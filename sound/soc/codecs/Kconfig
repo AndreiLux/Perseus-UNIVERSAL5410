@@ -18,6 +18,10 @@ config SND_SOC_WM8510
 	tristate
 	depends on SND_SOC
 
+config SND_SOC_WM8711
+	tristate
+	depends on SND_SOC
+
 config SND_SOC_WM8731
 	tristate
 	depends on SND_SOC
