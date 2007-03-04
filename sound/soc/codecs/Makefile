@@ -11,6 +11,7 @@ snd-soc-wm8772-objs := wm8772.o
 snd-soc-wm8956-objs := wm8956.o
 snd-soc-wm8960-objs := wm8960.o
 snd-soc-wm8971-objs := wm8971.o
+snd-soc-wm8974-objs := wm8974.o
 snd-soc-wm9712-objs := wm9712.o
 
 obj-$(CONFIG_SND_SOC_AC97_CODEC)	+= snd-soc-ac97.o
@@ -26,4 +27,5 @@ obj-$(CONFIG_SND_SOC_WM8772)	+= snd-soc-wm8772.o
 obj-$(CONFIG_SND_SOC_WM8956)	+= snd-soc-wm8956.o
 obj-$(CONFIG_SND_SOC_WM8960)	+= snd-soc-wm8960.o
 obj-$(CONFIG_SND_SOC_WM8971)	+= snd-soc-wm8971.o
+obj-$(CONFIG_SND_SOC_WM8974)	+= snd-soc-wm8974.o
 obj-$(CONFIG_SND_SOC_WM9712)	+= snd-soc-wm9712.o
