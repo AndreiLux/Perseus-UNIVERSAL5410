@@ -61,4 +61,14 @@ config SND_PXA2XX_SOC_TOSA
 	  Say Y if you want to add support for SoC audio on Sharp
 	  Zaurus SL-C6000x models (Tosa).
 
+config SND_PXA2XX_SOC_MAGICIAN
+	tristate "SoC Audio support for HTC Magician"
+	depends on SND_PXA2XX_SOC
+	select SND_PXA2XX_SOC_I2S
+	select SND_PXA2XX_SOC_SSP
+	select SND_SOC_UDA1380
+	help
+	  Say Y if you want to add support for SoC audio on the
+	  HTC Magician.
+
 endmenu
