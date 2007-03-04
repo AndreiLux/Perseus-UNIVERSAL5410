@@ -61,4 +61,14 @@ config SND_PXA2XX_SOC_TOSA
 	  Say Y if you want to add support for SoC audio on Sharp
 	  Zaurus SL-C6000x models (Tosa).
 
+config SND_PXA2XX_SOC_AMESOM_TLV320
+	tristate "SoC SSP Audio support for AMESOM - TLV320AIC24k"
+	depends on SND_PXA2XX_SOC && MACH_AMESOM
+	select SND_PXA2XX_SOC_I2S
+	select SND_PXA2XX_SOC_SSP
+	select SND_SOC_TLV320
+	help
+	  Say Y if you want to add support for SoC audio on Amesom
+	  with the tlv320.
+
 endmenu
