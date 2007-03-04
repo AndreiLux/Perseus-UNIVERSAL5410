@@ -1471,6 +1471,7 @@ static void wm8753_set_dai_mode(struct snd_soc_codec *codec, unsigned int mode)
 		wm8753_dai[0].playback.active = playback_active;
 		wm8753_dai[0].capture.active = capture_active;
 		wm8753_dai[0].active = codec_active;
+		wm8753_dai[0].private_data = private_data;
 		wm8753_dai[0].pop_wait = pop_wait;
 
 		playback_active = wm8753_dai[1].playback.active;
@@ -1479,10 +1480,10 @@ static void wm8753_set_dai_mode(struct snd_soc_codec *codec, unsigned int mode)
 		private_data = wm8753_dai[1].private_data;
 		pop_wait = wm8753_dai[1].pop_wait;
 		wm8753_dai[1] = wm8753_all_dai[(mode << 1) + 1];
-		wm8753_dai[1] = wm8753_all_dai[mode << 1];
 		wm8753_dai[1].playback.active = playback_active;
 		wm8753_dai[1].capture.active = capture_active;
 		wm8753_dai[1].active = codec_active;
+		wm8753_dai[1].private_data = private_data;
 		wm8753_dai[1].pop_wait = pop_wait;
 	}
 	wm8753_dai[0].codec = codec;
