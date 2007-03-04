@@ -1,0 +1,23 @@
+menu "SoC Audio for the Freescale i.MX"
+
+config SND_MXC_SOC
+	tristate "SoC Audio for the Freescale i.MX CPU"
+	depends on ARCH_MXC && SND
+	select SND_PCM
+	help
+	  Say Y or M if you want to add support for codecs attached to
+	  the MXC AC97, I2S or SSP interface. You will also need
+	  to select the audio interfaces to support below.
+
+config SND_MXC_AC97
+	tristate
+	select SND_AC97_CODEC
+
+config SND_MXC_SOC_AC97
+	tristate
+	select AC97_BUS
+
+config SND_MXC_SOC_SSI
+	tristate
+
+endmenu

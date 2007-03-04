@@ -25,6 +25,7 @@ depends on SND_SOC
 source "sound/soc/at91/Kconfig"
 source "sound/soc/pxa/Kconfig"
 source "sound/soc/s3c24xx/Kconfig"
+source "sound/soc/imx/Kconfig"
 endmenu
 
 # Supported codecs
