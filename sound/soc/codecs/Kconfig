@@ -10,6 +10,10 @@ config SND_SOC_TLV320
 	tristate
 	depends on SND_SOC
 
+config SND_SOC_UDA1380
+	tristate
+	depends on SND_SOC
+
 config SND_SOC_WM8731
 	tristate
 	depends on SND_SOC
