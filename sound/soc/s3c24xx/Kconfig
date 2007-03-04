@@ -21,5 +21,12 @@ config SND_S3C24XX_SOC_NEO1973_WM8753
 	  Say Y if you want to add support for SoC audio on smdk2440
 	  with the WM8753.
 
+config SND_S3C24XX_SOC_SMDK2440
+	tristate "SoC I2S Audio support for SMDK2440"
+	depends on SND_S3C24XX_SOC && MACH_SMDK
+	select SND_S3C24XX_SOC_I2S
+	help
+	  Say Y if you want to add support for SoC audio on SMDK2440
+
 endmenu
 
