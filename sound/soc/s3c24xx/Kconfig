@@ -28,5 +28,14 @@ config SND_S3C24XX_SOC_SMDK2440
 	help
 	  Say Y if you want to add support for SoC audio on SMDK2440
 
+config SND_S3C24XX_SOC_SMDK2440_WM8956
+	tristate "SoC I2S WM8956 Audio support for SMDK2440"
+	depends on SND_S3C24XX_SOC && MACH_SMDK
+	select SND_S3C24XX_SOC_I2S
+	select SND_SOC_WM8956
+	help
+	  Say Y if you want to add support for SoC audio on SMDK2440
+	  with WM8956.
+
 endmenu
 
