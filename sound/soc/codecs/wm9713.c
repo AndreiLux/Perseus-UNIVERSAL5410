@@ -891,7 +891,7 @@ static int wm9713_pcm_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static void wm9713_voiceshutdown(snd_pcm_substream_t *substream)
+static void wm9713_voiceshutdown(struct snd_pcm_substream *substream)
 {
     struct snd_soc_pcm_runtime *rtd = substream->private_data;
     struct snd_soc_device *socdev = rtd->socdev;
