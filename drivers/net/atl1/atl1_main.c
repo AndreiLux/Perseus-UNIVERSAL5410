@@ -1252,8 +1252,7 @@ static void atl1_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
 
 	spin_lock_irqsave(&adapter->lock, flags);
 	/* atl1_irq_disable(adapter); */
-	if (adapter->vlgrp)
-		adapter->vlgrp->vlan_devices[vid] = NULL;
+	vlan_group_set_device(adapter->vlgrp, vid, NULL);
 	/* atl1_irq_enable(adapter); */
 	spin_unlock_irqrestore(&adapter->lock, flags);
 	/* We don't do Vlan filtering */
@@ -1266,7 +1265,7 @@ static void atl1_restore_vlan(struct atl1_adapter *adapter)
 	if (adapter->vlgrp) {
 		u16 vid;
 		for (vid = 0; vid < VLAN_GROUP_ARRAY_LEN; vid++) {
-			if (!adapter->vlgrp->vlan_devices[vid])
+			if (!vlan_group_get_device(adapter->vlgrp, vid))
 				continue;
 			atl1_vlan_rx_add_vid(adapter->netdev, vid);
 		}
@@ -1329,7 +1328,7 @@ static int atl1_tx_csum(struct atl1_adapter *adapter, struct sk_buff *skb,
 
 	if (likely(skb->ip_summed == CHECKSUM_PARTIAL)) {
 		cso = skb->h.raw - skb->data;
-		css = (skb->h.raw + skb->csum) - skb->data;
+		css = (skb->h.raw + skb->csum_offset) - skb->data;
 		if (unlikely(cso & 0x1)) {
 			printk(KERN_DEBUG "%s: payload offset != even number\n",
 				atl1_driver_name);
@@ -1563,7 +1562,7 @@ static int atl1_xmit_frame(struct sk_buff *skb, struct net_device *netdev)
 	/* mss will be nonzero if we're doing segment offload (TSO/GSO) */
 	mss = skb_shinfo(skb)->gso_size;
 	if (mss) {
-		if (skb->protocol == ntohs(ETH_P_IP)) {
+		if (skb->protocol == htons(ETH_P_IP)) {
 			proto_hdr_len = ((skb->h.raw - skb->data) +
 					 (skb->h.th->doff << 2));
 			if (unlikely(proto_hdr_len > len)) {

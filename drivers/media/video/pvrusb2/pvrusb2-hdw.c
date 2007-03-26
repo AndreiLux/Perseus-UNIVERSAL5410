@@ -1248,10 +1248,10 @@ int pvr2_upload_firmware2(struct pvr2_hdw *hdw)
 	ret |= pvr2_write_register(hdw, 0xaa18, 0x00840000); /*unknown*/
 	LOCK_TAKE(hdw->ctl_lock); do {
 		hdw->cmd_buffer[0] = FX2CMD_FWPOST1;
-		ret |= pvr2_send_request(hdw,hdw->cmd_buffer,1,0,0);
+		ret |= pvr2_send_request(hdw,hdw->cmd_buffer,1,NULL,0);
 		hdw->cmd_buffer[0] = FX2CMD_MEMSEL;
 		hdw->cmd_buffer[1] = 0;
-		ret |= pvr2_send_request(hdw,hdw->cmd_buffer,2,0,0);
+		ret |= pvr2_send_request(hdw,hdw->cmd_buffer,2,NULL,0);
 	} while (0); LOCK_GIVE(hdw->ctl_lock);
 
 	if (ret) {
@@ -1268,7 +1268,7 @@ int pvr2_upload_firmware2(struct pvr2_hdw *hdw)
 	if (fw_len % sizeof(u32)) {
 		pvr2_trace(PVR2_TRACE_ERROR_LEGS,
 			   "size of %s firmware"
-			   " must be a multiple of %u bytes",
+			   " must be a multiple of %zu bytes",
 			   fw_files[fwidx],sizeof(u32));
 		release_firmware(fw_entry);
 		return -1;
@@ -1320,7 +1320,7 @@ int pvr2_upload_firmware2(struct pvr2_hdw *hdw)
 	LOCK_TAKE(hdw->ctl_lock); do {
 		hdw->cmd_buffer[0] = FX2CMD_MEMSEL;
 		hdw->cmd_buffer[1] = 0;
-		ret |= pvr2_send_request(hdw,hdw->cmd_buffer,2,0,0);
+		ret |= pvr2_send_request(hdw,hdw->cmd_buffer,2,NULL,0);
 	} while (0); LOCK_GIVE(hdw->ctl_lock);
 
 	if (ret) {

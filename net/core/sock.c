@@ -808,7 +808,7 @@ lenout:
  *
  * (We also register the sk_lock with the lock validator.)
  */
-static void inline sock_lock_init(struct sock *sk)
+static inline void sock_lock_init(struct sock *sk)
 {
 	sock_lock_init_class_and_name(sk,
 			af_family_slock_key_strings[sk->sk_family],
@@ -1597,7 +1597,7 @@ int compat_sock_common_getsockopt(struct socket *sock, int level, int optname,
 {
 	struct sock *sk = sock->sk;
 
-	if (sk->sk_prot->compat_setsockopt != NULL)
+	if (sk->sk_prot->compat_getsockopt != NULL)
 		return sk->sk_prot->compat_getsockopt(sk, level, optname,
 						      optval, optlen);
 	return sk->sk_prot->getsockopt(sk, level, optname, optval, optlen);
