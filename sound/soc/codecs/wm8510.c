@@ -500,7 +500,7 @@ static int wm8510_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_device *socdev = rtd->socdev;
 	struct snd_soc_codec *codec = socdev->codec;
-	u16 iface = wm8510_read_reg_cache(codec, WM8510_ADD) & 0x19f;
+	u16 iface = wm8510_read_reg_cache(codec, WM8510_IFACE) & 0x19f;
 	u16 adn = wm8510_read_reg_cache(codec, WM8510_ADD) & 0x1f1;
 
 	/* bit size */
