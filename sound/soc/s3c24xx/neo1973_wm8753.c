@@ -33,7 +33,7 @@
 #include <asm/arch/regs-iis.h>
 #include <asm/arch/regs-clock.h>
 #include <asm/arch/regs-gpio.h>
-#include <asm/arch/hardware.h>
+#include <asm/hardware.h>
 #include <asm/arch/audio.h>
 #include <asm/io.h>
 #include <asm/arch/spi-gpio.h>
