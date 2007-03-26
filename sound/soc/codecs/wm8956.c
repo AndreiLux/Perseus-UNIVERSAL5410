@@ -314,7 +314,7 @@ static int wm8956_dapm_event(struct snd_soc_codec *codec, int event)
 	}
 #endif
 	// tmp
-	wm8956_write(codec, WM8956_POWER1, 0xffff);
+	wm8956_write(codec, WM8956_POWER1, 0xfffe);
 	wm8956_write(codec, WM8956_POWER2, 0xffff);
 	wm8956_write(codec, WM8956_POWER3, 0xffff);
 	codec->dapm_state = event;
@@ -388,7 +388,7 @@ static int wm8956_set_dai_pll(struct snd_soc_codec_dai *codec_dai,
 		return -EINVAL;
 
 	reg = wm8956_read_reg_cache(codec, WM8956_PLLN) & 0x1e0;
-	wm8956_write(codec, WM8956_PLLN, reg | (pll_div.pre_div << 4)
+	wm8956_write(codec, WM8956_PLLN, reg | (1<<5) | (pll_div.pre_div << 4)
 		| pll_div.n);
 	wm8956_write(codec, WM8956_PLLK1, pll_div.k >> 16 );
 	wm8956_write(codec, WM8956_PLLK2, (pll_div.k >> 8) & 0xff);

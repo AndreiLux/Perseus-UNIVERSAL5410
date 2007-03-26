@@ -356,7 +356,7 @@ static int wm8960_dapm_event(struct snd_soc_codec *codec, int event)
 	}
 #endif
 	// tmp
-	wm8960_write(codec, WM8960_POWER1, 0xffff);
+	wm8960_write(codec, WM8960_POWER1, 0xfffe);
 	wm8960_write(codec, WM8960_POWER2, 0xffff);
 	wm8960_write(codec, WM8960_POWER3, 0xffff);
 	codec->dapm_state = event;
@@ -430,7 +430,7 @@ static int wm8960_set_dai_pll(struct snd_soc_codec_dai *codec_dai,
 		return -EINVAL;
 
 	reg = wm8960_read_reg_cache(codec, WM8960_PLLN) & 0x1e0;
-	wm8960_write(codec, WM8960_PLLN, reg | (pll_div.pre_div << 4)
+	wm8960_write(codec, WM8960_PLLN, reg | (1<<5) | (pll_div.pre_div << 4)
 		| pll_div.n);
 	wm8960_write(codec, WM8960_PLLK1, pll_div.k >> 16 );
 	wm8960_write(codec, WM8960_PLLK2, (pll_div.k >> 8) & 0xff);
