@@ -36,29 +36,23 @@
 #include "pxa2xx-i2s.h"
 #include "pxa2xx-ssp.h"
 
-#define MAGICIAN_HP_OFF    0
-#define MAGICIAN_HEADSET   1
-#define MAGICIAN_HP        2
+#define MAGICIAN_HP_ON     0
+#define MAGICIAN_HP_OFF    1
 
 #define MAGICIAN_SPK_ON    0
 #define MAGICIAN_SPK_OFF   1
 
 #define MAGICIAN_MIC       0
 #define MAGICIAN_MIC_EXT   1
-#define MAGICIAN_BT_HS     2
 
 /*
  * SSP GPIO's
  */
-#define GPIO26_SSP1RX_MD	(26 | GPIO_ALT_FN_1_IN)
-#define GPIO25_SSP1TX_MD	(25 | GPIO_ALT_FN_2_OUT)
-#define GPIO23_SSP1CLKS_MD	(23 | GPIO_ALT_FN_2_IN)
-#define GPIO24_SSP1FRMS_MD	(24 | GPIO_ALT_FN_2_IN)
-#define GPIO23_SSP1CLKM_MD	(23 | GPIO_ALT_FN_2_OUT)
-#define GPIO24_SSP1FRMM_MD	(24 | GPIO_ALT_FN_2_OUT)
-#define GPIO53_SSP1SYSCLK_MD	(53 | GPIO_ALT_FN_2_OUT)
+#define GPIO23_SSPSCLK_MD	(23 | GPIO_ALT_FN_2_OUT)
+#define GPIO24_SSPSFRM_MD	(24 | GPIO_ALT_FN_2_OUT)
+#define GPIO25_SSPTXD_MD	(25 | GPIO_ALT_FN_2_OUT)
 
-static int magician_jack_func = MAGICIAN_HP_OFF;
+static int magician_hp_func = MAGICIAN_HP_OFF;
 static int magician_spk_func = MAGICIAN_SPK_ON;
 static int magician_in_sel = MAGICIAN_MIC;
 
@@ -66,47 +60,26 @@ extern struct platform_device magician_cpld;
 
 static void magician_ext_control(struct snd_soc_codec *codec)
 {
-	if (magician_spk_func == MAGICIAN_SPK_ON)
-		snd_soc_dapm_set_endpoint(codec, "Speaker", 1);
-	else
-		snd_soc_dapm_set_endpoint(codec, "Speaker", 0);
+	snd_soc_dapm_set_endpoint(codec, "Speaker",
+			(magician_spk_func == MAGICIAN_SPK_ON));
 
-	/* set up jack connection */
-	switch (magician_jack_func) {
-	case MAGICIAN_HP:
-		/* enable and unmute hp jack, disable mic bias */
-		snd_soc_dapm_set_endpoint(codec, "Mic Jack", 0);
-		snd_soc_dapm_set_endpoint(codec, "Headphone Jack", 1);
+	snd_soc_dapm_set_endpoint(codec, "Headphone Jack",
+			(magician_hp_func == MAGICIAN_HP_ON));
+
+	switch (magician_in_sel) {
+	case MAGICIAN_MIC:
+		snd_soc_dapm_set_endpoint(codec, "Headset Mic", 0);
+		snd_soc_dapm_set_endpoint(codec, "Call Mic", 1);
 		break;
-	case MAGICIAN_HEADSET:
-		/* enable mic jack and bias, mute hp */
-		snd_soc_dapm_set_endpoint(codec, "Headphone Jack", 1);
-		snd_soc_dapm_set_endpoint(codec, "Mic Jack", 1);
-		break;
-	case MAGICIAN_HP_OFF:
-		/* jack removed, everything off */
-		snd_soc_dapm_set_endpoint(codec, "Headphone Jack", 0);
-		snd_soc_dapm_set_endpoint(codec, "Mic Jack", 0);
+	case MAGICIAN_MIC_EXT:
+		snd_soc_dapm_set_endpoint(codec, "Call Mic", 0);
+		snd_soc_dapm_set_endpoint(codec, "Headset Mic", 1);
 		break;
 	}
-#if 0
-	/* fixme pH5, can we detect and config the correct Mic type ? */
-	switch(magician_in_sel) {
-	case MAGICIAN_IN_MIC:
-		snd_soc_dapm_set_endpoint(codec, "Mic Jack", 1);
-		break;
-	case MAGICIAN_IN_MIC_EXT:
-		snd_soc_dapm_set_endpoint(codec, "Mic Jack", 1);
-		break;
-	case MAGICIAN_IN_BT_HS:
-		snd_soc_dapm_set_endpoint(codec, "Mic Jack", 0);
-		break;
-	}
-#endif
 	snd_soc_dapm_sync_endpoints(codec);
 }
 
-static int magician_startup(snd_pcm_substream_t *substream)
+static int magician_startup(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_codec *codec = rtd->socdev->codec;
@@ -282,35 +255,35 @@ static struct snd_soc_ops magician_playback_ops = {
 	.hw_free = magician_playback_hw_free,
 };
 
-static int magician_get_jack(snd_kcontrol_t * kcontrol,
-			     snd_ctl_elem_value_t * ucontrol)
+static int magician_get_jack(struct snd_kcontrol * kcontrol,
+			     struct snd_ctl_elem_value * ucontrol)
 {
-	ucontrol->value.integer.value[0] = magician_jack_func;
+	ucontrol->value.integer.value[0] = magician_hp_func;
 	return 0;
 }
 
-static int magician_set_jack(snd_kcontrol_t * kcontrol,
-			     snd_ctl_elem_value_t * ucontrol)
+static int magician_set_hp(struct snd_kcontrol * kcontrol,
+			     struct snd_ctl_elem_value * ucontrol)
 {
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
 
-	if (magician_jack_func == ucontrol->value.integer.value[0])
+	if (magician_hp_func == ucontrol->value.integer.value[0])
 		return 0;
 
-	magician_jack_func = ucontrol->value.integer.value[0];
+	magician_hp_func = ucontrol->value.integer.value[0];
 	magician_ext_control(codec);
 	return 1;
 }
 
-static int magician_get_spk(snd_kcontrol_t * kcontrol,
-			    snd_ctl_elem_value_t * ucontrol)
+static int magician_get_spk(struct snd_kcontrol * kcontrol,
+			    struct snd_ctl_elem_value * ucontrol)
 {
 	ucontrol->value.integer.value[0] = magician_spk_func;
 	return 0;
 }
 
-static int magician_set_spk(snd_kcontrol_t * kcontrol,
-			    snd_ctl_elem_value_t * ucontrol)
+static int magician_set_spk(struct snd_kcontrol * kcontrol,
+			    struct snd_ctl_elem_value * ucontrol)
 {
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
 
@@ -322,15 +295,15 @@ static int magician_set_spk(snd_kcontrol_t * kcontrol,
 	return 1;
 }
 
-static int magician_get_input(snd_kcontrol_t * kcontrol,
-			      snd_ctl_elem_value_t * ucontrol)
+static int magician_get_input(struct snd_kcontrol * kcontrol,
+			      struct snd_ctl_elem_value * ucontrol)
 {
 	ucontrol->value.integer.value[0] = magician_in_sel;
 	return 0;
 }
 
-static int magician_set_input(snd_kcontrol_t * kcontrol,
-			      snd_ctl_elem_value_t * ucontrol)
+static int magician_set_input(struct snd_kcontrol * kcontrol,
+			      struct snd_ctl_elem_value * ucontrol)
 {
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
 
@@ -380,56 +353,54 @@ static int magician_hp_power(struct snd_soc_dapm_widget *w, int event)
 
 static int magician_mic_bias(struct snd_soc_dapm_widget *w, int event)
 {
-	if (SND_SOC_DAPM_EVENT_ON(event))
-		magician_egpio_enable(&magician_cpld,
-			EGPIO_NR_MAGICIAN_MIC_POWER);
-	else
-		magician_egpio_disable(&magician_cpld,
-			EGPIO_NR_MAGICIAN_MIC_POWER);
+//	if (SND_SOC_DAPM_EVENT_ON(event))
+//		magician_egpio_enable(&magician_cpld,
+//			EGPIO_NR_MAGICIAN_MIC_POWER);
+//	else
+//		magician_egpio_disable(&magician_cpld,
+//			EGPIO_NR_MAGICIAN_MIC_POWER);
 	return 0;
 }
 
 /* magician machine dapm widgets */
 static const struct snd_soc_dapm_widget uda1380_dapm_widgets[] = {
 	SND_SOC_DAPM_HP("Headphone Jack", magician_hp_power),
-	SND_SOC_DAPM_MIC("Mic Jack", magician_mic_bias),
 	SND_SOC_DAPM_SPK("Speaker", magician_spk_power),
+	SND_SOC_DAPM_MIC("Call Mic", magician_mic_bias),
+	SND_SOC_DAPM_MIC("Headset Mic", magician_mic_bias),
 };
 
 /* magician machine audio_map */
 static const char *audio_map[][3] = {
 
-	/* headphone connected to VOUTLHP, VOUTRHP */
-	{"Headphone Jack", NULL, "VOUTLHP"},
-	{"Headphone Jack", NULL, "VOUTRHP"},
+	/* Headphone connected to VOUTL, VOUTR */
+	{"Headphone Jack", NULL, "VOUTL"},
+	{"Headphone Jack", NULL, "VOUTR"},
 
-	/* ext speaker connected to VOUTL, VOUTR  */
+	/* Speaker connected to VOUTL, VOUTR */
 	{"Speaker", NULL, "VOUTL"},
 	{"Speaker", NULL, "VOUTR"},
 
-	/* mic is connected to VINM */
-	{"VINM", NULL, "Mic Jack"},
-
-	/* line is connected to VINL, VINR */
-	{"VINL", NULL, "Line Jack"},
-	{"VINR", NULL, "Line Jack"},
+	/* Mics are connected to VINM */
+	{"VINM", NULL, "Headset Mic"},
+	{"VINM", NULL, "Call Mic"},
 
 	{NULL, NULL, NULL},
 };
 
-static const char *jack_function[] = { "Off", "Headset", "Headphone" };
+static const char *hp_function[] = { "On", "Off" };
 static const char *spk_function[] = { "On", "Off" };
-static const char *input_select[] = { "Internal Mic", "External Mic" };
+static const char *input_select[] = { "Call Mic", "Headset Mic" };
 static const struct soc_enum magician_enum[] = {
-	SOC_ENUM_SINGLE_EXT(4, jack_function),
+	SOC_ENUM_SINGLE_EXT(4, hp_function),
 	SOC_ENUM_SINGLE_EXT(2, spk_function),
 	SOC_ENUM_SINGLE_EXT(2, input_select),
 };
 
 static const struct snd_kcontrol_new uda1380_magician_controls[] = {
-	SOC_ENUM_EXT("Jack Function", magician_enum[0], magician_get_jack,
-			magician_set_jack),
-	SOC_ENUM_EXT("Speaker Function", magician_enum[1], magician_get_spk,
+	SOC_ENUM_EXT("Headphone Switch", magician_enum[0], magician_get_jack,
+			magician_set_hp),
+	SOC_ENUM_EXT("Speaker Switch", magician_enum[1], magician_get_spk,
 			magician_set_spk),
 	SOC_ENUM_EXT("Input Select", magician_enum[2], magician_get_input,
 			magician_set_input),
@@ -445,6 +416,10 @@ static int magician_uda1380_init(struct snd_soc_codec *codec)
 	/* NC codec pins */
 	snd_soc_dapm_set_endpoint(codec, "VOUTLHP", 0);
 	snd_soc_dapm_set_endpoint(codec, "VOUTRHP", 0);
+
+	/* FIXME: is anything connected here? */
+	snd_soc_dapm_set_endpoint(codec, "VINL", 0);
+	snd_soc_dapm_set_endpoint(codec, "VINR", 0);
 
 	/* Add magician specific controls */
 	for (i = 0; i < ARRAY_SIZE(uda1380_magician_controls); i++) {
@@ -525,6 +500,9 @@ static int __init magician_init(void)
 	udelay(5);
 	magician_egpio_disable(&magician_cpld, EGPIO_NR_MAGICIAN_CODEC_RESET);
 
+	/* correct place? we'll need it to talk to the uda1380 */
+	request_module("i2c-pxa");
+
 	magician_snd_device = platform_device_alloc("soc-audio", -1);
 	if (!magician_snd_device)
 		return -ENOMEM;
@@ -536,11 +514,9 @@ static int __init magician_init(void)
 	if (ret)
 		platform_device_put(magician_snd_device);
 
-	pxa_gpio_mode(GPIO53_SSP1SYSCLK_MD);
-	pxa_gpio_mode(GPIO26_SSP1RX_MD);
-	pxa_gpio_mode(GPIO25_SSP1TX_MD);
-	pxa_gpio_mode(GPIO23_SSP1CLKM_MD);
-	pxa_gpio_mode(GPIO24_SSP1FRMM_MD);
+	pxa_gpio_mode(GPIO23_SSPSCLK_MD);
+	pxa_gpio_mode(GPIO24_SSPSFRM_MD);
+	pxa_gpio_mode(GPIO25_SSPTXD_MD);
 
 	return ret;
 }

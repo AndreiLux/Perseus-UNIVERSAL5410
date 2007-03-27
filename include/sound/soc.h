@@ -27,27 +27,42 @@
 /*
  * Convenience kcontrol builders
  */
-#define SOC_SINGLE_VALUE(reg,shift,mask,invert) ((reg) | ((shift) << 8) |\
-	((shift) << 12) | ((mask) << 16) | ((invert) << 24))
-#define SOC_SINGLE_VALUE_EXT(reg,mask,invert) ((reg) | ((mask) << 16) |\
+#define SOC_SINGLE_VALUE(reg,shift,max,invert) ((reg) | ((shift) << 8) |\
+	((shift) << 12) | ((max) << 16) | ((invert) << 24))
+#define SOC_SINGLE_VALUE_EXT(reg,max,invert) ((reg) | ((max) << 16) |\
 	((invert) << 31))
-#define SOC_SINGLE(xname, reg, shift, mask, invert) \
+#define SOC_SINGLE(xname, reg, shift, max, invert) \
 {	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
 	.info = snd_soc_info_volsw, .get = snd_soc_get_volsw,\
 	.put = snd_soc_put_volsw, \
-	.private_value =  SOC_SINGLE_VALUE(reg, shift, mask, invert) }
-#define SOC_DOUBLE(xname, reg, shift_left, shift_right, mask, invert) \
+	.private_value =  SOC_SINGLE_VALUE(reg, shift, max, invert) }
+#define SOC_SINGLE_TLV(xname, reg, shift, max, invert, tlv_array) \
+{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
+	.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ|SNDRV_CTL_ELEM_ACCESS_READWRITE,\
+	.tlv.p = (tlv_array), \
+	.info = snd_soc_info_volsw, .get = snd_soc_get_volsw,\
+	.put = snd_soc_put_volsw, \
+	.private_value =  SOC_SINGLE_VALUE(reg, shift, max, invert) }
+#define SOC_DOUBLE(xname, reg, shift_left, shift_right, max, invert) \
 {	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = (xname),\
 	.info = snd_soc_info_volsw, .get = snd_soc_get_volsw, \
 	.put = snd_soc_put_volsw, \
 	.private_value = (reg) | ((shift_left) << 8) | \
-		((shift_right) << 12) | ((mask) << 16) | ((invert) << 24) }
-#define SOC_DOUBLE_R(xname, reg_left, reg_right, shift, mask, invert) \
+		((shift_right) << 12) | ((max) << 16) | ((invert) << 24) }
+#define SOC_DOUBLE_R(xname, reg_left, reg_right, shift, max, invert) \
 {	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = (xname), \
 	.info = snd_soc_info_volsw_2r, \
 	.get = snd_soc_get_volsw_2r, .put = snd_soc_put_volsw_2r, \
 	.private_value = (reg_left) | ((shift) << 8)  | \
-		((mask) << 12) | ((invert) << 20) | ((reg_right) << 24) }
+		((max) << 12) | ((invert) << 20) | ((reg_right) << 24) }
+#define SOC_DOUBLE_TLV(xname, reg, shift_left, shift_right, max, invert, tlv_array) \
+{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = (xname),\
+	.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ|SNDRV_CTL_ELEM_ACCESS_READWRITE,\
+	.tlv.p = (tlv_array), \
+	.info = snd_soc_info_volsw, .get = snd_soc_get_volsw, \
+	.put = snd_soc_put_volsw, \
+	.private_value = (reg) | ((shift_left) << 8) | \
+		((shift_right) << 12) | ((max) << 16) | ((invert) << 24) }
 #define SOC_ENUM_DOUBLE(xreg, xshift_l, xshift_r, xmask, xtexts) \
 {	.reg = xreg, .shift_l = xshift_l, .shift_r = xshift_r, \
 	.mask = xmask, .texts = xtexts }

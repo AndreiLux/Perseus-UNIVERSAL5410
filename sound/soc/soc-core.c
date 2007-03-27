@@ -1203,7 +1203,6 @@ struct snd_kcontrol *snd_soc_cnew(const struct snd_kcontrol_new *_template,
 	memcpy(&template, _template, sizeof(template));
 	if (long_name)
 		template.name = long_name;
-	template.access = SNDRV_CTL_ELEM_ACCESS_READWRITE;
 	template.index = 0;
 
 	return snd_ctl_new1(&template, data);
@@ -1338,13 +1337,13 @@ EXPORT_SYMBOL_GPL(snd_soc_info_enum_ext);
 int snd_soc_info_volsw_ext(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_info *uinfo)
 {
-	int mask = kcontrol->private_value;
+	int max = kcontrol->private_value;
 
 	uinfo->type =
-		mask == 1 ? SNDRV_CTL_ELEM_TYPE_BOOLEAN : SNDRV_CTL_ELEM_TYPE_INTEGER;
+		max == 1 ? SNDRV_CTL_ELEM_TYPE_BOOLEAN : SNDRV_CTL_ELEM_TYPE_INTEGER;
 	uinfo->count = 1;
 	uinfo->value.integer.min = 0;
-	uinfo->value.integer.max = mask;
+	uinfo->value.integer.max = max;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_info_volsw_ext);
@@ -1381,15 +1380,15 @@ EXPORT_SYMBOL_GPL(snd_soc_info_bool_ext);
 int snd_soc_info_volsw(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_info *uinfo)
 {
-	int mask = (kcontrol->private_value >> 16) & 0xff;
+	int max = (kcontrol->private_value >> 16) & 0xff;
 	int shift = (kcontrol->private_value >> 8) & 0x0f;
 	int rshift = (kcontrol->private_value >> 12) & 0x0f;
 
 	uinfo->type =
-		mask == 1 ? SNDRV_CTL_ELEM_TYPE_BOOLEAN : SNDRV_CTL_ELEM_TYPE_INTEGER;
+		max == 1 ? SNDRV_CTL_ELEM_TYPE_BOOLEAN : SNDRV_CTL_ELEM_TYPE_INTEGER;
 	uinfo->count = shift == rshift ? 1 : 2;
 	uinfo->value.integer.min = 0;
-	uinfo->value.integer.max = mask;
+	uinfo->value.integer.max = max;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_info_volsw);
@@ -1410,7 +1409,8 @@ int snd_soc_get_volsw(struct snd_kcontrol *kcontrol,
 	int reg = kcontrol->private_value & 0xff;
 	int shift = (kcontrol->private_value >> 8) & 0x0f;
 	int rshift = (kcontrol->private_value >> 12) & 0x0f;
-	int mask = (kcontrol->private_value >> 16) & 0xff;
+	int max = (kcontrol->private_value >> 16) & 0xff;
+	int mask = (1<<fls(max))-1;
 	int invert = (kcontrol->private_value >> 24) & 0x01;
 
 	ucontrol->value.integer.value[0] =
@@ -1420,10 +1420,10 @@ int snd_soc_get_volsw(struct snd_kcontrol *kcontrol,
 			(snd_soc_read(codec, reg) >> rshift) & mask;
 	if (invert) {
 		ucontrol->value.integer.value[0] =
-			mask - ucontrol->value.integer.value[0];
+			max - ucontrol->value.integer.value[0];
 		if (shift != rshift)
 			ucontrol->value.integer.value[1] =
-				mask - ucontrol->value.integer.value[1];
+				max - ucontrol->value.integer.value[1];
 	}
 
 	return 0;
@@ -1446,20 +1446,22 @@ int snd_soc_put_volsw(struct snd_kcontrol *kcontrol,
 	int reg = kcontrol->private_value & 0xff;
 	int shift = (kcontrol->private_value >> 8) & 0x0f;
 	int rshift = (kcontrol->private_value >> 12) & 0x0f;
-	int mask = (kcontrol->private_value >> 16) & 0xff;
+	int max = (kcontrol->private_value >> 16) & 0xff;
+	int mask = (1<<fls(max))-1;
 	int invert = (kcontrol->private_value >> 24) & 0x01;
 	int err;
 	unsigned short val, val2, val_mask;
 
 	val = (ucontrol->value.integer.value[0] & mask);
+printk("put_volsw: %d\n", val);
 	if (invert)
-		val = mask - val;
+		val = max - val;
 	val_mask = mask << shift;
 	val = val << shift;
 	if (shift != rshift) {
 		val2 = (ucontrol->value.integer.value[1] & mask);
 		if (invert)
-			val2 = mask - val2;
+			val2 = max - val2;
 		val_mask |= mask << rshift;
 		val |= val2 << rshift;
 	}
@@ -1481,13 +1483,13 @@ EXPORT_SYMBOL_GPL(snd_soc_put_volsw);
 int snd_soc_info_volsw_2r(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_info *uinfo)
 {
-	int mask = (kcontrol->private_value >> 12) & 0xff;
+	int max = (kcontrol->private_value >> 12) & 0xff;
 
 	uinfo->type =
-		mask == 1 ? SNDRV_CTL_ELEM_TYPE_BOOLEAN : SNDRV_CTL_ELEM_TYPE_INTEGER;
+		max == 1 ? SNDRV_CTL_ELEM_TYPE_BOOLEAN : SNDRV_CTL_ELEM_TYPE_INTEGER;
 	uinfo->count = 2;
 	uinfo->value.integer.min = 0;
-	uinfo->value.integer.max = mask;
+	uinfo->value.integer.max = max;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_info_volsw_2r);
@@ -1508,7 +1510,8 @@ int snd_soc_get_volsw_2r(struct snd_kcontrol *kcontrol,
 	int reg = kcontrol->private_value & 0xff;
 	int reg2 = (kcontrol->private_value >> 24) & 0xff;
 	int shift = (kcontrol->private_value >> 8) & 0x0f;
-	int mask = (kcontrol->private_value >> 12) & 0xff;
+	int max = (kcontrol->private_value >> 12) & 0xff;
+	int mask = (1<<fls(max))-1;
 	int invert = (kcontrol->private_value >> 20) & 0x01;
 
 	ucontrol->value.integer.value[0] =
@@ -1517,9 +1520,9 @@ int snd_soc_get_volsw_2r(struct snd_kcontrol *kcontrol,
 		(snd_soc_read(codec, reg2) >> shift) & mask;
 	if (invert) {
 		ucontrol->value.integer.value[0] =
-			mask - ucontrol->value.integer.value[0];
+			max - ucontrol->value.integer.value[0];
 		ucontrol->value.integer.value[1] =
-			mask - ucontrol->value.integer.value[1];
+			max - ucontrol->value.integer.value[1];
 	}
 
 	return 0;
@@ -1542,7 +1545,8 @@ int snd_soc_put_volsw_2r(struct snd_kcontrol *kcontrol,
 	int reg = kcontrol->private_value & 0xff;
 	int reg2 = (kcontrol->private_value >> 24) & 0xff;
 	int shift = (kcontrol->private_value >> 8) & 0x0f;
-	int mask = (kcontrol->private_value >> 12) & 0xff;
+	int max = (kcontrol->private_value >> 12) & 0xff;
+	int mask = (1<<fls(max))-1;
 	int invert = (kcontrol->private_value >> 20) & 0x01;
 	int err;
 	unsigned short val, val2, val_mask;
@@ -1552,8 +1556,8 @@ int snd_soc_put_volsw_2r(struct snd_kcontrol *kcontrol,
 	val2 = (ucontrol->value.integer.value[1] & mask);
 
 	if (invert) {
-		val = mask - val;
-		val2 = mask - val2;
+		val = max - val;
+		val2 = max - val2;
 	}
 
 	val = val << shift;
