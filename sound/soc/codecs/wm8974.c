@@ -513,7 +513,7 @@ static int wm8974_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_device *socdev = rtd->socdev;
 	struct snd_soc_codec *codec = socdev->codec;
-	u16 iface = wm8974_read_reg_cache(codec, WM8974_ADD) & 0x19f;
+	u16 iface = wm8974_read_reg_cache(codec, WM8974_IFACE) & 0x19f;
 	u16 adn = wm8974_read_reg_cache(codec, WM8974_ADD) & 0x1f1;
 
 	/* bit size */

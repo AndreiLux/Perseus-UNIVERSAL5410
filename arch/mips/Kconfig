@@ -167,6 +167,7 @@ config MIPS_COBALT
 	select IRQ_CPU
 	select MIPS_GT64111
 	select SYS_HAS_CPU_NEVADA
+	select SYS_HAS_EARLY_PRINTK
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_64BIT_KERNEL if EXPERIMENTAL
 	select SYS_SUPPORTS_LITTLE_ENDIAN
@@ -176,7 +177,7 @@ config MACH_DECSTATION
 	bool "DECstations"
 	select BOOT_ELF32
 	select DMA_NONCOHERENT
-	select EARLY_PRINTK
+	select SYS_HAS_EARLY_PRINTK
 	select IRQ_CPU
 	select SYS_HAS_CPU_R3000
 	select SYS_HAS_CPU_R4X00
@@ -242,13 +243,14 @@ config MACH_JAZZ
 config LASAT
 	bool "LASAT Networks platforms"
 	select DMA_NONCOHERENT
+	select SYS_HAS_EARLY_PRINTK
 	select HW_HAS_PCI
 	select MIPS_GT64120
 	select MIPS_NILE4
 	select R5000_CPU_SCACHE
 	select SYS_HAS_CPU_R5000
 	select SYS_SUPPORTS_32BIT_KERNEL
-	select SYS_SUPPORTS_64BIT_KERNEL if EXPERIMENTAL
+	select SYS_SUPPORTS_64BIT_KERNEL if BROKEN
 	select SYS_SUPPORTS_LITTLE_ENDIAN
 	select GENERIC_HARDIRQS_NO__DO_IRQ
 
@@ -256,6 +258,7 @@ config MIPS_ATLAS
 	bool "MIPS Atlas board"
 	select BOOT_ELF32
 	select DMA_NONCOHERENT
+	select SYS_HAS_EARLY_PRINTK
 	select IRQ_CPU
 	select HW_HAS_PCI
 	select MIPS_BOARDS_GEN
@@ -301,6 +304,7 @@ config MIPS_MALTA
 	select SYS_HAS_CPU_MIPS64_R1
 	select SYS_HAS_CPU_NEVADA
 	select SYS_HAS_CPU_RM7000
+	select SYS_HAS_EARLY_PRINTK
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_64BIT_KERNEL
 	select SYS_SUPPORTS_BIG_ENDIAN
@@ -316,6 +320,7 @@ config MIPS_SEAD
 	depends on EXPERIMENTAL
 	select IRQ_CPU
 	select DMA_NONCOHERENT
+	select SYS_HAS_EARLY_PRINTK
 	select MIPS_BOARDS_GEN
 	select SYS_HAS_CPU_MIPS32_R1
 	select SYS_HAS_CPU_MIPS32_R2
@@ -353,9 +358,11 @@ config WR_PPMC
 config MIPS_SIM
 	bool 'MIPS simulator (MIPSsim)'
 	select DMA_NONCOHERENT
+	select SYS_HAS_EARLY_PRINTK
 	select IRQ_CPU
 	select SYS_HAS_CPU_MIPS32_R1
 	select SYS_HAS_CPU_MIPS32_R2
+	select SYS_HAS_EARLY_PRINTK
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_BIG_ENDIAN
 	select SYS_SUPPORTS_LITTLE_ENDIAN
@@ -376,6 +383,7 @@ config MOMENCO_JAGUAR_ATX
 	select RM7000_CPU_SCACHE
 	select SWAP_IO_SPACE
 	select SYS_HAS_CPU_RM9000
+	select SYS_HAS_EARLY_PRINTK
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_64BIT_KERNEL
 	select SYS_SUPPORTS_BIG_ENDIAN
@@ -462,11 +470,6 @@ config MIPS_XXS1500
 	select SOC_AU1500
 	select SYS_SUPPORTS_LITTLE_ENDIAN
 
-config PNX8550_V2PCI
-	bool "Philips PNX8550 based Viper2-PCI board"
-	select PNX8550
-	select SYS_SUPPORTS_LITTLE_ENDIAN
-
 config PNX8550_JBS
 	bool "Philips PNX8550 based JBS board"
 	select PNX8550
@@ -513,6 +516,7 @@ config PMC_YOSEMITE
 	select IRQ_CPU_RM9K
 	select SWAP_IO_SPACE
 	select SYS_HAS_CPU_RM9000
+	select SYS_HAS_EARLY_PRINTK
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_64BIT_KERNEL
 	select SYS_SUPPORTS_BIG_ENDIAN
@@ -538,6 +542,8 @@ config QEMU
 	select SYS_SUPPORTS_LITTLE_ENDIAN
 	select ARCH_SPARSEMEM_ENABLE
 	select GENERIC_HARDIRQS_NO__DO_IRQ
+	select NR_CPUS_DEFAULT_1
+	select SYS_SUPPORTS_SMP
 	help
 	  Qemu is a software emulator which among other architectures also
 	  can simulate a MIPS32 4Kc system.  This patch adds support for the
@@ -573,6 +579,7 @@ config SGI_IP22
 	select SWAP_IO_SPACE
 	select SYS_HAS_CPU_R4X00
 	select SYS_HAS_CPU_R5000
+	select SYS_HAS_EARLY_PRINTK
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_64BIT_KERNEL
 	select SYS_SUPPORTS_BIG_ENDIAN
@@ -587,7 +594,7 @@ config SGI_IP27
 	select ARC64
 	select BOOT_ELF64
 	select DMA_IP27
-	select EARLY_PRINTK
+	select SYS_HAS_EARLY_PRINTK
 	select HW_HAS_PCI
 	select NR_CPUS_DEFAULT_64
 	select PCI_DOMAINS
@@ -749,6 +756,7 @@ config SNI_RM
 	select SYS_HAS_CPU_R5000
 	select SYS_HAS_CPU_R10000
 	select R5000_CPU_SCACHE
+	select SYS_HAS_EARLY_PRINTK
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_64BIT_KERNEL if EXPERIMENTAL
 	select SYS_SUPPORTS_BIG_ENDIAN
@@ -827,7 +835,6 @@ source "arch/mips/tx4927/Kconfig"
 source "arch/mips/tx4938/Kconfig"
 source "arch/mips/vr41xx/Kconfig"
 source "arch/mips/philips/pnx8550/common/Kconfig"
-source "arch/mips/cobalt/Kconfig"
 
 endmenu
 
@@ -897,6 +904,20 @@ config DMA_NEED_PCI_MAP_STATE
 	bool
 
 config EARLY_PRINTK
+	bool "Early printk" if EMBEDDED && DEBUG_KERNEL
+	depends on SYS_HAS_EARLY_PRINTK
+	default y
+	help
+	  This option enables special console drivers which allow the kernel
+	  to print messages very early in the bootup process.
+
+	  This is useful for kernel debugging when your machine crashes very
+	  early before the console code is initialized. For normal operation
+	  it is not recommended because it looks on some machines ugly and
+	  oesn't cooperate with an X server. You should normally N here,
+	  unless you want to debug such a crash.
+
+config SYS_HAS_EARLY_PRINTK
 	bool
 
 config GENERIC_ISA_DMA
@@ -1033,6 +1054,7 @@ config SOC_PNX8550
 	select DMA_NONCOHERENT
 	select HW_HAS_PCI
 	select SYS_HAS_CPU_MIPS32_R1
+	select SYS_HAS_EARLY_PRINTK
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select GENERIC_HARDIRQS_NO__DO_IRQ
 	select SYS_SUPPORTS_KGDB
@@ -1093,7 +1115,7 @@ config HAVE_STD_PC_SERIAL_PORT
 
 config ARC_CONSOLE
 	bool "ARC console support"
-	depends on SGI_IP22 || SNI_RM
+	depends on SGI_IP22 || (SNI_RM && CPU_LITTLE_ENDIAN)
 
 config ARC_MEMORY
 	bool
@@ -1539,6 +1561,7 @@ config MIPS_MT_SMP
 	select CPU_MIPSR2_IRQ_VI
 	select CPU_MIPSR2_SRS
 	select MIPS_MT
+	select NR_CPUS_DEFAULT_2
 	select SMP
 	select SYS_SUPPORTS_SMP
 	help
@@ -1553,7 +1576,6 @@ config MIPS_MT_SMTC
 	select CPU_MIPSR2_IRQ_VI
 	select CPU_MIPSR2_SRS
 	select MIPS_MT
-	select NR_CPUS_DEFAULT_2
 	select NR_CPUS_DEFAULT_8
 	select SMP
 	select SYS_SUPPORTS_SMP
@@ -1785,6 +1807,9 @@ config SMP
 config SYS_SUPPORTS_SMP
 	bool
 
+config NR_CPUS_DEFAULT_1
+	bool
+
 config NR_CPUS_DEFAULT_2
 	bool
 
@@ -1805,8 +1830,9 @@ config NR_CPUS_DEFAULT_64
 
 config NR_CPUS
 	int "Maximum number of CPUs (2-64)"
-	range 2 64
+	range 1 64 if NR_CPUS_DEFAULT_1
 	depends on SMP
+	default "1" if NR_CPUS_DEFAULT_1
 	default "2" if NR_CPUS_DEFAULT_2
 	default "4" if NR_CPUS_DEFAULT_4
 	default "8" if NR_CPUS_DEFAULT_8
@@ -1817,10 +1843,13 @@ config NR_CPUS
 	  This allows you to specify the maximum number of CPUs which this
 	  kernel will support.  The maximum supported value is 32 for 32-bit
 	  kernel and 64 for 64-bit kernels; the minimum value which makes
-	  sense is 2.
+	  sense is 1 for Qemu (useful only for kernel debugging purposes)
+	  and 2 for all others.
 
 	  This is purely to save memory - each supported CPU adds
-	  approximately eight kilobytes to the kernel image.
+	  approximately eight kilobytes to the kernel image.  For best
+	  performance should round up your number of processors to the next
+	  power of two.
 
 #
 # Timer Interrupt Frequency Configuration
@@ -1894,10 +1923,6 @@ config HZ
 	default 1024 if HZ_1024
 
 source "kernel/Kconfig.preempt"
-
-config RTC_DS1742
-	bool "DS1742 BRAM/RTC support"
-	depends on TOSHIBA_JMR3927 || TOSHIBA_RBTX4927
 
 config MIPS_INSANE_LARGE
 	bool "Support for large 64-bit configurations"
