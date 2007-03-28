@@ -495,7 +495,7 @@ static int wm8711_init(struct snd_soc_device* socdev)
 	codec->dai = &wm8711_dai;
 	codec->num_dai = 1;
 	codec->reg_cache_size = sizeof(wm8711_reg);
-	codec->reg_cache = kmemdup(wm8711_reg, sizeof(wm8753_reg), GFP_KERNEL);
+	codec->reg_cache = kmemdup(wm8711_reg, sizeof(wm8711_reg), GFP_KERNEL);
 
 	if (codec->reg_cache == NULL)
 		return -ENOMEM;
