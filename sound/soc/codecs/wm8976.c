@@ -684,14 +684,11 @@ static int wm8976_init(struct snd_soc_device* socdev)
 	codec->dapm_event = wm8976_dapm_event;
 	codec->dai = &wm8976_dai;
 	codec->num_dai = 1;
-	codec->reg_cache_size = ARRAY_SIZE(wm8976_reg);
-	codec->reg_cache =
-			kzalloc(sizeof(u16) * ARRAY_SIZE(wm8976_reg), GFP_KERNEL);
+	codec->reg_cache_size = sizeof(wm8976_reg);
+	codec->reg_cache = kmemdup(wm8976_reg, sizeof(wm8976_reg), GFP_KERNEL);
+
 	if (codec->reg_cache == NULL)
 		return -ENOMEM;
-	memcpy(codec->reg_cache, wm8976_reg,
-		sizeof(u16) * ARRAY_SIZE(wm8976_reg));
-	codec->reg_cache_size = sizeof(u16) * ARRAY_SIZE(wm8976_reg);
 
 	wm8976_reset(codec);
 
@@ -755,12 +752,11 @@ static int wm8976_codec_probe(struct i2c_adapter *adap, int addr, int kind)
 	client_template.adapter = adap;
 	client_template.addr = addr;
 
-	i2c = kzalloc(sizeof(struct i2c_client), GFP_KERNEL);
+	i2c = kmemdup(&client_remplate, sizeof(client_template), GFP_KERNEL);
 	if (i2c == NULL){
 		kfree(codec);
 		return -ENOMEM;
 	}
-	memcpy(i2c, &client_template, sizeof(struct i2c_client));
 
 	i2c_set_clientdata(i2c, codec);
 
