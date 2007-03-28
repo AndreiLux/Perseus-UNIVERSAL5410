@@ -540,7 +540,7 @@ static int uda1380_init(struct snd_soc_device *socdev, int dac_clk)
 	codec->dai = uda1380_dai;
 	codec->num_dai = ARRAY_SIZE(uda1380_dai);
 	codec->reg_cache_size = sizeof(uda1380_reg);
-	codec->reg_cache = kmemdup(uda1380_reg, sizeof(wm8753_reg), GFP_KERNEL);
+	codec->reg_cache = kmemdup(uda1380_reg, sizeof(uda1380_reg), GFP_KERNEL);
 
 	if (codec->reg_cache == NULL)
 		return -ENOMEM;
