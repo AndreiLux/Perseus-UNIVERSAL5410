@@ -1,7 +1,7 @@
 /*
- * s3c24xx-i2s.c  --  ALSA Soc Audio Layer
+ * s3c2443-ac97.c  --  ALSA Soc Audio Layer
  *
- * (c) 2006 Wolfson Microelectronics PLC.
+ * (c) 2007 Wolfson Microelectronics PLC.
  * Graeme Gregory graeme.gregory@wolfsonmicro.com or linux@wolfsonmicro.com
  *
  *  Copyright (C) 2005, Sean Choi <sh428.choi@samsung.com>
