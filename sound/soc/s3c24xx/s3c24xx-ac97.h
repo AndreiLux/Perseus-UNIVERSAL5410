@@ -22,4 +22,4 @@
 
 extern struct snd_soc_cpu_dai s3c2443_ac97_dai[];
 
-#endif /*S3C24XXI2S_H_*/
+#endif /*S3C24XXAC97_H_*/
