@@ -32,6 +32,12 @@
 #define AUDIO_NAME "ak4535"
 #define AK4535_VERSION "0.3"
 
+#define AK4535_DEBUG 0
+#if AK4535_DEBUG
+#else
+#define ak4535dbg_dump(s) if (0) {}
+#endif
+
 struct snd_soc_codec_device soc_codec_dev_ak4535;
 
 /* codec private data */
@@ -60,6 +66,21 @@ static inline unsigned int ak4535_read_reg_cache(struct snd_soc_codec *codec,
 		return -1;
 	return cache[reg];
 }
+
+static inline unsigned int ak4535_read(struct snd_soc_codec *codec,
+	unsigned int reg)
+{
+	u8 data;
+	data = reg;
+
+	if (codec->hw_write(codec->control_data, &data, 1) != 1)
+		return -EIO;
+
+	if (codec->hw_read(codec->control_data, &data, 1) != 1)
+		return -EIO;
+
+	return data;
+};
 
 /*
  * write ak4535 register cache
@@ -94,6 +115,19 @@ static int ak4535_write(struct snd_soc_codec *codec, unsigned int reg,
 	else
 		return -EIO;
 }
+
+static int ak4535_sync(struct snd_soc_codec *codec)
+{
+	u16 *cache = codec->reg_cache;
+	int i, r=0;
+
+	for (i = 0; i < AK4535_CACHEREGNUM; i++)
+		r |= ak4535_write (codec, i, cache[i]);
+	
+	ak4535dbg_dump (codec);
+
+	return r;
+};
 
 static const char *ak4535_mono_gain[] = {"+6dB", "-17dB"};
 static const char *ak4535_mono_out[] = {"(L + R)/2", "Hi-Z"};
@@ -167,7 +201,7 @@ static const struct snd_kcontrol_new ak4535_input_mixer_controls[] = {
 
 /* Input mux */
 static const struct snd_kcontrol_new ak4535_input_mux_control =
-	SOC_DAPM_ENUM("Input Select", ak4535_enum[0]);
+	SOC_DAPM_ENUM("Input Select", ak4535_enum[4]);
 
 /* HP L switch */
 static const struct snd_kcontrol_new ak4535_hpl_control =
@@ -176,10 +210,6 @@ static const struct snd_kcontrol_new ak4535_hpl_control =
 /* HP R switch */
 static const struct snd_kcontrol_new ak4535_hpr_control =
 	SOC_DAPM_SINGLE("Switch", AK4535_SIG2, 0, 1, 1);
-
-/* Speaker switch */
-static const struct snd_kcontrol_new ak4535_spk_control =
-	SOC_DAPM_SINGLE("Switch", AK4535_MODE2, 0, 0, 0);
 
 /* mono 2 switch */
 static const struct snd_kcontrol_new ak4535_mono2_control =
@@ -199,14 +229,13 @@ static const struct snd_soc_dapm_widget ak4535_dapm_widgets[] = {
 		ARRAY_SIZE(ak4535_mono1_mixer_controls)),
 	SND_SOC_DAPM_MIXER("Input Mixer", SND_SOC_NOPM, 0, 0,
 		&ak4535_input_mixer_controls[0],
-		ARRAY_SIZE(ak4535_mono1_mixer_controls)),
+		ARRAY_SIZE(ak4535_input_mixer_controls)),
 	SND_SOC_DAPM_MUX("Input Mux", SND_SOC_NOPM, 0, 0,
 		&ak4535_input_mux_control),
 	SND_SOC_DAPM_DAC("DAC", "Playback", AK4535_PM2, 0, 0),
 	SND_SOC_DAPM_SWITCH("Mono 2 Enable", SND_SOC_NOPM, 0, 0,
 		&ak4535_mono2_control),
-	SND_SOC_DAPM_SWITCH("Speaker Enable", SND_SOC_NOPM, 0, 0,
-		&ak4535_spk_control),
+	SND_SOC_DAPM_PGA("Speaker Enable", AK4535_MODE2, 0, 0, NULL, 0),	/* speaker powersave bit */
 	SND_SOC_DAPM_SWITCH("Line Out Enable", SND_SOC_NOPM, 0, 0,
 		&ak4535_line_control),
 	SND_SOC_DAPM_SWITCH("Left HP Enable", SND_SOC_NOPM, 0, 0,
@@ -222,7 +251,7 @@ static const struct snd_soc_dapm_widget ak4535_dapm_widgets[] = {
 	SND_SOC_DAPM_OUTPUT("MOUT1"),
 	SND_SOC_DAPM_OUTPUT("MOUT2"),
 	SND_SOC_DAPM_OUTPUT("MICOUT"),
-	SND_SOC_DAPM_ADC("ADC", "Capture", AK4535_PM1, 0, 1),
+	SND_SOC_DAPM_ADC("ADC", "Capture", AK4535_PM1, 0, 0),
 	SND_SOC_DAPM_PGA("Spk Amp", AK4535_PM2, 3, 0, NULL, 0),
 	SND_SOC_DAPM_PGA("HP R Amp", AK4535_PM2, 1, 0, NULL, 0),
 	SND_SOC_DAPM_PGA("HP L Amp", AK4535_PM2, 2, 0, NULL, 0),
@@ -250,11 +279,8 @@ static const char *audio_map[][3] = {
 	{"Mono1 Mixer", "Mic Sidetone Switch", "Mic"},
 	{"Mono1 Mixer", "Mono Playback Switch", "DAC"},
 
-	/* mono2 mixer */
-	{"Mono2 Mixer", "Mono Playback Switch", "Stereo Mixer"},
-
 	/* Mic */
-	{"AIN", NULL, "Mic"},
+	{"Mic", NULL, "AIN"},
 	{"Input Mux", "Internal", "Mic Int Bias"},
 	{"Input Mux", "External", "Mic Ext Bias"},
 	{"Mic Int Bias", NULL, "MICIN"},
@@ -262,34 +288,34 @@ static const char *audio_map[][3] = {
 	{"MICOUT", NULL, "Input Mux"},
 
 	/* line out */
-	{"LOUT", "Switch", "Line"},
-	{"ROUT", "Switch", "Line Out Enable"},
-	{"Line Out Enable", NULL, "Line Out"},
+	{"LOUT", NULL, "Line Out Enable"},
+	{"ROUT", NULL, "Line Out Enable"},
+	{"Line Out Enable", "Switch", "Line Out"},
 	{"Line Out", NULL, "Stereo Mixer"},
 
 	/* mono1 out */
 	{"MOUT1", NULL, "Mono Out"},
-	{"Mono Out", NULL, "Mono Mixer"},
+	{"Mono Out", NULL, "Mono1 Mixer"},
 
 	/* left HP */
-	{"HPL", "Switch", "Left HP Enable"},
-	{"Left HP Enable", NULL, "HP L Amp"},
+	{"HPL", NULL, "Left HP Enable"},
+	{"Left HP Enable", "Switch", "HP L Amp"},
 	{"HP L Amp", NULL, "Stereo Mixer"},
 
 	/* right HP */
-	{"HPR", "Switch", "Right HP Enable"},
-	{"Right HP Enable", NULL, "HP R Amp"},
+	{"HPR", NULL, "Right HP Enable"},
+	{"Right HP Enable", "Switch", "HP R Amp"},
 	{"HP R Amp", NULL, "Stereo Mixer"},
 
 	/* speaker */
-	{"SPP", "Switch", "Speaker Enable"},
-	{"SPN", "Switch", "Speaker Enable"},
-	{"Speaker Enable", NULL, "Spk Amp"},
+	{"SPP", NULL, "Speaker Enable"},
+	{"SPN", NULL, "Speaker Enable"},
+	{"Speaker Enable", "Switch", "Spk Amp"},
 	{"Spk Amp", NULL, "MIN"},
 
 	/* mono 2 */
-	{"MOUT2", "Switch", "Mono 2 Enable"},
-	{"Mono 2 Enable", NULL, "Stereo Mixer"},
+	{"MOUT2", NULL, "Mono 2 Enable"},
+	{"Mono 2 Enable", "Switch", "Stereo Mixer"},
 
 	/* Aux In */
 	{"Aux In", NULL, "AUX"},
@@ -311,7 +337,7 @@ static int ak4535_add_widgets(struct snd_soc_codec *codec)
 		snd_soc_dapm_new_control(codec, &ak4535_dapm_widgets[i]);
 	}
 
-	/* set up audio path audio_mapnects */
+	/* set up audio path audio_map interconnects */
 	for(i = 0; audio_map[i][0] != NULL; i++) {
 		snd_soc_dapm_connect_input(codec, audio_map[i][0],
 			audio_map[i][1], audio_map[i][2]);
@@ -390,7 +416,7 @@ static int ak4535_mute(struct snd_soc_codec_dai *dai, int mute)
 {
 	struct snd_soc_codec *codec = dai->codec;
 	u16 mute_reg = ak4535_read_reg_cache(codec, AK4535_DAC) & 0xffdf;
-	if (mute)
+	if (!mute)
 		ak4535_write(codec, AK4535_DAC, mute_reg);
 	else
 		ak4535_write(codec, AK4535_DAC, mute_reg | 0x20);
@@ -399,24 +425,31 @@ static int ak4535_mute(struct snd_soc_codec_dai *dai, int mute)
 
 static int ak4535_dapm_event(struct snd_soc_codec *codec, int event)
 {
+	u16 i;
+
 	switch (event) {
 	case SNDRV_CTL_POWER_D0: /* full On */
+		ak4535_mute(codec->dai, 0);
 	/* vref/mid, clk and osc on, dac unmute, active */
 	case SNDRV_CTL_POWER_D1: /* partial On */
 	case SNDRV_CTL_POWER_D2: /* partial On */
+		ak4535_mute(codec->dai, 1);
 		break;
 	case SNDRV_CTL_POWER_D3hot: /* Off, with power */
 		/* everything off except vref/vmid, dac mute, inactive */
-		ak4535_write(codec, AK4535_PM1, 0x80);
-		ak4535_write(codec, AK4535_PM2, 0x0);
+		i = ak4535_read_reg_cache (codec, AK4535_PM1);
+		ak4535_write(codec, AK4535_PM1, i|0x80);
+		i = ak4535_read_reg_cache (codec, AK4535_PM2);
+		ak4535_write(codec, AK4535_PM2, i & (~0x80));
 		break;
 	case SNDRV_CTL_POWER_D3cold: /* Off, without power */
 		/* everything off, inactive */
-		ak4535_write(codec, AK4535_PM1, 0x0);
-		ak4535_write(codec, AK4535_PM2, 0x80);
+		i = ak4535_read_reg_cache (codec, AK4535_PM1);
+		ak4535_write(codec, AK4535_PM1, i & (~0x80));
 		break;
 	}
 	codec->dapm_state = event;
+	ak4535dbg_dump (codec);
 	return 0;
 }
 
@@ -462,16 +495,7 @@ static int ak4535_resume(struct platform_device *pdev)
 {
 	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
 	struct snd_soc_codec *codec = socdev->codec;
-	int i;
-	u8 data[2];
-	u16 *cache = codec->reg_cache;
-
-	/* Sync reg_cache with the hardware */
-	for (i = 0; i < ARRAY_SIZE(ak4535_reg); i++) {
-		data[0] = (i << 1) | ((cache[i] >> 8) & 0x0001);
-		data[1] = cache[i] & 0x00ff;
-		codec->hw_write(codec->control_data, data, 2);
-	}
+	ak4535_sync(codec);
 	ak4535_dapm_event(codec, SNDRV_CTL_POWER_D3hot);
 	ak4535_dapm_event(codec, codec->suspend_dapm_state);
 	return 0;
@@ -649,6 +673,7 @@ static int ak4535_probe(struct platform_device *pdev)
 	if (setup->i2c_address) {
 		normal_i2c[0] = setup->i2c_address;
 		codec->hw_write = (hw_write_t)i2c_master_send;
+		codec->hw_read = (hw_read_t)i2c_master_recv;
 		ret = i2c_add_driver(&ak4535_i2c_driver);
 		if (ret != 0)
 			printk(KERN_ERR "can't add i2c driver");
