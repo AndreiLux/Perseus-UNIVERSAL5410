@@ -40,7 +40,7 @@
 
 #include "../codecs/wm8731.h"
 #include "at91-pcm.h"
-#include "at91-i2s.h"
+#include "at91-ssc.h"
 
 #if 0
 #define	DBG(x...)	printk(KERN_INFO "eti_b1_wm8731: " x)
@@ -249,7 +249,7 @@ static int eti_b1_wm8731_init(struct snd_soc_codec *codec)
 static struct snd_soc_dai_link eti_b1_dai = {
 	.name = "WM8731",
 	.stream_name = "WM8731",
-	.cpu_dai = &at91_i2s_dai[1],
+	.cpu_dai = &at91_ssc_dai[1],
 	.codec_dai = &wm8731_dai,
 	.init = eti_b1_wm8731_init,
 	.ops = &eti_b1_ops,
