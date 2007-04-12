@@ -38,7 +38,7 @@
 
 #include "s3c24xx-pcm.h"
 
-#define S3C24XX_PCM_DEBUG 0
+#define S3C24XX_PCM_DEBUG 1
 #if S3C24XX_PCM_DEBUG
 #define DBG(x...) printk(KERN_DEBUG x)
 #else
@@ -119,13 +119,15 @@ static void s3c24xx_audio_buffdone(struct s3c2410_dma_chan *channel,
 							enum s3c2410_dma_buffresult result)
 {
 	struct snd_pcm_substream *substream = dev_id;
-	struct s3c24xx_runtime_data *prtd = substream->runtime->private_data;
+	struct s3c24xx_runtime_data *prtd;
 
 	DBG("Entered %s\n", __FUNCTION__);
 
 	if (result == S3C2410_RES_ABORT || result == S3C2410_RES_ERR)
 		return;
 
+	prtd = substream->runtime->private_data;
+	
 	if (substream)
 		snd_pcm_period_elapsed(substream);
 
@@ -177,10 +179,12 @@ static int s3c24xx_pcm_hw_params(struct snd_pcm_substream *substream,
 						S3C2410_DISRCC_APB, prtd->params->dma_addr);
 
 		s3c2410_dma_config(prtd->params->channel,
-						2, S3C2410_DCON_SYNC_PCLK | S3C2410_DCON_HANDSHAKE);
+						prtd->params->dma_size,
+						S3C2410_DCON_SYNC_PCLK | S3C2410_DCON_HANDSHAKE);
 	} else {
 		s3c2410_dma_config(prtd->params->channel,
-						2, S3C2410_DCON_HANDSHAKE | S3C2410_DCON_SYNC_PCLK);
+						prtd->params->dma_size,
+						S3C2410_DCON_HANDSHAKE | S3C2410_DCON_SYNC_PCLK);
 
 		s3c2410_dma_devconfig(prtd->params->channel,
 						S3C2410_DMASRC_HW, 0x3,
@@ -214,7 +218,7 @@ static int s3c24xx_pcm_hw_free(struct snd_pcm_substream *substream)
 
 	/* TODO - do we need to ensure DMA flushed */
 	snd_pcm_set_runtime_buffer(substream, NULL);
-
+	
 	if (prtd->params) {
 		s3c2410_dma_free(prtd->params->channel, prtd->params->client);
 		prtd->params = NULL;
@@ -320,8 +324,6 @@ static int s3c24xx_pcm_open(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct s3c24xx_runtime_data *prtd;
-
-	int ret;
 
 	DBG("Entered %s\n", __FUNCTION__);
 

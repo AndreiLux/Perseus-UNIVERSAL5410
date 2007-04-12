@@ -248,7 +248,7 @@ static int wm8976_add_controls(struct snd_soc_codec *codec)
 }
 
 /* Left Output Mixer */
-static const snd_kcontrol_new_t wm8976_left_mixer_controls[] = {
+static const struct snd_kcontrol_new wm8976_left_mixer_controls[] = {
 SOC_DAPM_SINGLE("Right PCM Playback Switch", WM8976_OUTPUT, 6, 1, 1),
 SOC_DAPM_SINGLE("Left PCM Playback Switch", WM8976_MIXL, 0, 1, 1),
 SOC_DAPM_SINGLE("Line Bypass Switch", WM8976_MIXL, 1, 1, 0),
@@ -256,7 +256,7 @@ SOC_DAPM_SINGLE("Aux Playback Switch", WM8976_MIXL, 5, 1, 0),
 };
 
 /* Right Output Mixer */
-static const snd_kcontrol_new_t wm8976_right_mixer_controls[] = {
+static const struct snd_kcontrol_new wm8976_right_mixer_controls[] = {
 SOC_DAPM_SINGLE("Left PCM Playback Switch", WM8976_OUTPUT, 5, 1, 1),
 SOC_DAPM_SINGLE("Right PCM Playback Switch", WM8976_MIXR, 0, 1, 1),
 SOC_DAPM_SINGLE("Line Bypass Switch", WM8976_MIXR, 1, 1, 0),
@@ -264,23 +264,23 @@ SOC_DAPM_SINGLE("Aux Playback Switch", WM8976_MIXR, 5, 1, 0),
 };
 
 /* Left AUX Input boost vol */
-static const snd_kcontrol_new_t wm8976_laux_boost_controls =
+static const struct snd_kcontrol_new wm8976_laux_boost_controls =
 SOC_DAPM_SINGLE("Aux Volume", WM8976_ADCBOOST, 0, 3, 0);
 
 /* Left Input boost vol */
-static const snd_kcontrol_new_t wm8976_lmic_boost_controls =
+static const struct snd_kcontrol_new wm8976_lmic_boost_controls =
 SOC_DAPM_SINGLE("Input Volume", WM8976_ADCBOOST, 4, 3, 0);
 
 /* Left Aux In to PGA */
-static const snd_kcontrol_new_t wm8976_laux_capture_boost_controls =
+static const struct snd_kcontrol_new wm8976_laux_capture_boost_controls =
 SOC_DAPM_SINGLE("Capture Switch", WM8976_ADCBOOST,  8, 1, 0);
 
 /* Left Input P In to PGA */
-static const snd_kcontrol_new_t wm8976_lmicp_capture_boost_controls =
+static const struct snd_kcontrol_new wm8976_lmicp_capture_boost_controls =
 SOC_DAPM_SINGLE("Input P Capture Boost Switch", WM8976_INPUT,  0, 1, 0);
 
 /* Left Input N In to PGA */
-static const snd_kcontrol_new_t wm8976_lmicn_capture_boost_controls =
+static const struct snd_kcontrol_new wm8976_lmicn_capture_boost_controls =
 SOC_DAPM_SINGLE("Input N Capture Boost Switch", WM8976_INPUT,  1, 1, 0);
 
 // TODO Widgets
@@ -379,22 +379,52 @@ static int wm8976_add_widgets(struct snd_soc_codec *codec)
 	return 0;
 }
 
-struct pll_ {
-	unsigned int in_hz, out_hz;
+struct _pll_div {
 	unsigned int pre:4; /* prescale - 1 */
 	unsigned int n:4;
 	unsigned int k;
 };
 
-struct pll_ pll[] = {
-	{12000000, 11289600, 0, 7, 0x86c220},
-	{12000000, 12288000, 0, 8, 0x3126e8},
-	{13000000, 11289600, 0, 6, 0xf28bd4},
-	{13000000, 12288000, 0, 7, 0x8fd525},
-	{12288000, 11289600, 0, 7, 0x59999a},
-	{11289600, 12288000, 0, 8, 0x80dee9},
-	/* TODO: liam - add more entries */
-};
+static struct _pll_div pll_div;
+
+/* The size in bits of the pll divide multiplied by 10
+ * to allow rounding later */
+#define FIXED_PLL_SIZE ((1 << 24) * 10)
+
+static void pll_factors(unsigned int target, unsigned int source)
+{
+	unsigned long long Kpart;
+	unsigned int K, Ndiv, Nmod;
+
+	Ndiv = target / source;
+	if (Ndiv < 6) {
+		source >>= 1;
+		pll_div.pre = 1;
+		Ndiv = target / source;
+	} else
+		pll_div.pre = 0;
+
+	if ((Ndiv < 6) || (Ndiv > 12))
+		printk(KERN_WARNING
+			"WM8976 N value outwith recommended range! N = %d\n",Ndiv);
+
+	pll_div.n = Ndiv;
+	Nmod = target % source;
+	Kpart = FIXED_PLL_SIZE * (long long)Nmod;
+
+	do_div(Kpart, source);
+
+	K = Kpart & 0xFFFFFFFF;
+
+	/* Check if we need to round */
+	if ((K % 10) >= 5)
+		K += 5;
+
+	/* Move down to proper range now rounding is done */
+	K /= 10;
+
+	pll_div.k = K;
+}
 
 static int wm8976_set_dai_pll(struct snd_soc_codec_dai *codec_dai,
 		int pll_id, unsigned int freq_in, unsigned int freq_out)
@@ -409,18 +439,17 @@ static int wm8976_set_dai_pll(struct snd_soc_codec_dai *codec_dai,
 		return 0;
 	}
 
-	for(i = 0; i < ARRAY_SIZE(pll); i++) {
-		if (freq_in == pll[i].in_hz && freq_out == pll[i].out_hz) {
-			wm8976_write(codec, WM8976_PLLN, (pll[i].pre << 4) | pll[i].n);
-			wm8976_write(codec, WM8976_PLLK1, pll[i].k >> 18);
-			wm8976_write(codec, WM8976_PLLK1, (pll[i].k >> 9) && 0x1ff);
-			wm8976_write(codec, WM8976_PLLK1, pll[i].k && 0x1ff);
-			reg = wm8976_read_reg_cache(codec, WM8976_POWER1);
-			wm8976_write(codec, WM8976_POWER1, reg | 0x020);
-			return 0;
-		}
-	}
-	return -EINVAL;
+	pll_factors(freq_out * 8, freq_in);
+
+	wm8976_write(codec, WM8976_PLLN, (pll_div.pre << 4) | pll_div.n);
+	wm8976_write(codec, WM8976_PLLK1, pll_div.k >> 18);
+	wm8976_write(codec, WM8976_PLLK1, (pll_div.k >> 9) && 0x1ff);
+	wm8976_write(codec, WM8976_PLLK1, pll_div.k && 0x1ff);
+	reg = wm8976_read_reg_cache(codec, WM8976_POWER1);
+	wm8976_write(codec, WM8976_POWER1, reg | 0x020);
+	
+	
+	return 0;
 }
 
 static int wm8976_set_dai_fmt(struct snd_soc_codec_dai *codec_dai,
@@ -476,6 +505,8 @@ static int wm8976_set_dai_fmt(struct snd_soc_codec_dai *codec_dai,
 	}
 
 	wm8976_write(codec, WM8976_IFACE, iface);
+	wm8796_write(codec, WM8976_CLOCK, clk);
+
 	return 0;
 }
 
@@ -684,14 +715,11 @@ static int wm8976_init(struct snd_soc_device* socdev)
 	codec->dapm_event = wm8976_dapm_event;
 	codec->dai = &wm8976_dai;
 	codec->num_dai = 1;
-	codec->reg_cache_size = ARRAY_SIZE(wm8976_reg);
-	codec->reg_cache =
-			kzalloc(sizeof(u16) * ARRAY_SIZE(wm8976_reg), GFP_KERNEL);
+	codec->reg_cache_size = sizeof(wm8976_reg);
+	codec->reg_cache = kmemdup(wm8976_reg, sizeof(wm8976_reg), GFP_KERNEL);
+
 	if (codec->reg_cache == NULL)
 		return -ENOMEM;
-	memcpy(codec->reg_cache, wm8976_reg,
-		sizeof(u16) * ARRAY_SIZE(wm8976_reg));
-	codec->reg_cache_size = sizeof(u16) * ARRAY_SIZE(wm8976_reg);
 
 	wm8976_reset(codec);
 
@@ -755,12 +783,11 @@ static int wm8976_codec_probe(struct i2c_adapter *adap, int addr, int kind)
 	client_template.adapter = adap;
 	client_template.addr = addr;
 
-	i2c = kzalloc(sizeof(struct i2c_client), GFP_KERNEL);
+	i2c = kmemdup(&client_template, sizeof(client_template), GFP_KERNEL);
 	if (i2c == NULL){
 		kfree(codec);
 		return -ENOMEM;
 	}
-	memcpy(i2c, &client_template, sizeof(struct i2c_client));
 
 	i2c_set_clientdata(i2c, codec);
 
