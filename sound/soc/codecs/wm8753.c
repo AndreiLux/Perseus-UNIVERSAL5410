@@ -1588,6 +1588,10 @@ static int wm8753_init(struct snd_soc_device *socdev)
 	wm8753_write(codec, WM8753_LDAC, reg | 0x0100);
 	reg = wm8753_read_reg_cache(codec, WM8753_RDAC);
 	wm8753_write(codec, WM8753_RDAC, reg | 0x0100);
+	reg = wm8753_read_reg_cache(codec, WM8753_LADC);
+	wm8753_write(codec, WM8753_LADC, reg | 0x0100);
+	reg = wm8753_read_reg_cache(codec, WM8753_RADC);
+	wm8753_write(codec, WM8753_RADC, reg | 0x0100);
 	reg = wm8753_read_reg_cache(codec, WM8753_LOUT1V);
 	wm8753_write(codec, WM8753_LOUT1V, reg | 0x0100);
 	reg = wm8753_read_reg_cache(codec, WM8753_ROUT1V);
