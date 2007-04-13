@@ -1658,7 +1658,7 @@ static int wm8753_codec_probe(struct i2c_adapter *adap, int addr, int kind)
 	client_template.adapter = adap;
 	client_template.addr = addr;
 
-	i2c =  kmemdup(&client_remplate, sizeof(client_template), GFP_KERNEL);
+	i2c =  kmemdup(&client_template, sizeof(client_template), GFP_KERNEL);
 	if (i2c == NULL){
 		kfree(codec);
 		return -ENOMEM;
