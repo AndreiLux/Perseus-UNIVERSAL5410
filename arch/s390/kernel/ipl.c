@@ -839,7 +839,7 @@ static int __init reipl_ccw_init(void)
 	}
 	reipl_block_ccw->hdr.len = IPL_PARM_BLK_CCW_LEN;
 	reipl_block_ccw->hdr.version = IPL_PARM_BLOCK_VERSION;
-	reipl_block_ccw->hdr.blk0_len = sizeof(reipl_block_ccw->ipl_info.ccw);
+	reipl_block_ccw->hdr.blk0_len = IPL_PARM_BLK0_CCW_LEN;
 	reipl_block_ccw->hdr.pbt = DIAG308_IPL_TYPE_CCW;
 	/* check if read scp info worked and set loadparm */
 	if (SCCB_VALID)
@@ -880,8 +880,7 @@ static int __init reipl_fcp_init(void)
 	} else {
 		reipl_block_fcp->hdr.len = IPL_PARM_BLK_FCP_LEN;
 		reipl_block_fcp->hdr.version = IPL_PARM_BLOCK_VERSION;
-		reipl_block_fcp->hdr.blk0_len =
-			sizeof(reipl_block_fcp->ipl_info.fcp);
+		reipl_block_fcp->hdr.blk0_len = IPL_PARM_BLK0_FCP_LEN;
 		reipl_block_fcp->hdr.pbt = DIAG308_IPL_TYPE_FCP;
 		reipl_block_fcp->ipl_info.fcp.opt = DIAG308_IPL_OPT_IPL;
 	}
@@ -930,7 +929,7 @@ static int __init dump_ccw_init(void)
 	}
 	dump_block_ccw->hdr.len = IPL_PARM_BLK_CCW_LEN;
 	dump_block_ccw->hdr.version = IPL_PARM_BLOCK_VERSION;
-	dump_block_ccw->hdr.blk0_len = sizeof(reipl_block_ccw->ipl_info.ccw);
+	dump_block_ccw->hdr.blk0_len = IPL_PARM_BLK0_CCW_LEN;
 	dump_block_ccw->hdr.pbt = DIAG308_IPL_TYPE_CCW;
 	dump_capabilities |= IPL_TYPE_CCW;
 	return 0;
@@ -954,7 +953,7 @@ static int __init dump_fcp_init(void)
 	}
 	dump_block_fcp->hdr.len = IPL_PARM_BLK_FCP_LEN;
 	dump_block_fcp->hdr.version = IPL_PARM_BLOCK_VERSION;
-	dump_block_fcp->hdr.blk0_len = sizeof(dump_block_fcp->ipl_info.fcp);
+	dump_block_fcp->hdr.blk0_len = IPL_PARM_BLK0_FCP_LEN;
 	dump_block_fcp->hdr.pbt = DIAG308_IPL_TYPE_FCP;
 	dump_block_fcp->ipl_info.fcp.opt = DIAG308_IPL_OPT_DUMP;
 	dump_capabilities |= IPL_TYPE_FCP;
@@ -1066,7 +1065,7 @@ static void do_reset_calls(void)
 		reset->fn();
 }
 
-extern __u32 dump_prefix_page;
+u32 dump_prefix_page;
 
 void s390_reset_system(void)
 {
@@ -1078,7 +1077,7 @@ void s390_reset_system(void)
 	lc->panic_stack = S390_lowcore.panic_stack;
 
 	/* Save prefix page address for dump case */
-	dump_prefix_page = (unsigned long) lc;
+	dump_prefix_page = (u32)(unsigned long) lc;
 
 	/* Disable prefixing */
 	set_prefix(0);

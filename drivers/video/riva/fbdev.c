@@ -215,6 +215,11 @@ static int noaccel   __devinitdata = 0;
 #ifdef CONFIG_MTRR
 static int nomtrr __devinitdata = 0;
 #endif
+#ifdef CONFIG_PMAC_BACKLIGHT
+static int backlight __devinitdata = 1;
+#else
+static int backlight __devinitdata = 0;
+#endif
 
 static char *mode_option __devinitdata = NULL;
 static int  strictmode       = 0;
@@ -279,8 +284,6 @@ static const struct riva_regs reg_template = {
 #define MIN_LEVEL 0x158
 #define MAX_LEVEL 0x534
 #define LEVEL_STEP ((MAX_LEVEL - MIN_LEVEL) / FB_BACKLIGHT_MAX)
-
-static struct backlight_properties riva_bl_data;
 
 static int riva_bl_get_level_brightness(struct riva_par *par,
 		int level)
@@ -367,7 +370,7 @@ static void riva_bl_init(struct riva_par *par)
 		FB_BACKLIGHT_MAX);
 
 	bd->props.max_brightness = FB_BACKLIGHT_LEVELS - 1;
-	bd->props.brightness = riva_bl_data.max_brightness;
+	bd->props.brightness = bd->props.max_brightness;
 	bd->props.power = FB_BLANK_UNBLANK;
 	backlight_update_status(bd);
 
@@ -2059,7 +2062,10 @@ static int __devinit rivafb_probe(struct pci_dev *pd,
 	info->monspecs.modedb = NULL;
 
 	pci_set_drvdata(pd, info);
-	riva_bl_init(info->par);
+
+	if (backlight)
+		riva_bl_init(info->par);
+
 	ret = register_framebuffer(info);
 	if (ret < 0) {
 		printk(KERN_ERR PFX
@@ -2157,6 +2163,8 @@ static int __init rivafb_setup(char *options)
 				forceCRTC = -1;
 		} else if (!strncmp(this_opt, "flatpanel", 9)) {
 			flatpanel = 1;
+		} else if (!strncmp(this_opt, "backlight:", 10)) {
+			backlight = simple_strtoul(this_opt+10, NULL, 0);
 #ifdef CONFIG_MTRR
 		} else if (!strncmp(this_opt, "nomtrr", 6)) {
 			nomtrr = 1;

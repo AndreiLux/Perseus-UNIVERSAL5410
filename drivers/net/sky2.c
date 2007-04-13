@@ -510,9 +510,9 @@ static void sky2_phy_init(struct sky2_hw *hw, unsigned port)
 		ledover &= ~PHY_M_LED_MO_RX;
 	}
 
-	if (hw->chip_id == CHIP_ID_YUKON_EC_U && hw->chip_rev == CHIP_REV_YU_EC_A1) {
+	if (hw->chip_id == CHIP_ID_YUKON_EC_U &&
+	    hw->chip_rev == CHIP_REV_YU_EC_U_A1) {
 		/* apply fixes in PHY AFE */
-		pg = gm_phy_read(hw, port, PHY_MARV_EXT_ADR);
 		gm_phy_write(hw, port, PHY_MARV_EXT_ADR, 255);
 
 		/* increase differential signal amplitude in 10BASE-T */
@@ -524,7 +524,7 @@ static void sky2_phy_init(struct sky2_hw *hw, unsigned port)
 		gm_phy_write(hw, port, 0x17, 0x2002);
 
 		/* set page register to 0 */
-		gm_phy_write(hw, port, PHY_MARV_EXT_ADR, pg);
+		gm_phy_write(hw, port, PHY_MARV_EXT_ADR, 0);
 	} else if (hw->chip_id != CHIP_ID_YUKON_EX) {
 		gm_phy_write(hw, port, PHY_MARV_LED_CTRL, ledctrl);
 
@@ -1053,8 +1053,7 @@ static void sky2_vlan_rx_kill_vid(struct net_device *dev, unsigned short vid)
 
 	sky2_write32(hw, SK_REG(port, RX_GMF_CTRL_T), RX_VLAN_STRIP_OFF);
 	sky2_write32(hw, SK_REG(port, TX_GMF_CTRL_T), TX_VLAN_TAG_OFF);
-	if (sky2->vlgrp)
-		sky2->vlgrp->vlan_devices[vid] = NULL;
+	vlan_group_set_device(sky2->vlgrp, vid, NULL);
 
 	netif_tx_unlock_bh(dev);
 }
@@ -1562,6 +1561,7 @@ static int sky2_down(struct net_device *dev)
 
 	/* Stop more packets from being queued */
 	netif_stop_queue(dev);
+	netif_carrier_off(dev);
 
 	/* Disable port IRQ */
 	imask = sky2_read32(hw, B0_IMSK);
@@ -2166,9 +2166,27 @@ force_update:
 			/* fall through */
 #endif
 		case OP_RXCHKS:
-			skb = sky2->rx_ring[sky2->rx_next].skb;
-			skb->ip_summed = CHECKSUM_COMPLETE;
-			skb->csum = status & 0xffff;
+			if (!sky2->rx_csum)
+				break;
+
+			/* Both checksum counters are programmed to start at
+			 * the same offset, so unless there is a problem they
+			 * should match. This failure is an early indication that
+			 * hardware receive checksumming won't work.
+			 */
+			if (likely(status >> 16 == (status & 0xffff))) {
+				skb = sky2->rx_ring[sky2->rx_next].skb;
+				skb->ip_summed = CHECKSUM_COMPLETE;
+				skb->csum = status & 0xffff;
+			} else {
+				printk(KERN_NOTICE PFX "%s: hardware receive "
+				       "checksum problem (status = %#x)\n",
+				       dev->name, status);
+				sky2->rx_csum = 0;
+				sky2_write32(sky2->hw,
+					     Q_ADDR(rxqaddr[le->link], Q_CSR),
+					     BMU_DIS_RX_CHKSUM);
+			}
 			break;
 
 		case OP_TXINDEXLE:
@@ -3752,6 +3770,11 @@ static int sky2_resume(struct pci_dev *pdev)
 		goto out;
 
 	pci_enable_wake(pdev, PCI_D0, 0);
+
+	/* Re-enable all clocks */
+	if (hw->chip_id == CHIP_ID_YUKON_EX || hw->chip_id == CHIP_ID_YUKON_EC_U)
+		sky2_pci_write32(hw, PCI_DEV_REG3, 0);
+
 	sky2_reset(hw);
 
 	sky2_write32(hw, B0_IMSK, Y2_IS_BASE);

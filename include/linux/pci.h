@@ -209,11 +209,6 @@ static inline void pci_add_saved_cap(struct pci_dev *pci_dev,
 	hlist_add_head(&new_cap->next, &pci_dev->saved_cap_space);
 }
 
-static inline void pci_remove_saved_cap(struct pci_cap_saved_state *cap)
-{
-	hlist_del(&cap->next);
-}
-
 /*
  *  For PCI devices, the region numbers are assigned this way:
  *
@@ -543,6 +538,7 @@ void pci_set_master(struct pci_dev *dev);
 int __must_check pci_set_mwi(struct pci_dev *dev);
 void pci_clear_mwi(struct pci_dev *dev);
 void pci_intx(struct pci_dev *dev, int enable);
+void pci_msi_off(struct pci_dev *dev);
 int pci_set_dma_mask(struct pci_dev *dev, u64 mask);
 int pci_set_consistent_dma_mask(struct pci_dev *dev, u64 mask);
 void pci_update_resource(struct pci_dev *dev, struct resource *res, int resno);

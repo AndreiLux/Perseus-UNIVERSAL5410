@@ -615,6 +615,7 @@ typedef struct ide_drive_s {
         u8	init_speed;	/* transfer rate set at boot */
         u8	pio_speed;      /* unused by core, used by some drivers for fallback from DMA */
         u8	current_speed;	/* current transfer rate set */
+	u8	desired_speed;	/* desired transfer rate set */
         u8	dn;		/* now wide spread use */
         u8	wcache;		/* status of write cache */
 	u8	acoustic;	/* acoustic management */
@@ -860,6 +861,8 @@ typedef struct hwgroup_s {
 	int (*expiry)(ide_drive_t *);
 		/* ide_system_bus_speed */
 	int pio_clock;
+	int req_gen;
+	int req_gen_timer;
 
 	unsigned char cmd_buf[4];
 } ide_hwgroup_t;
@@ -1359,7 +1362,8 @@ u8 ide_dump_status(ide_drive_t *, const char *, u8);
 typedef struct ide_pio_timings_s {
 	int	setup_time;	/* Address setup (ns) minimum */
 	int	active_time;	/* Active pulse (ns) minimum */
-	int	cycle_time;	/* Cycle time (ns) minimum = (setup + active + recovery) */
+	int	cycle_time;	/* Cycle time (ns) minimum = */
+				/* active + recovery (+ setup for some chips) */
 } ide_pio_timings_t;
 
 typedef struct ide_pio_data_s {
