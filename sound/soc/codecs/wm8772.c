@@ -482,15 +482,12 @@ static int wm8772_init(struct snd_soc_device *socdev)
 	codec->dapm_event = wm8772_dapm_event;
 	codec->dai = wm8772_dai;
 	codec->num_dai = 1;
-	codec->reg_cache_size = ARRAY_SIZE(wm8772_reg);
-	codec->reg_cache =
-			kzalloc(sizeof(u16) * ARRAY_SIZE(wm8772_reg), GFP_KERNEL);
+	codec->reg_cache_size = sizeof(wm8772_reg);
+	codec->reg_cache = kmemdup(wm8772_reg, sizeof(wm8772_reg), GFP_KERNEL);
+
 	if (codec->reg_cache == NULL)
 		return -ENOMEM;
-	memcpy(codec->reg_cache, wm8772_reg,
-		sizeof(u16) * ARRAY_SIZE(wm8772_reg));
-	codec->reg_cache_size = sizeof(u16) * ARRAY_SIZE(wm8772_reg);
-
+	
 	wm8772_reset(codec);
 
 	/* register pcms */

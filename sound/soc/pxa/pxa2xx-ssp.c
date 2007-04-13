@@ -380,6 +380,10 @@ static int pxa2xx_ssp_set_dai_fmt(struct snd_soc_cpu_dai *cpu_dai,
 {
 	int port = cpu_dai->id + 1;
 
+	/* we can only change the settings if the port is not in use */
+	if (SSCR0_P(port) & SSCR0_SSE)
+		return 0;
+
 	/* reset port settings */
 	SSCR0_P(port) = 0;
 	SSCR1_P(port) = 0;

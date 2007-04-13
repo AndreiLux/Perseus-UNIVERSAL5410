@@ -1560,15 +1560,12 @@ static int wm8753_init(struct snd_soc_device *socdev)
 	codec->dapm_event = wm8753_dapm_event;
 	codec->dai = wm8753_dai;
 	codec->num_dai = 2;
-	codec->reg_cache_size = ARRAY_SIZE(wm8753_reg);
+	codec->reg_cache_size = sizeof(wm8753_reg);
+	codec->reg_cache = kmemdup(wm8753_reg, sizeof(wm8753_reg), GFP_KERNEL);
 
-	codec->reg_cache =
-			kzalloc(sizeof(u16) * ARRAY_SIZE(wm8753_reg), GFP_KERNEL);
 	if (codec->reg_cache == NULL)
 		return -ENOMEM;
-	memcpy(codec->reg_cache, wm8753_reg,
-		sizeof(u16) * ARRAY_SIZE(wm8753_reg));
-	codec->reg_cache_size = sizeof(u16) * ARRAY_SIZE(wm8753_reg);
+
 	wm8753_set_dai_mode(codec, 0);
 
 	wm8753_reset(codec);
@@ -1591,6 +1588,10 @@ static int wm8753_init(struct snd_soc_device *socdev)
 	wm8753_write(codec, WM8753_LDAC, reg | 0x0100);
 	reg = wm8753_read_reg_cache(codec, WM8753_RDAC);
 	wm8753_write(codec, WM8753_RDAC, reg | 0x0100);
+	reg = wm8753_read_reg_cache(codec, WM8753_LADC);
+	wm8753_write(codec, WM8753_LADC, reg | 0x0100);
+	reg = wm8753_read_reg_cache(codec, WM8753_RADC);
+	wm8753_write(codec, WM8753_RADC, reg | 0x0100);
 	reg = wm8753_read_reg_cache(codec, WM8753_LOUT1V);
 	wm8753_write(codec, WM8753_LOUT1V, reg | 0x0100);
 	reg = wm8753_read_reg_cache(codec, WM8753_ROUT1V);
@@ -1657,12 +1658,11 @@ static int wm8753_codec_probe(struct i2c_adapter *adap, int addr, int kind)
 	client_template.adapter = adap;
 	client_template.addr = addr;
 
-	i2c = kzalloc(sizeof(struct i2c_client), GFP_KERNEL);
+	i2c =  kmemdup(&client_template, sizeof(client_template), GFP_KERNEL);
 	if (i2c == NULL){
 		kfree(codec);
 		return -ENOMEM;
 	}
-	memcpy(i2c, &client_template, sizeof(struct i2c_client));
 	i2c_set_clientdata(i2c, codec);
 	codec->control_data = i2c;
 

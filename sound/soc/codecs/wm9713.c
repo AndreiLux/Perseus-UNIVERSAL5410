@@ -891,7 +891,7 @@ static int wm9713_pcm_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static void wm9713_voiceshutdown(snd_pcm_substream_t *substream)
+static void wm9713_voiceshutdown(struct snd_pcm_substream *substream)
 {
     struct snd_soc_pcm_runtime *rtd = substream->private_data;
     struct snd_soc_device *socdev = rtd->socdev;
@@ -1112,15 +1112,12 @@ static int wm9713_soc_probe(struct platform_device *pdev)
 	codec = socdev->codec;
 	mutex_init(&codec->mutex);
 
-	codec->reg_cache =
-			kzalloc(sizeof(u16) * ARRAY_SIZE(wm9713_reg), GFP_KERNEL);
+	codec->reg_cache = kmemdup(wm9713_reg, sizeof(wm9713_reg), GFP_KERNEL);
 	if (codec->reg_cache == NULL){
 		ret = -ENOMEM;
 		goto cache_err;
 	}
-	memcpy(codec->reg_cache, wm9713_reg,
-		sizeof(u16) * ARRAY_SIZE(wm9713_reg));
-	codec->reg_cache_size = sizeof(u16) * ARRAY_SIZE(wm9713_reg);
+	codec->reg_cache_size = sizeof(wm9713_reg);
 	codec->reg_cache_step = 2;
 
 	codec->private_data = kzalloc(sizeof(struct wm9713_priv), GFP_KERNEL);

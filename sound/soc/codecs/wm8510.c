@@ -500,7 +500,7 @@ static int wm8510_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_device *socdev = rtd->socdev;
 	struct snd_soc_codec *codec = socdev->codec;
-	u16 iface = wm8510_read_reg_cache(codec, WM8510_ADD) & 0x19f;
+	u16 iface = wm8510_read_reg_cache(codec, WM8510_IFACE) & 0x19f;
 	u16 adn = wm8510_read_reg_cache(codec, WM8510_ADD) & 0x1f1;
 
 	/* bit size */
@@ -662,15 +662,12 @@ static int wm8510_init(struct snd_soc_device *socdev)
 	codec->dapm_event = wm8510_dapm_event;
 	codec->dai = &wm8510_dai;
 	codec->num_dai = 1;
-	codec->reg_cache_size = ARRAY_SIZE(wm8510_reg);
-	codec->reg_cache =
-			kzalloc(sizeof(u16) * ARRAY_SIZE(wm8510_reg), GFP_KERNEL);
+	codec->reg_cache_size = sizeof(wm8510_reg);
+	codec->reg_cache = kmemdup(wm8510_reg, sizeof(wm8510_reg), GFP_KERNEL);
+	
 	if (codec->reg_cache == NULL)
 		return -ENOMEM;
-	memcpy(codec->reg_cache, wm8510_reg,
-		sizeof(u16) * ARRAY_SIZE(wm8510_reg));
-	codec->reg_cache_size = sizeof(u16) * ARRAY_SIZE(wm8510_reg);
-
+	
 	wm8510_reset(codec);
 
 	/* register pcms */
@@ -733,12 +730,11 @@ static int wm8510_codec_probe(struct i2c_adapter *adap, int addr, int kind)
 	client_template.adapter = adap;
 	client_template.addr = addr;
 
-	i2c = kzalloc(sizeof(struct i2c_client), GFP_KERNEL);
+	i2c = kmemdup(&client_template, sizeof(client_template), GFP_KERNEL);
 	if (i2c == NULL){
 		kfree(codec);
 		return -ENOMEM;
 	}
-	memcpy(i2c, &client_template, sizeof(struct i2c_client));
 	i2c_set_clientdata(i2c, codec);
 	codec->control_data = i2c;
 

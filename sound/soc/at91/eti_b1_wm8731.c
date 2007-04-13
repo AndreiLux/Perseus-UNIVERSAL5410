@@ -40,7 +40,7 @@
 
 #include "../codecs/wm8731.h"
 #include "at91-pcm.h"
-#include "at91-i2s.h"
+#include "at91-ssc.h"
 
 #if 0
 #define	DBG(x...)	printk(KERN_INFO "eti_b1_wm8731: " x)
@@ -248,15 +248,15 @@ static int eti_b1_wm8731_init(struct snd_soc_codec *codec)
 
 static struct snd_soc_dai_link eti_b1_dai = {
 	.name = "WM8731",
-	.stream_name = "WM8731",
-	.cpu_dai = &at91_i2s_dai[1],
+	.stream_name = "WM8731 PCM",
+	.cpu_dai = &at91_ssc_dai[1],
 	.codec_dai = &wm8731_dai,
 	.init = eti_b1_wm8731_init,
 	.ops = &eti_b1_ops,
 };
 
 static struct snd_soc_machine snd_soc_machine_eti_b1 = {
-	.name = "ETI_B1",
+	.name = "ETI_B1_WM8731",
 	.dai_link = &eti_b1_dai,
 	.num_links = 1,
 };
@@ -280,7 +280,7 @@ static int __init eti_b1_init(void)
 	u32 ssc_pio_lines;
 	struct at91_ssc_periph *ssc = eti_b1_dai.cpu_dai->private_data;
 
-	if (!request_mem_region(AT91RM9200_BASE_SSC1, SZ_16K, "soc-audio")) {
+	if (!request_mem_region(AT91RM9200_BASE_SSC1, SZ_16K, "soc-audio-1")) {
 		DBG("SSC1 memory region is busy\n");
 		return -EBUSY;
 	}
@@ -294,7 +294,7 @@ static int __init eti_b1_init(void)
 
 	ssc->pid = AT91RM9200_ID_SSC1;
 
-	eti_b1_snd_device = platform_device_alloc("soc-audio", -1);
+	eti_b1_snd_device = platform_device_alloc("soc-audio", 1);
 	if (!eti_b1_snd_device) {
 		DBG("platform device allocation failed\n");
 		ret = -ENOMEM;

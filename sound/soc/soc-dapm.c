@@ -692,7 +692,7 @@ static int dapm_mux_update_power(struct snd_soc_dapm_widget *widget,
 	return 0;
 }
 
-/* test and update the power status of a mixer widget */
+/* test and update the power status of a mixer or switch widget */
 static int dapm_mixer_update_power(struct snd_soc_dapm_widget *widget,
 				   struct snd_kcontrol *kcontrol, int reg,
 				   int val_mask, int val, int invert)
@@ -700,7 +700,7 @@ static int dapm_mixer_update_power(struct snd_soc_dapm_widget *widget,
 	struct snd_soc_dapm_path *path;
 	int found = 0;
 
-	if (widget->id != snd_soc_dapm_mixer)
+	if (widget->id != snd_soc_dapm_mixer && widget->id != snd_soc_dapm_switch)
 		return -ENODEV;
 
 	if (!snd_soc_test_bits(widget->codec, reg, val_mask, val))
@@ -882,13 +882,15 @@ int snd_soc_dapm_connect_input(struct snd_soc_codec *codec, const char *sink,
 	if (wsink->id == snd_soc_dapm_input) {
 		if (wsource->id == snd_soc_dapm_micbias ||
 			wsource->id == snd_soc_dapm_mic ||
-			wsink->id == snd_soc_dapm_line)
+			wsink->id == snd_soc_dapm_line ||
+			wsink->id == snd_soc_dapm_output)
 			wsink->ext = 1;
 	}
 	if (wsource->id == snd_soc_dapm_output) {
 		if (wsink->id == snd_soc_dapm_spk ||
 			wsink->id == snd_soc_dapm_hp ||
-			wsink->id == snd_soc_dapm_line)
+			wsink->id == snd_soc_dapm_line ||
+			wsink->id == snd_soc_dapm_input)
 			wsource->ext = 1;
 	}
 

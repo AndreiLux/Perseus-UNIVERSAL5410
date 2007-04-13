@@ -356,7 +356,7 @@ static int wm8960_dapm_event(struct snd_soc_codec *codec, int event)
 	}
 #endif
 	// tmp
-	wm8960_write(codec, WM8960_POWER1, 0xffff);
+	wm8960_write(codec, WM8960_POWER1, 0xfffe);
 	wm8960_write(codec, WM8960_POWER2, 0xffff);
 	wm8960_write(codec, WM8960_POWER3, 0xffff);
 	codec->dapm_state = event;
@@ -430,7 +430,7 @@ static int wm8960_set_dai_pll(struct snd_soc_codec_dai *codec_dai,
 		return -EINVAL;
 
 	reg = wm8960_read_reg_cache(codec, WM8960_PLLN) & 0x1e0;
-	wm8960_write(codec, WM8960_PLLN, reg | (pll_div.pre_div << 4)
+	wm8960_write(codec, WM8960_PLLN, reg | (1<<5) | (pll_div.pre_div << 4)
 		| pll_div.n);
 	wm8960_write(codec, WM8960_PLLK1, pll_div.k >> 16 );
 	wm8960_write(codec, WM8960_PLLK2, (pll_div.k >> 8) & 0xff);
@@ -559,15 +559,11 @@ static int wm8960_init(struct snd_soc_device *socdev)
 	codec->dapm_event = wm8960_dapm_event;
 	codec->dai = &wm8960_dai;
 	codec->num_dai = 1;
-	codec->reg_cache_size = ARRAY_SIZE(wm8960_reg);
+	codec->reg_cache_size = sizeof(wm8960_reg);
+	codec->reg_cache = kmemdup(wm8960_reg, sizeof(wm8960_reg), GFP_KERNEL);
 
-	codec->reg_cache =
-			kzalloc(sizeof(u16) * ARRAY_SIZE(wm8960_reg), GFP_KERNEL);
 	if (codec->reg_cache == NULL)
 		return -ENOMEM;
-	memcpy(codec->reg_cache,
-		wm8960_reg, sizeof(u16) * ARRAY_SIZE(wm8960_reg));
-	codec->reg_cache_size = sizeof(u16) * ARRAY_SIZE(wm8960_reg);
 
 	wm8960_reset(codec);
 
@@ -636,12 +632,11 @@ static int wm8960_codec_probe(struct i2c_adapter *adap, int addr, int kind)
 	client_template.adapter = adap;
 	client_template.addr = addr;
 
-	i2c = kzalloc(sizeof(struct i2c_client), GFP_KERNEL);
+	i2c = kmemdup(&client_template, sizeof(client_template), GFP_KERNEL);
 	if (i2c == NULL) {
 		kfree(codec);
 		return -ENOMEM;
 	}
-	memcpy(i2c, &client_template, sizeof(struct i2c_client));
 	i2c_set_clientdata(i2c, codec);
 	codec->control_data = i2c;
 
