@@ -22,7 +22,7 @@
 #include <sound/control.h>
 #include <sound/ac97_codec.h>
 
-#define SND_SOC_VERSION "0.13.0"
+#define SND_SOC_VERSION "0.13.1"
 
 /*
  * Convenience kcontrol builders
@@ -424,6 +424,9 @@ struct snd_soc_machine {
 	int (*suspend_post)(struct platform_device *pdev, pm_message_t state);
 	int (*resume_pre)(struct platform_device *pdev);
 	int (*resume_post)(struct platform_device *pdev);
+
+	/* callbacks */
+	int (*dapm_event)(struct snd_soc_machine *, int event);
 
 	/* CPU <--> Codec DAI links  */
 	struct snd_soc_dai_link *dai_link;

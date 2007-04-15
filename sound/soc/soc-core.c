@@ -354,10 +354,8 @@ static int soc_codec_close(struct snd_pcm_substream *substream)
 		snd_soc_dapm_stream_event(codec,
 			codec_dai->capture.stream_name, SND_SOC_DAPM_STREAM_STOP);
 
-		if (codec->active == 0 && codec_dai->pop_wait == 0){
-			if (codec->dapm_event)
-				codec->dapm_event(codec, SNDRV_CTL_POWER_D3hot);
-		}
+		if (codec->active == 0 && codec_dai->pop_wait == 0)
+			snd_soc_dapm_device_event(socdev, SNDRV_CTL_POWER_D3hot);
 	}
 
 	mutex_unlock(&pcm_mutex);
@@ -432,8 +430,7 @@ static int soc_pcm_prepare(struct snd_pcm_substream *substream)
 		/* no delayed work - do we need to power up codec */
 		if (codec->dapm_state != SNDRV_CTL_POWER_D0) {
 
-			if (codec->dapm_event)
-				codec->dapm_event(codec, SNDRV_CTL_POWER_D1);
+			snd_soc_dapm_device_event(socdev,  SNDRV_CTL_POWER_D1);
 
 			if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 				snd_soc_dapm_stream_event(codec,
@@ -444,8 +441,7 @@ static int soc_pcm_prepare(struct snd_pcm_substream *substream)
 					codec_dai->capture.stream_name,
 					SND_SOC_DAPM_STREAM_START);
 
-			if (codec->dapm_event)
-				codec->dapm_event(codec, SNDRV_CTL_POWER_D0);
+			snd_soc_dapm_device_event(socdev, SNDRV_CTL_POWER_D0);
 			if (codec_dai->dai_ops.digital_mute)
 				codec_dai->dai_ops.digital_mute(codec_dai, 0);
 
