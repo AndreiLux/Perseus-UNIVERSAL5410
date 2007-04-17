@@ -155,8 +155,6 @@ static int at91_pcm_prepare(struct snd_pcm_substream *substream)
 	struct at91_runtime_data *prtd = substream->runtime->private_data;
 	struct at91_pcm_dma_params *params = prtd->params;
 
-	DBG("%s prepare\n", params->name);
-
 	at91_ssc_write(params->ssc_base + AT91_SSC_IDR,
 			params->mask->ssc_endx | params->mask->ssc_endbuf);
 
@@ -170,8 +168,6 @@ static int at91_pcm_trigger(struct snd_pcm_substream *substream,
 	struct at91_runtime_data *prtd = substream->runtime->private_data;
 	struct at91_pcm_dma_params *params = prtd->params;
 	int ret = 0;
-
-	DBG("%s trigger %d\n", params->name, cmd);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:

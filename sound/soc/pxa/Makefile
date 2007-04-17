@@ -37,3 +37,4 @@ obj-$(CONFIG_SND_PXA2XX_SOC_MAINSTONE_WM9713) += snd-soc-mainstone-wm9713.o
 obj-$(CONFIG_SND_PXA2XX_SOC_MAINSTONE_WM9712) += snd-soc-mainstone-wm9712.o
 obj-$(CONFIG_SND_MAINSTONE_BASEBAND) += snd-soc-mainstone-baseband.o
 obj-$(CONFIG_SND_MAINSTONE_BLUETOOTH) += snd-soc-mainstone-bluetooth.o
+

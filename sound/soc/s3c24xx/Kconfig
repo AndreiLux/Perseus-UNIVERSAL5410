@@ -1,9 +1,6 @@
-menu "SoC Audio for the Samsung S3C24XX"
-
 config SND_S3C24XX_SOC
 	tristate "SoC Audio for the Samsung S3C24XX chips"
-	depends on ARCH_S3C2410 && SND
-	select SND_PCM
+	depends on ARCH_S3C2410 && SND_SOC
 	help
 	  Say Y or M if you want to add support for codecs attached to
 	  the S3C24XX AC97, I2S or SSP interface. You will also need
@@ -52,6 +49,4 @@ config SND_S3C24XX_SOC_SMDK2443_WM9710
 	help
 	  Say Y if you want to add support for SoC audio on smdk2443
 	  with the WM9710.
-
-endmenu
 
