@@ -38,7 +38,7 @@
 
 #include "s3c24xx-pcm.h"
 
-#define S3C24XX_PCM_DEBUG 1
+#define S3C24XX_PCM_DEBUG 0
 #if S3C24XX_PCM_DEBUG
 #define DBG(x...) printk(KERN_DEBUG x)
 #else
