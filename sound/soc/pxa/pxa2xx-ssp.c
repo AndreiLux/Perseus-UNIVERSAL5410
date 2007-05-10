@@ -191,9 +191,9 @@ static void pxa2xx_ssp_shutdown(struct snd_pcm_substream *substream)
 }
 
 #if defined (CONFIG_PXA27x)
-static int cken[3] = {CKEN23_SSP1, CKEN3_SSP2, CKEN4_SSP3};
+static int cken[3] = {CKEN_SSP1, CKEN_SSP2, CKEN_SSP3};
 #else
-static int cken[3] = {CKEN3_SSP, CKEN9_NSSP, CKEN10_ASSP};
+static int cken[3] = {CKEN_SSP, CKEN_NSSP, CKEN_ASSP};
 #endif
 
 #ifdef CONFIG_PM
