@@ -9,7 +9,7 @@ config SND_SOC_AC97_BUS
 	bool
 
 config SND_SOC
-	tristate "Alsa for SoC audio support"
+	tristate "ALSA for SoC audio support"
 	depends on SND
 	select SND_PCM
 	---help---
