@@ -100,6 +100,7 @@ int unregister_binfmt(struct linux_binfmt * fmt)
 	while (*tmp) {
 		if (fmt == *tmp) {
 			*tmp = fmt->next;
+			fmt->next = NULL;
 			write_unlock(&binfmt_lock);
 			return 0;
 		}
@@ -982,33 +983,51 @@ void compute_creds(struct linux_binprm *bprm)
 	task_unlock(current);
 	security_bprm_post_apply_creds(bprm);
 }
-
 EXPORT_SYMBOL(compute_creds);
 
+/*
+ * Arguments are '\0' separated strings found at the location bprm->p
+ * points to; chop off the first by relocating brpm->p to right after
+ * the first '\0' encountered.
+ */
 void remove_arg_zero(struct linux_binprm *bprm)
 {
 	if (bprm->argc) {
-		unsigned long offset;
-		char * kaddr;
-		struct page *page;
+		char ch;
 
-		offset = bprm->p % PAGE_SIZE;
-		goto inside;
+		do {
+			unsigned long offset;
+			unsigned long index;
+			char *kaddr;
+			struct page *page;
 
-		while (bprm->p++, *(kaddr+offset++)) {
-			if (offset != PAGE_SIZE)
-				continue;
-			offset = 0;
-			kunmap_atomic(kaddr, KM_USER0);
-inside:
-			page = bprm->page[bprm->p/PAGE_SIZE];
+			offset = bprm->p & ~PAGE_MASK;
+			index = bprm->p >> PAGE_SHIFT;
+
+			page = bprm->page[index];
 			kaddr = kmap_atomic(page, KM_USER0);
-		}
-		kunmap_atomic(kaddr, KM_USER0);
+
+			/* run through page until we reach end or find NUL */
+			do {
+				ch = *(kaddr + offset);
+
+				/* discard that character... */
+				bprm->p++;
+				offset++;
+			} while (offset < PAGE_SIZE && ch != '\0');
+
+			kunmap_atomic(kaddr, KM_USER0);
+
+			/* free the old page */
+			if (offset == PAGE_SIZE) {
+				__free_page(page);
+				bprm->page[index] = NULL;
+			}
+		} while (ch != '\0');
+
 		bprm->argc--;
 	}
 }
-
 EXPORT_SYMBOL(remove_arg_zero);
 
 /*
@@ -1244,13 +1263,17 @@ EXPORT_SYMBOL(set_binfmt);
  * name into corename, which must have space for at least
  * CORENAME_MAX_SIZE bytes plus one byte for the zero terminator.
  */
-static void format_corename(char *corename, const char *pattern, long signr)
+static int format_corename(char *corename, const char *pattern, long signr)
 {
 	const char *pat_ptr = pattern;
 	char *out_ptr = corename;
 	char *const out_end = corename + CORENAME_MAX_SIZE;
 	int rc;
 	int pid_in_pattern = 0;
+	int ispipe = 0;
+
+	if (*pattern == '|')
+		ispipe = 1;
 
 	/* Repeat as long as we have more pattern to process and more output
 	   space */
@@ -1341,8 +1364,8 @@ static void format_corename(char *corename, const char *pattern, long signr)
 	 *
 	 * If core_pattern does not include a %p (as is the default)
 	 * and core_uses_pid is set, then .%pid will be appended to
-	 * the filename */
-	if (!pid_in_pattern
+	 * the filename. Do not do this for piped commands. */
+	if (!ispipe && !pid_in_pattern
             && (core_uses_pid || atomic_read(&current->mm->mm_users) != 1)) {
 		rc = snprintf(out_ptr, out_end - out_ptr,
 			      ".%d", current->tgid);
@@ -1350,8 +1373,9 @@ static void format_corename(char *corename, const char *pattern, long signr)
 			goto out;
 		out_ptr += rc;
 	}
-      out:
+out:
 	*out_ptr = 0;
+	return ispipe;
 }
 
 static void zap_process(struct task_struct *start)
@@ -1502,16 +1526,15 @@ int do_coredump(long signr, int exit_code, struct pt_regs * regs)
 	 * uses lock_kernel()
 	 */
  	lock_kernel();
-	format_corename(corename, core_pattern, signr);
+	ispipe = format_corename(corename, core_pattern, signr);
 	unlock_kernel();
- 	if (corename[0] == '|') {
+ 	if (ispipe) {
 		/* SIGPIPE can happen, but it's just never processed */
  		if(call_usermodehelper_pipe(corename+1, NULL, NULL, &file)) {
  			printk(KERN_INFO "Core dump to %s pipe failed\n",
 			       corename);
  			goto fail_unlock;
  		}
-		ispipe = 1;
  	} else
  		file = filp_open(corename,
 				 O_CREAT | 2 | O_NOFOLLOW | O_LARGEFILE | flag,

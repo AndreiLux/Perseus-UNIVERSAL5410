@@ -360,16 +360,11 @@ struct pid *find_ge_pid(int nr)
 }
 EXPORT_SYMBOL_GPL(find_get_pid);
 
-int copy_pid_ns(int flags, struct task_struct *tsk)
+struct pid_namespace *copy_pid_ns(int flags, struct pid_namespace *old_ns)
 {
-	struct pid_namespace *old_ns = tsk->nsproxy->pid_ns;
-	int err = 0;
-
-	if (!old_ns)
-		return 0;
-
+	BUG_ON(!old_ns);
 	get_pid_ns(old_ns);
-	return err;
+	return old_ns;
 }
 
 void free_pid_ns(struct kref *kref)
@@ -412,7 +407,5 @@ void __init pidmap_init(void)
 	set_bit(0, init_pid_ns.pidmap[0].page);
 	atomic_dec(&init_pid_ns.pidmap[0].nr_free);
 
-	pid_cachep = kmem_cache_create("pid", sizeof(struct pid),
-					__alignof__(struct pid),
-					SLAB_PANIC, NULL, NULL);
+	pid_cachep = KMEM_CACHE(pid, SLAB_PANIC);
 }

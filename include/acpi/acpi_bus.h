@@ -303,6 +303,9 @@ struct acpi_device {
 #define to_acpi_device(d)	container_of(d, struct acpi_device, dev)
 #define to_acpi_driver(d)	container_of(d, struct acpi_driver, drv)
 
+/* acpi_device.dev.bus == &acpi_bus_type */
+extern struct bus_type acpi_bus_type;
+
 /*
  * Events
  * ------
@@ -316,7 +319,7 @@ struct acpi_bus_event {
 	u32 data;
 };
 
-extern struct subsystem acpi_subsys;
+extern struct kset acpi_subsys;
 
 /*
  * External Functions

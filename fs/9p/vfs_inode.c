@@ -30,7 +30,6 @@
 #include <linux/pagemap.h>
 #include <linux/stat.h>
 #include <linux/string.h>
-#include <linux/smp_lock.h>
 #include <linux/inet.h>
 #include <linux/namei.h>
 #include <linux/idr.h>
@@ -415,7 +414,7 @@ static int v9fs_remove(struct inode *dir, struct dentry *file, int rmdir)
 	file_inode = file->d_inode;
 	sb = file_inode->i_sb;
 	v9ses = v9fs_inode2v9ses(file_inode);
-	v9fid = v9fs_fid_lookup(file);
+	v9fid = v9fs_fid_clone(file);
 	if(IS_ERR(v9fid))
 		return PTR_ERR(v9fid);
 

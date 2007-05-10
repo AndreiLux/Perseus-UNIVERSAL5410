@@ -92,7 +92,7 @@ cflags-y += -ffreestanding
 # when fed the toolchain default!
 #
 # Certain gcc versions upto gcc 4.1.1 (probably 4.2-subversion as of
-# 2006-10-10 don't properly change the the predefined symbols if -EB / -EL
+# 2006-10-10 don't properly change the predefined symbols if -EB / -EL
 # are used, so we kludge that here.  A bug has been filed at
 # http://gcc.gnu.org/bugzilla/show_bug.cgi?id=29413.
 #
@@ -530,25 +530,29 @@ cflags-$(CONFIG_SGI_IP32)	+= -Iinclude/asm-mips/mach-ip32
 load-$(CONFIG_SGI_IP32)		+= 0xffffffff80004000
 
 #
-# Sibyte SB1250 SOC
+# Sibyte SB1250/BCM1480 SOC
 #
 # This is a LIB so that it links at the end, and initcalls are later
 # the sequence; but it is built as an object so that modules don't get
 # removed (as happens, even if they have __initcall/module_init)
 #
 core-$(CONFIG_SIBYTE_BCM112X)	+= arch/mips/sibyte/sb1250/
+core-$(CONFIG_SIBYTE_BCM112X)	+= arch/mips/sibyte/common/
 cflags-$(CONFIG_SIBYTE_BCM112X)	+= -Iinclude/asm-mips/mach-sibyte \
 			-DSIBYTE_HDR_FEATURES=SIBYTE_HDR_FMASK_1250_112x_ALL
 
 core-$(CONFIG_SIBYTE_SB1250)	+= arch/mips/sibyte/sb1250/
+core-$(CONFIG_SIBYTE_SB1250)	+= arch/mips/sibyte/common/
 cflags-$(CONFIG_SIBYTE_SB1250)	+= -Iinclude/asm-mips/mach-sibyte \
 			-DSIBYTE_HDR_FEATURES=SIBYTE_HDR_FMASK_1250_112x_ALL
 
 core-$(CONFIG_SIBYTE_BCM1x55)	+= arch/mips/sibyte/bcm1480/
+core-$(CONFIG_SIBYTE_BCM1x55)	+= arch/mips/sibyte/common/
 cflags-$(CONFIG_SIBYTE_BCM1x55)	+= -Iinclude/asm-mips/mach-sibyte \
 			-DSIBYTE_HDR_FEATURES=SIBYTE_HDR_FMASK_1480_ALL
 
 core-$(CONFIG_SIBYTE_BCM1x80)	+= arch/mips/sibyte/bcm1480/
+core-$(CONFIG_SIBYTE_BCM1x80)	+= arch/mips/sibyte/common/
 cflags-$(CONFIG_SIBYTE_BCM1x80)	+= -Iinclude/asm-mips/mach-sibyte \
 			-DSIBYTE_HDR_FEATURES=SIBYTE_HDR_FMASK_1480_ALL
 

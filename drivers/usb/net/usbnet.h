@@ -29,6 +29,7 @@ struct usbnet {
 	/* housekeeping */
 	struct usb_device	*udev;
 	struct driver_info	*driver_info;
+	const char		*driver_name;
 	wait_queue_head_t	*wait;
 	struct mutex		phy_mutex;
 
@@ -128,7 +129,7 @@ extern void usbnet_disconnect(struct usb_interface *);
 
 
 /* Drivers that reuse some of the standard USB CDC infrastructure
- * (notably, using multiple interfaces according to the the CDC
+ * (notably, using multiple interfaces according to the CDC
  * union descriptor) get some helper code.
  */
 struct cdc_state {

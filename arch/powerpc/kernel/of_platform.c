@@ -29,7 +29,6 @@
 #include <asm/ppc-pci.h>
 #include <asm/atomic.h>
 
-
 /*
  * The list of OF IDs below is used for matching bus types in the
  * system whose devices are to be exposed as of_platform_devices.
@@ -133,6 +132,7 @@ static int of_platform_device_resume(struct device * dev)
 struct bus_type of_platform_bus_type = {
        .name	= "of_platform",
        .match	= of_platform_bus_match,
+       .uevent	= of_device_uevent,
        .probe	= of_platform_device_probe,
        .remove	= of_platform_device_remove,
        .suspend	= of_platform_device_suspend,
@@ -177,7 +177,7 @@ static void of_platform_make_bus_id(struct of_device *dev)
 	 * and 'D' for MMIO DCRs.
 	 */
 #ifdef CONFIG_PPC_DCR
-	reg = get_property(node, "dcr-reg", NULL);
+	reg = of_get_property(node, "dcr-reg", NULL);
 	if (reg) {
 #ifdef CONFIG_PPC_DCR_NATIVE
 		snprintf(name, BUS_ID_SIZE, "d%x.%s",
@@ -197,7 +197,7 @@ static void of_platform_make_bus_id(struct of_device *dev)
 	/*
 	 * For MMIO, get the physical address
 	 */
-	reg = get_property(node, "reg", NULL);
+	reg = of_get_property(node, "reg", NULL);
 	if (reg) {
 		addr = of_translate_address(node, reg);
 		if (addr != OF_BAD_ADDR) {
@@ -475,9 +475,6 @@ static struct of_platform_driver of_pci_phb_driver = {
        .name = "of-pci",
        .match_table = of_pci_phb_ids,
        .probe = of_pci_phb_probe,
-       .driver = {
-	       .multithread_probe = 1,
-       },
 };
 
 static __init int of_pci_phb_init(void)

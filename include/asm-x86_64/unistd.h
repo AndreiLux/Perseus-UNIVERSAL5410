@@ -619,8 +619,8 @@ __SYSCALL(__NR_sync_file_range, sys_sync_file_range)
 __SYSCALL(__NR_vmsplice, sys_vmsplice)
 #define __NR_move_pages		279
 __SYSCALL(__NR_move_pages, sys_move_pages)
-
-#define __NR_syscall_max __NR_move_pages
+#define __NR_utimensat		280
+__SYSCALL(__NR_utimensat, sys_utimensat)
 
 #ifndef __NO_STUBS
 #define __ARCH_WANT_OLD_READDIR
@@ -655,7 +655,6 @@ __SYSCALL(__NR_move_pages, sys_move_pages)
 #include <asm/ptrace.h>
 
 asmlinkage long sys_iopl(unsigned int level, struct pt_regs *regs);
-asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int turn_on);
 struct sigaction;
 asmlinkage long sys_rt_sigaction(int sig,
 				const struct sigaction __user *act,

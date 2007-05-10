@@ -576,7 +576,9 @@ static struct sk_buff *ipxitf_adjust_skbuff(struct ipx_interface *intrfc,
 	skb2 = alloc_skb(len, GFP_ATOMIC);
 	if (skb2) {
 		skb_reserve(skb2, out_offset);
-		skb2->nh.raw = skb2->h.raw = skb_put(skb2, skb->len);
+		skb_reset_network_header(skb2);
+		skb_reset_transport_header(skb2);
+		skb_put(skb2, skb->len);
 		memcpy(ipx_hdr(skb2), ipx_hdr(skb), skb->len);
 		memcpy(skb2->cb, skb->cb, sizeof(skb->cb));
 	}
@@ -1807,8 +1809,8 @@ static int ipx_recvmsg(struct kiocb *iocb, struct socket *sock,
 				     copied);
 	if (rc)
 		goto out_free;
-	if (skb->tstamp.off_sec)
-		skb_get_timestamp(skb, &sk->sk_stamp);
+	if (skb->tstamp.tv64)
+		sk->sk_stamp = skb->tstamp;
 
 	msg->msg_namelen = sizeof(*sipx);
 
@@ -1959,7 +1961,6 @@ static const struct proto_ops SOCKOPS_WRAPPED(ipx_dgram_ops) = {
 	.sendpage	= sock_no_sendpage,
 };
 
-#include <linux/smp_lock.h>
 SOCKOPS_WRAP(ipx_dgram, PF_IPX);
 
 static struct packet_type ipx_8023_packet_type = {

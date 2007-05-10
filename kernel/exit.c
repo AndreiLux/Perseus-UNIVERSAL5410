@@ -7,7 +7,6 @@
 #include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/interrupt.h>
-#include <linux/smp_lock.h>
 #include <linux/module.h>
 #include <linux/capability.h>
 #include <linux/completion.h>
@@ -27,6 +26,7 @@
 #include <linux/profile.h>
 #include <linux/mount.h>
 #include <linux/proc_fs.h>
+#include <linux/kthread.h>
 #include <linux/mempolicy.h>
 #include <linux/taskstats_kern.h>
 #include <linux/delayacct.h>
@@ -255,26 +255,25 @@ static int has_stopped_jobs(struct pid *pgrp)
 }
 
 /**
- * reparent_to_init - Reparent the calling kernel thread to the init task of the pid space that the thread belongs to.
+ * reparent_to_kthreadd - Reparent the calling kernel thread to kthreadd
  *
  * If a kernel thread is launched as a result of a system call, or if
- * it ever exits, it should generally reparent itself to init so that
- * it is correctly cleaned up on exit.
+ * it ever exits, it should generally reparent itself to kthreadd so it
+ * isn't in the way of other processes and is correctly cleaned up on exit.
  *
  * The various task state such as scheduling policy and priority may have
  * been inherited from a user process, so we reset them to sane values here.
  *
- * NOTE that reparent_to_init() gives the caller full capabilities.
+ * NOTE that reparent_to_kthreadd() gives the caller full capabilities.
  */
-static void reparent_to_init(void)
+static void reparent_to_kthreadd(void)
 {
 	write_lock_irq(&tasklist_lock);
 
 	ptrace_unlink(current);
 	/* Reparent to init */
 	remove_parent(current);
-	current->parent = child_reaper(current);
-	current->real_parent = child_reaper(current);
+	current->real_parent = current->parent = kthreadd_task;
 	add_parent(current);
 
 	/* Set the exit signal to SIGCHLD so we signal init on exit */
@@ -348,7 +347,7 @@ int disallow_signal(int sig)
 		return -EINVAL;
 
 	spin_lock_irq(&current->sighand->siglock);
-	sigaddset(&current->blocked, sig);
+	current->sighand->action[(sig)-1].sa.sa_handler = SIG_IGN;
 	recalc_sigpending();
 	spin_unlock_irq(&current->sighand->siglock);
 	return 0;
@@ -401,7 +400,7 @@ void daemonize(const char *name, ...)
 	current->files = init_task.files;
 	atomic_inc(&current->files->count);
 
-	reparent_to_init();
+	reparent_to_kthreadd();
 }
 
 EXPORT_SYMBOL(daemonize);
@@ -1033,6 +1032,8 @@ asmlinkage void sys_exit_group(int error_code)
 
 static int eligible_child(pid_t pid, int options, struct task_struct *p)
 {
+	int err;
+
 	if (pid > 0) {
 		if (p->pid != pid)
 			return 0;
@@ -1066,8 +1067,9 @@ static int eligible_child(pid_t pid, int options, struct task_struct *p)
 	if (delay_group_leader(p))
 		return 2;
 
-	if (security_task_wait(p))
-		return 0;
+	err = security_task_wait(p);
+	if (err)
+		return err;
 
 	return 1;
 }
@@ -1449,6 +1451,7 @@ static long do_wait(pid_t pid, int options, struct siginfo __user *infop,
 	DECLARE_WAITQUEUE(wait, current);
 	struct task_struct *tsk;
 	int flag, retval;
+	int allowed, denied;
 
 	add_wait_queue(&current->signal->wait_chldexit,&wait);
 repeat:
@@ -1457,6 +1460,7 @@ repeat:
 	 * match our criteria, even if we are not able to reap it yet.
 	 */
 	flag = 0;
+	allowed = denied = 0;
 	current->state = TASK_INTERRUPTIBLE;
 	read_lock(&tasklist_lock);
 	tsk = current;
@@ -1471,6 +1475,12 @@ repeat:
 			ret = eligible_child(pid, options, p);
 			if (!ret)
 				continue;
+
+			if (unlikely(ret < 0)) {
+				denied = ret;
+				continue;
+			}
+			allowed = 1;
 
 			switch (p->state) {
 			case TASK_TRACED:
@@ -1570,6 +1580,8 @@ check_continued:
 		goto repeat;
 	}
 	retval = -ECHILD;
+	if (unlikely(denied) && !allowed)
+		retval = denied;
 end:
 	current->state = TASK_RUNNING;
 	remove_wait_queue(&current->signal->wait_chldexit,&wait);

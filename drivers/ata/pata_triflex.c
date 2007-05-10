@@ -43,16 +43,17 @@
 #include <linux/libata.h>
 
 #define DRV_NAME "pata_triflex"
-#define DRV_VERSION "0.2.7"
+#define DRV_VERSION "0.2.8"
 
 /**
  *	triflex_prereset		-	probe begin
  *	@ap: ATA port
+ *	@deadline: deadline jiffies for the operation
  *
  *	Set up cable type and use generic probe init
  */
 
-static int triflex_prereset(struct ata_port *ap)
+static int triflex_prereset(struct ata_port *ap, unsigned long deadline)
 {
 	static const struct pci_bits triflex_enable_bits[] = {
 		{ 0x80, 1, 0x01, 0x01 },
@@ -63,8 +64,8 @@ static int triflex_prereset(struct ata_port *ap)
 
 	if (!pci_test_config_bits(pdev, &triflex_enable_bits[ap->port_no]))
 		return -ENOENT;
-	ap->cbl = ATA_CBL_PATA40;
-	return ata_std_prereset(ap);
+
+	return ata_std_prereset(ap, deadline);
 }
 
 
@@ -214,6 +215,7 @@ static struct ata_port_operations triflex_port_ops = {
 	.thaw		= ata_bmdma_thaw,
 	.error_handler	= triflex_error_handler,
 	.post_internal_cmd = ata_bmdma_post_internal_cmd,
+	.cable_detect	= ata_cable_40wire,
 
 	.bmdma_setup 	= ata_bmdma_setup,
 	.bmdma_start 	= triflex_bmdma_start,
