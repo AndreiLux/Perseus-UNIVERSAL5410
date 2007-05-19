@@ -1021,7 +1021,7 @@ static int start_tx(struct sk_buff *skb, struct net_device *dev)
 		np->tx_ring[entry].length |= DescEndRing;
 
 	/* Now acquire the irq spinlock.
-	 * The difficult race is the the ordering between
+	 * The difficult race is the ordering between
 	 * increasing np->cur_tx and setting DescOwned:
 	 * - if np->cur_tx is increased first the interrupt
 	 *   handler could consider the packet as transmitted
@@ -1147,7 +1147,7 @@ static irqreturn_t intr_handler(int irq, void *dev_instance)
 		}
 
 		/* Abnormal error summary/uncommon events handlers. */
-		if (intr_status & (AbnormalIntr | TxFIFOUnderflow | SytemError |
+		if (intr_status & (AbnormalIntr | TxFIFOUnderflow | SystemError |
 						   TimerInt | TxDied))
 			netdev_error(dev, intr_status);
 

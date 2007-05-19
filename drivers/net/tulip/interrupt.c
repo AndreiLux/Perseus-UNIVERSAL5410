@@ -269,7 +269,7 @@ done:
             This would turn on IM for devices that is not contributing
             to backlog congestion with unnecessary latency.
 
-             We monitor the the device RX-ring and have:
+             We monitor the device RX-ring and have:
 
              HW Interrupt Mitigation either ON or OFF.
 
@@ -673,7 +673,7 @@ irqreturn_t tulip_interrupt(int irq, void *dev_instance)
 				if (tp->link_change)
 					(tp->link_change)(dev, csr5);
 			}
-			if (csr5 & SytemError) {
+			if (csr5 & SystemError) {
 				int error = (csr5 >> 23) & 7;
 				/* oops, we hit a PCI error.  The code produced corresponds
 				 * to the reason:
@@ -743,7 +743,7 @@ irqreturn_t tulip_interrupt(int irq, void *dev_instance)
 			  TxFIFOUnderflow |
 			  TxJabber |
 			  TPLnkFail |
-			  SytemError )) != 0);
+			  SystemError )) != 0);
 #else
 	} while ((csr5 & (NormalIntr|AbnormalIntr)) != 0);
 

@@ -672,9 +672,66 @@ static struct sk_buff *xfrm_state_netlink(struct sk_buff *in_skb,
 	return skb;
 }
 
+static int build_spdinfo(struct sk_buff *skb, u32 pid, u32 seq, u32 flags)
+{
+	struct xfrmk_spdinfo si;
+	struct xfrmu_spdinfo spc;
+	struct xfrmu_spdhinfo sph;
+	struct nlmsghdr *nlh;
+	u32 *f;
+
+	nlh = nlmsg_put(skb, pid, seq, XFRM_MSG_NEWSPDINFO, sizeof(u32), 0);
+	if (nlh == NULL) /* shouldnt really happen ... */
+		return -EMSGSIZE;
+
+	f = nlmsg_data(nlh);
+	*f = flags;
+	xfrm_spd_getinfo(&si);
+	spc.incnt = si.incnt;
+	spc.outcnt = si.outcnt;
+	spc.fwdcnt = si.fwdcnt;
+	spc.inscnt = si.inscnt;
+	spc.outscnt = si.outscnt;
+	spc.fwdscnt = si.fwdscnt;
+	sph.spdhcnt = si.spdhcnt;
+	sph.spdhmcnt = si.spdhmcnt;
+
+	NLA_PUT(skb, XFRMA_SPD_INFO, sizeof(spc), &spc);
+	NLA_PUT(skb, XFRMA_SPD_HINFO, sizeof(sph), &sph);
+
+	return nlmsg_end(skb, nlh);
+
+nla_put_failure:
+	nlmsg_cancel(skb, nlh);
+	return -EMSGSIZE;
+}
+
+static int xfrm_get_spdinfo(struct sk_buff *skb, struct nlmsghdr *nlh,
+		struct rtattr **xfrma)
+{
+	struct sk_buff *r_skb;
+	u32 *flags = NLMSG_DATA(nlh);
+	u32 spid = NETLINK_CB(skb).pid;
+	u32 seq = nlh->nlmsg_seq;
+	int len = NLMSG_LENGTH(sizeof(u32));
+
+	len += RTA_SPACE(sizeof(struct xfrmu_spdinfo));
+	len += RTA_SPACE(sizeof(struct xfrmu_spdhinfo));
+
+	r_skb = alloc_skb(len, GFP_ATOMIC);
+	if (r_skb == NULL)
+		return -ENOMEM;
+
+	if (build_spdinfo(r_skb, spid, seq, *flags) < 0)
+		BUG();
+
+	return nlmsg_unicast(xfrm_nl, r_skb, spid);
+}
+
 static int build_sadinfo(struct sk_buff *skb, u32 pid, u32 seq, u32 flags)
 {
-	struct xfrm_sadinfo si;
+	struct xfrmk_sadinfo si;
+	struct xfrmu_sadhinfo sh;
 	struct nlmsghdr *nlh;
 	u32 *f;
 
@@ -686,12 +743,11 @@ static int build_sadinfo(struct sk_buff *skb, u32 pid, u32 seq, u32 flags)
 	*f = flags;
 	xfrm_sad_getinfo(&si);
 
-	if (flags & XFRM_SAD_HMASK)
-		NLA_PUT_U32(skb, XFRMA_SADHMASK, si.sadhcnt);
-	if (flags & XFRM_SAD_HMAX)
-		NLA_PUT_U32(skb, XFRMA_SADHMAX, si.sadhmcnt);
-	if (flags & XFRM_SAD_CNT)
-		NLA_PUT_U32(skb, XFRMA_SADCNT, si.sadcnt);
+	sh.sadhmcnt = si.sadhmcnt;
+	sh.sadhcnt = si.sadhcnt;
+
+	NLA_PUT_U32(skb, XFRMA_SAD_CNT, si.sadcnt);
+	NLA_PUT(skb, XFRMA_SAD_HINFO, sizeof(sh), &sh);
 
 	return nlmsg_end(skb, nlh);
 
@@ -709,12 +765,8 @@ static int xfrm_get_sadinfo(struct sk_buff *skb, struct nlmsghdr *nlh,
 	u32 seq = nlh->nlmsg_seq;
 	int len = NLMSG_LENGTH(sizeof(u32));
 
-	if (*flags & XFRM_SAD_HMASK)
-		len += RTA_SPACE(sizeof(u32));
-	if (*flags & XFRM_SAD_HMAX)
-		len += RTA_SPACE(sizeof(u32));
-	if (*flags & XFRM_SAD_CNT)
-		len += RTA_SPACE(sizeof(u32));
+	len += RTA_SPACE(sizeof(struct xfrmu_sadhinfo));
+	len += RTA_SPACE(sizeof(u32));
 
 	r_skb = alloc_skb(len, GFP_ATOMIC);
 
@@ -1879,6 +1931,7 @@ static const int xfrm_msg_min[XFRM_NR_MSGTYPES] = {
 	[XFRM_MSG_REPORT      - XFRM_MSG_BASE] = XMSGSIZE(xfrm_user_report),
 	[XFRM_MSG_MIGRATE     - XFRM_MSG_BASE] = XMSGSIZE(xfrm_userpolicy_id),
 	[XFRM_MSG_GETSADINFO  - XFRM_MSG_BASE] = NLMSG_LENGTH(sizeof(u32)),
+	[XFRM_MSG_GETSPDINFO  - XFRM_MSG_BASE] = NLMSG_LENGTH(sizeof(u32)),
 };
 
 #undef XMSGSIZE
@@ -1907,6 +1960,7 @@ static struct xfrm_link {
 	[XFRM_MSG_GETAE       - XFRM_MSG_BASE] = { .doit = xfrm_get_ae  },
 	[XFRM_MSG_MIGRATE     - XFRM_MSG_BASE] = { .doit = xfrm_do_migrate    },
 	[XFRM_MSG_GETSADINFO  - XFRM_MSG_BASE] = { .doit = xfrm_get_sadinfo   },
+	[XFRM_MSG_GETSPDINFO  - XFRM_MSG_BASE] = { .doit = xfrm_get_spdinfo   },
 };
 
 static int xfrm_user_rcv_msg(struct sk_buff *skb, struct nlmsghdr *nlh)

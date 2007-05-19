@@ -27,7 +27,6 @@
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/types.h>
-#include <linux/pci.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/skbuff.h>
@@ -927,7 +926,7 @@ static int emac_link_differs(struct ocp_enet_private *dev)
 	int duplex = r & EMAC_MR1_FDE ? DUPLEX_FULL : DUPLEX_HALF;
 	int speed, pause, asym_pause;
 
-	if (r & (EMAC_MR1_MF_1000 | EMAC_MR1_MF_1000GPCS))
+	if (r & EMAC_MR1_MF_1000)
 		speed = SPEED_1000;
 	else if (r & EMAC_MR1_MF_100)
 		speed = SPEED_100;

@@ -197,7 +197,7 @@ typedef unsigned char *sk_buff_data_t;
  *	@tstamp: Time we arrived
  *	@dev: Device we arrived on/are leaving by
  *	@iif: ifindex of device we arrived on
- *	@h: Transport layer header
+ *	@transport_header: Transport layer header
  *	@network_header: Network layer header
  *	@mac_header: Link layer header
  *	@dst: destination entry
@@ -1470,6 +1470,11 @@ static inline int pskb_trim_rcsum(struct sk_buff *skb, unsigned int len)
 		for (skb = (queue)->next;					\
 		     prefetch(skb->next), (skb != (struct sk_buff *)(queue));	\
 		     skb = skb->next)
+
+#define skb_queue_walk_safe(queue, skb, tmp)					\
+		for (skb = (queue)->next, tmp = skb->next;			\
+		     skb != (struct sk_buff *)(queue);				\
+		     skb = tmp, tmp = skb->next)
 
 #define skb_queue_reverse_walk(queue, skb) \
 		for (skb = (queue)->prev;					\

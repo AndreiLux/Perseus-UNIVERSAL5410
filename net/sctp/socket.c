@@ -972,6 +972,7 @@ static int __sctp_connect(struct sock* sk,
 	int walk_size = 0;
 	union sctp_addr *sa_addr;
 	void *addr_buf;
+	unsigned short port;
 
 	sp = sctp_sk(sk);
 	ep = sp->ep;
@@ -992,6 +993,7 @@ static int __sctp_connect(struct sock* sk,
 	while (walk_size < addrs_size) {
 		sa_addr = (union sctp_addr *)addr_buf;
 		af = sctp_get_af_specific(sa_addr->sa.sa_family);
+		port = ntohs(sa_addr->v4.sin_port);
 
 		/* If the address family is not supported or if this address
 		 * causes the address buffer to overflow return EINVAL.
@@ -1003,6 +1005,12 @@ static int __sctp_connect(struct sock* sk,
 
 		err = sctp_verify_addr(sk, sa_addr, af->sockaddr_len);
 		if (err)
+			goto out_free;
+
+		/* Make sure the destination port is correctly set
+		 * in all addresses.
+		 */
+		if (asoc && asoc->peer.port && asoc->peer.port != port)
 			goto out_free;
 
 		memcpy(&to, sa_addr, af->sockaddr_len);
@@ -2578,7 +2586,7 @@ static int sctp_setsockopt_rtoinfo(struct sock *sk, char __user *optval, int opt
  *
  * 7.1.2 SCTP_ASSOCINFO
  *
- * This option is used to tune the the maximum retransmission attempts
+ * This option is used to tune the maximum retransmission attempts
  * of the association.
  * Returns an error if the new association retransmission value is
  * greater than the sum of the retransmission value  of the peer.
@@ -3987,7 +3995,7 @@ static int sctp_getsockopt_peer_addrs(struct sock *sk, int len,
 		memcpy(&temp, &from->ipaddr, sizeof(temp));
 		sctp_get_pf_specific(sk->sk_family)->addr_v4map(sp, &temp);
 		addrlen = sctp_get_af_specific(sk->sk_family)->sockaddr_len;
-		if(space_left < addrlen)
+		if (space_left < addrlen)
 			return -ENOMEM;
 		if (copy_to_user(to, &temp, addrlen))
 			return -EFAULT;
@@ -4076,8 +4084,9 @@ done:
 /* Helper function that copies local addresses to user and returns the number
  * of addresses copied.
  */
-static int sctp_copy_laddrs_to_user_old(struct sock *sk, __u16 port, int max_addrs,
-					void __user *to)
+static int sctp_copy_laddrs_old(struct sock *sk, __u16 port,
+					int max_addrs, void *to,
+					int *bytes_copied)
 {
 	struct list_head *pos, *next;
 	struct sctp_sockaddr_entry *addr;
@@ -4094,10 +4103,10 @@ static int sctp_copy_laddrs_to_user_old(struct sock *sk, __u16 port, int max_add
 		sctp_get_pf_specific(sk->sk_family)->addr_v4map(sctp_sk(sk),
 								&temp);
 		addrlen = sctp_get_af_specific(temp.sa.sa_family)->sockaddr_len;
-		if (copy_to_user(to, &temp, addrlen))
-			return -EFAULT;
+		memcpy(to, &temp, addrlen);
 
 		to += addrlen;
+		*bytes_copied += addrlen;
 		cnt ++;
 		if (cnt >= max_addrs) break;
 	}
@@ -4105,8 +4114,8 @@ static int sctp_copy_laddrs_to_user_old(struct sock *sk, __u16 port, int max_add
 	return cnt;
 }
 
-static int sctp_copy_laddrs_to_user(struct sock *sk, __u16 port,
-				    void __user **to, size_t space_left)
+static int sctp_copy_laddrs(struct sock *sk, __u16 port, void *to,
+			    size_t space_left, int *bytes_copied)
 {
 	struct list_head *pos, *next;
 	struct sctp_sockaddr_entry *addr;
@@ -4123,14 +4132,14 @@ static int sctp_copy_laddrs_to_user(struct sock *sk, __u16 port,
 		sctp_get_pf_specific(sk->sk_family)->addr_v4map(sctp_sk(sk),
 								&temp);
 		addrlen = sctp_get_af_specific(temp.sa.sa_family)->sockaddr_len;
-		if(space_left<addrlen)
+		if (space_left < addrlen)
 			return -ENOMEM;
-		if (copy_to_user(*to, &temp, addrlen))
-			return -EFAULT;
+		memcpy(to, &temp, addrlen);
 
-		*to += addrlen;
+		to += addrlen;
 		cnt ++;
 		space_left -= addrlen;
+		bytes_copied += addrlen;
 	}
 
 	return cnt;
@@ -4154,6 +4163,9 @@ static int sctp_getsockopt_local_addrs_old(struct sock *sk, int len,
 	int addrlen;
 	rwlock_t *addr_lock;
 	int err = 0;
+	void *addrs;
+	void *buf;
+	int bytes_copied = 0;
 
 	if (len != sizeof(struct sctp_getaddrs_old))
 		return -EINVAL;
@@ -4181,6 +4193,15 @@ static int sctp_getsockopt_local_addrs_old(struct sock *sk, int len,
 
 	to = getaddrs.addrs;
 
+	/* Allocate space for a local instance of packed array to hold all
+	 * the data.  We store addresses here first and then put write them
+	 * to the user in one shot.
+	 */
+	addrs = kmalloc(sizeof(union sctp_addr) * getaddrs.addr_num,
+			GFP_KERNEL);
+	if (!addrs)
+		return -ENOMEM;
+
 	sctp_read_lock(addr_lock);
 
 	/* If the endpoint is bound to 0.0.0.0 or ::0, get the valid
@@ -4190,38 +4211,42 @@ static int sctp_getsockopt_local_addrs_old(struct sock *sk, int len,
 		addr = list_entry(bp->address_list.next,
 				  struct sctp_sockaddr_entry, list);
 		if (sctp_is_any(&addr->a)) {
-			cnt = sctp_copy_laddrs_to_user_old(sk, bp->port,
-							   getaddrs.addr_num,
-							   to);
-			if (cnt < 0) {
-				err = cnt;
-				goto unlock;
-			}
+			cnt = sctp_copy_laddrs_old(sk, bp->port,
+						   getaddrs.addr_num,
+						   addrs, &bytes_copied);
 			goto copy_getaddrs;
 		}
 	}
 
+	buf = addrs;
 	list_for_each(pos, &bp->address_list) {
 		addr = list_entry(pos, struct sctp_sockaddr_entry, list);
 		memcpy(&temp, &addr->a, sizeof(temp));
 		sctp_get_pf_specific(sk->sk_family)->addr_v4map(sp, &temp);
 		addrlen = sctp_get_af_specific(temp.sa.sa_family)->sockaddr_len;
-		if (copy_to_user(to, &temp, addrlen)) {
-			err = -EFAULT;
-			goto unlock;
-		}
-		to += addrlen;
+		memcpy(buf, &temp, addrlen);
+		buf += addrlen;
+		bytes_copied += addrlen;
 		cnt ++;
 		if (cnt >= getaddrs.addr_num) break;
 	}
 
 copy_getaddrs:
+	sctp_read_unlock(addr_lock);
+
+	/* copy the entire address list into the user provided space */
+	if (copy_to_user(to, addrs, bytes_copied)) {
+		err = -EFAULT;
+		goto error;
+	}
+
+	/* copy the leading structure back to user */
 	getaddrs.addr_num = cnt;
 	if (copy_to_user(optval, &getaddrs, sizeof(struct sctp_getaddrs_old)))
 		err = -EFAULT;
 
-unlock:
-	sctp_read_unlock(addr_lock);
+error:
+	kfree(addrs);
 	return err;
 }
 
@@ -4241,7 +4266,9 @@ static int sctp_getsockopt_local_addrs(struct sock *sk, int len,
 	rwlock_t *addr_lock;
 	int err = 0;
 	size_t space_left;
-	int bytes_copied;
+	int bytes_copied = 0;
+	void *addrs;
+	void *buf;
 
 	if (len <= sizeof(struct sctp_getaddrs))
 		return -EINVAL;
@@ -4269,6 +4296,9 @@ static int sctp_getsockopt_local_addrs(struct sock *sk, int len,
 	to = optval + offsetof(struct sctp_getaddrs,addrs);
 	space_left = len - sizeof(struct sctp_getaddrs) -
 			 offsetof(struct sctp_getaddrs,addrs);
+	addrs = kmalloc(space_left, GFP_KERNEL);
+	if (!addrs)
+		return -ENOMEM;
 
 	sctp_read_lock(addr_lock);
 
@@ -4279,41 +4309,47 @@ static int sctp_getsockopt_local_addrs(struct sock *sk, int len,
 		addr = list_entry(bp->address_list.next,
 				  struct sctp_sockaddr_entry, list);
 		if (sctp_is_any(&addr->a)) {
-			cnt = sctp_copy_laddrs_to_user(sk, bp->port,
-						       &to, space_left);
+			cnt = sctp_copy_laddrs(sk, bp->port, addrs,
+						space_left, &bytes_copied);
 			if (cnt < 0) {
 				err = cnt;
-				goto unlock;
+				goto error;
 			}
 			goto copy_getaddrs;
 		}
 	}
 
+	buf = addrs;
 	list_for_each(pos, &bp->address_list) {
 		addr = list_entry(pos, struct sctp_sockaddr_entry, list);
 		memcpy(&temp, &addr->a, sizeof(temp));
 		sctp_get_pf_specific(sk->sk_family)->addr_v4map(sp, &temp);
 		addrlen = sctp_get_af_specific(temp.sa.sa_family)->sockaddr_len;
-		if(space_left < addrlen)
-			return -ENOMEM; /*fixme: right error?*/
-		if (copy_to_user(to, &temp, addrlen)) {
-			err = -EFAULT;
-			goto unlock;
+		if (space_left < addrlen) {
+			err =  -ENOMEM; /*fixme: right error?*/
+			goto error;
 		}
-		to += addrlen;
+		memcpy(buf, &temp, addrlen);
+		buf += addrlen;
+		bytes_copied += addrlen;
 		cnt ++;
 		space_left -= addrlen;
 	}
 
 copy_getaddrs:
+	sctp_read_unlock(addr_lock);
+
+	if (copy_to_user(to, addrs, bytes_copied)) {
+		err = -EFAULT;
+		goto error;
+	}
 	if (put_user(cnt, &((struct sctp_getaddrs __user *)optval)->addr_num))
 		return -EFAULT;
-	bytes_copied = ((char __user *)to) - optval;
 	if (put_user(bytes_copied, optlen))
 		return -EFAULT;
 
-unlock:
-	sctp_read_unlock(addr_lock);
+error:
+	kfree(addrs);
 	return err;
 }
 
@@ -4515,7 +4551,7 @@ static int sctp_getsockopt_rtoinfo(struct sock *sk, int len,
  *
  * 7.1.2 SCTP_ASSOCINFO
  *
- * This option is used to tune the the maximum retransmission attempts
+ * This option is used to tune the maximum retransmission attempts
  * of the association.
  * Returns an error if the new association retransmission value is
  * greater than the sum of the retransmission value  of the peer.
@@ -4988,7 +5024,8 @@ pp_found:
 		struct hlist_node *node;
 
 		SCTP_DEBUG_PRINTK("sctp_get_port() found a possible match\n");
-		if (pp->fastreuse && sk->sk_reuse)
+		if (pp->fastreuse && sk->sk_reuse &&
+			sk->sk_state != SCTP_SS_LISTENING)
 			goto success;
 
 		/* Run through the list of sockets bound to the port
@@ -5005,7 +5042,8 @@ pp_found:
 			struct sctp_endpoint *ep2;
 			ep2 = sctp_sk(sk2)->ep;
 
-			if (reuse && sk2->sk_reuse)
+			if (reuse && sk2->sk_reuse &&
+			    sk2->sk_state != SCTP_SS_LISTENING)
 				continue;
 
 			if (sctp_bind_addr_match(&ep2->base.bind_addr, addr,
@@ -5026,9 +5064,13 @@ pp_not_found:
 	 * if sk->sk_reuse is too (that is, if the caller requested
 	 * SO_REUSEADDR on this socket -sk-).
 	 */
-	if (hlist_empty(&pp->owner))
-		pp->fastreuse = sk->sk_reuse ? 1 : 0;
-	else if (pp->fastreuse && !sk->sk_reuse)
+	if (hlist_empty(&pp->owner)) {
+		if (sk->sk_reuse && sk->sk_state != SCTP_SS_LISTENING)
+			pp->fastreuse = 1;
+		else
+			pp->fastreuse = 0;
+	} else if (pp->fastreuse &&
+		(!sk->sk_reuse || sk->sk_state == SCTP_SS_LISTENING))
 		pp->fastreuse = 0;
 
 	/* We are set, so fill up all the data in the hash table
@@ -5036,8 +5078,8 @@ pp_not_found:
 	 * sockets FIXME: Blurry, NPI (ipg).
 	 */
 success:
-	inet_sk(sk)->num = snum;
 	if (!sctp_sk(sk)->bind_hash) {
+		inet_sk(sk)->num = snum;
 		sk_add_bind_node(sk, &pp->owner);
 		sctp_sk(sk)->bind_hash = pp;
 	}
@@ -5110,12 +5152,16 @@ SCTP_STATIC int sctp_seqpacket_listen(struct sock *sk, int backlog)
 	 * This is not currently spelled out in the SCTP sockets
 	 * extensions draft, but follows the practice as seen in TCP
 	 * sockets.
+	 *
+	 * Additionally, turn off fastreuse flag since we are not listening
 	 */
+	sk->sk_state = SCTP_SS_LISTENING;
 	if (!ep->base.bind_addr.port) {
 		if (sctp_autobind(sk))
 			return -EAGAIN;
-	}
-	sk->sk_state = SCTP_SS_LISTENING;
+	} else
+		sctp_sk(sk)->bind_hash->fastreuse = 0;
+
 	sctp_hash_endpoint(ep);
 	return 0;
 }
@@ -5153,11 +5199,13 @@ SCTP_STATIC int sctp_stream_listen(struct sock *sk, int backlog)
 	 * extensions draft, but follows the practice as seen in TCP
 	 * sockets.
 	 */
+	sk->sk_state = SCTP_SS_LISTENING;
 	if (!ep->base.bind_addr.port) {
 		if (sctp_autobind(sk))
 			return -EAGAIN;
-	}
-	sk->sk_state = SCTP_SS_LISTENING;
+	} else
+		sctp_sk(sk)->bind_hash->fastreuse = 0;
+
 	sk->sk_max_ack_backlog = backlog;
 	sctp_hash_endpoint(ep);
 	return 0;
@@ -5183,7 +5231,12 @@ int sctp_inet_listen(struct socket *sock, int backlog)
 	/* Allocate HMAC for generating cookie. */
 	if (sctp_hmac_alg) {
 		tfm = crypto_alloc_hash(sctp_hmac_alg, 0, CRYPTO_ALG_ASYNC);
-		if (!tfm) {
+		if (IS_ERR(tfm)) {
+			if (net_ratelimit()) {
+				printk(KERN_INFO
+				       "SCTP: failed to load transform for %s: %ld\n",
+					sctp_hmac_alg, PTR_ERR(tfm));
+			}
 			err = -ENOSYS;
 			goto out;
 		}

@@ -10,7 +10,6 @@
 #include <linux/pagemap.h>
 #include <linux/threads.h>
 #include <linux/smp.h>
-#include <linux/smp_lock.h>
 #include <linux/interrupt.h>
 #include <linux/kernel_stat.h>
 #include <linux/delay.h>
@@ -561,6 +560,9 @@ static void hypervisor_xcall_deliver(u64 data0, u64 data1, u64 data2, cpumask_t 
 	cpumask_t error_mask;
 	unsigned long flags, status;
 	int cnt, retries, this_cpu, prev_sent, i;
+
+	if (cpus_empty(mask))
+		return;
 
 	/* We have to do this whole thing with interrupts fully disabled.
 	 * Otherwise if we send an xcall from interrupt context it will
@@ -1343,11 +1345,11 @@ void __init setup_per_cpu_areas(void)
 	/* Copy section for each CPU (we discard the original) */
 	goal = PERCPU_ENOUGH_ROOM;
 
-	__per_cpu_shift = 0;
-	for (size = 1UL; size < goal; size <<= 1UL)
+	__per_cpu_shift = PAGE_SHIFT;
+	for (size = PAGE_SIZE; size < goal; size <<= 1UL)
 		__per_cpu_shift++;
 
-	ptr = alloc_bootmem(size * NR_CPUS);
+	ptr = alloc_bootmem_pages(size * NR_CPUS);
 
 	__per_cpu_base = ptr - __per_cpu_start;
 

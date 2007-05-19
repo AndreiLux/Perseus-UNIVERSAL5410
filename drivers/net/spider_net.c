@@ -175,12 +175,10 @@ spider_net_setup_aneg(struct spider_net_card *card)
 {
 	struct mii_phy *phy = &card->phy;
 	u32 advertise = 0;
-	u16 bmcr, bmsr, stat1000, estat;
+	u16 bmsr, estat;
 
-	bmcr     = spider_net_read_phy(card->netdev, phy->mii_id, MII_BMCR);
-	bmsr     = spider_net_read_phy(card->netdev, phy->mii_id, MII_BMSR);
-	stat1000 = spider_net_read_phy(card->netdev, phy->mii_id, MII_STAT1000);
-	estat    = spider_net_read_phy(card->netdev, phy->mii_id, MII_ESTATUS);
+	bmsr  = spider_net_read_phy(card->netdev, phy->mii_id, MII_BMSR);
+	estat = spider_net_read_phy(card->netdev, phy->mii_id, MII_ESTATUS);
 
 	if (bmsr & BMSR_10HALF)
 		advertise |= ADVERTISED_10baseT_Half;
@@ -432,7 +430,8 @@ spider_net_prepare_rx_descr(struct spider_net_card *card,
 	/* and we need to have it 128 byte aligned, therefore we allocate a
 	 * bit more */
 	/* allocate an skb */
-	descr->skb = dev_alloc_skb(bufsize + SPIDER_NET_RXBUF_ALIGN - 1);
+	descr->skb = netdev_alloc_skb(card->netdev,
+				      bufsize + SPIDER_NET_RXBUF_ALIGN - 1);
 	if (!descr->skb) {
 		if (netif_msg_rx_err(card) && net_ratelimit())
 			pr_err("Not enough memory to allocate rx buffer\n");
@@ -1830,7 +1829,7 @@ try_host_fw:
 	if (!dn)
 		goto out_err;
 
-	fw_prop = get_property(dn, "firmware", &fw_size);
+	fw_prop = of_get_property(dn, "firmware", &fw_size);
 	if (!fw_prop)
 		goto out_err;
 
@@ -2236,7 +2235,7 @@ spider_net_setup_netdev(struct spider_net_card *card)
 	if (!dn)
 		return -EIO;
 
-	mac = get_property(dn, "local-mac-address", NULL);
+	mac = of_get_property(dn, "local-mac-address", NULL);
 	if (!mac)
 		return -EIO;
 	memcpy(addr.sa_data, mac, ETH_ALEN);

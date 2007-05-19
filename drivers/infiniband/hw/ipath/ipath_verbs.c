@@ -1387,13 +1387,12 @@ static int enable_timer(struct ipath_devdata *dd)
 	 * processing.
 	 */
 	if (dd->ipath_flags & IPATH_GPIO_INTR) {
-		u64 val;
 		ipath_write_kreg(dd, dd->ipath_kregs->kr_debugportselect,
 				 0x2074076542310ULL);
 		/* Enable GPIO bit 2 interrupt */
-		val = ipath_read_kreg64(dd, dd->ipath_kregs->kr_gpio_mask);
-		val |= (u64) (1 << IPATH_GPIO_PORT0_BIT);
-		ipath_write_kreg( dd, dd->ipath_kregs->kr_gpio_mask, val);
+		dd->ipath_gpio_mask |= (u64) (1 << IPATH_GPIO_PORT0_BIT);
+		ipath_write_kreg(dd, dd->ipath_kregs->kr_gpio_mask,
+				 dd->ipath_gpio_mask);
 	}
 
 	init_timer(&dd->verbs_timer);
@@ -1412,8 +1411,9 @@ static int disable_timer(struct ipath_devdata *dd)
                 u64 val;
                 /* Disable GPIO bit 2 interrupt */
                 val = ipath_read_kreg64(dd, dd->ipath_kregs->kr_gpio_mask);
-                val &= ~((u64) (1 << IPATH_GPIO_PORT0_BIT));
-                ipath_write_kreg( dd, dd->ipath_kregs->kr_gpio_mask, val);
+		dd->ipath_gpio_mask &= ~((u64) (1 << IPATH_GPIO_PORT0_BIT));
+		ipath_write_kreg(dd, dd->ipath_kregs->kr_gpio_mask,
+				 dd->ipath_gpio_mask);
 		/*
 		 * We might want to undo changes to debugportselect,
 		 * but how?
@@ -1476,7 +1476,10 @@ int ipath_register_ib_device(struct ipath_devdata *dd)
 		ret = -ENOMEM;
 		goto err_lk;
 	}
+	INIT_LIST_HEAD(&idev->pending_mmaps);
 	spin_lock_init(&idev->pending_lock);
+	idev->mmap_offset = PAGE_SIZE;
+	spin_lock_init(&idev->mmap_offset_lock);
 	INIT_LIST_HEAD(&idev->pending[0]);
 	INIT_LIST_HEAD(&idev->pending[1]);
 	INIT_LIST_HEAD(&idev->pending[2]);
@@ -1558,6 +1561,7 @@ int ipath_register_ib_device(struct ipath_devdata *dd)
 		(1ull << IB_USER_VERBS_CMD_POST_SRQ_RECV);
 	dev->node_type = RDMA_NODE_IB_CA;
 	dev->phys_port_cnt = 1;
+	dev->num_comp_vectors = 1;
 	dev->dma_device = &dd->pcidev->dev;
 	dev->query_device = ipath_query_device;
 	dev->modify_device = ipath_modify_device;

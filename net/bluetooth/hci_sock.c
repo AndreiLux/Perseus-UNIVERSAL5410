@@ -499,6 +499,15 @@ static int hci_sock_setsockopt(struct socket *sock, int level, int optname, char
 		break;
 
 	case HCI_FILTER:
+		{
+			struct hci_filter *f = &hci_pi(sk)->filter;
+
+			uf.type_mask = f->type_mask;
+			uf.opcode    = f->opcode;
+			uf.event_mask[0] = *((u32 *) f->event_mask + 0);
+			uf.event_mask[1] = *((u32 *) f->event_mask + 1);
+		}
+
 		len = min_t(unsigned int, len, sizeof(uf));
 		if (copy_from_user(&uf, optval, len)) {
 			err = -EFAULT;
@@ -656,7 +665,8 @@ static int hci_sock_dev_event(struct notifier_block *this, unsigned long event, 
 		/* Detach sockets from device */
 		read_lock(&hci_sk_list.lock);
 		sk_for_each(sk, node, &hci_sk_list.head) {
-			lock_sock(sk);
+			local_bh_disable();
+			bh_lock_sock_nested(sk);
 			if (hci_pi(sk)->hdev == hdev) {
 				hci_pi(sk)->hdev = NULL;
 				sk->sk_err = EPIPE;
@@ -665,7 +675,8 @@ static int hci_sock_dev_event(struct notifier_block *this, unsigned long event, 
 
 				hci_dev_put(hdev);
 			}
-			release_sock(sk);
+			bh_unlock_sock(sk);
+			local_bh_enable();
 		}
 		read_unlock(&hci_sk_list.lock);
 	}

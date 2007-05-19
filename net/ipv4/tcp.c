@@ -252,7 +252,6 @@
 #include <linux/fcntl.h>
 #include <linux/poll.h>
 #include <linux/init.h>
-#include <linux/smp_lock.h>
 #include <linux/fs.h>
 #include <linux/random.h>
 #include <linux/bootmem.h>
@@ -1573,14 +1572,12 @@ void tcp_close(struct sock *sk, long timeout)
 
 	sk_stream_mem_reclaim(sk);
 
-	/* As outlined in draft-ietf-tcpimpl-prob-03.txt, section
-	 * 3.10, we send a RST here because data was lost.  To
-	 * witness the awful effects of the old behavior of always
-	 * doing a FIN, run an older 2.1.x kernel or 2.0.x, start
-	 * a bulk GET in an FTP client, suspend the process, wait
-	 * for the client to advertise a zero window, then kill -9
-	 * the FTP client, wheee...  Note: timeout is always zero
-	 * in such a case.
+	/* As outlined in RFC 2525, section 2.17, we send a RST here because
+	 * data was lost. To witness the awful effects of the old behavior of
+	 * always doing a FIN, run an older 2.1.x kernel or 2.0.x, start a bulk
+	 * GET in an FTP client, suspend the process, wait for the client to
+	 * advertise a zero window, then kill -9 the FTP client, wheee...
+	 * Note: timeout is always zero in such a case.
 	 */
 	if (data_was_unread) {
 		/* Unread data was tossed, zap the connection. */
@@ -1762,8 +1759,7 @@ int tcp_disconnect(struct sock *sk, int flags)
 	tcp_clear_retrans(tp);
 	inet_csk_delack_init(sk);
 	tcp_init_send_head(sk);
-	tp->rx_opt.saw_tstamp = 0;
-	tcp_sack_reset(&tp->rx_opt);
+	memset(&tp->rx_opt, 0, sizeof(tp->rx_opt));
 	__sk_dst_reset(sk);
 
 	BUG_TRAP(!inet->num || icsk->icsk_bind_hash);

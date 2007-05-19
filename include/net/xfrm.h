@@ -416,13 +416,6 @@ struct xfrm_audit
 	u32	secid;
 };
 
-/* SAD metadata, add more later */
-struct xfrm_sadinfo
-{
-	u32 sadhcnt; /* current hash bkts */
-	u32 sadhmcnt; /* max allowed hash bkts */
-	u32 sadcnt; /* current running count */
-};
 #ifdef CONFIG_AUDITSYSCALL
 extern void xfrm_audit_log(uid_t auid, u32 secid, int type, int result,
 		    struct xfrm_policy *xp, struct xfrm_state *x);
@@ -591,6 +584,10 @@ struct xfrm_dst
 		struct rt6_info		rt6;
 	} u;
 	struct dst_entry *route;
+#ifdef CONFIG_XFRM_SUB_POLICY
+	struct flowi *origin;
+	struct xfrm_selector *partner;
+#endif
 	u32 genid;
 	u32 route_mtu_cached;
 	u32 child_mtu_cached;
@@ -603,6 +600,12 @@ static inline void xfrm_dst_destroy(struct xfrm_dst *xdst)
 	dst_release(xdst->route);
 	if (likely(xdst->u.dst.xfrm))
 		xfrm_state_put(xdst->u.dst.xfrm);
+#ifdef CONFIG_XFRM_SUB_POLICY
+	kfree(xdst->origin);
+	xdst->origin = NULL;
+	kfree(xdst->partner);
+	xdst->partner = NULL;
+#endif
 }
 
 extern void xfrm_dst_ifdown(struct dst_entry *dst, struct net_device *dev);
@@ -942,10 +945,29 @@ static inline int xfrm_state_sort(struct xfrm_state **dst, struct xfrm_state **s
 	return -ENOSYS;
 }
 #endif
+
+struct xfrmk_sadinfo {
+	u32 sadhcnt; /* current hash bkts */
+	u32 sadhmcnt; /* max allowed hash bkts */
+	u32 sadcnt; /* current running count */
+};
+
+struct xfrmk_spdinfo {
+	u32 incnt;
+	u32 outcnt;
+	u32 fwdcnt;
+	u32 inscnt;
+	u32 outscnt;
+	u32 fwdscnt;
+	u32 spdhcnt;
+	u32 spdhmcnt;
+};
+
 extern struct xfrm_state *xfrm_find_acq_byseq(u32 seq);
 extern int xfrm_state_delete(struct xfrm_state *x);
 extern void xfrm_state_flush(u8 proto, struct xfrm_audit *audit_info);
-extern void xfrm_sad_getinfo(struct xfrm_sadinfo *si);
+extern void xfrm_sad_getinfo(struct xfrmk_sadinfo *si);
+extern void xfrm_spd_getinfo(struct xfrmk_spdinfo *si);
 extern int xfrm_replay_check(struct xfrm_state *x, __be32 seq);
 extern void xfrm_replay_advance(struct xfrm_state *x, __be32 seq);
 extern void xfrm_replay_notify(struct xfrm_state *x, int event);

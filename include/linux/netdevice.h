@@ -304,7 +304,7 @@ struct net_device
 
 	unsigned long		state;
 
-	struct net_device	*next;
+	struct list_head	dev_list;
 	
 	/* The device initialization function. Called only once. */
 	int			(*init)(struct net_device *dev);
@@ -325,7 +325,6 @@ struct net_device
 #define NETIF_F_VLAN_CHALLENGED	1024	/* Device cannot handle VLAN packets */
 #define NETIF_F_GSO		2048	/* Enable software GSO. */
 #define NETIF_F_LLTX		4096	/* LockLess TX */
-#define NETIF_F_INTERNAL_STATS	8192	/* Use stats structure in net_device */
 
 	/* Segmentation offload features */
 #define NETIF_F_GSO_SHIFT	16
@@ -468,6 +467,8 @@ struct net_device
 	/* device index hash chain */
 	struct hlist_node	index_hlist;
 
+	struct net_device	*link_watch_next;
+
 	/* register/unregister state machine */
 	enum { NETREG_UNINITIALIZED=0,
 	       NETREG_REGISTERED,	/* completed register_netdevice */
@@ -576,13 +577,36 @@ struct packet_type {
 #include <linux/notifier.h>
 
 extern struct net_device		loopback_dev;		/* The loopback */
-extern struct net_device		*dev_base;		/* All devices */
+extern struct list_head			dev_base_head;		/* All devices */
 extern rwlock_t				dev_base_lock;		/* Device list lock */
+
+#define for_each_netdev(d)		\
+		list_for_each_entry(d, &dev_base_head, dev_list)
+#define for_each_netdev_safe(d, n)	\
+		list_for_each_entry_safe(d, n, &dev_base_head, dev_list)
+#define for_each_netdev_continue(d)		\
+		list_for_each_entry_continue(d, &dev_base_head, dev_list)
+#define net_device_entry(lh)	list_entry(lh, struct net_device, dev_list)
+
+static inline struct net_device *next_net_device(struct net_device *dev)
+{
+	struct list_head *lh;
+
+	lh = dev->dev_list.next;
+	return lh == &dev_base_head ? NULL : net_device_entry(lh);
+}
+
+static inline struct net_device *first_net_device(void)
+{
+	return list_empty(&dev_base_head) ? NULL :
+		net_device_entry(dev_base_head.next);
+}
 
 extern int 			netdev_boot_setup_check(struct net_device *dev);
 extern unsigned long		netdev_boot_base(const char *prefix, int unit);
 extern struct net_device    *dev_getbyhwaddr(unsigned short type, char *hwaddr);
 extern struct net_device *dev_getfirstbyhwtype(unsigned short type);
+extern struct net_device *__dev_getfirstbyhwtype(unsigned short type);
 extern void		dev_add_pack(struct packet_type *pt);
 extern void		dev_remove_pack(struct packet_type *pt);
 extern void		__dev_remove_pack(struct packet_type *pt);
@@ -654,8 +678,10 @@ static inline void netif_start_queue(struct net_device *dev)
 static inline void netif_wake_queue(struct net_device *dev)
 {
 #ifdef CONFIG_NETPOLL_TRAP
-	if (netpoll_trap())
+	if (netpoll_trap()) {
+		clear_bit(__LINK_STATE_XOFF, &dev->state);
 		return;
+	}
 #endif
 	if (test_and_clear_bit(__LINK_STATE_XOFF, &dev->state))
 		__netif_schedule(dev);
@@ -663,10 +689,6 @@ static inline void netif_wake_queue(struct net_device *dev)
 
 static inline void netif_stop_queue(struct net_device *dev)
 {
-#ifdef CONFIG_NETPOLL_TRAP
-	if (netpoll_trap())
-		return;
-#endif
 	set_bit(__LINK_STATE_XOFF, &dev->state);
 }
 

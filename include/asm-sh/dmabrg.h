@@ -17,11 +17,7 @@
 #define DMABRGIRQ_A1RXF		8
 #define DMABRGIRQ_A1RXH		9
 
-typedef void(*DMABRGHANDLER)(void *);
-
-void dmabrg_disable_irq(unsigned int);
-void dmabrg_enable_irq(unsigned int);
-int dmabrg_request_irq(unsigned int, DMABRGHANDLER, void *);
-void dmabrg_free_irq(unsigned int);
+extern int dmabrg_request_irq(unsigned int, void(*)(void *), void *);
+extern void dmabrg_free_irq(unsigned int);
 
 #endif

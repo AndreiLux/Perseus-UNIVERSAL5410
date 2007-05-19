@@ -365,7 +365,7 @@ static __inline__ int led_get_net_activity(void)
 	 * for reading should be OK */
 	read_lock(&dev_base_lock);
 	rcu_read_lock();
-	for (dev = dev_base; dev; dev = dev->next) {
+	for_each_netdev(dev) {
 	    struct net_device_stats *stats;
 	    struct in_device *in_dev = __in_dev_get_rcu(dev);
 	    if (!in_dev || !in_dev->ifa_list)
@@ -373,8 +373,6 @@ static __inline__ int led_get_net_activity(void)
 	    if (LOOPBACK(in_dev->ifa_list->ifa_local))
 		continue;
 	    stats = dev->get_stats(dev);
-	    if (!stats)
-		continue;
 	    rx_total += stats->rx_packets;
 	    tx_total += stats->tx_packets;
 	}

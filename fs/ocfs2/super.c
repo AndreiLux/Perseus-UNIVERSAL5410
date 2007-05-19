@@ -937,32 +937,29 @@ static void ocfs2_inode_init_once(void *data,
 {
 	struct ocfs2_inode_info *oi = data;
 
-	if ((flags & (SLAB_CTOR_VERIFY|SLAB_CTOR_CONSTRUCTOR)) ==
-	    SLAB_CTOR_CONSTRUCTOR) {
-		oi->ip_flags = 0;
-		oi->ip_open_count = 0;
-		spin_lock_init(&oi->ip_lock);
-		ocfs2_extent_map_init(&oi->vfs_inode);
-		INIT_LIST_HEAD(&oi->ip_io_markers);
-		oi->ip_created_trans = 0;
-		oi->ip_last_trans = 0;
-		oi->ip_dir_start_lookup = 0;
+	oi->ip_flags = 0;
+	oi->ip_open_count = 0;
+	spin_lock_init(&oi->ip_lock);
+	ocfs2_extent_map_init(&oi->vfs_inode);
+	INIT_LIST_HEAD(&oi->ip_io_markers);
+	oi->ip_created_trans = 0;
+	oi->ip_last_trans = 0;
+	oi->ip_dir_start_lookup = 0;
 
-		init_rwsem(&oi->ip_alloc_sem);
-		mutex_init(&oi->ip_io_mutex);
+	init_rwsem(&oi->ip_alloc_sem);
+	mutex_init(&oi->ip_io_mutex);
 
-		oi->ip_blkno = 0ULL;
-		oi->ip_clusters = 0;
+	oi->ip_blkno = 0ULL;
+	oi->ip_clusters = 0;
 
-		ocfs2_lock_res_init_once(&oi->ip_rw_lockres);
-		ocfs2_lock_res_init_once(&oi->ip_meta_lockres);
-		ocfs2_lock_res_init_once(&oi->ip_data_lockres);
-		ocfs2_lock_res_init_once(&oi->ip_open_lockres);
+	ocfs2_lock_res_init_once(&oi->ip_rw_lockres);
+	ocfs2_lock_res_init_once(&oi->ip_meta_lockres);
+	ocfs2_lock_res_init_once(&oi->ip_data_lockres);
+	ocfs2_lock_res_init_once(&oi->ip_open_lockres);
 
-		ocfs2_metadata_cache_init(&oi->vfs_inode);
+	ocfs2_metadata_cache_init(&oi->vfs_inode);
 
-		inode_init_once(&oi->vfs_inode);
-	}
+	inode_init_once(&oi->vfs_inode);
 }
 
 static int ocfs2_initialize_mem_caches(void)
@@ -1538,7 +1535,7 @@ static int ocfs2_verify_volume(struct ocfs2_dinode *di,
 		} else if (bh->b_blocknr != le64_to_cpu(di->i_blkno)) {
 			mlog(ML_ERROR, "bad block number on superblock: "
 			     "found %llu, should be %llu\n",
-			     (unsigned long long)di->i_blkno,
+			     (unsigned long long)le64_to_cpu(di->i_blkno),
 			     (unsigned long long)bh->b_blocknr);
 		} else if (le32_to_cpu(di->id2.i_super.s_clustersize_bits) < 12 ||
 			    le32_to_cpu(di->id2.i_super.s_clustersize_bits) > 20) {

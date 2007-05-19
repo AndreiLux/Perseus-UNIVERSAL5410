@@ -83,7 +83,6 @@ static int max_interrupt_work = 10;
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/pm.h>
-#include <linux/pm_legacy.h>
 #include <linux/skbuff.h>
 #include <linux/delay.h>	/* for udelay() */
 #include <linux/spinlock.h>
@@ -96,8 +95,7 @@ static int max_interrupt_work = 10;
 #include <asm/io.h>
 #include <asm/irq.h>
 
-static char versionA[] __initdata = DRV_NAME ".c:" DRV_VERSION " " DRV_RELDATE " becker@scyld.com\n";
-static char versionB[] __initdata = "http://www.scyld.com/network/3c509.html\n";
+static char version[] __initdata = DRV_NAME ".c:" DRV_VERSION " " DRV_RELDATE " becker@scyld.com\n";
 
 #if defined(CONFIG_PM) && (defined(CONFIG_MCA) || defined(CONFIG_EISA))
 #define EL3_SUSPEND
@@ -361,7 +359,7 @@ static int __init el3_common_init(struct net_device *dev)
 	printk(", IRQ %d.\n", dev->irq);
 
 	if (el3_debug > 0)
-		printk(KERN_INFO "%s" KERN_INFO "%s", versionA, versionB);
+		printk(KERN_INFO "%s", version);
 	return 0;
 
 }
