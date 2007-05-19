@@ -6,11 +6,11 @@
  *
  *  Copyright (C) 2005, Sean Choi <sh428.choi@samsung.com>
  *  All rights reserved.
- * 
+ *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
  *  published by the Free Software Foundation.
- * 
+ *
  *  Revision history
  *	21st Mar 2007   Initial Version
  */
@@ -42,22 +42,15 @@
 #include "s3c24xx-pcm.h"
 #include "s3c24xx-ac97.h"
 
-#define S3C2443_I2S_DEBUG 1
-#if S3C2443_I2S_DEBUG
-#define DBG(x...) printk(KERN_DEBUG x)
-#else
-#define DBG(x...)
-#endif
-
 struct s3c24xx_ac97_info {
 	void __iomem	*regs;
 	struct clk	*ac97_clk;
 };
 static struct s3c24xx_ac97_info s3c24xx_ac97;
 
-static struct completion CAR_completion;
-static u32 waitingForMask;
-static DECLARE_MUTEX(CAR_mutex);
+DECLARE_COMPLETION(ac97_completion);
+static u32 codec_ready;
+static DECLARE_MUTEX(ac97_mutex);
 
 static unsigned short s3c2443_ac97_read(struct snd_ac97 *ac97,
 	unsigned short reg)
@@ -65,38 +58,31 @@ static unsigned short s3c2443_ac97_read(struct snd_ac97 *ac97,
 	u32 ac_glbctrl;
 	u32 ac_codec_cmd;
 	u32 stat, addr, data;
-	
-	DBG("Entered %s\n",__FUNCTION__);
-	
-	down(&CAR_mutex);
-	
-	// Initialise the completion used in ISR
-	init_completion(&CAR_completion);
-	
-	waitingForMask = S3C_AC97_GLBSTAT_CODECREADY;
+
+	down(&ac97_mutex);
+
+	codec_ready = S3C_AC97_GLBSTAT_CODECREADY;
 	ac_codec_cmd = readl(s3c24xx_ac97.regs + S3C_AC97_CODEC_CMD);
 	ac_codec_cmd = S3C_AC97_CODEC_CMD_READ | AC_CMD_ADDR(reg);
 	writel(ac_codec_cmd, s3c24xx_ac97.regs + S3C_AC97_CODEC_CMD);
 
 	udelay(50);
-	
+
 	ac_glbctrl = readl(s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
 	ac_glbctrl |= S3C_AC97_GLBCTRL_CODECREADYIE;
 	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-	
-	wait_for_completion(&CAR_completion);
+
+	wait_for_completion(&ac97_completion);
 
 	stat = readl(s3c24xx_ac97.regs + S3C_AC97_STAT);
 	addr = (stat >> 16) & 0x7f;
 	data = (stat & 0xffff);
 
-	DBG("AC97 Read %x %x\n", addr, data);
-	
-	if (addr != reg) {
-		printk("req addr = %02x, rep addr = %02x\n", reg, addr);
-	}
-	
-	up(&CAR_mutex);
+	if (addr != reg)
+		printk(KERN_ERR "s3c24xx-ac97: req addr = %02x,"
+				" rep addr = %02x\n", reg, addr);
+
+	up(&ac97_mutex);
 
 	return (unsigned short)data;
 }
@@ -107,32 +93,26 @@ static void s3c2443_ac97_write(struct snd_ac97 *ac97, unsigned short reg,
 	u32 ac_glbctrl;
 	u32 ac_codec_cmd;
 
-	DBG("Entered %s\n",__FUNCTION__);
+	down(&ac97_mutex);
 
-	down(&CAR_mutex);
-
-	DBG("AC97 Write %x:%x\n", reg,val);
-
-	init_completion(&CAR_completion);
-	
-	waitingForMask = S3C_AC97_GLBSTAT_CODECREADY;
+	codec_ready = S3C_AC97_GLBSTAT_CODECREADY;
 	ac_codec_cmd = readl(s3c24xx_ac97.regs + S3C_AC97_CODEC_CMD);
 	ac_codec_cmd = AC_CMD_ADDR(reg) | AC_CMD_DATA(val);
 	writel(ac_codec_cmd, s3c24xx_ac97.regs + S3C_AC97_CODEC_CMD);
-	
+
 	udelay(50);
-	
+
 	ac_glbctrl = readl(s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
 	ac_glbctrl |= S3C_AC97_GLBCTRL_CODECREADYIE;
 	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-	
-	wait_for_completion(&CAR_completion);
+
+	wait_for_completion(&ac97_completion);
 
 	ac_codec_cmd = readl(s3c24xx_ac97.regs + S3C_AC97_CODEC_CMD);
 	ac_codec_cmd |= S3C_AC97_CODEC_CMD_READ;
 	writel(ac_codec_cmd, s3c24xx_ac97.regs + S3C_AC97_CODEC_CMD);
-	
-	up(&CAR_mutex);
+
+	up(&ac97_mutex);
 
 }
 
@@ -140,60 +120,55 @@ static void s3c2443_ac97_warm_reset(struct snd_ac97 *ac97)
 {
 	u32 ac_glbctrl;
 
-	DBG("Entered %s\n", __FUNCTION__);
-
 	ac_glbctrl = readl(s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
 	ac_glbctrl = S3C_AC97_GLBCTRL_WARMRESET;
 	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-	udelay(1000);
+	msleep(1);
 
 	ac_glbctrl = 0;
 	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-	udelay(1000);
+	msleep(1);
 }
 
 static void s3c2443_ac97_cold_reset(struct snd_ac97 *ac97)
 {
 	u32 ac_glbctrl;
 
-	DBG("Entered %s\n", __FUNCTION__);
-
 	ac_glbctrl = readl(s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
 	ac_glbctrl = S3C_AC97_GLBCTRL_COLDRESET;
 	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-	udelay(1000);
+	msleep(1);
 
 	ac_glbctrl = 0;
 	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-	udelay(1000);
+	msleep(1);
 
 	ac_glbctrl = readl(s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
 	ac_glbctrl = S3C_AC97_GLBCTRL_ACLINKON;
 	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-	udelay(1000);
+	msleep(1);
 
 	ac_glbctrl |= S3C_AC97_GLBCTRL_TRANSFERDATAENABLE;
 	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-	udelay(1000);
-	
-	ac_glbctrl |= S3C_AC97_GLBCTRL_PCMOUTTM_DMA | S3C_AC97_GLBCTRL_PCMINTM_DMA |
-					S3C_AC97_GLBCTRL_MICINTM_DMA;
-	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
+	msleep(1);
 
+	ac_glbctrl |= S3C_AC97_GLBCTRL_PCMOUTTM_DMA |
+		S3C_AC97_GLBCTRL_PCMINTM_DMA | S3C_AC97_GLBCTRL_MICINTM_DMA;
+	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
 }
 
 static irqreturn_t s3c2443_ac97_irq(int irq, void *dev_id)
 {
-	int gsr;
+	int status;
 	u32 ac_glbctrl;
 
-	gsr = readl(s3c24xx_ac97.regs + S3C_AC97_GLBSTAT) & waitingForMask;
+	status = readl(s3c24xx_ac97.regs + S3C_AC97_GLBSTAT) & codec_ready;
 
-	if (gsr) {
-	    ac_glbctrl = readl(s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-	    ac_glbctrl &= ~S3C_AC97_GLBCTRL_CODECREADYIE;
-	    writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-		complete(&CAR_completion);
+	if (status) {
+		ac_glbctrl = readl(s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
+		ac_glbctrl &= ~S3C_AC97_GLBCTRL_CODECREADYIE;
+		writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
+		complete(&ac97_completion);
 	}
 	return IRQ_HANDLED;
 }
@@ -238,37 +213,19 @@ static struct s3c24xx_pcm_dma_params s3c2443_ac97_mic_mono_in = {
 	.dma_size	= 4,
 };
 
-#ifdef CONFIG_PM
-static int s3c2443_ac97_suspend(struct platform_device *pdev,
-	struct snd_soc_cpu_dai *dai)
-{
-
-	return 0;
-}
-
-static int s3c2443_ac97_resume(struct platform_device *pdev,
-	struct snd_soc_cpu_dai *dai)
-{
-	return 0;
-}
-
-#else
-#define s3c2443_ac97_suspend	NULL
-#define s3c2443_ac97_resume	NULL
-#endif
-
 static int s3c2443_ac97_probe(struct platform_device *pdev)
 {
 	int ret;
 	u32 ac_glbctrl;
-	
+
 	s3c24xx_ac97.regs = ioremap(S3C2440_PA_AC97, 0x100);
 	if (s3c24xx_ac97.regs == NULL)
 		return -ENXIO;
 
-	s3c24xx_ac97.ac97_clk=clk_get(&pdev->dev, "ac97");
+	s3c24xx_ac97.ac97_clk = clk_get(&pdev->dev, "ac97");
 	if (s3c24xx_ac97.ac97_clk == NULL) {
-		DBG("failed to get ac97_clock\n");
+		printk(KERN_ERR "s3c2443-ac97 failed to get ac97_clock\n");
+		iounmap(s3c24xx_ac97.regs);
 		return -ENODEV;
 	}
 	clk_enable(s3c24xx_ac97.ac97_clk);
@@ -278,34 +235,41 @@ static int s3c2443_ac97_probe(struct platform_device *pdev)
 	s3c2410_gpio_cfgpin(S3C2410_GPE2, S3C2443_GPE2_AC_BITCLK);
 	s3c2410_gpio_cfgpin(S3C2410_GPE3, S3C2443_GPE3_AC_SDI);
 	s3c2410_gpio_cfgpin(S3C2410_GPE4, S3C2443_GPE4_AC_SDO);
-	
+
 	ac_glbctrl = readl(s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
 	ac_glbctrl = S3C_AC97_GLBCTRL_COLDRESET;
 	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-	udelay(1000);
+	msleep(1);
 
 	ac_glbctrl = 0;
 	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-	udelay(1000);
+	msleep(1);
 
 	ac_glbctrl = readl(s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
 	ac_glbctrl = S3C_AC97_GLBCTRL_ACLINKON;
 	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-	udelay(1000);
+	msleep(1);
 
 	ac_glbctrl |= S3C_AC97_GLBCTRL_TRANSFERDATAENABLE;
 	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-	
-	ret = request_irq(IRQ_S3C2443_AC97, s3c2443_ac97_irq, SA_INTERRUPT, "AC97", NULL);
-	if (ret)
-		printk("Interrupt request failed.\n");
-	
+
+	ret = request_irq(IRQ_S3C2443_AC97, s3c2443_ac97_irq,
+		IRQF_DISABLED, "AC97", NULL);
+	if (ret < 0) {
+		printk(KERN_ERR "s3c24xx-ac97: interrupt request failed.\n");
+		clk_disable(s3c24xx_ac97.ac97_clk);
+		clk_put(s3c24xx_ac97.ac97_clk);
+		iounmap(s3c24xx_ac97.regs);
+	}
 	return ret;
 }
 
 static void s3c2443_ac97_remove(struct platform_device *pdev)
 {
-
+	free_irq(IRQ_S3C2443_AC97, NULL);
+	clk_disable(s3c24xx_ac97.ac97_clk);
+	clk_put(s3c24xx_ac97.ac97_clk);
+	iounmap(s3c24xx_ac97.regs);
 }
 
 static int s3c2443_ac97_hw_params(struct snd_pcm_substream *substream,
@@ -325,7 +289,7 @@ static int s3c2443_ac97_hw_params(struct snd_pcm_substream *substream,
 static int s3c2443_ac97_trigger(struct snd_pcm_substream *substream, int cmd)
 {
 	u32 ac_glbctrl;
-	
+
 	ac_glbctrl = readl(s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
 	switch(cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -346,7 +310,7 @@ static int s3c2443_ac97_trigger(struct snd_pcm_substream *substream, int cmd)
 		break;
 	}
 	writel(ac_glbctrl, s3c24xx_ac97.regs + S3C_AC97_GLBCTRL);
-	
+
 	return 0;
 }
 
@@ -364,7 +328,8 @@ static int s3c2443_ac97_hw_mic_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static int s3c2443_ac97_mic_trigger(struct snd_pcm_substream *substream, int cmd)
+static int s3c2443_ac97_mic_trigger(struct snd_pcm_substream *substream,
+	int cmd)
 {
 	u32 ac_glbctrl;
 
@@ -386,8 +351,8 @@ static int s3c2443_ac97_mic_trigger(struct snd_pcm_substream *substream, int cmd
 }
 
 #define s3c2443_AC97_RATES (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_11025 |\
-		SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_22050 | SNDRV_PCM_RATE_44100 | \
-		SNDRV_PCM_RATE_48000)
+		SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_22050 | \
+		SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000)
 
 struct snd_soc_cpu_dai s3c2443_ac97_dai[] = {
 {
@@ -396,8 +361,6 @@ struct snd_soc_cpu_dai s3c2443_ac97_dai[] = {
 	.type = SND_SOC_DAI_AC97,
 	.probe = s3c2443_ac97_probe,
 	.remove = s3c2443_ac97_remove,
-	.suspend = s3c2443_ac97_suspend,
-	.resume = s3c2443_ac97_resume,
 	.playback = {
 		.stream_name = "AC97 Playback",
 		.channels_min = 2,

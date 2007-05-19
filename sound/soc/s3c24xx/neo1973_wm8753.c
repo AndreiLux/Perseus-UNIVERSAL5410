@@ -42,23 +42,16 @@
 #include "s3c24xx-pcm.h"
 #include "s3c24xx-i2s.h"
 
-#define NEO1973_DEBUG 0
-#if NEO1973_DEBUG
-#define DBG(x...) printk(KERN_DEBUG x)
-#else
-#define DBG(x...)
-#endif
-
 /* define the scenarios */
-#define NEO_AUDIO_OFF					0
-#define NEO_GSM_CALL_AUDIO_HANDSET		1
-#define NEO_GSM_CALL_AUDIO_HEADSET		2
+#define NEO_AUDIO_OFF			0
+#define NEO_GSM_CALL_AUDIO_HANDSET	1
+#define NEO_GSM_CALL_AUDIO_HEADSET	2
 #define NEO_GSM_CALL_AUDIO_BLUETOOTH	3
-#define NEO_STEREO_TO_SPEAKERS			4
-#define NEO_STEREO_TO_HEADPHONES		5
-#define NEO_CAPTURE_HANDSET				6
-#define NEO_CAPTURE_HEADSET				7
-#define NEO_CAPTURE_BLUETOOTH			8
+#define NEO_STEREO_TO_SPEAKERS		4
+#define NEO_STEREO_TO_HEADPHONES	5
+#define NEO_CAPTURE_HANDSET		6
+#define NEO_CAPTURE_HEADSET		7
+#define NEO_CAPTURE_BLUETOOTH		8
 
 static struct snd_soc_machine neo1973;
 static struct i2c_client *i2c;
@@ -108,13 +101,15 @@ static int neo1973_hifi_hw_params(struct snd_pcm_substream *substream,
 
 	/* set codec DAI configuration */
 	ret = codec_dai->dai_ops.set_fmt(codec_dai,
-		SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBM_CFM);
+		SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
+		SND_SOC_DAIFMT_CBM_CFM);
 	if (ret < 0)
 		return ret;
 
 	/* set cpu DAI configuration */
 	ret = cpu_dai->dai_ops.set_fmt(cpu_dai,
-		SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBM_CFM);
+		SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
+		SND_SOC_DAIFMT_CBM_CFM);
 	if (ret < 0)
 		return ret;
 
@@ -124,11 +119,11 @@ static int neo1973_hifi_hw_params(struct snd_pcm_substream *substream,
 	if (ret < 0)
 		return ret;
 
-    /* set MCLK division for sample rate */
-    ret = cpu_dai->dai_ops.set_clkdiv(cpu_dai, S3C24XX_DIV_MCLK,
-        S3C2410_IISMOD_32FS );
-    if (ret < 0)
-        return ret;
+	/* set MCLK division for sample rate */
+	ret = cpu_dai->dai_ops.set_clkdiv(cpu_dai, S3C24XX_DIV_MCLK,
+		S3C2410_IISMOD_32FS );
+	if (ret < 0)
+		return ret;
 
 	/* set codec BCLK division for sample rate */
 	ret = codec_dai->dai_ops.set_clkdiv(codec_dai, WM8753_BCLKDIV, bclk);
@@ -142,8 +137,8 @@ static int neo1973_hifi_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 
 	/* codec PLL input is PCLK/4 */
-	ret = codec_dai->dai_ops.set_pll(codec_dai, WM8753_PLL1, iis_clkrate/4,
-		pll_out);
+	ret = codec_dai->dai_ops.set_pll(codec_dai, WM8753_PLL1,
+		iis_clkrate / 4, pll_out);
 	if (ret < 0)
 		return ret;
 
@@ -176,12 +171,11 @@ static int neo1973_voice_hw_params(struct snd_pcm_substream *substream,
 	int ret = 0;
 	unsigned long iis_clkrate;
 
-	/* todo: gg where is sysclk coming from for voice ?? */
 	iis_clkrate = s3c24xx_i2s_get_clockrate();
 
 	if (params_rate(params) != 8000)
 		return -EINVAL;
-	if(params_channels(params) != 1)
+	if (params_channels(params) != 1)
 		return -EINVAL;
 
 	pcmdiv = WM8753_PCM_DIV_6; /* 2.048 MHz */
@@ -205,8 +199,8 @@ static int neo1973_voice_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 
 	/* configue and enable PLL for 12.288MHz output */
-	ret = codec_dai->dai_ops.set_pll(codec_dai, WM8753_PLL2, iis_clkrate/4,
-		12288000);
+	ret = codec_dai->dai_ops.set_pll(codec_dai, WM8753_PLL2,
+		iis_clkrate / 4, 12288000);
 	if (ret < 0)
 		return ret;
 
@@ -324,18 +318,16 @@ static int neo1973_set_scenario(struct snd_kcontrol *kcontrol,
 		return 0;
 
 	neo1973_scenario = ucontrol->value.integer.value[0];
-
 	set_scenario_endpoints(codec, neo1973_scenario);
-
 	return 1;
 }
 
 static u8 lm4857_regs[4] = {0x00, 0x40, 0x80, 0xC0};
 
-static void lm4857_write_regs( void )
+static void lm4857_write_regs(void)
 {
-	if( i2c_master_send(i2c, lm4857_regs, 4) != 4)
-		printk(KERN_WARNING "lm4857: i2c write failed\n");
+	if (i2c_master_send(i2c, lm4857_regs, 4) != 4)
+		printk(KERN_ERR "lm4857: i2c write failed\n");
 }
 
 static int lm4857_get_reg(struct snd_kcontrol *kcontrol,
@@ -346,7 +338,6 @@ static int lm4857_get_reg(struct snd_kcontrol *kcontrol,
 	int mask = (kcontrol->private_value >> 16) & 0xFF;
 
 	ucontrol->value.integer.value[0] = (lm4857_regs[reg] >> shift) & mask;
-
 	return 0;
 }
 
@@ -363,7 +354,6 @@ static int lm4857_set_reg(struct snd_kcontrol *kcontrol,
 
 	lm4857_regs[reg] &= ~ (mask << shift);
 	lm4857_regs[reg] |= ucontrol->value.integer.value[0] << shift;
-
 	lm4857_write_regs();
 	return 1;
 }
@@ -393,7 +383,6 @@ static int lm4857_set_mode(struct snd_kcontrol *kcontrol,
 
 	lm4857_regs[LM4857_CTRL] &= 0xF0;
 	lm4857_regs[LM4857_CTRL] |= value;
-
 	lm4857_write_regs();
 	return 1;
 }
@@ -444,7 +433,7 @@ static const char *lm4857_mode[] = {
 };
 
 static const struct soc_enum lm4857_mode_enum[] = {
-	SOC_ENUM_SINGLE_EXT(5, lm4857_mode),
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(lm4857_mode), lm4857_mode),
 };
 
 static const char *neo_scenarios[] = {
@@ -460,7 +449,7 @@ static const char *neo_scenarios[] = {
 };
 
 static const struct soc_enum neo_scenario_enum[] = {
-	SOC_ENUM_SINGLE_EXT(9,neo_scenarios),
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(neo_scenarios),neo_scenarios),
 };
 
 static const struct snd_kcontrol_new wm8753_neo1973_controls[] = {
@@ -506,20 +495,22 @@ static int neo1973_wm8753_init(struct snd_soc_codec *codec)
 	set_scenario_endpoints(codec, NEO_AUDIO_OFF);
 
 	/* Add neo1973 specific widgets */
-	for(i = 0; i < ARRAY_SIZE(wm8753_dapm_widgets); i++)
+	for (i = 0; i < ARRAY_SIZE(wm8753_dapm_widgets); i++)
 		snd_soc_dapm_new_control(codec, &wm8753_dapm_widgets[i]);
 
 	/* add neo1973 specific controls */
 	for (i = 0; i < ARRAY_SIZE(wm8753_neo1973_controls); i++) {
-		if ((err = snd_ctl_add(codec->card,
-				snd_soc_cnew(&wm8753_neo1973_controls[i],codec, NULL))) < 0)
+		err = snd_ctl_add(codec->card,
+				snd_soc_cnew(&wm8753_neo1973_controls[i],
+				codec, NULL));
+		if (err < 0)
 			return err;
 	}
 
 	/* set up neo1973 specific audio path audio_mapnects */
-	for(i = 0; audio_map[i][0] != NULL; i++) {
-		snd_soc_dapm_connect_input(codec, audio_map[i][0], audio_map[i][1],
-			audio_map[i][2]);
+	for (i = 0; audio_map[i][0] != NULL; i++) {
+		snd_soc_dapm_connect_input(codec, audio_map[i][0],
+			audio_map[i][1], audio_map[i][2]);
 	}
 
 	snd_soc_dapm_sync_endpoints(codec);
@@ -594,22 +585,17 @@ static int lm4857_amp_probe(struct i2c_adapter *adap, int addr, int kind)
 	client_template.adapter = adap;
 	client_template.addr = addr;
 
-	DBG("Entering %s\n", __FUNCTION__);
-
-	i2c = kzalloc(sizeof(struct i2c_client), GFP_KERNEL);
-	if (i2c == NULL){
+	i2c = kmemdup(&client_template, sizeof(client_template), GFP_KERNEL);
+	if (i2c == NULL)
 		return -ENOMEM;
-	}
-	memcpy(i2c, &client_template, sizeof(struct i2c_client));
 
 	ret = i2c_attach_client(i2c);
 	if (ret < 0) {
-		DBG("failed to attach codec at addr %x\n", addr);
+		printk(KERN_ERR "LM4857 failed to attach at addr %x\n", addr);
 		goto exit_err;
 	}
 
 	lm4857_write_regs();
-
 	return ret;
 
 exit_err:
@@ -628,8 +614,6 @@ static int lm4857_i2c_attach(struct i2c_adapter *adap)
 {
 	return i2c_probe(adap, &addr_data, lm4857_amp_probe);
 }
-
-#define I2C_DRIVERID_LM4857 0xA5A5 /* liam -  need a proper id */
 
 /* corgi i2c codec control layer */
 static struct i2c_driver lm4857_i2c_driver = {

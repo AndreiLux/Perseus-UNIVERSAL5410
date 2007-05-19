@@ -9,8 +9,6 @@ obj-$(CONFIG_SND_SOC_SH4_HAC)	+= snd-soc-hac.o
 obj-$(CONFIG_SND_SOC_SH4_SSI)	+= snd-soc-ssi.o
 
 ## boards
-snd-soc-exmmb-ac97-objs	:= exmmb-ac97.o
-snd-soc-exmmb-i2s-objs	:= exmmb-i2s.o
+snd-soc-sh7760-ac97-objs	:= sh7760-ac97.o
 
-obj-$(CONFIG_SND_EXMMB7760_AC97) += snd-soc-exmmb-ac97.o
-obj-$(CONFIG_SND_EXMMB7760_SSI)	+= snd-soc-exmmb-i2s.o
+obj-$(CONFIG_SND_SH7760_AC97)	+= snd-soc-sh7760-ac97.o

@@ -1,11 +1,13 @@
 /*
- * Serial Sound Interface (I2S) support for SH7760
+ * Serial Sound Interface (I2S) support for SH7760/SH7780
  *
  * Copyright (c) 2007 Manuel Lauss <mano@roarinelk.homelinux.net>
+ *
  *  licensed under the terms outlined in the file COPYING at the root
  *  of the linux kernel sources.
  *
- * (should also work on the SH7780)
+ * dont forget to set IPSEL/OMSEL register bits (in your board code) to
+ * enable SSI output pins!
  */
 
 /*
@@ -23,8 +25,6 @@
  *	and can be independent from the actual sample bit depth. This is
  *	useful to support TDM mode codecs like the AD1939 which have a
  *	fixed TDM slot size, regardless of sample resolution.
- *
- * Don't forget to set IPSEL register to enable SSI output!
  */
 
 #include <linux/init.h>
@@ -37,24 +37,16 @@
 #include <sound/soc.h>
 #include <asm/io.h>
 
-#define SSI_DEBUG
-
-#ifdef SSI_DEBUG
-#define MSG(x...)	printk(KERN_INFO "sh4-i2s: " x)
-#else
-#define MSG(x...)	do {} while (0)
-#endif
-
 #define SSICR	0x00
 #define SSISR	0x04
 
 #define CR_DMAEN	(1 << 28)
 #define CR_CHNL_SHIFT	22
-#define CR_CHNL_MASK	3
+#define CR_CHNL_MASK	(3 << CR_CHNL_SHIFT)
 #define CR_DWL_SHIFT	19
-#define CR_DWL_MASK	7
+#define CR_DWL_MASK	(7 << CR_DWL_SHIFT)
 #define CR_SWL_SHIFT	16
-#define CR_SWL_MASK	7
+#define CR_SWL_MASK	(7 << CR_SWL_SHIFT)
 #define CR_SCK_MASTER	(1 << 15)	/* bitclock master bit */
 #define CR_SWS_MASTER	(1 << 14)	/* wordselect master bit */
 #define CR_SCKP		(1 << 13)	/* I2Sclock polarity */
@@ -64,20 +56,16 @@
 #define CR_PDTA		(1 << 9)	/* fifo data alignment */
 #define CR_DEL		(1 << 8)	/* delay data by 1 i2sclk */
 #define CR_BREN		(1 << 7)	/* clock gating in burst mode */
-#define CR_CKDIV_1	(0 << 4)	/* I2SCLK = HAC_BIT_CLK/1 */
-#define CR_CKDIV_2	(1 << 4)	/* I2SCLK = HAC_BIT_CLK/2 */
-#define CR_CKDIV_4	(2 << 4)	/* I2SCLK = HAC_BIT_CLK/4 */
-#define CR_CKDIV_8	(3 << 4)	/* I2SCLK = HAC_BIT_CLK/8 */
-#define CR_CKDIV_16	(4 << 4)	/* I2SCLK = HAC_BIT_CLK/16 */
-#define CR_CKDIV_MASK	(7 << 4)
+#define CR_CKDIV_SHIFT	4
+#define CR_CKDIV_MASK	(7 << CR_CKDIV_SHIFT)	/* bitclock divider */
 #define CR_MUTE		(1 << 3)	/* SSI mute */
 #define CR_CPEN		(1 << 2)	/* compressed mode */
 #define CR_TRMD		(1 << 1)	/* transmit/receive select */
 #define CR_EN		(1 << 0)	/* enable SSI */
 
-#define SSIREG(reg)	(*(volatile unsigned long *)(ssi->mmio + (reg)))
+#define SSIREG(reg)	(*(unsigned long *)(ssi->mmio + (reg)))
 
-struct ssi_private {
+struct ssi_priv {
 	unsigned long mmio;
 	unsigned long sysclk;
 	int inuse;
@@ -105,9 +93,9 @@ struct ssi_private {
 static int ssi_startup(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct ssi_private *ssi = &ssi_cpu_data[rtd->dai->cpu_dai->id];
+	struct ssi_priv *ssi = &ssi_cpu_data[rtd->dai->cpu_dai->id];
 	if (ssi->inuse) {
-		MSG("SSI already in use!\n");
+		pr_debug("ssi: already in use!\n");
 		return -EBUSY;
 	} else
 		ssi->inuse = 1;
@@ -117,7 +105,7 @@ static int ssi_startup(struct snd_pcm_substream *substream)
 static void ssi_shutdown(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct ssi_private *ssi = &ssi_cpu_data[rtd->dai->cpu_dai->id];
+	struct ssi_priv *ssi = &ssi_cpu_data[rtd->dai->cpu_dai->id];
 
 	ssi->inuse = 0;
 }
@@ -125,7 +113,7 @@ static void ssi_shutdown(struct snd_pcm_substream *substream)
 static int ssi_trigger(struct snd_pcm_substream *substream, int cmd)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct ssi_private *ssi = &ssi_cpu_data[rtd->dai->cpu_dai->id];
+	struct ssi_priv *ssi = &ssi_cpu_data[rtd->dai->cpu_dai->id];
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -142,46 +130,47 @@ static int ssi_trigger(struct snd_pcm_substream *substream, int cmd)
 }
 
 static int ssi_hw_params(struct snd_pcm_substream *substream,
-				struct snd_pcm_hw_params *params)
+			 struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct ssi_private *ssi = &ssi_cpu_data[rtd->dai->cpu_dai->id];
+	struct ssi_priv *ssi = &ssi_cpu_data[rtd->dai->cpu_dai->id];
 	unsigned long ssicr = SSIREG(SSICR);
-	unsigned int bits, channels, swl, recv;
+	unsigned int bits, channels, swl, recv, i;
 
 	channels = params_channels(params);
 	bits = params->msbits;
-	recv = substream->stream == SNDRV_PCM_STREAM_PLAYBACK ? 0 : 1;
+	recv = (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) ? 0 : 1;
 
-	MSG("hw_params() enter\nssicr was    %08lx\n", ssicr);
-	MSG("bits: %d channels: %d\n", bits, channels);
+	pr_debug("ssi_hw_params() enter\nssicr was    %08lx\n", ssicr);
+	pr_debug("bits: %d channels: %d\n", bits, channels);
+
+	ssicr &= ~(CR_TRMD | CR_CHNL_MASK | CR_DWL_MASK | CR_PDTA |
+		   CR_SWL_MASK);
 
 	/* direction (send/receive) */
-	if (recv)
-		ssicr &= ~CR_TRMD;
-	else
-		ssicr |= CR_TRMD;
+	if (!recv)
+		ssicr |= CR_TRMD;	/* transmit */
 
 	/* channels */
-	ssicr &= ~(CR_CHNL_MASK << CR_CHNL_SHIFT);
 	if ((channels < 2) || (channels > 8) || (channels & 1)) {
-		MSG("invalid number of channels\n");
+		pr_debug("ssi: invalid number of channels\n");
 		return -EINVAL;
 	}
 	ssicr |= ((channels >> 1) - 1) << CR_CHNL_SHIFT;
 
 	/* DATA WORD LENGTH (DWL): databits in audio sample */
-	ssicr &= ~(CR_DWL_MASK << CR_DWL_SHIFT);
+	i = 0;
 	switch (bits) {
+	case 32: ++i;
+	case 24: ++i;
+	case 22: ++i;
+	case 20: ++i;
+	case 18: ++i;
+	case 16: ++i;
+		 ssicr |= i << CR_DWL_SHIFT;
 	case 8:	 break;
-	case 16: ssicr |= (1<<CR_DWL_SHIFT); break;
-	case 18: ssicr |= (2<<CR_DWL_SHIFT); break;
-	case 20: ssicr |= (3<<CR_DWL_SHIFT); break;
-	case 22: ssicr |= (4<<CR_DWL_SHIFT); break;
-	case 24: ssicr |= (5<<CR_DWL_SHIFT); break;
-	case 32: ssicr |= (6<<CR_DWL_SHIFT); break;
 	default:
-		MSG("invalid sample width\n");
+		pr_debug("ssi: invalid sample width\n");
 		return -EINVAL;
 	}
 
@@ -189,46 +178,41 @@ static int ssi_hw_params(struct snd_pcm_substream *substream,
 	 * SYSTEM WORD LENGTH: size in bits of half a frame over the I2S
 	 * wires. This is usually bits_per_sample x channels/2;  i.e. in
 	 * Stereo mode  the SWL equals DWL.  SWL can  be bigger than the
-	 * product of (channels_per_slot x samplebits), i.e.  for codecs
+	 * product of (channels_per_slot x samplebits), e.g.  for codecs
 	 * like the AD1939 which  only accept 32bit wide TDM slots.  For
 	 * "standard" I2S operation we set SWL = chans / 2 * DWL here.
 	 * Waiting for ASoC to get TDM support ;-)
 	 */
-	ssicr &= ~((CR_SWL_MASK << CR_SWL_SHIFT) | CR_PDTA);
 	if ((bits > 16) && (bits <= 24)) {
 		bits = 24;	/* these are padded by the SSI */
 		/*ssicr |= CR_PDTA;*/ /* cpu/data endianness ? */
 	}
-	swl = bits * channels >> 1;
+	i = 0;
+	swl = (bits * channels) / 2;
 	switch (swl) {
+	case 256: ++i;
+	case 128: ++i;
+	case 64:  ++i;
+	case 48:  ++i;
+	case 32:  ++i;
+	case 16:  ++i;
+		  ssicr |= i << CR_SWL_SHIFT;
 	case 8:   break;
-	case 16:  ssicr |= (1<<CR_SWL_SHIFT); break;
-	case 24:  ssicr |= (2<<CR_SWL_SHIFT); break;
-	case 32:  ssicr |= (3<<CR_SWL_SHIFT); break;
-	case 48:  ssicr |= (4<<CR_SWL_SHIFT); break;
-	case 64:  ssicr |= (5<<CR_SWL_SHIFT); break;
-	case 128: ssicr |= (6<<CR_SWL_SHIFT); break;
-	case 256: ssicr |= (7<<CR_SWL_SHIFT); break;
 	default:
-		MSG("invalid system word length computed\n");
+		pr_debug("ssi: invalid system word length computed\n");
 		return -EINVAL;
 	}
 
-	/* TODO: make selection of sysck divider automatic, since bits
-	 *	 (SWL) and sysclk are known. Better yet, let asoc figure
-	 *	 that out when a substream is opened ;-)
-	 */
-
 	SSIREG(SSICR) = ssicr;
 
-	MSG("hw_params() leave\nssicr is now %08lx\n", ssicr);
+	pr_debug("ssi_hw_params() leave\nssicr is now %08lx\n", ssicr);
 	return 0;
 }
 
 static int ssi_set_sysclk(struct snd_soc_cpu_dai *cpu_dai, int clk_id,
 			  unsigned int freq, int dir)
 {
-	struct ssi_private *ssi = &ssi_cpu_data[cpu_dai->id];
+	struct ssi_priv *ssi = &ssi_cpu_data[cpu_dai->id];
 
 	ssi->sysclk = freq;
 
@@ -241,36 +225,38 @@ static int ssi_set_sysclk(struct snd_soc_cpu_dai *cpu_dai, int clk_id,
  */
 static int ssi_set_clkdiv(struct snd_soc_cpu_dai *dai, int did, int div)
 {
-	struct ssi_private *ssi = &ssi_cpu_data[dai->id];
+	struct ssi_priv *ssi = &ssi_cpu_data[dai->id];
 	unsigned long ssicr;
+	int i;
 
+	i = 0;
 	ssicr = SSIREG(SSICR) & ~CR_CKDIV_MASK;
-	switch (div)
-	{
-	case 1: ssicr |= CR_CKDIV_1; break;
-	case 2: ssicr |= CR_CKDIV_2; break;
-	case 4: ssicr |= CR_CKDIV_4; break;
-	case 8: ssicr |= CR_CKDIV_8; break;
-	case 16: ssicr |= CR_CKDIV_16; break;
+	switch (div) {
+	case 16: ++i;
+	case 8:  ++i;
+	case 4:  ++i;
+	case 2:  ++i;
+		 SSIREG(SSICR) = ssicr | (i << CR_CKDIV_SHIFT);
+	case 1:  break;
 	default:
-		MSG("invalid sck divider %d\n", div);
+		pr_debug("ssi: invalid sck divider %d\n", div);
 		return -EINVAL;
 	}
 
-	SSIREG(SSICR) = ssicr;
 	return 0;
 }
 
 static int ssi_set_fmt(struct snd_soc_cpu_dai *dai, unsigned int fmt)
 {
-	struct ssi_private *ssi = &ssi_cpu_data[dai->id];
+	struct ssi_priv *ssi = &ssi_cpu_data[dai->id];
 	unsigned long ssicr = SSIREG(SSICR);
 
-	MSG("set_fmt()\nssicr was    0x%08lx\n", ssicr);
+	pr_debug("ssi_set_fmt()\nssicr was    0x%08lx\n", ssicr);
 
-	ssicr &= ~(CR_DEL | CR_PDTA);	/* I2S format */
-	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK)
-	{
+	ssicr &= ~(CR_DEL | CR_PDTA | CR_BREN | CR_SWSP | CR_SCKP |
+		   CR_SWS_MASTER | CR_SCK_MASTER);
+
+	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
 	case SND_SOC_DAIFMT_I2S:
 		break;
 	case SND_SOC_DAIFMT_RIGHT_J:
@@ -280,46 +266,36 @@ static int ssi_set_fmt(struct snd_soc_cpu_dai *dai, unsigned int fmt)
 		ssicr |= CR_DEL;
 		break;
 	default:
-		MSG("unsupported format\n");
+		pr_debug("ssi: unsupported format\n");
 		return -EINVAL;
 	}
 
-	switch (fmt & SND_SOC_DAIFMT_CLOCK_MASK)
-	{
+	switch (fmt & SND_SOC_DAIFMT_CLOCK_MASK) {
 	case SND_SOC_DAIFMT_CONT:
-		ssicr &= ~CR_BREN;
 		break;
 	case SND_SOC_DAIFMT_GATED:
 		ssicr |= CR_BREN;
 		break;
 	}
 
-	ssicr &= ~(CR_SWSP | CR_SCKP);
-	switch (fmt & SND_SOC_DAIFMT_INV_MASK)
-	{
+	switch (fmt & SND_SOC_DAIFMT_INV_MASK) {
 	case SND_SOC_DAIFMT_NB_NF:
+		ssicr |= CR_SCKP;	/* sample data at low clkedge */
 		break;
 	case SND_SOC_DAIFMT_NB_IF:
-		ssicr |= CR_SWSP;
-		break;
-	case SND_SOC_DAIFMT_IB_NF:
-		ssicr |= CR_SCKP;
-		break;
-	case SND_SOC_DAIFMT_IB_IF:
 		ssicr |= CR_SCKP | CR_SWSP;
 		break;
+	case SND_SOC_DAIFMT_IB_NF:
+		break;
+	case SND_SOC_DAIFMT_IB_IF:
+		ssicr |= CR_SWSP;	/* word select starts low */
+		break;
 	default:
-		MSG("invalid inversion\n");
+		pr_debug("ssi: invalid inversion\n");
 		return -EINVAL;
 	}
-#ifdef CONFIG_CPU_SUBTYPE_SH7760
-	/* the SCKP bit behaves inverse from what the manual says */
-	ssicr ^= CR_SCKP;
-#endif
 
-	ssicr &= ~(CR_SWS_MASTER | CR_SCK_MASTER);
-	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK)
-	{
+	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
 	case SND_SOC_DAIFMT_CBM_CFM:
 		break;
 	case SND_SOC_DAIFMT_CBS_CFM:
@@ -332,12 +308,12 @@ static int ssi_set_fmt(struct snd_soc_cpu_dai *dai, unsigned int fmt)
 		ssicr |= CR_SWS_MASTER | CR_SCK_MASTER;
 		break;
 	default:
-		MSG("invalid master/slave configuration\n");
+		pr_debug("ssi: invalid master/slave configuration\n");
 		return -EINVAL;
 	}
 
 	SSIREG(SSICR) = ssicr;
-	MSG("set_fmt() leave\nssicr is now 0x%08lx\n", ssicr);
+	pr_debug("ssi_set_fmt() leave\nssicr is now 0x%08lx\n", ssicr);
 
 	return 0;
 }

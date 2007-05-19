@@ -1,12 +1,18 @@
 /*
- * Hitachi Audio Controller (AC97) support for SH7760
+ * Hitachi Audio Controller (AC97) support for SH7760/SH7780
  *
  * Copyright (c) 2007 Manuel Lauss <mano@roarinelk.homelinux.net>
  *  licensed under the terms outlined in the file COPYING at the root
  *  of the linux kernel sources.
  *
- * dont forget to set IPSEL register bits to enable HAC output pins!
- * (should also work on the SH7780)
+ * dont forget to set IPSEL/OMSEL register bits (in your board code) to
+ * enable HAC output pins!
+ */
+
+/* BIG FAT FIXME: although the SH7760 has 2 independent AC97 units, only
+ * the FIRST can be used since ASoC does not pass any information to the
+ * ac97_read/write() functions regarding WHICH unit to use.  You'll have
+ * to edit the code a bit to use the other AC97 unit.		--mlau
  */
 
 #include <linux/init.h>
@@ -21,15 +27,6 @@
 #include <sound/ac97_codec.h>
 #include <sound/initval.h>
 #include <sound/soc.h>
-#include <asm/io.h>
-
-/* #define AC97_DEBUG */
-
-#ifdef AC97_DEBUG
-#define MSG(x...)	printk(KERN_INFO "sh4-hac: " x)
-#else
-#define MSG(x...)	do {} while (0)
-#endif
 
 /* regs and bits */
 #define HACCR		0x08
@@ -55,9 +52,6 @@
 #define TSR_CMDAMT	(1 << 31)
 #define TSR_CMDDMT	(1 << 30)
 
-#define RIER_STARYIE	(1 << 22)
-#define RIER_STDRYIE	(1 << 21)
-
 #define RSR_STARY	(1 << 22)
 #define RSR_STDRY	(1 << 21)
 
@@ -81,7 +75,7 @@
 #define TMO_E3	21	/* 21 < E3 */
 #define TMO_E4	500	/* 21 < E4 < 1000 */
 
-struct hac_private {
+struct hac_priv {
 	unsigned long mmio;	/* HAC base address */
 } hac_cpu_data[] = {
 #if defined(CONFIG_CPU_SUBTYPE_SH7760)
@@ -100,12 +94,12 @@ struct hac_private {
 #endif
 };
 
-#define HACREG(reg)	(*(volatile unsigned long *)(hac->mmio + (reg)))
+#define HACREG(reg)	(*(unsigned long *)(hac->mmio + (reg)))
 
 /*
  * AC97 read/write flow as outlined in the SH7760 manual (pages 903-906)
  */
-static int hac_get_codec_data(struct hac_private *hac, unsigned short r,
+static int hac_get_codec_data(struct hac_priv *hac, unsigned short r,
 			      unsigned short *v)
 {
 	unsigned int to1, to2, i;
@@ -141,7 +135,7 @@ static int hac_get_codec_data(struct hac_private *hac, unsigned short r,
 	return (i < AC97_READ_RETRY);
 }
 
-static unsigned short hac_read_codec_aux(struct hac_private *hac,
+static unsigned short hac_read_codec_aux(struct hac_priv *hac,
 					 unsigned short reg)
 {
 	unsigned short val;
@@ -175,7 +169,7 @@ static void hac_ac97_write(struct snd_ac97 *ac97, unsigned short reg,
 			   unsigned short val)
 {
 	int unit_id = 0 /* ac97->private_data */;
-	struct hac_private *hac = &hac_cpu_data[unit_id];
+	struct hac_priv *hac = &hac_cpu_data[unit_id];
 	unsigned int i, to;
 	/* write_codec_aux */
 	for (i = 0; i < AC97_WRITE_RETRY; i++) {
@@ -203,14 +197,14 @@ static unsigned short hac_ac97_read(struct snd_ac97 *ac97,
 				    unsigned short reg)
 {
 	int unit_id = 0 /* ac97->private_data */;
-	struct hac_private *hac = &hac_cpu_data[unit_id];
+	struct hac_priv *hac = &hac_cpu_data[unit_id];
 	return hac_read_codec_aux(hac, reg);
 }
 
 static void hac_ac97_warmrst(struct snd_ac97 *ac97)
 {
 	int unit_id = 0 /* ac97->private_data */;
-	struct hac_private *hac = &hac_cpu_data[unit_id];
+	struct hac_priv *hac = &hac_cpu_data[unit_id];
 	unsigned int tmo;
 
 	HACREG(HACCR) = CR_WMRT | CR_ST | CR_B9;
@@ -218,8 +212,9 @@ static void hac_ac97_warmrst(struct snd_ac97 *ac97)
 	HACREG(HACCR) = CR_ST | CR_B9;
 	for (tmo = 1000; (tmo > 0) && !(HACREG(HACCR) & CR_CR); tmo--)
 		udelay(1);
+
 	if (!tmo)
-		printk(KERN_INFO "HAC reset: AC97 link down!\n");
+		printk(KERN_INFO "hac: reset: AC97 link down!\n");
 	/* settings this bit lets us have a conversation with codec */
 	HACREG(HACACR) |= ACR_TX12ATOM;
 }
@@ -227,7 +222,7 @@ static void hac_ac97_warmrst(struct snd_ac97 *ac97)
 static void hac_ac97_coldrst(struct snd_ac97 *ac97)
 {
 	int unit_id = 0 /* ac97->private_data */;
-	struct hac_private *hac;
+	struct hac_priv *hac;
 	hac = &hac_cpu_data[unit_id];
 
 	HACREG(HACCR) = 0;
@@ -245,10 +240,10 @@ struct snd_ac97_bus_ops soc_ac97_ops = {
 EXPORT_SYMBOL_GPL(soc_ac97_ops);
 
 static int hac_hw_params(struct snd_pcm_substream *substream,
-				struct snd_pcm_hw_params *params)
+			 struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct hac_private *hac = &hac_cpu_data[rtd->dai->cpu_dai->id];
+	struct hac_priv *hac = &hac_cpu_data[rtd->dai->cpu_dai->id];
 	int d = substream->stream == SNDRV_PCM_STREAM_PLAYBACK ? 0 : 1;
 
 	switch (params->msbits) {
@@ -261,7 +256,7 @@ static int hac_hw_params(struct snd_pcm_substream *substream,
 		HACREG(HACACR) |= d ?  ACR_DMARX20 :  ACR_DMATX20;
 		break;
 	default:
-		MSG("unsupported depth %d bits\n", params->msbits);
+		pr_debug("hac: invalid depth %d bit\n", params->msbits);
 		return -EINVAL;
 		break;
 	}

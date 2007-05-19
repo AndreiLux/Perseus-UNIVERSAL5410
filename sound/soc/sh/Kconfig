@@ -3,9 +3,9 @@ menu "SoC Audio support for SuperH"
 config SND_SOC_PCM_SH7760
 	tristate "SoC Audio support for Renesas SH7760"
 	depends on CPU_SUBTYPE_SH7760 && SND_SOC
+	select SH_DMABRG
 	help
 	  Enable this option for SH7760 AC97/I2S audio support.
-
 
 
 ##
@@ -27,23 +27,13 @@ config SND_SOC_SH4_SSI
 ## Boards
 ##
 
-config SND_EXMMB7760_AC97
-	tristate "MSC EXM32 Development Motherboard AC97 Audio"
-	depends on SND_SOC_PCM_SH7760 && SH_EXM7760
+config SND_SH7760_AC97
+	tristate "SH7760 AC97 sound support"
+	depends on CPU_SUBTYPE_SH7760 && SND_SOC_PCM_SH7760
 	select SND_SOC_SH4_HAC
 	select SND_SOC_AC97_CODEC
 	help
-	  Select this option if you want AC97 audio on your
-	  MSC EXM32-SH7760 Development Motherboard Kit.
-
-config SND_EXMMB7760_SSI
-	tristate "MSC EXM32 Development Motherboard I2S Audio"
-	depends on SND_SOC_PCM_SH7760 && SH_EXM7760
-	select SND_SOC_SH4_SSI
-	select SND_SOC_CS4251X
-	help
-	  Select this option if you want I2S audio on your
-	  MSC EXM32-SH7760 Development Motherboard Kit.
-
+	  This option enables generic sound support for the first
+	  AC97 unit of the SH7760.
 
 endmenu
