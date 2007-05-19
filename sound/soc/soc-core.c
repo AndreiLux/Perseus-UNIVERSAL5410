@@ -296,8 +296,7 @@ static void close_delayed_work(struct work_struct *work)
 			if (codec->active == 0) {
 				dbg("pop wq D3 %s %s\n", codec->name,
 					codec_dai->playback.stream_name);
-		 		if (codec->dapm_event)
-					codec->dapm_event(codec, SNDRV_CTL_POWER_D3hot);
+		 		snd_soc_dapm_device_event(socdev, SNDRV_CTL_POWER_D3hot);
 			}
 		}
 	}
