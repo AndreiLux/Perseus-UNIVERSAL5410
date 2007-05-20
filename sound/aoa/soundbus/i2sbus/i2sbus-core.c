@@ -23,9 +23,6 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Johannes Berg <johannes@sipsolutions.net>");
 MODULE_DESCRIPTION("Apple Soundbus: I2S support");
-/* for auto-loading, declare that we handle this weird
- * string that macio puts into the relevant device */
-MODULE_ALIAS("of:Ni2sTi2sC");
 
 static int force;
 module_param(force, int, 0444);
@@ -36,6 +33,8 @@ static struct of_device_id i2sbus_match[] = {
 	{ .name = "i2s" },
 	{ }
 };
+
+MODULE_DEVICE_TABLE(of, i2sbus_match);
 
 static int alloc_dbdma_descriptor_ring(struct i2sbus_dev *i2sdev,
 				       struct dbdma_command_mem *r,
@@ -122,7 +121,7 @@ static int i2sbus_get_and_fixup_rsrc(struct device_node *np, int index,
 {
 	struct device_node *parent;
 	int pindex, rc = -ENXIO;
-	u32 *reg;
+	const u32 *reg;
 
 	/* Machines with layout 76 and 36 (K2 based) have a weird device
 	 * tree what we need to special case.
@@ -141,7 +140,7 @@ static int i2sbus_get_and_fixup_rsrc(struct device_node *np, int index,
 	rc = of_address_to_resource(parent, pindex, res);
 	if (rc)
 		goto bail;
-	reg = (u32 *)get_property(np, "reg", NULL);
+	reg = of_get_property(np, "reg", NULL);
 	if (reg == NULL) {
 		rc = -ENXIO;
 		goto bail;
@@ -188,8 +187,8 @@ static int i2sbus_add_dev(struct macio_dev *macio,
 		}
 	}
 	if (i == 1) {
-		u32 *layout_id;
-		layout_id = (u32*) get_property(sound, "layout-id", NULL);
+		const u32 *layout_id =
+			of_get_property(sound, "layout-id", NULL);
 		if (layout_id) {
 			layout = *layout_id;
 			snprintf(dev->sound.modalias, 32,
@@ -336,8 +335,8 @@ static int i2sbus_probe(struct macio_dev* dev, const struct of_device_id *match)
 	}
 
 	while ((np = of_get_next_child(dev->ofdev.node, np))) {
-		if (device_is_compatible(np, "i2sbus") ||
-		    device_is_compatible(np, "i2s-modem")) {
+		if (of_device_is_compatible(np, "i2sbus") ||
+		    of_device_is_compatible(np, "i2s-modem")) {
 			got += i2sbus_add_dev(dev, control, np);
 		}
 	}

@@ -45,6 +45,7 @@ int heap_stack_gap = 0;
 
 EXPORT_SYMBOL(mem_map);
 EXPORT_SYMBOL(__vm_enough_memory);
+EXPORT_SYMBOL(num_physpages);
 
 /* list of shareable VMAs */
 struct rb_root nommu_vma_tree = RB_ROOT;
@@ -258,6 +259,14 @@ void *vmap(struct page **pages, unsigned int count, unsigned long flags, pgprot_
 void vunmap(void *addr)
 {
 	BUG();
+}
+
+/*
+ * Implement a stub for vmalloc_sync_all() if the architecture chose not to
+ * have one.
+ */
+void  __attribute__((weak)) vmalloc_sync_all(void)
+{
 }
 
 /*

@@ -172,15 +172,6 @@ static ide_startstop_t ide_start_power_step(ide_drive_t *drive, struct request *
 
 	memset(args, 0, sizeof(*args));
 
-	if (drive->media != ide_disk) {
-		/*
-		 * skip idedisk_pm_restore_pio and idedisk_pm_idle for ATAPI
-		 * devices
-		 */
-		if (pm->pm_step == idedisk_pm_restore_pio)
-			pm->pm_step = ide_pm_restore_dma;
-	}
-
 	switch (pm->pm_step) {
 	case ide_pm_flush_cache:	/* Suspend step 1 (flush cache) */
 		if (drive->media != ide_disk)
@@ -207,7 +198,13 @@ static ide_startstop_t ide_start_power_step(ide_drive_t *drive, struct request *
 	case idedisk_pm_restore_pio:	/* Resume step 1 (restore PIO) */
 		if (drive->hwif->tuneproc != NULL)
 			drive->hwif->tuneproc(drive, 255);
-		ide_complete_power_step(drive, rq, 0, 0);
+		/*
+		 * skip idedisk_pm_idle for ATAPI devices
+		 */
+		if (drive->media != ide_disk)
+			pm->pm_step = ide_pm_restore_dma;
+		else
+			ide_complete_power_step(drive, rq, 0, 0);
 		return ide_stopped;
 
 	case idedisk_pm_idle:		/* Resume step 2 (idle) */
@@ -226,6 +223,7 @@ static ide_startstop_t ide_start_power_step(ide_drive_t *drive, struct request *
 			break;
 		if (drive->hwif->ide_dma_check == NULL)
 			break;
+		drive->hwif->dma_off_quietly(drive);
 		ide_set_dma(drive);
 		break;
 	}
@@ -519,21 +517,24 @@ static ide_startstop_t ide_ata_error(ide_drive_t *drive, struct request *rq, u8 
 	if ((stat & DRQ_STAT) && rq_data_dir(rq) == READ && hwif->err_stops_fifo == 0)
 		try_to_flush_leftover_data(drive);
 
-	if (hwif->INB(IDE_STATUS_REG) & (BUSY_STAT|DRQ_STAT))
-		/* force an abort */
-		hwif->OUTB(WIN_IDLEIMMEDIATE, IDE_COMMAND_REG);
-
-	if (rq->errors >= ERROR_MAX || blk_noretry_request(rq))
+	if (rq->errors >= ERROR_MAX || blk_noretry_request(rq)) {
 		ide_kill_rq(drive, rq);
-	else {
-		if ((rq->errors & ERROR_RESET) == ERROR_RESET) {
-			++rq->errors;
-			return ide_do_reset(drive);
-		}
-		if ((rq->errors & ERROR_RECAL) == ERROR_RECAL)
-			drive->special.b.recalibrate = 1;
-		++rq->errors;
+		return ide_stopped;
 	}
+
+	if (hwif->INB(IDE_STATUS_REG) & (BUSY_STAT|DRQ_STAT))
+		rq->errors |= ERROR_RESET;
+
+	if ((rq->errors & ERROR_RESET) == ERROR_RESET) {
+		++rq->errors;
+		return ide_do_reset(drive);
+	}
+
+	if ((rq->errors & ERROR_RECAL) == ERROR_RECAL)
+		drive->special.b.recalibrate = 1;
+
+	++rq->errors;
+
 	return ide_stopped;
 }
 
@@ -1025,6 +1026,13 @@ static ide_startstop_t start_request (ide_drive_t *drive, struct request *rq)
 	if (!drive->special.all) {
 		ide_driver_t *drv;
 
+		/*
+		 * We reset the drive so we need to issue a SETFEATURES.
+		 * Do it _after_ do_special() restored device parameters.
+		 */
+		if (drive->current_speed == 0xff)
+			ide_config_drive_speed(drive, drive->desired_speed);
+
 		if (rq->cmd_type == REQ_TYPE_ATA_CMD ||
 		    rq->cmd_type == REQ_TYPE_ATA_TASK ||
 		    rq->cmd_type == REQ_TYPE_ATA_TASKFILE)
@@ -1216,6 +1224,7 @@ static void ide_do_request (ide_hwgroup_t *hwgroup, int masked_irq)
 #endif
 				/* so that ide_timer_expiry knows what to do */
 				hwgroup->sleeping = 1;
+				hwgroup->req_gen_timer = hwgroup->req_gen;
 				mod_timer(&hwgroup->timer, sleep);
 				/* we purposely leave hwgroup->busy==1
 				 * while sleeping */
@@ -1401,7 +1410,8 @@ void ide_timer_expiry (unsigned long data)
 
 	spin_lock_irqsave(&ide_lock, flags);
 
-	if ((handler = hwgroup->handler) == NULL) {
+	if (((handler = hwgroup->handler) == NULL) ||
+	    (hwgroup->req_gen != hwgroup->req_gen_timer)) {
 		/*
 		 * Either a marginal timeout occurred
 		 * (got the interrupt just as timer expired),
@@ -1429,6 +1439,7 @@ void ide_timer_expiry (unsigned long data)
 				if ((wait = expiry(drive)) > 0) {
 					/* reset timer */
 					hwgroup->timer.expires  = jiffies + wait;
+					hwgroup->req_gen_timer = hwgroup->req_gen;
 					add_timer(&hwgroup->timer);
 					spin_unlock_irqrestore(&ide_lock, flags);
 					return;
@@ -1643,6 +1654,7 @@ irqreturn_t ide_intr (int irq, void *dev_id)
 		printk(KERN_ERR "%s: ide_intr: hwgroup->busy was 0 ??\n", drive->name);
 	}
 	hwgroup->handler = NULL;
+	hwgroup->req_gen++;
 	del_timer(&hwgroup->timer);
 	spin_unlock(&ide_lock);
 

@@ -10,6 +10,7 @@
 #include <linux/blkdev.h>
 #include <linux/module.h>
 #include <linux/backing-dev.h>
+#include <linux/interrupt.h>
 #include <asm/uaccess.h>
 #include <asm/mmx.h>
 
@@ -715,10 +716,17 @@ do {									\
 unsigned long __copy_to_user_ll(void __user *to, const void *from,
 				unsigned long n)
 {
-	BUG_ON((long) n < 0);
 #ifndef CONFIG_X86_WP_WORKS_OK
 	if (unlikely(boot_cpu_data.wp_works_ok == 0) &&
 			((unsigned long )to) < TASK_SIZE) {
+		/*
+		 * When we are in an atomic section (see
+		 * mm/filemap.c:file_read_actor), return the full
+		 * length to take the slow path.
+		 */
+		if (in_atomic())
+			return n;
+
 		/* 
 		 * CPU does not honor the WP bit when writing
 		 * from supervisory mode, and due to preemption or SMP,
@@ -776,7 +784,6 @@ EXPORT_SYMBOL(__copy_to_user_ll);
 unsigned long __copy_from_user_ll(void *to, const void __user *from,
 					unsigned long n)
 {
-	BUG_ON((long)n < 0);
 	if (movsl_is_ok(to, from, n))
 		__copy_user_zeroing(to, from, n);
 	else
@@ -788,7 +795,6 @@ EXPORT_SYMBOL(__copy_from_user_ll);
 unsigned long __copy_from_user_ll_nozero(void *to, const void __user *from,
 					 unsigned long n)
 {
-	BUG_ON((long)n < 0);
 	if (movsl_is_ok(to, from, n))
 		__copy_user(to, from, n);
 	else
@@ -801,7 +807,6 @@ EXPORT_SYMBOL(__copy_from_user_ll_nozero);
 unsigned long __copy_from_user_ll_nocache(void *to, const void __user *from,
 					unsigned long n)
 {
-	BUG_ON((long)n < 0);
 #ifdef CONFIG_X86_INTEL_USERCOPY
 	if ( n > 64 && cpu_has_xmm2)
                 n = __copy_user_zeroing_intel_nocache(to, from, n);
@@ -816,7 +821,6 @@ unsigned long __copy_from_user_ll_nocache(void *to, const void __user *from,
 unsigned long __copy_from_user_ll_nocache_nozero(void *to, const void __user *from,
 					unsigned long n)
 {
-	BUG_ON((long)n < 0);
 #ifdef CONFIG_X86_INTEL_USERCOPY
 	if ( n > 64 && cpu_has_xmm2)
                 n = __copy_user_intel_nocache(to, from, n);
@@ -844,7 +848,6 @@ unsigned long __copy_from_user_ll_nocache_nozero(void *to, const void __user *fr
 unsigned long
 copy_to_user(void __user *to, const void *from, unsigned long n)
 {
-	BUG_ON((long) n < 0);
 	if (access_ok(VERIFY_WRITE, to, n))
 		n = __copy_to_user(to, from, n);
 	return n;
@@ -870,7 +873,6 @@ EXPORT_SYMBOL(copy_to_user);
 unsigned long
 copy_from_user(void *to, const void __user *from, unsigned long n)
 {
-	BUG_ON((long) n < 0);
 	if (access_ok(VERIFY_READ, from, n))
 		n = __copy_from_user(to, from, n);
 	else

@@ -269,7 +269,7 @@ int param_get_invbool(char *buffer, struct kernel_param *kp)
 	return param_get_bool(buffer, &dummy);
 }
 
-/* We cheat here and temporarily mangle the string. */
+/* We break the rule and mangle the string. */
 static int param_array(const char *name,
 		       const char *val,
 		       unsigned int min, unsigned int max,
@@ -356,6 +356,10 @@ int param_set_copystring(const char *val, struct kernel_param *kp)
 {
 	struct kparam_string *kps = kp->arg;
 
+	if (!val) {
+		printk(KERN_ERR "%s: missing param set value\n", kp->name);
+		return -EINVAL;
+	}
 	if (strlen(val)+1 > kps->maxlen) {
 		printk(KERN_ERR "%s: string doesn't fit in %u chars.\n",
 		       kp->name, kps->maxlen-1);
@@ -687,6 +691,7 @@ static struct kset_uevent_ops module_uevent_ops = {
 };
 
 decl_subsys(module, &module_ktype, &module_uevent_ops);
+int module_sysfs_initialized;
 
 static struct kobj_type module_ktype = {
 	.sysfs_ops =	&module_sysfs_ops,
@@ -705,6 +710,7 @@ static int __init param_sysfs_init(void)
 			__FILE__, __LINE__, ret);
 		return ret;
 	}
+	module_sysfs_initialized = 1;
 
 	param_sysfs_builtin();
 

@@ -1,5 +1,3 @@
-menu "SoC Audio for the Intel PXA2xx"
-
 config SND_PXA2XX_SOC
 	tristate "SoC Audio for the Intel PXA2xx chip"
 	depends on ARCH_PXA && SND_SOC
@@ -70,7 +68,6 @@ config SND_PXA2XX_SOC_MAGICIAN
 	  Say Y if you want to add support for SoC audio on the
 	  HTC Magician.
 
-
 config SND_PXA2XX_SOC_AMESOM_TLV320
 	tristate "SoC SSP Audio support for AMESOM - TLV320AIC24k"
 	depends on SND_PXA2XX_SOC && MACH_AMESOM
@@ -80,6 +77,14 @@ config SND_PXA2XX_SOC_AMESOM_TLV320
 	help
 	  Say Y if you want to add support for SoC audio on Amesom
 	  with the tlv320.
+	  
+config SND_PXA2XX_SOC_H5000
+	tristate "ASoC support for H5000"
+	depends on SND_PXA2XX_SOC && MACH_PXA
+	select SND_PXA2XX_SOC_I2S
+	select SND_SOC_AK4535
+	help
+	  Say Y if you want to add support for ASoC audio for H5000.
 
 config SND_PXA2XX_SOC_MAINSTONE
 	tristate "SoC AC97 Audio support for Intel Mainstone"
@@ -153,4 +158,3 @@ config SND_PXA2xx_SOC_MAINSTONE_WM9712
 	  Say Y if you want to add support for SoC voice audio on Mainstone
 	  with the WM9712.
 
-endmenu

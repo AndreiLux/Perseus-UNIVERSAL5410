@@ -191,9 +191,9 @@ static void pxa2xx_ssp_shutdown(struct snd_pcm_substream *substream)
 }
 
 #if defined (CONFIG_PXA27x)
-static int cken[3] = {CKEN23_SSP1, CKEN3_SSP2, CKEN4_SSP3};
+static int cken[3] = {CKEN_SSP1, CKEN_SSP2, CKEN_SSP3};
 #else
-static int cken[3] = {CKEN3_SSP, CKEN9_NSSP, CKEN10_ASSP};
+static int cken[3] = {CKEN_SSP, CKEN_NSSP, CKEN_ASSP};
 #endif
 
 #ifdef CONFIG_PM
@@ -379,6 +379,10 @@ static int pxa2xx_ssp_set_dai_fmt(struct snd_soc_cpu_dai *cpu_dai,
 		unsigned int fmt)
 {
 	int port = cpu_dai->id + 1;
+
+	/* we can only change the settings if the port is not in use */
+	if (SSCR0_P(port) & SSCR0_SSE)
+		return 0;
 
 	/* reset port settings */
 	SSCR0_P(port) = 0;

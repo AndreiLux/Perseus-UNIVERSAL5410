@@ -140,12 +140,12 @@ static dbdev_tab_t dbdev_tab[] = {
 	{ DSCR_CMD0_AES_RX, DEV_FLAGS_IN , 4, 32, 0x10300008, 0, 0 },
 	{ DSCR_CMD0_AES_TX, DEV_FLAGS_OUT, 4, 32, 0x10300004, 0, 0 },
 
-	{ DSCR_CMD0_PSC0_TX, DEV_FLAGS_OUT, 0, 16, 0x11a0001c, 0, 0 },
-	{ DSCR_CMD0_PSC0_RX, DEV_FLAGS_IN, 0, 16, 0x11a0001c, 0, 0 },
+	{ DSCR_CMD0_PSC0_TX, DEV_FLAGS_OUT, 0, 32, 0x11a0001c, 0, 0 },
+	{ DSCR_CMD0_PSC0_RX, DEV_FLAGS_IN, 0, 32, 0x11a0001c, 0, 0 },
 	{ DSCR_CMD0_PSC0_SYNC, DEV_FLAGS_ANYUSE, 0, 0, 0x00000000, 0, 0 },
 
-	{ DSCR_CMD0_PSC1_TX, DEV_FLAGS_OUT, 0, 16, 0x11b0001c, 0, 0 },
-	{ DSCR_CMD0_PSC1_RX, DEV_FLAGS_IN, 0, 16, 0x11b0001c, 0, 0 },
+	{ DSCR_CMD0_PSC1_TX, DEV_FLAGS_OUT, 0, 32, 0x11b0001c, 0, 0 },
+	{ DSCR_CMD0_PSC1_RX, DEV_FLAGS_IN, 0, 32, 0x11b0001c, 0, 0 },
 	{ DSCR_CMD0_PSC1_SYNC, DEV_FLAGS_ANYUSE, 0, 0, 0x00000000, 0, 0 },
 
 	{ DSCR_CMD0_CIM_RXA, DEV_FLAGS_IN, 0, 32, 0x14004020, 0, 0 },
@@ -591,13 +591,15 @@ _au1xxx_dbdma_put_source(u32 chanid, void *buf, int nbytes, u32 flags)
 
 	/* Load up buffer address and byte count.
 	*/
-	dp->dscr_source0 = virt_to_phys(buf);
+	dp->dscr_source0 = /*virt_to_phys*/(buf);
 	dp->dscr_cmd1 = nbytes;
 	/* Check flags  */
 	if (flags & DDMA_FLAGS_IE)
 		dp->dscr_cmd0 |= DSCR_CMD0_IE;
 	if (flags & DDMA_FLAGS_NOIE)
 		dp->dscr_cmd0 &= ~DSCR_CMD0_IE;
+	if (flags & DDMA_FLAGS_NOCV)
+		dp->dscr_cmd0 &= ~DSCR_CMD0_CV;
 
 	/*
 	 * There is an errata on the Au1200/Au1550 parts that could result
@@ -657,7 +659,7 @@ _au1xxx_dbdma_put_dest(u32 chanid, void *buf, int nbytes, u32 flags)
 	if (flags & DDMA_FLAGS_NOIE)
 		dp->dscr_cmd0 &= ~DSCR_CMD0_IE;
 
-	dp->dscr_dest0 = virt_to_phys(buf);
+	dp->dscr_dest0 = /*virt_to_phys*/(buf);
 	dp->dscr_cmd1 = nbytes;
 #if 0
 	printk("cmd0:%x cmd1:%x source0:%x source1:%x dest0:%x dest1:%x\n",
@@ -940,6 +942,7 @@ au1xxx_dbdma_dump(u32 chanid)
 		dp = phys_to_virt(DSCR_GET_NXTPTR(dp->dscr_nxtptr));
 	} while (dp != ctp->chan_desc_base);
 }
+EXPORT_SYMBOL(au1xxx_dbdma_dump);
 
 /* Put a descriptor into the DMA ring.
  * This updates the source/destination pointers and byte count.
@@ -989,6 +992,6 @@ au1xxx_dbdma_put_dscr(u32 chanid, au1x_ddma_desc_t *dscr )
 	*/
 	return nbytes;
 }
-
+EXPORT_SYMBOL(au1xxx_dbdma_put_dscr);
 #endif /* defined(CONFIG_SOC_AU1550) || defined(CONFIG_SOC_AU1200) */
 

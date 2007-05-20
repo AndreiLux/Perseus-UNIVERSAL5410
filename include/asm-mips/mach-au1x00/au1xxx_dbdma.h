@@ -387,6 +387,7 @@ void * au1xxx_ddma_get_nextptr_virt(au1x_ddma_desc_t *dp);
  */
 #define DDMA_FLAGS_IE	(1<<0)
 #define DDMA_FLAGS_NOIE (1<<1)
+#define DDMA_FLAGS_NOCV	(1<<2)	/* dont clear valid bit upon completion */
 
 #endif /* _LANGUAGE_ASSEMBLY */
 #endif /* _AU1000_DBDMA_H_ */

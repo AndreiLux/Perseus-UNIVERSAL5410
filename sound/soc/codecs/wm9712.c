@@ -102,7 +102,7 @@ SOC_SINGLE("Speaker Playback ZC Switch", AC97_MASTER, 7, 1, 0),
 SOC_SINGLE("Speaker Playback Invert Switch", AC97_MASTER, 6, 1, 0),
 SOC_SINGLE("Headphone Playback ZC Switch", AC97_HEADPHONE, 7, 1, 0),
 SOC_SINGLE("Mono Playback ZC Switch", AC97_MASTER_MONO, 7, 1, 0),
-SOC_SINGLE("Mono Playback Volume", AC97_MASTER_MONO, 0, 31, 1),
+SOC_SINGLE("Mono Playback Volume", AC97_MASTER_MONO, 0, 31, 0),
 
 SOC_SINGLE("ALC Target Volume", AC97_CODEC_CLASS_REV, 12, 15, 0),
 SOC_SINGLE("ALC Hold Time", AC97_CODEC_CLASS_REV, 8, 15, 0),
@@ -131,7 +131,7 @@ SOC_SINGLE("Aux Playback Headphone Volume", AC97_CD, 12, 7, 1),
 SOC_SINGLE("Aux Playback Speaker Volume", AC97_CD, 8, 7, 1),
 SOC_SINGLE("Aux Playback Phone Volume", AC97_CD, 4, 7, 1),
 
-SOC_SINGLE("Phone Volume", AC97_PHONE, 0, 15, 1),
+SOC_SINGLE("Phone Volume", AC97_PHONE, 0, 15, 0),
 SOC_DOUBLE("Line Capture Volume", AC97_LINE, 8, 0, 31, 1),
 
 SOC_SINGLE("Capture 20dB Boost Switch", AC97_REC_SEL, 14, 1, 0),
@@ -145,8 +145,8 @@ SOC_ENUM("Bass Control", wm9712_enum[5]),
 SOC_SINGLE("Bass Cut-off Switch", AC97_MASTER_TONE, 12, 1, 1),
 SOC_SINGLE("Tone Cut-off Switch", AC97_MASTER_TONE, 4, 1, 1),
 SOC_SINGLE("Playback Attenuate (-6dB) Switch", AC97_MASTER_TONE, 6, 1, 0),
-SOC_SINGLE("Bass Volume", AC97_MASTER_TONE, 8, 15, 1),
-SOC_SINGLE("Treble Volume", AC97_MASTER_TONE, 0, 15, 1),
+SOC_SINGLE("Bass Volume", AC97_MASTER_TONE, 8, 15, 0),
+SOC_SINGLE("Treble Volume", AC97_MASTER_TONE, 0, 15, 0),
 
 SOC_SINGLE("Capture ADC Switch", AC97_REC_GAIN, 15, 1, 1),
 SOC_ENUM("Capture Volume Steps", wm9712_enum[6]),
@@ -544,6 +544,7 @@ static int ac97_aux_prepare(struct snd_pcm_substream *substream)
 struct snd_soc_codec_dai wm9712_dai[] = {
 {
 	.name = "AC97 HiFi",
+	.type = SND_SOC_DAI_AC97_BUS,
 	.playback = {
 		.stream_name = "HiFi Playback",
 		.channels_min = 1,
@@ -676,14 +677,13 @@ static int wm9712_soc_probe(struct platform_device *pdev)
 	codec = socdev->codec;
 	mutex_init(&codec->mutex);
 
-	codec->reg_cache =
-		kzalloc(sizeof(u16) * ARRAY_SIZE(wm9712_reg), GFP_KERNEL);
+	codec->reg_cache = kmemdup(wm9712_reg, sizeof(wm9712_reg), GFP_KERNEL);
+
 	if (codec->reg_cache == NULL) {
 		ret = -ENOMEM;
 		goto cache_err;
 	}
-	memcpy(codec->reg_cache, wm9712_reg, sizeof(u16) * ARRAY_SIZE(wm9712_reg));
-	codec->reg_cache_size = sizeof(u16) * ARRAY_SIZE(wm9712_reg);
+	codec->reg_cache_size = sizeof(wm9712_reg);
 	codec->reg_cache_step = 2;
 
 	codec->name = "WM9712";

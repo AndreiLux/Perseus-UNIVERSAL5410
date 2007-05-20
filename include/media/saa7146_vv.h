@@ -216,6 +216,8 @@ void saa7146_set_gpio(struct saa7146_dev *saa, u8 pin, u8 data);
 extern struct saa7146_use_ops saa7146_video_uops;
 int saa7146_start_preview(struct saa7146_fh *fh);
 int saa7146_stop_preview(struct saa7146_fh *fh);
+int saa7146_video_do_ioctl(struct inode *inode, struct file *file,
+			   unsigned int cmd, void *arg);
 
 /* from saa7146_vbi.c */
 extern struct saa7146_use_ops saa7146_vbi_uops;
@@ -239,7 +241,8 @@ void saa7146_res_free(struct saa7146_fh *fh, unsigned int bits);
 #define SAA7146_HPS_SYNC_PORT_B		0x01
 
 /* some memory sizes */
-#define SAA7146_CLIPPING_MEM	(14*PAGE_SIZE)
+/* max. 16 clipping rectangles */
+#define SAA7146_CLIPPING_MEM	(16 * 4 * sizeof(u32))
 
 /* some defines for the various clipping-modes */
 #define SAA7146_CLIPPING_RECT		0x4

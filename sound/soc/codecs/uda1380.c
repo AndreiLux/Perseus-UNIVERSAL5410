@@ -728,14 +728,12 @@ static int uda1380_init(struct snd_soc_device *socdev, int dac_clk)
 	codec->dapm_event = uda1380_dapm_event;
 	codec->dai = uda1380_dai;
 	codec->num_dai = ARRAY_SIZE(uda1380_dai);
-	codec->reg_cache_size = ARRAY_SIZE(uda1380_reg);
-	codec->reg_cache =
-		kcalloc(ARRAY_SIZE(uda1380_reg), sizeof(u16), GFP_KERNEL);
+	codec->reg_cache_size = sizeof(uda1380_reg);
+	codec->reg_cache = kmemdup(uda1380_reg, sizeof(uda1380_reg), GFP_KERNEL);
+
 	if (codec->reg_cache == NULL)
 		return -ENOMEM;
-	memcpy(codec->reg_cache, uda1380_reg,
-	       sizeof(u16) * ARRAY_SIZE(uda1380_reg));
-	codec->reg_cache_size = sizeof(u16) * ARRAY_SIZE(uda1380_reg);
+
 	uda1380_reset(codec);
 
 	/* register pcms */
@@ -807,12 +805,11 @@ static int uda1380_codec_probe(struct i2c_adapter *adap, int addr, int kind)
 	client_template.adapter = adap;
 	client_template.addr = addr;
 
-	i2c = kzalloc(sizeof(struct i2c_client), GFP_KERNEL);
+	i2c = kmemdup(&client_template, sizeof(client_template), GFP_KERNEL);
 	if (i2c == NULL){
 		kfree(codec);
 		return -ENOMEM;
 	}
-	memcpy(i2c, &client_template, sizeof(struct i2c_client));
 	i2c_set_clientdata(i2c, codec);
 	codec->control_data = i2c;
 

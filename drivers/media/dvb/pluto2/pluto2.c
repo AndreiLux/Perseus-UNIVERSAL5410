@@ -149,6 +149,15 @@ static inline void pluto_rw(struct pluto *pluto, u32 reg, u32 mask, u32 bits)
 	writel(val, &pluto->io_mem[reg]);
 }
 
+static void pluto_write_tscr(struct pluto *pluto, u32 val)
+{
+	/* set the number of packets */
+	val &= ~TSCR_ADEF;
+	val |= TS_DMA_PACKETS / 2;
+
+	pluto_writereg(pluto, REG_TSCR, val);
+}
+
 static void pluto_setsda(void *data, int state)
 {
 	struct pluto *pluto = data;
@@ -213,11 +222,11 @@ static void pluto_reset_ts(struct pluto *pluto, int reenable)
 
 	if (val & TSCR_RSTN) {
 		val &= ~TSCR_RSTN;
-		pluto_writereg(pluto, REG_TSCR, val);
+		pluto_write_tscr(pluto, val);
 	}
 	if (reenable) {
 		val |= TSCR_RSTN;
-		pluto_writereg(pluto, REG_TSCR, val);
+		pluto_write_tscr(pluto, val);
 	}
 }
 
@@ -284,12 +293,20 @@ static void pluto_dma_end(struct pluto *pluto, unsigned int nbpackets)
 	 *     but no packets have been transfered.
 	 * [2] Sometimes (actually very often) NBPACKETS stays at zero
 	 *     although one packet has been transfered.
+	 * [3] Sometimes (actually rarely), the card gets into an erroneous
+	 *     mode where it continuously generates interrupts, claiming it
+	 *     has recieved nbpackets>TS_DMA_PACKETS packets, but no packet
+	 *     has been transfered. Only a reset seems to solve this
 	 */
 	if ((nbpackets == 0) || (nbpackets > TS_DMA_PACKETS)) {
 		unsigned int i = 0;
 		while (pluto->dma_buf[i] == 0x47)
 			i += 188;
 		nbpackets = i / 188;
+		if (i == 0) {
+			pluto_reset_ts(pluto, 1);
+			dev_printk(KERN_DEBUG, &pluto->pdev->dev, "resetting TS because of invalid packet counter\n");
+		}
 	}
 
 	dvb_dmx_swfilter_packets(&pluto->demux, pluto->dma_buf, nbpackets);
@@ -339,7 +356,7 @@ static irqreturn_t pluto_irq(int irq, void *dev_id)
 	}
 
 	/* ACK the interrupt */
-	pluto_writereg(pluto, REG_TSCR, tscr | TSCR_IACK);
+	pluto_write_tscr(pluto, tscr | TSCR_IACK);
 
 	return IRQ_HANDLED;
 }
@@ -348,9 +365,6 @@ static void __devinit pluto_enable_irqs(struct pluto *pluto)
 {
 	u32 val = pluto_readreg(pluto, REG_TSCR);
 
-	/* set the number of packets */
-	val &= ~TSCR_ADEF;
-	val |= TS_DMA_PACKETS / 2;
 	/* disable AFUL and LOCK interrupts */
 	val |= (TSCR_MSKA | TSCR_MSKL);
 	/* enable DMA and OVERFLOW interrupts */
@@ -358,7 +372,7 @@ static void __devinit pluto_enable_irqs(struct pluto *pluto)
 	/* clear pending interrupts */
 	val |= TSCR_IACK;
 
-	pluto_writereg(pluto, REG_TSCR, val);
+	pluto_write_tscr(pluto, val);
 }
 
 static void pluto_disable_irqs(struct pluto *pluto)
@@ -370,7 +384,7 @@ static void pluto_disable_irqs(struct pluto *pluto)
 	/* clear pending interrupts */
 	val |= TSCR_IACK;
 
-	pluto_writereg(pluto, REG_TSCR, val);
+	pluto_write_tscr(pluto, val);
 }
 
 static int __devinit pluto_hw_init(struct pluto *pluto)

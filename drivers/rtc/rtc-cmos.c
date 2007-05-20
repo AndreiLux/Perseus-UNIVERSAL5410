@@ -46,6 +46,10 @@ struct cmos_rtc {
 	int			irq;
 	struct resource		*iomem;
 
+	void			(*wake_on)(struct device *);
+	void			(*wake_off)(struct device *);
+
+	u8			enabled_wake;
 	u8			suspend_ctrl;
 
 	/* newer hardware extends the original register set */
@@ -58,6 +62,19 @@ struct cmos_rtc {
 #define is_valid_irq(n)		((n) >= 0)
 
 static const char driver_name[] = "rtc_cmos";
+
+/* The RTC_INTR register may have e.g. RTC_PF set even if RTC_PIE is clear;
+ * always mask it against the irq enable bits in RTC_CONTROL.  Bit values
+ * are the same: PF==PIE, AF=AIE, UF=UIE; so RTC_IRQMASK works with both.
+ */
+#define	RTC_IRQMASK	(RTC_PF | RTC_AF | RTC_UF)
+
+static inline int is_intr(u8 rtc_intr)
+{
+	if (!(rtc_intr & RTC_IRQF))
+		return 0;
+	return rtc_intr & RTC_IRQMASK;
+}
 
 /*----------------------------------------------------------------*/
 
@@ -188,8 +205,9 @@ static int cmos_set_alarm(struct device *dev, struct rtc_wkalrm *t)
 	rtc_control &= ~RTC_AIE;
 	CMOS_WRITE(rtc_control, RTC_CONTROL);
 	rtc_intr = CMOS_READ(RTC_INTR_FLAGS);
-	if (rtc_intr)
-		rtc_update_irq(&cmos->rtc->class_dev, 1, rtc_intr);
+	rtc_intr &= (rtc_control & RTC_IRQMASK) | RTC_IRQF;
+	if (is_intr(rtc_intr))
+		rtc_update_irq(cmos->rtc, 1, rtc_intr);
 
 	/* update alarm */
 	CMOS_WRITE(hrs, RTC_HOURS_ALARM);
@@ -207,8 +225,9 @@ static int cmos_set_alarm(struct device *dev, struct rtc_wkalrm *t)
 		rtc_control |= RTC_AIE;
 		CMOS_WRITE(rtc_control, RTC_CONTROL);
 		rtc_intr = CMOS_READ(RTC_INTR_FLAGS);
-		if (rtc_intr)
-			rtc_update_irq(&cmos->rtc->class_dev, 1, rtc_intr);
+		rtc_intr &= (rtc_control & RTC_IRQMASK) | RTC_IRQF;
+		if (is_intr(rtc_intr))
+			rtc_update_irq(cmos->rtc, 1, rtc_intr);
 	}
 
 	spin_unlock_irq(&rtc_lock);
@@ -287,8 +306,9 @@ cmos_rtc_ioctl(struct device *dev, unsigned int cmd, unsigned long arg)
 	}
 	CMOS_WRITE(rtc_control, RTC_CONTROL);
 	rtc_intr = CMOS_READ(RTC_INTR_FLAGS);
-	if (rtc_intr)
-		rtc_update_irq(&cmos->rtc->class_dev, 1, rtc_intr);
+	rtc_intr &= (rtc_control & RTC_IRQMASK) | RTC_IRQF;
+	if (is_intr(rtc_intr))
+		rtc_update_irq(cmos->rtc, 1, rtc_intr);
 	spin_unlock_irqrestore(&rtc_lock, flags);
 	return 0;
 }
@@ -353,24 +373,22 @@ static irqreturn_t cmos_interrupt(int irq, void *p)
 
 	spin_lock(&rtc_lock);
 	irqstat = CMOS_READ(RTC_INTR_FLAGS);
+	irqstat &= (CMOS_READ(RTC_CONTROL) & RTC_IRQMASK) | RTC_IRQF;
 	spin_unlock(&rtc_lock);
 
-	if (irqstat) {
-		/* NOTE: irqstat may have e.g. RTC_PF set
-		 * even when RTC_PIE is clear...
-		 */
+	if (is_intr(irqstat)) {
 		rtc_update_irq(p, 1, irqstat);
 		return IRQ_HANDLED;
 	} else
 		return IRQ_NONE;
 }
 
-#ifdef	CONFIG_PNPACPI
-#define	is_pnpacpi()	1
+#ifdef	CONFIG_PNP
+#define	is_pnp()	1
 #define	INITSECTION
 
 #else
-#define	is_pnpacpi()	0
+#define	is_pnp()	0
 #define	INITSECTION	__init
 #endif
 
@@ -391,13 +409,20 @@ cmos_do_probe(struct device *dev, struct resource *ports, int rtc_irq)
 	cmos_rtc.irq = rtc_irq;
 	cmos_rtc.iomem = ports;
 
-	/* For ACPI systems the info comes from the FADT.  On others,
-	 * board specific setup provides it as appropriate.
+	/* For ACPI systems extension info comes from the FADT.  On others,
+	 * board specific setup provides it as appropriate.  Systems where
+	 * the alarm IRQ isn't automatically a wakeup IRQ (like ACPI, and
+	 * some almost-clones) can provide hooks to make that behave.
 	 */
 	if (info) {
 		cmos_rtc.day_alrm = info->rtc_day_alarm;
 		cmos_rtc.mon_alrm = info->rtc_mon_alarm;
 		cmos_rtc.century = info->rtc_century;
+
+		if (info->wake_on && info->wake_off) {
+			cmos_rtc.wake_on = info->wake_on;
+			cmos_rtc.wake_off = info->wake_off;
+		}
 	}
 
 	cmos_rtc.rtc = rtc_device_register(driver_name, dev,
@@ -413,14 +438,14 @@ cmos_do_probe(struct device *dev, struct resource *ports, int rtc_irq)
 	 * REVISIT for non-x86 systems we may need to handle io memory
 	 * resources: ioremap them, and request_mem_region().
 	 */
-	if (is_pnpacpi()) {
+	if (is_pnp()) {
 		retval = request_resource(&ioport_resource, ports);
 		if (retval < 0) {
 			dev_dbg(dev, "i/o registers already in use\n");
 			goto cleanup0;
 		}
 	}
-	rename_region(ports, cmos_rtc.rtc->class_dev.class_id);
+	rename_region(ports, cmos_rtc.rtc->dev.bus_id);
 
 	spin_lock_irq(&rtc_lock);
 
@@ -456,8 +481,8 @@ cmos_do_probe(struct device *dev, struct resource *ports, int rtc_irq)
 
 	if (is_valid_irq(rtc_irq))
 		retval = request_irq(rtc_irq, cmos_interrupt, IRQF_DISABLED,
-				cmos_rtc.rtc->class_dev.class_id,
-				&cmos_rtc.rtc->class_dev);
+				cmos_rtc.rtc->dev.bus_id,
+				cmos_rtc.rtc);
 	if (retval < 0) {
 		dev_dbg(dev, "IRQ %d is already in use\n", rtc_irq);
 		goto cleanup1;
@@ -469,7 +494,7 @@ cmos_do_probe(struct device *dev, struct resource *ports, int rtc_irq)
 	 */
 
 	pr_info("%s: alarms up to one %s%s\n",
-			cmos_rtc.rtc->class_dev.class_id,
+			cmos_rtc.rtc->dev.bus_id,
 			is_valid_irq(rtc_irq)
 				?  (cmos_rtc.mon_alrm
 					? "year"
@@ -506,12 +531,12 @@ static void __exit cmos_do_remove(struct device *dev)
 
 	cmos_do_shutdown();
 
-	if (is_pnpacpi())
+	if (is_pnp())
 		release_resource(cmos->iomem);
 	rename_region(cmos->iomem, NULL);
 
 	if (is_valid_irq(cmos->irq))
-		free_irq(cmos->irq, &cmos_rtc.rtc->class_dev);
+		free_irq(cmos->irq, cmos_rtc.rtc);
 
 	rtc_device_unregister(cmos_rtc.rtc);
 
@@ -525,31 +550,36 @@ static int cmos_suspend(struct device *dev, pm_message_t mesg)
 {
 	struct cmos_rtc	*cmos = dev_get_drvdata(dev);
 	int		do_wake = device_may_wakeup(dev);
-	unsigned char	tmp, irqstat;
+	unsigned char	tmp;
 
 	/* only the alarm might be a wakeup event source */
 	spin_lock_irq(&rtc_lock);
 	cmos->suspend_ctrl = tmp = CMOS_READ(RTC_CONTROL);
 	if (tmp & (RTC_PIE|RTC_AIE|RTC_UIE)) {
+		unsigned char	irqstat;
+
 		if (do_wake)
 			tmp &= ~(RTC_PIE|RTC_UIE);
 		else
 			tmp &= ~(RTC_PIE|RTC_AIE|RTC_UIE);
 		CMOS_WRITE(tmp, RTC_CONTROL);
 		irqstat = CMOS_READ(RTC_INTR_FLAGS);
-	} else
-		irqstat = 0;
+		irqstat &= (tmp & RTC_IRQMASK) | RTC_IRQF;
+		if (is_intr(irqstat))
+			rtc_update_irq(cmos->rtc, 1, irqstat);
+	}
 	spin_unlock_irq(&rtc_lock);
 
-	if (irqstat)
-		rtc_update_irq(&cmos->rtc->class_dev, 1, irqstat);
-
-	/* ACPI HOOK:  enable ACPI_EVENT_RTC when (tmp & RTC_AIE)
-	 * ... it'd be best if we could do that under rtc_lock.
-	 */
+	if (tmp & RTC_AIE) {
+		cmos->enabled_wake = 1;
+		if (cmos->wake_on)
+			cmos->wake_on(dev);
+		else
+			enable_irq_wake(cmos->irq);
+	}
 
 	pr_debug("%s: suspend%s, ctrl %02x\n",
-			cmos_rtc.rtc->class_dev.class_id,
+			cmos_rtc.rtc->dev.bus_id,
 			(tmp & RTC_AIE) ? ", alarm may wake" : "",
 			tmp);
 
@@ -561,25 +591,28 @@ static int cmos_resume(struct device *dev)
 	struct cmos_rtc	*cmos = dev_get_drvdata(dev);
 	unsigned char	tmp = cmos->suspend_ctrl;
 
-	/* REVISIT:  a mechanism to resync the system clock (jiffies)
-	 * on resume should be portable between platforms ...
-	 */
-
 	/* re-enable any irqs previously active */
 	if (tmp & (RTC_PIE|RTC_AIE|RTC_UIE)) {
 
-		/* ACPI HOOK:  disable ACPI_EVENT_RTC when (tmp & RTC_AIE) */
+		if (cmos->enabled_wake) {
+			if (cmos->wake_off)
+				cmos->wake_off(dev);
+			else
+				disable_irq_wake(cmos->irq);
+			cmos->enabled_wake = 0;
+		}
 
 		spin_lock_irq(&rtc_lock);
 		CMOS_WRITE(tmp, RTC_CONTROL);
 		tmp = CMOS_READ(RTC_INTR_FLAGS);
+		tmp &= (cmos->suspend_ctrl & RTC_IRQMASK) | RTC_IRQF;
+		if (is_intr(tmp))
+			rtc_update_irq(cmos->rtc, 1, tmp);
 		spin_unlock_irq(&rtc_lock);
-		if (tmp)
-			rtc_update_irq(&cmos->rtc->class_dev, 1, tmp);
 	}
 
 	pr_debug("%s: resume, ctrl %02x\n",
-			cmos_rtc.rtc->class_dev.class_id,
+			cmos_rtc.rtc->dev.bus_id,
 			cmos->suspend_ctrl);
 
 
@@ -594,10 +627,10 @@ static int cmos_resume(struct device *dev)
 /*----------------------------------------------------------------*/
 
 /* The "CMOS" RTC normally lives on the platform_bus.  On ACPI systems,
- * the device node may alternatively be created as a PNP device.
+ * the device node will always be created as a PNPACPI device.
  */
 
-#ifdef	CONFIG_PNPACPI
+#ifdef	CONFIG_PNP
 
 #include <linux/pnp.h>
 
@@ -668,12 +701,12 @@ static void __exit cmos_exit(void)
 }
 module_exit(cmos_exit);
 
-#else	/* no PNPACPI */
+#else	/* no PNP */
 
 /*----------------------------------------------------------------*/
 
-/* Platform setup should have set up an RTC device, when PNPACPI is
- * unavailable ... this is the normal case, common even on PCs.
+/* Platform setup should have set up an RTC device, when PNP is
+ * unavailable ... this could happen even on (older) PCs.
  */
 
 static int __init cmos_platform_probe(struct platform_device *pdev)
@@ -718,7 +751,7 @@ static void __exit cmos_exit(void)
 module_exit(cmos_exit);
 
 
-#endif	/* !PNPACPI */
+#endif	/* !PNP */
 
 MODULE_AUTHOR("David Brownell");
 MODULE_DESCRIPTION("Driver for PC-style 'CMOS' RTCs");

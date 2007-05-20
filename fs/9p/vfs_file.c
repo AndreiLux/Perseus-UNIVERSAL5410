@@ -30,7 +30,6 @@
 #include <linux/file.h>
 #include <linux/stat.h>
 #include <linux/string.h>
-#include <linux/smp_lock.h>
 #include <linux/inet.h>
 #include <linux/list.h>
 #include <asm/uaccess.h>
@@ -41,6 +40,8 @@
 #include "9p.h"
 #include "v9fs_vfs.h"
 #include "fid.h"
+
+static const struct file_operations v9fs_cached_file_operations;
 
 /**
  * v9fs_file_open - open a file (or directory)
@@ -245,7 +246,7 @@ v9fs_file_write(struct file *filp, const char __user * data,
 	return total;
 }
 
-const struct file_operations v9fs_cached_file_operations = {
+static const struct file_operations v9fs_cached_file_operations = {
 	.llseek = generic_file_llseek,
 	.read = do_sync_read,
 	.aio_read = generic_file_aio_read,

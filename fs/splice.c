@@ -289,12 +289,10 @@ __generic_file_splice_read(struct file *in, loff_t *ppos,
 		nr_pages = PIPE_BUFFERS;
 
 	/*
-	 * Initiate read-ahead on this page range. however, don't call into
-	 * read-ahead if this is a non-zero offset (we are likely doing small
-	 * chunk splice and the page is already there) for a single page.
+	 * Don't try to 2nd guess the read-ahead logic, call into
+	 * page_cache_readahead() like the page cache reads would do.
 	 */
-	if (!loff || nr_pages > 1)
-		page_cache_readahead(mapping, &in->f_ra, in, index, nr_pages);
+	page_cache_readahead(mapping, &in->f_ra, in, index, nr_pages);
 
 	/*
 	 * Now fill in the holes:
@@ -378,10 +376,11 @@ __generic_file_splice_read(struct file *in, loff_t *ppos,
 			 * If in nonblock mode then dont block on waiting
 			 * for an in-flight io page
 			 */
-			if (flags & SPLICE_F_NONBLOCK)
-				break;
-
-			lock_page(page);
+			if (flags & SPLICE_F_NONBLOCK) {
+				if (TestSetPageLocked(page))
+					break;
+			} else
+				lock_page(page);
 
 			/*
 			 * page was truncated, stop here. if this isn't the
@@ -576,76 +575,21 @@ static int pipe_to_file(struct pipe_inode_info *pipe, struct pipe_buffer *buf,
 	if (this_len + offset > PAGE_CACHE_SIZE)
 		this_len = PAGE_CACHE_SIZE - offset;
 
-	/*
-	 * Reuse buf page, if SPLICE_F_MOVE is set and we are doing a full
-	 * page.
-	 */
-	if ((sd->flags & SPLICE_F_MOVE) && this_len == PAGE_CACHE_SIZE) {
-		/*
-		 * If steal succeeds, buf->page is now pruned from the
-		 * pagecache and we can reuse it. The page will also be
-		 * locked on successful return.
-		 */
-		if (buf->ops->steal(pipe, buf))
-			goto find_page;
-
-		page = buf->page;
-		if (add_to_page_cache(page, mapping, index, GFP_KERNEL)) {
-			unlock_page(page);
-			goto find_page;
-		}
-
-		page_cache_get(page);
-
-		if (!(buf->flags & PIPE_BUF_FLAG_LRU))
-			lru_cache_add(page);
-	} else {
 find_page:
-		page = find_lock_page(mapping, index);
-		if (!page) {
-			ret = -ENOMEM;
-			page = page_cache_alloc_cold(mapping);
-			if (unlikely(!page))
-				goto out_ret;
-
-			/*
-			 * This will also lock the page
-			 */
-			ret = add_to_page_cache_lru(page, mapping, index,
-						    GFP_KERNEL);
-			if (unlikely(ret))
-				goto out;
-		}
+	page = find_lock_page(mapping, index);
+	if (!page) {
+		ret = -ENOMEM;
+		page = page_cache_alloc_cold(mapping);
+		if (unlikely(!page))
+			goto out_ret;
 
 		/*
-		 * We get here with the page locked. If the page is also
-		 * uptodate, we don't need to do more. If it isn't, we
-		 * may need to bring it in if we are not going to overwrite
-		 * the full page.
+		 * This will also lock the page
 		 */
-		if (!PageUptodate(page)) {
-			if (this_len < PAGE_CACHE_SIZE) {
-				ret = mapping->a_ops->readpage(file, page);
-				if (unlikely(ret))
-					goto out;
-
-				lock_page(page);
-
-				if (!PageUptodate(page)) {
-					/*
-					 * Page got invalidated, repeat.
-					 */
-					if (!page->mapping) {
-						unlock_page(page);
-						page_cache_release(page);
-						goto find_page;
-					}
-					ret = -EIO;
-					goto out;
-				}
-			} else
-				SetPageUptodate(page);
-		}
+		ret = add_to_page_cache_lru(page, mapping, index,
+					    GFP_KERNEL);
+		if (unlikely(ret))
+			goto out;
 	}
 
 	ret = mapping->a_ops->prepare_write(file, page, offset, offset+this_len);
@@ -682,18 +626,25 @@ find_page:
 	}
 
 	ret = mapping->a_ops->commit_write(file, page, offset, offset+this_len);
-	if (!ret) {
+	if (ret) {
+		if (ret == AOP_TRUNCATED_PAGE) {
+			page_cache_release(page);
+			goto find_page;
+		}
+		if (ret < 0)
+			goto out;
 		/*
-		 * Return the number of bytes written and mark page as
-		 * accessed, we are now done!
+		 * Partial write has happened, so 'ret' already initialized by
+		 * number of bytes written, Where is nothing we have to do here.
 		 */
+	} else
 		ret = this_len;
-		mark_page_accessed(page);
-		balance_dirty_pages_ratelimited(mapping);
-	} else if (ret == AOP_TRUNCATED_PAGE) {
-		page_cache_release(page);
-		goto find_page;
-	}
+	/*
+	 * Return the number of bytes written and mark page as
+	 * accessed, we are now done!
+	 */
+	mark_page_accessed(page);
+	balance_dirty_pages_ratelimited(mapping);
 out:
 	page_cache_release(page);
 	unlock_page(page);
@@ -706,9 +657,9 @@ out_ret:
  * key here is the 'actor' worker passed in that actually moves the data
  * to the wanted destination. See pipe_to_file/pipe_to_sendpage above.
  */
-static ssize_t __splice_from_pipe(struct pipe_inode_info *pipe,
-				  struct file *out, loff_t *ppos, size_t len,
-				  unsigned int flags, splice_actor *actor)
+ssize_t __splice_from_pipe(struct pipe_inode_info *pipe,
+			   struct file *out, loff_t *ppos, size_t len,
+			   unsigned int flags, splice_actor *actor)
 {
 	int ret, do_wakeup, err;
 	struct splice_desc sd;
@@ -802,6 +753,7 @@ static ssize_t __splice_from_pipe(struct pipe_inode_info *pipe,
 
 	return ret;
 }
+EXPORT_SYMBOL(__splice_from_pipe);
 
 ssize_t splice_from_pipe(struct pipe_inode_info *pipe, struct file *out,
 			 loff_t *ppos, size_t len, unsigned int flags,

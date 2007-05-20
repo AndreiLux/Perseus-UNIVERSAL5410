@@ -201,7 +201,7 @@ static int iser_post_receive_control(struct iscsi_conn *conn)
 	 * what's common for both schemes is that the connection is not started
 	 */
 	if (conn->c_stage != ISCSI_CONN_STARTED)
-		rx_data_size = DEFAULT_MAX_RECV_DATA_SEGMENT_LENGTH;
+		rx_data_size = ISCSI_DEF_MAX_RECV_SEG_LEN;
 	else /* FIXME till user space sets conn->max_recv_dlength correctly */
 		rx_data_size = 128;
 
@@ -658,6 +658,7 @@ void iser_ctask_rdma_finalize(struct iscsi_iser_cmd_task *iser_ctask)
 {
 	int deferred;
 	int is_rdma_aligned = 1;
+	struct iser_regd_buf *regd;
 
 	/* if we were reading, copy back to unaligned sglist,
 	 * anyway dma_unmap and free the copy
@@ -672,20 +673,20 @@ void iser_ctask_rdma_finalize(struct iscsi_iser_cmd_task *iser_ctask)
 	}
 
 	if (iser_ctask->dir[ISER_DIR_IN]) {
-		deferred = iser_regd_buff_release
-			(&iser_ctask->rdma_regd[ISER_DIR_IN]);
+		regd = &iser_ctask->rdma_regd[ISER_DIR_IN];
+		deferred = iser_regd_buff_release(regd);
 		if (deferred) {
-			iser_err("References remain for BUF-IN rdma reg\n");
-			BUG();
+			iser_err("%d references remain for BUF-IN rdma reg\n",
+				 atomic_read(&regd->ref_count));
 		}
 	}
 
 	if (iser_ctask->dir[ISER_DIR_OUT]) {
-		deferred = iser_regd_buff_release
-			(&iser_ctask->rdma_regd[ISER_DIR_OUT]);
+		regd = &iser_ctask->rdma_regd[ISER_DIR_OUT];
+		deferred = iser_regd_buff_release(regd);
 		if (deferred) {
-			iser_err("References remain for BUF-OUT rdma reg\n");
-			BUG();
+			iser_err("%d references remain for BUF-OUT rdma reg\n",
+				 atomic_read(&regd->ref_count));
 		}
 	}
 

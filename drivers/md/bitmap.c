@@ -863,9 +863,7 @@ static int bitmap_init_from_disk(struct bitmap *bitmap, sector_t start)
 
 	/* We need 4 bits per page, rounded up to a multiple of sizeof(unsigned long) */
 	bitmap->filemap_attr = kzalloc(
-		(((num_pages*4/8)+sizeof(unsigned long)-1)
-		 /sizeof(unsigned long))
-		*sizeof(unsigned long),
+		roundup( DIV_ROUND_UP(num_pages*4, 8), sizeof(unsigned long)),
 		GFP_KERNEL);
 	if (!bitmap->filemap_attr)
 		goto out;
@@ -1458,10 +1456,10 @@ int bitmap_create(mddev_t *mddev)
 	bitmap->offset = mddev->bitmap_offset;
 	if (file) {
 		get_file(file);
-		do_sync_file_range(file, 0, LLONG_MAX,
-				   SYNC_FILE_RANGE_WAIT_BEFORE |
-				   SYNC_FILE_RANGE_WRITE |
-				   SYNC_FILE_RANGE_WAIT_AFTER);
+		do_sync_mapping_range(file->f_mapping, 0, LLONG_MAX,
+				      SYNC_FILE_RANGE_WAIT_BEFORE |
+				      SYNC_FILE_RANGE_WRITE |
+				      SYNC_FILE_RANGE_WAIT_AFTER);
 	}
 	/* read superblock from bitmap file (this sets bitmap->chunksize) */
 	err = bitmap_read_sb(bitmap);

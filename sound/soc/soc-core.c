@@ -116,6 +116,7 @@ static int soc_ac97_dev_register(struct snd_soc_codec *codec)
 static inline const char* get_dai_name(int type)
 {
 	switch(type) {
+	case SND_SOC_DAI_AC97_BUS:
 	case SND_SOC_DAI_AC97:
 		return "AC97";
 	case SND_SOC_DAI_I2S:
@@ -287,6 +288,13 @@ static void close_delayed_work(struct work_struct *work)
 		/* are we waiting on this codec DAI stream */
 		if (codec_dai->pop_wait == 1) {
 
+			/* power down the codec to D1 if no longer active */
+			if (codec->active == 0) {
+				dbg("pop wq D1 %s %s\n", codec->name,
+					codec_dai->playback.stream_name);
+				snd_soc_dapm_device_event(socdev, SNDRV_CTL_POWER_D1);
+			}
+
 			codec_dai->pop_wait = 0;
 			snd_soc_dapm_stream_event(codec, codec_dai->playback.stream_name,
 				SND_SOC_DAPM_STREAM_STOP);
@@ -295,8 +303,7 @@ static void close_delayed_work(struct work_struct *work)
 			if (codec->active == 0) {
 				dbg("pop wq D3 %s %s\n", codec->name,
 					codec_dai->playback.stream_name);
-		 		if (codec->dapm_event)
-					codec->dapm_event(codec, SNDRV_CTL_POWER_D3hot);
+		 		snd_soc_dapm_device_event(socdev, SNDRV_CTL_POWER_D3hot);
 			}
 		}
 	}
@@ -354,10 +361,8 @@ static int soc_codec_close(struct snd_pcm_substream *substream)
 		snd_soc_dapm_stream_event(codec,
 			codec_dai->capture.stream_name, SND_SOC_DAPM_STREAM_STOP);
 
-		if (codec->active == 0 && codec_dai->pop_wait == 0){
-			if (codec->dapm_event)
-				codec->dapm_event(codec, SNDRV_CTL_POWER_D3hot);
-		}
+		if (codec->active == 0 && codec_dai->pop_wait == 0)
+			snd_soc_dapm_device_event(socdev, SNDRV_CTL_POWER_D3hot);
 	}
 
 	mutex_unlock(&pcm_mutex);
@@ -432,8 +437,7 @@ static int soc_pcm_prepare(struct snd_pcm_substream *substream)
 		/* no delayed work - do we need to power up codec */
 		if (codec->dapm_state != SNDRV_CTL_POWER_D0) {
 
-			if (codec->dapm_event)
-				codec->dapm_event(codec, SNDRV_CTL_POWER_D1);
+			snd_soc_dapm_device_event(socdev,  SNDRV_CTL_POWER_D1);
 
 			if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 				snd_soc_dapm_stream_event(codec,
@@ -444,8 +448,7 @@ static int soc_pcm_prepare(struct snd_pcm_substream *substream)
 					codec_dai->capture.stream_name,
 					SND_SOC_DAPM_STREAM_START);
 
-			if (codec->dapm_event)
-				codec->dapm_event(codec, SNDRV_CTL_POWER_D0);
+			snd_soc_dapm_device_event(socdev, SNDRV_CTL_POWER_D0);
 			if (codec_dai->dai_ops.digital_mute)
 				codec_dai->dai_ops.digital_mute(codec_dai, 0);
 
@@ -1099,7 +1102,8 @@ int snd_soc_register_card(struct snd_soc_device *socdev)
 				continue;
 			}
 		}
-		if (socdev->machine->dai_link[i].cpu_dai->type == SND_SOC_DAI_AC97)
+		if (socdev->machine->dai_link[i].codec_dai->type == 
+			SND_SOC_DAI_AC97_BUS)
 			ac97 = 1;
 	}
 	snprintf(codec->card->shortname, sizeof(codec->card->shortname),
@@ -1148,11 +1152,21 @@ EXPORT_SYMBOL_GPL(snd_soc_register_card);
 void snd_soc_free_pcms(struct snd_soc_device *socdev)
 {
 	struct snd_soc_codec *codec = socdev->codec;
+#ifdef CONFIG_SND_SOC_AC97_BUS
+	struct snd_soc_codec_dai *codec_dai;
+	int i;
+#endif
 
 	mutex_lock(&codec->mutex);
 #ifdef CONFIG_SND_SOC_AC97_BUS
-	if (codec->ac97)
-		soc_ac97_dev_unregister(codec);
+	for(i = 0; i < codec->num_dai; i++) {
+		codec_dai = &codec->dai[i];
+		if (codec_dai->type == SND_SOC_DAI_AC97_BUS && codec->ac97) {
+			soc_ac97_dev_unregister(codec);
+			goto free_card;
+		}
+	}
+free_card:
 #endif
 
 	if (codec->card)

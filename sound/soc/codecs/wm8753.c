@@ -200,34 +200,34 @@ static const char *wm8753_dat_sel[] = {"Stereo", "Left ADC", "Right ADC",
 	"Channel Swap"};
 
 static const struct soc_enum wm8753_enum[] = {
-SOC_ENUM_SINGLE(WM8753_BASS, 7, 2, wm8753_base),		// 0
-SOC_ENUM_SINGLE(WM8753_BASS, 4, 6, wm8753_base_filter),	// 1
-SOC_ENUM_SINGLE(WM8753_TREBLE, 6, 2, wm8753_treble), 	// 2
-SOC_ENUM_SINGLE(WM8753_ALC1, 7, 4, wm8753_alc_func),	// 3
-SOC_ENUM_SINGLE(WM8753_NGATE, 1, 2, wm8753_ng_type),	// 4
-SOC_ENUM_SINGLE(WM8753_3D, 7, 2, wm8753_3d_func),		// 5
-SOC_ENUM_SINGLE(WM8753_3D, 6, 2, wm8753_3d_uc),			// 6
-SOC_ENUM_SINGLE(WM8753_3D, 5, 2, wm8753_3d_lc),			// 7
-SOC_ENUM_SINGLE(WM8753_DAC, 1, 4, wm8753_deemp),		// 8
-SOC_ENUM_SINGLE(WM8753_DAC, 4, 4, wm8753_mono_mix),		// 9
-SOC_ENUM_SINGLE(WM8753_DAC, 6, 2, wm8753_dac_phase),	// 10
-SOC_ENUM_SINGLE(WM8753_INCTL1, 3, 4, wm8753_line_mix),	// 11
-SOC_ENUM_SINGLE(WM8753_INCTL1, 2, 2, wm8753_mono_mux),	// 12
-SOC_ENUM_SINGLE(WM8753_INCTL1, 1, 2, wm8753_right_mux),	// 13
-SOC_ENUM_SINGLE(WM8753_INCTL1, 0, 2, wm8753_left_mux),	// 14
-SOC_ENUM_SINGLE(WM8753_INCTL2, 6, 4, wm8753_rxmsel),	// 15
-SOC_ENUM_SINGLE(WM8753_INCTL2, 4, 4, wm8753_sidetone_mux),// 16
-SOC_ENUM_SINGLE(WM8753_OUTCTL, 7, 4, wm8753_mono2_src),	// 17
-SOC_ENUM_SINGLE(WM8753_OUTCTL, 0, 3, wm8753_out3),		// 18
-SOC_ENUM_SINGLE(WM8753_ADCTL2, 7, 3, wm8753_out4),		// 19
-SOC_ENUM_SINGLE(WM8753_ADCIN, 2, 3, wm8753_radcsel),	// 20
-SOC_ENUM_SINGLE(WM8753_ADCIN, 0, 3, wm8753_ladcsel),	// 21
-SOC_ENUM_SINGLE(WM8753_ADCIN, 4, 4, wm8753_mono_adc),	// 22
-SOC_ENUM_SINGLE(WM8753_ADC, 2, 4, wm8753_adc_hp),		// 23
-SOC_ENUM_SINGLE(WM8753_ADC, 4, 2, wm8753_adc_filter),	// 24
-SOC_ENUM_SINGLE(WM8753_MICBIAS, 6, 3, wm8753_mic_sel),	// 25
-SOC_ENUM_SINGLE(WM8753_IOCTL, 2, 4, wm8753_dai_mode), // 26
-SOC_ENUM_SINGLE(WM8753_ADC, 7, 4, wm8753_dat_sel),	// 27
+SOC_ENUM_SINGLE(WM8753_BASS, 7, 2, wm8753_base),
+SOC_ENUM_SINGLE(WM8753_BASS, 4, 6, wm8753_base_filter),
+SOC_ENUM_SINGLE(WM8753_TREBLE, 6, 2, wm8753_treble),
+SOC_ENUM_SINGLE(WM8753_ALC1, 7, 4, wm8753_alc_func),
+SOC_ENUM_SINGLE(WM8753_NGATE, 1, 2, wm8753_ng_type),
+SOC_ENUM_SINGLE(WM8753_3D, 7, 2, wm8753_3d_func),
+SOC_ENUM_SINGLE(WM8753_3D, 6, 2, wm8753_3d_uc),
+SOC_ENUM_SINGLE(WM8753_3D, 5, 2, wm8753_3d_lc),
+SOC_ENUM_SINGLE(WM8753_DAC, 1, 4, wm8753_deemp),
+SOC_ENUM_SINGLE(WM8753_DAC, 4, 4, wm8753_mono_mix),
+SOC_ENUM_SINGLE(WM8753_DAC, 6, 2, wm8753_dac_phase),
+SOC_ENUM_SINGLE(WM8753_INCTL1, 3, 4, wm8753_line_mix),
+SOC_ENUM_SINGLE(WM8753_INCTL1, 2, 2, wm8753_mono_mux),
+SOC_ENUM_SINGLE(WM8753_INCTL1, 1, 2, wm8753_right_mux),
+SOC_ENUM_SINGLE(WM8753_INCTL1, 0, 2, wm8753_left_mux),
+SOC_ENUM_SINGLE(WM8753_INCTL2, 6, 4, wm8753_rxmsel),
+SOC_ENUM_SINGLE(WM8753_INCTL2, 4, 4, wm8753_sidetone_mux),
+SOC_ENUM_SINGLE(WM8753_OUTCTL, 7, 4, wm8753_mono2_src),
+SOC_ENUM_SINGLE(WM8753_OUTCTL, 0, 3, wm8753_out3),
+SOC_ENUM_SINGLE(WM8753_ADCTL2, 7, 3, wm8753_out4),
+SOC_ENUM_SINGLE(WM8753_ADCIN, 2, 3, wm8753_radcsel),
+SOC_ENUM_SINGLE(WM8753_ADCIN, 0, 3, wm8753_ladcsel),
+SOC_ENUM_SINGLE(WM8753_ADCIN, 4, 4, wm8753_mono_adc),
+SOC_ENUM_SINGLE(WM8753_ADC, 2, 4, wm8753_adc_hp),
+SOC_ENUM_SINGLE(WM8753_ADC, 4, 2, wm8753_adc_filter),
+SOC_ENUM_SINGLE(WM8753_MICBIAS, 6, 3, wm8753_mic_sel),
+SOC_ENUM_SINGLE(WM8753_IOCTL, 2, 4, wm8753_dai_mode),
+SOC_ENUM_SINGLE(WM8753_ADC, 7, 4, wm8753_dat_sel),
 };
 
 
@@ -704,7 +704,7 @@ struct _pll_div {
 static void pll_factors(struct _pll_div *pll_div, unsigned int target,
 	unsigned int source)
 {
-	unsigned long long Kpart;
+	u64 Kpart;
 	unsigned int K, Ndiv, Nmod;
 
 	Ndiv = target / source;
@@ -763,28 +763,27 @@ static int wm8753_set_dai_pll(struct snd_soc_codec_dai *codec_dai,
 		wm8753_write(codec, WM8753_CLOCK, reg);
 		return 0;
 	} else {
-
-        u16 value = 0;
-        struct _pll_div pll_div;
+		u16 value = 0;
+		struct _pll_div pll_div;
 
 		pll_factors(&pll_div, freq_out * 8, freq_in);
 
-        /* set up N and K PLL divisor ratios */
-        /* bits 8:5 = PLL_N, bits 3:0 = PLL_K[21:18] */
-        value = (pll_div.n << 5) + ((pll_div.k & 0x3c0000) >> 18);
-        wm8753_write(codec, WM8753_PLL1CTL2 + offset, value);
+		/* set up N and K PLL divisor ratios */
+		/* bits 8:5 = PLL_N, bits 3:0 = PLL_K[21:18] */
+		value = (pll_div.n << 5) + ((pll_div.k & 0x3c0000) >> 18);
+		wm8753_write(codec, WM8753_PLL1CTL2 + offset, value);
 
-        /* bits 8:0 = PLL_K[17:9] */
-        value = (pll_div.k & 0x03fe00) >> 9;
-        wm8753_write(codec, WM8753_PLL1CTL3 + offset, value);
+		/* bits 8:0 = PLL_K[17:9] */
+		value = (pll_div.k & 0x03fe00) >> 9;
+		wm8753_write(codec, WM8753_PLL1CTL3 + offset, value);
 
-        /* bits 8:0 = PLL_K[8:0] */
-        value = pll_div.k & 0x0001ff;
-        wm8753_write(codec, WM8753_PLL1CTL4 + offset, value);
+		/* bits 8:0 = PLL_K[8:0] */
+		value = pll_div.k & 0x0001ff;
+		wm8753_write(codec, WM8753_PLL1CTL4 + offset, value);
 
-        /* set PLL as input and enable */
-        wm8753_write(codec, WM8753_PLL1CTL1 + offset, 0x0027 |
-        	(pll_div.div2 << 3));
+		/* set PLL as input and enable */
+		wm8753_write(codec, WM8753_PLL1CTL1 + offset, 0x0027 |
+			(pll_div.div2 << 3));
 		wm8753_write(codec, WM8753_CLOCK, reg | enable);
 	}
 	return 0;
@@ -1560,15 +1559,12 @@ static int wm8753_init(struct snd_soc_device *socdev)
 	codec->dapm_event = wm8753_dapm_event;
 	codec->dai = wm8753_dai;
 	codec->num_dai = 2;
-	codec->reg_cache_size = ARRAY_SIZE(wm8753_reg);
+	codec->reg_cache_size = sizeof(wm8753_reg);
+	codec->reg_cache = kmemdup(wm8753_reg, sizeof(wm8753_reg), GFP_KERNEL);
 
-	codec->reg_cache =
-			kzalloc(sizeof(u16) * ARRAY_SIZE(wm8753_reg), GFP_KERNEL);
 	if (codec->reg_cache == NULL)
 		return -ENOMEM;
-	memcpy(codec->reg_cache, wm8753_reg,
-		sizeof(u16) * ARRAY_SIZE(wm8753_reg));
-	codec->reg_cache_size = sizeof(u16) * ARRAY_SIZE(wm8753_reg);
+
 	wm8753_set_dai_mode(codec, 0);
 
 	wm8753_reset(codec);
@@ -1591,6 +1587,10 @@ static int wm8753_init(struct snd_soc_device *socdev)
 	wm8753_write(codec, WM8753_LDAC, reg | 0x0100);
 	reg = wm8753_read_reg_cache(codec, WM8753_RDAC);
 	wm8753_write(codec, WM8753_RDAC, reg | 0x0100);
+	reg = wm8753_read_reg_cache(codec, WM8753_LADC);
+	wm8753_write(codec, WM8753_LADC, reg | 0x0100);
+	reg = wm8753_read_reg_cache(codec, WM8753_RADC);
+	wm8753_write(codec, WM8753_RADC, reg | 0x0100);
 	reg = wm8753_read_reg_cache(codec, WM8753_LOUT1V);
 	wm8753_write(codec, WM8753_LOUT1V, reg | 0x0100);
 	reg = wm8753_read_reg_cache(codec, WM8753_ROUT1V);
@@ -1633,8 +1633,6 @@ static struct snd_soc_device *wm8753_socdev;
  *    low  = 0x1a
  *    high = 0x1b
  */
-#define I2C_DRIVERID_WM8753 0xfefe /* liam -  need a proper id */
-
 static unsigned short normal_i2c[] = { 0, I2C_CLIENT_END };
 
 /* Magic definition of all other variables and things */
@@ -1657,12 +1655,11 @@ static int wm8753_codec_probe(struct i2c_adapter *adap, int addr, int kind)
 	client_template.adapter = adap;
 	client_template.addr = addr;
 
-	i2c = kzalloc(sizeof(struct i2c_client), GFP_KERNEL);
+	i2c =  kmemdup(&client_template, sizeof(client_template), GFP_KERNEL);
 	if (i2c == NULL){
 		kfree(codec);
 		return -ENOMEM;
 	}
-	memcpy(i2c, &client_template, sizeof(struct i2c_client));
 	i2c_set_clientdata(i2c, codec);
 	codec->control_data = i2c;
 

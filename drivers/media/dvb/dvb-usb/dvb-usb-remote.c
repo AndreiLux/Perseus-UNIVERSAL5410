@@ -3,7 +3,7 @@
  * Copyright (C) 2004-6 Patrick Boettcher (patrick.boettcher@desy.de)
  * see dvb-usb-init.c for copyright information.
  *
- * This file contains functions for initializing the the input-device and for handling remote-control-queries.
+ * This file contains functions for initializing the input-device and for handling remote-control-queries.
  */
 #include "dvb-usb-common.h"
 #include <linux/usb/input.h>
@@ -107,8 +107,6 @@ int dvb_usb_remote_init(struct dvb_usb_device *d)
 		return -ENOMEM;
 
 	input_dev->evbit[0] = BIT(EV_KEY);
-	input_dev->keycodesize = sizeof(unsigned char);
-	input_dev->keycodemax = KEY_MAX;
 	input_dev->name = "IR-receiver inside an USB DVB receiver";
 	input_dev->phys = d->rc_phys;
 	usb_to_input_id(d->udev, &input_dev->id);

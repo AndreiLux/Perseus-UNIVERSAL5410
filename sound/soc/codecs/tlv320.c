@@ -366,15 +366,12 @@ static int tlv320_init(struct snd_soc_device *socdev)
 	codec->write = tlv320_write;
 	codec->dai = tlv320_dai;
 	codec->num_dai = ARRAY_SIZE(tlv320_dai);
-	codec->reg_cache_size = ARRAY_SIZE(tlv320_reg_addr);
+	codec->reg_cache_size = sizeof(tlv320_reg_addr);
 
 	codec->reg_cache =
-			kzalloc(sizeof(u8) * ARRAY_SIZE(tlv320_reg_addr), GFP_KERNEL);
+		kmemdup(tlv320_reg_addr, sizeof(tlv320_reg_addr), GFP_KERNEL);
 	if (codec->reg_cache == NULL)
 		return -ENOMEM;
-	memcpy(codec->reg_cache, tlv320_reg_addr,
-		sizeof(u8) * ARRAY_SIZE(tlv320_reg_addr));
-	codec->reg_cache_size = sizeof(u8) * ARRAY_SIZE(tlv320_reg_addr);
 
 	/* register pcms */
 	ret = snd_soc_new_pcms(socdev, SNDRV_DEFAULT_IDX1, SNDRV_DEFAULT_STR1);
@@ -426,12 +423,11 @@ static int tlv320_codec_probe(struct i2c_adapter *adap, int addr, int kind)
 	client_template.adapter = adap;
 	client_template.addr = addr;
 
-	i2c = kzalloc(sizeof(struct i2c_client), GFP_KERNEL);
+	i2c = kmemdup(&client_template, sizeof(client_template), GFP_KERNEL);
 	if (i2c == NULL){
 		kfree(codec);
 		return -ENOMEM;
 	}
-	memcpy(i2c, &client_template, sizeof(struct i2c_client));
 	i2c_set_clientdata(i2c, codec);
 	codec->control_data = i2c;
 

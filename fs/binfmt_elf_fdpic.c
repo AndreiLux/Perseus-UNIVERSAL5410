@@ -30,7 +30,6 @@
 #include <linux/personality.h>
 #include <linux/ptrace.h>
 #include <linux/init.h>
-#include <linux/smp_lock.h>
 #include <linux/elf.h>
 #include <linux/elf-fdpic.h>
 #include <linux/elfcore.h>
@@ -1480,8 +1479,8 @@ static int elf_fdpic_dump_segments(struct file *file, struct mm_struct *mm,
 				DUMP_SEEK(file->f_pos + PAGE_SIZE);
 			}
 			else if (page == ZERO_PAGE(addr)) {
-				DUMP_SEEK(file->f_pos + PAGE_SIZE);
 				page_cache_release(page);
+				DUMP_SEEK(file->f_pos + PAGE_SIZE);
 			}
 			else {
 				void *kaddr;

@@ -47,7 +47,6 @@
 #include <linux/pci.h>
 #include <linux/vmalloc.h>
 #include <linux/smp.h>
-#include <linux/smp_lock.h>
 #include <linux/spinlock.h>
 #include <linux/kobject.h>
 #include <linux/firmware.h>
@@ -70,33 +69,40 @@
 
 static const struct pci_device_id icom_pci_table[] = {
 	{
-	      .vendor = PCI_VENDOR_ID_IBM,
-	      .device = PCI_DEVICE_ID_IBM_ICOM_DEV_ID_1,
-	      .subvendor = PCI_ANY_ID,
-	      .subdevice = PCI_ANY_ID,
-	      .driver_data = ADAPTER_V1,
-	 },
+		.vendor = PCI_VENDOR_ID_IBM,
+		.device = PCI_DEVICE_ID_IBM_ICOM_DEV_ID_1,
+		.subvendor = PCI_ANY_ID,
+		.subdevice = PCI_ANY_ID,
+		.driver_data = ADAPTER_V1,
+	},
 	{
-	      .vendor = PCI_VENDOR_ID_IBM,
-	      .device = PCI_DEVICE_ID_IBM_ICOM_DEV_ID_2,
-	      .subvendor = PCI_VENDOR_ID_IBM,
-	      .subdevice = PCI_DEVICE_ID_IBM_ICOM_V2_TWO_PORTS_RVX,
-	      .driver_data = ADAPTER_V2,
-	 },
+		.vendor = PCI_VENDOR_ID_IBM,
+		.device = PCI_DEVICE_ID_IBM_ICOM_DEV_ID_2,
+		.subvendor = PCI_VENDOR_ID_IBM,
+		.subdevice = PCI_DEVICE_ID_IBM_ICOM_V2_TWO_PORTS_RVX,
+		.driver_data = ADAPTER_V2,
+	},
 	{
-	      .vendor = PCI_VENDOR_ID_IBM,
-	      .device = PCI_DEVICE_ID_IBM_ICOM_DEV_ID_2,
-	      .subvendor = PCI_VENDOR_ID_IBM,
-	      .subdevice = PCI_DEVICE_ID_IBM_ICOM_V2_ONE_PORT_RVX_ONE_PORT_MDM,
-	      .driver_data = ADAPTER_V2,
-	 },
+		.vendor = PCI_VENDOR_ID_IBM,
+		.device = PCI_DEVICE_ID_IBM_ICOM_DEV_ID_2,
+		.subvendor = PCI_VENDOR_ID_IBM,
+		.subdevice = PCI_DEVICE_ID_IBM_ICOM_V2_ONE_PORT_RVX_ONE_PORT_MDM,
+		.driver_data = ADAPTER_V2,
+	},
 	{
-	      .vendor = PCI_VENDOR_ID_IBM,
-	      .device = PCI_DEVICE_ID_IBM_ICOM_DEV_ID_2,
-	      .subvendor = PCI_VENDOR_ID_IBM,
-	      .subdevice = PCI_DEVICE_ID_IBM_ICOM_FOUR_PORT_MODEL,
-	      .driver_data = ADAPTER_V2,
-	 },
+		.vendor = PCI_VENDOR_ID_IBM,
+		.device = PCI_DEVICE_ID_IBM_ICOM_DEV_ID_2,
+		.subvendor = PCI_VENDOR_ID_IBM,
+		.subdevice = PCI_DEVICE_ID_IBM_ICOM_FOUR_PORT_MODEL,
+		.driver_data = ADAPTER_V2,
+	},
+	{
+		.vendor = PCI_VENDOR_ID_IBM,
+		.device = PCI_DEVICE_ID_IBM_ICOM_DEV_ID_2,
+		.subvendor = PCI_VENDOR_ID_IBM,
+		.subdevice = PCI_DEVICE_ID_IBM_ICOM_V2_ONE_PORT_RVX_ONE_PORT_MDM_PCIE,
+		.driver_data = ADAPTER_V2,
+	},
 	{}
 };
 
@@ -164,7 +170,7 @@ static void free_port_memory(struct icom_port *icom_port)
 	}
 }
 
-static int __init get_port_memory(struct icom_port *icom_port)
+static int __devinit get_port_memory(struct icom_port *icom_port)
 {
 	int index;
 	unsigned long stgAddr;
@@ -1380,7 +1386,7 @@ static void icom_port_active(struct icom_port *icom_port, struct icom_adapter *i
 			    0x8024 + 2 - 2 * (icom_port->port - 2);
 	}
 }
-static int __init icom_load_ports(struct icom_adapter *icom_adapter)
+static int __devinit icom_load_ports(struct icom_adapter *icom_adapter)
 {
 	struct icom_port *icom_port;
 	int port_num;
@@ -1473,7 +1479,7 @@ static void icom_remove_adapter(struct icom_adapter *icom_adapter)
 		}
 	}
 
-	free_irq(icom_adapter->irq_number, (void *) icom_adapter);
+	free_irq(icom_adapter->pci_dev->irq, (void *) icom_adapter);
 	iounmap(icom_adapter->base_addr);
 	icom_free_adapter(icom_adapter);
 	pci_release_regions(icom_adapter->pci_dev);
@@ -1539,7 +1545,6 @@ static int __devinit icom_probe(struct pci_dev *dev,
 	}
 
 	 icom_adapter->base_addr_pci = pci_resource_start(dev, 0);
-	 icom_adapter->irq_number = dev->irq;
 	 icom_adapter->pci_dev = dev;
 	 icom_adapter->version = ent->driver_data;
 	 icom_adapter->subsystem_id = ent->subdevice;
@@ -1570,7 +1575,7 @@ static int __devinit icom_probe(struct pci_dev *dev,
 		icom_port = &icom_adapter->port_info[index];
 
 		if (icom_port->status == ICOM_PORT_ACTIVE) {
-			icom_port->uart_port.irq = icom_port->adapter->irq_number;
+			icom_port->uart_port.irq = icom_port->adapter->pci_dev->irq;
 			icom_port->uart_port.type = PORT_ICOM;
 			icom_port->uart_port.iotype = UPIO_MEM;
 			icom_port->uart_port.membase =
