@@ -1424,7 +1424,7 @@ int snd_soc_get_volsw(struct snd_kcontrol *kcontrol,
 	int shift = (kcontrol->private_value >> 8) & 0x0f;
 	int rshift = (kcontrol->private_value >> 12) & 0x0f;
 	int max = (kcontrol->private_value >> 16) & 0xff;
-	int mask = (1<<fls(max))-1;
+	int mask = (1 << fls(max)) - 1;
 	int invert = (kcontrol->private_value >> 24) & 0x01;
 
 	ucontrol->value.integer.value[0] =
@@ -1461,13 +1461,11 @@ int snd_soc_put_volsw(struct snd_kcontrol *kcontrol,
 	int shift = (kcontrol->private_value >> 8) & 0x0f;
 	int rshift = (kcontrol->private_value >> 12) & 0x0f;
 	int max = (kcontrol->private_value >> 16) & 0xff;
-	int mask = (1<<fls(max))-1;
+	int mask = (1 << fls(max)) - 1;
 	int invert = (kcontrol->private_value >> 24) & 0x01;
-	int err;
 	unsigned short val, val2, val_mask;
 
 	val = (ucontrol->value.integer.value[0] & mask);
-printk("put_volsw: %d\n", val);
 	if (invert)
 		val = max - val;
 	val_mask = mask << shift;
@@ -1479,8 +1477,7 @@ printk("put_volsw: %d\n", val);
 		val_mask |= mask << rshift;
 		val |= val2 << rshift;
 	}
-	err = snd_soc_update_bits(codec, reg, val_mask, val);
-	return err;
+	return snd_soc_update_bits(codec, reg, val_mask, val);
 }
 EXPORT_SYMBOL_GPL(snd_soc_put_volsw);
 
@@ -1560,7 +1557,7 @@ int snd_soc_put_volsw_2r(struct snd_kcontrol *kcontrol,
 	int reg2 = (kcontrol->private_value >> 24) & 0xff;
 	int shift = (kcontrol->private_value >> 8) & 0x0f;
 	int max = (kcontrol->private_value >> 12) & 0xff;
-	int mask = (1<<fls(max))-1;
+	int mask = (1 << fls(max)) - 1;
 	int invert = (kcontrol->private_value >> 20) & 0x01;
 	int err;
 	unsigned short val, val2, val_mask;
