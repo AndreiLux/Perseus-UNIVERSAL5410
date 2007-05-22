@@ -183,6 +183,7 @@ SOC_SINGLE("Capture PGA Volume", WM8510_INPPGA,  0, 63, 0),
 SOC_SINGLE("Speaker Playback ZC Switch", WM8510_SPKVOL,  7, 1, 0),
 SOC_SINGLE("Speaker Playback Switch", WM8510_SPKVOL,  6, 1, 1),
 SOC_SINGLE("Speaker Playback Volume", WM8510_SPKVOL,  0, 63, 0),
+SOC_SINGLE("Speaker Boost", WM8510_OUTPUT, 2, 1, 0),
 
 SOC_SINGLE("Capture Boost(+20dB)", WM8510_ADCBOOST,  8, 1, 0),
 SOC_SINGLE("Mono Playback Switch", WM8510_MONOMIX, 6, 1, 0),
