@@ -641,6 +641,12 @@ static int soc_suspend(struct platform_device *pdev, pm_message_t state)
 			dai->dai_ops.digital_mute(dai, 1);
 	}
 
+	snd_power_change_state(codec->card, SNDRV_CTL_POWER_D3cold);
+	
+	/* suspend all pcm's */
+	for(i = 0; i < machine->num_links; i++)
+		snd_pcm_suspend_all(machine->dai_link[i].pcm);
+
 	if (machine->suspend_pre)
 		machine->suspend_pre(pdev, state);
 
@@ -733,6 +739,7 @@ static int soc_resume(struct platform_device *pdev)
 	if (machine->resume_post)
 		machine->resume_post(pdev);
 
+	snd_power_change_state(codec->card, SNDRV_CTL_POWER_D3hot);
 	return 0;
 }
 
@@ -875,6 +882,7 @@ static int soc_new_pcm(struct snd_soc_device *socdev,
 		return ret;
 	}
 
+	dai_link->pcm = pcm;
 	pcm->private_data = rtd;
 	soc_pcm_ops.mmap = socdev->platform->pcm_ops->mmap;
 	soc_pcm_ops.pointer = socdev->platform->pcm_ops->pointer;
