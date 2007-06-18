@@ -18,6 +18,10 @@ config SND_PXA2XX_SOC_AC97
 config SND_PXA2XX_SOC_I2S
 	tristate
 
+config SND_PXA2XX_SOC_SSP
+	tristate
+	select PXA_SSP
+
 config SND_PXA2XX_SOC_CORGI
 	tristate "SoC Audio support for Sharp Zaurus SL-C7x0"
 	depends on SND_PXA2XX_SOC && PXA_SHARP_C7xx
@@ -53,3 +57,104 @@ config SND_PXA2XX_SOC_TOSA
 	help
 	  Say Y if you want to add support for SoC audio on Sharp
 	  Zaurus SL-C6000x models (Tosa).
+
+config SND_PXA2XX_SOC_MAGICIAN
+	tristate "SoC Audio support for HTC Magician"
+	depends on SND_PXA2XX_SOC
+	select SND_PXA2XX_SOC_I2S
+	select SND_PXA2XX_SOC_SSP
+	select SND_SOC_UDA1380
+	help
+	  Say Y if you want to add support for SoC audio on the
+	  HTC Magician.
+
+config SND_PXA2XX_SOC_AMESOM_TLV320
+	tristate "SoC SSP Audio support for AMESOM - TLV320AIC24k"
+	depends on SND_PXA2XX_SOC && MACH_AMESOM
+	select SND_PXA2XX_SOC_I2S
+	select SND_PXA2XX_SOC_SSP
+	select SND_SOC_TLV320
+	help
+	  Say Y if you want to add support for SoC audio on Amesom
+	  with the tlv320.
+	  
+config SND_PXA2XX_SOC_H5000
+	tristate "ASoC support for H5000"
+	depends on SND_PXA2XX_SOC && MACH_PXA
+	select SND_PXA2XX_SOC_I2S
+	select SND_SOC_AK4535
+	help
+	  Say Y if you want to add support for ASoC audio for H5000.
+
+config SND_PXA2XX_SOC_MAINSTONE
+	tristate "SoC AC97 Audio support for Intel Mainstone"
+	depends on SND_PXA2XX_SOC && MACH_MAINSTONE
+	select SND_PXA2XX_AC97
+	help
+	  Say Y if you want to add support for generic AC97 SoC audio on Mainstone.
+
+config SND_PXA2XX_SOC_MAINSTONE_WM8731
+	tristate "SoC I2S Audio support for Intel Mainstone - WM8731"
+	depends on SND_PXA2XX_SOC && MACH_MAINSTONE
+	select SND_PXA2XX_SOC_I2S
+	select SND_SOC_WM8731
+	help
+	  Say Y if you want to add support for SoC audio on Mainstone
+	  with the WM8731.
+
+config SND_PXA2XX_SOC_MAINSTONE_WM8753
+	tristate "SoC I2S/SSP Audio support for Intel Mainstone - WM8753"
+	depends on SND_PXA2XX_SOC && MACH_MAINSTONE
+	select SND_PXA2XX_SOC_I2S
+	select SND_PXA2XX_SOC_SSP
+	select SND_SOC_WM8753
+	help
+	  Say Y if you want to add support for SoC audio on Mainstone
+	  with the WM8753.
+
+config SND_PXA2XX_SOC_MAINSTONE_WM8974
+	tristate "SoC I2S Audio support for Intel Mainstone - WM8974"
+	depends on SND_PXA2XX_SOC && MACH_MAINSTONE
+	select SND_PXA2XX_SOC_I2S
+	select SND_SOC_WM8974
+	help
+	  Say Y if you want to add support for SoC audio on Mainstone
+	  with the WM8974.
+
+config SND_PXA2XX_SOC_MAINSTONE_WM9713
+	tristate "SoC I2S/SSP Audio support for Intel Mainstone - WM9713"
+	depends on SND_PXA2XX_SOC && MACH_MAINSTONE
+	select SND_PXA2XX_SOC_AC97
+	select SND_PXA2XX_SOC_SSP
+	select SND_SOC_WM9713
+	help
+	  Say Y if you want to add support for SoC voice audio on Mainstone
+	  with the WM9713.
+
+config SND_MAINSTONE_BASEBAND
+	tristate "Example SoC Baseband Audio support for Intel Mainstone"
+	depends on SND_PXA2XX_SOC && MACH_MAINSTONE
+	select SND_PXA2XX_SOC_AC97
+	select SND_SOC_WM9713
+	help
+	  Say Y if you want to add support for SoC baseband on Mainstone
+	  with the WM9713 and example Baseband modem.
+
+config SND_MAINSTONE_BLUETOOTH
+	tristate "Example SoC Bluetooth Audio support for Intel Mainstone"
+	depends on SND_PXA2XX_SOC && MACH_MAINSTONE
+	select SND_PXA2XX_SOC_I2S
+	select SND_SOC_WM8753
+	help
+	  Say Y if you want to add support for SoC bluetooth on Mainstone
+	  with the WM8753 and example Bluetooth codec.
+
+config SND_PXA2xx_SOC_MAINSTONE_WM9712
+	tristate "SoC I2S/SSP Audio support for Intel Mainstone - WM9712"
+	depends on SND_PXA2XX_SOC && MACH_MAINSTONE
+	select SND_PXA2XX_SOC_AC97
+	select SND_SOC_WM9712
+	help
+	  Say Y if you want to add support for SoC voice audio on Mainstone
+	  with the WM9712.
+

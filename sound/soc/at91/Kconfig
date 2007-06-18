@@ -25,3 +25,13 @@ config SND_AT91_SOC_ETI_SLAVE
 	help
 	  Say Y if you want to run with the AT91 SSC generating the BCLK
 	  and LRC signals on Endrelia boards.
+
+config SND_AT91_SOC_ETI_B1_BLUECORE
+	tristate "SoC Audio support for BlueCore PCM on Endrelia ETI-B1 boards"
+	depends on SND_AT91_SOC && (MACH_ETI_B1 || MACH_ETI_C1)
+	select SND_AT91_SOC_SSC
+	help
+	  Say Y if you want to add support for SoC audio on the CSR BlueCore
+	  Bluetooth PCM interface on Endrelia Technologies Inc ETI-B1 or
+	  ETI-C1 boards.
+

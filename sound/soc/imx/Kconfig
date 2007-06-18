@@ -1,0 +1,29 @@
+config SND_MXC_SOC
+	tristate "SoC Audio for the Freescale i.MX CPU"
+	depends on ARCH_MXC && SND
+	select SND_PCM
+	help
+	  Say Y or M if you want to add support for codecs attached to
+	  the MXC AC97, I2S or SSP interface. You will also need
+	  to select the audio interfaces to support below.
+
+config SND_MXC_AC97
+	tristate
+	select SND_AC97_CODEC
+
+config SND_MXC_SOC_AC97
+	tristate
+	select AC97_BUS
+
+config SND_MXC_SOC_SSI
+	tristate
+
+config SND_SOC_MX31ADS_WM8753
+	tristate "SoC Audio support for MX31 - WM8753"
+	depends on SND_MXC_SOC && ARCH_MX3
+	select SND_MXC_SOC_SSI
+	select SND_SOC_WM8753
+	help
+	  Say Y if you want to add support for SoC audio on MX31ADS
+	  with the WM8753.
+

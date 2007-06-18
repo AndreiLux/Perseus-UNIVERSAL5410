@@ -7,5 +7,7 @@ obj-$(CONFIG_SND_AT91_SOC_SSC) += snd-soc-at91-ssc.o
 
 # AT91 Machine Support
 snd-soc-eti-b1-wm8731-objs := eti_b1_wm8731.o
+snd-soc-eti-b1-bluecore-objs := eti_b1_bluecore.o
 
 obj-$(CONFIG_SND_AT91_SOC_ETI_B1_WM8731) += snd-soc-eti-b1-wm8731.o
+obj-$(CONFIG_SND_AT91_SOC_ETI_B1_BLUECORE) += snd-soc-eti-b1-bluecore.o

@@ -692,7 +692,7 @@ static int dapm_mux_update_power(struct snd_soc_dapm_widget *widget,
 	return 0;
 }
 
-/* test and update the power status of a mixer widget */
+/* test and update the power status of a mixer or switch widget */
 static int dapm_mixer_update_power(struct snd_soc_dapm_widget *widget,
 				   struct snd_kcontrol *kcontrol, int reg,
 				   int val_mask, int val, int invert)
@@ -700,7 +700,7 @@ static int dapm_mixer_update_power(struct snd_soc_dapm_widget *widget,
 	struct snd_soc_dapm_path *path;
 	int found = 0;
 
-	if (widget->id != snd_soc_dapm_mixer)
+	if (widget->id != snd_soc_dapm_mixer && widget->id != snd_soc_dapm_switch)
 		return -ENODEV;
 
 	if (!snd_soc_test_bits(widget->codec, reg, val_mask, val))
@@ -1019,8 +1019,9 @@ int snd_soc_dapm_get_volsw(struct snd_kcontrol *kcontrol,
 	int reg = kcontrol->private_value & 0xff;
 	int shift = (kcontrol->private_value >> 8) & 0x0f;
 	int rshift = (kcontrol->private_value >> 12) & 0x0f;
-	int mask = (kcontrol->private_value >> 16) & 0xff;
+	int max = (kcontrol->private_value >> 16) & 0xff;
 	int invert = (kcontrol->private_value >> 24) & 0x01;
+	int mask = (1 << fls(max)) - 1;
 
 	/* return the saved value if we are powered down */
 	if (widget->id == snd_soc_dapm_pga && !widget->power) {
@@ -1035,10 +1036,10 @@ int snd_soc_dapm_get_volsw(struct snd_kcontrol *kcontrol,
 			(snd_soc_read(widget->codec, reg) >> rshift) & mask;
 	if (invert) {
 		ucontrol->value.integer.value[0] =
-			mask - ucontrol->value.integer.value[0];
+			max - ucontrol->value.integer.value[0];
 		if (shift != rshift)
 			ucontrol->value.integer.value[1] =
-				mask - ucontrol->value.integer.value[1];
+				max - ucontrol->value.integer.value[1];
 	}
 
 	return 0;
@@ -1061,7 +1062,8 @@ int snd_soc_dapm_put_volsw(struct snd_kcontrol *kcontrol,
 	int reg = kcontrol->private_value & 0xff;
 	int shift = (kcontrol->private_value >> 8) & 0x0f;
 	int rshift = (kcontrol->private_value >> 12) & 0x0f;
-	int mask = (kcontrol->private_value >> 16) & 0xff;
+	int max = (kcontrol->private_value >> 16) & 0xff;
+	int mask = (1 << fls(max)) - 1;
 	int invert = (kcontrol->private_value >> 24) & 0x01;
 	unsigned short val, val2, val_mask;
 	int ret;
@@ -1069,13 +1071,13 @@ int snd_soc_dapm_put_volsw(struct snd_kcontrol *kcontrol,
 	val = (ucontrol->value.integer.value[0] & mask);
 
 	if (invert)
-		val = mask - val;
+		val = max - val;
 	val_mask = mask << shift;
 	val = val << shift;
 	if (shift != rshift) {
 		val2 = (ucontrol->value.integer.value[1] & mask);
 		if (invert)
-			val2 = mask - val2;
+			val2 = max - val2;
 		val_mask |= mask << rshift;
 		val |= val2 << rshift;
 	}
@@ -1278,6 +1280,29 @@ int snd_soc_dapm_stream_event(struct snd_soc_codec *codec,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_dapm_stream_event);
+
+/**
+ * snd_soc_dapm_device_event - send a device event to the dapm core
+ * @socdev: audio device
+ * @event: device event
+ *
+ * Sends a device event to the dapm core. The core then makes any
+ * necessary machine or codec power changes..
+ *
+ * Returns 0 for success else error.
+ */
+int snd_soc_dapm_device_event(struct snd_soc_device *socdev, int event)
+{
+	struct snd_soc_codec *codec = socdev->codec;
+	struct snd_soc_machine *machine = socdev->machine;
+	
+	if (machine->dapm_event)
+		machine->dapm_event(machine, event);
+	if (codec->dapm_event)
+		codec->dapm_event(codec, event);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(snd_soc_dapm_device_event);
 
 /**
  * snd_soc_dapm_set_endpoint - set audio endpoint status

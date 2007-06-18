@@ -280,7 +280,7 @@ static int __init eti_b1_init(void)
 	u32 ssc_pio_lines;
 	struct at91_ssc_periph *ssc = eti_b1_dai.cpu_dai->private_data;
 
-	if (!request_mem_region(AT91RM9200_BASE_SSC1, SZ_16K, "soc-audio")) {
+	if (!request_mem_region(AT91RM9200_BASE_SSC1, SZ_16K, "soc-audio-1")) {
 		DBG("SSC1 memory region is busy\n");
 		return -EBUSY;
 	}
@@ -294,7 +294,7 @@ static int __init eti_b1_init(void)
 
 	ssc->pid = AT91RM9200_ID_SSC1;
 
-	eti_b1_snd_device = platform_device_alloc("soc-audio", -1);
+	eti_b1_snd_device = platform_device_alloc("soc-audio", 1);
 	if (!eti_b1_snd_device) {
 		DBG("platform device allocation failed\n");
 		ret = -ENOMEM;
