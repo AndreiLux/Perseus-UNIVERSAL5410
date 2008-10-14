@@ -753,8 +753,8 @@ config FB_UVESA
 	  If unsure, say N.
 
 config FB_VESA
-	bool "VESA VGA graphics support"
-	depends on (FB = y) && X86
+	tristate "VESA VGA graphics support"
+	depends on FB && X86
 	select FB_CFB_FILLRECT
 	select FB_CFB_COPYAREA
 	select FB_CFB_IMAGEBLIT

@@ -27,6 +27,12 @@
 #define dac_reg	(0x3c8)
 #define dac_val	(0x3c9)
 
+struct vesafb_info
+{
+	u32 pseudo_palette[256];
+	int mtrr_hdl;
+};
+
 /* --------------------------------------------------------------------- */
 
 static struct fb_var_screeninfo vesafb_defined __initdata = {
@@ -46,16 +52,37 @@ static struct fb_fix_screeninfo vesafb_fix __initdata = {
 	.accel	= FB_ACCEL_NONE,
 };
 
+#ifndef MODULE
 static int   inverse    __read_mostly;
+#endif
 static int   mtrr       __read_mostly;		/* disable mtrr */
 static int   vram_remap __initdata;		/* Set amount of memory to be used */
 static int   vram_total __initdata;		/* Set total amount of memory */
 static int   pmi_setpal __read_mostly = 1;	/* pmi for palette changes ??? */
+static int	redraw		__read_mostly;
 static int   ypan       __read_mostly;		/* 0..nothing, 1..ypan, 2..ywrap */
+static int	ywrap		__read_mostly;
 static void  (*pmi_start)(void) __read_mostly;
 static void  (*pmi_pal)  (void) __read_mostly;
 static int   depth      __read_mostly;
 static int   vga_compat __read_mostly;
+
+module_param(redraw, bool, 0);
+module_param(ypan, bool, 0);
+module_param(ywrap, bool, 0);
+module_param_named(vgapal, pmi_setpal, invbool, 0);
+MODULE_PARM_DESC(vgapal, "Use VGA for setting palette (default)");
+module_param_named(pmipal, pmi_setpal, bool, 0);
+MODULE_PARM_DESC(pmipal, "Use PMI for setting palette");
+module_param(mtrr, bool, 0);
+MODULE_PARM_DESC(mtrr, "Enable MTRR support (default)");
+module_param_named(nomtrr, mtrr, invbool, 0);
+MODULE_PARM_DESC(nomtrr, "Disable MTRR support");
+module_param(vram_remap, int, 0);
+MODULE_PARM_DESC(vram_remap, "Set total amount of memory to be used");
+module_param(vram_total, int, 0);
+MODULE_PARM_DESC(vram_total, "Total amount of memory");
+
 /* --------------------------------------------------------------------- */
 
 static int vesafb_pan_display(struct fb_var_screeninfo *var,
@@ -192,6 +219,7 @@ static struct fb_ops vesafb_ops = {
 	.fb_imageblit	= cfb_imageblit,
 };
 
+#ifndef MODULE
 static int __init vesafb_setup(char *options)
 {
 	char *this_opt;
@@ -225,6 +253,7 @@ static int __init vesafb_setup(char *options)
 	}
 	return 0;
 }
+#endif
 
 static int __init vesafb_probe(struct platform_device *dev)
 {
@@ -495,7 +524,27 @@ err:
 	return err;
 }
 
+static int __exit vesafb_remove(struct platform_device *device)
+{
+	struct fb_info *info = dev_get_drvdata(&device->dev);
+
+	unregister_framebuffer(info);
+#ifdef CONFIG_MTRR
+	{
+		struct vesafb_info *vfb_info = (struct vesafb_info *) info->par;
+		if (vfb_info->mtrr_hdl >= 0)
+			mtrr_del(vfb_info->mtrr_hdl, 0, 0);
+	}
+#endif
+	iounmap(info->screen_base);
+	framebuffer_release(info);
+	release_mem_region(vesafb_fix.smem_start, vesafb_fix.smem_len);
+
+	return 0;
+}
+
 static struct platform_driver vesafb_driver = {
+	.remove = vesafb_remove,
 	.driver	= {
 		.name	= "vesafb",
 	},
@@ -506,11 +555,18 @@ static struct platform_device *vesafb_device;
 static int __init vesafb_init(void)
 {
 	int ret;
+#ifndef MODULE
 	char *option = NULL;
 
 	/* ignore error return of fb_get_options */
 	fb_get_options("vesafb", &option);
 	vesafb_setup(option);
+#else
+	if (redraw)
+		ypan = 0;
+	if (ywrap)
+		ypan = 2;
+#endif
 
 	vesafb_device = platform_device_alloc("vesafb", 0);
 	if (!vesafb_device)
@@ -530,6 +586,14 @@ static int __init vesafb_init(void)
 
 	return ret;
 }
+
+static void __exit vesafb_exit(void)
+{
+	platform_device_unregister(vesafb_device);
+	platform_driver_unregister(&vesafb_driver);
+}
+
 module_init(vesafb_init);
+module_exit(vesafb_exit);
 
 MODULE_LICENSE("GPL");
