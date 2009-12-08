@@ -8,6 +8,7 @@
 #include <linux/dirent.h>
 #include <linux/syscalls.h>
 #include <linux/utime.h>
+#include <linux/async.h>
 
 static __initdata char *message;
 static void __init error(char *x)
@@ -569,7 +570,9 @@ static void __init clean_rootfs(void)
 }
 #endif
 
-static int __init populate_rootfs(void)
+LIST_HEAD(populate_rootfs_domain);
+
+static void __init async_populate_rootfs(void)
 {
 	char *err = unpack_to_rootfs(__initramfs_start, __initramfs_size);
 	if (err)
@@ -582,7 +585,7 @@ static int __init populate_rootfs(void)
 			initrd_end - initrd_start);
 		if (!err) {
 			free_initrd();
-			return 0;
+			return;
 		} else {
 			clean_rootfs();
 			unpack_to_rootfs(__initramfs_start, __initramfs_size);
@@ -606,6 +609,12 @@ static int __init populate_rootfs(void)
 		free_initrd();
 #endif
 	}
-	return 0;
+	return;
 }
+
+static int __init populate_rootfs(void)
+{
+	async_schedule_domain(async_populate_rootfs, NULL, &populate_rootfs_domain);
+}
+
 rootfs_initcall(populate_rootfs);
