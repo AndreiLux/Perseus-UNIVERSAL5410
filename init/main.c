@@ -873,6 +873,12 @@ static int __init kernel_init(void * unused)
 	(void) sys_dup(0);
 	(void) sys_dup(0);
 	/*
+	 * We need to ensure that the filesystem is ready by this point, wait for
+	 * async_populate_rootfs to complete.
+	 */
+	async_synchronize_full_domain(&populate_rootfs_domain);
+
+	/*
 	 * check if there is an early userspace init.  If yes, let it do all
 	 * the work
 	 */
