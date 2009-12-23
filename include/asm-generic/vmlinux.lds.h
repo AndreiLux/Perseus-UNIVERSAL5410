@@ -626,6 +626,7 @@
 		*(.initcallearly.init)					\
 		INIT_CALLS_LEVEL(0)					\
 		INIT_CALLS_LEVEL(1)					\
+		INIT_CALLS_LEVEL(earlyrootfs)				\
 		INIT_CALLS_LEVEL(2)					\
 		INIT_CALLS_LEVEL(3)					\
 		INIT_CALLS_LEVEL(4)					\
