@@ -396,7 +396,7 @@ static int __init xeon75xx_mce_init(void)
 	pr_info("Found Xeon75xx PFA memory error translation table at %x\n",
 		addr);
 	mb();
-	cpu_specific_poll = xeon75xx_mce_poll;
+	mce_cpu_specific_poll = xeon75xx_mce_poll;
 	return 0;
 
 error_unmap:
@@ -412,7 +412,7 @@ MODULE_DESCRIPTION("Intel Xeon 75xx specific DIMM error reporting");
 #ifdef CONFIG_MODULE
 static void __exit xeon75xx_mce_exit(void)
 {
-	cpu_specific_poll = NULL;
+	mce_cpu_specific_poll = NULL;
 	wmb();
 	/* Wait for all machine checks to finish before really unloading */
 	synchronize_rcu();

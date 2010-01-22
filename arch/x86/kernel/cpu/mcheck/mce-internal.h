@@ -28,7 +28,7 @@ extern int mce_ser;
 
 extern struct mce_bank *mce_banks;
 
-extern void (*cpu_specific_poll)(struct mce *);
+extern void (*mce_cpu_specific_poll)(struct mce *);
 
 #ifdef CONFIG_ACPI_APEI
 int apei_write_mce(struct mce *m);
