@@ -85,9 +85,9 @@ static ssize_t  show_##name(struct device *dev,				\
 	int retval;							\
 									\
 	udev = to_usb_device(dev);					\
-	usb_lock_device(udev);						\
-	retval = sprintf(buf, "%s\n", udev->name);			\
-	usb_unlock_device(udev);					\
+	rcu_read_lock();						\
+	retval = sprintf(buf, "%s\n", rcu_dereference(udev->name));	\
+	rcu_read_unlock();						\
 	return retval;							\
 }									\
 static DEVICE_ATTR(name, S_IRUGO, show_##name, NULL);
