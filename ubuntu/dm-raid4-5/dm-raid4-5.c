@@ -3705,9 +3705,7 @@ static int dev_parms(struct raid_set *rs, char **argv, int *p)
 			TI_ERR("Invalid RAID device offset parameter");
 
 		dev->start = tmp;
-		r = dm_get_device(ti, *argv, dev->start,
-				  rs->set.sectors_per_dev,
-				  dm_table_get_mode(ti->table), &dev->dev);
+		r = dm_get_device(ti, *argv, dm_table_get_mode(ti->table), &dev->dev);
 		if (r)
 			TI_ERR_RET("RAID device lookup failure", r);
 
