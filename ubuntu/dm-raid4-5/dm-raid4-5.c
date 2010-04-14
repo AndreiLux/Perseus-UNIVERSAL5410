@@ -53,6 +53,7 @@ static const char *version = "v0.2594b";
 #include <linux/dm-dirty-log.h>
 #include "dm-region-hash.h"
 
+#include <linux/slab.h>
 
 /*
  * Configurable parameters
