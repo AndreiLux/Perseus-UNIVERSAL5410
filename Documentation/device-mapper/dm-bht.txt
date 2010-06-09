@@ -1,0 +1,73 @@
+dm-bht
+======
+
+dm-bht provides a block hash tree implementation.  The use of dm-bht allows
+for integrity checking of a given block device without reading the entire
+set of blocks into memory before use.
+
+In particular, dm-bht supplies an interface for creating and verifying a tree
+of cryptographic digests with any algorithm supported by the kernel crypto API.
+
+The code is meant to be usable from user-space for creation and verification as
+well as directly from a Device-Mapper target.  The `verity' target is the
+motivating example.
+
+
+Theory of operation
+===================
+
+dm-bht is logically comprised of multiple nodes organized in a tree-like
+structure.  Each node in the tree is a cryptographic hash.  If it is a leaf
+node, the hash is of some block data on disk.  If it is an intermediary node,
+then the hash is of a number of child nodes.
+
+dm-bht has a given depth starting at 1 (ignoring the root node).  Each level in
+the tree is concretely made up of dm_bht_entry structs.  Each entry in the tree
+is a collection of neighboring nodes that fit in one page-sized block.  The
+number is determined based on PAGE_SIZE and the size of the selected
+cryptographic digest algorithm.  The hashes are linearly ordered in this entry
+and any unaligned trailing space is ignored but included when calculating the
+parent node.
+
+The tree looks something like:
+
+depth = 2, alg= sha256, num_blocks = 32767
+                                 [   root    ]
+                                /    . . .    \
+                     [entry_0]                 [entry_1]
+                    /  . . .  \                 . . .   \
+         [entry_0_0]   . . .  [entry_0_127]    . . . .  [entry_1_127]
+           / ... \             /   . . .  \             /           \
+     blk_0 ... blk_127  blk_16256   blk_16383      blk_32640 . . . blk_32767
+
+root is treated independently from the depth and the blocks are expected to
+be hashed and supplied to the dm-bht.  hash blocks that make up the entry
+contents are expected to be read from disk.
+
+dm-bht does not handle I/O directly but instead expects the consumer to
+supply callbacks.  The read callback will always receive a page-align value
+to pass to the block device layer to read in a hash value.
+
+Usage
+=====
+
+The API provides mechanisms for reading and verifying a tree as well as
+creating and modifying the tree.  These two code paths were not meant to be
+used in parallel and modify the atomic entry values in incompatible ways.
+Where possible, tree creation and modification should be handled independently
+from tree verification.
+
+When reading, all required data for the hash tree should be populated for a
+block before attempting a verify.  This can be done by calling
+dm_bht_populate().  When all data is ready, a call to dm_bht_verify_block()
+with the expected hash value will perform both the direct block hash check and
+the hashes of the parent and neighboring nodes where needed to ensure validity
+up to the root hash.  Note, dm_bht_set_root_hexdigest() should be called before
+any verification attempts occur.
+
+When updating the tree, all block hashes should be stored with
+dm_bht_store_block().  Once all hashes are stored, a call to dm_bht_compute()
+will initiate a full tree update by walking all of the blocks of hashes
+starting at the leaf nodes and computing upward to the root node.  On
+completion, dm_bht_sync() may be called to write the tree to disk (or wherever
+the callback writes to).

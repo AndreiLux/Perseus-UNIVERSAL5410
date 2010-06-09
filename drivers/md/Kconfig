@@ -237,6 +237,44 @@ config DM_CRYPT
 
 	  If unsure, say N.
 
+config DM_BHT
+	tristate "Block hash tree support"
+	select CRYPTO
+	select CRYPTO_HASH
+	---help---
+	  Include support for device-mapper devices to use a block hash
+	  tree for managing data integrity checks in a scalable way.
+
+	  Targets that use this functionality should include it
+	  automatically.
+
+	  If unsure, say N.
+
+config DM_VERITY
+	tristate "Verity target support"
+	depends on BLK_DEV_DM
+	select DM_BHT
+	select CRYPTO
+	select CRYPTO_HASH
+	# TODO(wad) it is possible that the hash context per cpu approach
+	#           is not safe with PREEMPT.  Until checked, PREEMPT is
+	#           not allowed.
+	depends on !PREEMPT
+	---help---
+	  This device-mapper target allows you to create a device that
+	  transparently integrity checks the data on it. You'll need to
+	  activate the digests you're going to use in the cryptoapi
+	  configuration.
+
+	  Information on how to use dm-verity can be found on
+
+	  <http://dev.chromium.org/chromium-os/chromiumos-design-docs/verified-boot>
+
+	  To compile this code as a module, choose M here: the module will
+	  be called dm-verity.
+
+	  If unsure, say N.
+
 config DM_SNAPSHOT
        tristate "Snapshot target"
        depends on BLK_DEV_DM
