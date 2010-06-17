@@ -112,6 +112,11 @@ EXPORT_SYMBOL(system_state);
  */
 #define MAX_INIT_ARGS CONFIG_INIT_ENV_ARG_LIMIT
 #define MAX_INIT_ENVS CONFIG_INIT_ENV_ARG_LIMIT
+#ifdef CONFIG_INIT_PASS_ALL_PARAMS
+#define INIT_PASS_FUNCTION pass_all_bootoptions
+#else
+#define INIT_PASS_FUNCTION pass_unknown_bootoptions
+#endif
 
 extern void time_init(void);
 /* Default late time init is NULL. archs can override this later. */
@@ -243,19 +248,20 @@ static int __init repair_env_string(char *param, char *val)
 }
 
 /*
- * Unknown boot options get handed to init, unless they look like
- * unused parameters (modprobe will find them in /proc/cmdline).
+ * Select boot options to hand to init.  If all is set hand off them all
+ * otherwise only hand off unused ones which do not apply to modules
+ * (modprobe will find them in /proc/cmdline).
  */
-static int __init unknown_bootoption(char *param, char *val)
+static int __init pass_bootoption(char *param, char *val, int all)
 {
 	repair_env_string(param, val);
 
 	/* Handle obsolete-style parameters */
-	if (obsolete_checksetup(param))
+	if (obsolete_checksetup(param) && !all)
 		return 0;
 
 	/* Unused module parameter. */
-	if (strchr(param, '.') && (!val || strchr(param, '.') < val))
+	if (!all && strchr(param, '.') && (!val || strchr(param, '.') < val))
 		return 0;
 
 	if (panic_later)
@@ -285,6 +291,16 @@ static int __init unknown_bootoption(char *param, char *val)
 		argv_init[i] = param;
 	}
 	return 0;
+}
+static int __init pass_unknown_bootoptions(char *param, char *val, int known)
+{
+	if (known)
+		return 0;
+	return pass_bootoption(param, val, 0);
+}
+static int __init pass_all_bootoptions(char *param, char *val, int known)
+{
+	return pass_bootoption(param, val, 1);
 }
 
 static int __init init_setup(char *str)
@@ -385,9 +401,12 @@ static noinline void __init_refok rest_init(void)
 }
 
 /* Check for early params. */
-static int __init do_early_param(char *param, char *val)
+static int __init do_early_param(char *param, char *val, int known)
 {
 	const struct obs_kernel_param *p;
+
+	if (known)
+		return 0;
 
 	for (p = __setup_start; p < __setup_end; p++) {
 		if ((p->early && parameq(param, p->str)) ||
@@ -508,7 +527,7 @@ asmlinkage void __init start_kernel(void)
 	parse_early_param();
 	parse_args("Booting kernel", static_command_line, __start___param,
 		   __stop___param - __start___param,
-		   0, 0, &unknown_bootoption);
+		   0, 0, &INIT_PASS_FUNCTION);
 
 	jump_label_init();
 
