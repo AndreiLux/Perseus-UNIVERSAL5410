@@ -1256,8 +1256,7 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	/* arg0: device to verify */
 	vc->start = 0;  /* TODO: should this support a starting offset? */
 	/* We only ever grab the device in read-only mode. */
-	ret = dm_get_device(ti, argv[0], vc->start, ti->len,
-			    dm_table_get_mode(ti->table), &vc->dev);
+	ret = dm_get_device(ti, argv[0], dm_table_get_mode(ti->table), &vc->dev);
 	if (ret) {
 		DMERR("Failed to acquire device '%s': %d", argv[0], ret);
 		ti->error = "Device lookup failed";
@@ -1283,8 +1282,7 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	 *       ti->len passed to device mapper does not include
 	 *       the hashes.
 	 */
-	if (dm_get_device(ti, argv[1], vc->hash_start, dm_bht_sectors(&vc->bht),
-			  dm_table_get_mode(ti->table), &vc->hash_dev)) {
+	if (dm_get_device(ti, argv[1], dm_table_get_mode(ti->table), &vc->hash_dev)) {
 		ti->error = "Hash device lookup failed";
 		goto bad_hash_dev;
 	}
