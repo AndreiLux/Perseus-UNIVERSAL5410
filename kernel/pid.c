@@ -78,6 +78,9 @@ struct pid_namespace init_pid_ns = {
 	.last_pid = 0,
 	.level = 0,
 	.child_reaper = &init_task,
+#ifdef CONFIG_SECURITY_YAMA
+	.ptrace_scope = 1,
+#endif
 };
 EXPORT_SYMBOL_GPL(init_pid_ns);
 

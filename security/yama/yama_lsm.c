@@ -278,6 +278,61 @@ static struct security_operations yama_ops = {
 	.task_free =		yama_task_free,
 };
 
+static int yama_generic_permission(struct inode *inode, int mask)
+{
+	int retval;
+
+	if (inode->i_op->permission)
+		retval = inode->i_op->permission(inode, mask);
+	else
+		retval = generic_permission(inode, mask);
+	return retval;
+}
+
+/**
+ * yama_path_link - verify that hardlinking is allowed
+ * @old_dentry: the source inode/dentry to hardlink from
+ * @new_dir: target directory
+ * @new_dentry: the target inode/dentry to hardlink to
+ *
+ * Block hardlink when all of:
+ *  - fsuid does not match inode
+ *  - not CAP_FOWNER
+ *  - and at least one of:
+ *    - inode is not a regular file
+ *    - inode is setuid
+ *    - inode is setgid and group-exec
+ *    - access failure for read and write
+ *
+ * Returns 0 if successful, -ve on error.
+ */
+int yama_path_link(struct dentry *old_dentry, struct path *new_dir,
+			struct dentry *new_dentry)
+{
+	int rc = 0;
+	struct inode *inode = old_dentry->d_inode;
+	const int mode = inode->i_mode;
+	const struct cred *cred = current_cred();
+
+	if (!current->nsproxy->pid_ns->protected_nonaccess_hardlinks)
+		return 0;
+
+	if (cred->fsuid != inode->i_uid &&
+	    (!S_ISREG(mode) || (mode & S_ISUID) ||
+	     ((mode & (S_ISGID | S_IXGRP)) == (S_ISGID | S_IXGRP)) ||
+	     (yama_generic_permission(inode, MAY_READ | MAY_WRITE))) &&
+	    !capable(CAP_FOWNER)) {
+		char name[sizeof(current->comm)];
+		printk_ratelimited(KERN_NOTICE "non-accessible hardlink"
+			" creation was attempted by: %s (fsuid %d)\n",
+			get_task_comm(name, current),
+			cred->fsuid);
+		rc = -EPERM;
+	}
+
+	return rc;
+}
+
 #ifdef CONFIG_SYSCTL
 static int zero;
 static int one = 1;
