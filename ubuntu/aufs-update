@@ -1,0 +1,37 @@
+#!/bin/bash
+
+if [ "$#" -ne 1 ]; then
+	echo "Usage: $0 <aufs2-standalone directory>" 1>&2
+	exit 1
+fi
+aufs="$1"
+
+# Get the current tip name
+{
+	read x url
+	read x osha1
+} <aufs/BOM
+
+# Update aufs to the latest.
+git rm -rf aufs
+cp -rp "$aufs/fs/aufs" aufs
+cp -rp "$aufs/include" aufs
+git checkout -f HEAD -- aufs/BOM
+
+# Reinsert the include update.
+sed -i -e '1iEXTRA_CFLAGS += -I$(src)/include' aufs/Makefile
+
+# Find the latest commit.
+read x nsha1 <"$aufs/ChangeLog"
+
+# Insert the new commit ID and commit the result.
+sed -i -e "s/^COMMIT: .*/COMMIT: $nsha1/" aufs/BOM
+git add aufs
+{
+	echo "UBUNTU: ubuntu: AUFS -- update to $nsha1"
+	echo ""
+	awk <"$aufs/ChangeLog" '
+		/^commit '"$osha1"'/ 	{ exit }
+					{ print "    " $0 }
+	'
+} | git commit -s -F -
