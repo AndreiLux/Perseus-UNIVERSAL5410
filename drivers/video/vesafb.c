@@ -258,6 +258,7 @@ static int __init vesafb_setup(char *options)
 static int __init vesafb_probe(struct platform_device *dev)
 {
 	struct fb_info *info;
+	struct vesafb_info *vfb_info;
 	int i, err;
 	unsigned int size_vmode;
 	unsigned int size_remap;
@@ -316,13 +317,14 @@ static int __init vesafb_probe(struct platform_device *dev)
 		   spaces our resource handlers simply don't know about */
 	}
 
-	info = framebuffer_alloc(sizeof(u32) * 256, &dev->dev);
+	info = framebuffer_alloc(sizeof(struct vesafb_info), &dev->dev);
 	if (!info) {
 		release_mem_region(vesafb_fix.smem_start, size_total);
 		return -ENOMEM;
 	}
-	info->pseudo_palette = info->par;
-	info->par = NULL;
+	vfb_info = (struct vesafb_info *) info->par;
+	vfb_info->mtrr_hdl = -1;
+	info->pseudo_palette = vfb_info->pseudo_palette;
 
 	/* set vesafb aperture size for generic probing */
 	info->apertures = alloc_apertures(1);
@@ -452,17 +454,15 @@ static int __init vesafb_probe(struct platform_device *dev)
 		}
 
 		if (type) {
-			int rc;
-
 			/* Find the largest power-of-two */
 			temp_size = roundup_pow_of_two(temp_size);
 
 			/* Try and find a power of two to add */
 			do {
-				rc = mtrr_add(vesafb_fix.smem_start, temp_size,
+				vfb_info->mtrr_hdl = mtrr_add(vesafb_fix.smem_start, temp_size,
 					      type, 1);
 				temp_size >>= 1;
-			} while (temp_size >= PAGE_SIZE && rc == -EINVAL);
+			} while (temp_size >= PAGE_SIZE && vfb_info->mtrr_hdl == -EINVAL);
 		}
 	}
 #endif
