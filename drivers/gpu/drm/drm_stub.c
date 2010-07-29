@@ -356,7 +356,7 @@ int drm_get_minor(struct drm_device *dev, struct drm_minor **minor, int type)
 	new_minor->index = minor_id;
 	INIT_LIST_HEAD(&new_minor->master_list);
 
-	idr_replace(&drm_minors_idr, new_minor, minor_id);
+	idr_replace(&drm_minors_idr, ERR_PTR(-EAGAIN), minor_id);
 
 	if (type == DRM_MINOR_LEGACY) {
 		ret = drm_proc_init(new_minor, minor_id, drm_proc_root);

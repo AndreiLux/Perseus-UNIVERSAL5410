@@ -90,6 +90,10 @@ int drm_get_platform_dev(struct platform_device *platdev,
 
 	list_add_tail(&dev->driver_item, &driver->device_list);
 
+	if (drm_core_check_feature(dev, DRIVER_MODESET))
+		idr_replace(&drm_minors_idr, dev->control, dev->control->index);
+	idr_replace(&drm_minors_idr, dev->primary, dev->primary->index);
+
 	mutex_unlock(&drm_global_mutex);
 
 	DRM_INFO("Initialized %s %d.%d.%d %s on minor %d\n",
