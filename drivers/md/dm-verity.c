@@ -11,13 +11,16 @@
  * Implements a verifying transparent block device.
  * See Documentation/device-mapper/dm-verity.txt
  */
+#include <linux/async.h>
 #include <linux/backing-dev.h>
 #include <linux/bio.h>
 #include <linux/blkdev.h>
 #include <linux/completion.h>
 #include <linux/crypto.h>
 #include <linux/delay.h>
+#include <linux/device.h>
 #include <linux/err.h>
+#include <linux/genhd.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/mempool.h>
@@ -121,7 +124,12 @@ MODULE_PARM_DESC(error_behavior, "Behavior on error");
  */
 static int bht_readahead;
 module_param(bht_readahead, int, 0644);
-MODULE_PARM_DESC(bht_readahead, "number of entries to readahead in the bht");
+MODULE_PARM_DESC(bht_readahead, "Number of entries to readahead in the bht");
+
+/* Controls whether verity_get_device will wait forever for a device. */
+static int dev_wait;
+module_param(dev_wait, bool, 0444);
+MODULE_PARM_DESC(dev_wait, "Wait forever for a backing device")
 
 /* Used for tracking pending bios as well as for exporting information via
  * STATUSTYPE_INFO.
@@ -540,6 +548,132 @@ static void verity_error(struct verity_config *vc, struct dm_verity_io *io,
 		break;
 	}
 }
+
+/**
+ * match_dev_by_uuid - callback for finding a partition using its uuid
+ * @dev:	device passed in by the caller
+ * @data:	opaque pointer to a uuid packed by part_pack_uuid().
+ *
+ * Returns 1 if the device matches, and 0 otherwise.
+ */
+static int match_dev_by_uuid(struct device *dev, void *data)
+{
+	u8 *uuid = data;
+	struct hd_struct *part = dev_to_part(dev);
+
+	if (!part->info)
+		goto no_match;
+
+	if (memcmp(uuid, part->info->uuid, sizeof(part->info->uuid)))
+			goto no_match;
+
+	return 1;
+no_match:
+	return 0;
+}
+
+/**
+ * dm_get_device_by_uuid: claim a device using its UUID
+ * @ti:			current dm_target
+ * @uuid_string:	36 byte UUID hex encoded
+ * 			(xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+ * @dev_start:		offset in sectors passed to dm_get_device
+ * @dev_len:		length in sectors passed to dm_get_device
+ * @dm_dev:		dm_dev to populate
+ *
+ * Wraps dm_get_device allowing it to use a unique partition id to
+ * find a given partition on any drive. This code is based on
+ * printk_all_partitions in that it walks all of the register block devices.
+ *
+ * N.B., uuid_string is not checked for safety just strlen().
+ */
+static int dm_get_device_by_uuid(struct dm_target *ti, const char *uuid_str,
+			     sector_t dev_start, sector_t dev_len,
+			     struct dm_dev **dm_dev)
+{
+	struct device *dev = NULL;
+	dev_t devt = 0;
+	char devt_buf[BDEVT_SIZE];
+	u8 uuid[16];
+	size_t uuid_length = strlen(uuid_str);
+
+	if (uuid_length < 36)
+		goto bad_uuid;
+	/* Pack the requested UUID in the expected format. */
+	part_pack_uuid(uuid_str, uuid);
+
+	dev = class_find_device(&block_class, NULL, uuid, &match_dev_by_uuid);
+	if (!dev)
+		goto found_nothing;
+
+	devt = dev->devt;
+	put_device(dev);
+
+	/* The caller may specify +/-%u after the UUID if they want a partition
+	 * before or after the one identified.
+	 */
+	if (uuid_length > 36) {
+		unsigned int part_offset;
+		char sign;
+		unsigned minor = MINOR(devt);
+		if (sscanf(uuid_str + 36, "%c%u", &sign, &part_offset) == 2) {
+			if (sign == '+') {
+				minor += part_offset;
+			} else if (sign == '-') {
+				minor -= part_offset;
+			} else {
+				DMWARN("Trailing characters after UUID: %s\n",
+					uuid_str);
+			}
+			devt = MKDEV(MAJOR(devt), minor);
+		}
+	}
+
+	/* Construct the dev name to pass to dm_get_device.  dm_get_device
+	 * doesn't support being passed a dev_t.
+	 */
+	snprintf(devt_buf, sizeof(devt_buf), "%u:%u", MAJOR(devt), MINOR(devt));
+
+	/* TODO(wad) to make this generic we could also pass in the mode. */
+	if (dm_get_device(ti, devt_buf, dm_table_get_mode(ti->table), dm_dev) == 0)
+		return 0;
+
+	ti->error = "Failed to acquire device";
+	DMDEBUG("Failed to acquire discovered device %s", devt_buf);
+	return -1;
+bad_uuid:
+	ti->error = "Bad UUID";
+	DMDEBUG("Supplied value '%s' is an invalid UUID", uuid_str);
+	return -1;
+found_nothing:
+	DMDEBUG("No matching partition for GUID: %s", uuid_str);
+	ti->error = "No matching GUID";
+	return -1;
+}
+
+static int verity_get_device(struct dm_target *ti, const char *devname,
+			     sector_t dev_start, sector_t dev_len,
+			     struct dm_dev **dm_dev)
+{
+	do {
+		/* Try the normal path first since if everything is ready, it
+		 * will be the fastest.
+		 */
+		if (!dm_get_device(ti, devname, dm_table_get_mode(ti->table), dm_dev))
+			return 0;
+
+		/* Try the device by partition UUID */
+		if (!dm_get_device_by_uuid(ti, devname, dev_start, dev_len,
+		                           dm_dev))
+			return 0;
+
+		/* No need to be too aggressive since this is a slow path. */
+		msleep(500);
+	} while (dev_wait && (driver_probe_done() != 0 || *dm_dev == NULL));
+	async_synchronize_full();
+	return -1;
+}
+
 
 /*-----------------------------------------------------------------
  * Reverse flow of requests into the device.
@@ -1256,7 +1390,7 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	/* arg0: device to verify */
 	vc->start = 0;  /* TODO: should this support a starting offset? */
 	/* We only ever grab the device in read-only mode. */
-	ret = dm_get_device(ti, argv[0], dm_table_get_mode(ti->table), &vc->dev);
+	ret = verity_get_device(ti, argv[0], vc->start, ti->len, &vc->dev);
 	if (ret) {
 		DMERR("Failed to acquire device '%s': %d", argv[0], ret);
 		ti->error = "Device lookup failed";
@@ -1282,7 +1416,8 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	 *       ti->len passed to device mapper does not include
 	 *       the hashes.
 	 */
-	if (dm_get_device(ti, argv[1], dm_table_get_mode(ti->table), &vc->hash_dev)) {
+	if (verity_get_device(ti, argv[1], vc->hash_start,
+			      dm_bht_sectors(&vc->bht), &vc->hash_dev)) {
 		ti->error = "Hash device lookup failed";
 		goto bad_hash_dev;
 	}
