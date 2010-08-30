@@ -109,15 +109,18 @@ static int max_bios = MIN_BIOS * 2;
 module_param(max_bios, int, 0644);
 MODULE_PARM_DESC(max_bios, "Max number of allocated BIOs");
 
-/* Provide a lightweight means of controlling the behavior of dm-verity
- * devices when the module is configured.
+/* Provide a lightweight means of specifying the global default for
+ * error behavior: eio, reboot, or none
+ * Legacy support for 0 = eio, 1 = reboot/panic, and 2 = none.
  */
-enum error_behavior_type { DM_VERITY_EIO = 0, DM_VERITY_REBOOT,
-			   DM_VERITY_NOTHING };
-static int error_behavior = DM_VERITY_EIO;
-module_param(error_behavior, int, 0444);
-MODULE_PARM_DESC(error_behavior, "Behavior on error");
-
+enum verity_error_behavior {
+	DM_VERITY_ERROR_BEHAVIOR_EIO = 0, DM_VERITY_ERROR_BEHAVIOR_PANIC,
+	DM_VERITY_ERROR_BEHAVIOR_NONE };
+static const char *allowed_error_behaviors[] = { "eio", "panic", "none", NULL };
+#define DM_VERITY_MAX_ERROR_BEHAVIOR sizeof("panic")
+static char *error_behavior = "eio";
+module_param(error_behavior, charp, 0644);
+MODULE_PARM_DESC(error_behavior, "Behavior on error (eio, reboot, none)");
 
 /* Control whether the reads are optimized for sequential access by pre-reading
  * entries in the bht.
@@ -199,6 +202,8 @@ struct verity_config {
 
 	char hash_alg[CRYPTO_MAX_ALG_NAME];
 	struct hash_desc *hash;  /* one per cpu */
+
+	char error_behavior[DM_VERITY_MAX_ERROR_BEHAVIOR];
 
 	struct verity_stats stats;
 };
@@ -525,29 +530,88 @@ static void kverityd_verify_cleanup(struct dm_verity_io *io, int error)
  */
 static void verity_error(struct verity_config *vc, struct dm_verity_io *io,
 			 int error) {
+	const char *message;
+	dev_t devt = 0;
+	if (vc)
+		devt = vc->dev->bdev->bd_dev;
 	if (io)
 		io->error = -EIO;
 
 	switch (error) {
-	case -EACCES:
-		DMERR_LIMIT("verification failure occurred");
-		if (error_behavior == DM_VERITY_REBOOT) {
-#ifdef CONFIG_KEXEC
-			kernel_kexec();
-#else
-			/* Test this versus emergency_restart(); */
-			kernel_restart("dm-verity");
-#endif
-		} else if (error_behavior == DM_VERITY_NOTHING) {
-			/* IO errors have to be propagated. */
-			if (error != -EIO && io)
-				io->error = 0;
-		}
-		return;
-	default:
+	case -ENOMEM:
+		message = "out of memory";
 		break;
+	case -EBUSY:
+		message = "pending data seen during verify";
+		break;
+	case -EFAULT:
+		message = "crypto operation failure";
+		break;
+	case -EACCES:
+		message = "integrity failure";
+		break;
+	case -EPERM:
+		message = "hash tree population failure";
+		break;
+	case -EINVAL:
+		message = "unexpected missing/invalid data";
+		break;
+	default:
+		/* Other errors can be passed through as IO errors */
+		return;
 	}
+
+	DMERR_LIMIT("verification failure occurred: %s", message);
+	if (!strcmp(vc->error_behavior,
+		    allowed_error_behaviors[DM_VERITY_ERROR_BEHAVIOR_EIO]))
+		return;
+
+	if (!strcmp(vc->error_behavior,
+		    allowed_error_behaviors[DM_VERITY_ERROR_BEHAVIOR_NONE])) {
+		if (error != -EIO && io)
+			io->error = 0;
+		return;
+	}
+
+	/*  else DM_VERITY_ERROR_BEHAVOR_PANIC */
+	/* TODO(wad) If panic_timoeut is zero, a reboot does not occur.
+	 * extern int panic_timeout = 1;
+	 */
+	panic("dm-verity failure: "
+		"device:%u:%u error%d block:%llu message:%s",
+		MAJOR(devt), MINOR(devt), error, io->block, message);
 }
+
+/**
+ * verity_error_behavior_prepare - check and clean up error_behaviors
+ * @behavior:	char array of size DM_VERITY_BMAX_ERROR_BEHAVIOR
+ *
+ * Checks if the behavior is valid and rewrites it if it was a
+ * legacy mode (digit).
+ * Returns true if valid, false if not.
+ */
+static bool verity_error_behavior_prepare(char *behavior)
+{
+	const char **allowed = allowed_error_behaviors;
+	char legacy = '0';
+	bool ok = false;
+	if (!behavior)
+		return false;
+	do {
+		if (!strcmp(*allowed, behavior)) {
+			ok = true;
+			break;
+		}
+		/* Support legacy 0, 1, 2  by rewriting it. */
+		if (behavior[0] == legacy++) {
+			strcpy(behavior, *allowed);
+			ok = true;
+			break;
+		}
+	} while (*(++allowed));
+	return ok;
+}
+
 
 /**
  * match_dev_by_uuid - callback for finding a partition using its uuid
@@ -1313,7 +1377,7 @@ static int verity_map(struct dm_target *ti, struct bio *bio,
  * Construct an verified mapping:
  *  <device_to_verify> <device_with_hash_data>
  *  <page_aligned_offset_to_hash_data>
- *  <tree_depth> <hash_alg> <hash-of-bundle-hashes>
+ *  <tree_depth> <hash_alg> <hash-of-bundle-hashes> <errbehavior: optional>
  * E.g.,
  *   /dev/sda2 /dev/sda3 0 2 sha256
  *   f08aa4a3695290c569eb1b0ac032ae1040150afb527abbeb0a3da33d82fb2c6e
@@ -1344,7 +1408,8 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	unsigned long long tmpull = 0;
 	sector_t blocks;
 
-	if (argc != 6) {
+	/* Support expanding after the root hash for optional args */
+	if (argc < 6) {
 		ti->error = "Not enough arguments supplied";
 		return -EINVAL;
 	}
@@ -1458,6 +1523,22 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		}
 	}
 
+	/* arg6: override with optional device-specific error behavior */
+	if (argc >= 7) {
+		strncpy(vc->error_behavior, argv[7],
+			sizeof(vc->error_behavior));
+	} else {
+		/* Inherit the current global default. */
+		strncpy(vc->error_behavior, error_behavior,
+			sizeof(vc->error_behavior));
+	}
+	if (!verity_error_behavior_prepare(vc->error_behavior)) {
+		ti->error =
+			"Bad error_behavior supplied";
+		goto bad_err_behavior;
+	}
+
+
 	/* TODO: Maybe issues a request on the io queue for block 0? */
 
 	/* Argument processing is done, setup operational data */
@@ -1525,6 +1606,7 @@ bad_bs:
 bad_page_pool:
 	mempool_destroy(vc->io_pool);
 bad_slab_pool:
+bad_err_behavior:
 	for (cpu = 0; cpu < nr_cpu_ids; ++cpu)
 		if (vc->hash[cpu].tfm)
 			crypto_free_hash(vc->hash[cpu].tfm);

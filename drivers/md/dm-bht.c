@@ -1108,7 +1108,7 @@ int dm_bht_verify_block(struct dm_bht *bht, unsigned int block_index,
 	if (atomic_read(&bht->root_state) != DM_BHT_ENTRY_VERIFIED) {
 		unverified = dm_bht_verify_root(bht, dm_bht_compare_hash);
 		if (unverified) {
-			DMCRIT("Failed to verify root: %d", unverified);
+			DMERR_LIMIT("Failed to verify root: %d", unverified);
 			return unverified;
 		}
 	}
@@ -1116,8 +1116,8 @@ int dm_bht_verify_block(struct dm_bht *bht, unsigned int block_index,
 	/* Now check that the digest supplied matches the leaf hash */
 	unverified = dm_bht_check_block(bht, block_index, digest, &entry_state);
 	if (unverified) {
-		DMCRIT("Block check failed for %u: %d", block_index,
-		       unverified);
+		DMERR_LIMIT("Block check failed for %u: %d", block_index,
+				unverified);
 		return unverified;
 	}
 
@@ -1135,7 +1135,7 @@ int dm_bht_verify_block(struct dm_bht *bht, unsigned int block_index,
 					block_index,
 					dm_bht_compare_hash);
 	if (unverified)
-		DMERR("Failed to verify intermediary nodes for block: %u (%d)",
+		DMERR_LIMIT("Failed to verify intermediary nodes for block: %u (%d)",
 		      block_index, unverified);
 	return unverified;
 }
