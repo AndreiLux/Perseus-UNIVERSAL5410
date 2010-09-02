@@ -28,10 +28,13 @@
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 #include <linux/reboot.h>
-#include <asm/atomic.h>
 #include <linux/scatterlist.h>
+#include <linux/chromeos_platform.h>
+
+#include <asm/atomic.h>
 #include <asm/page.h>
 #include <asm/unaligned.h>
+
 #include <crypto/hash.h>
 #include <crypto/sha.h>
 
@@ -577,6 +580,10 @@ static void verity_error(struct verity_config *vc, struct dm_verity_io *io,
 	/* TODO(wad) If panic_timoeut is zero, a reboot does not occur.
 	 * extern int panic_timeout = 1;
 	 */
+
+	/* Flag to firmware that this filesystem failed and needs recovery */
+	chromeos_set_need_recovery();
+
 	panic("dm-verity failure: "
 		"device:%u:%u error%d block:%llu message:%s",
 		MAJOR(devt), MINOR(devt), error, io->block, message);
