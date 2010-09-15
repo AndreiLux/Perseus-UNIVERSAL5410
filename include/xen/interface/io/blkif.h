@@ -168,6 +168,18 @@ struct blkif_response {
 
 DEFINE_RING_TYPES(blkif, struct blkif_request, struct blkif_response);
 
+/*
+ * Maximum number of pages used for a blkif ring
+ * max-ring-pages advertised by blkback to blkfront may be lowered at blkback
+ * mod load time.   Load time param set to default.
+ */
+#define BLKIF_MAX_NUM_RING_PAGES 16
+#define BLKIF_MAX_NUM_RING_PAGES_DFLT 4
+#if BLKIF_MAX_NUM_RING_PAGES < BLKIF_MAX_NUM_RING_PAGES_DFLT
+#undef BLKIF_MAX_NUM_RING_PAGES_DFLT
+#define BLKIF_MAX_NUM_RING_PAGES_DFLT BLKIF_MAX_NUM_RING_PAGES
+#endif
+
 #define VDISK_CDROM        0x1
 #define VDISK_REMOVABLE    0x2
 #define VDISK_READONLY     0x4
