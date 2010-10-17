@@ -109,6 +109,13 @@ void clk_disable(struct clk *clk)
 
 	spin_lock_irqsave(&clocks_lock, flags);
 
+	if (WARN_ON(!clk->usage)) {
+		pr_err("%s: clock, %s : %s, already disabled\n", __func__,
+			clk->devname ? clk->devname : "", clk->name);
+		spin_unlock_irqrestore(&clocks_lock, flags);
+		return;
+	}
+
 	if ((--clk->usage) == 0)
 		(clk->enable)(clk, 0);
 
