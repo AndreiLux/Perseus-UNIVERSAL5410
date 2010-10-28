@@ -1172,7 +1172,8 @@ int dm_bht_destroy(struct dm_bht *bht)
 				continue;
 			default:
 				BUG_ON(!entry->nodes);
-				mempool_free(entry->nodes, bht->entry_pool);
+				mempool_free(virt_to_page(entry->nodes),
+					     bht->entry_pool);
 				break;
 			}
 		}
