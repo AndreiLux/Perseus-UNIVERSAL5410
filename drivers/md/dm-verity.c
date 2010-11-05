@@ -1115,8 +1115,11 @@ static void kverityd_src_io_read_end(struct bio *clone, int error)
 		 * free the leading/trailing pages for us.
 		 */
 		verity_free_buffer_pages(vc, io, io->ctx.bio);
-		/* drop the padded bio since we'll never use it now. */
-		bio_put(io->ctx.bio);
+		/* Release padded bio, if one was used. */
+		if (io->ctx.bio != io->base_bio) {
+			bio_put(io->ctx.bio);
+			io->ctx.bio = NULL;
+		}
 	}
 
 	/* Release the clone which just avoids the block layer from
