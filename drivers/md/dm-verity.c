@@ -993,7 +993,7 @@ static int kverityd_bht_read_callback(void *ctx, sector_t start, u8 *dst,
 	bio->bi_bdev = vc->hash_dev->bdev;
 	bio->bi_end_io = kverityd_io_bht_populate_end;
 	/* Instead of using NOIDLE, we unplug on intervals */
-	bio->bi_rw = (1 << BIO_RW_META);
+	bio->bi_rw = REQ_META;
 	/* Only need to free the bio since the page is managed by bht */
 	bio->bi_destructor = dm_verity_bio_destructor;
 	bio->bi_vcnt = 1;
