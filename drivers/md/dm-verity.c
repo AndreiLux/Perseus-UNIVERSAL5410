@@ -1338,15 +1338,6 @@ static int verity_map(struct dm_target *ti, struct bio *bio,
 	vc = ti->private;
 	r_queue = bdev_get_queue(vc->dev->bdev);
 
-	/* Barriers are passed through. Since the device is read-only,
-	 * barrier use seems unlikely but being data-free shouldn't be blocked
-	 * here.
-	 */
-	if (unlikely(bio_empty_barrier(bio))) {
-		bio->bi_bdev = vc->dev->bdev;
-		return DM_MAPIO_REMAPPED;
-	}
-
 	/* Trace incoming bios */
 	REQTRACE("Got a %s for %llu, %u bytes)",
 		(bio_rw(bio) == WRITE ? "WRITE" :
