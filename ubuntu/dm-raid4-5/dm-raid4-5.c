@@ -3228,7 +3228,7 @@ static void do_ios(struct raid_set *rs, struct bio_list *ios)
 		 * the input queue unless all work queues are empty
 		 * and the stripe cache is inactive.
 		 */
-		if (unlikely(bio_rw_flagged(bio, BIO_RW_BARRIER))) {
+		if (unlikely(bio->bi_rw & REQ_FLUSH)) {
 			/* REMOVEME: statistics. */
 			atomic_inc(rs->stats + S_BARRIER);
 			if (delay ||
