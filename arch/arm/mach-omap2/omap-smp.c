@@ -41,6 +41,14 @@ void __iomem *omap4_get_scu_base(void)
 	return scu_base;
 }
 
+static inline unsigned int get_a15_core_count(void)
+{
+	unsigned int ncores;
+
+	asm volatile("mrc p15, 1, %0, c9, c0, 2\n" : "=r" (ncores));
+	return ((ncores >> 24) & 3) + 1;
+}
+
 void __cpuinit platform_secondary_init(unsigned int cpu)
 {
 	/*
@@ -131,7 +139,6 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 static void __init wakeup_secondary(void)
 {
 	void __iomem *base = omap_get_wakeupgen_base();
-
 	/*
 	 * Write the address of secondary startup routine into the
 	 * AuxCoreBoot1 where ROM code will jump and start executing
@@ -190,6 +197,7 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 	 * Initialise the SCU and wake up the secondary core using
 	 * wakeup_secondary().
 	 */
-	scu_enable(scu_base);
+	if (scu_base)
+		scu_enable(scu_base);
 	wakeup_secondary();
 }
