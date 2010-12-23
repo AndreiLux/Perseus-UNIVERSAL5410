@@ -662,3 +662,13 @@ int setup_profiling_timer(unsigned int multiplier)
 {
 	return -EINVAL;
 }
+
+static void flush_all_cpu_cache(void *info)
+{
+	flush_cache_all();
+}
+
+void flush_all_cpu_caches(void)
+{
+	on_each_cpu(flush_all_cpu_cache, NULL, 1);
+}
