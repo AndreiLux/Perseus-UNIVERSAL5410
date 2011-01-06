@@ -71,6 +71,8 @@ call_usermodehelper_fns(char *path, char **argv, char **envp, int wait,
 			int (*init)(struct subprocess_info *info, struct cred *new),
 			void (*cleanup)(struct subprocess_info *), void *data);
 
+void populate_rootfs_wait(void);
+
 static inline int
 call_usermodehelper(char *path, char **argv, char **envp, int wait)
 {
