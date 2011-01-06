@@ -15,18 +15,19 @@ aufs="$1"
 # Update aufs to the latest.
 git rm -rf aufs
 cp -rp "$aufs/fs/aufs" aufs
-cp -rp "$aufs/include" aufs
+#cp -rp "$aufs/include" aufs
+cp -rp "$aufs/include/linux"/*.h include/linux
 git checkout -f HEAD -- aufs/BOM
 
 # Reinsert the include update.
-sed -i -e '1iEXTRA_CFLAGS += -I$(src)/include' aufs/Makefile
+#sed -i -e '1iEXTRA_CFLAGS += -I$(src)/include' aufs/Makefile
 
 # Find the latest commit.
 read x nsha1 <"$aufs/ChangeLog"
 
 # Insert the new commit ID and commit the result.
 sed -i -e "s/^COMMIT: .*/COMMIT: $nsha1/" aufs/BOM
-git add aufs
+git add aufs include/linux
 {
 	echo "UBUNTU: ubuntu: AUFS -- update to $nsha1"
 	echo ""
