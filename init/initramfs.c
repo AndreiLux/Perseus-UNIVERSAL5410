@@ -9,6 +9,7 @@
 #include <linux/syscalls.h>
 #include <linux/utime.h>
 #include <linux/async.h>
+#include <linux/export.h>
 
 static __initdata char *message;
 static void __init error(char *x)
@@ -571,6 +572,12 @@ static void __init clean_rootfs(void)
 #endif
 
 LIST_HEAD(populate_rootfs_domain);
+
+void populate_rootfs_wait(void)
+{
+	async_synchronize_full_domain(&populate_rootfs_domain);
+}
+EXPORT_SYMBOL(populate_rootfs_wait);
 
 static void __init async_populate_rootfs(void)
 {
