@@ -323,6 +323,7 @@ binary-%: install-%
 
 	dh_installchangelogs -p$(pkghdr)
 	dh_installdocs -p$(pkghdr)
+	dh_strip -p$(pkghdr)
 	dh_compress -p$(pkghdr)
 	dh_fixperms -p$(pkghdr)
 	dh_shlibdeps -p$(pkghdr)
