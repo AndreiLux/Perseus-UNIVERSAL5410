@@ -24,7 +24,7 @@
 
 static void chromeos_invalidate_kernel_endio(struct bio *bio, int err)
 {
-	const char *mode = ((bio->bi_rw & (1 << BIO_RW)) ? "write" : "read");
+	const char *mode = ((bio->bi_rw & REQ_WRITE) ? "write" : "read");
 	if (err)
 		chromeos_set_need_recovery();
 
@@ -80,8 +80,7 @@ static int chromeos_invalidate_kernel(struct block_device *root_bdev)
 	/* Ensure we do synchronous unblocked I/O. We may also need
 	 * sync_bdev() on completion, but it really shouldn't.
 	 */
-	int rw = (1 << BIO_RW_SYNCIO) | (1 << BIO_RW_BARRIER) |
-		 (1 << BIO_RW_UNPLUG) | (1 << BIO_RW_NOIDLE);
+	int rw = REQ_SYNC | REQ_SOFTBARRIER | REQ_NOIDLE;
 
 	/* Very basic sanity checking. This should be better. */
 	if (!root_bdev || !root_bdev->bd_part ||
@@ -143,7 +142,7 @@ static int chromeos_invalidate_kernel(struct block_device *root_bdev)
 		goto failed_to_write;
 	}
 
-	rw |= (1 << BIO_RW);
+	rw |= REQ_WRITE;
 	if (chromeos_invalidate_kernel_submit(bio, bdev, rw, page)) {
 		ret = -1;
 		goto failed_to_submit_write;
@@ -199,12 +198,6 @@ static struct notifier_block chromeos_nb = {
 static int __init dm_verity_chromeos_init(void)
 {
 	int r;
-
-	/* On all non-Chrome OS x86 targets, this will just panic. */
-	if (!chromeos_initialized()) {
-		DMERR("not on a chromeos platform");
-		return 1;
-	}
 
 	r = dm_verity_register_error_notifier(&chromeos_nb);
 	if (r < 0)
