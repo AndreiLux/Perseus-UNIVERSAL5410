@@ -15,6 +15,7 @@
 #include <linux/backing-dev.h>
 #include <linux/bio.h>
 #include <linux/blkdev.h>
+#include <linux/chromeos_platform.h>
 #include <linux/completion.h>
 #include <linux/crypto.h>
 #include <linux/delay.h>
@@ -22,6 +23,7 @@
 #include <linux/err.h>
 #include <linux/genhd.h>
 #include <linux/init.h>
+#include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/mempool.h>
 #include <linux/module.h>
@@ -118,12 +120,13 @@ MODULE_PARM_DESC(max_bios, "Max number of allocated BIOs");
  */
 enum verity_error_behavior {
 	DM_VERITY_ERROR_BEHAVIOR_EIO = 0, DM_VERITY_ERROR_BEHAVIOR_PANIC,
-	DM_VERITY_ERROR_BEHAVIOR_NONE };
-static const char *allowed_error_behaviors[] = { "eio", "panic", "none", NULL };
+	DM_VERITY_ERROR_BEHAVIOR_NONE, DM_VERITY_ERROR_BEHAVIOR_CROS };
+static const char *allowed_error_behaviors[] = { "eio", "panic", "none", "cros",
+						 NULL };
 #define DM_VERITY_MAX_ERROR_BEHAVIOR sizeof("panic")
 static char *error_behavior = "eio";
 module_param(error_behavior, charp, 0644);
-MODULE_PARM_DESC(error_behavior, "Behavior on error (eio, reboot, none)");
+MODULE_PARM_DESC(error_behavior, "Behavior on error (eio, panic, none, cros)");
 
 /* Control whether the reads are optimized for sequential access by pre-reading
  * entries in the bht.
@@ -528,12 +531,163 @@ static void kverityd_verify_cleanup(struct dm_verity_io *io, int error)
 	io->error = error;
 }
 
+static void chromeos_invalidate_kernel_endio(struct bio *bio, int err)
+{
+	const char *mode = ((bio->bi_rw & (1 << BIO_RW)) ? "write" : "read");
+	if (err)
+		chromeos_set_need_recovery();
+
+	if (bio_flagged(bio, BIO_EOPNOTSUPP)) {
+		DMERR("invalidate_kernel: %s not supported", mode);
+		chromeos_set_need_recovery();
+	} else if (!bio_flagged(bio, BIO_UPTODATE)) {
+		DMERR("invalidate_kernel: %s not up to date", mode);
+		chromeos_set_need_recovery();
+	} else {
+		DMERR("invalidate_kernel: partition header %s completed", mode);
+	}
+
+	complete(bio->bi_private);
+}
+
+static int chromeos_invalidate_kernel_submit(struct bio *bio,
+					     struct block_device *bdev,
+					     int rw, struct page *page)
+{
+	DECLARE_COMPLETION_ONSTACK(wait);
+
+	bio->bi_private = &wait;
+	bio->bi_end_io = chromeos_invalidate_kernel_endio;
+	bio->bi_bdev = bdev;
+
+	bio->bi_sector = 0;
+	bio->bi_vcnt = 1;
+	bio->bi_idx = 0;
+	bio->bi_size = 512;
+	bio->bi_rw = rw;
+	bio->bi_io_vec[0].bv_page = page;
+	bio->bi_io_vec[0].bv_len = 512;
+	bio->bi_io_vec[0].bv_offset = 0;
+
+	submit_bio(rw, bio);
+	/* Wait up to 2 seconds for completion or fail. */
+	if (!wait_for_completion_timeout(&wait, msecs_to_jiffies(2000)))
+		return -1;
+	return 0;
+}
+
+/* Replaces the first 8 bytes of a partition with DMVERROR */
+static int chromeos_invalidate_kernel(struct block_device *root_bdev)
+{
+	int ret = 0;
+	struct block_device *bdev;
+	struct bio *bio = NULL;
+	struct page *page = NULL;
+	int partno = root_bdev->bd_part->partno - 1;
+	dev_t kdev = MKDEV(0, 0);
+	fmode_t dev_mode;
+	/* Ensure we do synchronous unblocked I/O. We may also need
+	 * sync_bdev() on completion, but it really shouldn't.
+	 */
+	int rw = (1 << BIO_RW_SYNCIO) | (1 << BIO_RW_BARRIER) |
+		 (1 << BIO_RW_UNPLUG) | (1 << BIO_RW_NOIDLE);
+
+	/* Very basic sanity checking. This should be better. */
+	if (!root_bdev || !root_bdev->bd_part ||
+	    root_bdev->bd_part->partno <= 1) {
+		DMERR("invalidate_kernel: partition layout unexpected");
+		return -EINVAL;
+	}
+	kdev = MKDEV(MAJOR(root_bdev->bd_dev), MINOR(root_bdev->bd_dev) - 1);
+
+	DMERR("Attempting to invalidate kernel (part:%d,devt:%d)",
+	      partno, kdev);
+
+	/* First we open the device for reading. */
+	dev_mode = FMODE_READ;
+	bdev = open_by_devnum(kdev, dev_mode);
+	if (IS_ERR(bdev)) {
+		DMERR("invalidate_kernel: could not open device for reading");
+		ret = -1;
+		goto failed_to_read;
+	}
+
+	bio = bio_alloc(GFP_NOIO, 1);
+	if (!bio) {
+		ret = -1;
+		goto failed_bio_alloc;
+	}
+
+	page = alloc_page(GFP_NOIO);
+	if (!page) {
+		ret = -ENOMEM;
+		goto failed_to_alloc_page;
+	}
+
+	if (chromeos_invalidate_kernel_submit(bio, bdev, rw, page)) {
+		ret = -1;
+		goto failed_to_submit_read;
+	}
+
+	/* We have a page. Let's make sure it looks right. */
+	if (memcmp("CHROMEOS", page_address(page), 8)) {
+		DMERR("invalidate_kernel called on non-kernel partition");
+		ret = -EINVAL;
+		goto invalid_header;
+	} else {
+		DMERR("invalidate_kernel: found CHROMEOS kernel partition");
+	}
+
+	/* Stamp it and rewrite */
+	memcpy(page_address(page), "DMVERROR", 8);
+
+	/* The block dev was being changed on read. Let's reopen here. */
+	blkdev_put(bdev, dev_mode);
+	dev_mode = FMODE_WRITE;
+	bdev = open_by_devnum(kdev, dev_mode);
+	if (IS_ERR(bdev)) {
+		DMERR("invalidate_kernel: could not open device for reading");
+		dev_mode = 0;
+		ret = -1;
+		goto failed_to_write;
+	}
+
+	rw |= (1 << BIO_RW);
+	if (chromeos_invalidate_kernel_submit(bio, bdev, rw, page)) {
+		ret = -1;
+		goto failed_to_submit_write;
+	}
+	DMERR("invalidate_kernel: completed.");
+
+	__free_page(page);
+	bio_put(bio);
+	blkdev_put(bdev, dev_mode);
+	return 0;
+
+failed_to_submit_write:
+failed_to_write:
+invalid_header:
+	__free_page(page);
+failed_to_submit_read:
+	/* Technically, we'll leak a page with the pending bio, but
+	 *  we're about to panic so it's safer to do the panic() we expect.
+	 */
+failed_to_alloc_page:
+	bio_put(bio);
+failed_bio_alloc:
+	if (dev_mode)
+		blkdev_put(bdev, dev_mode);
+failed_to_read:
+	return ret;
+}
+
 /* If the request is not successful, this handler takes action.
  * TODO make this call a registered handler.
  */
 static void verity_error(struct verity_config *vc, struct dm_verity_io *io,
 			 int error) {
 	const char *message;
+	int needs_invalidate = 0;
 	dev_t devt = 0;
 	if (vc)
 		devt = vc->dev->bdev->bd_dev;
@@ -552,15 +706,22 @@ static void verity_error(struct verity_config *vc, struct dm_verity_io *io,
 		break;
 	case -EACCES:
 		message = "integrity failure";
+		/* Image is bad. */
+		needs_invalidate = 1;
 		break;
 	case -EPERM:
 		message = "hash tree population failure";
+		/* Could be bad hashes or I/O failure. */
+		needs_invalidate = 1;
 		break;
 	case -EINVAL:
 		message = "unexpected missing/invalid data";
+		/* The device was configured incorrectly - fallback. */
+		needs_invalidate = 1;
 		break;
 	default:
 		/* Other errors can be passed through as IO errors */
+		message = "unknown or I/O error";
 		return;
 	}
 
@@ -576,14 +737,19 @@ static void verity_error(struct verity_config *vc, struct dm_verity_io *io,
 		return;
 	}
 
+	/* CROS only differs from PANIC on terminal errors */
+	if (needs_invalidate &&
+	    !strcmp(vc->error_behavior,
+		    allowed_error_behaviors[DM_VERITY_ERROR_BEHAVIOR_CROS])) {
+		/* Wipe the first sector of the boot kernel, then panic :) */
+		if (chromeos_invalidate_kernel(vc->dev->bdev))
+			chromeos_set_need_recovery();
+		/* Fall through but only go to recovery if we couldn't
+		 * invalidate the disk.
+		 */
+	}
+
 	/*  else DM_VERITY_ERROR_BEHAVOR_PANIC */
-	/* TODO(wad) If panic_timoeut is zero, a reboot does not occur.
-	 * extern int panic_timeout = 1;
-	 */
-
-	/* Flag to firmware that this filesystem failed and needs recovery */
-	chromeos_set_need_recovery();
-
 	panic("dm-verity failure: "
 		"device:%u:%u error%d block:%llu message:%s",
 		MAJOR(devt), MINOR(devt), error, io->block, message);
@@ -591,7 +757,7 @@ static void verity_error(struct verity_config *vc, struct dm_verity_io *io,
 
 /**
  * verity_error_behavior_prepare - check and clean up error_behaviors
- * @behavior:	char array of size DM_VERITY_BMAX_ERROR_BEHAVIOR
+ * @behavior:	char array of size DM_VERITY_MAX_ERROR_BEHAVIOR
  *
  * Checks if the behavior is valid and rewrites it if it was a
  * legacy mode (digit).
@@ -1526,7 +1692,7 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 
 	/* arg6: override with optional device-specific error behavior */
 	if (argc >= 7) {
-		strncpy(vc->error_behavior, argv[7],
+		strncpy(vc->error_behavior, argv[6],
 			sizeof(vc->error_behavior));
 	} else {
 		/* Inherit the current global default. */
@@ -1572,6 +1738,7 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	 * sane.  Requests will be submitted asynchronously. blk_unplug() will
 	 * be called at the end of each dm_populate call so that the async
 	 * requests are batched per workqueue job.
+	 * TODO(wad) look into workqueue flags to ensure safety.
 	 */
 	vc->io_queue = create_workqueue("kverityd_io");
 	if (!vc->io_queue) {
