@@ -15,7 +15,6 @@
 #include <linux/backing-dev.h>
 #include <linux/bio.h>
 #include <linux/blkdev.h>
-#include <linux/chromeos_platform.h>
 #include <linux/completion.h>
 #include <linux/crypto.h>
 #include <linux/delay.h>
@@ -44,6 +43,8 @@
 #define CONFIG_DM_VERITY_TRACE 1
 #include <linux/device-mapper.h>
 #include <linux/dm-bht.h>
+
+#include "dm-verity.h"
 
 #define DM_MSG_PREFIX "verity"
 #define MESG_STR(x) x, sizeof(x)
@@ -116,17 +117,15 @@ MODULE_PARM_DESC(max_bios, "Max number of allocated BIOs");
 
 /* Provide a lightweight means of specifying the global default for
  * error behavior: eio, reboot, or none
- * Legacy support for 0 = eio, 1 = reboot/panic, and 2 = none.
+ * Legacy support for 0 = eio, 1 = reboot/panic, 2 = none, 3 = notify.
+ * This is matched to the enum in dm-verity.h.
  */
-enum verity_error_behavior {
-	DM_VERITY_ERROR_BEHAVIOR_EIO = 0, DM_VERITY_ERROR_BEHAVIOR_PANIC,
-	DM_VERITY_ERROR_BEHAVIOR_NONE, DM_VERITY_ERROR_BEHAVIOR_CROS };
-static const char *allowed_error_behaviors[] = { "eio", "panic", "none", "cros",
-						 NULL };
-#define DM_VERITY_MAX_ERROR_BEHAVIOR sizeof("panic")
+static const char *allowed_error_behaviors[] = { "eio", "panic", "none",
+						 "notify", NULL };
 static char *error_behavior = "eio";
 module_param(error_behavior, charp, 0644);
-MODULE_PARM_DESC(error_behavior, "Behavior on error (eio, panic, none, cros)");
+MODULE_PARM_DESC(error_behavior, "Behavior on error "
+				 "(eio, panic, none, notify)");
 
 /* Control whether the reads are optimized for sequential access by pre-reading
  * entries in the bht.
@@ -187,6 +186,7 @@ struct dm_verity_io {
 struct verity_config {
 	struct dm_dev *dev;
 	sector_t start;
+	sector_t size;
 
 	struct dm_dev *hash_dev;
 	sector_t hash_start;
@@ -209,7 +209,7 @@ struct verity_config {
 	char hash_alg[CRYPTO_MAX_ALG_NAME];
 	struct hash_desc *hash;  /* one per cpu */
 
-	char error_behavior[DM_VERITY_MAX_ERROR_BEHAVIOR];
+	int error_behavior;
 
 	struct verity_stats stats;
 };
@@ -221,6 +221,7 @@ static void kverityd_queue_io(struct dm_verity_io *io, bool delayed);
 static void kverityd_io_bht_populate(struct dm_verity_io *io);
 static void kverityd_io_bht_populate_end(struct bio *, int error);
 
+static BLOCKING_NOTIFIER_HEAD(verity_error_notifier);
 
 /*-----------------------------------------------
  * Statistic tracking functions
@@ -274,6 +275,22 @@ void verity_stats_average_requeues(struct verity_config *vc, int requeues)
 {
 	/* TODO(wad) */
 }
+
+/*-----------------------------------------------
+ * Exported interfaces
+ *-----------------------------------------------*/
+
+int dm_verity_register_error_notifier(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_register(&verity_error_notifier, nb);
+}
+EXPORT_SYMBOL_GPL(dm_verity_register_error_notifier);
+
+int dm_verity_unregister_error_notifier(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_unregister(&verity_error_notifier, nb);
+}
+EXPORT_SYMBOL_GPL(dm_verity_unregister_error_notifier);
 
 /*-----------------------------------------------
  * Allocation and utility functions
@@ -531,168 +548,28 @@ static void kverityd_verify_cleanup(struct dm_verity_io *io, int error)
 	io->error = error;
 }
 
-static void chromeos_invalidate_kernel_endio(struct bio *bio, int err)
-{
-	const char *mode = ((bio->bi_rw & (1 << BIO_RW)) ? "write" : "read");
-	if (err)
-		chromeos_set_need_recovery();
-
-	if (bio_flagged(bio, BIO_EOPNOTSUPP)) {
-		DMERR("invalidate_kernel: %s not supported", mode);
-		chromeos_set_need_recovery();
-	} else if (!bio_flagged(bio, BIO_UPTODATE)) {
-		DMERR("invalidate_kernel: %s not up to date", mode);
-		chromeos_set_need_recovery();
-	} else {
-		DMERR("invalidate_kernel: partition header %s completed", mode);
-	}
-
-	complete(bio->bi_private);
-}
-
-static int chromeos_invalidate_kernel_submit(struct bio *bio,
-					     struct block_device *bdev,
-					     int rw, struct page *page)
-{
-	DECLARE_COMPLETION_ONSTACK(wait);
-
-	bio->bi_private = &wait;
-	bio->bi_end_io = chromeos_invalidate_kernel_endio;
-	bio->bi_bdev = bdev;
-
-	bio->bi_sector = 0;
-	bio->bi_vcnt = 1;
-	bio->bi_idx = 0;
-	bio->bi_size = 512;
-	bio->bi_rw = rw;
-	bio->bi_io_vec[0].bv_page = page;
-	bio->bi_io_vec[0].bv_len = 512;
-	bio->bi_io_vec[0].bv_offset = 0;
-
-	submit_bio(rw, bio);
-	/* Wait up to 2 seconds for completion or fail. */
-	if (!wait_for_completion_timeout(&wait, msecs_to_jiffies(2000)))
-		return -1;
-	return 0;
-}
-
-/* Replaces the first 8 bytes of a partition with DMVERROR */
-static int chromeos_invalidate_kernel(struct block_device *root_bdev)
-{
-	int ret = 0;
-	struct block_device *bdev;
-	struct bio *bio = NULL;
-	struct page *page = NULL;
-	int partno = root_bdev->bd_part->partno - 1;
-	dev_t kdev = MKDEV(0, 0);
-	fmode_t dev_mode;
-	/* Ensure we do synchronous unblocked I/O. We may also need
-	 * sync_bdev() on completion, but it really shouldn't.
-	 */
-	int rw = (1 << BIO_RW_SYNCIO) | (1 << BIO_RW_BARRIER) |
-		 (1 << BIO_RW_UNPLUG) | (1 << BIO_RW_NOIDLE);
-
-	/* Very basic sanity checking. This should be better. */
-	if (!root_bdev || !root_bdev->bd_part ||
-	    root_bdev->bd_part->partno <= 1) {
-		DMERR("invalidate_kernel: partition layout unexpected");
-		return -EINVAL;
-	}
-	kdev = MKDEV(MAJOR(root_bdev->bd_dev), MINOR(root_bdev->bd_dev) - 1);
-
-	DMERR("Attempting to invalidate kernel (part:%d,devt:%d)",
-	      partno, kdev);
-
-	/* First we open the device for reading. */
-	dev_mode = FMODE_READ;
-	bdev = open_by_devnum(kdev, dev_mode);
-	if (IS_ERR(bdev)) {
-		DMERR("invalidate_kernel: could not open device for reading");
-		ret = -1;
-		goto failed_to_read;
-	}
-
-	bio = bio_alloc(GFP_NOIO, 1);
-	if (!bio) {
-		ret = -1;
-		goto failed_bio_alloc;
-	}
-
-	page = alloc_page(GFP_NOIO);
-	if (!page) {
-		ret = -ENOMEM;
-		goto failed_to_alloc_page;
-	}
-
-	if (chromeos_invalidate_kernel_submit(bio, bdev, rw, page)) {
-		ret = -1;
-		goto failed_to_submit_read;
-	}
-
-	/* We have a page. Let's make sure it looks right. */
-	if (memcmp("CHROMEOS", page_address(page), 8)) {
-		DMERR("invalidate_kernel called on non-kernel partition");
-		ret = -EINVAL;
-		goto invalid_header;
-	} else {
-		DMERR("invalidate_kernel: found CHROMEOS kernel partition");
-	}
-
-	/* Stamp it and rewrite */
-	memcpy(page_address(page), "DMVERROR", 8);
-
-	/* The block dev was being changed on read. Let's reopen here. */
-	blkdev_put(bdev, dev_mode);
-	dev_mode = FMODE_WRITE;
-	bdev = open_by_devnum(kdev, dev_mode);
-	if (IS_ERR(bdev)) {
-		DMERR("invalidate_kernel: could not open device for reading");
-		dev_mode = 0;
-		ret = -1;
-		goto failed_to_write;
-	}
-
-	rw |= (1 << BIO_RW);
-	if (chromeos_invalidate_kernel_submit(bio, bdev, rw, page)) {
-		ret = -1;
-		goto failed_to_submit_write;
-	}
-	DMERR("invalidate_kernel: completed.");
-
-	__free_page(page);
-	bio_put(bio);
-	blkdev_put(bdev, dev_mode);
-	return 0;
-
-failed_to_submit_write:
-failed_to_write:
-invalid_header:
-	__free_page(page);
-failed_to_submit_read:
-	/* Technically, we'll leak a page with the pending bio, but
-	 *  we're about to panic so it's safer to do the panic() we expect.
-	 */
-failed_to_alloc_page:
-	bio_put(bio);
-failed_bio_alloc:
-	if (dev_mode)
-		blkdev_put(bdev, dev_mode);
-failed_to_read:
-	return ret;
-}
-
 /* If the request is not successful, this handler takes action.
  * TODO make this call a registered handler.
  */
 static void verity_error(struct verity_config *vc, struct dm_verity_io *io,
-			 int error) {
+			 int error)
+{
 	const char *message;
-	int needs_invalidate = 0;
+	int error_behavior = DM_VERITY_ERROR_BEHAVIOR_PANIC;
 	dev_t devt = 0;
-	if (vc)
+	sector_t block = -1;
+	int transient = 1;
+	struct dm_verity_error_state error_state;
+
+	if (vc) {
 		devt = vc->dev->bdev->bd_dev;
-	if (io)
+		error_behavior = vc->error_behavior;
+	}
+
+	if (io) {
 		io->error = -EIO;
+		block = io->block;
+	}
 
 	switch (error) {
 	case -ENOMEM:
@@ -707,17 +584,17 @@ static void verity_error(struct verity_config *vc, struct dm_verity_io *io,
 	case -EACCES:
 		message = "integrity failure";
 		/* Image is bad. */
-		needs_invalidate = 1;
+		transient = 0;
 		break;
 	case -EPERM:
 		message = "hash tree population failure";
-		/* Could be bad hashes or I/O failure. */
-		needs_invalidate = 1;
+		/* Should be dm-bht specific errors */
+		transient = 0;
 		break;
 	case -EINVAL:
 		message = "unexpected missing/invalid data";
 		/* The device was configured incorrectly - fallback. */
-		needs_invalidate = 1;
+		transient = 0;
 		break;
 	default:
 		/* Other errors can be passed through as IO errors */
@@ -726,63 +603,68 @@ static void verity_error(struct verity_config *vc, struct dm_verity_io *io,
 	}
 
 	DMERR_LIMIT("verification failure occurred: %s", message);
-	if (!strcmp(vc->error_behavior,
-		    allowed_error_behaviors[DM_VERITY_ERROR_BEHAVIOR_EIO]))
-		return;
 
-	if (!strcmp(vc->error_behavior,
-		    allowed_error_behaviors[DM_VERITY_ERROR_BEHAVIOR_NONE])) {
+	if (error_behavior == DM_VERITY_ERROR_BEHAVIOR_NOTIFY) {
+		error_state.code = error;
+		error_state.transient = transient;
+		error_state.block = block;
+		error_state.message = message;
+		error_state.dev_start = vc->start;
+		error_state.dev_len = vc->size;
+		error_state.dev = vc->dev->bdev;
+		error_state.hash_dev_start = vc->hash_start;
+		error_state.hash_dev_len = dm_bht_sectors(&vc->bht);
+		error_state.hash_dev = vc->hash_dev->bdev;
+
+		/* Set default fallthrough behavior. */
+		error_state.behavior = DM_VERITY_ERROR_BEHAVIOR_PANIC;
+		error_behavior = DM_VERITY_ERROR_BEHAVIOR_PANIC;
+
+		if (!blocking_notifier_call_chain(
+		    &verity_error_notifier, transient, &error_state)) {
+			error_behavior = error_state.behavior;
+		}
+	}
+
+	switch (error_behavior) {
+	case DM_VERITY_ERROR_BEHAVIOR_EIO:
+		break;
+	case DM_VERITY_ERROR_BEHAVIOR_NONE:
 		if (error != -EIO && io)
 			io->error = 0;
-		return;
+		break;
+	default:
+		goto do_panic;
 	}
+	return;
 
-	/* CROS only differs from PANIC on terminal errors */
-	if (needs_invalidate &&
-	    !strcmp(vc->error_behavior,
-		    allowed_error_behaviors[DM_VERITY_ERROR_BEHAVIOR_CROS])) {
-		/* Wipe the first sector of the boot kernel, then panic :) */
-		if (chromeos_invalidate_kernel(vc->dev->bdev))
-			chromeos_set_need_recovery();
-		/* Fall through but only go to recovery if we couldn't
-		 * invalidate the disk.
-		 */
-	}
-
-	/*  else DM_VERITY_ERROR_BEHAVOR_PANIC */
+do_panic:
 	panic("dm-verity failure: "
-		"device:%u:%u error%d block:%llu message:%s",
-		MAJOR(devt), MINOR(devt), error, io->block, message);
+		"device:%u:%u error:%d block:%llu message:%s",
+		MAJOR(devt), MINOR(devt), error, block, message);
 }
 
 /**
- * verity_error_behavior_prepare - check and clean up error_behaviors
- * @behavior:	char array of size DM_VERITY_MAX_ERROR_BEHAVIOR
+ * verity_parse_error_behavior - parse a behavior charp to the enum
+ * @behavior:	NUL-terminated char array
  *
- * Checks if the behavior is valid and rewrites it if it was a
- * legacy mode (digit).
- * Returns true if valid, false if not.
+ * Checks if the behavior is valid either as text or as an index digit
+ * and returns the proper enum value or -1 on error.
  */
-static bool verity_error_behavior_prepare(char *behavior)
+static int verity_parse_error_behavior(char *behavior)
 {
 	const char **allowed = allowed_error_behaviors;
-	char legacy = '0';
-	bool ok = false;
-	if (!behavior)
-		return false;
-	do {
-		if (!strcmp(*allowed, behavior)) {
-			ok = true;
+	char index = '0';
+
+	for (; *allowed; allowed++, index++)
+		if (!strcmp(*allowed, behavior) || behavior[0] == index)
 			break;
-		}
-		/* Support legacy 0, 1, 2  by rewriting it. */
-		if (behavior[0] == legacy++) {
-			strcpy(behavior, *allowed);
-			ok = true;
-			break;
-		}
-	} while (*(++allowed));
-	return ok;
+
+	if (!*allowed)
+		return -1;
+
+	/* Convert to the integer index matching the enum. */
+	return (allowed - allowed_error_behaviors);
 }
 
 
@@ -1201,6 +1083,9 @@ static void kverityd_io_bht_populate(struct dm_verity_io *io)
 		if (populated < 0) {
 			DMCRIT("dm_bht_populate error for block %u (io:%p): %d",
 			       block, io, populated);
+			/* TODO(wad) support propagating transient errors
+			 *           cleanly.
+			 */
 			/* verity_dec_pending will handle the error case. */
 			io->error = -EPERM;
 			break;
@@ -1607,7 +1492,8 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	}
 	/* dm-bht block size is HARD CODED to PAGE_SIZE right now. */
 	/* Calculate the blocks from the given device size */
-	blocks = to_bytes(ti->len) >> PAGE_SHIFT;
+	vc->size = ti->len;
+	blocks = to_bytes(vc->size) >> PAGE_SHIFT;
 	if (dm_bht_create(&vc->bht, (unsigned int)depth, blocks, argv[4])) {
 		DMERR("failed to create required bht");
 		goto bad_bht;
@@ -1630,7 +1516,7 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	}
 
 	if (PAGE_ALIGN(vc->start) != vc->start ||
-	    PAGE_ALIGN(to_bytes(ti->len)) != to_bytes(ti->len)) {
+	    PAGE_ALIGN(to_bytes(vc->size)) != to_bytes(vc->size)) {
 		ti->error = "Device must be PAGE_SIZE divisble/aligned";
 		goto bad_hash_start;
 	}
@@ -1692,14 +1578,13 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 
 	/* arg6: override with optional device-specific error behavior */
 	if (argc >= 7) {
-		strncpy(vc->error_behavior, argv[6],
-			sizeof(vc->error_behavior));
+		vc->error_behavior = verity_parse_error_behavior(argv[6]);
 	} else {
 		/* Inherit the current global default. */
-		strncpy(vc->error_behavior, error_behavior,
-			sizeof(vc->error_behavior));
+		vc->error_behavior =
+			verity_parse_error_behavior(error_behavior);
 	}
-	if (!verity_error_behavior_prepare(vc->error_behavior)) {
+	if (vc->error_behavior == -1) {
 		ti->error =
 			"Bad error_behavior supplied";
 		goto bad_err_behavior;
