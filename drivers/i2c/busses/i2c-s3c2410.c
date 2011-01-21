@@ -449,6 +449,8 @@ static irqreturn_t s3c24xx_i2c_irq(int irqno, void *dev_id)
 	unsigned long status;
 	unsigned long tmp;
 
+	spin_lock(&i2c->lock);
+
 	status = readl(i2c->regs + S3C2410_IICSTAT);
 
 	if (status & S3C2410_IICSTAT_ARBITR) {
@@ -471,6 +473,8 @@ static irqreturn_t s3c24xx_i2c_irq(int irqno, void *dev_id)
 	i2c_s3c_irq_nextbyte(i2c, status);
 
  out:
+	spin_unlock(&i2c->lock);
+
 	return IRQ_HANDLED;
 }
 
