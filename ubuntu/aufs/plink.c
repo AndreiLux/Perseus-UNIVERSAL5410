@@ -414,8 +414,8 @@ void au_plink_append(struct inode *inode, aufs_bindex_t bindex,
 	spin_unlock(&sbinfo->si_plink.spin);
 	if (!found) {
 		cnt++;
-		WARN_ONCE(cnt > AUFS_PLINK_WARN,
-			  "unexpectedly many pseudo links, %d\n", cnt);
+//		WARN_ONCE(cnt > AUFS_PLINK_WARN,
+//			  "unexpectedly many pseudo links, %d\n", cnt);
 		err = whplink(h_dentry, inode, bindex, au_sbr(sb, bindex));
 	} else {
 		do_put_plink(tmp, 0);
