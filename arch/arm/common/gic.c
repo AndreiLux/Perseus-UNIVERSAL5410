@@ -358,6 +358,17 @@ static void __init gic_dist_init(struct gic_chip_data *gic)
 	writel_relaxed(0, base + GIC_DIST_CTRL);
 
 	/*
+	 * Find out how many interrupts are supported.
+	 * The GIC only supports up to 1020 interrupt sources.
+	 */
+	gic_irqs = readl_relaxed(base + GIC_DIST_CTR) & 0x1f;
+	gic_irqs = (gic_irqs + 1) * 32;
+	if (gic_irqs > 1020)
+		gic_irqs = 1020;
+
+	gic->gic_irqs = gic_irqs;
+
+	/*
 	 * Set all global interrupts to be level triggered, active low.
 	 */
 	for (i = 32; i < gic_irqs; i += 16)
@@ -588,6 +599,7 @@ static void __init gic_pm_init(struct gic_chip_data *gic)
 		sizeof(u32));
 	BUG_ON(!gic->saved_ppi_conf);
 
+	/* !!! only register notifier for first gic? */
 	if (gic == &gic_data[0])
 		cpu_pm_register_notifier(&gic_notifier_block);
 }
