@@ -248,6 +248,47 @@ static inline void omap_init_camera(void)
 #endif
 }
 
+#if defined(CONFIG_SND_OMAP_SOC_DMIC) || \
+	defined(CONFIG_SND_OMAP_SOC_DMIC_MODULE)
+
+static struct omap_device_pm_latency omap_dmic_latency[] = {
+	{
+		.deactivate_func = omap_device_idle_hwmods,
+		.activate_func = omap_device_enable_hwmods,
+		.flags = OMAP_DEVICE_LATENCY_AUTO_ADJUST,
+	},
+};
+
+static void omap_init_dmic(void)
+{
+	struct omap_hwmod *oh;
+	struct omap_device *od;
+
+	oh = omap_hwmod_lookup("dmic");
+	if (!oh) {
+		printk(KERN_ERR "Could not look up dmic hw_mod\n");
+		return;
+	}
+
+	od = omap_device_build("omap-dmic-dai", -1, oh, NULL, 0,
+				omap_dmic_latency,
+				ARRAY_SIZE(omap_dmic_latency), 0);
+	if (IS_ERR(od))
+		printk(KERN_ERR "Could not build omap_device for omap-dmic-dai\n");
+}
+#else
+static inline void omap_init_dmic(void) {}
+#endif
+
+
+struct omap_device_pm_latency omap_keyboard_latency[] = {
+	{
+		.deactivate_func = omap_device_idle_hwmods,
+		.activate_func   = omap_device_enable_hwmods,
+		.flags = OMAP_DEVICE_LATENCY_AUTO_ADJUST,
+	},
+};
+
 int __init omap4_keyboard_init(struct omap4_keypad_platform_data
 			*sdp4430_keypad_data, struct omap_board_data *bdata)
 {
@@ -778,6 +819,7 @@ static int __init omap2_init_devices(void)
 	omap_init_abe();
 	omap_init_aess();
 	omap_init_audio();
+	omap_init_dmic();
 	omap_init_mcpdm();
 	omap_init_dmic();
 	omap_init_camera();
