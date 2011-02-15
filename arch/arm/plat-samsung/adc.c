@@ -240,6 +240,8 @@ int s3c_adc_read(struct s3c_adc_client *client, unsigned int ch)
 	ret = wait_event_timeout(wake, client->result >= 0, HZ / 2);
 	if (client->result < 0) {
 		s3c_adc_stop(client);
+		dev_warn(&adc_dev->pdev->dev, "%s: %p is timed out\n",
+						__func__, client);
 		ret = -ETIMEDOUT;
 		goto err;
 	}
