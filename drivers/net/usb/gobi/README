@@ -1,0 +1,30 @@
+Qualcomm Gobi 2000 driver
+-------------------------
+
+This directory contains a driver for the Qualcomm Gobi 2000 CDMA/GSM modem. The
+device speaks a protocol called QMI with its host; this driver's responsibility
+is to multiplex transactions over QMI connections. Note that the relatively
+simple encoding defined in qmi.h and qmi.c is only the encapsulating protocol;
+the device speaks a more complex set of protocols embodied in the closed-source
+Gobi SDK which are necessary to use advanced features of the device.
+Furthermore, firmware (also proprietary) is needed to make the device useful. An
+open-source firmware loader exists: http://www.codon.org.uk/~mjg59/gobi_loader/.
+
+Interfaces:
+This driver presents two separate interfaces to userspace:
+- usbN, an ordinary usb network interface
+- /dev/qcqmiN, a channel to speak to the device using QMI messages
+The latter is for use by the Gobi SDK.
+
+History:
+This driver's original incarnation (of which this is a rewrite) was released
+under GPLv2 by Qualcomm on their Code Aurora site:
+https://www.codeaurora.org/gitweb/quic/la/?p=kernel/msm.git;a=commit;h=b5135a880f8942f990e8c2e383f7f876beacc55b
+
+Issues:
+Help and commentary on any of the issues below would be appreciated.
+- The locking in devqmi_close() is not threadsafe: we're walking a list of tasks
+  without holding a lock on the list. The original driver did this and I have
+  left it intact because I do not fully understand what's going on here.
+- The driver seems to deadlock very occasionally (one in ~6000 reboots during
+  stress testing). I've had no luck tracking this problem down.
