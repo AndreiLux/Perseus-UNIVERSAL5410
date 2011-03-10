@@ -104,6 +104,7 @@ static inline void s3c_adc_select(struct adc_device *adc,
 		con &= ~S3C2410_ADCCON_MUXMASK;
 	con &= ~S3C2410_ADCCON_STDBM;
 	con &= ~S3C2410_ADCCON_STARTMASK;
+	con |=  S3C2410_ADCCON_PRSCEN;
 
 	if (!client->is_ts) {
 		if (cpu == TYPE_ADCV3)
@@ -129,6 +130,7 @@ static void s3c_adc_dbgshow(struct adc_device *adc)
 static void s3c_adc_try(struct adc_device *adc)
 {
 	struct s3c_adc_client *next = adc->ts_pend;
+	unsigned int con = readl(adc->regs + S3C2410_ADCCON);
 
 	if (!next && !list_empty(&adc_pending)) {
 		next = list_first_entry(&adc_pending,
@@ -143,6 +145,10 @@ static void s3c_adc_try(struct adc_device *adc)
 		s3c_adc_select(adc, next);
 		s3c_adc_convert(adc);
 		s3c_adc_dbgshow(adc);
+	} else {
+		con &= ~S3C2410_ADCCON_PRSCEN;
+		con |=  S3C2410_ADCCON_STDBM;
+		writel(con, adc->regs + S3C2410_ADCCON);
 	}
 }
 
@@ -411,6 +417,7 @@ static int s3c_adc_probe(struct platform_device *pdev)
 	if (cpu == TYPE_ADCV2 || cpu == TYPE_ADCV3)
 		tmp |= S3C64XX_ADCCON_RESSEL;
 
+	tmp |= S3C2410_ADCCON_STDBM;
 	writel(tmp, adc->regs + S3C2410_ADCCON);
 
 	dev_info(dev, "attached adc driver\n");
