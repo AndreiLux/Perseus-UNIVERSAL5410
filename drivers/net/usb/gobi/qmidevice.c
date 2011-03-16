@@ -1379,6 +1379,8 @@ static bool qmi_ready(struct qcusbnet *dev, u16 timeout)
 				spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 				kfree(rbuf);
 				break;
+			} else {
+				spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 			}
 		} else {
 			spin_lock_irqsave(&dev->qmi.clients_lock, flags);
