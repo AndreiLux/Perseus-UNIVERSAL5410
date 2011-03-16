@@ -168,7 +168,7 @@ static void read_callback(struct urb *urb)
 	data = urb->transfer_buffer;
 	size = urb->actual_length;
 
-	print_hex_dump(KERN_INFO, "QCUSBNet2k: ", DUMP_PREFIX_OFFSET,
+	print_hex_dump(KERN_INFO, "gobi-read: ", DUMP_PREFIX_OFFSET,
 		       16, 1, data, size, true);
 
 	result = qmux_parse(&cid, data, size);
@@ -257,7 +257,7 @@ static void int_callback(struct urb *urb)
 			}
 		} else {
 			DBG("ignoring invalid interrupt in packet\n");
-			print_hex_dump(KERN_INFO, "QCUSBNet2k: ",
+			print_hex_dump(KERN_INFO, "gobi-int: ",
 				       DUMP_PREFIX_OFFSET, 16, 1,
 				       urb->transfer_buffer,
 				       urb->actual_length, true);
@@ -525,7 +525,7 @@ static int write_sync(struct qcusbnet *dev, char *buf, int size, u16 cid)
 			     NULL, dev);
 
 	DBG("Actual Write:\n");
-	print_hex_dump(KERN_INFO,  "QCUSBNet2k: ", DUMP_PREFIX_OFFSET,
+	print_hex_dump(KERN_INFO,  "gobi-write: ", DUMP_PREFIX_OFFSET,
 		       16, 1, buf, size, true);
 
 	sema_init(&sem, 0);
@@ -1244,7 +1244,7 @@ int qc_register(struct qcusbnet *dev)
 	}
 
 	printk(KERN_INFO "creating qcqmi%d\n", qmiidx);
-	device_create(dev->qmi.devclass, NULL, devno, NULL, "qcqmi%d", qmiidx);
+	device_create(dev->qmi.devclass, &dev->iface->dev, devno, NULL, "qcqmi%d", qmiidx);
 
 	dev->qmi.devnum = devno;
 	return 0;
