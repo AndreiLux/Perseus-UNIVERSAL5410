@@ -72,7 +72,7 @@ static struct urb *client_delurb(struct qcusbnet *dev, u16 cid);
 
 static int devqmi_open(struct inode *inode, struct file *file);
 static int devqmi_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg);
-static int devqmi_close(struct file *file, fl_owner_t ftable);
+static int devqmi_release(struct inode *inode, struct file *file);
 static ssize_t devqmi_read(struct file *file, char __user *buf, size_t size,
 			   loff_t *pos);
 static ssize_t devqmi_write(struct file *file, const char __user *buf,
@@ -83,19 +83,20 @@ static void wds_callback(struct qcusbnet *dev, u16 cid, void *data);
 static int setup_wds_callback(struct qcusbnet *dev);
 static int qmidms_getmeid(struct qcusbnet *dev);
 
-#define IOCTL_QMI_GET_SERVICE_FILE	(0x8BE0 + 1)
-#define IOCTL_QMI_GET_DEVICE_VIDPID	(0x8BE0 + 2)
-#define IOCTL_QMI_GET_DEVICE_MEID	(0x8BE0 + 3)
+#define IOCTL_QMI_GET_SERVICE_FILE      (0x8BE0 + 1)
+#define IOCTL_QMI_GET_DEVICE_VIDPID     (0x8BE0 + 2)
+#define IOCTL_QMI_GET_DEVICE_MEID       (0x8BE0 + 3)
+#define IOCTL_QMI_CLOSE                 (0x8BE0 + 4)
 #define CDC_GET_ENCAPSULATED_RESPONSE	0x01A1ll
 #define CDC_CONNECTION_SPEED_CHANGE	0x08000000002AA1ll
 
 static const struct file_operations devqmi_fops = {
-	.owner = THIS_MODULE,
-	.read  = devqmi_read,
-	.write = devqmi_write,
-	.ioctl = devqmi_ioctl,
-	.open  = devqmi_open,
-	.flush = devqmi_close,
+	.owner   = THIS_MODULE,
+	.read    = devqmi_read,
+	.write   = devqmi_write,
+	.ioctl   = devqmi_ioctl,
+	.open    = devqmi_open,
+	.release = devqmi_release,
 };
 
 #ifdef CONFIG_SMP
@@ -681,11 +682,6 @@ static void client_free(struct qcusbnet *dev, u16 cid)
 	unsigned long flags;
 	u8 tid;
 
-	if (!device_valid(dev)) {
-		DBG("invalid device\n");
-		return;
-	}
-
 	DBG("releasing 0x%04X\n", cid);
 
 	if (cid != QMICTL) {
@@ -987,8 +983,7 @@ static int devqmi_ioctl(struct inode *inode, struct file *file, unsigned int cmd
 	}
 
 	if (!device_valid(handle->dev)) {
-		DBG("Invalid device! Updating f_ops\n");
-		file->f_op = file->f_dentry->d_inode->i_fop;
+		DBG("Invalid device!\n");
 		return -ENXIO;
 	}
 
@@ -1014,6 +1009,31 @@ static int devqmi_ioctl(struct inode *inode, struct file *file, unsigned int cmd
 		return 0;
 		break;
 
+	/* Okay, all aboard the nasty hack express. If we don't have this
+	 * ioctl() (and we just rely on userspace to close() the file
+	 * descriptors), if userspace has any refs left to this fd (like, say, a
+	 * pending read()), then the read might hang around forever. Userspace
+	 * needs a way to cause us to kick people off those waitqueues before
+	 * closing the fd for good.
+	 *
+	 * If this driver used workqueues, the correct approach here would
+	 * instead be to make the file descriptor select()able, and then just
+	 * use select() instead of aio in userspace (thus allowing us to get
+	 * away with one thread total and avoiding the recounting mess
+	 * altogether).
+	 */
+	case IOCTL_QMI_CLOSE:
+		DBG("Tearing down QMI for service %lu", arg);
+		if (handle->cid == (u16)-1) {
+			DBG("no qmi cid");
+			return -EBADR;
+		}
+
+		file->private_data = NULL;
+		client_free(handle->dev, handle->cid);
+		kfree(handle);
+		return 0;
+		break;
 
 	case IOCTL_QMI_GET_DEVICE_VIDPID:
 		if (!arg) {
@@ -1058,60 +1078,14 @@ static int devqmi_ioctl(struct inode *inode, struct file *file, unsigned int cmd
 	}
 }
 
-static int devqmi_close(struct file *file, fl_owner_t ftable)
+static int devqmi_release(struct inode *inode, struct file *file)
 {
 	struct qmihandle *handle = (struct qmihandle *)file->private_data;
-	struct task_struct *task;
-	struct fdtable *fdtable;
-	int count = 0;
-	int used = 0;
-	unsigned long flags;
-
-	if (!handle) {
-		DBG("bad file data\n");
-		return -EBADF;
-	}
-
-	if (file_count(file) != 1) {
-		rcu_read_lock();
-		for_each_process(task) {
-			if (!task || !task->files)
-				continue;
-			spin_lock_irqsave(&task->files->file_lock, flags);
-			fdtable = files_fdtable(task->files);
-			for (count = 0; count < fdtable->max_fds; count++) {
-				/* Before this function was called, this file was removed
-				 * from our task's file table so if we find it in a file
-				 * table then it is being used by another task
-				 */
-				if (fdtable->fd[count] == file) {
-					used++;
-					break;
-				}
-			}
-			spin_unlock_irqrestore(&task->files->file_lock, flags);
-		}
-		rcu_read_unlock();
-
-		if (used > 0) {
-			DBG("not closing, as this FD is open by %d other process\n", used);
-			return 0;
-		}
-	}
-
-	if (!device_valid(handle->dev)) {
-		DBG("Invalid device! Updating f_ops\n");
-		file->f_op = file->f_dentry->d_inode->i_fop;
-		return -ENXIO;
-	}
-
-	DBG("0x%04X\n", handle->cid);
-
+	if (!handle)
+		return 0;
 	file->private_data = NULL;
-
 	if (handle->cid != (u16)-1)
 		client_free(handle->dev, handle->cid);
-
 	kfree(handle);
 	return 0;
 }
@@ -1130,8 +1104,7 @@ static ssize_t devqmi_read(struct file *file, char __user *buf, size_t size,
 	}
 
 	if (!device_valid(handle->dev)) {
-		DBG("Invalid device! Updating f_ops\n");
-		file->f_op = file->f_dentry->d_inode->i_fop;
+		DBG("Invalid device!\n");
 		return -ENXIO;
 	}
 
@@ -1288,11 +1261,6 @@ void qc_deregister(struct qcusbnet *dev)
 	struct file *file;
 	unsigned long flags;
 	int count = 0;
-
-	if (!device_valid(dev)) {
-		DBG("wrong device\n");
-		return;
-	}
 
 	list_for_each_safe(node, tmp, &dev->qmi.clients) {
 		client = list_entry(node, struct client, node);
