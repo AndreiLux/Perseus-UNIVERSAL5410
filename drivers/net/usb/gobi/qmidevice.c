@@ -734,7 +734,6 @@ static void client_free(struct qcusbnet *dev, u16 cid)
 			kfree(client);
 		}
 	}
-
 	spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 }
 
@@ -948,10 +947,13 @@ static int devqmi_open(struct inode *inode, struct file *file)
 	struct qmidev *qmidev = container_of(inode->i_cdev, struct qmidev, cdev);
 	struct qcusbnet *dev = container_of(qmidev, struct qcusbnet, qmi);
 
-	if (!device_valid(dev)) {
-		DBG("Invalid device\n");
+	/* We need an extra ref on the device per fd, since we stash a ref
+	 * inside the handle. If qcusbnet_get() returns NULL, that means the
+	 * device has been removed from the list - no new refs for us. */
+	struct qcusbnet *ref = qcusbnet_get(dev);
+
+	if (!ref)
 		return -ENXIO;
-	}
 
 	file->private_data = kmalloc(sizeof(struct qmihandle), GFP_KERNEL);
 	if (!file->private_data) {
@@ -961,7 +963,7 @@ static int devqmi_open(struct inode *inode, struct file *file)
 
 	handle = (struct qmihandle *)file->private_data;
 	handle->cid = (u16)-1;
-	handle->dev = dev;
+	handle->dev = ref;
 
 	DBG("%p %04x", handle, handle->cid);
 
@@ -980,6 +982,11 @@ static int devqmi_ioctl(struct inode *inode, struct file *file, unsigned int cmd
 	if (!handle) {
 		DBG("Bad file data\n");
 		return -EBADF;
+	}
+
+	if (handle->dev->dying) {
+		DBG("Dying device");
+		return -ENXIO;
 	}
 
 	if (!device_valid(handle->dev)) {
@@ -1086,6 +1093,7 @@ static int devqmi_release(struct inode *inode, struct file *file)
 	file->private_data = NULL;
 	if (handle->cid != (u16)-1)
 		client_free(handle->dev, handle->cid);
+	qcusbnet_put(handle->dev);
 	kfree(handle);
 	return 0;
 }
@@ -1101,6 +1109,11 @@ static ssize_t devqmi_read(struct file *file, char __user *buf, size_t size,
 	if (!handle) {
 		DBG("Bad file data\n");
 		return -EBADF;
+	}
+
+	if (handle->dev->dying) {
+		DBG("Dying device");
+		return -ENXIO;
 	}
 
 	if (!device_valid(handle->dev)) {
@@ -1187,6 +1200,7 @@ int qc_register(struct qcusbnet *dev)
 	char *name;
 
 	dev->valid = true;
+	dev->dying = false;
 	result = client_alloc(dev, QMICTL);
 	if (result) {
 		dev->valid = false;
@@ -1254,14 +1268,8 @@ void qc_deregister(struct qcusbnet *dev)
 {
 	struct list_head *node, *tmp;
 	struct client *client;
-	struct inode *inode;
-	struct list_head *inodes;
-	struct task_struct *task;
-	struct fdtable *fdtable;
-	struct file *file;
-	unsigned long flags;
-	int count = 0;
 
+	dev->dying = true;
 	list_for_each_safe(node, tmp, &dev->qmi.clients) {
 		client = list_entry(node, struct client, node);
 		DBG("release 0x%04X\n", client->cid);
@@ -1270,33 +1278,6 @@ void qc_deregister(struct qcusbnet *dev)
 
 	qc_stopread(dev);
 	dev->valid = false;
-	list_for_each(inodes, &dev->qmi.cdev.list) {
-		inode = container_of(inodes, struct inode, i_devices);
-		if (inode != NULL && !IS_ERR(inode)) {
-			rcu_read_lock();
-			for_each_process(task) {
-				if (!task || !task->files)
-					continue;
-				spin_lock_irqsave(&task->files->file_lock, flags);
-				fdtable = files_fdtable(task->files);
-				for (count = 0; count < fdtable->max_fds; count++) {
-					file = fdtable->fd[count];
-					if (file != NULL &&  file->f_dentry != NULL) {
-						if (file->f_dentry->d_inode == inode) {
-							rcu_assign_pointer(fdtable->fd[count], NULL);
-							spin_unlock_irqrestore(&task->files->file_lock, flags);
-							DBG("forcing close of open file handle\n");
-							filp_close(file, task->files);
-							spin_lock_irqsave(&task->files->file_lock, flags);
-						}
-					}
-				}
-				spin_unlock_irqrestore(&task->files->file_lock, flags);
-			}
-			rcu_read_unlock();
-		}
-	}
-
 	if (!IS_ERR(dev->qmi.devclass))
 		device_destroy(dev->qmi.devclass, dev->qmi.devnum);
 	cdev_del(&dev->qmi.cdev);

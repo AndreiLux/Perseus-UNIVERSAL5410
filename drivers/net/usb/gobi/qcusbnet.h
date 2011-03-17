@@ -19,6 +19,10 @@
 #ifndef QCUSBNET_QCUSBNET_H
 #define QCUSBNET_QCUSBNET_H
 
+#include "structs.h"
+
 extern int qc_suspend(struct usb_interface *iface, pm_message_t event);
+extern void qcusbnet_put(struct qcusbnet *dev);
+extern struct qcusbnet *qcusbnet_get(struct qcusbnet *dev);
 
 #endif /* !QCUSBNET_QCUSBNET_H */
