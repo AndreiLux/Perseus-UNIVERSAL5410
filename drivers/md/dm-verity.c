@@ -137,7 +137,7 @@ MODULE_PARM_DESC(bht_readahead, "Number of entries to readahead in the bht");
 /* Controls whether verity_get_device will wait forever for a device. */
 static int dev_wait;
 module_param(dev_wait, bool, 0444);
-MODULE_PARM_DESC(dev_wait, "Wait forever for a backing device")
+MODULE_PARM_DESC(dev_wait, "Wait forever for a backing device");
 
 /* Used for tracking pending bios as well as for exporting information via
  * STATUSTYPE_INFO.

@@ -94,8 +94,8 @@ static int chromeos_invalidate_kernel(struct block_device *root_bdev)
 	      partno, kdev);
 
 	/* First we open the device for reading. */
-	dev_mode = FMODE_READ;
-	bdev = open_by_devnum(kdev, dev_mode);
+	dev_mode = FMODE_READ | FMODE_EXCL;
+	bdev = blkdev_get_by_dev(kdev, dev_mode, chromeos_invalidate_kernel);
 	if (IS_ERR(bdev)) {
 		DMERR("invalidate_kernel: could not open device for reading");
 		ret = -1;
@@ -133,8 +133,8 @@ static int chromeos_invalidate_kernel(struct block_device *root_bdev)
 
 	/* The block dev was being changed on read. Let's reopen here. */
 	blkdev_put(bdev, dev_mode);
-	dev_mode = FMODE_WRITE;
-	bdev = open_by_devnum(kdev, dev_mode);
+	dev_mode = FMODE_WRITE | FMODE_EXCL;
+	bdev = blkdev_get_by_dev(kdev, dev_mode, chromeos_invalidate_kernel);
 	if (IS_ERR(bdev)) {
 		DMERR("invalidate_kernel: could not open device for reading");
 		dev_mode = 0;
