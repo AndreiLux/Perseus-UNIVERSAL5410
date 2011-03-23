@@ -168,8 +168,9 @@ static void read_callback(struct urb *urb)
 	data = urb->transfer_buffer;
 	size = urb->actual_length;
 
-	print_hex_dump(KERN_INFO, "gobi-read: ", DUMP_PREFIX_OFFSET,
-		       16, 1, data, size, true);
+	if (qcusbnet_debug)
+		print_hex_dump(KERN_INFO, "gobi-read: ", DUMP_PREFIX_OFFSET,
+		               16, 1, data, size, true);
 
 	result = qmux_parse(&cid, data, size);
 	if (result < 0) {
@@ -257,10 +258,11 @@ static void int_callback(struct urb *urb)
 			}
 		} else {
 			DBG("ignoring invalid interrupt in packet\n");
-			print_hex_dump(KERN_INFO, "gobi-int: ",
-				       DUMP_PREFIX_OFFSET, 16, 1,
-				       urb->transfer_buffer,
-				       urb->actual_length, true);
+			if (qcusbnet_debug)
+				print_hex_dump(KERN_INFO, "gobi-int: ",
+				               DUMP_PREFIX_OFFSET, 16, 1,
+				               urb->transfer_buffer,
+				               urb->actual_length, true);
 		}
 	}
 
@@ -525,8 +527,9 @@ static int write_sync(struct qcusbnet *dev, char *buf, int size, u16 cid)
 			     NULL, dev);
 
 	DBG("Actual Write:\n");
-	print_hex_dump(KERN_INFO,  "gobi-write: ", DUMP_PREFIX_OFFSET,
-		       16, 1, buf, size, true);
+	if (qcusbnet_debug)
+		print_hex_dump(KERN_INFO,  "gobi-write: ", DUMP_PREFIX_OFFSET,
+		               16, 1, buf, size, true);
 
 	sema_init(&sem, 0);
 
