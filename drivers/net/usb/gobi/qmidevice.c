@@ -70,6 +70,8 @@ static bool client_notify(struct qcusbnet *dev, u16 cid, u16 tid);
 static bool client_addurb(struct qcusbnet *dev, u16 cid, struct urb *urb);
 static struct urb *client_delurb(struct qcusbnet *dev, u16 cid);
 
+static int resubmit_int_urb(struct urb *urb);
+
 static int devqmi_open(struct inode *inode, struct file *file);
 static int devqmi_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg);
 static int devqmi_release(struct inode *inode, struct file *file);
@@ -134,6 +136,22 @@ bool qc_isdown(struct qcusbnet *dev, u8 reason)
 	return test_bit(reason, &dev->down);
 }
 
+static int resubmit_int_urb(struct urb *urb)
+{
+	int status;
+	int interval;
+	if (!urb || !urb->dev)
+		return -EINVAL;
+	interval = urb->dev->speed == USB_SPEED_HIGH ? 7 : 3;
+	usb_fill_int_urb(urb, urb->dev, urb->pipe, urb->transfer_buffer,
+	                 urb->transfer_buffer_length, urb->complete,
+	                 urb->context, interval);
+	status = usb_submit_urb(urb, GFP_ATOMIC);
+	if (status)
+		DBG("status %d", status);
+	return status;
+}
+
 static void read_callback(struct urb *urb)
 {
 	struct list_head *node;
@@ -160,6 +178,7 @@ static void read_callback(struct urb *urb)
 
 	if (urb->status) {
 		DBG("Read status = %d\n", urb->status);
+		resubmit_int_urb(dev->qmi.inturb);
 		return;
 	}
 
@@ -175,11 +194,13 @@ static void read_callback(struct urb *urb)
 	result = qmux_parse(&cid, data, size);
 	if (result < 0) {
 		DBG("Read error parsing QMUX %d\n", result);
+		resubmit_int_urb(dev->qmi.inturb);
 		return;
 	}
 
 	if (size < result + 3) {
 		DBG("Data buffer too small to parse\n");
+		resubmit_int_urb(dev->qmi.inturb);
 		return;
 	}
 
@@ -199,6 +220,7 @@ static void read_callback(struct urb *urb)
 					  "read will be discarded\n");
 				kfree(copy);
 				spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
+				resubmit_int_urb(dev->qmi.inturb);
 				return;
 			}
 
@@ -213,6 +235,7 @@ static void read_callback(struct urb *urb)
 	}
 
 	spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
+	resubmit_int_urb(dev->qmi.inturb);
 }
 
 static void int_callback(struct urb *urb)
@@ -266,14 +289,7 @@ static void int_callback(struct urb *urb)
 		}
 	}
 
-	interval = (dev->usbnet->udev->speed == USB_SPEED_HIGH) ? 7 : 3;
-
-	usb_fill_int_urb(urb, urb->dev,	urb->pipe, urb->transfer_buffer,
-			 urb->transfer_buffer_length, urb->complete,
-			 urb->context, interval);
-	status = usb_submit_urb(urb, GFP_ATOMIC);
-	if (status)
-		DBG("Error re-submitting Int URB %d\n", status);
+	resubmit_int_urb(dev->qmi.inturb);
 	return;
 }
 
