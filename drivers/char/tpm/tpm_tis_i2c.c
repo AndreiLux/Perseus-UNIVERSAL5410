@@ -20,8 +20,8 @@
  * License.
  *
  * NOTE:
- * Suspend does currently not work Nvidias Tegra2 Platform (tested on Seaboard)
- * but works fine on Beagleboard (arm omap).
+ * Suspend does currently not work Nvidias Tegra2 Platform
+ * but works fine on Beagleboard (ARM OMAP).
  *
  */
 #include <linux/init.h>
@@ -31,8 +31,8 @@
 #include <linux/wait.h>
 #include "tpm.h"
 
-/* max. buffer size required by TPM commands/results */
-#define TPM_BUFSIZE 4096
+/* max. buffer size supported by our tpm */
+#define TPM_BUFSIZE 1260
 
 /* max. number of iterations after i2c NAK */
 #define MAX_COUNT 3
@@ -97,7 +97,7 @@ static int iic_tpm_read(u8 addr, u8 *buffer, size_t len)
 	if (rc <= 0)
 		return -EIO;
 
-	/* After the TPM has sucessfully received the register address it needs
+	/* After the TPM has successfully received the register address it needs
 	 * some time, thus we're sleeping here again, before retrieving the data
 	 */
 	for (count = 0; count < MAX_COUNT; count++) {
@@ -324,9 +324,9 @@ static int recv_data(struct tpm_chip *chip, u8 *buf, size_t count)
 	while (size < count) {
 		burstcnt = get_burstcount(chip);
 
-		/* wait for positive burst count */
-		if (burstcnt <= 0)
-			continue;
+		/* burstcnt < 0 = tpm is busy */
+		if (burstcnt < 0)
+			return burstcnt;
 
 		/* limit received data to max. left */
 		if (burstcnt > (count-size))
@@ -397,6 +397,9 @@ static int tpm_tis_i2c_send(struct tpm_chip *chip, u8 *buf, size_t len)
 	size_t count = 0;
 	u8 sts = TPM_STS_GO;
 
+	if (len > TPM_BUFSIZE)
+		return -E2BIG; /* command is too long for our tpm, sorry */
+
 	if (request_locality(chip, 0) < 0)
 		return -EBUSY;
 
@@ -417,9 +420,9 @@ static int tpm_tis_i2c_send(struct tpm_chip *chip, u8 *buf, size_t len)
 			"send(): count=%zd, len=%zd, burstcount=%d (plain)\n",
 			count, len, burstcnt);
 
-		/* wait for positive burst count */
-		if (burstcnt <= 0)
-			continue;
+		/* burstcnt < 0 = tpm is busy */
+		if (burstcnt < 0)
+			return burstcnt;
 
 		if (burstcnt > (len-1-count))
 			burstcnt = len-1-count;
@@ -534,7 +537,7 @@ static int tpm_tis_i2c_init(struct device *dev)
 
 	if (request_locality(chip, 0) != 0) {
 		rc = -ENODEV;
-		goto out_err;
+		goto out_vendor;
 	}
 
 	/* read four bytes from DID_VID register */
@@ -566,9 +569,9 @@ out_release:
 
 out_vendor:
 	tpm_dev_vendor_release(chip);
+	tpm_remove_hardware(chip->dev);
 
 out_err:
-	tpm_remove_hardware(chip->dev);
 	return rc;
 }
 
@@ -580,10 +583,12 @@ static const struct i2c_device_id tpm_i2c_tis_table[] = {
 
 #ifdef CONFIG_PM
 /* NOTE:
- * Suspend does currently not work Nvidias Tegra2 Platform (tested on Seaboard)
+ * Suspend does currently not work Nvidias Tegra2 Platform
  * but works fine on Beagleboard (arm omap).
  *
- * This function will block System Suspend if TPM is not initialized.
+ * This function will block System Suspend if TPM is not initialized,
+ * however the TPM is usually initialized by BIOS/u-boot or by sending
+ * a tpm startup command.
  */
 static int tpm_tis_i2c_suspend(struct device *dev)
 {
@@ -708,5 +713,5 @@ module_init(init_tis_i2c);
 module_exit(cleanup_tis_i2c);
 MODULE_AUTHOR("Peter Huewe <huewe.external@infineon.com>");
 MODULE_DESCRIPTION("TPM TIS I2C Driver");
-MODULE_VERSION("2.0.99");
+MODULE_VERSION("2.1.2");
 MODULE_LICENSE("GPL");
