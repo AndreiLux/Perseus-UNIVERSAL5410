@@ -12,32 +12,20 @@
  * See Documentation/device-mapper/dm-verity.txt
  */
 #include <linux/async.h>
-#include <linux/backing-dev.h>
 #include <linux/bio.h>
 #include <linux/blkdev.h>
-#include <linux/completion.h>
-#include <linux/crypto.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/genhd.h>
 #include <linux/init.h>
-#include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/mempool.h>
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
-#include <linux/reboot.h>
-#include <linux/scatterlist.h>
-#include <linux/chromeos_platform.h>
-
 #include <asm/atomic.h>
 #include <asm/page.h>
-#include <asm/unaligned.h>
-
-#include <crypto/hash.h>
-#include <crypto/sha.h>
 
 /* #define CONFIG_DM_DEBUG 1 */
 #define CONFIG_DM_VERITY_TRACE 1
@@ -47,7 +35,6 @@
 #include "dm-verity.h"
 
 #define DM_MSG_PREFIX "verity"
-#define MESG_STR(x) x, sizeof(x)
 
 /* Supports up to 512-bit digests */
 #define VERITY_MAX_DIGEST_SIZE 64
@@ -61,12 +48,6 @@
 /* Helper for printing sector_t */
 #define ULL(x) ((unsigned long long)(x))
 
-/* Requires the pool to have the given # of pages available. They are only
- * used for padding non-block aligned requests so each request should need
- * at most 2 additional pages. This means our maximum queue without suffering
- * from memory contention could be 32 requests.
- */
-#define MIN_POOL_PAGES 16
 /* IOS represent min of dm_verity_ios in a pool, but we also use it to
  * preallocate biosets (MIN_IOS * 2):
  * 1. We need to clone the entire bioset, including bio_vecs, before passing
@@ -83,8 +64,9 @@
  */
 #define MIN_BIOS (MIN_IOS * 2)
 
-/* We use a block size == page_size in sectors */
-#define VERITY_BLOCK_SIZE ((PAGE_SIZE) >> (SECTOR_SHIFT))
+/* VERITY_BLOCK_SIZE must is less than PAGE_SIZE */
+#define VERITY_BLOCK_SIZE 4096
+#define VERITY_BLOCK_SHIFT 12
 
 /* Support additional tracing of requests */
 #ifdef CONFIG_DM_VERITY_TRACE
@@ -127,13 +109,6 @@ module_param(error_behavior, charp, 0644);
 MODULE_PARM_DESC(error_behavior, "Behavior on error "
 				 "(eio, panic, none, notify)");
 
-/* Control whether the reads are optimized for sequential access by pre-reading
- * entries in the bht.
- */
-static int bht_readahead;
-module_param(bht_readahead, int, 0644);
-MODULE_PARM_DESC(bht_readahead, "Number of entries to readahead in the bht");
-
 /* Controls whether verity_get_device will wait forever for a device. */
 static int dev_wait;
 module_param(dev_wait, bool, 0444);
@@ -151,36 +126,24 @@ struct verity_stats {
 	unsigned long long total_requests;
 };
 
-/* Holds the context of a given verify operation. */
-struct verify_context {
-	struct bio *bio;  /* block_size padded bio or aligned original bio */
-	unsigned int offset;  /* into current bio_vec */
-	unsigned int idx;  /* of current bio_vec */
-	unsigned int needed;  /* for next hash */
-	sector_t block;  /*  current block */
+/* per-requested-bio private data */
+enum verity_io_flags {
+	VERITY_IOFLAGS_PENDING = 0x1,	/* pending hash read bios */
+	VERITY_IOFLAGS_CLONED = 0x2,	/* original bio has been cloned */
 };
 
-/* per-requested-bio private data */
-enum next_queue_type { DM_VERITY_NONE, DM_VERITY_IO, DM_VERITY_VERIFY };
 struct dm_verity_io {
 	struct dm_target *target;
-	struct bio *base_bio;
+	struct bio *bio;
 	struct delayed_work work;
-	unsigned int next_queue;
+	unsigned int flags;
 
-	struct verify_context ctx;
 	int error;
 	atomic_t pending;
 
 	sector_t sector;  /* unaligned, converted to target sector */
 	sector_t block;  /* aligned block index */
 	sector_t count;  /* aligned count in blocks */
-
-	/* Tracks the number of bv_pages that were allocated
-	 * from the local pool during request padding.
-	 */
-	unsigned int leading_pages;
-	unsigned int trailing_pages;
 };
 
 struct verity_config {
@@ -198,7 +161,6 @@ struct verity_config {
 	/* Pool and bios required for making sure that backing device reads are
 	 * in PAGE_SIZE increments.
 	 */
-	mempool_t *page_pool;
 	struct bio_set *bs;
 
 	/* Single threaded I/O submitter */
@@ -207,7 +169,6 @@ struct verity_config {
 	struct workqueue_struct *verify_queue;
 
 	char hash_alg[CRYPTO_MAX_ALG_NAME];
-	struct hash_desc *hash;  /* one per cpu */
 
 	int error_behavior;
 
@@ -216,8 +177,8 @@ struct verity_config {
 
 static struct kmem_cache *_verity_io_pool;
 
-static void kverityd_queue_verify(struct dm_verity_io *io);
-static void kverityd_queue_io(struct dm_verity_io *io, bool delayed);
+static void kverityd_verify(struct work_struct *work);
+static void kverityd_io(struct work_struct *work);
 static void kverityd_io_bht_populate(struct dm_verity_io *io);
 static void kverityd_io_bht_populate_end(struct bio *, int error);
 
@@ -296,8 +257,6 @@ EXPORT_SYMBOL_GPL(dm_verity_unregister_error_notifier);
  * Allocation and utility functions
  *-----------------------------------------------*/
 
-static void verity_align_request(struct verity_config *vc, sector_t *start,
-				 unsigned int *size);
 static void kverityd_src_io_read_end(struct bio *clone, int error);
 
 /* Shared destructor for all internal bios */
@@ -331,27 +290,20 @@ static struct dm_verity_io *verity_io_alloc(struct dm_target *ti,
 {
 	struct verity_config *vc = ti->private;
 	struct dm_verity_io *io;
-	unsigned int aligned_size = bio->bi_size;
-	sector_t aligned_sector = sector;
 
 	ALLOCTRACE("dm_verity_io for sector %llu", ULL(sector));
 	io = mempool_alloc(vc->io_pool, GFP_NOIO);
 	if (unlikely(!io))
 		return NULL;
-	/* By default, assume io requests will require a hash */
-	io->next_queue = DM_VERITY_IO;
+	io->flags = 0;
 	io->target = ti;
-	io->base_bio = bio;
+	io->bio = bio;
 	io->sector = sector;
 	io->error = 0;
-	io->leading_pages = 0;
-	io->trailing_pages = 0;
-	io->ctx.bio = NULL;
 
-	verity_align_request(vc, &aligned_sector, &aligned_size);
 	/* Adjust the sector by the virtual starting sector */
-	io->block = (to_bytes(aligned_sector)) >> PAGE_SHIFT;
-	io->count = aligned_size >> PAGE_SHIFT;
+	io->block = (to_bytes(sector)) >> VERITY_BLOCK_SHIFT;
+	io->count = bio->bi_size >> VERITY_BLOCK_SHIFT;
 
 	DMDEBUG("io_alloc for %llu blocks starting at %llu",
 		ULL(io->count), ULL(io->block));
@@ -361,191 +313,23 @@ static struct dm_verity_io *verity_io_alloc(struct dm_target *ti,
 	return io;
 }
 
-/* ctx->bio should be prepopulated */
-static int verity_verify_context_init(struct verity_config *vc,
-				      struct verify_context *ctx)
-{
-	if (unlikely(ctx->bio == NULL)) {
-		DMCRIT("padded bio was not supplied to kverityd");
-		return -EINVAL;
-	}
-	ctx->offset = 0;
-	ctx->needed = PAGE_SIZE;
-	ctx->idx = ctx->bio ? ctx->bio->bi_idx : 0;
-	/* The sector has already be translated and adjusted to the
-	 * appropriate start for reading.
-	 */
-	ctx->block = to_bytes(ctx->bio->bi_sector) >> PAGE_SHIFT;
-	/* Setup the new hash context too */
-	if (crypto_hash_init(&vc->hash[smp_processor_id()])) {
-		DMCRIT("Failed to initialize the crypto hash");
-		return -EFAULT;
-	}
-	return 0;
-}
-
-static void clone_init(struct dm_verity_io *io, struct bio *clone,
-		       unsigned short vcnt, unsigned int size, sector_t start)
+static struct bio *verity_bio_clone(struct dm_verity_io *io)
 {
 	struct verity_config *vc = io->target->private;
+	struct bio *bio = io->bio;
+	struct bio *clone = verity_alloc_bioset(vc, GFP_NOIO, bio->bi_max_vecs);
 
+	if (!clone)
+		return NULL;
+
+	__bio_clone(clone, bio);
 	clone->bi_private = io;
 	clone->bi_end_io  = kverityd_src_io_read_end;
 	clone->bi_bdev    = vc->dev->bdev;
-	clone->bi_rw      = io->base_bio->bi_rw;
+	clone->bi_sector  = vc->start + io->sector;
 	clone->bi_destructor = dm_verity_bio_destructor;
-	clone->bi_idx = 0;
-	clone->bi_vcnt = vcnt;
-	clone->bi_size = size;
-	clone->bi_sector = start;
-}
 
-static void verity_align_request(struct verity_config *vc, sector_t *start,
-				 unsigned int *size)
-{
-	sector_t base_sector;
-	VERITY_BUG_ON(!start || !size || !vc, "NULL arguments");
-
-	base_sector = *start;
-	/* Mask off to the starting sector for a block */
-	*start = base_sector & (~(to_sector(PAGE_SIZE) - 1));
-	/* Add any extra bytes from the lead */
-	*size += to_bytes(base_sector - *start);
-	/* Now round up the size to the full block size */
-	*size = PAGE_ALIGN(*size);
-}
-
-/* Populates a bio_vec array starting with the pointer provided allocating
- * pages from the given page pool until bytes reaches 0.
- * The next position in the bio_vec array is returned on success. On
- * failure, a NULL is returned.
- * It is assumed that the bio_vec array is properly sized.
- */
-static struct bio_vec *populate_bio_vec(struct bio_vec *bvec,
-					mempool_t *page_pool,
-					unsigned int bytes,
-					unsigned int *pages_added) {
-	gfp_t gfp_mask = GFP_NOIO | __GFP_HIGHMEM;
-	if (!bvec || !page_pool || !pages_added)
-		return NULL;
-
-	while (bytes > 0) {
-		DMDEBUG("bytes == %u", bytes);
-		bvec->bv_offset = 0;
-		bvec->bv_len = min(bytes, (unsigned int)PAGE_SIZE);
-		ALLOCTRACE("page for bio_vec %p", bvec);
-		bvec->bv_page = mempool_alloc(page_pool, gfp_mask);
-		if (unlikely(bvec->bv_page == NULL)) {
-			DMERR("Out of pages in the page_pool!");
-			return NULL;
-		}
-		bytes -= bvec->bv_len;
-		++*pages_added;
-		++bvec;
-	}
-	return bvec;
-}
-
-static int verity_hash_bv(struct verity_config *vc,
-			  struct verify_context *ctx)
-{
-	struct bio_vec *bv = bio_iovec_idx(ctx->bio, ctx->idx);
-	struct scatterlist sg;
-	unsigned int size = bv->bv_len - (bv->bv_offset + ctx->offset);
-
-	/* Catch unexpected undersized bvs */
-	if (bv->bv_len < bv->bv_offset + ctx->offset) {
-		ctx->offset = 0;
-		ctx->idx++;
-		return 0;
-	}
-
-	/* Only update the hash with the amount that's needed for this
-	 * block (as tracked in the ctx->sector).
-	 */
-	size = min(size, ctx->needed);
-	DMDEBUG("Updating hash for block %llu vector idx %u: "
-		"size:%u offset:%u+%u len:%u",
-		ULL(ctx->block), ctx->idx, size, bv->bv_offset, ctx->offset,
-		bv->bv_len);
-
-	/* Updates the current digest hash context for the on going block */
-	sg_init_table(&sg, 1);
-	sg_set_page(&sg, bv->bv_page, size, bv->bv_offset + ctx->offset);
-
-	/* Use one hash_desc+tfm per cpu so that we can make use of all
-	 * available cores when verifying.  Only one context is handled per
-	 * processor, however.
-	 */
-	if (crypto_hash_update(&vc->hash[smp_processor_id()], &sg, size)) {
-		DMCRIT("Failed to update crypto hash");
-		return -EFAULT;
-	}
-	ctx->needed -= size;
-	ctx->offset += size;
-
-	if (ctx->offset + bv->bv_offset >= bv->bv_len) {
-		ctx->offset = 0;
-		/* Bump the bio_segment counter */
-		ctx->idx++;
-	}
-
-	return 0;
-}
-
-static void verity_free_buffer_pages(struct verity_config *vc,
-				     struct dm_verity_io *io, struct bio *clone)
-{
-	unsigned int original_vecs = clone->bi_vcnt;
-	struct bio_vec *bv;
-	VERITY_BUG_ON(!vc || !io || !clone, "NULL arguments");
-
-	/* No work to do. */
-	if (!io->leading_pages && !io->trailing_pages)
-		return;
-
-	/* Determine which pages are ours with one page per vector. */
-	original_vecs -= io->leading_pages + io->trailing_pages;
-
-	/* Handle any leading pages */
-	bv = bio_iovec_idx(clone, 0);
-	while (io->leading_pages--) {
-		if (unlikely(bv->bv_page == NULL)) {
-			VERITY_BUG("missing leading bv_page in padding");
-			bv++;
-			continue;
-		}
-		mempool_free(bv->bv_page, vc->page_pool);
-		bv->bv_page = NULL;
-		bv++;
-	}
-	bv += original_vecs;
-	/* TODO(wad) This is probably off-by-one */
-	while (io->trailing_pages--) {
-		if (unlikely(bv->bv_page == NULL)) {
-			VERITY_BUG("missing leading bv_page in padding");
-			bv++;
-			continue;
-		}
-		mempool_free(bv->bv_page, vc->page_pool);
-		bv->bv_page = NULL;
-		bv++;
-	}
-}
-
-static void kverityd_verify_cleanup(struct dm_verity_io *io, int error)
-{
-	struct verity_config *vc = io->target->private;
-	/* Clean up the pages used for padding, if any. */
-	verity_free_buffer_pages(vc, io, io->ctx.bio);
-
-	/* Release padded bio, if one was used. */
-	if (io->ctx.bio != io->base_bio) {
-		bio_put(io->ctx.bio);
-		io->ctx.bio = NULL;
-	}
-	/* Propagate the verification error. */
-	io->error = error;
+	return clone;
 }
 
 /* If the request is not successful, this handler takes action.
@@ -664,7 +448,7 @@ static int verity_parse_error_behavior(char *behavior)
 		return -1;
 
 	/* Convert to the integer index matching the enum. */
-	return (allowed - allowed_error_behaviors);
+	return allowed - allowed_error_behaviors;
 }
 
 
@@ -754,7 +538,7 @@ static int dm_get_device_by_uuid(struct dm_target *ti, const char *uuid_str,
 	snprintf(devt_buf, sizeof(devt_buf), "%u:%u", MAJOR(devt), MINOR(devt));
 
 	/* TODO(wad) to make this generic we could also pass in the mode. */
-	if (dm_get_device(ti, devt_buf, dm_table_get_mode(ti->table), dm_dev) == 0)
+	if (!dm_get_device(ti, devt_buf, dm_table_get_mode(ti->table), dm_dev))
 		return 0;
 
 	ti->error = "Failed to acquire device";
@@ -778,12 +562,13 @@ static int verity_get_device(struct dm_target *ti, const char *devname,
 		/* Try the normal path first since if everything is ready, it
 		 * will be the fastest.
 		 */
-		if (!dm_get_device(ti, devname, dm_table_get_mode(ti->table), dm_dev))
+		if (!dm_get_device(ti, devname,
+				   dm_table_get_mode(ti->table), dm_dev))
 			return 0;
 
 		/* Try the device by partition UUID */
 		if (!dm_get_device_by_uuid(ti, devname, dev_start, dev_len,
-		                           dm_dev))
+					   dm_dev))
 			return 0;
 
 		/* No need to be too aggressive since this is a slow path. */
@@ -802,6 +587,30 @@ static int verity_get_device(struct dm_target *ti, const char *devname,
 
 static void verity_inc_pending(struct dm_verity_io *io);
 
+static void verity_return_bio_to_caller(struct dm_verity_io *io)
+{
+	struct verity_config *vc = io->target->private;
+
+	if (io->error)
+		verity_error(vc, io, io->error);
+
+	bio_endio(io->bio, io->error);
+	mempool_free(io, vc->io_pool);
+}
+
+/* Check for any missing bht hashes. */
+static bool verity_is_bht_populated(struct dm_verity_io *io)
+{
+	struct verity_config *vc = io->target->private;
+	sector_t count;
+
+	for (count = 0; count < io->count; ++count)
+		if (!dm_bht_is_populated(&vc->bht, io->block + count))
+			return false;
+
+	return true;
+}
+
 /* verity_dec_pending manages the lifetime of all dm_verity_io structs.
  * Non-bug error handling is centralized through this interface and
  * all passage from workqueue to workqueue.
@@ -809,87 +618,73 @@ static void verity_inc_pending(struct dm_verity_io *io);
 static void verity_dec_pending(struct dm_verity_io *io)
 {
 	struct verity_config *vc = io->target->private;
-	struct bio *base_bio = io->base_bio;
-	int error = io->error;
 	VERITY_BUG_ON(!io, "NULL argument");
 
 	DMDEBUG("dec pending %p: %d--", io, atomic_read(&io->pending));
 
 	if (!atomic_dec_and_test(&io->pending))
-		goto more_work_to_do;
+		goto done;
 
-	if (unlikely(error)) {
-		/* We treat bad I/O as a compromise so that we go
-		 * to recovery mode. VERITY_BUG will just reboot on
-		 * e.g., OOM errors.
-		 */
-		verity_error(vc, io, error);
-		/* let the handler change the error. */
-		error = io->error;
-		goto return_to_user;
-	}
+	if (unlikely(io->error))
+		goto io_error;
 
-	if (io->next_queue == DM_VERITY_IO) {
-		kverityd_queue_io(io, true);
-		DMDEBUG("io %p requeued for io");
-		goto more_work_to_do;
-	}
-
-	if (io->next_queue == DM_VERITY_VERIFY) {
+	/* I/Os that were pending may now be ready */
+	if ((io->flags & VERITY_IOFLAGS_PENDING) &&
+	    !verity_is_bht_populated(io)) {
+		io->flags &= ~VERITY_IOFLAGS_PENDING;
+		INIT_DELAYED_WORK(&io->work, kverityd_io);
+		queue_delayed_work(vc->io_queue, &io->work, HZ/10);
+		verity_stats_total_requeues_inc(vc);
+		REQTRACE("Block %llu+ is being requeued for io (io:%p)",
+			 ULL(io->block), io);
+	} else {
+		io->flags &= ~VERITY_IOFLAGS_PENDING;
 		verity_stats_io_queue_dec(vc);
 		verity_stats_verify_queue_inc(vc);
-		kverityd_queue_verify(io);
-		DMDEBUG("io %p enqueued for verify");
-		goto more_work_to_do;
+		INIT_DELAYED_WORK(&io->work, kverityd_verify);
+		queue_delayed_work(vc->verify_queue, &io->work, 0);
+		REQTRACE("Block %llu+ is being queued for verify (io:%p)",
+			 ULL(io->block), io);
 	}
 
-return_to_user:
-	/* else next_queue == DM_VERITY_NONE */
-	mempool_free(io, vc->io_pool);
-
-	/* Return back to the caller */
-	bio_endio(base_bio, error);
-
-more_work_to_do:
+done:
 	return;
+
+io_error:
+	verity_return_bio_to_caller(io);
 }
 
-/* Walks the, potentially padded, data set and computes the hash of the
- * data read from the untrusted source device.  The computed hash is
- * then passed to dm-bht for verification.
+/* Walks the data set and computes the hash of the data read from the
+ * untrusted source device.  The computed hash is then passed to dm-bht
+ * for verification.
  */
 static int verity_verify(struct verity_config *vc,
-			 struct verify_context *ctx)
+			 struct bio *bio)
 {
-	u8 digest[VERITY_MAX_DIGEST_SIZE];
 	int r;
-	unsigned int block = 0;
-	unsigned int digest_size =
-		crypto_hash_digestsize(vc->hash[smp_processor_id()].tfm);
+	unsigned int idx, block;
 
-	while (ctx->idx < ctx->bio->bi_vcnt) {
-		r = verity_hash_bv(vc, ctx);
-		if (r < 0)
-			goto bad_hash;
+	VERITY_BUG_ON(bio == NULL);
 
-		/* Continue until all the data expected is processed */
-		if (ctx->needed)
-			continue;
+	block = to_bytes(bio->bi_sector) >> VERITY_BLOCK_SHIFT;
 
-		/* Calculate the final block digest to check in the tree */
-		if (crypto_hash_final(&vc->hash[smp_processor_id()], digest)) {
-			DMCRIT("Failed to compute final digest");
-			r = -EFAULT;
-			goto bad_state;
-		}
-		block = (unsigned int)(ctx->block);
-		r = dm_bht_verify_block(&vc->bht, block, digest, digest_size);
+	for (idx = bio->bi_idx; idx < bio->bi_vcnt; idx++) {
+		struct bio_vec *bv = bio_iovec_idx(bio, idx);
+
+		VERITY_BUG_ON(bv->bv_offset % VERITY_BLOCK_SIZE);
+		VERITY_BUG_ON(bv->bv_len % VERITY_BLOCK_SIZE);
+
+		DMDEBUG("Updating hash for block %u", block);
+
+		/* TODO(msb) handle case where multiple blocks fit in a page */
+		r = dm_bht_verify_block(&vc->bht, block,
+					page_address(bv->bv_page));
 		/* dm_bht functions aren't expected to return errno friendly
 		 * values.  They are converted here for uniformity.
 		 */
 		if (r > 0) {
-			DMERR("Pending data for block %llu seen at verify",
-			      ULL(ctx->block));
+			DMERR("Pending data for block %u seen at verify",
+			      block);
 			r = -EBUSY;
 			goto bad_state;
 		}
@@ -898,16 +693,9 @@ static int verity_verify(struct verity_config *vc,
 			r = -EACCES;
 			goto bad_match;
 		}
-		REQTRACE("Block %llu verified", ULL(ctx->block));
+		REQTRACE("Block %u verified", block);
 
-		/* Reset state for the next block */
-		if (crypto_hash_init(&vc->hash[smp_processor_id()])) {
-			DMCRIT("Failed to initialize the crypto hash");
-			r = -ENOMEM;
-			goto no_mem;
-		}
-		ctx->needed = PAGE_SIZE;
-		ctx->block++;
+		block++;
 		/* After completing a block, allow a reschedule.
 		 * TODO(wad) determine if this is truly needed.
 		 */
@@ -916,8 +704,6 @@ static int verity_verify(struct verity_config *vc,
 
 	return 0;
 
-bad_hash:
-no_mem:
 bad_state:
 bad_match:
 	return r;
@@ -931,42 +717,12 @@ static void kverityd_verify(struct work_struct *work)
 	struct dm_verity_io *io = container_of(dwork, struct dm_verity_io,
 					       work);
 	struct verity_config *vc = io->target->private;
-	int r = 0;
 
-	verity_inc_pending(io);
+	io->error = verity_verify(vc, io->bio);
 
-	/* Default to ctx.bio as the padded bio clone.
-	 * The original bio is never touched until release.
-	 */
-	r = verity_verify_context_init(vc, &io->ctx);
-
-	/* Only call verify if context initialization succeeded */
-	if (!r)
-		r = verity_verify(vc, &io->ctx);
-	/* Free up the padded bio and tag with the return value */
-	kverityd_verify_cleanup(io, r);
+	/* Free up the bio and tag with the return value */
 	verity_stats_verify_queue_dec(vc);
-
-	verity_dec_pending(io);
-}
-
-/* After all I/O is completed successfully for a request, it is queued on the
- * verify workqueue to ensure its integrity prior to returning it to the
- * caller.  There may be multiple workqueue threads - one per logical
- * processor.
- */
-static void kverityd_queue_verify(struct dm_verity_io *io)
-{
-	struct verity_config *vc = io->target->private;
-	/* verify work should never be requeued. */
-	io->next_queue = DM_VERITY_NONE;
-	REQTRACE("Block %llu+ is being queued for verify (io:%p)",
-		 ULL(io->block), io);
-	INIT_DELAYED_WORK(&io->work, kverityd_verify);
-	/* No delay needed. But if we move over jobs with pending io, then
-	 * we could probably delay them here.
-	 */
-	queue_delayed_work(vc->verify_queue, &io->work, 0);
+	verity_return_bio_to_caller(io);
 }
 
 /* Asynchronously called upon the completion of dm-bht I/O.  The status
@@ -995,8 +751,8 @@ static void kverityd_io_bht_populate_end(struct bio *bio, int error)
 
 	/* We bail but assume the tree has been marked bad. */
 	if (unlikely(error)) {
-		DMERR("Failed to read for block %llu (%u)",
-		      ULL(io->base_bio->bi_sector), io->base_bio->bi_size);
+		DMERR("Failed to read for sector %llu (%u)",
+		      ULL(io->bio->bi_sector), io->bio->bi_size);
 		io->error = error;
 		/* Pass through the error to verity_dec_pending below */
 	}
@@ -1017,7 +773,7 @@ static int kverityd_bht_read_callback(void *ctx, sector_t start, u8 *dst,
 	/* Explicitly catches these so we can use a custom bug route */
 	VERITY_BUG_ON(!io || !dst || !io->target || !io->target->private);
 	VERITY_BUG_ON(!entry);
-	VERITY_BUG_ON(count != to_sector(PAGE_SIZE));
+	VERITY_BUG_ON(count != to_sector(VERITY_BLOCK_SIZE));
 
 	vc = io->target->private;
 
@@ -1029,14 +785,14 @@ static int kverityd_bht_read_callback(void *ctx, sector_t start, u8 *dst,
 	/* We should only get page size requests at present. */
 	verity_inc_pending(io);
 	bio = verity_alloc_bioset(vc, GFP_NOIO, 1);
-	if (unlikely(!io->ctx.bio)) {
+	if (unlikely(!bio)) {
 		DMCRIT("Out of memory at bio_alloc_bioset");
 		dm_bht_read_completed(entry, -ENOMEM);
 		return -ENOMEM;
 	}
 	bio->bi_private = (void *) entry;
 	bio->bi_idx = 0;
-	bio->bi_size = PAGE_SIZE;
+	bio->bi_size = VERITY_BLOCK_SIZE;
 	bio->bi_sector = vc->hash_start + start;
 	bio->bi_bdev = vc->hash_dev->bdev;
 	bio->bi_end_io = kverityd_io_bht_populate_end;
@@ -1066,7 +822,6 @@ static void kverityd_io_bht_populate(struct dm_verity_io *io)
 	int io_status = 0;
 	sector_t count;
 
-	verity_inc_pending(io);
 	/* Submits an io request for each missing block of block hashes.
 	 * The last one to return will then enqueue this on the
 	 * io workqueue.
@@ -1094,28 +849,11 @@ static void kverityd_io_bht_populate(struct dm_verity_io *io)
 		io_status |= populated;
 
 		/* If this io has outstanding requests, unplug the io queue */
-		if (populated & DM_BHT_ENTRY_REQUESTED) {
+		if (populated & DM_BHT_ENTRY_REQUESTED)
 			blk_unplug(r_queue);
-			/* If the bht is reading ahead, a cond_resched may be
-			 * needed to break contention.  msleep_interruptible(1)
-			 * is an alternative option.
-			 */
-			if (bht_readahead)
-				cond_resched();
-		}
 	}
 	REQTRACE("Block %llu+ initiated %d requests (io: %p)",
 		 ULL(io->block), atomic_read(&io->pending) - 1, io);
-
-	/* TODO(wad) clean up the return values from maybe_read_entries */
-	/* If we return verified explicitly, then later we could do IO_REMAP
-	 * instead of resending to the verify queue.
-	 */
-	io->next_queue = DM_VERITY_VERIFY;
-	if (io_status == 0 || io_status == DM_BHT_ENTRY_READY) {
-		/* The whole request is ready. Make sure we can transition. */
-		DMDEBUG("io ready to be bumped %p", io);
-	}
 
 	if (io_status & DM_BHT_ENTRY_REQUESTED) {
 		/* If no data is pending another I/O request, this io
@@ -1134,14 +872,13 @@ static void kverityd_io_bht_populate(struct dm_verity_io *io)
 		 * stored I/O context but races could be a challenge.
 		 */
 		DMDEBUG("io is pending %p");
-		io->next_queue = DM_VERITY_IO;
+		io->flags |= VERITY_IOFLAGS_PENDING;
 	}
 
 	/* If I/O requests were issues on behalf of populate, then the last
 	 * request will result in a requeue.  If all data was pending from
 	 * other requests, this will be requeued now.
 	 */
-	verity_dec_pending(io);
 }
 
 /* Asynchronously called upon the completion of I/O issued
@@ -1151,10 +888,8 @@ static void kverityd_io_bht_populate(struct dm_verity_io *io)
 static void kverityd_src_io_read_end(struct bio *clone, int error)
 {
 	struct dm_verity_io *io = clone->bi_private;
-	struct verity_config *vc = io->target->private;
-	/* struct verity_config *vc = io->target->private; */
 
-	DMDEBUG("Padded I/O completed");
+	DMDEBUG("I/O completed");
 	if (unlikely(!bio_flagged(clone, BIO_UPTODATE) && !error))
 		error = -EIO;
 
@@ -1162,15 +897,6 @@ static void kverityd_src_io_read_end(struct bio *clone, int error)
 		DMERR("Error occurred: %d (%llu, %u)",
 			error, ULL(clone->bi_sector), clone->bi_size);
 		io->error = error;
-		/* verity_dec_pending will pick up the error, but it won't
-		 * free the leading/trailing pages for us.
-		 */
-		verity_free_buffer_pages(vc, io, io->ctx.bio);
-		/* Release padded bio, if one was used. */
-		if (io->ctx.bio != io->base_bio) {
-			bio_put(io->ctx.bio);
-			io->ctx.bio = NULL;
-		}
 	}
 
 	/* Release the clone which just avoids the block layer from
@@ -1183,131 +909,41 @@ static void kverityd_src_io_read_end(struct bio *clone, int error)
 }
 
 /* If not yet underway, an I/O request will be issued to the vc->dev
- * device for the data needed.  It is padded to the minimum block
- * size, aligned to that size, and cloned to avoid unexpected changes
+ * device for the data needed. It is cloned to avoid unexpected changes
  * to the original bio struct.
  */
 static void kverityd_src_io_read(struct dm_verity_io *io)
 {
 	struct verity_config *vc = io->target->private;
-	struct bio *base_bio = io->base_bio;
-	sector_t bio_start = vc->start + io->sector;
-	unsigned int leading_bytes = 0;
-	unsigned int trailing_bytes = 0;
-	unsigned int bio_size = base_bio->bi_size;
-	unsigned int vecs_needed = bio_segments(base_bio);
-	struct bio_vec *cur_bvec = NULL;
-	struct bio *clone = NULL;
+	struct bio *clone;
 
 	VERITY_BUG_ON(!io);
 
-	/* If bio is non-NULL, then the data is already read. Could also check
-	 * BIO_UPTODATE, but it doesn't seem needed.
+	/* If clone is non-NULL, then the read is already issued. Could also
+	 * check BIO_UPTODATE, but it doesn't seem needed.
 	 */
-	if (io->ctx.bio) {
+	if (io->flags & VERITY_IOFLAGS_CLONED) {
 		DMDEBUG("io_read called with existing bio. bailing: %p", io);
 		return;
 	}
+	io->flags |= VERITY_IOFLAGS_CLONED;
+
 	DMDEBUG("kverity_io_read started");
 
-	verity_inc_pending(io);
-	/* We duplicate the bio here for two reasons:
-	 * 1. The block layer may modify the bvec array
-	 * 2. We may need to pad to BLOCK_SIZE
-	 * First, we have to determine if we need more segments than are
-	 * currently in use.
-	 */
-	verity_align_request(vc, &bio_start, &bio_size);
-	/* Number of bytes alignment added to the start */
-	leading_bytes = to_bytes((vc->start + io->sector) - bio_start);
-	/* ... to the end of the original bio. */
-	trailing_bytes = (bio_size - leading_bytes) - base_bio->bi_size;
-
-	/* Additions are page aligned so page sized vectors can be padded in */
-	vecs_needed += PAGE_ALIGN(leading_bytes) >> PAGE_SHIFT;
-	vecs_needed += PAGE_ALIGN(trailing_bytes) >> PAGE_SHIFT;
-
-	DMDEBUG("allocating bioset for padding (%u)", vecs_needed);
-	/* Allocate the bioset for the duplicate plus padding */
-	if (vecs_needed == bio_segments(base_bio)) {
-		/* No padding is needed so we can just verify using the
-		 * original bio.
-		 */
-		DMDEBUG("No padding needed!");
-		io->ctx.bio = base_bio;
-	} else {
-		ALLOCTRACE("bioset for io %p, sector %llu",
-			   io, ULL(bio_start));
-		io->ctx.bio = verity_alloc_bioset(vc, GFP_NOIO, vecs_needed);
-		if (unlikely(io->ctx.bio == NULL)) {
-			DMCRIT("Failed to allocate padded bioset");
-			io->error = -ENOMEM;
-			verity_dec_pending(io);
-			return;
-		}
-
-		DMDEBUG("clone init");
-		clone_init(io, io->ctx.bio, vecs_needed, bio_size, bio_start);
-		/* Now we need to copy over the iovecs, but we need to make
-		 * sure to offset if we realigned the request.
-		 */
-		cur_bvec = io->ctx.bio->bi_io_vec;
-
-		DMDEBUG("Populating padded bioset (%u %u)",
-			leading_bytes, trailing_bytes);
-		DMDEBUG("leading_bytes == %u", leading_bytes);
-		cur_bvec = populate_bio_vec(cur_bvec, vc->page_pool,
-					    leading_bytes, &io->leading_pages);
-		if (unlikely(cur_bvec == NULL)) {
-				io->error = -ENOMEM;
-				verity_free_buffer_pages(vc, io, io->ctx.bio);
-				bio_put(io->ctx.bio);
-				verity_dec_pending(io);
-				return;
-		}
-		/* Now we should be aligned to copy the bio_vecs in place */
-		DMDEBUG("copying original bvecs");
-		memcpy(cur_bvec, bio_iovec(base_bio),
-		       sizeof(struct bio_vec) * bio_segments(base_bio));
-		cur_bvec += bio_segments(base_bio);
-		/* Handle trailing vecs */
-		DMDEBUG("trailing_bytes == %u", trailing_bytes);
-		cur_bvec = populate_bio_vec(cur_bvec, vc->page_pool,
-					    trailing_bytes,
-					    &io->trailing_pages);
-		if (unlikely(cur_bvec == NULL)) {
-			io->error = -ENOMEM;
-			verity_free_buffer_pages(vc, io, io->ctx.bio);
-			bio_put(io->ctx.bio);
-			verity_dec_pending(io);
-			return;
-		}
-	}
-
-	/* Now clone the padded request */
-	DMDEBUG("Creating clone of the padded request");
+	/* Clone the bio. The block layer may modify the bvec array. */
+	DMDEBUG("Creating clone of the request");
 	ALLOCTRACE("clone for io %p, sector %llu",
-		   io, ULL(bio_start));
-	clone = verity_alloc_bioset(vc, GFP_NOIO, bio_segments(io->ctx.bio));
+		   io, ULL(vc->start + io->sector));
+	clone = verity_bio_clone(io);
 	if (unlikely(!clone)) {
 		io->error = -ENOMEM;
-		/* Clean up */
-		verity_free_buffer_pages(vc, io, io->ctx.bio);
-		if (io->ctx.bio != base_bio)
-			bio_put(io->ctx.bio);
-		verity_dec_pending(io);
 		return;
 	}
 
-	clone_init(io, clone, bio_segments(io->ctx.bio), io->ctx.bio->bi_size,
-		   bio_start);
-	DMDEBUG("Populating clone of the padded request");
-	memcpy(clone->bi_io_vec, bio_iovec(io->ctx.bio),
-	       sizeof(struct bio_vec) * clone->bi_vcnt);
+	verity_inc_pending(io);
 
 	/* Submit to the block device */
-	DMDEBUG("Submitting padded bio (%u became %u)",
-		bio_sectors(base_bio), bio_sectors(clone));
+	DMDEBUG("Submitting bio");
 	/* XXX: check queue_max_hw_sectors(bdev_get_queue(clone->bi_bdev)); */
 	generic_make_request(clone);
 }
@@ -1322,47 +958,13 @@ static void kverityd_io(struct work_struct *work)
 						  work);
 	struct dm_verity_io *io = container_of(dwork, struct dm_verity_io,
 					       work);
-	VERITY_BUG_ON(!io->base_bio);
-
-	if (bio_data_dir(io->base_bio) == WRITE) {
-		/* TODO(wad) do something smarter when writes are seen */
-		printk(KERN_WARNING
-		       "Unexpected write bio received in kverityd_io");
-		io->error = -EIO;
-		return;
-	}
+	VERITY_BUG_ON(!io->bio);
 
 	/* Issue requests asynchronously. */
 	verity_inc_pending(io);
-	kverityd_src_io_read(io);  /* never updates next_queue */
-	kverityd_io_bht_populate(io);   /* manage next_queue eligibility */
+	kverityd_src_io_read(io);
+	kverityd_io_bht_populate(io);
 	verity_dec_pending(io);
-}
-
-/* All incoming requests are queued on the I/O workqueue at least once to
- * acquire both the data from the real device (vc->dev) and any data from the
- * hash tree device (vc->hash_dev) needed to verify the integrity of the data.
- * There may be multiple I/O workqueues - one per logical processor.
- */
-static void kverityd_queue_io(struct dm_verity_io *io, bool delayed)
-{
-	struct verity_config *vc = io->target->private;
-	unsigned long delay = 0;  /* jiffies */
-	/* Send all requests through one call to dm_bht_populate on the
-	 * queue to ensure that all blocks are accounted for before
-	 * proceeding on to verification.
-	 */
-	INIT_DELAYED_WORK(&io->work, kverityd_io);
-	/* If this context is dependent on work from another context, we just
-	 * requeue with a delay.  Later we could bounce this work to the verify
-	 * queue and have it wait there. TODO(wad)
-	 */
-	if (delayed) {
-		delay = HZ / 10;
-		REQTRACE("block %llu+ is being delayed %lu jiffies (io:%p)",
-			 ULL(io->block), delay, io);
-	}
-	queue_delayed_work(vc->io_queue, &io->work, delay);
 }
 
 /* Paired with verity_dec_pending, the pending value in the io dictate the
@@ -1408,6 +1010,9 @@ static int verity_map(struct dm_target *ti, struct bio *bio,
 		/* bio_endio(bio, -EIO); */
 		return -EIO;
 	} else {
+		VERITY_BUG_ON(bio->bi_sector % to_sector(VERITY_BLOCK_SIZE));
+		VERITY_BUG_ON(bio->bi_size % VERITY_BLOCK_SIZE);
+
 		/* Queue up the request to be verified */
 		io = verity_io_alloc(ti, bio, bio->bi_sector - ti->begin);
 		if (!io) {
@@ -1415,7 +1020,8 @@ static int verity_map(struct dm_target *ti, struct bio *bio,
 			return DM_MAPIO_REQUEUE;
 		}
 		verity_stats_io_queue_inc(vc);
-		kverityd_queue_io(io, false);
+		INIT_DELAYED_WORK(&io->work, kverityd_io);
+		queue_delayed_work(vc->io_queue, &io->work, 0);
 	}
 
 	return DM_MAPIO_SUBMITTED;
@@ -1454,7 +1060,6 @@ static int verity_map(struct dm_target *ti, struct bio *bio,
 static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 {
 	struct verity_config *vc;
-	int cpu = 0;
 	int ret = 0;
 	int depth;
 	unsigned long long tmpull = 0;
@@ -1485,15 +1090,14 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 
 	/* arg3: blocks in a bundle */
 	if (sscanf(argv[3], "%u", &depth) != 1 ||
-	    depth <= 0) {
+	    depth < 0) {
 		ti->error =
-			"Zero or negative depth supplied";
+			"Negative depth supplied";
 		goto bad_depth;
 	}
-	/* dm-bht block size is HARD CODED to PAGE_SIZE right now. */
 	/* Calculate the blocks from the given device size */
 	vc->size = ti->len;
-	blocks = to_bytes(vc->size) >> PAGE_SHIFT;
+	blocks = to_bytes(vc->size) >> VERITY_BLOCK_SHIFT;
 	if (dm_bht_create(&vc->bht, (unsigned int)depth, blocks, argv[4])) {
 		DMERR("failed to create required bht");
 		goto bad_bht;
@@ -1503,7 +1107,6 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		goto bad_root_hexdigest;
 	}
 	dm_bht_set_read_cb(&vc->bht, kverityd_bht_read_callback);
-	dm_bht_set_entry_readahead(&vc->bht, bht_readahead);
 
 	/* arg0: device to verify */
 	vc->start = 0;  /* TODO: should this support a starting offset? */
@@ -1515,9 +1118,9 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		goto bad_verity_dev;
 	}
 
-	if (PAGE_ALIGN(vc->start) != vc->start ||
-	    PAGE_ALIGN(to_bytes(vc->size)) != to_bytes(vc->size)) {
-		ti->error = "Device must be PAGE_SIZE divisble/aligned";
+	if ((to_bytes(vc->start) % VERITY_BLOCK_SIZE) ||
+	    (to_bytes(vc->size) % VERITY_BLOCK_SIZE)) {
+		ti->error = "Device must be VERITY_BLOCK_SIZE divisble/aligned";
 		goto bad_hash_start;
 	}
 
@@ -1553,28 +1156,6 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		ti->error = "Hash algorithm name is too long";
 		goto bad_hash;
 	}
-	/* Allocate enough crypto contexts to be able to perform verifies
-	 * on all available CPUs.
-	 */
-	ALLOCTRACE("hash_desc array");
-	vc->hash = (struct hash_desc *)
-		      kcalloc(nr_cpu_ids, sizeof(struct hash_desc), GFP_KERNEL);
-	if (!vc->hash) {
-		DMERR("failed to allocate crypto hash contexts");
-		return -ENOMEM;
-	}
-
-	/* Setup the hash first. Its length determines much of the bht layout */
-	for (cpu = 0; cpu < nr_cpu_ids; ++cpu) {
-		ALLOCTRACE("hash_tfm (per-cpu)");
-		vc->hash[cpu].tfm = crypto_alloc_hash(vc->hash_alg, 0, 0);
-		if (IS_ERR(vc->hash[cpu].tfm)) {
-			DMERR("failed to allocate crypto hash '%s'",
-			      vc->hash_alg);
-			vc->hash[cpu].tfm = NULL;
-			goto bad_hash_alg;
-		}
-	}
 
 	/* arg6: override with optional device-specific error behavior */
 	if (argc >= 7) {
@@ -1600,14 +1181,6 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	if (!vc->io_pool) {
 		ti->error = "Cannot allocate verity io mempool";
 		goto bad_slab_pool;
-	}
-
-	/* Used to allocate pages for padding requests to PAGE_SIZE */
-	ALLOCTRACE("page pool for request padding");
-	vc->page_pool = mempool_create_page_pool(MIN_POOL_PAGES, 0);
-	if (!vc->page_pool) {
-		ti->error = "Cannot allocate page mempool";
-		goto bad_page_pool;
 	}
 
 	/* Allocate the bioset used for request padding */
@@ -1655,17 +1228,10 @@ bad_verify_queue:
 bad_io_queue:
 	bioset_free(vc->bs);
 bad_bs:
-	mempool_destroy(vc->page_pool);
-bad_page_pool:
 	mempool_destroy(vc->io_pool);
 bad_slab_pool:
 bad_err_behavior:
-	for (cpu = 0; cpu < nr_cpu_ids; ++cpu)
-		if (vc->hash[cpu].tfm)
-			crypto_free_hash(vc->hash[cpu].tfm);
-bad_hash_alg:
 bad_hash:
-	kfree(vc->hash);
 	dm_put_device(ti, vc->hash_dev);
 bad_hash_dev:
 bad_hash_start:
@@ -1681,7 +1247,6 @@ bad_verity_dev:
 static void verity_dtr(struct dm_target *ti)
 {
 	struct verity_config *vc = (struct verity_config *) ti->private;
-	int cpu;
 
 	DMDEBUG("Destroying io_queue");
 	destroy_workqueue(vc->io_queue);
@@ -1690,15 +1255,8 @@ static void verity_dtr(struct dm_target *ti)
 
 	DMDEBUG("Destroying bs");
 	bioset_free(vc->bs);
-	DMDEBUG("Destroying page_pool");
-	mempool_destroy(vc->page_pool);
 	DMDEBUG("Destroying io_pool");
 	mempool_destroy(vc->io_pool);
-	DMDEBUG("Destroying crypto hash");
-	for (cpu = 0; cpu < nr_cpu_ids; ++cpu)
-		if (vc->hash[cpu].tfm)
-			crypto_free_hash(vc->hash[cpu].tfm);
-	kfree(vc->hash);
 
 	DMDEBUG("Destroying block hash tree");
 	dm_bht_destroy(&vc->bht);
@@ -1773,10 +1331,9 @@ static int verity_iterate_devices(struct dm_target *ti,
 static void verity_io_hints(struct dm_target *ti,
 			    struct queue_limits *limits)
 {
-	/*
-	 * Set this to the vc->dev value:
-	 blk_limits_io_min(limits, chunk_size); */
-	blk_limits_io_opt(limits, PAGE_SIZE);
+	limits->logical_block_size = VERITY_BLOCK_SIZE;
+	limits->physical_block_size = VERITY_BLOCK_SIZE;
+	blk_limits_io_min(limits, VERITY_BLOCK_SIZE);
 }
 
 static struct target_type verity_target = {

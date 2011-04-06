@@ -18,7 +18,6 @@
  * max to use for now.
  */
 #define DM_BHT_MAX_DIGEST_SIZE 128  /* 1k hashes are unlikely for now */
-#define DM_BHT_MAX_NODE_COUNT 256
 
 /* UNALLOCATED, PENDING, READY, and VERIFIED are valid states. All other
  * values are entry-related return codes.
@@ -84,17 +83,12 @@ typedef int(*dm_bht_callback)(void *,  /* external context */
  * TODO(wad): All hash storage memory is pre-allocated and freed once an
  * entire branch has been verified.
  */
-enum verify_mode { DM_BHT_REVERIFY_LEAVES = 0, DM_BHT_FULL_REVERIFY };
 struct dm_bht {
 	/* Configured values */
 	/* ENFORCE: depth must be >= 2. */
 	unsigned int depth;  /* Depth of the tree including the root */
 	unsigned int block_count;  /* Number of blocks hashed */
 	char hash_alg[CRYPTO_MAX_ALG_NAME];
-	int verify_mode;  /* different verification modes */
-	unsigned int entry_readahead;  /* number of entries to attempt to
-					* pre-read in a level.
-					*/
 
 	/* Computed values */
 	unsigned int node_count;  /* Data size (in hashes) for each entry */
@@ -124,19 +118,17 @@ int dm_bht_destroy(struct dm_bht *bht);
 
 /* Basic accessors for struct dm_bht */
 sector_t dm_bht_sectors(const struct dm_bht *bht);
-void dm_bht_set_entry_readahead(struct dm_bht *bht,
-				unsigned int readahead_count);
 void dm_bht_set_read_cb(struct dm_bht *bht, dm_bht_callback read_cb);
 void dm_bht_set_write_cb(struct dm_bht *bht, dm_bht_callback write_cb);
-void dm_bht_set_verify_mode(struct dm_bht *bht, int verify_mode);
 int dm_bht_set_root_hexdigest(struct dm_bht *bht, const u8 *hexdigest);
 int dm_bht_root_hexdigest(struct dm_bht *bht, u8 *hexdigest, int available);
 
 /* Functions for loading in data from disk for verification */
+bool dm_bht_is_populated(struct dm_bht *bht, unsigned int block_index);
 int dm_bht_populate(struct dm_bht *bht, void *read_cb_ctx,
 		    unsigned int block_index);
 int dm_bht_verify_block(struct dm_bht *bht, unsigned int block_index,
-			u8 *digest, unsigned int digest_len);
+			const void *block);
 
 /* Functions for creating struct dm_bhts on disk.  A newly created dm_bht
  * should not be directly used for verification. (It should be repopulated.)

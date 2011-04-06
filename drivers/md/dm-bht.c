@@ -93,20 +93,26 @@ static void dm_bht_log_mismatch(struct dm_bht *bht, u8 *given, u8 *computed)
 typedef int (*dm_bht_compare_cb)(struct dm_bht *, u8 *, u8 *);
 
 /**
- * dm_bht_compute_and_compare: hashes a page of data; compares it to a hash
+ * dm_bht_compute_hash: hashes a page of data
  */
-static int dm_bht_compute_and_compare(struct dm_bht *bht,
-				      struct hash_desc *hash_desc,
-				      struct page *page,
-				      u8 *expected_digest,
-				      dm_bht_compare_cb compare_cb)
+static int dm_bht_compute_hash(struct dm_bht *bht, const void *block,
+			       u8 *digest)
 {
+	struct hash_desc *hash_desc = &bht->hash_desc[smp_processor_id()];
 	struct scatterlist sg;
-	u8 digest[DM_BHT_MAX_DIGEST_SIZE];
-	int result;
+
+	/* TODO(msb): Once we supporting block_size < PAGE_SIZE, change this to:
+	 *            offset_into_page + length < page_size
+	 * For now just check that block is page-aligned.
+	 */
+	/*
+	 * TODO(msb): Re-enable once user-space code is modified to use
+	 *            aligned buffers.
+	 * BUG_ON(!IS_ALIGNED((uintptr_t)block, PAGE_SIZE));
+	 */
 
 	sg_init_table(&sg, 1);
-	sg_set_page(&sg, page, PAGE_SIZE, 0);
+	sg_set_buf(&sg, block, PAGE_SIZE);
 	/* Note, this is synchronous. */
 	if (crypto_hash_init(hash_desc)) {
 		DMCRIT("failed to reinitialize crypto hash (proc:%d)",
@@ -118,12 +124,7 @@ static int dm_bht_compute_and_compare(struct dm_bht *bht,
 		return -EINVAL;
 	}
 
-	result = compare_cb(bht, expected_digest, digest);
-#ifdef CONFIG_DM_DEBUG
-	if (result)
-		dm_bht_log_mismatch(bht, expected_digest, digest);
-#endif
-	return result;
+	return 0;
 }
 
 static __always_inline struct dm_bht_level *dm_bht_get_level(struct dm_bht *bht,
@@ -153,6 +154,28 @@ static __always_inline u8 *dm_bht_node(struct dm_bht *bht,
 				       unsigned int node_index)
 {
 	return &entry->nodes[node_index * bht->digest_size];
+}
+
+static inline struct dm_bht_entry *dm_bht_get_entry(struct dm_bht *bht,
+						    unsigned int depth,
+						    unsigned int block_index)
+{
+	unsigned int index = dm_bht_index_at_level(bht, depth, block_index);
+	struct dm_bht_level *level = dm_bht_get_level(bht, depth);
+
+	BUG_ON(index >= level->count);
+
+	return &level->entries[index];
+}
+
+static inline u8 *dm_bht_get_node(struct dm_bht *bht,
+				  struct dm_bht_entry *entry,
+				  unsigned int depth,
+				  unsigned int block_index)
+{
+	unsigned int index = dm_bht_index_at_level(bht, depth, block_index);
+
+	return dm_bht_node(bht, entry, index % bht->node_count);
 }
 
 
@@ -221,7 +244,7 @@ int dm_bht_create(struct dm_bht *bht, unsigned int depth,
 		goto bad_digest_len;
 	}
 
-	bht->root_digest = kzalloc(bht->digest_size, GFP_KERNEL);
+	bht->root_digest = (u8 *) kzalloc(bht->digest_size, GFP_KERNEL);
 	if (!bht->root_digest) {
 		DMERR("failed to allocate memory for root digest");
 		status = -ENOMEM;
@@ -242,12 +265,40 @@ int dm_bht_create(struct dm_bht *bht, unsigned int depth,
 		goto bad_block_count;
 	}
 
-	bht->depth = depth;  /* assignment below */
-	DMDEBUG("Setting depth %u", depth);
-	if (!depth || depth > UINT_MAX / sizeof(struct dm_bht_level)) {
+	/* Each dm_bht_entry->nodes is one page.  The node code tracks
+	 * how many nodes fit into one entry where a node is a single
+	 * hash (message digest).
+	 */
+	bht->node_count_shift = fls(PAGE_SIZE / bht->digest_size) - 1;
+	/* Round down to the nearest power of two.  This makes indexing
+	 * into the tree much less painful.
+	 */
+	bht->node_count = 1 << bht->node_count_shift;
+
+	/* This is unlikely to happen, but with 64k pages, who knows. */
+	if (bht->node_count > UINT_MAX / bht->digest_size) {
+		DMERR("node_count * hash_len exceeds UINT_MAX!");
+		status = -EINVAL;
+		goto bad_node_count;
+	}
+
+	/* if depth == 0, create a "regular" trie with a single root block */
+	if (depth == 0)
+		depth = DIV_ROUND_UP(fls(block_count - 1),
+				     bht->node_count_shift);
+	if (depth > UINT_MAX / sizeof(struct dm_bht_level)) {
 		DMERR("bht depth is invalid: %u", depth);
 		status = -EINVAL;
 		goto bad_depth;
+	}
+	DMDEBUG("Setting depth to %u.", depth);
+	bht->depth = depth;
+
+	/* Ensure that we can safely shift by this value. */
+	if (depth * bht->node_count_shift >= sizeof(unsigned int) * 8) {
+		DMERR("specified depth and node_count_shift is too large");
+		status = -EINVAL;
+		goto bad_node_count;
 	}
 
 	/* Allocate levels. Each level of the tree may have an arbitrary number
@@ -263,38 +314,6 @@ int dm_bht_create(struct dm_bht *bht, unsigned int depth,
 		goto bad_level_alloc;
 	}
 
-	/* Each dm_bht_entry->nodes is one page.  The node code tracks
-	 * how many nodes fit into one entry where a node is a single
-	 * hash (message digest).
-	 */
-	bht->node_count_shift = fls(PAGE_SIZE / bht->digest_size) - 1;
-	/* Round down to the nearest power of two.  This makes indexing
-	 * into the tree much less painful.
-	 */
-	bht->node_count = 1 << bht->node_count_shift;
-
-	/* TODO(wad) if node_count < DM_BHT_MAX_NODE_COUNT, then retry with
-	 * node_count_shift-1.
-	 */
-	if (bht->node_count > DM_BHT_MAX_NODE_COUNT) {
-		DMERR("node_count maximum node bitmap size");
-		status = -EINVAL;
-		goto bad_node_count;
-	}
-
-	/* This is unlikely to happen, but with 64k pages, who knows. */
-	if (bht->node_count > UINT_MAX / bht->digest_size) {
-		DMERR("node_count * hash_len exceeds UINT_MAX!");
-		status = -EINVAL;
-		goto bad_node_count;
-	}
-	/* Ensure that we can safely shift by this value. */
-	if (depth * bht->node_count_shift >= sizeof(unsigned int) * 8) {
-		DMERR("specified depth and node_count_shift is too large");
-		status = -EINVAL;
-		goto bad_node_count;
-	}
-
 	/* Setup callback stubs */
 	bht->read_cb = &dm_bht_read_callback_stub;
 	bht->write_cb = &dm_bht_write_callback_stub;
@@ -303,15 +322,13 @@ int dm_bht_create(struct dm_bht *bht, unsigned int depth,
 	if (status)
 		goto bad_entries_alloc;
 
-	bht->verify_mode = DM_BHT_REVERIFY_LEAVES;
-	bht->entry_readahead = 0;
 	return 0;
 
 bad_entries_alloc:
 	while (bht->depth-- > 0)
 		kfree(bht->levels[bht->depth].entries);
-bad_node_count:
 	kfree(bht->levels);
+bad_node_count:
 bad_level_alloc:
 bad_block_count:
 bad_depth:
@@ -373,7 +390,8 @@ static int dm_bht_initialize_entries(struct dm_bht *bht)
 		 * (a) which pages have been loaded from disk
 		 * (b) which specific nodes have been verified.
 		 */
-		level->entries = kcalloc(level->count,
+		level->entries = (struct dm_bht_entry *)
+				 kcalloc(level->count,
 					 sizeof(struct dm_bht_entry),
 					 GFP_KERNEL);
 		if (!level->entries) {
@@ -431,7 +449,6 @@ static int dm_bht_write_callback_stub(void *ctx, sector_t start,
  */
 void dm_bht_read_completed(struct dm_bht_entry *entry, int status)
 {
-	int state;
 	if (status) {
 		/* TODO(wad) add retry support */
 		DMCRIT("an I/O error occurred while reading entry");
@@ -439,13 +456,8 @@ void dm_bht_read_completed(struct dm_bht_entry *entry, int status)
 		/* entry->nodes will be freed later */
 		return;
 	}
-	state = atomic_cmpxchg(&entry->state,
-				   DM_BHT_ENTRY_PENDING,
-				   DM_BHT_ENTRY_READY);
-	if (state != DM_BHT_ENTRY_PENDING) {
-		DMCRIT("state changed on entry out from under io");
-		BUG();
-	}
+	BUG_ON(atomic_read(&entry->state) != DM_BHT_ENTRY_PENDING);
+	atomic_set(&entry->state, DM_BHT_ENTRY_READY);
 }
 EXPORT_SYMBOL(dm_bht_read_completed);
 
@@ -581,47 +593,6 @@ static int dm_bht_update_hash(struct dm_bht *bht, u8 *known, u8 *computed)
 	return 0;
 }
 
-/* digest length and bht must be checked already */
-static int dm_bht_check_block(struct dm_bht *bht, unsigned int block_index,
-			      u8 *digest, int *entry_state)
-{
-	int depth;
-	unsigned int index;
-	struct dm_bht_entry *entry;
-
-	/* The leaves contain the block hashes */
-	depth = bht->depth - 1;
-
-	/* Index into the bottom level.  Each entry in this level contains
-	 * nodes whose hashes are the direct hashes of one block of data on
-	 * disk.
-	 */
-	index = block_index >> bht->node_count_shift;
-	entry = &bht->levels[depth].entries[index];
-
-	*entry_state = atomic_read(&entry->state);
-	if (*entry_state <= DM_BHT_ENTRY_ERROR) {
-		DMCRIT("leaf entry for block %u is invalid",
-		       block_index);
-		return *entry_state;
-	}
-	if (*entry_state <= DM_BHT_ENTRY_PENDING) {
-		DMERR("leaf data not yet loaded for block %u",
-		      block_index);
-		return 1;
-	}
-
-	/* Index into the entry data */
-	index = (block_index % bht->node_count) * bht->digest_size;
-	if (memcmp(&entry->nodes[index], digest, bht->digest_size)) {
-		DMCRIT("digest mismatch for block %u", block_index);
-		dm_bht_log_mismatch(bht, &entry->nodes[index], digest);
-		return DM_BHT_ENTRY_ERROR_MISMATCH;
-	}
-	/* TODO(wad) update bht->block_bitmap here or in the caller */
-	return 0;
-}
-
 /* Walk all entries at level 0 to compute the root digest.
  * 0 on success.
  */
@@ -648,7 +619,7 @@ static int dm_bht_compute_root(struct dm_bht *bht, u8 *digest)
 			return 1;
 		}
 		sg_init_table(&sg, 1);
-		sg_set_page(&sg, virt_to_page(entry->nodes), PAGE_SIZE, 0);
+		sg_set_buf(&sg, entry->nodes, PAGE_SIZE);
 		if (crypto_hash_update(hash_desc, &sg, PAGE_SIZE)) {
 			DMCRIT("Failed to update crypto hash");
 			return -EINVAL;
@@ -688,104 +659,56 @@ static int dm_bht_verify_root(struct dm_bht *bht,
 }
 
 /* dm_bht_verify_path
- * Verifies the path to block_index from depth=0. Returns 0 on ok.
+ * Verifies the path. Returns 0 on ok.
  */
 static int dm_bht_verify_path(struct dm_bht *bht, unsigned int block_index,
-			      dm_bht_compare_cb compare_cb)
+			      const void *block)
 {
-	unsigned int depth;
-	struct dm_bht_level *level;
+	unsigned int depth = bht->depth;
 	struct dm_bht_entry *entry;
-	struct dm_bht_entry *parent = NULL;
-	u8 *node;
-	unsigned int node_index;
-	unsigned int entry_index;
-	unsigned int parent_index = 0;  /* for logging */
-	struct hash_desc *hash_desc;
 	int state;
-	int ret = 0;
 
-	hash_desc = &bht->hash_desc[smp_processor_id()];
-	for (depth = 0; depth < bht->depth; ++depth) {
-		level = dm_bht_get_level(bht, depth);
-		entry_index = dm_bht_index_at_level(bht, depth, block_index);
-		DMDEBUG("verify_path for bi=%u on d=%d ei=%u (max=%u)",
-			block_index, depth, entry_index, level->count);
-		BUG_ON(entry_index >= level->count);
-		entry = &level->entries[entry_index];
+	do {
+		u8 digest[DM_BHT_MAX_DIGEST_SIZE];
+		u8 *node;
 
-		/* Catch any existing errors */
+		/* Need to check that the hash of the current block is accurate
+		 * in its parent.
+		 */
+		entry = dm_bht_get_entry(bht, depth - 1, block_index);
 		state = atomic_read(&entry->state);
-		if (state <= DM_BHT_ENTRY_ERROR) {
-			DMCRIT("entry(d=%u,idx=%u) is in an error state: %d",
-			       depth, entry_index, state);
-			DMCRIT("verification is not possible");
-			ret = 1;
-			break;
-		} else if (state <= DM_BHT_ENTRY_PENDING) {
-			DMERR("entry not ready for verify: d=%u,e=%u",
-			      depth, entry_index);
-			ret = 1;
-			break;
-		}
-
-		/* We go through the error-checking for depth=0 here so we
-		 * don't have to duplicate it above.  After this point, parent
-		 * will always be set.
+		/* This call is only safe if all nodes along the path
+		 * are already populated (i.e. READY) via dm_bht_populate.
 		 */
-		if (!parent) {
-			parent_index = entry_index;
-			parent = entry;
-			continue;
-		}
+		BUG_ON(state < DM_BHT_ENTRY_READY);
+		node = dm_bht_get_node(bht, entry, depth, block_index);
 
+		if (dm_bht_compute_hash(bht, block, digest) ||
+		    dm_bht_compare_hash(bht, digest, node))
+			goto mismatch;
 
-		/* Because we are one level down, the node_index into the
-		 * the parent's node list modulo the number of nodes.
+		/* Keep the containing block of hashes to be verified in the
+		 * next pass.
 		 */
-		node_index = entry_index % bht->node_count;
+		block = entry->nodes;
+	} while (--depth > 0 && state != DM_BHT_ENTRY_VERIFIED);
 
-		/* If the nodes in entry have already been checked against the
-		 * parent, then we're done.
+	/* Mark path to leaf as verified. */
+	for (depth++; depth < bht->depth; depth++) {
+		entry = dm_bht_get_entry(bht, depth, block_index);
+		/* At this point, entry can only be in VERIFIED or READY state.
+		 * So it is safe to use atomic_set instead of atomic_cmpxchg.
 		 */
-		if (state == DM_BHT_ENTRY_VERIFIED) {
-			DMDEBUG("verify_path node %u is verified in parent %u",
-				node_index, parent_index);
-			/* If this entry has been checked, move along. */
-			parent_index = entry_index;
-			parent = entry;
-			continue;
-		}
-
-		DMDEBUG("verify_path node %u is not verified in parent %u",
-			node_index, parent_index);
-		/* We need to check that this entry matches the expected
-		 * hash in the parent->nodes.
-		 */
-		node = dm_bht_node(bht, parent, node_index);
-		if (dm_bht_compute_and_compare(bht, hash_desc,
-					       virt_to_page(entry->nodes),
-					       node, compare_cb)) {
-			DMERR("failed to verify entry's hash against parent "
-			      "(d=%u,ei=%u,p=%u,pnode=%u)",
-			      depth, entry_index, parent_index, node_index);
-			ret = DM_BHT_ENTRY_ERROR_MISMATCH;
-			break;
-		}
-
-		/* Instead of keeping a bitmap of which children have been
-		 * checked, this data is kept in the child state. If full
-		 * reverifies have been set, then no intermediate entry/node is
-		 * ever marked as verified.
-		 */
-		if (bht->verify_mode != DM_BHT_FULL_REVERIFY)
-			atomic_cmpxchg(&entry->state,
-				       DM_BHT_ENTRY_READY,
-				       DM_BHT_ENTRY_VERIFIED);
-		parent_index = entry_index;
-		parent = entry;
+		atomic_set(&entry->state, DM_BHT_ENTRY_VERIFIED);
 	}
-	return ret;
+
+	DMDEBUG("verify_path: node %u is verified to root", block_index);
+	return 0;
+
+mismatch:
+	DMERR("verify_path: failed to verify hash against parent (d=%u,bi=%u)",
+	      depth, block_index);
+	return DM_BHT_ENTRY_ERROR_MISMATCH;
 }
 
 /**
@@ -814,7 +737,6 @@ int dm_bht_store_block(struct dm_bht *bht, unsigned int block_index,
 	struct dm_bht_entry *entry;
 	struct dm_bht_level *level;
 	int state;
-	struct hash_desc *hash_desc;
 	struct page *node_page = NULL;
 
 	/* Look at the last level of nodes above the leaves (data blocks) */
@@ -849,6 +771,7 @@ int dm_bht_store_block(struct dm_bht *bht, unsigned int block_index,
 			return -ENOMEM;
 		}
 		entry->nodes = page_address(node_page);
+		memset(entry->nodes, 0, PAGE_SIZE);
 		/* TODO(wad) could expose this to the caller to that they
 		 * can transition from unallocated to ready manually.
 		 */
@@ -862,10 +785,8 @@ int dm_bht_store_block(struct dm_bht *bht, unsigned int block_index,
 		return 1;
 	}
 
-	hash_desc = &bht->hash_desc[smp_processor_id()];
-	dm_bht_compute_and_compare(bht, hash_desc, virt_to_page(block_data),
-				   dm_bht_node(bht, entry, node_index),
-				   &dm_bht_update_hash);
+	dm_bht_compute_hash(bht, block_data,
+			    dm_bht_node(bht, entry, node_index));
 	return 0;
 }
 EXPORT_SYMBOL(dm_bht_store_block);
@@ -911,32 +832,46 @@ EXPORT_SYMBOL(dm_bht_zeroread_callback);
  */
 int dm_bht_compute(struct dm_bht *bht, void *read_cb_ctx)
 {
-	unsigned int block;
-	int updated = 0;
-	/* Start at the last block and walk backwards. */
-	for (block = bht->block_count - 1; block != 0;
-	     block -= bht->node_count) {
-		DMDEBUG("Updating levels for block %u", block);
-		updated = dm_bht_populate(bht, read_cb_ctx, block);
-		if (updated < 0) {
-			DMERR("Failed to pre-zero entries");
-			return updated;
+	int depth, r;
+
+	for (depth = bht->depth - 2; depth >= 0; depth--) {
+		struct dm_bht_level *level = dm_bht_get_level(bht, depth);
+		struct dm_bht_level *child_level = level + 1;
+		struct dm_bht_entry *entry = level->entries;
+		struct dm_bht_entry *child = child_level->entries;
+		unsigned int i, j;
+
+		r = dm_bht_maybe_read_entries(bht, read_cb_ctx, depth,
+					      0, level->count, true);
+		if (r < 0) {
+			DMCRIT("an error occurred while reading entry");
+			goto out;
 		}
-		updated = dm_bht_verify_path(bht,
-					     block,
-					     dm_bht_update_hash);
-		if (updated) {
-			DMERR("Failed to update levels for block %u",
-			      block);
-			return updated;
+
+		for (i = 0; i < level->count; i++, entry++) {
+			unsigned int count = bht->node_count;
+			if (i == (level->count - 1))
+				count = child_level->count % bht->node_count;
+			if (count == 0)
+				count = bht->node_count;
+			for (j = 0; j < count; j++, child++) {
+				u8 *block = child->nodes;
+				u8 *digest = dm_bht_node(bht, entry, j);
+
+				r = dm_bht_compute_hash(bht, block, digest);
+				if (r) {
+					DMERR("Failed to update (d=%u,i=%u)",
+					      depth, i);
+					goto out;
+				}
+			}
 		}
-		if (block < bht->node_count)
-			break;
 	}
 	/* Don't forget the root digest! */
 	DMDEBUG("Calling verify_root with update_hash");
-	updated = dm_bht_verify_root(bht, dm_bht_update_hash);
-	return updated;
+	r = dm_bht_verify_root(bht, dm_bht_update_hash);
+out:
+	return r;
 }
 EXPORT_SYMBOL(dm_bht_compute);
 
@@ -987,6 +922,33 @@ int dm_bht_sync(struct dm_bht *bht, void *write_cb_ctx)
 	return 0;
 }
 EXPORT_SYMBOL(dm_bht_sync);
+
+/**
+ * dm_bht_is_populated - check that entries from disk needed to verify a given
+ *                       block are all ready
+ * @bht:	pointer to a dm_bht_create()d bht
+ * @block_index:specific block data is expected from
+ *
+ * Callers may wish to call dm_bht_is_populated() when checking an io
+ * for which entries were already pending.
+ */
+bool dm_bht_is_populated(struct dm_bht *bht, unsigned int block_index)
+{
+	unsigned int depth;
+
+	if (atomic_read(&bht->root_state) < DM_BHT_ENTRY_READY)
+		return false;
+
+	for (depth = bht->depth - 1; depth > 0; depth--) {
+		struct dm_bht_entry *entry = dm_bht_get_entry(bht, depth,
+							      block_index);
+		if (atomic_read(&entry->state) < DM_BHT_ENTRY_READY)
+			return false;
+	}
+
+	return true;
+}
+EXPORT_SYMBOL(dm_bht_is_populated);
 
 /**
  * dm_bht_populate - reads entries from disk needed to verify a given block
@@ -1053,26 +1015,6 @@ int dm_bht_populate(struct dm_bht *bht, void *read_cb_ctx,
 		}
 		/* Accrue return code flags */
 		populated |= read_status;
-
-		/* Attempt to pull in up to entry_readahead extra entries on
-		 * this I/O call iff we're doing the read right now.  This
-		 * helps optimize sequential access to the mapped drive.
-		 */
-		if (bht->entry_readahead &&
-		    (read_status & DM_BHT_ENTRY_REQUESTED)) {
-			unsigned int readahead_count;
-			entry_index++;
-			readahead_count = min(bht->entry_readahead,
-					      level->count - entry_index);
-			/* The result is completely ignored since this call is
-			 * critical for the current request.
-			 */
-			if (readahead_count)
-				dm_bht_maybe_read_entries(bht, read_cb_ctx,
-							  depth, entry_index,
-							  readahead_count,
-							  true);
-		}
 	}
 
 	/* All nodes are ready. The hash for the block_index can be verified */
@@ -1085,59 +1027,34 @@ EXPORT_SYMBOL(dm_bht_populate);
  * dm_bht_verify_block - checks that all nodes in the path for @block are valid
  * @bht:	pointer to a dm_bht_create()d bht
  * @block_index:specific block data is expected from
- * @digest:	computed digest for the given block to be checked
- * @digest_len:	length of @digest
+ * @block:	virtual address of the block data in memory
+ *              (must be aligned to block size)
  *
  * Returns 0 on success, 1 on missing data, and a negative error
  * code on verification failure. All supporting functions called
  * should return similarly.
  */
 int dm_bht_verify_block(struct dm_bht *bht, unsigned int block_index,
-				u8 *digest, unsigned int digest_len)
+			const void *block)
 {
-	int unverified = 0;
-	int entry_state = 0;
-
-	/* TODO(wad) do we really need this? */
-	if (digest_len != bht->digest_size) {
-		DMERR("invalid digest_len passed to verify_block");
-		return -EINVAL;
-	}
+	int r = 0;
 
 	/* Make sure that the root has been verified */
 	if (atomic_read(&bht->root_state) != DM_BHT_ENTRY_VERIFIED) {
-		unverified = dm_bht_verify_root(bht, dm_bht_compare_hash);
-		if (unverified) {
-			DMERR_LIMIT("Failed to verify root: %d", unverified);
-			return unverified;
+		r = dm_bht_verify_root(bht, dm_bht_compare_hash);
+		if (r) {
+			DMERR_LIMIT("Failed to verify root: %d", r);
+			goto out;
 		}
 	}
 
-	/* Now check that the digest supplied matches the leaf hash */
-	unverified = dm_bht_check_block(bht, block_index, digest, &entry_state);
-	if (unverified) {
-		DMERR_LIMIT("Block check failed for %u: %d", block_index,
-				unverified);
-		return unverified;
-	}
-
-	/* If the entry which contains the block hash is marked verified, then
-	 * it means that its hash has been check with the parent.  In addition,
-	 * since that is only possible via verify_path, it transitively means
-	 * it is verified to the root of the tree. If the depth is 1, then it
-	 * means the entry was verified during root verification.
-	 */
-	if (entry_state == DM_BHT_ENTRY_VERIFIED || bht->depth == 1)
-		return unverified;
-
 	/* Now check levels in between */
-	unverified = dm_bht_verify_path(bht,
-					block_index,
-					dm_bht_compare_hash);
-	if (unverified)
-		DMERR_LIMIT("Failed to verify intermediary nodes for block: %u (%d)",
-		      block_index, unverified);
-	return unverified;
+	r = dm_bht_verify_path(bht, block_index, block);
+	if (r)
+		DMERR_LIMIT("Failed to verify block: %u (%d)", block_index, r);
+
+out:
+	return r;
 }
 EXPORT_SYMBOL(dm_bht_verify_block);
 
@@ -1227,29 +1144,6 @@ void dm_bht_set_write_cb(struct dm_bht *bht, dm_bht_callback write_cb)
 EXPORT_SYMBOL(dm_bht_set_write_cb);
 
 /**
- * dm_bht_set_verify_mode - set verify mode
- * @bht:	pointer to a dm_bht_create()d bht
- * @verify_mode:	indicate verification behavior
- */
-void dm_bht_set_verify_mode(struct dm_bht *bht, int verify_mode)
-{
-	bht->verify_mode = verify_mode;
-}
-EXPORT_SYMBOL(dm_bht_set_verify_mode);
-
-/**
- * dm_bht_set_entry_readahead - set verify mode
- * @bht:	pointer to a dm_bht_create()d bht
- * @readahead_count:	number of entries to readahead from a given level
- */
-void dm_bht_set_entry_readahead(struct dm_bht *bht,
-				unsigned int readahead_count)
-{
-	bht->entry_readahead = readahead_count;
-}
-EXPORT_SYMBOL(dm_bht_set_entry_readahead);
-
-/**
  * dm_bht_set_root_hexdigest - sets an unverified root digest hash from hex
  * @bht:	pointer to a dm_bht_create()d bht
  * @hexdigest:	array of u8s containing the new digest in binary
@@ -1303,4 +1197,3 @@ int dm_bht_root_hexdigest(struct dm_bht *bht, u8 *hexdigest, int available)
 	return 0;
 }
 EXPORT_SYMBOL(dm_bht_root_hexdigest);
-
