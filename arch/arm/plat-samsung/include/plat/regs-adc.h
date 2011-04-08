@@ -63,6 +63,9 @@
 #define S3C2410_ADCDAT1_XY_PST		(0x3<<12)
 #define S3C2410_ADCDAT1_YPDATA_MASK	(0x03FF)
 
+/* ADCDLY Register Bits */
+#define S3C2410_ADCDLY_DELAY(x)		(((x)&0xFFFF)<<0)
+
 #endif /* __ASM_ARCH_REGS_ADC_H */
 
 

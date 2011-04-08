@@ -73,6 +73,7 @@ struct adc_device {
 	spinlock_t		 lock;
 
 	unsigned int		 prescale;
+	unsigned int		 delay;
 
 	int			 irq;
 	struct regulator	*vdd;
@@ -367,6 +368,7 @@ static int s3c_adc_probe(struct platform_device *pdev)
 
 	adc->pdev = pdev;
 	adc->prescale = S3C2410_ADCCON_PRSCVL(49);
+	adc->delay = S3C2410_ADCDLY_DELAY(1000);
 
 	adc->vdd = regulator_get(dev, "vdd");
 	if (IS_ERR(adc->vdd)) {
@@ -425,6 +427,7 @@ static int s3c_adc_probe(struct platform_device *pdev)
 
 	tmp |= S3C2410_ADCCON_STDBM;
 	writel(tmp, adc->regs + S3C2410_ADCCON);
+	writel(adc->delay, adc->regs + S3C2410_ADCDLY);
 
 	dev_info(dev, "attached adc driver\n");
 
@@ -509,6 +512,7 @@ static int s3c_adc_resume(struct device *dev)
 		tmp |= S3C64XX_ADCCON_RESSEL;
 
 	writel(tmp, adc->regs + S3C2410_ADCCON);
+	writel(adc->delay, adc->regs + S3C2410_ADCDLY);
 
 	return 0;
 }
