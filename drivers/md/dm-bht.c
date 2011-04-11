@@ -204,8 +204,8 @@ static int dm_bht_write_callback_stub(void *ctx, sector_t start,
  * Callers can offset into devices by storing the data in the io callbacks.
  * TODO(wad) bust up into smaller helpers
  */
-int dm_bht_create(struct dm_bht *bht, unsigned int depth,
-		  unsigned int block_count, const char *alg_name)
+int dm_bht_create(struct dm_bht *bht, unsigned int block_count,
+		  const char *alg_name)
 {
 	int status = 0;
 	int cpu = 0;
@@ -282,20 +282,11 @@ int dm_bht_create(struct dm_bht *bht, unsigned int depth,
 		goto bad_node_count;
 	}
 
-	/* if depth == 0, create a "regular" trie with a single root block */
-	if (depth == 0)
-		depth = DIV_ROUND_UP(fls(block_count - 1),
-				     bht->node_count_shift);
-	if (depth > UINT_MAX / sizeof(struct dm_bht_level)) {
-		DMERR("bht depth is invalid: %u", depth);
-		status = -EINVAL;
-		goto bad_depth;
-	}
-	DMDEBUG("Setting depth to %u.", depth);
-	bht->depth = depth;
+	bht->depth = DIV_ROUND_UP(fls(block_count - 1), bht->node_count_shift);
+	DMDEBUG("Setting depth to %u.", bht->depth);
 
 	/* Ensure that we can safely shift by this value. */
-	if (depth * bht->node_count_shift >= sizeof(unsigned int) * 8) {
+	if (bht->depth * bht->node_count_shift >= sizeof(unsigned int) * 8) {
 		DMERR("specified depth and node_count_shift is too large");
 		status = -EINVAL;
 		goto bad_node_count;
@@ -307,7 +298,8 @@ int dm_bht_create(struct dm_bht *bht, unsigned int depth,
 	 * nodes on the subsequent level or of a specific block on disk.
 	 */
 	bht->levels = (struct dm_bht_level *)
-			kcalloc(depth, sizeof(struct dm_bht_level), GFP_KERNEL);
+			kcalloc(bht->depth,
+				sizeof(struct dm_bht_level), GFP_KERNEL);
 	if (!bht->levels) {
 		DMERR("failed to allocate tree levels");
 		status = -ENOMEM;
@@ -331,7 +323,6 @@ bad_entries_alloc:
 bad_node_count:
 bad_level_alloc:
 bad_block_count:
-bad_depth:
 	kfree(bht->root_digest);
 bad_root_digest_alloc:
 bad_digest_len:

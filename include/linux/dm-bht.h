@@ -110,7 +110,6 @@ struct dm_bht {
 
 /* Constructor for struct dm_bht instances. */
 int dm_bht_create(struct dm_bht *bht,
-		  unsigned int depth,
 		  unsigned int block_count,
 		  const char *alg_name);
 /* Destructor for struct dm_bht instances.  Does not free @bht */

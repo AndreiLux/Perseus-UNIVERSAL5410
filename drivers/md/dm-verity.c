@@ -1090,15 +1090,15 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 
 	/* arg3: blocks in a bundle */
 	if (sscanf(argv[3], "%u", &depth) != 1 ||
-	    depth < 0) {
+	    depth != 0) {
 		ti->error =
-			"Negative depth supplied";
+			"Non-zero depth supplied";
 		goto bad_depth;
 	}
 	/* Calculate the blocks from the given device size */
 	vc->size = ti->len;
 	blocks = to_bytes(vc->size) >> VERITY_BLOCK_SHIFT;
-	if (dm_bht_create(&vc->bht, (unsigned int)depth, blocks, argv[4])) {
+	if (dm_bht_create(&vc->bht, blocks, argv[4])) {
 		DMERR("failed to create required bht");
 		goto bad_bht;
 	}
