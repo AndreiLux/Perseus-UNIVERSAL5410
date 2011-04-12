@@ -39,9 +39,7 @@ DEFINE_PER_CPU(struct mm_struct *, current_mm);
 
 /*
  * We fork()ed a process, and we need a new context for the child
- * to run in.  We reserve version 0 for initial tasks so we will
- * always allocate an ASID. The ASID 0 is reserved for the TTBR
- * register changing sequence.
+ * to run in.
  */
 void __init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 {
@@ -51,8 +49,14 @@ void __init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 
 static void flush_context(void)
 {
+	u32 ttb;
+
 	/* set the reserved ASID before flushing the TLB */
 	cpu_set_asid(0);
+	/* Copy TTBR1 into TTBR0 */
+	asm volatile("mrc	p15, 0, %0, c2, c0, 1\n"
+		     "mcr	p15, 0, %0, c2, c0, 0"
+		     : "=r" (ttb));
 	isb();
 	local_flush_tlb_all();
 	if (icache_is_vivt_asid_tagged()) {
