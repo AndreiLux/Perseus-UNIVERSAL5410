@@ -1,5 +1,5 @@
 /* qcusbnet.c - gobi network device
- * Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2011, Code Aurora Forum. All rights reserved.
 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -22,6 +22,7 @@
 #include "qcusbnet.h"
 
 #include <linux/module.h>
+#include <linux/ctype.h>
 
 #define DRIVER_VERSION "1.0.110+google"
 #define DRIVER_AUTHOR "Qualcomm Innovation Center"
@@ -580,12 +581,24 @@ static const struct usb_device_id qc_vidpids[] = {
 
 MODULE_DEVICE_TABLE(usb, qc_vidpids);
 
+static u8 nibble(unsigned char c)
+{
+	if (likely(isdigit(c)))
+		return c - '0';
+	c = toupper(c);
+	if (likely(isxdigit(c)))
+		return 10 + c - 'A';
+	return 0;
+}
+
 int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids)
 {
 	int status;
 	struct usbnet *usbnet;
 	struct qcusbnet *dev;
 	struct net_device_ops *netdevops;
+	int i;
+	u8 *addr;
 
 	status = usbnet_probe(iface, vidpids);
 	if (status < 0) {
@@ -631,8 +644,6 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 	dev->iface = iface;
 	memset(&(dev->meid), '0', 14);
 
-	DBG("Mac Address: %pM\n", dev->usbnet->net->dev_addr);
-
 	dev->valid = false;
 	memset(&dev->qmi, 0, sizeof(dev->qmi));
 
@@ -657,6 +668,13 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 		list_add(&dev->node, &qcusbnet_list);
 		mutex_unlock(&qcusbnet_lock);
 	}
+	/* After calling qc_register, MEID is valid */
+	addr = &usbnet->net->dev_addr[0];
+	for (i = 0; i < 6; i++)
+		addr[i] = (nibble(dev->meid[i*2+2]) << 4)+
+			nibble(dev->meid[i*2+3]);
+	addr[0] &= 0xfe;		/* clear multicast bit */
+	addr[0] |= 0x02;		/* set local assignment bit (IEEE802) */
 
 	return status;
 }
