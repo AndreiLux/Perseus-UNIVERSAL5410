@@ -678,7 +678,7 @@ static int verity_verify(struct verity_config *vc,
 
 		/* TODO(msb) handle case where multiple blocks fit in a page */
 		r = dm_bht_verify_block(&vc->bht, block,
-					page_address(bv->bv_page));
+					bv->bv_page, bv->bv_offset);
 		/* dm_bht functions aren't expected to return errno friendly
 		 * values.  They are converted here for uniformity.
 		 */

@@ -20,6 +20,7 @@
 #include <linux/dm-bht.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/mm_types.h>
 #include <linux/scatterlist.h>
 #include <linux/slab.h>  /* k*alloc */
 #include <linux/string.h>  /* memset */
@@ -95,24 +96,14 @@ typedef int (*dm_bht_compare_cb)(struct dm_bht *, u8 *, u8 *);
 /**
  * dm_bht_compute_hash: hashes a page of data
  */
-static int dm_bht_compute_hash(struct dm_bht *bht, const void *block,
-			       u8 *digest)
+static int dm_bht_compute_hash(struct dm_bht *bht, struct page *pg,
+			       unsigned int offset, u8 *digest)
 {
 	struct hash_desc *hash_desc = &bht->hash_desc[smp_processor_id()];
 	struct scatterlist sg;
 
-	/* TODO(msb): Once we supporting block_size < PAGE_SIZE, change this to:
-	 *            offset_into_page + length < page_size
-	 * For now just check that block is page-aligned.
-	 */
-	/*
-	 * TODO(msb): Re-enable once user-space code is modified to use
-	 *            aligned buffers.
-	 * BUG_ON(!IS_ALIGNED((uintptr_t)block, PAGE_SIZE));
-	 */
-
 	sg_init_table(&sg, 1);
-	sg_set_buf(&sg, block, PAGE_SIZE);
+	sg_set_page(&sg, pg, PAGE_SIZE, offset);
 	/* Note, this is synchronous. */
 	if (crypto_hash_init(hash_desc)) {
 		DMCRIT("failed to reinitialize crypto hash (proc:%d)",
@@ -653,7 +644,7 @@ static int dm_bht_verify_root(struct dm_bht *bht,
  * Verifies the path. Returns 0 on ok.
  */
 static int dm_bht_verify_path(struct dm_bht *bht, unsigned int block_index,
-			      const void *block)
+			      struct page *pg, unsigned int offset)
 {
 	unsigned int depth = bht->depth;
 	struct dm_bht_entry *entry;
@@ -674,14 +665,15 @@ static int dm_bht_verify_path(struct dm_bht *bht, unsigned int block_index,
 		BUG_ON(state < DM_BHT_ENTRY_READY);
 		node = dm_bht_get_node(bht, entry, depth, block_index);
 
-		if (dm_bht_compute_hash(bht, block, digest) ||
+		if (dm_bht_compute_hash(bht, pg, offset, digest) ||
 		    dm_bht_compare_hash(bht, digest, node))
 			goto mismatch;
 
 		/* Keep the containing block of hashes to be verified in the
 		 * next pass.
 		 */
-		block = entry->nodes;
+		pg = virt_to_page(entry->nodes);
+		offset = 0;
 	} while (--depth > 0 && state != DM_BHT_ENTRY_VERIFIED);
 
 	/* Mark path to leaf as verified. */
@@ -776,7 +768,7 @@ int dm_bht_store_block(struct dm_bht *bht, unsigned int block_index,
 		return 1;
 	}
 
-	dm_bht_compute_hash(bht, block_data,
+	dm_bht_compute_hash(bht, virt_to_page(block_data), 0,
 			    dm_bht_node(bht, entry, node_index));
 	return 0;
 }
@@ -846,10 +838,10 @@ int dm_bht_compute(struct dm_bht *bht, void *read_cb_ctx)
 			if (count == 0)
 				count = bht->node_count;
 			for (j = 0; j < count; j++, child++) {
-				u8 *block = child->nodes;
+				struct page *pg = virt_to_page(child->nodes);
 				u8 *digest = dm_bht_node(bht, entry, j);
 
-				r = dm_bht_compute_hash(bht, block, digest);
+				r = dm_bht_compute_hash(bht, pg, 0, digest);
 				if (r) {
 					DMERR("Failed to update (d=%u,i=%u)",
 					      depth, i);
@@ -1026,9 +1018,11 @@ EXPORT_SYMBOL(dm_bht_populate);
  * should return similarly.
  */
 int dm_bht_verify_block(struct dm_bht *bht, unsigned int block_index,
-			const void *block)
+			struct page *pg, unsigned int offset)
 {
 	int r = 0;
+
+	BUG_ON(offset != 0);
 
 	/* Make sure that the root has been verified */
 	if (atomic_read(&bht->root_state) != DM_BHT_ENTRY_VERIFIED) {
@@ -1040,7 +1034,7 @@ int dm_bht_verify_block(struct dm_bht *bht, unsigned int block_index,
 	}
 
 	/* Now check levels in between */
-	r = dm_bht_verify_path(bht, block_index, block);
+	r = dm_bht_verify_path(bht, block_index, pg, offset);
 	if (r)
 		DMERR_LIMIT("Failed to verify block: %u (%d)", block_index, r);
 

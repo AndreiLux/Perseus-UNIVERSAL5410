@@ -127,7 +127,7 @@ bool dm_bht_is_populated(struct dm_bht *bht, unsigned int block_index);
 int dm_bht_populate(struct dm_bht *bht, void *read_cb_ctx,
 		    unsigned int block_index);
 int dm_bht_verify_block(struct dm_bht *bht, unsigned int block_index,
-			const void *block);
+			struct page *pg, unsigned int offset);
 
 /* Functions for creating struct dm_bhts on disk.  A newly created dm_bht
  * should not be directly used for verification. (It should be repopulated.)
