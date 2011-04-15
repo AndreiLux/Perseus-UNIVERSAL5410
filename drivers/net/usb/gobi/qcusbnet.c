@@ -308,10 +308,10 @@ static int qcnet_worker(void *arg)
 
 	DBG("traffic thread started\n");
 
-	while (!kthread_should_stop()) {
+	while (!worker->exit && !kthread_should_stop()) {
 		wait_for_completion_interruptible(&worker->work);
 
-		if (kthread_should_stop()) {
+		if (worker->exit || kthread_should_stop()) {
 			spin_lock_irqsave(&worker->active_lock, activeflags);
 			if (worker->active) {
 				usb_kill_urb(worker->active);
@@ -487,6 +487,7 @@ static int qcnet_open(struct net_device *netdev)
 	spin_lock_init(&dev->worker.active_lock);
 	init_completion(&dev->worker.work);
 
+	dev->worker.exit = 0;
 	dev->worker.thread = kthread_run(qcnet_worker, &dev->worker, "qcnet_worker");
 	if (IS_ERR(dev->worker.thread)) {
 		DBG("AutoPM thread creation error\n");
@@ -523,6 +524,7 @@ int qcnet_stop(struct net_device *netdev)
 	}
 
 	qc_setdown(dev, DOWN_NET_IFACE_STOPPED);
+	dev->worker.exit = 1;
 	complete(&dev->worker.work);
 	kthread_stop(dev->worker.thread);
 	DBG("thread stopped\n");

@@ -49,6 +49,7 @@ struct urbreq {
 
 struct worker {
 	struct task_struct *thread;
+	int exit;
 	struct completion work;
 	struct list_head urbs;
 	spinlock_t urbs_lock;
