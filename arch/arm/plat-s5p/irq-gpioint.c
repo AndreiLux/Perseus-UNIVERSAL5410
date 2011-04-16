@@ -74,6 +74,12 @@ static int s5p_gpioint_set_type(struct irq_data *d, unsigned int type)
 	gc->type_cache &= ~(0x7 << shift);
 	gc->type_cache |= type << shift;
 	writel(gc->type_cache, gc->reg_base + ct->regs.type);
+
+	if (type & IRQ_TYPE_EDGE_BOTH)
+		__irq_set_handler_locked(d->irq, handle_edge_irq);
+	else
+		__irq_set_handler_locked(d->irq, handle_level_irq);
+
 	return 0;
 }
 
