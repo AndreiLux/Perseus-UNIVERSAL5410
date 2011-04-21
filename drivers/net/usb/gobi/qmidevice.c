@@ -74,8 +74,10 @@ static struct urb *client_delurb(struct qcusbnet *dev, u16 cid);
 static int resubmit_int_urb(struct urb *urb);
 
 static int devqmi_open(struct inode *inode, struct file *file);
-static int devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+#ifdef CONFIG_COMPAT
 static int devqmi_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+#endif
 static int devqmi_release(struct inode *inode, struct file *file);
 static ssize_t devqmi_read(struct file *file, char __user *buf, size_t size,
 			   loff_t *pos);
@@ -99,7 +101,9 @@ static const struct file_operations devqmi_fops = {
 	.read    = devqmi_read,
 	.write   = devqmi_write,
 	.unlocked_ioctl   = devqmi_ioctl,
+#ifdef CONFIG_COMPAT
 	.compat_ioctl = devqmi_compat_ioctl,
+#endif
 	.open    = devqmi_open,
 	.release = devqmi_release,
 };
@@ -991,7 +995,7 @@ static int devqmi_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static int devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int result;
 	u32 vidpid;
@@ -1101,10 +1105,12 @@ static int devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	}
 }
 
+#ifdef CONFIG_COMPAT
 static int devqmi_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	return devqmi_ioctl(file, cmd, compat_ptr(arg));
 }
+#endif
 
 static int devqmi_release(struct inode *inode, struct file *file)
 {
