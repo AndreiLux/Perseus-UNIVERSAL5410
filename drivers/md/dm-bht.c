@@ -784,7 +784,7 @@ int dm_bht_populate(struct dm_bht *bht, void *ctx,
 
 	DMDEBUG("dm_bht_populate(%u)", block_index);
 
-	for (depth = 0; depth < bht->depth; ++depth) {
+	for (depth = bht->depth - 1; (int)depth >= 0; --depth) {
 		struct dm_bht_level *level;
 		struct dm_bht_entry *entry;
 		unsigned int index;
@@ -795,9 +795,10 @@ int dm_bht_populate(struct dm_bht *bht, void *ctx,
 				       DM_BHT_ENTRY_UNALLOCATED,
 				       DM_BHT_ENTRY_PENDING);
 
+		if (state == DM_BHT_ENTRY_VERIFIED)
+			break;
 		if (state <= DM_BHT_ENTRY_ERROR)
 			goto error_state;
-
 		if (state != DM_BHT_ENTRY_UNALLOCATED)
 			continue;
 
