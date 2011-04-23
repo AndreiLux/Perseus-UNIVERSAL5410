@@ -15,7 +15,7 @@
 struct dm_verity_error_state {
 	int code;
 	int transient;  /* Likely to not happen after a reboot */
-	sector_t block;
+	u64 block;
 	const char *message;
 
 	sector_t dev_start;

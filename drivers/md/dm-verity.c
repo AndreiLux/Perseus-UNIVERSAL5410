@@ -64,7 +64,7 @@
  */
 #define MIN_BIOS (MIN_IOS * 2)
 
-/* VERITY_BLOCK_SIZE must is less than PAGE_SIZE */
+/* MUST be true: SECTOR_SHIFT <= VERITY_BLOCK_SHIFT <= PAGE_SHIFT */
 #define VERITY_BLOCK_SIZE 4096
 #define VERITY_BLOCK_SHIFT 12
 
@@ -131,9 +131,9 @@ struct dm_verity_io {
 	int error;
 	atomic_t pending;
 
-	sector_t sector;  /* unaligned, converted to target sector */
-	sector_t block;  /* aligned block index */
-	sector_t count;  /* aligned count in blocks */
+	sector_t sector;  /* converted to target sector */
+	u64 block;  /* aligned block index */
+	u64 count;  /* aligned count in blocks */
 };
 
 struct verity_config {
@@ -309,7 +309,7 @@ static void verity_error(struct verity_config *vc, struct dm_verity_io *io,
 	const char *message;
 	int error_behavior = DM_VERITY_ERROR_BEHAVIOR_PANIC;
 	dev_t devt = 0;
-	sector_t block = -1;
+	u64 block = ~0;
 	int transient = 1;
 	struct dm_verity_error_state error_state;
 
@@ -392,8 +392,8 @@ static void verity_error(struct verity_config *vc, struct dm_verity_io *io,
 
 do_panic:
 	panic("dm-verity failure: "
-		"device:%u:%u error:%d block:%llu message:%s",
-		MAJOR(devt), MINOR(devt), error, block, message);
+	      "device:%u:%u error:%d block:%llu message:%s",
+	      MAJOR(devt), MINOR(devt), error, ULL(block), message);
 }
 
 /**
@@ -570,10 +570,10 @@ static void verity_return_bio_to_caller(struct dm_verity_io *io)
 static bool verity_is_bht_populated(struct dm_verity_io *io)
 {
 	struct verity_config *vc = io->target->private;
-	sector_t count;
+	u64 block;
 
-	for (count = 0; count < io->count; ++count)
-		if (!dm_bht_is_populated(&vc->bht, io->block + count))
+	for (block = io->block; block < io->block + io->count; ++block)
+		if (!dm_bht_is_populated(&vc->bht, block))
 			return false;
 
 	return true;
@@ -626,8 +626,9 @@ io_error:
 static int verity_verify(struct verity_config *vc,
 			 struct bio *bio)
 {
+	unsigned int idx;
+	u64 block;
 	int r;
-	unsigned int idx, block;
 
 	VERITY_BUG_ON(bio == NULL);
 
@@ -639,7 +640,7 @@ static int verity_verify(struct verity_config *vc,
 		VERITY_BUG_ON(bv->bv_offset % VERITY_BLOCK_SIZE);
 		VERITY_BUG_ON(bv->bv_len % VERITY_BLOCK_SIZE);
 
-		DMDEBUG("Updating hash for block %u", block);
+		DMDEBUG("Updating hash for block %llu", ULL(block));
 
 		/* TODO(msb) handle case where multiple blocks fit in a page */
 		r = dm_bht_verify_block(&vc->bht, block,
@@ -648,8 +649,8 @@ static int verity_verify(struct verity_config *vc,
 		 * values.  They are converted here for uniformity.
 		 */
 		if (r > 0) {
-			DMERR("Pending data for block %u seen at verify",
-			      block);
+			DMERR("Pending data for block %llu seen at verify",
+			      ULL(block));
 			r = -EBUSY;
 			goto bad_state;
 		}
@@ -658,7 +659,7 @@ static int verity_verify(struct verity_config *vc,
 			r = -EACCES;
 			goto bad_match;
 		}
-		REQTRACE("Block %u verified", block);
+		REQTRACE("Block %llu verified", ULL(block));
 
 		block++;
 		/* After completing a block, allow a reschedule.
@@ -781,7 +782,7 @@ static int kverityd_bht_read_callback(void *ctx, sector_t start, u8 *dst,
 static void kverityd_io_bht_populate(struct dm_verity_io *io)
 {
 	struct verity_config *vc = io->target->private;
-	sector_t count;
+	u64 block;
 
 	/* Submits an io request for each missing block of block hashes.
 	 * The last one to return will then enqueue this on the
@@ -789,18 +790,16 @@ static void kverityd_io_bht_populate(struct dm_verity_io *io)
 	 */
 	REQTRACE("populating %llu starting at block %llu (io:%p)",
 		 ULL(io->count), ULL(io->block), io);
-	for (count = 0; count < io->count; ++count) {
-		unsigned int block = (unsigned int)(io->block + count);
+	for (block = io->block; block < io->block + io->count; ++block) {
 		int populated;
 
-		/* Check for truncation. */
-		VERITY_BUG_ON((sector_t)(block) < io->block);
 		/* populate for each block */
-		DMDEBUG("Calling dm_bht_populate for %u (io:%p)", block, io);
+		DMDEBUG("Calling dm_bht_populate for %ull (io:%p)",
+			ULL(block), io);
 		populated = dm_bht_populate(&vc->bht, io, block);
 		if (populated < 0) {
-			DMCRIT("dm_bht_populate error for block %u (io:%p): %d",
-			       block, io, populated);
+			DMCRIT("dm_bht_populate error: block %llu (io:%p): %d",
+			       ULL(block), io, populated);
 			/* TODO(wad) support propagating transient errors
 			 *           cleanly.
 			 */
@@ -1000,7 +999,7 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	int ret = 0;
 	int depth;
 	unsigned long long tmpull = 0;
-	sector_t blocks;
+	u64 blocks;
 
 	/* Support expanding after the root hash for optional args */
 	if (argc < 6) {
