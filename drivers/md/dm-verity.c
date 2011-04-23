@@ -778,22 +778,19 @@ static int kverityd_bht_read_callback(void *ctx, sector_t start, u8 *dst,
 	return 0;
 }
 
-/* Performs the work of loading in any missing bht hashes. */
+/* Submits an io request for each missing block of block hashes.
+ * The last one to return will then enqueue this on the io workqueue.
+ */
 static void kverityd_io_bht_populate(struct dm_verity_io *io)
 {
 	struct verity_config *vc = io->target->private;
 	u64 block;
 
-	/* Submits an io request for each missing block of block hashes.
-	 * The last one to return will then enqueue this on the
-	 * io workqueue.
-	 */
 	REQTRACE("populating %llu starting at block %llu (io:%p)",
 		 ULL(io->count), ULL(io->block), io);
 	for (block = io->block; block < io->block + io->count; ++block) {
 		int populated;
 
-		/* populate for each block */
 		DMDEBUG("Calling dm_bht_populate for %ull (io:%p)",
 			ULL(block), io);
 		populated = dm_bht_populate(&vc->bht, io, block);
@@ -810,11 +807,6 @@ static void kverityd_io_bht_populate(struct dm_verity_io *io)
 	}
 	REQTRACE("Block %llu+ initiated %d requests (io: %p)",
 		 ULL(io->block), atomic_read(&io->pending) - 1, io);
-
-	/* If I/O requests were issues on behalf of populate, then the last
-	 * request will result in a requeue.  If all data was pending from
-	 * other requests, this will be requeued now.
-	 */
 }
 
 /* Asynchronously called upon the completion of I/O issued
