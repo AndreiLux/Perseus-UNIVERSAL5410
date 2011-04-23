@@ -119,10 +119,10 @@ int dm_bht_set_root_hexdigest(struct dm_bht *bht, const u8 *hexdigest);
 int dm_bht_root_hexdigest(struct dm_bht *bht, u8 *hexdigest, int available);
 
 /* Functions for loading in data from disk for verification */
-bool dm_bht_is_populated(struct dm_bht *bht, unsigned int block_index);
+bool dm_bht_is_populated(struct dm_bht *bht, unsigned int block);
 int dm_bht_populate(struct dm_bht *bht, void *read_cb_ctx,
-		    unsigned int block_index);
-int dm_bht_verify_block(struct dm_bht *bht, unsigned int block_index,
+		    unsigned int block);
+int dm_bht_verify_block(struct dm_bht *bht, unsigned int block,
 			struct page *pg, unsigned int offset);
 
 /* Functions for creating struct dm_bhts on disk.  A newly created dm_bht
@@ -131,7 +131,7 @@ int dm_bht_verify_block(struct dm_bht *bht, unsigned int block_index,
  */
 int dm_bht_compute(struct dm_bht *bht, void *read_cb_ctx);
 int dm_bht_sync(struct dm_bht *bht, void *write_cb_ctx);
-int dm_bht_store_block(struct dm_bht *bht, unsigned int block_index,
+int dm_bht_store_block(struct dm_bht *bht, unsigned int block,
 		       u8 *block_data);
 int dm_bht_zeroread_callback(void *ctx, sector_t start, u8 *dst, sector_t count,
 			     struct dm_bht_entry *entry);
