@@ -241,11 +241,6 @@ int dm_bht_create(struct dm_bht *bht, unsigned int block_count,
 		status = -ENOMEM;
 		goto bad_root_digest_alloc;
 	}
-	/* We use the same defines for root state but just:
-	 * UNALLOCATED, REQUESTED, and VERIFIED since the workflow is
-	 * different.
-	 */
-	atomic_set(&bht->root_state, DM_BHT_ENTRY_UNALLOCATED);
 
 	/* Configure the tree */
 	bht->block_count = block_count;
@@ -533,84 +528,6 @@ static int dm_bht_compare_hash(struct dm_bht *bht, u8 *known, u8 *computed)
 	return memcmp(known, computed, bht->digest_size);
 }
 
-static int dm_bht_update_hash(struct dm_bht *bht, u8 *known, u8 *computed)
-{
-#ifdef CONFIG_DM_DEBUG
-	u8 hex[DM_BHT_MAX_DIGEST_SIZE * 2 + 1];
-#endif
-	memcpy(known, computed, bht->digest_size);
-#ifdef CONFIG_DM_DEBUG
-	dm_bht_bin_to_hex(computed, hex, bht->digest_size);
-	DMDEBUG("updating with hash: %s", hex);
-#endif
-	return 0;
-}
-
-/* Walk all entries at level 0 to compute the root digest.
- * 0 on success.
- */
-static int dm_bht_compute_root(struct dm_bht *bht, u8 *digest)
-{
-	struct dm_bht_entry *entry;
-	unsigned int count;
-	struct scatterlist sg;  /* feeds digest() */
-	struct hash_desc *hash_desc;
-	hash_desc = &bht->hash_desc[smp_processor_id()];
-	entry = bht->levels[0].entries;
-
-	if (crypto_hash_init(hash_desc)) {
-		DMCRIT("failed to reinitialize crypto hash (proc:%d)",
-			smp_processor_id());
-		return -EINVAL;
-	}
-
-	/* Point the scatterlist to the entries, then compute the digest */
-	for (count = 0; count < bht->levels[0].count; ++count, ++entry) {
-		if (atomic_read(&entry->state) <= DM_BHT_ENTRY_PENDING) {
-			DMCRIT("data not ready to compute root: %u",
-			       count);
-			return 1;
-		}
-		sg_init_table(&sg, 1);
-		sg_set_buf(&sg, entry->nodes, PAGE_SIZE);
-		if (crypto_hash_update(hash_desc, &sg, PAGE_SIZE)) {
-			DMCRIT("Failed to update crypto hash");
-			return -EINVAL;
-		}
-	}
-
-	if (crypto_hash_final(hash_desc, digest)) {
-		DMCRIT("Failed to compute final digest");
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int dm_bht_verify_root(struct dm_bht *bht,
-			      dm_bht_compare_cb compare_cb)
-{
-	int status = 0;
-	u8 digest[DM_BHT_MAX_DIGEST_SIZE];
-	if (atomic_read(&bht->root_state) == DM_BHT_ENTRY_VERIFIED)
-		return 0;
-	status = dm_bht_compute_root(bht, digest);
-	if (status) {
-		DMCRIT("Failed to compute root digest for verification");
-		return status;
-	}
-	DMDEBUG("root computed");
-	status = compare_cb(bht, bht->root_digest, digest);
-	if (status) {
-		DMCRIT("invalid root digest: %d", status);
-		dm_bht_log_mismatch(bht, bht->root_digest, digest);
-		return DM_BHT_ENTRY_ERROR_MISMATCH;
-	}
-	/* Could do a cmpxchg, but this should be safe. */
-	atomic_set(&bht->root_state, DM_BHT_ENTRY_VERIFIED);
-	return 0;
-}
-
 /* dm_bht_verify_path
  * Verifies the path. Returns 0 on ok.
  */
@@ -618,13 +535,12 @@ static int dm_bht_verify_path(struct dm_bht *bht, unsigned int block_index,
 			      struct page *pg, unsigned int offset)
 {
 	unsigned int depth = bht->depth;
+	u8 digest[DM_BHT_MAX_DIGEST_SIZE];
 	struct dm_bht_entry *entry;
+	u8 *node;
 	int state;
 
 	do {
-		u8 digest[DM_BHT_MAX_DIGEST_SIZE];
-		u8 *node;
-
 		/* Need to check that the hash of the current block is accurate
 		 * in its parent.
 		 */
@@ -647,6 +563,13 @@ static int dm_bht_verify_path(struct dm_bht *bht, unsigned int block_index,
 		offset = 0;
 	} while (--depth > 0 && state != DM_BHT_ENTRY_VERIFIED);
 
+	if (depth == 0 && state != DM_BHT_ENTRY_VERIFIED) {
+		if (dm_bht_compute_hash(bht, pg, offset, digest) ||
+		    dm_bht_compare_hash(bht, digest, bht->root_digest))
+			goto mismatch;
+		atomic_set(&entry->state, DM_BHT_ENTRY_VERIFIED);
+	}
+
 	/* Mark path to leaf as verified. */
 	for (depth++; depth < bht->depth; depth++) {
 		entry = dm_bht_get_entry(bht, depth, block_index);
@@ -660,8 +583,9 @@ static int dm_bht_verify_path(struct dm_bht *bht, unsigned int block_index,
 	return 0;
 
 mismatch:
-	DMERR("verify_path: failed to verify hash against parent (d=%u,bi=%u)",
-	      depth, block_index);
+	DMERR_LIMIT("verify_path: failed to verify hash (d=%u,bi=%u)",
+		    depth, block_index);
+	dm_bht_log_mismatch(bht, node, digest);
 	return DM_BHT_ENTRY_ERROR_MISMATCH;
 }
 
@@ -786,7 +710,7 @@ EXPORT_SYMBOL(dm_bht_zeroread_callback);
  */
 int dm_bht_compute(struct dm_bht *bht, void *read_cb_ctx)
 {
-	int depth, r;
+	int depth, r = 0;
 
 	for (depth = bht->depth - 2; depth >= 0; depth--) {
 		struct dm_bht_level *level = dm_bht_get_level(bht, depth);
@@ -821,9 +745,12 @@ int dm_bht_compute(struct dm_bht *bht, void *read_cb_ctx)
 			}
 		}
 	}
-	/* Don't forget the root digest! */
-	DMDEBUG("Calling verify_root with update_hash");
-	r = dm_bht_verify_root(bht, dm_bht_update_hash);
+	r = dm_bht_compute_hash(bht,
+				virt_to_page(bht->levels[0].entries->nodes),
+				0, bht->root_digest);
+	if (r)
+		DMERR("Failed to update root hash");
+
 out:
 	return r;
 }
@@ -890,10 +817,8 @@ bool dm_bht_is_populated(struct dm_bht *bht, unsigned int block_index)
 {
 	unsigned int depth;
 
-	if (atomic_read(&bht->root_state) < DM_BHT_ENTRY_READY)
-		return false;
-
-	for (depth = bht->depth - 1; depth > 0; depth--) {
+	/* TODO(msb) convert depth to int and avoid ugly cast */
+	for (depth = bht->depth - 1; (int)depth >= 0; depth--) {
 		struct dm_bht_entry *entry = dm_bht_get_entry(bht, depth,
 							      block_index);
 		if (atomic_read(&entry->state) < DM_BHT_ENTRY_READY)
@@ -910,66 +835,35 @@ EXPORT_SYMBOL(dm_bht_is_populated);
  * @read_cb_ctx:context used for all read_cb calls on this request
  * @block_index:specific block data is expected from
  *
- * Callers may wish to call dm_bht_populate(0) immediately after initialization
- * to start loading in all the level[0] entries.
+ * Returns negative value on error.
  */
 int dm_bht_populate(struct dm_bht *bht, void *read_cb_ctx,
 		    unsigned int block_index)
 {
-	unsigned int depth;
-	struct dm_bht_level *level;
-	int populated = 0;  /* return value */
-	unsigned int entry_index = 0;
-	int read_status = 0;
-	int root_state = 0;
+	unsigned int depth, entry_index;
+	int status, populated = 0;
 
-	if (block_index >= bht->block_count) {
-		DMERR("Request to populate for invalid block: %u",
-		      block_index);
-		return -EIO;
-	}
+	BUG_ON(block_index >= bht->block_count);
+
 	DMDEBUG("dm_bht_populate(%u)", block_index);
 
-	/* Load in all of level 0 if the root is unverified */
-	root_state = atomic_read(&bht->root_state);
-	/* TODO(wad) create a separate io object for the root request which
-	 * can continue on and be verified and stop making every request
-	 * check.
-	 */
-	if (root_state != DM_BHT_ENTRY_VERIFIED) {
-		DMDEBUG("root data is not yet loaded");
-		/* If positive, it means some are pending. */
-		populated = dm_bht_maybe_read_entry(bht, read_cb_ctx, 0, 0);
-		if (populated < 0) {
-			DMCRIT("an error occurred while reading level[0]");
-			/* TODO(wad) define std error codes */
-			return populated;
-		}
-	}
+	for (depth = 0; depth < bht->depth; ++depth) {
+		entry_index = dm_bht_index_at_level(bht, depth, block_index);
+		status = dm_bht_maybe_read_entry(bht, read_cb_ctx, depth,
+						 entry_index);
+		if (status < 0)
+			goto read_error;
 
-	for (depth = 1; depth < bht->depth; ++depth) {
-		level = dm_bht_get_level(bht, depth);
-		entry_index = dm_bht_index_at_level(bht, depth,
-						    block_index);
-		DMDEBUG("populate for bi=%u on d=%d ei=%u (max=%u)",
-			block_index, depth, entry_index, level->count);
-
-		/* Except for the root node case, we should only ever need
-		 * to load one entry along the path.
-		 */
-		read_status = dm_bht_maybe_read_entry(bht, read_cb_ctx,
-						      depth, entry_index);
-		if (unlikely(read_status < 0)) {
-			DMCRIT("failure occurred reading entry %u depth %u",
-			       entry_index, depth);
-			return read_status;
-		}
 		/* Accrue return code flags */
-		populated |= read_status;
+		populated |= status;
 	}
 
-	/* All nodes are ready. The hash for the block_index can be verified */
 	return populated;
+
+read_error:
+	DMCRIT("failure reading entry %u depth %u", entry_index, depth);
+	return status;
+
 }
 EXPORT_SYMBOL(dm_bht_populate);
 
@@ -988,26 +882,9 @@ EXPORT_SYMBOL(dm_bht_populate);
 int dm_bht_verify_block(struct dm_bht *bht, unsigned int block_index,
 			struct page *pg, unsigned int offset)
 {
-	int r = 0;
-
 	BUG_ON(offset != 0);
 
-	/* Make sure that the root has been verified */
-	if (atomic_read(&bht->root_state) != DM_BHT_ENTRY_VERIFIED) {
-		r = dm_bht_verify_root(bht, dm_bht_compare_hash);
-		if (r) {
-			DMERR_LIMIT("Failed to verify root: %d", r);
-			goto out;
-		}
-	}
-
-	/* Now check levels in between */
-	r = dm_bht_verify_path(bht, block_index, pg, offset);
-	if (r)
-		DMERR_LIMIT("Failed to verify block: %u (%d)", block_index, r);
-
-out:
-	return r;
+	return  dm_bht_verify_path(bht, block_index, pg, offset);
 }
 EXPORT_SYMBOL(dm_bht_verify_block);
 
@@ -1119,10 +996,6 @@ int dm_bht_set_root_hexdigest(struct dm_bht *bht, const u8 *hexdigest)
 	DMINFO("Set root digest to %s. Parsed as -> ", hexdigest);
 	dm_bht_log_mismatch(bht, bht->root_digest, bht->root_digest);
 #endif
-	/* Mark the root as unallocated to ensure that it transitions to
-	 * requested just in case the levels aren't loaded at this point.
-	 */
-	atomic_set(&bht->root_state, DM_BHT_ENTRY_UNALLOCATED);
 	return 0;
 }
 EXPORT_SYMBOL(dm_bht_set_root_hexdigest);

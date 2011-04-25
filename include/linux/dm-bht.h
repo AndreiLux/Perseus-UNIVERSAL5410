@@ -100,7 +100,6 @@ struct dm_bht {
 
 	/* bool verified;  Full tree is verified */
 	u8 *root_digest;  /* hash_alg(levels[0].entries[*].nodes) */
-	atomic_t root_state; /* Uses UNALLOCATED, REQUESTED, and VERIFIED */
 	struct dm_bht_level *levels;  /* in reverse order */
 	mempool_t *entry_pool;
 	/* Callbacks for reading and/or writing to the hash device */
