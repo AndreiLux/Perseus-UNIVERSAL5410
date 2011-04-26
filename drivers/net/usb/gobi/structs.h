@@ -27,6 +27,7 @@
 #include <linux/cdev.h>
 #include <linux/kobject.h>
 #include <linux/kthread.h>
+#include <linux/wait.h>
 
 #include <linux/usb/usbnet.h>
 
@@ -49,8 +50,8 @@ struct urbreq {
 
 struct worker {
 	struct task_struct *thread;
-	int exit;
-	struct completion work;
+	atomic_t work_count;
+	wait_queue_head_t waitq;
 	struct list_head urbs;
 	spinlock_t urbs_lock;
 	struct urb *active;
