@@ -765,7 +765,6 @@ static int kverityd_bht_read_callback(void *ctx, sector_t start, u8 *dst,
 	bio->bi_sector = vc->hash_start + start;
 	bio->bi_bdev = vc->hash_dev->bdev;
 	bio->bi_end_io = kverityd_io_bht_populate_end;
-	/* Instead of using NOIDLE, we unplug on intervals */
 	bio->bi_rw = REQ_META;
 	/* Only need to free the bio since the page is managed by bht */
 	bio->bi_destructor = dm_verity_bio_destructor;
@@ -786,7 +785,6 @@ static int kverityd_bht_read_callback(void *ctx, sector_t start, u8 *dst,
 static void kverityd_io_bht_populate(struct dm_verity_io *io)
 {
 	struct verity_config *vc = io->target->private;
-	struct request_queue *r_queue = bdev_get_queue(vc->hash_dev->bdev);
 	int populated = 0;
 	int io_status = 0;
 	sector_t count;
@@ -816,10 +814,6 @@ static void kverityd_io_bht_populate(struct dm_verity_io *io)
 		}
 		/* Accrue view of all I/O state for the full request */
 		io_status |= populated;
-
-		/* If this io has outstanding requests, unplug the io queue */
-		if (populated & DM_BHT_ENTRY_REQUESTED)
-			blk_unplug(r_queue);
 	}
 	REQTRACE("Block %llu+ initiated %d requests (io: %p)",
 		 ULL(io->block), atomic_read(&io->pending) - 1, io);
@@ -1162,9 +1156,7 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	}
 
 	/* Only one thread for the workqueue to keep the memory allocation
-	 * sane.  Requests will be submitted asynchronously. blk_unplug() will
-	 * be called at the end of each dm_populate call so that the async
-	 * requests are batched per workqueue job.
+	 * sane. Requests will be submitted asynchronously.
 	 * TODO(wad) look into workqueue flags to ensure safety.
 	 */
 	vc->io_queue = create_workqueue("kverityd_io");
