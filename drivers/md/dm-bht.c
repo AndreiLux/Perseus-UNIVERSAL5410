@@ -523,11 +523,6 @@ nomem:
 
 }
 
-static int dm_bht_compare_hash(struct dm_bht *bht, u8 *known, u8 *computed)
-{
-	return memcmp(known, computed, bht->digest_size);
-}
-
 /* dm_bht_verify_path
  * Verifies the path. Returns 0 on ok.
  */
@@ -553,7 +548,7 @@ static int dm_bht_verify_path(struct dm_bht *bht, unsigned int block_index,
 		node = dm_bht_get_node(bht, entry, depth, block_index);
 
 		if (dm_bht_compute_hash(bht, pg, offset, digest) ||
-		    dm_bht_compare_hash(bht, digest, node))
+		    memcmp(digest, node, bht->digest_size))
 			goto mismatch;
 
 		/* Keep the containing block of hashes to be verified in the
@@ -565,7 +560,7 @@ static int dm_bht_verify_path(struct dm_bht *bht, unsigned int block_index,
 
 	if (depth == 0 && state != DM_BHT_ENTRY_VERIFIED) {
 		if (dm_bht_compute_hash(bht, pg, offset, digest) ||
-		    dm_bht_compare_hash(bht, digest, bht->root_digest))
+		    memcmp(digest, bht->root_digest, bht->digest_size))
 			goto mismatch;
 		atomic_set(&entry->state, DM_BHT_ENTRY_VERIFIED);
 	}
