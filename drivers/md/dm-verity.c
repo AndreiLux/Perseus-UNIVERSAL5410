@@ -89,14 +89,6 @@ MODULE_PARM_DESC(alloc_trace, "Enable allocation tracing to DMINFO");
 #define ALLOCTRACE(fmt, args...) \
 	VERITY_TRACE(alloc_trace, "alloc: " fmt, ## args)
 
-/* MIN_BIOS * 2 is a safe upper bound.  An upper bound is desirable, especially
- * with larger dm-bhts because multiple requests will be issued to bootstrap
- * initial dm-bht root verification.
- */
-static int max_bios = MIN_BIOS * 2;
-module_param(max_bios, int, 0644);
-MODULE_PARM_DESC(max_bios, "Max number of allocated BIOs");
-
 /* Provide a lightweight means of specifying the global default for
  * error behavior: eio, reboot, or none
  * Legacy support for 0 = eio, 1 = reboot/panic, 2 = none, 3 = notify.
@@ -118,7 +110,6 @@ MODULE_PARM_DESC(dev_wait, "Wait forever for a backing device");
  * STATUSTYPE_INFO.
  */
 struct verity_stats {
-	unsigned int pending_bio;
 	unsigned int io_queue;
 	unsigned int verify_queue;
 	unsigned int average_requeues;
@@ -188,16 +179,6 @@ static BLOCKING_NOTIFIER_HEAD(verity_error_notifier);
  * Statistic tracking functions
  *-----------------------------------------------*/
 
-void verity_stats_pending_bio_inc(struct verity_config *vc)
-{
-	vc->stats.pending_bio++;
-}
-
-void verity_stats_pending_bio_dec(struct verity_config *vc)
-{
-	vc->stats.pending_bio--;
-}
-
 void verity_stats_io_queue_inc(struct verity_config *vc)
 {
 	vc->stats.io_queue++;
@@ -264,24 +245,12 @@ static void dm_verity_bio_destructor(struct bio *bio)
 {
 	struct dm_verity_io *io = bio->bi_private;
 	struct verity_config *vc = io->target->private;
-	verity_stats_pending_bio_dec(io->target->private);
 	bio_free(bio, vc->bs);
 }
 
-/* This function may block if the number of outstanding requests is too high. */
 struct bio *verity_alloc_bioset(struct verity_config *vc, gfp_t gfp_mask,
 				int nr_iovecs)
 {
-	/* Don't flood the I/O or over allocate from the pools */
-	verity_stats_pending_bio_inc(vc);
-	while (vc->stats.pending_bio > (unsigned int) max_bios) {
-		DMINFO("too many outstanding BIOs (%u). sleeping.",
-		       vc->stats.pending_bio - 1);
-		/* The request may be for dev->bdev, but all additional requests
-		 * come through the hash_dev and are the issue for clean up.
-		 */
-		msleep_interruptible(10);
-	}
 	return bio_alloc_bioset(gfp_mask, nr_iovecs, vc->bs);
 }
 
