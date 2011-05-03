@@ -25,9 +25,6 @@
 #define DM_BHT_ENTRY_VERIFIED 8  /* 'nodes' has been checked against parent */
 #define DM_BHT_ENTRY_READY 4  /* 'nodes' is loaded and available */
 #define DM_BHT_ENTRY_PENDING 2  /* 'nodes' is being loaded */
-#define DM_BHT_ENTRY_REQUESTED 1  /* non-state response indicating entry is
-				   * pending because of the current call
-				   */
 #define DM_BHT_ENTRY_UNALLOCATED 0 /* untouched */
 #define DM_BHT_ENTRY_ERROR -1 /* entry is unsuitable for use */
 #define DM_BHT_ENTRY_ERROR_IO -2 /* I/O error on load */

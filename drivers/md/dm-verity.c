@@ -119,8 +119,7 @@ struct verity_stats {
 
 /* per-requested-bio private data */
 enum verity_io_flags {
-	VERITY_IOFLAGS_PENDING = 0x1,	/* pending hash read bios */
-	VERITY_IOFLAGS_CLONED = 0x2,	/* original bio has been cloned */
+	VERITY_IOFLAGS_CLONED = 0x1,	/* original bio has been cloned */
 };
 
 struct dm_verity_io {
@@ -598,21 +597,18 @@ static void verity_dec_pending(struct dm_verity_io *io)
 		goto io_error;
 
 	/* I/Os that were pending may now be ready */
-	if ((io->flags & VERITY_IOFLAGS_PENDING) &&
-	    !verity_is_bht_populated(io)) {
-		io->flags &= ~VERITY_IOFLAGS_PENDING;
-		INIT_DELAYED_WORK(&io->work, kverityd_io);
-		queue_delayed_work(vc->io_queue, &io->work, HZ/10);
-		verity_stats_total_requeues_inc(vc);
-		REQTRACE("Block %llu+ is being requeued for io (io:%p)",
-			 ULL(io->block), io);
-	} else {
-		io->flags &= ~VERITY_IOFLAGS_PENDING;
+	if (verity_is_bht_populated(io)) {
 		verity_stats_io_queue_dec(vc);
 		verity_stats_verify_queue_inc(vc);
 		INIT_DELAYED_WORK(&io->work, kverityd_verify);
 		queue_delayed_work(vc->verify_queue, &io->work, 0);
 		REQTRACE("Block %llu+ is being queued for verify (io:%p)",
+			 ULL(io->block), io);
+	} else {
+		INIT_DELAYED_WORK(&io->work, kverityd_io);
+		queue_delayed_work(vc->io_queue, &io->work, HZ/10);
+		verity_stats_total_requeues_inc(vc);
+		REQTRACE("Block %llu+ is being requeued for io (io:%p)",
 			 ULL(io->block), io);
 	}
 
@@ -785,8 +781,6 @@ static int kverityd_bht_read_callback(void *ctx, sector_t start, u8 *dst,
 static void kverityd_io_bht_populate(struct dm_verity_io *io)
 {
 	struct verity_config *vc = io->target->private;
-	int populated = 0;
-	int io_status = 0;
 	sector_t count;
 
 	/* Submits an io request for each missing block of block hashes.
@@ -797,6 +791,8 @@ static void kverityd_io_bht_populate(struct dm_verity_io *io)
 		 ULL(io->count), ULL(io->block), io);
 	for (count = 0; count < io->count; ++count) {
 		unsigned int block = (unsigned int)(io->block + count);
+		int populated;
+
 		/* Check for truncation. */
 		VERITY_BUG_ON((sector_t)(block) < io->block);
 		/* populate for each block */
@@ -812,31 +808,9 @@ static void kverityd_io_bht_populate(struct dm_verity_io *io)
 			io->error = -EPERM;
 			break;
 		}
-		/* Accrue view of all I/O state for the full request */
-		io_status |= populated;
 	}
 	REQTRACE("Block %llu+ initiated %d requests (io: %p)",
 		 ULL(io->block), atomic_read(&io->pending) - 1, io);
-
-	if (io_status & DM_BHT_ENTRY_REQUESTED) {
-		/* If no data is pending another I/O request, this io
-		 * will get bounced on the next queue when the last async call
-		 * returns.
-		 */
-		DMDEBUG("io has outstanding requests %p");
-	}
-
-	/* Some I/O is pending outside of this request. */
-	if (io_status & DM_BHT_ENTRY_PENDING) {
-		/* PENDING will cause a BHT requeue as delayed work */
-		/* TODO(wad) add a callback to dm-bht for pending_cb. Then for
-		 * each entry, the io could be delayed heavily until the end
-		 * read cb requeue them. (entries could be added to the
-		 * stored I/O context but races could be a challenge.
-		 */
-		DMDEBUG("io is pending %p");
-		io->flags |= VERITY_IOFLAGS_PENDING;
-	}
 
 	/* If I/O requests were issues on behalf of populate, then the last
 	 * request will result in a requeue.  If all data was pending from

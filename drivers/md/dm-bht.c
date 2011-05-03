@@ -459,70 +459,6 @@ void dm_bht_write_completed(struct dm_bht_entry *entry, int status)
 }
 EXPORT_SYMBOL(dm_bht_write_completed);
 
-/* dm_bht_maybe_read_entry
- * Attempts to atomically acquire an entry, allocate any needed
- * memory, and issues the I/O callback to load the hash from disk.
- * Return value is negative on error. When positive, it is the state
- * value.
- */
-static int dm_bht_maybe_read_entry(struct dm_bht *bht, void *ctx,
-				   unsigned int depth, unsigned int index)
-{
-	struct dm_bht_level *level = &bht->levels[depth];
-	struct dm_bht_entry *entry = &level->entries[index];
-	sector_t current_sector = level->sector + to_sector(index * PAGE_SIZE);
-	struct page *node_page;
-	int state;
-
-	BUG_ON(depth >= bht->depth);
-
-	/* XXX: hardcoding PAGE_SIZE means that a perfectly valid image
-	 *      on one system may not work on a different kernel.
-	 * TODO(wad) abstract PAGE_SIZE with a bht->entry_size or
-	 *           at least a define and ensure bht->entry_size is
-	 *           sector aligned at least.
-	 */
-
-	/* If the entry's state is UNALLOCATED, then we'll claim it
-	 * for allocation and loading.
-	 */
-	state = atomic_cmpxchg(&entry->state,
-			       DM_BHT_ENTRY_UNALLOCATED,
-			       DM_BHT_ENTRY_PENDING);
-	DMDEBUG("dm_bht_maybe_read_entry(d=%u,ei=%u): ei=%lu, state=%d",
-		depth, index, (unsigned long)(entry - level->entries), state);
-
-	if (state != DM_BHT_ENTRY_UNALLOCATED)
-		goto out;
-
-	state = DM_BHT_ENTRY_REQUESTED;
-
-	/* Current entry is claimed for allocation and loading */
-	node_page = (struct page *) mempool_alloc(bht->entry_pool, GFP_NOIO);
-	if (!node_page)
-		goto nomem;
-	/* dm-bht guarantees page-aligned memory for callbacks. */
-	entry->nodes = page_address(node_page);
-
-	/* TODO(wad) error check callback here too */
-	DMDEBUG("dm_bht_maybe_read_entry(d=%u,ei=%u): reading %lu",
-		depth, index, (unsigned long)(entry - level->entries));
-	bht->read_cb(ctx, current_sector, entry->nodes,
-		     to_sector(PAGE_SIZE), entry);
-
-out:
-	if (state <= DM_BHT_ENTRY_ERROR)
-		DMCRIT("entry %u is in an error state", index);
-
-	return state;
-
-nomem:
-	DMCRIT("failed to allocate memory for entry->nodes from pool");
-	return -ENOMEM;
-
-
-}
-
 /* dm_bht_verify_path
  * Verifies the path. Returns 0 on ok.
  */
@@ -716,12 +652,17 @@ int dm_bht_compute(struct dm_bht *bht, void *read_cb_ctx)
 
 		for (i = 0; i < level->count; i++, entry++) {
 			unsigned int count = bht->node_count;
+			struct page *pg;
 
-			r = dm_bht_maybe_read_entry(bht, read_cb_ctx, depth, i);
-			if (r < 0) {
+			pg = (struct page *) mempool_alloc(bht->entry_pool,
+							   GFP_NOIO);
+			if (!pg) {
 				DMCRIT("an error occurred while reading entry");
 				goto out;
 			}
+
+			entry->nodes = page_address(pg);
+			atomic_set(&entry->state, DM_BHT_ENTRY_READY);
 
 			if (i == (level->count - 1))
 				count = child_level->count % bht->node_count;
@@ -827,38 +768,63 @@ EXPORT_SYMBOL(dm_bht_is_populated);
 /**
  * dm_bht_populate - reads entries from disk needed to verify a given block
  * @bht:	pointer to a dm_bht_create()d bht
- * @read_cb_ctx:context used for all read_cb calls on this request
+ * @ctx:        context used for all read_cb calls on this request
  * @block_index:specific block data is expected from
  *
- * Returns negative value on error.
+ * Returns negative value on error. Returns 0 on success.
  */
-int dm_bht_populate(struct dm_bht *bht, void *read_cb_ctx,
+int dm_bht_populate(struct dm_bht *bht, void *ctx,
 		    unsigned int block_index)
 {
-	unsigned int depth, entry_index;
-	int status, populated = 0;
+	unsigned int depth;
+	int state = 0;
 
 	BUG_ON(block_index >= bht->block_count);
 
 	DMDEBUG("dm_bht_populate(%u)", block_index);
 
 	for (depth = 0; depth < bht->depth; ++depth) {
-		entry_index = dm_bht_index_at_level(bht, depth, block_index);
-		status = dm_bht_maybe_read_entry(bht, read_cb_ctx, depth,
-						 entry_index);
-		if (status < 0)
-			goto read_error;
+		struct dm_bht_level *level;
+		struct dm_bht_entry *entry;
+		unsigned int index;
+		struct page *pg;
 
-		/* Accrue return code flags */
-		populated |= status;
+		entry = dm_bht_get_entry(bht, depth, block_index);
+		state = atomic_cmpxchg(&entry->state,
+				       DM_BHT_ENTRY_UNALLOCATED,
+				       DM_BHT_ENTRY_PENDING);
+
+		if (state <= DM_BHT_ENTRY_ERROR)
+			goto error_state;
+
+		if (state != DM_BHT_ENTRY_UNALLOCATED)
+			continue;
+
+		/* Current entry is claimed for allocation and loading */
+		pg = (struct page *) mempool_alloc(bht->entry_pool, GFP_NOIO);
+		if (!pg)
+			goto nomem;
+
+		/* dm-bht guarantees page-aligned memory for callbacks. */
+		entry->nodes = page_address(pg);
+
+		/* TODO(wad) error check callback here too */
+
+		level = &bht->levels[depth];
+		index = dm_bht_index_at_level(bht, depth, block_index);
+		bht->read_cb(ctx, level->sector + to_sector(index * PAGE_SIZE),
+			     entry->nodes, to_sector(PAGE_SIZE), entry);
 	}
 
-	return populated;
+	return 0;
 
-read_error:
-	DMCRIT("failure reading entry %u depth %u", entry_index, depth);
-	return status;
+error_state:
+	DMCRIT("block %u at depth %u is in an error state", block_index, depth);
+	return state;
 
+nomem:
+	DMCRIT("failed to allocate memory for entry->nodes from pool");
+	return -ENOMEM;
 }
 EXPORT_SYMBOL(dm_bht_populate);
 
