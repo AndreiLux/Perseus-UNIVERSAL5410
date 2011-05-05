@@ -578,6 +578,7 @@ static const struct usb_device_id qc_vidpids[] = {
 
 	MKVIDPID(0x05c6, 0x920d),	/* Qualcomm Gobi 3000 */
 	MKVIDPID(0x1410, 0xa021),	/* Novatel Gobi 3000 */
+	MKVIDPID(0x413c, 0x8194),	/* Dell Gobi 3000 */
 	{ }
 };
 
