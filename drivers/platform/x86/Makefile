@@ -51,4 +51,3 @@ obj-$(CONFIG_INTEL_OAKTRAIL)	+= intel_oaktrail.o
 obj-$(CONFIG_SAMSUNG_Q10)	+= samsung-q10.o
 obj-$(CONFIG_APPLE_GMUX)	+= apple-gmux.o
 obj-$(CONFIG_ACPI_CHROMEOS)	+= chromeos_acpi.o
-obj-$(CONFIG_CHROMEOS)		+= chromeos.o
