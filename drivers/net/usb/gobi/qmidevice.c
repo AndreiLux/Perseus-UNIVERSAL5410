@@ -499,21 +499,30 @@ static int read_sync(struct qcusbnet *dev, void **buf, u16 cid, u16 tid)
 	return size;
 }
 
+struct writectx {
+	struct semaphore sem;
+	struct kref ref;
+};
+
+static void writectx_release(struct kref *ref)
+{
+	struct writectx *ctx = container_of(ref, struct writectx, ref);
+	kfree(ctx);
+}
+
 static void write_callback(struct urb *urb)
 {
-	if (!urb) {
-		DBG("null urb\n");
-		return;
-	}
+	struct writectx *ctx = urb->context;
 
 	DBG("Write status/size %d/%d\n", urb->status, urb->actual_length);
-	up((struct semaphore *)urb->context);
+	up(&ctx->sem);
+	kref_put(&ctx->ref, writectx_release);
 }
 
 static int write_sync(struct qcusbnet *dev, char *buf, int size, u16 cid)
 {
 	int result;
-	struct semaphore sem;
+	struct writectx *ctx;
 	struct urb *urb;
 	struct urbsetup setup;
 	unsigned long flags;
@@ -523,15 +532,23 @@ static int write_sync(struct qcusbnet *dev, char *buf, int size, u16 cid)
 		return -ENXIO;
 	}
 
+	ctx = kmalloc(sizeof(*ctx), GFP_KERNEL);
+	if (!ctx) {
+		DBG("no memory for write context");
+		return -ENOMEM;
+	}
+
 	urb = usb_alloc_urb(0, GFP_KERNEL);
 	if (!urb) {
 		DBG("URB mem error\n");
+		kfree(ctx);
 		return -ENOMEM;
 	}
 
 	result = qmux_fill(cid, buf, size);
 	if (result < 0) {
 		usb_free_urb(urb);
+		kfree(ctx);
 		return result;
 	}
 
@@ -553,10 +570,12 @@ static int write_sync(struct qcusbnet *dev, char *buf, int size, u16 cid)
 		print_hex_dump(KERN_INFO,  "gobi-write: ", DUMP_PREFIX_OFFSET,
 		               16, 1, buf, size, true);
 
-	sema_init(&sem, 0);
+	sema_init(&ctx->sem, 0);
+	kref_init(&ctx->ref);
+	kref_get(&ctx->ref);	/* for the urb */
 
 	urb->complete = write_callback;
-	urb->context = &sem;
+	urb->context = ctx;
 
 	result = usb_autopm_get_interface(dev->iface);
 	if (result < 0) {
@@ -591,7 +610,8 @@ static int write_sync(struct qcusbnet *dev, char *buf, int size, u16 cid)
 	}
 
 	spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
-	result = down_interruptible(&sem);
+	result = down_interruptible(&ctx->sem);
+	kref_put(&ctx->ref, writectx_release);
 	if (!device_valid(dev)) {
 		DBG("Invalid device!\n");
 		return -ENXIO;
@@ -616,7 +636,6 @@ static int write_sync(struct qcusbnet *dev, char *buf, int size, u16 cid)
 	} else {
 		DBG("Interrupted %d !!!\n", result);
 		DBG("Device may be in bad state and need reset !!!\n");
-		usb_kill_urb(urb);
 	}
 
 	usb_free_urb(urb);
