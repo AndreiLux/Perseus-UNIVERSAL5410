@@ -103,8 +103,8 @@ static void exynos4_mct_write(unsigned int value, void *addr)
 		}
 	}
 
-	/* Wait maximum 1 ms until written values are applied */
-	for (i = 0; i < loops_per_jiffy / 1000 * HZ; i++)
+	/* Wait until written values are applied */
+	for (i = 0; i < 0x1000; i++)
 		if (__raw_readl(stat_addr) & mask) {
 			__raw_writel(mask, stat_addr);
 			return;
