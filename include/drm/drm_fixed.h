@@ -24,6 +24,8 @@
 #ifndef DRM_FIXED_H
 #define DRM_FIXED_H
 
+#include <asm/div64.h>
+
 typedef union dfixed {
 	u32 full;
 } fixed20_12;
