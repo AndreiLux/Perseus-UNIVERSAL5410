@@ -1,4 +1,7 @@
 #!/bin/bash
+#
+# NOTE: See aufs/BOM.UPDATING for instructions on how to use this updater.
+#
 
 if [ "$#" -ne 1 ]; then
 	echo "Usage: $0 <aufs2-standalone directory>" 1>&2
@@ -21,7 +24,7 @@ git rm -rf aufs
 cp -rp "$aufs/fs/aufs" aufs
 #cp -rp "$aufs/include" aufs
 cp -rp "$aufs/include/linux"/*.h include/linux
-git checkout -f HEAD -- aufs/BOM
+git checkout -f HEAD -- aufs/BOM aufs/BOM.UPDATING
 
 # Reinsert the include update.
 #sed -i -e '1iEXTRA_CFLAGS += -I$(src)/include' aufs/Makefile
