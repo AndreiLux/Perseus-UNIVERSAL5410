@@ -17,8 +17,9 @@
  */
 
 #include "qmi.h"
+#include "buffer.h"
 
-#include <linux/slab.h>
+#include <linux/string.h>
 
 struct qmux {
 	u8 tf;	/* always 1 */
@@ -88,11 +89,13 @@ struct getmeid_req {
 
 const size_t qmux_size = sizeof(struct qmux);
 
-void *qmictl_new_getcid(u8 tid, u8 svctype, size_t *size)
+struct buffer *qmictl_new_getcid(u8 tid, u8 svctype)
 {
-	struct getcid_req *req = kmalloc(sizeof(*req), GFP_KERNEL);
-	if (!req)
+	struct getcid_req *req;
+	struct buffer *buf = buffer_new(sizeof *req);
+	if (!buf)
 		return NULL;
+	req = buffer_data(buf);
 	req->req = 0x00;
 	req->tid = tid;
 	req->msgid = 0x0022;
@@ -100,15 +103,16 @@ void *qmictl_new_getcid(u8 tid, u8 svctype, size_t *size)
 	req->service = 0x01;
 	req->size = 0x0001;
 	req->qmisvc = svctype;
-	*size = sizeof(*req);
-	return req;
+	return buf;
 }
 
-void *qmictl_new_releasecid(u8 tid, u16 cid, size_t *size)
+struct buffer *qmictl_new_releasecid(u8 tid, u16 cid)
 {
-	struct releasecid_req *req = kmalloc(sizeof(*req), GFP_KERNEL);
-	if (!req)
+	struct releasecid_req *req;
+	struct buffer *buf = buffer_new(sizeof *req);
+	if (!buf)
 		return NULL;
+	req = buffer_data(buf);
 	req->req = 0x00;
 	req->tid = tid;
 	req->msgid = 0x0023;
@@ -116,26 +120,30 @@ void *qmictl_new_releasecid(u8 tid, u16 cid, size_t *size)
 	req->rlscid = 0x01;
 	req->size = 0x0002;
 	req->cid = cid;
-	*size = sizeof(*req);
-	return req;
+	return buf;
 }
 
-void *qmictl_new_ready(u8 tid, size_t *size)
+struct buffer *qmictl_new_ready(u8 tid)
 {
-	struct ready_req *req = kmalloc(sizeof(*req), GFP_KERNEL);
-	if (!req)
+	struct ready_req *req;
+	struct buffer *buf = buffer_new(sizeof *req);
+	if (!buf)
 		return NULL;
+	req = buffer_data(buf);
 	req->req = 0x00;
 	req->tid = tid;
 	req->msgid = 0x21;
 	req->tlvsize = 0;
-	*size = sizeof(*req);
-	return req;
+	return buf;
 }
 
-void *qmiwds_new_seteventreport(u8 tid, size_t *size)
+struct buffer *qmiwds_new_seteventreport(u8 tid)
 {
-	struct seteventreport_req *req = kmalloc(sizeof(*req), GFP_KERNEL);
+	struct seteventreport_req *req;
+	struct buffer *buf = buffer_new(sizeof *req);
+	if (!buf)
+		return NULL;
+	req = buffer_data(buf);
 	req->req = 0x00;
 	req->tid = tid;
 	req->msgid = 0x0001;
@@ -144,34 +152,35 @@ void *qmiwds_new_seteventreport(u8 tid, size_t *size)
 	req->size = 0x0005;
 	req->period = 0x01;
 	req->mask = 0x000000ff;
-	*size = sizeof(*req);
-	return req;
+	return buf;
 }
 
-void *qmiwds_new_getpkgsrvcstatus(u8 tid, size_t *size)
+struct buffer *qmiwds_new_getpkgsrvcstatus(u8 tid)
 {
-	struct getpkgsrvcstatus_req *req = kmalloc(sizeof(*req), GFP_KERNEL);
-	if (!req)
+	struct getpkgsrvcstatus_req *req;
+	struct buffer *buf = buffer_new(sizeof *req);
+	if (!buf)
 		return NULL;
+	req = buffer_data(buf);
 	req->req = 0x00;
 	req->tid = tid;
 	req->msgid = 0x22;
 	req->tlvsize = 0x0000;
-	*size = sizeof(*req);
-	return req;
+	return buf;
 }
 
-void *qmidms_new_getmeid(u8 tid, size_t *size)
+struct buffer *qmidms_new_getmeid(u8 tid)
 {
-	struct getmeid_req *req = kmalloc(sizeof(*req), GFP_KERNEL);
-	if (!req)
+	struct getmeid_req *req;
+	struct buffer *buf = buffer_new(sizeof *req);
+	if (!buf)
 		return NULL;
+	req = buffer_data(buf);
 	req->req = 0x00;
 	req->tid = tid;
 	req->msgid = 0x25;
 	req->tlvsize = 0x0000;
-	*size = sizeof(*req);
-	return req;
+	return buf;
 }
 
 int qmux_parse(u16 *cid, void *buf, size_t size)
@@ -188,15 +197,15 @@ int qmux_parse(u16 *cid, void *buf, size_t size)
 	return sizeof(*qmux);
 }
 
-int qmux_fill(u16 cid, void *buf, size_t size)
+int qmux_fill(u16 cid, struct buffer *buf)
 {
-	struct qmux *qmux = buf;
+	struct qmux *qmux = buffer_data(buf);
 
-	if (!buf || size < sizeof(*qmux))
+	if (buffer_size(buf) < sizeof(*qmux))
 		return -ENOMEM;
 
 	qmux->tf = 1;
-	qmux->len = size - 1;
+	qmux->len = buffer_size(buf) - 1;
 	qmux->ctrl = 0;
 	qmux->service = cid & 0xff;
 	qmux->qmicid = cid >> 8;

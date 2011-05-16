@@ -21,6 +21,8 @@
 
 #include <linux/types.h>
 
+struct buffer;
+
 #define QMICTL 0
 #define QMIWDS 1
 #define QMIDMS 2
@@ -35,16 +37,16 @@
 #define ENODATA   61
 
 int qmux_parse(u16 *cid, void *buf, size_t size);
-int qmux_fill(u16 cid, void *buf, size_t size);
+int qmux_fill(u16 cid, struct buffer *buf);
 
 extern const size_t qmux_size;
 
-void *qmictl_new_getcid(u8 tid, u8 svctype, size_t *size);
-void *qmictl_new_releasecid(u8 tid, u16 cid, size_t *size);
-void *qmictl_new_ready(u8 tid, size_t *size);
-void *qmiwds_new_seteventreport(u8 tid, size_t *size);
-void *qmiwds_new_getpkgsrvcstatus(u8 tid, size_t *size);
-void *qmidms_new_getmeid(u8 tid, size_t *size);
+struct buffer *qmictl_new_getcid(u8 tid, u8 svctype);
+struct buffer *qmictl_new_releasecid(u8 tid, u16 cid);
+struct buffer *qmictl_new_ready(u8 tid);
+struct buffer *qmiwds_new_seteventreport(u8 tid);
+struct buffer *qmiwds_new_getpkgsrvcstatus(u8 tid);
+struct buffer *qmidms_new_getmeid(u8 tid);
 
 struct qmiwds_stats {
 	u32 txok;

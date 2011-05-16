@@ -16,6 +16,7 @@
  * 02110-1301, USA.
  */
 
+#include "buffer.h"
 #include "qmidevice.h"
 #include "qcusbnet.h"
 
@@ -502,11 +503,13 @@ static int read_sync(struct qcusbnet *dev, void **buf, u16 cid, u16 tid)
 struct writectx {
 	struct semaphore sem;
 	struct kref ref;
+	struct buffer *buf;
 };
 
 static void writectx_release(struct kref *ref)
 {
 	struct writectx *ctx = container_of(ref, struct writectx, ref);
+	buffer_put(ctx->buf);
 	kfree(ctx);
 }
 
@@ -514,12 +517,12 @@ static void write_callback(struct urb *urb)
 {
 	struct writectx *ctx = urb->context;
 
-	DBG("Write status/size %d/%d\n", urb->status, urb->actual_length);
+	DBG("%p %d %d\n", ctx, urb->status, urb->actual_length);
 	up(&ctx->sem);
 	kref_put(&ctx->ref, writectx_release);
 }
 
-static int write_sync(struct qcusbnet *dev, char *buf, int size, u16 cid)
+static int write_sync(struct qcusbnet *dev, struct buffer *buf, u16 cid)
 {
 	int result;
 	struct writectx *ctx;
@@ -545,7 +548,7 @@ static int write_sync(struct qcusbnet *dev, char *buf, int size, u16 cid)
 		return -ENOMEM;
 	}
 
-	result = qmux_fill(cid, buf, size);
+	result = qmux_fill(cid, buf);
 	if (result < 0) {
 		usb_free_urb(urb);
 		kfree(ctx);
@@ -558,21 +561,23 @@ static int write_sync(struct qcusbnet *dev, char *buf, int size, u16 cid)
 	setup.value = 0;
 	setup.index = 0;
 	setup.len = 0;
-	setup.len = size;
+	setup.len = buffer_size(buf);
 
 	usb_fill_control_urb(urb, dev->usbnet->udev,
 			     usb_sndctrlpipe(dev->usbnet->udev, 0),
-			     (unsigned char *)&setup, (void *)buf, size,
-			     NULL, dev);
+			     (unsigned char *)&setup, buffer_data(buf),
+	                     buffer_size(buf), NULL, dev);
 
 	DBG("Actual Write:\n");
 	if (qcusbnet_debug)
 		print_hex_dump(KERN_INFO,  "gobi-write: ", DUMP_PREFIX_OFFSET,
-		               16, 1, buf, size, true);
+		               16, 1, buffer_data(buf), buffer_size(buf), true);
 
 	sema_init(&ctx->sem, 0);
 	kref_init(&ctx->ref);
 	kref_get(&ctx->ref);	/* for the urb */
+	buffer_get(buf);	/* give a ref to the context (also the urb) */
+	ctx->buf = buf;
 
 	urb->complete = write_callback;
 	urb->context = ctx;
@@ -583,6 +588,7 @@ static int write_sync(struct qcusbnet *dev, char *buf, int size, u16 cid)
 		if (result == -EPERM) {
 			qc_suspend(dev->iface, PMSG_SUSPEND);
 		}
+		buffer_put(buf);
 		return result;
 	}
 
@@ -592,6 +598,7 @@ static int write_sync(struct qcusbnet *dev, char *buf, int size, u16 cid)
 		usb_free_urb(urb);
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 		usb_autopm_put_interface(dev->iface);
+		buffer_put(buf);
 		return -EINVAL;
 	}
 
@@ -606,6 +613,7 @@ static int write_sync(struct qcusbnet *dev, char *buf, int size, u16 cid)
 
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 		usb_autopm_put_interface(dev->iface);
+		buffer_put(buf);
 		return result;
 	}
 
@@ -628,7 +636,10 @@ static int write_sync(struct qcusbnet *dev, char *buf, int size, u16 cid)
 
 	if (!result) {
 		if (!urb->status) {
-			result = size;
+			/* It's still safe to access buf here because our caller
+			 * must have been holding at least one ref in order to
+			 * give us the buffer. */
+			result = buffer_size(buf);
 		} else {
 			DBG("bad status = %d\n", urb->status);
 			result = urb->status;
@@ -647,8 +658,7 @@ static int client_alloc(struct qcusbnet *dev, u8 type)
 	u16 cid;
 	struct client *client;
 	int result;
-	void *wbuf;
-	size_t wbufsize;
+	struct buffer *wbuf;
 	void *rbuf;
 	u16 rbufsize;
 	unsigned long flags;
@@ -663,11 +673,11 @@ static int client_alloc(struct qcusbnet *dev, u8 type)
 		tid = atomic_add_return(1, &dev->qmi.qmitid);
 		if (!tid)
 			atomic_add_return(1, &dev->qmi.qmitid);
-		wbuf = qmictl_new_getcid(tid, type, &wbufsize);
+		wbuf = qmictl_new_getcid(tid, type);
 		if (!wbuf)
 			return -ENOMEM;
-		result = write_sync(dev, wbuf, wbufsize, QMICTL);
-		kfree(wbuf);
+		result = write_sync(dev, wbuf, QMICTL);
+		buffer_put(wbuf);
 
 		if (result < 0)
 			return result;
@@ -719,8 +729,7 @@ static void client_free(struct qcusbnet *dev, u16 cid)
 	struct urb *urb;
 	void *data;
 	u16 size;
-	void *wbuf;
-	size_t wbufsize;
+	struct buffer *wbuf;
 	void *rbuf;
 	u16 rbufsize;
 	unsigned long flags;
@@ -732,12 +741,12 @@ static void client_free(struct qcusbnet *dev, u16 cid)
 		tid = atomic_add_return(1, &dev->qmi.qmitid);
 		if (!tid)
 			tid = atomic_add_return(1, &dev->qmi.qmitid);
-		wbuf = qmictl_new_releasecid(tid, cid, &wbufsize);
+		wbuf = qmictl_new_releasecid(tid, cid);
 		if (!wbuf) {
 			DBG("memory error\n");
 		} else {
-			result = write_sync(dev, wbuf, wbufsize, QMICTL);
-			kfree(wbuf);
+			result = write_sync(dev, wbuf, QMICTL);
+			buffer_put(wbuf);
 
 			if (result < 0) {
 				DBG("bad write status %d\n", result);
@@ -1199,7 +1208,7 @@ static ssize_t devqmi_write(struct file *file, const char __user * buf,
 			    size_t size, loff_t *pos)
 {
 	int status;
-	void *wbuf;
+	struct buffer *wbuf;
 	struct qmihandle *handle = (struct qmihandle *)file->private_data;
 
 	if (!handle) {
@@ -1219,20 +1228,19 @@ static ssize_t devqmi_write(struct file *file, const char __user * buf,
 		return -EBADR;
 	}
 
-	wbuf = kmalloc(size + qmux_size, GFP_KERNEL);
+	wbuf = buffer_new(size + qmux_size);
 	if (!wbuf)
 		return -ENOMEM;
-	status = copy_from_user(wbuf + qmux_size, buf, size);
+	status = copy_from_user(buffer_data(wbuf) + qmux_size, buf, size);
 	if (status) {
 		DBG("Unable to copy data from userspace %d\n", status);
-		kfree(wbuf);
+		buffer_put(wbuf);
 		return status;
 	}
 
-	status = write_sync(handle->dev, wbuf, size + qmux_size,
-			    handle->cid);
+	status = write_sync(handle->dev, wbuf, handle->cid);
+	buffer_put(wbuf);
 
-	kfree(wbuf);
 	if (status == size + qmux_size)
 		return size;
 	return status;
@@ -1333,8 +1341,7 @@ void qc_deregister(struct qcusbnet *dev)
 static bool qmi_ready(struct qcusbnet *dev, u16 timeout)
 {
 	int result;
-	void *wbuf;
-	size_t wbufsize;
+	struct buffer *wbuf;
 	void *rbuf;
 	u16 rbufsize;
 	struct semaphore sem;
@@ -1354,18 +1361,18 @@ static bool qmi_ready(struct qcusbnet *dev, u16 timeout)
 		tid = atomic_add_return(1, &dev->qmi.qmitid);
 		if (!tid)
 			tid = atomic_add_return(1, &dev->qmi.qmitid);
-		kfree(wbuf);
-		wbuf = qmictl_new_ready(tid, &wbufsize);
+		wbuf = qmictl_new_ready(tid);
 		if (!wbuf)
 			return -ENOMEM;
 
 		result = read_async(dev, QMICTL, tid, upsem, &sem);
 		if (result) {
-			kfree(wbuf);
+			buffer_put(wbuf);
 			return false;
 		}
 
-		write_sync(dev, wbuf, wbufsize, QMICTL);
+		write_sync(dev, wbuf, QMICTL);
+		buffer_put(wbuf);
 
 		msleep(100);
 		if (!down_trylock(&sem)) {
@@ -1383,8 +1390,6 @@ static bool qmi_ready(struct qcusbnet *dev, u16 timeout)
 			spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 		}
 	}
-
-	kfree(wbuf);
 
 	if (now >= timeout)
 		return false;
@@ -1489,8 +1494,7 @@ static void wds_callback(struct qcusbnet *dev, u16 cid, void *data)
 static int setup_wds_callback(struct qcusbnet *dev)
 {
 	int result;
-	void *buf;
-	size_t size;
+	struct buffer *buf;
 	u16 cid;
 
 	if (!device_valid(dev)) {
@@ -1503,23 +1507,23 @@ static int setup_wds_callback(struct qcusbnet *dev)
 		return result;
 	cid = result;
 
-	buf = qmiwds_new_seteventreport(1, &size);
+	buf = qmiwds_new_seteventreport(1);
 	if (!buf)
 		return -ENOMEM;
 
-	result = write_sync(dev, buf, size, cid);
-	kfree(buf);
+	result = write_sync(dev, buf, cid);
+	buffer_put(buf);
 
 	if (result < 0) {
 		return result;
 	}
 
-	buf = qmiwds_new_getpkgsrvcstatus(2, &size);
+	buf = qmiwds_new_getpkgsrvcstatus(2);
 	if (buf == NULL)
 		return -ENOMEM;
 
-	result = write_sync(dev, buf, size, cid);
-	kfree(buf);
+	result = write_sync(dev, buf, cid);
+	buffer_put(buf);
 
 	if (result < 0)
 		return result;
@@ -1544,8 +1548,7 @@ static int setup_wds_callback(struct qcusbnet *dev)
 static int qmidms_getmeid(struct qcusbnet *dev)
 {
 	int result;
-	void *wbuf;
-	size_t wbufsize;
+	struct buffer *wbuf;
 	void *rbuf;
 	u16 rbufsize;
 	u16 cid;
@@ -1560,12 +1563,12 @@ static int qmidms_getmeid(struct qcusbnet *dev)
 		return result;
 	cid = result;
 
-	wbuf = qmidms_new_getmeid(1, &wbufsize);
+	wbuf = qmidms_new_getmeid(1);
 	if (!wbuf)
 		return -ENOMEM;
 
-	result = write_sync(dev, wbuf, wbufsize, cid);
-	kfree(wbuf);
+	result = write_sync(dev, wbuf, cid);
+	buffer_put(wbuf);
 
 	if (result < 0)
 		return result;
