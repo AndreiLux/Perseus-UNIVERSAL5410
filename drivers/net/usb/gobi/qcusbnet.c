@@ -326,7 +326,8 @@ static int qcnet_worker(void *arg)
 	DBG("traffic thread started\n");
 
 	while (!kthread_should_stop()) {
-		wait_event(worker->waitq, worker_should_wake(worker));
+		wait_event_interruptible(worker->waitq,
+		                         worker_should_wake(worker));
 
 		if (kthread_should_stop())
 			break;
