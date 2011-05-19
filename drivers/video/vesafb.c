@@ -74,7 +74,7 @@ module_param_named(vgapal, pmi_setpal, invbool, 0);
 MODULE_PARM_DESC(vgapal, "Use VGA for setting palette (default)");
 module_param_named(pmipal, pmi_setpal, bool, 0);
 MODULE_PARM_DESC(pmipal, "Use PMI for setting palette");
-module_param(mtrr, bool, 0);
+module_param(mtrr, uint, 0);
 MODULE_PARM_DESC(mtrr, "Enable MTRR support (default)");
 module_param_named(nomtrr, mtrr, invbool, 0);
 MODULE_PARM_DESC(nomtrr, "Disable MTRR support");
