@@ -55,7 +55,7 @@ static struct fb_fix_screeninfo vesafb_fix __initdata = {
 #ifndef MODULE
 static int   inverse    __read_mostly;
 #endif
-static int   mtrr       __read_mostly;		/* disable mtrr */
+static int   mtrr       __read_mostly = 3;	/* disable mtrr */
 static int   vram_remap __initdata;		/* Set amount of memory to be used */
 static int   vram_total __initdata;		/* Set total amount of memory */
 static int   pmi_setpal __read_mostly = 1;	/* pmi for palette changes ??? */
