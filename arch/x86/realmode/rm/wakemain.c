@@ -61,6 +61,30 @@ static void send_morse(const char *pattern)
 	}
 }
 
+#define I8042_STATUS_REG	0x64
+#define I8042_DATA_REG		0x60
+#define I8042_SET_LED_BITS	0xed
+#define I8042_STR_IBF		0x02
+
+static void flash_keyboard_leds(void)
+{
+	int i;
+	unsigned char leds = 7;
+
+	/* Flash keyboard LEDs 3 times */
+	for (i = 0; i < 6; i++) {
+		while (inb(I8042_STATUS_REG) & I8042_STR_IBF)
+			;
+		outb(I8042_SET_LED_BITS, I8042_DATA_REG);
+		while (inb(I8042_STATUS_REG) & I8042_STR_IBF)
+			;
+		outb(leds, I8042_DATA_REG);
+		leds ^= 7;
+		udelay(500000);
+	}
+}
+
+
 void main(void)
 {
 	/* Kill machine if structures are wrong */
@@ -79,4 +103,7 @@ void main(void)
 		probe_cards(0);
 		set_mode(wakeup_header.video_mode);
 	}
+
+	if (wakeup_header.realmode_flags & 8)
+		flash_keyboard_leds();
 }
