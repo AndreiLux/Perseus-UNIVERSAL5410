@@ -1046,6 +1046,8 @@ enum nl80211_commands {
  * @NL80211_ATTR_WIPHY_ANTENNA_AVAIL_RX: Bitmap of antennas which are available
  *	for configuration as RX antennas via the above parameters.
  *
+ * @NL80211_ATTR_SCAN_FLAGS: scan request control flags (u32)
+ *
  * @NL80211_ATTR_MCAST_RATE: Multicast tx rate (in 100 kbps) for IBSS
  *
  * @NL80211_ATTR_OFFCHANNEL_TX_OK: For management frame TX, the frame may be
@@ -1401,6 +1403,8 @@ enum nl80211_attrs {
 
 	NL80211_ATTR_WIPHY_ANTENNA_AVAIL_TX,
 	NL80211_ATTR_WIPHY_ANTENNA_AVAIL_RX,
+
+	NL80211_ATTR_SCAN_FLAGS,
 
 	NL80211_ATTR_SUPPORT_MESH_AUTH,
 	NL80211_ATTR_STA_PLINK_STATE,
@@ -2519,6 +2523,18 @@ enum nl80211_tx_power_setting {
 	NL80211_TX_POWER_AUTOMATIC,
 	NL80211_TX_POWER_LIMITED,
 	NL80211_TX_POWER_FIXED,
+};
+
+/**
+ * enum nl80211_scan_flags -  scan request control flags
+ *
+ * Scan request control flags are used to control the handling
+ * of NL80211_CMD_TRIGGER_SCAN, requests.
+ *
+ * @NL80211_SCAN_FLAG_TX_ABORT: abort scan if tx collides
+ */
+enum nl80211_scan_flags {
+	NL80211_SCAN_FLAG_TX_ABORT	= 1<<0,
 };
 
 /**
