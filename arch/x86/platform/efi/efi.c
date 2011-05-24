@@ -40,6 +40,7 @@
 #include <linux/io.h>
 #include <linux/reboot.h>
 #include <linux/bcd.h>
+#include <linux/debugfs.h>
 
 #include <asm/setup.h>
 #include <asm/efi.h>
@@ -91,6 +92,16 @@ static int __init setup_add_efi_memmap(char *arg)
 }
 early_param("add_efi_memmap", setup_add_efi_memmap);
 
+static int __init efi_debugfs_setup(void)
+{
+	static u64 efi_smbios_base;
+
+	efi_smbios_base = (u64) efi.smbios;
+	debugfs_create_u64("efi_smbios_base", 0444, NULL, &efi_smbios_base);
+
+	return 0;
+}
+late_initcall(efi_debugfs_setup);
 
 static efi_status_t virt_efi_get_time(efi_time_t *tm, efi_time_cap_t *tc)
 {
