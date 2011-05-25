@@ -1133,13 +1133,19 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	 * sane. Requests will be submitted asynchronously.
 	 * TODO(wad) look into workqueue flags to ensure safety.
 	 */
-	vc->io_queue = create_workqueue("kverityd_io");
+	vc->io_queue = alloc_workqueue("kverityd_io",
+				       WQ_CPU_INTENSIVE|
+				       WQ_HIGHPRI,
+				       1);
 	if (!vc->io_queue) {
 		ti->error = "Couldn't create kverityd io queue";
 		goto bad_io_queue;
 	}
 
-	vc->verify_queue = create_workqueue("kverityd");
+	vc->verify_queue = alloc_workqueue("kverityd",
+					   WQ_CPU_INTENSIVE|
+					   WQ_HIGHPRI,
+					   1);
 	if (!vc->verify_queue) {
 		ti->error = "Couldn't create kverityd queue";
 		goto bad_verify_queue;
