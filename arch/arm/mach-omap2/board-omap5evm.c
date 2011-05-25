@@ -33,6 +33,8 @@
 #include <mach/omap4-common.h>
 #include <plat/common.h>
 #include <plat/usb.h>
+#include <plat/mmc.h>
+#include "hsmmc.h"
 #include "mux.h"
 
 #include "common-board-devices.h"
@@ -571,6 +573,25 @@ static struct platform_device dummy_sd_regulator_device = {
 	}
 };
 
+static struct omap2_hsmmc_info mmc[] = {
+	{
+		.mmc		= 2,
+		.caps		= MMC_CAP_4_BIT_DATA | MMC_CAP_8_BIT_DATA,
+		.gpio_cd	= -EINVAL,
+		.gpio_wp	= -EINVAL,
+		.nonremovable	= true,
+		.ocr_mask	= MMC_VDD_29_30,
+		.no_off_init	= true,
+	},
+	{
+		.mmc		= 1,
+		.caps		= MMC_CAP_4_BIT_DATA,
+		.gpio_cd	= 67,
+		.gpio_wp	= -EINVAL,
+	},
+	{}	/* Terminator */
+};
+
 /* USBB3 to SMSC LAN9730 */
 #define GPIO_ETH_NRESET	172
 
@@ -614,6 +635,7 @@ static void __init omap_5430evm_init(void)
 	omap_5430evm_i2c_init();
 	omap_serial_init();
 	platform_device_register(&dummy_sd_regulator_device);
+	omap2_hsmmc_init(mmc);
 	omap_ehci_ohci_init();
 }
 
