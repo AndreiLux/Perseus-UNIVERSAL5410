@@ -3275,18 +3275,6 @@ static void do_ios(struct raid_set *rs, struct bio_list *ios)
 	bio_list_merge_head(ios, &reject);
 }
 
-/* Unplug: let any queued io role on the sets devices. */
-static void do_unplug(struct raid_set *rs)
-{
-	struct raid_dev *dev = rs->dev + rs->set.raid_devs;
-
-	while (dev-- > rs->dev) {
-		/* Only call any device unplug function, if io got queued. */
-		if (TestClearDevIoQueued(dev))
-			blk_unplug(bdev_get_queue(dev->dev->bdev));
-	}
-}
-
 /* Send an event in case we're getting too busy. */
 static void do_busy_event(struct raid_set *rs)
 {
@@ -3326,6 +3314,7 @@ static void do_raid(struct work_struct *ws)
 	struct raid_set *rs = container_of(ws, struct raid_set,
 					   io.dws_do_raid.work);
 	struct bio_list *ios = &rs->io.work, *ios_in = &rs->io.in;
+	struct blk_plug plug;
 
 	/*
 	 * We always need to end io, so that ios can get errored in
@@ -3342,8 +3331,9 @@ static void do_raid(struct work_struct *ws)
 	do_sc_resize(rs);
 
 	/* Try to recover regions. */
+	blk_start_plug(&plug);
 	do_recovery(rs);
-	do_unplug(rs);		/* Unplug the sets device queues. */
+	blk_finish_plug(&plug);	/* Unplug the queue */
 
 	/* Quickly grab all new ios queued and add them to the work list. */
 	mutex_lock(&rs->io.in_lock);
@@ -3351,11 +3341,12 @@ static void do_raid(struct work_struct *ws)
 	bio_list_init(ios_in);
 	mutex_unlock(&rs->io.in_lock);
 
+	blk_start_plug(&plug);
 	if (!bio_list_empty(ios))
 		do_ios(rs, ios); /* Got ios to work into the cache. */
 
 	do_flush(rs);		/* Flush any stripes on io list. */
-	do_unplug(rs);		/* Unplug the sets device queues. */
+	blk_finish_plug(&plug);	/* Unplug the queue */
 	do_busy_event(rs);	/* Check if we got too busy. */
 }
 
