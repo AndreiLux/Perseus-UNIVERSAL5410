@@ -2,6 +2,9 @@
 # The source package name will be the first token from $(DEBIAN)/changelog
 #
 src_pkg_name=$(shell sed -n '1s/^\(.*\) (.*).*$$/\1/p' $(DEBIAN)/changelog)
+# Allow for overriding common_src_pkg_name when we have perflavour source packages
+-include $(DEBIAN)/rules.d/vars.mk
+common_src_pkg_name?=src_pkg_name
 
 # Get some version info
 series := oneiric
@@ -143,7 +146,7 @@ do_doc_package_content=true
 ifeq ($(full_build),false)
 do_doc_package_content=false
 endif
-doc_pkg_name=$(src_pkg_name)-doc
+doc_pkg_name=$(common_src_pkg_name)-doc
 
 #
 # Similarly with the linux-source package, you need not build it as a developer. Its
@@ -175,8 +178,8 @@ ifneq ($(wildcard $(CURDIR)/tools),)
 else
 	do_tools?=false
 endif
-tools_pkg_name=$(src_pkg_name)-tools-$(abi_release)
-tools_common_pkg_name=$(src_pkg_name)-tools-common
+tools_pkg_name=$(common_src_pkg_name)-tools-$(abi_release)
+tools_common_pkg_name=$(common_src_pkg_name)-tools-common
 
 # The general flavour specific image package.
 do_flavour_image_package=true

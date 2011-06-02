@@ -52,6 +52,7 @@ updateportsconfigs defaultportsconfigs editportsconfigs genportsconfigs askconfi
 printenv:
 	dh_testdir
 	@echo "src package name  = $(src_pkg_name)"
+	@echo "src package name no flavour  = $(common_src_pkg_name)"
 	@echo "release           = $(release)"
 	@echo "revisions         = $(revisions)"
 	@echo "revision          = $(revision)"

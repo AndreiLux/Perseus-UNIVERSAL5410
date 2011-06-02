@@ -92,15 +92,17 @@ $(DEBIAN)/control.stub: $(DEBIAN)/d-i/kernel-versions.in	\
 	  new=`echo $$i | sed 's/\.in$$//'`;					\
 	  cat $$i | sed -e 's/PKGVER/$(release)/g'                              \
 	        -e 's/ABINUM/$(abinum)/g'                                       \
+		-e 's/COMMONSRCPKGNAME/$(common_src_pkg_name)/g'          \
 		-e 's/SRCPKGNAME/$(src_pkg_name)/g'                             \
 		-e 's/=HUMAN=/$(human_arch)/g'                                    \
 	  > $$new;								\
 	done
 	flavours="$(wildcard $(DEBIAN)/control.d/vars.* $(DEBIAN)/sub-flavours/*.vars)";\
 	for i in $$flavours; do							\
-	  $(SHELL) $(DROOT)/scripts/control-create $$i |				\
+	  $(SHELL) $(DROOT)/scripts/control-create $$i |			\
 		sed -e 's/PKGVER/$(release)/g'                                  \
 		-e 's/ABINUM/$(abinum)/g'                                       \
+		-e 's/COMMONSRCPKGNAME/$(common_src_pkg_name)/g'          \
 		-e 's/SRCPKGNAME/$(src_pkg_name)/g'                             \
 		-e 's/=HUMAN=/$(human_arch)/g'                                    \
 		>> $(DEBIAN)/control.stub;						\
