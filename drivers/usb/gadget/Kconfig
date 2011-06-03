@@ -268,6 +268,18 @@ config USB_S3C_HSOTG
 	  The Samsung S3C64XX USB2.0 high-speed gadget controller
 	  integrated into the S3C64XX series SoC.
 
+config USB_S3C_OTGD
+	tristate "S3C HS USB OTG Device"
+	depends on S3C_DEV_USB_HSOTG
+	select USB_GADGET_DUALSPEED
+	help
+	  Samsung's S3C64XX processors include high speed USB OTG2.0
+	  controller. It has 15 configurable endpoints, as well as
+	  endpoint zero (for control transfers).
+
+	  This driver has been tested on the S3C6410, S5P6440, S5PC100, S5PV210,
+	  EXYNOS4210, EXYNOS4x12, EXYNOS5250 processor.
+
 config USB_EXYNOS_SS_UDC
 	tristate "EXYNOS SuperSpeed USB 3.0 Device controller"
 	depends on EXYNOS_DEV_SS_UDC
