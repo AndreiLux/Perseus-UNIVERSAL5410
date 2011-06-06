@@ -48,17 +48,6 @@ struct urbreq {
 
 #define DEFAULT_READ_URB_LENGTH 0x1000
 
-struct worker {
-	struct task_struct *thread;
-	atomic_t work_count;
-	wait_queue_head_t waitq;
-	struct list_head urbs;
-	spinlock_t urbs_lock;
-	struct urb *active;
-	spinlock_t active_lock;
-	struct usb_interface *iface;
-};
-
 struct qmidev {
 	dev_t devnum;
 	struct class *devclass;
@@ -92,7 +81,14 @@ struct qcusbnet {
 	bool dying;
 	struct qmidev qmi;
 	char meid[14];
-	struct worker worker;
+
+	struct workqueue_struct *workqueue;
+	struct list_head urbs;
+	struct urb *active;
+
+	struct work_struct startxmit;
+	struct work_struct txtimeout;
+	struct work_struct complete;
 };
 
 #endif /* !QCUSBNET_STRUCTS_H */

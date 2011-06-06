@@ -24,7 +24,7 @@
 #include <linux/module.h>
 #include <linux/ctype.h>
 
-#define DRIVER_VERSION "1.0.110+google"
+#define DRIVER_VERSION "1.0.110+google+w0"
 #define DRIVER_AUTHOR "Qualcomm Innovation Center"
 #define DRIVER_DESC "gobi"
 
@@ -67,12 +67,6 @@ struct qcusbnet *qcusbnet_get(struct qcusbnet *key)
 	}
 	mutex_unlock(&qcusbnet_lock);
 	return NULL;
-}
-
-static void wake_worker(struct worker *worker)
-{
-	atomic_inc(&worker->work_count);
-	wake_up(&worker->waitq);
 }
 
 int qc_suspend(struct usb_interface *iface, pm_message_t event)
@@ -156,8 +150,6 @@ static int qc_resume(struct usb_interface *iface)
 			DBG("qc_startread error %d\n", ret);
 			return ret;
 		}
-
-		wake_worker(&dev->worker);
 	} else {
 		DBG("nothing to resume\n");
 		return 0;
@@ -236,204 +228,92 @@ static void qcnet_unbind(struct usbnet *usbnet, struct usb_interface *iface)
 	qcusbnet_put(dev);
 }
 
-static void qcnet_urbhook(struct urb *urb)
+static void qcnet_bg_complete(struct work_struct *work)
 {
-	unsigned long flags;
-	struct worker *worker = urb->context;
-	if (!worker) {
-		DBG("bad context\n");
-		return;
-	}
+	struct qcusbnet *dev = container_of(work, struct qcusbnet, complete);
+	BUG_ON(!dev->active);
+	usb_free_urb(dev->active);
+	dev->active = NULL;
+	usb_autopm_put_interface(dev->iface);
+	if (!list_empty(&dev->urbs))
+		queue_work(dev->workqueue, &dev->startxmit);
+}
 
-	if (urb->status) {
-		DBG("urb finished with error %d\n", urb->status);
-	}
+static void qcnet_complete(struct urb *urb)
+{
+	struct qcusbnet *dev = urb->context;
+	queue_work(dev->workqueue, &dev->complete);
+}
 
-	spin_lock_irqsave(&worker->active_lock, flags);
-	worker->active = ERR_PTR(-EAGAIN);
-	spin_unlock_irqrestore(&worker->active_lock, flags);
-	/* XXX-fix race against qcnet_stop()? */
-	wake_worker(worker);
-	usb_free_urb(urb);
+static void qcnet_bg_txtimeout(struct work_struct *work)
+{
+	struct qcusbnet *dev = container_of(work, struct qcusbnet, txtimeout);
+	struct list_head *node, *tmp;
+	struct urbreq *req;
+	if (dev->active)
+		usb_kill_urb(dev->active);
+	list_for_each_safe(node, tmp, &dev->urbs) {
+		req = list_entry(node, struct urbreq, node);
+		usb_free_urb(req->urb);
+		list_del(&req->node);
+		kfree(req);
+	}
 }
 
 static void qcnet_txtimeout(struct net_device *netdev)
 {
-	struct list_head *node, *tmp;
-	struct qcusbnet *dev;
-	struct worker *worker;
-	struct urbreq *req;
-	unsigned long activeflags, listflags;
 	struct usbnet *usbnet = netdev_priv(netdev);
-
-	if (!usbnet || !usbnet->net) {
-		DBG("failed to get usbnet device\n");
-		return;
-	}
-
-	dev = (struct qcusbnet *)usbnet->data[0];
-	if (!dev) {
-		DBG("failed to get QMIDevice\n");
-		return;
-	}
-	worker = &dev->worker;
-
-	DBG("\n");
-
-	spin_lock_irqsave(&worker->active_lock, activeflags);
-	if (worker->active)
-		usb_kill_urb(worker->active);
-	spin_unlock_irqrestore(&worker->active_lock, activeflags);
-
-	spin_lock_irqsave(&worker->urbs_lock, listflags);
-	list_for_each_safe(node, tmp, &worker->urbs) {
-		req = list_entry(node, struct urbreq, node);
-		usb_free_urb(req->urb);
-		list_del(&req->node);
-		kfree(req);
-	}
-	spin_unlock_irqrestore(&worker->urbs_lock, listflags);
-
-	wake_worker(worker);
+	struct qcusbnet *dev = (struct qcusbnet *)usbnet->data[0];
+	queue_work(dev->workqueue, &dev->txtimeout);
 }
 
-static int worker_should_wake(struct worker *worker)
+static void qcnet_bg_startxmit(struct work_struct *work)
 {
-	if (kthread_should_stop())
-		return 1;
-	/* This is safe only because we are the only place that decrements this
-	 * counter. */
-	if (atomic_read(&worker->work_count))
-		return 1;
-	return 0;
-}
-
-static int qcnet_worker(void *arg)
-{
-	struct list_head *node, *tmp;
-	unsigned long activeflags, listflags;
+	struct qcusbnet *dev = container_of(work, struct qcusbnet, startxmit);
 	struct urbreq *req;
 	int status;
-	struct usb_device *usbdev;
-	struct worker *worker = arg;
-	if (!worker) {
-		DBG("passed null pointer\n");
-		return -EINVAL;
+
+	if (dev->active)
+		return;
+	if (list_empty(&dev->urbs))
+		/* If we hit this case, it means that we added our urb to the
+		 * list while there was an urb in flight, and that urb
+		 * completed, causing our urb to be submitted; in addition, our
+		 * urb completed too, all before we got to schedule this work.
+		 * Unlikely, but possible. */
+		return;
+	req = list_first_entry(&dev->urbs, struct urbreq, node);
+	status = usb_autopm_get_interface(dev->iface);
+	if (status < 0) {
+		printk(KERN_WARNING "gobi: can't autoresume interface: %d", status);
+		if (status == -EPERM)
+			qc_suspend(dev->iface, PMSG_SUSPEND);
+		/* We could just drop the packet here, right...? It seems like
+		 * if this ever happens, we'll spin, but the old driver did that
+		 * as well. */
+		queue_work(dev->workqueue, &dev->startxmit);
+		return;
 	}
 
-	usbdev = interface_to_usbdev(worker->iface);
-
-	DBG("traffic thread started\n");
-
-	while (!kthread_should_stop()) {
-		wait_event_interruptible(worker->waitq,
-		                         worker_should_wake(worker));
-
-		if (kthread_should_stop())
-			break;
-		atomic_dec(&worker->work_count);
-
-		spin_lock_irqsave(&worker->active_lock, activeflags);
-		if (IS_ERR(worker->active) && PTR_ERR(worker->active) == -EAGAIN) {
-			worker->active = NULL;
-			spin_unlock_irqrestore(&worker->active_lock, activeflags);
-			usb_autopm_put_interface(worker->iface);
-			spin_lock_irqsave(&worker->active_lock, activeflags);
-		}
-
-		if (worker->active) {
-			spin_unlock_irqrestore(&worker->active_lock, activeflags);
-			continue;
-		}
-
-		spin_lock_irqsave(&worker->urbs_lock, listflags);
-		if (list_empty(&worker->urbs)) {
-			spin_unlock_irqrestore(&worker->urbs_lock, listflags);
-			spin_unlock_irqrestore(&worker->active_lock, activeflags);
-			continue;
-		}
-
-		req = list_first_entry(&worker->urbs, struct urbreq, node);
-		list_del(&req->node);
-		spin_unlock_irqrestore(&worker->urbs_lock, listflags);
-
-		worker->active = req->urb;
-		spin_unlock_irqrestore(&worker->active_lock, activeflags);
-
-		status = usb_autopm_get_interface(worker->iface);
-		if (status < 0) {
-			DBG("unable to autoresume interface: %d\n", status);
-			if (status == -EPERM) {
-				qc_suspend(worker->iface, PMSG_SUSPEND);
-			}
-
-			spin_lock_irqsave(&worker->urbs_lock, listflags);
-			list_add(&req->node, &worker->urbs);
-			spin_unlock_irqrestore(&worker->urbs_lock, listflags);
-
-			spin_lock_irqsave(&worker->active_lock, activeflags);
-			worker->active = NULL;
-			spin_unlock_irqrestore(&worker->active_lock, activeflags);
-
-			continue;
-		}
-
-		status = usb_submit_urb(worker->active, GFP_KERNEL);
-		if (status < 0) {
-			DBG("Failed to submit URB: %d.  Packet dropped\n", status);
-			spin_lock_irqsave(&worker->active_lock, activeflags);
-			usb_free_urb(worker->active);
-			worker->active = NULL;
-			spin_unlock_irqrestore(&worker->active_lock, activeflags);
-			usb_autopm_put_interface(worker->iface);
-			wake_worker(worker);
-		}
-
-		kfree(req);
+	list_del(&req->node);
+	dev->active = req->urb;
+	status = usb_submit_urb(dev->active, GFP_KERNEL);
+	if (status < 0) {
+		printk(KERN_WARNING "gobi: couldn't submit, packet dropped: %d", status);
+		usb_free_urb(dev->active);
+		dev->active = NULL;
+		usb_autopm_put_interface(dev->iface);
 	}
 
-	spin_lock_irqsave(&worker->active_lock, activeflags);
-	if (worker->active) {
-		usb_kill_urb(worker->active);
-	}
-	spin_unlock_irqrestore(&worker->active_lock, activeflags);
-
-	spin_lock_irqsave(&worker->urbs_lock, listflags);
-	list_for_each_safe(node, tmp, &worker->urbs) {
-		req = list_entry(node, struct urbreq, node);
-		usb_free_urb(req->urb);
-		list_del(&req->node);
-		kfree(req);
-	}
-	spin_unlock_irqrestore(&worker->urbs_lock, listflags);
-
-	DBG("traffic thread exiting\n");
-	worker->thread = NULL;
-	return 0;
+	kfree(req);
 }
 
 static int qcnet_startxmit(struct sk_buff *skb, struct net_device *netdev)
 {
-	unsigned long listflags;
-	struct qcusbnet *dev;
-	struct worker *worker;
 	struct urbreq *req;
 	void *data;
 	struct usbnet *usbnet = netdev_priv(netdev);
-
-	DBG("\n");
-
-	if (!usbnet || !usbnet->net) {
-		DBG("failed to get usbnet device\n");
-		return NETDEV_TX_BUSY;
-	}
-
-	dev = (struct qcusbnet *)usbnet->data[0];
-	if (!dev) {
-		DBG("failed to get QMIDevice\n");
-		return NETDEV_TX_BUSY;
-	}
-	worker = &dev->worker;
+	struct qcusbnet *dev = (struct qcusbnet *)usbnet->data[0];
 
 	if (qc_isdown(dev, DOWN_DRIVER_SUSPENDED)) {
 		DBG("device is suspended\n");
@@ -465,13 +345,10 @@ static int qcnet_startxmit(struct sk_buff *skb, struct net_device *netdev)
 	memcpy(data, skb->data, skb->len);
 
 	usb_fill_bulk_urb(req->urb, dev->usbnet->udev, dev->usbnet->out,
-			  data, skb->len, qcnet_urbhook, worker);
+			  data, skb->len, qcnet_complete, dev);
 
-	spin_lock_irqsave(&worker->urbs_lock, listflags);
-	list_add_tail(&req->node, &worker->urbs);
-	spin_unlock_irqrestore(&worker->urbs_lock, listflags);
-
-	wake_worker(worker);
+	list_add_tail(&req->node, &dev->urbs);
+	queue_work(dev->workqueue, &dev->startxmit);
 
 	netdev->trans_start = jiffies;
 	dev_kfree_skb_any(skb);
@@ -494,22 +371,6 @@ static int qcnet_open(struct net_device *netdev)
 	if (!dev) {
 		DBG("failed to get QMIDevice\n");
 		return -ENXIO;
-	}
-
-	DBG("\n");
-
-	dev->worker.iface = dev->iface;
-	INIT_LIST_HEAD(&dev->worker.urbs);
-	dev->worker.active = NULL;
-	spin_lock_init(&dev->worker.urbs_lock);
-	spin_lock_init(&dev->worker.active_lock);
-	atomic_set(&dev->worker.work_count, 0);
-	init_waitqueue_head(&dev->worker.waitq);
-
-	dev->worker.thread = kthread_run(qcnet_worker, &dev->worker, "qcnet_worker");
-	if (IS_ERR(dev->worker.thread)) {
-		DBG("AutoPM thread creation error\n");
-		return PTR_ERR(dev->worker.thread);
 	}
 
 	qc_cleardown(dev, DOWN_NET_IFACE_STOPPED);
@@ -542,8 +403,6 @@ int qcnet_stop(struct net_device *netdev)
 	}
 
 	qc_setdown(dev, DOWN_NET_IFACE_STOPPED);
-	kthread_stop(dev->worker.thread);
-	DBG("thread stopped\n");
 
 	if (dev->stop != NULL)
 		return dev->stop(netdev);
@@ -672,8 +531,13 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 	kref_init(&dev->refcount);
 	INIT_LIST_HEAD(&dev->node);
 	INIT_LIST_HEAD(&dev->qmi.clients);
-	atomic_set(&dev->worker.work_count, 0);
-	init_waitqueue_head(&dev->worker.waitq);
+	dev->workqueue = alloc_ordered_workqueue("gobi", 0);
+
+	INIT_LIST_HEAD(&dev->urbs);
+	INIT_WORK(&dev->startxmit, qcnet_bg_startxmit);
+	INIT_WORK(&dev->txtimeout, qcnet_bg_txtimeout);
+	INIT_WORK(&dev->complete, qcnet_bg_complete);
+
 	spin_lock_init(&dev->qmi.clients_lock);
 
 	dev->down = 0;
@@ -701,11 +565,27 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 }
 EXPORT_SYMBOL_GPL(qcnet_probe);
 
+static void qcnet_disconnect(struct usb_interface *intf)
+{
+	struct usbnet *usbnet = usb_get_intfdata(intf);
+	struct qcusbnet *dev = (struct qcusbnet *)usbnet->data[0];
+	struct list_head *node, *tmp;
+	struct urbreq *req;
+	destroy_workqueue(dev->workqueue);
+	list_for_each_safe(node, tmp, &dev->urbs) {
+		req = list_entry(node, struct urbreq, node);
+		usb_free_urb(req->urb);
+		list_del(&req->node);
+		kfree(req);
+	}
+	usbnet_disconnect(intf);
+}
+
 static struct usb_driver qcusbnet = {
 	.name       = "gobi",
 	.id_table   = qc_vidpids,
 	.probe      = qcnet_probe,
-	.disconnect = usbnet_disconnect,
+	.disconnect = qcnet_disconnect,
 	.suspend    = qc_suspend,
 	.resume     = qc_resume,
 	.supports_autosuspend = true,
