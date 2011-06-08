@@ -234,6 +234,96 @@ static int isl29018_read_proximity_ir(struct i2c_client *client, int scheme,
 }
 
 /* Sysfs interface */
+/* lux_scale */
+static ssize_t show_lux_scale(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct isl29018_chip *chip = iio_priv(indio_dev);
+
+	return sprintf(buf, "%d\n", chip->lux_scale);
+}
+
+static ssize_t store_lux_scale(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct isl29018_chip *chip = iio_priv(indio_dev);
+	unsigned long lval;
+
+	lval = simple_strtoul(buf, NULL, 10);
+	if (lval == 0)
+		return -EINVAL;
+
+	mutex_lock(&chip->lock);
+	chip->lux_scale = lval;
+	mutex_unlock(&chip->lock);
+
+	return count;
+}
+
+static ssize_t get_sensor_data(struct device *dev, char *buf, int mode)
+{
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct isl29018_chip *chip = iio_priv(indio_dev);
+	struct i2c_client *client = chip->client;
+	int value = 0;
+	int status;
+
+	mutex_lock(&chip->lock);
+	switch (mode) {
+	case COMMMAND1_OPMODE_PROX_ONCE:
+		status = isl29018_read_proximity_ir(client,
+						chip->prox_scheme, &value);
+	break;
+
+	case COMMMAND1_OPMODE_ALS_ONCE:
+		status = isl29018_read_lux(client, &value);
+		break;
+
+	case COMMMAND1_OPMODE_IR_ONCE:
+		status = isl29018_read_ir(client, &value);
+		break;
+
+	default:
+		dev_err(&client->dev, "Mode %d is not supported\n", mode);
+		mutex_unlock(&chip->lock);
+		return -EBUSY;
+	}
+
+	if (status < 0) {
+		dev_err(&client->dev, "Error in Reading data");
+		mutex_unlock(&chip->lock);
+		return status;
+	}
+
+	mutex_unlock(&chip->lock);
+
+	return sprintf(buf, "%d\n", value);
+}
+
+
+/* Read lux */
+static ssize_t show_lux(struct device *dev,
+		struct device_attribute *devattr, char *buf)
+{
+	return get_sensor_data(dev, buf, COMMMAND1_OPMODE_ALS_ONCE);
+}
+
+/* Read ir */
+static ssize_t show_ir(struct device *dev,
+		struct device_attribute *devattr, char *buf)
+{
+	return get_sensor_data(dev, buf, COMMMAND1_OPMODE_IR_ONCE);
+}
+
+/* Read nearest ir */
+static ssize_t show_proxim_ir(struct device *dev,
+		struct device_attribute *devattr, char *buf)
+{
+	return get_sensor_data(dev, buf, COMMMAND1_OPMODE_PROX_ONCE);
+}
+
 /* range */
 static ssize_t show_range(struct device *dev,
 			struct device_attribute *attr, char *buf)
@@ -440,6 +530,11 @@ static IIO_DEVICE_ATTR(proximity_on_chip_ambient_infrared_supression,
 					S_IRUGO | S_IWUSR,
 					show_prox_infrared_supression,
 					store_prox_infrared_supression, 0);
+static IIO_DEVICE_ATTR(illuminance0_input, S_IRUGO, show_lux, NULL, 0);
+static IIO_DEVICE_ATTR(illuminance0_calibscale, S_IRUGO | S_IWUSR,
+					show_lux_scale, store_lux_scale, 0);
+static IIO_DEVICE_ATTR(intensity_infrared_raw, S_IRUGO, show_ir, NULL, 0);
+static IIO_DEVICE_ATTR(proximity_raw, S_IRUGO, show_proxim_ir, NULL, 0);
 
 #define ISL29018_DEV_ATTR(name) (&iio_dev_attr_##name.dev_attr.attr)
 #define ISL29018_CONST_ATTR(name) (&iio_const_attr_##name.dev_attr.attr)
@@ -449,6 +544,10 @@ static struct attribute *isl29018_attributes[] = {
 	ISL29018_DEV_ATTR(adc_resolution),
 	ISL29018_CONST_ATTR(adc_resolution_available),
 	ISL29018_DEV_ATTR(proximity_on_chip_ambient_infrared_supression),
+	ISL29018_DEV_ATTR(illuminance0_input),
+	ISL29018_DEV_ATTR(illuminance0_calibscale),
+	ISL29018_DEV_ATTR(intensity_infrared_raw),
+	ISL29018_DEV_ATTR(proximity_raw),
 	NULL
 };
 
