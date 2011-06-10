@@ -70,7 +70,8 @@ static bool client_addnotify(struct qcusbnet *dev, u16 cid, u16 tid,
 			     void *data);
 static bool client_notify(struct qcusbnet *dev, u16 cid, u16 tid);
 static bool client_addurb(struct qcusbnet *dev, u16 cid, struct urb *urb);
-static struct urb *client_delurb(struct qcusbnet *dev, u16 cid);
+static struct urb *client_delurb(struct qcusbnet *dev, u16 cid,
+				 struct urb *urb);
 
 static int resubmit_int_urb(struct urb *urb);
 
@@ -527,6 +528,7 @@ static int write_sync(struct qcusbnet *dev, struct buffer *buf, u16 cid)
 	int result;
 	struct writectx *ctx;
 	struct urb *urb;
+	struct urb *removed_urb;
 	struct urbsetup setup;
 	unsigned long flags;
 
@@ -588,7 +590,9 @@ static int write_sync(struct qcusbnet *dev, struct buffer *buf, u16 cid)
 		if (result == -EPERM) {
 			qc_suspend(dev->iface, PMSG_SUSPEND);
 		}
+		usb_free_urb(urb);
 		buffer_put(buf);
+		kref_put(&ctx->ref, writectx_release);
 		return result;
 	}
 
@@ -599,21 +603,22 @@ static int write_sync(struct qcusbnet *dev, struct buffer *buf, u16 cid)
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 		usb_autopm_put_interface(dev->iface);
 		buffer_put(buf);
+		kref_put(&ctx->ref, writectx_release);
 		return -EINVAL;
 	}
 
 	result = usb_submit_urb(urb, GFP_KERNEL);
 	if (result < 0)	{
 		DBG("submit URB error %d\n", result);
-		if (client_delurb(dev, cid) != urb) {
-			DBG("Didn't get write URB back\n");
-		}
 
+		removed_urb = client_delurb(dev, cid, urb);
+		BUG_ON(urb != removed_urb);
 		usb_free_urb(urb);
 
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 		usb_autopm_put_interface(dev->iface);
 		buffer_put(buf);
+		kref_put(&ctx->ref, writectx_release);
 		return result;
 	}
 
@@ -627,7 +632,7 @@ static int write_sync(struct qcusbnet *dev, struct buffer *buf, u16 cid)
 
 	usb_autopm_put_interface(dev->iface);
 	spin_lock_irqsave(&dev->qmi.clients_lock, flags);
-	if (client_delurb(dev, cid) != urb) {
+	if (client_delurb(dev, cid, urb) != urb) {
 		DBG("Didn't get write URB back\n");
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 		return -EINVAL;
@@ -773,11 +778,11 @@ static void client_free(struct qcusbnet *dev, u16 cid)
 				;
 			}
 
-			urb = client_delurb(dev, cid);
+			urb = client_delurb(dev, cid, NULL);
 			while (urb != NULL) {
 				usb_kill_urb(urb);
 				usb_free_urb(urb);
-				urb = client_delurb(dev, cid);
+				urb = client_delurb(dev, cid, NULL);
 			}
 
 			while (client_delread(dev, cid, 0, &data, &size))
@@ -963,16 +968,16 @@ static bool client_addurb(struct qcusbnet *dev, u16 cid, struct urb *urb)
 	}
 
 	req->urb = urb;
-	list_add_tail(&req->node, &client->urbs);
+	list_add(&req->node, &client->urbs);
 
 	return true;
 }
 
-static struct urb *client_delurb(struct qcusbnet *dev, u16 cid)
+static struct urb *client_delurb(struct qcusbnet *dev, u16 cid, struct urb *urb)
 {
 	struct client *client;
 	struct urbreq *req;
-	struct urb *urb;
+	struct list_head *node;
 
 	assert_locked(dev);
 
@@ -982,16 +987,17 @@ static struct urb *client_delurb(struct qcusbnet *dev, u16 cid)
 		return NULL;
 	}
 
-	if (list_empty(&client->urbs)) {
-		DBG("No URB's to pop\n");
-		return NULL;
+	list_for_each(node, &client->urbs) {
+		req = list_entry(node, struct urbreq, node);
+		if (urb == NULL || req->urb == urb) {
+			list_del(&req->node);
+			urb = req->urb;
+			kfree(req);
+			return urb;
+		}
 	}
-
-	req = list_first_entry(&client->urbs, struct urbreq, node);
-	list_del(&req->node);
-	urb = req->urb;
-	kfree(req);
-	return urb;
+	DBG("No matching URB's to pop\n");
+	return NULL;
 }
 
 static int devqmi_open(struct inode *inode, struct file *file)
