@@ -271,10 +271,12 @@ static void int_callback(struct urb *urb)
 					     DEFAULT_READ_URB_LENGTH,
 					     read_callback, dev);
 			status = usb_submit_urb(dev->qmi.readurb, GFP_ATOMIC);
-			if (status) {
-				DBG("Error submitting Read URB %d\n", status);
+			if (status == 0) {
+				/* Do not resubmit the int_urb because
+				 * it will be resubmitted in read_callback */
 				return;
 			}
+			DBG("Error submitting Read URB %d\n", status);
 		} else if ((urb->actual_length == 16) &&
 			   (*(u64 *)urb->transfer_buffer == CDC_CONNECTION_SPEED_CHANGE)) {
 			/* if upstream or downstream is 0, stop traffic.
