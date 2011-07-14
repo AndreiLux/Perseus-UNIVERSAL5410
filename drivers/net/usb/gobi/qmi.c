@@ -18,6 +18,7 @@
 
 #include "qmi.h"
 #include "buffer.h"
+#include "structs.h"
 
 #include <linux/string.h>
 
@@ -187,7 +188,9 @@ int qmux_parse(u16 *cid, void *buf, size_t size)
 {
 	struct qmux *qmux = buf;
 
-	if (!buf || size < 12)
+	BUG_ON(!buf);
+
+	if (size < 12)
 		return -ENOMEM;
 
 	if (qmux->tf != 1 || qmux->len != size - 1 || qmux->ctrl != 0x80)
@@ -217,39 +220,68 @@ static u16 tlv_get(void *msg, u16 msgsize, u8 type, void *buf, u16 bufsize)
 	u16 pos;
 	u16 msize = 0;
 
-	if (!msg || !buf)
-		return -ENOMEM;
+	BUG_ON(!msg || !buf);
 
-	for (pos = 4;  pos + 3 < msgsize; pos += msize + 3) {
+	for (pos = 4; pos + 3 < msgsize; pos += msize + 3) {
 		msize = *(u16 *)(msg + pos + 1);
-		if (*(u8 *)(msg + pos) == type) {
-			if (bufsize < msize)
-				return -ENOMEM;
 
-			memcpy(buf, msg + pos + 3, msize);
-			return msize;
+		if (*(u8 *)(msg + pos) != type)
+			continue;
+
+		if (bufsize < msize) {
+			WRN("found type 0x%02x, "
+			    "but value too big (%d > %d)",
+			    type, msize, bufsize);
+			return -ENOMEM;
 		}
+
+		memcpy(buf, msg + pos + 3, msize);
+
+		return msize;
 	}
 
+	WRN("didn't find type 0x%02x", type);
 	return -ENOMSG;
 }
 
 int qmi_msgisvalid(void *msg, u16 size)
 {
-	char tlv[4];
+	u16 tlv[2];
+	int result;
+	u16 tsize;
 
-	if (tlv_get(msg, size, 2, &tlv[0], 4) == 4) {
-		if (*(u16 *)&tlv[0] != 0)
-			return *(u16 *)&tlv[2];
-		else
-			return 0;
+	BUG_ON(!msg);
+
+	result = tlv_get(msg, size, 2, tlv, 4);
+	if (result < 0) {
+		WRN("tlv_get failed: %d", result);
+		return result;
 	}
-	return -ENOMSG;
+	tsize = result;
+
+	if (tsize != 4) {
+		WRN("size is wrong (%d != 4)", tsize);
+		return -ENOMSG;
+	}
+
+	if (tlv[0] != 0) {
+		WRN("tlv[0]=%d, tlv[1]=%d", tlv[0], tlv[1]);
+		return tlv[1];
+	} else {
+		return 0;
+	}
 }
 
 int qmi_msgid(void *msg, u16 size)
 {
-	return size < 2 ? -ENODATA : *(u16 *)msg;
+	BUG_ON(!msg);
+
+	if (size < 2) {
+		WRN("message too short (%d < 2)", size);
+		return -ENODATA;
+	}
+
+	return *(u16 *)msg;
 }
 
 int qmictl_alloccid_resp(void *buf, u16 size, u16 *cid)
@@ -257,23 +289,37 @@ int qmictl_alloccid_resp(void *buf, u16 size, u16 *cid)
 	int result;
 	u8 offset = sizeof(struct qmux) + 2;
 
-	if (!buf || size < offset)
+	BUG_ON(!buf);
+
+	if (size < offset) {
+		WRN("message too short (%d < %d)", size, offset);
 		return -ENOMEM;
+	}
 
 	buf = buf + offset;
 	size -= offset;
 
 	result = qmi_msgid(buf, size);
-	if (result != 0x22)
+	if (result != 0x22) {
+		WRN("wrong message ID (0x%02x != 0x22)", result);
 		return -EFAULT;
+	}
 
 	result = qmi_msgisvalid(buf, size);
-	if (result != 0)
+	if (result != 0) {
+		WRN("invalid message");
 		return -EFAULT;
+	}
 
 	result = tlv_get(buf, size, 0x01, cid, 2);
-	if (result != 2)
+	if (result < 0) {
+		WRN("tlv_get failed: %d", result);
+		return result;
+	}
+	if (result != 2) {
+		WRN("size is wrong (%d != 2)", result);
 		return -EFAULT;
+	}
 
 	return 0;
 }
@@ -283,7 +329,9 @@ int qmictl_freecid_resp(void *buf, u16 size)
 	int result;
 	u8 offset = sizeof(struct qmux) + 2;
 
-	if (!buf || size < offset)
+	BUG_ON(!buf);
+
+	if (size < offset)
 		return -ENOMEM;
 
 	buf = buf + offset;
@@ -307,14 +355,19 @@ int qmiwds_event_resp(void *buf, u16 size, struct qmiwds_stats *stats)
 
 	u8 offset = sizeof(struct qmux) + 3;
 
-	if (!buf || size < offset || !stats)
+	BUG_ON(!buf || !stats);
+
+	if (size < offset) {
+		WRN("message too short (%d < %d)", size, offset);
 		return -ENOMEM;
+	}
 
 	buf = buf + offset;
 	size -= offset;
 
 	result = qmi_msgid(buf, size);
 	if (result == 0x01) {
+		/* TODO(ttuttle): Error checking? */
 		tlv_get(buf, size, 0x10, &stats->txok, 4);
 		tlv_get(buf, size, 0x11, &stats->rxok, 4);
 		tlv_get(buf, size, 0x12, &stats->txerr, 4);
@@ -325,14 +378,17 @@ int qmiwds_event_resp(void *buf, u16 size, struct qmiwds_stats *stats)
 		tlv_get(buf, size, 0x1A, &stats->rxbytesok, 8);
 	} else if (result == 0x22) {
 		result = tlv_get(buf, size, 0x01, &status[0], 2);
+		if (result < 0) {
+			WRN("tlv_get failed: %d", result);
+			return result;
+		}
+
 		if (result >= 1)
 			stats->linkstate = status[0] == 0x02;
 		if (result == 2)
 			stats->reconfigure = status[1] == 0x01;
-
-		if (result < 0)
-			return result;
 	} else {
+		WRN("wrong message ID (0x%02x != 0x01, 0x22)", result);
 		return -EFAULT;
 	}
 
@@ -345,23 +401,42 @@ int qmidms_meid_resp(void *buf,	u16 size, char *meid, int meidsize)
 
 	u8 offset = sizeof(struct qmux) + 3;
 
-	if (!buf || size < offset || meidsize < 14)
+	BUG_ON(!buf);
+
+	if (size < offset) {
+		WRN("message too short (%d < %d)", size, offset);
 		return -ENOMEM;
+	}
+
+	if (meidsize < 14) {
+		WRN("buffer too small (%d < %d)", meidsize, 14);
+		return -ENOMEM;
+	}
 
 	buf = buf + offset;
 	size -= offset;
 
 	result = qmi_msgid(buf, size);
-	if (result != 0x25)
+	if (result != 0x25) {
+		WRN("wrong message ID (0x%02x != 0x25)", result);
 		return -EFAULT;
+	}
 
 	result = qmi_msgisvalid(buf, size);
-	if (result)
+	if (result) {
+		WRN("invalid message");
 		return -EFAULT;
+	}
 
 	result = tlv_get(buf, size, 0x12, meid, 14);
-	if (result != 14)
+	if (result < 0) {
+		WRN("tlv_get failed: %d", result);
 		return -EFAULT;
+	}
+	if (result != 14) {
+		WRN("size is wrong (%d != 14)", result);
+		return -EFAULT;
+	}
 
 	return 0;
 }

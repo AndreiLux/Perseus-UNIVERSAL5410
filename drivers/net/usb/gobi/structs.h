@@ -33,10 +33,12 @@
 
 #include <linux/fdtable.h>
 
+#define WRN(fmt, arg...) printk(KERN_INFO "gobi: %s: " fmt, __func__, ##arg)
+
 #define DBG(fmt, arg...)						\
 do {									\
 	if (qcusbnet_debug == 1)					\
-		printk(KERN_INFO "QCUSBNet2k::%s " fmt, __func__, ##arg); \
+		printk(KERN_INFO "gobi: %s: " fmt, __func__, ##arg); \
 } while (0)
 
 struct qcusbnet;
