@@ -230,13 +230,16 @@ static void qcnet_unbind(struct usbnet *usbnet, struct usb_interface *iface)
 
 static void qcnet_bg_complete(struct work_struct *work)
 {
+	unsigned long listflags;
 	struct qcusbnet *dev = container_of(work, struct qcusbnet, complete);
 	BUG_ON(!dev->active);
 	usb_free_urb(dev->active);
 	dev->active = NULL;
 	usb_autopm_put_interface(dev->iface);
+	spin_lock_irqsave(&dev->urbs_lock, listflags);
 	if (!list_empty(&dev->urbs))
 		queue_work(dev->workqueue, &dev->startxmit);
+	spin_unlock_irqrestore(&dev->urbs_lock, listflags);
 }
 
 static void qcnet_complete(struct urb *urb)
@@ -269,20 +272,14 @@ static void qcnet_txtimeout(struct net_device *netdev)
 
 static void qcnet_bg_startxmit(struct work_struct *work)
 {
+	unsigned long listflags;
 	struct qcusbnet *dev = container_of(work, struct qcusbnet, startxmit);
-	struct urbreq *req;
+	struct urbreq *req = NULL;
 	int status;
 
 	if (dev->active)
 		return;
-	if (list_empty(&dev->urbs))
-		/* If we hit this case, it means that we added our urb to the
-		 * list while there was an urb in flight, and that urb
-		 * completed, causing our urb to be submitted; in addition, our
-		 * urb completed too, all before we got to schedule this work.
-		 * Unlikely, but possible. */
-		return;
-	req = list_first_entry(&dev->urbs, struct urbreq, node);
+
 	status = usb_autopm_get_interface(dev->iface);
 	if (status < 0) {
 		printk(KERN_WARNING "gobi: can't autoresume interface: %d", status);
@@ -295,7 +292,22 @@ static void qcnet_bg_startxmit(struct work_struct *work)
 		return;
 	}
 
-	list_del(&req->node);
+	spin_lock_irqsave(&dev->urbs_lock, listflags);
+	if (!list_empty(&dev->urbs)) {
+		req = list_first_entry(&dev->urbs, struct urbreq, node);
+		list_del(&req->node);
+	}
+	spin_unlock_irqrestore(&dev->urbs_lock, listflags);
+	if (req == NULL) {
+		/* If we hit this case, it means that we added our urb to the
+		 * list while there was an urb in flight, and that urb
+		 * completed, causing our urb to be submitted; in addition, our
+		 * urb completed too, all before we got to schedule this work.
+		 * Unlikely, but possible. */
+		usb_autopm_put_interface(dev->iface);
+		return;
+	}
+
 	dev->active = req->urb;
 	status = usb_submit_urb(dev->active, GFP_KERNEL);
 	if (status < 0) {
@@ -310,6 +322,7 @@ static void qcnet_bg_startxmit(struct work_struct *work)
 
 static int qcnet_startxmit(struct sk_buff *skb, struct net_device *netdev)
 {
+	unsigned long listflags;
 	struct urbreq *req;
 	void *data;
 	struct usbnet *usbnet = netdev_priv(netdev);
@@ -347,7 +360,10 @@ static int qcnet_startxmit(struct sk_buff *skb, struct net_device *netdev)
 	usb_fill_bulk_urb(req->urb, dev->usbnet->udev, dev->usbnet->out,
 			  data, skb->len, qcnet_complete, dev);
 
+	spin_lock_irqsave(&dev->urbs_lock, listflags);
 	list_add_tail(&req->node, &dev->urbs);
+	spin_unlock_irqrestore(&dev->urbs_lock, listflags);
+
 	queue_work(dev->workqueue, &dev->startxmit);
 
 	netdev->trans_start = jiffies;
@@ -533,7 +549,9 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 	INIT_LIST_HEAD(&dev->qmi.clients);
 	dev->workqueue = alloc_ordered_workqueue("gobi", 0);
 
+	spin_lock_init(&dev->urbs_lock);
 	INIT_LIST_HEAD(&dev->urbs);
+	dev->active = NULL;
 	INIT_WORK(&dev->startxmit, qcnet_bg_startxmit);
 	INIT_WORK(&dev->txtimeout, qcnet_bg_txtimeout);
 	INIT_WORK(&dev->complete, qcnet_bg_complete);

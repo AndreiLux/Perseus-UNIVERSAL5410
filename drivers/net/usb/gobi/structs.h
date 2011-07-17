@@ -83,6 +83,7 @@ struct qcusbnet {
 	char meid[14];
 
 	struct workqueue_struct *workqueue;
+	spinlock_t urbs_lock;
 	struct list_head urbs;
 	struct urb *active;
 
