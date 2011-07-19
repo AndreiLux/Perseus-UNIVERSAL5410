@@ -215,7 +215,7 @@ int qmux_fill(u16 cid, struct buffer *buf)
 	return 0;
 }
 
-static u16 tlv_get(void *msg, u16 msgsize, u8 type, void *buf, u16 bufsize)
+static int tlv_get(void *msg, u16 msgsize, u8 type, void *buf, u16 bufsize)
 {
 	u16 pos;
 	u16 msize = 0;
