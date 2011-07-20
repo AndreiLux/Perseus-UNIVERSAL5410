@@ -662,6 +662,7 @@ int dm_bht_compute(struct dm_bht *bht, void *read_cb_ctx)
 			}
 
 			entry->nodes = page_address(pg);
+			memset(entry->nodes, 0, PAGE_SIZE);
 			atomic_set(&entry->state, DM_BHT_ENTRY_READY);
 
 			if (i == (level->count - 1))
