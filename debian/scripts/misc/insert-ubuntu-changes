@@ -10,7 +10,7 @@ $start =~ s/.*\.//;
 
 my @changes = ();
 my $output = 0;
-open(CHG, "<debian.master/changelog") ||
+open(CHG, "<debian.linaro/changelog") ||
 	open(CHG, "<debian/changelog") ||
 	die "$0: debian/changelog: open failed - $!\n";
 while (<CHG>) {

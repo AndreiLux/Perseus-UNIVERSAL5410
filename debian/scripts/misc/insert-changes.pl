@@ -4,7 +4,7 @@ my $debian;
 $droot = $ARGV[0] if (defined $ARGV[0]);
 $droot = 'debian' if (!defined $droot);
 $debian = $ARGV[1] if (defined $ARGV[1]);
-$debian = 'debian.master' if (!defined $debian);
+$debian = 'debian.linaro' if (!defined $debian);
 
 system("make -s -f $droot/rules printchanges > $debian/changes");
 

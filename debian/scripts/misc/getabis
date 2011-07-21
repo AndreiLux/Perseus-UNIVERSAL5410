@@ -14,6 +14,8 @@ abi=$(echo $revision | awk -F. '{print $1}')
 verabi=$ver-$abi
 verfull=$ver-$revision
 
+src_pkg_name=$(dpkg-parsechangelog -l${DEBIAN}/changelog|grep Source|sed 's/^.*Source: //')
+
 WGET="wget --quiet -c"
 
 abidir="`pwd`/$DEBIAN/abi/$verfull"
@@ -38,8 +40,9 @@ getall() {
 		cd $tmpdir
 		for r in "${repo_list[@]}"
 		do
+			url="`echo $r | sed 's/linux$/'${src_pkg_name}'/'`"
 			if ! [ -f $filename ]; then
-				$WGET $r/$filename
+				$WGET $url/$filename
 			fi
 		done
 		if [ "$?" = "0" ]; then

@@ -24,7 +24,7 @@ case "$mode" in
 esac
 kerneldir="`pwd`"
 confdir="$kerneldir/${DEBIAN}/config"
-sharedconfdir="$kerneldir/debian.master/config"
+sharedconfdir="$kerneldir/debian.linaro/config"
 variant="$2"
 
 . $DEBIAN/etc/kernelconfig
