@@ -119,13 +119,13 @@ static int dm_bht_compute_hash(struct dm_bht *bht, struct page *pg,
 }
 
 static __always_inline struct dm_bht_level *dm_bht_get_level(struct dm_bht *bht,
-							     unsigned int depth)
+							     int depth)
 {
 	return &bht->levels[depth];
 }
 
 static __always_inline unsigned int dm_bht_get_level_shift(struct dm_bht *bht,
-						  unsigned int depth)
+							   int depth)
 {
 	return (bht->depth - depth) * bht->node_count_shift;
 }
@@ -134,7 +134,7 @@ static __always_inline unsigned int dm_bht_get_level_shift(struct dm_bht *bht,
  * index for depth.
  */
 static __always_inline unsigned int dm_bht_index_at_level(struct dm_bht *bht,
-							  unsigned int depth,
+							  int depth,
 							  unsigned int leaf)
 {
 	return leaf >> dm_bht_get_level_shift(bht, depth);
@@ -148,7 +148,7 @@ static __always_inline u8 *dm_bht_node(struct dm_bht *bht,
 }
 
 static inline struct dm_bht_entry *dm_bht_get_entry(struct dm_bht *bht,
-						    unsigned int depth,
+						    int depth,
 						    unsigned int block)
 {
 	unsigned int index = dm_bht_index_at_level(bht, depth, block);
@@ -161,7 +161,7 @@ static inline struct dm_bht_entry *dm_bht_get_entry(struct dm_bht *bht,
 
 static inline u8 *dm_bht_get_node(struct dm_bht *bht,
 				  struct dm_bht_entry *entry,
-				  unsigned int depth,
+				  int depth,
 				  unsigned int block)
 {
 	unsigned int index = dm_bht_index_at_level(bht, depth, block);
@@ -262,7 +262,7 @@ int dm_bht_create(struct dm_bht *bht, unsigned int block_count,
 	}
 
 	bht->depth = DIV_ROUND_UP(fls(block_count - 1), bht->node_count_shift);
-	DMDEBUG("Setting depth to %u.", bht->depth);
+	DMDEBUG("Setting depth to %d.", bht->depth);
 
 	/* Ensure that we can safely shift by this value. */
 	if (bht->depth * bht->node_count_shift >= sizeof(unsigned int) * 8) {
@@ -333,7 +333,7 @@ static int dm_bht_initialize_entries(struct dm_bht *bht)
 	unsigned int last_index = ALIGN(bht->block_count, bht->node_count) - 1;
 	unsigned int total_entries = 0;
 	struct dm_bht_level *level = NULL;
-	unsigned int depth;
+	int depth;
 
 	/* check that the largest level->count can't result in an int overflow
 	 * on allocation or sector calculation.
@@ -354,7 +354,7 @@ static int dm_bht_initialize_entries(struct dm_bht *bht)
 		level = dm_bht_get_level(bht, depth);
 		level->count = dm_bht_index_at_level(bht, depth,
 						     last_index) + 1;
-		DMDEBUG("depth: %u entries: %u", depth, level->count);
+		DMDEBUG("depth: %d entries: %u", depth, level->count);
 		/* TODO(wad) consider the case where the data stored for each
 		 * level is done with contiguous pages (instead of using
 		 * entry->nodes) and the level just contains two bitmaps:
@@ -366,7 +366,7 @@ static int dm_bht_initialize_entries(struct dm_bht *bht)
 					 sizeof(struct dm_bht_entry),
 					 GFP_KERNEL);
 		if (!level->entries) {
-			DMERR("failed to allocate entries for depth %u",
+			DMERR("failed to allocate entries for depth %d",
 			      bht->depth);
 			/* let the caller clean up the mess */
 			return -ENOMEM;
@@ -456,7 +456,7 @@ EXPORT_SYMBOL(dm_bht_write_completed);
 static int dm_bht_verify_path(struct dm_bht *bht, unsigned int block,
 			      struct page *pg, unsigned int offset)
 {
-	unsigned int depth = bht->depth;
+	int depth = bht->depth;
 	u8 digest[DM_BHT_MAX_DIGEST_SIZE];
 	struct dm_bht_entry *entry;
 	u8 *node;
@@ -505,7 +505,7 @@ static int dm_bht_verify_path(struct dm_bht *bht, unsigned int block,
 	return 0;
 
 mismatch:
-	DMERR_LIMIT("verify_path: failed to verify hash (d=%u,bi=%u)",
+	DMERR_LIMIT("verify_path: failed to verify hash (d=%d,bi=%u)",
 		    depth, block);
 	dm_bht_log_mismatch(bht, node, digest);
 	return DM_BHT_ENTRY_ERROR_MISMATCH;
@@ -666,7 +666,7 @@ int dm_bht_compute(struct dm_bht *bht, void *read_cb_ctx)
 
 				r = dm_bht_compute_hash(bht, pg, 0, digest);
 				if (r) {
-					DMERR("Failed to update (d=%u,i=%u)",
+					DMERR("Failed to update (d=%d,i=%u)",
 					      depth, i);
 					goto out;
 				}
@@ -694,7 +694,7 @@ EXPORT_SYMBOL(dm_bht_compute);
  */
 int dm_bht_sync(struct dm_bht *bht, void *write_cb_ctx)
 {
-	unsigned int depth;
+	int depth;
 	int ret = 0;
 	int state;
 	sector_t sector;
@@ -743,10 +743,9 @@ EXPORT_SYMBOL(dm_bht_sync);
  */
 bool dm_bht_is_populated(struct dm_bht *bht, unsigned int block)
 {
-	unsigned int depth;
+	int depth;
 
-	/* TODO(msb) convert depth to int and avoid ugly cast */
-	for (depth = bht->depth - 1; (int)depth >= 0; depth--) {
+	for (depth = bht->depth - 1; depth >= 0; depth--) {
 		struct dm_bht_entry *entry = dm_bht_get_entry(bht, depth,
 							      block);
 		if (atomic_read(&entry->state) < DM_BHT_ENTRY_READY)
@@ -768,14 +767,14 @@ EXPORT_SYMBOL(dm_bht_is_populated);
 int dm_bht_populate(struct dm_bht *bht, void *ctx,
 		    unsigned int block)
 {
-	unsigned int depth;
+	int depth;
 	int state = 0;
 
 	BUG_ON(block >= bht->block_count);
 
 	DMDEBUG("dm_bht_populate(%u)", block);
 
-	for (depth = bht->depth - 1; (int)depth >= 0; --depth) {
+	for (depth = bht->depth - 1; depth >= 0; --depth) {
 		struct dm_bht_level *level;
 		struct dm_bht_entry *entry;
 		unsigned int index;
@@ -812,7 +811,7 @@ int dm_bht_populate(struct dm_bht *bht, void *ctx,
 	return 0;
 
 error_state:
-	DMCRIT("block %u at depth %u is in an error state", block, depth);
+	DMCRIT("block %u at depth %d is in an error state", block, depth);
 	return state;
 
 nomem:
@@ -850,7 +849,7 @@ EXPORT_SYMBOL(dm_bht_verify_block);
  */
 int dm_bht_destroy(struct dm_bht *bht)
 {
-	unsigned int depth;
+	int depth;
 	int cpu = 0;
 
 	depth = bht->depth;

@@ -82,8 +82,7 @@ typedef int(*dm_bht_callback)(void *,  /* external context */
  */
 struct dm_bht {
 	/* Configured values */
-	/* ENFORCE: depth must be >= 2. */
-	unsigned int depth;  /* Depth of the tree including the root */
+	int depth;  /* Depth of the tree including the root */
 	unsigned int block_count;  /* Number of blocks hashed */
 	char hash_alg[CRYPTO_MAX_ALG_NAME];
 
