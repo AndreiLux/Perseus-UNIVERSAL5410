@@ -229,7 +229,7 @@ static int tlv_get(void *msg, u16 msgsize, u8 type, void *buf, u16 bufsize)
 			continue;
 
 		if (bufsize < msize) {
-			WRN("found type 0x%02x, "
+			GOBI_ERROR("found type 0x%02x, "
 			    "but value too big (%d > %d)",
 			    type, msize, bufsize);
 			return -ENOMEM;
@@ -240,7 +240,7 @@ static int tlv_get(void *msg, u16 msgsize, u8 type, void *buf, u16 bufsize)
 		return msize;
 	}
 
-	WRN("didn't find type 0x%02x", type);
+	GOBI_WARN("didn't find type 0x%02x", type);
 	return -ENOMSG;
 }
 
@@ -254,18 +254,18 @@ int qmi_msgisvalid(void *msg, u16 size)
 
 	result = tlv_get(msg, size, 2, tlv, 4);
 	if (result < 0) {
-		WRN("tlv_get failed: %d", result);
+		GOBI_ERROR("tlv_get failed: %d", result);
 		return result;
 	}
 	tsize = result;
 
 	if (tsize != 4) {
-		WRN("size is wrong (%d != 4)", tsize);
+		GOBI_ERROR("size is wrong (%d != 4)", tsize);
 		return -ENOMSG;
 	}
 
 	if (tlv[0] != 0) {
-		WRN("tlv[0]=%d, tlv[1]=%d", tlv[0], tlv[1]);
+		GOBI_WARN("tlv[0]=%d, tlv[1]=%d", tlv[0], tlv[1]);
 		return tlv[1];
 	} else {
 		return 0;
@@ -277,7 +277,7 @@ int qmi_msgid(void *msg, u16 size)
 	BUG_ON(!msg);
 
 	if (size < 2) {
-		WRN("message too short (%d < 2)", size);
+		GOBI_ERROR("message too short (%d < 2)", size);
 		return -ENODATA;
 	}
 
@@ -292,7 +292,7 @@ int qmictl_alloccid_resp(void *buf, u16 size, u16 *cid)
 	BUG_ON(!buf);
 
 	if (size < offset) {
-		WRN("message too short (%d < %d)", size, offset);
+		GOBI_ERROR("message too short (%d < %d)", size, offset);
 		return -ENOMEM;
 	}
 
@@ -301,23 +301,23 @@ int qmictl_alloccid_resp(void *buf, u16 size, u16 *cid)
 
 	result = qmi_msgid(buf, size);
 	if (result != 0x22) {
-		WRN("wrong message ID (0x%02x != 0x22)", result);
+		GOBI_ERROR("wrong message ID (0x%02x != 0x22)", result);
 		return -EFAULT;
 	}
 
 	result = qmi_msgisvalid(buf, size);
 	if (result != 0) {
-		WRN("invalid message");
+		GOBI_WARN("invalid message");
 		return -EFAULT;
 	}
 
 	result = tlv_get(buf, size, 0x01, cid, 2);
 	if (result < 0) {
-		WRN("tlv_get failed: %d", result);
+		GOBI_ERROR("tlv_get failed: %d", result);
 		return result;
 	}
 	if (result != 2) {
-		WRN("size is wrong (%d != 2)", result);
+		GOBI_ERROR("size is wrong (%d != 2)", result);
 		return -EFAULT;
 	}
 
@@ -331,19 +331,25 @@ int qmictl_freecid_resp(void *buf, u16 size)
 
 	BUG_ON(!buf);
 
-	if (size < offset)
+	if (size < offset) {
+		GOBI_ERROR("message too short (%d < %d)", size, offset);
 		return -ENOMEM;
+	}
 
 	buf = buf + offset;
 	size -= offset;
 
 	result = qmi_msgid(buf, size);
-	if (result != 0x23)
+	if (result != 0x23) {
+		GOBI_ERROR("wrong message ID (0x%02x != 0x23)", result);
 		return -EFAULT;
+	}
 
 	result = qmi_msgisvalid(buf, size);
-	if (result != 0)
+	if (result != 0) {
+		GOBI_ERROR("invalid message");
 		return -EFAULT;
+	}
 
 	return 0;
 }
@@ -358,7 +364,7 @@ int qmiwds_event_resp(void *buf, u16 size, struct qmiwds_stats *stats)
 	BUG_ON(!buf || !stats);
 
 	if (size < offset) {
-		WRN("message too short (%d < %d)", size, offset);
+		GOBI_ERROR("message too short (%d < %d)", size, offset);
 		return -ENOMEM;
 	}
 
@@ -368,6 +374,7 @@ int qmiwds_event_resp(void *buf, u16 size, struct qmiwds_stats *stats)
 	result = qmi_msgid(buf, size);
 	if (result == 0x01) {
 		/* TODO(ttuttle): Error checking? */
+		/* TODO(ttuttle): Endianness? */
 		tlv_get(buf, size, 0x10, &stats->txok, 4);
 		tlv_get(buf, size, 0x11, &stats->rxok, 4);
 		tlv_get(buf, size, 0x12, &stats->txerr, 4);
@@ -379,7 +386,7 @@ int qmiwds_event_resp(void *buf, u16 size, struct qmiwds_stats *stats)
 	} else if (result == 0x22) {
 		result = tlv_get(buf, size, 0x01, &status[0], 2);
 		if (result < 0) {
-			WRN("tlv_get failed: %d", result);
+			GOBI_ERROR("tlv_get failed: %d", result);
 			return result;
 		}
 
@@ -388,7 +395,7 @@ int qmiwds_event_resp(void *buf, u16 size, struct qmiwds_stats *stats)
 		if (result == 2)
 			stats->reconfigure = status[1] == 0x01;
 	} else {
-		WRN("wrong message ID (0x%02x != 0x01, 0x22)", result);
+		GOBI_ERROR("wrong message ID (0x%02x != 0x01, 0x22)", result);
 		return -EFAULT;
 	}
 
@@ -404,12 +411,12 @@ int qmidms_meid_resp(void *buf,	u16 size, char *meid, int meidsize)
 	BUG_ON(!buf);
 
 	if (size < offset) {
-		WRN("message too short (%d < %d)", size, offset);
+		GOBI_ERROR("message too short (%d < %d)", size, offset);
 		return -ENOMEM;
 	}
 
 	if (meidsize < 14) {
-		WRN("buffer too small (%d < %d)", meidsize, 14);
+		GOBI_ERROR("buffer too small (%d < %d)", meidsize, 14);
 		return -ENOMEM;
 	}
 
@@ -418,23 +425,23 @@ int qmidms_meid_resp(void *buf,	u16 size, char *meid, int meidsize)
 
 	result = qmi_msgid(buf, size);
 	if (result != 0x25) {
-		WRN("wrong message ID (0x%02x != 0x25)", result);
+		GOBI_ERROR("wrong message ID (0x%02x != 0x25)", result);
 		return -EFAULT;
 	}
 
 	result = qmi_msgisvalid(buf, size);
 	if (result) {
-		WRN("invalid message");
+		GOBI_ERROR("invalid message");
 		return -EFAULT;
 	}
 
 	result = tlv_get(buf, size, 0x12, meid, 14);
 	if (result < 0) {
-		WRN("tlv_get failed: %d", result);
+		GOBI_ERROR("tlv_get failed: %d", result);
 		return -EFAULT;
 	}
 	if (result != 14) {
-		WRN("size is wrong (%d != 14)", result);
+		GOBI_ERROR("size is wrong (%d != 14)", result);
 		return -EFAULT;
 	}
 

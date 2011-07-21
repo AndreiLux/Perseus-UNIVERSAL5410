@@ -33,13 +33,17 @@
 
 #include <linux/fdtable.h>
 
-#define WRN(fmt, arg...) printk(KERN_INFO "gobi: %s: " fmt, __func__, ##arg)
+extern int gobi_debug;
 
-#define DBG(fmt, arg...)						\
-do {									\
-	if (qcusbnet_debug == 1)					\
+#define GOBI_LOG(lvl, fmt, arg...) \
+do { \
+	if (lvl <= gobi_debug) \
 		printk(KERN_INFO "gobi: %s: " fmt, __func__, ##arg); \
 } while (0)
+
+#define GOBI_ERROR(fmt, arg...) GOBI_LOG(0, fmt, ##arg)
+#define GOBI_WARN(fmt, arg...)  GOBI_LOG(1, fmt, ##arg)
+#define GOBI_DEBUG(fmt, arg...) GOBI_LOG(2, fmt, ##arg)
 
 struct qcusbnet;
 

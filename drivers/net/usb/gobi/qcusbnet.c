@@ -31,7 +31,7 @@
 static LIST_HEAD(qcusbnet_list);
 static DEFINE_MUTEX(qcusbnet_lock);
 
-int qcusbnet_debug;
+int gobi_debug;
 static struct class *devclass;
 
 static void free_dev(struct kref *ref)
@@ -83,11 +83,11 @@ int qc_suspend(struct usb_interface *iface, pm_message_t event)
 	BUG_ON(!dev);
 
 	if (!(event.event & PM_EVENT_AUTO)) {
-		DBG("device suspended to power level %d",
+		GOBI_DEBUG("device suspended to power level %d",
 		    event.event);
 		qc_setdown(dev, DOWN_DRIVER_SUSPENDED);
 	} else {
-		DBG("device autosuspend");
+		GOBI_DEBUG("device autosuspend");
 	}
 
 	if (event.event & PM_EVENT_SUSPEND) {
@@ -118,24 +118,24 @@ static int qc_resume(struct usb_interface *iface)
 
 	oldstate = iface->dev.power.power_state.event;
 	iface->dev.power.power_state.event = PM_EVENT_ON;
-	DBG("resuming from power mode %d", oldstate);
+	GOBI_DEBUG("resuming from power mode %d", oldstate);
 
 	if (oldstate & PM_EVENT_SUSPEND) {
 		qc_cleardown(dev, DOWN_DRIVER_SUSPENDED);
 
 		ret = usbnet_resume(iface);
 		if (ret) {
-			WRN("usbnet_resume failed: %d", ret);
+			GOBI_ERROR("usbnet_resume failed: %d", ret);
 			return ret;
 		}
 
 		ret = qc_startread(dev);
 		if (ret) {
-			WRN("qc_startread failed: %d", ret);
+			GOBI_ERROR("qc_startread failed: %d", ret);
 			return ret;
 		}
 	} else {
-		DBG("nothing to resume");
+		GOBI_DEBUG("nothing to resume");
 		return 0;
 	}
 
@@ -151,13 +151,13 @@ static int qcnet_bind(struct usbnet *usbnet, struct usb_interface *iface)
 	struct usb_host_endpoint *out = NULL;
 
 	if (iface->num_altsetting != 1) {
-		WRN("invalid num_altsetting %u", iface->num_altsetting);
+		GOBI_ERROR("invalid num_altsetting %u", iface->num_altsetting);
 		return -EINVAL;
 	}
 
 	if (iface->cur_altsetting->desc.bInterfaceNumber != 0
 	    && iface->cur_altsetting->desc.bInterfaceNumber != 5) {
-		WRN("invalid interface %d",
+		GOBI_ERROR("invalid interface %d",
 			  iface->cur_altsetting->desc.bInterfaceNumber);
 		return -EINVAL;
 	}
@@ -166,7 +166,7 @@ static int qcnet_bind(struct usbnet *usbnet, struct usb_interface *iface)
 	for (i = 0; i < numends; i++) {
 		endpoint = iface->cur_altsetting->endpoint + i;
 		if (!endpoint) {
-			WRN("invalid endpoint %u", i);
+			GOBI_ERROR("invalid endpoint %u", i);
 			return -EINVAL;
 		}
 
@@ -179,20 +179,20 @@ static int qcnet_bind(struct usbnet *usbnet, struct usb_interface *iface)
 	}
 
 	if (!in || !out) {
-		WRN("invalid endpoints");
+		GOBI_ERROR("invalid endpoints");
 		return -EINVAL;
 	}
 
 	if (usb_set_interface(usbnet->udev,
 			      iface->cur_altsetting->desc.bInterfaceNumber, 0))	{
-		WRN("unable to set interface");
+		GOBI_ERROR("unable to set interface");
 		return -EINVAL;
 	}
 
 	usbnet->in = usb_rcvbulkpipe(usbnet->udev, in->desc.bEndpointAddress & USB_ENDPOINT_NUMBER_MASK);
 	usbnet->out = usb_sndbulkpipe(usbnet->udev, out->desc.bEndpointAddress & USB_ENDPOINT_NUMBER_MASK);
 
-	DBG("in %x, out %x",
+	GOBI_DEBUG("in %x, out %x",
 	    in->desc.bEndpointAddress,
 	    out->desc.bEndpointAddress);
 
@@ -266,7 +266,7 @@ static void qcnet_bg_startxmit(struct work_struct *work)
 
 	status = usb_autopm_get_interface(dev->iface);
 	if (status < 0) {
-		WRN("failed to autoresume interface: %d", status);
+		GOBI_ERROR("failed to autoresume interface: %d", status);
 		if (status == -EPERM)
 			qc_suspend(dev->iface, PMSG_SUSPEND);
 		/* We could just drop the packet here, right...? It seems like
@@ -295,7 +295,7 @@ static void qcnet_bg_startxmit(struct work_struct *work)
 	dev->active = req->urb;
 	status = usb_submit_urb(dev->active, GFP_KERNEL);
 	if (status < 0) {
-		WRN("failed to submit urb: %d (packet dropped)", status);
+		GOBI_ERROR("failed to submit urb: %d (packet dropped)", status);
 		usb_free_urb(dev->active);
 		dev->active = NULL;
 		usb_autopm_put_interface(dev->iface);
@@ -313,14 +313,14 @@ static int qcnet_startxmit(struct sk_buff *skb, struct net_device *netdev)
 	struct qcusbnet *dev = (struct qcusbnet *)usbnet->data[0];
 
 	if (qc_isdown(dev, DOWN_DRIVER_SUSPENDED)) {
-		WRN("device is suspended");
+		GOBI_ERROR("device is suspended");
 		dump_stack();
 		return NETDEV_TX_BUSY;
 	}
 
 	req = kmalloc(sizeof(*req), GFP_ATOMIC);
 	if (!req) {
-		WRN("failed to allocate urbreq");
+		GOBI_ERROR("failed to allocate urbreq");
 		return NETDEV_TX_BUSY;
 	}
 
@@ -328,7 +328,7 @@ static int qcnet_startxmit(struct sk_buff *skb, struct net_device *netdev)
 
 	if (!req->urb) {
 		kfree(req);
-		WRN("failed to allocate urb");
+		GOBI_ERROR("failed to allocate urb");
 		return NETDEV_TX_BUSY;
 	}
 
@@ -336,7 +336,7 @@ static int qcnet_startxmit(struct sk_buff *skb, struct net_device *netdev)
 	if (!data) {
 		usb_free_urb(req->urb);
 		kfree(req);
-		WRN("failed to allocate data buffer");
+		GOBI_ERROR("failed to allocate data buffer");
 		return NETDEV_TX_BUSY;
 	}
 	memcpy(data, skb->data, skb->len);
@@ -374,7 +374,7 @@ static int qcnet_open(struct net_device *netdev)
 			usb_autopm_put_interface(dev->iface);
 		}
 	} else {
-		DBG("no USBNetOpen defined");
+		GOBI_WARN("no USBNetOpen defined");
 	}
 
 	return status;
@@ -469,25 +469,25 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 
 	status = usbnet_probe(iface, vidpids);
 	if (status < 0) {
-		WRN("usbnet_probe failed: %d", status);
+		GOBI_ERROR("usbnet_probe failed: %d", status);
 		return status;
 	}
 
 	usbnet = usb_get_intfdata(iface);
 
 	if (!usbnet) {
-		WRN("usbnet is NULL");
+		GOBI_ERROR("usbnet is NULL");
 		return -ENXIO;
 	}
 
 	if (!usbnet->net) {
-		WRN("usbnet->net is NULL");
+		GOBI_ERROR("usbnet->net is NULL");
 		return -ENXIO;
 	}
 
 	dev = kmalloc(sizeof(struct qcusbnet), GFP_KERNEL);
 	if (!dev) {
-		WRN("failed to allocate struct qcusbnet");
+		GOBI_ERROR("failed to allocate struct qcusbnet");
 		return -ENOMEM;
 	}
 
@@ -497,7 +497,7 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 
 	netdevops = kmalloc(sizeof(struct net_device_ops), GFP_KERNEL);
 	if (!netdevops) {
-		WRN("failed to allocate net device ops");
+		GOBI_ERROR("failed to allocate net device ops");
 		return -ENOMEM;
 	}
 	memcpy(netdevops, usbnet->net->netdev_ops, sizeof(struct net_device_ops));
@@ -591,7 +591,7 @@ static int __init modinit(void)
 {
 	devclass = class_create(THIS_MODULE, "QCQMI");
 	if (IS_ERR(devclass)) {
-		WRN("class_create failed: %ld", PTR_ERR(devclass));
+		GOBI_ERROR("class_create failed: %ld", PTR_ERR(devclass));
 		return -ENOMEM;
 	}
 	printk(KERN_INFO "%s: %s", DRIVER_DESC, DRIVER_VERSION);
@@ -611,5 +611,5 @@ MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_LICENSE("Dual BSD/GPL");
 
-module_param(qcusbnet_debug, bool, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(qcusbnet_debug, "Debugging enabled or not");
+module_param(gobi_debug, int, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(gobi_debug, "Debugging level");

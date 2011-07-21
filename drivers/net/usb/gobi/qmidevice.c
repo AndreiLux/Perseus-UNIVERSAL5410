@@ -58,7 +58,6 @@ struct qmihandle {
 	struct qcusbnet *dev;
 };
 
-extern int qcusbnet_debug;
 static int qcusbnet2k_fwdelay;
 
 static bool device_valid(struct qcusbnet *dev);
@@ -94,7 +93,7 @@ static int qmidms_getmeid(struct qcusbnet *dev);
 #define IOCTL_QMI_GET_SERVICE_FILE      (0x8BE0 + 1)
 #define IOCTL_QMI_GET_DEVICE_VIDPID     (0x8BE0 + 2)
 #define IOCTL_QMI_GET_DEVICE_MEID       (0x8BE0 + 3)
-#define IOCTL_QMI_CLOSE                 (0x8BE0 + 4)
+#define IOCTL_QMI_CLOSE		 (0x8BE0 + 4)
 #define CDC_GET_ENCAPSULATED_RESPONSE	0x01A1ll
 #define CDC_CONNECTION_SPEED_CHANGE	0x08000000002AA1ll
 
@@ -155,11 +154,11 @@ static int resubmit_int_urb(struct urb *urb)
 
 	interval = urb->dev->speed == USB_SPEED_HIGH ? 7 : 3;
 	usb_fill_int_urb(urb, urb->dev, urb->pipe, urb->transfer_buffer,
-	                 urb->transfer_buffer_length, urb->complete,
-	                 urb->context, interval);
+			 urb->transfer_buffer_length, urb->complete,
+			 urb->context, interval);
 	status = usb_submit_urb(urb, GFP_ATOMIC);
 	if (status)
-		WRN("failed to resubmit int urb: %d", status);
+		GOBI_ERROR("failed to resubmit int urb: %d", status);
 	return status;
 }
 
@@ -180,34 +179,34 @@ static void read_callback(struct urb *urb)
 
 	dev = urb->context;
 	if (!device_valid(dev)) {
-		WRN("invalid device");
+		GOBI_ERROR("invalid device");
 		return;
 	}
 
 	if (urb->status) {
-		WRN("urb status = %d", urb->status);
+		GOBI_ERROR("urb status = %d", urb->status);
 		resubmit_int_urb(dev->qmi.inturb);
 		return;
 	}
 
-	DBG("read %d bytes", urb->actual_length);
+	GOBI_DEBUG("read %d bytes", urb->actual_length);
 
 	data = urb->transfer_buffer;
 	size = urb->actual_length;
 
-	if (qcusbnet_debug)
+	if (gobi_debug >= 2)
 		print_hex_dump(KERN_INFO, "gobi-read: ", DUMP_PREFIX_OFFSET,
-		               16, 1, data, size, true);
+			       16, 1, data, size, true);
 
 	result = qmux_parse(&cid, data, size);
 	if (result < 0) {
-		WRN("failed to parse read: %d", result);
+		GOBI_ERROR("failed to parse read: %d", result);
 		resubmit_int_urb(dev->qmi.inturb);
 		return;
 	}
 
 	if (size < result + 3) {
-		WRN("data buffer too small (%d < %d)", size, result + 3);
+		GOBI_ERROR("data buffer too small (%d < %d)", size, result + 3);
 		resubmit_int_urb(dev->qmi.inturb);
 		return;
 	}
@@ -226,8 +225,9 @@ static void read_callback(struct urb *urb)
 			if (!client_addread(dev, client->cid, tid, copy, size)) {
 				kfree(copy);
 				spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
-				WRN("failed to add read; discarding read of "
-				    "cid=0x%04x tid=0x%04x", cid, tid);
+				GOBI_ERROR("failed to add read; discarding "
+					   "read of cid=0x%04x tid=0x%04x",
+					   cid, tid);
 				resubmit_int_urb(dev->qmi.inturb);
 				return;
 			}
@@ -249,12 +249,12 @@ static void int_callback(struct urb *urb)
 	struct qcusbnet *dev = (struct qcusbnet *)urb->context;
 
 	if (!device_valid(dev)) {
-		DBG("invalid device");
+		GOBI_WARN("invalid device");
 		return;
 	}
 
 	if (urb->status) {
-		WRN("urb status = %d", urb->status);
+		GOBI_ERROR("urb status = %d", urb->status);
 		if (urb->status != -EOVERFLOW)
 			return;
 	} else {
@@ -272,7 +272,7 @@ static void int_callback(struct urb *urb)
 				 * it will be resubmitted in read_callback */
 				return;
 			}
-			WRN("failed to submit read urb: %d", status);
+			GOBI_ERROR("failed to submit read urb: %d", status);
 		} else if ((urb->actual_length == 16) &&
 			   (*(u64 *)urb->transfer_buffer == CDC_CONNECTION_SPEED_CHANGE)) {
 			/* if upstream or downstream is 0, stop traffic.
@@ -280,20 +280,20 @@ static void int_callback(struct urb *urb)
 			if ((*(u32 *)(urb->transfer_buffer + 8) == 0) ||
 			    (*(u32 *)(urb->transfer_buffer + 12) == 0)) {
 				qc_setdown(dev, DOWN_CDC_CONNECTION_SPEED);
-				DBG("traffic stopping due to "
-				    "CONNECTION_SPEED_CHANGE");
+				GOBI_DEBUG("traffic stopping due to "
+					   "CONNECTION_SPEED_CHANGE");
 			} else {
 				qc_cleardown(dev, DOWN_CDC_CONNECTION_SPEED);
-				DBG("resuming traffic due to "
-				    "CONNECTION_SPEED_CHANGE");
+				GOBI_DEBUG("resuming traffic due to "
+					   "CONNECTION_SPEED_CHANGE");
 			}
 		} else {
-			WRN("ignoring invalid int urb");
-			if (qcusbnet_debug)
+			GOBI_ERROR("ignoring invalid int urb");
+			if (gobi_debug >= 1)
 				print_hex_dump(KERN_INFO, "gobi-int: ",
-				               DUMP_PREFIX_OFFSET, 16, 1,
-				               urb->transfer_buffer,
-				               urb->actual_length, true);
+					       DUMP_PREFIX_OFFSET, 16, 1,
+					       urb->transfer_buffer,
+					       urb->actual_length, true);
 		}
 	}
 
@@ -307,26 +307,26 @@ int qc_startread(struct qcusbnet *dev)
 	int status;
 
 	if (!device_valid(dev)) {
-		WRN("invalid device");
+		GOBI_ERROR("invalid device");
 		return -ENXIO;
 	}
 
 	dev->qmi.readurb = usb_alloc_urb(0, GFP_KERNEL);
 	if (!dev->qmi.readurb) {
-		WRN("failed to allocate read urb");
+		GOBI_ERROR("failed to allocate read urb");
 		return -ENOMEM;
 	}
 
 	dev->qmi.inturb = usb_alloc_urb(0, GFP_KERNEL);
 	if (!dev->qmi.inturb) {
-		WRN("failed to allocate int urb");
+		GOBI_ERROR("failed to allocate int urb");
 		usb_free_urb(dev->qmi.readurb);
 		return -ENOMEM;
 	}
 
 	dev->qmi.readbuf = kmalloc(DEFAULT_READ_URB_LENGTH, GFP_KERNEL);
 	if (!dev->qmi.readbuf) {
-		WRN("failed to allocate read buffer");
+		GOBI_ERROR("failed to allocate read buffer");
 		usb_free_urb(dev->qmi.readurb);
 		usb_free_urb(dev->qmi.inturb);
 		return -ENOMEM;
@@ -334,7 +334,7 @@ int qc_startread(struct qcusbnet *dev)
 
 	dev->qmi.intbuf = kmalloc(DEFAULT_READ_URB_LENGTH, GFP_KERNEL);
 	if (!dev->qmi.intbuf) {
-		WRN("failed to allocate int buffer");
+		GOBI_ERROR("failed to allocate int buffer");
 		usb_free_urb(dev->qmi.readurb);
 		usb_free_urb(dev->qmi.inturb);
 		kfree(dev->qmi.readbuf);
@@ -343,7 +343,7 @@ int qc_startread(struct qcusbnet *dev)
 
 	dev->qmi.readsetup = kmalloc(sizeof(*dev->qmi.readsetup), GFP_KERNEL);
 	if (!dev->qmi.readsetup) {
-		WRN("failed to allocate setup packet buffer");
+		GOBI_ERROR("failed to allocate setup packet buffer");
 		usb_free_urb(dev->qmi.readurb);
 		usb_free_urb(dev->qmi.inturb);
 		kfree(dev->qmi.readbuf);
@@ -365,19 +365,19 @@ int qc_startread(struct qcusbnet *dev)
 			 int_callback, dev, interval);
 	status = usb_submit_urb(dev->qmi.inturb, GFP_KERNEL);
 	if (status != 0)
-		WRN("failed to submit int urb: %d", status);
+		GOBI_ERROR("failed to submit int urb: %d", status);
 	return status;
 }
 
 void qc_stopread(struct qcusbnet *dev)
 {
 	if (dev->qmi.readurb) {
-		DBG("killing read urb");
+		GOBI_DEBUG("killing read urb");
 		usb_kill_urb(dev->qmi.readurb);
 	}
 
 	if (dev->qmi.inturb) {
-		DBG("killing int urb");
+		GOBI_DEBUG("killing int urb");
 		usb_kill_urb(dev->qmi.inturb);
 	}
 
@@ -405,7 +405,7 @@ static int read_async(struct qcusbnet *dev, u16 cid, u16 tid,
 	unsigned long flags;
 
 	if (!device_valid(dev)) {
-		WRN("invalid device (cid=0x%04x, tid=0x%04x)", cid, tid);
+		GOBI_ERROR("invalid device (cid=0x%04x, tid=0x%04x)", cid, tid);
 		return -ENXIO;
 	}
 
@@ -414,8 +414,8 @@ static int read_async(struct qcusbnet *dev, u16 cid, u16 tid,
 	client = client_bycid(dev, cid);
 	if (!client) {
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
-		WRN("could not find client (cid=0x%04x, tid=0x%04x)",
-		    cid, tid);
+		GOBI_ERROR("could not find client (cid=0x%04x, tid=0x%04x)",
+			   cid, tid);
 		return -ENXIO;
 	}
 
@@ -430,7 +430,8 @@ static int read_async(struct qcusbnet *dev, u16 cid, u16 tid,
 
 	if (!client_addnotify(dev, cid, tid, hook, data)) {
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
-		WRN("failed to add notify (cid=0x%04x, tid=0x%04x)", cid, tid);
+		GOBI_ERROR("failed to add notify (cid=0x%04x, tid=0x%04x)",
+			   cid, tid);
 		/* TODO(ttuttle): return error? */
 		return 0;
 	}
@@ -442,7 +443,7 @@ static int read_async(struct qcusbnet *dev, u16 cid, u16 tid,
 
 static void upsem(struct qcusbnet *dev, u16 cid, void *data)
 {
-	DBG("(cid=0x%04x)", cid);
+	GOBI_DEBUG("(cid=0x%04x)", cid);
 	up((struct semaphore *)data);
 }
 
@@ -458,7 +459,7 @@ static int read_sync(struct qcusbnet *dev, void **buf, u16 cid, u16 tid)
 	u16 size;
 
 	if (!device_valid(dev)) {
-		WRN("invalid device");
+		GOBI_ERROR("invalid device");
 		return -ENXIO;
 	}
 
@@ -467,7 +468,8 @@ static int read_sync(struct qcusbnet *dev, void **buf, u16 cid, u16 tid)
 	client = client_bycid(dev, cid);
 	if (!client) {
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
-		WRN("could not find client (cid=0x%04x, tid=0x%04x)", cid, tid);
+		GOBI_ERROR("could not find client (cid=0x%04x, tid=0x%04x)",
+			   cid, tid);
 		return -ENXIO;
 	}
 
@@ -475,10 +477,8 @@ static int read_sync(struct qcusbnet *dev, void **buf, u16 cid, u16 tid)
 		sema_init(&sem, 0);
 		if (!client_addnotify(dev, cid, tid, upsem, &sem)) {
 			spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
-			/* TODO(ttuttle): should be WRN, but on dying-client
-			   path. */
-			DBG("failed to register for notification"
-			    " (cid=0x%04x, tid=0x%04x)", cid, tid);
+			GOBI_WARN("failed to register for notification "
+				  "(cid=0x%04x, tid=0x%04x)", cid, tid);
 			return -EFAULT;
 		}
 
@@ -486,7 +486,7 @@ static int read_sync(struct qcusbnet *dev, void **buf, u16 cid, u16 tid)
 
 		result = down_interruptible(&sem);
 		if (result) {
-			DBG("interrupted: %d (cid=0x%04x, tid=0x%04x)",
+			GOBI_WARN("interrupted: %d (cid=0x%04x, tid=0x%04x)",
 			    result, cid, tid);
 
 			spin_lock_irqsave(&dev->qmi.clients_lock, flags);
@@ -504,8 +504,8 @@ static int read_sync(struct qcusbnet *dev, void **buf, u16 cid, u16 tid)
 		}
 
 		if (!device_valid(dev)) {
-			WRN("invalid device (cid=0x%04x, tid=0x%04x)",
-			    cid, tid);
+			GOBI_ERROR("invalid device (cid=0x%04x, tid=0x%04x)",
+				   cid, tid);
 			return -ENXIO;
 		}
 
@@ -535,7 +535,7 @@ static void write_callback(struct urb *urb)
 {
 	struct writectx *ctx = urb->context;
 
-	DBG("%p %d %d", ctx, urb->status, urb->actual_length);
+	GOBI_DEBUG("%p %d %d", ctx, urb->status, urb->actual_length);
 	up(&ctx->sem);
 	kref_put(&ctx->ref, writectx_release);
 }
@@ -555,20 +555,21 @@ static int write_sync(struct qcusbnet *dev, struct buffer *data_buf, u16 cid)
 	unsigned long flags;
 
 	if (!device_valid(dev)) {
-		WRN("invalid device (cid=0x%04x)", cid);
+		GOBI_ERROR("invalid device (cid=0x%04x)", cid);
 		return -ENXIO;
 	}
 
 	ctx = kmalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx) {
-		WRN("failed to allocate write context (cid=0x%04x)", cid);
+		GOBI_ERROR("failed to allocate write context (cid=0x%04x)",
+			   cid);
 		return -ENOMEM;
 	}
 
 	urb = usb_alloc_urb(0, GFP_KERNEL);
 	if (!urb) {
 		kfree(ctx);
-		WRN("failed to allocate urb (cid=0x%04x)", cid);
+		GOBI_ERROR("failed to allocate urb (cid=0x%04x)", cid);
 		return -ENOMEM;
 	}
 
@@ -589,14 +590,13 @@ static int write_sync(struct qcusbnet *dev, struct buffer *data_buf, u16 cid)
 	usb_fill_control_urb(urb, dev->usbnet->udev,
 			     usb_sndctrlpipe(dev->usbnet->udev, 0),
 			     (unsigned char *)&ctx->setup,
-	                     buffer_data(data_buf), buffer_size(data_buf),
-	                     NULL, dev);
+			     buffer_data(data_buf), buffer_size(data_buf),
+			     NULL, dev);
 
-	DBG("Actual Write:");
-	if (qcusbnet_debug)
+	if (gobi_debug >= 2)
 		print_hex_dump(KERN_INFO,  "gobi-write: ", DUMP_PREFIX_OFFSET,
-		               16, 1, buffer_data(data_buf),
-		               buffer_size(data_buf), true);
+			       16, 1, buffer_data(data_buf),
+			       buffer_size(data_buf), true);
 
 	sema_init(&ctx->sem, 0);
 	kref_init(&ctx->ref);
@@ -611,7 +611,8 @@ static int write_sync(struct qcusbnet *dev, struct buffer *data_buf, u16 cid)
 
 	result = usb_autopm_get_interface(dev->iface);
 	if (result < 0) {
-		DBG("unable to resume interface: %d (cid=0x%04x)", result, cid);
+		GOBI_ERROR("unable to resume interface: %d (cid=0x%04x)",
+			   result, cid);
 		if (result == -EPERM) {
 			qc_suspend(dev->iface, PMSG_SUSPEND);
 		}
@@ -625,7 +626,7 @@ static int write_sync(struct qcusbnet *dev, struct buffer *data_buf, u16 cid)
 	if (!client_addurb(dev, cid, urb)) {
 		usb_free_urb(urb);
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
-		WRN("failed to add urb (cid=0x%04x)", cid);
+		GOBI_ERROR("failed to add urb (cid=0x%04x)", cid);
 		usb_autopm_put_interface(dev->iface);
 		kref_put(&ctx->ref, writectx_release);
 		return -EINVAL;
@@ -633,7 +634,8 @@ static int write_sync(struct qcusbnet *dev, struct buffer *data_buf, u16 cid)
 
 	result = usb_submit_urb(urb, GFP_KERNEL);
 	if (result < 0)	{
-		WRN("failed to submit urb: %d (cid=0x%04x)", result, cid);
+		GOBI_ERROR("failed to submit urb: %d (cid=0x%04x)",
+			   result, cid);
 
 		removed_urb = client_delurb(dev, cid, urb);
 		BUG_ON(urb != removed_urb);
@@ -650,7 +652,7 @@ static int write_sync(struct qcusbnet *dev, struct buffer *data_buf, u16 cid)
 	result = down_interruptible(&ctx->sem);
 	kref_put(&ctx->ref, writectx_release);
 	if (!device_valid(dev)) {
-		WRN("invalid device (cid=0x%04x)", cid);
+		GOBI_ERROR("invalid device (cid=0x%04x)", cid);
 		return -ENXIO;
 	}
 
@@ -658,7 +660,7 @@ static int write_sync(struct qcusbnet *dev, struct buffer *data_buf, u16 cid)
 
 	spin_lock_irqsave(&dev->qmi.clients_lock, flags);
 	if (client_delurb(dev, cid, urb) != urb) {
-		WRN("didn't get write urb back (cid=0x%04x)", cid);
+		GOBI_ERROR("didn't get write urb back (cid=0x%04x)", cid);
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 		return -EINVAL;
 	}
@@ -668,12 +670,13 @@ static int write_sync(struct qcusbnet *dev, struct buffer *data_buf, u16 cid)
 		if (!urb->status) {
 			result = buffer_size(data_buf);
 		} else {
-			WRN("urb status = %d (cid=0x%04x)", urb->status, cid);
+			GOBI_ERROR("urb status = %d (cid=0x%04x)",
+				   urb->status, cid);
 			result = urb->status;
 		}
 	} else {
-		WRN("interrupted: %d (cid=0x%04x)", result, cid);
-		WRN("(modem may need to be reset)");
+		GOBI_ERROR("interrupted: %d (cid=0x%04x)", result, cid);
+		GOBI_ERROR("(modem may need to be reset)");
 	}
 
 	usb_free_urb(urb);
@@ -695,20 +698,20 @@ static int cid_alloc(struct qcusbnet *dev, u8 type)
 
 	wbuf = qmictl_new_getcid(tid, type);
 	if (!wbuf) {
-		WRN("failed to create getcid request");
+		GOBI_ERROR("failed to create getcid request");
 		return -ENOMEM;
 	}
 
 	result = write_sync(dev, wbuf, QMICTL);
 	buffer_put(wbuf);
 	if (result < 0) {
-		WRN("failed to write getcid request: %d", result);
+		GOBI_ERROR("failed to write getcid request: %d", result);
 		return result;
 	}
 
 	result = read_sync(dev, &rbuf, QMICTL, tid);
 	if (result < 0) {
-		WRN("failed to read alloccid response: %d", result);
+		GOBI_ERROR("failed to read alloccid response: %d", result);
 		return result;
 	}
 
@@ -717,7 +720,7 @@ static int cid_alloc(struct qcusbnet *dev, u8 type)
 	result = qmictl_alloccid_resp(rbuf, size, &cid);
 	kfree(rbuf);
 	if (result < 0) {
-		WRN("failed to parse alloccid response: %d", result);
+		GOBI_WARN("failed to parse alloccid response: %d", result);
 		return result;
 	}
 
@@ -738,20 +741,20 @@ static int cid_free(struct qcusbnet *dev, u16 cid)
 
 	wbuf = qmictl_new_releasecid(tid, cid);
 	if (!wbuf) {
-		WRN("failed to create releasecid request");
+		GOBI_ERROR("failed to create releasecid request");
 		return -ENOMEM;
 	}
 
 	result = write_sync(dev, wbuf, QMICTL);
 	buffer_put(wbuf);
 	if (result < 0) {
-		WRN("failed to write releasecid request: %d", result);
+		GOBI_ERROR("failed to write releasecid request: %d", result);
 		return result;
 	}
 
 	result = read_sync(dev, &rbuf, QMICTL, tid);
 	if (result < 0) {
-		WRN("failed to read freecid response: %d", result);
+		GOBI_ERROR("failed to read freecid response: %d", result);
 		return result;
 	}
 
@@ -760,7 +763,7 @@ static int cid_free(struct qcusbnet *dev, u16 cid)
 	result = qmictl_freecid_resp(rbuf, size);
 	kfree(rbuf);
 	if (result < 0) {
-		WRN("failed to parse freecid response: %d", result);
+		GOBI_ERROR("failed to parse freecid response: %d", result);
 		return result;
 	}
 
@@ -775,15 +778,15 @@ static int client_alloc(struct qcusbnet *dev, u8 type)
 	unsigned long flags;
 
 	if (!device_valid(dev)) {
-		WRN("invalid device (type=0x%02x)", type);
+		GOBI_ERROR("invalid device (type=0x%02x)", type);
 		return -ENXIO;
 	}
 
 	if (type) {
 		result = cid_alloc(dev, type);
 		if (result < 0) {
-			WRN("failed to allocate cid: %d (type=0x%02x)",
-			    result, type);
+			GOBI_WARN("failed to allocate cid: %d (type=0x%02x)",
+				  result, type);
 			return result;
 		}
 		cid = result;
@@ -795,14 +798,14 @@ static int client_alloc(struct qcusbnet *dev, u8 type)
 
 	if (client_bycid(dev, cid)) {
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
-		WRN("duplicate cid 0x%04x (type=0x%02x)", cid, type);
+		GOBI_ERROR("duplicate cid 0x%04x (type=0x%02x)", cid, type);
 		return -ETOOMANYREFS;
 	}
 
 	client = kmalloc(sizeof(*client), GFP_ATOMIC);
 	if (!client) {
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
-		WRN("failed to allocate client (type=0x%02x)", type);
+		GOBI_ERROR("failed to allocate client (type=0x%02x)", type);
 		return -ENOMEM;
 	}
 
@@ -860,7 +863,7 @@ struct client *client_bycid(struct qcusbnet *dev, u16 cid)
 	struct client *client;
 
 	if (!device_valid(dev)) {
-		WRN("invalid device");
+		GOBI_ERROR("invalid device");
 		return NULL;
 	}
 
@@ -885,13 +888,13 @@ static bool client_addread(struct qcusbnet *dev, u16 cid, u16 tid, void *data,
 
 	client = client_bycid(dev, cid);
 	if (!client) {
-		WRN("failed to find client");
+		GOBI_ERROR("failed to find client");
 		return false;
 	}
 
 	req = kmalloc(sizeof(*req), GFP_ATOMIC);
 	if (!req) {
-		WRN("failed to allocate req");
+		GOBI_ERROR("failed to allocate req");
 		return false;
 	}
 
@@ -915,8 +918,8 @@ static bool client_delread(struct qcusbnet *dev, u16 cid, u16 tid, void **data,
 
 	client = client_bycid(dev, cid);
 	if (!client) {
-		/* TODO(ttuttle): Should be WRN, but on dying-client path. */
-		DBG("failed to find client (cid=0x%04x, tid=0x%04x)", cid, tid);
+		GOBI_WARN("failed to find client (cid=0x%04x, tid=0x%04x)",
+			  cid, tid);
 		return false;
 	}
 
@@ -930,10 +933,10 @@ static bool client_delread(struct qcusbnet *dev, u16 cid, u16 tid, void **data,
 			return true;
 		}
 
-		DBG("skipping 0x%04x data TID = %x", cid, req->tid);
+		GOBI_DEBUG("skipping 0x%04x data TID = %x", cid, req->tid);
 	}
 
-	DBG("no read to delete (cid=0x%04x, tid=0x%04x)", cid, tid);
+	GOBI_DEBUG("no read to delete (cid=0x%04x, tid=0x%04x)", cid, tid);
 	return false;
 }
 
@@ -948,15 +951,15 @@ static bool client_addnotify(struct qcusbnet *dev, u16 cid, u16 tid,
 
 	client = client_bycid(dev, cid);
 	if (!client) {
-		/* TODO(ttuttle): Should be WRN, but on dying-client path. */
-		DBG("failed to find client (cid=0x%04x, tid=0x%04x)", cid, tid);
+		GOBI_WARN("failed to find client (cid=0x%04x, tid=0x%04x)",
+			  cid, tid);
 		return false;
 	}
 
 	req = kmalloc(sizeof(*req), GFP_ATOMIC);
 	if (!req) {
-		WRN("failed to allocate req (cid=0x%04x, tid=0x%04x)",
-		    cid, tid);
+		GOBI_ERROR("failed to allocate req (cid=0x%04x, tid=0x%04x)",
+			   cid, tid);
 		return false;
 	}
 
@@ -978,7 +981,8 @@ static bool client_notify(struct qcusbnet *dev, u16 cid, u16 tid)
 
 	client = client_bycid(dev, cid);
 	if (!client) {
-		WRN("failed to find client (cid=0x%04x, tid=0x%04x)", cid, tid);
+		GOBI_ERROR("failed to find client (cid=0x%04x, tid=0x%04x)",
+			   cid, tid);
 		return false;
 	}
 
@@ -991,7 +995,7 @@ static bool client_notify(struct qcusbnet *dev, u16 cid, u16 tid)
 			break;
 		}
 
-		DBG("skipping data TID = %x", notify->tid);
+		GOBI_DEBUG("skipping data TID = %x", notify->tid);
 	}
 
 	if (delnotify) {
@@ -1006,8 +1010,7 @@ static bool client_notify(struct qcusbnet *dev, u16 cid, u16 tid)
 		return true;
 	}
 
-	/* TODO(ttuttle): Should be WRN, but is on dying-client path. */
-	DBG("no notify to call (cid=0x%04x, tid=0x%04x)", cid, tid);
+	GOBI_WARN("no notify to call (cid=0x%04x, tid=0x%04x)", cid, tid);
 
 	return false;
 }
@@ -1021,13 +1024,13 @@ static bool client_addurb(struct qcusbnet *dev, u16 cid, struct urb *urb)
 
 	client = client_bycid(dev, cid);
 	if (!client) {
-		WRN("failed to find client (cid=0x%04x)", cid);
+		GOBI_ERROR("failed to find client (cid=0x%04x)", cid);
 		return false;
 	}
 
 	req = kmalloc(sizeof(*req), GFP_ATOMIC);
 	if (!req) {
-		WRN("failed to allocate req (cid=0x%04x)", cid);
+		GOBI_ERROR("failed to allocate req (cid=0x%04x)", cid);
 		return false;
 	}
 
@@ -1047,7 +1050,7 @@ static struct urb *client_delurb(struct qcusbnet *dev, u16 cid, struct urb *urb)
 
 	client = client_bycid(dev, cid);
 	if (!client) {
-		WRN("failed to find client (cid=0x%04x)", cid);
+		GOBI_ERROR("failed to find client (cid=0x%04x)", cid);
 		return NULL;
 	}
 
@@ -1063,7 +1066,7 @@ static struct urb *client_delurb(struct qcusbnet *dev, u16 cid, struct urb *urb)
 	if (urb) {
 		/* Only warn if we didn't find a specific URB we were looking
 		   for. */
-		WRN("no matching urb to delete (cid=0x%04x)", cid);
+		GOBI_ERROR("no matching urb to delete (cid=0x%04x)", cid);
 	}
 	return NULL;
 }
@@ -1084,7 +1087,7 @@ static int devqmi_open(struct inode *inode, struct file *file)
 
 	file->private_data = kmalloc(sizeof(struct qmihandle), GFP_KERNEL);
 	if (!file->private_data) {
-		WRN("failed to allocate struct qmihandle");
+		GOBI_ERROR("failed to allocate struct qmihandle");
 		return -ENOMEM;
 	}
 
@@ -1092,7 +1095,7 @@ static int devqmi_open(struct inode *inode, struct file *file)
 	handle->cid = (u16)-1;
 	handle->dev = ref;
 
-	DBG("%p %04x", handle, handle->cid);
+	GOBI_DEBUG("%p %04x", handle, handle->cid);
 
 	return 0;
 }
@@ -1104,35 +1107,35 @@ static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 	struct qmihandle *handle = (struct qmihandle *)file->private_data;
 
-	DBG("%p %04x %08x", handle, handle->cid, cmd);
+	GOBI_DEBUG("%p %04x %08x", handle, handle->cid, cmd);
 
 	if (!device_valid(handle->dev)) {
-		DBG("invalid device");
+		GOBI_WARN("invalid device");
 		return -ENXIO;
 	}
 
 	if (handle->dev->dying) {
-		DBG("dying device");
+		GOBI_WARN("dying device");
 		return -ENXIO;
 	}
 
 	switch (cmd) {
 
 	case IOCTL_QMI_GET_SERVICE_FILE:
-		DBG("Setting up QMI for service %lu", arg);
+		GOBI_DEBUG("Setting up QMI for service %lu", arg);
 		if (((u8)arg) == 0) {
-			DBG("cannot use QMICTL from userspace");
+			GOBI_WARN("cannot use QMICTL from userspace");
 			return -EINVAL;
 		}
 
 		if (handle->cid != (u16)-1) {
-			DBG("cid already set");
+			GOBI_WARN("cid already set");
 			return -EBADR;
 		}
 
 		result = client_alloc(handle->dev, (u8)arg);
 		if (result < 0) {
-			WRN("failed to allocate client: %d", result);
+			GOBI_WARN("failed to allocate client: %d", result);
 			return result;
 		}
 
@@ -1155,7 +1158,7 @@ static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	 */
 	case IOCTL_QMI_CLOSE:
 		if (handle->cid == (u16)-1) {
-			DBG("no cid");
+			GOBI_WARN("no cid");
 			return -EBADR;
 		}
 
@@ -1167,17 +1170,18 @@ static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 	case IOCTL_QMI_GET_DEVICE_VIDPID:
 		if (!arg) {
-			DBG("GET_DEVICE_VIDPID: bad VIDPID buffer");
+			GOBI_WARN("GET_DEVICE_VIDPID: bad VIDPID buffer");
 			return -EINVAL;
 		}
 
 		if (!handle->dev->usbnet) {
-			WRN("GET_DEVICE_VIDPID: dev->usbnet is NULL");
+			GOBI_ERROR("GET_DEVICE_VIDPID: dev->usbnet is NULL");
 			return -ENOMEM;
 		}
 
 		if (!handle->dev->usbnet->udev) {
-			WRN("GET_DEVICE_VIDPID: dev->usbnet->udev is NULL");
+			GOBI_ERROR("GET_DEVICE_VIDPID: dev->usbnet->udev "
+				   "is NULL");
 			return -ENOMEM;
 		}
 
@@ -1186,8 +1190,8 @@ static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		result = copy_to_user((unsigned int *)arg, &vidpid, 4);
 		if (result) {
-			DBG("GET_DEVICE_VIDPID: copy_to_user failed: %d",
-			    result);
+			GOBI_WARN("GET_DEVICE_VIDPID: copy_to_user failed: %d",
+				  result);
 			return result;
 		}
 
@@ -1195,21 +1199,21 @@ static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 	case IOCTL_QMI_GET_DEVICE_MEID:
 		if (!arg) {
-			DBG("GET_DEVICE_MEID: bad MEID buffer");
+			GOBI_WARN("GET_DEVICE_MEID: bad MEID buffer");
 			return -EINVAL;
 		}
 
 		result = copy_to_user((unsigned int *)arg, &handle->dev->meid[0], 14);
 		if (result) {
-			DBG("GET_DEVICE_MEID: copy_to_user failed: %d",
-			    result);
+			GOBI_WARN("GET_DEVICE_MEID: copy_to_user failed: %d",
+				  result);
 			return result;
 		}
 
 		return 0;
 
 	default:
-		DBG("I don't even know *how* to %08x!", cmd);
+		GOBI_WARN("I don't even know *how* to %08x!", cmd);
 		return -EBADRQC;
 
 	}
@@ -1246,29 +1250,28 @@ static ssize_t devqmi_read(struct file *file, char __user *buf, size_t size,
 	struct qmihandle *handle = (struct qmihandle *)file->private_data;
 
 	if (!handle) {
-		DBG("handle is NULL");
+		GOBI_WARN("handle is NULL");
 		return -EBADF;
 	}
 
 	if (handle->dev->dying) {
-		DBG("dying device");
+		GOBI_WARN("dying device");
 		return -ENXIO;
 	}
 
 	if (!device_valid(handle->dev)) {
-		DBG("invalid device");
+		GOBI_WARN("invalid device");
 		return -ENXIO;
 	}
 
 	if (handle->cid == (u16)-1) {
-		DBG("cid is not set");
+		GOBI_WARN("cid is not set");
 		return -EBADR;
 	}
 
 	result = read_sync(handle->dev, &data, handle->cid, 0);
 	if (result <= 0) {
-		/* TODO(ttuttle): Should be WRN, but is on dying-client path. */
-		DBG("read_sync failed: %d", result);
+		GOBI_WARN("read_sync failed: %d", result);
 		return result;
 	}
 
@@ -1276,14 +1279,14 @@ static ssize_t devqmi_read(struct file *file, char __user *buf, size_t size,
 	smalldata = data + qmux_size;
 
 	if (result > size) {
-		DBG("read data is too large (%d > %d)", result, size);
+		GOBI_WARN("read data is too large (%d > %d)", result, size);
 		kfree(data);
 		return -EOVERFLOW;
 	}
 
 	status = copy_to_user(buf, smalldata, result);
 	if (status) {
-		WRN("copy_to_user failed: %d", status);
+		GOBI_ERROR("copy_to_user failed: %d", status);
 		result = status;
 	}
 
@@ -1299,35 +1302,35 @@ static ssize_t devqmi_write(struct file *file, const char __user * buf,
 	struct qmihandle *handle = (struct qmihandle *)file->private_data;
 
 	if (!handle) {
-		DBG("handle is NULL");
+		GOBI_WARN("handle is NULL");
 		return -EBADF;
 	}
 
 	if (!device_valid(handle->dev)) {
-		DBG("invalid device");
+		GOBI_WARN("invalid device");
 		/* TODO(ttuttle): what the heck is this for: */
 		file->f_op = file->f_dentry->d_inode->i_fop;
 		return -ENXIO;
 	}
 
 	if (handle->cid == (u16)-1) {
-		DBG("cid is not set");
+		GOBI_WARN("cid is not set");
 		return -EBADR;
 	}
 
 	if (size + qmux_size <= size) {
-		DBG("size too big");
+		GOBI_WARN("size too big");
 		return -EINVAL;
 	}
 
 	wbuf = buffer_new(size + qmux_size);
 	if (!wbuf) {
-		WRN("failed to allocate buffer");
+		GOBI_ERROR("failed to allocate buffer");
 		return -ENOMEM;
 	}
 	status = copy_from_user(buffer_data(wbuf) + qmux_size, buf, size);
 	if (status) {
-		WRN("copy_from_user failed: %d", status);
+		GOBI_ERROR("copy_from_user failed: %d", status);
 		buffer_put(wbuf);
 		return status;
 	}
@@ -1363,7 +1366,7 @@ int qc_register(struct qcusbnet *dev)
 	}
 
 	if (!qmi_ready(dev, 30000)) {
-		WRN("device unresponsive to QMI");
+		GOBI_ERROR("device unresponsive to QMI");
 		return -ETIMEDOUT;
 	}
 
@@ -1389,19 +1392,19 @@ int qc_register(struct qcusbnet *dev)
 
 	result = cdev_add(&dev->qmi.cdev, devno, 1);
 	if (result) {
-		WRN("failed to add cdev: %d", result);
+		GOBI_ERROR("failed to add cdev: %d", result);
 		return result;
 	}
 
 	name = strstr(dev->usbnet->net->name, "usb");
 	if (!name) {
-		WRN("bad net name: %s", dev->usbnet->net->name);
+		GOBI_ERROR("bad net name: %s", dev->usbnet->net->name);
 		return -ENXIO;
 	}
 	name += strlen("usb");
 	qmiidx = simple_strtoul(name, NULL, 10);
 	if (qmiidx < 0) {
-		WRN("bad minor number: %s", name);
+		GOBI_ERROR("bad minor number: %s", name);
 		return -ENXIO;
 	}
 
@@ -1443,7 +1446,7 @@ static bool qmi_ready(struct qcusbnet *dev, u16 timeout)
 	u8 tid;
 
 	if (!device_valid(dev)) {
-		WRN("invalid device");
+		GOBI_ERROR("invalid device");
 		return -EFAULT;
 	}
 
@@ -1487,7 +1490,7 @@ static bool qmi_ready(struct qcusbnet *dev, u16 timeout)
 	if (now >= timeout)
 		return false;
 
-	DBG("QMI Ready after %u milliseconds", now);
+	GOBI_DEBUG("ready after %u milliseconds", now);
 
 	/* 3580 and newer doesn't need a delay; older needs 5000ms */
 	if (qcusbnet2k_fwdelay)
@@ -1514,7 +1517,7 @@ static void wds_callback(struct qcusbnet *dev, u16 cid, void *data)
 	unsigned long flags;
 
 	if (!device_valid(dev)) {
-		WRN("invalid device");
+		GOBI_ERROR("invalid device");
 		return;
 	}
 
@@ -1523,7 +1526,7 @@ static void wds_callback(struct qcusbnet *dev, u16 cid, void *data)
 	spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 
 	if (!ret) {
-		WRN("no read found");
+		GOBI_ERROR("no read found");
 		return;
 	}
 
@@ -1532,7 +1535,7 @@ static void wds_callback(struct qcusbnet *dev, u16 cid, void *data)
 
 	result = qmiwds_event_resp(rbuf, rbufsize, &dstats);
 	if (result < 0) {
-		WRN("failed to parse event response");
+		GOBI_ERROR("failed to parse event response");
 	} else {
 		if (dstats.txofl != (u32)-1)
 			stats->tx_fifo_errors = dstats.txofl;
@@ -1559,15 +1562,15 @@ static void wds_callback(struct qcusbnet *dev, u16 cid, void *data)
 			stats->rx_bytes = dstats.rxbytesok;
 
 		if (dstats.reconfigure) {
-			DBG("Net device link reset");
+			GOBI_DEBUG("Net device link reset");
 			qc_setdown(dev, DOWN_NO_NDIS_CONNECTION);
 			qc_cleardown(dev, DOWN_NO_NDIS_CONNECTION);
 		} else {
 			if (dstats.linkstate) {
-				DBG("Net device link is connected");
+				GOBI_DEBUG("Net device link is connected");
 				qc_cleardown(dev, DOWN_NO_NDIS_CONNECTION);
 			} else {
-				DBG("Net device link is disconnected");
+				GOBI_DEBUG("Net device link is disconnected");
 				qc_setdown(dev, DOWN_NO_NDIS_CONNECTION);
 			}
 		}
@@ -1577,7 +1580,7 @@ static void wds_callback(struct qcusbnet *dev, u16 cid, void *data)
 
 	result = read_async(dev, cid, 0, wds_callback, data);
 	if (result != 0) {
-		WRN("failed to set up async read: %d", result);
+		GOBI_ERROR("failed to set up async read: %d", result);
 	}
 }
 
@@ -1588,46 +1591,48 @@ static int setup_wds_callback(struct qcusbnet *dev)
 	int result;
 
 	if (!device_valid(dev)) {
-		WRN("invalid device");
+		GOBI_ERROR("invalid device");
 		return -EFAULT;
 	}
 
 	result = client_alloc(dev, QMIWDS);
 	if (result < 0) {
-		WRN("failed to allocate client");
+		GOBI_ERROR("failed to allocate client");
 		return result;
 	}
 	cid = result;
 
 	wbuf = qmiwds_new_seteventreport(1);
 	if (!wbuf) {
-		WRN("failed to create seteventreport request");
+		GOBI_ERROR("failed to create seteventreport request");
 		return -ENOMEM;
 	}
 
 	result = write_sync(dev, wbuf, cid);
 	buffer_put(wbuf);
 	if (result < 0) {
-		WRN("failed to write seteventreport request: %d", result);
+		GOBI_ERROR("failed to write seteventreport request: %d",
+			   result);
 		return result;
 	}
 
 	wbuf = qmiwds_new_getpkgsrvcstatus(2);
 	if (!wbuf) {
-		WRN("failed to create getpkgsrvcstatus request");
+		GOBI_ERROR("failed to create getpkgsrvcstatus request");
 		return -ENOMEM;
 	}
 
 	result = write_sync(dev, wbuf, cid);
 	buffer_put(wbuf);
 	if (result < 0) {
-		WRN("failed to write getpkgsrvcstatus request: %d", result);
+		GOBI_ERROR("failed to write getpkgsrvcstatus request: %d",
+			   result);
 		return result;
 	}
 
 	result = read_async(dev, cid, 0, wds_callback, NULL);
 	if (result) {
-		WRN("failed to set up async read: %d", result);
+		GOBI_ERROR("failed to set up async read: %d", result);
 		return result;
 	}
 
@@ -1637,7 +1642,7 @@ static int setup_wds_callback(struct qcusbnet *dev)
 				 0x22, 0x21, 1, 0, NULL, 0, 100);
 	if (result < 0) {
 		/* TODO(ttuttle): what does this message mean? */
-		WRN("Bad SetControlLineState status %d", result);
+		GOBI_ERROR("Bad SetControlLineState status %d", result);
 		return result;
 	}
 
@@ -1653,34 +1658,34 @@ static int qmidms_getmeid(struct qcusbnet *dev)
 	u16 size;
 
 	if (!device_valid(dev))	{
-		WRN("invalid device");
+		GOBI_ERROR("invalid device");
 		return -EFAULT;
 	}
 
 	result = client_alloc(dev, QMIDMS);
 	/* TODO(ttuttle): free client if we error out */
 	if (result < 0) {
-		WRN("failed to allocate client");
+		GOBI_ERROR("failed to allocate client");
 		return result;
 	}
 	cid = result;
 
 	wbuf = qmidms_new_getmeid(1);
 	if (!wbuf) {
-		WRN("failed to create getmeid request");
+		GOBI_ERROR("failed to create getmeid request");
 		return -ENOMEM;
 	}
 
 	result = write_sync(dev, wbuf, cid);
 	buffer_put(wbuf);
 	if (result < 0) {
-		WRN("failed to write getmeid request");
+		GOBI_ERROR("failed to write getmeid request");
 		return result;
 	}
 
 	result = read_sync(dev, &rbuf, cid, 1);
 	if (result < 0) {
-		WRN("failed to read meid response");
+		GOBI_ERROR("failed to read meid response");
 		return result;
 	}
 	size = result;
@@ -1689,7 +1694,7 @@ static int qmidms_getmeid(struct qcusbnet *dev)
 	kfree(rbuf);
 
 	if (result < 0) {
-		WRN("failed to parse meid response");
+		GOBI_ERROR("failed to parse meid response");
 		memset(&dev->meid[0], '0', 14);
 		/* TODO(ttuttle): Do this in other failure cases? */
 	}
