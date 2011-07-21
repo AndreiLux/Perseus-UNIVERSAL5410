@@ -235,13 +235,6 @@ int dm_bht_create(struct dm_bht *bht, unsigned int block_count,
 		goto bad_digest_len;
 	}
 
-	bht->root_digest = (u8 *) kzalloc(bht->digest_size, GFP_KERNEL);
-	if (!bht->root_digest) {
-		DMERR("failed to allocate memory for root digest");
-		status = -ENOMEM;
-		goto bad_root_digest_alloc;
-	}
-
 	/* Configure the tree */
 	bht->block_count = block_count;
 	DMDEBUG("Setting block_count %u", block_count);
@@ -312,8 +305,6 @@ bad_entries_alloc:
 bad_node_count:
 bad_level_alloc:
 bad_block_count:
-	kfree(bht->root_digest);
-bad_root_digest_alloc:
 bad_digest_len:
 	for (cpu = 0; cpu < nr_cpu_ids; ++cpu)
 		if (bht->hash_desc[cpu].tfm)
@@ -862,8 +853,6 @@ int dm_bht_destroy(struct dm_bht *bht)
 	unsigned int depth;
 	int cpu = 0;
 
-	kfree(bht->root_digest);
-
 	depth = bht->depth;
 	while (depth-- != 0) {
 		struct dm_bht_entry *entry = bht->levels[depth].entries;
@@ -944,10 +933,6 @@ EXPORT_SYMBOL(dm_bht_set_write_cb);
  */
 int dm_bht_set_root_hexdigest(struct dm_bht *bht, const u8 *hexdigest)
 {
-	if (!bht->root_digest) {
-		DMCRIT("No allocation for root digest. Call dm_bht_create");
-		return -1;
-	}
 	/* Make sure we have at least the bytes expected */
 	if (strnlen((char *)hexdigest, bht->digest_size * 2) !=
 	    bht->digest_size * 2) {
@@ -975,12 +960,6 @@ int dm_bht_root_hexdigest(struct dm_bht *bht, u8 *hexdigest, int available)
 	    ((unsigned int) available) < bht->digest_size * 2 + 1) {
 		DMERR("hexdigest has too few bytes available");
 		return -EINVAL;
-	}
-	if (!bht->root_digest) {
-		DMERR("no root digest exists to export");
-		if (available > 0)
-			*hexdigest = 0;
-		return -1;
 	}
 	dm_bht_bin_to_hex(bht->root_digest, hexdigest, bht->digest_size);
 	return 0;

@@ -96,7 +96,7 @@ struct dm_bht {
 	sector_t sectors;  /* Number of disk sectors used */
 
 	/* bool verified;  Full tree is verified */
-	u8 *root_digest;  /* hash_alg(levels[0].entries[*].nodes) */
+	u8 root_digest[DM_BHT_MAX_DIGEST_SIZE];
 	struct dm_bht_level *levels;  /* in reverse order */
 	mempool_t *entry_pool;
 	/* Callbacks for reading and/or writing to the hash device */
