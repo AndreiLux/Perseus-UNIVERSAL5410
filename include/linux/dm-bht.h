@@ -11,7 +11,6 @@
 
 #include <linux/compiler.h>
 #include <linux/crypto.h>
-#include <linux/mempool.h>
 #include <linux/types.h>
 
 /* To avoid allocating memory for digest tests, we just setup a
@@ -97,7 +96,6 @@ struct dm_bht {
 	/* bool verified;  Full tree is verified */
 	u8 root_digest[DM_BHT_MAX_DIGEST_SIZE];
 	struct dm_bht_level *levels;  /* in reverse order */
-	mempool_t *entry_pool;
 	/* Callbacks for reading and/or writing to the hash device */
 	dm_bht_callback read_cb;
 	dm_bht_callback write_cb;

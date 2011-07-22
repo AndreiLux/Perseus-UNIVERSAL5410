@@ -382,16 +382,6 @@ static int dm_bht_initialize_entries(struct dm_bht *bht)
 		}
 	}
 
-	/* Go ahead and reserve enough space for everything.  We really don't
-	 * want memory allocation failures.  Once we start freeing verified
-	 * entries, then we can reduce this reservation.
-	 */
-	bht->entry_pool = mempool_create_page_pool(total_entries, 0);
-	if (!bht->entry_pool) {
-		DMERR("failed to allocate mempool");
-		return -ENOMEM;
-	}
-
 	return 0;
 }
 
@@ -564,8 +554,7 @@ int dm_bht_store_block(struct dm_bht *bht, unsigned int block,
 	 *     The number of updated entries is NOT tracked.
 	 */
 	if (state == DM_BHT_ENTRY_UNALLOCATED) {
-		node_page = (struct page *) mempool_alloc(bht->entry_pool,
-							  GFP_KERNEL);
+		node_page = alloc_page(GFP_KERNEL);
 		if (!node_page) {
 			atomic_set(&entry->state, DM_BHT_ENTRY_ERROR);
 			return -ENOMEM;
@@ -645,8 +634,7 @@ int dm_bht_compute(struct dm_bht *bht, void *read_cb_ctx)
 			unsigned int count = bht->node_count;
 			struct page *pg;
 
-			pg = (struct page *) mempool_alloc(bht->entry_pool,
-							   GFP_NOIO);
+			pg = alloc_page(GFP_NOIO);
 			if (!pg) {
 				DMCRIT("an error occurred while reading entry");
 				goto out;
@@ -793,7 +781,7 @@ int dm_bht_populate(struct dm_bht *bht, void *ctx,
 			continue;
 
 		/* Current entry is claimed for allocation and loading */
-		pg = (struct page *) mempool_alloc(bht->entry_pool, GFP_NOIO);
+		pg = alloc_page(GFP_NOIO);
 		if (!pg)
 			goto nomem;
 
@@ -815,7 +803,7 @@ error_state:
 	return state;
 
 nomem:
-	DMCRIT("failed to allocate memory for entry->nodes from pool");
+	DMCRIT("failed to allocate memory for entry->nodes");
 	return -ENOMEM;
 }
 EXPORT_SYMBOL(dm_bht_populate);
@@ -870,15 +858,13 @@ int dm_bht_destroy(struct dm_bht *bht)
 				continue;
 			default:
 				BUG_ON(!entry->nodes);
-				mempool_free(virt_to_page(entry->nodes),
-					     bht->entry_pool);
+				__free_page(virt_to_page(entry->nodes));
 				break;
 			}
 		}
 		kfree(bht->levels[depth].entries);
 		bht->levels[depth].entries = NULL;
 	}
-	mempool_destroy(bht->entry_pool);
 	kfree(bht->levels);
 	for (cpu = 0; cpu < nr_cpu_ids; ++cpu)
 		if (bht->hash_desc[cpu].tfm)
