@@ -30,7 +30,7 @@
 #include <asm/localtimer.h>
 
 /* set up by the platform code */
-static void __iomem *twd_base;
+void __iomem *twd_base;
 
 static struct clk *twd_clk;
 static unsigned long twd_timer_rate;

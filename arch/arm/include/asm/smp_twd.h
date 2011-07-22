@@ -27,6 +27,8 @@ struct twd_local_timer {
 	struct resource	res[2];
 };
 
+extern void __iomem *twd_base;
+
 #define DEFINE_TWD_LOCAL_TIMER(name,base,irq)	\
 struct twd_local_timer name __initdata = {	\
 	.res	= {				\

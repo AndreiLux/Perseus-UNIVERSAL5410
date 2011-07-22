@@ -17,7 +17,9 @@
  */
 #include <linux/init.h>
 #include <linux/device.h>
+#include <linux/delay.h>
 #include <linux/smp.h>
+#include <linux/hrtimer.h>
 #include <linux/io.h>
 
 #include <asm/cacheflush.h>
@@ -140,11 +142,23 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 		 * 2) CPU1 must re-enable the GIC distributor on
 		 * it's wakeup path.
 		 */
-		if (omap4_smp_romcode_errata)
+		if (omap4_smp_romcode_errata) {
+			local_irq_disable();
 			gic_dist_disable();
+		}
 
 		clkdm_wakeup(cpu1_clkdm);
 		clkdm_allow_idle(cpu1_clkdm);
+
+		if (omap4_smp_romcode_errata) {
+			while (gic_dist_disabled()) {
+				udelay(1);
+				cpu_relax();
+			}
+			gic_timer_retrigger();
+			local_irq_enable();
+		}
+
 	} else {
 		dsb_sev();
 		booted = true;
