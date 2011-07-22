@@ -203,6 +203,7 @@ static void qcnet_unbind(struct usbnet *usbnet, struct usb_interface *iface)
 {
 	struct qcusbnet *dev = (struct qcusbnet *)usbnet->data[0];
 
+	iface->needs_remote_wakeup = 0;
 	netif_carrier_off(usbnet->net);
 	qc_deregister(dev);
 
@@ -544,6 +545,8 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 	if (status) {
 		qc_deregister(dev);
 	} else {
+		iface->needs_remote_wakeup = 1;
+
 		mutex_lock(&qcusbnet_lock);
 		/* Give our initial ref to the list */
 		list_add(&dev->node, &qcusbnet_list);
