@@ -33,6 +33,10 @@
 #include <plat/omap_device.h>
 #include <plat/omap4-keypad.h>
 
+#if defined(CONFIG_SND_OMAP_SOC_ABE_DSP) || \
+	defined(CONFIG_SND_OMAP_SOC_ABE_DSP_MODULE)
+#include <sound/omap-abe-dsp.h>
+#endif
 #include "mux.h"
 #include "control.h"
 #include "devices.h"
@@ -379,6 +383,51 @@ static void __init omap_init_dmic(void)
 }
 #else
 static inline void omap_init_dmic(void) {}
+
+#if defined(CONFIG_SND_OMAP_SOC_ABE_DSP) || \
+	defined(CONFIG_SND_OMAP_SOC_ABE_DSP_MODULE)
+
+static struct omap_device_pm_latency omap_aess_latency[] = {
+	{
+		.deactivate_func = omap_device_idle_hwmods,
+		.activate_func = omap_device_enable_hwmods,
+		.flags = OMAP_DEVICE_LATENCY_AUTO_ADJUST,
+	},
+};
+
+static void omap_init_aess(void)
+{
+	struct omap_hwmod *oh;
+	struct omap_device *od;
+	struct omap4_abe_dsp_pdata *pdata;
+
+	oh = omap_hwmod_lookup("aess");
+	if (!oh) {
+		pr_err("Could not look up aess hw_mod\n");
+		return;
+	}
+
+	pdata = kzalloc(sizeof(struct omap4_abe_dsp_pdata), GFP_KERNEL);
+	if (!pdata) {
+		pr_err("%s Could not allocate platform data\n", __func__);
+		return;
+	}
+
+	/* FIXME: Add correct context loss counter */
+	/*pdata->get_context_loss_count = omap_pm_get_dev_context_loss_count;*/
+
+	od = omap_device_build("aess", -1, oh, pdata,
+				sizeof(struct omap4_abe_dsp_pdata),
+				omap_aess_latency,
+				ARRAY_SIZE(omap_aess_latency), 0);
+
+	kfree(pdata);
+
+	if (IS_ERR(od))
+		pr_err("Could not build omap_device for omap-aess-audio\n");
+}
+#else
+static inline void omap_init_aess(void) {}
 #endif
 
 #if defined(CONFIG_SPI_OMAP24XX) || defined(CONFIG_SPI_OMAP24XX_MODULE)
@@ -727,6 +776,7 @@ static int __init omap2_init_devices(void)
 	 * in alphabetical order so they're easier to sort through.
 	 */
 	omap_init_abe();
+	omap_init_aess();
 	omap_init_audio();
 	omap_init_mcpdm();
 	omap_init_dmic();
