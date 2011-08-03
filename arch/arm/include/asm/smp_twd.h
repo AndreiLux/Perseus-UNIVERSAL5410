@@ -46,6 +46,8 @@ static inline void twd_local_timer_of_register(void)
 #endif
 void twd_timer_setup(struct clock_event_device *);
 void twd_timer_stop(struct clock_event_device *);
+struct resource;
+
 #ifdef CONFIG_HAVE_ARM_TWD
 int twd_timer_register(struct resource *res, int res_nr);
 #else
