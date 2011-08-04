@@ -27,6 +27,8 @@
 #include <linux/types.h>
 #include <linux/chromeos_platform.h>
 #include <linux/module.h>
+#include <linux/platform_device.h>
+#include <linux/ramoops.h>
 #include "chromeos.h"
 
 static int chromeos_read_nvram(u8 *nvram_buffer, int buf_size);
@@ -111,3 +113,38 @@ static int chromeos_read_nvram(u8 *nvram_buffer, int buf_size)
 	}
 	return size;
 }
+
+/* Set the platform dependent parameters using kernel config parameters */
+static struct ramoops_platform_data chromeos_ramoops_data = {
+	.mem_size		= CONFIG_CHROMEOS_RAMOOPS_RAM_SIZE,
+	.mem_address		= CONFIG_CHROMEOS_RAMOOPS_RAM_START,
+	.record_size		= CONFIG_CHROMEOS_RAMOOPS_RECORD_SIZE,
+	.dump_oops		= CONFIG_CHROMEOS_RAMOOPS_DUMP_OOPS,
+};
+
+static struct platform_device chromeos_ramoops = {
+	.name = "ramoops",
+	.dev = {
+		.platform_data = &chromeos_ramoops_data,
+	},
+};
+
+/*
+ * If you don't set the ramoops module parameters then ramoops needs a
+ * platform device in order to run. So a platform device is registered
+ * which sets the needed parameters.
+ */
+static int __init chromeos_ramoops_init(void)
+{
+	int ret;
+
+	ret = platform_device_register(&chromeos_ramoops);
+	if (ret) {
+		printk(KERN_ERR "unable to register platform device\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+subsys_initcall(chromeos_ramoops_init);
