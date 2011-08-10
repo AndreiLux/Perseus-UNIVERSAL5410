@@ -153,11 +153,6 @@ struct verity_config {
 	 */
 	struct bio_set *bs;
 
-	/* Single threaded I/O submitter */
-	struct workqueue_struct *io_queue;
-	/* Multithreaded verifier queue */
-	struct workqueue_struct *verify_queue;
-
 	char hash_alg[CRYPTO_MAX_ALG_NAME];
 
 	int error_behavior;
@@ -166,6 +161,7 @@ struct verity_config {
 };
 
 static struct kmem_cache *_verity_io_pool;
+static struct workqueue_struct *kveritydq, *kverityd_ioq;
 
 static void kverityd_verify(struct work_struct *work);
 static void kverityd_io(struct work_struct *work);
@@ -601,12 +597,12 @@ static void verity_dec_pending(struct dm_verity_io *io)
 		verity_stats_io_queue_dec(vc);
 		verity_stats_verify_queue_inc(vc);
 		INIT_DELAYED_WORK(&io->work, kverityd_verify);
-		queue_delayed_work(vc->verify_queue, &io->work, 0);
+		queue_delayed_work(kveritydq, &io->work, 0);
 		REQTRACE("Block %llu+ is being queued for verify (io:%p)",
 			 ULL(io->block), io);
 	} else {
 		INIT_DELAYED_WORK(&io->work, kverityd_io);
-		queue_delayed_work(vc->io_queue, &io->work, HZ/10);
+		queue_delayed_work(kverityd_ioq, &io->work, HZ/10);
 		verity_stats_total_requeues_inc(vc);
 		REQTRACE("Block %llu+ is being requeued for io (io:%p)",
 			 ULL(io->block), io);
@@ -949,7 +945,7 @@ static int verity_map(struct dm_target *ti, struct bio *bio,
 		}
 		verity_stats_io_queue_inc(vc);
 		INIT_DELAYED_WORK(&io->work, kverityd_io);
-		queue_delayed_work(vc->io_queue, &io->work, 0);
+		queue_delayed_work(kverityd_ioq, &io->work, 0);
 	}
 
 	return DM_MAPIO_SUBMITTED;
@@ -1176,28 +1172,6 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		goto bad_bs;
 	}
 
-	/* Only one thread for the workqueue to keep the memory allocation
-	 * sane. Requests will be submitted asynchronously.
-	 * TODO(wad) look into workqueue flags to ensure safety.
-	 */
-	vc->io_queue = alloc_workqueue("kverityd_io",
-				       WQ_CPU_INTENSIVE|
-				       WQ_HIGHPRI,
-				       1);
-	if (!vc->io_queue) {
-		ti->error = "Couldn't create kverityd io queue";
-		goto bad_io_queue;
-	}
-
-	vc->verify_queue = alloc_workqueue("kverityd",
-					   WQ_CPU_INTENSIVE|
-					   WQ_HIGHPRI,
-					   1);
-	if (!vc->verify_queue) {
-		ti->error = "Couldn't create kverityd queue";
-		goto bad_verify_queue;
-	}
-
 	ti->num_flush_requests = 1;
 	ti->private = vc;
 
@@ -1211,10 +1185,6 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	}
 	return 0;
 
-bad_verify_queue:
-	destroy_workqueue(vc->io_queue);
-bad_io_queue:
-	bioset_free(vc->bs);
 bad_bs:
 	mempool_destroy(vc->io_pool);
 bad_slab_pool:
@@ -1224,7 +1194,6 @@ bad_hash:
 bad_hash_dev:
 bad_hash_start:
 	dm_put_device(ti, vc->dev);
-bad_depth:
 bad_bht:
 bad_root_hexdigest:
 bad_verity_dev:
@@ -1235,11 +1204,6 @@ bad_verity_dev:
 static void verity_dtr(struct dm_target *ti)
 {
 	struct verity_config *vc = (struct verity_config *) ti->private;
-
-	DMDEBUG("Destroying io_queue");
-	destroy_workqueue(vc->io_queue);
-	DMDEBUG("Destroying verify_queue");
-	destroy_workqueue(vc->verify_queue);
 
 	DMDEBUG("Destroying bs");
 	bioset_free(vc->bs);
@@ -1337,28 +1301,56 @@ static struct target_type verity_target = {
 	.io_hints = verity_io_hints,
 };
 
+#define VERITY_WQ_FLAGS (WQ_CPU_INTENSIVE|WQ_HIGHPRI)
+
 static int __init dm_verity_init(void)
 {
-	int r;
+	int r = -ENOMEM;
 
 	_verity_io_pool = KMEM_CACHE(dm_verity_io, 0);
-	if (!_verity_io_pool)
-		return -ENOMEM;
+	if (!_verity_io_pool) {
+		DMERR("failed to allocate pool dm_verity_io");
+		goto bad_io_pool;
+	}
+
+	kverityd_ioq = alloc_workqueue("kverityd_io", VERITY_WQ_FLAGS, 1);
+	if (!kverityd_ioq) {
+		DMERR("failed to create workqueue kverityd_ioq");
+		goto bad_io_queue;
+	}
+
+	kveritydq = alloc_workqueue("kverityd", VERITY_WQ_FLAGS, 1);
+	if (!kveritydq) {
+		DMERR("failed to create workqueue kveritydq");
+		goto bad_verify_queue;
+	}
 
 	r = dm_register_target(&verity_target);
 	if (r < 0) {
 		DMERR("register failed %d", r);
-		kmem_cache_destroy(_verity_io_pool);
-		/* TODO(wad): add optional recovery bail here. */
-	} else {
-		DMINFO("dm-verity registered");
-		/* TODO(wad): Add root setup to initcalls workqueue here */
+		goto register_failed;
 	}
+
+	DMINFO("version %u.%u.%u loaded", verity_target.version[0],
+	       verity_target.version[1], verity_target.version[2]);
+
+	return r;
+
+register_failed:
+	destroy_workqueue(kveritydq);
+bad_verify_queue:
+	destroy_workqueue(kverityd_ioq);
+bad_io_queue:
+	kmem_cache_destroy(_verity_io_pool);
+bad_io_pool:
 	return r;
 }
 
 static void __exit dm_verity_exit(void)
 {
+	destroy_workqueue(kveritydq);
+	destroy_workqueue(kverityd_ioq);
+
 	dm_unregister_target(&verity_target);
 	kmem_cache_destroy(_verity_io_pool);
 }
