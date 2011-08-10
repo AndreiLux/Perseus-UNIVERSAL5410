@@ -201,16 +201,6 @@ int dm_bht_create(struct dm_bht *bht, unsigned int block_count,
 	int status = 0;
 	int cpu = 0;
 
-	/* Allocate enough crypto contexts to be able to perform verifies
-	 * on all available CPUs.
-	 */
-	bht->hash_desc = (struct hash_desc *)
-		kcalloc(nr_cpu_ids, sizeof(struct hash_desc), GFP_KERNEL);
-	if (!bht->hash_desc) {
-		DMERR("failed to allocate crypto hash contexts");
-		return -ENOMEM;
-	}
-
 	/* Setup the hash first. Its length determines much of the bht layout */
 	for (cpu = 0; cpu < nr_cpu_ids; ++cpu) {
 		bht->hash_desc[cpu].tfm = crypto_alloc_hash(alg_name, 0, 0);
@@ -306,11 +296,10 @@ bad_node_count:
 bad_level_alloc:
 bad_block_count:
 bad_digest_len:
+bad_hash_alg:
 	for (cpu = 0; cpu < nr_cpu_ids; ++cpu)
 		if (bht->hash_desc[cpu].tfm)
 			crypto_free_hash(bht->hash_desc[cpu].tfm);
-bad_hash_alg:
-	kfree(bht->hash_desc);
 	return status;
 }
 EXPORT_SYMBOL(dm_bht_create);
@@ -869,7 +858,6 @@ int dm_bht_destroy(struct dm_bht *bht)
 	for (cpu = 0; cpu < nr_cpu_ids; ++cpu)
 		if (bht->hash_desc[cpu].tfm)
 			crypto_free_hash(bht->hash_desc[cpu].tfm);
-	kfree(bht->hash_desc);
 	return 0;
 }
 EXPORT_SYMBOL(dm_bht_destroy);
