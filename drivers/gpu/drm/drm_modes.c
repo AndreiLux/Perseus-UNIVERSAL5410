@@ -545,6 +545,22 @@ void drm_mode_list_concat(struct list_head *head, struct list_head *new)
 }
 EXPORT_SYMBOL(drm_mode_list_concat);
 
+u32 drm_mode_bandwidth(struct drm_display_mode *mode, int depth)
+{
+	u32 a_active, a_total, active_percent, pixels_per_second;
+	int bytes_per_pixel = depth / 8;
+
+	if (!mode->htotal || !mode->vtotal || !mode->clock)
+		return 0;
+
+	a_active = mode->hdisplay * mode->vdisplay;
+	a_total = mode->htotal * mode->vtotal;
+	active_percent = (a_active * 1000) / a_total;
+	pixels_per_second = active_percent * mode->clock;
+	return (u32)(pixels_per_second * bytes_per_pixel / (1024 * 1024));
+}
+EXPORT_SYMBOL(drm_mode_bandwidth);
+
 /**
  * drm_mode_width - get the width of a mode
  * @mode: mode

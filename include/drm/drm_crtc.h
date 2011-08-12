@@ -96,6 +96,7 @@ enum drm_mode_status {
     MODE_ONE_HEIGHT,    /* only one height is supported */
     MODE_ONE_SIZE,      /* only one resolution is supported */
     MODE_NO_REDUCED,    /* monitor doesn't accept reduced blanking */
+    MODE_BANDWIDTH,	/* mode requires too much memory bandwidth */
     MODE_UNVERIFIED = -3, /* mode needs to reverified */
     MODE_BAD = -2,	/* unspecified reason */
     MODE_ERROR	= -1	/* error condition */
@@ -588,6 +589,8 @@ struct drm_connector {
 	int video_latency[2];	/* [0]: progressive, [1]: interlaced */
 	int audio_latency[2];
 	int null_edid_counter; /* needed to workaround some HW bugs where we get all 0s */
+
+	uint32_t proposed_depth; /* depth to be used in mode bw calcs */
 };
 
 /**
@@ -868,6 +871,7 @@ extern void drm_mode_set_name(struct drm_display_mode *mode);
 extern bool drm_mode_equal(struct drm_display_mode *mode1, struct drm_display_mode *mode2);
 extern int drm_mode_width(struct drm_display_mode *mode);
 extern int drm_mode_height(struct drm_display_mode *mode);
+extern u32 drm_mode_bandwidth(struct drm_display_mode *mode, int depth);
 
 /* for us by fb module */
 extern int drm_mode_attachmode_crtc(struct drm_device *dev,
