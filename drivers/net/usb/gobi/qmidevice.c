@@ -33,6 +33,7 @@ struct readreq {
 struct notifyreq {
 	struct list_head node;
 	void (*func)(struct qcusbnet *, u16, void *);
+	u16  cid;
 	u16  tid;
 	void *data;
 };
@@ -67,7 +68,11 @@ static bool client_delread(struct qcusbnet *dev, u16 cid, u16 tid, void **data, 
 static bool client_addnotify(struct qcusbnet *dev, u16 cid, u16 tid,
 			     void (*hook)(struct qcusbnet *, u16 cid, void *),
 			     void *data);
-static bool client_notify(struct qcusbnet *dev, u16 cid, u16 tid);
+static struct notifyreq *client_remove_notify(struct client *client, u16 tid);
+static void client_notify_and_free(struct qcusbnet *dev,
+				   struct notifyreq *notify);
+static void client_notify_list(struct qcusbnet *dev,
+			       struct list_head *notifies);
 static bool client_addurb(struct qcusbnet *dev, u16 cid, struct urb *urb);
 static struct urb *client_delurb(struct qcusbnet *dev, u16 cid,
 				 struct urb *urb);
@@ -174,6 +179,7 @@ static void read_callback(struct urb *urb)
 	struct qcusbnet *dev;
 	unsigned long flags;
 	u16 tid;
+	LIST_HEAD(notifies);
 
 	BUG_ON(!urb);
 
@@ -216,30 +222,31 @@ static void read_callback(struct urb *urb)
 	else
 		tid = *(u16 *)(data + result + 1);
 	spin_lock_irqsave(&dev->qmi.clients_lock, flags);
-
 	list_for_each(node, &dev->qmi.clients) {
 		client = list_entry(node, struct client, node);
 		if (client->cid == cid || (client->cid | 0xff00) == cid) {
+			struct notifyreq *notify;
+
 			copy = kmalloc(size, GFP_ATOMIC);
 			memcpy(copy, data, size);
 			if (!client_addread(dev, client->cid, tid, copy, size)) {
-				kfree(copy);
-				spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 				GOBI_ERROR("failed to add read; discarding "
 					   "read of cid=0x%04x tid=0x%04x",
 					   cid, tid);
-				resubmit_int_urb(dev->qmi.inturb);
-				return;
+				kfree(copy);
+				break;
 			}
 
-			client_notify(dev, client->cid, tid);
-
+			notify = client_remove_notify(client, tid);
+			if (notify)
+				list_add(&notify->node, &notifies);
 			if (cid >> 8 != 0xff)
 				break;
 		}
 	}
-
 	spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
+
+	client_notify_list(dev, &notifies);
 	resubmit_int_urb(dev->qmi.inturb);
 }
 
@@ -622,7 +629,6 @@ static int write_sync(struct qcusbnet *dev, struct buffer *data_buf, u16 cid)
 	}
 
 	spin_lock_irqsave(&dev->qmi.clients_lock, flags);
-
 	if (!client_addurb(dev, cid, urb)) {
 		usb_free_urb(urb);
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
@@ -631,23 +637,26 @@ static int write_sync(struct qcusbnet *dev, struct buffer *data_buf, u16 cid)
 		kref_put(&ctx->ref, writectx_release);
 		return -EINVAL;
 	}
+	spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 
 	result = usb_submit_urb(urb, GFP_KERNEL);
 	if (result < 0)	{
 		GOBI_ERROR("failed to submit urb: %d (cid=0x%04x)",
 			   result, cid);
 
+		spin_lock_irqsave(&dev->qmi.clients_lock, flags);
 		removed_urb = client_delurb(dev, cid, urb);
-		BUG_ON(urb != removed_urb);
-		usb_free_urb(urb);
-
+		if (urb == removed_urb)
+			usb_free_urb(urb);
+		else
+			GOBI_ERROR("didn't get write urb back (cid=0x%04x)",
+				   cid);
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
+
 		usb_autopm_put_interface(dev->iface);
 		kref_put(&ctx->ref, writectx_release);
 		return result;
 	}
-
-	spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 
 	result = down_interruptible(&ctx->sem);
 	kref_put(&ctx->ref, writectx_release);
@@ -834,25 +843,30 @@ static void client_free(struct qcusbnet *dev, u16 cid)
 
 	spin_lock_irqsave(&dev->qmi.clients_lock, flags);
 	list_for_each_safe(node, tmp, &dev->qmi.clients) {
+		struct notifyreq *notify;
+
 		client = list_entry(node, struct client, node);
-		if (client->cid == cid) {
-			while (client_notify(dev, cid, 0)) {
-				;
-			}
+		if (client->cid != cid)
+			continue;
 
-			urb = client_delurb(dev, cid, NULL);
-			while (urb != NULL) {
-				usb_kill_urb(urb);
-				usb_free_urb(urb);
-				urb = client_delurb(dev, cid, NULL);
-			}
-
-			while (client_delread(dev, cid, 0, &data, &size))
-				kfree(data);
-
-			list_del(&client->node);
-			kfree(client);
+		while ((notify = client_remove_notify(client, 0)) != NULL) {
+			/* release lock during notification */
+			spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
+			client_notify_and_free(dev, notify);
+			spin_lock_irqsave(&dev->qmi.clients_lock, flags);
 		}
+		urb = client_delurb(dev, cid, NULL);
+		while (urb != NULL) {
+			usb_kill_urb(urb);
+			usb_free_urb(urb);
+			urb = client_delurb(dev, cid, NULL);
+		}
+		while (client_delread(dev, cid, 0, &data, &size))
+			kfree(data);
+
+		list_del(&client->node);
+		kfree(client);
+		break;
 	}
 	spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 }
@@ -966,53 +980,50 @@ static bool client_addnotify(struct qcusbnet *dev, u16 cid, u16 tid,
 	list_add_tail(&req->node, &client->notifies);
 	req->func = hook;
 	req->data = data;
+	req->cid = cid;
 	req->tid = tid;
 
 	return true;
 }
 
-static bool client_notify(struct qcusbnet *dev, u16 cid, u16 tid)
+static struct notifyreq *client_remove_notify(struct client *client, u16 tid)
 {
-	struct client *client;
-	struct notifyreq *delnotify, *notify;
+	struct notifyreq *notify;
 	struct list_head *node;
-
-	assert_locked(dev);
-
-	client = client_bycid(dev, cid);
-	if (!client) {
-		GOBI_ERROR("failed to find client (cid=0x%04x, tid=0x%04x)",
-			   cid, tid);
-		return false;
-	}
-
-	delnotify = NULL;
 
 	list_for_each(node, &client->notifies) {
 		notify = list_entry(node, struct notifyreq, node);
 		if (!tid || !notify->tid || tid == notify->tid) {
-			delnotify = notify;
-			break;
+			list_del(&notify->node);
+			return notify;
 		}
-
 		GOBI_DEBUG("skipping data TID = %x", notify->tid);
 	}
+	GOBI_WARN("no notify to call (cid=0x%04x, tid=0x%04x)",
+		  client->cid, tid);
+	return NULL;
+}
 
-	if (delnotify) {
-		list_del(&delnotify->node);
-		if (delnotify->func) {
-			/* TODO(ttuttle): This looks sketchy. */
-			spin_unlock(&dev->qmi.clients_lock);
-			delnotify->func(dev, cid, delnotify->data);
-			spin_lock(&dev->qmi.clients_lock);
-		}
-		kfree(delnotify);
-		return true;
+static void client_notify_and_free(struct qcusbnet *dev,
+				   struct notifyreq *notify)
+{
+	if (notify->func)
+		notify->func(dev, notify->cid, notify->data);
+	kfree(notify);
+}
+
+static void client_notify_list(struct qcusbnet *dev,
+			       struct list_head *notifies)
+{
+	struct list_head *node, *tmp;
+	struct notifyreq *notify;
+
+	/* The calling thread must not hold any qmidevice spinlocks */
+	list_for_each_safe(node, tmp, notifies) {
+		notify = list_entry(node, struct notifyreq, node);
+		list_del(&notify->node);
+		client_notify_and_free(dev, notify);
 	}
-
-	GOBI_WARN("no notify to call (cid=0x%04x, tid=0x%04x)", cid, tid);
-
-	return false;
 }
 
 static bool client_addurb(struct qcusbnet *dev, u16 cid, struct urb *urb)
@@ -1481,9 +1492,16 @@ static bool qmi_ready(struct qcusbnet *dev, u16 timeout)
 				spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 			}
 		} else {
+			struct notifyreq *notify = NULL;
+			struct client *client;
+
 			spin_lock_irqsave(&dev->qmi.clients_lock, flags);
-			client_notify(dev, QMICTL, tid);
+			client = client_bycid(dev, QMICTL);
+			if (client)
+				notify = client_remove_notify(client, tid);
 			spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
+			if (notify)
+				client_notify_and_free(dev, notify);
 		}
 	}
 
