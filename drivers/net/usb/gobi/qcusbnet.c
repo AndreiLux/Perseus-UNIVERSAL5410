@@ -156,6 +156,7 @@ static int qcnet_bind(struct usbnet *usbnet, struct usb_interface *iface)
 	struct usb_host_endpoint *endpoint = NULL;
 	struct usb_host_endpoint *in = NULL;
 	struct usb_host_endpoint *out = NULL;
+	int dir_in, dir_out, xfer_int;
 
 	if (iface->num_altsetting != 1) {
 		GOBI_ERROR("invalid num_altsetting %u", iface->num_altsetting);
@@ -169,24 +170,53 @@ static int qcnet_bind(struct usbnet *usbnet, struct usb_interface *iface)
 		return -EINVAL;
 	}
 
+	GOBI_DEBUG("interface number: %d",
+		iface->cur_altsetting->desc.bInterfaceNumber);
+
 	numends = iface->cur_altsetting->desc.bNumEndpoints;
 	for (i = 0; i < numends; i++) {
 		endpoint = iface->cur_altsetting->endpoint + i;
-		if (!endpoint) {
-			GOBI_ERROR("invalid endpoint %u", i);
-			return -EINVAL;
-		}
 
-		if (usb_endpoint_dir_in(&endpoint->desc)
-		&&  !usb_endpoint_xfer_int(&endpoint->desc)) {
+		dir_in   = usb_endpoint_dir_in(&endpoint->desc);
+		dir_out  = usb_endpoint_dir_out(&endpoint->desc);
+		xfer_int = usb_endpoint_xfer_int(&endpoint->desc);
+
+		GOBI_DEBUG("endpoint %d: addr %u "
+			"dir_in %d dir_out %d xfer_int %d",
+			i, endpoint->desc.bEndpointAddress,
+			dir_in, dir_out, xfer_int);
+
+		if (dir_in && !xfer_int) {
+			if (in) {
+				GOBI_ERROR("multiple in endpoints");
+				return -EINVAL;
+			}
+			GOBI_DEBUG("setting endpoint %d as in", i);
 			in = endpoint;
-		} else if (!usb_endpoint_dir_out(&endpoint->desc)) {
+		} else if (dir_out && !xfer_int) {
+			if (out) {
+				GOBI_ERROR("multiple out endpoints");
+				return -EINVAL;
+			}
+			GOBI_DEBUG("setting endpoint %d as out", i);
 			out = endpoint;
+		} else {
+			GOBI_DEBUG("ignoring endpoint %d", i);
 		}
 	}
 
 	if (!in || !out) {
-		GOBI_ERROR("invalid endpoints");
+		GOBI_ERROR("missing endpoint(s)");
+		if (in)
+			GOBI_ERROR("found in endpoint: %u",
+				in->desc.bEndpointAddress);
+		else
+			GOBI_ERROR("didn't find in endpoint");
+		if (out)
+			GOBI_ERROR("found out endpoint: %u",
+				out->desc.bEndpointAddress);
+		else
+			GOBI_ERROR("didn't find out endpoint");
 		return -EINVAL;
 	}
 
@@ -196,12 +226,14 @@ static int qcnet_bind(struct usbnet *usbnet, struct usb_interface *iface)
 		return -EINVAL;
 	}
 
-	usbnet->in = usb_rcvbulkpipe(usbnet->udev, in->desc.bEndpointAddress & USB_ENDPOINT_NUMBER_MASK);
-	usbnet->out = usb_sndbulkpipe(usbnet->udev, out->desc.bEndpointAddress & USB_ENDPOINT_NUMBER_MASK);
+	GOBI_DEBUG("found endpoints: in %u, out %u",
+		   in->desc.bEndpointAddress,
+		   out->desc.bEndpointAddress);
 
-	GOBI_DEBUG("in %x, out %x",
-	    in->desc.bEndpointAddress,
-	    out->desc.bEndpointAddress);
+	usbnet->in = usb_rcvbulkpipe(usbnet->udev,
+		in->desc.bEndpointAddress & USB_ENDPOINT_NUMBER_MASK);
+	usbnet->out = usb_sndbulkpipe(usbnet->udev,
+		out->desc.bEndpointAddress & USB_ENDPOINT_NUMBER_MASK);
 
 	return 0;
 }
