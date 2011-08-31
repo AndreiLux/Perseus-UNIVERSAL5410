@@ -17,6 +17,7 @@
  * max to use for now.
  */
 #define DM_BHT_MAX_DIGEST_SIZE 128  /* 1k hashes are unlikely for now */
+#define DM_BHT_SALT_SIZE       32   /* 256 bits of salt is a lot */
 
 /* UNALLOCATED, PENDING, READY, and VERIFIED are valid states. All other
  * values are entry-related return codes.
@@ -84,6 +85,12 @@ struct dm_bht {
 	int depth;  /* Depth of the tree including the root */
 	unsigned int block_count;  /* Number of blocks hashed */
 	char hash_alg[CRYPTO_MAX_ALG_NAME];
+	unsigned char salt[DM_BHT_SALT_SIZE];
+
+	/* This is a temporary hack to ease the transition to salting. It will
+	 * be removed once salting is supported both in kernel and userspace,
+	 * and the salt will default to all zeroes instead. */
+	bool have_salt;
 
 	/* Computed values */
 	unsigned int node_count;  /* Data size (in hashes) for each entry */
@@ -114,6 +121,8 @@ void dm_bht_set_read_cb(struct dm_bht *bht, dm_bht_callback read_cb);
 void dm_bht_set_write_cb(struct dm_bht *bht, dm_bht_callback write_cb);
 int dm_bht_set_root_hexdigest(struct dm_bht *bht, const u8 *hexdigest);
 int dm_bht_root_hexdigest(struct dm_bht *bht, u8 *hexdigest, int available);
+void dm_bht_set_salt(struct dm_bht *bht, const char *hexsalt);
+int dm_bht_salt(struct dm_bht *bht, char *hexsalt);
 
 /* Functions for loading in data from disk for verification */
 bool dm_bht_is_populated(struct dm_bht *bht, unsigned int block);

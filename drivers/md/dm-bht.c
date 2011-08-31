@@ -110,8 +110,19 @@ static int dm_bht_compute_hash(struct dm_bht *bht, struct page *pg,
 			smp_processor_id());
 		return -EINVAL;
 	}
-	if (crypto_hash_digest(hash_desc, &sg, PAGE_SIZE, digest)) {
-		DMCRIT("crypto_hash_digest failed");
+	if (crypto_hash_update(hash_desc, &sg, PAGE_SIZE)) {
+		DMCRIT("crypto_hash_update failed");
+		return -EINVAL;
+	}
+	if (bht->have_salt) {
+		sg_set_buf(&sg, bht->salt, sizeof(bht->salt));
+		if (crypto_hash_update(hash_desc, &sg, sizeof(bht->salt))) {
+			DMCRIT("crypto_hash_update failed");
+			return -EINVAL;
+		}
+	}
+	if (crypto_hash_final(hash_desc, digest)) {
+		DMCRIT("crypto_hash_final failed");
 		return -EINVAL;
 	}
 
@@ -200,6 +211,8 @@ int dm_bht_create(struct dm_bht *bht, unsigned int block_count,
 {
 	int status = 0;
 	int cpu = 0;
+
+	bht->have_salt = false;
 
 	/* Setup the hash first. Its length determines much of the bht layout */
 	for (cpu = 0; cpu < nr_cpu_ids; ++cpu) {
@@ -938,3 +951,30 @@ int dm_bht_root_hexdigest(struct dm_bht *bht, u8 *hexdigest, int available)
 	return 0;
 }
 EXPORT_SYMBOL(dm_bht_root_hexdigest);
+
+/**
+ * dm_bht_set_salt - sets the salt used, in hex
+ * @bht:      pointer to a dm_bht_create()d bht
+ * @hexsalt:  salt string, as hex; will be zero-padded or truncated to
+ *            DM_BHT_SALT_SIZE * 2 hex digits.
+ */
+void dm_bht_set_salt(struct dm_bht *bht, const char *hexsalt)
+{
+	size_t saltlen = min(strlen(hexsalt) / 2, sizeof(bht->salt));
+	bht->have_salt = true;
+	memset(bht->salt, 0, sizeof(bht->salt));
+	dm_bht_hex_to_bin(bht->salt, (const u8 *)hexsalt, saltlen);
+}
+
+/**
+ * dm_bht_salt - returns the salt used, in hex
+ * @bht:      pointer to a dm_bht_create()d bht
+ * @hexsalt:  buffer to put salt into, of length DM_BHT_SALT_SIZE * 2 + 1.
+ */
+int dm_bht_salt(struct dm_bht *bht, char *hexsalt)
+{
+	if (!bht->have_salt)
+		return -EINVAL;
+	dm_bht_bin_to_hex(bht->salt, (u8 *)hexsalt, sizeof(bht->salt));
+	return 0;
+}
