@@ -482,6 +482,91 @@ static u8 nibble(unsigned char c)
 	return 0;
 }
 
+static int discover_endpoints(struct qcusbnet *dev)
+{
+	int numends;
+	int i;
+	struct usb_host_endpoint *endpoint = NULL;
+	struct usb_host_endpoint *int_in   = NULL;
+	struct usb_host_endpoint *bulk_in  = NULL;
+	struct usb_host_endpoint *bulk_out = NULL;
+	int dir_in, dir_out, xfer_int;
+
+	GOBI_DEBUG("interface number: %d",
+		dev->iface->cur_altsetting->desc.bInterfaceNumber);
+
+	numends = dev->iface->cur_altsetting->desc.bNumEndpoints;
+	for (i = 0; i < numends; i++) {
+		endpoint = dev->iface->cur_altsetting->endpoint + i;
+
+		dir_in = usb_endpoint_dir_in(&endpoint->desc);
+		dir_out = usb_endpoint_dir_out(&endpoint->desc);
+		xfer_int = usb_endpoint_xfer_int(&endpoint->desc);
+
+		GOBI_DEBUG("endpoint %d: addr %x "
+			"dir_in %d dir_out %d xfer_int %d",
+			i, endpoint->desc.bEndpointAddress,
+			dir_in, dir_out, xfer_int);
+
+		if (dir_in && xfer_int) {
+			if (int_in) {
+				GOBI_ERROR("multiple int_in endpoints");
+				return -EINVAL;
+			}
+			GOBI_DEBUG("setting endpoint %d as int in", i);
+			int_in = endpoint;
+		} else if (dir_in && !xfer_int) {
+			if (bulk_in) {
+				GOBI_ERROR("multiple bulk_in endpoints");
+				return -EINVAL;
+			}
+			GOBI_DEBUG("setting endpoint %d as bulk in", i);
+			bulk_in = endpoint;
+		} else if (dir_out && !xfer_int) {
+			if (bulk_out) {
+				GOBI_ERROR("multiple bulk_out endpoints");
+				return -EINVAL;
+			}
+			GOBI_DEBUG("setting endpoint %d as bulk out", i);
+			bulk_out = endpoint;
+		} else {
+			GOBI_DEBUG("ignoring endpoint %d", i);
+		}
+	}
+
+	if (!int_in || !bulk_in || !bulk_out) {
+		GOBI_ERROR("missing endpoint(s)");
+		if (int_in)
+			GOBI_ERROR("found int_in endpoint: %u",
+				int_in->desc.bEndpointAddress);
+		else
+			GOBI_ERROR("didn't find int_in endpoint");
+		if (bulk_in)
+			GOBI_ERROR("found bulk_in endpoint: %u",
+				bulk_in->desc.bEndpointAddress);
+		else
+			GOBI_ERROR("didn't find bulk_in endpoint");
+		if (bulk_out)
+			GOBI_ERROR("found bulk_out endpoint: %u",
+				bulk_out->desc.bEndpointAddress);
+		else
+			GOBI_ERROR("didn't find bulk_out endpoint");
+		return -EINVAL;
+	}
+
+	dev->iface_num     = dev->iface->cur_altsetting->desc.bInterfaceNumber;
+	dev->int_in_endp   = int_in->desc.bEndpointAddress;
+	dev->bulk_in_endp  = bulk_in->desc.bEndpointAddress;
+	dev->bulk_out_endp = bulk_out->desc.bEndpointAddress;
+
+	GOBI_DEBUG("found endpoints: iface_num %u "
+		"int_in %u bulk_in %u bulk_out %u",
+		dev->iface_num,
+		dev->int_in_endp, dev->bulk_in_endp, dev->bulk_out_endp);
+
+	return 0;
+}
+
 int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids)
 {
 	int status;
@@ -515,6 +600,14 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 		return -ENOMEM;
 	}
 
+	dev->iface = iface;
+	status = discover_endpoints(dev);
+	if (status) {
+		GOBI_ERROR("discover_endpoints failed: %d", status);
+		kfree(dev);
+		return status;
+	}
+
 	usbnet->data[0] = (unsigned long)dev;
 
 	dev->usbnet = usbnet;
@@ -538,7 +631,6 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 
 	memset(&(dev->usbnet->net->stats), 0, sizeof(struct net_device_stats));
 
-	dev->iface = iface;
 	memset(&(dev->meid), '0', 14);
 
 	dev->valid = false;

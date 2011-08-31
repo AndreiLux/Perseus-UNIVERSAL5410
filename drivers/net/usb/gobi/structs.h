@@ -96,6 +96,11 @@ struct qcusbnet {
 	struct work_struct startxmit;
 	struct work_struct txtimeout;
 	struct work_struct complete;
+
+	unsigned int iface_num;
+	unsigned int int_in_endp;
+	unsigned int bulk_in_endp;
+	unsigned int bulk_out_endp;
 };
 
 #endif /* !QCUSBNET_STRUCTS_H */
