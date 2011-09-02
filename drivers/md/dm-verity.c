@@ -973,6 +973,7 @@ static void splitarg(char *arg, char **key, char **val) {
  * @alg:            hash algorithm
  * @root_hexdigest: toplevel hash of the tree
  * @error_behavior: what to do when verification fails [optional]
+ * @salt:           salt, in hex [optional]
  *
  * E.g.,
  * payload=/dev/sda2 hashtree=/dev/sda3 alg=sha256
@@ -1006,6 +1007,7 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	const char *alg = NULL;
 	const char *root_hexdigest = NULL;
 	const char *dev_error_behavior = error_behavior;
+	const char *hexsalt = NULL;
 	int i;
 
 	if (argc >= 6 && !strchr(argv[3], '=')) {
@@ -1056,6 +1058,8 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 				}
 			} else if (!strcmp(key, "error_behavior")) {
 				dev_error_behavior = val;
+			} else if (!strcmp(key, "salt")) {
+				hexsalt = val;
 			}
 		}
 	}
@@ -1100,6 +1104,8 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		DMERR("root hexdigest error");
 		goto bad_root_hexdigest;
 	}
+	if (hexsalt)
+		dm_bht_set_salt(&vc->bht, hexsalt);
 	dm_bht_set_read_cb(&vc->bht, kverityd_bht_read_callback);
 
 	/* payload: device to verify */
