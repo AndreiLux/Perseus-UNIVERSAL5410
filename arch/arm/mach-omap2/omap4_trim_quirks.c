@@ -77,6 +77,10 @@ int omap4_ldo_trim_configure(void)
 			OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_EFUSE_2);
 	}
 
+	/* Required for DPLL_MPU to lock at 2.4 GHz */
+	if (dpll_trim_override)
+		omap_ctrl_writel(0x29, OMAP4_CTRL_MODULE_CORE_DPLL_NWELL_TRIM_0);
+
 	return 0;
 }
 

@@ -49,6 +49,7 @@ int omap4_dpllmx_gatectrl_read(struct clk *clk);
                                                                                 
 #define MAX_FREQ_UPDATE_TIMEOUT  100000                                         
 #define OMAP_1_4GHz     1400000000                                              
+#define OMAP_1_2GHz     1200000000
 #define OMAP_1GHz               1000000000                                      
 #define OMAP_920MHz             920000000                                       
 #define OMAP_748MHz             748000000                                       
@@ -712,7 +713,7 @@ static int omap4460_dcc(struct clk *clk, unsigned long rate)
                 return -EINVAL;
 
         v = __raw_readl(dd->mult_div1_reg);
-        if (rate < OMAP_1GHz) {
+	if (!cpu_is_omap447x() || rate <= OMAP_1GHz) {
                 /* If DCC is enabled, disable it */
                 if (v & OMAP4460_DCC_EN_MASK) {
                         v &= ~OMAP4460_DCC_EN_MASK;
@@ -749,10 +750,12 @@ int omap4460_mpu_dpll_set_rate(struct clk *clk, unsigned long rate)
 		omap4460_mpu_dpll_update_children(rate);
 
 	/*
-	 * On OMAP4460, to obtain MPU DPLL frequency higher
-	 * than 1GHz, DCC (Duty Cycle Correction) needs to
-	 * be enabled.
+	 * To obtain MPU DPLL frequency higher than 1GHz, On OMAP4470,
+	 * DCC (Duty Cycle Correction) needs to be enabled.
 	 * And needs to be kept disabled for < 1 Ghz.
+	 *
+	 * OMAP4460 has a HW issue with DCC so until proper WA is found
+	 * DCC shouldn't be used at any frequency.
 	 */
 	dpll_rate = omap2_get_dpll_rate(clk->parent);
 
@@ -762,7 +765,7 @@ int omap4460_mpu_dpll_set_rate(struct clk *clk, unsigned long rate)
 
 	pr_debug("omap4460_mpu_dpll_set_rate: %ld -> %ld\n", dpll_rate, rate);
 
-	if (rate < OMAP_1GHz) {
+	if (!cpu_is_omap447x() || rate <= OMAP_1GHz) {
 		omap4460_dcc(clk, rate);
 		if (clk->parent->set_rate(clk->parent, rate)) {
 			omap4460_dcc(clk, dpll_rate);
@@ -770,7 +773,7 @@ int omap4460_mpu_dpll_set_rate(struct clk *clk, unsigned long rate)
 		}
 	} else {
 		/*
-		 * On 4460, the MPU clk for frequencies higher than 1Ghz
+		 * On OMAP4470, the MPU clk for frequencies higher than 1Ghz
 		 * is sourced from CLKOUTX2_M3, instead of CLKOUT_M2, while
 		 * value of M3 is fixed to 1. Hence for frequencies higher
 		 * than 1 Ghz, lock the DPLL at half the rate so the
