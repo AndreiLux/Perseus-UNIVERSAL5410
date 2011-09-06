@@ -496,6 +496,8 @@ int omap_enter_lowpower(unsigned int cpu, unsigned int power_state)
 	}
 
 	if (omap4_device_prev_state_off()) {
+		/* Reconfigure the trim settings as well */
+		omap4_ldo_trim_configure();
 		omap4_dpll_resume_off();
 		omap4_cm_resume_off();
 	}
