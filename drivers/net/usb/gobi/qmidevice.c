@@ -23,6 +23,7 @@
 #include <linux/module.h>
 #include <linux/compat.h>
 #include <linux/poll.h>
+#include <asm/byteorder.h>
 
 struct readreq {
 	struct list_head node;
@@ -101,12 +102,10 @@ static void wds_callback(struct qcusbnet *dev, u16 cid, void *data);
 static int setup_wds_callback(struct qcusbnet *dev);
 static int qmidms_getmeid(struct qcusbnet *dev);
 
-#define IOCTL_QMI_GET_SERVICE_FILE      (0x8BE0 + 1)
-#define IOCTL_QMI_GET_DEVICE_VIDPID     (0x8BE0 + 2)
-#define IOCTL_QMI_GET_DEVICE_MEID       (0x8BE0 + 3)
-#define IOCTL_QMI_CLOSE		 (0x8BE0 + 4)
-#define CDC_GET_ENCAPSULATED_RESPONSE	0x01A1ll
-#define CDC_CONNECTION_SPEED_CHANGE	0x08000000002AA1ll
+#define IOCTL_QMI_GET_SERVICE_FILE	(0x8BE0 + 1)
+#define IOCTL_QMI_GET_DEVICE_VIDPID	(0x8BE0 + 2)
+#define IOCTL_QMI_GET_DEVICE_MEID	(0x8BE0 + 3)
+#define IOCTL_QMI_CLOSE		(0x8BE0 + 4)
 
 static const struct file_operations devqmi_fops = {
 	.owner   = THIS_MODULE,
@@ -263,8 +262,13 @@ static void read_callback(struct urb *urb)
 
 static void int_callback(struct urb *urb)
 {
-	int status;
 	struct qcusbnet *dev = (struct qcusbnet *)urb->context;
+	int status;
+	int len;
+	u8 *buf;
+
+	static const u8 GET_ENCAPSULATED_RESPONSE = 0x01;
+	static const u8 CONNETION_SPEED_CHANGE    = 0x2A;
 
 	if (!device_valid(dev)) {
 		GOBI_WARN("invalid device");
@@ -273,50 +277,88 @@ static void int_callback(struct urb *urb)
 
 	if (urb->status) {
 		GOBI_ERROR("urb status = %d", urb->status);
-		if (urb->status != -EOVERFLOW)
+		if (urb->status == -EOVERFLOW)
+			goto resubmit;
+		else
 			return;
-	} else {
-		if ((urb->actual_length == 8) &&
-		    (*(u64 *)urb->transfer_buffer == CDC_GET_ENCAPSULATED_RESPONSE)) {
-			usb_fill_control_urb(dev->qmi.readurb, dev->usbnet->udev,
-					     usb_rcvctrlpipe(dev->usbnet->udev, 0),
-					     (unsigned char *)dev->qmi.readsetup,
-					     dev->qmi.readbuf,
-					     DEFAULT_READ_URB_LENGTH,
-					     read_callback, dev);
-			status = usb_submit_urb(dev->qmi.readurb, GFP_ATOMIC);
-			if (status == 0) {
-				/* Do not resubmit the int_urb because
-				 * it will be resubmitted in read_callback */
-				return;
-			}
-			GOBI_ERROR("failed to submit read urb: %d", status);
-		} else if ((urb->actual_length == 16) &&
-			   (*(u64 *)urb->transfer_buffer == CDC_CONNECTION_SPEED_CHANGE)) {
-			/* if upstream or downstream is 0, stop traffic.
-			 * Otherwise resume it */
-			if ((*(u32 *)(urb->transfer_buffer + 8) == 0) ||
-			    (*(u32 *)(urb->transfer_buffer + 12) == 0)) {
-				qc_setdown(dev, DOWN_CDC_CONNECTION_SPEED);
-				GOBI_DEBUG("traffic stopping due to "
-					   "CONNECTION_SPEED_CHANGE");
-			} else {
-				qc_cleardown(dev, DOWN_CDC_CONNECTION_SPEED);
-				GOBI_DEBUG("resuming traffic due to "
-					   "CONNECTION_SPEED_CHANGE");
-			}
-		} else {
-			GOBI_ERROR("ignoring invalid int urb");
-			if (gobi_debug >= 1)
-				print_hex_dump(KERN_INFO, "gobi-int: ",
-					       DUMP_PREFIX_OFFSET, 16, 1,
-					       urb->transfer_buffer,
-					       urb->actual_length, true);
-		}
 	}
 
+	buf = urb->transfer_buffer;
+	len = urb->actual_length;
+
+	if (len < 8) {
+		GOBI_ERROR("urb too short (%d < 8)", len);
+		goto resubmit;
+	}
+
+	u8  req_type  = buf[0];
+	u8  request   = buf[1];
+	u16 iface_num = le16_to_cpup(buf + 4);
+
+	/* 0xA1 = dir: device-to-host, type: class, recipient: interface */
+	if (req_type != 0xA1) {
+		GOBI_ERROR("wrong request type (0x%02x != 0x%02x)",
+			req_type, 0xA1);
+		goto resubmit;
+	}
+
+	if (iface_num != dev->iface_num) {
+		GOBI_ERROR("wrong interface number (0x%04x != 0x%04x)",
+			iface_num, dev->iface_num);
+		goto resubmit;
+	}
+
+	if (request == GET_ENCAPSULATED_RESPONSE) {
+		if (len != 8) {
+			GOBI_ERROR("wrong length (%d != 8)", len);
+			goto resubmit;
+		}
+
+		GOBI_DEBUG("GET_ENCAPSULATED_RESPONSE");
+
+		usb_fill_control_urb(dev->qmi.readurb, dev->usbnet->udev,
+				     usb_rcvctrlpipe(dev->usbnet->udev, 0),
+				     (unsigned char *)dev->qmi.readsetup,
+				     dev->qmi.readbuf,
+				     DEFAULT_READ_URB_LENGTH,
+				     read_callback, dev);
+		status = usb_submit_urb(dev->qmi.readurb, GFP_ATOMIC);
+		if (status) {
+			GOBI_ERROR("failed to submit read urb: %d", status);
+			goto resubmit;
+		}
+		/* Do not resubmit the int_urb because
+		 * it will be resubmitted in read_callback */
+		return;
+	} else if (request == CONNECTION_SPEED_CHANGE) {
+		if (len != 16) {
+			GOBI_ERROR("wrong length (%d != 16)", len);
+			goto resubmit;
+		}
+
+		u32 upstream   = le32_to_cpup(buf +  8);
+		u32 downstream = le32_to_cpup(buf + 12);
+
+		GOBI_DEBUG("CONNECTION_SPEED_CHANGE: %d/%d",
+			upstream, downstream);
+
+		if (upstream == 0 || downstream == 0) {
+			qc_setdown(dev, DOWN_CDC_CONNECTION_SPEED);
+			GOBI_DEBUG("traffic stopping due to "
+				   "CONNECTION_SPEED_CHANGE");
+		} else {
+			qc_cleardown(dev, DOWN_CDC_CONNECTION_SPEED);
+			GOBI_DEBUG("resuming traffic due to "
+				   "CONNECTION_SPEED_CHANGE");
+		}
+		goto resubmit;
+	} else {
+		GOBI_ERROR("invalid request: 0x%02x", request);
+		goto resubmit;
+	}
+
+resubmit:
 	resubmit_int_urb(dev->qmi.inturb);
-	return;
 }
 
 int qc_startread(struct qcusbnet *dev)
@@ -372,13 +414,13 @@ int qc_startread(struct qcusbnet *dev)
 	dev->qmi.readsetup->type = 0xA1;
 	dev->qmi.readsetup->code = 1;
 	dev->qmi.readsetup->value = 0;
-	dev->qmi.readsetup->index = 0;
+	dev->qmi.readsetup->index = dev->iface_num;
 	dev->qmi.readsetup->len = DEFAULT_READ_URB_LENGTH;
 
 	interval = (dev->usbnet->udev->speed == USB_SPEED_HIGH) ? 7 : 3;
 
 	usb_fill_int_urb(dev->qmi.inturb, dev->usbnet->udev,
-			 usb_rcvintpipe(dev->usbnet->udev, 0x81),
+			 usb_rcvintpipe(dev->usbnet->udev, dev->int_in_endp),
 			 dev->qmi.intbuf, DEFAULT_READ_URB_LENGTH,
 			 int_callback, dev, interval);
 	status = usb_submit_urb(dev->qmi.inturb, GFP_KERNEL);
@@ -602,7 +644,7 @@ static int write_sync(struct qcusbnet *dev, struct buffer *data_buf, u16 cid)
 	ctx->setup.type = 0x21;
 	ctx->setup.code = 0;
 	ctx->setup.value = 0;
-	ctx->setup.index = 0;
+	ctx->setup.index = dev->iface_num;
 	ctx->setup.len = buffer_size(data_buf);
 
 	usb_fill_control_urb(urb, dev->usbnet->udev,
