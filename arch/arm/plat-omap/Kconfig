@@ -28,6 +28,7 @@ config ARCH_OMAP2PLUS
 	select OMAP_DM_TIMER
 	select USE_OF
 	select PROC_DEVICETREE if PROC_FS
+	select MULTI_IRQ_HANDLER
 	help
 	  "Systems based on OMAP2, OMAP3, OMAP4 or OMAP5"
 

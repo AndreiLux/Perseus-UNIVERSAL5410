@@ -20,6 +20,7 @@
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
+#include <asm/hardware/gic.h>
 
 #include <mach/hardware.h>
 #include <mach/omap4-common.h>
@@ -58,6 +59,7 @@ MACHINE_START(OMAP_5430EVM, "OMAP5430 evm board")
 	.reserve	= omap_reserve,
 	.init_early	= omap_5430evm_init_early,
 	.init_irq	= gic_init_irq,
+	.handle_irq     = gic_handle_irq,
 	.init_machine	= omap_5430evm_init,
 	.timer		= &omap5_timer,
 MACHINE_END
