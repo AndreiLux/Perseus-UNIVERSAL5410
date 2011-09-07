@@ -1463,7 +1463,6 @@ int qc_register(struct qcusbnet *dev)
 	char *name;
 
 	dev->valid = true;
-	dev->dying = false;
 	result = client_alloc(dev, QMICTL);
 	if (result) {
 		dev->valid = false;
@@ -1532,7 +1531,6 @@ void qc_deregister(struct qcusbnet *dev)
 	struct list_head *node, *tmp;
 	struct client *client;
 
-	dev->dying = true;
 	list_for_each_safe(node, tmp, &dev->qmi.clients) {
 		client = list_entry(node, struct client, node);
 		client_free(dev, client->cid);
