@@ -6,6 +6,7 @@ obj-$(CONFIG_DMAR_TABLE) += dmar.o
 obj-$(CONFIG_INTEL_IOMMU) += iova.o intel-iommu.o
 obj-$(CONFIG_IRQ_REMAP) += intr_remapping.o
 obj-$(CONFIG_EXYNOS_IOMMU) += exynos-iommu.o
+obj-$(CONFIG_EXYNOS_IOVMM) += exynos-iovmm.o
 obj-$(CONFIG_OMAP_IOMMU) += omap-iommu.o
 obj-$(CONFIG_OMAP_IOVMM) += omap-iovmm.o
 obj-$(CONFIG_OMAP_IOMMU_DEBUG) += omap-iommu-debug.o
