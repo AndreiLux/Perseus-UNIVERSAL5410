@@ -268,7 +268,7 @@ static void int_callback(struct urb *urb)
 	u8 *buf;
 
 	static const u8 GET_ENCAPSULATED_RESPONSE = 0x01;
-	static const u8 CONNETION_SPEED_CHANGE    = 0x2A;
+	static const u8 CONNECTION_SPEED_CHANGE   = 0x2A;
 
 	if (!device_valid(dev)) {
 		GOBI_WARN("invalid device");
@@ -336,8 +336,8 @@ static void int_callback(struct urb *urb)
 			goto resubmit;
 		}
 
-		u32 upstream   = le32_to_cpup(buf +  8);
-		u32 downstream = le32_to_cpup(buf + 12);
+		u32 upstream   = le32_to_cpup((__le32 *)(buf +  8));
+		u32 downstream = le32_to_cpup((__le32 *)(buf + 12));
 
 		GOBI_DEBUG("CONNECTION_SPEED_CHANGE: %d/%d",
 			upstream, downstream);
