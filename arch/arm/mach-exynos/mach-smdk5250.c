@@ -19,6 +19,7 @@
 #include <plat/regs-serial.h>
 
 #include <mach/map.h>
+#include <mach/exynos-ion.h>
 
 #include "common.h"
 
@@ -67,6 +68,12 @@ static struct s3c2410_uartcfg smdk5250_uartcfgs[] __initdata = {
 	},
 };
 
+static struct platform_device *smdk5250_devices[] __initdata = {
+#ifdef CONFIG_ION_EXYNOS
+	&exynos_device_ion,
+#endif
+};
+
 static void __init smdk5250_map_io(void)
 {
 	clk_xusbxti.rate = 24000000;
@@ -78,7 +85,9 @@ static void __init smdk5250_map_io(void)
 
 static void __init smdk5250_machine_init(void)
 {
-	/* nothing here yet */
+	exynos_ion_set_platdata();
+
+	platform_add_devices(smdk5250_devices, ARRAY_SIZE(smdk5250_devices));
 }
 
 MACHINE_START(SMDK5250, "SMDK5250")
