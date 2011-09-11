@@ -26,6 +26,7 @@
 
 #include <mach/hardware.h>
 #include <mach/omap-secure.h>
+#include <mach/omap-wakeupgen.h>
 
 #include "iomap.h"
 #include "common.h"
@@ -33,7 +34,6 @@
 
 /* SCU base address */
 static void __iomem *scu_base;
-
 static DEFINE_SPINLOCK(boot_lock);
 
 void __iomem *omap4_get_scu_base(void)
@@ -73,6 +73,8 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
 	static struct clockdomain *cpu1_clkdm;
 	static bool booted;
+	void __iomem *base = omap_get_wakeupgen_base();
+
 	/*
 	 * Set synchronisation state between this boot processor
 	 * and the secondary one
@@ -85,7 +87,11 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 * the AuxCoreBoot1 register is updated with cpu state
 	 * A barrier is added to ensure that write buffer is drained
 	 */
-	omap_modify_auxcoreboot0(0x200, 0xfffffdff);
+	if (cpu_is_omap44xx())
+		omap_modify_auxcoreboot0(0x200, 0xfffffdff);
+	else
+		__raw_writel(0x200, base + OMAP_AUX_CORE_BOOT_0);
+
 	flush_cache_all();
 	smp_wmb();
 
@@ -124,14 +130,21 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 
 static void __init wakeup_secondary(void)
 {
+	void __iomem *base = omap_get_wakeupgen_base();
+
 	/*
 	 * Write the address of secondary startup routine into the
 	 * AuxCoreBoot1 where ROM code will jump and start executing
 	 * on secondary core once out of WFE
 	 * A barrier is added to ensure that write buffer is drained
 	 */
-	omap_auxcoreboot_addr(virt_to_phys(omap_secondary_startup));
-	smp_wmb();
+	if (cpu_is_omap44xx())
+		omap_auxcoreboot_addr(virt_to_phys(omap_secondary_startup));
+	else
+		__raw_writel(virt_to_phys(omap5_secondary_startup),
+						base + OMAP_AUX_CORE_BOOT_1);
+
+	wmb();
 
 	/*
 	 * Send a 'sev' to wake the secondary core from WFE.
@@ -147,16 +160,15 @@ static void __init wakeup_secondary(void)
  */
 void __init smp_init_cpus(void)
 {
-	unsigned int i, ncores;
+	unsigned int i, ncores = 1;
 
-	/*
-	 * Currently we can't call ioremap here because
-	 * SoC detection won't work until after init_early.
-	 */
-	scu_base =  OMAP2_L4_IO_ADDRESS(OMAP44XX_SCU_BASE);
-	BUG_ON(!scu_base);
-
-	ncores = scu_get_core_count(scu_base);
+	/* Static mapping, never released */
+	if (cpu_is_omap44xx())
+		scu_base = ioremap(OMAP44XX_SCU_BASE, SZ_256);
+		BUG_ON(!scu_base);
+		ncores = scu_get_core_count(scu_base);
+	else if (cpu_is_omap54xx())
+		ncores = get_a15_core_count();
 
 	/* sanity check */
 	if (ncores > nr_cpu_ids) {
