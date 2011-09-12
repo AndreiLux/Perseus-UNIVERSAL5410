@@ -733,7 +733,7 @@ static void unfreeze_array(conf_t *conf)
 	spin_unlock_irq(&conf->resync_lock);
 }
 
-static int make_request(mddev_t *mddev, struct bio * bio)
+static void make_request(mddev_t *mddev, struct bio * bio)
 {
 	conf_t *conf = mddev->private;
 	mirror_info_t *mirror;
@@ -750,7 +750,7 @@ static int make_request(mddev_t *mddev, struct bio * bio)
 
 	if (unlikely(bio->bi_rw & REQ_FLUSH)) {
 		md_flush_request(mddev, bio);
-		return 0;
+		return;
 	}
 
 	/* If this request crosses a chunk boundary, we need to
@@ -782,10 +782,8 @@ static int make_request(mddev_t *mddev, struct bio * bio)
 		conf->nr_waiting++;
 		spin_unlock_irq(&conf->resync_lock);
 
-		if (make_request(mddev, &bp->bio1))
-			generic_make_request(&bp->bio1);
-		if (make_request(mddev, &bp->bio2))
-			generic_make_request(&bp->bio2);
+		make_request(mddev, &bp->bio1);
+		make_request(mddev, &bp->bio2);
 
 		spin_lock_irq(&conf->resync_lock);
 		conf->nr_waiting--;
@@ -793,14 +791,14 @@ static int make_request(mddev_t *mddev, struct bio * bio)
 		spin_unlock_irq(&conf->resync_lock);
 
 		bio_pair_release(bp);
-		return 0;
+		return;
 	bad_map:
 		printk("md/raid10:%s: make_request bug: can't convert block across chunks"
 		       " or bigger than %dk %llu %d\n", mdname(mddev), chunk_sects/2,
 		       (unsigned long long)bio->bi_sector, bio->bi_size >> 10);
 
 		bio_io_error(bio);
-		return 0;
+		return;
 	}
 
 	md_write_start(mddev, bio);
@@ -829,7 +827,7 @@ static int make_request(mddev_t *mddev, struct bio * bio)
 		int slot = r10_bio->read_slot;
 		if (disk < 0) {
 			raid_end_bio_io(r10_bio);
-			return 0;
+			return;
 		}
 		mirror = conf->mirrors + disk;
 
@@ -844,8 +842,38 @@ static int make_request(mddev_t *mddev, struct bio * bio)
 		read_bio->bi_rw = READ | do_sync;
 		read_bio->bi_private = r10_bio;
 
-		generic_make_request(read_bio);
-		return 0;
+		if (max_sectors < r10_bio->sectors) {
+			/* Could not read all from this device, so we will
+			 * need another r10_bio.
+			 */
+			sectors_handled = (r10_bio->sectors + max_sectors
+					   - bio->bi_sector);
+			r10_bio->sectors = max_sectors;
+			spin_lock_irq(&conf->device_lock);
+			if (bio->bi_phys_segments == 0)
+				bio->bi_phys_segments = 2;
+			else
+				bio->bi_phys_segments++;
+			spin_unlock(&conf->device_lock);
+			/* Cannot call generic_make_request directly
+			 * as that will be queued in __generic_make_request
+			 * and subsequent mempool_alloc might block
+			 * waiting for it.  so hand bio over to raid10d.
+			 */
+			reschedule_retry(r10_bio);
+
+			r10_bio = mempool_alloc(conf->r10bio_pool, GFP_NOIO);
+
+			r10_bio->master_bio = bio;
+			r10_bio->sectors = ((bio->bi_size >> 9)
+					    - sectors_handled);
+			r10_bio->state = 0;
+			r10_bio->mddev = mddev;
+			r10_bio->sector = bio->bi_sector + sectors_handled;
+			goto read_again;
+		} else
+			generic_make_request(read_bio);
+		return;
 	}
 
 	/*
@@ -935,7 +963,6 @@ static int make_request(mddev_t *mddev, struct bio * bio)
 
 	if (do_sync || !mddev->bitmap || !plugged)
 		md_wakeup_thread(mddev->thread);
-	return 0;
 }
 
 static void status(struct seq_file *seq, mddev_t *mddev)
