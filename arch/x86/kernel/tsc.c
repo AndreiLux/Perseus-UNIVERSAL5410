@@ -975,6 +975,10 @@ void __init tsc_init(void)
 		return;
 	}
 
+	do_div(initial_tsc, cpu_khz / 1000);
+	printk(KERN_INFO "Initial usec timer %llu\n",
+		(unsigned long long)initial_tsc);
+
 	printk("Detected %lu.%03lu MHz processor.\n",
 			(unsigned long)cpu_khz / 1000,
 			(unsigned long)cpu_khz % 1000);
