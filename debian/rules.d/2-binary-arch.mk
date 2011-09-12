@@ -10,6 +10,8 @@ build_cd =
 build_O  = O=$(builddir)/build-$*
 endif
 
+kbsr      = $(builddir)/build-$*
+
 $(stampdir)/stamp-prepare-%: config-prepare-check-%
 	@echo Debug: $@
 	@touch $@
@@ -180,7 +182,7 @@ endif
 		sed -e 's/.*CONFIG_DEBUG_INFO=.*/# CONFIG_DEBUG_INFO is not set/g' > \
 		$(hdrdir)/.config
 	chmod 644 $(hdrdir)/.config
-	$(kmake) O=$(hdrdir) -j1 silentoldconfig prepare scripts
+	$(kmake) HOSTCC=$(CROSS_COMPILE)gcc KBUILD_SCRIPTROOT=$(kbsr) O=$(hdrdir) -j1 silentoldconfig prepare scripts
 	# We'll symlink this stuff
 	rm -f $(hdrdir)/Makefile
 	rm -rf $(hdrdir)/include2
