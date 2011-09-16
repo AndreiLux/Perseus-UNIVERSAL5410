@@ -55,9 +55,9 @@ printdir = $(patsubst $(INSTALL_HDR_PATH)/%/,%,$(dir $@))
 quiet_cmd_install = INSTALL $(printdir) ($(words $(all-files))\
                             file$(if $(word 2, $(all-files)),s))
       cmd_install = \
-        $(PERL) $< $(srctree)/$(obj) $(install) $(SRCARCH) $(header-y); \
-        $(PERL) $< $(objtree)/$(obj) $(install) $(SRCARCH) $(objhdr-y); \
-        $(PERL) $< $(objtree)/$(gen) $(install) $(SRCARCH) $(genhdr-y); \
+        $(PERL) $< $(srctree)/$(obj) $(install) $(SRCARCH) $(printdir) $(header-y); \
+        $(PERL) $< $(objtree)/$(obj) $(install) $(SRCARCH) $(printdir) $(objhdr-y); \
+        $(PERL) $< $(objtree)/$(gen) $(install) $(SRCARCH) $(printdir) $(genhdr-y); \
         for F in $(wrapper-files); do                                   \
                 echo "\#include <asm-generic/$$F>" > $(install)/$$F;    \
         done;                                                           \
