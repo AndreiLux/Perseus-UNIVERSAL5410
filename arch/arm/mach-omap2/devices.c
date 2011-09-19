@@ -89,6 +89,7 @@ static int __init omap4_l3_init(void)
 	 * To avoid code running on other OMAPs in
 	 * multi-omap builds
 	 */
+
 	if ((!(cpu_is_omap44xx())) && (!cpu_is_omap54xx()))
 		return -ENODEV;
 
@@ -342,7 +343,7 @@ static inline void omap_init_mbox(void) { }
 
 static inline void omap_init_sti(void) {}
 
-#if defined CONFIG_ARCH_OMAP4
+#if defined CONFIG_ARCH_OMAP4 || defined CONFIG_ARCH_OMAP5
 
 static struct platform_device codec_dmic0 = {
 	.name	= "dmic-codec",
@@ -384,6 +385,15 @@ static struct platform_device omap_pcm = {
 
 static void omap_init_audio(void)
 {
+	platform_device_register(&omap_mcbsp1);
+	platform_device_register(&omap_mcbsp2);
+	if (cpu_is_omap243x() || cpu_is_omap34xx() || cpu_is_omap44xx() || cpu_is_omap54xx()) {
+		platform_device_register(&omap_mcbsp3);
+		platform_device_register(&omap_mcbsp4);
+	}
+	if (cpu_is_omap243x() || cpu_is_omap34xx())
+		platform_device_register(&omap_mcbsp5);
+
 	platform_device_register(&omap_pcm);
 }
 
