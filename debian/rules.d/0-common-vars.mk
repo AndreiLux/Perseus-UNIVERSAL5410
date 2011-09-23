@@ -69,9 +69,9 @@ endif
 # The debug packages are ginormous, so you probably want to skip
 # building them (as a developer).
 #
-ifeq ($(full_build),false)
-skipdbg=true
-endif
+#ifeq ($(full_build),false)
+#skipdbg=true
+#endif
 
 abinum		:= $(shell echo $(revision) | sed -e 's/\..*//')$(abi_suffix)
 prev_abinum	:= $(shell echo $(prev_revision) | sed -e 's/\..*//')$(abi_suffix)
