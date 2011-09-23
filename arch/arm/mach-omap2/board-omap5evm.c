@@ -17,6 +17,7 @@
 #include <linux/io.h>
 #include <linux/gpio.h>
 #include <linux/hwspinlock.h>
+#include <linux/i2c/tsl2771.h>
 
 #include <linux/regulator/machine.h>
 #include <linux/regulator/fixed.h>
@@ -43,6 +44,8 @@
 
 #define OMAP5_TOUCH_IRQ_1              179
 #define OMAP5_TOUCH_RESET              230
+
+#define OMAP5_TSL2771_INT_GPIO          149
 
 static const int evm5430_keymap[] = {
 	KEY(0, 0, KEY_RESERVED),
@@ -131,6 +134,29 @@ static struct omap4_keypad_platform_data evm5430_keypad_data = {
 
 static struct omap_board_data keypad_data = {
 	.id                     = 1,
+};
+
+struct tsl2771_platform_data tsl2771_data = {
+	.irq_flags      = (IRQF_TRIGGER_LOW | IRQF_ONESHOT),
+	.flags          = (TSL2771_USE_ALS | TSL2771_USE_PROX),
+	.def_enable                     = 0x0,
+	.als_adc_time                   = 0xdb,
+	.prox_adc_time                  = 0xff,
+	.wait_time                      = 0x00,
+	.als_low_thresh_low_byte        = 0x0,
+	.als_low_thresh_high_byte       = 0x0,
+	.als_high_thresh_low_byte       = 0x0,
+	.als_high_thresh_high_byte      = 0x0,
+	.prox_low_thresh_low_byte       = 0x0,
+	.prox_low_thresh_high_byte      = 0x0,
+	.prox_high_thresh_low_byte      = 0x0,
+	.prox_high_thresh_high_byte     = 0x0,
+	.interrupt_persistence          = 0xf6,
+	.config                         = 0x00,
+	.prox_pulse_count               = 0x03,
+	.gain_control                   = 0xE0,
+	.glass_attn                     = 0x01,
+	.device_factor                  = 0x34,
 };
 
 static void __init omap_5430evm_init_early(void)
@@ -818,6 +844,11 @@ static struct qtouch_ts_platform_data atmel_mxt224_ts_platform_data = {
 static struct i2c_board_info __initdata omap5evm_i2c_2_boardinfo[] = {
 	{
 		I2C_BOARD_INFO("bmp085", 0x77),
+	},
+	{
+		I2C_BOARD_INFO("tsl2771", 0x39),
+		.platform_data = &tsl2771_data,
+		.irq = OMAP5_TSL2771_INT_GPIO,
 	},
 };
 
