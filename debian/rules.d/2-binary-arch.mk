@@ -174,6 +174,13 @@ ifneq ($(skipdbg),true)
 		$(dbgpkgdir)/usr/lib/debug/boot/vmlinux-$(abi_release)-$*
 	$(build_cd) $(kmake) $(build_O) modules_install \
 		INSTALL_MOD_PATH=$(dbgpkgdir)/usr/lib/debug
+	# Add .gnu_debuglink sections to each stripped .ko
+	# pointing to unstripped verson
+	find $(pkgdir) -name '*.ko' | sed 's|$(pkgdir)||' | while read module ; do \
+		$(CROSS_COMPILE)objcopy \
+			--add-gnu-debuglink=$(dbgpkgdir)/usr/lib/debug/$$module \
+			$(pkgdir)/$$module; \
+	done
 	rm -f $(dbgpkgdir)/usr/lib/debug/lib/modules/$(abi_release)-$*/build
 	rm -f $(dbgpkgdir)/usr/lib/debug/lib/modules/$(abi_release)-$*/source
 	rm -f $(dbgpkgdir)/usr/lib/debug/lib/modules/$(abi_release)-$*/modules.*
