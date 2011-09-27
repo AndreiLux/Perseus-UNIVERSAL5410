@@ -1507,12 +1507,13 @@ int qc_register(struct qcusbnet *dev)
 		return result;
 	}
 
-	name = strstr(dev->usbnet->net->name, "usb");
+	name = strstr(dev->usbnet->net->name, "wwan");
 	if (!name) {
-		GOBI_ERROR("bad net name: %s", dev->usbnet->net->name);
+		GOBI_ERROR("bad net name: %s (expected wwan%%d)",
+			   dev->usbnet->net->name);
 		return -ENXIO;
 	}
-	name += strlen("usb");
+	name += strlen("wwan");
 	qmiidx = simple_strtoul(name, NULL, 10);
 	if (qmiidx < 0) {
 		GOBI_ERROR("bad minor number: %s", name);

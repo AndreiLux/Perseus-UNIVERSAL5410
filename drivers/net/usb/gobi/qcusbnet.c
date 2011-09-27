@@ -431,7 +431,7 @@ int qcnet_stop(struct net_device *netdev)
 
 static const struct driver_info qc_netinfo = {
 	.description   = "QCUSBNet Ethernet Device",
-	.flags         = FLAG_ETHER,
+	.flags         = FLAG_ETHER | FLAG_WWAN,
 	.bind          = qcnet_bind,
 	.unbind        = qcnet_unbind,
 	.data          = 0,
