@@ -369,6 +369,11 @@ ifneq ($(skipdbg),true)
 	dh_md5sums -p$(dbgpkg)
 	dh_builddeb -p$(dbgpkg)
 
+	# Hack Alert! Commenting the section out for linaro ppa build only
+	# Must not upload this to primary archive as is.
+	# Turns out that Purpose: PRIMARY is in /CurrentlyBuilding
+	# and not PPA as was expected
+	
 	# Hokay...here's where we do a little twiddling...
 	# Renaming the debug package prevents it from getting into
 	# the primary archive, and therefore prevents this very large
@@ -377,20 +382,20 @@ ifneq ($(skipdbg),true)
 	#
 	# Only do this for PRIMARY archive for now
 	#
-	set -e; \
-	( \
-		$(lockme_cmd) 9 || exit 1; \
-		if grep -qs '^Purpose: PRIMARY$$' /CurrentlyBuilding; then \
-			mv ../$(dbgpkg)_$(release)-$(revision)_$(arch).deb \
-				../$(dbgpkg)_$(release)-$(revision)_$(arch).ddeb; \
-			if grep -qs '^Build-Debug-Symbols: yes$$' /CurrentlyBuilding; then \
-				sed -i '/^$(dbgpkg)_/s/\.deb /.ddeb /' debian/files; \
-			else \
-				grep -v '^$(dbgpkg)_.*$$' debian/files > debian/files.new; \
-				mv debian/files.new debian/files; \
-			fi; \
-		fi; \
-	) 9>$(lockme_file)
+	#set -e; \
+	#( \
+	#	$(lockme_cmd) 9 || exit 1; \
+	#	if grep -qs '^Purpose: PRIMARY$$' /CurrentlyBuilding; then \
+	#		mv ../$(dbgpkg)_$(release)-$(revision)_$(arch).deb \
+	#			../$(dbgpkg)_$(release)-$(revision)_$(arch).ddeb; \
+	#		if grep -qs '^Build-Debug-Symbols: yes$$' /CurrentlyBuilding; then \
+	#			sed -i '/^$(dbgpkg)_/s/\.deb /.ddeb /' debian/files; \
+	#		else \
+	#			grep -v '^$(dbgpkg)_.*$$' debian/files > debian/files.new; \
+	#			mv debian/files.new debian/files; \
+	#		fi; \
+	#	fi; \
+	#) 9>$(lockme_file)
 	# Now, the package wont get into the archive, but it will get put
 	# into the debug system.
 endif
