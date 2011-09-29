@@ -6935,7 +6935,7 @@ static int nl80211_add_scan_req(struct sk_buff *msg,
 	if (req->ie)
 		NLA_PUT(msg, NL80211_ATTR_IE, req->ie_len, req->ie);
 
-	NLA_PUT_U8(msg, NL80211_ATTR_SCAN_FLAGS, req->flags);
+	NLA_PUT_U32(msg, NL80211_ATTR_SCAN_FLAGS, req->flags);
 
 	return 0;
  nla_put_failure:
