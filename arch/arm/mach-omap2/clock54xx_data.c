@@ -893,7 +893,6 @@ static struct clk dpll_unipro1_clkdcoldo_ck = {
 	.clksel_reg	= OMAP54XX_CM_CLKDCOLDO_DPLL_USB,
 	.clksel_mask	= OMAP54XX_DIVHS_MASK,
 	.ops		= &clkops_omap4_dpllmx_ops,
-	.recalc		= &omap2_clksel_recalc,
 	.round_rate	= &omap2_clksel_round_rate,
 	.set_rate	= &omap2_clksel_set_rate,
 };
@@ -953,7 +952,6 @@ static struct clk dpll_unipro2_clkdcoldo_ck = {
 	.clksel_reg	= OMAP54XX_CM_CLKDCOLDO_DPLL_USB,
 	.clksel_mask	= OMAP54XX_DIVHS_MASK,
 	.ops		= &clkops_omap4_dpllmx_ops,
-	.recalc		= &omap2_clksel_recalc,
 	.round_rate	= &omap2_clksel_round_rate,
 	.set_rate	= &omap2_clksel_set_rate,
 };
