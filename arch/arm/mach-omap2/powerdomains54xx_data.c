@@ -347,5 +347,5 @@ static struct powerdomain *powerdomains_omap54xx[] __initdata = {
 
 void __init omap54xx_powerdomains_init(void)
 {
-	pwrdm_init(powerdomains_omap54xx, &omap4_pwrdm_operations);
+	pwrdm_init(powerdomains_omap54xx, &omap5_pwrdm_operations);
 }
