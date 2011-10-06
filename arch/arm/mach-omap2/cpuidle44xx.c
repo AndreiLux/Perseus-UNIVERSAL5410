@@ -102,7 +102,7 @@ static int omap4_enter_idle(struct cpuidle_device *dev,
 		(cx->mpu_logic_state == PWRDM_POWER_OFF))
 			cpu_cluster_pm_enter();
 
-	omap4_enter_lowpower(dev->cpu, cx->cpu_state);
+	omap_enter_lowpower(dev->cpu, cx->cpu_state);
 
 	/*
 	 * Call idle CPU PM exit notifier chain to restore
@@ -116,7 +116,7 @@ static int omap4_enter_idle(struct cpuidle_device *dev,
 	 * Call idle CPU cluster PM exit notifier chain
 	 * to restore GIC and wakeupgen context.
 	 */
-	if (omap4_mpuss_read_prev_context_state())
+	if (omap_mpuss_read_prev_context_state())
 		cpu_cluster_pm_exit();
 
 	if (index > 0)
