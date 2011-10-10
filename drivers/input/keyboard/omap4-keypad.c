@@ -32,24 +32,67 @@
 #include <linux/pm_runtime.h>
 
 #include <linux/platform_data/omap4-keypad.h>
+#include <plat/omap4-keypad.h>
+#include <plat/cpu.h>
 
-/* OMAP4 registers */
-#define OMAP4_KBD_REVISION		0x00
-#define OMAP4_KBD_SYSCONFIG		0x10
-#define OMAP4_KBD_SYSSTATUS		0x14
-#define OMAP4_KBD_IRQSTATUS		0x18
-#define OMAP4_KBD_IRQENABLE		0x1C
-#define OMAP4_KBD_WAKEUPENABLE		0x20
-#define OMAP4_KBD_PENDING		0x24
-#define OMAP4_KBD_CTRL			0x28
-#define OMAP4_KBD_DEBOUNCINGTIME	0x2C
-#define OMAP4_KBD_LONGKEYTIME		0x30
-#define OMAP4_KBD_TIMEOUT		0x34
-#define OMAP4_KBD_STATEMACHINE		0x38
-#define OMAP4_KBD_ROWINPUTS		0x3C
-#define OMAP4_KBD_COLUMNOUTPUTS		0x40
-#define OMAP4_KBD_FULLCODE31_0		0x44
-#define OMAP4_KBD_FULLCODE63_32		0x48
+static const u8 *regs;
+
+enum {
+	KBD_REVISION = 0x0,
+	KBD_SYSCONFIG     ,
+	KBD_SYSSTATUS     , /* only on omap4 */
+	KBD_IRQSTATUS     ,
+	KBD_IRQENABLE     ,
+	KBD_WAKEUPENABLE  ,
+	KBD_PENDING       ,
+	KBD_CTRL          ,
+	KBD_DEBOUNCINGTIME,
+	KBD_LONGKEYTIME   ,
+	KBD_TIMEOUT       ,
+	KBD_STATEMACHINE  ,
+	KBD_ROWINPUTS     ,
+	KBD_COLUMNOUTPUTS ,
+	KBD_FULLCODE31_0  ,
+	KBD_FULLCODE63_32 ,
+};
+
+static const u8 omap4_kp_reg_map[] = {
+	[KBD_REVISION]          = 0x0,
+	[KBD_SYSCONFIG]         = 0x10,
+	[KBD_SYSSTATUS]         = 0x14,
+	[KBD_IRQSTATUS]         = 0x18,
+	[KBD_IRQENABLE]         = 0x1C,
+	[KBD_WAKEUPENABLE]      = 0x20,
+	[KBD_PENDING]           = 0x24,
+	[KBD_CTRL]              = 0x28,
+	[KBD_DEBOUNCINGTIME]    = 0x2C,
+	[KBD_LONGKEYTIME]       = 0x30,
+	[KBD_TIMEOUT]           = 0x34,
+	[KBD_STATEMACHINE]      = 0x38,
+	[KBD_ROWINPUTS]         = 0x3C,
+	[KBD_COLUMNOUTPUTS]     = 0x40,
+	[KBD_FULLCODE31_0]      = 0x44,
+	[KBD_FULLCODE63_32]     = 0x48,
+};
+
+static const u8 omap5_kp_reg_map[] = {
+	[KBD_REVISION]          = 0x0,
+	[KBD_SYSCONFIG]         = 0x10,
+	[KBD_IRQSTATUS]         = 0x24,
+	[KBD_IRQENABLE]         = 0x28,
+	[KBD_WAKEUPENABLE]      = 0x30,
+	[KBD_PENDING]           = 0x34,
+	[KBD_CTRL]              = 0x38,
+	[KBD_DEBOUNCINGTIME]    = 0x3C,
+	[KBD_LONGKEYTIME]       = 0x40,
+	[KBD_TIMEOUT]           = 0x44,
+	[KBD_STATEMACHINE]      = 0x48,
+	[KBD_ROWINPUTS]         = 0x4C,
+	[KBD_COLUMNOUTPUTS]     = 0x50,
+	[KBD_FULLCODE31_0]      = 0x54,
+	[KBD_FULLCODE63_32]     = 0x58,
+};
+
 
 /* OMAP4 bit definitions */
 #define OMAP4_DEF_IRQENABLE_EVENTEN	(1 << 0)
@@ -92,11 +135,11 @@ static irqreturn_t omap4_keypad_interrupt(int irq, void *dev_id)
 
 	/* Disable interrupts */
 	__raw_writel(OMAP4_VAL_IRQDISABLE,
-		     keypad_data->base + OMAP4_KBD_IRQENABLE);
+		     keypad_data->base + regs[KBD_IRQENABLE]);
 
-	*new_state = __raw_readl(keypad_data->base + OMAP4_KBD_FULLCODE31_0);
+	*new_state = __raw_readl(keypad_data->base + regs[KBD_FULLCODE31_0]);
 	*(new_state + 1) = __raw_readl(keypad_data->base
-						+ OMAP4_KBD_FULLCODE63_32);
+						+ regs[KBD_FULLCODE63_32]);
 
 	for (row = 0; row < keypad_data->rows; row++) {
 		changed = key_state[row] ^ keypad_data->key_state[row];
@@ -121,12 +164,12 @@ static irqreturn_t omap4_keypad_interrupt(int irq, void *dev_id)
 		sizeof(keypad_data->key_state));
 
 	/* clear pending interrupts */
-	__raw_writel(__raw_readl(keypad_data->base + OMAP4_KBD_IRQSTATUS),
-			keypad_data->base + OMAP4_KBD_IRQSTATUS);
+	__raw_writel(__raw_readl(keypad_data->base + regs[KBD_IRQSTATUS]),
+			keypad_data->base + regs[KBD_IRQSTATUS]);
 
 	/* enable interrupts */
 	__raw_writel(OMAP4_DEF_IRQENABLE_EVENTEN | OMAP4_DEF_IRQENABLE_LONGKEY,
-			keypad_data->base + OMAP4_KBD_IRQENABLE);
+			keypad_data->base + regs[KBD_IRQENABLE]);
 
 	return IRQ_HANDLED;
 }
@@ -140,15 +183,15 @@ static int omap4_keypad_open(struct input_dev *input)
 	disable_irq(keypad_data->irq);
 
 	__raw_writel(OMAP4_VAL_FUNCTIONALCFG,
-			keypad_data->base + OMAP4_KBD_CTRL);
+			keypad_data->base + regs[KBD_CTRL]);
 	__raw_writel(OMAP4_VAL_DEBOUNCINGTIME,
-			keypad_data->base + OMAP4_KBD_DEBOUNCINGTIME);
+			keypad_data->base + regs[KBD_DEBOUNCINGTIME]);
 	__raw_writel(OMAP4_VAL_IRQDISABLE,
-			keypad_data->base + OMAP4_KBD_IRQSTATUS);
+			keypad_data->base + regs[KBD_IRQSTATUS]);
 	__raw_writel(OMAP4_DEF_IRQENABLE_EVENTEN | OMAP4_DEF_IRQENABLE_LONGKEY,
-			keypad_data->base + OMAP4_KBD_IRQENABLE);
+			keypad_data->base + regs[KBD_IRQENABLE]);
 	__raw_writel(OMAP4_DEF_WUP_EVENT_ENA | OMAP4_DEF_WUP_LONG_KEY_ENA,
-			keypad_data->base + OMAP4_KBD_WAKEUPENABLE);
+			keypad_data->base + regs[KBD_WAKEUPENABLE]);
 
 	enable_irq(keypad_data->irq);
 
@@ -163,11 +206,11 @@ static void omap4_keypad_close(struct input_dev *input)
 
 	/* Disable interrupts */
 	__raw_writel(OMAP4_VAL_IRQDISABLE,
-		     keypad_data->base + OMAP4_KBD_IRQENABLE);
+		     keypad_data->base + regs[KBD_IRQENABLE]);
 
 	/* clear pending interrupts */
-	__raw_writel(__raw_readl(keypad_data->base + OMAP4_KBD_IRQSTATUS),
-			keypad_data->base + OMAP4_KBD_IRQSTATUS);
+	__raw_writel(__raw_readl(keypad_data->base + regs[KBD_IRQSTATUS]),
+			keypad_data->base + regs[KBD_IRQSTATUS]);
 
 	enable_irq(keypad_data->irq);
 
@@ -240,6 +283,13 @@ static int __devinit omap4_keypad_probe(struct platform_device *pdev)
 	keypad_data->row_shift = row_shift;
 	keypad_data->rows = pdata->rows;
 	keypad_data->cols = pdata->cols;
+
+	if (cpu_is_omap44xx())
+		regs = omap4_kp_reg_map;
+	else if (cpu_is_omap54xx())
+		regs = omap5_kp_reg_map;
+	else
+		WARN_ON("Onchip Keypad is not supported...!!!");
 
 	/* input device allocation */
 	keypad_data->input = input_dev = input_allocate_device();
