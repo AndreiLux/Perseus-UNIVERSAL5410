@@ -81,6 +81,7 @@ struct cpu_pm_ops {
 extern int omap4_finish_suspend(unsigned long cpu_state);
 extern void omap4_cpu_resume(void);
 extern int omap5_finish_suspend(unsigned long cpu_state);
+extern void omap5_cpu_resume(void);
 
 static DEFINE_PER_CPU(struct omap4_cpu_pm_info, omap4_pm_info);
 static struct powerdomain *mpuss_pd;
@@ -331,10 +332,7 @@ int omap_enter_lowpower(unsigned int cpu, unsigned int power_state)
 	/*
 	 * Call low level function  with targeted low power state.
 	 */
-	if (cpu_is_omap44xx())
-		cpu_suspend(save_state, omap_pm_ops.finish_suspend);
-	else
-		omap_pm_ops.finish_suspend(save_state);
+	cpu_suspend(save_state, omap_pm_ops.finish_suspend);
 
 	/*
 	 * Restore the CPUx power state to ON otherwise CPUx
@@ -380,7 +378,14 @@ int __cpuinit omap4_hotplug_cpu(unsigned int cpu, unsigned int power_state)
 	 * CPU ONLINE follows normal CPU ONLINE ptah via
 	 * omap_secondary_startup().
 	 */
-	omap_pm_ops.finish_suspend(cpu_state);
+	/*
+	 * FIXME: The kernel hotplug path seems to be buggy for an
+	 * integrated l2 cache on SMP machines. So use normal resume path.
+	 */
+	if (cpu_is_omap54xx())
+		cpu_suspend(cpu_state, omap_pm_ops.finish_suspend);
+	else
+		omap_pm_ops.finish_suspend(cpu_state);
 
 #if 0
 	/* Clear FORCE OFF mode if supported */
@@ -496,7 +501,8 @@ int __init omap_mpuss_init(void)
 		omap_pm_ops.hotplug_restart = omap_secondary_startup;
 	} else if (cpu_is_omap54xx()) {
 		omap_pm_ops.finish_suspend = omap5_finish_suspend;
-		omap_pm_ops.hotplug_restart = omap5_secondary_startup;
+		omap_pm_ops.hotplug_restart = omap5_cpu_resume;
+		omap_pm_ops.resume = omap5_cpu_resume;
 	}
 
 	if (cpu_is_omap54xx())

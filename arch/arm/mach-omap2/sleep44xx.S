@@ -410,6 +410,10 @@ do_wfi:
 	dsb
 	ldmfd	sp!, {pc}
 ENDPROC(omap5_finish_suspend)
+
+ENTRY(omap5_cpu_resume)
+	b	cpu_resume			@ Jump to generic resume
+ENDPROC(omap5_cpu_resume)
 #endif
 
 #ifndef CONFIG_OMAP4_ERRATA_I688
