@@ -312,6 +312,19 @@ void blk_insert_flush(struct request *rq)
 		rq->cmd_flags &= ~REQ_FUA;
 
 	/*
+	 * An empty flush handed down from a stacking driver may
+	 * translate into nothing if the underlying device does not
+	 * advertise a write-back cache.  In this case, simply
+	 * complete the request.
+	 */
+	if (!policy) {
+		__blk_end_bidi_request(rq, 0, 0, 0);
+		return;
+	}
+
+	BUG_ON(rq->bio != rq->biotail); /*assumes zero or single bio rq */
+
+	/*
 	 * If there's data but flush is not necessary, the request can be
 	 * processed directly without going through flush machinery.  Queue
 	 * for normal execution.
