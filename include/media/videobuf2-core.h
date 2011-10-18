@@ -59,6 +59,8 @@ struct vb2_fileio_data;
  */
 struct vb2_mem_ops {
 	void		*(*alloc)(void *alloc_ctx, unsigned long size);
+	void		(*prepare)(void *buf_priv);
+	void		(*finish)(void *buf_priv);
 	void		(*put)(void *buf_priv);
 
 	void		*(*get_userptr)(void *alloc_ctx, unsigned long vaddr,
