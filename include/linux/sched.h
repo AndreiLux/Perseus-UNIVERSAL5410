@@ -909,6 +909,7 @@ struct sched_group_power {
 	 * Number of busy cpus in this group.
 	 */
 	atomic_t nr_busy_cpus;
+	unsigned long next_update;
 };
 
 struct sched_group {
