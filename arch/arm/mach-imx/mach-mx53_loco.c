@@ -309,6 +309,10 @@ static struct sys_timer mx53_loco_timer = {
 	.init	= mx53_loco_timer_init,
 };
 
+static const char *mx53_loco_dt_match[] __initdata = {
+	"fsl,mx53-loco",
+	NULL
+};
 MACHINE_START(MX53_LOCO, "Freescale MX53 LOCO Board")
 	.map_io = mx53_map_io,
 	.init_early = imx53_init_early,
@@ -317,4 +321,5 @@ MACHINE_START(MX53_LOCO, "Freescale MX53 LOCO Board")
 	.timer = &mx53_loco_timer,
 	.init_machine = mx53_loco_board_init,
 	.restart	= mxc_restart,
+	.dt_compat = mx53_loco_dt_match,
 MACHINE_END
