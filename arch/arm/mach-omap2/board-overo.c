@@ -556,6 +556,11 @@ static void __init overo_init(void)
 					"OVERO_GPIO_USBH_CPEN\n");
 }
 
+static const char *omap3_overo_dt_match[] = {
+	"gumstix,omap3-overo",
+	NULL
+};
+
 MACHINE_START(OVERO, "Gumstix Overo")
 	.atag_offset	= 0x100,
 	.reserve	= omap_reserve,
@@ -566,4 +571,5 @@ MACHINE_START(OVERO, "Gumstix Overo")
 	.init_machine	= overo_init,
 	.timer		= &omap3_timer,
 	.restart	= omap_prcm_restart,
+	.dt_compat	= omap3_overo_dt_match,
 MACHINE_END
