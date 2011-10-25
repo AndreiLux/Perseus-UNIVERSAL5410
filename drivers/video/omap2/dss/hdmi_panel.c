@@ -32,12 +32,50 @@
 static struct {
 	/* This protects the panel ops, mainly when accessing the HDMI IP. */
 	struct mutex lock;
+	struct omap_dss_device *dssdev;
 #if defined(CONFIG_OMAP4_DSS_HDMI_AUDIO)
 	/* This protects the audio ops, specifically. */
 	spinlock_t audio_lock;
 #endif
 } hdmi;
 
+static ssize_t hdmi_deepcolor_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int deepcolor;
+
+	deepcolor = omapdss_hdmi_get_deepcolor();
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", deepcolor);
+}
+
+static ssize_t hdmi_deepcolor_store(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t size)
+{
+	int r, deepcolor, curr_deepcolor;
+
+	r = kstrtoint(buf, 0, &deepcolor);
+	if (r || deepcolor > 3)
+		return -EINVAL;
+
+	curr_deepcolor = omapdss_hdmi_get_deepcolor();
+
+	if (deepcolor == curr_deepcolor)
+		return size;
+
+	if (hdmi.dssdev->state != OMAP_DSS_DISPLAY_ACTIVE)
+		r = omapdss_hdmi_set_deepcolor(hdmi.dssdev, deepcolor, false);
+	else
+		r = omapdss_hdmi_set_deepcolor(hdmi.dssdev, deepcolor, true);
+	if (r)
+		return r;
+
+	return size;
+}
+
+static DEVICE_ATTR(deepcolor, S_IRUGO | S_IWUSR, hdmi_deepcolor_show,
+			hdmi_deepcolor_store);
 
 static int hdmi_panel_probe(struct omap_dss_device *dssdev)
 {
@@ -48,6 +86,10 @@ static int hdmi_panel_probe(struct omap_dss_device *dssdev)
 
 	dssdev->panel.timings = (struct omap_video_timings){640, 480, 25175, 96, 16, 48, 2 , 11, 31};
 
+	/* sysfs entry to provide user space control to set deepcolor mode */
+	if (device_create_file(&dssdev->dev, &dev_attr_deepcolor))
+		DSSERR("failed to create sysfs file\n");
+
 	DSSDBG("hdmi_panel_probe x_res= %d y_res = %d\n",
 		dssdev->panel.timings.x_res,
 		dssdev->panel.timings.y_res);
@@ -56,7 +98,7 @@ static int hdmi_panel_probe(struct omap_dss_device *dssdev)
 
 static void hdmi_panel_remove(struct omap_dss_device *dssdev)
 {
-
+	device_remove_file(&dssdev->dev, &dev_attr_deepcolor);
 }
 
 #if defined(CONFIG_OMAP4_DSS_HDMI_AUDIO)
