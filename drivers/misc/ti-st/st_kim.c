@@ -40,6 +40,7 @@
 
 #define MAX_ST_DEVICES	3	/* Imagine 1 on each UART for now */
 static struct platform_device *st_kim_devices[MAX_ST_DEVICES];
+#define TI_FIRMWARE_SUBDIR  "ti-connectivity/"
 
 /**********************************************************************/
 /* internal functions */
@@ -267,12 +268,14 @@ static long download_firmware(struct kim_data_s *kim_gdata)
 	long len = 0;
 	unsigned char *ptr = NULL;
 	unsigned char *action_ptr = NULL;
-	unsigned char bts_scr_name[30] = { 0 };	/* 30 char long bts scr name? */
+	unsigned char bts_scr_name[60];
 	int wr_room_space;
 	int cmd_size;
 	unsigned long timeout;
 
-	err = read_local_version(kim_gdata, bts_scr_name);
+	strcpy(bts_scr_name, TI_FIRMWARE_SUBDIR);
+	err = read_local_version(kim_gdata, &bts_scr_name[
+						  strlen(TI_FIRMWARE_SUBDIR)]);
 	if (err != 0) {
 		pr_err("kim: failed to read local ver");
 		return err;
@@ -282,7 +285,7 @@ static long download_firmware(struct kim_data_s *kim_gdata)
 			     &kim_gdata->kim_pdev->dev);
 	if (unlikely((err != 0) || (kim_gdata->fw_entry->data == NULL) ||
 		     (kim_gdata->fw_entry->size == 0))) {
-		pr_err(" request_firmware failed(errno %ld) for %s", err,
+		pr_err(" request_firmware failed(errno %ld) for %s\n", err,
 			   bts_scr_name);
 		return -EINVAL;
 	}
