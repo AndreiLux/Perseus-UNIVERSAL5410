@@ -68,6 +68,8 @@ struct gic_chip_data {
 };
 
 static DEFINE_RAW_SPINLOCK(irq_controller_lock);
+/* Address of GIC 0 CPU interface */
+static void __iomem *gic_cpu_base_addr __read_mostly;
 
 #ifdef CONFIG_ARM_ERRATA_4668
 static inline void gic_writel_relaxed(unsigned int v,
