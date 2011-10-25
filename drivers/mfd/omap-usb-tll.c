@@ -99,6 +99,7 @@
 struct usbtll_omap {
 	struct clk				*usbtll_p1_fck;
 	struct clk				*usbtll_p2_fck;
+	struct clk				*usbtll_p3_fck;
 	struct usbtll_omap_platform_data	platdata;
 	spinlock_t				lock;
 };
@@ -240,6 +241,15 @@ static int __devinit usbtll_omap_probe(struct platform_device *pdev)
 		goto err_usbtll_p1_fck;
 	}
 
+	if (cpu_is_omap54xx()) {
+		tll->usbtll_p3_fck = clk_get(dev, "usb_tll_hs_usb_ch2_clk");
+		if (IS_ERR(tll->usbtll_p3_fck)) {
+			ret = PTR_ERR(tll->usbtll_p3_fck);
+			dev_err(dev, "usbtll_p2_fck failed error:%d\n", ret);
+			goto err_usbtll_p2_fck;
+		}
+	}
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		dev_err(dev, "usb tll get resource failed\n");
@@ -324,6 +334,7 @@ err_ioremap:
 	if (!ret)
 		goto end;
 	pm_runtime_disable(dev);
+	clk_put(tll->usbtll_p3_fck);
 
 err_usbtll_p2_fck:
 	clk_put(tll->usbtll_p2_fck);
@@ -348,6 +359,7 @@ static int __devexit usbtll_omap_remove(struct platform_device *pdev)
 {
 	struct usbtll_omap *tll = platform_get_drvdata(pdev);
 
+	clk_put(tll->usbtll_p3_fck);
 	clk_put(tll->usbtll_p2_fck);
 	clk_put(tll->usbtll_p1_fck);
 	pm_runtime_disable(&pdev->dev);
@@ -376,6 +388,9 @@ static int usbtll_runtime_resume(struct device *dev)
 	if (is_ehci_tll_mode(pdata->port_mode[1]))
 		clk_enable(tll->usbtll_p2_fck);
 
+	if (is_ehci_tll_mode(pdata->port_mode[2]))
+		clk_enable(tll->usbtll_p3_fck);
+
 	spin_unlock_irqrestore(&tll->lock, flags);
 
 	return 0;
@@ -401,6 +416,9 @@ static int usbtll_runtime_suspend(struct device *dev)
 
 	if (is_ehci_tll_mode(pdata->port_mode[1]))
 		clk_disable(tll->usbtll_p2_fck);
+
+	if (is_ehci_tll_mode(pdata->port_mode[2]))
+		clk_disable(tll->usbtll_p3_fck);
 
 	spin_unlock_irqrestore(&tll->lock, flags);
 
