@@ -244,14 +244,8 @@ static void qcnet_unbind(struct usbnet *usbnet, struct usb_interface *iface)
 
 	dev->dying = true;
 
-	iface->needs_remote_wakeup = 0;
-	netif_carrier_off(usbnet->net);
-	qc_deregister(dev);
-
 	kfree(usbnet->net->netdev_ops);
 	usbnet->net->netdev_ops = NULL;
-	/* drop the list's ref */
-	qcusbnet_put(dev);
 }
 
 static void qcnet_bg_complete(struct work_struct *work)
@@ -709,13 +703,20 @@ static void qcnet_disconnect(struct usb_interface *intf)
 	struct qcusbnet *dev = (struct qcusbnet *)usbnet->data[0];
 	struct list_head *node, *tmp;
 	struct urb *urb;
+
+	intf->needs_remote_wakeup = 0;
+	netif_carrier_off(usbnet->net);
+	usbnet_disconnect(intf);
+
+	qc_deregister(dev);
+
 	destroy_workqueue(dev->workqueue);
 	list_for_each_safe(node, tmp, &dev->urbs) {
 		urb = list_entry(node, struct urb, urb_list);
 		list_del(&urb->urb_list);
 		free_urb_with_skb(urb);
 	}
-	usbnet_disconnect(intf);
+	qcusbnet_put(dev);
 }
 
 static struct usb_driver qcusbnet = {
