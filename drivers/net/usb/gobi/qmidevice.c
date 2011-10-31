@@ -1464,38 +1464,46 @@ int qc_register(struct qcusbnet *dev)
 
 	dev->valid = true;
 	result = client_alloc(dev, QMICTL);
-	if (result) {
-		dev->valid = false;
-		return result;
+	if (result < 0) {
+		GOBI_ERROR("client_alloc failed: %d", result);
+		goto fail;
+	}
+	if (result > 0) {
+		GOBI_ERROR("client_alloc assigned nonzero cid %d", result);
+		result = -ENXIO;
+		goto fail;
 	}
 	atomic_set(&dev->qmi.qmitid, 1);
 
 	result = qc_startread(dev);
 	if (result) {
-		dev->valid = false;
-		return result;
+		GOBI_ERROR("qc_startread failed: %d", result);
+		goto fail_client_free;
 	}
 
 	if (!qmi_ready(dev, 30000)) {
 		GOBI_ERROR("device unresponsive to QMI");
-		return -ETIMEDOUT;
+		result = -ETIMEDOUT;
+		goto fail_stopread;
 	}
 
 	result = setup_wds_callback(dev);
 	if (result) {
-		dev->valid = false;
-		return result;
+		GOBI_ERROR("setup_wds_callback_failed: %d", result);
+		goto fail_stopread;
 	}
 
 	result = qmidms_getmeid(dev);
 	if (result) {
-		dev->valid = false;
-		return result;
+		GOBI_ERROR("qmidms_getmeid failed: %d", result);
+		goto fail_stopread;
 	}
 
 	result = alloc_chrdev_region(&devno, 0, 1, "qcqmi");
-	if (result < 0)
-		return result;
+	if (result < 0) {
+		GOBI_ERROR("alloc_chrdev_region failed: %d", result);
+		goto fail_stopread;
+	}
 
 	cdev_init(&dev->qmi.cdev, &devqmi_fops);
 	dev->qmi.cdev.owner = THIS_MODULE;
@@ -1504,27 +1512,46 @@ int qc_register(struct qcusbnet *dev)
 	result = cdev_add(&dev->qmi.cdev, devno, 1);
 	if (result) {
 		GOBI_ERROR("failed to add cdev: %d", result);
-		return result;
+		goto fail_unregister_chrdev_region;
 	}
 
 	name = strstr(dev->usbnet->net->name, "wwan");
 	if (!name) {
 		GOBI_ERROR("bad net name: %s (expected wwan%%d)",
 			   dev->usbnet->net->name);
-		return -ENXIO;
+		result = -ENXIO;
+		goto fail_cdev_del;
 	}
 	name += strlen("wwan");
 	qmiidx = simple_strtoul(name, NULL, 10);
 	if (qmiidx < 0) {
 		GOBI_ERROR("bad minor number: %s", name);
-		return -ENXIO;
+		result = -ENXIO;
+		goto fail_cdev_del;
 	}
 
 	printk(KERN_INFO "creating qcqmi%d", qmiidx);
-	device_create(dev->qmi.devclass, &dev->iface->dev, devno, NULL, "qcqmi%d", qmiidx);
+	struct device *d = device_create(dev->qmi.devclass, &dev->iface->dev,
+					 devno, NULL, "qcqmi%d", qmiidx);
+	if (IS_ERR(d)) {
+		GOBI_ERROR("device_create failed: %d", PTR_ERR(d));
+		goto fail_cdev_del;
+	}
 
 	dev->qmi.devnum = devno;
 	return 0;
+
+fail_cdev_del:
+	cdev_del(&dev->qmi.cdev);
+fail_unregister_chrdev_region:
+	unregister_chrdev_region(devno, 1);
+fail_stopread:
+	qc_stopread(dev);
+fail_client_free:
+	client_free(dev, 0);
+fail:
+	dev->valid = false;
+	return result;
 }
 
 void qc_deregister(struct qcusbnet *dev)
