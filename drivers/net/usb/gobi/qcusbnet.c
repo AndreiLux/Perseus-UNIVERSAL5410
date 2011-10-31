@@ -587,25 +587,28 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 	status = usbnet_probe(iface, vidpids);
 	if (status < 0) {
 		GOBI_WARN("usbnet_probe failed: %d", status);
-		return status;
+		goto fail;
 	}
 
 	usbnet = usb_get_intfdata(iface);
 
 	if (!usbnet) {
 		GOBI_ERROR("usbnet is NULL");
-		return -ENXIO;
+		status = -ENXIO;
+		goto fail_disconnect;
 	}
 
 	if (!usbnet->net) {
 		GOBI_ERROR("usbnet->net is NULL");
-		return -ENXIO;
+		status = -ENXIO;
+		goto fail_disconnect;
 	}
 
 	dev = kmalloc(sizeof(struct qcusbnet), GFP_KERNEL);
 	if (!dev) {
 		GOBI_ERROR("failed to allocate struct qcusbnet");
-		return -ENOMEM;
+		status = -ENOMEM;
+		goto fail_disconnect;
 	}
 
 	dev->dying = false;
@@ -614,8 +617,7 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 	status = discover_endpoints(dev);
 	if (status) {
 		GOBI_ERROR("discover_endpoints failed: %d", status);
-		kfree(dev);
-		return status;
+		goto fail_free;
 	}
 
 	usbnet->data[0] = (unsigned long)dev;
@@ -625,7 +627,8 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 	netdevops = kmalloc(sizeof(struct net_device_ops), GFP_KERNEL);
 	if (!netdevops) {
 		GOBI_ERROR("failed to allocate net device ops");
-		return -ENOMEM;
+		status = -ENOMEM;
+		goto fail_free;
 	}
 	memcpy(netdevops, usbnet->net->netdev_ops, sizeof(struct net_device_ops));
 
@@ -668,15 +671,17 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 
 	status = qc_register(dev);
 	if (status) {
-		qc_deregister(dev);
-	} else {
-		iface->needs_remote_wakeup = 1;
-
-		mutex_lock(&qcusbnet_lock);
-		/* Give our initial ref to the list */
-		list_add(&dev->node, &qcusbnet_list);
-		mutex_unlock(&qcusbnet_lock);
+		GOBI_ERROR("qc_register failed: %d", status);
+		goto fail_destroy;
 	}
+
+	iface->needs_remote_wakeup = 1;
+
+	mutex_lock(&qcusbnet_lock);
+	/* Give our initial ref to the list */
+	list_add(&dev->node, &qcusbnet_list);
+	mutex_unlock(&qcusbnet_lock);
+
 	/* After calling qc_register, MEID is valid */
 	addr = &usbnet->net->dev_addr[0];
 	for (i = 0; i < 6; i++)
@@ -685,6 +690,15 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 	addr[0] &= 0xfe;		/* clear multicast bit */
 	addr[0] |= 0x02;		/* set local assignment bit (IEEE802) */
 
+	return 0;
+
+fail_destroy:
+	destroy_workqueue(dev->workqueue);
+fail_free:
+	kfree(dev);
+fail_disconnect:
+	usbnet_disconnect(iface);
+fail:
 	return status;
 }
 EXPORT_SYMBOL_GPL(qcnet_probe);
