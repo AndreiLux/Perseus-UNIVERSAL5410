@@ -586,7 +586,7 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 
 	status = usbnet_probe(iface, vidpids);
 	if (status < 0) {
-		GOBI_ERROR("usbnet_probe failed: %d", status);
+		GOBI_WARN("usbnet_probe failed: %d", status);
 		return status;
 	}
 
