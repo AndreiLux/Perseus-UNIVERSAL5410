@@ -688,6 +688,16 @@ config ACPI_CHROMEOS
 	  This driver provides the firmware interface for the services exported
 	  through the CHROMEOS interfaces when using ChromeOS ACPI firmware.
 
+config CHROMEOS_LAPTOP
+	tristate "ChromeOS Laptop"
+	depends on DMI
+	---help---
+	  This driver configures interrupts and instantiates i2c and smbus
+	  devices on Chrome OS laptops. Should be used only with supported
+	  Chrome OS laptops because the interrupt line is specific per platform.
+	  Say M here to support these devices on supported hardware, and
+	  modprobe after the i2c bus is ready.
+
 config IBM_RTL
 	tristate "Device driver to enable PRTL support"
 	depends on X86 && PCI
