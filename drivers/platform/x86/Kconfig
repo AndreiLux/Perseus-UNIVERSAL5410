@@ -694,9 +694,10 @@ config CHROMEOS_LAPTOP
 	---help---
 	  This driver configures interrupts and instantiates i2c and smbus
 	  devices on Chrome OS laptops. Should be used only with supported
-	  Chrome OS laptops because the interrupt line is specific per platform.
-	  Say M here to support these devices on supported hardware, and
-	  modprobe after the i2c bus is ready.
+	  Chrome OS laptops.
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called chromeos_laptop.
 
 config IBM_RTL
 	tristate "Device driver to enable PRTL support"

@@ -23,19 +23,9 @@
 #include <linux/i2c/cyapa.h>
 #include <linux/module.h>
 
-
-/**************************************************************************/
-/**                    Setup for LUMPY EVT board                         **/
-/**************************************************************************/
-#define LUMPY_TOUCHPAD_I2C_ADDR    0x67 /* I2C address (get from cyapa?) */
-
+#define LUMPY_TOUCHPAD_I2C_ADDR    0x67 /* I2C address */
 static struct i2c_client *lumpy_tp;
-/**************************************************************************/
 
-
-static int bus = 15;
-module_param(bus, int, S_IRUGO);
-MODULE_PARM_DESC(bus, "i2c bus number for peripheral bus");
 static struct i2c_board_info __initdata cyapa_device = {
 	I2C_BOARD_INFO(CYAPA_I2C_NAME, LUMPY_TOUCHPAD_I2C_ADDR),
 	.irq		= -1,
@@ -50,20 +40,36 @@ static const struct dmi_system_id lumpy[] = {
 	{ }
 };
 
+static int __find_i2c_adap(struct device *dev, void *data)
+{
+	const char *name = data;
+	struct i2c_adapter *adapter;
+	if (strncmp(dev_name(dev), "i2c-", 4))
+		return 0;
+	adapter = to_i2c_adapter(dev);
+	return !strncmp(adapter->name, name, strlen(name));
+}
+
 static int lumpy_add_devices()
 {
 	const struct dmi_device *dmi_tp;
 	struct dmi_dev_onboard *dev_data;
 	int type = DMI_DEV_TYPE_DEV_ONBOARD;
 	struct i2c_adapter *adapter;
+	struct device *dev = NULL;
+	int bus;
 
-	adapter = i2c_get_adapter(bus);
-	if (!adapter) {
-		pr_err("%s: i2c adapter bus %d invalid\n", __func__, bus);
+	/* find the SMBus adapter */
+	dev = bus_find_device(&i2c_bus_type, NULL, "SMBus I801 adapter",
+			      __find_i2c_adap);
+	if (!dev) {
+		pr_err("%s: no SMBus adapter found on system.\n", __func__);
 		return -ENXIO;
 	}
+	adapter = to_i2c_adapter(dev);
+	bus = adapter->nr;
 
-	/*  cyapa */
+	/*  add cyapa */
 	dmi_tp = dmi_find_device(type, "trackpad", NULL);
 	if (!dmi_tp) {
 		pr_err("%s failed to dmi find device trackpad.\n",
