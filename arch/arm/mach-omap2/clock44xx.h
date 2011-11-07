@@ -16,5 +16,6 @@
 #define OMAP4430_REGM4XEN_MULT	4
 
 int omap4xxx_clk_init(void);
+int omap4_core_dpll_m2_set_rate(struct clk *clk, unsigned long rate);
 
 #endif
