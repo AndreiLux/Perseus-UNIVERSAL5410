@@ -20,14 +20,20 @@
  */
 #include <linux/dmi.h>
 #include <linux/i2c.h>
-#include <linux/i2c/cyapa.h>
 #include <linux/module.h>
 
 #define LUMPY_TOUCHPAD_I2C_ADDR    0x67 /* I2C address */
+#define LUMPY_ALS_I2C_ADDR         0x44
 static struct i2c_client *lumpy_tp;
+static struct i2c_client *lumpy_als;
 
 static struct i2c_board_info __initdata cyapa_device = {
-	I2C_BOARD_INFO(CYAPA_I2C_NAME, LUMPY_TOUCHPAD_I2C_ADDR),
+	I2C_BOARD_INFO("cyapa", LUMPY_TOUCHPAD_I2C_ADDR),
+	.irq		= -1,
+};
+
+static struct i2c_board_info __initdata als_device = {
+	I2C_BOARD_INFO("isl29018", LUMPY_ALS_I2C_ADDR),
 	.irq		= -1,
 };
 
@@ -50,11 +56,30 @@ static int __find_i2c_adap(struct device *dev, void *data)
 	return !strncmp(adapter->name, name, strlen(name));
 }
 
-static int lumpy_add_devices()
+static struct i2c_client *add_smbus_device(struct i2c_adapter *adap,
+					   const char *name,
+					   struct i2c_board_info *info)
 {
-	const struct dmi_device *dmi_tp;
-	struct dmi_dev_onboard *dev_data;
-	int type = DMI_DEV_TYPE_DEV_ONBOARD;
+	const struct dmi_device *dmi_dev;
+	const struct dmi_dev_onboard *dev_data;
+
+	dmi_dev = dmi_find_device(DMI_DEV_TYPE_DEV_ONBOARD, name, NULL);
+	if (!dmi_dev) {
+		pr_err("%s failed to dmi find device %s.\n", __func__, name);
+		return NULL;
+	}
+	dev_data = (struct dmi_dev_onboard *)dmi_dev->device_data;
+	if (!dev_data) {
+		pr_err("%s failed to get device data from dmi.\n",
+		       __func__);
+		return NULL;
+	}
+	info->irq = dev_data->instance;
+	return i2c_new_device(adap, info);
+}
+
+static int lumpy_add_devices(void)
+{
 	struct i2c_adapter *adapter;
 	struct device *dev = NULL;
 	int bus;
@@ -70,25 +95,17 @@ static int lumpy_add_devices()
 	bus = adapter->nr;
 
 	/*  add cyapa */
-	dmi_tp = dmi_find_device(type, "trackpad", NULL);
-	if (!dmi_tp) {
-		pr_err("%s failed to dmi find device trackpad.\n",
-		       __func__);
-		return -ENODEV;
-	}
-	dev_data = (struct dmi_dev_onboard *)dmi_tp->device_data;
-	if (!dev_data) {
-		pr_err("%s failed to get device data from dmi.\n",
-		       __func__);
-		return -ENODEV;
-	}
-	cyapa_device.irq = dev_data->instance;
-	lumpy_tp = i2c_new_device(adapter, &cyapa_device);
-	if (!lumpy_tp) {
-		pr_err("%s failed to register device %d-%02x\n", __func__,
-		       bus, LUMPY_TOUCHPAD_I2C_ADDR);
-		return -ENODEV;
-	}
+	lumpy_tp = add_smbus_device(adapter, "trackpad", &cyapa_device);
+	if (!lumpy_tp)
+		pr_err("%s failed to register device %d-%02x\n",
+		       __func__, bus, LUMPY_TOUCHPAD_I2C_ADDR);
+
+	/* add isl light sensor */
+	lumpy_als = add_smbus_device(adapter, "lightsensor", &als_device);
+	if (!lumpy_als)
+		pr_err("%s failed to register device %d-%02x\n",
+		       __func__, bus, LUMPY_ALS_I2C_ADDR);
+
 	i2c_put_adapter(adapter);
 	return 0;
 }
@@ -108,6 +125,10 @@ static void __exit chromeos_laptop_exit(void)
 	if (lumpy_tp) {
 		i2c_unregister_device(lumpy_tp);
 		lumpy_tp = NULL;
+	}
+	if (lumpy_als) {
+		i2c_unregister_device(lumpy_als);
+		lumpy_als = NULL;
 	}
 }
 
