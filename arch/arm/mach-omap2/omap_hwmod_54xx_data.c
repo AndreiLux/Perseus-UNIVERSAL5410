@@ -2722,6 +2722,10 @@ static struct omap_hwmod omap54xx_hsi_hwmod = {
  * multimaster high-speed i2c controller
  */
 
+static struct omap_i2c_dev_attr i2c_dev_attr = {                                
+	.flags	= OMAP_I2C_FLAG_BUS_SHIFT_NONE | OMAP_I2C_FLAG_RESET_REGS_POSTIDLE,
+};
+
 static struct omap_hwmod_class_sysconfig omap54xx_i2c_sysc = {
 	.sysc_offs	= 0x0010,
 	.syss_offs	= 0x0090,
