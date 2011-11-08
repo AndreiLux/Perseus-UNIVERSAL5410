@@ -4358,11 +4358,49 @@ static struct omap_hwmod_ocp_if *omap54xx_sata_masters[] = {
 };
 
 static struct omap_hwmod_addr_space omap54xx_sata_addrs[] = {
+
+	/* ahci address space should be always the first element
+	 * for the ahci platform driver.
+	 */
 	{
+		.name		= "ahci",
 		.pa_start	= 0x4a140000,
-		.pa_end		= 0x4a141fff,
+		.pa_end		= 0x4a1410ff,
+	},
+	{
+		.name		= "sysc",
+		.pa_start	= 0x4A141100,
+		.pa_end		= 0x4A141104,
 		.flags		= ADDR_TYPE_RT
 	},
+
+#if (!defined(CONFIG_MACH_OMAP_5430ZEBU) && !defined(CONFIG_OMAP5_VIRTIO))
+	/*
+	 * - TODO -
+	 * Following PLL addresses will be removed in future,
+	 * once the SATA Phy is made as seperate platform driver.
+	 */
+	{
+		.name		= "ocp2scp3",
+		.pa_start	= 0x4A090000,
+		.pa_end		= 0x4A096400,
+	},
+	{
+		.name		= "rx",
+		.pa_start	= 0x4A096000,
+		.pa_end		= 0x4A096080,
+	},
+	{
+		.name		= "tx",
+		.pa_start	= 0x4A096400,
+		.pa_end		= 0x4A096464,
+	},
+	{
+		.name		= "pll",
+		.pa_start	= 0x4A096800,
+		.pa_end		= 0x4A096840,
+	},
+#endif
 	{ }
 };
 
@@ -4403,6 +4441,7 @@ static struct omap_hwmod omap54xx_sata_hwmod = {
 	.slaves_cnt	= ARRAY_SIZE(omap54xx_sata_slaves),
 	.masters	= omap54xx_sata_masters,
 	.masters_cnt	= ARRAY_SIZE(omap54xx_sata_masters),
+	.flags		= HWMOD_SWSUP_SIDLE | HWMOD_SWSUP_MSTANDBY,
 	.omap_chip	= OMAP_CHIP_INIT(CHIP_IS_OMAP54XX),
 };
 
