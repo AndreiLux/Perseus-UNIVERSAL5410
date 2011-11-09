@@ -27,6 +27,7 @@
 #include <plat/mcspi.h>
 #include <plat/mcbsp.h>
 #include <plat/mmc.h>
+#include <plat/i2c.h>
 #include <plat/dmtimer.h>
 
 #include "omap_hwmod_common_data.h"
@@ -2668,6 +2669,8 @@ static struct omap_hwmod_class_sysconfig omap54xx_i2c_sysc = {
 static struct omap_hwmod_class omap54xx_i2c_hwmod_class = {
 	.name	= "i2c",
 	.sysc	= &omap54xx_i2c_sysc,
+	.rev	= OMAP_I2C_IP_VERSION_2,
+	.reset	= &omap_i2c_reset,
 };
 
 /* i2c1 */
