@@ -17,6 +17,8 @@
 #include <linux/io.h>
 #include <linux/slab.h>
 
+#include <plat/cpu.h>
+
 #include <mach/map.h>
 #include <mach/asv.h>
 
@@ -26,9 +28,12 @@ static int __init exynos_asv_init(void)
 {
 	exynos_asv = kzalloc(sizeof(struct samsung_asv), GFP_KERNEL);
 	if (!exynos_asv)
-		return -ENOMEM;
+		goto out;
 
-	/* I will add asv driver of exynos4 series to regist */
+	if (soc_is_exynos4210())
+		exynos4210_asv_init(exynos_asv);
+	else
+		goto out;
 
 	if (exynos_asv->check_vdd_arm) {
 		if (exynos_asv->check_vdd_arm())
