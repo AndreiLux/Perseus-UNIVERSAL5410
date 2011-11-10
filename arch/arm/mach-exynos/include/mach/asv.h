@@ -14,6 +14,7 @@
 #define __ASM_ARCH_ASV_H __FILE__
 
 #define JUDGE_TABLE_END			NULL
+#define EXYNOS4_LOOP_CNT		10
 
 struct asv_judge_table {
 	unsigned int hpm_limit; /* HPM value to decide group of target */
@@ -36,5 +37,7 @@ struct samsung_asv {
 	/* store into some repository to send result of asv */
 	int (*store_result)(struct samsung_asv *asv_info);
 };
+
+extern void exynos4210_asv_init(struct samsung_asv *asv_info);
 
 #endif /* __ASM_ARCH_ASV_H */
