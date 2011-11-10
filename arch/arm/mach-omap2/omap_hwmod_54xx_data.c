@@ -1210,6 +1210,7 @@ static struct omap_hwmod_ocp_if *omap54xx_dsp_slaves[] = {
 static struct omap_hwmod omap54xx_dsp_hwmod = {
 	.name		= "dsp",
 	.class		= &omap54xx_dsp_hwmod_class,
+	.flags		= HWMOD_INIT_NO_RESET,
 	.clkdm_name	= "dsp_clkdm",
 	.mpu_irqs	= omap54xx_dsp_irqs,
 	.rst_lines	= omap54xx_dsp_resets,
