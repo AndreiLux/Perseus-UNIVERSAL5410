@@ -827,6 +827,9 @@ static struct i2c_board_info __initdata omap5evm_i2c_4_boardinfo[] = {
 		.platform_data = &atmel_mxt224_ts_platform_data,
 		.irq = OMAP_GPIO_IRQ(OMAP5_TOUCH_IRQ_1),
 	},
+	{
+		I2C_BOARD_INFO("tmp102", 0x48),
+	},
 };
 
 static int __init omap_5430evm_i2c_init(void)
