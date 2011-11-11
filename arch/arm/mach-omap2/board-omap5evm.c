@@ -18,6 +18,7 @@
 #include <linux/gpio.h>
 #include <linux/hwspinlock.h>
 #include <linux/i2c/tsl2771.h>
+#include <linux/input/mpu6050.h>
 
 #include <linux/regulator/machine.h>
 #include <linux/regulator/fixed.h>
@@ -46,6 +47,7 @@
 #define OMAP5_TOUCH_RESET              230
 
 #define OMAP5_TSL2771_INT_GPIO          149
+#define	OMAP5_MPU6050_INT_GPIO		150
 
 static const int evm5430_keymap[] = {
 	KEY(0, 0, KEY_RESERVED),
@@ -134,6 +136,31 @@ static struct omap4_keypad_platform_data evm5430_keypad_data = {
 
 static struct omap_board_data keypad_data = {
 	.id                     = 1,
+};
+
+static struct mpu6050_platform_data mpu6050_platform_data = {
+	.aux_i2c_supply = 0,
+	.sample_rate_div = 0,
+	.config = 0,
+	.fifo_mode = 0,
+	.mpu6050_accel = {
+			.x_axis = 2,
+			.y_axis = 2,
+			.z_axis = 2,
+			.fsr = 0,               /* FSR to  -2g */
+			.hpf = 4,               /* HPF ON and cut off 0.63HZ */
+			.ctrl_mode = 2,         /* ZERO MOTION DETECTION */
+			.mode_thr_val = 0,      /* Threshold val */
+			.mode_thr_dur = 0,      /* Threshold duration */
+			.irqflags = IRQF_TRIGGER_HIGH,
+	},
+	.mpu6050_gyro = {
+			.x_axis = 2,
+			.y_axis = 2,
+			.z_axis = 2,
+			.fsr = 0,
+			.config = 0,
+	},
 };
 
 struct tsl2771_platform_data tsl2771_data = {
@@ -849,6 +876,11 @@ static struct i2c_board_info __initdata omap5evm_i2c_2_boardinfo[] = {
 		I2C_BOARD_INFO("tsl2771", 0x39),
 		.platform_data = &tsl2771_data,
 		.irq = OMAP5_TSL2771_INT_GPIO,
+	},
+	{
+		I2C_BOARD_INFO("mpu6050", 0x68),
+		.platform_data = &mpu6050_platform_data,
+		.irq = OMAP5_MPU6050_INT_GPIO,
 	},
 };
 
