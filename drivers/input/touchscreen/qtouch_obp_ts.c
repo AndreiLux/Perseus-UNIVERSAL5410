@@ -318,6 +318,14 @@ static int qtouch_hw_init(struct qtouch_ts_data *ts)
 	uint16_t adj_addr;
 
 	pr_info("%s: Doing hw init\n", __func__);
+	obj = find_obj(ts, QTM_OBJ_GEN_CMD_PROC);
+	ret = qtouch_write_addr(ts, obj->entry.addr, &ts->pdata->gen_cmd_proc,
+				min(sizeof(ts->pdata->gen_cmd_proc),
+					obj->entry.size));
+	if (ret != 0) {
+		pr_err("%s: Can't write general command config\n", __func__);
+		return ret;
+	}
 
 	/* take the IC out of suspend */
 	qtouch_power_config(ts, 1);
@@ -326,7 +334,7 @@ static int qtouch_hw_init(struct qtouch_ts_data *ts)
 	obj = find_obj(ts, QTM_OBJ_GEN_ACQUIRE_CONF);
 	ret = qtouch_write_addr(ts, obj->entry.addr, &ts->pdata->acquire_cfg,
 				min(sizeof(ts->pdata->acquire_cfg),
-				    obj->entry.size));
+					obj->entry.size));
 	if (ret != 0) {
 		pr_err("%s: Can't write acquisition config\n", __func__);
 		return ret;
@@ -382,6 +390,19 @@ static int qtouch_hw_init(struct qtouch_ts_data *ts)
 		}
 	}
 
+	obj = find_obj(ts, QTM_OBJ_TOUCH_PROXIMITY);
+	if (obj && obj->entry.num_inst > 0) {
+		ret = qtouch_write_addr(ts, obj->entry.addr,
+				&ts->pdata->touch_proximity_cfg,
+				min(sizeof(ts->pdata->touch_proximity_cfg),
+					obj->entry.size));
+		if (ret != 0) {
+			pr_err("%s: Can't write the touch proximity config\n",
+				__func__);
+			return ret;
+		}
+	}
+
 	/* configure the signal filter */
 	obj = find_obj(ts, QTM_OBJ_PROCG_SIG_FILTER);
 	if (obj && obj->entry.num_inst > 0) {
@@ -392,6 +413,31 @@ static int qtouch_hw_init(struct qtouch_ts_data *ts)
 		if (ret != 0) {
 			pr_err("%s: Can't write signal filter config\n",
 			       __func__);
+			return ret;
+		}
+	}
+
+	obj = find_obj(ts, QTM_OBJ_SPT_COMMSCONFIG);
+	if (obj && obj->entry.num_inst > 0) {
+		ret = qtouch_write_addr(ts, obj->entry.addr,
+				&ts->pdata->spt_commsconfig_cfg,
+				min(sizeof(ts->pdata->spt_commsconfig_cfg),
+					obj->entry.size));
+		if (ret != 0) {
+			pr_err("%s: Can't write common config\n",
+				__func__);
+			return ret;
+		}
+	}
+	obj = find_obj(ts, QTM_OBJ_SPT_GPIOPWM);
+	if (obj && obj->entry.num_inst > 0) {
+		ret = qtouch_write_addr(ts, obj->entry.addr,
+				&ts->pdata->spt_gpiopwm_cfg,
+				min(sizeof(ts->pdata->spt_gpiopwm_cfg),
+					obj->entry.size));
+		if (ret != 0) {
+			pr_err("%s: Can't write gpio power management config\n",
+				__func__);
 			return ret;
 		}
 	}
@@ -459,12 +505,49 @@ static int qtouch_hw_init(struct qtouch_ts_data *ts)
 				min(sizeof(ts->pdata->spt_cte_cfg),
 					obj->entry.size));
 		if (ret != 0) {
-			pr_err("%s: Can't write the noise suppression config\n",
+			pr_err("%s: Can't write the capacitive touch config\n",
 			       __func__);
 			return ret;
 		}
 	}
+	obj = find_obj(ts, QTM_OBJ_PROCI_ONETOUCHGESTUREPROCESSOR);
+	if (obj && obj->entry.num_inst > 0) {
+		ret = qtouch_write_addr(ts, obj->entry.addr,
+			&ts->pdata->onetouchgestureprocessor_cfg,
+				min(sizeof(ts->pdata->onetouchgestureprocessor_cfg),
+					obj->entry.size));
+		if (ret != 0) {
+			pr_err("%s: Can't write the one touch gesture config\n",
+				__func__);
+			return ret;
+		}
+	}
 
+	obj = find_obj(ts, QTM_OBJ_SPT_SELFTEST);
+	if (obj && obj->entry.num_inst > 0) {
+		ret = qtouch_write_addr(ts, obj->entry.addr,
+			&ts->pdata->spt_selftest_cfg,
+				min(sizeof(ts->pdata->spt_selftest_cfg),
+					obj->entry.size));
+		if (ret != 0) {
+			pr_err("%s: Can't write the selftest config\n",
+				__func__);
+			return ret;
+		}
+	}
+
+	obj = find_obj(ts, QTM_OBJ_PROCI_TWOTOUCHGESTUREPROCESSOR);
+	if (obj && obj->entry.num_inst > 0) {
+		ret = qtouch_write_addr(ts, obj->entry.addr,
+				&ts->pdata->twotouchgestureprocessor_cfg,
+					min(sizeof(ts->pdata->twotouchgestureprocessor_cfg),
+						obj->entry.size));
+		if (ret != 0) {
+			pr_err("%s: Can't write the two touch gesture config\n",
+				__func__);
+			return ret;
+		}
+	}
 	ret = qtouch_force_calibration(ts);
 	if (ret != 0) {
 		pr_err("%s: Unable to recalibrate after reset\n", __func__);
@@ -557,8 +640,7 @@ static int do_cmd_proc_msg(struct qtouch_ts_data *ts, struct qtm_object *obj,
 	if (ts->pdata->flags & QTOUCH_EEPROM_CHECKSUM) {
 		if (msg->checksum != ts->eeprom_checksum) {
 			if (qtouch_tsdebug)
-				pr_info("%s:EEPROM checksum is 0x%X cnt %i
-						hw_reset %i\n",
+				pr_info("%s:EEPROM checksum is 0x%X cnt %i hw_reset %i\n",
 					__func__, msg->checksum,
 					ts->checksum_cnt, hw_reset);
 			if (ts->checksum_cnt > 2) {
@@ -598,8 +680,15 @@ static int do_touch_multi_msg(struct qtouch_ts_data *ts, struct qtm_object *obj,
 		return 0;
 
 	/* x/y are 10bit values, with bottom 2 bits inside the xypos_lsb */
-	x = (msg->xpos_msb << 2) | ((msg->xypos_lsb >> 6) & 0x3);
-	y = (msg->ypos_msb << 2) | ((msg->xypos_lsb >> 2) & 0x3);
+	if (ts->pdata->abs_max_x > 1024)
+		x = (msg->ypos_msb << 4) | ((msg->xypos_lsb) & 0xf);
+	else
+		x = (msg->xpos_msb << 2) | ((msg->xypos_lsb >> 6) & 0x3);
+	if (ts->pdata->abs_max_y > 1024)
+		y = (msg->ypos_msb << 4) | ((msg->xypos_lsb) & 0xf);
+	else
+		y = (msg->xpos_msb << 2) | ((msg->xypos_lsb >> 6) & 0x3);
+
 	width = msg->touch_area;
 	pressure = msg->touch_amp;
 
