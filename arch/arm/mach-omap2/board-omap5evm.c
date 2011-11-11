@@ -815,6 +815,12 @@ static struct qtouch_ts_platform_data atmel_mxt224_ts_platform_data = {
 	},
 };
 
+static struct i2c_board_info __initdata omap5evm_i2c_2_boardinfo[] = {
+	{
+		I2C_BOARD_INFO("bmp085", 0x77),
+	},
+};
+
 static struct i2c_board_info __initdata omap5evm_i2c_4_boardinfo[] = {
 	{
 		I2C_BOARD_INFO(QTOUCH_TS_NAME, 0x4a),
@@ -842,7 +848,8 @@ static int __init omap_5430evm_i2c_init(void)
 #else
 	omap_register_i2c_bus(1, 400, NULL, 0);
 #endif
-	omap_register_i2c_bus(2, 400, NULL, 0);
+	omap_register_i2c_bus(2, 400, omap5evm_i2c_2_boardinfo,
+				ARRAY_SIZE(omap5evm_i2c_2_boardinfo));
 	omap_register_i2c_bus(3, 400, NULL, 0);
 	omap_register_i2c_bus(4, 400, omap5evm_i2c_4_boardinfo,
 				ARRAY_SIZE(omap5evm_i2c_4_boardinfo));
