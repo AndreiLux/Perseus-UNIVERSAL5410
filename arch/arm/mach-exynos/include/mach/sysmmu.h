@@ -1,46 +1,67 @@
-/* linux/arch/arm/mach-exynos4/include/mach/sysmmu.h
- *
- * Copyright (c) 2010-2011 Samsung Electronics Co., Ltd.
+/*
+ * Copyright (c) 2011-2012 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com
  *
- * Samsung sysmmu driver for EXYNOS4
+ * EXYNOS - System MMU support
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
-*/
+ */
 
-#ifndef __ASM_ARM_ARCH_SYSMMU_H
-#define __ASM_ARM_ARCH_SYSMMU_H __FILE__
+#ifndef _ARM_MACH_EXYNOS_SYSMMU_H_
+#define _ARM_MACH_EXYNOS_SYSMMU_H_
 
-enum exynos4_sysmmu_ips {
-	SYSMMU_MDMA,
-	SYSMMU_SSS,
-	SYSMMU_FIMC0,
-	SYSMMU_FIMC1,
-	SYSMMU_FIMC2,
-	SYSMMU_FIMC3,
-	SYSMMU_JPEG,
-	SYSMMU_FIMD0,
-	SYSMMU_FIMD1,
-	SYSMMU_PCIe,
-	SYSMMU_G2D,
-	SYSMMU_ROTATOR,
-	SYSMMU_MDMA2,
-	SYSMMU_TV,
-	SYSMMU_MFC_L,
-	SYSMMU_MFC_R,
-	EXYNOS4_SYSMMU_TOTAL_IPNUM,
-};
+#define SYSMMU_DEVNAME_BASE "exynos-sysmmu"
 
-#define S5P_SYSMMU_TOTAL_IPNUM		EXYNOS4_SYSMMU_TOTAL_IPNUM
+#ifdef CONFIG_EXYNOS_DEV_SYSMMU
+#include <linux/device.h>
 
-extern const char *sysmmu_ips_name[EXYNOS4_SYSMMU_TOTAL_IPNUM];
+#define SYSMMU_PLATDEV(ipname) exynos_device_sysmmu_##ipname
 
-typedef enum exynos4_sysmmu_ips sysmmu_ips;
+#ifdef CONFIG_EXYNOS_DEV_PD
+#define ASSIGN_SYSMMU_POWERDOMAIN(ipname, powerdomain) \
+		SYSMMU_PLATDEV(ipname).dev.parent = powerdomain
+#else
+#define ASSIGN_SYSMMU_POWERDOMAIN(ipname, powerdomain) do { } while (0)
+#endif
 
-void sysmmu_clk_init(struct device *dev, sysmmu_ips ips);
-void sysmmu_clk_enable(sysmmu_ips ips);
-void sysmmu_clk_disable(sysmmu_ips ips);
+extern struct platform_device SYSMMU_PLATDEV(sss);
+extern struct platform_device SYSMMU_PLATDEV(jpeg);
+extern struct platform_device SYSMMU_PLATDEV(fimd1);
+extern struct platform_device SYSMMU_PLATDEV(2d);
+extern struct platform_device SYSMMU_PLATDEV(rot);
+extern struct platform_device SYSMMU_PLATDEV(mdma);
+extern struct platform_device SYSMMU_PLATDEV(tv);
+extern struct platform_device SYSMMU_PLATDEV(mfc_l);
+extern struct platform_device SYSMMU_PLATDEV(mfc_r);
+extern struct platform_device SYSMMU_PLATDEV(is_isp);
+extern struct platform_device SYSMMU_PLATDEV(is_drc);
+extern struct platform_device SYSMMU_PLATDEV(is_fd);
+extern struct platform_device SYSMMU_PLATDEV(is_cpu);
+extern struct platform_device SYSMMU_PLATDEV(is_sclrc);
+extern struct platform_device SYSMMU_PLATDEV(is_sclrp);
+extern struct platform_device SYSMMU_PLATDEV(is_odc);
+extern struct platform_device SYSMMU_PLATDEV(is_dis0);
+extern struct platform_device SYSMMU_PLATDEV(is_dis1);
+extern struct platform_device SYSMMU_PLATDEV(is_3dnr);
+extern struct platform_device SYSMMU_PLATDEV(flite0);
+extern struct platform_device SYSMMU_PLATDEV(flite1);
+extern struct platform_device SYSMMU_PLATDEV(gsc0);
+extern struct platform_device SYSMMU_PLATDEV(gsc1);
+extern struct platform_device SYSMMU_PLATDEV(gsc2);
+extern struct platform_device SYSMMU_PLATDEV(gsc3);
 
-#endif /* __ASM_ARM_ARCH_SYSMMU_H */
+static inline void sysmmu_set_owner(struct device *sysmmu, struct device *owner)
+{
+	sysmmu->archdata.iommu = owner;
+}
+
+#else /* !CONFIG_EXYNOS_DEV_SYSMMU */
+#define sysmmu_set_owner(sysmmu, owner) do { } while (0)
+#define ASSIGN_SYSMMU_POWERDOMAIN(ipname, powerdomain) do { } while (0)
+#endif
+
+#define SYSMMU_CLOCK_NAME(ipname, id) SYSMMU_DEVNAME_BASE "." #id
+
+#endif /* _ARM_MACH_EXYNOS_SYSMMU_H_ */

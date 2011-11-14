@@ -15,8 +15,6 @@
 
 #include <asm/pgtable.h>
 
-#include <mach/map.h>
-#include <mach/regs-sysmmu.h>
 #include <plat/sysmmu.h>
 
 #define CTRL_ENABLE	0x5
@@ -24,6 +22,18 @@
 #define CTRL_DISABLE	0x0
 
 static struct device *dev;
+
+#define S5P_MMU_CTRL			0x000
+#define S5P_MMU_CFG			0x004
+#define S5P_MMU_STATUS			0x008
+#define S5P_MMU_FLUSH			0x00C
+#define S5P_PT_BASE_ADDR		0x014
+#define S5P_INT_STATUS			0x018
+#define S5P_INT_CLEAR			0x01C
+#define S5P_PAGE_FAULT_ADDR		0x024
+#define S5P_AW_FAULT_ADDR		0x028
+#define S5P_AR_FAULT_ADDR		0x02C
+#define S5P_DEFAULT_SLAVE_ADDR		0x030
 
 static unsigned short fault_reg_offset[SYSMMU_FAULTS_NUM] = {
 	S5P_PAGE_FAULT_ADDR,

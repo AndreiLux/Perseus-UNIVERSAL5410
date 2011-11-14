@@ -86,10 +86,10 @@ config EXYNOS4_SETUP_FIMD0
 	help
 	  Common setup code for FIMD0.
 
-config EXYNOS4_DEV_SYSMMU
+config EXYNOS_DEV_SYSMMU
 	bool
 	help
-	  Common setup code for SYSTEM MMU in EXYNOS4
+	  Common setup code for SYSTEM MMU in EXYNOS
 
 config EXYNOS4_DEV_DWMCI
 	bool
@@ -206,7 +206,6 @@ config MACH_SMDKV310
 	select SAMSUNG_DEV_PWM
 	select EXYNOS_DEV_DMA
 	select EXYNOS4_DEV_USB_OHCI
-	select EXYNOS4_DEV_SYSMMU
 	select EXYNOS4_SETUP_FIMD0
 	select EXYNOS4_SETUP_I2C1
 	select EXYNOS4_SETUP_KEYPAD
@@ -225,7 +224,6 @@ config MACH_ARMLEX4210
 	select S3C_DEV_HSMMC3
 	select EXYNOS_DEV_DMA
 	select EXYNOS4_DEV_AHCI
-	select EXYNOS4_DEV_SYSMMU
 	select EXYNOS4_SETUP_SDHCI
 	help
 	  Machine support for Samsung ARMLEX4210 based on EXYNOS4210
@@ -373,6 +371,7 @@ config MACH_SMDK5250
 	bool "SMDK5250"
 	select SOC_EXYNOS5250
 	select EXYNOS_DEV_DMA
+	select EXYNOS_DEV_SYSMMU
 	help
 	  Machine support for Samsung SMDK5250
 endif
