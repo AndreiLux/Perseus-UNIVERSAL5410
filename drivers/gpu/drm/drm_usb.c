@@ -85,7 +85,39 @@ static const char *drm_usb_get_name(struct drm_device *dev)
 static int drm_usb_set_busid(struct drm_device *dev,
 			       struct drm_master *master)
 {
+	struct usb_driver *udriver = dev->driver->kdriver.usb;
+	int len, ret;
+
+	master->unique_len = 40;
+	master->unique_size = master->unique_len;
+	master->unique = kmalloc(master->unique_size, GFP_KERNEL);
+	if (master->unique == NULL)
+		return -ENOMEM;
+
+	len = snprintf(master->unique, master->unique_len,
+		       "usb:%s", dev_name(&dev->usbdev->dev));
+
+	if (len >= master->unique_len) {
+		DRM_ERROR("buffer overflow");
+		ret = -EINVAL;
+		goto err;
+	} else
+		master->unique_len = len;
+
+	dev->devname = kmalloc(strlen(udriver->name) +
+			       master->unique_len + 2, GFP_KERNEL);
+
+	if (dev->devname == NULL) {
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	sprintf(dev->devname, "%s@%s", udriver->name,
+		master->unique);
+
 	return 0;
+err:
+	return ret;
 }
 
 static struct drm_bus drm_usb_bus = {
