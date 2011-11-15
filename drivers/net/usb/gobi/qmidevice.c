@@ -439,13 +439,13 @@ int qc_startread(struct qcusbnet *dev)
 void qc_stopread(struct qcusbnet *dev)
 {
 	if (dev->qmi.readurb) {
-		GOBI_DEBUG("killing read urb");
-		usb_kill_urb(dev->qmi.readurb);
+		GOBI_DEBUG("poisoning read urb");
+		usb_poison_urb(dev->qmi.readurb);
 	}
 
 	if (dev->qmi.inturb) {
-		GOBI_DEBUG("killing int urb");
-		usb_kill_urb(dev->qmi.inturb);
+		GOBI_DEBUG("poisoning int urb");
+		usb_poison_urb(dev->qmi.inturb);
 	}
 
 	kfree(dev->qmi.readsetup);
