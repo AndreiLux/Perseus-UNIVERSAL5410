@@ -1857,8 +1857,7 @@ static int qmidms_getmeid(struct qcusbnet *dev, int sync_flags)
 
 	if (result < 0) {
 		GOBI_ERROR("failed to parse meid response");
-		memset(&dev->meid[0], '0', 14);
-		/* TODO(ttuttle): Do this in other failure cases? */
+		return result;
 	}
 
 	client_free(dev, cid, sync_flags);
