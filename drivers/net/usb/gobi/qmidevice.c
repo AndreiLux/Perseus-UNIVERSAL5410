@@ -1581,12 +1581,11 @@ void qc_deregister(struct qcusbnet *dev)
 		client_free(dev, client->cid, sync_flags);
 	}
 
-	qc_stopread(dev);
-	dev->valid = false;
-	if (!IS_ERR(dev->qmi.devclass))
-		device_destroy(dev->qmi.devclass, dev->qmi.devnum);
+	device_destroy(dev->qmi.devclass, dev->qmi.devnum);
 	cdev_del(&dev->qmi.cdev);
 	unregister_chrdev_region(dev->qmi.devnum, 1);
+	qc_stopread(dev);
+	dev->valid = false;
 }
 
 static bool qmi_ready(struct qcusbnet *dev, u16 timeout)
