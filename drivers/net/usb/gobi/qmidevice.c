@@ -1813,55 +1813,59 @@ static int setup_wds_callback(struct qcusbnet *dev, int sync_flags)
 
 static int qmidms_getmeid(struct qcusbnet *dev, int sync_flags)
 {
-	int result;
-	u16 cid;
+	u16 cid = CID_NONE;
 	struct buffer *wbuf;
-	void *rbuf;
+	void *rbuf = NULL;
 	u16 size;
+	int result;
 
 	if (!device_valid(dev))	{
 		GOBI_ERROR("invalid device");
-		return -EFAULT;
+		result = -EFAULT;
+		goto out;
 	}
 
 	result = client_alloc(dev, QMIDMS, sync_flags);
-	/* TODO(ttuttle): free client if we error out */
 	if (result < 0) {
 		GOBI_ERROR("failed to allocate client");
-		return result;
+		goto out;
 	}
 	cid = result;
 
 	wbuf = qmidms_new_getmeid(1);
 	if (!wbuf) {
 		GOBI_ERROR("failed to create getmeid request");
-		return -ENOMEM;
+		result = -ENOMEM;
+		goto out;
 	}
 
 	result = write_sync(dev, wbuf, cid, sync_flags);
 	buffer_put(wbuf);
 	if (result < 0) {
 		GOBI_ERROR("failed to write getmeid request");
-		return result;
+		goto out;
 	}
 
 	result = read_sync(dev, &rbuf, cid, 1, sync_flags);
 	if (result < 0) {
 		GOBI_ERROR("failed to read meid response");
-		return result;
+		goto out;
 	}
 	size = result;
 
 	result = qmidms_meid_resp(rbuf, size, &dev->meid[0], 14);
-	kfree(rbuf);
-
 	if (result < 0) {
 		GOBI_ERROR("failed to parse meid response");
-		return result;
+		goto out;
 	}
 
-	client_free(dev, cid, sync_flags);
-	return 0;
+	result = 0;
+
+out:
+	kfree(rbuf);
+	if (cid != CID_NONE)
+		client_free(dev, cid, sync_flags);
+	return result;
 }
 
 module_param(qcusbnet2k_fwdelay, int, S_IRUGO | S_IWUSR);
