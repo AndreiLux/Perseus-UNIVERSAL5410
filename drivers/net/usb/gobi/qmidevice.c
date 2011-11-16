@@ -906,9 +906,13 @@ static void client_free(struct qcusbnet *dev, u16 cid, int sync_flags)
 	void *data;
 	u16 size;
 	unsigned long flags;
+	int result;
 
-	if (cid != QMICTL)
-		cid_free(dev, cid, sync_flags);
+	if (cid != QMICTL) {
+		result = cid_free(dev, cid, sync_flags);
+		if (result)
+			GOBI_ERROR("failed to free cid: %d (ignoring)", result);
+	}
 
 	spin_lock_irqsave(&dev->qmi.clients_lock, flags);
 	list_for_each_safe(node, tmp, &dev->qmi.clients) {
