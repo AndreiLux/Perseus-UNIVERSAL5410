@@ -23,6 +23,8 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <linux/module.h>
+
 #include "drmP.h"
 #include "drm.h"
 
