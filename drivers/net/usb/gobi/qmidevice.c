@@ -65,7 +65,9 @@ struct qmihandle {
 #define CID_NONE ((u16)-1)
 
 enum {
-	SYNC_TIMEOUT = 0x1
+	SYNC_INTERRUPTIBLE = 0x0,
+	SYNC_TIMEOUT = 0x1,
+	SYNC_UNINTERRUPTIBLE = 0x2
 };
 
 #define QMI_SYNC_TIMEOUT_MSEC 250
@@ -508,6 +510,21 @@ static int read_async(struct qcusbnet *dev, u16 cid, u16 tid,
 	return 0;
 }
 
+static int down_sync_flags(struct semaphore *sem, int sync_flags)
+{
+	if (sync_flags == SYNC_INTERRUPTIBLE) {
+		return down_interruptible(sem);
+	} else if (sync_flags == SYNC_TIMEOUT) {
+		return down_timeout(sem, QMI_SYNC_TIMEOUT_JIFFIES);
+	} else if (sync_flags == SYNC_UNINTERRUPTIBLE) {
+		down(sem);
+		return 0;
+	} else {
+		BUG_ON(1);
+		return -EINVAL;
+	}
+}
+
 static void upsem(struct qcusbnet *dev, u16 cid, void *data)
 {
 	GOBI_DEBUG("(cid=0x%04x)", cid);
@@ -552,10 +569,7 @@ static int read_sync(struct qcusbnet *dev, void **buf, u16 cid, u16 tid,
 
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 
-		if (sync_flags & SYNC_TIMEOUT)
-			result = down_timeout(&sem, QMI_SYNC_TIMEOUT_JIFFIES);
-		else
-			result = down_interruptible(&sem);
+		result = down_sync_flags(&sem, sync_flags);
 		if (result) {
 			GOBI_WARN("down failed: %d (cid=0x%04x, tid=0x%04x)",
 			    result, cid, tid);
@@ -723,10 +737,7 @@ static int write_sync(struct qcusbnet *dev, struct buffer *data_buf, u16 cid,
 		return result;
 	}
 
-	if (sync_flags & SYNC_TIMEOUT)
-		result = down_timeout(&ctx->sem, QMI_SYNC_TIMEOUT_JIFFIES);
-	else
-		result = down_interruptible(&ctx->sem);
+	result = down_sync_flags(&ctx->sem, sync_flags);
 	kref_put(&ctx->ref, writectx_release);
 	if (!device_valid(dev)) {
 		GOBI_ERROR("invalid device (cid=0x%04x)", cid);
@@ -1219,7 +1230,7 @@ static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return -EBADR;
 		}
 
-		result = client_alloc(handle->dev, (u8)arg, 0);
+		result = client_alloc(handle->dev, (u8)arg, SYNC_INTERRUPTIBLE);
 		if (result < 0) {
 			GOBI_WARN("failed to allocate client: %d", result);
 			return result;
@@ -1249,7 +1260,7 @@ static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 
 		file->private_data = NULL;
-		client_free(handle->dev, handle->cid, 0);
+		client_free(handle->dev, handle->cid, SYNC_UNINTERRUPTIBLE);
 		kfree(handle);
 
 		return 0;
@@ -1319,7 +1330,8 @@ static int devqmi_release(struct inode *inode, struct file *file)
 	if (handle) {
 		file->private_data = NULL;
 		if (handle->cid != CID_NONE)
-			client_free(handle->dev, handle->cid, 0);
+			client_free(handle->dev, handle->cid,
+				    SYNC_UNINTERRUPTIBLE);
 		qcusbnet_put(handle->dev);
 		kfree(handle);
 	}
@@ -1355,7 +1367,8 @@ static ssize_t devqmi_read(struct file *file, char __user *buf, size_t size,
 		return -EBADR;
 	}
 
-	result = read_sync(handle->dev, &data, handle->cid, 0, 0);
+	result = read_sync(handle->dev, &data, handle->cid, 0,
+			   SYNC_INTERRUPTIBLE);
 	if (result <= 0) {
 		GOBI_WARN("read_sync failed: %d", result);
 		return result;
@@ -1421,7 +1434,7 @@ static ssize_t devqmi_write(struct file *file, const char __user * buf,
 		return status;
 	}
 
-	status = write_sync(handle->dev, wbuf, handle->cid, 0);
+	status = write_sync(handle->dev, wbuf, handle->cid, SYNC_INTERRUPTIBLE);
 	buffer_put(wbuf);
 
 	if (status == size + qmux_size)
@@ -1627,7 +1640,7 @@ static bool qmi_ready(struct qcusbnet *dev, u16 timeout)
 		}
 
 		/* TODO: Convert to use SYNC_TIMEOUT */
-		write_sync(dev, wbuf, QMICTL, 0);
+		write_sync(dev, wbuf, QMICTL, SYNC_INTERRUPTIBLE);
 		buffer_put(wbuf);
 
 		msleep(100);
