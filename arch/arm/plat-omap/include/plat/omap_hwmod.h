@@ -442,6 +442,12 @@ struct omap_hwmod_omap4_prcm {
 #define _HWMOD_STATE_ENABLED			4
 #define _HWMOD_STATE_IDLE			5
 #define _HWMOD_STATE_DISABLED			6
+/*
+ * This state signifies the hwmod was left enabled
+ * after init, by the framework, because of the
+ * 'HWMOD_INIT_NO_IDLE' flag.
+ */
+#define _HWMOD_STATE_ENABLED_AT_INIT		7
 
 /**
  * struct omap_hwmod_class - the type of an IP block
