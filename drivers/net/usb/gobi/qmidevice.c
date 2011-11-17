@@ -1831,14 +1831,14 @@ static int qmidms_getmeid(struct qcusbnet *dev, int sync_flags)
 
 	result = client_alloc(dev, QMIDMS, sync_flags);
 	if (result < 0) {
-		GOBI_ERROR("failed to allocate client");
+		GOBI_ERROR("failed to allocate client: %d", result);
 		goto out;
 	}
 	cid = result;
 
 	wbuf = qmidms_new_getmeid(1);
 	if (!wbuf) {
-		GOBI_ERROR("failed to create getmeid request");
+		GOBI_ERROR("failed to create getmeid request: %d", result);
 		result = -ENOMEM;
 		goto out;
 	}
@@ -1846,20 +1846,20 @@ static int qmidms_getmeid(struct qcusbnet *dev, int sync_flags)
 	result = write_sync(dev, wbuf, cid, sync_flags);
 	buffer_put(wbuf);
 	if (result < 0) {
-		GOBI_ERROR("failed to write getmeid request");
+		GOBI_ERROR("failed to write getmeid request: %d", result);
 		goto out;
 	}
 
 	result = read_sync(dev, &rbuf, cid, 1, sync_flags);
 	if (result < 0) {
-		GOBI_ERROR("failed to read meid response");
+		GOBI_ERROR("failed to read meid response: %d", result);
 		goto out;
 	}
 	size = result;
 
 	result = qmidms_meid_resp(rbuf, size, &dev->meid[0], 14);
 	if (result < 0) {
-		GOBI_ERROR("failed to parse meid response");
+		GOBI_ERROR("failed to parse meid response: %d", result);
 		goto out;
 	}
 
