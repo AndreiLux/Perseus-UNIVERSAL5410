@@ -1550,13 +1550,14 @@ int qc_register(struct qcusbnet *dev)
 		goto fail_cdev_del;
 	}
 
-	printk(KERN_INFO "creating qcqmi%d", qmiidx);
 	struct device *d = device_create(dev->qmi.devclass, &dev->iface->dev,
 					 devno, NULL, "qcqmi%d", qmiidx);
 	if (IS_ERR(d)) {
 		GOBI_ERROR("device_create failed: %d", PTR_ERR(d));
 		goto fail_cdev_del;
 	}
+
+	printk(KERN_INFO "gobi: registered qcqmi%d", qmiidx, qmiidx);
 
 	dev->qmi.devnum = devno;
 	return 0;
