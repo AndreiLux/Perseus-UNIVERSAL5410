@@ -70,7 +70,7 @@ enum {
 	SYNC_UNINTERRUPTIBLE = 0x2
 };
 
-#define QMI_SYNC_TIMEOUT_MSEC 250
+#define QMI_SYNC_TIMEOUT_MSEC 2000
 #define QMI_SYNC_TIMEOUT_JIFFIES msecs_to_jiffies(QMI_SYNC_TIMEOUT_MSEC)
 
 static int qcusbnet2k_fwdelay;
