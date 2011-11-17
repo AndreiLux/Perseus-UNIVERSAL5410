@@ -159,13 +159,13 @@ static int qcnet_bind(struct usbnet *usbnet, struct usb_interface *iface)
 	int dir_in, dir_out, xfer_int;
 
 	if (iface->num_altsetting != 1) {
-		GOBI_ERROR("invalid num_altsetting %u", iface->num_altsetting);
+		GOBI_WARN("invalid num_altsetting %u", iface->num_altsetting);
 		return -EINVAL;
 	}
 
 	if (iface->cur_altsetting->desc.bInterfaceNumber != 0
 	    && iface->cur_altsetting->desc.bInterfaceNumber != 5) {
-		GOBI_ERROR("invalid interface %d",
+		GOBI_WARN("invalid interface %d",
 			  iface->cur_altsetting->desc.bInterfaceNumber);
 		return -EINVAL;
 	}
@@ -188,14 +188,14 @@ static int qcnet_bind(struct usbnet *usbnet, struct usb_interface *iface)
 
 		if (dir_in && !xfer_int) {
 			if (in) {
-				GOBI_ERROR("multiple in endpoints");
+				GOBI_WARN("multiple in endpoints");
 				return -EINVAL;
 			}
 			GOBI_DEBUG("setting endpoint %d as in", i);
 			in = endpoint;
 		} else if (dir_out && !xfer_int) {
 			if (out) {
-				GOBI_ERROR("multiple out endpoints");
+				GOBI_WARN("multiple out endpoints");
 				return -EINVAL;
 			}
 			GOBI_DEBUG("setting endpoint %d as out", i);
@@ -206,23 +206,23 @@ static int qcnet_bind(struct usbnet *usbnet, struct usb_interface *iface)
 	}
 
 	if (!in || !out) {
-		GOBI_ERROR("missing endpoint(s)");
+		GOBI_WARN("missing endpoint(s)");
 		if (in)
-			GOBI_ERROR("found in endpoint: %u",
+			GOBI_WARN("found in endpoint: %u",
 				in->desc.bEndpointAddress);
 		else
-			GOBI_ERROR("didn't find in endpoint");
+			GOBI_WARN("didn't find in endpoint");
 		if (out)
-			GOBI_ERROR("found out endpoint: %u",
+			GOBI_WARN("found out endpoint: %u",
 				out->desc.bEndpointAddress);
 		else
-			GOBI_ERROR("didn't find out endpoint");
+			GOBI_WARN("didn't find out endpoint");
 		return -EINVAL;
 	}
 
 	if (usb_set_interface(usbnet->udev,
 			      iface->cur_altsetting->desc.bInterfaceNumber, 0))	{
-		GOBI_ERROR("unable to set interface");
+		GOBI_WARN("unable to set interface");
 		return -EINVAL;
 	}
 
