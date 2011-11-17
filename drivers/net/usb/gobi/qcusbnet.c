@@ -160,14 +160,14 @@ static int qcnet_bind(struct usbnet *usbnet, struct usb_interface *iface)
 
 	if (iface->num_altsetting != 1) {
 		GOBI_WARN("invalid num_altsetting %u", iface->num_altsetting);
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	if (iface->cur_altsetting->desc.bInterfaceNumber != 0
 	    && iface->cur_altsetting->desc.bInterfaceNumber != 5) {
 		GOBI_WARN("invalid interface %d",
 			  iface->cur_altsetting->desc.bInterfaceNumber);
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	GOBI_DEBUG("interface number: %d",
@@ -189,14 +189,14 @@ static int qcnet_bind(struct usbnet *usbnet, struct usb_interface *iface)
 		if (dir_in && !xfer_int) {
 			if (in) {
 				GOBI_WARN("multiple in endpoints");
-				return -EINVAL;
+				return -ENODEV;
 			}
 			GOBI_DEBUG("setting endpoint %d as in", i);
 			in = endpoint;
 		} else if (dir_out && !xfer_int) {
 			if (out) {
 				GOBI_WARN("multiple out endpoints");
-				return -EINVAL;
+				return -ENODEV;
 			}
 			GOBI_DEBUG("setting endpoint %d as out", i);
 			out = endpoint;
@@ -217,7 +217,7 @@ static int qcnet_bind(struct usbnet *usbnet, struct usb_interface *iface)
 				out->desc.bEndpointAddress);
 		else
 			GOBI_WARN("didn't find out endpoint");
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	if (usb_set_interface(usbnet->udev,
@@ -513,21 +513,21 @@ static int discover_endpoints(struct qcusbnet *dev)
 		if (dir_in && xfer_int) {
 			if (int_in) {
 				GOBI_ERROR("multiple int_in endpoints");
-				return -EINVAL;
+				return -ENODEV;
 			}
 			GOBI_DEBUG("setting endpoint %d as int in", i);
 			int_in = endpoint;
 		} else if (dir_in && !xfer_int) {
 			if (bulk_in) {
 				GOBI_ERROR("multiple bulk_in endpoints");
-				return -EINVAL;
+				return -ENODEV;
 			}
 			GOBI_DEBUG("setting endpoint %d as bulk in", i);
 			bulk_in = endpoint;
 		} else if (dir_out && !xfer_int) {
 			if (bulk_out) {
 				GOBI_ERROR("multiple bulk_out endpoints");
-				return -EINVAL;
+				return -ENODEV;
 			}
 			GOBI_DEBUG("setting endpoint %d as bulk out", i);
 			bulk_out = endpoint;
@@ -553,7 +553,7 @@ static int discover_endpoints(struct qcusbnet *dev)
 				bulk_out->desc.bEndpointAddress);
 		else
 			GOBI_ERROR("didn't find bulk_out endpoint");
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	dev->iface_num     = dev->iface->cur_altsetting->desc.bInterfaceNumber;
