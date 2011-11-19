@@ -36,29 +36,27 @@ usage() {
 MAKE=true
 ALLTARGET=alldefconfig
 
-while true; do
-	case $1 in
-	"-n")
+while getopts "nmh" opt; do
+	case ${opt} in
+	n)
 		ALLTARGET=allnoconfig
-		shift
-		continue
 		;;
-	"-m")
+	m)
 		MAKE=false
-		shift
-		continue
 		;;
-	"-h")
+	h)
 		usage
 		exit
-		;;
-	*)
-		break
 		;;
 	esac
 done
 
+shift $(expr $OPTIND - 1)
 
+if [ $# -lt 2 ]; then
+	usage
+	exit 1
+fi
 
 MERGE_LIST=$*
 SED_CONFIG_EXP="s/^\(# \)\{0,1\}\(CONFIG_[a-zA-Z0-9_]*\)[= ].*/\2/p"
@@ -68,6 +66,9 @@ TMP_FILE=$(mktemp ./.tmp.config.XXXXXXXXXX)
 for MERGE_FILE in $MERGE_LIST ; do
 	echo "Merging $MERGE_FILE"
 	CFG_LIST=$(sed -n "$SED_CONFIG_EXP" $MERGE_FILE)
+	if [ $? != 0 ] ; then
+		exit 1
+	fi
 
 	for CFG in $CFG_LIST ; do
 		grep -q -w $CFG $TMP_FILE
