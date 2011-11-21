@@ -35,63 +35,6 @@
 
 /* OMAP USBHOST Register addresses  */
 
-/* TLL Register Set */
-#define	OMAP_USBTLL_REVISION				(0x00)
-#define	OMAP_USBTLL_SYSCONFIG				(0x10)
-#define	OMAP_USBTLL_SYSCONFIG_CACTIVITY			(1 << 8)
-#define	OMAP_USBTLL_SYSCONFIG_SIDLEMODE			(1 << 3)
-#define	OMAP_USBTLL_SYSCONFIG_ENAWAKEUP			(1 << 2)
-#define	OMAP_USBTLL_SYSCONFIG_SOFTRESET			(1 << 1)
-#define	OMAP_USBTLL_SYSCONFIG_AUTOIDLE			(1 << 0)
-
-#define	OMAP_USBTLL_SYSSTATUS				(0x14)
-#define	OMAP_USBTLL_SYSSTATUS_RESETDONE			(1 << 0)
-
-#define	OMAP_USBTLL_IRQSTATUS				(0x18)
-#define	OMAP_USBTLL_IRQENABLE				(0x1C)
-
-#define	OMAP_TLL_SHARED_CONF				(0x30)
-#define	OMAP_TLL_SHARED_CONF_USB_90D_DDR_EN		(1 << 6)
-#define	OMAP_TLL_SHARED_CONF_USB_180D_SDR_EN		(1 << 5)
-#define	OMAP_TLL_SHARED_CONF_USB_DIVRATION		(1 << 2)
-#define	OMAP_TLL_SHARED_CONF_FCLK_REQ			(1 << 1)
-#define	OMAP_TLL_SHARED_CONF_FCLK_IS_ON			(1 << 0)
-
-#define	OMAP_TLL_CHANNEL_CONF(num)			(0x040 + 0x004 * num)
-#define OMAP_TLL_CHANNEL_CONF_FSLSMODE_SHIFT		24
-#define	OMAP_TLL_CHANNEL_CONF_ULPINOBITSTUFF		(1 << 11)
-#define	OMAP_TLL_CHANNEL_CONF_ULPI_ULPIAUTOIDLE		(1 << 10)
-#define	OMAP_TLL_CHANNEL_CONF_UTMIAUTOIDLE		(1 << 9)
-#define	OMAP_TLL_CHANNEL_CONF_ULPIDDRMODE		(1 << 8)
-#define OMAP_TLL_CHANNEL_CONF_CHANMODE_FSLS		(1 << 1)
-#define	OMAP_TLL_CHANNEL_CONF_CHANEN			(1 << 0)
-
-#define OMAP_TLL_FSLSMODE_6PIN_PHY_DAT_SE0		0x0
-#define OMAP_TLL_FSLSMODE_6PIN_PHY_DP_DM		0x1
-#define OMAP_TLL_FSLSMODE_3PIN_PHY			0x2
-#define OMAP_TLL_FSLSMODE_4PIN_PHY			0x3
-#define OMAP_TLL_FSLSMODE_6PIN_TLL_DAT_SE0		0x4
-#define OMAP_TLL_FSLSMODE_6PIN_TLL_DP_DM		0x5
-#define OMAP_TLL_FSLSMODE_3PIN_TLL			0x6
-#define OMAP_TLL_FSLSMODE_4PIN_TLL			0x7
-#define OMAP_TLL_FSLSMODE_2PIN_TLL_DAT_SE0		0xA
-#define OMAP_TLL_FSLSMODE_2PIN_DAT_DP_DM		0xB
-
-#define	OMAP_TLL_ULPI_FUNCTION_CTRL(num)		(0x804 + 0x100 * num)
-#define	OMAP_TLL_ULPI_INTERFACE_CTRL(num)		(0x807 + 0x100 * num)
-#define	OMAP_TLL_ULPI_OTG_CTRL(num)			(0x80A + 0x100 * num)
-#define	OMAP_TLL_ULPI_INT_EN_RISE(num)			(0x80D + 0x100 * num)
-#define	OMAP_TLL_ULPI_INT_EN_FALL(num)			(0x810 + 0x100 * num)
-#define	OMAP_TLL_ULPI_INT_STATUS(num)			(0x813 + 0x100 * num)
-#define	OMAP_TLL_ULPI_INT_LATCH(num)			(0x814 + 0x100 * num)
-#define	OMAP_TLL_ULPI_DEBUG(num)			(0x815 + 0x100 * num)
-#define	OMAP_TLL_ULPI_SCRATCH_REGISTER(num)		(0x816 + 0x100 * num)
-
-#define OMAP_TLL_CHANNEL_COUNT				3
-#define OMAP_TLL_CHANNEL_1_EN_MASK			(1 << 0)
-#define OMAP_TLL_CHANNEL_2_EN_MASK			(1 << 1)
-#define OMAP_TLL_CHANNEL_3_EN_MASK			(1 << 2)
-
 /* UHH Register Set */
 #define	OMAP_UHH_REVISION				(0x00)
 #define	OMAP_UHH_SYSCONFIG				(0x10)
@@ -131,8 +74,6 @@
 #define OMAP4_P2_MODE_TLL				(1 << 18)
 #define OMAP4_P2_MODE_HSIC				(3 << 18)
 
-#define OMAP_REV2_TLL_CHANNEL_COUNT			2
-
 #define	OMAP_UHH_DEBUG_CSR				(0x44)
 
 /* Values of UHH_REVISION - Note: these are not given in the TRM */
@@ -152,15 +93,12 @@ struct usbhs_hcd_omap {
 	struct clk			*xclk60mhsp2_ck;
 	struct clk			*utmi_p1_fck;
 	struct clk			*usbhost_p1_fck;
-	struct clk			*usbtll_p1_fck;
 	struct clk			*utmi_p2_fck;
 	struct clk			*usbhost_p2_fck;
-	struct clk			*usbtll_p2_fck;
 	struct clk			*init_60m_fclk;
 	struct clk			*ehci_logic_fck;
 
 	void __iomem			*uhh_base;
-	void __iomem			*tll_base;
 
 	struct usbhs_omap_platform_data	platdata;
 
@@ -440,14 +378,10 @@ static int usbhs_runtime_resume(struct device *dev)
 	if (omap->ehci_logic_fck && !IS_ERR(omap->ehci_logic_fck))
 		clk_enable(omap->ehci_logic_fck);
 
-	if (is_ehci_tll_mode(pdata->port_mode[0])) {
+	if (is_ehci_tll_mode(pdata->port_mode[0]))
 		clk_enable(omap->usbhost_p1_fck);
-		clk_enable(omap->usbtll_p1_fck);
-	}
-	if (is_ehci_tll_mode(pdata->port_mode[1])) {
+	if (is_ehci_tll_mode(pdata->port_mode[1]))
 		clk_enable(omap->usbhost_p2_fck);
-		clk_enable(omap->usbtll_p2_fck);
-	}
 	clk_enable(omap->utmi_p1_fck);
 	clk_enable(omap->utmi_p2_fck);
 
@@ -471,14 +405,10 @@ static int usbhs_runtime_suspend(struct device *dev)
 
 	spin_lock_irqsave(&omap->lock, flags);
 
-	if (is_ehci_tll_mode(pdata->port_mode[0])) {
+	if (is_ehci_tll_mode(pdata->port_mode[0]))
 		clk_disable(omap->usbhost_p1_fck);
-		clk_disable(omap->usbtll_p1_fck);
-	}
-	if (is_ehci_tll_mode(pdata->port_mode[1])) {
+	if (is_ehci_tll_mode(pdata->port_mode[1]))
 		clk_disable(omap->usbhost_p2_fck);
-		clk_disable(omap->usbtll_p2_fck);
-	}
 	clk_disable(omap->utmi_p2_fck);
 	clk_disable(omap->utmi_p1_fck);
 
@@ -580,6 +510,21 @@ static void omap_usbhs_init(struct device *dev)
 			usbhs_omap_tll_init(dev, OMAP_TLL_CHANNEL_COUNT);
 	}
 
+	if (pdata->ehci_data->phy_reset) {
+		/* Hold the PHY in RESET for enough time till
+		 * PHY is settled and ready
+		 */
+		udelay(10);
+
+		if (gpio_is_valid(pdata->ehci_data->reset_gpio_port[0]))
+			gpio_set_value
+				(pdata->ehci_data->reset_gpio_port[0], 1);
+
+		if (gpio_is_valid(pdata->ehci_data->reset_gpio_port[1]))
+			gpio_set_value
+				(pdata->ehci_data->reset_gpio_port[1], 1);
+	}
+
 	spin_unlock_irqrestore(&omap->lock, flags);
 	pm_runtime_put_sync(dev);
 }
@@ -670,25 +615,11 @@ static int __devinit usbhs_omap_probe(struct platform_device *pdev)
 		goto err_xclk60mhsp2_ck;
 	}
 
-	omap->usbtll_p1_fck = clk_get(dev, "usb_tll_hs_usb_ch0_clk");
-	if (IS_ERR(omap->usbtll_p1_fck)) {
-		ret = PTR_ERR(omap->usbtll_p1_fck);
-		dev_err(dev, "usbtll_p1_fck failed error:%d\n", ret);
-		goto err_usbhost_p1_fck;
-	}
-
 	omap->usbhost_p2_fck = clk_get(dev, "usb_host_hs_utmi_p2_clk");
 	if (IS_ERR(omap->usbhost_p2_fck)) {
 		ret = PTR_ERR(omap->usbhost_p2_fck);
 		dev_err(dev, "usbhost_p2_fck failed error:%d\n", ret);
-		goto err_usbtll_p1_fck;
-	}
-
-	omap->usbtll_p2_fck = clk_get(dev, "usb_tll_hs_usb_ch1_clk");
-	if (IS_ERR(omap->usbtll_p2_fck)) {
-		ret = PTR_ERR(omap->usbtll_p2_fck);
-		dev_err(dev, "usbtll_p2_fck failed error:%d\n", ret);
-		goto err_usbhost_p2_fck;
+		goto err_usbhost_p1_fck;
 	}
 
 	if (cpu_is_omap54xx())
@@ -699,7 +630,7 @@ static int __devinit usbhs_omap_probe(struct platform_device *pdev)
 	if (IS_ERR(omap->init_60m_fclk)) {
 		ret = PTR_ERR(omap->init_60m_fclk);
 		dev_err(dev, "init_60m_fclk failed error:%d\n", ret);
-		goto err_usbtll_p2_fck;
+		goto err_usbhost_p2_fck;
 	}
 
 	if (is_ehci_phy_mode(pdata->port_mode[0])) {
@@ -745,20 +676,6 @@ static int __devinit usbhs_omap_probe(struct platform_device *pdev)
 		goto err_init_60m_fclk;
 	}
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "tll");
-	if (!res) {
-		dev_err(dev, "UHH EHCI get resource failed\n");
-		ret = -ENODEV;
-		goto err_tll;
-	}
-
-	omap->tll_base = ioremap(res->start, resource_size(res));
-	if (!omap->tll_base) {
-		dev_err(dev, "TLL ioremap failed\n");
-		ret = -ENOMEM;
-		goto err_tll;
-	}
-
 	platform_set_drvdata(pdev, omap);
 
 	omap_usbhs_init(dev);
@@ -771,22 +688,13 @@ static int __devinit usbhs_omap_probe(struct platform_device *pdev)
 	goto end_probe;
 
 err_alloc:
-	iounmap(omap->tll_base);
-
-err_tll:
 	iounmap(omap->uhh_base);
 
 err_init_60m_fclk:
 	clk_put(omap->init_60m_fclk);
 
-err_usbtll_p2_fck:
-	clk_put(omap->usbtll_p2_fck);
-
 err_usbhost_p2_fck:
 	clk_put(omap->usbhost_p2_fck);
-
-err_usbtll_p1_fck:
-	clk_put(omap->usbtll_p1_fck);
 
 err_usbhost_p1_fck:
 	clk_put(omap->usbhost_p1_fck);
@@ -823,11 +731,10 @@ static int __devexit usbhs_omap_remove(struct platform_device *pdev)
 	struct usbhs_hcd_omap *omap = platform_get_drvdata(pdev);
 
 	iounmap(omap->tll_base);
+	omap_usbhs_deinit(&pdev->dev);
 	iounmap(omap->uhh_base);
 	clk_put(omap->init_60m_fclk);
-	clk_put(omap->usbtll_p2_fck);
 	clk_put(omap->usbhost_p2_fck);
-	clk_put(omap->usbtll_p1_fck);
 	clk_put(omap->usbhost_p1_fck);
 	clk_put(omap->xclk60mhsp2_ck);
 	clk_put(omap->utmi_p2_fck);
