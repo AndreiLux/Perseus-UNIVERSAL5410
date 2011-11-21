@@ -62,6 +62,10 @@ struct usbhs_omap_platform_data {
 	struct ehci_hcd_omap_platform_data	*ehci_data;
 	struct ohci_hcd_omap_platform_data	*ohci_data;
 };
+
+struct usbtll_omap_platform_data {
+	enum usbhs_omap_port_mode		port_mode[OMAP3_HS_USB_PORTS];
+};
 /*-------------------------------------------------------------------------*/
 
 #define OMAP1_OTG_BASE			0xfffb0400
@@ -144,6 +148,9 @@ static inline void omap_writel(u32 v, u32 pa)
 {
 	__raw_writel(v, OMAP2_L4_IO_ADDRESS(pa));
 }
+
+extern int omap_tll_enable(void);
+extern int omap_tll_disable(void);
 
 #endif
 
