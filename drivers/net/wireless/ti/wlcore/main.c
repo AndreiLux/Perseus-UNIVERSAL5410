@@ -5288,7 +5288,7 @@ static int wl1271_init_ieee80211(struct wl1271 *wl)
 
 #define WL1271_DEFAULT_CHANNEL 0
 
-static struct ieee80211_hw *wl1271_alloc_hw(void)
+struct ieee80211_hw *wlcore_alloc_hw(void)
 {
 	struct ieee80211_hw *hw;
 	struct wl1271 *wl;
@@ -5413,8 +5413,9 @@ err_hw_alloc:
 
 	return ERR_PTR(ret);
 }
+EXPORT_SYMBOL_GPL(wlcore_alloc_hw);
 
-static int wl1271_free_hw(struct wl1271 *wl)
+int wlcore_free_hw(struct wl1271 *wl)
 {
 	/* Unblock any fwlog readers */
 	mutex_lock(&wl->mutex);
@@ -5448,6 +5449,7 @@ static int wl1271_free_hw(struct wl1271 *wl)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(wlcore_free_hw);
 
 static irqreturn_t wl12xx_hardirq(int irq, void *cookie)
 {
@@ -5478,22 +5480,12 @@ static irqreturn_t wl12xx_hardirq(int irq, void *cookie)
 	return IRQ_WAKE_THREAD;
 }
 
-int __devinit wlcore_probe(struct platform_device *pdev)
+int __devinit wlcore_probe(struct wl1271 *wl, struct platform_device *pdev)
 {
 	struct wl12xx_platform_data *pdata = pdev->dev.platform_data;
-	struct ieee80211_hw *hw;
-	struct wl1271 *wl;
 	unsigned long irqflags;
-	int ret = -ENODEV;
+	int ret;
 
-	hw = wl1271_alloc_hw();
-	if (IS_ERR(hw)) {
-		wl1271_error("can't allocate hw");
-		ret = PTR_ERR(hw);
-		goto out;
-	}
-
-	wl = hw->priv;
 	wl->irq = platform_get_irq(pdev, 0);
 	wl->ref_clock = pdata->board_ref_clock;
 	wl->tcxo_clock = pdata->board_tcxo_clock;
@@ -5522,7 +5514,7 @@ int __devinit wlcore_probe(struct platform_device *pdev)
 		wl->irq_wake_enabled = true;
 		device_init_wakeup(wl->dev, 1);
 		if (pdata->pwr_in_suspend)
-			hw->wiphy->wowlan.flags = WIPHY_WOWLAN_ANY;
+			wl->hw->wiphy->wowlan.flags = WIPHY_WOWLAN_ANY;
 
 	}
 	disable_irq(wl->irq);
@@ -5556,7 +5548,7 @@ int __devinit wlcore_probe(struct platform_device *pdev)
 		goto out_hw_pg_ver;
 	}
 
-	return 0;
+	goto out;
 
 out_hw_pg_ver:
 	device_remove_file(wl->dev, &dev_attr_hw_pg_ver);
@@ -5568,7 +5560,7 @@ out_irq:
 	free_irq(wl->irq, wl);
 
 out_free_hw:
-	wl1271_free_hw(wl);
+	wlcore_free_hw(wl);
 
 out:
 	return ret;
@@ -5585,7 +5577,7 @@ int __devexit wlcore_remove(struct platform_device *pdev)
 	}
 	wl1271_unregister_hw(wl);
 	free_irq(wl->irq, wl);
-	wl1271_free_hw(wl);
+	wlcore_free_hw(wl);
 
 	return 0;
 }
