@@ -50,6 +50,12 @@
 #define L2_AUX_VAL 0x7C470001
 #define L2_AUX_MASK 0xC200ffff
 
+#ifdef CONFIG_PM
+extern int s3c_irq_wake(struct irq_data *data, unsigned int state);
+#else
+#define s3c_irq_wake NULL
+#endif
+
 static const char name_exynos4210[] = "EXYNOS4210";
 static const char name_exynos4212[] = "EXYNOS4212";
 static const char name_exynos4412[] = "EXYNOS4412";
@@ -531,6 +537,9 @@ void __init exynos4_init_irq(void)
 	 * uses GIC instead of VIC.
 	 */
 	s5p_init_irq(NULL, 0);
+#ifdef CONFIG_PM
+	irq_get_chip(IRQ_RTC_ALARM)->irq_set_wake = s3c_irq_wake;
+#endif
 }
 
 void __init exynos5_init_irq(void)
