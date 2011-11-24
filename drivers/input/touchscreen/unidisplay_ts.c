@@ -36,11 +36,13 @@
 #define DEBUG_PRINT(fmt, args...)
 #endif
 
-#define	INPUT_REPORT(x, y, p)	\
+#define	INPUT_REPORT(x, y, p, val1, val2)	\
 		{ \
 		input_report_abs(tsdata->input, ABS_MT_POSITION_X, x); \
 		input_report_abs(tsdata->input, ABS_MT_POSITION_Y, y); \
 		input_report_abs(tsdata->input, ABS_MT_TOUCH_MAJOR, p); \
+		input_report_abs(tsdata->input, ABS_PRESSURE, val1); \
+		input_report_key(tsdata->input, BTN_TOUCH, val2); \
 		input_mt_sync(tsdata->input); \
 		}
 
@@ -172,7 +174,7 @@ static int unidisplay_ts_thread(void *kthread)
 					y1 = buf[4];
 					y1 <<= 8;
 					y1 |= buf[3];
-					INPUT_REPORT(x1, y1, 1);
+					INPUT_REPORT(x1, y1, 1, 255, 1);
 				}
 				if (type & 0x2) {
 					x1 = buf[6];
@@ -181,13 +183,13 @@ static int unidisplay_ts_thread(void *kthread)
 					y1 = buf[8];
 					y1 <<= 8;
 					y1 |= buf[7];
-					INPUT_REPORT(x1, y1, 2);
+					INPUT_REPORT(x1, y1, 2, 255, 1);
 				}
 				input_sync(tsdata->input);
 				timeout = msecs_to_jiffies(20);
 			} else {
-				INPUT_REPORT(0, 0, 0);
-				INPUT_REPORT(0, 0, 0);
+				INPUT_REPORT(0, 0, 0, 0 ,0);
+				INPUT_REPORT(0, 0, 0, 0, 0);
 				input_sync(tsdata->input);
 				timeout = MAX_SCHEDULE_TIMEOUT;
 			}
