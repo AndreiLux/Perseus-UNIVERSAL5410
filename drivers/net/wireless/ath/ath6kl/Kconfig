@@ -30,3 +30,9 @@ config ATH6KL_DEBUG
 	depends on ATH6KL
 	---help---
 	  Enables debug support
+
+config ATH6KL_PLATFORM_DATA
+        bool "Atheros ath6kl Platform data support"
+        depends on ATH6KL
+        ---help---
+          Enables ath6kl platform data
