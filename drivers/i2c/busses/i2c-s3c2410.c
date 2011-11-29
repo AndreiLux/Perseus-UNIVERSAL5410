@@ -1132,7 +1132,9 @@ static int s3c24xx_i2c_suspend_noirq(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct s3c24xx_i2c *i2c = platform_get_drvdata(pdev);
 
+	i2c_lock_adapter(&i2c->adap);
 	i2c->suspended = 1;
+	i2c_unlock_adapter(&i2c->adap);
 
 	return 0;
 }
@@ -1141,11 +1143,24 @@ static int s3c24xx_i2c_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct s3c24xx_i2c *i2c = platform_get_drvdata(pdev);
+	int ret;
+
+	i2c_lock_adapter(&i2c->adap);
+
+	clk_enable(i2c->clk);
+
+	ret = s3c24xx_i2c_init(i2c);
+	if (ret) {
+		i2c_unlock_adapter(&i2c->adap);
+		clk_disable(i2c->clk);
+		return ret;
+	}
+
+	clk_disable(i2c->clk);
 
 	i2c->suspended = 0;
-	clk_enable(i2c->clk);
-	s3c24xx_i2c_init(i2c);
-	clk_disable(i2c->clk);
+
+	i2c_unlock_adapter(&i2c->adap);
 
 	return 0;
 }
