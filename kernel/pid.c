@@ -80,6 +80,8 @@ struct pid_namespace init_pid_ns = {
 	.child_reaper = &init_task,
 #ifdef CONFIG_SECURITY_YAMA
 	.ptrace_scope = 1,
+	.protected_sticky_symlinks = 1,
+	.protected_nonaccess_hardlinks = 1,
 #endif
 };
 EXPORT_SYMBOL_GPL(init_pid_ns);

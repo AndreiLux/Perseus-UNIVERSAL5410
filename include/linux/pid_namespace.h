@@ -34,6 +34,11 @@ struct pid_namespace {
 	gid_t pid_gid;
 	int hide_pid;
 	int reboot;	/* group exit code if this pidns was rebooted */
+#ifdef CONFIG_SECURITY_YAMA
+	int ptrace_scope;
+	int protected_sticky_symlinks;
+	int protected_nonaccess_hardlinks;
+#endif
 };
 
 extern struct pid_namespace init_pid_ns;
