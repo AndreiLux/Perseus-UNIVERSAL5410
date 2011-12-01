@@ -566,7 +566,8 @@ EXPORT_SYMBOL_GPL(swiotlb_tbl_sync_single);
 
 void *
 swiotlb_alloc_coherent(struct device *hwdev, size_t size,
-		       dma_addr_t *dma_handle, gfp_t flags)
+		       dma_addr_t *dma_handle, gfp_t flags,
+		       struct dma_attrs *attrs)
 {
 	dma_addr_t dev_addr;
 	void *ret;
@@ -615,7 +616,7 @@ EXPORT_SYMBOL(swiotlb_alloc_coherent);
 
 void
 swiotlb_free_coherent(struct device *hwdev, size_t size, void *vaddr,
-		      dma_addr_t dev_addr)
+		      dma_addr_t dev_addr, struct dma_attrs *attrs)
 {
 	phys_addr_t paddr = dma_to_phys(hwdev, dev_addr);
 

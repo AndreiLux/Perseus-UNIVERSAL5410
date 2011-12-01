@@ -50,11 +50,13 @@ extern void swiotlb_bounce(phys_addr_t phys, char *dma_addr, size_t size,
 
 extern void
 *swiotlb_alloc_coherent(struct device *hwdev, size_t size,
-			dma_addr_t *dma_handle, gfp_t flags);
+			dma_addr_t *dma_handle, gfp_t flags,
+			struct dma_attrs *attrs);
 
 extern void
 swiotlb_free_coherent(struct device *hwdev, size_t size,
-		      void *vaddr, dma_addr_t dma_handle);
+		      void *vaddr, dma_addr_t dma_handle,
+		      struct dma_attrs *attrs);
 
 extern dma_addr_t swiotlb_map_page(struct device *dev, struct page *page,
 				   unsigned long offset, size_t size,
