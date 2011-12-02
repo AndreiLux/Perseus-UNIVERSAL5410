@@ -26,6 +26,7 @@
 #include <linux/types.h>
 #include <linux/device.h>
 #include <linux/miscdevice.h>
+#include <linux/usb/composite.h>
 
 #define ADB_BULK_BUFFER_SIZE           4096
 
