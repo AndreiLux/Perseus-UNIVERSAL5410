@@ -13,6 +13,7 @@
  * via the DEFAULT_DEBUG_MASK. See xt_qtaguid_internal.h.
  */
 #define DEBUG
+/* TODO: support ipv6 for iface_stat */
 
 #include <linux/file.h>
 #include <linux/inetdevice.h>
@@ -1374,6 +1375,7 @@ static struct sock *qtaguid_find_sk(const struct sk_buff *skb,
 				    struct xt_action_param *par)
 {
 	struct sock *sk;
+	unsigned int hook_mask = (1 << par->hooknum);
 
 	MT_DEBUG("qtaguid: find_sk(skb=%p) hooknum=%d family=%d\n", skb,
 		 par->hooknum, par->family);
@@ -1399,6 +1401,7 @@ static struct sock *qtaguid_find_sk(const struct sk_buff *skb,
 	/*
 	 * Seems to be issues on the file ptr for TCP_TIME_WAIT SKs.
 	 * http://kerneltrap.org/mailarchive/linux-netdev/2010/10/21/6287959
+	 * Not fixed in 3.0-r3 :(
 	 */
 	if (sk) {
 		MT_DEBUG("qtaguid: %p->sk_proto=%u "
