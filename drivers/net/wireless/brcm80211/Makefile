@@ -21,3 +21,4 @@ subdir-ccflags-$(CONFIG_BRCMDBG)	+= -DBCMDBG
 obj-$(CONFIG_BRCMUTIL)	+= brcmutil/
 obj-$(CONFIG_BRCMFMAC)	+= brcmfmac/
 obj-$(CONFIG_BRCMSMAC)	+= brcmsmac/
+obj-$(CONFIG_BCM4329)   += bcm4329/ 
