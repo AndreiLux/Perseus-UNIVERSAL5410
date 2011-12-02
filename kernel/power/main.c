@@ -307,8 +307,8 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 			dpm_save_failed_errno(error);
 		} else
 			suspend_stats.success++;
-	}
 #endif
+	}
 #endif
 
  Exit:
