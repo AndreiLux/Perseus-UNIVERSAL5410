@@ -13,7 +13,6 @@
  * via the DEFAULT_DEBUG_MASK. See xt_qtaguid_internal.h.
  */
 #define DEBUG
-/* TODO: support ipv6 for iface_stat */
 
 #include <linux/file.h>
 #include <linux/inetdevice.h>
@@ -37,6 +36,7 @@
  */
 #define XT_SOCKET_SUPPORTED_HOOKS \
 	((1 << NF_INET_PRE_ROUTING) | (1 << NF_INET_LOCAL_IN))
+
 
 static const char *module_procdirname = "xt_qtaguid";
 static struct proc_dir_entry *xt_qtaguid_procdir;
@@ -1575,11 +1575,15 @@ ret_res:
 	return res;
 }
 
-/* TODO: Use Documentation/filesystems/seq_file.txt? */
-static int qtaguid_ctrl_proc_read(char *page, char **start, off_t off,
-				int count, int *eof, void *data)
+/*
+ * Procfs reader to get all active socket tags using style "1)" as described in
+ * fs/proc/generic.c
+ */
+static int qtaguid_ctrl_proc_read(char *page, char **num_items_returned,
+				  off_t items_to_skip, int char_count, int *eof,
+				  void *data)
 {
-	char *out = page + off;
+	char *outp = page;
 	int len;
 	uid_t uid;
 	struct rb_node *node;
@@ -1627,6 +1631,9 @@ static int qtaguid_ctrl_proc_read(char *page, char **start, off_t off,
 			*outp = '\0';
 			return outp - page;
 		}
+		outp += len;
+		char_count -= len;
+		(*num_items_returned)++;
 	}
 	spin_unlock_bh(&sock_tag_list_lock);
 
