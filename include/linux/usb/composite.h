@@ -47,6 +47,7 @@
  */
 #define USB_GADGET_DELAYED_STATUS       0x7fff	/* Impossibly large value */
 
+struct usb_composite_dev;
 struct usb_configuration;
 
 /**
@@ -169,6 +170,7 @@ int config_ep_by_speed(struct usb_gadget *g, struct usb_function *f,
 #define	MAX_CONFIG_INTERFACES		16	/* arbitrary; max 255 */
 
 void usb_function_set_enabled(struct usb_function *, int);
+void usb_composite_force_reset(struct usb_composite_dev *);
 
 /**
  * struct usb_configuration - represents one gadget configuration
@@ -376,6 +378,8 @@ struct usb_composite_dev {
 	spinlock_t			lock;
 
 	struct switch_dev sdev;
+	/* used by usb_composite_force_reset to avoid signalling switch changes */
+	bool				mute_switch;
 	struct work_struct switch_work;
 };
 
