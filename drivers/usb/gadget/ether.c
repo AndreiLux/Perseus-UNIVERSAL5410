@@ -237,7 +237,7 @@ static int __init rndis_do_config(struct usb_configuration *c)
 		c->bmAttributes |= USB_CONFIG_ATT_WAKEUP;
 	}
 
-	return rndis_bind_config(c, hostaddr);
+	return rndis_bind_config(c, hostaddr, 0, manufacturer);
 }
 
 static struct usb_configuration rndis_config_driver = {
