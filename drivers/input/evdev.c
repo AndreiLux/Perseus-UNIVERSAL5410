@@ -426,8 +426,7 @@ static ssize_t evdev_read(struct file *file, char __user *buffer,
 	}
 
 	if (retval == 0 && (file->f_flags & O_NONBLOCK))
-		return -EAGAIN;
-
+		retval = -EAGAIN;
 	return retval;
 }
 
