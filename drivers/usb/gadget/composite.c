@@ -690,6 +690,8 @@ static int set_config(struct usb_composite_dev *cdev,
 
 		if (!f)
 			break;
+		if (f->hidden)
+			continue;
 
 		/*
 		 * Record which endpoints are used by the function. This is used
