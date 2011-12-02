@@ -1260,7 +1260,7 @@ static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 
 		file->private_data = NULL;
-		client_free(handle->dev, handle->cid, SYNC_UNINTERRUPTIBLE);
+		client_free(handle->dev, handle->cid, SYNC_TIMEOUT);
 		kfree(handle);
 
 		return 0;
@@ -1331,7 +1331,7 @@ static int devqmi_release(struct inode *inode, struct file *file)
 		file->private_data = NULL;
 		if (handle->cid != CID_NONE)
 			client_free(handle->dev, handle->cid,
-				    SYNC_UNINTERRUPTIBLE);
+				    SYNC_TIMEOUT);
 		qcusbnet_put(handle->dev);
 		kfree(handle);
 	}
