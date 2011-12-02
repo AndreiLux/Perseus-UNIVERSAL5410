@@ -36,6 +36,7 @@
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
+#include <linux/switch.h>
 
 /*
  * USB function drivers should return USB_GADGET_DELAYED_STATUS if they
@@ -117,7 +118,9 @@ struct usb_function {
 	struct usb_descriptor_header	**ss_descriptors;
 
 	struct usb_configuration	*config;
-	int				hidden;
+
+	/* disabled is zero if the function is enabled */
+	int				disabled;
 
 	/* REVISIT:  bind() functions can be marked __init, which
 	 * makes trouble for section mismatch analysis.  See if
@@ -164,6 +167,8 @@ int config_ep_by_speed(struct usb_gadget *g, struct usb_function *f,
 			struct usb_ep *_ep);
 
 #define	MAX_CONFIG_INTERFACES		16	/* arbitrary; max 255 */
+
+void usb_function_set_enabled(struct usb_function *, int);
 
 /**
  * struct usb_configuration - represents one gadget configuration
@@ -369,6 +374,8 @@ struct usb_composite_dev {
 
 	/* protects deactivations and delayed_status counts*/
 	spinlock_t			lock;
+
+	struct switch_dev sdev;
 };
 
 extern int usb_string_id(struct usb_composite_dev *c);
