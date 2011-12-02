@@ -19,6 +19,7 @@
 #include <linux/kernel.h>
 #include <linux/device.h>
 #include <linux/etherdevice.h>
+#include <linux/usb/android_composite.h>
 
 #include <linux/atomic.h>
 
@@ -545,9 +546,9 @@ static int rndis_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 		}
 		if (!rndis->notify->desc) {
 			VDBG(cdev, "init rndis ctrl %d\n", intf);
-			if (config_ep_by_speed(cdev->gadget, f, rndis->notify))
-				goto fail;
 		}
+		if (config_ep_by_speed(cdev->gadget, f, rndis->notify))
+			goto fail;
 		usb_ep_enable(rndis->notify);
 		rndis->notify->driver_data = rndis;
 
@@ -561,14 +562,14 @@ static int rndis_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 
 		if (!rndis->port.in_ep->desc || !rndis->port.out_ep->desc) {
 			DBG(cdev, "init rndis\n");
-			if (config_ep_by_speed(cdev->gadget, f,
-					       rndis->port.in_ep) ||
-			    config_ep_by_speed(cdev->gadget, f,
-					       rndis->port.out_ep)) {
-				rndis->port.in_ep->desc = NULL;
-				rndis->port.out_ep->desc = NULL;
-				goto fail;
-			}
+		}
+		if (config_ep_by_speed(cdev->gadget, f,
+				       rndis->port.in_ep) ||
+		    config_ep_by_speed(cdev->gadget, f,
+				       rndis->port.out_ep)) {
+			rndis->port.in_ep->desc = NULL;
+			rndis->port.out_ep->desc = NULL;
+			goto fail;
 		}
 
 		/* Avoid ZLPs; they can be troublesome. */
@@ -923,3 +924,33 @@ fail:
 	}
 	return status;
 }
+
+#ifdef CONFIG_USB_ANDROID_RNDIS
+#include "rndis.c"
+
+// FIXME - using bogus MAC address for now
+
+static u8 ethaddr[ETH_ALEN] = { 11, 22, 33, 44, 55, 66 };
+
+int rndis_function_bind_config(struct usb_configuration *c)
+{
+	int ret = gether_setup(c->cdev->gadget, ethaddr);
+	if (ret == 0)
+		ret = rndis_bind_config(c, ethaddr);
+	return ret;
+}
+
+static struct android_usb_function rndis_function = {
+	.name = "rndis",
+	.bind_config = rndis_function_bind_config,
+};
+
+static int __init init(void)
+{
+	printk(KERN_INFO "f_rndis init\n");
+	android_register_function(&rndis_function);
+	return 0;
+}
+module_init(init);
+
+#endif /* CONFIG_USB_ANDROID_RNDIS */
