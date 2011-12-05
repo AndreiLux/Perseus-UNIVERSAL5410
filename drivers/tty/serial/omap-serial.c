@@ -705,7 +705,6 @@ serial_omap_set_termios(struct uart_port *port, struct ktermios *termios,
 {
 	struct uart_omap_port *up = (struct uart_omap_port *)port;
 	unsigned char cval = 0;
-	unsigned char efr = 0;
 	unsigned long flags = 0;
 	unsigned int baud, quot;
 
@@ -884,7 +883,6 @@ serial_omap_set_termios(struct uart_port *port, struct ktermios *termios,
 	/* Hardware Flow Control Configuration */
 
 	if (termios->c_cflag & CRTSCTS) {
-		efr |= (UART_EFR_CTS | UART_EFR_RTS);
 		serial_out(up, UART_LCR, UART_LCR_CONF_MODE_A);
 
 		up->mcr = serial_in(up, UART_MCR);
@@ -895,9 +893,16 @@ serial_omap_set_termios(struct uart_port *port, struct ktermios *termios,
 		serial_out(up, UART_EFR, up->efr | UART_EFR_ECB);
 
 		serial_out(up, UART_TI752_TCR, OMAP_UART_TCR_TRIG);
-		serial_out(up, UART_EFR, efr); /* Enable AUTORTS and AUTOCTS */
+		up->efr |= (UART_EFR_CTS | UART_EFR_RTS);
+		serial_out(up, UART_EFR, up->efr); /* Enable AUTORTS and AUTOCTS */
 		serial_out(up, UART_LCR, UART_LCR_CONF_MODE_A);
 		serial_out(up, UART_MCR, up->mcr | UART_MCR_RTS);
+		serial_out(up, UART_LCR, cval);
+	} else {
+		serial_out(up, UART_LCR, UART_LCR_CONF_MODE_B);
+		up->efr = serial_in(up, UART_EFR);
+		up->efr &= ~(UART_EFR_CTS | UART_EFR_RTS);
+		serial_out(up, UART_EFR, up->efr); /* Disable AUTORTS and AUTOCTS */
 		serial_out(up, UART_LCR, cval);
 	}
 
