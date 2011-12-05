@@ -250,6 +250,8 @@ struct emif_platform_data {
 	u32 ip_rev;
 	u32 phy_type;
 };
+
+void emif_freq_pre_notify_handler(u32 new_freq);
 #endif /* __ASSEMBLY__ */
 
 #endif /* __LINUX_EMIF_H */

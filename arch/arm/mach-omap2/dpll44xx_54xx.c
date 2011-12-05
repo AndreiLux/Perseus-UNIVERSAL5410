@@ -84,9 +84,8 @@ int omap4_core_dpll_m2_set_rate(struct clk *clk, unsigned long rate)
 	/*
 	 * Program EMIF timing parameters in EMIF shadow registers
 	 * for targetted DRR clock.
-	 * DDR Clock = core_dpll_m2 / 2
 	 */
-	/* omap_emif_setup_registers(validrate >> 1, LPDDR2_VOLTAGE_STABLE); */
+	emif_freq_pre_notify_handler(validrate);
 
 	/*
 	 * FREQ_UPDATE sequence:

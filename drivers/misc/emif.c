@@ -23,7 +23,10 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/module.h>
+#include <linux/list.h>
+#include <linux/notifier.h>
 #include "emif_regs.h"
+#include <mach/omap4-common.h>
 
 /** struct emif_data - Per device static data for driver's use
  * @thermal_handling_pending:	Whether thermal handling is pending or not
@@ -57,6 +60,7 @@ struct emif_data {
 	u8				duplicate;
 	u8				temperature_level;
 	u32				irq;
+	struct list_head		siblings;
 	void __iomem			*base;
 	struct device			*dev;
 	const struct lpddr2_addressing	*addressing;
@@ -70,6 +74,7 @@ struct emif_data {
 };
 
 static struct emif_data *emif1;
+static LIST_HEAD(device_list);
 static u32 t_ck; /* DDR clock period in ps */
 
 static void do_emif_regdump_show(struct seq_file *s, struct emif_data *emif,
@@ -238,7 +243,7 @@ static u32 get_cl(struct emif_data *emif)
 
 static void do_freq_update(void)
 {
-	/* TODO: Add an implementation when DVFS framework is available */
+	omap4_prcm_freq_update();
 }
 
 /* Find addressing table entry based on the device's type and density */
@@ -1473,6 +1478,7 @@ static int __devinit emif_probe(struct platform_device *pdev)
 		emif1 = emif;
 
 	emif->addressing = get_addressing_table(emif->plat_data->device_info);
+	list_add(&emif->siblings, &device_list);
 
 	/* Save pointers to each other in emif and device structures */
 	emif->dev = &pdev->dev;
@@ -1756,6 +1762,15 @@ static const struct of_device_id omap_emif_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, omap_emif_of_match);
 #endif
+
+void emif_freq_pre_notify_handler(u32 new_freq)
+{
+	struct emif_data *emif;
+	list_for_each_entry(emif, &device_list, siblings) {
+		do_freq_pre_notify_handling(emif, new_freq);
+	}
+}
+EXPORT_SYMBOL(emif_freq_pre_notify_handler);
 
 static struct platform_driver omap_emif_driver = {
 	.probe		= emif_probe,

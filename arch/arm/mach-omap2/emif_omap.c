@@ -18,6 +18,14 @@
 #include <plat/omap_device.h>
 #include <mach/omap4-common.h>
 
+static struct omap_device_pm_latency omap_emif_latency[] = {
+	[0] = {
+		.deactivate_func = omap_device_idle_hwmods,
+		.activate_func = omap_device_enable_hwmods,
+		.flags = OMAP_DEVICE_LATENCY_AUTO_ADJUST,
+	}
+};
+
 static struct emif_platform_data omap_emif_platform_data __initdata = {
 	.hw_caps = EMIF_HW_CAPS_LL_INTERFACE
 };
@@ -86,7 +94,8 @@ void __init omap_emif_set_device_details(u32 emif_nr,
 	od = omap_device_build("emif", emif_nr, oh,
 				&omap_emif_platform_data,
 				sizeof(omap_emif_platform_data),
-				NULL, 0, false);
+				omap_emif_latency,
+				ARRAY_SIZE(omap_emif_latency), false);
 	if (!od)
 		goto error;
 
