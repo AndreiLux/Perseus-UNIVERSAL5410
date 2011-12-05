@@ -371,9 +371,10 @@ int __cpuinit omap4_hotplug_cpu(unsigned int cpu, unsigned int power_state)
 	set_cpu_wakeup_addr(cpu, virt_to_phys(omap_pm_ops.hotplug_restart));
 	omap_pm_ops.scu_prepare(cpu, power_state);
 
+#if 0
 	/* Enable FORCE OFF mode if supported */
 	set_cpu_force_off(cpu, 1);
-
+#endif
 	/*
 	 * CPU never retuns back if targetted power state is OFF mode.
 	 * CPU ONLINE follows normal CPU ONLINE ptah via
@@ -381,8 +382,18 @@ int __cpuinit omap4_hotplug_cpu(unsigned int cpu, unsigned int power_state)
 	 */
 	omap_pm_ops.finish_suspend(cpu_state);
 
+#if 0
 	/* Clear FORCE OFF mode if supported */
 	set_cpu_force_off(cpu, 0);
+#endif
+	/*
+	 * FIXME: Temporary code to make normal OFF mdoe work for CPU since
+	 * FORCE_OFF doesn't work reliably.
+	 */
+	if (cpu_is_omap54xx()) {
+		omap_writel(0xf0, OMAP54XX_GIC_CPU_BASE + 0x04);
+		omap_writel(0x1, OMAP54XX_GIC_CPU_BASE);
+	}
 
 	set_cpu_next_pwrst(cpu, PWRDM_POWER_ON);
 	return 0;
