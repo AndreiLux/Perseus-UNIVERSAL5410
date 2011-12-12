@@ -1,0 +1,9 @@
+panda-boot
+panda-serial-console
+panda-mem-suspend
+panda-ethernet
+panda-ehci-host
+panda-musb
+panda-wlan
+panda-bt
+
