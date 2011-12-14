@@ -6,6 +6,7 @@
 #include <linux/amba/mmci.h>
 #include <linux/io.h>
 #include <linux/init.h>
+#include <linux/memblock.h>
 #include <linux/of_address.h>
 #include <linux/of_fdt.h>
 #include <linux/of_irq.h>
@@ -486,6 +487,62 @@ MACHINE_END
 
 #if defined(CONFIG_ARCH_VEXPRESS_DT)
 
+static u32 v2m_dt_hdlcd_clk_devfn;
+
+static int v2m_dt_hdlcd_clk_set(struct clk *clk, unsigned long rate)
+{
+	return v2m_cfg_write(v2m_dt_hdlcd_clk_devfn, rate);
+}
+
+static const struct clk_ops v2m_dt_hdlcd_clk_ops = {
+	.round	= v2m_osc_round,
+	.set	= v2m_dt_hdlcd_clk_set,
+};
+
+static struct clk v2m_dt_db1_osc3_clk = {
+	.ops	= &v2m_dt_hdlcd_clk_ops,
+	.rate	= 23750000,
+};
+
+static struct clk_lookup v2m_dt_hdlcd_clk_lookup = {
+	.dev_id	= "hdlcd",
+	.clk	= &v2m_dt_db1_osc3_clk,
+};
+
+static void __init v2m_dt_hdlcd_init(void)
+{
+	struct device_node *node;
+	u32 framebuffer[2];
+	u32 osc;
+
+	node = of_find_compatible_node(NULL, NULL, "arm,hdlcd");
+	if (!node)
+		return;
+
+	if (WARN_ON(of_property_read_u32_array(node, "framebuffer",
+			framebuffer, ARRAY_SIZE(framebuffer))))
+		return;
+
+	if (WARN_ON(of_property_read_u32(node, "arm,vexpress-osc", &osc)))
+		return;
+
+	if (WARN_ON(memblock_remove(framebuffer[0], framebuffer[1])))
+		return;
+
+	v2m_dt_hdlcd_clk_devfn = SYS_CFG_OSC | osc;
+	if (!(readl(v2m_sysreg_base + V2M_SYS_MISC) & SYS_MISC_MASTERSITE)) {
+		v2m_cfg_write(SYS_CFG_MUXFPGA | SYS_CFG_SITE_MB, 1);
+		v2m_dt_hdlcd_clk_devfn |= SYS_CFG_SITE_DB1;
+	} else {
+		v2m_cfg_write(SYS_CFG_MUXFPGA | SYS_CFG_SITE_MB, 2);
+		v2m_dt_hdlcd_clk_devfn |= SYS_CFG_SITE_DB2;
+	}
+	clkdev_add(&v2m_dt_hdlcd_clk_lookup);
+
+	/* DVI mode: 2 = XGA */
+	v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_MB, 2);
+};
+
 static struct map_desc v2m_rs1_io_desc __initdata = {
 	.virtual	= V2M_PERIPH,
 	.pfn		= __phys_to_pfn(0x1c000000),
@@ -617,6 +674,8 @@ void __init v2m_dt_init_early(void)
 
 	clkdev_add_table(v2m_dt_lookups, ARRAY_SIZE(v2m_dt_lookups));
 	versatile_sched_clock_init(v2m_sysreg_base + V2M_SYS_24MHZ, 24000000);
+
+	v2m_dt_hdlcd_init();
 }
 
 static  struct of_device_id vexpress_irq_match[] __initdata = {
