@@ -29,6 +29,13 @@
 			compatible = "arm,cortex-a9";
 			reg = <0>;
 			next-level-cache = <&L2>;
+			cpu-freqs = <996000000 792000000 396000000 198000000>;
+			cpu-volts = <	/* min		max */
+					1225000		1450000	/* 996M */
+					1100000		1450000	/* 792M */
+					950000		1450000	/* 396M */
+					850000		1450000>; /* 198M */
+			trans-latency = <61036>; /* two CLK32 periods */
 		};
 
 		cpu@1 {
