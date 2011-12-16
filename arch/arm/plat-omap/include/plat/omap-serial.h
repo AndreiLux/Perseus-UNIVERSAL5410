@@ -70,6 +70,7 @@ struct omap_uart_port_info {
 	unsigned int		dma_rx_timeout;
 	unsigned int		autosuspend_timeout;
 	unsigned int		dma_rx_poll_rate;
+	unsigned char		wer;
 
 	int (*get_context_loss_count)(struct device *);
 	void (*set_forceidle)(struct platform_device *);
@@ -117,6 +118,7 @@ struct uart_omap_port {
 	unsigned char		dlh;
 	unsigned char		mdr1;
 	unsigned char		scr;
+	unsigned char		wer;
 
 	int			use_dma;
 	/*
