@@ -3494,7 +3494,8 @@ i915_gem_busy_ioctl(struct drm_device *dev, void *data,
 		if (obj->base.write_domain & I915_GEM_GPU_DOMAINS) {
 			ret = i915_gem_flush_ring(obj->ring,
 						  0, obj->base.write_domain);
-		} else if (obj->ring->outstanding_lazy_request ==
+		}
+		if (obj->ring->outstanding_lazy_request ==
 			   obj->last_rendering_seqno) {
 			struct drm_i915_gem_request *request;
 
