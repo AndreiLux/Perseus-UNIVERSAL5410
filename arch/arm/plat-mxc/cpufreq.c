@@ -100,16 +100,6 @@ static int mxc_set_target(struct cpufreq_policy *policy,
 
 	ret = set_cpu_freq(freq_Hz);
 
-#ifdef CONFIG_SMP
-	/* loops_per_jiffy is not updated by the cpufreq core for SMP systems.
-	 * So update it for all CPUs.
-	 */
-	for_each_possible_cpu(cpu)
-		per_cpu(cpu_data, cpu).loops_per_jiffy =
-		cpufreq_scale(per_cpu(cpu_data, cpu).loops_per_jiffy,
-					freqs.old, freqs.new);
-#endif
-
 	for_each_possible_cpu(cpu) {
 		freqs.cpu = cpu;
 		cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
