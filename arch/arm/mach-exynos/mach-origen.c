@@ -616,6 +616,7 @@ static struct platform_device *origen_devices[] __initdata = {
 	&exynos4_device_pd[PD_MFC],
 	&origen_device_gpiokeys,
 	&origen_lcd_hv070wsa,
+	&exynos4_device_tmu,
 };
 
 /* LCD Backlight data */
