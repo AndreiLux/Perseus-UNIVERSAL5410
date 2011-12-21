@@ -29,3 +29,11 @@ config CPU_THERMAL
 	  This will be useful for platforms using the generic thermal interface
 	  and not the ACPI interface.
 	  If you want this support, you should say Y or M here.
+
+config SAMSUNG_THERMAL_INTERFACE
+	bool "Samsung Thermal interface support"
+	depends on THERMAL && CPU_THERMAL
+	help
+	  This is a samsung thermal interface which will be used as
+	  a link between sensors and cooling devices with linux thermal
+	  framework.
