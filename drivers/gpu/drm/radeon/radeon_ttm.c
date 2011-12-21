@@ -614,6 +614,7 @@ static int radeon_ttm_tt_populate(struct ttm_tt *ttm)
 	struct radeon_ttm_tt *gtt = (void *)ttm;
 	unsigned i;
 	int r;
+	bool slave = !!(ttm->page_flags & TTM_PAGE_FLAG_SLAVE);
 
 	if (ttm->state != tt_unpopulated)
 		return 0;
@@ -626,15 +627,18 @@ static int radeon_ttm_tt_populate(struct ttm_tt *ttm)
 #endif
 
 #ifdef CONFIG_SWIOTLB
-	if (swiotlb_nr_tbl()) {
+	if (!slave && swiotlb_nr_tbl()) {
 		return ttm_dma_populate(&gtt->ttm, rdev->dev);
 	}
 #endif
 
-	r = ttm_pool_populate(ttm);
-	if (r) {
-		return r;
-	}
+	if (!slave) {
+		r = ttm_pool_populate(ttm);
+		if (r) {
+			return r;
+		}
+	} else
+		ttm->state = tt_unbound;
 
 	for (i = 0; i < ttm->num_pages; i++) {
 		gtt->ttm.dma_address[i] = pci_map_page(rdev->pdev, ttm->pages[i],
@@ -646,7 +650,10 @@ static int radeon_ttm_tt_populate(struct ttm_tt *ttm)
 					       PAGE_SIZE, PCI_DMA_BIDIRECTIONAL);
 				gtt->ttm.dma_address[i] = 0;
 			}
-			ttm_pool_unpopulate(ttm);
+			if (!slave)
+				ttm_pool_unpopulate(ttm);
+			else
+				ttm->state = tt_unpopulated;
 			return -EFAULT;
 		}
 	}
@@ -658,6 +665,7 @@ static void radeon_ttm_tt_unpopulate(struct ttm_tt *ttm)
 	struct radeon_device *rdev;
 	struct radeon_ttm_tt *gtt = (void *)ttm;
 	unsigned i;
+	bool slave = !!(ttm->page_flags & TTM_PAGE_FLAG_SLAVE);
 
 	rdev = radeon_get_rdev(ttm->bdev);
 #if __OS_HAS_AGP
@@ -668,7 +676,7 @@ static void radeon_ttm_tt_unpopulate(struct ttm_tt *ttm)
 #endif
 
 #ifdef CONFIG_SWIOTLB
-	if (swiotlb_nr_tbl()) {
+	if (!slave && swiotlb_nr_tbl()) {
 		ttm_dma_unpopulate(&gtt->ttm, rdev->dev);
 		return;
 	}
@@ -680,8 +688,10 @@ static void radeon_ttm_tt_unpopulate(struct ttm_tt *ttm)
 				       PAGE_SIZE, PCI_DMA_BIDIRECTIONAL);
 		}
 	}
-
-	ttm_pool_unpopulate(ttm);
+	if (!slave)
+		ttm_pool_unpopulate(ttm);
+	else
+		ttm->state = tt_unpopulated;
 }
 
 static struct ttm_bo_driver radeon_bo_driver = {
