@@ -89,12 +89,17 @@ nouveau_bo_fixup_align(struct nouveau_bo *nvbo, u32 flags,
 int
 nouveau_bo_new(struct drm_device *dev, int size, int align,
 	       uint32_t flags, uint32_t tile_mode, uint32_t tile_flags,
+	       struct sg_table *sg,
 	       struct nouveau_bo **pnvbo)
 {
 	struct drm_nouveau_private *dev_priv = dev->dev_private;
 	struct nouveau_bo *nvbo;
 	size_t acc_size;
 	int ret;
+	int type = ttm_bo_type_device;
+
+	if (sg)
+		type = ttm_bo_type_sg;
 
 	nvbo = kzalloc(sizeof(struct nouveau_bo), GFP_KERNEL);
 	if (!nvbo)
@@ -120,8 +125,8 @@ nouveau_bo_new(struct drm_device *dev, int size, int align,
 				       sizeof(struct nouveau_bo));
 
 	ret = ttm_bo_init(&dev_priv->ttm.bdev, &nvbo->bo, size,
-			  ttm_bo_type_device, &nvbo->placement,
-			  align >> PAGE_SHIFT, 0, false, NULL, acc_size, NULL,
+			  type, &nvbo->placement,
+			  align >> PAGE_SHIFT, 0, false, NULL, acc_size, sg,
 			  nouveau_bo_del_ttm);
 	if (ret) {
 		/* ttm will call nouveau_bo_del_ttm if it fails.. */
