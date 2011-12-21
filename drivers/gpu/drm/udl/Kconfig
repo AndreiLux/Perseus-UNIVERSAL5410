@@ -7,6 +7,7 @@ config DRM_UDL
 	select FB_SYS_IMAGEBLIT
 	select FB_DEFERRED_IO
 	select DRM_KMS_HELPER
+	select FB_DEFERRED_IO
 	help
 	  This is a KMS driver for the USB displaylink video adapters.
           Say M/Y to add support for these devices via drm/kms interfaces.

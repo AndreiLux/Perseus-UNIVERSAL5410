@@ -66,6 +66,7 @@ struct udl_gem_object {
 	struct drm_gem_object base;
 	struct page **pages;
 	void *vmapping;
+	struct sg_table *sg;
 };
 
 #define to_udl_bo(x) container_of(x, struct udl_gem_object, base)
@@ -74,6 +75,10 @@ struct udl_framebuffer {
 	struct drm_framebuffer base;
 	struct udl_gem_object *obj;
 	bool active_16; /* active on the 16-bit channel */
+};
+
+struct udl_file_private {
+	struct drm_prime_file_private prime;
 };
 
 #define to_udl_fb(x) container_of(x, struct udl_framebuffer, base)
@@ -92,6 +97,9 @@ void udl_urb_completion(struct urb *urb);
 
 int udl_driver_load(struct drm_device *dev, unsigned long flags);
 int udl_driver_unload(struct drm_device *dev);
+int udl_driver_open(struct drm_device *, struct drm_file *);
+void udl_driver_preclose(struct drm_device *dev, struct drm_file *);
+void udl_driver_postclose(struct drm_device *dev, struct drm_file *file_priv);
 
 int udl_fbdev_init(struct drm_device *dev);
 void udl_fbdev_cleanup(struct drm_device *dev);
@@ -116,8 +124,11 @@ int udl_dumb_destroy(struct drm_file *file_priv, struct drm_device *dev,
 
 int udl_gem_init_object(struct drm_gem_object *obj);
 void udl_gem_free_object(struct drm_gem_object *gem_obj);
+void udl_gem_close_object(struct drm_gem_object *gem, struct drm_file *file_priv);
 struct udl_gem_object *udl_gem_alloc_object(struct drm_device *dev,
 					    size_t size);
+struct drm_gem_object * udl_gem_prime_import(struct drm_device *dev,
+				struct dma_buf *dma_buf);
 
 int udl_gem_vmap(struct udl_gem_object *obj);
 void udl_gem_vunmap(struct udl_gem_object *obj);

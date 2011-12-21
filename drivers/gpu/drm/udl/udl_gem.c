@@ -9,6 +9,7 @@
 #include "drmP.h"
 #include "udl_drv.h"
 #include <linux/shmem_fs.h>
+#include <linux/dma-buf.h>
 
 struct udl_gem_object *udl_gem_alloc_object(struct drm_device *dev,
 					    size_t size)
@@ -147,6 +148,12 @@ static void udl_gem_put_pages(struct udl_gem_object *obj)
 	int page_count = obj->base.size / PAGE_SIZE;
 	int i;
 
+	if (obj->base.import_attach) {
+		drm_free_large(obj->pages);
+		obj->pages = NULL;
+		return;
+	}
+
 	for (i = 0; i < page_count; i++)
 		page_cache_release(obj->pages[i]);
 
@@ -181,6 +188,9 @@ void udl_gem_free_object(struct drm_gem_object *gem_obj)
 {
 	struct udl_gem_object *obj = to_udl_bo(gem_obj);
 
+	if (gem_obj->import_attach)
+		drm_prime_gem_destroy(gem_obj, obj->sg);
+
 	if (obj->vmapping)
 		udl_gem_vunmap(obj);
 
@@ -189,6 +199,15 @@ void udl_gem_free_object(struct drm_gem_object *gem_obj)
 
 	if (gem_obj->map_list.map)
 		drm_gem_free_mmap_offset(gem_obj);
+}
+
+void udl_gem_close_object(struct drm_gem_object *gem, struct drm_file *file_priv)
+{
+	struct udl_file_private *fpriv = file_priv->driver_priv;
+
+	if (gem->import_attach)
+		drm_prime_remove_fd_handle_mapping(&fpriv->prime, gem->import_attach->dmabuf);
+
 }
 
 /* the dumb interface doesn't work with the GEM straight MMAP
@@ -224,4 +243,70 @@ out:
 unlock:
 	mutex_unlock(&dev->struct_mutex);
 	return ret;
+}
+
+static int udl_prime_create(struct drm_device *dev,
+			    size_t size,
+			    struct sg_table *sg,
+			    struct udl_gem_object **obj_p)
+{
+	struct udl_gem_object *obj;
+	int npages;
+	int i;
+	struct scatterlist *iter;
+
+	npages = size / PAGE_SIZE;
+
+	*obj_p = NULL;
+	obj = udl_gem_alloc_object(dev, npages * PAGE_SIZE);
+	if (!obj)
+		return -ENOMEM;
+
+	obj->sg = sg;
+	obj->pages = drm_malloc_ab(npages, sizeof(struct page *));
+	if (obj->pages == NULL) {
+		DRM_ERROR("obj pages is NULL %d\n", npages);
+		return -ENOMEM;
+	}
+
+	for_each_sg(sg->sgl, iter, npages, i)
+		obj->pages[i] = sg_page(iter);
+
+	*obj_p = obj;
+	return 0;
+}
+
+struct drm_gem_object * udl_gem_prime_import(struct drm_device *dev,
+				struct dma_buf *dma_buf)
+{
+	struct dma_buf_attachment *attach;
+	struct sg_table *sg;
+	struct udl_gem_object *uobj;
+	int ret;
+
+	/* need to attach */
+	attach = dma_buf_attach(dma_buf, dev->dev);
+	if (IS_ERR(attach))
+		return ERR_PTR(PTR_ERR(attach));
+
+	sg = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+	if (IS_ERR(sg)) {
+		ret = PTR_ERR(sg);
+		goto fail_detach;
+	}
+
+	ret = udl_prime_create(dev, dma_buf->size, sg, &uobj);
+	if (ret) {
+		goto fail_unmap;
+	}
+
+	uobj->base.import_attach = attach;
+
+	return &uobj->base;
+
+fail_unmap:
+	dma_buf_unmap_attachment(attach, sg, DMA_BIDIRECTIONAL);
+fail_detach:
+	dma_buf_detach(dma_buf, attach);
+	return ERR_PTR(ret);
 }
