@@ -204,6 +204,17 @@ config KEYBOARD_GPIO_POLLED
 	  To compile this driver as a module, choose M here: the
 	  module will be called gpio_keys_polled.
 
+config KEYBOARD_HIGHBANK
+	tristate "Calxeda Highbank Virtual Keys"
+	depends on ARCH_HIGHBANK
+	default y
+	help
+	  This driver implements support for virtual power keys on Calxeda
+	  Highbank systems.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called highbank_keys.
+
 config KEYBOARD_TCA6416
 	tristate "TCA6416/TCA6408A Keypad Support"
 	depends on I2C
