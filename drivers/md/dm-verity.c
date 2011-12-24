@@ -122,6 +122,15 @@ struct verity_stats {
 	 * blocks for it yet */
 	unsigned long long total_requeues;
 	unsigned long long total_requests;	/* number of reads */
+
+	unsigned long long total_blocks;	/* total blocks read */
+	unsigned long long total_size;	/* total blocks read */
+
+	unsigned long bht_requests;	/* number of hash blocks read */
+
+	/* number of reads for each block size (log2) */
+	unsigned long io_by_block_size[sizeof(uint64_t) * 8];
+	unsigned long long io_size_by_block_size[sizeof(uint64_t) * 8];
 };
 
 /* per-requested-bio private data */
@@ -776,6 +785,7 @@ static int kverityd_bht_read_callback(void *ctx, sector_t start, u8 *dst,
 	 * being removed prior since this is called synchronously.
 	 */
 	DMDEBUG("Submitting bht io %p (entry:%p)", io, entry);
+	vc->stats.bht_requests++;
 	generic_make_request(bio);
 	return 0;
 }
@@ -950,6 +960,12 @@ static int verity_map(struct dm_target *ti, struct bio *bio,
 			return DM_MAPIO_REQUEUE;
 		}
 		verity_stats_io_queue_inc(vc);
+		vc->stats.total_blocks += io->count;
+		vc->stats.io_by_block_size[ilog2(io->count)]++;
+
+		vc->stats.total_size += bio->bi_size;
+		vc->stats.io_size_by_block_size[ilog2(io->count)] +=
+			bio->bi_size;
 		INIT_DELAYED_WORK(&io->work, kverityd_io);
 		queue_delayed_work(kverityd_ioq, &io->work, 0);
 	}
@@ -961,11 +977,30 @@ static int verity_stats_seq_show(struct seq_file *seq, void *offset)
 {
 	struct verity_config *vc = seq->private;
 	struct verity_stats *stats = &vc->stats;
+	unsigned long long running_total;
+	int i;
 
 	seq_printf(seq, "%d\tI/O queue pending\n", (int)stats->io_queue);
 	seq_printf(seq, "%u\tVerify queue pending\n", stats->verify_queue);
+	seq_printf(seq, "%lu\tHash block requests\n", stats->bht_requests);
 	seq_printf(seq, "%llu\tTotal re-queues\n", stats->total_requeues);
 	seq_printf(seq, "%llu\tTotal requests\n", stats->total_requests);
+	seq_printf(seq, "%lluMB\tTotal size\n", stats->total_size >> 20);
+	seq_printf(seq, "%llu\tTotal blocks\n", stats->total_blocks);
+	for (running_total = i = 0; i < 30; i++) {
+		if (stats->io_by_block_size[i]) {
+			running_total += stats->io_size_by_block_size[i];
+			seq_printf(seq, "%lu\tRequests of size %u-%u"
+				" (%uKB to %uKB), %lluKB, "
+				"run.tot. = %lluMB\n",
+				stats->io_by_block_size[i],
+				1U << i, (2U << i) - 1,
+				1U << i << VERITY_BLOCK_SHIFT >> 10,
+				((2U << i) - 1) << VERITY_BLOCK_SHIFT >> 10,
+				stats->io_size_by_block_size[i] >> 10,
+				running_total >> 20);
+		}
+	}
 
 	return 0;
 }
