@@ -14,6 +14,7 @@
 #include <linux/async.h>
 #include <linux/bio.h>
 #include <linux/blkdev.h>
+#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/err.h>
@@ -22,6 +23,7 @@
 #include <linux/kernel.h>
 #include <linux/mempool.h>
 #include <linux/module.h>
+#include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 #include <asm/atomic.h>
@@ -164,10 +166,12 @@ struct verity_config {
 
 	struct verity_stats stats;
 	const char *name;		/* name for this config */
+	struct dentry *debugfs_dir;	/* debugfs dir for this config */
 };
 
 static struct kmem_cache *_verity_io_pool;
 static struct workqueue_struct *kveritydq, *kverityd_ioq;
+static struct dentry *debugfs_root; /* top-level debugfs dir for verity */
 
 static void kverityd_verify(struct work_struct *work);
 static void kverityd_io(struct work_struct *work);
@@ -953,6 +957,59 @@ static int verity_map(struct dm_target *ti, struct bio *bio,
 	return DM_MAPIO_SUBMITTED;
 }
 
+static int verity_stats_seq_show(struct seq_file *seq, void *offset)
+{
+	struct verity_config *vc = seq->private;
+	struct verity_stats *stats = &vc->stats;
+
+	seq_printf(seq, "%d\tI/O queue pending\n", (int)stats->io_queue);
+	seq_printf(seq, "%u\tVerify queue pending\n", stats->verify_queue);
+	seq_printf(seq, "%llu\tTotal re-queues\n", stats->total_requeues);
+	seq_printf(seq, "%llu\tTotal requests\n", stats->total_requests);
+
+	return 0;
+}
+
+static int verity_stats_open_fs(struct inode *inode, struct file *file)
+{
+	return single_open(file, verity_stats_seq_show, inode->i_private);
+}
+
+static const struct file_operations verity_stats_fops = {
+	.owner = THIS_MODULE,
+	.open = verity_stats_open_fs,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static int verity_init_debugfs(struct verity_config *vc)
+{
+	struct dentry *dir, *stats;
+
+	dir = debugfs_create_dir(vc->name, debugfs_root);
+	if (!dir)
+		goto cant_create_dir;
+	stats = debugfs_create_file("stats",
+			S_IFREG | S_IRUSR | S_IRGRP | S_IROTH,
+			dir, vc, &verity_stats_fops);
+	if (!stats)
+		goto cant_create_file;
+
+	vc->debugfs_dir = dir;
+	return 0;
+
+cant_create_file:
+	debugfs_remove_recursive(dir);
+cant_create_dir:
+	return -ENODEV;
+}
+
+static void verity_cleanup_debugfs(struct verity_config *vc)
+{
+	debugfs_remove_recursive(vc->debugfs_dir);
+}
+
 static void splitarg(char *arg, char **key, char **val) {
 	*key = strsep(&arg, "=");
 	*val = strsep(&arg, "");
@@ -982,7 +1039,6 @@ static void splitarg(char *arg, char **key, char **val) {
  * root_hexdigest=f08aa4a3695290c569eb1b0ac032ae1040150afb527abbeb0a3da33d82fb2c6e
  *
  * TODO(wad):
- * - Add stats: num_requeues, num_ios, etc with proc ibnterface
  * - Boot time addition
  * - Track block verification to free block_hashes if memory use is a concern
  * Testing needed:
@@ -1098,6 +1154,9 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	/* For the name, use the payload default with / changed to _ */
 	vc->name = dm_disk(dm_table_get_md(ti->table))->disk_name;
 
+	if (verity_init_debugfs(vc))
+		goto bad_debugfs;
+
 	/* Calculate the blocks from the given device size */
 	vc->size = ti->len;
 	blocks = to_bytes(vc->size) >> VERITY_BLOCK_SHIFT;
@@ -1208,6 +1267,8 @@ bad_hash_start:
 bad_bht:
 bad_root_hexdigest:
 bad_verity_dev:
+	verity_cleanup_debugfs(vc);
+bad_debugfs:
 	kfree(vc);   /* hash is not secret so no need to zero */
 	return -EINVAL;
 }
@@ -1229,6 +1290,10 @@ static void verity_dtr(struct dm_target *ti)
 
 	DMDEBUG("Putting dev");
 	dm_put_device(ti, vc->dev);
+
+	DMDEBUG("Removing debugfs dir");
+	verity_cleanup_debugfs(vc);
+
 	DMDEBUG("Destroying config");
 	kfree(vc);
 }
@@ -1318,6 +1383,13 @@ static int __init dm_verity_init(void)
 {
 	int r = -ENOMEM;
 
+	debugfs_root = debugfs_create_dir("dm-verity", NULL);
+	if (!debugfs_root) {
+		DMERR("failed to create debugfs directory");
+		r = -ENODEV;
+		goto bad_debugfs_dir;
+	}
+
 	_verity_io_pool = KMEM_CACHE(dm_verity_io, 0);
 	if (!_verity_io_pool) {
 		DMERR("failed to allocate pool dm_verity_io");
@@ -1354,6 +1426,8 @@ bad_verify_queue:
 bad_io_queue:
 	kmem_cache_destroy(_verity_io_pool);
 bad_io_pool:
+	debugfs_remove_recursive(debugfs_root);
+bad_debugfs_dir:
 	return r;
 }
 
@@ -1364,6 +1438,7 @@ static void __exit dm_verity_exit(void)
 
 	dm_unregister_target(&verity_target);
 	kmem_cache_destroy(_verity_io_pool);
+	debugfs_remove_recursive(debugfs_root);
 }
 
 module_init(dm_verity_init);
