@@ -111,11 +111,15 @@ MODULE_PARM_DESC(dev_wait, "Wait forever for a backing device");
  * STATUSTYPE_INFO.
  */
 struct verity_stats {
-	unsigned int io_queue;
-	unsigned int verify_queue;
-	unsigned int average_requeues;
+	unsigned int io_queue;		/* # pending I/O operations */
+	unsigned int verify_queue;	/* # pending verify operations */
+	unsigned int average_requeues;	/* not implemented */
+
+	/*
+	 * Number of times a data block was ready but we didn't have the hash
+	 * blocks for it yet */
 	unsigned long long total_requeues;
-	unsigned long long total_requests;
+	unsigned long long total_requests;	/* number of reads */
 };
 
 /* per-requested-bio private data */
