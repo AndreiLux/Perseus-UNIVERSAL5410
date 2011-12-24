@@ -113,7 +113,7 @@ struct verity_stats {
 	unsigned int io_queue;
 	unsigned int verify_queue;
 	unsigned int average_requeues;
-	unsigned int total_requeues;
+	unsigned long long total_requeues;
 	unsigned long long total_requests;
 };
 
@@ -196,10 +196,6 @@ void verity_stats_verify_queue_dec(struct verity_config *vc)
 
 void verity_stats_total_requeues_inc(struct verity_config *vc)
 {
-	if (vc->stats.total_requeues >= INT_MAX - 1) {
-		DMINFO("stats.total_requeues is wrapping");
-		vc->stats.total_requeues = 0;
-	}
 	vc->stats.total_requeues++;
 }
 
@@ -1239,7 +1235,7 @@ static int verity_status(struct dm_target *ti, status_type_t type,
 
 	switch (type) {
 	case STATUSTYPE_INFO:
-		DMEMIT("%u %u %u %u %llu",
+		DMEMIT("%u %u %u %llu %llu",
 		       vc->stats.io_queue,
 		       vc->stats.verify_queue,
 		       vc->stats.average_requeues,
