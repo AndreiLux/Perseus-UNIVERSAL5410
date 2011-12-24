@@ -33,6 +33,7 @@
 #include <linux/dm-bht.h>
 
 #include "dm-verity.h"
+#include "md.h"
 
 #define DM_MSG_PREFIX "verity"
 
@@ -158,6 +159,7 @@ struct verity_config {
 	int error_behavior;
 
 	struct verity_stats stats;
+	const char *name;		/* name for this config */
 };
 
 static struct kmem_cache *_verity_io_pool;
@@ -1088,6 +1090,9 @@ static int verity_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		 */
 		return -EINVAL;
 	}
+
+	/* For the name, use the payload default with / changed to _ */
+	vc->name = dm_disk(dm_table_get_md(ti->table))->disk_name;
 
 	/* Calculate the blocks from the given device size */
 	vc->size = ti->len;
