@@ -27,7 +27,7 @@ endif
 installed-mod-fw := $(addprefix $(INSTALL_FW_PATH)/,$(mod-fw))
 
 installed-fw := $(addprefix $(INSTALL_FW_PATH)/,$(fw-shipped-all))
-installed-fw-dirs := $(sort $(dir $(installed-fw))) $(INSTALL_FW_PATH)/.
+installed-fw-dirs := $(sort $(dir $(installed-fw))) $(INSTALL_FW_PATH)
 
 # Workaround for make < 3.81, where .SECONDEXPANSION doesn't work.
 PHONY += $(INSTALL_FW_PATH)/$$(%) install-all-dirs
@@ -35,6 +35,14 @@ $(INSTALL_FW_PATH)/$$(%): install-all-dirs
 	@true
 install-all-dirs: $(installed-fw-dirs)
 	@true
+
+
+# hack for make-3.82 support; without this (admittedly daft) rule,
+# firmware installation fails since it can't find a matching
+# rule for $(INSTALL_FW_PATH/..
+# leave the hack in place till the root cause is fully found, without
+# it make-3.82 cannot be used.
+$(INSTALL_FW_PATH)/./: $(INSTALL_FW_PATH)
 
 quiet_cmd_install = INSTALL $(subst $(srctree)/,,$@)
       cmd_install = $(INSTALL) -m0644 $< $@
