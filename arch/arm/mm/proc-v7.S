@@ -25,6 +25,32 @@
 #include "proc-v7-2level.S"
 #endif
 
+#ifdef CONFIG_SECURE_REGS
+#include <mach/secure-regs.S>
+#else
+	.macro set_secure_regs, base, value
+	.endm
+#endif
+
+#define TTB_S		(1 << 1)
+#define TTB_RGN_NC	(0 << 3)
+#define TTB_RGN_OC_WBWA	(1 << 3)
+#define TTB_RGN_OC_WT	(2 << 3)
+#define TTB_RGN_OC_WB	(3 << 3)
+#define TTB_NOS		(1 << 5)
+#define TTB_IRGN_NC	((0 << 0) | (0 << 6))
+#define TTB_IRGN_WBWA	((0 << 0) | (1 << 6))
+#define TTB_IRGN_WT	((1 << 0) | (0 << 6))
+#define TTB_IRGN_WB	((1 << 0) | (1 << 6))
+
+/* PTWs cacheable, inner WB not shareable, outer WB not shareable */
+#define TTB_FLAGS_UP	TTB_IRGN_WB|TTB_RGN_OC_WB
+#define PMD_FLAGS_UP	PMD_SECT_WB
+
+/* PTWs cacheable, inner WBWA shareable, outer WBWA not shareable */
+#define TTB_FLAGS_SMP	TTB_IRGN_WBWA|TTB_S|TTB_NOS|TTB_RGN_OC_WBWA
+#define PMD_FLAGS_SMP	PMD_SECT_WBWA|PMD_SECT_S
+
 ENTRY(cpu_v7_proc_init)
 	mov	pc, lr
 ENDPROC(cpu_v7_proc_init)
