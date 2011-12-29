@@ -435,9 +435,10 @@ static struct clk aess_fclk = {
 
 static struct clk abe_iclk = {
 	.name		= "abe_iclk",
-	.parent		= &aess_fclk,
+	.parent		= &abe_clk,
 	.ops		= &clkops_null,
-	.recalc		= &followparent_recalc,
+	.fixed_div	= 2,
+	.recalc		= &omap_fixed_divisor_recalc,
 };
 
 static struct clk cm_core_custefuse_clk_div_ck = {
