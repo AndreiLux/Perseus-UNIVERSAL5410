@@ -369,7 +369,7 @@ static struct omap_hwmod_ocp_if omap54xx_ipu__l3_main_2 = {
 static struct omap_hwmod_ocp_if omap54xx_iss__l3_main_2 = {
 	.master		= &omap54xx_iss_hwmod,
 	.slave		= &omap54xx_l3_main_2_hwmod,
-	.clk		= "dpll_core_h23_ck",
+	.clk		= "dpll_core_h23x2_ck",
 	.user		= OCP_USER_MPU | OCP_USER_SDMA,
 };
 
@@ -419,7 +419,7 @@ static struct omap_hwmod_ocp_if omap54xx_sata__l3_main_2 = {
 static struct omap_hwmod_ocp_if omap54xx_usb_otg_ss__l3_main_2 = {
 	.master		= &omap54xx_usb_otg_ss_hwmod,
 	.slave		= &omap54xx_l3_main_2_hwmod,
-	.clk		= "dpll_core_h13_ck",
+	.clk		= "dpll_core_h13x2_ck",
 	.user		= OCP_USER_MPU | OCP_USER_SDMA,
 };
 
@@ -1129,7 +1129,7 @@ static struct omap_hwmod_rst_info omap54xx_dsp_resets[] = {
 static struct omap_hwmod_ocp_if omap54xx_dsp__iva = {
 	.master		= &omap54xx_dsp_hwmod,
 	.slave		= &omap54xx_iva_hwmod,
-	.clk		= "dpll_iva_h12_ck",
+	.clk		= "dpll_iva_h12x2_ck",
 };
 
 /* dsp master ports */
@@ -1159,7 +1159,7 @@ static struct omap_hwmod omap54xx_dsp_hwmod = {
 	.mpu_irqs	= omap54xx_dsp_irqs,
 	.rst_lines	= omap54xx_dsp_resets,
 	.rst_lines_cnt	= ARRAY_SIZE(omap54xx_dsp_resets),
-	.main_clk	= "dpll_iva_h11_ck",
+	.main_clk	= "dpll_iva_h11x2_ck",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = OMAP54XX_CM_DSP_DSP_CLKCTRL_OFFSET,
@@ -2934,7 +2934,7 @@ static struct omap_hwmod omap54xx_ipu_hwmod = {
 	.mpu_irqs	= omap54xx_ipu_irqs,
 	.rst_lines	= omap54xx_ipu_resets,
 	.rst_lines_cnt	= ARRAY_SIZE(omap54xx_ipu_resets),
-	.main_clk	= "dpll_core_h22_ck",
+	.main_clk	= "dpll_core_h22x2_ck",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = OMAP54XX_CM_IPU_IPU_CLKCTRL_OFFSET,
@@ -3017,7 +3017,7 @@ static struct omap_hwmod omap54xx_iss_hwmod = {
 	.clkdm_name	= "cam_clkdm",
 	.mpu_irqs	= omap54xx_iss_irqs,
 	.sdma_reqs	= omap54xx_iss_sdma_reqs,
-	.main_clk	= "dpll_core_h22_ck",
+	.main_clk	= "dpll_core_h22x2_ck",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = OMAP54XX_CM_CAM_ISS_CLKCTRL_OFFSET,
@@ -3104,7 +3104,7 @@ static struct omap_hwmod omap54xx_iva_hwmod = {
 	.mpu_irqs	= omap54xx_iva_irqs,
 	.rst_lines	= omap54xx_iva_resets,
 	.rst_lines_cnt	= ARRAY_SIZE(omap54xx_iva_resets),
-	.main_clk	= "dpll_iva_h12_ck",
+	.main_clk	= "dpll_iva_h12x2_ck",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = OMAP54XX_CM_IVA_IVA_CLKCTRL_OFFSET,
