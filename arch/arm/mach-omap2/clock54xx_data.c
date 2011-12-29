@@ -38,10 +38,6 @@
 #include "control.h"
 #include "scrm44xx.h"
 
-/* OMAP4 modulemode control */
-#define OMAP54XX_MODULEMODE_HWCTRL			0
-#define OMAP54XX_MODULEMODE_SWCTRL			1
-
 /* Root clocks */
 
 static struct clk pad_clks_ck = {
@@ -1365,8 +1361,6 @@ static struct clk timer10_clk_mux_ck = {
 	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
 	.recalc		= &omap2_clksel_recalc,
-	.enable_reg	= OMAP54XX_CM_L4PER_TIMER10_CLKCTRL,
-	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
 	.clkdm_name	= "l4per_clkdm",
 };
 
@@ -1378,8 +1372,6 @@ static struct clk timer11_clk_mux_ck = {
 	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
 	.recalc		= &omap2_clksel_recalc,
-	.enable_reg	= OMAP54XX_CM_L4PER_TIMER11_CLKCTRL,
-	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
 	.clkdm_name	= "l4per_clkdm",
 };
 
@@ -1392,8 +1384,6 @@ static struct clk timer1_clk_mux_ck = {
 	.clksel_mask    = OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
 	.recalc		= &omap2_clksel_recalc,
-	.enable_reg     = OMAP54XX_CM_WKUPAON_TIMER1_CLKCTRL,
-	.enable_bit     = OMAP54XX_MODULEMODE_SWCTRL,
 	.clkdm_name     = "wkupaon_clkdm",
 };
 
@@ -1406,8 +1396,6 @@ static struct clk timer2_clk_mux_ck = {
 	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
 	.recalc		= &omap2_clksel_recalc,
-	.enable_reg	= OMAP54XX_CM_L4PER_TIMER2_CLKCTRL,
-	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
 	.clkdm_name	= "l4per_clkdm",
 };
 
@@ -1420,8 +1408,6 @@ static struct clk timer3_clk_mux_ck = {
 	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
 	.recalc		= &omap2_clksel_recalc,
-	.enable_reg	= OMAP54XX_CM_L4PER_TIMER3_CLKCTRL,
-	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
 	.clkdm_name	= "l4per_clkdm",
 };
 
@@ -1434,8 +1420,6 @@ static struct clk timer4_clk_mux_ck = {
 	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
 	.recalc		= &omap2_clksel_recalc,
-	.enable_reg	= OMAP54XX_CM_L4PER_TIMER4_CLKCTRL,
-	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
 	.clkdm_name	= "l4per_clkdm",
 };
 
@@ -1454,8 +1438,6 @@ static struct clk timer5_sync_mux_ck = {
 	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
 	.recalc		= &omap2_clksel_recalc,
-	.enable_reg	= OMAP54XX_CM_ABE_TIMER5_CLKCTRL,
-	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
 	.clkdm_name	= "abe_clkdm",
 };
 
@@ -1468,8 +1450,6 @@ static struct clk timer6_sync_mux_ck = {
 	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
 	.recalc		= &omap2_clksel_recalc,
-	.enable_reg	= OMAP54XX_CM_ABE_TIMER6_CLKCTRL,
-	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
 	.clkdm_name	= "abe_clkdm",
 };
 
@@ -1482,8 +1462,6 @@ static struct clk timer7_sync_mux_ck = {
 	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
 	.recalc		= &omap2_clksel_recalc,
-	.enable_reg	= OMAP54XX_CM_ABE_TIMER7_CLKCTRL,
-	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
 	.clkdm_name	= "abe_clkdm",
 };
 
@@ -1496,8 +1474,6 @@ static struct clk timer8_sync_mux_ck = {
 	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
 	.recalc		= &omap2_clksel_recalc,
-	.enable_reg	= OMAP54XX_CM_ABE_TIMER8_CLKCTRL,
-	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
 	.clkdm_name	= "abe_clkdm",
 };
 
@@ -1510,8 +1486,6 @@ static struct clk timer9_clk_mux_ck = {
 	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
 	.recalc		= &omap2_clksel_recalc,
-	.enable_reg	= OMAP54XX_CM_L4PER_TIMER9_CLKCTRL,
-	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
 	.clkdm_name	= "l4per_clkdm",
 };
 
