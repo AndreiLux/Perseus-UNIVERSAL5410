@@ -535,6 +535,35 @@ static int __init omap_5430evm_i2c_init(void)
 	return 0;
 }
 
+static struct regulator_consumer_supply omap5_evm_vmmc1_supply[] = {
+	REGULATOR_SUPPLY("vmmc", "omap_hsmmc.0"),
+	REGULATOR_SUPPLY("vmmc", "omap_hsmmc.1"),
+};
+
+static struct regulator_init_data omap5_evm_vmmc1 = {
+	.constraints = {
+		.valid_ops_mask = REGULATOR_CHANGE_STATUS,
+		.always_on	= true,
+	},
+	.num_consumer_supplies = ARRAY_SIZE(omap5_evm_vmmc1_supply),
+	.consumer_supplies = omap5_evm_vmmc1_supply,
+};
+
+static struct fixed_voltage_config omap5_evm_sd_dummy = {
+	.supply_name = "vmmc_supply",
+	.microvolts = 3000000, /* 3.0V */
+	.gpio = -EINVAL,
+	.init_data = &omap5_evm_vmmc1,
+};
+
+static struct platform_device dummy_sd_regulator_device = {
+	.name		= "reg-fixed-voltage",
+	.id		= 1,
+	.dev = {
+		.platform_data = &omap5_evm_sd_dummy,
+	}
+};
+
 /* USBB3 to SMSC LAN9730 */
 #define GPIO_ETH_NRESET	172
 
@@ -577,6 +606,7 @@ static void __init omap_5430evm_init(void)
 
 	omap_5430evm_i2c_init();
 	omap_serial_init();
+	platform_device_register(&dummy_sd_regulator_device);
 	omap_ehci_ohci_init();
 }
 
