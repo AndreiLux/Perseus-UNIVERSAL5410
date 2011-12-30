@@ -226,18 +226,29 @@ static void s3c24xx_i2c_message_start(struct s3c24xx_i2c *i2c,
 
 static inline void s3c24xx_i2c_stop(struct s3c24xx_i2c *i2c, int ret)
 {
-	unsigned long iicstat = readl(i2c->regs + S3C2410_IICSTAT);
+	unsigned long iicstat;
+	unsigned long iiccon;
 
 	dev_dbg(i2c->dev, "STOP\n");
 
 	/* stop the transfer */
+
+	/* Disable irq */
+	s3c24xx_i2c_disable_irq(i2c);
+
+	/* STOP signal generation : MTx(0xD0) */
+	iicstat = readl(i2c->regs + S3C2410_IICSTAT);
 	iicstat &= ~S3C2410_IICSTAT_START;
 	writel(iicstat, i2c->regs + S3C2410_IICSTAT);
 
-	i2c->state = STATE_STOP;
+	/* Clear pending bit */
+	iiccon = readl(i2c->regs + S3C2410_IICCON);
+	iiccon &= ~S3C2410_IICCON_IRQPEND;
+	writel(iiccon, i2c->regs + S3C2410_IICCON);
 
 	s3c24xx_i2c_master_complete(i2c, ret);
-	s3c24xx_i2c_disable_irq(i2c);
+
+	i2c->state = STATE_STOP;
 }
 
 /* helper functions to determine the current state in the set of
