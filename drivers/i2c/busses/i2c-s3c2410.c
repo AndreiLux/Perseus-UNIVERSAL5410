@@ -1,4 +1,4 @@
-/* linux/drivers/i2c/busses/i2c-s3c2410.c
+z/* linux/drivers/i2c/busses/i2c-s3c2410.c
  *
  * Copyright (C) 2004,2005,2009 Simtec Electronics
  *	Ben Dooks <ben@simtec.co.uk>
@@ -614,6 +614,11 @@ static int s3c24xx_i2c_xfer(struct i2c_adapter *adap,
 	struct s3c24xx_i2c *i2c = (struct s3c24xx_i2c *)adap->algo_data;
 	int retry;
 	int ret;
+
+	if (i2c->suspended) {
+		dev_err(i2c->dev, "I2C is not initialzed.\n");
+		return -EREMOTEIO;
+	}
 
 	pm_runtime_get_sync(&adap->dev);
 	clk_enable(i2c->clk);
