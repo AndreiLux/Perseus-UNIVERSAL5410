@@ -91,6 +91,17 @@ struct s3c24xx_i2c {
 
 /* default platform data removed, dev should always carry data. */
 
+static inline void dump_i2c_register(struct s3c24xx_i2c *i2c)
+{
+	dev_warn(i2c->dev, "Register dump(%d) : %x %x %x %x %x\n"
+		, i2c->suspended
+		, readl(i2c->regs + S3C2410_IICCON)
+		, readl(i2c->regs + S3C2410_IICSTAT)
+		, readl(i2c->regs + S3C2410_IICADD)
+		, readl(i2c->regs + S3C2410_IICDS)
+		, readl(i2c->regs + S3C2440_IICLC));
+}
+
 /* s3c24xx_i2c_is2440()
  *
  * return true is this is an s3c2440
@@ -546,6 +557,7 @@ static int s3c24xx_i2c_doxfer(struct s3c24xx_i2c *i2c,
 	ret = s3c24xx_i2c_set_master(i2c);
 	if (ret != 0) {
 		dev_err(i2c->dev, "cannot get bus (error %d)\n", ret);
+		dump_i2c_register(i2c);
 		ret = -EAGAIN;
 		goto out;
 	}
@@ -569,10 +581,13 @@ static int s3c24xx_i2c_doxfer(struct s3c24xx_i2c *i2c,
 	/* having these next two as dev_err() makes life very
 	 * noisy when doing an i2cdetect */
 
-	if (timeout == 0)
+	if (timeout == 0) {
 		dev_dbg(i2c->dev, "timeout\n");
-	else if (ret != num)
+		dump_i2c_register(i2c);
+	} else if (ret != num) {
 		dev_dbg(i2c->dev, "incomplete xfer (%d)\n", ret);
+		dump_i2c_register(i2c);
+	}
 
 	/* ensure the stop has been through the bus */
 
@@ -582,7 +597,7 @@ static int s3c24xx_i2c_doxfer(struct s3c24xx_i2c *i2c,
 	do {
 		cpu_relax();
 		iicstat = readl(i2c->regs + S3C2410_IICSTAT);
-	} while ((iicstat & S3C2410_IICSTAT_START) && --spins);
+	} while ((iicstat & S3C2410_IICSTAT_BUSBUSY) && --spins);
 
 	/* if that timed out sleep */
 	if (!spins) {
@@ -592,8 +607,9 @@ static int s3c24xx_i2c_doxfer(struct s3c24xx_i2c *i2c,
 
 	/* if still not finished, clean it up */
 	spin_lock_irq(&i2c->lock);
-	if (iicstat & S3C2410_IICSTAT_START) {
+	if (iicstat & S3C2410_IICSTAT_BUSBUSY) {
 		dev_warn(i2c->dev, "timeout waiting for bus idle\n");
+		dump_i2c_register(i2c);
 		s3c24xx_i2c_stop(i2c, 0);
 	}
 	spin_unlock_irq(&i2c->lock);
@@ -617,6 +633,7 @@ static int s3c24xx_i2c_xfer(struct i2c_adapter *adap,
 
 	if (i2c->suspended) {
 		dev_err(i2c->dev, "I2C is not initialzed.\n");
+		dump_i2c_register(i2c);
 		return -EREMOTEIO;
 	}
 
