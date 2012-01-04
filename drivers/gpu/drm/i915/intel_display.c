@@ -6992,7 +6992,7 @@ struct drm_display_mode *intel_crtc_mode_get(struct drm_device *dev,
 	return mode;
 }
 
-#define GPU_IDLE_TIMEOUT 500 /* ms */
+#define GPU_IDLE_TIMEOUT 400 /* ms */
 
 /* When this timer fires, we've been idle for awhile */
 static void intel_gpu_idle_timer(unsigned long arg)
@@ -7011,7 +7011,7 @@ static void intel_gpu_idle_timer(unsigned long arg)
 	queue_work(dev_priv->wq, &dev_priv->idle_work);
 }
 
-#define CRTC_IDLE_TIMEOUT 1000 /* ms */
+#define CRTC_IDLE_TIMEOUT 700 /* ms */
 
 static void intel_crtc_idle_timer(unsigned long arg)
 {
