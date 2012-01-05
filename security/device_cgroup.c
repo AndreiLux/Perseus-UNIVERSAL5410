@@ -13,6 +13,7 @@
 #include <linux/slab.h>
 #include <linux/rcupdate.h>
 #include <linux/mutex.h>
+#include <linux/export.h>
 
 #define ACC_MKNOD 1
 #define ACC_READ  2
