@@ -1831,7 +1831,7 @@ int vfs_path_lookup(struct dentry *dentry, struct vfsmount *mnt,
  * needs parent already locked. Doesn't follow mounts.
  * SMP-safe.
  */
-static struct dentry *lookup_hash(struct nameidata *nd)
+struct dentry *lookup_hash(struct nameidata *nd)
 {
 	return __lookup_hash(&nd->last, nd->path.dentry, nd);
 }
