@@ -37,8 +37,12 @@
 #include <plat/omap4-keypad.h>
 #include "hsmmc.h"
 #include "mux.h"
+#include <linux/qtouch_obp_ts.h>
 
 #include "common-board-devices.h"
+
+#define OMAP5_TOUCH_IRQ_1              179
+#define OMAP5_TOUCH_RESET              230
 
 static const int evm5430_keymap[] = {
 	KEY(0, 0, KEY_RESERVED),
@@ -410,12 +414,14 @@ static struct regulator_init_data omap5_ldo1 = {
 
 static struct regulator_init_data omap5_ldo2 = {
 	.constraints = {
-		.min_uV			= 2800000,
-		.max_uV			= 2800000,
+		.min_uV			= 2900000,
+		.max_uV			= 2900000,
+		.apply_uV               = true,
 		.valid_modes_mask	= REGULATOR_MODE_NORMAL
 					| REGULATOR_MODE_STANDBY,
-	.valid_ops_mask		= REGULATOR_CHANGE_MODE
+		.valid_ops_mask		= REGULATOR_CHANGE_MODE
 					| REGULATOR_CHANGE_STATUS,
+		.always_on              = true,
 	},
 };
 
@@ -609,6 +615,214 @@ static struct i2c_board_info __initdata omap5evm_i2c_1_boardinfo[] = {
 };
 
 
+static struct qtm_touch_keyarray_cfg omap5evm_key_array_data[] = {
+	{
+		.ctrl = 0,
+		.x_origin = 0,
+		.y_origin = 0,
+		.x_size = 0,
+		.y_size = 0,
+		.aks_cfg = 0,
+		.burst_len = 0,
+		.tch_det_thr = 0,
+		.tch_det_int = 0,
+		.rsvd1 = 0,
+	},
+};
+
+static struct qtouch_ts_platform_data atmel_mxt224_ts_platform_data = {
+	.irqflags       = (IRQF_TRIGGER_FALLING | IRQF_TRIGGER_LOW),
+	.flags          = (QTOUCH_USE_MULTITOUCH | QTOUCH_FLIP_X |
+			   QTOUCH_FLIP_Y | QTOUCH_CFG_BACKUPNV),
+	.abs_min_x      = 0,
+	.abs_max_x      = 1280,
+	.abs_min_y      = 0,
+	.abs_max_y      = 1024,
+	.abs_min_p      = 0,
+	.abs_max_p      = 255,
+	.abs_min_w      = 0,
+	.abs_max_w      = 15,
+	.x_delta        = 0x00,
+	.y_delta        = 0x00,
+	.nv_checksum    = 0x187a,
+	.fuzz_x         = 0,
+	.fuzz_y         = 0,
+	.fuzz_p         = 2,
+	.fuzz_w         = 2,
+	.hw_reset       = NULL,
+	.gen_cmd_proc = {
+		.reset  = 0x00,
+		.backupnv = 0x00,
+		.calibrate = 0x01,
+		.reportall = 0x00,
+	},
+	.power_cfg      = {
+		.idle_acq_int   = 0xff,
+		.active_acq_int = 0xff,
+		.active_idle_to = 0x42,
+	},
+	.acquire_cfg    = {
+		.charge_time    = 0x0a,
+		.atouch_drift   = 0x05,
+		.touch_drift    = 0x14,
+		.drift_susp     = 0x14,
+		.touch_autocal  = 0x00,
+		.sync           = 0,
+		.cal_suspend_time = 0x0a,
+		.cal_suspend_thresh = 0x00,
+	},
+	.multi_touch_cfg        = {
+		.ctrl           = 0x83,
+		.x_origin       = 0,
+		.y_origin       = 0,
+		.x_size         = 0x12,
+		.y_size         = 0x0c,
+		.aks_cfg        = 0x0,
+		.burst_len      = 0x01,
+		.tch_det_thr    = 0x1D,
+		.tch_det_int    = 0x2,
+		.mov_hyst_init  = 0x63,
+		.mov_hyst_next  = 0x63,
+		.mov_filter     = 0x00,
+		.num_touch      = 10,
+		.orient         = 0x00,
+		.mrg_timeout    = 0x00,
+		.merge_hyst     = 0x0a,
+		.merge_thresh   = 0x0a,
+		.amp_hyst       = 0x00,
+		.x_res          = 0x0fff,
+		.y_res          = 0x0500,
+		.x_low_clip     = 0x00,
+		.x_high_clip    = 0x00,
+		.y_low_clip     = 0x00,
+		.y_high_clip    = 0x00,
+		.x_edge_ctrl    = 0xD4,
+		.x_edge_dist    = 0x42,
+		.y_edge_ctrl    = 0xD4,
+		.y_edge_dist    = 0x64,
+		.jumplimit      = 0x3E,
+	},
+	.key_array      = {
+		.cfg            = omap5evm_key_array_data,
+		.num_keys   = ARRAY_SIZE(omap5evm_key_array_data),
+	},
+	.grip_suppression_cfg = {
+		.ctrl           = 0x00,
+		.xlogrip        = 0x00,
+		.xhigrip        = 0x00,
+		.ylogrip        = 0x00,
+		.yhigrip        = 0x00,
+		.maxtchs        = 0x00,
+		.reserve0       = 0x00,
+		.szthr1         = 0x00,
+		.szthr2         = 0x00,
+		.shpthr1        = 0x00,
+		.shpthr2        = 0x00,
+		.supextto       = 0x00,
+	},
+	.noise0_suppression_cfg = {
+		.ctrl           = 0x07,
+		.reserved       = 0x0000,
+		.gcaf_upper_limit = 0x0019,
+		.gcaf_lower_limit = 0xffe7,
+		.gcaf_valid     = 0x04,
+		.noise_thresh   = 0x32,
+		.reserved1      = 0x00,
+		.freq_hop_scale = 0x00,
+		.burst_freq_0   = 0x0a,
+		.burst_freq_1 = 0x0f,
+		.burst_freq_2 = 0x04,
+		.burst_freq_3 = 0x19,
+		.burst_freq_4 = 0x1e,
+		.num_of_gcaf_samples = 0x04,
+	},
+	.touch_proximity_cfg = {
+		.ctrl           = 0x00,
+		.xorigin        = 0x00,
+		.yorigin        = 0x00,
+		.xsize          = 0x00,
+		.ysize          = 0x00,
+		.reserved       = 0x00,
+		.blen           = 0x00,
+		.fxddthr        = 0x0000,
+		.fxddi          = 0x00,
+		.average        = 0x00,
+		.mvnullrate     = 0x0000,
+		.mvdthr         = 0x0000,
+	},
+	.spt_commsconfig_cfg = {
+		.ctrl           = 0x00,
+		.command        = 0x00,
+	},
+	.spt_gpiopwm_cfg = {
+		.ctrl           = 0x00,
+		.reportmask     = 0x00,
+		.dir            = 0x00,
+		.intpullup      = 0x00,
+		.out            = 0x00,
+		.wake           = 0x00,
+		.pwm            = 0x00,
+		.period         = 0x00,
+		.duty0          = 0x00,
+		.duty1          = 0x00,
+		.duty2          = 0x00,
+		.duty3          = 0x00,
+		.trigger0       = 0x00,
+		.trigger1       = 0x00,
+		.trigger2       = 0x00,
+		.trigger3       = 0x00,
+	},
+	.onetouchgestureprocessor_cfg = {
+		.ctrl   =       0x00,
+		.numgest =      0x00,
+		.gesten =       0x00,
+		.process =      0x00,
+		.tapto =        0x00,
+		.flickto =      0x00,
+		.dragto =       0x00,
+		.spressto =     0x00,
+		.lpressto =     0x00,
+		.reppressto =   0x00,
+		.flickthr =     0x00,
+		.dragthr =      0x00,
+		.tapthr =       0x00,
+		.throwthr =     0x00,
+	},
+	.spt_selftest_cfg = {
+		.ctrl = 0x03,
+		.cmd = 0x00,
+		.hisiglim0 = 0x36b0,
+		.losiglim0 = 0x1b58,
+		.hisiglim1 = 0x0000,
+		.losiglim1 = 0x0000,
+		.hisiglim2 = 0x0000,
+		.losiglim2 = 0x0000,
+	},
+	.twotouchgestureprocessor_cfg = {
+		.ctrl   =       0x03,
+		.numgest =      0x01,
+		.reserved =     0x00,
+		.gesten =       0xe0,
+		.rotatethr =    0x03,
+		.zoomthr =      0x0063,
+	},
+	.spt_cte_cfg = {
+		.ctrl = 0x00,
+		.command = 0x00,
+		.mode = 0x02,
+		.gcaf_idle_mode = 0x04,
+		.gcaf_actv_mode = 0x08,
+	},
+};
+
+static struct i2c_board_info __initdata omap5evm_i2c_4_boardinfo[] = {
+	{
+		I2C_BOARD_INFO(QTOUCH_TS_NAME, 0x4a),
+		.platform_data = &atmel_mxt224_ts_platform_data,
+		.irq = OMAP_GPIO_IRQ(OMAP5_TOUCH_IRQ_1),
+	},
+};
+
 static int __init omap_5430evm_i2c_init(void)
 {
 	omap_i2c_hwspinlock_init(1, 0, &sdp4430_i2c_1_bus_pdata);
@@ -624,14 +838,30 @@ static int __init omap_5430evm_i2c_init(void)
 	omap_register_i2c_bus_board_data(5, &sdp4430_i2c_5_bus_pdata);
 #ifdef CONFIG_OMAP5_SEVM_PALMAS
 	omap_register_i2c_bus(1, 400, omap5evm_i2c_1_boardinfo,
-					ARRAY_SIZE(omap5evm_i2c_1_boardinfo));
+				ARRAY_SIZE(omap5evm_i2c_1_boardinfo));
 #else
 	omap_register_i2c_bus(1, 400, NULL, 0);
 #endif
 	omap_register_i2c_bus(2, 400, NULL, 0);
 	omap_register_i2c_bus(3, 400, NULL, 0);
-	omap_register_i2c_bus(4, 400, NULL, 0);
+	omap_register_i2c_bus(4, 400, omap5evm_i2c_4_boardinfo,
+				ARRAY_SIZE(omap5evm_i2c_4_boardinfo));
 	omap_register_i2c_bus(5, 400, NULL, 0);
+	return 0;
+}
+
+int __init omap5evm_touch_init(void)
+{
+	gpio_request(OMAP5_TOUCH_IRQ_1, "atmel touch irq");
+	gpio_direction_input(OMAP5_TOUCH_IRQ_1);
+
+	gpio_request(OMAP5_TOUCH_RESET, "atmel reset");
+	gpio_direction_output(OMAP5_TOUCH_RESET, 1);
+	mdelay(100);
+	gpio_direction_output(OMAP5_TOUCH_RESET, 0);
+	mdelay(100);
+	gpio_direction_output(OMAP5_TOUCH_RESET, 1);
+
 	return 0;
 }
 
@@ -726,6 +956,7 @@ static void __init omap_5430evm_init(void)
 			&custom_configs);
 #endif
 
+	omap5evm_touch_init();
 	omap_5430evm_i2c_init();
 	omap_serial_init();
 	platform_device_register(&dummy_sd_regulator_device);
