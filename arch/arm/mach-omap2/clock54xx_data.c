@@ -1206,6 +1206,7 @@ static struct clk gpu_hyd_clk_mux_ck = {
 	.name		= "gpu_hyd_clk_mux_ck",
 	.parent		= &dpll_core_h14x2_ck,
 	.clksel		= gpu_core_clk_mux_sel,
+	.init		= &omap2_init_clksel_parent,
 	.clksel_reg	= OMAP54XX_CM_GPU_GPU_CLKCTRL,
 	.clksel_mask	= OMAP54XX_CLKSEL_GPU_HYD_GCLK_MASK,
 	.ops		= &clkops_null,
