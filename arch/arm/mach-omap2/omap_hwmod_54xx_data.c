@@ -3045,11 +3045,21 @@ static struct omap_hwmod_ocp_if *omap54xx_iss_masters[] = {
 	&omap54xx_iss__l3_main_2,
 };
 
+static struct omap_hwmod_addr_space omap54xx_iss_addrs[] = {
+	{
+		.pa_start	= 0x52000000,
+		.pa_end		= 0x520000ff,
+		.flags		= ADDR_TYPE_RT
+	},
+	{}
+};
+
 /* l3_main_2 -> iss */
 static struct omap_hwmod_ocp_if omap54xx_l3_main_2__iss = {
 	.master		= &omap54xx_l3_main_2_hwmod,
 	.slave		= &omap54xx_iss_hwmod,
 	.clk		= "l3_div_ck",
+	.addr		= omap54xx_iss_addrs,
 	.user		= OCP_USER_MPU | OCP_USER_SDMA,
 };
 
