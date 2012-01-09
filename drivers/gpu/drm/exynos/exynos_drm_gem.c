@@ -27,6 +27,7 @@
 #include "drm.h"
 
 #include <drm/exynos_drm.h>
+#include <linux/dma-buf.h>
 
 #include "exynos_drm_drv.h"
 #include "exynos_drm_gem.h"
@@ -101,7 +102,7 @@ void exynos_drm_gem_destroy(struct exynos_drm_gem_obj *exynos_gem_obj)
 	kfree(exynos_gem_obj);
 }
 
-static struct exynos_drm_gem_obj *exynos_drm_gem_init(struct drm_device *dev,
+struct exynos_drm_gem_obj *exynos_drm_gem_init(struct drm_device *dev,
 						      unsigned long size)
 {
 	struct exynos_drm_gem_obj *exynos_gem_obj;
@@ -390,6 +391,24 @@ int exynos_drm_gem_dumb_destroy(struct drm_file *file_priv,
 	}
 
 	return 0;
+}
+
+void exynos_drm_gem_close_object(struct drm_gem_object *obj,
+				struct drm_file *file)
+{
+	struct exynos_drm_gem_obj *exynos_gem_obj = to_exynos_gem_obj(obj);
+	struct drm_exynos_file_private *file_priv = file->driver_priv;
+
+	if (obj->import_attach) {
+		drm_prime_remove_fd_handle_mapping(&file_priv->prime,
+						obj->import_attach->dmabuf);
+
+		/*
+		 * release import_attach object and drop file->f_count
+		 * of this dmabuf.
+		 */
+		drm_prime_gem_destroy(obj, exynos_gem_obj->sgt);
+	}
 }
 
 int exynos_drm_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
