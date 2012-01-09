@@ -2487,7 +2487,13 @@ static struct omap_hwmod omap54xx_gpmc_hwmod = {
  */
 
 static struct omap_hwmod_class_sysconfig omap54xx_gpu_sysc = {
-	.rev_offs	= 0xfe24,
+	.rev_offs       = 0xfe00,
+	.sysc_offs      = 0xfe10,
+	.sysc_flags     = (SYSC_HAS_MIDLEMODE | SYSC_HAS_SIDLEMODE),
+	.idlemodes      = (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART |
+						SIDLE_SMART_WKUP),
+	.sysc_fields    = &omap_hwmod_sysc_type2,
+
 };
 
 static struct omap_hwmod_class omap54xx_gpu_hwmod_class = {
@@ -2509,7 +2515,7 @@ static struct omap_hwmod_ocp_if *omap54xx_gpu_masters[] = {
 static struct omap_hwmod_addr_space omap54xx_gpu_addrs[] = {
 	{
 		.pa_start	= 0x56000000,
-		.pa_end		= 0x56001fff,
+		.pa_end		= 0x5600ffff,
 		.flags		= ADDR_TYPE_RT
 	},
 	{ }
@@ -5894,7 +5900,7 @@ static __initdata struct omap_hwmod *omap54xx_hwmods[] = {
 	&omap54xx_gpmc_hwmod,
 
 	/* gpu class */
-/*	&omap54xx_gpu_hwmod, */
+	&omap54xx_gpu_hwmod,
 
 	/* hsi class */
 /*	&omap54xx_hsi_hwmod, */
