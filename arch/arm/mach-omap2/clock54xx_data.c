@@ -1230,11 +1230,24 @@ static struct clk l3_div_ck = {
 	.set_rate	= &omap2_clksel_set_rate,
 };
 
+static const struct clksel_rate div2_0to8_rates[] = {
+	{ .div = 1, .val = 0, .flags = RATE_IN_54XX },
+	{ .div = 8, .val = 1, .flags = RATE_IN_54XX },
+	{ .div = 0 },
+};
+
+static const struct clksel l3init_60m_fclk_div[] = {
+	{ .parent = &dpll_usb_m2_ck, .rates = div2_0to8_rates },
+	{ .parent = NULL },
+};
 static struct clk l3init_60m_fclk = {
 	.name		= "l3init_60m_fclk",
 	.parent		= &dpll_usb_m2_ck,
+	.clksel		= l3init_60m_fclk_div,
+	.clksel_reg	= OMAP54XX_CM_CLKSEL_USB_60MHZ,
+	.clksel_mask	= OMAP54XX_CLKSEL_0_0_MASK,
 	.ops		= &clkops_null,
-	.recalc		= &followparent_recalc,
+	.recalc		= &omap2_clksel_recalc,
 };
 
 static const struct clksel l4_div_div[] = {
