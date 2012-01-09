@@ -1409,6 +1409,8 @@ static struct clk mmc1_fclk = {
 	.clksel_mask	= OMAP54XX_CLKSEL_DIV_MASK,
 	.ops		= &clkops_null,
 	.recalc		= &omap2_clksel_recalc,
+	.round_rate	= &omap2_clksel_round_rate,
+	.set_rate	= &omap2_clksel_set_rate,
 };
 
 static struct clk mmc2_fclk_mux = {
@@ -1436,6 +1438,8 @@ static struct clk mmc2_fclk = {
 	.clksel_mask	= OMAP54XX_CLKSEL_DIV_MASK,
 	.ops		= &clkops_null,
 	.recalc		= &omap2_clksel_recalc,
+	.round_rate	= &omap2_clksel_round_rate,
+	.set_rate	= &omap2_clksel_set_rate,
 };
 
 static struct clk per_abe_24m_fclk = {
