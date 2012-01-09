@@ -66,6 +66,8 @@ struct dma_buf_ops {
 	void (*unmap_dma_buf)(struct dma_buf_attachment *,
 						struct sg_table *,
 						enum dma_data_direction);
+	unsigned int (*get_shared_cnt)(struct dma_buf *);
+
 	/* TODO: Add try_map_dma_buf version, to return immed with -EBUSY
 	 * if the call would block.
 	 */
@@ -140,6 +142,8 @@ struct sg_table *dma_buf_map_attachment(struct dma_buf_attachment *,
 					enum dma_data_direction);
 void dma_buf_unmap_attachment(struct dma_buf_attachment *, struct sg_table *,
 				enum dma_data_direction);
+
+unsigned int dma_buf_get_shared_cnt(struct dma_buf *dmabuf);
 #else
 
 static inline struct dma_buf_attachment *dma_buf_attach(struct dma_buf *dmabuf,
@@ -186,6 +190,11 @@ static inline void dma_buf_unmap_attachment(struct dma_buf_attachment *attach,
 			struct sg_table *sg, enum dma_data_direction dir)
 {
 	return;
+}
+
+static inline unsigned int dma_buf_get_shared_cnt(struct dma_buf *dmabuf)
+{
+	return 0;
 }
 
 #endif /* CONFIG_DMA_SHARED_BUFFER */

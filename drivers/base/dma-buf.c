@@ -289,3 +289,27 @@ void dma_buf_unmap_attachment(struct dma_buf_attachment *attach,
 
 }
 EXPORT_SYMBOL_GPL(dma_buf_unmap_attachment);
+
+/**
+ * dma_buf_get_shared_cnt - Get refcount of shared buffer.
+ *
+ * @dmabuf: a buffer object that you want to get the shared refcount.
+ *
+ * Returns the shared refcount value of the dmabuf.
+ */
+unsigned int dma_buf_get_shared_cnt(struct dma_buf *dmabuf)
+{
+	int ret = 0;
+
+	if (WARN_ON(!dmabuf || !dmabuf->ops))
+		return ret;
+
+	mutex_lock(&dmabuf->lock);
+
+	if (dmabuf->ops->get_shared_cnt)
+		ret = dmabuf->ops->get_shared_cnt(dmabuf);
+
+	mutex_unlock(&dmabuf->lock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(dma_buf_get_shared_cnt);
