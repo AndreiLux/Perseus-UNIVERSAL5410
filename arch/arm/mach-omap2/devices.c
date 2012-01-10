@@ -387,9 +387,10 @@ static void omap_init_audio(void)
 {
 	platform_device_register(&omap_mcbsp1);
 	platform_device_register(&omap_mcbsp2);
-	if (cpu_is_omap243x() || cpu_is_omap34xx() || cpu_is_omap44xx() || cpu_is_omap54xx()) {
+	if (cpu_class_is_omap2() && !cpu_is_omap242x()) {
 		platform_device_register(&omap_mcbsp3);
-		platform_device_register(&omap_mcbsp4);
+		if (!cpu_is_omap54xx())
+			platform_device_register(&omap_mcbsp4);
 	}
 	if (cpu_is_omap243x() || cpu_is_omap34xx())
 		platform_device_register(&omap_mcbsp5);
