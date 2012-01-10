@@ -17,6 +17,8 @@ struct dma_map_ops {
 			      struct dma_attrs *attrs);
 	int (*mmap)(struct device *, struct vm_area_struct *,
 			  void *, dma_addr_t, size_t, struct dma_attrs *attrs);
+	int (*get_pages)(struct device *dev, void *vaddr, dma_addr_t dma_addr,
+			struct page **pages, size_t n_pages);
 
 	dma_addr_t (*map_page)(struct device *dev, struct page *page,
 			       unsigned long offset, size_t size,

@@ -115,10 +115,14 @@ static void arm_dma_sync_single_for_device(struct device *dev,
 
 static int arm_dma_set_mask(struct device *dev, u64 dma_mask);
 
+static int arm_dma_get_pages(struct device *dev, void *cpu_addr,
+	dma_addr_t dma_addr, struct page **pages, size_t n_pages);
+
 struct dma_map_ops arm_dma_ops = {
 	.alloc			= arm_dma_alloc,
 	.free			= arm_dma_free,
 	.mmap			= arm_dma_mmap,
+	.get_pages		= arm_dma_get_pages,
 	.map_page		= arm_dma_map_page,
 	.unmap_page		= arm_dma_unmap_page,
 	.map_sg			= arm_dma_map_sg,
@@ -532,6 +536,25 @@ int arm_dma_mmap(struct device *dev, struct vm_area_struct *vma,
 #endif	/* CONFIG_MMU */
 
 	return ret;
+}
+
+/*
+ * Get pages for the DMA-coherent memory.
+ */
+static int arm_dma_get_pages(struct device *dev, void *cpu_addr,
+	dma_addr_t dma_addr, struct page **pages, size_t n_pages)
+{
+#ifdef CONFIG_MMU
+	int i;
+	unsigned long pfn = dma_to_pfn(dev, dma_addr);
+
+	for (i = 0; i < n_pages; ++i)
+		pages[i] = pfn_to_page(pfn + i);
+
+	return n_pages;
+#else
+	return -ENXIO;
+#endif	/* CONFIG_MMU */
 }
 
 /*
@@ -1062,6 +1085,26 @@ static int arm_iommu_mmap_attrs(struct device *dev, struct vm_area_struct *vma,
 	return 0;
 }
 
+static int arm_iommu_get_pages(struct device *dev, void *cpu_addr,
+	dma_addr_t dma_addr, struct page **pages, size_t n_pages)
+{
+	struct arm_vmregion *c;
+	int n_valid_pages;
+
+	c = arm_vmregion_find(&consistent_head, (unsigned long)cpu_addr);
+
+	if (!c)
+		return -ENXIO;
+
+	n_valid_pages = (c->vm_end - c->vm_start) >> PAGE_SHIFT;
+	if (n_valid_pages < n_pages)
+		n_pages = n_valid_pages;
+
+	memcpy(pages, c->priv, n_pages * sizeof pages[0]);
+
+	return n_pages;
+}
+
 /*
  * free a page as defined by the above mapping.
  * Must not be called with IRQs disabled.
@@ -1341,6 +1384,7 @@ struct dma_map_ops iommu_ops = {
 	.alloc		= arm_iommu_alloc_attrs,
 	.free		= arm_iommu_free_attrs,
 	.mmap		= arm_iommu_mmap_attrs,
+	.get_pages	= arm_iommu_get_pages,
 
 	.map_page		= arm_iommu_map_page,
 	.unmap_page		= arm_iommu_unmap_page,

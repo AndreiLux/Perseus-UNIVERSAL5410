@@ -197,6 +197,14 @@ static inline int dma_mmap_attrs(struct device *dev, struct vm_area_struct *vma,
 	return ops->mmap(dev, vma, cpu_addr, dma_addr, size, attrs);
 }
 
+static inline int dma_get_pages(struct device *dev, void *cpu_addr,
+	dma_addr_t dma_addr, struct page **pages, size_t n_pages)
+{
+	const struct dma_map_ops *ops = get_dma_ops(dev);
+	BUG_ON(!ops);
+	return ops->get_pages(dev, cpu_addr, dma_addr, pages, n_pages);
+}
+
 static inline void *dma_alloc_writecombine(struct device *dev, size_t size,
 				       dma_addr_t *dma_handle, gfp_t flag)
 {
