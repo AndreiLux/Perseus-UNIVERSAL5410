@@ -207,6 +207,7 @@ static const char *v4l2_ioctls[] = {
 	[_IOC_NR(VIDIOC_S_FBUF)]           = "VIDIOC_S_FBUF",
 	[_IOC_NR(VIDIOC_OVERLAY)]          = "VIDIOC_OVERLAY",
 	[_IOC_NR(VIDIOC_QBUF)]             = "VIDIOC_QBUF",
+	[_IOC_NR(VIDIOC_EXPBUF)]           = "VIDIOC_EXPBUF",
 	[_IOC_NR(VIDIOC_DQBUF)]            = "VIDIOC_DQBUF",
 	[_IOC_NR(VIDIOC_STREAMON)]         = "VIDIOC_STREAMON",
 	[_IOC_NR(VIDIOC_STREAMOFF)]        = "VIDIOC_STREAMOFF",
@@ -932,6 +933,16 @@ static long __video_do_ioctl(struct file *file,
 		ret = ops->vidioc_qbuf(file, fh, p);
 		if (!ret)
 			dbgbuf(cmd, vfd, p);
+		break;
+	}
+	case VIDIOC_EXPBUF:
+	{
+		struct v4l2_exportbuffer *p = arg;
+
+		if (!ops->vidioc_expbuf)
+			break;
+
+		ret = ops->vidioc_expbuf(file, fh, p);
 		break;
 	}
 	case VIDIOC_DQBUF:
