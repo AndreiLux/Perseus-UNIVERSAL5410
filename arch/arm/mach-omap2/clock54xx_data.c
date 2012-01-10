@@ -1618,12 +1618,15 @@ static const struct clksel ts_clk_div_ck_div[] = {
 static struct clk ts_clk_div_ck = {
 	.name		= "ts_clk_div_ck",
 	.parent		= &wkupaon_clk_mux_ck,
+	.enable_reg	= OMAP54XX_CM_COREAON_BANDGAP_CLKCTRL,
+	.enable_bit	= OMAP54XX_OPTFCLKEN_TS_FCLK_SHIFT,
 	.clksel		= ts_clk_div_ck_div,
-	.init		= omap2_init_clksel_parent,
 	.clksel_reg	= OMAP54XX_CM_COREAON_BANDGAP_CLKCTRL,
 	.clksel_mask	= OMAP54XX_CLKSEL_24_25_MASK,
 	.ops		= &clkops_null,
 	.recalc		= &omap2_clksel_recalc,
+	.round_rate	= &omap2_clksel_round_rate,
+	.set_rate	= &omap2_clksel_set_rate,
 };
 
 static const struct clksel utmi_p1_gfclk_sel[] = {
