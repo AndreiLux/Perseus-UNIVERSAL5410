@@ -143,7 +143,6 @@ struct sg_table *dma_buf_map_attachment(struct dma_buf_attachment *,
 void dma_buf_unmap_attachment(struct dma_buf_attachment *, struct sg_table *,
 				enum dma_data_direction);
 
-unsigned int dma_buf_get_shared_cnt(struct dma_buf *dmabuf);
 #else
 
 static inline struct dma_buf_attachment *dma_buf_attach(struct dma_buf *dmabuf,
@@ -190,11 +189,6 @@ static inline void dma_buf_unmap_attachment(struct dma_buf_attachment *attach,
 			struct sg_table *sg, enum dma_data_direction dir)
 {
 	return;
-}
-
-static inline unsigned int dma_buf_get_shared_cnt(struct dma_buf *dmabuf)
-{
-	return 0;
 }
 
 #endif /* CONFIG_DMA_SHARED_BUFFER */

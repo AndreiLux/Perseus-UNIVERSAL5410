@@ -291,7 +291,20 @@ int exynos_drm_gem_init_object(struct drm_gem_object *obj)
 
 void exynos_drm_gem_free_object(struct drm_gem_object *obj)
 {
+	struct exynos_drm_gem_obj *exynos_gem_obj;
+
 	DRM_DEBUG_KMS("%s\n", __FILE__);
+
+	exynos_gem_obj = to_exynos_gem_obj(obj);
+
+	/*
+	 * now this gem object could be released so if there is the dmabuf
+	 * imported to this gem object then release it and this opration
+	 * will release import_attach object and also drop file->f_count
+	 * of this dmabuf.
+	 */
+	if (obj->import_attach)
+		drm_prime_gem_destroy(obj, exynos_gem_obj->sgt);
 
 	exynos_drm_gem_destroy(to_exynos_gem_obj(obj));
 }
@@ -396,18 +409,23 @@ int exynos_drm_gem_dumb_destroy(struct drm_file *file_priv,
 void exynos_drm_gem_close_object(struct drm_gem_object *obj,
 				struct drm_file *file)
 {
-	struct exynos_drm_gem_obj *exynos_gem_obj = to_exynos_gem_obj(obj);
 	struct drm_exynos_file_private *file_priv = file->driver_priv;
 
-	if (obj->import_attach) {
-		drm_prime_remove_fd_handle_mapping(&file_priv->prime,
-						obj->import_attach->dmabuf);
+	DRM_DEBUG_KMS("%s\n", __FILE__);
 
-		/*
-		 * release import_attach object and drop file->f_count
-		 * of this dmabuf.
-		 */
-		drm_prime_gem_destroy(obj, exynos_gem_obj->sgt);
+	/*
+	 * remove a prime member object from prime list
+	 * only if obj->refcount has 1 and note that obj->refcount
+	 * would be decreased by drm_gem_object_handle_unreference_unlock().
+	 *
+	 * Note:
+	 * if this prime is released with that obj->refcount has more than 2
+	 * then when user requested import, a new gem object would be created
+	 * and return it instead of old one registed to prime list.
+	 */
+	if (obj->import_attach && atomic_read(&obj->refcount.refcount) == 1) {
+		drm_prime_remove_fd_handle_mapping(&file_priv->prime,
+					obj->import_attach->dmabuf);
 	}
 }
 

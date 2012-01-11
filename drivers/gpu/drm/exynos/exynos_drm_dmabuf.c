@@ -46,10 +46,12 @@ static void exynos_dmabuf_detach(struct dma_buf *dmabuf,
 {
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
+	/* TODO */
+
 	/*
 	 * when drm_prime_handle_to_fd() is called, file->f_count of this
-	 * dmabuf will be increased by dma_buf_get() so drop
-	 * the reference here.
+	 * dmabuf will be increased by dma_buf_get() so drop the reference
+	 * here.
 	 */
 	dma_buf_put(dmabuf);
 }
@@ -321,12 +323,11 @@ int exynos_dmabuf_prime_fd_to_handle(struct drm_device *drm_dev,
 	buffer->size = sg_dma_len(sgt->sgl);
 
 	/*
-	 * if this buffer is shared with fd's then set shared_refcount to 2
-	 * otherwise 1. when this gem is released, the memory region shared
-	 * with others shouldn't be released.
+	 * import(fd to handle) means that the physical memory region
+	 * from the sgt is being shared with others so shared_refcount
+	 * should be 1.
 	 */
-	atomic_set(&buffer->shared_refcount,
-			dma_buf_get_shared_cnt(dmabuf) ? 2 : 1);
+	atomic_set(&buffer->shared_refcount, 1);
 
 	exynos_gem_obj->base.import_attach = attach;
 
