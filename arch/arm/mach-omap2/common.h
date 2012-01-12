@@ -219,6 +219,9 @@ extern int omap4_finish_suspend(unsigned long cpu_state);
 extern void omap4_cpu_resume(void);
 extern int omap4_hotplug_cpu(unsigned int cpu, unsigned int power_state);
 extern u32 omap4_mpuss_read_prev_context_state(void);
+extern u32 omap_mpuss_read_prev_context_state(void);                            
+extern void mpuss_timer_setup(unsigned long freq);                              
+extern void omap_mpuss_timer_init(void);
 #else
 static inline int omap4_enter_lowpower(unsigned int cpu,
 					unsigned int power_state)

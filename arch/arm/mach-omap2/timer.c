@@ -42,9 +42,11 @@
 #include <asm/smp_twd.h>
 #include <asm/sched_clock.h>
 #include "common.h"
+#include <asm/arch_timer.h>
 #include <plat/omap_hwmod.h>
 #include <plat/omap_device.h>
 #include <plat/omap-pm.h>
+#include <mach/omap4-common.h>
 
 #include "powerdomain.h"
 
@@ -363,16 +365,41 @@ static void __init omap4_timer_init(void)
 OMAP_SYS_TIMER(4)
 #endif
 
+#ifdef CONFIG_ARM_ARCH_TIMER
+static struct resource arch_timer_resources[] = {
+	{
+		.start  = 30,
+		.end    = 30,
+		.flags  = IORESOURCE_IRQ,
+	},
+	{
+		.start  = 6144000,
+		.end    = 6144000,
+		.flags  = IORESOURCE_MEM,
+	},
+};
+
+static void __init arch_timer_init(void)
+{
+	int err;
+
+	omap_mpuss_timer_init();
+	err = arch_timer_register(arch_timer_resources,
+			ARRAY_SIZE(arch_timer_resources));
+	if (err)
+		pr_err("arch_timer_register failed %d\n", err);
+}
+#else
+#define arch_timer_init	NULL
+#endif
+
 #ifdef CONFIG_ARCH_OMAP5
 static void __init omap5_timer_init(void)
 {
-#ifdef CONFIG_LOCAL_TIMERS
-	twd_base = ioremap(OMAP54XX_LOCAL_TWD_BASE, SZ_256);
-	BUG_ON(!twd_base);
-#endif
 	omap2_gp_clockevent_init(1, OMAP5_CLKEV_SOURCE);
 
 	omap2_gp_clocksource_init(2, OMAP5_MPU_SOURCE);
+	late_time_init = arch_timer_init;
 }
 OMAP_SYS_TIMER(5)
 #endif
