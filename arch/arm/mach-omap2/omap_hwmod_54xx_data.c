@@ -6235,6 +6235,10 @@ static __initdata struct omap_hwmod *omap54xx_hwmods[] = {
 	/* usb_otg_ss class */
 	&omap54xx_usb_otg_ss_hwmod,
 
+	/* usb host class */
+	&omap54xx_usb_host_hs_hwmod,
+	&omap54xx_usb_tll_hs_hwmod,
+
 	/* wd_timer class */
 	&omap54xx_wd_timer2_hwmod,
 	&omap54xx_wd_timer3_hwmod,
