@@ -2348,6 +2348,7 @@ static struct omap_clk omap54xx_clks[] = {
 	CLK(NULL,	"func_24m_clk",			&func_24m_clk,	CK_54XX),
 	CLK(NULL,	"dmic_sync_mux_ck",		&dmic_sync_mux_ck,	CK_54XX),
 	CLK(NULL,	"dmic_gfclk",			&dmic_gfclk,	CK_54XX),
+	CLK(NULL,	"dmic_fck",			&dmic_gfclk,	CK_54XX), /* fclk alias */
 	CLK(NULL,	"dpll_abe_m2_ck",		&dpll_abe_m2_ck,	CK_54XX),
 	CLK(NULL,	"dpll_core_h11x2_ck",		&dpll_core_h11x2_ck,	CK_54XX),
 	CLK(NULL,	"dpll_core_h13x2_ck",		&dpll_core_h13x2_ck,	CK_54XX),
