@@ -611,6 +611,11 @@ static int s3c24xx_i2c_doxfer(struct s3c24xx_i2c *i2c,
 		dev_warn(i2c->dev, "timeout waiting for bus idle\n");
 		dump_i2c_register(i2c);
 		s3c24xx_i2c_stop(i2c, 0);
+
+		/* Disable Serial Out : To forcely terminate the connection */
+		iicstat = readl(i2c->regs + S3C2410_IICSTAT);
+		iicstat &= ~S3C2410_IICSTAT_TXRXEN;
+		writel(iicstat, i2c->regs + S3C2410_IICSTAT);
 	}
 	spin_unlock_irq(&i2c->lock);
 
