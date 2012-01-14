@@ -72,6 +72,7 @@
 #define OMAP4_P2_MODE_CLEAR				(3 << 18)
 #define OMAP4_P2_MODE_TLL				(1 << 18)
 #define OMAP4_P2_MODE_HSIC				(3 << 18)
+#define OMAP5_P3_MODE_HSIC				(3 << 20)
 
 #define	OMAP_UHH_DEBUG_CSR				(0x44)
 
@@ -437,6 +438,9 @@ static void omap_usbhs_init(struct device *dev)
 			reg |= OMAP4_P2_MODE_TLL;
 		else if (is_ehci_hsic_mode(pdata->port_mode[1]))
 			reg |= OMAP4_P2_MODE_HSIC;
+
+		if (is_ehci_hsic_mode(pdata->port_mode[2]))
+			reg |= OMAP5_P3_MODE_HSIC;
 	}
 
 	usbhs_write(omap->uhh_base, OMAP_UHH_HOSTCONFIG, reg);
@@ -475,6 +479,22 @@ static void omap_usbhs_init(struct device *dev)
 	pm_runtime_put_sync(dev);
 }
 
+static void omap_usbhs_deinit(struct device *dev)
+{
+	struct usbhs_hcd_omap		*omap = dev_get_drvdata(dev);
+	struct usbhs_omap_platform_data	*pdata = &omap->platdata;
+
+	if (pdata->ehci_data->phy_reset) {
+		if (gpio_is_valid(pdata->ehci_data->reset_gpio_port[0]))
+			gpio_free(pdata->ehci_data->reset_gpio_port[0]);
+
+		if (gpio_is_valid(pdata->ehci_data->reset_gpio_port[1]))
+			gpio_free(pdata->ehci_data->reset_gpio_port[1]);
+	}
+
+	usbhs_write(omap->uhh_base, OMAP_UHH_HOSTCONFIG, reg);
+	dev_dbg(dev, "UHH setup done, uhh_hostconfig=%x\n", reg);
+}
 
 /**
  * usbhs_omap_probe - initialize TI-based HCDs
