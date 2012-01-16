@@ -20,8 +20,8 @@
  *
  */
 
-#ifndef __ARCH_ARM_MACH_OMAP2_CM2_44XX_H
-#define __ARCH_ARM_MACH_OMAP2_CM2_44XX_H
+#ifndef __ARCH_ARM_MACH_OMAP2_CM2_54XX_H
+#define __ARCH_ARM_MACH_OMAP2_CM2_54XX_H
 
 /* CM2 base address */
 #define OMAP54XX_CM_CORE_BASE		0x4a008000

@@ -18,8 +18,8 @@
  * published by the Free Software Foundation.
  */
 
-#ifndef __ARCH_ARM_MACH_OMAP2_CLOCKDOMAINS44XX_H
-#define __ARCH_ARM_MACH_OMAP2_CLOCKDOMAINS44XX_H
+#ifndef __ARCH_ARM_MACH_OMAP2_CLOCKDOMAINS54XX_H
+#define __ARCH_ARM_MACH_OMAP2_CLOCKDOMAINS54XX_H
 
 #include <plat/clockdomain.h>
 

@@ -20,8 +20,8 @@
  *
  */
 
-#ifndef __ARCH_ARM_MACH_OMAP2_CM1_44XX_H
-#define __ARCH_ARM_MACH_OMAP2_CM1_44XX_H
+#ifndef __ARCH_ARM_MACH_OMAP2_CM1_54XX_H
+#define __ARCH_ARM_MACH_OMAP2_CM1_54XX_H
 
 /* CM1 base address */
 #define OMAP54XX_CM_CORE_AON_BASE		0x4a004000
