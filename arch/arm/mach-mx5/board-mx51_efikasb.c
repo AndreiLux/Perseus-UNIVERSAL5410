@@ -279,6 +279,11 @@ static struct sys_timer mx51_efikasb_timer = {
 	.init	= mx51_efikasb_timer_init,
 };
 
+static const char *mx51_efikasb_dt_match[] __initdata = {
+	"genesi,efikasb",
+	NULL
+};
+
 MACHINE_START(MX51_EFIKASB, "Genesi Efika Smartbook")
 	.atag_offset = 0x100,
 	.map_io = mx51_map_io,
@@ -287,4 +292,5 @@ MACHINE_START(MX51_EFIKASB, "Genesi Efika Smartbook")
 	.handle_irq = imx51_handle_irq,
 	.init_machine =  efikasb_board_init,
 	.timer = &mx51_efikasb_timer,
+	.dt_compat = mx51_efikasb_dt_match,
 MACHINE_END

@@ -552,6 +552,11 @@ static void __init omap3_beagle_init(void)
 	beagle_opp_init();
 }
 
+static const char *omap3_beagle_dt_match[] = {
+	"ti,omap3-beagle",
+	NULL
+};
+
 MACHINE_START(OMAP3_BEAGLE, "OMAP3 Beagle Board")
 	/* Maintainer: Syed Mohammed Khasim - http://beagleboard.org */
 	.atag_offset	= 0x100,
@@ -562,4 +567,5 @@ MACHINE_START(OMAP3_BEAGLE, "OMAP3 Beagle Board")
 	.handle_irq	= omap3_intc_handle_irq,
 	.init_machine	= omap3_beagle_init,
 	.timer		= &omap3_secure_timer,
+	.dt_compat	= omap3_beagle_dt_match,
 MACHINE_END
