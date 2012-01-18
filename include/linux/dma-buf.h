@@ -66,7 +66,6 @@ struct dma_buf_ops {
 	void (*unmap_dma_buf)(struct dma_buf_attachment *,
 						struct sg_table *,
 						enum dma_data_direction);
-	unsigned int (*get_shared_cnt)(struct dma_buf *);
 
 	/* TODO: Add try_map_dma_buf version, to return immed with -EBUSY
 	 * if the call would block.

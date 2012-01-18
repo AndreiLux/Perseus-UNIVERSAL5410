@@ -129,21 +129,6 @@ static void exynos_unmap_dmabuf(struct dma_buf_attachment *attach,
 	atomic_dec(&buffer->shared_refcount);
 }
 
-static unsigned int exynos_get_shared_cnt(struct dma_buf *dmabuf)
-{
-	struct drm_gem_object *obj = dmabuf->priv;
-	struct exynos_drm_gem_obj *exynos_gem_obj;
-	struct exynos_drm_gem_buf *buffer;
-
-	DRM_DEBUG_KMS("%s\n", __FILE__);
-
-	exynos_gem_obj = to_exynos_gem_obj(obj);
-
-	buffer = exynos_gem_obj->buffer;
-
-	return atomic_read(&buffer->shared_refcount);
-}
-
 static void exynos_dmabuf_release(struct dma_buf *dmabuf)
 {
 	struct drm_gem_object *obj = dmabuf->priv;
@@ -173,7 +158,6 @@ static struct dma_buf_ops exynos_dmabuf_ops = {
 	.detach			= exynos_dmabuf_detach,
 	.map_dma_buf		= exynos_map_dmabuf,
 	.unmap_dma_buf		= exynos_unmap_dmabuf,
-	.get_shared_cnt		= exynos_get_shared_cnt,
 	.release		= exynos_dmabuf_release,
 };
 
@@ -223,9 +207,11 @@ int exynos_dmabuf_prime_handle_to_fd(struct drm_device *drm_dev,
 
 	/* get file descriptor for a given dmabuf object. */
 	obj->prime_fd = dma_buf_fd(obj->export_dma_buf);
-	if (*prime_fd < 0) {
+	if (obj->prime_fd < 0) {
 		DRM_DEBUG_KMS("failed to get fd from dmabuf.\n");
-		ret = *prime_fd;
+		dma_buf_put(obj->export_dma_buf);
+		ret = obj->prime_fd;
+		goto err2;
 	}
 
 	/*
