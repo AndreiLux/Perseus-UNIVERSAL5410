@@ -66,6 +66,8 @@
 #define EDID_QUIRK_FIRST_DETAILED_PREFERRED	(1 << 5)
 /* use +hsync +vsync for detailed mode */
 #define EDID_QUIRK_DETAILED_SYNC_PP		(1 << 6)
+/* the panel supports, but does not include a lower clocked mode for lvds */
+#define EDID_QUIRK_ADD_DOWNCLOCK_MODE		(1 << 7)
 
 struct detailed_mode_closure {
 	struct drm_connector *connector;
@@ -120,6 +122,18 @@ static struct edid_quirk {
 	/* Samsung SyncMaster 22[5-6]BW */
 	{ "SAM", 596, EDID_QUIRK_PREFER_LARGE_60 },
 	{ "SAM", 638, EDID_QUIRK_PREFER_LARGE_60 },
+
+	/* Samsung TFT-LCD LTN121AT10-301 */
+	{ "SEC", 0x3142, EDID_QUIRK_ADD_DOWNCLOCK_MODE },
+};
+
+static struct downclock_rate {
+	char *vendor;
+	int product_id;
+	int clock;
+} downclock_rate_list[] = {
+	/* Samsung TFT-LCD LTN121AT10-301 */
+	{ "SEC", 0x3142, 56428},
 };
 
 /*** DDC fetch and block validation ***/
@@ -484,6 +498,37 @@ static void edid_fixup_preferred(struct drm_connector *connector,
 	}
 
 	preferred_mode->type |= DRM_MODE_TYPE_PREFERRED;
+}
+
+static int edid_add_downclock(struct drm_connector *connector,
+			       struct edid *edid)
+{
+	struct drm_display_mode *t, *cur_mode, *downclock_mode;
+	struct downclock_rate *rate;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(downclock_rate_list); i++) {
+		rate = &downclock_rate_list[i];
+
+		if (edid_vendor(edid, rate->vendor) &&
+		    (EDID_PRODUCT_ID(edid) == rate->product_id))
+			break;
+	}
+	if (i == ARRAY_SIZE(downclock_rate_list))
+		return 0;
+
+	list_for_each_entry_safe(cur_mode, t, &connector->probed_modes, head) {
+		if (!(cur_mode->type & DRM_MODE_TYPE_PREFERRED))
+			continue;
+
+		downclock_mode = drm_mode_duplicate(connector->dev, cur_mode);
+		downclock_mode->type &= ~DRM_MODE_TYPE_PREFERRED;
+		downclock_mode->clock = rate->clock;
+		drm_mode_probed_add(connector, downclock_mode);
+		DRM_INFO("Adding LVDS downclock mode\n");
+		return 1;
+	}
+	return 0;
 }
 
 struct drm_display_mode *drm_mode_find_dmt(struct drm_device *dev,
@@ -1760,6 +1805,9 @@ int drm_add_edid_modes(struct drm_connector *connector, struct edid *edid)
 
 	if (quirks & (EDID_QUIRK_PREFER_LARGE_60 | EDID_QUIRK_PREFER_LARGE_75))
 		edid_fixup_preferred(connector, quirks);
+
+	if (quirks & EDID_QUIRK_ADD_DOWNCLOCK_MODE)
+		num_modes += edid_add_downclock(connector, edid);
 
 	drm_add_display_info(edid, &connector->display_info);
 
