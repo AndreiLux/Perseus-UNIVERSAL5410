@@ -1854,6 +1854,7 @@ static int cyapa_suspend(struct device *dev)
 
 	if (device_may_wakeup(dev))
 		enable_irq_wake(cyapa->irq);
+	disable_irq(cyapa->irq);
 
 	return 0;
 }
@@ -1863,6 +1864,7 @@ static int cyapa_resume(struct device *dev)
 	int ret;
 	struct cyapa *cyapa = dev_get_drvdata(dev);
 
+	enable_irq(cyapa->irq);
 	if (device_may_wakeup(dev))
 		disable_irq_wake(cyapa->irq);
 
