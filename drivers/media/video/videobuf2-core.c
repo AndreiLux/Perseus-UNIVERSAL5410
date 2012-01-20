@@ -118,7 +118,7 @@ static void __vb2_buf_dmabuf_put(struct vb2_buffer *vb)
 		void *mem_priv = vb->planes[plane].mem_priv;
 
 		if (mem_priv) {
-			call_memop(q, plane, detach_dmabuf, mem_priv);
+			call_memop(q, detach_dmabuf, mem_priv);
 			dma_buf_put(vb->planes[plane].dbuf);
 			vb->planes[plane].dbuf = NULL;
 			vb->planes[plane].mem_priv = NULL;
@@ -905,6 +905,8 @@ static int __fill_vb2_buffer(struct vb2_buffer *vb, const struct v4l2_buffer *b,
 		}
 		if (b->memory == V4L2_MEMORY_DMABUF) {
 			for (plane = 0; plane < vb->num_planes; ++plane) {
+				v4l2_planes[plane].bytesused =
+					b->m.planes[plane].bytesused;
 				v4l2_planes[plane].m.fd = b->m.planes[plane].m.fd;
 			}
 		}
@@ -1052,17 +1054,13 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 		if (IS_ERR_OR_NULL(dbuf)) {
 			dprintk(1, "qbuf: invalid dmabuf fd for "
 				"plane %d\n", plane);
-			ret = PTR_ERR(dbuf);
+			ret = -EINVAL;
 			goto err;
 		}
 
-		/* this doesn't get filled in until __fill_vb2_buffer(),
-		 * since it isn't known until after dma_buf_get()..
-		 */
-		planes[plane].length = dbuf->size;
-
 		/* Skip the plane if already verified */
 		if (dbuf == vb->planes[plane].dbuf) {
+			planes[plane].length = dbuf->size;
 			dma_buf_put(dbuf);
 			continue;
 		}
@@ -1072,7 +1070,7 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 
 		/* Release previously acquired memory if present */
 		if (vb->planes[plane].mem_priv) {
-			call_memop(q, plane, detach_dmabuf,
+			call_memop(q, detach_dmabuf,
 				vb->planes[plane].mem_priv);
 			dma_buf_put(vb->planes[plane].dbuf);
 		}
@@ -1080,8 +1078,8 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 		vb->planes[plane].mem_priv = NULL;
 
 		/* Acquire each plane's memory */
-		mem_priv = q->mem_ops->attach_dmabuf(
-				q->alloc_ctx[plane], dbuf);
+		mem_priv = call_memop(q, attach_dmabuf, q->alloc_ctx[plane],
+			dbuf, q->plane_sizes[plane], write);
 		if (IS_ERR(mem_priv)) {
 			dprintk(1, "qbuf: failed acquiring dmabuf "
 				"memory for plane %d\n", plane);
@@ -1089,6 +1087,7 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 			goto err;
 		}
 
+		planes[plane].length = dbuf->size;
 		vb->planes[plane].dbuf = dbuf;
 		vb->planes[plane].mem_priv = mem_priv;
 	}
@@ -1098,8 +1097,7 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 	 * the buffer(s)..
 	 */
 	for (plane = 0; plane < vb->num_planes; ++plane) {
-		ret = q->mem_ops->map_dmabuf(
-				vb->planes[plane].mem_priv, write);
+		ret = call_memop(q, map_dmabuf, vb->planes[plane].mem_priv);
 		if (ret) {
 			dprintk(1, "qbuf: failed mapping dmabuf "
 				"memory for plane %d\n", plane);
@@ -1527,7 +1525,7 @@ int vb2_dqbuf(struct vb2_queue *q, struct v4l2_buffer *b, bool nonblocking)
 	 */
 	if (q->memory == V4L2_MEMORY_DMABUF)
 		for (plane = 0; plane < vb->num_planes; ++plane)
-			call_memop(q, plane, unmap_dmabuf,
+			call_memop(q, unmap_dmabuf,
 				vb->planes[plane].mem_priv);
 
 	switch (vb->state) {

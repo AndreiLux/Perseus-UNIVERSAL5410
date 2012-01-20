@@ -88,10 +88,10 @@ struct vb2_mem_ops {
 	 * in the vb2 core, and vb2_mem_ops really just need to get/put the
 	 * sglist (and make sure that the sglist fits it's needs..)
 	 */
-	void		*(*attach_dmabuf)(void *alloc_ctx,
-					  struct dma_buf *dbuf);
+	void		*(*attach_dmabuf)(void *alloc_ctx, struct dma_buf *dbuf,
+				unsigned long size, int write);
 	void		(*detach_dmabuf)(void *buf_priv);
-	int		(*map_dmabuf)(void *buf_priv, int write);
+	int		(*map_dmabuf)(void *buf_priv);
 	void		(*unmap_dmabuf)(void *buf_priv);
 
 	void		*(*vaddr)(void *buf_priv);
