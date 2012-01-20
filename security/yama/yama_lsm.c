@@ -224,6 +224,7 @@ static int ptracer_exception_found(struct task_struct *tracer,
 		tracee = rcu_dereference(tracee->group_leader);
 	list_for_each_entry(relation, &ptracer_relations, node)
 		if (relation->tracee == tracee) {
+			found = true;
 			parent = relation->tracer;
 			found = true;
 			break;
