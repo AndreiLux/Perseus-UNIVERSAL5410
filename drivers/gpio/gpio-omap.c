@@ -415,7 +415,10 @@ static void _clear_gpio_irqbank(struct gpio_bank *bank, int gpio_mask)
 	/* Workaround for clearing DSP GPIO interrupts to allow retention */
 	if (bank->regs->irqstatus2) {
 		reg = bank->base + bank->regs->irqstatus2;
-		__raw_writel(gpio_mask, reg);
+		if (omap_rev() != OMAP5430_REV_ES1_0)
+			__raw_writel(gpio_mask, reg);
+		else
+			__raw_writel(IRQ_STATUS_CLEARALL, reg);
 	}
 
 	/* Flush posted write for the irq status to avoid spurious interrupts */
