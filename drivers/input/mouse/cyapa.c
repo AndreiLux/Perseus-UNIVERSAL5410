@@ -134,14 +134,20 @@
 #define CYAPA_OFFSET_SOFT_RESET  REG_OFFSET_COMMAND_BASE
 
 #define REG_OFFSET_POWER_MODE (REG_OFFSET_COMMAND_BASE + 1)
-#define OP_POWER_MODE_MASK     0xC0
-#define OP_POWER_MODE_SHIFT    6
-#define PWR_MODE_FULL_ACTIVE   3
-#define PWR_MODE_LIGHT_SLEEP   2
-#define PWR_MODE_MEDIUM_SLEEP  1
-#define PWR_MODE_DEEP_SLEEP    0
 #define SET_POWER_MODE_DELAY   10000  /* unit: us */
 #define SET_POWER_MODE_TRIES   3
+
+#define PWR_MODE_MASK   0xFC
+#define PWR_MODE_FULL_ACTIVE (0x3F << 2)
+#define PWR_MODE_IDLE        (0x05 << 2) /* default sleep time is 50 ms. */
+#define PWR_MODE_BTN_ONLY    (0x01 << 2)
+#define PWR_MODE_OFF         (0x00 << 2)
+
+#define PWR_STATUS_MASK      0x0C
+#define PWR_STATUS_ACTIVE    (0x03 << 2)
+#define PWR_STATUS_IDLE      (0x02 << 2)
+#define PWR_STATUS_BTN_ONLY  (0x01 << 2)
+#define PWR_STATUS_OFF       (0x00 << 2)
 
 /*
  * CYAPA trackpad device states.
@@ -756,9 +762,13 @@ static int cyapa_set_power_mode(struct cyapa *cyapa, u8 power_mode)
 	if (cyapa->state != CYAPA_STATE_OP)
 		return 0;
 
-	power = cyapa_read_byte(cyapa, CYAPA_CMD_POWER_MODE);
-	power &= ~OP_POWER_MODE_MASK;
-	power |= (power_mode << OP_POWER_MODE_SHIFT) & OP_POWER_MODE_MASK;
+	ret = cyapa_read_byte(cyapa, CYAPA_CMD_POWER_MODE);
+	if (ret < 0)
+		return ret;
+
+	power = ret;
+	power &= ~PWR_MODE_MASK;
+	power |= power_mode & PWR_MODE_MASK;
 	while (true) {
 		ret = cyapa_write_byte(cyapa, CYAPA_CMD_POWER_MODE, power);
 		if (!ret || --tries < 1)
@@ -1639,10 +1649,13 @@ static int __devexit cyapa_remove(struct i2c_client *client)
 static int cyapa_suspend(struct device *dev)
 {
 	int ret;
+	u8 power_mode;
 	struct cyapa *cyapa = dev_get_drvdata(dev);
 
-	/* set trackpad device to light sleep mode. Just ignore any errors */
-	ret = cyapa_set_power_mode(cyapa, PWR_MODE_LIGHT_SLEEP);
+	/* set trackpad device to idle mode if wakeup is allowed
+	 * otherwise turn off. */
+	power_mode = device_may_wakeup(dev) ? PWR_MODE_IDLE : PWR_MODE_OFF;
+	ret = cyapa_set_power_mode(cyapa, power_mode);
 	if (ret < 0)
 		dev_err(dev, "set power mode failed, %d\n", ret);
 
