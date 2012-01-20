@@ -143,6 +143,8 @@
 #define PWR_MODE_BTN_ONLY    (0x01 << 2)
 #define PWR_MODE_OFF         (0x00 << 2)
 
+#define BTN_ONLY_MODE_NAME   "buttononly"
+
 #define PWR_STATUS_MASK      0x0C
 #define PWR_STATUS_ACTIVE    (0x03 << 2)
 #define PWR_STATUS_IDLE      (0x02 << 2)
@@ -215,6 +217,9 @@ struct cyapa {
 	u8 adapter_func;
 	bool irq_wake;  /* irq wake is enabled */
 	bool smbus;
+
+	/* power mode settings */
+	u8 suspend_power_mode;
 
 	/* read from query data region. */
 	char product_id[16];
@@ -1226,12 +1231,81 @@ static ssize_t cyapa_update_fw_store(struct device *dev,
 	return ret ? ret : count;
 }
 
+static u8 cyapa_sleep_time_to_pwr_cmd(u16 sleep_time)
+{
+	if (sleep_time < 20)
+		sleep_time = 20;     /* minimal sleep time. */
+	else if (sleep_time > 1000)
+		sleep_time = 1000;   /* maximal sleep time. */
+
+	if (sleep_time < 100)
+		return ((sleep_time / 10) << 2) & PWR_MODE_MASK;
+	else
+		return ((sleep_time / 20 + 5) << 2) & PWR_MODE_MASK;
+}
+
+static u16 cyapa_pwr_cmd_to_sleep_time(u8 pwr_mode)
+{
+	u8 encoded_time = pwr_mode >> 2;
+	return (encoded_time < 10) ? encoded_time * 10
+				   : (encoded_time - 5) * 20;
+}
+
+static ssize_t cyapa_show_suspend_scanrate(struct device *dev,
+					   struct device_attribute *attr,
+					   char *buf)
+{
+	struct cyapa *cyapa = dev_get_drvdata(dev);
+	int len = 0;
+	u8 pwr_cmd = cyapa->suspend_power_mode;
+
+	if (pwr_cmd == PWR_MODE_BTN_ONLY)
+		len = sprintf(buf, "%s\n", BTN_ONLY_MODE_NAME);
+	else
+		len = sprintf(buf, "%u\n",
+			      cyapa_pwr_cmd_to_sleep_time(pwr_cmd));
+	return len;
+}
+
+static ssize_t cyapa_update_suspend_scanrate(struct device *dev,
+					     struct device_attribute *attr,
+					     const char *buf, size_t count)
+{
+	struct cyapa *cyapa = dev_get_drvdata(dev);
+	const char *btnonly = BTN_ONLY_MODE_NAME;
+	u8 pwr_cmd;
+	u16 sleep_time;
+	size_t len;
+
+	if (buf == NULL || count == 0)
+		goto invalidparam;
+
+	len = (buf[count - 1] == '\n') ? count - 1 : count;
+
+	if (len == strlen(btnonly) &&
+	    !strncasecmp(buf, btnonly, strlen(btnonly)))
+		pwr_cmd = PWR_MODE_BTN_ONLY;
+	else if (!kstrtou16(buf, 10, &sleep_time))
+		pwr_cmd = cyapa_sleep_time_to_pwr_cmd(sleep_time);
+	else
+		goto invalidparam;
+
+	cyapa->suspend_power_mode = pwr_cmd;
+	return count;
+
+invalidparam:
+	dev_err(dev, "invalid suspend scanrate ms parameters\n");
+	return -EINVAL;
+}
 
 static DEVICE_ATTR(firmware_version, S_IRUGO, cyapa_show_fm_ver, NULL);
 static DEVICE_ATTR(hardware_version, S_IRUGO, cyapa_show_hw_ver, NULL);
 static DEVICE_ATTR(product_id, S_IRUGO, cyapa_show_product_id, NULL);
 static DEVICE_ATTR(protocol_version, S_IRUGO, cyapa_show_protocol_version, NULL);
 static DEVICE_ATTR(update_fw, S_IWUSR, NULL, cyapa_update_fw_store);
+static DEVICE_ATTR(suspend_scanrate_ms, S_IRUGO|S_IWUSR,
+		   cyapa_show_suspend_scanrate,
+		   cyapa_update_suspend_scanrate);
 
 static struct attribute *cyapa_sysfs_entries[] = {
 	&dev_attr_firmware_version.attr,
@@ -1244,6 +1318,16 @@ static struct attribute *cyapa_sysfs_entries[] = {
 
 static const struct attribute_group cyapa_sysfs_group = {
 	.attrs = cyapa_sysfs_entries,
+};
+
+static struct attribute *cyapa_power_wakeup_entries[] = {
+	&dev_attr_suspend_scanrate_ms.attr,
+	NULL,
+};
+
+static const struct attribute_group cyapa_power_wakeup_group = {
+	.name = power_group_name,
+	.attrs = cyapa_power_wakeup_entries,
 };
 
 /*
@@ -1589,6 +1673,7 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 	if (cyapa->adapter_func == CYAPA_ADAPTER_FUNC_SMBUS)
 		cyapa->smbus = true;
 	cyapa->state = CYAPA_STATE_NO_DEVICE;
+	cyapa->suspend_power_mode = PWR_MODE_IDLE;
 
 	mutex_init(&cyapa->debugfs_mutex);
 
@@ -1616,6 +1701,10 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 
 	if (cyapa_debugfs_init(cyapa))
 		dev_warn(dev, "error creating debugfs entries.\n");
+
+	if (device_can_wakeup(dev) &&
+	    sysfs_merge_group(&client->dev.kobj, &cyapa_power_wakeup_group))
+		dev_warn(dev, "error creating wakeup power entries.\n");
 
 	cyapa_detect(cyapa);
 
@@ -1658,7 +1747,8 @@ static int cyapa_suspend(struct device *dev)
 
 	/* set trackpad device to idle mode if wakeup is allowed
 	 * otherwise turn off. */
-	power_mode = device_may_wakeup(dev) ? PWR_MODE_IDLE : PWR_MODE_OFF;
+	power_mode = device_may_wakeup(dev) ? cyapa->suspend_power_mode
+					    : PWR_MODE_OFF;
 	ret = cyapa_set_power_mode(cyapa, power_mode);
 	if (ret < 0)
 		dev_err(dev, "set power mode failed, %d\n", ret);
