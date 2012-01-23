@@ -118,6 +118,7 @@ void omap242x_map_io(void);
 void omap243x_map_io(void);
 void omap3_map_io(void);
 void omap4_map_io(void);
+int omap_barriers_init(void);
 
 /**
  * omap_test_timeout - busy-loop, testing a condition

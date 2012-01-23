@@ -47,7 +47,7 @@ void omap_bus_sync(void)
 	}
 }
 
-static int __init omap_barriers_init(void)
+int __init omap_barriers_init(void)
 {
 	struct map_desc dram_io_desc[1];
 	phys_addr_t paddr;
@@ -77,7 +77,11 @@ static int __init omap_barriers_init(void)
 
 	return 0;
 }
-core_initcall(omap_barriers_init);
+#else
+int __init omap_barriers_init(void)
+{
+	return 0;
+}
 #endif
 
 void __init gic_init_irq(void)

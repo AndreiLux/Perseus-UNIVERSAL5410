@@ -282,7 +282,12 @@ void __init omapti816x_map_common_io(void)
 #ifdef CONFIG_ARCH_OMAP4
 void __init omap44xx_map_common_io(void)
 {
+	int res;
+
 	iotable_init(omap44xx_io_desc, ARRAY_SIZE(omap44xx_io_desc));
+	res = omap_barriers_init();
+	if (res)
+		pr_err("Barriers broken\n");
 }
 #endif
 
