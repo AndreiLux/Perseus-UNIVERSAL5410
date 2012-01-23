@@ -16,6 +16,7 @@
 #include <linux/io.h>
 #include <linux/platform_device.h>
 #include <linux/memblock.h>
+#include <linux/module.h>
 
 #include <asm/hardware/gic.h>
 #include <asm/hardware/cache-l2x0.h>
@@ -46,6 +47,7 @@ void omap_bus_sync(void)
 		isb();
 	}
 }
+EXPORT_SYMBOL(omap_bus_sync);
 
 int __init omap_barriers_init(void)
 {
