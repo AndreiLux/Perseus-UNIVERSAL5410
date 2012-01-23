@@ -1788,4 +1788,3 @@ static int __init omap_emif_register(void)
 {
 	return platform_driver_register(&omap_emif_driver);
 }
-postcore_initcall(omap_emif_register);
