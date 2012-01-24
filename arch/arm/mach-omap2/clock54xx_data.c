@@ -1745,7 +1745,7 @@ static struct clk hsi_fclk = {
 };
 
 /* SCRM aux clk nodes */
-
+#if 0
 static const struct clksel auxclk_src_sel[] = {
 	{ .parent = &sys_clkin_ck, .rates = div_1_0_rates },
 	{ .parent = &dpll_core_m3x2_ck, .rates = div_1_1_rates },
@@ -2028,7 +2028,7 @@ static struct clk auxclkreq5_ck = {
 	.clksel_mask	= OMAP4_MAPPING_MASK,
 	.recalc		= &omap2_clksel_recalc,
 };
-
+#endif
 /*
  * clkdev
  */
@@ -2172,6 +2172,7 @@ static struct omap_clk omap54xx_clks[] = {
 	CLK(NULL,	"usb_tll_hs_usb_ch2_clk",	&usb_tll_hs_usb_ch2_clk,	CK_54XX),
 	CLK(NULL,	"fdif_fclk",			&fdif_fclk,	CK_54XX),
 	CLK(NULL,	"hsi_fclk",			&hsi_fclk,	CK_54XX),
+#if 0
 	CLK(NULL,	"auxclk0_src_ck",		&auxclk0_src_ck,	CK_54XX),
 	CLK(NULL,	"auxclk0_ck",			&auxclk0_ck,	CK_54XX),
 	CLK(NULL,	"auxclkreq0_ck",		&auxclkreq0_ck,	CK_54XX),
@@ -2190,6 +2191,7 @@ static struct omap_clk omap54xx_clks[] = {
 	CLK(NULL,	"auxclk5_src_ck",		&auxclk5_src_ck,	CK_54XX),
 	CLK(NULL,	"auxclk5_ck",			&auxclk5_ck,	CK_54XX),
 	CLK(NULL,	"auxclkreq5_ck",		&auxclkreq5_ck,	CK_54XX),
+#endif
 	CLK(NULL,	"gpmc_ck",			&dummy_ck,	CK_54XX),
 	CLK(NULL,	"gpt1_ick",			&dummy_ck,	CK_54XX),
 	CLK(NULL,	"gpt2_ick",			&dummy_ck,	CK_54XX),
