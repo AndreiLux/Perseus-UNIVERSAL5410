@@ -1271,44 +1271,84 @@ static struct clk per_abe_24m_fclk = {
 
 static struct clk timer10_clk_mux_ck = {
 	.name		= "timer10_clk_mux_ck",
-	.parent		= &sys_clkin_ck,
+	.clksel		= abe_dpll_bypass_clk_mux_sel,
+	.init		= &omap2_init_clksel_parent,
+	.clksel_reg	= OMAP54XX_CM_L4PER_TIMER10_CLKCTRL,
+	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
-	.recalc		= &followparent_recalc,
+	.recalc		= &omap2_clksel_recalc,
+	.enable_reg	= OMAP54XX_CM_L4PER_TIMER10_CLKCTRL,
+	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
+	.clkdm_name	= "l4per_clkdm",
 };
 
 static struct clk timer11_clk_mux_ck = {
 	.name		= "timer11_clk_mux_ck",
-	.parent		= &sys_clkin_ck,
+	.clksel		= abe_dpll_bypass_clk_mux_sel,
+	.init		= &omap2_init_clksel_parent,
+	.clksel_reg	= OMAP54XX_CM_L4PER_TIMER11_CLKCTRL,
+	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
-	.recalc		= &followparent_recalc,
+	.recalc		= &omap2_clksel_recalc,
+	.enable_reg	= OMAP54XX_CM_L4PER_TIMER11_CLKCTRL,
+	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
+	.clkdm_name	= "l4per_clkdm",
 };
 
 static struct clk timer1_clk_mux_ck = {
-	.name		= "timer1_clk_mux_ck",
+	.name           = "timer1_clk_mux_ck",
 	.parent		= &sys_clkin_ck,
+	.clksel		= abe_dpll_bypass_clk_mux_sel,
+	.init		= &omap2_init_clksel_parent,
+	.clksel_reg	= OMAP54XX_CM_WKUPAON_TIMER1_CLKCTRL,
+	.clksel_mask    = OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
-	.recalc		= &followparent_recalc,
+	.recalc		= &omap2_clksel_recalc,
+	.enable_reg     = OMAP54XX_CM_WKUPAON_TIMER1_CLKCTRL,
+	.enable_bit     = OMAP54XX_MODULEMODE_SWCTRL,
+	.clkdm_name     = "wkupaon_clkdm",
 };
 
 static struct clk timer2_clk_mux_ck = {
 	.name		= "timer2_clk_mux_ck",
 	.parent		= &sys_clkin_ck,
+	.clksel		= abe_dpll_bypass_clk_mux_sel,
+	.init		= &omap2_init_clksel_parent,
+	.clksel_reg	= OMAP54XX_CM_L4PER_TIMER2_CLKCTRL,
+	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
-	.recalc		= &followparent_recalc,
+	.recalc		= &omap2_clksel_recalc,
+	.enable_reg	= OMAP54XX_CM_L4PER_TIMER2_CLKCTRL,
+	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
+	.clkdm_name	= "l4per_clkdm",
 };
 
 static struct clk timer3_clk_mux_ck = {
 	.name		= "timer3_clk_mux_ck",
 	.parent		= &sys_clkin_ck,
+	.clksel		= abe_dpll_bypass_clk_mux_sel,
+	.init		= &omap2_init_clksel_parent,
+	.clksel_reg	= OMAP54XX_CM_L4PER_TIMER3_CLKCTRL,
+	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
-	.recalc		= &followparent_recalc,
+	.recalc		= &omap2_clksel_recalc,
+	.enable_reg	= OMAP54XX_CM_L4PER_TIMER3_CLKCTRL,
+	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
+	.clkdm_name	= "l4per_clkdm",
 };
 
 static struct clk timer4_clk_mux_ck = {
 	.name		= "timer4_clk_mux_ck",
 	.parent		= &sys_clkin_ck,
+	.clksel		= abe_dpll_bypass_clk_mux_sel,
+	.init		= &omap2_init_clksel_parent,
+	.clksel_reg	= OMAP54XX_CM_L4PER_TIMER4_CLKCTRL,
+	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
-	.recalc		= &followparent_recalc,
+	.recalc		= &omap2_clksel_recalc,
+	.enable_reg	= OMAP54XX_CM_L4PER_TIMER4_CLKCTRL,
+	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
+	.clkdm_name	= "l4per_clkdm",
 };
 
 static const struct clksel timer5_sync_mux_sel[] = {
@@ -1320,36 +1360,71 @@ static const struct clksel timer5_sync_mux_sel[] = {
 static struct clk timer5_sync_mux_ck = {
 	.name		= "timer5_sync_mux_ck",
 	.parent		= &syc_clk_div_ck,
+	.clksel		= timer5_sync_mux_sel,
+	.init		= &omap2_init_clksel_parent,
+	.clksel_reg	= OMAP54XX_CM_ABE_TIMER5_CLKCTRL,
+	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
-	.recalc		= &followparent_recalc,
+	.recalc		= &omap2_clksel_recalc,
+	.enable_reg	= OMAP54XX_CM_ABE_TIMER5_CLKCTRL,
+	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
+	.clkdm_name	= "abe_clkdm",
 };
 
 static struct clk timer6_sync_mux_ck = {
 	.name		= "timer6_sync_mux_ck",
 	.parent		= &syc_clk_div_ck,
+	.clksel		= timer5_sync_mux_sel,
+	.init		= &omap2_init_clksel_parent,
+	.clksel_reg	= OMAP54XX_CM_ABE_TIMER6_CLKCTRL,
+	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
-	.recalc		= &followparent_recalc,
+	.recalc		= &omap2_clksel_recalc,
+	.enable_reg	= OMAP54XX_CM_ABE_TIMER6_CLKCTRL,
+	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
+	.clkdm_name	= "abe_clkdm",
 };
 
 static struct clk timer7_sync_mux_ck = {
 	.name		= "timer7_sync_mux_ck",
 	.parent		= &syc_clk_div_ck,
+	.clksel		= timer5_sync_mux_sel,
+	.init		= &omap2_init_clksel_parent,
+	.clksel_reg	= OMAP54XX_CM_ABE_TIMER7_CLKCTRL,
+	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
-	.recalc		= &followparent_recalc,
+	.recalc		= &omap2_clksel_recalc,
+	.enable_reg	= OMAP54XX_CM_ABE_TIMER7_CLKCTRL,
+	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
+	.clkdm_name	= "abe_clkdm",
 };
 
 static struct clk timer8_sync_mux_ck = {
 	.name		= "timer8_sync_mux_ck",
 	.parent		= &syc_clk_div_ck,
+	.clksel		= timer5_sync_mux_sel,
+	.init		= &omap2_init_clksel_parent,
+	.clksel_reg	= OMAP54XX_CM_ABE_TIMER8_CLKCTRL,
+	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
-	.recalc		= &followparent_recalc,
+	.recalc		= &omap2_clksel_recalc,
+	.enable_reg	= OMAP54XX_CM_ABE_TIMER8_CLKCTRL,
+	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
+	.clkdm_name	= "abe_clkdm",
 };
 
 static struct clk timer9_clk_mux_ck = {
 	.name		= "timer9_clk_mux_ck",
 	.parent		= &sys_clkin_ck,
+	.clksel		= abe_dpll_bypass_clk_mux_sel,
+	.init		= &omap2_init_clksel_parent,
+	.clksel_reg	= OMAP54XX_CM_L4PER_TIMER9_CLKCTRL,
+	.clksel_mask	= OMAP54XX_CLKSEL_MASK,
 	.ops		= &clkops_null,
-	.recalc		= &followparent_recalc,
+	.recalc		= &omap2_clksel_recalc,
+	.enable_reg	= OMAP54XX_CM_L4PER_TIMER9_CLKCTRL,
+	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
+	.clkdm_name	= "l4per_clkdm",
 };
 
 static const struct clksel wkupaon_clk_mux_sel[] = {
@@ -2229,6 +2304,39 @@ static struct omap_clk omap54xx_clks[] = {
 	CLK("usbhs-omap.0",	"usbhost_ick",		&dummy_ck,	CK_54XX),
 	CLK("usbhs-omap.0",	"usbtll_fck",		&dummy_ck,	CK_54XX),
 	CLK("omap_wdt",	"ick",				&dummy_ck,	CK_54XX),
+	CLK(NULL,       "gpt1_fck",                     &timer1_clk_mux_ck,    CK_54XX),
+	CLK(NULL,       "gpt10_fck",                    &timer10_clk_mux_ck,   CK_54XX),
+	CLK(NULL,       "gpt11_fck",                    &timer11_clk_mux_ck,   CK_54XX),
+	CLK(NULL,       "gpt2_fck",                     &timer2_clk_mux_ck,    CK_54XX),
+	CLK(NULL,       "gpt3_fck",                     &timer3_clk_mux_ck,    CK_54XX),
+	CLK(NULL,       "gpt4_fck",                     &timer4_clk_mux_ck,    CK_54XX),
+	CLK(NULL,       "gpt5_fck",                     &timer5_sync_mux_ck,    CK_54XX),
+	CLK(NULL,       "gpt6_fck",                     &timer6_sync_mux_ck,    CK_54XX),
+	CLK(NULL,       "gpt7_fck",                     &timer7_sync_mux_ck,    CK_54XX),
+	CLK(NULL,       "gpt8_fck",                     &timer8_sync_mux_ck,    CK_54XX),
+	CLK(NULL,       "gpt9_fck",                     &timer9_clk_mux_ck,    CK_54XX),
+	CLK("omap_timer.1",	"32k_ck",	&sys_32k_ck,	CK_54XX),
+	CLK("omap_timer.2",	"32k_ck",	&sys_32k_ck,	CK_54XX),
+	CLK("omap_timer.3",	"32k_ck",	&sys_32k_ck,	CK_54XX),
+	CLK("omap_timer.4",	"32k_ck",	&sys_32k_ck,	CK_54XX),
+	CLK("omap_timer.5",	"32k_ck",	&sys_32k_ck,	CK_54XX),
+	CLK("omap_timer.6",	"32k_ck",	&sys_32k_ck,	CK_54XX),
+	CLK("omap_timer.7",	"32k_ck",	&sys_32k_ck,	CK_54XX),
+	CLK("omap_timer.8",	"32k_ck",	&sys_32k_ck,	CK_54XX),
+	CLK("omap_timer.9",	"32k_ck",	&sys_32k_ck,	CK_54XX),
+	CLK("omap_timer.10",	"32k_ck",	&sys_32k_ck,	CK_54XX),
+	CLK("omap_timer.11",	"32k_ck",	&sys_32k_ck,	CK_54XX),
+	CLK("omap_timer.1",	"sys_ck",	&sys_clkin_ck,	CK_54XX),
+	CLK("omap_timer.2",	"sys_ck",	&sys_clkin_ck,	CK_54XX),
+	CLK("omap_timer.3",	"sys_ck",	&sys_clkin_ck,	CK_54XX),
+	CLK("omap_timer.4",	"sys_ck",	&sys_clkin_ck,	CK_54XX),
+	CLK("omap_timer.9",	"sys_ck",	&sys_clkin_ck,	CK_54XX),
+	CLK("omap_timer.10",	"sys_ck",	&sys_clkin_ck,	CK_54XX),
+	CLK("omap_timer.11",	"sys_ck",	&sys_clkin_ck,	CK_54XX),
+	CLK("omap_timer.5",	"sys_ck",	&syc_clk_div_ck,	CK_54XX),
+	CLK("omap_timer.6",	"sys_ck",	&syc_clk_div_ck,	CK_54XX),
+	CLK("omap_timer.7",	"sys_ck",	&syc_clk_div_ck,	CK_54XX),
+	CLK("omap_timer.8",	"sys_ck",	&syc_clk_div_ck,	CK_54XX),
 };
 
 int __init omap5xxx_clk_init(void)
