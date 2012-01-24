@@ -364,6 +364,17 @@ config MACH_SMDK4412
 	  Machine support for Samsung SMDK4412
 endif
 
+if ARCH_EXYNOS5
+
+comment "EXYNOS5250 Boards"
+
+config MACH_SMDK5250
+	bool "SMDK5250"
+	select SOC_EXYNOS5250
+	help
+	  Machine support for Samsung SMDK5250
+endif
+
 comment "Flattened Device Tree based board for EXYNOS SoCs"
 
 config MACH_EXYNOS4_DT
