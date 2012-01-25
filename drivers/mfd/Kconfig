@@ -915,6 +915,13 @@ config MFD_PALMAS_GPADC
 	  If you say yes here you get support for the GPADC on
 	  Palmas series of PMIC chips from Texas Instruments.
 
+config MFD_PALMAS_RESOURCE
+	bool "Support for the misc RESOURCES on the Palmas series chips"
+	depends on MFD_PALMAS
+	help
+	  If you say yes here you get support for the misc RESOURCES on
+	  Palmas series of PMIC chips from Texas Instruments.
+
 endif # MFD_SUPPORT
 
 menu "Multimedia Capabilities Port drivers"
@@ -938,12 +945,5 @@ config MCP_UCB1200
 config MCP_UCB1200_TS
 	tristate "Touchscreen interface support"
 	depends on MCP_UCB1200 && INPUT
-
-config MFD_PALMAS_GPADC
-	bool "Support for the GPADC on the Palmas series chips"
-	depends on MFD_PALMAS
-	help
-	  If you say yes here you get support for the GPADC on
-	  Palmas series of PMIC chips from Texas Instruments.
 
 endmenu

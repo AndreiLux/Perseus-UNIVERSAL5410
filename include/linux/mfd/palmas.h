@@ -306,6 +306,26 @@ extern int palmas_set_switch_smps10(struct palmas *palmas, int sw);
 extern int palmas_set_ldo8_tracking(struct palmas *palmas, int tracking);
 extern int palmas_set_ldo9_bypass(struct palmas *palmas, int bypass);
 
+/* Resource exported functions */
+
+extern int palmas_enable_clk32kg(struct palmas_resource *resource);
+extern int palmas_disable_clk32kg(struct palmas_resource *resource);
+extern int palmas_is_enabled_clk32kg(struct palmas_resource *resource);
+extern int palmas_enable_clk32kgaudio(struct palmas_resource *resource);
+extern int palmas_disable_clk32kgaudio(struct palmas_resource *resource);
+extern int palmas_is_enabled_clk32kgaudio(struct palmas_resource *resource);
+extern int palmas_enable_regen1(struct palmas_resource *resource);
+extern int palmas_disable_regen1(struct palmas_resource *resource);
+extern int palmas_enable_regen2(struct palmas_resource *resource);
+extern int palmas_disable_regen2(struct palmas_resource *resource);
+extern int palmas_is_enabled_regen2(struct palmas_resource *resource);
+extern int palmas_enable_sysen1(struct palmas_resource *resource);
+extern int palmas_disable_sysen1(struct palmas_resource *resource);
+extern int palmas_is_enabled_sysen1(struct palmas_resource *resource);
+extern int palmas_enable_sysen2(struct palmas_resource *resource);
+extern int palmas_disable_sysen2(struct palmas_resource *resource);
+extern int palmas_is_enabled_sysen2(struct palmas_resource *resource);
+
 /* Define the palmas IRQ numbers */
 enum palmas_irqs {
 	/* INT1 registers */
