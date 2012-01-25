@@ -426,6 +426,14 @@ static int omap2_dm_timer_set_src(struct platform_device *pdev, int source)
 	return ret;
 }
 
+static struct omap_device_pm_latency omap2_dmtimer_latency[] = {
+	{
+		.deactivate_func = omap_device_idle_hwmods,
+		.activate_func   = omap_device_enable_hwmods,
+		.flags = OMAP_DEVICE_LATENCY_AUTO_ADJUST,
+	},
+};
+
 /**
  * omap_timer_init - build and register timer device with an
  * associated timer hwmod
