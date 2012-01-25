@@ -53,19 +53,23 @@
 #define OMAP2_MPU_SOURCE	"sys_ck"
 #define OMAP3_MPU_SOURCE	OMAP2_MPU_SOURCE
 #define OMAP4_MPU_SOURCE	"sys_clkin_ck"
+#define OMAP5_MPU_SOURCE	"sys_clkin_ck"
 #define OMAP2_32K_SOURCE	"func_32k_ck"
 #define OMAP3_32K_SOURCE	"omap_32k_fck"
 #define OMAP4_32K_SOURCE	"sys_32k_ck"
+#define OMAP5_32K_SOURCE	"sys_32k_ck"
 
 #ifdef CONFIG_OMAP_32K_TIMER
 #define OMAP2_CLKEV_SOURCE	OMAP2_32K_SOURCE
 #define OMAP3_CLKEV_SOURCE	OMAP3_32K_SOURCE
 #define OMAP4_CLKEV_SOURCE	OMAP4_32K_SOURCE
+#define OMAP5_CLKEV_SOURCE	OMAP5_32K_SOURCE
 #define OMAP3_SECURE_TIMER	12
 #else
 #define OMAP2_CLKEV_SOURCE	OMAP2_MPU_SOURCE
 #define OMAP3_CLKEV_SOURCE	OMAP3_MPU_SOURCE
 #define OMAP4_CLKEV_SOURCE	OMAP4_MPU_SOURCE
+#define OMAP5_CLKEV_SOURCE	OMAP5_MPU_SOURCE
 #define OMAP3_SECURE_TIMER	1
 #endif
 
@@ -348,6 +352,20 @@ static void __init omap4_timer_init(void)
 OMAP_SYS_TIMER(4)
 #endif
 
+#ifdef CONFIG_ARCH_OMAP5
+static void __init omap5_timer_init(void)
+{
+#ifdef CONFIG_LOCAL_TIMERS
+	twd_base = ioremap(OMAP54XX_LOCAL_TWD_BASE, SZ_256);
+	BUG_ON(!twd_base);
+#endif
+	omap2_gp_clockevent_init(1, OMAP5_CLKEV_SOURCE);
+
+	omap2_gp_clocksource_init(2, OMAP5_MPU_SOURCE);
+}
+OMAP_SYS_TIMER(5)
+#endif
+
 /**
  * omap2_dm_timer_set_src - change the timer input clock source
  * @pdev:	timer platform device pointer
@@ -501,3 +519,4 @@ static int __init omap2_dm_timer_init(void)
 	return 0;
 }
 arch_initcall(omap2_dm_timer_init);
+
