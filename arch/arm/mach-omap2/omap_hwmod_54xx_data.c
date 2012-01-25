@@ -29,6 +29,7 @@
 #include <plat/mmc.h>
 #include <plat/i2c.h>
 #include <plat/dmtimer.h>
+#include <plat/scm.h>
 
 #include "omap_hwmod_common_data.h"
 
@@ -918,6 +919,72 @@ static struct omap_hwmod omap54xx_aess_hwmod = {
 	.masters	= omap54xx_aess_masters,
 	.masters_cnt	= ARRAY_SIZE(omap54xx_aess_masters),
 	.omap_chip	= OMAP_CHIP_INIT(CHIP_IS_OMAP54XX),
+};
+
+/*
+ * 'ctrl_module' class
+ * attila core control module
+ */
+
+static struct omap_hwmod_class_sysconfig omap54xx_ctrl_module_sysc = {
+	.rev_offs       = 0x0000,
+	.sysc_offs      = 0x0010,
+	.sysc_flags     = SYSC_HAS_SIDLEMODE,
+	.idlemodes      = (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART |
+				SIDLE_SMART_WKUP),
+	.sysc_fields    = &omap_hwmod_sysc_type2,
+};
+
+static struct omap_hwmod_class omap54xx_ctrl_module_hwmod_class = {
+	.name   = "ctrl_module",
+	.sysc   = &omap54xx_ctrl_module_sysc,
+};
+
+/* ctrl_module_core */
+static struct omap_hwmod omap54xx_ctrl_module_core_hwmod;
+static struct omap_hwmod_irq_info omap54xx_ctrl_module_core_irqs[] = {
+	{ .name = "sec_evts", .irq = 8 + OMAP44XX_IRQ_GIC_START },
+	{ .name = "thermal_alert", .irq = 126 + OMAP44XX_IRQ_GIC_START },
+};
+
+static struct omap_hwmod_addr_space omap54xx_ctrl_module_core_addrs[] = {
+	{
+		.pa_start       = 0x4a002000,
+		.pa_end         = 0x4a0027ff,
+		.flags          = ADDR_TYPE_RT
+	},
+};
+
+/* l4_cfg -> ctrl_module_core */
+static struct omap_hwmod_ocp_if omap54xx_l4_cfg__ctrl_module_core = {
+	.master         = &omap54xx_l4_cfg_hwmod,
+	.slave          = &omap54xx_ctrl_module_core_hwmod,
+	.clk            = "l4_div_ck",
+	.addr           = omap54xx_ctrl_module_core_addrs,
+	.user           = OCP_USER_MPU | OCP_USER_SDMA,
+};
+
+/* ctrl_module_core slave ports */
+static struct omap_hwmod_ocp_if *omap54xx_ctrl_module_core_slaves[] = {
+	&omap54xx_l4_cfg__ctrl_module_core,
+};
+
+/* scm dev_attr */
+static struct omap4plus_scm_dev_attr scm_dev_attr = {
+	.rev		= 2,
+	.cnt		= 3,
+};
+
+static struct omap_hwmod omap54xx_ctrl_module_core_hwmod = {
+	.name           = "ctrl_module_core",
+	.class          = &omap54xx_ctrl_module_hwmod_class,
+	.mpu_irqs       = omap54xx_ctrl_module_core_irqs,
+	.main_clk       = "l4_div_ck",
+	.slaves         = omap54xx_ctrl_module_core_slaves,
+	.slaves_cnt     = ARRAY_SIZE(omap54xx_ctrl_module_core_slaves),
+	.dev_attr	= &scm_dev_attr,
+	.clkdm_name     = "l4cfg_clkdm",
+	.omap_chip      = OMAP_CHIP_INIT(CHIP_IS_OMAP54XX),
 };
 
 /*
@@ -6266,6 +6333,9 @@ static __initdata struct omap_hwmod *omap54xx_hwmods[] = {
 	&omap54xx_timer9_hwmod,
 	&omap54xx_timer10_hwmod,
 	&omap54xx_timer11_hwmod,
+
+	/* scm hwmod */
+	&omap54xx_ctrl_module_core_hwmod,
 
 	/* uart class */
 	&omap54xx_uart1_hwmod,
