@@ -376,15 +376,6 @@ static struct irq_chip tsi108_pci_irq = {
 	.irq_unmask = tsi108_pci_irq_unmask,
 };
 
-static int pci_irq_host_xlate(struct irq_domain *h, struct device_node *ct,
-			    const u32 *intspec, unsigned int intsize,
-			    irq_hw_number_t *out_hwirq, unsigned int *out_flags)
-{
-	*out_hwirq = intspec[0];
-	*out_flags = IRQ_TYPE_LEVEL_HIGH;
-	return 0;
-}
-
 static int pci_irq_host_map(struct irq_domain *h, unsigned int virq,
 			  irq_hw_number_t hw)
 {	unsigned int irq;
@@ -399,7 +390,7 @@ static int pci_irq_host_map(struct irq_domain *h, unsigned int virq,
 
 static struct irq_domain_ops pci_irq_domain_ops = {
 	.map = pci_irq_host_map,
-	.xlate = pci_irq_host_xlate,
+	.xlate = irq_domain_xlate_pci,
 };
 
 /*
