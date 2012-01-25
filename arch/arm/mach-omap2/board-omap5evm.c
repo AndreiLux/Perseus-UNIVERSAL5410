@@ -26,12 +26,18 @@
 #include <mach/omap4-common.h>
 #include <plat/common.h>
 
+#include "common-board-devices.h"
+
 static void __init omap_5430evm_init_early(void)
 {
 	omap2_init_common_infrastructure();
 	omap2_init_common_devices(NULL, NULL);
 }
 
+static struct __devinitdata emif_custom_configs custom_configs = {
+	.mask	= EMIF_CUSTOM_CONFIG_LPMODE,
+	.lpmode	= EMIF_LP_MODE_DISABLE
+};
 static int __init omap_5430evm_i2c_init(void)
 {
 	omap_register_i2c_bus(1, 400, NULL, 0);
@@ -42,6 +48,18 @@ static int __init omap_5430evm_i2c_init(void)
 }
 static void __init omap_5430evm_init(void)
 {
+	omap_emif_set_device_details(1, &lpddr2_elpida_4G_S4_x2_info,
+			lpddr2_elpida_4G_S4_timings,
+			ARRAY_SIZE(lpddr2_elpida_4G_S4_timings),
+			&lpddr2_elpida_S4_min_tck,
+			&custom_configs);
+
+	omap_emif_set_device_details(2, &lpddr2_elpida_4G_S4_x2_info,
+			lpddr2_elpida_4G_S4_timings,
+			ARRAY_SIZE(lpddr2_elpida_4G_S4_timings),
+			&lpddr2_elpida_S4_min_tck,
+			&custom_configs);
+
 	omap_5430evm_i2c_init();
 	omap_serial_init();
 }
