@@ -123,6 +123,27 @@ config IRQ_REMAP
 	  To use x2apic mode in the CPU's which support x2APIC enhancements or
 	  to support platforms with CPU's having > 8 bit APIC ID, say Y.
 
+config EXYNOS_IOMMU
+	bool "Exynos IOMMU Support"
+	depends on ARCH_EXYNOS && EXYNOS_DEV_SYSMMU
+	select IOMMU_API
+	help
+	  Support for the IOMMU(System MMU) of Samsung Exynos application
+	  processor family. This enables H/W multimedia accellerators to see
+	  non-linear physical memory chunks as a linear memory in their
+	  address spaces
+
+	  If unsure, say N here.
+
+config EXYNOS_IOMMU_DEBUG
+	bool "Debugging log for Exynos IOMMU"
+	depends on EXYNOS_IOMMU
+	help
+	  Select this to see the detailed log message that shows what
+	  happens in the IOMMU driver
+
+	  Say N unless you need kernel log message for IOMMU debugging
+
 # OMAP IOMMU support
 config OMAP_IOMMU
 	bool "OMAP IOMMU Support"
