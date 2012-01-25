@@ -1,5 +1,5 @@
 /*
- * OMAP44xx PRM instance offset macros
+ * OMAP54xx PRM instance offset macros
  *
  * Copyright (C) 2009-2010 Texas Instruments, Inc.
  * Copyright (C) 2009-2010 Nokia Corporation
@@ -18,8 +18,6 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
- * XXX This file needs to be updated to align on one of "OMAP4", "OMAP44XX",
- *     or "OMAP4430".
  */
 
 #ifndef __ARCH_ARM_MACH_OMAP2_PRM44XX_H
@@ -59,14 +57,6 @@
 /* PRM clockdomain register offsets (from instance start) */
 #define OMAP54XX_PRM_WKUPAON_CM_WKUPAON_CDOFFS	0x0000
 #define OMAP54XX_PRM_EMU_CM_EMU_CDOFFS		0x0000
-
-/* OMAP4 specific register offsets */
-#define OMAP4_RM_RSTCTRL				0x0000
-#define OMAP4_RM_RSTTIME				0x0004
-#define OMAP4_RM_RSTST					0x0008
-#define OMAP4_PM_PWSTCTRL				0x0000
-#define OMAP4_PM_PWSTST					0x0004
-
 
 /* PRM */
 

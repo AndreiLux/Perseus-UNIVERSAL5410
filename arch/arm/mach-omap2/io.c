@@ -28,6 +28,13 @@
 #include <plat/sram.h>
 #include <plat/sdrc.h>
 #include <plat/serial.h>
+
+#include "clock2xxx.h"
+#include "clock3xxx.h"
+#include "clock44xx.h"
+#include "clock54xx.h"
+#include "io.h"
+
 #include <plat/omap-pm.h>
 #include <plat/omap_hwmod.h>
 #include <plat/multi.h>
@@ -262,6 +269,77 @@ static struct map_desc omap44xx_io_desc[] __initdata = {
 };
 #endif
 
+#ifdef	CONFIG_ARCH_OMAP5
+static struct map_desc omap54xx_io_desc[] __initdata = {
+	{
+		.virtual	= L3_54XX_VIRT,
+		.pfn		= __phys_to_pfn(L3_54XX_PHYS),
+		.length		= L3_54XX_SIZE,
+		.type		= MT_DEVICE,
+	},
+	{
+		.virtual	= L4_54XX_VIRT,
+		.pfn		= __phys_to_pfn(L4_54XX_PHYS),
+		.length		= L4_54XX_SIZE,
+		.type		= MT_DEVICE,
+	},
+	{
+		.virtual	= L4_WK_54XX_VIRT,
+		.pfn		= __phys_to_pfn(L4_WK_54XX_PHYS),
+		.length		= L4_WK_54XX_SIZE,
+		.type		= MT_DEVICE,
+	},
+	{
+		.virtual	= OMAP54XX_GPMC_VIRT,
+		.pfn		= __phys_to_pfn(OMAP54XX_GPMC_PHYS),
+		.length		= OMAP54XX_GPMC_SIZE,
+		.type		= MT_DEVICE,
+	},
+	{
+		.virtual	= OMAP54XX_EMIF1_VIRT,
+		.pfn		= __phys_to_pfn(OMAP54XX_EMIF1_PHYS),
+		.length		= OMAP54XX_EMIF1_SIZE,
+		.type		= MT_DEVICE,
+	},
+	{
+		.virtual	= OMAP54XX_EMIF2_VIRT,
+		.pfn		= __phys_to_pfn(OMAP54XX_EMIF2_PHYS),
+		.length		= OMAP54XX_EMIF2_SIZE,
+		.type		= MT_DEVICE,
+	},
+	{
+		.virtual	= OMAP54XX_DMM_VIRT,
+		.pfn		= __phys_to_pfn(OMAP54XX_DMM_PHYS),
+		.length		= OMAP54XX_DMM_SIZE,
+		.type		= MT_DEVICE,
+	},
+	{
+		.virtual	= L4_PER_54XX_VIRT,
+		.pfn		= __phys_to_pfn(L4_PER_54XX_PHYS),
+		.length		= L4_PER_54XX_SIZE,
+		.type		= MT_DEVICE,
+	},
+	{
+		.virtual	= L4_EMU_54XX_VIRT,
+		.pfn		= __phys_to_pfn(L4_EMU_54XX_PHYS),
+		.length		= L4_EMU_54XX_SIZE,
+		.type		= MT_DEVICE,
+	},
+};
+#endif
+static void __init _omap2_map_common_io(void)
+{
+	/* Normally devicemaps_init() would flush caches and tlb after
+	 * mdesc->map_io(), but we must also do it here because of the CPU
+	 * revision check below.
+	 */
+	local_flush_tlb_all();
+	flush_cache_all();
+
+	omap2_check_revision();
+	omap_sram_init();
+}
+
 #ifdef CONFIG_SOC_OMAP2420
 void __init omap242x_map_common_io(void)
 {
@@ -307,6 +385,13 @@ void __init omap44xx_map_common_io(void)
 }
 #endif
 
+#ifdef CONFIG_ARCH_OMAP5
+void __init omap54xx_map_common_io(void)
+{
+	iotable_init(omap54xx_io_desc, ARRAY_SIZE(omap54xx_io_desc));
+	_omap2_map_common_io();
+}
+#endif
 /*
  * omap2_init_reprogram_sdrc - reprogram SDRC timing parameters
  *
@@ -355,6 +440,30 @@ static void __init omap_hwmod_init_postsetup(void)
 {
 	u8 postsetup_state;
 
+	if (cpu_is_omap242x()) {
+		omap2xxx_powerdomains_init();
+		omap2xxx_clockdomains_init();
+		omap2420_hwmod_init();
+	} else if (cpu_is_omap243x()) {
+		omap2xxx_powerdomains_init();
+		omap2xxx_clockdomains_init();
+		omap2430_hwmod_init();
+	} else if (cpu_is_omap34xx()) {
+		omap3xxx_powerdomains_init();
+		omap3xxx_clockdomains_init();
+		omap3xxx_hwmod_init();
+	} else if (cpu_is_omap44xx()) {
+		omap44xx_powerdomains_init();
+		omap44xx_clockdomains_init();
+		omap44xx_hwmod_init();
+	} else if (cpu_is_omap54xx()) {
+		omap54xx_powerdomains_init();
+		omap54xx_clockdomains_init();
+		omap54xx_hwmod_init();
+	} else {
+		pr_err("Could not init hwmod data - unknown SoC\n");
+        }
+
 	/* Set the default postsetup state for all hwmods */
 #ifdef CONFIG_PM_RUNTIME
 	postsetup_state = _HWMOD_STATE_IDLE;
@@ -381,7 +490,24 @@ static void __init omap_hwmod_init_postsetup(void)
 				     _set_hwmod_postsetup_state,
 				     &postsetup_state);
 
-	omap_pm_if_early_init();
+        if (cpu_is_omap54xx())                                                  
+                pr_err("FIXME: omap5 opp layer init\n");                        
+        else                                                                    
+                omap_pm_if_early_init();                                        
+                                                                                
+        if (cpu_is_omap2420())                                                  
+                omap2420_clk_init();                                            
+        else if (cpu_is_omap2430())                                             
+                omap2430_clk_init();                                            
+        else if (cpu_is_omap34xx())                                             
+                omap3xxx_clk_init();                                            
+        else if (cpu_is_omap44xx())                                             
+                omap4xxx_clk_init();                                            
+        else if (cpu_is_omap54xx())                                             
+                omap5xxx_clk_init();                                            
+        else                                                                    
+                pr_err("Could not init clock framework - unknown SoC\n");  
+
 }
 
 #ifdef CONFIG_SOC_OMAP2420

@@ -287,8 +287,14 @@ static void __init omap4_init_voltages(void)
 
 static int __init omap2_common_pm_init(void)
 {
-	if (!of_have_populated_dt())
-		omap2_init_processor_devices();
+	if (cpu_is_omap54xx()) {
+		pr_err("FIXME: omap2_common_pm_init\n");
+		return 0;
+	}
+
+        if (!of_have_populated_dt())                                            
+                omap2_init_processor_devices(); 
+
 	omap_pm_if_init();
 
 	return 0;
@@ -304,6 +310,15 @@ static int __init omap2_common_pm_late_init(void)
 	 */
 	if (of_have_populated_dt())
 		return 0;
+
+	if (cpu_is_omap54xx()) {
+		pr_err("FIXME: omap2_common_pm_late_init\n");
+		return 0;
+	}
+
+	/* Init the OMAP TWL parameters */
+	omap3_twl_init();
+	omap4_twl_init();
 
 	/* Init the voltage layer */
 	omap_pmic_late_init();

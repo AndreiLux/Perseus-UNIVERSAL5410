@@ -1,5 +1,5 @@
 /*
- * OMAP44xx CM1 instance offset macros
+ * OMAP54xx CM1 instance offset macros
  *
  * Copyright (C) 2009-2011 Texas Instruments, Inc.
  * Copyright (C) 2009-2010 Nokia Corporation
@@ -18,8 +18,6 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
- * XXX This file needs to be updated to align on one of "OMAP4", "OMAP44XX",
- *     or "OMAP4430".
  */
 
 #ifndef __ARCH_ARM_MACH_OMAP2_CM1_44XX_H

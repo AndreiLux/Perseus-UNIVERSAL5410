@@ -231,6 +231,52 @@ void __init omap_serial_init_port(struct omap_board_data *bdata,
 		info = omap_serial_default_info;
 
 	oh = uart->oh;
+	uart->dma_enabled = 0;
+#ifndef CONFIG_SERIAL_OMAP
+	name = "serial8250";
+
+	/*
+	 * !! 8250 driver does not use standard IORESOURCE* It
+	 * has it's own custom pdata that can be taken from
+	 * the hwmod resource data.  But, this needs to be
+	 * done after the build.
+	 *
+	 * ?? does it have to be done before the register ??
+	 * YES, because platform_device_data_add() copies
+	 * pdata, it does not use a pointer.
+	 */
+	p->flags = UPF_BOOT_AUTOCONF;
+	p->iotype = UPIO_MEM;
+	p->regshift = 2;
+	p->uartclk = OMAP24XX_BASE_BAUD * 16;
+	p->irq = oh->mpu_irqs[0].irq;
+	p->mapbase = oh->slaves[0]->addr->pa_start;
+	p->membase = omap_hwmod_get_mpu_rt_va(oh);
+	p->irqflags = IRQF_SHARED;
+	p->private_data = uart;
+
+	/*
+	 * omap44xx, ti816x: Never read empty UART fifo
+	 * omap3xxx: Never read empty UART fifo on UARTs
+	 * with IP rev >=0x52
+	 */
+	uart->regshift = p->regshift;
+	uart->membase = p->membase;
+	if (cpu_is_omap44xx() || cpu_is_ti816x() || cpu_is_omap54xx())
+		uart->errata |= UART_ERRATA_FIFO_FULL_ABORT;
+	else if ((serial_read_reg(uart, UART_OMAP_MVER) & 0xFF)
+			>= UART_OMAP_NO_EMPTY_FIFO_READ_IP_REV)
+		uart->errata |= UART_ERRATA_FIFO_FULL_ABORT;
+
+	if (uart->errata & UART_ERRATA_FIFO_FULL_ABORT) {
+		p->serial_in = serial_in_override;
+		p->serial_out = serial_out_override;
+	}
+
+	pdata = &ports[0];
+	pdata_size = 2 * sizeof(struct plat_serial8250_port);
+#else
+
 	name = DRIVER_NAME;
 
 	omap_up.dma_enabled = info->dma_enabled;
@@ -274,6 +320,44 @@ void __init omap_serial_init_port(struct omap_board_data *bdata,
 	if (((cpu_is_omap34xx() || cpu_is_omap44xx()) && bdata->pads)
 			&& !uart_debug)
 		device_init_wakeup(&pdev->dev, true);
+	console_lock(); /* in case the earlycon is on the UART */
+
+	/*
+	 * Because of early UART probing, UART did not get idled
+	 * on init.  Now that omap_device is ready, ensure full idle
+	 * before doing omap_device_enable().
+	 */
+	if (!cpu_is_omap54xx()) {
+		omap_hwmod_idle(uart->oh);
+		omap_device_enable(uart->pdev);
+		omap_uart_idle_init(uart);
+		omap_uart_reset(uart);
+		omap_hwmod_enable_wakeup(uart->oh);
+		omap_device_idle(uart->pdev);
+	}
+
+	/*
+	 * Need to block sleep long enough for interrupt driven
+	 * driver to start.  Console driver is in polling mode
+	 * so device needs to be kept enabled while polling driver
+	 * is in use.
+	 */
+	if (uart->timeout)
+		uart->timeout = (30 * HZ);
+	omap_uart_block_sleep(uart);
+	uart->timeout = DEFAULT_TIMEOUT;
+
+	console_unlock();
+
+	if ((cpu_is_omap34xx() && uart->padconf) ||
+	    (uart->wk_en && uart->wk_mask)) {
+		device_init_wakeup(&od->pdev.dev, true);
+		DEV_CREATE_FILE(&od->pdev.dev, &dev_attr_sleep_timeout);
+	}
+
+	/* Enable the MDR1 errata for OMAP3 */
+	if (cpu_is_omap34xx() && !cpu_is_ti816x())
+		uart->errata |= UART_ERRATA_i202_MDR1_ACCESS;
 }
 
 /**
