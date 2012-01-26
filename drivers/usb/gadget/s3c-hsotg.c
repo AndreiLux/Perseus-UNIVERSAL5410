@@ -1556,8 +1556,11 @@ static void s3c_hsotg_handle_outdone(struct s3c_hsotg *hsotg,
 	}
 
 	if (epnum == 0) {
+		/* Condition req->complete != s3c_hsotg_complete_setup says:
+		 * send ZLP when we have an asynchronous request from gadget */
 		if (!was_setup && req->complete != s3c_hsotg_complete_setup)
 			s3c_hsotg_send_zlp(hsotg, hs_req);
+
 	}
 
 	s3c_hsotg_complete_request_lock(hsotg, hs_ep, hs_req, result);
@@ -1808,6 +1811,13 @@ static void s3c_hsotg_complete_in(struct s3c_hsotg *hsotg,
 		return;
 	}
 
+	/* Finish ZLP handling for IN EP0 transactions */
+	if (hsotg->eps[0].sent_zlp) {
+		dev_dbg(hsotg->dev, "zlp packet received\n");
+		s3c_hsotg_complete_request_lock(hsotg, hs_ep, hs_req, 0);
+		return;
+	}
+
 	/* Calculate the size of the transfer by checking how much is left
 	 * in the endpoint size register and then working it out from
 	 * the amount we loaded for the transfer.
@@ -1827,9 +1837,21 @@ static void s3c_hsotg_complete_in(struct s3c_hsotg *hsotg,
 			__func__, hs_req->req.actual, size_done);
 
 	hs_req->req.actual = size_done;
+	dev_dbg(hsotg->dev, "req->length:%d req->actual:%d\n",
+		hs_req->req.length, hs_req->req.actual);
 
-	/* if we did all of the transfer, and there is more data left
-	 * around, then try restarting the rest of the request */
+	/* Check if dealing with Maximum Packet Size(MPS) IN transfer (EP0)
+	 * When req.lenght == ep.maxpacket then send IN ZLP packet to
+	 * inform host that no more data is available.
+	 */
+	if (hs_req->req.length == hs_req->req.actual && hs_ep->index == 0
+	    && hs_req->req.length == hs_ep->ep.maxpacket) {
+
+		dev_dbg(hsotg->dev, "ep0 zlp IN packet sent\n");
+		s3c_hsotg_send_zlp(hsotg, hs_req);
+
+		return;
+	}
 
 	if (!size_left && hs_req->req.actual < hs_req->req.length) {
 		dev_dbg(hsotg->dev, "%s trying more for req...\n", __func__);
