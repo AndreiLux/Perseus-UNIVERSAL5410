@@ -1,1 +1,25 @@
-UBUNTU: SAUCE: (no-up) Restore VT fonts on switch
+This is the list of patches which were dropped opening the release for
+Ubuntu-Q.
+
+The set of seccomp_filter chromium patches have been dropped as they did
+not apply cleanly when rebasing to v3.3-rc1.  Additionaly, it appears
+that a new patch being proposed which we would like want to take instead
+- https://lists.ubuntu.com/archives/kernel-team/2012-January/018513.html
+
+CHROMIUM: enable CONFIG_SECCOMP_FILTER and CONFIG_HAVE_SECCOMP_FILTER
+CHROMIUM: Fix kref usage
+CHROMIUM: Fix seccomp_t compile error
+CHROMIUM: seccomp_filter: make inherited filters composable
+CHROMIUM: seccomp_filter: inheritance documentation
+CHROMIUM: seccomp_filter: allow CAP_SYS_ADMIN management of execve
+CHROMIUM: seccomp_filter: remove "skip" from copy and add drop helper
+CHROMIUM: seccomp_filters: clean up warnings; kref mistake
+CHROMIUM: seccomp_filters: guard all ftrace wrapper code
+CHROMIUM: seccomp_filter: kill NR_syscall references
+CHROMIUM: enable CONFIG_BTREE
+CHROMIUM: seccomp_filters: move to btrees
+CHROMIUM: arm: select HAVE_SECCOMP_FILTER
+CHROMIUM: x86: add HAVE_SECCOMP_FILTER and seccomp_execve
+CHROMIUM: seccomp_filter: Document what seccomp_filter is and how it works.
+CHROMIUM: seccomp_filter: add process state reporting
+CHROMIUM: seccomp_filter: new mode with configurable syscall filters
