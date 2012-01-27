@@ -453,6 +453,24 @@ config VMWARE_BALLOON
 	  To compile this driver as a module, choose M here: the
 	  module will be called vmw_balloon.
 
+config DDR
+	bool "JEDEC DDR data"
+	help
+	  Data from JEDEC specs for DDR SDRAM memories,
+	  particularly the AC timing parameters and addressing
+	  information. This data is useful for drivers handling
+	  DDR SDRAM controllers.
+
+config EMIF
+	bool "Texas Instruments EMIF driver"
+	select DDR
+	help
+	  This driver is for the EMIF module available in Texas Instruments
+	  SoCs. EMIF is an SDRAM controller that supports DDR2, DDR3, and
+	  LPDDR2 SDRAM memories. The driver takes care of re-configuring
+	  AC timing parameters during DVFS, and on temperature change.
+
+
 config ARM_CHARLCD
 	bool "ARM Ltd. Character LCD Driver"
 	depends on PLAT_VERSATILE
