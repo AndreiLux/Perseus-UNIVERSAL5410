@@ -47,6 +47,7 @@ static int __init omap_5430evm_i2c_init(void)
 	omap_register_i2c_bus(2, 400, NULL, 0);
 	omap_register_i2c_bus(3, 400, NULL, 0);
 	omap_register_i2c_bus(4, 400, NULL, 0);
+	omap_register_i2c_bus(5, 400, NULL, 0);
 	return 0;
 }
 static void __init omap_5430evm_init(void)
