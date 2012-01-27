@@ -207,7 +207,7 @@ static struct omap4_keypad_platform_data sdp4430_keypad_data = {
 	.cols			= 8,
 };
 
-static struct omap_board_data keypad_data = {
+static struct omap_board_data keypad_data __initdata = {
 	.id	    		= 1,
 	.pads	 		= keypad_pads,
 	.pads_cnt       	= ARRAY_SIZE(keypad_pads),
