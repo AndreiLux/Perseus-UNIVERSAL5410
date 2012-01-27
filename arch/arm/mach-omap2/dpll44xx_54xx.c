@@ -85,7 +85,9 @@ int omap4_core_dpll_m2_set_rate(struct clk *clk, unsigned long rate)
 	 * Program EMIF timing parameters in EMIF shadow registers
 	 * for targetted DRR clock.
 	 */
+#ifndef CONFIG_MACH_OMAP_5430ZEBU
 	emif_freq_pre_notify_handler(validrate);
+#endif
 
 	/*
 	 * FREQ_UPDATE sequence:

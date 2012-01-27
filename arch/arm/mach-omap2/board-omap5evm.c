@@ -34,10 +34,13 @@ static void __init omap_5430evm_init_early(void)
 	omap2_init_common_devices(NULL, NULL);
 }
 
+#ifndef CONFIG_MACH_OMAP_5430ZEBU
 static struct __devinitdata emif_custom_configs custom_configs = {
 	.mask	= EMIF_CUSTOM_CONFIG_LPMODE,
 	.lpmode	= EMIF_LP_MODE_DISABLE
 };
+#endif
+
 static int __init omap_5430evm_i2c_init(void)
 {
 	omap_register_i2c_bus(1, 400, NULL, 0);
@@ -48,6 +51,7 @@ static int __init omap_5430evm_i2c_init(void)
 }
 static void __init omap_5430evm_init(void)
 {
+#ifndef CONFIG_MACH_OMAP_5430ZEBU
 	omap_emif_set_device_details(1, &lpddr2_elpida_4G_S4_x2_info,
 			lpddr2_elpida_4G_S4_timings,
 			ARRAY_SIZE(lpddr2_elpida_4G_S4_timings),
@@ -59,6 +63,7 @@ static void __init omap_5430evm_init(void)
 			ARRAY_SIZE(lpddr2_elpida_4G_S4_timings),
 			&lpddr2_elpida_S4_min_tck,
 			&custom_configs);
+#endif
 
 	omap_5430evm_i2c_init();
 	omap_serial_init();
