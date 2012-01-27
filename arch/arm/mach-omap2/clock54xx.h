@@ -12,4 +12,7 @@
 
 int omap5xxx_clk_init(void);
 
+int omap5_mpu_dpll_set_rate(struct clk *clk, unsigned long rate);
+long omap5_mpu_dpll_round_rate(struct clk *clk, unsigned long rate);
+unsigned long omap5_mpu_dpll_recalc(struct clk *clk);
 #endif
