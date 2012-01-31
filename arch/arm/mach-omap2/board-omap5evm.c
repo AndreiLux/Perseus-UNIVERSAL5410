@@ -32,6 +32,8 @@
 #include <mach/hardware.h>
 #include <mach/omap4-common.h>
 #include <plat/common.h>
+#include <plat/usb.h>
+#include "mux.h"
 
 #include "common-board-devices.h"
 
@@ -532,6 +534,31 @@ static int __init omap_5430evm_i2c_init(void)
 	omap_register_i2c_bus(5, 400, NULL, 0);
 	return 0;
 }
+
+/* USBB3 to SMSC LAN9730 */
+#define GPIO_ETH_NRESET	172
+
+/* USBB2 to SMSC 4640 HUB */
+#define GPIO_HUB_NRESET	173
+
+static const struct usbhs_omap_board_data usbhs_bdata __initconst = {
+	.port_mode[0] = OMAP_USBHS_PORT_MODE_UNUSED,
+	.port_mode[1] = OMAP_EHCI_PORT_MODE_HSIC,
+	.port_mode[2] = OMAP_EHCI_PORT_MODE_HSIC,
+	.phy_reset  = true,
+	.reset_gpio_port[0]  = -EINVAL,
+	.reset_gpio_port[1]  = GPIO_HUB_NRESET,
+	.reset_gpio_port[2]  = GPIO_ETH_NRESET
+};
+
+static void __init omap_ehci_ohci_init(void)
+{
+	omap_mux_init_signal("gpio_172", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
+	omap_mux_init_signal("gpio_173", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
+	usbhs_init(&usbhs_bdata);
+	return;
+}
+
 static void __init omap_5430evm_init(void)
 {
 #ifndef CONFIG_MACH_OMAP_5430ZEBU
@@ -550,6 +577,7 @@ static void __init omap_5430evm_init(void)
 
 	omap_5430evm_i2c_init();
 	omap_serial_init();
+	omap_ehci_ohci_init();
 }
 
 static void __init omap_5430evm_map_io(void)
