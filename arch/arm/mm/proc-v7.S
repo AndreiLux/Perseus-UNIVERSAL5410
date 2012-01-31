@@ -393,7 +393,7 @@ ENDPROC(__v7_setup)
 
 	.align	2
 __v7_setup_stack:
-	.space	4 * 11				@ 11 registers
+	.space	4 * 15				@ 15 registers
 
 	__INITDATA
 
