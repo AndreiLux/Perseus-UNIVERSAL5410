@@ -68,6 +68,7 @@ config ARCH_OMAP5
 	select ARM_ARCH_TIMER if !MACH_OMAP_5430ZEBU
 	select MISC_DEVICES  if !MACH_OMAP_5430ZEBU
 	select EMIF if !MACH_OMAP_5430ZEBU
+	select USB_ARCH_HAS_EHCI if USB_SUPPORT
 
 comment "OMAP Core Type"
 	depends on ARCH_OMAP2
