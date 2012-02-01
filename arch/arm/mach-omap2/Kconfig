@@ -433,6 +433,15 @@ config OMAP_PM_STANDALONE
 	  Enable this option to enable Power Management with minimal set of
 	  drivers.
 
+
+config OMAP4_ARM_ERRATA_742230
+	bool "Enables the workaround for ARM errata 742230 on GP devices"
+	help
+	  Enables the ARM errata 742230 on OMAP443x and OMAP446x (GP) devices.
+	  This involves setting bit 4 of the CP15 diagnostic control register.
+	  This is handled for HS devices in the PPA code and does not need to be
+	  enabled."
+
 endmenu
 
 endif

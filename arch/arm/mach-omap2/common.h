@@ -283,6 +283,25 @@ static inline u32 omap_mpuss_read_prev_context_state(void)
 }
 #endif
 
+extern u32 omap_get_arm_rev(void);
+
+/*
+ * omap4_get_diagctrl0_errata_flags: Routine to get the flag value of the CP15
+ * diagnostic control register.
+ *
+ * Return the value to be set into the CP15 Diagnostic control 0 reg
+ */
+static inline unsigned int omap4_get_diagctrl0_errata_flags(void)
+{
+	unsigned int ret  = 0;
+	u32 arm_rev = omap_get_arm_rev();
+#ifdef CONFIG_OMAP4_ARM_ERRATA_742230
+	if ((arm_rev >= 0x10) && (arm_rev <= 0x22))
+		ret |= (1 << 4);
+#endif
+	return ret;
+}
+
 struct omap_sdrc_params;
 extern void omap_sdrc_init(struct omap_sdrc_params *sdrc_cs0,
 				      struct omap_sdrc_params *sdrc_cs1);
@@ -290,4 +309,10 @@ extern void omap_sdrc_init(struct omap_sdrc_params *sdrc_cs0,
 extern int omap_aess_preprogram(struct omap_hwmod *oh);
 
 #endif /* __ASSEMBLER__ */
+
+/*
+ * Secure HAL API entry ids
+ */
+#define HAL_DIAGREG_0                   0x114
+
 #endif /* __ARCH_ARM_MACH_OMAP2PLUS_COMMON_H */
