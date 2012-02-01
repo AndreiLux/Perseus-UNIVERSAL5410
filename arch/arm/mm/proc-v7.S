@@ -270,7 +270,8 @@ __v7_setup:
 1:
 #endif
 #if (defined(CONFIG_OMAP4_ARM_ERRATA_742230) || \
-	defined(CONFIG_OMAP4_ARM_ERRATA_751472))
+	defined(CONFIG_OMAP4_ARM_ERRATA_751472) || \
+	defined(CONFIG_OMAP4_ARM_ERRATA_743622))
 	stmia	r12, {r0-r4}
 	ldr	r0, =0x4a0022c4			@ Ctrl module status reg addr
 	ldr	r1, [r0]
@@ -285,6 +286,10 @@ __v7_setup:
 #ifdef CONFIG_OMAP4_ARM_ERRATA_751472
 	cmp	r6, #0x30			@ present prior to r3p0
 	orrlt	r0, r0, #1 << 11		@ set bit #11
+#endif
+#ifdef CONFIG_OMAP4_ARM_ERRATA_743622
+	cmp	r6, #0x30
+	orrlt	r0, r0, #1 << 6			@ set bit #6
 #endif
 	cmp	r0, #0
 	beq	zero_diagctrl0
