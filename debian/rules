@@ -8,6 +8,8 @@
 #
 
 DEBIAN=$(shell awk -F= '($$1 == "DEBIAN") { print $$2 }' <debian/debian.env)
+TIMESTAMP:=$(shell printf %x $$(date +%s))
+_DUMMY:=$(shell sed -i -e '1 s/%TIMESTAMP%/$(TIMESTAMP)/'  $(DEBIAN)/changelog)
 
 # dpkg-buildpackage passes options that are incomptatible
 # with the kernel build.
@@ -59,14 +61,11 @@ clean: debian/control
 
 	# This gets rid of the d-i packages in control
 	cp -f $(DEBIAN)/control.stub $(DEBIAN)/control
-	cp -p $(DEBIAN)/changelog debian/changelog
+	cat $(DEBIAN)/changelog debian/changelog | \
+		sed -e '1 s/%TIMESTAMP%/$(TIMESTAMP)/' > debian/changelog
 
 	# Install the copyright information.
 	cp -p $(DEBIAN)/copyright debian/copyright
-
-	touch -r $(DEBIAN)/control.stub.in $(DEBIAN)/control $(DEBIAN)/control.stub debian/control debian/control.stub
-	touch -r $(DEBIAN)/d-i/kernel-versions.in $(DEBIAN)/d-i/kernel-versions
-	touch -r $(DEBIAN)/changelog debian
 
 distclean: clean
 	rm -rf $(DEBIAN)/control $(DEBIAN)/control.stub \
