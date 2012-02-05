@@ -678,9 +678,9 @@ static int addr = 0x20;
 module_param(addr, int, S_IRUGO);
 MODULE_PARM_DESC(addr, "TPM I2C Device Address (default: 0x20)");
 
-static int bus_id = 2;
+static int bus_id = 1;
 module_param(bus_id, int, S_IRUGO);
-MODULE_PARM_DESC(bus_id, "TPM I2C Bus Id (default: 2)");
+MODULE_PARM_DESC(bus_id, "TPM I2C Bus Id (default: 1)");
 
 static int __init init_tis_i2c(void)
 {
