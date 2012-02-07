@@ -20,6 +20,13 @@
 #include <mach/regs-clock.h>
 #include <mach/cpufreq.h>
 
+#define SUPPORT_1400MHZ                (1 << 31)
+#define SUPPORT_1200MHZ                (1 << 30)
+#define SUPPORT_1000MHZ                (1 << 29)
+
+#define SUPPORT_FREQ_SHIFT     29
+#define SUPPORT_FREQ_MASK      7
+
 #define CPUFREQ_LEVEL_END	L5
 
 static int max_support_idx = L0;
@@ -35,10 +42,7 @@ struct cpufreq_clkdiv {
 	unsigned int clkdiv;
 };
 
-static unsigned int exynos4210_volt_table[CPUFREQ_LEVEL_END] = {
-	1250000, 1150000, 1050000, 975000, 950000,
-};
-
+static unsigned int exynos4210_volt_table[CPUFREQ_LEVEL_END];
 
 static struct cpufreq_clkdiv exynos4210_clkdiv_table[CPUFREQ_LEVEL_END];
 
@@ -49,6 +53,28 @@ static struct cpufreq_frequency_table exynos4210_freq_table[] = {
 	{L3, 500*1000},
 	{L4, 200*1000},
 	{0, CPUFREQ_TABLE_END},
+};
+
+/*
+ * ASV group voltage table
+ */
+static const unsigned int asv_voltage[CPUFREQ_LEVEL_END][8] = {
+	/*
+	 *		SS, A1, A2, B1, B2, C1, C2, D
+	 * @1200 :
+	 * @1000 :
+	 * @800	:	ASV_VOLTAGE_TABLE
+	 * @500	:
+	 * @200	:
+	 */
+	{ 1350000, 1350000, 1300000, 1275000, 1250000, 1225000, 1200000,
+	1175000 },
+	{ 1300000, 1250000, 1200000, 1175000, 1150000, 1125000, 1100000,
+	1075000 },
+	{ 1200000, 1150000, 1100000, 1075000, 1050000, 1025000, 1000000,
+	975000 },
+	{ 1100000, 1050000, 1000000, 975000, 975000, 950000, 925000, 925000 },
+	{ 1050000, 1000000, 975000, 950000, 950000, 925000, 925000, 925000 },
 };
 
 static unsigned int clkdiv_cpu0[CPUFREQ_LEVEL_END][7] = {
@@ -229,6 +255,31 @@ static void exynos4210_set_frequency(unsigned int old_index,
 	}
 }
 
+static void __init set_volt_table(void)
+{
+	unsigned int tmp, i, asv_group = 0;
+
+	tmp = exynos_result_of_asv;
+
+	switch (tmp & (SUPPORT_FREQ_MASK << SUPPORT_FREQ_SHIFT)) {
+	case SUPPORT_1200MHZ:
+		asv_group = (tmp & 0xF);
+		break;
+	case SUPPORT_1400MHZ:
+	case SUPPORT_1000MHZ:
+	default:
+		/* Not supported and assign typical ASV group */
+		asv_group = 2;
+		break;
+	}
+
+	printk(KERN_INFO "DVFS: VDD_ARM Voltage table set with %d Group\n",
+		asv_group);
+
+	for (i = 0 ; i < CPUFREQ_LEVEL_END ; i++)
+		exynos4210_volt_table[i] = asv_voltage[i][asv_group];
+}
+
 int exynos4210_cpufreq_init(struct exynos_dvfs_info *info)
 {
 	int i;
@@ -274,6 +325,8 @@ int exynos4210_cpufreq_init(struct exynos_dvfs_info *info)
 
 		exynos4210_clkdiv_table[i].clkdiv = tmp;
 	}
+
+	set_volt_table();
 
 	info->mpll_freq_khz = rate;
 	info->pm_lock_idx = L2;
