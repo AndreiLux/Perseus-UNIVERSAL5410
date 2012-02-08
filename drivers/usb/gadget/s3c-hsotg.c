@@ -151,6 +151,7 @@ struct s3c_hsotg_ep {
  * @ctrl_buff: Buffer for EP0 control requests.
  * @ctrl_req: Request for EP0 control packets.
  * @setup: NAK management for EP0 SETUP
+ * @last_rst: Time of last reset
  * @eps: The endpoints being supplied to the gadget framework
  */
 struct s3c_hsotg {
@@ -178,6 +179,7 @@ struct s3c_hsotg {
 
 	struct usb_gadget	gadget;
 	unsigned int		setup;
+	unsigned long           last_rst;
 	struct s3c_hsotg_ep	eps[];
 };
 
@@ -2362,23 +2364,26 @@ irq_retry:
 	}
 
 	if (gintsts & S3C_GINTSTS_USBRst) {
+
+		u32 usb_status = readl(hsotg->regs + S3C_GOTGCTL);
+
 		dev_info(hsotg->dev, "%s: USBRst\n", __func__);
 		dev_dbg(hsotg->dev, "GNPTXSTS=%08x\n",
 			readl(hsotg->regs + S3C_GNPTXSTS));
 
 		writel(S3C_GINTSTS_USBRst, hsotg->regs + S3C_GINTSTS);
 
-		kill_all_requests(hsotg, &hsotg->eps[0], -ECONNRESET, true);
+		if (usb_status & S3C_GOTGCTL_BSESVLD) {
+			if (time_after(jiffies, hsotg->last_rst +
+				       msecs_to_jiffies(200))) {
 
-		/* it seems after a reset we can end up with a situation
-		 * where the TXFIFO still has data in it... the docs
-		 * suggest resetting all the fifos, so use the init_fifo
-		 * code to relayout and flush the fifos.
-		 */
+				kill_all_requests(hsotg, &hsotg->eps[0],
+							  -ECONNRESET, true);
 
-		s3c_hsotg_init_fifo(hsotg);
-
-		s3c_hsotg_enqueue_setup(hsotg);
+				s3c_hsotg_core_init(hsotg);
+				hsotg->last_rst = jiffies;
+			}
+		}
 	}
 
 	/* check both FIFOs */
@@ -2421,6 +2426,7 @@ irq_retry:
 		writel(S3C_GINTSTS_USBSusp, hsotg->regs + S3C_GINTSTS);
 
 		call_gadget(hsotg, suspend);
+		s3c_hsotg_disconnect(hsotg);
 	}
 
 	if (gintsts & S3C_GINTSTS_WkUpInt) {
@@ -2433,6 +2439,8 @@ irq_retry:
 	if (gintsts & S3C_GINTSTS_ErlySusp) {
 		dev_dbg(hsotg->dev, "S3C_GINTSTS_ErlySusp\n");
 		writel(S3C_GINTSTS_ErlySusp, hsotg->regs + S3C_GINTSTS);
+
+		s3c_hsotg_disconnect(hsotg);
 	}
 
 	/* these next two seem to crop-up occasionally causing the core
@@ -2810,7 +2818,7 @@ static int s3c_hsotg_start(struct usb_gadget_driver *driver,
 	}
 
 	s3c_hsotg_core_init(hsotg);
-
+	hsotg->last_rst = jiffies;
 	dev_info(hsotg->dev, "bound driver %s\n", driver->driver.name);
 	return 0;
 
