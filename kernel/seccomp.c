@@ -17,13 +17,13 @@
 #include <linux/audit.h>
 #include <linux/compat.h>
 #include <linux/filter.h>
+#include <linux/ptrace.h>
 #include <linux/sched.h>
 #include <linux/seccomp.h>
 #include <linux/security.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
-#include <linux/tracehook.h>
 #ifdef CONFIG_HAVE_ARCH_SECCOMP_FILTER
 #include <asm/syscall.h>
 #endif
@@ -400,7 +400,7 @@ int __secure_computing_int(int this_syscall)
 	case SECCOMP_MODE_FILTER:
 		ret = seccomp_run_filters(this_syscall);
 		data = ret & SECCOMP_RET_DATA;
-		switch (code & SECCOMP_RET_ACTION) {
+		switch (ret & SECCOMP_RET_ACTION) {
 		case SECCOMP_RET_ERRNO:
 			/* Set the low-order 16-bits as a errno. */
 			syscall_set_return_value(current, task_pt_regs(current),
@@ -412,6 +412,15 @@ int __secure_computing_int(int this_syscall)
 			/* Let the filter pass back 16 bits of data. */
 			seccomp_send_sigsys(this_syscall, data);
 			goto skip;
+		case SECCOMP_RET_TRACE:
+			/* Skip these calls if there is no tracer. */
+			if (!ptrace_event_enabled(current, PTRACE_EVENT_SECCOMP))
+				goto skip;
+			/* Allow the BPF to provide the event message */
+			ptrace_event(PTRACE_EVENT_SECCOMP, data);
+			if (fatal_signal_pending(current))
+				break;
+			return 0;
 		case SECCOMP_RET_ALLOW:
 			return 0;
 		case SECCOMP_RET_KILL:
