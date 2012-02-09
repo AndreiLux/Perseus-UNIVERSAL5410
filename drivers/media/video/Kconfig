@@ -66,6 +66,27 @@ config VIDEOBUF2_DMA_SG
 	select VIDEOBUF2_CORE
 	select VIDEOBUF2_MEMOPS
 	tristate
+
+choice
+prompt "Video Buffer 2 for Exynos platforms"
+default VIDEOBUF2_ION
+config VIDEOBUF2_CMA_PHYS
+	bool "CMA"
+	depends on CMA
+	select VIDEOBUF2_CORE
+	select VIDEOBUF2_MEMOPS
+	help
+	  Internal memory management for Video Buffer 2 by CMA
+
+config  VIDEOBUF2_ION
+	bool "Android ION"
+	depends on ION_EXYNOS
+	select VIDEOBUF2_CORE
+	select VIDEOBUF2_MEMOPS
+	help
+	  Internal memory management for Video Buffer 2 by ION
+endchoice
+
 #
 # Multimedia Video device configuration
 #
