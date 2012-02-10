@@ -36,7 +36,7 @@
 #define IEEE80211_ASSOC_TIMEOUT (HZ / 5)
 #define IEEE80211_ASSOC_MAX_TRIES 3
 
-static int max_nullfunc_tries = 2;
+static int max_nullfunc_tries = 10;
 module_param(max_nullfunc_tries, int, 0644);
 MODULE_PARM_DESC(max_nullfunc_tries,
 		 "Maximum nullfunc tx tries before disconnecting (reason 4).");
@@ -54,7 +54,7 @@ MODULE_PARM_DESC(max_probe_tries,
  * probe on beacon miss before declaring the connection lost
  * default to what we want.
  */
-#define IEEE80211_BEACON_LOSS_COUNT	7
+#define IEEE80211_BEACON_LOSS_COUNT	14
 
 /*
  * Time the connection can be idle before we probe
