@@ -9,6 +9,7 @@
 
 #include <linux/platform_device.h>
 #include <linux/serial_core.h>
+#include <linux/cma.h>
 
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
@@ -68,6 +69,32 @@ static struct s3c2410_uartcfg smdk5250_uartcfgs[] __initdata = {
 	},
 };
 
+#ifdef CONFIG_CMA
+/* defined in arch/arm/mach-exynos/reserve-mem.c */
+extern void exynos_cma_region_reserve(struct cma_region *,
+				struct cma_region *, size_t, const char *);
+
+static void __init exynos_reserve_mem(void)
+{
+	static struct cma_region regions[] = {
+		{
+			.name = "ion",
+			.size = CONFIG_ION_EXYNOS_CONTIGHEAP_SIZE * SZ_1K,
+		}, {
+			.size = 0 /* END OF REGION DEFINITIONS */
+		}
+	};
+
+	static const char map[] __initconst = "ion-exynos=ion;";
+
+	exynos_cma_region_reserve(regions, NULL, 0, map);
+}
+#else /* CONFIG_CMA */
+static inline void exynos_reserve_mem(void)
+{
+}
+#endif
+
 static struct platform_device *smdk5250_devices[] __initdata = {
 #ifdef CONFIG_ION_EXYNOS
 	&exynos_device_ion,
@@ -85,6 +112,7 @@ static void __init smdk5250_map_io(void)
 
 static void __init smdk5250_machine_init(void)
 {
+	exynos_reserve_mem();
 	exynos_ion_set_platdata();
 
 	platform_add_devices(smdk5250_devices, ARRAY_SIZE(smdk5250_devices));
