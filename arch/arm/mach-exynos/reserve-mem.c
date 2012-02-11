@@ -10,7 +10,7 @@
  * published by the Free Software Foundation.
  */
 
-#ifdef CMA_DEBUG
+#ifdef CONFIG_CMA_DEBUG
 #define DEBUG
 #endif
 
