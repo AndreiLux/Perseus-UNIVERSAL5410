@@ -81,6 +81,9 @@ static void __init exynos_reserve_mem(void)
 		{
 			.name = "ion",
 			.size = CONFIG_ION_EXYNOS_CONTIGHEAP_SIZE * SZ_1K,
+			{
+				.alignment = SZ_1M
+			}
 		}, {
 			.size = 0 /* END OF REGION DEFINITIONS */
 		}
