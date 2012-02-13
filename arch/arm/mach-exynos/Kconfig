@@ -89,6 +89,11 @@ config EXYNOS4_SETUP_FIMD0
 	help
 	  Common setup code for FIMD0.
 
+config EXYNOS_SETUP_FIMD1
+	bool
+	help
+	  Common setup code for FIMD1.
+
 config EXYNOS_DEV_SYSMMU
 	bool
 	help
@@ -373,9 +378,12 @@ comment "EXYNOS5250 Boards"
 config MACH_SMDK5250
 	bool "SMDK5250"
 	select SOC_EXYNOS5250
+	select S5P_DEV_FIMD1
 	select EXYNOS_DEV_DMA
 	select EXYNOS_DEV_SYSMMU
 	select EXYNOS_DEV_DWMCI
+	select EXYNOS_DEV_DMA
+	select EXYNOS_SETUP_FIMD1
 	help
 	  Machine support for Samsung SMDK5250
 endif

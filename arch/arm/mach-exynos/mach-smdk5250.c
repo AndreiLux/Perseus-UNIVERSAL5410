@@ -12,6 +12,10 @@
 #include <linux/cma.h>
 #include <linux/gpio.h>
 #include <linux/mmc/host.h>
+#include <linux/delay.h>
+#include <linux/fb.h>
+
+#include <video/platform_lcd.h>
 
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
@@ -19,9 +23,12 @@
 
 #include <plat/clock.h>
 #include <plat/cpu.h>
+#include <plat/devs.h>
+#include <plat/fb.h>
 #include <plat/regs-serial.h>
 #include <plat/gpio-cfg.h>
 #include <plat/devs.h>
+#include <plat/regs-fb-v4.h>
 
 #include <mach/map.h>
 #include <mach/sysmmu.h>
@@ -29,6 +36,9 @@
 #include <mach/dwmci.h>
 
 #include "common.h"
+
+#define CONFIG_LCD_MIPI_S6E8AB0
+#define CONFIG_FB_MIPI_DSIM
 
 /* Following are default values for UCON, ULCON and UFCON UART registers */
 #define SMDK5250_UCON_DEFAULT	(S3C2410_UCON_TXILEVEL |	\
@@ -89,12 +99,20 @@ static void __init exynos_reserve_mem(void)
 			{
 				.alignment = SZ_1M
 			}
+#ifdef CONFIG_VIDEO_SAMSUNG_MEMSIZE_FIMD
+		}, {
+			.name = "fimd",
+			.size = CONFIG_VIDEO_SAMSUNG_MEMSIZE_FIMD * SZ_1K,
+			.start = 0
+#endif
 		}, {
 			.size = 0 /* END OF REGION DEFINITIONS */
 		}
 	};
 
-	static const char map[] __initconst = "ion-exynos=ion;";
+	static const char map[] __initconst =
+		"exynos5-fb.1=fimd;"
+		"ion-exynos=ion, fimd;";
 
 	exynos_cma_region_reserve(regions, NULL, 0, map);
 }
@@ -103,35 +121,6 @@ static inline void exynos_reserve_mem(void)
 {
 }
 #endif
-
-static struct platform_device *smdk5250_devices[] __initdata = {
-	&SYSMMU_PLATDEV(mfc_l),
-	&SYSMMU_PLATDEV(mfc_r),
-	&SYSMMU_PLATDEV(2d),
-	&SYSMMU_PLATDEV(jpeg),
-	&SYSMMU_PLATDEV(gsc0),
-	&SYSMMU_PLATDEV(gsc1),
-	&SYSMMU_PLATDEV(gsc2),
-	&SYSMMU_PLATDEV(gsc3),
-	&SYSMMU_PLATDEV(flite0),
-	&SYSMMU_PLATDEV(flite1),
-	&SYSMMU_PLATDEV(tv),
-	&SYSMMU_PLATDEV(rot),
-	&SYSMMU_PLATDEV(is_isp),
-	&SYSMMU_PLATDEV(is_drc),
-	&SYSMMU_PLATDEV(is_fd),
-	&SYSMMU_PLATDEV(is_cpu),
-	&SYSMMU_PLATDEV(is_odc),
-	&SYSMMU_PLATDEV(is_sclrc),
-	&SYSMMU_PLATDEV(is_sclrp),
-	&SYSMMU_PLATDEV(is_dis0),
-	&SYSMMU_PLATDEV(is_dis1),
-	&SYSMMU_PLATDEV(is_3dnr),
-#ifdef CONFIG_ION_EXYNOS
-	&exynos_device_ion,
-#endif
-	&exynos5_device_dwmci,
-};
 
 static void exynos_dwmci_cfg_gpio(int width)
 {
@@ -179,6 +168,176 @@ static struct dw_mci_board exynos_dwmci_pdata __initdata = {
 	.hclk_name		= "dwmci",
 	.cclk_name		= "sclk_dwmci",
 	.cfg_gpio		= exynos_dwmci_cfg_gpio,
+};
+
+#ifdef CONFIG_FB_S3C
+#if defined(CONFIG_LCD_MIPI_S6E8AB0)
+static void mipi_lcd_set_power(struct plat_lcd_data *pd,
+				unsigned int power)
+{
+	/* reset */
+	gpio_request_one(EXYNOS5_GPX1(5), GPIOF_OUT_INIT_HIGH, "GPX1");
+
+	mdelay(20);
+	if (power) {
+		/* fire nRESET on power up */
+		gpio_set_value(EXYNOS5_GPX1(5), 0);
+		mdelay(20);
+		gpio_set_value(EXYNOS5_GPX1(5), 1);
+		mdelay(20);
+		gpio_free(EXYNOS5_GPX1(5));
+	} else {
+		/* fire nRESET on power off */
+		gpio_set_value(EXYNOS5_GPX1(5), 0);
+		mdelay(20);
+		gpio_set_value(EXYNOS5_GPX1(5), 1);
+		mdelay(20);
+		gpio_free(EXYNOS5_GPX1(5));
+	}
+	mdelay(20);
+	/* power */
+	gpio_request_one(EXYNOS5_GPX3(0), GPIOF_OUT_INIT_LOW, "GPX3");
+	if (power) {
+		/* fire nRESET on power up */
+		gpio_set_value(EXYNOS5_GPX3(0), 1);
+		gpio_free(EXYNOS5_GPX3(0));
+	} else {
+		/* fire nRESET on power off */
+		gpio_set_value(EXYNOS5_GPX3(0), 0);
+		gpio_free(EXYNOS5_GPX3(0));
+	}
+
+#ifndef CONFIG_BACKLIGHT_PWM
+	/* backlight */
+	gpio_request_one(EXYNOS5_GPB2(0), GPIOF_OUT_INIT_LOW, "GPB2");
+	if (power) {
+		/* fire nRESET on power up */
+		gpio_set_value(EXYNOS5_GPB2(0), 1);
+		gpio_free(EXYNOS5_GPB2(0));
+	} else {
+		/* fire nRESET on power off */
+		gpio_set_value(EXYNOS5_GPB2(0), 0);
+		gpio_free(EXYNOS5_GPB2(0));
+	}
+#endif
+}
+
+static struct plat_lcd_data smdk5250_mipi_lcd_data = {
+	.set_power	= mipi_lcd_set_power,
+};
+
+static struct platform_device smdk5250_mipi_lcd = {
+	.name			= "platform-lcd",
+	.dev.platform_data	= &smdk5250_mipi_lcd_data,
+};
+
+static struct s3c_fb_pd_win smdk5250_fb_win0 = {
+	.win_mode = {
+		.left_margin	= 0x4,
+		.right_margin	= 0x4,
+		.upper_margin	= 4,
+		.lower_margin	= 4,
+		.hsync_len	= 4,
+		.vsync_len	= 4,
+		.xres		= 1280,
+		.yres		= 800,
+	},
+	.virtual_x		= 1280,
+	.virtual_y		= 800 * 2,
+	.width			= 223,
+	.height			= 125,
+	.max_bpp		= 32,
+	.default_bpp		= 24,
+};
+
+static struct s3c_fb_pd_win smdk5250_fb_win1 = {
+	.win_mode = {
+		.left_margin	= 0x4,
+		.right_margin	= 0x4,
+		.upper_margin	= 4,
+		.lower_margin	= 4,
+		.hsync_len	= 4,
+		.vsync_len	= 4,
+		.xres		= 1280,
+		.yres		= 800,
+	},
+	.virtual_x		= 1280,
+	.virtual_y		= 800 * 2,
+	.width			= 223,
+	.height			= 125,
+	.max_bpp		= 32,
+	.default_bpp		= 24,
+};
+
+static struct s3c_fb_pd_win smdk5250_fb_win2 = {
+	.win_mode = {
+		.left_margin	= 0x4,
+		.right_margin	= 0x4,
+		.upper_margin	= 4,
+		.lower_margin	= 4,
+		.hsync_len	= 4,
+		.vsync_len	= 4,
+		.xres		= 1280,
+		.yres		= 800,
+	},
+	.virtual_x		= 1280,
+	.virtual_y		= 800 * 2,
+	.width			= 223,
+	.height			= 125,
+	.max_bpp		= 32,
+	.default_bpp		= 24,
+};
+#endif
+
+static struct s3c_fb_platdata smdk5250_lcd1_pdata __initdata = {
+#if defined(CONFIG_LCD_MIPI_S6E8AB0)
+	.win[0]		= &smdk5250_fb_win0,
+	.win[1]		= &smdk5250_fb_win1,
+	.win[2]		= &smdk5250_fb_win2,
+#endif
+	.default_win	= 2,
+	.vidcon0	= VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB,
+#if defined(CONFIG_LCD_MIPI_S6E8AB0)
+	.vidcon1	= VIDCON1_INV_VCLK,
+#endif
+	.setup_gpio	= exynos5_fimd1_gpio_setup_24bpp,
+};
+
+#endif
+
+static struct platform_device *smdk5250_devices[] __initdata = {
+	&SYSMMU_PLATDEV(mfc_l),
+	&SYSMMU_PLATDEV(mfc_r),
+	&SYSMMU_PLATDEV(2d),
+	&SYSMMU_PLATDEV(jpeg),
+	&SYSMMU_PLATDEV(gsc0),
+	&SYSMMU_PLATDEV(gsc1),
+	&SYSMMU_PLATDEV(gsc2),
+	&SYSMMU_PLATDEV(gsc3),
+	&SYSMMU_PLATDEV(flite0),
+	&SYSMMU_PLATDEV(flite1),
+	&SYSMMU_PLATDEV(tv),
+	&SYSMMU_PLATDEV(rot),
+	&SYSMMU_PLATDEV(is_isp),
+	&SYSMMU_PLATDEV(is_drc),
+	&SYSMMU_PLATDEV(is_fd),
+	&SYSMMU_PLATDEV(is_cpu),
+	&SYSMMU_PLATDEV(is_odc),
+	&SYSMMU_PLATDEV(is_sclrc),
+	&SYSMMU_PLATDEV(is_sclrp),
+	&SYSMMU_PLATDEV(is_dis0),
+	&SYSMMU_PLATDEV(is_dis1),
+	&SYSMMU_PLATDEV(is_3dnr),
+#ifdef CONFIG_ION_EXYNOS
+	&exynos_device_ion,
+#endif
+	&exynos5_device_dwmci,
+#ifdef CONFIG_FB_S3C
+#ifdef CONFIG_FB_MIPI_DSIM
+	&smdk5250_mipi_lcd,
+#endif
+	&s5p_device_fimd1,
+#endif
 };
 
 static void __init smdk5250_map_io(void)
@@ -270,7 +429,19 @@ static void __init smdk5250_machine_init(void)
 	exynos_ion_set_platdata();
 	exynos_dwmci_set_platdata(&exynos_dwmci_pdata);
 
+
+#ifdef CONFIG_FB_S3C
+	s5p_fimd1_set_platdata(&smdk5250_lcd1_pdata);
+	dev_set_name(&s5p_device_fimd1.dev, "exynos5-fb.1");
+	clk_add_alias("lcd", "exynos5-fb.1", "fimd", &s5p_device_fimd1.dev);
+#endif
+
 	platform_add_devices(smdk5250_devices, ARRAY_SIZE(smdk5250_devices));
+
+#ifdef CONFIG_FB_S3C
+	exynos5_fimd1_setup_clock(&s5p_device_fimd1.dev, "sclk_fimd", "mout_mpll_user",
+				800 * MHZ);
+#endif
 }
 
 MACHINE_START(SMDK5250, "SMDK5250")

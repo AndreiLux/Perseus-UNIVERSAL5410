@@ -342,6 +342,38 @@ void __init s5p_fimd0_set_platdata(struct s3c_fb_platdata *pd)
 }
 #endif /* CONFIG_S5P_DEV_FIMD0 */
 
+/* FIMD1 */
+
+#ifdef CONFIG_S5P_DEV_FIMD1
+static struct resource s5p_fimd1_resource[] = {
+#ifdef CONFIG_FB_EXYNOS_FIMD_V8
+	[0] = DEFINE_RES_MEM(S5P_PA_FIMD1, SZ_256K),
+#else
+	[0] = DEFINE_RES_MEM(S5P_PA_FIMD1, SZ_32K),
+#endif
+	[1] = DEFINE_RES_IRQ(IRQ_FIMD1_VSYNC),
+	[2] = DEFINE_RES_IRQ(IRQ_FIMD1_FIFO),
+	[3] = DEFINE_RES_IRQ(IRQ_FIMD1_SYSTEM),
+};
+
+struct platform_device s5p_device_fimd1 = {
+	.name		= "s5p-fb",
+	.id		= 1,
+	.num_resources	= ARRAY_SIZE(s5p_fimd1_resource),
+	.resource	= s5p_fimd1_resource,
+	.dev		= {
+		.dma_mask		= &samsung_device_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+};
+
+void __init s5p_fimd1_set_platdata(struct s3c_fb_platdata *pd)
+{
+	s3c_set_platdata(pd, sizeof(struct s3c_fb_platdata),
+			 &s5p_device_fimd1);
+}
+#endif /* CONFIG_S5P_DEV_FIMD1 */
+
 /* HWMON */
 
 #ifdef CONFIG_S3C_DEV_HWMON

@@ -22,11 +22,25 @@
  */
 #define S3C_FB_MAX_WIN	(5)
 
+/* IOCTL commands */
+#define S3CFB_WIN_POSITION		_IOW('F', 203, \
+						struct s3c_fb_user_window)
+#define S3CFB_WIN_SET_PLANE_ALPHA	_IOW('F', 204, \
+						struct s3c_fb_user_plane_alpha)
+#define S3CFB_WIN_SET_CHROMA		_IOW('F', 205, \
+						struct s3c_fb_user_chroma)
+#define S3CFB_SET_VSYNC_INT		_IOW('F', 206, u32)
+
+#define S3CFB_GET_ION_USER_HANDLE	_IOWR('F', 208, \
+						struct s3c_fb_user_ion_client)
+
 /**
  * struct s3c_fb_pd_win - per window setup data
  * @win_mode: The display parameters to initialise (not for window 0)
  * @virtual_x: The virtual X size.
  * @virtual_y: The virtual Y size.
+ * @width: The width of display in mm
+ * @height: The height of display in mm
  */
 struct s3c_fb_pd_win {
 	struct fb_videomode	win_mode;
@@ -35,6 +49,8 @@ struct s3c_fb_pd_win {
 	unsigned short		max_bpp;
 	unsigned short		virtual_x;
 	unsigned short		virtual_y;
+	unsigned short		width;
+	unsigned short		height;
 };
 
 /**
@@ -82,6 +98,14 @@ extern void s3c_fb_set_platdata(struct s3c_fb_platdata *pd);
 extern void s5p_fimd0_set_platdata(struct s3c_fb_platdata *pd);
 
 /**
+ * s5p_fimd1_set_platdata() - Setup the FB device with platform data.
+ * @pd: The platform data to set. The data is copied from the passed structure
+ *      so the machine data can mark the data __initdata so that any unused
+ *      machines will end up dumping their data at runtime.
+ */
+extern void s5p_fimd1_set_platdata(struct s3c_fb_platdata *pd);
+
+/**
  * s3c64xx_fb_gpio_setup_24bpp() - S3C64XX setup function for 24bpp LCD
  *
  * Initialise the GPIO for an 24bpp LCD display on the RGB interface.
@@ -110,10 +134,26 @@ extern void s5pv210_fb_gpio_setup_24bpp(void);
 extern void exynos4_fimd0_gpio_setup_24bpp(void);
 
 /**
+ * exynos5_fimd1_gpio_setup_24bpp() - Exynos5 setup function for 24bpp LCD0
+ *
+ * Initialise the GPIO for an 24bpp LCD display on the RGB interface 1.
+ */
+extern void exynos5_fimd1_gpio_setup_24bpp(void);
+
+/**
  * s5p64x0_fb_gpio_setup_24bpp() - S5P6440/S5P6450 setup function for 24bpp LCD
  *
  * Initialise the GPIO for an 24bpp LCD display on the RGB interface.
  */
 extern void s5p64x0_fb_gpio_setup_24bpp(void);
+
+/**
+ * exynos5_fimd1_setup_clock() = Exynos5 setup function for parent clock.
+ * @dev: device pointer
+ * @parent: parent clock used for LCD pixel clock
+ * @clk_rate: clock rate for parent clock
+ */
+extern int __init exynos5_fimd1_setup_clock(struct device *dev, const char *bus_clk,
+					const char *parent, unsigned long clk_rate);
 
 #endif /* __PLAT_S3C_FB_H */
