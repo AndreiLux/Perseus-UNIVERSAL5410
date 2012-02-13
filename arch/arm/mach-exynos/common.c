@@ -32,6 +32,7 @@
 #include <mach/regs-pmu.h>
 #include <mach/regs-gpio.h>
 #include <mach/pmu.h>
+#include <mach/smc.h>
 
 #include <plat/cpu.h>
 #include <plat/clock.h>
@@ -243,6 +244,13 @@ static struct map_desc exynos5_iodesc[] __initdata = {
 		.length		= SZ_4K,
 		.type		= MT_DEVICE,
 	}, {
+#ifdef CONFIG_ARM_TRUSTZONE
+		.virtual	= (unsigned long)S5P_VA_SYSRAM_NS,
+		.pfn		= __phys_to_pfn(EXYNOS5_PA_SYSRAM_NS),
+		.length		= SZ_4K,
+		.type		= MT_DEVICE,
+	}, {
+#endif
 		.virtual	= (unsigned long)S5P_VA_CMU,
 		.pfn		= __phys_to_pfn(EXYNOS5_PA_CMU),
 		.length		= 144 * SZ_1K,
@@ -649,7 +657,11 @@ static int __init exynos5_l2_cache_init(void)
 
 	val |= (1 << 9) | (1 << 5) | (2 << 6) | (2 << 0);
 
+#ifdef CONFIG_ARM_TRUSTZONE
+	exynos_smc(SMC_CMD_REG, SMC_REG_ID_CP15(9, 1, 0, 2), val, 0);
+#else
 	asm volatile("mcr p15, 1, %0, c9, c0, 2\n" : : "r"(val));
+#endif
 	asm volatile("mrc p15, 0, %0, c1, c0, 0\n"
 		     "orr %0, %0, #(1 << 2)\n"	/* cache enable */
 		     "mcr p15, 0, %0, c1, c0, 0\n"

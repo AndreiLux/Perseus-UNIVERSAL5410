@@ -14,6 +14,10 @@
 
 #include <plat/irqs.h>
 
+/* SGI: Software Generated Interrupt */
+
+#define IRQ_SGI(x)		(x)
+
 /* PPI: Private Peripheral Interrupt */
 
 #define IRQ_PPI(x)			(x + 16)
