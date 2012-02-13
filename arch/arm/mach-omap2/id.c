@@ -516,7 +516,7 @@ static void __init omap5_check_revision(void)
 	rev = (idcode >> 28) & 0xff;
 
 	switch (hawkeye) {
-	case 0xb852:
+	case 0xb942:
 		switch (rev) {
 		case 0:
 			omap_revision = OMAP5430_REV_ES1_0;
