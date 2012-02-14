@@ -14,6 +14,7 @@
 #include <linux/mmc/host.h>
 #include <linux/delay.h>
 #include <linux/fb.h>
+#include <linux/i2c.h>
 
 #include <video/platform_lcd.h>
 
@@ -29,6 +30,7 @@
 #include <plat/gpio-cfg.h>
 #include <plat/devs.h>
 #include <plat/regs-fb-v4.h>
+#include <plat/iic.h>
 
 #include <mach/map.h>
 #include <mach/sysmmu.h>
@@ -83,6 +85,32 @@ static struct s3c2410_uartcfg smdk5250_uartcfgs[] __initdata = {
 		.ucon		= SMDK5250_UCON_DEFAULT,
 		.ulcon		= SMDK5250_ULCON_DEFAULT,
 		.ufcon		= SMDK5250_UFCON_DEFAULT,
+	},
+};
+
+static struct i2c_board_info i2c_devs0[] __initdata = {
+	{
+		I2C_BOARD_INFO("s5m87xx", 0xCC >> 1),
+		.irq		= IRQ_EINT(26),
+	},
+};
+
+static struct i2c_board_info i2c_devs1[] __initdata = {
+	{
+		I2C_BOARD_INFO("wm8994", 0x1a),
+	},
+};
+
+static struct i2c_board_info i2c_devs2[] __initdata = {
+	{
+		I2C_BOARD_INFO("exynos_hdcp", (0x74 >> 1)),
+	},
+};
+
+static struct i2c_board_info i2c_devs7[] __initdata = {
+	{
+		I2C_BOARD_INFO("egalax_i2c", 0x04),
+		.irq		= IRQ_EINT(25),
 	},
 };
 
@@ -541,6 +569,12 @@ static struct s5p_platform_mipi_dsim dsim_platform_data = {
 #endif
 
 static struct platform_device *smdk5250_devices[] __initdata = {
+	&s3c_device_i2c0,
+	&s3c_device_i2c1,
+	&s3c_device_i2c2,
+	&s3c_device_i2c4,
+	&s3c_device_i2c5,
+	&s3c_device_i2c7,
 	&SYSMMU_PLATDEV(mfc_l),
 	&SYSMMU_PLATDEV(mfc_r),
 	&SYSMMU_PLATDEV(2d),
@@ -660,6 +694,20 @@ static void __init exynos_sysmmu_init(void)
 
 static void __init smdk5250_machine_init(void)
 {
+	s3c_i2c0_set_platdata(NULL);
+	i2c_register_board_info(0, i2c_devs0, ARRAY_SIZE(i2c_devs0));
+
+	s3c_i2c1_set_platdata(NULL);
+	i2c_register_board_info(1, i2c_devs1, ARRAY_SIZE(i2c_devs1));
+
+	s3c_i2c2_set_platdata(NULL);
+	i2c_register_board_info(2, i2c_devs2, ARRAY_SIZE(i2c_devs2));
+
+	s3c_i2c4_set_platdata(NULL);
+	s3c_i2c5_set_platdata(NULL);
+	s3c_i2c7_set_platdata(NULL);
+	i2c_register_board_info(7, i2c_devs7, ARRAY_SIZE(i2c_devs7));
+
 	exynos_sysmmu_init();
 	exynos_reserve_mem();
 	exynos_ion_set_platdata();
