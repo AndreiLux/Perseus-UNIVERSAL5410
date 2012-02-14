@@ -125,6 +125,8 @@ struct dw_mci {
 	struct mmc_request	*mrq;
 	struct mmc_command	*cmd;
 	struct mmc_data		*data;
+	struct clk		*hclk;
+	struct clk		*cclk;
 
 	/* DMA interface members*/
 	int			use_dma;
@@ -231,11 +233,21 @@ struct dw_mci_board {
 	/* delay in mS before detecting cards after interrupt */
 	u32 detect_delay_ms;
 
+	char *hclk_name;
+	char *cclk_name;
+
 	int (*init)(u32 slot_id, irq_handler_t , void *);
 	int (*get_ro)(u32 slot_id);
 	int (*get_cd)(u32 slot_id);
 	int (*get_ocr)(u32 slot_id);
 	int (*get_bus_wd)(u32 slot_id);
+	void (*cfg_gpio)(int width);
+	void (*set_io_timing)(void *data, unsigned char timing);
+
+	/* Phase Shift Value */
+	unsigned int sdr_timing;
+	unsigned int ddr_timing;
+
 	/*
 	 * Enable power to selected slot and set voltage to desired level.
 	 * Voltage levels are specified using MMC_VDD_xxx defines defined
