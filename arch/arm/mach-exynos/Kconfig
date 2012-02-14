@@ -94,6 +94,13 @@ config EXYNOS_SETUP_FIMD1
 	help
 	  Common setup code for FIMD1.
 
+config EXYNOS4_SETUP_MIPI_DSIM
+	bool
+	depends on FB_MIPI_DSIM
+	default y
+	help
+	  Common setup code for MIPI_DSIM to support mainline style fimd.
+
 config EXYNOS_DEV_SYSMMU
 	bool
 	help
