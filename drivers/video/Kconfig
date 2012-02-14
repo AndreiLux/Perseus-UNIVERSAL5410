@@ -2055,6 +2055,12 @@ config FB_S3C
 
 	  Currently the support is only for the S3C6400 and S3C6410 SoCs.
 
+config FB_MIPI_DSIM
+	bool "Samsung MIPI DSIM"
+	depends on FB_S3C
+	default n
+	---help---
+	  This enables support for Samsung MIPI DSIM feature
 
 config FB_EXYNOS_FIMD_V8
 	bool "regiter extensions for FIMD version 8"
