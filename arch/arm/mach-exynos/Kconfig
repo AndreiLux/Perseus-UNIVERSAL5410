@@ -91,7 +91,7 @@ config EXYNOS_DEV_SYSMMU
 	help
 	  Common setup code for SYSTEM MMU in EXYNOS
 
-config EXYNOS4_DEV_DWMCI
+config EXYNOS_DEV_DWMCI
 	bool
 	help
 	  Compile in platform device definitions for DWMCI
@@ -372,6 +372,7 @@ config MACH_SMDK5250
 	select SOC_EXYNOS5250
 	select EXYNOS_DEV_DMA
 	select EXYNOS_DEV_SYSMMU
+	select EXYNOS_DEV_DWMCI
 	help
 	  Machine support for Samsung SMDK5250
 endif
