@@ -54,44 +54,6 @@ static unsigned int dpll_table[15] = {
 	320, 390, 450, 510, 560,
 	640, 690, 770, 870, 950 };
 
-static int s5p_mipi_dsi_fb_notifier_callback(struct notifier_block *self,
-		unsigned long event, void *data)
-{
-	struct mipi_dsim_device *dsim;
-
-	dsim = container_of(self, struct mipi_dsim_device, fb_notif);
-
-	switch (event) {
-	case FB_EVENT_RESUME:
-#ifdef CONFIG_LCD_MIPI_TC358764
-		s5p_mipi_dsi_func_reset(dsim);
-#endif
-		break;
-	case FB_BLANK_UNBLANK:
-#ifdef CONFIG_LCD_MIPI_TC358764
-		s5p_mipi_dsi_set_cpu_transfer_mode(dsim, 1);
-		s5p_mipi_dsi_clear_int_status(dsim, INTSRC_SFR_FIFO_EMPTY);
-		dsim->dsim_lcd_drv->displayon(dsim);
-		s5p_mipi_dsi_set_cpu_transfer_mode(dsim, 0);
-#else
-		dsim->dsim_lcd_drv->displayon(dsim);
-#endif
-		break;
-	default:
-		break;
-	}
-
-	return 0;
-}
-
-static int s5p_mipi_dsi_register_fb(struct mipi_dsim_device *dsim)
-{
-	memset(&dsim->fb_notif, 0, sizeof(dsim->fb_notif));
-	dsim->fb_notif.notifier_call = s5p_mipi_dsi_fb_notifier_callback;
-
-	return fb_register_client(&dsim->fb_notif);
-}
-
 #ifdef CONFIG_LCD_MIPI_TC358764
 int s5p_mipi_dsi_wait_int_status(struct mipi_dsim_device *dsim, unsigned int intSrc)
 {
@@ -812,12 +774,6 @@ static int s5p_mipi_dsi_probe(struct platform_device *pdev)
 	dsim->pd = to_dsim_plat(&pdev->dev);
 	dsim->dev = &pdev->dev;
 	dsim->id = pdev->id;
-
-	ret = s5p_mipi_dsi_register_fb(dsim);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to register fb notifier chain\n");
-		return -EFAULT;
-	}
 
 	pm_runtime_enable(&pdev->dev);
 	pm_runtime_get_sync(&pdev->dev);
