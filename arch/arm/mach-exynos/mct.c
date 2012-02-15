@@ -311,7 +311,9 @@ static int exynos4_tick_set_next_event(unsigned long cycles,
 {
 	struct mct_clock_event_device *mevt = this_cpu_ptr(&percpu_mct_tick);
 
-	exynos4_mct_tick_start(cycles, mevt);
+	if ((evt->mode != CLOCK_EVT_MODE_SHUTDOWN)
+		&& (evt->mode != CLOCK_EVT_MODE_UNUSED))
+		exynos4_mct_tick_start(cycles, mevt);
 
 	return 0;
 }
