@@ -25,6 +25,10 @@ void s3c_i2c4_cfg_gpio(struct platform_device *dev)
 		s3c_gpio_cfgall_range(EXYNOS4_GPB(0), 2,
 				      S3C_GPIO_SFN(3), S3C_GPIO_PULL_UP);
 
+	else if (soc_is_exynos5250())
+		s3c_gpio_cfgall_range(EXYNOS5_GPA2(0), 2,
+				      S3C_GPIO_SFN(3), S3C_GPIO_PULL_UP);
+
 	else
 		pr_err("failed to configure gpio for i2c4\n");
 }
