@@ -284,6 +284,10 @@ static __init int exynos4_pm_drvinit(void)
 	struct clk *pll_base;
 	unsigned int tmp;
 
+	if (soc_is_exynos5250())
+		/* will be implemented */
+		return 0;
+
 	s3c_pm_init();
 
 	/* All wakeup disable */
@@ -391,6 +395,10 @@ static struct syscore_ops exynos4_pm_syscore_ops = {
 
 static __init int exynos4_pm_syscore_init(void)
 {
+	if (soc_is_exynos5250())
+		/* will be implemented */
+		return 0;
+
 	register_syscore_ops(&exynos4_pm_syscore_ops);
 	return 0;
 }
