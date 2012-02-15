@@ -403,6 +403,8 @@ config MACH_SMDK5250
 	select EXYNOS4_SETUP_I2C4
 	select EXYNOS4_SETUP_I2C5
 	select EXYNOS4_SETUP_I2C7
+	select SAMSUNG_DEV_BACKLIGHT
+	select SAMSUNG_DEV_PWM
 	help
 	  Machine support for Samsung SMDK5250
 endif

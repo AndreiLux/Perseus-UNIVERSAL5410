@@ -15,6 +15,7 @@
 #include <linux/delay.h>
 #include <linux/fb.h>
 #include <linux/i2c.h>
+#include <linux/pwm_backlight.h>
 
 #include <video/platform_lcd.h>
 
@@ -28,6 +29,7 @@
 #include <plat/fb.h>
 #include <plat/regs-serial.h>
 #include <plat/gpio-cfg.h>
+#include <plat/backlight.h>
 #include <plat/devs.h>
 #include <plat/regs-fb-v4.h>
 #include <plat/iic.h>
@@ -568,6 +570,17 @@ static struct s5p_platform_mipi_dsim dsim_platform_data = {
 };
 #endif
 
+/* LCD Backlight data */
+static struct samsung_bl_gpio_info smdk5250_bl_gpio_info = {
+	.no	= EXYNOS5_GPB2(0),
+	.func	= S3C_GPIO_SFN(2),
+};
+
+static struct platform_pwm_backlight_data smdk5250_bl_data = {
+	.pwm_id		= 0,
+	.pwm_period_ns	= 30000,
+};
+
 static struct platform_device *smdk5250_devices[] __initdata = {
 	&s3c_device_i2c0,
 	&s3c_device_i2c1,
@@ -713,6 +726,7 @@ static void __init smdk5250_machine_init(void)
 	exynos_ion_set_platdata();
 	exynos_dwmci_set_platdata(&exynos_dwmci_pdata);
 
+	samsung_bl_set(&smdk5250_bl_gpio_info, &smdk5250_bl_data);
 
 #ifdef CONFIG_FB_S3C
 	s5p_fimd1_set_platdata(&smdk5250_lcd1_pdata);
