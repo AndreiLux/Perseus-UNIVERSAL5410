@@ -397,6 +397,33 @@ static int mxt_fw_write(struct i2c_client *client,
 	return 0;
 }
 
+#ifdef DEBUG
+#define DUMP_LEN	16
+static void mxt_dump_xfer(struct device *dev, const char *func, u16 reg,
+			  u16 len, const u8 *val)
+{
+	/* Rough guess for string size */
+	char str[DUMP_LEN * 3 + 2];
+	int i;
+	size_t n;
+
+	for (i = 0, n = 0; i < len; i++) {
+		n += snprintf(&str[n], sizeof(str) - n, "%02x ", val[i]);
+		if ((i + 1) % DUMP_LEN == 0 || (i + 1) == len) {
+			dev_dbg(dev,
+				"%s(reg: %d len: %d offset: 0x%02x): %s\n",
+				func, reg, len, (i / DUMP_LEN) * DUMP_LEN,
+				str);
+			n = 0;
+		}
+	}
+}
+#undef DUMP_LEN
+#else
+static void mxt_dump_xfer(struct device *dev, const char *func, u16 reg,
+			  u16 len, const u8 *val) { }
+#endif
+
 static int mxt_read_reg(struct i2c_client *client, u16 reg, u16 len, void *val)
 {
 	struct i2c_msg xfer[2];
@@ -422,6 +449,8 @@ static int mxt_read_reg(struct i2c_client *client, u16 reg, u16 len, void *val)
 		return -EIO;
 	}
 
+	mxt_dump_xfer(&client->dev, __func__, reg, len, val);
+
 	return 0;
 }
 
@@ -434,6 +463,8 @@ static int mxt_write_reg(struct i2c_client *client, u16 reg, u16 len,
 	buf[0] = reg & 0xff;
 	buf[1] = (reg >> 8) & 0xff;
 	memcpy(&buf[2], val, len);
+
+	mxt_dump_xfer(&client->dev, __func__, reg, len, val);
 
 	if (i2c_master_send(client, buf, count) != count) {
 		dev_err(&client->dev, "%s: i2c write failed\n", __func__);
