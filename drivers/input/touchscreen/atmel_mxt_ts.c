@@ -397,8 +397,7 @@ static int mxt_fw_write(struct i2c_client *client,
 	return 0;
 }
 
-static int __mxt_read_reg(struct i2c_client *client,
-			       u16 reg, u16 len, void *val)
+static int mxt_read_reg(struct i2c_client *client, u16 reg, u16 len, void *val)
 {
 	struct i2c_msg xfer[2];
 	u8 buf[2];
@@ -419,28 +418,25 @@ static int __mxt_read_reg(struct i2c_client *client,
 	xfer[1].buf = val;
 
 	if (i2c_transfer(client->adapter, xfer, 2) != 2) {
-		dev_err(&client->dev, "%s: i2c transfer failed\n", __func__);
+		dev_err(&client->dev, "%s: i2c read failed\n", __func__);
 		return -EIO;
 	}
 
 	return 0;
 }
 
-static int mxt_read_reg(struct i2c_client *client, u16 reg, u8 *val)
+static int mxt_write_reg(struct i2c_client *client, u16 reg, u16 len,
+			 const void *val)
 {
-	return __mxt_read_reg(client, reg, 1, val);
-}
-
-static int mxt_write_reg(struct i2c_client *client, u16 reg, u8 val)
-{
-	u8 buf[3];
+	size_t count = 2 + len;		/* + 2-byte offset */
+	u8 buf[count];
 
 	buf[0] = reg & 0xff;
 	buf[1] = (reg >> 8) & 0xff;
-	buf[2] = val;
+	memcpy(&buf[2], val, len);
 
-	if (i2c_master_send(client, buf, 3) != 3) {
-		dev_err(&client->dev, "%s: i2c send failed\n", __func__);
+	if (i2c_master_send(client, buf, count) != count) {
+		dev_err(&client->dev, "%s: i2c write failed\n", __func__);
 		return -EIO;
 	}
 
@@ -450,8 +446,7 @@ static int mxt_write_reg(struct i2c_client *client, u16 reg, u8 val)
 static int mxt_read_object_table(struct i2c_client *client,
 				      u16 reg, u8 *object_buf)
 {
-	return __mxt_read_reg(client, reg, MXT_OBJECT_SIZE,
-				   object_buf);
+	return mxt_read_reg(client, reg, MXT_OBJECT_SIZE, object_buf);
 }
 
 static struct mxt_object *
@@ -481,8 +476,8 @@ static int mxt_read_message(struct mxt_data *data,
 		return -EINVAL;
 
 	reg = object->start_address;
-	return __mxt_read_reg(data->client, reg,
-			sizeof(struct mxt_message), message);
+	return mxt_read_reg(data->client, reg, sizeof(struct mxt_message),
+			    message);
 }
 
 static int mxt_read_object(struct mxt_data *data,
@@ -496,7 +491,7 @@ static int mxt_read_object(struct mxt_data *data,
 		return -EINVAL;
 
 	reg = object->start_address;
-	return __mxt_read_reg(data->client, reg + offset, 1, val);
+	return mxt_read_reg(data->client, reg + offset, 1, val);
 }
 
 static int mxt_write_object(struct mxt_data *data,
@@ -510,7 +505,7 @@ static int mxt_write_object(struct mxt_data *data,
 		return -EINVAL;
 
 	reg = object->start_address;
-	return mxt_write_reg(data->client, reg + offset, val);
+	return mxt_write_reg(data->client, reg + offset, 1, &val);
 }
 
 static void mxt_input_report(struct mxt_data *data, int single_id)
@@ -757,27 +752,27 @@ static int mxt_get_info(struct mxt_data *data)
 	int error;
 	u8 val;
 
-	error = mxt_read_reg(client, MXT_FAMILY_ID, &val);
+	error = mxt_read_reg(client, MXT_FAMILY_ID, 1, &val);
 	if (error)
 		return error;
 	info->family_id = val;
 
-	error = mxt_read_reg(client, MXT_VARIANT_ID, &val);
+	error = mxt_read_reg(client, MXT_VARIANT_ID, 1, &val);
 	if (error)
 		return error;
 	info->variant_id = val;
 
-	error = mxt_read_reg(client, MXT_VERSION, &val);
+	error = mxt_read_reg(client, MXT_VERSION, 1, &val);
 	if (error)
 		return error;
 	info->version = val;
 
-	error = mxt_read_reg(client, MXT_BUILD, &val);
+	error = mxt_read_reg(client, MXT_BUILD, 1, &val);
 	if (error)
 		return error;
 	info->build = val;
 
-	error = mxt_read_reg(client, MXT_OBJECT_NUM, &val);
+	error = mxt_read_reg(client, MXT_OBJECT_NUM, 1, &val);
 	if (error)
 		return error;
 	info->object_num = val;
@@ -860,12 +855,12 @@ static int mxt_initialize(struct mxt_data *data)
 	msleep(MXT_RESET_TIME);
 
 	/* Update matrix size at info struct */
-	error = mxt_read_reg(client, MXT_MATRIX_X_SIZE, &val);
+	error = mxt_read_reg(client, MXT_MATRIX_X_SIZE, 1, &val);
 	if (error)
 		return error;
 	info->matrix_xsize = val;
 
-	error = mxt_read_reg(client, MXT_MATRIX_Y_SIZE, &val);
+	error = mxt_read_reg(client, MXT_MATRIX_Y_SIZE, 1, &val);
 	if (error)
 		return error;
 	info->matrix_ysize = val;
