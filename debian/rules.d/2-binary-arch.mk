@@ -49,6 +49,7 @@ install-%: dbgpkgdir = $(CURDIR)/debian/$(bin_pkg_name)-$*-dbgsym
 install-%: basepkg = $(hdrs_pkg_name)
 install-%: hdrdir = $(CURDIR)/debian/$(basepkg)-$*/usr/src/$(basepkg)-$*
 install-%: target_flavour = $*
+install-%: | install-headers
 install-%: checks-%
 	@echo Debug: $@
 	dh_testdir
@@ -205,6 +206,9 @@ ifeq ($(arch),powerpc)
 endif
 	# Script to symlink everything up
 	$(SHELL) $(DROOT)/scripts/link-headers "$(hdrdir)" "$(basepkg)" "$*"
+ifeq ($(do_complete_flavour_headers),true)
+	rsync -a debian/$(basepkg)/usr debian/$(basepkg)-$*
+endif
 	# The build symlink
 	install -d debian/$(basepkg)-$*/lib/modules/$(abi_release)-$*
 	ln -s /usr/src/$(basepkg)-$* \
