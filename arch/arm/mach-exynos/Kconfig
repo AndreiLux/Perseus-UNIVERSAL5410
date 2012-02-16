@@ -72,6 +72,7 @@ config SOC_EXYNOS5250
 config EXYNOS4_MCT
 	bool
 	default y
+	select HAVE_SCHED_CLOCK
 	help
 	  Use MCT (Multi Core Timer) as kernel timers
 
