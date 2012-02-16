@@ -141,6 +141,7 @@
 #define PWR_MODE_MEDIUM_SLEEP  1
 #define PWR_MODE_DEEP_SLEEP    0
 #define SET_POWER_MODE_DELAY   10000  /* unit: us */
+#define SET_POWER_MODE_TRIES   3
 
 /*
  * CYAPA trackpad device states.
@@ -747,22 +748,27 @@ static int cyapa_bl_exit(struct cyapa *cyapa)
  */
 static int cyapa_set_power_mode(struct cyapa *cyapa, u8 power_mode)
 {
+	struct device *dev = &cyapa->client->dev;
 	int ret;
 	u8 power;
-	int tries = 3;
+	int tries = SET_POWER_MODE_TRIES;
 
 	if (cyapa->state != CYAPA_STATE_OP)
 		return 0;
 
 	power = cyapa_read_byte(cyapa, CYAPA_CMD_POWER_MODE);
 	power &= ~OP_POWER_MODE_MASK;
-	power |= ((power_mode << OP_POWER_MODE_SHIFT) & OP_POWER_MODE_MASK);
-	do {
+	power |= (power_mode << OP_POWER_MODE_SHIFT) & OP_POWER_MODE_MASK;
+	while (true) {
 		ret = cyapa_write_byte(cyapa, CYAPA_CMD_POWER_MODE, power);
-		/* sleep at least 10 ms. */
+		if (!ret || --tries < 1)
+			break;
+		dev_dbg(dev, "set power mode retry. tries left = %d\n", tries);
 		usleep_range(SET_POWER_MODE_DELAY, 2 * SET_POWER_MODE_DELAY);
-	} while ((ret != 0) && (tries-- > 0));
-
+	}
+	if (ret < 0)
+		dev_err(dev, "failed to set power_mode 0x%02x err = %d\n",
+			power_mode, ret);
 	return ret;
 }
 
