@@ -43,6 +43,8 @@ endif
 # Debian Build System targets
 binary: binary-indep binary-arch
 
+binary-arch: binary-indep
+
 build: build-arch build-indep
 
 clean: debian/control
