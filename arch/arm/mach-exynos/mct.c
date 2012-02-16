@@ -20,6 +20,7 @@
 #include <linux/delay.h>
 #include <linux/percpu.h>
 
+#include <asm/sched_clock.h>
 #include <asm/hardware/gic.h>
 #include <asm/localtimer.h>
 
@@ -126,6 +127,11 @@ static void exynos4_mct_frc_start(u32 hi, u32 lo)
 	exynos4_mct_write(reg, EXYNOS4_MCT_G_TCON);
 }
 
+static u32 exynos4_read_sched_clock(void)
+{
+	return __raw_readl(EXYNOS4_MCT_G_CNT_L);
+}
+
 static cycle_t exynos4_frc_read(struct clocksource *cs)
 {
 	unsigned int lo, hi;
@@ -160,6 +166,8 @@ static void __init exynos4_clocksource_init(void)
 
 	if (clocksource_register_hz(&mct_frc, clk_rate))
 		panic("%s: can't register clocksource\n", mct_frc.name);
+
+	setup_sched_clock(exynos4_read_sched_clock, 32, clk_rate);
 }
 
 static void exynos4_mct_comp0_stop(void)
