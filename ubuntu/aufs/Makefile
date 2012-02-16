@@ -8,8 +8,12 @@ endif
 # cf. include/linux/kernel.h
 # enable pr_debug
 ccflags-y += -DDEBUG
-# sparse doesn't allow spaces
-ccflags-y += -D'pr_fmt(fmt)=AUFS_NAME"\040%s:%d:%s[%d]:\040"fmt,__func__,__LINE__,current->comm,current->pid'
+# sparse requires the full pathname
+ifdef M
+ccflags-y += -include ${M}/../../ubuntu/include/linux/aufs_type.h
+else
+ccflags-y += -include ${srctree}/ubuntu/include/linux/aufs_type.h
+endif
 
 obj-$(CONFIG_AUFS_FS) += aufs.o
 aufs-y := module.o sbinfo.o super.o branch.o xino.o sysaufs.o opts.o \
