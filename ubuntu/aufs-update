@@ -29,12 +29,16 @@ git checkout -f HEAD -- aufs/BOM aufs/BOM.UPDATING
 # Reinsert the include update.
 #sed -i -e '1iEXTRA_CFLAGS += -I$(src)/include' aufs/Makefile
 
+# Fix the relative patch references ...
+sed -i -e 's@/include/@/ubuntu/include/@g;' aufs/Makefile
+
 ## # Find the latest commit in the ChangeLog.
 ## read x n_log_sha1 <"$aufs/ChangeLog"
 
 # Insert the new commit ID and commit the result.
 sed -i -e "s/^COMMIT: .*/COMMIT: $n_tip_sha1/" aufs/BOM
 sed -i -e "s/^CHANGELOG: .*/CHANGELOG: $n_log_sha1/" aufs/BOM
+
 git add aufs include/linux
 {
 	echo "UBUNTU: ubuntu: AUFS -- update to $n_tip_sha1"
