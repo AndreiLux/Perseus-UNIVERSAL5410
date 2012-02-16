@@ -402,7 +402,7 @@ static ssize_t cyapa_i2c_reg_read_block(struct cyapa *cyapa, u8 reg, size_t len,
 	ssize_t ret;
 
 	ret = i2c_smbus_read_i2c_block_data(cyapa->client, reg, len, values);
-	dev_dbg(dev, "i2c read block reg: 0x%02x len: %d ret: %d\n",
+	dev_dbg(dev, "i2c read block reg: 0x%02x len: %zu ret: %zd\n",
 		reg, len, ret);
 	if (ret > 0)
 		cyapa_dump_data(cyapa, ret, values);
@@ -428,7 +428,7 @@ static ssize_t cyapa_i2c_reg_write_block(struct cyapa *cyapa, u8 reg,
 	ssize_t ret;
 
 	ret = i2c_smbus_write_i2c_block_data(cyapa->client, reg, len, values);
-	dev_dbg(dev, "i2c write block reg: 0x%02x len: %d ret: %d\n",
+	dev_dbg(dev, "i2c write block reg: 0x%02x len: %zu ret: %zd\n",
 		reg, len, ret);
 	cyapa_dump_data(cyapa, len, values);
 
@@ -479,7 +479,7 @@ static ssize_t cyapa_smbus_read_block(struct cyapa *cyapa, u8 cmd, size_t len,
 	}
 
 out:
-	dev_dbg(dev, "smbus read block cmd: 0x%02x len: %d ret: %d\n",
+	dev_dbg(dev, "smbus read block cmd: 0x%02x len: %zu ret: %zd\n",
 		cmd, len, ret);
 	if (ret > 0)
 		cyapa_dump_data(cyapa, len, values);
@@ -1040,7 +1040,7 @@ static int cyapa_check_fw(struct cyapa *cyapa, const struct firmware *fw)
 
 	/* Firmware must match exact 30848 bytes = 482 64-byte blocks. */
 	if (fw->size != CYAPA_FW_SIZE) {
-		dev_err(dev, "invalid firmware size = %u, expected %u.\n",
+		dev_err(dev, "invalid firmware size = %zu, expected %u.\n",
 			fw->size, CYAPA_FW_SIZE);
 		return -EINVAL;
 	}
@@ -1049,8 +1049,8 @@ static int cyapa_check_fw(struct cyapa *cyapa, const struct firmware *fw)
 	csum_expected = (fw->data[0] << 8) | fw->data[1];
 	csum = cyapa_csum(&fw->data[2], CYAPA_FW_HDR_SIZE - 2);
 	if (csum != csum_expected) {
-		dev_err(dev, "invalid firmware header checksum = %04x, "
-			     "expected: %04x\n", csum, csum_expected);
+		dev_err(dev, "invalid firmware header checksum = %04x, expected: %04x\n",
+			csum, csum_expected);
 		return -EINVAL;
 	}
 
@@ -1059,8 +1059,8 @@ static int cyapa_check_fw(struct cyapa *cyapa, const struct firmware *fw)
 			 fw->data[CYAPA_FW_HDR_SIZE - 1];
 	csum = cyapa_csum(&fw->data[CYAPA_FW_HDR_SIZE], CYAPA_FW_DATA_SIZE);
 	if (csum != csum_expected) {
-		dev_err(dev, "invalid firmware checksum = %04x, "
-			     "expected: %04x\n", csum, csum_expected);
+		dev_err(dev, "invalid firmware checksum = %04x, expected: %04x\n",
+			csum, csum_expected);
 		return -EINVAL;
 	}
 	return 0;
