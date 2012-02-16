@@ -12,6 +12,12 @@
 #ifndef __ASM_ARCH_GPIO_H
 #define __ASM_ARCH_GPIO_H __FILE__
 
+#include <linux/types.h>
+#include <linux/err.h>
+#include <mach/irqs.h>
+#include <plat/irqs.h>
+#include <plat/cpu.h>
+
 /* Macro for EXYNOS GPIO numbering */
 
 #define EXYNOS_GPIO_NEXT(__gpio) \
@@ -282,5 +288,33 @@ enum exynos5_gpio_number {
 /* define the number of gpios */
 
 #define ARCH_NR_GPIOS		(CONFIG_SAMSUNG_GPIO_EXTRA + S3C_GPIO_END)
+
+static inline int irq_to_gpio(unsigned int irq)
+{
+	if (soc_is_exynos5250()) {
+		switch (irq) {
+		case IRQ_EINT(0) ... IRQ_EINT(7):
+			return EXYNOS5_GPX0(0) + irq - IRQ_EINT(0);
+		case IRQ_EINT(8) ... IRQ_EINT(15):
+			return EXYNOS5_GPX1(0) + irq - IRQ_EINT(8);
+		case IRQ_EINT(16) ... IRQ_EINT(23):
+			return EXYNOS5_GPX2(0) + irq - IRQ_EINT(16);
+		case IRQ_EINT(24) ... IRQ_EINT(31):
+			return EXYNOS5_GPX3(0) + irq - IRQ_EINT(24);
+		}
+	} else {
+		switch (irq) {
+		case IRQ_EINT(0) ... IRQ_EINT(7):
+			return EXYNOS4_GPX0(0) + irq - IRQ_EINT(0);
+		case IRQ_EINT(8) ... IRQ_EINT(15):
+			return EXYNOS4_GPX1(0) + irq - IRQ_EINT(8);
+		case IRQ_EINT(16) ... IRQ_EINT(23):
+			return EXYNOS4_GPX2(0) + irq - IRQ_EINT(16);
+		case IRQ_EINT(24) ... IRQ_EINT(31):
+			return EXYNOS4_GPX3(0) + irq - IRQ_EINT(24);
+		}
+	}
+	return -EINVAL;
+}
 
 #endif /* __ASM_ARCH_GPIO_H */
