@@ -12,8 +12,8 @@ aufs="$1"
 # Get the current tip name
 {
 	read x url
-	read x o_tip_sha1
 	read x o_log_sha1
+	read x o_tip_sha1
 } <aufs/BOM
 
 # Identify the tip of the standalone tree for reporting
@@ -29,8 +29,8 @@ git checkout -f HEAD -- aufs/BOM aufs/BOM.UPDATING
 # Reinsert the include update.
 #sed -i -e '1iEXTRA_CFLAGS += -I$(src)/include' aufs/Makefile
 
-# Find the latest commit in the ChangeLog.
-read x n_log_sha1 <"$aufs/ChangeLog"
+## # Find the latest commit in the ChangeLog.
+## read x n_log_sha1 <"$aufs/ChangeLog"
 
 # Insert the new commit ID and commit the result.
 sed -i -e "s/^COMMIT: .*/COMMIT: $n_tip_sha1/" aufs/BOM
@@ -39,8 +39,9 @@ git add aufs include/linux
 {
 	echo "UBUNTU: ubuntu: AUFS -- update to $n_tip_sha1"
 	echo ""
-	awk <"$aufs/ChangeLog" '
-		/^commit '"$o_log_sha1"'/ 	{ exit }
-						{ print "    " $0 }
-	'
+	(cd "$aufs" && git log --no-merges "$o_tip_sha1..$n_tip_sha1" | git shortlog)
+## 	awk <"$aufs/ChangeLog" '
+## 		/^commit '"$o_log_sha1"'/ 	{ exit }
+## 						{ print "    " $0 }
+## 	'
 } | git commit -s -F -
