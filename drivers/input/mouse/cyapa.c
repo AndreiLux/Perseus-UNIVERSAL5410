@@ -1355,6 +1355,7 @@ static int cyapa_debugfs_init(struct cyapa *cyapa)
 static irqreturn_t cyapa_irq(int irq, void *dev_id)
 {
 	struct cyapa *cyapa = dev_id;
+	struct device *dev = &cyapa->client->dev;
 	struct input_dev *input = cyapa->input;
 	struct cyapa_reg_data data;
 	int i;
@@ -1370,6 +1371,9 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 	 */
 	if (!input)
 		return IRQ_HANDLED;
+
+	if (device_may_wakeup(dev))
+		pm_wakeup_event(dev, 0);
 
 	ret = cyapa_read_block(cyapa, CYAPA_CMD_GROUP_DATA, (u8 *)&data);
 	if (ret != sizeof(data))
