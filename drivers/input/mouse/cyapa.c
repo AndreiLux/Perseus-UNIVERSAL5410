@@ -1901,6 +1901,20 @@ static void cyapa_detect(struct cyapa *cyapa)
 		if (ret)
 			dev_err(dev, "create input_dev instance failed, %d\n",
 				ret);
+
+		/*
+		 * On some systems, a system crash / warm boot does not reset
+		 * the device's current power mode to FULL_ACTIVE.
+		 * If such an event happens during suspend, after the device
+		 * has been put in a low power mode, the device will still be
+		 * in low power mode on a subsequent boot, since there was
+		 * never a matching resume().
+		 * Handle this by always forcing full power here, when a
+		 * device is first detected to be in operational mode.
+		 */
+		ret = cyapa_set_power_mode(cyapa, PWR_MODE_FULL_ACTIVE);
+		if (ret)
+			dev_warn(dev, "set active power failed, %d\n", ret);
 	}
 }
 
