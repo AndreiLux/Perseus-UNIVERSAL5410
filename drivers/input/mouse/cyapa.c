@@ -214,6 +214,7 @@ struct cyapa {
 	struct input_dev	*input;
 	int irq;
 	u8 adapter_func;
+	bool irq_wake;  /* irq wake is enabled */
 	bool smbus;
 
 	/* read from query data region. */
@@ -2025,7 +2026,7 @@ static int cyapa_suspend(struct device *dev)
 		dev_err(dev, "set power mode failed, %d\n", ret);
 
 	if (device_may_wakeup(dev))
-		enable_irq_wake(cyapa->irq);
+		cyapa->irq_wake = (enable_irq_wake(cyapa->irq) == 0);
 	disable_irq(cyapa->irq);
 
 	return 0;
@@ -2037,7 +2038,7 @@ static int cyapa_resume(struct device *dev)
 	struct cyapa *cyapa = dev_get_drvdata(dev);
 
 	enable_irq(cyapa->irq);
-	if (device_may_wakeup(dev))
+	if (device_may_wakeup(dev) && cyapa->irq_wake)
 		disable_irq_wake(cyapa->irq);
 
 	cyapa_detect(cyapa);
