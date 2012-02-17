@@ -581,6 +581,11 @@ static struct clk exynos5_init_clocks_off[] = {
 		.enable		= exynos5_clk_ip_fsys_ctrl,
 		.ctrlbit	= (1 << 7),
 	}, {
+		.name		= "usbdrd30",
+		.parent		= &exynos5_clk_aclk_200.clk,
+		.enable		= exynos5_clk_ip_fsys_ctrl,
+		.ctrlbit	= (1 << 19),
+	}, {
 		.name		= "gps",
 		.enable		= exynos5_clk_ip_gps_ctrl,
 		.ctrlbit	= ((1 << 3) | (1 << 2) | (1 << 0)),
@@ -825,6 +830,16 @@ static struct clk exynos5_clk_mdma1 = {
 	.devname	= "dma-pl330.2",
 	.enable		= exynos5_clk_ip_gen_ctrl,
 	.ctrlbit	= (1 << 4),
+};
+
+struct clk *exynos5_clkset_usbdrd30_list[] = {
+	[0] = &exynos5_clk_mout_mpll.clk,
+	[1] = &exynos5_clk_mout_cpll.clk,
+};
+
+struct clksrc_sources exynos5_clkset_usbdrd30 = {
+	.sources	= exynos5_clkset_usbdrd30_list,
+	.nr_sources	= ARRAY_SIZE(exynos5_clkset_usbdrd30_list),
 };
 
 struct clk *exynos5_clkset_group_list[] = {
@@ -1072,6 +1087,15 @@ static struct clksrc_clk exynos5_clksrcs[] = {
 			.parent		= &exynos5_clk_mout_cpll.clk,
 		},
 		.reg_div = { .reg = EXYNOS5_CLKDIV_GEN, .shift = 4, .size = 3 },
+	}, {
+		.clk	= {
+			.name		= "sclk_usbdrd30",
+			.enable		= exynos5_clksrc_mask_fsys_ctrl,
+			.ctrlbit	= (1 << 28),
+		},
+		.sources = &exynos5_clkset_usbdrd30,
+		.reg_src = { .reg = EXYNOS5_CLKSRC_FSYS, .shift = 28, .size = 1 },
+		.reg_div = { .reg = EXYNOS5_CLKDIV_FSYS0, .shift = 24, .size = 4 },
 	},
 };
 
