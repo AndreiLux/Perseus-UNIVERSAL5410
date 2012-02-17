@@ -1635,9 +1635,16 @@ static void exynos_ss_udc_handle_depevt(struct exynos_ss_udc *udc, u32 event)
  */
 static void exynos_ss_udc_handle_devt(struct exynos_ss_udc *udc, u32 event)
 {
+	int event_info;
+
 	switch (event & EXYNOS_USB3_DEVT_EVENT_MASK) {
 	case EXYNOS_USB3_DEVT_EVENT_ULStChng:
 		dev_dbg(udc->dev, "USB-Link State Change");
+		event_info = event & EXYNOS_USB3_DEVT_EventParam_MASK;
+		if (event_info == EXYNOS_USB3_DEVT_EventParam(0x3) ||
+			event_info == EXYNOS_USB3_DEVT_EventParam(0x4)) {
+			call_gadget(udc, disconnect);
+		}
 		break;
 
 	case EXYNOS_USB3_DEVT_EVENT_ConnectDone:
