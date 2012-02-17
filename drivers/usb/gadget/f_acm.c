@@ -395,9 +395,11 @@ static int acm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 			usb_ep_disable(acm->notify);
 		} else {
 			VDBG(cdev, "init acm ctrl interface %d\n", intf);
-			if (config_ep_by_speed(cdev->gadget, f, acm->notify))
-				return -EINVAL;
 		}
+
+		if (config_ep_by_speed(cdev->gadget, f, acm->notify))
+			return -EINVAL;
+
 		usb_ep_enable(acm->notify);
 		acm->notify->driver_data = acm;
 
@@ -408,17 +410,16 @@ static int acm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 		}
 		if (!acm->port.in->desc || !acm->port.out->desc) {
 			DBG(cdev, "activate acm ttyGS%d\n", acm->port_num);
-			if (config_ep_by_speed(cdev->gadget, f,
-					       acm->port.in) ||
-			    config_ep_by_speed(cdev->gadget, f,
-					       acm->port.out)) {
-				acm->port.in->desc = NULL;
-				acm->port.out->desc = NULL;
-				return -EINVAL;
-			}
+		}
+		if (config_ep_by_speed(cdev->gadget, f,
+				       acm->port.in) ||
+		    config_ep_by_speed(cdev->gadget, f,
+				       acm->port.out)) {
+			acm->port.in->desc = NULL;
+			acm->port.out->desc = NULL;
+			return -EINVAL;
 		}
 		gserial_connect(&acm->port, acm->port_num);
-
 	} else
 		return -EINVAL;
 
@@ -677,6 +678,7 @@ acm_unbind(struct usb_configuration *c, struct usb_function *f)
 		usb_free_descriptors(f->hs_descriptors);
 	usb_free_descriptors(f->descriptors);
 	gs_free_req(acm->notify, acm->notify_req);
+	kfree(acm->port.func.name);
 	kfree(acm);
 }
 
@@ -748,7 +750,11 @@ int acm_bind_config(struct usb_configuration *c, u8 port_num)
 	acm->port.disconnect = acm_disconnect;
 	acm->port.send_break = acm_send_break;
 
-	acm->port.func.name = "acm";
+	acm->port.func.name = kasprintf(GFP_KERNEL, "acm%u", port_num);
+	if (!acm->port.func.name) {
+		kfree(acm);
+		return -ENOMEM;
+	}
 	acm->port.func.strings = acm_strings;
 	/* descriptors are per-instance copies */
 	acm->port.func.bind = acm_bind;

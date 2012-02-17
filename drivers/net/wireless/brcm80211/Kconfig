@@ -42,3 +42,6 @@ config BRCMDBG
 	depends on BRCMSMAC || BRCMFMAC
 	---help---
 	  Selecting this enables additional code for debug purposes.
+
+source "drivers/net/wireless/brcm80211/bcm4329/Kconfig"
+source "drivers/net/wireless/brcm80211/bcmdhd/Kconfig" 
