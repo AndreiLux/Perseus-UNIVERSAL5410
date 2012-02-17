@@ -1,9 +1,9 @@
-/* linux/arch/arm/mach-exynos4/include/mach/regs-pmu.h
+/* linux/arch/arm/mach-exynos/include/mach/regs-pmu.h
  *
  * Copyright (c) 2010-2011 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com
  *
- * EXYNOS4 - Power management unit definition
+ * EXYNOS - Power management unit definition
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -14,6 +14,7 @@
 #define __ASM_ARCH_REGS_PMU_H __FILE__
 
 #include <mach/map.h>
+#include <mach/regs-pmu5.h>
 
 #define S5P_PMUREG(x)				(S5P_VA_PMU + (x))
 
