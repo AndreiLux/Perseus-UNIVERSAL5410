@@ -21,6 +21,7 @@
 #include <linux/pwm_backlight.h>
 #include <linux/input.h>
 #include <linux/gpio_event.h>
+#include <linux/platform_data/exynos_usb3_drd.h>
 
 #include <video/platform_lcd.h>
 
@@ -798,7 +799,17 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&wm8994_fixed_voltage0,
 	&wm8994_fixed_voltage1,
 	&wm8994_fixed_voltage2,
+	&exynos_device_ss_udc,
 };
+
+static struct exynos_usb3_drd_pdata smdk5250_ss_udc_pdata;
+
+static void __init smdk5250_ss_udc_init(void)
+{
+	struct exynos_usb3_drd_pdata *pdata = &smdk5250_ss_udc_pdata;
+
+	exynos_ss_udc_set_platdata(pdata);
+}
 
 static void __init smdk5250_map_io(void)
 {
@@ -914,6 +925,8 @@ static void __init smdk5250_machine_init(void)
 	s5p_dsim_set_platdata(&dsim_platform_data);
 #endif
 	smdk5250_gpio_power_init();
+
+	smdk5250_ss_udc_init();
 
 	platform_add_devices(smdk5250_devices, ARRAY_SIZE(smdk5250_devices));
 
