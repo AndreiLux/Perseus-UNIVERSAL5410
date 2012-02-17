@@ -25,7 +25,7 @@
 #include "mali_kbase_pm.h"
 #include "mali_kbase_gpuprops.h"
 
-#if defined(__KERNEL__) && defined(__linux__)
+#if defined(CSTD_OS_LINUX_KERNEL)
 #include <kbase/src/linux/mali_kbase_linux.h>
 #elif defined(MALI_KBASE_USERSPACE)
 #include <kbase/src/userspace/mali_kbase_userspace.h>
