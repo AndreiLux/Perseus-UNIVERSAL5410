@@ -118,6 +118,12 @@ config EXYNOS4_DEV_USB_OHCI
 	help
 	  Compile in platform device definition for USB OHCI
 
+config EXYNOS_DEV_SS_UDC
+	bool
+	help
+	  Compile in platform device definition for EXYNOS SuperSpeed USB 3.0
+	  Device controller
+
 config EXYNOS4_SETUP_I2C1
 	bool
 	help
