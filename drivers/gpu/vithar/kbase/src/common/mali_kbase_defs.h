@@ -561,6 +561,13 @@ struct kbase_device {
 	u32                     js_reset_ticks_ss;
 	u32                     js_reset_ticks_nss;
 #endif
+
+#ifdef CONFIG_VITHAR
+	struct clk *sclk_g3d;
+#endif
+#ifdef CONFIG_VITHAR_RT_PM
+	struct delayed_work runtime_pm_workqueue;
+#endif
 };
 
 struct kbase_context

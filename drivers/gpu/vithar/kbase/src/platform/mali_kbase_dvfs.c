@@ -49,17 +49,11 @@
 #include <kbase/src/platform/mali_kbase_dvfs.h>
 
 #ifdef CONFIG_REGULATOR
-struct regulator *g3d_regulator=NULL;
+static struct regulator *g3d_regulator=NULL;
 static int mali_gpu_vol = 1050000; /* 1.05V  */
 #endif
 
 #ifdef CONFIG_VITHAR_DVFS
-#ifdef CONFIG_EXYNOS5_CPUFREQ
-#include <mach/cpufreq.h>
-#endif
-
-void kbase_platform_dvfs_set_clock(int freq);
-void kbase_platform_dvfs_set_vol(int vol);
 
 typedef struct _mali_dvfs_info{
 	unsigned int voltage;
@@ -69,6 +63,7 @@ typedef struct _mali_dvfs_info{
 }mali_dvfs_info;
 
 typedef struct _mali_dvfs_status_type{
+	kbase_device *kbdev;
 	int step;
 	int utilisation;
 	int keepcnt;
@@ -82,15 +77,15 @@ osk_spinlock mali_dvfs_spinlock;
 
 /*dvfs status*/
 static mali_dvfs_status mali_dvfs_status_current;
-static const mali_dvfs_info mali_dvfs_infotbl[MALI_DVFS_STEPS]=
+static const mali_dvfs_info mali_dvfs_infotbl[MALI_DVFS_STEP]=
 {
-#if (MALI_DVFS_STEPS == 5)
+#if (MALI_DVFS_STEP == 5)
 	{900000, 100, 0, 25},
 	{950000, 160, 20, 40},
 	{1000000, 200, 35, 65},
 	{1050000, 266, 55, 85},
 	{1150000, 400, 70, 100}
-#elif (MALI_DVFS_STEPS == 4)
+#elif (MALI_DVFS_STEP == 4)
 	{900000, 100, 0, 25},
 	{950000, 160, 20, 40},
 	{1000000, 200, 35, 65},
@@ -100,46 +95,81 @@ static const mali_dvfs_info mali_dvfs_infotbl[MALI_DVFS_STEPS]=
 #endif
 };
 
-#ifdef CONFIG_EXYNOS5_CPUFREQ
-void mali_dvfs_set_cpulock(int freq)
+static void kbase_platform_dvfs_set_clock(kbase_device *kbdev, int freq)
 {
 	static int _freq = -1;
-	unsigned int level;
+	unsigned long rate = 0;
 
-	if (_freq == freq)
+	if(kbdev->sclk_g3d == 0)
 		return;
 
-	if (_freq!=-1)
-		exynos_cpufreq_lock_free(DVFS_LOCK_ID_USER);
+	if (freq == _freq)
+		return;
 
 	switch(freq)
 	{
-	case 1000: case 900: case 800: case 700:
-	case 600: case 500: case 400: case 300: case 200:
-		if (exynos_cpufreq_get_level(freq * 1000, &level)) {
-			printk("failed to get cpufreq level for %dMHz\n", freq);
-			return;
-		}
-
-		if (exynos_cpufreq_lock(DVFS_LOCK_ID_USER, level)) {
-			printk("failed to cpufreq lock for L%d\n", level);
-			return;
-		}
-
-		printk("cpufreq locked on <%d>%dMHz\n", level, freq);
+	case 400:
+		rate = 400000000;
 		break;
-	case 0:
-		//just free
+	case 266:
+		rate = 267000000;
+		break;
+	case 200:
+		rate = 200000000;
+		break;
+	case 160:
+		rate = 160000000;
+		break;
+	case 133:
+		rate = 134000000;
+		break;
+	case 100:
+		rate = 100000000;
+		break;
+	case 50:
+		rate = 50000000;
 		break;
 	default:
 		return;
 	}
 
 	_freq = freq;
+	clk_set_rate(kbdev->sclk_g3d, rate);
 
+#if MALI_DVFS_DEBUG
+	printk("dvfs_set_clock %dMhz\n", freq);
+#endif
 	return;
 }
+
+static void kbase_platform_dvfs_set_vol(int vol)
+{
+	static int _vol = -1;
+
+	if (_vol == vol)
+		return;
+
+
+	switch(vol)
+	{
+	case 1150000:
+	case 1050000:
+	case 1000000:
+	case 950000:
+	case 900000:
+		kbase_platform_set_voltage(NULL, vol);
+		break;
+	default:
+		return;
+	}
+
+	_vol = vol;
+
+#if MALI_DVFS_DEBUG
+	printk("dvfs_set_vol %dmV\n", vol);
 #endif
+	return;
+}
 
 static void mali_dvfs_event_proc(struct work_struct *w)
 {
@@ -149,30 +179,21 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 	dvfs_status = mali_dvfs_status_current;
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
 
-#if MALI_DVFS_CPUFREQ_TEST
-	if (dvfs_status.utilisation > 40)
-		mali_dvfs_set_cpulock(800);
-	else if (dvfs_status.utilisation > 0)
-		mali_dvfs_set_cpulock(300);
-	else
-		mali_dvfs_set_cpulock(0);
-#endif
-
 #if MALI_DVFS_START_MAX_STEP
 	/*If no input is for longtime, first step will be max step. */
 	if (dvfs_status.utilisation > 10 && dvfs_status.noutilcnt > 20) {
-		dvfs_status.step=MALI_DVFS_STEPS-2;
+		dvfs_status.step=MALI_DVFS_STEP-2;
 		dvfs_status.utilisation = 100;
 	}
 #endif
 
 	if (dvfs_status.utilisation > mali_dvfs_infotbl[dvfs_status.step].max_threshold)
 	{
-		OSK_ASSERT(dvfs_status.step < MALI_DVFS_STEPS);
+		OSK_ASSERT(dvfs_status.step < MALI_DVFS_STEP);
 		dvfs_status.step++;
 		dvfs_status.keepcnt=0;
 		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[dvfs_status.step].voltage);
-		kbase_platform_dvfs_set_clock(mali_dvfs_infotbl[dvfs_status.step].clock);
+		kbase_platform_dvfs_set_clock(mali_dvfs_status_current.kbdev, mali_dvfs_infotbl[dvfs_status.step].clock);
 	}else if ((dvfs_status.step>0) &&
 			(dvfs_status.utilisation < mali_dvfs_infotbl[dvfs_status.step].min_threshold)) {
 		dvfs_status.keepcnt++;
@@ -181,7 +202,7 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 			OSK_ASSERT(dvfs_status.step > 0);
 			dvfs_status.step--;
 			dvfs_status.keepcnt=0;
-			kbase_platform_dvfs_set_clock(mali_dvfs_infotbl[dvfs_status.step].clock);
+			kbase_platform_dvfs_set_clock(mali_dvfs_status_current.kbdev, mali_dvfs_infotbl[dvfs_status.step].clock);
 			kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[dvfs_status.step].voltage);
 		}
 	}else{
@@ -211,7 +232,7 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 
 static DECLARE_WORK(mali_dvfs_work, mali_dvfs_event_proc);
 
-int kbase_platform_dvfs_event(u32 utilisation)
+int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 {
 	osk_spinlock_lock(&mali_dvfs_spinlock);
 	mali_dvfs_status_current.utilisation = utilisation;
@@ -227,8 +248,11 @@ int kbase_platform_dvfs_get_control_status(void)
 	return mali_dvfs_control;
 }
 
-int kbase_platform_dvfs_init(int step)
+int kbase_platform_dvfs_init(struct device *dev, int step)
 {
+	struct kbase_device *kbdev;
+	kbdev = dev_get_drvdata(dev);
+
 	/*default status
 	add here with the right function to get initilization value.
 	*/
@@ -239,9 +263,11 @@ int kbase_platform_dvfs_init(int step)
 
 	/*add a error handling here*/
 	osk_spinlock_lock(&mali_dvfs_spinlock);
+	mali_dvfs_status_current.kbdev = kbdev;
 	mali_dvfs_status_current.utilisation = 100;
 	mali_dvfs_status_current.step = step;
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
+
 	return MALI_TRUE;
 }
 

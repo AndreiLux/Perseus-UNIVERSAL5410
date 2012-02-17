@@ -293,14 +293,7 @@ typedef struct kbase_pm_device_data
 	kbasep_pm_metrics_data  metrics;
 #ifdef CONFIG_VITHAR
 	/** Indicator if system clock to mail-t604 is active */
-	int						g3d_clock_status;
-	/** Lock to protect g3d_clock_status */
-	osk_spinlock_irq		cmu_change_lock;
-
-	/** Indicator if system power to mail-t604 is active */
-	int						g3d_power_status;
-	/** Lock to protect g3d_power_status */
-	osk_spinlock_irq		pmu_change_lock;
+	int			cmu_pmu_status;
 
     /** cmd & pmu lock */
     osk_spinlock_irq		cmu_pmu_lock;

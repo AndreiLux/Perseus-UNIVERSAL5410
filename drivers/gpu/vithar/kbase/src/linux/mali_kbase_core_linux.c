@@ -1211,12 +1211,7 @@ static int kbase_common_device_init(kbase_device *kbdev)
 	}
 #if MALI_LICENSE_IS_GPL
 	dev_set_drvdata(osdev->dev, kbdev);
-#ifdef CONFIG_VITHAR_DEVICE_NODE_CREATION_IN_RUNTIME
 	osdev->mdev.minor	= MISC_DYNAMIC_MINOR;
-#else
-	/* FPGA use ROM filesystem, so we cannot MISC device node */
-	osdev->mdev.minor	= 77;
-#endif
 	osdev->mdev.name	= osdev->devname;
 	osdev->mdev.fops	= &kbase_fops;
 	osdev->mdev.parent	= get_device(osdev->dev);
@@ -1239,8 +1234,11 @@ static int kbase_common_device_init(kbase_device *kbdev)
 	}
 
 #ifdef CONFIG_VITHAR
-	if(kbase_platform_create_sysfs_file(osdev->dev))
+	if(kbase_platform_init(osdev->dev))
+	{
+		dev_err(osdev->dev, "kbase_platform_init failed\n");
 		goto out_file;
+	}
 #endif
 	down(&kbase_dev_list_lock);
 	list_add(&osdev->entry, &kbase_dev_list);
@@ -1605,13 +1603,6 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	osdev->reg_start = reg_res->start;
 	osdev->reg_size = resource_size(reg_res);
 
-#ifdef CONFIG_VITHAR
-	if(kbase_platform_init(osdev->dev))
-	{
-	    err = -ENOENT;
-	    goto out_free_dev;
-	}
-#endif
 	err = kbase_register_memory_regions(kbdev, (kbase_attribute *)osdev->dev->platform_data);
 	if (err)
 	{
@@ -1731,16 +1722,9 @@ static int kbase_device_suspend(struct device *dev)
 
 	/* Wait for the policy to suspend the device */
 	kbase_pm_wait_for_power_down(kbdev);
+
 #ifdef CONFIG_VITHAR
-	/* Turn off Host clock & power to Vithar */
-	kbase_platform_clock_off(dev);
-	kbase_platform_power_off(dev);
-
-#if 1
-	/* Turn off PMIC input power! Using Regulator */
-	kbase_platform_regulator_disable(dev);
-#endif
-
+	kbase_platform_cmu_pmu_control(dev, 0);
 #endif
 
 	return 0;
@@ -1763,15 +1747,9 @@ static int kbase_device_resume(struct device *dev)
 		return -ENODEV;
 	}
 #ifdef CONFIG_VITHAR
-#if 1
-	/* Turn on PMIC input power! Using Regulator */
-	kbase_platform_regulator_enable(dev);
+	kbase_platform_cmu_pmu_control(dev, 1);
 #endif
 
-	/* Turn on Host clock & power to Vithar */
-	kbase_platform_power_on(dev);
-	kbase_platform_clock_on(dev);
-#endif
 	/* Send the event to the power policy */
 	kbase_pm_send_event(kbdev, KBASE_PM_EVENT_SYSTEM_RESUME);
 

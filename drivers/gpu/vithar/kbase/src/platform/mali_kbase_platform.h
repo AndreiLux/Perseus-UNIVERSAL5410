@@ -19,12 +19,7 @@
 #define _KBASE_PLATFORM_H_
 
 /* All things that are needed for the Linux port. */
-
-int kbase_platform_clock_on(struct device *dev);
-int kbase_platform_clock_off(struct device *dev);
-int kbase_platform_power_on(struct device *dev);
-int kbase_platform_power_off(struct device *dev);
-int kbase_platform_create_sysfs_file(struct device *dev);
+int kbase_platform_cmu_pmu_control(struct device *dev, int control);
 void kbase_platform_remove_sysfs_file(struct device *dev);
 int kbase_platform_init(struct device *dev);
 int kbase_platform_is_power_on(void);

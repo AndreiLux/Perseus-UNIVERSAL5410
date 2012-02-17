@@ -218,17 +218,7 @@ typedef enum
 	 */
 	OSK_LOCK_ORDER_BASE_REG_QUEUE,
 
-#ifdef CONFIG_VITHAR
-	/**
-	 * System clock for mali-t604
-	 */
-	OSK_LOCK_ORDER_CMU_CLOCK,
-
-	/**
-	 * System power for mali-t604
-	 */
-	OSK_LOCK_ORDER_PMU_CLOCK,
-
+#ifdef CONFIG_VITHAR_RT_PM
     /**
      * System power for mali-t604
      */

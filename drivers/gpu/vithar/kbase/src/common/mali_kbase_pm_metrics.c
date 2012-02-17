@@ -48,7 +48,7 @@ static void dvfs_callback(void *data)
 	kbdev = (kbase_device*)data;
 #ifdef CONFIG_VITHAR_DVFS
 	CSTD_UNUSED(action);
-	kbase_platform_dvfs_event(kbase_pm_get_dvfs_utilisation(kbdev));
+	kbase_platform_dvfs_event(kbdev, kbase_pm_get_dvfs_utilisation(kbdev));
 #else
 	action = kbase_pm_get_dvfs_action(kbdev);
 
@@ -91,6 +91,9 @@ mali_error kbasep_pm_metrics_init(kbase_device *kbdev)
 	kbdev->pm.metrics.time_idle = 0;
 	kbdev->pm.metrics.gpu_active = MALI_TRUE;
 	kbdev->pm.metrics.timer_active = MALI_TRUE;
+#ifdef CONFIG_VITHAR_RT_PM
+	kbdev->pm.cmu_pmu_status = 0;
+#endif
 
 	osk_err = osk_spinlock_irq_init(&kbdev->pm.metrics.lock, OSK_LOCK_ORDER_PM_METRICS);
 	if (OSK_ERR_NONE != osk_err)

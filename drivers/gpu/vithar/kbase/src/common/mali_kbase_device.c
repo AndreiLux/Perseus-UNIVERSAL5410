@@ -204,6 +204,10 @@ kbase_device *kbase_device_create(const kbase_device_info *dev_info)
 		goto free_reset_timer;
 	}
 
+#ifdef CONFIG_VITHAR
+	kbdev->sclk_g3d = 0;
+#endif
+
 	osk_debug_assert_register_hook( &kbasep_trace_hook_wrapper, kbdev );
 	return kbdev;
 

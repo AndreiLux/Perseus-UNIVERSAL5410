@@ -93,37 +93,17 @@ mali_error kbase_pm_init(kbase_device *kbdev)
 	}
 
 #ifdef CONFIG_VITHAR_RT_PM
-	osk_err = osk_spinlock_irq_init(&kbdev->pm.cmu_change_lock, OSK_LOCK_ORDER_CMU_CLOCK);
-	if (OSK_ERR_NONE != osk_err)
-	{
-		goto cmu_change_lock_fail;
-	}
-
-	osk_err = osk_spinlock_irq_init(&kbdev->pm.pmu_change_lock, OSK_LOCK_ORDER_PMU_CLOCK);
-	if (OSK_ERR_NONE != osk_err)
-	{
-		goto pmu_change_lock_fail;
-	}
-
-	kbdev->pm.g3d_power_status= 1;
-	kbdev->pm.g3d_clock_status= 1;
-
 	osk_err = osk_spinlock_irq_init(&kbdev->pm.cmu_pmu_lock, OSK_LOCK_ORDER_CMU_PMU);
 	if (OSK_ERR_NONE != osk_err)
 	{
 		goto cmu_pmu_lock_fail;
 	}
-
 #endif
 
 	return MALI_ERROR_NONE;
 
 #ifdef CONFIG_VITHAR_RT_PM
 cmu_pmu_lock_fail:
-	osk_spinlock_irq_term(&kbdev->pm.pmu_change_lock);
-pmu_change_lock_fail:
-	osk_spinlock_irq_term(&kbdev->pm.cmu_change_lock);
-cmu_change_lock_fail:
 	osk_spinlock_irq_term(&kbdev->pm.active_count_lock);
 #endif
 active_count_lock_fail:
@@ -216,6 +196,9 @@ void kbase_pm_context_active(kbase_device *kbdev)
 
 	if (c == 1)
 	{
+#ifdef CONFIG_VITHAR_RT_PM
+		kbase_device_runtime_get_sync(kbdev->osdev.dev);
+#endif
 		/* First context active */
 		kbase_pm_send_event(kbdev, KBASE_PM_EVENT_GPU_ACTIVE);
 
@@ -242,6 +225,10 @@ void kbase_pm_context_idle(kbase_device *kbdev)
 		kbase_pm_send_event(kbdev, KBASE_PM_EVENT_GPU_IDLE);
 
 		kbasep_pm_record_gpu_idle(kbdev);
+
+#ifdef CONFIG_VITHAR_RT_PM
+		kbase_device_runtime_put_sync(kbdev->osdev.dev);
+#endif
 	}
 
 	/* We must wait for the above functions to finish (in the case c==0) before releasing the lock otherwise there is

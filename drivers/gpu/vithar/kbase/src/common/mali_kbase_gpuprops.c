@@ -21,10 +21,6 @@
 #include <kbase/src/common/mali_midg_regmap.h>
 #include <kbase/src/common/mali_kbase_gpuprops.h>
 
-#ifdef CONFIG_VITHAR_RT_PM
-#include <kbase/src/platform/mali_kbase_runtime_pm.h>
-#endif
-
 /**
  * @brief Extracts bits from a 32-bit bitfield.
  * @hideinitializer
@@ -199,11 +195,6 @@ void kbase_gpuprops_get_props(base_gpu_props * gpu_props, kbase_device * kbdev)
 
 	OSK_ASSERT(NULL != kbdev);
 	OSK_ASSERT(NULL != gpu_props);
-
-#ifdef CONFIG_VITHAR_RT_PM
-    //kbase_device_runtime_get_sync(kbdev->osdev.dev);
-    kbase_device_runtime_resume(kbdev->osdev.dev);
-#endif
 
 	/* Dump relevant registers */
 	kbase_gpuprops_dump_registers(kbdev, &regdump);

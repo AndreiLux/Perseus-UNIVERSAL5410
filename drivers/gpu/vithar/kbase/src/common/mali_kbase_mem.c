@@ -235,8 +235,12 @@ void kbase_mem_usage_release_pages(kbasep_mem_usage * usage, u32 nr_pages)
  *
  * Wait 1000 GPU clock cycles. This delay is known to give the GPU time to flush its write buffer.
  */
- #ifdef CONFIG_VITHAR_RT_PM
-static void kbase_wait_write_flush(struct kbase_context *kctx) { udelay(7); }
+#ifdef CONFIG_VITHAR_RT_PM
+static void kbase_wait_write_flush(struct kbase_context *kctx)
+{
+	/* 1000 GPU clock @ the minimum 100Mhz is 10us */
+	udelay(10);
+}
 #else
 #if MALI_NO_MALI
 static void kbase_wait_write_flush(struct kbase_context *kctx) { }
