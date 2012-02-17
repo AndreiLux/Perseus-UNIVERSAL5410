@@ -842,6 +842,13 @@ struct clksrc_sources exynos5_clkset_usbdrd30 = {
 	.nr_sources	= ARRAY_SIZE(exynos5_clkset_usbdrd30_list),
 };
 
+static struct clk exynos5_init_audss_clocks[] = {
+	{
+		.name		= "iis",
+		.devname	= "samsung-i2s.0",
+	},
+};
+
 struct clk *exynos5_clkset_group_list[] = {
 	[0] = &clk_ext_xtal_mux,
 	[1] = NULL,
@@ -1403,6 +1410,10 @@ void __init exynos5_register_clocks(void)
 
 	s3c_register_clocks(exynos5_init_clocks_off, ARRAY_SIZE(exynos5_init_clocks_off));
 	s3c_disable_clocks(exynos5_init_clocks_off, ARRAY_SIZE(exynos5_init_clocks_off));
+
+	s3c_register_clocks(exynos5_init_audss_clocks, ARRAY_SIZE(exynos5_init_audss_clocks));
+	s3c_disable_clocks(exynos5_init_audss_clocks, ARRAY_SIZE(exynos5_init_audss_clocks));
+
 	clkdev_add_table(exynos5_clk_lookup, ARRAY_SIZE(exynos5_clk_lookup));
 
 	register_syscore_ops(&exynos5_clock_syscore_ops);
