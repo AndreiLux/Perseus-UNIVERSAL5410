@@ -16,14 +16,50 @@
 #include <linux/platform_device.h>
 #include <mach/regs-pmu.h>
 #include <mach/regs-usb-phy.h>
+#include <mach/regs-usb3-exynos-drd-phy.h>
 #include <plat/cpu.h>
 #include <plat/usb-phy.h>
 
+#define PHY_ENABLE	(1 << 0)
+#define PHY_DISABLE	(0 << 0)
+
+enum usb_phy_type {
+	USB_PHY		= (0x1 << 0),
+	USB_PHY0	= (0x1 << 0),
+	USB_PHY1	= (0x1 << 1),
+	USB_PHY_HSIC0	= (0x1 << 1),
+	USB_PHY_HSIC1	= (0x1 << 2),
+};
+
+struct exynos_usb_phy {
+	u8 phy0_usage;
+	u8 phy1_usage;
+	u8 phy2_usage;
+	unsigned long flags;
+};
+
+static struct exynos_usb_phy usb_phy_control;
 static atomic_t host_usage;
+static DEFINE_SPINLOCK(phy_lock);
 
 static int exynos4_usb_host_phy_is_on(void)
 {
 	return (readl(EXYNOS4_PHYPWR) & PHY1_STD_ANALOG_POWERDOWN) ? 0 : 1;
+}
+
+static void exynos_usb_phy_control(enum usb_phy_type phy_type , int on)
+{
+	spin_lock(&phy_lock);
+
+	if (phy_type & USB_PHY0) {
+		if (on == PHY_ENABLE) {
+			usb_phy_control.phy0_usage++;
+			writel(PHY_ENABLE, EXYNOS5_USBDEV_PHY_CONTROL);
+		} else if (on == PHY_DISABLE && (--usb_phy_control.phy0_usage) == 0)
+			writel(PHY_DISABLE, EXYNOS5_USBDEV_PHY_CONTROL);
+	}
+
+	spin_unlock(&phy_lock);
 }
 
 static int exynos4_usb_phy1_init(struct platform_device *pdev)
@@ -134,10 +170,73 @@ static int exynos4_usb_phy1_exit(struct platform_device *pdev)
 	return 0;
 }
 
+static int exynos5_usb_phy30_init(struct platform_device *pdev)
+{
+	u32 reg;
+
+	exynos_usb_phy_control(USB_PHY0, PHY_ENABLE);
+
+	/* Reset USB 3.0 PHY */
+	writel(0x087fffc0, EXYNOS_USB3_LINKSYSTEM);
+	writel(0x00000000, EXYNOS_USB3_PHYREG0);
+	writel(0x24d4e6e4, EXYNOS_USB3_PHYPARAM0);
+	writel(0x03fff820, EXYNOS_USB3_PHYPARAM1);
+	writel(0x00000000, EXYNOS_USB3_PHYBATCHG);
+	writel(0x00000000, EXYNOS_USB3_PHYRESUME);
+	/* REVISIT : Over-current pin is inactive on SMDK5250 */
+	if (soc_is_exynos5250())
+		writel((readl(EXYNOS_USB3_LINKPORT) & ~(0x3<<4)) |
+			(0x3<<2), EXYNOS_USB3_LINKPORT);
+
+	/* UTMI Power Control */
+	writel(EXYNOS_USB3_PHYUTMI_OTGDISABLE, EXYNOS_USB3_PHYUTMI);
+
+	/* Set 100MHz external clock */
+	reg = EXYNOS_USB3_PHYCLKRST_PORTRESET |
+		/* HS PLL uses ref_pad_clk{p,m} or ref_alt_clk_{p,m}
+		* as reference */
+		EXYNOS_USB3_PHYCLKRST_REFCLKSEL(2) |
+		/* Digital power supply in normal operating mode */
+		EXYNOS_USB3_PHYCLKRST_RETENABLEN |
+		/* 0x27-100MHz, 0x2a-24MHz, 0x31-20MHz, 0x38-19.2MHz */
+		EXYNOS_USB3_PHYCLKRST_FSEL(0x27) |
+		/* 0x19-100MHz, 0x68-24MHz, 0x7d-20Mhz */
+		EXYNOS_USB3_PHYCLKRST_MPLL_MULTIPLIER(0x19) |
+		/* Enable ref clock for SS function */
+		EXYNOS_USB3_PHYCLKRST_REF_SSP_EN |
+		/* Enable spread spectrum */
+		EXYNOS_USB3_PHYCLKRST_SSC_EN;
+
+	writel(reg, EXYNOS_USB3_PHYCLKRST);
+
+	udelay(10);
+
+	reg &= ~(EXYNOS_USB3_PHYCLKRST_PORTRESET);
+	writel(reg, EXYNOS_USB3_PHYCLKRST);
+
+	return 0;
+}
+
+static int exynos5_usb_phy30_exit(struct platform_device *pdev)
+{
+	u32 reg;
+
+	reg = EXYNOS_USB3_PHYUTMI_OTGDISABLE |
+		EXYNOS_USB3_PHYUTMI_FORCESUSPEND |
+		EXYNOS_USB3_PHYUTMI_FORCESLEEP;
+	writel(reg, EXYNOS_USB3_PHYUTMI);
+
+	exynos_usb_phy_control(USB_PHY0, PHY_DISABLE);
+
+	return 0;
+}
+
 int s5p_usb_phy_init(struct platform_device *pdev, int type)
 {
 	if (type == S5P_USB_PHY_HOST)
 		return exynos4_usb_phy1_init(pdev);
+	else if (type == S5P_USB_PHY_DRD)
+		return exynos5_usb_phy30_init(pdev);
 
 	return -EINVAL;
 }
@@ -146,6 +245,8 @@ int s5p_usb_phy_exit(struct platform_device *pdev, int type)
 {
 	if (type == S5P_USB_PHY_HOST)
 		return exynos4_usb_phy1_exit(pdev);
+	else if (type == S5P_USB_PHY_DRD)
+		return exynos5_usb_phy30_exit(pdev);
 
 	return -EINVAL;
 }
