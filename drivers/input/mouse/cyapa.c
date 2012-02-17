@@ -25,12 +25,10 @@
 #include <linux/input/mt.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
-#include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/semaphore.h>
 #include <linux/slab.h>
-#include <linux/spinlock.h>
 #include <linux/uaccess.h>
 
 
@@ -202,12 +200,6 @@ struct cyapa_reg_data {
 
 /* The main device structure */
 struct cyapa {
-	/* synchronize accessing members of cyapa data structure. */
-	spinlock_t miscdev_spinlock;
-	/* synchronize accessing and updating file->f_pos. */
-	struct mutex misc_mutex;
-	int misc_open_count;
-
 	enum cyapa_state state;
 
 	struct i2c_client	*client;
@@ -245,9 +237,6 @@ static const u8 bl_deactivate[] = { 0x00, 0xFF, 0x3B, 0x00, 0x01, 0x02, 0x03,
 		0x04, 0x05, 0x06, 0x07 };
 static const u8 bl_exit[] = { 0x00, 0xFF, 0xA5, 0x00, 0x01, 0x02, 0x03, 0x04,
 		0x05, 0x06, 0x07 };
-
-/* global pointer to trackpad touch data structure. */
-static struct cyapa *global_cyapa;
 
 /* global root node of the cyapa debugfs directory. */
 static struct dentry *cyapa_debugfs_root;
@@ -1169,374 +1158,6 @@ err_detect:
 }
 
 /*
- **************************************************************
- * misc cyapa device for trackpad firmware update,
- * and for raw read/write operations.
- * The following programs may open and use cyapa device.
- * 1. X Input Driver.
- * 2. trackpad firmware update program.
- **************************************************************
- */
-static int cyapa_misc_open(struct inode *inode, struct file *file)
-{
-	int count;
-	unsigned long flags;
-	struct cyapa *cyapa = global_cyapa;
-
-	if (cyapa == NULL)
-		return -ENODEV;
-	file->private_data = (void *)cyapa;
-
-	spin_lock_irqsave(&cyapa->miscdev_spinlock, flags);
-	if (cyapa->misc_open_count) {
-		spin_unlock_irqrestore(&cyapa->miscdev_spinlock, flags);
-		return -EBUSY;
-	}
-	count = ++cyapa->misc_open_count;
-	spin_unlock_irqrestore(&cyapa->miscdev_spinlock, flags);
-
-	return 0;
-}
-
-static int cyapa_misc_close(struct inode *inode, struct file *file)
-{
-	int count;
-	unsigned long flags;
-	struct cyapa *cyapa = (struct cyapa *)file->private_data;
-
-	spin_lock_irqsave(&cyapa->miscdev_spinlock, flags);
-	count = --cyapa->misc_open_count;
-	spin_unlock_irqrestore(&cyapa->miscdev_spinlock, flags);
-
-	return 0;
-}
-
-static int cyapa_pos_validate(unsigned int pos)
-{
-	return (pos >= 0) && (pos < CYAPA_REG_MAP_SIZE);
-}
-
-static loff_t cyapa_misc_llseek(struct file *file, loff_t offset, int origin)
-{
-	loff_t ret = -EINVAL;
-	struct cyapa *cyapa = (struct cyapa *)file->private_data;
-	struct device *dev = &cyapa->client->dev;
-
-	if (cyapa == NULL) {
-		dev_err(dev, "cypress trackpad device does not exit.\n");
-		return -ENODEV;
-	}
-
-	mutex_lock(&cyapa->misc_mutex);
-	switch (origin) {
-	case SEEK_SET:
-		if (cyapa_pos_validate(offset)) {
-			file->f_pos = offset;
-			ret = file->f_pos;
-		}
-		break;
-
-	case SEEK_CUR:
-		if (cyapa_pos_validate(file->f_pos + offset)) {
-			file->f_pos += offset;
-			ret = file->f_pos;
-		}
-		break;
-
-	case SEEK_END:
-		if (cyapa_pos_validate(CYAPA_REG_MAP_SIZE + offset)) {
-			file->f_pos = (CYAPA_REG_MAP_SIZE + offset);
-			ret = file->f_pos;
-		}
-		break;
-
-	default:
-		break;
-	}
-	mutex_unlock(&cyapa->misc_mutex);
-
-	return ret;
-}
-
-static int cyapa_miscdev_rw_params_check(struct cyapa *cyapa,
-	unsigned long offset, unsigned int length)
-{
-	struct device *dev = &cyapa->client->dev;
-	unsigned int max_offset;
-
-	if (cyapa == NULL)
-		return -ENODEV;
-
-	/*
-	 * application may read/write 0 length byte
-	 * to reset read/write pointer to offset.
-	 */
-	max_offset = (length == 0) ? offset : (length - 1 + offset);
-
-	/* max registers contained in one register map in bytes is 256. */
-	if (cyapa_pos_validate(offset) && cyapa_pos_validate(max_offset))
-		return 0;
-
-	dev_warn(dev, "invalid parameters, length=%d, offset=0x%x\n", length,
-		 (unsigned int)offset);
-
-	return -EINVAL;
-}
-
-static ssize_t cyapa_misc_read(struct file *file, char __user *usr_buf,
-		size_t count, loff_t *offset)
-{
-	int ret;
-	int reg_len = (int)count;
-	unsigned long reg_offset = *offset;
-	u8 reg_buf[CYAPA_REG_MAP_SIZE];
-	struct cyapa *cyapa = (struct cyapa *)file->private_data;
-	struct device *dev = &cyapa->client->dev;
-
-	ret = cyapa_miscdev_rw_params_check(cyapa, reg_offset, count);
-	if (ret < 0)
-		return ret;
-
-	ret = cyapa_i2c_reg_read_block(cyapa, (u16)reg_offset, reg_len,
-				       reg_buf);
-	if (ret < 0) {
-		dev_err(dev, "I2C read FAILED.\n");
-		return ret;
-	}
-
-	if (ret < reg_len)
-		dev_warn(dev, "Expected %d bytes, read %d bytes.\n",
-			reg_len, ret);
-	reg_len = ret;
-
-	if (copy_to_user(usr_buf, reg_buf, reg_len)) {
-		ret = -EFAULT;
-	} else {
-		*offset += reg_len;
-		ret = reg_len;
-	}
-
-	return ret;
-}
-
-static ssize_t cyapa_misc_write(struct file *file, const char __user *usr_buf,
-		size_t count, loff_t *offset)
-{
-	int ret;
-	unsigned long reg_offset = *offset;
-	u8 reg_buf[CYAPA_REG_MAP_SIZE];
-	struct cyapa *cyapa = (struct cyapa *)file->private_data;
-
-	ret = cyapa_miscdev_rw_params_check(cyapa, reg_offset, count);
-	if (ret < 0)
-		return ret;
-
-	if (copy_from_user(reg_buf, usr_buf, (int)count))
-		return -EINVAL;
-
-	ret = cyapa_i2c_reg_write_block(cyapa,
-					(u16)reg_offset,
-					(int)count,
-					reg_buf);
-
-	if (!ret)
-		*offset += count;
-
-	return ret ? ret : count;
-}
-
-static int cyapa_send_bl_cmd(struct cyapa *cyapa, enum cyapa_bl_cmd cmd)
-{
-	struct device *dev = &cyapa->client->dev;
-	int ret;
-
-	switch (cmd) {
-	case CYAPA_CMD_APP_TO_IDLE:
-		ret = cyapa_bl_enter(cyapa);
-		if (ret < 0)
-			dev_err(dev, "enter bootloader failed, %d\n", ret);
-		break;
-
-	case CYAPA_CMD_IDLE_TO_ACTIVE:
-		ret = cyapa_bl_activate(cyapa);
-		if (ret)
-			dev_err(dev, "activate bootloader failed, %d\n", ret);
-		break;
-
-	case CYAPA_CMD_ACTIVE_TO_IDLE:
-		ret = cyapa_bl_deactivate(cyapa);
-		if (ret)
-			dev_err(dev, "deactivate bootloader failed, %d\n", ret);
-		break;
-
-	case CYAPA_CMD_IDLE_TO_APP:
-		cyapa_detect(cyapa);
-		break;
-
-	default:
-		/* unknown command. */
-		ret = -EINVAL;
-	}
-	return ret;
-}
-
-static long cyapa_misc_ioctl(struct file *file, unsigned int cmd,
-		unsigned long arg)
-{
-	int ret;
-	int ioctl_len;
-	struct cyapa *cyapa = (struct cyapa *)file->private_data;
-	struct device *dev = &cyapa->client->dev;
-	struct cyapa_misc_ioctl_data ioctl_data;
-	struct cyapa_trackpad_run_mode run_mode;
-	u8 buf[8];
-
-	if (cyapa == NULL) {
-		dev_err(dev, "device does not exist.\n");
-		return -ENODEV;
-	}
-
-	/* copy to kernel space. */
-	ioctl_len = sizeof(struct cyapa_misc_ioctl_data);
-	if (copy_from_user(&ioctl_data, (u8 *)arg, ioctl_len))
-		return -EINVAL;
-
-	switch (cmd) {
-	case CYAPA_GET_PRODUCT_ID:
-		if (!ioctl_data.buf || ioctl_data.len < 16)
-			return -EINVAL;
-
-		ioctl_data.len = 16;
-		if (copy_to_user(ioctl_data.buf, cyapa->product_id, 16))
-				return -EIO;
-		if (copy_to_user((void *)arg, &ioctl_data, ioctl_len))
-			return -EIO;
-		return ioctl_data.len;
-
-	case CYAPA_GET_FIRMWARE_VER:
-		if (!ioctl_data.buf || ioctl_data.len < 2)
-			return -EINVAL;
-
-		ioctl_data.len = 2;
-		memset(buf, 0, sizeof(buf));
-		buf[0] = cyapa->fw_maj_ver;
-		buf[1] = cyapa->fw_min_ver;
-		if (copy_to_user(ioctl_data.buf, buf, ioctl_data.len))
-			return -EIO;
-		if (copy_to_user((void *)arg, &ioctl_data, ioctl_len))
-			return -EIO;
-		return ioctl_data.len;
-
-	case CYAPA_GET_HARDWARE_VER:
-		if (!ioctl_data.buf || ioctl_data.len < 2)
-			return -EINVAL;
-
-		ioctl_data.len = 2;
-		memset(buf, 0, sizeof(buf));
-		buf[0] = cyapa->hw_maj_ver;
-		buf[1] = cyapa->hw_min_ver;
-		if (copy_to_user(ioctl_data.buf, buf, ioctl_data.len))
-			return -EIO;
-		if (copy_to_user((void *)arg, &ioctl_data, ioctl_len))
-			return -EIO;
-		return ioctl_data.len;
-
-	case CYAPA_GET_PROTOCOL_VER:
-		if (!ioctl_data.buf || ioctl_data.len < 1)
-			return -EINVAL;
-
-		ioctl_data.len = 1;
-		memset(buf, 0, sizeof(buf));
-		buf[0] = cyapa->gen;
-		if (copy_to_user(ioctl_data.buf, buf, ioctl_data.len))
-			return -EIO;
-		if (copy_to_user((void *)arg, &ioctl_data, ioctl_len))
-			return -EIO;
-		return ioctl_data.len;
-
-	case CYAPA_GET_TRACKPAD_RUN_MODE:
-		if (!ioctl_data.buf || ioctl_data.len < 2)
-			return -EINVAL;
-
-		/* Convert cyapa->state to IOCTL format */
-		switch (cyapa->state) {
-		case CYAPA_STATE_OP:
-			buf[0] = CYAPA_OPERATIONAL_MODE;
-			buf[1] = CYAPA_BOOTLOADER_INVALID_STATE;
-			break;
-		case CYAPA_STATE_BL_IDLE:
-			buf[0] = CYAPA_BOOTLOADER_MODE;
-			buf[1] = CYAPA_BOOTLOADER_IDLE_STATE;
-			break;
-		case CYAPA_STATE_BL_ACTIVE:
-			buf[0] = CYAPA_BOOTLOADER_MODE;
-			buf[1] = CYAPA_BOOTLOADER_ACTIVE_STATE;
-			break;
-		case CYAPA_STATE_BL_BUSY:
-			buf[0] = CYAPA_BOOTLOADER_MODE;
-			buf[1] = CYAPA_BOOTLOADER_INVALID_STATE;
-			break;
-		default:
-			buf[0] = CYAPA_BOOTLOADER_INVALID_STATE;
-			buf[1] = CYAPA_BOOTLOADER_INVALID_STATE;
-			break;
-		}
-
-		ioctl_data.len = 2;
-		if (copy_to_user(ioctl_data.buf, buf, ioctl_data.len))
-			return -EIO;
-
-		if (copy_to_user((void *)arg, &ioctl_data, ioctl_len))
-			return -EIO;
-
-		return ioctl_data.len;
-
-	case CYAYA_SEND_MODE_SWITCH_CMD:
-		if (!ioctl_data.buf || ioctl_data.len < 3)
-			return -EINVAL;
-
-		ret = copy_from_user(&run_mode, (u8 *)ioctl_data.buf,
-			sizeof(struct cyapa_trackpad_run_mode));
-		if (ret)
-			return -EINVAL;
-
-		return cyapa_send_bl_cmd(cyapa, run_mode.rev_cmd);
-
-	default:
-		ret = -EINVAL;
-		break;
-	}
-
-	return ret;
-}
-
-static const struct file_operations cyapa_misc_fops = {
-	.owner = THIS_MODULE,
-	.open = cyapa_misc_open,
-	.release = cyapa_misc_close,
-	.unlocked_ioctl = cyapa_misc_ioctl,
-	.llseek = cyapa_misc_llseek,
-	.read = cyapa_misc_read,
-	.write = cyapa_misc_write,
-};
-
-static struct miscdevice cyapa_misc_dev = {
-	.name = CYAPA_MISC_NAME,
-	.fops = &cyapa_misc_fops,
-	.minor = MISC_DYNAMIC_MINOR,
-};
-
-static int __init cyapa_misc_init(void)
-{
-	return misc_register(&cyapa_misc_dev);
-}
-
-static void __exit cyapa_misc_exit(void)
-{
-	misc_deregister(&cyapa_misc_dev);
-}
-
-/*
  *******************************************************************
  * below routines export interfaces to sysfs file system.
  * so user can get firmware/driver/hardware information using cat command.
@@ -1949,10 +1570,6 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 		cyapa->smbus = true;
 	cyapa->state = CYAPA_STATE_NO_DEVICE;
 
-	global_cyapa = cyapa;
-	cyapa->misc_open_count = 0;
-	spin_lock_init(&cyapa->miscdev_spinlock);
-	mutex_init(&cyapa->misc_mutex);
 	mutex_init(&cyapa->debugfs_mutex);
 
 	/*
@@ -1986,7 +1603,6 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 
 err_mem_free:
 	kfree(cyapa);
-	global_cyapa = NULL;
 
 	return ret;
 }
@@ -2009,7 +1625,6 @@ static int __devexit cyapa_remove(struct i2c_client *client)
 	cyapa->read_fw_image = NULL;
 
 	kfree(cyapa);
-	global_cyapa = NULL;
 
 	return 0;
 }
@@ -2086,22 +1701,11 @@ static int __init cyapa_init(void)
 		return ret;
 	}
 
-	/*
-	 * though misc cyapa interface device initialization may failed,
-	 * but it won't affect the function of trackpad device when
-	 * cypress_i2c_driver initialized successfully.
-	 * misc init failure will only affect firmware upload function,
-	 * so do not check cyapa_misc_init return value here.
-	 */
-	cyapa_misc_init();
-
 	return ret;
 }
 
 static void __exit cyapa_exit(void)
 {
-	cyapa_misc_exit();
-
 	if (cyapa_debugfs_root)
 		debugfs_remove_recursive(cyapa_debugfs_root);
 
