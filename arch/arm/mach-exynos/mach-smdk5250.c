@@ -799,6 +799,11 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&wm8994_fixed_voltage0,
 	&wm8994_fixed_voltage1,
 	&wm8994_fixed_voltage2,
+	&samsung_asoc_dma,
+	&samsung_asoc_idma,
+	&exynos5_device_i2s0,
+	&exynos5_device_pcm0,
+	&exynos5_device_spdif,
 	&exynos_device_ss_udc,
 };
 
