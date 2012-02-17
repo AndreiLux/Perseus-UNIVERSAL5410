@@ -36,6 +36,15 @@
 #include <mach/regs-pmu.h>
 #include <mach/pm-core.h>
 #include <mach/pmu.h>
+#include <mach/smc.h>
+
+#ifdef CONFIG_ARM_TRUSTZONE
+#define REG_INFORM0            (S5P_VA_SYSRAM_NS + 0x8)
+#define REG_INFORM1            (S5P_VA_SYSRAM_NS + 0xC)
+#else
+#define REG_INFORM0            (S5P_INFORM0)
+#define REG_INFORM1            (S5P_INFORM1)
+#endif
 
 static struct sleep_save exynos4_set_clksrc[] = {
 	{ .reg = EXYNOS4_CLKSRC_MASK_TOP		, .val = 0x00000001, },
@@ -87,9 +96,12 @@ static int exynos_cpu_suspend(unsigned long arg)
 	if (soc_is_exynos5250())
 		__raw_writel(0x10000, EXYNOS5_GPS_LPI);
 
+#ifdef CONFIG_ARM_TRUSTZONE
+	exynos_smc(SMC_CMD_SLEEP, 0, 0, 0);
+#else
 	/* issue the standby signal into the pm unit. */
 	cpu_do_idle();
-
+#endif
 	/* we should never get past here */
 	panic("sleep resumed to originator?");
 }
@@ -112,10 +124,10 @@ static void exynos_pm_prepare(void)
 
 	/* Set value of power down register for sleep mode */
 	exynos4_sys_powerdown_conf(SYS_SLEEP);
-	__raw_writel(S5P_CHECK_SLEEP, S5P_INFORM1);
+	__raw_writel(S5P_CHECK_SLEEP, REG_INFORM1);
 
 	/* ensure at least INFORM0 has the resume address */
-	__raw_writel(virt_to_phys(s3c_cpu_resume), S5P_INFORM0);
+	__raw_writel(virt_to_phys(s3c_cpu_resume), REG_INFORM0);
 
 	/*
 	 * Before enter central sequence mode,
