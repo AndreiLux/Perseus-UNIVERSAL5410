@@ -23,14 +23,27 @@
 #include <mach/regs-pmu.h>
 #include <mach/pmu.h>
 
+#include <plat/pm.h>
+#include <mach/pm-core.h>
+#include <mach/smc.h>
+
 #include <plat/cpu.h>
 
+#ifdef CONFIG_ARM_TRUSTZONE
+#define REG_DIRECTGO_ADDR	(samsung_rev() == EXYNOS4210_REV_1_1 ? \
+			S5P_INFORM7 : (samsung_rev() == EXYNOS4210_REV_1_0 ? \
+			(S5P_VA_SYSRAM_NS + 0x24) : S5P_INFORM0))
+#define REG_DIRECTGO_FLAG	(samsung_rev() == EXYNOS4210_REV_1_1 ? \
+			S5P_INFORM6 : (samsung_rev() == EXYNOS4210_REV_1_0 ? \
+			(S5P_VA_SYSRAM_NS + 0x20) : S5P_INFORM1))
+#else
 #define REG_DIRECTGO_ADDR	(samsung_rev() == EXYNOS4210_REV_1_1 ? \
 			S5P_INFORM7 : (samsung_rev() == EXYNOS4210_REV_1_0 ? \
 			(S5P_VA_SYSRAM + 0x24) : S5P_INFORM0))
 #define REG_DIRECTGO_FLAG	(samsung_rev() == EXYNOS4210_REV_1_1 ? \
 			S5P_INFORM6 : (samsung_rev() == EXYNOS4210_REV_1_0 ? \
 			(S5P_VA_SYSRAM + 0x20) : S5P_INFORM1))
+#endif
 
 #define S5P_CHECK_AFTR		0xFCBA0D10
 
@@ -75,6 +88,7 @@ static void exynos4_set_wakeupmask(void)
 
 static unsigned int g_pwr_ctrl, g_diag_reg;
 
+#if !defined(CONFIG_ARM_TRUSTZONE)
 static void save_cpu_arch_register(void)
 {
 	/*read power control register*/
@@ -92,10 +106,23 @@ static void restore_cpu_arch_register(void)
 	asm("mcr p15, 0, %0, c15, c0, 1" : : "r"(g_diag_reg) : "cc");
 	return;
 }
+#else
+static void save_cpu_arch_register(void)
+{
+}
+
+static void restore_cpu_arch_register(void)
+{
+}
+#endif
 
 static int idle_finisher(unsigned long flags)
 {
+#if defined(CONFIG_ARM_TRUSTZONE)
+	exynos_smc(SMC_CMD_CPU0AFTR, 0, 0, 0);
+#else
 	cpu_do_idle();
+#endif
 	return 1;
 }
 
@@ -129,7 +156,9 @@ static int exynos4_enter_core0_aftr(struct cpuidle_device *dev,
 	cpu_suspend(0, idle_finisher);
 
 #ifdef CONFIG_SMP
+#if !defined(CONFIG_ARM_TRUSTZONE)
 	scu_enable(S5P_VA_SCU);
+#endif
 #endif
 	cpu_pm_exit();
 
