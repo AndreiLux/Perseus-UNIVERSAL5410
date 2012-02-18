@@ -915,7 +915,6 @@ static void __init smdk5250_machine_init(void)
 	i2c_register_board_info(7, i2c_devs7, ARRAY_SIZE(i2c_devs7));
 
 	exynos_sysmmu_init();
-	exynos_reserve_mem();
 	exynos_ion_set_platdata();
 	exynos_dwmci_set_platdata(&exynos_dwmci_pdata);
 
@@ -949,4 +948,5 @@ MACHINE_START(SMDK5250, "SMDK5250")
 	.init_machine	= smdk5250_machine_init,
 	.timer		= &exynos4_timer,
 	.restart	= exynos5_restart,
+	.reserve	= exynos_reserve_mem,
 MACHINE_END
