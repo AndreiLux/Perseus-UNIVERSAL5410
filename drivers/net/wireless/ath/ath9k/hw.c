@@ -3074,3 +3074,65 @@ void ath9k_hw_name(struct ath_hw *ah, char *hw_name, size_t len)
 	hw_name[used] = '\0';
 }
 EXPORT_SYMBOL(ath9k_hw_name);
+
+#define DCU_COMPLETE_STATE  1
+#define NUM_STATUS_READS    50
+bool ath9k_hw_detect_mac_hang(struct ath_hw *ah)
+{
+	u32 dma_dbg_4 = 0, dma_dbg_5 = 0, dma_dbg_6;
+	u32 cur_chain_state = 0;
+	int i, hang_pos, hang_state = 0;
+
+	dma_dbg_6 = REG_READ(ah, AR_DMADBG_6);
+
+	if ((dma_dbg_6 & 0x3) != DCU_COMPLETE_STATE) {
+		ath_dbg(ath9k_hw_common(ah), RX_STUCK,
+			"MAC Hang signature not found at DCU complete\n");
+		return false;
+	}
+
+	dma_dbg_5 = REG_READ(ah, AR_DMADBG_5);
+	for (hang_pos = 3; hang_pos >= 0; hang_pos--) {
+		hang_state = (dma_dbg_5 >> (5 * hang_pos)) & 0x1f;
+		if (hang_state)
+			goto hang_check_iter;
+	}
+
+	dma_dbg_4 = REG_READ(ah, AR_DMADBG_4);
+	for (hang_pos = 5; hang_pos >= 0; hang_pos--) {
+		hang_state = (dma_dbg_4 >> (5 * hang_pos)) & 0x1f;
+		if (hang_state)
+			goto hang_check_iter;
+	}
+
+	ath_dbg(ath9k_hw_common(ah), RX_STUCK,
+		"MAC Hang signature 1 not found\n");
+	return false;
+
+hang_check_iter:
+	ath_dbg(ath9k_hw_common(ah), RX_STUCK,
+		"DMA Registers: %x %x %x Hang pos: %d\n",
+		dma_dbg_4, dma_dbg_5, dma_dbg_6, hang_pos);
+
+
+	for (i = 0; i < NUM_STATUS_READS; i++) {
+		if (dma_dbg_4) {
+			dma_dbg_4 = REG_READ(ah, AR_DMADBG_4);
+			cur_chain_state = (dma_dbg_4 >> (5 * hang_pos)) & 0x1f;
+		} else {
+			dma_dbg_5 = REG_READ(ah, AR_DMADBG_5);
+			cur_chain_state = (dma_dbg_5 >> (5 * hang_pos)) & 0x1f;
+		}
+		dma_dbg_6 = REG_READ(ah, AR_DMADBG_6);
+
+		if (((dma_dbg_6 & 0x3) != DCU_COMPLETE_STATE) ||
+		    (cur_chain_state != hang_state))
+			return false;
+	}
+
+	ath_dbg(ath9k_hw_common(ah), RX_STUCK,
+		"MAC Hang signature 1 found\n");
+
+	return true;
+}
+EXPORT_SYMBOL(ath9k_hw_detect_mac_hang);
