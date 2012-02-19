@@ -20,7 +20,6 @@
 #include <linux/firmware.h>
 #include <linux/gpio.h>
 #include <linux/i2c.h>
-#include <linux/i2c/cyapa.h>
 #include <linux/input.h>
 #include <linux/input/mt.h>
 #include <linux/interrupt.h>
@@ -31,6 +30,12 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
+/* APA trackpad firmware generation */
+enum cyapa_gen {
+	CYAPA_GEN1 = 0x01,  /* only one finger supported. */
+	CYAPA_GEN2 = 0x02,  /* max five fingers supported. */
+	CYAPA_GEN3 = 0x03,  /* support MT-protocol B with tracking ID. */
+};
 
 /* commands for read/write registers of Cypress trackpad */
 #define CYAPA_CMD_SOFT_RESET       0x00
@@ -1688,7 +1693,7 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 				   NULL,
 				   cyapa_irq,
 				   IRQF_TRIGGER_FALLING,
-				   CYAPA_I2C_NAME,
+				   "cyapa",
 				   cyapa);
 	if (ret) {
 		dev_err(dev, "IRQ request failed: %d\n, ", ret);
@@ -1782,14 +1787,14 @@ static int cyapa_resume(struct device *dev)
 static SIMPLE_DEV_PM_OPS(cyapa_pm_ops, cyapa_suspend, cyapa_resume);
 
 static const struct i2c_device_id cyapa_id_table[] = {
-	{ CYAPA_I2C_NAME, 0 },
+	{ "cyapa", 0 },
 	{ },
 };
 MODULE_DEVICE_TABLE(i2c, cyapa_id_table);
 
 static struct i2c_driver cyapa_driver = {
 	.driver = {
-		.name = CYAPA_I2C_NAME,
+		.name = "cyapa",
 		.owner = THIS_MODULE,
 		.pm = &cyapa_pm_ops,
 	},
@@ -1804,7 +1809,7 @@ static int __init cyapa_init(void)
 	int ret;
 
 	/* Create a global debugfs root for all cyapa devices */
-	cyapa_debugfs_root = debugfs_create_dir(CYAPA_I2C_NAME, NULL);
+	cyapa_debugfs_root = debugfs_create_dir("cyapa", NULL);
 	if (cyapa_debugfs_root == ERR_PTR(-ENODEV))
 		cyapa_debugfs_root = NULL;
 
