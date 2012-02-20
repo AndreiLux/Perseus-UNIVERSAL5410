@@ -1,0 +1,22 @@
+#
+# Exynos multimedia device drivers
+#
+config VIDEO_EXYNOS
+	bool "Exynos Multimedia Devices"
+	depends on ARCH_EXYNOS5
+	default n
+	select VIDEO_FIXED_MINOR_RANGES
+	help
+	  This is a representative exynos multimedia device.
+
+if VIDEO_EXYNOS
+	source "drivers/media/video/exynos/mdev/Kconfig"
+	source "drivers/media/video/exynos/fimc-lite/Kconfig"
+	source "drivers/media/video/exynos/mipi-csis/Kconfig"
+	source "drivers/media/video/exynos/gsc/Kconfig"
+endif
+
+config MEDIA_EXYNOS
+	bool
+	help
+	  Compile mdev to use exynos5 media device driver.

@@ -570,6 +570,36 @@ config VIDEO_NOON010PC30
 
 source "drivers/media/video/m5mols/Kconfig"
 
+choice
+depends on VIDEO_S5K4BA || VIDEO_S5K4EA || VIDEO_M5MO || VIDEO_M5MOLS
+prompt "Select ITU / MIPI Camera port"
+default ITU_A
+config ITU_A
+	bool "ITU Camera A port"
+	depends on !(VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS ||\
+			VIDEO_EXYNOS_MIPI_CSIS)
+	help
+	  This enables support for ITU A port
+config ITU_B
+	bool "ITU Camera B port"
+	depends on !(VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS ||\
+			VIDEO_EXYNOS_MIPI_CSIS)
+	help
+	  This enables support for ITU B port
+config CSI_C
+	bool "CSI Camera A port"
+	depends on (VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS ||\
+			VIDEO_EXYNOS_MIPI_CSIS)
+	help
+	  This enables support for CSI A port
+config CSI_D
+	bool "CSI Camera B port"
+	depends on (VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS ||\
+			VIDEO_EXYNOS_MIPI_CSIS)
+	help
+	  This enables support for CSI B port
+endchoice
+
 config VIDEO_S5K6AA
 	tristate "Samsung S5K6AAFX sensor support"
 	depends on I2C && VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API
@@ -1182,6 +1212,9 @@ config VIDEO_S5P_MIPI_CSIS
 source "drivers/media/video/s5p-tv/Kconfig"
 
 endif # V4L_PLATFORM_DRIVERS
+
+source "drivers/media/video/exynos/Kconfig"
+
 endif # VIDEO_CAPTURE_DRIVERS
 
 menuconfig V4L_MEM2MEM_DRIVERS

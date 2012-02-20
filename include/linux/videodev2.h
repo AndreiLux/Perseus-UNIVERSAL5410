@@ -359,10 +359,15 @@ struct v4l2_pix_format {
 
 /* two non contiguous planes - one Y, one Cr + Cb interleaved  */
 #define V4L2_PIX_FMT_NV12M   v4l2_fourcc('N', 'M', '1', '2') /* 12  Y/CbCr 4:2:0  */
+#define V4L2_PIX_FMT_NV21M        v4l2_fourcc('N', 'M', '2', '1') /* 21  Y/CrCb 4:2:0  */
 #define V4L2_PIX_FMT_NV12MT  v4l2_fourcc('T', 'M', '1', '2') /* 12  Y/CbCr 4:2:0 64x32 macroblocks */
+
+#define V4L2_PIX_FMT_NV12MT_16X16 v4l2_fourcc('V', 'M', '1', '2') /* 12  Y/CbCr 4:2:0 16x16 macroblocks */
 
 /* three non contiguous planes - Y, Cb, Cr */
 #define V4L2_PIX_FMT_YUV420M v4l2_fourcc('Y', 'M', '1', '2') /* 12  YUV420 planar */
+
+#define V4L2_PIX_FMT_YVU420M v4l2_fourcc('Y', 'V', 'U', 'M') /* 12  YVU420 planar */
 
 /* Bayer formats - see http://www.siliconimaging.com/RGB%20Bayer.htm */
 #define V4L2_PIX_FMT_SBGGR8  v4l2_fourcc('B', 'A', '8', '1') /*  8  BGBG.. GRGR.. */
@@ -1264,8 +1269,36 @@ enum v4l2_colorfx {
 
 #define V4L2_CID_ALPHA_COMPONENT		(V4L2_CID_BASE+41)
 
+/*
+ * This is custom CID
+ */
+/* for rgb alpha function */
+#define V4L2_CID_GLOBAL_ALPHA			(V4L2_CID_BASE+42)
+
+/* cacheable configuration */
+#define V4L2_CID_CACHEABLE			(V4L2_CID_BASE+43)
+
+/* jpeg captured size */
+#define V4L2_CID_CAM_JPEG_MEMSIZE		(V4L2_CID_BASE+44)
+#define V4L2_CID_CAM_JPEG_ENCODEDSIZE		(V4L2_CID_BASE+45)
+
+#define V4L2_CID_SET_SHAREABLE			(V4L2_CID_BASE+46)
+
+/* TV configuration */
+#define V4L2_CID_TV_LAYER_BLEND_ENABLE		(V4L2_CID_BASE+47)
+#define V4L2_CID_TV_LAYER_BLEND_ALPHA		(V4L2_CID_BASE+48)
+#define V4L2_CID_TV_PIXEL_BLEND_ENABLE		(V4L2_CID_BASE+49)
+#define V4L2_CID_TV_CHROMA_ENABLE		(V4L2_CID_BASE+50)
+#define V4L2_CID_TV_CHROMA_VALUE		(V4L2_CID_BASE+51)
+#define V4L2_CID_TV_HPD_STATUS			(V4L2_CID_BASE+52)
+
+/* for color space conversion equation selection */
+#define V4L2_CID_CSC_EQ_MODE			(V4L2_CID_BASE+53)
+#define V4L2_CID_CSC_EQ				(V4L2_CID_BASE+54)
+#define V4L2_CID_CSC_RANGE			(V4L2_CID_BASE+55)
+
 /* last CID + 1 */
-#define V4L2_CID_LASTP1                         (V4L2_CID_BASE+42)
+#define V4L2_CID_LASTP1                         (V4L2_CID_BASE+56)
 
 /*  MPEG-class control IDs defined by V4L2 */
 #define V4L2_CID_MPEG_BASE 			(V4L2_CTRL_CLASS_MPEG | 0x900)
