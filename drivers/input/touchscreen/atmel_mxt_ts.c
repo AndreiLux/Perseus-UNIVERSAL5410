@@ -194,6 +194,7 @@
 #define MXT_BOOT_STATUS_MASK	0x3f
 
 /* Touch status */
+#define MXT_UNGRIP		(1 << 0)
 #define MXT_SUPPRESS		(1 << 1)
 #define MXT_AMP			(1 << 2)
 #define MXT_VECTOR		(1 << 3)
@@ -238,14 +239,6 @@ struct mxt_message {
 	u8 message[7];
 };
 
-struct mxt_finger {
-	int status;
-	int x;
-	int y;
-	int area;
-	int pressure;
-};
-
 /* Each client has this additional data */
 struct mxt_data {
 	struct i2c_client *client;
@@ -253,7 +246,6 @@ struct mxt_data {
 	const struct mxt_platform_data *pdata;
 	struct mxt_object *object_table;
 	struct mxt_info info;
-	struct mxt_finger finger[MXT_MAX_FINGER];
 	unsigned int irq;
 	unsigned int max_x;
 	unsigned int max_y;
@@ -529,97 +521,55 @@ static int mxt_read_message(struct mxt_data *data,
 			    message);
 }
 
-static void mxt_input_report(struct mxt_data *data, int single_id)
-{
-	struct mxt_finger *finger = data->finger;
-	struct input_dev *input_dev = data->input_dev;
-	int status = finger[single_id].status;
-	int finger_num = 0;
-	int id;
-
-	for (id = 0; id < MXT_MAX_FINGER; id++) {
-		if (!finger[id].status)
-			continue;
-
-		input_mt_slot(input_dev, id);
-		input_mt_report_slot_state(input_dev, MT_TOOL_FINGER,
-				finger[id].status != MXT_RELEASE);
-
-		if (finger[id].status != MXT_RELEASE) {
-			finger_num++;
-			input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR,
-					finger[id].area);
-			input_report_abs(input_dev, ABS_MT_POSITION_X,
-					finger[id].x);
-			input_report_abs(input_dev, ABS_MT_POSITION_Y,
-					finger[id].y);
-			input_report_abs(input_dev, ABS_MT_PRESSURE,
-					finger[id].pressure);
-		} else {
-			finger[id].status = 0;
-		}
-	}
-
-	input_report_key(input_dev, BTN_TOUCH, finger_num > 0);
-
-	if (status != MXT_RELEASE) {
-		input_report_abs(input_dev, ABS_X, finger[single_id].x);
-		input_report_abs(input_dev, ABS_Y, finger[single_id].y);
-		input_report_abs(input_dev,
-				 ABS_PRESSURE, finger[single_id].pressure);
-	}
-
-	input_sync(input_dev);
-}
-
 static void mxt_input_touchevent(struct mxt_data *data,
-				      struct mxt_message *message, int id)
+				 struct mxt_message *message, int id)
 {
-	struct mxt_finger *finger = data->finger;
 	struct device *dev = &data->client->dev;
-	u8 status = message->message[0];
+	struct input_dev *input_dev = data->input_dev;
+	u8 status;
 	int x;
 	int y;
 	int area;
-	int pressure;
+	int amplitude;
 
-	/* Check the touch is present on the screen */
-	if (!(status & MXT_DETECT)) {
-		if (status & MXT_RELEASE) {
-			dev_dbg(dev, "[%d] released\n", id);
-
-			finger[id].status = MXT_RELEASE;
-			mxt_input_report(data, id);
-		}
-		return;
-	}
-
-	/* Check only AMP detection */
-	if (!(status & (MXT_PRESS | MXT_MOVE)))
-		return;
-
+	status = message->message[0];
 	x = (message->message[1] << 4) | ((message->message[3] >> 4) & 0xf);
 	y = (message->message[2] << 4) | ((message->message[3] & 0xf));
 	if (data->max_x < 1024)
-		x = x >> 2;
+		x >>= 2;
 	if (data->max_y < 1024)
-		y = y >> 2;
+		y >>= 2;
 
 	area = message->message[4];
-	pressure = message->message[5];
+	amplitude = message->message[5];
 
-	dev_dbg(dev, "[%d] %s x: %d, y: %d, area: %d\n", id,
-		status & MXT_MOVE ? "moved" : "pressed",
-		x, y, area);
+	dev_dbg(dev,
+		"[%d] %c%c%c%c%c%c%c%c x: %d y: %d area: %d amp: %d\n",
+		id,
+		(status & MXT_DETECT) ? 'D' : '.',
+		(status & MXT_PRESS) ? 'P' : '.',
+		(status & MXT_RELEASE) ? 'R' : '.',
+		(status & MXT_MOVE) ? 'M' : '.',
+		(status & MXT_VECTOR) ? 'V' : '.',
+		(status & MXT_AMP) ? 'A' : '.',
+		(status & MXT_SUPPRESS) ? 'S' : '.',
+		(status & MXT_UNGRIP) ? 'U' : '.',
+		x, y, area, amplitude);
 
-	finger[id].status = status & MXT_MOVE ?
-				MXT_MOVE : MXT_PRESS;
-	finger[id].x = x;
-	finger[id].y = y;
-	finger[id].area = area;
-	finger[id].pressure = pressure;
+	input_mt_slot(input_dev, id);
+	input_mt_report_slot_state(input_dev, MT_TOOL_FINGER,
+				   status & MXT_DETECT);
 
-	mxt_input_report(data, id);
+	if (status & MXT_DETECT) {
+		input_report_abs(input_dev, ABS_MT_POSITION_X, x);
+		input_report_abs(input_dev, ABS_MT_POSITION_Y, y);
+		input_report_abs(input_dev, ABS_MT_PRESSURE, amplitude);
+		/* TODO: This should really be sqrt(area) */
+		input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, area);
+	}
+
+	input_mt_report_pointer_emulation(input_dev, false);
+	input_sync(input_dev);
 }
 
 static irqreturn_t mxt_interrupt(int irq, void *dev_id)
