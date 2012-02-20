@@ -113,11 +113,15 @@ config S5P_DEV_ONENAND
 
 config S5P_DEV_CSIS0
 	bool
+	depends on (VIDEO_S5P_MIPI_CSIS || VIDEO_EXYNOS_MIPI_CSIS)
+	default y
 	help
 	  Compile in platform device definitions for MIPI-CSIS channel 0
 
 config S5P_DEV_CSIS1
 	bool
+	depends on (VIDEO_S5P_MIPI_CSIS || VIDEO_EXYNOS_MIPI_CSIS)
+	default y
 	help
 	  Compile in platform device definitions for MIPI-CSIS channel 1
 
@@ -133,6 +137,8 @@ config S5P_DEV_USB_EHCI
 
 config S5P_SETUP_MIPIPHY
 	bool
+	depends on (VIDEO_S5P_MIPI_CSIS || VIDEO_EXYNOS_MIPI_CSIS)
+	default y
 	help
 	  Compile in common setup code for MIPI-CSIS and MIPI-DSIM devices
 

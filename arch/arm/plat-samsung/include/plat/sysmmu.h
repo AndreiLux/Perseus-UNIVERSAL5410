@@ -108,4 +108,5 @@ void exynos_sysmmu_set_prefbuf(struct device *owner,
 #define exynos_sysmmu_set_fault_handler(sysmmu, handler) do { } while (0)
 #define exynos_sysmmu_set_prefbuf(owner, b0, s0, b1, s1) do { } while (0)
 #endif
+#endif
 #endif /* __ASM_PLAT_SYSMMU_H */

@@ -29,9 +29,11 @@
 #include <asm/hardware/gic.h>
 #include <asm/mach-types.h>
 
+#include <media/m5mols.h>
+#include <media/exynos_gscaler.h>
+#include <media/exynos_flite.h>
 #include <plat/clock.h>
 #include <plat/cpu.h>
-#include <plat/devs.h>
 #include <plat/fb.h>
 #include <plat/regs-serial.h>
 #include <plat/gpio-cfg.h>
@@ -39,6 +41,7 @@
 #include <plat/devs.h>
 #include <plat/regs-fb-v4.h>
 #include <plat/iic.h>
+#include <plat/mipi_csis.h>
 
 #include <mach/map.h>
 #include <mach/sysmmu.h>
@@ -147,6 +150,144 @@ static void __init smdk5250_gpio_power_init(void)
 
 	gpio_free(EXYNOS5_GPX0(0));
 }
+
+#ifdef CONFIG_EXYNOS_MEDIA_DEVICE
+struct platform_device exynos_device_md0 = {
+	.name = "exynos-mdev",
+	.id = 0,
+};
+
+struct platform_device exynos_device_md1 = {
+	.name = "exynos-mdev",
+	.id = 1,
+};
+
+struct platform_device exynos_device_md2 = {
+	.name = "exynos-mdev",
+	.id = 2,
+};
+#endif
+
+#ifdef CONFIG_VIDEO_EXYNOS_FIMC_LITE
+#if defined(CONFIG_ITU_A)
+static int smdk5250_cam0_reset(int dummy)
+{
+	int err;
+	/* Camera A */
+	err = gpio_request(EXYNOS5_GPX1(2), "GPX1");
+	if (err)
+		printk(KERN_ERR "#### failed to request GPX1_2 ####\n");
+
+	s3c_gpio_setpull(EXYNOS5_GPX1(2), S3C_GPIO_PULL_NONE);
+	gpio_direction_output(EXYNOS5_GPX1(2), 0);
+	gpio_direction_output(EXYNOS5_GPX1(2), 1);
+	gpio_free(EXYNOS5_GPX1(2));
+
+	return 0;
+}
+#endif
+#if defined(CONFIG_ITU_B)
+static int smdk5250_cam1_reset(int dummy)
+{
+	int err;
+	/* Camera A */
+	err = gpio_request(EXYNOS5_GPX1(0), "GPX1");
+	if (err)
+		printk(KERN_ERR "#### failed to request GPX1_2 ####\n");
+
+	s3c_gpio_setpull(EXYNOS5_GPX1(0), S3C_GPIO_PULL_NONE);
+	gpio_direction_output(EXYNOS5_GPX1(0), 0);
+	gpio_direction_output(EXYNOS5_GPX1(0), 1);
+	gpio_free(EXYNOS5_GPX1(0));
+
+	return 0;
+}
+#endif
+
+/* 1 MIPI Cameras */
+#ifdef CONFIG_VIDEO_M5MOLS
+static struct m5mols_platform_data m5mols_platdata = {
+#ifdef CONFIG_CSI_C
+	.gpio_rst = EXYNOS5_GPX1(2), /* ISP_RESET */
+#endif
+#ifdef CONFIG_CSI_D
+	.gpio_rst = EXYNOS5_GPX1(0), /* ISP_RESET */
+#endif
+	.enable_rst = true, /* positive reset */
+	.irq = IRQ_EINT(22),
+};
+
+static struct i2c_board_info m5mols_board_info = {
+	I2C_BOARD_INFO("M5MOLS", 0x1F),
+	.platform_data = &m5mols_platdata,
+};
+#endif
+#endif /* CONFIG_VIDEO_EXYNOS_FIMC_LITE */
+
+#ifdef CONFIG_VIDEO_EXYNOS_MIPI_CSIS
+static struct regulator_consumer_supply mipi_csi_fixed_voltage_supplies[] = {
+	REGULATOR_SUPPLY("mipi_csi", "s5p-mipi-csis.0"),
+	REGULATOR_SUPPLY("mipi_csi", "s5p-mipi-csis.1"),
+};
+
+static struct regulator_init_data mipi_csi_fixed_voltage_init_data = {
+	.constraints = {
+		.always_on = 1,
+	},
+	.num_consumer_supplies	= ARRAY_SIZE(mipi_csi_fixed_voltage_supplies),
+	.consumer_supplies	= mipi_csi_fixed_voltage_supplies,
+};
+
+static struct fixed_voltage_config mipi_csi_fixed_voltage_config = {
+	.supply_name	= "DC_5V",
+	.microvolts	= 5000000,
+	.gpio		= -EINVAL,
+	.init_data	= &mipi_csi_fixed_voltage_init_data,
+};
+
+static struct platform_device mipi_csi_fixed_voltage = {
+	.name		= "reg-fixed-voltage",
+	.id		= 3,
+	.dev		= {
+		.platform_data	= &mipi_csi_fixed_voltage_config,
+	},
+};
+#endif
+
+#ifdef CONFIG_VIDEO_M5MOLS
+static struct regulator_consumer_supply m5mols_fixed_voltage_supplies[] = {
+	REGULATOR_SUPPLY("core", NULL),
+	REGULATOR_SUPPLY("dig_18", NULL),
+	REGULATOR_SUPPLY("d_sensor", NULL),
+	REGULATOR_SUPPLY("dig_28", NULL),
+	REGULATOR_SUPPLY("a_sensor", NULL),
+	REGULATOR_SUPPLY("dig_12", NULL),
+};
+
+static struct regulator_init_data m5mols_fixed_voltage_init_data = {
+	.constraints = {
+		.always_on = 1,
+	},
+	.num_consumer_supplies	= ARRAY_SIZE(m5mols_fixed_voltage_supplies),
+	.consumer_supplies	= m5mols_fixed_voltage_supplies,
+};
+
+static struct fixed_voltage_config m5mols_fixed_voltage_config = {
+	.supply_name	= "CAM_SENSOR",
+	.microvolts	= 1800000,
+	.gpio		= -EINVAL,
+	.init_data	= &m5mols_fixed_voltage_init_data,
+};
+
+static struct platform_device m5mols_fixed_voltage = {
+	.name		= "reg-fixed-voltage",
+	.id		= 4,
+	.dev		= {
+		.platform_data	= &m5mols_fixed_voltage_config,
+	},
+};
+#endif
+
 static struct regulator_consumer_supply wm8994_fixed_voltage0_supplies[] = {
 	REGULATOR_SUPPLY("AVDD2", "1-001a"),
 	REGULATOR_SUPPLY("CPVDD", "1-001a"),
@@ -326,6 +467,108 @@ static inline void exynos_reserve_mem(void)
 {
 }
 #endif
+
+#ifdef CONFIG_VIDEO_EXYNOS_FIMC_LITE
+static void __init smdk5250_camera_gpio_cfg(void)
+{
+	/* CAM A port(b0010) : PCLK, VSYNC, HREF, CLK_OUT */
+	s3c_gpio_cfgrange_nopull(EXYNOS5_GPH0(0), 4, S3C_GPIO_SFN(2));
+	/* CAM A port(b0010) : DATA[0-7] */
+	s3c_gpio_cfgrange_nopull(EXYNOS5_GPH1(0), 8, S3C_GPIO_SFN(2));
+	/* CAM B port(b0010) : PCLK, BAY_RGB[0-6] */
+	s3c_gpio_cfgrange_nopull(EXYNOS5_GPG0(0), 8, S3C_GPIO_SFN(2));
+	/* CAM B port(b0010) : BAY_Vsync, BAY_RGB[7-13] */
+	s3c_gpio_cfgrange_nopull(EXYNOS5_GPG1(0), 8, S3C_GPIO_SFN(2));
+	/* CAM B port(b0010) : BAY_Hsync, BAY_MCLK */
+	s3c_gpio_cfgrange_nopull(EXYNOS5_GPG2(0), 2, S3C_GPIO_SFN(2));
+	/* This is externel interrupt for m5mo */
+#ifdef CONFIG_VIDEO_M5MOLS
+	s3c_gpio_cfgpin(EXYNOS5_GPX2(6), S3C_GPIO_SFN(0xF));
+	s3c_gpio_setpull(EXYNOS5_GPX2(6), S3C_GPIO_PULL_NONE);
+#endif
+}
+#endif
+
+#if defined(CONFIG_VIDEO_EXYNOS_GSCALER) && defined(CONFIG_VIDEO_EXYNOS_FIMC_LITE)
+#if defined(CONFIG_VIDEO_M5MOLS)
+static struct exynos_isp_info m5mols = {
+	.board_info	= &m5mols_board_info,
+	.cam_srclk_name	= "xxti",
+	.clk_frequency  = 24000000UL,
+	.bus_type	= CAM_TYPE_MIPI,
+#ifdef CONFIG_CSI_C
+	.cam_clk_name	= "sclk_cam0",
+	.i2c_bus_num	= 4,
+	.cam_port	= CAM_PORT_A, /* A-Port : 0, B-Port : 1 */
+#endif
+#ifdef CONFIG_CSI_D
+	.cam_clk_name	= "sclk_cam1",
+	.i2c_bus_num	= 5,
+	.cam_port	= CAM_PORT_B, /* A-Port : 0, B-Port : 1 */
+#endif
+	.flags		= CAM_CLK_INV_PCLK | CAM_CLK_INV_VSYNC,
+	.csi_data_align = 32,
+};
+/* This is for platdata of fimc-lite */
+static struct s3c_platform_camera flite_m5mo = {
+	.type		= CAM_TYPE_MIPI,
+	.use_isp	= true,
+	.inv_pclk	= 1,
+	.inv_vsync	= 1,
+	.inv_href	= 0,
+	.inv_hsync	= 0,
+};
+#endif
+
+static void __set_gsc_camera_config(struct exynos_platform_gscaler *data,
+					u32 active_index, u32 preview,
+					u32 camcording, u32 max_cam)
+{
+	data->active_cam_index = active_index;
+	data->cam_preview = preview;
+	data->cam_camcording = camcording;
+	data->num_clients = max_cam;
+}
+
+static void __set_flite_camera_config(struct exynos_platform_flite *data,
+					u32 active_index, u32 max_cam)
+{
+	data->active_cam_index = active_index;
+	data->num_clients = max_cam;
+}
+
+static void __init smdk5250_set_camera_platdata(void)
+{
+	int gsc_cam_index = 0;
+	int flite0_cam_index = 0;
+	int flite1_cam_index = 0;
+#if defined(CONFIG_VIDEO_M5MOLS)
+	exynos_gsc0_default_data.isp_info[gsc_cam_index++] = &m5mols;
+#if defined(CONFIG_CSI_C)
+	exynos_flite0_default_data.cam[flite0_cam_index] = &flite_m5mo;
+	exynos_flite0_default_data.isp_info[flite0_cam_index] = &m5mols;
+	flite0_cam_index++;
+#endif
+#if defined(CONFIG_CSI_D)
+	exynos_flite1_default_data.cam[flite1_cam_index] = &flite_m5mo;
+	exynos_flite1_default_data.isp_info[flite1_cam_index] = &m5mols;
+	flite1_cam_index++;
+#endif
+#endif
+	/* flite platdata register */
+	__set_flite_camera_config(&exynos_flite0_default_data, 0, flite0_cam_index);
+	__set_flite_camera_config(&exynos_flite1_default_data, 0, flite1_cam_index);
+
+	/* gscaler platdata register */
+	/* GSC-0 */
+	__set_gsc_camera_config(&exynos_gsc0_default_data, 0, 1, 0, gsc_cam_index);
+
+	/* GSC-1 */
+	/* GSC-2 */
+	/* GSC-3 */
+}
+#endif /* CONFIG_VIDEO_EXYNOS_GSCALER */
+
 
 static void exynos_dwmci_cfg_gpio(int width)
 {
@@ -788,6 +1031,29 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 #ifdef CONFIG_ION_EXYNOS
 	&exynos_device_ion,
 #endif
+#ifdef CONFIG_EXYNOS_MEDIA_DEVICE
+	&exynos_device_md0,
+	&exynos_device_md1,
+	&exynos_device_md2,
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS_GSCALER
+	&exynos5_device_gsc0,
+	&exynos5_device_gsc1,
+	&exynos5_device_gsc2,
+	&exynos5_device_gsc3,
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS_FIMC_LITE
+	&exynos_device_flite0,
+	&exynos_device_flite1,
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS_MIPI_CSIS
+	&s5p_device_mipi_csis0,
+	&s5p_device_mipi_csis1,
+	&mipi_csi_fixed_voltage,
+#endif
+#ifdef CONFIG_VIDEO_M5MOLS
+	&m5mols_fixed_voltage,
+#endif
 	&exynos5_device_dwmci,
 #ifdef CONFIG_FB_S3C
 #ifdef CONFIG_FB_MIPI_DSIM
@@ -822,7 +1088,7 @@ static void __init smdk5250_ss_udc_init(void)
 static void __init smdk5250_map_io(void)
 {
 	clk_xusbxti.rate = 24000000;
-
+	clk_xxti.rate = 24000000;
 	exynos_init_io(NULL, 0);
 	s3c24xx_init_clocks(clk_xusbxti.rate);
 	s3c24xx_init_uarts(smdk5250_uartcfgs, ARRAY_SIZE(smdk5250_uartcfgs));
@@ -855,10 +1121,8 @@ static void __init exynos_sysmmu_init(void)
 #ifdef CONFIG_VIDEO_EXYNOS_FIMC_LITE
 	ASSIGN_SYSMMU_POWERDOMAIN(flite0, &exynos5_device_pd[PD_GSCL].dev);
 	ASSIGN_SYSMMU_POWERDOMAIN(flite1, &exynos5_device_pd[PD_GSCL].dev);
-	sysmmu_set_owner(&SYSMMU_PLATDEV(flite0).dev,
-						&exynos_device_flite0.dev);
-	sysmmu_set_owner(&SYSMMU_PLATDEV(flite1).dev,
-						&exynos_device_flite1.dev);
+	sysmmu_set_owner(&SYSMMU_PLATDEV(flite0).dev, &exynos_device_flite0.dev);
+	sysmmu_set_owner(&SYSMMU_PLATDEV(flite1).dev, &exynos_device_flite1.dev);
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_ROTATOR
 	sysmmu_set_owner(&SYSMMU_PLATDEV(rot).dev, &exynos_device_rotator.dev);
@@ -940,6 +1204,58 @@ static void __init smdk5250_machine_init(void)
 #ifdef CONFIG_FB_S3C
 	exynos5_fimd1_setup_clock(&s5p_device_fimd1.dev, "sclk_fimd", "mout_mpll_user",
 				800 * MHZ);
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS_MIPI_CSIS
+#if defined(CONFIG_EXYNOS_DEV_PD)
+	s5p_device_mipi_csis0.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
+	s5p_device_mipi_csis1.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
+#endif
+	s3c_set_platdata(&s5p_mipi_csis0_default_data,
+			sizeof(s5p_mipi_csis0_default_data), &s5p_device_mipi_csis0);
+	s3c_set_platdata(&s5p_mipi_csis1_default_data,
+			sizeof(s5p_mipi_csis1_default_data), &s5p_device_mipi_csis1);
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS_FIMC_LITE
+#if defined(CONFIG_EXYNOS_DEV_PD)
+	exynos_device_flite0.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
+	exynos_device_flite1.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
+#endif
+	smdk5250_camera_gpio_cfg();
+	smdk5250_set_camera_platdata();
+	s3c_set_platdata(&exynos_flite0_default_data,
+			sizeof(exynos_flite0_default_data), &exynos_device_flite0);
+	s3c_set_platdata(&exynos_flite1_default_data,
+			sizeof(exynos_flite1_default_data), &exynos_device_flite1);
+/* In EVT0, for using camclk, gscaler clock should be enabled */
+	dev_set_name(&exynos_device_flite0.dev, "exynos-gsc.0");
+	clk_add_alias("gscl", "exynos-fimc-lite.0", "gscl",
+			&exynos_device_flite0.dev);
+	dev_set_name(&exynos_device_flite0.dev, "exynos-fimc-lite.0");
+
+	dev_set_name(&exynos_device_flite1.dev, "exynos-gsc.0");
+	clk_add_alias("gscl", "exynos-fimc-lite.1", "gscl",
+			&exynos_device_flite1.dev);
+	dev_set_name(&exynos_device_flite1.dev, "exynos-fimc-lite.1");
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS_GSCALER
+#if defined(CONFIG_EXYNOS_DEV_PD)
+	exynos5_device_gsc0.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
+	exynos5_device_gsc1.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
+	exynos5_device_gsc2.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
+	exynos5_device_gsc3.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
+#endif
+	s3c_set_platdata(&exynos_gsc0_default_data, sizeof(exynos_gsc0_default_data),
+			&exynos5_device_gsc0);
+	s3c_set_platdata(&exynos_gsc1_default_data, sizeof(exynos_gsc1_default_data),
+			&exynos5_device_gsc1);
+	s3c_set_platdata(&exynos_gsc2_default_data, sizeof(exynos_gsc2_default_data),
+			&exynos5_device_gsc2);
+	s3c_set_platdata(&exynos_gsc3_default_data, sizeof(exynos_gsc3_default_data),
+			&exynos5_device_gsc3);
+	exynos5_gsc_set_parent_clock("mout_aclk_300_gscl_mid", "mout_mpll_user");
+	exynos5_gsc_set_parent_clock("mout_aclk_300_gscl", "mout_aclk_300_gscl_mid");
+	exynos5_gsc_set_parent_clock("aclk_300_gscl", "dout_aclk_300_gscl");
+	exynos5_gsc_set_clock_rate("dout_aclk_300_gscl", 310000000);
 #endif
 }
 

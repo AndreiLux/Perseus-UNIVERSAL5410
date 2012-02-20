@@ -54,6 +54,8 @@ obj-y					+= dev-uart.o
 obj-$(CONFIG_ARCH_EXYNOS)		+= dev-audio.o
 obj-$(CONFIG_EXYNOS4_DEV_AHCI)		+= dev-ahci.o
 obj-$(CONFIG_EXYNOS_DEV_DWMCI)		+= dev-dwmci.o
+obj-$(CONFIG_EXYNOS4_DEV_FIMC_LITE)	+= dev-fimc-lite.o
+obj-$(CONFIG_EXYNOS5_DEV_GSC)		+= dev-gsc.o
 obj-$(CONFIG_EXYNOS_DEV_SYSMMU)		+= dev-sysmmu.o
 obj-$(CONFIG_EXYNOS_DEV_DMA)		+= dma.o
 obj-$(CONFIG_EXYNOS4_DEV_USB_OHCI)	+= dev-ohci.o
@@ -61,6 +63,8 @@ obj-$(CONFIG_EXYNOS_DEV_SS_UDC)		+= dev-exynos-udc.o
 
 obj-$(CONFIG_ARCH_EXYNOS)		+= setup-i2c0.o
 obj-$(CONFIG_EXYNOS4_SETUP_FIMC)	+= setup-fimc.o
+obj-$(CONFIG_EXYNOS4_SETUP_CSIS)	+= setup-csis.o
+obj-$(CONFIG_EXYNOS5_SETUP_GSC)		+= setup-gsc.o
 obj-$(CONFIG_EXYNOS4_SETUP_FIMD0)	+= setup-fimd0.o
 obj-$(CONFIG_EXYNOS_SETUP_FIMD1)	+= setup-fimd1.o
 obj-$(CONFIG_EXYNOS4_SETUP_MIPI_DSIM)	+= setup-mipidsim.o

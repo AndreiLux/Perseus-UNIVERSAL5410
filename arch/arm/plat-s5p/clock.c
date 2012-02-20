@@ -40,6 +40,11 @@ struct clk clk_xusbxti = {
 	.id		= -1,
 };
 
+struct clk clk_xxti= {
+	.name		= "xxti",
+	.id		= -1,
+};
+
 struct clk s5p_clk_27m = {
 	.name		= "clk_27m",
 	.id		= -1,
@@ -250,6 +255,7 @@ static struct clk *s5p_clks[] __initdata = {
 	&clk_fout_vpll,
 	&clk_vpll,
 	&clk_xusbxti,
+	&clk_xxti,
 };
 
 void __init s5p_register_clocks(unsigned long xtal_freq)
