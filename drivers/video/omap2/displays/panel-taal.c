@@ -912,6 +912,15 @@ static int taal_probe(struct omap_dss_device *dssdev)
 
 	dev_set_drvdata(&dssdev->dev, td);
 
+	if (gpio_is_valid(panel_data->reset_gpio)) {
+		r = gpio_request_one(panel_data->reset_gpio, GPIOF_OUT_INIT_LOW,
+				"taal rst");
+		if (r) {
+			dev_err(&dssdev->dev, "failed to request reset gpio\n");
+			goto err_rst_gpio;
+		}
+	}
+
 	taal_hw_reset(dssdev);
 
 	if (panel_data->use_dsi_backlight) {
@@ -992,6 +1001,9 @@ err_gpio:
 	if (bldev != NULL)
 		backlight_device_unregister(bldev);
 err_bl:
+	if (gpio_is_valid(panel_data->reset_gpio))
+		gpio_free(panel_data->reset_gpio);
+err_rst_gpio:
 	destroy_workqueue(td->workqueue);
 err_wq:
 	kfree(td);
@@ -1029,6 +1041,9 @@ static void __exit taal_remove(struct omap_dss_device *dssdev)
 
 	/* reset, to be sure that the panel is in a valid state */
 	taal_hw_reset(dssdev);
+
+	if (gpio_is_valid(panel_data->reset_gpio))
+		gpio_free(panel_data->reset_gpio);
 
 	kfree(td);
 }
