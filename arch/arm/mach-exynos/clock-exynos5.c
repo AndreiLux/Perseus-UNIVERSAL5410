@@ -858,6 +858,11 @@ static struct clk exynos5_init_clocks_on[] = {
 		.devname	= "s5pv210-uart.5",
 		.enable		= exynos5_clk_ip_peric_ctrl,
 		.ctrlbit	= (1 << 5),
+	}, {
+		.name		= "secss",
+		.parent		= &exynos5_clk_aclk_acp.clk,
+		.enable		= exynos5_clk_ip_acp_ctrl,
+		.ctrlbit	= (1 << 2),
 	}
 };
 

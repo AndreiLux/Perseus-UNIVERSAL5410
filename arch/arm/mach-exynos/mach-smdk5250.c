@@ -805,6 +805,9 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&exynos5_device_pcm0,
 	&exynos5_device_spdif,
 	&exynos_device_ss_udc,
+#ifdef CONFIG_S5P_DEV_ACE
+	&s5p_device_ace,
+#endif
 };
 
 static struct exynos_usb3_drd_pdata smdk5250_ss_udc_pdata;
