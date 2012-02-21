@@ -90,7 +90,7 @@ int iovmm_setup(struct device *dev)
 	}
 
 	/* 1GB addr space from 0x80000000 */
-	ret = gen_pool_add(vmm->vmm_pool, 0x80000000, 0x20000000, -1);
+	ret = gen_pool_add(vmm->vmm_pool, 0x80000000, 0x40000000, -1);
 	if (ret)
 		goto err_setup_domain;
 
@@ -302,24 +302,8 @@ dma_addr_t iovmm_map(struct device *dev, struct scatterlist *sg, off_t offset,
 					region->start, region->size);
 	return region->start;
 err_map_map:
-	while (addr >= start) {
-		int order;
-		mapped_size = addr - start;
-
-		if (mapped_size == 0) /* Mapping failed at the first page */
-			mapped_size = size;
-
-		BUG_ON(mapped_size < PAGE_SIZE);
-
-		order = min(__fls(mapped_size), __ffs(start));
-
-		iommu_unmap(vmm->domain, start, order - PAGE_SHIFT);
-
-		start += 1 << order;
-		mapped_size -= 1 << order;
-	}
+	iommu_unmap(vmm->domain, start, mapped_size);
 	gen_pool_free(vmm->vmm_pool, start, size);
-
 err_map_nomem_lock:
 	spin_unlock(&vmm->lock);
 err_map_nomem:
