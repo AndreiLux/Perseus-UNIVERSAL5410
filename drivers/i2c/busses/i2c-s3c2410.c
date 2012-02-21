@@ -580,7 +580,12 @@ static int s3c24xx_i2c_doxfer(struct s3c24xx_i2c *i2c,
 	if (iicstat & S3C2410_IICSTAT_BUSBUSY) {
 		dev_dbg(i2c->dev, "timeout waiting for bus idle\n");
 		dump_i2c_register(i2c);
-		s3c24xx_i2c_stop(i2c, 0);
+
+		if (i2c->state != STATE_STOP) {
+			dev_dbg(i2c->dev,
+				"timeout : i2c interrupt hasn't occurred\n");
+			s3c24xx_i2c_stop(i2c, 0);
+		}
 
 		/* Disable Serial Out : To forcely terminate the connection */
 		iicstat = readl(i2c->regs + S3C2410_IICSTAT);
