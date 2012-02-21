@@ -82,6 +82,14 @@ int gsc_out_hw_set(struct gsc_ctx *ctx)
 	gsc_hw_set_global_alpha(ctx);
 	gsc_hw_set_input_buf_mask_all(gsc);
 
+	gsc_hw_enable_control(gsc, true);
+	ret = gsc_wait_operating(gsc);
+	if (ret < 0) {
+		gsc_err("wait operation timeout");
+		return -EINVAL;
+	}
+	gsc_pipeline_s_stream(gsc, true);
+
 	return 0;
 }
 
@@ -259,7 +267,6 @@ static int gsc_subdev_s_stream(struct v4l2_subdev *sd, int enable)
 	int ret;
 
 	if (enable) {
-		pm_runtime_get_sync(&gsc->pdev->dev);
 		ret = gsc_out_hw_set(gsc->out.ctx);
 		if (ret) {
 			gsc_err("GSC H/W setting is failed");
@@ -704,6 +711,15 @@ static void gsc_out_buffer_queue(struct vb2_buffer *vb)
 	struct gsc_dev *gsc = ctx->gsc_dev;
 	int ret;
 
+	if (!test_and_set_bit(ST_OUTPUT_STREAMON, &gsc->state)) {
+		pm_runtime_get_sync(&gsc->pdev->dev);
+		if (ctx->out_path == GSC_FIMD) {
+			gsc_disp_fifo_sw_reset(gsc);
+			gsc_pixelasync_sw_reset(gsc);
+		}
+
+	}
+
 	if (gsc->out.req_cnt >= atomic_read(&q->queued_count)) {
 		ret = gsc_out_set_in_addr(gsc, ctx, buf, vb->v4l2_buf.index);
 		if (ret) {
@@ -714,20 +730,6 @@ static void gsc_out_buffer_queue(struct vb2_buffer *vb)
 	} else {
 		gsc_err("All requested buffers have been queued already");
 		return;
-	}
-
-	if (!test_and_set_bit(ST_OUTPUT_STREAMON, &gsc->state)) {
-		if (ctx->out_path == GSC_FIMD) {
-			gsc_disp_fifo_sw_reset(gsc);
-			gsc_pixelasync_sw_reset(gsc);
-		}
-		gsc_hw_enable_control(gsc, true);
-		ret = gsc_wait_operating(gsc);
-		if (ret < 0) {
-			gsc_err("wait operation timeout");
-			return;
-		}
-		gsc_pipeline_s_stream(gsc, true);
 	}
 }
 
