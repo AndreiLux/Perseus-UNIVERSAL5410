@@ -886,7 +886,7 @@ static int lv2set_page(unsigned long *pent, phys_addr_t paddr, size_t size,
 
 		*pent = mk_lv2ent_spage(paddr);
 		pgtable_flush(pent, pent + 1);
-		*pgcnt += 1;
+		*pgcnt -= 1;
 	} else { /* size == LPAGE_SIZE */
 		int i;
 		for (i = 0; i < SPAGES_PER_LPAGE; i++, pent++) {
@@ -897,8 +897,8 @@ static int lv2set_page(unsigned long *pent, phys_addr_t paddr, size_t size,
 
 			*pent = mk_lv2ent_lpage(paddr);
 		}
-		pgtable_flush(pent, pent + SPAGES_PER_LPAGE);
-		*pgcnt += SPAGES_PER_LPAGE;
+		pgtable_flush(pent - SPAGES_PER_LPAGE, pent);
+		*pgcnt -= SPAGES_PER_LPAGE;
 	}
 
 	return 0;
@@ -985,6 +985,8 @@ static size_t exynos_iommu_unmap(struct iommu_domain *domain,
 	if (lv2ent_small(ent)) {
 		*ent = 0;
 		size = SPAGE_SIZE;
+		priv->lv2entcnt[lv1ent_offset(iova)] += 1;
+		pgtable_flush(ent, ent + 1);
 		goto done;
 	}
 
@@ -994,6 +996,8 @@ static size_t exynos_iommu_unmap(struct iommu_domain *domain,
 	memset(ent, 0, sizeof(*ent) * SPAGES_PER_LPAGE);
 
 	size = LPAGE_SIZE;
+	priv->lv2entcnt[lv1ent_offset(iova)] += SPAGES_PER_LPAGE;
+	pgtable_flush(ent, ent + SPAGES_PER_LPAGE);
 done:
 	list_for_each_entry(client, &priv->clients, node)
 		sysmmu_tlb_invalidate_entry(client->dev, iova);
