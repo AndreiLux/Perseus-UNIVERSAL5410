@@ -1001,11 +1001,9 @@ static int __init omap_5430evm_i2c_init(void)
 #else
 	omap_register_i2c_bus(1, 400, NULL, 0);
 #endif
-	omap_register_i2c_bus(2, 400, omap5evm_i2c_2_boardinfo,
-				ARRAY_SIZE(omap5evm_i2c_2_boardinfo));
+	omap_register_i2c_bus(2, 400, NULL, 0);
 	omap_register_i2c_bus(3, 400, NULL, 0);
-	omap_register_i2c_bus(4, 400, omap5evm_i2c_4_boardinfo,
-				ARRAY_SIZE(omap5evm_i2c_4_boardinfo));
+	omap_register_i2c_bus(4, 400, NULL, 0);
 	omap_register_i2c_bus(5, 400, omap5evm_i2c_5_boardinfo,
 				ARRAY_SIZE(omap5evm_i2c_5_boardinfo));
 	return 0;
@@ -1104,15 +1102,11 @@ static void __init omap_5430evm_init(void)
 {
 	int status;
 
-	omap5evm_touch_init();
 	omap_5430evm_i2c_init();
 	omap_serial_init();
 	platform_device_register(&dummy_sd_regulator_device);
 	omap2_hsmmc_init(mmc);
 	omap_ehci_ohci_init();
-	status = omap4_keyboard_init(&evm5430_keypad_data, &keypad_data);
-	if (status)
-		pr_err("Keypad initialization failed: %d\n", status);
 }
 
 static void __init omap_5430evm_map_io(void)
