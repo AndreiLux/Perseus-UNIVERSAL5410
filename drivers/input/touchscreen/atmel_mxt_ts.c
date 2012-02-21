@@ -516,8 +516,7 @@ static int mxt_read_messages(struct mxt_data *data, u8 count,
 			    sizeof(struct mxt_message) * count, messages);
 }
 
-static void mxt_input_touchevent(struct mxt_data *data,
-				 struct mxt_message *message)
+static void mxt_input_touch(struct mxt_data *data, struct mxt_message *message)
 {
 	struct device *dev = &data->client->dev;
 	struct input_dev *input_dev = data->input_dev;
@@ -571,9 +570,6 @@ static void mxt_input_touchevent(struct mxt_data *data,
 		input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, area);
 		/* TODO: Use vector to report ORIENTATION & TOUCH_MINOR */
 	}
-
-	input_mt_report_pointer_emulation(input_dev, false);
-	input_sync(input_dev);
 }
 
 static int mxt_proc_messages(struct mxt_data *data, u8 count)
@@ -581,6 +577,7 @@ static int mxt_proc_messages(struct mxt_data *data, u8 count)
 	struct device *dev = &data->client->dev;
 	struct mxt_message messages[count], *msg;
 	int ret;
+	bool update_input;
 
 	ret = mxt_read_messages(data, count, messages);
 	if (ret) {
@@ -588,12 +585,14 @@ static int mxt_proc_messages(struct mxt_data *data, u8 count)
 		return ret;
 	}
 
+	update_input = false;
 	for (msg = messages; msg < &messages[count]; msg++) {
 		mxt_dump_message(dev, msg);
 
 		if (msg->reportid >= data->T9_reportid_min &&
 		    msg->reportid <= data->T9_reportid_max) {
-			mxt_input_touchevent(data, msg);
+			mxt_input_touch(data, msg);
+			update_input = true;
 		} else if (msg->reportid == data->T6_reportid) {
 			unsigned csum = msg->message[1] |
 					(msg->message[2] << 8) |
@@ -601,6 +600,11 @@ static int mxt_proc_messages(struct mxt_data *data, u8 count)
 			dev_info(dev, "Status: %02x Config Checksum: %06x\n",
 				 msg->message[0], csum);
 		}
+	}
+
+	if (update_input) {
+		input_mt_report_pointer_emulation(data->input_dev, false);
+		input_sync(data->input_dev);
 	}
 
 	return 0;
