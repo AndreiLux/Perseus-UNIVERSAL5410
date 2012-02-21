@@ -92,7 +92,7 @@ struct s3c24xx_i2c {
 
 static inline void dump_i2c_register(struct s3c24xx_i2c *i2c)
 {
-	dev_warn(i2c->dev, "Register dump(%d) : %x %x %x %x %x\n"
+	dev_dbg(i2c->dev, "Register dump(%d) : %x %x %x %x %x\n"
 		, i2c->suspended
 		, readl(i2c->regs + S3C2410_IICCON)
 		, readl(i2c->regs + S3C2410_IICSTAT)
@@ -312,7 +312,7 @@ static int i2c_s3c_irq_nextbyte(struct s3c24xx_i2c *i2c, unsigned long iicstat)
 		    !(i2c->msg->flags & I2C_M_IGNORE_NAK)) {
 			/* ack was not received... */
 
-			dev_warn(i2c->dev, "ack was not received\n");
+			dev_dbg(i2c->dev, "ack was not received\n");
 			s3c24xx_i2c_stop(i2c, -ENXIO);
 			goto out_ack;
 		}
@@ -343,7 +343,7 @@ static int i2c_s3c_irq_nextbyte(struct s3c24xx_i2c *i2c, unsigned long iicstat)
 
 		if (!(i2c->msg->flags & I2C_M_IGNORE_NAK)) {
 			if (iicstat & S3C2410_IICSTAT_LASTBIT) {
-				dev_warn(i2c->dev, "WRITE: No Ack\n");
+				dev_dbg(i2c->dev, "WRITE: No Ack\n");
 
 				s3c24xx_i2c_stop(i2c, -ECONNREFUSED);
 				goto out_ack;
@@ -578,7 +578,7 @@ static int s3c24xx_i2c_doxfer(struct s3c24xx_i2c *i2c,
 	/* if still not finished, clean it up */
 	spin_lock_irq(&i2c->lock);
 	if (iicstat & S3C2410_IICSTAT_BUSBUSY) {
-		dev_warn(i2c->dev, "timeout waiting for bus idle\n");
+		dev_dbg(i2c->dev, "timeout waiting for bus idle\n");
 		dump_i2c_register(i2c);
 		s3c24xx_i2c_stop(i2c, 0);
 
