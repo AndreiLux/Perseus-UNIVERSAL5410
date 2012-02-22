@@ -21,12 +21,11 @@
 #include <asm/suspend.h>
 #include <asm/unified.h>
 #include <mach/regs-pmu.h>
+#include <mach/regs-clock.h>
 #include <mach/pmu.h>
-
-#include <plat/pm.h>
-#include <mach/pm-core.h>
 #include <mach/smc.h>
 
+#include <plat/pm.h>
 #include <plat/cpu.h>
 
 #ifdef CONFIG_ARM_TRUSTZONE
@@ -53,6 +52,76 @@ static int exynos4_enter_idle(struct cpuidle_device *dev,
 static int exynos4_enter_lowpower(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv,
 				int index);
+
+struct check_reg_lpa {
+	void __iomem	*check_reg;
+	unsigned int	check_bit;
+};
+
+/*
+ * List of check power domain list for LPA mode
+ * These register are have to power off to enter LPA mode
+ */
+static struct check_reg_lpa exynos5_power_domain[] = {
+	{.check_reg = EXYNOS5_GSCL_STATUS,	.check_bit = 0x7},
+	{.check_reg = EXYNOS5_ISP_STATUS,	.check_bit = 0x7},
+};
+
+/*
+ * List of check clock gating list for LPA mode
+ * If clock of list is not gated, system can not enter LPA mode.
+ */
+static struct check_reg_lpa exynos5_clock_gating[] = {
+	{.check_reg = EXYNOS5_CLKGATE_IP_GEN,	.check_bit = 0x4210},
+	{.check_reg = EXYNOS5_CLKGATE_IP_FSYS,	.check_bit = 0x0002},
+	{.check_reg = EXYNOS5_CLKGATE_IP_PERIC,	.check_bit = 0x3FC0},
+};
+
+static int exynos4_check_reg_status(struct check_reg_lpa *reg_list,
+				    unsigned int list_cnt)
+{
+	unsigned int i;
+	unsigned int tmp;
+
+	for (i = 0; i < list_cnt; i++) {
+		tmp = __raw_readl(reg_list[i].check_reg);
+		if (tmp & reg_list[i].check_bit)
+			return -EBUSY;
+	}
+
+	return 0;
+}
+
+static int exynos4_uart_fifo_check(void)
+{
+	unsigned int ret;
+	unsigned int check_val;
+
+	ret = 0;
+
+	/* Check UART for console is empty */
+	check_val = __raw_readl(S5P_VA_UART(CONFIG_S3C_LOWLEVEL_UART_PORT) +
+				0x18);
+
+	ret = ((check_val >> 16) & 0xff);
+
+	return ret;
+}
+
+static int __maybe_unused exynos4_check_enter_mode(void)
+{
+	/* Check power domain */
+	if (exynos4_check_reg_status(exynos5_power_domain,
+				    ARRAY_SIZE(exynos5_power_domain)))
+		return S5P_CHECK_DIDLE;
+
+	/* Check clock gating */
+	if (exynos4_check_reg_status(exynos5_clock_gating,
+				    ARRAY_SIZE(exynos5_clock_gating)))
+		return S5P_CHECK_DIDLE;
+
+	return S5P_CHECK_LPA;
+}
 
 static struct cpuidle_state exynos4_cpuidle_set[] __initdata = {
 	[0] = {
@@ -86,9 +155,9 @@ static void exynos4_set_wakeupmask(void)
 	__raw_writel(0x0000ff3e, S5P_WAKEUP_MASK);
 }
 
+#if !defined(CONFIG_ARM_TRUSTZONE)
 static unsigned int g_pwr_ctrl, g_diag_reg;
 
-#if !defined(CONFIG_ARM_TRUSTZONE)
 static void save_cpu_arch_register(void)
 {
 	/*read power control register*/
@@ -153,6 +222,7 @@ static int exynos4_enter_core0_aftr(struct cpuidle_device *dev,
 	__raw_writel(tmp, S5P_CENTRAL_SEQ_CONFIGURATION);
 
 	cpu_pm_enter();
+
 	cpu_suspend(0, idle_finisher);
 
 #ifdef CONFIG_SMP
@@ -175,6 +245,90 @@ static int exynos4_enter_core0_aftr(struct cpuidle_device *dev,
 		tmp |= S5P_CENTRAL_LOWPWR_CFG;
 		__raw_writel(tmp, S5P_CENTRAL_SEQ_CONFIGURATION);
 	}
+
+	/* Clear wakeup state register */
+	__raw_writel(0x0, S5P_WAKEUP_STAT);
+
+	do_gettimeofday(&after);
+
+	local_irq_enable();
+	idle_time = (after.tv_sec - before.tv_sec) * USEC_PER_SEC +
+		    (after.tv_usec - before.tv_usec);
+
+	dev->last_residency = idle_time;
+	return index;
+}
+
+static int exynos4_enter_core0_lpa(struct cpuidle_device *dev,
+				struct cpuidle_driver *drv,
+				int index)
+{
+	struct timeval before, after;
+	int idle_time;
+	unsigned long tmp;
+
+	local_irq_disable();
+	do_gettimeofday(&before);
+
+	/*
+	 * Unmasking all wakeup source.
+	 */
+	__raw_writel(0x0, S5P_WAKEUP_MASK);
+
+	/*
+	 * GPS and JPEG power can not turn off.
+	 */
+	__raw_writel(0x10000, EXYNOS5_GPS_LPI);
+
+	__raw_writel(virt_to_phys(s3c_cpu_resume), REG_DIRECTGO_ADDR);
+	__raw_writel(0xfcba0d10, REG_DIRECTGO_FLAG);
+
+	/* Set value of power down register for aftr mode */
+	exynos4_sys_powerdown_conf(SYS_LPA);
+
+	save_cpu_arch_register();
+
+	/* Setting Central Sequence Register for power down mode */
+	tmp = __raw_readl(S5P_CENTRAL_SEQ_CONFIGURATION);
+	tmp &= ~S5P_CENTRAL_LOWPWR_CFG;
+	__raw_writel(tmp, S5P_CENTRAL_SEQ_CONFIGURATION);
+
+	do {
+		/* Waiting for flushing UART fifo */
+	} while (exynos4_uart_fifo_check());
+
+	cpu_pm_enter();
+
+	cpu_suspend(0, idle_finisher);
+
+#ifdef CONFIG_SMP
+#if !defined(CONFIG_ARM_TRUSTZONE)
+	scu_enable(S5P_VA_SCU);
+#endif
+#endif
+	cpu_pm_exit();
+
+	restore_cpu_arch_register();
+
+	/*
+	 * If PMU failed while entering sleep mode, WFI will be
+	 * ignored by PMU and then exiting cpu_do_idle().
+	 * S5P_CENTRAL_LOWPWR_CFG bit will not be set automatically
+	 * in this situation.
+	 */
+	tmp = __raw_readl(S5P_CENTRAL_SEQ_CONFIGURATION);
+	if (!(tmp & S5P_CENTRAL_LOWPWR_CFG)) {
+		tmp |= S5P_CENTRAL_LOWPWR_CFG;
+		__raw_writel(tmp, S5P_CENTRAL_SEQ_CONFIGURATION);
+	}
+
+	/* For release retention */
+	__raw_writel((1 << 28), S5P_PAD_RET_GPIO_OPTION);
+	__raw_writel((1 << 28), S5P_PAD_RET_UART_OPTION);
+	__raw_writel((1 << 28), S5P_PAD_RET_MMCA_OPTION);
+	__raw_writel((1 << 28), S5P_PAD_RET_MMCB_OPTION);
+	__raw_writel((1 << 28), S5P_PAD_RET_EBIA_OPTION);
+	__raw_writel((1 << 28), S5P_PAD_RET_EBIB_OPTION);
 
 	/* Clear wakeup state register */
 	__raw_writel(0x0, S5P_WAKEUP_STAT);
@@ -222,8 +376,11 @@ static int exynos4_enter_lowpower(struct cpuidle_device *dev,
 
 	if (new_index == 0)
 		return exynos4_enter_idle(dev, drv, new_index);
-	else
+
+	if (exynos4_check_enter_mode() == S5P_CHECK_DIDLE)
 		return exynos4_enter_core0_aftr(dev, drv, new_index);
+	else
+		return exynos4_enter_core0_lpa(dev, drv, new_index);
 }
 
 static int __init exynos4_init_cpuidle(void)
