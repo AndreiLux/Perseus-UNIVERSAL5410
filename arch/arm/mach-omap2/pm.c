@@ -112,8 +112,10 @@ static void __init omap2_init_processor_devices(void)
 
 	if (cpu_is_omap44xx() || cpu_is_omap54xx()) {
 		_init_omap_device("l3_main_1");
+#ifndef CONFIG_OMAP_PM_STANDALONE
 		_init_omap_device("dsp");
 		_init_omap_device("iva");
+#endif
 	} else {
 		_init_omap_device("l3_main");
 	}
@@ -524,7 +526,9 @@ static void __init omap5_init_voltages(void)
 
 	omap2_set_init_voltage("mpu", "virt_dpll_mpu_ck", mpu_dev);
 	omap2_set_init_voltage("core", "virt_l3_ck", l3_dev);
+#ifndef CONFIG_OMAP_PM_STANDALONE
 	omap2_set_init_voltage("mm", "dpll_iva_h12x2_ck", iva_dev);
+#endif
 }
 
 static int __init omap2_common_pm_init(void)
