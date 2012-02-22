@@ -6262,15 +6262,18 @@ static __initdata struct omap_hwmod *omap54xx_hwmods[] = {
 	&omap54xx_i2c4_hwmod,
 	&omap54xx_i2c5_hwmod,
 
+#ifndef CONFIG_OMAP_PM_STANDALONE
 	/* ipu class */
 	&omap54xx_ipu_hwmod,
+#endif
 
 	/* iss class */
 /*	&omap54xx_iss_hwmod, */
 
+#ifndef CONFIG_OMAP_PM_STANDALONE
 	/* iva class */
 	&omap54xx_iva_hwmod,
-
+#endif
 	/* kbd class */
 	&omap54xx_kbd_hwmod,
 
