@@ -56,3 +56,5 @@ obj-$(CONFIG_SAMSUNG_PD)	+= pd.o
 # PWM support
 
 obj-$(CONFIG_HAVE_PWM)		+= pwm.o
+
+obj-$(CONFIG_S5P_DEV_FIMG2D)	+= dev-fimg2d.o

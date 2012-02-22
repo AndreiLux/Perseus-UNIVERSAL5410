@@ -159,6 +159,8 @@ extern struct platform_device samsung_asoc_dma;
 extern struct platform_device samsung_asoc_idma;
 extern struct platform_device samsung_device_keypad;
 
+extern struct platform_device s5p_device_fimg2d;
+
 /* s3c2440 specific devices */
 
 #ifdef CONFIG_CPU_S3C2440

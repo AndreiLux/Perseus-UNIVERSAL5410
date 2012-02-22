@@ -289,6 +289,11 @@ config S5P_DEV_MIPI_DSIM
 	  Compile in platform device definitions for MIPI_DSIM
 	  to support mainlile style fimd
 
+config S5P_DEV_FIMG2D
+	bool
+	help
+	  Compile in platform device definitions for FIMG2D controller
+
 # DMA
 
 config S3C_DMA
