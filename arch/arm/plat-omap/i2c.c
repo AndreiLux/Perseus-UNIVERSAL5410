@@ -35,7 +35,6 @@
 #include <mach/irqs.h>
 #include <plat/mux.h>
 #include <plat/i2c.h>
-#include <plat/omap-pm.h>
 #include <plat/omap_device.h>
 
 #define OMAP_I2C_SIZE		0x3f
@@ -141,6 +140,14 @@ static void omap_pm_set_max_mpu_wakeup_lat_compat(struct device *dev, long t)
 {
 	omap_pm_set_max_mpu_wakeup_lat(dev, t);
 }
+
+static struct omap_device_pm_latency omap_i2c_latency[] = {
+	[0] = {
+		.deactivate_func	= omap_device_idle_hwmods,
+		.activate_func		= omap_device_enable_hwmods,
+		.flags			= OMAP_DEVICE_LATENCY_AUTO_ADJUST,
+	},
+};
 
 static inline int omap2_i2c_add_bus(int bus_id)
 {
