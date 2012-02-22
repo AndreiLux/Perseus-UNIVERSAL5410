@@ -2,7 +2,7 @@
  * Copyright (c) 2010-2012 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com
  *
- * Samsung System MMU driver for S5P platform
+ * Samsung System MMU driver for Exynos platforms
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -29,9 +29,6 @@ enum EXYNOS_SYSMMU_INTERRUPT_TYPE {
 	SYSMMU_FAULTS_NUM
 };
 
-#ifdef CONFIG_S5P_SYSTEM_MMU
-
-#include <mach/sysmmu.h>
 /*
  * @itype: type of fault.
  * @pgtable_base: the physical address of page table base. This is 0 if @itype
@@ -39,7 +36,7 @@ enum EXYNOS_SYSMMU_INTERRUPT_TYPE {
  * @fault_addr: the device (virtual) address that the System MMU tried to
  *             translated. This is 0 if @itype is SYSMMU_BUSERROR.
  */
-typedef int (*sysmmu_fault_handler_t)(enum S5P_SYSMMU_INTERRUPT_TYPE itype,
+typedef int (*sysmmu_fault_handler_t)(enum EXYNOS_SYSMMU_INTERRUPT_TYPE itype,
 			unsigned long pgtable_base, unsigned long fault_addr);
 
 #ifdef CONFIG_EXYNOS_IOMMU
@@ -107,6 +104,5 @@ void exynos_sysmmu_set_prefbuf(struct device *owner,
 #define exynos_sysmmu_tlb_invalidate(owner) do { } while (0)
 #define exynos_sysmmu_set_fault_handler(sysmmu, handler) do { } while (0)
 #define exynos_sysmmu_set_prefbuf(owner, b0, s0, b1, s1) do { } while (0)
-#endif
 #endif
 #endif /* __ASM_PLAT_SYSMMU_H */
