@@ -75,6 +75,7 @@ struct voltagedomain {
 	struct omap_vc_channel *vc;
 	const struct omap_vfsm_instance *vfsm;
 	struct omap_vp_instance *vp;
+	struct omap_abb_instance *abb;
 	struct omap_voltdm_pmic *pmic;
 
 	/* VC/VP register access functions: SoC specific */
