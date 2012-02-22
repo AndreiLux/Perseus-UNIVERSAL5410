@@ -22,7 +22,6 @@
 #include <plat/irqs.h>
 
 #include "vp.h"
-
 #include "prm2xxx_3xxx.h"
 #include "cm2xxx_3xxx.h"
 #include "prm-regbits-24xx.h"
@@ -451,3 +450,11 @@ void omap3xxx_prm_restore_irqen(u32 *saved_mask)
 	omap2_prm_write_mod_reg(saved_mask[0], OCP_MOD,
 				OMAP3_PRM_IRQENABLE_MPU_OFFSET);
 }
+
+static int __init omap3xxx_prcm_init(void)
+{
+	if (cpu_is_omap34xx())
+		return omap_prcm_register_chain_handler(&omap3_prcm_irq_setup);
+	return 0;
+}
+subsys_initcall(omap3xxx_prcm_init);
