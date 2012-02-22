@@ -105,6 +105,15 @@ config OMAP5_SEVM_PALMAS
 	help
 	  For PALMAS support in OMAP5 say Y. Only for SEVM boards with
 	  PALMAS/TWL6035 mounted on them say y else
+
+config OMAP4460_SEVM_PALMAS
+	bool "PALMAS Support on OMAP4460"
+	depends on ARCH_OMAP
+	default n
+	help
+	  For PALMAS support in OMAP4460 say Y. By default this should
+	  be turned n since all OMAP4460 come with TWL6030. Only for
+	  SEVM boards with PALMAS/TWL6035 mounted on them say y else
 	  say n.
 
 config OMAP_MUX_DEBUG
