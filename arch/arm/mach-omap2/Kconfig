@@ -73,6 +73,8 @@ config ARCH_OMAP5
 	select USB_ARCH_HAS_EHCI if USB_SUPPORT
 	select LOCAL_TIMERS if SMP                                              
 	select ARCH_NEEDS_CPU_IDLE_COUPLED if CPU_IDLE
+	select ARCH_HAS_OPP
+	select PM_OPP if PM
 
 comment "OMAP Core Type"
 	depends on ARCH_OMAP2

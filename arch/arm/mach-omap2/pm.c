@@ -506,9 +506,19 @@ static int __init omap2_pm_qos_tput_init(void)
 	return ret;
 }
 
+static void __init omap5_init_voltages(void)
+{
+	if (!cpu_is_omap54xx())
+		return;
+
+	omap2_set_init_voltage("mpu", "dpll_mpu_ck", mpu_dev);
+	omap2_set_init_voltage("core", "l3_div_ck", l3_dev);
+	omap2_set_init_voltage("mm", "dpll_iva_h12_ck", iva_dev);
+}
+
 static int __init omap2_common_pm_init(void)
 {
-#ifndef CONFIG_MACH_OMAP_5430ZEBU
+#ifdef CONFIG_OMAP5_VIRTIO
 	if (cpu_is_omap54xx()) {
 		pr_err("FIXME: omap2_common_pm_init\n");
 		return 0;
@@ -547,10 +557,12 @@ static int __init omap2_common_pm_late_init(void)
 	if (of_have_populated_dt())
 		return 0;
 
+#ifdef CONFIG_OMAP5_VIRTIO
 	if (cpu_is_omap54xx()) {
 		pr_err("FIXME: omap2_common_pm_late_init\n");
 		return 0;
 	}
+#endif
 
 	/* Init the OMAP TWL parameters */
 	omap_init_all_pmic();
@@ -562,6 +574,7 @@ static int __init omap2_common_pm_late_init(void)
 	/* Initialize the voltages */
 	omap3_init_voltages();
 	omap4_init_voltages();
+	omap5_init_voltages();
 
 	/* Smartreflex device init */
 	omap_devinit_smartreflex();

@@ -30,6 +30,9 @@ struct voltagedomain;
 #define OMAP4_VP_VDD_CORE_ID 0
 #define OMAP4_VP_VDD_IVA_ID 1
 #define OMAP4_VP_VDD_MPU_ID 2
+#define OMAP5_VP_VDD_CORE_ID 0
+#define OMAP5_VP_VDD_MM_ID 1
+#define OMAP5_VP_VDD_MPU_ID 2
 
 /* XXX document */
 #define VP_IDLE_TIMEOUT		200
@@ -117,6 +120,10 @@ extern struct omap_vp_instance omap3_vp_core;
 extern struct omap_vp_instance omap4_vp_mpu;
 extern struct omap_vp_instance omap4_vp_iva;
 extern struct omap_vp_instance omap4_vp_core;
+
+extern struct omap_vp_instance omap5_vp_mpu;
+extern struct omap_vp_instance omap5_vp_mm;
+extern struct omap_vp_instance omap5_vp_core;
 
 void omap_vp_init(struct voltagedomain *voltdm);
 void omap_vp_enable(struct voltagedomain *voltdm);

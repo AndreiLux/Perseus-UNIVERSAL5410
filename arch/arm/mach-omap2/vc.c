@@ -490,7 +490,7 @@ void __init omap_vc_init_channel(struct voltagedomain *voltdm)
 
 	if (cpu_is_omap34xx())
 		omap3_vc_init_channel(voltdm);
-	else if (cpu_is_omap44xx())
+	else if (cpu_is_omap44xx() || cpu_is_omap54xx())
 		omap4_vc_init_channel(voltdm);
 }
 

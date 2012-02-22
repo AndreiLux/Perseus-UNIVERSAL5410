@@ -64,6 +64,7 @@ ifeq ($(CONFIG_PM_OPP),y)
 obj-y					+= opp.o
 obj-$(CONFIG_ARCH_OMAP3)		+= opp3xxx_data.o
 obj-$(CONFIG_ARCH_OMAP4)		+= opp4xxx_data.o
+obj-$(CONFIG_ARCH_OMAP5)		+= opp5xxx_data.o
 endif
 
 obj-$(CONFIG_ARCH_OMAP5)                += opp4xxx_data.o
@@ -110,8 +111,8 @@ obj-$(CONFIG_ARCH_OMAP4)		+= prcm.o cm2xxx_3xxx.o cminst44xx.o \
 					   abb44xx_data.o
 obj-$(CONFIG_ARCH_OMAP5)                += prcm.o cm2xxx_3xxx.o cminst44xx.o \
                                            cm44xx.o prcm_mpu44xx.o \
-                                           prminst44xx.o vc44xx_data.o \
-                                           vp44xx_data.o dvfs.o
+                                           prminst44xx.o vc54xx_data.o \
+                                           vp54xx_data.o dvfs.o
 
 # OMAP voltage domains
 voltagedomain-common			:= voltage.o vc.o vp.o abb.o
@@ -122,7 +123,7 @@ obj-$(CONFIG_ARCH_OMAP3)		+= $(voltagedomain-common) \
 obj-$(CONFIG_ARCH_OMAP4)		+= $(voltagedomain-common) \
 					   voltagedomains44xx_data.o
 obj-$(CONFIG_ARCH_OMAP5)		+= $(voltagedomain-common) \
-					   voltagedomains44xx_data.o
+					   voltagedomains54xx_data.o
 
 # OMAP powerdomain framework
 powerdomain-common			+= powerdomain.o powerdomain-common.o

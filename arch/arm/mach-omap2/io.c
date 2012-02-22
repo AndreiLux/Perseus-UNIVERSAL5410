@@ -562,8 +562,7 @@ void __init omap54xx_init_early(void)
 // set_globals was called by omap_5430evm_map_io already                                                                              
 //	omap2_set_globals_543x();
 	omap_common_init_early(); 
-	omap44xx_voltagedomains_init();
-//	omap54xx_voltagedomains_init();
+	omap54xx_voltagedomains_init();
 	omap54xx_powerdomains_init();                                   
 	omap54xx_clockdomains_init();                                   
 	omap54xx_hwmod_init();                                          
