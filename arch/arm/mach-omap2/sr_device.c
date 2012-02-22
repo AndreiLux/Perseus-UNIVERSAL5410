@@ -69,6 +69,43 @@ static void __init sr_set_nvalues(struct omap_volt_data *volt_data,
 	sr_data->nvalue_count = count;
 }
 
+static void __init lvt_sr_set_nvalues(struct omap_volt_data *volt_data,
+				struct omap_sr_data *sr_data)
+{
+	struct omap_sr_nvalue_table *lvt_nvalue_table;
+	int i, count = 0;
+
+	while (volt_data[count].volt_nominal)
+		count++;
+
+	lvt_nvalue_table = kzalloc(sizeof(struct omap_sr_nvalue_table)*count,
+				GFP_KERNEL);
+
+	for (i = 0; i < count; i++) {
+		u32 v;
+		/*
+		 * In OMAP4 the efuse registers are 24 bit aligned.
+		 * A __raw_readl will fail for non-32 bit aligned address
+		 * and hence the 8-bit read and shift.
+		 */
+		if (cpu_is_omap44xx()) {
+			u16 offset = volt_data[i].lvt_sr_efuse_offs;
+
+			v = omap_ctrl_readb(offset) |
+				omap_ctrl_readb(offset + 1) << 8 |
+				omap_ctrl_readb(offset + 2) << 16;
+		} else {
+			v = omap_ctrl_readl(volt_data[i].lvt_sr_efuse_offs);
+		}
+
+		lvt_nvalue_table[i].efuse_offs = volt_data[i].lvt_sr_efuse_offs;
+		lvt_nvalue_table[i].nvalue = v;
+	}
+
+	sr_data->lvt_nvalue_table = lvt_nvalue_table;
+	sr_data->lvt_nvalue_count = count;
+}
+
 static int __init sr_dev_init(struct omap_hwmod *oh, void *user)
 {
 	struct omap_sr_data *sr_data;
@@ -93,6 +130,7 @@ static int __init sr_dev_init(struct omap_hwmod *oh, void *user)
 		goto exit;
 	}
 
+	sr_data->lvt_sensor = false;
 	sr_data->ip_type = oh->class->rev;
 	sr_data->senn_mod = 0x1;
 	sr_data->senp_mod = 0x1;
@@ -104,6 +142,10 @@ static int __init sr_dev_init(struct omap_hwmod *oh, void *user)
 		goto exit;
 	}
 
+	if ((cpu_is_omap54xx()) && (!strcmp(sr_data->voltdm->name, "mpu") ||
+		!strcmp(sr_data->voltdm->name, "mm")))
+		sr_data->lvt_sensor = true;
+
 	omap_voltage_get_volttable(sr_data->voltdm, &volt_data);
 	if (!volt_data) {
 		pr_warning("%s: No Voltage table registerd fo VDD%d."
@@ -112,6 +154,9 @@ static int __init sr_dev_init(struct omap_hwmod *oh, void *user)
 	}
 
 	sr_set_nvalues(volt_data, sr_data);
+
+	if (sr_data->lvt_sensor)
+		lvt_sr_set_nvalues(volt_data, sr_data);
 
 	sr_data->enable_on_init = sr_enable_on_init;
 

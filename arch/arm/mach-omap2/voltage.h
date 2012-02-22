@@ -18,6 +18,7 @@
 
 #include "vc.h"
 #include "vp.h"
+#include "smartreflex.h"
 
 struct powerdomain;
 

@@ -47,6 +47,8 @@ struct omap_sr {
 	int				nvalue_count;
 	bool				autocomp_active; /* current state  */
 	bool				autocomp_state;  /*for suspend/resume*/
+	int				lvt_nvalue_count;
+	bool				lvt_sensor;
 	u32				clk_length;
 	u32				err_weight;
 	u32				err_minlimit;
@@ -57,6 +59,12 @@ struct omap_sr {
 	u32				senp_mod;
 	u32				senn_mod;
 	void __iomem			*base;
+	struct platform_device		*pdev;
+	struct list_head		node;
+	struct omap_sr_nvalue_table	*nvalue_table;
+	struct omap_sr_nvalue_table	*lvt_nvalue_table;
+	struct voltagedomain		*voltdm;
+	struct dentry			*dbg_dir;
 };
 
 /* sr_list contains all the instances of smartreflex module */
@@ -282,7 +290,7 @@ static void sr_set_regfields(struct omap_sr *sr)
 	 * file or pmic specific data structure. In that case these structure
 	 * fields will have to be populated using the pdata or pmic structure.
 	 */
-	if (cpu_is_omap34xx() || cpu_is_omap44xx()) {
+	if (cpu_is_omap34xx() || cpu_is_omap44xx() || cpu_is_omap54xx()) {
 		sr->err_weight = OMAP3430_SR_ERRWEIGHT;
 		sr->err_maxlimit = OMAP3430_SR_ERRMAXLIMIT;
 		sr->accum_data = OMAP3430_SR_ACCUMDATA;
@@ -500,6 +508,37 @@ static u32 sr_retrieve_nvalue(struct omap_sr *sr, u32 efuse_offs)
 	return 0;
 }
 
+ /**
+  * sr_retrieve_lvt_nvalue() - Retrieves Nvalues from Efuse offsets.
+  * @sr:		SR Instance Pointer
+  * @efuse_offs:	Efuses Address Offsets
+  *
+  * This API is called from sr_enable. It retrieves
+  * Nvalues corrsponding to efuse offset
+  * for a SR instance. It looks
+  * up in Nvalue Table with efuse
+  * offset and returns corresponding Ntarget.
+  */
+
+static u32 sr_retrieve_lvt_nvalue(struct omap_sr *sr, u32 efuse_offs)
+{
+	int i = 0;
+
+	if (!sr->lvt_nvalue_table) {
+		dev_warn(&sr->pdev->dev, "%s: Missing LVT Sensor ntarget value table\n",
+			__func__);
+		return 0;
+	}
+
+	while (i < sr->lvt_nvalue_count) {
+		if (sr->lvt_nvalue_table->efuse_offs == efuse_offs)
+			return sr->lvt_nvalue_table->nvalue;
+		sr->lvt_nvalue_table++;
+		i++;
+	}
+
+	return 0;
+}
 /* Public Functions */
 
 /**
@@ -581,6 +620,11 @@ int sr_configure_errgen(struct voltagedomain *voltdm)
 		return -EINVAL;
 	}
 
+	if (sr->lvt_sensor) {
+		sr_config |= SRCONFIG_LVTSENENABLE;
+		sr_config |= SRCONFIG_LVTSENNENABLE_MASK |
+			SRCONFIG_LVTSENPENABLE_MASK;
+	}
 	sr_config |= ((senn_en << senn_shift) | (senp_en << senp_shift));
 	sr_write_reg(sr, SRCONFIG, sr_config);
 	sr_errconfig = (sr->err_weight << ERRCONFIG_ERRWEIGHT_SHIFT) |
@@ -695,6 +739,11 @@ int sr_configure_minmax(struct voltagedomain *voltdm)
 		return -EINVAL;
 	}
 
+	if (sr->lvt_sensor) {
+		sr_config |= SRCONFIG_LVTSENENABLE;
+		sr_config |= SRCONFIG_LVTSENNENABLE_MASK |
+			SRCONFIG_LVTSENPENABLE_MASK;
+	}
 	sr_config |= ((senn_en << senn_shift) | (senp_en << senp_shift));
 	sr_write_reg(sr, SRCONFIG, sr_config);
 	sr_avgwt = (sr->senp_avgweight << AVGWEIGHT_SENPAVGWEIGHT_SHIFT) |
@@ -749,6 +798,7 @@ int sr_enable(struct voltagedomain *voltdm, struct omap_volt_data *volt_data)
 	struct omap_sr *sr = _sr_lookup(voltdm);
 	u32 nvalue_reciprocal;
 	int ret;
+	u32 lvt_nvalue_reciprocal = 0;
 
 	if (IS_ERR(sr)) {
 		pr_warning("%s: omap_sr struct for sr_%s not found\n",
@@ -765,6 +815,14 @@ int sr_enable(struct voltagedomain *voltdm, struct omap_volt_data *volt_data)
 
 	nvalue_reciprocal = sr_retrieve_nvalue(sr, volt_data->sr_efuse_offs);
 
+	if (sr->lvt_sensor) {
+		lvt_nvalue_reciprocal = sr_retrieve_lvt_nvalue(sr, volt_data->lvt_sr_efuse_offs);
+		if (!lvt_nvalue_reciprocal) {
+			dev_err(&sr->pdev->dev, "%s: LVT SENSOR NVALUE = 0 at voltage %ld\n",
+				__func__, omap_get_operation_voltage(volt_data));
+			return -ENODATA;
+		}
+	}
 	if (!nvalue_reciprocal) {
 		dev_warn(&sr->pdev->dev, "%s: NVALUE = 0 at voltage %ld\n",
 			__func__, omap_get_operation_voltage(volt_data));
@@ -787,6 +845,8 @@ int sr_enable(struct voltagedomain *voltdm, struct omap_volt_data *volt_data)
 
 	sr_write_reg(sr, NVALUERECIPROCAL, nvalue_reciprocal);
 
+	if (sr->lvt_sensor)
+		sr_write_reg(sr, LVTNVALUERECIPROCAL, lvt_nvalue_reciprocal);
 	/* SRCONFIG - enable SR */
 	sr_modify_reg(sr, SRCONFIG, SRCONFIG_SRENABLE, SRCONFIG_SRENABLE);
 	return 0;
@@ -1069,6 +1129,7 @@ static int __init omap_sr_probe(struct platform_device *pdev)
 	struct omap_sr_data *pdata = pdev->dev.platform_data;
 	struct resource *mem, *irq;
 	struct dentry *nvalue_dir;
+	struct dentry *lvt_nvalue_dir;
 	struct omap_volt_data *volt_data;
 	int i, ret = 0;
 	char *name;
@@ -1111,8 +1172,11 @@ static int __init omap_sr_probe(struct platform_device *pdev)
 	sr_info->pdev = pdev;
 	sr_info->srid = pdev->id;
 	sr_info->voltdm = pdata->voltdm;
+	sr_info->lvt_sensor = pdata->lvt_sensor;
 	sr_info->nvalue_table = pdata->nvalue_table;
 	sr_info->nvalue_count = pdata->nvalue_count;
+	sr_info->lvt_nvalue_table = pdata->lvt_nvalue_table;
+	sr_info->lvt_nvalue_count = pdata->lvt_nvalue_count;
 	sr_info->senn_mod = pdata->senn_mod;
 	sr_info->senp_mod = pdata->senp_mod;
 	sr_info->autocomp_active = false;
@@ -1188,6 +1252,15 @@ static int __init omap_sr_probe(struct platform_device *pdev)
 		goto err_debugfs;
 	}
 
+	if (sr_info->lvt_sensor) {
+		lvt_nvalue_dir = debugfs_create_dir("lvt_nvalue", sr_info->dbg_dir);
+		if (IS_ERR_OR_NULL(lvt_nvalue_dir)) {
+			dev_err(&pdev->dev, "%s: Unable to create debugfs directory"
+				"for lvt sensor's n-values\n", __func__);
+			ret = PTR_ERR(lvt_nvalue_dir);
+			goto err_release_region;
+		}
+	}
 	omap_voltage_get_volttable(sr_info->voltdm, &volt_data);
 	if (!volt_data) {
 		dev_warn(&pdev->dev, "%s: No Voltage table for the"
@@ -1205,6 +1278,16 @@ static int __init omap_sr_probe(struct platform_device *pdev)
 			 volt_data[i].volt_nominal);
 		(void) debugfs_create_x32(name, S_IRUGO | S_IWUSR, nvalue_dir,
 				&(sr_info->nvalue_table[i].nvalue));
+	}
+	if (sr_info->lvt_sensor) {
+		for (i = 0; i < sr_info->lvt_nvalue_count; i++) {
+			char name[NVALUE_NAME_LEN + 1];
+
+			snprintf(name, sizeof(name), "volt_%d",
+				volt_data[i].volt_nominal);
+			(void) debugfs_create_x32(name, S_IRUGO | S_IWUSR, lvt_nvalue_dir,
+					&(sr_info->lvt_nvalue_table[i].nvalue));
+		}
 	}
 
 	return ret;
