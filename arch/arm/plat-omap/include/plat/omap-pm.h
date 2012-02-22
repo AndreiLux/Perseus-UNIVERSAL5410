@@ -62,44 +62,6 @@ void omap_pm_if_exit(void);
  * Device-driver-originated constraints (via board-*.c files, platform_data)
  */
 
-
-/**
- * omap_pm_set_max_mpu_wakeup_lat - set the maximum MPU wakeup latency
- * @dev: struct device * requesting the constraint
- * @t: maximum MPU wakeup latency in microseconds
- *
- * Request that the maximum interrupt latency for the MPU to be no
- * greater than @t microseconds. "Interrupt latency" in this case is
- * defined as the elapsed time from the occurrence of a hardware or
- * timer interrupt to the time when the device driver's interrupt
- * service routine has been entered by the MPU.
- *
- * It is intended that underlying PM code will use this information to
- * determine what power state to put the MPU powerdomain into, and
- * possibly the CORE powerdomain as well, since interrupt handling
- * code currently runs from SDRAM.  Advanced PM or board*.c code may
- * also configure interrupt controller priorities, OCP bus priorities,
- * CPU speed(s), etc.
- *
- * This function will not affect device wakeup latency, e.g., time
- * elapsed from when a device driver enables a hardware device with
- * clk_enable(), to when the device is ready for register access or
- * other use.  To control this device wakeup latency, use
- * omap_pm_set_max_dev_wakeup_lat()
- *
- * Multiple calls to omap_pm_set_max_mpu_wakeup_lat() will replace the
- * previous t value.  To remove the latency target for the MPU, call
- * with t = -1.
- *
- * XXX This constraint will be deprecated soon in favor of the more
- * general omap_pm_set_max_dev_wakeup_lat()
- *
- * Returns -EINVAL for an invalid argument, -ERANGE if the constraint
- * is not satisfiable, or 0 upon success.
- */
-int omap_pm_set_max_mpu_wakeup_lat(struct device *dev, long t);
-
-
 /**
  * omap_pm_set_min_bus_tput - set minimum bus throughput needed by device
  * @dev: struct device * requesting the constraint
@@ -130,67 +92,6 @@ int omap_pm_set_max_mpu_wakeup_lat(struct device *dev, long t);
  * is not satisfiable, or 0 upon success.
  */
 int omap_pm_set_min_bus_tput(struct device *dev, u8 agent_id, unsigned long r);
-
-
-/**
- * omap_pm_set_max_dev_wakeup_lat - set the maximum device enable latency
- * @req_dev: struct device * requesting the constraint, or NULL if none
- * @dev: struct device * to set the constraint one
- * @t: maximum device wakeup latency in microseconds
- *
- * Request that the maximum amount of time necessary for a device @dev
- * to become accessible after its clocks are enabled should be no
- * greater than @t microseconds.  Specifically, this represents the
- * time from when a device driver enables device clocks with
- * clk_enable(), to when the register reads and writes on the device
- * will succeed.  This function should be called before clk_disable()
- * is called, since the power state transition decision may be made
- * during clk_disable().
- *
- * It is intended that underlying PM code will use this information to
- * determine what power state to put the powerdomain enclosing this
- * device into.
- *
- * Multiple calls to omap_pm_set_max_dev_wakeup_lat() will replace the
- * previous wakeup latency values for this device.  To remove the
- * wakeup latency restriction for this device, call with t = -1.
- *
- * Returns -EINVAL for an invalid argument, -ERANGE if the constraint
- * is not satisfiable, or 0 upon success.
- */
-int omap_pm_set_max_dev_wakeup_lat(struct device *req_dev, struct device *dev,
-				   long t);
-
-
-/**
- * omap_pm_set_max_sdma_lat - set the maximum system DMA transfer start latency
- * @dev: struct device *
- * @t: maximum DMA transfer start latency in microseconds
- *
- * Request that the maximum system DMA transfer start latency for this
- * device 'dev' should be no greater than 't' microseconds.  "DMA
- * transfer start latency" here is defined as the elapsed time from
- * when a device (e.g., McBSP) requests that a system DMA transfer
- * start or continue, to the time at which data starts to flow into
- * that device from the system DMA controller.
- *
- * It is intended that underlying PM code will use this information to
- * determine what power state to put the CORE powerdomain into.
- *
- * Since system DMA transfers may not involve the MPU, this function
- * will not affect MPU wakeup latency.  Use set_max_cpu_lat() to do
- * so.  Similarly, this function will not affect device wakeup latency
- * -- use set_max_dev_wakeup_lat() to affect that.
- *
- * Multiple calls to set_max_sdma_lat() will replace the previous t
- * value for this device.  To remove the maximum DMA latency for this
- * device, call with t = -1.
- *
- * Returns -EINVAL for an invalid argument, -ERANGE if the constraint
- * is not satisfiable, or 0 upon success.
- */
-int omap_pm_set_max_sdma_lat(struct device *dev, long t);
-
 
 /**
  * omap_pm_set_min_clk_rate - set minimum clock rate requested by @dev
