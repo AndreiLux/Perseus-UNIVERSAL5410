@@ -121,6 +121,10 @@ struct omap_volt_data {
  * @i2c_mcode: master code value for I2C high-speed preamble transmission
  * @vsel_to_uv:	PMIC API to convert vsel value to actual voltage in uV.
  * @uv_to_vsel:	PMIC API to convert voltage in uV to vsel value.
+ * @i2c_hscll_low: PMIC interface speed config for highspeed mode (T low)
+ * @i2c_hscll_high: PMIC interface speed config for highspeed mode (T high)
+ * @i2c_scll_low: PMIC interface speed config for fullspeed mode (T low)
+ * @i2c_scll_high: PMIC interface speed config for fullspeed mode (T high)
  */
 struct omap_voltdm_pmic {
 	int slew_rate;
@@ -140,6 +144,10 @@ struct omap_voltdm_pmic {
 	u8 vp_vddmax;
 	u8 vp_timeout_us;
 	bool i2c_high_speed;
+	u8 i2c_hscll_low;
+	u8 i2c_hscll_high;
+	u8 i2c_scll_low;
+	u8 i2c_scll_high;
 	u8 i2c_mcode;
 	unsigned long (*vsel_to_uv) (const u8 vsel);
 	u8 (*uv_to_vsel) (unsigned long uV);
