@@ -68,9 +68,22 @@ static inline int omap4_opp_init(void)
  * omap3_pm_init_cpuidle
  */
 struct cpuidle_params {
-	u32 exit_latency;	/* exit_latency = sleep + wake-up latencies */
+	/*
+	 * exit_latency = sleep + wake-up latencies of the MPU,
+	 * which include the MPU itself and the peripherals needed
+	 * for the MPU to execute instructions (e.g. main memory,
+	 * caches, IRQ controller, MMU etc). Some of those peripherals
+	 * can belong to other power domains than the MPU subsystem and so
+	 * the corresponding latencies must be included in this figure.
+	 */
+	u32 exit_latency;
+	/*
+	 * target_residency: required amount of time in the C state
+	 * to break even on energy cost
+	 */
 	u32 target_residency;
-	u8 valid;		/* validates the C-state */
+	/* validates the C-state on the given board */
+	u8 valid;
 };
 
 #if defined(CONFIG_PM) && defined(CONFIG_CPU_IDLE)
