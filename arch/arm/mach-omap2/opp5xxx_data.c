@@ -124,7 +124,7 @@ static struct omap_opp_def __initdata omap54xx_opp_def_list[] = {
 	/* MMC1 OPP1 - OPPLOW */
 	OPP_INITIALIZER("mmc1", "mmc1_fclk", "core", true, 96000000, OMAP5430_VDD_CORE_OPP_LOW),
 	/* MMC1 OPP2 - OPPNOM */
-	OPP_INITIALIZER("mmc1", "mmc1_fclk", "core", true, 192000000, OMAP5430_VDD_CORE_OPP_LOW),
+	OPP_INITIALIZER("mmc1", "mmc1_fclk", "core", true, 192000000, OMAP5430_VDD_CORE_OPP_NOM),
 
 	/* MMC2 OPP1 - OPPLOW */
 	OPP_INITIALIZER("mmc2", "mmc2_fclk", "core", true, 96000000, OMAP5430_VDD_CORE_OPP_LOW),
