@@ -382,3 +382,35 @@ void omap3_prm_abb_clear_txdone(u8 abb_id)
 	omap2_prm_write_mod_reg(abb->tranxdone_status,
 				OCP_MOD, OMAP3_PRM_IRQSTATUS_MPU_OFFSET);
 }
+
+/**
+ * omap3xxx_prm_read_pending_irqs - read pending PRM MPU IRQs into @events
+ * @events: ptr to a u32, preallocated by caller
+ *
+ * Read PRM_IRQSTATUS_MPU bits, AND'ed with the currently-enabled PRM
+ * MPU IRQs, and store the result into the u32 pointed to by @events.
+ * No return value.
+ */
+void omap3xxx_prm_read_pending_irqs(unsigned long *events)
+{
+	u32 mask, st;
+
+	/* XXX Can the mask read be avoided (e.g., can it come from RAM?) */
+	mask = omap2_prm_read_mod_reg(OCP_MOD, OMAP3_PRM_IRQENABLE_MPU_OFFSET);
+	st = omap2_prm_read_mod_reg(OCP_MOD, OMAP3_PRM_IRQSTATUS_MPU_OFFSET);
+
+	events[0] = mask & st;
+}
+
+/**
+ * omap3xxx_prm_ocp_barrier - force buffered MPU writes to the PRM to complete
+ *
+ * Force any buffered writes to the PRM IP block to complete.  Needed
+ * by the PRM IRQ handler, which reads and writes directly to the IP
+ * block, to avoid race conditions after acknowledging or clearing IRQ
+ * bits.  No return value.
+ */
+void omap3xxx_prm_ocp_barrier(void)
+{
+	omap2_prm_read_mod_reg(OCP_MOD, OMAP3_PRM_REVISION_OFFSET);
+}
