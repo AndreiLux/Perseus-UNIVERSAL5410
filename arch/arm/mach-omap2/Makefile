@@ -114,7 +114,7 @@ obj-$(CONFIG_ARCH_OMAP5)                += prcm.o cm2xxx_3xxx.o cminst44xx.o \
                                            vp44xx_data.o dvfs.o
 
 # OMAP voltage domains
-voltagedomain-common			:= voltage.o vc.o vp.o
+voltagedomain-common			:= voltage.o vc.o vp.o abb.o
 obj-$(CONFIG_ARCH_OMAP2)		+= $(voltagedomain-common) \
 					   voltagedomains2xxx_data.o
 obj-$(CONFIG_ARCH_OMAP3)		+= $(voltagedomain-common) \
