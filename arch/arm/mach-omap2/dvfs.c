@@ -709,7 +709,7 @@ static int _dvfs_scale(struct device *req_dev, struct device *target_dev,
 
 	curr_volt = omap_vp_get_curr_volt(voltdm);
 	if (!curr_volt)
-		curr_volt = voltdm_get_voltage(voltdm);
+		curr_volt = omap_get_operation_voltage(voltdm_get_voltage(voltdm));
 
 	/* Disable smartreflex module across voltage and frequency scaling */
 	omap_sr_disable(voltdm);
@@ -717,7 +717,8 @@ static int _dvfs_scale(struct device *req_dev, struct device *target_dev,
 	if (curr_volt == new_volt) {
 		volt_scale_dir = DVFS_VOLT_SCALE_NONE;
 	} else if (curr_volt < new_volt) {
-		ret = voltdm_scale(voltdm, new_volt);
+		ret = voltdm_scale(voltdm,
+			omap_voltage_get_voltdata(voltdm, new_volt));
 		if (ret) {
 			dev_err(target_dev,
 				"%s: Unable to scale the %s to %ld volt\n",
@@ -787,7 +788,8 @@ static int _dvfs_scale(struct device *req_dev, struct device *target_dev,
 		goto fail;
 
 	if (DVFS_VOLT_SCALE_DOWN == volt_scale_dir) {
-		voltdm_scale(voltdm, new_volt);
+		voltdm_scale(voltdm,
+			omap_voltage_get_voltdata(voltdm, new_volt));
 		_dep_scale_domains(target_dev, vdd);
 	}
 

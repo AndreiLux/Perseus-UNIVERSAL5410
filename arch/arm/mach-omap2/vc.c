@@ -102,11 +102,17 @@ static int omap_vc_config_channel(struct voltagedomain *voltdm)
 
 /* Voltage scale and accessory APIs */
 int omap_vc_pre_scale(struct voltagedomain *voltdm,
-		      unsigned long target_volt,
-		      u8 *target_vsel, u8 *current_vsel)
+			struct omap_volt_data *target_volt,
+			u8 *target_vsel, u8 *current_vsel)
 {
 	struct omap_vc_channel *vc = voltdm->vc;
 	u32 vc_cmdval;
+
+	if (IS_ERR_OR_NULL(voltdm) || IS_ERR_OR_NULL(target_volt) ||
+			!target_vsel || !current_vsel) {
+		pr_err("%s: invalid parms!\n", __func__);
+		return -EINVAL;
+	}
 
 	/* Check if sufficient pmic info is available for this vdd */
 	if (!voltdm->pmic) {
@@ -128,8 +134,8 @@ int omap_vc_pre_scale(struct voltagedomain *voltdm,
 		return -EINVAL;
 	}
 
-	*target_vsel = voltdm->pmic->uv_to_vsel(target_volt);
-	*current_vsel = voltdm->pmic->uv_to_vsel(voltdm->nominal_volt);
+	*target_vsel = voltdm->pmic->uv_to_vsel(omap_get_operation_voltage(target_volt));
+	*current_vsel = voltdm->pmic->uv_to_vsel(omap_get_operation_voltage(voltdm->nominal_volt));
 
 	/* Setting the ON voltage to the new target voltage */
 	vc_cmdval = voltdm->read(vc->cmdval_reg);
@@ -143,7 +149,7 @@ int omap_vc_pre_scale(struct voltagedomain *voltdm,
 }
 
 void omap_vc_post_scale(struct voltagedomain *voltdm,
-			unsigned long target_volt,
+			struct omap_volt_data *target_volt,
 			u8 target_vsel, u8 current_vsel)
 {
 	u32 smps_steps = 0, smps_delay = 0;
@@ -205,7 +211,7 @@ static int omap_vc_bypass_send_value(struct voltagedomain *voltdm,
 
 /* vc_bypass_scale - VC bypass method of voltage scaling */
 int omap_vc_bypass_scale(struct voltagedomain *voltdm,
-			 unsigned long target_volt)
+				struct omap_volt_data *target_volt)
 {
 	struct omap_vc_channel *vc = voltdm->vc;
 	u32 loop_cnt = 0, retries_cnt = 0;
@@ -254,7 +260,7 @@ int omap_vc_bypass_scale(struct voltagedomain *voltdm,
 
 /* vc_bypass_scale_voltage - VC bypass method of voltage scaling */
 int omap_vc_bypass_scale_voltage(struct voltagedomain *voltdm,
-				 unsigned long target_volt)
+				struct omap_volt_data *target_volt)
 {
 	struct omap_vc_channel *vc;
 	u8 target_vsel, current_vsel;

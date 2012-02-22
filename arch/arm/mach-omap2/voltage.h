@@ -86,31 +86,12 @@ struct voltagedomain {
 	} sys_clk;
 
 	int (*scale) (struct voltagedomain *voltdm,
-		      unsigned long target_volt);
+		      struct omap_volt_data *target_volt);
 
-	u32 nominal_volt;
+	struct omap_volt_data *nominal_volt;
 	struct omap_volt_data *volt_data;
 	struct omap_vdd_info *vdd;
 	struct dentry *debug_dir;
-};
-
-/**
- * struct omap_volt_data - Omap voltage specific data.
- * @voltage_nominal:	The possible voltage value in uV
- * @sr_efuse_offs:	The offset of the efuse register(from system
- *			control module base address) from where to read
- *			the n-target value for the smartreflex module.
- * @sr_errminlimit:	Error min limit value for smartreflex. This value
- *			differs at differnet opp and thus is linked
- *			with voltage.
- * @vp_errorgain:	Error gain value for the voltage processor. This
- *			field also differs according to the voltage/opp.
- */
-struct omap_volt_data {
-	u32	volt_nominal;
-	u32	sr_efuse_offs;
-	u8	sr_errminlimit;
-	u8	vp_errgain;
 };
 
 /* Min and max voltages from OMAP perspective */
@@ -243,7 +224,17 @@ int voltdm_for_each(int (*fn)(struct voltagedomain *voltdm, void *user),
 int voltdm_for_each_pwrdm(struct voltagedomain *voltdm,
 			  int (*fn)(struct voltagedomain *voltdm,
 				    struct powerdomain *pwrdm));
-int voltdm_scale(struct voltagedomain *voltdm, unsigned long target_volt);
+int voltdm_scale(struct voltagedomain *voltdm, struct omap_volt_data *target_volt);
 void voltdm_reset(struct voltagedomain *voltdm);
-unsigned long voltdm_get_voltage(struct voltagedomain *voltdm);
+struct omap_volt_data *voltdm_get_voltage(struct voltagedomain *voltdm);
+
+/* convert volt data to the voltage for the voltage data */
+static inline unsigned long omap_get_operation_voltage(
+		struct omap_volt_data *vdata)
+{
+	if (IS_ERR_OR_NULL(vdata))
+		return 0;
+	return vdata->volt_nominal;
+}
+
 #endif

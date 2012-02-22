@@ -52,11 +52,11 @@ static LIST_HEAD(voltdm_list);
  * API to get the current non-auto-compensated voltage for a voltage domain.
  * Returns 0 in case of error else returns the current voltage.
  */
-unsigned long voltdm_get_voltage(struct voltagedomain *voltdm)
+struct omap_volt_data *voltdm_get_voltage(struct voltagedomain *voltdm)
 {
 	if (IS_ERR_OR_NULL(voltdm)) {
 		pr_warning("%s: VDD specified does not exist!\n", __func__);
-		return 0;
+		return ERR_PTR(-ENODATA);
 	}
 
 	return voltdm->nominal_volt;
@@ -65,13 +65,13 @@ unsigned long voltdm_get_voltage(struct voltagedomain *voltdm)
 /**
  * voltdm_scale() - API to scale voltage of a particular voltage domain.
  * @voltdm: pointer to the voltage domain which is to be scaled.
- * @target_volt: The target voltage of the voltage domain
+ * @target_volt: The target voltage data for the voltage domain
  *
  * This API should be called by the kernel to do the voltage scaling
  * for a particular voltage domain during DVFS.
  */
 int voltdm_scale(struct voltagedomain *voltdm,
-		 unsigned long target_volt)
+		 struct omap_volt_data *target_volt)
 {
 	int ret;
 
@@ -104,7 +104,7 @@ int voltdm_scale(struct voltagedomain *voltdm,
  */
 void voltdm_reset(struct voltagedomain *voltdm)
 {
-	unsigned long target_volt;
+	struct omap_volt_data *target_volt;
 
 	if (IS_ERR_OR_NULL(voltdm)) {
 		pr_warning("%s: VDD specified does not exist!\n", __func__);
@@ -257,13 +257,21 @@ DEFINE_SIMPLE_ATTRIBUTE(vp_volt_debug_fops, vp_volt_debug_get, NULL, "%llu\n");
 static int nom_volt_debug_get(void *data, u64 *val)
 {
 	struct voltagedomain *voltdm = (struct voltagedomain *) data;
+	struct omap_volt_data *volt_data;
 
 	if (!voltdm) {
 		pr_warning("Wrong paramater passed\n");
 		return -EINVAL;
 	}
 
-	*val = voltdm_get_voltage(voltdm);
+	volt_data = voltdm_get_voltage(voltdm);
+
+	if (IS_ERR_OR_NULL(volt_data)) {
+		pr_warning("%s: No voltage/domain?\n", __func__);
+		return -ENODEV;
+	}
+
+	*val = volt_data->volt_nominal;
 
 	return 0;
 }
