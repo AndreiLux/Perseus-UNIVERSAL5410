@@ -51,6 +51,7 @@
 
 #include <plat/dsim.h>
 #include <plat/mipi_dsi.h>
+#include <plat/fimg2d.h>
 
 #include "common.h"
 
@@ -988,6 +989,13 @@ static struct s5p_platform_mipi_dsim dsim_platform_data = {
 };
 #endif
 
+#ifdef CONFIG_VIDEO_EXYNOS_FIMG2D
+static struct fimg2d_platdata fimg2d_data __initdata = {
+	.hw_ver		= 0x42,
+	.gate_clkname	= "fimg2d",
+};
+#endif
+
 /* LCD Backlight data */
 static struct samsung_bl_gpio_info smdk5250_bl_gpio_info = {
 	.no	= EXYNOS5_GPB2(0),
@@ -1051,6 +1059,9 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&s5p_device_mipi_csis0,
 	&s5p_device_mipi_csis1,
 	&mipi_csi_fixed_voltage,
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS_FIMG2D
+	&s5p_device_fimg2d,
 #endif
 #ifdef CONFIG_VIDEO_M5MOLS
 	&m5mols_fixed_voltage,
@@ -1131,7 +1142,7 @@ static void __init exynos_sysmmu_init(void)
 #ifdef CONFIG_VIDEO_EXYNOS_ROTATOR
 	sysmmu_set_owner(&SYSMMU_PLATDEV(rot).dev, &exynos_device_rotator.dev);
 #endif
-#ifdef CONFIG_VIDEO_FIMG2D
+#ifdef CONFIG_VIDEO_EXYNOS_FIMG2D
 	sysmmu_set_owner(&SYSMMU_PLATDEV(2d).dev, &s5p_device_fimg2d.dev);
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS5_FIMC_IS
@@ -1218,6 +1229,9 @@ static void __init smdk5250_machine_init(void)
 			sizeof(s5p_mipi_csis0_default_data), &s5p_device_mipi_csis0);
 	s3c_set_platdata(&s5p_mipi_csis1_default_data,
 			sizeof(s5p_mipi_csis1_default_data), &s5p_device_mipi_csis1);
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS_FIMG2D
+	s5p_fimg2d_set_platdata(&fimg2d_data);
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_FIMC_LITE
 #if defined(CONFIG_EXYNOS_DEV_PD)

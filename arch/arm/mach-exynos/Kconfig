@@ -404,6 +404,7 @@ config MACH_SMDK5250
 	select S3C_DEV_I2C5
 	select S3C_DEV_I2C7
 	select S5P_DEV_FIMD1
+	select S5P_DEV_FIMG2D
 	select EXYNOS_DEV_DMA
 	select EXYNOS_DEV_SYSMMU
 	select EXYNOS_DEV_DWMCI
