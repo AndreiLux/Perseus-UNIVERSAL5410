@@ -6253,7 +6253,7 @@ static __initdata struct omap_hwmod *omap54xx_hwmods[] = {
 	&omap54xx_ipu_hwmod,
 
 	/* iss class */
-/*	&omap54xx_iss_hwmod, */
+	&omap54xx_iss_hwmod,
 
 	/* iva class */
 	&omap54xx_iva_hwmod,
