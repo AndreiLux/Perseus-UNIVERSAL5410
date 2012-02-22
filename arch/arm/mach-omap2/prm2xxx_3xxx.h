@@ -319,6 +319,10 @@ extern void omap3_trigger_io_chain(void);
 u32 omap3_prm_vp_check_txdone(u8 vp_id);
 void omap3_prm_vp_clear_txdone(u8 vp_id);
 
+/* OMAP36xx-specific ABB functions */
+u32 omap3_prm_abb_check_txdone(u8 vp_id);
+void omap3_prm_abb_clear_txdone(u8 vp_id);
+
 /*
  * OMAP3 access functions for voltage controller (VC) and
  * voltage proccessor (VP) in the PRM.
