@@ -1711,11 +1711,9 @@ static int _idle(struct omap_hwmod *oh)
 	/* Mux pins for device idle if populated */
 	if (oh->mux && oh->mux->pads_dynamic) {
 		omap_hwmod_mux(oh->mux, _HWMOD_STATE_IDLE);
-<<<<<<< current
+		// !!! we really need to call both of these?
 		omap_trigger_io_chain();
-=======
 		omap_trigger_wuclk_ctrl();
->>>>>>> patched
 	}
 
 	oh->_state = _HWMOD_STATE_IDLE;
@@ -2827,15 +2825,25 @@ int omap_hwmod_get_context_loss_count(struct omap_hwmod *oh)
 	struct powerdomain *pwrdm;
 	int ret = 0;
 
+<<<<<<< current
 	/* OMAP2/3 don't have hw context lost flags for all modules */
 	if (cpu_is_omap24xx() || cpu_is_omap34xx()) {
+=======
+	if (oh->prcm.omap4.context_offs) {
+		/* Support for per-hwmod context register */
+		ret = oh->prcm.omap4.context_lost_counter;
+	} else {
+>>>>>>> patched
 		pwrdm = omap_hwmod_get_pwrdm(oh);
 		if (pwrdm)
 			ret = pwrdm_get_context_loss_count(pwrdm);
 	}
+<<<<<<< current
 	else {
 		ret = oh->prcm.omap4.context_lost_counter;
 	}
+=======
+>>>>>>> patched
 
 	return ret;
 }
