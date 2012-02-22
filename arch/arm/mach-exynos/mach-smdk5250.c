@@ -42,6 +42,7 @@
 #include <plat/regs-fb-v4.h>
 #include <plat/iic.h>
 #include <plat/mipi_csis.h>
+#include <plat/jpeg.h>
 
 #include <mach/map.h>
 #include <mach/sysmmu.h>
@@ -1071,6 +1072,9 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&exynos5_device_pcm0,
 	&exynos5_device_spdif,
 	&exynos_device_ss_udc,
+#ifdef CONFIG_VIDEO_EXYNOS_JPEG
+	&s5p_device_jpeg,
+#endif
 #ifdef CONFIG_S5P_DEV_ACE
 	&s5p_device_ace,
 #endif
@@ -1256,6 +1260,9 @@ static void __init smdk5250_machine_init(void)
 	exynos5_gsc_set_parent_clock("mout_aclk_300_gscl", "mout_aclk_300_gscl_mid");
 	exynos5_gsc_set_parent_clock("aclk_300_gscl", "dout_aclk_300_gscl");
 	exynos5_gsc_set_clock_rate("dout_aclk_300_gscl", 310000000);
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS_JPEG
+	exynos5_jpeg_setup_clock(&s5p_device_jpeg.dev, 150000000);
 #endif
 }
 

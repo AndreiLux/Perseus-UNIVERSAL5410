@@ -461,6 +461,20 @@ config EXYNOS5_SETUP_GSC
 	help
 	  Common setup code for GSC
 
+config EXYNOS5_DEV_JPEG
+	bool
+	depends on VIDEO_EXYNOS_JPEG
+	default y
+	help
+	  Compile in platform device definitions for JPEG
+
+config EXYNOS5_SETUP_JPEG
+	bool
+	depends on VIDEO_EXYNOS_JPEG
+	default y
+	help
+	  Common setup code for JPEG
+
 config EXYNOS4_SETUP_CSIS
 	bool
 	depends on VIDEO_FIMC_MIPI
