@@ -82,6 +82,9 @@ extern struct omap_abb_instance omap36xx_abb_mpu;
 extern struct omap_abb_instance omap4_abb_mpu;
 extern struct omap_abb_instance omap4_abb_iva;
 
+extern struct omap_abb_instance omap5_abb_mpu;
+extern struct omap_abb_instance omap5_abb_mm;
+
 void omap_abb_init(struct voltagedomain *voltdm);
 void omap_abb_enable(struct voltagedomain *voltdm);
 void omap_abb_disble(struct voltagedomain *voltdm);
