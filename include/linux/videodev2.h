@@ -432,6 +432,13 @@ struct v4l2_pix_format {
 #define V4L2_PIX_FMT_JPGL	v4l2_fourcc('J', 'P', 'G', 'L') /* JPEG-Lite */
 #define V4L2_PIX_FMT_SE401      v4l2_fourcc('S', '4', '0', '1') /* se401 janggu compressed rgb */
 
+#define V4L2_PIX_FMT_JPEG_444     v4l2_fourcc('J', 'P', 'G', '4') /* yuv444 of JFIF JPEG     */
+#define V4L2_PIX_FMT_JPEG_422     v4l2_fourcc('J', 'P', 'G', '2') /* yuv422 of JFIF JPEG     */
+#define V4L2_PIX_FMT_JPEG_420     v4l2_fourcc('J', 'P', 'G', '0') /* yuv420 of JFIF JPEG     */
+#define V4L2_PIX_FMT_JPEG_GRAY     v4l2_fourcc('J', 'P', 'G', 'G') /* grey of JFIF JPEG     */
+#define V4L2_PIX_FMT_YUV444_2P  v4l2_fourcc('Y', 'U', '2', 'P') /* 16  xxxxyyyy uuuuvvvv */
+#define V4L2_PIX_FMT_YVU444_2P  v4l2_fourcc('Y', 'V', '2', 'P') /* 16  xxxxyyyy uuuuvvvv */
+#define V4L2_PIX_FMT_YUV444_3P  v4l2_fourcc('Y', 'U', '3', 'P') /* 16  xxxxyyyy uuuuvvvv */
 /*
  *	F O R M A T   E N U M E R A T I O N
  */
