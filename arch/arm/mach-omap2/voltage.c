@@ -239,6 +239,67 @@ void omap_change_voltscale_method(struct voltagedomain *voltdm,
 	}
 }
 
+static int dyn_volt_debug_get(void *data, u64 *val)
+{
+	struct voltagedomain *voltdm = (struct voltagedomain *)data;
+	struct omap_volt_data *volt_data;
+
+	volt_data = voltdm_get_voltage(voltdm);
+	if (IS_ERR_OR_NULL(volt_data)) {
+		pr_warning("%s: No voltage/domain?\n", __func__);
+		return -ENODEV;
+	}
+
+	*val = volt_data->volt_dynamic_nominal;
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(dyn_volt_debug_fops, dyn_volt_debug_get, NULL,
+								"%llu\n");
+
+static int calib_volt_debug_get(void *data, u64 *val)
+{
+	struct voltagedomain *voltdm = (struct voltagedomain *)data;
+	struct omap_volt_data *volt_data;
+
+	volt_data = voltdm_get_voltage(voltdm);
+	if (IS_ERR_OR_NULL(volt_data)) {
+		pr_warning("%s: No voltage/domain?\n", __func__);
+		return -ENODEV;
+	}
+
+	*val = volt_data->volt_calibrated;
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(calib_volt_debug_fops, calib_volt_debug_get, NULL,
+								"%llu\n");
+
+/**
+ * omap_voltage_calib_reset() - reset the calibrated voltage entries
+ * @voltdm: voltage domain to reset the entries for
+ *
+ * when the calibrated entries are no longer valid, this api allows
+ * the calibrated voltages to be reset.
+ */
+int omap_voltage_calib_reset(struct voltagedomain *voltdm)
+{
+	struct omap_volt_data *volt_data;
+
+	if (IS_ERR_OR_NULL(voltdm)) {
+		pr_warning("%s: VDD specified does not exist!\n", __func__);
+		return -EINVAL;
+	}
+
+	volt_data = voltdm->vdd->volt_data;
+	/* reset the calibrated voltages as 0 */
+	while (volt_data->volt_nominal) {
+		volt_data->volt_calibrated = 0;
+		volt_data++;
+	}
+	return 0;
+}
+
 /* Voltage debugfs support */
 static int vp_volt_debug_get(void *data, u64 *val)
 {
@@ -304,6 +365,12 @@ static void __init voltdm_debugfs_init(struct dentry *voltage_dir,
 	(void) debugfs_create_file("curr_nominal_volt", S_IRUGO,
 				voltdm->debug_dir, (void *) voltdm,
 				&nom_volt_debug_fops);
+	(void) debugfs_create_file("curr_dyn_nominal_volt", S_IRUGO,
+				voltdm->debug_dir, (void *) voltdm,
+				&dyn_volt_debug_fops);
+	(void) debugfs_create_file("curr_calibrated_volt", S_IRUGO,
+				voltdm->debug_dir, (void *) voltdm,
+				&calib_volt_debug_fops);
 }
 
 /**
