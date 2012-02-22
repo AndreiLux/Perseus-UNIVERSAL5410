@@ -47,6 +47,7 @@
 #include <mach/map.h>
 #include <mach/sysmmu.h>
 #include <mach/exynos-ion.h>
+#include <mach/exynos-mfc.h>
 #include <mach/dwmci.h>
 
 #include <plat/dsim.h>
@@ -1037,6 +1038,9 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&SYSMMU_PLATDEV(is_dis1),
 	&SYSMMU_PLATDEV(is_3dnr),
 	&smdk5250_input_device,
+#ifdef CONFIG_VIDEO_EXYNOS_MFC
+	&s5p_device_mfc,
+#endif
 #ifdef CONFIG_ION_EXYNOS
 	&exynos_device_ion,
 #endif
@@ -1100,6 +1104,12 @@ static void __init smdk5250_ss_udc_init(void)
 	exynos_ss_udc_set_platdata(pdata);
 }
 
+#if defined(CONFIG_VIDEO_EXYNOS_MFC)
+static struct s5p_mfc_platdata smdk5250_mfc_pd = {
+	.clock_rate = 300 * MHZ,
+};
+#endif
+
 static void __init smdk5250_map_io(void)
 {
 	clk_xusbxti.rate = 24000000;
@@ -1114,7 +1124,7 @@ static void __init exynos_sysmmu_init(void)
 #ifdef CONFIG_VIDEO_JPEG_V2X
 	sysmmu_set_owner(&SYSMMU_PLATDEV(jpeg).dev, &s5p_device_jpeg.dev);
 #endif
-#if defined(CONFIG_VIDEO_SAMSUNG_S5P_MFC)
+#if defined(CONFIG_VIDEO_EXYNOS_MFC)
 	sysmmu_set_owner(&SYSMMU_PLATDEV(mfc_l).dev, &s5p_device_mfc.dev);
 	sysmmu_set_owner(&SYSMMU_PLATDEV(mfc_r).dev, &s5p_device_mfc.dev);
 #endif
@@ -1200,6 +1210,9 @@ static void __init smdk5250_machine_init(void)
 	exynos_ion_set_platdata();
 	exynos_dwmci_set_platdata(&exynos_dwmci_pdata);
 
+#ifdef CONFIG_VIDEO_EXYNOS_MFC
+	s5p_mfc_set_platdata(&smdk5250_mfc_pd);
+#endif
 	samsung_bl_set(&smdk5250_bl_gpio_info, &smdk5250_bl_data);
 
 #ifdef CONFIG_FB_S3C

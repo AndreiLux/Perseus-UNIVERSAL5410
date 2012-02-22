@@ -169,6 +169,11 @@ config EXYNOS4_SETUP_KEYPAD
 	help
 	  Common setup code for keypad.
 
+config EXYNOS4_SETUP_MFC
+	bool
+	help
+	  Common setup code for MFC.
+
 config EXYNOS4_SETUP_SDHCI
 	bool
 	select EXYNOS4_SETUP_SDHCI_GPIO
@@ -403,6 +408,7 @@ config MACH_SMDK5250
 	select S3C_DEV_I2C4
 	select S3C_DEV_I2C5
 	select S3C_DEV_I2C7
+	select S5P_DEV_MFC
 	select S5P_DEV_FIMD1
 	select S5P_DEV_FIMG2D
 	select EXYNOS_DEV_DMA
@@ -418,6 +424,7 @@ config MACH_SMDK5250
 	select EXYNOS4_SETUP_I2C4
 	select EXYNOS4_SETUP_I2C5
 	select EXYNOS4_SETUP_I2C7
+	select EXYNOS4_SETUP_MFC
 	select EXYNOS4_SETUP_USB_PHY
 	select SAMSUNG_DEV_BACKLIGHT
 	select SAMSUNG_DEV_PWM
