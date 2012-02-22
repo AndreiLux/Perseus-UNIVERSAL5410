@@ -66,6 +66,8 @@ obj-$(CONFIG_ARCH_OMAP4)		+= opp4xxx_data.o
 endif
 
 obj-$(CONFIG_ARCH_OMAP5)                += opp4xxx_data.o
+# CPUFREQ driver
+obj-$(CONFIG_CPU_FREQ)                  += omap2plus-cpufreq.o
 
 # Power Management
 ifeq ($(CONFIG_PM),y)
