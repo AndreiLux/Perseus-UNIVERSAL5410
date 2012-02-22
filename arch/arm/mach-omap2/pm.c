@@ -11,6 +11,7 @@
 
 #include <linux/kernel.h>
 #include <linux/init.h>
+#include <linux/notifier.h>
 #include <linux/io.h>
 #include <linux/err.h>
 #include <linux/opp.h>
@@ -19,9 +20,13 @@
 
 #include <asm/system_misc.h>
 
+#include "common.h"
+#include <linux/pm_qos.h>
+
 #include <plat/omap-pm.h>
 #include <plat/omap_device.h>
-#include "common.h"
+#include <plat/omap_hwmod.h>
+#include <plat/common.h>
 
 #include "prcm-common.h"
 #include "voltage.h"
@@ -391,6 +396,63 @@ static void __init omap4_init_voltages(void)
 #endif
 }
 
+/* Interface to the per-device PM QoS framework */
+static int omap2_dev_pm_qos_handler(struct notifier_block *nb,
+				    unsigned long new_value,
+				    void *req)
+{
+	struct omap_device *od;
+	struct omap_hwmod *oh;
+	struct platform_device *pdev;
+	struct dev_pm_qos_request *dev_pm_qos_req = req;
+
+	pr_debug("OMAP PM CONSTRAINTS: req@0x%p, new_value=%lu\n",
+		 req, new_value);
+
+	/* Look for the platform device for the constraint target device */
+	pdev = to_platform_device(dev_pm_qos_req->dev);
+
+	/* Try to catch non platform devices */
+	if (pdev->name == NULL) {
+		pr_err("%s: Error: platform device for device %s not valid\n",
+		       __func__, dev_name(dev_pm_qos_req->dev));
+		return -EINVAL;
+	}
+
+	/* Find the associated omap_device for dev */
+	od = container_of(pdev, struct omap_device, pdev);
+
+	/* Find the primary omap_hwmod for dev */
+	oh = od->hwmods[0];
+
+	if (od->hwmods_cnt != 1)
+		pr_warn_once("%s: No unique hwmod for device %s, using the "
+			     "hwmod[0] entry (%s)\n", __func__,
+			     dev_name(dev_pm_qos_req->dev), oh->name);
+
+	pr_debug("OMAP PM CONSTRAINTS: req@0x%p, dev=0x%p, new_value=%lu\n",
+		 req, dev_pm_qos_req->dev, new_value);
+
+	/* Apply the constraint */
+	return omap_hwmod_set_wkup_lat_constraint(oh, dev_pm_qos_req,
+						  new_value);
+}
+
+static struct notifier_block omap2_dev_pm_qos_notifier = {
+	.notifier_call	= omap2_dev_pm_qos_handler,
+};
+
+static int __init omap2_dev_pm_qos_init(void)
+{
+	int ret;
+
+	ret = dev_pm_qos_add_global_notifier(&omap2_dev_pm_qos_notifier);
+	if (ret)
+		WARN(1, KERN_ERR "Cannot add global notifier for dev PM QoS\n");
+
+	return ret;
+}
+
 static int __init omap2_common_pm_init(void)
 {
 	if (cpu_is_omap54xx()) {
@@ -409,8 +471,12 @@ static int __init omap2_common_pm_init(void)
 	if (cpu_is_omap44xx())
 		io_chain_trigger_func = omap4_trigger_io_chain;
 
+	/* Register to the per-device PM QoS framework */
+	omap2_dev_pm_qos_init();
+
 	return 0;
 }
+
 postcore_initcall(omap2_common_pm_init);
 
 static int __init omap2_common_pm_late_init(void)
