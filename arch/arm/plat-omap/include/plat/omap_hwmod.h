@@ -376,6 +376,7 @@ struct omap_hwmod_omap4_prcm {
 	u16		clkctrl_offs;
 	u16		rstctrl_offs;
 	u16		context_offs;
+	unsigned	context_lost_counter;
 	u8		submodule_wkdep_bit;
 	u8		modulemode;
 	unsigned	context_lost_counter;
