@@ -690,6 +690,7 @@ static int _dvfs_scale(struct device *req_dev, struct device *target_dev,
 	int ret = 0;
 	struct voltagedomain *voltdm;
 	struct omap_vdd_info *vdd;
+	struct omap_volt_data *volt_data;
 
 	voltdm = tdvfs_info->voltdm;
 	if (IS_ERR_OR_NULL(voltdm)) {
@@ -707,9 +708,15 @@ static int _dvfs_scale(struct device *req_dev, struct device *target_dev,
 	node = plist_last(&tdvfs_info->vdd_user_list);
 	new_volt = node->prio;
 
+	volt_data = voltdm_get_voltage(voltdm);
+	if (IS_ERR_OR_NULL(volt_data)) {
+		pr_warning("%s: No voltage/domain?\n", __func__);
+		return -ENODEV;
+	}
+
 	curr_volt = omap_vp_get_curr_volt(voltdm);
 	if (!curr_volt)
-		curr_volt = omap_get_operation_voltage(voltdm_get_voltage(voltdm));
+		curr_volt = omap_get_operation_voltage(volt_data);
 
 	/* Disable smartreflex module across voltage and frequency scaling */
 	omap_sr_disable(voltdm);
@@ -801,7 +808,7 @@ fail:
 			__func__, voltdm->name);
 out:
 	/* Re-enable Smartreflex module */
-	omap_sr_enable(voltdm);
+	omap_sr_enable(voltdm, volt_data);
 
 	/* Mark done */
 	tdvfs_info->is_scaling = false;

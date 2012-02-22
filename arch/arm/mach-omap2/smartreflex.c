@@ -318,7 +318,7 @@ static void sr_start_vddautocomp(struct omap_sr *sr, bool class_start)
 		return;
 	}
 
-	ret = sr_class->enable(sr->voltdm);
+	ret = sr_class->enable(sr->voltdm, voltdm_get_voltage(sr->voltdm));
 	if (!ret && class_start)
 		sr->autocomp_active = true;
 }
@@ -710,7 +710,7 @@ int sr_configure_minmax(struct voltagedomain *voltdm)
 /**
  * sr_enable() - Enables the smartreflex module.
  * @voltdm:	VDD pointer to which the SR module to be configured belongs to.
- * @volt:	The voltage at which the Voltage domain associated with
+ * @volt_data:	The voltage at which the Voltage domain associated with
  *		the smartreflex module is operating at.
  *		This is required only to program the correct Ntarget value.
  *
@@ -718,9 +718,10 @@ int sr_configure_minmax(struct voltagedomain *voltdm)
  * enable a smartreflex module. Returns 0 on success. Returns error
  * value if the voltage passed is wrong or if ntarget value is wrong.
  */
-int sr_enable(struct voltagedomain *voltdm, unsigned long volt)
+int sr_enable(struct voltagedomain *voltdm, struct omap_volt_data *volt_data)
 {
 	struct omap_volt_data *volt_data;
+	u32 nvalue_reciprocal;
 	struct omap_sr *sr = _sr_lookup(voltdm);
 	u32 nvalue_reciprocal;
 	int ret;
@@ -733,17 +734,16 @@ int sr_enable(struct voltagedomain *voltdm, unsigned long volt)
 
 	volt_data = omap_voltage_get_voltdata(sr->voltdm, volt);
 
-	if (IS_ERR(volt_data)) {
-		dev_warn(&sr->pdev->dev, "%s: Unable to get voltage table"
-			"for nominal voltage %ld\n", __func__, volt);
-		return PTR_ERR(volt_data);
+	if (IS_ERR_OR_NULL(volt_data)) {
+		dev_warn(&sr->pdev->dev, "%s: bad voltage data\n", __func__);
+		return -EINVAL;
 	}
 
 	nvalue_reciprocal = sr_retrieve_nvalue(sr, volt_data->sr_efuse_offs);
 
 	if (!nvalue_reciprocal) {
 		dev_warn(&sr->pdev->dev, "%s: NVALUE = 0 at voltage %ld\n",
-			__func__, volt);
+			__func__, omap_get_operation_voltage(volt_data));
 		return -ENODATA;
 	}
 
@@ -907,13 +907,15 @@ int sr_register_class(struct omap_sr_class_data *class_data)
  * omap_sr_enable() -  API to enable SR clocks and to call into the
  *			registered smartreflex class enable API.
  * @voltdm:	VDD pointer to which the SR module to be configured belongs to.
+ * @volt_data:	Voltage data to go to
  *
  * This API is to be called from the kernel in order to enable
  * a particular smartreflex module. This API will do the initial
  * configurations to turn on the smartreflex module and in turn call
  * into the registered smartreflex class enable API.
  */
-void omap_sr_enable(struct voltagedomain *voltdm)
+void omap_sr_enable(struct voltagedomain *voltdm,
+			struct omap_volt_data *volt_data)
 {
 	struct omap_sr *sr = _sr_lookup(voltdm);
 
