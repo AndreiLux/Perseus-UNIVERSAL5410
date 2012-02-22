@@ -22,6 +22,7 @@
 #include <linux/input.h>
 #include <linux/gpio_event.h>
 #include <linux/platform_data/exynos_usb3_drd.h>
+#include <linux/persistent_ram.h>
 
 #include <video/platform_lcd.h>
 #include <video/s5p-dp.h>
@@ -62,6 +63,15 @@
 
 #include "common.h"
 
+static struct platform_device ramconsole_device = {
+	.name           = "ram_console",
+	.id             = -1,
+};
+
+static struct platform_device persistent_trace_device = {
+	.name           = "persistent_trace",
+	.id             = -1,
+};
 
 /* Following are default values for UCON, ULCON and UFCON UART registers */
 #define SMDK5250_UCON_DEFAULT	(S3C2410_UCON_TXILEVEL |	\
@@ -1136,6 +1146,8 @@ static struct platform_pwm_backlight_data smdk5250_bl_data = {
 };
 
 static struct platform_device *smdk5250_devices[] __initdata = {
+	&ramconsole_device,
+	&persistent_trace_device,
 	&s3c_device_i2c0,
 	&s3c_device_i2c1,
 	&s3c_device_i2c2,
@@ -1362,6 +1374,35 @@ static void __init exynos_sysmmu_init(void)
 #endif
 }
 
+static struct persistent_ram_descriptor smdk5250_prd[] __initdata = {
+	{
+		.name = "ram_console",
+		.size = SZ_2M,
+	},
+#ifdef CONFIG_PERSISTENT_TRACER
+	{
+		.name = "persistent_trace",
+		.size = SZ_1M,
+	},
+#endif
+};
+
+static struct persistent_ram smdk5250_pr __initdata = {
+	.descs = smdk5250_prd,
+	.num_descs = ARRAY_SIZE(smdk5250_prd),
+	.start = PLAT_PHYS_OFFSET + SZ_1G + SZ_512M,
+#ifdef CONFIG_PERSISTENT_TRACER
+	.size = 3 * SZ_1M,
+#else
+	.size = SZ_2M,
+#endif
+};
+
+static void __init smdk5250_init_early(void)
+{
+	persistent_ram_early_init(&smdk5250_pr);
+}
+
 static void __init smdk5250_machine_init(void)
 {
 	s3c_i2c0_set_platdata(NULL);
@@ -1525,6 +1566,7 @@ static void __init smdk5250_machine_init(void)
 
 MACHINE_START(SMDK5250, "SMDK5250")
 	.atag_offset	= 0x100,
+	.init_early	= smdk5250_init_early,
 	.init_irq	= exynos5_init_irq,
 	.map_io		= smdk5250_map_io,
 	.handle_irq	= gic_handle_irq,
