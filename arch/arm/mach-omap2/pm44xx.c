@@ -20,10 +20,17 @@
 #include <linux/io.h>
 
 #include <mach/ctrl_module_wkup_44xx.h>
+#include <linux/interrupt.h>
+
+#include <asm/system_misc.h> 
 
 #include "common.h"
 #include "clockdomain.h"
 #include "powerdomain.h"
+#include "prm44xx.h"
+#include "prcm44xx.h"
+#include "prm-regbits-44xx.h"
+#include "prminst44xx.h"
 #include "pm.h"
 
 struct power_state {
@@ -306,6 +313,24 @@ static inline int omap5_init_static_deps(void)
 	return ret;
 }
 
+static irqreturn_t prcm_interrupt_handler (int irq, void *dev_id)
+{
+u32 irqenable_mpu, irqstatus_mpu;
+
+	irqenable_mpu = omap4_prm_read_inst_reg(OMAP4430_PRM_OCP_SOCKET_INST,
+							OMAP4_PRM_IRQENABLE_MPU_OFFSET);
+	irqstatus_mpu = omap4_prm_read_inst_reg(OMAP4430_PRM_OCP_SOCKET_INST,
+							OMAP4_PRM_IRQSTATUS_MPU_OFFSET);
+
+	/* Check if a IO_ST interrupt */
+	if (irqstatus_mpu & OMAP4430_IO_ST_MASK) {
+		/* Re-enable UART3 */
+		omap_trigger_wuclk_ctrl();
+	}
+
+	return IRQ_HANDLED;
+}
+
 /**
  * omap_pm_init - Init routine for OMAP4 PM
  *
@@ -331,6 +356,22 @@ static int __init omap_pm_init(void)
 		pr_err("Failed to setup powerdomains\n");
 		goto err2;
 	}
+
+#ifdef CONFIG_PM
+		/* Enable GLOBAL_WUEN */
+		omap4_prminst_rmw_inst_reg_bits(OMAP4430_GLOBAL_WUEN_MASK, OMAP4430_GLOBAL_WUEN_MASK,
+			OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_IO_PMCTRL_OFFSET);
+
+		ret = request_irq(omap_prcm_event_to_irq("io"),
+						(irq_handler_t)prcm_interrupt_handler,
+						IRQF_SHARED | IRQF_NO_SUSPEND, "pm_io",
+						omap_pm_init);
+		if (ret) {
+				printk(KERN_ERR "request_irq failed to register for pm_io\n");
+				goto err2;
+		}
+
+#endif
 
 	if (cpu_is_omap44xx())
 		ret = omap4_init_static_deps();
