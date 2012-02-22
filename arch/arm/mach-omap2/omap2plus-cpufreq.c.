@@ -40,6 +40,8 @@
 /* OPP tolerance in percentage */
 #define	OPP_TOLERANCE	4
 
+#include "dvfs.h"
+
 #ifdef CONFIG_SMP
 struct lpj_info {
 	unsigned long	ref;
@@ -147,6 +149,8 @@ static int omap_target(struct cpufreq_policy *policy,
 	}
 
 	ret = clk_set_rate(mpu_clk, freqs.new * 1000);
+//	ret = omap_device_scale(mpu_dev, mpu_dev, freqs.new * 1000);
+	freqs.new = omap_getspeed(policy->cpu);
 
 	/* scaling down?  scale voltage after frequency */
 	if (mpu_reg && (freqs.new < freqs.old)) {
