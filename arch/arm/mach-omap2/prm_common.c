@@ -225,8 +225,6 @@ void omap_prcm_irq_complete(void)
 	prcm_irq_setup->restore_irqen(prcm_irq_setup->saved_mask);
 }
 
-=======
->>>>>>> patched
 /**
  * omap_prcm_register_chain_handler - initializes the prcm chained interrupt
  * handler based on provided parameters
