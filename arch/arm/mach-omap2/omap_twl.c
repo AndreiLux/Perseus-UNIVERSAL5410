@@ -299,6 +299,33 @@ static struct omap_voltdm_pmic omap443x_core_pmic = {
 	.uv_to_vsel		= twl6030_uv_to_vsel,
 };
 
+/* Core uses the MPU rail of 4430 */
+static struct omap_voltdm_pmic omap446x_core_pmic = {
+	.slew_rate		= 4000,
+	.step_size		= 12660,
+	.on_volt		= 1200000,
+	.onlp_volt		= 1200000,
+	.ret_volt		= 830000,
+	.off_volt		= 0,
+	.volt_setup_time	= 0,
+	.vp_erroroffset		= OMAP4_VP_CONFIG_ERROROFFSET,
+	.vp_vstepmin		= OMAP4_VP_VSTEPMIN_VSTEPMIN,
+	.vp_vstepmax		= OMAP4_VP_VSTEPMAX_VSTEPMAX,
+	.vp_vddmin		= OMAP4_VP_CORE_VLIMITTO_VDDMIN,
+	.vp_vddmax		= OMAP4_VP_CORE_VLIMITTO_VDDMAX,
+	.vp_timeout_us		= OMAP4_VP_VLIMITTO_TIMEOUT_US,
+	.i2c_slave_addr		= OMAP4_SRI2C_SLAVE_ADDR,
+	.i2c_high_speed		= true,
+	.i2c_scll_low		= 0x28,
+	.i2c_scll_high		= 0x2C,
+	.i2c_hscll_low		= 0x0B,
+	.i2c_hscll_high		= 0x00,
+	.volt_reg_addr		= OMAP4_VDD_MPU_SR_VOLT_REG,
+	.cmd_reg_addr		= OMAP4_VDD_MPU_SR_CMD_REG,
+	.vsel_to_uv		= twl6030_vsel_to_uv,
+	.uv_to_vsel		= twl6030_uv_to_vsel,
+};
+
 static struct omap_voltdm_pmic omap5_mpu_pmic = {
 	.slew_rate		= 5000,
 	.step_size		= 10000,
@@ -422,6 +449,11 @@ static __initdata struct omap_pmic_map omap_twl_map[] = {
 		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
 		.pmic_data = &omap4_iva_pmic,
 
+	},
+	{
+		.name = "core",
+		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP4460ES1_0),
+		.pmic_data = &omap446x_core_pmic,
 	},
 	{
 		.name = "mpu",
