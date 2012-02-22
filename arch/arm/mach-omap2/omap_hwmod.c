@@ -1589,7 +1589,11 @@ static int _enable(struct omap_hwmod *oh)
 			((oh->_state == _HWMOD_STATE_IDLE) &&
 			 oh->mux->pads_dynamic))) {
 		omap_hwmod_mux(oh->mux, _HWMOD_STATE_ENABLED);
+
+		// !!! these are doing the same job?
+
 		omap_trigger_io_chain();
+		omap_trigger_wuclk_ctrl();
 	}
 
 	_add_initiator_dep(oh, mpu_oh);
@@ -1680,7 +1684,11 @@ static int _idle(struct omap_hwmod *oh)
 	/* Mux pins for device idle if populated */
 	if (oh->mux && oh->mux->pads_dynamic) {
 		omap_hwmod_mux(oh->mux, _HWMOD_STATE_IDLE);
+<<<<<<< current
 		omap_trigger_io_chain();
+=======
+		omap_trigger_wuclk_ctrl();
+>>>>>>> patched
 	}
 
 	oh->_state = _HWMOD_STATE_IDLE;

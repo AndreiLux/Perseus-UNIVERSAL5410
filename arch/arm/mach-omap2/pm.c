@@ -37,6 +37,8 @@
 #include "prm2xxx_3xxx.h"
 #include "prm44xx.h"
 #include "dvfs.h"
+#include "prm2xxx_3xxx.h"
+#include "prm44xx.h"
 
 static struct omap_device_pm_latency *pm_lats;
 static void (*io_chain_trigger_func) (void);
@@ -126,6 +128,15 @@ void omap_trigger_io_chain(void)
 		io_chain_trigger_func();
 		spin_unlock_irqrestore(&io_chain_lock, flags);
 	}
+}
+
+void omap_trigger_wuclk_ctrl(void)
+{
+	if (cpu_is_omap34xx())
+		omap3_trigger_wuclk_ctrl();
+
+	if (cpu_is_omap44xx())
+		omap4_trigger_wuclk_ctrl();
 }
 
 /* Types of sleep_switch used in omap_set_pwrdm_state */
