@@ -84,13 +84,14 @@ struct omap_opp_def {
 	.opp_sel	= _opp_sel,				       \
 }
 
-#define OMAP5_VOLT_DATA_DEFINE(_v_nom, _efuse_offs, _lvt_efuse_offs, _errminlimit, _errgain)  \
+#define OMAP5_VOLT_DATA_DEFINE(_v_nom, _efuse_offs, _lvt_efuse_offs, _errminlimit, _errgain, _opp_sel)  \
 {								       \
 	.volt_nominal	= _v_nom,				       \
 	.sr_efuse_offs	= _efuse_offs,				       \
 	.lvt_sr_efuse_offs	= _lvt_efuse_offs,				       \
 	.sr_errminlimit = _errminlimit,				       \
-	.vp_errgain	= _errgain				       \
+	.vp_errgain	= _errgain,				       \
+	.opp_sel	= _opp_sel,				       \
 }
 
 /* Use this to initialize the default table */
