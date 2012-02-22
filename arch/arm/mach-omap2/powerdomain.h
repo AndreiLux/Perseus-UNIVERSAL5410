@@ -19,8 +19,10 @@
 
 #include <linux/types.h>
 #include <linux/list.h>
-
+#include <linux/plist.h>
+#include <linux/mutex.h>
 #include <linux/atomic.h>
+#include <linux/pm_qos.h>
 
 #include <plat/cpu.h>
 
@@ -57,6 +59,16 @@
 				 (1 << PWRDM_POWER_RET) | \
 				 (1 << PWRDM_POWER_INACTIVE)  | \
 				 (1 << PWRDM_POWER_ON))
+/* Powerdomain functional power states */
+#define PWRDM_FUNC_PWRST_OFF		0x0
+#define PWRDM_FUNC_PWRST_OSWR		0x1
+#define PWRDM_FUNC_PWRST_CSWR		0x2
+#define PWRDM_FUNC_PWRST_INACTIVE	0x3
+#define PWRDM_FUNC_PWRST_ON		0x4
+
+#define PWRDM_MAX_FUNC_PWRSTS	5
+
+#define UNSUP_STATE		-1
 
 /* Powerdomain flags: hardware save-and-restore support */
 #define PWRDM_HAS_HDWR_SAR		(1 << 0)
@@ -116,7 +128,13 @@ struct powerdomain;
  * @state_counter:
  * @timer:
  * @state_timer:
- *
+ * @wakeup_lat: wakeup latencies (in us) for possible powerdomain power states
+ * Note about the wakeup latencies ordering: the values must be sorted
+ *  in decremental order
+ * @wkup_lat_plist_head: pwrdm wake-up latency constraints list
+ * @wkup_lat_plist_lock: mutex that protects the constraints lists
+ *  domains states
+ * @wkup_lat_next_state: next pwrdm state, calculated from the constraints list
  * @prcm_partition possible values are defined in mach-omap2/prcm44xx.h.
  */
 struct powerdomain {
@@ -146,6 +164,16 @@ struct powerdomain {
 	s64 timer;
 	s64 state_timer[PWRDM_MAX_PWRSTS];
 #endif
+	const s32 wakeup_lat[PWRDM_MAX_FUNC_PWRSTS];
+	struct plist_head wkup_lat_plist_head;
+	struct mutex wkup_lat_plist_lock;
+	int wkup_lat_next_state;
+};
+
+/* Linked list for the wake-up latency constraints */
+struct pwrdm_wkup_constraints_entry {
+	void			*cookie;
+	struct plist_node	node;
 };
 
 /**
@@ -245,7 +273,14 @@ int pwrdm_get_context_loss_count(struct powerdomain *pwrdm);
 bool pwrdm_can_ever_lose_context(struct powerdomain *pwrdm);
 int pwrdm_enable_force_off(struct powerdomain *pwrdm);
 int pwrdm_disable_force_off(struct powerdomain *pwrdm);
+int pwrdm_set_wkup_lat_constraint(struct powerdomain *pwrdm, void *cookie,
+				long min_latency);
+#define pwrdm_wakeuplat_update_constraint(pwrdm, cookie, min_latency)	\
+				pwrdm_set_wkup_lat_constraint(pwrdm, cookie, min_latency)
 
+#define pwrdm_wakeuplat_remove_constraint(pwrdm, cookie)					\
+				pwrdm_set_wkup_lat_constraint(pwrdm, cookie,			\
+				PM_QOS_DEV_LAT_DEFAULT_VALUE)
 extern void omap242x_powerdomains_init(void);
 extern void omap243x_powerdomains_init(void);
 extern void omap3xxx_powerdomains_init(void);
