@@ -336,9 +336,9 @@ static inline void __omap_dm_timer_init_regs(struct omap_dm_timer *timer)
 static inline void __omap_dm_timer_reset(struct omap_dm_timer *timer,
 					int autoidle, int wakeup)
 {
+#if 0
 	u32 l;
 
-#if 0
 	l = __raw_readl(timer->io_base + OMAP_TIMER_OCP_CFG_OFFSET);
 	l |= 0x02 << 3;  /* Set to smart-idle mode */
 	l |= 0x2 << 8;   /* Set clock activity to perserve f-clock on idle */
