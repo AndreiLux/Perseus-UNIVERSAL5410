@@ -338,6 +338,7 @@ static inline void __omap_dm_timer_reset(struct omap_dm_timer *timer,
 {
 	u32 l;
 
+#if 0
 	l = __raw_readl(timer->io_base + OMAP_TIMER_OCP_CFG_OFFSET);
 	l |= 0x02 << 3;  /* Set to smart-idle mode */
 	l |= 0x2 << 8;   /* Set clock activity to perserve f-clock on idle */
@@ -349,6 +350,7 @@ static inline void __omap_dm_timer_reset(struct omap_dm_timer *timer,
 		l |= 1 << 2;
 
 	__raw_writel(l, timer->io_base + OMAP_TIMER_OCP_CFG_OFFSET);
+#endif
 
 	/* Match hardware reset default of posted mode */
 	__omap_dm_timer_write(timer, OMAP_TIMER_IF_CTRL_REG,
