@@ -16,18 +16,21 @@
 #include <plat/omap_hwmod.h>
 #include "voltage.h"
 
+#ifdef CONFIG_PM
+int omap_dvfs_register_device(struct device *dev, char *voltdm_name,
+		char *clk_name);
+int omap_device_scale(struct device *req_dev, struct device *target_dev,
+		unsigned long rate);
+#else
 static inline int omap_dvfs_register_device(struct device *dev,
 		char *voltdm_name, char *clk_name)
 {
-	return 0;
+	return -EINVAL;
 }
 static inline int omap_device_scale(struct device *req_dev,
 		struct device *target_dev, unsigned long rate)
 {
-	return 0;
+	return -EINVAL;
 }
-static inline bool omap_dvfs_is_any_dev_scaling(void)
-{
-	return true;
-}
+#endif
 #endif
