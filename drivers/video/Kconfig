@@ -2093,6 +2093,12 @@ config VIDEO_SAMSUNG_MEMSIZE_FIMD
 	depends on FB_S3C
 	default "25600"
 
+config S5P_DP
+	tristate "Samsung SoC DP support"
+	depends on FB_S3C && ARCH_EXYNOS5
+	default n
+	---help---
+	  This enables support for DP device.
 
 config FB_S3C2410
 	tristate "S3C2410 LCD framebuffer support"
