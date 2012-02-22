@@ -291,7 +291,7 @@ int omap_voltage_calib_reset(struct voltagedomain *voltdm)
 		return -EINVAL;
 	}
 
-	volt_data = voltdm->vdd->volt_data;
+	volt_data = voltdm_get_voltage(voltdm);
 	/* reset the calibrated voltages as 0 */
 	while (volt_data->volt_nominal) {
 		volt_data->volt_calibrated = 0;
