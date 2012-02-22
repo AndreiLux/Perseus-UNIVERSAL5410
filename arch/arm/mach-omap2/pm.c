@@ -453,6 +453,40 @@ static int __init omap2_dev_pm_qos_init(void)
 	return ret;
 }
 
+/* Interface to the memory throughput class of the PM QoS framework */
+static int omap2_pm_qos_tput_handler(struct notifier_block *nb,
+				     unsigned long new_value,
+				     void *unused)
+{
+	pr_debug("OMAP PM MEM TPUT: new_value=%lu\n", new_value);
+
+	/* Apply the constraint */
+
+	/*
+	 * Add a call to the DVFS layer, using the new_value (in kB/s)
+	 * as the minimum memory throughput to calculate the L3
+	 * minimum allowed frequency
+	 */
+
+	return 0;
+}
+
+static struct notifier_block omap2_pm_qos_tput_notifier = {
+	.notifier_call	= omap2_pm_qos_tput_handler,
+};
+
+static int __init omap2_pm_qos_tput_init(void)
+{
+	int ret;
+
+	ret = pm_qos_add_notifier(PM_QOS_MEMORY_THROUGHPUT,
+				  &omap2_pm_qos_tput_notifier);
+	if (ret)
+		WARN(1, KERN_ERR "Cannot add global notifier for dev PM QoS\n");
+
+	return ret;
+}
+
 static int __init omap2_common_pm_init(void)
 {
 	if (cpu_is_omap54xx()) {
@@ -473,6 +507,9 @@ static int __init omap2_common_pm_init(void)
 
 	/* Register to the per-device PM QoS framework */
 	omap2_dev_pm_qos_init();
+
+	/* Register to the throughput class of PM QoS */
+	omap2_pm_qos_tput_init();
 
 	return 0;
 }
