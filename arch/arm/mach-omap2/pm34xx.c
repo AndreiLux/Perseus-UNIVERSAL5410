@@ -376,6 +376,17 @@ void omap_sram_idle(void)
 		omap2_gpio_resume_after_idle();
 	}
 
+	/* Disable IO-PAD and IO-CHAIN wakeup */
+	if (omap3_has_io_wakeup() &&
+	    (per_next_state < PWRDM_POWER_ON ||
+	     core_next_state < PWRDM_POWER_ON)) {
+		omap2_prm_clear_mod_reg_bits(OMAP3430_EN_IO_MASK, WKUP_MOD,
+					     PM_WKEN);
+		if (omap3_has_io_chain_ctrl())
+			omap3_disable_io_chain();
+	}
+	pwrdm_post_transition();
+
 	clkdm_allow_idle(mpu_pwrdm->pwrdm_clkdms[0]);
 }
 
