@@ -423,6 +423,13 @@ config OMAP4_ERRATA_I688
 config OMAP_TPS6236X
 	bool
 
+config OMAP_PM_STANDALONE
+        bool "Minimal OMAP PM"
+	default n
+	help
+	  Enable this option to enable Power Management with minimal set of
+	  drivers.
+
 endmenu
 
 endif
