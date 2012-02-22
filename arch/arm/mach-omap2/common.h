@@ -233,8 +233,10 @@ extern void omap_cpu_resume(void);
 extern int omap_hotplug_cpu(unsigned int cpu, unsigned int power_state);
 extern u32 omap_mpuss_read_prev_context_state(void);
 extern u32 omap_mpuss_read_prev_context_state(void);                            
-extern void mpuss_timer_setup(unsigned long freq);                              
 extern void omap_mpuss_timer_init(void);
+extern void gic_dist_enable(void);
+extern void gic_dist_disable(void);
+
 #else
 static inline int omap_enter_lowpower(unsigned int cpu,
 					unsigned int power_state)

@@ -135,7 +135,7 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 		 * 2) CPU1 must re-enable the GIC distributor on
 		 * it's wakeup path.
 		 */
-		if (omap4_smp_romcode_errata)
+		if (omap4_smp_romcode_errata || cpu_is_omap446x())
 			gic_dist_disable();
 
 		clkdm_wakeup(cpu1_clkdm);
