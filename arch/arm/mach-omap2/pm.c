@@ -511,9 +511,9 @@ static void __init omap5_init_voltages(void)
 	if (!cpu_is_omap54xx())
 		return;
 
-	omap2_set_init_voltage("mpu", "dpll_mpu_ck", mpu_dev);
-	omap2_set_init_voltage("core", "l3_div_ck", l3_dev);
-	omap2_set_init_voltage("mm", "dpll_iva_h12_ck", iva_dev);
+	omap2_set_init_voltage("mpu", "virt_dpll_mpu_ck", mpu_dev);
+	omap2_set_init_voltage("core", "virt_l3_ck", l3_dev);
+	omap2_set_init_voltage("mm", "dpll_iva_h12x2_ck", iva_dev);
 }
 
 static int __init omap2_common_pm_init(void)
