@@ -36,6 +36,7 @@
 #include "twl-common.h"
 #include "prm2xxx_3xxx.h"
 #include "prm44xx.h"
+#include "dvfs.h"
 
 static struct omap_device_pm_latency *pm_lats;
 static void (*io_chain_trigger_func) (void);
@@ -458,17 +459,35 @@ static int omap2_pm_qos_tput_handler(struct notifier_block *nb,
 				     unsigned long new_value,
 				     void *unused)
 {
+	int ret = 0;
+	struct device *l3_dev;
+	static struct device dummy_l3_dev = {
+		.init_name = "omap2_pm_qos_tput_handler",
+	};
+
 	pr_debug("OMAP PM MEM TPUT: new_value=%lu\n", new_value);
 
 	/* Apply the constraint */
+
+	l3_dev = omap2_get_l3_device();
+	if (!l3_dev) {
+		pr_err("Unable to get l3 device pointer");
+		ret = -EINVAL;
+		goto err;
+	}
 
 	/*
 	 * Add a call to the DVFS layer, using the new_value (in kB/s)
 	 * as the minimum memory throughput to calculate the L3
 	 * minimum allowed frequency
 	 */
+	/* Convert the throughput(in KiB/s) into Hz. */
+	new_value = (new_value * 1000) / 4;
 
-	return 0;
+	ret = omap_device_scale(&dummy_l3_dev, l3_dev, new_value);
+
+err:
+	return ret;
 }
 
 static struct notifier_block omap2_pm_qos_tput_notifier = {
