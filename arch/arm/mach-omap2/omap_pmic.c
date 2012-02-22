@@ -22,6 +22,7 @@
 void __init omap_init_all_pmic(void)
 {
 	omap_twl_init();
+	omap_tps6236x_init();
 }
 
 /**

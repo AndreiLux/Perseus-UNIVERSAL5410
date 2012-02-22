@@ -24,6 +24,7 @@ endif
 obj-$(CONFIG_OMAP_SCM_DEV)          += scm_device.o
 
 obj-$(CONFIG_TWL4030_CORE) += omap_twl.o
+obj-$(CONFIG_OMAP_TPS6236X) += omap_tps6236x.o
 
 # SMP support ONLY available for OMAP4
 obj-$(CONFIG_SMP)			+= omap-smp.o omap-headsmp.o
