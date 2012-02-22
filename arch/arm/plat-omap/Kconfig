@@ -68,6 +68,11 @@ config OMAP_SMARTREFLEX
 	  by default during system init via the enable_on_init flag
 	  which an be passed as platform data to the smartreflex driver.
 
+choice
+	prompt "OMAP SmartReflex operating mode selection"
+	depends on (ARCH_OMAP3 || ARCH_OMAP4 || ARCH_OMAP5) && PM
+	default OMAP_SMARTREFLEX_CLASS3
+
 config OMAP_SMARTREFLEX_CLASS3
 	bool "Class 3 mode of Smartreflex Implementation"
 	depends on OMAP_SMARTREFLEX && TWL4030_CORE
@@ -84,6 +89,8 @@ config OMAP_SMARTREFLEX_CLASS1P5
 	  Say Y to enable Class 1.5 implementation of Smartreflex
 	  Class 1.5 implementation of Smartreflex employs software controlled
 	  hardware voltage calibration.
+
+endchoice
 
 config OMAP_SR_CLASS1P5_RECALIBRATION_DELAY
 	int "Class 1.5 mode recalibration recalibration delay(ms)"
