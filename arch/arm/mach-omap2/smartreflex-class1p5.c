@@ -573,8 +573,10 @@ static int __init sr_class1p5_init(void)
 	int r;
 
 	/* Enable this class only for OMAP3630, OMAP4 and OMAP5 */
-	if (!(cpu_is_omap3630() || cpu_is_omap44xx()))
+	if (!(cpu_is_omap3630() || cpu_is_omap44xx() || cpu_is_omap54xx())) {
+		pr_err("SmartReflex class 1.5 not supported for this CPU");
 		return -EINVAL;
+	}
 
 	r = sr_register_class(&class1p5_data);
 	if (r) {
