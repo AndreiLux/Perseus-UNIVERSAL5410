@@ -218,8 +218,14 @@ static void sr_set_regfields(struct omap_sr *sr)
 	}
 }
 
-static void sr_start_vddautocomp(struct omap_sr *sr)
+static void sr_start_vddautocomp(struct omap_sr *sr, bool class_start)
 {
+	int ret;
+
+	if (((sr->autocomp_active) && (class_start)) ||
+		((!sr->autocomp_active) && (!class_start)))
+		return;
+
 	if (!sr_class || !(sr_class->enable) || !(sr_class->configure)) {
 		dev_warn(&sr->pdev->dev,
 			"%s: smartreflex class driver not registered\n",
@@ -227,19 +233,24 @@ static void sr_start_vddautocomp(struct omap_sr *sr)
 		return;
 	}
 
-	if (sr_class->start &&
+	if (class_start && sr_class->start &&
 	    sr_class->start(sr->voltdm, sr_class->class_priv_data)) {
 		dev_err(&sr->pdev->dev,
 			"%s: SRClass initialization failed\n", __func__);
 		return;
 	}
 
-	if (!sr_class->enable(sr->voltdm))
+	ret = sr_class->enable(sr->voltdm);
+	if (!ret && class_start)
 		sr->autocomp_active = true;
 }
 
-static void sr_stop_vddautocomp(struct omap_sr *sr)
+static void sr_stop_vddautocomp(struct omap_sr *sr, bool class_stop,
+		int is_volt_reset)
 {
+	if (!sr->autocomp_active)
+		return;
+
 	if (!sr_class || !(sr_class->disable)) {
 		dev_warn(&sr->pdev->dev,
 			"%s: smartreflex class driver not registered\n",
@@ -247,15 +258,13 @@ static void sr_stop_vddautocomp(struct omap_sr *sr)
 		return;
 	}
 
-	if (sr->autocomp_active) {
-		sr_class->disable(sr->voltdm, 1);
+	sr_class->disable(sr->voltdm, is_volt_reset);
+	if (class_stop) {
 		if (sr_class->stop &&
-		    sr_class->stop(sr->voltdm,
-			    sr_class->class_priv_data)) {
+		    sr_class->stop(sr->voltdm, sr_class->class_priv_data))
 			dev_err(&sr->pdev->dev,
 				"%s: SR[%d]Class deinitialization failed\n",
 				__func__, sr->srid);
-		}
 		sr->autocomp_active = false;
 	}
 }
@@ -292,7 +301,7 @@ static int sr_late_init(struct omap_sr *sr_info)
 	}
 
 	if (pdata && pdata->enable_on_init)
-		sr_start_vddautocomp(sr_info);
+		sr_start_vddautocomp(sr_info, true);
 
 	return ret;
 
@@ -779,16 +788,7 @@ void omap_sr_enable(struct voltagedomain *voltdm)
 		return;
 	}
 
-	if (!sr->autocomp_active)
-		return;
-
-	if (!sr_class || !(sr_class->enable) || !(sr_class->configure)) {
-		dev_warn(&sr->pdev->dev, "%s: smartreflex class driver not"
-			"registered\n", __func__);
-		return;
-	}
-
-	sr_class->enable(voltdm);
+	sr_start_vddautocomp(sr, false);
 }
 
 /**
@@ -812,16 +812,7 @@ void omap_sr_disable(struct voltagedomain *voltdm)
 		return;
 	}
 
-	if (!sr->autocomp_active)
-		return;
-
-	if (!sr_class || !(sr_class->disable)) {
-		dev_warn(&sr->pdev->dev, "%s: smartreflex class driver not"
-			"registered\n", __func__);
-		return;
-	}
-
-	sr_class->disable(voltdm, 0);
+	sr_stop_vddautocomp(sr, false, 0);
 }
 
 /**
@@ -845,16 +836,7 @@ void omap_sr_disable_reset_volt(struct voltagedomain *voltdm)
 		return;
 	}
 
-	if (!sr->autocomp_active)
-		return;
-
-	if (!sr_class || !(sr_class->disable)) {
-		dev_warn(&sr->pdev->dev, "%s: smartreflex class driver not"
-			"registered\n", __func__);
-		return;
-	}
-
-	sr_class->disable(voltdm, 1);
+	sr_stop_vddautocomp(sr, false, 1);
 }
 
 /**
@@ -909,9 +891,9 @@ static int omap_sr_autocomp_store(void *data, u64 val)
 	/* control enable/disable only if there is a delta in value */
 	if (sr_info->autocomp_active != val) {
 		if (!val)
-			sr_stop_vddautocomp(sr_info);
+			sr_stop_vddautocomp(sr_info, true, 1);
 		else
-			sr_start_vddautocomp(sr_info);
+			sr_start_vddautocomp(sr_info, true);
 	}
 
 	return 0;
@@ -1098,7 +1080,7 @@ static int __devexit omap_sr_remove(struct platform_device *pdev)
 	}
 
 	if (sr_info->autocomp_active)
-		sr_stop_vddautocomp(sr_info);
+		sr_stop_vddautocomp(sr_info, true, 1);
 	if (sr_info->dbg_dir)
 		debugfs_remove_recursive(sr_info->dbg_dir);
 
