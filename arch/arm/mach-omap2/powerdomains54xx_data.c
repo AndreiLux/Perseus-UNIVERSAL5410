@@ -59,7 +59,7 @@ static struct powerdomain core_54xx_pwrdm = {
 /* abe_54xx_pwrdm: Audio back end power domain */
 static struct powerdomain abe_54xx_pwrdm = {
 	.name		  = "abe_pwrdm",
-	.voltdm           = { .name = "iva" },
+	.voltdm		  = { .name = "core" }, // not iva? !!!
 	.prcm_offs	  = OMAP54XX_PRM_ABE_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
 	.pwrsts		  = PWRSTS_OFF_RET_INA_ON,
@@ -79,7 +79,7 @@ static struct powerdomain abe_54xx_pwrdm = {
 /* coreaon_54xx_pwrdm: Always ON logic that sits in VDD_CORE voltage domain */
 static struct powerdomain coreaon_54xx_pwrdm = {
 	.name		  = "coreaon_pwrdm",
-	.voltdm           = { .name = "core" },
+	.voltdm		  = { .name = "core" },
 	.prcm_offs	  = OMAP54XX_PRM_COREAON_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
 	.pwrsts		  = PWRSTS_ON,
@@ -176,7 +176,7 @@ static struct powerdomain mpu_54xx_pwrdm = {
 /* custefuse_54xx_pwrdm: Customer efuse controller power domain */
 static struct powerdomain custefuse_54xx_pwrdm = {
 	.name		  = "custefuse_pwrdm",
-	.voltdm           = { .name = "core" },
+	.voltdm		  = { .name = "wakeup" } , // not core?
 	.prcm_offs	  = OMAP54XX_PRM_CUSTEFUSE_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
 	.pwrsts		  = PWRSTS_OFF_ON,
@@ -186,7 +186,7 @@ static struct powerdomain custefuse_54xx_pwrdm = {
 /* dsp_54xx_pwrdm: Tesla processor power domain */
 static struct powerdomain dsp_54xx_pwrdm = {
 	.name		  = "dsp_pwrdm",
-	.voltdm           = { .name = "iva" },
+	.voltdm		  = { .name = "mm" }, // not iva?
 	.prcm_offs	  = OMAP54XX_PRM_DSP_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
 	.pwrsts		  = PWRSTS_OFF_RET_INA_ON,
@@ -208,7 +208,7 @@ static struct powerdomain dsp_54xx_pwrdm = {
 /* cam_54xx_pwrdm: Camera subsystem power domain */
 static struct powerdomain cam_54xx_pwrdm = {
 	.name		  = "cam_pwrdm",
-	.voltdm           = { .name = "iva" },
+	.voltdm		  = { .name = "core" }, // not iva?
 	.prcm_offs	  = OMAP54XX_PRM_CAM_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
 	.pwrsts		  = PWRSTS_OFF_INA_ON,
@@ -265,7 +265,7 @@ static struct powerdomain l4per_54xx_pwrdm = {
 /* gpu_54xx_pwrdm: 3D accelerator power domain */
 static struct powerdomain gpu_54xx_pwrdm = {
 	.name		  = "gpu_pwrdm",
-	.voltdm           = { .name = "core" },
+	.voltdm		  = { .name = "mm" },
 	.prcm_offs	  = OMAP54XX_PRM_GPU_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
 	.pwrsts		  = PWRSTS_OFF_INA_ON,
@@ -297,7 +297,7 @@ static struct powerdomain wkupaon_54xx_pwrdm = {
 /* iva_54xx_pwrdm: IVA-HD power domain */
 static struct powerdomain iva_54xx_pwrdm = {
 	.name		  = "iva_pwrdm",
-	.voltdm           = { .name = "iva" },
+	.voltdm		  = { .name = "mm" }, // not iva?
 	.prcm_offs	  = OMAP54XX_PRM_IVA_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
 	.pwrsts		  = PWRSTS_OFF_RET_INA_ON,
