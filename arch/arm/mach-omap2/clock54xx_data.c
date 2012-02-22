@@ -2355,6 +2355,7 @@ static struct clk auxclkreq5_ck = {
 	.clksel_mask	= OMAP5_MAPPING_MASK,
 	.recalc		= &omap2_clksel_recalc,
 };
+
 /*
  * clkdev
  */
