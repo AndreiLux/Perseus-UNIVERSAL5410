@@ -33,6 +33,8 @@ struct powerdomain;
 #define OMAP3_VOLTOFFSET	0xff
 #define OMAP3_VOLTSETUP2	0xff
 
+struct omap_vdd_info;
+
 /**
  * struct omap_vfsm_instance - per-voltage manager FSM register/bitfield
  * data
@@ -88,6 +90,7 @@ struct voltagedomain {
 
 	u32 nominal_volt;
 	struct omap_volt_data *volt_data;
+	struct omap_vdd_info *vdd;
 	struct dentry *debug_dir;
 };
 
@@ -174,6 +177,48 @@ struct omap_voltdm_pmic {
 	u8 i2c_mcode;
 	unsigned long (*vsel_to_uv) (const u8 vsel);
 	u8 (*uv_to_vsel) (unsigned long uV);
+};
+
+/**
+ * struct omap_vdd_dep_volt - Map table for voltage dependencies
+ * @main_vdd_volt	: The main vdd voltage
+ * @dep_vdd_volt	: The voltage at which the dependent vdd should be
+ *			  when the main vdd is at <main_vdd_volt> voltage
+ *
+ * Table containing the parent vdd voltage and the dependent vdd voltage
+ * corresponding to it.
+ */
+struct omap_vdd_dep_volt {
+	u32 main_vdd_volt;
+	u32 dep_vdd_volt;
+};
+
+/**
+ * struct omap_vdd_dep_info -  Dependent vdd info
+ * @name		: Dependent vdd name
+ * @_dep_voltdm		: internal structure meant to prevent multiple lookups
+ * @dep_table		: Table containing the dependent vdd voltage
+ *			  corresponding to every main vdd voltage.
+ * @nr_dep_entries	: number of dependency voltage entries
+ */
+struct omap_vdd_dep_info {
+	char *name;
+	struct voltagedomain *_dep_voltdm;
+	struct omap_vdd_dep_volt *dep_table;
+	int nr_dep_entries;
+};
+
+/**
+ * omap_vdd_info - Per Voltage Domain info
+ *
+ * @volt_data		: voltage table having the distinct voltages supported
+ *			  by the domain and other associated per voltage data.
+ * @dep_vdd_info	: Array ending with a 0 terminator for dependency
+ *			  voltage information.
+ */
+struct omap_vdd_info {
+	struct omap_volt_data *volt_data;
+	struct omap_vdd_dep_info *dep_vdd_info;
 };
 
 void omap_voltage_get_volttable(struct voltagedomain *voltdm,
