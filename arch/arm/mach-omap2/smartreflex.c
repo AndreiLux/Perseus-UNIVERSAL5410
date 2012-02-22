@@ -531,9 +531,8 @@ static u32 sr_retrieve_lvt_nvalue(struct omap_sr *sr, u32 efuse_offs)
 	}
 
 	while (i < sr->lvt_nvalue_count) {
-		if (sr->lvt_nvalue_table->efuse_offs == efuse_offs)
-			return sr->lvt_nvalue_table->nvalue;
-		sr->lvt_nvalue_table++;
+		if (sr->lvt_nvalue_table[i].efuse_offs == efuse_offs)
+			return sr->lvt_nvalue_table[i].nvalue;
 		i++;
 	}
 
