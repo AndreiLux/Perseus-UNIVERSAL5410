@@ -145,6 +145,8 @@ static struct omap_opp_def __initdata omap54xx_opp_def_list[] = {
 	OPP_INITIALIZER("aess", "abe_clk", "core", true, 98304000, OMAP5430_VDD_CORE_OPP_LOW),
 	/* ABE OPP2 - OPPNOM */
 	OPP_INITIALIZER("aess", "abe_clk", "core", true, 196608000, OMAP5430_VDD_CORE_OPP_NOM),
+#endif
+
 	/* IVA OPP1 - OPPLOW */
 	OPP_INITIALIZER("iva", "dpll_iva_h12x2_ck", "mm", true, 194200000, OMAP5430_VDD_MM_OPP_LOW),
 	/* IVA OPP2 - OPPNOM */
@@ -159,6 +161,7 @@ static struct omap_opp_def __initdata omap54xx_opp_def_list[] = {
 	/* DSP OPP3 - OPPTB */
 	OPP_INITIALIZER("dsp", "dpll_iva_h11x2_ck", "mm", false, 532000000, OMAP5430_VDD_MM_OPP_OD),
 
+#if 0
 	/* SGX OPP1 - OPPLOW */
 	OPP_INITIALIZER("gpu", "dpll_per_h14x2_ck", "mm", true, 192000000, OMAP5430_VDD_MM_OPP_LOW),
 	/* SGX OPP2 - OPPNOM */
