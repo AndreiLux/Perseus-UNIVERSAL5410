@@ -1641,6 +1641,7 @@ static int _enable(struct omap_hwmod *oh)
 
 	_enable_clocks(oh);
 	_enable_module(oh);
+	_update_context_lost(oh);
 
 	_omap_update_context_lost(oh);
 
@@ -1694,7 +1695,7 @@ static int _idle(struct omap_hwmod *oh)
 	if (oh->class->sysc)
 		_idle_sysc(oh);
 	_del_initiator_dep(oh, mpu_oh);
-
+	_clear_context_lost(oh);
 	_omap4_disable_module(oh);
 
 	/*
