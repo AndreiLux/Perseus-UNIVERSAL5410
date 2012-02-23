@@ -27,6 +27,7 @@
 #include "cminst44xx.h"
 #include "prcm44xx.h"
 #include "cm-regbits-44xx.h"
+#include "cm2_54xx.h"
 
 /* CM1 hardware module low-level functions */
 
@@ -67,7 +68,7 @@ struct omap4_cm_regs {
 	struct omap4_cm_reg reg[MAX_CM_REGISTERS];
 };
 
-static struct omap4_cm_regs cm1_regs[] = {
+static struct omap4_cm_regs omap4_cm1_regs[] = {
 	/* OMAP4430_CM1_OCP_SOCKET_MOD */
 	{ .mod_off = OMAP4430_CM1_OCP_SOCKET_INST, .no_reg = 1,
 	{{.offset = OMAP4_CM_CM1_PROFILING_CLKCTRL_OFFSET} },
@@ -113,7 +114,7 @@ static struct omap4_cm_regs cm1_regs[] = {
 	},
 };
 
-static struct omap4_cm_regs cm2_regs[] = {
+static struct omap4_cm_regs omap4_cm2_regs[] = {
 	/* OMAP4430_CM2_OCP_SOCKET_MOD */
 	{.mod_off = OMAP4430_CM2_OCP_SOCKET_INST, .no_reg = 1,
 	{{.offset = OMAP4_CM_CM2_PROFILING_CLKCTRL_OFFSET} },
@@ -316,27 +317,177 @@ static void omap4_cm1_prepare_off(void)
 	}
 }
 
-static void omap4_cm2_prepare_off(void)
+static struct omap4_cm_regs omap5_cm2_regs[] = {
+	/* OMAP54XX_CM2_OCP_SOCKET_MOD */
+	{.mod_off = OMAP54XX_CM_CORE_OCP_SOCKET_INST, .no_reg = 1,
+	{{.offset = OMAP54XX_CM_CM_CORE_PROFILING_CLKCTRL_OFFSET} },
+	},
+	/* OMAP54XX_CM2_CKGEN_MOD */
+	{.mod_off = OMAP54XX_CM_CORE_CKGEN_INST, .no_reg = 1,
+	{{.offset = OMAP54XX_CM_CLKSEL_USB_60MHZ_OFFSET} },
+	},
+	/* OMAP54XX_CM2_ALWAYS_ON_MOD */
+	{.mod_off = OMAP54XX_CM_CORE_COREAON_INST, .no_reg = 7,
+	{{.offset = OMAP54XX_CM_COREAON_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_COREAON_SMARTREFLEX_MPU_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_COREAON_SMARTREFLEX_MM_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_COREAON_SMARTREFLEX_CORE_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_COREAON_USB_PHY_CORE_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_COREAON_BANDGAP_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_COREAON_IO_SRCOMP_CLKCTRL_OFFSET} },
+	},
+	/* OMAP54XX_CM2_CORE_MOD */
+	{.mod_off = OMAP54XX_CM_CORE_CORE_INST, .no_reg = 28,
+	{{.offset = OMAP54XX_CM_L3MAIN1_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L3MAIN1_DYNAMICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_L3MAIN2_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L3MAIN2_DYNAMICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_L3MAIN2_GPMC_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_IPU_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_IPU_STATICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_IPU_DYNAMICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_IPU_IPU_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_DMA_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_DMA_STATICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_EMIF_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_EMIF_EMIF1_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_EMIF_EMIF2_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_EMIF_EMIF_DLL_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_C2C_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_C2C_STATICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_C2C_DYNAMICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_MIPIEXT_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_MIPIEXT_STATICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_MIPIEXT_DYNAMICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_MIPIEXT_UNIPRO1_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_MIPIEXT_LLI_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_MIPIEXT_MPHY_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4CFG_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4CFG_DYNAMICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_L3INSTR_L3_INSTR_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L3INSTR_OCP_WP_NOC_CLKCTRL_OFFSET} },
+	},
+	/* OMAP54XX_CM2_IVAHD_MOD */
+	{.mod_off = OMAP54XX_CM_CORE_IVA_INST, .no_reg = 4,
+	{{.offset = OMAP54XX_CM_IVA_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_IVA_STATICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_IVA_IVA_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_IVA_SL2_CLKCTRL_OFFSET} },
+	},
+	/* OMAP54XX_CM2_CAM_MOD */
+	{.mod_off = OMAP54XX_CM_CORE_CAM_INST, .no_reg = 5,
+	{{.offset = OMAP54XX_CM_CAM_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_CAM_STATICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_CAM_ISS_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_CAM_FDIF_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_CAM_CAL_CLKCTRL_OFFSET} },
+	},
+	/* OMAP54XX_CM2_DSS_MOD */
+	{.mod_off = OMAP54XX_CM_CORE_DSS_INST, .no_reg = 3,
+	{{.offset = OMAP54XX_CM_DSS_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_DSS_STATICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_DSS_DSS_CLKCTRL_OFFSET} },
+	},
+	/* OMAP54XX_CM2_GFX_MOD */
+	{.mod_off = OMAP54XX_CM_CORE_GPU_INST, .no_reg = 3,
+	{{.offset = OMAP54XX_CM_GPU_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_GPU_STATICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_GPU_GPU_CLKCTRL_OFFSET} },
+	},
+	/* OMAP54XX_CM2_L3INIT_MOD */
+	{.mod_off = OMAP54XX_CM_CORE_L3INIT_INST, .no_reg = 13,
+	{{.offset = OMAP54XX_CM_L3INIT_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L3INIT_STATICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_L3INIT_MMC1_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L3INIT_MMC2_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L3INIT_HSI_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L3INIT_UNIPRO2_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L3INIT_MPHY_UNIPRO2_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L3INIT_USB_HOST_HS_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L3INIT_USB_TLL_HS_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L3INIT_SATA_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L3INIT_OCP2SCP1_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L3INIT_OCP2SCP3_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L3INIT_USB_OTG_SS_CLKCTRL_OFFSET} },
+	},
+	/* OMAP54XX_CM2_L4PER_MOD */
+	{.mod_off = OMAP54XX_CM_CORE_L4PER_INST, .no_reg = 49,
+	{{.offset = OMAP54XX_CM_L4PER_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_DYNAMICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_TIMER10_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_TIMER11_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_TIMER2_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_TIMER3_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_TIMER4_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_TIMER9_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_ELM_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_GPIO2_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_GPIO3_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_GPIO4_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_GPIO5_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_GPIO6_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_HDQ1W_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_I2C1_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_I2C2_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_I2C3_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_I2C4_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_L4_PER_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_MCSPI1_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_MCSPI2_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_MCSPI3_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_MCSPI4_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_GPIO7_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_GPIO8_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_MMC3_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_MMC4_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_SLIMBUS2_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_UART1_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_UART2_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_UART3_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_UART4_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_MMC5_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_I2C5_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_UART5_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4PER_UART6_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4SEC_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4SEC_STATICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_L4SEC_DYNAMICDEP_OFFSET},
+	 {.offset = OMAP54XX_CM_L4SEC_AES1_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4SEC_AES2_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4SEC_DES3DES_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4SEC_FPKA_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4SEC_RNG_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4SEC_SHA2MD5_CLKCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_L4SEC_DMA_CRYPTO_CLKCTRL_OFFSET} },
+	},
+	/* OMAP54XX_CM2_CEFUSE_MOD */
+	{.mod_off = OMAP54XX_CM_CORE_CUSTEFUSE_INST, .no_reg = 2,
+	{{.offset = OMAP54XX_CM_CUSTEFUSE_CLKSTCTRL_OFFSET},
+	 {.offset = OMAP54XX_CM_CUSTEFUSE_EFUSE_CTRL_CUST_CLKCTRL_OFFSET} },
+	},
+};
+
+static void omap4_cm_part_save(struct omap4_cm_regs *cm_reg, int size,
+	u8 partition)
 {
 	u32 i, j;
-	struct omap4_cm_regs *cm_reg = cm2_regs;
 
-	for (i = 0; i < ARRAY_SIZE(cm2_regs); i++, cm_reg++) {
+	for (i = 0; i < size; i++, cm_reg++) {
 		for (j = 0; j < cm_reg->no_reg; j++) {
 			cm_reg->reg[j].val =
-			    omap4_cminst_read_inst_reg(OMAP4430_CM2_PARTITION,
+			    omap4_cminst_read_inst_reg(partition,
 						       cm_reg->mod_off,
 						       cm_reg->reg[j].offset);
 		}
 	}
 }
 
-static void omap4_cm1_resume_off(void)
+static void omap4_cm_part_restore(struct omap4_cm_regs *cm_reg, int size,
+	u8 partition)
 {
 	u32 i, j;
-	struct omap4_cm_regs *cm_reg = cm1_regs;
 
-	for (i = 0; i < ARRAY_SIZE(cm1_regs); i++, cm_reg++) {
+	for (i = 0; i < size; i++, cm_reg++) {
 		for (j = 0; j < cm_reg->no_reg; j++) {
 			omap4_cminst_write_inst_reg(cm_reg->reg[j].val,
 						    OMAP4430_CM1_PARTITION,
@@ -355,6 +506,7 @@ static void omap4_cm2_resume_off(void)
 		for (j = 0; j < cm_reg->no_reg; j++) {
 			omap4_cminst_write_inst_reg(cm_reg->reg[j].val,
 						    OMAP4430_CM2_PARTITION,
+						    partition,
 						    cm_reg->mod_off,
 						    cm_reg->reg[j].offset);
 		}
@@ -363,12 +515,35 @@ static void omap4_cm2_resume_off(void)
 
 void omap4_cm_prepare_off(void)
 {
-	omap4_cm1_prepare_off();
-	omap4_cm2_prepare_off();
+	if (cpu_is_omap44xx()) {
+		omap4_cm_part_save(omap4_cm1_regs,
+			ARRAY_SIZE(omap4_cm1_regs), OMAP4430_CM1_PARTITION);
+		omap4_cm_part_save(omap4_cm2_regs,
+			ARRAY_SIZE(omap4_cm2_regs), OMAP4430_CM2_PARTITION);
+	} else {
+		/* OMAP5 can use omap4 cm1 registers as the layout is same */
+		omap4_cm_part_save(omap4_cm1_regs,
+			ARRAY_SIZE(omap4_cm1_regs),
+			OMAP54XX_CM_CORE_AON_PARTITION);
+		omap4_cm_part_save(omap5_cm2_regs,
+			ARRAY_SIZE(omap5_cm2_regs), OMAP54XX_CM_CORE_PARTITION);
+	}
 }
 
 void omap4_cm_resume_off(void)
 {
-	omap4_cm1_resume_off();
-	omap4_cm2_resume_off();
+	if (cpu_is_omap44xx()) {
+		omap4_cm_part_restore(omap4_cm1_regs,
+			ARRAY_SIZE(omap4_cm1_regs), OMAP4430_CM1_PARTITION);
+		omap4_cm_part_restore(omap4_cm2_regs,
+			ARRAY_SIZE(omap4_cm2_regs), OMAP4430_CM2_PARTITION);
+	} else {
+		/* omap5 can use omap4 cm1 registers as the layout is same */
+		omap4_cm_part_restore(omap4_cm1_regs,
+			ARRAY_SIZE(omap4_cm1_regs),
+			OMAP54XX_CM_CORE_AON_PARTITION);
+		omap4_cm_part_restore(omap5_cm2_regs,
+			ARRAY_SIZE(omap5_cm2_regs),
+			OMAP54XX_CM_CORE_PARTITION);
+	}
 }
