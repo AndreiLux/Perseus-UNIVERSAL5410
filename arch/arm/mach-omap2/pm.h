@@ -197,10 +197,19 @@ static inline int omap_pmic_register_data(struct omap_pmic_map *map)
 extern void omap_init_all_pmic(void);
 
 #ifdef CONFIG_TWL4030_CORE
-extern int omap_twl_init(void);
+extern int omap_twl4030_init(void);
 extern int omap3_twl_set_sr_bit(bool enable);
 #else
-static inline int omap_twl_init(void)
+static inline int omap_twl4030_init(void)
+{
+	return -EINVAL;
+}
+#endif
+
+#ifdef CONFIG_MFD_PALMAS
+extern int omap_palmas_init(void);
+#else
+static inline int omap_palmas_init(void)
 {
 	return -EINVAL;
 }

@@ -21,7 +21,8 @@
  */
 void __init omap_init_all_pmic(void)
 {
-	omap_twl_init();
+	omap_twl4030_init();
+	omap_palmas_init();
 #ifndef CONFIG_OMAP4460_SEVM_PALMAS
 	omap_tps6236x_init();
 #endif
