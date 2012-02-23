@@ -76,6 +76,7 @@ int voltdm_scale(struct voltagedomain *voltdm,
 		 struct omap_volt_data *target_volt)
 {
 	int ret;
+	struct omap_voltage_notifier notify;
 
 	if (IS_ERR_OR_NULL(voltdm)) {
 		pr_warning("%s: VDD specified does not exist!\n", __func__);
@@ -93,29 +94,39 @@ int voltdm_scale(struct voltagedomain *voltdm,
 		if (ret) {
 			pr_err("%s: abb prescale failed for vdd%s: %d\n",
 					__func__, voltdm->name, ret);
-			goto out;
+			goto out1;
 		}
 	}
+
+	notify.voltdm = voltdm;
+	notify.target_volt = target_volt->volt_nominal;
+	srcu_notifier_call_chain(&voltdm->change_notify_list,
+			OMAP_VOLTAGE_PRECHANGE,
+			(void *)&notify);
 
 	ret = voltdm->scale(voltdm, target_volt);
 	if (ret) {
 		pr_err("%s: vdd_%s failed to scale: %d\n",
 				__func__, voltdm->name, ret);
-		goto out;
+		goto out2;
 	}
 
 	voltdm->nominal_volt = target_volt;
 
 	if (voltdm->abb) {
 		ret = omap_abb_post_scale(voltdm, target_volt);
-		if (ret) {
+		if (ret)
 			pr_err("%s: abb postscale failed for vdd%s: %d\n",
 					__func__, voltdm->name, ret);
-			goto out;
-		}
 	}
 
-out:
+out2:
+	notify.op_result = ret;
+	srcu_notifier_call_chain(&voltdm->change_notify_list,
+			OMAP_VOLTAGE_POSTCHANGE,
+			(void *)&notify);
+
+out1:
 	return ret;
 }
 
@@ -626,4 +637,17 @@ void voltdm_init(struct voltagedomain **voltdms)
 		for (v = voltdms; *v; v++)
 			_voltdm_register(*v);
 	}
+}
+
+int __init __init_volt_domain_notifier_list(struct voltagedomain **voltdms)
+{
+	struct voltagedomain **v;
+
+	if (!voltdms)
+		return -1;
+
+	for (v = voltdms; *v; v++)
+		srcu_init_notifier_head(&(*v)->change_notify_list);
+
+	return 0;
 }
