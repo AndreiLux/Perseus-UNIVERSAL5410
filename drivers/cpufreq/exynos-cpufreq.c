@@ -18,6 +18,7 @@
 #include <linux/cpufreq.h>
 #include <linux/suspend.h>
 #include <linux/module.h>
+#include <linux/reboot.h>
 
 #include <mach/cpufreq.h>
 
@@ -532,6 +533,23 @@ static struct cpufreq_driver exynos_driver = {
 #endif
 };
 
+static int exynos_cpufreq_reboot_notifier_call(struct notifier_block *this,
+				   unsigned long code, void *_cmd)
+{
+	int ret = 0;
+
+	ret = exynos_cpufreq_lock(DVFS_LOCK_ID_PM, exynos_info->pm_lock_idx);
+	if (ret < 0)
+		return NOTIFY_BAD;
+
+	printk(KERN_INFO "REBOOT Notifier for CPUFREQ\n");
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block exynos_cpufreq_reboot_notifier = {
+	.notifier_call = exynos_cpufreq_reboot_notifier_call,
+};
+
 static int __init exynos_cpufreq_init(void)
 {
 	int ret = -EINVAL;
@@ -567,6 +585,7 @@ static int __init exynos_cpufreq_init(void)
 	exynos_cpufreq_disable = false;
 
 	register_pm_notifier(&exynos_cpufreq_nb);
+	register_reboot_notifier(&exynos_cpufreq_reboot_notifier);
 
 	for (i = 0; i < DVFS_LOCK_ID_END; i++) {
 		g_cpufreq_lock_val[i] = exynos_info->min_support_idx;
