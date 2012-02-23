@@ -643,6 +643,10 @@ static void omap4_vc_sleep(struct voltagedomain *voltdm)
 		val = 1;
 		break;
 	}
+
+	if (omap4_device_next_state_off())
+		val = 0;
+
 	voltctrl = voltdm->read(OMAP4_PRM_VOLTCTRL_OFFSET);
 
 	voltctrl &= ~(u32)voltdm->vc->voltctrl_mask;
