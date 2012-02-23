@@ -4456,7 +4456,7 @@ static struct omap_hwmod_addr_space omap54xx_sata_addrs[] = {
 		.flags		= ADDR_TYPE_RT
 	},
 
-#if (!defined(CONFIG_MACH_OMAP_5430ZEBU) && !defined(CONFIG_OMAP5_VIRTIO))
+#if (!defined(CONFIG_MACH_OMAP_5430ZEBU))
 	/*
 	 * - TODO -
 	 * Following PLL addresses will be removed in future,

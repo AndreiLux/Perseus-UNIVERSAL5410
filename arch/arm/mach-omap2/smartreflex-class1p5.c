@@ -226,6 +226,10 @@ start_sampling:
 	}
 	/* trigger sampling */
 	sr_notifier_control(voltdm, true);
+
+#ifdef CONFIG_MACH_OMAP_5430ZEBU
+	mdelay(20);
+#endif
 	schedule_delayed_work(&work_data->work,
 			      msecs_to_jiffies(SR1P5_SAMPLING_DELAY_MS *
 					       SR1P5_STABLE_SAMPLES));
@@ -299,6 +303,10 @@ static void do_recalibrate(struct work_struct *work)
 			/* TODO: unpause DVFS transitions */
 		}
 	}
+
+#ifdef CONFIG_MACH_OMAP_5430ZEBU
+	mdelay(20);
+#endif
 	/* We come back again after time the usual delay */
 	schedule_delayed_work(&recal_work,
 	      msecs_to_jiffies(CONFIG_OMAP_SR_CLASS1P5_RECALIBRATION_DELAY));
@@ -349,6 +357,9 @@ static int sr_class1p5_enable(struct voltagedomain *voltdm,
 	work_data->vdata = volt_data;
 	work_data->work_active = true;
 	work_data->num_calib_triggers = 0;
+#ifdef CONFIG_MACH_OMAP_5430ZEBU
+	mdelay(20);
+#endif
 	/* program the workqueue and leave it to calibrate offline.. */
 	schedule_delayed_work(&work_data->work,
 			      msecs_to_jiffies(SR1P5_SAMPLING_DELAY_MS *
@@ -585,6 +596,9 @@ static int __init sr_class1p5_init(void)
 	} else {
 #if CONFIG_OMAP_SR_CLASS1P5_RECALIBRATION_DELAY
 		INIT_DELAYED_WORK_DEFERRABLE(&recal_work, do_recalibrate);
+#ifdef CONFIG_MACH_OMAP_5430ZEBU
+	mdelay(20);
+#endif
 		schedule_delayed_work(&recal_work, msecs_to_jiffies(
 				CONFIG_OMAP_SR_CLASS1P5_RECALIBRATION_DELAY));
 #endif

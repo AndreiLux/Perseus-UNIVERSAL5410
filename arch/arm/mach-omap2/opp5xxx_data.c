@@ -151,12 +151,21 @@ struct omap_vdd_dep_info omap54xx_vddmm_dep_info[] = {
 
 
 static struct omap_opp_def __initdata omap54xx_opp_def_list[] = {
+#ifdef CONFIG_MACH_OMAP_5430ZEBU
+	/* MPU OPP1 - OPPLOW */
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 550000000, OMAP5430_VDD_MPU_OPP_LOW),
+	/* MPU OPP2 - OPPNOM */
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 1100000000, OMAP5430_VDD_MPU_OPP_NOM),
+	/* MPU OPP3 - OPP-HIGH */
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 1500000000, OMAP5430_VDD_MPU_OPP_HIGH),
+#else
 	/* MPU OPP1 - OPPLOW */
 	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 400000000, OMAP5430_VDD_MPU_OPP_LOW),
 	/* MPU OPP2 - OPPNOM */
 	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 800000000, OMAP5430_VDD_MPU_OPP_NOM),
 	/* MPU OPP3 - OPP-HIGH */
 	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 1100000000, OMAP5430_VDD_MPU_OPP_HIGH),
+#endif
 	/* L3 OPP1 - OPPLOW */
 	OPP_INITIALIZER("l3_main_1", "virt_l3_ck", "core", true, 133000000, OMAP5430_VDD_CORE_OPP_LOW),
 	/* L3 OPP2 - OPPNOM */

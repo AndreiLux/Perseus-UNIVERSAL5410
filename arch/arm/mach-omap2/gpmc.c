@@ -721,7 +721,9 @@ static int __init gpmc_init(void)
 		ck = "gpmc_ck";
 		l = OMAP54XX_GPMC_BASE;
 		/* FIXME: Remove with clock-framework */
-		return 0;
+#ifndef CONFIG_MACH_OMAP_5430ZEBU
+			return 0;
+#endif
 	}
 
 	if (WARN_ON(!ck))
@@ -744,6 +746,14 @@ static int __init gpmc_init(void)
 
 	l = gpmc_read_reg(GPMC_REVISION);
 	printk(KERN_INFO "GPMC revision %d.%d\n", (l >> 4) & 0x0f, l & 0x0f);
+
+
+#ifdef CONFIG_MACH_OMAP_5430ZEBU
+		gpmc_write_reg(GPMC_IRQENABLE, 0);
+		gpmc_write_reg(GPMC_IRQSTATUS, gpmc_read_reg(GPMC_IRQSTATUS));
+		return 0;
+#endif
+
 	/* Set smart idle mode and automatic L3 clock gating */
 	l = gpmc_read_reg(GPMC_SYSCONFIG);
 	l &= 0x03 << 3;

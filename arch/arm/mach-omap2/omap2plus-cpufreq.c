@@ -206,8 +206,11 @@ static int __cpuinit omap_cpu_init(struct cpufreq_policy *policy)
 	}
 
 	/* FIXME: what's the actual transition time? */
+#ifdef CONFIG_MACH_OMAP_5430ZEBU
+	policy->cpuinfo.transition_latency = 10000 * 1000;
+#else
 	policy->cpuinfo.transition_latency = 300 * 1000;
-
+#endif
 	return 0;
 
 fail_table:

@@ -21,10 +21,14 @@
 
 #include <mach/ctrl_module_wkup_44xx.h>
 #include <linux/interrupt.h>
+#include <linux/io.h>
 
 #include <asm/system_misc.h> 
 
 #include "common.h"
+#include <plat/omap_hwmod.h>
+
+#include "powerdomain.h"
 #include "clockdomain.h"
 #include "powerdomain.h"
 #include "prm44xx.h"
@@ -32,6 +36,10 @@
 #include "prm-regbits-44xx.h"
 #include "prminst44xx.h"
 #include "pm.h"
+#include "voltage.h"
+#include "prm44xx.h"
+#include "prm-regbits-44xx.h"
+#include "cm2_54xx.h"
 
 static const char * const autoidle_hwmods[] = {
 	"mpu",
@@ -354,6 +362,23 @@ u32 irqenable_mpu, irqstatus_mpu;
 	return IRQ_HANDLED;
 }
 
+static void __init prcm_setup_regs(void)
+{
+	struct omap_hwmod *oh;
+
+#ifdef CONFIG_MACH_OMAP_5430ZEBU
+	/* Idle gpmc */
+	oh = omap_hwmod_lookup("gpmc");
+	omap_hwmod_idle(oh);
+
+	/* Idle OCP_WP_NOC */
+	__raw_writel(0, OMAP54XX_CM_L3INSTR_OCP_WP_NOC_CLKCTRL);
+
+	/* Idle hdq */
+	__raw_writel(0, OMAP54XX_CM_L4PER_HDQ1W_CLKCTRL);
+#endif
+}
+
 /**
  * omap_pm_init - Init routine for OMAP4 PM
  *
@@ -373,6 +398,8 @@ static int __init omap_pm_init(void)
 	}
 
 	pr_info("Power Management for TI OMAP4XX/OMAP5XXX devices.\n");
+
+	prcm_setup_regs();
 
 	ret = pwrdm_for_each(pwrdms_setup, NULL);
 	if (ret) {
