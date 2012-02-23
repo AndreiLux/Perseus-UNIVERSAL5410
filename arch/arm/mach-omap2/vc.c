@@ -582,7 +582,7 @@ static void omap4_set_timings(struct voltagedomain *voltdm, bool off_mode)
 	val |= omap4_usec_to_val_scrm(tshut, OMAP4_DOWNTIME_SHIFT,
 		OMAP4_DOWNTIME_MASK);
 
-	__raw_writel(val, OMAP4_SCRM_CLKSETUPTIME);
+	voltdm->scrm_write(val, OMAP4_SCRM_CLKSETUPTIME_OFFSET);
 
 	tstart = voltdm->pmic->startup_time;
 	tshut = voltdm->pmic->shutdown_time;
@@ -592,7 +592,7 @@ static void omap4_set_timings(struct voltagedomain *voltdm, bool off_mode)
 			OMAP4_WAKEUPTIME_MASK);
 		val |= omap4_usec_to_val_scrm(tshut, OMAP4_SLEEPTIME_SHIFT,
 			OMAP4_SLEEPTIME_MASK);
-		__raw_writel(val, OMAP4_SCRM_PMICSETUPTIME);
+		voltdm->scrm_write(val, OMAP4_SCRM_PMICSETUPTIME_OFFSET);
 	}
 }
 
@@ -610,24 +610,24 @@ static void omap4_vc_sleep(struct voltagedomain *voltdm)
 		val = 1;
 		break;
 	}
-	voltctrl = __raw_readl(OMAP4430_PRM_VOLTCTRL);
+	voltctrl = voltdm->read(OMAP4_PRM_VOLTCTRL_OFFSET);
 
 	voltctrl &= ~(u32)voltdm->vc->voltctrl_mask;
 
 	voltctrl |= val << voltdm->vc->voltctrl_shift;
 
-	__raw_writel(voltctrl, OMAP4430_PRM_VOLTCTRL);
+	voltdm->write(voltctrl, OMAP4_PRM_VOLTCTRL_OFFSET);
 }
 
 static void omap4_vc_wakeup(struct voltagedomain *voltdm)
 {
 	u32 voltctrl;
 
-	voltctrl = __raw_readl(OMAP4430_PRM_VOLTCTRL);
+	voltctrl = voltdm->read(OMAP4_PRM_VOLTCTRL_OFFSET);
 
 	voltctrl &= ~(u32)voltdm->vc->voltctrl_mask;
 
-	__raw_writel(voltctrl, OMAP4430_PRM_VOLTCTRL);
+	voltdm->write(voltctrl, OMAP4_PRM_VOLTCTRL_OFFSET);
 }
 
 /* OMAP4 specific voltage init functions */
