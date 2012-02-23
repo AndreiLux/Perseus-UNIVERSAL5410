@@ -214,10 +214,40 @@ void omap_pm_idle(u32 cpu_id, int state)
 }
 
 #ifdef CONFIG_SUSPEND
-static int omap4_pm_suspend(void)
+/**
+ * omap4_restore_pwdms_after_suspend() - Restore powerdomains after suspend
+ *
+ * Re-program all powerdomains to saved power domain states.
+ *
+ * returns 0 if all power domains hit targeted power state, -1 if any domain
+ * failed to hit targeted power state (status related to the actual restore
+ * is not returned).
+ */
+static int omap4_restore_pwdms_after_suspend(void)
 {
 	struct power_state *pwrst;
 	int state, ret = 0, logic_state;
+
+	/* Restore next powerdomain state */
+	list_for_each_entry(pwrst, &pwrst_list, node) {
+		state = pwrdm_read_prev_pwrst(pwrst->pwrdm);
+		if (state > pwrst->next_state) {
+			pr_info("Powerdomain (%s) didn't enter "
+			       "target state %d\n",
+			       pwrst->pwrdm->name, pwrst->next_state);
+			ret = -1;
+		}
+		omap_set_pwrdm_state(pwrst->pwrdm, pwrst->saved_state);
+		pwrdm_set_logic_retst(pwrst->pwrdm, pwrst->saved_logic_state);
+	}
+
+	return ret;
+}
+
+static int omap4_pm_suspend(void)
+{
+	struct power_state *pwrst;
+	int ret = 0;
 	u32 cpu_id = smp_processor_id();
 
 	/*
@@ -266,18 +296,8 @@ static int omap4_pm_suspend(void)
 	 */
 	omap_enter_lowpower(cpu_id, PWRDM_POWER_OFF);
 
-	/* Restore next powerdomain state */
-	list_for_each_entry(pwrst, &pwrst_list, node) {
-		state = pwrdm_read_prev_pwrst(pwrst->pwrdm);
-		if (state > pwrst->next_state) {
-			pr_info("Powerdomain (%s) didn't enter "
-			       "target state %d\n",
-			       pwrst->pwrdm->name, pwrst->next_state);
-			ret = -1;
-		}
-		omap_set_pwrdm_state(pwrst->pwrdm, pwrst->saved_state);
-		pwrdm_set_logic_retst(pwrst->pwrdm, pwrst->saved_logic_state);
-	}
+	ret = omap4_restore_pwdms_after_suspend();
+
 	if (ret)
 		pr_crit("Could not enter target state in pm_suspend\n");
 	else
