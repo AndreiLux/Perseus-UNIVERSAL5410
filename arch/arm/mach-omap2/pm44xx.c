@@ -245,6 +245,10 @@ static int omap4_restore_pwdms_after_suspend(void)
 		if (cstate == PWRDM_POWER_ON)
 			continue;
 
+		/* If we have already achieved saved state, nothing to do */
+		if (cstate == pwrst->saved_state)
+			continue;
+
 		omap_set_pwrdm_state(pwrst->pwrdm, pwrst->saved_state);
 		pwrdm_set_logic_retst(pwrst->pwrdm, pwrst->saved_logic_state);
 	}
