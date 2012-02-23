@@ -14,6 +14,8 @@
 #include <linux/clk.h>
 #include <linux/io.h>
 
+#include <asm/div64.h>
+
 #include <plat/cpu.h>
 #include <plat/prcm.h>
 
@@ -23,6 +25,7 @@
 #include "prm-regbits-44xx.h"
 #include "prm44xx.h"
 #include "scrm44xx.h"
+#include "pm.h"
 
 /**
  * struct omap_vc_channel_cfg - describe the cfg_channel bitfield
@@ -330,9 +333,25 @@ int omap_vc_bypass_send_i2c_msg(struct voltagedomain *voltdm, u8 slave_addr,
 					reg_addr, data);
 }
 
+static u32 omap_usec_to_32k(u32 usec)
+{
+	/* DIV_ROUND_UP expanded to 64bit to avoid overflow */
+	u64 val = 32768ULL * (u64)usec + 1000000ULL - 1;
+	do_div(val, 1000000ULL);
+	return val;
+}
+
+static void omap3_set_clksetup(u32 usec, struct voltagedomain *voltdm)
+{
+	voltdm->write(omap_usec_to_32k(usec), OMAP3_PRM_CLKSETUP_OFFSET);
+}
+
 static void omap3_set_ret_timings(struct voltagedomain *voltdm)
 {
 	unsigned long voltsetup1;
+
+	/* In retention oscillator is not shut down */
+	omap3_set_clksetup(1, voltdm);
 
 	voltsetup1 = (voltdm->vc_param->on - voltdm->vc_param->ret) /
 			voltdm->pmic->slew_rate;
@@ -354,6 +373,10 @@ static void omap3_set_off_timings(struct voltagedomain *voltdm)
 {
 	unsigned long clksetup;
 	unsigned long voltsetup2;
+	u32 tstart, tshut;
+
+	omap_pm_get_oscillator(&tstart, &tshut);
+	omap3_set_clksetup(tstart, voltdm);
 
 	clksetup = voltdm->read(OMAP3_PRM_CLKSETUP_OFFSET);
 
@@ -361,7 +384,7 @@ static void omap3_set_off_timings(struct voltagedomain *voltdm)
 	voltsetup2 = voltdm->vc_param->on / voltdm->pmic->slew_rate;
 
 	/* convert to 32k clk cycles */
-	voltsetup2 = voltsetup2 * 32768 / 1000000 + 1;
+	voltsetup2 = DIV_ROUND_UP(voltsetup2 * 32768, 1000000);
 
 	voltdm->write(voltsetup2, OMAP3_PRM_VOLTSETUP2_OFFSET);
 
@@ -428,10 +451,24 @@ static u32 omap4_calc_volt_ramp(struct voltagedomain *voltdm, u32 voltage_diff,
 		(cycles << OMAP4430_RAMP_UP_COUNT_SHIFT);
 }
 
+static u32 omap4_usec_to_val_scrm(u32 usec, int shift, u32 mask)
+{
+	u32 val;
+
+	val = omap_usec_to_32k(usec) << shift;
+
+	/* Check for overflow, if yes, force to max value */
+	if (val > mask)
+		val = mask;
+
+	return val;
+}
+
 static void omap4_set_timings(struct voltagedomain *voltdm, bool off_mode)
 {
 	u32 val;
 	u32 ramp;
+	u32 tstart, tshut;
 
 	/* configure the setup times */
 	val = voltdm->read(voltdm->vfsm->voltsetup_reg);
@@ -453,6 +490,15 @@ static void omap4_set_timings(struct voltagedomain *voltdm, bool off_mode)
 	val |= ramp << OMAP4430_RAMP_UP_COUNT_SHIFT;
 
 	voltdm->write(val, voltdm->vfsm->voltsetup_reg);
+
+	omap_pm_get_oscillator(&tstart, &tshut);
+
+	val = omap4_usec_to_val_scrm(tstart, OMAP4_SETUPTIME_SHIFT,
+		OMAP4_SETUPTIME_MASK);
+	val |= omap4_usec_to_val_scrm(tshut, OMAP4_DOWNTIME_SHIFT,
+		OMAP4_DOWNTIME_MASK);
+
+	__raw_writel(val, OMAP4_SCRM_CLKSETUPTIME);
 }
 
 /* OMAP4 specific voltage init functions */
