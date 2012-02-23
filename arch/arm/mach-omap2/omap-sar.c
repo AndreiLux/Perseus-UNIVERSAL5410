@@ -23,6 +23,7 @@
 
 #include "omap4-sar-layout.h"
 #include "cm-regbits-44xx.h"
+#include "cm-regbits-54xx.h"
 #include "prcm44xx.h"
 #include "cminst44xx.h"
 
@@ -71,6 +72,14 @@ static struct sar_overwrite_entry omap4_sar_overwrite_data[OW_IDX_SIZE] = {
 	[MEMIF_CLKSTCTRL_2_IDX] = { .reg_addr = 0x4a009e0c },
 	[HSUSBHOST_CLKCTRL_IDX] = { .reg_addr = 0x4a009e54 },
 	[HSUSBHOST_CLKCTRL_2_IDX] = { .reg_addr = 0x4a009e54 },
+};
+
+static struct sar_overwrite_entry omap5_sar_overwrite_data[OW_IDX_SIZE] = {
+	[MEMIF_CLKSTCTRL_IDX] = { .reg_addr = 0x4a009e24 },
+	[MEMIF_CLKSTCTRL_2_IDX] = { .reg_addr = 0x4a009e24 },
+	[SHADOW_FREQ_CFG1_IDX] = { .reg_addr = 0x4a004e38 },
+	[HSUSBHOST_CLKCTRL_IDX] = { .reg_addr = 0x4a009e60 },
+	[HSUSBHOST_CLKCTRL_2_IDX] = { .reg_addr = 0x4a009e60 },
 };
 
 static void check_overwrite_data(u32 io_addr, u32 ram_addr, int size)
@@ -293,6 +302,39 @@ void omap_sar_overwrite(void)
 			     sar_ram_base + offset + 8);
 	}
 
+	if (sar_overwrite_data[MEMIF_CLKSTCTRL_2_IDX].valid)
+		__raw_writel(0x3, sar_ram_base +
+			sar_overwrite_data[MEMIF_CLKSTCTRL_2_IDX].sar_offset);
+
+	if (sar_overwrite_data[HSUSBHOST_CLKCTRL_IDX].valid) {
+		offset = sar_overwrite_data[HSUSBHOST_CLKCTRL_IDX].sar_offset;
+
+		/* Overwriting Phase2a data to be restored */
+		/* CM_L3INIT_USB_HOST_CLKCTRL: SAR_MODE = 1, MODULEMODE = 2 */
+		__raw_writel(0x00000012, sar_ram_base + offset);
+		/* CM_L3INIT_USB_TLL_CLKCTRL: SAR_MODE = 1, MODULEMODE = 1 */
+		__raw_writel(0x00000011, sar_ram_base + offset + 4);
+		/*
+		 * CM2 CM_SDMA_STATICDEP : Enable static depedency for
+		 * SAR modules
+		 */
+		__raw_writel(0x000090e8, sar_ram_base + offset + 8);
+	}
+
+	if (sar_overwrite_data[HSUSBHOST_CLKCTRL_IDX].valid) {
+		offset = sar_overwrite_data[HSUSBHOST_CLKCTRL_2_IDX].sar_offset;
+
+		/* Overwriting Phase2b data to be restored */
+		/* CM_L3INIT_USB_HOST_CLKCTRL: SAR_MODE = 0, MODULEMODE = 0 */
+		val = __raw_readl(OMAP4430_CM_L3INIT_USB_HOST_CLKCTRL);
+		val &= (OMAP4430_CLKSEL_UTMI_P1_MASK |
+			OMAP4430_CLKSEL_UTMI_P2_MASK);
+		__raw_writel(val, sar_ram_base + offset);
+		/* CM_L3INIT_USB_TLL_CLKCTRL: SAR_MODE = 0, MODULEMODE = 0 */
+		__raw_writel(0x0000000, sar_ram_base + offset + 4);
+		/* CM2 CM_SDMA_STATICDEP : Clear the static depedency */
+		__raw_writel(0x00000040, sar_ram_base + offset + 8);
+	}
 	/* readback to ensure data reaches to SAR RAM */
 	barrier();
 	val = __raw_readl(sar_ram_base + offset + 8);
@@ -530,3 +572,83 @@ static int __init omap4_sar_ram_init(void)
 	return 0;
 }
 early_initcall(omap4_sar_ram_init);
+
+static struct sar_module omap54xx_sar_modules[] = {
+	{ .base = OMAP54XX_EMIF1_BASE, .size = SZ_1M },
+	{ .base = OMAP54XX_EMIF2_BASE, .size = SZ_1M },
+	{ .base = OMAP54XX_DMM_BASE, .size = SZ_1M },
+	{ .base = OMAP54XX_CM_CORE_AON_BASE, .size = SZ_8K },
+	{ .base = OMAP54XX_CM_CORE_BASE, .size = SZ_8K },
+	{ .base = OMAP54XX_C2C_BASE, .size = SZ_1M },
+	{ .base = OMAP543X_CTRL_BASE, .size = SZ_4K },
+	{ .base = OMAP543X_SCM_BASE, .size = SZ_4K },
+	{ .base = L3_54XX_BASE_CLK1, .size = SZ_1M },
+	{ .base = L3_54XX_BASE_CLK2, .size = SZ_1M },
+	{ .base = L3_54XX_BASE_CLK3, .size = SZ_1M },
+#ifndef CONFIG_MACH_OMAP_5430ZEBU
+	{ .base = OMAP54XX_USBTLL_BASE, .size = SZ_1M },
+	{ .base = OMAP54XX_UHH_CONFIG_BASE, .size = SZ_1M },
+#else
+	{ .base = OMAP54XX_USBTLL_BASE, .size = SZ_1M, .invalid = true },
+	{ .base = OMAP54XX_UHH_CONFIG_BASE, .size = SZ_1M, .invalid = true },
+#endif
+	{ .base = L4_54XX_PHYS, .size = SZ_4M },
+	{ .base = L4_PER_54XX_PHYS, .size = SZ_4M },
+	{ .base = 0 },
+};
+
+static int __init omap5_sar_ram_init(void)
+{
+	/*
+	 * To avoid code running on other OMAPs in
+	 * multi-omap builds
+	 */
+	if (!cpu_is_omap54xx())
+		return -ENODEV;
+
+	/*
+	 * Static mapping, never released Actual SAR area used is 8K it's
+	 * spaced over 16K address with some part is reserved.
+	 */
+	sar_ram_base = ioremap(OMAP54XX_SAR_RAM_BASE, SZ_16K);
+	BUG_ON(!sar_ram_base);
+
+	sar_modules = omap54xx_sar_modules;
+	sar_overwrite_data = omap5_sar_overwrite_data;
+
+	sar_ioremap_modules();
+
+	sar_layout_generate();
+
+	/*
+	 * SAR BANK3 contains all firewall settings and it's saved through
+	 * secure API on HS device. On GP device these registers are
+	 * meaningless but still needs to be saved. Otherwise Auto-restore
+	 * phase DMA takes an abort. Hence save these conents only once
+	 * in init to avoid the issue while waking up from device OFF
+	 */
+	if (omap_type() == OMAP2_DEVICE_TYPE_GP)
+		save_sar_bank3();
+
+	/*
+	 * L3INIT PD and clocks are needed for SAR save phase
+	 */
+	l3init_pwrdm = pwrdm_lookup("l3init_pwrdm");
+	if (!l3init_pwrdm)
+		pr_err("Failed to get l3init_pwrdm\n");
+
+	l3init_clkdm = clkdm_lookup("l3init_clkdm");
+	if (!l3init_clkdm)
+		pr_err("Failed to get l3init_clkdm\n");
+
+	usb_host_ck = clk_get(NULL, "usb_host_hs_fck");
+	if (IS_ERR(usb_host_ck))
+		pr_err("Could not get usb_host_ck\n");
+
+	usb_tll_ck = clk_get(NULL, "usb_tll_hs_ick");
+	if (IS_ERR(usb_tll_ck))
+		pr_err("Could not get usb_tll_ck\n");
+
+	return 0;
+}
+early_initcall(omap5_sar_ram_init);
