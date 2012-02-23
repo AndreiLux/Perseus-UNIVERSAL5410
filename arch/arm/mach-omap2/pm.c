@@ -58,6 +58,21 @@ static struct device *dsp_dev;
 
 bool omap_pm_is_ready_status;
 
+/**
+ * struct omap2_oscillator - Describe the board main oscillator latencies
+ * @startup_time: oscillator startup latency
+ * @shutdown_time: oscillator shutdown latency
+ */
+struct omap2_oscillator {
+	u32 startup_time;
+	u32 shutdown_time;
+};
+
+static struct omap2_oscillator oscillator = {
+	.startup_time = ULONG_MAX,
+	.shutdown_time = ULONG_MAX,
+};
+
 struct device *omap2_get_mpuss_device(void)
 {
 	WARN_ON_ONCE(!mpu_dev);
@@ -82,6 +97,18 @@ struct device *omap4_get_dsp_device(void)
 	return dsp_dev;
 }
 EXPORT_SYMBOL(omap4_get_dsp_device);
+
+void omap_pm_setup_oscillator(u32 tstart, u32 tshut)
+{
+	oscillator.startup_time = tstart;
+	oscillator.shutdown_time = tshut;
+}
+
+void omap_pm_get_oscillator(u32 *tstart, u32 *tshut)
+{
+	*tstart = oscillator.startup_time;
+	*tshut = oscillator.shutdown_time;
+}
 
 static int _init_omap_device(char *name)
 {

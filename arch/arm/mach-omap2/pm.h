@@ -253,10 +253,14 @@ static inline bool omap_pm_is_ready(void)
 {
 	return omap_pm_is_ready_status;
 }
+extern void omap_pm_setup_oscillator(u32 tstart, u32 tshut);
+extern void omap_pm_get_oscillator(u32 *tstart, u32 *tshut);
 #else
 static inline bool omap_pm_is_ready(void)
 {
 	return false;
 }
+static inline void omap_pm_setup_oscillator(u32 tstart, u32 tshut) { }
+static inline void omap_pm_get_oscillator(u32 *tstart, u32 *tshut) { }
 #endif
 #endif
