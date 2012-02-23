@@ -511,6 +511,9 @@ static void __init beagle_opp_init(void)
 			opp_disable(mpu_dev, 720000000);
 			opp_disable(iva_dev, 520000000);
 		}
+
+		/* Setup oscillator startup time to 10ms */
+		omap_pm_setup_oscillator(10000, 0);
 	}
 
 	/* Custom OPP enabled for all xM versions */
