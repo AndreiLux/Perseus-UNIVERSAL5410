@@ -1,0 +1,25 @@
+Kernel driver omap_temp_sensor
+==============================
+
+Supported chips:
+  * Texas Instruments OMAP4460
+    Prefix: 'omap_temp_sensor'
+
+Author:
+        J Keerthy <j-keerthy@ti.com>
+
+Description
+-----------
+
+The Texas Instruments OMAP4 family of chips have a bandgap temperature sensor.
+The temperature sensor feature is used to convert the temperature of the device
+into a decimal value coded on 10 bits. An internal ADC is used for conversion.
+The recommended operating temperatures must be in the range -40 degree Celsius
+to 123 degree celsius for standard conversion.
+The thresholds are programmable and upon crossing the thresholds an interrupt
+is generated. The OMAP temperature sensor has a programmable update rate in
+milli seconds.
+(Currently the driver programs a default of 2000 milliseconds).
+
+The driver provides the common sysfs-interface for temperatures (see
+Documentation/hwmon/sysfs-interface under Temperatures).
