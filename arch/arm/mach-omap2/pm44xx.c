@@ -200,6 +200,8 @@ void omap_pm_idle(u32 cpu_id, int state)
 		omap4_dpll_prepare_off();
 	}
 
+	omap_trigger_wuclk_ctrl();
+
 	omap_enter_lowpower(cpu_id, state);
 
 	if (omap4_device_prev_state_off()) {
@@ -500,19 +502,7 @@ static inline int omap5_init_static_deps(void)
 
 static irqreturn_t prcm_interrupt_handler (int irq, void *dev_id)
 {
-u32 irqenable_mpu, irqstatus_mpu;
-
-	irqenable_mpu = omap4_prm_read_inst_reg(OMAP4430_PRM_OCP_SOCKET_INST,
-							OMAP4_PRM_IRQENABLE_MPU_OFFSET);
-	irqstatus_mpu = omap4_prm_read_inst_reg(OMAP4430_PRM_OCP_SOCKET_INST,
-							OMAP4_PRM_IRQSTATUS_MPU_OFFSET);
-
-	/* Check if a IO_ST interrupt */
-	if (irqstatus_mpu & OMAP4430_IO_ST_MASK) {
-		/* Re-enable UART3 */
-		omap_trigger_wuclk_ctrl();
-	}
-
+	/* Do nothing, we just need the interrupt handler to enable it */
 	return IRQ_HANDLED;
 }
 
