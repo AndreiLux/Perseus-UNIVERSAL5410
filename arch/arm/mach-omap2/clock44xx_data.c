@@ -1501,6 +1501,9 @@ static struct clk dss_fck = {
 	.clkdm_name	= "l3_dss_clkdm",
 	.parent		= &l3_div_ck,
 	.recalc		= &followparent_recalc,
+#ifdef CONFIG_OMAP_PM_STANDALONE
+	.autoidle	= 1, /* XXX Temporary hack, dss_fck handling broken */
+#endif
 };
 
 static struct clk efuse_ctrl_cust_fck = {
