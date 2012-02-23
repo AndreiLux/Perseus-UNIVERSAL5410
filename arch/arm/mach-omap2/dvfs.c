@@ -191,7 +191,7 @@ struct omap_vdd_dvfs_info {
 };
 
 static LIST_HEAD(omap_dvfs_info_list);
-static DEFINE_MUTEX(omap_dvfs_lock);
+DEFINE_MUTEX(omap_dvfs_lock);
 
 /* Dvfs scale helper function */
 static int _dvfs_scale(struct device *req_dev, struct device *target_dev,
