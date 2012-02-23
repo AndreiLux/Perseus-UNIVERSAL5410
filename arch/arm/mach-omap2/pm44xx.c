@@ -516,6 +516,19 @@ static void __init prcm_setup_regs(void)
 	omap4_prminst_rmw_inst_reg_bits(OMAP4430_DISABLE_RTA_EXPORT_MASK,
 		0x1 << OMAP4430_DISABLE_RTA_EXPORT_SHIFT,
 		OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_LDO_SRAM_IVA_SETUP_OFFSET);
+
+	/* Toggle CLKREQ in RET and OFF states */
+	omap4_prminst_write_inst_reg(0x2, OMAP4430_PRM_PARTITION,
+		OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_CLKREQCTRL_OFFSET);
+	/*
+	 * De-assert PWRREQ signal in Device OFF state
+	 *      0x3: PWRREQ is de-asserted if all voltage domain are in
+	 *      OFF state. Conversely, PWRREQ is asserted upon any
+	 *      voltage domain entering or staying in ON or SLEEP or
+	 *      RET state.
+	 */
+	omap4_prminst_write_inst_reg(0x3, OMAP4430_PRM_PARTITION,
+		OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_PWRREQCTRL_OFFSET);
 }
 
 /**
