@@ -1404,7 +1404,7 @@ static void __devexit omap_sr_shutdown(struct platform_device *pdev)
 	}
 
 	if (sr_info->autocomp_active)
-		sr_stop_vddautocomp(sr_info);
+		sr_stop_vddautocomp(sr_info, true, 1);
 
 	return;
 }
