@@ -29,6 +29,7 @@
 #include "common.h"
 
 #include "pm.h"
+#include "dvfs.h"
 #include "smartreflex.h"
 
 #define SMARTREFLEX_NAME_LEN	16
@@ -319,16 +320,22 @@ static void sr_start_vddautocomp(struct omap_sr *sr, bool class_start)
 		return;
 	}
 
+	/* pause dvfs from interfereing with our operations */
+	mutex_lock(&omap_dvfs_lock);
+
 	if (class_start && sr_class->start &&
 	    sr_class->start(sr->voltdm, sr_class->class_priv_data)) {
 		dev_err(&sr->pdev->dev,
 			"%s: SRClass initialization failed\n", __func__);
-		return;
+		goto err;
 	}
 
 	ret = sr_class->enable(sr->voltdm, voltdm_get_voltage(sr->voltdm));
 	if (!ret && class_start)
 		sr->autocomp_active = true;
+
+err:
+	mutex_unlock(&omap_dvfs_lock);
 }
 
 static void sr_stop_vddautocomp(struct omap_sr *sr, bool class_stop,
@@ -344,6 +351,9 @@ static void sr_stop_vddautocomp(struct omap_sr *sr, bool class_stop,
 		return;
 	}
 
+	/* Pause dvfs from interfereing with our operations */
+	mutex_lock(&omap_dvfs_lock);
+
 	sr_class->disable(sr->voltdm,
 			voltdm_get_voltage(sr->voltdm),
 			is_volt_reset);
@@ -355,6 +365,8 @@ static void sr_stop_vddautocomp(struct omap_sr *sr, bool class_stop,
 				__func__, sr->srid);
 		sr->autocomp_active = false;
 	}
+
+	mutex_unlock(&omap_dvfs_lock);
 }
 
 /*
