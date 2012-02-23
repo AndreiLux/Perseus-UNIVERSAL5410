@@ -252,7 +252,7 @@ static struct omap_voltdm_pmic omap3_core_pmic = {
 };
 
 static struct omap_voltdm_pmic omap4_mpu_pmic = {
-	.slew_rate		= 4000,
+	.slew_rate		= 9000,
 	.step_size		= 12660,
 	.switch_on_time		= 549,
 	.vp_erroroffset		= OMAP4_VP_CONFIG_ERROROFFSET,
@@ -274,7 +274,7 @@ static struct omap_voltdm_pmic omap4_mpu_pmic = {
 };
 
 static struct omap_voltdm_pmic omap4_iva_pmic = {
-	.slew_rate		= 4000,
+	.slew_rate		= 9000,
 	.step_size		= 12660,
 	.switch_on_time		= 549,
 	.vp_erroroffset		= OMAP4_VP_CONFIG_ERROROFFSET,
@@ -296,7 +296,7 @@ static struct omap_voltdm_pmic omap4_iva_pmic = {
 };
 
 static struct omap_voltdm_pmic omap443x_core_pmic = {
-	.slew_rate		= 4000,
+	.slew_rate		= 9000,
 	.step_size		= 12660,
 	.startup_time		= 500,
 	.shutdown_time		= 500,
@@ -368,7 +368,7 @@ static struct omap_voltdm_pmic omap446x_iva_pmic = {
 
 /* Core uses the MPU rail of 4430 */
 static struct omap_voltdm_pmic omap446x_core_pmic = {
-	.slew_rate		= 4000,
+	.slew_rate		= 9000,
 	.step_size		= 12660,
 	.startup_time		= 500,
 	.shutdown_time		= 500,
