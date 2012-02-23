@@ -13,6 +13,7 @@
 #include <linux/bug.h>
 #include <linux/clk.h>
 #include <linux/io.h>
+#include <linux/string.h>
 
 #include <asm/div64.h>
 
@@ -149,6 +150,8 @@ int omap_vc_pre_scale(struct voltagedomain *voltdm,
 	vc_cmdval &= ~vc->common->cmd_on_mask;
 	vc_cmdval |= (*target_vsel << vc->common->cmd_on_shift);
 	voltdm->write(vc_cmdval, vc->cmdval_reg);
+
+	voltdm->vc_param->on = target_volt->volt_nominal;
 
 	omap_vp_update_errorgain(voltdm, target_volt);
 
@@ -346,14 +349,17 @@ static void omap3_set_clksetup(u32 usec, struct voltagedomain *voltdm)
 	voltdm->write(omap_usec_to_32k(usec), OMAP3_PRM_CLKSETUP_OFFSET);
 }
 
-static void omap3_set_ret_timings(struct voltagedomain *voltdm)
+static void omap3_set_i2c_timings(struct voltagedomain *voltdm, int off_mode)
 {
 	unsigned long voltsetup1;
+	u32 tgt_volt;
 
-	/* In retention oscillator is not shut down */
-	omap3_set_clksetup(1, voltdm);
+	if (off_mode)
+		tgt_volt = voltdm->vc_param->off;
+	else
+		tgt_volt = voltdm->vc_param->ret;
 
-	voltsetup1 = (voltdm->vc_param->on - voltdm->vc_param->ret) /
+	voltsetup1 = (voltdm->vc_param->on - tgt_volt) /
 			voltdm->pmic->slew_rate;
 
 	voltsetup1 = voltsetup1 * voltdm->sys_clk.rate / 8 / 1000000 + 1;
@@ -361,22 +367,20 @@ static void omap3_set_ret_timings(struct voltagedomain *voltdm)
 	voltdm->rmw(voltdm->vfsm->voltsetup_mask,
 		voltsetup1 << __ffs(voltdm->vfsm->voltsetup_mask),
 		voltdm->vfsm->voltsetup_reg);
-
-	/*
-	 * pmic is not controlling the voltage scaling during retention,
-	 * thus set voltsetup2 to 0
-	 */
-	voltdm->write(0, OMAP3_PRM_VOLTSETUP2_OFFSET);
 }
 
 static void omap3_set_off_timings(struct voltagedomain *voltdm)
 {
 	unsigned long clksetup;
 	unsigned long voltsetup2;
-	u32 tstart, tshut;
+	unsigned long voltsetup2_old;
+	u32 val;
 
-	omap_pm_get_oscillator(&tstart, &tshut);
-	omap3_set_clksetup(tstart, voltdm);
+	val = voltdm->read(OMAP3_PRM_VOLTCTRL_OFFSET);
+	if (!(val & OMAP3430_SEL_OFF_MASK)) {
+		omap3_set_i2c_timings(voltdm, 1);
+		return;
+	}
 
 	clksetup = voltdm->read(OMAP3_PRM_CLKSETUP_OFFSET);
 
@@ -386,7 +390,15 @@ static void omap3_set_off_timings(struct voltagedomain *voltdm)
 	/* convert to 32k clk cycles */
 	voltsetup2 = DIV_ROUND_UP(voltsetup2 * 32768, 1000000);
 
-	voltdm->write(voltsetup2, OMAP3_PRM_VOLTSETUP2_OFFSET);
+	voltsetup2_old = voltdm->read(OMAP3_PRM_VOLTSETUP2_OFFSET);
+
+	if (voltsetup2 > voltsetup2_old) {
+		voltdm->write(voltsetup2, OMAP3_PRM_VOLTSETUP2_OFFSET);
+		voltdm->write(clksetup - voltsetup2,
+			OMAP3_PRM_VOLTOFFSET_OFFSET);
+	} else
+		voltdm->write(clksetup - voltsetup2_old,
+			OMAP3_PRM_VOLTOFFSET_OFFSET);
 
 	/*
 	 * omap is not controlling voltage scaling during off-mode,
@@ -394,14 +406,85 @@ static void omap3_set_off_timings(struct voltagedomain *voltdm)
 	 */
 	voltdm->rmw(voltdm->vfsm->voltsetup_mask, 0,
 		voltdm->vfsm->voltsetup_reg);
+}
 
-	/* voltoffset must be clksetup minus voltsetup2 according to TRM */
-	voltdm->write(clksetup - voltsetup2, OMAP3_PRM_VOLTOFFSET_OFFSET);
+static void omap3_set_core_ret_timings(struct voltagedomain *voltdm)
+{
+	omap3_set_clksetup(1, voltdm);
+
+	/*
+	 * Reset voltsetup 2 and voltoffset when entering retention
+	 * as they are not used in this mode
+	 */
+	voltdm->write(0, OMAP3_PRM_VOLTSETUP2_OFFSET);
+	voltdm->write(0, OMAP3_PRM_VOLTOFFSET_OFFSET);
+	omap3_set_i2c_timings(voltdm, 0);
+}
+
+static void omap3_set_core_off_timings(struct voltagedomain *voltdm)
+{
+	u32 tstart, tshut;
+	omap_pm_get_oscillator(&tstart, &tshut);
+	omap3_set_clksetup(tstart, voltdm);
+	omap3_set_off_timings(voltdm);
+}
+
+static void omap3_vc_channel_sleep(struct voltagedomain *voltdm)
+{
+	/* Set off timings if entering off */
+	if (voltdm->target_state == PWRDM_POWER_OFF)
+		omap3_set_off_timings(voltdm);
+	else
+		omap3_set_i2c_timings(voltdm, 0);
+}
+
+static void omap3_vc_channel_wakeup(struct voltagedomain *voltdm)
+{
+}
+
+static void omap3_vc_core_sleep(struct voltagedomain *voltdm)
+{
+	u8 mode;
+
+	switch (voltdm->target_state) {
+	case PWRDM_POWER_OFF:
+		mode = OMAP3430_AUTO_OFF_MASK;
+		break;
+	case PWRDM_POWER_RET:
+		mode = OMAP3430_AUTO_RET_MASK;
+		break;
+	default:
+		mode = OMAP3430_AUTO_SLEEP_MASK;
+		break;
+	}
+
+	if (mode & OMAP3430_AUTO_OFF_MASK)
+		omap3_set_core_off_timings(voltdm);
+	else
+		omap3_set_core_ret_timings(voltdm);
+
+	voltdm->rmw(OMAP3430_AUTO_OFF_MASK | OMAP3430_AUTO_RET_MASK |
+		    OMAP3430_AUTO_SLEEP_MASK, mode,
+		    OMAP3_PRM_VOLTCTRL_OFFSET);
+}
+
+static void omap3_vc_core_wakeup(struct voltagedomain *voltdm)
+{
+	voltdm->rmw(OMAP3430_AUTO_OFF_MASK | OMAP3430_AUTO_RET_MASK |
+		    OMAP3430_AUTO_SLEEP_MASK, 0, OMAP3_PRM_VOLTCTRL_OFFSET);
 }
 
 static void __init omap3_vc_init_channel(struct voltagedomain *voltdm)
 {
-	omap3_set_off_timings(voltdm);
+	if (!strcmp(voltdm->name, "core")) {
+		voltdm->sleep = omap3_vc_core_sleep;
+		voltdm->wakeup = omap3_vc_core_wakeup;
+		omap3_set_core_ret_timings(voltdm);
+	} else {
+		voltdm->sleep = omap3_vc_channel_sleep;
+		voltdm->wakeup = omap3_vc_channel_wakeup;
+		omap3_set_i2c_timings(voltdm, 0);
+	}
 }
 
 static u32 omap4_calc_volt_ramp(struct voltagedomain *voltdm, u32 voltage_diff,
