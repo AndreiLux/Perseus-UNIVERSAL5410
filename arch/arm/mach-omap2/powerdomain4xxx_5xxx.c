@@ -302,4 +302,6 @@ struct pwrdm_ops omap5_pwrdm_operations = {
 	.pwrdm_wait_transition	= omap4_pwrdm_wait_transition,
 	.pwrdm_enable_force_off	= omap5_pwrdm_enable_force_off,
 	.pwrdm_disable_force_off	= omap5_pwrdm_disable_force_off,
+	.pwrdm_enable_hdwr_sar	= omap4_pwrdm_enable_hdwr_sar,
+	.pwrdm_disable_hdwr_sar	= omap4_pwrdm_disable_hdwr_sar,
 };
