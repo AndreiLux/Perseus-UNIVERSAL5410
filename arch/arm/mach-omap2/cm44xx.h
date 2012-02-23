@@ -28,6 +28,5 @@ extern void omap4_cm_prepare_off(void);
 extern void omap4_cm_resume_off(void);
 extern void omap4_dpll_prepare_off(void);
 extern void omap4_dpll_resume_off(void);
-#endif
 
 #endif
