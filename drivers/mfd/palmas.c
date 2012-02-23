@@ -70,6 +70,15 @@ static struct resource rtc_resource[] = {
 	},
 };
 
+static struct resource pwron_resource[] = {
+	{
+		.name = "PWRON_BUTTON",
+		.start = PALMAS_PWRON_IRQ,
+		.end = PALMAS_PWRON_IRQ,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
 static struct mfd_cell palmas_children[] = {
 	{
 		.name = "palmas-gpadc",
@@ -100,6 +109,12 @@ static struct mfd_cell palmas_children[] = {
 		.num_resources = ARRAY_SIZE(rtc_resource),
 		.resources = rtc_resource,
 		.id = 5,
+	},
+	{
+		.name = "palmas_pwron",
+		.num_resources = ARRAY_SIZE(pwron_resource),
+		.resources = pwron_resource,
+		.id = 6,
 	}
 };
 
