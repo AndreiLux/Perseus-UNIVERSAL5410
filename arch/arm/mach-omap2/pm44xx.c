@@ -427,6 +427,9 @@ static int __init omap_pm_init(void)
 	/* Overwrite the default cpu_do_idle() */
 	arm_pm_idle = omap_default_idle;
 
+	 /* Enable wakeup for PRCM IRQ for system wide suspend */
+	enable_irq_wake(OMAP44XX_IRQ_PRCM);
+
 	if (cpu_is_omap44xx()) {
 		/* Overwrite the default arch_idle() */
 		pm_idle = omap_default_idle;
