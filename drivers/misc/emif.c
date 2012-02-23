@@ -27,6 +27,8 @@
 #include <linux/notifier.h>
 #include "emif_regs.h"
 #include <plat/common.h>
+#include "common.h"
+#include "../../arch/arm/mach-omap2/voltage.h"
 
 /** struct emif_data - Per device static data for driver's use
  * @thermal_handling_pending:	Whether thermal handling is pending or not
@@ -60,6 +62,7 @@ struct emif_data {
 	u8				duplicate;
 	u8				temperature_level;
 	u32				irq;
+	struct notifier_block		volt_notifier_blk;
 	struct list_head		siblings;
 	void __iomem			*base;
 	struct device			*dev;
@@ -76,6 +79,10 @@ struct emif_data {
 static struct emif_data *emif1;
 static LIST_HEAD(device_list);
 static u32 t_ck; /* DDR clock period in ps */
+
+/* Forward declarations */
+static int emif_notify_voltage(struct notifier_block *nb, unsigned long val,
+	void *data);
 
 static void do_emif_regdump_show(struct seq_file *s, struct emif_data *emif,
 	struct emif_regs *regs)
@@ -1463,6 +1470,7 @@ static int __devinit emif_probe(struct platform_device *pdev)
 {
 	struct emif_data	*emif;
 	struct resource		*res;
+	struct voltagedomain	*voltdm;
 
 #if defined(CONFIG_OF)
 	if (pdev->dev.of_node)
@@ -1483,6 +1491,15 @@ static int __devinit emif_probe(struct platform_device *pdev)
 	/* Save pointers to each other in emif and device structures */
 	emif->dev = &pdev->dev;
 	platform_set_drvdata(pdev, emif);
+
+	/* Setup the notifiers */
+	voltdm = voltdm_lookup("core");
+	if (!voltdm)
+		goto error;
+
+	emif->volt_notifier_blk.notifier_call = emif_notify_voltage;
+	if (voltdm_register_notifier(voltdm, &emif->volt_notifier_blk))
+		goto error;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res)
@@ -1706,12 +1723,7 @@ static struct emif_regs *get_regs(struct emif_data *emif, u32 freq)
 	return regs;
 }
 
-/*
- * Function un-used right now. Will be used later when DVFS framework
- * is available
- */
-static void __attribute__((unused)) do_volt_notify_handling(
-		struct emif_data *emif, u32 volt_state)
+static void do_volt_notify_handling(struct emif_data *emif, u32 volt_state)
 {
 	dev_dbg(emif->dev, "voltage notification : %d", volt_state);
 
@@ -1726,12 +1738,7 @@ static void __attribute__((unused)) do_volt_notify_handling(
 	do_freq_update();
 }
 
-/*
- * Function un-used right now. Will be used later when DVFS framework
- * is available
- */
-static void __attribute__((unused)) do_freq_pre_notify_handling(void *emif_data,
-		u32 new_freq)
+static void do_freq_pre_notify_handling(void *emif_data, u32 new_freq)
 {
 	struct emif_regs *regs;
 	struct emif_data *emif = emif_data;
@@ -1762,6 +1769,27 @@ static const struct of_device_id omap_emif_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, omap_emif_of_match);
 #endif
+
+/*
+ * omap_emif_notify_voltage - setup the voltage sensitive
+ * registers based on the voltage situation (voltage ramping or stable)
+ */
+static int emif_notify_voltage(struct notifier_block *nb,
+		unsigned long val, void *data)
+{
+	u32			volt_state;
+	struct emif_data	*emif;
+
+	if (val == OMAP_VOLTAGE_PRECHANGE)
+		volt_state =  DDR_VOLTAGE_RAMPING;
+	else
+		volt_state =  DDR_VOLTAGE_STABLE;
+
+	emif = container_of(nb, struct emif_data, volt_notifier_blk);
+	do_volt_notify_handling(emif, volt_state);
+
+	return 0;
+}
 
 void emif_freq_pre_notify_handler(u32 new_freq)
 {
