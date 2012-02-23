@@ -17,6 +17,8 @@
  * Please place only base defines here and put the rest in device
  * specific headers.
  */
+#define OMAP54XX_LLIA_BASE		0x3c000000
+#define OMAP54XX_LLIB_BASE		0x3c800000
 #define L4_54XX_BASE			0x4a000000
 #define L4_WK_54XX_BASE			0x4ae00000
 #define L4_PER_54XX_BASE		0x48000000

@@ -594,6 +594,8 @@ static struct sar_module omap54xx_sar_modules[] = {
 #endif
 	{ .base = L4_54XX_PHYS, .size = SZ_4M },
 	{ .base = L4_PER_54XX_PHYS, .size = SZ_4M },
+	{ .base = OMAP54XX_LLIA_BASE, .size = SZ_64K },
+	{ .base = OMAP54XX_LLIB_BASE, .size = SZ_64K },
 	{ .base = 0 },
 };
 
