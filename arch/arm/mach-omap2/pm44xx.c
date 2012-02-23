@@ -40,6 +40,9 @@
 #include "prm44xx.h"
 #include "prm-regbits-44xx.h"
 #include "cm2_54xx.h"
+#include "cm44xx.h"
+#include "prm54xx.h"
+#include "dvfs.h"
 
 static const char * const autoidle_hwmods[] = {
 	"gpio2",
@@ -181,6 +184,13 @@ void omap_pm_idle(u32 cpu_id, int state)
 	pwrdm_clear_all_prev_pwrst(per_pwrdm);
 	omap4_device_clear_prev_off_state();
 
+	/*
+	 * Just return if we detect a scenario where we conflict
+	 * with DVFS
+	 */
+	if (omap_dvfs_is_any_dev_scaling())
+		return;
+
 	if (omap4_device_next_state_off()) {
 		/* Save the device context to SAR RAM */
 		if (omap_sar_save())
@@ -207,6 +217,17 @@ static int omap4_pm_suspend(void)
 	struct power_state *pwrst;
 	int state, ret = 0, logic_state;
 	u32 cpu_id = smp_processor_id();
+
+	/*
+	 * If any device was in the middle of a scale operation
+	 * then abort, as we cannot predict which part of the scale
+	 * operation we interrupted.
+	 */
+	if (omap_dvfs_is_any_dev_scaling()) {
+		pr_err("%s: oops.. middle of scale op.. aborting suspend\n",
+			__func__);
+		return -EBUSY;
+	}
 
 	/* Save current powerdomain state */
 	list_for_each_entry(pwrst, &pwrst_list, node) {
