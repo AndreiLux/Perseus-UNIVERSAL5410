@@ -26,6 +26,7 @@
 #include "prm-regbits-44xx.h"
 #include "prm44xx.h"
 #include "prm54xx.h"
+#include "scrm44xx.h"
 #include "prcm44xx.h"
 #include "prminst44xx.h"
 #include "voltage.h"
@@ -56,6 +57,7 @@ static struct voltagedomain omap5_voltdm_mpu = {
 	.read = omap4_prm_vcvp_read,
 	.write = omap4_prm_vcvp_write,
 	.rmw = omap4_prm_vcvp_rmw,
+	.scrm_write = omap5_scrm_write,
 	.vc = &omap5_vc_mpu,
 	.vfsm = &omap5_vdd_mpu_vfsm,
 	.vp = &omap5_vp_mpu,
@@ -69,6 +71,7 @@ static struct voltagedomain omap5_voltdm_mm = {
 	.read = omap4_prm_vcvp_read,
 	.write = omap4_prm_vcvp_write,
 	.rmw = omap4_prm_vcvp_rmw,
+	.scrm_write = omap5_scrm_write,
 	.vc = &omap5_vc_mm,
 	.vfsm = &omap5_vdd_mm_vfsm,
 	.vp = &omap5_vp_mm,
@@ -82,6 +85,7 @@ static struct voltagedomain omap5_voltdm_core = {
 	.read = omap4_prm_vcvp_read,
 	.write = omap4_prm_vcvp_write,
 	.rmw = omap4_prm_vcvp_rmw,
+	.scrm_write = omap5_scrm_write,
 	.vc = &omap5_vc_core,
 	.vfsm = &omap5_vdd_core_vfsm,
 	.vp = &omap5_vp_core,

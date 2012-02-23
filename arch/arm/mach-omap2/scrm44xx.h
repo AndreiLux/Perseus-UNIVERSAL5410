@@ -20,9 +20,12 @@
 #define __ARCH_ARM_MACH_OMAP2_SCRM_44XX_H
 
 #define OMAP4_SCRM_BASE				0x4a30a000
+#define OMAP5_SCRM_BASE				0x4ae0a000
 
 #define OMAP44XX_SCRM_REGADDR(reg)	\
 		OMAP2_L4_IO_ADDRESS(OMAP4_SCRM_BASE + (reg))
+#define OMAP54XX_SCRM_REGADDR(reg)	\
+		OMAP2_L4_IO_ADDRESS(OMAP5_SCRM_BASE + (reg))
 
 /* Registers offset */
 #define OMAP4_SCRM_REVISION_SCRM_OFFSET		0x0000
@@ -171,5 +174,8 @@
 /* D2DWARMRSTST */
 #define OMAP4_D2DWARMRSTST_SHIFT		3
 #define OMAP4_D2DWARMRSTST_MASK			(1 << 3)
+
+extern void omap4_scrm_write(u32 val, u32 offset);
+extern void omap5_scrm_write(u32 val, u32 offset);
 
 #endif

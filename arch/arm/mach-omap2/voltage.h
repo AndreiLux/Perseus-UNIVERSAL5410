@@ -89,6 +89,7 @@ struct voltagedomain {
 	u32 (*read) (u8 offset);
 	void (*write) (u32 val, u8 offset);
 	u32 (*rmw)(u32 mask, u32 bits, u8 offset);
+	void (*scrm_write) (u32 val, u32 offset);
 
 	union {
 		const char *name;
