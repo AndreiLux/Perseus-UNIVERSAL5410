@@ -1074,6 +1074,7 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 #ifdef CONFIG_VIDEO_EXYNOS_FIMG2D
 	&s5p_device_fimg2d,
 #endif
+	&exynos5_device_rotator,
 #ifdef CONFIG_VIDEO_M5MOLS
 	&m5mols_fixed_voltage,
 #endif
@@ -1171,7 +1172,7 @@ static void __init exynos_sysmmu_init(void)
 	sysmmu_set_owner(&SYSMMU_PLATDEV(flite1).dev, &exynos_device_flite1.dev);
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_ROTATOR
-	sysmmu_set_owner(&SYSMMU_PLATDEV(rot).dev, &exynos_device_rotator.dev);
+	sysmmu_set_owner(&SYSMMU_PLATDEV(rot).dev, &exynos5_device_rotator.dev);
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_FIMG2D
 	sysmmu_set_owner(&SYSMMU_PLATDEV(2d).dev, &s5p_device_fimg2d.dev);
