@@ -78,23 +78,6 @@ void pm_dbg_update_time(struct powerdomain *pwrdm, int prev)
 	pwrdm->timer = t;
 }
 
-static int clkdm_dbg_show_counter(struct clockdomain *clkdm, void *user)
-{
-	struct seq_file *s = (struct seq_file *)user;
-
-	if (strcmp(clkdm->name, "emu_clkdm") == 0 ||
-		strcmp(clkdm->name, "wkup_clkdm") == 0 ||
-		strncmp(clkdm->name, "dpll", 4) == 0)
-		return 0;
-
-	seq_printf(s, "%s->%s (%d)", clkdm->name,
-			clkdm->pwrdm.ptr->name,
-			atomic_read(&clkdm->usecount));
-	seq_printf(s, "\n");
-
-	return 0;
-}
-
 static int pwrdm_dbg_show_counter(struct powerdomain *pwrdm, void *user)
 {
 	struct seq_file *s = (struct seq_file *)user;
@@ -148,10 +131,54 @@ static int pwrdm_dbg_show_timer(struct powerdomain *pwrdm, void *user)
 	return 0;
 }
 
+static struct voltagedomain *parent_voltdm;
+static struct powerdomain *parent_pwrdm;
+
+static int pwrdm_child_show(struct clockdomain *clkdm, void *user)
+{
+	struct seq_file *s = user;
+	u32 usecount;
+
+	if (clkdm->pwrdm.ptr == parent_pwrdm) {
+		usecount = atomic_read(&clkdm->usecount);
+		if (usecount)
+			seq_printf(s, "    %s : %d\n", clkdm->name, usecount);
+	}
+	return 0;
+}
+
+static int voltdm_child_show(struct powerdomain *pwrdm, void *user)
+{
+	struct seq_file *s = user;
+	u32 usecount;
+
+	if (pwrdm->voltdm.ptr == parent_voltdm) {
+		usecount = atomic_read(&pwrdm->usecount);
+		if (usecount) {
+			seq_printf(s, "  %s : %d\n", pwrdm->name, usecount);
+			parent_pwrdm = pwrdm;
+			clkdm_for_each(pwrdm_child_show, s);
+		}
+	}
+	return 0;
+}
+
+static int voltdm_dbg_show_counters(struct voltagedomain *voltdm, void *user)
+{
+	struct seq_file *s = user;
+
+	seq_printf(s, "%s : %d\n", voltdm->name,
+		atomic_read(&voltdm->usecount));
+
+	parent_voltdm = voltdm;
+	pwrdm_for_each(voltdm_child_show, s);
+	return 0;
+}
+
 static int pm_dbg_show_counters(struct seq_file *s, void *unused)
 {
 	pwrdm_for_each(pwrdm_dbg_show_counter, s);
-	clkdm_for_each(clkdm_dbg_show_counter, s);
+	voltdm_for_each(voltdm_dbg_show_counters, s);
 
 	return 0;
 }
