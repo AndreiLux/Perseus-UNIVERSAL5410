@@ -32,15 +32,15 @@
  * voltage dependent data for each VDD.
  */
 
-#define OMAP5_ON_VOLTAGE_UV			1000000
-#define OMAP5_ONLP_VOLTAGE_UV			1000000
+#define OMAP5_ON_VOLTAGE_UV				1040000
+#define OMAP5_ONLP_VOLTAGE_UV			1040000
 #define OMAP5_ON_VOLTAGE_MPU_UV			1220000
 #define OMAP5_ONLP_VOLTAGE_MPU_UV		1220000
-#define OMAP5_RET_VOLTAGE_UV			830000
+#define OMAP5_RET_VOLTAGE_UV			700000
 #define OMAP5_OFF_VOLTAGE_UV			0
 
-#define OMAP5430_VDD_MPU_OPP_LOW		 880000
-#define OMAP5430_VDD_MPU_OPP_NOM		1000000
+#define OMAP5430_VDD_MPU_OPP_LOW		 950000
+#define OMAP5430_VDD_MPU_OPP_NOM		1040000
 #define OMAP5430_VDD_MPU_OPP_HIGH		1220000
 #define OMAP5430_VDD_MPU_OPP_SB			1220000
 
@@ -64,9 +64,9 @@ struct omap_vc_param omap54xx_mpu_vc_data = {
 	.off			= OMAP5_OFF_VOLTAGE_UV,
 };
 
-#define OMAP5430_VDD_MM_OPP_LOW			 880000
-#define OMAP5430_VDD_MM_OPP_NOM			1000000
-#define OMAP5430_VDD_MM_OPP_OD			1140000
+#define OMAP5430_VDD_MM_OPP_LOW			 950000
+#define OMAP5430_VDD_MM_OPP_NOM			1040000
+#define OMAP5430_VDD_MM_OPP_OD			1200000
 
 struct omap_volt_data omap54xx_vdd_mm_volt_data[] = {
 	OMAP5_VOLT_DATA_DEFINE(OMAP5430_VDD_MM_OPP_LOW, OMAP54XX_CONTROL_FUSE_MM_OPP50, OMAP54XX_CONTROL_FUSE_MM_LVT_OPP50, 0xf4, 0x0c, OMAP_ABB_NOMINAL_OPP),
@@ -87,8 +87,8 @@ struct omap_vc_param omap54xx_mm_vc_data = {
 	.off			= OMAP5_OFF_VOLTAGE_UV,
 };
 
-#define OMAP5430_VDD_CORE_OPP_LOW		 880000
-#define OMAP5430_VDD_CORE_OPP_NOM		1000000
+#define OMAP5430_VDD_CORE_OPP_LOW		 950000
+#define OMAP5430_VDD_CORE_OPP_NOM		1040000
 
 struct omap_volt_data omap54xx_vdd_core_volt_data[] = {
 	VOLT_DATA_DEFINE(OMAP5430_VDD_CORE_OPP_LOW, OMAP54XX_CONTROL_FUSE_CORE_OPP50, 0xf4, 0x0c, OMAP_ABB_NO_LDO),
@@ -152,13 +152,11 @@ struct omap_vdd_dep_info omap54xx_vddmm_dep_info[] = {
 
 static struct omap_opp_def __initdata omap54xx_opp_def_list[] = {
 	/* MPU OPP1 - OPPLOW */
-	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 550000000, OMAP5430_VDD_MPU_OPP_LOW),
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 400000000, OMAP5430_VDD_MPU_OPP_LOW),
 	/* MPU OPP2 - OPPNOM */
-	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 1100000000, OMAP5430_VDD_MPU_OPP_NOM),
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 800000000, OMAP5430_VDD_MPU_OPP_NOM),
 	/* MPU OPP3 - OPP-HIGH */
-	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 1500000000, OMAP5430_VDD_MPU_OPP_HIGH),
-	/* MPU OPP4 - OPP-SB */
-	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 2000000000, OMAP5430_VDD_MPU_OPP_SB),
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 1100000000, OMAP5430_VDD_MPU_OPP_HIGH),
 	/* L3 OPP1 - OPPLOW */
 	OPP_INITIALIZER("l3_main_1", "virt_l3_ck", "core", true, 133000000, OMAP5430_VDD_CORE_OPP_LOW),
 	/* L3 OPP2 - OPPNOM */
@@ -205,7 +203,6 @@ static struct omap_opp_def __initdata omap54xx_opp_def_list[] = {
 	OPP_INITIALIZER("dsp", "dpll_iva_h11x2_ck", "mm", true, 466000000, OMAP5430_VDD_MM_OPP_NOM),
 	/* DSP OPP3 - OPPTB */
 	OPP_INITIALIZER("dsp", "dpll_iva_h11x2_ck", "mm", false, 532000000, OMAP5430_VDD_MM_OPP_OD),
-
 #endif
 #if 0
 	/* SGX OPP1 - OPPLOW */
