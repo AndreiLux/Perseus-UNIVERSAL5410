@@ -236,7 +236,7 @@ extern u32 omap_mpuss_read_prev_context_state(void);
 extern void omap_mpuss_timer_init(void);
 extern void gic_dist_enable(void);
 extern void gic_dist_disable(void);
-
+extern u32 gic_readl(u32 offset, u8 idx);
 #else
 static inline int omap_enter_lowpower(unsigned int cpu,
 					unsigned int power_state)
