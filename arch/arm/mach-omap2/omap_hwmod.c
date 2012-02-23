@@ -2638,8 +2638,10 @@ int omap_hwmod_disable_clkdm_usecounting(struct omap_hwmod *oh)
 
 	oh->flags |= HWMOD_NO_CLKDM_USECOUNTING;
 
-	if (oh->clkdm && oh->_state == _HWMOD_STATE_ENABLED)
+	if ((oh->clkdm && oh->_state == _HWMOD_STATE_ENABLED) ||
+		(oh->clkdm && oh->_state == _HWMOD_STATE_ENABLED_AT_INIT)) {
 		clkdm_usecount_dec(oh->clkdm);
+	}
 
 	return 0;
 }
