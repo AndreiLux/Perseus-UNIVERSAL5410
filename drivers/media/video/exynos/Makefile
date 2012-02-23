@@ -5,5 +5,6 @@ obj-$(CONFIG_VIDEO_EXYNOS_GSCALER)	+= gsc/
 obj-$(CONFIG_VIDEO_EXYNOS_JPEG)	+= jpeg/
 obj-$(CONFIG_VIDEO_EXYNOS_FIMG2D)	+= fimg2d/
 obj-$(CONFIG_VIDEO_EXYNOS_MFC)	+= mfc/
+obj-$(CONFIG_VIDEO_EXYNOS_TV)		+= tv/
 
 EXTRA_CLAGS += -Idrivers/media/video
