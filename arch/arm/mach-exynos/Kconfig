@@ -411,6 +411,8 @@ config MACH_SMDK5250
 	select S5P_DEV_MFC
 	select S5P_DEV_FIMD1
 	select S5P_DEV_FIMG2D
+	select S5P_DEV_TV
+	select S5P_DEV_I2C_HDMIPHY
 	select EXYNOS_DEV_DMA
 	select EXYNOS_DEV_SYSMMU
 	select EXYNOS_DEV_DWMCI
@@ -489,6 +491,12 @@ config EXYNOS4_SETUP_CSIS
 	default y
 	help
 	  Common setup code for MIPI-CSIS
+
+config EXYNOS5_SETUP_TVOUT
+	bool
+	default y
+	help
+	  Common setup code for TVOUT
 
 if ARCH_EXYNOS4
 
