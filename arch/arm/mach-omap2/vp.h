@@ -35,7 +35,7 @@ struct voltagedomain;
 #define OMAP5_VP_VDD_MPU_ID 2
 
 /* XXX document */
-#define VP_IDLE_TIMEOUT		200
+#define VP_IDLE_TIMEOUT		500
 #define VP_TRANXDONE_TIMEOUT	300
 
 /**
