@@ -1073,6 +1073,9 @@ int clkdm_hwmod_enable(struct clockdomain *clkdm, struct omap_hwmod *oh)
 	if (!oh)
 		return -EINVAL;
 
+	if (oh->flags & HWMOD_NO_CLKDM_USECOUNTING)
+		return 0;
+
 	return _clkdm_clk_hwmod_enable(clkdm);
 }
 
@@ -1103,6 +1106,9 @@ int clkdm_hwmod_disable(struct clockdomain *clkdm, struct omap_hwmod *oh)
 
 	if (!oh)
 		return -EINVAL;
+
+	if (oh->flags & HWMOD_NO_CLKDM_USECOUNTING)
+		return 0;
 
 	return _clkdm_clk_hwmod_disable(clkdm);
 }

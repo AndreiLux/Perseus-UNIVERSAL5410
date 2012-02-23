@@ -407,6 +407,8 @@ struct omap_hwmod_omap4_prcm {
  *     in order to complete the reset. Optional clocks will be disabled
  *     again after the reset.
  * HWMOD_16BIT_REG: Module has 16bit registers
+ * HWMOD_NO_CLKDM_USECOUNTING: No clockdomain usecounting for this hwmod,
+ *     handled by hardware.
  */
 #define HWMOD_SWSUP_SIDLE			(1 << 0)
 #define HWMOD_SWSUP_MSTANDBY			(1 << 1)
@@ -417,6 +419,7 @@ struct omap_hwmod_omap4_prcm {
 #define HWMOD_NO_IDLEST				(1 << 6)
 #define HWMOD_CONTROL_OPT_CLKS_IN_RESET		(1 << 7)
 #define HWMOD_16BIT_REG				(1 << 8)
+#define HWMOD_NO_CLKDM_USECOUNTING		(1 << 9)
 
 /*
  * omap_hwmod._int_flags definitions
@@ -618,6 +621,8 @@ int omap_hwmod_set_clockact_none(struct omap_hwmod *oh);
 
 int omap_hwmod_enable_wakeup(struct omap_hwmod *oh);
 int omap_hwmod_disable_wakeup(struct omap_hwmod *oh);
+
+int omap_hwmod_disable_clkdm_usecounting(struct omap_hwmod *oh);
 
 int omap_hwmod_for_each_by_class(const char *classname,
 				 int (*fn)(struct omap_hwmod *oh,

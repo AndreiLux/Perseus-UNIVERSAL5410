@@ -2622,6 +2622,29 @@ int omap_hwmod_disable_wakeup(struct omap_hwmod *oh)
 }
 
 /**
+ * omap_hwmod_disable_clkdm_usecounting - disables clockdomain usecounting
+ * for the given hwmod.
+ * @oh: struct omap_hwmod *
+ *
+ * The state of some hwmods does not matter for the clockdomain, it can
+ * transition to idle anyway. This API can be used to disable usecount
+ * mechanism for these hwmods, so that the usecount value is sensible
+ * all the time.
+ */
+int omap_hwmod_disable_clkdm_usecounting(struct omap_hwmod *oh)
+{
+	if (!oh)
+		return -EINVAL;
+
+	oh->flags |= HWMOD_NO_CLKDM_USECOUNTING;
+
+	if (oh->clkdm && oh->_state == _HWMOD_STATE_ENABLED)
+		clkdm_usecount_dec(oh->clkdm);
+
+	return 0;
+}
+
+/**
  * omap_hwmod_assert_hardreset - assert the HW reset line of submodules
  * contained in the hwmod module.
  * @oh: struct omap_hwmod *
