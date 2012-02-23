@@ -150,6 +150,7 @@ extern struct platform_device exynos5_device_i2s2;
 extern struct platform_device exynos5_device_spdif;
 extern struct platform_device exynos_device_flite0;
 extern struct platform_device exynos_device_flite1;
+extern struct platform_device exynos5_device_rotator;
 
 extern struct platform_device exynos5_device_gsc0;
 extern struct platform_device exynos5_device_gsc1;

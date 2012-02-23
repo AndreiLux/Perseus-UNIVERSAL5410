@@ -706,6 +706,11 @@ static struct clk exynos5_init_clocks_off[] = {
 		.enable		= exynos5_clk_ip_gscl_ctrl,
 		.ctrlbit	= (1 << 6),
 	}, {
+		.name		= "rotator",
+		.devname	= "exynos-rot",
+		.enable		= exynos5_clk_ip_gen_ctrl,
+		.ctrlbit	= (1 << 1),
+	}, {
 		.name		= "jpeg",
 		.enable		= exynos5_clk_ip_gen_ctrl,
 		.ctrlbit	= (1 << 2),

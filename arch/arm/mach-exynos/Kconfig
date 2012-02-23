@@ -118,6 +118,12 @@ config EXYNOS4_DEV_FIMC_LITE
 	help
 	  Compile in platform device definitions for FIMC_LITE
 
+config EXYNOS_DEV_ROTATOR
+	bool
+	help
+	  Compile in platform device definitions for EXYNOS ROTATOR
+	  NOTE: EXYNOS4 is not supported yet, it will be implemented.
+
 config EXYNOS4_DEV_USB_OHCI
 	bool
 	help
@@ -420,6 +426,7 @@ config MACH_SMDK5250
 	select EXYNOS_DEV_SS_UDC
 	select EXYNOS_DEV_DWC3
 	select EXYNOS_SETUP_FIMD1
+	select EXYNOS_DEV_ROTATOR
 	select EXYNOS4_DEV_FIMC_LITE
 	select EXYNOS4_SETUP_I2C1
 	select EXYNOS4_SETUP_I2C2
