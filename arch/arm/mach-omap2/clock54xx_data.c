@@ -2035,6 +2035,26 @@ static struct clk usb_tll_hs_usb_ch2_clk = {
 	.clkdm_name	= "l3init_clkdm",
 };
 
+static struct clk usb_host_hs_fck = {
+	.name		= "usb_host_hs_fck",
+	.ops		= &clkops_omap2_dflt,
+	.enable_reg	= OMAP54XX_CM_L3INIT_USB_HOST_HS_CLKCTRL,
+	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
+	.clkdm_name	= "l3init_clkdm",
+	.parent		= &l3init_60m_fclk,
+	.recalc		= &followparent_recalc,
+};
+
+static struct clk usb_tll_hs_ick = {
+	.name		= "usb_tll_hs_ick",
+	.ops		= &clkops_omap2_dflt,
+	.enable_reg	= OMAP54XX_CM_L3INIT_USB_TLL_HS_CLKCTRL,
+	.enable_bit	= OMAP54XX_MODULEMODE_HWCTRL,
+	.clkdm_name	= "l3init_clkdm",
+	.parent		= &l4_div_ck,
+	.recalc		= &followparent_recalc,
+};
+
 static const struct clksel fdif_fclk_div[] = {
 	{ .parent = &dpll_per_h11x2_ck, .rates = div2_1to2_rates },
 	{ .parent = NULL },
@@ -2517,10 +2537,12 @@ static struct omap_clk omap54xx_clks[] = {
 	CLK(NULL,	"usb_host_hs_utmi_p1_clk",	&usb_host_hs_utmi_p1_clk,	CK_54XX),
 	CLK(NULL,	"usb_host_hs_utmi_p2_clk",	&usb_host_hs_utmi_p2_clk,	CK_54XX),
 	CLK(NULL,	"usb_host_hs_utmi_p3_clk",	&usb_host_hs_utmi_p3_clk,	CK_54XX),
+	CLK(NULL,	"usb_host_hs_fck",		&usb_host_hs_fck,		CK_54XX),
 	CLK(NULL,	"usb_otg_ss_refclk960m_ck",	&usb_otg_ss_refclk960m_ck,	CK_54XX),
 	CLK(NULL,	"usb_tll_hs_usb_ch0_clk",	&usb_tll_hs_usb_ch0_clk,	CK_54XX),
 	CLK(NULL,	"usb_tll_hs_usb_ch1_clk",	&usb_tll_hs_usb_ch1_clk,	CK_54XX),
 	CLK(NULL,	"usb_tll_hs_usb_ch2_clk",	&usb_tll_hs_usb_ch2_clk,	CK_54XX),
+	CLK(NULL,	"usb_tll_hs_ick",		&usb_tll_hs_ick,		CK_54XX),
 	CLK(NULL,	"fdif_fclk",			&fdif_fclk,	CK_54XX),
 	CLK(NULL,	"hsi_fclk",			&hsi_fclk,	CK_54XX),
 	CLK(NULL,	"auxclk0_src_ck",		&auxclk0_src_ck,	CK_54XX),
