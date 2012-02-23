@@ -42,7 +42,6 @@
 #include "cm2_54xx.h"
 
 static const char * const autoidle_hwmods[] = {
-	"mpu",
 	"gpio2",
 	"gpio3",
 	"gpio4",
@@ -50,6 +49,9 @@ static const char * const autoidle_hwmods[] = {
 	"gpio6",
 	"kbd",
 	"timer1",
+	"emif1",
+	"emif2",
+	"gpmc"
 };
 
 struct power_state {
