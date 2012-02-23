@@ -59,6 +59,8 @@ struct omap_vc_channel omap4_vc_mpu = {
 	.smps_volra_mask = OMAP4430_VOLRA_VDD_MPU_L_MASK,
 	.smps_cmdra_mask = OMAP4430_CMDRA_VDD_MPU_L_MASK,
 	.cfg_channel_sa_shift = OMAP4430_SA_VDD_MPU_L_SHIFT,
+	.voltctrl_shift = OMAP4430_AUTO_CTRL_VDD_MPU_L_SHIFT,
+	.voltctrl_mask = OMAP4430_AUTO_CTRL_VDD_MPU_L_MASK,
 };
 
 struct omap_vc_channel omap4_vc_iva = {
@@ -72,6 +74,8 @@ struct omap_vc_channel omap4_vc_iva = {
 	.smps_volra_mask = OMAP4430_VOLRA_VDD_IVA_L_MASK,
 	.smps_cmdra_mask = OMAP4430_CMDRA_VDD_IVA_L_MASK,
 	.cfg_channel_sa_shift = OMAP4430_SA_VDD_IVA_L_SHIFT,
+	.voltctrl_shift = OMAP4430_AUTO_CTRL_VDD_IVA_L_SHIFT,
+	.voltctrl_mask = OMAP4430_AUTO_CTRL_VDD_IVA_L_MASK,
 };
 
 struct omap_vc_channel omap4_vc_core = {
@@ -85,5 +89,7 @@ struct omap_vc_channel omap4_vc_core = {
 	.smps_volra_mask = OMAP4430_VOLRA_VDD_CORE_L_MASK,
 	.smps_cmdra_mask = OMAP4430_CMDRA_VDD_CORE_L_MASK,
 	.cfg_channel_sa_shift = OMAP4430_SA_VDD_CORE_L_SHIFT,
+	.voltctrl_shift = OMAP4430_AUTO_CTRL_VDD_CORE_L_SHIFT,
+	.voltctrl_mask = OMAP4430_AUTO_CTRL_VDD_CORE_L_MASK,
 };
 

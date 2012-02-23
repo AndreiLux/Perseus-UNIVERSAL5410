@@ -102,6 +102,8 @@ struct omap_vc_channel {
 	u8 cfg_channel_reg;
 	u8 cfg_channel_sa_shift;
 	u8 flags;
+	u8 voltctrl_shift;
+	u8 voltctrl_mask;
 };
 
 extern struct omap_vc_channel omap3_vc_mpu;

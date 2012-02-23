@@ -596,6 +596,40 @@ static void omap4_set_timings(struct voltagedomain *voltdm, bool off_mode)
 	}
 }
 
+static void omap4_vc_sleep(struct voltagedomain *voltdm)
+{
+	u32 val;
+	u32 voltctrl;
+
+	switch (voltdm->target_state) {
+	case PWRDM_POWER_OFF:
+	case PWRDM_POWER_RET:
+		val = 2;
+		break;
+	default:
+		val = 1;
+		break;
+	}
+	voltctrl = __raw_readl(OMAP4430_PRM_VOLTCTRL);
+
+	voltctrl &= ~(u32)voltdm->vc->voltctrl_mask;
+
+	voltctrl |= val << voltdm->vc->voltctrl_shift;
+
+	__raw_writel(voltctrl, OMAP4430_PRM_VOLTCTRL);
+}
+
+static void omap4_vc_wakeup(struct voltagedomain *voltdm)
+{
+	u32 voltctrl;
+
+	voltctrl = __raw_readl(OMAP4430_PRM_VOLTCTRL);
+
+	voltctrl &= ~(u32)voltdm->vc->voltctrl_mask;
+
+	__raw_writel(voltctrl, OMAP4430_PRM_VOLTCTRL);
+}
+
 /* OMAP4 specific voltage init functions */
 static void __init omap4_vc_init_channel(struct voltagedomain *voltdm)
 {
@@ -603,6 +637,9 @@ static void __init omap4_vc_init_channel(struct voltagedomain *voltdm)
 	u32 vc_val = 0;
 
 	omap4_set_timings(voltdm, false);
+
+	voltdm->sleep = omap4_vc_sleep;
+	voltdm->wakeup = omap4_vc_wakeup;
 
 	if (pmic->i2c_high_speed) {
 		vc_val |= pmic->i2c_hscll_low << OMAP4430_HSCLL_SHIFT;
