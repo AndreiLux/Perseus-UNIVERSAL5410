@@ -52,6 +52,7 @@
 #include <asm/hardware/cache-l2x0.h>
 
 #include <plat/omap44xx.h>
+#include <mach/omap-secure.h>
 
 #include <mach/omap-secure.h>
 
