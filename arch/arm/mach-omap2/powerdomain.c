@@ -137,6 +137,12 @@ static void _update_logic_membank_counters(struct powerdomain *pwrdm)
 	if (logic_pwrst == -EINVAL)
 		logic_pwrst = pwrdm_read_logic_retst(pwrdm);
 
+	prev_logic_pwrst = pwrdm_read_prev_logic_pwrst(pwrdm);
+#if 0
+	/* Fake logic off counter */
+	if ((pwrdm->pwrsts_logic_ret == PWRSTS_OFF_RET) &&
+		(pwrdm_read_logic_retst(pwrdm) == PWRDM_POWER_OFF))
+#endif
 	if ((pwrdm->pwrsts_logic_ret == PWRSTS_OFF_RET) &&
 	    (logic_pwrst == PWRDM_POWER_OFF))
 		pwrdm->ret_logic_off_counter++;
