@@ -38,14 +38,23 @@
 #define OMAP4_VDD_CORE_SR_VOLT_REG	0x61
 #define OMAP4_VDD_CORE_SR_CMD_REG	0x62
 
+#ifdef CONFIG_OMAP4460_SEVM_PALMAS
+#define OMAP446X_VDD_MPU_SR_VOLT_REG	0x23
+#define OMAP446X_VDD_MPU_SR_CMD_REG		0x22
+#define OMAP446X_VDD_IVA_SR_VOLT_REG	0x2B
+#define OMAP446X_VDD_IVA_SR_CMD_REG		0x2A
+#define OMAP446X_VDD_CORE_SR_VOLT_REG	0x37
+#define OMAP446X_VDD_CORE_SR_CMD_REG	0x36
+#endif
+
 /* XXX TODO: Update MPU Registers */
 #define OMAP5_SRI2C_SLAVE_ADDR		0x12
-#define OMAP5_VDD_MPU_SR_VOLT_REG	0x55
-#define OMAP5_VDD_MPU_SR_CMD_REG	0x56
-#define OMAP5_VDD_MM_SR_VOLT_REG	0x56
-#define OMAP5_VDD_MM_SR_CMD_REG		0x55
-#define OMAP5_VDD_CORE_SR_VOLT_REG	0x4A
-#define OMAP5_VDD_CORE_SR_CMD_REG	0x49
+#define OMAP5_VDD_MPU_SR_VOLT_REG	0x23
+#define OMAP5_VDD_MPU_SR_CMD_REG	0x22
+#define OMAP5_VDD_MM_SR_VOLT_REG	0x2B
+#define OMAP5_VDD_MM_SR_CMD_REG		0x2A
+#define OMAP5_VDD_CORE_SR_VOLT_REG	0x37
+#define OMAP5_VDD_CORE_SR_CMD_REG	0x36
 
 static bool is_offset_valid;
 static u8 smps_offset;
@@ -179,6 +188,37 @@ static unsigned long twl6035_vsel_to_uv(const u8 vsel)
 		return 500000 + temp_vsel * 10000;
 }
 
+static u8 twl6035_uv_to_vsel(unsigned long uv)
+{
+	if (uv > 1650000) {
+		pr_err("%s:OUT OF RANGE! non mapped uv for %ld\n",
+			__func__, uv);
+		return 0;
+	}
+
+	return ((uv - 500000)/10000) + 6;
+}
+
+static unsigned long twl6035_vsel_to_uv(const u8 vsel)
+{
+	u8 temp_vsel = vsel;
+
+	if (vsel == 0 || vsel > 127) {
+		pr_err("%s:OUT OF RANGE! non mapped vsel %d\n",
+			__func__, vsel);
+		return 0;
+	}
+
+	if (temp_vsel > 121)
+		temp_vsel = 121;
+
+	temp_vsel = temp_vsel - 6;
+	if (temp_vsel < 0)
+		return 500000;
+	else
+		return 500000 + temp_vsel * 10000;
+}
+
 static struct omap_voltdm_pmic omap3_mpu_pmic = {
 	.slew_rate		= 4000,
 	.step_size		= 12500,
@@ -299,6 +339,53 @@ static struct omap_voltdm_pmic omap443x_core_pmic = {
 	.uv_to_vsel		= twl6030_uv_to_vsel,
 };
 
+#ifdef CONFIG_OMAP4460_SEVM_PALMAS
+static struct omap_voltdm_pmic omap446x_mpu_pmic = {
+	.slew_rate		= 5000,
+	.step_size		= 10000,
+	.volt_setup_time	= 0,
+	.vp_erroroffset		= OMAP4_VP_CONFIG_ERROROFFSET,
+	.vp_vstepmin		= OMAP4_VP_VSTEPMIN_VSTEPMIN,
+	.vp_vstepmax		= OMAP4_VP_VSTEPMAX_VSTEPMAX,
+	.vp_vddmin		= OMAP4_VP_MPU_VLIMITTO_VDDMIN,
+	.vp_vddmax		= OMAP4_VP_MPU_VLIMITTO_VDDMAX,
+	.vp_timeout_us		= OMAP4_VP_VLIMITTO_TIMEOUT_US,
+	.i2c_slave_addr		= OMAP4_SRI2C_SLAVE_ADDR,
+	.volt_reg_addr		= OMAP446X_VDD_MPU_SR_VOLT_REG,
+	.cmd_reg_addr		= OMAP446X_VDD_MPU_SR_CMD_REG,
+	.i2c_high_speed		= true,
+	.i2c_scll_low		= 0x28,
+	.i2c_scll_high		= 0x2C,
+	.i2c_hscll_low		= 0x0B,
+	.i2c_hscll_high		= 0x00,
+	.vsel_to_uv		= twl6035_vsel_to_uv,
+	.uv_to_vsel		= twl6035_uv_to_vsel,
+};
+
+static struct omap_voltdm_pmic omap446x_iva_pmic = {
+	.slew_rate		= 5000,
+	.step_size		= 10000,
+	.volt_setup_time	= 0,
+	.vp_erroroffset		= OMAP4_VP_CONFIG_ERROROFFSET,
+	.vp_vstepmin		= OMAP4_VP_VSTEPMIN_VSTEPMIN,
+	.vp_vstepmax		= OMAP4_VP_VSTEPMAX_VSTEPMAX,
+	.vp_vddmin		= OMAP4_VP_IVA_VLIMITTO_VDDMIN,
+	.vp_vddmax		= OMAP4_VP_IVA_VLIMITTO_VDDMAX,
+	.vp_timeout_us		= OMAP4_VP_VLIMITTO_TIMEOUT_US,
+	.i2c_slave_addr		= OMAP4_SRI2C_SLAVE_ADDR,
+	.volt_reg_addr		= OMAP446X_VDD_IVA_SR_VOLT_REG,
+	.cmd_reg_addr		= OMAP446X_VDD_IVA_SR_CMD_REG,
+	.i2c_high_speed		= true,
+	.i2c_scll_low		= 0x28,
+	.i2c_scll_high		= 0x2C,
+	.i2c_hscll_low		= 0x0B,
+	.i2c_hscll_high		= 0x00,
+	.vsel_to_uv		= twl6035_vsel_to_uv,
+	.uv_to_vsel		= twl6035_uv_to_vsel,
+};
+#endif
+
+
 /* Core uses the MPU rail of 4430 */
 static struct omap_voltdm_pmic omap446x_core_pmic = {
 	.slew_rate		= 4000,
@@ -320,10 +407,17 @@ static struct omap_voltdm_pmic omap446x_core_pmic = {
 	.i2c_scll_high		= 0x2C,
 	.i2c_hscll_low		= 0x0B,
 	.i2c_hscll_high		= 0x00,
+#ifdef CONFIG_OMAP4460_SEVM_PALMAS
+	.volt_reg_addr		= OMAP446X_VDD_CORE_SR_VOLT_REG,
+	.cmd_reg_addr		= OMAP446X_VDD_CORE_SR_CMD_REG,
+	.vsel_to_uv		= twl6035_vsel_to_uv,
+	.uv_to_vsel		= twl6035_uv_to_vsel,
+#else
 	.volt_reg_addr		= OMAP4_VDD_MPU_SR_VOLT_REG,
 	.cmd_reg_addr		= OMAP4_VDD_MPU_SR_CMD_REG,
 	.vsel_to_uv		= twl6030_vsel_to_uv,
 	.uv_to_vsel		= twl6030_uv_to_vsel,
+#endif
 };
 
 static struct omap_voltdm_pmic omap5_mpu_pmic = {
@@ -448,13 +542,26 @@ static __initdata struct omap_pmic_map omap_twl_map[] = {
 		.name = "iva",
 		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
 		.pmic_data = &omap4_iva_pmic,
-
 	},
+#ifdef CONFIG_OMAP4460_SEVM_PALMAS
+	{
+		.name = "mpu",
+		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP4460ES1_0),
+		.pmic_data = &omap446x_mpu_pmic,
+	},
+#endif
 	{
 		.name = "core",
 		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP4460ES1_0),
 		.pmic_data = &omap446x_core_pmic,
 	},
+#ifdef CONFIG_OMAP4460_SEVM_PALMAS
+	{	.name = "iva",
+		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP4460ES1_0),
+		.pmic_data = &omap446x_iva_pmic,
+
+	},
+#endif
 	{
 		.name = "mpu",
 		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP5430),
