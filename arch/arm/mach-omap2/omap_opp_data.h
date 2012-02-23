@@ -102,13 +102,30 @@ extern int __init omap_init_opp_table(struct omap_opp_def *opp_def,
 extern struct omap_volt_data omap34xx_vddmpu_volt_data[];
 extern struct omap_volt_data omap34xx_vddcore_volt_data[];
 extern struct omap_vdd_dep_info omap34xx_vddmpu_dep_info[];
+extern struct omap_vp_param omap34xx_mpu_vp_data;
+extern struct omap_vp_param omap34xx_core_vp_data;
+extern struct omap_vc_param omap34xx_mpu_vc_data;
+extern struct omap_vc_param omap34xx_core_vc_data;
+
 extern struct omap_volt_data omap36xx_vddmpu_volt_data[];
 extern struct omap_volt_data omap36xx_vddcore_volt_data[];
 extern struct omap_vdd_dep_info omap36xx_vddmpu_dep_info[];
+extern struct omap_vp_param omap36xx_mpu_vp_data;
+extern struct omap_vp_param omap36xx_core_vp_data;
+extern struct omap_vc_param omap36xx_mpu_vc_data;
+extern struct omap_vc_param omap36xx_core_vc_data;
 
 extern struct omap_volt_data omap44xx_vdd_mpu_volt_data[];
 extern struct omap_volt_data omap44xx_vdd_iva_volt_data[];
 extern struct omap_volt_data omap44xx_vdd_core_volt_data[];
+extern struct omap_vp_param omap44xx_mpu_vp_data;
+extern struct omap_vp_param omap44xx_iva_vp_data;
+extern struct omap_vp_param omap44xx_core_vp_data;
+extern struct omap_vc_param omap44xx_mpu_vc_data;
+extern struct omap_vc_param omap44xx_iva_vc_data;
+extern struct omap_vc_param omap44xx_core_vc_data;
+extern struct omap_vp_param omap446x_core_vp_data;
+extern struct omap_vc_param omap446x_core_vc_data;
 
 extern struct omap_vdd_dep_info omap443x_vddmpu_dep_info[];
 extern struct omap_vdd_dep_info omap443x_vddiva_dep_info[];
@@ -123,6 +140,12 @@ extern struct omap_vdd_dep_info omap446x_vddiva_dep_info[];
 extern struct omap_volt_data omap54xx_vdd_mpu_volt_data[];
 extern struct omap_volt_data omap54xx_vdd_mm_volt_data[];
 extern struct omap_volt_data omap54xx_vdd_core_volt_data[];
+extern struct omap_vp_param omap54xx_mpu_vp_data;
+extern struct omap_vp_param omap54xx_mm_vp_data;
+extern struct omap_vp_param omap54xx_core_vp_data;
+extern struct omap_vc_param omap54xx_mpu_vc_data;
+extern struct omap_vc_param omap54xx_mm_vc_data;
+extern struct omap_vc_param omap54xx_core_vc_data;
 
 extern struct omap_vdd_dep_info omap54xx_vddmpu_dep_info[];
 extern struct omap_vdd_dep_info omap54xx_vddmm_dep_info[];

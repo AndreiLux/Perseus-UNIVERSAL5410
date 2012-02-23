@@ -118,6 +118,14 @@ void __init omap44xx_voltagedomains_init(void)
 		omap4_vdd_iva_info.dep_vdd_info = omap443x_vddiva_dep_info;
 
 		omap4_voltdm_core.volt_data = omap44xx_vdd_core_volt_data;
+
+		omap4_voltdm_mpu.vp_param = &omap44xx_mpu_vp_data;
+		omap4_voltdm_iva.vp_param = &omap44xx_iva_vp_data;
+		omap4_voltdm_core.vp_param = &omap44xx_core_vp_data;
+
+		omap4_voltdm_mpu.vc_param = &omap44xx_mpu_vc_data;
+		omap4_voltdm_iva.vc_param = &omap44xx_iva_vc_data;
+		omap4_voltdm_core.vc_param = &omap44xx_core_vc_data;
 	} else if (cpu_is_omap446x()) {
 		omap4_voltdm_mpu.volt_data = omap446x_vdd_mpu_volt_data;
 		omap4_vdd_mpu_info.dep_vdd_info = omap446x_vddmpu_dep_info;
@@ -126,6 +134,14 @@ void __init omap44xx_voltagedomains_init(void)
 		omap4_vdd_iva_info.dep_vdd_info = omap446x_vddiva_dep_info;
 
 		omap4_voltdm_core.volt_data = omap446x_vdd_core_volt_data;
+
+		omap4_voltdm_mpu.vp_param = &omap44xx_mpu_vp_data;
+		omap4_voltdm_iva.vp_param = &omap44xx_iva_vp_data;
+		omap4_voltdm_core.vp_param = &omap446x_core_vp_data;
+
+		omap4_voltdm_mpu.vc_param = &omap44xx_mpu_vc_data;
+		omap4_voltdm_iva.vc_param = &omap44xx_iva_vc_data;
+		omap4_voltdm_core.vc_param = &omap446x_core_vc_data;
 	} else
 		return;
 

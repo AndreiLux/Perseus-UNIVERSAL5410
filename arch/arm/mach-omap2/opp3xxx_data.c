@@ -27,6 +27,10 @@
 #include "abb.h"
 
 /* 34xx */
+#define OMAP3_ON_VOLTAGE_UV		1200000
+#define OMAP3_ONLP_VOLTAGE_UV		1000000
+#define OMAP3_RET_VOLTAGE_UV		975000
+#define OMAP3_OFF_VOLTAGE_UV		600000
 
 /* VDD1 */
 
@@ -43,6 +47,18 @@ struct omap_volt_data omap34xx_vddmpu_volt_data[] = {
 	VOLT_DATA_DEFINE(OMAP3430_VDD_MPU_OPP4_UV, OMAP343X_CONTROL_FUSE_OPP4_VDD1, 0xf9, 0x18, OMAP_ABB_NO_LDO),
 	VOLT_DATA_DEFINE(OMAP3430_VDD_MPU_OPP5_UV, OMAP343X_CONTROL_FUSE_OPP5_VDD1, 0xf9, 0x18, OMAP_ABB_NO_LDO),
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0),
+};
+
+struct omap_vp_param omap34xx_mpu_vp_data = {
+	.vddmin			= OMAP3430_VP1_VLIMITTO_VDDMIN,
+	.vddmax			= OMAP3430_VP1_VLIMITTO_VDDMAX,
+};
+
+struct omap_vc_param omap34xx_mpu_vc_data = {
+	.on		= OMAP3_ON_VOLTAGE_UV,
+	.onlp		= OMAP3_ONLP_VOLTAGE_UV,
+	.ret		= OMAP3_RET_VOLTAGE_UV,
+	.off		= OMAP3_OFF_VOLTAGE_UV,
 };
 
 /* VDD2 */
@@ -76,6 +92,18 @@ struct omap_vdd_dep_info omap34xx_vddmpu_dep_info[] = {
 	{.name = NULL, .dep_table = NULL, .nr_dep_entries = 0},
 };
 
+struct omap_vp_param omap34xx_core_vp_data = {
+	.vddmin			= OMAP3430_VP2_VLIMITTO_VDDMIN,
+	.vddmax			= OMAP3430_VP2_VLIMITTO_VDDMAX,
+};
+
+struct omap_vc_param omap34xx_core_vc_data = {
+	.on		= OMAP3_ON_VOLTAGE_UV,
+	.onlp		= OMAP3_ONLP_VOLTAGE_UV,
+	.ret		= OMAP3_RET_VOLTAGE_UV,
+	.off		= OMAP3_OFF_VOLTAGE_UV,
+};
+
 /* 36xx */
 
 /* VDD1 */
@@ -93,6 +121,18 @@ struct omap_volt_data omap36xx_vddmpu_volt_data[] = {
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0),
 };
 
+struct omap_vp_param omap36xx_mpu_vp_data = {
+	.vddmin			= OMAP3630_VP1_VLIMITTO_VDDMIN,
+	.vddmax			= OMAP3630_VP1_VLIMITTO_VDDMAX,
+};
+
+struct omap_vc_param omap36xx_mpu_vc_data = {
+	.on		= OMAP3_ON_VOLTAGE_UV,
+	.onlp		= OMAP3_ONLP_VOLTAGE_UV,
+	.ret		= OMAP3_RET_VOLTAGE_UV,
+	.off		= OMAP3_OFF_VOLTAGE_UV,
+};
+
 /* VDD2 */
 
 #define OMAP3630_VDD_CORE_OPP50_UV		1000000
@@ -102,6 +142,18 @@ struct omap_volt_data omap36xx_vddcore_volt_data[] = {
 	VOLT_DATA_DEFINE(OMAP3630_VDD_CORE_OPP50_UV, OMAP3630_CONTROL_FUSE_OPP50_VDD2, 0xf4, 0x0c, OMAP_ABB_NO_LDO),
 	VOLT_DATA_DEFINE(OMAP3630_VDD_CORE_OPP100_UV, OMAP3630_CONTROL_FUSE_OPP100_VDD2, 0xf9, 0x16, OMAP_ABB_NO_LDO),
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0),
+};
+
+struct omap_vp_param omap36xx_core_vp_data = {
+	.vddmin			= OMAP3630_VP2_VLIMITTO_VDDMIN,
+	.vddmax			= OMAP3630_VP2_VLIMITTO_VDDMAX,
+};
+
+struct omap_vc_param omap36xx_core_vc_data = {
+	.on		= OMAP3_ON_VOLTAGE_UV,
+	.onlp		= OMAP3_ONLP_VOLTAGE_UV,
+	.ret		= OMAP3_RET_VOLTAGE_UV,
+	.off		= OMAP3_OFF_VOLTAGE_UV,
 };
 
 /* OPP data */

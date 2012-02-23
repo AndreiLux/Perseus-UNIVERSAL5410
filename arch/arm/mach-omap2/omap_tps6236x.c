@@ -170,10 +170,6 @@ static u8 tps6236x_uv_to_vsel(unsigned long uv)
 static struct omap_voltdm_pmic omap4_mpu_pmic = {
 	.slew_rate		= 8000,
 	.step_size		= STEP_SIZE_TPS6236X,
-	.on_volt		= 1375000,
-	.onlp_volt		= 1375000,
-	.ret_volt		= 830000,
-	.off_volt		= 0,
 	.volt_setup_time	= 0,
 	.vp_erroroffset		= OMAP4_VP_CONFIG_ERROROFFSET,
 	.vp_vstepmin		= OMAP4_VP_VSTEPMIN_VSTEPMIN,

@@ -32,6 +32,13 @@
  * voltage dependent data for each VDD.
  */
 
+#define OMAP5_ON_VOLTAGE_UV			1000000
+#define OMAP5_ONLP_VOLTAGE_UV			1000000
+#define OMAP5_ON_VOLTAGE_MPU_UV			1220000
+#define OMAP5_ONLP_VOLTAGE_MPU_UV		1220000
+#define OMAP5_RET_VOLTAGE_UV			830000
+#define OMAP5_OFF_VOLTAGE_UV			0
+
 #define OMAP5430_VDD_MPU_OPP_LOW		 880000
 #define OMAP5430_VDD_MPU_OPP_NOM		1000000
 #define OMAP5430_VDD_MPU_OPP_HIGH		1220000
@@ -45,6 +52,18 @@ struct omap_volt_data omap54xx_vdd_mpu_volt_data[] = {
 	OMAP5_VOLT_DATA_DEFINE(0, 0, 0, 0, 0, 0),
 };
 
+struct omap_vp_param omap54xx_mpu_vp_data = {
+	.vddmin			= OMAP5_VP_MPU_VLIMITTO_VDDMIN,
+	.vddmax			= OMAP5_VP_MPU_VLIMITTO_VDDMAX,
+};
+
+struct omap_vc_param omap54xx_mpu_vc_data = {
+	.on			= OMAP5_ON_VOLTAGE_MPU_UV,
+	.onlp			= OMAP5_ONLP_VOLTAGE_MPU_UV,
+	.ret			= OMAP5_RET_VOLTAGE_UV,
+	.off			= OMAP5_OFF_VOLTAGE_UV,
+};
+
 #define OMAP5430_VDD_MM_OPP_LOW			 880000
 #define OMAP5430_VDD_MM_OPP_NOM			1000000
 #define OMAP5430_VDD_MM_OPP_OD			1140000
@@ -56,6 +75,18 @@ struct omap_volt_data omap54xx_vdd_mm_volt_data[] = {
 	OMAP5_VOLT_DATA_DEFINE(0, 0, 0, 0, 0, 0),
 };
 
+struct omap_vp_param omap54xx_mm_vp_data = {
+	.vddmin			= OMAP5_VP_MM_VLIMITTO_VDDMIN,
+	.vddmax			= OMAP5_VP_MM_VLIMITTO_VDDMAX,
+};
+
+struct omap_vc_param omap54xx_mm_vc_data = {
+	.on			= OMAP5_ON_VOLTAGE_UV,
+	.onlp			= OMAP5_ONLP_VOLTAGE_UV,
+	.ret			= OMAP5_RET_VOLTAGE_UV,
+	.off			= OMAP5_OFF_VOLTAGE_UV,
+};
+
 #define OMAP5430_VDD_CORE_OPP_LOW		 880000
 #define OMAP5430_VDD_CORE_OPP_NOM		1000000
 
@@ -63,6 +94,18 @@ struct omap_volt_data omap54xx_vdd_core_volt_data[] = {
 	VOLT_DATA_DEFINE(OMAP5430_VDD_CORE_OPP_LOW, OMAP54XX_CONTROL_FUSE_CORE_OPP50, 0xf4, 0x0c, OMAP_ABB_NO_LDO),
 	VOLT_DATA_DEFINE(OMAP5430_VDD_CORE_OPP_NOM, OMAP54XX_CONTROL_FUSE_CORE_OPP100, 0xf9, 0x16, OMAP_ABB_NO_LDO),
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0),
+};
+
+struct omap_vp_param omap54xx_core_vp_data = {
+	.vddmin			= OMAP5_VP_CORE_VLIMITTO_VDDMIN,
+	.vddmax			= OMAP5_VP_CORE_VLIMITTO_VDDMAX,
+};
+
+struct omap_vc_param omap54xx_core_vc_data = {
+	.on			= OMAP5_ON_VOLTAGE_UV,
+	.onlp			= OMAP5_ONLP_VOLTAGE_UV,
+	.ret			= OMAP5_RET_VOLTAGE_UV,
+	.off			= OMAP5_OFF_VOLTAGE_UV,
 };
 
 /* Dependency of domains are as follows for OMAP5430 (OPP based):

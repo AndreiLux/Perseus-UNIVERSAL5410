@@ -34,6 +34,16 @@
  * voltage dependent data for each VDD.
  */
 
+#define OMAP4_ON_VOLTAGE_UV			1375000
+#define OMAP4_ONLP_VOLTAGE_UV			1375000
+#define OMAP4_RET_VOLTAGE_UV			837500
+#define OMAP4_OFF_VOLTAGE_UV			600000
+
+#define OMAP4460_ON_VOLTAGE_UV			1200000
+#define OMAP4460_ONLP_VOLTAGE_UV		1200000
+#define OMAP4460_RET_VOLTAGE_UV			830000
+#define OMAP4460_OFF_VOLTAGE_UV			0
+
 #define OMAP4430_VDD_MPU_OPP50_UV		1025000
 #define OMAP4430_VDD_MPU_OPP100_UV		1200000
 #define OMAP4430_VDD_MPU_OPPTURBO_UV		1313000
@@ -47,6 +57,18 @@ struct omap_volt_data omap44xx_vdd_mpu_volt_data[] = {
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0),
 };
 
+struct omap_vp_param omap44xx_mpu_vp_data = {
+	.vddmin			= OMAP4_VP_MPU_VLIMITTO_VDDMIN,
+	.vddmax			= OMAP4_VP_MPU_VLIMITTO_VDDMAX,
+};
+
+struct omap_vc_param omap44xx_mpu_vc_data = {
+	.on			= OMAP4_ON_VOLTAGE_UV,
+	.onlp			= OMAP4_ONLP_VOLTAGE_UV,
+	.ret			= OMAP4_RET_VOLTAGE_UV,
+	.off			= OMAP4_OFF_VOLTAGE_UV,
+};
+
 #define OMAP4430_VDD_IVA_OPP50_UV		1013000
 #define OMAP4430_VDD_IVA_OPP100_UV		1188000
 #define OMAP4430_VDD_IVA_OPPTURBO_UV		1300000
@@ -58,6 +80,18 @@ struct omap_volt_data omap44xx_vdd_iva_volt_data[] = {
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0),
 };
 
+struct omap_vp_param omap44xx_iva_vp_data = {
+	.vddmin			= OMAP4_VP_IVA_VLIMITTO_VDDMIN,
+	.vddmax			= OMAP4_VP_IVA_VLIMITTO_VDDMAX,
+};
+
+struct omap_vc_param omap44xx_iva_vc_data = {
+	.on			= OMAP4_ON_VOLTAGE_UV,
+	.onlp			= OMAP4_ONLP_VOLTAGE_UV,
+	.ret			= OMAP4_RET_VOLTAGE_UV,
+	.off			= OMAP4_OFF_VOLTAGE_UV,
+};
+
 #define OMAP4430_VDD_CORE_OPP50_UV		1025000
 #define OMAP4430_VDD_CORE_OPP100_UV		1200000
 
@@ -65,6 +99,18 @@ struct omap_volt_data omap44xx_vdd_core_volt_data[] = {
 	VOLT_DATA_DEFINE(OMAP4430_VDD_CORE_OPP50_UV, OMAP44XX_CONTROL_FUSE_CORE_OPP50, 0xf4, 0x0c, OMAP_ABB_NO_LDO),
 	VOLT_DATA_DEFINE(OMAP4430_VDD_CORE_OPP100_UV, OMAP44XX_CONTROL_FUSE_CORE_OPP100, 0xf9, 0x16, OMAP_ABB_NO_LDO),
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0),
+};
+
+struct omap_vp_param omap44xx_core_vp_data = {
+	.vddmin			= OMAP4_VP_CORE_VLIMITTO_VDDMIN,
+	.vddmax			= OMAP4_VP_CORE_VLIMITTO_VDDMAX,
+};
+
+struct omap_vc_param omap44xx_core_vc_data = {
+	.on			= OMAP4_ON_VOLTAGE_UV,
+	.onlp			= OMAP4_ONLP_VOLTAGE_UV,
+	.ret			= OMAP4_RET_VOLTAGE_UV,
+	.off			= OMAP4_OFF_VOLTAGE_UV,
 };
 
 /* Dependency of domains are as follows for OMAP4430 (OPP based):
@@ -165,6 +211,18 @@ struct omap_volt_data omap446x_vdd_core_volt_data[] = {
 	VOLT_DATA_DEFINE(OMAP4460_VDD_CORE_OPP50_UV, OMAP44XX_CONTROL_FUSE_CORE_OPP50, 0xf4, 0x0c, OMAP_ABB_NO_LDO),
 	VOLT_DATA_DEFINE(OMAP4460_VDD_CORE_OPP100_UV, OMAP44XX_CONTROL_FUSE_CORE_OPP100, 0xf9, 0x16, OMAP_ABB_NO_LDO),
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0),
+};
+
+struct omap_vp_param omap446x_core_vp_data = {
+	.vddmin			= OMAP4_VP_CORE_VLIMITTO_VDDMIN,
+	.vddmax			= OMAP4_VP_CORE_VLIMITTO_VDDMAX,
+};
+
+struct omap_vc_param omap446x_core_vc_data = {
+	.on			= OMAP4460_ON_VOLTAGE_UV,
+	.onlp			= OMAP4460_ONLP_VOLTAGE_UV,
+	.ret			= OMAP4460_RET_VOLTAGE_UV,
+	.off			= OMAP4460_OFF_VOLTAGE_UV,
 };
 
 /* OMAP 4460 MPU Core VDD dependency table */

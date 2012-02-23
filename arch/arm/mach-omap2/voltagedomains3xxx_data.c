@@ -121,10 +121,18 @@ void __init omap3xxx_voltagedomains_init(void)
 		omap3_voltdm_core.volt_data = omap36xx_vddcore_volt_data;
 		omap3_vdd1_info.dep_vdd_info = omap36xx_vddmpu_dep_info;
 		omap3_voltdm_mpu.abb = &omap36xx_abb_mpu;
+		omap3_voltdm_mpu.vp_param = &omap36xx_mpu_vp_data;
+		omap3_voltdm_core.vp_param = &omap36xx_core_vp_data;
+		omap3_voltdm_mpu.vc_param = &omap36xx_mpu_vc_data;
+		omap3_voltdm_core.vc_param = &omap36xx_core_vc_data;
 	} else {
 		omap3_voltdm_mpu.volt_data = omap34xx_vddmpu_volt_data;
 		omap3_voltdm_core.volt_data = omap34xx_vddcore_volt_data;
 		omap3_vdd1_info.dep_vdd_info = omap34xx_vddmpu_dep_info;
+		omap3_voltdm_mpu.vp_param = &omap34xx_mpu_vp_data;
+		omap3_voltdm_core.vp_param = &omap34xx_core_vp_data;
+		omap3_voltdm_mpu.vc_param = &omap34xx_mpu_vc_data;
+		omap3_voltdm_core.vc_param = &omap34xx_core_vc_data;
 	}
 #endif
 

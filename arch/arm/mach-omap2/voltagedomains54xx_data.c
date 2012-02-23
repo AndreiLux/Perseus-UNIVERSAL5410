@@ -119,6 +119,14 @@ void __init omap54xx_voltagedomains_init(void)
 
 	omap5_voltdm_core.volt_data = omap54xx_vdd_core_volt_data;
 
+	omap5_voltdm_mpu.vp_param = &omap54xx_mpu_vp_data;
+	omap5_voltdm_mm.vp_param = &omap54xx_mm_vp_data;
+	omap5_voltdm_core.vp_param = &omap54xx_core_vp_data;
+
+	omap5_voltdm_mpu.vc_param = &omap54xx_mpu_vc_data;
+	omap5_voltdm_mm.vc_param = &omap54xx_mm_vc_data;
+	omap5_voltdm_core.vc_param = &omap54xx_core_vc_data;
+
 	for (i = 0; voltdm = voltagedomains_omap5[i], voltdm; i++)
 		voltdm->sys_clk.name = sys_clk_name;
 

@@ -11,14 +11,18 @@
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/bug.h>
+#include <linux/clk.h>
+#include <linux/io.h>
 
 #include <plat/cpu.h>
+#include <plat/prcm.h>
 
 #include "voltage.h"
 #include "vc.h"
 #include "prm-regbits-34xx.h"
 #include "prm-regbits-44xx.h"
 #include "prm44xx.h"
+#include "scrm44xx.h"
 
 /**
  * struct omap_vc_channel_cfg - describe the cfg_channel bitfield
@@ -326,39 +330,138 @@ int omap_vc_bypass_send_i2c_msg(struct voltagedomain *voltdm, u8 slave_addr,
 					reg_addr, data);
 }
 
-static void __init omap3_vfsm_init(struct voltagedomain *voltdm)
+static void omap3_set_ret_timings(struct voltagedomain *voltdm)
 {
+	unsigned long voltsetup1;
+
+	voltsetup1 = (voltdm->vc_param->on - voltdm->vc_param->ret) /
+			voltdm->pmic->slew_rate;
+
+	voltsetup1 = voltsetup1 * voltdm->sys_clk.rate / 8 / 1000000 + 1;
+
+	voltdm->rmw(voltdm->vfsm->voltsetup_mask,
+		voltsetup1 << __ffs(voltdm->vfsm->voltsetup_mask),
+		voltdm->vfsm->voltsetup_reg);
+
 	/*
-	 * Voltage Manager FSM parameters init
-	 * XXX This data should be passed in from the board file
+	 * pmic is not controlling the voltage scaling during retention,
+	 * thus set voltsetup2 to 0
 	 */
-	voltdm->write(OMAP3_CLKSETUP, OMAP3_PRM_CLKSETUP_OFFSET);
-	voltdm->write(OMAP3_VOLTOFFSET, OMAP3_PRM_VOLTOFFSET_OFFSET);
-	voltdm->write(OMAP3_VOLTSETUP2, OMAP3_PRM_VOLTSETUP2_OFFSET);
+	voltdm->write(0, OMAP3_PRM_VOLTSETUP2_OFFSET);
+}
+
+static void omap3_set_off_timings(struct voltagedomain *voltdm)
+{
+	unsigned long clksetup;
+	unsigned long voltsetup2;
+
+	clksetup = voltdm->read(OMAP3_PRM_CLKSETUP_OFFSET);
+
+	/* voltsetup 2 in us */
+	voltsetup2 = voltdm->vc_param->on / voltdm->pmic->slew_rate;
+
+	/* convert to 32k clk cycles */
+	voltsetup2 = voltsetup2 * 32768 / 1000000 + 1;
+
+	voltdm->write(voltsetup2, OMAP3_PRM_VOLTSETUP2_OFFSET);
+
+	/*
+	 * omap is not controlling voltage scaling during off-mode,
+	 * thus set voltsetup1 to 0
+	 */
+	voltdm->rmw(voltdm->vfsm->voltsetup_mask, 0,
+		voltdm->vfsm->voltsetup_reg);
+
+	/* voltoffset must be clksetup minus voltsetup2 according to TRM */
+	voltdm->write(clksetup - voltsetup2, OMAP3_PRM_VOLTOFFSET_OFFSET);
 }
 
 static void __init omap3_vc_init_channel(struct voltagedomain *voltdm)
 {
-	static bool is_initialized;
-
-	if (is_initialized)
-		return;
-
-	omap3_vfsm_init(voltdm);
-
-	is_initialized = true;
+	omap3_set_off_timings(voltdm);
 }
 
+static u32 omap4_calc_volt_ramp(struct voltagedomain *voltdm, u32 voltage_diff,
+		u32 clk_rate)
+{
+	u32 prescaler;
+	u32 cycles;
+	u32 time;
+
+	time = voltage_diff / voltdm->pmic->slew_rate;
+
+	cycles = clk_rate / 1000 * time / 1000;
+
+	cycles /= 64;
+	prescaler = 0;
+
+	/* shift to next prescaler until no overflow */
+
+	/* scale for div 256 = 64 * 4 */
+	if (cycles > 63) {
+		cycles /= 4;
+		prescaler++;
+	}
+
+	/* scale for div 512 = 256 * 2 */
+	if (cycles > 63) {
+		cycles /= 2;
+		prescaler++;
+	}
+
+	/* scale for div 2048 = 512 * 4 */
+	if (cycles > 63) {
+		cycles /= 4;
+		prescaler++;
+	}
+
+	/* check for overflow => invalid ramp time */
+	if (cycles > 63) {
+		pr_warning("%s: invalid setuptime for vdd_%s\n", __func__,
+			voltdm->name);
+		return 0;
+	}
+
+	cycles++;
+
+	return (prescaler << OMAP4430_RAMP_UP_PRESCAL_SHIFT) |
+		(cycles << OMAP4430_RAMP_UP_COUNT_SHIFT);
+}
+
+static void omap4_set_timings(struct voltagedomain *voltdm, bool off_mode)
+{
+	u32 val;
+	u32 ramp;
+
+	/* configure the setup times */
+	val = voltdm->read(voltdm->vfsm->voltsetup_reg);
+
+	if (off_mode)
+		ramp = omap4_calc_volt_ramp(voltdm,
+			voltdm->vc_param->on - voltdm->vc_param->off,
+			voltdm->sys_clk.rate);
+	else
+		ramp = omap4_calc_volt_ramp(voltdm,
+			voltdm->vc_param->on - voltdm->vc_param->ret,
+			voltdm->sys_clk.rate);
+
+	if (!ramp)
+		return;
+
+	val |= ramp << OMAP4430_RAMP_DOWN_COUNT_SHIFT;
+
+	val |= ramp << OMAP4430_RAMP_UP_COUNT_SHIFT;
+
+	voltdm->write(val, voltdm->vfsm->voltsetup_reg);
+}
 
 /* OMAP4 specific voltage init functions */
 static void __init omap4_vc_init_channel(struct voltagedomain *voltdm)
 {
-	static bool is_initialized;
 	struct omap_voltdm_pmic *pmic = voltdm->pmic;
 	u32 vc_val = 0;
 
-	if (is_initialized)
-		return;
+	omap4_set_timings(voltdm, true);
 
 	if (pmic->i2c_high_speed) {
 		vc_val |= pmic->i2c_hscll_low << OMAP4430_HSCLL_SHIFT;
@@ -370,8 +473,6 @@ static void __init omap4_vc_init_channel(struct voltagedomain *voltdm)
 
 	if (vc_val)
 		voltdm->write(vc_val, OMAP4_PRM_VC_CFG_I2C_CLK_OFFSET);
-
-	is_initialized = true;
 }
 
 /**
@@ -443,7 +544,6 @@ void __init omap_vc_init_channel(struct voltagedomain *voltdm)
 	vc->i2c_slave_addr = voltdm->pmic->i2c_slave_addr;
 	vc->volt_reg_addr = voltdm->pmic->volt_reg_addr;
 	vc->cmd_reg_addr = voltdm->pmic->cmd_reg_addr;
-	vc->setup_time = voltdm->pmic->volt_setup_time;
 
 	/* Configure the i2c slave address for this VC */
 	voltdm->rmw(vc->smps_sa_mask,
@@ -467,10 +567,10 @@ void __init omap_vc_init_channel(struct voltagedomain *voltdm)
 	}
 
 	/* Set up the on, inactive, retention and off voltage */
-	on_vsel = voltdm->pmic->uv_to_vsel(voltdm->pmic->on_volt);
-	onlp_vsel = voltdm->pmic->uv_to_vsel(voltdm->pmic->onlp_volt);
-	ret_vsel = voltdm->pmic->uv_to_vsel(voltdm->pmic->ret_volt);
-	off_vsel = voltdm->pmic->uv_to_vsel(voltdm->pmic->off_volt);
+	on_vsel = voltdm->pmic->uv_to_vsel(voltdm->vc_param->on);
+	onlp_vsel = voltdm->pmic->uv_to_vsel(voltdm->vc_param->onlp);
+	ret_vsel = voltdm->pmic->uv_to_vsel(voltdm->vc_param->ret);
+	off_vsel = voltdm->pmic->uv_to_vsel(voltdm->vc_param->off);
 	val = ((on_vsel << vc->common->cmd_on_shift) |
 	       (onlp_vsel << vc->common->cmd_onlp_shift) |
 	       (ret_vsel << vc->common->cmd_ret_shift) |
@@ -480,11 +580,6 @@ void __init omap_vc_init_channel(struct voltagedomain *voltdm)
 
 	/* Channel configuration */
 	omap_vc_config_channel(voltdm);
-
-	/* Configure the setup times */
-	voltdm->rmw(voltdm->vfsm->voltsetup_mask,
-		    vc->setup_time << __ffs(voltdm->vfsm->voltsetup_mask),
-		    voltdm->vfsm->voltsetup_reg);
 
 	omap_vc_i2c_init(voltdm);
 
