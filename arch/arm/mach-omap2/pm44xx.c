@@ -33,6 +33,15 @@
 #include "prminst44xx.h"
 #include "pm.h"
 
+static const char * const autoidle_hwmods[] = {
+	"mpu",
+	"gpio2",
+	"gpio3",
+	"gpio4",
+	"gpio5",
+	"gpio6",
+};
+
 struct power_state {
 	struct powerdomain *pwrdm;
 	u32 next_state;
@@ -393,6 +402,13 @@ static int __init omap_pm_init(void)
 	if (ret) {
 		pr_err("Failed to initialise static depedencies\n");
 		goto err2;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(autoidle_hwmods); i++) {
+		struct omap_hwmod *oh;
+
+		oh = omap_hwmod_lookup(autoidle_hwmods[i]);
+		omap_hwmod_disable_clkdm_usecounting(oh);
 	}
 
 	ret = omap_mpuss_init();
