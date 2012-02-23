@@ -27,6 +27,8 @@
 #include "prm44xx.h"
 #include "scrm44xx.h"
 #include "pm.h"
+#include "prcm44xx.h"
+#include "prminst44xx.h"
 
 /**
  * struct omap_vc_channel_cfg - describe the cfg_channel bitfield
@@ -600,10 +602,30 @@ static void omap4_set_volt_ramp_time(struct voltagedomain *voltdm,
 	voltdm->write(val, offset);
 }
 
+static int __init _voltdm_sum_time(struct voltagedomain *voltdm, void *user)
+{
+	struct omap_voltdm_pmic *pmic;
+	u32 *max_time = (u32 *)user;
+
+	if (!voltdm || !max_time) {
+		WARN_ON(1);
+		return -EINVAL;
+	}
+
+	pmic = voltdm->pmic;
+	if (pmic) {
+		*max_time += voltdm->vc_param->on / pmic->slew_rate;
+		*max_time += pmic->switch_on_time;
+	}
+
+	return 0;
+}
+
 static void omap4_set_timings(struct voltagedomain *voltdm)
 {
 	u32 val;
 	u32 tstart, tshut;
+	u32 reset_delay_time = 0;
 
 	omap4_set_volt_ramp_time(voltdm, true);
 	omap4_set_volt_ramp_time(voltdm, false);
@@ -626,6 +648,25 @@ static void omap4_set_timings(struct voltagedomain *voltdm)
 		val |= omap4_usec_to_val_scrm(tshut, OMAP4_SLEEPTIME_SHIFT,
 			OMAP4_SLEEPTIME_MASK);
 		voltdm->scrm_write(val, OMAP4_SCRM_PMICSETUPTIME_OFFSET);
+	}
+
+/*
+	 * Setup OMAP WARMRESET time:
+	 * we use the sum of each voltage domain setup times to handle
+	 * the worst case condition where the device resets from OFF mode.
+	 * hence we leave PRM_VOLTSETUP_WARMRESET alone as this is
+	 * already part of RSTTIME1 we program in.
+	 * in addition, to handle oscillator switch off and switch back on
+	 * (in case WDT triggered while CLKREQ goes low), we also
+	 * add in the additional latencies.
+	 */
+	if (!voltdm_for_each(_voltdm_sum_time, (void *)&reset_delay_time)) {
+		reset_delay_time += tstart + tshut;
+		val = omap4_usec_to_val_scrm(reset_delay_time,
+			OMAP4430_RSTTIME1_SHIFT, OMAP4430_RSTTIME1_MASK);
+		omap4_prminst_rmw_inst_reg_bits(OMAP4430_RSTTIME1_MASK, val,
+			OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST,
+			OMAP4_PRM_RSTTIME_OFFSET);
 	}
 }
 
