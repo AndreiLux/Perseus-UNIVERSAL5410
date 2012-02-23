@@ -499,6 +499,17 @@ static void omap4_set_timings(struct voltagedomain *voltdm, bool off_mode)
 		OMAP4_DOWNTIME_MASK);
 
 	__raw_writel(val, OMAP4_SCRM_CLKSETUPTIME);
+
+	tstart = voltdm->pmic->startup_time;
+	tshut = voltdm->pmic->shutdown_time;
+
+	if (tstart && tshut) {
+		val = omap4_usec_to_val_scrm(tstart, OMAP4_WAKEUPTIME_SHIFT,
+			OMAP4_WAKEUPTIME_MASK);
+		val |= omap4_usec_to_val_scrm(tshut, OMAP4_SLEEPTIME_SHIFT,
+			OMAP4_SLEEPTIME_MASK);
+		__raw_writel(val, OMAP4_SCRM_PMICSETUPTIME);
+	}
 }
 
 /* OMAP4 specific voltage init functions */
