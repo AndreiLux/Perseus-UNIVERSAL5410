@@ -226,17 +226,25 @@ void omap_pm_idle(u32 cpu_id, int state)
 static int omap4_restore_pwdms_after_suspend(void)
 {
 	struct power_state *pwrst;
-	int state, ret = 0, logic_state;
+	int cstate, pstate, ret = 0;
 
 	/* Restore next powerdomain state */
 	list_for_each_entry(pwrst, &pwrst_list, node) {
-		state = pwrdm_read_prev_pwrst(pwrst->pwrdm);
-		if (state > pwrst->next_state) {
+		cstate = pwrdm_read_pwrst(pwrst->pwrdm);
+		pstate = pwrdm_read_prev_pwrst(pwrst->pwrdm);
+		if (pstate > pwrst->next_state) {
 			pr_info("Powerdomain (%s) didn't enter "
-			       "target state %d\n",
-			       pwrst->pwrdm->name, pwrst->next_state);
+				"target state %d Vs achieved state %d.\n"
+				"current state %d\n",
+				pwrst->pwrdm->name, pwrst->next_state,
+				pstate, cstate);
 			ret = -1;
 		}
+
+		/* If state already ON due to h/w dep, don't do anything */
+		if (cstate == PWRDM_POWER_ON)
+			continue;
+
 		omap_set_pwrdm_state(pwrst->pwrdm, pwrst->saved_state);
 		pwrdm_set_logic_retst(pwrst->pwrdm, pwrst->saved_logic_state);
 	}
