@@ -20,7 +20,10 @@
 
 #include <mach/omap-secure.h>
 
+#include "clockdomain.h"
+
 static phys_addr_t omap_secure_memblock_base;
+static struct clockdomain *l4_secure_clkdm;
 
 /**
  * omap_sec_dispatcher: Routine to dispatch low power secure
@@ -44,6 +47,11 @@ u32 omap_secure_dispatcher(u32 idx, u32 flag, u32 nargs, u32 arg1, u32 arg2,
 	param[3] = arg3;
 	param[4] = arg4;
 
+	if (!l4_secure_clkdm)
+		l4_secure_clkdm = clkdm_lookup("l4_secure_clkdm");
+
+	clkdm_wakeup(l4_secure_clkdm);
+
 	/*
 	 * Secure API needs physical address
 	 * pointer for the parameters
@@ -51,6 +59,8 @@ u32 omap_secure_dispatcher(u32 idx, u32 flag, u32 nargs, u32 arg1, u32 arg2,
 	flush_cache_all();
 	outer_clean_range(__pa(param), __pa(param + 5));
 	ret = omap_smc2(idx, flag, __pa(param));
+
+	clkdm_allow_idle(l4_secure_clkdm);
 
 	return ret;
 }
