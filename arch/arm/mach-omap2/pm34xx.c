@@ -71,6 +71,7 @@ void (*omap3_do_wfi_sram)(void);
 static struct powerdomain *mpu_pwrdm, *neon_pwrdm;
 static struct powerdomain *core_pwrdm, *per_pwrdm;
 static struct powerdomain *cam_pwrdm;
+static struct voltagedomain *mpu_iva_voltdm;
 
 static void omap3_enable_io_chain(void)
 {
@@ -295,6 +296,8 @@ void omap_sram_idle(void)
 		return;
 	}
 
+	voltdm_pwrdm_disable(mpu_iva_voltdm);
+
 	/* NEON control */
 	if (pwrdm_read_pwrst(neon_pwrdm) == PWRDM_POWER_ON)
 		pwrdm_set_next_pwrst(neon_pwrdm, mpu_next_state);
@@ -385,6 +388,8 @@ void omap_sram_idle(void)
 		if (omap3_has_io_chain_ctrl())
 			omap3_disable_io_chain();
 	}
+	voltdm_pwrdm_enable(mpu_iva_voltdm);
+
 	pwrdm_post_transition();
 
 	clkdm_allow_idle(mpu_pwrdm->pwrdm_clkdms[0]);
@@ -742,6 +747,9 @@ static int __init omap3_pm_init(void)
 	}
 
 	(void) clkdm_for_each(omap_pm_clkdms_setup, NULL);
+
+	mpu_iva_voltdm = voltdm_lookup("mpu_iva");
+	voltdm_pwrdm_enable(mpu_iva_voltdm);
 
 	mpu_pwrdm = pwrdm_lookup("mpu_pwrdm");
 	if (mpu_pwrdm == NULL) {
