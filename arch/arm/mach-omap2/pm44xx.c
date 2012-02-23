@@ -338,20 +338,37 @@ static int omap4_pm_suspend(void)
  * get_achievable_state() - Provide achievable state
  * @available_states:	what states are available
  * @req_min_state:	what state is the minimum we'd like to hit
+ * @is_parent_pd:	is this a parent power domain?
  *
  * Power domains have varied capabilities. When attempting a low power
  * state such as OFF/RET, a specific min requested state may not be
- * supported on the power domain, in which case, the next higher power
- * state which is supported is returned. This is because a combination
- * of system power states where the parent PD's state is not in line
- * with expectation can result in system instabilities.
+ * supported on the power domain, in which case:
+ * a) if this power domain is a parent power domain, we do not intend
+ * for it to go to a lower power state(because we are not targetting it),
+ * select the next higher power state which is supported is returned.
+ * b) However, for all children power domains, we first try to match
+ * with a lower power domain state before attempting a higher state.
+ * This is because a combination of system power states where the
+ * parent PD's state is not in line with expectation can result in
+ * system instabilities.
  */
-static inline u8 get_achievable_state(u8 available_states, u8 req_min_state)
+static inline u8 get_achievable_state(u8 available_states, u8 req_min_state,
+					bool is_parent_pd)
 {
-	u16 mask = 0xFF << req_min_state;
+	u8 max_mask = 0xFF << req_min_state;
+	u8 min_mask = ~max_mask;
 
-	if (available_states & mask)
-		return __ffs(available_states & mask);
+	/* First see if we have an accurate match */
+	if (available_states & BIT(req_min_state))
+		return req_min_state;
+
+	/* See if a lower power state is possible on this child domain */
+	if (!is_parent_pd && available_states & min_mask)
+		return __ffs(available_states & min_mask);
+
+	if (available_states & max_mask)
+		return __ffs(available_states & max_mask);
+
 	return PWRDM_POWER_ON;
 }
 
@@ -394,11 +411,19 @@ void omap4_pm_off_mode_enable(int enable)
 	}
 
 	list_for_each_entry(pwrst, &pwrst_list, node) {
+		bool parent_power_domain = false;
+
+		if (!strcmp(pwrst->pwrdm->name, "core_pwrdm") ||
+		    !strcmp(pwrst->pwrdm->name, "mpu_pwrdm") ||
+		    !strcmp(pwrst->pwrdm->name, "ivahd_pwrdm"))
+			parent_power_domain = true;
+
 		pwrst->next_state =
-			get_achievable_state(pwrst->pwrdm->pwrsts, next_state);
+			get_achievable_state(pwrst->pwrdm->pwrsts, next_state,
+				parent_power_domain);
 		pwrst->next_logic_state =
 			get_achievable_state(pwrst->pwrdm->pwrsts_logic_ret,
-				next_logic_state);
+				next_logic_state, parent_power_domain);
 		if (pwrst->pwrdm->pwrsts &&
 		    pwrst->next_state < pwrst->saved_state)
 			omap_set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
