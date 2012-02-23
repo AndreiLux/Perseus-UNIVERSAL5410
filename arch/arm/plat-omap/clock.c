@@ -282,6 +282,8 @@ int clk_register(struct clk *clk)
 		list_add(&clk->sibling, &root_clks);
 
 	list_add(&clk->node, &clocks);
+	if (clk->ops == &clkops_null)
+		clk->autoidle = 1;
 	if (clk->init)
 		clk->init(clk);
 	mutex_unlock(&clocks_mutex);

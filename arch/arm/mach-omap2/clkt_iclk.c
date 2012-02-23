@@ -21,6 +21,7 @@
 #include "clock2xxx.h"
 #include "cm2xxx_3xxx.h"
 #include "cm-regbits-24xx.h"
+#include "clockdomain.h"
 
 /* Private functions */
 
@@ -34,6 +35,11 @@ void omap2_clkt_iclk_allow_idle(struct clk *clk)
 	v = __raw_readl((__force void __iomem *)r);
 	v |= (1 << clk->enable_bit);
 	__raw_writel(v, (__force void __iomem *)r);
+
+	if (clk->usecount && clk->clkdm)
+		clkdm_usecount_dec(clk->clkdm);
+
+	clk->autoidle = 1;
 }
 
 /* XXX */
@@ -46,6 +52,11 @@ void omap2_clkt_iclk_deny_idle(struct clk *clk)
 	v = __raw_readl((__force void __iomem *)r);
 	v &= ~(1 << clk->enable_bit);
 	__raw_writel(v, (__force void __iomem *)r);
+
+	if (clk->usecount && clk->clkdm)
+		clkdm_usecount_inc(clk->clkdm);
+
+	clk->autoidle = 0;
 }
 
 /* Public data */

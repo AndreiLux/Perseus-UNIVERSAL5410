@@ -1159,6 +1159,18 @@ int pwrdm_state_switch(struct powerdomain *pwrdm)
 	return ret;
 }
 
+void pwrdm_clkdm_enable(struct powerdomain *pwrdm)
+{
+	if (atomic_inc_return(&pwrdm->usecount) == 1)
+		voltdm_pwrdm_enable(pwrdm->voltdm.ptr);
+}
+
+void pwrdm_clkdm_disable(struct powerdomain *pwrdm)
+{
+	if (!atomic_dec_return(&pwrdm->usecount))
+		voltdm_pwrdm_disable(pwrdm->voltdm.ptr);
+}
+
 int pwrdm_pre_transition(void)
 {
 	pwrdm_for_each(_pwrdm_pre_transition_cb, NULL);

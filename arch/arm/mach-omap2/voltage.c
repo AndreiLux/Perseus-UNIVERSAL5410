@@ -38,6 +38,7 @@
 
 #include "voltage.h"
 #include "powerdomain.h"
+#include "smartreflex.h"
 
 #include "vc.h"
 #include "vp.h"
@@ -490,6 +491,35 @@ int voltdm_add_pwrdm(struct voltagedomain *voltdm, struct powerdomain *pwrdm)
 	list_add(&pwrdm->voltdm_node, &voltdm->pwrdm_list);
 
 	return 0;
+}
+
+void voltdm_pwrdm_enable(struct voltagedomain *voltdm)
+{
+	if (atomic_inc_return(&voltdm->usecount) == 1) {
+		if (voltdm->wakeup)
+			voltdm->wakeup(voltdm);
+		omap_sr_enable(voltdm);
+	}
+}
+
+void voltdm_pwrdm_disable(struct voltagedomain *voltdm)
+{
+	int target_state = -EINVAL;
+	int state;
+	struct powerdomain *pwrdm;
+
+	if (!atomic_dec_return(&voltdm->usecount)) {
+		omap_sr_disable(voltdm);
+		/* Determine target state for voltdm */
+		list_for_each_entry(pwrdm, &voltdm->pwrdm_list, voltdm_node) {
+			state = pwrdm_read_next_pwrst(pwrdm);
+			if (state > target_state)
+				target_state = state;
+		}
+		voltdm->target_state = target_state;
+		if (voltdm->sleep)
+			voltdm->sleep(voltdm);
+	}
 }
 
 /**
