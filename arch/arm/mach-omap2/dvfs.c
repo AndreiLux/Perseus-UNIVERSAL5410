@@ -670,7 +670,7 @@ fail:
 			__func__, voltdm->name);
 out:
 	/* Re-enable Smartreflex module */
-	omap_sr_enable(voltdm, volt_data);
+	omap_sr_enable(voltdm);
 
 	/* Mark done */
 	tdvfs_info->is_scaling = false;

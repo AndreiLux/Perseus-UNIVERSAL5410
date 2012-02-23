@@ -263,8 +263,7 @@ struct omap_sr_data {
 };
 
 /* Smartreflex module enable/disable interface */
-void omap_sr_enable(struct voltagedomain *voltdm,
-			struct omap_volt_data *volt_data);
+void omap_sr_enable(struct voltagedomain *voltdm);
 void omap_sr_disable(struct voltagedomain *voltdm);
 void omap_sr_disable_reset_volt(struct voltagedomain *voltdm);
 
@@ -283,8 +282,7 @@ int sr_configure_minmax(struct voltagedomain *voltdm);
 int sr_register_class(struct omap_sr_class_data *class_data);
 bool is_sr_enabled(struct voltagedomain *voltdm);
 #else
-static inline void omap_sr_enable(struct voltagedomain *voltdm,
-			struct omap_volt_data *volt_data) {}
+static inline void omap_sr_enable(struct voltagedomain *voltdm) {}
 static inline void omap_sr_disable(struct voltagedomain *voltdm) {}
 
 static inline int sr_notifier_control(struct voltagedomain *voltdm,
