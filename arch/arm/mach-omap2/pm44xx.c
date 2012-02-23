@@ -51,7 +51,9 @@ static const char * const autoidle_hwmods[] = {
 	"timer1",
 	"emif1",
 	"emif2",
-	"gpmc"
+	"gpmc",
+	"l3_instr",
+	"l3_main_3"
 };
 
 struct power_state {
@@ -379,6 +381,15 @@ static void __init prcm_setup_regs(void)
 	/* Idle hdq */
 	__raw_writel(0, OMAP54XX_CM_L4PER_HDQ1W_CLKCTRL);
 #endif
+
+#ifdef CONFIG_OMAP_ALLOW_OSWR
+	/* Enable L3 hwmods, otherwise dev off will fail */
+	oh = omap_hwmod_lookup("l3_main_3");
+	omap_hwmod_enable(oh);
+	oh = omap_hwmod_lookup("l3_instr");
+	omap_hwmod_enable(oh);
+#endif
+
 /*
 	 * Errata ID: i608 Impacted OMAP4430 ES 1.0,2.0,2.1,2.2
 	 * On OMAP4, Retention-Till-Access Memory feature is not working
