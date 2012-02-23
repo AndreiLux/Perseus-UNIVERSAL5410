@@ -24,6 +24,7 @@
 #include <linux/platform_data/exynos_usb3_drd.h>
 
 #include <video/platform_lcd.h>
+#include <video/s5p-dp.h>
 
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
@@ -35,6 +36,7 @@
 #include <plat/clock.h>
 #include <plat/cpu.h>
 #include <plat/fb.h>
+#include <plat/dp.h>
 #include <plat/regs-serial.h>
 #include <plat/gpio-cfg.h>
 #include <plat/backlight.h>
@@ -860,7 +862,67 @@ static struct s3c_fb_pd_win smdk5250_fb_win2 = {
 	.max_bpp		= 32,
 	.default_bpp		= 24,
 };
+#elif defined(CONFIG_S5P_DP)
+static void dp_lcd_set_power(struct plat_lcd_data *pd,
+				unsigned int power)
+{
+#ifndef CONFIG_BACKLIGHT_PWM
+	/* LCD_PWM_IN_2.8V: LCD_B_PWM, GPB2_0 */
+	gpio_request(EXYNOS5_GPB2(0), "GPB2");
 #endif
+	/* LCD_APS_EN_2.8V: GPD0_6 */
+	gpio_request(EXYNOS5_GPD0(6), "GPD0");
+
+	/* LCD_EN: GPD0_5 */
+	gpio_request(EXYNOS5_GPD0(5), "GPD0");
+
+	/* LCD_EN: GPD0_5 */
+	gpio_direction_output(EXYNOS5_GPD0(5), power);
+	mdelay(20);
+
+	/* LCD_APS_EN_2.8V: GPD0_6 */
+	gpio_direction_output(EXYNOS5_GPD0(6), power);
+	mdelay(20);
+#ifndef CONFIG_BACKLIGHT_PWM
+	/* LCD_PWM_IN_2.8V: LCD_B_PWM, GPB2_0 */
+	gpio_direction_output(EXYNOS5_GPB2(0), power);
+
+	gpio_free(EXYNOS5_GPB2(0));
+#endif
+	gpio_free(EXYNOS5_GPD0(6));
+	gpio_free(EXYNOS5_GPD0(5));
+}
+
+static struct plat_lcd_data smdk5250_dp_lcd_data = {
+	.set_power	= dp_lcd_set_power,
+};
+
+static struct platform_device smdk5250_dp_lcd = {
+	.name	= "platform-lcd",
+	.dev	= {
+		.parent		= &s5p_device_fimd1.dev,
+		.platform_data	= &smdk5250_dp_lcd_data,
+	},
+};
+
+static struct s3c_fb_pd_win smdk5250_fb_win2 = {
+	.win_mode = {
+		.left_margin	= 80,
+		.right_margin	= 48,
+		.upper_margin	= 37,
+		.lower_margin	= 3,
+		.hsync_len	= 32,
+		.vsync_len	= 6,
+		.xres		= 2560,
+		.yres		= 1600,
+	},
+	.virtual_x		= 2560,
+	.virtual_y		= 1600 * 2,
+	.max_bpp		= 32,
+	.default_bpp		= 24,
+};
+#endif
+
 static struct s3c_fb_platdata smdk5250_lcd1_pdata __initdata = {
 #if defined(CONFIG_LCD_MIPI_S6E8AB0)
 	.win[0]		= &smdk5250_fb_win0,
@@ -870,6 +932,10 @@ static struct s3c_fb_platdata smdk5250_lcd1_pdata __initdata = {
 	.win[0]		= &smdk5250_fb_win0,
 	.win[1]		= &smdk5250_fb_win1,
 	.win[2]		= &smdk5250_fb_win2,
+#elif defined(CONFIG_S5P_DP)
+	.win[0]		= &smdk5250_fb_win2,
+	.win[1]		= &smdk5250_fb_win2,
+	.win[2]		= &smdk5250_fb_win2,
 #endif
 	.default_win	= 2,
 	.vidcon0	= VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB,
@@ -877,6 +943,8 @@ static struct s3c_fb_platdata smdk5250_lcd1_pdata __initdata = {
 	.vidcon1	= VIDCON1_INV_VCLK,
 #elif defined(CONFIG_LCD_MIPI_TC358764)
 	.vidcon1	= VIDCON1_INV_VCLK,
+#elif defined(CONFIG_S5P_DP)
+	.vidcon1	= 0,
 #endif
 	.setup_gpio	= exynos5_fimd1_gpio_setup_24bpp,
 };
@@ -997,6 +1065,54 @@ static struct s5p_platform_mipi_dsim dsim_platform_data = {
 };
 #endif
 
+#ifdef CONFIG_S5P_DP
+static struct video_info smdk5250_dp_config = {
+	.name			= "WQXGA(2560x1600) LCD, for SMDK TEST",
+
+	.h_sync_polarity	= 0,
+	.v_sync_polarity	= 0,
+	.interlaced		= 0,
+
+	.color_space		= COLOR_RGB,
+	.dynamic_range		= VESA,
+	.ycbcr_coeff		= COLOR_YCBCR601,
+	.color_depth		= COLOR_8,
+
+	.link_rate		= LINK_RATE_2_70GBPS,
+	.lane_count		= LANE_COUNT4,
+};
+
+static void s5p_dp_backlight_on(void)
+{
+	/* LED_BACKLIGHT_RESET: GPX1_5 */
+	gpio_request(EXYNOS5_GPX1(5), "GPX1");
+
+	gpio_direction_output(EXYNOS5_GPX1(5), 1);
+	mdelay(20);
+
+	gpio_free(EXYNOS5_GPX1(5));
+}
+
+static void s5p_dp_backlight_off(void)
+{
+	/* LED_BACKLIGHT_RESET: GPX1_5 */
+	gpio_request(EXYNOS5_GPX1(5), "GPX1");
+
+	gpio_direction_output(EXYNOS5_GPX1(5), 0);
+	mdelay(20);
+
+	gpio_free(EXYNOS5_GPX1(5));
+}
+
+static struct s5p_dp_platdata smdk5250_dp_data __initdata = {
+	.video_info	= &smdk5250_dp_config,
+	.phy_init	= s5p_dp_phy_init,
+	.phy_exit	= s5p_dp_phy_exit,
+	.backlight_on	= s5p_dp_backlight_on,
+	.backlight_off	= s5p_dp_backlight_off,
+};
+#endif
+
 #ifdef CONFIG_VIDEO_EXYNOS_FIMG2D
 static struct fimg2d_platdata fimg2d_data __initdata = {
 	.hw_ver		= 0x42,
@@ -1085,6 +1201,10 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&s5p_device_mipi_dsim,
 #endif
 	&s5p_device_fimd1,
+#ifdef CONFIG_S5P_DP
+	&s5p_device_dp,
+	&smdk5250_dp_lcd,
+#endif
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_TV
 #ifdef CONFIG_VIDEO_EXYNOS_HDMI
@@ -1242,6 +1362,9 @@ static void __init smdk5250_machine_init(void)
 	dev_set_name(&s5p_device_fimd1.dev, "exynos5-fb.1");
 	clk_add_alias("lcd", "exynos5-fb.1", "fimd", &s5p_device_fimd1.dev);
 #endif
+#ifdef CONFIG_S5P_DP
+	s5p_dp_set_platdata(&smdk5250_dp_data);
+#endif
 #ifdef CONFIG_FB_MIPI_DSIM
 	s5p_dsim_set_platdata(&dsim_platform_data);
 #endif
@@ -1252,8 +1375,13 @@ static void __init smdk5250_machine_init(void)
 	platform_add_devices(smdk5250_devices, ARRAY_SIZE(smdk5250_devices));
 
 #ifdef CONFIG_FB_S3C
+#if defined(CONFIG_S5P_DP)
+	exynos5_fimd1_setup_clock(&s5p_device_fimd1.dev, "sclk_fimd", "mout_mpll_user",
+				267 * MHZ);
+#else
 	exynos5_fimd1_setup_clock(&s5p_device_fimd1.dev, "sclk_fimd", "mout_mpll_user",
 				800 * MHZ);
+#endif
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_MIPI_CSIS
 #if defined(CONFIG_EXYNOS_DEV_PD)

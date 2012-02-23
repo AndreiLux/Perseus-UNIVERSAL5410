@@ -289,6 +289,11 @@ config S5P_DEV_MIPI_DSIM
 	  Compile in platform device definitions for MIPI_DSIM
 	  to support mainlile style fimd
 
+config S5P_DEV_DP
+	bool
+	help
+	  Compile in platform device definitions for DP controller
+
 config S5P_DEV_FIMG2D
 	bool
 	help

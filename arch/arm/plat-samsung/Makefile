@@ -32,6 +32,7 @@ obj-y				+= devs.o
 obj-y				+= dev-uart.o
 
 obj-$(CONFIG_S5P_DEV_MIPI_DSIM) += dev-mipidsim.o
+obj-$(CONFIG_S5P_DEV_DP)	+= dev-dp.o
 
 obj-$(CONFIG_SAMSUNG_DEV_BACKLIGHT)	+= dev-backlight.o
 
