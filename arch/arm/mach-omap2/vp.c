@@ -89,6 +89,12 @@ void __init omap_vp_init(struct voltagedomain *voltdm)
 
 	vp->enabled = false;
 
+	if (!voltdm->pmic) {
+		pr_err("%s: No pmic data for voltdm %s\n", __func__,
+			voltdm->name);
+		return;
+	}
+
 	/* Divide to avoid overflow */
 	sys_clk_rate = voltdm->sys_clk.rate / 1000;
 
