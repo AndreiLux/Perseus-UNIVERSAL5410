@@ -42,6 +42,30 @@ unsigned int exynos_getspeed(unsigned int cpu)
 	return clk_get_rate(exynos_info->cpu_clk) / 1000;
 }
 
+static unsigned int exynos_get_safe_armvolt(unsigned int old_index, unsigned int new_index)
+{
+	unsigned int safe_arm_volt = 0;
+	struct cpufreq_frequency_table *freq_table = exynos_info->freq_table;
+	unsigned int *volt_table = exynos_info->volt_table;
+
+	/*
+	 * ARM clock source will be changed APLL to MPLL temporary
+	 * To support this level, need to control regulator for
+	 * reguired voltage level
+	 */
+
+	if (exynos_info->need_apll_change != NULL) {
+		if (exynos_info->need_apll_change(old_index, new_index) &&
+			(freq_table[new_index].frequency < exynos_info->mpll_freq_khz) &&
+			(freq_table[old_index].frequency < exynos_info->mpll_freq_khz)) {
+				safe_arm_volt = volt_table[exynos_info->pll_safe_idx];
+			}
+
+	}
+
+	return safe_arm_volt;
+}
+
 static int exynos_target(struct cpufreq_policy *policy,
 			  unsigned int target_freq,
 			  unsigned int relation)
@@ -82,12 +106,8 @@ static int exynos_target(struct cpufreq_policy *policy,
 	 * To support this level, need to control regulator for
 	 * required voltage level
 	 */
-	if (exynos_info->need_apll_change != NULL) {
-		if (exynos_info->need_apll_change(old_index, index) &&
-		   (freq_table[index].frequency < mpll_freq_khz) &&
-		   (freq_table[old_index].frequency < mpll_freq_khz))
-			safe_arm_volt = volt_table[exynos_info->pll_safe_idx];
-	}
+	safe_arm_volt = exynos_get_safe_armvolt(old_index, index);
+
 	arm_volt = volt_table[index];
 
 	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
