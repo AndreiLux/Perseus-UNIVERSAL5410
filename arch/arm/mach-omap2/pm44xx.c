@@ -399,8 +399,13 @@ void omap4_pm_off_mode_enable(int enable)
 		pwrst->next_logic_state =
 			get_achievable_state(pwrst->pwrdm->pwrsts_logic_ret,
 				next_logic_state);
-		omap_set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
-		pwrdm_set_logic_retst(pwrst->pwrdm, pwrst->next_logic_state);
+		if (pwrst->pwrdm->pwrsts &&
+		    pwrst->next_state < pwrst->saved_state)
+			omap_set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
+		if (pwrst->pwrdm->pwrsts_logic_ret &&
+		    pwrst->next_logic_state < pwrst->saved_logic_state)
+			pwrdm_set_logic_retst(pwrst->pwrdm,
+				pwrst->next_logic_state);
 	}
 }
 
