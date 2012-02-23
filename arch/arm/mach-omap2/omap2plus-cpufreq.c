@@ -24,6 +24,7 @@
 #include <linux/io.h>
 #include <linux/opp.h>
 #include <linux/cpu.h>
+#include <linux/thermal_framework.h>
 
 #include <asm/system.h>
 #include <asm/smp_plat.h>
@@ -37,10 +38,12 @@
 
 #include "dvfs.h"
 
+#include "dvfs.h"
+
 #ifdef CONFIG_SMP
 struct lpj_info {
-	unsigned long	ref;
-	unsigned int	freq;
+	unsigned long ref;
+	unsigned int freq;
 };
 
 static DEFINE_PER_CPU(struct lpj_info, lpj_ref);
@@ -52,13 +55,13 @@ static atomic_t freq_table_users = ATOMIC_INIT(0);
 static struct clk *mpu_clk;
 static char *mpu_clk_name;
 static struct device *mpu_dev;
+static DEFINE_MUTEX(omap_cpufreq_lock);
 
-static int omap_verify_speed(struct cpufreq_policy *policy)
-{
-	if (!freq_table)
-		return -EINVAL;
-	return cpufreq_frequency_table_verify(policy, freq_table);
-}
+static unsigned int max_thermal;
+static unsigned int max_freq;
+static unsigned int current_target_freq;
+static unsigned int current_cooling_level;
+static bool omap_cpufreq_ready;
 
 static unsigned int omap_getspeed(unsigned int cpu)
 {
@@ -71,52 +74,36 @@ static unsigned int omap_getspeed(unsigned int cpu)
 	return rate;
 }
 
-static int omap_target(struct cpufreq_policy *policy,
-		       unsigned int target_freq,
-		       unsigned int relation)
+static int omap_cpufreq_scale(unsigned int target_freq, unsigned int cur_freq)
 {
 	unsigned int i;
-	int ret = 0;
+	int ret;
 	struct cpufreq_freqs freqs;
 
-	if (!freq_table) {
-		dev_err(mpu_dev, "%s: cpu%d: no freq table!\n", __func__,
-				policy->cpu);
-		return -EINVAL;
-	}
+	freqs.new = target_freq;
+	freqs.old = omap_getspeed(0);
 
-	ret = cpufreq_frequency_table_target(policy, freq_table, target_freq,
-			relation, &i);
-	if (ret) {
-		dev_dbg(mpu_dev, "%s: cpu%d: no freq match for %d(ret=%d)\n",
-			__func__, policy->cpu, target_freq, ret);
-		return ret;
-	}
-	freqs.new = freq_table[i].frequency;
-	if (!freqs.new) {
-		dev_err(mpu_dev, "%s: cpu%d: no match for freq %d\n", __func__,
-			policy->cpu, target_freq);
-		return -EINVAL;
-	}
+	/*
+	 * If the new frequency is more than the thermal max allowed
+	 * frequency, go ahead and scale the mpu device to proper frequency.
+	 */
+	if (freqs.new > max_thermal)
+		freqs.new = max_thermal;
 
-	freqs.old = omap_getspeed(policy->cpu);
-	freqs.cpu = policy->cpu;
-
-	if (freqs.old == freqs.new && policy->cur == freqs.new)
-		return ret;
+	if ((freqs.old == freqs.new) && (cur_freq == freqs.new))
+		return 0;
 
 	/* notifiers */
-	for_each_cpu(i, policy->cpus) {
-		freqs.cpu = i;
-		cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
-	}
+	for_each_online_cpu(freqs.cpu)
+	    cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
 
 #ifdef CONFIG_CPU_FREQ_DEBUG
 	pr_info("cpufreq-omap: transition: %u --> %u\n", freqs.old, freqs.new);
 #endif
 
 	ret = omap_device_scale(mpu_dev, mpu_dev, freqs.new * 1000);
-	freqs.new = omap_getspeed(policy->cpu);
+
+	freqs.new = omap_getspeed(0);
 
 #ifdef CONFIG_SMP
 	/*
@@ -124,7 +111,7 @@ static int omap_target(struct cpufreq_policy *policy,
 	 * cpufreq driver. So, update the per-CPU loops_per_jiffy value
 	 * on frequency transition. We need to update all dependent CPUs.
 	 */
-	for_each_cpu(i, policy->cpus) {
+	for_each_possible_cpu(i) {
 		struct lpj_info *lpj = &per_cpu(lpj_ref, i);
 		if (!lpj->freq) {
 			lpj->ref = per_cpu(cpu_data, i).loops_per_jiffy;
@@ -132,7 +119,7 @@ static int omap_target(struct cpufreq_policy *policy,
 		}
 
 		per_cpu(cpu_data, i).loops_per_jiffy =
-			cpufreq_scale(lpj->ref, lpj->freq, freqs.new);
+		    cpufreq_scale(lpj->ref, lpj->freq, freqs.new);
 	}
 
 	/* And don't forget to adjust the global one */
@@ -145,10 +132,62 @@ static int omap_target(struct cpufreq_policy *policy,
 #endif
 
 	/* notifiers */
-	for_each_cpu(i, policy->cpus) {
-		freqs.cpu = i;
-		cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+	for_each_online_cpu(freqs.cpu)
+	    cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+
+	return ret;
+}
+
+static unsigned int omap_thermal_lower_speed(void)
+{
+	unsigned int max = 0;
+	unsigned int curr;
+	int i;
+
+	curr = max_thermal;
+
+	for (i = 0; freq_table[i].frequency != CPUFREQ_TABLE_END; i++)
+		if (freq_table[i].frequency > max &&
+		    freq_table[i].frequency < curr)
+			max = freq_table[i].frequency;
+
+	if (!max)
+		return curr;
+
+	return max;
+}
+
+static int omap_verify_speed(struct cpufreq_policy *policy)
+{
+	if (!freq_table)
+		return -EINVAL;
+	return cpufreq_frequency_table_verify(policy, freq_table);
+}
+
+static int omap_target(struct cpufreq_policy *policy,
+		       unsigned int target_freq, unsigned int relation)
+{
+	unsigned int i;
+	int ret = 0;
+
+	if (!freq_table) {
+		dev_err(mpu_dev, "%s: cpu%d: no freq table!\n", __func__,
+			policy->cpu);
+		return -EINVAL;
 	}
+
+	ret = cpufreq_frequency_table_target(policy, freq_table, target_freq,
+					     relation, &i);
+	if (ret) {
+		dev_dbg(mpu_dev, "%s: cpu%d: no freq match for %d(ret=%d)\n",
+			__func__, policy->cpu, target_freq, ret);
+		return ret;
+	}
+
+	mutex_lock(&omap_cpufreq_lock);
+	current_target_freq = freq_table[i].frequency;
+	ret = omap_cpufreq_scale(current_target_freq, policy->cur);
+	mutex_unlock(&omap_cpufreq_lock);
 
 	return ret;
 }
@@ -159,9 +198,99 @@ static inline void freq_table_free(void)
 		opp_free_cpufreq_table(mpu_dev, &freq_table);
 }
 
+#ifdef CONFIG_THERMAL_FRAMEWORK
+static void omap_thermal_step_freq_down(void)
+{
+	unsigned int cur;
+
+	mutex_lock(&omap_cpufreq_lock);
+
+	max_thermal = omap_thermal_lower_speed();
+
+	pr_debug("%s: temperature too high, starting cpu throttling at max %u\n",
+		__func__, max_thermal);
+
+	cur = omap_getspeed(0);
+	if (cur > max_thermal)
+		omap_cpufreq_scale(max_thermal, cur);
+
+	mutex_unlock(&omap_cpufreq_lock);
+}
+
+static void omap_thermal_step_freq_up(void)
+{
+	unsigned int cur;
+
+	mutex_lock(&omap_cpufreq_lock);
+	max_thermal = max_freq;
+
+	pr_debug("%s: temperature reduced, stepping up to %i\n",
+		__func__, current_target_freq);
+
+	cur = omap_getspeed(0);
+	omap_cpufreq_scale(current_target_freq, cur);
+
+	mutex_unlock(&omap_cpufreq_lock);
+}
+
+/*
+ * cpufreq_apply_cooling: based on requested cooling level, throttle the cpu
+ * @param cooling_level: percentage of required cooling at the moment
+ *
+ * The maximum cpu frequency will be readjusted based on the required
+ * cooling_level.
+*/
+static int cpufreq_apply_cooling(struct thermal_dev *dev, int cooling_level)
+{
+	if (cooling_level < current_cooling_level) {
+		pr_debug("%s: Unthrottle cool level %i curr cool %i\n",
+		       __func__, cooling_level, current_cooling_level);
+		omap_thermal_step_freq_up();
+	} else if (cooling_level > current_cooling_level) {
+		pr_debug("%s: Throttle cool level %i curr cool %i\n",
+		       __func__, cooling_level, current_cooling_level);
+		omap_thermal_step_freq_down();
+	}
+
+	current_cooling_level = cooling_level;
+
+	return 0;
+}
+
+static struct thermal_dev_ops cpufreq_cooling_ops = {
+	.cool_device = cpufreq_apply_cooling,
+};
+
+static struct thermal_dev thermal_dev = {
+	.name = "cpufreq_cooling",
+	.domain_name = "cpu",
+	.dev_ops = &cpufreq_cooling_ops,
+};
+
+static int __init omap_cpufreq_cooling_init(void)
+{
+	return thermal_cooling_dev_register(&thermal_dev);
+}
+
+static void __exit omap_cpufreq_cooling_exit(void)
+{
+	thermal_governor_dev_unregister(&thermal_dev);
+}
+#else
+static int __init omap_cpufreq_cooling_init(void)
+{
+	return 0;
+}
+
+static void __exit omap_cpufreq_cooling_exit(void)
+{
+}
+#endif
+
 static int __cpuinit omap_cpu_init(struct cpufreq_policy *policy)
 {
 	int result = 0;
+	int i;
 
 	mpu_clk = clk_get(NULL, mpu_clk_name);
 	if (IS_ERR(mpu_clk))
@@ -179,7 +308,7 @@ static int __cpuinit omap_cpu_init(struct cpufreq_policy *policy)
 
 	if (result) {
 		dev_err(mpu_dev, "%s: cpu%d: failed creating freq table[%d]\n",
-				__func__, policy->cpu, result);
+			__func__, policy->cpu, result);
 		goto fail_ck;
 	}
 
@@ -193,6 +322,11 @@ static int __cpuinit omap_cpu_init(struct cpufreq_policy *policy)
 	policy->max = policy->cpuinfo.max_freq;
 	policy->cur = omap_getspeed(policy->cpu);
 
+	for (i = 0; freq_table[i].frequency != CPUFREQ_TABLE_END; i++)
+		max_freq = max(freq_table[i].frequency, max_freq);
+	max_thermal = max_freq;
+	current_cooling_level = 0;
+
 	/*
 	 * On OMAP SMP configuartion, both processors share the voltage
 	 * and clock. So both CPUs needs to be scaled together and hence
@@ -204,6 +338,8 @@ static int __cpuinit omap_cpu_init(struct cpufreq_policy *policy)
 		policy->shared_type = CPUFREQ_SHARED_TYPE_ANY;
 		cpumask_setall(policy->cpus);
 	}
+
+	omap_cpufreq_cooling_init();
 
 	/* FIXME: what's the actual transition time? */
 #ifdef CONFIG_MACH_OMAP_5430ZEBU
@@ -233,18 +369,20 @@ static struct freq_attr *omap_cpufreq_attr[] = {
 };
 
 static struct cpufreq_driver omap_driver = {
-	.flags		= CPUFREQ_STICKY,
-	.verify		= omap_verify_speed,
-	.target		= omap_target,
-	.get		= omap_getspeed,
-	.init		= omap_cpu_init,
-	.exit		= omap_cpu_exit,
-	.name		= "omap",
-	.attr		= omap_cpufreq_attr,
+	.flags = CPUFREQ_STICKY,
+	.verify = omap_verify_speed,
+	.target = omap_target,
+	.get = omap_getspeed,
+	.init = omap_cpu_init,
+	.exit = omap_cpu_exit,
+	.name = "omap2plus",
+	.attr = omap_cpufreq_attr,
 };
 
 static int __init omap_cpufreq_init(void)
 {
+	int ret;
+
 	if (cpu_is_omap24xx())
 		mpu_clk_name = "virt_prcm_set";
 	else if (cpu_is_omap34xx())
@@ -265,11 +403,15 @@ static int __init omap_cpufreq_init(void)
 		return -EINVAL;
 	}
 
-	return cpufreq_register_driver(&omap_driver);
+	ret = cpufreq_register_driver(&omap_driver);
+	omap_cpufreq_ready = !ret;
+	return ret;
+
 }
 
 static void __exit omap_cpufreq_exit(void)
 {
+	omap_cpufreq_cooling_exit();
 	cpufreq_unregister_driver(&omap_driver);
 }
 
