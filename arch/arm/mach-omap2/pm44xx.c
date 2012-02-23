@@ -101,6 +101,27 @@ void omap4_device_set_state_off(u8 enable)
 				OMAP4430_DEVICE_OFF_ENABLE_SHIFT,
 		OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST,
 		offset);
+
+#ifdef CONFIG_OMAP_PM_STANDALONE
+	/*
+	 * XXX: We must toggle auto-ret control for MM when changing
+	 * device off state. This should be removed once MM is used
+	 * properly
+	 */
+	if (cpu_is_omap54xx()) {
+		u32 val;
+
+		val = omap4_prminst_read_inst_reg(OMAP54XX_PRM_PARTITION,
+			OMAP54XX_PRM_DEVICE_INST, OMAP54XX_PRM_VOLTCTRL_OFFSET);
+		if (enable)
+			val &= ~(0x3 << 4);
+		else
+			val |= 0x2 << 4;
+
+		omap4_prminst_write_inst_reg(val, OMAP54XX_PRM_PARTITION,
+			OMAP54XX_PRM_DEVICE_INST, OMAP54XX_PRM_VOLTCTRL_OFFSET);
+	}
+#endif
 }
 
 /**
@@ -529,6 +550,22 @@ static void __init prcm_setup_regs(void)
 	 */
 	omap4_prminst_write_inst_reg(0x3, OMAP4430_PRM_PARTITION,
 		OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_PWRREQCTRL_OFFSET);
+
+#ifdef CONFIG_OMAP_PM_STANDALONE
+	/*
+	 * XXX: Enable MM autoret on omap5 by default
+	 * Should be removed once MM domain is used properly
+	 */
+	if (cpu_is_omap54xx()) {
+		u32 val;
+
+		val = omap4_prminst_read_inst_reg(OMAP54XX_PRM_PARTITION,
+			OMAP54XX_PRM_DEVICE_INST, OMAP54XX_PRM_VOLTCTRL_OFFSET);
+		val |= 0x2 << 4;
+		omap4_prminst_write_inst_reg(val, OMAP54XX_PRM_PARTITION,
+			OMAP54XX_PRM_DEVICE_INST, OMAP54XX_PRM_VOLTCTRL_OFFSET);
+	}
+#endif
 }
 
 /**
