@@ -364,6 +364,7 @@ static void __init exynos5_map_io(void)
 	s3c_i2c2_setname("s3c2440-i2c");
 
 	s5p_fb_setname(1, "exynos5-fb");
+	s5p_hdmi_setname("exynos5-hdmi");
 
 #ifdef CONFIG_S5P_DEV_ACE
 	s5p_ace_setname("exynos4-ace");

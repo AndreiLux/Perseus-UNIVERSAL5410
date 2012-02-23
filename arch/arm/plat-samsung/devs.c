@@ -64,6 +64,7 @@
 #include <plat/regs-serial.h>
 #include <plat/regs-spi.h>
 #include <plat/s3c64xx-spi.h>
+#include <plat/tv-core.h>
 
 static u64 samsung_device_dma_mask = DMA_BIT_MASK(32);
 
@@ -795,6 +796,8 @@ void __init s5p_i2c_hdmiphy_set_platdata(struct s3c2410_platform_i2c *pd)
 			pd->bus_num = 8;
 		else if (soc_is_s5pv210())
 			pd->bus_num = 3;
+		else if (soc_is_exynos5250())
+			pd->bus_num = 8;
 		else
 			pd->bus_num = 0;
 	}
@@ -1328,7 +1331,8 @@ void __init s3c24xx_ts_set_platdata(struct s3c2410_ts_mach_info *pd)
 
 static struct resource s5p_hdmi_resources[] = {
 	[0] = DEFINE_RES_MEM(S5P_PA_HDMI, SZ_1M),
-	[1] = DEFINE_RES_IRQ(IRQ_HDMI),
+	[1] = DEFINE_RES_IRQ(IRQ_TVOUT_EXT_HPD),
+	[2] = DEFINE_RES_IRQ(IRQ_HDMI),
 };
 
 struct platform_device s5p_device_hdmi = {
@@ -1338,6 +1342,7 @@ struct platform_device s5p_device_hdmi = {
 	.resource	= s5p_hdmi_resources,
 };
 
+#if defined(CONFIG_ARCH_EXYNOS4)
 static struct resource s5p_sdo_resources[] = {
 	[0] = DEFINE_RES_MEM(S5P_PA_SDO, SZ_64K),
 	[1] = DEFINE_RES_IRQ(IRQ_SDO),
@@ -1355,6 +1360,12 @@ static struct resource s5p_mixer_resources[] = {
 	[1] = DEFINE_RES_MEM_NAMED(S5P_PA_VP, SZ_64K, "vp"),
 	[2] = DEFINE_RES_IRQ_NAMED(IRQ_MIXER, "irq"),
 };
+#else
+static struct resource s5p_mixer_resources[] = {
+	[0] = DEFINE_RES_MEM_NAMED(S5P_PA_MIXER, SZ_64K, "mxr"),
+	[2] = DEFINE_RES_IRQ_NAMED(IRQ_MIXER, "irq"),
+};
+#endif
 
 struct platform_device s5p_device_mixer = {
 	.name		= "s5p-mixer",
@@ -1366,6 +1377,34 @@ struct platform_device s5p_device_mixer = {
 		.coherent_dma_mask	= DMA_BIT_MASK(32),
 	}
 };
+
+static struct resource s5p_cec_resources[] = {
+	[0] = DEFINE_RES_MEM_NAMED(S5P_PA_HDMI_CEC, SZ_64K, "cec"),
+	[1] = DEFINE_RES_IRQ_NAMED(IRQ_CEC, "irq"),
+};
+
+struct platform_device s5p_device_cec = {
+	.name           = "s5p-tvout-cec",
+	.id             = -1,
+	.num_resources  = ARRAY_SIZE(s5p_cec_resources),
+	.resource       = s5p_cec_resources,
+};
+
+void __init s5p_hdmi_cec_set_platdata(struct s5p_platform_cec *pd)
+{
+	struct s5p_platform_cec *npd;
+
+	npd = kmemdup(pd, sizeof(struct s5p_platform_cec), GFP_KERNEL);
+	if (!npd)
+		printk(KERN_ERR "%s: no memory for platform data\n",
+				__func__);
+	else {
+		if (!npd->cfg_gpio)
+			npd->cfg_gpio = s5p_cec_cfg_gpio;
+		s5p_device_cec.dev.platform_data = npd;
+	}
+}
+
 #endif /* CONFIG_S5P_DEV_TV */
 
 /* USB */

@@ -43,6 +43,7 @@
 #include <plat/iic.h>
 #include <plat/mipi_csis.h>
 #include <plat/jpeg.h>
+#include <plat/tv-core.h>
 
 #include <mach/map.h>
 #include <mach/sysmmu.h>
@@ -433,6 +434,12 @@ static struct i2c_board_info i2c_devs7[] __initdata = {
 		.irq		= IRQ_EINT(25),
 	},
 };
+
+#if defined(CONFIG_VIDEO_EXYNOS_TV) && defined(CONFIG_VIDEO_EXYNOS_HDMI_CEC)
+static struct s5p_platform_cec hdmi_cec_data __initdata = {
+
+};
+#endif
 
 #ifdef CONFIG_CMA
 /* defined in arch/arm/mach-exynos/reserve-mem.c */
@@ -1078,6 +1085,20 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 #endif
 	&s5p_device_fimd1,
 #endif
+#ifdef CONFIG_VIDEO_EXYNOS_TV
+#ifdef CONFIG_VIDEO_EXYNOS_HDMI
+	&s5p_device_hdmi,
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS_HDMIPHY
+	&s5p_device_i2c_hdmiphy,
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS_MIXER
+	&s5p_device_mixer,
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS_HDMI_CEC
+	&s5p_device_cec,
+#endif
+#endif
 	&wm8994_fixed_voltage0,
 	&wm8994_fixed_voltage1,
 	&wm8994_fixed_voltage2,
@@ -1291,6 +1312,38 @@ static void __init smdk5250_machine_init(void)
 #ifdef CONFIG_VIDEO_EXYNOS_JPEG
 	exynos5_jpeg_setup_clock(&s5p_device_jpeg.dev, 150000000);
 #endif
+#if defined(CONFIG_VIDEO_EXYNOS_TV) && defined(CONFIG_VIDEO_EXYNOS_HDMI)
+	dev_set_name(&s5p_device_hdmi.dev, "exynos5-hdmi");
+	clk_add_alias("hdmi", "s5p-hdmi", "hdmi", &s5p_device_hdmi.dev);
+	clk_add_alias("hdmiphy", "s5p-hdmi", "hdmiphy", &s5p_device_hdmi.dev);
+
+	/* direct HPD to HDMI chip */
+	gpio_request(EXYNOS5_GPX3(7), "hpd-plug");
+	gpio_direction_input(EXYNOS5_GPX3(7));
+	s3c_gpio_cfgpin(EXYNOS5_GPX3(7), S3C_GPIO_SFN(0xf));
+	s3c_gpio_setpull(EXYNOS5_GPX3(7), S3C_GPIO_PULL_NONE);
+
+	/* HDMI CEC */
+	gpio_request(EXYNOS5_GPX3(6), "hdmi-cec");
+	gpio_direction_input(EXYNOS5_GPX3(6));
+	s3c_gpio_cfgpin(EXYNOS5_GPX3(6), S3C_GPIO_SFN(0x3));
+	s3c_gpio_setpull(EXYNOS5_GPX3(6), S3C_GPIO_PULL_NONE);
+
+	/* setup dependencies between TV devices */
+	/* This will be added after power domain for exynos5 is developed */
+#if defined(CONFIG_EXYNOS_DEV_PD)
+	s5p_device_hdmi.dev.parent = &exynos5_device_pd[PD_DISP1].dev;
+	s5p_device_mixer.dev.parent = &exynos5_device_pd[PD_DISP1].dev;
+#endif
+
+#if defined(CONFIG_VIDEO_EXYNOS_HDMIPHY)
+	s5p_i2c_hdmiphy_set_platdata(NULL);
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS_HDMI_CEC
+	s5p_hdmi_cec_set_platdata(&hdmi_cec_data);
+#endif
+#endif
+
 }
 
 MACHINE_START(SMDK5250, "SMDK5250")
