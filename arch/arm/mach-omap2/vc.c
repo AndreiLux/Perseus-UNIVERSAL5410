@@ -552,27 +552,28 @@ static void omap4_set_timings(struct voltagedomain *voltdm, bool off_mode)
 	u32 val;
 	u32 ramp;
 	u32 tstart, tshut;
+	int offset;
 
-	/* configure the setup times */
-	val = voltdm->read(voltdm->vfsm->voltsetup_reg);
-
-	if (off_mode)
+	if (off_mode) {
 		ramp = omap4_calc_volt_ramp(voltdm,
 			voltdm->vc_param->on - voltdm->vc_param->off,
 			voltdm->sys_clk.rate);
-	else
+		offset = voltdm->vfsm->voltsetup_off_reg;
+	} else {
 		ramp = omap4_calc_volt_ramp(voltdm,
 			voltdm->vc_param->on - voltdm->vc_param->ret,
 			voltdm->sys_clk.rate);
+		offset = voltdm->vfsm->voltsetup_reg;
+	}
 
 	if (!ramp)
 		return;
 
-	val |= ramp << OMAP4430_RAMP_DOWN_COUNT_SHIFT;
+	val = ramp << OMAP4430_RAMP_DOWN_COUNT_SHIFT;
 
 	val |= ramp << OMAP4430_RAMP_UP_COUNT_SHIFT;
 
-	voltdm->write(val, voltdm->vfsm->voltsetup_reg);
+	voltdm->write(val, offset);
 
 	omap_pm_get_oscillator(&tstart, &tshut);
 
@@ -601,7 +602,7 @@ static void __init omap4_vc_init_channel(struct voltagedomain *voltdm)
 	struct omap_voltdm_pmic *pmic = voltdm->pmic;
 	u32 vc_val = 0;
 
-	omap4_set_timings(voltdm, true);
+	omap4_set_timings(voltdm, false);
 
 	if (pmic->i2c_high_speed) {
 		vc_val |= pmic->i2c_hscll_low << OMAP4430_HSCLL_SHIFT;

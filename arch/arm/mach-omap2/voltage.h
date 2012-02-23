@@ -47,6 +47,7 @@ struct omap_vdd_info;
 struct omap_vfsm_instance {
 	u32 voltsetup_mask;
 	u8 voltsetup_reg;
+	u8 voltsetup_off_reg;
 };
 
 #define OMAP3PLUS_DYNAMIC_NOMINAL_MARGIN_UV	50000
