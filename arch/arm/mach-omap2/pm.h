@@ -47,6 +47,7 @@ static inline bool omap4_device_next_state_off(void)
 }
 #endif
 void omap_trigger_wuclk_ctrl(void);
+extern u32 omap4_device_off_counter;
 
 #if defined(CONFIG_PM_OPP)
 extern int omap3_opp_init(void);
