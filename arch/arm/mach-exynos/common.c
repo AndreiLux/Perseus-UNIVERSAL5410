@@ -19,6 +19,7 @@
 #include <linux/serial_core.h>
 #include <linux/of.h>
 #include <linux/of_irq.h>
+#include <linux/dma-mapping.h>
 
 #include <asm/proc-fns.h>
 #include <asm/exception.h>
@@ -377,6 +378,7 @@ static void __init exynos4_map_io(void)
 static void __init exynos5_map_io(void)
 {
 	iotable_init(exynos5_iodesc, ARRAY_SIZE(exynos5_iodesc));
+	init_consistent_dma_size(14 << 20);
 
 	s3c_device_i2c0.resource[0].start = EXYNOS5_PA_IIC(0);
 	s3c_device_i2c0.resource[0].end   = EXYNOS5_PA_IIC(0) + SZ_4K - 1;
