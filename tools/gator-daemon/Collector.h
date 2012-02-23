@@ -19,6 +19,7 @@ public:
 	void stop();
 	int collect(char* buffer);
 	void enablePerfCounters();
+	void setupPerfCounters();
 	int getBufferSize() {return bufferSize;}
 private:
 	int bufferSize;
