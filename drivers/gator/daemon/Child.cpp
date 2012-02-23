@@ -226,7 +226,7 @@ void Child::run() {
 	}
 
 	// Write configuration into the driver
-	collector->enablePerfCounters();
+	collector->setupPerfCounters();
 
 	// Create user-space buffers
 	int fifoBufferSize = collector->getBufferSize();

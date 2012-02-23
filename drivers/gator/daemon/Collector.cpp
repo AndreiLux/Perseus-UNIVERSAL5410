@@ -46,10 +46,14 @@ Collector::Collector() {
 
 	getCoreName();
 
+	enablePerfCounters();
+
 	// Read unchanging keys from driver which are created at insmod'ing of gator.ko
 	for (int i = 0; i < MAX_PERFORMANCE_COUNTERS; i++) {
-		snprintf(text, sizeof(text), "events/%s/key", gSessionData->mPerfCounterType[i]);
-		readIntDriver(text, &gSessionData->mPerfCounterKey[i]);
+		if (gSessionData->mPerfCounterEnabled[i]) {
+			snprintf(text, sizeof(text), "events/%s/key", gSessionData->mPerfCounterType[i]);
+			readIntDriver(text, &gSessionData->mPerfCounterKey[i]);
+		}
 	}
 }
 
@@ -64,6 +68,21 @@ Collector::~Collector() {
 }
 
 void Collector::enablePerfCounters() {
+	char text[sizeof(gSessionData->mPerfCounterType[0]) + 30]; // sufficiently large to hold all /dev/gator/events/<types>/enabled
+	for (int i=0; i<MAX_PERFORMANCE_COUNTERS; i++) {
+		if (!gSessionData->mPerfCounterEnabled[i]) {
+			continue;
+		}
+		snprintf(text, sizeof(text), "events/%s/enabled", gSessionData->mPerfCounterType[i]);
+		if (writeReadDriver(text, &gSessionData->mPerfCounterEnabled[i])) {
+			// Disable those events that don't exist on this hardware platform even though they exist in configuration.xml
+			gSessionData->mPerfCounterEnabled[i] = 0;
+			continue;
+		}
+	}
+}
+
+void Collector::setupPerfCounters() {
 	char base[sizeof(gSessionData->mPerfCounterType[0]) + 10]; // sufficiently large to hold all events/<types>
 	char text[sizeof(gSessionData->mPerfCounterType[0]) + 20]; // sufficiently large to hold all events/<types>/<file>
 
@@ -85,10 +104,6 @@ void Collector::enablePerfCounters() {
 				logg->logError(__FILE__, __LINE__, "Event Based Sampling is only supported with kernel versions 3.0.0 and higher with CONFIG_PERF_EVENTS=y, and CONFIG_HW_PERF_EVENTS=y\n");
 				handleException();
 			}
-		}
-		snprintf(text, sizeof(text), "%s/enabled", base);
-		if (writeReadDriver(text, &gSessionData->mPerfCounterEnabled[i])) {
-			gSessionData->mPerfCounterEnabled[i] = 0;
 		}
 	}
 }
