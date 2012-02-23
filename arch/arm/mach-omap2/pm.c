@@ -164,7 +164,7 @@ void omap_trigger_wuclk_ctrl(void)
 	if (cpu_is_omap34xx())
 		omap3_trigger_wuclk_ctrl();
 
-	if (cpu_is_omap44xx())
+	if (cpu_is_omap44xx() || cpu_is_omap54xx())
 		omap4_trigger_wuclk_ctrl();
 }
 
