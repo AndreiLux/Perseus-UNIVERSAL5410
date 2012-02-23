@@ -37,17 +37,20 @@
 
 static const struct omap_vfsm_instance omap5_vdd_mpu_vfsm = {
 	.voltsetup_reg = OMAP54XX_PRM_VOLTSETUP_MPU_RET_SLEEP_OFFSET,
+	.voltsetup_off_reg = OMAP54XX_PRM_VOLTSETUP_MPU_OFF_OFFSET,
 };
 static struct omap_vdd_info omap5_vdd_mpu_info;
 
 
 static const struct omap_vfsm_instance omap5_vdd_mm_vfsm = {
 	.voltsetup_reg = OMAP54XX_PRM_VOLTSETUP_MM_RET_SLEEP_OFFSET,
+	.voltsetup_off_reg = OMAP54XX_PRM_VOLTSETUP_MM_OFF_OFFSET,
 };
 static struct omap_vdd_info omap5_vdd_mm_info;
 
 static const struct omap_vfsm_instance omap5_vdd_core_vfsm = {
 	.voltsetup_reg = OMAP54XX_PRM_VOLTSETUP_CORE_RET_SLEEP_OFFSET,
+	.voltsetup_off_reg = OMAP54XX_PRM_VOLTSETUP_CORE_OFF_OFFSET,
 };
 static struct omap_vdd_info omap5_vdd_core_info;
 
