@@ -174,3 +174,20 @@ void omap4_prminst_global_warm_sw_reset(void)
 				    OMAP4430_PRM_DEVICE_INST,
 				    OMAP4_PRM_RSTCTRL_OFFSET);
 }
+
+void omap4_prminst_global_cold_sw_reset(void)
+{
+	u32 v;
+
+	v = omap4_prm_read_inst_reg(OMAP4430_PRM_DEVICE_INST,
+				    OMAP4_RM_RSTCTRL);
+	v |= OMAP4430_RST_GLOBAL_COLD_SW_MASK;
+	omap4_prm_write_inst_reg(v, OMAP4430_PRM_DEVICE_INST,
+				 OMAP4_RM_RSTCTRL);
+
+	/* OCP barrier */
+	v = omap4_prm_read_inst_reg(OMAP4430_PRM_DEVICE_INST,
+				    OMAP4_RM_RSTCTRL);
+}
+
+
