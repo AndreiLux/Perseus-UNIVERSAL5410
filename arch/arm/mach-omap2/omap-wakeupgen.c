@@ -626,10 +626,15 @@ int __init omap_wakeupgen_init(void)
 	 * program the SAR locations for interrupt security registers to
 	 * reflect the same.
 	 */
-	sar_writel(GIC_ISR_NON_SECURE, ICDISR_CPU0_OFFSET, 0);
-	sar_writel(GIC_ISR_NON_SECURE, ICDISR_CPU1_OFFSET, 0);
-	for (i = 0; i < max_spi_reg; i++)
-		sar_writel(GIC_ISR_NON_SECURE, ICDISR_SPI_OFFSET, i);
+	if (omap_type() == OMAP2_DEVICE_TYPE_GP) {
+		sar_base = ioremap(OMAP44XX_SAR_RAM_BASE, SZ_16K);
+		sar_writel(GIC_ISR_NON_SECURE, ICDISR_CPU0_OFFSET, 0);
+		sar_writel(GIC_ISR_NON_SECURE, ICDISR_CPU1_OFFSET, 0);
+		for (i = 0; i < max_spi_reg; i++)
+			sar_writel(GIC_ISR_NON_SECURE, ICDISR_SPI_OFFSET, i);
+		iounmap(sar_base);
+		sar_base = NULL;
+	}
 
 	irq_hotplug_init();
 	irq_pm_init();
