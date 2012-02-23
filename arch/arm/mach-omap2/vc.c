@@ -488,13 +488,15 @@ static void __init omap3_vc_init_channel(struct voltagedomain *voltdm)
 }
 
 static u32 omap4_calc_volt_ramp(struct voltagedomain *voltdm, u32 voltage_diff,
-		u32 clk_rate)
+		u32 add_usec, u32 clk_rate)
 {
 	u32 prescaler;
 	u32 cycles;
 	u32 time;
 
 	time = voltage_diff / voltdm->pmic->slew_rate;
+
+	time += add_usec;
 
 	cycles = clk_rate / 1000 * time / 1000;
 
@@ -547,22 +549,22 @@ static u32 omap4_usec_to_val_scrm(u32 usec, int shift, u32 mask)
 	return val;
 }
 
-static void omap4_set_timings(struct voltagedomain *voltdm, bool off_mode)
+static void omap4_set_volt_ramp_time(struct voltagedomain *voltdm,
+	bool off_mode)
 {
 	u32 val;
 	u32 ramp;
-	u32 tstart, tshut;
 	int offset;
 
 	if (off_mode) {
 		ramp = omap4_calc_volt_ramp(voltdm,
 			voltdm->vc_param->on - voltdm->vc_param->off,
+			voltdm->pmic->switch_on_time,
 			voltdm->sys_clk.rate);
-		ramp += voltdm->pmic->switch_on_time;
 		offset = voltdm->vfsm->voltsetup_off_reg;
 	} else {
 		ramp = omap4_calc_volt_ramp(voltdm,
-			voltdm->vc_param->on - voltdm->vc_param->ret,
+			voltdm->vc_param->on - voltdm->vc_param->ret, 0,
 			voltdm->sys_clk.rate);
 		offset = voltdm->vfsm->voltsetup_reg;
 	}
@@ -575,6 +577,15 @@ static void omap4_set_timings(struct voltagedomain *voltdm, bool off_mode)
 	val |= ramp << OMAP4430_RAMP_UP_COUNT_SHIFT;
 
 	voltdm->write(val, offset);
+}
+
+static void omap4_set_timings(struct voltagedomain *voltdm)
+{
+	u32 val;
+	u32 tstart, tshut;
+
+	omap4_set_volt_ramp_time(voltdm, true);
+	omap4_set_volt_ramp_time(voltdm, false);
 
 	omap_pm_get_oscillator(&tstart, &tshut);
 
@@ -637,7 +648,7 @@ static void __init omap4_vc_init_channel(struct voltagedomain *voltdm)
 	struct omap_voltdm_pmic *pmic = voltdm->pmic;
 	u32 vc_val = 0;
 
-	omap4_set_timings(voltdm, false);
+	omap4_set_timings(voltdm);
 
 	voltdm->sleep = omap4_vc_sleep;
 	voltdm->wakeup = omap4_vc_wakeup;
