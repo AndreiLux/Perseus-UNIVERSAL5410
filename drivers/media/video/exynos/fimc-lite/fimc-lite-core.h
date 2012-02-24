@@ -228,7 +228,7 @@ struct flite_vb2 {
 
 	unsigned long (*plane_addr)(struct vb2_buffer *vb, u32 plane_no);
 
-	void (*resume)(void *alloc_ctx);
+	int (*resume)(void *alloc_ctx);
 	void (*suspend)(void *alloc_ctx);
 
 	int (*cache_flush)(struct vb2_buffer *vb, u32 num_planes);

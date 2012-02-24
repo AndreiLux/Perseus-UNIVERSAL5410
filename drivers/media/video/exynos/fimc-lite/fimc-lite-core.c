@@ -349,11 +349,12 @@ static irqreturn_t flite_irq_handler(int irq, void *priv)
 		if (!list_empty(&flite->active_buf_q)) {
 			buf = active_queue_pop(flite);
 			if (!test_bit(FLITE_ST_RUN, &flite->state)) {
+				flite_info("error interrupt");
 				vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
 				goto unlock;
 			}
 			vb2_buffer_done(&buf->vb, VB2_BUF_STATE_DONE);
-			flite_info("done_index : %d", buf->vb.v4l2_buf.index);
+			flite_dbg("done_index : %d", buf->vb.v4l2_buf.index);
 		}
 		if (!list_empty(&flite->pending_buf_q)) {
 			buf = pending_queue_pop(flite);
@@ -621,10 +622,10 @@ static int flite_link_setup(struct media_entity *entity,
 	struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(entity);
 	struct flite_dev *flite = v4l2_get_subdevdata(sd);
 
-	flite_info("");
 	switch (local->index | media_entity_type(remote->entity)) {
 	case FLITE_PAD_SINK | MEDIA_ENT_T_V4L2_SUBDEV:
 		if (flags & MEDIA_LNK_FL_ENABLED) {
+			flite_info("sink link enabled");
 			if (flite->input != FLITE_INPUT_NONE) {
 				flite_err("link is busy");
 				return -EBUSY;
@@ -634,22 +635,29 @@ static int flite_link_setup(struct media_entity *entity,
 			else
 				flite->input = FLITE_INPUT_SENSOR;
 		} else {
+			flite_info("sink link disabled");
 			flite->input = FLITE_INPUT_NONE;
 		}
 		break;
 
 	case FLITE_PAD_SOURCE_PREV | MEDIA_ENT_T_V4L2_SUBDEV: /* fall through */
 	case FLITE_PAD_SOURCE_CAMCORD | MEDIA_ENT_T_V4L2_SUBDEV:
-		if (flags & MEDIA_LNK_FL_ENABLED)
+		if (flags & MEDIA_LNK_FL_ENABLED) {
+			flite_info("source link enabled");
 			flite->output |= FLITE_OUTPUT_GSC;
-		else
+		} else {
+			flite_info("source link disabled");
 			flite->output &= ~FLITE_OUTPUT_GSC;
+		}
 		break;
 	case FLITE_PAD_SOURCE_MEM | MEDIA_ENT_T_DEVNODE:
-		if (flags & MEDIA_LNK_FL_ENABLED)
+		if (flags & MEDIA_LNK_FL_ENABLED) {
+			flite_info("source link enabled");
 			flite->output |= FLITE_OUTPUT_MEM;
-		else
+		} else {
+			flite_info("source link disabled");
 			flite->output &= ~FLITE_OUTPUT_MEM;
+		}
 		break;
 	default:
 		flite_err("ERR link");
@@ -901,6 +909,10 @@ int __flite_pipeline_shutdown(struct flite_dev *flite)
 	if (ret && ret != -ENXIO)
 		flite_set_cam_clock(flite, false);
 
+	flite->pipeline.flite = NULL;
+	flite->pipeline.csis = NULL;
+	flite->pipeline.sensor = NULL;
+
 	return ret == -ENXIO ? 0 : ret;
 }
 
@@ -1003,9 +1015,15 @@ static int flite_start_streaming(struct vb2_queue *q, unsigned int count)
 {
 	struct flite_dev *flite = q->drv_priv;
 
-	flite_hw_reset(flite);
 	flite->active_buf_cnt = 0;
 	flite->pending_buf_cnt = 0;
+
+	flite->mdev->is_flite_on= true;
+
+	if (!test_bit(FLITE_ST_STREAM, &flite->state)) {
+		if (!test_and_set_bit(FLITE_ST_PIPE_STREAM, &flite->state))
+			flite_pipeline_s_stream(flite, 1);
+	}
 
 	return 0;
 }
@@ -1049,6 +1067,8 @@ static int flite_stop_streaming(struct vb2_queue *q)
 
 	if (!flite_active(flite))
 		return -EINVAL;
+
+	flite->mdev->is_flite_on= false;
 
 	return flite_stop_capture(flite);
 }
@@ -1117,7 +1137,7 @@ int flite_prepare_addr(struct flite_dev *flite, struct vb2_buffer *vb,
 
 	addr->y = flite->vb2->plane_addr(vb, 0);
 
-	flite_info("ADDR: y= 0x%X", addr->y);
+	flite_dbg("ADDR: y= 0x%X", addr->y);
 
 	return 0;
 }
@@ -1460,6 +1480,8 @@ static int flite_streamon(struct file *file, void *priv, enum v4l2_buf_type type
 	ret = flite_link_validate(flite);
 	if (ret)
 		return ret;
+
+	flite_hw_reset(flite);
 
 	return vb2_streamon(&flite->vbq, type);
 }
@@ -2067,6 +2089,7 @@ static int flite_probe(struct platform_device *pdev)
 		flite_err("failed to get flite.%d clock", flite->id);
 		goto err_entity;
 	}
+	flite->mdev->is_flite_on= false;
 #endif
 	platform_set_drvdata(flite->pdev, flite->sd_flite);
 	pm_runtime_enable(&pdev->dev);

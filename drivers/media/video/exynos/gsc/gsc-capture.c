@@ -151,6 +151,7 @@ static void gsc_capture_buf_queue(struct vb2_buffer *vb)
 	struct gsc_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
 	struct gsc_dev *gsc = ctx->gsc_dev;
 	struct gsc_capture_device *cap = &gsc->cap;
+	struct exynos_md *mdev = gsc->mdev[MDEV_CAPTURE];
 	int min_bufs, ret;
 	unsigned long flags;
 
@@ -160,7 +161,7 @@ static void gsc_capture_buf_queue(struct vb2_buffer *vb)
 		gsc_err("Failed to prepare output addr");
 
 	if (!test_bit(ST_CAPT_SUSPENDED, &gsc->state)) {
-		gsc_info("buf_index : %d", vb->v4l2_buf.index);
+		gsc_dbg("buf_index : %d", vb->v4l2_buf.index);
 		gsc_hw_set_output_buf_masking(gsc, vb->v4l2_buf.index, 0);
 	}
 
@@ -171,7 +172,11 @@ static void gsc_capture_buf_queue(struct vb2_buffer *vb)
 		!test_bit(ST_CAPT_STREAM, &gsc->state)) {
 		if (!test_and_set_bit(ST_CAPT_PIPE_STREAM, &gsc->state)) {
 			spin_unlock_irqrestore(&gsc->slock, flags);
-			gsc_cap_pipeline_s_stream(gsc, 1);
+			if (!mdev->is_flite_on)
+				gsc_cap_pipeline_s_stream(gsc, 1);
+			else
+				v4l2_subdev_call(gsc->cap.sd_cap, video,
+							s_stream, 1);
 			return;
 		}
 
@@ -233,35 +238,37 @@ static int gsc_capture_subdev_s_stream(struct v4l2_subdev *sd, int enable)
 	struct gsc_capture_device *cap = &gsc->cap;
 	struct gsc_ctx *ctx = cap->ctx;
 
-	gsc_info("");
-
-	gsc_hw_set_frm_done_irq_mask(gsc, false);
-	gsc_hw_set_overflow_irq_mask(gsc, false);
-	gsc_hw_set_one_frm_mode(gsc, false);
-	gsc_hw_set_gsc_irq_enable(gsc, true);
-
-	if (gsc->pipeline.disp)
-		gsc_hw_set_sysreg_writeback(ctx);
-	else
-		gsc_hw_set_sysreg_camif(true);
-
-	gsc_hw_set_input_path(ctx);
-	gsc_hw_set_in_size(ctx);
-	gsc_hw_set_in_image_format(ctx);
-	gsc_hw_set_output_path(ctx);
-	gsc_hw_set_out_size(ctx);
-	gsc_hw_set_out_image_format(ctx);
-	gsc_hw_set_global_alpha(ctx);
-
-	gsc_capture_scaler_info(ctx);
-	gsc_hw_set_prescaler(ctx);
-	gsc_hw_set_mainscaler(ctx);
-
-	set_bit(ST_CAPT_PEND, &gsc->state);
-
-	gsc_hw_enable_control(gsc, true);
-	set_bit(ST_CAPT_STREAM, &gsc->state);
-
+	if (enable) {
+		gsc_info("start");
+		gsc_hw_set_frm_done_irq_mask(gsc, false);
+		gsc_hw_set_overflow_irq_mask(gsc, false);
+		gsc_hw_set_one_frm_mode(gsc, false);
+		gsc_hw_set_gsc_irq_enable(gsc, true);
+		
+		if (gsc->pipeline.disp)
+			gsc_hw_set_sysreg_writeback(ctx);
+		else
+			gsc_hw_set_sysreg_camif(true);
+		
+		gsc_hw_set_input_path(ctx);
+		gsc_hw_set_in_size(ctx);
+		gsc_hw_set_in_image_format(ctx);
+		gsc_hw_set_output_path(ctx);
+		gsc_hw_set_out_size(ctx);
+		gsc_hw_set_out_image_format(ctx);
+		gsc_hw_set_global_alpha(ctx);
+		
+		gsc_capture_scaler_info(ctx);
+		gsc_hw_set_prescaler(ctx);
+		gsc_hw_set_mainscaler(ctx);
+		
+		set_bit(ST_CAPT_PEND, &gsc->state);
+		
+		gsc_hw_enable_control(gsc, true);
+		set_bit(ST_CAPT_STREAM, &gsc->state);
+	} else {
+		gsc_info("stop");
+	}
 	return 0;
 }
 
@@ -270,6 +277,7 @@ static int gsc_capture_start_streaming(struct vb2_queue *q, unsigned int count)
 	struct gsc_ctx *ctx = q->drv_priv;
 	struct gsc_dev *gsc = ctx->gsc_dev;
 	struct gsc_capture_device *cap = &gsc->cap;
+	struct exynos_md *mdev = gsc->mdev[MDEV_CAPTURE];
 	int min_bufs;
 
 	min_bufs = cap->reqbufs_cnt > 1 ? 2 : 1;
@@ -277,7 +285,11 @@ static int gsc_capture_start_streaming(struct vb2_queue *q, unsigned int count)
 		!test_bit(ST_CAPT_STREAM, &gsc->state)) {
 		if (!test_and_set_bit(ST_CAPT_PIPE_STREAM, &gsc->state)) {
 			gsc_info("");
-			gsc_cap_pipeline_s_stream(gsc, 1);
+			if (!mdev->is_flite_on)
+				gsc_cap_pipeline_s_stream(gsc, 1);
+			else
+				v4l2_subdev_call(gsc->cap.sd_cap, video,
+							s_stream, 1);
 		}
 	}
 
@@ -286,6 +298,7 @@ static int gsc_capture_start_streaming(struct vb2_queue *q, unsigned int count)
 
 static int gsc_capture_state_cleanup(struct gsc_dev *gsc)
 {
+	struct exynos_md *mdev = gsc->mdev[MDEV_CAPTURE];
 	unsigned long flags;
 	bool streaming;
 
@@ -298,10 +311,15 @@ static int gsc_capture_state_cleanup(struct gsc_dev *gsc)
 	set_bit(ST_CAPT_SUSPENDED, &gsc->state);
 	spin_unlock_irqrestore(&gsc->slock, flags);
 
-	if (streaming)
+	if (streaming) {
+		if (mdev->is_flite_on)
 		return gsc_cap_pipeline_s_stream(gsc, 0);
 	else
+			return v4l2_subdev_call(gsc->cap.sd_cap, video,
+							s_stream, 0);
+	} else {
 		return 0;
+}
 }
 
 static int gsc_cap_stop_capture(struct gsc_dev *gsc)
@@ -646,17 +664,19 @@ static void gsc_set_cam_clock(struct gsc_dev *gsc, bool on)
 static int __gsc_cap_pipeline_initialize(struct gsc_dev *gsc,
 					 struct media_entity *me, bool prep)
 {
+	struct exynos_md *mdev = gsc->mdev[MDEV_CAPTURE];
 	int ret = 0;
 
-	if (prep)
+	if (prep) {
 		gsc_cap_pipeline_prepare(gsc, me);
 	if ((!gsc->pipeline.sensor || !gsc->pipeline.flite) &&
 			!gsc->pipeline.disp)
 		return -EINVAL;
+	}
 
 	gsc_set_cam_clock(gsc, true);
 
-	if (gsc->pipeline.sensor && gsc->pipeline.flite)
+	if (!mdev->is_flite_on && gsc->pipeline.sensor && gsc->pipeline.flite)
 		ret = gsc_cap_pipeline_s_power(gsc, 1);
 
 	return ret;
@@ -716,13 +736,20 @@ err:
 
 int __gsc_cap_pipeline_shutdown(struct gsc_dev *gsc)
 {
+	struct exynos_md *mdev = gsc->mdev[MDEV_CAPTURE];
 	int ret = 0;
 
-	if (gsc->pipeline.sensor && gsc->pipeline.flite)
+	if (!mdev->is_flite_on && gsc->pipeline.sensor && gsc->pipeline.flite)
 		ret = gsc_cap_pipeline_s_power(gsc, 0);
 
 	if (ret && ret != -ENXIO)
 		gsc_set_cam_clock(gsc, false);
+
+	gsc->pipeline.sd_gsc= NULL;
+	gsc->pipeline.disp= NULL;
+	gsc->pipeline.flite = NULL;
+	gsc->pipeline.csis = NULL;
+	gsc->pipeline.sensor = NULL;
 
 	return ret == -ENXIO ? 0 : ret;
 }
@@ -738,6 +765,7 @@ int gsc_cap_pipeline_shutdown(struct gsc_dev *gsc)
 
 	return ret;
 }
+
 static int gsc_capture_close(struct file *file)
 {
 	struct gsc_dev *gsc = video_drvdata(file);
@@ -882,12 +910,27 @@ static int gsc_capture_streamoff(struct file *file, void *priv,
 			    enum v4l2_buf_type type)
 {
 	struct gsc_dev *gsc = video_drvdata(file);
-	struct v4l2_subdev *sd = gsc->pipeline.sensor;
+	struct v4l2_subdev *sd;
+	struct gsc_pipeline *p = &gsc->pipeline;
 	int ret;
 
+	if (p->disp) {
+		sd = gsc->pipeline.disp;
+	} else if (p->sensor) {
+		sd = gsc->pipeline.sensor;
+	} else {
+		gsc_err("Error pipeline");
+		return -EPIPE;
+	}
+
 	ret = vb2_streamoff(&gsc->cap.vbq, type);
-	if (ret == 0)
-		media_entity_pipeline_stop(&sd->entity);
+	if (ret == 0) {
+		if (p->disp)
+			media_entity_pipeline_stop(&p->disp->entity);
+		else if (p->sensor)
+			media_entity_pipeline_stop(&p->sensor->entity);
+	}
+
 	return ret;
 }
 
@@ -1262,10 +1305,10 @@ static int gsc_capture_link_setup(struct media_entity *entity,
 	struct gsc_dev *gsc = v4l2_get_subdevdata(sd);
 	struct gsc_capture_device *cap = &gsc->cap;
 
-	gsc_info("");
 	switch (local->index | media_entity_type(remote->entity)) {
 	case GSC_PAD_SINK | MEDIA_ENT_T_V4L2_SUBDEV:
 		if (flags & MEDIA_LNK_FL_ENABLED) {
+			gsc_info("local to gsc-subdev link enable");
 			if (cap->input != 0)
 				return -EBUSY;
 			/* Write-Back link enabled */
@@ -1274,18 +1317,29 @@ static int gsc_capture_link_setup(struct media_entity *entity,
 					media_entity_to_v4l2_subdev(remote->entity);
 				gsc->cap.sd_disp->grp_id = FIMD_GRP_ID;
 				cap->ctx->in_path = GSC_WRITEBACK;
-				cap->input |= GSC_IN_FIMD_WRITEBACK;
+				cap->input = GSC_IN_FIMD_WRITEBACK;
 			} else if (remote->index == FLITE_PAD_SOURCE_PREV) {
-				cap->input |= GSC_IN_FLITE_PREVIEW;
+				cap->ctx->in_path = GSC_CAMERA;
+				cap->input = GSC_IN_FLITE_PREVIEW;
 			} else {
-				cap->input |= GSC_IN_FLITE_CAMCORDING;
+				cap->ctx->in_path = GSC_CAMERA;
+				cap->input = GSC_IN_FLITE_CAMCORDING;
 			}
 		} else {
+			if (cap->input == GSC_IN_FIMD_WRITEBACK)
+				gsc->pipeline.disp = NULL;
+			else if ((cap->input == GSC_IN_FLITE_PREVIEW) ||
+				(cap->input == GSC_IN_FLITE_CAMCORDING))
+				gsc->pipeline.flite = NULL;
+			gsc_info("local to gsc-subdev link disable");
 			cap->input = GSC_IN_NONE;
 		}
 		break;
 	case GSC_PAD_SOURCE | MEDIA_ENT_T_DEVNODE:
-		/* gsc-cap always write to memory */
+		if (flags & MEDIA_LNK_FL_ENABLED)
+			gsc_info("gsc-subdev to gsc-video link enable");
+		else
+			gsc_info("gsc-subdev to gsc-video link disable");
 		break;
 	}
 
@@ -1353,9 +1407,7 @@ static int gsc_capture_create_link(struct gsc_dev *gsc)
 	source = &gsc->cap.sd_cap->entity;
 	sink = &gsc->cap.vfd->entity;
 	if (source && sink) {
-		ret = media_entity_create_link(source, GSC_PAD_SOURCE, sink,
-				0, MEDIA_LNK_FL_IMMUTABLE |
-				MEDIA_LNK_FL_ENABLED);
+		ret = media_entity_create_link(source, GSC_PAD_SOURCE, sink, 0, 0);
 		if (ret) {
 			gsc_err("failed link flite to gsc\n");
 			return ret;
