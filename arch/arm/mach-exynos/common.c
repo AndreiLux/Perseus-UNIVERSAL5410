@@ -286,6 +286,31 @@ static struct map_desc exynos5_iodesc[] __initdata = {
 		.pfn		= __phys_to_pfn(EXYNOS5_PA_SS_PHY),
 		.length		= SZ_4K,
 		.type		= MT_DEVICE,
+	}, {
+		.virtual        = (unsigned long)S5P_VA_PPMU_CPU,
+		.pfn            = __phys_to_pfn(EXYNOS5_PA_PPMU_CPU),
+		.length         = SZ_8K,
+		.type		= MT_DEVICE,
+	}, {
+		.virtual        = (unsigned long)S5P_VA_PPMU_DDR_C,
+		.pfn            = __phys_to_pfn(EXYNOS5_PA_PPMU_DDR_C),
+		.length         = SZ_8K,
+		.type           = MT_DEVICE,
+	}, {
+		.virtual        = (unsigned long)S5P_VA_PPMU_DDR_R1,
+		.pfn            = __phys_to_pfn(EXYNOS5_PA_PPMU_DDR_R1),
+		.length         = SZ_8K,
+		.type           = MT_DEVICE,
+	}, {
+		.virtual        = (unsigned long)S5P_VA_PPMU_DDR_L,
+		.pfn            = __phys_to_pfn(EXYNOS5_PA_PPMU_DDR_L),
+		.length         = SZ_8K,
+		.type           = MT_DEVICE,
+	}, {
+		.virtual        = (unsigned long)S5P_VA_PPMU_RIGHT,
+		.pfn            = __phys_to_pfn(EXYNOS5_PA_PPMU_RIGHT),
+		.length         = SZ_8K,
+		.type           = MT_DEVICE,
 	},
 };
 
