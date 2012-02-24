@@ -61,7 +61,7 @@ int vb2_ion_cache_flush(struct vb2_buffer *vb, u32 num_planes);
 int vb2_ion_cache_inv(struct vb2_buffer *vb, u32 num_planes);
 
 void vb2_ion_suspend(void *alloc_ctx);
-void vb2_ion_resume(void *alloc_ctx);
+int vb2_ion_resume(void *alloc_ctx);
 
 extern const struct vb2_mem_ops vb2_ion_memops;
 extern struct ion_device *ion_exynos;
