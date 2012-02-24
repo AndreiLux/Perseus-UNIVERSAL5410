@@ -21,7 +21,7 @@
 #include <plat/usb-phy.h>
 
 static struct resource exynos4_ohci_resource[] = {
-	[0] = DEFINE_RES_MEM(EXYNOS4_PA_OHCI, SZ_256),
+	[0] = DEFINE_RES_MEM(EXYNOS_PA_OHCI, SZ_256),
 	[1] = DEFINE_RES_IRQ(IRQ_USB_HOST),
 };
 
