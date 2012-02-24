@@ -2088,11 +2088,6 @@ config FB_S3C_DEBUG_REGWRITE
        ---help---
          Show all register writes via printk(KERN_DEBUG)
 
-config VIDEO_SAMSUNG_MEMSIZE_FIMD
-	int "Memory size in kbytes for FIMD0"
-	depends on FB_S3C
-	default "25600"
-
 config S5P_DP
 	tristate "Samsung SoC DP support"
 	depends on FB_S3C && ARCH_EXYNOS5

@@ -457,20 +457,12 @@ static void __init exynos_reserve_mem(void)
 			{
 				.alignment = SZ_1M
 			}
-#ifdef CONFIG_VIDEO_SAMSUNG_MEMSIZE_FIMD
-		}, {
-			.name = "fimd",
-			.size = CONFIG_VIDEO_SAMSUNG_MEMSIZE_FIMD * SZ_1K,
-			.start = 0
-#endif
 		}, {
 			.size = 0 /* END OF REGION DEFINITIONS */
 		}
 	};
 
-	static const char map[] __initconst =
-		"exynos5-fb.1=fimd;"
-		"ion-exynos=ion, fimd;";
+	static const char map[] __initconst = "ion-exynos=ion;";
 
 	exynos_cma_region_reserve(regions, NULL, 0, map);
 }
