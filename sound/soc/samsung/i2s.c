@@ -22,6 +22,7 @@
 
 #include <plat/audio.h>
 #include <plat/clock.h>
+#include <plat/cpu.h>
 
 #include <mach/map.h>
 #include <mach/regs-audss.h>
@@ -30,6 +31,7 @@
 #include "idma.h"
 #include "i2s.h"
 #include "i2s-regs.h"
+#include "srp-type.h"
 
 #define msecs_to_loops(t) (loops_per_jiffy / 1000 * HZ * t)
 
@@ -1169,7 +1171,12 @@ static __devinit int samsung_i2s_probe(struct platform_device *pdev)
 		sec_dai->dma_playback.dma_size = 4;
 		sec_dai->base = regs_base;
 		sec_dai->quirks = quirks;
-		sec_dai->idma_playback.dma_addr = i2s_cfg->idma_addr;
+
+		if (soc_is_exynos5250() && srp_enabled_status())
+			sec_dai->idma_playback.dma_addr = srp_get_idma_addr();
+		else
+			sec_dai->idma_playback.dma_addr = i2s_cfg->idma_addr;
+
 		sec_dai->pri_dai = pri_dai;
 		pri_dai->sec_dai = sec_dai;
 	}
