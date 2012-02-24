@@ -34,6 +34,8 @@ obj-$(CONFIG_HOTPLUG_CPU)	+= hotplug.o
 obj-$(CONFIG_ARCH_EXYNOS5)		+= ppmu.o
 obj-$(CONFIG_EXYNOS_BUSFREQ)		+= dev_lock.o busfreq_opp_exynos5.o busfreq_opp_5250.o
 
+obj-$(CONFIG_ARCH_EXYNOS)	+= clock-audss.o
+
 # machine support
 
 obj-$(CONFIG_MACH_SMDKC210)		+= mach-smdkv310.o

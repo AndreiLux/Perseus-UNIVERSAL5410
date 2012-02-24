@@ -15,6 +15,7 @@
 extern struct sys_timer exynos4_timer;
 
 void exynos_init_io(struct map_desc *mach_desc, int size);
+void exynos_register_audss_clocks(void);
 void exynos4_init_irq(void);
 void exynos5_init_irq(void);
 void exynos4_restart(char mode, const char *cmd);
