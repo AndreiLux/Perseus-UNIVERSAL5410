@@ -459,12 +459,21 @@ static void __init exynos_reserve_mem(void)
 			{
 				.alignment = SZ_1M
 			}
-		}, {
+		},
+#ifdef CONFIG_AUDIO_SAMSUNG_MEMSIZE_SRP
+		{
+			.name = "srp",
+			.size = CONFIG_AUDIO_SAMSUNG_MEMSIZE_SRP * SZ_1K,
+			.start = 0,
+		},
+#endif
+		{
 			.size = 0 /* END OF REGION DEFINITIONS */
 		}
 	};
 
-	static const char map[] __initconst = "ion-exynos=ion;";
+	static const char map[] __initconst = "ion-exynos=ion;"
+					      "samsung-rp=srp;";
 
 	exynos_cma_region_reserve(regions, NULL, 0, map);
 }
@@ -1219,6 +1228,7 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&wm8994_fixed_voltage2,
 	&samsung_asoc_dma,
 	&samsung_asoc_idma,
+	&exynos5_device_srp,
 	&exynos5_device_i2s0,
 	&exynos5_device_pcm0,
 	&exynos5_device_spdif,
