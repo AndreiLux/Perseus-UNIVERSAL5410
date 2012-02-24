@@ -61,6 +61,7 @@ struct emif_data {
 	u8				thermal_notify_pending;
 	u8				duplicate;
 	u8				temperature_level;
+	u8				lpmode;
 	u32				irq;
 	struct notifier_block		volt_notifier_blk;
 	struct list_head		siblings;
@@ -1799,6 +1800,54 @@ void emif_freq_pre_notify_handler(u32 new_freq)
 	}
 }
 EXPORT_SYMBOL(emif_freq_pre_notify_handler);
+
+
+/*
+ * omap_emif_frequency_pre_notify - Disable DDR self refresh of both EMIFs
+ *
+ * It disables the LP mode if the LP mode of EMIFs was LP_MODE_SELF_REFRESH.
+ *
+ * It should be called before any PRCM frequency update sequence.
+ * After the frequency update sequence, omap_emif_frequency_post_notify
+ * should be called to restore the original LP MODE setting of the EMIFs.
+ *
+ */
+void omap_emif_frequency_pre_notify(void)
+{
+	struct emif_data *emif;
+	list_for_each_entry(emif, &device_list, siblings) {
+		void __iomem *base = emif->base;
+		u32 pm_ctrl = readl(base + EMIF_POWER_MANAGEMENT_CONTROL);
+		emif->lpmode = (pm_ctrl >> LP_MODE_SHIFT) & 0x7;
+		if (emif->lpmode == EMIF_LP_MODE_SELF_REFRESH) {
+			pm_ctrl &= ~(0x7 << LP_MODE_SHIFT);
+			writel(pm_ctrl,	base + EMIF_POWER_MANAGEMENT_CONTROL);
+		}
+	}
+}
+EXPORT_SYMBOL(omap_emif_frequency_pre_notify);
+
+/*
+ * omap_emif_frequency_post_notify - Enable DDR self refresh of both EMIFs
+ *
+ * It restores the LP mode of the EMIFs back to LP_MODE_SELF_REFRESH if it
+ * was previously disabled by omap_emif_frequency_pre_notify()
+ *
+ */
+void omap_emif_frequency_post_notify(void)
+{
+	struct emif_data *emif;
+	list_for_each_entry(emif, &device_list, siblings) {
+		void __iomem *base = emif->base;
+		u32 pm_ctrl = readl(base + EMIF_POWER_MANAGEMENT_CONTROL);
+		if (emif->lpmode == EMIF_LP_MODE_SELF_REFRESH) {
+			pm_ctrl &= ~(0x7 << LP_MODE_SHIFT);
+			pm_ctrl |= (EMIF_LP_MODE_SELF_REFRESH << LP_MODE_SHIFT);
+			writel(pm_ctrl, base + EMIF_POWER_MANAGEMENT_CONTROL);
+		}
+	}
+}
+EXPORT_SYMBOL(omap_emif_frequency_post_notify);
 
 static struct platform_driver omap_emif_driver = {
 	.probe		= emif_probe,

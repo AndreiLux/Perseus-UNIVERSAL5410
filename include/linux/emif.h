@@ -252,6 +252,8 @@ struct emif_platform_data {
 };
 
 void emif_freq_pre_notify_handler(u32 new_freq);
+void omap_emif_frequency_pre_notify(void);
+void omap_emif_frequency_post_notify(void);
 #endif /* __ASSEMBLY__ */
 
 #endif /* __LINUX_EMIF_H */
