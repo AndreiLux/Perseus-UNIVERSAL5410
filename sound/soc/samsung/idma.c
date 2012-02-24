@@ -47,7 +47,7 @@ static const struct snd_pcm_hardware idma_hardware = {
 	.period_bytes_min = 128,
 	.period_bytes_max = MAX_IDMA_PERIOD,
 	.periods_min = 1,
-	.periods_max = 2,
+	.periods_max = 4,
 };
 
 struct idma_ctrl {
