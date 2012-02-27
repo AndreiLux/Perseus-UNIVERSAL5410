@@ -40,7 +40,7 @@
 #define OMAP5_OFF_VOLTAGE_UV			0
 
 #define OMAP5430_VDD_MPU_OPP_LOW		 950000
-#define OMAP5430_VDD_MPU_OPP_NOM		1040000
+#define OMAP5430_VDD_MPU_OPP_NOM		1150000
 #define OMAP5430_VDD_MPU_OPP_HIGH		1220000
 #define OMAP5430_VDD_MPU_OPP_SB			1220000
 
@@ -65,7 +65,7 @@ struct omap_vc_param omap54xx_mpu_vc_data = {
 };
 
 #define OMAP5430_VDD_MM_OPP_LOW			 950000
-#define OMAP5430_VDD_MM_OPP_NOM			1040000
+#define OMAP5430_VDD_MM_OPP_NOM			1150000
 #define OMAP5430_VDD_MM_OPP_OD			1200000
 
 struct omap_volt_data omap54xx_vdd_mm_volt_data[] = {
@@ -88,7 +88,7 @@ struct omap_vc_param omap54xx_mm_vc_data = {
 };
 
 #define OMAP5430_VDD_CORE_OPP_LOW		 950000
-#define OMAP5430_VDD_CORE_OPP_NOM		1040000
+#define OMAP5430_VDD_CORE_OPP_NOM		1150000
 
 struct omap_volt_data omap54xx_vdd_core_volt_data[] = {
 	VOLT_DATA_DEFINE(OMAP5430_VDD_CORE_OPP_LOW, OMAP54XX_CONTROL_FUSE_CORE_OPP50, 0xf4, 0x0c, OMAP_ABB_NO_LDO),
