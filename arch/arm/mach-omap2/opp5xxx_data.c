@@ -21,7 +21,8 @@
 #include <linux/module.h>
 
 #include <plat/cpu.h>
-
+#include <linux/opp.h>
+#include <plat/omap_device.h>
 #include "control.h"
 #include "omap_opp_data.h"
 #include "pm.h"
@@ -167,7 +168,7 @@ static struct omap_opp_def __initdata omap54xx_opp_def_list[] = {
 	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 1100000000, OMAP5430_VDD_MPU_OPP_HIGH),
 #endif
 	/* L3 OPP1 - OPPLOW */
-	OPP_INITIALIZER("l3_main_1", "virt_l3_ck", "core", true, 133000000, OMAP5430_VDD_CORE_OPP_LOW),
+	OPP_INITIALIZER("l3_main_1", "virt_l3_ck", "core", false, 133000000, OMAP5430_VDD_CORE_OPP_LOW),
 	/* L3 OPP2 - OPPNOM */
 	OPP_INITIALIZER("l3_main_1", "virt_l3_ck", "core", true, 266000000, OMAP5430_VDD_CORE_OPP_NOM),
 	/* TODO: Uncomment the following once we have drivers for them */
@@ -236,6 +237,26 @@ static int __init omap5_opp_init(void)
 
 	r = omap_init_opp_table(omap54xx_opp_def_list,
 			ARRAY_SIZE(omap54xx_opp_def_list));
+
+	if (!cpu_is_omap5432()) {
+		/* Enable scaling on the Core domain */
+		struct omap_hwmod *oh_mpu = omap_hwmod_lookup("l3_main_1");
+		struct platform_device *pdev;
+		if (!oh_mpu || !oh_mpu->od) {
+			return r;
+		} else {
+			pdev = oh_mpu->od->pdev;
+			r = opp_enable(&pdev->dev, 133000000);
+			if (r < 0) {
+				dev_err(&pdev->dev,
+						"unable to enable Core LOW OPP for 5430 device!\n");
+				return r;
+			}
+		}
+		pr_info("Added LOW OPP to CORE domain - this is expected on 5430 device\n");
+	} else {
+		pr_info("Did not LOW OPP to CORE domain - this is expected on 5432 device\n");
+	}
 
 	return r;
 }
