@@ -107,14 +107,43 @@ static struct clk exynos5_clk_sclk_usbphy = {
 	.rate		= 48000000,
 };
 
+struct clksrc_clk exynos5_clk_audiocdclk0 = {
+	.clk	= {
+		.name		= "audiocdclk",
+		.rate		= 16934400,
+	},
+};
+
+static struct clk exynos5_clk_audiocdclk1 = {
+	.name           = "audiocdclk",
+};
+
+static struct clk exynos5_clk_audiocdclk2 = {
+	.name		= "audiocdclk",
+};
+
+static struct clk exynos5_clk_spdifcdclk = {
+	.name		= "spdifcdclk",
+};
+
 static int exynos5_clksrc_mask_top_ctrl(struct clk *clk, int enable)
 {
 	return s5p_gatectrl(EXYNOS5_CLKSRC_MASK_TOP, clk, enable);
 }
 
+static int exynos5_clksrc_mask_peric1_ctrl(struct clk *clk, int enable)
+{
+	return s5p_gatectrl(EXYNOS5_CLKSRC_MASK_PERIC1, clk, enable);
+}
+
 static int exynos5_clksrc_mask_disp1_0_ctrl(struct clk *clk, int enable)
 {
 	return s5p_gatectrl(EXYNOS5_CLKSRC_MASK_DISP1_0, clk, enable);
+}
+
+static int exynos5_clksrc_mask_maudio_ctrl(struct clk *clk, int enable)
+{
+	return s5p_gatectrl(EXYNOS5_CLKSRC_MASK_MAUDIO, clk, enable);
 }
 
 static int exynos5_clksrc_mask_fsys_ctrl(struct clk *clk, int enable)
@@ -1023,6 +1052,116 @@ static struct clk exynos5_clk_mdma1 = {
 	.ctrlbit	= (1 << 4),
 };
 
+static struct clk *clkset_sclk_audio0_list[] = {
+	[0] = &exynos5_clk_audiocdclk0.clk,
+	[1] = &clk_ext_xtal_mux,
+	[2] = &exynos5_clk_sclk_hdmi27m,
+	[3] = &exynos5_clk_sclk_dptxphy,
+	[4] = &exynos5_clk_sclk_usbphy,
+	[5] = &exynos5_clk_sclk_hdmiphy,
+	[6] = &exynos5_clk_mout_mpll.clk,
+	[7] = &exynos5_clk_mout_epll.clk,
+	[8] = &exynos5_clk_sclk_vpll.clk,
+	[9] = &exynos5_clk_mout_cpll.clk,
+};
+
+static struct clksrc_sources exynos5_clkset_sclk_audio0 = {
+	.sources	= clkset_sclk_audio0_list,
+	.nr_sources	= ARRAY_SIZE(clkset_sclk_audio0_list),
+};
+
+static struct clksrc_clk exynos5_clk_sclk_audio0 = {
+	.clk	= {
+		.name		= "sclk_audio",
+		.enable		= exynos5_clksrc_mask_maudio_ctrl,
+		.ctrlbit	= (1 << 0),
+	},
+	.sources = &exynos5_clkset_sclk_audio0,
+	.reg_src = { .reg = EXYNOS5_CLKSRC_MAUDIO, .shift = 0, .size = 4 },
+	.reg_div = { .reg = EXYNOS5_CLKDIV_MAUDIO, .shift = 0, .size = 4 },
+};
+
+static struct clk *exynos5_clkset_sclk_audio1_list[] = {
+	[0] = &exynos5_clk_audiocdclk1,
+	[1] = &clk_ext_xtal_mux,
+	[2] = &exynos5_clk_sclk_hdmi27m,
+	[3] = &exynos5_clk_sclk_dptxphy,
+	[4] = &exynos5_clk_sclk_usbphy,
+	[5] = &exynos5_clk_sclk_hdmiphy,
+	[6] = &exynos5_clk_mout_mpll.clk,
+	[7] = &exynos5_clk_mout_epll.clk,
+	[8] = &exynos5_clk_sclk_vpll.clk,
+	[9] = &exynos5_clk_mout_cpll.clk,
+};
+
+static struct clksrc_sources exynos5_clkset_sclk_audio1 = {
+	.sources	= exynos5_clkset_sclk_audio1_list,
+	.nr_sources	= ARRAY_SIZE(exynos5_clkset_sclk_audio1_list),
+};
+
+static struct clksrc_clk exynos5_clk_sclk_audio1 = {
+	.clk	= {
+		.name		= "sclk_audio1",
+		.enable		= exynos5_clksrc_mask_peric1_ctrl,
+		.ctrlbit	= (1 << 0),
+	},
+	.sources = &exynos5_clkset_sclk_audio1,
+	.reg_src = { .reg = EXYNOS5_CLKSRC_PERIC1, .shift = 0, .size = 4 },
+	.reg_div = { .reg = EXYNOS5_CLKDIV_PERIC4, .shift = 0, .size = 4 },
+};
+
+static struct clk *exynos5_clkset_sclk_audio2_list[] = {
+	[0] = &exynos5_clk_audiocdclk2,
+	[1] = &clk_ext_xtal_mux,
+	[2] = &exynos5_clk_sclk_hdmi27m,
+	[3] = &exynos5_clk_sclk_dptxphy,
+	[4] = &exynos5_clk_sclk_usbphy,
+	[5] = &exynos5_clk_sclk_hdmiphy,
+	[6] = &exynos5_clk_mout_mpll.clk,
+	[7] = &exynos5_clk_mout_epll.clk,
+	[8] = &exynos5_clk_sclk_vpll.clk,
+	[9] = &exynos5_clk_mout_cpll.clk,
+};
+
+static struct clksrc_sources exynos5_clkset_sclk_audio2 = {
+	.sources	= exynos5_clkset_sclk_audio2_list,
+	.nr_sources	= ARRAY_SIZE(exynos5_clkset_sclk_audio2_list),
+};
+
+static struct clksrc_clk exynos5_clk_sclk_audio2 = {
+	.clk	= {
+		.name		= "sclk_audio2",
+		.enable		= exynos5_clksrc_mask_peric1_ctrl,
+		.ctrlbit	= (1 << 4),
+	},
+	.sources = &exynos5_clkset_sclk_audio2,
+	.reg_src = { .reg = EXYNOS5_CLKSRC_PERIC1, .shift = 4, .size = 4 },
+	.reg_div = { .reg = EXYNOS5_CLKDIV_PERIC4, .shift = 16, .size = 4 },
+};
+
+static struct clk *exynos5_clkset_sclk_spdif_list[] = {
+	[0] = &exynos5_clk_sclk_audio0.clk,
+	[1] = &exynos5_clk_sclk_audio1.clk,
+	[2] = &exynos5_clk_sclk_audio2.clk,
+	[3] = &exynos5_clk_spdifcdclk,
+};
+
+static struct clksrc_sources exynos5_clkset_sclk_spdif = {
+	.sources	= exynos5_clkset_sclk_spdif_list,
+	.nr_sources	= ARRAY_SIZE(exynos5_clkset_sclk_spdif_list),
+};
+
+static struct clksrc_clk exynos5_clk_sclk_spdif = {
+	.clk	= {
+		.name		= "sclk_spdif",
+		.enable		= exynos5_clksrc_mask_peric1_ctrl,
+		.ctrlbit	= (1 << 8),
+		.ops		= &s5p_sclk_spdif_ops,
+	},
+	.sources = &exynos5_clkset_sclk_spdif,
+	.reg_src = { .reg = EXYNOS5_CLKSRC_PERIC1, .shift = 8, .size = 2 },
+};
+
 struct clk *exynos5_clkset_usbdrd30_list[] = {
 	[0] = &exynos5_clk_mout_mpll.clk,
 	[1] = &exynos5_clk_mout_cpll.clk,
@@ -1341,6 +1480,10 @@ static struct clksrc_clk *exynos5_clksrc_cdev[] = {
 	&exynos5_clk_sclk_mmc1,
 	&exynos5_clk_sclk_mmc2,
 	&exynos5_clk_sclk_mmc3,
+	&exynos5_clk_sclk_audio0,
+	&exynos5_clk_sclk_audio1,
+	&exynos5_clk_sclk_audio2,
+	&exynos5_clk_sclk_spdif,
 };
 
 static struct clk_lookup exynos5_clk_lookup[] = {
