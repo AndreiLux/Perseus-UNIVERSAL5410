@@ -1011,6 +1011,33 @@ static void ca0132_exit_chip(struct hda_codec *codec)
 	/* put any chip cleanup stuffs here. */
 }
 
+/* turn on/off EAPD control (only if available) */
+static void set_eapd(struct hda_codec *codec, hda_nid_t nid, int on)
+{
+	if (get_wcaps_type(get_wcaps(codec, nid)) != AC_WID_PIN)
+		return;
+	if (snd_hda_query_pin_caps(codec, nid) & AC_PINCAP_EAPD) {
+		/* configure the EAPD pin, and set it to the requested state. */
+		snd_hda_codec_write(codec, nid, 0, 0x78D, 0x00);
+		snd_hda_codec_write(codec, nid, 0, AC_VERB_SET_EAPD_BTLENABLE,
+				    on ? 2 : 0);
+	}
+}
+
+/* enable EAPD controls of the codec */
+static void ca0132_auto_setup_eapd(struct hda_codec *codec, int on)
+{
+	static const hda_nid_t pins[] = {0x0b, 0};
+	const hda_nid_t *p;
+
+	for (p = pins; *p != 0; p++) {
+		if (get_wcaps_type(get_wcaps(codec, *p)) != AC_WID_PIN)
+			return;
+		if (snd_hda_query_pin_caps(codec, *p) & AC_PINCAP_EAPD)
+			set_eapd(codec, *p, on);
+	}
+}
+
 static int ca0132_init(struct hda_codec *codec)
 {
 	struct ca0132_spec *spec = codec->spec;
@@ -1030,6 +1057,7 @@ static int ca0132_init(struct hda_codec *codec)
 	init_input(codec, cfg->dig_in_pin, spec->dig_in);
 
 	ca0132_set_ct_ext(codec, 1);
+	ca0132_auto_setup_eapd(codec, 1);
 
 	return 0;
 }
