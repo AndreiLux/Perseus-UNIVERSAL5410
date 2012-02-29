@@ -270,14 +270,12 @@ static ssize_t adb_read(struct file *fp, char __user *buf,
 	struct adb_dev *dev = fp->private_data;
 	struct usb_request *req;
 	int r = count, xfer;
+	int maxp;
 	int ret;
 
 	pr_debug("adb_read(%d)\n", count);
 	if (!_adb_dev)
 		return -ENODEV;
-
-	if (count > ADB_BULK_BUFFER_SIZE)
-		return -EINVAL;
 
 	if (adb_lock(&dev->read_excl))
 		return -EBUSY;
@@ -296,6 +294,12 @@ static ssize_t adb_read(struct file *fp, char __user *buf,
 		r = -EIO;
 		goto done;
 	}
+
+	maxp = usb_endpoint_maxp(dev->ep_out->desc);
+	count = round_up(count, maxp);
+
+	if (count > ADB_BULK_BUFFER_SIZE)
+		return -EINVAL;
 
 requeue_req:
 	/* queue a request */
