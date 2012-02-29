@@ -122,16 +122,7 @@ static int smdk_wm8994_init_paiftx(struct snd_soc_pcm_runtime *rtd)
 }
 
 static struct snd_soc_dai_link smdk_dai[] = {
-	{ /* Primary DAI i/f */
-		.name = "WM8994 AIF1",
-		.stream_name = "Pri_Dai",
-		.cpu_dai_name = "samsung-i2s.0",
-		.codec_dai_name = "wm8994-aif1",
-		.platform_name = "samsung-audio",
-		.codec_name = "wm8994-codec",
-		.init = smdk_wm8994_init_paiftx,
-		.ops = &smdk_ops,
-	}, { /* Sec_Fifo Playback i/f */
+	{ /* Sec_Fifo Playback i/f */
 		.name = "Sec_FIFO TX",
 		.stream_name = "Sec_Dai",
 		.cpu_dai_name = "samsung-i2s.4",
@@ -142,6 +133,15 @@ static struct snd_soc_dai_link smdk_dai[] = {
 		.platform_name = "samsung-audio",
 #endif
 		.codec_name = "wm8994-codec",
+		.ops = &smdk_ops,
+	}, {  /* Primary DAI i/f */
+		.name = "WM8994 AIF1",
+		.stream_name = "Pri_Dai",
+		.cpu_dai_name = "samsung-i2s.0",
+		.codec_dai_name = "wm8994-aif1",
+		.platform_name = "samsung-audio",
+		.codec_name = "wm8994-codec",
+		.init = smdk_wm8994_init_paiftx,
 		.ops = &smdk_ops,
 	},
 };

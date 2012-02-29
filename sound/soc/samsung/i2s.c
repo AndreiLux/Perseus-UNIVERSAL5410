@@ -897,7 +897,7 @@ static int samsung_i2s_dai_probe(struct snd_soc_dai *dai)
 	struct i2s_dai *other = i2s->pri_dai ? : i2s->sec_dai;
 	int ret;
 
-	if (other && other->clk) /* If this is probe on secondary */
+	if (other && other->clk) /* If this is second dai probe */
 		goto probe_exit;
 
 	i2s->addr = ioremap(i2s->base, SZ_256);
@@ -949,11 +949,11 @@ static int samsung_i2s_dai_probe(struct snd_soc_dai *dai)
 		other->clk = i2s->clk;
 	}
 
-	if (i2s->quirks & QUIRK_SEC_DAI)
-		idma_reg_addr_init(i2s->addr,
-					i2s->sec_dai->idma_playback.dma_addr);
-
 probe_exit:
+	if ((i2s->quirks & QUIRK_SEC_DAI) && !is_secondary(i2s))
+		idma_reg_addr_init(i2s->addr,
+				   i2s->sec_dai->idma_playback.dma_addr);
+
 	clk_enable(i2s->clk);
 
 	if (i2s->quirks & QUIRK_NEED_RSTCLR)
@@ -974,6 +974,8 @@ probe_exit:
 				0, SND_SOC_CLOCK_IN);
 
 	clk_disable(i2s->clk);
+	clk_put(fout_epll);
+	clk_put(mout_audss);
 
 	return 0;
 
