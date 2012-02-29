@@ -33,6 +33,7 @@
 #include <media/m5mols.h>
 #include <media/exynos_gscaler.h>
 #include <media/exynos_flite.h>
+#include <media/exynos_fimc_is.h>
 #include <plat/clock.h>
 #include <plat/cpu.h>
 #include <plat/fb.h>
@@ -1175,6 +1176,9 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&exynos_device_md1,
 	&exynos_device_md2,
 #endif
+#ifdef CONFIG_VIDEO_EXYNOS5_FIMC_IS
+	&exynos5_device_fimc_is,
+#endif
 #ifdef CONFIG_VIDEO_EXYNOS_GSCALER
 	&exynos5_device_gsc0,
 	&exynos5_device_gsc1,
@@ -1345,11 +1349,11 @@ static void __init exynos_sysmmu_init(void)
 						&exynos5_device_fimc_is.dev);
 	sysmmu_set_owner(&SYSMMU_PLATDEV(is_odc).dev,
 						&exynos5_device_fimc_is.dev);
-	sysmmu_set_owner(&SYSMMU_PLATDEV(is_sclrc).dev
+	sysmmu_set_owner(&SYSMMU_PLATDEV(is_sclrc).dev,
 						&exynos5_device_fimc_is.dev);
 	sysmmu_set_owner(&SYSMMU_PLATDEV(is_sclrp).dev,
 						&exynos5_device_fimc_is.dev);
-	sysmmu_set_owner(&SYSMMU_PLATDEV(is_dis0).dev
+	sysmmu_set_owner(&SYSMMU_PLATDEV(is_dis0).dev,
 						&exynos5_device_fimc_is.dev);
 	sysmmu_set_owner(&SYSMMU_PLATDEV(is_dis1).dev,
 						&exynos5_device_fimc_is.dev);
@@ -1445,6 +1449,22 @@ static void __init smdk5250_machine_init(void)
 	clk_add_alias("gscl", "exynos-fimc-lite.1", "gscl",
 			&exynos_device_flite1.dev);
 	dev_set_name(&exynos_device_flite1.dev, "exynos-fimc-lite.1");
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS5_FIMC_IS
+	dev_set_name(&exynos5_device_fimc_is.dev, "s5p-mipi-csis.0");
+	clk_add_alias("gscl_wrap", "exynos5-fimc-is", "gscl_wrap", &exynos5_device_fimc_is.dev);
+	clk_add_alias("sclk_gscl_wrap", "exynos5-fimc-is", "sclk_gscl_wrap", &exynos5_device_fimc_is.dev);
+	dev_set_name(&exynos5_device_fimc_is.dev, "exynos5-fimc-is");
+
+	dev_set_name(&exynos5_device_fimc_is.dev, "exynos-gsc.0");
+	clk_add_alias("gscl", "exynos5-fimc-is", "gscl", &exynos5_device_fimc_is.dev);
+	dev_set_name(&exynos5_device_fimc_is.dev, "exynos5-fimc-is");
+
+	exynos5_fimc_is_set_platdata(NULL);
+#if defined(CONFIG_EXYNOS_DEV_PD)
+	exynos5_device_pd[PD_ISP].dev.parent = &exynos5_device_pd[PD_GSCL].dev;
+	exynos5_device_fimc_is.dev.parent = &exynos5_device_pd[PD_ISP].dev;
+#endif
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_GSCALER
 #if defined(CONFIG_EXYNOS_DEV_PD)

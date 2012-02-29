@@ -123,6 +123,13 @@ config EXYNOS4_DEV_FIMC_LITE
 	help
 	  Compile in platform device definitions for FIMC_LITE
 
+config EXYNOS4_DEV_FIMC_IS
+	bool
+	depends on (VIDEO_EXYNOS_FIMC_IS || VIDEO_EXYNOS5_FIMC_IS)
+	default y
+	help
+	  Compile in platform device definition for FIMC-IS
+
 config EXYNOS_DEV_ROTATOR
 	bool
 	help
@@ -205,6 +212,13 @@ config EXYNOS4_SETUP_USB_PHY
 	bool
 	help
 	  Common setup code for USB PHY controller
+
+config EXYNOS4_SETUP_FIMC_IS
+	bool
+	depends on VIDEO_EXYNOS5_FIMC_IS
+	default y
+	help
+	  Common setup code for the FIMC-IS-MC
 
 config EXYNOS4_SETUP_SPI
 	bool

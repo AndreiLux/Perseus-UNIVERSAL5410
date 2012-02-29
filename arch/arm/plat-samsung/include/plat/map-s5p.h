@@ -51,6 +51,9 @@
 
 #define S5P_VA_SS_PHY		S3C_ADDR(0x02A00000)
 
+#define S5P_VA_FIMCLITE0	S3C_ADDR(0x02A10000)
+#define S5P_VA_MIPICSI0		S3C_ADDR(0x02A20000)
+
 #define VA_VIC(x)		(S3C_VA_IRQ + ((x) * 0x10000))
 #define VA_VIC0			VA_VIC(0)
 #define VA_VIC1			VA_VIC(1)
