@@ -58,7 +58,7 @@
 		compatible = "arm,hdlcd";
 		reg = <0x2a110000 0x1000>;
 		interrupts = <0 85 4>;
-		mode = "1024x768-32@60";
+		mode = "640x480-16@60";
 		arm,vexpress-osc = <3>;
 		framebuffer = <0xbf000000 0x01000000>;
 	};
