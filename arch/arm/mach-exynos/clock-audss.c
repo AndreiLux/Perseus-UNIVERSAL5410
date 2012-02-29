@@ -87,8 +87,18 @@ static struct clk exynos_init_audss_clocks[] = {
 		.enable		= exynos_clk_audss_ctrl,
 		.ctrlbit	= EXYNOS_AUDSS_CLKGATE_I2SSPECIAL | EXYNOS_AUDSS_CLKGATE_I2SBUS,
 	}, {
+		.name		= "iis",
+		.devname	= "samsung-i2s.4",
+		.enable		= exynos_clk_audss_ctrl,
+		.ctrlbit	= EXYNOS_AUDSS_CLKGATE_I2SSPECIAL | EXYNOS_AUDSS_CLKGATE_I2SBUS,
+	}, {
 		.name		= "pcm",
 		.devname	= "samsung-pcm.0",
+		.enable		= exynos_clk_audss_ctrl,
+		.ctrlbit	= EXYNOS_AUDSS_CLKGATE_I2SSPECIAL | EXYNOS_AUDSS_CLKGATE_I2SBUS,
+	}, {
+		.name		= "pcm",
+		.devname	= "samsung-pcm.4",
 		.enable		= exynos_clk_audss_ctrl,
 		.ctrlbit	= EXYNOS_AUDSS_CLKGATE_I2SSPECIAL | EXYNOS_AUDSS_CLKGATE_I2SBUS,
 	},
