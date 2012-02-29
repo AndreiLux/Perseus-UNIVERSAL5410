@@ -1,7 +1,7 @@
 /*
  *  chromeos_laptop.c - Driver to instantiate Chromebook platform devices.
  *
- *  Copyright (C) 2011 The Chromium OS Authors
+ *  Copyright (C) 2012 The Chromium OS Authors
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,117 +18,196 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
+
 #include <linux/dmi.h>
 #include <linux/i2c.h>
 #include <linux/module.h>
 
-#define LUMPY_TOUCHPAD_I2C_ADDR    0x67 /* I2C address */
-#define LUMPY_ALS_I2C_ADDR         0x44
-static struct i2c_client *lumpy_tp;
-static struct i2c_client *lumpy_als;
+#define CYAPA_TP_I2C_ADDR	0x67
+#define ISL_ALS_I2C_ADDR	0x44
+#define TAOS_ALS_I2C_ADDR	0x29
+
+static struct i2c_client *tp;
+static struct i2c_client *als;
 
 static struct i2c_board_info __initdata cyapa_device = {
-	I2C_BOARD_INFO("cyapa", LUMPY_TOUCHPAD_I2C_ADDR),
+	I2C_BOARD_INFO("cyapa", CYAPA_TP_I2C_ADDR),
 	.irq		= -1,
 };
 
-static struct i2c_board_info __initdata als_device = {
-	I2C_BOARD_INFO("isl29018", LUMPY_ALS_I2C_ADDR),
-	.irq		= -1,
+static struct i2c_board_info __initdata isl_als_device = {
+	I2C_BOARD_INFO("isl29018", ISL_ALS_I2C_ADDR),
 };
 
-static const struct dmi_system_id lumpy[] = {
-	{
-		.matches = {
-			DMI_MATCH(DMI_PRODUCT_NAME, "Lumpy"),
-		},
-	},
-	{ }
+static struct i2c_board_info __initdata tsl2583_als_device = {
+	I2C_BOARD_INFO("tsl2583", TAOS_ALS_I2C_ADDR),
+};
+
+static struct i2c_board_info __initdata tsl2563_als_device = {
+	I2C_BOARD_INFO("tsl2563", TAOS_ALS_I2C_ADDR),
 };
 
 static int __find_i2c_adap(struct device *dev, void *data)
 {
 	const char *name = data;
+	const char *prefix = "i2c-";
 	struct i2c_adapter *adapter;
-	if (strncmp(dev_name(dev), "i2c-", 4))
+	if (strncmp(dev_name(dev), prefix, strlen(prefix)))
 		return 0;
 	adapter = to_i2c_adapter(dev);
 	return !strncmp(adapter->name, name, strlen(name));
 }
 
-static struct i2c_client *add_smbus_device(struct i2c_adapter *adap,
-					   const char *name,
-					   struct i2c_board_info *info)
+static int find_smbus_i801(void)
 {
-	const struct dmi_device *dmi_dev;
-	const struct dmi_dev_onboard *dev_data;
-
-	dmi_dev = dmi_find_device(DMI_DEV_TYPE_DEV_ONBOARD, name, NULL);
-	if (!dmi_dev) {
-		pr_err("%s failed to dmi find device %s.\n", __func__, name);
-		return NULL;
-	}
-	dev_data = (struct dmi_dev_onboard *)dmi_dev->device_data;
-	if (!dev_data) {
-		pr_err("%s failed to get device data from dmi.\n",
-		       __func__);
-		return NULL;
-	}
-	info->irq = dev_data->instance;
-	return i2c_new_device(adap, info);
-}
-
-static int lumpy_add_devices(void)
-{
-	struct i2c_adapter *adapter;
 	struct device *dev = NULL;
-	int bus;
-
+	struct i2c_adapter *adapter;
 	/* find the SMBus adapter */
 	dev = bus_find_device(&i2c_bus_type, NULL, "SMBus I801 adapter",
 			      __find_i2c_adap);
 	if (!dev) {
 		pr_err("%s: no SMBus adapter found on system.\n", __func__);
-		return -ENXIO;
+		return -ENODEV;
 	}
 	adapter = to_i2c_adapter(dev);
-	bus = adapter->nr;
+	return adapter->nr;
+}
 
-	/*  add cyapa */
-	lumpy_tp = add_smbus_device(adapter, "trackpad", &cyapa_device);
-	if (!lumpy_tp)
-		pr_err("%s failed to register device %d-%02x\n",
-		       __func__, bus, LUMPY_TOUCHPAD_I2C_ADDR);
+static struct i2c_client *add_smbus_device(const char *name,
+					   struct i2c_board_info *info)
+{
+	const struct dmi_device *dmi_dev;
+	const struct dmi_dev_onboard *dev_data;
+	struct i2c_adapter *adapter;
+	struct i2c_client *client;
+	int bus;
 
-	/* add isl light sensor */
-	lumpy_als = add_smbus_device(adapter, "lightsensor", &als_device);
-	if (!lumpy_als)
+	/*
+	 * If a name is specified, look for irq platform information stashed
+	 * in DMI_DEV_TYPE_DEV_ONBOARD.
+	 */
+	if (name) {
+		dmi_dev = dmi_find_device(DMI_DEV_TYPE_DEV_ONBOARD, name, NULL);
+		if (!dmi_dev) {
+			pr_err("%s failed to dmi find device %s.\n",
+			       __func__,
+			       name);
+			return NULL;
+		}
+		dev_data = (struct dmi_dev_onboard *)dmi_dev->device_data;
+		if (!dev_data) {
+			pr_err("%s failed to get data from dmi for %s.\n",
+			       __func__, name);
+		return NULL;
+		}
+		info->irq = dev_data->instance;
+	}
+
+	/* find the SMBus adapter */
+	bus = find_smbus_i801();
+	if (bus < 0)
+		return NULL;
+	adapter = i2c_get_adapter(bus);
+
+	/* add the i2c device */
+	client = i2c_new_device(adapter, info);
+	if (!client)
 		pr_err("%s failed to register device %d-%02x\n",
-		       __func__, bus, LUMPY_ALS_I2C_ADDR);
+		       __func__, bus, info->addr);
+	else
+		pr_debug("%s added smbus device %d-%02x\n",
+			 __func__, bus, info->addr);
 
 	i2c_put_adapter(adapter);
+	return client;
+}
+
+static int setup_cyapa_tp(const struct dmi_system_id *id)
+{
+	/* add cyapa touchpad */
+	tp = add_smbus_device("trackpad", &cyapa_device);
 	return 0;
 }
 
+static int setup_isl29018_als(const struct dmi_system_id *id)
+{
+	/* add isl29018 light sensor */
+	als = add_smbus_device("lightsensor", &isl_als_device);
+	return 0;
+}
+
+static int setup_tsl2583_als(const struct dmi_system_id *id)
+{
+	/* add tsl2583 light sensor */
+	als = add_smbus_device(NULL, &tsl2583_als_device);
+	return 0;
+}
+
+static int setup_tsl2563_als(const struct dmi_system_id *id)
+{
+	/* add tsl2563 light sensor */
+	als = add_smbus_device(NULL, &tsl2563_als_device);
+	return 0;
+}
+
+static const struct dmi_system_id chromeos_laptop_dmi_table[] = {
+	{
+		.ident = "Lumpy - Touchpad",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Lumpy"),
+		},
+		.callback = setup_cyapa_tp,
+	},
+	{
+		.ident = "Lumpy - Light Sensor",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Lumpy"),
+		},
+		.callback = setup_isl29018_als,
+	},
+	{
+		.ident = "Samsung Series 5 Chromebook - Light Sensor",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Alex"),
+		},
+		.callback = setup_tsl2583_als,
+	},
+	{
+		.ident = "Cr-48 - Light Sensor",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Mario"),
+		},
+		.callback = setup_tsl2563_als,
+	},
+	{
+		.ident = "Acer AC700 - Light Sensor",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "ZGB"),
+		},
+		.callback = setup_tsl2563_als,
+	},
+
+	{ }
+};
 
 static int __init chromeos_laptop_init(void)
 {
-	if (!dmi_check_system(lumpy)) {
+	if (!dmi_check_system(chromeos_laptop_dmi_table)) {
 		pr_debug("%s unsupported system.\n", __func__);
 		return -ENODEV;
 	}
-	return lumpy_add_devices();
+	return 0;
 }
 
 static void __exit chromeos_laptop_exit(void)
 {
-	if (lumpy_tp) {
-		i2c_unregister_device(lumpy_tp);
-		lumpy_tp = NULL;
+	if (tp) {
+		i2c_unregister_device(tp);
+		tp = NULL;
 	}
-	if (lumpy_als) {
-		i2c_unregister_device(lumpy_als);
-		lumpy_als = NULL;
+	if (als) {
+		i2c_unregister_device(als);
+		als = NULL;
 	}
 }
 
