@@ -22,6 +22,7 @@
 #include <linux/input/matrix_keypad.h>
 
 #include <linux/platform_data/omap4-keypad.h>
+#include <linux/of_fdt.h>
 
 #include <linux/regulator/machine.h>
 #include <linux/regulator/fixed.h>
@@ -939,16 +940,6 @@ static int __init omap_5430evm_i2c_init(void)
 	omap_register_i2c_bus_board_data(4, &sdp4430_i2c_4_bus_pdata);
 	omap_register_i2c_bus_board_data(5, &sdp4430_i2c_5_bus_pdata);
 
-	if (cpu_is_omap5432()) { // uEVM
-		pr_info("Using uEVM 6040 Audio Power On\n");
-		twl6040_data.audpwron_gpio = 141;
-		omap_mux_init_signal("gpio_141", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
-
-		omap_mux_init_signal("gpio_147", OMAP_PIN_INPUT_PULLUP | OMAP_PIN_OFF_NONE);
-		omap_mux_init_signal("gpio_148", OMAP_PIN_INPUT_PULLUP | OMAP_PIN_OFF_NONE);
-
-	}
-
 #ifdef CONFIG_OMAP5_SEVM_PALMAS
 	omap_register_i2c_bus(1, 400, omap5evm_i2c_1_boardinfo,
 				ARRAY_SIZE(omap5evm_i2c_1_boardinfo));
@@ -1128,15 +1119,6 @@ static struct usbhs_omap_board_data usbhs_bdata __initconst = {
 
 static void __init omap_ehci_ohci_init(void)
 {
-	if (cpu_is_omap5432()) {
-		usbhs_bdata.reset_gpio_port[1] = GPIO_HUB_NRESET_UEVM;
-		usbhs_bdata.reset_gpio_port[2] = GPIO_ETH_NRESET_UEVM;
-		omap_mux_init_signal("gpio_80", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
-		omap_mux_init_signal("gpio_15", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
-	} else {
-		omap_mux_init_signal("gpio_172", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
-		omap_mux_init_signal("gpio_173", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
-	}
 	usbhs_init(&usbhs_bdata);
 }
 
@@ -1148,7 +1130,7 @@ static struct omap_board_mux board_mux[] __initdata = {
 #define board_mux NULL
 #endif
 
-static void __init omap_5430evm_init(void)
+static void __init omap54xx_common_init(void)
 {
 	int status;
 
@@ -1165,7 +1147,9 @@ static void __init omap_5430evm_init(void)
 			&lpddr2_elpida_S4_min_tck,
 			&custom_configs);
 #endif
+
 	omap5_mux_init(board_mux, NULL, OMAP_PACKAGE_CBL);
+
 	omap5evm_touch_init();
 	if (cpu_is_omap5432()) { // ie, uevm !!!
 		mmc[1].gpio_cd = 152;
@@ -1185,6 +1169,52 @@ static void __init omap_5430evm_init(void)
 	omap_ehci_ohci_init();
 }
 
+static void __init omap_5430_sevm_init(void)
+{
+	int status;
+
+	omap_mux_init_signal("gpio_172", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
+	omap_mux_init_signal("gpio_173", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
+	
+	omap54xx_common_init();
+	status = omap4_keyboard_init(&evm5430_keypad_data, &keypad_data);
+	if (status)
+		pr_err("Keypad initialization failed: %d\n", status);
+}
+
+static void __init omap_5432_uevm_init(void)
+{
+	mmc[1].gpio_cd = 152;
+	omap_mux_init_signal("gpio_152", OMAP_PIN_INPUT_PULLUP | OMAP_PIN_OFF_NONE);
+
+	omap_mux_init_signal("gpio_147", OMAP_PIN_INPUT_PULLUP | OMAP_PIN_OFF_NONE);
+	omap_mux_init_signal("gpio_148", OMAP_PIN_INPUT_PULLUP | OMAP_PIN_OFF_NONE);
+
+	usbhs_bdata.reset_gpio_port[1] = GPIO_HUB_NRESET_UEVM;
+	usbhs_bdata.reset_gpio_port[2] = GPIO_ETH_NRESET_UEVM;
+	omap_mux_init_signal("gpio_80", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
+	omap_mux_init_signal("gpio_15", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
+
+	omap54xx_common_init();
+}
+
+static void __init omap_54xx_init(void)
+{
+	const char *model;
+	pr_err("omap_54xx_init in\n");
+        model = of_get_flat_dt_prop(of_get_flat_dt_root(), "model", NULL);    
+	BUG_ON(!model);
+	pr_err("model: %s\n", model);
+
+	if (!strcmp(model, "TI OMAP5 sEVM"))
+		omap_5432_uevm_init();
+	else
+		omap_5430_sevm_init();
+
+	pr_err("omap_54xx_init out\n");
+}
+
+
 static void __init omap_5430evm_map_io(void)
 {
 	omap2_set_globals_543x();
@@ -1193,10 +1223,11 @@ static void __init omap_5430evm_map_io(void)
 
 static const char *omap5_sevm_match[] __initdata = {
         "ti,omap5-sevm",
+	"ti,omap5-uevm",
         NULL,
 };
 
-MACHINE_START(OMAP5_SEVM, "OMAP5430 sEVM board")
+MACHINE_START(OMAP5_SEVM, "TI OMAP5 Eval Board")
 	/* Maintainer: Santosh Shilimkar - Texas Instruments Inc */
 	.atag_offset    = 0x100,  
 	.map_io		= omap_5430evm_map_io,
@@ -1204,26 +1235,9 @@ MACHINE_START(OMAP5_SEVM, "OMAP5430 sEVM board")
 	.init_early	= omap54xx_init_early,
 	.init_irq	= gic_init_irq,
 	.handle_irq     = gic_handle_irq,
-	.init_machine	= omap_5430evm_init,
+	.init_machine	= omap_54xx_init,
 	.timer		= &omap5_timer,
 	.dt_compat	= omap5_sevm_match,
 MACHINE_END
 
-static const char *omap5_uevm_match[] __initdata = {
-        "ti,omap5-uevm",
-        NULL,
-};
-
-MACHINE_START(OMAP5_SEVM, "OMAP5432 uEVM board")
-	/* Maintainer: Santosh Shilimkar - Texas Instruments Inc */
-	.atag_offset    = 0x100,  
-	.map_io		= omap_5430evm_map_io,
-	.reserve	= omap_reserve,
-	.init_early	= omap54xx_init_early,
-	.init_irq	= gic_init_irq,
-	.handle_irq     = gic_handle_irq,
-	.init_machine	= omap_5430evm_init,
-	.timer		= &omap5_timer,
-	.dt_compat	= omap5_uevm_match,
-MACHINE_END
 
