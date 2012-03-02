@@ -49,7 +49,13 @@ static irqreturn_t palmas_irq(int irq, void *irq_data)
 	irq_sts |= reg << 16;
 	palmas->read(palmas, PALMAS_INTERRUPT_BASE, PALMAS_INT4_STATUS, &reg);
 	irq_sts |= reg << 24;
-
+	pr_err("palmas_irq: 0x%08X\n", irq_sts);
+#if 0
+	palmas->read(palmas, PALMAS_SMPS_BASE, PALMAS_SMPS_POWERGOOD_MASK1, &reg);
+	pr_err("    pg mask 1 = 0x%x\n", reg);
+        palmas->read(palmas, PALMAS_SMPS_BASE, PALMAS_SMPS_POWERGOOD_MASK2, &reg);
+        pr_err("    pg mask 2 = 0x%x\n", reg);
+#endif
 	irq_clr = irq_sts &= ~palmas->irq_mask;
 
 	if (!irq_sts)
@@ -165,6 +171,10 @@ int palmas_irq_init(struct palmas *palmas)
 	palmas->write(palmas, PALMAS_INTERRUPT_BASE, PALMAS_INT3_STATUS, reg);
 	palmas->write(palmas, PALMAS_INTERRUPT_BASE, PALMAS_INT4_STATUS, reg);
 
+	palmas->write(palmas, PALMAS_SMPS_BASE, PALMAS_SMPS_POWERGOOD_MASK1, 0xff);
+	palmas->write(palmas, PALMAS_SMPS_BASE, PALMAS_SMPS_POWERGOOD_MASK1, 0x87);
+
+
 	mutex_init(&palmas->irq_lock);
 
 	/* Register with genirq */
@@ -192,6 +202,9 @@ int palmas_irq_init(struct palmas *palmas)
 	else
 		/* Make nirq wakeup capable */
 		enable_irq_wake(palmas->irq);
+
+	/* hack */
+	disable_irq(palmas->irq);
 
 	return ret;
 }
