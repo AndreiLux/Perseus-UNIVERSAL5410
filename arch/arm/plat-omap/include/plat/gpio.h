@@ -33,6 +33,13 @@
 #define OMAP1_MPUIO_BASE			0xfffb5000
 
 /*
+ * Define our own ARCH_NR_GPIOS here to override the one
+ * externally defined in asm-generic/gpio.h
+ */
+
+#define ARCH_NR_GPIOS  320
+
+/*
  * These are the omap15xx/16xx offsets. The omap7xx offset are
  * OMAP_MPUIO_ / 2 offsets below.
  */

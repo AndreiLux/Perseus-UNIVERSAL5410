@@ -18,6 +18,7 @@
 #include <linux/gpio.h>
 #include <linux/hwspinlock.h>
 #include <linux/i2c/tsl2771.h>
+#include <linux/i2c/pca953x.h>
 #include <linux/input/mpu6050.h>
 #include <linux/input/matrix_keypad.h>
 
@@ -918,11 +919,23 @@ static struct i2c_board_info __initdata omap5evm_i2c_4_boardinfo[] = {
 	},
 };
 
+/*
+ * I2C GPIO Expander - TCA6424
+ */
+
+static struct pca953x_platform_data omap_5430evm_gpio_expander_info_0 = {
+	.gpio_base	= OMAP_MAX_GPIO_LINES,
+};
+
 static struct i2c_board_info __initdata omap5evm_i2c_5_boardinfo[] = {
 	{
 		I2C_BOARD_INFO("smsc", 0x38),
 		.platform_data = &omap5_kp_data,
 		.irq = 151,
+	},
+	{
+		I2C_BOARD_INFO("tca6424", 0x22),
+		.platform_data = &omap_5430evm_gpio_expander_info_0,
 	},
 };
 
