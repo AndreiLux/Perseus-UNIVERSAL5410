@@ -269,6 +269,15 @@ static int palmas_list_voltage_smps(struct regulator_dev *dev,
 	if (!selector)
 		return 0;
 
+	switch (id) {
+	case PALMAS_REG_SMPS7:
+	case PALMAS_REG_SMPS9:
+		mult = 2;
+		break;
+	default:
+		break;
+	}
+
 	/* Read the multiplier set in VSEL register to return
 	 * the correct voltage.
 	 */
@@ -698,6 +707,9 @@ static int palmas_ldo_init(struct palmas *palmas, int id,
 	u8 addr;
 	int ret;
 
+	if (id == PALMAS_REG_LDO2 || id == PALMAS_REG_LDO8)
+		return 0;
+
 	addr = palmas_regs_info[id].ctrl_addr;
 
 	ret = palmas_smps_read(palmas, addr, &reg);
@@ -777,6 +789,12 @@ static __devinit int palmas_probe(struct platform_device *pdev)
 	ret = palmas_smps_read(palmas, PALMAS_SMPS_CTRL, &reg);
 	if (ret)
 		goto err_unregister_regulator;
+
+               /* force SMPS7 (1.8V) and SMPS9 (2.1V) */                       
+                                                                                
+       palmas_smps_write(pmic->palmas, palmas_regs_info[PALMAS_REG_SMPS7].vsel_addr, SMPS12_VOLTAGE_RANGE | 0x2e);
+       palmas_smps_write(pmic->palmas, palmas_regs_info[PALMAS_REG_SMPS9].vsel_addr, SMPS12_VOLTAGE_RANGE | 0x3d);
+ 
 
 	if (reg & SMPS_CTRL_SMPS12_SMPS123_EN)
 		pmic->smps123 = 1;
