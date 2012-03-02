@@ -24,6 +24,8 @@
 #include <asm/mach/arch.h>
 #include <asm/mach-types.h>
 
+char dt_selected_model[64];
+
 void __init early_init_dt_add_memory_arch(u64 base, u64 size)
 {
 	arm_add_memory(base, size);
@@ -116,6 +118,8 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 	model = of_get_flat_dt_prop(dt_root, "model", NULL);
 	if (!model)
 		model = of_get_flat_dt_prop(dt_root, "compatible", NULL);
+	else
+		strncpy(dt_selected_model, model, sizeof(dt_selected_model) - 1);
 	if (!model)
 		model = "<unknown>";
 	pr_info("Machine: %s, model: %s\n", mdesc_best->name, model);

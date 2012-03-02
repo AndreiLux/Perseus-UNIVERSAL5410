@@ -1173,6 +1173,8 @@ static void __init omap_5430_sevm_init(void)
 {
 	int status;
 
+	pr_info("Starting 5430 sEVM setup\n");
+
 	omap_mux_init_signal("gpio_172", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
 	omap_mux_init_signal("gpio_173", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
 	
@@ -1184,6 +1186,8 @@ static void __init omap_5430_sevm_init(void)
 
 static void __init omap_5432_uevm_init(void)
 {
+	pr_info("Starting 5432 uEVM setup");
+
 	mmc[1].gpio_cd = 152;
 	omap_mux_init_signal("gpio_152", OMAP_PIN_INPUT_PULLUP | OMAP_PIN_OFF_NONE);
 
@@ -1200,18 +1204,22 @@ static void __init omap_5432_uevm_init(void)
 
 static void __init omap_54xx_init(void)
 {
+
+	// this is part of the hack patch around virtual mapping of dt blob
+
+	extern char dt_selected_model[64];
+#if 0
 	const char *model;
 	pr_err("omap_54xx_init in\n");
         model = of_get_flat_dt_prop(of_get_flat_dt_root(), "model", NULL);    
 	BUG_ON(!model);
 	pr_err("model: %s\n", model);
+#endif
 
-	if (!strcmp(model, "TI OMAP5 sEVM"))
+	if (!strcmp(dt_selected_model, "TI OMAP5 uEVM"))
 		omap_5432_uevm_init();
 	else
 		omap_5430_sevm_init();
-
-	pr_err("omap_54xx_init out\n");
 }
 
 
