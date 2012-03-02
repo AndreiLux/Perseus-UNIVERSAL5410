@@ -936,6 +936,17 @@ static int __init omap_5430evm_i2c_init(void)
 	omap_register_i2c_bus_board_data(3, &sdp4430_i2c_3_bus_pdata);
 	omap_register_i2c_bus_board_data(4, &sdp4430_i2c_4_bus_pdata);
 	omap_register_i2c_bus_board_data(5, &sdp4430_i2c_5_bus_pdata);
+
+	if (cpu_is_omap5432()) { // uEVM
+		pr_info("Using uEVM 6040 Audio Power On\n");
+		twl6040_data.audpwron_gpio = 141;
+		omap_mux_init_signal("gpio_141", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
+
+		omap_mux_init_signal("gpio_147", OMAP_PIN_INPUT_PULLUP | OMAP_PIN_OFF_NONE);
+		omap_mux_init_signal("gpio_148", OMAP_PIN_INPUT_PULLUP | OMAP_PIN_OFF_NONE);
+
+	}
+
 #ifdef CONFIG_OMAP5_SEVM_PALMAS
 	omap_register_i2c_bus(1, 400, omap5evm_i2c_1_boardinfo,
 				ARRAY_SIZE(omap5evm_i2c_1_boardinfo));
@@ -1096,27 +1107,35 @@ static void omap5_sdp5430_wifi_init(void)
 }
 
 /* USBB3 to SMSC LAN9730 */
-#define GPIO_ETH_NRESET	172
+#define GPIO_ETH_NRESET_SEVM	172
+#define GPIO_ETH_NRESET_UEVM    15
 
 /* USBB2 to SMSC 4640 HUB */
-#define GPIO_HUB_NRESET	173
+#define GPIO_HUB_NRESET_SEVM	173
+#define GPIO_HUB_NRESET_UEVM    80
 
-static const struct usbhs_omap_board_data usbhs_bdata __initconst = {
+static struct usbhs_omap_board_data usbhs_bdata __initconst = {
 	.port_mode[0] = OMAP_USBHS_PORT_MODE_UNUSED,
 	.port_mode[1] = OMAP_EHCI_PORT_MODE_HSIC,
 	.port_mode[2] = OMAP_EHCI_PORT_MODE_HSIC,
 	.phy_reset  = true,
 	.reset_gpio_port[0]  = -EINVAL,
-	.reset_gpio_port[1]  = GPIO_HUB_NRESET,
-	.reset_gpio_port[2]  = GPIO_ETH_NRESET
+	.reset_gpio_port[1]  = GPIO_HUB_NRESET_SEVM,
+	.reset_gpio_port[2]  = GPIO_ETH_NRESET_SEVM
 };
 
 static void __init omap_ehci_ohci_init(void)
 {
-	omap_mux_init_signal("gpio_172", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
-	omap_mux_init_signal("gpio_173", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
+	if (cpu_is_omap5432()) {
+		usbhs_bdata.reset_gpio_port[1] = GPIO_HUB_NRESET_UEVM;
+		usbhs_bdata.reset_gpio_port[2] = GPIO_ETH_NRESET_UEVM;
+		omap_mux_init_signal("gpio_80", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
+		omap_mux_init_signal("gpio_15", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
+	} else {
+		omap_mux_init_signal("gpio_172", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
+		omap_mux_init_signal("gpio_173", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
+	}
 	usbhs_init(&usbhs_bdata);
-	return;
 }
 
 #ifdef CONFIG_OMAP_MUX
@@ -1146,6 +1165,11 @@ static void __init omap_5430evm_init(void)
 #endif
 	omap5_mux_init(board_mux, NULL, OMAP_PACKAGE_CBL);
 	omap5evm_touch_init();
+	if (cpu_is_omap5432()) { // ie, uevm !!!
+		mmc[1].gpio_cd = 152;
+		omap_mux_init_signal("gpio_152", OMAP_PIN_INPUT_PULLUP | OMAP_PIN_OFF_NONE);
+	}
+
 	omap_5430evm_i2c_init();
 	omap5evm_sensor_init();
 	omap_serial_board_init(NULL, 2);
