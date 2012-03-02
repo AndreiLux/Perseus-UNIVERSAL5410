@@ -2570,6 +2570,41 @@ static int s3c_hsotg_corereset(struct s3c_hsotg *hsotg)
 	return 0;
 }
 
+/**
+ * s3c_hsotg_phy_enable - enable platform phy dev
+ *
+ * @param: The driver state
+ *
+ * A wrapper for platform code responsible for controlling
+ * low-level USB code
+ */
+static void s3c_hsotg_phy_enable(struct s3c_hsotg *hsotg)
+{
+	struct platform_device *pdev =
+		container_of(hsotg->dev, struct platform_device, dev);
+
+	printk(KERN_ERR "%s: pdev 0x%p\n", __func__, pdev);
+	if (hsotg->plat->phy_init)
+		hsotg->plat->phy_init(pdev, S5P_USB_PHY_DEVICE);
+}
+
+/**
+ * s3c_hsotg_phy_disable - disable platform phy dev
+ *
+ * @param: The driver state
+ *
+ * A wrapper for platform code responsible for controlling
+ * low-level USB code
+ */
+static void s3c_hsotg_phy_disable(struct s3c_hsotg *hsotg)
+{
+	struct platform_device *pdev =
+		container_of(hsotg->dev, struct platform_device, dev);
+
+	if (hsotg->plat->phy_exit)
+		hsotg->plat->phy_exit(pdev, S5P_USB_PHY_DEVICE);
+}
+
 static int s3c_hsotg_start(struct usb_gadget_driver *driver,
 		int (*bind)(struct usb_gadget *))
 {
@@ -3317,8 +3352,9 @@ static int __devinit s3c_hsotg_probe(struct platform_device *pdev)
 
 	clk_enable(hsotg->clk);
 
-	if (plat->phy_init)
-		plat->phy_init(pdev, S5P_USB_PHY_DEVICE);
+	/* usb phy enable */
+
+	s3c_hsotg_phy_enable(hsotg);
 
 	s3c_hsotg_corereset(hsotg);
 	s3c_hsotg_init(hsotg);
@@ -3339,8 +3375,7 @@ static int __devinit s3c_hsotg_probe(struct platform_device *pdev)
 	return 0;
 
 err_add_udc:
-	if (plat->phy_exit)
-		plat->phy_exit(pdev, S5P_USB_PHY_DEVICE);
+	s3c_hsotg_phy_disable(hsotg);
 
 	clk_disable(hsotg->clk);
 	clk_put(hsotg->clk);
@@ -3361,7 +3396,6 @@ err_mem:
 static int __devexit s3c_hsotg_remove(struct platform_device *pdev)
 {
 	struct s3c_hsotg *hsotg = platform_get_drvdata(pdev);
-	struct s3c_hsotg_plat *plat = hsotg->plat;
 
 	usb_del_gadget_udc(&hsotg->gadget);
 
@@ -3375,8 +3409,7 @@ static int __devexit s3c_hsotg_remove(struct platform_device *pdev)
 	release_resource(hsotg->regs_res);
 	kfree(hsotg->regs_res);
 
-	if (plat->phy_exit)
-		plat->phy_exit(pdev, S5P_USB_PHY_DEVICE);
+	s3c_hsotg_phy_disable(hsotg);
 
 	clk_disable(hsotg->clk);
 	clk_put(hsotg->clk);
