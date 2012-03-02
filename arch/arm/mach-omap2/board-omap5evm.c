@@ -1191,7 +1191,12 @@ static void __init omap_5430evm_map_io(void)
 //	omap54xx_map_common_io();
 }
 
-MACHINE_START(OMAP5_SEVM, "OMAP5430 evm board")
+static const char *omap5_sevm_match[] __initdata = {
+        "ti,omap5-sevm",
+        NULL,
+};
+
+MACHINE_START(OMAP5_SEVM, "OMAP5430 sEVM board")
 	/* Maintainer: Santosh Shilimkar - Texas Instruments Inc */
 	.atag_offset    = 0x100,  
 	.map_io		= omap_5430evm_map_io,
@@ -1201,4 +1206,24 @@ MACHINE_START(OMAP5_SEVM, "OMAP5430 evm board")
 	.handle_irq     = gic_handle_irq,
 	.init_machine	= omap_5430evm_init,
 	.timer		= &omap5_timer,
+	.dt_compat	= omap5_sevm_match,
 MACHINE_END
+
+static const char *omap5_uevm_match[] __initdata = {
+        "ti,omap5-uevm",
+        NULL,
+};
+
+MACHINE_START(OMAP5_SEVM, "OMAP5432 uEVM board")
+	/* Maintainer: Santosh Shilimkar - Texas Instruments Inc */
+	.atag_offset    = 0x100,  
+	.map_io		= omap_5430evm_map_io,
+	.reserve	= omap_reserve,
+	.init_early	= omap54xx_init_early,
+	.init_irq	= gic_init_irq,
+	.handle_irq     = gic_handle_irq,
+	.init_machine	= omap_5430evm_init,
+	.timer		= &omap5_timer,
+	.dt_compat	= omap5_uevm_match,
+MACHINE_END
+
