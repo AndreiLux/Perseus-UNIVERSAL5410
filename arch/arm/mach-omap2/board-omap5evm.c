@@ -15,6 +15,7 @@
 #include <linux/init.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
+#include <linux/leds.h>
 #include <linux/gpio.h>
 #include <linux/hwspinlock.h>
 #include <linux/i2c/tsl2771.h>
@@ -56,6 +57,52 @@
 
 #define GPIO_WIFI_PMENA			140
 #define GPIO_WIFI_IRQ			9
+
+static struct gpio_led gpio_leds[] = {
+	{
+		.name			= "red",
+		.default_trigger	= "heartbeat",
+		.gpio			= 273,
+	},
+	{
+		.name			= "usr1",
+		.default_trigger	= "default-off",
+		.gpio			= 258,
+	},
+	{
+		.name			= "usr2",
+		.default_trigger	= "default-off",
+		.gpio			= 259,
+	},
+	{
+		.name			= "usr3",
+		.default_trigger	= "default-off",
+		.gpio			= 260,
+	},
+	{
+		.name			= "usr4",
+		.default_trigger	= "default-off",
+		.gpio			= 261,
+	},
+	{
+		.name			= "usr5",
+		.default_trigger	= "default-off",
+		.gpio			= 262,
+	},
+};
+
+static struct gpio_led_platform_data gpio_led_info = {
+	.leds		= gpio_leds,
+	.num_leds	= ARRAY_SIZE(gpio_leds),
+};
+
+static struct platform_device leds_gpio = {
+	.name	= "leds-gpio",
+	.id	= -1,
+	.dev	= {
+		.platform_data	= &gpio_led_info,
+	},
+};
 
 static const int evm5430_keymap[] = {
 	KEY(0, 0, KEY_RESERVED),
@@ -1180,6 +1227,7 @@ static void __init omap54xx_common_init(void)
 
 //	omap2_hsmmc_init(mmc);
 	omap_ehci_ohci_init();
+	platform_device_register(&leds_gpio);
 }
 
 static void __init omap_5430_sevm_init(void)
