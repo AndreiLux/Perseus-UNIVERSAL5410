@@ -13,6 +13,10 @@
 	model = "TI OMAP5 sEVM";
 	compatible = "ti,omap5-sevm", "ti,omap5430", "ti,omap5";
 
+        chosen {
+                bootargs = "root=/dev/mmcblk1p2 rw rootwait console=ttyO2,115200n8 earlyprintk earlycon=ttyO2,115200n8 no_console_suspend";
+        };
+
 	memory {
 		device_type = "memory";
 		reg = <0x80000000 0x40000000>; /* 1 GB */
