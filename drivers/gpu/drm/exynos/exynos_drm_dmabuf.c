@@ -185,6 +185,7 @@ int exynos_dmabuf_prime_handle_to_fd(struct drm_device *drm_dev,
 	exynos_gem_obj = to_exynos_gem_obj(obj);
 
 	if (obj->prime_fd != -1) {
+		DRM_DEBUG_KMS("dmabuf already present.\n");
 		/* we have a prime fd already referencing the object. */
 		goto have_fd;
 	}
@@ -200,7 +201,8 @@ int exynos_dmabuf_prime_handle_to_fd(struct drm_device *drm_dev,
 	 */
 	obj->export_dma_buf = dma_buf_export(obj, &exynos_dmabuf_ops,
 						obj->size, 0600);
-	if (!obj->export_dma_buf) {
+	if (IS_ERR(obj->export_dma_buf)) {
+		DRM_DEBUG_KMS("failed to export dmabuf.\n");
 		ret = PTR_ERR(obj->export_dma_buf);
 		goto err2;
 	}
