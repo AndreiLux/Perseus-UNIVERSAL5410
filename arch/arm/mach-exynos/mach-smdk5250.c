@@ -1148,6 +1148,7 @@ static struct platform_pwm_backlight_data smdk5250_bl_data = {
 static struct platform_device *smdk5250_devices[] __initdata = {
 	&ramconsole_device,
 	&persistent_trace_device,
+	&s3c_device_rtc,
 	&s3c_device_i2c0,
 	&s3c_device_i2c1,
 	&s3c_device_i2c2,
