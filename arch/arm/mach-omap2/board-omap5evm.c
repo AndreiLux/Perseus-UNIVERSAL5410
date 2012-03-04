@@ -45,6 +45,7 @@
 #include <plat/usb.h>
 #include <plat/mmc.h>
 #include <plat/omap4-keypad.h>
+#include <plat/omap_hwmod.h>
 #include "hsmmc.h"
 #include "mux.h"
 #include <linux/qtouch_obp_ts.h>
@@ -1167,7 +1168,7 @@ static void omap5_sdp5430_wifi_init(void)
 #define GPIO_HUB_NRESET_SEVM	173
 #define GPIO_HUB_NRESET_UEVM    80
 
-static struct usbhs_omap_board_data usbhs_bdata __initconst = {
+static struct usbhs_omap_board_data usbhs_bdata __initdata = {
 	.port_mode[0] = OMAP_USBHS_PORT_MODE_UNUSED,
 	.port_mode[1] = OMAP_EHCI_PORT_MODE_HSIC,
 	.port_mode[2] = OMAP_EHCI_PORT_MODE_HSIC,
@@ -1190,11 +1191,54 @@ static struct omap_board_mux board_mux[] __initdata = {
 #define board_mux NULL
 #endif
 
+struct omap_mux_setting omap5432_common_mux[] __initdata = {
+        {                 
+                .name = "emmc_clk.emmc_clk",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE0,
+        },
+        {                 
+                .name = "emmc_cmd.emmc_cmd",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE0,
+        },
+        {                 
+                .name = "emmc_data0.emmc_data0",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE0,
+        },
+        {                 
+                .name = "emmc_data1.emmc_data1",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE0,
+        },
+        {                 
+                .name = "emmc_data2.emmc_data2",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE0,
+        },
+        {                 
+                .name = "emmc_data3.emmc_data3",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE0,
+        },
+        {                 
+                .name = "emmc_data4.emmc_data4",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE0,
+        },
+        {                 
+                .name = "emmc_data5.emmc_data5",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE0,
+        },
+        {                 
+                .name = "emmc_data6.emmc_data6",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE0,
+        },
+	{                 
+                .name = "emmc_data7.emmc_data7",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE0,
+        },
+};                                                                              
+
 static void __init omap54xx_common_init(void)
 {
-	int status;
+        omap_mux_init_array(omap5432_common_mux,                                
+                                              ARRAY_SIZE(omap5432_common_mux)); 
 
-#ifndef CONFIG_MACH_OMAP_5430ZEBU
 	omap_emif_set_device_details(1, &lpddr2_elpida_4G_S4_x2_info,
 			lpddr2_elpida_4G_S4_timings,
 			ARRAY_SIZE(lpddr2_elpida_4G_S4_timings),
@@ -1206,29 +1250,33 @@ static void __init omap54xx_common_init(void)
 			ARRAY_SIZE(lpddr2_elpida_4G_S4_timings),
 			&lpddr2_elpida_S4_min_tck,
 			&custom_configs);
-#endif
-
-	omap5_mux_init(board_mux, NULL, OMAP_PACKAGE_CBL);
 
 	omap5evm_touch_init();
-	if (cpu_is_omap5432()) { // ie, uevm !!!
-		mmc[1].gpio_cd = 152;
-		omap_mux_init_signal("gpio_152", OMAP_PIN_INPUT_PULLUP | OMAP_PIN_OFF_NONE);
-	}
-
 	omap_5430evm_i2c_init();
 	omap5evm_sensor_init();
 	omap_serial_board_init(NULL, 2);
 	omap_serial_board_init(NULL, 4);
 	platform_device_register(&dummy_sd_regulator_device);
 	omap_serial_init();
-
 	omap5_sdp5430_wifi_init();
-
-//	omap2_hsmmc_init(mmc);
+	omap2_hsmmc_init(mmc);
 	omap_ehci_ohci_init();
 	platform_device_register(&leds_gpio);
 }
+
+struct omap_mux_setting omap5432_sevm_mux[] = {                                   
+        {                                                                       
+                /* GPIO 172 - Ethernet bridge nRESET */
+                .name = "rfbi_data6.gpio6_172",
+                .mode = OMAP_PIN_OUTPUT | OMAP_MUX_MODE6,                 
+        },                                                                      
+        {                                                                       
+                /* GPIO 173 - Hub nRESET */
+		.name = "rfbi_data7.gpio6_173",
+                .mode = OMAP_PIN_OUTPUT | OMAP_MUX_MODE6,                 
+        },
+};
+
 
 static void __init omap_5430_sevm_init(void)
 {
@@ -1236,32 +1284,119 @@ static void __init omap_5430_sevm_init(void)
 
 	pr_info("Starting 5430 sEVM setup\n");
 
-	omap_mux_init_signal("gpio_172", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
-	omap_mux_init_signal("gpio_173", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
+	omap_mux_init_array(omap5432_sevm_mux, ARRAY_SIZE(omap5432_sevm_mux));
 
         /* Disable pulls on DCC lines - necessary for EDID detection */         
         omap_writel(0x50000000, 0x4A002E20);                                    
 	
 	omap54xx_common_init();
+
 	status = omap4_keyboard_init(&evm5430_keypad_data, &keypad_data);
 	if (status)
 		pr_err("Keypad initialization failed: %d\n", status);
 }
 
+struct omap_mux_setting omap5432_uevm_mux[] = {
+	{
+		/* I2C1 / PMIC scl */
+		.name = "i2c1_pmic_scl.i2c1_pmic_scl",
+		.mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE0,
+	},
+        {                                                                       
+                /* I2C1 / PMIC sda */                                           
+		.name = "i2c1_pmic_sda.i2c1_pmic_sda",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE0,
+        }, 
+        {                                                                       
+                /* I2C5 / expander scl */                                           
+                .name = "i2c5_scl.i2c5_scl",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE0,
+        },                                                                      
+        {                                                                       
+                /* I2C5 / expander sda */                                           
+		.name = "i2c5_sda.i2c5_sda",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE0,
+        },
+        {                                                                       
+                /* GPIO152 Card detect */                                           
+		.name = "uart6_rts.gpio5_152",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE6,
+        },
+        {                                                                       
+                /* GPIO80 USB host reset */
+		.name = "hsi2_caflag.gpio3_80",                                       
+                .mode = OMAP_PIN_OUTPUT,
+        },
+        {                                                                       
+                /* GPIO 15 Ethernet reset */                                       
+		.name = "llib_wakereqin.gpio1_wk15",
+                .mode = OMAP_PIN_OUTPUT | OMAP_MUX_MODE6,
+        },
+        {                                                                       
+                /* HDMI CEC */                                           
+		.name = "hdmi_cec.hdmi_cec",
+                .mode = OMAP_PIN_INPUT | OMAP_MUX_MODE0,
+        },                                                                      
+        {                                                                       
+                /* HDMI HPD */                                           
+		.name = "hdmi_hpd.hdmi_hpd",
+                .mode = OMAP_PIN_INPUT | OMAP_MUX_MODE0,
+        },
+        {                                                                       
+                /* GPIO 194 HDMI EDID BITBANG I2C scl */                                       
+		.name = "hdmi_ddc_scl.gpio7_194",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE6,
+        },                                                                      
+        {                                                                       
+                /* GPIO 195 HDMI EDID BITBANG I2C sda */
+		.name = "hdmi_ddc_sda.gpio7_195",
+                .mode = OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE6,
+        },
+        {                                                                       
+                /* GPIO_94 USB HOST 2 HSIC - hub */                                                  
+		.name = "usbb2_hsic_strobe.usbb2_hsic_strobe",
+                .mode = OMAP_PIN_INPUT | OMAP_MUX_MODE0,    
+        },
+        {                                                                       
+                /* GPIO_95 USB HOST 2 HSIC - hub */                                                  
+		.name = "usbb2_hsic_data.usbb2_hsic_data",
+                .mode = OMAP_PIN_INPUT | OMAP_MUX_MODE0,    
+        },
+        {                                                                       
+                /* GPIO_158 USB HOST 3 HSIC - ethernet */                                                  
+		.name = "usbb3_hsic_strobe.usbb3_hsic_strobe",
+                .mode = OMAP_PIN_INPUT | OMAP_MUX_MODE0,    
+        },
+        {                                                                       
+                /* GPIO_159 USB HOST 3 HSIC - ethernet */
+		.name = "usbb3_hsic_data.usbb3_hsic_data",
+                .mode = OMAP_PIN_INPUT | OMAP_MUX_MODE0,    
+        },
+        {                                                                       
+                /* FREF_CLK1_OUT - Usb hub clock */                       
+		.name = "fref_clk1_out.fref_clk1_out",
+                .mode = OMAP_PIN_OUTPUT,    
+        },
+        {                                                                       
+                /* FREF_CLK0_OUT - Camera clock */                       
+		.name = "fref_clk0_out.fref_clk0_out",
+                .mode = OMAP_PIN_OUTPUT,    
+        },
+};
+
+
 static void __init omap_5432_uevm_init(void)
 {
 	pr_info("Starting 5432 uEVM setup");
 
+	/* SD Card Detect */
 	mmc[1].gpio_cd = 152;
-	omap_mux_init_signal("gpio_152", OMAP_PIN_INPUT_PULLUP | OMAP_PIN_OFF_NONE);
 
-	omap_mux_init_signal("gpio_147", OMAP_PIN_INPUT_PULLUP | OMAP_PIN_OFF_NONE);
-	omap_mux_init_signal("gpio_148", OMAP_PIN_INPUT_PULLUP | OMAP_PIN_OFF_NONE);
-
+	/* uEVM-specific ethernet resets */
 	usbhs_bdata.reset_gpio_port[1] = GPIO_HUB_NRESET_UEVM;
 	usbhs_bdata.reset_gpio_port[2] = GPIO_ETH_NRESET_UEVM;
-	omap_mux_init_signal("gpio_80", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
-	omap_mux_init_signal("gpio_15", OMAP_PIN_OUTPUT | OMAP_PIN_OFF_NONE);
+
+	omap_mux_init_array(omap5432_uevm_mux, ARRAY_SIZE(omap5432_uevm_mux));
 
 	omap54xx_common_init();
 }
@@ -1279,6 +1414,8 @@ static void __init omap_54xx_init(void)
 	BUG_ON(!model);
 	pr_err("model: %s\n", model);
 #endif
+
+	omap5_mux_init(board_mux, NULL, OMAP_PACKAGE_CBL);
 
 	if (!strcmp(dt_selected_model, "TI OMAP5 uEVM"))
 		omap_5432_uevm_init();
@@ -1311,5 +1448,4 @@ MACHINE_START(OMAP5_SEVM, "TI OMAP5 Eval Board")
 	.timer		= &omap5_timer,
 	.dt_compat	= omap5_sevm_match,
 MACHINE_END
-
 
