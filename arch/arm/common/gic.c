@@ -739,10 +739,11 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 	gic_irqs -= hwirq_base; /* calculate # of irqs to allocate */
 	irq_base = irq_alloc_descs(irq_start, 16, gic_irqs, numa_node_id());
 	if (IS_ERR_VALUE(irq_base)) {
-		WARN(1, "Cannot allocate irq_descs @ IRQ%d, assuming pre-allocated\n",
-		     irq_start);
+		pr_warn("Cannot allocate irq_descs @ IRQ%d, assuming pre-allocated\n",
+			irq_start);
 		irq_base = irq_start;
 	}
+
 	gic->domain = irq_domain_add_legacy(node, gic_irqs, irq_base,
 				    hwirq_base, &gic_irq_domain_ops, gic);
 	if (WARN_ON(!gic->domain))
