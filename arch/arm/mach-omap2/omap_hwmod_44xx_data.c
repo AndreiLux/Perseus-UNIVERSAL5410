@@ -5928,6 +5928,10 @@ static __initdata struct omap_hwmod *omap44xx_hwmods[] = {
 	&omap44xx_dss_rfbi_hwmod,
 	&omap44xx_dss_venc_hwmod,
 
+	/* emif class */
+	&omap44xx_emif1_hwmod,
+	&omap44xx_emif2_hwmod,
+
 	/* gpio class */
 	&omap44xx_gpio1_hwmod,
 	&omap44xx_gpio2_hwmod,
