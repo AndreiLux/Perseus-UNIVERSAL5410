@@ -2463,42 +2463,49 @@ static struct samsung_gpio_chip exynos5_gpios_1[] = {
 			.label	= "GPD1",
 		},
 	}, {
+		.config	= &samsung_gpio_cfgs[8],
 		.chip	= {
 			.base	= EXYNOS5_GPY0(0),
 			.ngpio	= EXYNOS5_GPIO_Y0_NR,
 			.label	= "GPY0",
 		},
 	}, {
+		.config	= &samsung_gpio_cfgs[8],
 		.chip	= {
 			.base	= EXYNOS5_GPY1(0),
 			.ngpio	= EXYNOS5_GPIO_Y1_NR,
 			.label	= "GPY1",
 		},
 	}, {
+		.config	= &samsung_gpio_cfgs[8],
 		.chip	= {
 			.base	= EXYNOS5_GPY2(0),
 			.ngpio	= EXYNOS5_GPIO_Y2_NR,
 			.label	= "GPY2",
 		},
 	}, {
+		.config	= &samsung_gpio_cfgs[8],
 		.chip	= {
 			.base	= EXYNOS5_GPY3(0),
 			.ngpio	= EXYNOS5_GPIO_Y3_NR,
 			.label	= "GPY3",
 		},
 	}, {
+		.config	= &samsung_gpio_cfgs[8],
 		.chip	= {
 			.base	= EXYNOS5_GPY4(0),
 			.ngpio	= EXYNOS5_GPIO_Y4_NR,
 			.label	= "GPY4",
 		},
 	}, {
+		.config	= &samsung_gpio_cfgs[8],
 		.chip	= {
 			.base	= EXYNOS5_GPY5(0),
 			.ngpio	= EXYNOS5_GPIO_Y5_NR,
 			.label	= "GPY5",
 		},
 	}, {
+		.config	= &samsung_gpio_cfgs[8],
 		.chip	= {
 			.base	= EXYNOS5_GPY6(0),
 			.ngpio	= EXYNOS5_GPIO_Y6_NR,
@@ -2963,6 +2970,22 @@ static __init int samsung_gpiolib_init(void)
 		}
 		samsung_gpiolib_add_4bit_chips(exynos5_gpios_4,
 					       nr_chips, gpio_base4);
+#if defined(CONFIG_SOC_EXYNOS5250) && defined(CONFIG_S5P_GPIO_INT)
+		s5p_register_gpioint_bank(EXYNOS5_IRQ_GPIO_XA, 0,
+				EXYNOS5_IRQ_GPIO1_NR_GROUPS);
+		s5p_register_gpioint_bank(EXYNOS5_IRQ_GPIO_XB,
+				EXYNOS5_IRQ_GPIO1_NR_GROUPS,
+				EXYNOS5_IRQ_GPIO2_NR_GROUPS);
+		s5p_register_gpioint_bank(EXYNOS5_IRQ_GPIO_C2C,
+				EXYNOS5_IRQ_GPIO1_NR_GROUPS +
+					EXYNOS5_IRQ_GPIO2_NR_GROUPS,
+				EXYNOS5_IRQ_GPIO3_NR_GROUPS);
+		s5p_register_gpioint_bank(EXYNOS5_IRQ_GPIO,
+				EXYNOS5_IRQ_GPIO1_NR_GROUPS +
+					EXYNOS5_IRQ_GPIO2_NR_GROUPS +
+					EXYNOS5_IRQ_GPIO3_NR_GROUPS,
+				EXYNOS5_IRQ_GPIO4_NR_GROUPS);
+#endif
 #endif	/* CONFIG_SOC_EXYNOS5250 */
 	} else {
 		WARN(1, "Unknown SoC in gpio-samsung, no GPIOs added\n");
