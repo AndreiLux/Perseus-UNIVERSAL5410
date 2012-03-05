@@ -53,3 +53,10 @@ struct omap_dss_dispc_dev_attr omap2_3_dss_dispc_dev_attr = {
 	.manager_count		= 2,
 	.has_framedonetv_irq	= 0
 };
+
+struct omap_hwmod_sysc_fields omap_hwmod_sysc_custom = {
+	.midle_shift    = SYSC_TYPE2_MIDLEMODE_SHIFT,
+	.sidle_shift    = SYSC_TYPE2_SIDLEMODE_SHIFT,
+	.srst_shift     = SYSC_TYPE2_SOFTRESET_SHIFT,
+	.srst_shift     = 1,
+};
