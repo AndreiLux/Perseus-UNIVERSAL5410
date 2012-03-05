@@ -26,6 +26,8 @@
 #include <linux/mfd/palmas.h>
 #endif
 #include <linux/i2c/smsc.h>
+#include <linux/wl12xx.h>
+
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
@@ -48,6 +50,9 @@
 
 #define OMAP5_TSL2771_INT_GPIO          149
 #define	OMAP5_MPU6050_INT_GPIO		150
+
+#define GPIO_WIFI_PMENA			140
+#define GPIO_WIFI_IRQ			9
 
 static const int evm5430_keymap[] = {
 	KEY(0, 0, KEY_RESERVED),
@@ -1073,8 +1078,88 @@ static struct omap2_hsmmc_info mmc[] = {
 		.gpio_cd	= 67,
 		.gpio_wp	= -EINVAL,
 	},
+	{
+		.mmc            = 3,
+		.caps           = MMC_CAP_4_BIT_DATA | MMC_CAP_POWER_OFF_CARD,
+		.gpio_cd        = -EINVAL,
+		.gpio_wp        = -EINVAL,
+		.ocr_mask       = MMC_VDD_165_195,
+		.nonremovable   = true,
+	},
 	{}	/* Terminator */
 };
+
+static struct regulator_consumer_supply omap5_sdp5430_vmmc3_supply = {
+	.supply         = "vmmc",
+	.dev_name       = "omap_hsmmc.2",
+};
+
+static struct regulator_init_data sdp5430_vmmc3 = {
+	.constraints            = {
+		.valid_ops_mask = REGULATOR_CHANGE_STATUS,
+	},
+	.num_consumer_supplies  = 1,
+	.consumer_supplies      = &omap5_sdp5430_vmmc3_supply,
+};
+
+static struct fixed_voltage_config sdp5430_vwlan = {
+	.supply_name            = "vwl1271",
+	.microvolts             = 1800000, /* 1.8V */
+	.gpio                   = GPIO_WIFI_PMENA,
+	.startup_delay          = 70000, /* 70msec */
+	.enable_high            = 1,
+	.enabled_at_boot        = 0,
+	.init_data              = &sdp5430_vmmc3,
+};
+
+static struct platform_device omap_vwlan_device = {
+	.name           = "reg-fixed-voltage",
+	.id             = 2,
+	.dev = {
+		.platform_data = &sdp5430_vwlan,
+	},
+};
+
+static void omap5_sdp5430_wifi_mux_init(void)
+{
+	omap_mux_init_gpio(GPIO_WIFI_IRQ, OMAP_PIN_INPUT |
+				OMAP_PIN_OFF_WAKEUPENABLE);
+	omap_mux_init_gpio(GPIO_WIFI_PMENA, OMAP_PIN_OUTPUT);
+
+	omap_mux_init_signal("wlsdio_cmd.wlsdio_cmd",
+				OMAP_MUX_MODE0 | OMAP_PIN_INPUT_PULLUP);
+	omap_mux_init_signal("wlsdio_clk.wlsdio_clk",
+				OMAP_MUX_MODE0 | OMAP_PIN_INPUT_PULLUP);
+	omap_mux_init_signal("wlsdio_data0.wlsdio_data0",
+				OMAP_MUX_MODE0 | OMAP_PIN_INPUT_PULLUP);
+	omap_mux_init_signal("wlsdio_data1.wlsdio_data1",
+				OMAP_MUX_MODE0 | OMAP_PIN_INPUT_PULLUP);
+	omap_mux_init_signal("wlsdio_data2.wlsdio_data2",
+				OMAP_MUX_MODE0 | OMAP_PIN_INPUT_PULLUP);
+	omap_mux_init_signal("wlsdio_data3.wlsdio_data3",
+				OMAP_MUX_MODE0 | OMAP_PIN_INPUT_PULLUP);
+}
+
+static struct wl12xx_platform_data omap5_sdp5430_wlan_data __initdata = {
+	.irq                = OMAP_GPIO_IRQ(GPIO_WIFI_IRQ),
+	.board_ref_clock    = WL12XX_REFCLOCK_26,
+	.board_tcxo_clock   = WL12XX_TCXOCLOCK_26,
+};
+
+static void omap5_sdp5430_wifi_init(void)
+{
+/* PRDP: To be enabled on production */
+#if 0
+	omap5_sdp5430_wifi_mux_init();
+#endif
+
+	if (gpio_request_one(GPIO_WIFI_IRQ, GPIOF_IN, "wlan"))
+		printk(KERN_INFO "wlan: IRQ gpio request failure in board file\n");
+
+	if (wl12xx_set_platform_data(&omap5_sdp5430_wlan_data))
+		pr_err("Error setting wl12xx data\n");
+	platform_device_register(&omap_vwlan_device);
+}
 
 /* USBB3 to SMSC LAN9730 */
 #define GPIO_ETH_NRESET	172
@@ -1107,6 +1192,9 @@ static void __init omap_5430evm_init(void)
 	omap_5430evm_i2c_init();
 	omap_serial_init();
 	platform_device_register(&dummy_sd_regulator_device);
+
+	omap5_sdp5430_wifi_init();
+
 	omap2_hsmmc_init(mmc);
 	omap_ehci_ohci_init();
 }
