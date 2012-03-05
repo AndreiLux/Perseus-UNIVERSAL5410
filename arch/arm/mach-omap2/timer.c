@@ -134,7 +134,6 @@ static void omap2_gp_timer_set_mode(enum clock_event_mode mode,
 		break;
 	case CLOCK_EVT_MODE_UNUSED:
 	case CLOCK_EVT_MODE_SHUTDOWN:
-#ifndef CONFIG_NO_HZ
 #ifdef CONFIG_PM_DEBUG
 		if (wakeup_timer_seconds) {
 			__omap_dm_timer_write(&clkev, OMAP_TIMER_LOAD_REG,
@@ -142,7 +141,6 @@ static void omap2_gp_timer_set_mode(enum clock_event_mode mode,
 			__omap_dm_timer_load_start(&clkev, OMAP_TIMER_CTRL_ST,
 			0xffffffff - (clkev.rate * wakeup_timer_seconds), 1);
 		}
-#endif
 #endif
 		break;
 	case CLOCK_EVT_MODE_RESUME:
