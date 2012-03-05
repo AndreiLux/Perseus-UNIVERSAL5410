@@ -28,11 +28,19 @@ static void wq_sched_handler(struct work_struct *wsptr);
 
 DECLARE_WORK(work, wq_sched_handler);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)
 GATOR_DEFINE_PROBE(mm_page_free_direct, TP_PROTO(struct page *page, unsigned int order)) {
+#else
+GATOR_DEFINE_PROBE(mm_page_free, TP_PROTO(struct page *page, unsigned int order)) {
+#endif
 	mem_event++;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)
 GATOR_DEFINE_PROBE(mm_pagevec_free, TP_PROTO(struct page *page, int cold)) {
+#else
+GATOR_DEFINE_PROBE(mm_page_free_batched, TP_PROTO(struct page *page, int cold)) {
+#endif
 	mem_event++;
 }
 
@@ -83,20 +91,36 @@ static int gator_events_meminfo_start(void)
 	if (meminfo_global_enabled == 0)
 		return 0;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)
 	if (GATOR_REGISTER_TRACE(mm_page_free_direct))
-		goto mm_page_free_direct_exit;
+#else
+	if (GATOR_REGISTER_TRACE(mm_page_free))
+#endif
+		goto mm_page_free_exit;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)
 	if (GATOR_REGISTER_TRACE(mm_pagevec_free))
-		goto mm_pagevec_free_exit;
+#else
+	if (GATOR_REGISTER_TRACE(mm_page_free_batched))
+#endif
+		goto mm_page_free_batched_exit;
 	if (GATOR_REGISTER_TRACE(mm_page_alloc))
 		goto mm_page_alloc_exit;
 
 	return 0;
 
 mm_page_alloc_exit:
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)
 	GATOR_UNREGISTER_TRACE(mm_pagevec_free);
-mm_pagevec_free_exit:
+#else
+	GATOR_UNREGISTER_TRACE(mm_page_free_batched);
+#endif
+mm_page_free_batched_exit:
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)
 	GATOR_UNREGISTER_TRACE(mm_page_free_direct);
-mm_page_free_direct_exit:
+#else
+	GATOR_UNREGISTER_TRACE(mm_page_free);
+#endif
+mm_page_free_exit:
 	return -1;
 }
 
@@ -105,8 +129,13 @@ static void gator_events_meminfo_stop(void)
 	int i;
 
 	if (meminfo_global_enabled) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)
 		GATOR_UNREGISTER_TRACE(mm_page_free_direct);
 		GATOR_UNREGISTER_TRACE(mm_pagevec_free);
+#else
+		GATOR_UNREGISTER_TRACE(mm_page_free);
+		GATOR_UNREGISTER_TRACE(mm_page_free_batched);
+#endif
 		GATOR_UNREGISTER_TRACE(mm_page_alloc);
 	}
 
