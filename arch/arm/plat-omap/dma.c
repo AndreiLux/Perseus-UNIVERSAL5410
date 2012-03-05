@@ -736,11 +736,11 @@ int omap_request_dma(int dev_id, const char *dev_name,
 	}
 
 	if (cpu_class_is_omap2()) {
-		omap2_enable_irq_lch(free_ch);
-		omap_enable_channel_irq(free_ch);
 		/* Clear the CSR register and IRQ status register */
 		p->dma_write(OMAP2_DMA_CSR_CLEAR_MASK, CSR, free_ch);
 		p->dma_write(1 << free_ch, IRQSTATUS_L0, 0);
+		omap2_enable_irq_lch(free_ch);
+		omap_enable_channel_irq(free_ch);
 	}
 
 	*dma_ch_out = free_ch;
