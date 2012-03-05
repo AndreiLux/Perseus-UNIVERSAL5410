@@ -258,8 +258,8 @@ static int __cpuinit arch_timer_cpu_notify(struct notifier_block *self,
 	struct clock_event_device *clk = per_cpu_ptr(arch_timer_evt, cpu);
 
 	switch (action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
+	case CPU_STARTING:
+	case CPU_STARTING_FROZEN:
 		smp_call_function_single(cpu, arch_timer_setup, clk, 1);
 		break;
 
