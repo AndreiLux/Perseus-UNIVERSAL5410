@@ -262,6 +262,23 @@ int __init omap_mux_init_signal(const char *muxname, int val)
 	return 0;
 }
 
+int omap_mux_init_array(struct omap_mux_setting *muxarray, int count)
+{
+	int r;
+
+	while (count--) {
+		r = omap_mux_init_signal(muxarray->name, muxarray->mode);
+		if (r) {
+			pr_err("omap_mux_init_array: failed setting %s: %d\n",
+							muxarray->name, r);
+			return r;
+		}
+		muxarray++;
+	}
+
+	return 0;
+}
+
 struct omap_hwmod_mux_info * __init
 omap_hwmod_mux_init(struct omap_device_pad *bpads, int nr_pads)
 {

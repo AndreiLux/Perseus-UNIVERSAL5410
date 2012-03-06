@@ -186,6 +186,11 @@ struct omap_device_pad {
 	struct omap_mux			*mux;
 };
 
+struct omap_mux_setting {
+	const char *name;
+	u16	mode;
+};
+
 struct omap_hwmod_mux_info;
 
 #define OMAP_MUX_STATIC(signal, mode)					\
@@ -209,6 +214,13 @@ int omap_mux_init_gpio(int gpio, int val);
  * @val:		Options for the mux register value
  */
 int omap_mux_init_signal(const char *muxname, int val);
+
+/**
+ * omap_mux_init_array - omap_mux_init_signal for an array
+ * @muxarray:		pointer to list of omap_mux_setting
+ * @count:		number of entries in @muxarry
+ */
+int omap_mux_init_array(struct omap_mux_setting *muxarray, int count);
 
 /**
  * omap_hwmod_mux_init - initialize hwmod specific mux data
