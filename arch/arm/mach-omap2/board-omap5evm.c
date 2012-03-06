@@ -1185,10 +1185,33 @@ static void __init omap_ehci_ohci_init(void)
 	return;
 }
 
+#ifdef CONFIG_OMAP_MUX
+static struct omap_board_mux board_mux[] __initdata = {
+	{ .reg_offset = OMAP_MUX_TERMINATOR },
+};
+#else
+#define board_mux NULL
+#endif
+
 static void __init omap_5430evm_init(void)
 {
 	int status;
 
+#ifndef CONFIG_MACH_OMAP_5430ZEBU
+	omap_emif_set_device_details(1, &lpddr2_elpida_4G_S4_x2_info,
+			lpddr2_elpida_4G_S4_timings,
+			ARRAY_SIZE(lpddr2_elpida_4G_S4_timings),
+			&lpddr2_elpida_S4_min_tck,
+			&custom_configs);
+
+	omap_emif_set_device_details(2, &lpddr2_elpida_4G_S4_x2_info,
+			lpddr2_elpida_4G_S4_timings,
+			ARRAY_SIZE(lpddr2_elpida_4G_S4_timings),
+			&lpddr2_elpida_S4_min_tck,
+			&custom_configs);
+#endif
+	omap5_mux_init(board_mux, NULL, OMAP_PACKAGE_CBL);
+	omap5evm_touch_init();
 	omap_5430evm_i2c_init();
 	omap_serial_init();
 	platform_device_register(&dummy_sd_regulator_device);
