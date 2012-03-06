@@ -939,13 +939,13 @@ int __init omap5_mux_init(struct omap_board_mux *board_subset,
 		return -EINVAL;
 	}
 
-	ret = omap_mux_init("core", 0,
+	ret = omap_mux_init("core", OMAP_MUX_GPIO_IN_MODE6,
 			    OMAP5_CTRL_MODULE_PAD_CORE_MUX_PBASE,
 			    OMAP5_CTRL_MODULE_PAD_CORE_MUX_SIZE,
 			    omap5_core_muxmodes, NULL, board_subset,
 			    package_balls_core);
 
-	ret = omap_mux_init("wkup", 0,
+	ret = omap_mux_init("wkup", OMAP_MUX_GPIO_IN_MODE6,
 			    OMAP5_CTRL_MODULE_PAD_WKUP_MUX_PBASE,
 			    OMAP5_CTRL_MODULE_PAD_WKUP_MUX_SIZE,
 			    omap5_wkup_muxmodes, NULL, board_subset,
