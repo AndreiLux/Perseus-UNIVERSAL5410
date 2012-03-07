@@ -544,13 +544,23 @@ void __init usbhs_init(const struct usbhs_omap_board_data *pdata)
 		return;
 	}
 
+        pdev = omap_device_build_ss(OMAP_USBHS_DEVICE, bus_id, &oh[0], 1,           
+                                (void *)&usbhs_data, sizeof(usbhs_data),        
+                                omap_uhhtll_latency,                            
+                                ARRAY_SIZE(omap_uhhtll_latency), false);        
+        if (IS_ERR(pdev)) {                                                     
+                pr_err("Could not build hwmod devices %s,%s\n",                 
+                        USBHS_UHH_HWMODNAME, USBHS_TLL_HWMODNAME);              
+                return;                                                         
+        }  
+
 	oh[1] = omap_hwmod_lookup(USBHS_TLL_HWMODNAME);
 	if (!oh[1]) {
 		pr_err("Could not look up %s\n", USBHS_TLL_HWMODNAME);
 		return;
 	}
 
-	pdev = omap_device_build_ss(OMAP_USBHS_DEVICE, bus_id, oh, 2,
+	pdev = omap_device_build_ss(OMAP_USBTLL_DEVICE, bus_id, &oh[1], 1,
 				(void *)&usbhs_data, sizeof(usbhs_data),
 				omap_uhhtll_latency,
 				ARRAY_SIZE(omap_uhhtll_latency), false);
