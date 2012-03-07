@@ -187,6 +187,13 @@ static const struct dmi_system_id chromeos_laptop_dmi_table[] = {
 		},
 		.callback = setup_tsl2563_als,
 	},
+	{
+		.ident = "Link - Light Sensor",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Link"),
+		},
+		.callback = setup_isl29018_als,
+	},
 
 	{ }
 };
