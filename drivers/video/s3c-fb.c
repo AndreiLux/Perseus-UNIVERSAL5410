@@ -1339,8 +1339,10 @@ static int s3c_fb_get_user_ion_handle(struct s3c_fb *sfb,
 				struct s3c_fb_user_ion_client *user_ion_client)
 {
 	/* Create fd for ion_buffer */
+#if 0
 	user_ion_client->fd = ion_share_fd(sfb->fb_ion_client,
 					win->fb_ion_handle);
+#endif
 	if (user_ion_client->fd < 0) {
 		pr_err("ion_share_fd failed\n");
 		return user_ion_client->fd;
