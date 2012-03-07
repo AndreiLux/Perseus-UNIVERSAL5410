@@ -16,7 +16,7 @@
 #include <linux/atomic.h>
 #include <linux/spinlock.h>
 
-enum EXYNOS_SYSMMU_INTERRUPT_TYPE {
+enum exynos_sysmmu_inttype {
 	SYSMMU_PAGEFAULT,
 	SYSMMU_AR_MULTIHIT,
 	SYSMMU_AW_MULTIHIT,
@@ -36,7 +36,7 @@ enum EXYNOS_SYSMMU_INTERRUPT_TYPE {
  * @fault_addr: the device (virtual) address that the System MMU tried to
  *             translated. This is 0 if @itype is SYSMMU_BUSERROR.
  */
-typedef int (*sysmmu_fault_handler_t)(enum EXYNOS_SYSMMU_INTERRUPT_TYPE itype,
+typedef int (*sysmmu_fault_handler_t)(enum exynos_sysmmu_inttype itype,
 			unsigned long pgtable_base, unsigned long fault_addr);
 
 #ifdef CONFIG_EXYNOS_IOMMU
@@ -58,7 +58,7 @@ int exynos_sysmmu_enable(struct device *owner, unsigned long pgd);
  * This function disable system mmu to transfer address
  * from virtual address to physical address
  */
-void exynos_sysmmu_disable(struct device *owner);
+bool exynos_sysmmu_disable(struct device *owner);
 
 /**
  * exynos_sysmmu_tlb_invalidate() - flush all TLB entry in system mmu
@@ -73,7 +73,7 @@ void exynos_sysmmu_tlb_invalidate(struct device *owner);
  * The device drivers of peripheral devices that has a System MMU can implement
  * a fault handler to resolve address translation fault by System MMU.
  * The meanings of return value and parameters are described below.
-
+ *
  * return value: non-zero if the fault is correctly resolved.
  *         zero if the fault is not handled.
  */
@@ -100,7 +100,6 @@ void exynos_sysmmu_set_prefbuf(struct device *owner,
 #else /* CONFIG_EXYNOS_IOMMU */
 #define exynos_sysmmu_enable(owner, pgd) do { } while (0)
 #define exynos_sysmmu_disable(owner) do { } while (0)
-#define exynos_sysmmu_set_tablebase_pgd(owner, pgd) do { } while (0)
 #define exynos_sysmmu_tlb_invalidate(owner) do { } while (0)
 #define exynos_sysmmu_set_fault_handler(sysmmu, handler) do { } while (0)
 #define exynos_sysmmu_set_prefbuf(owner, b0, s0, b1, s1) do { } while (0)

@@ -12,6 +12,8 @@
 #define __ASM_PLAT_IOVMM_H
 
 #ifdef CONFIG_EXYNOS_IOVMM
+struct scatterlist;
+
 int iovmm_setup(struct device *dev);
 void iovmm_cleanup(struct device *dev);
 int iovmm_activate(struct device *dev);
