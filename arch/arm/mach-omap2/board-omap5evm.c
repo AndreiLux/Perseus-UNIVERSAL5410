@@ -25,6 +25,8 @@
 
 #include <linux/platform_data/omap4-keypad.h>
 #include <linux/of_fdt.h>
+#include <linux/i2c-gpio.h>
+#include <linux/clk.h>
 
 #include <linux/regulator/machine.h>
 #include <linux/regulator/fixed.h>
@@ -1387,6 +1389,8 @@ struct omap_mux_setting omap5432_uevm_mux[] = {
 
 static void __init omap_5432_uevm_init(void)
 {
+	struct clk *phy_ref_clk;
+
 	pr_info("Starting 5432 uEVM setup");
 
 	/* SD Card Detect */
@@ -1397,6 +1401,15 @@ static void __init omap_5432_uevm_init(void)
 	usbhs_bdata.reset_gpio_port[2] = GPIO_ETH_NRESET_UEVM;
 
 	omap_mux_init_array(omap5432_uevm_mux, ARRAY_SIZE(omap5432_uevm_mux));
+
+        /* FREF_CLK1 provides the 19.2 MHz reference clock to the PHY */        
+        phy_ref_clk = clk_get(NULL, "auxclk1_ck");                              
+        if (IS_ERR(phy_ref_clk)) {                                              
+                pr_err("Cannot request auxclk1\n");
+        } else {
+	        clk_set_rate(phy_ref_clk, 19200000);                                    
+	        clk_enable(phy_ref_clk);
+	}
 
 	omap54xx_common_init();
 }
