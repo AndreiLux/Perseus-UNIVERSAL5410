@@ -1839,15 +1839,21 @@ static void s3c_hsotg_complete_in(struct s3c_hsotg *hsotg,
 			__func__, hs_req->req.actual, size_done);
 
 	hs_req->req.actual = size_done;
-	dev_dbg(hsotg->dev, "req->length:%d req->actual:%d\n",
-		hs_req->req.length, hs_req->req.actual);
+	dev_dbg(hsotg->dev, "req->length:%d req->actual:%d req->zero:%d\n",
+		hs_req->req.length, hs_req->req.actual, hs_req->req.zero);
 
-	/* Check if dealing with Maximum Packet Size(MPS) IN transfer (EP0)
-	 * When req.lenght == ep.maxpacket then send IN ZLP packet to
-	 * inform host that no more data is available.
+	/* Check if dealing with Maximum Packet Size(MPS) IN transfer at EP0
+	 * When sent data is a multiple MPS size (e.g. 64B ,128B ,192B
+	 * ,256B ... ), after last MPS sized packet send IN ZLP packet to
+	 * inform the host that no more data is available.
+	 * The state of req.zero member is checked to be sure that the value to
+	 * send is smaller than wValue expected from host.
+	 * Check req.length to NOT send another ZLP when the current one is
+	 * under completion (the one for which this completion has been called).
 	 */
-	if (hs_req->req.length == hs_req->req.actual && hs_ep->index == 0
-	    && hs_req->req.length == hs_ep->ep.maxpacket) {
+	if (hs_req->req.length && hs_ep->index == 0 && hs_req->req.zero
+	    && hs_req->req.length == hs_req->req.actual
+	    && !(hs_req->req.length % hs_ep->ep.maxpacket)) {
 
 		dev_dbg(hsotg->dev, "ep0 zlp IN packet sent\n");
 		s3c_hsotg_send_zlp(hsotg, hs_req);
