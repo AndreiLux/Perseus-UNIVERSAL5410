@@ -811,54 +811,20 @@ int vb2_ion_cache_inv(struct vb2_buffer *vb, u32 num_planes)
 void vb2_ion_suspend(void *alloc_ctx)
 {
 	struct vb2_ion_conf *conf = alloc_ctx;
-	unsigned long flags;
-	int ret;
 
 	if (!conf->use_mmu)
 		return;
-
-	spin_lock_irqsave(&conf->slock, flags);
-
-	ret = atomic_dec_return(&conf->mmu_enable);
-	if (ret < 0) {
-		pr_warning("Already vb2-ion suspend: %s\n",
-					dev_name(conf->dev));
-		atomic_set(&conf->mmu_enable, 0);
-	} else if (ret == 0) {
-		iovmm_deactivate(conf->dev);
-	}
-
-	spin_unlock_irqrestore(&conf->slock, flags);
+	iovmm_deactivate(conf->dev);
 }
 
 int vb2_ion_resume(void *alloc_ctx)
 {
 	struct vb2_ion_conf *conf = alloc_ctx;
-	int ret = -ENOENT;
-	unsigned long flags;
 
 	if (!conf->use_mmu)
-		return ret;
+		return 0;
 
-	spin_lock_irqsave(&conf->slock, flags);
-	ret = atomic_inc_return(&conf->mmu_enable);
-
-	if (ret > 1) {
-		pr_warning("Already vb2-ion resume: %s\n", dev_name(conf->dev));
-	} else if (ret == 1) {
-		ret = iovmm_activate(conf->dev);
-		if (ret) {
-			pr_err("iovmm_activate failed: %s\n",
-							dev_name(conf->dev));
-			if (ret == -EBUSY)
-				ret = 1;
-			else
-				atomic_dec(&conf->mmu_enable);
-		}
-	}
-	spin_unlock_irqrestore(&conf->slock, flags);
-
-	return ret;
+	return iovmm_activate(conf->dev);
 }
 
 MODULE_AUTHOR("Jonghun,	Han <jonghun.han@samsung.com>");
