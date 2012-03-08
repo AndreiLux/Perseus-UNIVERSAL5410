@@ -104,7 +104,7 @@ void __init exynos_dwmci_set_platdata(struct dw_mci_board *pd)
 		npd = s3c_set_platdata(pd, sizeof(struct dw_mci_board),
 			&exynos5_device_dwmci);
 	else
-		npd = 0;
+		npd = NULL;
 
 	if (!npd->init)
 		npd->init = exynos_dwmci_init;
