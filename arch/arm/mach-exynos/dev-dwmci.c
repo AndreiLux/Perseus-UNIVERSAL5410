@@ -106,6 +106,9 @@ void __init exynos_dwmci_set_platdata(struct dw_mci_board *pd)
 	else
 		npd = NULL;
 
+	if (!npd)
+		return;
+
 	if (!npd->init)
 		npd->init = exynos_dwmci_init;
 	if (!npd->get_bus_wd)
