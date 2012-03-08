@@ -548,6 +548,16 @@ static struct omap_dss_board_info omap4_panda_dss_data = {
 	.default_device	= &omap4_panda_dvi_device,
 };
 
+/*
+ * These device paths represent the onboard USB <-> Ethernet bridge, and
+ * the WLAN module on Panda, both of which need their random or all-zeros
+ * mac address replacing with a per-cpu stable generated one
+ */
+static const char * const panda_fixup_mac_device_paths[] = {
+       "usb1/1-1/1-1.1/1-1.1:1.0",
+       "mmc1:0001:2",
+};
+
 void __init omap4_panda_display_init(void)
 {
 	int r;
@@ -614,6 +624,10 @@ static void __init omap4_panda_init(void)
 	omap4_mux_init(board_mux, NULL, package);
 
 	omap_panda_wlan_data.irq = gpio_to_irq(GPIO_WIFI_IRQ);
+
+	omap_register_mac_device_fixup_paths(panda_fixup_mac_device_paths,
+				     ARRAY_SIZE(panda_fixup_mac_device_paths));
+
 	ret = wl12xx_set_platform_data(&omap_panda_wlan_data);
 	if (ret)
 		pr_err("error setting wl12xx data: %d\n", ret);
