@@ -14,11 +14,16 @@
 	compatible = "ti,omap5-uevm", "ti,omap5432", "ti,omap5";
 
         chosen {                                                                
-                bootargs = "root=/dev/mmcblk0p2 rw rootwait console=ttyO2,115200n8 loglevel=4";
+                bootargs = "root=/dev/mmcblk1p2 rw rootwait console=ttyO2,115200n8 loglevel=4";
         };
+
+	chosen_emmc {                                                            
+                bootargs = "root=/dev/mmcblk0p2 rw rootwait console=ttyO2,115200n8 loglevel=4";
+        };  
 
 	memory {
 		device_type = "memory";
 		reg = <0x80000000 0x40000000>; /* 1 GB */
 	};
 };
+
