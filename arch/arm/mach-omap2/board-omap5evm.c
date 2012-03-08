@@ -1236,6 +1236,16 @@ struct omap_mux_setting omap5432_common_mux[] __initdata = {
         },
 };                                                                              
 
+/*
+ * These device paths represent the onboard USB <-> Ethernet bridge, and
+ * the WLAN module on Panda, both of which need their random or all-zeros       
+ * mac address replacing with a per-cpu stable generated one                    
+ */
+static const char * const omap5evm_fixup_mac_device_paths[] = {                    
+       "1-3:1.0",
+       "mmc2:0001:2",
+};
+
 static void __init omap54xx_common_init(void)
 {
         omap_mux_init_array(omap5432_common_mux,                                
@@ -1252,6 +1262,9 @@ static void __init omap54xx_common_init(void)
 			ARRAY_SIZE(lpddr2_elpida_4G_S4_timings),
 			&lpddr2_elpida_S4_min_tck,
 			&custom_configs);
+
+        omap_register_mac_device_fixup_paths(omap5evm_fixup_mac_device_paths,
+                                  ARRAY_SIZE(omap5evm_fixup_mac_device_paths));
 
 	omap5evm_touch_init();
 	omap_5430evm_i2c_init();
