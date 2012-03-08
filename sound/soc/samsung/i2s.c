@@ -948,6 +948,8 @@ static int samsung_i2s_dai_probe(struct snd_soc_dai *dai)
 		other->audss_base = i2s->audss_base;
 		other->clk = i2s->clk;
 	}
+	clk_put(fout_epll);
+	clk_put(mout_audss);
 
 probe_exit:
 	if ((i2s->quirks & QUIRK_SEC_DAI) && !is_secondary(i2s))
@@ -974,8 +976,6 @@ probe_exit:
 				0, SND_SOC_CLOCK_IN);
 
 	clk_disable(i2s->clk);
-	clk_put(fout_epll);
-	clk_put(mout_audss);
 
 	return 0;
 
