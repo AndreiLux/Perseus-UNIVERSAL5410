@@ -18,12 +18,15 @@
 #include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/platform_data/omap4-keypad.h>
+#include <linux/netdevice.h>
+#include <linux/if_ether.h>
 
 #include <mach/hardware.h>
 #include <mach/irqs.h>
 #include <asm/mach-types.h>
 #include <asm/mach/map.h>
 #include <asm/pmu.h>
+#include <mach/id.h>
 
 #include "iomap.h"
 #include <plat/board.h>
@@ -48,6 +51,9 @@
 
 #define L3_MODULES_MAX_LEN 12
 #define L3_MODULES 3
+
+static const char * const *mac_device_fixup_paths;
+int count_mac_device_fixup_paths;
 
 static int __init omap3_l3_init(void)
 {
@@ -811,6 +817,90 @@ static void omap_init_vout(void)
 #else
 static inline void omap_init_vout(void) {}
 #endif
+
+
+static int omap_device_path_need_mac(struct device *dev)
+{
+	const char **try = (const char **)mac_device_fixup_paths;
+	const char *path;
+	int count = count_mac_device_fixup_paths;
+	const char *p;
+	int len;
+	struct device *devn;
+
+	while (count--) {
+
+		p = *try + strlen(*try);
+		devn = dev;
+
+		while (devn) {
+
+			path = dev_name(devn);
+			len = strlen(path);
+
+			if ((p - *try) < len) {
+				devn = NULL;
+				continue;
+			}
+
+			p -= len;
+
+			if (strncmp(path, p, len)) {
+				devn = NULL;
+				continue;
+			}
+
+			devn = devn->parent;
+			if (p == *try)
+				return count;
+
+			if (devn != NULL && (p - *try) < 2)
+				devn = NULL;
+
+			p--;
+			if (devn != NULL && *p != '/')
+				devn = NULL;
+		}
+
+		try++;
+	}
+
+	return -ENOENT;
+}
+
+static int omap_panda_netdev_event(struct notifier_block *this,
+                                                unsigned long event, void *ptr)
+{
+	struct net_device *dev = ptr;
+	struct sockaddr sa;
+	int n;
+
+	if (event != NETDEV_REGISTER)
+		return NOTIFY_DONE;
+
+	n = omap_device_path_need_mac(dev->dev.parent);
+	if (n >= 0) {
+		sa.sa_family = dev->type;
+		omap2_die_id_to_ethernet_mac(sa.sa_data, n);
+		dev->netdev_ops->ndo_set_mac_address(dev, &sa);
+	}
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block omap_panda_netdev_notifier = {
+	.notifier_call = omap_panda_netdev_event,
+	.priority = 1,
+};
+
+
+int omap_register_mac_device_fixup_paths(const char * const *paths, int count)
+{
+	mac_device_fixup_paths = paths;
+	count_mac_device_fixup_paths = count;
+	return register_netdevice_notifier(&omap_panda_netdev_notifier);
+}
+
 
 /*-------------------------------------------------------------------------*/
 
