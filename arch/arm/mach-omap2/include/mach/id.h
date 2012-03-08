@@ -18,5 +18,6 @@ struct omap_die_id {
 };
 
 void omap_get_die_id(struct omap_die_id *odi);
+void omap2_die_id_to_ethernet_mac(u8 *mac, int subtype);
 
 #endif
