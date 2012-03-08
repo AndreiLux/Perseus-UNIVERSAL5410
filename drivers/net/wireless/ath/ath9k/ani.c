@@ -43,11 +43,11 @@ static const struct ani_ofdm_level_entry ofdm_level_table[] = {
 	{  2,  2,  1  }, /* lvl 2 */
 	{  3,  2,  1  }, /* lvl 3  (default) */
 	{  4,  3,  1  }, /* lvl 4 */
-	{  5,  4,  1  }, /* lvl 5 */
-	{  6,  5,  1  }, /* lvl 6 */
-	{  7,  6,  1  }, /* lvl 7 */
-	{  7,  7,  1  }, /* lvl 8 */
-	{  7,  8,  0  }  /* lvl 9 */
+	{  4,  3,  0  }, /* lvl 5 */
+	{  5,  4,  0  }, /* lvl 6 */
+	{  6,  5,  0  }, /* lvl 7 */
+	{  7,  6,  0  }, /* lvl 8 */
+	{  7,  7,  0  }, /* lvl 9 */
 };
 #define ATH9K_ANI_OFDM_NUM_LEVEL \
 	ARRAY_SIZE(ofdm_level_table)
@@ -290,20 +290,12 @@ static void ath9k_hw_set_ofdm_nil(struct ath_hw *ah, u8 immunityLevel)
 				     ATH9K_ANI_FIRSTEP_LEVEL,
 				     entry_ofdm->fir_step_level);
 
-	if ((ah->opmode != NL80211_IFTYPE_STATION &&
-	     ah->opmode != NL80211_IFTYPE_ADHOC) ||
-	    aniState->noiseFloor <= aniState->rssiThrHigh) {
-		if (aniState->ofdmWeakSigDetectOff)
-			/* force on ofdm weak sig detect */
-			ath9k_hw_ani_control(ah,
-				ATH9K_ANI_OFDM_WEAK_SIGNAL_DETECTION,
-					     true);
-		else if (aniState->ofdmWeakSigDetectOff ==
-			 entry_ofdm->ofdm_weak_signal_on)
-			ath9k_hw_ani_control(ah,
+	if ((aniState->noiseFloor >= aniState->rssiThrHigh) &&
+	    (!aniState->ofdmWeakSigDetectOff !=
+			entry_ofdm->ofdm_weak_signal_on))
+		ath9k_hw_ani_control(ah,
 				ATH9K_ANI_OFDM_WEAK_SIGNAL_DETECTION,
 				entry_ofdm->ofdm_weak_signal_on);
-	}
 }
 
 static void ath9k_hw_ani_ofdm_err_trigger(struct ath_hw *ah)
@@ -651,6 +643,7 @@ static bool ath9k_hw_ani_read_counters(struct ath_hw *ah)
 	}
 
 	aniState->listenTime += listenTime;
+	aniState->totallistenTime += listenTime;
 
 	ath9k_hw_update_mibstats(ah, &ah->ah_mibStats);
 
@@ -711,18 +704,22 @@ void ath9k_hw_ani_monitor(struct ath_hw *ah, struct ath9k_channel *chan)
 			 aniState->listenTime;
 
 	ath_dbg(common, ANI,
-		"listenTime=%d OFDM:%d errs=%d/s CCK:%d errs=%d/s ofdm_turn=%d\n",
+		"listenTime=%d totallistenTime= %d OFDM:%d errs=%d/s "
+		"CCK:%d errs=%d/s ofdm_turn=%d\n",
 		aniState->listenTime,
+		aniState->totallistenTime,
 		aniState->ofdmNoiseImmunityLevel,
 		ofdmPhyErrRate, aniState->cckNoiseImmunityLevel,
 		cckPhyErrRate, aniState->ofdmsTurn);
 
-	if (aniState->listenTime > 5 * ah->aniperiod) {
+	if ((aniState->totallistenTime > 5 * ah->aniperiod) &&
+	    (aniState->totallistenTime != aniState->listenTime)) {
 		if (ofdmPhyErrRate <= ah->config.ofdm_trig_low &&
 		    cckPhyErrRate <= ah->config.cck_trig_low) {
 			ath9k_hw_ani_lower_immunity(ah);
 			aniState->ofdmsTurn = !aniState->ofdmsTurn;
 		}
+		aniState->totallistenTime = 0;
 		ath9k_ani_restart(ah);
 	} else if (aniState->listenTime > ah->aniperiod) {
 		/* check to see if need to raise immunity */

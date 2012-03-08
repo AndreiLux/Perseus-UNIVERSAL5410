@@ -1003,6 +1003,7 @@ void ar9003_hw_bb_watchdog_config(struct ath_hw *ah);
 void ar9003_hw_bb_watchdog_read(struct ath_hw *ah);
 void ar9003_hw_bb_watchdog_dbg_info(struct ath_hw *ah);
 void ar9003_hw_disable_phy_restart(struct ath_hw *ah);
+void ar9003_hw_dump_ani_reg(struct ath_hw *ah);
 void ar9003_paprd_enable(struct ath_hw *ah, bool val);
 void ar9003_paprd_populate_single_table(struct ath_hw *ah,
 					struct ath9k_hw_cal_data *caldata,
@@ -1026,6 +1027,8 @@ void ar9002_hw_attach_ops(struct ath_hw *ah);
 void ar9003_hw_attach_ops(struct ath_hw *ah);
 
 void ar9002_hw_load_ani_reg(struct ath_hw *ah, struct ath9k_channel *chan);
+void ar9003_hw_dump_txdesc(struct ath_hw *ah);
+bool ath9k_hw_detect_mac_hang(struct ath_hw *ah);
 /*
  * ANI work can be shared between all families but a next
  * generation implementation of ANI will be used only for AR9003 only

@@ -166,6 +166,11 @@ void ath_hw_cycle_counters_update(struct ath_common *common)
 	common->cc_survey.rx_busy += busy;
 	common->cc_survey.rx_frame += rx;
 	common->cc_survey.tx_frame += tx;
+
+	common->cc_rxpoll.cycles += cycles;
+	common->cc_rxpoll.rx_busy += busy;
+	common->cc_rxpoll.rx_frame += rx;
+	common->cc_rxpoll.tx_frame += tx;
 }
 EXPORT_SYMBOL(ath_hw_cycle_counters_update);
 

@@ -150,6 +150,7 @@ struct ath_common {
 	spinlock_t cc_lock;
 	struct ath_cycle_counters cc_ani;
 	struct ath_cycle_counters cc_survey;
+	struct ath_cycle_counters cc_rxpoll;
 
 	struct ath_regulatory regulatory;
 	struct ath_regulatory reg_world_copy;

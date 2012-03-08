@@ -760,6 +760,7 @@ int ath9k_init_device(u16 devid, struct ath_softc *sc,
 	INIT_WORK(&sc->hw_check_work, ath_hw_check);
 	INIT_WORK(&sc->paprd_work, ath_paprd_calibrate);
 	INIT_DELAYED_WORK(&sc->hw_pll_work, ath_hw_pll_work);
+	setup_timer(&sc->rx_poll_timer, ath_rx_poll_work, (unsigned long)sc);
 
 	/* Register with mac80211 */
 	error = ieee80211_register_hw(hw);

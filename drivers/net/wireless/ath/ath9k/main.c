@@ -219,8 +219,19 @@ static int ath_update_survey_stats(struct ath_softc *sc)
 
 static void __ath_cancel_work(struct ath_softc *sc)
 {
+	struct ath_hw *ah = sc->sc_ah;
+	struct ath_common *common = ath9k_hw_common(ah);
+
+	if (sc->sc_flags & SC_OP_INVALID)
+		return -EIO;
+
+	sc->hw_busy_count = 0;
+
+	del_timer_sync(&common->ani.timer);
+	del_timer_sync(&sc->rx_poll_timer);
 	cancel_work_sync(&sc->paprd_work);
 	cancel_work_sync(&sc->hw_check_work);
+	cancel_work_sync(&sc->hw_reset_work);
 	cancel_delayed_work_sync(&sc->tx_complete_work);
 	cancel_delayed_work_sync(&sc->hw_pll_work);
 }
@@ -228,7 +239,6 @@ static void __ath_cancel_work(struct ath_softc *sc)
 static void ath_cancel_work(struct ath_softc *sc)
 {
 	__ath_cancel_work(sc);
-	cancel_work_sync(&sc->hw_reset_work);
 }
 
 static bool ath_prepare_reset(struct ath_softc *sc, bool retry_tx, bool flush)
@@ -280,6 +290,9 @@ static bool ath_complete_reset(struct ath_softc *sc, bool start)
 		if (sc->sc_flags & SC_OP_BEACONS)
 			ath_set_beacon(sc);
 
+		if (sc->sc_flags & SC_OP_PRIM_STA_VIF)
+			mod_timer(&sc->rx_poll_timer,
+				  jiffies + msecs_to_jiffies(10));
 		ieee80211_queue_delayed_work(sc->hw, &sc->tx_complete_work, 0);
 		ieee80211_queue_delayed_work(sc->hw, &sc->hw_pll_work, HZ/2);
 		if (!common->disable_ani)
@@ -709,6 +722,7 @@ void ath_rx_poll_work(unsigned long data)
 	ath_dbg(common, RX_STUCK, "IMR %08x IER %08x intr_cnt %d\n",
 		REG_READ(ah, AR_IMR), REG_READ(ah, AR_IER),
 		atomic_read(&ah->intr_ref_cnt));
+
 	ar9003_hw_dump_txdesc(ah);
 
 	REG_SET_BIT(ah, AR_DIAG_SW, 0x8080000);
@@ -1143,9 +1157,47 @@ static int ath_reset(struct ath_softc *sc, bool retry_tx)
 {
 	int r;
 
+	sc->hw_busy_count = 0;
+
+	ath9k_debug_samp_bb_mac(sc);
+	/* Stop ANI */
+	del_timer_sync(&common->ani.timer);
+	del_timer_sync(&sc->rx_poll_timer);
+
 	ath9k_ps_wakeup(sc);
 
-	r = ath_reset_internal(sc, NULL, retry_tx);
+	ieee80211_stop_queues(hw);
+
+	ath9k_hw_disable_interrupts(ah);
+	ath_drain_all_txq(sc, retry_tx);
+
+	ath_stoprecv(sc);
+	ath_flushrecv(sc);
+
+	r = ath9k_hw_reset(ah, sc->sc_ah->curchan, ah->caldata, false);
+	if (r)
+		ath_err(common,
+			"Unable to reset hardware; reset status %d\n", r);
+
+	if (ath_startrecv(sc) != 0)
+		ath_err(common, "Unable to start recv logic\n");
+
+	/*
+	 * We may be doing a reset in response to a request
+	 * that changes the channel so update any state that
+	 * might change as a result.
+	 */
+	ath9k_cmn_update_txpow(ah, sc->curtxpow,
+			       sc->config.txpowlimit, &sc->curtxpow);
+
+	if ((sc->sc_flags & SC_OP_BEACONS) || !(sc->sc_flags & (SC_OP_OFFCHANNEL)))
+		ath_set_beacon(sc);	/* restart beacons */
+
+	if (sc->sc_flags & SC_OP_PRIM_STA_VIF)
+		mod_timer(&sc->rx_poll_timer, jiffies + msecs_to_jiffies(300));
+
+	ath9k_hw_set_interrupts(ah, ah->imask);
+	ath9k_hw_enable_interrupts(ah);
 
 	if (retry_tx) {
 		int i;
@@ -2178,6 +2230,9 @@ static void ath9k_bss_iter(void *data, u8 *mac, struct ieee80211_vif *vif)
 		if (!common->disable_ani) {
 			sc->sc_flags |= SC_OP_ANI_RUN;
 			ath_start_ani(common);
+			atomic_set(&sc->stop_rx_poll, 0);
+			mod_timer(&sc->rx_poll_timer,
+				  jiffies + msecs_to_jiffies(300));
 		}
 
 	}
@@ -2214,6 +2269,7 @@ static void ath9k_config_bss(struct ath_softc *sc, struct ieee80211_vif *vif)
 		/* Stop ANI */
 		sc->sc_flags &= ~SC_OP_ANI_RUN;
 		del_timer_sync(&common->ani.timer);
+		del_timer_sync(&sc->rx_poll_timer);
 		memset(&sc->caldata, 0, sizeof(sc->caldata));
 	}
 }
