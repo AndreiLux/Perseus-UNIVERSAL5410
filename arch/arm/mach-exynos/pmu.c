@@ -176,7 +176,7 @@ static struct exynos4_pmu_conf exynos4212_pmu_config[] = {
 	{ S5P_PAD_RETENTION_MMCB_LOWPWR,	{ 0x1, 0x0, 0x0 } },
 	{ S5P_PAD_RETENTION_EBIA_LOWPWR,	{ 0x1, 0x0, 0x0 } },
 	{ S5P_PAD_RETENTION_EBIB_LOWPWR,	{ 0x1, 0x0, 0x0 } },
-	{ S5P_PAD_RETENTION_GPIO_COREBLK_LOWPWR,{ 0x1, 0x0, 0x0 } },
+	{ S5P_PAD_RETENTION_GPIO_COREBLK_LOWPWR, { 0x1, 0x0, 0x0 } },
 	{ S5P_PAD_RETENTION_ISOLATION_LOWPWR,	{ 0x1, 0x0, 0x0 } },
 	{ S5P_PAD_ISOLATION_COREBLK_LOWPWR,	{ 0x1, 0x0, 0x0 } },
 	{ S5P_PAD_RETENTION_ALV_SEL_LOWPWR,	{ 0x1, 0x0, 0x0 } },
@@ -369,7 +369,7 @@ void exynos4_sys_powerdown_conf(enum sys_powerdown mode)
 {
 	unsigned int i;
 
-	if(soc_is_exynos5250())
+	if (soc_is_exynos5250())
 		exynos5_init_pmu();
 
 	for (i = 0; (exynos4_pmu_config[i].reg != PMU_TABLE_END) ; i++)
