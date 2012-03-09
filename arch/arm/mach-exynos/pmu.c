@@ -379,6 +379,8 @@ void exynos4_sys_powerdown_conf(enum sys_powerdown mode)
 
 static int __init exynos4_pmu_init(void)
 {
+	unsigned int value;
+
 	exynos4_pmu_config = exynos4210_pmu_config;
 
 	if (soc_is_exynos4210()) {
@@ -388,6 +390,18 @@ static int __init exynos4_pmu_init(void)
 		exynos4_pmu_config = exynos4212_pmu_config;
 		pr_info("EXYNOS4212 PMU Initialize\n");
 	} else if (soc_is_exynos5250()) {
+		/*
+		 * When SYS_WDTRESET is set, watchdog timer reset request
+		 * is ignored by power management unit.
+		 */
+		value = __raw_readl(EXYNOS5_AUTOMATIC_WDT_RESET_DISABLE);
+		value &= ~EXYNOS5_SYS_WDTRESET;
+		__raw_writel(value, EXYNOS5_AUTOMATIC_WDT_RESET_DISABLE);
+
+		value = __raw_readl(EXYNOS5_MASK_WDT_RESET_REQUEST);
+		value &= ~EXYNOS5_SYS_WDTRESET;
+		__raw_writel(value, EXYNOS5_MASK_WDT_RESET_REQUEST);
+
 		exynos4_pmu_config = exynos52xx_pmu_config;
 		pr_info("EXYNOS5250 PMU Initialize\n");
 	} else {
