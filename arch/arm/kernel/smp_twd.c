@@ -231,6 +231,10 @@ static struct clk *twd_get_clock(void)
 	return clk;
 }
 
+extern void smp_timer_broadcast(const struct cpumask *mask);
+
+static struct clock_event_device __percpu **twd_evt;
+
 /*
  * Setup the local clock events for a CPU.
  */
