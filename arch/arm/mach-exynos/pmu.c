@@ -1,9 +1,9 @@
-/* linux/arch/arm/mach-exynos4/pmu.c
+/* linux/arch/arm/mach-exynos/pmu.c
  *
  * Copyright (c) 2011 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com/
  *
- * EXYNOS4210 - CPU PMU(Power Management Unit) support
+ * EXYNOS - CPU PMU(Power Management Unit) support
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,9 +16,9 @@
 #include <mach/regs-clock.h>
 #include <mach/pmu.h>
 
-static struct exynos4_pmu_conf *exynos4_pmu_config;
+static struct exynos_pmu_conf *exynos_pmu_config;
 
-static struct exynos4_pmu_conf exynos4210_pmu_config[] = {
+static struct exynos_pmu_conf exynos4210_pmu_config[] = {
 	/* { .reg = address, .val = { AFTR, LPA, SLEEP } */
 	{ S5P_ARM_CORE0_LOWPWR,			{ 0x0, 0x0, 0x2 } },
 	{ S5P_DIS_IRQ_CORE0,			{ 0x0, 0x0, 0x0 } },
@@ -94,7 +94,7 @@ static struct exynos4_pmu_conf exynos4210_pmu_config[] = {
 	{ PMU_TABLE_END,},
 };
 
-static struct exynos4_pmu_conf exynos4212_pmu_config[] = {
+static struct exynos_pmu_conf exynos4212_pmu_config[] = {
 	{ S5P_ARM_CORE0_LOWPWR,			{ 0x0, 0x0, 0x2 } },
 	{ S5P_DIS_IRQ_CORE0,			{ 0x0, 0x0, 0x0 } },
 	{ S5P_DIS_IRQ_CENTRAL0,			{ 0x0, 0x0, 0x0 } },
@@ -202,7 +202,7 @@ static struct exynos4_pmu_conf exynos4212_pmu_config[] = {
 	{ PMU_TABLE_END,},
 };
 
-static struct exynos4_pmu_conf exynos52xx_pmu_config[] = {
+static struct exynos_pmu_conf exynos52xx_pmu_config[] = {
 	/* { .reg = address, .val = { AFTR, LPA, SLEEP } */
 	{ EXYNOS5_ARM_CORE0_SYS_PWR_REG,			{ 0x0, 0x0, 0x2} },
 	{ EXYNOS5_DIS_IRQ_ARM_CORE0_LOCAL_SYS_PWR_REG,		{ 0x0, 0x0, 0x0} },
@@ -365,29 +365,29 @@ static void exynos5_init_pmu(void)
 	}
 }
 
-void exynos4_sys_powerdown_conf(enum sys_powerdown mode)
+void exynos_sys_powerdown_conf(enum sys_powerdown mode)
 {
 	unsigned int i;
 
 	if (soc_is_exynos5250())
 		exynos5_init_pmu();
 
-	for (i = 0; (exynos4_pmu_config[i].reg != PMU_TABLE_END) ; i++)
-		__raw_writel(exynos4_pmu_config[i].val[mode],
-				exynos4_pmu_config[i].reg);
+	for (i = 0; (exynos_pmu_config[i].reg != PMU_TABLE_END) ; i++)
+		__raw_writel(exynos_pmu_config[i].val[mode],
+				exynos_pmu_config[i].reg);
 }
 
-static int __init exynos4_pmu_init(void)
+static int __init exynos_pmu_init(void)
 {
 	unsigned int value;
 
-	exynos4_pmu_config = exynos4210_pmu_config;
+	exynos_pmu_config = exynos4210_pmu_config;
 
 	if (soc_is_exynos4210()) {
-		exynos4_pmu_config = exynos4210_pmu_config;
+		exynos_pmu_config = exynos4210_pmu_config;
 		pr_info("EXYNOS4210 PMU Initialize\n");
 	} else if (soc_is_exynos4212()) {
-		exynos4_pmu_config = exynos4212_pmu_config;
+		exynos_pmu_config = exynos4212_pmu_config;
 		pr_info("EXYNOS4212 PMU Initialize\n");
 	} else if (soc_is_exynos5250()) {
 		/*
@@ -402,12 +402,12 @@ static int __init exynos4_pmu_init(void)
 		value &= ~EXYNOS5_SYS_WDTRESET;
 		__raw_writel(value, EXYNOS5_MASK_WDT_RESET_REQUEST);
 
-		exynos4_pmu_config = exynos52xx_pmu_config;
+		exynos_pmu_config = exynos52xx_pmu_config;
 		pr_info("EXYNOS5250 PMU Initialize\n");
 	} else {
-		pr_info("EXYNOS4: PMU not supported\n");
+		pr_info("EXYNOS: PMU not supported\n");
 	}
 
 	return 0;
 }
-arch_initcall(exynos4_pmu_init);
+arch_initcall(exynos_pmu_init);
