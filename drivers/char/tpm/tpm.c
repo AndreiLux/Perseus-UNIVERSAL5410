@@ -25,6 +25,7 @@
 
 #include <linux/poll.h>
 #include <linux/slab.h>
+#include <linux/jiffies.h>
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
 #include <linux/freezer.h>
@@ -348,6 +349,38 @@ static void timeout_work(struct work_struct *work)
 	mutex_unlock(&chip->buffer_mutex);
 }
 
+static void needs_resume(struct tpm_chip *chip)
+{
+	mutex_lock(&chip->resume_mutex);
+	chip->resume_time = jiffies;
+	chip->needs_resume = 1;
+	mutex_unlock(&chip->resume_mutex);
+}
+
+/* The maximum time in milliseconds that the TPM self test will take to
+ * complete.  TODO(semenzato): 1s should be plenty for all TPMs, but how can we
+ * ensure it?
+ */
+#define TPM_SELF_TEST_DURATION_MSEC 1000
+
+static void resume_if_needed(struct tpm_chip *chip)
+{
+	mutex_lock(&chip->resume_mutex);
+	if (chip->needs_resume) {
+		/* If it's been TPM_SELF_TEST_DURATION_MSEC msec since resume,
+		 * then selftest has completed and we don't need to wait.
+		 */
+		if (jiffies - chip->resume_time <
+		    msecs_to_jiffies(TPM_SELF_TEST_DURATION_MSEC)) {
+			dev_info(chip->dev, "waiting for TPM self test");
+			tpm_continue_selftest(chip);
+		}
+		chip->needs_resume = 0;
+		dev_info(chip->dev, "TPM delayed resume completed");
+	}
+	mutex_unlock(&chip->resume_mutex);
+}
+
 /*
  * Returns max number of jiffies to wait
  */
@@ -465,6 +498,8 @@ static ssize_t transmit_cmd(struct tpm_chip *chip, struct tpm_cmd_t *cmd,
 			    int len, const char *desc)
 {
 	int err;
+
+	resume_if_needed(chip);
 
 	len = tpm_transmit(chip,(u8 *) cmd, len);
 	if (len <  0)
@@ -990,7 +1025,7 @@ ssize_t tpm_show_caps(struct device *dev, struct device_attribute *attr,
 		       be32_to_cpu(cap.manufacturer_id));
 
 	rc = tpm_getcap(dev, CAP_VERSION_1_1, &cap,
-		        "attempting to determine the 1.1 version");
+			"attempting to determine the 1.1 version");
 	if (rc)
 		return 0;
 	str += sprintf(str,
@@ -1185,6 +1220,8 @@ ssize_t tpm_write(struct file *file, const char __user *buf,
 	while (atomic_read(&chip->data_pending) != 0)
 		msleep(TPM_TIMEOUT);
 
+	resume_if_needed(chip);
+
 	mutex_lock(&chip->buffer_mutex);
 
 	if (in_size > TPM_BUFSIZE)
@@ -1219,6 +1256,7 @@ ssize_t tpm_read(struct file *file, char __user *buf,
 	del_singleshot_timer_sync(&chip->user_read_timer);
 	flush_work_sync(&chip->work);
 	ret_size = atomic_read(&chip->data_pending);
+	/* TODO(wad): atomic_set should come AFTER the buffer is copied. */
 	atomic_set(&chip->data_pending, 0);
 	if (ret_size > 0) {	/* relay data */
 		ssize_t orig_ret_size = ret_size;
@@ -1314,6 +1352,7 @@ int tpm_pm_resume(struct device *dev)
 	if (chip == NULL)
 		return -ENODEV;
 
+	needs_resume(chip);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(tpm_pm_resume);
@@ -1370,6 +1409,7 @@ struct tpm_chip *tpm_register_hardware(struct device *dev,
 
 	mutex_init(&chip->buffer_mutex);
 	mutex_init(&chip->tpm_mutex);
+	mutex_init(&chip->resume_mutex);
 	INIT_LIST_HEAD(&chip->list);
 
 	INIT_WORK(&chip->work, timeout_work);
