@@ -223,7 +223,7 @@ static void __ath_cancel_work(struct ath_softc *sc)
 	struct ath_common *common = ath9k_hw_common(ah);
 
 	if (sc->sc_flags & SC_OP_INVALID)
-		return -EIO;
+		return;
 
 	sc->hw_busy_count = 0;
 
@@ -1155,6 +1155,8 @@ chip_reset:
 
 static int ath_reset(struct ath_softc *sc, bool retry_tx)
 {
+	struct ath_hw *ah = sc->sc_ah;
+	struct ath_common *common = ath9k_hw_common(ah);
 	int r;
 
 	sc->hw_busy_count = 0;
@@ -1166,7 +1168,7 @@ static int ath_reset(struct ath_softc *sc, bool retry_tx)
 
 	ath9k_ps_wakeup(sc);
 
-	ieee80211_stop_queues(hw);
+	ieee80211_stop_queues(sc->hw);
 
 	ath9k_hw_disable_interrupts(ah);
 	ath_drain_all_txq(sc, retry_tx);
@@ -1196,7 +1198,7 @@ static int ath_reset(struct ath_softc *sc, bool retry_tx)
 	if (sc->sc_flags & SC_OP_PRIM_STA_VIF)
 		mod_timer(&sc->rx_poll_timer, jiffies + msecs_to_jiffies(300));
 
-	ath9k_hw_set_interrupts(ah, ah->imask);
+	ath9k_hw_set_interrupts(ah);
 	ath9k_hw_enable_interrupts(ah);
 
 	if (retry_tx) {
