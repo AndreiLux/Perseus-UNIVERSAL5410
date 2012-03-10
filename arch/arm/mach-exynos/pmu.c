@@ -202,7 +202,7 @@ static struct exynos_pmu_conf exynos4212_pmu_config[] = {
 	{ PMU_TABLE_END,},
 };
 
-static struct exynos_pmu_conf exynos52xx_pmu_config[] = {
+static struct exynos_pmu_conf exynos5250_pmu_config[] = {
 	/* { .reg = address, .val = { AFTR, LPA, SLEEP } */
 	{ EXYNOS5_ARM_CORE0_SYS_PWR_REG,			{ 0x0, 0x0, 0x2} },
 	{ EXYNOS5_DIS_IRQ_ARM_CORE0_LOCAL_SYS_PWR_REG,		{ 0x0, 0x0, 0x0} },
@@ -402,7 +402,7 @@ static int __init exynos_pmu_init(void)
 		value &= ~EXYNOS5_SYS_WDTRESET;
 		__raw_writel(value, EXYNOS5_MASK_WDT_RESET_REQUEST);
 
-		exynos_pmu_config = exynos52xx_pmu_config;
+		exynos_pmu_config = exynos5250_pmu_config;
 		pr_info("EXYNOS5250 PMU Initialize\n");
 	} else {
 		pr_info("EXYNOS: PMU not supported\n");
