@@ -47,7 +47,7 @@ struct _cpu_boot_info cpu_boot_info[NR_CPUS];
  * boot "holding pen"
  */
 
-volatile int __cpuinitdata pen_release = -1;
+volatile int pen_release = -1;
 
 /*
  * Write pen_release in a way that is guaranteed to be visible to all
