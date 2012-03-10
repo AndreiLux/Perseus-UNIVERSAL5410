@@ -203,7 +203,48 @@ static __init int exynos4_pm_init_power_domain(void)
 #endif
 	return 0;
 }
-arch_initcall(exynos4_pm_init_power_domain);
+
+/* For EXYNOS5 */
+EXYNOS_GPD(exynos5_pd_mfc, EXYNOS5_MFC_CONFIGURATION, "pd-mfc");
+EXYNOS_GPD(exynos5_pd_gscl, EXYNOS5_GSCL_CONFIGURATION, "pd-gscl");
+
+static struct exynos_pm_domain *exynos5_pm_domains[] = {
+	&exynos5_pd_mfc,
+	&exynos5_pd_gscl,
+};
+
+static int __init exynos5_pm_init_power_domain(void)
+{
+	int idx;
+
+	if (of_have_populated_dt())
+		return exynos_pm_dt_parse_domains();
+
+	for (idx = 0; idx < ARRAY_SIZE(exynos5_pm_domains); idx++)
+		pm_genpd_init(&exynos5_pm_domains[idx]->pd, NULL,
+				exynos5_pm_domains[idx]->is_off);
+
+#ifdef CONFIG_S5P_DEV_MFC
+	exynos_pm_add_dev_to_genpd(&s5p_device_mfc, &exynos5_pd_mfc);
+#endif
+#ifdef CONFIG_EXYNOS5_DEV_GSC
+	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc0, &exynos5_pd_gscl);
+	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc1, &exynos5_pd_gscl);
+	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc2, &exynos5_pd_gscl);
+	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc3, &exynos5_pd_gscl);
+#endif
+
+	return 0;
+}
+
+static int __init exynos_pm_init_power_domain(void)
+{
+	if (soc_is_exynos5250())
+		return exynos5_pm_init_power_domain();
+	else
+		return exynos4_pm_init_power_domain();
+}
+arch_initcall(exynos_pm_init_power_domain);
 
 static __init int exynos_pm_late_initcall(void)
 {
