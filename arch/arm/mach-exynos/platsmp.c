@@ -98,15 +98,16 @@ static int exynos_power_up_cpu(unsigned int cpu)
 	void __iomem *power_base = cpu_boot_info[cpu].power_base;
 
 	val = __raw_readl(power_base);
-	if (!(val & S5P_CORE_LOCAL_PWR_EN)) {
-		__raw_writel(S5P_CORE_LOCAL_PWR_EN, power_base);
+	if (!(val & EXYNOS_CORE_LOCAL_PWR_EN)) {
+		__raw_writel(EXYNOS_CORE_LOCAL_PWR_EN, power_base);
 
 		/* wait max 10 ms until cpu is on */
 		timeout = 10;
 		while (timeout) {
 			val = __raw_readl(power_base + 0x4);
 
-			if ((val & S5P_CORE_LOCAL_PWR_EN) == S5P_CORE_LOCAL_PWR_EN)
+			if ((val & EXYNOS_CORE_LOCAL_PWR_EN) ==
+			     EXYNOS_CORE_LOCAL_PWR_EN)
 				break;
 
 			mdelay(1);
@@ -223,10 +224,10 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 	for (i = 1; i < max_cpus; i++) {
 		if (soc_is_exynos4210() &&
 			(samsung_rev() == EXYNOS4210_REV_1_1))
-			cpu_boot_info[i].boot_base = S5P_INFORM5;
+			cpu_boot_info[i].boot_base = EXYNOS_INFORM5;
 		else
 			cpu_boot_info[i].boot_base = S5P_VA_SYSRAM;
 
-		cpu_boot_info[i].power_base = S5P_ARM_CORE_CONFIGURATION(i);
+		cpu_boot_info[i].power_base = EXYNOS_ARM_CORE_CONFIGURATION(i);
 	}
 }

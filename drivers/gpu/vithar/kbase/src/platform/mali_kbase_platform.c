@@ -44,7 +44,6 @@
 #include <linux/clk.h>
 #include <mach/regs-clock.h>
 #include <mach/regs-pmu.h>
-#include <mach/regs-pmu5.h>
 #include <asm/delay.h>
 #include <kbase/src/platform/mali_kbase_runtime_pm.h>
 #include <kbase/src/platform/mali_kbase_dvfs.h>
@@ -673,7 +672,7 @@ static void set_clkout_for_3d(void)
 
     tmp = 0x0;
     tmp |= 7 << 8; // CLKOUT_CMU_TOP selected
-    __raw_writel(tmp, S5P_PMU_DEBUG);
+	__raw_writel(tmp, EXYNOS_PMU_DEBUG);
 }
 
 static ssize_t show_clkout(struct device *dev, struct device_attribute *attr, char *buf)

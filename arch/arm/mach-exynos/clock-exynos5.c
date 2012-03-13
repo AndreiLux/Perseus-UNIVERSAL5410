@@ -183,7 +183,7 @@ static int exynos5_clk_ip_disp1_ctrl(struct clk *clk, int enable)
 
 static int exynos5_clk_hdmiphy_ctrl(struct clk *clk, int enable)
 {
-	return s5p_gatectrl(S5P_HDMI_PHY_CONTROL, clk, enable);
+	return s5p_gatectrl(EXYNOS_HDMI_PHY_CONTROL, clk, enable);
 }
 
 static int exynos5_clk_ip_fsys_ctrl(struct clk *clk, int enable)

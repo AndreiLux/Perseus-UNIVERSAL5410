@@ -42,8 +42,8 @@
 #define REG_INFORM0            (S5P_VA_SYSRAM_NS + 0x8)
 #define REG_INFORM1            (S5P_VA_SYSRAM_NS + 0xC)
 #else
-#define REG_INFORM0            (S5P_INFORM0)
-#define REG_INFORM1            (S5P_INFORM1)
+#define REG_INFORM0            (EXYNOS_INFORM0)
+#define REG_INFORM1            (EXYNOS_INFORM1)
 #endif
 
 static struct sleep_save exynos4_set_clksrc[] = {
@@ -124,7 +124,7 @@ static void exynos_pm_prepare(void)
 
 	/* Set value of power down register for sleep mode */
 	exynos_sys_powerdown_conf(SYS_SLEEP);
-	__raw_writel(S5P_CHECK_SLEEP, REG_INFORM1);
+	__raw_writel(EXYNOS_CHECK_SLEEP, REG_INFORM1);
 
 	/* ensure at least INFORM0 has the resume address */
 	__raw_writel(virt_to_phys(s3c_cpu_resume), REG_INFORM0);
@@ -237,9 +237,9 @@ static __init int exynos_pm_drvinit(void)
 	s3c_pm_init();
 
 	/* All wakeup disable */
-	tmp = __raw_readl(S5P_WAKEUP_MASK);
+	tmp = __raw_readl(EXYNOS_WAKEUP_MASK);
 	tmp |= ((0xFF << 8) | (0x1F << 1));
-	__raw_writel(tmp, S5P_WAKEUP_MASK);
+	__raw_writel(tmp, EXYNOS_WAKEUP_MASK);
 
 	if(!soc_is_exynos5250()) {
 		pll_base = clk_get(NULL, "xtal");
@@ -261,13 +261,13 @@ static int exynos_pm_suspend(void)
 	unsigned long tmp;
 
 	/* Setting Central Sequence Register for power down mode */
-	tmp = __raw_readl(S5P_CENTRAL_SEQ_CONFIGURATION);
-	tmp &= ~S5P_CENTRAL_LOWPWR_CFG;
-	__raw_writel(tmp, S5P_CENTRAL_SEQ_CONFIGURATION);
+	tmp = __raw_readl(EXYNOS_CENTRAL_SEQ_CONFIGURATION);
+	tmp &= ~EXYNOS_CENTRAL_LOWPWR_CFG;
+	__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_CONFIGURATION);
 
 	/* Setting SEQ_OPTION register */
-	tmp = (S5P_USE_STANDBY_WFI0 | S5P_USE_STANDBY_WFE0);
-	__raw_writel(tmp, S5P_CENTRAL_SEQ_OPTION);
+	tmp = (EXYNOS4_USE_STANDBY_WFI0 | EXYNOS4_USE_STANDBY_WFE0);
+	__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_OPTION);
 
 	if (!soc_is_exynos5250()) {
 		/* Save Power control register */
@@ -294,10 +294,10 @@ static void exynos_pm_resume(void)
 	 * S5P_CENTRAL_LOWPWR_CFG bit will not be set automatically
 	 * in this situation.
 	 */
-	tmp = __raw_readl(S5P_CENTRAL_SEQ_CONFIGURATION);
-	if (!(tmp & S5P_CENTRAL_LOWPWR_CFG)) {
-		tmp |= S5P_CENTRAL_LOWPWR_CFG;
-		__raw_writel(tmp, S5P_CENTRAL_SEQ_CONFIGURATION);
+	tmp = __raw_readl(EXYNOS_CENTRAL_SEQ_CONFIGURATION);
+	if (!(tmp & EXYNOS_CENTRAL_LOWPWR_CFG)) {
+		tmp |= EXYNOS_CENTRAL_LOWPWR_CFG;
+		__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_CONFIGURATION);
 		/* No need to perform below restore code */
 		goto early_wakeup;
 	}
@@ -317,13 +317,13 @@ static void exynos_pm_resume(void)
 
 	/* For release retention */
 
-	__raw_writel((1 << 28), S5P_PAD_RET_MAUDIO_OPTION);
-	__raw_writel((1 << 28), S5P_PAD_RET_GPIO_OPTION);
-	__raw_writel((1 << 28), S5P_PAD_RET_UART_OPTION);
-	__raw_writel((1 << 28), S5P_PAD_RET_MMCA_OPTION);
-	__raw_writel((1 << 28), S5P_PAD_RET_MMCB_OPTION);
-	__raw_writel((1 << 28), S5P_PAD_RET_EBIA_OPTION);
-	__raw_writel((1 << 28), S5P_PAD_RET_EBIB_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_MAUDIO_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_GPIO_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_UART_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_MMCA_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_MMCB_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIA_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIB_OPTION);
 
 	s3c_pm_do_restore_core(exynos_core_save, ARRAY_SIZE(exynos_core_save));
 

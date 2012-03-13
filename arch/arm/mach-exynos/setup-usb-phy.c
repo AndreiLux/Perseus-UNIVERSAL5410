@@ -154,8 +154,9 @@ static int exynos4_usb_phy1_init(struct platform_device *pdev)
 	if (exynos4_usb_host_phy_is_on())
 		return 0;
 
-	writel(readl(S5P_USBHOST_PHY_CONTROL) | S5P_USBHOST_PHY_ENABLE,
-			S5P_USBHOST_PHY_CONTROL);
+	writel(readl(EXYNOS4210_USBHOST_PHY_CONTROL) |
+		     EXYNOS4210_USBHOST_PHY_ENABLE,
+		     EXYNOS4210_USBHOST_PHY_CONTROL);
 
 	/* set clock frequency for PLL */
 	phyclk = readl(EXYNOS4_PHYCLK) & ~CLKSEL_MASK;
@@ -228,8 +229,9 @@ static int exynos4_usb_phy1_exit(struct platform_device *pdev)
 	writel((readl(EXYNOS4_PHYPWR) | PHY1_STD_ANALOG_POWERDOWN),
 			EXYNOS4_PHYPWR);
 
-	writel(readl(S5P_USBHOST_PHY_CONTROL) & ~S5P_USBHOST_PHY_ENABLE,
-			S5P_USBHOST_PHY_CONTROL);
+	writel(readl(EXYNOS4210_USBHOST_PHY_CONTROL) &
+		    ~EXYNOS4210_USBHOST_PHY_ENABLE,
+		     EXYNOS4210_USBHOST_PHY_CONTROL);
 
 	clk_disable(otg_clk);
 	clk_put(otg_clk);

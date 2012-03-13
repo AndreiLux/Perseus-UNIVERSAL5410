@@ -200,12 +200,12 @@ static int exynos4_clk_ip_perir_ctrl(struct clk *clk, int enable)
 
 static int exynos4_clk_hdmiphy_ctrl(struct clk *clk, int enable)
 {
-	return s5p_gatectrl(S5P_HDMI_PHY_CONTROL, clk, enable);
+	return s5p_gatectrl(EXYNOS_HDMI_PHY_CONTROL, clk, enable);
 }
 
 static int exynos4_clk_dac_ctrl(struct clk *clk, int enable)
 {
-	return s5p_gatectrl(S5P_DAC_PHY_CONTROL, clk, enable);
+	return s5p_gatectrl(EXYNOS4210_DAC_PHY_CONTROL, clk, enable);
 }
 
 /* Core list of CMU_CPU side */
