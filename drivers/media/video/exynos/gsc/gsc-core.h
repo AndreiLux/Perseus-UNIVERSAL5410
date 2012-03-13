@@ -18,6 +18,7 @@
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/videodev2.h>
+#include <linux/videodev2_exynos_media.h>
 #include <linux/io.h>
 #include <linux/pm_runtime.h>
 #include <mach/videonode.h>

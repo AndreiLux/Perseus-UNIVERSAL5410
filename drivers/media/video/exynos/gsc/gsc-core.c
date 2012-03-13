@@ -926,8 +926,8 @@ static const struct v4l2_ctrl_config gsc_custom_ctrl[] = {
 		.name = "Set CSC equation",
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.step = 1,
 		.max = 8,
+		.step = 1,
 		.def = V4L2_COLORSPACE_REC709,
 	}, {
 		.ops = &gsc_ctrl_ops,
@@ -955,6 +955,7 @@ int gsc_ctrls_create(struct gsc_ctx *ctx)
 				&gsc_ctrl_ops, V4L2_CID_HFLIP, 0, 1, 1, 0);
 	ctx->gsc_ctrls.vflip = v4l2_ctrl_new_std(&ctx->ctrl_handler,
 				&gsc_ctrl_ops, V4L2_CID_VFLIP, 0, 1, 1, 0);
+
 	ctx->gsc_ctrls.global_alpha = v4l2_ctrl_new_custom(&ctx->ctrl_handler,
 					&gsc_custom_ctrl[0], NULL);
 	ctx->gsc_ctrls.cacheable = v4l2_ctrl_new_custom(&ctx->ctrl_handler,

@@ -13,6 +13,7 @@
 #include "mixer.h"
 
 #include <linux/videodev2.h>
+#include <linux/videodev2_exynos_media.h>
 #include <linux/mm.h>
 #include <linux/version.h>
 #include <linux/timer.h>

@@ -22,6 +22,7 @@
 #include <linux/kernel.h>
 #include <linux/spinlock.h>
 #include <linux/wait.h>
+#include <linux/videodev2_exynos_media.h>
 #include <media/v4l2-device.h>
 #include <media/videobuf2-core.h>
 #include <media/exynos_mc.h>

@@ -15,6 +15,7 @@
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/videodev2.h>
+#include <linux/videodev2_exynos_media.h>
 #include <linux/io.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>

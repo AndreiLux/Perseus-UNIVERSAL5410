@@ -25,6 +25,7 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/videodev2.h>
+#include <linux/videodev2_exynos_media.h>
 #include <media/v4l2-subdev.h>
 #include <media/exynos_mc.h>
 #include <plat/mipi_csis.h>

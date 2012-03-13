@@ -21,6 +21,7 @@
 #include <linux/version.h>
 #include <linux/workqueue.h>
 #include <linux/videodev2.h>
+#include <linux/videodev2_exynos_media.h>
 #include <mach/videonode.h>
 #include <media/videobuf2-core.h>
 

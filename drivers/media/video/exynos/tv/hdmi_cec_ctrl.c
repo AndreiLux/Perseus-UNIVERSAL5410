@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/videodev2.h>
+#include <linux/videodev2_exynos_media.h>
 #include <linux/irqreturn.h>
 #include <linux/stddef.h>
 

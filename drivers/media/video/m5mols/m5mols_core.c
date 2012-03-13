@@ -22,6 +22,7 @@
 #include <linux/gpio.h>
 #include <linux/regulator/consumer.h>
 #include <linux/videodev2.h>
+#include <linux/videodev2_exynos_media.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <media/v4l2-ctrls.h>
