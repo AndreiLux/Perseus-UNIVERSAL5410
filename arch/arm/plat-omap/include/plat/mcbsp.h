@@ -84,7 +84,8 @@ struct omap_mcbsp {
 	struct clk *fclk;
 	struct omap_mcbsp_st_data *st_data;
 #endif
-#if defined(CONFIG_ARCH_OMAP3) || defined(CONFIG_ARCH_OMAP4)
+#if defined(CONFIG_ARCH_OMAP3) || defined(CONFIG_ARCH_OMAP4) || \
+	defined(CONFIG_ARCH_OMAP5)
 	int dma_op_mode;
 	u16 max_tx_thres;
 	u16 max_rx_thres;
@@ -105,7 +106,8 @@ extern int omap_mcbsp_count;
 
 int omap_mcbsp_init(void);
 void omap_mcbsp_config(unsigned int id, const struct omap_mcbsp_reg_cfg * config);
-#if defined(CONFIG_ARCH_OMAP3) || defined(CONFIG_ARCH_OMAP4)
+#if defined(CONFIG_ARCH_OMAP3) || defined(CONFIG_ARCH_OMAP4) || \
+	defined(CONFIG_ARCH_OMAP5)
 void omap_mcbsp_set_tx_threshold(unsigned int id, u16 threshold);
 void omap_mcbsp_set_rx_threshold(unsigned int id, u16 threshold);
 u16 omap_mcbsp_get_max_tx_threshold(unsigned int id);
