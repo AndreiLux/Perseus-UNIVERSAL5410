@@ -830,37 +830,40 @@ static int gsc_s_ctrl(struct v4l2_ctrl *ctrl)
 
 	switch (ctrl->id) {
 	case V4L2_CID_HFLIP:
-		user_to_drv(ctx->gsc_ctrls.hflip, ctrl->val);
+		update_ctrl_value(ctx->gsc_ctrls.hflip, ctrl->val);
 		break;
 
 	case V4L2_CID_VFLIP:
-		user_to_drv(ctx->gsc_ctrls.vflip, ctrl->val);
+		update_ctrl_value(ctx->gsc_ctrls.vflip, ctrl->val);
 		break;
 
 	case V4L2_CID_ROTATE:
-		user_to_drv(ctx->gsc_ctrls.rotate, ctrl->val);
+		update_ctrl_value(ctx->gsc_ctrls.rotate, ctrl->val);
 		break;
 
 	case V4L2_CID_GLOBAL_ALPHA:
-		user_to_drv(ctx->gsc_ctrls.global_alpha, ctrl->val);
+		update_ctrl_value(ctx->gsc_ctrls.global_alpha, ctrl->val);
 		break;
 
 	case V4L2_CID_CACHEABLE:
-		user_to_drv(ctx->gsc_ctrls.cacheable, ctrl->val);
+		update_ctrl_value(ctx->gsc_ctrls.cacheable, ctrl->val);
 		break;
 
 	case V4L2_CID_CSC_EQ_MODE:
-		user_to_drv(ctx->gsc_ctrls.csc_eq_mode, ctrl->val);
+		update_ctrl_value(ctx->gsc_ctrls.csc_eq_mode, ctrl->val);
 		break;
 
 	case V4L2_CID_CSC_EQ:
-		user_to_drv(ctx->gsc_ctrls.csc_eq, ctrl->val);
+		update_ctrl_value(ctx->gsc_ctrls.csc_eq, ctrl->val);
 		break;
 
 	case V4L2_CID_CSC_RANGE:
-		user_to_drv(ctx->gsc_ctrls.csc_range, ctrl->val);
+		update_ctrl_value(ctx->gsc_ctrls.csc_range, ctrl->val);
 		break;
 
+	case V4L2_CID_CONTENT_PROTECTION:
+		update_ctrl_value(ctx->gsc_ctrls.drm_en, ctrl->val);
+		break;
 	default:
 		ret = gsc_s_ctrl_to_mxr(ctrl);
 		if (ret) {
@@ -968,6 +971,14 @@ static const struct v4l2_ctrl_config gsc_custom_ctrl[] = {
 		.flags = V4L2_CTRL_FLAG_SLIDER,
 		.max = DEFAULT_CSC_RANGE,
 		.def = DEFAULT_CSC_RANGE,
+	}, {
+		.ops = &gsc_ctrl_ops,
+		.id = V4L2_CID_CONTENT_PROTECTION,
+		.name = "Enable content protection",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+		.max = 1,
+		.def = DEFAULT_CONTENT_PROTECTION,
 	},
 };
 
@@ -1012,6 +1023,9 @@ int gsc_ctrls_create(struct gsc_ctx *ctx)
 					&gsc_custom_ctrl[9], NULL);
 	ctx->gsc_ctrls.csc_range = v4l2_ctrl_new_custom(&ctx->ctrl_handler,
 					&gsc_custom_ctrl[10], NULL);
+
+	ctx->gsc_ctrls.drm_en = v4l2_ctrl_new_custom(&ctx->ctrl_handler,
+					&gsc_custom_ctrl[11], NULL);
 
 	ctx->ctrls_rdy = ctx->ctrl_handler.error == 0;
 

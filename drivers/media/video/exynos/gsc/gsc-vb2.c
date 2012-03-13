@@ -63,5 +63,6 @@ const struct gsc_vb2 gsc_vb2_ion = {
 	.suspend	= vb2_ion_detach_iommu,
 	.cache_flush	= vb2_ion_cache_flush,
 	.set_cacheable	= vb2_ion_set_cached,
+	.set_protected	= vb2_ion_set_protected,
 };
 #endif

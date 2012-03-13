@@ -134,7 +134,8 @@ static void gsc_m2m_device_run(void *priv)
 		goto put_device;
 	}
 
-	gsc_set_prefbuf(gsc, ctx->s_frame);
+	if (!gsc->protected_content)
+		gsc_set_prefbuf(gsc, ctx->s_frame);
 
 	if (ctx->state & GSC_PARAMS) {
 		gsc_hw_set_sw_reset(gsc);
@@ -375,6 +376,8 @@ static int gsc_m2m_reqbufs(struct file *file, void *fh,
 			gsc_ctx_state_lock_clear(GSC_DST_FMT, ctx);
 	}
 
+	update_protected_content(gsc, ctx->gsc_ctrls.drm_en);
+	gsc->vb2->set_protected(gsc->alloc_ctx, gsc->protected_content);
 	frame = ctx_get_frame(ctx, reqbufs->type);
 	frame->cacheable = ctx->gsc_ctrls.cacheable->val;
 	gsc->vb2->set_cacheable(gsc->alloc_ctx, frame->cacheable);

@@ -76,7 +76,7 @@ extern int gsc_dbg;
 #define FIMD_NAME_SIZE			32
 #define GSC_M2M_BUF_NUM			0
 #define GSC_OUT_BUF_MAX			2
-#define GSC_MAX_CTRL_NUM		11
+#define GSC_MAX_CTRL_NUM		12
 #define GSC_OUT_MAX_MASK_NUM		7
 #define GSC_OUT_DEF_SRC			15
 #define GSC_OUT_DEF_DST			7
@@ -86,6 +86,7 @@ extern int gsc_dbg;
 #define DEFAULT_GSC_SOURCE_HEIGHT	480
 #define DEFAULT_CSC_EQ			1
 #define DEFAULT_CSC_RANGE		1
+#define DEFAULT_CONTENT_PROTECTION	0
 
 #define GSC_LAST_DEV_ID			3
 #define GSC_PAD_SINK			0
@@ -254,6 +255,7 @@ struct gsc_addr {
  * @csc_eq_mode: mode to select csc equation of current frame
  * @csc_eq: csc equation of current frame
  * @csc_range: csc range of current frame
+ * @drm_en: control content protection
  */
 struct gsc_ctrls {
 	struct v4l2_ctrl	*rotate;
@@ -270,6 +272,7 @@ struct gsc_ctrls {
 	struct v4l2_ctrl	*csc_eq_mode;
 	struct v4l2_ctrl	*csc_eq;
 	struct v4l2_ctrl	*csc_range;
+	struct v4l2_ctrl	*drm_en;
 };
 
 /**
@@ -484,6 +487,8 @@ struct gsc_vb2 {
 
 	int (*cache_flush)(struct vb2_buffer *vb, u32 num_planes);
 	void (*set_cacheable)(void *alloc_ctx, bool cacheable);
+	void (*set_sharable)(void *alloc_ctx, bool sharable);
+	void (*set_protected)(void *alloc_ctx, bool ctx_protected);
 };
 
 struct gsc_pipeline {
@@ -537,6 +542,7 @@ struct gsc_dev {
 	struct exynos_md		*mdev[2];
 	struct gsc_pipeline		pipeline;
 	struct exynos_entity_data	md_data;
+	bool				protected_content;
 };
 
 /**
@@ -750,9 +756,15 @@ static inline struct gsc_dev *entity_to_gsc(struct media_entity *me)
 	return entity_data_to_gsc(v4l2_get_subdevdata(sd));
 }
 
-static inline void user_to_drv(struct v4l2_ctrl *ctrl, s32 value)
+static inline void update_ctrl_value(struct v4l2_ctrl *ctrl, s32 value)
 {
 	ctrl->cur.val = ctrl->val = value;
+}
+
+static inline void update_protected_content(struct gsc_dev *gsc,
+					    struct v4l2_ctrl *ctrl)
+{
+	gsc->protected_content = ctrl->cur.val;
 }
 
 void gsc_hw_set_sw_reset(struct gsc_dev *dev);

@@ -422,6 +422,8 @@ static int gsc_output_reqbufs(struct file *file, void *priv,
 		gsc_ctx_state_lock_clear(GSC_SRC_FMT | GSC_DST_FMT,
 					 out->ctx);
 
+	update_protected_content(gsc, out->ctx->gsc_ctrls.drm_en);
+	gsc->vb2->set_protected(gsc->alloc_ctx, gsc->protected_content);
 	frame = ctx_get_frame(out->ctx, reqbufs->type);
 	frame->cacheable = out->ctx->gsc_ctrls.cacheable->val;
 	gsc->vb2->set_cacheable(gsc->alloc_ctx, frame->cacheable);
