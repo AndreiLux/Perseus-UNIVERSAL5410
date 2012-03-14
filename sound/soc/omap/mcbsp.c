@@ -28,6 +28,16 @@
 #include <plat/mcbsp.h>
 
 #include "mcbsp.h"
+#include <plat/omap_device.h>
+
+struct omap_mcbsp **mcbsp_ptr;
+int omap_mcbsp_count;
+
+static int __devinit omap_st_add(struct omap_mcbsp *mcbsp,                      
+                                 struct resource *res);
+
+#define omap_mcbsp_check_valid_id(id)	(id < omap_mcbsp_count)
+#define id_to_mcbsp_ptr(id)		mcbsp_ptr[id];
 
 static void omap_mcbsp_write(struct omap_mcbsp *mcbsp, u16 reg, u32 val)
 {
@@ -54,6 +64,8 @@ static int omap_mcbsp_read(struct omap_mcbsp *mcbsp, u16 reg, bool from_cache)
 				     ((u32 *)mcbsp->reg_cache)[reg];
 	}
 }
+
+#ifdef CONFIG_ARCH_OMAP3
 
 static void omap_mcbsp_st_write(struct omap_mcbsp *mcbsp, u16 reg, u32 val)
 {
@@ -1005,7 +1017,7 @@ static void __devexit omap_st_remove(struct omap_mcbsp *mcbsp)
 	}
 }
 #else
-static inline int __devinit omap_st_add(struct omap_mcbsp *mcbsp) { return 0; }
+static inline int __devinit omap_st_add(struct omap_mcbsp *mcbsp, struct resource *res) { return 0; }
 static inline void __devexit omap_st_remove(struct omap_mcbsp *mcbsp) {}
 #endif
 
@@ -1039,7 +1051,7 @@ static inline void __devinit omap34xx_device_init(struct omap_mcbsp *mcbsp)
 
 	if (cpu_is_omap34xx()) {
 		if (mcbsp->id == 2 || mcbsp->id == 3)
-			if (omap_st_add(mcbsp))
+			if (omap_st_add(mcbsp, NULL))
 				dev_warn(mcbsp->dev,
 				 "Unable to create sidetone controls\n");
 	}
@@ -1053,6 +1065,7 @@ static inline void __devexit omap34xx_device_exit(struct omap_mcbsp *mcbsp)
 		if (mcbsp->id == 2 || mcbsp->id == 3)
 			omap_st_remove(mcbsp);
 }
+#endif
 
 /*
  * McBSP1 and McBSP3 are directly mapped on 1610 and 1510.
