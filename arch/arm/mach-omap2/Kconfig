@@ -439,6 +439,12 @@ config OMAP_ALLOW_OSWR
 	  Which means the Logic of power domains can be lost now
 	  unlike the CSWR wherein the logic is retained
 
+config OMAP_DVFS
+	bool  "Enable OMAP DVFS"
+	depends on ARCH_OMAP5
+	default n
+	help
+	  Select this option to enable DVFS support on OMAP
 endmenu
 
 endif

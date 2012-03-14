@@ -100,7 +100,7 @@ endif
 obj-y					+= prm_common.o
 obj-$(CONFIG_ARCH_OMAP2)		+= prcm.o cm2xxx_3xxx.o prm2xxx_3xxx.o
 obj-$(CONFIG_ARCH_OMAP3)		+= prcm.o cm2xxx_3xxx.o prm2xxx_3xxx.o \
-					   vc3xxx_data.o vp3xxx_data.o dvfs.o \
+					   vc3xxx_data.o vp3xxx_data.o \
 					   abb36xx_data.o
 # XXX The presence of cm2xxx_3xxx.o on the line below is temporary and
 # will be removed once the OMAP4 part of the codebase is converted to
@@ -115,7 +115,9 @@ obj-$(CONFIG_ARCH_OMAP5)                += prcm.o cm2xxx_3xxx.o cminst44xx.o \
                                            cm44xx.o prcm_mpu44xx.o \
                                            prminst44xx.o vc54xx_data.o \
                                            vp54xx_data.o dvfs.o abb54xx_data.o \
-					   prm44xx.o scrm44xx.o
+					   prm44xx.o scrm44xx.o omap-sar.o
+
+obj-$(CONFIG_OMAP_DVFS)                += dvfs.o
 
 # OMAP voltage domains
 voltagedomain-common			:= voltage.o vc.o vp.o abb.o

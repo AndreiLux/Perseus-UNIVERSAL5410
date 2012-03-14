@@ -16,7 +16,7 @@
 #include <plat/omap_hwmod.h>
 #include "voltage.h"
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_OMAP_DVFS
 #include <linux/mutex.h>
 extern struct mutex omap_dvfs_lock;
 
@@ -33,12 +33,12 @@ static inline bool omap_dvfs_is_any_dev_scaling(void)
 static inline int omap_dvfs_register_device(struct device *dev,
 		char *voltdm_name, char *clk_name)
 {
-	return -EINVAL;
+	return 0;
 }
 static inline int omap_device_scale(struct device *req_dev,
 		struct device *target_dev, unsigned long rate)
 {
-	return -EINVAL;
+	return 0;
 }
 static inline bool omap_dvfs_is_any_dev_scaling(void)
 {
