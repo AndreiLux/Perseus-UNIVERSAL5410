@@ -16,7 +16,7 @@
 #include <plat/omap_hwmod.h>
 #include "voltage.h"
 
-#ifdef CONFIG_OMAP_DVFS
+#ifdef CONFIG_CPU_FREQ
 #include <linux/mutex.h>
 extern struct mutex omap_dvfs_lock;
 
