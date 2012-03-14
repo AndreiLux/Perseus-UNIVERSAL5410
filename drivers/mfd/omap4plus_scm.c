@@ -280,23 +280,80 @@ static void omap4plus_scm_save_ctxt(struct scm *scm_ptr)
 	}
 }
 
+static void omap_temp_sensor_force_single_read(struct scm *scm_ptr, int id)
+{
+	int temp = 0, counter = 1000;
+
+	/* Select single conversion mode */
+	temp = omap4plus_scm_readl(scm_ptr,
+			scm_ptr->registers[id]->bgap_mode_ctrl);
+	temp &= ~(1 << __ffs(scm_ptr->registers[id]->mode_ctrl_mask));
+	omap4plus_scm_writel(scm_ptr, temp,
+				scm_ptr->registers[id]->bgap_mode_ctrl);
+
+	/* Start of Conversion = 1 */
+	temp = omap4plus_scm_readl(scm_ptr,
+			scm_ptr->registers[id]->temp_sensor_ctrl);
+	temp |= 1 << __ffs(scm_ptr->registers[id]->bgap_soc_mask);
+	omap4plus_scm_writel(scm_ptr, temp,
+			scm_ptr->registers[id]->temp_sensor_ctrl);
+	/* Wait until DTEMP is updated */
+	temp = omap4plus_scm_readl(scm_ptr,
+			scm_ptr->registers[id]->temp_sensor_ctrl);
+		temp &= (scm_ptr->registers[id]->bgap_dtemp_mask);
+		while ((temp == 0) && --counter) {
+			temp = omap4plus_scm_readl(scm_ptr,
+				scm_ptr->registers[id]->temp_sensor_ctrl);
+			temp &= (scm_ptr->registers[id]->bgap_dtemp_mask);
+	}
+	/* Start of Conversion = 0 */
+	temp = omap4plus_scm_readl(scm_ptr,
+			scm_ptr->registers[id]->temp_sensor_ctrl);
+	temp &= ~(1 << __ffs(scm_ptr->registers[id]->bgap_soc_mask));
+	omap4plus_scm_writel(scm_ptr, temp,
+			scm_ptr->registers[id]->temp_sensor_ctrl);
+}
+
 static void omap4plus_scm_restore_ctxt(struct scm *scm_ptr)
 {
-	int i;
+	int i, temp = 0;
 
 	for (i = 0; i < scm_ptr->cnt; i++) {
-		omap4plus_scm_writel(scm_ptr, scm_ptr->regval[i]->bg_mode_ctrl,
-					scm_ptr->registers[i]->bgap_mode_ctrl);
-		omap4plus_scm_writel(scm_ptr, scm_ptr->regval[i]->bg_ctrl,
-					scm_ptr->registers[i]->bgap_mask_ctrl);
-		omap4plus_scm_writel(scm_ptr, scm_ptr->regval[i]->bg_counter,
-					scm_ptr->registers[i]->bgap_counter);
-		omap4plus_scm_writel(scm_ptr, scm_ptr->regval[i]->bg_threshold,
-					scm_ptr->registers[i]->bgap_threshold);
-		omap4plus_scm_writel(scm_ptr,
-					scm_ptr->regval[i]->tshut_threshold,
+		if ((omap4plus_scm_readl(scm_ptr,
+			scm_ptr->registers[i]->bgap_counter) == 0)) {
+			omap4plus_scm_writel(scm_ptr,
+				scm_ptr->regval[i]->bg_threshold,
+				scm_ptr->registers[i]->bgap_threshold);
+			omap4plus_scm_writel(scm_ptr,
+				scm_ptr->regval[i]->tshut_threshold,
 					scm_ptr->registers[i]->tshut_threshold);
-
+			/* Force immediate temperature measurement and update
+			 * of the DTEMP field
+			 */
+			omap_temp_sensor_force_single_read(scm_ptr, i);
+			omap4plus_scm_writel(scm_ptr,
+				scm_ptr->regval[i]->bg_counter,
+				scm_ptr->registers[i]->bgap_counter);
+			omap4plus_scm_writel(scm_ptr,
+				scm_ptr->regval[i]->bg_mode_ctrl,
+				scm_ptr->registers[i]->bgap_mode_ctrl);
+			omap4plus_scm_writel(scm_ptr,
+				scm_ptr->regval[i]->bg_ctrl,
+				scm_ptr->registers[i]->bgap_mask_ctrl);
+		} else {
+			temp = omap4plus_scm_readl(scm_ptr,
+				scm_ptr->registers[i]->temp_sensor_ctrl);
+			temp &= (scm_ptr->registers[i]->bgap_dtemp_mask);
+			if (temp == 0) {
+				omap_temp_sensor_force_single_read(scm_ptr, i);
+				temp = omap4plus_scm_readl(scm_ptr,
+					scm_ptr->registers[i]->bgap_mask_ctrl);
+				temp |= 1 <<
+				__ffs(scm_ptr->registers[i]->mode_ctrl_mask);
+				omap4plus_scm_writel(scm_ptr, temp,
+					scm_ptr->registers[i]->bgap_mask_ctrl);
+			}
+		}
 	}
 }
 
