@@ -1067,10 +1067,10 @@ int omap4460plus_temp_sensor_init(struct scm *scm_ptr)
 
 	enable_continuous_mode(scm_ptr);
 
-	/* Set 2 seconds time as default counter */
+	/* Set .250 seconds time as default counter */
 	for (i = 0; i < scm_ptr->cnt; i++) {
 		configure_temp_sensor_counter(scm_ptr, i,
-						scm_ptr->clk_rate * 2);
+						scm_ptr->clk_rate / 4);
 	}
 
 	return 0;

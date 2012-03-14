@@ -205,7 +205,7 @@ out:
 		thermal_update_temp_thresholds(omap_gov->temp_sensor,
 			die_temp_lower, die_temp_upper);
 		omap_update_report_rate(omap_gov->temp_sensor,
-			NORMAL_TEMP_MONITORING_RATE);
+			FAST_TEMP_MONITORING_RATE);
 		omap_gov->panic_zone_reached = 0;
 	}
 
