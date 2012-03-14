@@ -36,6 +36,8 @@ obj-$(CONFIG_EXYNOS_BUSFREQ)		+= dev_lock.o busfreq_opp_exynos5.o busfreq_opp_52
 
 obj-$(CONFIG_ARCH_EXYNOS)	+= clock-audss.o
 
+obj-$(CONFIG_EXYNOS_FIQ_DEBUGGER)	+= exynos_fiq_debugger.o
+
 # machine support
 
 obj-$(CONFIG_MACH_SMDKC210)		+= mach-smdkv310.o
