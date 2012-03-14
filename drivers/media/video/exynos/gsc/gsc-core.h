@@ -76,7 +76,7 @@ extern int gsc_dbg;
 #define FIMD_NAME_SIZE			32
 #define GSC_M2M_BUF_NUM			0
 #define GSC_OUT_BUF_MAX			2
-#define GSC_MAX_CTRL_NUM		10
+#define GSC_MAX_CTRL_NUM		11
 #define GSC_OUT_MAX_MASK_NUM		7
 #define GSC_OUT_DEF_SRC			15
 #define GSC_OUT_DEF_DST			7
@@ -266,6 +266,7 @@ struct gsc_ctrls {
 	struct v4l2_ctrl	*pixel_blend_en;
 	struct v4l2_ctrl	*chroma_en;
 	struct v4l2_ctrl	*chroma_val;
+	struct v4l2_ctrl	*prio;
 	struct v4l2_ctrl	*csc_eq_mode;
 	struct v4l2_ctrl	*csc_eq;
 	struct v4l2_ctrl	*csc_range;

@@ -124,6 +124,7 @@ static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 			sub_mxr = &mdev->sub_mxr[i];
 			if (sub_mxr->local) {
 				layer = sub_mxr->layer[MXR_LAYER_VIDEO];
+				layer->pipe.state = MXR_PIPELINE_STREAMING;
 				mxr_layer_geo_fix(layer);
 				layer->ops.format_set(layer);
 				layer->ops.stream_set(layer, 1);
@@ -141,6 +142,7 @@ static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 	/* Alpha blending configuration always can be changed
 	 * whenever streaming */
 	mxr_set_alpha_blend(mdev);
+	mxr_reg_set_layer_prio(mdev);
 
 	if ((mdev->n_streamer == 1 && local == 1) ||
 	    (mdev->n_streamer == 2 && local == 2)) {
@@ -301,6 +303,7 @@ static int mxr_streamer_put(struct mxr_device *mdev, struct v4l2_subdev *sd)
 			if (sub_mxr->local) {
 				layer = sub_mxr->layer[MXR_LAYER_VIDEO];
 				layer->ops.stream_set(layer, 0);
+				layer->pipe.state = MXR_PIPELINE_IDLE;
 			}
 		}
 		mxr_reg_local_path_clear(mdev);
@@ -666,6 +669,7 @@ static int mxr_s_power(struct v4l2_subdev *sd, int on)
 static int mxr_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 {
 	struct mxr_device *mdev = sd_to_mdev(sd);
+	struct mxr_layer *layer;
 	int v = ctrl->value;
 	int num = 0;
 
@@ -677,21 +681,27 @@ static int mxr_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 	else if (!strcmp(sd->name, "s5p-mixer1"))
 		num = MXR_SUB_MIXER1;
 
+	layer = mdev->sub_mxr[num].layer[MXR_LAYER_VIDEO];
 	switch (ctrl->id) {
 	case V4L2_CID_TV_LAYER_BLEND_ENABLE:
-		mdev->sub_mxr[num].layer[MXR_LAYER_VIDEO]->layer_blend_en = v;
+		layer->layer_blend_en = v;
 		break;
 	case V4L2_CID_TV_LAYER_BLEND_ALPHA:
-		mdev->sub_mxr[num].layer[MXR_LAYER_VIDEO]->layer_alpha = (u32)v;
+		layer->layer_alpha = (u32)v;
 		break;
 	case V4L2_CID_TV_PIXEL_BLEND_ENABLE:
-		mdev->sub_mxr[num].layer[MXR_LAYER_VIDEO]->pixel_blend_en = v;
+		layer->pixel_blend_en = v;
 		break;
 	case V4L2_CID_TV_CHROMA_ENABLE:
-		mdev->sub_mxr[num].layer[MXR_LAYER_VIDEO]->chroma_en = v;
+		layer->chroma_en = v;
 		break;
 	case V4L2_CID_TV_CHROMA_VALUE:
-		mdev->sub_mxr[num].layer[MXR_LAYER_VIDEO]->chroma_val = (u32)v;
+		layer->chroma_val = (u32)v;
+		break;
+	case V4L2_CID_TV_LAYER_PRIO:
+		layer->prio = (u8)v;
+		if (layer->pipe.state == MXR_PIPELINE_STREAMING)
+			mxr_reg_set_layer_prio(mdev);
 		break;
 	default:
 		mxr_err(mdev, "invalid control id\n");

@@ -141,21 +141,21 @@ struct mxr_buffer {
 };
 
 /** TV graphic layer pipeline state */
-enum tv_graph_pipeline_state {
+enum mxr_pipeline_state {
 	/** graphic layer is not shown */
-	TV_GRAPH_PIPELINE_IDLE = 0,
+	MXR_PIPELINE_IDLE = 0,
 	/** state between STREAMON and hardware start */
-	TV_GRAPH_PIPELINE_STREAMING_START,
+	MXR_PIPELINE_STREAMING_START,
 	/** graphic layer is shown */
-	TV_GRAPH_PIPELINE_STREAMING,
+	MXR_PIPELINE_STREAMING,
 	/** state before STREAMOFF is finished */
-	TV_GRAPH_PIPELINE_STREAMING_FINISH,
+	MXR_PIPELINE_STREAMING_FINISH,
 };
 
 /** TV graphic layer pipeline structure for streaming media data */
-struct tv_graph_pipeline {
+struct mxr_pipeline {
 	struct media_pipeline pipe;
-	enum tv_graph_pipeline_state state;
+	enum mxr_pipeline_state state;
 
 	/** starting point on pipeline */
 	struct mxr_layer *layer;
@@ -234,7 +234,7 @@ struct mxr_layer {
 	/** source pad of mixer input */
 	struct media_pad pad;
 	/** pipeline structure for streaming TV graphic layer */
-	struct tv_graph_pipeline pipe;
+	struct mxr_pipeline pipe;
 
 	/** enable per layer blending for each layer */
 	int layer_blend_en;
@@ -246,6 +246,8 @@ struct mxr_layer {
 	int chroma_en;
 	/** value for chromakey */
 	u32 chroma_val;
+	/** priority for each layer */
+	u8 prio;
 };
 
 /** description of mixers output interface */
@@ -509,6 +511,7 @@ void mxr_get_mbus_fmt(struct mxr_device *mdev,
 void mxr_layer_sync(struct mxr_device *mdev, int en);
 void mxr_vsync_set_update(struct mxr_device *mdev, int en);
 void mxr_reg_reset(struct mxr_device *mdev);
+void mxr_reg_set_layer_prio(struct mxr_device *mdev);
 void mxr_reg_set_layer_blend(struct mxr_device *mdev, int sub_mxr, int num,
 		int en);
 void mxr_reg_layer_alpha(struct mxr_device *mdev, int sub_mxr, int num, u32 a);

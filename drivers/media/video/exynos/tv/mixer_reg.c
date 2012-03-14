@@ -103,16 +103,6 @@ static void mxr_reg_sub_mxr_reset(struct mxr_device *mdev, int mxr_num)
 	u32 val; /* value stored to register */
 
 	if (mxr_num == MXR_SUB_MIXER0) {
-		/* setting default layer priority: layer1 > layer0 > video
-		 * because typical usage scenario would be
-		 * layer0,1 - UI overlay
-		 * video - video playback
-		 */
-		val  = MXR_LAYER_CFG_GRP1_VAL(3);
-		val |= MXR_LAYER_CFG_GRP0_VAL(2);
-		val |= MXR_LAYER_CFG_VP_VAL(1);
-		mxr_write(mdev, MXR_LAYER_CFG, val);
-
 		/* use dark gray background color */
 		mxr_write(mdev, MXR_BG_COLOR0, 0x008080);
 		mxr_write(mdev, MXR_BG_COLOR1, 0x008080);
@@ -370,6 +360,24 @@ void mxr_reg_vp_buffer(struct mxr_device *mdev,
 #endif
 }
 
+void mxr_reg_set_layer_prio(struct mxr_device *mdev)
+{
+	u8 p_g0, p_g1, p_v;
+	u32 val;
+
+	p_v = mdev->sub_mxr[MXR_SUB_MIXER0].layer[MXR_LAYER_VIDEO]->prio;
+	p_g0 = mdev->sub_mxr[MXR_SUB_MIXER0].layer[MXR_LAYER_GRP0]->prio;
+	p_g1 = mdev->sub_mxr[MXR_SUB_MIXER0].layer[MXR_LAYER_GRP1]->prio;
+	mxr_dbg(mdev, "video layer priority = %d\n", p_v);
+	mxr_dbg(mdev, "graphic0 layer priority = %d\n", p_g0);
+	mxr_dbg(mdev, "graphic1 layer priority = %d\n", p_g1);
+
+	val  = MXR_LAYER_CFG_GRP1_VAL(p_g1);
+	val |= MXR_LAYER_CFG_GRP0_VAL(p_g0);
+	val |= MXR_LAYER_CFG_VP_VAL(p_v);
+	mxr_write(mdev, MXR_LAYER_CFG, val);
+}
+
 void mxr_reg_set_layer_blend(struct mxr_device *mdev, int sub_mxr, int num,
 		int en)
 {
@@ -516,7 +524,7 @@ void mxr_reg_colorkey_val(struct mxr_device *mdev, int sub_mxr, int num, u32 v)
 static void mxr_irq_layer_handle(struct mxr_layer *layer)
 {
 	struct list_head *head = &layer->enq_list;
-	struct tv_graph_pipeline *pipe = &layer->pipe;
+	struct mxr_pipeline *pipe = &layer->pipe;
 	struct mxr_buffer *done;
 
 	/* skip non-existing layer */
@@ -524,14 +532,14 @@ static void mxr_irq_layer_handle(struct mxr_layer *layer)
 		return;
 
 	spin_lock(&layer->enq_slock);
-	if (pipe->state == TV_GRAPH_PIPELINE_IDLE)
+	if (pipe->state == MXR_PIPELINE_IDLE)
 		goto done;
 
 	done = layer->shadow_buf;
 	layer->shadow_buf = layer->update_buf;
 
 	if (list_empty(head)) {
-		if (pipe->state != TV_GRAPH_PIPELINE_STREAMING)
+		if (pipe->state != MXR_PIPELINE_STREAMING)
 			layer->update_buf = NULL;
 	} else {
 		struct mxr_buffer *next;

@@ -807,6 +807,7 @@ static int gsc_s_ctrl_to_mxr(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_TV_PIXEL_BLEND_ENABLE:
 	case V4L2_CID_TV_CHROMA_ENABLE:
 	case V4L2_CID_TV_CHROMA_VALUE:
+	case V4L2_CID_TV_LAYER_PRIO:
 		control.id = ctrl->id;
 		control.value = ctrl->val;
 		v4l2_subdev_call(sd, core, s_ctrl, &control);
@@ -934,6 +935,16 @@ static const struct v4l2_ctrl_config gsc_custom_ctrl[] = {
 		.step = 1,
 	}, {
 		.ops = &gsc_ctrl_ops,
+		.id = V4L2_CID_TV_LAYER_PRIO,
+		.name = "Set layer priority",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+		.min = 0,
+		.max = 15,
+		.def = 1,
+		.step = 1,
+	}, {
+		.ops = &gsc_ctrl_ops,
 		.id = V4L2_CID_CSC_EQ_MODE,
 		.name = "Set CSC equation mode",
 		.type = V4L2_CTRL_TYPE_BOOLEAN,
@@ -991,14 +1002,16 @@ int gsc_ctrls_create(struct gsc_ctx *ctx)
 					&gsc_custom_ctrl[5], NULL);
 	ctx->gsc_ctrls.chroma_val = v4l2_ctrl_new_custom(&ctx->ctrl_handler,
 					&gsc_custom_ctrl[6], NULL);
+	ctx->gsc_ctrls.prio = v4l2_ctrl_new_custom(&ctx->ctrl_handler,
+					&gsc_custom_ctrl[7], NULL);
 
 	/* for CSC equation */
 	ctx->gsc_ctrls.csc_eq_mode = v4l2_ctrl_new_custom(&ctx->ctrl_handler,
-					&gsc_custom_ctrl[7], NULL);
-	ctx->gsc_ctrls.csc_eq = v4l2_ctrl_new_custom(&ctx->ctrl_handler,
 					&gsc_custom_ctrl[8], NULL);
-	ctx->gsc_ctrls.csc_range = v4l2_ctrl_new_custom(&ctx->ctrl_handler,
+	ctx->gsc_ctrls.csc_eq = v4l2_ctrl_new_custom(&ctx->ctrl_handler,
 					&gsc_custom_ctrl[9], NULL);
+	ctx->gsc_ctrls.csc_range = v4l2_ctrl_new_custom(&ctx->ctrl_handler,
+					&gsc_custom_ctrl[10], NULL);
 
 	ctx->ctrls_rdy = ctx->ctrl_handler.error == 0;
 

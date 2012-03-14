@@ -106,7 +106,7 @@ void mxr_release_video(struct mxr_device *mdev)
 	mdev->vb2->cleanup(mdev->alloc_ctx);
 }
 
-static void tv_graph_pipeline_stream(struct tv_graph_pipeline *pipe, int on)
+static void tv_graph_pipeline_stream(struct mxr_pipeline *pipe, int on)
 {
 	struct mxr_device *mdev = pipe->layer->mdev;
 	struct media_entity *me = &pipe->layer->vfd.entity;
@@ -396,19 +396,10 @@ static int mxr_s_ctrl(struct file *file, void *fh, struct v4l2_control *ctrl)
 {
 	struct mxr_layer *layer = video_drvdata(file);
 	struct mxr_device *mdev = layer->mdev;
-	int cur_mxr = layer->cur_mxr;
 	int v = ctrl->value;
-	int num = 0;
 	int ret;
 
 	mxr_dbg(mdev, "%s start\n", __func__);
-
-	if (layer->type == MXR_LAYER_TYPE_VIDEO)
-		num = 0;
-	else if (layer->type == MXR_LAYER_TYPE_GRP && layer->idx == 0)
-		num = 1;
-	else if (layer->type == MXR_LAYER_TYPE_GRP && layer->idx == 1)
-		num = 2;
 
 	ret = mxr_check_ctrl_val(ctrl);
 	if (ret) {
@@ -418,19 +409,19 @@ static int mxr_s_ctrl(struct file *file, void *fh, struct v4l2_control *ctrl)
 
 	switch (ctrl->id) {
 	case V4L2_CID_TV_LAYER_BLEND_ENABLE:
-		mdev->sub_mxr[cur_mxr].layer[num]->layer_blend_en = v;
+		layer->layer_blend_en = v;
 		break;
 	case V4L2_CID_TV_LAYER_BLEND_ALPHA:
-		mdev->sub_mxr[cur_mxr].layer[num]->layer_alpha = (u32)v;
+		layer->layer_alpha = (u32)v;
 		break;
 	case V4L2_CID_TV_PIXEL_BLEND_ENABLE:
-		mdev->sub_mxr[cur_mxr].layer[num]->pixel_blend_en = v;
+		layer->pixel_blend_en = v;
 		break;
 	case V4L2_CID_TV_CHROMA_ENABLE:
-		mdev->sub_mxr[cur_mxr].layer[num]->chroma_en = v;
+		layer->chroma_en = v;
 		break;
 	case V4L2_CID_TV_CHROMA_VALUE:
-		mdev->sub_mxr[cur_mxr].layer[num]->chroma_val = (u32)v;
+		layer->chroma_val = (u32)v;
 		break;
 	case V4L2_CID_TV_HPD_STATUS:
 		v4l2_subdev_call(to_outsd(mdev), core, s_ctrl, ctrl);
@@ -440,6 +431,11 @@ static int mxr_s_ctrl(struct file *file, void *fh, struct v4l2_control *ctrl)
 		break;
 	case V4L2_CID_TV_SET_ASPECT_RATIO:
 		v4l2_subdev_call(to_outsd(mdev), core, s_ctrl, ctrl);
+	case V4L2_CID_TV_LAYER_PRIO:
+		layer->prio = (u8)v;
+		/* This can be turned on/off each layer while streaming */
+		if (layer->pipe.state == MXR_PIPELINE_STREAMING)
+			mxr_reg_set_layer_prio(mdev);
 		break;
 	default:
 		mxr_err(mdev, "invalid control id\n");
@@ -659,7 +655,6 @@ static int mxr_qbuf(struct file *file, void *priv, struct v4l2_buffer *p)
 {
 	struct mxr_layer *layer = video_drvdata(file);
 
-	mxr_dbg(layer->mdev, "%s:%d(%d)\n", __func__, __LINE__, p->index);
 	return vb2_qbuf(&layer->vb_queue, p);
 }
 
@@ -667,7 +662,6 @@ static int mxr_dqbuf(struct file *file, void *priv, struct v4l2_buffer *p)
 {
 	struct mxr_layer *layer = video_drvdata(file);
 
-	mxr_dbg(layer->mdev, "%s:%d\n", __func__, __LINE__);
 	return vb2_dqbuf(&layer->vb_queue, p, file->f_flags & O_NONBLOCK);
 }
 
@@ -895,8 +889,7 @@ static void buf_queue(struct vb2_buffer *vb)
 {
 	struct mxr_buffer *buffer = container_of(vb, struct mxr_buffer, vb);
 	struct mxr_layer *layer = vb2_get_drv_priv(vb->vb2_queue);
-	struct mxr_device *mdev = layer->mdev;
-	struct tv_graph_pipeline *pipe = &layer->pipe;
+	struct mxr_pipeline *pipe = &layer->pipe;
 	unsigned long flags;
 
 	spin_lock_irqsave(&layer->enq_slock, flags);
@@ -904,19 +897,16 @@ static void buf_queue(struct vb2_buffer *vb)
 	spin_unlock_irqrestore(&layer->enq_slock, flags);
 
 	spin_lock_irqsave(&layer->enq_slock, flags);
-	if (pipe->state == TV_GRAPH_PIPELINE_STREAMING_START) {
-		pipe->state = TV_GRAPH_PIPELINE_STREAMING;
-	}
-	spin_unlock_irqrestore(&layer->enq_slock, flags);
+	if (pipe->state == MXR_PIPELINE_STREAMING_START)
+		pipe->state = MXR_PIPELINE_STREAMING;
 
-	mxr_dbg(mdev, "queuing buffer\n");
+	spin_unlock_irqrestore(&layer->enq_slock, flags);
 }
 
 static void wait_lock(struct vb2_queue *vq)
 {
 	struct mxr_layer *layer = vb2_get_drv_priv(vq);
 
-	mxr_dbg(layer->mdev, "%s\n", __func__);
 	mutex_lock(&layer->mutex);
 }
 
@@ -924,7 +914,6 @@ static void wait_unlock(struct vb2_queue *vq)
 {
 	struct mxr_layer *layer = vb2_get_drv_priv(vq);
 
-	mxr_dbg(layer->mdev, "%s\n", __func__);
 	mutex_unlock(&layer->mutex);
 }
 
@@ -976,7 +965,7 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 {
 	struct mxr_layer *layer = vb2_get_drv_priv(vq);
 	struct mxr_device *mdev = layer->mdev;
-	struct tv_graph_pipeline *pipe = &layer->pipe;
+	struct mxr_pipeline *pipe = &layer->pipe;
 	unsigned long flags;
 	int ret;
 
@@ -1002,7 +991,7 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 	layer->ops.format_set(layer);
 
 	spin_lock_irqsave(&layer->enq_slock, flags);
-	pipe->state = TV_GRAPH_PIPELINE_STREAMING_START;
+	pipe->state = MXR_PIPELINE_STREAMING_START;
 	spin_unlock_irqrestore(&layer->enq_slock, flags);
 
 	/* enabling layer in hardware */
@@ -1045,14 +1034,14 @@ static int stop_streaming(struct vb2_queue *vq)
 	unsigned long flags;
 	struct timer_list watchdog;
 	struct mxr_buffer *buf, *buf_tmp;
-	struct tv_graph_pipeline *pipe = &layer->pipe;
+	struct mxr_pipeline *pipe = &layer->pipe;
 
 	mxr_dbg(mdev, "%s\n", __func__);
 
 	spin_lock_irqsave(&layer->enq_slock, flags);
 
 	/* reset list */
-	pipe->state = TV_GRAPH_PIPELINE_STREAMING_FINISH;
+	pipe->state = MXR_PIPELINE_STREAMING_FINISH;
 
 	/* set all buffer to be done */
 	list_for_each_entry_safe(buf, buf_tmp, &layer->enq_list, list) {
@@ -1077,7 +1066,7 @@ static int stop_streaming(struct vb2_queue *vq)
 	/* stopping hardware */
 	spin_lock_irqsave(&layer->enq_slock, flags);
 
-	pipe->state = TV_GRAPH_PIPELINE_IDLE;
+	pipe->state = MXR_PIPELINE_IDLE;
 	spin_unlock_irqrestore(&layer->enq_slock, flags);
 
 	/* disabling layer in hardware */
@@ -1167,6 +1156,7 @@ struct mxr_layer *mxr_base_layer_create(struct mxr_device *mdev,
 	layer->mdev = mdev;
 	layer->idx = idx;
 	layer->ops = *ops;
+	layer->prio = idx + 2;
 
 	spin_lock_init(&layer->enq_slock);
 	INIT_LIST_HEAD(&layer->enq_list);
