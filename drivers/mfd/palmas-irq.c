@@ -187,11 +187,12 @@ int palmas_irq_init(struct palmas *palmas)
 
 	ret = request_threaded_irq(palmas->irq, NULL, palmas_irq, IRQF_ONESHOT,
 				   "palmas-irq", palmas);
-
-
-
 	if (ret != 0)
 		dev_err(palmas->dev, "Failed to request IRQ: %d\n", ret);
+
+	/* Make nirq wakeup capable */
+	if (ret != 0)
+		enable_irq_wake(palmas->irq);
 
 	return ret;
 }
