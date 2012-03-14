@@ -9,17 +9,25 @@
 
 #include <linux/kernel.h>
 #include <linux/init.h>
+#include <linux/clockchips.h>
+#include <linux/cpu.h>
 #include <linux/cpuidle.h>
 #include <linux/cpu_pm.h>
+#include <linux/delay.h>
 #include <linux/io.h>
 #include <linux/export.h>
+#include <linux/moduleparam.h>
+#include <linux/ratelimit.h>
 #include <linux/time.h>
 #include <linux/serial_core.h>
 
+#include <asm/cp15.h>
+#include <asm/cacheflush.h>
 #include <asm/proc-fns.h>
 #include <asm/smp_scu.h>
 #include <asm/suspend.h>
 #include <asm/unified.h>
+#include <asm/hardware/gic.h>
 #include <mach/regs-pmu.h>
 #include <mach/regs-clock.h>
 #include <mach/pmu.h>
@@ -29,15 +37,25 @@
 #include <plat/cpu.h>
 #include <plat/regs-serial.h>
 
+#include <trace/events/power.h>
+
 #ifdef CONFIG_ARM_TRUSTZONE
 #define REG_DIRECTGO_ADDR	(S5P_VA_SYSRAM_NS + 0x24)
 #define REG_DIRECTGO_FLAG	(S5P_VA_SYSRAM_NS + 0x20)
+#define BOOT_VECTOR		(S5P_VA_SYSRAM_NS + 0x1C)
 #else
 #define REG_DIRECTGO_ADDR	(S5P_VA_SYSRAM + 0x24)
 #define REG_DIRECTGO_FLAG	(S5P_VA_SYSRAM + 0x20)
+#define BOOT_VECTOR		S5P_VA_SYSRAM
 #endif
 
+static bool allow_coupled_idle = true;
+module_param(allow_coupled_idle, bool, 0644);
+
 #define EXYNOS_CHECK_DIRECTGO	0xFCBA0D10
+
+static atomic_t exynos_idle_barrier;
+static volatile bool cpu1_abort;
 
 static int exynos_enter_idle(struct cpuidle_device *dev,
 			     struct cpuidle_driver *drv,
@@ -45,6 +63,74 @@ static int exynos_enter_idle(struct cpuidle_device *dev,
 static int exynos_enter_lowpower(struct cpuidle_device *dev,
 				 struct cpuidle_driver *drv,
 				 int index);
+
+static inline void cpu_enter_lowpower_a9(void)
+{
+	unsigned int v;
+
+	flush_cache_all();
+	asm volatile(
+	"	mcr	p15, 0, %1, c7, c5, 0\n"
+	"	mcr	p15, 0, %1, c7, c10, 4\n"
+	/*
+	 * Turn off coherency
+	 */
+	"	mrc	p15, 0, %0, c1, c0, 1\n"
+	"	bic	%0, %0, %3\n"
+	"	mcr	p15, 0, %0, c1, c0, 1\n"
+	"	mrc	p15, 0, %0, c1, c0, 0\n"
+	"	bic	%0, %0, %2\n"
+	"	mcr	p15, 0, %0, c1, c0, 0\n"
+	  : "=&r" (v)
+	  : "r" (0), "Ir" (CR_C), "Ir" (0x40)
+	  : "cc");
+}
+
+static inline void cpu_enter_lowpower_a15(void)
+{
+	unsigned int v;
+
+	asm volatile(
+	"       mrc     p15, 0, %0, c1, c0, 0\n"
+	"       bic     %0, %0, %1\n"
+	"       mcr     p15, 0, %0, c1, c0, 0\n"
+	  : "=&r" (v)
+	  : "Ir" (CR_C)
+	  : "cc");
+
+	flush_cache_all();
+
+	asm volatile(
+	/*
+	* Turn off coherency
+	*/
+	"	dmb\n"
+	"       mrc     p15, 0, %0, c1, c0, 1\n"
+	"       bic     %0, %0, %1\n"
+	"       mcr     p15, 0, %0, c1, c0, 1\n"
+	: "=&r" (v)
+	: "Ir" (0x40)
+	: "cc");
+
+	isb();
+	dsb();
+}
+
+static inline void cpu_leave_lowpower(void)
+{
+	unsigned int v;
+
+	asm volatile(
+	"mrc	p15, 0, %0, c1, c0, 0\n"
+	"	orr	%0, %0, %1\n"
+	"	mcr	p15, 0, %0, c1, c0, 0\n"
+	"	mrc	p15, 0, %0, c1, c0, 1\n"
+	"	orr	%0, %0, %2\n"
+	"	mcr	p15, 0, %0, c1, c0, 1\n"
+	  : "=&r" (v)
+	  : "Ir" (CR_C), "Ir" (0x40)
+	  : "cc");
+}
 
 struct check_reg_lpa {
 	void __iomem	*check_reg;
@@ -120,8 +206,8 @@ static int __maybe_unused exynos_check_enter_mode(void)
 static struct cpuidle_state exynos_cpuidle_set[] __initdata = {
 	[0] = {
 		.enter			= exynos_enter_idle,
-		.exit_latency		= 1,
-		.target_residency	= 10000,
+		.exit_latency		= 10,
+		.target_residency	= 10,
 		.flags			= CPUIDLE_FLAG_TIME_VALID,
 		.name			= "C0",
 		.desc			= "ARM clock gating(WFI)",
@@ -129,8 +215,9 @@ static struct cpuidle_state exynos_cpuidle_set[] __initdata = {
 	[1] = {
 		.enter			= exynos_enter_lowpower,
 		.exit_latency		= 300,
-		.target_residency	= 10000,
-		.flags			= CPUIDLE_FLAG_TIME_VALID,
+		.target_residency	= 1000,
+		.flags			= CPUIDLE_FLAG_TIME_VALID |
+					  CPUIDLE_FLAG_COUPLED,
 		.name			= "C1",
 		.desc			= "ARM power down",
 	},
@@ -141,6 +228,7 @@ static DEFINE_PER_CPU(struct cpuidle_device, exynos_cpuidle_device);
 static struct cpuidle_driver exynos_idle_driver = {
 	.name		= "exynos_idle",
 	.owner		= THIS_MODULE,
+	.en_core_tk_irqen = true,
 };
 
 /* Ext-GIC nIRQ/nFIQ is the only wakeup source in AFTR */
@@ -167,21 +255,11 @@ static int idle_finisher(unsigned long flags)
 	return 1;
 }
 
-static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
-				   struct cpuidle_driver *drv,
-				   int index)
+static int exynos_enter_core0(enum sys_powerdown powerdown)
 {
-	struct timeval before, after;
-	int idle_time;
 	unsigned long tmp;
 
-	local_irq_disable();
-	do_gettimeofday(&before);
-
-	exynos_set_wakeupmask();
-
-	/* Set value of power down register for aftr mode */
-	exynos_sys_powerdown_conf(SYS_AFTR);
+	exynos_sys_powerdown_conf(powerdown);
 
 	__raw_writel(virt_to_phys(s3c_cpu_resume), REG_DIRECTGO_ADDR);
 	__raw_writel(EXYNOS_CHECK_DIRECTGO, REG_DIRECTGO_FLAG);
@@ -193,7 +271,8 @@ static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 	tmp &= ~EXYNOS_CENTRAL_LOWPWR_CFG;
 	__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_CONFIGURATION);
 
-	cpu_pm_enter();
+	if (cpu_pm_enter())
+		goto abort_cpu;
 
 	cpu_suspend(0, idle_finisher);
 
@@ -203,7 +282,9 @@ static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 		scu_enable(S5P_VA_SCU);
 #endif
 #endif
+
 	cpu_pm_exit();
+abort_cpu:
 
 	restore_cpu_arch_register();
 
@@ -219,16 +300,20 @@ static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 		__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_CONFIGURATION);
 	}
 
+	return 0;
+}
+
+static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
+				   struct cpuidle_driver *drv,
+				   int index)
+{
+	exynos_set_wakeupmask();
+
+	exynos_enter_core0(SYS_AFTR);
+
 	/* Clear wakeup state register */
 	__raw_writel(0x0, EXYNOS_WAKEUP_STAT);
 
-	do_gettimeofday(&after);
-
-	local_irq_enable();
-	idle_time = (after.tv_sec - before.tv_sec) * USEC_PER_SEC +
-		    (after.tv_usec - before.tv_usec);
-
-	dev->last_residency = idle_time;
 	return index;
 }
 
@@ -236,60 +321,16 @@ static int exynos_enter_core0_lpa(struct cpuidle_device *dev,
 				  struct cpuidle_driver *drv,
 				  int index)
 {
-	struct timeval before, after;
-	int idle_time;
-	unsigned long tmp;
-
-	local_irq_disable();
-	do_gettimeofday(&before);
-
 	/*
 	 * Unmasking all wakeup source.
 	 */
 	__raw_writel(0x0, EXYNOS_WAKEUP_MASK);
 
-	__raw_writel(virt_to_phys(s3c_cpu_resume), REG_DIRECTGO_ADDR);
-	__raw_writel(EXYNOS_CHECK_DIRECTGO, REG_DIRECTGO_FLAG);
-
-	/* Set value of power down register for aftr mode */
-	exynos_sys_powerdown_conf(SYS_LPA);
-
-	save_cpu_arch_register();
-
-	/* Setting Central Sequence Register for power down mode */
-	tmp = __raw_readl(EXYNOS_CENTRAL_SEQ_CONFIGURATION);
-	tmp &= ~EXYNOS_CENTRAL_LOWPWR_CFG;
-	__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_CONFIGURATION);
-
 	do {
 		/* Waiting for flushing UART fifo */
 	} while (exynos_uart_fifo_check());
 
-	cpu_pm_enter();
-
-	cpu_suspend(0, idle_finisher);
-
-#ifdef CONFIG_SMP
-#if !defined(CONFIG_ARM_TRUSTZONE)
-	if (!soc_is_exynos5250())
-		scu_enable(S5P_VA_SCU);
-#endif
-#endif
-	cpu_pm_exit();
-
-	restore_cpu_arch_register();
-
-	/*
-	 * If PMU failed while entering sleep mode, WFI will be
-	 * ignored by PMU and then exiting cpu_do_idle().
-	 * S5P_CENTRAL_LOWPWR_CFG bit will not be set automatically
-	 * in this situation.
-	 */
-	tmp = __raw_readl(EXYNOS_CENTRAL_SEQ_CONFIGURATION);
-	if (!(tmp & EXYNOS_CENTRAL_LOWPWR_CFG)) {
-		tmp |= EXYNOS_CENTRAL_LOWPWR_CFG;
-		__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_CONFIGURATION);
-	}
+	exynos_enter_core0(SYS_LPA);
 
 	/* For release retention */
 	__raw_writel((1 << 28), EXYNOS_PAD_RET_GPIO_OPTION);
@@ -302,13 +343,6 @@ static int exynos_enter_core0_lpa(struct cpuidle_device *dev,
 	/* Clear wakeup state register */
 	__raw_writel(0x0, EXYNOS_WAKEUP_STAT);
 
-	do_gettimeofday(&after);
-
-	local_irq_enable();
-	idle_time = (after.tv_sec - before.tv_sec) * USEC_PER_SEC +
-		    (after.tv_usec - before.tv_usec);
-
-	dev->last_residency = idle_time;
 	return index;
 }
 
@@ -333,27 +367,152 @@ static int exynos_enter_idle(struct cpuidle_device *dev,
 	return index;
 }
 
+void exynos_nop(void *info)
+{
+}
+
 static int exynos_enter_lowpower(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv,
 				int index)
 {
-	int new_index = index;
+	int ret = index;
 
-	/* This mode only can be entered when other core's are offline */
-	if (num_online_cpus() > 1)
-		new_index = drv->safe_state_index;
+	__raw_writel(virt_to_phys(s3c_cpu_resume), BOOT_VECTOR);
+	cpuidle_coupled_parallel_barrier(dev, &exynos_idle_barrier);
 
-	if (new_index == 0)
-		return exynos_enter_idle(dev, drv, new_index);
+	if (!allow_coupled_idle) {
+		exynos_enter_idle(dev, drv, dev->safe_state_index);
+		smp_call_function_single(!dev->cpu, exynos_nop, NULL, 0);
+		return index;
+	}
 
-	if (exynos_check_enter_mode() == EXYNOS_CHECK_DIDLE)
-		return exynos_enter_core0_aftr(dev, drv, new_index);
-	else
-		return exynos_enter_core0_lpa(dev, drv, new_index);
+	/* Both cpus will reach this point at the same time */
+	if (dev->cpu == 0) {
+		/* Idle sequence for cpu 0 */
+		if (cpu_online(1)) {
+			/* Wait for cpu1 to turn itself off */
+			while (__raw_readl(EXYNOS_ARM_CORE1_STATUS) & 3) {
+				/* cpu1 may skip idle and boot back up again */
+				if (cpu1_abort)
+					goto abort;
+
+				/*
+				 * cpu1 may bounce through idle and boot back up
+				 * again, getting stuck in the boot rom code
+				 */
+				if (__raw_readl(BOOT_VECTOR) == 0)
+					goto abort;
+
+				cpu_relax();
+			}
+		}
+
+		/* Enter the final low power state */
+		if (exynos_check_enter_mode() == EXYNOS_CHECK_DIDLE)
+			ret = exynos_enter_core0_aftr(dev, drv, index);
+		else
+			ret = exynos_enter_core0_lpa(dev, drv, index);
+
+abort:
+		if (cpu_online(1)) {
+			/* Set the boot vector to something non-zero */
+			__raw_writel(virt_to_phys(s3c_cpu_resume),
+				BOOT_VECTOR);
+			dsb();
+
+			/* Turn on cpu1 and wait for it to be on */
+			__raw_writel(0x3, EXYNOS_ARM_CORE1_CONFIGURATION);
+			while ((__raw_readl(EXYNOS_ARM_CORE1_STATUS) & 3) != 3)
+				cpu_relax();
+
+#ifdef CONFIG_ARM_TRUSTZONE
+			exynos_smc(SMC_CMD_CPU1BOOT, 0, 0, 0);
+#endif
+
+			/* Wait for cpu1 to get stuck in the boot rom */
+			while ((__raw_readl(BOOT_VECTOR) != 0) && !cpu1_abort)
+				cpu_relax();
+
+			if (!cpu1_abort) {
+				/* Poke cpu1 out of the boot rom */
+				__raw_writel(virt_to_phys(s3c_cpu_resume),
+					BOOT_VECTOR);
+				dsb_sev();
+			}
+
+			/* Wait for cpu1 to finish booting */
+			while (!cpu1_abort)
+				cpu_relax();
+		}
+	} else {
+		/* Idle sequence for cpu 1 */
+
+		/*
+		 * Turn off localtimer to prevent ticks from waking up cpu 1
+		 * before cpu 0.
+		 */
+		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &dev->cpu);
+
+		if (cpu_pm_enter())
+			goto cpu1_aborted;
+
+		cpu_enter_lowpower_a15();
+
+		/* Turn off cpu 1 */
+		__raw_writel(0, EXYNOS_ARM_CORE1_CONFIGURATION);
+		cpu_suspend(0, idle_finisher);
+
+		cpu_leave_lowpower();
+
+		cpu_pm_exit();
+		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &dev->cpu);
+
+cpu1_aborted:
+		/* Notify cpu 0 that cpu 1 is awake */
+		dsb();
+		cpu1_abort = true;
+	}
+
+	cpuidle_coupled_parallel_barrier(dev, &exynos_idle_barrier);
+
+	cpu1_abort = false;
+
+	return ret;
 }
+
+
+static void __setup_broadcast_timer(void *arg)
+{
+	unsigned long reason = (unsigned long)arg;
+	int cpu = smp_processor_id();
+
+	reason = reason ?
+		CLOCK_EVT_NOTIFY_BROADCAST_ON : CLOCK_EVT_NOTIFY_BROADCAST_OFF;
+
+	clockevents_notify(reason, &cpu);
+}
+
+static int setup_broadcast_cpuhp_notify(struct notifier_block *n,
+		unsigned long action, void *hcpu)
+{
+	int hotcpu = (unsigned long)hcpu;
+
+	switch (action & 0xf) {
+	case CPU_ONLINE:
+		smp_call_function_single(hotcpu, __setup_broadcast_timer,
+			(void *)true, 1);
+		break;
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block setup_broadcast_notifier = {
+	.notifier_call = setup_broadcast_cpuhp_notify,
+};
 
 static int __init exynos_init_cpuidle(void)
 {
+	int ret;
 	int i, max_cpuidle_state, cpu_id;
 	struct cpuidle_device *device;
 	struct cpuidle_driver *drv = &exynos_idle_driver;
@@ -369,14 +528,17 @@ static int __init exynos_init_cpuidle(void)
 	drv->safe_state_index = 0;
 	cpuidle_register_driver(&exynos_idle_driver);
 
+	on_each_cpu(__setup_broadcast_timer, (void *)true, 1);
+	ret = register_cpu_notifier(&setup_broadcast_notifier);
+	if (ret)
+		pr_err("%s: failed to register cpu notifier\n", __func__);
+
 	for_each_cpu(cpu_id, cpu_online_mask) {
 		device = &per_cpu(exynos_cpuidle_device, cpu_id);
 		device->cpu = cpu_id;
 
-		if (cpu_id == 0)
-			device->state_count = ARRAY_SIZE(exynos_cpuidle_set);
-		else
-			device->state_count = 1;	/* Support IDLE only */
+		device->state_count = ARRAY_SIZE(exynos_cpuidle_set);
+		device->coupled_cpus = *cpu_possible_mask;
 
 		if (cpuidle_register_device(device)) {
 			printk(KERN_ERR "CPUidle register device failed\n,");
