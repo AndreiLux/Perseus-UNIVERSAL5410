@@ -487,4 +487,6 @@
 #define EXYNOS5_IRQ_UART4		IRQ_SPI(55)
 #define EXYNOS5_IRQ_DWMCI		IRQ_SPI(123)
 
+#define FIQ_START			0
+
 #endif /* __ASM_ARCH_IRQS_H */
