@@ -50,6 +50,7 @@
 #include <plat/tv-core.h>
 #include <plat/ehci.h>
 
+#include <mach/exynos_fiq_debugger.h>
 #include <mach/map.h>
 #include <mach/sysmmu.h>
 #include <mach/exynos-ion.h>
@@ -95,21 +96,15 @@ static struct s3c2410_uartcfg smdk5250_uartcfgs[] __initdata = {
 		.ulcon		= SMDK5250_ULCON_DEFAULT,
 		.ufcon		= SMDK5250_UFCON_DEFAULT,
 	},
+	/* Do not initialize hwport 1, it will be handled by fiq_debugger */
 	[1] = {
-		.hwport		= 1,
-		.flags		= 0,
-		.ucon		= SMDK5250_UCON_DEFAULT,
-		.ulcon		= SMDK5250_ULCON_DEFAULT,
-		.ufcon		= SMDK5250_UFCON_DEFAULT,
-	},
-	[2] = {
 		.hwport		= 2,
 		.flags		= 0,
 		.ucon		= SMDK5250_UCON_DEFAULT,
 		.ulcon		= SMDK5250_ULCON_DEFAULT,
 		.ufcon		= SMDK5250_UFCON_DEFAULT,
 	},
-	[3] = {
+	[2] = {
 		.hwport		= 3,
 		.flags		= 0,
 		.ucon		= SMDK5250_UCON_DEFAULT,
@@ -1414,6 +1409,8 @@ static void __init smdk5250_init_early(void)
 
 static void __init smdk5250_machine_init(void)
 {
+	exynos_serial_debug_init(1, 0);
+
 	s3c_i2c0_set_platdata(NULL);
 	i2c_register_board_info(0, i2c_devs0, ARRAY_SIZE(i2c_devs0));
 
