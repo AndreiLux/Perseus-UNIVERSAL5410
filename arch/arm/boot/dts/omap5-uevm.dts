@@ -14,7 +14,7 @@
 	compatible = "ti,omap5-uevm", "ti,omap5432", "ti,omap5";
 
         chosen {                                                                
-                bootargs = "root=/dev/mmcblk1p2 rw rootwait console=ttyO2,115200n8 loglevel=4";
+                bootargs = "root=/dev/mmcblk1p2 rw rootwait earlyprintk=1 earlycon=ttyO2,115200n8 console=ttyO2,115200n8 loglevel=8";
         };
 
 	chosen_emmc {                                                            
