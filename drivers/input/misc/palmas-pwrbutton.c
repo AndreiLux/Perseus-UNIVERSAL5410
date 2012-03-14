@@ -64,6 +64,7 @@ static int __init palmas_pwron_probe(struct platform_device *pdev)
 	struct palmas_pwron *pwron;
 	int irq = platform_get_irq_byname(pdev, "PWRON_BUTTON");
 	int err;
+	u8 value;
 
 	pwron = kzalloc(sizeof(*pwron), GFP_KERNEL);
 	if (!pwron) {
@@ -86,6 +87,15 @@ static int __init palmas_pwron_probe(struct platform_device *pdev)
 
 	pwron->palmas = palmas;
 	pwron->input_dev = input_dev;
+
+	/* Read the LONG_PRESS_KEY register */
+	palmas->read(palmas, PALMAS_PMU_CONTROL_BASE, PALMAS_LONG_PRESS_KEY,
+				&value);
+
+	/* 6 Seconds as the LPK_TIME Long Press Key Time */
+	value = value & 0xF3;
+	palmas->write(palmas, PALMAS_PMU_CONTROL_BASE, PALMAS_LONG_PRESS_KEY,
+				value);
 
 	err = request_threaded_irq(irq, NULL, pwron_irq,
 			IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING,
