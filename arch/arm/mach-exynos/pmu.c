@@ -377,6 +377,24 @@ void exynos_sys_powerdown_conf(enum sys_powerdown mode)
 				exynos_pmu_config[i].reg);
 }
 
+void exynos_xxti_sys_powerdown(bool enable)
+{
+	unsigned int value;
+	void __iomem *base;
+
+	base = soc_is_exynos5250() ? EXYNOS5_XXTI_SYS_PWR_REG :
+				     EXYNOS4_XXTI_LOWPWR;
+
+	value = __raw_readl(base);
+
+	if (enable)
+		value |= EXYNOS_SYS_PWR_CFG;
+	else
+		value &= ~EXYNOS_SYS_PWR_CFG;
+
+	__raw_writel(value, base);
+}
+
 static int __init exynos_pmu_init(void)
 {
 	unsigned int value;
