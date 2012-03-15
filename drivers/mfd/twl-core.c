@@ -94,7 +94,17 @@
 #define twl_has_power()        false
 #endif
 
+#undef RTC_NAME
+
 #if defined(CONFIG_RTC_DRV_TWL4030) || defined(CONFIG_RTC_DRV_TWL4030_MODULE)
+#define RTC_NAME	"twl_rtc"
+#endif
+
+#if defined(CONFIG_RTC_DRV_PALMAS) || defined(CONFIG_RTC_DRV_PALMAS_MODULE)
+#define RTC_NAME	"palmas_rtc"
+#endif
+
+#ifdef RTC_NAME
 #define twl_has_rtc()	true
 #else
 #define twl_has_rtc()	false
@@ -708,7 +718,7 @@ add_children(struct twl4030_platform_data *pdata, unsigned irq_base,
 		 * HW security concerns, and "least privilege".
 		 */
 		sub_chip_id = twl_map[TWL_MODULE_RTC].sid;
-		child = add_child(sub_chip_id, "twl_rtc",
+		child = add_child(sub_chip_id, RTC_NAME,
 				NULL, 0,
 				true, irq_base + RTC_INTR_OFFSET, 0);
 		if (IS_ERR(child))

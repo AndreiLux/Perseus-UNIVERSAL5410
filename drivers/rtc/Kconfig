@@ -323,6 +323,16 @@ config RTC_DRV_TWL4030
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-twl.
 
+config RTC_DRV_PALMAS
+	tristate "TI Palmas"
+	depends on RTC_CLASS && TWL4030_CORE && !RTC_DRV_TWL4030
+	help
+	  If you say yes here you get support for the RTC on the
+	  PALMAS family chips, used mostly with OMAP5 platforms.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called rtc-palmas
+
 config RTC_DRV_S35390A
 	tristate "Seiko Instruments S-35390A"
 	select BITREVERSE

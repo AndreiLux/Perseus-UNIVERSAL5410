@@ -96,7 +96,7 @@ static struct mfd_cell palmas_children[] = {
 		.id = 4,
 	},
 	{
-		.name = "twl_rtc",
+		.name = "palmas_rtc",
 		.num_resources = ARRAY_SIZE(rtc_resource),
 		.resources = rtc_resource,
 		.id = 5,
