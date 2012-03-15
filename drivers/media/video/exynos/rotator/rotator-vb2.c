@@ -1,9 +1,8 @@
-/* linux/drivers/media/video/exynos/rotator/rotator-vb2.c
+/*
+ * Copyright (c) 2012 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
  *
- * Copyright (c) 2011 Samsung Electronics Co., Ltd.
- *		http://www.samsung.com/
- *
- * Videobuf2 bridge driver file for Exynos Rotator driver
+ * Videobuf2 bridge driver file for EXYNOS Image Rotator driver
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,7 +15,7 @@
 #if defined(CONFIG_VIDEOBUF2_ION)
 void *rot_ion_init(struct rot_dev *rot)
 {
-	return vb2_ion_create_context(&rot->pdev->dev, SZ_1M,
+	return vb2_ion_create_context(rot->dev, SZ_1M,
 		VB2ION_CTX_PHCONTIG | VB2ION_CTX_IOMMU | VB2ION_CTX_UNCACHED);
 }
 
