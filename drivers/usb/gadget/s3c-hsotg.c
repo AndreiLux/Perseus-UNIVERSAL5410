@@ -2883,16 +2883,12 @@ static int s3c_hsotg_udc_stop(struct usb_gadget *gadget,
 	for (ep = 0; ep < hsotg->num_of_eps; ep++)
 		s3c_hsotg_ep_disable(&hsotg->eps[ep].ep);
 
-	call_gadget(hsotg, disconnect);
-
-	driver->unbind(&hsotg->gadget);
 	s3c_hsotg_phy_disable(hsotg);
 	regulator_bulk_disable(ARRAY_SIZE(hsotg->supplies), hsotg->supplies);
 
 	hsotg->driver = NULL;
 	hsotg->gadget.speed = USB_SPEED_UNKNOWN;
-
-	device_del(&hsotg->gadget.dev);
+	hsotg->gadget.dev.driver = NULL;
 
 	dev_info(hsotg->dev, "unregistered gadget driver '%s'\n",
 		 driver->driver.name);
@@ -3526,7 +3522,10 @@ static int __devexit s3c_hsotg_remove(struct platform_device *pdev)
 
 	s3c_hsotg_delete_debug(hsotg);
 
-	usb_gadget_unregister_driver(hsotg->driver);
+	if (hsotg->driver) {
+		/* should have been done already by driver model core */
+		usb_gadget_unregister_driver(hsotg->driver);
+	}
 
 	free_irq(hsotg->irq, hsotg);
 	iounmap(hsotg->regs);
@@ -3540,6 +3539,7 @@ static int __devexit s3c_hsotg_remove(struct platform_device *pdev)
 	clk_disable(hsotg->clk);
 	clk_put(hsotg->clk);
 
+	device_unregister(&hsotg->gadget.dev);
 	kfree(hsotg);
 	return 0;
 }
