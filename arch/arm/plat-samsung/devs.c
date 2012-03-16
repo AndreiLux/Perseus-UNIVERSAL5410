@@ -64,6 +64,7 @@
 #include <plat/regs-serial.h>
 #include <plat/regs-spi.h>
 #include <plat/s3c64xx-spi.h>
+#include <plat/fimg2d.h>
 
 static u64 samsung_device_dma_mask = DMA_BIT_MASK(32);
 
@@ -268,34 +269,6 @@ struct platform_device s5p_device_fimc3 = {
 };
 #endif /* CONFIG_S5P_DEV_FIMC3 */
 
-/* G2D */
-
-#ifdef CONFIG_S5P_DEV_G2D
-static struct resource s5p_g2d_resource[] = {
-	[0] = {
-		.start	= S5P_PA_G2D,
-		.end	= S5P_PA_G2D + SZ_4K - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	[1] = {
-		.start	= IRQ_2D,
-		.end	= IRQ_2D,
-		.flags	= IORESOURCE_IRQ,
-	},
-};
-
-struct platform_device s5p_device_g2d = {
-	.name		= "s5p-g2d",
-	.id		= 0,
-	.num_resources	= ARRAY_SIZE(s5p_g2d_resource),
-	.resource	= s5p_g2d_resource,
-	.dev		= {
-		.dma_mask		= &samsung_device_dma_mask,
-		.coherent_dma_mask	= DMA_BIT_MASK(32),
-	},
-};
-#endif /* CONFIG_S5P_DEV_G2D */
-
 #ifdef CONFIG_S5P_DEV_JPEG
 static struct resource s5p_jpeg_resource[] = {
 	[0] = DEFINE_RES_MEM(S5P_PA_JPEG, SZ_4K),
@@ -341,6 +314,49 @@ void __init s5p_fimd0_set_platdata(struct s3c_fb_platdata *pd)
 			 &s5p_device_fimd0);
 }
 #endif /* CONFIG_S5P_DEV_FIMD0 */
+
+/* G2D */
+
+#ifdef CONFIG_S5P_DEV_G2D
+static struct resource s5p_g2d_resource[] = {
+	[0] = DEFINE_RES_MEM(S5P_PA_G2D, SZ_4K),
+	[1] = DEFINE_RES_IRQ(IRQ_2D),
+};
+
+struct platform_device s5p_device_g2d = {
+	.name		= "s5p-g2d",
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(s5p_g2d_resource),
+	.resource	= s5p_g2d_resource,
+	.dev		= {
+		.dma_mask		= &samsung_device_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+};
+
+#ifdef CONFIG_VIDEO_FIMG2D4X
+static struct fimg2d_platdata default_g2d_data __initdata = {
+	.parent_clkname = "mout_g2d0",
+	.clkname = "sclk_fimg2d",
+	.gate_clkname = "fimg2d",
+	.clkrate = 250 * 1000000,
+};
+
+void __init s5p_fimg2d_set_platdata(struct fimg2d_platdata *pd)
+{
+	struct fimg2d_platdata *npd;
+
+	if (!pd)
+		pd = &default_g2d_data;
+
+	npd = kmemdup(pd, sizeof(*pd), GFP_KERNEL);
+	if (!npd)
+		printk(KERN_ERR "no memory for fimg2d platform data\n");
+	else
+		s5p_device_g2d.dev.platform_data = npd;
+}
+#endif /* CONFIG_VIDEO_FIMG2D4X */
+#endif /* CONFIG_S5P_DEV_G2D */
 
 /* HWMON */
 
