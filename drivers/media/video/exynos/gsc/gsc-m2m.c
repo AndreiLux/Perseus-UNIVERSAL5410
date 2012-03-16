@@ -135,10 +135,14 @@ static void gsc_m2m_device_run(void *priv)
 	}
 
 	gsc_set_prefbuf(gsc, ctx->s_frame);
-	gsc_hw_set_input_addr(gsc, &ctx->s_frame.addr, GSC_M2M_BUF_NUM);
-	gsc_hw_set_output_addr(gsc, &ctx->d_frame.addr, GSC_M2M_BUF_NUM);
 
 	if (ctx->state & GSC_PARAMS) {
+		gsc_hw_set_sw_reset(gsc);
+		ret = gsc_wait_reset(gsc);
+		if (ret < 0) {
+			gsc_err("gscaler s/w reset timeout");
+			goto put_device;
+		}
 		gsc_hw_set_input_buf_masking(gsc, GSC_M2M_BUF_NUM, false);
 		gsc_hw_set_output_buf_masking(gsc, GSC_M2M_BUF_NUM, false);
 		gsc_hw_set_frm_done_irq_mask(gsc, false);
@@ -167,6 +171,8 @@ static void gsc_m2m_device_run(void *priv)
 	/* When you update SFRs in the middle of operating
 	gsc_hw_set_sfr_update(ctx);
 	*/
+	gsc_hw_set_input_addr(gsc, &ctx->s_frame.addr, GSC_M2M_BUF_NUM);
+	gsc_hw_set_output_addr(gsc, &ctx->d_frame.addr, GSC_M2M_BUF_NUM);
 
 	ctx->state &= ~GSC_PARAMS;
 
@@ -180,7 +186,6 @@ static void gsc_m2m_device_run(void *priv)
 			gsc_err("gscaler wait operating timeout");
 			goto put_device;
 		}
-		gsc_hw_enable_control(gsc, false);
 	}
 
 	spin_unlock_irqrestore(&ctx->slock, flags);
@@ -358,6 +363,7 @@ static int gsc_m2m_reqbufs(struct file *file, void *fh,
 
 	max_cnt = (reqbufs->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) ?
 		gsc->variant->in_buf_cnt : gsc->variant->out_buf_cnt;
+
 	if (reqbufs->count > max_cnt)
 		return -EINVAL;
 	else if (reqbufs->count == 0) {

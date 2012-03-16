@@ -264,22 +264,34 @@ void gsc_get_prescaler_shfactor(u32 hratio, u32 vratio, u32 *sh)
 }
 
 void gsc_check_src_scale_info(struct gsc_variant *var, struct gsc_frame *s_frame,
-			      u32 *wratio, u32 tx, u32 ty, u32 *hratio)
+			      u32 *wratio, u32 tx, u32 ty, u32 *hratio, int rot)
 {
 	int remainder = 0, walign, halign;
+	int poly_sc_walign, poly_sc_halign;
+
+	poly_sc_walign = var->pix_align->real_w;
+	poly_sc_halign = var->pix_align->real_h;
 
 	if (is_yuv420(s_frame->fmt->pixelformat)) {
-		walign = GSC_SC_ALIGN_4;
-		halign = GSC_SC_ALIGN_4;
+		walign = *wratio << poly_sc_walign;
+		halign = *hratio << poly_sc_halign;
 	} else if (is_yuv422(s_frame->fmt->pixelformat)) {
-		walign = GSC_SC_ALIGN_4;
-		halign = GSC_SC_ALIGN_2;
+		walign = *wratio << poly_sc_walign;
+		if (rot == 90 || rot == 270)
+			halign = *hratio << poly_sc_halign;
+		else
+			halign = *hratio << (poly_sc_halign - 1);
 	} else {
-		walign = GSC_SC_ALIGN_2;
-		halign = GSC_SC_ALIGN_2;
+		if (rot == 90 || rot == 270) {
+			walign = *wratio << poly_sc_walign;
+			halign = *hratio << poly_sc_halign;
+		} else {
+			walign = *wratio << (poly_sc_walign - 1);
+			halign = *hratio << (poly_sc_halign - 1);
+		}
 	}
 
-	remainder = s_frame->crop.width % (*wratio * walign);
+	remainder = s_frame->crop.width % walign;
 	if (remainder) {
 		s_frame->crop.width -= remainder;
 		gsc_cal_prescaler_ratio(var, s_frame->crop.width, tx, wratio);
@@ -287,7 +299,7 @@ void gsc_check_src_scale_info(struct gsc_variant *var, struct gsc_frame *s_frame
 			s_frame->crop.width + remainder, s_frame->crop.width);
 	}
 
-	remainder = s_frame->crop.height % (*hratio * halign);
+	remainder = s_frame->crop.height % halign;
 	if (remainder) {
 		s_frame->crop.height -= remainder;
 		gsc_cal_prescaler_ratio(var, s_frame->crop.height, ty, hratio);
@@ -634,8 +646,10 @@ int gsc_set_scaler_info(struct gsc_ctx *ctx)
 	struct gsc_frame *s_frame = &ctx->s_frame;
 	struct gsc_frame *d_frame = &ctx->d_frame;
 	struct gsc_variant *variant = ctx->gsc_dev->variant;
-	int tx, ty;
+	int tx, ty, rot;
 	int ret;
+
+	rot = ctx->gsc_ctrls.rotate->val;
 
 	ret = gsc_check_scaler_ratio(variant, s_frame->crop.width,
 		s_frame->crop.height, d_frame->crop.width, d_frame->crop.height,
@@ -645,8 +659,7 @@ int gsc_set_scaler_info(struct gsc_ctx *ctx)
 		return ret;
 	}
 
-	if (ctx->gsc_ctrls.rotate->val == 90 ||
-	    ctx->gsc_ctrls.rotate->val == 270) {
+	if (rot == 90 || rot == 270) {
 		ty = d_frame->crop.width;
 		tx = d_frame->crop.height;
 	} else {
@@ -669,7 +682,7 @@ int gsc_set_scaler_info(struct gsc_ctx *ctx)
 	}
 
 	gsc_check_src_scale_info(variant, s_frame, &sc->pre_hratio,
-				 tx, ty, &sc->pre_vratio);
+				 tx, ty, &sc->pre_vratio, rot);
 
 	gsc_get_prescaler_shfactor(sc->pre_hratio, sc->pre_vratio,
 				   &sc->pre_shfactor);
@@ -1072,7 +1085,7 @@ void gsc_cap_irq_handler(struct gsc_dev *gsc)
 	int done_index;
 
 	done_index = gsc_hw_get_done_output_buf_index(gsc);
-	gsc_info("done_index : %d", done_index);
+	gsc_dbg("done_index : %d", done_index);
 	if (done_index < 0)
 		gsc_err("All buffers are masked\n");
 	test_bit(ST_CAPT_RUN, &gsc->state) ? :
@@ -1431,7 +1444,7 @@ static const struct dev_pm_ops gsc_pm_ops = {
 	.runtime_resume		= gsc_runtime_resume,
 };
 
-struct gsc_pix_max gsc_v_100_max = {
+struct gsc_pix_max gsc_v_max = {
 	.org_scaler_bypass_w	= 8192,
 	.org_scaler_bypass_h	= 8192,
 	.org_scaler_input_w	= 4800,
@@ -1446,31 +1459,54 @@ struct gsc_pix_max gsc_v_100_max = {
 	.target_rot_en_h	= 2016,
 };
 
-struct gsc_pix_min gsc_v_100_min = {
-	.org_w			= 64,
-	.org_h			= 32,
-	.real_w			= 64,
-	.real_h			= 32,
-	.target_rot_dis_w	= 64,
-	.target_rot_dis_h	= 32,
-	.target_rot_en_w	= 32,
-	.target_rot_en_h	= 16,
+struct gsc_pix_min gsc_v_min[2] = {
+	[0] = {
+		.org_w			= 64,
+		.org_h			= 32,
+		.real_w			= 64,
+		.real_h			= 32,
+		.target_rot_dis_w	= 64,
+		.target_rot_dis_h	= 32,
+		.target_rot_en_w	= 32,
+		.target_rot_en_h	= 16,
+	},
+	[1] = {
+		.org_w			= 16,
+		.org_h			= 8,
+		.real_w			= 16,
+		.real_h			= 16,
+		.target_rot_dis_w	= 16,
+		.target_rot_dis_h	= 8,
+		.target_rot_en_w	= 16,
+		.target_rot_en_h	= 8,
+	},
 };
 
-struct gsc_pix_align gsc_v_100_align = {
-	.org_h			= 16,
-	.org_w			= 16, /* yuv420 : 16, others : 8 */
-	.offset_h		= 2,  /* yuv420/422 : 2, others : 1 */
-	.real_w			= 16, /* yuv420/422 : 4~16, others : 2~8 */
-	.real_h			= 16, /* yuv420 : 4~16, others : 1 */
-	.target_w		= 2,  /* yuv420/422 : 2, others : 1 */
-	.target_h		= 2,  /* yuv420 : 2, others : 1 */
+struct gsc_pix_align gsc_v_align[2] = {
+	[0] = {
+		.org_h			= 16,
+		.org_w			= 16,
+		.offset_h		= 2,
+		.real_w			= 2,
+		.real_h			= 2,
+		.target_w		= 2,
+		.target_h		= 2,
+	},
+	[1] = {
+		.org_h			= 16,
+		.org_w			= 16,
+		.offset_h		= 2,
+		.real_w			= 1,
+		.real_h			= 1,
+		.target_w		= 2,
+		.target_h		= 2,
+	},
 };
 
 struct gsc_variant gsc_v_100_variant = {
-	.pix_max		= &gsc_v_100_max,
-	.pix_min		= &gsc_v_100_min,
-	.pix_align		= &gsc_v_100_align,
+	.pix_max		= &gsc_v_max,
+	.pix_min		= &gsc_v_min[0],
+	.pix_align		= &gsc_v_align[0],
 	.in_buf_cnt		= 8,
 	.out_buf_cnt		= 16,
 	.sc_up_max		= 8,
@@ -1478,6 +1514,19 @@ struct gsc_variant gsc_v_100_variant = {
 	.poly_sc_down_max	= 4,
 	.pre_sc_down_max	= 4,
 	.local_sc_down		= 2,
+};
+
+struct gsc_variant gsc_v_200_variant = {
+	.pix_max		= &gsc_v_max,
+	.pix_min		= &gsc_v_min[1],
+	.pix_align		= &gsc_v_align[1],
+	.in_buf_cnt		= 4,
+	.out_buf_cnt		= 16,
+	.sc_up_max		= 8,
+	.sc_down_max		= 16,
+	.poly_sc_down_max	= 4,
+	.pre_sc_down_max	= 4,
+	.local_sc_down		= 4,
 };
 
 static struct gsc_driverdata gsc_v_100_drvdata = {
@@ -1488,13 +1537,26 @@ static struct gsc_driverdata gsc_v_100_drvdata = {
 		[3] = &gsc_v_100_variant,
 	},
 	.num_entities = 4,
-	.lclk_frequency = 266000000UL,
+};
+
+static struct gsc_driverdata gsc_v_200_drvdata = {
+	.variant = {
+		[0] = &gsc_v_200_variant,
+		[1] = &gsc_v_200_variant,
+		[2] = &gsc_v_200_variant,
+		[3] = &gsc_v_200_variant,
+	},
+	.num_entities = 4,
 };
 
 static struct platform_device_id gsc_driver_ids[] = {
 	{
 		.name		= "exynos-gsc",
 		.driver_data	= (unsigned long)&gsc_v_100_drvdata,
+	},
+	{
+		.name		= "exynos5250-gsc",
+		.driver_data	= (unsigned long)&gsc_v_200_drvdata,
 	},
 	{},
 };

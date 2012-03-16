@@ -35,15 +35,6 @@ int gsc_out_hw_reset_off (struct gsc_dev *gsc)
 {
 	int ret;
 
-	mdelay(1);
-	gsc_hw_set_sw_reset(gsc);
-	ret = gsc_wait_reset(gsc);
-	if (ret < 0) {
-		gsc_err("gscaler s/w reset timeout");
-		return ret;
-	}
-	gsc_pixelasync_sw_reset(gsc);
-	gsc_disp_fifo_sw_reset(gsc);
 	gsc_hw_enable_control(gsc, false);
 	ret = gsc_wait_stop(gsc);
 	if (ret < 0) {
@@ -255,6 +246,8 @@ static int gsc_subdev_set_crop(struct v4l2_subdev *sd,
 		f->crop.top = crop->rect.top;
 		f->crop.width = crop->rect.width;
 		f->crop.height = crop->rect.height;
+		if (f->crop.width % 2)
+			f->crop.width -= 1;
 	}
 
 	gsc_dbg("pad%d: (%d,%d)/%dx%d", crop->pad, crop->rect.left, crop->rect.top,
@@ -715,11 +708,12 @@ static void gsc_out_buffer_queue(struct vb2_buffer *vb)
 
 	if (!test_and_set_bit(ST_OUTPUT_STREAMON, &gsc->state)) {
 		pm_runtime_get_sync(&gsc->pdev->dev);
-		if (ctx->out_path == GSC_FIMD) {
-			gsc_disp_fifo_sw_reset(gsc);
-			gsc_pixelasync_sw_reset(gsc);
+		gsc_hw_set_sw_reset(gsc);
+		ret = gsc_wait_reset(gsc);
+		if (ret < 0) {
+			gsc_err("gscaler s/w reset timeout");
+			return;
 		}
-
 	}
 
 	if (gsc->out.req_cnt >= atomic_read(&q->queued_count)) {

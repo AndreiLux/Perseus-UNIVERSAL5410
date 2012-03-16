@@ -100,10 +100,9 @@ void gsc_hw_set_one_frm_mode(struct gsc_dev *dev, bool mask)
 	u32 cfg;
 
 	cfg = readl(dev->regs + GSC_ENABLE);
+	cfg &= ~(GSC_ENABLE_ON_CLEAR_MASK);
 	if (mask)
-		cfg |= GSC_ENABLE_ON_CLEAR;
-	else
-		cfg &= ~GSC_ENABLE_ON_CLEAR;
+		cfg |= GSC_ENABLE_ON_CLEAR_ONESHOT;
 	writel(cfg, dev->regs + GSC_ENABLE);
 }
 
@@ -656,6 +655,9 @@ void gsc_hw_set_sysreg_writeback(struct gsc_ctx *ctx)
 
 	u32 cfg = readl(SYSREG_GSCBLK_CFG1);
 
+	cfg &= ~GSC_BLK_SW_RESET_WB_DEST(dev->id);
+	writel(cfg, SYSREG_GSCBLK_CFG1);
+
 	cfg |= GSC_BLK_DISP1WB_DEST(dev->id);
 	cfg |= GSC_BLK_GSCL_WB_IN_SRC_SEL(dev->id);
 	cfg |= GSC_BLK_SW_RESET_WB_DEST(dev->id);
@@ -663,16 +665,25 @@ void gsc_hw_set_sysreg_writeback(struct gsc_ctx *ctx)
 	writel(cfg, SYSREG_GSCBLK_CFG1);
 }
 
-void gsc_hw_set_sysreg_camif(bool on)
+void gsc_hw_set_pxlasync_camif_lo_mask(struct gsc_dev *dev, bool on)
 {
-	u32 cfg = readl(SYSREG_GSCBLK_CFG0);
+	u32 cfg = 0;
 
-	if (on)
-		cfg |= GSC_PXLASYNC_CAMIF_TOP;
-	else
-		cfg &= ~(GSC_PXLASYNC_CAMIF_TOP);
-
-	writel(cfg, SYSREG_GSCBLK_CFG0);
+	if (dev->id == 3) {
+		cfg = readl(SYSREG_GSCBLK_CFG0);
+		if (on)
+			cfg |= PXLASYNC_LO_MASK_CAMIF_TOP;
+		else
+			cfg &= ~(PXLASYNC_LO_MASK_CAMIF_TOP);
+		writel(cfg, SYSREG_GSCBLK_CFG0);
+	} else {
+		cfg = readl(SYSREG_GSCBLK_CFG2);
+		if (on)
+			cfg |= PXLASYNC_LO_MASK_CAMIF_GSCL(dev->id);
+		else
+			cfg &= ~PXLASYNC_LO_MASK_CAMIF_GSCL(dev->id);
+		writel(cfg, SYSREG_GSCBLK_CFG2);
+	}
 }
 
 void gsc_hw_set_h_coef(struct gsc_ctx *ctx)

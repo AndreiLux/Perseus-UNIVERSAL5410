@@ -78,8 +78,6 @@ extern int gsc_dbg;
 #define GSC_OUT_BUF_MAX			2
 #define GSC_MAX_CTRL_NUM		10
 #define GSC_OUT_MAX_MASK_NUM		7
-#define GSC_SC_ALIGN_4			4
-#define GSC_SC_ALIGN_2			2
 #define GSC_OUT_DEF_SRC			15
 #define GSC_OUT_DEF_DST			7
 #define DEFAULT_GSC_SINK_WIDTH		800
@@ -464,12 +462,10 @@ struct gsc_variant {
  * struct gsc_driverdata - per device type driver data for init time.
  *
  * @variant: the variant information for this driver.
- * @lclk_frequency: g-scaler clock frequency
  * @num_entities: the number of g-scalers
  */
 struct gsc_driverdata {
 	struct gsc_variant *variant[GSC_MAX_DEVS];
-	unsigned long	lclk_frequency;
 	int		num_entities;
 };
 
@@ -604,7 +600,7 @@ int gsc_try_crop(struct gsc_ctx *ctx, struct v4l2_crop *cr);
 int gsc_cal_prescaler_ratio(struct gsc_variant *var, u32 src, u32 dst, u32 *ratio);
 void gsc_get_prescaler_shfactor(u32 hratio, u32 vratio, u32 *sh);
 void gsc_check_src_scale_info(struct gsc_variant *var, struct gsc_frame *s_frame,
-			      u32 *wratio, u32 tx, u32 ty, u32 *hratio);
+			u32 *wratio, u32 tx, u32 ty, u32 *hratio, int rot);
 int gsc_check_scaler_ratio(struct gsc_variant *var, int sw, int sh, int dw,
 			   int dh, int rot, int out_path);
 int gsc_set_scaler_info(struct gsc_ctx *ctx);
@@ -782,7 +778,7 @@ void gsc_hw_set_global_alpha(struct gsc_ctx *ctx);
 void gsc_hw_set_sfr_update(struct gsc_ctx *ctx);
 void gsc_hw_set_local_dst(int id, bool on);
 void gsc_hw_set_sysreg_writeback(struct gsc_ctx *ctx);
-void gsc_hw_set_sysreg_camif(bool on);
+void gsc_hw_set_pxlasync_camif_lo_mask(struct gsc_dev *dev, bool on);
 void gsc_hw_set_h_coef(struct gsc_ctx *ctx);
 void gsc_hw_set_v_coef(struct gsc_ctx *ctx);
 

@@ -248,8 +248,8 @@ static int gsc_capture_subdev_s_stream(struct v4l2_subdev *sd, int enable)
 		if (gsc->pipeline.disp)
 			gsc_hw_set_sysreg_writeback(ctx);
 		else
-			gsc_hw_set_sysreg_camif(true);
-		
+			gsc_hw_set_pxlasync_camif_lo_mask(gsc, true);
+
 		gsc_hw_set_input_path(ctx);
 		gsc_hw_set_in_size(ctx);
 		gsc_hw_set_in_image_format(ctx);
@@ -271,6 +271,7 @@ static int gsc_capture_subdev_s_stream(struct v4l2_subdev *sd, int enable)
 	} else {
 		gsc_info("stop");
 	}
+
 	return 0;
 }
 
@@ -708,6 +709,7 @@ static int gsc_capture_open(struct file *file)
 	}
 
 	set_bit(ST_CAPT_OPEN, &gsc->state);
+
 	pm_runtime_get_sync(&gsc->pdev->dev);
 
 	if (++gsc->cap.refcnt == 1) {
