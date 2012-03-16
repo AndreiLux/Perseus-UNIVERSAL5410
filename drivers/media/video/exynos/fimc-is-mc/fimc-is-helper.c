@@ -27,7 +27,7 @@
 #include <linux/videodev2.h>
 #include <media/v4l2-subdev.h>
 #include <linux/videodev2.h>
-#include <linux/videodev2_samsung.h>
+#include <linux/videodev2_exynos_camera.h>
 #include <linux/gpio.h>
 #include <linux/gpio_event.h>
 #include <plat/gpio-cfg.h>
