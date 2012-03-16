@@ -250,6 +250,7 @@ struct mxt_data {
 
 	/* Cached parameters from object table */
 	u16 T5_address;
+	u8 T6_reportid;
 	u8 T9_reportid_min;
 	u8 T9_reportid_max;
 	u16 T44_address;
@@ -591,8 +592,15 @@ static int mxt_proc_messages(struct mxt_data *data, u8 count)
 		mxt_dump_message(dev, msg);
 
 		if (msg->reportid >= data->T9_reportid_min &&
-		    msg->reportid <= data->T9_reportid_max)
+		    msg->reportid <= data->T9_reportid_max) {
 			mxt_input_touchevent(data, msg);
+		} else if (msg->reportid == data->T6_reportid) {
+			unsigned csum = msg->message[1] |
+					(msg->message[2] << 8) |
+					(msg->message[3] << 16);
+			dev_info(dev, "Status: %02x Config Checksum: %06x\n",
+				 msg->message[0], csum);
+		}
 	}
 
 	return 0;
@@ -652,28 +660,6 @@ static int mxt_check_reg_init(struct mxt_data *data)
 		if (ret)
 			return ret;
 		offset += config_size;
-	}
-
-	return 0;
-}
-
-static int mxt_make_highchg(struct mxt_data *data)
-{
-	struct device *dev = &data->client->dev;
-	struct mxt_message message;
-	int count = 10;
-	int error;
-
-	/* Read dummy message to make high CHG pin */
-	do {
-		error = mxt_read_messages(data, 1, &message);
-		if (error)
-			return error;
-	} while (message.reportid != 0xff && --count);
-
-	if (!count) {
-		dev_err(dev, "CHG pin isn't cleared\n");
-		return -EBUSY;
 	}
 
 	return 0;
@@ -773,6 +759,9 @@ static int mxt_get_object_table(struct mxt_data *data)
 		switch (object->type) {
 		case MXT_GEN_MESSAGE_T5:
 			data->T5_address = object->start_address;
+			break;
+		case MXT_GEN_COMMAND_T6:
+			data->T6_reportid = min_id;
 			break;
 		case MXT_TOUCH_MULTI_T9:
 			data->T9_reportid_min = min_id;
@@ -1041,7 +1030,7 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 
 	enable_irq(data->irq);
 
-	error = mxt_make_highchg(data);
+	error = mxt_handle_messages(data);
 	if (error)
 		return error;
 
@@ -1161,7 +1150,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		goto err_free_object;
 	}
 
-	error = mxt_make_highchg(data);
+	error = mxt_handle_messages(data);
 	if (error)
 		goto err_free_irq;
 
