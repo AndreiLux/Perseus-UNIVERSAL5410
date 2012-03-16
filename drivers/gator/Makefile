@@ -39,7 +39,7 @@ clean-files := gator_events.h
 silent_chk_events.h = :
 gator_events.h: FORCE
 	@$($(quiet)chk_events.h)
-	$(Q)cd $(obj) ; $(CONFIG_SHELL) $(obj)/gator_events.sh $@
+	$(Q)cd $(srctree)/$(src) ; $(CONFIG_SHELL) gator_events.sh $(objtree)/$(obj)/$@
 
 else
 
