@@ -676,6 +676,8 @@ static int sdhci_s3c_suspend(struct device *dev)
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 
+	if (host->mmc)
+		host->mmc->pm_flags |= host->mmc->pm_caps;
 	return sdhci_suspend_host(host);
 }
 
