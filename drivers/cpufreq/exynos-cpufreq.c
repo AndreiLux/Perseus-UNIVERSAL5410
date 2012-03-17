@@ -118,6 +118,9 @@ static int exynos_target(struct cpufreq_policy *policy,
 	freqs.new = freq_table[index].frequency;
 	freqs.cpu = policy->cpu;
 
+	if (freqs.old == freqs.new)
+		goto out;
+
 	/*
 	 * ARM clock source will be changed APLL to MPLL temporary
 	 * To support this level, need to control regulator for
@@ -139,8 +142,8 @@ static int exynos_target(struct cpufreq_policy *policy,
 	if (safe_arm_volt)
 		regulator_set_voltage(arm_regulator, safe_arm_volt,
 				      safe_arm_volt);
-	if (freqs.new != freqs.old)
-		exynos_info->set_freq(old_index, index);
+
+	exynos_info->set_freq(old_index, index);
 
 	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
 
