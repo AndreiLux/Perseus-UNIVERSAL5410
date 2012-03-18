@@ -86,10 +86,8 @@ static int exynos4_check_reg_status(struct check_reg_lpa *reg_list,
 
 static int exynos4_uart_fifo_check(void)
 {
-	unsigned int ret;
+	int ret;
 	unsigned int check_val;
-
-	ret = 0;
 
 	/* Check UART for console is empty */
 	check_val = __raw_readl(S5P_VA_UART(CONFIG_S3C_LOWLEVEL_UART_PORT) +
