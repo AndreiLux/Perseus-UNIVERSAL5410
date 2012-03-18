@@ -46,6 +46,19 @@ static DEFINE_IDR(cpufreq_idr);
 static DEFINE_PER_CPU(unsigned int, max_policy_freq);
 static struct freq_clip_table *notify_table;
 static int notify_state;
+
+struct hotplug_cooling_device {
+	int id;
+	struct thermal_cooling_device *cool_dev;
+	unsigned int hotplug_state;
+	const struct cpumask *allowed_cpus;
+	struct list_head node;
+};
+
+static LIST_HEAD(cooling_cpuhotplug_list);
+static DEFINE_MUTEX(cooling_cpuhotplug_lock);
+static DEFINE_IDR(cpuhotplug_idr);
+
 static BLOCKING_NOTIFIER_HEAD(cputherm_state_notifier_list);
 
 static int get_idr(struct idr *idr, struct mutex *lock, int *id)
@@ -357,3 +370,160 @@ void cpufreq_cooling_unregister(struct thermal_cooling_device *cdev)
 	kfree(cpufreq_dev);
 }
 EXPORT_SYMBOL(cpufreq_cooling_unregister);
+
+/*
+ * cpu hotplug cooling device callback functions
+ */
+static int cpuhotplug_get_max_state(struct thermal_cooling_device *cdev,
+				 unsigned long *state)
+{
+	int ret = -EINVAL;
+	struct hotplug_cooling_device *hotplug_dev;
+
+	/*
+	* This cooling device may be of type ACTIVE, so state field can
+	* be 0 or 1
+	*/
+	mutex_lock(&cooling_cpuhotplug_lock);
+	list_for_each_entry(hotplug_dev, &cooling_cpuhotplug_list, node) {
+		if (hotplug_dev && hotplug_dev->cool_dev == cdev) {
+			*state = 1;
+			ret = 0;
+			break;
+		}
+	}
+	mutex_unlock(&cooling_cpuhotplug_lock);
+	return ret;
+}
+
+static int cpuhotplug_get_cur_state(struct thermal_cooling_device *cdev,
+				 unsigned long *state)
+{
+	int ret = -EINVAL;
+	struct hotplug_cooling_device *hotplug_dev;
+
+	mutex_lock(&cooling_cpuhotplug_lock);
+	list_for_each_entry(hotplug_dev, &cooling_cpuhotplug_list, node) {
+		if (hotplug_dev && hotplug_dev->cool_dev == cdev) {
+			*state = hotplug_dev->hotplug_state;
+			ret = 0;
+			break;
+		}
+	}
+	mutex_unlock(&cooling_cpuhotplug_lock);
+	return ret;
+}
+
+/*This cooling may be as ACTIVE type*/
+static int cpuhotplug_set_cur_state(struct thermal_cooling_device *cdev,
+				 unsigned long state)
+{
+	int cpuid, this_cpu = smp_processor_id();
+	struct hotplug_cooling_device *hotplug_dev;
+
+	mutex_lock(&cooling_cpuhotplug_lock);
+	list_for_each_entry(hotplug_dev, &cooling_cpuhotplug_list, node)
+		if (hotplug_dev && hotplug_dev->cool_dev == cdev)
+			break;
+
+	mutex_unlock(&cooling_cpuhotplug_lock);
+	if (!hotplug_dev || hotplug_dev->cool_dev != cdev)
+		return -EINVAL;
+
+	if (hotplug_dev->hotplug_state == state)
+		return 0;
+
+	/*
+	* This cooling device may be of type ACTIVE, so state field can
+	* be 0 or 1
+	*/
+	if (state == 1) {
+		for_each_cpu(cpuid, hotplug_dev->allowed_cpus) {
+			if (cpu_online(cpuid) && (cpuid != this_cpu))
+				cpu_down(cpuid);
+		}
+	} else if (state == 0) {
+		for_each_cpu(cpuid, hotplug_dev->allowed_cpus) {
+			if (!cpu_online(cpuid) && (cpuid != this_cpu))
+				cpu_up(cpuid);
+		}
+	} else {
+		return -EINVAL;
+	}
+
+	hotplug_dev->hotplug_state = state;
+
+	return 0;
+}
+/* bind hotplug callbacks to cpu hotplug cooling device */
+static struct thermal_cooling_device_ops cpuhotplug_cooling_ops = {
+	.get_max_state = cpuhotplug_get_max_state,
+	.get_cur_state = cpuhotplug_get_cur_state,
+	.set_cur_state = cpuhotplug_set_cur_state,
+};
+
+struct thermal_cooling_device *cpuhotplug_cooling_register(
+	const struct cpumask *mask_val)
+{
+	struct thermal_cooling_device *cool_dev;
+	struct hotplug_cooling_device *hotplug_dev;
+	int ret = 0;
+	char dev_name[THERMAL_NAME_LENGTH];
+
+	hotplug_dev =
+		kzalloc(sizeof(struct hotplug_cooling_device), GFP_KERNEL);
+
+	if (!hotplug_dev)
+		return ERR_PTR(-ENOMEM);
+
+	ret = get_idr(&cpuhotplug_idr, &cooling_cpuhotplug_lock,
+			&hotplug_dev->id);
+	if (ret) {
+		kfree(hotplug_dev);
+		return ERR_PTR(-EINVAL);
+	}
+
+	sprintf(dev_name, "cpu-hotplug-%u", hotplug_dev->id);
+
+	hotplug_dev->hotplug_state = 0;
+	hotplug_dev->allowed_cpus = mask_val;
+	cool_dev = thermal_cooling_device_register(dev_name, hotplug_dev,
+						&cpuhotplug_cooling_ops);
+	if (!cool_dev) {
+		release_idr(&cpuhotplug_idr, &cooling_cpuhotplug_lock,
+				hotplug_dev->id);
+		kfree(hotplug_dev);
+		return ERR_PTR(-EINVAL);
+	}
+
+	hotplug_dev->cool_dev = cool_dev;
+	mutex_lock(&cooling_cpuhotplug_lock);
+	list_add_tail(&hotplug_dev->node, &cooling_cpuhotplug_list);
+	mutex_unlock(&cooling_cpuhotplug_lock);
+
+	return cool_dev;
+}
+EXPORT_SYMBOL(cpuhotplug_cooling_register);
+
+void cpuhotplug_cooling_unregister(struct thermal_cooling_device *cdev)
+{
+	struct hotplug_cooling_device *hotplug_dev = NULL;
+
+	mutex_lock(&cooling_cpuhotplug_lock);
+	list_for_each_entry(hotplug_dev, &cooling_cpuhotplug_list, node)
+		if (hotplug_dev && hotplug_dev->cool_dev == cdev)
+			break;
+
+	if (!hotplug_dev || hotplug_dev->cool_dev != cdev) {
+		mutex_unlock(&cooling_cpuhotplug_lock);
+		return;
+	}
+
+	list_del(&hotplug_dev->node);
+	mutex_unlock(&cooling_cpuhotplug_lock);
+	thermal_cooling_device_unregister(hotplug_dev->cool_dev);
+	release_idr(&cpuhotplug_idr, &cooling_cpuhotplug_lock,
+						hotplug_dev->id);
+	kfree(hotplug_dev);
+}
+EXPORT_SYMBOL(cpuhotplug_cooling_unregister);

@@ -38,6 +38,22 @@ the cooling device pointer.
 
     cdev: Cooling device pointer which has to be unregistered.
 
+1.2 cpuhotplug registration APIs
+1.2.1 struct thermal_cooling_device *cpuhotplug_cooling_register(
+	const struct cpumask *mask_val)
+
+    This interface function registers the cpuhotplug cooling device with the name
+    "cpu-hotplug-%x". This api can support multiple instances of cpuhotplug
+    cooling devices.
+
+    mask_val: all the allowed cpu's which can be hotplugged out.
+
+1.1.2 void cpuhotplug_cooling_unregister(struct thermal_cooling_device *cdev)
+
+    This interface function unregisters the "thermal-cpuhotplug-%x" cooling
+    device.
+
+    cdev: Cooling device pointer which has to be unregistered.
 
 2. CPU cooling action notifier interface
 
