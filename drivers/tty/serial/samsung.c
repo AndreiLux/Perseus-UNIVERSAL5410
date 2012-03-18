@@ -1168,7 +1168,6 @@ static DEVICE_ATTR(clock_source, S_IRUGO, s3c24xx_serial_show_clksrc, NULL);
 /* Device driver serial port probe */
 
 static const struct of_device_id s3c24xx_uart_dt_match[];
-static int probe_index;
 
 static inline struct s3c24xx_serial_drv_data *s3c24xx_get_driver_data(
 			struct platform_device *pdev)
@@ -1189,9 +1188,12 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 	struct s3c24xx_uart_port *ourport;
 	int ret;
 
-	dbg("s3c24xx_serial_probe(%p) %d\n", pdev, probe_index);
+	dbg("s3c24xx_serial_probe(%p) %d\n", pdev, pdev->id);
 
-	ourport = &s3c24xx_serial_ports[probe_index];
+	if (pdev->id >= CONFIG_SERIAL_SAMSUNG_UARTS)
+		return -EINVAL;
+
+	ourport = &s3c24xx_serial_ports[pdev->id];
 
 	ourport->drv_data = s3c24xx_get_driver_data(pdev);
 	if (!ourport->drv_data) {
@@ -1206,9 +1208,7 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 
 	ourport->port.fifosize = (ourport->info->fifosize) ?
 		ourport->info->fifosize :
-		ourport->drv_data->fifosize[probe_index];
-
-	probe_index++;
+		ourport->drv_data->fifosize[pdev->id];
 
 	dbg("%s: initialising port %p...\n", __func__, ourport);
 
