@@ -226,7 +226,7 @@ static int radeon_move_blit(struct ttm_buffer_object *bo,
 	int r, i;
 
 	rdev = radeon_get_rdev(bo->bdev);
-	r = radeon_fence_create(rdev, &fence, rdev->copy_ring);
+	r = radeon_fence_create(rdev, &fence, radeon_copy_ring_index(rdev));
 	if (unlikely(r)) {
 		return r;
 	}
@@ -255,7 +255,7 @@ static int radeon_move_blit(struct ttm_buffer_object *bo,
 		DRM_ERROR("Unknown placement %d\n", old_mem->mem_type);
 		return -EINVAL;
 	}
-	if (!rdev->ring[rdev->copy_ring].ready) {
+	if (!rdev->ring[radeon_copy_ring_index(rdev)].ready) {
 		DRM_ERROR("Trying to move memory with ring turned off.\n");
 		return -EINVAL;
 	}
@@ -266,7 +266,7 @@ static int radeon_move_blit(struct ttm_buffer_object *bo,
 	if (rdev->family >= CHIP_R600) {
 		for (i = 0; i < RADEON_NUM_RINGS; ++i) {
 			/* no need to sync to our own or unused rings */
-			if (i == rdev->copy_ring || !rdev->ring[i].ready)
+			if (i == radeon_copy_ring_index(rdev) || !rdev->ring[i].ready)
 				continue;
 
 			if (!fence->semaphore) {
@@ -283,12 +283,12 @@ static int radeon_move_blit(struct ttm_buffer_object *bo,
 			radeon_semaphore_emit_signal(rdev, i, fence->semaphore);
 			radeon_ring_unlock_commit(rdev, &rdev->ring[i]);
 
-			r = radeon_ring_lock(rdev, &rdev->ring[rdev->copy_ring], 3);
+			r = radeon_ring_lock(rdev, &rdev->ring[radeon_copy_ring_index(rdev)], 3);
 			/* FIXME: handle ring lock error */
 			if (r)
 				continue;
-			radeon_semaphore_emit_wait(rdev, rdev->copy_ring, fence->semaphore);
-			radeon_ring_unlock_commit(rdev, &rdev->ring[rdev->copy_ring]);
+			radeon_semaphore_emit_wait(rdev, radeon_copy_ring_index(rdev), fence->semaphore);
+			radeon_ring_unlock_commit(rdev, &rdev->ring[radeon_copy_ring_index(rdev)]);
 		}
 	}
 
@@ -410,7 +410,8 @@ static int radeon_bo_move(struct ttm_buffer_object *bo,
 		radeon_move_null(bo, new_mem);
 		return 0;
 	}
-	if (!rdev->ring[RADEON_RING_TYPE_GFX_INDEX].ready || rdev->asic->copy == NULL) {
+	if (!rdev->ring[radeon_copy_ring_index(rdev)].ready ||
+	    rdev->asic->copy.copy == NULL) {
 		/* use memcpy */
 		goto memcpy;
 	}
@@ -613,6 +614,7 @@ static int radeon_ttm_tt_populate(struct ttm_tt *ttm)
 	struct radeon_ttm_tt *gtt = (void *)ttm;
 	unsigned i;
 	int r;
+	bool slave = !!(ttm->page_flags & TTM_PAGE_FLAG_SLAVE);
 
 	if (ttm->state != tt_unpopulated)
 		return 0;
@@ -625,15 +627,18 @@ static int radeon_ttm_tt_populate(struct ttm_tt *ttm)
 #endif
 
 #ifdef CONFIG_SWIOTLB
-	if (swiotlb_nr_tbl()) {
+	if (!slave && swiotlb_nr_tbl()) {
 		return ttm_dma_populate(&gtt->ttm, rdev->dev);
 	}
 #endif
 
-	r = ttm_pool_populate(ttm);
-	if (r) {
-		return r;
-	}
+	if (!slave) {
+		r = ttm_pool_populate(ttm);
+		if (r) {
+			return r;
+		}
+	} else
+		ttm->state = tt_unbound;
 
 	for (i = 0; i < ttm->num_pages; i++) {
 		gtt->ttm.dma_address[i] = pci_map_page(rdev->pdev, ttm->pages[i],
@@ -645,7 +650,10 @@ static int radeon_ttm_tt_populate(struct ttm_tt *ttm)
 					       PAGE_SIZE, PCI_DMA_BIDIRECTIONAL);
 				gtt->ttm.dma_address[i] = 0;
 			}
-			ttm_pool_unpopulate(ttm);
+			if (!slave)
+				ttm_pool_unpopulate(ttm);
+			else
+				ttm->state = tt_unpopulated;
 			return -EFAULT;
 		}
 	}
@@ -657,6 +665,7 @@ static void radeon_ttm_tt_unpopulate(struct ttm_tt *ttm)
 	struct radeon_device *rdev;
 	struct radeon_ttm_tt *gtt = (void *)ttm;
 	unsigned i;
+	bool slave = !!(ttm->page_flags & TTM_PAGE_FLAG_SLAVE);
 
 	rdev = radeon_get_rdev(ttm->bdev);
 #if __OS_HAS_AGP
@@ -667,7 +676,7 @@ static void radeon_ttm_tt_unpopulate(struct ttm_tt *ttm)
 #endif
 
 #ifdef CONFIG_SWIOTLB
-	if (swiotlb_nr_tbl()) {
+	if (!slave && swiotlb_nr_tbl()) {
 		ttm_dma_unpopulate(&gtt->ttm, rdev->dev);
 		return;
 	}
@@ -679,8 +688,10 @@ static void radeon_ttm_tt_unpopulate(struct ttm_tt *ttm)
 				       PAGE_SIZE, PCI_DMA_BIDIRECTIONAL);
 		}
 	}
-
-	ttm_pool_unpopulate(ttm);
+	if (!slave)
+		ttm_pool_unpopulate(ttm);
+	else
+		ttm->state = tt_unpopulated;
 }
 
 static struct ttm_bo_driver radeon_bo_driver = {

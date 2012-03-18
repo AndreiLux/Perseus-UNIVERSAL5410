@@ -81,6 +81,7 @@ struct ttm_backend_func {
 #define TTM_PAGE_FLAG_PERSISTENT_SWAP (1 << 5)
 #define TTM_PAGE_FLAG_ZERO_ALLOC      (1 << 6)
 #define TTM_PAGE_FLAG_DMA32           (1 << 7)
+#define TTM_PAGE_FLAG_SLAVE           (1 << 8)
 
 enum ttm_caching_state {
 	tt_uncached,
@@ -683,6 +684,8 @@ extern int ttm_tt_set_placement_caching(struct ttm_tt *ttm, uint32_t placement);
 extern int ttm_tt_swapout(struct ttm_tt *ttm,
 			  struct file *persistent_swap_storage);
 
+extern int ttm_tt_set_sg_pages(struct ttm_tt *ttm,
+			       struct sg_table *sg);
 /*
  * ttm_bo.c
  */

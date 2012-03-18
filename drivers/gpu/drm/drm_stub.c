@@ -313,6 +313,14 @@ int drm_fill_in_dev(struct drm_device *dev,
 		}
 	}
 
+	if (drm_core_check_feature(dev, DRIVER_PRIME)) {
+		int i;
+		for (i = 0; i < DRM_DMA_BUF_HASH_ENTRIES; i++)
+			INIT_HLIST_HEAD(&dev->dma_buf_hash[i]);
+
+		mutex_init(&dev->prime_mutex);
+	}
+
 	return 0;
 
       error_out_unreg:
@@ -429,6 +437,11 @@ int drm_put_minor(struct drm_minor **minor_p)
 	return 0;
 }
 
+static void drm_unplug_minor(struct drm_minor *minor)
+{
+	drm_sysfs_device_remove(minor);
+}
+
 /**
  * Called via drm_exit() at module unload time or when pci device is
  * unplugged.
@@ -492,3 +505,21 @@ void drm_put_dev(struct drm_device *dev)
 	kfree(dev);
 }
 EXPORT_SYMBOL(drm_put_dev);
+
+void drm_unplug_dev(struct drm_device *dev)
+{
+	/* for a USB device */
+	if (drm_core_check_feature(dev, DRIVER_MODESET))
+		drm_unplug_minor(dev->control);
+	drm_unplug_minor(dev->primary);
+
+	mutex_lock(&drm_global_mutex);
+
+	drm_device_set_unplugged(dev);
+
+	if (dev->open_count == 0) {
+		drm_put_dev(dev);
+	}
+	mutex_unlock(&drm_global_mutex);
+}
+EXPORT_SYMBOL(drm_unplug_dev);
