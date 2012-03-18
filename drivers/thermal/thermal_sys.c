@@ -192,6 +192,8 @@ trip_point_type_show(struct device *dev, struct device_attribute *attr,
 		return sprintf(buf, "passive\n");
 	case THERMAL_TRIP_ACTIVE:
 		return sprintf(buf, "active\n");
+	case THERMAL_TRIP_STATE_INSTANCE:
+		return sprintf(buf, "state-instance\n");
 	default:
 		return sprintf(buf, "unknown\n");
 	}
@@ -1034,10 +1036,10 @@ EXPORT_SYMBOL(thermal_cooling_device_unregister);
 
 void thermal_zone_device_update(struct thermal_zone_device *tz)
 {
-	int count, ret = 0;
-	long temp, trip_temp;
+	int count, ret = 0, inst_id;
+	long temp, trip_temp, max_state, last_trip_change = 0;
 	enum thermal_trip_type trip_type;
-	struct thermal_cooling_device_instance *instance;
+	struct thermal_cooling_device_instance *instance, *state_instance;
 	struct thermal_cooling_device *cdev;
 
 	mutex_lock(&tz->lock);
@@ -1084,6 +1086,43 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 					cdev->ops->set_cur_state(cdev, 1);
 				else
 					cdev->ops->set_cur_state(cdev, 0);
+			}
+			break;
+		case THERMAL_TRIP_STATE_INSTANCE:
+			list_for_each_entry(instance, &tz->cooling_devices,
+					    node) {
+				if (instance->trip != count)
+					continue;
+
+				if (temp <= last_trip_change)
+					continue;
+
+				inst_id = 0;
+				/*
+				*For this instance how many instance of same
+				*cooling device occured before
+				*/
+
+				list_for_each_entry(state_instance,
+						&tz->cooling_devices, node) {
+					if (instance->cdev ==
+							state_instance->cdev)
+						inst_id++;
+					if (state_instance->trip == count)
+						break;
+				}
+
+				cdev = instance->cdev;
+				cdev->ops->get_max_state(cdev, &max_state);
+
+				if ((temp >= trip_temp) &&
+						(inst_id <= max_state))
+					cdev->ops->set_cur_state(cdev, inst_id);
+				else if ((temp < trip_temp) &&
+						(--inst_id <= max_state))
+					cdev->ops->set_cur_state(cdev, inst_id);
+
+				last_trip_change = trip_temp;
 			}
 			break;
 		case THERMAL_TRIP_PASSIVE:
