@@ -58,5 +58,22 @@ static inline void cpufreq_cooling_unregister(
 	return;
 }
 #endif	/*CONFIG_CPU_FREQ*/
+#ifdef CONFIG_HOTPLUG_CPU
+extern struct thermal_cooling_device *cpuhotplug_cooling_register(
+	const struct cpumask *mask_val);
+
+extern void cpuhotplug_cooling_unregister(struct thermal_cooling_device *cdev);
+#else /*!CONFIG_HOTPLUG_CPU*/
+static inline struct thermal_cooling_device *cpuhotplug_cooling_register(
+	const struct cpumask *mask_val)
+{
+	return NULL;
+}
+static inline void cpuhotplug_cooling_unregister(
+				struct thermal_cooling_device *cdev)
+{
+	return;
+}
+#endif /*CONFIG_HOTPLUG_CPU*/
 
 #endif /* __CPU_COOLING_H__ */
