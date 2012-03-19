@@ -118,6 +118,11 @@ int __init ux500_idle_init(void)
 	int ret, cpu;
 	struct cpuidle_device *device;
 
+	if (machine_is_u5500()) {
+		printk(KERN_WARNING "cpuidle: u5500 not supported\n");
+		return -ENOSYS;
+	}
+
         /* Configure wake up reasons */
 	prcmu_enable_wakeups(PRCMU_WAKEUP(ARM) | PRCMU_WAKEUP(RTC) |
 			     PRCMU_WAKEUP(ABB));
