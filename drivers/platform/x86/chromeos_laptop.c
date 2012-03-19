@@ -188,12 +188,13 @@ static int find_i2c_adapter_num(enum i2c_adapter_type type)
 {
 	struct device *dev = NULL;
 	struct i2c_adapter *adapter;
+	const char *name = i2c_adapter_names[type];
 	/* find the SMBus adapter */
-	dev = bus_find_device(&i2c_bus_type, NULL, i2c_adapter_names[type],
+	dev = bus_find_device(&i2c_bus_type, NULL, (void *)name,
 			      __find_i2c_adap);
 	if (!dev) {
 		pr_err("%s: i2c adapter %s not found on system.\n", __func__,
-		       i2c_adapter_names[type]);
+		       name);
 		return -ENODEV;
 	}
 	adapter = to_i2c_adapter(dev);
