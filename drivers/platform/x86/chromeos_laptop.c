@@ -21,14 +21,17 @@
 
 #include <linux/dmi.h>
 #include <linux/i2c.h>
+#include <linux/i2c/atmel_mxt_ts.h>
+#include <linux/interrupt.h>
 #include <linux/module.h>
 
+#define ATMEL_TP_I2C_ADDR	0x4b
 #define CYAPA_TP_I2C_ADDR	0x67
 #define ISL_ALS_I2C_ADDR	0x44
 #define TAOS_ALS_I2C_ADDR	0x29
 
-static struct i2c_client *tp;
 static struct i2c_client *als;
+static struct i2c_client *tp;
 
 const char *i2c_adapter_names[] = {
 	"SMBus I801 adapter",
@@ -58,6 +61,70 @@ static struct i2c_board_info __initdata tsl2583_als_device = {
 
 static struct i2c_board_info __initdata tsl2563_als_device = {
 	I2C_BOARD_INFO("tsl2563", TAOS_ALS_I2C_ADDR),
+};
+
+static const u8 atmel_tp_config_data[] = {
+	/* MXT_GEN_COMMAND(6) */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	/* MXT_GEN_POWERCONFIG(7) */
+	0xff, 0xff, 0x32,
+	/* MXT_GEN_ACQUIRE(8) */
+	0x06, 0x00, 0x14, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	/* MXT_TOUCH_MULTI(9) */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+	0x00, 0x02, 0x01, 0x00, 0x0a, 0x03, 0x03, 0x0a, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x20, 0x00, 0x37, 0x37, 0x00,
+	/* MXT_TOUCH_KEYARRAY(15) */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00,
+	/* MXT_SPT_COMMSCONFIG(18) */
+	0x00, 0x00,
+	/* MXT_SPT_GPIOPWM(19) */
+	0x03, 0xDF, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	/* MXT_TOUCH_PROXIMITY(23) */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	/* MXT_SPT_SELFTEST(25)  */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00,
+	/* MXT_PROCI_GRIPSUPPRESSION(40) */
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	/* MXT_PROCI_TOUCHSUPPRESSION(42)  */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	/* MXT_SPT_CTECONFIG(46) */
+	0x00, 0x02, 0x0a, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00,
+	/* MXT_PROCI_STYLUS(47) */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	/* MXT_PROCG_NOISESUPPRESSION(48) */
+	0x01, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00
+};
+
+static struct mxt_platform_data atmel_tp_platform_data = {
+	.x_line			= 18,
+	.y_line			= 12,
+	.x_size			= 102*20,
+	.y_size			= 68*20,
+	.blen			= 0x20,	/* Gain setting is in upper 4 bits */
+	.threshold		= 0x19,
+	.voltage		= 0,	/* 3.3V */
+	.orient			= MXT_HORIZONTAL_FLIP,
+	.irqflags		= IRQF_TRIGGER_FALLING,
+	.config			= atmel_tp_config_data,
+	.config_length		= sizeof(atmel_tp_config_data),
+};
+
+static struct i2c_board_info __initdata atmel_tp_device = {
+	I2C_BOARD_INFO("atmel_mxt_tp", ATMEL_TP_I2C_ADDR),
+	.platform_data = &atmel_tp_platform_data,
+	.irq = -1,
+	.flags		= I2C_CLIENT_WAKE,
 };
 
 static struct i2c_client *__add_i2c_device(const char *name, int bus,
@@ -146,6 +213,13 @@ static struct i2c_client *add_smbus_device(const char *name,
 	return add_i2c_device(name, I2C_ADAPTER_SMBUS, info);
 }
 
+static int setup_atmel_tp(const struct dmi_system_id *id)
+{
+	/* atmel mxt touchpad */
+	tp = add_i2c_device("trackpad", I2C_ADAPTER_VGADDC, &atmel_tp_device);
+	return 0;
+}
+
 static int setup_cyapa_tp(const struct dmi_system_id *id)
 {
 	/* cyapa touchpad */
@@ -181,6 +255,13 @@ static const struct dmi_system_id chromeos_laptop_dmi_table[] = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Lumpy"),
 		},
 		.callback = setup_cyapa_tp,
+	},
+	{
+		.ident = "atmel_ts - Touchpad",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Link"),
+		},
+		.callback = setup_atmel_tp,
 	},
 	{
 		.ident = "isl29018 - Light Sensor",
@@ -219,13 +300,13 @@ static int __init chromeos_laptop_init(void)
 
 static void __exit chromeos_laptop_exit(void)
 {
-	if (tp) {
-		i2c_unregister_device(tp);
-		tp = NULL;
-	}
 	if (als) {
 		i2c_unregister_device(als);
 		als = NULL;
+	}
+	if (tp) {
+		i2c_unregister_device(tp);
+		tp = NULL;
 	}
 }
 
