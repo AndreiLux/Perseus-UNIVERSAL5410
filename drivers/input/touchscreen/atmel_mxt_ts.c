@@ -249,8 +249,10 @@ struct mxt_data {
 	unsigned int max_y;
 
 	/* Cached parameters from object table */
+	u16 T5_address;
 	u8 T9_reportid_min;
 	u8 T9_reportid_max;
+	u16 T44_address;
 };
 
 static bool mxt_object_readable(unsigned int type)
@@ -500,19 +502,17 @@ static int mxt_write_object(struct mxt_data *data, u8 type, u8 instance,
 	return mxt_write_reg(data->client, reg, 1, &val);
 }
 
-static int mxt_read_message(struct mxt_data *data,
-				 struct mxt_message *message)
+static int mxt_read_num_messages(struct mxt_data *data, u8 *count)
 {
-	struct mxt_object *object;
-	u16 reg;
+	/* TODO: Optimization: read first message along with message count */
+	return mxt_read_reg(data->client, data->T44_address, 1, count);
+}
 
-	object = mxt_get_object(data, MXT_GEN_MESSAGE_T5);
-	if (!object)
-		return -EINVAL;
-
-	reg = object->start_address;
-	return mxt_read_reg(data->client, reg, sizeof(struct mxt_message),
-			    message);
+static int mxt_read_messages(struct mxt_data *data, u8 count,
+			     struct mxt_message *messages)
+{
+	return mxt_read_reg(data->client, data->T5_address,
+			    sizeof(struct mxt_message) * count, messages);
 }
 
 static void mxt_input_touchevent(struct mxt_data *data,
@@ -575,26 +575,50 @@ static void mxt_input_touchevent(struct mxt_data *data,
 	input_sync(input_dev);
 }
 
+static int mxt_proc_messages(struct mxt_data *data, u8 count)
+{
+	struct device *dev = &data->client->dev;
+	struct mxt_message messages[count], *msg;
+	int ret;
+
+	ret = mxt_read_messages(data, count, messages);
+	if (ret) {
+		dev_err(dev, "Failed to read %u messages (%d).\n", count, ret);
+		return ret;
+	}
+
+	for (msg = messages; msg < &messages[count]; msg++) {
+		mxt_dump_message(dev, msg);
+
+		if (msg->reportid >= data->T9_reportid_min &&
+		    msg->reportid <= data->T9_reportid_max)
+			mxt_input_touchevent(data, msg);
+	}
+
+	return 0;
+}
+
+static int mxt_handle_messages(struct mxt_data *data)
+{
+	struct device *dev = &data->client->dev;
+	int ret;
+	u8 count;
+
+	ret = mxt_read_num_messages(data, &count);
+	if (ret) {
+		dev_err(dev, "Failed to read message count (%d).\n", ret);
+		return ret;
+	}
+
+	if (count > 0)
+		ret = mxt_proc_messages(data, count);
+
+	return ret;
+}
+
 static irqreturn_t mxt_interrupt(int irq, void *dev_id)
 {
-	struct mxt_data *data = dev_id;
-	struct mxt_message message;
-	struct device *dev = &data->client->dev;
-
-	do {
-		if (mxt_read_message(data, &message)) {
-			dev_err(dev, "Failed to read message\n");
-			goto end;
-		}
-
-		if (message.reportid >= data->T9_reportid_min &&
-		    message.reportid <= data->T9_reportid_max)
-			mxt_input_touchevent(data, &message);
-		else
-			mxt_dump_message(dev, &message);
-	} while (message.reportid != 0xff);
-
-end:
+	mxt_handle_messages(dev_id);
 	return IRQ_HANDLED;
 }
 
@@ -642,7 +666,7 @@ static int mxt_make_highchg(struct mxt_data *data)
 
 	/* Read dummy message to make high CHG pin */
 	do {
-		error = mxt_read_message(data, &message);
+		error = mxt_read_messages(data, 1, &message);
 		if (error)
 			return error;
 	} while (message.reportid != 0xff && --count);
@@ -747,9 +771,15 @@ static int mxt_get_object_table(struct mxt_data *data)
 
 		/* Save data for objects used when processing interrupts */
 		switch (object->type) {
+		case MXT_GEN_MESSAGE_T5:
+			data->T5_address = object->start_address;
+			break;
 		case MXT_TOUCH_MULTI_T9:
 			data->T9_reportid_min = min_id;
 			data->T9_reportid_max = max_id;
+			break;
+		case MXT_SPT_MESSAGECOUNT_T44:
+			data->T44_address = object->start_address;
 			break;
 		}
 	}
