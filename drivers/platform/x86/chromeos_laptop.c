@@ -30,6 +30,18 @@
 static struct i2c_client *tp;
 static struct i2c_client *als;
 
+const char *i2c_adapter_names[] = {
+	"SMBus I801 adapter",
+	"i915 gmbus vga",
+	"i915 gmbus panel",
+};
+
+enum i2c_adapter_type {
+	I2C_ADAPTER_SMBUS = 0,
+	I2C_ADAPTER_VGADDC,
+	I2C_ADAPTER_PANEL,
+};
+
 static struct i2c_board_info __initdata cyapa_device = {
 	I2C_BOARD_INFO("cyapa", CYAPA_TP_I2C_ADDR),
 	.irq		= -1,
@@ -48,41 +60,16 @@ static struct i2c_board_info __initdata tsl2563_als_device = {
 	I2C_BOARD_INFO("tsl2563", TAOS_ALS_I2C_ADDR),
 };
 
-static int __find_i2c_adap(struct device *dev, void *data)
-{
-	const char *name = data;
-	const char *prefix = "i2c-";
-	struct i2c_adapter *adapter;
-	if (strncmp(dev_name(dev), prefix, strlen(prefix)))
-		return 0;
-	adapter = to_i2c_adapter(dev);
-	return !strncmp(adapter->name, name, strlen(name));
-}
-
-static int find_smbus_i801(void)
-{
-	struct device *dev = NULL;
-	struct i2c_adapter *adapter;
-	/* find the SMBus adapter */
-	dev = bus_find_device(&i2c_bus_type, NULL, "SMBus I801 adapter",
-			      __find_i2c_adap);
-	if (!dev) {
-		pr_err("%s: no SMBus adapter found on system.\n", __func__);
-		return -ENODEV;
-	}
-	adapter = to_i2c_adapter(dev);
-	return adapter->nr;
-}
-
-static struct i2c_client *add_smbus_device(const char *name,
+static struct i2c_client *__add_i2c_device(const char *name, int bus,
 					   struct i2c_board_info *info)
 {
 	const struct dmi_device *dmi_dev;
 	const struct dmi_dev_onboard *dev_data;
 	struct i2c_adapter *adapter;
 	struct i2c_client *client;
-	int bus;
 
+	if (bus < 0)
+		return NULL;
 	/*
 	 * If a name is specified, look for irq platform information stashed
 	 * in DMI_DEV_TYPE_DEV_ONBOARD.
@@ -99,15 +86,11 @@ static struct i2c_client *add_smbus_device(const char *name,
 		if (!dev_data) {
 			pr_err("%s failed to get data from dmi for %s.\n",
 			       __func__, name);
-		return NULL;
+			return NULL;
 		}
 		info->irq = dev_data->instance;
 	}
 
-	/* find the SMBus adapter */
-	bus = find_smbus_i801();
-	if (bus < 0)
-		return NULL;
 	adapter = i2c_get_adapter(bus);
 
 	/* add the i2c device */
@@ -116,16 +99,56 @@ static struct i2c_client *add_smbus_device(const char *name,
 		pr_err("%s failed to register device %d-%02x\n",
 		       __func__, bus, info->addr);
 	else
-		pr_debug("%s added smbus device %d-%02x\n",
+		pr_debug("%s added i2c device %d-%02x\n",
 			 __func__, bus, info->addr);
 
 	i2c_put_adapter(adapter);
 	return client;
 }
 
+static int __find_i2c_adap(struct device *dev, void *data)
+{
+	const char *name = data;
+	const char *prefix = "i2c-";
+	struct i2c_adapter *adapter;
+	if (strncmp(dev_name(dev), prefix, strlen(prefix)))
+		return 0;
+	adapter = to_i2c_adapter(dev);
+	return !strncmp(adapter->name, name, strlen(name));
+}
+
+static int find_i2c_adapter_num(enum i2c_adapter_type type)
+{
+	struct device *dev = NULL;
+	struct i2c_adapter *adapter;
+	/* find the SMBus adapter */
+	dev = bus_find_device(&i2c_bus_type, NULL, i2c_adapter_names[type],
+			      __find_i2c_adap);
+	if (!dev) {
+		pr_err("%s: i2c adapter %s not found on system.\n", __func__,
+		       i2c_adapter_names[type]);
+		return -ENODEV;
+	}
+	adapter = to_i2c_adapter(dev);
+	return adapter->nr;
+}
+
+static struct i2c_client *add_i2c_device(const char *name,
+					 enum i2c_adapter_type type,
+					 struct i2c_board_info *info)
+{
+	return __add_i2c_device(name, find_i2c_adapter_num(type), info);
+}
+
+static struct i2c_client *add_smbus_device(const char *name,
+					   struct i2c_board_info *info)
+{
+	return add_i2c_device(name, I2C_ADAPTER_SMBUS, info);
+}
+
 static int setup_cyapa_tp(const struct dmi_system_id *id)
 {
-	/* add cyapa touchpad */
+	/* cyapa touchpad */
 	tp = add_smbus_device("trackpad", &cyapa_device);
 	return 0;
 }
@@ -153,48 +176,35 @@ static int setup_tsl2563_als(const struct dmi_system_id *id)
 
 static const struct dmi_system_id chromeos_laptop_dmi_table[] = {
 	{
-		.ident = "Lumpy - Touchpad",
+		.ident = "cyapa - Touchpad",
 		.matches = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Lumpy"),
 		},
 		.callback = setup_cyapa_tp,
 	},
 	{
-		.ident = "Lumpy - Light Sensor",
+		.ident = "isl29018 - Light Sensor",
 		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Link"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "Lumpy"),
 		},
 		.callback = setup_isl29018_als,
 	},
 	{
-		.ident = "Samsung Series 5 Chromebook - Light Sensor",
+		.ident = "tsl2583 - Light Sensor",
 		.matches = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Alex"),
 		},
 		.callback = setup_tsl2583_als,
 	},
 	{
-		.ident = "Cr-48 - Light Sensor",
+		.ident = "tsl2563 - Light Sensor",
 		.matches = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Mario"),
-		},
-		.callback = setup_tsl2563_als,
-	},
-	{
-		.ident = "Acer AC700 - Light Sensor",
-		.matches = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "ZGB"),
 		},
 		.callback = setup_tsl2563_als,
 	},
-	{
-		.ident = "Link - Light Sensor",
-		.matches = {
-			DMI_MATCH(DMI_PRODUCT_NAME, "Link"),
-		},
-		.callback = setup_isl29018_als,
-	},
-
 	{ }
 };
 
