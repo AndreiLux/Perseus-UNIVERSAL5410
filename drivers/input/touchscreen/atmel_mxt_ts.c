@@ -36,6 +36,7 @@
 #define MXT_FW_NAME		"maxtouch.fw"
 
 /* Registers */
+#define MXT_INFO		0x00
 #define MXT_FAMILY_ID		0x00
 #define MXT_VARIANT_ID		0x01
 #define MXT_VERSION		0x02
@@ -713,41 +714,6 @@ static void mxt_handle_pdata(struct mxt_data *data)
 	}
 }
 
-static int mxt_get_info(struct mxt_data *data)
-{
-	struct i2c_client *client = data->client;
-	struct mxt_info *info = &data->info;
-	int error;
-	u8 val;
-
-	error = mxt_read_reg(client, MXT_FAMILY_ID, 1, &val);
-	if (error)
-		return error;
-	info->family_id = val;
-
-	error = mxt_read_reg(client, MXT_VARIANT_ID, 1, &val);
-	if (error)
-		return error;
-	info->variant_id = val;
-
-	error = mxt_read_reg(client, MXT_VERSION, 1, &val);
-	if (error)
-		return error;
-	info->version = val;
-
-	error = mxt_read_reg(client, MXT_BUILD, 1, &val);
-	if (error)
-		return error;
-	info->build = val;
-
-	error = mxt_read_reg(client, MXT_OBJECT_NUM, 1, &val);
-	if (error)
-		return error;
-	info->object_num = val;
-
-	return 0;
-}
-
 static int mxt_get_object_table(struct mxt_data *data)
 {
 	struct i2c_client *client = data->client;
@@ -789,11 +755,12 @@ static int mxt_get_object_table(struct mxt_data *data)
 static int mxt_initialize(struct mxt_data *data)
 {
 	struct i2c_client *client = data->client;
+	struct device *dev = &client->dev;
 	struct mxt_info *info = &data->info;
 	int error;
-	u8 val;
 
-	error = mxt_get_info(data);
+	/* Read 7-byte info block starting at address 0 */
+	error = mxt_read_reg(client, MXT_INFO, sizeof(*info), info);
 	if (error)
 		return error;
 
@@ -818,26 +785,18 @@ static int mxt_initialize(struct mxt_data *data)
 	mxt_write_object(data, MXT_GEN_COMMAND_T6, 0, MXT_COMMAND_RESET, 1);
 	msleep(MXT_RESET_TIME);
 
-	/* Update matrix size at info struct */
-	error = mxt_read_reg(client, MXT_MATRIX_X_SIZE, 1, &val);
+	/* Update matrix size, since it may have been modified by pdata */
+	error = mxt_read_reg(client, MXT_MATRIX_X_SIZE, 2,
+			     &info->matrix_xsize);
 	if (error)
 		return error;
-	info->matrix_xsize = val;
 
-	error = mxt_read_reg(client, MXT_MATRIX_Y_SIZE, 1, &val);
-	if (error)
-		return error;
-	info->matrix_ysize = val;
+	dev_info(dev, "Family ID: %d Variant ID: %d Major.Minor.Build: %d.%d.%d\n",
+		 info->family_id, info->variant_id, info->version >> 4,
+		 info->version & 0xf, info->build);
 
-	dev_info(&client->dev,
-			"Family ID: %d Variant ID: %d Version: %d Build: %d\n",
-			info->family_id, info->variant_id, info->version,
-			info->build);
-
-	dev_info(&client->dev,
-			"Matrix X Size: %d Matrix Y Size: %d Object Num: %d\n",
-			info->matrix_xsize, info->matrix_ysize,
-			info->object_num);
+	dev_info(dev, "Matrix X Size: %d Matrix Y Size: %d Object Num: %d\n",
+		 info->matrix_xsize, info->matrix_ysize, info->object_num);
 
 	return 0;
 }
