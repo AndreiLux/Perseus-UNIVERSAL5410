@@ -490,6 +490,16 @@ mxt_get_object(struct mxt_data *data, u8 type)
 	return NULL;
 }
 
+static int mxt_read_object(struct mxt_data *data, struct mxt_object *object,
+			   u8 instance, void *val)
+{
+	u16 addr;
+
+	BUG_ON(instance >= object->instances);
+	addr = object->start_address + instance * object->size;
+	return mxt_read_reg(data->client, addr, object->size, val);
+}
+
 static int mxt_read_message(struct mxt_data *data,
 				 struct mxt_message *message)
 {
@@ -503,20 +513,6 @@ static int mxt_read_message(struct mxt_data *data,
 	reg = object->start_address;
 	return mxt_read_reg(data->client, reg, sizeof(struct mxt_message),
 			    message);
-}
-
-static int mxt_read_object(struct mxt_data *data,
-				u8 type, u8 offset, u8 *val)
-{
-	struct mxt_object *object;
-	u16 reg;
-
-	object = mxt_get_object(data, type);
-	if (!object)
-		return -EINVAL;
-
-	reg = object->start_address;
-	return mxt_read_reg(data->client, reg + offset, 1, val);
 }
 
 static int mxt_write_object(struct mxt_data *data,
@@ -916,47 +912,47 @@ static void mxt_calc_resolution(struct mxt_data *data)
 }
 
 static ssize_t mxt_object_show(struct device *dev,
-				    struct device_attribute *attr, char *buf)
+			       struct device_attribute *attr, char *buf)
 {
 	struct mxt_data *data = dev_get_drvdata(dev);
-	struct mxt_object *object;
 	int count = 0;
-	int i, j;
+	int i, j, k;
 	int error;
-	u8 val;
 
 	for (i = 0; i < data->info.object_num; i++) {
-		object = data->object_table + i;
+		struct mxt_object *object = &data->object_table[i];
 
-		count += snprintf(buf + count, PAGE_SIZE - count,
-				"Object[%d] (Type %d)\n",
-				i + 1, object->type);
-		if (count >= PAGE_SIZE)
-			return PAGE_SIZE - 1;
+		if (!mxt_object_readable(object->type))
+			continue;
 
-		if (!mxt_object_readable(object->type)) {
+		for (j = 0; j < object->instances; j++) {
+			u8 obuf[object->size];
+
 			count += snprintf(buf + count, PAGE_SIZE - count,
-					"\n");
+					  "Object[%d] Type: T%d Instance: %d/%d\n",
+					  i + 1, object->type, j + 1,
+					  object->instances);
 			if (count >= PAGE_SIZE)
 				return PAGE_SIZE - 1;
-			continue;
-		}
 
-		for (j = 0; j < object->size; j++) {
-			error = mxt_read_object(data,
-						object->type, j, &val);
+
+			error = mxt_read_object(data, object, j, obuf);
 			if (error)
 				return error;
 
-			count += snprintf(buf + count, PAGE_SIZE - count,
-					"\t[%2d]: %02x (%d)\n", j, val, val);
+			for (k = 0; k < object->size; k++) {
+				count += snprintf(buf + count,
+						  PAGE_SIZE - count,
+						  "\t[%2d]: %02x (%d)\n",
+						  k, obuf[k], obuf[k]);
+				if (count >= PAGE_SIZE)
+					return PAGE_SIZE - 1;
+			}
+
+			count += snprintf(buf + count, PAGE_SIZE - count, "\n");
 			if (count >= PAGE_SIZE)
 				return PAGE_SIZE - 1;
 		}
-
-		count += snprintf(buf + count, PAGE_SIZE - count, "\n");
-		if (count >= PAGE_SIZE)
-			return PAGE_SIZE - 1;
 	}
 
 	return count;
