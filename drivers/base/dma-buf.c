@@ -406,3 +406,32 @@ void dma_buf_kunmap(struct dma_buf *dmabuf, unsigned long page_num,
 		dmabuf->ops->kunmap(dmabuf, page_num, vaddr);
 }
 EXPORT_SYMBOL_GPL(dma_buf_kunmap);
+
+/**
+ * dma_buf_vmap - Create virtual mapping for the buffer object into kernel address space. The same restrictions as for vmap and friends apply.
+ * @dma_buf:	[in]	buffer to vmap
+ *
+ * This call may fail due to lack of virtual mapping address space.
+ */
+void *dma_buf_vmap(struct dma_buf *dmabuf)
+{
+	WARN_ON(!dmabuf);
+
+	if (dmabuf->ops->vmap)
+		return dmabuf->ops->vmap(dmabuf);
+	return NULL;
+}
+EXPORT_SYMBOL(dma_buf_vmap);
+
+/**
+ * dma_buf_vunmap - Unmap a page obtained by dma_buf_vmap.
+ * @dma_buf:	[in]	buffer to vmap
+ */
+void dma_buf_vunmap(struct dma_buf *dmabuf, void *vaddr)
+{
+	WARN_ON(!dmabuf);
+
+	if (dmabuf->ops->vunmap)
+		dmabuf->ops->vunmap(dmabuf, vaddr);
+}
+EXPORT_SYMBOL(dma_buf_vunmap);

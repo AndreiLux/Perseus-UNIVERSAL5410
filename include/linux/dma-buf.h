@@ -92,6 +92,9 @@ struct dma_buf_ops {
 	void (*kunmap_atomic)(struct dma_buf *, unsigned long, void *);
 	void *(*kmap)(struct dma_buf *, unsigned long);
 	void (*kunmap)(struct dma_buf *, unsigned long, void *);
+
+	void *(*vmap)(struct dma_buf *);
+	void (*vunmap)(struct dma_buf *, void *vaddr);
 };
 
 /**
@@ -167,6 +170,9 @@ void *dma_buf_kmap_atomic(struct dma_buf *, unsigned long);
 void dma_buf_kunmap_atomic(struct dma_buf *, unsigned long, void *);
 void *dma_buf_kmap(struct dma_buf *, unsigned long);
 void dma_buf_kunmap(struct dma_buf *, unsigned long, void *);
+
+void *dma_buf_vmap(struct dma_buf *);
+void dma_buf_vunmap(struct dma_buf *, void *vaddr);
 #else
 
 static inline struct dma_buf_attachment *dma_buf_attach(struct dma_buf *dmabuf,
@@ -246,6 +252,14 @@ static inline void *dma_buf_kmap(struct dma_buf *dmabuf, unsigned long pnum)
 
 static inline void dma_buf_kunmap(struct dma_buf *dmabuf,
 				  unsigned long pnum, void *vaddr)
+{
+}
+
+static inline void *dma_buf_vmap(struct dma_buf *)
+{
+}
+
+static inline void dma_buf_vunmap(struct dma_buf *, void *vaddr);
 {
 }
 #endif /* CONFIG_DMA_SHARED_BUFFER */
