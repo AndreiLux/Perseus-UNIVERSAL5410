@@ -500,6 +500,20 @@ static int mxt_read_object(struct mxt_data *data, struct mxt_object *object,
 	return mxt_read_reg(data->client, addr, object->size, val);
 }
 
+static int mxt_write_object(struct mxt_data *data, u8 type, u8 instance,
+			    u8 offset, u8 val)
+{
+	struct mxt_object *object;
+	u16 reg;
+
+	object = mxt_get_object(data, type);
+	if (!object || instance >= object->instances || offset >= object->size)
+		return -EINVAL;
+
+	reg = object->start_address + instance * object->size + offset;
+	return mxt_write_reg(data->client, reg, 1, &val);
+}
+
 static int mxt_read_message(struct mxt_data *data,
 				 struct mxt_message *message)
 {
@@ -513,20 +527,6 @@ static int mxt_read_message(struct mxt_data *data,
 	reg = object->start_address;
 	return mxt_read_reg(data->client, reg, sizeof(struct mxt_message),
 			    message);
-}
-
-static int mxt_write_object(struct mxt_data *data,
-				 u8 type, u8 offset, u8 val)
-{
-	struct mxt_object *object;
-	u16 reg;
-
-	object = mxt_get_object(data, type);
-	if (!object)
-		return -EINVAL;
-
-	reg = object->start_address;
-	return mxt_write_reg(data->client, reg + offset, 1, &val);
 }
 
 static void mxt_input_report(struct mxt_data *data, int single_id)
@@ -723,32 +723,32 @@ static void mxt_handle_pdata(struct mxt_data *data)
 	u8 voltage;
 
 	/* Set touchscreen lines */
-	mxt_write_object(data, MXT_TOUCH_MULTI_T9, MXT_TOUCH_XSIZE,
-			pdata->x_line);
-	mxt_write_object(data, MXT_TOUCH_MULTI_T9, MXT_TOUCH_YSIZE,
-			pdata->y_line);
+	mxt_write_object(data, MXT_TOUCH_MULTI_T9, 0,
+			 MXT_TOUCH_XSIZE, pdata->x_line);
+	mxt_write_object(data, MXT_TOUCH_MULTI_T9, 0,
+			 MXT_TOUCH_YSIZE, pdata->y_line);
 
 	/* Set touchscreen orient */
-	mxt_write_object(data, MXT_TOUCH_MULTI_T9, MXT_TOUCH_ORIENT,
-			pdata->orient);
+	mxt_write_object(data, MXT_TOUCH_MULTI_T9, 0,
+			 MXT_TOUCH_ORIENT, pdata->orient);
 
 	/* Set touchscreen burst length */
-	mxt_write_object(data, MXT_TOUCH_MULTI_T9,
-			MXT_TOUCH_BLEN, pdata->blen);
+	mxt_write_object(data, MXT_TOUCH_MULTI_T9, 0,
+			 MXT_TOUCH_BLEN, pdata->blen);
 
 	/* Set touchscreen threshold */
-	mxt_write_object(data, MXT_TOUCH_MULTI_T9,
-			MXT_TOUCH_TCHTHR, pdata->threshold);
+	mxt_write_object(data, MXT_TOUCH_MULTI_T9, 0,
+			 MXT_TOUCH_TCHTHR, pdata->threshold);
 
 	/* Set touchscreen resolution */
-	mxt_write_object(data, MXT_TOUCH_MULTI_T9,
-			MXT_TOUCH_XRANGE_LSB, (pdata->x_size - 1) & 0xff);
-	mxt_write_object(data, MXT_TOUCH_MULTI_T9,
-			MXT_TOUCH_XRANGE_MSB, (pdata->x_size - 1) >> 8);
-	mxt_write_object(data, MXT_TOUCH_MULTI_T9,
-			MXT_TOUCH_YRANGE_LSB, (pdata->y_size - 1) & 0xff);
-	mxt_write_object(data, MXT_TOUCH_MULTI_T9,
-			MXT_TOUCH_YRANGE_MSB, (pdata->y_size - 1) >> 8);
+	mxt_write_object(data, MXT_TOUCH_MULTI_T9, 0,
+			 MXT_TOUCH_XRANGE_LSB, (pdata->x_size - 1) & 0xff);
+	mxt_write_object(data, MXT_TOUCH_MULTI_T9, 0,
+			 MXT_TOUCH_XRANGE_MSB, (pdata->x_size - 1) >> 8);
+	mxt_write_object(data, MXT_TOUCH_MULTI_T9, 0,
+			 MXT_TOUCH_YRANGE_LSB, (pdata->y_size - 1) & 0xff);
+	mxt_write_object(data, MXT_TOUCH_MULTI_T9, 0,
+			 MXT_TOUCH_YRANGE_MSB, (pdata->y_size - 1) >> 8);
 
 	/* Set touchscreen voltage */
 	if (pdata->voltage) {
@@ -760,8 +760,8 @@ static void mxt_handle_pdata(struct mxt_data *data)
 			voltage = (pdata->voltage - MXT_VOLTAGE_DEFAULT) /
 				MXT_VOLTAGE_STEP;
 
-		mxt_write_object(data, MXT_SPT_CTECONFIG_T28,
-				MXT_CTE_VOLTAGE, voltage);
+		mxt_write_object(data, MXT_SPT_CTECONFIG_T28, 0,
+				 MXT_CTE_VOLTAGE, voltage);
 	}
 }
 
@@ -863,14 +863,12 @@ static int mxt_initialize(struct mxt_data *data)
 	mxt_handle_pdata(data);
 
 	/* Backup to memory */
-	mxt_write_object(data, MXT_GEN_COMMAND_T6,
-			MXT_COMMAND_BACKUPNV,
-			MXT_BACKUP_VALUE);
+	mxt_write_object(data, MXT_GEN_COMMAND_T6, 0,
+			 MXT_COMMAND_BACKUPNV, MXT_BACKUP_VALUE);
 	msleep(MXT_BACKUP_TIME);
 
 	/* Soft reset */
-	mxt_write_object(data, MXT_GEN_COMMAND_T6,
-			MXT_COMMAND_RESET, 1);
+	mxt_write_object(data, MXT_GEN_COMMAND_T6, 0, MXT_COMMAND_RESET, 1);
 	msleep(MXT_RESET_TIME);
 
 	/* Update matrix size at info struct */
@@ -974,8 +972,8 @@ static int mxt_load_fw(struct device *dev, const char *fn)
 	}
 
 	/* Change to the bootloader mode */
-	mxt_write_object(data, MXT_GEN_COMMAND_T6,
-			MXT_COMMAND_RESET, MXT_BOOT_VALUE);
+	mxt_write_object(data, MXT_GEN_COMMAND_T6, 0,
+			 MXT_COMMAND_RESET, MXT_BOOT_VALUE);
 	msleep(MXT_RESET_TIME);
 
 	/* Change to slave address of bootloader */
@@ -1079,15 +1077,13 @@ static const struct attribute_group mxt_attr_group = {
 static void mxt_start(struct mxt_data *data)
 {
 	/* Touch enable */
-	mxt_write_object(data,
-			MXT_TOUCH_MULTI_T9, MXT_TOUCH_CTRL, 0x83);
+	mxt_write_object(data, MXT_TOUCH_MULTI_T9, 0, MXT_TOUCH_CTRL, 0x83);
 }
 
 static void mxt_stop(struct mxt_data *data)
 {
 	/* Touch disable */
-	mxt_write_object(data,
-			MXT_TOUCH_MULTI_T9, MXT_TOUCH_CTRL, 0);
+	mxt_write_object(data, MXT_TOUCH_MULTI_T9, 0, MXT_TOUCH_CTRL, 0);
 }
 
 static int mxt_input_open(struct input_dev *dev)
@@ -1239,8 +1235,7 @@ static int mxt_resume(struct device *dev)
 	struct input_dev *input_dev = data->input_dev;
 
 	/* Soft reset */
-	mxt_write_object(data, MXT_GEN_COMMAND_T6,
-			MXT_COMMAND_RESET, 1);
+	mxt_write_object(data, MXT_GEN_COMMAND_T6, 0, MXT_COMMAND_RESET, 1);
 
 	msleep(MXT_RESET_TIME);
 
