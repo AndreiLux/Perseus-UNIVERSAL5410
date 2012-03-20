@@ -152,6 +152,7 @@ long clk_round_rate(struct clk *clk, unsigned long rate)
 int clk_set_rate(struct clk *clk, unsigned long rate)
 {
 	int ret;
+	unsigned long flags;
 
 	if (IS_ERR(clk))
 		return -EINVAL;
@@ -166,9 +167,9 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 	if (clk->ops == NULL || clk->ops->set_rate == NULL)
 		return -EINVAL;
 
-	spin_lock(&clocks_lock);
+	spin_lock_irqsave(&clocks_lock, flags);
 	ret = (clk->ops->set_rate)(clk, rate);
-	spin_unlock(&clocks_lock);
+	spin_unlock_irqrestore(&clocks_lock, flags);
 
 	return ret;
 }
@@ -181,16 +182,17 @@ struct clk *clk_get_parent(struct clk *clk)
 int clk_set_parent(struct clk *clk, struct clk *parent)
 {
 	int ret = 0;
+	unsigned long flags;
 
 	if (IS_ERR(clk))
 		return -EINVAL;
 
-	spin_lock(&clocks_lock);
+	spin_lock_irqsave(&clocks_lock, flags);
 
 	if (clk->ops && clk->ops->set_parent)
 		ret = (clk->ops->set_parent)(clk, parent);
 
-	spin_unlock(&clocks_lock);
+	spin_unlock_irqrestore(&clocks_lock, flags);
 
 	return ret;
 }
