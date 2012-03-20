@@ -21,6 +21,7 @@
 #include <linux/of_address.h>
 
 #include <mach/regs-pmu.h>
+#include <plat/cpu.h>
 #include <plat/devs.h>
 
 /*
@@ -126,22 +127,28 @@ static __init void exynos_pm_add_dev_to_genpd(struct platform_device *pdev,
 	}
 }
 
+/* For EXYNOS4 */
 EXYNOS_GPD(exynos4_pd_mfc, EXYNOS4_MFC_CONFIGURATION, "pd-mfc");
 EXYNOS_GPD(exynos4_pd_g3d, EXYNOS4_G3D_CONFIGURATION, "pd-g3d");
 EXYNOS_GPD(exynos4_pd_lcd0, EXYNOS4_LCD0_CONFIGURATION, "pd-lcd0");
-EXYNOS_GPD(exynos4_pd_lcd1, EXYNOS4210_LCD1_CONFIGURATION, "pd-lcd1");
 EXYNOS_GPD(exynos4_pd_tv, EXYNOS4_TV_CONFIGURATION, "pd-tv");
 EXYNOS_GPD(exynos4_pd_cam, EXYNOS4_CAM_CONFIGURATION, "pd-cam");
 EXYNOS_GPD(exynos4_pd_gps, EXYNOS4_GPS_CONFIGURATION, "pd-gps");
+
+/* For EXYNOS4210 */
+EXYNOS_GPD(exynos4210_pd_lcd1, EXYNOS4210_LCD1_CONFIGURATION, "pd-lcd1");
 
 static struct exynos_pm_domain *exynos4_pm_domains[] = {
 	&exynos4_pd_mfc,
 	&exynos4_pd_g3d,
 	&exynos4_pd_lcd0,
-	&exynos4_pd_lcd1,
 	&exynos4_pd_tv,
 	&exynos4_pd_cam,
 	&exynos4_pd_gps,
+};
+
+static struct exynos_pm_domain *exynos4210_pm_domains[] = {
+	&exynos4210_pd_lcd1,
 };
 
 static __init int exynos4_pm_init_power_domain(void)
@@ -154,6 +161,11 @@ static __init int exynos4_pm_init_power_domain(void)
 	for (idx = 0; idx < ARRAY_SIZE(exynos4_pm_domains); idx++)
 		pm_genpd_init(&exynos4_pm_domains[idx]->pd, NULL,
 				exynos4_pm_domains[idx]->is_off);
+
+	if (soc_is_exynos4210())
+		for (idx = 0; idx < ARRAY_SIZE(exynos4210_pm_domains); idx++)
+			pm_genpd_init(&exynos4210_pm_domains[idx]->pd, NULL,
+					exynos4210_pm_domains[idx]->is_off);
 
 #ifdef CONFIG_S5P_DEV_FIMD0
 	exynos_pm_add_dev_to_genpd(&s5p_device_fimd0, &exynos4_pd_lcd0);
