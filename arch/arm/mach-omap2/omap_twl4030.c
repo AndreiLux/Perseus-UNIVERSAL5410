@@ -343,45 +343,37 @@ static int __init twl_set_sr(struct voltagedomain *voltdm)
 static __initdata struct omap_pmic_map omap_twl_map[] = {
 	{
 		.name = "mpu",
-		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP3430),
 		.pmic_data = &omap3_mpu_pmic,
 		.special_action = twl_set_sr,
 	},
 	{
 		.name = "core",
-		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP3430),
 		.pmic_data = &omap3_core_pmic,
 	},
 	{
 		.name = "mpu",
-		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
 		.pmic_data = &omap4_mpu_pmic,
 	},
 	{
 		.name = "core",
-		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
 		.pmic_data = &omap443x_core_pmic,
 	},
 	{
 		.name = "iva",
-		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
 		.pmic_data = &omap4_iva_pmic,
 	},
 #ifdef CONFIG_OMAP4460_SEVM_PALMAS
 	{
 		.name = "mpu",
-		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP4460ES1_0),
 		.pmic_data = &omap446x_mpu_pmic,
 	},
 #endif
 	{
 		.name = "core",
-		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP4460ES1_0),
 		.pmic_data = &omap446x_core_pmic,
 	},
 #ifdef CONFIG_OMAP4460_SEVM_PALMAS
 	{	.name = "iva",
-		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP4460ES1_0),
 		.pmic_data = &omap446x_iva_pmic,
 
 	},

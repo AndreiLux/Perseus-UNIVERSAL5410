@@ -264,7 +264,6 @@ out:
 static __initdata struct omap_pmic_map omap_tps_map[] = {
 	{
 		.name = "mpu",
-		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP4460ES1_0),
 		.pmic_data = &omap4_mpu_pmic,
 		.special_action = omap4_twl_tps62361_enable,
 	},
