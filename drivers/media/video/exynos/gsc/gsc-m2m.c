@@ -147,6 +147,8 @@ static void gsc_m2m_device_run(void *priv)
 		gsc_hw_set_output_buf_masking(gsc, GSC_M2M_BUF_NUM, false);
 		gsc_hw_set_frm_done_irq_mask(gsc, false);
 		gsc_hw_set_gsc_irq_enable(gsc, true);
+		gsc_hw_set_one_frm_mode(gsc, true);
+		gsc_hw_set_freerun_clock_mode(gsc, false);
 
 		if (gsc_set_scaler_info(ctx)) {
 			gsc_err("Scaler setup error");

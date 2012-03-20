@@ -94,6 +94,12 @@ int gsc_wait_stop(struct gsc_dev *dev)
 	return -EBUSY;
 }
 
+void gsc_hw_set_in_pingpong_update(struct gsc_dev *dev)
+{
+	u32 cfg = readl(dev->regs + GSC_ENABLE);
+	cfg |= GSC_ENABLE_IN_PP_UPDATE;
+	writel(cfg, dev->regs + GSC_ENABLE);
+}
 
 void gsc_hw_set_one_frm_mode(struct gsc_dev *dev, bool mask)
 {
@@ -287,6 +293,16 @@ void gsc_hw_set_output_addr(struct gsc_dev *dev,
 	writel(addr->y, dev->regs + GSC_OUT_BASE_ADDR_Y(index));
 	writel(addr->cb, dev->regs + GSC_OUT_BASE_ADDR_CB(index));
 	writel(addr->cr, dev->regs + GSC_OUT_BASE_ADDR_CR(index));
+}
+
+void gsc_hw_set_freerun_clock_mode(struct gsc_dev *dev, bool mask)
+{
+	u32 cfg = readl(dev->regs + GSC_ENABLE);
+
+	cfg &= ~(GSC_ENABLE_CLK_GATE_MODE_MASK);
+	if (mask)
+		cfg |= GSC_ENABLE_CLK_GATE_MODE_FREE;
+	writel(cfg, dev->regs + GSC_ENABLE);
 }
 
 void gsc_hw_set_input_path(struct gsc_ctx *ctx)

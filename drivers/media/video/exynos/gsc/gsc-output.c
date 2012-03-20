@@ -58,6 +58,8 @@ int gsc_out_hw_set(struct gsc_ctx *ctx)
 
 	gsc_hw_set_frm_done_irq_mask(gsc, false);
 	gsc_hw_set_gsc_irq_enable(gsc, true);
+	gsc_hw_set_one_frm_mode(gsc, false);
+	gsc_hw_set_freerun_clock_mode(gsc, true);
 
 	gsc_hw_set_input_path(ctx);
 	gsc_hw_set_in_size(ctx);
@@ -723,6 +725,7 @@ static void gsc_out_buffer_queue(struct vb2_buffer *vb)
 			return;
 		}
 		gsc_hw_set_input_buf_masking(gsc, vb->v4l2_buf.index, false);
+		gsc_hw_set_in_pingpong_update(gsc);
 	} else {
 		gsc_err("All requested buffers have been queued already");
 		return;

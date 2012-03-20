@@ -763,6 +763,7 @@ void gsc_hw_set_input_buf_masking(struct gsc_dev *dev, u32 shift, bool enable);
 void gsc_hw_set_output_buf_masking(struct gsc_dev *dev, u32 shift, bool enable);
 void gsc_hw_set_input_addr(struct gsc_dev *dev, struct gsc_addr *addr, int index);
 void gsc_hw_set_output_addr(struct gsc_dev *dev, struct gsc_addr *addr, int index);
+void gsc_hw_set_freerun_clock_mode(struct gsc_dev *dev, bool mask);
 void gsc_hw_set_input_path(struct gsc_ctx *ctx);
 void gsc_hw_set_in_size(struct gsc_ctx *ctx);
 void gsc_hw_set_in_image_rgb(struct gsc_ctx *ctx);
@@ -781,6 +782,7 @@ void gsc_hw_set_sysreg_writeback(struct gsc_ctx *ctx);
 void gsc_hw_set_pxlasync_camif_lo_mask(struct gsc_dev *dev, bool on);
 void gsc_hw_set_h_coef(struct gsc_ctx *ctx);
 void gsc_hw_set_v_coef(struct gsc_ctx *ctx);
+void gsc_hw_set_in_pingpong_update(struct gsc_dev *dev);
 
 int gsc_hw_get_input_buf_mask_status(struct gsc_dev *dev);
 int gsc_hw_get_done_input_buf_index(struct gsc_dev *dev);
