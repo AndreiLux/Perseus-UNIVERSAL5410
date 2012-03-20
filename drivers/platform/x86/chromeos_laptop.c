@@ -134,6 +134,7 @@ static struct i2c_client *__add_i2c_device(const char *name, int bus,
 	const struct dmi_dev_onboard *dev_data;
 	struct i2c_adapter *adapter;
 	struct i2c_client *client;
+	const unsigned short addr_list[] = { info->addr, I2C_CLIENT_END };
 
 	if (bus < 0)
 		return NULL;
@@ -161,7 +162,7 @@ static struct i2c_client *__add_i2c_device(const char *name, int bus,
 	adapter = i2c_get_adapter(bus);
 
 	/* add the i2c device */
-	client = i2c_new_device(adapter, info);
+	client = i2c_new_probed_device(adapter, info, addr_list, NULL);
 	if (!client)
 		pr_err("%s failed to register device %d-%02x\n",
 		       __func__, bus, info->addr);
