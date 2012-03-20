@@ -52,3 +52,11 @@ config SENSORS_EXYNOS4_TMU
 	  Unit) on SAMSUNG EXYNOS4 series of SoC.
 	  This driver can also be built as a module. If so, the module
 	  will be called exynos4-tmu
+
+config OMAP_THERMAL_INTERFACE
+	bool "TI OMAP Thermal interface support"
+	depends on THERMAL && CPU_THERMAL
+	help
+	  This is a OMAP thermal interface which will be used as
+	  a link between sensors and cooling devices with linux thermal
+	  framework.

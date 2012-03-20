@@ -42,6 +42,9 @@
 
 #ifdef CONFIG_THERMAL_FRAMEWORK
 #include <linux/thermal_framework.h>
+#elif defined(CONFIG_CPU_THERMAL)
+#include <linux/omap_thermal.h>
+#include <linux/platform_data/omap4_thermal_data.h>
 #endif
 /* Offsets from the base of temperature sensor registers */
 
@@ -889,6 +892,45 @@ static struct thermal_dev_ops omap_sensor_ops = {
 	.init_slope = omap_report_slope,
 	.init_offset = omap_report_offset
 };
+#elif defined(CONFIG_CPU_THERMAL)
+
+/* temp/frequency table for 1.20GHz chip */
+static struct omap4_thermal_data omap4_1200mhz_bandgap_data = {
+	.trigger_levels[0] = 73000,
+	.trigger_levels[1] = 79000,
+	.trigger_levels[2] = 86000,
+	.trigger_levels[3] = 93000,
+	/* 920Mhz */
+	.freq_tab[0] = {
+		.freq_clip_pctg = 24,
+		.polling_interval = 4,
+		},
+	/* 700MHz */
+	.freq_tab[1] = {
+		.freq_clip_pctg = 41,
+		.polling_interval = 2,
+		},
+	/* 350MHz */
+	.freq_tab[2] = {
+		.freq_clip_pctg = 70,
+		.polling_interval = 1,
+		},
+	/* Shutdown */
+	.freq_tab[3] = {
+		.freq_clip_pctg = 99,
+		},
+	.freq_tab_count = 4,
+};
+
+static int omap_read_temp(void *private_data)
+{
+	struct scm *scm_ptr = private_data;
+	int temp;
+
+	temp = omap4460plus_scm_read_temp(scm_ptr, 0);
+	return temp;
+}
+
 #endif
 
 int omap4460plus_temp_sensor_init(struct scm *scm_ptr)
@@ -927,6 +969,9 @@ int omap4460plus_temp_sensor_init(struct scm *scm_ptr)
 		pr_err("Unable to allocate memory for ts data\n");
 		return -ENOMEM;
 	}
+#elif defined(CONFIG_CPU_THERMAL)
+	scm_ptr->cpu_therm = kzalloc(sizeof(struct thermal_sensor_conf)
+		 * scm_ptr->cnt, GFP_KERNEL);
 #endif
 
 	for (i = 0; i < scm_ptr->cnt; i++) {
@@ -964,6 +1009,15 @@ int omap4460plus_temp_sensor_init(struct scm *scm_ptr)
 			pr_err("%s:Cannot alloc memory for thermal fw\n",
 			       __func__);
 			ret = -ENOMEM;
+		}
+#elif defined(CONFIG_CPU_THERMAL)
+		strncpy(scm_ptr->cpu_therm[0].name, "omap_ondie_sensor", SENSOR_NAME_LEN);
+		scm_ptr->cpu_therm[0].private_data = scm_ptr;
+		scm_ptr->cpu_therm[0].read_temperature = omap_read_temp;
+		scm_ptr->cpu_therm[0].sensor_data = &omap4_1200mhz_bandgap_data;
+		if (!omap4_register_thermal(scm_ptr->cpu_therm)) {
+			/* kzfree() */
+			scm_ptr->cpu_therm = NULL;
 		}
 #endif
 	} else if (scm_ptr->rev == 2) {
@@ -1006,6 +1060,9 @@ int omap4460plus_temp_sensor_init(struct scm *scm_ptr)
 			       __func__);
 			ret = -ENOMEM;
 		}
+#elif defined(CONFIG_CPU_THERMAL)
+		pr_err("CPU_THERMAL not supported on OMAP5 yet");
+		return -ENODEV;
 #endif
 	}
 

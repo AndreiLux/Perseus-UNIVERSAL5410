@@ -133,7 +133,11 @@ struct scm {
 	struct device			*dev;
 	struct omap4460plus_temp_sensor_data **ts_data;
 	struct omap4460plus_temp_sensor_registers **registers;
+#if defined(CONFIG_THERMAL_FRAMEWORK)
 	struct thermal_dev		**therm_fw;
+#elif defined(CONFIG_CPU_THERMAL)
+	struct thermal_sensor_conf	*cpu_therm;
+#endif
 	struct scm_regval		**regval;
 	struct clk		*fclock;
 	struct clk		*div_clk;
