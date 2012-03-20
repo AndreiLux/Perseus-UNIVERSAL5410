@@ -3317,6 +3317,13 @@ static void __devexit s3c_hsotg_delete_debug(struct s3c_hsotg *hsotg)
 	debugfs_remove(hsotg->debug_root);
 }
 
+static void s3c_hsotg_gadget_release(struct device *dev)
+{
+	struct s3c_hsotg *hsotg = dev_get_drvdata(dev);
+
+	kfree(hsotg);
+}
+
 static int __devinit s3c_hsotg_probe(struct platform_device *pdev)
 {
 	struct s3c_hsotg_plat *plat = pdev->dev.platform_data;
@@ -3400,6 +3407,7 @@ static int __devinit s3c_hsotg_probe(struct platform_device *pdev)
 
 	hsotg->gadget.dev.parent = dev;
 	hsotg->gadget.dev.dma_mask = dev->dma_mask;
+	hsotg->gadget.dev.release = s3c_hsotg_gadget_release;
 
 	/* reset the system */
 
@@ -3540,7 +3548,6 @@ static int __devexit s3c_hsotg_remove(struct platform_device *pdev)
 	clk_put(hsotg->clk);
 
 	device_unregister(&hsotg->gadget.dev);
-	kfree(hsotg);
 	return 0;
 }
 
