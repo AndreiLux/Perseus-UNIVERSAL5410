@@ -2233,17 +2233,21 @@ static int set_enc_param(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 	case V4L2_CID_MPEG_VIDEO_H264_PROFILE:
 		switch (ctrl->value) {
 		case V4L2_MPEG_VIDEO_H264_PROFILE_MAIN:
-			p->codec.h264.profile = 0;
+			p->codec.h264.profile =
+				S5P_FIMV_ENC_PROFILE_H264_MAIN;
 			break;
 		case V4L2_MPEG_VIDEO_H264_PROFILE_HIGH:
-			p->codec.h264.profile = 1;
+			p->codec.h264.profile =
+				S5P_FIMV_ENC_PROFILE_H264_HIGH;
 			break;
 		case V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE:
-			p->codec.h264.profile = 2;
+			p->codec.h264.profile =
+				S5P_FIMV_ENC_PROFILE_H264_BASELINE;
 			break;
 		case V4L2_MPEG_VIDEO_H264_PROFILE_CONSTRAINED_BASELINE:
 			if (IS_MFCV6(dev))
-				p->codec.h264.profile = 3;
+				p->codec.h264.profile =
+				S5P_FIMV_ENC_PROFILE_H264_CONSTRAINED_BASELINE;
 			else
 				ret = -EINVAL;
 			break;
@@ -2393,10 +2397,12 @@ static int set_enc_param(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 	case V4L2_CID_MPEG_VIDEO_MPEG4_PROFILE:
 		switch (ctrl->value) {
 		case V4L2_MPEG_VIDEO_MPEG4_PROFILE_SIMPLE:
-			p->codec.mpeg4.profile = 0;
+			p->codec.mpeg4.profile =
+				S5P_FIMV_ENC_PROFILE_MPEG4_SIMPLE;
 			break;
 		case V4L2_MPEG_VIDEO_MPEG4_PROFILE_ADVANCED_SIMPLE:
-			p->codec.mpeg4.profile = 1;
+			p->codec.mpeg4.profile =
+			S5P_FIMV_ENC_PROFILE_MPEG4_ADVANCED_SIMPLE;
 			break;
 		default:
 			ret = -EINVAL;

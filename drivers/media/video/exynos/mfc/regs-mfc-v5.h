@@ -124,6 +124,12 @@
 #define S5P_FIMV_ENC_HSIZE_PX		0x0818 /* frame width at encoder */
 #define S5P_FIMV_ENC_VSIZE_PX		0x081c /* frame height at encoder */
 #define S5P_FIMV_ENC_PROFILE		0x0830 /* profile register */
+#define S5P_FIMV_ENC_PROFILE_H264_MAIN                 0
+#define S5P_FIMV_ENC_PROFILE_H264_HIGH                 1
+#define S5P_FIMV_ENC_PROFILE_H264_BASELINE             2
+#define S5P_FIMV_ENC_PROFILE_H264_CONSTRAINED_BASELINE 3
+#define S5P_FIMV_ENC_PROFILE_MPEG4_SIMPLE              0
+#define S5P_FIMV_ENC_PROFILE_MPEG4_ADVANCED_SIMPLE     1
 #define S5P_FIMV_ENC_PIC_STRUCT		0x083c /* picture field/frame flag */
 #define S5P_FIMV_ENC_LF_CTRL		0x0848 /* loop filter control */
 #define S5P_FIMV_ENC_ALPHA_OFF		0x084c /* loop filter alpha offset */
