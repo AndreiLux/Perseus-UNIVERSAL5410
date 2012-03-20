@@ -755,6 +755,9 @@ static DEFINE_SPINLOCK(eint_lock);
 
 static unsigned int eint0_15_data[16];
 
+#define EXYNOS_EINT_NR 32
+static struct irq_domain *irq_domain;
+
 static inline int exynos4_irq_to_gpio(unsigned int irq)
 {
 	if (irq < IRQ_EINT(0))
@@ -845,9 +848,9 @@ static inline void exynos_irq_eint_mask(struct irq_data *data)
 	u32 mask;
 
 	spin_lock(&eint_lock);
-	mask = __raw_readl(EINT_MASK(exynos_eint_base, data->irq));
-	mask |= EINT_OFFSET_BIT(data->irq);
-	__raw_writel(mask, EINT_MASK(exynos_eint_base, data->irq));
+	mask = __raw_readl(EINT_MASK(exynos_eint_base, data->hwirq));
+	mask |= EINT_OFFSET_BIT(data->hwirq);
+	__raw_writel(mask, EINT_MASK(exynos_eint_base, data->hwirq));
 	spin_unlock(&eint_lock);
 }
 
@@ -856,16 +859,16 @@ static void exynos_irq_eint_unmask(struct irq_data *data)
 	u32 mask;
 
 	spin_lock(&eint_lock);
-	mask = __raw_readl(EINT_MASK(exynos_eint_base, data->irq));
-	mask &= ~(EINT_OFFSET_BIT(data->irq));
-	__raw_writel(mask, EINT_MASK(exynos_eint_base, data->irq));
+	mask = __raw_readl(EINT_MASK(exynos_eint_base, data->hwirq));
+	mask &= ~(EINT_OFFSET_BIT(data->hwirq));
+	__raw_writel(mask, EINT_MASK(exynos_eint_base, data->hwirq));
 	spin_unlock(&eint_lock);
 }
 
 static inline void exynos_irq_eint_ack(struct irq_data *data)
 {
-	__raw_writel(EINT_OFFSET_BIT(data->irq),
-		     EINT_PEND(exynos_eint_base, data->irq));
+	__raw_writel(EINT_OFFSET_BIT(data->hwirq),
+		     EINT_PEND(exynos_eint_base, data->hwirq));
 }
 
 static void exynos_irq_eint_maskack(struct irq_data *data)
@@ -876,7 +879,7 @@ static void exynos_irq_eint_maskack(struct irq_data *data)
 
 static int exynos_irq_eint_set_type(struct irq_data *data, unsigned int type)
 {
-	int offs = EINT_OFFSET(data->irq);
+	int offs = data->hwirq;
 	int shift;
 	u32 ctrl, mask;
 	u32 newvalue = 0;
@@ -911,10 +914,10 @@ static int exynos_irq_eint_set_type(struct irq_data *data, unsigned int type)
 	mask = 0x7 << shift;
 
 	spin_lock(&eint_lock);
-	ctrl = __raw_readl(EINT_CON(exynos_eint_base, data->irq));
+	ctrl = __raw_readl(EINT_CON(exynos_eint_base, data->hwirq));
 	ctrl &= ~mask;
 	ctrl |= newvalue << shift;
-	__raw_writel(ctrl, EINT_CON(exynos_eint_base, data->irq));
+	__raw_writel(ctrl, EINT_CON(exynos_eint_base, data->hwirq));
 	spin_unlock(&eint_lock);
 
 	if (soc_is_exynos5250())
@@ -958,7 +961,7 @@ static inline void exynos_irq_demux_eint(unsigned int start)
 
 	while (status) {
 		irq = fls(status) - 1;
-		generic_handle_irq(irq + start);
+		generic_handle_irq(irq_find_mapping(irq_domain, irq + start));
 		status &= ~(1 << irq);
 	}
 }
@@ -967,8 +970,8 @@ static void exynos_irq_demux_eint16_31(unsigned int irq, struct irq_desc *desc)
 {
 	struct irq_chip *chip = irq_get_chip(irq);
 	chained_irq_enter(chip, desc);
-	exynos_irq_demux_eint(IRQ_EINT(16));
-	exynos_irq_demux_eint(IRQ_EINT(24));
+	exynos_irq_demux_eint(16);
+	exynos_irq_demux_eint(24);
 	chained_irq_exit(chip, desc);
 }
 
@@ -976,6 +979,7 @@ static void exynos_irq_eint0_15(unsigned int irq, struct irq_desc *desc)
 {
 	u32 *irq_data = irq_get_handler_data(irq);
 	struct irq_chip *chip = irq_get_chip(irq);
+	int eint_irq;
 
 	chained_irq_enter(chip, desc);
 	chip->irq_mask(&desc->irq_data);
@@ -983,15 +987,28 @@ static void exynos_irq_eint0_15(unsigned int irq, struct irq_desc *desc)
 	if (chip->irq_ack)
 		chip->irq_ack(&desc->irq_data);
 
-	generic_handle_irq(*irq_data);
+	eint_irq = irq_find_mapping(irq_domain, *irq_data);
+	generic_handle_irq(eint_irq);
 
 	chip->irq_unmask(&desc->irq_data);
 	chained_irq_exit(chip, desc);
 }
 
+static int exynos_eint_irq_domain_map(struct irq_domain *d, unsigned int irq,
+					irq_hw_number_t hw)
+{
+	irq_set_chip_and_handler(irq, &exynos_irq_eint, handle_level_irq);
+	set_irq_flags(irq, IRQF_VALID);
+	return 0;
+}
+
+static struct irq_domain_ops exynos_eint_irq_domain_ops = {
+	.map = exynos_eint_irq_domain_map,
+};
+
 static int __init exynos_init_irq_eint(void)
 {
-	int irq, *src_int;
+	int irq, *src_int, irq_base;
 	unsigned int paddr;
 
 	paddr = soc_is_exynos5250() ? EXYNOS5_PA_GPIO1 : EXYNOS4_PA_GPIO2;
@@ -1001,16 +1018,24 @@ static int __init exynos_init_irq_eint(void)
 		return -ENXIO;
 	}
 
-	for (irq = 0 ; irq <= 31 ; irq++) {
-		irq_set_chip_and_handler(IRQ_EINT(irq), &exynos_irq_eint,
-					 handle_level_irq);
-		set_irq_flags(IRQ_EINT(irq), IRQF_VALID);
+	irq_base = irq_alloc_descs(IRQ_EINT(0), 1, EXYNOS_EINT_NR, 0);
+	if (IS_ERR_VALUE(irq_base)) {
+		irq_base = IRQ_EINT(0);
+		pr_warning("%s: irq desc alloc failed. Continuing with %d as "
+				"linux irq base\n", __func__, irq_base);
+	}
+
+	irq_domain = irq_domain_add_legacy(NULL, EXYNOS_EINT_NR, irq_base, 0,
+					 &exynos_eint_irq_domain_ops, NULL);
+	if (WARN_ON(!irq_domain)) {
+		pr_warning("%s: irq domain init failed\n", __func__);
+		return 0;
 	}
 
 	irq_set_chained_handler(EXYNOS_IRQ_EINT16_31, exynos_irq_demux_eint16_31);
 
 	for (irq = 0 ; irq <= 15; irq++) {
-		eint0_15_data[irq] = IRQ_EINT(irq);
+		eint0_15_data[irq] = irq;
 		src_int = soc_is_exynos5250() ? exynos5_eint0_15_src_int :
 						exynos4_eint0_15_src_int;
 		irq_set_handler_data(src_int[irq], &eint0_15_data[irq]);
