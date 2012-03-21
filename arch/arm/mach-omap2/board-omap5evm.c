@@ -1471,6 +1471,7 @@ MACHINE_START(OMAP5_SEVM, "TI OMAP5 Eval Board")
 	.init_irq	= gic_init_irq,
 	.handle_irq     = gic_handle_irq,
 	.init_machine	= omap_54xx_init,
+	.restart	= omap_prcm_restart,
 	.timer		= &omap5_timer,
 	.dt_compat	= omap5_sevm_match,
 MACHINE_END
