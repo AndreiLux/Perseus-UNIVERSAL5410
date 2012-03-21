@@ -320,6 +320,15 @@ static int omap_mbox_startup(struct omap_mbox *mbox)
 	}
 
 	if (!mbox->use_count++) {
+
+		ret = request_irq(mbox->irq, mbox_interrupt, IRQF_SHARED,
+							mbox->name, mbox);
+		mbox->ops->enable_irq(mbox, IRQ_RX);
+		if (unlikely(ret)) {
+			pr_err("failed to register mailbox interrupt:%d\n",
+									ret);
+			goto fail_request_irq;
+		}
 		mq = mbox_queue_alloc(mbox, NULL, mbox_tx_tasklet);
 		if (!mq) {
 			ret = -ENOMEM;
