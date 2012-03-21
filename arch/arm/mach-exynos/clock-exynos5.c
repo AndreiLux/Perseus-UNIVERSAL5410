@@ -231,6 +231,15 @@ static int exynos5_clk_ip_isp1_ctrl(struct clk *clk, int enable)
 	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_ISP1, clk, enable);
 }
 
+static int exynos5_clk_clkout_ctrl(struct clk *clk, int enable)
+{
+	/*
+	 * Setting the bit disable the clock
+	 * and clearing it enables the clock
+	 */
+	return s5p_gatectrl(EXYNOS_PMU_DEBUG, clk, !enable);
+}
+
 /* Core list of CMU_CPU side */
 
 static struct clksrc_clk exynos5_clk_mout_apll = {
@@ -620,6 +629,28 @@ static struct clksrc_clk exynos5_clk_aclk_66 = {
 		.parent		= &exynos5_clk_aclk_66_pre.clk,
 	},
 	.reg_div = { .reg = EXYNOS5_CLKDIV_TOP0, .shift = 0, .size = 3 },
+};
+
+/* For CLKOUT */
+struct clk *exynos5_clkset_clk_clkout_list[] = {
+	/* Others are for debugging */
+	[16] = &clk_xxti,
+	[17] = &clk_xusbxti,
+};
+
+struct clksrc_sources exynos5_clkset_clk_clkout = {
+	.sources	= exynos5_clkset_clk_clkout_list,
+	.nr_sources	= ARRAY_SIZE(exynos5_clkset_clk_clkout_list),
+};
+
+static struct clksrc_clk exynos5_clk_clkout = {
+	.clk	= {
+		.name		= "clkout",
+		.enable		= exynos5_clk_clkout_ctrl,
+		.ctrlbit	= (1 << 0),
+	},
+	.sources = &exynos5_clkset_clk_clkout,
+	.reg_src = { .reg = EXYNOS_PMU_DEBUG, .shift = 8, .size = 5 },
 };
 
 static struct clk exynos5_init_clocks_off[] = {
@@ -1567,6 +1598,7 @@ static struct clksrc_clk *exynos5_sysclks[] = {
 	&exynos5_clk_aclk_400_isp,
 	&exynos5_clk_aclk_266_isp,
 	&exynos5_clk_sclk_uart_isp,
+	&exynos5_clk_clkout,
 };
 
 static struct clk *exynos5_clk_cdev[] = {
@@ -1860,6 +1892,7 @@ void __init exynos5_register_clocks(void)
 	s3c_disable_clocks(exynos5_init_clocks_off, ARRAY_SIZE(exynos5_init_clocks_off));
 	clkdev_add_table(exynos5_clk_lookup, ARRAY_SIZE(exynos5_clk_lookup));
 
+	s3c_disable_clocks(&exynos5_clk_clkout.clk, 1);
 	register_syscore_ops(&exynos5_clock_syscore_ops);
 	s3c_pwmclk_init();
 }
