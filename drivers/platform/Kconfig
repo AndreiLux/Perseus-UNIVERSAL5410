@@ -16,3 +16,52 @@ config CHROMEOS
 	  Provides abstracted interfaces to the firmware features provided on
 	  ChromeOS devices. It depends on a lowlevel driver to implement the
 	  firmware interface on the platform.
+
+config CHROMEOS_RAMOOPS_RAM_START
+        hex "Physical address of preserved RAM"
+	depends on RAMOOPS && CHROMEOS
+        default "0"
+
+        ---help---
+          Address of the memory area that is used for logging using ramoops.
+	  This value can also be set through platform data.
+
+          For this feature to be useful, the selected memory area must be
+          preserved across reboot, so not used by the boot loader, for example.
+
+config CHROMEOS_RAMOOPS_RAM_SIZE
+        hex "Size of preserved RAM"
+	depends on RAMOOPS && CHROMEOS
+        default "0"
+
+        ---help---
+          Size of the memory area that is used for logging using ramoops.
+	  This value can also be set through platform data.
+
+          For this feature to be useful, the selected memory area must be
+          preserved across reboot, so not used by the boot loader, for example.
+
+config CHROMEOS_RAMOOPS_RECORD_SIZE
+        hex "Size of a single dump logged in RAM"
+	depends on RAMOOPS && CHROMEOS
+        default "0x00001000"
+
+        ---help---
+          This is the size of a single dump which is logged in RAM. Should be
+	  set according to the level of detail needed in the dump.
+	  This value can also be set through platform data.
+
+	  Must be divisible by CHROMEOS_RAMOOPS_RAM_SIZE.
+
+config CHROMEOS_RAMOOPS_DUMP_OOPS
+        hex "Flag to dump oopses and panics or only panics"
+	depends on RAMOOPS && CHROMEOS
+        default "1"
+
+        ---help---
+	  If flag is set to 0 dump oopses and panics.
+	  If flag is set to 1 dump only panics.
+
+	  This value can also be set through platform data.
+          For this feature to be useful, the selected memory area must be
+          preserved across reboot, so not used by the boot loader, for example.
