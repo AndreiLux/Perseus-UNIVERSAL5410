@@ -125,6 +125,8 @@ static int palmas_i2c_read_block(struct palmas *palmas, int ipblock, u8 reg,
 	u8 addr;
 	int ret;
 
+	mutex_lock(&palmas->io_mutex);
+
 	i2c = palmas->palmas_clients[(ipblock >> 8) - 1].client;
 	addr = (ipblock & 0xFF) + reg;
 
@@ -137,6 +139,8 @@ static int palmas_i2c_read_block(struct palmas *palmas, int ipblock, u8 reg,
 
 	/* Read the result */
 	ret = i2c_master_recv(i2c, dest, length);
+
+	mutex_unlock(&palmas->io_mutex);
 
 	if (ret < 0)
 		return ret;
@@ -165,6 +169,8 @@ static int palmas_i2c_write_block(struct palmas *palmas, int ipblock, u8 reg,
 		return -EINVAL;
 	}
 
+	mutex_lock(&palmas->io_mutex);
+
 	i2c = palmas->palmas_clients[(ipblock >> 8) - 1].client;
 	addr = (ipblock & 0xFF) + reg;
 
@@ -173,6 +179,9 @@ static int palmas_i2c_write_block(struct palmas *palmas, int ipblock, u8 reg,
 
 	/* Write the Address */
 	ret = i2c_master_send(i2c, buffer, length + 1);
+
+	mutex_unlock(&palmas->io_mutex);
+
 	if (ret < 0)
 		return ret;
 	if (ret != (length + 1))
