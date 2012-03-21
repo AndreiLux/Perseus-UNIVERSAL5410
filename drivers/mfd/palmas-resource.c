@@ -89,6 +89,19 @@ int palmas_enable_clk32kgaudio(struct palmas_resource *resource)
 	u8 reg;
 
 	ret = palmas_resource_read(resource->palmas,
+			PALMAS_PRIMARY_SECONDARY_PAD2, &reg);
+	if (ret)
+		return ret;
+
+	reg &= ~PRIMARY_SECONDARY_PAD2_GPIO_5_MASK;
+	reg |= 1;
+
+	ret = palmas_resource_write(resource->palmas,
+			PALMAS_PRIMARY_SECONDARY_PAD2, reg);
+	if (ret)
+		return ret;
+
+	ret = palmas_resource_read(resource->palmas,
 			PALMAS_CLK32KGAUDIO_CTRL, &reg);
 
 	if (ret)
