@@ -1288,8 +1288,8 @@ int s5p_mfc_decode_one_frame(struct s5p_mfc_ctx *ctx, int last_frame)
 	mfc_debug(2, "Setting flags to %08lx (free:%d WTF:%d)\n",
 				dec->dpb_status, ctx->dst_queue_cnt,
 						dec->dpb_queue_cnt);
-	WRITEL(0xffffffff, S5P_FIMV_D_AVAILABLE_DPB_FLAG_LOWER);
-	WRITEL(0xffffffff, S5P_FIMV_D_AVAILABLE_DPB_FLAG_UPPER);
+	WRITEL(dec->dpb_status, S5P_FIMV_D_AVAILABLE_DPB_FLAG_LOWER);
+	WRITEL(0x0, S5P_FIMV_D_AVAILABLE_DPB_FLAG_UPPER);
 	WRITEL(dec->slice_enable, S5P_FIMV_D_SLICE_IF_ENABLE);
 
 	WRITEL(ctx->inst_no, S5P_FIMV_INSTANCE_ID);
