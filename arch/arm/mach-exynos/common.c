@@ -64,6 +64,7 @@ static void exynos4_init_clocks(int xtal);
 static void exynos5_init_clocks(int xtal);
 static void exynos_init_uarts(struct s3c2410_uartcfg *cfg, int no);
 static int exynos_init(void);
+static int exynos_init_irq_eint(void);
 
 static struct cpu_table cpu_ids[] __initdata = {
 	{
@@ -613,6 +614,7 @@ void __init exynos4_init_irq(void)
 	 * uses GIC instead of VIC.
 	 */
 	s5p_init_irq(NULL, 0);
+	exynos_init_irq_eint();
 }
 
 void __init exynos5_init_irq(void)
@@ -631,6 +633,7 @@ void __init exynos5_init_irq(void)
 	 * uses GIC instead of VIC.
 	 */
 	s5p_init_irq(NULL, 0);
+	exynos_init_irq_eint();
 }
 
 struct bus_type exynos4_subsys = {
@@ -1060,4 +1063,3 @@ static int __init exynos_init_irq_eint(void)
 
 	return 0;
 }
-arch_initcall(exynos_init_irq_eint);
