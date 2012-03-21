@@ -215,9 +215,14 @@ static struct i2c_client *add_smbus_device(const char *name,
 	return add_i2c_device(name, I2C_ADAPTER_SMBUS, info);
 }
 
-static int setup_atmel_tp(const struct dmi_system_id *id)
+static int setup_link_tp(const struct dmi_system_id *id)
 {
-	/* atmel mxt touchpad */
+	/* first try cyapa touchpad */
+	tp = add_i2c_device("trackpad", I2C_ADAPTER_VGADDC, &cyapa_device);
+	if (tp)
+		return 0;
+
+	/* then try atmel mxt touchpad */
 	tp = add_i2c_device("trackpad", I2C_ADAPTER_VGADDC, &atmel_tp_device);
 	return 0;
 }
@@ -259,11 +264,11 @@ static const struct dmi_system_id chromeos_laptop_dmi_table[] = {
 		.callback = setup_cyapa_tp,
 	},
 	{
-		.ident = "atmel_ts - Touchpad",
+		.ident = "Link - Touchpads",
 		.matches = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Link"),
 		},
-		.callback = setup_atmel_tp,
+		.callback = setup_link_tp,
 	},
 	{
 		.ident = "isl29018 - Light Sensor",
