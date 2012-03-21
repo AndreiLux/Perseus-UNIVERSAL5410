@@ -220,6 +220,7 @@ static void s5p_mfc_handle_frame_all_extracted(struct s5p_mfc_ctx *ctx)
 		mfc_debug(2, "Cleaned up buffer: %d\n",
 			  dst_buf->vb.v4l2_buf.index);
 	}
+	ctx->state = MFCINST_RUNNING;
 	mfc_debug(2, "After cleanup\n");
 }
 
