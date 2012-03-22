@@ -21,10 +21,11 @@
 #include <mach/common.h>
 #include <mach/devices-common.h>
 #include <mach/iomux-v3.h>
+#include <mach/cpuidle.h>
 
 static struct clk *gpc_dvfs_clk;
 
-static void imx5_idle(void)
+void imx5_idle(void)
 {
 	if (!need_resched()) {
 		/* gpc clock is needed for SRPG */
@@ -191,6 +192,8 @@ void __init imx51_soc_init(void)
 
 	/* i.mx51 has the i.mx35 type sdma */
 	imx_add_imx_sdma("imx35-sdma", MX51_SDMA_BASE_ADDR, MX51_INT_SDMA, &imx51_sdma_pdata);
+
+	imx5_cpuidle_init();
 }
 
 void __init imx53_soc_init(void)

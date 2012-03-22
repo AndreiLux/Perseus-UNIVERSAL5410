@@ -27,6 +27,7 @@
 #include <asm/mach/time.h>
 #include <mach/common.h>
 #include <mach/hardware.h>
+#include <mach/cpuidle.h>
 
 void imx6q_restart(char mode, const char *cmd)
 {
@@ -82,6 +83,7 @@ static void __init imx6q_init_machine(void)
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 
 	imx6q_pm_init();
+	imx6q_cpuidle_init();
 }
 
 static void __init imx6q_map_io(void)
