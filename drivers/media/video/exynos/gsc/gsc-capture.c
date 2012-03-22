@@ -163,10 +163,7 @@ static void gsc_capture_buf_queue(struct vb2_buffer *vb)
 	if (ret)
 		gsc_err("Failed to prepare output addr");
 
-	if (!test_bit(ST_CAPT_SUSPENDED, &gsc->state)) {
-		gsc_dbg("buf_index : %d", vb->v4l2_buf.index);
 		gsc_hw_set_output_buf_masking(gsc, vb->v4l2_buf.index, 0);
-	}
 
 	min_bufs = cap->reqbufs_cnt > 1 ? 2 : 1;
 
@@ -311,7 +308,6 @@ static int gsc_capture_state_cleanup(struct gsc_dev *gsc)
 	gsc->state &= ~(1 << ST_CAPT_RUN | 1 << ST_CAPT_STREAM |
 			1 << ST_CAPT_PIPE_STREAM | 1 << ST_CAPT_PEND);
 
-	set_bit(ST_CAPT_SUSPENDED, &gsc->state);
 	spin_unlock_irqrestore(&gsc->slock, flags);
 
 	if (streaming) {
@@ -781,7 +777,6 @@ static int gsc_capture_close(struct file *file)
 		gsc_hw_enable_control(gsc, false);
 		clear_bit(ST_CAPT_STREAM, &gsc->state);
 		gsc_cap_pipeline_shutdown(gsc);
-		clear_bit(ST_CAPT_SUSPENDED, &gsc->state);
 	}
 
 	pm_runtime_put(&gsc->pdev->dev);
