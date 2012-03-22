@@ -37,11 +37,13 @@
  *	- this address could be physical address without IOMMU and
  *	device address with IOMMU.
  * @size: size of allocated memory region.
+ * @shared_refcount: a reference count for this buffer being shared with others.
  */
 struct exynos_drm_gem_buf {
 	void __iomem		*kvaddr;
 	dma_addr_t		dma_addr;
 	unsigned long		size;
+	atomic_t		shared_refcount;
 };
 
 /*
@@ -62,10 +64,15 @@ struct exynos_drm_gem_buf {
 struct exynos_drm_gem_obj {
 	struct drm_gem_object		base;
 	struct exynos_drm_gem_buf	*buffer;
+	struct sg_table			*sgt;
 };
 
 /* destroy a buffer with gem object */
 void exynos_drm_gem_destroy(struct exynos_drm_gem_obj *exynos_gem_obj);
+
+/* create a private gem object and initialize it. */
+struct exynos_drm_gem_obj *exynos_drm_gem_init(struct drm_device *dev,
+						      unsigned long size);
 
 /* create a new buffer with gem object */
 struct exynos_drm_gem_obj *exynos_drm_gem_create(struct drm_device *dev,
@@ -120,5 +127,8 @@ int exynos_drm_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf);
 
 /* set vm_flags and we can change the vm attribute to other one at here. */
 int exynos_drm_gem_mmap(struct file *filp, struct vm_area_struct *vma);
+
+void exynos_drm_gem_close_object(struct drm_gem_object *obj,
+				struct drm_file *file);
 
 #endif

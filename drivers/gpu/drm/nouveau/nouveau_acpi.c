@@ -39,6 +39,11 @@ static struct nouveau_dsm_priv {
 	acpi_handle rom_handle;
 } nouveau_dsm_priv;
 
+bool nouveau_is_optimus(void)
+{
+	return nouveau_dsm_priv.optimus_detected;
+}
+
 #define NOUVEAU_DSM_HAS_MUX 0x1
 #define NOUVEAU_DSM_HAS_OPT 0x2
 

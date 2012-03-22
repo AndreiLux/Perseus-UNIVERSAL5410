@@ -27,6 +27,7 @@
 #include "drm.h"
 
 #include <drm/exynos_drm.h>
+#include <linux/dma-buf.h>
 
 #include "exynos_drm_drv.h"
 #include "exynos_drm_gem.h"
@@ -101,7 +102,7 @@ void exynos_drm_gem_destroy(struct exynos_drm_gem_obj *exynos_gem_obj)
 	kfree(exynos_gem_obj);
 }
 
-static struct exynos_drm_gem_obj *exynos_drm_gem_init(struct drm_device *dev,
+struct exynos_drm_gem_obj *exynos_drm_gem_init(struct drm_device *dev,
 						      unsigned long size)
 {
 	struct exynos_drm_gem_obj *exynos_gem_obj;
@@ -208,7 +209,6 @@ static int exynos_drm_gem_mmap_buffer(struct file *filp,
 
 	/* in case of direct mapping, always having non-cachable attribute */
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-	vma->vm_file = filp;
 
 	vm_size = vma->vm_end - vma->vm_start;
 	/*
@@ -291,7 +291,20 @@ int exynos_drm_gem_init_object(struct drm_gem_object *obj)
 
 void exynos_drm_gem_free_object(struct drm_gem_object *obj)
 {
+	struct exynos_drm_gem_obj *exynos_gem_obj;
+
 	DRM_DEBUG_KMS("%s\n", __FILE__);
+
+	exynos_gem_obj = to_exynos_gem_obj(obj);
+
+	/*
+	 * now this gem object could be released so if there is the dmabuf
+	 * imported to this gem object then release it and this opration
+	 * will release import_attach object and also drop file->f_count
+	 * of this dmabuf.
+	 */
+	if (obj->import_attach)
+		drm_prime_gem_destroy(obj, exynos_gem_obj->sgt);
 
 	exynos_drm_gem_destroy(to_exynos_gem_obj(obj));
 }
@@ -391,6 +404,29 @@ int exynos_drm_gem_dumb_destroy(struct drm_file *file_priv,
 	}
 
 	return 0;
+}
+
+void exynos_drm_gem_close_object(struct drm_gem_object *obj,
+				struct drm_file *file)
+{
+	struct drm_exynos_file_private *file_priv = file->driver_priv;
+
+	DRM_DEBUG_KMS("%s\n", __FILE__);
+
+	/*
+	 * remove a prime member object from prime list
+	 * only if obj->refcount has 1 and note that obj->refcount
+	 * would be decreased by drm_gem_object_handle_unreference_unlock().
+	 *
+	 * Note:
+	 * if this prime is released with that obj->refcount has more than 2
+	 * then when user requested import, a new gem object would be created
+	 * and return it instead of old one registed to prime list.
+	 */
+	if (obj->import_attach && atomic_read(&obj->refcount.refcount) == 1) {
+		drm_prime_remove_fd_handle_mapping(&file_priv->prime,
+					obj->import_attach->dmabuf);
+	}
 }
 
 int exynos_drm_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)

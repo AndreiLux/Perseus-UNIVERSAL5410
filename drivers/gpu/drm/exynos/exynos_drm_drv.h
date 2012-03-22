@@ -195,6 +195,10 @@ struct exynos_drm_manager {
 	struct exynos_drm_display_ops *display_ops;
 };
 
+struct drm_exynos_file_private {
+	struct drm_prime_file_private prime;
+};
+
 /*
  * Exynos drm private structure.
  */

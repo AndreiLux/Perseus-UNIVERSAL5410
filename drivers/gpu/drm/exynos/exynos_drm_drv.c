@@ -37,6 +37,7 @@
 #include "exynos_drm_fbdev.h"
 #include "exynos_drm_fb.h"
 #include "exynos_drm_gem.h"
+#include "exynos_drm_dmabuf.h"
 #include "exynos_drm_plane.h"
 
 #define DRIVER_NAME	"exynos"
@@ -144,11 +145,39 @@ static int exynos_drm_unload(struct drm_device *dev)
 	return 0;
 }
 
+static int exynos_drm_open(struct drm_device *dev, struct drm_file *file)
+{
+	struct drm_exynos_file_private *file_priv;
+
+	DRM_DEBUG_DRIVER("%s\n", __FILE__);
+
+	file_priv = kzalloc(sizeof(*file_priv), GFP_KERNEL);
+	if (!file_priv)
+		return -ENOMEM;
+
+	file->driver_priv = file_priv;
+
+	drm_prime_init_file_private(&file_priv->prime);
+
+	return 0;
+}
+
 static void exynos_drm_preclose(struct drm_device *dev,
 					struct drm_file *file)
 {
+	struct exynos_drm_private *dev_priv = dev->dev_private;
+	struct drm_exynos_file_private *file_priv = file->driver_priv;
+
 	DRM_DEBUG_DRIVER("%s\n", __FILE__);
 
+	/*
+	 * drm framework frees all events at release time,
+	 * so private event list should be cleared.
+	 */
+	if (!list_empty(&dev_priv->pageflip_event_list))
+		INIT_LIST_HEAD(&dev_priv->pageflip_event_list);
+
+	drm_prime_destroy_file_private(&file_priv->prime);
 }
 
 static void exynos_drm_postclose(struct drm_device *dev, struct drm_file *file)
@@ -199,9 +228,10 @@ static const struct file_operations exynos_drm_driver_fops = {
 
 static struct drm_driver exynos_drm_driver = {
 	.driver_features	= DRIVER_HAVE_IRQ | DRIVER_BUS_PLATFORM |
-				  DRIVER_MODESET | DRIVER_GEM,
+				  DRIVER_MODESET | DRIVER_GEM | DRIVER_PRIME,
 	.load			= exynos_drm_load,
 	.unload			= exynos_drm_unload,
+	.open			= exynos_drm_open,
 	.preclose		= exynos_drm_preclose,
 	.lastclose		= exynos_drm_lastclose,
 	.postclose		= exynos_drm_postclose,
@@ -210,7 +240,10 @@ static struct drm_driver exynos_drm_driver = {
 	.disable_vblank		= exynos_drm_crtc_disable_vblank,
 	.gem_init_object	= exynos_drm_gem_init_object,
 	.gem_free_object	= exynos_drm_gem_free_object,
+	.prime_handle_to_fd	= exynos_dmabuf_prime_handle_to_fd,
+	.prime_fd_to_handle	= exynos_dmabuf_prime_fd_to_handle,
 	.gem_vm_ops		= &exynos_drm_gem_vm_ops,
+	.gem_close_object	= &exynos_drm_gem_close_object,
 	.dumb_create		= exynos_drm_gem_dumb_create,
 	.dumb_map_offset	= exynos_drm_gem_dumb_map_offset,
 	.dumb_destroy		= exynos_drm_gem_dumb_destroy,

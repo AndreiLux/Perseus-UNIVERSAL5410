@@ -55,6 +55,10 @@ static void lowlevel_buffer_deallocate(struct drm_device *dev,
 {
 	DRM_DEBUG_KMS("%s.\n", __FILE__);
 
+	/* now buffer is being shared. */
+	if (atomic_read(&buffer->shared_refcount))
+		return;
+
 	if (buffer->dma_addr && buffer->size)
 		dma_free_writecombine(dev->dev, buffer->size, buffer->kvaddr,
 				(dma_addr_t)buffer->dma_addr);

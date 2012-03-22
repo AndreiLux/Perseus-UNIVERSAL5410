@@ -216,6 +216,8 @@ struct drm_mode_get_connector {
 	__u32 encoder_id; /**< Current Encoder */
 	__u32 connector_id; /**< Id */
 	__u32 connector_type;
+	/* connector type id is also used an input for the proposed
+	   depth - all libdrm pass in 0 for this up until this change */
 	__u32 connector_type_id;
 
 	__u32 connection;

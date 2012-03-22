@@ -42,6 +42,7 @@
 #include "ttm/ttm_bo_driver.h"
 #include "ttm/ttm_placement.h"
 #include "ttm/ttm_page_alloc.h"
+#include <linux/scatterlist.h>
 
 /**
  * Allocates storage for pointers to the pages that back the ttm.
@@ -178,6 +179,21 @@ void ttm_tt_destroy(struct ttm_tt *ttm)
 
 	ttm->swap_storage = NULL;
 	ttm->func->destroy(ttm);
+}
+
+int ttm_tt_set_sg_pages(struct ttm_tt *ttm,
+			struct sg_table *sg)
+{
+	int i;
+	struct scatterlist *sl;
+
+	BUG_ON(sg->nents != ttm->num_pages);
+	BUG_ON((ttm->page_flags & TTM_PAGE_FLAG_SLAVE) == 0);
+	
+	for_each_sg(sg->sgl, sl, sg->nents, i)
+		ttm->pages[i] = sg_page(sl);
+
+	return 0;
 }
 
 int ttm_tt_init(struct ttm_tt *ttm, struct ttm_bo_device *bdev,
