@@ -241,6 +241,13 @@ static int setup_isl29018_als(const struct dmi_system_id *id)
 	return 0;
 }
 
+static int setup_isl29023_als(const struct dmi_system_id *id)
+{
+	/* add isl29023 light sensor on Panel DDC GMBus */
+	als = add_i2c_device("lightsensor", I2C_ADAPTER_PANEL, &isl_als_device);
+	return 0;
+}
+
 static int setup_tsl2583_als(const struct dmi_system_id *id)
 {
 	/* add tsl2583 light sensor */
@@ -273,10 +280,16 @@ static const struct dmi_system_id chromeos_laptop_dmi_table[] = {
 	{
 		.ident = "isl29018 - Light Sensor",
 		.matches = {
-			DMI_MATCH(DMI_PRODUCT_NAME, "Link"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "Lumpy"),
 		},
 		.callback = setup_isl29018_als,
+	},
+	{
+		.ident = "isl29023 - Light Sensor",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Link"),
+		},
+		.callback = setup_isl29023_als,
 	},
 	{
 		.ident = "tsl2583 - Light Sensor",
@@ -289,6 +302,12 @@ static const struct dmi_system_id chromeos_laptop_dmi_table[] = {
 		.ident = "tsl2563 - Light Sensor",
 		.matches = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Mario"),
+		},
+		.callback = setup_tsl2563_als,
+	},
+	{
+		.ident = "tsl2563 - Light Sensor",
+		.matches = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "ZGB"),
 		},
 		.callback = setup_tsl2563_als,
