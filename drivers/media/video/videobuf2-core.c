@@ -1602,7 +1602,7 @@ int vb2_expbuf(struct vb2_queue *q, struct v4l2_exportbuffer *eb)
 		return -EINVAL;
 	}
 
-	ret = dma_buf_fd(dbuf);
+	ret = dma_buf_fd(dbuf, FD_CLOEXEC);
 	if (ret < 0) {
 		dprintk(3, "buffer %d, plane %d failed to export (%d)\n",
 			buffer, plane, ret);
