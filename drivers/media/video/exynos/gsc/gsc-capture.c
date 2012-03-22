@@ -91,6 +91,7 @@ int gsc_cap_pipeline_s_stream(struct gsc_dev *gsc, int on)
 		return -ENODEV;
 
 	if (on) {
+		gsc_info("start stream");
 		ret = v4l2_subdev_call(p->sd_gsc, video, s_stream, 1);
 		if (ret < 0 && ret != -ENOIOCTLCMD)
 			return ret;
@@ -108,9 +109,7 @@ int gsc_cap_pipeline_s_stream(struct gsc_dev *gsc, int on)
 			ret = v4l2_subdev_call(p->sensor, video, s_stream, 1);
 		}
 	} else {
-		ret = v4l2_subdev_call(p->sd_gsc, video, s_stream, 0);
-		if (ret < 0 && ret != -ENOIOCTLCMD)
-			return ret;
+		gsc_info("stop stream");
 		if (p->disp) {
 			ret = v4l2_subdev_call(p->disp, video, s_stream, 0);
 			if (ret < 0 && ret != -ENOIOCTLCMD)
@@ -124,6 +123,10 @@ int gsc_cap_pipeline_s_stream(struct gsc_dev *gsc, int on)
 				return ret;
 			ret = v4l2_subdev_call(p->flite, video, s_stream, 0);
 		}
+
+		ret = v4l2_subdev_call(p->sd_gsc, video, s_stream, 0);
+		if (ret < 0 && ret != -ENOIOCTLCMD)
+			return ret;
 	}
 
 	return ret == -ENOIOCTLCMD ? 0 : ret;
