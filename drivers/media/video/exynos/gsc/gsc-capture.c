@@ -953,32 +953,27 @@ static struct v4l2_subdev *gsc_cap_remote_subdev(struct gsc_dev *gsc, u32 *pad)
 static int gsc_capture_g_crop(struct file *file, void *fh, struct v4l2_crop *crop)
 {
 	struct gsc_dev *gsc = video_drvdata(file);
-	struct v4l2_subdev_format format;
 	struct v4l2_subdev *subdev;
-	u32 pad;
+	struct v4l2_subdev_crop subdev_crop;
 	int ret;
 
-	subdev = gsc_cap_remote_subdev(gsc, &pad);
+	subdev = gsc_cap_remote_subdev(gsc, NULL);
 	if (subdev == NULL)
 		return -EINVAL;
 
 	/* Try the get crop operation first and fallback to get format if not
 	 * implemented.
 	 */
-	ret = v4l2_subdev_call(subdev, video, g_crop, crop);
-	if (ret != -ENOIOCTLCMD)
-		return ret;
-
-	format.pad = pad;
-	format.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-	ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, &format);
+	subdev_crop.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+	subdev_crop.pad = GSC_PAD_SOURCE;
+	ret = v4l2_subdev_call(subdev, pad, get_crop, NULL, &subdev_crop);
 	if (ret < 0)
 		return ret == -ENOIOCTLCMD ? -EINVAL : ret;
 
-	crop->c.left = 0;
-	crop->c.top = 0;
-	crop->c.width = format.format.width;
-	crop->c.height = format.format.height;
+	crop->c.left = subdev_crop.rect.left;
+	crop->c.top = subdev_crop.rect.top;
+	crop->c.width = subdev_crop.rect.width;
+	crop->c.height = subdev_crop.rect.height;
 
 	return 0;
 }
@@ -987,13 +982,21 @@ static int gsc_capture_s_crop(struct file *file, void *fh, struct v4l2_crop *cro
 {
 	struct gsc_dev *gsc = video_drvdata(file);
 	struct v4l2_subdev *subdev;
+	struct v4l2_subdev_crop subdev_crop;
 	int ret;
 
 	subdev = gsc_cap_remote_subdev(gsc, NULL);
 	if (subdev == NULL)
 		return -EINVAL;
 
-	ret = v4l2_subdev_call(subdev, video, s_crop, crop);
+	subdev_crop.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+	subdev_crop.pad = GSC_PAD_SOURCE;
+	subdev_crop.rect.left = crop->c.left;
+	subdev_crop.rect.top = crop->c.top;
+	subdev_crop.rect.width = crop->c.width;
+	subdev_crop.rect.height = crop->c.height;
+
+	ret = v4l2_subdev_call(subdev, pad, set_crop, NULL, &subdev_crop);
 
 	return ret == -ENOIOCTLCMD ? -EINVAL : ret;
 }
