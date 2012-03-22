@@ -6265,8 +6265,8 @@ static __initdata struct omap_hwmod *omap44xx_hwmods[] = {
 	&omap44xx_wd_timer3_hwmod,
 
 	/* emif class */
-	&omap44xx_emif1_hwmod,
-	&omap44xx_emif2_hwmod,
+//	&omap44xx_emif1_hwmod,
+//	&omap44xx_emif2_hwmod,
 
 	NULL,
 };
