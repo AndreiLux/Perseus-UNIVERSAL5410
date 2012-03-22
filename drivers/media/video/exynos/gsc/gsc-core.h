@@ -37,6 +37,8 @@
 #include <media/videobuf2-ion.h>
 #endif
 
+extern const int h_coef_8t[7][16][8];
+extern const int v_coef_4t[7][16][4];
 extern int gsc_dbg;
 
 #define gsc_info(fmt, args...)						\
@@ -100,6 +102,14 @@ extern int gsc_dbg;
 #define	GSC_CTX_START			(1 << 5)
 #define	GSC_CTX_STOP_REQ		(1 << 6)
 #define	GSC_CTX_CAP			(1 << 10)
+
+#define GSC_SC_UP_MAX_RATIO		65536
+#define GSC_SC_DOWN_RATIO_7_8		74898
+#define GSC_SC_DOWN_RATIO_6_8		87381
+#define GSC_SC_DOWN_RATIO_5_8		104857
+#define GSC_SC_DOWN_RATIO_4_8		131072
+#define GSC_SC_DOWN_RATIO_3_8		174762
+#define GSC_SC_DOWN_RATIO_2_8		262144
 
 enum gsc_dev_flags {
 	/* for global */
@@ -773,6 +783,8 @@ void gsc_hw_set_sfr_update(struct gsc_ctx *ctx);
 void gsc_hw_set_local_dst(int id, bool on);
 void gsc_hw_set_sysreg_writeback(struct gsc_ctx *ctx);
 void gsc_hw_set_sysreg_camif(bool on);
+void gsc_hw_set_h_coef(struct gsc_ctx *ctx);
+void gsc_hw_set_v_coef(struct gsc_ctx *ctx);
 
 int gsc_hw_get_input_buf_mask_status(struct gsc_dev *dev);
 int gsc_hw_get_done_input_buf_index(struct gsc_dev *dev);

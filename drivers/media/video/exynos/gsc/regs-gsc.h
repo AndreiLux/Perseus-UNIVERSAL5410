@@ -221,4 +221,10 @@
 #define GSC_OUT_BASE_ADDR_PINGPONG(x)	((x) << 16)
 #define GSC_OUT_BASE_ADDR_MASK		(0xffff << 0)
 
+/* G-Scaler horizontal scaling filter */
+#define GSC_HCOEF(n, s, x)	(0x300 + (n) * 0x4 + (s) * 0x30 + (x) * 0x300)
+
+/* G-Scaler vertical scaling filter */
+#define GSC_VCOEF(n, s, x)	(0x200 + (n) * 0x4 + (s) * 0x30 + (x) * 0x300)
+
 #endif /* REGS_GSC_H_ */

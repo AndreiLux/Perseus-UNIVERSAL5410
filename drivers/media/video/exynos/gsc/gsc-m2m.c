@@ -159,6 +159,8 @@ static void gsc_m2m_device_run(void *priv)
 
 		gsc_hw_set_prescaler(ctx);
 		gsc_hw_set_mainscaler(ctx);
+		gsc_hw_set_h_coef(ctx);
+		gsc_hw_set_v_coef(ctx);
 		gsc_hw_set_rotation(ctx);
 		gsc_hw_set_global_alpha(ctx);
 	}

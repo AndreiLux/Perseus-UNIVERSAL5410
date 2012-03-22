@@ -261,6 +261,8 @@ static int gsc_capture_subdev_s_stream(struct v4l2_subdev *sd, int enable)
 		gsc_capture_scaler_info(ctx);
 		gsc_hw_set_prescaler(ctx);
 		gsc_hw_set_mainscaler(ctx);
+		gsc_hw_set_h_coef(ctx);
+		gsc_hw_set_v_coef(ctx);
 		
 		set_bit(ST_CAPT_PEND, &gsc->state);
 		

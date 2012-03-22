@@ -78,6 +78,8 @@ int gsc_out_hw_set(struct gsc_ctx *ctx)
 
 	gsc_hw_set_prescaler(ctx);
 	gsc_hw_set_mainscaler(ctx);
+	gsc_hw_set_h_coef(ctx);
+	gsc_hw_set_v_coef(ctx);
 	gsc_hw_set_rotation(ctx);
 	gsc_hw_set_global_alpha(ctx);
 	gsc_hw_set_input_buf_mask_all(gsc);

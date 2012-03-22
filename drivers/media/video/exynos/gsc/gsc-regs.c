@@ -674,3 +674,65 @@ void gsc_hw_set_sysreg_camif(bool on)
 
 	writel(cfg, SYSREG_GSCBLK_CFG0);
 }
+
+void gsc_hw_set_h_coef(struct gsc_ctx *ctx)
+{
+	struct gsc_scaler *sc = &ctx->scaler;
+	struct gsc_dev *dev = ctx->gsc_dev;
+	int i, j, k, sc_ratio = 0;
+
+	if (sc->main_hratio <= GSC_SC_UP_MAX_RATIO)
+		sc_ratio = 0;
+	else if (sc->main_hratio <= GSC_SC_DOWN_RATIO_7_8)
+		sc_ratio = 1;
+	else if (sc->main_hratio <= GSC_SC_DOWN_RATIO_6_8)
+		sc_ratio = 2;
+	else if (sc->main_hratio <= GSC_SC_DOWN_RATIO_5_8)
+		sc_ratio = 3;
+	else if (sc->main_hratio <= GSC_SC_DOWN_RATIO_4_8)
+		sc_ratio = 4;
+	else if (sc->main_hratio <= GSC_SC_DOWN_RATIO_3_8)
+		sc_ratio = 5;
+	else
+		sc_ratio = 6;
+
+	for (i = 0; i < 9; i++) {
+		for (j = 0; j < 8; j++) {
+			for (k = 0; k < 3; k++) {
+				writel(h_coef_8t[sc_ratio][i][j],
+				       dev->regs + GSC_HCOEF(i, j, k));
+			}
+		}
+	}
+}
+
+void gsc_hw_set_v_coef(struct gsc_ctx *ctx)
+{
+	struct gsc_scaler *sc = &ctx->scaler;
+	struct gsc_dev *dev = ctx->gsc_dev;
+	int i, j, k, sc_ratio = 0;
+
+	if (sc->main_vratio <= GSC_SC_UP_MAX_RATIO)
+		sc_ratio = 0;
+	else if (sc->main_vratio <= GSC_SC_DOWN_RATIO_7_8)
+		sc_ratio = 1;
+	else if (sc->main_vratio <= GSC_SC_DOWN_RATIO_6_8)
+		sc_ratio = 2;
+	else if (sc->main_vratio <= GSC_SC_DOWN_RATIO_5_8)
+		sc_ratio = 3;
+	else if (sc->main_vratio <= GSC_SC_DOWN_RATIO_4_8)
+		sc_ratio = 4;
+	else if (sc->main_vratio <= GSC_SC_DOWN_RATIO_3_8)
+		sc_ratio = 5;
+	else
+		sc_ratio = 6;
+
+	for (i = 0; i < 9; i++) {
+		for (j = 0; j < 4; j++) {
+			for (k = 0; k < 3; k++) {
+				writel(v_coef_4t[sc_ratio][i][j],
+				       dev->regs + GSC_VCOEF(i, j, k));
+			}
+		}
+	}
+}
