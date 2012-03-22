@@ -46,6 +46,8 @@
 #include <linux/pm_runtime.h>
 #include <linux/pm_qos.h>
 
+#define USE_HW_SPINLOCK 0
+
 /* I2C controller revisions */
 #define OMAP_I2C_OMAP1_REV_2		0x20
 
@@ -274,6 +276,7 @@ static inline u16 omap_i2c_read_reg(struct omap_i2c_dev *i2c_dev, int reg)
 				(i2c_dev->regs[reg] << i2c_dev->reg_shift));
 }
 
+#if USE_HW_SPINLOCK
 static int omap_i2c_hwspinlock_lock(struct omap_i2c_dev *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev->dev);
@@ -298,6 +301,7 @@ static void omap_i2c_hwspinlock_unlock(struct omap_i2c_dev *dev)
 	if (pdata->hwspin_unlock)
 		pdata->hwspin_unlock(pdata->handle);
 }
+#endif
 
 static int omap_i2c_unidle(struct omap_i2c_dev *dev)
 {
@@ -674,7 +678,7 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		return -EINVAL;
 
 	pm_runtime_get_sync(dev->dev);
-
+#if USE_HW_SPINLOCK
 	r = omap_i2c_hwspinlock_lock(dev);
 	/* To-Do: if we are unable to acquire the lock, we must
 	try to recover somehow */
@@ -687,6 +691,7 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		goto out2;
 	}
 
+#endif
 	r = omap_i2c_wait_for_bb(dev);
 	if (r < 0)
 		r = omap_i2c_bus_clear(dev);
@@ -717,7 +722,9 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 out1:
 	omap_i2c_idle(dev);
 out2:
+#if USE_HW_SPINLOCK
 	omap_i2c_hwspinlock_unlock(dev);
+#endif
 	pm_runtime_put(dev->dev);
 	return r;
 }
