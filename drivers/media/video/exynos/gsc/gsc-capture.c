@@ -313,8 +313,8 @@ static int gsc_capture_state_cleanup(struct gsc_dev *gsc)
 	spin_unlock_irqrestore(&gsc->slock, flags);
 
 	if (streaming) {
-		if (mdev->is_flite_on)
-		return gsc_cap_pipeline_s_stream(gsc, 0);
+		if (!mdev->is_flite_on)
+			return gsc_cap_pipeline_s_stream(gsc, 0);
 	else
 			return v4l2_subdev_call(gsc->cap.sd_cap, video,
 							s_stream, 0);
