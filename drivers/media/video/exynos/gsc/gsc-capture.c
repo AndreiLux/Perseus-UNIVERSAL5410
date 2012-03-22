@@ -333,7 +333,7 @@ static int gsc_cap_stop_capture(struct gsc_dev *gsc)
 	gsc_info("G-Scaler h/w disable control");
 	gsc_hw_enable_control(gsc, false);
 	clear_bit(ST_CAPT_STREAM, &gsc->state);
-	ret = gsc_wait_operating(gsc);
+	ret = gsc_wait_stop(gsc);
 	if (ret) {
 		gsc_err("GSCALER_OP_STATUS is operating\n");
 		return ret;
