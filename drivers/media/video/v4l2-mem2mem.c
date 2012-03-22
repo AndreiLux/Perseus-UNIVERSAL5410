@@ -331,6 +331,19 @@ int v4l2_m2m_querybuf(struct file *file, struct v4l2_m2m_ctx *m2m_ctx,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(v4l2_m2m_querybuf);
+/*
+ * v4l2_m2m_expbuf() - multi-queue-not-aware EXPBUF
+ */
+int v4l2_m2m_expbuf(struct file *file, struct v4l2_m2m_ctx *m2m_ctx,
+						struct v4l2_exportbuffer *eb)
+{
+	struct vb2_queue *vq;
+
+	/* Below code is written only for FIMC CAPTURE for now */
+	vq = v4l2_m2m_get_vq(m2m_ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+	return vb2_expbuf(vq, eb);
+}
+EXPORT_SYMBOL_GPL(v4l2_m2m_expbuf);
 
 /**
  * v4l2_m2m_qbuf() - enqueue a source or destination buffer, depending on
