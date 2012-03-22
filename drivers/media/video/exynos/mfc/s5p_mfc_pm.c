@@ -147,9 +147,7 @@ int s5p_mfc_clock_on(void)
 	mfc_debug(3, "+ %d", atomic_read(&clk_ref));
 
 	ret = clk_enable(pm->clock);
-	if (atomic_read(&clk_ref) == 1)
-		s5p_mfc_mem_resume(dev->alloc_ctx[0]);
-
+	s5p_mfc_mem_resume(dev->alloc_ctx[0]);
 	return ret;
 }
 
@@ -161,8 +159,7 @@ void s5p_mfc_clock_off(void)
 
 	mfc_debug(3, "- %d", atomic_read(&clk_ref));
 
-	if (atomic_read(&clk_ref) == 0)
-		s5p_mfc_mem_suspend(dev->alloc_ctx[0]);
+	s5p_mfc_mem_suspend(dev->alloc_ctx[0]);
 	clk_disable(pm->clock);
 }
 
