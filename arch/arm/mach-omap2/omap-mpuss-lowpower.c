@@ -284,6 +284,11 @@ static void save_l2x0_context(void)
 	u32 val;
 	void __iomem *l2x0_base = omap4_get_l2cache_base();
 
+	if (!l2x0_base) {
+		pr_err("save_l2x0_context: failed\n");
+		return;
+	}
+
 	val = __raw_readl(l2x0_base + L2X0_AUX_CTRL);
 	__raw_writel(val, sar_base + L2X0_AUXCTRL_OFFSET);
 	val = __raw_readl(l2x0_base + L2X0_PREFETCH_CTRL);
