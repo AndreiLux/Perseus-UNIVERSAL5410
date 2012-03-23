@@ -715,9 +715,28 @@ static void ion_exynos_user_heap_free(struct ion_buffer *buffer)
 	kfree(privdata);
 }
 
+static int ion_exynos_user_heap_phys(struct ion_heap *heap,
+				       struct ion_buffer *buffer,
+				       ion_phys_addr_t *addr, size_t *len)
+{
+	struct exynos_user_heap_data *privdata = buffer->priv_virt;
+
+	if (privdata->sgt.orig_nents != 1)
+		return -EINVAL;
+
+	if (addr)
+		*addr = sg_phys(privdata->sgt.sgl);
+
+	if (len)
+		*len = sg_dma_len(privdata->sgt.sgl);
+
+	return 0;
+}
+
 static struct ion_heap_ops user_heap_ops = {
 	.allocate = ion_exynos_user_heap_allocate,
 	.free = ion_exynos_user_heap_free,
+	.phys = ion_exynos_user_heap_phys,
 	.map_dma = ion_exynos_heap_map_dma,
 	.unmap_dma = ion_exynos_heap_unmap_dma,
 	.map_kernel = ion_exynos_heap_map_kernel,
