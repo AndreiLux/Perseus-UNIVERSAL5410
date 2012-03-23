@@ -102,8 +102,8 @@ static int exynos_cpu_suspend(unsigned long arg)
 	/* issue the standby signal into the pm unit. */
 	cpu_do_idle();
 #endif
-	/* we should never get past here */
-	panic("sleep resumed to originator?");
+	pr_info("sleep resumed to originator?");
+	return 1; /* abort suspend */
 }
 
 static void exynos_pm_prepare(void)
