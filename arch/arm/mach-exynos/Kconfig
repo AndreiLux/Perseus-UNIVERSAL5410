@@ -225,8 +225,9 @@ config EXYNOS4_SETUP_SPI
 	  Common setup code for SPI GPIO configurations.
 
 config EXYNOS_FIQ_DEBUGGER
-        bool "Exynos FIQ debugger support"
+	bool "Exynos FIQ debugger support"
 	depends on FIQ_DEBUGGER
+	default y
 	help
 	  Exynos platform support for the FIQ debugger
 
