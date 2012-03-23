@@ -660,6 +660,7 @@ static int gsc_out_queue_setup(struct vb2_queue *vq, const struct v4l2_format *f
 		sizes[i] = get_plane_size(&ctx->s_frame, i);
 		allocators[i] = ctx->gsc_dev->alloc_ctx;
 	}
+	vb2_queue_init(vq);
 
 	return 0;
 }
