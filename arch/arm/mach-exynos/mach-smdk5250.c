@@ -103,8 +103,20 @@ static struct s3c2410_uartcfg smdk5250_uartcfgs[] __initdata = {
 		.ulcon		= SMDK5250_ULCON_DEFAULT,
 		.ufcon		= SMDK5250_UFCON_DEFAULT,
 	},
-	/* Do not initialize hwport 2, it will be handled by fiq_debugger */
 	[2] = {
+#ifndef CONFIG_EXYNOS_FIQ_DEBUGGER
+	/*
+	 * Don't need to initialize hwport 2, when FIQ debugger is
+	 * enabled. Because it will be handled by fiq_debugger.
+	 */
+		.hwport		= 2,
+		.flags		= 0,
+		.ucon		= SMDK5250_UCON_DEFAULT,
+		.ulcon		= SMDK5250_ULCON_DEFAULT,
+		.ufcon		= SMDK5250_UFCON_DEFAULT,
+	},
+	[3] = {
+#endif
 		.hwport		= 3,
 		.flags		= 0,
 		.ucon		= SMDK5250_UCON_DEFAULT,
@@ -1604,7 +1616,9 @@ static void __init smdk5250_init_early(void)
 
 static void __init smdk5250_machine_init(void)
 {
+#ifdef CONFIG_EXYNOS_FIQ_DEBUGGER
 	exynos_serial_debug_init(2, 0);
+#endif
 
 	s3c_i2c0_set_platdata(NULL);
 	i2c_register_board_info(0, i2c_devs0, ARRAY_SIZE(i2c_devs0));
