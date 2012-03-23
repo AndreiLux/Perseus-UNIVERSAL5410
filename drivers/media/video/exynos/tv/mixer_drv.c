@@ -129,6 +129,9 @@ static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 				local += sub_mxr->local;
 			}
 		}
+		if (local == 2)
+			mxr_layer_sync(mdev, MXR_ENABLE);
+
 		/* Set the TVOUT register about gsc-mixer local path */
 		mxr_reg_local_path_set(mdev, mdev->mxr0_gsc, mdev->mxr1_gsc,
 				mdev->flags);
@@ -227,6 +230,8 @@ static int mxr_streamer_put(struct mxr_device *mdev, struct v4l2_subdev *sd)
 			if (sub_mxr->local)
 				local += sub_mxr->local;
 		}
+		if (local == 2)
+			mxr_layer_sync(mdev, MXR_DISABLE);
 	}
 
 	if ((mdev->n_streamer == 0 && local == 1) ||
@@ -290,6 +295,7 @@ static int mxr_streamer_put(struct mxr_device *mdev, struct v4l2_subdev *sd)
 				layer->ops.stream_set(layer, 0);
 			}
 		}
+		mxr_reg_local_path_clear(mdev);
 		mxr_output_put(mdev);
 
 		/* disable mixer clock */
@@ -862,6 +868,11 @@ static int mxr_try_crop(struct v4l2_subdev *sd,
 	r->width = clamp_val(r->width, 1, fmt->width - r->left);
 	r->height = clamp_val(r->height, 1, fmt->height - r->top);
 
+	/* need to align size with G-Scaler */
+	if (pad == MXR_PAD_SINK_GSCALER || pad == MXR_PAD_SOURCE_GSCALER)
+		if (r->width % 2)
+			r->width -= 1;
+
 	return 0;
 }
 
@@ -1319,7 +1330,7 @@ static int __devinit mxr_probe(struct platform_device *pdev)
 
 	mdev = kzalloc(sizeof *mdev, GFP_KERNEL);
 	if (!mdev) {
-		mxr_err(mdev, "not enough memory.\n");
+		dev_err(dev, "not enough memory.\n");
 		ret = -ENOMEM;
 		goto fail;
 	}
@@ -1329,6 +1340,7 @@ static int __devinit mxr_probe(struct platform_device *pdev)
 
 	/* use only sub mixer0 as default */
 	mdev->sub_mxr[MXR_SUB_MIXER0].use = 1;
+	mdev->sub_mxr[MXR_SUB_MIXER1].use = 1;
 
 #if defined(CONFIG_VIDEOBUF2_CMA_PHYS)
 	mdev->vb2 = &mxr_vb2_cma;

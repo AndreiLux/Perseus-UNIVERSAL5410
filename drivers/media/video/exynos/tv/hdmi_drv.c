@@ -26,6 +26,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/clk.h>
 #include <linux/regulator/consumer.h>
+#include <linux/videodev2_exynos_media.h>
 #include <linux/sched.h>
 #include <plat/devs.h>
 #include <plat/tv-core.h>
@@ -232,6 +233,8 @@ static int hdmi_streamon(struct hdmi_device *hdev)
 	if (hdev->audio_enable)
 		hdmi_audio_enable(hdev, 1);
 
+	hdmi_set_dvi_mode(hdev);
+
 	/* enable HDMI and timing generator */
 	hdmi_enable(hdev, 1);
 	hdmi_tg_enable(hdev, 1);
@@ -333,10 +336,21 @@ int hdmi_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 {
 	struct hdmi_device *hdev = sd_to_hdmi_dev(sd);
 	struct device *dev = hdev->dev;
+	int ret = 0;
 
-	dev_info(dev, "S_CTRL is not applied yet.\n");
+	dev_dbg(dev, "%s start\n", __func__);
 
-	return 0;
+	switch (ctrl->id) {
+	case V4L2_CID_TV_SET_DVI_MODE:
+		hdev->dvi_mode = ctrl->value;
+		break;
+	default:
+		dev_err(dev, "invalid control id\n");
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
 }
 
 int hdmi_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)

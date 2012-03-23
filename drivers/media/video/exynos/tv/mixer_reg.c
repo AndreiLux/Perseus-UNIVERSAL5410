@@ -15,6 +15,7 @@
 #include "regs-mixer.h"
 #include "regs-vp.h"
 
+#include <plat/cpu.h>
 #include <linux/delay.h>
 
 /* Register access subroutines */
@@ -63,6 +64,12 @@ static inline void mxr_write_mask(struct mxr_device *mdev, u32 reg_id,
 
 	val = (val & mask) | (old & ~mask);
 	writel(val, mdev->res.mxr_regs + reg_id);
+}
+
+void mxr_layer_sync(struct mxr_device *mdev, int en)
+{
+	mxr_write_mask(mdev, MXR_STATUS, en ? MXR_STATUS_LAYER_SYNC : 0,
+		MXR_STATUS_LAYER_SYNC);
 }
 
 void mxr_vsync_set_update(struct mxr_device *mdev, int en)
@@ -149,6 +156,8 @@ void mxr_reg_reset(struct mxr_device *mdev)
 	unsigned long flags;
 
 	spin_lock_irqsave(&mdev->reg_slock, flags);
+
+	mxr_write_mask(mdev, MXR_STATUS, ~0, MXR_STATUS_SOFT_RESET);
 	mxr_vsync_set_update(mdev, MXR_DISABLE);
 
 	/* set output in RGB888 mode */
@@ -579,12 +588,11 @@ irqreturn_t mxr_irq_handler(int irq, void *dev_data)
 		wake_up(&mdev->event_queue);
 	}
 
-	/* clear interrupts */
-	if (~val & MXR_INT_EN_VSYNC) {
-		/* vsync interrupt use different bit for read and clear */
-		val &= ~MXR_INT_EN_VSYNC;
-		val |= MXR_INT_CLEAR_VSYNC;
-	}
+	/* clear interrupts.
+	   vsync is updated after write MXR_CFG_LAYER_UPDATE bit */
+	if (val & MXR_INT_CLEAR_VSYNC)
+		mxr_write_mask(mdev, MXR_INT_STATUS, ~0, MXR_INT_CLEAR_VSYNC);
+
 	val = mxr_irq_underrun_handle(mdev, val);
 	mxr_write(mdev, MXR_INT_STATUS, val);
 
@@ -599,6 +607,12 @@ irqreturn_t mxr_irq_handler(int irq, void *dev_data)
 #endif
 		mxr_irq_layer_handle(mdev->sub_mxr[i].layer[MXR_LAYER_GRP0]);
 		mxr_irq_layer_handle(mdev->sub_mxr[i].layer[MXR_LAYER_GRP1]);
+	}
+
+	if (test_bit(MXR_EVENT_VSYNC, &mdev->event_flags)) {
+		spin_lock(&mdev->reg_slock);
+		mxr_write_mask(mdev, MXR_CFG, ~0, MXR_CFG_LAYER_UPDATE);
+		spin_unlock(&mdev->reg_slock);
 	}
 
 	return IRQ_HANDLED;
@@ -703,6 +717,17 @@ void mxr_reg_set_mbus_fmt(struct mxr_device *mdev,
 	spin_unlock_irqrestore(&mdev->reg_slock, flags);
 }
 
+void mxr_reg_local_path_clear(struct mxr_device *mdev)
+{
+	u32 val;
+
+	val = readl(SYSREG_DISP1BLK_CFG);
+	val &= ~(DISP1BLK_CFG_MIXER0_VALID | DISP1BLK_CFG_MIXER1_VALID);
+	writel(val, SYSREG_DISP1BLK_CFG);
+	mxr_dbg(mdev, "SYSREG_DISP1BLK_CFG = 0x%x\n",
+			readl(SYSREG_DISP1BLK_CFG));
+}
+
 void mxr_reg_local_path_set(struct mxr_device *mdev, int mxr0_gsc, int mxr1_gsc,
 		u32 flags)
 {
@@ -743,7 +768,24 @@ void mxr_reg_local_path_set(struct mxr_device *mdev, int mxr0_gsc, int mxr1_gsc,
 
 void mxr_reg_graph_layer_stream(struct mxr_device *mdev, int idx, int en)
 {
-	/* no extra actions need to be done */
+	u32 val = 0;
+	unsigned long flags;
+
+	spin_lock_irqsave(&mdev->reg_slock, flags);
+	mxr_vsync_set_update(mdev, MXR_DISABLE);
+
+	if (mdev->frame_packing) {
+		val  = MXR_TVOUT_CFG_TWO_PATH;
+		val |= MXR_TVOUT_CFG_STEREO_SCOPIC;
+	} else {
+		val  = MXR_TVOUT_CFG_ONE_PATH;
+		val |= MXR_TVOUT_CFG_PATH_MIXER0;
+	}
+
+	mxr_write(mdev, MXR_TVOUT_CFG, val);
+
+	mxr_vsync_set_update(mdev, MXR_ENABLE);
+	spin_unlock_irqrestore(&mdev->reg_slock, flags);
 }
 
 void mxr_reg_vp_layer_stream(struct mxr_device *mdev, int en)
@@ -843,6 +885,27 @@ do { \
 	DUMPREG(MXR_GRAPHIC1_WH);
 	DUMPREG(MXR_GRAPHIC1_SXY);
 	DUMPREG(MXR_GRAPHIC1_DXY);
+
+	if (soc_is_exynos5250()) {
+		DUMPREG(MXR1_LAYER_CFG);
+		DUMPREG(MXR1_VIDEO_CFG);
+
+		DUMPREG(MXR1_GRAPHIC0_CFG);
+		DUMPREG(MXR1_GRAPHIC0_BASE);
+		DUMPREG(MXR1_GRAPHIC0_SPAN);
+		DUMPREG(MXR1_GRAPHIC0_WH);
+		DUMPREG(MXR1_GRAPHIC0_SXY);
+		DUMPREG(MXR1_GRAPHIC0_DXY);
+
+		DUMPREG(MXR1_GRAPHIC1_CFG);
+		DUMPREG(MXR1_GRAPHIC1_BASE);
+		DUMPREG(MXR1_GRAPHIC1_SPAN);
+		DUMPREG(MXR1_GRAPHIC1_WH);
+		DUMPREG(MXR1_GRAPHIC1_SXY);
+		DUMPREG(MXR1_GRAPHIC1_DXY);
+
+		DUMPREG(MXR_TVOUT_CFG);
+	}
 #undef DUMPREG
 }
 

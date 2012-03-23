@@ -185,6 +185,13 @@ enum mxr_layer_type {
 	MXR_LAYER_TYPE_GRP = 1,
 };
 
+struct mxr_layer_en {
+	int graph0;
+	int graph1;
+	int graph2;
+	int graph3;
+};
+
 /** layer instance, a single window and content displayed on output */
 struct mxr_layer {
 	/** parent mixer device */
@@ -372,6 +379,11 @@ struct mxr_device {
 
 	/** count of sub-mixers */
 	struct sub_mxr_device sub_mxr[MXR_MAX_SUB_MIXERS];
+
+	/** enabled layer number **/
+	struct mxr_layer_en layer_en;
+	/** frame packing flag **/
+	int frame_packing;
 };
 
 #if defined(CONFIG_VIDEOBUF2_CMA_PHYS)
@@ -494,6 +506,7 @@ void mxr_get_mbus_fmt(struct mxr_device *mdev,
 
 /* accessing Mixer's and Video Processor's registers */
 
+void mxr_layer_sync(struct mxr_device *mdev, int en);
 void mxr_vsync_set_update(struct mxr_device *mdev, int en);
 void mxr_reg_reset(struct mxr_device *mdev);
 void mxr_reg_set_layer_blend(struct mxr_device *mdev, int sub_mxr, int num,
@@ -511,6 +524,7 @@ void mxr_reg_streamoff(struct mxr_device *mdev);
 int mxr_reg_wait4vsync(struct mxr_device *mdev);
 void mxr_reg_set_mbus_fmt(struct mxr_device *mdev,
 	struct v4l2_mbus_framefmt *fmt);
+void mxr_reg_local_path_clear(struct mxr_device *mdev);
 void mxr_reg_local_path_set(struct mxr_device *mdev, int mxr0_gsc, int mxr1_gsc,
 		u32 flags);
 void mxr_reg_graph_layer_stream(struct mxr_device *mdev, int idx, int en);

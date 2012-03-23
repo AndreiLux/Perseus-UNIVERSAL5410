@@ -300,6 +300,9 @@ struct hdmi_device {
 	bool hpd_user_checked;
 	atomic_t hpd_state;
 	spinlock_t hpd_lock;
+
+	/* choose DVI or HDMI mode */
+	int dvi_mode;
 };
 
 struct hdmi_conf {
@@ -343,6 +346,7 @@ void hdmi_sw_hpd_plug(struct hdmi_device *hdev, int en);
 void hdmi_phy_sw_reset(struct hdmi_device *hdev);
 void hdmi_dumpregs(struct hdmi_device *hdev, char *prefix);
 void hdmi_set_3d_info(struct hdmi_device *hdev);
+void hdmi_set_dvi_mode(struct hdmi_device *hdev);
 
 /** HDCP functions */
 irqreturn_t hdcp_irq_handler(struct hdmi_device *hdev);
