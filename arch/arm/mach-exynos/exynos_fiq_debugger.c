@@ -59,6 +59,9 @@ static int debug_port_init(struct platform_device *pdev)
 	struct exynos_fiq_debugger *dbg = get_dbg(pdev);
 	unsigned long timeout;
 
+	exynos_write(dbg, dbg->baud, S3C2410_UBRDIV);
+	exynos_write(dbg, dbg->frac_baud, S3C2443_DIVSLOT);
+
 	/* Mask and clear all interrupts */
 	exynos_write(dbg, 0xF, S3C64XX_UINTM);
 	exynos_write(dbg, 0xF, S3C64XX_UINTP);
@@ -108,6 +111,9 @@ static void debug_putc(struct platform_device *pdev, unsigned int c)
 	struct exynos_fiq_debugger *dbg = get_dbg(pdev);
 	int count = loops_per_jiffy;
 
+	if (exynos_read(dbg, S3C2410_ULCON) != S3C2410_LCON_CS8)
+		debug_port_init(pdev);
+
 	while (exynos_read(dbg, S3C2410_UFSTAT) & S5PV210_UFSTAT_TXFULL)
 		if (--count == 0)
 			return;
@@ -125,24 +131,18 @@ static void debug_flush(struct platform_device *pdev)
 			return;
 }
 
-int debug_suspend(struct platform_device *pdev)
+static int debug_suspend(struct platform_device *pdev)
 {
 	struct exynos_fiq_debugger *dbg = get_dbg(pdev);
-
-	dbg->baud = exynos_read(dbg, S3C2410_UBRDIV);
-	dbg->frac_baud = exynos_read(dbg, S3C2443_DIVSLOT);
 
 	exynos_write(dbg, 0xF, S3C64XX_UINTM);
 
 	return 0;
 }
 
-int debug_resume(struct platform_device *pdev)
+static int debug_resume(struct platform_device *pdev)
 {
 	struct exynos_fiq_debugger *dbg = get_dbg(pdev);
-
-	exynos_write(dbg, dbg->baud, S3C2410_UBRDIV);
-	exynos_write(dbg, dbg->frac_baud, S3C2443_DIVSLOT);
 
 	debug_port_init(pdev);
 
@@ -195,6 +195,9 @@ int __init exynos_serial_debug_init(int id, bool is_fiq)
 	dbg->pdata.uart_dev_resume = debug_resume;
 
 	dbg->pdev = pdev;
+
+	dbg->baud = exynos_read(dbg, S3C2410_UBRDIV);
+	dbg->frac_baud = exynos_read(dbg, S3C2443_DIVSLOT);
 
 	if (platform_device_register(pdev)) {
 		pr_err("exynos_fiq_debugger: failed to register fiq debugger\n");
