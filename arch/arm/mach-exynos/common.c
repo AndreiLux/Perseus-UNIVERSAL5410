@@ -933,6 +933,11 @@ static int exynos_irq_eint_set_type(struct irq_data *data, unsigned int type)
 	__raw_writel(ctrl, EINT_CON(exynos_eint_base, data->irq));
 	spin_unlock(&eint_lock);
 
+	if (type & IRQ_TYPE_EDGE_BOTH)
+		__irq_set_handler_locked(data->irq, handle_edge_irq);
+	else
+		__irq_set_handler_locked(data->irq, handle_level_irq);
+
 	if (soc_is_exynos5250())
 		s3c_gpio_cfgpin(exynos5_irq_to_gpio(data->irq), S3C_GPIO_SFN(0xf));
 	else
