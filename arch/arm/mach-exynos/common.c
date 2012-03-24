@@ -64,7 +64,8 @@ static void exynos4_init_clocks(int xtal);
 static void exynos5_init_clocks(int xtal);
 static void exynos_init_uarts(struct s3c2410_uartcfg *cfg, int no);
 static int exynos_init(void);
-static int exynos_init_irq_eint(void);
+static int exynos_init_irq_eint(struct device_node *np,
+				struct device_node *parent);
 
 static struct cpu_table cpu_ids[] __initdata = {
 	{
@@ -588,6 +589,8 @@ static const struct of_device_id exynos4_dt_irq_match[] = {
 	{ .compatible = "arm,cortex-a9-gic", .data = gic_of_init, },
 	{ .compatible = "samsung,exynos4210-combiner",
 			.data = combiner_of_init, },
+	{ .compatible = "samsung,exynos4210-wakeup-eint",
+			.data = exynos_init_irq_eint, },
 	{},
 };
 #endif
@@ -605,8 +608,10 @@ void __init exynos4_init_irq(void)
 		of_irq_init(exynos4_dt_irq_match);
 #endif
 
-	if (!of_have_populated_dt())
+	if (!of_have_populated_dt()) {
 		combiner_init(S5P_VA_COMBINER_BASE, NULL);
+		exynos_init_irq_eint(NULL, NULL);
+	}
 
 	/*
 	 * The parameters of s5p_init_irq() are for VIC init.
@@ -614,12 +619,12 @@ void __init exynos4_init_irq(void)
 	 * uses GIC instead of VIC.
 	 */
 	s5p_init_irq(NULL, 0);
-	exynos_init_irq_eint();
 }
 
 void __init exynos5_init_irq(void)
 {
 	int irq;
+	struct device_node *np;
 
 #ifdef CONFIG_OF
 	of_irq_init(exynos4_dt_irq_match);
@@ -628,12 +633,29 @@ void __init exynos5_init_irq(void)
 	combiner_init(S5P_VA_COMBINER_BASE, NULL);
 
 	/*
+	 * The Exynos5 wakeup interrupt controller has two-interrupt parents,
+	 * gic and combiner. Hence, a interrupt nexus node is used to translate
+	 * interrupt specifers for the interrupts which wakeup interrupt
+	 * controller deliver to the gic and combiner.
+	 *
+	 * When using a interrupt nexus node (which is child node of the wakeup
+	 * controller node), the interrupt parent of the wakeup controller node
+	 * is set as the nexus node and the nexus node does not have a
+	 * 'interrupt-controller' property. Hence, the of_irq_init function
+	 * will not be able to invoke the intializer function for wakeup
+	 * interrupt controller. So call the initiazer explicitly here.
+	 */
+	np = of_find_compatible_node(NULL, NULL,
+					"samsung,exynos5210-wakeup-eint");
+	if (np)
+		exynos_init_irq_eint(np, NULL);
+
+	/*
 	 * The parameters of s5p_init_irq() are for VIC init.
 	 * Theses parameters should be NULL and 0 because EXYNOS4
 	 * uses GIC instead of VIC.
 	 */
 	s5p_init_irq(NULL, 0);
-	exynos_init_irq_eint();
 }
 
 struct bus_type exynos4_subsys = {
@@ -1025,13 +1047,19 @@ static struct irq_domain_ops exynos_eint_irq_domain_ops = {
 	.map = exynos_eint_irq_domain_map,
 };
 
-static int __init exynos_init_irq_eint(void)
+static int __init exynos_init_irq_eint(struct device_node *np,
+					struct device_node *parent)
 {
-	int irq, *src_int, irq_base;
+	int irq, *src_int, irq_base, irq_eint;
 	unsigned int paddr;
 
-	paddr = soc_is_exynos5250() ? EXYNOS5_PA_GPIO1 : EXYNOS4_PA_GPIO2;
-	exynos_eint_base = ioremap(paddr, SZ_4K);
+	if (!np) {
+		paddr = soc_is_exynos5250() ? EXYNOS5_PA_GPIO1 :
+						EXYNOS4_PA_GPIO2;
+		exynos_eint_base = ioremap(paddr, SZ_4K);
+	} else {
+		exynos_eint_base = of_iomap(np, 0);
+	}
 	if (!exynos_eint_base) {
 		pr_err("unable to ioremap for EINT base address\n");
 		return -ENXIO;
@@ -1044,21 +1072,23 @@ static int __init exynos_init_irq_eint(void)
 				"linux irq base\n", __func__, irq_base);
 	}
 
-	irq_domain = irq_domain_add_legacy(NULL, EXYNOS_EINT_NR, irq_base, 0,
+	irq_domain = irq_domain_add_legacy(np, EXYNOS_EINT_NR, irq_base, 0,
 					 &exynos_eint_irq_domain_ops, NULL);
 	if (WARN_ON(!irq_domain)) {
 		pr_warning("%s: irq domain init failed\n", __func__);
 		return 0;
 	}
 
-	irq_set_chained_handler(EXYNOS_IRQ_EINT16_31, exynos_irq_demux_eint16_31);
+	irq_eint = np ? irq_of_parse_and_map(np, 16) : EXYNOS_IRQ_EINT16_31;
+	irq_set_chained_handler(irq_eint, exynos_irq_demux_eint16_31);
 
 	for (irq = 0 ; irq <= 15; irq++) {
 		eint0_15_data[irq] = irq;
 		src_int = soc_is_exynos5250() ? exynos5_eint0_15_src_int :
 						exynos4_eint0_15_src_int;
-		irq_set_handler_data(src_int[irq], &eint0_15_data[irq]);
-		irq_set_chained_handler(src_int[irq], exynos_irq_eint0_15);
+		irq_eint = np ? irq_of_parse_and_map(np, irq) : src_int[irq];
+		irq_set_handler_data(irq_eint, &eint0_15_data[irq]);
+		irq_set_chained_handler(irq_eint, exynos_irq_eint0_15);
 	}
 
 	return 0;
