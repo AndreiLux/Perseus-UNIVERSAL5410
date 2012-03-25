@@ -631,10 +631,10 @@ int gsc_check_scaler_ratio(struct gsc_variant *var, int sw, int sh, int dw,
 		tmp_h = dh;
 	}
 
-	if ((sw / tmp_w) > sc_down_max ||
-	    (sh / tmp_h) > sc_down_max ||
-	    (tmp_w / sw) > var->sc_up_max ||
-	    (tmp_h / sh) > var->sc_up_max)
+	if ((sw > (tmp_w * sc_down_max)) ||
+	    (sh > (tmp_h * sc_down_max)) ||
+	    (tmp_w > (sw * var->sc_up_max)) ||
+	    (tmp_h > (sh * var->sc_up_max)))
 		return -EINVAL;
 
 	return 0;
