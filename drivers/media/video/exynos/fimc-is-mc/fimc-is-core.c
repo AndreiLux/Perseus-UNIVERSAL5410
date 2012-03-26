@@ -38,44 +38,8 @@
 #include "fimc-is-misc.h"
 
 #if defined(CONFIG_VIDEOBUF2_ION)
-struct vb2_buffer *is_vb;
+static void *is_vb_cookie;
 void *buf_start;
-
-struct vb2_ion_conf {
-	struct device		*dev;
-	const char		*name;
-
-	struct ion_client	*client;
-
-	unsigned long		align;
-	bool			contig;
-	bool			sharable;
-	bool			cacheable;
-	bool			use_mmu;
-	atomic_t		mmu_enable;
-
-	spinlock_t		slock;
-};
-
-struct vb2_ion_buf {
-	struct vm_area_struct		**vma;
-	int				vma_count;
-	struct vb2_ion_conf		*conf;
-	struct vb2_vmarea_handler	handler;
-
-	struct ion_handle		*handle;	/* Kernel space */
-
-	dma_addr_t			kva;
-	dma_addr_t			dva;
-	unsigned long			size;
-
-	struct scatterlist		*sg;
-	int				nents;
-
-	atomic_t			ref;
-
-	bool				cacheable;
-};
 
 #endif
 
@@ -165,39 +129,37 @@ int fimc_is_init_mem(struct fimc_is_dev *dev)
 
 void fimc_is_mem_init_mem_cleanup(void *alloc_ctxes)
 {
-	vb2_ion_cleanup(alloc_ctxes);
+	vb2_ion_destroy_context(alloc_ctxes);
 }
 
 void fimc_is_mem_resume(void *alloc_ctxes)
 {
-	vb2_ion_resume(alloc_ctxes);
+	vb2_ion_attach_iommu(alloc_ctxes);
 }
 
 void fimc_is_mem_suspend(void *alloc_ctxes)
 {
-	vb2_ion_suspend(alloc_ctxes);
+	vb2_ion_detach_iommu(alloc_ctxes);
 }
 
-int fimc_is_cache_flush(struct vb2_buffer *vb,
+int fimc_is_cache_flush(struct fimc_is_dev *dev,
 				const void *start_addr, unsigned long size)
 {
-	return vb2_ion_cache_flush(vb, 1);
-}
-
-int fimc_is_cache_inv(struct vb2_buffer *vb,
-				const void *start_addr, unsigned long size)
-{
-	return vb2_ion_cache_inv(vb, 1);
+	vb2_ion_sync_for_device(dev->mem.fw_cookie,
+		(unsigned long)start_addr - (unsigned long)dev->mem.kvaddr,
+			size, DMA_BIDIRECTIONAL);
+	return 0;
 }
 
 /* Allocate firmware */
 int fimc_is_alloc_firmware(struct fimc_is_dev *dev)
 {
 	void *fimc_is_bitproc_buf;
+	int ret;
+
 	dbg("Allocating memory for FIMC-IS firmware.\n");
 
-	fimc_is_bitproc_buf =
-		dev->vb2->ops->alloc(dev->alloc_ctx,
+	fimc_is_bitproc_buf = vb2_ion_private_alloc(dev->alloc_ctx,
 					FIMC_IS_A5_MEM_SIZE+FIMC_IS_TDNR_MEM_SIZE);
 	if (IS_ERR(fimc_is_bitproc_buf)) {
 		fimc_is_bitproc_buf = 0;
@@ -205,10 +167,10 @@ int fimc_is_alloc_firmware(struct fimc_is_dev *dev)
 		return -ENOMEM;
 	}
 
-	dev->mem.dvaddr = (size_t)dev->vb2->ops->cookie(fimc_is_bitproc_buf);
-	if (dev->mem.dvaddr  & FIMC_IS_FW_BASE_MASK) {
+	ret = vb2_ion_dma_address(fimc_is_bitproc_buf, &dev->mem.dvaddr);
+	if ((ret < 0) || (dev->mem.dvaddr  & FIMC_IS_FW_BASE_MASK)) {
 		err("The base memory is not aligned to 64MB.\n");
-		dev->vb2->ops->put(fimc_is_bitproc_buf);
+		vb2_ion_private_free(fimc_is_bitproc_buf);
 		dev->mem.dvaddr = 0;
 		fimc_is_bitproc_buf = 0;
 		return -EIO;
@@ -216,22 +178,20 @@ int fimc_is_alloc_firmware(struct fimc_is_dev *dev)
 	dbg("Device vaddr = %08x , size = %08x\n",
 				dev->mem.dvaddr, FIMC_IS_A5_MEM_SIZE);
 
-	dev->mem.kvaddr = dev->vb2->ops->vaddr(fimc_is_bitproc_buf);
-	if (!dev->mem.kvaddr) {
+	dev->mem.kvaddr = vb2_ion_private_vaddr(fimc_is_bitproc_buf);
+	if (IS_ERR(dev->mem.kvaddr)) {
 		err("Bitprocessor memory remap failed\n");
-		dev->vb2->ops->put(fimc_is_bitproc_buf);
+		vb2_ion_private_free(fimc_is_bitproc_buf);
 		dev->mem.dvaddr = 0;
 		fimc_is_bitproc_buf = 0;
 		return -EIO;
 	}
 	dbg("Virtual address for FW: %08lx\n",
 			(long unsigned int)dev->mem.kvaddr);
-	dbg("Physical address for FW: %08lx\n",
-			(long unsigned int)virt_to_phys(dev->mem.kvaddr));
 	dev->mem.bitproc_buf = fimc_is_bitproc_buf;
-	dev->mem.vb2_buf.planes[0].mem_priv = fimc_is_bitproc_buf;
+	dev->mem.fw_cookie = fimc_is_bitproc_buf;
 
-	is_vb = &dev->mem.vb2_buf;
+	is_vb_cookie = dev->mem.fw_cookie;
 	buf_start = dev->mem.kvaddr;
 	return 0;
 }
@@ -239,7 +199,6 @@ int fimc_is_alloc_firmware(struct fimc_is_dev *dev)
 void fimc_is_mem_cache_clean(const void *start_addr,
 				unsigned long size)
 {
-	struct vb2_ion_buf *buf;
 	off_t offset;
 
 	if (start_addr < buf_start) {
@@ -250,16 +209,11 @@ void fimc_is_mem_cache_clean(const void *start_addr,
 
 	offset = start_addr - buf_start;
 
-	buf = (struct vb2_ion_buf *)is_vb->planes[0].mem_priv;
-	dma_sync_sg_for_device(buf->conf->dev, buf->sg, buf->nents,
-						DMA_BIDIRECTIONAL);
+	vb2_ion_sync_for_device(is_vb_cookie, offset, size, DMA_TO_DEVICE);
 }
 
 void fimc_is_mem_cache_inv(const void *start_addr, unsigned long size)
 {
-	struct vb2_ion_buf *buf;
-	struct scatterlist *sg;
-	int i;
 	off_t offset;
 
 	if (start_addr < buf_start) {
@@ -269,24 +223,7 @@ void fimc_is_mem_cache_inv(const void *start_addr, unsigned long size)
 
 	offset = start_addr - buf_start;
 
-	buf = (struct vb2_ion_buf *)is_vb->planes[0].mem_priv;
-	for_each_sg(buf->sg, sg, buf->nents, i) {
-		phys_addr_t start, end;
-
-		if (offset >= sg_dma_len(sg)) {
-			offset -= sg_dma_len(sg);
-			continue;
-		}
-
-		start = sg_phys(sg);
-		end = start + sg_dma_len(sg);
-
-		dmac_flush_range(phys_to_virt(start),
-				 phys_to_virt(end));
-		outer_flush_range(start, end);	/* L2 */
-		if (size == 0)
-			break;
-	}
+	vb2_ion_sync_for_device(is_vb_cookie, offset, size, DMA_FROM_DEVICE);
 }
 
 int fimc_is_init_mem(struct fimc_is_dev *dev)
@@ -313,8 +250,7 @@ int fimc_is_init_mem(struct fimc_is_dev *dev)
 			((unsigned char *)&dev->is_p_region->shared[0] -
 			dev->mem.kvaddr);
 
-	if (fimc_is_cache_flush(&dev->mem.vb2_buf,
-			(void *)dev->is_p_region, IS_PARAM_SIZE)) {
+	if (fimc_is_cache_flush(dev, (void *)dev->is_p_region, IS_PARAM_SIZE)) {
 		err("fimc_is_cache_flush-Err\n");
 		return -EINVAL;
 	}
@@ -415,8 +351,9 @@ static int fimc_is_load_setfile(struct fimc_is_dev *dev)
 	} else {
 		memcpy((dev->mem.kvaddr + dev->setfile.base),
 					fw_blob->data, fw_blob->size);
-		fimc_is_mem_cache_clean((void *)dev->mem.kvaddr,
-					fw_blob->size + 1);
+		fimc_is_mem_cache_clean(
+				(void *)(dev->mem.kvaddr + dev->setfile.base),
+				fw_blob->size + 1);
 	}
 #endif
 	dev->setfile.state = 1;
@@ -477,25 +414,7 @@ int fimc_is_init_set(struct fimc_is_dev *dev , u32 val)
 		dbg("v4l2 : Load set file end\n");
 		/* Debug only */
 		dbg("Parameter region addr = 0x%08x\n",
-			virt_to_phys(dev->is_p_region));
-		dbg("ISP region addr = 0x%08x\n",
-			virt_to_phys(&dev->is_p_region->parameter.isp));
-		dbg("scalerc region addr = 0x%08x\n",
-			virt_to_phys(&dev->is_p_region->parameter.scalerc));
-		dbg("tdnr region addr = 0x%08x\n",
-			virt_to_phys(&dev->is_p_region->parameter.tdnr));
-		dbg("FN[0] addr = 0x%x\n",
-			virt_to_phys(&dev->is_p_region->header[0]
-							.frame_number));
-		dbg("FN[1] addr = 0x%x\n",
-			virt_to_phys(&dev->is_p_region->header[1]
-							.frame_number));
-		dbg("FN[2] addr = 0x%x\n",
-			virt_to_phys(&dev->is_p_region->header[2]
-							.frame_number));
-		dbg("FN[3] addr = 0x%x\n",
-			virt_to_phys(&dev->is_p_region->header[3]
-							.frame_number));
+			(unsigned int)(dev->is_p_region));
 		dev->frame_count = 0;
 
 		dbg("Stream Off\n");

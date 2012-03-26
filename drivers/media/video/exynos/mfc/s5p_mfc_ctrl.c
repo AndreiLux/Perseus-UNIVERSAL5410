@@ -28,7 +28,7 @@
 #include "s5p_mfc_pm.h"
 
 static void *s5p_mfc_bitproc_buf;
-static size_t s5p_mfc_bitproc_phys;
+static dma_addr_t s5p_mfc_bitproc_phys;
 static unsigned char *s5p_mfc_bitproc_virt;
 
 /* Allocate firmware */
@@ -79,34 +79,30 @@ int s5p_mfc_alloc_firmware(struct s5p_mfc_dev *dev)
 	}
 #endif
 	mfc_debug(2, "Allocating memory for firmware.\n");
-	s5p_mfc_bitproc_buf = s5p_mfc_mem_alloc(
+	s5p_mfc_bitproc_buf = s5p_mfc_mem_allocate(
 		dev->alloc_ctx[MFC_CMA_FW_ALLOC_CTX], firmware_size);
 	if (IS_ERR(s5p_mfc_bitproc_buf)) {
 		s5p_mfc_bitproc_buf = 0;
 		printk(KERN_ERR "Allocating bitprocessor buffer failed\n");
 		return -ENOMEM;
 	}
-	s5p_mfc_bitproc_phys = s5p_mfc_mem_cookie(
-		dev->alloc_ctx[MFC_CMA_FW_ALLOC_CTX], s5p_mfc_bitproc_buf);
+	s5p_mfc_bitproc_phys = s5p_mfc_mem_dma_addr(s5p_mfc_bitproc_buf);
 	if (s5p_mfc_bitproc_phys & ((1 << base_align) - 1)) {
 		mfc_err("The base memory is not aligned to %dBytes.\n",
 				(1 << base_align));
-		s5p_mfc_mem_put(dev->alloc_ctx[MFC_CMA_FW_ALLOC_CTX],
-							s5p_mfc_bitproc_buf);
+		s5p_mfc_mem_free(s5p_mfc_bitproc_buf);
 		s5p_mfc_bitproc_phys = 0;
 		s5p_mfc_bitproc_buf = 0;
 		return -EIO;
 	}
 	dev->port_a = s5p_mfc_bitproc_phys;
 
-	s5p_mfc_bitproc_virt = s5p_mfc_mem_vaddr(
-		dev->alloc_ctx[MFC_CMA_FW_ALLOC_CTX], s5p_mfc_bitproc_buf);
+	s5p_mfc_bitproc_virt = s5p_mfc_mem_vaddr(s5p_mfc_bitproc_buf);
 	mfc_debug(2, "Virtual address for FW: %08lx\n",
 				(long unsigned int)s5p_mfc_bitproc_virt);
 	if (!s5p_mfc_bitproc_virt) {
 		mfc_err("Bitprocessor memory remap failed\n");
-		s5p_mfc_mem_put(dev->alloc_ctx[MFC_CMA_FW_ALLOC_CTX],
-							s5p_mfc_bitproc_buf);
+		s5p_mfc_mem_free(s5p_mfc_bitproc_buf);
 		s5p_mfc_bitproc_phys = 0;
 		s5p_mfc_bitproc_buf = 0;
 		return -EIO;
@@ -182,7 +178,7 @@ int s5p_mfc_load_firmware(struct s5p_mfc_dev *dev)
 					     FIRMWARE_CODE_SIZE,
 					     DMA_TO_DEVICE);
 	*/
-	s5p_mfc_cache_clean(s5p_mfc_bitproc_buf);
+	s5p_mfc_cache_clean_fw(s5p_mfc_bitproc_buf);
 	release_firmware(fw_blob);
 	mfc_debug_leave();
 	return 0;
@@ -200,8 +196,7 @@ int s5p_mfc_release_firmware(struct s5p_mfc_dev *dev)
 		dma_unmap_single(dev->v4l2_dev.dev, s5p_mfc_bitproc_dma,
 				 FIRMWARE_CODE_SIZE, DMA_TO_DEVICE);
 	*/
-	s5p_mfc_mem_put(dev->alloc_ctx[MFC_CMA_FW_ALLOC_CTX],
-			s5p_mfc_bitproc_buf);
+	s5p_mfc_mem_free(s5p_mfc_bitproc_buf);
 
 	s5p_mfc_bitproc_virt =  0;
 	s5p_mfc_bitproc_phys = 0;

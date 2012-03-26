@@ -46,35 +46,33 @@ const struct fimc_is_vb2 fimc_is_vb2_cma = {
 	.set_cacheable	= fimc_is_cma_set_cacheable,
 };
 #elif defined(CONFIG_VIDEOBUF2_ION)
-void *fimc_is_ion_init(struct fimc_is_dev *isp)
+
+static void *fimc_is_ion_init(struct fimc_is_dev *isp)
 {
-	struct vb2_ion vb2_ion;
-	struct vb2_drv vb2_drv = {0, };
-	char ion_name[16] = {0,};
-
-	vb2_ion.dev = &isp->pdev->dev;
-	sprintf(ion_name, "exynos5-fimc-is");
-	vb2_ion.name = ion_name;
-	vb2_ion.contig = false;
-	vb2_ion.cacheable = true;
-	vb2_ion.align = SZ_4K;
-
-	vb2_drv.use_mmu = true;
-
-	return vb2_ion_init(&vb2_ion, &vb2_drv);
+	return vb2_ion_create_context(&isp->pdev->dev, SZ_4K,
+					VB2ION_CTX_IOMMU | VB2ION_CTX_VMCONTIG);
 }
+
+static unsigned long plane_addr(struct vb2_buffer *vb, u32 plane_no)
+{
+	void *cookie = vb2_plane_cookie(vb, plane_no);
+	dma_addr_t dva = 0;
+
+	WARN_ON(vb2_ion_dma_address(cookie, &dva) != 0);
+
+	return dva;
+}
+
 
 const struct fimc_is_vb2 fimc_is_vb2_ion = {
 	.ops		= &vb2_ion_memops,
 	.init		= fimc_is_ion_init,
-	.cleanup	= vb2_ion_cleanup,
-	.plane_addr	= vb2_ion_plane_dvaddr,
-	.resume		= vb2_ion_resume,
-	.suspend	= vb2_ion_suspend,
+	.cleanup	= vb2_ion_destroy_context,
+	.plane_addr	= plane_addr,
+	.resume		= vb2_ion_attach_iommu,
+	.suspend	= vb2_ion_detach_iommu,
 	.cache_flush	= vb2_ion_cache_flush,
-	.set_cacheable	= vb2_ion_set_cacheable,
-	.set_sharable	= vb2_ion_set_sharable,
-	.get_kvaddr	= vb2_ion_plane_kvaddr,
+	.set_cacheable	= vb2_ion_set_cached,
 };
 #endif
 

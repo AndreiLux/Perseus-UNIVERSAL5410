@@ -16,29 +16,28 @@
 #if defined(CONFIG_VIDEOBUF2_ION)
 void *rot_ion_init(struct rot_dev *rot)
 {
-	struct vb2_ion vb2_ion;
-	struct vb2_drv vb2_drv = {0, };
+	return vb2_ion_create_context(&rot->pdev->dev, SZ_1M,
+		VB2ION_CTX_PHCONTIG | VB2ION_CTX_IOMMU | VB2ION_CTX_UNCACHED);
+}
 
-	vb2_ion.dev = &rot->pdev->dev;
-	vb2_ion.name = "Rotator";
-	vb2_ion.contig = true;
-	vb2_ion.cacheable = false;
-	vb2_ion.align = SZ_1M;
+static unsigned long rot_vb2_plane_addr(struct vb2_buffer *vb, u32 plane_no)
+{
+	void *cookie = vb2_plane_cookie(vb, plane_no);
+	dma_addr_t dma_addr = 0;
 
-	vb2_drv.use_mmu = true;
+	WARN_ON(vb2_ion_dma_address(cookie, &dma_addr) != 0);
 
-	return vb2_ion_init(&vb2_ion, &vb2_drv);
+	return (unsigned long)dma_addr;
 }
 
 const struct rot_vb2 rot_vb2_ion = {
 	.ops		= &vb2_ion_memops,
 	.init		= rot_ion_init,
-	.cleanup	= vb2_ion_cleanup,
-	.plane_addr	= vb2_ion_plane_dvaddr,
-	.resume		= vb2_ion_resume,
-	.suspend	= vb2_ion_suspend,
+	.cleanup	= vb2_ion_destroy_context,
+	.plane_addr	= rot_vb2_plane_addr,
+	.resume		= vb2_ion_attach_iommu,
+	.suspend	= vb2_ion_detach_iommu,
 	.cache_flush	= vb2_ion_cache_flush,
-	.set_cacheable	= vb2_ion_set_cacheable,
-	.set_sharable	= vb2_ion_set_sharable,
+	.set_cacheable	= vb2_ion_set_cached,
 };
 #endif

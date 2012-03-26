@@ -41,31 +41,28 @@ const struct flite_vb2 flite_vb2_cma = {
 #elif defined(CONFIG_VIDEOBUF2_ION)
 void *flite_ion_init(struct flite_dev *flite)
 {
-	struct vb2_ion vb2_ion;
-	struct vb2_drv vb2_drv = {0, };
-	char ion_name[16] = {0,};
+	return vb2_ion_create_context(&flite->pdev->dev, SZ_4K,
+		VB2ION_CTX_VMCONTIG | VB2ION_CTX_IOMMU | VB2ION_CTX_UNCACHED);
+}
 
-	vb2_ion.dev = &flite->pdev->dev;
-	sprintf(ion_name, "flite%d", flite->id);
-	vb2_ion.name = ion_name;
-	vb2_ion.contig = false;
-	vb2_ion.cacheable = false;
-	vb2_ion.align = SZ_4K;
+static unsigned long flite_vb2_plane_addr(struct vb2_buffer *vb, u32 plane_no)
+{
+	void *cookie = vb2_plane_cookie(vb, plane_no);
+	dma_addr_t dva = 0;
 
-	vb2_drv.use_mmu = true;
+	WARN_ON(vb2_ion_dma_address(cookie, &dva) != 0);
 
-	return vb2_ion_init(&vb2_ion, &vb2_drv);
+	return dva;
 }
 
 const struct flite_vb2 flite_vb2_ion = {
 	.ops		= &vb2_ion_memops,
 	.init		= flite_ion_init,
-	.cleanup	= vb2_ion_cleanup,
-	.plane_addr	= vb2_ion_plane_dvaddr,
-	.resume		= vb2_ion_resume,
-	.suspend	= vb2_ion_suspend,
+	.cleanup	= vb2_ion_destroy_context,
+	.plane_addr	= flite_vb2_plane_addr,
+	.resume		= vb2_ion_attach_iommu,
+	.suspend	= vb2_ion_detach_iommu,
 	.cache_flush	= vb2_ion_cache_flush,
-	.set_cacheable	= vb2_ion_set_cacheable,
-	.set_sharable	= vb2_ion_set_sharable,
+	.set_cacheable	= vb2_ion_set_cached,
 };
 #endif

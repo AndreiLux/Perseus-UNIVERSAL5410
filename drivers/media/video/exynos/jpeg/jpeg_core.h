@@ -28,11 +28,7 @@
 #include <media/v4l2-ioctl.h>
 
 #include <media/videobuf2-core.h>
-#if defined(CONFIG_VIDEOBUF2_CMA_PHYS)
-#include <media/videobuf2-cma-phys.h>
-#elif defined(CONFIG_VIDEOBUF2_ION)
 #include <media/videobuf2-ion.h>
-#endif
 #include "jpeg_mem.h"
 
 #define INT_TIMEOUT		1000

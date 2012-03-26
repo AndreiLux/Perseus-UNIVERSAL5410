@@ -605,7 +605,6 @@ static void fimc_is_scalerc_buffer_queue(struct vb2_buffer *vb)
 {
 	struct fimc_is_video_dev *video = vb->vb2_queue->drv_priv;
 	struct fimc_is_dev	*isp = video->dev;
-	dma_addr_t kvaddr;
 	unsigned int i;
 
 	dbg("%s\n", __func__);
@@ -615,11 +614,9 @@ static void fimc_is_scalerc_buffer_queue(struct vb2_buffer *vb)
 		for (i = 0; i < vb->num_planes; i++) {
 			isp->video[FIMC_IS_VIDEO_NUM_SCALERC].buf[vb->v4l2_buf.index][i]
 					= isp->vb2->plane_addr(vb, i);
-			kvaddr = isp->vb2->get_kvaddr(vb, i);
 			dbg("index(%d)(%d) deviceVaddr(0x%08x)\n",
 				vb->v4l2_buf.index, i,
 				isp->video[FIMC_IS_VIDEO_NUM_SCALERC].buf[vb->v4l2_buf.index][i]);
-			dbg("index(%d)(%d) KVaddr(0x%08x)\n", vb->v4l2_buf.index, i, kvaddr);
 		}
 
 		isp->video[FIMC_IS_VIDEO_NUM_SCALERC].buf_ref_cnt++;
@@ -1197,7 +1194,6 @@ static void fimc_is_scalerp_buffer_queue(struct vb2_buffer *vb)
 {
 	struct fimc_is_video_dev *video = vb->vb2_queue->drv_priv;
 	struct fimc_is_dev	*isp = video->dev;
-	dma_addr_t kvaddr;
 	unsigned int i;
 
 	dbg("%s\n", __func__);
@@ -1207,10 +1203,8 @@ static void fimc_is_scalerp_buffer_queue(struct vb2_buffer *vb)
 		for (i = 0; i < vb->num_planes; i++) {
 			isp->video[FIMC_IS_VIDEO_NUM_SCALERP].buf[vb->v4l2_buf.index][i]
 				= isp->vb2->plane_addr(vb, i);
-			kvaddr = isp->vb2->get_kvaddr(vb, i);
 			dbg("index(%d)(%d) deviceVaddr(0x%08x)\n", vb->v4l2_buf.index, i,
 				isp->video[FIMC_IS_VIDEO_NUM_SCALERP].buf[vb->v4l2_buf.index][i]);
-			dbg("index(%d)(%d) KVaddr(0x%08x)\n", vb->v4l2_buf.index, i, kvaddr);
 		}
 
 		isp->video[FIMC_IS_VIDEO_NUM_SCALERP].buf_ref_cnt++;
@@ -1789,7 +1783,6 @@ static void fimc_is_3dnr_buffer_queue(struct vb2_buffer *vb)
 {
 	struct fimc_is_video_dev *video = vb->vb2_queue->drv_priv;
 	struct fimc_is_dev	*isp = video->dev;
-	dma_addr_t kvaddr;
 	unsigned int i;
 
 	dbg("%s\n", __func__);
@@ -1799,11 +1792,8 @@ static void fimc_is_3dnr_buffer_queue(struct vb2_buffer *vb)
 		for (i = 0; i < vb->num_planes; i++) {
 			isp->video[FIMC_IS_VIDEO_NUM_3DNR].buf[vb->v4l2_buf.index][i]
 				= isp->vb2->plane_addr(vb, i);
-			kvaddr = isp->vb2->get_kvaddr(vb, i);
 			dbg("index(%d)(%d) deviceVaddr(0x%08x)\n", vb->v4l2_buf.index, i,
 				isp->video[FIMC_IS_VIDEO_NUM_3DNR].buf[vb->v4l2_buf.index][i]);
-			dbg("index(%d)(%d) KVaddr(0x%08x)\n",
-				vb->v4l2_buf.index, i, kvaddr);
 		}
 
 		isp->video[FIMC_IS_VIDEO_NUM_3DNR].buf_ref_cnt++;

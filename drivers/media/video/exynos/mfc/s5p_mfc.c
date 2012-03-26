@@ -438,7 +438,7 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 			mfc_debug(2, "Running again the same buffer.\n");
 
 			stream_vir = vb2_plane_vaddr(&src_buf->vb, 0);
-			s5p_mfc_cache_inv(src_buf->vb.planes[0].mem_priv);
+			s5p_mfc_cache_inv(src_buf->vb.planes[0].mem_priv, 0);
 
 			offset = s5p_mfc_find_start_code(
 					stream_vir + dec->consumed, remained);
@@ -1248,7 +1248,8 @@ static int __devexit s5p_mfc_remove(struct platform_device *pdev)
 	video_unregister_device(dev->vfd_enc);
 	video_unregister_device(dev->vfd_dec);
 	v4l2_device_unregister(&dev->v4l2_dev);
-	s5p_mfc_mem_cleanup_multi((void **)dev->alloc_ctx);
+	s5p_mfc_mem_cleanup_multi((void **)dev->alloc_ctx,
+					dev->variant->port_num + 1);
 	mfc_debug(2, "Will now deinit HW\n");
 	s5p_mfc_deinit_hw(dev);
 	free_irq(dev->irq, dev);

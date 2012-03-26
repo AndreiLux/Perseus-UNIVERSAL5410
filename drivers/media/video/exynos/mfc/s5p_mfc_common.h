@@ -597,9 +597,6 @@ struct s5p_mfc_ctx {
 
 	/* For 6.x */
 	size_t scratch_buf_size;
-
-	/* ION file descriptor */
-	int fd_ion;
 };
 
 #define fh_to_mfc_ctx(x)	\
