@@ -88,15 +88,6 @@ int voltdm_scale(struct voltagedomain *voltdm,
 		return -ENODATA;
 	}
 
-	if (voltdm->abb) {
-		ret = omap_abb_pre_scale(voltdm, target_v);
-		if (ret) {
-			pr_err("%s: abb prescale failed for vdd%s: %d\n",
-					__func__, voltdm->name, ret);
-			goto out1;
-		}
-	}
-
 	notify.voltdm = voltdm;
 	notify.target_volt = target_v->volt_nominal;
 	srcu_notifier_call_chain(&voltdm->change_notify_list,
@@ -104,28 +95,15 @@ int voltdm_scale(struct voltagedomain *voltdm,
 			(void *)&notify);
 
 	ret = voltdm->scale(voltdm, target_v);
-	if (ret) {
-		pr_err("%s: vdd_%s failed to scale: %d\n",
-				__func__, voltdm->name, ret);
-		goto out2;
-	}
+	if (ret)
+		pr_err("%s: voltage scale failed for vdd%s: %d\n",
+			__func__, voltdm->name, ret);
 
-	voltdm->nominal_volt = target_v;
-
-	if (voltdm->abb) {
-		ret = omap_abb_post_scale(voltdm, voltdm->curr_volt);
-		if (ret)
-			pr_err("%s: abb postscale failed for vdd%s: %d\n",
-					__func__, voltdm->name, ret);
-	}
-
-out2:
 	notify.op_result = ret;
 	srcu_notifier_call_chain(&voltdm->change_notify_list,
 			OMAP_VOLTAGE_POSTCHANGE,
 			(void *)&notify);
 
-out1:
 	return ret;
 }
 

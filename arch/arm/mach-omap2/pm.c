@@ -39,6 +39,7 @@
 #include "dvfs.h"
 #include "prm2xxx_3xxx.h"
 #include "prm44xx.h"
+#include "abb.h"
 
 static void (*io_chain_trigger_func) (void);
 static DEFINE_SPINLOCK(io_chain_lock);
@@ -248,7 +249,43 @@ int omap_set_pwrdm_state(struct powerdomain *pwrdm, u32 pwrst)
 	return ret;
 }
 
+static int __init boot_volt_scale(struct voltagedomain *voltdm,
+				  unsigned long boot_v)
+{
+	struct omap_volt_data *vdata;
+	int ret = 0;
 
+	vdata = omap_voltage_get_voltdata(voltdm, boot_v);
+	if (IS_ERR_OR_NULL(vdata)) {
+		pr_err("%s:%s: Bad New voltage data for %ld\n",
+			__func__, voltdm->name, boot_v);
+		return PTR_ERR(vdata);
+	}
+	/* DO NOT DO abb prescale -
+	 * case 1: OPP needs FBB, bootloader configured FBB
+	 *  - doing a prescale results in bypass -> system fail
+	 * case 2: OPP needs FBB, bootloader does not configure FBB
+	 * - FBB will be configured in postscale
+	 * case 3: OPP needs bypass, bootloader configures FBB
+	 * - bypass will be configured in postscale
+	 * case 4: OPP needs bypass, bootloader configured in bypass
+	 * - bypass programming in postscale skipped
+	 */
+	ret = voltdm_scale(voltdm, vdata);
+	if (ret) {
+		pr_err("%s: Fail set voltage(v=%ld)on vdd%s\n",
+			__func__, boot_v, voltdm->name);
+		return ret;
+	}
+	if (voltdm->abb) {
+		ret = omap_abb_post_scale(voltdm, vdata);
+		if (ret) {
+			pr_err("%s: Fail abb postscale(v=%ld)vdd%s\n",
+				__func__, boot_v, voltdm->name);
+		}
+	}
+	return ret;
+}
 
 /*
  * This API is to be called during init to set the various voltage
@@ -329,8 +366,7 @@ static int __init omap2_set_init_voltage(char *vdd_name, char *clk_name,
 	 */
 
 	if (freq_cur < freq_valid) {
-		ret = voltdm_scale(voltdm,
-			omap_voltage_get_voltdata(voltdm, bootup_volt));
+		ret = boot_volt_scale(voltdm, bootup_volt);
 		if (ret) {
 			pr_err("%s: Fail set voltage-%s(f=%ld v=%ld)on vdd%s\n",
 				__func__, vdd_name, freq_valid,
@@ -350,8 +386,7 @@ static int __init omap2_set_init_voltage(char *vdd_name, char *clk_name,
 	}
 
 	if (freq_cur >= freq_valid) {
-		ret = voltdm_scale(voltdm,
-			omap_voltage_get_voltdata(voltdm, bootup_volt));
+		ret = boot_volt_scale(voltdm, bootup_volt);
 		if (ret) {
 			pr_err("%s: Fail set voltage-%s(f=%ld v=%ld)on vdd%s\n",
 				__func__, clk_name, freq_valid,
