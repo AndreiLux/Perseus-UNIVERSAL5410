@@ -74,10 +74,71 @@ void i915_gem_dmabuf_release(struct dma_buf *dma_buf)
 	}
 }
 
+static void *i915_gem_dmabuf_vmap(struct dma_buf *dma_buf)
+{
+	struct drm_i915_gem_object *obj = dma_buf->priv;
+	int ret;
+
+	if (obj->dma_buf_vmapping) {
+		obj->vmapping_count++;
+		return obj->dma_buf_vmapping;
+	}
+
+	if (!obj->pages) {
+		ret = i915_gem_object_get_pages_gtt(obj, __GFP_NORETRY | __GFP_NOWARN);
+		if (ret)
+			return NULL;
+	}
+	
+	obj->dma_buf_vmapping = vmap(obj->pages, obj->base.size / PAGE_SIZE, 0, PAGE_KERNEL);
+	if (!obj->dma_buf_vmapping) {
+		DRM_ERROR("failed to vmap object\n");
+		return NULL;
+	}
+
+	obj->vmapping_count = 1;
+	return obj->dma_buf_vmapping;
+}
+
+static void i915_gem_dmabuf_vunmap(struct dma_buf *dma_buf, void *vaddr)
+{
+	struct drm_i915_gem_object *obj = dma_buf->priv;
+	--obj->dma_buf_vmapping;
+	if (obj->dma_buf_vmapping == 0) {
+		vunmap(obj->dma_buf_vmapping);
+		obj->dma_buf_vmapping = NULL;
+	}
+}
+
+static void *i915_gem_dmabuf_kmap_atomic(struct dma_buf *dma_buf, unsigned long page_num)
+{
+	return NULL;
+}
+
+static void i915_gem_dmabuf_kunmap_atomic(struct dma_buf *dma_buf, unsigned long page_num, void *addr)
+{
+
+}
+static void *i915_gem_dmabuf_kmap(struct dma_buf *dma_buf, unsigned long page_num)
+{
+	return NULL;
+}
+
+static void i915_gem_dmabuf_kunmap(struct dma_buf *dma_buf, unsigned long page_num, void *addr)
+{
+
+}
+
 struct dma_buf_ops i915_dmabuf_ops =  {
 	.map_dma_buf = i915_gem_map_dma_buf,
 	.unmap_dma_buf = i915_gem_unmap_dma_buf,
 	.release = i915_gem_dmabuf_release,
+	.kmap = i915_gem_dmabuf_kmap,
+	.kmap_atomic = i915_gem_dmabuf_kmap_atomic,
+	.kunmap = i915_gem_dmabuf_kunmap,
+	.kunmap_atomic = i915_gem_dmabuf_kunmap_atomic,
+	.vmap = i915_gem_dmabuf_vmap,
+	.vunmap = i915_gem_dmabuf_vunmap,
 };
 
 struct dma_buf *i915_gem_prime_export(struct drm_device *dev,
