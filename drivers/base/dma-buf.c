@@ -412,6 +412,9 @@ EXPORT_SYMBOL_GPL(dma_buf_kunmap);
  * @dma_buf:	[in]	buffer to vmap
  *
  * This call may fail due to lack of virtual mapping address space.
+ * These calls are optional in drivers. The intended use for them
+ * is for mapping objects linear in kernel space for high use objects.
+ * Please attempt to use kmap/kunmap before thinking about these interfaces.
  */
 void *dma_buf_vmap(struct dma_buf *dmabuf)
 {
@@ -424,7 +427,7 @@ void *dma_buf_vmap(struct dma_buf *dmabuf)
 EXPORT_SYMBOL(dma_buf_vmap);
 
 /**
- * dma_buf_vunmap - Unmap a page obtained by dma_buf_vmap.
+ * dma_buf_vunmap - Unmap a vmap obtained by dma_buf_vmap.
  * @dma_buf:	[in]	buffer to vmap
  */
 void dma_buf_vunmap(struct dma_buf *dmabuf, void *vaddr)
