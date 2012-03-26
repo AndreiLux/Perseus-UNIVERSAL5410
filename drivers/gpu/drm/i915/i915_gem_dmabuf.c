@@ -77,11 +77,16 @@ void i915_gem_dmabuf_release(struct dma_buf *dma_buf)
 static void *i915_gem_dmabuf_vmap(struct dma_buf *dma_buf)
 {
 	struct drm_i915_gem_object *obj = dma_buf->priv;
+	struct drm_device *dev = obj->base.dev;
 	int ret;
+
+	ret = i915_mutex_lock_interruptible(dev);
+	if (ret)
+		return NULL;
 
 	if (obj->dma_buf_vmapping) {
 		obj->vmapping_count++;
-		return obj->dma_buf_vmapping;
+		goto out_unlock;
 	}
 
 	if (!obj->pages) {
@@ -93,21 +98,31 @@ static void *i915_gem_dmabuf_vmap(struct dma_buf *dma_buf)
 	obj->dma_buf_vmapping = vmap(obj->pages, obj->base.size / PAGE_SIZE, 0, PAGE_KERNEL);
 	if (!obj->dma_buf_vmapping) {
 		DRM_ERROR("failed to vmap object\n");
-		return NULL;
+		goto out_unlock;
 	}
 
 	obj->vmapping_count = 1;
+out_unlock:
+	mutex_unlock(&dev->struct_mutex);
 	return obj->dma_buf_vmapping;
 }
 
 static void i915_gem_dmabuf_vunmap(struct dma_buf *dma_buf, void *vaddr)
 {
 	struct drm_i915_gem_object *obj = dma_buf->priv;
+	struct drm_device *dev = obj->base.dev;
+	int ret;
+
+	ret = i915_mutex_lock_interruptible(dev);
+	if (ret)
+		return;
+
 	--obj->dma_buf_vmapping;
 	if (obj->dma_buf_vmapping == 0) {
 		vunmap(obj->dma_buf_vmapping);
 		obj->dma_buf_vmapping = NULL;
 	}
+	mutex_unlock(&dev->struct_mutex);
 }
 
 static void *i915_gem_dmabuf_kmap_atomic(struct dma_buf *dma_buf, unsigned long page_num)
