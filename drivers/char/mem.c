@@ -27,6 +27,7 @@
 #include <linux/splice.h>
 #include <linux/pfn.h>
 #include <linux/export.h>
+#include <linux/low-mem-notify.h>
 
 #include <asm/uaccess.h>
 #include <asm/io.h>
@@ -866,6 +867,9 @@ static const struct memdev {
 	[11] = { "kmsg", 0, &kmsg_fops, NULL },
 #ifdef CONFIG_CRASH_DUMP
 	[12] = { "oldmem", 0, &oldmem_fops, NULL },
+#endif
+#ifdef CONFIG_LOW_MEM_NOTIFY
+	[13] = { "chromeos-low-mem", 0666, &low_mem_notify_fops, NULL },
 #endif
 };
 

@@ -58,6 +58,7 @@
 #include <linux/memcontrol.h>
 #include <linux/prefetch.h>
 #include <linux/page-debug-flags.h>
+#include <linux/low-mem-notify.h>
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -2450,6 +2451,11 @@ retry_cpuset:
 				&preferred_zone);
 	if (!preferred_zone)
 		goto out;
+
+#ifdef CONFIG_LOW_MEM_NOTIFY
+	if (is_low_mem_situation())
+		low_mem_notify();
+#endif
 
 	/* First allocation attempt */
 	page = get_page_from_freelist(gfp_mask|__GFP_HARDWALL, nodemask, order,
