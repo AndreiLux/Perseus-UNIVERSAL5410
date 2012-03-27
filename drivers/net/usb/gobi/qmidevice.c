@@ -96,7 +96,8 @@ static int resubmit_int_urb(struct urb *urb);
 static int devqmi_open(struct inode *inode, struct file *file);
 static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
 #ifdef CONFIG_COMPAT
-static int devqmi_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+static long devqmi_compat_ioctl(struct file *file, unsigned int cmd,
+				unsigned long arg);
 #endif
 static int devqmi_release(struct inode *inode, struct file *file);
 static ssize_t devqmi_read(struct file *file, char __user *buf, size_t size,
@@ -275,6 +276,9 @@ static void int_callback(struct urb *urb)
 	int status;
 	int len;
 	u8 *buf;
+	u8 req_type, request;
+	u16 iface_num;
+	u32 upstream, downstream;
 
 	static const u8 GET_ENCAPSULATED_RESPONSE = 0x01;
 	static const u8 CONNECTION_SPEED_CHANGE   = 0x2A;
@@ -300,9 +304,9 @@ static void int_callback(struct urb *urb)
 		goto resubmit;
 	}
 
-	u8  req_type  = buf[0];
-	u8  request   = buf[1];
-	u16 iface_num = le16_to_cpup(buf + 4);
+	req_type  = buf[0];
+	request   = buf[1];
+	iface_num = le16_to_cpup((__le16 *)(buf + 4));
 
 	/* 0xA1 = dir: device-to-host, type: class, recipient: interface */
 	if (req_type != 0xA1) {
@@ -345,8 +349,8 @@ static void int_callback(struct urb *urb)
 			goto resubmit;
 		}
 
-		u32 upstream   = le32_to_cpup((__le32 *)(buf +  8));
-		u32 downstream = le32_to_cpup((__le32 *)(buf + 12));
+		upstream   = le32_to_cpup((__le32 *)(buf +  8));
+		downstream = le32_to_cpup((__le32 *)(buf + 12));
 
 		GOBI_DEBUG("CONNECTION_SPEED_CHANGE: %d/%d",
 			upstream, downstream);
@@ -1317,9 +1321,10 @@ static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 }
 
 #ifdef CONFIG_COMPAT
-static int devqmi_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static long devqmi_compat_ioctl(struct file *file, unsigned int cmd,
+				unsigned long arg)
 {
-	return devqmi_ioctl(file, cmd, compat_ptr(arg));
+	return devqmi_ioctl(file, cmd, arg);
 }
 #endif
 
@@ -1378,7 +1383,7 @@ static ssize_t devqmi_read(struct file *file, char __user *buf, size_t size,
 	smalldata = data + qmux_size;
 
 	if (result > size) {
-		GOBI_WARN("read data is too large (%d > %d)", result, size);
+		GOBI_WARN("read data is too large (%d > %zu)", result, size);
 		kfree(data);
 		return -EOVERFLOW;
 	}
@@ -1493,6 +1498,7 @@ int qc_register(struct qcusbnet *dev)
 	int qmiidx = 0;
 	dev_t devno;
 	char *name;
+	struct device *d;
 	int sync_flags = SYNC_TIMEOUT;
 
 	dev->valid = true;
@@ -1563,14 +1569,14 @@ int qc_register(struct qcusbnet *dev)
 		goto fail_cdev_del;
 	}
 
-	struct device *d = device_create(dev->qmi.devclass, &dev->iface->dev,
-					 devno, NULL, "qcqmi%d", qmiidx);
+	d = device_create(dev->qmi.devclass, &dev->iface->dev, devno, NULL,
+			  "qcqmi%d", qmiidx);
 	if (IS_ERR(d)) {
-		GOBI_ERROR("device_create failed: %d", PTR_ERR(d));
+		GOBI_ERROR("device_create failed: %ld", PTR_ERR(d));
 		goto fail_cdev_del;
 	}
 
-	printk(KERN_INFO "gobi: registered qcqmi%d", qmiidx, qmiidx);
+	printk(KERN_INFO "gobi: registered qcqmi%d", qmiidx);
 
 	dev->qmi.devnum = devno;
 	return 0;
