@@ -1430,6 +1430,17 @@ static struct platform_pwm_backlight_data smdk5250_bl_data = {
 	.pwm_period_ns	= 30000,
 };
 
+/* DEVFREQ controlling mif */
+static struct platform_device exynos_bus_mif_devfreq = {
+	.name                   = "exynos5-bus-mif",
+};
+
+/* DEVFREQ controlling int */
+static struct platform_device exynos_bus_int_devfreq = {
+	.name                   = "exynos5-bus-int",
+};
+
+
 static struct platform_device *smdk5250_devices[] __initdata = {
 	&ramconsole_device,
 	&persistent_trace_device,
@@ -1529,6 +1540,8 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&s3c64xx_device_spi0,
 	&s3c64xx_device_spi1,
 	&s3c64xx_device_spi2,
+	&exynos_bus_mif_devfreq,
+	&exynos_bus_int_devfreq,
 };
 
 /* TMU */
