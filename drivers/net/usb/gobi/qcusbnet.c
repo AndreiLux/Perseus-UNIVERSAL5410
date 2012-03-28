@@ -313,7 +313,8 @@ static void qcnet_bg_startxmit(struct work_struct *work)
 
 	status = usb_autopm_get_interface(dev->iface);
 	if (status < 0) {
-		GOBI_ERROR("failed to autoresume interface: %d", status);
+		/* Should be ERROR, but it can spin, which floods logs. */
+		GOBI_WARN("failed to autoresume interface: %d", status);
 		if (status == -EPERM)
 			qc_suspend(dev->iface, PMSG_SUSPEND);
 		/* We could just drop the packet here, right...? It seems like
