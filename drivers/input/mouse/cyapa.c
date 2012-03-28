@@ -26,6 +26,7 @@
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/pm_runtime.h>
 #include <linux/semaphore.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
@@ -156,6 +157,8 @@ enum cyapa_gen {
 #define PWR_STATUS_BTN_ONLY  (0x01 << 2)
 #define PWR_STATUS_OFF       (0x00 << 2)
 
+#define AUTOSUSPEND_DELAY   2000 /* unit : ms */
+
 /*
  * CYAPA trackpad device states.
  * Used in register 0x00, bit1-0, DeviceStatus field.
@@ -225,6 +228,9 @@ struct cyapa {
 
 	/* power mode settings */
 	u8 suspend_power_mode;
+#ifdef CONFIG_PM_RUNTIME
+	u8 runtime_suspend_power_mode;
+#endif /* CONFIG_PM_RUNTIME */
 
 	/* read from query data region. */
 	char product_id[16];
@@ -1266,6 +1272,56 @@ static u16 cyapa_pwr_cmd_to_sleep_time(u8 pwr_mode)
 				   : (encoded_time - 5) * 20;
 }
 
+#ifdef CONFIG_PM_RUNTIME
+static ssize_t cyapa_show_rt_suspend_scanrate(struct device *dev,
+					      struct device_attribute *attr,
+					      char *buf)
+{
+	struct cyapa *cyapa = dev_get_drvdata(dev);
+	u8 pwr_cmd = cyapa->runtime_suspend_power_mode;
+
+	return scnprintf(buf, PAGE_SIZE, "%u\n",
+			 cyapa_pwr_cmd_to_sleep_time(pwr_cmd));
+}
+
+static ssize_t cyapa_update_rt_suspend_scanrate(struct device *dev,
+						struct device_attribute *attr,
+						const char *buf, size_t count)
+{
+	struct cyapa *cyapa = dev_get_drvdata(dev);
+	u16 time;
+
+	if (buf == NULL || count == 0 || kstrtou16(buf, 10, &time)) {
+		dev_err(dev, "invalid runtime suspend scanrate ms parameter\n");
+		return -EINVAL;
+	}
+
+	/*
+	 * When the suspend scanrate is changed, pm_runtime_get to resume
+	 * a potentially suspended device, update to the new pwr_cmd
+	 * and then pm_runtime_put to suspend into the new power mode.
+	 */
+	pm_runtime_get_sync(dev);
+	cyapa->runtime_suspend_power_mode = cyapa_sleep_time_to_pwr_cmd(time);
+	pm_runtime_put_sync_autosuspend(dev);
+	return count;
+}
+
+static DEVICE_ATTR(runtime_suspend_scanrate_ms, S_IRUGO|S_IWUSR,
+		   cyapa_show_rt_suspend_scanrate,
+		   cyapa_update_rt_suspend_scanrate);
+
+static struct attribute *cyapa_power_runtime_entries[] = {
+	&dev_attr_runtime_suspend_scanrate_ms.attr,
+	NULL,
+};
+
+static const struct attribute_group cyapa_power_runtime_group = {
+	.name = power_group_name,
+	.attrs = cyapa_power_runtime_entries,
+};
+#endif /* CONFIG_PM_RUNTIME */
+
 #ifdef CONFIG_PM_SLEEP
 static ssize_t cyapa_show_suspend_scanrate(struct device *dev,
 					   struct device_attribute *attr,
@@ -1462,6 +1518,9 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 	int num_fingers;
 	unsigned int mask;
 
+	pm_runtime_get_sync(dev);
+	pm_runtime_mark_last_busy(dev);
+
 	/*
 	 * Don't read input if input device has not been configured.
 	 * This check check solves a race during probe() between irq_request()
@@ -1469,19 +1528,19 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 	 * initially disabled.
 	 */
 	if (!input)
-		return IRQ_HANDLED;
+		goto irqhandled;
 
 	if (device_may_wakeup(dev))
 		pm_wakeup_event(dev, 0);
 
 	ret = cyapa_read_block(cyapa, CYAPA_CMD_GROUP_DATA, (u8 *)&data);
 	if (ret != sizeof(data))
-		return IRQ_HANDLED;
+		goto irqhandled;
 
 	if ((data.device_status & OP_STATUS_SRC) != OP_STATUS_SRC ||
 	    (data.device_status & OP_STATUS_DEV) != CYAPA_DEV_NORMAL ||
 	    (data.finger_btn & OP_DATA_VALID) != OP_DATA_VALID) {
-		return IRQ_HANDLED;
+		goto irqhandled;
 	}
 
 	mask = 0;
@@ -1513,6 +1572,8 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 	input_report_key(input, BTN_LEFT, data.finger_btn & OP_DATA_BTN_MASK);
 	input_sync(input);
 
+irqhandled:
+	pm_runtime_put_sync_autosuspend(dev);
 	return IRQ_HANDLED;
 }
 
@@ -1662,6 +1723,24 @@ static void cyapa_detect(struct cyapa *cyapa)
 	}
 }
 
+
+#ifdef CONFIG_PM_RUNTIME
+static int cyapa_start_runtime(struct cyapa *cyapa)
+{
+	struct device *dev = &cyapa->client->dev;
+
+	cyapa->runtime_suspend_power_mode = PWR_MODE_IDLE;
+	if (sysfs_merge_group(&dev->kobj, &cyapa_power_runtime_group))
+		dev_warn(dev, "error creating wakeup runtime entries.\n");
+	pm_runtime_enable(dev);
+	pm_runtime_set_active(dev);
+	pm_runtime_use_autosuspend(dev);
+	pm_runtime_set_autosuspend_delay(dev, AUTOSUSPEND_DELAY);
+}
+#else
+static int cyapa_start_runtime(struct cyapa *cyapa) {}
+#endif /* CONFIG_PM_RUNTIME */
+
 static int __devinit cyapa_probe(struct i2c_client *client,
 				 const struct i2c_device_id *dev_id)
 {
@@ -1726,6 +1805,7 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 
 	cyapa_detect(cyapa);
 
+	cyapa_start_runtime(cyapa);
 	return 0;
 
 err_mem_free:
@@ -1738,6 +1818,7 @@ static int __devexit cyapa_remove(struct i2c_client *client)
 {
 	struct cyapa *cyapa = i2c_get_clientdata(client);
 
+	pm_runtime_disable(&client->dev);
 	sysfs_remove_group(&client->dev.kobj, &cyapa_sysfs_group);
 
 	free_irq(cyapa->irq, cyapa);
@@ -1799,7 +1880,36 @@ static int cyapa_resume(struct device *dev)
 }
 #endif /* CONFIG_PM_SLEEP */
 
-static SIMPLE_DEV_PM_OPS(cyapa_pm_ops, cyapa_suspend, cyapa_resume);
+#ifdef CONFIG_PM_RUNTIME
+static int cyapa_runtime_suspend(struct device *dev)
+{
+	int ret;
+	struct cyapa *cyapa = dev_get_drvdata(dev);
+
+	/* set trackpad device to idle mode */
+	ret = cyapa_set_power_mode(cyapa, cyapa->runtime_suspend_power_mode);
+	if (ret)
+		dev_err(dev, "runtime suspend failed, %d\n", ret);
+	return ret;
+}
+
+static int cyapa_runtime_resume(struct device *dev)
+{
+	int ret;
+	struct cyapa *cyapa = dev_get_drvdata(dev);
+
+	/* resume to full active mode */
+	ret = cyapa_set_power_mode(cyapa, PWR_MODE_FULL_ACTIVE);
+	if (ret)
+		dev_err(dev, "runtime resume failed, %d\n", ret);
+	return ret;
+}
+#endif /* CONFIG_PM_RUNTIME */
+
+static const struct dev_pm_ops cyapa_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(cyapa_suspend, cyapa_resume)
+	SET_RUNTIME_PM_OPS(cyapa_runtime_suspend, cyapa_runtime_resume, NULL)
+};
 
 static const struct i2c_device_id cyapa_id_table[] = {
 	{ "cyapa", 0 },
