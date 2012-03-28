@@ -140,7 +140,7 @@ enum cyapa_gen {
 
 #define REG_OFFSET_POWER_MODE (REG_OFFSET_COMMAND_BASE + 1)
 #define SET_POWER_MODE_DELAY   10000  /* unit: us */
-#define SET_POWER_MODE_TRIES   3
+#define SET_POWER_MODE_TRIES   5
 
 #define PWR_MODE_MASK   0xFC
 #define PWR_MODE_FULL_ACTIVE (0x3F << 2)
@@ -772,9 +772,18 @@ static int cyapa_set_power_mode(struct cyapa *cyapa, u8 power_mode)
 	if (cyapa->state != CYAPA_STATE_OP)
 		return 0;
 
-	ret = cyapa_read_byte(cyapa, CYAPA_CMD_POWER_MODE);
-	if (ret < 0)
+	while (true) {
+		ret = cyapa_read_byte(cyapa, CYAPA_CMD_POWER_MODE);
+		if (ret >= 0 || --tries < 1)
+			break;
+		dev_dbg(dev, "set power mode read retry. tries left = %d\n",
+			tries);
+		usleep_range(SET_POWER_MODE_DELAY, 2 * SET_POWER_MODE_DELAY);
+	}
+	if (ret < 0) {
+		dev_err(dev, "failed to read power mode %d\n", ret);
 		return ret;
+	}
 
 	power = ret;
 	power &= ~PWR_MODE_MASK;
@@ -783,7 +792,8 @@ static int cyapa_set_power_mode(struct cyapa *cyapa, u8 power_mode)
 		ret = cyapa_write_byte(cyapa, CYAPA_CMD_POWER_MODE, power);
 		if (!ret || --tries < 1)
 			break;
-		dev_dbg(dev, "set power mode retry. tries left = %d\n", tries);
+		dev_dbg(dev, "set power mode write retry. tries left = %d\n",
+			tries);
 		usleep_range(SET_POWER_MODE_DELAY, 2 * SET_POWER_MODE_DELAY);
 	}
 	if (ret < 0)
