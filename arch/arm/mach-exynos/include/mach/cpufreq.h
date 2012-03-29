@@ -18,30 +18,6 @@ enum cpufreq_level_index {
 	L20,
 };
 
-enum cpufreq_lock_ID {
-	DVFS_LOCK_ID_G2D,	/* G2D */
-	DVFS_LOCK_ID_TV,	/* TV */
-	DVFS_LOCK_ID_MFC,	/* MFC */
-	DVFS_LOCK_ID_USB,	/* USB */
-	DVFS_LOCK_ID_CAM,	/* CAM */
-	DVFS_LOCK_ID_PM,	/* PM */
-	DVFS_LOCK_ID_USER,	/* USER */
-	DVFS_LOCK_ID_TMU,	/* TMU */
-	DVFS_LOCK_ID_LPA,	/* LPA */
-	DVFS_LOCK_ID_DRM,	/* DRM */
-	DVFS_LOCK_ID_END,
-};
-
-int exynos_cpufreq_get_level(unsigned int freq,
-			unsigned int *level);
-int exynos_cpufreq_lock(unsigned int nId,
-			enum cpufreq_level_index cpufreq_level);
-void exynos_cpufreq_lock_free(unsigned int nId);
-
-int exynos_cpufreq_upper_limit(unsigned int nId,
-			enum cpufreq_level_index cpufreq_level);
-void exynos_cpufreq_upper_limit_free(unsigned int nId);
-
 struct exynos_dvfs_info {
 	unsigned long	mpll_freq_khz;
 	unsigned int	pll_safe_idx;
