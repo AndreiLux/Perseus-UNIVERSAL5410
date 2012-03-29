@@ -281,6 +281,15 @@ int s3c24xx_register_clock(struct clk *clk)
 	if (clk->enable == NULL)
 		clk->enable = clk_null_enable;
 
+	/* add to the list of available clocks */
+
+	/* Quick check to see if this clock has already been registered. */
+	BUG_ON(clk->list.prev != clk->list.next);
+
+	spin_lock(&clocks_lock);
+	list_add(&clk->list, &clocks);
+	spin_unlock(&clocks_lock);
+
 	/* fill up the clk_lookup structure and register it*/
 	clk->lookup.dev_id = clk->devname;
 	clk->lookup.con_id = clk->name;
@@ -395,7 +404,11 @@ static int clk_debugfs_register_one(struct clk *c)
 	char s[255];
 	char *p = s;
 
-	p += sprintf(p, "%s", c->devname);
+	if (c->name)
+		p += sprintf(p, "%s", c->name);
+
+	if (c->devname)
+		p += sprintf(p, ":%s", c->devname);
 
 	d = debugfs_create_dir(s, pa ? pa->dent : clk_debugfs_root);
 	if (!d)
