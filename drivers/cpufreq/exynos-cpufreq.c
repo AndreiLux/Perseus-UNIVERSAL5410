@@ -24,6 +24,9 @@
 
 #include <plat/cpu.h>
 
+/* Use boot_freq when entering sleep mode */
+static unsigned int boot_freq;
+
 static struct exynos_dvfs_info *exynos_info;
 
 static struct regulator *arm_regulator;
@@ -163,8 +166,8 @@ static int exynos_cpufreq_resume(struct cpufreq_policy *policy)
  * @pm_event
  * @v
  *
- * While frequency_locked == true, target() ignores every frequency but
- * locking_frequency. The locking_frequency value is the initial frequency,
+ * While cpufreq_disable == true, target() ignores every frequency but
+ * boot_freq. The boot_freq value is the initial frequency,
  * which is set by the bootloader. In order to eliminate possible
  * inconsistency in clock values, we save and restore frequencies during
  * suspend and resume and block CPUFREQ activities. Note that the standard
@@ -174,18 +177,29 @@ static int exynos_cpufreq_resume(struct cpufreq_policy *policy)
 static int exynos_cpufreq_pm_notifier(struct notifier_block *notifier,
 				       unsigned long pm_event, void *v)
 {
-	unsigned int *volt_table;
-
-	volt_table = exynos_info->volt_table;
+	int ret;
 
 	switch (pm_event) {
 	case PM_SUSPEND_PREPARE:
+		ret = cpufreq_driver_target(cpufreq_cpu_get(0), boot_freq,
+					CPUFREQ_RELATION_H);
+
+		if (ret < 0)
+			return NOTIFY_BAD;
+
+		mutex_lock(&cpufreq_lock);
 		exynos_cpufreq_disable = true;
+		mutex_unlock(&cpufreq_lock);
+
 		pr_debug("PM_SUSPEND_PREPARE for CPUFREQ\n");
 		break;
 	case PM_POST_SUSPEND:
 		pr_debug("PM_POST_SUSPEND for CPUFREQ\n");
+
+		mutex_lock(&cpufreq_lock);
 		exynos_cpufreq_disable = false;
+		mutex_unlock(&cpufreq_lock);
+
 		break;
 	}
 	return NOTIFY_OK;
@@ -198,6 +212,7 @@ static struct notifier_block exynos_cpufreq_nb = {
 static int exynos_cpufreq_cpu_init(struct cpufreq_policy *policy)
 {
 	policy->cur = policy->min = policy->max = exynos_getspeed(policy->cpu);
+	boot_freq = exynos_getspeed(0);
 
 	cpufreq_frequency_table_get_attr(exynos_info->freq_table, policy->cpu);
 
@@ -236,7 +251,17 @@ static struct cpufreq_driver exynos_driver = {
 static int exynos_cpufreq_reboot_notifier_call(struct notifier_block *this,
 				   unsigned long code, void *_cmd)
 {
-	printk(KERN_INFO "REBOOT Notifier for CPUFREQ\n");
+	int ret;
+
+	ret = cpufreq_driver_target(cpufreq_cpu_get(0), boot_freq,
+			CPUFREQ_RELATION_H);
+	if (ret < 0)
+		return NOTIFY_BAD;
+
+	mutex_lock(&cpufreq_lock);
+	exynos_cpufreq_disable = true;
+	mutex_unlock(&cpufreq_lock);
+
 	return NOTIFY_DONE;
 }
 
