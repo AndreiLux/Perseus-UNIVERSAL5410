@@ -107,6 +107,10 @@ static struct clk exynos5_clk_sclk_usbphy = {
 	.rate		= 48000000,
 };
 
+static struct clk dummy_apb_pclk = {
+	.name		= "apb_pclk",
+};
+
 struct clksrc_clk exynos5_clk_audiocdclk0 = {
 	.clk	= {
 		.name		= "audiocdclk",
@@ -1894,5 +1898,7 @@ void __init exynos5_register_clocks(void)
 
 	s3c_disable_clocks(&exynos5_clk_clkout.clk, 1);
 	register_syscore_ops(&exynos5_clock_syscore_ops);
+	s3c24xx_register_clock(&dummy_apb_pclk);
+
 	s3c_pwmclk_init();
 }
