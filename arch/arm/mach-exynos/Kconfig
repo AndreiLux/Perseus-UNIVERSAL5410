@@ -231,6 +231,13 @@ config EXYNOS_FIQ_DEBUGGER
 	help
 	  Exynos platform support for the FIQ debugger
 
+config EXYNOS5_CORESIGHT
+	bool "EXYNOS5 embedded trace support"
+	depends on ARCH_EXYNOS5
+	select OC_ETM
+	help
+	  Enable embedded trace support
+
 # machine support
 
 if ARCH_EXYNOS4

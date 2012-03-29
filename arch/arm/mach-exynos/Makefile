@@ -38,6 +38,8 @@ obj-$(CONFIG_ARCH_EXYNOS)	+= clock-audss.o
 
 obj-$(CONFIG_EXYNOS_FIQ_DEBUGGER)	+= exynos_fiq_debugger.o
 
+obj-$(CONFIG_EXYNOS5_CORESIGHT)		+= coresight-exynos5.o
+
 # machine support
 
 obj-$(CONFIG_MACH_SMDKC210)		+= mach-smdkv310.o
