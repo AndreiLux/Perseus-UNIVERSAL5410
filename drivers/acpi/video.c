@@ -73,6 +73,14 @@ static bool brightness_switch_enabled = 1;
 module_param(brightness_switch_enabled, bool, 0644);
 
 /*
+ *  The Default is to let the OS handle brightness autoswitching due to
+ *  AC/battery status changes. On some laptops (MSI Wind) this doesn't
+ *  work so we need a workaround.
+ */
+static int brightness_autoswitch_via_bios = 0;
+module_param(brightness_autoswitch_via_bios, bool, 0644);
+
+/*
  * By default, we don't allow duplicate ACPI video bus devices
  * under the same VGA controller
  */
@@ -1425,7 +1433,7 @@ static int acpi_video_bus_put_devices(struct acpi_video_bus *video)
 
 static int acpi_video_bus_start_devices(struct acpi_video_bus *video)
 {
-	return acpi_video_bus_DOS(video, 0, 1);
+	return acpi_video_bus_DOS(video, 0, !brightness_autoswitch_via_bios);
 }
 
 static int acpi_video_bus_stop_devices(struct acpi_video_bus *video)
