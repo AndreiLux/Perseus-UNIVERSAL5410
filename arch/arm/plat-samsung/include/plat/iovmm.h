@@ -45,13 +45,31 @@ dma_addr_t iovmm_map(struct device *dev, struct scatterlist *sg, off_t offset,
  */
 void iovmm_unmap(struct device *dev, dma_addr_t iova);
 
+/* iovmm_map_oto - create one to one mapping for the given physical address
+ * @dev: the owner of the IO address space to map
+ * @phys: physical address to map
+ * @size: size of the mapping to create
+ *
+ * This function return 0 if mapping is successful. Otherwise, minus error
+ * value.
+ */
+int iovmm_map_oto(struct device *dev, phys_addr_t phys, size_t size);
+
+/* iovmm_unmap_oto - remove one to one mapping
+ * @dev: the owner ofthe IO address space
+ * @phys: physical address to remove mapping
+ */
+void iovmm_unmap_oto(struct device *dev, phys_addr_t phys);
+
 #else
-#define iovmm_setup(dev)	(-ENOSYS)
-#define iovmm_cleanup(dev)
-#define iovmm_activate(dev)	(-ENOSYS)
-#define iovmm_deactivate(dev)
-#define iovmm_map(dev, sg)	(0)
-#define iovmm_unmap(dev, iova)
+#define iovmm_setup(dev)		(-ENOSYS)
+#define iovmm_cleanup(dev)		do { } while (0)
+#define iovmm_activate(dev)		(-ENOSYS)
+#define iovmm_deactivate(dev)		do { } while (0)
+#define iovmm_map(dev, sg)		(0)
+#define iovmm_unmap(dev, iova)		do { } while (0)
+#define iovmm_map_oto(dev, phys, size)	(0)
+#define iovmm_unmap_oto(dev, phys)	do { } while (0)
 #endif /* CONFIG_EXYNOS_IOVMM */
 
 #endif /*__ASM_PLAT_IOVMM_H*/
