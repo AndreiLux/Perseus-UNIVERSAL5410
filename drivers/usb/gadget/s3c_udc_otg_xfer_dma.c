@@ -156,6 +156,8 @@ static int setdma_tx(struct s3c_ep *ep, struct s3c_request *req)
 	ctrl = __raw_readl(udc->regs + S3C_UDC_OTG_DIEPCTL(ep_num));
 	ctrl &= ~DEPCTL_TXFNUM_MASK;
 	ctrl |= (ep_num << DEPCTL_TXFNUM_BIT);
+	if (ep->bmAttributes == USB_ENDPOINT_XFER_ISOC)
+		ctrl |= DEPCTL_SET_ODD_FRM;
 	__raw_writel(ctrl , udc->regs + S3C_UDC_OTG_DIEPCTL(ep_num));
 #endif
 
@@ -171,6 +173,8 @@ static int setdma_tx(struct s3c_ep *ep, struct s3c_request *req)
 	ctrl = __raw_readl(udc->regs + S3C_UDC_OTG_DIEPCTL(EP0_CON));
 	ctrl = (ctrl & ~(EP_MASK<<DEPCTL_NEXT_EP_BIT)) |
 		(ep_num<<DEPCTL_NEXT_EP_BIT);
+	if (ep->bmAttributes == USB_ENDPOINT_XFER_ISOC)
+		ctrl |= DEPCTL_SET_ODD_FRM;
 	__raw_writel(ctrl, udc->regs + S3C_UDC_OTG_DIEPCTL(EP0_CON));
 #endif
 

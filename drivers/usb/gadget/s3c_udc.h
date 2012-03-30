@@ -91,7 +91,7 @@
  */
 
 enum ep_type_list {
-	ep_control, ep_bulk_in, ep_bulk_out, ep_interrupt
+	ep_control, ep_bulk_in, ep_bulk_out, ep_interrupt, ep_isochronous
 };
 
 struct s3c_ep {
