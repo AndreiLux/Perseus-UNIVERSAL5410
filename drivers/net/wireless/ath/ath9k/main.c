@@ -923,11 +923,11 @@ void ath_rx_poll_work(unsigned long data)
 		ath_dbg(common, RESET,
 			"rx clear %d match count %d iteration %d\n",
 			rx_clear, match_count, iter);
-		if (match_count++ > 15)
+		if (match_count++ > 9)
 			goto queue_reset_work;
 	} else if (ath9k_hw_detect_mac_hang(ah))
 		goto queue_reset_work;
-	else if (iter >= 9) {
+	else if (iter >= 15) {
 		iter = match_count = 0;
 		nmsec = 200;
 	}
