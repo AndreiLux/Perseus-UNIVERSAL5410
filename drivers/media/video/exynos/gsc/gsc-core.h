@@ -176,6 +176,7 @@ enum gsc_yuv_fmt {
 		     (img == V4L2_PIX_FMT_NV12M) | (img == V4L2_PIX_FMT_NV21M) | \
 		     (img == V4L2_PIX_FMT_YUV420M) | (img == V4L2_PIX_FMT_YVU420M) | \
 		     (img == V4L2_PIX_FMT_NV12MT_16X16))
+#define is_AYV12(img) (img == V4L2_PIX_FMT_YVU420M)
 
 #define gsc_m2m_run(dev) test_bit(ST_M2M_RUN, &(dev)->state)
 #define gsc_m2m_opened(dev) test_bit(ST_M2M_OPEN, &(dev)->state)
@@ -783,6 +784,8 @@ void gsc_hw_set_pxlasync_camif_lo_mask(struct gsc_dev *dev, bool on);
 void gsc_hw_set_h_coef(struct gsc_ctx *ctx);
 void gsc_hw_set_v_coef(struct gsc_ctx *ctx);
 void gsc_hw_set_in_pingpong_update(struct gsc_dev *dev);
+void gsc_hw_set_in_chrom_stride(struct gsc_ctx *ctx);
+void gsc_hw_set_out_chrom_stride(struct gsc_ctx *ctx);
 void gsc_hw_set_fire_bit_sync_mode(struct gsc_dev *dev, bool mask);
 
 int gsc_hw_get_input_buf_mask_status(struct gsc_dev *dev);

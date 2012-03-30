@@ -94,6 +94,38 @@ int gsc_wait_stop(struct gsc_dev *dev)
 	return -EBUSY;
 }
 
+void gsc_hw_set_in_chrom_stride(struct gsc_ctx *ctx)
+{
+	struct gsc_dev *dev = ctx->gsc_dev;
+	struct gsc_frame *frame = &ctx->s_frame;
+	u32 chrom_size, cfg;
+
+	cfg = readl(dev->regs + GSC_IN_CON);
+	cfg |= GSC_IN_CHROM_STRIDE_SEPAR;
+	writel(cfg, dev->regs + GSC_IN_CON);
+
+	cfg &= ~GSC_IN_CHROM_STRIDE_MASK;
+	chrom_size = ALIGN(frame->f_width / 2, 16) * 2;
+	cfg = GSC_IN_CHROM_STRIDE_VALUE(chrom_size);
+	writel(cfg, dev->regs + GSC_IN_CHROM_STRIDE);
+}
+
+void gsc_hw_set_out_chrom_stride(struct gsc_ctx *ctx)
+{
+	struct gsc_dev *dev = ctx->gsc_dev;
+	struct gsc_frame *frame = &ctx->d_frame;
+	u32 chrom_size, cfg;
+
+	cfg = readl(dev->regs + GSC_OUT_CON);
+	cfg |= GSC_OUT_CHROM_STRIDE_SEPAR;
+	writel(cfg, dev->regs + GSC_OUT_CON);
+
+	cfg &= ~GSC_OUT_CHROM_STRIDE_MASK;
+	chrom_size = ALIGN(frame->f_width / 2, 16) * 2;
+	cfg = GSC_OUT_CHROM_STRIDE_VALUE(chrom_size);
+	writel(cfg, dev->regs + GSC_OUT_CHROM_STRIDE);
+}
+
 void gsc_hw_set_in_pingpong_update(struct gsc_dev *dev)
 {
 	u32 cfg = readl(dev->regs + GSC_ENABLE);
@@ -414,7 +446,8 @@ void gsc_hw_set_in_image_format(struct gsc_ctx *ctx)
 	cfg = readl(dev->regs + GSC_IN_CON);
 	cfg &= ~(GSC_IN_RGB_TYPE_MASK | GSC_IN_YUV422_1P_ORDER_MASK |
 		 GSC_IN_CHROMA_ORDER_MASK | GSC_IN_FORMAT_MASK |
-		 GSC_IN_TILE_TYPE_MASK | GSC_IN_TILE_MODE);
+		 GSC_IN_TILE_TYPE_MASK | GSC_IN_TILE_MODE |
+		 GSC_IN_CHROM_STRIDE_SEL_MASK);
 	writel(cfg, dev->regs + GSC_IN_CON);
 
 	if (is_rgb(frame->fmt->pixelformat)) {
@@ -453,6 +486,9 @@ void gsc_hw_set_in_image_format(struct gsc_ctx *ctx)
 			cfg |= GSC_IN_YUV422_3P;
 		break;
 	};
+
+	if (is_AYV12(frame->fmt->pixelformat))
+		gsc_hw_set_in_chrom_stride(ctx);
 
 	if (is_tiled(frame->fmt))
 		cfg |= GSC_IN_TILE_C_16x8 | GSC_IN_TILE_MODE;
@@ -541,7 +577,8 @@ void gsc_hw_set_out_image_format(struct gsc_ctx *ctx)
 	cfg = readl(dev->regs + GSC_OUT_CON);
 	cfg &= ~(GSC_OUT_RGB_TYPE_MASK | GSC_OUT_YUV422_1P_ORDER_MASK |
 		 GSC_OUT_CHROMA_ORDER_MASK | GSC_OUT_FORMAT_MASK |
-		 GSC_OUT_TILE_TYPE_MASK | GSC_OUT_TILE_MODE);
+		 GSC_OUT_TILE_TYPE_MASK | GSC_OUT_TILE_MODE |
+		 GSC_OUT_CHROM_STRIDE_SEL_MASK);
 	writel(cfg, dev->regs + GSC_OUT_CON);
 
 	if (is_rgb(frame->fmt->pixelformat)) {
@@ -583,6 +620,9 @@ void gsc_hw_set_out_image_format(struct gsc_ctx *ctx)
 		cfg |= GSC_OUT_YUV420_3P;
 		break;
 	};
+
+	if (is_AYV12(frame->fmt->pixelformat))
+		gsc_hw_set_out_chrom_stride(ctx);
 
 	if (is_tiled(frame->fmt))
 		cfg |= GSC_OUT_TILE_C_16x8 | GSC_OUT_TILE_MODE;

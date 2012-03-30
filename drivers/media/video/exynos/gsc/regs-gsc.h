@@ -64,9 +64,8 @@
 
 /* G-Scaler input control */
 #define GSC_IN_CON			0x10
-#define GSC_IN_CHORM_STRIDE_MASK	(1 << 20)
-#define GSC_IN_CHORM_STRIDE_HALF	(0 << 20)
-#define GSC_IN_CHORM_STRIDE_SEPAR	(1 << 20)
+#define GSC_IN_CHROM_STRIDE_SEL_MASK	(1 << 20)
+#define GSC_IN_CHROM_STRIDE_SEPAR	(1 << 20)
 #define GSC_IN_RB_SWAP_MASK		(1 << 19)
 #define GSC_IN_RB_SWAP			(1 << 19)
 #define GSC_IN_ROT_MASK			(7 << 16)
@@ -134,9 +133,8 @@
 #define GSC_OUT_CON			0x20
 #define GSC_OUT_GLOBAL_ALPHA_MASK	(0xff << 24)
 #define GSC_OUT_GLOBAL_ALPHA(x)		((x) << 24)
-#define GSC_OUT_CHORM_STRIDE_MASK	(1 << 13)
-#define GSC_OUT_CHORM_STRIDE_HALF	(0 << 13)
-#define GSC_OUT_CHORM_STRIDE_SEPAR	(1 << 13)
+#define GSC_OUT_CHROM_STRIDE_SEL_MASK	(1 << 13)
+#define GSC_OUT_CHROM_STRIDE_SEPAR	(1 << 13)
 #define GSC_OUT_RB_SWAP_MASK		(1 << 12)
 #define GSC_OUT_RB_SWAP			(1 << 12)
 #define GSC_OUT_RGB_TYPE_MASK		(3 << 10)
