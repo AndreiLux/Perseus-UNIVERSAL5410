@@ -145,21 +145,16 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 	struct vb2_ion_context *ctx = alloc_ctx;
 	struct vb2_ion_buf *buf;
 	struct scatterlist *sg;
-	u32 heap = 0;
 	int ret = 0;
 
 	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
 	if (!buf)
 		return ERR_PTR(-ENOMEM);
 
-	if (ctx->flags & VB2ION_CTX_PHCONTIG)
-		heap |= ION_HEAP_EXYNOS_CONTIG_MASK;
-	if (ctx->flags & VB2ION_CTX_VMCONTIG)
-		heap |= ION_HEAP_EXYNOS_MASK;
-
 	size = PAGE_ALIGN(size);
 
-	buf->handle = ion_alloc(ctx->client, size, ctx->alignment, heap);
+	buf->handle = ion_alloc(ctx->client, size, ctx->alignment,
+				ion_heapflag(ctx->flags));
 	if (IS_ERR(buf->handle)) {
 		ret = -ENOMEM;
 		goto err_alloc;

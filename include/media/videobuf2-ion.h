@@ -20,6 +20,10 @@
 
 /* flags to vb2_ion_create_context
  * These flags are dependet upon heap flags in ION.
+ *
+ * bit 0 ~ ION_NUM_HEAPS: ion heap flags
+ * bit ION_NUM_HEAPS+1 ~ 20: non-ion flags (cached, iommu)
+ * bit 21 ~ BITS_PER_LONG - 1: ion specific flags
  */
 
 /* Allocate physically contiguous memory */
@@ -30,6 +34,16 @@
 #define VB2ION_CTX_IOMMU	(1 << (ION_NUM_HEAPS + 1))
 /* Non-cached mapping to user when mmap */
 #define VB2ION_CTX_UNCACHED	(1 << (ION_NUM_HEAPS + 2))
+
+/* flags for contents protection */
+#define VB2ION_CTX_DRM_MFCSH	ION_HEAP_EXYNOS_MFC_SH_MASK
+#define VB2ION_CTX_DRM_VIDEO	ION_HEAP_EXYNOS_VIDEO_MASK
+#define VB2ION_CTX_DRM_MFCFW	ION_HEAP_EXYNOS_MFC_FW_MASK
+
+#define VB2ION_CTX_MASK_ION	(~((1 << (BITS_PER_LONG - 12)) - 1) \
+				| ((1 << ION_NUM_HEAPS) - 1))
+/* mask out all non-ion flags */
+#define ion_heapflag(flag)	(flag & VB2ION_CTX_MASK_ION)
 
 struct device;
 struct vb2_buffer;
