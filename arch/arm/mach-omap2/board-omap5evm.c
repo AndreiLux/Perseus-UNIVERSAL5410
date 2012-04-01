@@ -1247,6 +1247,7 @@ static void __init omap54xx_common_init(void)
 	omap_serial_board_init(NULL, 4);
 	platform_device_register(&dummy_sd_regulator_device);
 	omap_serial_init();
+	omap_sdrc_init(NULL, NULL);
 	omap2_hsmmc_init(mmc);
 	omap_ehci_ohci_init();
 	platform_device_register(&leds_gpio);
