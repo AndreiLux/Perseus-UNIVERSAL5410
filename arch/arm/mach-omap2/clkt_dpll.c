@@ -17,6 +17,7 @@
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/clk.h>
+#include <linux/slab.h>
 #include <linux/io.h>
 
 #include <asm/div64.h>
@@ -296,11 +297,23 @@ long omap2_dpll_round_rate(struct clk *clk, unsigned long target_rate)
 	unsigned long scaled_rt_rp;
 	unsigned long new_rate = 0;
 	struct dpll_data *dd;
+	unsigned long bestrate = 0, diff, bestdiff = ULONG_MAX;
+	int bestm = 0, bestn = 0;
+	struct dpll_rate_list *rs, *rate_cache;
 
 	if (!clk || !clk->dpll_data)
 		return ~0;
 
 	dd = clk->dpll_data;
+
+	rate_cache = dd->rate_cache;
+	for (rs = rate_cache; rs; rs = rs->next)
+		if (rs->target_rate == target_rate) {
+			dd->last_rounded_m = rs->m;
+			dd->last_rounded_n = rs->n;
+			dd->last_rounded_rate = rs->actual_rate;
+			return rs->actual_rate;
+		}
 
 	pr_debug("clock: %s: starting DPLL round_rate, target rate %ld\n",
 		 clk->name, target_rate);
@@ -340,19 +353,47 @@ long omap2_dpll_round_rate(struct clk *clk, unsigned long target_rate)
 		if (r == DPLL_MULT_UNDERFLOW)
 			continue;
 
-//		pr_err("    clock: target=%ld %s: m = %d: n = %d: new_rate = %ld\n",
-//			 target_rate, clk->name, m, n, new_rate);
+#ifdef DEBUG
+		pr_err("clock: target=%ld %s: m = %d: n = %d: new_rate = %ld\n",
+			 target_rate, clk->name, m, n, new_rate);
+#endif
 
-		if (target_rate == new_rate ||
-			((target_rate - new_rate) > 0 && (target_rate - new_rate) < 1000000)
-		) {
-			dd->last_rounded_m = m;
-			dd->last_rounded_n = n;
-			dd->last_rounded_rate = target_rate;
-			break;
+		if (target_rate > new_rate)
+			diff = target_rate - new_rate;
+		else
+			diff = new_rate - target_rate;
+		if (diff < bestdiff) {
+			bestm = m;
+			bestn = n;
+			bestrate = new_rate;
+			bestdiff = diff;
 		}
+		if (new_rate == target_rate)
+			break;
 	}
-
-	return new_rate;
+	/*
+	 * The following if verifies that the new frequency is within 0.01% of
+	 * the target frequency.
+	 */
+	if (bestdiff < (ULONG_MAX / 10000) &&
+				      ((bestdiff * 10000) / target_rate) < 1) {
+		dd->last_rounded_m = bestm;
+		dd->last_rounded_n = bestn;
+		dd->last_rounded_rate = bestrate;
+		rs = kzalloc(sizeof (struct dpll_rate_list), GFP_KERNEL);
+		if (rs) {
+			rs->m = bestm;
+			rs->n = bestn;
+			rs->target_rate = target_rate;
+			rs->actual_rate = bestrate;
+			if (rate_cache == dd->rate_cache) {
+				rs->next = dd->rate_cache;
+				dd->rate_cache = rs;
+			} else
+				kzfree(rs);
+		}
+		return bestrate;
+	} else
+		return 0;
 }
 
