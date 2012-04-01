@@ -332,6 +332,7 @@ static void __init _omap2_map_common_io(void)
 	/* Normally devicemaps_init() would flush caches and tlb after
 	 * mdesc->map_io(), but we must also do it here because of the CPU
 	 * revision check below.
+	 * AG Now moved by Jassi's patch to be earlier... leaving this in
 	 */
 	local_flush_tlb_all();
 	flush_cache_all();
@@ -433,6 +434,7 @@ static int _set_hwmod_postsetup_state(struct omap_hwmod *oh, void *data)
 
 static void __init omap_common_init_early(void)
 {
+	omap2_check_revision();
 	omap_init_consistent_dma_size();
 }
 
