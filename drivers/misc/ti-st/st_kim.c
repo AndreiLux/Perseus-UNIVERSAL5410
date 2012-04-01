@@ -808,20 +808,20 @@ int kim_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct ti_st_plat_data	*pdata = pdev->dev.platform_data;
 
-	if (pdata->suspend)
+	if (pdata->suspend && !IS_ERR(pdata->suspend))
 		return pdata->suspend(pdev, state);
 
-	return -EOPNOTSUPP;
+	return 0; //-EOPNOTSUPP;
 }
 
 int kim_resume(struct platform_device *pdev)
 {
 	struct ti_st_plat_data	*pdata = pdev->dev.platform_data;
 
-	if (pdata->resume)
+	if (pdata->resume && !IS_ERR(pdata->suspend))
 		return pdata->resume(pdev);
 
-	return -EOPNOTSUPP;
+	return 0; // -EOPNOTSUPP;
 }
 
 /**********************************************************************/
