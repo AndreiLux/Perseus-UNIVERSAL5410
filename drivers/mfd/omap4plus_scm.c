@@ -261,7 +261,19 @@ static void omap4plus_scm_save_ctxt(struct scm *scm_ptr)
 {
 	int i;
 
+	if (!scm_ptr)
+		return;
+
 	for (i = 0; i < scm_ptr->cnt; i++) {
+
+		pr_err("omap4plus_scm_save_ctxt: %d / %d\n", i, scm_ptr->cnt);
+
+		if (!scm_ptr->registers[i])
+			continue;
+
+		if (!scm_ptr->regval[i])
+			continue;
+
 		scm_ptr->regval[i]->bg_mode_ctrl =
 			omap4plus_scm_readl(scm_ptr,
 				scm_ptr->registers[i]->bgap_mode_ctrl);
@@ -277,6 +289,8 @@ static void omap4plus_scm_save_ctxt(struct scm *scm_ptr)
 		scm_ptr->regval[i]->tshut_threshold =
 			omap4plus_scm_readl(scm_ptr,
 				scm_ptr->registers[i]->tshut_threshold);
+
+		pr_err("omap4plus_scm_save_ctxt: %d done\n", i);
 	}
 }
 
