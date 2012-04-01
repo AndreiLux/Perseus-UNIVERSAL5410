@@ -470,6 +470,11 @@ int omap3_noncore_dpll_set_rate(struct clk *clk, unsigned long rate)
 		if (dd->last_rounded_rate != rate)
 			rate = clk->round_rate(clk, rate);
 
+		if (rate == ~0) {
+			pr_err("Rounding failed\n");
+			return -EINVAL;
+		}
+
 		if (dd->last_rounded_rate == 0)
 			return -EINVAL;
 
