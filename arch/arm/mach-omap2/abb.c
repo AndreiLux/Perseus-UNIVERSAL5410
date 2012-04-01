@@ -98,13 +98,16 @@ int omap_abb_pre_scale(struct voltagedomain *voltdm,
 	struct omap_volt_data *nominal_volt;
 	u8 opp_sel;
 
-	if (!voltdm || !target_volt)
+	if (!voltdm || !target_volt || IS_ERR(target_volt))
 		return -EINVAL;
 
 	nominal_volt = voltdm_get_voltage(voltdm);
 
+	if (IS_ERR(nominal_volt))
+		return 0;
+
 	/* FIXME handle boot-time corner case */
-	if (!nominal_volt)
+	if (nominal_volt == 0)
 		return 0;
 
 	/* bail if the sequence is wrong */
