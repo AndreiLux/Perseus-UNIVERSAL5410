@@ -152,6 +152,7 @@ static void omap4_l2x0_set_debug(unsigned long val)
 static int __init omap_l2_cache_init(void)
 {
 	u32 aux_ctrl = 0;
+	u32 lockdown = 0;
 
 	/*
 	 * To avoid code running on other OMAPs in
@@ -186,6 +187,26 @@ static int __init omap_l2_cache_init(void)
 	}
 	if (omap_rev() != OMAP4430_REV_ES1_0)
 		omap_smc1(0x109, aux_ctrl);
+
+	if (cpu_is_omap446x()) {
+		writel_relaxed(0xa5a5, l2cache_base + 0x900);
+		writel_relaxed(0xa5a5, l2cache_base + 0x908);
+		writel_relaxed(0xa5a5, l2cache_base + 0x904);
+		writel_relaxed(0xa5a5, l2cache_base + 0x90C);
+	}
+
+	/*
+	 * FIXME: Temporary WA for OMAP4460 stability issue.
+	 * Lock-down specific L2 cache ways which  makes effective
+	 * L2 size as 512 KB instead of 1 MB
+	 */
+	if (cpu_is_omap446x()) {
+		lockdown = 0xa5a5;
+		writel_relaxed(lockdown, l2cache_base + L2X0_LOCKDOWN_WAY_D0);
+		writel_relaxed(lockdown, l2cache_base + L2X0_LOCKDOWN_WAY_D1);
+		writel_relaxed(lockdown, l2cache_base + L2X0_LOCKDOWN_WAY_I0);
+		writel_relaxed(lockdown, l2cache_base + L2X0_LOCKDOWN_WAY_I1);
+	}
 
 	/* Enable PL310 L2 Cache controller */
 	omap_smc1(0x102, 0x1);
