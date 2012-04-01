@@ -340,10 +340,12 @@ long omap2_dpll_round_rate(struct clk *clk, unsigned long target_rate)
 		if (r == DPLL_MULT_UNDERFLOW)
 			continue;
 
-		pr_debug("clock: %s: m = %d: n = %d: new_rate = %ld\n",
-			 clk->name, m, n, new_rate);
+//		pr_err("    clock: target=%ld %s: m = %d: n = %d: new_rate = %ld\n",
+//			 target_rate, clk->name, m, n, new_rate);
 
-		if (target_rate == new_rate) {
+		if (target_rate == new_rate ||
+			((target_rate - new_rate) > 0 && (target_rate - new_rate) < 1000000)
+		) {
 			dd->last_rounded_m = m;
 			dd->last_rounded_n = n;
 			dd->last_rounded_rate = target_rate;
@@ -351,12 +353,6 @@ long omap2_dpll_round_rate(struct clk *clk, unsigned long target_rate)
 		}
 	}
 
-	if (target_rate != new_rate) {
-		pr_debug("clock: %s: cannot round to rate %ld\n", clk->name,
-			 target_rate);
-		return ~0;
-	}
-
-	return target_rate;
+	return new_rate;
 }
 
