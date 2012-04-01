@@ -200,7 +200,8 @@ static int __init omap_l2_cache_init(void)
 	 * Lock-down specific L2 cache ways which  makes effective
 	 * L2 size as 512 KB instead of 1 MB
 	 */
-	if (cpu_is_omap446x()) {
+	if (cpu_is_omap446x() && omap_rev() == OMAP4430_REV_ES1_0) {
+		pr_info("4460 ES1.0 Cache Issue workaround enabled\n");
 		lockdown = 0xa5a5;
 		writel_relaxed(lockdown, l2cache_base + L2X0_LOCKDOWN_WAY_D0);
 		writel_relaxed(lockdown, l2cache_base + L2X0_LOCKDOWN_WAY_D1);
