@@ -67,8 +67,8 @@
 #define L2X0_DEBUG_CTRL			0xF40
 #define L2X0_PREFETCH_CTRL		0xF60
 #define L2X0_POWER_CTRL			0xF80
-#define   L2X0_DYNAMIC_CLK_GATING_EN	(1 << 1)
-#define   L2X0_STNDBY_MODE_EN		(1 << 0)
+#define L2X0_DYNAMIC_CLK_GATING_EN	(1 << 1)
+#define L2X0_STNDBY_MODE_EN		(1 << 0)
 
 /* Registers shifts and masks */
 #define L2X0_CACHE_ID_REV_MASK		(0x3f)
@@ -83,7 +83,7 @@
 #define L2X0_CACHE_ID_RTL_R3P1          0x6
 #define L2X0_CACHE_ID_RTL_R3P2          0x8
 
-#define L2X0_AUX_CTRL_MASK			0xc0000fff
+#define L2X0_AUX_CTRL_MASK			0xd0000fff
 #define L2X0_AUX_CTRL_DATA_RD_LATENCY_SHIFT	0
 #define L2X0_AUX_CTRL_DATA_RD_LATENCY_MASK	0x7
 #define L2X0_AUX_CTRL_DATA_WR_LATENCY_SHIFT	3
@@ -109,6 +109,10 @@
 #define L2X0_ADDR_FILTER_EN		1
 
 #define REV_PL310_R2P0				4
+
+#define L2X0_PREFETCH_DATA_PREFETCH_SHIFT	28
+#define L2X0_PREFETCH_INTSTR_PREFETCH_SHIFT	29
+#define L2X0_PREFETCH_DOUBLE_LINEFILL_SHIFT	30
 
 #ifndef __ASSEMBLY__
 extern void __init l2x0_init(void __iomem *base, u32 aux_val, u32 aux_mask);
