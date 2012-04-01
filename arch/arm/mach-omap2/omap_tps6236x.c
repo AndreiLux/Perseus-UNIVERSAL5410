@@ -26,6 +26,8 @@
 #define MIN_VOLTAGE_TPS62361_UV		500000
 #define MAX_VOLTAGE_TPS62361_UV		1770000
 
+#define NOM_VOLTAGE_TPS62361_UV		1430000
+
 #define MAX_VOLTAGE_RAMP_TPS6236X_UV	32000
 
 /*
@@ -205,8 +207,8 @@ static int __init omap4_twl_tps62361_enable(struct voltagedomain *voltdm)
 	int ret = 0;
 	u8 val;
 
-	/* Dont trust the bootloader. start with max, pm will set to proper */
-	val = voltdm->pmic->uv_to_vsel(voltdm->pmic->vp_vddmax);
+	/* Dont trust the bootloader. start with nominal, pm will set later */
+	val = voltdm->pmic->uv_to_vsel(NOM_VOLTAGE_TPS62361_UV);
 	ret = omap_vc_bypass_send_i2c_msg(voltdm, voltdm->pmic->i2c_slave_addr,
 			default_reg, val);
 
