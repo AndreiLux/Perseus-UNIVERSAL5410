@@ -1129,6 +1129,7 @@ static struct omap_hwmod_addr_space omap44xx_ctrl_module_core_addrs[] = {
 		.pa_end         = 0x4a0027ff,
 		.flags          = ADDR_TYPE_RT
 	},
+	{ },
 };
 
 /* l4_cfg -> ctrl_module_core */
