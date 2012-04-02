@@ -2512,6 +2512,12 @@ static struct samsung_gpio_chip exynos5_gpios_1[] = {
 			.label	= "GPY6",
 		},
 	}, {
+		.chip	= {
+			.base	= EXYNOS5_GPC4(0),
+			.ngpio	= EXYNOS5_GPIO_C4_NR,
+			.label	= "GPC4",
+		},
+	}, {
 		.config	= &samsung_gpio_cfgs[9],
 		.irq_base = IRQ_EINT(0),
 		.chip	= {
@@ -2793,8 +2799,6 @@ static __init int samsung_gpiolib_init(void)
 #endif
 	} else if (soc_is_exynos4210()) {
 #ifdef CONFIG_CPU_EXYNOS4210
-		void __iomem *gpx_base;
-
 		/* gpio part1 */
 		gpio_base1 = ioremap(EXYNOS4_PA_GPIO1, SZ_4K);
 		if (gpio_base1 == NULL) {
@@ -2823,11 +2827,11 @@ static __init int samsung_gpiolib_init(void)
 			goto err_ioremap2;
 		}
 
-		/* need to set base address for gpx */
-		chip = &exynos4_gpios_2[16];
-		gpx_base = gpio_base2 + 0xC00;
-		for (i = 0; i < 4; i++, chip++, gpx_base += 0x20)
-			chip->base = gpx_base;
+		/* need to set base address for GPX */
+		exynos4_gpios_2[16].base = gpio_base2 + 0xC00;
+		exynos4_gpios_2[17].base = gpio_base2 + 0xC20;
+		exynos4_gpios_2[18].base = gpio_base2 + 0xC40;
+		exynos4_gpios_2[19].base = gpio_base2 + 0xC60;
 
 		chip = exynos4_gpios_2;
 		nr_chips = ARRAY_SIZE(exynos4_gpios_2);
@@ -2872,8 +2876,6 @@ static __init int samsung_gpiolib_init(void)
 #endif	/* CONFIG_CPU_EXYNOS4210 */
 	} else if (soc_is_exynos5250()) {
 #ifdef CONFIG_SOC_EXYNOS5250
-		void __iomem *gpx_base;
-
 		/* gpio part1 */
 		gpio_base1 = ioremap(EXYNOS5_PA_GPIO1, SZ_4K);
 		if (gpio_base1 == NULL) {
@@ -2881,11 +2883,11 @@ static __init int samsung_gpiolib_init(void)
 			goto err_ioremap1;
 		}
 
-		/* need to set base address for gpx */
-		chip = &exynos5_gpios_1[20];
-		gpx_base = gpio_base1 + 0xC00;
-		for (i = 0; i < 4; i++, chip++, gpx_base += 0x20)
-			chip->base = gpx_base;
+		exynos5_gpios_1[20].base = gpio_base1 + 0x2E0;	/* GPC4 */
+		exynos5_gpios_1[21].base = gpio_base1 + 0xC00;	/* GPX0 */
+		exynos5_gpios_1[22].base = gpio_base1 + 0xC20;	/* GPX1 */
+		exynos5_gpios_1[23].base = gpio_base1 + 0xC40;	/* GPX2 */
+		exynos5_gpios_1[24].base = gpio_base1 + 0xC60;	/* GPX3 */
 
 		chip = exynos5_gpios_1;
 		nr_chips = ARRAY_SIZE(exynos5_gpios_1);
@@ -2929,12 +2931,9 @@ static __init int samsung_gpiolib_init(void)
 			goto err_ioremap3;
 		}
 
-		/* need to set base address for gpv */
-		exynos5_gpios_3[0].base = gpio_base3;
-		exynos5_gpios_3[1].base = gpio_base3 + 0x20;
-		exynos5_gpios_3[2].base = gpio_base3 + 0x60;
-		exynos5_gpios_3[3].base = gpio_base3 + 0x80;
-		exynos5_gpios_3[4].base = gpio_base3 + 0xC0;
+		exynos5_gpios_3[2].base = gpio_base3 + 0x60;	/* GPV2 */
+		exynos5_gpios_3[3].base = gpio_base3 + 0x80;	/* GPV3 */
+		exynos5_gpios_3[4].base = gpio_base3 + 0xC0;	/* GPV4 */
 
 		chip = exynos5_gpios_3;
 		nr_chips = ARRAY_SIZE(exynos5_gpios_3);
