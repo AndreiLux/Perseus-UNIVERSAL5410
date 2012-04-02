@@ -39,20 +39,7 @@
 #define SMC_REG_ID_SFR(ADDR)	(SMC_REG_CLASS_SFR | (ADDR >> 2))
 
 #ifndef __ASSEMBLY__
-static inline u32 exynos_smc(u32 cmd, u32 arg1, u32 arg2, u32 arg3)
-{
-	register u32 reg0 __asm__("r0") = cmd;
-	register u32 reg1 __asm__("r1") = arg1;
-	register u32 reg2 __asm__("r2") = arg2;
-	register u32 reg3 __asm__("r3") = arg3;
-
-	__asm__ volatile (
-		"smc	0\n"
-		: "+r"(reg0), "+r"(reg1), "+r"(reg2), "+r"(reg3)
-	);
-
-	return reg0;
-}
+u32 exynos_smc(u32 cmd, u32 arg1, u32 arg2, u32 arg3);
 #endif
 
 #endif /* __ASM_ARCH_SMC_H */
