@@ -339,4 +339,13 @@ config MOUSE_SYNAPTICS_USB
 	  To compile this driver as a module, choose M here: the
 	  module will be called synaptics_usb.
 
+config MOUSE_CYAPA
+	tristate "Cypress APA I2C Touchpad support"
+	depends on I2C
+	help
+	  Say y here if you have a Cypress APA I2C Touchpad.
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called cyapa.
+
 endif
