@@ -748,7 +748,7 @@ static void set_eapd(struct hda_codec *codec, hda_nid_t nid, int on)
 	/* delay de-assert of eapd to allow biasing of amp
 	 * inputs to settle avoiding an audible 'pop'.
 	 */
-	if (nid == 0x14) && codec->subsystem_id == 0x144dc0a7)
+	if ((nid == 0x14) && codec->subsystem_id == 0x144dc0a7)
 		msleep(25);
 
 	if (snd_hda_query_pin_caps(codec, nid) & AC_PINCAP_EAPD)
@@ -6597,6 +6597,17 @@ static void alc272_fixup_mario(struct hda_codec *codec,
 		       "hda_codec: failed to override amp caps for NID 0x2\n");
 }
 
+static void alc272_fixup_alex(struct hda_codec *codec,
+			       const struct alc_fixup *fix, int pre_init) {
+	if (snd_hda_override_amp_caps(codec, 0x2, HDA_OUTPUT,
+				      (0x3c << AC_AMPCAP_OFFSET_SHIFT) |
+				      (0x3c << AC_AMPCAP_NUM_STEPS_SHIFT) |
+				      (0x03 << AC_AMPCAP_STEP_SIZE_SHIFT) |
+				      (0 << AC_AMPCAP_MUTE_SHIFT)))
+		printk(KERN_WARNING
+		       "hda_codec: failed to override amp caps for NID 0x2\n");
+}
+
 enum {
 	ALC662_FIXUP_ASPIRE,
 	ALC662_FIXUP_IDEAPAD,
@@ -6613,6 +6624,7 @@ enum {
 	ALC662_FIXUP_ASUS_MODE7,
 	ALC662_FIXUP_ASUS_MODE8,
 	ALC662_FIXUP_NO_JACK_DETECT,
+	ALC272_FIXUP_ALEX,
 };
 
 static const struct alc_fixup alc662_fixups[] = {
@@ -6762,6 +6774,10 @@ static const struct alc_fixup alc662_fixups[] = {
 		.type = ALC_FIXUP_FUNC,
 		.v.func = alc_fixup_no_jack_detect,
 	},
+	[ALC272_FIXUP_ALEX] = {
+		.type = ALC_FIXUP_FUNC,
+		.v.func = alc272_fixup_alex,
+	}
 };
 
 static const struct snd_pci_quirk alc662_fixup_tbl[] = {
@@ -6847,6 +6863,7 @@ static const struct alc_model_fixup alc662_fixup_models[] = {
 	{.id = ALC662_FIXUP_ASUS_MODE6, .name = "asus-mode6"},
 	{.id = ALC662_FIXUP_ASUS_MODE7, .name = "asus-mode7"},
 	{.id = ALC662_FIXUP_ASUS_MODE8, .name = "asus-mode8"},
+	{.id = ALC272_FIXUP_ALEX, .name = "alex"},
 	{}
 };
 
