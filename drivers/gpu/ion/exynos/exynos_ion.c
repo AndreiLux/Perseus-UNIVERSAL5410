@@ -291,24 +291,25 @@ static void *ion_exynos_heap_map_kernel(struct ion_heap *heap,
 	struct page **pages, **tmp_pages;
 	struct sg_table *sgt;
 	struct scatterlist *sgl;
-	int num_pages = buffer->size >> PAGE_SHIFT;
-	int i;
+	int num_pages, i;
 	void *vaddr;
 
 	sgt = buffer->priv_virt;
+	num_pages = PAGE_ALIGN(offset_in_page(sg_phys(sgt->sgl)) + buffer->size)
+								>> PAGE_SHIFT;
 
-	pages = vmalloc(sizeof(*pages) * (buffer->size >> PAGE_SHIFT));
+	pages = vmalloc(sizeof(*pages) * num_pages);
 	if (!pages)
 		return NULL;
 
 	tmp_pages = pages;
 	for_each_sg(sgt->sgl, sgl, sgt->orig_nents, i) {
 		struct page *page = sg_page(sgl);
-		int n;
+		unsigned int n =
+			PAGE_ALIGN(sgl->offset + sg_dma_len(sgl)) >> PAGE_SHIFT;
 
-		for (n = sg_dma_len(sgl) >> PAGE_SHIFT; n > 0; n--)
+		for (; n > 0; n--)
 			*(tmp_pages++) = page++;
-
 	}
 
 	vaddr = vmap(pages, num_pages, VM_USERMAP | VM_MAP, PAGE_KERNEL);
@@ -321,7 +322,9 @@ static void *ion_exynos_heap_map_kernel(struct ion_heap *heap,
 static void ion_exynos_heap_unmap_kernel(struct ion_heap *heap,
 				  struct ion_buffer *buffer)
 {
-	vunmap(buffer->vaddr);
+	struct sg_table *sgt = buffer->priv_virt;
+
+	vunmap(buffer->vaddr - offset_in_page(sg_phys(sgt->sgl)));
 }
 
 static int ion_exynos_heap_map_user(struct ion_heap *heap,
