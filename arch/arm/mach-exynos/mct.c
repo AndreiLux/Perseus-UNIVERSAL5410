@@ -475,7 +475,7 @@ static void __init exynos4_timer_resources(void)
 
 static void __init exynos4_timer_init(void)
 {
-	if (soc_is_exynos4210())
+	if (soc_is_exynos4210() || soc_is_exynos5250())
 		mct_int_type = MCT_INT_SPI;
 	else
 		mct_int_type = MCT_INT_PPI;
