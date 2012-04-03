@@ -47,16 +47,6 @@ void kbase_gpuprops_set(struct kbase_device *kbdev);
  */
 mali_error  kbase_gpuprops_uk_get_props(struct kbase_context *kctx, kbase_uk_gpuprops * kbase_props);
 
-/**
- * @brief Get the GPU configuration
- *
- * Fill the base_gpu_props structure with values from the GPU configuration registers
- *
- * @param gpu_props  The base_gpu_props structure
- * @param kbdev      The kbase_device structure for the device
- */
-void kbase_gpuprops_get_props(base_gpu_props * gpu_props, struct kbase_device * kbdev);
-
 
 #endif /* _KBASE_GPUPROPS_H_ */
 

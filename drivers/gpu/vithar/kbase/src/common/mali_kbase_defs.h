@@ -27,6 +27,10 @@
 #include <mali_base_hwconfig.h>
 #include <kbase/mali_kbase_config.h>
 
+#ifdef CONFIG_KDS
+#include <kds/include/linux/kds.h>
+#endif
+
 /** Enable SW tracing when set */
 #ifndef KBASE_TRACE_ENABLE
 #if MALI_DEBUG
@@ -58,7 +62,7 @@
  *
  * @note if not in use, define this value to 0 instead of #undef'ing it
  */
-#define KBASE_DISABLE_SCHEDULING_SOFT_STOPS 1
+#define KBASE_DISABLE_SCHEDULING_SOFT_STOPS 0
 
 /**
  * Prevent hard-stops from occuring in scheduling situations
@@ -69,7 +73,7 @@
  *
  * @note if not in use, define this value to 0 instead of #undef'ing it
  */
-#define KBASE_DISABLE_SCHEDULING_HARD_STOPS 1
+#define KBASE_DISABLE_SCHEDULING_HARD_STOPS 0
 
 /* Forward declarations+defintions */
 typedef struct kbase_context kbase_context;
@@ -158,6 +162,47 @@ typedef struct kbase_jd_bag {
 	u32         nr_atoms;
 } kbase_jd_bag;
 
+/**
+ * @brief States to model state machine processed by kbasep_js_job_check_ref_cores(), which
+ * handles retaining cores for power management and affinity management.
+ *
+ * The state @ref KBASE_ATOM_COREREF_STATE_RECHECK_AFFINITY prevents an attack
+ * where lots of atoms could be submitted before powerup, and each has an
+ * affinity chosen that causes other atoms to have an affinity
+ * violation. Whilst the affinity was not causing violations at the time it
+ * was chosen, it could cause violations thereafter. For example, 1000 jobs
+ * could have had their affinity chosen during the powerup time, so any of
+ * those 1000 jobs could cause an affinity violation later on.
+ *
+ * The attack would otherwise occur because other atoms/contexts have to wait for:
+ * -# the currently running atoms (which are causing the violation) to
+ * finish
+ * -# and, the atoms that had their affinity chosen during powerup to
+ * finish. These are run preferrentially because they don't cause a
+ * violation, but instead continue to cause the violation in others.
+ * -# or, the attacker is scheduled out (which might not happen for just 2
+ * contexts)
+ *
+ * By re-choosing the affinity (which is designed to avoid violations at the
+ * time it's chosen), we break condition (2) of the wait, which minimizes the
+ * problem to just waiting for current jobs to finish (which can be bounded if
+ * the Job Scheduling Policy has a timer).
+ */
+typedef enum
+{
+	/** Starting state: No affinity chosen, and cores must be requested. kbase_jd_atom::affinity==0 */
+	KBASE_ATOM_COREREF_STATE_NO_CORES_REQUESTED,
+	/** Cores requested, but waiting for them to be powered. Requested cores given by kbase_jd_atom::affinity */
+	KBASE_ATOM_COREREF_STATE_WAITING_FOR_REQUESTED_CORES,
+	/** Cores given by kbase_jd_atom::affinity are powered, but affinity might be out-of-date, so must recheck */
+	KBASE_ATOM_COREREF_STATE_RECHECK_AFFINITY,
+	/** Cores given by kbase_jd_atom::affinity are powered, and affinity is up-to-date, but must check for violations */
+	KBASE_ATOM_COREREF_STATE_CHECK_AFFINITY_VIOLATIONS,
+	/** Cores are powered, kbase_jd_atom::affinity up-to-date, no affinity violations: atom can be submitted to HW */
+	KBASE_ATOM_COREREF_STATE_READY
+
+} kbase_atom_coreref_state;
+
 typedef struct kbase_jd_atom {
 	kbase_event     event;
 	osk_workq_work  work;
@@ -168,8 +213,14 @@ typedef struct kbase_jd_atom {
 	base_jd_dep     pre_dep;
 	base_jd_dep     post_dep;
 	u32             nr_syncsets;
+	u32             nr_extres;
 	u64             affinity;
 	u64             jc;
+	kbase_atom_coreref_state   coreref_state;
+#ifdef CONFIG_KDS
+	struct kds_resource_set *  kds_rset;
+	mali_bool                  kds_dep_satisfied;
+#endif
 
 	base_jd_core_req    core_req;       /**< core requirements */
 
@@ -205,8 +256,10 @@ typedef struct kbase_jd_atom {
  * is cleared. The atom can be run when pre_dep[0] == pre_dep[1] == 0.
  */
 
+#define KBASE_JD_DEP_QUEUE_SIZE 256
+
 typedef struct kbase_jd_dep_queue {
-	kbase_jd_atom *queue[256];
+	kbase_jd_atom *queue[KBASE_JD_DEP_QUEUE_SIZE];
 	u32            sem[BASEP_JD_SEM_ARRAY_SIZE];
 } kbase_jd_dep_queue;
 
@@ -244,12 +297,15 @@ typedef struct kbase_jd_context {
 	osk_spinlock_irq    tb_lock;
 	u32                 *tb;
 	size_t              tb_wrap_offset;
+
+#ifdef CONFIG_KDS
+	struct kds_callback kds_cb;
+#endif
 } kbase_jd_context;
 
-typedef struct kbase_jm_slot {
-#if BASE_HW_ISSUE_7347 == 0
+typedef struct kbase_jm_slot
+{
 	osk_spinlock_irq lock;
-#endif
 
 	/* The number of slots must be a power of two */
 #define BASE_JM_SUBMIT_SLOTS        16
@@ -260,12 +316,6 @@ typedef struct kbase_jm_slot {
 	u8               submitted_head;
 	u8               submitted_nr;
 
-#if BASE_HW_ISSUE_5713
-	/** Are we allowed to submit to this slot?
-	 * MALI_TRUE if submission is not permitted at this time due to a soft-stop in progress.
-	 */
-	mali_bool8      submission_blocked_for_soft_stop;
-#endif
 } kbase_jm_slot;
 
 typedef enum kbase_midgard_type
@@ -389,7 +439,8 @@ typedef enum
 	KBASE_INSTR_STATE_CLEANED,
 	KBASE_INSTR_STATE_PRECLEANING,
 	KBASE_INSTR_STATE_POSTCLEANING,
-	KBASE_INSTR_STATE_ERROR
+	KBASE_INSTR_STATE_RESETTING,
+	KBASE_INSTR_STATE_FAULT
 
 } kbase_instr_state;
 
@@ -441,9 +492,6 @@ typedef struct kbase_trace
 struct kbase_device {
 	const kbase_device_info *dev_info;
 	kbase_jm_slot           jm_slots[BASE_JM_MAX_NR_SLOTS];
-#if BASE_HW_ISSUE_7347
-	osk_spinlock_irq        jm_slot_lock;
-#endif
 	s8                      slot_submit_count_irq[BASE_JM_MAX_NR_SLOTS];
 	kbase_os_device         osdev;
 	kbase_pm_device_data    pm;
@@ -475,16 +523,16 @@ struct kbase_device {
 	u64                     tiler_inuse_bitmap;
 
 	/* Refcount for cores in use */
-	u32                      shader_inuse_cnt[64];
-	u32                      tiler_inuse_cnt[64];
+	u32                     shader_inuse_cnt[64];
+	u32                     tiler_inuse_cnt[64];
 
 	/* Bitmaps of cores the JS needs for jobs ready to run */
 	u64                     shader_needed_bitmap;
 	u64                     tiler_needed_bitmap;
 
 	/* Refcount for cores needed */
-	u8                      shader_needed_cnt[64];
-	u8                      tiler_needed_cnt[64];
+	u32                      shader_needed_cnt[64];
+	u32                      tiler_needed_cnt[64];
 
 	/* Bitmaps of cores that are currently available (powered up and the power policy is happy for jobs to be
 	 * submitted to these cores. These are updated by the power management code. The job scheduler should avoid
@@ -495,21 +543,24 @@ struct kbase_device {
 	u64                     shader_available_bitmap;
 	u64                     tiler_available_bitmap;
 
-	s8                      nr_address_spaces;     /**< Number of address spaces in the GPU (constant) */
+	s8                      nr_hw_address_spaces;     /**< Number of address spaces in the GPU (constant) */
+	s8                      nr_user_address_spaces;   /**< Number of address spaces available to user contexts */
 	s8                      nr_job_slots;          /**< Number of job slots in the GPU (constant) */
 
 	/** GPU's JSn_FEATURES registers - not directly applicable to a base_jd_atom's
 	 * core_req member. Instead, see the kbasep_js_device_data's js_reqs[] member */
 	kbasep_jsn_feature      job_slot_features[BASE_JM_MAX_NR_SLOTS];
 
-	osk_spinlock            hwcnt_lock;
-	kbase_context *         hwcnt_context;
-	u64                     hwcnt_addr;
-	mali_bool               hwcnt_in_progress;
-	mali_bool               hwcnt_is_setup;
-	osk_waitq               hwcnt_waitqueue;
-	/* Instrumentation state machine current state */
-	kbase_instr_state       hwcnt_state;
+	/* Structure used for instrumentation and HW counters dumping */
+	struct {
+		/* The lock should be used when accessing any of the following members */
+		osk_spinlock_irq    lock;
+
+		kbase_context      *kctx;
+		u64                 addr;
+		osk_waitq           waitqueue;
+		kbase_instr_state   state;
+	} hwcnt;
 
 	/* Set when we're about to reset the GPU */
 	osk_atomic              reset_gpu;
@@ -565,9 +616,6 @@ struct kbase_device {
 #ifdef CONFIG_VITHAR
 	struct clk *sclk_g3d;
 #endif
-#ifdef CONFIG_VITHAR_RT_PM
-	struct delayed_work runtime_pm_workqueue;
-#endif
 };
 
 struct kbase_context
@@ -575,11 +623,6 @@ struct kbase_context
 	kbase_device            *kbdev;
 	osk_phy_allocator       pgd_allocator;
 	osk_phy_addr            pgd;
-#if (BASE_HW_ISSUE_6315 && BASE_HW_ISSUE_6787)
-	osk_phy_allocator       nulljob_allocator;
-	osk_phy_addr            nulljob_pa;
-	osk_virt_addr           nulljob_va;
-#endif /* (BASE_HW_ISSUE_6315 && BASE_HW_ISSUE_6787) */
 	osk_dlist               event_list;
 	osk_mutex               event_mutex;
 	mali_bool               event_closed;
@@ -606,6 +649,13 @@ struct kbase_context
 	 * to ensure the context doesn't disappear (but this has restrictions on what other locks
 	 * you can take whilst doing this) */
 	int                     as_nr;
+
+	/* NOTE:
+	 *
+	 * Flags are in jctx.sched_info.ctx.flags
+	 * Mutable flags *must* be accessed under jctx.sched_info.ctx.jsctx_mutex
+	 *
+	 * All other flags must be added there */
 };
 
 typedef enum kbase_reg_access_type
@@ -622,4 +672,6 @@ typedef enum kbase_share_attr_bits
 	SHARE_INNER_BITS = (3ULL << 8)  /* inner shareable coherency */
 } kbase_share_attr_bits;
 
+
 #endif /* _KBASE_DEFS_H_ */
+

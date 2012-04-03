@@ -28,6 +28,9 @@
 #export MALI_HW_VERSION?=r0p0
 #export MALI_UNCACHED?=0
 #export MALI_INSTRUMENTATION_LEVEL?=0
+#export MALI_CUSTOMER_RELEASE?=1
+#export MALI_GATOR_SUPPORT?=0
+#export MALI_COVERAGE?=0
 
 KDIR ?= /lib/modules/$(shell uname -r)/build
 
@@ -44,12 +47,14 @@ endif
 all:
 	$(MAKE) -C $(KDIR) M=$(MROOT)/osk/src/linux
 	$(MAKE) -C $(KDIR) M=$(MROOT)/uk/src/ukk/linux
+	$(MAKE) -C $(KDIR) M=$(MROOT)/kds/lib/kds
 	$(MAKE) -C $(KDIR) M=$(MROOT)/ump/src/devicedrv
 	$(MAKE) -C $(KDIR) M=$(MROOT)/kbase/src KBUILD_EXTRA_SYMBOLS="$(MROOT)/uk/src/ukk/linux/Module.symvers $(MROOT)/ump/src/devicedrv/Module.symvers"
 
 clean:
 	$(MAKE) -C $(KDIR) M=$(MROOT)/osk/src/linux clean
 	$(MAKE) -C $(KDIR) M=$(MROOT)/uk/src/ukk/linux clean
+	$(MAKE) -C $(KDIR) M=$(MROOT)/kds/lib/kds clean
 	$(MAKE) -C $(KDIR) M=$(MROOT)/ump/src/devicedrv clean
 	$(MAKE) -C $(KDIR) M=$(MROOT)/kbase/src clean
 

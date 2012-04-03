@@ -36,16 +36,57 @@
 
 #define LOOKUP_VARIANT_MASK ((1u<<KBASEP_JS_MAX_NR_CORE_REQ_VARIANTS) - 1u)
 
+/** Core requirements that all the variants support */
+#define JS_CORE_REQ_ALL_OTHERS \
+	( BASE_JD_REQ_CF | BASE_JD_REQ_V | BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_PERMON | BASE_JD_REQ_EXTERNAL_RESOURCES )
+
+/** Context requirements the all the variants support */
+#if BASE_HW_ISSUE_8987 != 0
+/* In this HW workaround, restrict Compute-only contexts and Compute jobs onto job slot[2],
+ * which will ensure their affinity does not intersect GLES jobs */
+#define JS_CTX_REQ_ALL_OTHERS \
+	( KBASE_CTX_FLAG_CREATE_FLAGS_SET | KBASE_CTX_FLAG_PRIVILEGED )
+#define JS_CORE_REQ_COMPUTE_SLOT \
+	( BASE_JD_REQ_CS )
+#define JS_CORE_REQ_ONLY_COMPUTE_SLOT \
+	( BASE_JD_REQ_ONLY_COMPUTE )
+
+#else /* BASE_HW_ISSUE_8987 != 0 */
+/* Otherwise, compute-only contexts/compute jobs can use any job slot */
+#define JS_CTX_REQ_ALL_OTHERS \
+	( KBASE_CTX_FLAG_CREATE_FLAGS_SET | KBASE_CTX_FLAG_PRIVILEGED | KBASE_CTX_FLAG_HINT_ONLY_COMPUTE)
+#define JS_CORE_REQ_COMPUTE_SLOT \
+	( BASE_JD_REQ_CS | BASE_JD_REQ_ONLY_COMPUTE )
+#define JS_CORE_REQ_ONLY_COMPUTE_SLOT \
+	( BASE_JD_REQ_CS | BASE_JD_REQ_ONLY_COMPUTE )
+
+#endif /* BASE_HW_ISSUE_8987 != 0 */
+
 /* core_req variants are ordered by least restrictive first, so that our
  * algorithm in cached_variant_idx_init picks the least restrictive variant for
- * each job . Note that coherent_group requirement is added to all CS works as the
- * selection of JS does not depend on the coherency requirement. */
-static const base_jd_core_req core_req_variants[] ={
+ * each job . Note that coherent_group requirement is added to all CS variants as the
+ * selection of job-slot does not depend on the coherency requirement. */
+static const kbasep_atom_req core_req_variants[] ={
+	{
+		(JS_CORE_REQ_ALL_OTHERS | BASE_JD_REQ_FS),
+		(JS_CTX_REQ_ALL_OTHERS)
+	},
+	{
+		(JS_CORE_REQ_ALL_OTHERS | JS_CORE_REQ_COMPUTE_SLOT),
+		(JS_CTX_REQ_ALL_OTHERS)
+	},
+	{
+		(JS_CORE_REQ_ALL_OTHERS | JS_CORE_REQ_COMPUTE_SLOT | BASE_JD_REQ_T),
+		(JS_CTX_REQ_ALL_OTHERS)
+	},
 
-	(BASE_JD_REQ_FS | BASE_JD_REQ_CF | BASE_JD_REQ_V | BASE_JD_REQ_PERMON ),
-	(BASE_JD_REQ_CS | BASE_JD_REQ_CF | BASE_JD_REQ_V | BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_PERMON ),
-	(BASE_JD_REQ_CS | BASE_JD_REQ_T | BASE_JD_REQ_CF | BASE_JD_REQ_V | BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_PERMON ),
-	(BASE_JD_REQ_CS | BASE_JD_REQ_CF | BASE_JD_REQ_V | BASE_JD_REQ_NSS | BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_PERMON ),
+	/* The last variant is one guarenteed to support Compute contexts/job, or
+	 * NSS jobs. In the case of a context that's specified as 'Only Compute', it'll not allow
+	 * Tiler or Fragment jobs, and so those get rejected */
+	{
+		(JS_CORE_REQ_ALL_OTHERS | JS_CORE_REQ_ONLY_COMPUTE_SLOT | BASE_JD_REQ_NSS ),
+		(JS_CTX_REQ_ALL_OTHERS | KBASE_CTX_FLAG_HINT_ONLY_COMPUTE)
+	}
 };
 
 #define NUM_CORE_REQ_VARIANTS NELEMS(core_req_variants)
@@ -54,14 +95,14 @@ static const u32 variants_supported_ss_state[] =
 {
 	(1u << 0),             /* js[0] uses variant 0 (FS list)*/
 	(1u << 2) | (1u << 1), /* js[1] uses variants 1 and 2 (CS and CS+T lists)*/
-	(1u << 1)              /* js[2] uses variant 1 (CS list). NOTE: could set to 0 */
+	(1u << 3)              /* js[2] uses variant 3 (Compute list) */
 };
 
 static const u32 variants_supported_nss_state[] =
 {
 	(1u << 0),             /* js[0] uses variant 0 (FS list)*/
 	(1u << 2) | (1u << 1), /* js[1] uses variants 1 and 2 (CS and CS+T lists)*/
-	(1u << 3)              /* js[2] uses variant 3 (NSS list) */
+	(1u << 3)              /* js[2] uses variant 3 (Compute/NSS list) */
 };
 
 /* Defines for easy asserts 'is scheduled'/'is queued'/'is neither queued norscheduled' */
@@ -101,6 +142,13 @@ static const int weight_of_priority[] =
 	/*   16 */  36388,   45485,   56856,   71070
 };
 
+/**
+ * @note There is nothing to stop the priority of the ctx containing \a
+ * ctx_info changing during or immediately after this function is called
+ * (because its jsctx_mutex cannot be held during IRQ). Therefore, this
+ * function should only be seen as a heuristic guide as to the priority weight
+ * of the context.
+ */
 STATIC u64 priority_weight(kbasep_js_policy_cfs_ctx *ctx_info, u32 time_us)
 {
 	u64 time_delta_us;
@@ -108,7 +156,7 @@ STATIC u64 priority_weight(kbasep_js_policy_cfs_ctx *ctx_info, u32 time_us)
 	priority = ctx_info->process_priority + ctx_info->bag_priority;
 
 	/* Adjust runtime_us using priority weight if required */
-	if(priority != 0)
+	if(priority != 0 && time_us != 0)
 	{
 		int clamped_priority;
 
@@ -285,7 +333,11 @@ STATIC INLINE u32 get_slot_to_variant_lookup( u32 *bit_array, u32 slot_idx )
 
 /* Check the core_req_variants: make sure that every job slot is satisifed by
  * one of the variants. This checks that cached_variant_idx_init will produce a
- * valid result for jobs that make maximum use of the job slots. */
+ * valid result for jobs that make maximum use of the job slots.
+ *
+ * @note The checks are limited to the job slots - this does not check that
+ * every context requirement is covered (because some are intentionally not
+ * supported, such as KBASE_CTX_FLAG_SUBMIT_DISABLED) */
 #if MALI_DEBUG
 STATIC void debug_check_core_req_variants( kbase_device *kbdev, kbasep_js_policy_cfs *policy_info )
 {
@@ -304,7 +356,7 @@ STATIC void debug_check_core_req_variants( kbase_device *kbdev, kbasep_js_policy
 		for ( i = 0; i < policy_info->num_core_req_variants ; ++i )
 		{
 			base_jd_core_req var_core_req;
-			var_core_req = policy_info->core_req_variants[i];
+			var_core_req = policy_info->core_req_variants[i].core_req;
 
 			if ( (var_core_req & job_core_req) == job_core_req )
 			{
@@ -329,6 +381,8 @@ STATIC void build_core_req_variants( kbase_device *kbdev, kbasep_js_policy_cfs *
 	OSK_ASSERT( policy_info != NULL );
 	CSTD_UNUSED( kbdev );
 
+	OSK_ASSERT( NUM_CORE_REQ_VARIANTS <= KBASEP_JS_MAX_NR_CORE_REQ_VARIANTS );
+
 	/* Assume a static set of variants */
 	OSK_MEMCPY( policy_info->core_req_variants, core_req_variants, sizeof(core_req_variants) );
 
@@ -340,7 +394,13 @@ STATIC void build_core_req_variants( kbase_device *kbdev, kbasep_js_policy_cfs *
 
 STATIC void build_slot_lookups( kbase_device *kbdev, kbasep_js_policy_cfs *policy_info )
 {
-	int i;
+	s8 i;
+
+	OSK_ASSERT( kbdev != NULL );
+	OSK_ASSERT( policy_info != NULL );
+
+	OSK_ASSERT( kbdev->nr_job_slots <= NELEMS(variants_supported_ss_state) );
+	OSK_ASSERT( kbdev->nr_job_slots <= NELEMS(variants_supported_nss_state) );
 
 	/* Given the static set of variants, provide a static set of lookups */
 	for ( i = 0; i < kbdev->nr_job_slots; ++i )
@@ -356,26 +416,34 @@ STATIC void build_slot_lookups( kbase_device *kbdev, kbasep_js_policy_cfs *polic
 
 }
 
-STATIC mali_error cached_variant_idx_init( kbasep_js_policy_cfs *policy_info, kbase_jd_atom *atom )
+STATIC mali_error cached_variant_idx_init( kbasep_js_policy_cfs *policy_info, kbase_context *kctx, kbase_jd_atom *atom )
 {
 	kbasep_js_policy_cfs_job *job_info;
 	u32 i;
 	base_jd_core_req job_core_req;
+	kbase_context_flags ctx_flags;
+	kbasep_js_kctx_info *js_kctx_info;
 
 	OSK_ASSERT( policy_info != NULL );
+	OSK_ASSERT( kctx != NULL );
 	OSK_ASSERT( atom != NULL );
 
 	job_info = &atom->sched_info.cfs;
 	job_core_req = atom->core_req;
+	js_kctx_info = &kctx->jctx.sched_info;
+	ctx_flags = js_kctx_info->ctx.flags;
 
 	/* Pick a core_req variant that matches us. Since they're ordered by least
 	 * restrictive first, it picks the least restrictive variant */
 	for ( i = 0; i < policy_info->num_core_req_variants ; ++i )
 	{
 		base_jd_core_req var_core_req;
-		var_core_req = policy_info->core_req_variants[i];
+		kbase_context_flags var_ctx_req;
+		var_core_req = policy_info->core_req_variants[i].core_req;
+		var_ctx_req = policy_info->core_req_variants[i].ctx_req;
 		
-		if ( (var_core_req & job_core_req) == job_core_req )
+		if ( (var_core_req & job_core_req) == job_core_req
+			 && (var_ctx_req & ctx_flags) == ctx_flags )
 		{
 			job_info->cached_variant_idx = i;
 			return MALI_ERROR_NONE;
@@ -450,6 +518,44 @@ STATIC mali_bool dequeue_job( kbase_device *kbdev,
 	return MALI_FALSE;
 }
 
+/**
+ * Hold the runpool_irq spinlock for this
+ */
+OSK_STATIC_INLINE mali_bool timer_callback_should_run( kbase_device *kbdev )
+{
+	kbasep_js_device_data *js_devdata;
+	s8 nr_running_ctxs;
+
+	OSK_ASSERT(kbdev != NULL);
+	js_devdata = &kbdev->js_data;
+
+	/* nr_user_contexts_running is updated with the runpool_mutex. However, the
+	 * locking in the caller gives us a barrier that ensures nr_user_contexts is
+	 * up-to-date for reading */
+	nr_running_ctxs = js_devdata->nr_user_contexts_running;
+
+#if BASE_HW_ISSUE_9435 != 0
+	/* Timeouts would have to be 4x longer (due to micro-architectural design)
+	 * to support OpenCL conformance tests, so only run the timer when there's:
+	 * - 2 or more CL contexts
+	 * - 1 or more GLES contexts
+	 *
+	 * NOTE: We will treat a context that has both Compute and Non-Compute jobs
+	 * will be treated as an OpenCL context (hence, we don't check
+	 * KBASEP_JS_CTX_ATTR_NON_COMPUTE).
+	 */
+	{
+		s8 nr_compute_ctxs = kbasep_js_ctx_attr_count_on_runpool( kbdev, KBASEP_JS_CTX_ATTR_COMPUTE );
+		s8 nr_noncompute_ctxs = nr_running_ctxs - nr_compute_ctxs;
+
+		return (mali_bool)( nr_compute_ctxs >= 2 || nr_noncompute_ctxs > 0 );
+	}
+#else /* BASE_HW_ISSUE_9435 != 0 */
+	/* Run the timer callback whenever you have at least 1 context */
+	return (mali_bool)(nr_running_ctxs > 0);
+#endif /* BASE_HW_ISSUE_9435 != 0 */
+}
+
 static void timer_callback(void *data)
 {
 	kbase_device *kbdev = (kbase_device*)data;
@@ -488,7 +594,8 @@ static void timer_callback(void *data)
 #if (BASE_HW_ISSUE_5736 == 0) || MALI_BACKEND_KERNEL
 			u32 ticks = atom->sched_info.cfs.ticks ++;
 
-			if ( (!CINSTR_DUMPING_ENABLED) && (atom->core_req & BASE_JD_REQ_NSS) == 0 )
+#if !CINSTR_DUMPING_ENABLED
+			if ( (atom->core_req & BASE_JD_REQ_NSS) == 0 )
 			{
 				/* Job is Soft-Stoppable */
 				if (ticks == js_devdata->soft_stop_ticks)
@@ -521,6 +628,7 @@ static void timer_callback(void *data)
 				}
 			}
 			else
+#endif /* !CINSTR_DUMPING_ENABLED */
 			{
 				/* Job is Non Soft-Stoppable */
 				if (ticks == js_devdata->soft_stop_ticks)
@@ -570,7 +678,7 @@ static void timer_callback(void *data)
 	/* the timer is re-issued if there is contexts in the run-pool */
 	osk_spinlock_irq_lock(&js_devdata->runpool_irq.lock);
 
-	if (OSK_DLIST_IS_EMPTY(&policy_info->scheduled_ctxs_head) == MALI_FALSE)
+	if (timer_callback_should_run(kbdev) != MALI_FALSE)
 	{
 		osk_err = osk_timer_start_ns(&policy_info->timer, js_devdata->scheduling_tick_ns);
 		if (OSK_ERR_NONE != osk_err)
@@ -664,9 +772,6 @@ mali_error kbasep_js_policy_init_ctx( kbase_device *kbdev, kbase_context *kctx )
 	{
 		OSK_DLIST_INIT( &ctx_info->job_list_head[i] );
 	}
-
-	/* We don't allow priority increases unless the process is privileged */
-	ctx_info->process_privileged = osk_is_privileged();
 
 	osk_get_process_priority(&prio);
 	ctx_info->process_rt_policy = prio.is_realtime;
@@ -779,7 +884,13 @@ void kbasep_js_policy_enqueue_ctx( kbasep_js_policy *js_policy, kbase_context *k
 		kbasep_js_policy_cfs_ctx *list_ctx_info;
 		list_ctx_info  = &list_kctx->jctx.sched_info.runpool.policy_ctx.cfs;
 
-		if ( list_ctx_info->runtime_us > ctx_info->runtime_us )
+		if ( (kctx->jctx.sched_info.ctx.flags & KBASE_CTX_FLAG_PRIVILEGED) != 0 )
+		{
+			break;
+		}
+
+		if ( (list_ctx_info->runtime_us > ctx_info->runtime_us) && 
+		     ((list_kctx->jctx.sched_info.ctx.flags & KBASE_CTX_FLAG_PRIVILEGED) == 0) )
 		{
 			break;
 		}
@@ -964,6 +1075,7 @@ void kbasep_js_policy_runpool_add_ctx( kbasep_js_policy *js_policy, kbase_contex
 {
 	kbasep_js_policy_cfs     *policy_info;
 	kbasep_js_device_data    *js_devdata;
+	kbase_device *kbdev;
 	osk_error osk_err;
 
 	OSK_ASSERT( js_policy != NULL );
@@ -971,9 +1083,9 @@ void kbasep_js_policy_runpool_add_ctx( kbasep_js_policy *js_policy, kbase_contex
 
 	policy_info = &js_policy->cfs;
 	js_devdata = CONTAINER_OF( js_policy, kbasep_js_device_data, policy );
+	kbdev = CONTAINER_OF( js_policy, kbase_device, js_data.policy );
 
 	{
-		kbase_device *kbdev = CONTAINER_OF( js_policy, kbase_device, js_data.policy );
 		KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_POLICY_RUNPOOL_ADD_CTX, kctx, NULL, 0u,
 								  kbasep_js_policy_trace_get_refcnt_nolock( kbdev, kctx ));
 	}
@@ -987,7 +1099,8 @@ void kbasep_js_policy_runpool_add_ctx( kbasep_js_policy *js_policy, kbase_contex
 	                     kbase_context,
 	                     jctx.sched_info.runpool.policy_ctx.cfs.list );
 
-	if (policy_info->timer_running == MALI_FALSE)
+	if ( timer_callback_should_run(kbdev) != MALI_FALSE
+		 && policy_info->timer_running == MALI_FALSE )
 	{
 		osk_err = osk_timer_start_ns(&policy_info->timer, js_devdata->scheduling_tick_ns);
 		if (OSK_ERR_NONE == osk_err)
@@ -1098,7 +1211,7 @@ mali_error kbasep_js_policy_init_job( kbasep_js_policy *js_policy, kbase_jd_atom
 
 	/* Determine the job's index into the job list head, will return error if the
 	 * atom is malformed and so is reported. */
-	return cached_variant_idx_init( policy_info, atom );
+	return cached_variant_idx_init( policy_info, parent_ctx, atom );
 }
 
 void kbasep_js_policy_term_job( kbasep_js_policy *js_policy, kbase_jd_atom *atom )
@@ -1151,7 +1264,7 @@ mali_bool kbasep_js_policy_dequeue_job( kbase_device *kbdev,
 	policy_info = &js_devdata->policy.cfs;
 
 	/* Get the variants for this slot */
-	if ( js_devdata->runpool_irq.nr_nss_ctxs_running == 0 )
+	if ( kbasep_js_ctx_attr_count_on_runpool( kbdev, KBASEP_JS_CTX_ATTR_NSS ) == 0 )
 	{
 		/* SS-state */
 		variants_supported = get_slot_to_variant_lookup( policy_info->slot_to_variant_lookup_ss_state, job_slot_idx );
@@ -1278,4 +1391,3 @@ mali_bool kbasep_js_policy_ctx_has_priority( kbasep_js_policy *js_policy, kbase_
 
 	return MALI_FALSE;
 }
-

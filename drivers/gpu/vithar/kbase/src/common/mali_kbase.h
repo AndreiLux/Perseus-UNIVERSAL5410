@@ -23,6 +23,7 @@
 #include <kbase/src/common/mali_kbase_uku.h>
 
 #include "mali_kbase_pm.h"
+#include "mali_kbase_cpuprops.h"
 #include "mali_kbase_gpuprops.h"
 
 #if defined(CSTD_OS_LINUX_KERNEL)
@@ -60,15 +61,28 @@ extern const kbase_device_info kbase_dev_info[];
 
 kbase_device *kbase_device_create(const kbase_device_info *dev_info);
 void kbase_device_destroy(kbase_device *kbdev);
+void kbase_device_free(kbase_device *kbdev);
 int kbase_device_has_feature(kbase_device *kbdev, u32 feature);
 kbase_midgard_type kbase_device_get_type(kbase_device *kbdev);
 
+/**
+ * Ensure that all IRQ handlers have completed execution
+ *
+ * @param kbdev     The kbase device
+ */
+void kbase_synchronize_irqs(kbase_device *kbdev);
+
 struct kbase_context *kbase_create_context(kbase_device *kbdev);
 void kbase_destroy_context(kbase_context *kctx);
+mali_error kbase_context_set_create_flags(kbase_context *kctx, u32 flags);
 
 mali_error kbase_instr_hwcnt_setup(kbase_context * kctx, kbase_uk_hwcnt_setup * setup);
-mali_error kbase_instr_hwcnt_dump(kbase_context * kctx);
+mali_error kbase_instr_hwcnt_enable(kbase_context * kctx, kbase_uk_hwcnt_setup * setup);
+mali_error kbase_instr_hwcnt_disable(kbase_context * kctx);
 mali_error kbase_instr_hwcnt_clear(kbase_context * kctx);
+mali_error kbase_instr_hwcnt_dump(kbase_context * kctx);
+mali_error kbase_instr_hwcnt_dump_irq(kbase_context * kctx);
+mali_bool kbase_instr_hwcnt_dump_complete(kbase_context * kctx, mali_bool *success);
 
 void kbase_clean_caches_done(kbase_device *kbdev);
 
@@ -83,7 +97,8 @@ void kbase_destroy_os_context(kbase_os_context *osctx);
 mali_error kbase_jd_init(struct kbase_context *kctx);
 void kbase_jd_exit(struct kbase_context *kctx);
 mali_error kbase_jd_submit(struct kbase_context *kctx, const kbase_uk_job_submit *user_bag);
-void kbase_jd_done(kbase_jd_atom *katom);
+void kbase_jd_post_external_resources(kbase_jd_atom * katom);
+void kbase_jd_done(kbase_jd_atom *katom, int slot_nr, kbasep_js_tick *end_timestamp, mali_bool start_new_jobs);
 void kbase_jd_cancel(kbase_jd_atom *katom);
 void kbase_jd_flush_workqueues(kbase_context *kctx);
 void kbase_jd_zap_context(kbase_context *kctx);
@@ -237,7 +252,6 @@ const char *kbase_exception_name(u32 exception_code);
 #define KBASE_TRACE_ADD( kbdev, code, ctx, uatom, gpu_addr, info_val )     \
 	kbasep_trace_add( kbdev, KBASE_TRACE_CODE(code), ctx, uatom, gpu_addr, \
 					  0, 0, 0, info_val )
-
 
 /** Clear the trace */
 #define KBASE_TRACE_CLEAR( kbdev ) \

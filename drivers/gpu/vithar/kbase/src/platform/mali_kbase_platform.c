@@ -43,6 +43,7 @@
 #include <linux/fb.h>
 #include <linux/clk.h>
 #include <mach/regs-clock.h>
+#include <mach/pmu.h>
 #include <mach/regs-pmu.h>
 #include <asm/delay.h>
 #include <kbase/src/platform/mali_kbase_runtime_pm.h>
@@ -52,7 +53,9 @@
 static int kbase_platform_power_clock_init(struct device *dev)
 {
 	int timeout;
+#ifndef CONFIG_VITHAR_HWVER_R0P0
 	struct clk *mpll = NULL;
+#endif
 	struct kbase_device *kbdev;
 	kbdev = dev_get_drvdata(dev);
 	if (!kbdev)
@@ -75,6 +78,13 @@ static int kbase_platform_power_clock_init(struct device *dev)
 
 	/* Turn on G3D clock */
 
+#ifdef CONFIG_VITHAR_HWVER_R0P0
+	kbdev->sclk_g3d = clk_get(dev, "aclk_400");
+	if(IS_ERR(kbdev->sclk_g3d)) {
+		OSK_PRINT_ERROR(OSK_BASE_PM, "failed to clk_get [sclk_g3d]\n");
+		goto out;
+	}
+#else
 	mpll = clk_get(dev, "mout_mpll_user");
 	if(IS_ERR(mpll)) {
 		OSK_PRINT_ERROR(OSK_BASE_PM, "failed to clk_get [mout_mpll_user]\n");
@@ -99,6 +109,7 @@ static int kbase_platform_power_clock_init(struct device *dev)
 		goto out;
 	}
 
+#endif
 	(void) clk_enable(kbdev->sclk_g3d);
 
 	return 0;
@@ -663,16 +674,18 @@ static int get_clkout_cmu_top(int *val)
 
 static void set_clkout_for_3d(void)
 {
-    int tmp;
+#ifdef PMU_XCLKOUT_SET
+	int tmp;
 
-    tmp = 0x0;
-    tmp |= 0x1000B; // ACLK_400 selected
-    tmp |= 9 << 8; // divided by (9 + 1)
-    __raw_writel(tmp, EXYNOS5_CLKOUT_CMU_TOP);
+	tmp = 0x0;
+	tmp |= 0x1000B; // ACLK_400 selected
+	tmp |= 9 << 8; // divided by (9 + 1)
+	__raw_writel(tmp, EXYNOS5_CLKOUT_CMU_TOP);
 
-    tmp = 0x0;
-    tmp |= 7 << 8; // CLKOUT_CMU_TOP selected
-	__raw_writel(tmp, EXYNOS_PMU_DEBUG);
+	tmp = 0x0;
+	tmp |= 7 << 8; // CLKOUT_CMU_TOP selected
+	__raw_writel(tmp, S5P_PMU_DEBUG);
+#endif
 }
 
 static ssize_t show_clkout(struct device *dev, struct device_attribute *attr, char *buf)

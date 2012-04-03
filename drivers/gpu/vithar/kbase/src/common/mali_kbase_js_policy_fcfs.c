@@ -21,16 +21,58 @@
 
 #define LOOKUP_VARIANT_MASK ((1u<<KBASEP_JS_MAX_NR_CORE_REQ_VARIANTS) - 1u)
 
+
+/** Core requirements that all the variants support */
+#define JS_CORE_REQ_ALL_OTHERS \
+	( BASE_JD_REQ_CF | BASE_JD_REQ_V | BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_PERMON | BASE_JD_REQ_EXTERNAL_RESOURCES )
+
+/** Context requirements the all the variants support */
+#if BASE_HW_ISSUE_8987 != 0
+/* In this HW workaround, restrict Compute-only contexts and Compute jobs onto job slot[2],
+ * which will ensure their affinity does not intersect GLES jobs */
+#define JS_CTX_REQ_ALL_OTHERS \
+	( KBASE_CTX_FLAG_CREATE_FLAGS_SET | KBASE_CTX_FLAG_PRIVILEGED )
+#define JS_CORE_REQ_COMPUTE_SLOT \
+	( BASE_JD_REQ_CS )
+#define JS_CORE_REQ_ONLY_COMPUTE_SLOT \
+	( BASE_JD_REQ_ONLY_COMPUTE )
+
+#else /* BASE_HW_ISSUE_8987 != 0 */
+/* Otherwise, compute-only contexts/compute jobs can use any job slot */
+#define JS_CTX_REQ_ALL_OTHERS \
+	( KBASE_CTX_FLAG_CREATE_FLAGS_SET | KBASE_CTX_FLAG_PRIVILEGED | KBASE_CTX_FLAG_HINT_ONLY_COMPUTE)
+#define JS_CORE_REQ_COMPUTE_SLOT \
+	( BASE_JD_REQ_CS | BASE_JD_REQ_ONLY_COMPUTE )
+#define JS_CORE_REQ_ONLY_COMPUTE_SLOT \
+	( BASE_JD_REQ_CS | BASE_JD_REQ_ONLY_COMPUTE )
+
+#endif /* BASE_HW_ISSUE_8987 != 0 */
+
 /* core_req variants are ordered by least restrictive first, so that our
  * algorithm in cached_variant_idx_init picks the least restrictive variant for
- * each job . Note that coherent_group requirement is added to all CS works as the
- * selection of JS does not depend on the coherency requirement. */
-static const base_jd_core_req core_req_variants[] ={
+ * each job . Note that coherent_group requirement is added to all CS variants as the
+ * selection of job-slot does not depend on the coherency requirement. */
+static const kbasep_atom_req core_req_variants[] ={
+	{
+		(JS_CORE_REQ_ALL_OTHERS | BASE_JD_REQ_FS),
+		(JS_CTX_REQ_ALL_OTHERS)
+	},
+	{
+		(JS_CORE_REQ_ALL_OTHERS | JS_CORE_REQ_COMPUTE_SLOT),
+		(JS_CTX_REQ_ALL_OTHERS)
+	},
+	{
+		(JS_CORE_REQ_ALL_OTHERS | JS_CORE_REQ_COMPUTE_SLOT | BASE_JD_REQ_T),
+		(JS_CTX_REQ_ALL_OTHERS)
+	},
 
-	(BASE_JD_REQ_FS | BASE_JD_REQ_CF | BASE_JD_REQ_V | BASE_JD_REQ_PERMON ),
-	(BASE_JD_REQ_CS | BASE_JD_REQ_CF | BASE_JD_REQ_V | BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_PERMON ),
-	(BASE_JD_REQ_CS | BASE_JD_REQ_T  | BASE_JD_REQ_CF | BASE_JD_REQ_V   | BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_PERMON ),
-	(BASE_JD_REQ_CS | BASE_JD_REQ_CF | BASE_JD_REQ_V  | BASE_JD_REQ_NSS | BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_PERMON ),
+	/* The last variant is one guarenteed to support Compute contexts/job, or
+	 * NSS jobs. In the case of a context that's specified as 'Only Compute', it'll not allow
+	 * Tiler or Fragment jobs, and so those get rejected */
+	{
+		(JS_CORE_REQ_ALL_OTHERS | JS_CORE_REQ_ONLY_COMPUTE_SLOT | BASE_JD_REQ_NSS ),
+		(JS_CTX_REQ_ALL_OTHERS | KBASE_CTX_FLAG_HINT_ONLY_COMPUTE)
+	}
 };
 
 #define NUM_CORE_REQ_VARIANTS NELEMS(core_req_variants)
@@ -39,14 +81,14 @@ static const u32 variants_supported_ss_state[] =
 {
 	(1u << 0),             /* js[0] uses variant 0 (FS list)*/
 	(1u << 2) | (1u << 1), /* js[1] uses variants 1 and 2 (CS and CS+T lists)*/
-	(1u << 1)              /* js[2] uses variant 1 (CS list). NOTE: could set to 0 */
+	(1u << 3)              /* js[2] uses variant 3 (Compute list) */
 };
 
 static const u32 variants_supported_nss_state[] =
 {
 	(1u << 0),             /* js[0] uses variant 0 (FS list)*/
 	(1u << 2) | (1u << 1), /* js[1] uses variants 1 and 2 (CS and CS+T lists)*/
-	(1u << 3)              /* js[2] uses variant 3 (NSS list) */
+	(1u << 3)              /* js[2] uses variant 3 (Compute/NSS list) */
 };
 
 /* Defines for easy asserts 'is scheduled'/'is queued'/'is neither queued norscheduled' */
@@ -140,10 +182,14 @@ STATIC INLINE u32 get_slot_to_variant_lookup( u32 *bit_array, u32 slot_idx )
 	return res;
 }
 
-#if MALI_DEBUG
 /* Check the core_req_variants: make sure that every job slot is satisifed by
  * one of the variants. This checks that cached_variant_idx_init will produce a
- * valid result for jobs that make maximum use of the job slots. */
+ * valid result for jobs that make maximum use of the job slots.
+ *
+ * @note The checks are limited to the job slots - this does not check that
+ * every context requirement is covered (because some are intentionally not
+ * supported, such as KBASE_CTX_FLAG_SUBMIT_DISABLED) */
+#if MALI_DEBUG
 STATIC void debug_check_core_req_variants( kbase_device *kbdev, kbasep_js_policy_fcfs *policy_info )
 {
 	kbasep_js_device_data *js_devdata;
@@ -161,7 +207,7 @@ STATIC void debug_check_core_req_variants( kbase_device *kbdev, kbasep_js_policy
 		for ( i = 0; i < policy_info->num_core_req_variants ; ++i )
 		{
 			base_jd_core_req var_core_req;
-			var_core_req = policy_info->core_req_variants[i];
+			var_core_req = policy_info->core_req_variants[i].core_req;
 
 			if ( (var_core_req & job_core_req) == job_core_req )
 			{
@@ -196,7 +242,7 @@ STATIC void build_core_req_variants( kbase_device *kbdev, kbasep_js_policy_fcfs 
 
 STATIC void build_slot_lookups( kbase_device *kbdev, kbasep_js_policy_fcfs *policy_info )
 {
-	int i;
+	s8 i;
 
 	/* Given the static set of variants, provide a static set of lookups */
 	for ( i = 0; i < kbdev->nr_job_slots; ++i )
@@ -212,26 +258,34 @@ STATIC void build_slot_lookups( kbase_device *kbdev, kbasep_js_policy_fcfs *poli
 
 }
 
-STATIC mali_error cached_variant_idx_init( kbasep_js_policy_fcfs *policy_info, kbase_jd_atom *atom )
+STATIC mali_error cached_variant_idx_init( kbasep_js_policy_fcfs *policy_info, kbase_context *kctx, kbase_jd_atom *atom )
 {
 	kbasep_js_policy_fcfs_job *job_info;
 	u32 i;
 	base_jd_core_req job_core_req;
+	kbase_context_flags ctx_flags;
+	kbasep_js_kctx_info *js_kctx_info;
 
 	OSK_ASSERT( policy_info != NULL );
+	OSK_ASSERT( kctx != NULL );
 	OSK_ASSERT( atom != NULL );
 
 	job_info = &atom->sched_info.fcfs;
-	job_core_req = atom->user_atom->core_req;
+	job_core_req = atom->core_req;
+	js_kctx_info = &kctx->jctx.sched_info;
+	ctx_flags = js_kctx_info->ctx.flags;
 
 	/* Pick a core_req variant that matches us. Since they're ordered by least
 	 * restrictive first, it picks the least restrictive variant */
 	for ( i = 0; i < policy_info->num_core_req_variants ; ++i )
 	{
 		base_jd_core_req var_core_req;
-		var_core_req = policy_info->core_req_variants[i];
+		kbase_context_flags var_ctx_req;
+		var_core_req = policy_info->core_req_variants[i].core_req;
+		var_ctx_req = policy_info->core_req_variants[i].ctx_req;
 		
-		if ( (var_core_req & job_core_req) == job_core_req )
+		if ( (var_core_req & job_core_req) == job_core_req
+			 && (var_ctx_req & ctx_flags) == ctx_flags )
 		{
 			job_info->cached_variant_idx = i;
 			return MALI_ERROR_NONE;
@@ -242,7 +296,6 @@ STATIC mali_error cached_variant_idx_init( kbasep_js_policy_fcfs *policy_info, k
 	 * attempt to attack the driver. */
 	return MALI_ERROR_FUNCTION_FAILED;
 }
-
 
 /*
  * Non-private functions
@@ -332,20 +385,33 @@ void kbasep_js_policy_term_ctx( kbasep_js_policy *js_policy, kbase_context *kctx
 void kbasep_js_policy_enqueue_ctx( kbasep_js_policy *js_policy, kbase_context *kctx )
 {
 	kbasep_js_policy_fcfs     *policy_info;
+	kbasep_js_kctx_info *js_kctx_info;
 
 	OSK_ASSERT( js_policy != NULL );
 	OSK_ASSERT( kctx != NULL );
 
 	policy_info = &js_policy->fcfs;
+	js_kctx_info = &kctx->jctx.sched_info;
 
 	/* ASSERT about scheduled-ness/queued-ness */
 	kbasep_js_debug_check( policy_info, kctx, KBASEP_JS_CHECK_NOTQUEUED );
 
-	/* All enqueued contexts go to the back of the queue */
-	OSK_DLIST_PUSH_BACK( &policy_info->ctx_queue_head,
-						 kctx,
-						 kbase_context,
-						 jctx.sched_info.runpool.policy_ctx.fcfs.list );
+	if ( (js_kctx_info->ctx.flags & KBASE_CTX_FLAG_PRIVILEGED) != 0 )
+	{
+		/* Enqueue privileged contexts to the head of the queue */
+		OSK_DLIST_PUSH_FRONT( &policy_info->ctx_queue_head,
+							  kctx,
+							  kbase_context,
+							  jctx.sched_info.runpool.policy_ctx.fcfs.list );
+	}
+	else
+	{
+		/* All enqueued contexts go to the back of the queue */
+		OSK_DLIST_PUSH_BACK( &policy_info->ctx_queue_head,
+							 kctx,
+							 kbase_context,
+							 jctx.sched_info.runpool.policy_ctx.fcfs.list );
+	}
 }
 
 mali_bool kbasep_js_policy_dequeue_head_ctx( kbasep_js_policy *js_policy, kbase_context **kctx_ptr )
@@ -473,16 +539,19 @@ mali_bool kbasep_js_policy_should_remove_ctx( kbasep_js_policy *js_policy, kbase
 
 mali_error kbasep_js_policy_init_job( kbasep_js_policy *js_policy, kbase_jd_atom *atom )
 {
- 	kbasep_js_policy_fcfs *policy_info;
+	kbasep_js_policy_fcfs *policy_info;
+	kbase_context *parent_ctx;
 
 	OSK_ASSERT( js_policy != NULL );
 	OSK_ASSERT( atom != NULL );
+	parent_ctx = atom->kctx;
+	OSK_ASSERT( parent_ctx != NULL );
 
 	policy_info = &js_policy->fcfs;
 
 	/* Determine the job's index into the job list head, will return error if the
 	 * atom is malformed and so is reported. */
-	return cached_variant_idx_init( policy_info, atom );
+	return cached_variant_idx_init( policy_info, parent_ctx, atom );
 }
 
 void kbasep_js_policy_term_job( kbasep_js_policy *js_policy, kbase_jd_atom *atom )
@@ -525,7 +594,7 @@ mali_bool kbasep_js_policy_dequeue_job( kbase_device *kbdev,
 	policy_info = &js_devdata->policy.fcfs;
 
 	/* Get the variants for this slot */
-	if ( js_devdata->runpool_irq.nr_nss_ctxs_running == 0 )
+	if ( kbasep_js_ctx_attr_count_on_runpool( kbdev, KBASEP_JS_CTX_ATTR_NSS ) == 0 )
 	{
 		/* SS-state */
 		variants_supported = get_slot_to_variant_lookup( policy_info->slot_to_variant_lookup_ss_state, job_slot_idx );
@@ -617,4 +686,3 @@ mali_bool kbasep_js_policy_ctx_has_priority( kbasep_js_policy *js_policy, kbase_
 	/* A new context never has priority over the current one */
 	return MALI_FALSE;
 }
-

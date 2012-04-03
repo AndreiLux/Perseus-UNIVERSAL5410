@@ -1,13 +1,13 @@
 /*
  *
- * (C) COPYRIGHT 2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- *
+ * 
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- *
+ * 
  */
 
 
@@ -75,14 +75,12 @@ KBASE_TRACE_CODE_MAKE_CODE( JM_IRQ_END ),        /* info_val==jobs processed */
  * - uatom==kernel-side mapped uatom address (for correlation with user-side)
  */
 KBASE_TRACE_CODE_MAKE_CODE( JM_JOB_DONE ),       /* info_val==exit code; gpu_addr==chain gpuaddr */
-KBASE_TRACE_CODE_MAKE_CODE( JM_SUBMIT ),         /* gpu_addr==JSn_HEAD_NEXT written */
+KBASE_TRACE_CODE_MAKE_CODE( JM_SUBMIT ),         /* gpu_addr==JSn_HEAD_NEXT written, info_val==lower 32 bits of affinity */
 
 /* gpu_addr is as follows:
  * - If JSn_STATUS active after soft-stop, val==gpu addr written to JSn_HEAD on submit
  * - otherwise gpu_addr==0 */
 KBASE_TRACE_CODE_MAKE_CODE( JM_SOFTSTOP ),
-
-KBASE_TRACE_CODE_MAKE_CODE( JM_SOFTSTOP_EVICT ), /* gpu_addr==JSn_HEAD_NEXT read */
 KBASE_TRACE_CODE_MAKE_CODE( JM_HARDSTOP ),       /* gpu_addr==JSn_HEAD read */
 
 KBASE_TRACE_CODE_MAKE_CODE( JM_UPDATE_HEAD ),    /* gpu_addr==JSn_TAIL read */
@@ -98,7 +96,9 @@ KBASE_TRACE_CODE_MAKE_CODE( JM_ZAP_NON_SCHEDULED ), /* info_val == is_scheduled 
 KBASE_TRACE_CODE_MAKE_CODE( JM_ZAP_SCHEDULED ),     /* info_val == is_scheduled */
 KBASE_TRACE_CODE_MAKE_CODE( JM_ZAP_DONE ),
 
-KBASE_TRACE_CODE_MAKE_CODE( JM_ZAP_CONTEXT_SLOT ),  /* info_val == nr jobs submitted */
+KBASE_TRACE_CODE_MAKE_CODE( JM_SLOT_SOFT_OR_HARD_STOP ),  /* info_val == nr jobs submitted */
+KBASE_TRACE_CODE_MAKE_CODE( JM_SLOT_EVICT ), /* gpu_addr==JSn_HEAD_NEXT last written */
+KBASE_TRACE_CODE_MAKE_CODE( JM_SUBMIT_AFTER_RESET ),
 
 
 /*
@@ -125,6 +125,19 @@ KBASE_TRACE_CODE_MAKE_CODE( JS_RELEASE_CTX ),
 KBASE_TRACE_CODE_MAKE_CODE( JS_TRY_SCHEDULE_HEAD_CTX ),
 KBASE_TRACE_CODE_MAKE_CODE( JS_JOB_DONE_TRY_RUN_NEXT_JOB ), /* gpu_addr==value to write into JSn_HEAD */
 KBASE_TRACE_CODE_MAKE_CODE( JS_JOB_DONE_RETRY_NEEDED ), /* gpu_addr==value to write into JSn_HEAD */
+KBASE_TRACE_CODE_MAKE_CODE( JS_FAST_START_EVICTS_CTX ), /* kctx is the one being evicted, info_val == kctx to put in  */
+KBASE_TRACE_CODE_MAKE_CODE( JS_AFFINITY_SUBMIT_TO_BLOCKED ),
+KBASE_TRACE_CODE_MAKE_CODE( JS_AFFINITY_CURRENT ), /* info_val == lower 32 bits of affinity */
+KBASE_TRACE_CODE_MAKE_CODE( JS_CORE_REF_REQUEST_CORES_FAILED ), /* info_val == lower 32 bits of affinity */
+KBASE_TRACE_CODE_MAKE_CODE( JS_CORE_REF_REGISTER_INUSE_FAILED ), /* info_val == lower 32 bits of affinity */
+KBASE_TRACE_CODE_MAKE_CODE( JS_CORE_REF_REQUEST_ON_RECHECK_FAILED ), /* info_val == lower 32 bits of rechecked affinity */
+KBASE_TRACE_CODE_MAKE_CODE( JS_CORE_REF_REGISTER_ON_RECHECK_FAILED ), /* info_val == lower 32 bits of rechecked affinity */
+KBASE_TRACE_CODE_MAKE_CODE( JS_CORE_REF_AFFINITY_WOULD_VIOLATE ), /* info_val == lower 32 bits of affinity */
+KBASE_TRACE_CODE_MAKE_CODE( JS_CTX_ATTR_NOW_ON_CTX ), /* info_val == the ctx attribute now on ctx */
+KBASE_TRACE_CODE_MAKE_CODE( JS_CTX_ATTR_NOW_ON_RUNPOOL ), /* info_val == the ctx attribute now on runpool */
+KBASE_TRACE_CODE_MAKE_CODE( JS_CTX_ATTR_NOW_OFF_CTX ), /* info_val == the ctx attribute now off ctx */
+KBASE_TRACE_CODE_MAKE_CODE( JS_CTX_ATTR_NOW_OFF_RUNPOOL ), /* info_val == the ctx attribute now off runpool */
+
 
 /*
  * Scheduler Policy events
@@ -132,7 +145,7 @@ KBASE_TRACE_CODE_MAKE_CODE( JS_JOB_DONE_RETRY_NEEDED ), /* gpu_addr==value to wr
 
 KBASE_TRACE_CODE_MAKE_CODE( JS_POLICY_INIT_CTX ),
 KBASE_TRACE_CODE_MAKE_CODE( JS_POLICY_TERM_CTX ),
-	KBASE_TRACE_CODE_MAKE_CODE( JS_POLICY_TRY_EVICT_CTX ), /* info_val == whether it was evicted */
+KBASE_TRACE_CODE_MAKE_CODE( JS_POLICY_TRY_EVICT_CTX ), /* info_val == whether it was evicted */
 KBASE_TRACE_CODE_MAKE_CODE( JS_POLICY_KILL_ALL_CTX_JOBS ),
 KBASE_TRACE_CODE_MAKE_CODE( JS_POLICY_ENQUEUE_CTX ),
 KBASE_TRACE_CODE_MAKE_CODE( JS_POLICY_DEQUEUE_HEAD_CTX ),
@@ -143,8 +156,30 @@ KBASE_TRACE_CODE_MAKE_CODE( JS_POLICY_DEQUEUE_JOB ),
 KBASE_TRACE_CODE_MAKE_CODE( JS_POLICY_DEQUEUE_JOB_IRQ ),
 KBASE_TRACE_CODE_MAKE_CODE( JS_POLICY_ENQUEUE_JOB ),     /* gpu_addr==JSn_HEAD to write if the job were run */
 KBASE_TRACE_CODE_MAKE_CODE( JS_POLICY_TIMER_START ),
-KBASE_TRACE_CODE_MAKE_CODE( JS_POLICY_TIMER_END )
+KBASE_TRACE_CODE_MAKE_CODE( JS_POLICY_TIMER_END ),
 
 
+/*
+ * Power Management Events
+ */
+KBASE_TRACE_CODE_MAKE_CODE( PM_JOB_SUBMIT_AFTER_POWERING_UP ),
+KBASE_TRACE_CODE_MAKE_CODE( PM_JOB_SUBMIT_AFTER_POWERED_UP ),
+KBASE_TRACE_CODE_MAKE_CODE( PM_PWRON ),
+KBASE_TRACE_CODE_MAKE_CODE( PM_PWROFF ),
+KBASE_TRACE_CODE_MAKE_CODE( PM_CORES_POWERED ),
+KBASE_TRACE_CODE_MAKE_CODE( PM_CORES_CHANGE_DESIRED_ON_POWERUP ),
+KBASE_TRACE_CODE_MAKE_CODE( PM_CORES_CHANGE_DESIRED_ON_POWERDOWN ),
+KBASE_TRACE_CODE_MAKE_CODE( PM_CORES_CHANGE_DESIRED ),
+KBASE_TRACE_CODE_MAKE_CODE( PM_CORES_CHANGE_AVAILABLE ),
+KBASE_TRACE_CODE_MAKE_CODE( PM_REGISTER_CHANGE_SHADER_INUSE ),
+KBASE_TRACE_CODE_MAKE_CODE( PM_REGISTER_CHANGE_SHADER_NEEDED ),
+KBASE_TRACE_CODE_MAKE_CODE( PM_RELEASE_CHANGE_SHADER_INUSE ),
+KBASE_TRACE_CODE_MAKE_CODE( PM_UNREQUEST_CHANGE_SHADER_NEEDED ),
+KBASE_TRACE_CODE_MAKE_CODE( PM_REQUEST_CHANGE_SHADER_NEEDED ),
+
+
+/* Unused code just to make it easier to not have a comma at the end.
+ * All other codes MUST come before this */
+KBASE_TRACE_CODE_MAKE_CODE( DUMMY )
 
 /* ***** THE LACK OF HEADER GUARDS IS INTENTIONAL ***** */

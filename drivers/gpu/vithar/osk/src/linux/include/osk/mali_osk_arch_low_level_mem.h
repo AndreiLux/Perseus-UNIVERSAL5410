@@ -153,15 +153,18 @@ void osk_kunmap_debug(int slot);
 
 static inline void *osk_kmap_atomic(osk_phy_addr page, osk_kmap_slot slot)
 {
+	void * res;
 	/**
 	 * Note: kmap_atomic should never fail and so OSK_SIMULATE_FAILURE is not
 	 * included for this function call.
 	 */
 	OSK_ASSERT((slot >= OSK_KMAP_SLOT_0) && (slot <= OSK_KMAP_SLOT_1));
-	OSK_DEBUG_CODE( osk_kmap_debug(slot) );
 
-	preempt_disable();
-	return kmap_atomic(pfn_to_page(PFN_DOWN(page)), KM_USER0+slot);
+	res = kmap_atomic(pfn_to_page(PFN_DOWN(page)), KM_USER0+slot);
+
+	/* keep this after the call to avoid us updating the debug info on the wrong CPU */
+	OSK_DEBUG_CODE( osk_kmap_debug(slot) );
+	return res;
 }
 
 static inline void osk_kunmap_atomic(osk_phy_addr page, void *mapping, osk_kmap_slot slot)
@@ -170,7 +173,6 @@ static inline void osk_kunmap_atomic(osk_phy_addr page, void *mapping, osk_kmap_
 	OSK_DEBUG_CODE( osk_kunmap_debug(slot) );
 
 	kunmap_atomic(mapping, KM_USER0+slot);
-	preempt_enable();
 }
 
 static inline void osk_sync_to_memory(osk_phy_addr paddr, osk_virt_addr vaddr, size_t sz)

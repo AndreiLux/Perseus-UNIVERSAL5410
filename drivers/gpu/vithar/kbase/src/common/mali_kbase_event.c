@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -38,10 +38,18 @@ static void *kbase_event_process(kbase_context *ctx,
 		kbase_jd_atom *katom = (void *)event->data;
 		/* return the offset in the ring buffer... */
 		data = (void *)((uintptr_t)katom->user_atom - (uintptr_t)ctx->jctx.pool);
-		/* perform the sync operations only on successful jobs */
-		kbase_post_job_sync(ctx,
-				base_jd_get_atom_syncset(katom->user_atom, 0),
-				katom->nr_syncsets);
+
+		if (katom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES)
+		{
+			kbase_jd_post_external_resources(katom);
+		}
+		else
+		{
+			/* perform the sync operations only on successful jobs */
+			kbase_post_job_sync(ctx,
+					base_jd_get_atom_syncset(katom->user_atom, 0),
+					katom->nr_syncsets);
+		}
 		ptr = katom;
 		/* As the event is integral part of the katom, return
 		 * immediatly... */

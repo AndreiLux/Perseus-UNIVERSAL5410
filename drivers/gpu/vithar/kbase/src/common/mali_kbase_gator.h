@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -18,8 +18,8 @@
 
 #if MALI_GATOR_SUPPORT
 #define GATOR_MAKE_EVENT(type,number) (((type) << 24) | ((number) << 16))
-#define GATOR_TIMELINE_START 1
-#define GATOR_TIMELINE_STOP  2
-void kbase_trace_mali_timeline_event(u32 event);
+#define GATOR_JOB_SLOTS_START 1
+#define GATOR_JOB_SLOTS_STOP  2
+void kbase_trace_mali_job_slots_event(u32 event);
 #endif
 

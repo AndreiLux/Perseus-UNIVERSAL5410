@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -24,7 +24,28 @@
 #define TRACE_INCLUDE_FILE mali_linux_trace
 
 /**
- * mali_timeline_event - called from mali_kbase_core_linux.c
+ * mali_job_slots_event - called from mali_kbase_core_linux.c
+ * @event_id: ORed together bitfields representing a type of event, made with the GATOR_MAKE_EVENT() macro.
+ */
+TRACE_EVENT(mali_job_slots_event,
+
+	TP_PROTO(unsigned int event_id),
+
+	TP_ARGS(event_id),
+
+	TP_STRUCT__entry(
+		__field(	int,	event_id	)
+	),
+
+	TP_fast_assign(
+		__entry->event_id = event_id;
+	),
+
+	TP_printk("event=%d", __entry->event_id)
+);
+
+/**
+ * mali_timeline_event - not currently used
  * @event_id: ORed together bitfields representing a type of event, made with the GATOR_MAKE_EVENT() macro.
  */
 TRACE_EVENT(mali_timeline_event,

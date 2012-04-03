@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2008-2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2008-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -24,8 +24,9 @@
 #include <linux/cred.h>
 #include <asm/mmu_context.h>
 
-
-
+#ifdef CONFIG_KDS
+#include <kds/include/linux/kds.h>
+#endif
 #include <ump/ump_common.h>
 #include <ump/src/devicedrv/common/ump_kernel_descriptor_mapping.h>
 
@@ -90,7 +91,12 @@ typedef struct umpp_allocation
 	uint64_t blocksCount; /**< Number of physsical blocks the allocation is built up of */
 	ump_dd_physical_block_64 * block_array; /**< Array, one entry per block, describing block start and length */
 
-	struct list_head map_list; /**< Trackers all CPU VA mappings of this allocation */
+	struct mutex     map_list_lock; /**< Lock protecting the map_list */
+	struct list_head map_list; /**< Tracks all CPU VA mappings of this allocation */
+
+#ifdef CONFIG_KDS
+	struct kds_resource kds_res; /**< The KDS resource controlling access to this allocation */
+#endif
 
 	void * backendData; /**< Physical memory backend meta-data */
 } umpp_allocation;

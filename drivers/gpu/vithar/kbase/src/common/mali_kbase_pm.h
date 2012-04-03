@@ -66,6 +66,7 @@ mali_error kbase_pm_powerup(struct kbase_device *kbdev);
  * Should ensure that no new interrupts are generated,
  * but allow any currently running interrupt handlers to complete successfully.
  * No event can make the pm system turn on the GPU after this function returns.
+ * The active policy is sent @ref KBASE_PM_EVENT_SYSTEM_SUSPEND.
  *
  * @param kbdev     The kbase device structure for the device (must be a valid pointer)
  */
@@ -234,6 +235,20 @@ typedef enum kbase_pm_dvfs_action
 	KBASE_PM_DVFS_CLOCK_DOWN    /**< The clock frequency should be decreased if possible */
 } kbase_pm_dvfs_action;
 
+/** A value for an atomic @ref work_active, 
+ * which tracks whether the work unit has been enqueued.
+ */
+typedef enum kbase_pm_work_active_state 
+{
+	KBASE_PM_WORK_ACTIVE_STATE_INACTIVE    = 0x00u, /**< There are no work units enqueued and @ref kbase_pm_worker is not running. */
+	KBASE_PM_WORK_ACTIVE_STATE_ENQUEUED    = 0x01u, /**< There is a work unit enqueued, but @ref kbase_pm_worker is not running. */
+	KBASE_PM_WORK_ACTIVE_STATE_PROCESSING  = 0x02u, /**< @ref kbase_pm_worker is running. */
+	KBASE_PM_WORK_ACTIVE_STATE_PENDING_EVT = 0x03u  /**< Processing and there's an event outstanding. 
+                                                            @ref kbase_pm_worker is running, but @ref pending_events
+                                                            has been updated since it started so 
+                                                            it should recheck the list of pending events before exiting. */  
+} kbase_pm_work_active_state;
+
 /** Data stored per device for power management.
  *
  * This structure contains data for the power management framework. There is one instance of this structure per device 
@@ -253,12 +268,8 @@ typedef struct kbase_pm_device_data
 	osk_atomic              pending_events;
 	/** The work unit that is enqueued onto the workqueue. */
 	osk_workq_work          work;
-	/** An atomic which tracks whether the work unit has been enqueued:
-	 * @arg 0 - Inactive. There are no work units enqueued and @ref kbase_pm_worker is not running.
-	 * @arg 1 - Enqueued. There is a work unit enqueued, but @ref kbase_pm_worker is not running.
-	 * @arg 2 - Processing. @ref kbase_pm_worker is running.
-	 * @arg 3 - Processing and there's an event outstanding. @ref kbase_pm_worker is running, but @ref pending_events
-	 *          has been updated since it started so it should recheck the list of pending events before exiting.
+	/** An atomic which tracks whether the work unit has been enqueued.
+	 * For list of possible values please refer to @ref kbase_pm_work_active_state.
 	 */
 	osk_atomic              work_active;
 	/** The wait queue for power up events. */
@@ -270,7 +281,10 @@ typedef struct kbase_pm_device_data
 	int                     active_count;
 	/** Lock to protect active_count */
 	osk_spinlock_irq        active_count_lock;
-
+	/** The reference count of active gpu cycle counter users */
+	int                     gpu_cycle_counter_requests;
+	/** Lock to protect gpu_cycle_counter_requests */
+	osk_spinlock_irq        gpu_cycle_counter_requests_lock;
 	/** A bit mask identifying the shader cores that the power policy would like to be on.
 	 * The current state of the cores may be different, but there should be transitions in progress that will
 	 * eventually achieve this state (assuming that the policy doesn't change its mind in the mean time.
@@ -289,14 +303,30 @@ typedef struct kbase_pm_device_data
 	 */
 	osk_spinlock_irq        power_change_lock;
 
+	/** Set to true when the GPU is powered and register accesses are possible, false otherwise */
+	mali_bool               gpu_powered;
+
 	/** Structure to hold metrics for the GPU */
 	kbasep_pm_metrics_data  metrics;
+
+	/** Callback when the GPU needs to be turned on. See @ref kbase_pm_callback_conf
+	 *
+	 * @param kbdev         The kbase device
+	 *
+	 * @return 1 if GPU state was lost, 0 otherwise
+	 */
+	int (*callback_power_on)(struct kbase_device *kbdev);
+
+	/** Callback when the GPU may be turned off. See @ref kbase_pm_callback_conf
+	 *
+	 * @param kbdev         The kbase device
+	 */
+	void (*callback_power_off)(struct kbase_device *kbdev);
 #ifdef CONFIG_VITHAR
 	/** Indicator if system clock to mail-t604 is active */
 	int			cmu_pmu_status;
-
-    /** cmd & pmu lock */
-    osk_spinlock_irq		cmu_pmu_lock;
+	/** cmd & pmu lock */
+	osk_spinlock_irq		cmu_pmu_lock;
 #endif
 } kbase_pm_device_data;
 
@@ -327,6 +357,7 @@ int kbase_pm_list_policies(const kbase_pm_policy * const **policies);
 /** The current policy is ready to change to the new policy
  *
  * The current policy must ensure that all cores have finished transitioning before calling this function.
+ * The new policy is sent an @ref KBASE_PM_EVENT_POLICY_INIT event.
  *
  * @param kbdev     The kbase device structure for the device (must be a valid pointer)
  */
@@ -485,7 +516,7 @@ void kbase_pm_disable_interrupts(struct kbase_device *kbdev);
  * This function checks the GPU ID register to ensure that the GPU is supported by the driver and performs a reset on 
  * the device so that it is in a known state before the device is used.
  *
- * @param kbdev     The kbase device structure for the device (must be a valid pointer)
+ * @param kbdev        The kbase device structure for the device (must be a valid pointer)
  * 
  * @return MALI_ERROR_NONE if the device is supported and successfully reset.
  */
@@ -553,9 +584,29 @@ void kbase_pm_wait_for_power_down(struct kbase_device *kbdev);
  * This function should be called when a context is about to submit a job. It informs the active power policy that the 
  * GPU is going to be in use shortly and the policy is expected to start turning on the GPU.
  *
+ * This function will block until the GPU is available.
+ *
  * @param kbdev     The kbase device structure for the device (must be a valid pointer)
  */
 void kbase_pm_context_active(struct kbase_device *kbdev);
+
+/** Increment the count of active contexts without waiting.
+ *
+ * This function increments the count of active contexts like @ref kbase_pm_context_active, however it is safe for use 
+ * in atomic contexts. It will only succeed when the GPU is already active, if the GPU is idle then it will return 
+ * MALI_ERROR_FUNCTION_FAILED and the count of active contexts will @b not be increased.
+ *
+ * WARNING: Unlike kbase_pm_context_active this function will not wait for the GPU to be powered, so if another thread 
+ * is blocked in kbase_pm_context_active this function will return success even though the GPU has not finished 
+ * powering up (although the reference count will have been incremented). For this reason this function must be used 
+ * very carefully.
+ *
+ * @param kbdev     The kbase device structure for the device (must be a valid pointer)
+ *
+ * @return MALI_ERROR_NONE if the count of active contexts was incremented, MALI_ERROR_FUNCTION_FAILED if the GPU is 
+ * not active
+ */
+mali_error kbase_pm_context_active_irq(struct kbase_device *kbdev);
 
 /** Decrement the reference count of active contexts.
  *
@@ -592,6 +643,9 @@ void kbasep_pm_read_present_cores(struct kbase_device *kbdev);
  * The cores requested are reference counted and a subsequent call to @ref kbase_pm_register_inuse_cores or
  * @ref kbase_pm_unrequest_cores should be made to dereference the cores as being 'needed'.
  *
+ * The current running policy is sent an @ref KBASE_PM_EVENT_CHANGE_GPU_STATE if power up of requested core is
+ * required.
+
  * The policy is expected to make these cores available at some point in the future,
  * but may take an arbitrary length of time to reach this state.
  *
@@ -607,6 +661,9 @@ mali_error kbase_pm_request_cores(struct kbase_device *kbdev, u64 shader_cores, 
  *
  * This function undoes the effect of @ref kbase_pm_request_cores. It should be used when a job is not
  * going to be submitted to the hardware (e.g. the job is cancelled before it is enqueued).
+ *
+ * The current running policy is sent an @ref KBASE_PM_EVENT_CHANGE_GPU_STATE if power down of requested core
+ * is required.
  *
  * The policy may use this as an indication that it can power down cores.
  *
@@ -634,9 +691,9 @@ mali_bool kbase_pm_register_inuse_cores(struct kbase_device *kbdev, u64 shader_c
 
 /** Release cores after a job has run.
  *
- * This function should be called when a job has finished running on the hardware. A call to @ref
- * kbase_pm_register_inuse_cores must have previously occurred. The reference counts of the specified cores will be
- * decremented which may cause the bitmask of 'inuse' cores to be reduced. The power policy may then turn off any
+ * This function should be called when a job has finished running on the hardware. A call to @ref 
+ * kbase_pm_register_inuse_cores must have previously occurred. The reference counts of the specified cores will be 
+ * decremented which may cause the bitmask of 'inuse' cores to be reduced. The power policy may then turn off any 
  * cores which are no longer 'inuse'.
  *
  * @param kbdev         The kbase device structure for the device
@@ -728,5 +785,23 @@ void kbase_pm_unregister_vsync_callback(struct kbase_device *kbdev);
  */
 kbase_pm_dvfs_action kbase_pm_get_dvfs_action(struct kbase_device *kbdev);
 
+/** Mark that the GPU cycle counter is needed, if the caller is the first caller
+ *  then the GPU cycle counters will be enabled.
+ *
+ * The GPU must be powered when calling this function (i.e. @ref kbase_pm_context_active must have been called).
+ *
+ * @param kbdev    The kbase device structure for the device (must be a valid pointer)
+ */
+
+void kbase_pm_request_gpu_cycle_counter(struct kbase_device *kbdev);
+
+/** Mark that the GPU cycle counter is no longer in use, if the caller is the last
+ *  caller then the GPU cycle counters will be disabled. A request must have been made
+ *  before a call to this.
+ *
+ * @param kbdev    The kbase device structure for the device (must be a valid pointer)
+ */
+
+void kbase_pm_release_gpu_cycle_counter(struct kbase_device *kbdev);
 
 #endif /* _KBASE_PM_H_ */

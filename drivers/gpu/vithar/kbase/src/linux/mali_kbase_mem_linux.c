@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -289,14 +289,18 @@ static int  kbase_trace_buffer_mmap(struct kbase_context * kctx, struct vm_area_
 	{
 		err = -ENOMEM;
 		WARN_ON(1);
-		goto disconnect;
+		goto out_disconnect;
 	}
 
 	new_reg->flags	&= ~KBASE_REG_FREE;
 	new_reg->flags	|= KBASE_REG_IS_TB | KBASE_REG_CPU_CACHED;
 
-	if (kbase_add_va_region(kctx, new_reg, vma->vm_start, nr_pages, 1))
-		BUG_ON(1);
+	if (MALI_ERROR_NONE != kbase_add_va_region(kctx, new_reg, vma->vm_start, nr_pages, 1))
+	{
+		err = -ENOMEM;
+		WARN_ON(1);
+		goto out_va_region;
+	}
 
 	*reg		= new_reg;
 
@@ -307,7 +311,9 @@ static int  kbase_trace_buffer_mmap(struct kbase_context * kctx, struct vm_area_
 	pr_debug("%s done\n", __func__);
 	return 0;
 
-disconnect:
+out_va_region:
+	kbase_free_alloced_region(new_reg);
+out_disconnect:
 	kbase_device_trace_buffer_uninstall(kctx);
 	osk_vfree(tb);
 out:
@@ -349,8 +355,12 @@ static int kbase_mmu_dump_mmap( struct kbase_context *kctx,
 	new_reg->flags &= ~KBASE_REG_FREE;
 	new_reg->flags |= KBASE_REG_IS_MMU_DUMP | KBASE_REG_CPU_CACHED;
 
-	if (kbase_add_va_region(kctx, new_reg, vma->vm_start, nr_pages, 1))
-		BUG_ON(1);
+	if (MALI_ERROR_NONE != kbase_add_va_region(kctx, new_reg, vma->vm_start, nr_pages, 1))
+	{
+		err = -ENOMEM;
+		WARN_ON(1);
+		goto out_va_region;
+	}
 
 	*kmap_addr  = kaddr;
 	*reg        = new_reg;
@@ -358,6 +368,8 @@ static int kbase_mmu_dump_mmap( struct kbase_context *kctx,
 	pr_debug("kbase_mmu_dump_mmap done\n");
 	return 0;
 
+out_va_region:
+	kbase_free_alloced_region(new_reg);
 out:
 	return err;
 }
@@ -475,14 +487,15 @@ int kbase_mmap(struct file *file, struct vm_area_struct *vma)
 
 			kbase_unlink_cookie(kctx, vma->vm_pgoff, reg);
 
-			/*
-			 * If we cannot map it in GPU space,
-			 * then something is *very* wrong. We
-			 * might as well die now.
-			 */
-			if (kbase_gpu_mmap(kctx, reg, vma->vm_start,
-					   nr_pages, 1))
-				BUG_ON(1);
+			if (MALI_ERROR_NONE != kbase_gpu_mmap(kctx, reg, vma->vm_start, nr_pages, 1))
+			{
+				/* Unable to map in GPU space. Recover from kbase_unlink_cookie */
+				OSK_DLIST_PUSH_FRONT(&kctx->osctx.reg_pending, reg, struct kbase_va_region, link);
+				kctx->osctx.cookies &= ~(1UL << vma->vm_pgoff);
+				WARN_ON(1);
+				err = -ENOMEM;
+				goto out_unlock;
+			}
 
 			/*
 			 * Overwrite the offset with the
@@ -510,7 +523,7 @@ int kbase_mmap(struct file *file, struct vm_area_struct *vma)
 		{
 			if (reg->start_pfn <= vma->vm_pgoff &&
 			    (reg->start_pfn + reg->nr_alloc_pages) >= (vma->vm_pgoff + nr_pages) &&
-			    (reg->flags & (KBASE_REG_ZONE_MASK | KBASE_REG_FREE)) == KBASE_REG_ZONE_TMEM)
+			    (reg->flags & (KBASE_REG_ZONE_MASK | KBASE_REG_FREE | KBASE_REG_NO_CPU_MAP)) == KBASE_REG_ZONE_TMEM)
 			{
 				/* Match! */
 				goto map;
@@ -567,3 +580,107 @@ void kbase_destroy_os_context(kbase_os_context *osctx)
 				link, kbase_reg_pending_dtor);
 }
 KBASE_EXPORT_TEST_API(kbase_destroy_os_context)
+
+void *kbase_va_alloc(kbase_context *kctx, u32 size)
+{
+	void *va;
+	u32 pages = ((size-1) >> OSK_PAGE_SHIFT) + 1;
+	struct kbase_va_region *reg;
+	osk_phy_addr *page_array;
+	u32 flags = BASE_MEM_PROT_CPU_RD | BASE_MEM_PROT_CPU_WR |
+	            BASE_MEM_PROT_GPU_RD | BASE_MEM_PROT_GPU_WR;
+	int i;
+
+	OSK_ASSERT(kctx != NULL);
+
+	if (size == 0)
+	{
+		goto err;
+	}
+	
+	va = osk_vmalloc(size);
+	if (!va)
+	{
+		goto err;
+	}
+
+	kbase_gpu_vm_lock(kctx);
+
+	reg = kbase_alloc_free_region(kctx, 0, pages, KBASE_REG_ZONE_PMEM);
+	if (!reg)
+	{
+		goto vm_unlock;
+	}
+
+	reg->flags &= ~KBASE_REG_FREE;
+	kbase_update_region_flags(reg, flags, MALI_FALSE);
+
+	reg->nr_alloc_pages = pages;
+	reg->extent = 0;
+
+	page_array = osk_vmalloc(pages * sizeof(*page_array));
+	if (!page_array)
+	{
+		goto free_reg;
+	}
+
+	for (i = 0; i < pages; i++)
+	{
+		uintptr_t addr;
+		struct page *page;
+		addr = (uintptr_t)va + (i << OSK_PAGE_SHIFT);
+		page = vmalloc_to_page((void *)addr);
+		page_array[i] = PFN_PHYS(page_to_pfn(page));
+	}
+
+	kbase_set_phy_pages(reg, page_array);
+
+	if (kbase_gpu_mmap(kctx, reg, (uintptr_t)va, pages, 1))
+	{
+		goto free_array;
+	}
+
+	kbase_gpu_vm_unlock(kctx);
+
+	return va;
+
+free_array:
+	osk_vfree(page_array);
+free_reg:
+	osk_free(reg);
+vm_unlock:
+	kbase_gpu_vm_lock(kctx);
+	osk_vfree(va);
+err:
+	return NULL;
+}
+KBASE_EXPORT_SYMBOL(kbase_va_alloc)
+
+void kbase_va_free(kbase_context *kctx, void *va)
+{
+	struct kbase_va_region *reg;
+	osk_phy_addr *page_array;
+	mali_error err;
+
+	OSK_ASSERT(kctx != NULL);
+	OSK_ASSERT(va != NULL);
+	
+	kbase_gpu_vm_lock(kctx);
+	
+	reg = kbase_validate_region(kctx, (uintptr_t)va);
+	OSK_ASSERT(reg);
+
+	err = kbase_gpu_munmap(kctx, reg);
+	OSK_ASSERT(err == MALI_ERROR_NONE);
+
+	page_array = kbase_get_phy_pages(reg);
+	osk_vfree(page_array);
+
+	osk_free(reg);
+
+	kbase_gpu_vm_unlock(kctx);
+
+	osk_vfree(va);
+}
+KBASE_EXPORT_SYMBOL(kbase_va_free)
+

@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -16,12 +16,6 @@
 #include <uk/mali_ukk.h>
 #include <plat/mali_ukk_os.h>
 
-/* following OS specific includes can be removed when osk functions are implemented */
-#if 0
-#include <linux/module.h>       /* Kernel module definitions */
-#include <linux/kernel.h>       /* Needed for KERN_INFO */
-#endif
-
 mali_error ukk_start(void)
 {
 	return MALI_ERROR_NONE;
@@ -31,39 +25,18 @@ void ukk_stop(void)
 {
 }
 
-void ukk_call_prepare(ukk_call_context * const ukk_ctx, ukk_session * const session, void * const thread_ctx)
+void ukk_call_prepare(ukk_call_context * const ukk_ctx, ukk_session * const session)
 {
 	OSK_ASSERT(NULL != ukk_ctx);
 	OSK_ASSERT(NULL != session);
-	/* NULL thread_ctx parameter is allowed */
 
 	ukk_ctx->ukk_session = session;
-	ukk_ctx->thread_ctx = thread_ctx;
-	ukk_ctx->data = 0;
 }
 
 void *ukk_session_get(ukk_call_context * const ukk_ctx)
 {
 	OSK_ASSERT(NULL != ukk_ctx);
 	return ukk_ctx->ukk_session;
-}
-
-void ukk_call_data_set(ukk_call_context * const ukk_ctx, uintptr_t data)
-{
-	OSK_ASSERT(NULL != ukk_ctx);
-	ukk_ctx->data = data;
-}
-
-uintptr_t ukk_call_data_get(ukk_call_context * const ukk_ctx)
-{
-	OSK_ASSERT(NULL != ukk_ctx);
-	return ukk_ctx->data;
-}
-
-void *ukk_thread_ctx_get(ukk_call_context * const ukk_ctx)
-{
-	OSK_ASSERT(NULL != ukk_ctx);
-	return ukk_ctx->thread_ctx;
 }
 
 static mali_error ukkp_dispatch_call(ukk_call_context *ukk_ctx, void *args, u32 args_size)

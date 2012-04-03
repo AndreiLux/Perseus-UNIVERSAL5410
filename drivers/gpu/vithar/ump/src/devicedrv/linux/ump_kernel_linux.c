@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2008-2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2008-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -451,8 +451,6 @@ static int do_ump_dd_msync_now(umpp_session * session, ump_k_msync * params)
 		if (it->id == params->secure_id)
 		{
 			/* found, do the cache op */
-#if 0
-			/* waiting for OSK api as requested in MIDBASE-515 */
 #if defined CONFIG_64BIT && CONFIG_64BIT
 			if (is_compat_task())
 			{
@@ -462,14 +460,10 @@ static int do_ump_dd_msync_now(umpp_session * session, ump_k_msync * params)
 			else
 			{
 #endif
-#endif
 				umpp_dd_cpu_msync_now(it->mem, params->cache_operation, params->mapped_ptr.value, params->size);
 				result = 0;
-#if 0
-				/* waiting for OSK api as requested in MIDBASE-515 */
 #if defined CONFIG_64BIT && CONFIG_64BIT
 			}
-#endif
 #endif
 			break;
 		}
@@ -820,6 +814,9 @@ EXPORT_SYMBOL(ump_dd_size_get_64);
 EXPORT_SYMBOL(ump_dd_retain);
 EXPORT_SYMBOL(ump_dd_release);
 EXPORT_SYMBOL(ump_dd_create_from_phys_blocks_64);
+#ifdef CONFIG_KDS
+EXPORT_SYMBOL(ump_dd_kds_resource_get);
+#endif
 
 /* import API */
 EXPORT_SYMBOL(ump_import_module_register);

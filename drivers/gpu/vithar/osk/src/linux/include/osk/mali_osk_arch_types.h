@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -39,6 +39,29 @@
 #define OSK_PAGE_SHIFT PAGE_SHIFT
 #define OSK_PAGE_SIZE  PAGE_SIZE
 #define OSK_PAGE_MASK  PAGE_MASK
+
+/** Number of CPU Cores */
+#define OSK_NUM_CPUS    NR_CPUS
+
+/** Total amount of memory, in pages */
+#define OSK_MEM_PAGES  totalram_pages
+
+/**
+ * @def OSK_L1_DCACHE_LINE_SIZE_LOG2
+ * @brief CPU L1 Data Cache Line size, in the form of a Logarithm to base 2.
+ *
+ * Must agree with the OSU definition: CONFIG_CPU_L1_DCACHE_LINE_SIZE_LOG2.
+ */
+#define OSK_L1_DCACHE_LINE_SIZE_LOG2 6
+
+/**
+ * @def OSK_L1_DCACHE_SIZE
+ * @brief CPU L1 Data Cache size, in bytes.
+ *
+ * Must agree with the OSU definition: CONFIG_CPU_L1_DCACHE_SIZE.
+ */
+#define OSK_L1_DCACHE_SIZE ((u32)0x00008000)
+
 
 #define OSK_MIN(x,y) min((x), (y))
 

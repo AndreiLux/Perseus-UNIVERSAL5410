@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- *
+ * 
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- *
+ * 
  */
 
 
@@ -75,8 +75,8 @@ static base_jd_event_code kbase_dump_cpu_gpu_time(kbase_context *kctx, mali_addr
 	{
 		return BASE_JD_EVENT_JOB_CANCELLED;
 	}
-
-	if (! (reg->flags & KBASE_REG_GPU_RW) )
+	
+	if (! (reg->flags & KBASE_REG_GPU_WR) )
 	{
 		/* Region is not writable by GPU so we won't write to it either */
 		return BASE_JD_EVENT_JOB_CANCELLED;

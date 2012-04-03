@@ -73,8 +73,16 @@ static void demand_power_down(kbase_device *kbdev)
 static void demand_change_gpu_state(kbase_device *kbdev)
 {
 	/* Update the bitmap of the cores we need */
-	kbdev->pm.desired_shader_state = kbdev->shader_needed_bitmap;
-	kbdev->pm.desired_tiler_state = kbdev->tiler_needed_bitmap;
+	u64 new_shader_desired = kbdev->shader_needed_bitmap | kbdev->shader_inuse_bitmap;
+	u64 new_tiler_desired = kbdev->tiler_needed_bitmap | kbdev->tiler_inuse_bitmap;
+
+	if ( kbdev->pm.desired_shader_state != new_shader_desired )
+	{
+		KBASE_TRACE_ADD( kbdev, PM_CORES_CHANGE_DESIRED, NULL, NULL, 0u, (u32)new_shader_desired );
+	}
+
+	kbdev->pm.desired_shader_state = new_shader_desired;
+	kbdev->pm.desired_tiler_state = new_tiler_desired;
 
 	kbase_pm_check_transitions(kbdev);
 }
@@ -114,6 +122,7 @@ static void demand_state_changed(kbase_device *kbdev)
 			data->state = KBASEP_PM_DEMAND_STATE_POWERED_UP;
 			kbase_pm_power_up_done(kbdev);
 			/* State changed, try to run jobs */
+			KBASE_TRACE_ADD( kbdev, PM_JOB_SUBMIT_AFTER_POWERING_UP, NULL, NULL, 0u, 0 );
 			kbase_js_try_run_jobs(kbdev);
 			break;
 		case KBASEP_PM_DEMAND_STATE_POWERING_DOWN:
@@ -125,6 +134,7 @@ static void demand_state_changed(kbase_device *kbdev)
 			break;
 		case KBASEP_PM_DEMAND_STATE_POWERED_UP:
 			/* Core states may have been changed, try to run jobs */
+			KBASE_TRACE_ADD( kbdev, PM_JOB_SUBMIT_AFTER_POWERED_UP, NULL, NULL, 0u, 0 );
 			kbase_js_try_run_jobs(kbdev);
 			break;
 		default:

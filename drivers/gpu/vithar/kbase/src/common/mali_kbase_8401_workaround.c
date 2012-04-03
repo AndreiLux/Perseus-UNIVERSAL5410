@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- *
+ * 
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- *
+ * 
  */
 
 
@@ -97,9 +97,34 @@ static const u32 compute_job_32bit_urt[] =
 
 static const u32 compute_job_32bit_rmu[] =
 {
-	/* Register Mapped Uniform Data Area (16 byte aligned) */
-	0x00000000, 0x00000000,
-	0x00000000, 0x00000000,
+	/* Register Mapped Uniform Data Area (16 byte aligned), an array of 128-bit
+	 * register values.
+	 *
+	 * NOTE: this is also used as the URT pointer, so the first 16-byte entry
+	 * must be all zeros.
+	 *
+	 * For BASE_HW_ISSUE_8987, we place 16 RMUs here, because this should only
+	 * be run concurrently with other GLES jobs (i.e. FS jobs from slot 0).
+	 */
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+	0x00000000, 0x00000000, 0x00000000, 0x00000000,
+	0x00000000, 0x00000000, 0x00000000, 0x00000000
 };
 
 static const u32 compute_job_32bit_rsd[] =
@@ -115,8 +140,8 @@ static const u32 compute_job_32bit_rsd[] =
 	/* Attribute array sizes */
 	0x00000000,
 	/* Uniform array size and Shader Flags */
-	/* Flags set: R, D, SE, FPM */
-	0x40003800,
+	/* Flags set: R, D, SE, Reg Uniforms==16, FPM==OpenCL */
+	0x42003800,
 	/* Depth bias */
 	0x00000000,
 	/* Depth slope bias */
@@ -206,16 +231,32 @@ static void kbasep_8401_workaround_update_job_pointers(u32 *dummy_compute_job, i
 
 mali_error kbasep_8401_workaround_init(kbase_device *kbdev)
 {
+	kbasep_js_device_data *js_devdata;
 	kbase_context *workaround_kctx;
 	u32 count;
 	int i;
+	u16 as_present_mask;
 
 	OSK_ASSERT(kbdev);
 	OSK_ASSERT(kbdev->workaround_kctx == NULL);
 
+	js_devdata = &kbdev->js_data;
+
 	/* For this workaround we reserve one address space to allow us to
 	 * submit a special job independent of other contexts */
-	kbdev->nr_address_spaces--;
+	--(kbdev->nr_hw_address_spaces);
+
+	if ( kbdev->nr_user_address_spaces == (kbdev->nr_hw_address_spaces + 1) )
+	{
+		/* Only update nr_user_address_spaces if it was unchanged - to ensure
+		 * HW workarounds that have modified this will still work */
+		--(kbdev->nr_user_address_spaces);
+	}
+	OSK_ASSERT( kbdev->nr_user_address_spaces <= kbdev->nr_hw_address_spaces );
+
+	/* Recalculate the free address spaces bit-pattern */
+	as_present_mask = (1U << kbdev->nr_hw_address_spaces) - 1;
+	js_devdata->as_free &= as_present_mask;
 
 	workaround_kctx = kbase_create_context(kbdev);
 	if(!workaround_kctx)
@@ -253,9 +294,9 @@ mali_error kbasep_8401_workaround_init(kbase_device *kbdev)
 	                       /* physical address */
 	                       kbdev->workaround_compute_job_pa,
 	                       /* number of pages */
-	                       KBASE_8401_WORKAROUND_COMPUTEJOB_COUNT,
+			       KBASE_8401_WORKAROUND_COMPUTEJOB_COUNT,
 	                       /* flags */
-	                       KBASE_REG_CPU_RW|KBASE_REG_GPU_RW);
+	                       KBASE_REG_GPU_RD|KBASE_REG_CPU_RD|KBASE_REG_CPU_WR|KBASE_REG_GPU_WR);
 
 	kbdev->workaround_kctx = workaround_kctx;
 	return MALI_ERROR_NONE;
@@ -277,10 +318,14 @@ page_release:
 
 void kbasep_8401_workaround_term(kbase_device *kbdev)
 {
+	kbasep_js_device_data *js_devdata;
 	int i;
+	u16 restored_as;
 
 	OSK_ASSERT(kbdev);
 	OSK_ASSERT(kbdev->workaround_kctx);
+
+	js_devdata = &kbdev->js_data;
 
 	for(i = 0; i < KBASE_8401_WORKAROUND_COMPUTEJOB_COUNT; i++)
 	{
@@ -293,20 +338,38 @@ void kbasep_8401_workaround_term(kbase_device *kbdev)
 	kbdev->workaround_kctx = NULL;
 
 	/* Free up the workaround address space */
-	kbdev->nr_address_spaces++;
+	kbdev->nr_hw_address_spaces++;
+
+	if ( kbdev->nr_user_address_spaces == (kbdev->nr_hw_address_spaces - 1) )
+	{
+		/* Only update nr_user_address_spaces if it was unchanged - to ensure
+		 * HW workarounds that have modified this will still work */
+		++(kbdev->nr_user_address_spaces);
+	}
+	OSK_ASSERT( kbdev->nr_user_address_spaces <= kbdev->nr_hw_address_spaces );
+
+	/* Recalculate the free address spaces bit-pattern */
+	restored_as = (1U << kbdev->nr_hw_address_spaces);
+	js_devdata->as_free |= restored_as;
 }
 
 /**
  * Submit the 8401 workaround job.
- **/
-
+ *
+ * Important for BASE_HW_ISSUE_8987: This job always uses 16 RMUs
+ * - Therefore, on slot[1] it will always use the same number of RMUs as another
+ * GLES job.
+ * - On slot[2], no other job (GLES or otherwise) will be running on the
+ * cores, by virtue of it being slot[2]. Therefore, any value of RMUs is
+ * acceptable.
+ */
 void kbasep_8401_submit_dummy_job(kbase_device *kbdev, int js)
 {
 	u32 cfg;
 	mali_addr64 jc;
 
 	/* While this workaround is active we reserve the last address space just for submitting the dummy jobs */
-	int as = kbdev->nr_address_spaces;
+	int as = kbdev->nr_hw_address_spaces;
 
 	/* Don't issue compute jobs on job slot 0 */
 	OSK_ASSERT(js != 0);
@@ -320,7 +383,7 @@ void kbasep_8401_submit_dummy_job(kbase_device *kbdev, int js)
 
 	/* Get the affinity of the previous job */
 	dummy_job_atom[js].affinity = ((u64)kbase_reg_read(kbdev, JOB_SLOT_REG(js, JSn_AFFINITY_LO), NULL)) |
-	                          (((u64)kbase_reg_read(kbdev, JOB_SLOT_REG(js, JSn_AFFINITY_HI), NULL)) << 32);
+	                              (((u64)kbase_reg_read(kbdev, JOB_SLOT_REG(js, JSn_AFFINITY_HI), NULL)) << 32);
 
 	/* Don't submit a compute job if the affinity was previously zero (i.e. no jobs have run yet on this slot) */
 	if(!dummy_job_atom[js].affinity)
@@ -330,12 +393,13 @@ void kbasep_8401_submit_dummy_job(kbase_device *kbdev, int js)
 
 	/* Ensure that our page tables are programmed into the MMU */
 	kbase_reg_write(kbdev, MMU_AS_REG(as, ASn_TRANSTAB_LO),
-	                (kbdev->workaround_kctx->pgd & 0xFFFFF000) | (1ul << 2) | 3, NULL);
-	kbase_reg_write(kbdev, MMU_AS_REG(as, ASn_TRANSTAB_HI),
-	                (kbdev->workaround_kctx->pgd >> 32), NULL);
+	                       (kbdev->workaround_kctx->pgd & ASn_TRANSTAB_ADDR_SPACE_MASK) | ASn_TRANSTAB_READ_INNER
+	                       | ASn_TRANSTAB_ADRMODE_TABLE, NULL);
 
-	kbase_reg_write(kbdev, MMU_AS_REG(as, ASn_MEMATTR_LO), 0x48484848, NULL);
-	kbase_reg_write(kbdev, MMU_AS_REG(as, ASn_MEMATTR_HI), 0x48484848, NULL);
+	kbase_reg_write(kbdev, MMU_AS_REG(as, ASn_TRANSTAB_HI), (kbdev->workaround_kctx->pgd >> 32), NULL);
+
+	kbase_reg_write(kbdev, MMU_AS_REG(as, ASn_MEMATTR_LO), ASn_MEMATTR_IMPL_DEF_CACHE_POLICY, NULL);
+	kbase_reg_write(kbdev, MMU_AS_REG(as, ASn_MEMATTR_HI), ASn_MEMATTR_IMPL_DEF_CACHE_POLICY, NULL);
 	kbase_reg_write(kbdev, MMU_AS_REG(as, ASn_COMMAND), ASn_COMMAND_UPDATE, NULL);
 
 	kbase_reg_write(kbdev, JOB_SLOT_REG(js, JSn_HEAD_NEXT_LO), jc & 0xFFFFFFFF, NULL);
@@ -345,7 +409,8 @@ void kbasep_8401_submit_dummy_job(kbase_device *kbdev, int js)
 	kbase_reg_write(kbdev, JOB_SLOT_REG(js, JSn_AFFINITY_NEXT_HI), dummy_job_atom[js].affinity >> 32, NULL);
 
 	/* start MMU, medium priority, cache clean/flush on end, clean/flush on start */
-	cfg = as | (3 << 12) | (1 << 10) | (8 << 16) | (3 << 8);
+	cfg = as | JSn_CONFIG_END_FLUSH_CLEAN_INVALIDATE | JSn_CONFIG_START_MMU
+	         | JSn_CONFIG_START_FLUSH_CLEAN_INVALIDATE | JSn_CONFIG_THREAD_PRI(8);
 	kbase_reg_write(kbdev, JOB_SLOT_REG(js, JSn_CONFIG_NEXT), cfg, NULL);
 
 	KBASE_TRACE_ADD_SLOT( kbdev, JM_SUBMIT, NULL, 0, jc, js );

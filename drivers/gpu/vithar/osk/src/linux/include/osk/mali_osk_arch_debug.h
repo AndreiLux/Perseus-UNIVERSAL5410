@@ -52,7 +52,12 @@ void oskp_debug_print(const char *fmt, ...);
 /**
  * Quit the driver and halt.
  */
-#define OSKP_QUIT() OSKP_BREAKPOINT()
+#define OSKP_QUIT() BUG()
+
+/**
+ * Print a backtrace 
+ */
+#define OSKP_TRACE() WARN_ON(1)
 
 #define OSKP_CHANNEL_INFO      ((u32)0x00000001)      /**< @brief No output*/
 #define OSKP_CHANNEL_WARN      ((u32)0x00000002)      /**< @brief Standard output*/
@@ -87,6 +92,7 @@ void oskp_debug_print(const char *fmt, ...);
 #define OSK_ACTION_PRINT_AND_CONTINUE 1 /**< @brief The given message is printed then the execution continues*/
 #define OSK_ACTION_PRINT_AND_BREAK    2 /**< @brief The given message is printed then a break point is triggered*/
 #define OSK_ACTION_PRINT_AND_QUIT     3 /**< @brief The given message is printed then the execution is stopped*/
+#define OSK_ACTION_PRINT_AND_TRACE    4 /**< @brief The given message and a backtrace is printed then the execution continues*/
 
 /**
  * @def OSK_ON_INFO
@@ -117,18 +123,16 @@ void oskp_debug_print(const char *fmt, ...);
  *
  */
 #if MALI_DEBUG
-	#define OSK_ON_INFO                OSK_ACTION_PRINT_AND_CONTINUE
+	#define OSK_ON_INFO                OSK_ACTION_IGNORE
 	#define OSK_ON_WARN                OSK_ACTION_PRINT_AND_CONTINUE
-	#define OSK_ON_ASSERT              OSK_ACTION_PRINT_AND_CONTINUE
+	#define OSK_ON_ASSERT              OSK_ACTION_PRINT_AND_QUIT
 	#define OSK_ON_ERROR               OSK_ACTION_PRINT_AND_CONTINUE
-	#define OSK_ON_FAIL                OSK_ACTION_PRINT_AND_CONTINUE
 	#define OSK_ON_RAW                 OSK_ACTION_PRINT_AND_CONTINUE
 #else
 	#define OSK_ON_INFO                OSK_ACTION_IGNORE
 	#define OSK_ON_WARN                OSK_ACTION_IGNORE
 	#define OSK_ON_ASSERT              OSK_ACTION_IGNORE
 	#define OSK_ON_ERROR               OSK_ACTION_PRINT_AND_CONTINUE
-	#define OSK_ON_FAIL                OSK_ACTION_IGNORE
 	#define OSK_ON_RAW                 OSK_ACTION_PRINT_AND_CONTINUE
 #endif
 
@@ -162,7 +166,6 @@ void oskp_debug_print(const char *fmt, ...);
 		if(MALI_FALSE == (expr))\
 		{\
 			OSKP_PRINT_ASSERT(__VA_ARGS__);\
-			OSKP_KERNEL_TEST_ASSERT();\
 		}\
 	}while(MALI_FALSE)
 
@@ -218,6 +221,7 @@ void oskp_debug_print(const char *fmt, ...);
 	{\
 		OSKP_ASSERT_OUT(OSKP_PRINT_TRACE, OSKP_PRINT_FUNCTION, __VA_ARGS__);\
 		oskp_debug_assert_call_hook();\
+		OSKP_KERNEL_TEST_ASSERT();\
 		OSKP_ASSERT_ACTION();\
 	}while(MALI_FALSE)
 
@@ -244,6 +248,8 @@ void oskp_debug_print(const char *fmt, ...);
 	#define OSKP_ASSERT_ACTION OSKP_BREAKPOINT
 #elif OSK_ON_ASSERT == OSK_ACTION_PRINT_AND_QUIT
 	#define OSKP_ASSERT_ACTION OSKP_QUIT
+#elif OSK_ON_ASSERT == OSK_ACTION_PRINT_AND_TRACE
+	#define OSKP_ASSERT_ACTION OSKP_TRACE
 #elif OSK_ON_ASSERT == OSK_ACTION_PRINT_AND_CONTINUE || OSK_ON_ASSERT == OSK_ACTION_IGNORE
 	#define OSKP_ASSERT_ACTION() CSTD_NOP()
 #else
@@ -259,6 +265,8 @@ void oskp_debug_print(const char *fmt, ...);
 	#define OSKP_RAW_ACTION OSKP_BREAKPOINT
 #elif OSK_ON_RAW == OSK_ACTION_PRINT_AND_QUIT
 	#define OSKP_RAW_ACTION OSKP_QUIT
+#elif OSK_ON_RAW == OSK_ACTION_PRINT_AND_TRACE
+	#define OSKP_RAW_ACTION OSKP_TRACE
 #elif OSK_ON_RAW == OSK_ACTION_PRINT_AND_CONTINUE || OSK_ON_RAW == OSK_ACTION_IGNORE
 	#define OSKP_RAW_ACTION() CSTD_NOP()
 #else
@@ -274,6 +282,8 @@ void oskp_debug_print(const char *fmt, ...);
 	#define OSKP_INFO_ACTION OSKP_BREAKPOINT
 #elif OSK_ON_INFO == OSK_ACTION_PRINT_AND_QUIT
 	#define OSKP_INFO_ACTION OSKP_QUIT
+#elif OSK_ON_INFO == OSK_ACTION_PRINT_AND_TRACE
+	#define OSKP_INFO_ACTION OSKP_TRACE
 #elif OSK_ON_INFO == OSK_ACTION_PRINT_AND_CONTINUE || OSK_ON_INFO == OSK_ACTION_IGNORE
 	#define OSKP_INFO_ACTION() CSTD_NOP()
 #else
@@ -289,6 +299,8 @@ void oskp_debug_print(const char *fmt, ...);
 	#define OSKP_ERROR_ACTION OSKP_BREAKPOINT
 #elif OSK_ON_ERROR == OSK_ACTION_PRINT_AND_QUIT
 	#define OSKP_ERROR_ACTION OSKP_QUIT
+#elif OSK_ON_ERROR == OSK_ACTION_PRINT_AND_TRACE
+	#define OSKP_ERROR_ACTION OSKP_TRACE
 #elif OSK_ON_ERROR == OSK_ACTION_PRINT_AND_CONTINUE || OSK_ON_ERROR == OSK_ACTION_IGNORE
 	#define OSKP_ERROR_ACTION() CSTD_NOP()
 #else
@@ -303,26 +315,13 @@ void oskp_debug_print(const char *fmt, ...);
 #if OSK_ON_WARN == OSK_ACTION_PRINT_AND_BREAK
 	#define OSKP_WARN_ACTION OSKP_BREAKPOINT
 #elif OSK_ON_WARN == OSK_ACTION_PRINT_AND_QUIT
-	#define OSKP_WARN_ACTION OSK_QUIT
+	#define OSKP_WARN_ACTION OSKP_QUIT
+#elif OSK_ON_WARN == OSK_ACTION_PRINT_AND_TRACE
+	#define OSKP_WARN_ACTION OSKP_TRACE
 #elif OSK_ON_WARN == OSK_ACTION_PRINT_AND_CONTINUE || OSK_ON_WARN == OSK_ACTION_IGNORE
 	#define OSKP_WARN_ACTION() CSTD_NOP()
 #else
 	#error invalid value for OSK_ON_WARN
-#endif
-
-/**
- * @def OSKP_FAIL_ACTION
- * @brief (Private) Action associated to the @see OSK_PRINT_INFO event.
- */
-/* Configure the post display action */
-#if OSK_ON_FAIL == OSK_ACTION_PRINT_AND_BREAK
-	#define OSKP_FAIL_ACTION OSKP_BREAKPOINT
-#elif OSK_ON_FAIL == OSK_ACTION_PRINT_AND_QUIT
-	#define OSKP_FAIL_ACTION OSKP_QUIT
-#elif OSK_ON_FAIL == OSK_ACTION_PRINT_AND_CONTINUE || OSK_ON_FAIL == OSK_ACTION_IGNORE
-	#define OSKP_FAIL_ACTION() CSTD_NOP()
-#else
-	#error invalid value for OSK_ON_FAIL
 #endif
 
 /**
@@ -579,28 +578,6 @@ void oskp_debug_print(const char *fmt, ...);
 #endif
 
 /**
- * @def OSKP_FAIL_OUT(module, trace, ...)
- * @brief (Private) system printing function associated to the @see OSK_PRINT_FAIL event.
- * @param module module ID
- * @param trace location in the code from where the message is printed
- * @param function function from where the message is printed
- * @param ... Format string followed by format arguments.
- */
-/* Select the correct system output function*/
-#if OSK_ON_FAIL != OSK_ACTION_IGNORE
-	#define OSKP_FAIL_OUT(module, trace, function, ...)\
-		do\
-		{\
-			/* Split up in several lines to prevent hitting max 128 chars limit of OSK print function */ \
-			OSKP_PRINT("Mali<FAIL,%s>: ", module);\
-			OSKP_PRINT(__VA_ARGS__);\
-			OSKP_PRINT(OSK_STOP_MSG);\
-		}while(MALI_FALSE)
-#else
-	#define OSKP_FAIL_OUT(module, trace, function, ...) CSTD_NOP()
-#endif
-
-/**
  * @def OSKP_PRINT_IS_ALLOWED(module, channel)
  * @brief function or constant indicating if the given module is allowed to print on the given channel
  * @note If @see OSK_USE_RUNTIME_CONFIG is disabled then this macro is set to MALI_TRUE to avoid any overhead
@@ -612,7 +589,7 @@ void oskp_debug_print(const char *fmt, ...);
 #if OSK_USE_RUNTIME_CONFIG
 	#define OSKP_PRINT_IS_ALLOWED(module, channel) oskp_is_allowed_to_print( (module), (channel) )
 #else
-	#define OSKP_PRINT_IS_ALLOWED(module, channel) ((OSK_CHANNEL_INFO == channel) ? MALI_FALSE : MALI_TRUE)	
+	#define OSKP_PRINT_IS_ALLOWED(module, channel) MALI_TRUE
 #endif
 
 /**

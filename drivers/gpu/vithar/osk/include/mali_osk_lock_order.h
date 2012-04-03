@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -116,6 +116,11 @@ typedef enum
 	OSK_LOCK_ORDER_TB,
 
 	/**
+	 * For KBASE_TRACE_ADD<...> macros
+	 */
+	OSK_LOCK_ORDER_TRACE,
+
+	/**
 	 * For modification of the MMU mask register, which is done as a read-modify-write
 	 */
 	OSK_LOCK_ORDER_MMU_MASK,
@@ -128,18 +133,15 @@ typedef enum
 	 * For access to active_count in kbase_pm_device_data
 	 */
 	OSK_LOCK_ORDER_POWER_MGMT_ACTIVE = OSK_LOCK_ORDER_POWER_MGMT,
-
-
-	OSK_LOCK_ORDER_TRACE,
+	
+	/**
+	 * For access to gpu_cycle_counter_requests in kbase_pm_device_data
+	 */
+	OSK_LOCK_ORDER_POWER_MGMT_GPU_CYCLE_COUNTER,
 	/**
 	 * For the resources used during MMU pf or low-level job handling
 	 */
 	OSK_LOCK_ORDER_JS_RUNPOOL_IRQ,
-
-	/**
-	 * For hardware counters collection setup
-	 */
-	OSK_LOCK_ORDER_HWCNT,
 
 	/**
 	 * For job slot management
@@ -147,7 +149,12 @@ typedef enum
 	 * This is an IRQ lock, and so must be held after all sleeping locks
 	 */
 	OSK_LOCK_ORDER_JSLOT,
-	
+
+	/**
+	 * For hardware counters collection setup
+	 */
+	OSK_LOCK_ORDER_HWCNT,
+
 	/**
 	 * For use when zapping a context (see kbase_jd_zap_context)
 	 */
@@ -219,10 +226,10 @@ typedef enum
 	OSK_LOCK_ORDER_BASE_REG_QUEUE,
 
 #ifdef CONFIG_VITHAR_RT_PM
-    /**
-     * System power for mali-t604
-     */
-    OSK_LOCK_ORDER_CMU_PMU,
+	/**
+	 * System power for mali-t604
+	 */
+	OSK_LOCK_ORDER_CMU_PMU,
 #endif
 
 	/**

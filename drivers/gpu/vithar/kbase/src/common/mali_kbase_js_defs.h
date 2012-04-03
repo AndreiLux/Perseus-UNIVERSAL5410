@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -21,9 +21,6 @@
 #ifndef _KBASE_JS_DEFS_H_
 #define _KBASE_JS_DEFS_H_
 
-#include "mali_kbase_js_policy_fcfs.h"
-#include "mali_kbase_js_policy_cfs.h"
-
 /**
  * @addtogroup base_api
  * @{
@@ -38,6 +35,35 @@
  * @addtogroup kbase_js
  * @{
  */
+
+/* Types used by the policies must go here */
+enum
+{
+	/** Context has had its creation flags set */
+	KBASE_CTX_FLAG_CREATE_FLAGS_SET = (1u << 0),
+
+	/** Context will not submit any jobs */
+	KBASE_CTX_FLAG_SUBMIT_DISABLED  = (1u << 1),
+
+	/** Set if the context uses an address space and should be kept scheduled in */
+	KBASE_CTX_FLAG_PRIVILEGED       = (1u << 2),
+
+	/** Kernel-side equivalent of BASE_CONTEXT_HINT_ONLY_COMPUTE. Non-mutable after creation flags set */
+	KBASE_CTX_FLAG_HINT_ONLY_COMPUTE= (1u << 3)
+
+	/* NOTE: Add flags for other things, such as 'is scheduled', and 'is dying' */
+};
+
+typedef u32 kbase_context_flags;
+
+typedef struct kbasep_atom_req
+{
+	base_jd_core_req core_req;
+	kbase_context_flags ctx_req;
+} kbasep_atom_req;
+
+#include "mali_kbase_js_policy_cfs.h"
+
 
 /* Wrapper Interface - doxygen is elsewhere */
 typedef union kbasep_js_policy
@@ -92,6 +118,59 @@ typedef union kbasep_js_policy_job_info
  */
 #define KBASE_JS_IRQ_THROTTLE_TIME_US 20
 
+/**
+ * @brief Context attributes
+ *
+ * Each context attribute can be thought of as a boolean value that caches some
+ * state information about either the runpool, or the context:
+ * - In the case of the runpool, it is a cache of "Do any contexts owned by
+ * the runpool have attribute X?"
+ * - In the case of a context, it is a cache of "Do any atoms owned by the
+ * context have attribute X?"
+ *
+ * The boolean value of the context attributes often affect scheduling
+ * decisions, such as affinities to use and job slots to use.
+ *
+ * To accomodate changes of state in the context, each attribute is refcounted
+ * in the context, and in the runpool for all running contexts. Specifically:
+ * - The runpool holds a refcount of how many contexts in the runpool have this
+ * attribute.
+ * - The context holds a refcount of how many atoms have this attribute.
+ *
+ * Examples of use:
+ * - Finding out when NSS jobs are in the runpool
+ * - Finding out when there are a mix of @ref BASE_CONTEXT_HINT_ONLY_COMPUTE
+ * and ! @ref BASE_CONTEXT_HINT_ONLY_COMPUTE contexts in the runpool
+ */
+typedef enum
+{
+	/** Attribute indicating an NSS context */
+	KBASEP_JS_CTX_ATTR_NSS,
+
+	/** Attribute indicating a context that contains Compute jobs. That is,
+	 * @ref BASE_CONTEXT_HINT_COMPUTE is \b set and/or the context has jobs of type
+	 * @ref BASE_JD_REQ_ONLY_COMPUTE
+	 *
+	 * @note A context can be both 'Compute' and 'Non Compute' if it contains
+	 * both types of jobs.
+	 */
+	KBASEP_JS_CTX_ATTR_COMPUTE,
+
+	/** Attribute indicating a context that contains Non-Compute jobs. That is,
+	 * the context has some jobs that are \b not of type @ref
+	 * BASE_JD_REQ_ONLY_COMPUTE. The context usually has
+	 * BASE_CONTEXT_HINT_COMPUTE \b clear, but this depends on the HW
+	 * workarounds in use in the Job Scheduling Policy.
+	 *
+	 * @note A context can be both 'Compute' and 'Non Compute' if it contains
+	 * both types of jobs.
+	 */
+	KBASEP_JS_CTX_ATTR_NON_COMPUTE,
+
+	/** Must be the last in the enum */
+	KBASEP_JS_CTX_ATTR_COUNT
+} kbasep_js_ctx_attr;
+
 
 /**
  * Data used by the scheduler that is unique for each Address Space.
@@ -122,7 +201,7 @@ typedef struct kbasep_js_per_as_data
  * device. This context is global to the device, and is not tied to any
  * particular kbase_context running on the device.
  *
- * nr_contexts_running, nr_nss_ctxs_running, nr_permon_jobs_submitted and as_free are
+ * nr_contexts_running, nr_nss_ctxs_running and as_free are
  * optimized for packing together (by making them smaller types than u32). The
  * operations on them should rarely involve masking. The use of signed types for
  * arithmetic indicates to the compiler that the value will not rollover (which
@@ -163,10 +242,43 @@ typedef struct kbasep_js_device_data
 		 * kbasep_js_per_as_data to store this flag  */
 		u16 submit_allowed;
 
-		s8 nr_nss_ctxs_running;                 /**< Number of NSS contexts */
-		s8 nr_permon_jobs_submitted;			/**< Number of PERMON jobs submitted to hw */
+		/** Context Attributes:
+		 * Each is large enough to hold a refcount of the number of contexts
+		 * that can fit into the runpool. This is currently BASE_MAX_NR_AS
+		 *
+		 * Note that when BASE_MAX_NR_AS==16 we need 5 bits (not 4) to store
+		 * the refcount. Hence, it's not worthwhile reducing this to
+		 * bit-manipulation on u32s to save space (where in contrast, 4 bit
+		 * sub-fields would be easy to do and would save space).
+		 *
+		 * Whilst this must not become negative, the sign bit is used for:
+		 * - error detection in debug builds
+		 * - Optimization: it is undefined for a signed int to overflow, and so
+		 * the compiler can optimize for that never happening (thus, no masking
+		 * is required on updating the variable) */
+		s8 ctx_attr_ref_count[KBASEP_JS_CTX_ATTR_COUNT];
+
 		/** Data that is unique for each AS */
 		kbasep_js_per_as_data per_as_data[BASE_MAX_NR_AS];
+
+		/*
+		 * Affinity management and tracking
+		 */
+		/** Bitvector to aid affinity checking. Element 'n' bit 'i' indicates
+		 * that slot 'n' is using core i (i.e. slot_affinity_refcount[n][i] > 0) */
+		u64                     slot_affinities[BASE_JM_MAX_NR_SLOTS];
+		/** Bitvector indicating which slots \em might have atoms blocked on
+		 * them because otherwise they'd violate affinity restrictions */
+		u16                     slots_blocked_on_affinity;
+		/** Refcount for each core owned by each slot. Used to generate the
+		 * slot_affinities array of bitvectors
+		 *
+		 * The value of the refcount will not exceed BASE_JM_SUBMIT_SLOTS,
+		 * because it is refcounted only when a job is definitely about to be
+		 * submitted to a slot, and is de-refcounted immediately after a job
+		 * finishes */
+		s8                      slot_affinity_refcount[BASE_JM_MAX_NR_SLOTS][64];
+
 	} runpool_irq;
 
 	/**
@@ -188,7 +300,10 @@ typedef struct kbasep_js_device_data
 
 	u16 as_free;                            /**< Bitpattern of free Address Spaces */
 
-	s8 nr_contexts_running;                 /**< Number of currently scheduled contexts */
+	/** Number of currently scheduled user contexts (excluding ones that are not submitting jobs) */
+	s8 nr_user_contexts_running;
+	/** Number of currently scheduled contexts (including ones that are not submitting jobs) */
+	s8 nr_all_contexts_running;
 
 	/**
 	 * Policy-specific information.
@@ -218,13 +333,13 @@ typedef struct kbasep_js_device_data
 	int init_status;
 } kbasep_js_device_data;
 
+
 /**
  * @brief KBase Context Job Scheduling information structure
  *
  * This is a substructure in the kbase_context that encapsulates all the
  * scheduling information.
  */
-
 typedef struct kbasep_js_kctx_info
 {
 	/**
@@ -263,7 +378,10 @@ typedef struct kbasep_js_kctx_info
 		 * for such jobs*/
 		u32 nr_jobs;
 
-		u32 nr_nss_jobs;                        /**< Number of NSS jobs (BASE_JD_REQ_NSS bit set) */
+		/** Context Attributes:
+		 * Each is large enough to hold a refcount of the number of atoms on
+		 * the context. **/
+		u32 ctx_attr_ref_count[KBASEP_JS_CTX_ATTR_COUNT];
 
 		/**
 		 * Waitq that reflects whether the context is not scheduled on the run-pool.
@@ -282,7 +400,15 @@ typedef struct kbasep_js_kctx_info
 		 */
 		osk_waitq not_scheduled_waitq;
 
-		/* NOTE: Unify the flags together */
+		/**
+		 * Waitq that reflects whether the context is scheduled on the run-pool.
+		 * This is set when is_scheduled is true, and clear when is_scheduled
+		 * is false.
+		 */
+		osk_waitq scheduled_waitq;
+
+		kbase_context_flags     flags;
+		/* NOTE: Unify the following flags into kbase_context_flags */
 		/**
 		 * Is the context scheduled on the Run Pool?
 		 *

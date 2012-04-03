@@ -54,7 +54,6 @@ static INLINE int kbasep_jm_is_js_free(kbase_device *kbdev, int js, kbase_contex
  * - there is enough space in the GPU's buffers (JSn_NEXT and JSn_HEAD registers) to accomodate the job.
  * - there is enough space to track the job in a our Submit Slots. Note that we have to maintain space to
  *   requeue one job in case the next registers on the hardware need to be cleared.
- * - the slot is not blocked (due to PRLAM-5713 workaround)
  */
 static INLINE mali_bool kbasep_jm_is_submit_slots_free(kbase_device *kbdev, int js, kbase_context *kctx)
 {
@@ -67,14 +66,8 @@ static INLINE mali_bool kbasep_jm_is_submit_slots_free(kbase_device *kbdev, int 
 		return MALI_FALSE;
 	}
 
-#if BASE_HW_ISSUE_5713
-	return (mali_bool)( !kbdev->jm_slots[js].submission_blocked_for_soft_stop
-	                    && kbasep_jm_is_js_free(kbdev, js, kctx)
-	                    && kbdev->jm_slots[js].submitted_nr < (BASE_JM_SUBMIT_SLOTS-2) );
-#else
 	return (mali_bool)( kbasep_jm_is_js_free(kbdev, js, kctx)
 	                    && kbdev->jm_slots[js].submitted_nr < (BASE_JM_SUBMIT_SLOTS-2) );
-#endif
 }
 
 /**
@@ -84,9 +77,6 @@ static INLINE void kbasep_jm_init_submit_slot(  kbase_jm_slot *slot )
 {
 	slot->submitted_nr = 0;
 	slot->submitted_head = 0;
-#if BASE_HW_ISSUE_5713
-	slot->submission_blocked_for_soft_stop = MALI_FALSE;
-#endif
 }
 
 /**
@@ -225,11 +215,7 @@ void kbase_job_done_slot(kbase_device *kbdev, int s, u32 completion_code, u64 jo
  */
 static INLINE kbase_jm_slot *kbase_job_slot_lock(kbase_device *kbdev, int js)
 {
-#if BASE_HW_ISSUE_7347
-	osk_spinlock_irq_lock(&kbdev->jm_slot_lock);
-#else
 	osk_spinlock_irq_lock(&kbdev->jm_slots[js].lock);
-#endif
 	return &kbdev->jm_slots[js];
 }
 
@@ -241,11 +227,7 @@ static INLINE kbase_jm_slot *kbase_job_slot_lock(kbase_device *kbdev, int js)
  */
 static INLINE void kbase_job_slot_unlock(kbase_device *kbdev, int js)
 {
-#if BASE_HW_ISSUE_7347
-	osk_spinlock_irq_unlock(&kbdev->jm_slot_lock);
-#else
 	osk_spinlock_irq_unlock(&kbdev->jm_slots[js].lock);
-#endif
 }
 
 /** @} */ /* end group kbase_jm */

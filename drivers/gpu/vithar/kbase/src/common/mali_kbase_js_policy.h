@@ -460,6 +460,9 @@ void kbasep_js_policy_term_ctx( kbasep_js_policy *js_policy, kbase_context *kctx
  * priority context from the Run Pool to allow the high priority context to be
  * scheduled in.
  *
+ * If the context has the privileged flag set, it will always be kept at the 
+ * head of the queue.
+ *
  * The caller will be holding kbasep_js_kctx_info::ctx::jsctx_mutex.
  * The caller will be holding kbasep_js_device_data::queue_mutex.
  */
@@ -579,8 +582,17 @@ mali_bool kbasep_js_policy_should_remove_ctx( kbasep_js_policy *js_policy, kbase
 /**
  * @brief Indicate whether a new context has an higher priority than the current context.
  *
- * The locking conditions on the caller are as follows:
- * - it will be holding kbasep_js_device_data::runpool_mutex.
+ *
+ * The caller has the following conditions on locking:
+ * - kbasep_js_kctx_info::ctx::jsctx_mutex will be held for \a new_ctx
+ *
+ * This function must not sleep, because an IRQ spinlock might be held whilst
+ * this is called.
+ *
+ * @note There is nothing to stop the priority of \a current_ctx changing
+ * during or immediately after this function is called (because its jsctx_mutex
+ * cannot be held). Therefore, this function should only be seen as a heuristic
+ * guide as to whether \a new_ctx is higher priority than \a current_ctx
  */
 mali_bool kbasep_js_policy_ctx_has_priority( kbasep_js_policy *js_policy, kbase_context *current_ctx, kbase_context *new_ctx );
 
@@ -623,6 +635,9 @@ union kbasep_js_policy_job_info;
  * A job must only ever be initialized on the Policy once, and must be
  * terminated on the Policy on completion (whether or not that completion was
  * success/failure).
+ *
+ * The caller has the following conditions on locking:
+ * - kbasep_js_kctx_info::ctx::jsctx_mutex will be held.
  *
  * @return MALI_ERROR_NONE if initialization was correct.
  */

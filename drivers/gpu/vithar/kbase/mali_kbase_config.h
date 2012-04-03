@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010, 2012 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -85,6 +85,8 @@ enum
 	/**
 	 * Maximum of memory which can be allocated from the OS
 	 * to be used by the GPU (shared memory).
+	 * This must be greater than 0 as the GPU page tables
+	 * are currently stored in a shared memory allocation.
 	 *
 	 * Attached value: number in bytes
 	 * Default value: Limited by available memory
@@ -378,8 +380,50 @@ enum
 	 * Default value: @ref DEFAULT_JS_RESET_TIMEOUT_MS
 	 */
 	KBASE_CONFIG_ATTR_JS_RESET_TIMEOUT_MS,
-
 	/*** End Job Scheduling Configs ***/
+
+	/** Power management configuration
+	 *
+	 * Attached value: pointer to @ref kbase_pm_callback_conf
+	 * Default value: See @ref kbase_pm_callback_conf
+	 */
+	KBASE_CONFIG_ATTR_POWER_MANAGEMENT_CALLBACKS,
+
+	/**
+	 * Boolean indicating whether the driver is configured to be secure at
+	 * a potential loss of performance.
+	 *
+	 * This currently affects only r0p0-15dev0 HW and earlier.
+	 *
+	 * On r0p0-15dev0 HW and earlier, there are tradeoffs between security and
+	 * performance:
+	 *
+	 * - When this is set to MALI_TRUE, the driver remains fully secure,
+	 * but potentially loses performance compared with setting this to
+	 * MALI_FALSE.
+	 * - When set to MALI_FALSE, the driver is open to certain security
+	 * attacks.
+	 *
+	 * From r0p0-00rel0 and onwards, there is no security loss by setting
+	 * this to MALI_FALSE, and no performance loss by setting it to
+	 * MALI_TRUE.
+	 *
+	 * Attached value: mali_bool value
+	 * Default value: @ref DEFAULT_SECURE_BUT_LOSS_OF_PERFORMANCE
+	 */
+	KBASE_CONFIG_ATTR_SECURE_BUT_LOSS_OF_PERFORMANCE,
+
+	/**
+	 * A pointer to a function that calculates the CPU clock
+	 * speed of the platform in MHz - see
+	 * @ref kbase_cpuprops_clock_speed_function for the function
+	 * prototype.
+	 *
+	 * Attached value: A @ref kbase_cpuprops_clock_speed_function.
+	 * Default Value:  Pointer to @ref DEFAULT_CPU_SPEED_FUNC -
+	 *                 returns a clock speed of 100 MHz.
+	 */
+	KBASE_CONFIG_ATTR_CPU_SPEED_FUNC,
 
 	/**
 	 * End of attribute list indicator.
@@ -455,6 +499,46 @@ typedef struct kbase_memory_resource
 	struct kbase_attribute * attributes;
 	const char * name;
 } kbase_memory_resource;
+
+/* Forward declaration of kbase_device */
+struct kbase_device;
+
+/*
+ * @brief Specifies the callbacks for power management
+ *
+ * By default no callbacks will be made and the GPU must not be powered off.
+ */
+typedef struct kbase_pm_callback_conf
+{
+	/** Callback for when the GPU is idle and the power to it can be switched off.
+	 *
+	 * The system integrator can decide whether to either do nothing, just switch off
+	 * the clocks to the GPU, or to completely power down the GPU.
+	 */
+	void (*power_off_callback)(struct kbase_device *kbdev);
+
+	/** Callback for when the GPU is about to become active and power must be supplied.
+	 *
+	 * This function must not return until the GPU is powered and clocked sufficiently for register access to
+	 * succeed.  The return value specifies whether the GPU was powered down since the call to power_off_callback.
+	 * If the GPU state has been lost then this function must return 1, otherwise it should return 0.
+	 *
+	 * The return value of the first call to this function is ignored.
+	 *
+	 * @return 1 if the GPU state may have been lost, 0 otherwise.
+	 */
+	int (*power_on_callback)(struct kbase_device *kbdev);
+} kbase_pm_callback_conf;
+
+/**
+ * Type of the function pointer for KBASE_CONFIG_ATTR_CPU_SPEED_FUNC.
+ *
+ * @param clock_speed [out] Once called this will contain the current CPU clock speed in MHz.
+ *                          This is mainly used to implement OpenCL's clGetDeviceInfo().
+ * 
+ * @return 0 on success, 1 on error.
+ */
+typedef int (*kbase_cpuprops_clock_speed_function)(u32 *clock_speed);
 
 #if !MALI_LICENSE_IS_GPL || (defined(MALI_FAKE_PLATFORM_DEVICE) && MALI_FAKE_PLATFORM_DEVICE)
 /*
@@ -561,7 +645,7 @@ void kbasep_get_memory_performance(const kbase_memory_resource *resource,
  *
  * Function checks validity of given configuration attributes. It will fail on any attribute with unknown id, attribute
  * with invalid value or attribute list that is not correctly terminated. It will also fail if
- * KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MIN or KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX are not specified.
+ * KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MIN or KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX are not specified. 
  *
  * @param[in]  attributes  Array of attributes to validate
  *

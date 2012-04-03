@@ -27,6 +27,8 @@
 #include <kbase/src/common/mali_kbase_defs.h>
 
 
+#define KBASE_MMU_PAGE_ENTRIES 512
+
 /*
  * Definitions:
  * - PGD: Page Directory.
@@ -62,7 +64,7 @@ static void mmu_mask_reenable(kbase_device * kbdev, kbase_context *kctx, kbase_a
 	u32 mask;
 	osk_spinlock_irq_lock(&kbdev->mmu_mask_change);
 	mask = kbase_reg_read(kbdev, MMU_REG(MMU_IRQ_MASK), kctx);
-	mask |= ((1UL << as->number) | (1UL << (16 + as->number)));
+	mask |= ((1UL << as->number) | (1UL << (MMU_REGS_BUS_ERROR_FLAG(as->number))));
 	kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_MASK), mask, kctx);
 	osk_spinlock_irq_unlock(&kbdev->mmu_mask_change);
 }
@@ -98,7 +100,7 @@ static void page_fault_worker(osk_workq_work *data)
 		/* AS transaction begin */
 		osk_mutex_lock(&faulting_as->transaction_mutex);
 		reg = kbase_reg_read(kbdev, MMU_AS_REG(as_no, ASn_TRANSTAB_LO), NULL);
-		reg &= ~3;
+		reg = (reg & (~(u32)MMU_TRANSTAB_ADRMODE_MASK)) | ASn_TRANSTAB_ADRMODE_UNMAPPED;
 		kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_TRANSTAB_LO), reg, NULL);
 		kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_COMMAND), ASn_COMMAND_UPDATE, NULL);
 		kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_CLEAR), (1UL << as_no), NULL);
@@ -225,16 +227,16 @@ osk_phy_addr kbase_mmu_alloc_pgd(kbase_context *kctx)
 	page = osk_kmap(pgd);
 	if(NULL == page)
 	{
-		osk_phy_pages_free(&kctx->pgd_allocator, 1, &pgd);
+		kbase_phy_pages_free(kctx->kbdev, &kctx->pgd_allocator, 1, &pgd);
 		kbase_mem_usage_release_pages(&kctx->usage, 1);
 		return 0;
 	}
 
-	for (i = 0; i < 512; i++)
+	for (i = 0; i < KBASE_MMU_PAGE_ENTRIES; i++)
 		page[i] = ENTRY_IS_INVAL;
 
 	/* Clean the full page */
-	ksync_kern_vrange_gpu(pgd, page, 512 * sizeof(u64));
+	ksync_kern_vrange_gpu(pgd, page, KBASE_MMU_PAGE_ENTRIES * sizeof(u64));
 	osk_kunmap(pgd, page);
 	return pgd;
 }
@@ -339,11 +341,11 @@ static osk_phy_addr mmu_insert_pages_recover_get_next_pgd(struct kbase_context *
 
 	page = osk_kmap_atomic(pgd, OSK_KMAP_SLOT_0);
 	/* osk_kmap_atomic should NEVER fail */
-	OSK_ASSERT(!page);
+	OSK_ASSERT(NULL != page);
 
 	target_pgd = mmu_pte_to_phy_addr(page[vpfn]);
 	/* As we are recovering from what has already been set up, we should have a target_pgd */
-	OSK_ASSERT(!target_pgd);
+	OSK_ASSERT(0 != target_pgd);
 
 	osk_kunmap_atomic(pgd, page, OSK_KMAP_SLOT_0);
 	return target_pgd;
@@ -359,7 +361,7 @@ static osk_phy_addr mmu_insert_pages_recover_get_bottom_pgd(struct kbase_context
 	for (l = MIDGARD_MMU_TOPLEVEL; l < 3; l++) {
 		pgd = mmu_insert_pages_recover_get_next_pgd(kctx, pgd, vpfn, l);
 		/* Should never fail */
-		OSK_ASSERT(!pgd);
+		OSK_ASSERT(0 != pgd);
 	}
 
 	return pgd;
@@ -378,22 +380,21 @@ static void mmu_insert_pages_failure_recovery(struct kbase_context *kctx, u64 vp
 	while (nr) {
 		u32 i;
 		u32 index = vpfn & 0x1FF;
-		u32 count = 512 - index;
-
+		u32 count = KBASE_MMU_PAGE_ENTRIES - index;
+		
 		if (count > nr)
 		{
 			count = nr;
 		}
 
 		pgd = mmu_insert_pages_recover_get_bottom_pgd(kctx, vpfn);
-		OSK_ASSERT(!pgd);
+		OSK_ASSERT(0 != pgd);
 
 		pgd_page = osk_kmap_atomic(pgd, OSK_KMAP_SLOT_0);
-		OSK_ASSERT(!pgd_page);
+		OSK_ASSERT(NULL != pgd_page);
 
 		/* Invalidate the entries we added */
 		for (i = 0; i < count; i++) {
-			OSK_ASSERT(0 == (pgd_page[index + i] & 1UL));
 			pgd_page[index + i] = ENTRY_IS_INVAL;
 		}
 
@@ -411,11 +412,11 @@ static void mmu_insert_pages_failure_recovery(struct kbase_context *kctx, u64 vp
  * Map 'nr' pages pointed to by 'phys' at GPU PFN 'vpfn'
  */
 mali_error kbase_mmu_insert_pages(struct kbase_context *kctx, u64 vpfn,
-                                  osk_phy_addr *phys, u32 nr, u16 flags)
+                                  osk_phy_addr *phys, u32 nr, u32 flags)
 {
 	osk_phy_addr pgd;
 	u64 *pgd_page;
-	u64 mmu_flags;
+	u64 mmu_flags = 0;
 	/* In case the insert_pages only partially completes we need to be able to recover */
 	mali_bool recover_required = MALI_FALSE;
 	u64 recover_vpfn = vpfn;
@@ -427,8 +428,8 @@ mali_error kbase_mmu_insert_pages(struct kbase_context *kctx, u64 vpfn,
 	OSK_ASSERT( (flags & ~((1 << KBASE_REG_FLAGS_NR_BITS) - 1)) == 0 );
 	OSK_ASSERT( vpfn <= (UINT64_MAX / OSK_PAGE_SIZE) ); /* 64-bit address range is the max */
 
-	mmu_flags = ENTRY_RD_BIT; /* GPU read always given */
-	mmu_flags |= (flags & KBASE_REG_GPU_RW) ? ENTRY_WR_BIT : 0; /* write perm if requested */
+	mmu_flags |= (flags & KBASE_REG_GPU_WR) ? ENTRY_WR_BIT : 0; /* write perm if requested */
+	mmu_flags |= (flags & KBASE_REG_GPU_RD) ? ENTRY_RD_BIT : 0; /* read perm if requested */
 	mmu_flags |= (flags & KBASE_REG_GPU_NX) ? ENTRY_NX_BIT : 0; /* nx if requested */
 	
 	if (flags & KBASE_REG_SHARE_BOTH)
@@ -445,7 +446,7 @@ mali_error kbase_mmu_insert_pages(struct kbase_context *kctx, u64 vpfn,
 	while (nr) {
 		u32 i;
 		u32 index = vpfn & 0x1FF;
-		u32 count = 512 - index;
+		u32 count = KBASE_MMU_PAGE_ENTRIES - index;
 		
 		if (count > nr)
 			count = nr;
@@ -532,7 +533,7 @@ KBASE_EXPORT_TEST_API(kbase_mmu_insert_pages)
 	{
 		u32 i;
 		u32 index = vpfn & 0x1FF;
-		u32 count = 512 - index;
+		u32 count = KBASE_MMU_PAGE_ENTRIES - index;
 		if (count > nr)
 			count = nr;
 
@@ -592,7 +593,7 @@ KBASE_EXPORT_TEST_API(kbase_mmu_insert_pages)
 			kbase_reg_write(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_COMMAND), ASn_COMMAND_FLUSH, kctx);
 
 			/* wait for the flush to complete */
-			while (kbase_reg_read(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_STATUS), kctx) & 1);
+			while (kbase_reg_read(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_STATUS), kctx) & ASn_STATUS_FLUSH_ACTIVE);
 
 			osk_mutex_unlock(&kbdev->as[kctx->as_nr].transaction_mutex);
 			/* AS transaction end */
@@ -619,7 +620,7 @@ static void mmu_check_unused(kbase_context *kctx, osk_phy_addr pgd)
 	/* kmap_atomic should NEVER fail. */
 	OSK_ASSERT(NULL != page);
 
-	for (i = 0; i < 512; i++)
+	for (i = 0; i < KBASE_MMU_PAGE_ENTRIES; i++)
 	{
 		if (mmu_pte_is_valid(page[i]))
 		{
@@ -643,7 +644,7 @@ static void mmu_teardown_level(kbase_context *kctx, osk_phy_addr pgd, int level,
 	osk_kunmap_atomic(pgd, pgd_page, OSK_KMAP_SLOT_1);
 	pgd_page = pgd_page_buffer;
 
-	for (i = 0; i < 512; i++) {
+	for (i = 0; i < KBASE_MMU_PAGE_ENTRIES; i++) {
 		target_pgd = mmu_pte_to_phy_addr(pgd_page[i]);
 
 		if (target_pgd) {
@@ -711,7 +712,7 @@ static size_t kbasep_mmu_dump_level(kbase_context *kctx, osk_phy_addr pgd, int l
 	osk_phy_addr target_pgd;
 	u64 *pgd_page;
 	int i;
-	size_t size = 512*sizeof(u64)+sizeof(u64);
+	size_t size = KBASE_MMU_PAGE_ENTRIES*sizeof(u64)+sizeof(u64);
 	size_t dump_size;
 
 	pgd_page = osk_kmap(pgd);
@@ -731,13 +732,13 @@ static size_t kbasep_mmu_dump_level(kbase_context *kctx, osk_phy_addr pgd, int l
 		*buffer += sizeof(osk_phy_addr);
 
 		/* Followed by the page table itself */
-		memcpy(*buffer, pgd_page, sizeof(u64)*512);
-		*buffer += sizeof(u64)*512;
+		memcpy(*buffer, pgd_page, sizeof(u64)*KBASE_MMU_PAGE_ENTRIES);
+		*buffer += sizeof(u64)*KBASE_MMU_PAGE_ENTRIES;
 
 		*size_left -= size;
 	}
 	
-	for (i = 0; i < 512; i++) {
+	for (i = 0; i < KBASE_MMU_PAGE_ENTRIES; i++) {
 		if ((pgd_page[i] & ENTRY_IS_PTE) == ENTRY_IS_PTE) {
 			target_pgd = mmu_pte_to_phy_addr(pgd_page[i]);
 
@@ -809,9 +810,6 @@ static u64 lock_region(u64 pfn, u32 num_pages)
 	/* can't lock a zero sized range */
 	OSK_ASSERT(num_pages);
 
-#if BASE_HW_ISSUE_7660
-	region = KBASE_LOCK_REGION_MAX_SIZE;
-#else
 	region = pfn << OSK_PAGE_SHIFT;
 	/*
 	 * osk_clz returns (given the ASSERT above):
@@ -842,7 +840,6 @@ static u64 lock_region(u64 pfn, u32 num_pages)
 		OSK_ASSERT(region_width >= KBASE_LOCK_REGION_MIN_SIZE);
 		region |= region_width;
 	}
-#endif
 
 	return region;
 }
@@ -957,9 +954,9 @@ void kbase_mmu_interrupt(kbase_device * kbdev, u32 irq_stat)
 		if (kctx)
 		{
 			/* hw counters dumping in progress, signal the other thread that it failed */
-			if (kbdev->hwcnt_context == kctx && kbdev->hwcnt_in_progress == MALI_TRUE)
+			if ((kbdev->hwcnt.kctx == kctx) && (kbdev->hwcnt.state == KBASE_INSTR_STATE_DUMPING))
 			{
-				kbdev->hwcnt_in_progress = MALI_FALSE;
+				kbdev->hwcnt.state = KBASE_INSTR_STATE_FAULT;
 			}
 
 			/* Stop the kctx from submitting more jobs and cause it to be scheduled
@@ -1137,18 +1134,12 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 	OSK_PRINT_WARN(OSK_BASE_MMU, "source id 0x%X", source_id);
 
 	/* hardware counters dump fault handling */
-	if (kbdev->hwcnt_context && kbdev->hwcnt_context->as_nr == as_no && kbdev->hwcnt_in_progress == MALI_TRUE)
+	if ((kbdev->hwcnt.kctx) && 
+	    (kbdev->hwcnt.kctx->as_nr == as_no) && 
+		(kbdev->hwcnt.state == KBASE_INSTR_STATE_DUMPING))
 	{
-#if 0
-		PRLAM-5311 blocks any address checking
-		u32 num_core_groups = 1; /* See MIDBASE-701 */
-		if ((fault_addr >= kbdev->hwcnt_addr) && (fault_addr < (kbdev->hwcnt_addr + (num_core_groups * 2048))))
-		{
-#endif
-			kbdev->hwcnt_in_progress = MALI_FALSE;
-#if 0
-		}
-#endif
+		/* See MIDBASE-1631 */
+		kbdev->hwcnt.state = KBASE_INSTR_STATE_FAULT;
 	}
 
 	/* Stop the kctx from submitting more jobs and cause it to be scheduled
@@ -1202,12 +1193,16 @@ void kbasep_as_do_poke(osk_workq_work * work)
 	as = CONTAINER_OF(work, kbase_as, poke_work);
 	kbdev = CONTAINER_OF(as, kbase_device, as[as->number]);
 
+	kbase_pm_context_active(kbdev);
+
 	/* AS transaction begin */
 	osk_mutex_lock(&as->transaction_mutex);
 	/* Force a uTLB invalidate */
 	kbase_reg_write(kbdev, MMU_AS_REG(as->number, ASn_COMMAND), ASn_COMMAND_UNLOCK, NULL);
 	osk_mutex_unlock(&as->transaction_mutex);
 	/* AS transaction end */
+
+	kbase_pm_context_idle(kbdev);
 
 	if (osk_atomic_get(&as->poke_refcount))
 	{

@@ -13,12 +13,15 @@
 
 
 #include <linux/ioport.h>
+#include <linux/clk.h>
 #include <kbase/src/common/mali_kbase.h>
 #include <kbase/src/common/mali_kbase_defs.h>
 #include <kbase/src/linux/mali_kbase_config_linux.h>
+#include <kbase/src/platform/mali_kbase_runtime_pm.h>
 #include <ump/ump_common.h>
 #include <mach/map.h>
 
+#define HZ_IN_MHZ                           (1000000)
 
 static kbase_io_resources io_resources =
 {
@@ -32,11 +35,42 @@ static kbase_io_resources io_resources =
 	}
 };
 
+int get_cpu_clock_speed(u32* cpu_clock)
+{
+	struct clk * cpu_clk;
+	u32 freq=0;
+	cpu_clk = clk_get(NULL, "armclk");
+	if (IS_ERR(cpu_clk))
+		return 1;
+	freq = clk_get_rate(cpu_clk);
+	*cpu_clock = (freq/HZ_IN_MHZ);
+	return 0;
+}
+
+#ifdef CONFIG_VITHAR_RT_PM
+static int pm_callback_power_on(kbase_device *kbdev)
+{
+	/* Nothing is needed on VExpress, but we may have destroyed GPU state (if the below HARD_RESET code is active) */
+	struct kbase_os_device *osdev = &kbdev->osdev;
+	kbase_device_runtime_get_sync(osdev->dev);
+	return 1;
+}
+
+static void pm_callback_power_off(kbase_device *kbdev)
+{
+	struct kbase_os_device *osdev = &kbdev->osdev;
+	kbase_device_runtime_put_sync(osdev->dev);
+}
+
+
+static kbase_pm_callback_conf pm_callbacks =
+{
+	.power_on_callback = pm_callback_power_on,
+	.power_off_callback = pm_callback_power_off
+};
+#endif
+
 static kbase_attribute config_attributes[] = {
-	{
-		KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT,
-		1024 * 1024 * 1024UL /* 1024MB */
-	},
 	{
 		KBASE_CONFIG_ATTR_UMP_DEVICE,
 		UMP_DEVICE_Z_SHIFT
@@ -49,21 +83,30 @@ static kbase_attribute config_attributes[] = {
 
 	{
 		KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_PERF_GPU,
-		KBASE_MEM_PERF_SLOW
+		KBASE_MEM_PERF_FAST
 	},
-
+#ifdef CONFIG_VITHAR_RT_PM
+	{
+		KBASE_CONFIG_ATTR_POWER_MANAGEMENT_CALLBACKS,
+		(uintptr_t)&pm_callbacks
+	},
+#endif
 	{
 		KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX,
-		4000
+		533000
 	},
 
 	{
 		KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MIN,
-		1000
+		100000
 	},
 	{
 		KBASE_CONFIG_ATTR_JS_RESET_TIMEOUT_MS,
 		500 /* 500ms before cancelling stuck jobs */
+	},
+	{
+		KBASE_CONFIG_ATTR_CPU_SPEED_FUNC,
+		(uintptr_t)&get_cpu_clock_speed
 	},
 	{
 		KBASE_CONFIG_ATTR_END,

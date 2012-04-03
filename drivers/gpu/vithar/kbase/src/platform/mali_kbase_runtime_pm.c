@@ -43,32 +43,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/workqueue.h>
 
-/** Indicator to use suspended power off scheme.
- *
- * if SUSPENDED_OFF is defined, power gating to mali-t604 is RUNTIME_PM_RUNTIME_DELAY_TIME delayed.
- */
-#define SUSPENDED_OFF
 #define RUNTIME_PM_DELAY_TIME 10
-static void kbase_device_runtime_workqueue_callback(struct work_struct *work)
-{
-#ifdef SUSPENDED_OFF
-	struct kbase_device *kbdev;
-	kbdev = container_of(work, struct kbase_device, runtime_pm_workqueue.work);
-
-	kbase_pm_wait_for_power_down(kbdev);
-	kbase_platform_cmu_pmu_control(kbdev->osdev.dev, 0);
-#endif
-}
-
-void kbase_device_runtime_init_workqueue(struct device *dev)
-{
-#ifdef SUSPENDED_OFF
-	struct kbase_device *kbdev;
-	kbdev = dev_get_drvdata(dev);
-	INIT_DELAYED_WORK(&kbdev->runtime_pm_workqueue, kbase_device_runtime_workqueue_callback);
-	schedule_delayed_work(&kbdev->runtime_pm_workqueue, RUNTIME_PM_DELAY_TIME);
-#endif
-}
 
 /** Suspend callback from the OS.
  *
@@ -80,16 +55,7 @@ void kbase_device_runtime_init_workqueue(struct device *dev)
  */
 int kbase_device_runtime_suspend(struct device *dev)
 {
-#ifdef SUSPENDED_OFF
-	struct kbase_device *kbdev;
-	kbdev = dev_get_drvdata(dev);
-
-	cancel_delayed_work(&kbdev->runtime_pm_workqueue);
-	schedule_delayed_work(&kbdev->runtime_pm_workqueue, RUNTIME_PM_DELAY_TIME);
-	return 0;
-#else
 	return kbase_platform_cmu_pmu_control(dev, 0);
-#endif
 }
 
 /** Resume callback from the OS.
@@ -102,14 +68,6 @@ int kbase_device_runtime_suspend(struct device *dev)
  */
 int kbase_device_runtime_resume(struct device *dev)
 {
-#ifdef SUSPENDED_OFF
-	struct kbase_device *kbdev;
-	kbdev = dev_get_drvdata(dev);
-
-	if(work_pending(&kbdev->runtime_pm_workqueue.work)) {
-		cancel_delayed_work(&kbdev->runtime_pm_workqueue);
-	}
-#endif
 	return kbase_platform_cmu_pmu_control(dev, 1);
 }
 

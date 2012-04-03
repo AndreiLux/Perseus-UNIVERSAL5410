@@ -68,6 +68,8 @@ struct kbase_context *kbase_create_context(kbase_device *kbdev)
 
 	OSK_DLIST_INIT(&kctx->reg_list);
 
+	/* Use a new *Shared Memory* allocator for GPU page tables.
+	 * See MIDBASE-1534 for details. */
 	osk_err = osk_phy_allocator_init(&kctx->pgd_allocator, 0, 0, NULL);
 	if (OSK_ERR_NONE != osk_err)
 		goto free_region_lock;
@@ -82,21 +84,6 @@ struct kbase_context *kbase_create_context(kbase_device *kbdev)
 	
 	if (kbase_create_os_context(&kctx->osctx))
 		goto free_pgd;
-
-#if (BASE_HW_ISSUE_6787 && BASE_HW_ISSUE_6315)
-	osk_err = osk_phy_allocator_init(&kctx->nulljob_allocator, 0, 0, NULL);
-	if (OSK_ERR_NONE != osk_err)
-		goto free_context;
-	if (1 !=  osk_phy_pages_alloc(&kctx->nulljob_allocator, 1, &kctx->nulljob_pa))
-		goto free_nulljob_allocinit;
-	kctx->nulljob_va = osk_kmap(kctx->nulljob_pa);
-	if (NULL == kctx->nulljob_va)
-		goto free_nulljob_alloc;
-	/* NOTE: we use page 1 of the reserved address region */
-	mali_err = kbase_mmu_insert_pages(kctx, (u64)1, &kctx->nulljob_pa, 1, KBASE_REG_CPU_RW|KBASE_REG_GPU_RW);
-	if(MALI_ERROR_NONE != mali_err)
-		goto free_nulljob_kmap;
-#endif
 
 	/* Make sure page 0 is not used... */
 	pmem_reg = kbase_alloc_free_region(kctx, 1,
@@ -119,16 +106,6 @@ struct kbase_context *kbase_create_context(kbase_device *kbdev)
 	OSK_DLIST_PUSH_BACK(&kctx->reg_list, tmem_reg, struct kbase_va_region, link);
 
 	return kctx;
-#if (BASE_HW_ISSUE_6787 && BASE_HW_ISSUE_6315)
-free_nulljob_kmap:
-	osk_kunmap(kctx->nulljob_pa, kctx->nulljob_va);
-free_nulljob_alloc:
-	osk_phy_pages_free(&kctx->nulljob_allocator, 1, &kctx->nulljob_pa);
-free_nulljob_allocinit:
-	osk_phy_allocator_term(&kctx->nulljob_allocator);
-free_context:
-	kbase_destroy_os_context(&kctx->osctx);
-#endif /* (BASE_HW_ISSUE_6787 && BASE_HW_ISSUE_6315) */
 free_pgd:
 	kbase_mmu_free_pgd(kctx);
 free_mmu:
@@ -151,7 +128,7 @@ out:
 	return NULL;
 	
 }
-KBASE_EXPORT_TEST_API(kbase_create_context)
+KBASE_EXPORT_SYMBOL(kbase_create_context)
 
 /**
  * @brief Destroy a kernel base context.
@@ -173,17 +150,14 @@ void kbase_destroy_context(struct kbase_context *kctx)
 	/* Ensure the core is powered up for the destroy process */
 	kbase_pm_context_active(kbdev);
 
-	if(kbdev->hwcnt_context == kctx)
+	if(kbdev->hwcnt.kctx == kctx)
 	{
 		/* disable the use of the hw counters if the app didn't use the API correctly or crashed */
-		kbase_uk_hwcnt_setup tmp;
-
 		KBASE_TRACE_ADD( kbdev, CORE_CTX_HWINSTR_TERM, kctx, NULL, 0u, 0u );
 		OSK_PRINT_WARN(OSK_BASE_CTX,
 					   "The privileged process asking for instrumentation forgot to disable it "
 					   "before exiting. Will end instrumentation for them" );
-		tmp.dump_buffer = 0ull;
-		kbase_instr_hwcnt_setup(kctx, &tmp);
+		kbase_instr_hwcnt_disable(kctx);
 	}
 
 	kbase_jd_zap_context(kctx);
@@ -206,44 +180,63 @@ void kbase_destroy_context(struct kbase_context *kctx)
 	osk_mutex_term(&kctx->reg_lock);
 
 	kbase_pm_context_idle(kbdev);
-#if (BASE_HW_ISSUE_6787 && BASE_HW_ISSUE_6315)
-	osk_kunmap(kctx->nulljob_pa, kctx->nulljob_va);
-	osk_phy_pages_free(&kctx->nulljob_allocator, 1, &kctx->nulljob_pa);
-	osk_phy_allocator_term(&kctx->nulljob_allocator);
-#endif /* (BASE_HW_ISSUE_6787 && BASE_HW_ISSUE_6315) */
 
 	kbase_mmu_term(kctx);
 
 	kbase_mem_usage_term(&kctx->usage);
 	osk_free(kctx);
 }
+KBASE_EXPORT_SYMBOL(kbase_destroy_context)
 
-mali_error kbase_instr_hwcnt_clear(kbase_context * kctx)
+/**
+ * Set creation flags on a context
+ */
+mali_error kbase_context_set_create_flags(kbase_context *kctx, u32 flags)
 {
-	mali_error err = MALI_ERROR_FUNCTION_FAILED;
-	kbase_device *kbdev;
-
+	mali_error err = MALI_ERROR_NONE;
+	kbasep_js_kctx_info *js_kctx_info;
 	OSK_ASSERT(NULL != kctx);
 
-	kbdev = kctx->kbdev;
-	OSK_ASSERT(NULL != kbdev);
+	js_kctx_info = &kctx->jctx.sched_info;
 
-	osk_spinlock_lock(&kbdev->hwcnt_lock);
-
-	/* Check it's the context previously set up and we're not already dumping */
-	if (kbdev->hwcnt_context != kctx ||
-	    MALI_TRUE == kbdev->hwcnt_in_progress)
+	/* Validate flags */
+	if ( flags != (flags & BASE_CONTEXT_CREATE_KERNEL_FLAGS) )
 	{
+		err = MALI_ERROR_FUNCTION_FAILED;
 		goto out;
 	}
 
-	/* Clear the counters */
-	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), GPU_COMMAND_PRFCNT_CLEAR, kctx);
+	osk_mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
 
-	err = MALI_ERROR_NONE;
+	/* Ensure this is the first call */
+	if ( (js_kctx_info->ctx.flags & KBASE_CTX_FLAG_CREATE_FLAGS_SET) != 0 )
+	{
+		OSK_PRINT_ERROR(OSK_BASE_CTX, "User attempted to set context creation flags more than once - not allowed");
+		err = MALI_ERROR_FUNCTION_FAILED;
+		goto out_unlock;
+	}
 
+	js_kctx_info->ctx.flags |= KBASE_CTX_FLAG_CREATE_FLAGS_SET;
+
+	/* Translate the flags */
+	if ( (flags & BASE_CONTEXT_SYSTEM_MONITOR_SUBMIT_DISABLED) == 0 )
+	{
+		/* This flag remains set until it is explicitly cleared */
+		js_kctx_info->ctx.flags &= ~((u32)KBASE_CTX_FLAG_SUBMIT_DISABLED);
+	}
+
+	if ( (flags & BASE_CONTEXT_HINT_ONLY_COMPUTE) != 0 )
+	{
+		js_kctx_info->ctx.flags |= (u32)KBASE_CTX_FLAG_HINT_ONLY_COMPUTE;
+	}
+
+	/* Latch the initial attributes into the Job Scheduler */
+	kbasep_js_ctx_attr_set_initial_attrs( kctx->kbdev, kctx );
+
+
+out_unlock:
+	osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 out:
-	osk_spinlock_unlock(&kbdev->hwcnt_lock);
 	return err;
 }
-
+KBASE_EXPORT_SYMBOL(kbase_context_set_create_flags)

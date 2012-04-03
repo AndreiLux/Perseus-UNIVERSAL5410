@@ -13,7 +13,6 @@
 
 
 /* module headers */
-#include <malisw/mali_stdtypes.h>
 #include <ump/ump_kernel_interface.h>
 #include <ump/src/ump_ioctl.h>
 
@@ -134,8 +133,13 @@ ump_dd_handle ump_dd_allocate_64(uint64_t size, ump_alloc_flags flags, ump_dd_se
 	alloc->callback_data = callback_data;
 	alloc->size = size;
 
+	mutex_init(&alloc->map_list_lock);
 	INIT_LIST_HEAD(&alloc->map_list);
 	atomic_set(&alloc->refcount, 1);
+
+#ifdef CONFIG_KDS
+	kds_resource_init(&alloc->kds_res);
+#endif
 
 	if (!(alloc->flags & UMP_PROT_SHAREABLE))
 	{
@@ -192,7 +196,7 @@ unsigned long ump_dd_size_get(ump_dd_handle mem)
 	alloc = (umpp_allocation*)mem;
 
 	UMP_ASSERT(alloc->flags & UMP_CONSTRAINT_32BIT_ADDRESSABLE);
-	UMP_ASSERT(alloc->size <= UINT32_MAX);
+	UMP_ASSERT(alloc->size <= UMP_UINT32_MAX);
 
 	return (unsigned long)alloc->size;
 }
@@ -207,6 +211,19 @@ ump_secure_id ump_dd_secure_id_get(const ump_dd_handle mem)
 
 	return alloc->id;
 }
+
+#ifdef CONFIG_KDS
+struct kds_resource * ump_dd_kds_resource_get(const ump_dd_handle mem)
+{
+	umpp_allocation * alloc;
+
+	UMP_ASSERT(mem);
+
+	alloc = (umpp_allocation*)mem;
+
+	return &alloc->kds_res;
+}
+#endif
 
 ump_alloc_flags ump_dd_allocation_flags_get(const ump_dd_handle mem)
 {
@@ -328,6 +345,8 @@ void ump_dd_release(ump_dd_handle mem)
 		return;
 	}
 
+	UMP_ASSERT(list_empty(&alloc->map_list));
+
 	/* cleanup */
 	if (NULL != alloc->final_release_func)
 	{
@@ -338,6 +357,12 @@ void ump_dd_release(ump_dd_handle mem)
 	{
 		umpp_phys_free(alloc);
 	}
+
+#ifdef CONFIG_KDS
+	kds_resource_term(&alloc->kds_res);
+#endif
+
+	mutex_destroy(&alloc->map_list_lock);
 
 	kfree(alloc);
 }
@@ -383,8 +408,8 @@ ump_dd_status_code ump_dd_phys_blocks_get(ump_dd_handle mem, ump_dd_physical_blo
 
 	for( i = 0; i < num_blocks; i++)
 	{
-		UMP_ASSERT(alloc->block_array[i].addr <= UINT32_MAX);
-		UMP_ASSERT(alloc->block_array[i].size <= UINT32_MAX);
+		UMP_ASSERT(alloc->block_array[i].addr <= UMP_UINT32_MAX);
+		UMP_ASSERT(alloc->block_array[i].size <= UMP_UINT32_MAX);
 
 		blocks[i].addr = (unsigned long)alloc->block_array[i].addr;
 		blocks[i].size = (unsigned long)alloc->block_array[i].size;
@@ -404,8 +429,8 @@ ump_dd_status_code ump_dd_phys_block_get(ump_dd_handle mem, unsigned long index,
 
 	UMP_ASSERT(alloc->flags & UMP_CONSTRAINT_32BIT_ADDRESSABLE);
 
-	UMP_ASSERT(alloc->block_array[index].addr <= UINT32_MAX);
-	UMP_ASSERT(alloc->block_array[index].size <= UINT32_MAX);
+	UMP_ASSERT(alloc->block_array[index].addr <= UMP_UINT32_MAX);
+	UMP_ASSERT(alloc->block_array[index].size <= UMP_UINT32_MAX);
 
 	block->addr = (unsigned long)alloc->block_array[index].addr;
 	block->size = (unsigned long)alloc->block_array[index].size;
@@ -423,7 +448,7 @@ unsigned long ump_dd_phys_block_count_get(ump_dd_handle mem)
 	alloc = (const umpp_allocation *)mem;
 
 	UMP_ASSERT(alloc->flags & UMP_CONSTRAINT_32BIT_ADDRESSABLE);
-	UMP_ASSERT(alloc->blocksCount <= UINT32_MAX);
+	UMP_ASSERT(alloc->blocksCount <= UMP_UINT32_MAX);
 
 	return (unsigned long)alloc->blocksCount;
 }
@@ -440,32 +465,46 @@ umpp_cpu_mapping * umpp_dd_find_enclosing_mapping(umpp_allocation * alloc, void 
 		return NULL;
 	}
 
+	mutex_lock(&alloc->map_list_lock);
 	list_for_each_entry(map, &alloc->map_list, link)
 	{
 		if ( map->vaddr_start <= target_first &&
 		   (void*)((uintptr_t)map->vaddr_start + (map->nr_pages << PAGE_SHIFT) - 1) >= target_last)
 		{
-			return map;
+			goto out;
 		}
 	}
-	return NULL;
+	map = NULL;
+out:
+	mutex_unlock(&alloc->map_list_lock);
+
+	return map;
 }
 
 void umpp_dd_add_cpu_mapping(umpp_allocation * alloc, umpp_cpu_mapping * map)
 {
+	UMP_ASSERT(alloc);
+	UMP_ASSERT(map);
+	mutex_lock(&alloc->map_list_lock);
 	list_add(&map->link, &alloc->map_list);
+	mutex_unlock(&alloc->map_list_lock);
 }
 
 void umpp_dd_remove_cpu_mapping(umpp_allocation * alloc, umpp_cpu_mapping * target)
 {
 	umpp_cpu_mapping * map;
 
+	UMP_ASSERT(alloc);
+	UMP_ASSERT(target);
+
+	mutex_lock(&alloc->map_list_lock);
 	list_for_each_entry(map, &alloc->map_list, link)
 	{
 		if (map == target)
 		{
 			list_del(&target->link);
 			kfree(target);
+			mutex_unlock(&alloc->map_list_lock);
 			return;
 		}
 	}
@@ -624,6 +663,9 @@ UMP_KERNEL_API_EXPORT ump_dd_handle ump_dd_create_from_phys_blocks_64(const ump_
 
 	memcpy(alloc->block_array, blocks, sizeof(ump_dd_physical_block_64) * num_blocks);
 
+#ifdef CONFIG_KDS
+	kds_resource_init(&alloc->kds_res);
+#endif
 	alloc->size = size;
 	alloc->blocksCount = num_blocks;
 	alloc->flags = flags;
@@ -636,7 +678,7 @@ UMP_KERNEL_API_EXPORT ump_dd_handle ump_dd_create_from_phys_blocks_64(const ump_
 		alloc->owner = get_current()->pid;
 	}
 
-
+	mutex_init(&alloc->map_list_lock);
 	INIT_LIST_HEAD(&alloc->map_list);
 	atomic_set(&alloc->refcount, 1);
 

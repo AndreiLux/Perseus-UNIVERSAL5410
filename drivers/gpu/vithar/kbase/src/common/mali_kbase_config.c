@@ -14,13 +14,14 @@
 
 #include <kbase/src/common/mali_kbase.h>
 #include <kbase/src/common/mali_kbase_defs.h>
+#include <kbase/src/common/mali_kbase_cpuprops.h>
 #include <osk/mali_osk.h>
 #include <ump/ump_common.h>
 
 /* Specifies how many attributes are permitted in the config (excluding terminating attribute).
  * This is used in validation function so we can detect if configuration is properly terminated. This value can be
  * changed if we need to introduce more attributes or many memory regions need to be defined */
-#define ATTRIBUTE_COUNT_MAX 16
+#define ATTRIBUTE_COUNT_MAX 32
 
 /* right now we allow only 2 memory attributes (excluding termination attribute) */
 #define MEMORY_ATTRIBUTE_COUNT_MAX 2
@@ -51,7 +52,11 @@
  * Default minimum number of scheduling ticks before Soft-Stoppable
  * (BASE_JD_REQ_NSS bit clear) jobs are hard-stopped
  */
+#if BASE_HW_ISSUE_8408 != 0
+#define DEFAULT_JS_HARD_STOP_TICKS_SS 12 /* 1.2s before hard-stop, for a certain GLES2 test at 128x128 (bound by combined vertex+tiler job) */
+#else
 #define DEFAULT_JS_HARD_STOP_TICKS_SS 2 /* Between 0.2 and 0.3s before hard-stop */
+#endif
 
 /**
  * Default minimum number of scheduling ticks before Non-Soft-Stoppable
@@ -63,7 +68,11 @@
  * Default minimum number of scheduling ticks before the GPU is reset
  * to clear a "stuck" Soft-Stoppable job
  */
+#if BASE_HW_ISSUE_8408 != 0
+#define DEFAULT_JS_RESET_TICKS_SS 18 /* 1.8s before resetting GPU, for a certain GLES2 test at 128x128 (bound by combined vertex+tiler job) */
+#else
 #define DEFAULT_JS_RESET_TICKS_SS 3 /* 0.3-0.4s before GPU is reset */
+#endif
 
 /**
  * Default minimum number of scheduling ticks before the GPU is reset
@@ -104,8 +113,20 @@
  */
 #define DEFAULT_JS_CFS_CTX_RUNTIME_MIN_SLICES 2
 
+/**
+ * Default setting for whether to prefer security or performance.
+ *
+ * Currently affects only r0p0-15dev0 HW and earlier.
+ */
+#define DEFAULT_SECURE_BUT_LOSS_OF_PERFORMANCE MALI_FALSE
+
 /*** End Scheduling defaults ***/
 
+/**
+ * Default value for KBASE_CONFIG_ATTR_CPU_SPEED_FUNC.
+ * Points to @ref kbase_cpuprops_get_default_clock_speed.
+ */
+#define DEFAULT_CPU_SPEED_FUNC ((uintptr_t)kbase_cpuprops_get_default_clock_speed)
 
 #if (!defined(MALI_KBASE_USERSPACE) || !MALI_KBASE_USERSPACE) && (!MALI_LICENSE_IS_GPL || MALI_FAKE_PLATFORM_DEVICE)
 
@@ -230,9 +251,15 @@ uintptr_t kbasep_get_config_value(const kbase_attribute *attributes, int attribu
 		case KBASE_CONFIG_ATTR_JS_RESET_TIMEOUT_MS:
 			return     DEFAULT_JS_RESET_TIMEOUT_MS;
 		/* End scheduling defaults */
+		case KBASE_CONFIG_ATTR_POWER_MANAGEMENT_CALLBACKS:
+			return 0;
+		case  KBASE_CONFIG_ATTR_SECURE_BUT_LOSS_OF_PERFORMANCE:
+			return DEFAULT_SECURE_BUT_LOSS_OF_PERFORMANCE;
+		case KBASE_CONFIG_ATTR_CPU_SPEED_FUNC:
+			return     DEFAULT_CPU_SPEED_FUNC;
 		default:
 			OSK_PRINT_ERROR(OSK_BASE_CORE,
-			    "kbasep_get_config_value. Cannot get value of attribute with id=%i and no default value defined",
+			    "kbasep_get_config_value. Cannot get value of attribute with id=%d and no default value defined",
 			    attribute_id);
 			return 0;
 	}
@@ -324,7 +351,7 @@ static mali_bool kbasep_validate_memory_resource(const kbase_memory_resource *me
 		{
 			if (i >= MEMORY_ATTRIBUTE_COUNT_MAX)
 			{
-				OSK_PRINT_WARN(OSK_BASE_CORE, "More than MEMORY_ATTRIBUTE_COUNT_MAX=%i configuration attributes defined. Is memory attribute list properly terminated?",
+				OSK_PRINT_WARN(OSK_BASE_CORE, "More than MEMORY_ATTRIBUTE_COUNT_MAX=%d configuration attributes defined. Is memory attribute list properly terminated?",
 						MEMORY_ATTRIBUTE_COUNT_MAX);
 				return MALI_FALSE;
 			}
@@ -334,7 +361,7 @@ static mali_bool kbasep_validate_memory_resource(const kbase_memory_resource *me
 					if (MALI_TRUE != kbasep_validate_memory_performance(
 							(kbase_memory_performance)memory_resource->attributes[i].data))
 					{
-						OSK_PRINT_WARN(OSK_BASE_CORE, "CPU performance of \"%s\" region is invalid: %i",
+						OSK_PRINT_WARN(OSK_BASE_CORE, "CPU performance of \"%s\" region is invalid: %d",
 								memory_resource->name, (kbase_memory_performance)memory_resource->attributes[i].data);
 						return MALI_FALSE;
 					}
@@ -344,13 +371,13 @@ static mali_bool kbasep_validate_memory_resource(const kbase_memory_resource *me
 					if (MALI_TRUE != kbasep_validate_memory_performance(
 											(kbase_memory_performance)memory_resource->attributes[i].data))
 					{
-						OSK_PRINT_WARN(OSK_BASE_CORE, "GPU performance of \"%s\" region is invalid: %i",
+						OSK_PRINT_WARN(OSK_BASE_CORE, "GPU performance of \"%s\" region is invalid: %d",
 								memory_resource->name, (kbase_memory_performance)memory_resource->attributes[i].data);
 							return MALI_FALSE;
 					}
 					break;
 				default:
-					OSK_PRINT_WARN(OSK_BASE_CORE, "Invalid memory attribute found in \"%s\" memory region: %i",
+					OSK_PRINT_WARN(OSK_BASE_CORE, "Invalid memory attribute found in \"%s\" memory region: %d",
 							memory_resource->name, memory_resource->attributes[i].id);
 					return MALI_FALSE;
 			}
@@ -379,6 +406,27 @@ static mali_bool kbasep_validate_gpu_clock_freq(const kbase_attribute *attribute
 	return MALI_TRUE;
 }
 
+static mali_bool kbasep_validate_pm_callback(const kbase_pm_callback_conf *callbacks)
+{
+	if (callbacks == NULL)
+	{
+		/* Having no callbacks is valid */
+		return MALI_TRUE;
+	}
+	if ((callbacks->power_off_callback != NULL && callbacks->power_on_callback == NULL) ||
+	    (callbacks->power_off_callback == NULL && callbacks->power_on_callback != NULL))
+	{
+		OSK_PRINT_WARN(OSK_BASE_CORE, "Invalid power management callbacks: Only one of power_off_callback and power_on_callback was specified");
+		return MALI_FALSE;
+	}
+	return MALI_TRUE;
+}
+
+static mali_bool kbasep_validate_cpu_speed_func(kbase_cpuprops_clock_speed_function fcn)
+{
+	return fcn != NULL;
+}
+
 mali_bool kbasep_validate_configuration_attributes(const kbase_attribute *attributes)
 {
 	int i;
@@ -390,7 +438,7 @@ mali_bool kbasep_validate_configuration_attributes(const kbase_attribute *attrib
 	{
 		if (i >= ATTRIBUTE_COUNT_MAX)
 		{
-			OSK_PRINT_WARN(OSK_BASE_CORE, "More than ATTRIBUTE_COUNT_MAX=%i configuration attributes defined. Is attribute list properly terminated?",
+			OSK_PRINT_WARN(OSK_BASE_CORE, "More than ATTRIBUTE_COUNT_MAX=%d configuration attributes defined. Is attribute list properly terminated?",
 					ATTRIBUTE_COUNT_MAX);
 			return MALI_FALSE;
 		}
@@ -404,14 +452,20 @@ mali_bool kbasep_validate_configuration_attributes(const kbase_attribute *attrib
 					return MALI_FALSE;
 				}
 				break;
+
 			case KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_MAX:
-				/* any value is allowed */
+				/* Some shared memory is required for GPU page tables, see MIDBASE-1534 */
+				if ( 0 == attributes[i].data )
+				{
+					OSK_PRINT_WARN(OSK_BASE_CORE, "Maximum OS Shared Memory Maximum is set to 0 which is not supported");
+					return MALI_FALSE;
+				}
 				break;
 
 			case KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_PERF_GPU:
 				if (MALI_FALSE == kbasep_validate_memory_performance((kbase_memory_performance)attributes[i].data))
 				{
-					OSK_PRINT_WARN(OSK_BASE_CORE, "Shared OS memory GPU performance attribute has invalid value: %i",
+					OSK_PRINT_WARN(OSK_BASE_CORE, "Shared OS memory GPU performance attribute has invalid value: %d",
 							(kbase_memory_performance)attributes[i].data);
 					return MALI_FALSE;
 				}
@@ -424,13 +478,13 @@ mali_bool kbasep_validate_configuration_attributes(const kbase_attribute *attrib
 			case KBASE_CONFIG_ATTR_UMP_DEVICE:
 				if (MALI_FALSE == kbasep_validate_ump_device(attributes[i].data))
 				{
-					OSK_PRINT_WARN(OSK_BASE_CORE, "Unknown UMP device found in configuration: %i",
+					OSK_PRINT_WARN(OSK_BASE_CORE, "Unknown UMP device found in configuration: %d",
 							(int)attributes[i].data);
 					return MALI_FALSE;
 				}
 				break;
 
-		    case KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MIN:
+			case KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MIN:
 				had_gpu_freq_min = MALI_TRUE;
 				if (MALI_FALSE == kbasep_validate_gpu_clock_freq(attributes))
 				{
@@ -439,7 +493,7 @@ mali_bool kbasep_validate_configuration_attributes(const kbase_attribute *attrib
 				}
 				break;
 
-		    case KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX:
+			case KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX:
 				had_gpu_freq_max = MALI_TRUE;
 				if (MALI_FALSE == kbasep_validate_gpu_clock_freq(attributes))
 				{
@@ -457,7 +511,7 @@ mali_bool kbasep_validate_configuration_attributes(const kbase_attribute *attrib
 				#endif
 						{
 							OSK_PRINT_WARN(OSK_BASE_CORE, "Invalid Job Scheduling Configuration attribute for "
-										   "KBASE_CONFIG_ATTR_JS_SCHEDULING_TICKS_NS: %i",
+										   "KBASE_CONFIG_ATTR_JS_SCHEDULING_TICKS_NS: %d",
 										   (int)attributes[i].data);
 							return MALI_FALSE;
 						}
@@ -473,19 +527,58 @@ mali_bool kbasep_validate_configuration_attributes(const kbase_attribute *attrib
 			case KBASE_CONFIG_ATTR_JS_CTX_TIMESLICE_NS:
 			case KBASE_CONFIG_ATTR_JS_CFS_CTX_RUNTIME_INIT_SLICES:
 			case KBASE_CONFIG_ATTR_JS_CFS_CTX_RUNTIME_MIN_SLICES:
-				#if	CSTD_CPU_64BIT
+				#if CSTD_CPU_64BIT
 					if ( (u64)attributes[i].data > (u64)U32_MAX )
 					{
 						OSK_PRINT_WARN(OSK_BASE_CORE, "Job Scheduling Configuration attribute exceeds 32-bits: "
-									   "id==%d val==%i",
+									   "id==%d val==%d",
 									   attributes[i].id, (int)attributes[i].data);
 						return MALI_FALSE;
 					}
 				#endif
 				break;
 
+			case KBASE_CONFIG_ATTR_GPU_IRQ_THROTTLE_TIME_US:
+				#if CSTD_CPU_64BIT
+					if ( (u64)attributes[i].data > (u64)U32_MAX )
+					{
+						OSK_PRINT_WARN(OSK_BASE_CORE, "IRQ throttle time attribute exceeds 32-bits: "
+						               "id==%d val==%d",
+						               attributes[i].id, (int)attributes[i].data);
+						return MALI_FALSE;
+					}
+				#endif
+				break;
+
+			case KBASE_CONFIG_ATTR_POWER_MANAGEMENT_CALLBACKS:
+				if (MALI_FALSE == kbasep_validate_pm_callback((kbase_pm_callback_conf*)attributes[i].data))
+				{
+					/* Warning message handled by kbasep_validate_pm_callback() */
+					return MALI_FALSE;
+				}
+				break;
+
+			case KBASE_CONFIG_ATTR_SECURE_BUT_LOSS_OF_PERFORMANCE:
+				if ( attributes[i].data != MALI_TRUE && attributes[i].data != MALI_FALSE  )
+				{
+					OSK_PRINT_WARN(OSK_BASE_CORE,
+								   "Value for KBASE_CONFIG_ATTR_SECURE_BUT_LOSS_OF_PERFORMANCE was not "
+								   "MALI_TRUE or MALI_FALSE: %u",
+								   (unsigned int)attributes[i].data);
+					return MALI_FALSE;
+				}
+				break;
+
+			case KBASE_CONFIG_ATTR_CPU_SPEED_FUNC:
+				if (MALI_FALSE == kbasep_validate_cpu_speed_func((kbase_cpuprops_clock_speed_function)attributes[i].data))
+				{
+					OSK_PRINT_WARN(OSK_BASE_CORE, "Invalid function pointer in KBASE_CONFIG_ATTR_CPU_SPEED_FUNC");
+					return MALI_FALSE;
+				}
+				break;
+
 			default:
-				OSK_PRINT_WARN(OSK_BASE_CORE, "Invalid attribute found in configuration: %i", attributes[i].id);
+				OSK_PRINT_WARN(OSK_BASE_CORE, "Invalid attribute found in configuration: %d", attributes[i].id);
 				return MALI_FALSE;
 		}
 	}

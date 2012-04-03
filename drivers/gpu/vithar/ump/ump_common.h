@@ -32,6 +32,21 @@ extern "C"
 #include <stdint.h>
 #endif
 
+#define UMP_UINT32_MAX (4294967295U)
+#define UMP_UINT64_MAX (18446744073709551615ULL)
+
+#ifdef __GNUC__
+	#define CHECK_RESULT        __attribute__((__warn_unused_result__))
+	#define INLINE	__inline__
+#else
+	#define CHECK_RESULT
+	#define INLINE __inline
+#endif
+
+#ifndef STATIC
+	#define STATIC static
+#endif
+
 /**
  * Values to identify major and minor version of UMP
  */
@@ -180,7 +195,7 @@ enum
 
 };
 
-typedef u32 ump_cpu_msync_op;
+typedef uint32_t ump_cpu_msync_op;
 
 /**
  * Memory import types supported.

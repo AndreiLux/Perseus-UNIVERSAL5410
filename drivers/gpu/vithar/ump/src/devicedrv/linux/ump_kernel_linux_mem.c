@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2008-2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2008-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -36,13 +36,12 @@ static void umpp_vm_close(struct vm_area_struct *vma)
 	ump_dd_handle handle;
 
 	mapping = (umpp_cpu_mapping*)vma->vm_private_data;
+	UMP_ASSERT(mapping);
+	
 	session = mapping->session;
 	handle = mapping->handle;
 
-	mutex_lock(&session->session_lock);
 	umpp_dd_remove_cpu_mapping(mapping->handle, mapping); /* will free the mapping object */
-	mutex_unlock(&session->session_lock);
-
 	ump_dd_release(handle);
 }
 
@@ -223,9 +222,7 @@ int umpp_linux_mmap(struct file * filp, struct vm_area_struct * vma)
 		map->handle = h;
 		map->session = session;
 
-		mutex_lock(&session->session_lock);
 		umpp_dd_add_cpu_mapping(h, map);
-		mutex_unlock(&session->session_lock);
 
 		return 0;
 

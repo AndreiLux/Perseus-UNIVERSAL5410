@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2008-2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2008-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -25,8 +25,16 @@
 
 #include "mali_kbase_gpuprops_types.h"
 
-#define BASE_UK_VERSION_MAJOR 0
-#define BASE_UK_VERSION_MINOR 1
+#define BASE_UK_VERSION_MAJOR 1
+#define BASE_UK_VERSION_MINOR 0
+
+/** 32/64-bit neutral way to represent pointers */
+typedef union kbase_pointer
+{
+	void * value;     /**< client should store their pointers here */
+	u32 compat_value; /**< 64-bit kernels should fetch value here when handling 32-bit clients */
+	u64 sizer;        /**< Force 64-bit storage for all clients regardless */
+} kbase_pointer;
 
 typedef struct kbase_uk_tmem_alloc
 {
@@ -41,15 +49,17 @@ typedef struct kbase_uk_tmem_alloc
 	mali_addr64 gpu_addr;
 } kbase_uk_tmem_alloc;
 
-typedef struct kbase_uk_tmem_from_ump
+typedef struct kbase_uk_tmem_import
 {
-	uk_header   header;
+	uk_header             header;
 	/* IN */
-	ump_secure_id id;
+	kbase_pointer         phandle;
+	base_tmem_import_type type;
+	u32                   padding;
 	/* OUT */
-	mali_addr64 gpu_addr;
-	u64 pages;
-} kbase_uk_tmem_from_ump;
+	mali_addr64           gpu_addr;
+	u64                   pages;
+} kbase_uk_tmem_import;
 
 typedef struct kbase_uk_pmem_alloc
 {
@@ -120,6 +130,15 @@ typedef struct kbase_uk_hwcnt_clear
 	uk_header   header;
 } kbase_uk_hwcnt_clear;
 
+typedef struct kbase_uk_cpuprops
+{
+	uk_header header;
+
+	/* IN */
+	struct base_cpu_props props;
+	/* OUT */
+}kbase_uk_cpuprops;
+
 typedef struct kbase_uk_gpuprops
 {
 	uk_header header;
@@ -162,6 +181,12 @@ typedef struct kbase_uk_get_ddk_version
 	u32  version_string_size;
 } kbase_uk_get_ddk_version;
 
+typedef struct kbase_uk_set_flags
+{
+	uk_header header;
+	/* IN */
+	u32       create_flags;
+} kbase_uk_set_flags;
 
 #if MALI_DEBUG
 #define TEST_ADDR_COUNT 4
@@ -202,10 +227,20 @@ typedef struct kbase_uk_model_control_params
 } kbase_uk_model_control_params;
 #endif /* MALI_NO_MALI */
 
+
+typedef struct kbase_uk_ext_buff_kds_data
+{
+	uk_header header;
+	kbase_pointer external_resource;
+	int num_res;
+	kbase_pointer file_descriptor;
+} kbase_uk_ext_buff_kds_data;
+
+
 typedef enum kbase_uk_function_id
 {
 	KBASE_FUNC_TMEM_ALLOC = (UK_FUNC_ID + 0),
-	KBASE_FUNC_TMEM_FROM_UMP,
+	KBASE_FUNC_TMEM_IMPORT,
 	KBASE_FUNC_PMEM_ALLOC,
 	KBASE_FUNC_MEM_FREE,
 
@@ -219,13 +254,16 @@ typedef enum kbase_uk_function_id
 	KBASE_FUNC_HWCNT_DUMP,
 	KBASE_FUNC_HWCNT_CLEAR,
 
+	KBASE_FUNC_CPU_PROPS_REG_DUMP,
 	KBASE_FUNC_GPU_PROPS_REG_DUMP,
 
 	KBASE_FUNC_TMEM_RESIZE,
 
 	KBASE_FUNC_FIND_CPU_MAPPING,
 
-	KBASE_FUNC_GET_VERSION
+	KBASE_FUNC_GET_VERSION,
+	KBASE_FUNC_EXT_BUFFER_LOCK,
+	KBASE_FUNC_SET_FLAGS
 
 #if MALI_DEBUG
 	, KBASE_FUNC_SET_TEST_DATA

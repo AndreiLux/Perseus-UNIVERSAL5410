@@ -272,23 +272,101 @@
 
 /* End Register Offsets */
 
+/*
+ * MMU_IRQ_RAWSTAT register values. Values are valid also for
+   MMU_IRQ_CLEAR, MMU_IRQ_MASK, MMU_IRQ_STATUS registers.
+ */
+
+#define MMU_REGS_PAGE_FAULT_FLAGS   16
+
+/* Macros return bit number to retrvie page fault or bus eror flag from MMU registers */
+#define MMU_REGS_PAGE_FAULT_FLAG(n) (n)
+#define MMU_REGS_BUS_ERROR_FLAG(n)  (n + MMU_REGS_PAGE_FAULT_FLAGS)
+
+/*
+ * Begin MMU TRANSTAB register values
+ */
+#define ASn_TRANSTAB_ADDR_SPACE_MASK   0xfffff000
+#define ASn_TRANSTAB_ADRMODE_UNMAPPED  (0u << 0)
+#define ASn_TRANSTAB_ADRMODE_IDENTITY  (1u << 1)
+#define ASn_TRANSTAB_ADRMODE_TABLE     (3u << 0)
+#define ASn_TRANSTAB_READ_INNER        (1u << 2)
+#define ASn_TRANSTAB_SHARE_OUTER       (1u << 4)
+
+#define MMU_TRANSTAB_ADRMODE_MASK      0x00000003
+
+/*
+ * Begin MMU STATUS register values
+ */
+#define ASn_STATUS_FLUSH_ACTIVE 0x01
 
 /*
  * Begin Command Values
  */
 
 /* JSn_COMMAND register commands */
-#define JSn_COMMAND_NOP                0x00    /* NOP Operation. Writing this value is ignored */
-#define JSn_COMMAND_START              0x01    /* Start processing a job chain. Writing this value is ignored */
-#define JSn_COMMAND_SOFT_STOP          0x02    /* Gently stop processing a job chain */
-#define JSn_COMMAND_HARD_STOP          0x03    /* Rudely stop processing a job chain */
+#define JSn_COMMAND_NOP         0x00    /* NOP Operation. Writing this value is ignored */
+#define JSn_COMMAND_START       0x01    /* Start processing a job chain. Writing this value is ignored */
+#define JSn_COMMAND_SOFT_STOP   0x02    /* Gently stop processing a job chain */
+#define JSn_COMMAND_HARD_STOP   0x03    /* Rudely stop processing a job chain */
 
 /* ASn_COMMAND register commands */
-#define ASn_COMMAND_NOP                0x00    /* NOP Operation */
-#define ASn_COMMAND_UPDATE             0x01    /* Broadcasts the values in ASn_TRANSTAB and ASn_MEMATTR to all MMUs */
-#define ASn_COMMAND_LOCK               0x02    /* Issue a lock region command to all MMUs */
-#define ASn_COMMAND_UNLOCK             0x03    /* Issue a flush region command to all MMUs */
-#define ASn_COMMAND_FLUSH              0x04    /* Flush all L2 caches then issue a flush region command to all MMUs */
+#define ASn_COMMAND_NOP         0x00    /* NOP Operation */
+#define ASn_COMMAND_UPDATE      0x01    /* Broadcasts the values in ASn_TRANSTAB and ASn_MEMATTR to all MMUs */
+#define ASn_COMMAND_LOCK        0x02    /* Issue a lock region command to all MMUs */
+#define ASn_COMMAND_UNLOCK      0x03    /* Issue a flush region command to all MMUs */
+#define ASn_COMMAND_FLUSH       0x04    /* Flush all L2 caches then issue a flush region command to all MMUs */
+
+/* Possible values of JSn_CONFIG and JSn_CONFIG_NEXT registers */
+#define JSn_CONFIG_START_FLUSH_NO_ACTION        (0u << 0)
+#define JSn_CONFIG_START_FLUSH_CLEAN            (1u << 8)
+#define JSn_CONFIG_START_FLUSH_CLEAN_INVALIDATE (3u << 8)
+#define JSn_CONFIG_START_MMU                    (1u << 10)
+#define JSn_CONFIG_END_FLUSH_NO_ACTION          JSn_CONFIG_START_FLUSH_NO_ACTION
+#define JSn_CONFIG_END_FLUSH_CLEAN              (1u << 12)
+#define JSn_CONFIG_END_FLUSH_CLEAN_INVALIDATE   (3u << 12) 
+#define JSn_CONFIG_THREAD_PRI(n)                ((n) << 16)
+
+/* JSn_STATUS register values */
+
+/* NOTE: Please keep this values in sync with enum base_jd_event_code in mali_base_kernel.h.
+ * The values are separated to avoid dependency of userspace and kernel code.
+ */
+
+/* Group of values representing the job status insead a particular fault */
+#define JSn_STATUS_NO_EXCEPTION_BASE   0x00 
+#define JSn_STATUS_INTERRUPTED         (JSn_STATUS_NO_EXCEPTION_BASE + 0x02) /* 0x02 means INTERRUPTED */
+#define JSn_STATUS_STOPPED             (JSn_STATUS_NO_EXCEPTION_BASE + 0x03) /* 0x03 means STOPPED */
+#define JSn_STATUS_TERMINATED          (JSn_STATUS_NO_EXCEPTION_BASE + 0x04) /* 0x04 means TERMINATED */
+
+/* General fault values */
+#define JSn_STATUS_FAULT_BASE          0x40
+#define JSn_STATUS_CONFIG_FAULT        (JSn_STATUS_FAULT_BASE)               /* 0x40 means CONFIG FAULT */
+#define JSn_STATUS_POWER_FAULT         (JSn_STATUS_FAULT_BASE + 0x01)        /* 0x41 means POWER FAULT */
+#define JSn_STATUS_READ_FAULT          (JSn_STATUS_FAULT_BASE + 0x02)        /* 0x42 means READ FAULT */
+#define JSn_STATUS_WRITE_FAULT         (JSn_STATUS_FAULT_BASE + 0x03)        /* 0x43 means WRITE FAULT */
+#define JSn_STATUS_AFFINITY_FAULT      (JSn_STATUS_FAULT_BASE + 0x04)        /* 0x44 means AFFINITY FAULT */
+#define JSn_STATUS_BUS_FAULT           (JSn_STATUS_FAULT_BASE + 0x08)        /* 0x48 means BUS FAULT */
+
+/* Instruction or data faults */
+#define JSn_STATUS_INSTRUCTION_FAULT_BASE  0x50
+#define JSn_STATUS_INSTR_INVALID_PC        (JSn_STATUS_INSTRUCTION_FAULT_BASE)        /* 0x50 means INSTR INVALID PC */
+#define JSn_STATUS_INSTR_INVALID_ENC       (JSn_STATUS_INSTRUCTION_FAULT_BASE + 0x01) /* 0x51 means INSTR INVALID ENC */
+#define JSn_STATUS_INSTR_TYPE_MISMATCH     (JSn_STATUS_INSTRUCTION_FAULT_BASE + 0x02) /* 0x52 means INSTR TYPE MISMATCH */
+#define JSn_STATUS_INSTR_OPERAND_FAULT     (JSn_STATUS_INSTRUCTION_FAULT_BASE + 0x03) /* 0x53 means INSTR OPERAND FAULT */
+#define JSn_STATUS_INSTR_TLS_FAULT         (JSn_STATUS_INSTRUCTION_FAULT_BASE + 0x04) /* 0x54 means INSTR TLS FAULT */
+#define JSn_STATUS_INSTR_BARRIER_FAULT     (JSn_STATUS_INSTRUCTION_FAULT_BASE + 0x05) /* 0x55 means INSTR BARRIER FAULT */
+#define JSn_STATUS_INSTR_ALIGN_FAULT       (JSn_STATUS_INSTRUCTION_FAULT_BASE + 0x06) /* 0x56 means INSTR ALIGN FAULT */
+/* NOTE: No fault with 0x57 code defined in spec. */ 
+#define JSn_STATUS_DATA_INVALID_FAULT      (JSn_STATUS_INSTRUCTION_FAULT_BASE + 0x08) /* 0x58 means DATA INVALID FAULT */
+#define JSn_STATUS_TILE_RANGE_FAULT        (JSn_STATUS_INSTRUCTION_FAULT_BASE + 0x09) /* 0x59 means TILE RANGE FAULT */
+#define JSn_STATUS_ADDRESS_RANGE_FAULT     (JSn_STATUS_INSTRUCTION_FAULT_BASE + 0x0A) /* 0x5A means ADDRESS RANGE FAULT */
+
+/* Other faults */
+#define JSn_STATUS_MEMORY_FAULT_BASE   0x60
+#define JSn_STATUS_OUT_OF_MEMORY       (JSn_STATUS_MEMORY_FAULT_BASE)       /* 0x60 means OUT OF MEMORY */
+#define JSn_STATUS_UNKNOWN             0x7F                                 /* 0x7F means UNKNOWN */
+
 
 /* GPU_COMMAND values */
 #define GPU_COMMAND_NOP                0x00    /* No operation, nothing happens */
@@ -311,6 +389,10 @@
 #define PRFCNT_CONFIG_MODE_OFF    0    /* The performance counters are disabled. */
 #define PRFCNT_CONFIG_MODE_MANUAL 1    /* The performance counters are enabled, but are only written out when a PRFCNT_SAMPLE command is issued using the GPU_COMMAND register. */
 #define PRFCNT_CONFIG_MODE_TILE   2    /* The performance counters are enabled, and are written out each time a tile finishes rendering. */
+
+/* AS<n>_MEMATTR values */
+#define ASn_MEMATTR_IMPL_DEF_CACHE_POLICY 0x48484848    /* Use GPU implementation-defined caching policy. */ 
+#define ASn_MEMATTR_FORCE_TO_CACHE_ALL    0x4F4F4F4F    /* The attribute set to force all resources to be cached. */ 
 
 #endif /* _MIDGARD_REGMAP_H_ */
 

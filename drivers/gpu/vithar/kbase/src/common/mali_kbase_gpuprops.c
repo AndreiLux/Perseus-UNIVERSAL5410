@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -53,6 +53,9 @@ STATIC void kbase_gpuprops_dump_registers(kbase_device * kbdev, kbase_gpuprops_r
 	OSK_ASSERT(NULL != kbdev);
 	OSK_ASSERT(NULL != regdump);
 
+	/* Ensure that the GPU is powered */
+	kbase_pm_context_active(kbdev);
+
 	/* Fill regdump with the content of the relevant registers */
 
 	regdump->gpu_id = kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_ID), NULL);
@@ -71,9 +74,9 @@ STATIC void kbase_gpuprops_dump_registers(kbase_device * kbdev, kbase_gpuprops_r
 	}
 
 	for(i = 0; i < BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS; i++)
-        {   
-                regdump->texture_features[i] =  kbase_reg_read(kbdev, GPU_CONTROL_REG(TEXTURE_FEATURES_REG(i)), NULL); 
-        } 
+	{
+		regdump->texture_features[i] =  kbase_reg_read(kbdev, GPU_CONTROL_REG(TEXTURE_FEATURES_REG(i)), NULL); 
+	}
 
 	regdump->shader_present_lo = kbase_reg_read(kbdev, GPU_CONTROL_REG(SHADER_PRESENT_LO), NULL);
 	regdump->shader_present_hi = kbase_reg_read(kbdev, GPU_CONTROL_REG(SHADER_PRESENT_HI), NULL);
@@ -86,6 +89,8 @@ STATIC void kbase_gpuprops_dump_registers(kbase_device * kbdev, kbase_gpuprops_r
 
 	regdump->l3_present_lo = kbase_reg_read(kbdev, GPU_CONTROL_REG(L3_PRESENT_LO), NULL);
 	regdump->l3_present_hi = kbase_reg_read(kbdev, GPU_CONTROL_REG(L3_PRESENT_HI), NULL);
+
+	kbase_pm_context_idle(kbdev);
 }
 
 STATIC void kbase_gpuprops_construct_coherent_groups(base_gpu_props * const props)
@@ -166,29 +171,15 @@ STATIC void kbase_gpuprops_construct_coherent_groups(base_gpu_props * const prop
 	props->coherency_info.num_groups = num_groups;
 }
 
-/* Get the available memory size (OS dependant) */
-STATIC u64 kbase_gpuprops_get_available_memory(void)
-{
-	u64 available = 0;
-
-#ifdef MALI_KBASE_USERSPACE /* Userspace */
-	osu_cpu_props cpu_props;
-	osu_errcode osu_err;
-
-	osu_err = osu_cpu_props_get(&cpu_props);
-	if (MALI_ERROR_NONE == osu_err)
-	{
-		available = cpu_props.available_memory_size;
-	}
-
-#elif defined(__KERNEL__) /* Linux */
-	available = totalram_pages << PAGE_SHIFT;
-#endif
-
-	return available;
-}
-
-void kbase_gpuprops_get_props(base_gpu_props * gpu_props, kbase_device * kbdev)
+/**
+ * @brief Get the GPU configuration
+ *
+ * Fill the base_gpu_props structure with values from the GPU configuration registers
+ *
+ * @param gpu_props  The base_gpu_props structure
+ * @param kbdev      The kbase_device structure for the device
+ */
+static void kbase_gpuprops_get_props(base_gpu_props * gpu_props, kbase_device * kbdev)
 {
 	kbase_gpuprops_regdump regdump;
 	int i;
@@ -206,12 +197,12 @@ void kbase_gpuprops_get_props(base_gpu_props * gpu_props, kbase_device * kbdev)
 	gpu_props->core_props.product_id = KBASE_UBFX32(regdump.gpu_id, 16U, 16);
 	gpu_props->core_props.log2_program_counter_size = KBASE_GPU_PC_SIZE_LOG2;
 	gpu_props->core_props.gpu_speed_mhz = KBASE_GPU_SPEED_MHZ;
-	gpu_props->core_props.gpu_available_memory_size = kbase_gpuprops_get_available_memory();
+	gpu_props->core_props.gpu_available_memory_size = OSK_MEM_PAGES << OSK_PAGE_SHIFT;
 
 	for(i = 0; i < BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS; i++)
-        {   
-                gpu_props->core_props.texture_features[i] = regdump.texture_features[i]; 
-        } 
+	{
+		gpu_props->core_props.texture_features[i] = regdump.texture_features[i];
+	}
 
 	gpu_props->l2_props.log2_line_size = KBASE_UBFX32(regdump.l2_features, 0U, 8);
 	gpu_props->l2_props.log2_cache_size = KBASE_UBFX32(regdump.l2_features, 16U, 8);
@@ -236,11 +227,11 @@ void kbase_gpuprops_get_props(base_gpu_props * gpu_props, kbase_device * kbdev)
 	gpu_props->raw_props.l3_present = ((u64)regdump.l3_present_hi << 32) + regdump.l3_present_lo;
 
 	for(i = 0; i < MIDG_MAX_JOB_SLOTS; i++)
-        {   
-                gpu_props->raw_props.js_features[i] = regdump.js_features[i]; 
-        } 
-	
-	/* Initialize the coherent_group structure for each group */ 
+	{
+		gpu_props->raw_props.js_features[i] = regdump.js_features[i];
+	}
+
+	/* Initialize the coherent_group structure for each group */
 	kbase_gpuprops_construct_coherent_groups(gpu_props);
 }
 

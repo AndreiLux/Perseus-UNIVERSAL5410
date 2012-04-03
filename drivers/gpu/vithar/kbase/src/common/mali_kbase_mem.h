@@ -85,8 +85,8 @@ typedef struct kbase_va_region
 	u32                     nr_pages;   /* VA size */
 
 #define KBASE_REG_FREE       (1ul << 0) /* Free region */
-#define KBASE_REG_CPU_RW     (1ul << 1) /* CPU write access */
-#define KBASE_REG_GPU_RW     (1ul << 2) /* GPU write access */
+#define KBASE_REG_CPU_WR     (1ul << 1) /* CPU write access */
+#define KBASE_REG_GPU_WR     (1ul << 2) /* GPU write access */
 #define KBASE_REG_GPU_NX     (1ul << 3) /* No eXectue flag */
 #define KBASE_REG_CPU_CACHED (1ul << 4) /* Is CPU cached? */
 #define KBASE_REG_GPU_CACHED (1ul << 5) /* Is GPU cached? */
@@ -95,17 +95,21 @@ typedef struct kbase_va_region
 #define KBASE_REG_PF_GROW    (1ul << 7) /* Can grow on pf? */
 
 #define KBASE_REG_IS_RB      (1ul << 8) /* Is ringbuffer? */
-#define KBASE_REG_IS_UMP     (1ul << 9) /* Is UMP? */
-#define KBASE_REG_IS_MMU_DUMP (1ul << 10) /* Is an MMU dump */
-#define KBASE_REG_IS_TB      (1ul << 11) /* Is register trace buffer? */
+#define KBASE_REG_IS_MMU_DUMP (1ul << 9) /* Is an MMU dump */
+#define KBASE_REG_IS_TB      (1ul << 10) /* Is register trace buffer? */
 
-#define KBASE_REG_SHARE_IN   (1ul << 12) /* inner shareable coherency */
-#define KBASE_REG_SHARE_BOTH (1ul << 13) /* inner & outer shareable coherency */
+#define KBASE_REG_SHARE_IN   (1ul << 11) /* inner shareable coherency */
+#define KBASE_REG_SHARE_BOTH (1ul << 12) /* inner & outer shareable coherency */
+
+#define KBASE_REG_NO_CPU_MAP (1ul << 13) /* buffer can not be mapped on the CPU, only available for the GPU */
 
 #define KBASE_REG_ZONE_MASK  (3ul << 14) /* Space for 4 different zones. Only use 3 for now */
 #define KBASE_REG_ZONE(x)    (((x) & 3) << 14)
 
-#define KBASE_REG_FLAGS_NR_BITS      16  /* Number of bits used by kbase_va_region flags */
+#define KBASE_REG_GPU_RD     (1ul<<16) /* GPU write access */
+#define KBASE_REG_CPU_RD     (1ul<<17) /* CPU read access */
+
+#define KBASE_REG_FLAGS_NR_BITS    18  /* Number of bits used by kbase_va_region flags */
 
 #define KBASE_REG_ZONE_PMEM  KBASE_REG_ZONE(0)
 
@@ -122,8 +126,9 @@ typedef struct kbase_va_region
                                     KBASE_REG_ZONE_TMEM_BASE)
 #endif
 
-#define KBASE_REG_COOKIE_MASK       (0xFFFF << 16)
-#define KBASE_REG_COOKIE(x)         (((x) & 0xFFFF) << 16)
+#define KBASE_REG_COOKIE_MASK       (~((1ul << KBASE_REG_FLAGS_NR_BITS)-1))
+#define KBASE_REG_COOKIE(x)         ((x << KBASE_REG_FLAGS_NR_BITS) & KBASE_REG_COOKIE_MASK)
+
 /* Bit mask of cookies that not used for PMEM but reserved for other uses */
 #define KBASE_REG_RESERVED_COOKIES  7ULL
 /* The reserved cookie values */
@@ -148,10 +153,21 @@ typedef struct kbase_va_region
 	 * to the last (still valid) commit we've done */
 	kbase_mem_commit *  last_commit;
 
-	void                *ump_handle;
 	osk_phy_addr        *phy_pages;
 
 	osk_dlist           map_list;
+
+	/* non-NULL if this memory object is a kds_resource */
+	struct kds_resource * kds_res;
+
+	base_tmem_import_type imported_type;
+
+	/* member in union valid based on imported_type */
+	union
+	{
+		ump_dd_handle ump_handle;
+	} imported_metadata;
+
 } kbase_va_region;
 
 /* Common functions */
@@ -303,8 +319,32 @@ void kbase_mmu_term(struct kbase_context *kctx);
 osk_phy_addr kbase_mmu_alloc_pgd(kbase_context *kctx);
 void kbase_mmu_free_pgd(struct kbase_context *kctx);
 mali_error kbase_mmu_insert_pages(struct kbase_context *kctx, u64 vpfn,
-                                  osk_phy_addr *phys, u32 nr, u16 flags);
+                                  osk_phy_addr *phys, u32 nr, u32 flags);
 mali_error kbase_mmu_teardown_pages(struct kbase_context *kctx, u64 vpfn, u32 nr);
+
+/**
+ * @brief Check that a pointer is actually a valid region.
+ *
+ * Must be called with context lock held.
+ */
+struct kbase_va_region *kbase_validate_region(struct kbase_context *kctx, mali_addr64 gpu_addr);
+
+/**
+ * @brief Register region and map it on the GPU.
+ *
+ * Call kbase_add_va_region() and map the region on the GPU.
+ */
+mali_error kbase_gpu_mmap(struct kbase_context *kctx,
+                          struct kbase_va_region *reg,
+                          mali_addr64 addr, u32 nr_pages,
+                          u32 align);
+  
+/**
+ * @brief Remove the region from the GPU and unregister it.
+ *
+ * Must be called with context lock held.
+ */
+mali_error kbase_gpu_munmap(struct kbase_context *kctx, struct kbase_va_region *reg);
 
 /**
  * The caller has the following locking conditions:
@@ -377,9 +417,29 @@ struct kbase_va_region *kbase_tmem_alloc(struct kbase_context *kctx,
  */
 mali_error kbase_tmem_resize(struct kbase_context *kctx, mali_addr64 gpu_addr, s32 delta, u32 *size, base_backing_threshold_status * failure_reason);
 
-#if MALI_USE_UMP
-struct kbase_va_region *kbase_tmem_from_ump(struct kbase_context *kctx, ump_secure_id id, u64 * const pages);
-#endif /* MALI_USE_UMP */
+/**
+ * Import external memory.
+ *
+ * This function supports importing external memory.
+ * If imported a kbase_va_region is created of the tmem type.
+ * The region might not be mappable on the CPU depending on the imported type.
+ * If not mappable the KBASE_REG_NO_CPU_MAP bit will be set.
+ *
+ * Import will fail if (but not limited to):
+ * @li Unsupported import type
+ * @li Handle not valid for the type
+ * @li Access to a handle was not valid
+ * @li The underlying memory can't be accessed by the GPU
+ * @li No VA space found to map the memory
+ * @li Resources to track the region was not available
+ *
+ * @param[in]   kctx    The kbase context which the tmem will be created in
+ * @param       type    The type of memory to import
+ * @param       handle  Handle to the memory to import
+ * @param[out]  pages   Where to store the number of pages imported
+ * @return A region pointer on success, NULL on failure
+ */
+struct kbase_va_region *kbase_tmem_import(struct kbase_context *kctx, base_tmem_import_type type, int handle, u64 * const pages);
 
 
 /* OS specific functions */

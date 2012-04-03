@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -61,7 +61,7 @@ typedef struct kbasep_js_policy_fcfs
 	u32 num_core_req_variants;
 
 	/** Variants of the core requirements */
-	base_jd_core_req core_req_variants[KBASEP_JS_MAX_NR_CORE_REQ_VARIANTS];
+	kbasep_atom_req core_req_variants[KBASEP_JS_MAX_NR_CORE_REQ_VARIANTS];
 
 	/* Lookups per job slot against which core_req_variants match it */
 	u32 slot_to_variant_lookup_ss_state[KBASEP_JS_VARIANT_LOOKUP_WORDS_NEEDED];

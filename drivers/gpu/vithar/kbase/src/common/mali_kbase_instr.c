@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -14,193 +14,15 @@
 
 /**
  * @file mali_kbase_instr.c
- * Base kernel instrumentation APIs for hardware revisions without BASE_HW_ISSUE_7115.
+ * Base kernel instrumentation APIs.
  */
 
 #include <kbase/src/common/mali_kbase.h>
 #include <kbase/src/common/mali_midg_regmap.h>
 
-#if (BASE_HW_ISSUE_7115 == 0)
-
-static void kbase_instr_hwcnt_destroy(kbase_context * kctx);
-
-
-static mali_error kbasep_instr_hwcnt_setup(kbase_context * kctx, kbase_uk_hwcnt_setup * setup)
-{
-	mali_error err = MALI_ERROR_NONE; /* let's be optimistic */
-	kbase_device *kbdev;
-	kbasep_js_device_data *js_devdata;
-	mali_bool access_allowed;
-	u32 irq_mask;
-
-	OSK_ASSERT(NULL != kctx);
-	OSK_ASSERT(NULL != setup);
-
-	kbdev = kctx->kbdev;
-	OSK_ASSERT(NULL != kbdev);
-
-	js_devdata = &kbdev->js_data;
-	OSK_ASSERT(NULL != js_devdata);
-
-	/* Determine if the calling task has access to this capability */
-	access_allowed = kbase_security_has_capability(kctx, KBASE_SEC_INSTR_HW_COUNTERS_COLLECT, KBASE_SEC_FLAG_NOAUDIT);
-	if (MALI_FALSE == access_allowed )
-	{
-		return MALI_ERROR_FUNCTION_FAILED;
-	}
-
-	if (setup->dump_buffer & (2048-1))
-	{
-		/* alignment failure */
-		return MALI_ERROR_FUNCTION_FAILED;
-	}
-
-	/* dumping in progress without hardware context ? */
-	OSK_ASSERT(((kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_STATUS), kctx) & GPU_STATUS_PRFCNT_ACTIVE)) == 0);
-
-	if ((setup->dump_buffer != 0ULL) && (NULL == kbdev->hwcnt_context))
-	{
-		/* Setup HW counters for the context */
-
-		/* Enable interrupt */
-		irq_mask = kbase_reg_read(kbdev,GPU_CONTROL_REG(GPU_IRQ_MASK),NULL);
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), irq_mask | PRFCNT_SAMPLE_COMPLETED, NULL);
-		/* configure */
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_BASE_LO),     setup->dump_buffer & 0xFFFFFFFF, kctx);
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_BASE_HI),     setup->dump_buffer >> 32,        kctx);
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_JM_EN),       setup->jm_bm,                    kctx);
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_SHADER_EN),   setup->shader_bm,                kctx);
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_TILER_EN),    setup->tiler_bm,                 kctx);
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_L3_CACHE_EN), setup->l3_cache_bm,              kctx);
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_MMU_L2_EN),   setup->mmu_l2_bm,                kctx);
-
-		/* mark as in use and that this context is the owner */
-		kbdev->hwcnt_context = kctx;
-		/* remember the dump address so we can reprogram it later */
-		kbdev->hwcnt_addr = setup->dump_buffer;
-
-		osk_spinlock_irq_lock(&js_devdata->runpool_irq.lock);
-		if (kctx->as_nr != KBASEP_AS_NR_INVALID)
-		{
-			/* Setup the base address */
-#if BASE_HW_ISSUE_8186
-			u32 val;
-			/* Issue 8186 requires TILER_EN to be disabled before updating PRFCNT_CONFIG. We then restore the register contents */
-			val = kbase_reg_read(kbdev, GPU_CONTROL_REG(PRFCNT_TILER_EN), kctx);
-			if(0 != val)
-			{
-				kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_TILER_EN), 0, kctx);
-			}
-			/* Now update PRFCNT_CONFIG with TILER_EN = 0 */
-			kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_CONFIG), (kctx->as_nr << PRFCNT_CONFIG_AS_SHIFT) | PRFCNT_CONFIG_MODE_MANUAL, kctx);
-			/* Restore PRFCNT_TILER_EN */
-			if(0 != val)
-			{
-				kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_TILER_EN), val, kctx);
-			}
-#else
-			kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_CONFIG), (kctx->as_nr << PRFCNT_CONFIG_AS_SHIFT) | PRFCNT_CONFIG_MODE_MANUAL, kctx);
-#endif
-			/* Prevent the context to be scheduled out */
-			kbasep_js_runpool_retain_ctx_nolock(kbdev, kctx);
-
-			kbdev->hwcnt_is_setup = MALI_TRUE;
-		}
-		osk_spinlock_irq_unlock(&js_devdata->runpool_irq.lock);
-
-		OSK_PRINT_INFO( OSK_BASE_CORE, "HW counters dumping set-up for context %p", kctx);
-	}
-	else if ((setup->dump_buffer == 0ULL) && (kctx == kbdev->hwcnt_context))
-	{
-		/* Disable HW counters for the context */
-
-		/* disable interrupt */
-		irq_mask = kbase_reg_read(kbdev,GPU_CONTROL_REG(GPU_IRQ_MASK),NULL);
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), irq_mask & ~PRFCNT_SAMPLE_COMPLETED, NULL);
-
-		if (MALI_TRUE == kbdev->hwcnt_is_setup)
-		{
-			/* Disable the counters */
-			kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_CONFIG), 0, kctx);
-
-			kbdev->hwcnt_is_setup = MALI_FALSE;
-
-			/* We need to release the spinlock while calling runpool_release */
-			osk_spinlock_unlock(&kbdev->hwcnt_lock);
-			/* Release the context */
-			kbasep_js_runpool_release_ctx(kbdev, kctx);
-			osk_spinlock_lock(&kbdev->hwcnt_lock);
-		}
-
-		kbdev->hwcnt_context = NULL;
-		kbdev->hwcnt_addr = 0ULL;
-
-		OSK_PRINT_INFO( OSK_BASE_CORE, "HW counters dumping disabled for context %p", kctx);
-	}
-	else
-	{
-		/* already in use or trying to disable while not owning */
-		err = MALI_ERROR_FUNCTION_FAILED;
-	}
-	return err;
-}
-KBASE_EXPORT_TEST_API(kbase_destroy_context)
-
-static mali_error kbasep_instr_hwcnt_dump(kbase_context * kctx)
-{
-	mali_error err = MALI_ERROR_FUNCTION_FAILED;
-	kbase_device *kbdev;
-
-	OSK_ASSERT(NULL != kctx);
-
-	kbdev = kctx->kbdev;
-	OSK_ASSERT(NULL != kbdev);
-
-	/* Check it's the context previously set up and we're not already dumping */
-	if (!(kbdev->hwcnt_context != kctx ||
-	      MALI_TRUE == kbdev->hwcnt_in_progress ||
-	      MALI_FALSE == kbdev->hwcnt_is_setup))
-	{
-		err = MALI_ERROR_NONE;
-
-		/* Mark that we're dumping so the PF handler can signal that we faulted */
-		kbdev->hwcnt_in_progress = MALI_TRUE;
-		/* Start dumping */
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), GPU_COMMAND_PRFCNT_SAMPLE, kctx);
-	}
-	return err;
-}
-
-/**
- * @brief On dump complete, cleanup dump state.
- */
-
-static mali_error kbasep_instr_hwcnt_dump_complete(kbase_device *kbdev)
-{
-	mali_error err = MALI_ERROR_FUNCTION_FAILED;
-	OSK_ASSERT(NULL != kbdev);
-
-	/* if hwcnt_in_progress is now MALI_FALSE we have faulted in some way */
-	if (kbdev->hwcnt_in_progress)
-	{
-		/* success */
-		err = MALI_ERROR_NONE;
-
-		/* clear the mark for next time */
-		kbdev->hwcnt_in_progress = MALI_FALSE;
-	}
-
-	/* reconfigure the dump address */
-	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_BASE_LO), kbdev->hwcnt_addr & 0xFFFFFFFF, NULL);
-	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_BASE_HI), kbdev->hwcnt_addr >> 32,        NULL);
-
-	return err;
-}
-
 /**
  * @brief Issue Cache Clean & Invalidate command to hardware
  */
-
 static void kbasep_instr_hwcnt_cacheclean(kbase_device *kbdev)
 {
 	u32 irq_mask;
@@ -212,200 +34,422 @@ static void kbasep_instr_hwcnt_cacheclean(kbase_device *kbdev)
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), irq_mask | CLEAN_CACHES_COMPLETED, NULL);
 	/* clean&invalidate the caches so we're sure the mmu tables for the dump buffer is valid */
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), GPU_COMMAND_CLEAN_INV_CACHES, NULL);
-	/* NOTE: PRLAM-5316 created as there is no way to know when the command has completed */
+}
+
+/**
+ * @brief Enable HW counters collection
+ *
+ * Note: will wait for a cache clean to complete
+ */
+mali_error kbase_instr_hwcnt_enable(kbase_context * kctx, kbase_uk_hwcnt_setup * setup)
+{
+	mali_error err = MALI_ERROR_FUNCTION_FAILED;
+	kbasep_js_device_data *js_devdata;
+	mali_bool access_allowed;
+	u32 irq_mask;
+	kbase_device *kbdev;
+
+	OSK_ASSERT(NULL != kctx);
+	kbdev = kctx->kbdev;
+	OSK_ASSERT(NULL != kbdev);
+	OSK_ASSERT(NULL != setup);
+
+	js_devdata = &kbdev->js_data;
+	OSK_ASSERT(NULL != js_devdata);
+
+	/* Determine if the calling task has access to this capability */
+	access_allowed = kbase_security_has_capability(kctx, KBASE_SEC_INSTR_HW_COUNTERS_COLLECT, KBASE_SEC_FLAG_NOAUDIT);
+	if (MALI_FALSE == access_allowed)
+	{
+		goto out;
+	}
+
+	if ((setup->dump_buffer == 0ULL) ||
+	    (setup->dump_buffer & (2048-1)))
+	{
+		/* alignment failure */
+		goto out;
+	}
+	
+
+	/* Mark the context as active so the GPU is kept turned on */
+	kbase_pm_context_active(kbdev);
+
+	osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+
+	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING)
+	{
+		/* GPU is being reset*/
+		osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+		osk_waitq_wait(&kbdev->hwcnt.waitqueue);
+		osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+	}
+
+
+	if (kbdev->hwcnt.state != KBASE_INSTR_STATE_DISABLED)
+	{
+		/* Instrumentation is already enabled */
+		osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+		kbase_pm_context_idle(kbdev);
+		goto out;
+	}
+
+	/* Enable interrupt */
+	irq_mask = kbase_reg_read(kbdev,GPU_CONTROL_REG(GPU_IRQ_MASK),NULL);
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), irq_mask | PRFCNT_SAMPLE_COMPLETED, NULL);
+
+	/* In use, this context is the owner */
+	kbdev->hwcnt.kctx = kctx;
+	/* Remember the dump address so we can reprogram it later */
+	kbdev->hwcnt.addr = setup->dump_buffer;
+
+	/* Precleaning so that state does not transition to IDLE */
+	kbdev->hwcnt.state = KBASE_INSTR_STATE_PRECLEANING;
+	osk_waitq_clear(&kbdev->hwcnt.waitqueue);
+
+	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+
+	/* Clean&invalidate the caches so we're sure the mmu tables for the dump buffer is valid */
+	kbasep_instr_hwcnt_cacheclean(kbdev);
+	/* Wait for cacheclean to complete */
+	osk_waitq_wait(&kbdev->hwcnt.waitqueue);
+	OSK_ASSERT(kbdev->hwcnt.state == KBASE_INSTR_STATE_CLEANED);
+
+	/* Schedule the context in */
+	kbasep_js_schedule_privileged_ctx(kbdev, kctx);
+
+	/* Configure */
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_BASE_LO),     setup->dump_buffer & 0xFFFFFFFF, kctx);
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_BASE_HI),     setup->dump_buffer >> 32,        kctx);
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_JM_EN),       setup->jm_bm,                    kctx);
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_SHADER_EN),   setup->shader_bm,                kctx);
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_L3_CACHE_EN), setup->l3_cache_bm,              kctx);
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_MMU_L2_EN),   setup->mmu_l2_bm,                kctx);
+#if BASE_HW_ISSUE_8186
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_TILER_EN),    0,                               kctx);
+#endif
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_CONFIG), (kctx->as_nr << PRFCNT_CONFIG_AS_SHIFT) | PRFCNT_CONFIG_MODE_MANUAL, kctx);
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_TILER_EN),    setup->tiler_bm,                 kctx);
+
+	osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+
+	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING)
+	{
+		/* GPU is being reset*/
+		osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+		osk_waitq_wait(&kbdev->hwcnt.waitqueue);
+		osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+	}
+
+	kbdev->hwcnt.state = KBASE_INSTR_STATE_IDLE;
+	osk_waitq_set(&kbdev->hwcnt.waitqueue);
+
+	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+
+	err = MALI_ERROR_NONE;
+
+	OSK_PRINT_INFO( OSK_BASE_CORE, "HW counters dumping set-up for context %p", kctx);
+
+out:
+	return err;
+}
+KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_enable)
+
+/**
+ * @brief Disable HW counters collection
+ *
+ * Note: might sleep, waiting for an ongoing dump to complete
+ */
+mali_error kbase_instr_hwcnt_disable(kbase_context * kctx)
+{
+	mali_error err = MALI_ERROR_FUNCTION_FAILED;
+	u32 irq_mask;
+	kbase_device *kbdev;
+
+	OSK_ASSERT(NULL != kctx);
+	kbdev = kctx->kbdev;
+	OSK_ASSERT(NULL != kbdev);
+
+	while (1)
+	{
+		osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+
+		if (kbdev->hwcnt.state == KBASE_INSTR_STATE_DISABLED)
+		{
+			/* Instrumentation is not enabled */
+			osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+			goto out;
+		}
+
+		if (kbdev->hwcnt.kctx != kctx)
+		{
+			/* Instrumentation has been setup for another context */
+			osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+			goto out;
+		}
+
+		if (kbdev->hwcnt.state == KBASE_INSTR_STATE_IDLE)
+		{
+			break;
+		}
+
+		osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+
+		/* Ongoing dump/setup - wait for its completion */
+		osk_waitq_wait(&kbdev->hwcnt.waitqueue);
+	}
+
+	kbdev->hwcnt.state = KBASE_INSTR_STATE_DISABLED;
+	osk_waitq_clear(&kbdev->hwcnt.waitqueue);
+
+	/* Disable interrupt */
+	irq_mask = kbase_reg_read(kbdev,GPU_CONTROL_REG(GPU_IRQ_MASK),NULL);
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), irq_mask & ~PRFCNT_SAMPLE_COMPLETED, NULL);
+
+	/* Disable the counters */
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_CONFIG), 0, kctx);
+
+	kbdev->hwcnt.kctx = NULL;
+	kbdev->hwcnt.addr = 0ULL;
+
+	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+
+	/* Release the context, this implicitly (and indirectly) calls kbase_pm_context_idle */
+	kbasep_js_release_privileged_ctx(kbdev, kctx);
+
+	OSK_PRINT_INFO( OSK_BASE_CORE, "HW counters dumping disabled for context %p", kctx);
+
+	err = MALI_ERROR_NONE;
+
+out:
+	return err;
+}
+KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_disable)
+
+/**
+ * @brief Configure HW counters collection
+ */
+mali_error kbase_instr_hwcnt_setup(kbase_context * kctx, kbase_uk_hwcnt_setup * setup)
+{
+	mali_error err = MALI_ERROR_FUNCTION_FAILED;
+	kbase_device *kbdev;
+
+	OSK_ASSERT(NULL != kctx);
+
+	kbdev = kctx->kbdev;
+	OSK_ASSERT(NULL != kbdev);
+
+	if (NULL == setup)
+	{
+		/* Bad parameter - abort */
+		goto out;
+	}
+
+	if (setup->dump_buffer != 0ULL)
+	{
+		/* Enable HW counters */
+		err = kbase_instr_hwcnt_enable(kctx, setup);
+	}
+	else
+	{
+		/* Disable HW counters */
+		err = kbase_instr_hwcnt_disable(kctx);
+	}
+
+out:
+	return err;
 }
 
 /**
  * @brief Issue Dump command to hardware
  */
-
-mali_error kbase_instr_hwcnt_dump(kbase_context * kctx)
+mali_error kbase_instr_hwcnt_dump_irq(kbase_context * kctx)
 {
-	mali_error err;
+	mali_error err = MALI_ERROR_FUNCTION_FAILED;
 	kbase_device *kbdev;
 
 	OSK_ASSERT(NULL != kctx);
 	kbdev = kctx->kbdev;
 	OSK_ASSERT(NULL != kbdev);
 
-	while(1)
+	osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+
+	OSK_ASSERT(kbdev->hwcnt.state != KBASE_INSTR_STATE_RESETTING);
+
+	if (kbdev->hwcnt.kctx != kctx)
 	{
-		osk_spinlock_lock(&kbdev->hwcnt_lock);
-		if(kbdev->hwcnt_state == KBASE_INSTR_STATE_DISABLED)
-		{
-			/* If the hw counters have been disabled - fail the dump request */
-			osk_spinlock_unlock(&kbdev->hwcnt_lock);
-			err = MALI_ERROR_FUNCTION_FAILED;
-			break;
-		}
-		else if(kbdev->hwcnt_state != KBASE_INSTR_STATE_IDLE)
-		{
-			osk_spinlock_unlock(&kbdev->hwcnt_lock);
-			/* Wait for idle state before retrying to obtain state change */
-			osk_waitq_wait(&kbdev->hwcnt_waitqueue);
-		}
-		else
-		{
-			osk_waitq_clear(&kbdev->hwcnt_waitqueue);
-			err = kbasep_instr_hwcnt_dump(kctx);
-			if(MALI_ERROR_FUNCTION_FAILED == err)
-			{
-				/* Handle a failed dump request gracefully */
-				osk_spinlock_unlock(&kbdev->hwcnt_lock);
-				break;
-			}
-			kbdev->hwcnt_state = KBASE_INSTR_STATE_DUMPING;
-			OSK_PRINT_INFO( OSK_BASE_CORE, "HW counters dumping done for context %p", kctx);
-			osk_spinlock_unlock(&kbdev->hwcnt_lock);
-			/* Wait for dump & cacheclean to complete */
-			osk_waitq_wait(&kbdev->hwcnt_waitqueue);
-			/* Detect dump failure */
-			if(kbdev->hwcnt_state == KBASE_INSTR_STATE_ERROR)
-			{
-				err = MALI_ERROR_FUNCTION_FAILED;
-				kbdev->hwcnt_state = KBASE_INSTR_STATE_IDLE;
-				osk_waitq_set(&kbdev->hwcnt_waitqueue);
-			}
-			break;
-		}
+		 /* The instrumentation has been setup for another context */
+		goto unlock;
 	}
 
+	if (kbdev->hwcnt.state != KBASE_INSTR_STATE_IDLE)
+	{
+		/* HW counters are disabled or another dump is ongoing */
+		goto unlock;
+	}
+
+	osk_waitq_clear(&kbdev->hwcnt.waitqueue);
+
+	/* Mark that we're dumping - the PF handler can signal that we faulted */
+	kbdev->hwcnt.state = KBASE_INSTR_STATE_DUMPING;
+
+	/* Reconfigure the dump address */
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_BASE_LO), kbdev->hwcnt.addr & 0xFFFFFFFF, NULL);
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_BASE_HI), kbdev->hwcnt.addr >> 32,        NULL);
+
+	/* Start dumping */
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), GPU_COMMAND_PRFCNT_SAMPLE, kctx);
+
+	OSK_PRINT_INFO( OSK_BASE_CORE, "HW counters dumping done for context %p", kctx);
+
+	err = MALI_ERROR_NONE;
+
+unlock:
+	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
 	return err;
 }
+KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_dump_irq)
 
 /**
- * @brief Initialize the Instrumentation hardware
+ * @brief Tell whether the HW counters dump has completed
+ *
+ * Notes:
+ * - does not sleep
+ * - success will be set to MALI_TRUE if the dump succeeded or
+ *   MALI_FALSE on failure
  */
-
-mali_error kbase_instr_hwcnt_setup(kbase_context * kctx, kbase_uk_hwcnt_setup * setup)
+mali_bool kbase_instr_hwcnt_dump_complete(kbase_context * kctx, mali_bool *success)
 {
-	mali_error err = MALI_ERROR_NONE;
+	mali_bool complete = MALI_FALSE;
 	kbase_device *kbdev;
 
 	OSK_ASSERT(NULL != kctx);
+	kbdev = kctx->kbdev;
+	OSK_ASSERT(NULL != kbdev);
+	OSK_ASSERT(NULL != success);
 
+	osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+
+	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_IDLE)
+	{
+		*success = MALI_TRUE;
+		complete = MALI_TRUE;
+	}
+	else if (kbdev->hwcnt.state == KBASE_INSTR_STATE_FAULT)
+	{
+		*success = MALI_FALSE;
+		complete = MALI_TRUE;
+		kbdev->hwcnt.state = KBASE_INSTR_STATE_IDLE;
+	}
+
+	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+
+	return complete;
+}
+KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_dump_complete)
+
+/**
+ * @brief Issue Dump command to hardware and wait for completion
+ */
+mali_error kbase_instr_hwcnt_dump(kbase_context * kctx)
+{
+	mali_error err = MALI_ERROR_FUNCTION_FAILED;
+	kbase_device *kbdev;
+
+	OSK_ASSERT(NULL != kctx);
 	kbdev = kctx->kbdev;
 	OSK_ASSERT(NULL != kbdev);
 
-	if(NULL == setup)
+	err = kbase_instr_hwcnt_dump_irq(kctx);
+	if (MALI_ERROR_NONE != err)
 	{
-		/* Bad parameter - abort */
-		return MALI_ERROR_FUNCTION_FAILED;
+		 /* Can't dump HW counters */
+		goto out;
 	}
 
-	osk_spinlock_lock(&kbdev->hwcnt_lock);
+	/* Wait for dump & cacheclean to complete */
+	osk_waitq_wait(&kbdev->hwcnt.waitqueue);
 
-	if((setup->dump_buffer == 0ULL) && (kctx == kbdev->hwcnt_context))
+	osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+
+	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING)
 	{
-		/* Handle request to disable HW counters for the context */
-		osk_spinlock_unlock(&kbdev->hwcnt_lock);
-		kbase_instr_hwcnt_destroy(kctx);
-
-		/* This context is not used for hwcnt anymore */
-		kbase_pm_context_idle(kbdev);
+		/* GPU is being reset*/
+		osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+		osk_waitq_wait(&kbdev->hwcnt.waitqueue);
+		osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
 	}
-	else if((setup->dump_buffer != 0ULL) && (kbdev->hwcnt_state == KBASE_INSTR_STATE_DISABLED))
+
+	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_FAULT)
 	{
-		/* Precleaning so that state does not transition to IDLE */
-		kbdev->hwcnt_state = KBASE_INSTR_STATE_PRECLEANING;
-		osk_waitq_clear(&kbdev->hwcnt_waitqueue);
-
-		osk_spinlock_unlock(&kbdev->hwcnt_lock);
-
-		/* Mark this context as active as we don't want the GPU interrupts to be disabled */
-		kbase_pm_context_active(kbdev);
-
-		kbasep_instr_hwcnt_cacheclean(kbdev);
-
-		/* Wait for cacheclean to complete */
-		osk_waitq_wait(&kbdev->hwcnt_waitqueue);
-		OSK_ASSERT(kbdev->hwcnt_state == KBASE_INSTR_STATE_CLEANED);
-		
-		/* Now setup the instrumentation hw registers */
-		err = kbasep_instr_hwcnt_setup(kctx, setup);
-
-		kbdev->hwcnt_state = KBASE_INSTR_STATE_IDLE;
-		osk_waitq_set(&kbdev->hwcnt_waitqueue);
+		kbdev->hwcnt.state = KBASE_INSTR_STATE_IDLE;
 	}
 	else
 	{
-		osk_spinlock_unlock(&kbdev->hwcnt_lock);
-		err = MALI_ERROR_FUNCTION_FAILED;
+		/* Dump done */
+		OSK_ASSERT(kbdev->hwcnt.state == KBASE_INSTR_STATE_IDLE);
+		err = MALI_ERROR_NONE;
 	}
 
+	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+out:
 	return err;
 }
+KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_dump)
 
 /**
- * @brief Destory the Instrumentation context
+ * @brief Clear the HW counters
  */
-
-static void kbase_instr_hwcnt_destroy(kbase_context * kctx)
+mali_error kbase_instr_hwcnt_clear(kbase_context * kctx)
 {
-	mali_error err;
+	mali_error err = MALI_ERROR_FUNCTION_FAILED;
 	kbase_device *kbdev;
 
 	OSK_ASSERT(NULL != kctx);
-
 	kbdev = kctx->kbdev;
 	OSK_ASSERT(NULL != kbdev);
 
-	while(1)
+	osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+
+	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING)
 	{
-		osk_spinlock_lock(&kbdev->hwcnt_lock);
-		if(kbdev->hwcnt_state == KBASE_INSTR_STATE_IDLE)
-		{
-			/* kbase_instr_hwcnt_setup will need to be called to re-enable Instrumentation */
-			kbdev->hwcnt_state = KBASE_INSTR_STATE_DISABLED;
-			osk_waitq_clear(&kbdev->hwcnt_waitqueue);
-			/* destroy instrumentation context */
-			if(kbdev->hwcnt_context == kctx)
-			{
-				/* disable the use of the hw counters if the app didn't use the API correctly or crashed */
-				kbase_uk_hwcnt_setup tmp;
-				tmp.dump_buffer = 0ull;
-				err = kbasep_instr_hwcnt_setup(kctx, &tmp);
-				OSK_ASSERT(err != MALI_ERROR_FUNCTION_FAILED);
-			}
-			/* inform any other threads waiting for IDLE that state has changed to DISABLED */
-			osk_waitq_set(&kbdev->hwcnt_waitqueue);
-			osk_spinlock_unlock(&kbdev->hwcnt_lock);
-			break;
-		}
-		else if(kbdev->hwcnt_state == KBASE_INSTR_STATE_DISABLED)
-		{
-			/* If Instrumentation was never enabled, do nothing */
-			osk_spinlock_unlock(&kbdev->hwcnt_lock);
-			break;
-		}
-		else
-		{
-			osk_spinlock_unlock(&kbdev->hwcnt_lock);
-			osk_waitq_wait(&kbdev->hwcnt_waitqueue);
-		}
+		/* GPU is being reset*/
+		osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+		osk_waitq_wait(&kbdev->hwcnt.waitqueue);
+		osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
 	}
+
+	/* Check it's the context previously set up and we're not already dumping */
+	if (kbdev->hwcnt.kctx != kctx ||
+	    kbdev->hwcnt.state != KBASE_INSTR_STATE_IDLE)
+	{
+		goto out;
+	}
+
+	/* Clear the counters */
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), GPU_COMMAND_PRFCNT_CLEAR, kctx);
+
+	err = MALI_ERROR_NONE;
+
+out:
+	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+	return err;
 }
+KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_clear)
 
 /**
  * @brief Dump complete interrupt received
  */
-
 void kbase_instr_hwcnt_sample_done(kbase_device *kbdev)
 {
-	mali_error err;
-
-	err = kbasep_instr_hwcnt_dump_complete(kbdev);
-	/* Did the dump complete successfully? */
-	if(err == MALI_ERROR_FUNCTION_FAILED)
+	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_FAULT)
 	{
-		/* Inform waiting thread of dump failure */
-		kbdev->hwcnt_state = KBASE_INSTR_STATE_ERROR;
-		osk_waitq_set(&kbdev->hwcnt_waitqueue);
+		osk_waitq_set(&kbdev->hwcnt.waitqueue);
 	}
 	else
 	{
 		/* Always clean and invalidate the cache after a successful dump */
-		kbdev->hwcnt_state = KBASE_INSTR_STATE_POSTCLEANING;
+		kbdev->hwcnt.state = KBASE_INSTR_STATE_POSTCLEANING;
 		kbasep_instr_hwcnt_cacheclean(kbdev);
 	}
 }
@@ -413,26 +457,28 @@ void kbase_instr_hwcnt_sample_done(kbase_device *kbdev)
 /**
  * @brief Cache clean interrupt received
  */
-
 void kbase_clean_caches_done(kbase_device *kbdev)
 {
 	u32 irq_mask;
 
-	/* Disable interrupt */
-	irq_mask = kbase_reg_read(kbdev,GPU_CONTROL_REG(GPU_IRQ_MASK),NULL);
-	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), irq_mask & ~CLEAN_CACHES_COMPLETED, NULL);
+	if (kbdev->hwcnt.state != KBASE_INSTR_STATE_DISABLED)
+	{
+		/* Disable interrupt */
+		irq_mask = kbase_reg_read(kbdev,GPU_CONTROL_REG(GPU_IRQ_MASK),NULL);
+		kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), irq_mask & ~CLEAN_CACHES_COMPLETED, NULL);
 
-	if(kbdev->hwcnt_state == KBASE_INSTR_STATE_PRECLEANING)
-	{
-		/* Don't return IDLE as we need kbase_instr_hwcnt_setup to continue rather than
-		   allow access to another waiting thread */
-		kbdev->hwcnt_state = KBASE_INSTR_STATE_CLEANED;
+		if (kbdev->hwcnt.state == KBASE_INSTR_STATE_PRECLEANING)
+		{
+			/* Don't return IDLE as we need kbase_instr_hwcnt_setup to continue rather than
+			   allow access to another waiting thread */
+			kbdev->hwcnt.state = KBASE_INSTR_STATE_CLEANED;
+		}
+		else
+		{
+			/* All finished and idle */
+			kbdev->hwcnt.state = KBASE_INSTR_STATE_IDLE;
+		}
+
+		osk_waitq_set(&kbdev->hwcnt.waitqueue);
 	}
-	else
-	{
-		/* All finished and idle */
-		kbdev->hwcnt_state = KBASE_INSTR_STATE_IDLE;
-	}
-	osk_waitq_set(&kbdev->hwcnt_waitqueue);
 }
-#endif /* BASE_HW_ISSUE_7115 */

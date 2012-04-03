@@ -26,14 +26,6 @@ ARCH ?= $(shell uname -m)
 
 # linux build system integration
 
-######################################################################
-#******************************************************************###
-#TODO: remove OSK references for Linux Kernel mainline release:  **###
-#***** I.E. for each ifeq ($(MALI_UNIT_TEST),1) leave only the   **###
-#####* body in the else branch and remove the rest               **###
-#####**************************************************************###
-######################################################################
-
 ifeq ($(MALI_UNIT_TEST),1)
 OS=linux
 RELATIVE_ROOT=../../..
@@ -48,6 +40,10 @@ ifneq ($(VITHAR_ROOT),)
 # Inside the kernel build system
 
 EXTRA_CFLAGS += -I$(KBUILD_EXTMOD) -I$(KBUILD_EXTMOD)/common -I$(KBUILD_EXTMOD)/linux  -I$(KBUILD_EXTMOD)/../.. -I$(KBUILD_EXTMOD)/../../.. -DUMP_LICENSE_IS_GPL=$(MALI_LICENSE_IS_GPL)
+ifeq ($(MALI_LICENSE_IS_GPL),1) 
+	# GPL driver supports KDS
+	EXTRA_CFLAGS += -DCONFIG_KDS
+endif
 
 # For customer releases the Linux Device Drivers will be provided as ARM proprietary and GPL releases:
 # The ARM proprietary product will only include the license/proprietary directory
@@ -113,19 +109,19 @@ $(shell ln -sf arch-$(CONFIG) arch)
 $(shell touch arch/config.h)
 endif
 
-all:
+EXTRA_SYMBOLS=
 ifeq ($(MALI_UNIT_TEST),1)
-	$(MAKE) ARCH=$(ARCH) -C $(KDIR) M=$(CURDIR) KBUILD_EXTRA_SYMBOLS="$(ROOT)/uk/src/ukk/linux/Module.symvers"
-else
-	$(MAKE) ARCH=$(ARCH) -C $(KDIR) M=$(CURDIR)
+	EXTRA_SYMBOLS+=$(ROOT)/uk/src/ukk/linux/Module.symvers
+endif
+ifeq ($(MALI_LICENSE_IS_GPL),1)
+	EXTRA_SYMBOLS+=$(ROOT)/kds/lib/kds/Module.symvers
 endif
 
+all:
+	$(MAKE) ARCH=$(ARCH) -C $(KDIR) M=$(PWD) KBUILD_EXTRA_SYMBOLS="$(EXTRA_SYMBOLS)"
+
 kernelrelease:
-ifeq ($(MALI_UNIT_TEST),1)
-	$(MAKE) -C $(KDIR) KBUILD_EXTRA_SYMBOLS="$(ROOT)/uk/src/ukk/linux/Module.symvers" kernelrelease
-else
-	$(MAKE) -C $(KDIR) kernelrelease
-endif
+	$(MAKE) -C $(KDIR) KBUILD_EXTRA_SYMBOLS="$(EXTRA_SYMBOLS)" kernelrelease
 
 clean:
 	$(MAKE) ARCH=$(ARCH) -C $(KDIR) M=$(CURDIR) clean

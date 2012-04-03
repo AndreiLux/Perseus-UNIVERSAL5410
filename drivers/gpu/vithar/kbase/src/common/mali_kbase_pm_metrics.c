@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -128,6 +128,7 @@ spinlock_free:
 out:
 	return ret;
 }
+KBASE_EXPORT_TEST_API(kbasep_pm_metrics_init)
 
 void kbasep_pm_metrics_term(kbase_device *kbdev)
 {
@@ -144,6 +145,7 @@ void kbasep_pm_metrics_term(kbase_device *kbdev)
 
 	osk_spinlock_irq_term(&kbdev->pm.metrics.lock);
 }
+KBASE_EXPORT_TEST_API(kbasep_pm_metrics_term)
 
 void kbasep_pm_record_gpu_idle(kbase_device *kbdev)
 {
@@ -162,6 +164,7 @@ void kbasep_pm_record_gpu_idle(kbase_device *kbdev)
 
 	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
 }
+KBASE_EXPORT_TEST_API(kbasep_pm_record_gpu_idle)
 
 void kbasep_pm_record_gpu_active(kbase_device *kbdev)
 {
@@ -180,6 +183,7 @@ void kbasep_pm_record_gpu_active(kbase_device *kbdev)
 
 	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
 }
+KBASE_EXPORT_TEST_API(kbasep_pm_record_gpu_active)
 
 void kbase_pm_report_vsync(kbase_device *kbdev, int buffer_updated)
 {
@@ -189,6 +193,7 @@ void kbase_pm_report_vsync(kbase_device *kbdev, int buffer_updated)
 	kbdev->pm.metrics.vsync_hit = buffer_updated;
 	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
 }
+KBASE_EXPORT_TEST_API(kbase_pm_report_vsync)
 
 kbase_pm_dvfs_action kbase_pm_get_dvfs_action(kbase_device *kbdev)
 {
@@ -262,7 +267,7 @@ out:
 
 	return action;
 }
-
+KBASE_EXPORT_TEST_API(kbase_pm_get_dvfs_action)
 #ifdef CONFIG_VITHAR_DVFS
 int kbase_pm_get_dvfs_utilisation(kbase_device *kbdev)
 {

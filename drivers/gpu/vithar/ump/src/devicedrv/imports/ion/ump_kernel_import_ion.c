@@ -160,7 +160,7 @@ static ump_dd_handle import_ion_import(void * custom_session_data, void * pfd, u
 
 	if (ump_handle != UMP_DD_INVALID_MEMORY_HANDLE)
 	{
-		/* 
+		/*
 		 * As we have a final release callback installed
 		 * we must keep the module locked until
 		 * the callback has been triggered
@@ -205,7 +205,7 @@ static void __exit import_ion_cleanup_module(void)
 module_init(import_ion_initialize_module);
 module_exit(import_ion_cleanup_module);
 
-/* And some module informatio */
+/* And some module information */
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("ARM Ltd.");
 MODULE_VERSION("1.0");

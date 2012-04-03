@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -39,6 +39,24 @@ void ukk_session_term(ukk_session *ukk_session)
 	OSK_ASSERT(NULL != ukk_session);
 }
 
+mali_error ukk_copy_from_user( size_t bytes,  void * kernel_buffer, const void * const user_buffer )
+{
+	if ( copy_from_user( kernel_buffer, user_buffer, bytes ) )
+	{
+		return MALI_ERROR_FUNCTION_FAILED;
+	}
+	return MALI_ERROR_NONE;
+}
+
+mali_error ukk_copy_to_user( size_t bytes, void * user_buffer, const void * const kernel_buffer )
+{
+	if ( copy_to_user( user_buffer, kernel_buffer, bytes ) )
+	{
+		return MALI_ERROR_FUNCTION_FAILED;
+	}
+	return MALI_ERROR_NONE;
+}
+
 static int __init ukk_module_init(void)
 {
 	if (MALI_ERROR_NONE != ukk_start())
@@ -53,14 +71,13 @@ static void __exit ukk_module_exit(void)
 	ukk_stop();
 }
 
+EXPORT_SYMBOL(ukk_copy_from_user);
+EXPORT_SYMBOL(ukk_copy_to_user);
 EXPORT_SYMBOL(ukk_session_init);
 EXPORT_SYMBOL(ukk_session_term);
 EXPORT_SYMBOL(ukk_session_get);
 EXPORT_SYMBOL(ukk_call_prepare);
-EXPORT_SYMBOL(ukk_call_data_set);
-EXPORT_SYMBOL(ukk_call_data_get);
 EXPORT_SYMBOL(ukk_dispatch);
-EXPORT_SYMBOL(ukk_thread_ctx_get);
 
 module_init(ukk_module_init);
 module_exit(ukk_module_exit);

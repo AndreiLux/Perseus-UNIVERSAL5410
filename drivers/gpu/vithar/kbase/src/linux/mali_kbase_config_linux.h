@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -18,8 +18,10 @@
 #include <kbase/mali_kbase_config.h>
 #include <linux/ioport.h>
 
-#if !MALI_LICENSE_IS_GPL || MALI_FAKE_PLATFORM_DEVICE
 #define PLATFORM_CONFIG_RESOURCE_COUNT 4
+#define PLATFORM_CONFIG_IRQ_RES_COUNT  3
+
+#if !MALI_LICENSE_IS_GPL || MALI_FAKE_PLATFORM_DEVICE
 /**
  * @brief Convert data in kbase_io_resources struct to Linux-specific resources
  *

@@ -35,6 +35,10 @@
  */
 typedef void * ump_dd_handle;
 
+#ifdef CONFIG_KDS
+#include <kds/include/linux/kds.h>
+#endif
+
 #include <ump/ump_common.h>
 #include <ump/ump_kernel_platform.h>
 
@@ -59,8 +63,8 @@ extern "C"
  */
 typedef struct ump_dd_physical_block_64
 {
-	u64 addr; /**< The physical address of the block */
-	u64 size; /**< The length of the block, in bytes, typically page aligned */
+	uint64_t addr; /**< The physical address of the block */
+	uint64_t size; /**< The length of the block, in bytes, typically page aligned */
 } ump_dd_physical_block_64;
 
 /**
@@ -116,7 +120,7 @@ typedef void (*ump_dd_final_release_callback)(const ump_dd_handle, void *);
  * @param[in] callback_data An opaque pointer which will be provided to @a filter_func and @a final_release_func
  * @return Handle to the new allocation, or @a UMP_DD_INVALID_MEMORY_HANDLE on allocation failure.
  */
-UMP_KERNEL_API_EXPORT ump_dd_handle ump_dd_allocate_64(u64 size, ump_alloc_flags flags, ump_dd_security_filter filter_func, ump_dd_final_release_callback final_release_func, void* callback_data);
+UMP_KERNEL_API_EXPORT ump_dd_handle ump_dd_allocate_64(uint64_t size, ump_alloc_flags flags, ump_dd_security_filter filter_func, ump_dd_final_release_callback final_release_func, void* callback_data);
 
 
 /**
@@ -154,6 +158,18 @@ UMP_KERNEL_API_EXPORT ump_alloc_flags ump_dd_allocation_flags_get(const ump_dd_h
  */
 UMP_KERNEL_API_EXPORT ump_secure_id ump_dd_secure_id_get(const ump_dd_handle mem);
 
+#ifdef CONFIG_KDS
+/**
+ * Retrieve the KDS resource for the specified UMP memory.
+ *
+ * The KDS resource should be used to synchronize access to the UMP allocation.
+ * See the KDS API for how to do that.
+ *
+ * @param mem Handle to the UMP memory to query.
+ * @return Pointer to the KDS resource controlling access to the UMP memory.
+ */
+UMP_KERNEL_API_EXPORT struct kds_resource * ump_dd_kds_resource_get(const ump_dd_handle mem);
+#endif
 
 /**
  * Retrieves a handle to allocated UMP memory.
@@ -192,7 +208,7 @@ UMP_KERNEL_API_EXPORT ump_dd_handle ump_dd_from_secure_id(ump_secure_id secure_i
  * @param[out] pCount Pointer to where to store the number of items in the returned array
  * @param[out] pArray Pointer to where to store a pointer to the physical blocks array
  */
-UMP_KERNEL_API_EXPORT void ump_dd_phys_blocks_get_64(const ump_dd_handle mem, u64 * pCount, const ump_dd_physical_block_64 ** pArray);
+UMP_KERNEL_API_EXPORT void ump_dd_phys_blocks_get_64(const ump_dd_handle mem, uint64_t * pCount, const ump_dd_physical_block_64 ** pArray);
 
 /**
  * Retrieves the actual size of the specified UMP memory.
@@ -210,7 +226,7 @@ UMP_KERNEL_API_EXPORT void ump_dd_phys_blocks_get_64(const ump_dd_handle mem, u6
  *
  * @return Returns the allocated size of the specified UMP memory, in bytes.
  */
-UMP_KERNEL_API_EXPORT u64 ump_dd_size_get_64(const ump_dd_handle mem);
+UMP_KERNEL_API_EXPORT uint64_t ump_dd_size_get_64(const ump_dd_handle mem);
 
 
 /**
@@ -270,7 +286,7 @@ UMP_KERNEL_API_EXPORT void ump_dd_release(ump_dd_handle mem);
  * @param[in] callback_data An opaque pointer which will be provided to @a filter_func and @a final_release_func
  * @return Handle to the UMP allocation handle created, or @a UMP_DD_INVALID_MEMORY_HANDLE if no such handle could be created.
  */
-UMP_KERNEL_API_EXPORT ump_dd_handle ump_dd_create_from_phys_blocks_64(const ump_dd_physical_block_64 * blocks, u64 num_blocks, ump_alloc_flags flags, ump_dd_security_filter filter_func, ump_dd_final_release_callback final_release_func, void* callback_data);
+UMP_KERNEL_API_EXPORT ump_dd_handle ump_dd_create_from_phys_blocks_64(const ump_dd_physical_block_64 * blocks, uint64_t num_blocks, ump_alloc_flags flags, ump_dd_security_filter filter_func, ump_dd_final_release_callback final_release_func, void* callback_data);
 
 
 /** @name UMP v1 API

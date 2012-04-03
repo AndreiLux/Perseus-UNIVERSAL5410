@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010, 2012 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -39,6 +39,26 @@
 #define BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS 3
 
 #define BASE_MAX_COHERENT_GROUPS 16
+
+#if defined CDBG_ASSERT
+#define LOCAL_ASSERT CDBG_ASSERT
+#elif defined OSK_ASSERT
+#define LOCAL_ASSERT OSK_ASSERT
+#else
+#error assert macro not defined!
+#endif
+
+#if defined OSK_PAGE_MASK
+	#define LOCAL_PAGE_LSB ~OSK_PAGE_MASK
+#else
+	#include <osu/mali_osu.h>
+
+	#if defined CONFIG_CPU_PAGE_SIZE_LOG2
+		#define LOCAL_PAGE_LSB ((1ul << CONFIG_CPU_PAGE_SIZE_LOG2) - 1)
+	#else
+		#error Failed to find page size
+	#endif
+#endif
 
 
 /**
@@ -93,6 +113,38 @@ enum
 };
 
 /**
+ * @brief Memory types supported by @a base_tmem_import
+ *
+ * Each type defines what the supported handle type is.
+ *
+ * If any new type is added here ARM must be contacted
+ * to allocate a numeric value for it.
+ * Do not just add a new type without synchronizing with ARM
+ * as future releases from ARM might include other new types
+ * which could clash with your custom types.
+ */
+typedef enum base_tmem_import_type
+{
+	BASE_TMEM_IMPORT_TYPE_INVALID = 0,
+	/** UMP import. Handle type is ump_secure_id. */
+	BASE_TMEM_IMPORT_TYPE_UMP = 1,
+	/** UMM import. Handle type is a file descriptor (int) */
+	BASE_TMEM_IMPORT_TYPE_UMM = 2
+} base_tmem_import_type;
+
+/**
+ * Bits we can tag into a memory handle.
+ * We use the lower 12 bits as our handles are page-multiples, thus not using the 12 LSBs
+ */
+enum
+{
+	BASE_MEM_TAGS_MASK      = ((1U << 12) - 1),   /**< Mask to get hold of the tag bits/see if there are tag bits */
+	BASE_MEM_TAG_IMPORTED  =   (1U << 0)          /**< Tagged as imported */
+	/* max 1u << 11 supported */
+};
+
+
+/**
  * @brief Number of bits used as flags for base memory management
  *
  * Must be kept in sync with the ::base_mem_alloc_flags flags
@@ -129,6 +181,20 @@ typedef struct base_syncset
 
 /** @} end group base_user_api_memory_defered */
 
+/**
+ * Handle to represent imported memory object.
+ * Simple opague handle to imported memory, can't be used
+ * with anything but base_external_resource_init to bind to an atom.
+ */
+typedef struct base_import_handle
+{
+	struct
+	{
+		mali_addr64 handle;
+	} basep;
+} base_import_handle;
+
+
 /** @} end group base_user_api_memory */
 
 /**
@@ -163,7 +229,7 @@ typedef struct base_jd_dep {
  */
 typedef struct base_jd_udata
 {
-	u64     blob[1]; /**< per-job data array */
+	u64     blob[2]; /**< per-job data array */
 } base_jd_udata;
 
 /**
@@ -181,7 +247,18 @@ typedef u16 base_jd_core_req;
 /* Requirements that come from the HW */
 #define BASE_JD_REQ_DEP 0           /**< No requirement, dependency only */
 #define BASE_JD_REQ_FS  (1U << 0)   /**< Requires fragment shaders */
-#define BASE_JD_REQ_CS  (1U << 1)   /**< Requires compute shaders */
+/**
+ * Requires compute shaders
+ * This covers any of the following Midgard Job types:
+ * - Vertex Shader Job
+ * - Geometry Shader Job
+ * - An actual Compute Shader Job
+ *
+ * Compare this with @ref BASE_JD_REQ_ONLY_COMPUTE, which specifies that the
+ * job is specifically just the "Compute Shader" job type, and not the "Vertex
+ * Shader" nor the "Geometry Shader" job type.
+ */
+#define BASE_JD_REQ_CS  (1U << 1)
 #define BASE_JD_REQ_T   (1U << 2)   /**< Requires tiling */
 #define BASE_JD_REQ_CF  (1U << 3)   /**< Requires cache flushes */
 #define BASE_JD_REQ_V   (1U << 4)   /**< Requires value writeback */
@@ -213,22 +290,42 @@ typedef u16 base_jd_core_req;
  * they are needed, to reduce power consumption.
  */
 
-#define BASE_JD_REQ_PERMON          (1U << 7)
+#define BASE_JD_REQ_PERMON               (1U << 7)
+
+/**
+ * SW Only requirement: External resources are referenced by this atom.
+ * When external resources are referenced no syncsets can be bundled with the atom
+ * but should instead be part of a NULL jobs inserted into the dependency tree.
+ * The first pre_dep object must be configured for the external resouces to use,
+ * the second pre_dep object can be used to create other dependencies.
+ */
+#define BASE_JD_REQ_EXTERNAL_RESOURCES   (1U << 8)
 
 /**
  * SW Only requirement: Software defined job. Jobs with this bit set will not be submitted
  * to the hardware but will cause some action to happen within the driver
  */
-#define BASE_JD_REQ_SOFT_JOB        (1U << 8)
+#define BASE_JD_REQ_SOFT_JOB        (1U << 9)
 
 #define BASE_JD_REQ_SOFT_DUMP_CPU_GPU_TIME      (BASE_JD_REQ_SOFT_JOB | 0x1)
+
+/**
+ * HW Requirement: Requires Compute shaders (but not Vertex or Geometry Shaders)
+ *
+ * This indicates that the Job Chain contains Midgard Jobs of the 'Compute Shaders' type.
+ *
+ * In contrast to @ref BASE_JD_REQ_CS, this does \b not indicate that the Job
+ * Chain contains 'Geometry Shader' or 'Vertex Shader' jobs.
+ *
+ * @note This is a more flexible variant of the @ref BASE_CONTEXT_HINT_ONLY_COMPUTE flag,
+ * allowing specific jobs to be marked as 'Only Compute' instead of the entire context
+ */
+#define BASE_JD_REQ_ONLY_COMPUTE    (1U << 10)
 
 /**
 * These requirement bits are currently unused in base_jd_core_req (currently a u16)
 */
 
-#define BASEP_JD_REQ_RESERVED_BIT9  ( 1U << 9 )
-#define BASEP_JD_REQ_RESERVED_BIT10 ( 1U << 10 )
 #define BASEP_JD_REQ_RESERVED_BIT11 ( 1U << 11 )
 #define BASEP_JD_REQ_RESERVED_BIT12 ( 1U << 12 )
 #define BASEP_JD_REQ_RESERVED_BIT13 ( 1U << 13 )
@@ -239,8 +336,7 @@ typedef u16 base_jd_core_req;
 * Mask of all the currently unused requirement bits in base_jd_core_req.
 */
 
-#define BASEP_JD_REQ_RESERVED ( BASEP_JD_REQ_RESERVED_BIT9  |\
-                                BASEP_JD_REQ_RESERVED_BIT10 | BASEP_JD_REQ_RESERVED_BIT11 |\
+#define BASEP_JD_REQ_RESERVED ( BASEP_JD_REQ_RESERVED_BIT11 |\
                                 BASEP_JD_REQ_RESERVED_BIT12 | BASEP_JD_REQ_RESERVED_BIT13 |\
                                 BASEP_JD_REQ_RESERVED_BIT14 | BASEP_JD_REQ_RESERVED_BIT15 )
 
@@ -256,12 +352,13 @@ typedef u16 base_jd_core_req;
  */
 typedef struct base_jd_atom
 {
-	base_jd_udata       udata;          /**< user data */
 	mali_addr64         jc;             /**< job-chain GPU address */
+	base_jd_udata       udata;          /**< user data */
 	base_jd_dep         pre_dep;        /**< pre-dependencies */
 	base_jd_dep         post_dep;       /**< post-dependencies */
-	u16                 nr_syncsets;    /**< nr of syncsets following the atom */
 	base_jd_core_req    core_req;       /**< core requirements */
+	u16                 nr_syncsets;    /**< nr of syncsets following the atom */
+	u16                 nr_extres;      /**< nr of external resources following the atom */
 
 	/** @brief Relative priority.
 	 *
@@ -273,12 +370,39 @@ typedef struct base_jd_atom
 	s8                  prio;
 } base_jd_atom;
 
-/* Lot of hacks to cope with the fact that C89 doesn't allow arrays of size 0 */
+/* Structure definition works around the fact that C89 doesn't allow arrays of size 0 */
 typedef struct basep_jd_atom_ss
 {
 	base_jd_atom    atom;
 	base_syncset    syncsets[1];
 } basep_jd_atom_ss;
+
+typedef enum base_external_resource_access
+{
+	BASE_EXT_RES_ACCESS_SHARED,
+	BASE_EXT_RES_ACCESS_EXCLUSIVE
+} base_external_resource_access;
+
+typedef struct base_external_resource
+{
+	u64  ext_resource;
+} base_external_resource;
+
+/* Structure definition works around the fact that C89 doesn't allow arrays of size 0 */
+typedef struct basep_jd_atom_ext_res
+{
+	base_jd_atom  atom;
+	base_external_resource resources[1];
+} basep_jd_atom_ext_res;
+
+static INLINE size_t base_jd_atom_size_ex(u32 syncset_count, u32 external_res_count)
+{
+	LOCAL_ASSERT( 0 == syncset_count || 0 == external_res_count );
+
+	return syncset_count      ? offsetof(basep_jd_atom_ss, syncsets[syncset_count]) :
+	       external_res_count ? offsetof(basep_jd_atom_ext_res, resources[external_res_count]) :
+	                            sizeof(base_jd_atom);
+}
 
 /**
  * @brief Atom size evaluator
@@ -292,7 +416,7 @@ typedef struct basep_jd_atom_ss
  */
 static INLINE size_t base_jd_atom_size(u32 nr)
 {
-	return nr ? offsetof(basep_jd_atom_ss, syncsets[nr]) : sizeof(base_jd_atom);
+	return base_jd_atom_size_ex(nr, 0);
 }
 
 /**
@@ -307,16 +431,49 @@ static INLINE size_t base_jd_atom_size(u32 nr)
  */
 static INLINE base_syncset *base_jd_get_atom_syncset(base_jd_atom *atom, int n)
 {
-#if defined CDBG_ASSERT
-	CDBG_ASSERT(atom != NULL);
-	CDBG_ASSERT( (n >= 0) && (n <= atom->nr_syncsets) );
-#elif defined OSK_ASSERT
-	OSK_ASSERT(atom != NULL);
-	OSK_ASSERT( (n >= 0) && (n <= atom->nr_syncsets) );
-#else
-#error assert macro not defined!
-#endif
+	LOCAL_ASSERT(atom != NULL);
+	LOCAL_ASSERT(0 == (atom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES));
+	LOCAL_ASSERT( (n >= 0) && (n <= atom->nr_syncsets) );
 	return &((basep_jd_atom_ss *)atom)->syncsets[n];
+}
+
+/**
+ * @brief Atom external resource accessor
+ *
+ * This functions returns a pointer to the nth external resource tracked by the atom.
+ *
+ * @param[in] atom The allocated atom
+ * @param     n    The number of the external resource to return a pointer to
+ * @return a pointer to the nth external resource
+ */
+static INLINE base_external_resource *base_jd_get_external_resource(base_jd_atom *atom, int n)
+{
+	LOCAL_ASSERT(atom != NULL);
+	LOCAL_ASSERT(BASE_JD_REQ_EXTERNAL_RESOURCES == (atom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES));
+	LOCAL_ASSERT( (n >= 0) && (n <= atom->nr_extres) );
+	return &((basep_jd_atom_ext_res*)atom)->resources[n];
+}
+
+/**
+ * @brief External resource info initialization.
+ *
+ * Sets up a external resource object to reference
+ * a memory allocation and the type of access requested.
+ *
+ * @param[in] res     The resource object to initialize
+ * @param     address The GPU VA of the external memory
+ * @param     access  The type of access requested
+ */
+static INLINE void base_external_resource_init(base_external_resource * res, base_import_handle handle, base_external_resource_access access)
+{
+	mali_addr64 address;
+	address = handle.basep.handle;
+
+	LOCAL_ASSERT(res != NULL);
+	LOCAL_ASSERT(0 == (address & LOCAL_PAGE_LSB));
+	LOCAL_ASSERT(access == BASE_EXT_RES_ACCESS_SHARED || access == BASE_EXT_RES_ACCESS_EXCLUSIVE);
+
+	res->ext_resource = address | (access & LOCAL_PAGE_LSB);
 }
 
 /**
@@ -331,14 +488,9 @@ static INLINE base_syncset *base_jd_get_atom_syncset(base_jd_atom *atom, int n)
  */
 static INLINE base_jd_atom *base_jd_get_next_atom(base_jd_atom *atom)
 {
-#if defined CDBG_ASSERT
-	CDBG_ASSERT(atom != NULL);
-#elif defined OSK_ASSERT
-	OSK_ASSERT(atom != NULL);
-#else
-#error assert macro not defined!
-#endif
-	return (base_jd_atom *)base_jd_get_atom_syncset(atom, atom->nr_syncsets);
+	LOCAL_ASSERT(atom != NULL);
+	return (atom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES) ? (base_jd_atom *)base_jd_get_external_resource(atom, atom->nr_extres) :
+	                                                           (base_jd_atom *)base_jd_get_atom_syncset(atom, atom->nr_syncsets);
 }
 
 /**
@@ -401,7 +553,7 @@ typedef enum base_jd_event_code
 
 	/* non-fatal exceptions */
 	BASE_JD_EVENT_NOT_STARTED = 0x00, /**< Can't be seen by userspace, treated as 'previous job done' */
-	BASE_JD_EVENT_DONE = 0x01, 
+	BASE_JD_EVENT_DONE = 0x01,
 	BASE_JD_EVENT_STOPPED = 0x03,     /**< Can't be seen by userspace, becomes TERMINATED, DONE or JOB_CANCELLED */
 	BASE_JD_EVENT_TERMINATED = 0x04,  /**< This is actually a fault status code - the job was hard stopped */
 	BASE_JD_EVENT_ACTIVE = 0x08,      /**< Can't be seen by userspace, jobs only returned on complete/fail/cancel */
@@ -435,11 +587,11 @@ typedef enum base_jd_event_code
 	BASE_JD_EVENT_STATE_FAULT = 0x5A,
 	BASE_JD_EVENT_OUT_OF_MEMORY = 0x60,
 	BASE_JD_EVENT_UNKNOWN = 0x7F,
-	
+
 	/* GPU exceptions */
 	BASE_JD_EVENT_DELAYED_BUS_FAULT = 0x80,
 	BASE_JD_EVENT_SHAREABILITY_FAULT = 0x88,
-	
+
 	/* MMU exceptions */
 	BASE_JD_EVENT_TRANSLATION_FAULT_LEVEL1  = 0xC1,
 	BASE_JD_EVENT_TRANSLATION_FAULT_LEVEL2  = 0xC2,
@@ -625,7 +777,7 @@ typedef u32 midg_js_present;
  *
  *
  * @section sec_base_user_api_gpuprops_config Platform Config Compile-time Properties
- * 
+ *
  * The Platform Config File sets up gpu properties that are specific to a
  * certain platform. Properties that are 'Implementation Defined' in the
  * Midgard Architecture spec are placed here.
@@ -641,7 +793,7 @@ typedef u32 midg_js_present;
  * - platform_XYZ
  * - platform_XYZ/plat
  * - platform_XYZ/plat/plat_config.h
- * 
+ *
  * They then edit plat_config.h, using the example plat_config.h files as a
  * guide.
  *
@@ -649,11 +801,11 @@ typedef u32 midg_js_present;
  * receive a helpful \#error message if they do not do this correctly. This
  * selects the Reference Configuration for the Midgard Implementation. The rationale
  * behind this decision (against asking the customer to write \#include
- * <gpus/mali_t600.h> in their plat_config.h) is as follows: 
+ * <gpus/mali_t600.h> in their plat_config.h) is as follows:
  * - This mechanism 'looks' like a regular config file (such as Linux's
  * .config)
  * - It is difficult to get wrong in a way that will produce strange build
- * errors: 
+ * errors:
  *  - They need not know where the mali_t600.h, other_midg_gpu.h etc. files are stored - and
  *  so they won't accidentally pick another file with 'mali_t600' in its name
  *  - When the build doesn't work, the System Integrator may think the DDK is
@@ -670,7 +822,7 @@ typedef u32 midg_js_present;
  *   the build progresses with their fix, but with errors elsewhere.
  *
  * However, there is nothing to prevent the customer using \#include to organize
- * their own configurations files hierarchically. 
+ * their own configurations files hierarchically.
  *
  * The mechanism for the header file processing is as follows:
  *
@@ -684,7 +836,7 @@ typedef u32 midg_js_present;
 
 	   node [ shape=box ];
 	   {
-	       rank = same; ordering = out; 
+	       rank = same; ordering = out;
 
 		   "midg/midg_gpu_props.h";
 		   "base/midg_gpus/mali_t600.h";
@@ -701,8 +853,8 @@ typedef u32 midg_js_present;
 	   { rank = same; "plat/plat_config.h"; }
 	   { rank = same; "mali_base.h"; }
 
-	   
-	   
+
+
 	   "mali_base.h" -> "midg/midg.h" -> "midg/midg_gpu_props.h";
 	   "mali_base.h" -> "plat/plat_config.h" ;
 	   "mali_base.h" -> select_gpu ;
@@ -714,7 +866,7 @@ typedef u32 midg_js_present;
 	   select_gpu -> "base/midg_gpus/other_midg_gpu.h" ;
    }
    @enddot
- * 
+ *
  *
  * @section sec_base_user_api_gpuprops_kernel Kernel Operation
  *
@@ -855,7 +1007,7 @@ struct mali_base_gpu_tiler_props
 
 /**
  * @brief descriptor for a coherent group
- * 
+ *
  * \c core_mask exposes all cores in that coherent group, and \c num_cores
  * provides a cached population-count for that mask.
  *
@@ -864,7 +1016,7 @@ struct mali_base_gpu_tiler_props
  * the application should not further restrict the core mask itself, as it may
  * result in an empty core mask. However, it can guarentee that there will be
  * at least one core available for each core group exposed .
- * 
+ *
  * @usecase Chains marked at certain user-side priorities (e.g. the Long-running
  * (batch) priority ) can be prevented from running on entire core groups by the
  * Kernel Chain Scheduler policy.
@@ -903,7 +1055,7 @@ struct mali_base_gpu_coherent_group_info
 	 */
 	u32 num_core_groups;
 
-	/** 
+	/**
 	 * Coherency features of the memory, accessed by @ref midg_mem_features
 	 * methods
 	 */
@@ -975,6 +1127,87 @@ typedef struct mali_base_gpu_props
 
 /** @} end group base_user_api_gpuprops */
 
+/**
+ * @addtogroup base_user_api_core User-side Base core APIs
+ * @{
+ */
+
+/**
+ * \enum base_context_create_flags
+ *
+ * Flags to pass to ::base_context_init.
+ * Flags can be ORed together to enable multiple things.
+ *
+ * These share the same space as @ref basep_context_private_flags, and so must
+ * not collide with them.
+ */
+enum base_context_create_flags
+{
+	/** No flags set */
+	BASE_CONTEXT_CREATE_FLAG_NONE               = 0,
+
+	/** Base context is embedded in a cctx object (flag used for CINSTR software counter macros) */
+	BASE_CONTEXT_CCTX_EMBEDDED                  = (1u << 0),
+
+	/** Base context is a 'System Monitor' context for Hardware counters.
+	 *
+	 * One important side effect of this is that job submission is disabled. */
+	BASE_CONTEXT_SYSTEM_MONITOR_SUBMIT_DISABLED = (1u << 1),
+
+	/** Base context flag indicating a 'hint' that this context uses Compute
+	 * Jobs only.
+	 *
+	 * Specifially, this means that it only sends atoms that <b>do not</b>
+	 * contain the following @ref base_jd_corereq :
+	 * - BASE_JD_REQ_FS
+	 * - BASE_JD_REQ_T
+	 *
+	 * Violation of these requirements will cause the Job-Chains to be rejected.
+	 *
+	 * In addition, it is inadvisable for the atom's Job-Chains to contain Jobs
+	 * of the following @ref midg_job_type (whilst it may work now, it may not
+	 * work in future) :
+	 * - @ref MIDG_JOB_VERTEX
+	 * - @ref MIDG_JOB_GEOMETRY
+	 *
+	 * @note An alternative to using this is to specify the BASE_JD_REQ_ONLY_COMPUTE
+	 * requirement in atoms.
+	 */
+	BASE_CONTEXT_HINT_ONLY_COMPUTE              = (1u << 2)
+};
+
+/**
+ * Bitpattern describing the ::base_context_create_flags that can be passed to base_context_init()
+ */
+#define BASE_CONTEXT_CREATE_ALLOWED_FLAGS \
+	( ((u32)BASE_CONTEXT_CCTX_EMBEDDED) | \
+	  ((u32)BASE_CONTEXT_SYSTEM_MONITOR_SUBMIT_DISABLED) | \
+	  ((u32)BASE_CONTEXT_HINT_ONLY_COMPUTE) )
+
+/**
+ * Bitpattern describing the ::base_context_create_flags that can be passed to the kernel
+ */
+#define BASE_CONTEXT_CREATE_KERNEL_FLAGS \
+	( ((u32)BASE_CONTEXT_SYSTEM_MONITOR_SUBMIT_DISABLED) | \
+	  ((u32)BASE_CONTEXT_HINT_ONLY_COMPUTE) )
+
+
+/**
+ * Private flags used on the base context
+ *
+ * These start at bit 31, and run down to zero.
+ *
+ * They share the same space as @ref base_context_create_flags, and so must
+ * not collide with them.
+ */
+enum basep_context_private_flags
+{
+	/** Private flag tracking whether job descriptor dumping is disabled */
+	BASEP_CONTEXT_FLAG_JOB_DUMP_DISABLED = (1 << 31)
+};
+
+/** @} end group base_user_api_core */
+
 /** @} end group base_user_api */
 
 /**
@@ -983,7 +1216,7 @@ typedef struct mali_base_gpu_props
  *
  * C Pre-processor macros are exposed here to do with Platform
  * Config.
- * 
+ *
  * These include:
  * - GPU Properties that are constant on a particular Midgard Family
  * Implementation e.g. Maximum samples per pixel on Mali-T600.
@@ -992,6 +1225,76 @@ typedef struct mali_base_gpu_props
  */
 
 /** @} end group base_plat_config_gpuprops */
+
+/**
+   @addtogroup basecpuprops
+ * @{
+ */
+
+/**
+ * @brief CPU Property Flag for base_cpu_props::cpu_flags, indicating a
+ * Little Endian System. If not set in base_cpu_props::cpu_flags, then the
+ * system is Big Endian.
+ *
+ * The compile-time equivalent is @ref CONFIG_CPU_LITTLE_ENDIAN.
+ */
+#define BASE_CPU_PROPERTY_FLAG_LITTLE_ENDIAN F_BIT_0
+
+/** @brief Platform Dynamic CPU properties structure */
+typedef struct base_cpu_props {
+    u32 nr_cores;            /**< Number of CPU cores */
+
+    /**
+     * CPU page size as a Logarithm to Base 2. The compile-time
+     * equivalent is @ref CONFIG_CPU_PAGE_SIZE_LOG2
+     */
+    u32 cpu_page_size_log2;
+
+    /**
+     * CPU L1 Data cache line size as a Logarithm to Base 2. The compile-time
+     * equivalent is @ref CONFIG_CPU_L1_DCACHE_LINE_SIZE_LOG2.
+     */
+    u32 cpu_l1_dcache_line_size_log2;
+
+    /**
+     * CPU L1 Data cache size, in bytes. The compile-time equivalient is
+     * @ref CONFIG_CPU_L1_DCACHE_SIZE.
+     *
+     * This CPU Property is mainly provided to implement OpenCL's
+     * clGetDeviceInfo(), which allows the CL_DEVICE_GLOBAL_MEM_CACHE_SIZE
+     * hint to be queried.
+     */
+    u32 cpu_l1_dcache_size;
+
+    /**
+     * CPU Property Flags bitpattern.
+     *
+     * This is a combination of bits as specified by the macros prefixed with
+     * 'BASE_CPU_PROPERTY_FLAG_'.
+     */
+    u32 cpu_flags;
+
+    /**
+     * Maximum clock speed in MHz.
+     * @usecase 'Maximum' CPU Clock Speed information is required by OpenCL's
+     * clGetDeviceInfo() function for the CL_DEVICE_MAX_CLOCK_FREQUENCY hint.
+     */
+    u32 max_cpu_clock_speed_mhz;
+
+    /**
+     * @brief Total memory, in bytes.
+     *
+     * This is the theoretical maximum memory available to the CPU. It is
+     * unlikely that a client will be able to allocate all of this memory for
+     * their own purposes, but this at least provides an upper bound on the
+     * memory available to the CPU.
+     *
+     * This is required for OpenCL's clGetDeviceInfo() call when
+     * CL_DEVICE_GLOBAL_MEM_SIZE is requested, for OpenCL CPU devices.
+     */
+    u64 available_memory_size;
+} base_cpu_props;
+/** @} end group basecpuprops */
 
 /** @} end group base_api */
 

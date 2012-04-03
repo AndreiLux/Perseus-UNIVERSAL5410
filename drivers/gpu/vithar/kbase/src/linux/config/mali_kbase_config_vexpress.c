@@ -18,8 +18,11 @@
 #include <kbase/src/linux/mali_kbase_config_linux.h>
 #include <ump/ump_common.h>
 
+#include "mali_kbase_cpu_vexpress.h"
+
 /* Set this to 1 to enable dedicated memory banks */
 #define T6F1_ZBT_DDR_ENABLED 0
+#define HARD_RESET_AT_POWER_OFF 0
 
 static kbase_io_resources io_resources =
 {
@@ -35,7 +38,8 @@ static kbase_io_resources io_resources =
 
 #if T6F1_ZBT_DDR_ENABLED
 
-static kbase_attribute lt_zbt_attrs[] = {
+static kbase_attribute lt_zbt_attrs[] =
+{
 	{
 		KBASE_MEM_ATTR_PERF_CPU,
 		KBASE_MEM_PERF_SLOW
@@ -46,7 +50,8 @@ static kbase_attribute lt_zbt_attrs[] = {
 	}
 };
 
-static kbase_memory_resource lt_zbt = {
+static kbase_memory_resource lt_zbt =
+{
 	.base = 0xFD000000,
 	.size = 16 * 1024 * 1024UL /* 16MB */,
 	.attributes = lt_zbt_attrs,
@@ -54,7 +59,8 @@ static kbase_memory_resource lt_zbt = {
 };
 
 
-static kbase_attribute lt_ddr_attrs[] = {
+static kbase_attribute lt_ddr_attrs[] =
+{
 	{
 		KBASE_MEM_ATTR_PERF_CPU,
 		KBASE_MEM_PERF_SLOW
@@ -65,7 +71,8 @@ static kbase_attribute lt_ddr_attrs[] = {
 	}
 };
 
-static kbase_memory_resource lt_ddr = {
+static kbase_memory_resource lt_ddr =
+{
 	.base = 0xE0000000,
 	.size = 256 * 1024 * 1024UL /* 256MB */,
 	.attributes = lt_ddr_attrs,
@@ -74,7 +81,34 @@ static kbase_memory_resource lt_ddr = {
 
 #endif /* T6F1_ZBT_DDR_ENABLED */
 
-static kbase_attribute config_attributes[] = {
+static int pm_callback_power_on(kbase_device *kbdev)
+{
+	/* Nothing is needed on VExpress, but we may have destroyed GPU state (if the below HARD_RESET code is active) */
+	return 1;
+}
+
+static void pm_callback_power_off(kbase_device *kbdev)
+{
+#if HARD_RESET_AT_POWER_OFF
+	/* Cause a GPU hard reset to test whether we have actually idled the GPU
+	 * and that we properly reconfigure the GPU on power up.
+	 * Usually this would be dangerous, but if the GPU is working correctly it should
+	 * be completely safe as the GPU should not be active at this point.
+	 * However this is disabled normally because it will most likely interfere with
+	 * bus logging etc.
+	 */
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), GPU_COMMAND_HARD_RESET, NULL);
+#endif
+}
+
+static kbase_pm_callback_conf pm_callbacks =
+{
+	.power_on_callback = pm_callback_power_on,
+	.power_off_callback = pm_callback_power_off
+};
+
+static kbase_attribute config_attributes[] =
+{
 	{
 		KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT,
 		512 * 1024 * 1024UL /* 512MB */
@@ -130,7 +164,11 @@ static kbase_attribute config_attributes[] = {
 
 	{
 		KBASE_CONFIG_ATTR_JS_HARD_STOP_TICKS_SS,
+#if BASE_HW_ISSUE_8408 != 0
+		2000 /* 30s before hard-stop, for a certain GLES2 test at 128x128 (bound by combined vertex+tiler job) */
+#else
 		333 /* 5s before hard-stop */
+#endif
 	},
 
 	{
@@ -140,7 +178,11 @@ static kbase_attribute config_attributes[] = {
 
 	{
 		KBASE_CONFIG_ATTR_JS_RESET_TICKS_SS,
+#if BASE_HW_ISSUE_8408 != 0
+		3000 /* 45s before resetting GPU, for a certain GLES2 test at 128x128 (bound by combined vertex+tiler job) */
+#else
 		500 /* 7.5s before resetting GPU */
+#endif
 	},
 
 	{
@@ -161,7 +203,11 @@ static kbase_attribute config_attributes[] = {
 
 	{
 		KBASE_CONFIG_ATTR_JS_HARD_STOP_TICKS_SS,
+#if BASE_HW_ISSUE_8408 != 0
+		12 /* 30s before hard-stop, for a certain GLES2 test at 128x128 (bound by combined vertex+tiler job) */
+#else
 		2 /* 5s before hard-stop */
+#endif
 	},
 
 	{
@@ -171,7 +217,11 @@ static kbase_attribute config_attributes[] = {
 
 	{
 		KBASE_CONFIG_ATTR_JS_RESET_TICKS_SS,
+#if BASE_HW_ISSUE_8408 != 0
+		18 /* 45s before resetting GPU, for a certain GLES2 test at 128x128 (bound by combined vertex+tiler job) */
+#else
 		3 /* 7.5s before resetting GPU */
+#endif
 	},
 
 	{
@@ -187,6 +237,26 @@ static kbase_attribute config_attributes[] = {
 	{
 		KBASE_CONFIG_ATTR_JS_CTX_TIMESLICE_NS,
 		1000000 /* 1ms - an agressive timeslice for testing purposes (causes lots of scheduling out for >4 ctxs) */
+	},
+
+	{
+		KBASE_CONFIG_ATTR_POWER_MANAGEMENT_CALLBACKS,
+		(uintptr_t)&pm_callbacks
+	},
+
+	{
+		KBASE_CONFIG_ATTR_CPU_SPEED_FUNC,
+		(uintptr_t)&kbase_get_vexpress_cpu_clock_speed
+	},
+
+	{
+		KBASE_CONFIG_ATTR_SECURE_BUT_LOSS_OF_PERFORMANCE,
+		(uintptr_t)MALI_FALSE /* By default we prefer performance over security on r0p0-15dev0 and earlier */
+	},
+
+	{
+		KBASE_CONFIG_ATTR_GPU_IRQ_THROTTLE_TIME_US,
+		20
 	},
 
 	{

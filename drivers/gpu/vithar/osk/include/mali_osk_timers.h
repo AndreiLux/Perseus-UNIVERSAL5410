@@ -140,7 +140,7 @@ OSK_STATIC_INLINE osk_error osk_timer_start_ns(osk_timer *tim, u64 delay_ns) CHE
 OSK_STATIC_INLINE osk_error osk_timer_modify(osk_timer *tim, u32 new_delay) CHECK_RESULT;
 
 /**
- * @brief Modifies a timer's timeout using a high-resolution parameter
+ * @brief Modifies a timer's timeout using a high-resolution parameter 
  *
  * This is identical to osk_timer_modify(), except that the argument is
  * expressed in nanoseconds.

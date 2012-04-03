@@ -23,6 +23,12 @@
 #define GPU_NUM_ADDRESS_SPACES 4
 #define GPU_NUM_JOB_SLOTS 3
 
+/* NOTE: Magic - 0x45435254 (TRCE in ASCII).
+ * Supports tracing feature provided in the base module.
+ * Please keep it in sync with the value of base module.
+ */
+#define TRACE_BUFFER_HEADER_SPECIAL 0x45435254
+
 /* This array is referenced at compile time, it cannot be made static... */
 const kbase_device_info kbase_dev_info[] = {
 	{
@@ -80,7 +86,7 @@ kbase_device *kbase_device_create(const kbase_device_info *dev_info)
 	kbdev->dev_info = dev_info;
 
 	/* NOTE: Add Property Query here */
-	kbdev->nr_address_spaces = GPU_NUM_ADDRESS_SPACES;
+	kbdev->nr_hw_address_spaces = GPU_NUM_ADDRESS_SPACES;
 	kbdev->nr_job_slots = GPU_NUM_JOB_SLOTS;
 	kbdev->job_slot_features[0] =
 		  KBASE_JSn_FEATURE_NULL_JOB
@@ -110,7 +116,7 @@ kbase_device *kbase_device_create(const kbase_device_info *dev_info)
 		goto free_dev;
 	}
 
-	for (i = 0; i < kbdev->nr_address_spaces; i++)
+	for (i = 0; i < kbdev->nr_hw_address_spaces; i++)
 	{
 		const char format[] = "mali_mmu%d";
 		char name[sizeof(format)];
@@ -164,16 +170,14 @@ kbase_device *kbase_device_create(const kbase_device_info *dev_info)
 	}
 	/* don't change i after this point */
 
-	osk_err = osk_spinlock_init(&kbdev->hwcnt_lock, OSK_LOCK_ORDER_HWCNT);
+	osk_err = osk_spinlock_irq_init(&kbdev->hwcnt.lock, OSK_LOCK_ORDER_HWCNT);
 	if (OSK_ERR_NONE != osk_err)
 	{
 		goto free_workqs;
 	}
 
-	kbdev->hwcnt_in_progress = MALI_FALSE;
-	kbdev->hwcnt_is_setup = MALI_FALSE;
-	kbdev->hwcnt_state = KBASE_INSTR_STATE_DISABLED;
-	osk_err = osk_waitq_init(&kbdev->hwcnt_waitqueue);
+	kbdev->hwcnt.state = KBASE_INSTR_STATE_DISABLED;
+	osk_err = osk_waitq_init(&kbdev->hwcnt.waitqueue);
 	if (OSK_ERR_NONE != osk_err)
 	{
 		goto free_hwcnt_lock;
@@ -218,9 +222,9 @@ free_reset_waitq:
 free_reset_workq:
 	osk_workq_term(&kbdev->reset_workq);
 free_hwcnt_waitq:
-	osk_waitq_term(&kbdev->hwcnt_waitqueue);
+	osk_waitq_term(&kbdev->hwcnt.waitqueue);
 free_hwcnt_lock:
-	osk_spinlock_term(&kbdev->hwcnt_lock);
+	osk_spinlock_irq_term(&kbdev->hwcnt.lock);
 free_workqs:
 	while (i > 0)
 	{
@@ -251,18 +255,22 @@ void kbase_device_destroy(kbase_device *kbdev)
 	osk_waitq_term(&kbdev->reset_waitq);
 	osk_workq_term(&kbdev->reset_workq);
 
-	for (i = 0; i < kbdev->nr_address_spaces; i++)
+	for (i = 0; i < kbdev->nr_hw_address_spaces; i++)
 	{
 		osk_mutex_term(&kbdev->as[i].transaction_mutex);
 		osk_workq_term(&kbdev->as[i].pf_wq);
 #if BASE_HW_ISSUE_8316
-		osk_workq_term(&kbdev->as[i].poke_wq);
 		osk_timer_term(&kbdev->as[i].poke_timer);
+		osk_workq_term(&kbdev->as[i].poke_wq);
 #endif /* BASE_HW_ISSUE_8316 */
 	}
 
-	osk_spinlock_term(&kbdev->hwcnt_lock);
-	osk_waitq_term(&kbdev->hwcnt_waitqueue);
+	osk_spinlock_irq_term(&kbdev->hwcnt.lock);
+	osk_waitq_term(&kbdev->hwcnt.waitqueue);
+}
+
+void kbase_device_free(kbase_device *kbdev)
+{
 	osk_free(kbdev);
 }
 
@@ -285,7 +293,7 @@ void kbase_device_trace_buffer_install(kbase_context * kctx, u32 * tb, size_t si
 
 	/* set up the header */
 	/* magic number in the first 4 bytes */
-	tb[0] = 0x45435254;
+	tb[0] = TRACE_BUFFER_HEADER_SPECIAL;
 	/* Store (write offset = 0, wrap counter = 0, transaction active = no)
 	 * write offset 0 means never written.
 	 * Offsets 1 to (wrap_offset - 1) used to store values when trace started
@@ -354,6 +362,7 @@ void kbase_device_trace_register_access(kbase_context * kctx, kbase_reg_access_t
 
 void kbase_reg_write(kbase_device *kbdev, u16 offset, u32 value, kbase_context * kctx)
 {
+	/*OSK_ASSERT(kbdev->pm.gpu_powered); Disabled due to MIDBASE-1560*/
 	OSK_PRINT_INFO(OSK_BASE_CORE, "w: reg %04x val %08x", offset, value);
 	kbase_os_reg_write(kbdev, offset, value);
 	if (kctx && kctx->jctx.tb) kbase_device_trace_register_access(kctx, REG_WRITE, offset, value);
@@ -363,6 +372,7 @@ KBASE_EXPORT_TEST_API(kbase_reg_write)
 u32 kbase_reg_read(kbase_device *kbdev, u16 offset, kbase_context * kctx)
 {
 	u32 val;
+	/*OSK_ASSERT(kbdev->pm.gpu_powered); Disabled due to MIDBASE-1560*/
 	val = kbase_os_reg_read(kbdev, offset);
 	OSK_PRINT_INFO(OSK_BASE_CORE, "r: reg %04x val %08x", offset, val);
 	if (kctx && kctx->jctx.tb) kbase_device_trace_register_access(kctx, REG_READ, offset, val);

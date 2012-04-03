@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -26,6 +26,8 @@
 #include "mali_kbase_js_defs.h"
 #include "mali_kbase_js_policy.h"
 #include "mali_kbase_defs.h"
+
+#include "mali_kbase_js_ctx_attr.h"
 
 /**
  * @addtogroup base_api
@@ -146,7 +148,7 @@ void kbasep_js_kctx_term( kbase_context *kctx );
  * It is a programming error to have more than U32_MAX jobs in flight at a time.
  *
  * The following locking conditions are made on the caller:
- * - it must hold kbasep_js_kctx_info::ctx::jsctx_mutex.
+ * - it must \em not hold kbasep_js_kctx_info::ctx::jsctx_mutex.
  * - it must \em not hold kbasep_js_device_data::runpool_irq::lock (as this will be
  * obtained internally)
  * - it must \em not hold kbasep_js_device_data::runpool_mutex (as this will be
@@ -238,6 +240,25 @@ mali_bool kbasep_js_runpool_retain_ctx_nolock( kbase_device *kbdev, kbase_contex
 kbase_context* kbasep_js_runpool_lookup_ctx( kbase_device *kbdev, int as_nr );
 
 /**
+ * @brief Handling the requeuing/killing of a context that was evicted from the
+ * policy queue or runpool.
+ *
+ * This should be used whenever handing off a context that has been evicted
+ * from the policy queue or the runpool:
+ * - If the context is not dying and has jobs, it gets re-added to the policy
+ * queue
+ * - Otherwise, it is not added (but PM is informed that it is idle)
+ *
+ * In addition, if the context is dying the jobs are killed asynchronously.
+ *
+ * The following locking conditions are made on the caller:
+ * - it must hold kbasep_js_kctx_info::ctx::jsctx_mutex.
+ * - it must \em not hold kbasep_jd_device_data::queue_mutex (as this will be
+ * obtained internally)
+ */
+void kbasep_js_runpool_requeue_or_kill_ctx( kbase_device *kbdev, kbase_context *kctx );
+
+/**
  * @brief Release a refcount of a context being busy, allowing it to be
  * scheduled out.
  *
@@ -272,6 +293,8 @@ kbase_context* kbasep_js_runpool_lookup_ctx( kbase_device *kbdev, int as_nr );
  * - it must \em not hold kbasep_js_device_data::runpool_mutex (as this will be
  * obtained internally)
  * - it must \em not hold the kbase_device::as[n].transaction_mutex (as this will be obtained internally)
+ * - it must \em not hold kbasep_jd_device_data::queue_mutex (as this will be
+ * obtained internally)
  *
  */
 void kbasep_js_runpool_release_ctx( kbase_device *kbdev, kbase_context *kctx );
@@ -380,17 +403,65 @@ void kbasep_js_try_run_next_job( kbase_device *kbdev );
 void kbasep_js_try_schedule_head_ctx( kbase_device *kbdev );
 
 /**
+ * @brief Schedule in a privileged context
+ *
+ * This schedules a context in regardless of the context priority.
+ * If the runpool is full, a context will be forced out of the runpool and the function will wait
+ * for the new context to be scheduled in.
+ * The context will be kept scheduled in (and the corresponding address space reserved) until 
+ * kbasep_js_release_privileged_ctx is called).
+ *
+ * The following locking conditions are made on the caller:
+ * - it must \em not hold the kbasep_js_device_data::runpool_irq::lock, because
+ * it will be used internally.
+ * - it must \em not hold kbasep_js_device_data::runpool_mutex (as this will be
+ * obtained internally)
+ * - it must \em not hold the kbase_device::as[n].transaction_mutex (as this will be obtained internally)
+ * - it must \em not hold kbasep_jd_device_data::queue_mutex (again, it's used internally).
+ * - it must \em not hold kbasep_js_kctx_info::ctx::jsctx_mutex, because it will
+ * be used internally.
+ * - it must \em not hold kbdev->jm_slots[ \a js ].lock (as this will be
+ * obtained internally)
+ *
+ */
+void kbasep_js_schedule_privileged_ctx( kbase_device *kbdev, kbase_context *kctx );
+
+/**
+ * @brief Release a privileged context, allowing it to be scheduled out.
+ *
+ * See kbasep_js_runpool_release_ctx for potential side effects.
+ *
+ * The following locking conditions are made on the caller:
+ * - it must \em not hold the kbasep_js_device_data::runpool_irq::lock, because
+ * it will be used internally.
+ * - it must \em not hold kbasep_js_kctx_info::ctx::jsctx_mutex.
+ * - it must \em not hold kbasep_js_device_data::runpool_mutex (as this will be
+ * obtained internally)
+ * - it must \em not hold the kbase_device::as[n].transaction_mutex (as this will be obtained internally)
+ *
+ */
+void kbasep_js_release_privileged_ctx( kbase_device *kbdev, kbase_context *kctx );
+
+/**
  * @brief Handle the Job Scheduler component for the IRQ of a job finishing
  *
- * This atomically does the following:
- * - updates the runpool's notion of time spent by a running ctx
- * - determines whether a context should be marked for scheduling out
- * - tries to submit the next job on the slot (picking from all ctxs in the runpool)
+ * This does the following:
+ * -# Releases resources held by the atom
+ * -# if \a end_timestamp != NULL, updates the runpool's notion of time spent by a running ctx
+ * -# determines whether a context should be marked for scheduling out
+ * -# if start_new_jobs is true, tries to submit the next job on the slot
+ * (picking from all ctxs in the runpool)
  *
- * In addition, if submission from IRQ failed, then this sets a message on
- * katom that submission needs to be retried from the worker thread.
+ * In addition, if submission didn't happen (the submit-from-IRQ function
+ * failed or start_new_jobs == MALI_FALSE), then this sets a message on katom
+ * that submission needs to be retried from the worker thread.
  *
- * NOTE: It's possible to move the first two steps (inc calculating job's time
+ * Normally, the time calculated from end_timestamp is rounded up to the
+ * minimum time precision. Therefore, to ensure the job is recorded as not
+ * spending any time, then set end_timestamp to NULL. For example, this is necessary when
+ * evicting jobs from JSn_HEAD_NEXT (because they didn't actually run).
+ *
+ * NOTE: It's possible to move the steps (2) and (3) (inc calculating job's time
  * used) into the worker (outside of IRQ context), but this may allow a context
  * to use up to twice as much timeslice as is allowed by the policy. For
  * policies that order by time spent, this is not a problem for overall
@@ -399,9 +470,9 @@ void kbasep_js_try_schedule_head_ctx( kbase_device *kbdev );
  * The following locking conditions are made on the caller:
  * - it must \em not hold the kbasep_js_device_data::runpoool_irq::lock, because
  * it will be used internally.
- * - it must hold kbdev->jm_slots[ \a s ].lock
+ * - it must hold kbdev->jm_slots[ \a slot_nr ].lock
  */
-void kbasep_js_job_done_slot_irq( kbase_device *kbdev, int s, kbase_jd_atom *katom, kbasep_js_tick *end_timestamp );
+void kbasep_js_job_done_slot_irq( kbase_jd_atom *katom, int slot_nr, kbasep_js_tick *end_timestamp, mali_bool start_new_jobs );
 
 /**
  * @brief Try to submit the next job on each slot
@@ -412,6 +483,31 @@ void kbasep_js_job_done_slot_irq( kbase_device *kbdev, int s, kbase_jd_atom *kat
  * - bdev->jm_slots[ \a js ].lock
  */
 void kbase_js_try_run_jobs( kbase_device *kbdev );
+
+/**
+ * @brief Handle releasing cores for power management and affinity management,
+ * ensuring that cores are powered down and affinity tracking is updated.
+ *
+ * This must only be called on an atom that is not currently running, and has
+ * not been re-queued onto the context (and so does not need locking)
+ *
+ * This function enters at the following @ref kbase_atom_coreref_state states:
+ * - NO_CORES_REQUESTED
+ * - WAITING_FOR_REQUESTED_CORES
+ * - RECHECK_AFFINITY
+ * - READY
+ *
+ * It transitions the above states back to NO_CORES_REQUESTED by the end of the
+ * function call (possibly via intermediate states).
+ *
+ * No locks need be held by the caller, since this takes the necessary Power
+ * Management locks itself. The runpool_irq.lock is not taken (the work that
+ * requires it is handled by kbase_js_affinity_submit_to_blocked_slots() ).
+ *
+ * @note The corresponding kbasep_js_job_check_ref_cores() is private to the
+ * Job Scheduler, and is called automatically when running the next job.
+ */
+void kbasep_js_job_check_deref_cores(kbase_device *kbdev, struct kbase_jd_atom *katom);
 
 /*
  * Helpers follow

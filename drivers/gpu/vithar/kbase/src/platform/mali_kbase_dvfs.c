@@ -50,7 +50,11 @@
 
 #ifdef CONFIG_REGULATOR
 static struct regulator *g3d_regulator=NULL;
-static int mali_gpu_vol = 1050000; /* 1.05V  */
+#ifdef CONFIG_VITHAR_HWVER_R0P0
+static int mali_gpu_vol = 1250000; /* 1.25V @ 533 MHz */
+#else
+static int mali_gpu_vol = 1050000; /* 1.05V @ 266 MHz */
+#endif
 #endif
 
 #ifdef CONFIG_VITHAR_DVFS

@@ -282,7 +282,7 @@ const char* oskp_module_to_str(const osk_module module);
  *   argument is used though.
  *
  * @param format format string
- *
+ * 
  */
 void oskp_validate_format_string(const char *format, ...);
 

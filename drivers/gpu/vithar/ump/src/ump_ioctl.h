@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2008-2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2008-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -26,8 +26,8 @@
 typedef union ump_pointer
 {
 	void * value; /**< client should store their pointers here */
-	u32 compat_value; /**< 64-bit kernels should fetch value here when handling 32-bit clients */
-	u64 sizer; /**< Force 64-bit storage for all clients regardless */
+	uint32_t compat_value; /**< 64-bit kernels should fetch value here when handling 32-bit clients */
+	uint64_t sizer; /**< Force 64-bit storage for all clients regardless */
 } ump_pointer;
 
 /**
@@ -36,7 +36,7 @@ typedef union ump_pointer
  */
 typedef struct ump_k_allocate
 {
-	u64 size; /**< [in] Size in bytes to allocate */
+	uint64_t size; /**< [in] Size in bytes to allocate */
 	ump_secure_id secure_id; /**< [out] Secure ID of allocation on success */
 	ump_alloc_flags alloc_flags; /**< [in] Flags to use when allocating */
 } ump_k_allocate;
@@ -47,9 +47,9 @@ typedef struct ump_k_allocate
  */
 typedef struct ump_k_sizequery
 {
-	u64 size; /**< [out] Size of allocation */
+	uint64_t size; /**< [out] Size of allocation */
 	ump_secure_id secure_id; /**< [in] ID of allocation to query the size of */
-	u32 padding; /* don't remove */
+	uint32_t padding; /* don't remove */
 } ump_k_sizequery;
 
 /**
@@ -61,7 +61,7 @@ typedef struct ump_k_msync
 	ump_pointer mapped_ptr; /**< [in] CPU VA to perform cache operation on */
 	ump_secure_id secure_id; /**< [in] ID of allocation to perform cache operation on */
 	ump_cpu_msync_op cache_operation; /**< [in] Cache operation to perform */
-	u64 size; /**< [in] Size in bytes of the range to synchronize */
+	uint64_t size; /**< [in] Size in bytes of the range to synchronize */
 } ump_k_msync;
 
 /**
@@ -71,7 +71,7 @@ typedef struct ump_k_msync
 typedef struct ump_k_retain
 {
 	ump_secure_id secure_id; /**< [in] ID of allocation to retain a reference to */
-	u32 padding; /* don't remove */
+	uint32_t padding; /* don't remove */
 } ump_k_retain;
 
 /**
@@ -81,16 +81,16 @@ typedef struct ump_k_retain
 typedef struct ump_k_release
 {
 	ump_secure_id secure_id; /**< [in] ID of allocation to release a reference to */
-	u32 padding; /* don't remove */
+	uint32_t padding; /* don't remove */
 } ump_k_release;
 
 typedef struct ump_k_import
 {
 	ump_pointer phandle;                /**< [in]  Pointer to handle to import */
-	u32 type;                           /**< [in]  Type of handle to import */
+	uint32_t type;                           /**< [in]  Type of handle to import */
 	ump_alloc_flags alloc_flags;        /**< [in]  Flags to assign to the imported memory */
 	ump_secure_id secure_id;            /**< [out] UMP ID representing the imported memory */
-	u32 padding;                        /* don't remove */
+	uint32_t padding;                        /* don't remove */
 } ump_k_import;
 
 /**

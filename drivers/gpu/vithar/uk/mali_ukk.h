@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -97,16 +97,13 @@ typedef struct ukk_call_context ukk_call_context;
  * return value of the uk_header structure.
  *
  * A UK call implementation is provided with access to a number of objects it may need during the UK call through
- * a UKK call context. This UKK call context contains
+ * a UKK call context. This UKK call context currently only contains
  *   - a pointer to the UKK session for the UK call
- *   - a thread context from which the UK call was made (OS specific)
- *   - a general purpose data field (large enough to contain a pointer)
  *
  * It is the responsibility of the ioctl handler to initialize a UKK call context using ukk_call_prepare() and pass
- * it on to the UKK dispatch function. The UK call implementation then uses ukk_session_get(), ukk_thread_ctx_get()
- * and ukk_call_data_get() to retrieve the stored objects in the UKK call context. The UK call implementation 
- * normally uses the UKK session pointer returned from ukk_session_get() to access the UKK client driver's context
- * in which the UKK session is embedded. For example:
+ * it on to the UKK dispatch function. The UK call implementation then uses ukk_session_get() to retrieve the stored
+ * objects in the UKK call context. The UK call implementation normally uses the UKK session pointer returned from
+ * ukk_session_get() to access the UKK client driver's context in which the UKK session is embedded. For example:
  *	struct kbase_context {
  *          int some_kbase_context_data;
  *          int more_kbase_context_data;
@@ -163,7 +160,7 @@ testdrv_ioctl(os_driver_context *osctx, void *user_arg, u32 args_size)
 	
 	kernel_arg = os_copy_to_kernel_space(user_arg, args_size);
 	
-	ukk_call_prepare(&call_ctx, &ts->ukk_session_obj, NULL);
+	ukk_call_prepare(&call_ctx, &ts->ukk_session_obj);
 	
 	ukk_dispatch(&call_ctx, kernel_arg, args_size);
 	
@@ -273,25 +270,15 @@ struct ukk_session
 
 /**
  * Stucture containing context data passed in to each UK call. Before each UK call it is initialized
- * by the ukk_call_prepare() function. UK calls can retrieve the context data using the functions 
- * ukk_session_get(), ukk_thread_ctx_get(), ukk_call_data_get() and ukk_session_data_get().
+ * by the ukk_call_prepare() function. UK calls can retrieve the context data using the function 
+ * ukk_session_get().
  */
 struct ukk_call_context
 {
 	/**
 	 * Pointer to UKK core session data. 
-	 * Pass to ukk_session_data_get() to access the session data of the UKK client.
 	 */
 	ukk_session *ukk_session;
-	/**
-	 * Pointer to the caller thread context that initiated the UK call.
-	 */
-	void *thread_ctx;
-	/**
-	 * General purpose data value (large enough to store a pointer) to pass along to the function
-	 * implementing the UK call in the UKK client.
-	 */
-	uintptr_t data;
 };
 
 /**
@@ -358,27 +345,15 @@ void ukk_session_term(ukk_session *ukk_session);
 /**
  * @brief Prepare a context in which to execute a UK call
  * 
- * UK calls are passed a call context that allows them to get access to the UKK session data, 
- * the UKK client session data, the calling thread's context and a general purpose value that may
- * be necessary for the implementation of the UK call.
- *
- * The ukk_call_prepare() function initializes this call context with the general purpose value
- * set to 0. The general purpose value may be set later using the ukk_call_data_set() function.
- *
- * Given a call context, UK calls use ukk_session_get() to get access to the UKK session data,
- * ukk_thread_ctx_get() to get access to the calling thread's context and ukk_call_data_get() to
- * get access to a uintptr_t sized value of general purpose data. With the UKK session data
- * you get access to the UKK client session data using the ukk_session_data_get() function.
+ * UK calls are passed a call context that allows them to get access to the UKK session data. 
+ * Given a call context, UK calls use ukk_session_get() to get access to the UKK session data.
  * 
- * Debug builds will assert when a NULL pointer is passed for ukk_ctx, ukk_session. A NULL
- * thread_ctx is allowed if the OS-specific UKK implemenation doesn't require any reference
- * to the calling thread's context.
+ * Debug builds will assert when a NULL pointer is passed for ukk_ctx, ukk_session.
  *
  * @param[out] ukk_ctx     Pointer to call context to initialize.
  * @param[in] ukk_session  Pointer to UKK session to associate with the call context
- * @param[in] thread_ctx   Pointer to the calling thread's context to associate with the call context
  */
-void ukk_call_prepare(ukk_call_context * const ukk_ctx, ukk_session * const ukk_session, void * const thread_ctx);
+void ukk_call_prepare(ukk_call_context * const ukk_ctx, ukk_session * const ukk_session);
 
 /**
  * @brief Get the UKK session of a call context
@@ -393,40 +368,28 @@ void ukk_call_prepare(ukk_call_context * const ukk_ctx, ukk_session * const ukk_
 void *ukk_session_get(ukk_call_context * const ukk_ctx);
 
 /**
- * @brief Set the data value of a call context
- * 
- * Sets the data value associated with a call context. See ukk_call_prepare and ukk_call_data_get.
+ * @brief Copy data from user space to kernel space
  *
- * Debug builds will assert when a NULL pointer is passed for ukk_ctx.
+ * @param[in]  bytes         Number of bytes to copy from @ref user_buffer to @ref_kernel_buffer
+ * @param[out] kernel_buffer Pointer to data buffer in kernel space.
+ * @param[in]  user_buffer   Pointer to data buffer in user space.
  *
- * @param[in,out] ukk_ctx Pointer to a call context
- * @param[in] data        data value (large enough to store a pointer) to associate with a call context
+ * @return Returns MALI_ERROR_NONE on success.
  */
-void ukk_call_data_set(ukk_call_context * const ukk_ctx, uintptr_t data);
+
+mali_error ukk_copy_from_user( size_t bytes,  void * kernel_buffer, const void * const user_buffer );
 
 /**
- * @brief Get the data value of a call context
- * 
- * Returns the data value associated with a call context. See ukk_call_prepare and ukk_call_data_set.
+ * @brief Copy data from kernel space to user space
  *
- * Debug builds will assert when a NULL pointer is passed for ukk_ctx.
+ * @param[in] bytes Pointer to a call context
+ * @param[in] user_buffer Pointer to a call context
+ * @param[out] kernel_buffer Pointer to a call context
  *
- * @param[in] ukk_ctx Pointer to a call context
- * @return data value associated with the call context (large enough to store a pointer)
+ * @return Returns MALI_ERROR_NONE on success.
  */
-uintptr_t ukk_call_data_get(ukk_call_context * const ukk_ctx);
 
-/**
- * @brief Get the thread context of a call context
- *
- * Returns the calling thread's context associated with a call context. See ukk_call_prepare.
- *
- * Debug builds will assert when a NULL pointer is passed for ukk_ctx.
- *
- * @param[in] ukk_ctx Pointer to a call context
- * @return Pointer to the calling thread's context associated with the call context
- */
-void *ukk_thread_ctx_get(ukk_call_context * const ukk_ctx);
+mali_error ukk_copy_to_user( size_t bytes, void * user_buffer, const void * const kernel_buffer );
 
 /**
  * @brief Dispatch a UK call

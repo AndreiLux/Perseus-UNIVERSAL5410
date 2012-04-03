@@ -60,7 +60,7 @@ void oskp_validate_format_string(const char *format, ...)
 {
 #if MALI_DEBUG
 	char c;
-	static const char *supported[] =
+	static const char *supported[] = 
 	{
 		"d", "ld", "lld",
 		"x", "lx", "llx",
@@ -94,7 +94,7 @@ void oskp_validate_format_string(const char *format, ...)
 				 * an alphabetic character and flags, width, precision do not
 				 * contain alphabetic characters.
 				 */
-				do
+				do 
 				{
 					if ((c >= 'a' && c <= 'z') || c == 'X')
 					{
