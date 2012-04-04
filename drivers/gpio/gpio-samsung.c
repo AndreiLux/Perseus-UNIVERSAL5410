@@ -2123,8 +2123,8 @@ static struct samsung_gpio_chip s5pv210_gpios_4bit[] = {
  * uses the above macro and depends on the banks being listed in order here.
  */
 
+#ifdef CONFIG_CPU_EXYNOS4210
 static struct samsung_gpio_chip exynos4_gpios_1[] = {
-#ifdef CONFIG_ARCH_EXYNOS4
 	{
 		.chip	= {
 			.base	= EXYNOS4_GPA0(0),
@@ -2222,11 +2222,9 @@ static struct samsung_gpio_chip exynos4_gpios_1[] = {
 			.label	= "GPF3",
 		},
 	},
-#endif
 };
 
 static struct samsung_gpio_chip exynos4_gpios_2[] = {
-#ifdef CONFIG_ARCH_EXYNOS4
 	{
 		.chip	= {
 			.base	= EXYNOS4_GPJ0(0),
@@ -2367,11 +2365,9 @@ static struct samsung_gpio_chip exynos4_gpios_2[] = {
 			.to_irq	= samsung_gpiolib_to_irq,
 		},
 	},
-#endif
 };
 
 static struct samsung_gpio_chip exynos4_gpios_3[] = {
-#ifdef CONFIG_ARCH_EXYNOS4
 	{
 		.chip	= {
 			.base	= EXYNOS4_GPZ(0),
@@ -2379,11 +2375,11 @@ static struct samsung_gpio_chip exynos4_gpios_3[] = {
 			.label	= "GPZ",
 		},
 	},
-#endif
 };
+#endif
 
+#ifdef CONFIG_SOC_EXYNOS5250
 static struct samsung_gpio_chip exynos5_gpios_1[] = {
-#ifdef CONFIG_ARCH_EXYNOS5
 	{
 		.chip	= {
 			.base	= EXYNOS5_GPA0(0),
@@ -2554,11 +2550,9 @@ static struct samsung_gpio_chip exynos5_gpios_1[] = {
 			.to_irq	= samsung_gpiolib_to_irq,
 		},
 	},
-#endif
 };
 
 static struct samsung_gpio_chip exynos5_gpios_2[] = {
-#ifdef CONFIG_ARCH_EXYNOS5
 	{
 		.chip	= {
 			.base	= EXYNOS5_GPE0(0),
@@ -2615,11 +2609,9 @@ static struct samsung_gpio_chip exynos5_gpios_2[] = {
 
 		},
 	},
-#endif
 };
 
 static struct samsung_gpio_chip exynos5_gpios_3[] = {
-#ifdef CONFIG_ARCH_EXYNOS5
 	{
 		.chip	= {
 			.base	= EXYNOS5_GPV0(0),
@@ -2651,11 +2643,9 @@ static struct samsung_gpio_chip exynos5_gpios_3[] = {
 			.label	= "GPV4",
 		},
 	},
-#endif
 };
 
 static struct samsung_gpio_chip exynos5_gpios_4[] = {
-#ifdef CONFIG_ARCH_EXYNOS5
 	{
 		.chip	= {
 			.base	= EXYNOS5_GPZ(0),
@@ -2663,8 +2653,8 @@ static struct samsung_gpio_chip exynos5_gpios_4[] = {
 			.label	= "GPZ",
 		},
 	},
-#endif
 };
+#endif
 
 
 #if defined(CONFIG_ARCH_EXYNOS) && defined(CONFIG_OF)
