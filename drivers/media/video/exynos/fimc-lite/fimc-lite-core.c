@@ -1840,7 +1840,6 @@ static struct exynos_md *flite_get_capture_md(enum mdev_node node)
 
 	ret = driver_for_each_device(drv, NULL, &md[0],
 				     flite_get_md_callback);
-	put_driver(drv);
 
 	return ret ? NULL : md[node];
 
