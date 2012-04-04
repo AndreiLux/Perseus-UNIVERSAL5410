@@ -125,7 +125,6 @@ static inline void *module_name_to_driver_data(char *module_name)
 	if (drv) {
 		dev = driver_find_device(drv, NULL, NULL, dummy_callback);
 		driver_data = dev_get_drvdata(dev);
-		put_driver(drv);
 		return driver_data;
 	} else
 		return NULL;
