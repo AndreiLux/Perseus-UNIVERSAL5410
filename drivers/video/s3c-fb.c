@@ -2401,8 +2401,6 @@ static int s3c_fb_register_mc_wb_components(struct s3c_fb *sfb)
 	ret = driver_for_each_device(driver, NULL, &mdev[0],
 		fimd_get_media_info);
 
-	put_driver(driver);
-
 	sfb->md_wb = mdev[MDEV_CAPTURE];
 
 	/* Local paths have been set up only between FIMD1 and Gscaler0~3 */
