@@ -711,6 +711,7 @@ static void gsc_out_buffer_queue(struct vb2_buffer *vb)
 	struct vb2_queue *q = vb->vb2_queue;
 	struct gsc_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
 	struct gsc_dev *gsc = ctx->gsc_dev;
+	unsigned long flags;
 	int ret;
 
 	if (!test_and_set_bit(ST_OUTPUT_STREAMON, &gsc->state)) {
@@ -729,8 +730,10 @@ static void gsc_out_buffer_queue(struct vb2_buffer *vb)
 			gsc_err("Failed to prepare G-Scaler address");
 			return;
 		}
+		spin_lock_irqsave(&gsc->slock, flags);
 		gsc_hw_set_input_buf_masking(gsc, vb->v4l2_buf.index, false);
 		gsc_hw_set_in_pingpong_update(gsc);
+		spin_unlock_irqrestore(&gsc->slock, flags);
 	} else {
 		gsc_err("All requested buffers have been queued already");
 		return;
