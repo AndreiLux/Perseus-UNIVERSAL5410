@@ -140,7 +140,7 @@ u8 exynos5250_pdma0_peri[] = {
 static struct dma_pl330_platdata exynos_pdma0_pdata;
 
 static AMBA_AHB_DEVICE(exynos_pdma0, "dma-pl330.0", 0x00041330,
-	NULL, {0}, &exynos_pdma0_pdata);
+	0, {0}, &exynos_pdma0_pdata);
 
 static u8 exynos4210_pdma1_peri[] = {
 	DMACH_PCM0_RX,
@@ -241,7 +241,7 @@ u8 exynos5250_pdma1_peri[] = {
 struct dma_pl330_platdata exynos_pdma1_pdata;
 
 static AMBA_AHB_DEVICE(exynos_pdma1,  "dma-pl330.1", 0x00041330,
-	NULL, {0}, &exynos_pdma1_pdata);
+	0, {0}, &exynos_pdma1_pdata);
 
 static u8 mdma_peri[] = {
 	DMACH_MTOM_0,
@@ -260,7 +260,7 @@ static struct dma_pl330_platdata exynos_mdma1_pdata = {
 };
 
 static AMBA_AHB_DEVICE(exynos_mdma1,  "dma-pl330.2", 0x00041330,
-	NULL, {0}, &exynos_mdma1_pdata);
+	0, {0}, &exynos_mdma1_pdata);
 
 static int __init exynos_dma_init(void)
 {
