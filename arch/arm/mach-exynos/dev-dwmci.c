@@ -35,9 +35,8 @@ static int exynos_dwmci_init(u32 slot_id, irq_handler_t handler, void *data)
 {
 	struct dw_mci *host = (struct dw_mci *)data;
 
-	/* Set Phase Shift Register */
-	host->pdata->ddr_timing = 0x00010000;
-	host->pdata->sdr_timing = 0x00010000;
+	host->pdata->sdr_timing = 0x03020001;
+	host->pdata->ddr_timing = 0x03030002;
 
 	return 0;
 }
@@ -54,7 +53,7 @@ static void exynos_dwmci_set_io_timing(void *data, unsigned char timing)
 			host->regs + DWMCI_CLKSEL);
 }
 
-static struct dw_mci_board exynos_dwmci_pdata = {
+static struct dw_mci_board exynos4_dwmci_pdata = {
 	.num_slots		= 1,
 	.quirks			= DW_MCI_QUIRK_BROKEN_CARD_DETECTION,
 	.bus_hz			= 80 * 1000 * 1000,
@@ -66,45 +65,96 @@ static struct dw_mci_board exynos_dwmci_pdata = {
 
 static u64 exynos_dwmci_dmamask = DMA_BIT_MASK(32);
 
-#define EXYNOS_DWMCI_RESOURCE(_series) \
-static struct resource exynos##_series##_dwmci_resource[] = { \
-	[0] = DEFINE_RES_MEM(EXYNOS##_series##_PA_DWMCI, SZ_4K), \
-	[1] = DEFINE_RES_IRQ(EXYNOS##_series##_IRQ_DWMCI), \
+static struct resource exynos4_dwmci_resources[] = {
+	[0] = DEFINE_RES_MEM(EXYNOS4_PA_DWMCI, SZ_4K),
+	[1] = DEFINE_RES_IRQ(EXYNOS4_IRQ_DWMCI),
 };
 
-EXYNOS_DWMCI_RESOURCE(4)
-EXYNOS_DWMCI_RESOURCE(5)
-
-#define EXYNOS_DWMCI_PLATFORM_DEVICE(_series) \
-struct platform_device exynos##_series##_device_dwmci = \
-{\
-	.name		= "dw_mmc", \
-	.id		= -1, \
-	.num_resources	= ARRAY_SIZE(exynos##_series##_dwmci_resource), \
-	.resource	= exynos##_series##_dwmci_resource, \
-	.dev		= { \
-		.dma_mask		= &exynos_dwmci_dmamask, \
-		.coherent_dma_mask	= DMA_BIT_MASK(32), \
-		.platform_data		= &exynos_dwmci_pdata, \
-	}, \
+struct platform_device exynos4_device_dwmci = {
+	.name		= "dw_mmc",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(exynos4_dwmci_resources),
+	.resource	= exynos4_dwmci_resources,
+	.dev		= {
+		.dma_mask		= &exynos_dwmci_dmamask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+		.platform_data		= &exynos4_dwmci_pdata,
+	},
 };
 
-EXYNOS_DWMCI_PLATFORM_DEVICE(4)
-EXYNOS_DWMCI_PLATFORM_DEVICE(5)
 
-void __init exynos_dwmci_set_platdata(struct dw_mci_board *pd)
+#define EXYNOS5_DWMCI_RESOURCE(_channel)			\
+static struct resource exynos5_dwmci##_channel##_resource[] = {	\
+	[0] = DEFINE_RES_MEM(S3C_PA_HSMMC##_channel, SZ_4K),	\
+	[1] = DEFINE_RES_IRQ(IRQ_HSMMC##_channel),		\
+}
+
+EXYNOS5_DWMCI_RESOURCE(0);
+EXYNOS5_DWMCI_RESOURCE(1);
+EXYNOS5_DWMCI_RESOURCE(2);
+EXYNOS5_DWMCI_RESOURCE(3);
+
+#define EXYNOS5_DWMCI_DEF_PLATDATA(_channel)			\
+struct dw_mci_board exynos5_dwmci##_channel##_def_platdata = {	\
+	.num_slots		= 1,				\
+	.quirks			=				\
+		DW_MCI_QUIRK_BROKEN_CARD_DETECTION,		\
+	.bus_hz			= 200 * 1000 * 1000,		\
+	.detect_delay_ms	= 200,				\
+	.init			= exynos_dwmci_init,		\
+	.get_bus_wd		= exynos_dwmci_get_bus_wd,	\
+	.set_io_timing		= exynos_dwmci_set_io_timing,	\
+}
+
+EXYNOS5_DWMCI_DEF_PLATDATA(0);
+EXYNOS5_DWMCI_DEF_PLATDATA(1);
+EXYNOS5_DWMCI_DEF_PLATDATA(2);
+EXYNOS5_DWMCI_DEF_PLATDATA(3);
+
+#define EXYNOS5_DWMCI_PLATFORM_DEVICE(_channel)			\
+struct platform_device exynos5_device_dwmci##_channel =		\
+{								\
+	.name		= "dw_mmc",				\
+	.id		= _channel,				\
+	.num_resources	=					\
+	ARRAY_SIZE(exynos5_dwmci##_channel##_resource),		\
+	.resource	= exynos5_dwmci##_channel##_resource,	\
+	.dev		= {					\
+		.dma_mask		= &exynos_dwmci_dmamask,\
+		.coherent_dma_mask	= DMA_BIT_MASK(32),	\
+		.platform_data		=			\
+			&exynos5_dwmci##_channel##_def_platdata,\
+	},							\
+}
+
+EXYNOS5_DWMCI_PLATFORM_DEVICE(0);
+EXYNOS5_DWMCI_PLATFORM_DEVICE(1);
+EXYNOS5_DWMCI_PLATFORM_DEVICE(2);
+EXYNOS5_DWMCI_PLATFORM_DEVICE(3);
+
+static struct platform_device *exynos5_dwmci_devs[] = {
+	&exynos5_device_dwmci0,
+	&exynos5_device_dwmci1,
+	&exynos5_device_dwmci2,
+	&exynos5_device_dwmci3,
+};
+
+void __init exynos_dwmci_set_platdata(struct dw_mci_board *pd, u32 slot_id)
 {
-	struct dw_mci_board *npd;
+	struct dw_mci_board *npd = NULL;
 
 	if ((soc_is_exynos4210()) || soc_is_exynos4212() ||
-		soc_is_exynos4412())
+		soc_is_exynos4412()) {
 		npd = s3c_set_platdata(pd, sizeof(struct dw_mci_board),
-			&exynos4_device_dwmci);
-	else if (soc_is_exynos5250())
-		npd = s3c_set_platdata(pd, sizeof(struct dw_mci_board),
-			&exynos5_device_dwmci);
-	else
-		npd = NULL;
+				&exynos4_device_dwmci);
+	} else if (soc_is_exynos5250()) {
+		if (slot_id < ARRAY_SIZE(exynos5_dwmci_devs))
+			npd = s3c_set_platdata(pd, sizeof(struct dw_mci_board),
+					       exynos5_dwmci_devs[slot_id]);
+		else
+			pr_err("%s: slot %d is not supported\n", __func__,
+			       slot_id);
+	}
 
 	if (!npd)
 		return;
