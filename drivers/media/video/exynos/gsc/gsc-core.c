@@ -1294,7 +1294,6 @@ static int gsc_probe(struct platform_device *pdev)
 
 	ret = driver_for_each_device(driver, NULL, &mdev[0],
 			gsc_get_media_info);
-	put_driver(driver);
 	if (ret)
 		goto err_irq;
 
