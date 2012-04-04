@@ -20,8 +20,10 @@
 
 #if defined(CONFIG_ARCH_EXYNOS4)
 #define EXYNOS_PA_SYSMMU(ipbase) EXYNOS4_PA_SYSMMU_##ipbase
+#define EXYNOS_IRQ_SYSMMU(irq) EXYNOS4_IRQ_SYSMMU_##irq##_0
 #elif defined(CONFIG_ARCH_EXYNOS5)
 #define EXYNOS_PA_SYSMMU(ipbase) EXYNOS5_PA_SYSMMU_##ipbase
+#define EXYNOS_IRQ_SYSMMU(irq) EXYNOS5_IRQ_SYSMMU_##irq##_0
 #endif
 
 #define SYSMMU_RESOURCE(ipname, base, irq) \
@@ -32,8 +34,8 @@ static struct resource sysmmu_resource_##ipname[] =\
 		.end	= EXYNOS_PA_SYSMMU(base) + SZ_4K - 1,\
 		.flags	= IORESOURCE_MEM,\
 	}, {\
-		.start	= IRQ_SYSMMU_##irq##_0,\
-		.end	= IRQ_SYSMMU_##irq##_0,\
+		.start	= EXYNOS_IRQ_SYSMMU(irq),\
+		.end	= EXYNOS_IRQ_SYSMMU(irq),\
 		.flags	= IORESOURCE_IRQ,\
 	},\
 }
