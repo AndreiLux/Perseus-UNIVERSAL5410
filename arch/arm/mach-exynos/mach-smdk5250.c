@@ -414,8 +414,8 @@ static struct wm8994_pdata wm8994_platform_data = {
 	.gpio_defaults[8] = 0x0100, /* GPIO9  ADCDAT3 out */
 	.gpio_defaults[9] = 0x0100, /* GPIO10 LRCLK3  out */
 	.gpio_defaults[10] = 0x0100,/* GPIO11 BCLK3   out */
-	.ldo[0] = { 0, NULL, &wm8994_ldo1_data },
-	.ldo[1] = { 0, NULL, &wm8994_ldo2_data },
+	.ldo[0] = { 0, &wm8994_ldo1_data },
+	.ldo[1] = { 0, &wm8994_ldo2_data },
 };
 
 static struct i2c_board_info i2c_devs0[] __initdata = {
