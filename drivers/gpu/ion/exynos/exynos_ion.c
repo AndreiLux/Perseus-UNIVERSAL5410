@@ -51,23 +51,7 @@ static struct device *exynos_ion_dev;
 
 static int orders[] = {PAGE_SHIFT + 8, PAGE_SHIFT + 4, PAGE_SHIFT, 0};
 
-static inline phys_addr_t *get_imbufs(int idx,
-		phys_addr_t *lv0imbufs, phys_addr_t **lv1pimbufs,
-		phys_addr_t ***lv2ppimbufs)
-{
-	if (idx < MAX_LV0IMBUFS) {
-		return lv0imbufs;
-	} else if (idx < MAX_LV1IMBUFS) {
-		idx -= MAX_LV0IMBUFS;
-		return lv1pimbufs[LV1IDX(idx)];
-	} else if (idx < MAX_IMBUFS) {
-		idx -= MAX_LV1IMBUFS;
-		return lv2ppimbufs[LV2IDX1(idx)][LV2IDX2(idx)];
-	}
-	return NULL;
-}
-
-static inline phys_addr_t *get_imbufs_4free(int idx,
+static inline phys_addr_t *get_imbufs_and_free(int idx,
 		phys_addr_t *lv0imbufs, phys_addr_t **lv1pimbufs,
 		phys_addr_t ***lv2ppimbufs)
 {
@@ -77,7 +61,8 @@ static inline phys_addr_t *get_imbufs_4free(int idx,
 		phys_addr_t *imbufs;
 		idx -= MAX_LV0IMBUFS;
 		imbufs = lv1pimbufs[LV1IDX(idx)];
-		if (LV1IDX(idx) == 0)
+		if ((LV1IDX(idx) == (IMBUFS_ENTRIES - 1)) ||
+			(lv1pimbufs[LV1IDX(idx) + 1] == NULL))
 			kfree(lv1pimbufs);
 		return imbufs;
 	} else if (idx < MAX_IMBUFS) {
@@ -85,9 +70,12 @@ static inline phys_addr_t *get_imbufs_4free(int idx,
 		phys_addr_t *imbufs;
 		baseidx = idx - MAX_LV1IMBUFS;
 		imbufs = lv2ppimbufs[LV2IDX1(baseidx)][LV2IDX2(baseidx)];
-		if (LV2IDX2(baseidx) == 0) {
+		if ((LV2IDX2(baseidx) == (IMBUFS_ENTRIES - 1)) ||
+			(lv2ppimbufs[LV2IDX1(baseidx)][LV2IDX2(baseidx) + 1]
+				== NULL)) {
 			kfree(lv2ppimbufs[LV2IDX1(baseidx)]);
-			if (LV2IDX1(baseidx) == 0)
+			if ((LV2IDX1(baseidx) == (IMBUFS_ENTRIES - 1)) ||
+				(lv2ppimbufs[LV2IDX1(baseidx) + 1] == NULL))
 				kfree(lv2ppimbufs);
 		}
 		return imbufs;
@@ -102,22 +90,15 @@ static int ion_exynos_heap_allocate(struct ion_heap *heap,
 				     unsigned long flags)
 {
 	int *cur_order = orders;
-	int alloc_chunks;
+	int alloc_chunks = 0;
 	int ret = 0;
-	phys_addr_t *im_phys_bufs;
+	phys_addr_t *im_phys_bufs = NULL;
 	phys_addr_t **pim_phys_bufs = NULL;
 	phys_addr_t ***ppim_phys_bufs = NULL;
 	phys_addr_t *cur_bufs = NULL;
 	int copied = 0;
 	struct scatterlist *sgl;
 	struct sg_table *sgtable;
-
-	im_phys_bufs = kzalloc(sizeof(*im_phys_bufs) * IMBUFS_ENTRIES,
-				GFP_KERNEL);
-	if (!im_phys_bufs)
-		return -ENOMEM;
-
-	alloc_chunks = 0;
 
 	while (size && *cur_order) {
 		struct page *page;
@@ -138,6 +119,13 @@ static int ion_exynos_heap_allocate(struct ion_heap *heap,
 		if (alloc_chunks & IMBUFS_MASK) {
 			cur_bufs++;
 		} else if (alloc_chunks < MAX_LV0IMBUFS) {
+			if (!im_phys_bufs)
+				im_phys_bufs = kzalloc(
+					sizeof(*im_phys_bufs) * IMBUFS_ENTRIES,
+					GFP_KERNEL);
+			if (!im_phys_bufs)
+				break;
+
 			cur_bufs = im_phys_bufs;
 		} else if (alloc_chunks < MAX_LV1IMBUFS) {
 			int lv1idx = LV1IDX(alloc_chunks - MAX_LV0IMBUFS);
@@ -218,8 +206,8 @@ static int ion_exynos_heap_allocate(struct ion_heap *heap,
 	sgl = sgtable->sgl;
 	while (copied < alloc_chunks) {
 		int i;
-		cur_bufs = get_imbufs(copied, im_phys_bufs, pim_phys_bufs,
-								ppim_phys_bufs);
+		cur_bufs = get_imbufs_and_free(copied, im_phys_bufs,
+						pim_phys_bufs, ppim_phys_bufs);
 		BUG_ON(!cur_bufs);
 		for (i = 0; (i < IMBUFS_ENTRIES) && cur_bufs[i]; i++) {
 			phys_addr_t phys;
@@ -231,31 +219,32 @@ static int ion_exynos_heap_allocate(struct ion_heap *heap,
 			sgl = sg_next(sgl);
 			copied++;
 		}
+
+		kfree(cur_bufs);
 	}
 
 	buffer->priv_virt = sgtable;
 	buffer->flags = flags;
 
+	return 0;
 alloc_error:
-	alloc_chunks = (alloc_chunks + (IMBUFS_ENTRIES - 1)) & ~IMBUFS_MASK;
-	while (alloc_chunks) {
+	copied = 0;
+	while (copied < alloc_chunks) {
 		int i;
-		cur_bufs = get_imbufs_4free(alloc_chunks - 1, im_phys_bufs,
+		cur_bufs = get_imbufs_and_free(copied, im_phys_bufs,
 				pim_phys_bufs, ppim_phys_bufs);
-		if (unlikely(ret)) {
-			for (i = 0; (i < IMBUFS_ENTRIES) && cur_bufs[i]; i++) {
-				phys_addr_t phys;
-				int gfp_order;
+		for (i = 0; (i < IMBUFS_ENTRIES) && cur_bufs[i]; i++) {
+			phys_addr_t phys;
+			int gfp_order;
 
-				phys = cur_bufs[i];
-				gfp_order = (phys & ~PAGE_MASK) - PAGE_SHIFT;
-				phys = phys & PAGE_MASK;
-				__free_pages(phys_to_page(phys), gfp_order);
-			}
+			phys = cur_bufs[i];
+			gfp_order = (phys & ~PAGE_MASK) - PAGE_SHIFT;
+			phys = phys & PAGE_MASK;
+			__free_pages(phys_to_page(phys), gfp_order);
 		}
 
 		kfree(cur_bufs);
-		alloc_chunks -= IMBUFS_ENTRIES;
+		copied += IMBUFS_ENTRIES;
 	}
 
 	return ret;
