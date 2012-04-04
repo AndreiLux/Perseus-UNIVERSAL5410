@@ -271,6 +271,7 @@ int omap_mux_init_array(struct omap_mux_setting *muxarray, int count)
 		if (r) {
 			pr_err("omap_mux_init_array: failed setting %s: %d\n",
 							muxarray->name, r);
+			BUG();
 			return r;
 		}
 		muxarray++;
