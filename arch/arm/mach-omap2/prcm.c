@@ -71,7 +71,12 @@ void omap_prcm_restart(char mode, const char *cmd)
 		prcm_offs = OMAP3430_GR_MOD;
 		omap3_ctrl_write_boot_mode((cmd ? (u8)*cmd : 0));
 	} else if (cpu_is_omap44xx() || cpu_is_omap54xx()) {
-		omap4_prminst_global_warm_sw_reset(); /* never returns */
+		if (cpu_is_omap543x()
+			&& (omap_rev() == OMAP5430_REV_ES1_0 || omap_rev() == OMAP5432_REV_ES1_0)) {
+			/* ES1 needs cold reset. */
+			omap4_prminst_global_cold_sw_reset();
+		} else
+			omap4_prminst_global_warm_sw_reset(); /* never returns */
 	} else {
 		WARN_ON(1);
 	}
