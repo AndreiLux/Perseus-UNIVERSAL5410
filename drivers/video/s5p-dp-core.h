@@ -46,6 +46,7 @@ struct s5p_dp_device {
 void s5p_dp_enable_video_mute(struct s5p_dp_device *dp, bool enable);
 void s5p_dp_stop_video(struct s5p_dp_device *dp);
 void s5p_dp_lane_swap(struct s5p_dp_device *dp, bool enable);
+void s5p_dp_init_analog_param(struct s5p_dp_device *dp);
 void s5p_dp_init_interrupt(struct s5p_dp_device *dp);
 void s5p_dp_reset(struct s5p_dp_device *dp);
 void s5p_dp_config_interrupt(struct s5p_dp_device *dp);
