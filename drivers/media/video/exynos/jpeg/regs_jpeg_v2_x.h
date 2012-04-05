@@ -1,6 +1,6 @@
-/* linux/arch/arm/plat-s5p/include/plat/regs-jpeg_v2_x.h
+/* linux/drivers/media/video/exynos/jpeg/regs-jpeg_v2_x.h
  *
- * Copyright (c) 2010 Samsung Electronics Co., Ltd.
+ * Copyright (c) 2012 Samsung Electronics Co., Ltd.
  * http://www.samsung.com/
  *
  * Register definition file for Samsung JPEG v.2 Encoder/Decoder

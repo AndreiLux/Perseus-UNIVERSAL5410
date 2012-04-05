@@ -1,6 +1,6 @@
 /* linux/drivers/media/video/exynos/jpeg/jpeg_mem.h
  *
- * Copyright (c) 2010 Samsung Electronics Co., Ltd.
+ * Copyright (c) 2012 Samsung Electronics Co., Ltd.
  * http://www.samsung.com/
  *
  * Definition for Operation of Jpeg encoder/docoder with memory

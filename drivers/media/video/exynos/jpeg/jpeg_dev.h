@@ -1,6 +1,6 @@
 /* linux/drivers/media/video/exynos/jpeg/jpeg_dev.h
   *
-  * Copyright (c) 2010 Samsung Electronics Co., Ltd.
+  * Copyright (c) 2012 Samsung Electronics Co., Ltd.
   * http://www.samsung.com/
   *
   * Header file for Samsung Jpeg v2.x Interface driver
