@@ -451,44 +451,6 @@ static struct s5p_platform_cec hdmi_cec_data __initdata = {
 };
 #endif
 
-#ifdef CONFIG_CMA
-/* defined in arch/arm/mach-exynos/reserve-mem.c */
-extern void exynos_cma_region_reserve(struct cma_region *,
-				struct cma_region *, size_t, const char *);
-
-static void __init exynos_reserve_mem(void)
-{
-	static struct cma_region regions[] = {
-		{
-			.name = "ion",
-			.size = CONFIG_ION_EXYNOS_CONTIGHEAP_SIZE * SZ_1K,
-			{
-				.alignment = SZ_1M
-			}
-		},
-#ifdef CONFIG_AUDIO_SAMSUNG_MEMSIZE_SRP
-		{
-			.name = "srp",
-			.size = CONFIG_AUDIO_SAMSUNG_MEMSIZE_SRP * SZ_1K,
-			.start = 0,
-		},
-#endif
-		{
-			.size = 0 /* END OF REGION DEFINITIONS */
-		}
-	};
-
-	static const char map[] __initconst = "ion-exynos=ion;"
-					      "samsung-rp=srp;";
-
-	exynos_cma_region_reserve(regions, NULL, 0, map);
-}
-#else /* CONFIG_CMA */
-static inline void exynos_reserve_mem(void)
-{
-}
-#endif
-
 #ifdef CONFIG_VIDEO_EXYNOS_FIMC_LITE
 static void __init smdk5250_camera_gpio_cfg(void)
 {
@@ -1231,6 +1193,106 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&s5p_device_ace,
 #endif
 };
+
+
+#if defined(CONFIG_CMA)
+/* defined in arch/arm/mach-exynos/reserve-mem.c */
+extern void exynos_cma_region_reserve(struct cma_region *,
+				struct cma_region *, size_t, const char *);
+static void __init exynos_reserve_mem(void)
+{
+	static struct cma_region regions[] = {
+		{
+			.name = "ion",
+#ifdef CONFIG_ION_EXYNOS_CONTIGHEAP_SIZE
+			.size = CONFIG_ION_EXYNOS_CONTIGHEAP_SIZE * SZ_1K,
+#endif
+			.start = 0
+		},
+#ifdef CONFIG_AUDIO_SAMSUNG_MEMSIZE_SRP
+		{
+			.name = "srp",
+			.size = CONFIG_AUDIO_SAMSUNG_MEMSIZE_SRP * SZ_1K,
+			.start = 0,
+		},
+#endif
+#ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
+#ifdef CONFIG_ION_EXYNOS_DRM_MFC_SH
+		{
+			.name = "drm_mfc_sh",
+			.size = SZ_1M,
+		},
+#endif
+#endif
+		{
+			.size = 0
+		},
+	};
+#ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
+	static struct cma_region regions_secure[] = {
+#ifdef CONFIG_ION_EXYNOS_DRM_VIDEO
+		{
+			.name = "drm_video",
+			.size = (
+#ifdef CONFIG_ION_EXYNOS_DRM_MEMSIZE_FIMD_VIDEO
+				CONFIG_ION_EXYNOS_DRM_MEMSIZE_FIMD_VIDEO +
+#endif
+#ifdef CONFIG_ION_EXYNOS_DRM_MEMSIZE_GSC
+				CONFIG_ION_EXYNOS_DRM_MEMSIZE_GSC +
+#endif
+#ifdef CONFIG_ION_EXYNOS_DRM_MEMSIZE_MFC_SECURE
+				CONFIG_ION_EXYNOS_DRM_MEMSIZE_MFC_SECURE +
+#endif
+				0) * SZ_1K,
+		},
+#endif
+#ifdef CONFIG_ION_EXYNOS_DRM_MFC_FW
+		{
+			.name = "drm_mfc_fw",
+			.size = SZ_1M,
+		},
+#endif
+#ifdef CONFIG_ION_EXYNOS_DRM_SECTBL
+		{
+			.name = "drm_sectbl",
+			.size = SZ_1M,
+		},
+#endif
+		{
+			.size = 0
+		},
+	};
+#else /* !CONFIG_EXYNOS_CONTENT_PATH_PROTECTION */
+	struct cma_region *regions_secure = NULL;
+#endif /* CONFIG_EXYNOS_CONTENT_PATH_PROTECTION */
+	static const char map[] __initconst =
+#ifdef CONFIG_EXYNOS_C2C
+		"samsung-c2c=c2c_shdmem;"
+#endif
+		"s3cfb.0=fimd;exynos5-fb.1=fimd;"
+		"samsung-rp=srp;"
+		"exynos-gsc.0=gsc0;exynos-gsc.1=gsc1;exynos-gsc.2=gsc2;exynos-gsc.3=gsc3;"
+		"exynos-fimc-lite.0=flite0;exynos-fimc-lite.1=flite1;"
+#ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
+		"ion-exynos/mfc_sh=drm_mfc_sh;"
+		"ion-exynos/video=drm_video;"
+		"ion-exynos/mfc_fw=drm_mfc_fw;"
+		"ion-exynos/sectbl=drm_sectbl;"
+#endif
+		"ion-exynos=ion;"
+		"exynos-rot=rot;"
+		"s5p-mfc-v6/f=fw;"
+		"s5p-mfc-v6/a=b1;"
+		"s5p-mixer=tv;"
+		"exynos5-fimc-is=fimc_is;";
+
+	exynos_cma_region_reserve(regions, regions_secure, 0, map);
+}
+#else /* !CONFIG_CMA*/
+static inline void exynos_reserve_mem(void)
+{
+}
+#endif
 
 /* USB EHCI */
 static struct s5p_ehci_platdata smdk5250_ehci_pdata;

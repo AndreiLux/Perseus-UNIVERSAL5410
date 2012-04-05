@@ -18,6 +18,37 @@ config ION_EXYNOS
 	  Choose this option if you wish to use ion on a Samsung Exynos.
 
 config ION_EXYNOS_CONTIGHEAP_SIZE
-	int "Size of Exynos Contiguous Heap in KBytes"
-	depends on ION_EXYNOS
-	default "30720"
+	int "Size in Kilobytes of memory pool of EXYNOS_CONTIG_HEAP"
+	depends on ION_EXYNOS && CMA
+	default 45056
+
+config ION_EXYNOS_DRM_MFC_SH
+	bool "ION Heap for drm mfc sh"
+	depends on EXYNOS_CONTENT_PATH_PROTECTION
+
+config ION_EXYNOS_DRM_VIDEO
+	bool "ION Heap for drm video"
+	depends on EXYNOS_CONTENT_PATH_PROTECTION
+
+config ION_EXYNOS_DRM_MFC_FW
+	bool "ION Heap for drm fw"
+	depends on EXYNOS_CONTENT_PATH_PROTECTION
+
+config ION_EXYNOS_DRM_SECTBL
+	bool "ION Heap for drm sectbl"
+	depends on EXYNOS_CONTENT_PATH_PROTECTION
+
+config ION_EXYNOS_DRM_MEMSIZE_FIMD_VIDEO
+	int "Reserved memsize in kilobytes for FIMD video"
+	depends on ION_EXYNOS_DRM_VIDEO
+	default 32768
+
+config ION_EXYNOS_DRM_MEMSIZE_GSC
+	int "Reserved memsize in kilobytes for GSC"
+	depends on ION_EXYNOS_DRM_VIDEO
+	default 33792
+
+config ION_EXYNOS_DRM_MEMSIZE_MFC_SECURE
+	int "Reserved memsize in kilobytes for MFC secure"
+	depends on ION_EXYNOS_DRM_VIDEO
+	default 30720

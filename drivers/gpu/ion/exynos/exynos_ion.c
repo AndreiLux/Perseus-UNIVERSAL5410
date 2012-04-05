@@ -406,7 +406,17 @@ static int ion_exynos_contig_heap_allocate(struct ion_heap *heap,
 					   unsigned long align,
 					   unsigned long flags)
 {
-	buffer->priv_phys = cma_alloc(exynos_ion_dev, NULL, len, align);
+	char *type = NULL;
+
+	if (flags & ION_EXYNOS_MFC_SH_MASK)
+		type = "mfc_sh";
+	else if (flags & ION_EXYNOS_VIDEO_MASK)
+		type = "video";
+	else if (flags & ION_EXYNOS_MFC_FW_MASK)
+		type = "mfc_fw";
+	else if (flags & ION_EXYNOS_SECTBL_MASK)
+		type = "sectbl";
+	buffer->priv_phys = cma_alloc(exynos_ion_dev, type, len, align);
 	if (IS_ERR_VALUE(buffer->priv_phys))
 		return (int)buffer->priv_phys;
 
