@@ -997,6 +997,11 @@ static int mxt_load_fw(struct device *dev, const char *fn)
 		return ret;
 	}
 
+	if (client->addr == MXT_BOOT_LOW || client->addr == MXT_BOOT_HIGH) {
+		/* already in bootloader mode. */
+		goto bootloader_ready;
+	}
+
 	/* Change to the bootloader mode */
 	mxt_write_object(data, MXT_GEN_COMMAND_T6, 0,
 			 MXT_COMMAND_RESET, MXT_BOOT_VALUE);
@@ -1008,6 +1013,7 @@ static int mxt_load_fw(struct device *dev, const char *fn)
 	else
 		client->addr = MXT_BOOT_HIGH;
 
+bootloader_ready:
 	ret = mxt_check_bootloader(client, MXT_WAITING_BOOTLOAD_CMD);
 	if (ret)
 		goto out;
@@ -1220,9 +1226,13 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	input_set_drvdata(input_dev, data);
 	i2c_set_clientdata(client, data);
 
-	error = mxt_initialize(data);
-	if (error)
-		goto err_free_object;
+	if (client->addr == MXT_APP_LOW || client->addr == MXT_APP_HIGH) {
+		error = mxt_initialize(data);
+		if (error)
+			goto err_free_object;
+	} else {
+		dev_info(&client->dev, "device came up in bootloader mode.\n");
+	}
 
 	error = request_threaded_irq(client->irq, NULL, mxt_interrupt,
 			pdata->irqflags, client->dev.driver->name, data);
@@ -1231,9 +1241,11 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		goto err_free_object;
 	}
 
-	error = mxt_handle_messages(data);
-	if (error)
-		goto err_free_irq;
+	if (client->addr == MXT_APP_LOW || client->addr == MXT_APP_HIGH) {
+		error = mxt_handle_messages(data);
+		if (error)
+			goto err_free_irq;
+	}
 
 	error = input_register_device(input_dev);
 	if (error)
