@@ -22,6 +22,10 @@ void jpeg_sw_reset(void __iomem *base)
 	unsigned int reg;
 
 	reg = readl(base + S5P_JPEG_CNTL_REG);
+	writel((reg & S5P_JPEG_ENC_DEC_MODE_MASK),
+			base + S5P_JPEG_CNTL_REG);
+
+	reg = readl(base + S5P_JPEG_CNTL_REG);
 	writel(reg & ~S5P_JPEG_SOFT_RESET_HI,
 			base + S5P_JPEG_CNTL_REG);
 
