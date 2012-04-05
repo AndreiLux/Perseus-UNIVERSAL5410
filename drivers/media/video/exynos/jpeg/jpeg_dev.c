@@ -51,58 +51,6 @@
 #include "jpeg_regs.h"
 #include "regs_jpeg_v2_x.h"
 
-void jpeg_watchdog(unsigned long arg)
-{
-	struct jpeg_dev *dev = (struct jpeg_dev *)arg;
-
-	printk(KERN_DEBUG "jpeg_watchdog\n");
-	if (test_bit(0, &dev->hw_run)) {
-		atomic_inc(&dev->watchdog_cnt);
-		printk(KERN_DEBUG "jpeg_watchdog_count.\n");
-	}
-
-	if (atomic_read(&dev->watchdog_cnt) >= JPEG_WATCHDOG_CNT)
-		queue_work(dev->watchdog_workqueue, &dev->watchdog_work);
-
-	dev->watchdog_timer.expires = jiffies +
-					msecs_to_jiffies(JPEG_WATCHDOG_INTERVAL);
-	add_timer(&dev->watchdog_timer);
-}
-
-static void jpeg_watchdog_worker(struct work_struct *work)
-{
-	struct jpeg_dev *dev;
-	struct jpeg_ctx *ctx;
-	unsigned long flags;
-	struct vb2_buffer *src_vb, *dst_vb;
-
-	printk(KERN_DEBUG "jpeg_watchdog_worker\n");
-	dev = container_of(work, struct jpeg_dev, watchdog_work);
-
-	spin_lock_irqsave(&dev->slock, flags);
-	clear_bit(0, &dev->hw_run);
-	if (dev->mode == ENCODING)
-		ctx = v4l2_m2m_get_curr_priv(dev->m2m_dev_enc);
-	else
-		ctx = v4l2_m2m_get_curr_priv(dev->m2m_dev_dec);
-
-	if (ctx) {
-		src_vb = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
-		dst_vb = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
-
-		v4l2_m2m_buf_done(src_vb, VB2_BUF_STATE_ERROR);
-		v4l2_m2m_buf_done(dst_vb, VB2_BUF_STATE_ERROR);
-		if (dev->mode == ENCODING)
-			v4l2_m2m_job_finish(dev->m2m_dev_enc, ctx->m2m_ctx);
-		else
-			v4l2_m2m_job_finish(dev->m2m_dev_dec, ctx->m2m_ctx);
-	} else {
-		printk(KERN_ERR "watchdog_ctx is NULL\n");
-	}
-
-	spin_unlock_irqrestore(&dev->slock, flags);
-}
-
 static int jpeg_dec_queue_setup(struct vb2_queue *vq,
 					const struct v4l2_format *fmt, unsigned int *num_buffers,
 					unsigned int *num_planes, unsigned int sizes[],
@@ -427,8 +375,6 @@ static int jpeg_m2m_release(struct file *file)
 	unsigned long flags;
 
 	spin_lock_irqsave(&ctx->slock, flags);
-	if (test_bit(0, &ctx->dev->hw_run) == 0)
-		del_timer_sync(&ctx->dev->watchdog_timer);
 
 	v4l2_m2m_ctx_release(ctx->m2m_ctx);
 	spin_unlock_irqrestore(&ctx->slock, flags);
@@ -547,16 +493,6 @@ static void jpeg_device_dec_run(void *priv)
 	dev = ctx->dev;
 
 	spin_lock_irqsave(&ctx->slock, flags);
-
-	printk(KERN_DEBUG "dec_run.\n");
-
-	if (timer_pending(&ctx->dev->watchdog_timer) == 0) {
-		ctx->dev->watchdog_timer.expires = jiffies +
-					msecs_to_jiffies(JPEG_WATCHDOG_INTERVAL);
-		add_timer(&ctx->dev->watchdog_timer);
-	}
-
-	set_bit(0, &ctx->dev->hw_run);
 
 	dev->mode = DECODING;
 	dec_param = ctx->param.dec_param;
@@ -703,7 +639,6 @@ static irqreturn_t jpeg_irq(int irq, void *priv)
 		v4l2_m2m_buf_done(dst_vb, VB2_BUF_STATE_ERROR);
 	}
 
-	clear_bit(0, &ctx->dev->hw_run);
 	if (ctrl->mode == ENCODING)
 		v4l2_m2m_job_finish(ctrl->m2m_dev_enc, ctx->m2m_ctx);
 	else
@@ -889,13 +824,6 @@ static int jpeg_probe(struct platform_device *pdev)
 	dev->bus_dev = dev_get("exynos-busfreq");
 #endif
 
-	dev->watchdog_workqueue = create_singlethread_workqueue(JPEG_NAME);
-	INIT_WORK(&dev->watchdog_work, jpeg_watchdog_worker);
-	atomic_set(&dev->watchdog_cnt, 0);
-	init_timer(&dev->watchdog_timer);
-	dev->watchdog_timer.data = (unsigned long)dev;
-	dev->watchdog_timer.function = jpeg_watchdog;
-
 	/* clock disable */
 	clk_disable(dev->clk);
 
@@ -935,10 +863,6 @@ err_alloc:
 static int jpeg_remove(struct platform_device *pdev)
 {
 	struct jpeg_dev *dev = platform_get_drvdata(pdev);
-
-	del_timer_sync(&dev->watchdog_timer);
-	flush_workqueue(dev->watchdog_workqueue);
-	destroy_workqueue(dev->watchdog_workqueue);
 
 	v4l2_m2m_release(dev->m2m_dev_enc);
 	video_unregister_device(dev->vfd_enc);

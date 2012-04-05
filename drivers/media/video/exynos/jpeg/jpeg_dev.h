@@ -17,8 +17,6 @@
 #define JPEG_ENC_NAME		"video12"
 #define JPEG_DEC_NAME		"video11"
 
-#define JPEG_WATCHDOG_CNT 10
-#define JPEG_WATCHDOG_INTERVAL   1000
 #if defined(CONFIG_BUSFREQ_OPP)
 #define BUSFREQ_400MHZ	400266
 #endif
