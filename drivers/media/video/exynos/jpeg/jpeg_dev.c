@@ -530,6 +530,7 @@ static void jpeg_device_enc_run(void *priv)
 
 	jpeg_set_encode_hoff_cnt(dev->reg_base, enc_param.out_fmt);
 
+	jpeg_set_timer_count(dev->reg_base, enc_param.in_width * enc_param.in_height * 32 + 0xff);
 	jpeg_set_enc_dec_mode(dev->reg_base, ENCODING);
 
 	spin_unlock_irqrestore(&ctx->slock, flags);
@@ -593,6 +594,7 @@ static void jpeg_device_dec_run(void *priv)
 
 	jpeg_set_dec_out_fmt(dev->reg_base, dec_param.out_fmt);
 	jpeg_set_dec_bitstream_size(dev->reg_base, dec_param.size);
+	jpeg_set_timer_count(dev->reg_base, dec_param.in_width * dec_param.in_height * 8 + 0xff);
 	jpeg_set_enc_dec_mode(dev->reg_base, DECODING);
 
 	spin_unlock_irqrestore(&ctx->slock, flags);
@@ -642,6 +644,8 @@ static irqreturn_t jpeg_irq(int irq, void *priv)
 
 	spin_lock(&ctrl->slock);
 
+	jpeg_clean_interrupt(ctrl->reg_base);
+
 	if (ctrl->mode == ENCODING)
 		ctx = v4l2_m2m_get_curr_priv(ctrl->m2m_dev_enc);
 	else
@@ -675,6 +679,9 @@ static irqreturn_t jpeg_irq(int irq, void *priv)
 			break;
 		case 0x10:
 			ctrl->irq_ret = ERR_FRAME;
+			break;
+		case 0x20:
+			ctrl->irq_ret = ERR_TIME_OUT;
 			break;
 		default:
 			ctrl->irq_ret = ERR_UNKNOWN;

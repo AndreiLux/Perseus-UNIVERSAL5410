@@ -345,6 +345,11 @@ void jpeg_set_interrupt(void __iomem *base)
 	writel(S5P_JPEG_INT_EN_ALL, base + S5P_JPEG_INT_EN_REG);
 }
 
+void jpeg_clean_interrupt(void __iomem *base)
+{
+	writel(0, base + S5P_JPEG_INT_EN_REG);
+}
+
 unsigned int jpeg_get_int_status(void __iomem *base)
 {
 	unsigned int	int_status;
@@ -512,6 +517,11 @@ unsigned int jpeg_get_stream_size(void __iomem *base)
 void jpeg_set_dec_bitstream_size(void __iomem *base, unsigned int size)
 {
 	writel(size, base + S5P_JPEG_BITSTREAM_SIZE_REG);
+}
+
+void jpeg_set_timer_count(void __iomem *base, unsigned int size)
+{
+	writel(size, base + S5P_JPEG_INT_TIMER_COUNT_REG);
 }
 
 void jpeg_get_frame_size(void __iomem *base,
