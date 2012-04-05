@@ -417,13 +417,19 @@ static int __cpuinit exynos4_local_timer_setup(struct clock_event_device *evt)
 	if (mct_int_type == MCT_INT_SPI) {
 		if (cpu == 0) {
 			mct_tick0_event_irq.dev_id = mevt;
-			evt->irq = EXYNOS4_IRQ_MCT_L0;
-			setup_irq(EXYNOS4_IRQ_MCT_L0, &mct_tick0_event_irq);
+			if (soc_is_exynos5250())
+				evt->irq = EXYNOS5_IRQ_MCT_L0;
+			else
+				evt->irq = EXYNOS4_IRQ_MCT_L0;
+			setup_irq(evt->irq, &mct_tick0_event_irq);
 		} else {
 			mct_tick1_event_irq.dev_id = mevt;
-			evt->irq = EXYNOS4_IRQ_MCT_L1;
-			setup_irq(EXYNOS4_IRQ_MCT_L1, &mct_tick1_event_irq);
-			irq_set_affinity(EXYNOS4_IRQ_MCT_L1, cpumask_of(1));
+			if (soc_is_exynos5250())
+				evt->irq = EXYNOS5_IRQ_MCT_L1;
+			else
+				evt->irq = EXYNOS4_IRQ_MCT_L1;
+			setup_irq(evt->irq, &mct_tick1_event_irq);
+			irq_set_affinity(evt->irq, cpumask_of(1));
 		}
 	} else {
 		enable_percpu_irq(EXYNOS_IRQ_MCT_LOCALTIMER, 0);
