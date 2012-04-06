@@ -262,6 +262,16 @@ struct s5p_mfc_dev {
 	struct vb2_alloc_ctx **alloc_ctx;
 
 	unsigned long clk_state;
+
+	/* for DRM */
+	int curr_ctx_drm;
+	int fw_status;
+	int num_drm_inst;
+	struct s5p_mfc_extra_buf drm_info;
+	struct vb2_alloc_ctx *alloc_ctx_fw;
+	struct vb2_alloc_ctx *alloc_ctx_sh;
+	struct vb2_alloc_ctx *alloc_ctx_drm;
+
 	struct work_struct work_struct;
 	struct workqueue_struct *irq_workqueue;
 };
@@ -601,6 +611,9 @@ struct s5p_mfc_ctx {
 
 	/* For 6.x */
 	size_t scratch_buf_size;
+
+	/* for DRM */
+	int is_drm;
 };
 
 #define fh_to_mfc_ctx(x)	\

@@ -22,6 +22,7 @@
 #include <linux/workqueue.h>
 #include <linux/videodev2.h>
 #include <linux/videodev2_exynos_media.h>
+#include <linux/proc_fs.h>
 #include <mach/videonode.h>
 #include <media/videobuf2-core.h>
 
@@ -42,6 +43,37 @@
 
 int debug;
 module_param(debug, int, S_IRUGO | S_IWUSR);
+
+#ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
+static struct proc_dir_entry *mfc_proc_entry;
+
+#define MFC_PROC_ROOT			"mfc"
+#define MFC_PROC_INSTANCE_NUMBER	"instance_number"
+#define MFC_PROC_DRM_INSTANCE_NUMBER	"drm_instance_number"
+#define MFC_PROC_FW_STATUS		"fw_status"
+
+#define MFC_DRM_MAGIC_SIZE	0x10
+#define MFC_DRM_MAGIC_CHUNK0	0x13cdbf16
+#define MFC_DRM_MAGIC_CHUNK1	0x8b803342
+#define MFC_DRM_MAGIC_CHUNK2	0x5e87f4f5
+#define MFC_DRM_MAGIC_CHUNK3	0x3bd05317
+
+static bool check_magic(unsigned char *addr)
+{
+	if (((u32)*(u32 *)(addr) == MFC_DRM_MAGIC_CHUNK0) &&
+	    ((u32)*(u32 *)(addr + 0x4) == MFC_DRM_MAGIC_CHUNK1) &&
+	    ((u32)*(u32 *)(addr + 0x8) == MFC_DRM_MAGIC_CHUNK2) &&
+	    ((u32)*(u32 *)(addr + 0xC) == MFC_DRM_MAGIC_CHUNK3))
+		return true;
+	else
+		return false;
+}
+
+static inline void clear_magic(unsigned char *addr)
+{
+	memset((void *)addr, 0x00, MFC_DRM_MAGIC_SIZE);
+}
+#endif
 
 void mfc_workqueue_try_run(struct work_struct *work)
 {
@@ -458,6 +490,7 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 				src_buf->vb.v4l2_planes[0].bytesused -
 							dec->consumed);
 			dev->curr_ctx = ctx->num;
+			dev->curr_ctx_drm = ctx->is_drm;
 			s5p_mfc_clean_ctx_int_flags(ctx);
 			spin_unlock_irqrestore(&dev->irqlock, flags);
 			s5p_mfc_clear_int_flags();
@@ -824,12 +857,49 @@ static int s5p_mfc_open(struct file *file)
 		goto err_ctx_ctrls;
 	}
 
+#ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
+	if (check_magic(dev->drm_info.virt)) {
+		mfc_debug(1, "DRM instance opened\n");
+
+		dev->num_drm_inst++;
+		ctx->is_drm = 1;
+
+		s5p_mfc_alloc_instance_buffer(ctx);
+	}
+#endif
+
 	/* Load firmware if this is the first instance */
 	if (dev->num_inst == 1) {
 		dev->watchdog_timer.expires = jiffies +
 					msecs_to_jiffies(MFC_WATCHDOG_INTERVAL);
 		add_timer(&dev->watchdog_timer);
+#ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
+		if (check_magic(dev->drm_info.virt)) {
+			clear_magic(dev->drm_info.virt);
 
+			if (!dev->fw_status) {
+				ret = s5p_mfc_alloc_firmware(dev);
+				if (ret)
+					goto err_fw_alloc;
+			}
+
+			dev->fw_status = 1;
+		} else {
+			if (!dev->fw_status) {
+				ret = s5p_mfc_alloc_firmware(dev);
+				if (ret)
+					goto err_fw_alloc;
+
+				ret = s5p_mfc_load_firmware(dev);
+				if (ret)
+					goto err_fw_load;
+
+				dev->fw_status = 1;
+			}
+		}
+
+		s5p_mfc_alloc_dev_context_buffer(dev);
+#else
 		/* Load the FW */
 		ret = s5p_mfc_alloc_firmware(dev);
 		if (ret)
@@ -838,7 +908,7 @@ static int s5p_mfc_open(struct file *file)
 		ret = s5p_mfc_load_firmware(dev);
 		if (ret)
 			goto err_fw_load;
-
+#endif
 		mfc_debug(2, "power on\n");
 		ret = s5p_mfc_power_on();
 		if (ret < 0) {
@@ -847,6 +917,7 @@ static int s5p_mfc_open(struct file *file)
 		}
 
 		dev->curr_ctx = ctx->num;
+		dev->curr_ctx_drm = ctx->is_drm;
 
 		/* Init the FW */
 		ret = s5p_mfc_init_hw(dev);
@@ -865,6 +936,8 @@ err_fw_load:
 	s5p_mfc_release_firmware(dev);
 
 err_fw_alloc:
+	if (ctx->is_drm)
+		dev->num_drm_inst--;
 	del_timer_sync(&dev->watchdog_timer);
 	call_cop(ctx, cleanup_ctx_ctrls, ctx);
 
@@ -939,13 +1012,17 @@ static int s5p_mfc_release(struct file *file)
 	if (dev->curr_ctx == ctx->num)
 		clear_bit(0, &dev->hw_lock);
 
+	if (ctx->is_drm)
+		dev->num_drm_inst--;
 	dev->num_inst--;
 
 	if (dev->num_inst == 0) {
 		s5p_mfc_deinit_hw(dev);
 
 		/* reset <-> F/W release */
+#ifndef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
 		s5p_mfc_release_firmware(dev);
+#endif
 		del_timer_sync(&dev->watchdog_timer);
 
 		mfc_debug(2, "power off\n");
@@ -1029,6 +1106,41 @@ static struct video_device s5p_mfc_enc_videodev = {
 	.minor = -1,
 	.release = video_device_release,
 };
+
+#ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
+static int proc_read_inst_number(char *buf, char **start,
+		off_t off, int count, int *eof, void *data)
+{
+	struct s5p_mfc_dev *dev = (struct s5p_mfc_dev *)data;
+	int len = 0;
+
+	len += sprintf(buf + len, "%d\n", dev->num_inst);
+
+	return len;
+}
+
+static int proc_read_drm_inst_number(char *buf, char **start,
+		off_t off, int count, int *eof, void *data)
+{
+	struct s5p_mfc_dev *dev = (struct s5p_mfc_dev *)data;
+	int len = 0;
+
+	len += sprintf(buf + len, "%d\n", dev->num_drm_inst);
+
+	return len;
+}
+
+static int proc_read_fw_status(char *buf, char **start,
+		off_t off, int count, int *eof, void *data)
+{
+	struct s5p_mfc_dev *dev = (struct s5p_mfc_dev *)data;
+	int len = 0;
+
+	len += sprintf(buf + len, "%d\n", dev->fw_status);
+
+	return len;
+}
+#endif
 
 /* MFC probe function */
 static int __devinit s5p_mfc_probe(struct platform_device *pdev)
@@ -1197,12 +1309,118 @@ static int __devinit s5p_mfc_probe(struct platform_device *pdev)
 	}
 	INIT_WORK(&dev->work_struct, mfc_workqueue_try_run);
 
+#ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
+	dev->alloc_ctx_fw = (struct vb2_alloc_ctx *)
+		vb2_ion_create_context(&pdev->dev,
+			IS_MFCV6(dev) ? SZ_4K : SZ_128K,
+			VB2ION_CTX_DRM_MFCFW);
+	if (IS_ERR(dev->alloc_ctx_fw)) {
+		mfc_err("failed to prepare F/W allocation context\n");
+		ret = PTR_ERR(dev->alloc_ctx_fw);
+		goto alloc_ctx_fw_fail;
+	}
+
+	dev->alloc_ctx_sh = (struct vb2_alloc_ctx *)
+		vb2_ion_create_context(&pdev->dev,
+			SZ_4K,
+			VB2ION_CTX_DRM_MFCSH);
+	if (IS_ERR(dev->alloc_ctx_sh)) {
+		mfc_err("failed to prepare shared allocation context\n");
+		ret = PTR_ERR(dev->alloc_ctx_sh);
+		goto alloc_ctx_sh_fail;
+	}
+
+	dev->drm_info.alloc =
+			s5p_mfc_mem_allocate(dev->alloc_ctx_sh, PAGE_SIZE);
+	if (IS_ERR(dev->drm_info.alloc)) {
+		mfc_err("failed to allocate shared region\n");
+		ret = PTR_ERR(dev->drm_info.alloc);
+		goto shared_alloc_fail;
+	}
+	dev->drm_info.virt = s5p_mfc_mem_vaddr(dev->drm_info.alloc);
+	if (!dev->drm_info.virt) {
+		mfc_err("failed to get vaddr for shared region\n");
+		ret = -ENOMEM;
+		goto shared_vaddr_fail;
+	}
+
+	dev->alloc_ctx_drm = (struct vb2_alloc_ctx *)
+		vb2_ion_create_context(&pdev->dev,
+			SZ_4K,
+			VB2ION_CTX_DRM_VIDEO);
+	if (IS_ERR(dev->alloc_ctx_drm)) {
+		mfc_err("failed to prepare DRM allocation context\n");
+		ret = PTR_ERR(dev->alloc_ctx_drm);
+		goto alloc_ctx_drm_fail;
+	}
+
+	mfc_proc_entry = proc_mkdir(MFC_PROC_ROOT, NULL);
+	if (!mfc_proc_entry) {
+		dev_err(&pdev->dev, "unable to create /proc/%s\n",
+				MFC_PROC_ROOT);
+		ret = -ENOMEM;
+		goto err_proc_entry;
+	}
+
+	if (!create_proc_read_entry(MFC_PROC_INSTANCE_NUMBER,
+				0,
+				mfc_proc_entry,
+				proc_read_inst_number,
+				dev)) {
+		dev_err(&pdev->dev, "unable to create /proc/%s/%s\n",
+				MFC_PROC_ROOT, MFC_PROC_INSTANCE_NUMBER);
+		ret = -ENOMEM;
+		goto err_proc_number;
+	}
+
+	if (!create_proc_read_entry(MFC_PROC_DRM_INSTANCE_NUMBER,
+				0,
+				mfc_proc_entry,
+				proc_read_drm_inst_number,
+				dev)) {
+		dev_err(&pdev->dev, "unable to create /proc/%s/%s\n",
+				MFC_PROC_ROOT, MFC_PROC_DRM_INSTANCE_NUMBER);
+		ret = -ENOMEM;
+		goto err_proc_drm;
+	}
+
+	if (!create_proc_read_entry(MFC_PROC_FW_STATUS,
+				0,
+				mfc_proc_entry,
+				proc_read_fw_status,
+				dev)) {
+		dev_err(&pdev->dev, "unable to create /proc/%s/%s\n",
+				MFC_PROC_ROOT, MFC_PROC_FW_STATUS);
+		ret = -ENOMEM;
+		goto err_proc_fw;
+	}
+#endif
 	pr_debug("%s--\n", __func__);
 	return 0;
 
 /* Deinit MFC if probe had failed */
-workqueue_fail:
+#ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
+err_proc_fw:
+	remove_proc_entry(MFC_PROC_DRM_INSTANCE_NUMBER, mfc_proc_entry);
+err_proc_drm:
+	remove_proc_entry(MFC_PROC_INSTANCE_NUMBER, mfc_proc_entry);
+err_proc_number:
+	remove_proc_entry(MFC_PROC_ROOT, NULL);
+err_proc_entry:
+	vb2_ion_destroy_context(dev->alloc_ctx_drm);
+shared_vaddr_fail:
+	s5p_mfc_mem_free(dev->drm_info.alloc);
+shared_alloc_fail:
+alloc_ctx_drm_fail:
+	vb2_ion_destroy_context(dev->alloc_ctx_sh);
+alloc_ctx_sh_fail:
+	vb2_ion_destroy_context(dev->alloc_ctx_fw);
+alloc_ctx_fw_fail:
 	destroy_workqueue(dev->irq_workqueue);
+#endif
+workqueue_fail:
+	s5p_mfc_mem_cleanup_multi((void **)dev->alloc_ctx,
+			alloc_ctx_num);
 alloc_ctx_fail:
 	video_unregister_device(dev->vfd_enc);
 rel_vdev_enc:
@@ -1246,6 +1464,16 @@ static int __devexit s5p_mfc_remove(struct platform_device *pdev)
 	video_unregister_device(dev->vfd_enc);
 	video_unregister_device(dev->vfd_dec);
 	v4l2_device_unregister(&dev->v4l2_dev);
+#ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
+	remove_proc_entry(MFC_PROC_FW_STATUS, mfc_proc_entry);
+	remove_proc_entry(MFC_PROC_DRM_INSTANCE_NUMBER, mfc_proc_entry);
+	remove_proc_entry(MFC_PROC_INSTANCE_NUMBER, mfc_proc_entry);
+	remove_proc_entry(MFC_PROC_ROOT, NULL);
+	vb2_ion_destroy_context(dev->alloc_ctx_drm);
+	s5p_mfc_mem_free(dev->drm_info.alloc);
+	vb2_ion_destroy_context(dev->alloc_ctx_sh);
+	vb2_ion_destroy_context(dev->alloc_ctx_fw);
+#endif
 	s5p_mfc_mem_cleanup_multi((void **)dev->alloc_ctx,
 					dev->variant->port_num + 1);
 	mfc_debug(2, "Will now deinit HW\n");

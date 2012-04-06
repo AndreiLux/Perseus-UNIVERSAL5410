@@ -1766,7 +1766,8 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 
 		ctx->capture_state = QUEUE_FREE;
 
-		s5p_mfc_alloc_instance_buffer(ctx);
+		if (!ctx->is_drm)
+			s5p_mfc_alloc_instance_buffer(ctx);
 
 		spin_lock_irqsave(&dev->condlock, flags);
 		set_bit(ctx->num, &dev->ctx_work_bits);
@@ -1861,7 +1862,11 @@ static int vidioc_reqbufs(struct file *file, void *priv,
 		}
 		*/
 		cacheable = (ctx->cacheable & MFCMASK_DST_CACHE) ? 1 : 0;
-		s5p_mfc_mem_set_cacheable(alloc_ctx1, cacheable);
+		if (ctx->is_drm)
+			s5p_mfc_mem_set_cacheable(
+					ctx->dev->alloc_ctx_drm, cacheable);
+		else
+			s5p_mfc_mem_set_cacheable(alloc_ctx1, cacheable);
 
 		if (ctx->capture_state != QUEUE_FREE) {
 			mfc_err("invalid capture state: %d\n", ctx->capture_state);
@@ -1887,10 +1892,18 @@ static int vidioc_reqbufs(struct file *file, void *priv,
 	} else if (reqbufs->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		/* cacheable setting */
 		cacheable = (ctx->cacheable & MFCMASK_SRC_CACHE) ? 1 : 0;
-		if (!IS_MFCV6(dev))
-			s5p_mfc_mem_set_cacheable(alloc_ctx2, cacheable);
-		else
-			s5p_mfc_mem_set_cacheable(alloc_ctx1, cacheable);
+		if (ctx->is_drm) {
+			s5p_mfc_mem_set_cacheable(
+					ctx->dev->alloc_ctx_drm, cacheable);
+		} else {
+			if (!IS_MFCV6(dev))
+				s5p_mfc_mem_set_cacheable(
+							alloc_ctx2, cacheable);
+			else
+				s5p_mfc_mem_set_cacheable(
+							alloc_ctx1, cacheable);
+		}
+
 		if (ctx->output_state != QUEUE_FREE) {
 			mfc_err("invalid output state: %d\n", ctx->output_state);
 			return -EINVAL;
@@ -2704,6 +2717,8 @@ static int s5p_mfc_queue_setup(struct vb2_queue *vq,
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
 	struct s5p_mfc_dev *dev = ctx->dev;
 	int i;
+	void *alloc_ctx1 = ctx->dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX];
+	void *alloc_ctx2 = ctx->dev->alloc_ctx[MFC_CMA_BANK2_ALLOC_CTX];
 
 	mfc_debug_enter();
 
@@ -2730,7 +2745,10 @@ static int s5p_mfc_queue_setup(struct vb2_queue *vq,
 			*buf_count = MFC_MAX_BUFFERS;
 
 		psize[0] = enc->dst_buf_size;
-		allocators[0] = ctx->dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX];
+		if (ctx->is_drm)
+			allocators[0] = ctx->dev->alloc_ctx_drm;
+		else
+			allocators[0] = alloc_ctx1;
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		if (ctx->src_fmt)
 			*plane_count = ctx->src_fmt->num_planes;
@@ -2744,14 +2762,18 @@ static int s5p_mfc_queue_setup(struct vb2_queue *vq,
 
 		psize[0] = ctx->luma_size;
 		psize[1] = ctx->chroma_size;
-		if (IS_MFCV6(dev)) {
-			allocators[0] = ctx->dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX];
-			allocators[1] = ctx->dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX];
+		if (ctx->is_drm) {
+			allocators[0] = ctx->dev->alloc_ctx_drm;
+			allocators[1] = ctx->dev->alloc_ctx_drm;
 		} else {
-			allocators[0] = ctx->dev->alloc_ctx[MFC_CMA_BANK2_ALLOC_CTX];
-			allocators[1] = ctx->dev->alloc_ctx[MFC_CMA_BANK2_ALLOC_CTX];
+			if (IS_MFCV6(dev)) {
+				allocators[0] = alloc_ctx1;
+				allocators[1] = alloc_ctx1;
+			} else {
+				allocators[0] = alloc_ctx2;
+				allocators[1] = alloc_ctx2;
+			}
 		}
-
 	} else {
 		mfc_err("invalid queue type: %d\n", vq->type);
 		return -EINVAL;

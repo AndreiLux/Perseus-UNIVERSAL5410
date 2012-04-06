@@ -39,7 +39,9 @@ int s5p_mfc_sys_init_cmd(struct s5p_mfc_dev *dev)
 
 	mfc_debug_enter();
 
+#ifndef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
 	s5p_mfc_alloc_dev_context_buffer(dev);
+#endif
 
 	s5p_mfc_write_reg(dev->ctx_buf.ofs, S5P_FIMV_CONTEXT_MEM_ADDR);
 	s5p_mfc_write_reg(buf_size->dev_ctx, S5P_FIMV_CONTEXT_MEM_SIZE);
