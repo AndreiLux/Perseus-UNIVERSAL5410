@@ -1728,7 +1728,7 @@ static void do_volt_notify_handling(struct emif_data *emif, u32 volt_state)
 	dev_dbg(emif->dev, "voltage notification : %d", volt_state);
 
 	if (!emif->curr_regs) {
-		dev_err(emif->dev,
+		dev_dbg(emif->dev,
 			"Volt-notify before registers are ready: %d\n",
 			volt_state);
 		return;
