@@ -239,7 +239,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_BOOLEAN,
 		.name = "Cacheable flag",
 		.minimum = 0,
-		.maximum = 1,
+		.maximum = 3,
 		.step = 1,
 		.default_value = 0,
 	},
@@ -1189,13 +1189,16 @@ static int vidioc_reqbufs(struct file *file, void *priv,
 	struct s5p_mfc_dec *dec = ctx->dec_priv;
 	int ret = 0;
 	unsigned long flags;
+	int cacheable;
+	void *alloc_ctx1 = ctx->dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX];
+	void *alloc_ctx2 = ctx->dev->alloc_ctx[MFC_CMA_BANK2_ALLOC_CTX];
 
 	mfc_debug_enter();
 	mfc_debug(2, "Memory type: %d\n", reqbufs->memory);
 
 	if (reqbufs->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		s5p_mfc_mem_set_cacheable(ctx->dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX],
-				ctx->cacheable);
+		cacheable = (ctx->cacheable & MFCMASK_SRC_CACHE) ? 1 : 0;
+		s5p_mfc_mem_set_cacheable(alloc_ctx1, cacheable);
 		/* Can only request buffers after
 		   an instance has been opened.*/
 		if (ctx->state == MFCINST_GOT_INST) {
@@ -1221,9 +1224,10 @@ static int vidioc_reqbufs(struct file *file, void *priv,
 		dec->dst_memtype = reqbufs->memory;
 
 		/* cacheable setting */
+		cacheable = (ctx->cacheable & MFCMASK_DST_CACHE) ? 1 : 0;
 		if (!IS_MFCV6(dev))
-			s5p_mfc_mem_set_cacheable(ctx->dev->alloc_ctx[MFC_CMA_BANK2_ALLOC_CTX], ctx->cacheable);
-		s5p_mfc_mem_set_cacheable(ctx->dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX], ctx->cacheable);
+			s5p_mfc_mem_set_cacheable(alloc_ctx2, cacheable);
+		s5p_mfc_mem_set_cacheable(alloc_ctx1, cacheable);
 
 		if (reqbufs->count == 0) {
 			mfc_debug(2, "Freeing buffers.\n");
@@ -1580,10 +1584,7 @@ static int vidioc_s_ctrl(struct file *file, void *priv,
 	case V4L2_CID_CACHEABLE:
 		/*if (stream_on)
 			return -EBUSY; */
-		if (ctrl->value >= 0 || ctrl->value <= 3)
-			ctx->cacheable = ctrl->value;
-		else
-			ctx->cacheable = 0;
+		ctx->cacheable |= ctrl->value;
 		break;
 	case V4L2_CID_MPEG_VIDEO_H264_SEI_FRAME_PACKING:
 		/*if (stream_on)
@@ -1898,6 +1899,8 @@ static int s5p_mfc_buf_finish(struct vb2_buffer *vb)
 	unsigned int index = vb->v4l2_buf.index;
 
 	if (vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+		if (ctx->cacheable & MFCMASK_DST_CACHE)
+			s5p_mfc_mem_cache_flush(vb, 2);
 		if (call_cop(ctx, to_ctx_ctrls, ctx, &ctx->dst_ctrls[index]) < 0)
 			mfc_err("failed in to_buf_ctrls\n");
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
