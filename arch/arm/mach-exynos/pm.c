@@ -95,11 +95,6 @@ static int exynos_cpu_suspend(unsigned long arg)
 #ifdef CONFIG_CACHE_L2X0
 	outer_flush_all();
 #endif
-	/*
-	 * To enter suspend mode, GPS LPI register must be set.
-	 */
-	if (soc_is_exynos5250())
-		__raw_writel(0x10000, EXYNOS5_GPS_LPI);
 
 #ifdef CONFIG_ARM_TRUSTZONE
 	exynos_smc(SMC_CMD_SLEEP, 0, 0, 0);
