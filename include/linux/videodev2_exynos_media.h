@@ -217,4 +217,6 @@ enum v4l2_mpeg_video_h264_hierarchical_coding_type {
 #define V4L2_CID_MPEG_VIDEO_H264_HIERARCHICAL_CODING_LAYER_QP	\
 					(V4L2_CID_MPEG_MFC_BASE + 41)
 
+#define V4L2_CID_MPEG_VIDEO_H264_MVC_VIEW_ID			\
+					(V4L2_CID_MPEG_MFC_BASE + 42)
 #endif /* __LINUX_VIDEODEV2_EXYNOS_MEDIA_H */
