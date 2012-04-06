@@ -92,21 +92,39 @@ int __init exynos5_jpeg_setup_clock(struct device *dev,
 					unsigned long clk_rate)
 {
 	struct clk *sclk;
+	struct clk *mout_user = NULL;
+	int ret;
 
 	sclk = clk_get(dev, "sclk_jpeg");
 	if (IS_ERR(sclk))
 		return PTR_ERR(sclk);
 
+	mout_user = clk_get(dev, "mout_mpll_user");
+	if (IS_ERR(mout_user)) {
+		dev_err(dev, "failed to clk_get mout_user for jpeg\n");
+		clk_put(sclk);
+		return PTR_ERR(mout_user);
+	}
+	ret = clk_set_parent(sclk, mout_user);
+	if (ret < 0) {
+		dev_err(dev, "failed to clk_set_parent for jpeg\n");
+		goto err_clk;
+	}
+
 	if (!clk_rate)
 		clk_rate = 150000000UL;
 
 	if (clk_set_rate(sclk, clk_rate)) {
-		pr_err("%s rate change failed: %lu\n", sclk->name, clk_rate);
-		clk_put(sclk);
-		return PTR_ERR(sclk);
+		dev_err(dev, "failed to clk_set_rate of sclk for jpeg\n");
+		goto err_clk;
 	}
 
 	clk_put(sclk);
+	clk_put(mout_user);
 
 	return 0;
+err_clk:
+	clk_put(sclk);
+	clk_put(mout_user);
+	return -EINVAL;
 }
