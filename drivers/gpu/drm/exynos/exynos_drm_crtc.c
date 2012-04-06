@@ -192,6 +192,16 @@ static void exynos_drm_crtc_dpms(struct drm_crtc *crtc, int mode)
 	mutex_unlock(&dev->struct_mutex);
 }
 
+static void exynos_drm_crtc_disable(struct drm_crtc *crtc)
+{
+	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
+	struct exynos_drm_overlay *overlay = &exynos_crtc->overlay;
+	int win = overlay->zpos;
+
+	exynos_drm_fn_encoder(crtc, &win,
+		exynos_drm_encoder_crtc_disable);
+}
+
 static void exynos_drm_crtc_prepare(struct drm_crtc *crtc)
 {
 	DRM_DEBUG_KMS("%s\n", __FILE__);
@@ -282,6 +292,7 @@ static void exynos_drm_crtc_load_lut(struct drm_crtc *crtc)
 
 static struct drm_crtc_helper_funcs exynos_crtc_helper_funcs = {
 	.dpms		= exynos_drm_crtc_dpms,
+	.disable	= exynos_drm_crtc_disable,
 	.prepare	= exynos_drm_crtc_prepare,
 	.commit		= exynos_drm_crtc_commit,
 	.mode_fixup	= exynos_drm_crtc_mode_fixup,
