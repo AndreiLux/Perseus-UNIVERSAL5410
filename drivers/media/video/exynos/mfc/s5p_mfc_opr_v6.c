@@ -465,6 +465,7 @@ int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 	int align_gap;
 	struct s5p_mfc_buf *buf;
 	struct list_head *buf_queue;
+	unsigned char *dpb_vir;
 
 	buf_addr1 = ctx->port_a_phys;
 	buf_size1 = ctx->port_a_size;
@@ -492,16 +493,26 @@ int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 	mfc_debug(2, "Frame size: %d ch: %d mv: %d\n", frame_size, frame_size_ch,
 								frame_size_mv);
 
-	i = 0;
 	if (dec->dst_memtype == V4L2_MEMORY_USERPTR)
 		buf_queue = &ctx->dst_queue;
 	else
 		buf_queue = &dec->dpb_queue;
+	i = 0;
 	list_for_each_entry(buf, buf_queue, list) {
 		mfc_debug(2, "Luma %x\n", buf->cookie.raw.luma);
 		WRITEL(buf->cookie.raw.luma, S5P_FIMV_D_LUMA_DPB + i * 4);
 		mfc_debug(2, "\tChroma %x\n", buf->cookie.raw.chroma);
 		WRITEL(buf->cookie.raw.chroma, S5P_FIMV_D_CHROMA_DPB + i * 4);
+
+		if ((i == 0) && (!ctx->is_drm)) {
+			dpb_vir = vb2_plane_vaddr(&buf->vb, 0);
+			memset(dpb_vir, 0x0, ctx->luma_size);
+			s5p_mfc_cache_inv(&buf->vb, 0);
+
+			dpb_vir = vb2_plane_vaddr(&buf->vb, 1);
+			memset(dpb_vir, 0x80, ctx->chroma_size);
+			s5p_mfc_cache_inv(&buf->vb, 1);
+		}
 		i++;
 	}
 
@@ -584,7 +595,8 @@ int s5p_mfc_set_enc_ref_buffer(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
-	size_t buf_addr1, buf_size1;
+	size_t buf_addr1;
+	int buf_size1;
 	int i;
 
 	mfc_debug_enter();
@@ -1500,6 +1512,10 @@ static inline int s5p_mfc_run_dec_frame(struct s5p_mfc_ctx *ctx)
 	/* Frames are being decoded */
 	if (list_empty(&ctx->src_queue)) {
 		mfc_debug(2, "No src buffers.\n");
+		spin_unlock_irqrestore(&dev->irqlock, flags);
+		return -EAGAIN;
+	}
+	if (ctx->dst_queue_cnt < ctx->dpb_count) {
 		spin_unlock_irqrestore(&dev->irqlock, flags);
 		return -EAGAIN;
 	}

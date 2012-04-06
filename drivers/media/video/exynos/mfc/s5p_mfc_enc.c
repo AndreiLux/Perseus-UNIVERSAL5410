@@ -29,6 +29,7 @@
 #include "s5p_mfc_debug.h"
 #include "s5p_mfc_reg.h"
 #include "s5p_mfc_enc.h"
+#include "s5p_mfc_pm.h"
 
 #define DEF_SRC_FMT	1
 #define DEF_DST_FMT	2
@@ -144,7 +145,7 @@ static struct v4l2_queryctrl controls[] = {
 		.minimum = ENC_MULTI_SLICE_BYTE_MIN,
 		.maximum = (1 << 30) - 1,
 		.step = 1,
-		.default_value = 350,
+		.default_value = ENC_MULTI_SLICE_BYTE_MIN,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_CYCLIC_INTRA_REFRESH_MB,
@@ -2134,7 +2135,7 @@ static int vidioc_g_ctrl(struct file *file, void *priv,
 
 static inline int h264_level(enum v4l2_mpeg_video_h264_level lvl)
 {
-	static unsigned int t[V4L2_MPEG_VIDEO_H264_LEVEL_4_0 + 1] = {
+	static unsigned int t[V4L2_MPEG_VIDEO_H264_LEVEL_4_2 + 1] = {
 		/* V4L2_MPEG_VIDEO_H264_LEVEL_1_0   */ 10,
 		/* V4L2_MPEG_VIDEO_H264_LEVEL_1B    */ 9,
 		/* V4L2_MPEG_VIDEO_H264_LEVEL_1_1   */ 11,
@@ -2147,6 +2148,8 @@ static inline int h264_level(enum v4l2_mpeg_video_h264_level lvl)
 		/* V4L2_MPEG_VIDEO_H264_LEVEL_3_1   */ 31,
 		/* V4L2_MPEG_VIDEO_H264_LEVEL_3_2   */ 32,
 		/* V4L2_MPEG_VIDEO_H264_LEVEL_4_0   */ 40,
+		/* V4L2_MPEG_VIDEO_H264_LEVEL_4_1   */ 41,
+		/* V4L2_MPEG_VIDEO_H264_LEVEL_4_2   */ 42,
 	};
 	return t[lvl];
 }
@@ -2276,10 +2279,6 @@ static int set_enc_param(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 		break;
 	case V4L2_CID_MPEG_VIDEO_H264_LEVEL:
 		p->codec.h264.level = h264_level(ctrl->value);
-		if (p->codec.h264.level < 0) {
-			mfc_err("Level number is wrong\n");
-			ret = p->codec.h264.level;
-		}
 		break;
 	case V4L2_CID_MPEG_MFC51_VIDEO_H264_INTERLACE:
 		p->codec.h264.interlace = ctrl->value;
@@ -2429,10 +2428,6 @@ static int set_enc_param(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 		break;
 	case V4L2_CID_MPEG_VIDEO_MPEG4_LEVEL:
 		p->codec.mpeg4.level = mpeg4_level(ctrl->value);
-		if (p->codec.mpeg4.level < 0) {
-			mfc_err("Level number is wrong\n");
-			ret = p->codec.mpeg4.level;
-		}
 		break;
 	case V4L2_CID_MPEG_VIDEO_MPEG4_I_FRAME_QP:
 		p->codec.mpeg4.rc_frame_qp = ctrl->value;
@@ -2975,7 +2970,7 @@ static int s5p_mfc_stop_streaming(struct vb2_queue *q)
 
 	if ((ctx->state == MFCINST_FINISHING ||
 		ctx->state ==  MFCINST_RUNNING) &&
-		dev->curr_ctx == ctx->num && dev->hw_lock) {
+		(dev->curr_ctx == ctx->num) && test_bit(0, &dev->hw_lock)) {
 		ctx->state = MFCINST_ABORT;
 		s5p_mfc_wait_for_done_ctx(ctx, S5P_FIMV_R2H_CMD_FRAME_DONE_RET,
 					  0);
