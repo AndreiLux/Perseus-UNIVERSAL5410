@@ -11,9 +11,12 @@ if ARCH_EXYNOS
 
 menu "SAMSUNG EXYNOS SoCs Support"
 
+choice
+	prompt "EXYNOS System Type"
+	default ARCH_EXYNOS5
+
 config ARCH_EXYNOS4
 	bool "SAMSUNG EXYNOS4"
-	default y
 	select HAVE_SMP
 	select MIGHT_HAVE_CACHE_L2X0
 	help
@@ -27,6 +30,8 @@ config ARCH_EXYNOS5
 	select ARM_ERRATA_763722 if SMP
 	help
 	  Samsung EXYNOS5 (Cortex-A15) SoC based systems
+
+endchoice
 
 comment "EXYNOS SoCs"
 
