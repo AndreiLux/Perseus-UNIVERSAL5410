@@ -360,6 +360,12 @@ static int jpeg_m2m_open(struct file *file)
 #else
 	pm_runtime_get_sync(&dev->plat_dev->dev);
 #endif
+#else
+	dev->vb2->resume(dev->alloc_ctx);
+#ifdef CONFIG_BUSFREQ_OPP
+	/* lock bus frequency */
+	dev_lock(dev->bus_dev, &dev->plat_dev->dev, BUSFREQ_400MHZ);
+#endif
 #endif
 
 	return 0;
@@ -388,6 +394,12 @@ static int jpeg_m2m_release(struct file *file)
 #endif
 #else
 	pm_runtime_put_sync(&ctx->dev->plat_dev->dev);
+#endif
+#else
+	ctx->dev->vb2->suspend(ctx->dev->alloc_ctx);
+#ifdef CONFIG_BUSFREQ_OPP
+	/* Unlock bus frequency */
+	dev_unlock(ctx->dev->bus_dev, &ctx->dev->plat_dev->dev);
 #endif
 #endif
 	clk_disable(ctx->dev->clk);
@@ -889,6 +901,11 @@ static int jpeg_remove(struct platform_device *pdev)
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 #endif
+#else
+#ifdef CONFIG_BUSFREQ_OPP
+	/* lock bus frequency */
+	dev_unlock(dev->bus_dev, &pdev->dev);
+#endif
 #endif
 	kfree(dev);
 	return 0;
@@ -911,6 +928,17 @@ static int jpeg_suspend(struct platform_device *pdev, pm_message_t state)
 #else
 	pm_runtime_put_sync(&pdev->dev);
 #endif
+#else
+	struct jpeg_dev *dev = platform_get_drvdata(pdev);
+
+	if (dev->ctx) {
+		dev->vb2->suspend(dev->alloc_ctx);
+		clk_disable(dev->clk);
+	}
+#ifdef CONFIG_BUSFREQ_OPP
+	/* lock bus frequency */
+	dev_unlock(dev->bus_dev, &pdev->dev);
+#endif
 #endif
 	return 0;
 }
@@ -928,6 +956,13 @@ static int jpeg_resume(struct platform_device *pdev)
 #else
 	pm_runtime_get_sync(&pdev->dev);
 #endif
+#else
+	struct jpeg_dev *dev = platform_get_drvdata(pdev);
+
+	if (dev->ctx) {
+		clk_enable(dev->clk);
+		dev->vb2->resume(dev->alloc_ctx);
+	}
 #endif
 	return 0;
 }
