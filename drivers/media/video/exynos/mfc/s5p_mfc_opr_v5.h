@@ -102,6 +102,7 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 						S5P_FIMV_SI_BUF_NUMBER)
 #define s5p_mfc_get_inst_no()		readl(dev->regs_base + \
 						S5P_FIMV_RISC2HOST_ARG1)
+#define s5p_mfc_get_mv_count()		0
 #define s5p_mfc_get_mvc_num_views()	-1
 #define s5p_mfc_get_mvc_view_id()	-1
 #define s5p_mfc_get_enc_dpb_count()	-1

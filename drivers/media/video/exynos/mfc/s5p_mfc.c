@@ -233,6 +233,7 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 	unsigned int frame_type = s5p_mfc_get_disp_frame_type();
 
 	ctx->sequence++;
+
 	/* If frame is same as previous then skip and do not dequeue */
 	if (frame_type == S5P_FIMV_DECODE_FRAME_SKIPPED)
 		return;
@@ -618,6 +619,8 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 			s5p_mfc_dec_calc_dpb_size(ctx);
 
 			ctx->dpb_count = s5p_mfc_get_dpb_count();
+			if (dev->fw.date >= 0x120206)
+				dec->mv_count = s5p_mfc_get_mv_count();
 			if (ctx->img_width == 0 || ctx->img_height == 0)
 				ctx->state = MFCINST_ERROR;
 			else
@@ -1176,6 +1179,7 @@ static int __devinit s5p_mfc_probe(struct platform_device *pdev)
 	dev->watchdog_timer.data = (unsigned long)dev;
 	dev->watchdog_timer.function = s5p_mfc_watchdog;
 
+	dev->fw.ver = 0x65;
 	dev->variant = (struct s5p_mfc_variant *)
 		platform_get_device_id(pdev)->driver_data;
 
@@ -1332,7 +1336,7 @@ struct s5p_mfc_buf_size_v5 mfc_buf_size_v5 = {
 };
 
 struct s5p_mfc_buf_size_v6 mfc_buf_size_v6 = {
-	.dev_ctx = 0x400,
+	.dev_ctx = 0x6400,
 	.h264_dec_ctx = 0x200000,	/*  1.6MB */
 	.other_dec_ctx = 0x5000,	/*  20KB */
 	.h264_enc_ctx = 0x19000,	/* 100KB */

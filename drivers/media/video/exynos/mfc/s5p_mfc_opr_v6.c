@@ -83,12 +83,14 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 			  ctx->luma_size, ctx->chroma_size, ctx->mv_size);
 		mfc_debug(2, "Totals bufs: %d\n", dec->total_dpb_count);
 	} else if (ctx->type == MFCINST_ENCODER) {
-		enc->tmv_buffer_size = 2 * ALIGN((mb_width + 1) * (mb_height + 1) * 8, 16);
+		enc->tmv_buffer_size = ENC_TMV_SIZE(mb_width, mb_height);
+		enc->tmv_buffer_size = ALIGN(enc->tmv_buffer_size, 32) * 2;
 		enc->luma_dpb_size = ALIGN((mb_width * mb_height) * 256, 256);
 		enc->chroma_dpb_size = ALIGN((mb_width * mb_height) * 128, 256);
-		enc->me_buffer_size = ALIGN(((((ctx->img_width+63)/64) * 16) *
-			(((ctx->img_height+63)/64) * 16)) +
-			 ((((mb_width*mb_height)+31)/32) * 16), 256);
+		enc->me_buffer_size =
+			(ENC_ME_SIZE(ctx->img_width, ctx->img_height,
+						mb_width, mb_height));
+		enc->me_buffer_size = ALIGN(enc->me_buffer_size, 256);
 
 		mfc_debug(2, "recon luma size: %d chroma size: %d\n",
 			  enc->luma_dpb_size, enc->chroma_dpb_size);
@@ -100,47 +102,81 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 	switch (ctx->codec_mode) {
 	case S5P_FIMV_CODEC_H264_DEC:
 	case S5P_FIMV_CODEC_H264_MVC_DEC:
-		ctx->scratch_buf_size = (mb_width * 128) + 65536;
+		if (dev->fw.date < 0x120206)
+			dec->mv_count = dec->total_dpb_count;
+		if (dev->fw.ver == 0x61)
+			ctx->scratch_buf_size =
+				DEC_V61_H264_SCRATCH_SIZE(mb_width, mb_height);
+		else
+			ctx->scratch_buf_size =
+				DEC_V65_H264_SCRATCH_SIZE(mb_width, mb_height);
 		ctx->scratch_buf_size = ALIGN(ctx->scratch_buf_size, 256);
 		ctx->port_a_size =
 			ctx->scratch_buf_size +
-			(dec->total_dpb_count * ctx->mv_size);
+			(dec->mv_count * ctx->mv_size);
 		break;
 	case S5P_FIMV_CODEC_MPEG4_DEC:
 	case S5P_FIMV_CODEC_FIMV1_DEC:
 	case S5P_FIMV_CODEC_FIMV2_DEC:
 	case S5P_FIMV_CODEC_FIMV3_DEC:
 	case S5P_FIMV_CODEC_FIMV4_DEC:
-		/* mb_width * (mb_height * 64 + 144) + 8192 * mb_height + 41088 */
-		ctx->scratch_buf_size = mb_width * (mb_height * 64 + 144) +
-			((2048 + 15)/16 * mb_height * 64) +
-			((2048 + 15)/16 * 256 + 8320);
+		if (dev->fw.ver == 0x61)
+			ctx->scratch_buf_size =
+				DEC_V61_MPEG4_SCRATCH_SIZE(mb_width, mb_height);
+		else
+			ctx->scratch_buf_size =
+				DEC_V65_MPEG4_SCRATCH_SIZE(mb_width, mb_height);
 		ctx->scratch_buf_size = ALIGN(ctx->scratch_buf_size, 256);
 		ctx->port_a_size = ctx->scratch_buf_size;
 		break;
 	case S5P_FIMV_CODEC_VC1RCV_DEC:
 	case S5P_FIMV_CODEC_VC1_DEC:
-		ctx->scratch_buf_size = 2096 * (mb_width + mb_height + 1);
+		if (dev->fw.ver == 0x61)
+			ctx->scratch_buf_size =
+				DEC_V61_VC1_SCRATCH_SIZE(mb_width, mb_height);
+		else
+			ctx->scratch_buf_size =
+				DEC_V65_VC1_SCRATCH_SIZE(mb_width, mb_height);
 		ctx->scratch_buf_size = ALIGN(ctx->scratch_buf_size, 256);
 		ctx->port_a_size = ctx->scratch_buf_size;
 		break;
 	case S5P_FIMV_CODEC_MPEG2_DEC:
+		if (dev->fw.ver == 0x61)
+			ctx->scratch_buf_size =
+				DEC_V61_MPEG2_SCRATCH_SIZE(mb_width, mb_height);
+		else
+			ctx->scratch_buf_size =
+				DEC_V65_MPEG2_SCRATCH_SIZE(mb_width, mb_height);
 		ctx->port_a_size = 0;
 		ctx->port_b_size = 0;
 		break;
 	case S5P_FIMV_CODEC_H263_DEC:
-		ctx->scratch_buf_size = mb_width * 400;
+		if (dev->fw.ver == 0x61)
+			ctx->scratch_buf_size =
+				DEC_V61_MPEG4_SCRATCH_SIZE(mb_width, mb_height);
+		else
+			ctx->scratch_buf_size =
+				DEC_V65_MPEG4_SCRATCH_SIZE(mb_width, mb_height);
 		ctx->scratch_buf_size = ALIGN(ctx->scratch_buf_size, 256);
 		ctx->port_a_size = ctx->scratch_buf_size;
 		break;
 	case S5P_FIMV_CODEC_VP8_DEC:
-		ctx->scratch_buf_size = mb_width * 32 + mb_height * 128 + 34816;
+		if (dev->fw.ver == 0x61)
+			ctx->scratch_buf_size =
+				DEC_V61_VP8_SCRATCH_SIZE(mb_width, mb_height);
+		else
+			ctx->scratch_buf_size =
+				DEC_V65_VP8_SCRATCH_SIZE(mb_width, mb_height);
 		ctx->scratch_buf_size = ALIGN(ctx->scratch_buf_size, 256);
 		ctx->port_a_size = ctx->scratch_buf_size;
 		break;
 	case S5P_FIMV_CODEC_H264_ENC:
-		ctx->scratch_buf_size = (mb_width * 64) +
-			((mb_width + 1) * 16) + (4096 * 16);
+		if (dev->fw.ver == 0x61)
+			ctx->scratch_buf_size =
+				ENC_V61_H264_SCRATCH_SIZE(mb_width, mb_height);
+		else
+			ctx->scratch_buf_size =
+				ENC_V65_H264_SCRATCH_SIZE(mb_width, mb_height);
 		ctx->scratch_buf_size = ALIGN(ctx->scratch_buf_size, 256);
 		ctx->port_a_size =
 			ctx->scratch_buf_size + enc->tmv_buffer_size +
@@ -150,7 +186,12 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 		break;
 	case S5P_FIMV_CODEC_MPEG4_ENC:
 	case S5P_FIMV_CODEC_H263_ENC:
-		ctx->scratch_buf_size = (mb_width * 16) + ((mb_width + 1) * 16);
+		if (dev->fw.ver == 0x61)
+			ctx->scratch_buf_size =
+				ENC_V61_MPEG4_SCRATCH_SIZE(mb_width, mb_height);
+		else
+			ctx->scratch_buf_size =
+				ENC_V65_MPEG4_SCRATCH_SIZE(mb_width, mb_height);
 		ctx->scratch_buf_size = ALIGN(ctx->scratch_buf_size, 256);
 		ctx->port_a_size =
 			ctx->scratch_buf_size + enc->tmv_buffer_size +
@@ -440,9 +481,13 @@ int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 		WRITEL(buf->cookie.raw.luma, S5P_FIMV_D_LUMA_DPB + i * 4);
 		mfc_debug(2, "\tChroma %x\n", buf->cookie.raw.chroma);
 		WRITEL(buf->cookie.raw.chroma, S5P_FIMV_D_CHROMA_DPB + i * 4);
+		i++;
+	}
 
-		if (ctx->codec_mode == S5P_FIMV_CODEC_H264_DEC ||
-				ctx->codec_mode == S5P_FIMV_CODEC_H264_MVC_DEC) {
+	WRITEL(dec->mv_count, S5P_FIMV_D_NUM_MV);
+	if (ctx->codec_mode == S5P_FIMV_CODEC_H264_DEC ||
+			ctx->codec_mode == S5P_FIMV_CODEC_H264_MVC_DEC) {
+		for (i = 0; i < dec->mv_count; i++) {
 			/* To test alignment */
 			align_gap = buf_addr1;
 			buf_addr1 = ALIGN(buf_addr1, 16);
@@ -454,8 +499,6 @@ int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 			buf_addr1 += frame_size_mv;
 			buf_size1 -= frame_size_mv;
 		}
-
-		i++;
 	}
 
 	mfc_debug(2, "Buf1: %u, buf_size1: %d (frames %d)\n",
@@ -743,14 +786,11 @@ static int s5p_mfc_set_enc_params(struct s5p_mfc_ctx *ctx)
 	WRITEL(reg, S5P_FIMV_E_RC_CONFIG);
 
 	/* setting for MV range [16, 256] */
-	reg = 0;
-	reg &= ~(0x3fff);
-	reg = 256;
+	if (dev->fw.ver == 0x61)
+		reg = ENC_V61_MV_RANGE;
+	else
+		reg = ENC_V65_MV_RANGE;
 	WRITEL(reg, S5P_FIMV_E_MV_HOR_RANGE);
-
-	reg = 0;
-	reg &= ~(0x3fff);
-	reg = 256;
 	WRITEL(reg, S5P_FIMV_E_MV_VER_RANGE);
 
 	WRITEL(0x0, S5P_FIMV_E_VBV_INIT_DELAY); /* SEQ_start Only */

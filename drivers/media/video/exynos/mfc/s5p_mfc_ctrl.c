@@ -211,7 +211,7 @@ int s5p_mfc_release_firmware(struct s5p_mfc_dev *dev)
 static int s5p_mfc_reset(struct s5p_mfc_dev *dev)
 {
 	int i;
-	unsigned int mc_status;
+	unsigned int status;
 	unsigned long timeout;
 
 	mfc_debug_enter();
@@ -236,6 +236,17 @@ static int s5p_mfc_reset(struct s5p_mfc_dev *dev)
 			s5p_mfc_write_reg(0, S5P_FIMV_REG_CLEAR_BEGIN + (i*4));
 
 		/* Reset */
+		s5p_mfc_write_reg(0x1, S5P_FIMV_MFC_BUS_RESET_CTRL);
+
+		timeout = jiffies + msecs_to_jiffies(MFC_BW_TIMEOUT);
+		/* Check bus status */
+		do {
+			if (time_after(jiffies, timeout)) {
+				mfc_err("Timeout while resetting MFC.\n");
+				return -EIO;
+			}
+			status = s5p_mfc_read_reg(S5P_FIMV_MFC_BUS_RESET_CTRL);
+		} while ((status & 0x2) == 0);
 		s5p_mfc_write_reg(0, S5P_FIMV_RISC_ON);
 		s5p_mfc_write_reg(0x1FFF, S5P_FIMV_MFC_RESET);
 		s5p_mfc_write_reg(0, S5P_FIMV_MFC_RESET);
@@ -253,9 +264,9 @@ static int s5p_mfc_reset(struct s5p_mfc_dev *dev)
 				return -EIO;
 			}
 
-			mc_status = s5p_mfc_read_reg(S5P_FIMV_MC_STATUS);
+			status = s5p_mfc_read_reg(S5P_FIMV_MC_STATUS);
 
-		} while (mc_status & 0x3);
+		} while (status & 0x3);
 
 		s5p_mfc_write_reg(0x0, S5P_FIMV_SW_RESET);
 		s5p_mfc_write_reg(0x3fe, S5P_FIMV_SW_RESET);
@@ -298,7 +309,9 @@ static inline void s5p_mfc_clear_cmds(struct s5p_mfc_dev *dev)
 /* Initialize hardware */
 int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
 {
-	int ret;
+	char dvx_info;
+	int mfc_info;
+	int ret = 0;
 
 	mfc_debug_enter();
 
@@ -314,7 +327,7 @@ int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
 	ret = s5p_mfc_reset(dev);
 	if (ret) {
 		mfc_err("Failed to reset MFC - timeout.\n");
-		return ret;
+		goto err_init_hw;
 	}
 	mfc_debug(2, "Done MFC reset...\n");
 
@@ -334,7 +347,8 @@ int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
 	if (s5p_mfc_wait_for_done_dev(dev, S5P_FIMV_R2H_CMD_FW_STATUS_RET)) {
 		mfc_err("Failed to load firmware.\n");
 		s5p_mfc_clean_dev_int_flags(dev);
-		return -EIO;
+		ret = -EIO;
+		goto err_init_hw;
 	}
 
 	s5p_mfc_clean_dev_int_flags(dev);
@@ -342,12 +356,15 @@ int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
 	ret = s5p_mfc_sys_init_cmd(dev);
 	if (ret) {
 		mfc_err("Failed to send command to MFC - timeout.\n");
-		return ret;
+		goto err_init_hw;
 	}
 	mfc_debug(2, "Ok, now will write a command to init the system\n");
 	if (s5p_mfc_wait_for_done_dev(dev, S5P_FIMV_R2H_CMD_SYS_INIT_RET)) {
 		mfc_err("Failed to load firmware\n");
-		return -EIO;
+		ret = -EIO;
+		/* Disable the clock that enabled in s5p_mfc_sys_init_cmd() */
+		s5p_mfc_clock_off();
+		goto err_init_hw;
 	}
 
 	dev->int_cond = 0;
@@ -356,19 +373,39 @@ int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
 		/* Failure. */
 		mfc_err("Failed to init firmware - error: %d"
 				" int: %d.\n", dev->int_err, dev->int_type);
-		return -EIO;
+		ret = -EIO;
+		goto err_init_hw;
 	}
 
-	mfc_info("MFC F/W version : %02xyy, %02xmm, %02xdd\n",
+	dvx_info = MFC_GET_REG(SYS_FW_DVX_INFO);
+	if (dvx_info != 'D' && dvx_info != 'E')
+		dvx_info = 'N';
+
+	mfc_info("MFC v%x.%x, F/W : (%c) %02xyy, %02xmm, %02xdd\n",
+		 MFC_VER_MAJOR(dev->fw.ver),
+		 MFC_VER_MINOR(dev->fw.ver),
+		 dvx_info,
 		 MFC_GET_REG(SYS_FW_VER_YEAR),
 		 MFC_GET_REG(SYS_FW_VER_MONTH),
 		 MFC_GET_REG(SYS_FW_VER_DATE));
 
-	s5p_mfc_clock_off();
+	dev->fw.date = MFC_GET_REG(SYS_FW_VER_ALL);
+	/* Check MFC version and F/W version */
+	if (dev->fw.date >= 0x120328) {
+		mfc_info = MFC_GET_REG(SYS_MFC_VER);
+		if (mfc_info != dev->fw.ver) {
+			mfc_err("Invalid F/W version(0x%x) for MFC H/W(0x%x)\n",
+					mfc_info, dev->fw.ver);
+			ret = -EIO;
+			goto err_init_hw;
+		}
+	}
 
+err_init_hw:
+	s5p_mfc_clock_off();
 	mfc_debug_leave();
 
-	return 0;
+	return ret;
 }
 
 
@@ -396,14 +433,13 @@ int s5p_mfc_sleep(struct s5p_mfc_dev *dev)
 	ret = s5p_mfc_sleep_cmd(dev);
 	if (ret) {
 		mfc_err("Failed to send command to MFC - timeout.\n");
-		return ret;
+		goto err_mfc_sleep;
 	}
 	if (s5p_mfc_wait_for_done_dev(dev, S5P_FIMV_R2H_CMD_SLEEP_RET)) {
 		mfc_err("Failed to sleep\n");
-		return -EIO;
+		ret = -EIO;
+		goto err_mfc_sleep;
 	}
-
-	s5p_mfc_clock_off();
 
 	dev->int_cond = 0;
 	if (dev->int_err != 0 || dev->int_type !=
@@ -411,9 +447,12 @@ int s5p_mfc_sleep(struct s5p_mfc_dev *dev)
 		/* Failure. */
 		mfc_err("Failed to sleep - error: %d"
 				" int: %d.\n", dev->int_err, dev->int_type);
-		return -EIO;
+		ret = -EIO;
+		goto err_mfc_sleep;
 	}
 
+err_mfc_sleep:
+	s5p_mfc_clock_off();
 	mfc_debug_leave();
 
 	return ret;
@@ -433,7 +472,7 @@ int s5p_mfc_wakeup(struct s5p_mfc_dev *dev)
 	ret = s5p_mfc_reset(dev);
 	if (ret) {
 		mfc_err("Failed to reset MFC - timeout.\n");
-		return ret;
+		goto err_mfc_wakeup;
 	}
 	mfc_debug(2, "Done MFC reset...\n");
 
@@ -448,7 +487,7 @@ int s5p_mfc_wakeup(struct s5p_mfc_dev *dev)
 	ret = s5p_mfc_wakeup_cmd(dev);
 	if (ret) {
 		mfc_err("Failed to send command to MFC - timeout.\n");
-		return ret;
+		goto err_mfc_wakeup;
 	}
 
 	/* 4. Release reset signal to the RISC */
@@ -460,10 +499,9 @@ int s5p_mfc_wakeup(struct s5p_mfc_dev *dev)
 	mfc_debug(2, "Ok, now will write a command to wakeup the system\n");
 	if (s5p_mfc_wait_for_done_dev(dev, S5P_FIMV_R2H_CMD_WAKEUP_RET)) {
 		mfc_err("Failed to load firmware\n");
-		return -EIO;
+		ret = -EIO;
+		goto err_mfc_wakeup;
 	}
-
-	s5p_mfc_clock_off();
 
 	dev->int_cond = 0;
 	if (dev->int_err != 0 || dev->int_type !=
@@ -471,9 +509,12 @@ int s5p_mfc_wakeup(struct s5p_mfc_dev *dev)
 		/* Failure. */
 		mfc_err("Failed to wakeup - error: %d"
 				" int: %d.\n", dev->int_err, dev->int_type);
-		return -EIO;
+		ret = -EIO;
+		goto err_mfc_wakeup;
 	}
 
+err_mfc_wakeup:
+	s5p_mfc_clock_off();
 	mfc_debug_leave();
 
 	return 0;
