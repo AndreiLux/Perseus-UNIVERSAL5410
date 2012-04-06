@@ -1683,6 +1683,7 @@ static struct clksrc_clk *exynos5_sysclks[] = {
 	&exynos5_clk_mout_bpll_user,
 	&exynos5_clk_mout_cpll,
 	&exynos5_clk_mout_epll,
+	&exynos5_clk_mout_gpll,
 	&exynos5_clk_mout_mpll_fout,
 	&exynos5_clk_mout_mpll,
 	&exynos5_clk_mout_mpll_user,
