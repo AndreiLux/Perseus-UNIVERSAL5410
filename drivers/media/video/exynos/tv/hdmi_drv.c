@@ -289,8 +289,6 @@ static int hdmi_s_stream(struct v4l2_subdev *sd, int enable)
 
 static void hdmi_resource_poweron(struct hdmi_resources *res)
 {
-	/* power-on hdmi physical interface */
-	clk_enable(res->hdmiphy);
 	/* use VPP as parent clock; HDMIPHY is not working yet */
 	clk_set_parent(res->sclk_hdmi, res->sclk_pixel);
 	/* turn clocks on */
@@ -324,10 +322,18 @@ static int hdmi_s_power(struct v4l2_subdev *sd, int on)
 	/* only values < 0 indicate errors */
 	return IS_ERR_VALUE(ret) ? ret : 0;
 #else
-	if (on)
+	if (on) {
+		clk_enable(hdev->res.hdmi);
+		hdmi_hpd_enable(hdev, 1);
+		set_internal_hpd_int(hdev);
 		hdmi_runtime_resume(hdev->dev);
-	else
+	}
+	else {
+		hdmi_hpd_enable(hdev, 0);
+		set_external_hpd_int(hdev);
+		clk_disable(hdev->res.hdmi);
 		hdmi_runtime_suspend(hdev->dev);
+	}
 	return 0;
 #endif
 }
@@ -452,6 +458,8 @@ static const struct v4l2_subdev_ops hdmi_sd_ops = {
 
 static int hdmi_runtime_suspend(struct device *dev)
 {
+	struct platform_device *pdev = to_platform_device(dev);
+	struct s5p_hdmi_platdata *pdata = pdev->dev.platform_data;
 	struct v4l2_subdev *sd = dev_get_drvdata(dev);
 	struct hdmi_device *hdev = sd_to_hdmi_dev(sd);
 	struct hdmi_resources *res = &hdev->res;
@@ -467,13 +475,16 @@ static int hdmi_runtime_suspend(struct device *dev)
 	v4l2_subdev_call(hdev->phy_sd, core, s_power, 0);
 
 	/* power-off hdmiphy */
-	clk_disable(res->hdmiphy);
+	if (pdata->hdmiphy_enable)
+		pdata->hdmiphy_enable(pdev, 0);
 
 	return 0;
 }
 
 static int hdmi_runtime_resume(struct device *dev)
 {
+	struct platform_device *pdev = to_platform_device(dev);
+	struct s5p_hdmi_platdata *pdata = pdev->dev.platform_data;
 	struct v4l2_subdev *sd = dev_get_drvdata(dev);
 	struct hdmi_device *hdev = sd_to_hdmi_dev(sd);
 	struct hdmi_resources *res = &hdev->res;
@@ -481,6 +492,9 @@ static int hdmi_runtime_resume(struct device *dev)
 
 	dev_dbg(dev, "%s\n", __func__);
 
+	/* power-on hdmiphy */
+	if (pdata->hdmiphy_enable)
+		pdata->hdmiphy_enable(pdev, 1);
 	hdmi_resource_poweron(&hdev->res);
 
 	hdmi_phy_sw_reset(hdev);
@@ -501,7 +515,8 @@ static int hdmi_runtime_resume(struct device *dev)
 fail:
 	clk_disable(res->sclk_hdmi);
 	v4l2_subdev_call(hdev->phy_sd, core, s_power, 0);
-	clk_disable(res->hdmiphy);
+	if (pdata->hdmiphy_enable)
+		pdata->hdmiphy_enable(pdev, 0);
 	dev_err(dev, "poweron failed\n");
 
 	return ret;
@@ -518,8 +533,6 @@ static void hdmi_resources_cleanup(struct hdmi_device *hdev)
 
 	dev_dbg(hdev->dev, "HDMI resource cleanup\n");
 	/* put clocks */
-	if (!IS_ERR_OR_NULL(res->hdmiphy))
-		clk_put(res->hdmiphy);
 	if (!IS_ERR_OR_NULL(res->sclk_hdmiphy))
 		clk_put(res->sclk_hdmiphy);
 	if (!IS_ERR_OR_NULL(res->sclk_pixel))
@@ -559,11 +572,6 @@ static int hdmi_resources_init(struct hdmi_device *hdev)
 	res->sclk_hdmiphy = clk_get(dev, "sclk_hdmiphy");
 	if (IS_ERR_OR_NULL(res->sclk_hdmiphy)) {
 		dev_err(dev, "failed to get clock 'sclk_hdmiphy'\n");
-		goto fail;
-	}
-	res->hdmiphy = clk_get(dev, "hdmiphy");
-	if (IS_ERR_OR_NULL(res->hdmiphy)) {
-		dev_err(dev, "failed to get clock 'hdmiphy'\n");
 		goto fail;
 	}
 
@@ -674,6 +682,7 @@ static void s5p_hpd_kobject_uevent(struct work_struct *work)
 
 static int __devinit hdmi_probe(struct platform_device *pdev)
 {
+	struct s5p_hdmi_platdata *pdata;
 	struct device *dev = &pdev->dev;
 	struct resource *res;
 	struct i2c_adapter *phy_adapter;
@@ -767,12 +776,16 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 		goto fail_vdev;
 	}
 
+	pdata = pdev->dev.platform_data;
+
 	/* HDMI PHY power off
 	 * HDMI PHY is on as default configuration
 	 * So, HDMI PHY must be turned off if it's not used */
-	clk_enable(hdmi_dev->res.hdmiphy);
+	if (pdata->hdmiphy_enable)
+		pdata->hdmiphy_enable(pdev, 1);
 	v4l2_subdev_call(hdmi_dev->phy_sd, core, s_power, 0);
-	clk_disable(hdmi_dev->res.hdmiphy);
+	if (pdata->hdmiphy_enable)
+		pdata->hdmiphy_enable(pdev, 0);
 
 	pm_runtime_enable(dev);
 

@@ -120,7 +120,6 @@ struct hdmi_resources {
 	struct clk *sclk_hdmi;
 	struct clk *sclk_pixel;
 	struct clk *sclk_hdmiphy;
-	struct clk *hdmiphy;
 	struct regulator_bulk_data *regul_bulk;
 	int regul_count;
 };

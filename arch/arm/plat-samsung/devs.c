@@ -1342,6 +1342,16 @@ struct platform_device s5p_device_hdmi = {
 	.resource	= s5p_hdmi_resources,
 };
 
+void __init s5p_hdmi_set_platdata(struct s5p_hdmi_platdata *pd)
+{
+	struct s5p_hdmi_platdata *npd;
+	npd = s3c_set_platdata(pd, sizeof(struct
+				s5p_hdmi_platdata),
+			&s5p_device_hdmi);
+	if (!npd->hdmiphy_enable)
+		npd->hdmiphy_enable = s5p_hdmiphy_enable;
+}
+
 #if defined(CONFIG_ARCH_EXYNOS4)
 static struct resource s5p_sdo_resources[] = {
 	[0] = DEFINE_RES_MEM(S5P_PA_SDO, SZ_64K),

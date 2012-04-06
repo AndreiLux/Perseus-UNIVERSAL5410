@@ -645,6 +645,11 @@ static struct i2c_board_info i2c_devs7[] __initdata = {
 	},
 };
 
+#if defined(CONFIG_VIDEO_EXYNOS_TV) && defined(CONFIG_VIDEO_EXYNOS_HDMI)
+static struct s5p_hdmi_platdata hdmi_platdata __initdata = {
+};
+#endif
+
 #if defined(CONFIG_VIDEO_EXYNOS_TV) && defined(CONFIG_VIDEO_EXYNOS_HDMI_CEC)
 static struct s5p_platform_cec hdmi_cec_data __initdata = {
 
@@ -1831,7 +1836,6 @@ static void __init smdk5250_machine_init(void)
 #if defined(CONFIG_VIDEO_EXYNOS_TV) && defined(CONFIG_VIDEO_EXYNOS_HDMI)
 	dev_set_name(&s5p_device_hdmi.dev, "exynos5-hdmi");
 	clk_add_alias("hdmi", "s5p-hdmi", "hdmi", &s5p_device_hdmi.dev);
-	clk_add_alias("hdmiphy", "s5p-hdmi", "hdmiphy", &s5p_device_hdmi.dev);
 
 	/* direct HPD to HDMI chip */
 	gpio_request(EXYNOS5_GPX3(7), "hpd-plug");
@@ -1853,6 +1857,7 @@ static void __init smdk5250_machine_init(void)
 #endif
 
 #if defined(CONFIG_VIDEO_EXYNOS_HDMIPHY)
+	s5p_hdmi_set_platdata(&hdmi_platdata);
 	s5p_i2c_hdmiphy_set_platdata(NULL);
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_HDMI_CEC

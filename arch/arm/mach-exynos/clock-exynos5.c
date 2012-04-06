@@ -227,11 +227,6 @@ static int exynos5_clk_ip_disp1_ctrl(struct clk *clk, int enable)
 	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_DISP1, clk, enable);
 }
 
-static int exynos5_clk_hdmiphy_ctrl(struct clk *clk, int enable)
-{
-	return s5p_gatectrl(EXYNOS_HDMI_PHY_CONTROL, clk, enable);
-}
-
 static int exynos5_clk_ip_fsys_ctrl(struct clk *clk, int enable)
 {
 	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_FSYS, clk, enable);
@@ -880,11 +875,6 @@ static struct clk exynos5_init_clocks_off[] = {
 		.devname	= "exynos5-hdmi",
 		.enable		= exynos5_clk_ip_disp1_ctrl,
 		.ctrlbit	= (1 << 6),
-	}, {
-		.name           = "hdmiphy",
-		.devname	= "exynos5-hdmi",
-		.enable         = exynos5_clk_hdmiphy_ctrl,
-		.ctrlbit        = (1 << 0),
 	}, {
 		.name		= "mixer",
 		.devname	= "s5p-mixer",
