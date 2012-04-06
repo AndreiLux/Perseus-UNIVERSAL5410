@@ -56,6 +56,10 @@ int gsc_out_hw_set(struct gsc_ctx *ctx)
 		return ret;
 	}
 
+	if (gsc_hw_get_mxr_path_status())
+		gsc_hw_set_fire_bit_sync_mode(gsc, true);
+	else
+		gsc_hw_set_fire_bit_sync_mode(gsc, false);
 	gsc_hw_set_frm_done_irq_mask(gsc, false);
 	gsc_hw_set_gsc_irq_enable(gsc, true);
 	gsc_hw_set_one_frm_mode(gsc, false);
@@ -759,18 +763,28 @@ static int gsc_out_link_setup(struct media_entity *entity,
 				   Gscaler 2 --> Window 2, Gscaler 3 --> Window 2 */
 				char name[FIMD_NAME_SIZE];
 				sprintf(name, "%s%d", FIMD_ENTITY_NAME, get_win_num(gsc));
-				gsc_hw_set_local_dst(gsc->id, true);
 				sd = media_entity_to_v4l2_subdev(remote->entity);
 				gsc->pipeline.disp = sd;
-				if (!strcmp(sd->name, name))
+				if (!strcmp(sd->name, name)) {
 					gsc->out.ctx->out_path = GSC_FIMD;
-				else
+					gsc_hw_set_local_dst(gsc->id,
+							GSC_FIMD, true);
+				} else {
 					gsc->out.ctx->out_path = GSC_MIXER;
+					gsc_hw_set_local_dst(gsc->id,
+							GSC_MIXER, true);
+				}
 			} else
 				gsc_err("G-Scaler source pad was linked already");
 		} else if (!(flags & ~MEDIA_LNK_FL_ENABLED)) {
 			if (gsc->pipeline.disp != NULL) {
-				gsc_hw_set_local_dst(gsc->id, false);
+				if (gsc->out.ctx->out_path == GSC_FIMD) {
+					gsc_hw_set_local_dst(gsc->id,
+							     GSC_FIMD, false);
+				} else {
+					gsc_hw_set_local_dst(gsc->id,
+							     GSC_MIXER, false);
+				}
 				gsc->pipeline.disp = NULL;
 				gsc->out.ctx->out_path = 0;
 			} else

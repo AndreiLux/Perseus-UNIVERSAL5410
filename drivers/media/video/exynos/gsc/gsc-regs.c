@@ -112,6 +112,29 @@ void gsc_hw_set_one_frm_mode(struct gsc_dev *dev, bool mask)
 	writel(cfg, dev->regs + GSC_ENABLE);
 }
 
+void gsc_hw_set_fire_bit_sync_mode(struct gsc_dev *dev, bool mask)
+{
+	u32 cfg;
+
+	cfg = readl(dev->regs + GSC_ENABLE);
+	cfg &= ~(GSC_ENABLE_PP_UPDATE_MODE_MASK);
+	if (mask)
+		cfg |= GSC_ENABLE_PP_UPDATE_FIRE_MODE;
+	writel(cfg, dev->regs + GSC_ENABLE);
+}
+
+int gsc_hw_get_mxr_path_status(void)
+{
+	int i, cnt = 0;
+
+	u32 cfg = readl(SYSREG_GSCBLK_CFG0);
+	for (i = 0; i < GSC_MAX_DEVS; i++) {
+		if (cfg & GSC_OUT_DST_MXR_SEL(i))
+			cnt++;
+	}
+	return (cnt > 2) ? 1 : 0;
+}
+
 int gsc_hw_get_input_buf_mask_status(struct gsc_dev *dev)
 {
 	u32 cfg, status, bits = 0;
@@ -654,14 +677,21 @@ void gsc_hw_set_sfr_update(struct gsc_ctx *ctx)
 	writel(cfg, dev->regs + GSC_ENABLE);
 }
 
-void gsc_hw_set_local_dst(int id, bool on)
+void gsc_hw_set_local_dst(int id, int out, bool on)
 {
 	u32 cfg = readl(SYSREG_GSCBLK_CFG0);
 
-	if (on)
-		cfg |= GSC_OUT_DST_SEL(id);
-	else
-		cfg &= ~(GSC_OUT_DST_SEL(id));
+	if (out == GSC_FIMD) {
+		if (on)
+			cfg |= GSC_OUT_DST_FIMD_SEL(id);
+		else
+			cfg &= ~(GSC_OUT_DST_FIMD_SEL(id));
+	} else if (out == GSC_MIXER) {
+		if (on)
+			cfg |= GSC_OUT_DST_MXR_SEL(id);
+		else
+			cfg &= ~(GSC_OUT_DST_MXR_SEL(id));
+	}
 	writel(cfg, SYSREG_GSCBLK_CFG0);
 }
 
