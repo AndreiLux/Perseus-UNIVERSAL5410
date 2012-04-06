@@ -227,12 +227,19 @@ static void s5p_mfc_handle_frame_all_extracted(struct s5p_mfc_ctx *ctx)
 static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 {
 	struct s5p_mfc_dec *dec = ctx->dec_priv;
+	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_buf *dst_buf;
 	size_t dspl_y_addr = MFC_GET_ADR(DEC_DISPLAY_Y);
 	unsigned int index;
 	unsigned int frame_type = s5p_mfc_get_disp_frame_type();
+	unsigned int mvc_view_id = s5p_mfc_get_mvc_disp_view_id();
 
-	ctx->sequence++;
+	if (ctx->codec_mode == S5P_FIMV_CODEC_H264_MVC_DEC) {
+		if (mvc_view_id == 0)
+			ctx->sequence++;
+	} else {
+		ctx->sequence++;
+	}
 
 	/* If frame is same as previous then skip and do not dequeue */
 	if (frame_type == S5P_FIMV_DECODE_FRAME_SKIPPED)

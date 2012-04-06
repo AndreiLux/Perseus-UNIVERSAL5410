@@ -476,6 +476,18 @@ static struct s5p_mfc_ctrl_cfg mfc_ctrl_list[] = {
 		.flag_addr = 0,
 		.flag_shft = 0,
 	},
+	{
+		.type = MFC_CTRL_TYPE_GET_DST,
+		.id = V4L2_CID_MPEG_VIDEO_H264_MVC_VIEW_ID,
+		.is_volatile = 0,
+		.mode = MFC_CTRL_MODE_CUSTOM,
+		.addr = S5P_FIMV_D_MVC_VIEW_ID,
+		.mask = 0xFFFF,
+		.shft = 0,
+		.flag_mode = MFC_CTRL_MODE_NONE,
+		.flag_addr = 0,
+		.flag_shft = 0,
+	},
 };
 
 #define NUM_CTRL_CFGS ARRAY_SIZE(mfc_ctrl_list)
