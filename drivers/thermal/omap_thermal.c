@@ -9,23 +9,11 @@
 #include <linux/omap_thermal.h>
 #include <linux/platform_data/omap4_thermal_data.h>
 
-#define MAX_COOLING_DEVICE 4
-
-struct omap_thermal_zone {
-	unsigned int idle_interval;
-	unsigned int active_interval;
-	struct thermal_zone_device *therm_dev;
-	struct thermal_cooling_device *cool_dev[MAX_COOLING_DEVICE];
-	unsigned int cool_dev_size;
-	struct thermal_sensor_conf *sensor_conf;
-	struct omap4_thermal_data *sensor_data;
-};
-
-static struct omap_thermal_zone *th_zone;
-
 static int omap_get_mode(struct thermal_zone_device *thermal,
 			    enum thermal_device_mode *mode)
 {
+	struct omap_thermal_zone *th_zone = thermal->devdata;
+
 	if (th_zone->sensor_conf) {
 		pr_info("Temperature sensor not initialised\n");
 		*mode = THERMAL_DEVICE_DISABLED;
@@ -37,6 +25,8 @@ static int omap_get_mode(struct thermal_zone_device *thermal,
 static int omap_set_mode(struct thermal_zone_device *thermal,
 			    enum thermal_device_mode mode)
 {
+	struct omap_thermal_zone *th_zone = thermal->devdata;
+
 	if (!th_zone->therm_dev) {
 		pr_notice("thermal zone not registered\n");
 		return 0;
@@ -70,6 +60,8 @@ static int omap_get_trip_type(struct thermal_zone_device *thermal, int trip,
 static int omap_get_trip_temp(struct thermal_zone_device *thermal, int trip,
 				 unsigned long *temp)
 {
+	struct omap_thermal_zone *th_zone = thermal->devdata;
+
 	if (trip >= 0 && trip < thermal->trips)
 		*temp = th_zone->sensor_data->trigger_levels[trip];
 	else
@@ -80,6 +72,8 @@ static int omap_get_trip_temp(struct thermal_zone_device *thermal, int trip,
 static int omap_get_crit_temp(struct thermal_zone_device *thermal,
 				 unsigned long *temp)
 {
+	struct omap_thermal_zone *th_zone = thermal->devdata;
+
 	/*Panic zone*/
 	*temp = th_zone->sensor_data->trigger_levels[thermal->trips-1];
 	return 0;
@@ -87,6 +81,7 @@ static int omap_get_crit_temp(struct thermal_zone_device *thermal,
 static int omap_bind(struct thermal_zone_device *thermal,
 			struct thermal_cooling_device *cdev)
 {
+	struct omap_thermal_zone *th_zone = thermal->devdata;
 	unsigned int i;
 
 	/* if the cooling device is the one from omap4 bind it */
@@ -111,6 +106,7 @@ static int omap_bind(struct thermal_zone_device *thermal,
 static int omap_unbind(struct thermal_zone_device *thermal,
 			  struct thermal_cooling_device *cdev)
 {
+	struct omap_thermal_zone *th_zone = thermal->devdata;
 	unsigned int i;
 
 	/* if the cooling device is the one from omap4 unbind it */
@@ -135,6 +131,7 @@ static int omap_unbind(struct thermal_zone_device *thermal,
 static int omap_get_temp(struct thermal_zone_device *thermal,
 			       unsigned long *temp)
 {
+	struct omap_thermal_zone *th_zone = thermal->devdata;
 	void *data;
 
 	if (!th_zone->sensor_conf) {
@@ -158,7 +155,7 @@ static struct thermal_zone_device_ops omap_dev_ops = {
 	.get_crit_temp = omap_get_crit_temp,
 };
 
-void omap4_unregister_thermal(void)
+void omap4_unregister_thermal(struct omap_thermal_zone *th_zone)
 {
 	unsigned int i;
 
@@ -176,14 +173,16 @@ void omap4_unregister_thermal(void)
 }
 EXPORT_SYMBOL(omap4_unregister_thermal);
 
-int omap4_register_thermal(struct thermal_sensor_conf *sensor_conf)
+struct omap_thermal_zone *omap4_register_thermal(
+	struct thermal_sensor_conf *sensor_conf)
 {
-	int ret, count, tab_size;
+	int ret = 0, count, tab_size;
 	struct freq_pctg_table *tab_ptr;
+	struct omap_thermal_zone *th_zone;
 
 	if (!sensor_conf) {
 		pr_err("Temperature sensor not initialised\n");
-		return -EINVAL;
+		return ERR_PTR(-EINVAL);
 	}
 
 	th_zone = kzalloc(sizeof(struct omap_thermal_zone), GFP_KERNEL);
@@ -216,7 +215,7 @@ int omap4_register_thermal(struct thermal_sensor_conf *sensor_conf)
 	th_zone->cool_dev_size = tab_size;
 
 	th_zone->therm_dev = thermal_zone_device_register(sensor_conf->name,
-			tab_size, NULL, &omap_dev_ops, 1, 1, 4000, 4000);
+			tab_size, th_zone, &omap_dev_ops, 1, 1, 4000, 4000);
 	if (IS_ERR(th_zone->therm_dev)) {
 		pr_err("Failed to register thermal zone device\n");
 		ret = -EINVAL;
@@ -224,16 +223,16 @@ int omap4_register_thermal(struct thermal_sensor_conf *sensor_conf)
 	}
 
 	th_zone->active_interval = 1;
-	th_zone->idle_interval = 10;
+	th_zone->idle_interval = 5;
 
 	omap_set_mode(th_zone->therm_dev, THERMAL_DEVICE_DISABLED);
 
 	pr_info("omap: Kernel Thermal management registered\n");
 
-	return 0;
+	return th_zone;
 
 err_unregister:
-	omap4_unregister_thermal();
-	return ret;
+	omap4_unregister_thermal(th_zone);
+	return ERR_PTR(ret);
 }
 EXPORT_SYMBOL(omap4_register_thermal);

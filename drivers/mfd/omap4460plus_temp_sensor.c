@@ -894,6 +894,8 @@ static struct thermal_dev_ops omap_sensor_ops = {
 };
 #elif defined(CONFIG_CPU_THERMAL)
 
+struct omap_thermal_zone *omap_zones[3];
+
 /* temp/frequency table for 1.20GHz chip */
 static struct omap4_thermal_data omap4_1200mhz_bandgap_data = {
 	.trigger_levels[0] = 73000,
@@ -902,24 +904,79 @@ static struct omap4_thermal_data omap4_1200mhz_bandgap_data = {
 	.trigger_levels[3] = 93000,
 	/* 920Mhz */
 	.freq_tab[0] = {
-		.freq_clip_pctg = 24,
-		.polling_interval = 4,
+		.freq_clip_pctg = 23,
+		.polling_interval = 2000,
 		},
 	/* 700MHz */
 	.freq_tab[1] = {
 		.freq_clip_pctg = 41,
-		.polling_interval = 2,
+		.polling_interval = 1000,
 		},
 	/* 350MHz */
 	.freq_tab[2] = {
 		.freq_clip_pctg = 70,
-		.polling_interval = 1,
+		.polling_interval = 500,
 		},
 	/* Shutdown */
 	.freq_tab[3] = {
 		.freq_clip_pctg = 99,
 		},
 	.freq_tab_count = 4,
+};
+
+/* temp/frequency table for 1.50GHz chip */
+static struct omap4_thermal_data omap4_1500mhz_bandgap_data = {
+	.trigger_levels[0] = 73000,
+	.trigger_levels[1] = 79000,
+	.trigger_levels[2] = 86000,
+	.trigger_levels[3] = 93000,
+	.trigger_levels[4] = 99000,
+	/* 1200MHz */
+	.freq_tab[0] = {
+		.freq_clip_pctg = 19,
+		.polling_interval = 2000,
+		},
+	/* 920MHz */
+	.freq_tab[1] = {
+		.freq_clip_pctg = 38,
+		.polling_interval = 2000,
+		},
+	/* 700MHz */
+	.freq_tab[2] = {
+		.freq_clip_pctg = 53,
+		.polling_interval = 1000,
+		},
+	/* 350MHz */
+	.freq_tab[3] = {
+		.freq_clip_pctg = 76,
+		.polling_interval = 500,
+		},
+	/* Shutdown */
+	.freq_tab[4] = {
+		.freq_clip_pctg = 99,
+		},
+	.freq_tab_count = 5,
+};
+
+static struct omap4_thermal_data omap5_1500mhz_bandgap_data = {
+	.trigger_levels[0] = 73000,
+	.trigger_levels[1] = 86000,
+	.trigger_levels[2] = 99000,
+	/* 1100MHz */
+	.freq_tab[0] = {
+		.freq_clip_pctg = 26,
+		.polling_interval = 1000,
+		},
+	/* 550MHz */
+	.freq_tab[1] = {
+		.freq_clip_pctg = 63,
+		.polling_interval = 500,
+		},
+	/* Shutdown */
+	.freq_tab[2] = {
+		.freq_clip_pctg = 99,
+		},
+	.freq_tab_count = 3,
 };
 
 static int omap_read_temp(void *private_data)
@@ -972,6 +1029,10 @@ int omap4460plus_temp_sensor_init(struct scm *scm_ptr)
 #elif defined(CONFIG_CPU_THERMAL)
 	scm_ptr->cpu_therm = kzalloc(sizeof(struct thermal_sensor_conf)
 		 * scm_ptr->cnt, GFP_KERNEL);
+	if (!scm_ptr->cpu_therm) {
+		pr_err("Unable to allocate memory for ts data\n");
+		goto clk_err;
+	}
 #endif
 
 	for (i = 0; i < scm_ptr->cnt; i++) {
@@ -1011,14 +1072,17 @@ int omap4460plus_temp_sensor_init(struct scm *scm_ptr)
 			ret = -ENOMEM;
 		}
 #elif defined(CONFIG_CPU_THERMAL)
-		strncpy(scm_ptr->cpu_therm[0].name, "omap_ondie_sensor", SENSOR_NAME_LEN);
+		strncpy(scm_ptr->cpu_therm[0].name, "omap_ondie_sensor",
+			SENSOR_NAME_LEN);
 		scm_ptr->cpu_therm[0].private_data = scm_ptr;
 		scm_ptr->cpu_therm[0].read_temperature = omap_read_temp;
-		scm_ptr->cpu_therm[0].sensor_data = &omap4_1200mhz_bandgap_data;
-		if (!omap4_register_thermal(scm_ptr->cpu_therm)) {
-			/* kzfree() */
-			scm_ptr->cpu_therm = NULL;
-		}
+		if (omap4_has_mpu_1_5ghz())
+			scm_ptr->cpu_therm[0].sensor_data =
+				&omap4_1500mhz_bandgap_data;
+		else
+			scm_ptr->cpu_therm[0].sensor_data =
+				&omap4_1200mhz_bandgap_data;
+		omap_zones[0] = omap4_register_thermal(scm_ptr->cpu_therm);
 #endif
 	} else if (scm_ptr->rev == 2) {
 		scm_ptr->registers[0] = &omap5430_mpu_temp_sensor_registers;
@@ -1061,8 +1125,22 @@ int omap4460plus_temp_sensor_init(struct scm *scm_ptr)
 			ret = -ENOMEM;
 		}
 #elif defined(CONFIG_CPU_THERMAL)
-		pr_err("CPU_THERMAL not supported on OMAP5 yet");
-		return -ENODEV;
+		strncpy(scm_ptr->cpu_therm[0].name, "omap_ondie_sensor",
+			SENSOR_NAME_LEN);
+		scm_ptr->cpu_therm[0].private_data = scm_ptr;
+		scm_ptr->cpu_therm[0].read_temperature = omap_read_temp;
+		scm_ptr->cpu_therm[0].sensor_data = &omap5_1500mhz_bandgap_data;
+		omap_zones[0] = omap4_register_thermal(&scm_ptr->cpu_therm[0]);
+		strncpy(scm_ptr->cpu_therm[1].name, "omap_ondie_gpu_sensor",
+			SENSOR_NAME_LEN);
+		scm_ptr->cpu_therm[1].private_data = scm_ptr;
+		scm_ptr->cpu_therm[1].read_temperature = omap_read_temp;
+		scm_ptr->cpu_therm[1].sensor_data = &omap5_1500mhz_bandgap_data;
+		strncpy(scm_ptr->cpu_therm[2].name, "omap_ondie_core_sensor",
+			SENSOR_NAME_LEN);
+		scm_ptr->cpu_therm[2].private_data = scm_ptr;
+		scm_ptr->cpu_therm[2].read_temperature = omap_read_temp;
+		scm_ptr->cpu_therm[2].sensor_data = &omap5_1500mhz_bandgap_data;
 #endif
 	}
 
