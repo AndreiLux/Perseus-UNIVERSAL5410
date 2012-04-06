@@ -1677,8 +1677,7 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 	/* Last frame has already been sent to MFC
 	 * Now obtaining frames from MFC buffer */
 
-	if (test_and_set_bit(0, &dev->clk_state) == 0)
-		s5p_mfc_clock_on();
+	s5p_mfc_clock_on();
 
 	if (ctx->type == MFCINST_DECODER) {
 		switch (ctx->state) {
@@ -1742,6 +1741,7 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 		/* Free hardware lock */
 		if (test_and_clear_bit(0, &dev->hw_lock) == 0)
 			mfc_err("Failed to unlock hardware.\n");
+		s5p_mfc_clock_off();
 	}
 }
 

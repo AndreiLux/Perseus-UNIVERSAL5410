@@ -1704,8 +1704,7 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 	/* Last frame has already been sent to MFC
 	 * Now obtaining frames from MFC buffer */
 
-	if (test_and_set_bit(0, &dev->clk_state) == 0)
-		s5p_mfc_clock_on();
+	s5p_mfc_clock_on();
 
 	if (ctx->type == MFCINST_DECODER) {
 		switch (ctx->state) {
@@ -1773,6 +1772,7 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 		/* Free hardware lock */
 		if (test_and_clear_bit(0, &dev->hw_lock) == 0)
 			mfc_err("Failed to unlock hardware.\n");
+		s5p_mfc_clock_off();
 	}
 }
 
@@ -1796,12 +1796,12 @@ void s5p_mfc_write_info(struct s5p_mfc_ctx *ctx, unsigned int data, unsigned int
 	struct s5p_mfc_dev *dev = ctx->dev;
 
 	/* MFC 6.x uses SFR for information */
-	if (test_bit(0, &dev->clk_state) == 0) {
+	if (dev->hw_lock) {
+		WRITEL(data, ofs);
+	} else {
 		s5p_mfc_clock_on();
 		WRITEL(data, ofs);
 		s5p_mfc_clock_off();
-	} else {
-		WRITEL(data, ofs);
 	}
 }
 
@@ -1811,12 +1811,12 @@ unsigned int s5p_mfc_read_info(struct s5p_mfc_ctx *ctx, unsigned int ofs)
 	int ret;
 
 	/* MFC 6.x uses SFR for information */
-	if (test_bit(0, &dev->clk_state) == 0) {
+	if (dev->hw_lock) {
+		ret = READL(ofs);
+	} else {
 		s5p_mfc_clock_on();
 		ret = READL(ofs);
 		s5p_mfc_clock_off();
-	} else {
-		ret = READL(ofs);
 	}
 
 	return ret;

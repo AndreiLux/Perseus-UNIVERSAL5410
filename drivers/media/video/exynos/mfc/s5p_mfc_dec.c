@@ -1111,7 +1111,6 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 
 	/* In case of calling s_fmt twice or more */
 	if (ctx->inst_no != MFC_NO_INSTANCE_SET) {
-		s5p_mfc_clock_on();
 		ctx->state = MFCINST_RETURN_INST;
 		spin_lock_irqsave(&dev->condlock, flags);
 		set_bit(ctx->num, &dev->ctx_work_bits);
@@ -1128,7 +1127,6 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		s5p_mfc_release_dec_desc_buffer(ctx);
 
 		ctx->state = MFCINST_INIT;
-		s5p_mfc_clock_off();
 	}
 
 	if (dec->crc_enable && (ctx->codec_mode == S5P_FIMV_CODEC_H264_DEC ||
@@ -1646,10 +1644,12 @@ static int vidioc_g_crop(struct file *file, void *priv,
 			return -EINVAL;
 		}
 	if (ctx->src_fmt->fourcc == V4L2_PIX_FMT_H264) {
+		s5p_mfc_clock_on();
 		left = s5p_mfc_read_info(ctx, CROP_INFO_H);
 		right = left >> S5P_FIMV_SHARED_CROP_RIGHT_SHIFT;
 		left = left & S5P_FIMV_SHARED_CROP_LEFT_MASK;
 		top = s5p_mfc_read_info(ctx, CROP_INFO_V);
+		s5p_mfc_clock_off();
 		bottom = top >> S5P_FIMV_SHARED_CROP_BOTTOM_SHIFT;
 		top = top & S5P_FIMV_SHARED_CROP_TOP_MASK;
 		cr->c.left = left;
