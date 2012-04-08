@@ -630,7 +630,7 @@ static int ion_exynos_user_heap_allocate(struct ion_heap *heap,
 	privdata = kmalloc(sizeof(*privdata), GFP_KERNEL);
 	if (!privdata) {
 		ret = -ENOMEM;
-		goto err_privdata;
+		goto finish;
 	}
 
 	buffer->priv_virt = privdata;
@@ -640,15 +640,13 @@ static int ion_exynos_user_heap_allocate(struct ion_heap *heap,
 				flags & ION_EXYNOS_WRITE_MASK, pages);
 
 	if (ret < 0) {
-		kfree(pages);
-
 		ret = pfnmap_digger(&privdata->sgt, start, nr_pages);
 		if (ret)
 			goto err_pfnmap;
 
 		privdata->is_pfnmap = true;
 
-		return 0;
+		goto finish;
 	}
 
 	if (ret != nr_pages) {
@@ -688,7 +686,7 @@ err_alloc_sg:
 		put_page(pages[i]);
 err_pfnmap:
 	kfree(privdata);
-err_privdata:
+finish:
 	kfree(pages);
 	return ret;
 }
