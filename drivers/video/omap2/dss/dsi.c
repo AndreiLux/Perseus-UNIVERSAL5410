@@ -267,6 +267,7 @@ struct dsi_data {
 
 	bool vdds_dsi_enabled;
 	struct regulator *vdds_dsi_reg;
+	struct regulator *panel_supply;
 
 	struct {
 		enum dsi_vc_source source;
@@ -1626,6 +1627,9 @@ int dsi_pll_init(struct platform_device *dsidev, bool enable_hsclk,
 		if (r)
 			goto err0;
 		dsi->vdds_dsi_enabled = true;
+
+		if (dsi->panel_supply)
+			regulator_enable(dsi->panel_supply);
 	}
 
 	/* XXX PLL does not come out of reset without this... */
@@ -1678,6 +1682,8 @@ void dsi_pll_uninit(struct platform_device *dsidev, bool disconnect_lanes)
 	dsi_pll_power(dsidev, DSI_PLL_POWER_OFF);
 	if (disconnect_lanes) {
 		WARN_ON(!dsi->vdds_dsi_enabled);
+		if (dsi->panel_supply)
+			regulator_disable(dsi->panel_supply);
 		regulator_disable(dsi->vdds_dsi_reg);
 		dsi->vdds_dsi_enabled = false;
 	}
@@ -4657,6 +4663,7 @@ static int __init dsi_init_display(struct omap_dss_device *dssdev)
 {
 	struct platform_device *dsidev = dsi_get_dsidev_from_dssdev(dssdev);
 	struct dsi_data *dsi = dsi_get_dsidrv_data(dsidev);
+	struct regulator *panel_supply;
 
 	DSSDBG("DSI init\n");
 
@@ -4676,6 +4683,14 @@ static int __init dsi_init_display(struct omap_dss_device *dssdev)
 		}
 
 		dsi->vdds_dsi_reg = vdds_dsi;
+	}
+
+	panel_supply = regulator_get(&dsi->pdev->dev, "panel_supply");
+	if (IS_ERR(panel_supply)) {
+		DSSERR("can't get regulator for panel\n");
+		dsi->panel_supply = NULL;
+	} else {
+		dsi->panel_supply = panel_supply;
 	}
 
 	return 0;
