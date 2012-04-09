@@ -1528,6 +1528,11 @@ static void __init smdk5250_machine_init(void)
 	exynos5_device_gsc2.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
 	exynos5_device_gsc3.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
 #endif
+	exynos5_gsc_set_pdev_name(0, "exynos5250-gsc");
+	exynos5_gsc_set_pdev_name(1, "exynos5250-gsc");
+	exynos5_gsc_set_pdev_name(2, "exynos5250-gsc");
+	exynos5_gsc_set_pdev_name(3, "exynos5250-gsc");
+
 	s3c_set_platdata(&exynos_gsc0_default_data, sizeof(exynos_gsc0_default_data),
 			&exynos5_device_gsc0);
 	s3c_set_platdata(&exynos_gsc1_default_data, sizeof(exynos_gsc1_default_data),
