@@ -37,6 +37,7 @@ MODULE_PARM_DESC(debug, "Debug level (0-1)");
 #define MODULE_NAME			"s5p-mipi-csis"
 #define DEFAULT_CSIS_SINK_WIDTH		800
 #define DEFAULT_CSIS_SINK_HEIGHT	480
+#define CLK_NAME_SIZE			20
 
 enum csis_input_entity {
 	CSIS_INPUT_NONE,
@@ -47,6 +48,7 @@ enum csis_output_entity {
 	CSIS_OUTPUT_NONE,
 	CSIS_OUTPUT_FLITE,
 };
+
 #define CSIS0_MAX_LANES		4
 #define CSIS1_MAX_LANES		2
 /* Register map definition */
@@ -191,6 +193,7 @@ static void s5pcsis_enable_interrupts(struct csis_state *state, bool on)
 static void s5pcsis_reset(struct csis_state *state)
 {
 	u32 val = s5pcsis_read(state, S5PCSIS_CTRL);
+
 	s5pcsis_write(state, S5PCSIS_CTRL, val | S5PCSIS_CTRL_RESET);
 	udelay(10);
 }
@@ -280,9 +283,12 @@ static int s5pcsis_clk_get(struct csis_state *state)
 {
 	struct device *dev = &state->pdev->dev;
 	int i;
+	char clk_name[CLK_NAME_SIZE];
 
 	for (i = 0; i < NUM_CSIS_CLOCKS; i++) {
-		state->clock[i] = clk_get(dev, csi_clock_name[i]);
+		snprintf(clk_name, sizeof(clk_name), "%s%d",
+			 csi_clock_name[i], state->pdev->id);
+		state->clock[i] = clk_get(dev, clk_name);
 		if (IS_ERR(state->clock[i])) {
 			s5pcsis_clk_put(state);
 			dev_err(dev, "failed to get clock: %s\n",
@@ -512,20 +518,25 @@ static int s5pcsis_link_setup(struct media_entity *entity,
 	struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(entity);
 	struct csis_state *state = sd_to_csis_state(sd);
 
-	v4l2_info(sd, "%s\n", __func__);
 	switch (local->index | media_entity_type(remote->entity)) {
 	case CSIS_PAD_SINK | MEDIA_ENT_T_V4L2_SUBDEV:
-		if (flags & MEDIA_LNK_FL_ENABLED)
+		if (flags & MEDIA_LNK_FL_ENABLED) {
+			v4l2_info(sd, "%s : sink link enabled\n", __func__);
 			state->input = CSIS_INPUT_SENSOR;
-		else
+		} else {
+			v4l2_info(sd, "%s : sink link disabled\n", __func__);
 			state->input = CSIS_INPUT_NONE;
+		}
 		break;
 
 	case CSIS_PAD_SOURCE | MEDIA_ENT_T_V4L2_SUBDEV:
-		if (flags & MEDIA_LNK_FL_ENABLED)
+		if (flags & MEDIA_LNK_FL_ENABLED) {
+			v4l2_info(sd, "%s : source link enabled\n", __func__);
 			state->output = CSIS_OUTPUT_FLITE;
-		else
+		} else {
+			v4l2_info(sd, "%s : source link disabled\n", __func__);
 			state->output = CSIS_OUTPUT_NONE;
+		}
 		break;
 
 	default:
