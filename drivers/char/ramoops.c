@@ -36,21 +36,6 @@
 #define RAMOOPS_KERNMSG_HDR "===="
 #define MIN_MEM_SIZE 4096UL
 
-static ulong record_size = MIN_MEM_SIZE;
-module_param(record_size, ulong, 0400);
-MODULE_PARM_DESC(record_size,
-		"size of each dump done on oops/panic");
-
-static ulong mem_address;
-module_param(mem_address, ulong, 0400);
-MODULE_PARM_DESC(mem_address,
-		"start of reserved RAM used to store oops/panic logs");
-
-static ulong mem_size;
-module_param(mem_size, ulong, 0400);
-MODULE_PARM_DESC(mem_size,
-		"size of reserved RAM used to store oops/panic logs");
-
 static int ramoops_pstore_open(struct pstore_info *psi);
 static int ramoops_pstore_close(struct pstore_info *psi);
 static ssize_t ramoops_pstore_read(u64 *id, enum pstore_type_id *type,
@@ -74,9 +59,6 @@ struct ramoops_context {
 	unsigned int read_count;
 	struct pstore_info pstore;
 };
-
-static struct platform_device *dummy;
-static struct ramoops_platform_data *dummy_data;
 
 static struct ramoops_context oops_cxt = {
 	.pstore = {
@@ -235,7 +217,6 @@ static int __init ramoops_probe(struct platform_device *pdev)
 	cxt->size = pdata->mem_size;
 	cxt->phys_addr = pdata->mem_address;
 	cxt->record_size = pdata->record_size;
-	cxt->dump_oops = pdata->dump_oops;
 
 	cxt->pstore.bufsize = cxt->record_size;
 	cxt->pstore.buf = kmalloc(cxt->pstore.bufsize, GFP_KERNEL);
@@ -262,15 +243,6 @@ static int __init ramoops_probe(struct platform_device *pdev)
 		pr_err("registering with pstore failed\n");
 		goto fail1;
 	}
-
-	/*
-	 * Update the module parameter variables as well so they are visible
-	 * through /sys/module/ramoops/parameters/
-	 */
-	mem_size = pdata->mem_size;
-	mem_address = pdata->mem_address;
-	record_size = pdata->record_size;
-	dump_oops = pdata->dump_oops;
 
 	return 0;
 
@@ -317,38 +289,12 @@ static struct platform_driver ramoops_driver = {
 
 static int __init ramoops_init(void)
 {
-	int ret;
-	ret = platform_driver_probe(&ramoops_driver, ramoops_probe);
-	if (ret == -ENODEV) {
-		/*
-		 * If we didn't find a platform device, we use module parameters
-		 * building platform data on the fly.
-		 */
-		pr_info("platform device not found, using module parameters\n");
-		dummy_data = kzalloc(sizeof(struct ramoops_platform_data),
-				     GFP_KERNEL);
-		if (!dummy_data)
-			return -ENOMEM;
-		dummy_data->mem_size = mem_size;
-		dummy_data->mem_address = mem_address;
-		dummy_data->record_size = record_size;
-		dummy = platform_create_bundle(&ramoops_driver, ramoops_probe,
-			NULL, 0, dummy_data,
-			sizeof(struct ramoops_platform_data));
-
-		if (IS_ERR(dummy))
-			ret = PTR_ERR(dummy);
-		else
-			ret = 0;
-	}
-
-	return ret;
+	return platform_driver_probe(&ramoops_driver, ramoops_probe);
 }
 
 static void __exit ramoops_exit(void)
 {
 	platform_driver_unregister(&ramoops_driver);
-	kfree(dummy_data);
 }
 
 module_init(ramoops_init);
