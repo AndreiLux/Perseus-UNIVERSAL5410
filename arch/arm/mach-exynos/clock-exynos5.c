@@ -895,12 +895,12 @@ static struct clk exynos5_init_clocks_off[] = {
 		.enable		= exynos5_clk_ip_gscl_ctrl,
 		.ctrlbit	= (1 << 4),
 	}, {
-		.name		= "gscl_wrap",
+		.name		= "gscl_wrap0",
 		.devname	= "s5p-mipi-csis.0",
 		.enable		= exynos5_clk_ip_gscl_ctrl,
 		.ctrlbit	= (1 << 5),
 	}, {
-		.name		= "gscl_wrap",
+		.name		= "gscl_wrap1",
 		.devname	= "s5p-mipi-csis.1",
 		.enable		= exynos5_clk_ip_gscl_ctrl,
 		.ctrlbit	= (1 << 6),
@@ -1543,7 +1543,7 @@ static struct clksrc_clk exynos5_clksrcs[] = {
 		.reg_div = { .reg = EXYNOS5_CLKDIV_TOP0, .shift = 24, .size = 3 },
 	}, {
 		.clk	= {
-			.name		= "sclk_gscl_wrap",
+			.name		= "sclk_gscl_wrap0",
 			.devname	= "s5p-mipi-csis.0",
 			.enable		= exynos5_clksrc_mask_gscl_ctrl,
 			.ctrlbit	= (1 << 24),
@@ -1553,7 +1553,7 @@ static struct clksrc_clk exynos5_clksrcs[] = {
 		.reg_div = { .reg = EXYNOS5_CLKDIV_GSCL, .shift = 24, .size = 4 },
 	}, {
 		.clk	= {
-			.name		= "sclk_gscl_wrap",
+			.name		= "sclk_gscl_wrap1",
 			.devname	= "s5p-mipi-csis.1",
 			.enable		= exynos5_clksrc_mask_gscl_ctrl,
 			.ctrlbit	= (1 << 28),
