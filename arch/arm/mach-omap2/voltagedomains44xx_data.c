@@ -118,13 +118,13 @@ void __init omap44xx_voltagedomains_init(void)
 	 * for the currently-running IC
 	 */
 	if (cpu_is_omap443x()) {
-		omap4_voltdm_mpu.volt_data = omap44xx_vdd_mpu_volt_data;
+		omap4_voltdm_mpu.volt_data = omap443x_vdd_mpu_volt_data;
 		omap4_vdd_mpu_info.dep_vdd_info = omap443x_vddmpu_dep_info;
 
-		omap4_voltdm_iva.volt_data = omap44xx_vdd_iva_volt_data;
+		omap4_voltdm_iva.volt_data = omap443x_vdd_iva_volt_data;
 		omap4_vdd_iva_info.dep_vdd_info = omap443x_vddiva_dep_info;
 
-		omap4_voltdm_core.volt_data = omap44xx_vdd_core_volt_data;
+		omap4_voltdm_core.volt_data = omap443x_vdd_core_volt_data;
 
 		omap4_voltdm_mpu.vp_param = &omap44xx_mpu_vp_data;
 		omap4_voltdm_iva.vp_param = &omap44xx_iva_vp_data;
