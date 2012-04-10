@@ -35,8 +35,10 @@ struct cpufreq_cooling_device {
 	struct thermal_cooling_device *cool_dev;
 	struct freq_clip_table *tab_ptr;
 	unsigned int tab_size;
-	unsigned int cpufreq_state;
+	unsigned int cpufreq_cur_state;
+	unsigned int cpufreq_max_state;
 	const struct cpumask *allowed_cpus;
+	enum thermal_trip_type type;
 	struct list_head node;
 };
 
@@ -46,6 +48,7 @@ static DEFINE_IDR(cpufreq_idr);
 static DEFINE_PER_CPU(unsigned int, max_policy_freq);
 static struct freq_clip_table *notify_table;
 static int notify_state;
+static struct cpufreq_cooling_device *notify_dev;
 
 struct hotplug_cooling_device {
 	int id;
@@ -132,21 +135,42 @@ static bool is_cpufreq_valid(int cpu)
 	return !cpufreq_get_policy(&policy, cpu) ? true : false;
 }
 
+static int get_freq_state_count(struct cpufreq_cooling_device *cpufreq_dev)
+{
+	struct cpufreq_frequency_table *table;
+	int i = 0, cpu, max_count = 0;
+
+	if (cpufreq_dev->type != THERMAL_TRIP_PASSIVE)
+		return cpufreq_dev->cpufreq_max_state;
+
+	for_each_cpu(cpu, cpufreq_dev->allowed_cpus) {
+		table = cpufreq_frequency_get_table(cpu);
+		i = 0;
+		if (table)
+			while (table[i].frequency != CPUFREQ_TABLE_END)
+				i++;
+			if (i > max_count)
+				max_count = i;
+	}
+	return max_count;
+}
+
 static int cpufreq_apply_cooling(struct cpufreq_cooling_device *cpufreq_device,
 				unsigned long cooling_state)
 {
 	unsigned int event, cpuid;
 	struct freq_clip_table *th_table;
 
-	if (cooling_state > cpufreq_device->tab_size)
+	if (cooling_state > get_freq_state_count(cpufreq_device))
 		return -EINVAL;
 
-	cpufreq_device->cpufreq_state = cooling_state;
+	cpufreq_device->cpufreq_cur_state = cooling_state;
 
 	/*cpufreq thermal notifier uses this cpufreq device pointer*/
 	notify_state = cooling_state;
+	notify_dev = cpufreq_device;
 
-	if (notify_state > 0) {
+	if (notify_state > 0 && cpufreq_device->type != THERMAL_TRIP_PASSIVE) {
 		th_table = &(cpufreq_device->tab_ptr[cooling_state - 1]);
 		memcpy(notify_table, th_table, sizeof(struct freq_clip_table));
 		event = CPUFREQ_COOLING_TYPE;
@@ -160,6 +184,7 @@ static int cpufreq_apply_cooling(struct cpufreq_cooling_device *cpufreq_device,
 	}
 
 	notify_state = -1;
+	notify_dev = NULL;
 
 	return 0;
 }
@@ -169,12 +194,21 @@ static int cpufreq_thermal_notifier(struct notifier_block *nb,
 {
 	struct cpufreq_policy *policy = data;
 	unsigned long max_freq = 0;
+	struct cpufreq_frequency_table *table;
+	int ret;
 
 	if ((event != CPUFREQ_ADJUST) || (notify_state == -1))
 		return 0;
 
 	if (notify_state > 0) {
-		max_freq = notify_table->freq_clip_max;
+		if (notify_dev->type == THERMAL_TRIP_PASSIVE) {
+			table = cpufreq_frequency_get_table(policy->cpu);
+			ret = get_freq_state_count(notify_dev);
+			if (notify_state < ret)
+				max_freq = table[notify_state - 1].frequency;
+		} else {
+			max_freq = notify_table->freq_clip_max;
+		}
 
 		if (per_cpu(max_policy_freq, policy->cpu) == 0)
 			per_cpu(max_policy_freq, policy->cpu) = policy->max;
@@ -209,7 +243,7 @@ static int cpufreq_get_max_state(struct thermal_cooling_device *cdev,
 	mutex_lock(&cooling_cpufreq_lock);
 	list_for_each_entry(cpufreq_device, &cooling_cpufreq_list, node) {
 		if (cpufreq_device && cpufreq_device->cool_dev == cdev) {
-			*state = cpufreq_device->tab_size;
+			*state = get_freq_state_count(cpufreq_device);
 			ret = 0;
 			break;
 		}
@@ -227,7 +261,7 @@ static int cpufreq_get_cur_state(struct thermal_cooling_device *cdev,
 	mutex_lock(&cooling_cpufreq_lock);
 	list_for_each_entry(cpufreq_device, &cooling_cpufreq_list, node) {
 		if (cpufreq_device && cpufreq_device->cool_dev == cdev) {
-			*state = cpufreq_device->cpufreq_state;
+			*state = cpufreq_device->cpufreq_cur_state;
 			ret = 0;
 			break;
 		}
@@ -271,7 +305,7 @@ static struct notifier_block thermal_cpufreq_notifier_block = {
 
 struct thermal_cooling_device *cpufreq_cooling_register(
 	struct freq_clip_table *tab_ptr, unsigned int tab_size,
-	const struct cpumask *mask_val)
+	const struct cpumask *mask_val, enum thermal_trip_type type)
 {
 	struct thermal_cooling_device *cool_dev;
 	struct cpufreq_cooling_device *cpufreq_dev = NULL;
@@ -279,7 +313,10 @@ struct thermal_cooling_device *cpufreq_cooling_register(
 	char dev_name[THERMAL_NAME_LENGTH];
 	int ret = 0, id = 0, i;
 
-	if (tab_ptr == NULL || tab_size == 0)
+	if ((tab_ptr == NULL || tab_size == 0) && type != THERMAL_TRIP_PASSIVE)
+		return ERR_PTR(-EINVAL);
+
+	if ((tab_ptr != NULL || tab_size != 0) && type == THERMAL_TRIP_PASSIVE)
 		return ERR_PTR(-EINVAL);
 
 	list_for_each_entry(cpufreq_dev, &cooling_cpufreq_list, node)
@@ -303,6 +340,11 @@ struct thermal_cooling_device *cpufreq_cooling_register(
 	cpufreq_dev->tab_ptr = tab_ptr;
 	cpufreq_dev->tab_size = tab_size;
 	cpufreq_dev->allowed_cpus = mask_val;
+	cpufreq_dev->type = type;
+	cpufreq_dev->cpufreq_max_state = 0;
+
+	if (type != THERMAL_TRIP_PASSIVE)
+		cpufreq_dev->cpufreq_max_state = tab_size;
 
 	/* Initialize all the tab_ptr->mask_val to the passed mask_val */
 	for (i = 0; i < tab_size; i++)

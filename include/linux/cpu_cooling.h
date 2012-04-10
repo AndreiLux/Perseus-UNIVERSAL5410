@@ -42,13 +42,13 @@ int cputherm_unregister_notifier(struct notifier_block *nb, unsigned int list);
 #ifdef CONFIG_CPU_FREQ
 struct thermal_cooling_device *cpufreq_cooling_register(
 	struct freq_clip_table *tab_ptr, unsigned int tab_size,
-	const struct cpumask *mask_val);
+	const struct cpumask *mask_val, enum thermal_trip_type type);
 
 void cpufreq_cooling_unregister(struct thermal_cooling_device *cdev);
 #else /*!CONFIG_CPU_FREQ*/
 static inline struct thermal_cooling_device *cpufreq_cooling_register(
 	struct freq_clip_table *tab_ptr, unsigned int tab_size,
-	const struct cpumask *mask_val)
+	const struct cpumask *mask_val, enum thermal_trip_type type)
 {
 	return NULL;
 }

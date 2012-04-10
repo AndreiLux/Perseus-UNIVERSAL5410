@@ -19,7 +19,7 @@ the cooling device pointer.
 1.1 cpufreq registration/unregistration APIs
 1.1.1 struct thermal_cooling_device *cpufreq_cooling_register(
 	struct freq_clip_table *tab_ptr, unsigned int tab_size,
-	const struct cpumask *mask_val)
+	const struct cpumask *mask_val, enum thermal_trip_type type)
 
     This interface function registers the cpufreq cooling device with the name
     "thermal-cpufreq-%x". This api can support multiple instances of cpufreq
@@ -31,6 +31,8 @@ the cooling device pointer.
 	 cpus.
     tab_size: the total number of cpufreq cooling states.
     mask_val: all the allowed cpu's where frequency clipping can happen.
+    type: This can have values like (THERMAL_TRIP_PASSIVE, THERMAL_TRIP_ACTIVE,
+	   and THERMAL_TRIP_STATE_INSTANCE)
 
 1.1.2 void cpufreq_cooling_unregister(struct thermal_cooling_device *cdev)
 
