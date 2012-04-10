@@ -573,11 +573,57 @@ static struct thermal_sensor_conf exynos4_sensor_conf = {
 	.read_temperature	= (int (*)(void *))exynos4_tmu_read,
 };
 
+#if defined(CONFIG_CPU_EXYNOS4210)
+static struct exynos4_tmu_platform_data exynos4_default_tmu_data = {
+	.threshold = 80,
+	.trigger_levels[0] = 2,
+	.trigger_levels[1] = 5,
+	.trigger_levels[2] = 20,
+	.trigger_levels[3] = 30,
+	.trigger_level0_en = 1,
+	.trigger_level1_en = 1,
+	.trigger_level2_en = 1,
+	.trigger_level3_en = 1,
+	.gain = 15,
+	.reference_voltage = 7,
+	.cal_type = TYPE_ONE_POINT_TRIMMING,
+	.freq_tab[0] = {
+		.freq_clip_max = 800 * 1000,
+	},
+	.freq_tab[1] = {
+		.freq_clip_max = 200 * 1000,
+	},
+	.freq_tab_count = 2,
+};
+#define EXYNOS4210_TMU_DRV_DATA ((kernel_ulong_t)&exynos4_default_tmu_data)
+#else
+#define EXYNOS4210_TMU_DRV_DATA ((kernel_ulong_t)NULL)
+#endif
+
+static struct platform_device_id exynos4_tmu_driver_ids[] = {
+	{
+		.name		= "exynos4-tmu",
+		.driver_data    = EXYNOS4210_TMU_DRV_DATA,
+	},
+	{ },
+};
+MODULE_DEVICE_TABLE(platform, exynos4_tmu_driver_ids);
+
+static inline struct  exynos4_tmu_platform_data *exynos4_get_driver_data(
+			struct platform_device *pdev)
+{
+	return (struct exynos4_tmu_platform_data *)
+			platform_get_device_id(pdev)->driver_data;
+}
+
 static int __devinit exynos4_tmu_probe(struct platform_device *pdev)
 {
 	struct exynos4_tmu_data *data;
 	struct exynos4_tmu_platform_data *pdata = pdev->dev.platform_data;
 	int ret, i;
+
+	if (!pdata)
+		pdata = exynos4_get_driver_data(pdev);
 
 	if (!pdata) {
 		dev_err(&pdev->dev, "No platform init data supplied.\n");
@@ -733,6 +779,7 @@ static struct platform_driver exynos4_tmu_driver = {
 	.remove	= __devexit_p(exynos4_tmu_remove),
 	.suspend = exynos4_tmu_suspend,
 	.resume = exynos4_tmu_resume,
+	.id_table = exynos4_tmu_driver_ids,
 };
 
 module_platform_driver(exynos4_tmu_driver);
