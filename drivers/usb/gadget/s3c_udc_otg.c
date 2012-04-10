@@ -890,7 +890,7 @@ static struct s3c_udc memory = {
 	/* first group of endpoints */
 	.ep[1] = {
 		.ep = {
-			.name = "ep1-bulk",
+			.name = "ep1in-bulk",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
@@ -905,7 +905,7 @@ static struct s3c_udc memory = {
 
 	.ep[2] = {
 		.ep = {
-			.name = "ep2-bulk",
+			.name = "ep2out-bulk",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
@@ -920,7 +920,7 @@ static struct s3c_udc memory = {
 
 	.ep[3] = {
 		.ep = {
-			.name = "ep3-int",
+			.name = "ep3in-int",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
@@ -934,7 +934,7 @@ static struct s3c_udc memory = {
 	},
 	.ep[4] = {
 		.ep = {
-			.name = "ep4-bulk",
+			.name = "ep4out-bulk",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
@@ -948,7 +948,7 @@ static struct s3c_udc memory = {
 	},
 	.ep[5] = {
 		.ep = {
-			.name = "ep5-bulk",
+			.name = "ep5in-bulk",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
@@ -962,7 +962,7 @@ static struct s3c_udc memory = {
 	},
 	.ep[6] = {
 		.ep = {
-			.name = "ep6-int",
+			.name = "ep6in-int",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
@@ -976,7 +976,7 @@ static struct s3c_udc memory = {
 	},
 	.ep[7] = {
 		.ep = {
-			.name = "ep7-bulk",
+			.name = "ep7out-bulk",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
@@ -990,7 +990,7 @@ static struct s3c_udc memory = {
 	},
 	.ep[8] = {
 		.ep = {
-			.name = "ep8-bulk",
+			.name = "ep8in-bulk",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
@@ -1004,7 +1004,7 @@ static struct s3c_udc memory = {
 	},
 	.ep[9] = {
 		.ep = {
-			.name = "ep9-int",
+			.name = "ep9in-int",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
@@ -1018,7 +1018,7 @@ static struct s3c_udc memory = {
 	},
 	.ep[10] = {
 		.ep = {
-			.name = "ep10-bulk",
+			.name = "ep10out-bulk",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
@@ -1032,7 +1032,7 @@ static struct s3c_udc memory = {
 	},
 	.ep[11] = {
 		.ep = {
-			.name = "ep11-bulk",
+			.name = "ep11in-bulk",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
@@ -1046,7 +1046,7 @@ static struct s3c_udc memory = {
 	},
 	.ep[12] = {
 		.ep = {
-			.name = "ep12-int",
+			.name = "ep12in-int",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
@@ -1060,7 +1060,7 @@ static struct s3c_udc memory = {
 	},
 	.ep[13] = {
 		.ep = {
-			.name = "ep13-bulk",
+			.name = "ep13out-bulk",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
@@ -1074,7 +1074,7 @@ static struct s3c_udc memory = {
 	},
 	.ep[14] = {
 		.ep = {
-			.name = "ep14-bulk",
+			.name = "ep14in-bulk",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
@@ -1088,7 +1088,7 @@ static struct s3c_udc memory = {
 	},
 	.ep[15] = {
 		.ep = {
-			.name = "ep15-int",
+			.name = "ep15in-int",
 			.ops = &s3c_ep_ops,
 			.maxpacket = EP_FIFO_SIZE,
 		},
