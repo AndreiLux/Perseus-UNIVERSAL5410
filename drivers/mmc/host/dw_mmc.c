@@ -46,7 +46,7 @@
 				 DW_MCI_CMD_ERROR_FLAGS  | SDMMC_INT_HLE)
 #define DW_MCI_SEND_STATUS	1
 #define DW_MCI_RECV_STATUS	2
-#define DW_MCI_DMA_THRESHOLD	16
+#define DW_MCI_DMA_THRESHOLD	4
 
 #ifdef CONFIG_MMC_DW_IDMAC
 struct idmac_desc {
