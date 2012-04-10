@@ -46,6 +46,8 @@
 #define REG_INFORM1            (EXYNOS_INFORM1)
 #endif
 
+#define EXYNOS_I2C_CFG		(S3C_VA_SYS + 0x234)
+
 static struct sleep_save exynos4_set_clksrc[] = {
 	{ .reg = EXYNOS4_CLKSRC_MASK_TOP		, .val = 0x00000001, },
 	{ .reg = EXYNOS4_CLKSRC_MASK_CAM		, .val = 0x11111111, },
@@ -79,6 +81,9 @@ static struct sleep_save exynos_core_save[] = {
 	SAVE_ITEM(S5P_SROM_BC1),
 	SAVE_ITEM(S5P_SROM_BC2),
 	SAVE_ITEM(S5P_SROM_BC3),
+
+	/* I2C CFG */
+	SAVE_ITEM(EXYNOS_I2C_CFG),
 };
 
 
