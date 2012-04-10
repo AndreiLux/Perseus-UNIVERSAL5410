@@ -686,7 +686,7 @@ static void hdmi_core_av_packet_config(struct hdmi_ip_data *ip_data,
 		(repeat_cfg.generic_pkt_repeat));
 }
 
-static void hdmi_wp_init(struct omap_video_timings *timings,
+void hdmi_wp_init(struct omap_video_timings *timings,
 			struct hdmi_video_format *video_fmt)
 {
 	pr_debug("Enter hdmi_wp_init\n");
@@ -715,7 +715,7 @@ void ti_hdmi_4xxx_wp_video_stop(struct hdmi_ip_data *ip_data)
 	REG_FLD_MOD(hdmi_wp_base(ip_data), HDMI_WP_VIDEO_CFG, false, 31, 31);
 }
 
-static void hdmi_wp_video_init_format(struct hdmi_video_format *video_fmt,
+void hdmi_wp_video_init_format(struct hdmi_video_format *video_fmt,
 	struct omap_video_timings *timings, struct hdmi_config *param)
 {
 	pr_debug("Enter hdmi_wp_video_init_format\n");
@@ -731,7 +731,7 @@ static void hdmi_wp_video_init_format(struct hdmi_video_format *video_fmt,
 	timings->vsw = param->timings.vsw;
 }
 
-static void hdmi_wp_video_config_format(struct hdmi_ip_data *ip_data,
+void hdmi_wp_video_config_format(struct hdmi_ip_data *ip_data,
 		struct hdmi_video_format *video_fmt)
 {
 	u32 l = 0;
@@ -744,7 +744,7 @@ static void hdmi_wp_video_config_format(struct hdmi_ip_data *ip_data,
 	hdmi_write_reg(hdmi_wp_base(ip_data), HDMI_WP_VIDEO_SIZE, l);
 }
 
-static void hdmi_wp_video_config_interface(struct hdmi_ip_data *ip_data)
+void hdmi_wp_video_config_interface(struct hdmi_ip_data *ip_data)
 {
 	u32 r;
 	pr_debug("Enter hdmi_wp_video_config_interface\n");
@@ -757,7 +757,7 @@ static void hdmi_wp_video_config_interface(struct hdmi_ip_data *ip_data)
 	hdmi_write_reg(hdmi_wp_base(ip_data), HDMI_WP_VIDEO_CFG, r);
 }
 
-static void hdmi_wp_video_config_timing(struct hdmi_ip_data *ip_data,
+void hdmi_wp_video_config_timing(struct hdmi_ip_data *ip_data,
 		struct omap_video_timings *timings)
 {
 	u32 timing_h = 0;
