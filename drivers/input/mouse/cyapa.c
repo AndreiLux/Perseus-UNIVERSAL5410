@@ -1308,9 +1308,6 @@ static DEVICE_ATTR(hardware_version, S_IRUGO, cyapa_show_hw_ver, NULL);
 static DEVICE_ATTR(product_id, S_IRUGO, cyapa_show_product_id, NULL);
 static DEVICE_ATTR(protocol_version, S_IRUGO, cyapa_show_protocol_version, NULL);
 static DEVICE_ATTR(update_fw, S_IWUSR, NULL, cyapa_update_fw_store);
-static DEVICE_ATTR(suspend_scanrate_ms, S_IRUGO|S_IWUSR,
-		   cyapa_show_suspend_scanrate,
-		   cyapa_update_suspend_scanrate);
 
 static struct attribute *cyapa_sysfs_entries[] = {
 	&dev_attr_firmware_version.attr,
@@ -1325,6 +1322,11 @@ static const struct attribute_group cyapa_sysfs_group = {
 	.attrs = cyapa_sysfs_entries,
 };
 
+#ifdef CONFIG_PM
+static DEVICE_ATTR(suspend_scanrate_ms, S_IRUGO|S_IWUSR,
+		   cyapa_show_suspend_scanrate,
+		   cyapa_update_suspend_scanrate);
+
 static struct attribute *cyapa_power_wakeup_entries[] = {
 	&dev_attr_suspend_scanrate_ms.attr,
 	NULL,
@@ -1334,6 +1336,7 @@ static const struct attribute_group cyapa_power_wakeup_group = {
 	.name = power_group_name,
 	.attrs = cyapa_power_wakeup_entries,
 };
+#endif
 
 /*
  **************************************************************
@@ -1707,9 +1710,11 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 	if (cyapa_debugfs_init(cyapa))
 		dev_warn(dev, "error creating debugfs entries.\n");
 
+#ifdef CONFIG_PM
 	if (device_can_wakeup(dev) &&
 	    sysfs_merge_group(&client->dev.kobj, &cyapa_power_wakeup_group))
 		dev_warn(dev, "error creating wakeup power entries.\n");
+#endif
 
 	cyapa_detect(cyapa);
 
