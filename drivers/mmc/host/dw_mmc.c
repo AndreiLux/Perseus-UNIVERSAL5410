@@ -1787,6 +1787,25 @@ static void dw_mci_work_routine_card(struct work_struct *work)
 	}
 }
 
+static void dw_mci_notify_change(struct platform_device *dev, int state)
+{
+	struct dw_mci *host = platform_get_drvdata(dev);
+	unsigned long flags;
+
+	if (host) {
+		spin_lock_irqsave(&host->lock, flags);
+		if (state) {
+			dev_dbg(&dev->dev, "card inserted.\n");
+			host->quirks |= DW_MCI_QUIRK_BROKEN_CARD_DETECTION;
+		} else {
+			dev_dbg(&dev->dev, "card removed.\n");
+			 host->quirks &= ~DW_MCI_QUIRK_BROKEN_CARD_DETECTION;
+		}
+		tasklet_schedule(&host->tasklet);
+		spin_unlock_irqrestore(&host->lock, flags);
+	}
+}
+
 static irqreturn_t dw_mci_detect_interrupt(int irq, void *dev_id)
 {
 	struct dw_mci_slot *slot = dev_id;
@@ -2143,6 +2162,9 @@ int __devinit dw_mci_probe(struct dw_mci *host)
 	if (host->pdata->caps & MMC_CAP_UHS_SDR50)
 		clk_set_rate(host->cclk, 200 * 1000 * 1000);
 
+	if (host->pdata->cd_type == DW_MCI_CD_EXTERNAL)
+		host->pdata->ext_cd_init(&dw_mci_notify_change);
+
 	/*
 	 * Enable interrupts for command done, data over, data empty, card det,
 	 * receive ready and error such as transmit, receive timeout, crc error
@@ -2204,6 +2226,9 @@ void dw_mci_remove(struct dw_mci *host)
 
 	mci_writel(host, RINTSTS, 0xFFFFFFFF);
 	mci_writel(host, INTMASK, 0); /* disable all mmc interrupt first */
+
+	if (host->pdata->cd_type == DW_MCI_CD_EXTERNAL)
+		host->pdata->ext_cd_cleanup(&dw_mci_notify_change);
 
 	for (i = 0; i < host->num_slots; i++) {
 		dev_dbg(&host->dev, "remove slot %d\n", i);

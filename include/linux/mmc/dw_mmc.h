@@ -204,6 +204,13 @@ struct dw_mci_dma_ops {
 /* Unreliable card detection */
 #define DW_MCI_QUIRK_BROKEN_CARD_DETECTION	BIT(3)
 
+enum dw_mci_cd_types {
+	DW_MCI_CD_INTERNAL,	/* use mmc internal CD line */
+	DW_MCI_CD_EXTERNAL,	/* use external callback */
+	DW_MCI_CD_GPIO,		/* use external gpio pin for CD line */
+	DW_MCI_CD_NONE,		/* no CD line, use polling to detect card */
+	DW_MCI_CD_PERMANENT,	/* no CD line, card permanently wired to host */
+};
 
 struct dma_pdata;
 
@@ -251,6 +258,22 @@ struct dw_mci_board {
 	/* Phase Shift Value */
 	unsigned int sdr_timing;
 	unsigned int ddr_timing;
+
+	/* cd_type: Type of Card Detection method (see cd_types enum above) */
+	enum dw_mci_cd_types cd_type;
+
+	/* ext_cd_cleanup: Cleanup external card detect subsystem.
+	* ext_cd_init: Initialize external card detect subsystem.
+	*	notify_func argument is a callback to the dwmci driver
+	*	that triggers the card detection event. Callback arguments:
+	*	dev is pointer to platform device of the host controller,
+	*	state is new state of the card (0 - removed, 1 - inserted).
+	*/
+
+	int (*ext_cd_init)(void (*notify_func)
+		(struct platform_device *, int state));
+	int (*ext_cd_cleanup)(void (*notify_func)
+		(struct platform_device *, int state));
 
 	/*
 	 * Enable power to selected slot and set voltage to desired level.
