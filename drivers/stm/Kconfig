@@ -4,4 +4,12 @@ config STM_FW
            help
                      STM Framework Driver
 
+config STM_OMAP_TI1_0
+           tristate "STM OMAP TI1.0 Drvier"
+           depends on STM_FW
+           default n
+           help
+	 STM OMAP TI1.0 Driver - provides Syet, Trace Macrocell
+	 support for V1.0 implementation found in, eg, OMAP4
+
 
