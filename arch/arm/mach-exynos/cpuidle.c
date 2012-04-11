@@ -29,19 +29,11 @@
 #include <plat/cpu.h>
 
 #ifdef CONFIG_ARM_TRUSTZONE
-#define REG_DIRECTGO_ADDR	(samsung_rev() == EXYNOS4210_REV_1_1 ? \
-			S5P_INFORM7 : (samsung_rev() == EXYNOS4210_REV_1_0 ? \
-			(S5P_VA_SYSRAM_NS + 0x24) : S5P_INFORM0))
-#define REG_DIRECTGO_FLAG	(samsung_rev() == EXYNOS4210_REV_1_1 ? \
-			S5P_INFORM6 : (samsung_rev() == EXYNOS4210_REV_1_0 ? \
-			(S5P_VA_SYSRAM_NS + 0x20) : S5P_INFORM1))
+#define REG_DIRECTGO_ADDR	(S5P_VA_SYSRAM_NS + 0x24)
+#define REG_DIRECTGO_FLAG	(S5P_VA_SYSRAM_NS + 0x20)
 #else
-#define REG_DIRECTGO_ADDR	(samsung_rev() == EXYNOS4210_REV_1_1 ? \
-			S5P_INFORM7 : (samsung_rev() == EXYNOS4210_REV_1_0 ? \
-			(S5P_VA_SYSRAM + 0x24) : S5P_INFORM0))
-#define REG_DIRECTGO_FLAG	(samsung_rev() == EXYNOS4210_REV_1_1 ? \
-			S5P_INFORM6 : (samsung_rev() == EXYNOS4210_REV_1_0 ? \
-			(S5P_VA_SYSRAM + 0x20) : S5P_INFORM1))
+#define REG_DIRECTGO_ADDR	(S5P_VA_SYSRAM + 0x24)
+#define REG_DIRECTGO_FLAG	(S5P_VA_SYSRAM + 0x20)
 #endif
 
 #define S5P_CHECK_AFTR		0xFCBA0D10
@@ -113,14 +105,14 @@ static int __maybe_unused exynos4_check_enter_mode(void)
 	/* Check power domain */
 	if (exynos4_check_reg_status(exynos5_power_domain,
 				    ARRAY_SIZE(exynos5_power_domain)))
-		return S5P_CHECK_DIDLE;
+		return EXYNOS_CHECK_DIDLE;
 
 	/* Check clock gating */
 	if (exynos4_check_reg_status(exynos5_clock_gating,
 				    ARRAY_SIZE(exynos5_clock_gating)))
-		return S5P_CHECK_DIDLE;
+		return EXYNOS_CHECK_DIDLE;
 
-	return S5P_CHECK_LPA;
+	return EXYNOS_CHECK_LPA;
 }
 
 static struct cpuidle_state exynos4_cpuidle_set[] __initdata = {
@@ -152,7 +144,7 @@ static struct cpuidle_driver exynos4_idle_driver = {
 /* Ext-GIC nIRQ/nFIQ is the only wakeup source in AFTR */
 static void exynos4_set_wakeupmask(void)
 {
-	__raw_writel(0x0000ff3e, S5P_WAKEUP_MASK);
+	__raw_writel(0x0000ff3e, EXYNOS_WAKEUP_MASK);
 }
 
 #if !defined(CONFIG_ARM_TRUSTZONE)
@@ -209,7 +201,7 @@ static int exynos4_enter_core0_aftr(struct cpuidle_device *dev,
 	exynos4_set_wakeupmask();
 
 	/* Set value of power down register for aftr mode */
-	exynos4_sys_powerdown_conf(SYS_AFTR);
+	exynos_sys_powerdown_conf(SYS_AFTR);
 
 	__raw_writel(virt_to_phys(s3c_cpu_resume), REG_DIRECTGO_ADDR);
 	__raw_writel(S5P_CHECK_AFTR, REG_DIRECTGO_FLAG);
@@ -217,9 +209,9 @@ static int exynos4_enter_core0_aftr(struct cpuidle_device *dev,
 	save_cpu_arch_register();
 
 	/* Setting Central Sequence Register for power down mode */
-	tmp = __raw_readl(S5P_CENTRAL_SEQ_CONFIGURATION);
-	tmp &= ~S5P_CENTRAL_LOWPWR_CFG;
-	__raw_writel(tmp, S5P_CENTRAL_SEQ_CONFIGURATION);
+	tmp = __raw_readl(EXYNOS_CENTRAL_SEQ_CONFIGURATION);
+	tmp &= ~EXYNOS_CENTRAL_LOWPWR_CFG;
+	__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_CONFIGURATION);
 
 	cpu_pm_enter();
 
@@ -240,14 +232,14 @@ static int exynos4_enter_core0_aftr(struct cpuidle_device *dev,
 	 * S5P_CENTRAL_LOWPWR_CFG bit will not be set automatically
 	 * in this situation.
 	 */
-	tmp = __raw_readl(S5P_CENTRAL_SEQ_CONFIGURATION);
-	if (!(tmp & S5P_CENTRAL_LOWPWR_CFG)) {
-		tmp |= S5P_CENTRAL_LOWPWR_CFG;
-		__raw_writel(tmp, S5P_CENTRAL_SEQ_CONFIGURATION);
+	tmp = __raw_readl(EXYNOS_CENTRAL_SEQ_CONFIGURATION);
+	if (!(tmp & EXYNOS_CENTRAL_LOWPWR_CFG)) {
+		tmp |= EXYNOS_CENTRAL_LOWPWR_CFG;
+		__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_CONFIGURATION);
 	}
 
 	/* Clear wakeup state register */
-	__raw_writel(0x0, S5P_WAKEUP_STAT);
+	__raw_writel(0x0, EXYNOS_WAKEUP_STAT);
 
 	do_gettimeofday(&after);
 
@@ -273,7 +265,7 @@ static int exynos4_enter_core0_lpa(struct cpuidle_device *dev,
 	/*
 	 * Unmasking all wakeup source.
 	 */
-	__raw_writel(0x0, S5P_WAKEUP_MASK);
+	__raw_writel(0x0, EXYNOS_WAKEUP_MASK);
 
 	/*
 	 * GPS and JPEG power can not turn off.
@@ -284,14 +276,14 @@ static int exynos4_enter_core0_lpa(struct cpuidle_device *dev,
 	__raw_writel(0xfcba0d10, REG_DIRECTGO_FLAG);
 
 	/* Set value of power down register for aftr mode */
-	exynos4_sys_powerdown_conf(SYS_LPA);
+	exynos_sys_powerdown_conf(SYS_LPA);
 
 	save_cpu_arch_register();
 
 	/* Setting Central Sequence Register for power down mode */
-	tmp = __raw_readl(S5P_CENTRAL_SEQ_CONFIGURATION);
-	tmp &= ~S5P_CENTRAL_LOWPWR_CFG;
-	__raw_writel(tmp, S5P_CENTRAL_SEQ_CONFIGURATION);
+	tmp = __raw_readl(EXYNOS_CENTRAL_SEQ_CONFIGURATION);
+	tmp &= ~EXYNOS_CENTRAL_LOWPWR_CFG;
+	__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_CONFIGURATION);
 
 	do {
 		/* Waiting for flushing UART fifo */
@@ -316,22 +308,22 @@ static int exynos4_enter_core0_lpa(struct cpuidle_device *dev,
 	 * S5P_CENTRAL_LOWPWR_CFG bit will not be set automatically
 	 * in this situation.
 	 */
-	tmp = __raw_readl(S5P_CENTRAL_SEQ_CONFIGURATION);
-	if (!(tmp & S5P_CENTRAL_LOWPWR_CFG)) {
-		tmp |= S5P_CENTRAL_LOWPWR_CFG;
-		__raw_writel(tmp, S5P_CENTRAL_SEQ_CONFIGURATION);
+	tmp = __raw_readl(EXYNOS_CENTRAL_SEQ_CONFIGURATION);
+	if (!(tmp & EXYNOS_CENTRAL_LOWPWR_CFG)) {
+		tmp |= EXYNOS_CENTRAL_LOWPWR_CFG;
+		__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_CONFIGURATION);
 	}
 
 	/* For release retention */
-	__raw_writel((1 << 28), S5P_PAD_RET_GPIO_OPTION);
-	__raw_writel((1 << 28), S5P_PAD_RET_UART_OPTION);
-	__raw_writel((1 << 28), S5P_PAD_RET_MMCA_OPTION);
-	__raw_writel((1 << 28), S5P_PAD_RET_MMCB_OPTION);
-	__raw_writel((1 << 28), S5P_PAD_RET_EBIA_OPTION);
-	__raw_writel((1 << 28), S5P_PAD_RET_EBIB_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_GPIO_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_UART_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_MMCA_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_MMCB_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIA_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIB_OPTION);
 
 	/* Clear wakeup state register */
-	__raw_writel(0x0, S5P_WAKEUP_STAT);
+	__raw_writel(0x0, EXYNOS_WAKEUP_STAT);
 
 	do_gettimeofday(&after);
 
@@ -377,7 +369,7 @@ static int exynos4_enter_lowpower(struct cpuidle_device *dev,
 	if (new_index == 0)
 		return exynos4_enter_idle(dev, drv, new_index);
 
-	if (exynos4_check_enter_mode() == S5P_CHECK_DIDLE)
+	if (exynos4_check_enter_mode() == EXYNOS_CHECK_DIDLE)
 		return exynos4_enter_core0_aftr(dev, drv, new_index);
 	else
 		return exynos4_enter_core0_lpa(dev, drv, new_index);
