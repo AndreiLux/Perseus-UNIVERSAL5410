@@ -1,5 +1,4 @@
-/* linux/arch/arm/mach-exynos4/cpuidle.c
- *
+/*
  * Copyright (c) 2011 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com
  *
@@ -36,14 +35,14 @@
 #define REG_DIRECTGO_FLAG	(S5P_VA_SYSRAM + 0x20)
 #endif
 
-#define S5P_CHECK_AFTR		0xFCBA0D10
+#define EXYNOS_CHECK_AFTR	0xFCBA0D10
 
-static int exynos4_enter_idle(struct cpuidle_device *dev,
-			struct cpuidle_driver *drv,
-			      int index);
-static int exynos4_enter_lowpower(struct cpuidle_device *dev,
-				struct cpuidle_driver *drv,
-				int index);
+static int exynos_enter_idle(struct cpuidle_device *dev,
+			     struct cpuidle_driver *drv,
+			     int index);
+static int exynos_enter_lowpower(struct cpuidle_device *dev,
+				 struct cpuidle_driver *drv,
+				 int index);
 
 struct check_reg_lpa {
 	void __iomem	*check_reg;
@@ -69,7 +68,7 @@ static struct check_reg_lpa exynos5_clock_gating[] = {
 	{.check_reg = EXYNOS5_CLKGATE_IP_PERIC,	.check_bit = 0x3FC0},
 };
 
-static int exynos4_check_reg_status(struct check_reg_lpa *reg_list,
+static int exynos_check_reg_status(struct check_reg_lpa *reg_list,
 				    unsigned int list_cnt)
 {
 	unsigned int i;
@@ -84,7 +83,7 @@ static int exynos4_check_reg_status(struct check_reg_lpa *reg_list,
 	return 0;
 }
 
-static int exynos4_uart_fifo_check(void)
+static int exynos_uart_fifo_check(void)
 {
 	int ret;
 	unsigned int check_val;
@@ -98,24 +97,24 @@ static int exynos4_uart_fifo_check(void)
 	return ret;
 }
 
-static int __maybe_unused exynos4_check_enter_mode(void)
+static int __maybe_unused exynos_check_enter_mode(void)
 {
 	/* Check power domain */
-	if (exynos4_check_reg_status(exynos5_power_domain,
+	if (exynos_check_reg_status(exynos5_power_domain,
 				    ARRAY_SIZE(exynos5_power_domain)))
 		return EXYNOS_CHECK_DIDLE;
 
 	/* Check clock gating */
-	if (exynos4_check_reg_status(exynos5_clock_gating,
+	if (exynos_check_reg_status(exynos5_clock_gating,
 				    ARRAY_SIZE(exynos5_clock_gating)))
 		return EXYNOS_CHECK_DIDLE;
 
 	return EXYNOS_CHECK_LPA;
 }
 
-static struct cpuidle_state exynos4_cpuidle_set[] __initdata = {
+static struct cpuidle_state exynos_cpuidle_set[] __initdata = {
 	[0] = {
-		.enter			= exynos4_enter_idle,
+		.enter			= exynos_enter_idle,
 		.exit_latency		= 1,
 		.target_residency	= 100000,
 		.flags			= CPUIDLE_FLAG_TIME_VALID,
@@ -123,7 +122,7 @@ static struct cpuidle_state exynos4_cpuidle_set[] __initdata = {
 		.desc			= "ARM clock gating(WFI)",
 	},
 	[1] = {
-		.enter			= exynos4_enter_lowpower,
+		.enter			= exynos_enter_lowpower,
 		.exit_latency		= 300,
 		.target_residency	= 100000,
 		.flags			= CPUIDLE_FLAG_TIME_VALID,
@@ -132,15 +131,15 @@ static struct cpuidle_state exynos4_cpuidle_set[] __initdata = {
 	},
 };
 
-static DEFINE_PER_CPU(struct cpuidle_device, exynos4_cpuidle_device);
+static DEFINE_PER_CPU(struct cpuidle_device, exynos_cpuidle_device);
 
-static struct cpuidle_driver exynos4_idle_driver = {
-	.name		= "exynos4_idle",
+static struct cpuidle_driver exynos_idle_driver = {
+	.name		= "exynos_idle",
 	.owner		= THIS_MODULE,
 };
 
 /* Ext-GIC nIRQ/nFIQ is the only wakeup source in AFTR */
-static void exynos4_set_wakeupmask(void)
+static void exynos_set_wakeupmask(void)
 {
 	__raw_writel(0x0000ff3e, EXYNOS_WAKEUP_MASK);
 }
@@ -185,9 +184,9 @@ static int idle_finisher(unsigned long flags)
 	return 1;
 }
 
-static int exynos4_enter_core0_aftr(struct cpuidle_device *dev,
-				struct cpuidle_driver *drv,
-				int index)
+static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
+				   struct cpuidle_driver *drv,
+				   int index)
 {
 	struct timeval before, after;
 	int idle_time;
@@ -196,13 +195,13 @@ static int exynos4_enter_core0_aftr(struct cpuidle_device *dev,
 	local_irq_disable();
 	do_gettimeofday(&before);
 
-	exynos4_set_wakeupmask();
+	exynos_set_wakeupmask();
 
 	/* Set value of power down register for aftr mode */
 	exynos_sys_powerdown_conf(SYS_AFTR);
 
 	__raw_writel(virt_to_phys(s3c_cpu_resume), REG_DIRECTGO_ADDR);
-	__raw_writel(S5P_CHECK_AFTR, REG_DIRECTGO_FLAG);
+	__raw_writel(EXYNOS_CHECK_AFTR, REG_DIRECTGO_FLAG);
 
 	save_cpu_arch_register();
 
@@ -249,9 +248,9 @@ static int exynos4_enter_core0_aftr(struct cpuidle_device *dev,
 	return index;
 }
 
-static int exynos4_enter_core0_lpa(struct cpuidle_device *dev,
-				struct cpuidle_driver *drv,
-				int index)
+static int exynos_enter_core0_lpa(struct cpuidle_device *dev,
+				  struct cpuidle_driver *drv,
+				  int index)
 {
 	struct timeval before, after;
 	int idle_time;
@@ -285,7 +284,7 @@ static int exynos4_enter_core0_lpa(struct cpuidle_device *dev,
 
 	do {
 		/* Waiting for flushing UART fifo */
-	} while (exynos4_uart_fifo_check());
+	} while (exynos_uart_fifo_check());
 
 	cpu_pm_enter();
 
@@ -333,7 +332,7 @@ static int exynos4_enter_core0_lpa(struct cpuidle_device *dev,
 	return index;
 }
 
-static int exynos4_enter_idle(struct cpuidle_device *dev,
+static int exynos_enter_idle(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv,
 				int index)
 {
@@ -354,7 +353,7 @@ static int exynos4_enter_idle(struct cpuidle_device *dev,
 	return index;
 }
 
-static int exynos4_enter_lowpower(struct cpuidle_device *dev,
+static int exynos_enter_lowpower(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv,
 				int index)
 {
@@ -365,37 +364,37 @@ static int exynos4_enter_lowpower(struct cpuidle_device *dev,
 		new_index = drv->safe_state_index;
 
 	if (new_index == 0)
-		return exynos4_enter_idle(dev, drv, new_index);
+		return exynos_enter_idle(dev, drv, new_index);
 
-	if (exynos4_check_enter_mode() == EXYNOS_CHECK_DIDLE)
-		return exynos4_enter_core0_aftr(dev, drv, new_index);
+	if (exynos_check_enter_mode() == EXYNOS_CHECK_DIDLE)
+		return exynos_enter_core0_aftr(dev, drv, new_index);
 	else
-		return exynos4_enter_core0_lpa(dev, drv, new_index);
+		return exynos_enter_core0_lpa(dev, drv, new_index);
 }
 
-static int __init exynos4_init_cpuidle(void)
+static int __init exynos_init_cpuidle(void)
 {
 	int i, max_cpuidle_state, cpu_id;
 	struct cpuidle_device *device;
-	struct cpuidle_driver *drv = &exynos4_idle_driver;
+	struct cpuidle_driver *drv = &exynos_idle_driver;
 
 	/* Setup cpuidle driver */
-	drv->state_count = (sizeof(exynos4_cpuidle_set) /
+	drv->state_count = (sizeof(exynos_cpuidle_set) /
 				       sizeof(struct cpuidle_state));
 	max_cpuidle_state = drv->state_count;
 	for (i = 0; i < max_cpuidle_state; i++) {
-		memcpy(&drv->states[i], &exynos4_cpuidle_set[i],
+		memcpy(&drv->states[i], &exynos_cpuidle_set[i],
 				sizeof(struct cpuidle_state));
 	}
 	drv->safe_state_index = 0;
-	cpuidle_register_driver(&exynos4_idle_driver);
+	cpuidle_register_driver(&exynos_idle_driver);
 
 	for_each_cpu(cpu_id, cpu_online_mask) {
-		device = &per_cpu(exynos4_cpuidle_device, cpu_id);
+		device = &per_cpu(exynos_cpuidle_device, cpu_id);
 		device->cpu = cpu_id;
 
 		if (cpu_id == 0)
-			device->state_count = (sizeof(exynos4_cpuidle_set) /
+			device->state_count = (sizeof(exynos_cpuidle_set) /
 					       sizeof(struct cpuidle_state));
 		else
 			device->state_count = 1;	/* Support IDLE only */
@@ -408,4 +407,4 @@ static int __init exynos4_init_cpuidle(void)
 
 	return 0;
 }
-device_initcall(exynos4_init_cpuidle);
+device_initcall(exynos_init_cpuidle);
