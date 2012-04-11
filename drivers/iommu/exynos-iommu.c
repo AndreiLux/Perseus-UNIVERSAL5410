@@ -649,8 +649,7 @@ static int exynos_sysmmu_probe(struct platform_device *pdev)
 
 	__set_fault_handler(data, &default_fault_handler);
 
-	if (dev->parent)
-		pm_runtime_enable(dev);
+	pm_runtime_enable(dev);
 
 	dev_dbg(dev, "(%s) Initialized\n", data->dbgname);
 	return 0;
@@ -672,11 +671,28 @@ err_alloc:
 	return ret;
 }
 
+static int exynos_pm_resume(struct device *dev)
+{
+	struct sysmmu_drvdata *data;
+
+	data = dev_get_drvdata(dev);
+
+	if (is_sysmmu_active(data))
+		__exynos_sysmmu_enable(data, data->pgtable, NULL);
+
+	return 0;
+}
+
+const struct dev_pm_ops exynos_pm_ops = {
+	.resume = &exynos_pm_resume,
+};
+
 static struct platform_driver exynos_sysmmu_driver = {
 	.probe		= exynos_sysmmu_probe,
 	.driver		= {
 		.owner		= THIS_MODULE,
 		.name		= "exynos-sysmmu",
+		.pm		= &exynos_pm_ops,
 	}
 };
 
