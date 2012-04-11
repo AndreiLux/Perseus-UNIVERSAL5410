@@ -1,0 +1,7 @@
+config STM_FW
+           tristate "STM Framework Driver Support"
+           default n
+           help
+                     STM Framework Driver
+
+
