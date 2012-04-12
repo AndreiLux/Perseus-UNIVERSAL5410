@@ -14,6 +14,7 @@
 #include <linux/io.h>
 #include <linux/export.h>
 #include <linux/time.h>
+#include <linux/serial_core.h>
 
 #include <asm/proc-fns.h>
 #include <asm/smp_scu.h>
@@ -26,6 +27,7 @@
 
 #include <plat/pm.h>
 #include <plat/cpu.h>
+#include <plat/regs-serial.h>
 
 #ifdef CONFIG_ARM_TRUSTZONE
 #define REG_DIRECTGO_ADDR	(S5P_VA_SYSRAM_NS + 0x24)
@@ -35,7 +37,7 @@
 #define REG_DIRECTGO_FLAG	(S5P_VA_SYSRAM + 0x20)
 #endif
 
-#define EXYNOS_CHECK_AFTR	0xFCBA0D10
+#define EXYNOS_CHECK_DIRECTGO	0xFCBA0D10
 
 static int exynos_enter_idle(struct cpuidle_device *dev,
 			     struct cpuidle_driver *drv,
@@ -55,7 +57,7 @@ struct check_reg_lpa {
  */
 static struct check_reg_lpa exynos5_power_domain[] = {
 	{.check_reg = EXYNOS5_GSCL_STATUS,	.check_bit = 0x7},
-	{.check_reg = EXYNOS5_ISP_STATUS,	.check_bit = 0x7},
+	{.check_reg = EXYNOS5_G3D_STATUS,	.check_bit = 0x7},
 };
 
 /*
@@ -63,9 +65,12 @@ static struct check_reg_lpa exynos5_power_domain[] = {
  * If clock of list is not gated, system can not enter LPA mode.
  */
 static struct check_reg_lpa exynos5_clock_gating[] = {
-	{.check_reg = EXYNOS5_CLKGATE_IP_GEN,	.check_bit = 0x4210},
-	{.check_reg = EXYNOS5_CLKGATE_IP_FSYS,	.check_bit = 0x0002},
-	{.check_reg = EXYNOS5_CLKGATE_IP_PERIC,	.check_bit = 0x3FC0},
+	{.check_reg = EXYNOS5_CLKSRC_MASK_DISP1_0,	.check_bit = 0x00000001},
+	{.check_reg = EXYNOS5_CLKGATE_IP_DISP1,		.check_bit = 0x00000008},
+	{.check_reg = EXYNOS5_CLKGATE_IP_MFC,		.check_bit = 0x00000001},
+	{.check_reg = EXYNOS5_CLKGATE_IP_GEN,		.check_bit = 0x00004016},
+	{.check_reg = EXYNOS5_CLKGATE_IP_FSYS,		.check_bit = 0x00000002},
+	{.check_reg = EXYNOS5_CLKGATE_IP_PERIC,		.check_bit = 0x00377FC0},
 };
 
 static int exynos_check_reg_status(struct check_reg_lpa *reg_list,
@@ -90,7 +95,7 @@ static int exynos_uart_fifo_check(void)
 
 	/* Check UART for console is empty */
 	check_val = __raw_readl(S5P_VA_UART(CONFIG_S3C_LOWLEVEL_UART_PORT) +
-				0x18);
+				S3C2410_UFSTAT);
 
 	ret = ((check_val >> 16) & 0xff);
 
@@ -116,7 +121,7 @@ static struct cpuidle_state exynos_cpuidle_set[] __initdata = {
 	[0] = {
 		.enter			= exynos_enter_idle,
 		.exit_latency		= 1,
-		.target_residency	= 100000,
+		.target_residency	= 10000,
 		.flags			= CPUIDLE_FLAG_TIME_VALID,
 		.name			= "C0",
 		.desc			= "ARM clock gating(WFI)",
@@ -124,7 +129,7 @@ static struct cpuidle_state exynos_cpuidle_set[] __initdata = {
 	[1] = {
 		.enter			= exynos_enter_lowpower,
 		.exit_latency		= 300,
-		.target_residency	= 100000,
+		.target_residency	= 10000,
 		.flags			= CPUIDLE_FLAG_TIME_VALID,
 		.name			= "C1",
 		.desc			= "ARM power down",
@@ -144,27 +149,6 @@ static void exynos_set_wakeupmask(void)
 	__raw_writel(0x0000ff3e, EXYNOS_WAKEUP_MASK);
 }
 
-#if !defined(CONFIG_ARM_TRUSTZONE)
-static unsigned int g_pwr_ctrl, g_diag_reg;
-
-static void save_cpu_arch_register(void)
-{
-	/*read power control register*/
-	asm("mrc p15, 0, %0, c15, c0, 0" : "=r"(g_pwr_ctrl) : : "cc");
-	/*read diagnostic register*/
-	asm("mrc p15, 0, %0, c15, c0, 1" : "=r"(g_diag_reg) : : "cc");
-	return;
-}
-
-static void restore_cpu_arch_register(void)
-{
-	/*write power control register*/
-	asm("mcr p15, 0, %0, c15, c0, 0" : : "r"(g_pwr_ctrl) : "cc");
-	/*write diagnostic register*/
-	asm("mcr p15, 0, %0, c15, c0, 1" : : "r"(g_diag_reg) : "cc");
-	return;
-}
-#else
 static void save_cpu_arch_register(void)
 {
 }
@@ -172,7 +156,6 @@ static void save_cpu_arch_register(void)
 static void restore_cpu_arch_register(void)
 {
 }
-#endif
 
 static int idle_finisher(unsigned long flags)
 {
@@ -201,7 +184,7 @@ static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 	exynos_sys_powerdown_conf(SYS_AFTR);
 
 	__raw_writel(virt_to_phys(s3c_cpu_resume), REG_DIRECTGO_ADDR);
-	__raw_writel(EXYNOS_CHECK_AFTR, REG_DIRECTGO_FLAG);
+	__raw_writel(EXYNOS_CHECK_DIRECTGO, REG_DIRECTGO_FLAG);
 
 	save_cpu_arch_register();
 
@@ -265,7 +248,7 @@ static int exynos_enter_core0_lpa(struct cpuidle_device *dev,
 	__raw_writel(0x0, EXYNOS_WAKEUP_MASK);
 
 	__raw_writel(virt_to_phys(s3c_cpu_resume), REG_DIRECTGO_ADDR);
-	__raw_writel(0xfcba0d10, REG_DIRECTGO_FLAG);
+	__raw_writel(EXYNOS_CHECK_DIRECTGO, REG_DIRECTGO_FLAG);
 
 	/* Set value of power down register for aftr mode */
 	exynos_sys_powerdown_conf(SYS_LPA);
@@ -374,8 +357,8 @@ static int __init exynos_init_cpuidle(void)
 	struct cpuidle_driver *drv = &exynos_idle_driver;
 
 	/* Setup cpuidle driver */
-	drv->state_count = (sizeof(exynos_cpuidle_set) /
-				       sizeof(struct cpuidle_state));
+	drv->state_count = ARRAY_SIZE(exynos_cpuidle_set);
+
 	max_cpuidle_state = drv->state_count;
 	for (i = 0; i < max_cpuidle_state; i++) {
 		memcpy(&drv->states[i], &exynos_cpuidle_set[i],
@@ -389,8 +372,7 @@ static int __init exynos_init_cpuidle(void)
 		device->cpu = cpu_id;
 
 		if (cpu_id == 0)
-			device->state_count = (sizeof(exynos_cpuidle_set) /
-					       sizeof(struct cpuidle_state));
+			device->state_count = ARRAY_SIZE(exynos_cpuidle_set);
 		else
 			device->state_count = 1;	/* Support IDLE only */
 
