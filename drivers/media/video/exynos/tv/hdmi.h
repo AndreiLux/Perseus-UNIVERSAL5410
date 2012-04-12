@@ -341,6 +341,7 @@ void hdmi_set_int_mask(struct hdmi_device *hdev, u8 mask, int en);
 void hdmi_sw_hpd_enable(struct hdmi_device *hdev, int en);
 void hdmi_sw_hpd_plug(struct hdmi_device *hdev, int en);
 void hdmi_phy_sw_reset(struct hdmi_device *hdev);
+void hdmi_sw_reset(struct hdmi_device *hdev);
 void hdmi_dumpregs(struct hdmi_device *hdev, char *prefix);
 void hdmi_set_3d_info(struct hdmi_device *hdev);
 void hdmi_set_dvi_mode(struct hdmi_device *hdev);

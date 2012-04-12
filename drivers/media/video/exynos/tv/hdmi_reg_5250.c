@@ -2768,6 +2768,13 @@ void hdmi_phy_sw_reset(struct hdmi_device *hdev)
 	hdmi_write_mask(hdev, HDMI_PHY_RSTOUT,  0, HDMI_PHY_SW_RSTOUT);
 }
 
+void hdmi_sw_reset(struct hdmi_device *hdev)
+{
+	hdmi_write_mask(hdev, HDMI_CORE_RSTOUT, 0, HDMI_CORE_SW_RSTOUT);
+	mdelay(10);
+	hdmi_write_mask(hdev, HDMI_CORE_RSTOUT, ~0, HDMI_CORE_SW_RSTOUT);
+}
+
 void hdmi_dumpregs(struct hdmi_device *hdev, char *prefix)
 {
 #define DUMPREG(reg_id) \
