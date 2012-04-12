@@ -1402,12 +1402,6 @@ config ARM_ERRATA_761171
 	help
 	  This option enables the workaround for the 761171 Cortex-A15 erratum.
 
-config ARM_ERRATA_762974
-	bool "ARM errata: disable l2 prefetch"
-	depends on CPU_V7 && SMP
-	help
-	  This option enables the workaround for the 762964 Cortex-A15 erratum.
-
 config ARM_ERRATA_763722
 	bool "ARM errata: disable store streaming of mode 2 and mode 3"
 	depends on CPU_V7 && SMP
