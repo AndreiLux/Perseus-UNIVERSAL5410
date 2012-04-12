@@ -25,9 +25,34 @@
 
 struct regulator_dev *dummy_regulator_rdev;
 
-static struct regulator_init_data dummy_initdata;
+static struct regulator_init_data dummy_initdata = {
+	.constraints = {
+		.name = "dummy",
+		.min_uV = 0,
+		.max_uV = 5000000,
+		.apply_uV = 0,
+		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
+		.state_mem = {
+			.disabled = 0,
+		},
+	},
+};
 
-static struct regulator_ops dummy_ops;
+static int dummy_get_voltage(struct regulator_dev *rdev)
+{
+	return 0;
+}
+
+static int dummy_set_voltage(struct regulator_dev *rdev,
+		int min_uV, int max_uV, unsigned *selector)
+{
+	return 0;
+}
+
+static struct regulator_ops dummy_ops = {
+	.get_voltage = dummy_get_voltage,
+	.set_voltage = dummy_set_voltage,
+};
 
 static struct regulator_desc dummy_desc = {
 	.name = "dummy",
