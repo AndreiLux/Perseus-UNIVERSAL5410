@@ -6114,9 +6114,9 @@ static const struct alc_fixup alc269_fixups[] = {
 		.v.pins = (const struct alc_pincfg[]) {
 			{ 0x12, 0x99a3092f }, /* int-mic */
 			{ 0x14, 0x99130110 }, /* speaker */
-			{ 0x18, 0x01a19c20 }, /* mic */
+			{ 0x18, 0x03a11c20 }, /* mic */
 			{ 0x1e, 0x0346101e }, /* SPDIF1 */
-			{ 0x21, 0x0121401f }, /* HP out */
+			{ 0x21, 0x0321101f }, /* HP out */
 			{ }
 		},
 	},
