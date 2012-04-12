@@ -104,7 +104,89 @@
 	};
 
 	i2c@13860000 {
-		status = "disabled";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		samsung,i2c-sda-delay = <100>;
+		samsung,i2c-max-bus-freq = <20000>;
+		gpios = <&gpd1 0 2 3 0>,
+			<&gpd1 1 2 3 0>;
+
+		max8997_pmic@66 {
+			compatible = "maxim,max8997-pmic";
+			interrupt-parent = <&wakeup_eint>;
+			reg = <0x66>;
+			interrupts = <4 0>, <3 0>;
+
+			max8997,pmic-buck1-uses-gpio-dvs;
+			max8997,pmic-buck2-uses-gpio-dvs;
+			max8997,pmic-buck5-uses-gpio-dvs;
+			max8997,pmic-ignore-gpiodvs-side-effect;
+			max8997,pmic-buck125-default-dvs-idx = <0>;
+			max8997,pmic-buck125-dvs-gpios = <&gpx0 0 1 0 0>, /* SET1 */
+							 <&gpx0 1 1 0 0>, /* SET2 */
+							 <&gpx0 2 1 0 0>; /* SET3 */
+			max8997,pmic-buck1-dvs-voltage = <1350000>, <1300000>,
+							 <1250000>, <1200000>,
+							 <1150000>, <1100000>,
+							 <1000000>, <950000>;
+			max8997,pmic-buck2-dvs-voltage = <1100000>, <1100000>,
+							 <1100000>, <1100000>,
+							 <1000000>, <1000000>,
+							 <1000000>, <1000000>;
+			max8997,pmic-buck5-dvs-voltage = <1200000>, <1200000>,
+							 <1200000>, <1200000>,
+							 <1200000>, <1200000>,
+							 <1200000>, <1200000>;
+
+			regulators {
+				ldo1_reg: LDO1 {
+					regulator-name = "VDD_ABB_3.3V";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <3300000>;
+				};
+
+				ldo2_reg: LDO2 {
+					regulator-name = "VDD_ALIVE_1.1V";
+					regulator-min-microvolt = <1100000>;
+					regulator-max-microvolt = <1100000>;
+					regulator-always-on;
+				};
+
+				ldo3_reg: LDO3 {
+					regulator-name = "VMIPI_1.1V";
+					regulator-min-microvolt = <1100000>;
+					regulator-max-microvolt = <1100000>;
+				};
+
+				ldo4_reg: LDO4 {
+					regulator-name = "VDD_RTC_1.8V";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt	= <1800000>;
+					regulator-always-on;
+				};
+
+				ldo6_reg: LDO6 {
+					regulator-name = "VMIPI_1.8V";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt	= <1800000>;
+					regulator-always-on;
+				};
+
+				ldo7_reg: LDO7 {
+					regulator-name = "VDD_AUD_1.8V";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt	= <1800000>;
+					regulator-always-on;
+				};
+
+				buck7_reg: BUCK7 {
+					regulator-name = "VDD_LCD_3.3V";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <3300000>;
+					regulator-boot-on;
+				};
+			};
+		};
 	};
 
 	i2c@13870000 {
