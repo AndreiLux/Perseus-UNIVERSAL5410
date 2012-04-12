@@ -268,13 +268,9 @@ __v7_setup:
 	mcreq	p15, 1, r10, c15, c0, 3		@ write l2 prefetch ctrl register
 #endif
 #ifdef CONFIG_ARM_ERRATA_763722
-	teq	r6, #0x0			@ present in r0p0
-	teqne	r6, #0x1			@ present in r0p1
-	teqne	r6, #0x2			@ present in r0p2
-	teqne	r6, #0x3			@ present in r0p3
-	mrceq	p15, 0, r10, c1, c0, 1		@ read aux control register
-	orreq	r10, r10, #15 << 25		@ set [28:25] bit
-	mcreq	p15, 0, r10, c1, c0, 1		@ write aux control register
+	mrc	p15, 0, r10, c1, c0, 1		@ read aux control register
+	orr	r10, r10, #15 << 25		@ set [28:25] bit
+	mcr	p15, 0, r10, c1, c0, 1		@ write aux control register
 #endif
 
 4:	mov	r10, #0
