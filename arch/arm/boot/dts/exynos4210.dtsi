@@ -57,6 +57,18 @@
 				<0 32 0>;
 	};
 
+	power-domain-lcd0 {
+		compatible = "samsung,exynos4210-pd";
+		reg = <0x10023C00 0x10>;
+	};
+
+	fimd@11C00000 {
+		compatible = "samsung,exynos4210-fimd";
+		interrupt-parent = <&combiner>;
+		reg = <0x11C00000 0x8000>;
+		interrupts = <11 1>, <11 0>, <11 2>;
+	};
+
 	watchdog@10060000 {
 		compatible = "samsung,s3c2410-wdt";
 		reg = <0x10060000 0x100>;
