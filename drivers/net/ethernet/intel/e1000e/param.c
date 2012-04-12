@@ -166,8 +166,8 @@ E1000_PARAM(WriteProtectNVM, "Write-protect NVM [WARNING: disabling this can lea
  *
  * Default Value: 1 (enabled)
  */
-E1000_PARAM(CrcStripping, "Enable CRC Stripping, disable if your BMC needs " \
-                          "the CRC");
+E1000_PARAM(CrcStripping,
+	    "Enable CRC Stripping, disable if your BMC needs the CRC");
 
 struct e1000_option {
 	enum { enable_option, range_option, list_option } type;
