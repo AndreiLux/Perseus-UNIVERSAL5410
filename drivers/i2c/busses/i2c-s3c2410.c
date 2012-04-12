@@ -103,8 +103,10 @@ static inline int s3c24xx_i2c_is2440(struct s3c24xx_i2c *i2c)
 
 #ifdef CONFIG_OF
 	if (i2c->dev->of_node)
-		return of_device_is_compatible(i2c->dev->of_node,
-				"samsung,s3c2440-i2c");
+		return (of_device_is_compatible(i2c->dev->of_node,
+				"samsung,s3c2440-i2c") ||
+			of_device_is_compatible(i2c->dev->of_node,
+				"samsung,s3c2440-hdmiphy-i2c"));
 #endif
 
 	type = platform_get_device_id(pdev)->driver_data;
@@ -120,6 +122,12 @@ static inline int s3c24xx_i2c_is2440_hdmiphy(struct s3c24xx_i2c *i2c)
 {
 	struct platform_device *pdev = to_platform_device(i2c->dev);
 	enum s3c24xx_i2c_type type;
+
+#ifdef CONFIG_OF
+	if (i2c->dev->of_node)
+		return of_device_is_compatible(i2c->dev->of_node,
+				"samsung,s3c2440-hdmiphy-i2c");
+#endif
 
 	type = platform_get_device_id(pdev)->driver_data;
 	return type == TYPE_S3C2440_HDMIPHY;
@@ -1159,6 +1167,7 @@ MODULE_DEVICE_TABLE(platform, s3c24xx_driver_ids);
 static const struct of_device_id s3c24xx_i2c_match[] = {
 	{ .compatible = "samsung,s3c2410-i2c" },
 	{ .compatible = "samsung,s3c2440-i2c" },
+	{ .compatible = "samsung,s3c2440-hdmiphy-i2c" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, s3c24xx_i2c_match);
