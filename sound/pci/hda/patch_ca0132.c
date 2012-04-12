@@ -975,7 +975,7 @@ static void ca0132_config(struct hda_codec *codec)
 
 	/* headphone */
 	cfg->hp_outs = 1;
-	cfg->hp_pins[0] = 0x0f;
+	cfg->hp_pins[0] = 0x10;
 
 	spec->hp_dac = 0;
 	spec->multiout.hp_nid = 0;
@@ -1038,6 +1038,18 @@ static void ca0132_auto_setup_eapd(struct hda_codec *codec, int on)
 	}
 }
 
+/* Enable GPIO mask and set output for HP amp. */
+static const struct hda_verb ca0132_hp_portd_amp_mpio2[] = {
+	{0x01, 0x790, 0x04}, /* map MPIO-2 to GPIO-0 */
+	{0x01, AC_VERB_SET_GPIO_MASK, 0x01},
+	{0x01, AC_VERB_SET_GPIO_DIRECTION, 0x01},
+	{0x01, AC_VERB_SET_GPIO_DATA, 0x01},
+	/* PortD config for HP output. */
+	{0x15, AC_VERB_SET_GPIO_DIRECTION, 0x0d},
+	{0x15, AC_VERB_SET_GPIO_WAKE_MASK, 0x20},
+	{ }
+};
+
 static int ca0132_init(struct hda_codec *codec)
 {
 	struct ca0132_spec *spec = codec->spec;
@@ -1058,6 +1070,7 @@ static int ca0132_init(struct hda_codec *codec)
 
 	ca0132_set_ct_ext(codec, 1);
 	ca0132_auto_setup_eapd(codec, 1);
+	snd_hda_sequence_write(codec, ca0132_hp_portd_amp_mpio2);
 
 	return 0;
 }
