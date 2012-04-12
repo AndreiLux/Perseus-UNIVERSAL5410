@@ -251,14 +251,6 @@ __v7_setup:
 3:	ldr	r10, =0x00000c0f		@ Cortex-A15 primary part number
 	teq	r0, r10
 	bne	4f
-#ifdef CONFIG_ARM_ERRATA_761171
-	teq	r6, #0x0			@ present in r0p0
-	teqne	r6, #0x1			@ present in r0p1
-	teqne	r6, #0x2			@ present in r0p2
-	mrceq	p15, 0, r10, c1, c0, 1		@ read aux control register
-	orreq	r10, r10, #3 << 27		@ set [28:27] bit
-	mcreq	p15, 0, r10, c1, c0, 1		@ write aux control register
-#endif
 #ifdef CONFIG_ARM_ERRATA_763722
 	mrc	p15, 0, r10, c1, c0, 1		@ read aux control register
 	orr	r10, r10, #15 << 25		@ set [28:25] bit
