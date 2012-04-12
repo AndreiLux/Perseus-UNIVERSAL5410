@@ -1396,11 +1396,6 @@ config PL310_ERRATA_769419
 	  on systems with an outer cache, the store buffer is drained
 	  explicitly.
 
-config ARM_ERRATA_763722
-	bool "ARM errata: disable store streaming of mode 2 and mode 3"
-	depends on CPU_V7 && SMP
-	help
-	  This option enables the workaround for the 763722 Cortex-A15 erratum.
 endmenu
 
 source "arch/arm/common/Kconfig"

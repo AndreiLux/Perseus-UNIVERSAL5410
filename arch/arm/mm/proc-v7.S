@@ -210,7 +210,7 @@ __v7_setup:
 	orreq	r10, r10, #(1 << 22)		@ set the Write Allocate disable bit
 	mcreq	p15, 1, r10, c9, c0, 2		@ write the L2 cache aux ctrl register
 #endif
-	b	4f
+	b	3f
 
 	/* Cortex-A9 Errata */
 2:	ldr	r10, =0x00000c09		@ Cortex-A9 primary part number
@@ -245,19 +245,8 @@ __v7_setup:
 	mcrlt	p15, 0, r10, c15, c0, 1		@ write diagnostic register
 1:
 #endif
-	b	4f
 
-	/* Cortex-A15 Errata */
-3:	ldr	r10, =0x00000c0f		@ Cortex-A15 primary part number
-	teq	r0, r10
-	bne	4f
-#ifdef CONFIG_ARM_ERRATA_763722
-	mrc	p15, 0, r10, c1, c0, 1		@ read aux control register
-	orr	r10, r10, #15 << 25		@ set [28:25] bit
-	mcr	p15, 0, r10, c1, c0, 1		@ write aux control register
-#endif
-
-4:	mov	r10, #0
+3:	mov	r10, #0
 	mcr	p15, 0, r10, c7, c5, 0		@ I+BTB cache invalidate
 	dsb
 #ifdef CONFIG_MMU
