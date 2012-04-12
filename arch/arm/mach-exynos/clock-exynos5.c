@@ -193,6 +193,11 @@ static int exynos5_clksrc_mask_peric0_ctrl(struct clk *clk, int enable)
 	return s5p_gatectrl(EXYNOS5_CLKSRC_MASK_PERIC0, clk, enable);
 }
 
+static int exynos5_clksrc_mask_gen_ctrl(struct clk *clk, int enable)
+{
+	return s5p_gatectrl(EXYNOS5_CLKSRC_MASK_GEN, clk, enable);
+}
+
 static int exynos5_clk_ip_acp_ctrl(struct clk *clk, int enable)
 {
 	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_ACP, clk, enable);
@@ -1588,9 +1593,12 @@ static struct clksrc_clk exynos5_clksrcs[] = {
 	}, {
 		.clk	= {
 			.name		= "sclk_jpeg",
-			.parent		= &exynos5_clk_mout_cpll.clk,
+			.enable		= exynos5_clksrc_mask_gen_ctrl,
+			.ctrlbit	= (1 << 0),
 		},
-		.reg_div = { .reg = EXYNOS5_CLKDIV_GEN, .shift = 4, .size = 3 },
+		.sources = &exynos5_clkset_group,
+		.reg_src = { .reg = EXYNOS5_CLKSRC_GEN, .shift = 0, .size = 4 },
+		.reg_div = { .reg = EXYNOS5_CLKDIV_GEN, .shift = 4, .size = 4 },
 	}, {
 		.clk	= {
 			.name		= "sclk_usbdrd30",
