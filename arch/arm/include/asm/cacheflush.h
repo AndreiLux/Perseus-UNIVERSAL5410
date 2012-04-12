@@ -50,6 +50,10 @@
  *
  *		Unconditionally clean and invalidate the entire cache.
  *
+ *	flush_kern_dcache_level(level)
+ *
+ *		Flush data cache levels up to the level input parameter.
+ *
  *	flush_user_all()
  *
  *		Clean and invalidate all user space cache entries
@@ -98,6 +102,7 @@
 struct cpu_cache_fns {
 	void (*flush_icache_all)(void);
 	void (*flush_kern_all)(void);
+	void (*flush_kern_dcache_level)(int);
 	void (*flush_user_all)(void);
 	void (*flush_user_range)(unsigned long, unsigned long, unsigned int);
 
@@ -198,6 +203,23 @@ extern void copy_to_user_page(struct vm_area_struct *, struct page *,
 #define __flush_icache_preferred	__cpuc_flush_icache_all
 #else
 #define __flush_icache_preferred	__flush_icache_all_generic
+#endif
+
+#define flush_cache_level_preferred()		(-1)
+
+static inline int flush_cache_level_cpu(void)
+{
+	return flush_cache_level_preferred();
+}
+/*
+ * Flush data cache up to a certain cache level
+ * level -	upper cache level to clean
+ *		if level == -1, default to flush_kern_all
+ */
+#ifdef MULTI_CACHE
+#define flush_dcache_level(level)	cpu_cache.flush_kern_dcache_level(level)
+#else
+#define flush_dcache_level(level)	__cpuc_flush_kern_all()
 #endif
 
 static inline void __flush_icache_all(void)
