@@ -205,7 +205,23 @@ extern void copy_to_user_page(struct vm_area_struct *, struct page *,
 #define __flush_icache_preferred	__flush_icache_all_generic
 #endif
 
+#if __LINUX_ARM_ARCH__ >= 7
+/*
+ * Hotplug and CPU idle code requires to flush only cache levels
+ * impacted by power down operations. In v7 the upper level is
+ * retrieved by reading LoUIS field of CLIDR, since inner shareability
+ * represents the cache boundaries affected by per-CPU shutdown
+ * operations in the most common platforms.
+ */
+#define __cache_level_v7_uis ({ \
+	u32 val; \
+	asm volatile("mrc p15, 1, %0, c0, c0, 1" : "=r"(val)); \
+	((val & 0xe00000) >> 21); })
+
+#define flush_cache_level_preferred()		__cache_level_v7_uis
+#else
 #define flush_cache_level_preferred()		(-1)
+#endif
 
 static inline int flush_cache_level_cpu(void)
 {
