@@ -1835,6 +1835,11 @@ static int __devinit dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 	else
 		mmc->caps2 = 0;
 
+	if (host->pdata->pm_caps) {
+		mmc->pm_caps |= host->pdata->pm_caps;
+		mmc->pm_flags = mmc->pm_caps;
+	}
+
 	if (host->pdata->get_bus_wd) {
 		if (host->pdata->get_bus_wd(slot->id) >= 4) {
 			mmc->caps |= MMC_CAP_4_BIT_DATA;
@@ -2238,6 +2243,8 @@ int dw_mci_suspend(struct dw_mci *host)
 		struct dw_mci_slot *slot = host->slot[i];
 		if (!slot)
 			continue;
+		if (slot->mmc)
+			slot->mmc->pm_flags |= slot->mmc->pm_caps;
 		ret = mmc_suspend_host(slot->mmc);
 		if (ret < 0) {
 			while (--i >= 0) {
