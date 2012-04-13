@@ -577,7 +577,6 @@ void gsc_hw_set_out_image_format(struct gsc_ctx *ctx)
 	cfg = readl(dev->regs + GSC_OUT_CON);
 	cfg &= ~(GSC_OUT_RGB_TYPE_MASK | GSC_OUT_YUV422_1P_ORDER_MASK |
 		 GSC_OUT_CHROMA_ORDER_MASK | GSC_OUT_FORMAT_MASK |
-		 GSC_OUT_TILE_TYPE_MASK | GSC_OUT_TILE_MODE |
 		 GSC_OUT_CHROM_STRIDE_SEL_MASK);
 	writel(cfg, dev->regs + GSC_OUT_CON);
 
@@ -623,10 +622,6 @@ void gsc_hw_set_out_image_format(struct gsc_ctx *ctx)
 
 	if (is_AYV12(frame->fmt->pixelformat))
 		gsc_hw_set_out_chrom_stride(ctx);
-
-	if (is_tiled(frame->fmt))
-		cfg |= GSC_OUT_TILE_C_16x8 | GSC_OUT_TILE_MODE;
-
 end_set:
 	writel(cfg, dev->regs + GSC_OUT_CON);
 }
