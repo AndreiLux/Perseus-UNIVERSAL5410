@@ -225,6 +225,8 @@ struct dw_mci_board {
 
 	unsigned int caps;	/* Capabilities */
 	unsigned int caps2;	/* More capabilities */
+	unsigned int pm_caps;	/* supported pm features */
+
 	/*
 	 * Override fifo depth. If 0, autodetect it from the FIFOTH register,
 	 * but note that this may not be reliable after a bootloader has used
