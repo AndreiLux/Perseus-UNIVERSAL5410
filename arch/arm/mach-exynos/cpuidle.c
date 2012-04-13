@@ -199,7 +199,8 @@ static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 
 #ifdef CONFIG_SMP
 #if !defined(CONFIG_ARM_TRUSTZONE)
-	scu_enable(S5P_VA_SCU);
+	if (!soc_is_exynos5250())
+		scu_enable(S5P_VA_SCU);
 #endif
 #endif
 	cpu_pm_exit();
@@ -270,7 +271,8 @@ static int exynos_enter_core0_lpa(struct cpuidle_device *dev,
 
 #ifdef CONFIG_SMP
 #if !defined(CONFIG_ARM_TRUSTZONE)
-	scu_enable(S5P_VA_SCU);
+	if (!soc_is_exynos5250())
+		scu_enable(S5P_VA_SCU);
 #endif
 #endif
 	cpu_pm_exit();
