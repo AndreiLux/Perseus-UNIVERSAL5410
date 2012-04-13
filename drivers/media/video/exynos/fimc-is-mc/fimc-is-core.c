@@ -1861,7 +1861,7 @@ static int fimc_is_probe(struct platform_device *pdev)
 		goto p_err3;
 	}
 
-#if defined(CONFIG_EXYNOS_DEV_PD) && defined(CONFIG_PM_RUNTIME)
+#if defined(CONFIG_PM_RUNTIME)
 	pm_runtime_enable(&pdev->dev);
 #endif
 

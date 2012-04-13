@@ -14,7 +14,6 @@
 #include <linux/dma-mapping.h>
 
 #include <plat/cpu.h>
-#include <plat/pd.h>
 #include <plat/devs.h>
 
 #include <mach/map.h>
@@ -94,29 +93,10 @@ struct sysmmu_resource_map {
 	.clocknames = SYSMMU_CLOCK_NAME "," SYSMMU_CLOCK_NAME2,		\
 }
 
-#ifdef CONFIG_EXYNOS_DEV_PD
-#define SYSMMU_RESOURCE_MAPPING_PD(core, ipname, resname, pd) {		\
-	.pdev = &SYSMMU_PLATDEV(ipname),				\
-	.res = SYSMMU_RESOURCE_NAME(EXYNOS##core, resname),		\
-	.rnum = ARRAY_SIZE(SYSMMU_RESOURCE_NAME(EXYNOS##core, resname)),\
-	.clocknames = SYSMMU_CLOCK_NAME,				\
-	.pdd = &exynos##core##_device_pd[pd].dev,			\
-}
-
-#define SYSMMU_RESOURCE_MAPPING_MCPD(core, ipname, resname, pd, pdata) {\
-	.pdev = &SYSMMU_PLATDEV(ipname),				\
-	.res = SYSMMU_RESOURCE_NAME(EXYNOS##core, resname),		\
-	.rnum = ARRAY_SIZE(SYSMMU_RESOURCE_NAME(EXYNOS##core, resname)),\
-	.clocknames = SYSMMU_CLOCK_NAME "," SYSMMU_CLOCK_NAME2,		\
-	.pdd = &exynos##core##_device_pd[pd].dev,			\
-}
-#else
 #define SYSMMU_RESOURCE_MAPPING_PD(core, ipname, resname, pd)		\
 		SYSMMU_RESOURCE_MAPPING(core, ipname, resname)
 #define SYSMMU_RESOURCE_MAPPING_MCPD(core, ipname, resname, pd, pdata)	\
 		SYSMMU_RESOURCE_MAPPING_MC(core, ipname, resname, pdata)
-
-#endif /* CONFIG_EXYNOS_DEV_PD */
 
 #ifdef CONFIG_ARCH_EXYNOS4
 SYSMMU_RESOURCE_DEFINE(EXYNOS4, fimc0,	FIMC0,	FIMC0);

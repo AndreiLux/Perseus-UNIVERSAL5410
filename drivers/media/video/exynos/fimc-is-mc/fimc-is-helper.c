@@ -862,13 +862,13 @@ done:
 
 void fimc_is_hw_a5_power(struct fimc_is_dev *isp, int on)
 {
-#if defined(CONFIG_EXYNOS_DEV_PD) && defined(CONFIG_PM_RUNTIME)
+#if defined(CONFIG_PM_RUNTIME)
 	struct device *dev = &isp->pdev->dev;
 #endif
 
 	printk(KERN_INFO "%s(%d)\n", __func__, on);
 
-#if defined(CONFIG_EXYNOS_DEV_PD) && defined(CONFIG_PM_RUNTIME)
+#if defined(CONFIG_PM_RUNTIME)
 	if (on)
 		pm_runtime_get_sync(dev);
 	else

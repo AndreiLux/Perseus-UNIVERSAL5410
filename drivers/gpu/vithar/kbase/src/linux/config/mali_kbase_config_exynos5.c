@@ -19,7 +19,6 @@
 #include <ump/ump_common.h>
 #include <mach/map.h>
 #include <plat/devs.h>
-#include <plat/pd.h>
 #include <linux/pm_runtime.h>
 #include <kbase/src/platform/mali_kbase_platform.h>
 #include <kbase/src/platform/mali_kbase_runtime_pm.h>

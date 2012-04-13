@@ -1755,10 +1755,6 @@ static void __init smdk5250_machine_init(void)
 #endif
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_MIPI_CSIS
-#if defined(CONFIG_EXYNOS_DEV_PD)
-	s5p_device_mipi_csis0.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
-	s5p_device_mipi_csis1.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
-#endif
 	s3c_set_platdata(&s5p_mipi_csis0_default_data,
 			sizeof(s5p_mipi_csis0_default_data), &s5p_device_mipi_csis0);
 	s3c_set_platdata(&s5p_mipi_csis1_default_data,
@@ -1768,10 +1764,6 @@ static void __init smdk5250_machine_init(void)
 	s5p_fimg2d_set_platdata(&fimg2d_data);
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_FIMC_LITE
-#if defined(CONFIG_EXYNOS_DEV_PD)
-	exynos_device_flite0.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
-	exynos_device_flite1.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
-#endif
 	smdk5250_camera_gpio_cfg();
 	smdk5250_set_camera_platdata();
 	s3c_set_platdata(&exynos_flite0_default_data,
@@ -1816,18 +1808,8 @@ static void __init smdk5250_machine_init(void)
 	exynos5_fimc_is_data.gpio_info = &gpio_smdk5250;
 
 	exynos5_fimc_is_set_platdata(&exynos5_fimc_is_data);
-#if defined(CONFIG_EXYNOS_DEV_PD)
-	exynos5_device_pd[PD_ISP].dev.parent = &exynos5_device_pd[PD_GSCL].dev;
-	exynos5_device_fimc_is.dev.parent = &exynos5_device_pd[PD_ISP].dev;
-#endif
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_GSCALER
-#if defined(CONFIG_EXYNOS_DEV_PD)
-	exynos5_device_gsc0.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
-	exynos5_device_gsc1.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
-	exynos5_device_gsc2.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
-	exynos5_device_gsc3.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
-#endif
 	s3c_set_platdata(&exynos_gsc0_default_data, sizeof(exynos_gsc0_default_data),
 			&exynos5_device_gsc0);
 	s3c_set_platdata(&exynos_gsc1_default_data, sizeof(exynos_gsc1_default_data),
@@ -1859,13 +1841,6 @@ static void __init smdk5250_machine_init(void)
 	gpio_direction_input(EXYNOS5_GPX3(6));
 	s3c_gpio_cfgpin(EXYNOS5_GPX3(6), S3C_GPIO_SFN(0x3));
 	s3c_gpio_setpull(EXYNOS5_GPX3(6), S3C_GPIO_PULL_NONE);
-
-	/* setup dependencies between TV devices */
-	/* This will be added after power domain for exynos5 is developed */
-#if defined(CONFIG_EXYNOS_DEV_PD)
-	s5p_device_hdmi.dev.parent = &exynos5_device_pd[PD_DISP1].dev;
-	s5p_device_mixer.dev.parent = &exynos5_device_pd[PD_DISP1].dev;
-#endif
 
 #if defined(CONFIG_VIDEO_EXYNOS_HDMIPHY)
 	s5p_hdmi_set_platdata(&hdmi_platdata);
