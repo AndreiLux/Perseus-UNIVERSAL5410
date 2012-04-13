@@ -30,6 +30,12 @@ config CPU_THERMAL
 	  and not the ACPI interface.
 	  If you want this support, you should say Y or M here.
 
+config IMX6Q_THERMAL
+	bool "IMX6Q Thermal interface support"
+	depends on THERMAL && CPU_THERMAL
+	help
+	  Adds thermal management for IMX6Q.
+	  
 config SPEAR_THERMAL
 	bool "SPEAr thermal sensor driver"
 	depends on THERMAL
