@@ -100,6 +100,7 @@ static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 #if defined(CONFIG_CPU_EXYNOS4210)
 	struct mxr_resources *res = &mdev->res;
 #endif
+	struct v4l2_control ctrl;
 
 	mutex_lock(&mdev->s_mutex);
 	++mdev->n_streamer;
@@ -176,8 +177,15 @@ static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 					sd->name);
 			return ret;
 		}
+		ctrl.id = V4L2_CID_TV_GET_DVI_MODE;
+		ret = v4l2_subdev_call(sd, core, g_ctrl, &ctrl);
+		if (ret) {
+			mxr_err(mdev, "failed to get DVI or HDMI mode %s\n",
+					sd->name);
+			return ret;
+		}
 
-		mxr_reg_set_mbus_fmt(mdev, &mbus_fmt);
+		mxr_reg_set_mbus_fmt(mdev, &mbus_fmt, ctrl.value);
 		ret = v4l2_subdev_call(sd, video, s_mbus_fmt, &mbus_fmt);
 		if (ret) {
 			mxr_err(mdev, "failed to set mbus_fmt for output %s\n",

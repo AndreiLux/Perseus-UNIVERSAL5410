@@ -670,7 +670,7 @@ int mxr_reg_wait4vsync(struct mxr_device *mdev)
 }
 
 void mxr_reg_set_mbus_fmt(struct mxr_device *mdev,
-	struct v4l2_mbus_framefmt *fmt)
+		struct v4l2_mbus_framefmt *fmt, u32 dvi_mode)
 {
 	u32 val = 0;
 	unsigned long flags;
@@ -681,8 +681,13 @@ void mxr_reg_set_mbus_fmt(struct mxr_device *mdev,
 	/* choosing between YUV444 and RGB888 as mixer output type */
 	if (mdev->sub_mxr[MXR_SUB_MIXER0].mbus_fmt[MXR_PAD_SOURCE_GRP0].code ==
 		V4L2_MBUS_FMT_YUV8_1X24) {
-		val = MXR_CFG_OUT_YUV444;
-		fmt->code = V4L2_MBUS_FMT_YUV8_1X24;
+		if (dvi_mode) {
+			val = MXR_CFG_OUT_RGB888;
+			fmt->code = V4L2_MBUS_FMT_XRGB8888_4X8_LE;
+		} else {
+			val = MXR_CFG_OUT_YUV444;
+			fmt->code = V4L2_MBUS_FMT_YUV8_1X24;
+		}
 	} else {
 		val = MXR_CFG_OUT_RGB888;
 		fmt->code = V4L2_MBUS_FMT_XRGB8888_4X8_LE;

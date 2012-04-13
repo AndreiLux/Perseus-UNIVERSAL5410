@@ -121,7 +121,8 @@ static int hdmi_set_infoframe(struct hdmi_device *hdev)
 
 static int hdmi_set_packets(struct hdmi_device *hdev)
 {
-	hdmi_reg_set_acr(hdev);
+	if (!hdev->dvi_mode)
+		hdmi_reg_set_acr(hdev);
 	return 0;
 }
 
@@ -171,7 +172,7 @@ static int hdmi_streamon(struct hdmi_device *hdev)
 	hdmi_reg_spdif_audio_init(hdev);
 #endif
 	/* enbale HDMI audio */
-	if (hdev->audio_enable)
+	if (hdev->audio_enable && !hdev->dvi_mode)
 		hdmi_audio_enable(hdev, 1);
 
 	hdmi_set_dvi_mode(hdev);
@@ -314,7 +315,6 @@ int hdmi_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 	struct device *dev = hdev->dev;
 
 	ctrl->value = switch_get_state(&hdev->hpd_switch);
-
 	dev_dbg(dev, "HDMI cable is %s\n", ctrl->value ?
 			"connected" : "disconnected");
 

@@ -11,12 +11,12 @@
  * or (at your option) any later version
  */
 
+#include "hdmi.h"
 #include <linux/delay.h>
 #include <linux/pm_runtime.h>
 #include <plat/devs.h>
 #include <plat/tv-core.h>
 
-#include "hdmi.h"
 #include "regs-hdmi-5250.h"
 
 static const struct hdmi_preset_conf hdmi_conf_480p60 = {
