@@ -1,7 +1,7 @@
 config GATOR
 	tristate "Gator module for ARM's Streamline Performance Analyzer"
 	default m
-	depends on GENERIC_TRACER || TRACING
 	depends on PROFILING
 	depends on HIGH_RES_TIMERS
 	depends on LOCAL_TIMERS || !(ARM && SMP)
+	select TRACING
