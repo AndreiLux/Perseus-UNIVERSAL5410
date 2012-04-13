@@ -24,6 +24,7 @@
 #include <linux/i2c/atmel_mxt_ts.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
+#include "chromeos_laptop.h"
 
 #define ATMEL_TP_I2C_ADDR	0x4b
 #define CYAPA_TP_I2C_ADDR	0x67
@@ -37,12 +38,6 @@ const char *i2c_adapter_names[] = {
 	"SMBus I801 adapter",
 	"i915 gmbus vga",
 	"i915 gmbus panel",
-};
-
-enum i2c_adapter_type {
-	I2C_ADAPTER_SMBUS = 0,
-	I2C_ADAPTER_VGADDC,
-	I2C_ADAPTER_PANEL,
 };
 
 static struct i2c_board_info __initdata cyapa_device = {
@@ -279,20 +274,22 @@ static int find_i2c_adapter_num(enum i2c_adapter_type type)
 	return adapter->nr;
 }
 
-static struct i2c_client *add_probed_i2c_device(const char *name,
-						enum i2c_adapter_type type,
-						struct i2c_board_info *info,
-						const unsigned short *addr_list)
+struct i2c_client *chromeos_laptop_add_probed_i2c_device(
+		const char *name,
+		enum i2c_adapter_type type,
+		struct i2c_board_info *info,
+		const unsigned short *addrs)
 {
 	return __add_probed_i2c_device(name,
 				       find_i2c_adapter_num(type),
 				       info,
-				       addr_list);
+				       addrs);
 }
+EXPORT_SYMBOL(chromeos_laptop_add_probed_i2c_device);
 
-static struct i2c_client *add_i2c_device(const char *name,
-					 enum i2c_adapter_type type,
-					 struct i2c_board_info *info)
+struct i2c_client *chromeos_laptop_add_i2c_device(const char *name,
+						  enum i2c_adapter_type type,
+						  struct i2c_board_info *info)
 {
 	const unsigned short addr_list[] = { info->addr, I2C_CLIENT_END };
 	return __add_probed_i2c_device(name,
@@ -300,23 +297,27 @@ static struct i2c_client *add_i2c_device(const char *name,
 				       info,
 				       addr_list);
 }
+EXPORT_SYMBOL(chromeos_laptop_add_i2c_device);
 
 static struct i2c_client *add_smbus_device(const char *name,
 					   struct i2c_board_info *info)
 {
-	return add_i2c_device(name, I2C_ADAPTER_SMBUS, info);
+	return chromeos_laptop_add_i2c_device(name, I2C_ADAPTER_SMBUS, info);
 }
 
 static int setup_link_tp(const struct dmi_system_id *id)
 {
 	/* first try cyapa touchpad */
-	tp = add_i2c_device("trackpad", I2C_ADAPTER_VGADDC, &cyapa_device);
+	tp = chromeos_laptop_add_i2c_device("trackpad",
+					    I2C_ADAPTER_VGADDC,
+					    &cyapa_device);
 	if (tp)
 		return 0;
 
 	/* then try atmel mxt touchpad */
-	tp = add_i2c_device("trackpad", I2C_ADAPTER_VGADDC,
-			    &atmel_224s_tp_device);
+	tp = chromeos_laptop_add_i2c_device("trackpad",
+					    I2C_ADAPTER_VGADDC,
+					    &atmel_224s_tp_device);
 	return 0;
 }
 
@@ -328,8 +329,9 @@ static int setup_lumpy_tp(const struct dmi_system_id *id)
 		return 0;
 
 	/* then try atmel mxt touchpad */
-	tp = add_i2c_device("trackpad", I2C_ADAPTER_VGADDC,
-			    &atmel_224e_tp_device);
+	tp = chromeos_laptop_add_i2c_device("trackpad",
+					    I2C_ADAPTER_VGADDC,
+					    &atmel_224e_tp_device);
 	return 0;
 }
 
@@ -343,7 +345,9 @@ static int setup_isl29018_als(const struct dmi_system_id *id)
 static int setup_isl29023_als(const struct dmi_system_id *id)
 {
 	/* add isl29023 light sensor on Panel DDC GMBus */
-	als = add_i2c_device("lightsensor", I2C_ADAPTER_PANEL, &isl_als_device);
+	als = chromeos_laptop_add_i2c_device("lightsensor",
+					     I2C_ADAPTER_PANEL,
+					     &isl_als_device);
 	return 0;
 }
 
