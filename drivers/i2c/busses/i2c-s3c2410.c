@@ -62,7 +62,7 @@ enum s3c24xx_i2c_type {
 struct s3c24xx_i2c {
 	spinlock_t		lock;
 	wait_queue_head_t	wait;
-	unsigned int		suspended:1;
+	bool			is_suspended;
 
 	struct i2c_msg		*msg;
 	unsigned int		msg_num;
@@ -93,7 +93,7 @@ struct s3c24xx_i2c {
 static inline void dump_i2c_register(struct s3c24xx_i2c *i2c)
 {
 	dev_dbg(i2c->dev, "Register dump(%d) : %x %x %x %x %x\n"
-		, i2c->suspended
+		, i2c->is_suspended
 		, readl(i2c->regs + S3C2410_IICCON)
 		, readl(i2c->regs + S3C2410_IICSTAT)
 		, readl(i2c->regs + S3C2410_IICADD)
@@ -521,7 +521,7 @@ static int s3c24xx_i2c_doxfer(struct s3c24xx_i2c *i2c,
 	int spins = 20;
 	int ret;
 
-	if (i2c->suspended)
+	if (i2c->is_suspended)
 		return -EIO;
 
 	ret = s3c24xx_i2c_set_master(i2c);
@@ -611,7 +611,7 @@ static int s3c24xx_i2c_xfer(struct i2c_adapter *adap,
 	int retry;
 	int ret;
 
-	if (i2c->suspended) {
+	if (i2c->is_suspended) {
 		dev_err(i2c->dev, "I2C is not initialzed.\n");
 		dump_i2c_register(i2c);
 		return -EIO;
@@ -1133,7 +1133,7 @@ static int s3c24xx_i2c_suspend_noirq(struct device *dev)
 	struct s3c24xx_i2c *i2c = platform_get_drvdata(pdev);
 
 	i2c_lock_adapter(&i2c->adap);
-	i2c->suspended = 1;
+	i2c->is_suspended = true;
 	i2c_unlock_adapter(&i2c->adap);
 
 	return 0;
@@ -1158,7 +1158,7 @@ static int s3c24xx_i2c_resume(struct device *dev)
 
 	clk_disable(i2c->clk);
 
-	i2c->suspended = 0;
+	i2c->is_suspended = false;
 
 	i2c_unlock_adapter(&i2c->adap);
 
