@@ -503,7 +503,7 @@ static int s3c24xx_i2c_set_master(struct s3c24xx_i2c *i2c)
 		if (!(iicstat & S3C2410_IICSTAT_BUSBUSY))
 			return 0;
 
-		msleep(1);
+		usleep_range(1000, 2000);
 	}
 
 	return -ETIMEDOUT;
@@ -571,7 +571,7 @@ static int s3c24xx_i2c_doxfer(struct s3c24xx_i2c *i2c,
 
 	/* if that timed out sleep */
 	if (!spins) {
-		msleep(1);
+		usleep_range(1000, 2000);
 		iicstat = readl(i2c->regs + S3C2410_IICSTAT);
 	}
 
