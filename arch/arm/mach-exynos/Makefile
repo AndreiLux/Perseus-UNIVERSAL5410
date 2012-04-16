@@ -33,9 +33,6 @@ obj-$(CONFIG_EXYNOS4_MCT)	+= mct.o
 
 obj-$(CONFIG_HOTPLUG_CPU)	+= hotplug.o
 
-obj-$(CONFIG_ARCH_EXYNOS5)		+= ppmu.o
-obj-$(CONFIG_EXYNOS_BUSFREQ)		+= dev_lock.o busfreq_opp_exynos5.o busfreq_opp_5250.o
-
 obj-$(CONFIG_ARCH_EXYNOS)	+= clock-audss.o
 
 obj-$(CONFIG_EXYNOS_FIQ_DEBUGGER)	+= exynos_fiq_debugger.o

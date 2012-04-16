@@ -126,12 +126,6 @@ config S3C_ADC
 	  for drivers such as the touchscreen and hwmon to use to share
 	  this resource.
 
-# Busfreq driver
-
-config EXYNOS_BUSFREQ
-	bool "Support DVFS for BUS & Device"
-	depends on ARCH_EXYNOS5 && REGULATOR
-
 # device definitions to compile in
 
 config S3C_DEV_HSMMC
