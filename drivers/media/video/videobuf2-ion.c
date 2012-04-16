@@ -160,7 +160,9 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 		goto err_alloc;
 	}
 
+#if 0
 	buf->cookie.sg = ion_map_dma(ctx->client, buf->handle);
+#endif
 	if (IS_ERR(buf->cookie.sg)) {
 		ret = -ENOMEM;
 		goto err_map_dma;
@@ -196,7 +198,9 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 err_ion_map_io:
 	ion_unmap_kernel(ctx->client, buf->handle);
 err_map_kernel:
+#if 0
 	ion_unmap_dma(ctx->client, buf->handle);
+#endif
 err_map_dma:
 	ion_free(ctx->client, buf->handle);
 err_alloc:
@@ -219,7 +223,9 @@ void vb2_ion_private_free(void *cookie)
 		iovmm_unmap(ctx->dev, buf->cookie.ioaddr);
 
 	ion_unmap_kernel(ctx->client, buf->handle);
+#if 0
 	ion_unmap_dma(ctx->client, buf->handle);
+#endif
 	ion_free(ctx->client, buf->handle);
 
 	kfree(buf);
@@ -371,7 +377,9 @@ static void *vb2_ion_get_userptr(void *alloc_ctx, unsigned long vaddr,
 	}
 #endif
 
+#if 0
 	buf->cookie.sg = ion_map_dma(ctx->client, buf->handle);
+#endif
 	if (IS_ERR(buf->cookie.sg)) {
 		ret = -ENOMEM;
 		goto err_map_dma;
@@ -426,7 +434,9 @@ err_get_vma:
 	if (ctx_iommu(ctx))
 		iovmm_unmap(ctx->dev, buf->cookie.ioaddr);
 err_ion_map_io:
+#if 0
 	ion_unmap_dma(ctx->client, buf->handle);
+#endif
 err_map_dma:
 	ion_free(ctx->client, buf->handle);
 err_import_uva:
@@ -444,7 +454,9 @@ static void vb2_ion_put_userptr(void *mem_priv)
 	if (ctx_iommu(ctx))
 		iovmm_unmap(ctx->dev, buf->cookie.ioaddr);
 
+#if 0
 	ion_unmap_dma(ctx->client, buf->handle);
+#endif
 	if (buf->kva)
 		ion_unmap_kernel(ctx->client, buf->handle);
 
