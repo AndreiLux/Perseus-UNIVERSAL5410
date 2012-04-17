@@ -1,6 +1,6 @@
 /* linux/drivers/iommu/exynos_iommu.c
  *
- * Copyright (c) 2011 Samsung Electronics Co., Ltd.
+ * Copyright (c) 2011-2012 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com
  *
  * This program is free software; you can redistribute it and/or modify
@@ -14,24 +14,21 @@
 
 #include <linux/io.h>
 #include <linux/interrupt.h>
-#include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/mm.h>
-#include <linux/iommu.h>
 #include <linux/errno.h>
-#include <linux/list.h>
 #include <linux/memblock.h>
 #include <linux/export.h>
 
 #include <asm/cacheflush.h>
 #include <asm/pgtable.h>
 
-#include <plat/sysmmu.h>
-
 #include <mach/sysmmu.h>
+
+#include "exynos-iommu.h"
 
 /* We does not consider super section mapping (16MB) */
 #define SECT_ORDER 20
@@ -142,21 +139,6 @@ struct exynos_iommu_domain {
 	short *lv2entcnt; /* free lv2 entry counter for each section */
 	spinlock_t lock; /* lock for this structure */
 	spinlock_t pgtablelock; /* lock for modifying page table @ pgtable */
-};
-
-struct sysmmu_drvdata {
-	struct list_head node; /* entry of exynos_iommu_domain.clients */
-	struct device *sysmmu;	/* System MMU's device descriptor */
-	struct device *dev;	/* Owner of system MMU */
-	char *dbgname;
-	int nsfrs;
-	void __iomem **sfrbases;
-	struct clk *clk[2];
-	int activations;
-	rwlock_t lock;
-	struct iommu_domain *domain;
-	sysmmu_fault_handler_t fault_handler;
-	unsigned long pgtable;
 };
 
 static bool set_sysmmu_active(struct sysmmu_drvdata *data)
@@ -648,6 +630,10 @@ static int exynos_sysmmu_probe(struct platform_device *pdev)
 		data->dbgname = platdata->dbgname;
 	}
 
+	ret = exynos_init_iovmm(dev, &data->vmm);
+	if (ret)
+		goto err_iovmm;
+
 	data->sysmmu = dev;
 	rwlock_init(&data->lock);
 	INIT_LIST_HEAD(&data->node);
@@ -659,6 +645,15 @@ static int exynos_sysmmu_probe(struct platform_device *pdev)
 
 	dev_dbg(dev, "(%s) Initialized\n", data->dbgname);
 	return 0;
+err_iovmm:
+	if (data->clk[0]) {
+		clk_put(data->clk[0]);
+		if (data->clk[1]) {
+			clk_put(data->clk[1]);
+			if (data->clk[2])
+				clk_put(data->clk[2]);
+		}
+	}
 err_irq:
 	while (i-- > 0) {
 		int irq;
@@ -1050,10 +1045,11 @@ static int __init exynos_iommu_init(void)
 {
 	int ret;
 
-	ret = platform_driver_register(&exynos_sysmmu_driver);
+	ret = bus_set_iommu(&platform_bus_type, &exynos_iommu_ops);
+	if (!ret)
+		ret = platform_driver_register(&exynos_sysmmu_driver);
 
-	if (ret == 0)
-		bus_set_iommu(&platform_bus_type, &exynos_iommu_ops);
+	/* Nothing to do although platform_driver_register() fails */
 
 	return ret;
 }
