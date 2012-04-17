@@ -926,25 +926,25 @@ static int vidioc_enum_fmt_vid_out_mplane(struct file *file, void *prov,
 }
 
 /* Get format */
-static int vidioc_g_fmt(struct file *file, void *priv, struct v4l2_format *f)
+static int vidioc_g_fmt_vid_cap_mplane(struct file *file, void *priv,
+						struct v4l2_format *f)
 {
 	struct s5p_mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
-	struct s5p_mfc_dec *dec = ctx->dec_priv;
-	struct v4l2_pix_format_mplane *pix_mp;
+	struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
 
 	mfc_debug_enter();
-	pix_mp = &f->fmt.pix_mp;
 	mfc_debug(2, "f->type = %d ctx->state = %d\n", f->type, ctx->state);
-	if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
-	    (ctx->state == MFCINST_GOT_INST || ctx->state == MFCINST_RES_CHANGE_END)) {
+
+	if (ctx->state == MFCINST_GOT_INST ||
+	    ctx->state == MFCINST_RES_CHANGE_END) {
 		/* If the MFC is parsing the header,
 		 * so wait until it is finished */
 		s5p_mfc_clean_ctx_int_flags(ctx);
-		s5p_mfc_wait_for_done_ctx(ctx, S5P_FIMV_R2H_CMD_SEQ_DONE_RET,
-									1);
+		s5p_mfc_wait_for_done_ctx(ctx,
+			S5P_FIMV_R2H_CMD_SEQ_DONE_RET, 1);
 	}
-	if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
-	    ctx->state >= MFCINST_HEAD_PARSED &&
+
+	if (ctx->state >= MFCINST_HEAD_PARSED &&
 	    ctx->state < MFCINST_ABORT) {
 		/* This is run on CAPTURE (deocde output) */
 		/* Width and height are set to the dimensions
@@ -959,26 +959,41 @@ static int vidioc_g_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		   outputs the decoded frame */
 		pix_mp->pixelformat = V4L2_PIX_FMT_NV12MT;
 		pix_mp->plane_fmt[0].bytesperline = ctx->buf_width;
-		pix_mp->plane_fmt[0].sizeimage = ctx->buf_width * ctx->buf_height;
+		pix_mp->plane_fmt[0].sizeimage =
+			ctx->buf_width * ctx->buf_height;
 		pix_mp->plane_fmt[1].bytesperline = ctx->buf_width;
-		pix_mp->plane_fmt[1].sizeimage = ctx->buf_width * (ctx->buf_height >> 1);
-	} else if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		/* This is run on OUTPUT
-		   The buffer contains compressed image
-		   so width and height have no meaning */
-		pix_mp->width = 0;
-		pix_mp->height = 0;
-		pix_mp->field = V4L2_FIELD_NONE;
-		pix_mp->plane_fmt[0].bytesperline = dec->src_buf_size;
-		pix_mp->plane_fmt[0].sizeimage = dec->src_buf_size;
-		pix_mp->pixelformat = ctx->src_fmt->fourcc;
-		pix_mp->num_planes = ctx->src_fmt->num_planes;
-	} else {
-		mfc_err("Format could not be read\n");
-		mfc_debug(2, "%s-- with error\n", __func__);
-		return -EINVAL;
+		pix_mp->plane_fmt[1].sizeimage =
+			ctx->buf_width * (ctx->buf_height >> 1);
 	}
+
 	mfc_debug_leave();
+
+	return 0;
+}
+
+static int vidioc_g_fmt_vid_out_mplane(struct file *file, void *priv,
+						struct v4l2_format *f)
+{
+	struct s5p_mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
+	struct s5p_mfc_dec *dec = ctx->dec_priv;
+	struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
+
+	mfc_debug_enter();
+	mfc_debug(2, "f->type = %d ctx->state = %d\n", f->type, ctx->state);
+
+	/* This is run on OUTPUT
+	   The buffer contains compressed image
+	   so width and height have no meaning */
+	pix_mp->width = 0;
+	pix_mp->height = 0;
+	pix_mp->field = V4L2_FIELD_NONE;
+	pix_mp->plane_fmt[0].bytesperline = dec->src_buf_size;
+	pix_mp->plane_fmt[0].sizeimage = dec->src_buf_size;
+	pix_mp->pixelformat = ctx->src_fmt->fourcc;
+	pix_mp->num_planes = ctx->src_fmt->num_planes;
+
+	mfc_debug_leave();
+
 	return 0;
 }
 
@@ -1043,6 +1058,7 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 	pix_mp = &f->fmt.pix_mp;
 	if (ret)
 		return ret;
+
 	if (ctx->vq_src.streaming || ctx->vq_dst.streaming) {
 		v4l2_err(&dev->v4l2_dev, "%s queue busy\n", __func__);
 		ret = -EBUSY;
@@ -1721,8 +1737,8 @@ static const struct v4l2_ioctl_ops s5p_mfc_dec_ioctl_ops = {
 	.vidioc_enum_fmt_vid_cap_mplane = vidioc_enum_fmt_vid_cap_mplane,
 	.vidioc_enum_fmt_vid_out = vidioc_enum_fmt_vid_out,
 	.vidioc_enum_fmt_vid_out_mplane = vidioc_enum_fmt_vid_out_mplane,
-	.vidioc_g_fmt_vid_cap_mplane = vidioc_g_fmt,
-	.vidioc_g_fmt_vid_out_mplane = vidioc_g_fmt,
+	.vidioc_g_fmt_vid_cap_mplane = vidioc_g_fmt_vid_cap_mplane,
+	.vidioc_g_fmt_vid_out_mplane = vidioc_g_fmt_vid_out_mplane,
 	.vidioc_try_fmt_vid_cap_mplane = vidioc_try_fmt,
 	.vidioc_try_fmt_vid_out_mplane = vidioc_try_fmt,
 	.vidioc_s_fmt_vid_cap_mplane = vidioc_s_fmt,
