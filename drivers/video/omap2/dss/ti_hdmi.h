@@ -273,6 +273,12 @@ void ti_hdmi_4xxx_wp_audio_config_dma(struct hdmi_ip_data *ip_data,
 int ti_hdmi_4xxx_audio_config(struct hdmi_ip_data *ip_data,
 		struct omap_dss_audio *audio);
 #endif
+#if defined(CONFIG_OMAP5_DSS_HDMI_AUDIO)
+void ti_hdmi_5xxx_wp_audio_enable(struct hdmi_ip_data *ip_data, bool enable);
+void ti_hdmi_5xxx_audio_start(struct hdmi_ip_data *ip_data, bool enable);
+int ti_hdmi_5xxx_audio_config(struct hdmi_ip_data *ip_data,
+		struct snd_aes_iec958 *iec, struct snd_cea_861_aud_if *aud_if);
+#endif
 void ti_hdmi_5xxx_basic_configure(struct hdmi_ip_data *ip_data);
 void ti_hdmi_5xxx_core_dump(struct hdmi_ip_data *ip_data, struct seq_file *s);
 int ti_hdmi_5xxx_read_edid(struct hdmi_ip_data *ip_data,
