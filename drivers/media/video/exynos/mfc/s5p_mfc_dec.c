@@ -1041,69 +1041,56 @@ static int vidioc_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
 }
 
 /* Set format */
-static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
+static int vidioc_s_fmt_vid_cap_mplane(struct file *file, void *priv,
+							struct v4l2_format *f)
+{
+	struct s5p_mfc_dev *dev = video_drvdata(file);
+	struct s5p_mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
+	int ret = 0;
+
+	mfc_debug_enter();
+
+	if (ctx->vq_dst.streaming) {
+		v4l2_err(&dev->v4l2_dev, "%s queue busy\n", __func__);
+		return -EBUSY;
+	}
+
+	ret = vidioc_try_fmt(file, priv, f);
+	if (ret)
+		return ret;
+
+	ctx->dst_fmt = find_format(f, MFC_FMT_RAW);
+
+	mfc_debug_leave();
+
+	return 0;
+}
+
+static int vidioc_s_fmt_vid_out_mplane(struct file *file, void *priv,
+							struct v4l2_format *f)
 {
 	struct s5p_mfc_dev *dev = video_drvdata(file);
 	struct s5p_mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
 	struct s5p_mfc_dec *dec = ctx->dec_priv;
 	unsigned long flags;
 	int ret = 0;
-	struct s5p_mfc_fmt *fmt;
-	struct v4l2_pix_format_mplane *pix_mp;
+	struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
 	int i;
 	struct s5p_mfc_ctx_ctrl *ctx_ctrl;
 
 	mfc_debug_enter();
+
+	if (ctx->vq_src.streaming) {
+		v4l2_err(&dev->v4l2_dev, "%s queue busy\n", __func__);
+		return -EBUSY;
+	}
+
 	ret = vidioc_try_fmt(file, priv, f);
-	pix_mp = &f->fmt.pix_mp;
 	if (ret)
 		return ret;
 
-	if (ctx->vq_src.streaming || ctx->vq_dst.streaming) {
-		v4l2_err(&dev->v4l2_dev, "%s queue busy\n", __func__);
-		ret = -EBUSY;
-		goto out;
-	}
-
-	if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-		fmt = find_format(f, MFC_FMT_RAW);
-		if (!fmt) {
-			mfc_err("Unsupported format for source.\n");
-			return -EINVAL;
-		}
-		if (!IS_MFCV6(dev)) {
-			if (fmt->fourcc != V4L2_PIX_FMT_NV12MT) {
-				mfc_err("Not supported format.\n");
-				return -EINVAL;
-			}
-		} else if (IS_MFCV6(dev)) {
-			if (fmt->fourcc == V4L2_PIX_FMT_NV12MT) {
-				mfc_err("Not supported format.\n");
-				return -EINVAL;
-			}
-		}
-		ctx->dst_fmt = fmt;
-		mfc_debug_leave();
-		return ret;
-	} else if (f->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		mfc_err("Wrong type error for S_FMT : %d", f->type);
-		return -EINVAL;
-	}
-
-	fmt = find_format(f, MFC_FMT_DEC);
-	if (!fmt || fmt->codec_mode == MFC_FORMATS_NO_CODEC) {
-		mfc_err("Unknown codec.\n");
-		ret = -EINVAL;
-		goto out;
-	}
-	if (!IS_MFCV6(dev)) {
-		if (fmt->fourcc == V4L2_PIX_FMT_VP8) {
-			mfc_err("Not supported format.\n");
-			return -EINVAL;
-		}
-	}
-	ctx->src_fmt = fmt;
-	ctx->codec_mode = fmt->codec_mode;
+	ctx->src_fmt = find_format(f, MFC_FMT_DEC);
+	ctx->codec_mode = ctx->src_fmt->codec_mode;
 	mfc_debug(2, "The codec number is: %d\n", ctx->codec_mode);
 	ctx->pix_format = pix_mp->pixelformat;
 	if ((pix_mp->width > 0) && (pix_mp->height > 0)) {
@@ -1196,13 +1183,13 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		mfc_err("Error getting instance from hardware.\n");
 		s5p_mfc_release_instance_buffer(ctx);
 		s5p_mfc_release_dec_desc_buffer(ctx);
-		ret = -EIO;
-		goto out;
+		return -EIO;
 	}
 	mfc_debug(2, "Got instance number: %d\n", ctx->inst_no);
-out:
+
 	mfc_debug_leave();
-	return ret;
+
+	return 0;
 }
 
 /* Reqeust buffers */
@@ -1741,8 +1728,8 @@ static const struct v4l2_ioctl_ops s5p_mfc_dec_ioctl_ops = {
 	.vidioc_g_fmt_vid_out_mplane = vidioc_g_fmt_vid_out_mplane,
 	.vidioc_try_fmt_vid_cap_mplane = vidioc_try_fmt,
 	.vidioc_try_fmt_vid_out_mplane = vidioc_try_fmt,
-	.vidioc_s_fmt_vid_cap_mplane = vidioc_s_fmt,
-	.vidioc_s_fmt_vid_out_mplane = vidioc_s_fmt,
+	.vidioc_s_fmt_vid_cap_mplane = vidioc_s_fmt_vid_cap_mplane,
+	.vidioc_s_fmt_vid_out_mplane = vidioc_s_fmt_vid_out_mplane,
 	.vidioc_reqbufs = vidioc_reqbufs,
 	.vidioc_querybuf = vidioc_querybuf,
 	.vidioc_qbuf = vidioc_qbuf,
