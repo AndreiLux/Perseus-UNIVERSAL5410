@@ -16,13 +16,17 @@ gator-y :=	gator_main.o \
 
 gator-y +=	gator_events_mmaped.o
 
-ifneq ($(GATOR_WITH_MALI_SUPPORT),)
-ifeq ($(GATOR_WITH_MALI_SUPPORT),MALI_T6xx)
+ifeq ($(CONFIG_GATOR_WITH_MALI_SUPPORT),y)
+
+ifeq ($(CONFIG_GATOR_MALI_T6XX),y)
 gator-y +=	gator_events_mali_t6xx.o
 else
 gator-y +=	gator_events_mali.o
 endif
-EXTRA_CFLAGS +=	-DMALI_SUPPORT=$(GATOR_WITH_MALI_SUPPORT)
+
+ccflags-y += -I$(CONFIG_GATOR_MALI_PATH)
+ccflags-$(CONFIG_GATOR_MALI_400MP) += -DMALI_SUPPORT=MALI_400
+ccflags-$(CONFIG_GATOR_MALI_T6XX) += -DMALI_SUPPORT=MALI_T6xx
 endif
 
 gator-$(CONFIG_ARM) +=	gator_events_armv6.o \
