@@ -556,6 +556,9 @@ static void __init omap3_cpuinfo(void)
  */
 void __init omap2_set_globals_tap(struct omap_globals *omap2_globals)
 {
+
+	pr_info("omap2_set_globals_tap\n");
+
 	omap_revision = omap2_globals->class;
 	tap_base = omap2_globals->tap;
 

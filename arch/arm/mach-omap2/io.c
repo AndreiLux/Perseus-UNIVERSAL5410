@@ -433,7 +433,6 @@ static int _set_hwmod_postsetup_state(struct omap_hwmod *oh, void *data)
 
 static void __init omap_common_init_early(void)
 {
-	omap2xxx_check_revision();
 	omap_init_consistent_dma_size();
 }
 
@@ -559,7 +558,8 @@ void __init omap4430_init_early(void)
 
 #ifdef CONFIG_ARCH_OMAP5                                                                                
 void __init omap54xx_init_early(void)                              
-{ 
+{
+	pr_info("omap54xx_init_early\n"); 
 	omap2_set_globals_543x();
 	omap5xxx_check_revision();
 	omap_common_init_early(); 
