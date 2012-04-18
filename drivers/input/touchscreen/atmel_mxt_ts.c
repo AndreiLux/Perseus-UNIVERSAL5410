@@ -301,7 +301,7 @@ static bool mxt_object_readable(unsigned int type)
 	case MXT_SPT_GPIOPWM_T19:
 	case MXT_SPT_SELFTEST_T25:
 	case MXT_SPT_CTECONFIG_T28:
-	case MXT_SPT_USERDATA_T38:
+	case MXT_DEBUG_DIAGNOSTIC_T37:
 	case MXT_SPT_DIGITIZER_T43:
 	case MXT_SPT_CTECONFIG_T46:
 	case MXT_SPT_TIMER_T61:
