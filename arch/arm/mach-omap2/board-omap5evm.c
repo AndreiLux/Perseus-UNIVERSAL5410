@@ -1424,6 +1424,13 @@ static void __init omap_54xx_init(void)
 		omap_5430_sevm_init();
 }
 
+static void __init omap_5430evm_map_io(void)
+{
+	pr_info("omap_5430evm_map_io\n");
+//	omap2_set_globals_543x();
+	omap54xx_map_common_io();
+}
+
 static const char *omap5_sevm_match[] __initdata = {
         "ti,omap5-sevm",
 	"ti,omap5-uevm",

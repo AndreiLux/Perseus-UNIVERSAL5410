@@ -41,6 +41,7 @@
 #include "prm-regbits-34xx.h"
 #include "control.h"
 #include "mux.h"
+#include "iomap.h"
 
 /*
  * NOTE: By default the serial auto_suspend timeout is disabled as it causes
@@ -609,9 +610,9 @@ void __init omap_serial_board_init(struct omap_uart_port_info *info, u8 port_id)
 	/* XXX: temporary hack to enable wakeup for UART3 RX pad */
 	if (cpu_is_omap54xx()) {
 		u32 val;
-		val = __raw_readl(0x4a0029dc);
+		val = __raw_readl(OMAP2_L4_IO_ADDRESS(0x4a0029dc));
 		val |= 0x4000;
-		__raw_writel(val, 0x4a0029dc);
+		__raw_writel(val, OMAP2_L4_IO_ADDRESS(0x4a0029dc));
 	}
 }
 
