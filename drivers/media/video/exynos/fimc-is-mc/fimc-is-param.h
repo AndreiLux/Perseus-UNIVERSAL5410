@@ -12,7 +12,7 @@
 #ifndef FIMC_IS_PARAMS_H
 #define FIMC_IS_PARAMS_H
 
-#define IS_REGION_VER 115  /* IS REGION VERSION 1.15 */
+#define IS_REGION_VER 121  /* IS REGION VERSION 1.15 */
 
 /* MACROs */
 #define IS_SET_PARAM_BIT(dev, num) \
@@ -20,13 +20,14 @@
 		: set_bit(num, &dev->p_region_index1))
 #define IS_INC_PARAM_NUM(dev)		atomic_inc(&dev->p_region_num)
 
-#define IS_PARAM_GLOBAL		(dev->is_p_region->parameter.global)
-#define IS_PARAM_ISP		(dev->is_p_region->parameter.isp)
-#define IS_PARAM_DRC		(dev->is_p_region->parameter.drc)
-#define IS_PARAM_FD		(dev->is_p_region->parameter.fd)
-#define IS_HEADER		(dev->is_p_region->header)
-#define IS_FACE			(dev->is_p_region->face)
-#define IS_PARAM_SIZE		(FIMC_IS_REGION_SIZE+1)
+#define IS_PARAM_GLOBAL(dev)		(dev->is_p_region->parameter.global)
+#define IS_PARAM_ISP(dev)		(dev->is_p_region->parameter.isp)
+#define IS_PARAM_DRC(dev)		(dev->is_p_region->parameter.drc)
+#define IS_PARAM_FD(dev)		(dev->is_p_region->parameter.fd)
+#define IS_HEADER(dev)			(dev->is_p_region->header)
+#define IS_FACE(dev)			(dev->is_p_region->face)
+#define IS_SHARED(dev)			(dev->is_shared_region)
+#define IS_PARAM_SIZE			(FIMC_IS_REGION_SIZE + 1)
 
 /* Global control */
 #define IS_SET_PARAM_GLOBAL_SHOTMODE_CMD(dev, x) \
@@ -58,18 +59,20 @@
 		(dev->is_p_region->parameter.isp.otf_input.bitwidth = x)
 #define IS_ISP_SET_PARAM_OTF_INPUT_ORDER(dev, x) \
 		(dev->is_p_region->parameter.isp.otf_input.order = x)
+#define IS_ISP_SET_PARAM_OTF_INPUT_CROP_OFFSET_X(dev, x) \
+		(dev->is_p_region->parameter.isp.otf_input.crop_offset_x = x)
+#define IS_ISP_SET_PARAM_OTF_INPUT_CROP_OFFSET_Y(dev, x) \
+		(dev->is_p_region->parameter.isp.otf_input.crop_offset_y = x)
+#define IS_ISP_SET_PARAM_OTF_INPUT_CROP_WIDTH(dev, x) \
+		(dev->is_p_region->parameter.isp.otf_input.crop_width = x)
+#define IS_ISP_SET_PARAM_OTF_INPUT_CROP_HEIGHT(dev, x) \
+		(dev->is_p_region->parameter.isp.otf_input.crop_height = x)
+#define IS_ISP_SET_PARAM_OTF_INPUT_FRAMETIME_MIN(dev, x) \
+		(dev->is_p_region->parameter.isp.otf_input.frametime_min = x)
+#define IS_ISP_SET_PARAM_OTF_INPUT_FRAMETIME_MAX(dev, x) \
+		(dev->is_p_region->parameter.isp.otf_input.frametime_max = x)
 #define IS_ISP_SET_PARAM_OTF_INPUT_ERR(dev, x) \
 		(dev->is_p_region->parameter.isp.otf_input.err = x)
-#define IS_ISP_SET_PARAM_OTF_INPUT_RESERVED0(dev, x) \
-		(dev->is_p_region->parameter.isp.otf_input.reserved[0] = x)
-#define IS_ISP_SET_PARAM_OTF_INPUT_RESERVED1(dev, x) \
-		(dev->is_p_region->parameter.isp.otf_input.reserved[1] = x)
-#define IS_ISP_SET_PARAM_OTF_INPUT_RESERVED2(dev, x) \
-		(dev->is_p_region->parameter.isp.otf_input.reserved[2] = x)
-#define IS_ISP_SET_PARAM_OTF_INPUT_RESERVED3(dev, x) \
-		(dev->is_p_region->parameter.isp.otf_input.reserved[3] = x)
-#define IS_ISP_SET_PARAM_OTF_INPUT_RESERVED4(dev, x) \
-		(dev->is_p_region->parameter.isp.otf_input.reserved[4] = x)
 
 #define IS_ISP_SET_PARAM_DMA_INPUT1_CMD(dev, x) \
 		(dev->is_p_region->parameter.isp.dma1_input.cmd = x)
@@ -119,12 +122,18 @@
 		(dev->is_p_region->parameter.isp.aa.target = x)
 #define IS_ISP_SET_PARAM_AA_MODE(dev, x) \
 		(dev->is_p_region->parameter.isp.aa.mode = x)
+#define IS_ISP_SET_PARAM_AA_SCENE(dev, x) \
+		(dev->is_p_region->parameter.isp.aa.scene = x)
+#define IS_ISP_SET_PARAM_AA_SLEEP(dev, x) \
+		(dev->is_p_region->parameter.isp.aa.sleep = x)
 #define IS_ISP_SET_PARAM_AA_FACE(dev, x) \
 		(dev->is_p_region->parameter.isp.aa.face = x)
-#define IS_ISP_SET_PARAM_AA_WIN_POS_X(dev, x) \
-		(dev->is_p_region->parameter.isp.aa.win_pos_x = x)
-#define IS_ISP_SET_PARAM_AA_WIN_POS_Y(dev, x) \
-		(dev->is_p_region->parameter.isp.aa.win_pos_y = x)
+#define IS_ISP_SET_PARAM_AA_TOUCH_X(dev, x) \
+		(dev->is_p_region->parameter.isp.aa.touch_x = x)
+#define IS_ISP_SET_PARAM_AA_TOUCH_Y(dev, x) \
+		(dev->is_p_region->parameter.isp.aa.touch_y = x)
+#define IS_ISP_SET_PARAM_AA_MANUAL_AF(dev, x) \
+		(dev->is_p_region->parameter.isp.aa.manual_af_setting = x)
 #define IS_ISP_SET_PARAM_AA_ERR(dev, x) \
 		(dev->is_p_region->parameter.isp.aa.err = x)
 
@@ -168,10 +177,6 @@
 		(dev->is_p_region->parameter.isp.adjust.brightness = x)
 #define IS_ISP_SET_PARAM_ADJUST_HUE(dev, x) \
 		(dev->is_p_region->parameter.isp.adjust.hue = x)
-#define IS_ISP_SET_PARAM_ADJUST_SHUTTER_TIME_MIN(dev, x) \
-		(dev->is_p_region->parameter.isp.adjust.shutter_time_min = x)
-#define IS_ISP_SET_PARAM_ADJUST_SHUTTER_TIME_MAX(dev, x) \
-		(dev->is_p_region->parameter.isp.adjust.shutter_time_max = x)
 #define IS_ISP_SET_PARAM_ADJUST_ERR(dev, x) \
 		(dev->is_p_region->parameter.isp.adjust.err = x)
 
@@ -228,6 +233,8 @@
 		(dev->is_p_region->parameter.isp.dma1_output.buffer_number = x)
 #define IS_ISP_SET_PARAM_DMA_OUTPUT1_BUFFER_ADDRESS(dev, x) \
 	(dev->is_p_region->parameter.isp.dma1_output.buffer_address = x)
+#define IS_ISP_SET_PARAM_DMA_OUTPUT1_MASK(dev, x) \
+	(dev->is_p_region->parameter.isp.dma1_output.dma_out_mask = x)
 #define IS_ISP_SET_PARAM_DMA_OUTPUT1_ERR(dev, x) \
 		(dev->is_p_region->parameter.isp.dma1_output.err = x)
 
@@ -249,6 +256,11 @@
 		(dev->is_p_region->parameter.isp.dma2_output.buffer_number = x)
 #define IS_ISP_SET_PARAM_DMA_OUTPUT2_BUFFER_ADDRESS(dev, x) \
 		(dev->is_p_region->parameter.isp.dma2_output.buffer_address = x)
+#define IS_ISP_SET_PARAM_DMA_OUTPUT2_MASK(dev, x) \
+		(dev->is_p_region->parameter.isp.dma2_output.dma_out_mask = x)
+#define IS_ISP_SET_PARAM_DMA_OUTPUT2_DMA_DONE(dev, x) \
+	(dev->is_p_region->parameter.isp.dma2_output.notify_dma_done = x)
+
 #define IS_ISP_SET_PARAM_DMA_OUTPUT2_ERR(dev, x) \
 		(dev->is_p_region->parameter.isp.dma2_output.err = x)
 
@@ -349,13 +361,13 @@
 	(dev->is_p_region->parameter.scalerc.input_crop.crop_width = x)
 #define IS_SCALERC_SET_PARAM_INPUT_CROP_HEIGHT(dev, x) \
 	(dev->is_p_region->parameter.scalerc.input_crop.crop_height = x)
-#define IS_SCALERC_SET_PARAM_INPUT_IN_WIDTH(dev, x) \
+#define IS_SCALERC_SET_PARAM_INPUT_CROP_IN_WIDTH(dev, x) \
 	(dev->is_p_region->parameter.scalerc.input_crop.in_width = x)
-#define IS_SCALERC_SET_PARAM_INPUT_IN_HEIGHT(dev, x) \
+#define IS_SCALERC_SET_PARAM_INPUT_CROP_IN_HEIGHT(dev, x) \
 	(dev->is_p_region->parameter.scalerc.input_crop.in_height = x)
-#define IS_SCALERC_SET_PARAM_INPUT_OUT_WIDTH(dev, x) \
+#define IS_SCALERC_SET_PARAM_INPUT_CROP_OUT_WIDTH(dev, x) \
 	(dev->is_p_region->parameter.scalerc.input_crop.out_width = x)
-#define IS_SCALERC_SET_PARAM_INPUT_OUT_HEIGHT(dev, x) \
+#define IS_SCALERC_SET_PARAM_INPUT_CROP_OUT_HEIGHT(dev, x) \
 	(dev->is_p_region->parameter.scalerc.input_crop.out_height = x)
 #define IS_SCALERC_SET_PARAM_INPUT_CROP_ERR(dev, x) \
 	(dev->is_p_region->parameter.scalerc.input_crop.err = x)
@@ -408,6 +420,8 @@
 	(dev->is_p_region->parameter.scalerc.dma_output.buffer_number = x)
 #define IS_SCALERC_SET_PARAM_DMA_OUTPUT_BUFFERADDR(dev, x) \
 	(dev->is_p_region->parameter.scalerc.dma_output.buffer_address = x)
+#define IS_SCALERC_SET_PARAM_DMA_OUTPUT_MASK(dev, x) \
+	(dev->is_p_region->parameter.scalerc.dma_output.dma_out_mask = x)
 #define IS_SCALERC_SET_PARAM_DMA_OUTPUT_OUTPATH(dev, x) \
 	(dev->is_p_region->parameter.scalerc.dma_output.reserved[0] = x)
 #define IS_SCALERC_SET_PARAM_DMA_OUTPUT_ERR(dev, x) \
@@ -416,6 +430,10 @@
 /* ODC Macros */
 #define IS_ODC_SET_PARAM_CONTROL_CMD(dev, x) \
 	(dev->is_p_region->parameter.odc.control.cmd = x)
+#define IS_ODC_SET_PARAM_CONTROL_BUFFERNUM(dev, x) \
+	(dev->is_p_region->parameter.odc.control.buffer_number = x)
+#define IS_ODC_SET_PARAM_CONTROL_BUFFERADDR(dev, x) \
+	(dev->is_p_region->parameter.odc.control.buffer_address = x)
 #define IS_ODC_SET_PARAM_CONTROL_BYPASS(dev, x) \
 	(dev->is_p_region->parameter.odc.control.bypass = x)
 #define IS_ODC_SET_PARAM_CONTROL_ERR(dev, x) \
@@ -454,6 +472,10 @@
 /* DIS Macros */
 #define IS_DIS_SET_PARAM_CONTROL_CMD(dev, x) \
 	(dev->is_p_region->parameter.dis.control.cmd = x)
+#define IS_DIS_SET_PARAM_CONTROL_BUFFERNUM(dev, x) \
+	(dev->is_p_region->parameter.dis.control.buffer_number = x)
+#define IS_DIS_SET_PARAM_CONTROL_BUFFERADDR(dev, x) \
+	(dev->is_p_region->parameter.dis.control.buffer_address = x)
 #define IS_DIS_SET_PARAM_CONTROL_BYPASS(dev, x) \
 	(dev->is_p_region->parameter.dis.control.bypass = x)
 #define IS_DIS_SET_PARAM_CONTROL_ERR(dev, x) \
@@ -494,6 +516,10 @@
 	(dev->is_p_region->parameter.tdnr.control.cmd = x)
 #define IS_TDNR_SET_PARAM_CONTROL_BYPASS(dev, x) \
 	(dev->is_p_region->parameter.tdnr.control.bypass = x)
+#define IS_TDNR_SET_PARAM_CONTROL_BUFFERNUM(dev, x) \
+	(dev->is_p_region->parameter.tdnr.control.buffer_number = x)
+#define IS_TDNR_SET_PARAM_CONTROL_BUFFERADDR(dev, x) \
+	(dev->is_p_region->parameter.tdnr.control.buffer_address = x)
 #define IS_TDNR_SET_PARAM_CONTROL_ERR(dev, x) \
 	(dev->is_p_region->parameter.tdnr.control.err = x)
 
@@ -550,6 +576,8 @@
 	(dev->is_p_region->parameter.tdnr.dma_output.buffer_number = x)
 #define IS_TDNR_SET_PARAM_DMA_OUTPUT_BUFFERADDR(dev, x) \
 	(dev->is_p_region->parameter.tdnr.dma_output.buffer_address = x)
+#define IS_TDNR_SET_PARAM_DMA_OUTPUT_MASK(dev, x) \
+	(dev->is_p_region->parameter.tdnr.dma_output.dma_out_mask = x)
 #define IS_TDNR_SET_PARAM_DMA_OUTPUT_ERR(dev, x) \
 	(dev->is_p_region->parameter.tdnr.dma_output.err = x)
 
@@ -591,13 +619,13 @@
 	(dev->is_p_region->parameter.scalerp.input_crop.crop_width = x)
 #define IS_SCALERP_SET_PARAM_INPUT_CROP_HEIGHT(dev, x) \
 	(dev->is_p_region->parameter.scalerp.input_crop.crop_height = x)
-#define IS_SCALERP_SET_PARAM_INPUT_IN_WIDTH(dev, x) \
+#define IS_SCALERP_SET_PARAM_INPUT_CROP_IN_WIDTH(dev, x) \
 	(dev->is_p_region->parameter.scalerp.input_crop.in_width = x)
-#define IS_SCALERP_SET_PARAM_INPUT_IN_HEIGHT(dev, x) \
+#define IS_SCALERP_SET_PARAM_INPUT_CROP_IN_HEIGHT(dev, x) \
 	(dev->is_p_region->parameter.scalerp.input_crop.in_height = x)
-#define IS_SCALERP_SET_PARAM_INPUT_OUT_WIDTH(dev, x) \
+#define IS_SCALERP_SET_PARAM_INPUT_CROP_OUT_WIDTH(dev, x) \
 	(dev->is_p_region->parameter.scalerp.input_crop.out_width = x)
-#define IS_SCALERP_SET_PARAM_INPUT_OUT_HEIGHT(dev, x) \
+#define IS_SCALERP_SET_PARAM_INPUT_CROP_OUT_HEIGHT(dev, x) \
 	(dev->is_p_region->parameter.scalerp.input_crop.out_height = x)
 #define IS_SCALERP_SET_PARAM_INPUT_CROP_ERR(dev, x) \
 	(dev->is_p_region->parameter.scalerp.input_crop.err = x)
@@ -660,6 +688,8 @@
 	(dev->is_p_region->parameter.scalerp.dma_output.buffer_number = x)
 #define IS_SCALERP_SET_PARAM_DMA_OUTPUT_BUFFERADDR(dev, x) \
 	(dev->is_p_region->parameter.scalerp.dma_output.buffer_address = x)
+#define IS_SCALERP_SET_PARAM_DMA_OUTPUT_MASK(dev, x) \
+	(dev->is_p_region->parameter.scalerp.dma_output.dma_out_mask = x)
 #define IS_SCALERP_SET_PARAM_DMA_OUTPUT_ERR(dev, x) \
 	(dev->is_p_region->parameter.scalerp.dma_output.err = x)
 
@@ -806,8 +836,8 @@
 
 enum is_entry {
 	ENTRY_GLOBAL,
-	ENTRY_SENSOR,
 	ENTRY_BUFFER,
+	ENTRY_SENSOR,
 	ENTRY_ISP,
 	ENTRY_DRC,
 	ENTRY_SCALERC,
@@ -822,15 +852,17 @@ enum is_entry {
 enum is_param_set_bit {
 	PARAM_GLOBAL_SHOTMODE = 0,
 	PARAM_SENSOR_CONTROL,
+	PARAM_SENSOR_OTF_INPUT,
 	PARAM_SENSOR_OTF_OUTPUT,
 	PARAM_SENSOR_FRAME_RATE,
+	PARAM_SENSOR_DMA_OUTPUT,
 	PARAM_BUFFER_CONTROL,
 	PARAM_BUFFER_OTF_INPUT,
 	PARAM_BUFFER_OTF_OUTPUT,
 	PARAM_ISP_CONTROL,
-	PARAM_ISP_OTF_INPUT,
+	PARAM_ISP_OTF_INPUT = 10,
 	PARAM_ISP_DMA1_INPUT,
-	PARAM_ISP_DMA2_INPUT = 10,
+	PARAM_ISP_DMA2_INPUT,
 	PARAM_ISP_AA,
 	PARAM_ISP_FLASH,
 	PARAM_ISP_AWB,
@@ -838,9 +870,9 @@ enum is_param_set_bit {
 	PARAM_ISP_ISO,
 	PARAM_ISP_ADJUST,
 	PARAM_ISP_METERING,
-	PARAM_ISP_AFC,
+	PARAM_ISP_AFC = 20,
 	PARAM_ISP_OTF_OUTPUT,
-	PARAM_ISP_DMA1_OUTPUT = 20,
+	PARAM_ISP_DMA1_OUTPUT,
 	PARAM_ISP_DMA2_OUTPUT,
 	PARAM_DRC_CONTROL,
 	PARAM_DRC_OTF_INPUT,
@@ -848,19 +880,19 @@ enum is_param_set_bit {
 	PARAM_DRC_OTF_OUTPUT,
 	PARAM_SCALERC_CONTROL,
 	PARAM_SCALERC_OTF_INPUT,
-	PARAM_SCALERC_IMAGE_EFFECT,
+	PARAM_SCALERC_IMAGE_EFFECT = 30,
 	PARAM_SCALERC_INPUT_CROP,
-	PARAM_SCALERC_OUTPUT_CROP = 30,
+	PARAM_SCALERC_OUTPUT_CROP,
 	PARAM_SCALERC_OTF_OUTPUT,
-	PARAM_SCALERC_DMA_OUTPUT = 32,
+	PARAM_SCALERC_DMA_OUTPUT = 34,
 	PARAM_ODC_CONTROL,
 	PARAM_ODC_OTF_INPUT,
 	PARAM_ODC_OTF_OUTPUT,
 	PARAM_DIS_CONTROL,
 	PARAM_DIS_OTF_INPUT,
-	PARAM_DIS_OTF_OUTPUT,
+	PARAM_DIS_OTF_OUTPUT = 40,
 	PARAM_TDNR_CONTROL,
-	PARAM_TDNR_OTF_INPUT = 40,
+	PARAM_TDNR_OTF_INPUT,
 	PARAM_TDNR_1ST_FRAME,
 	PARAM_TDNR_OTF_OUTPUT,
 	PARAM_TDNR_DMA_OUTPUT,
@@ -868,15 +900,15 @@ enum is_param_set_bit {
 	PARAM_SCALERP_OTF_INPUT,
 	PARAM_SCALERP_IMAGE_EFFECT,
 	PARAM_SCALERP_INPUT_CROP,
-	PARAM_SCALERP_OUTPUT_CROP,
+	PARAM_SCALERP_OUTPUT_CROP = 50,
 	PARAM_SCALERP_ROTATION,
-	PARAM_SCALERP_FLIP = 50,
+	PARAM_SCALERP_FLIP,
 	PARAM_SCALERP_OTF_OUTPUT,
 	PARAM_SCALERP_DMA_OUTPUT,
 	PARAM_FD_CONTROL,
 	PARAM_FD_OTF_INPUT,
 	PARAM_FD_DMA_INPUT,
-	PARAM_FD_CONFIG = 56,
+	PARAM_FD_CONFIG = 58,
 	PARAM_END,
 };
 
@@ -893,9 +925,11 @@ enum is_param_set_bit {
 /* 0~31 */
 #define PARAM_GLOBAL_SHOTMODE		0
 #define PARAM_SENSOR_CONTROL		INC_NUM(PARAM_GLOBAL_SHOTMODE)
-#define PARAM_SENSOR_OTF_OUTPUT		INC_NUM(PARAM_SENSOR_CONTROL)
+#define PARAM_SENSOR_OTF_INPUT		INC_NUM(PARAM_SENSOR_CONTROL)
+#define PARAM_SENSOR_OTF_OUTPUT		INC_NUM(PARAM_SENSOR_OTF_INPUT)
 #define PARAM_SENSOR_FRAME_RATE		INC_NUM(PARAM_SENSOR_OTF_OUTPUT)
-#define PARAM_BUFFER_CONTROL		INC_NUM(PARAM_SENSOR_FRAME_RATE)
+#define PARAM_SENSOR_DMA_OUTPUT		INC_NUM(PARAM_SENSOR_FRAME_RATE)
+#define PARAM_BUFFER_CONTROL		INC_NUM(PARAM_SENSOR_DMA_OUTPUT)
 #define PARAM_BUFFER_OTF_INPUT		INC_NUM(PARAM_BUFFER_CONTROL)
 #define PARAM_BUFFER_OTF_OUTPUT		INC_NUM(PARAM_BUFFER_OTF_INPUT)
 #define PARAM_ISP_CONTROL		INC_NUM(PARAM_BUFFER_OTF_OUTPUT)
@@ -955,7 +989,7 @@ enum is_param_set_bit {
 #define PARAM_STRNUM_GLOBAL		(PARAM_GLOBAL_SHOTMODE)
 #define PARAM_RANGE_GLOBAL		1
 #define PARAM_STRNUM_SENSOR		(PARAM_SENSOR_BYPASS)
-#define PARAM_RANGE_SENSOR		3
+#define PARAM_RANGE_SENSOR		5
 #define PARAM_STRNUM_BUFFER		(PARAM_BUFFER_BYPASS)
 #define PARAM_RANGE_BUFFER		3
 #define PARAM_STRNUM_ISP		(PARAM_ISP_BYPASS)
@@ -974,6 +1008,9 @@ enum is_param_set_bit {
 #define PARAM_RANGE_SCALERP		9
 #define PARAM_STRNUM_LHFD		(PARAM_FD_BYPASS)
 #define PARAM_RANGE_LHFD		4
+
+#define PARAM_LOW_MASK		(0xFFFFFFFF)
+#define PARAM_HIGH_MASK		(0x07FFFFFF)
 
 /* Enumerations
 *
@@ -1035,7 +1072,9 @@ enum otf_intput_error {
 
 enum dma_input_command {
 	DMA_INPUT_COMMAND_DISABLE	= 0,
-	DMA_INPUT_COMMAND_ENABLE	= 1
+	DMA_INPUT_COMMAND_ENABLE	= 1,
+	DMA_INPUT_COMMAND_BUF_MNGR	= 2,
+	DMA_INPUT_COMMAND_RUN_SINGLE	= 3,
 };
 
 enum dma_inut_format {
@@ -1124,7 +1163,9 @@ enum otf_output_error {
 
 enum dma_output_command {
 	DMA_OUTPUT_COMMAND_DISABLE	= 0,
-	DMA_OUTPUT_COMMAND_ENABLE	= 1
+	DMA_OUTPUT_COMMAND_ENABLE	= 1,
+	DMA_OUTPUT_COMMAND_BUF_MNGR	= 2,
+	DMA_OUTPUT_UPDATE_MASK_BITS	= 3
 };
 
 enum dma_output_format {
@@ -1219,12 +1260,23 @@ enum isp_af_mode {
 	ISP_AF_MODE_SLEEP		= 4,
 	ISP_AF_MODE_INIT		= 5,
 	ISP_AF_MODE_SET_CENTER_WINDOW	= 6,
-	ISP_AF_MODE_SET_TOUCH_WINDOW	= 7
+	ISP_AF_MODE_SET_TOUCH_WINDOW	= 7,
+	ISP_AF_SET_FACE_WINDOW		= 8
 };
 
 enum isp_af_face {
 	ISP_AF_FACE_DISABLE		= 0,
 	ISP_AF_FACE_ENABLE		= 1
+};
+
+enum isp_af_scene {
+	ISP_AF_SCENE_NORMAL		= 0,
+	ISP_AF_SCENE_MACRO		= 1
+};
+
+enum isp_af_sleep {
+	ISP_AF_SLEEP_OFF		= 0,
+	ISP_AF_SLEEP_ON			= 1
 };
 
 enum isp_af_continuous {
@@ -1297,8 +1349,14 @@ enum iso_error {
 
 /* --------------------------  Adjust  ----------------------------------- */
 enum iso_adjust_command {
-	ISP_ADJUST_COMMAND_AUTO		= 0,
-	ISP_ADJUST_COMMAND_MANUAL	= 1
+	ISP_ADJUST_COMMAND_AUTO			= 0,
+	ISP_ADJUST_COMMAND_MANUAL_CONTRAST	= (1 << 0),
+	ISP_ADJUST_COMMAND_MANUAL_SATURATION	= (1 << 1),
+	ISP_ADJUST_COMMAND_MANUAL_SHARPNESS	= (1 << 2),
+	ISP_ADJUST_COMMAND_MANUAL_EXPOSURE	= (1 << 3),
+	ISP_ADJUST_COMMAND_MANUAL_BRIGHTNESS	= (1 << 4),
+	ISP_ADJUST_COMMAND_MANUAL_HUE		= (1 << 5),
+	ISP_ADJUST_COMMAND_MANUAL_ALL		= 0x7F
 };
 
 enum isp_adjust_error {
@@ -1338,17 +1396,17 @@ enum isp_scene_command {
 	ISP_SCENE_PORTRAIT	= 1,
 	ISP_SCENE_LANDSCAPE     = 2,
 	ISP_SCENE_SPORTS        = 3,
-	ISP_SCENE_PARTYINDOOR = 4,
-	ISP_SCENE_BEACHSNOW    = 5,
-	ISP_SCENE_SUNSET           = 6,
-	ISP_SCENE_DAWN              = 7,
-	ISP_SCENE_FALL                = 8,
-	ISP_SCENE_NIGHT              = 9,
-	ISP_SCENE_AGAINSTLIGHTWLIGHT  = 10,
-	ISP_SCENE_AGAINSTLIGHTWOLIGHT  = 11,
-	ISP_SCENE_FIRE                 = 12,
-	ISP_SCENE_TEXT                 = 13,
-	ISP_SCENE_CANDLE            = 14
+	ISP_SCENE_PARTYINDOOR	= 4,
+	ISP_SCENE_BEACHSNOW	= 5,
+	ISP_SCENE_SUNSET	= 6,
+	ISP_SCENE_DAWN		= 7,
+	ISP_SCENE_FALL		= 8,
+	ISP_SCENE_NIGHT		= 9,
+	ISP_SCENE_AGAINSTLIGHTWLIGHT	= 10,
+	ISP_SCENE_AGAINSTLIGHTWOLIGHT	= 11,
+	ISP_SCENE_FIRE			= 12,
+	ISP_SCENE_TEXT			= 13,
+	ISP_SCENE_CANDLE		= 14
 };
 
 /* --------------------------  Scaler  --------------------------------- */
@@ -1473,7 +1531,11 @@ enum fd_config_orientation {
 struct param_control {
 	u32	cmd;
 	u32	bypass;
-	u32	reserved[PARAMETER_MAX_MEMBER-3];
+	u32 buffer_address;
+	u32 buffer_number;
+	u32 first_drop_frame;
+	u32 run_mode;			/* 0: continuous, 1: single */
+	u32	reserved[PARAMETER_MAX_MEMBER-7];
 	u32	err;
 };
 
@@ -1488,7 +1550,9 @@ struct param_otf_input {
 	u32	crop_offset_y;
 	u32	crop_width;
 	u32	crop_height;
-	u32	reserved[PARAMETER_MAX_MEMBER-11];
+	u32	frametime_min;
+	u32	frametime_max;
+	u32	reserved[PARAMETER_MAX_MEMBER-13];
 	u32	err;
 };
 
@@ -1528,7 +1592,8 @@ struct param_dma_output {
 	u32	buffer_number;
 	u32	buffer_address;
 	u32	notify_dma_done;
-	u32	reserved[PARAMETER_MAX_MEMBER-11];
+	u32	dma_out_mask;
+	u32	reserved[PARAMETER_MAX_MEMBER-12];
 	u32	err;
 };
 
@@ -1545,33 +1610,19 @@ struct param_sensor_framerate {
 	u32	err;
 };
 
-#if 0
 struct param_isp_aa {
 	u32	cmd;
 	u32	target;
 	u32	mode;
+	u32	scene;
+	u32	sleep;
 	u32	face;
-	u32	continuous;
-	u32	win_pos_x;
-	u32	win_pos_y;
-	u32	win_width;
-	u32	win_height;
+	u32	touch_x;
+	u32	touch_y;
 	u32	manual_af_setting;
-	u32	reserved[PARAMETER_MAX_MEMBER-11];
+	u32	reserved[PARAMETER_MAX_MEMBER-10];
 	u32	err;
 };
-#else
-struct param_isp_aa {
-	u32	cmd;
-	u32	target;
-	u32	mode;
-	u32	face;
-	u32	win_pos_x;
-	u32	win_pos_y;
-	u32	reserved[PARAMETER_MAX_MEMBER-7];
-	u32	err;
-};
-#endif
 struct param_isp_flash {
 	u32	cmd;
 	u32	redeye;
@@ -1607,9 +1658,7 @@ struct param_isp_adjust {
 	s32	exposure;
 	s32	brightness;
 	s32	hue;
-	s32	shutter_time_min;
-	s32	shutter_time_max;
-	u32	reserved[PARAMETER_MAX_MEMBER-10];
+	u32	reserved[PARAMETER_MAX_MEMBER-8];
 	u32	err;
 };
 
@@ -1635,29 +1684,6 @@ struct param_scaler_imageeffect {
 	u32	reserved[PARAMETER_MAX_MEMBER-2];
 	u32	err;
 };
-
-#if 0
-struct param_scaler_crop {
-	u32	cmd;
-	u32	pos_x;
-	u32	pos_y;
-	u32	crop_width;
-	u32	crop_height;
-	u32	reserved[PARAMETER_MAX_MEMBER-6];
-	u32	err;
-};
-
-struct param_scaler_scaling {
-	u32	cmd;
-	u32	pre_h_ratio;
-	u32	pre_v_ratio;
-	u32	sh_factor;
-	u32	h_ratio;
-	u32	v_ratio;
-	u32	reserved[PARAMETER_MAX_MEMBER-7];
-	u32	err;
-};
-#endif
 
 struct param_scaler_input_crop {
 	u32  cmd;
@@ -1707,8 +1733,8 @@ struct param_fd_config {
 	u32	max_number;
 	u32	roll_angle;
 	u32	yaw_angle;
-	u32	smile_mode;
-	u32	blink_mode;
+	s32	smile_mode;
+	s32	blink_mode;
 	u32	eye_detect;
 	u32	mouth_detect;
 	u32	orientation;
@@ -1724,8 +1750,10 @@ struct global_param {
 /* To be added */
 struct sensor_param {
 	struct param_control		control;
+	struct param_otf_input		otf_input;
 	struct param_otf_output		otf_output;
 	struct param_sensor_framerate	frame_rate;
+	struct param_dma_output		dma_output;
 };
 
 struct buffer_param {
@@ -1971,7 +1999,9 @@ struct is_debug_frame_descriptor {
 	u32	req_lei;
 };
 
-#define MAX_FRAMEDESCRIPTOR_CONTEXT_NUM	(30*30)	/* 30 sec */
+#define MAX_FRAMEDESCRIPTOR_CONTEXT_NUM	(30 * 20)	/* 600 frame */
+#define MAX_VERSION_DISPLAY_BUF		(32)
+
 struct is_share_region {
 	u32	frame_time;
 	u32	exposure_time;
@@ -1983,18 +2013,42 @@ struct is_share_region {
 
 	u32	af_position;
 	u32	af_status;
-	u32  af_scene_type;
+	u32	af_scene_type;
 
 	u32	frame_descp_onoff_control;
 	u32	frame_descp_update_done;
 	u32	frame_descp_idx;
-	u32  frame_descp_max_idx;
+	u32	frame_descp_max_idx;
 
 	struct is_debug_frame_descriptor
 		dbg_frame_descp_ctx[MAX_FRAMEDESCRIPTOR_CONTEXT_NUM];
 
-	u32 chip_id;
-	u32 chip_rev_no;
+	u32	chip_id;
+	u32	chip_rev_no;
+	u8	ispfw_version_no[MAX_VERSION_DISPLAY_BUF];
+	u8	ispfw_version_date[MAX_VERSION_DISPLAY_BUF];
+	u8	sirc_sdk_version_no[MAX_VERSION_DISPLAY_BUF];
+	u8	sirc_sdk_revsion_no[MAX_VERSION_DISPLAY_BUF];
+	u8	sirc_sdk_version_date[MAX_VERSION_DISPLAY_BUF];
+};
+
+struct is_debug_control {
+	u32 uiWritePoint;	/* 0~500KB boundary*/
+	u32 uiAssertFlag;	/* 0:Not Inovked, 1:Invoked*/
+	u32 uiPAbortFlag;	/* 0:Not Inovked, 1:Invoked*/
+	u32 uiDAbortFlag;	/* 0:Not Inovked, 1:Invoked*/
+	u32 uiPDReadyFlag;	/* 0:Normal, 1:EnterIdle(Ready to power down)*/
+	u32 uiISPFrameErr;	/* Frame Error Count.*/
+	u32 uiDRCFrameErr;	/* Frame Error Count.*/
+	u32 uiSCCFrameErr;	/* Frame Error Count.*/
+	u32 uiODCFrameErr;	/* Frame Error Count.*/
+	u32 uiDISFrameErr;	/* Frame Error Count.*/
+	u32 uiTDNRFrameErr;	/* Frame Error Count.*/
+	u32 uiSCPFrameErr;	/* Frame Error Count.*/
+	u32 uiFDFrameErr;	/* Frame Error Count.*/
+	u32 uiISPFrameDrop;	/* Frame Drop Count.*/
+	u32 uiDRCFrameDrop;	/* Frame Drop Count.*/
+	u32 uiDISFrameDrop;	/* Frame Drop Count.*/
 };
 
 #endif

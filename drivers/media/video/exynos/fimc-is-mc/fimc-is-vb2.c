@@ -26,7 +26,10 @@ void *fimc_is_cma_init(struct fimc_is_dev *isp)
 	return vb2_cma_phys_init(&isp->pdev->dev, NULL, 0, false);
 }
 
-void fimc_is_cma_resume(void *alloc_ctx) {}
+int fimc_is_cma_resume(void *alloc_ctx)
+{
+	return 1;
+}
 void fimc_is_cma_suspend(void *alloc_ctx) {}
 void fimc_is_cma_set_cacheable(void *alloc_ctx, bool cacheable) {}
 
@@ -62,7 +65,6 @@ static unsigned long plane_addr(struct vb2_buffer *vb, u32 plane_no)
 
 	return dva;
 }
-
 
 const struct fimc_is_vb2 fimc_is_vb2_ion = {
 	.ops		= &vb2_ion_memops,
