@@ -25,6 +25,7 @@
 #include <linux/interrupt.h>
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
+#include <linux/kthread.h>
 
 #if defined(CONFIG_FB_EXYNOS_FIMD_MC) || defined(CONFIG_FB_EXYNOS_FIMD_MC_WB)
 #include <media/v4l2-subdev.h>
@@ -69,9 +70,6 @@
 	__raw_writel(v, r); \
 } while (0)
 #endif /* FB_S3C_DEBUG_REGWRITE */
-
-/* irq_flags bits */
-#define S3C_FB_VSYNC_IRQ_EN	0
 
 #define VSYNC_TIMEOUT_MSEC 50
 
@@ -234,11 +232,15 @@ struct s3c_fb_win {
 /**
  * struct s3c_fb_vsync - vsync information
  * @wait:	a queue for processes waiting for vsync
- * @count:	vsync interrupt count
+ * @timestamp:	the time of the last vsync interrupt
+ * @active:	whether userspace is requesting vsync uevents
+ * @thread:	uevent-generating thread
  */
 struct s3c_fb_vsync {
 	wait_queue_head_t	wait;
-	unsigned int		count;
+	ktime_t			timestamp;
+	bool			active;
+	struct task_struct	*thread;
 };
 
 /**
@@ -254,7 +256,6 @@ struct s3c_fb_vsync {
  * @pdata: The platform configuration data passed with the device.
  * @windows: The hardware windows that have been claimed.
  * @irq_no: IRQ line number
- * @irq_flags: irq flags
  * @vsync_info: VSYNC-related information (count, queues...)
  */
 struct s3c_fb {
@@ -272,7 +273,6 @@ struct s3c_fb {
 	struct s3c_fb_win	*windows[S3C_FB_MAX_WIN];
 
 	int			 irq_no;
-	unsigned long		 irq_flags;
 	struct s3c_fb_vsync	 vsync_info;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -1091,20 +1091,17 @@ static void s3c_fb_enable_irq(struct s3c_fb *sfb)
 	void __iomem *regs = sfb->regs;
 	u32 irq_ctrl_reg;
 
-	if (!test_and_set_bit(S3C_FB_VSYNC_IRQ_EN, &sfb->irq_flags)) {
-		/* IRQ disabled, enable it */
-		irq_ctrl_reg = readl(regs + VIDINTCON0);
+	irq_ctrl_reg = readl(regs + VIDINTCON0);
 
-		irq_ctrl_reg |= VIDINTCON0_INT_ENABLE;
-		irq_ctrl_reg |= VIDINTCON0_INT_FRAME;
+	irq_ctrl_reg |= VIDINTCON0_INT_ENABLE;
+	irq_ctrl_reg |= VIDINTCON0_INT_FRAME;
 
-		irq_ctrl_reg &= ~VIDINTCON0_FRAMESEL0_MASK;
-		irq_ctrl_reg |= VIDINTCON0_FRAMESEL0_VSYNC;
-		irq_ctrl_reg &= ~VIDINTCON0_FRAMESEL1_MASK;
-		irq_ctrl_reg |= VIDINTCON0_FRAMESEL1_NONE;
+	irq_ctrl_reg &= ~VIDINTCON0_FRAMESEL0_MASK;
+	irq_ctrl_reg |= VIDINTCON0_FRAMESEL0_VSYNC;
+	irq_ctrl_reg &= ~VIDINTCON0_FRAMESEL1_MASK;
+	irq_ctrl_reg |= VIDINTCON0_FRAMESEL1_NONE;
 
-		writel(irq_ctrl_reg, regs + VIDINTCON0);
-	}
+	writel(irq_ctrl_reg, regs + VIDINTCON0);
 }
 
 /**
@@ -1116,15 +1113,12 @@ static void s3c_fb_disable_irq(struct s3c_fb *sfb)
 	void __iomem *regs = sfb->regs;
 	u32 irq_ctrl_reg;
 
-	if (test_and_clear_bit(S3C_FB_VSYNC_IRQ_EN, &sfb->irq_flags)) {
-		/* IRQ enabled, disable it */
-		irq_ctrl_reg = readl(regs + VIDINTCON0);
+	irq_ctrl_reg = readl(regs + VIDINTCON0);
 
-		irq_ctrl_reg &= ~VIDINTCON0_INT_FRAME;
-		irq_ctrl_reg &= ~VIDINTCON0_INT_ENABLE;
+	irq_ctrl_reg &= ~VIDINTCON0_INT_FRAME;
+	irq_ctrl_reg &= ~VIDINTCON0_INT_ENABLE;
 
-		writel(irq_ctrl_reg, regs + VIDINTCON0);
-	}
+	writel(irq_ctrl_reg, regs + VIDINTCON0);
 }
 
 static irqreturn_t s3c_fb_irq(int irq, void *dev_id)
@@ -1142,14 +1136,9 @@ static irqreturn_t s3c_fb_irq(int irq, void *dev_id)
 		/* VSYNC interrupt, accept it */
 		writel(VIDINTCON1_INT_FRAME, regs + VIDINTCON1);
 
-		sfb->vsync_info.count++;
-		wake_up_interruptible(&sfb->vsync_info.wait);
+		sfb->vsync_info.timestamp = ktime_get();
+		wake_up_interruptible_all(&sfb->vsync_info.wait);
 	}
-
-	/* We only support waiting for VSYNC for now, so it's safe
-	 * to always disable irqs here.
-	 */
-	s3c_fb_disable_irq(sfb);
 
 	spin_unlock(&sfb->slock);
 	return IRQ_HANDLED;
@@ -1162,7 +1151,7 @@ static irqreturn_t s3c_fb_irq(int irq, void *dev_id)
  */
 static int s3c_fb_wait_for_vsync(struct s3c_fb *sfb, u32 crtc)
 {
-	unsigned long count;
+	ktime_t timestamp;
 	int ret;
 
 	if (crtc != 0)
@@ -1170,11 +1159,10 @@ static int s3c_fb_wait_for_vsync(struct s3c_fb *sfb, u32 crtc)
 
 	pm_runtime_get_sync(sfb->dev);
 
-	count = sfb->vsync_info.count;
-	s3c_fb_enable_irq(sfb);
+	timestamp = sfb->vsync_info.timestamp;
 	ret = wait_event_interruptible_timeout(sfb->vsync_info.wait,
-				       count != sfb->vsync_info.count,
-				       msecs_to_jiffies(VSYNC_TIMEOUT_MSEC));
+			!ktime_equal(timestamp, sfb->vsync_info.timestamp),
+			msecs_to_jiffies(VSYNC_TIMEOUT_MSEC));
 
 	pm_runtime_put_sync(sfb->dev);
 
@@ -1354,6 +1342,7 @@ static int s3c_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		struct s3c_fb_user_plane_alpha user_alpha;
 		struct s3c_fb_user_chroma user_chroma;
 		struct s3c_fb_user_ion_client user_ion_client;
+		u32 vsync;
 	} p;
 
 	switch (cmd) {
@@ -1405,7 +1394,12 @@ static int s3c_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		break;
 
 	case S3CFB_SET_VSYNC_INT:
-		/* unnecessary, but for compatibility */
+		if (get_user(p.vsync, (int __user *)arg)) {
+			ret = -EFAULT;
+			break;
+		}
+
+		sfb->vsync_info.active = p.vsync;
 		ret = 0;
 		break;
 
@@ -2467,6 +2461,32 @@ static void s3c_fb_unregister_mc_wb_entities(struct s3c_fb *sfb)
 	v4l2_device_unregister_subdev(&sfb->sd_wb);
 }
 #endif
+
+static int s3c_fb_wait_for_vsync_thread(void *data)
+{
+	struct s3c_fb *sfb = data;
+
+	while (!kthread_should_stop()) {
+		ktime_t timestamp = sfb->vsync_info.timestamp;
+		int ret = wait_event_interruptible_timeout(sfb->vsync_info.wait,
+			!ktime_equal(timestamp, sfb->vsync_info.timestamp) &&
+			sfb->vsync_info.active,
+			msecs_to_jiffies(VSYNC_TIMEOUT_MSEC));
+
+		if (ret > 0) {
+			char *envp[2];
+			char buf[64];
+			snprintf(buf, sizeof(buf), "VSYNC=%llu",
+					ktime_to_ns(sfb->vsync_info.timestamp));
+			envp[0] = buf;
+			envp[1] = NULL;
+			kobject_uevent_env(&sfb->dev->kobj, KOBJ_CHANGE,
+					envp);
+		}
+	}
+
+	return 0;
+}
 /*------------------------------------------------------------------ */
 
 static int __devinit s3c_fb_probe(struct platform_device *pdev)
@@ -2686,6 +2706,14 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	register_early_suspend(&sfb->early_suspend);
 #endif
 
+	sfb->vsync_info.thread = kthread_run(s3c_fb_wait_for_vsync_thread,
+			sfb, "s3c-fb-vsync");
+	if (sfb->vsync_info.thread == ERR_PTR(-ENOMEM)) {
+		dev_err(sfb->dev, "failed to run vsync thread\n");
+		sfb->vsync_info.thread = NULL;
+	}
+
+	s3c_fb_enable_irq(sfb);
 	pm_runtime_put_sync(sfb->dev);
 
 	return 0;
@@ -2742,6 +2770,9 @@ static int __devexit s3c_fb_remove(struct platform_device *pdev)
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	unregister_early_suspend(&sfb->early_suspend);
 #endif
+
+	if (sfb->vsync_info.thread)
+		kthread_stop(sfb->vsync_info.thread);
 
 	if (!sfb->variant.has_clksel) {
 		clk_disable(sfb->lcd_clk);
