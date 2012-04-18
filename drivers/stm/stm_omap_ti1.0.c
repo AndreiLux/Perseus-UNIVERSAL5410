@@ -46,6 +46,8 @@
 #include <linux/io.h>
 #include <linux/err.h>
 
+#include <plat/omap44xx.h>
+
 #include "stm_fw.h"
 #include "stm_msg.h"
 
