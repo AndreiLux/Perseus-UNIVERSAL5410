@@ -761,8 +761,16 @@ static int s3c24xx_i2c_parse_dt_gpio(struct s3c24xx_i2c *i2c)
 {
 	int idx, gpio, ret;
 
+	/* No need to proceed if there is no DTB */
+	if (!i2c->dev->of_node)
+		return 0;
+
 	for (idx = 0; idx < 2; idx++) {
 		gpio = of_get_gpio(i2c->dev->of_node, idx);
+
+		if (gpio == -ENOENT)
+			break;
+
 		if (!gpio_is_valid(gpio)) {
 			dev_err(i2c->dev, "invalid gpio[%d]: %d\n", idx, gpio);
 			goto free_gpio;
