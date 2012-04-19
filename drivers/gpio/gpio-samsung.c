@@ -2378,7 +2378,7 @@ static struct samsung_gpio_chip exynos4_gpios_3[] = {
 };
 #endif
 
-#ifdef CONFIG_SOC_EXYNOS5250
+#ifdef CONFIG_ARCH_EXYNOS5
 static struct samsung_gpio_chip exynos5_gpios_1[] = {
 	{
 		.chip	= {
@@ -2551,7 +2551,9 @@ static struct samsung_gpio_chip exynos5_gpios_1[] = {
 		},
 	},
 };
+#endif
 
+#ifdef CONFIG_ARCH_EXYNOS5
 static struct samsung_gpio_chip exynos5_gpios_2[] = {
 	{
 		.chip	= {
@@ -2610,7 +2612,9 @@ static struct samsung_gpio_chip exynos5_gpios_2[] = {
 		},
 	},
 };
+#endif
 
+#ifdef CONFIG_ARCH_EXYNOS5
 static struct samsung_gpio_chip exynos5_gpios_3[] = {
 	{
 		.chip	= {
@@ -2644,7 +2648,9 @@ static struct samsung_gpio_chip exynos5_gpios_3[] = {
 		},
 	},
 };
+#endif
 
+#ifdef CONFIG_ARCH_EXYNOS5
 static struct samsung_gpio_chip exynos5_gpios_4[] = {
 	{
 		.chip	= {
