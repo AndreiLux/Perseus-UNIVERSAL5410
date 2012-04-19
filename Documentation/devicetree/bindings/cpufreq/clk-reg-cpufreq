@@ -1,0 +1,7 @@
+Generic cpufreq driver based on clk and regulator APIs
+
+Required properties in /cpus/cpu@0:
+- cpu-freqs : cpu frequency points it support, in unit of Hz.
+- cpu-volts : cpu voltages required by the frequency point at the same index,
+	      in unit of uV.
+- trans-latency :  transition_latency, in unit of ns.
