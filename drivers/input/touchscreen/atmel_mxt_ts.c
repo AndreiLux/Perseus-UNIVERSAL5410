@@ -1087,15 +1087,28 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 	return count;
 }
 
+static ssize_t mxt_fw_version_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	struct mxt_data *data = dev_get_drvdata(dev);
+	struct mxt_info *info = &data->info;
+	return scnprintf(buf, PAGE_SIZE,
+		"Family ID: %d Variant ID: %d Major.Minor.Build: %d.%d.%d\n",
+		info->family_id, info->variant_id, info->version >> 4,
+		info->version & 0xf, info->build);
+}
+
 static DEVICE_ATTR(backupnv, S_IWUSR, NULL, mxt_backupnv_store);
 static DEVICE_ATTR(object, S_IRUGO | S_IWUSR, mxt_object_show,
 		   mxt_object_store);
 static DEVICE_ATTR(update_fw, S_IWUSR, NULL, mxt_update_fw_store);
+static DEVICE_ATTR(fw_version, S_IRUGO, mxt_fw_version_show, NULL);
 
 static struct attribute *mxt_attrs[] = {
 	&dev_attr_backupnv.attr,
 	&dev_attr_object.attr,
 	&dev_attr_update_fw.attr,
+	&dev_attr_fw_version.attr,
 	NULL
 };
 
