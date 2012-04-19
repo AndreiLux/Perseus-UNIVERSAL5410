@@ -127,8 +127,6 @@ config EXYNOS4_DEV_FIMC_LITE
 
 config EXYNOS4_DEV_FIMC_IS
 	bool
-	depends on (VIDEO_EXYNOS_FIMC_IS || VIDEO_EXYNOS5_FIMC_IS)
-	default y
 	help
 	  Compile in platform device definition for FIMC-IS
 
@@ -217,8 +215,6 @@ config EXYNOS4_SETUP_USB_PHY
 
 config EXYNOS4_SETUP_FIMC_IS
 	bool
-	depends on VIDEO_EXYNOS5_FIMC_IS
-	default y
 	help
 	  Common setup code for the FIMC-IS-MC
 
@@ -466,7 +462,7 @@ config MACH_SMDK5250
 	select EXYNOS_SETUP_DP
 	select EXYNOS_SETUP_FIMD1
 	select EXYNOS_DEV_ROTATOR
-	select EXYNOS4_DEV_FIMC_LITE
+	select EXYNOS4_DEV_FIMC_IS
 	select EXYNOS4_DEV_USB_OHCI
 	select EXYNOS4_SETUP_I2C1
 	select EXYNOS4_SETUP_I2C2
@@ -475,6 +471,7 @@ config MACH_SMDK5250
 	select EXYNOS4_SETUP_I2C7
 	select EXYNOS4_SETUP_MFC
 	select EXYNOS4_SETUP_USB_PHY
+	select EXYNOS4_SETUP_FIMC_IS
 	select SAMSUNG_DEV_BACKLIGHT
 	select SAMSUNG_DEV_PWM
 	help
