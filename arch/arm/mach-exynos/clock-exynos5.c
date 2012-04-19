@@ -1096,20 +1096,10 @@ static struct clk exynos5_init_clocks_off[] = {
 		.enable		= &exynos5_clk_ip_isp1_ctrl,
 		.ctrlbit	= (0xF << 4),
 	}, {
-		.name		= SYSMMU_CLOCK_NAME,
-		.devname	= SYSMMU_CLOCK_DEVNAME(camif0, 12),
+		.name		= SYSMMU_CLOCK_NAME3,
+		.devname	= SYSMMU_CLOCK_DEVNAME(isp, 9),
 		.enable		= &exynos5_clk_ip_gscl_ctrl,
-		.ctrlbit	= (1 << 11),
-	}, {
-		.name		= SYSMMU_CLOCK_NAME,
-		.devname	= SYSMMU_CLOCK_DEVNAME(camif1, 13),
-		.enable		= &exynos5_clk_ip_gscl_ctrl,
-		.ctrlbit	= (1 << 12),
-	}, {
-		.name		= SYSMMU_CLOCK_NAME,
-		.devname	= SYSMMU_CLOCK_DEVNAME(camif2, 14),
-		.enable		= &exynos5_clk_ip_gscl_ctrl,
-		.ctrlbit	= (1 << 20),
+		.ctrlbit	= (0x203 << 11),
 	}, {
 		.name		= SYSMMU_CLOCK_NAME,
 		.devname	= SYSMMU_CLOCK_DEVNAME(2d, 15),
