@@ -140,7 +140,7 @@ u8 exynos5250_pdma0_peri[] = {
 static struct dma_pl330_platdata exynos_pdma0_pdata;
 
 static AMBA_AHB_DEVICE(exynos_pdma0, "dma-pl330.0", 0x00041330,
-	0, {0}, &exynos_pdma0_pdata);
+	0, {EXYNOS5_IRQ_PDMA0}, &exynos_pdma0_pdata);
 
 static u8 exynos4210_pdma1_peri[] = {
 	DMACH_PCM0_RX,
@@ -241,7 +241,7 @@ u8 exynos5250_pdma1_peri[] = {
 struct dma_pl330_platdata exynos_pdma1_pdata;
 
 static AMBA_AHB_DEVICE(exynos_pdma1,  "dma-pl330.1", 0x00041330,
-	0, {0}, &exynos_pdma1_pdata);
+	0, {EXYNOS5_IRQ_PDMA1}, &exynos_pdma1_pdata);
 
 static u8 mdma_peri[] = {
 	DMACH_MTOM_0,
@@ -260,7 +260,7 @@ static struct dma_pl330_platdata exynos_mdma1_pdata = {
 };
 
 static AMBA_AHB_DEVICE(exynos_mdma1,  "dma-pl330.2", 0x00041330,
-	0, {0}, &exynos_mdma1_pdata);
+	0, {EXYNOS5_IRQ_MDMA1}, &exynos_mdma1_pdata);
 
 static int __init exynos_dma_init(void)
 {
@@ -293,10 +293,13 @@ static int __init exynos_dma_init(void)
 	if (soc_is_exynos4210() || soc_is_exynos4212() || soc_is_exynos4412()) {
 		exynos_pdma0_device.res.start = EXYNOS4_PA_PDMA0;
 		exynos_pdma0_device.res.end = EXYNOS4_PA_PDMA0 + SZ_4K;
+		exynos_pdma0_device.irq[0] = EXYNOS4_IRQ_PDMA0;
 		exynos_pdma1_device.res.start = EXYNOS4_PA_PDMA1;
 		exynos_pdma1_device.res.end = EXYNOS4_PA_PDMA1 + SZ_4K;
+		exynos_pdma1_device.irq[0] = EXYNOS4_IRQ_PDMA1;
 		exynos_mdma1_device.res.start = EXYNOS4_PA_MDMA1;
 		exynos_mdma1_device.res.end = EXYNOS4_PA_MDMA1 + SZ_4K;
+		exynos_mdma1_device.irq[0] = EXYNOS4_IRQ_MDMA1;
 	} else if (soc_is_exynos5250()) {
 		exynos_pdma0_device.res.start = EXYNOS5_PA_PDMA0;
 		exynos_pdma0_device.res.end = EXYNOS5_PA_PDMA0 + SZ_4K;
