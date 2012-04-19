@@ -301,6 +301,7 @@ static void dw_mci_stop_dma(struct dw_mci *host)
 	}
 }
 
+#ifdef CONFIG_MMC_DW_IDMAC
 static int dw_mci_get_dma_dir(struct mmc_data *data)
 {
 	if (data->flags & MMC_DATA_WRITE)
@@ -309,7 +310,6 @@ static int dw_mci_get_dma_dir(struct mmc_data *data)
 		return DMA_FROM_DEVICE;
 }
 
-#ifdef CONFIG_MMC_DW_IDMAC
 static void dw_mci_dma_cleanup(struct dw_mci *host)
 {
 	struct mmc_data *data = host->data;
@@ -435,24 +435,6 @@ static int dw_mci_idmac_init(struct dw_mci *host)
 	return 0;
 }
 
-static struct dw_mci_dma_ops dw_mci_idmac_ops = {
-	.init = dw_mci_idmac_init,
-	.start = dw_mci_idmac_start_dma,
-	.stop = dw_mci_idmac_stop_dma,
-	.complete = dw_mci_idmac_complete_dma,
-	.cleanup = dw_mci_dma_cleanup,
-};
-#else
-static int dw_mci_pre_dma_transfer(struct dw_mci *host,
-				   struct mmc_data *data,
-				   bool next)
-{
-	return -ENOSYS;
-}
-#define dw_mci_pre_req		NULL
-#define dw_mci_post_req		NULL
-#endif /* CONFIG_MMC_DW_IDMAC */
-
 static int dw_mci_pre_dma_transfer(struct dw_mci *host,
 				   struct mmc_data *data,
 				   bool next)
@@ -528,6 +510,24 @@ static void dw_mci_post_req(struct mmc_host *mmc,
 			     dw_mci_get_dma_dir(data));
 	data->host_cookie = 0;
 }
+
+static struct dw_mci_dma_ops dw_mci_idmac_ops = {
+	.init = dw_mci_idmac_init,
+	.start = dw_mci_idmac_start_dma,
+	.stop = dw_mci_idmac_stop_dma,
+	.complete = dw_mci_idmac_complete_dma,
+	.cleanup = dw_mci_dma_cleanup,
+};
+#else
+static int dw_mci_pre_dma_transfer(struct dw_mci *host,
+				   struct mmc_data *data,
+				   bool next)
+{
+	return -ENOSYS;
+}
+#define dw_mci_pre_req		NULL
+#define dw_mci_post_req		NULL
+#endif /* CONFIG_MMC_DW_IDMAC */
 
 static int dw_mci_submit_data_dma(struct dw_mci *host, struct mmc_data *data)
 {
