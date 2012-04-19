@@ -434,6 +434,7 @@ static inline void omap_init_dmic(void) {}
 #endif
 
 #if defined(CONFIG_SND_OMAP_SOC_ABE_DSP) || \
+	defined(CONFIG_SND_OMAP_SOC_ABE) || \
 	defined(CONFIG_SND_OMAP_SOC_ABE_DSP_MODULE)
 
 static struct omap_device_pm_latency omap_aess_latency[] = {
@@ -447,8 +448,8 @@ static struct omap_device_pm_latency omap_aess_latency[] = {
 static void omap_init_aess(void)
 {
 	struct omap_hwmod *oh;
-	struct omap_device *od;
 	struct omap4_abe_dsp_pdata *pdata;
+	struct platform_device *pdev;
 
 	oh = omap_hwmod_lookup("aess");
 	if (!oh) {
@@ -465,14 +466,14 @@ static void omap_init_aess(void)
 	/* FIXME: Add correct context loss counter */
 	/*pdata->get_context_loss_count = omap_pm_get_dev_context_loss_count;*/
 
-	od = omap_device_build("aess", -1, oh, pdata,
+	pdev = omap_device_build("aess", -1, oh, pdata,
 				sizeof(struct omap4_abe_dsp_pdata),
 				omap_aess_latency,
 				ARRAY_SIZE(omap_aess_latency), 0);
 
 	kfree(pdata);
 
-	if (IS_ERR(od))
+	if (IS_ERR(pdev))
 		pr_err("Could not build omap_device for omap-aess-audio\n");
 }
 #else
