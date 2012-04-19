@@ -29,6 +29,7 @@
 #include <linux/i2c/twl.h>
 #include <linux/mfd/twl6040.h>
 #include <linux/hwspinlock.h>
+#include <linux/mfd/twl6040.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/fixed.h>
 #include <linux/wl12xx.h>
