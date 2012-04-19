@@ -20,16 +20,16 @@ config SUSPEND_FREEZER
 
 config HAS_WAKELOCK
 	bool
-	default y
+	default n
 
 config WAKELOCK
 	bool
-	default y
+	default n
 
 config USER_WAKELOCK
 	bool "Userspace wake locks"
 	depends on PM_SLEEP
-	default y
+	default n
 	---help---
 	  User-space wake lock api. Write "lockname" or "lockname timeout"
 	  to /sys/power/wake_lock lock and if needed create a wake lock.
