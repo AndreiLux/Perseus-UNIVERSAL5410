@@ -44,6 +44,32 @@ static void wait_for_pager_signal(int signo)
 	raise(signo);
 }
 
+static int check_pager(const char *pager)
+{
+	char *env_path;
+	char *pager_path;
+	char *path;
+	struct stat stat_buf;
+
+	env_path = getenv("PATH");
+	pager_path = malloc(strlen(env_path) + strlen(pager) + 2);
+	if (pager_path == NULL)
+		return -1;
+	path = strtok(env_path, ":");
+	while (path) {
+		strcpy(pager_path, path);
+		strcat(pager_path, "/");
+		strcat(pager_path, pager);
+		if (!stat(pager_path, &stat_buf)) {
+			free(pager_path);
+			return 0;
+		}
+		path = strtok(NULL, ":");
+	}
+	free(pager_path);
+	return -1;
+}
+
 void setup_pager(void)
 {
 	const char *pager = getenv("PERF_PAGER");
@@ -58,7 +84,10 @@ void setup_pager(void)
 	if (!pager)
 		pager = getenv("PAGER");
 	if (!pager)
-		pager = "less";
+		if (!check_pager("less"))
+			pager = "less";
+		else
+			pager = "/bin/more";
 	else if (!*pager || !strcmp(pager, "cat"))
 		return;
 
