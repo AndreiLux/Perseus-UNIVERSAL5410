@@ -210,6 +210,7 @@ static struct regulator_init_data __initdata max8997_ldo7_data = {
 		.min_uV		= 1800000,
 		.max_uV		= 1800000,
 		.apply_uV	= 1,
+		.always_on	= 1,
 		.valid_ops_mask	= REGULATOR_CHANGE_STATUS,
 		.state_mem	= {
 			.disabled	= 1,
@@ -269,6 +270,7 @@ static struct regulator_init_data __initdata max8997_ldo11_data = {
 		.min_uV		= 3000000,
 		.max_uV		= 3000000,
 		.apply_uV	= 1,
+		.always_on	= 1,
 		.valid_ops_mask	= REGULATOR_CHANGE_STATUS,
 		.state_mem	= {
 			.disabled	= 1,
@@ -477,6 +479,13 @@ static struct i2c_board_info i2c0_devs[] __initdata = {
 		.irq = IRQ_TS,
 	},
 #endif
+};
+
+/* I2C1 */
+static struct i2c_board_info i2c1_devs[] __initdata = {
+	{
+		I2C_BOARD_INFO("alc5625", 0x1E),
+	},
 };
 
 static struct s3c_sdhci_platdata origen_hsmmc0_pdata __initdata = {
@@ -744,6 +753,7 @@ static struct platform_device *origen_devices[] __initdata = {
 	&s3c_device_hsmmc0,
 	&s3c_device_hsmmc3,
 	&s3c_device_i2c0,
+	&s3c_device_i2c1,
 	&s3c_device_rtc,
 	&s3c_device_wdt,
 	&s3c_device_usb_hsotg,
@@ -762,6 +772,8 @@ static struct platform_device *origen_devices[] __initdata = {
 	&s5p_device_mfc_l,
 	&s5p_device_mfc_r,
 	&s5p_device_mixer,
+	&samsung_asoc_dma,
+	&exynos4_device_i2s0,
 	&exynos4_device_ohci,
 	&origen_device_gpiokeys,
 	&origen_lcd_hv070wsa,
@@ -824,6 +836,9 @@ static void __init origen_machine_init(void)
 
 	s3c_i2c0_set_platdata(NULL);
 	i2c_register_board_info(0, i2c0_devs, ARRAY_SIZE(i2c0_devs));
+
+	s3c_i2c1_set_platdata(NULL);
+	i2c_register_board_info(1, i2c1_devs, ARRAY_SIZE(i2c1_devs));
 
 	/*
 	 * Since sdhci instance 2 can contain a bootable media,
