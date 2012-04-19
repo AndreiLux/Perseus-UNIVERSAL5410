@@ -17,6 +17,8 @@
 #include <linux/regulator/consumer.h>
 #include <linux/cpufreq.h>
 #include <linux/suspend.h>
+#include <linux/notifier.h>
+#include <linux/reboot.h>
 
 #include <mach/cpufreq.h>
 
@@ -46,7 +48,7 @@ static int exynos_target(struct cpufreq_policy *policy,
 			  unsigned int target_freq,
 			  unsigned int relation)
 {
-	unsigned int index, old_index;
+	unsigned int index, old_index = 0, i;
 	unsigned int arm_volt, safe_arm_volt = 0;
 	int ret = 0;
 	struct cpufreq_frequency_table *freq_table = exynos_info->freq_table;
@@ -62,10 +64,11 @@ static int exynos_target(struct cpufreq_policy *policy,
 		goto out;
 	}
 
-	if (cpufreq_frequency_table_target(policy, freq_table,
-					   freqs.old, relation, &old_index)) {
-		ret = -EINVAL;
-		goto out;
+	for (i = 0; (freq_table[i].frequency != CPUFREQ_TABLE_END); i++) {
+		if (freqs.old == freq_table[i].frequency) {
+			old_index = i;
+			break;
+		}
 	}
 
 	if (cpufreq_frequency_table_target(policy, freq_table,
@@ -204,8 +207,35 @@ static struct notifier_block exynos_cpufreq_nb = {
 	.notifier_call = exynos_cpufreq_pm_notifier,
 };
 
+static int exynos_cpufreq_reboot_notifier(struct notifier_block *this,
+						unsigned long code, void *_cmd)
+{
+	struct cpufreq_policy *policy = cpufreq_cpu_get(0); /* boot CPU */
+	mutex_lock(&cpufreq_lock);
+
+	if (frequency_locked)
+		goto out;
+	frequency_locked = true;
+
+	if (locking_frequency) {
+		mutex_unlock(&cpufreq_lock);
+		exynos_target(policy, locking_frequency, CPUFREQ_RELATION_H);
+		mutex_lock(&cpufreq_lock);
+	}
+
+out:
+	mutex_unlock(&cpufreq_lock);
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block exynos_cpufreq_reboot_nb = {
+	.notifier_call = exynos_cpufreq_reboot_notifier,
+};
+
 static int exynos_cpufreq_cpu_init(struct cpufreq_policy *policy)
 {
+	int ret;
+
 	policy->cur = policy->min = policy->max = exynos_getspeed(policy->cpu);
 
 	cpufreq_frequency_table_get_attr(exynos_info->freq_table, policy->cpu);
@@ -228,8 +258,25 @@ static int exynos_cpufreq_cpu_init(struct cpufreq_policy *policy)
 		cpumask_setall(policy->cpus);
 	}
 
-	return cpufreq_frequency_table_cpuinfo(policy, exynos_info->freq_table);
+	ret = cpufreq_frequency_table_cpuinfo(policy, exynos_info->freq_table);
+	if (ret)
+		return ret;
+
+	cpufreq_frequency_table_get_attr(exynos_info->freq_table, policy->cpu);
+	return 0;
+
 }
+
+static int exynos4_cpufreq_cpu_exit(struct cpufreq_policy *policy)
+{
+	cpufreq_frequency_table_put_attr(policy->cpu);
+	return 0;
+}
+
+static struct freq_attr *exynos4_cpufreq_attr[] = {
+	&cpufreq_freq_attr_scaling_available_freqs,
+	NULL,
+};
 
 static struct cpufreq_driver exynos_driver = {
 	.flags		= CPUFREQ_STICKY,
@@ -237,7 +284,9 @@ static struct cpufreq_driver exynos_driver = {
 	.target		= exynos_target,
 	.get		= exynos_getspeed,
 	.init		= exynos_cpufreq_cpu_init,
+	.exit           = exynos4_cpufreq_cpu_exit,
 	.name		= "exynos_cpufreq",
+	.attr           = exynos4_cpufreq_attr,
 #ifdef CONFIG_PM
 	.suspend	= exynos_cpufreq_suspend,
 	.resume		= exynos_cpufreq_resume,
@@ -276,6 +325,7 @@ static int __init exynos_cpufreq_init(void)
 	}
 
 	register_pm_notifier(&exynos_cpufreq_nb);
+	register_reboot_notifier(&exynos_cpufreq_reboot_nb);
 
 	if (cpufreq_register_driver(&exynos_driver)) {
 		pr_err("%s: failed to register cpufreq driver\n", __func__);
