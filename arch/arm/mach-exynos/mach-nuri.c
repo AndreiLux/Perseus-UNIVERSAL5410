@@ -113,7 +113,6 @@ static struct s3c_sdhci_platdata nuri_hsmmc0_data __initdata = {
 				MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED |
 				MMC_CAP_ERASE),
 	.cd_type		= S3C_SDHCI_CD_PERMANENT,
-	.clk_type		= S3C_SDHCI_CLK_DIV_EXTERNAL,
 };
 
 static struct regulator_consumer_supply emmc_supplies[] = {
@@ -154,7 +153,6 @@ static struct s3c_sdhci_platdata nuri_hsmmc2_data __initdata = {
 	.ext_cd_gpio		= EXYNOS4_GPX3(3),	/* XEINT_27 */
 	.ext_cd_gpio_invert	= 1,
 	.cd_type		= S3C_SDHCI_CD_GPIO,
-	.clk_type		= S3C_SDHCI_CLK_DIV_EXTERNAL,
 };
 
 /* WLAN */
@@ -163,7 +161,6 @@ static struct s3c_sdhci_platdata nuri_hsmmc3_data __initdata = {
 	.host_caps		= MMC_CAP_4_BIT_DATA |
 				MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED,
 	.cd_type		= S3C_SDHCI_CD_EXTERNAL,
-	.clk_type		= S3C_SDHCI_CLK_DIV_EXTERNAL,
 };
 
 static void __init nuri_sdhci_init(void)
@@ -214,25 +211,29 @@ static struct platform_device nuri_gpio_keys = {
 
 /* Frame Buffer */
 static struct s3c_fb_pd_win nuri_fb_win0 = {
-	.win_mode = {
-		.left_margin	= 64,
-		.right_margin	= 16,
-		.upper_margin	= 64,
-		.lower_margin	= 1,
-		.hsync_len	= 48,
-		.vsync_len	= 3,
-		.xres		= 1024,
-		.yres		= 600,
-		.refresh	= 60,
-	},
 	.max_bpp	= 24,
 	.default_bpp	= 16,
+	.xres		= 1024,
+	.yres		= 600,
 	.virtual_x	= 1024,
 	.virtual_y	= 2 * 600,
 };
 
+static struct fb_videomode nuri_lcd_timing = {
+	.left_margin	= 64,
+	.right_margin	= 16,
+	.upper_margin	= 64,
+	.lower_margin	= 1,
+	.hsync_len	= 48,
+	.vsync_len	= 3,
+	.xres		= 1024,
+	.yres		= 600,
+	.refresh	= 60,
+};
+
 static struct s3c_fb_platdata nuri_fb_pdata __initdata = {
 	.win[0]		= &nuri_fb_win0,
+	.vtiming	= &nuri_lcd_timing,
 	.vidcon0	= VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB |
 			  VIDCON0_CLKSEL_LCD,
 	.vidcon1	= VIDCON1_INV_HSYNC | VIDCON1_INV_VSYNC,
@@ -1037,11 +1038,7 @@ static struct platform_device nuri_max8903_device = {
 static void __init nuri_power_init(void)
 {
 	int gpio;
-	int irq_base = IRQ_GPIO_END + 1;
 	int ta_en = 0;
-
-	nuri_max8997_pdata.irq_base = irq_base;
-	irq_base += MAX8997_IRQ_NR;
 
 	gpio = EXYNOS4_GPX0(7);
 	gpio_request(gpio, "AP_PMIC_IRQ");

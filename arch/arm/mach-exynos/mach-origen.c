@@ -424,7 +424,6 @@ static struct max8997_platform_data __initdata origen_max8997_pdata = {
 	.buck1_gpiodvs	= false,
 	.buck2_gpiodvs	= false,
 	.buck5_gpiodvs	= false,
-	.irq_base	= IRQ_GPIO_END + 1,
 
 	.ignore_gpiodvs_side_effect = true,
 	.buck125_default_idx = 0x0,
@@ -472,12 +471,10 @@ static struct i2c_board_info i2c0_devs[] __initdata = {
 
 static struct s3c_sdhci_platdata origen_hsmmc0_pdata __initdata = {
 	.cd_type		= S3C_SDHCI_CD_INTERNAL,
-	.clk_type		= S3C_SDHCI_CLK_DIV_EXTERNAL,
 };
 
 static struct s3c_sdhci_platdata origen_hsmmc2_pdata __initdata = {
 	.cd_type		= S3C_SDHCI_CD_INTERNAL,
-	.clk_type		= S3C_SDHCI_CLK_DIV_EXTERNAL,
 };
 
 /* USB EHCI */
@@ -567,22 +564,26 @@ static struct platform_device origen_lcd_hv070wsa = {
 };
 
 static struct s3c_fb_pd_win origen_fb_win0 = {
-	.win_mode = {
-		.left_margin	= 64,
-		.right_margin	= 16,
-		.upper_margin	= 64,
-		.lower_margin	= 16,
-		.hsync_len	= 48,
-		.vsync_len	= 3,
-		.xres		= 1024,
-		.yres		= 600,
-	},
+	.xres			= 1024,
+	.yres			= 600,
 	.max_bpp		= 32,
 	.default_bpp		= 24,
 };
 
+static struct fb_videomode origen_lcd_timing = {
+	.left_margin	= 64,
+	.right_margin	= 16,
+	.upper_margin	= 64,
+	.lower_margin	= 16,
+	.hsync_len	= 48,
+	.vsync_len	= 3,
+	.xres		= 1024,
+	.yres		= 600,
+};
+
 static struct s3c_fb_platdata origen_lcd_pdata __initdata = {
 	.win[0]		= &origen_fb_win0,
+	.vtiming	= &origen_lcd_timing,
 	.vidcon0	= VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB,
 	.vidcon1	= VIDCON1_INV_HSYNC | VIDCON1_INV_VSYNC |
 				VIDCON1_INV_VCLK,

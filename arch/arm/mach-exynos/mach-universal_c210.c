@@ -748,7 +748,6 @@ static struct s3c_sdhci_platdata universal_hsmmc0_data __initdata = {
 	.host_caps		= (MMC_CAP_8_BIT_DATA | MMC_CAP_4_BIT_DATA |
 				MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED),
 	.cd_type		= S3C_SDHCI_CD_PERMANENT,
-	.clk_type		= S3C_SDHCI_CLK_DIV_EXTERNAL,
 };
 
 static struct regulator_consumer_supply mmc0_supplies[] = {
@@ -788,7 +787,6 @@ static struct s3c_sdhci_platdata universal_hsmmc2_data __initdata = {
 	.ext_cd_gpio		= EXYNOS4_GPX3(4),      /* XEINT_28 */
 	.ext_cd_gpio_invert	= 1,
 	.cd_type		= S3C_SDHCI_CD_GPIO,
-	.clk_type		= S3C_SDHCI_CLK_DIV_EXTERNAL,
 };
 
 /* WiFi */
@@ -813,25 +811,29 @@ static struct i2c_board_info i2c1_devs[] __initdata = {
 
 /* Frame Buffer */
 static struct s3c_fb_pd_win universal_fb_win0 = {
-	.win_mode = {
-		.left_margin	= 16,
-		.right_margin	= 16,
-		.upper_margin	= 2,
-		.lower_margin	= 28,
-		.hsync_len	= 2,
-		.vsync_len	= 1,
-		.xres		= 480,
-		.yres		= 800,
-		.refresh	= 55,
-	},
 	.max_bpp	= 32,
 	.default_bpp	= 16,
+	.xres		= 480,
+	.yres		= 800,
 	.virtual_x	= 480,
 	.virtual_y	= 2 * 800,
 };
 
+static struct fb_videomode universal_lcd_timing = {
+	.left_margin	= 16,
+	.right_margin	= 16,
+	.upper_margin	= 2,
+	.lower_margin	= 28,
+	.hsync_len	= 2,
+	.vsync_len	= 1,
+	.xres		= 480,
+	.yres		= 800,
+	.refresh	= 55,
+};
+
 static struct s3c_fb_platdata universal_lcd_pdata __initdata = {
 	.win[0]		= &universal_fb_win0,
+	.vtiming	= &universal_lcd_timing,
 	.vidcon0	= VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB |
 			  VIDCON0_CLKSEL_LCD,
 	.vidcon1	= VIDCON1_INV_VCLK | VIDCON1_INV_VDEN
