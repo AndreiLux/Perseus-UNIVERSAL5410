@@ -57,6 +57,20 @@
 static const char * const *mac_device_fixup_paths;
 int count_mac_device_fixup_paths;
 
+/* macro for building platform_device for McBSP ports */                        
+#define OMAP_MCBSP_PLATFORM_DEVICE(port_nr)             \                       
+static struct platform_device omap_mcbsp##port_nr = {   \                       
+        .name   = "omap-mcbsp-dai",                     \                       
+        .id     = port_nr - 1,                  \                               
+} 
+
+OMAP_MCBSP_PLATFORM_DEVICE(1);
+OMAP_MCBSP_PLATFORM_DEVICE(2);
+OMAP_MCBSP_PLATFORM_DEVICE(3);
+OMAP_MCBSP_PLATFORM_DEVICE(4);
+OMAP_MCBSP_PLATFORM_DEVICE(5);
+
+
 static int __init omap3_l3_init(void)
 {
 	int l;
@@ -361,7 +375,6 @@ static struct platform_device omap_pcm = {
 
 static void omap_init_audio(void)
 {
-#if 0
 	platform_device_register(&omap_mcbsp1);
 	platform_device_register(&omap_mcbsp2);
 	if (cpu_class_is_omap2() && !cpu_is_omap242x()) {
@@ -373,7 +386,6 @@ static void omap_init_audio(void)
 		platform_device_register(&omap_mcbsp5);
 
 	platform_device_register(&omap_pcm);
-#endif
 }
 
 #else
