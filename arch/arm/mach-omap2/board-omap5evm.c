@@ -1425,6 +1425,11 @@ struct omap_mux_setting omap5432_uevm_mux[] = {
 		.name = "fref_clk0_out.fref_clk0_out",
                 .mode = OMAP_PIN_OUTPUT,    
         },
+	{
+                /* GPIO_141 AUDPWRON */                       
+		.name = "mcspi1_somi.gpio5_141",
+                .mode = OMAP_PIN_OUTPUT | OMAP_MUX_MODE6,
+        },
 };
 
 
@@ -1454,6 +1459,9 @@ static void __init omap_5432_uevm_init(void)
 
 	/* WLAN module IRQ */
 	gpio_wlan_irq = 14;
+
+	/* AUDPWRON gpio */
+	twl6040_data.audpwron_gpio = 141;
 
 	omap54xx_common_init();
 }
