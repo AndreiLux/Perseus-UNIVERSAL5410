@@ -101,10 +101,10 @@ config SND_OMAP_SOC_SDP3430
 config SND_OMAP_SOC_OMAP_ABE_TWL6040
 	tristate "SoC Audio support for OMAP boards using ABE and twl6040 codec"
 	depends on SND_OMAP_SOC && (ARCH_OMAP4 || ARCH_OMAP5)
-	select SND_OMAP_SOC_DMIC
+#	select SND_OMAP_SOC_DMIC
 	select SND_OMAP_SOC_MCPDM
 	select SND_SOC_TWL6040
-	select SND_SOC_DMIC
+#	select SND_SOC_DMIC
 	select SND_OMAP_SOC_MCBSP
 	select SND_OMAP_SOC_ABE
 	select SND_DYNAMIC_MINORS
