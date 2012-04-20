@@ -547,6 +547,7 @@ static void __init omap3_cpuinfo(void)
 	printk(")\n");
 }
 
+
 /*
  * Set up things for map_io and processor detection later on. Gets called
  * pretty much first thing from board init. For multi-omap, this gets
