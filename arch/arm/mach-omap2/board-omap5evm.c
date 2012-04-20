@@ -22,11 +22,13 @@
 #include <linux/i2c/pca953x.h>
 #include <linux/input/mpu6050.h>
 #include <linux/input/matrix_keypad.h>
+#include <linux/mfd/twl6040.h>
 
 #include <linux/platform_data/omap4-keypad.h>
 #include <linux/of_fdt.h>
 #include <linux/i2c-gpio.h>
 #include <linux/clk.h>
+#include <linux/platform_data/omap-abe-twl6040.h>
 
 #include <linux/regulator/machine.h>
 #include <linux/regulator/fixed.h>
@@ -753,6 +755,57 @@ static struct palmas_platform_data palmas_omap5 = {
 };
 #endif  /* CONFIG_OMAP5_SEVM_PALMAS */
 
+static struct twl6040_codec_data twl6040_codec = {
+	/* single-step ramp for headset and handsfree */
+	.hs_left_step	= 0x0f,
+	.hs_right_step	= 0x0f,
+	.hf_left_step	= 0x1d,
+	.hf_right_step	= 0x1d,
+};
+
+static struct twl6040_vibra_data twl6040_vibra = {
+	.vibldrv_res = 8,
+	.vibrdrv_res = 3,
+	.viblmotor_res = 10,
+	.vibrmotor_res = 10,
+	.vddvibl_uV = 0,	/* fixed volt supply - VBAT */
+	.vddvibr_uV = 0,	/* fixed volt supply - VBAT */
+};
+
+static struct twl6040_platform_data twl6040_data = {
+	.codec		= &twl6040_codec,
+	.vibra		= &twl6040_vibra,
+	.audpwron_gpio	= 145,
+	.irq_base	= TWL6040_CODEC_IRQ_BASE,
+};
+
+static struct omap_abe_twl6040_data omap5sevm_abe_audio_data = {                    
+        /* Audio out */                                                         
+        .has_hs         = ABE_TWL6040_LEFT | ABE_TWL6040_RIGHT,                 
+        /* HandsFree through expasion connector */                              
+        .has_hf         = ABE_TWL6040_LEFT | ABE_TWL6040_RIGHT,                 
+        /* PandaBoard: FM TX, PandaBoardES: can be connected to audio out */    
+        .has_aux        = ABE_TWL6040_LEFT | ABE_TWL6040_RIGHT,                 
+        /* PandaBoard: FM RX, PandaBoardES: audio in */                         
+        .has_afm        = ABE_TWL6040_LEFT | ABE_TWL6040_RIGHT,                 
+        .has_abe        = 1,                                                    
+        /* No jack detection. */                                                
+        .jack_detection = 1,                                                    
+        /* MCLK input is 38.4MHz */                                             
+        .mclk_freq      = 19200000,                                             
+        .card_name      = "omap5sevm",
+	.has_hsmic	= 1,                                                                        
+	.has_dmic	= 0, // was  1
+}; 
+
+static struct platform_device omap5sevm_abe_audio = {                               
+        .name           = "omap-abe-twl6040",                                   
+        .id             = -1,                                                   
+        .dev = {                                                                
+                .platform_data = &omap5sevm_abe_audio_data,                         
+        },                                                                      
+};  
+
 static struct i2c_board_info __initdata omap5evm_i2c_1_boardinfo[] = {
 #ifdef CONFIG_OMAP5_SEVM_PALMAS
 	{
@@ -1246,6 +1299,7 @@ static void __init omap54xx_common_init(void)
 	omap_serial_board_init(NULL, 4);
 	omap_sdrc_init(NULL, NULL);
 	omap_hsmmc_init(mmc);
+	platform_device_register(&omap5sevm_abe_audio);
 	omap_ehci_ohci_init();
 	platform_device_register(&leds_gpio);
 }
