@@ -1270,6 +1270,12 @@ static __devinit int omap_abe_probe(struct platform_device *pdev)
 
 	card->dev = &pdev->dev;
 
+	if (!machine_is_omap_4430sdp() &&
+			 !machine_is_omap4_panda() && !machine_is_omap5_sevm())
+		return -ENODEV;
+
+	pr_info("OMAP4/5 SoC init\n");
+
 	if (!pdata) {
 		dev_err(&pdev->dev, "Missing pdata\n");
 		return -ENODEV;
