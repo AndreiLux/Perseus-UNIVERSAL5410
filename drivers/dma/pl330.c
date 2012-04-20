@@ -2314,13 +2314,15 @@ static void pl330_tasklet(unsigned long data)
 	struct dma_pl330_desc *desc, *_dt;
 	unsigned long flags;
 	LIST_HEAD(list);
-
 	spin_lock_irqsave(&pch->lock, flags);
 
 	/* Pick up ripe tomatoes */
 	list_for_each_entry_safe(desc, _dt, &pch->work_list, node)
 		if (desc->status == DONE) {
-			dma_cookie_complete(&desc->txd);
+			if (pch->cyclic)
+				pch->chan.completed_cookie = desc->txd.cookie;
+			else
+				dma_cookie_complete(&desc->txd);
 			list_move_tail(&desc->node, &list);
 		}
 
