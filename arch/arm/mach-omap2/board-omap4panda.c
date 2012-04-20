@@ -62,6 +62,7 @@
 #define GPIO_HUB_NRESET		62
 #define GPIO_WIFI_PMENA		43
 #define GPIO_WIFI_IRQ		53
+#define GPIO_AUDPWRON		127
 #define HDMI_GPIO_CT_CP_HPD 60 /* HPD mode enable/disable */
 #define HDMI_GPIO_LS_OE 41 /* Level shifter for HDMI */
 #define HDMI_GPIO_HPD  63 /* Hotplug detect */
@@ -332,7 +333,7 @@ static struct twl6040_codec_data twl6040_codec = {
 
 static struct twl6040_platform_data twl6040_data = {
 	.codec		= &twl6040_codec,
-	.audpwron_gpio	= 127,
+	.audpwron_gpio	= GPIO_AUDPWRON,
 	.irq_base	= TWL6040_CODEC_IRQ_BASE,
 };
 
@@ -486,6 +487,9 @@ static struct omap_board_mux board_mux[] __initdata = {
 	OMAP4_MUX(DPM_EMU18, OMAP_PIN_OUTPUT | OMAP_MUX_MODE5),
 	/* dispc2_data0 */
 	OMAP4_MUX(DPM_EMU19, OMAP_PIN_OUTPUT | OMAP_MUX_MODE5),
+	/* AUDPWRON 127 */
+	OMAP4_MUX(HDQ_SIO, OMAP_PIN_INPUT | OMAP_MUX_MODE3),
+
 	{ .reg_offset = OMAP_MUX_TERMINATOR },
 };
 
