@@ -448,7 +448,7 @@ static struct omap_device_pm_latency omap_aess_latency[] = {
 static void omap_init_aess(void)
 {
 	struct omap_hwmod *oh;
-	struct omap4_abe_dsp_pdata *pdata;
+//	struct omap4_abe_dsp_pdata *pdata;
 	struct platform_device *pdev;
 
 	oh = omap_hwmod_lookup("aess");
@@ -456,22 +456,22 @@ static void omap_init_aess(void)
 		pr_err("Could not look up aess hw_mod\n");
 		return;
 	}
-
+/*
 	pdata = kzalloc(sizeof(struct omap4_abe_dsp_pdata), GFP_KERNEL);
 	if (!pdata) {
 		pr_err("%s Could not allocate platform data\n", __func__);
 		return;
 	}
-
+*/
 	/* FIXME: Add correct context loss counter */
 	/*pdata->get_context_loss_count = omap_pm_get_dev_context_loss_count;*/
 
-	pdev = omap_device_build("aess", -1, oh, pdata,
-				sizeof(struct omap4_abe_dsp_pdata),
+	pdev = omap_device_build("aess", -1, oh, /* pdata */ NULL, 0,
+//				sizeof(struct omap4_abe_dsp_pdata),
 				omap_aess_latency,
 				ARRAY_SIZE(omap_aess_latency), 0);
 
-	kfree(pdata);
+	//kfree(pdata);
 
 	if (IS_ERR(pdev))
 		pr_err("Could not build omap_device for omap-aess-audio\n");

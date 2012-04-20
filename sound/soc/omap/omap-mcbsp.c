@@ -676,7 +676,7 @@ omap_mcbsp_get_st_ch##channel##_volume(struct snd_kcontrol *kc,	\
 	uc->value.integer.value[0] = chgain;				\
 	return 0;							\
 }
-
+#ifdef CONFIG_ARCH_OMAP3
 OMAP_MCBSP_ST_SET_CHANNEL_VOLUME(0)
 OMAP_MCBSP_ST_SET_CHANNEL_VOLUME(1)
 OMAP_MCBSP_ST_GET_CHANNEL_VOLUME(0)
@@ -760,7 +760,7 @@ int omap_mcbsp_st_add_controls(struct snd_soc_pcm_runtime *rtd)
 	return -EINVAL;
 }
 EXPORT_SYMBOL_GPL(omap_mcbsp_st_add_controls);
-
+#endif
 static __devinit int asoc_mcbsp_probe(struct platform_device *pdev)
 {
 	struct omap_mcbsp_platform_data *pdata = dev_get_platdata(&pdev->dev);

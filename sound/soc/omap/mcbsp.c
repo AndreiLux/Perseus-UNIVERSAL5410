@@ -366,6 +366,7 @@ int omap_st_set_chgain(struct omap_mcbsp *mcbsp, int channel, s16 chgain)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(omap_st_set_chgain);
 
 int omap_st_get_chgain(struct omap_mcbsp *mcbsp, int channel, s16 *chgain)
 {
@@ -386,6 +387,7 @@ int omap_st_get_chgain(struct omap_mcbsp *mcbsp, int channel, s16 *chgain)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(omap_st_get_chgain);
 
 static int omap_st_start(struct omap_mcbsp *mcbsp)
 {
@@ -418,6 +420,7 @@ int omap_st_enable(struct omap_mcbsp *mcbsp)
 
 	return 0;
 }
+EXPORT_SYMBOL(omap_st_enable);
 
 static int omap_st_stop(struct omap_mcbsp *mcbsp)
 {
@@ -448,6 +451,7 @@ int omap_st_disable(struct omap_mcbsp *mcbsp)
 
 	return ret;
 }
+EXPORT_SYMBOL(omap_st_disable);
 
 int omap_st_is_enabled(struct omap_mcbsp *mcbsp)
 {
@@ -473,16 +477,10 @@ static inline void omap_st_stop(struct omap_mcbsp *mcbsp) {}
  */
 void omap_mcbsp_set_tx_threshold(struct omap_mcbsp *mcbsp, u16 threshold)
 {
-	struct omap_mcbsp *mcbsp;
 
 	if (!cpu_is_omap34xx() && !cpu_is_omap44xx() && !cpu_is_omap54xx())
 		return;
 
-	if (!omap_mcbsp_check_valid_id(id)) {
-		printk(KERN_ERR "%s: Invalid id (%d)\n", __func__, id + 1);
-		return;
-	}
-	mcbsp = id_to_mcbsp_ptr(id);
 	if (mcbsp->pdata->buffer_size == 0)
 		return;
 
@@ -498,16 +496,9 @@ EXPORT_SYMBOL_GPL(omap_mcbsp_set_tx_threshold);
  */
 void omap_mcbsp_set_rx_threshold(struct omap_mcbsp *mcbsp, u16 threshold)
 {
-	struct omap_mcbsp *mcbsp;
-
 	if (!cpu_is_omap34xx() && !cpu_is_omap44xx() && !cpu_is_omap54xx())
 		return;
 
-	if (!omap_mcbsp_check_valid_id(id)) {
-		printk(KERN_ERR "%s: Invalid id (%d)\n", __func__, id + 1);
-		return;
-	}
-	mcbsp = id_to_mcbsp_ptr(id);
 	if (mcbsp->pdata->buffer_size == 0)
 		return;
 
@@ -579,7 +570,7 @@ static inline void omap34xx_mcbsp_free(struct omap_mcbsp *mcbsp)
 static inline void omap34xx_mcbsp_free(struct omap_mcbsp *mcbsp) {}
 #endif
 
-int omap_mcbsp_request(unsigned int id)
+int omap_mcbsp_request(struct omap_mcbsp *mcbsp)
 {
 	void *reg_cache;
 	int err;
@@ -1260,6 +1251,6 @@ void __devexit omap_mcbsp_sysfs_remove(struct omap_mcbsp *mcbsp)
 	if (mcbsp->pdata->buffer_size)
 		sysfs_remove_group(&mcbsp->dev->kobj, &additional_attr_group);
 
-	if (mcbsp->st_data)
-		sysfs_remove_group(&mcbsp->dev->kobj, &sidetone_attr_group);
+//	if (mcbsp->st_data)
+//		sysfs_remove_group(&mcbsp->dev->kobj, &sidetone_attr_group);
 }
