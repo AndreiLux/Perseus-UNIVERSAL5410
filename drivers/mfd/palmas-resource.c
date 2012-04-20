@@ -573,6 +573,11 @@ static int __devinit palmas_resource_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_int;
 
+	/* Test */
+        printk(KERN_ERR "PALMAS 32kHz enable\n");
+	palmas_enable_clk32kg(resource);
+	palmas_enable_clk32kgaudio(resource);
+
 	return 0;
 
 err_int:
