@@ -814,6 +814,12 @@ static struct i2c_board_info __initdata omap5evm_i2c_1_boardinfo[] = {
 		.irq = OMAP44XX_IRQ_SYS_1N,
 	},
 #endif
+        {
+                I2C_BOARD_INFO("twl6040", 0x4b),
+                .platform_data = &twl6040_data,
+                .irq = OMAP44XX_IRQ_SYS_2N,
+        },
+
 };
 
 
