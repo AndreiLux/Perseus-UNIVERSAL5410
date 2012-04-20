@@ -412,7 +412,7 @@ static void __init omap_init_mcpdm(void)
 static inline void omap_init_mcpdm(void) {}
 #endif
 
-#if defined(CONFIG_SND_OMAP_SOC_DMIC) || \
+#if defined(CONFIG_SND_OMAP_SOC_DMIC) || defined(CONFIG_SND_SOC_DMIC) || \
 		defined(CONFIG_SND_OMAP_SOC_DMIC_MODULE)
 
 static void __init omap_init_dmic(void)
