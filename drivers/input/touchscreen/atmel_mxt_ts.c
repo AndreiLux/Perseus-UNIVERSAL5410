@@ -889,99 +889,6 @@ static void mxt_calc_resolution(struct mxt_data *data)
 	}
 }
 
-static ssize_t mxt_object_show(struct device *dev,
-			       struct device_attribute *attr, char *buf)
-{
-	struct mxt_data *data = dev_get_drvdata(dev);
-	int count = 0;
-	int i, j, k;
-	int error;
-
-	for (i = 0; i < data->info.object_num; i++) {
-		struct mxt_object *object = &data->object_table[i];
-
-		if (!mxt_object_readable(object->type))
-			continue;
-
-		for (j = 0; j < object->instances; j++) {
-			u8 obuf[object->size];
-
-			count += snprintf(buf + count, PAGE_SIZE - count,
-					  "Object[%d] Type: T%d Instance: %d/%d\n",
-					  i + 1, object->type, j + 1,
-					  object->instances);
-			if (count >= PAGE_SIZE)
-				return PAGE_SIZE - 1;
-
-
-			error = mxt_read_object(data, object, j, obuf);
-			if (error)
-				return error;
-
-			for (k = 0; k < object->size; k++) {
-				count += snprintf(buf + count,
-						  PAGE_SIZE - count,
-						  "\t[%2d]: %02x (%d)\n",
-						  k, obuf[k], obuf[k]);
-				if (count >= PAGE_SIZE)
-					return PAGE_SIZE - 1;
-			}
-
-			count += snprintf(buf + count, PAGE_SIZE - count, "\n");
-			if (count >= PAGE_SIZE)
-				return PAGE_SIZE - 1;
-		}
-	}
-
-	return count;
-}
-
-static ssize_t mxt_object_store(struct device *dev,
-				struct device_attribute *attr,
-				const char *buf, size_t count)
-{
-	struct mxt_data *data = dev_get_drvdata(dev);
-	int ret;
-	u32 param;
-	u8 type, instance, offset, val;
-
-	ret = kstrtou32(buf, 16, &param);
-	if (ret < 0)
-		return -EINVAL;
-
-	/*
-	 * Byte Write Command is encoded in 32-bit word: TTIIOOVV:
-	 * <Type> <Instance> <Offset> <Value>
-	 */
-	type = (param & 0xff000000) >> 24;
-	instance = (param & 0x00ff0000) >> 16;
-	offset = (param & 0x0000ff00) >> 8;
-	val = param & 0x000000ff;
-
-	ret = mxt_write_object(data, type, instance, offset, val);
-	if (ret)
-		return ret;
-
-	return count;
-}
-
-static ssize_t mxt_backupnv_store(struct device *dev,
-				  struct device_attribute *attr,
-				  const char *buf, size_t count)
-{
-	struct mxt_data *data = dev_get_drvdata(dev);
-	int ret;
-
-	/* Backup non-volatile memory */
-	ret = mxt_write_object(data, MXT_GEN_COMMAND_T6, 0,
-			       MXT_COMMAND_BACKUPNV, MXT_BACKUP_VALUE);
-	if (ret)
-		return ret;
-	msleep(MXT_BACKUP_TIME);
-
-	return count;
-}
-
 static int mxt_load_fw(struct device *dev, const char *fn)
 {
 	struct mxt_data *data = dev_get_drvdata(dev);
@@ -1059,6 +966,113 @@ out:
 	return ret;
 }
 
+/**
+ * sysfs interface
+ **/
+static ssize_t mxt_backupnv_store(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf, size_t count)
+{
+	struct mxt_data *data = dev_get_drvdata(dev);
+	int ret;
+
+	/* Backup non-volatile memory */
+	ret = mxt_write_object(data, MXT_GEN_COMMAND_T6, 0,
+			       MXT_COMMAND_BACKUPNV, MXT_BACKUP_VALUE);
+	if (ret)
+		return ret;
+	msleep(MXT_BACKUP_TIME);
+
+	return count;
+}
+
+static ssize_t mxt_fw_version_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	struct mxt_data *data = dev_get_drvdata(dev);
+	struct mxt_info *info = &data->info;
+	return scnprintf(buf, PAGE_SIZE,
+			 "Family ID: %d Variant ID: %d Major.Minor.Build: %d.%d.%d\n",
+			 info->family_id, info->variant_id,
+			 info->version >> 4, info->version & 0xf, info->build);
+}
+
+static ssize_t mxt_object_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	struct mxt_data *data = dev_get_drvdata(dev);
+	int count = 0;
+	int i, j, k;
+	int error;
+
+	for (i = 0; i < data->info.object_num; i++) {
+		struct mxt_object *object = &data->object_table[i];
+
+		if (!mxt_object_readable(object->type))
+			continue;
+
+		for (j = 0; j < object->instances; j++) {
+			u8 obuf[object->size];
+
+			count += snprintf(buf + count, PAGE_SIZE - count,
+					  "Object[%d] Type: T%d Instance: %d/%d\n",
+					  i + 1, object->type, j + 1,
+					  object->instances);
+			if (count >= PAGE_SIZE)
+				return PAGE_SIZE - 1;
+
+
+			error = mxt_read_object(data, object, j, obuf);
+			if (error)
+				return error;
+
+			for (k = 0; k < object->size; k++) {
+				count += snprintf(buf + count,
+						  PAGE_SIZE - count,
+						  "\t[%2d]: %02x (%d)\n",
+						  k, obuf[k], obuf[k]);
+				if (count >= PAGE_SIZE)
+					return PAGE_SIZE - 1;
+			}
+
+			count += snprintf(buf + count, PAGE_SIZE - count, "\n");
+			if (count >= PAGE_SIZE)
+				return PAGE_SIZE - 1;
+		}
+	}
+
+	return count;
+}
+
+static ssize_t mxt_object_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct mxt_data *data = dev_get_drvdata(dev);
+	int ret;
+	u32 param;
+	u8 type, instance, offset, val;
+
+	ret = kstrtou32(buf, 16, &param);
+	if (ret < 0)
+		return -EINVAL;
+
+	/*
+	 * Byte Write Command is encoded in 32-bit word: TTIIOOVV:
+	 * <Type> <Instance> <Offset> <Value>
+	 */
+	type = (param & 0xff000000) >> 24;
+	instance = (param & 0x00ff0000) >> 16;
+	offset = (param & 0x0000ff00) >> 8;
+	val = param & 0x000000ff;
+
+	ret = mxt_write_object(data, type, instance, offset, val);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
 static ssize_t mxt_update_fw_store(struct device *dev,
 					struct device_attribute *attr,
 					const char *buf, size_t count)
@@ -1093,28 +1107,17 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 	return count;
 }
 
-static ssize_t mxt_fw_version_show(struct device *dev,
-			       struct device_attribute *attr, char *buf)
-{
-	struct mxt_data *data = dev_get_drvdata(dev);
-	struct mxt_info *info = &data->info;
-	return scnprintf(buf, PAGE_SIZE,
-		"Family ID: %d Variant ID: %d Major.Minor.Build: %d.%d.%d\n",
-		info->family_id, info->variant_id, info->version >> 4,
-		info->version & 0xf, info->build);
-}
-
 static DEVICE_ATTR(backupnv, S_IWUSR, NULL, mxt_backupnv_store);
+static DEVICE_ATTR(fw_version, S_IRUGO, mxt_fw_version_show, NULL);
 static DEVICE_ATTR(object, S_IRUGO | S_IWUSR, mxt_object_show,
 		   mxt_object_store);
 static DEVICE_ATTR(update_fw, S_IWUSR, NULL, mxt_update_fw_store);
-static DEVICE_ATTR(fw_version, S_IRUGO, mxt_fw_version_show, NULL);
 
 static struct attribute *mxt_attrs[] = {
 	&dev_attr_backupnv.attr,
+	&dev_attr_fw_version.attr,
 	&dev_attr_object.attr,
 	&dev_attr_update_fw.attr,
-	&dev_attr_fw_version.attr,
 	NULL
 };
 
