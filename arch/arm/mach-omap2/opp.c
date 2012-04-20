@@ -53,8 +53,10 @@ int __init omap_init_opp_table(struct omap_opp_def *opp_def,
 	 * Initialize only if not already initialized even if the previous
 	 * call failed, because, no reason we'd succeed again.
 	 */
-	if (omap_table_init)
+	if (omap_table_init) {
+		WARN_ON(1);
 		return -EEXIST;
+	}
 	omap_table_init = 1;
 
 	/* Lets now register with OPP library */
@@ -69,7 +71,7 @@ int __init omap_init_opp_table(struct omap_opp_def *opp_def,
 		}
 		oh = omap_hwmod_lookup(opp_def->hwmod_name);
 		if (!oh || !oh->od) {
-			pr_debug("%s: no hwmod or odev for %s, [%d] "
+			pr_err("%s: no hwmod or odev for %s, [%d] "
 				"cannot add OPPs.\n", __func__,
 				opp_def->hwmod_name, i);
 			continue;
