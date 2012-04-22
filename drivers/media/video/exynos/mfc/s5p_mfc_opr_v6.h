@@ -179,7 +179,7 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 #define ENC_TMV_SIZE(x, y)					\
 		(((x) + 1) * ((y) + 3) * 8)
 #define ENC_ME_SIZE(f_x, f_y, mb_x, mb_y)			\
-		((((((f_x) + 63) / 64) * 16) *			\
+		((((((f_x) + 127) / 64) * 16) *			\
 		((((f_y) + 63) / 64) * 16)) +			\
 		((((mb_x) * (mb_y) + 31) / 32) * 16))
 
