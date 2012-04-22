@@ -680,7 +680,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "MPEG4 level",
 		.minimum = V4L2_MPEG_VIDEO_MPEG4_LEVEL_0,
-		.maximum = V4L2_MPEG_VIDEO_MPEG4_LEVEL_5,
+		.maximum = V4L2_MPEG_VIDEO_MPEG4_LEVEL_6,
 		.step = 1,
 		.default_value = V4L2_MPEG_VIDEO_MPEG4_LEVEL_0,
 	},
@@ -2156,15 +2156,16 @@ static inline int h264_level(enum v4l2_mpeg_video_h264_level lvl)
 
 static inline int mpeg4_level(enum v4l2_mpeg_video_mpeg4_level lvl)
 {
-	static unsigned int t[V4L2_MPEG_VIDEO_MPEG4_LEVEL_5 + 1] = {
-		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_0    */ 0,
-		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_0B   */ 9,
-		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_1    */ 1,
-		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_2    */ 2,
-		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_3    */ 3,
-		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_3B   */ 7,
-		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_4    */ 4,
-		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_5    */ 5,
+	static unsigned int t[V4L2_MPEG_VIDEO_MPEG4_LEVEL_6 + 1] = {
+		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_0	     */ 0,
+		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_0B, Simple    */ 9,
+		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_1	     */ 1,
+		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_2	     */ 2,
+		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_3	     */ 3,
+		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_3B, Advanced  */ 7,
+		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_4	     */ 4,
+		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_5	     */ 5,
+		/* V4L2_MPEG_VIDEO_MPEG4_LEVEL_6,  Simple    */ 6,
 	};
 	return t[lvl];
 }
