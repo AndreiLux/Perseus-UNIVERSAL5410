@@ -156,6 +156,9 @@ enum v4l2_mpeg_mfc51_video_frame_type {
 				V4L2_CID_MPEG_MFC51_VIDEO_H264_RC_FRAME_RATE
 #define V4L2_CID_MPEG_MFC51_VIDEO_BIT_RATE_CH	V4L2_CID_MPEG_VIDEO_BITRATE
 
+/* new entry for enum v4l2_mpeg_video_mpeg4_level */
+#define V4L2_MPEG_VIDEO_MPEG4_LEVEL_6		8
+
 /* proposed CIDs, based on 3.3-rc3 */
 #define V4L2_CID_MPEG_VIDEO_VBV_DELAY		(V4L2_CID_MPEG_MFC_BASE + 26)
 
