@@ -1470,15 +1470,15 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 			 V4L2_BUF_FLAG_BFRAME);
 
 		switch (slice_type) {
-		case S5P_FIMV_DECODE_FRAME_I_FRAME:
+		case S5P_FIMV_ENCODED_TYPE_I:
 			mb_entry->vb.v4l2_buf.flags |=
 				V4L2_BUF_FLAG_KEYFRAME;
 			break;
-		case S5P_FIMV_DECODE_FRAME_P_FRAME:
+		case S5P_FIMV_ENCODED_TYPE_P:
 			mb_entry->vb.v4l2_buf.flags |=
 				V4L2_BUF_FLAG_PFRAME;
 			break;
-		case S5P_FIMV_DECODE_FRAME_B_FRAME:
+		case S5P_FIMV_ENCODED_TYPE_B:
 			mb_entry->vb.v4l2_buf.flags |=
 				V4L2_BUF_FLAG_BFRAME;
 			break;

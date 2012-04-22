@@ -271,7 +271,7 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 	}
 
 	/* If frame is same as previous then skip and do not dequeue */
-	if (frame_type == S5P_FIMV_DECODE_FRAME_SKIPPED)
+	if (frame_type == S5P_FIMV_DISPLAY_FRAME_NOT_CODED)
 		return;
 	/* The MFC returns address of the buffer, now we have to
 	 * check which videobuf does it correspond to */
@@ -301,15 +301,15 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 					V4L2_BUF_FLAG_BFRAME);
 
 			switch (frame_type) {
-			case S5P_FIMV_DECODE_FRAME_I_FRAME:
+			case S5P_FIMV_DISPLAY_FRAME_I:
 				dst_buf->vb.v4l2_buf.flags |=
 					V4L2_BUF_FLAG_KEYFRAME;
 				break;
-			case S5P_FIMV_DECODE_FRAME_P_FRAME:
+			case S5P_FIMV_DISPLAY_FRAME_P:
 				dst_buf->vb.v4l2_buf.flags |=
 					V4L2_BUF_FLAG_PFRAME;
 				break;
-			case S5P_FIMV_DECODE_FRAME_B_FRAME:
+			case S5P_FIMV_DISPLAY_FRAME_B:
 				dst_buf->vb.v4l2_buf.flags |=
 					V4L2_BUF_FLAG_BFRAME;
 				break;
@@ -468,7 +468,8 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 		remained = src_buf->vb.v4l2_planes[0].bytesused - dec->consumed;
 
 		if (dec->is_packedpb && remained > STUFF_BYTE &&
-			s5p_mfc_get_dec_frame_type() == S5P_FIMV_DECODE_FRAME_P_FRAME) {
+			s5p_mfc_get_dec_frame_type() ==
+						S5P_FIMV_DECODED_FRAME_P) {
 			unsigned char *stream_vir;
 			int offset = 0;
 

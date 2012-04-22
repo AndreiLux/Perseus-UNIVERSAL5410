@@ -78,11 +78,11 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 #define s5p_mfc_get_dspl_status()	readl(dev->regs_base + \
 						S5P_FIMV_SI_DISPLAY_STATUS)
 #define s5p_mfc_get_dec_frame_type()	(readl(dev->regs_base + \
-						S5P_FIMV_DECODE_FRAME_TYPE) \
-					& S5P_FIMV_DECODE_FRAME_MASK)
+						S5P_FIMV_DECODED_FRAME_TYPE) \
+					& S5P_FIMV_DECODED_FRAME_MASK)
 #define s5p_mfc_get_disp_frame_type()	((s5p_mfc_read_shm(ctx, DISP_PIC_FRAME_TYPE) \
 						>> S5P_FIMV_SHARED_DISP_FRAME_TYPE_SHIFT) \
-						& S5P_FIMV_DECODE_FRAME_MASK)
+						& S5P_FIMV_DECODED_FRAME_MASK)
 #define s5p_mfc_get_consumed_stream()	readl(dev->regs_base + \
 						S5P_FIMV_SI_CONSUMED_BYTES)
 #define s5p_mfc_get_int_reason()	(readl(dev->regs_base + \

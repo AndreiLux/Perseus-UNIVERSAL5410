@@ -200,14 +200,14 @@
 #define S5P_FIMV_DECODE_C_ADR			0x2028
 
 /* Decoded frame tpe */
-#define S5P_FIMV_DECODE_FRAME_TYPE		0x2020
-#define S5P_FIMV_DECODE_FRAME_MASK		7
+#define S5P_FIMV_DECODED_FRAME_TYPE		0x2020
+#define S5P_FIMV_DECODED_FRAME_MASK		7
 
-#define S5P_FIMV_DECODE_FRAME_SKIPPED		0
-#define S5P_FIMV_DECODE_FRAME_I_FRAME		1
-#define S5P_FIMV_DECODE_FRAME_P_FRAME		2
-#define S5P_FIMV_DECODE_FRAME_B_FRAME		3
-#define S5P_FIMV_DECODE_FRAME_OTHER_FRAME	4
+#define S5P_FIMV_DECODED_FRAME_NOT_CODED	0
+#define S5P_FIMV_DECODED_FRAME_I		1
+#define S5P_FIMV_DECODED_FRAME_P		2
+#define S5P_FIMV_DECODED_FRAME_B		3
+#define S5P_FIMV_DECODED_FRAME_OTHER		4
 
 /* Sizes of buffers required for decoding */
 #define S5P_FIMV_DEC_NB_IP_SIZE			(32 * 1024)
@@ -242,6 +242,11 @@
 #define S5P_FIMV_ENC_SI_PIC_CNT		0x2008 /* picture count */
 #define S5P_FIMV_ENC_SI_WRITE_PTR	0x200c /* write pointer */
 #define S5P_FIMV_ENC_SI_SLICE_TYPE	0x2010 /* slice type(I/P/B/IDR) */
+#define S5P_FIMV_ENCODED_TYPE_NOT_CODED	0
+#define S5P_FIMV_ENCODED_TYPE_I		1
+#define S5P_FIMV_ENCODED_TYPE_P		2
+#define S5P_FIMV_ENCODED_TYPE_B		3
+#define S5P_FIMV_ENCODED_TYPE_SKIPPED	4
 #define S5P_FIMV_ENCODED_Y_ADDR         0x2014 /* the addr of the encoded luma pic */
 #define S5P_FIMV_ENCODED_C_ADDR         0x2018 /* the addr of the encoded chroma pic */
 
