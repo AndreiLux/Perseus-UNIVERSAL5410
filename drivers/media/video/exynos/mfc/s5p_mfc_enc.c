@@ -1465,9 +1465,9 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 		mb_entry = list_entry(ctx->dst_queue.next, struct s5p_mfc_buf, list);
 
 		mb_entry->vb.v4l2_buf.flags &=
-			(V4L2_BUF_FLAG_KEYFRAME &
-			 V4L2_BUF_FLAG_PFRAME &
-			 V4L2_BUF_FLAG_BFRAME);
+			~(V4L2_BUF_FLAG_KEYFRAME |
+			  V4L2_BUF_FLAG_PFRAME |
+			  V4L2_BUF_FLAG_BFRAME);
 
 		switch (slice_type) {
 		case S5P_FIMV_ENCODED_TYPE_I:
