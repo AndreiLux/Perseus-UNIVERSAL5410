@@ -31,6 +31,9 @@
 #include <linux/pm_runtime.h>
 #include <linux/gpio.h>
 
+#include <plat/usb.h>
+#include <plat/cpu.h>
+
 #define USBHS_DRIVER_NAME	"usbhs_omap"
 #define OMAP_EHCI_DEVICE	"ehci-omap"
 #define OMAP_OHCI_DEVICE	"ohci-omap3"
