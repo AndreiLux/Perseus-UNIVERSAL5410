@@ -186,12 +186,6 @@ static void __sysmmu_tlb_invalidate(void __iomem *sfrbase)
 	__raw_writel(0x1, sfrbase + REG_MMU_FLUSH);
 }
 
-static void __sysmmu_tlb_invalidate_entry(void __iomem *sfrbase,
-						unsigned long iova)
-{
-	__raw_writel((iova & SPAGE_MASK) | 1, sfrbase + REG_MMU_FLUSH_ENTRY);
-}
-
 static void __sysmmu_set_ptbase(void __iomem *sfrbase,
 				       unsigned long pgd)
 {
@@ -486,31 +480,6 @@ bool exynos_sysmmu_disable(struct device *dev)
 	pm_runtime_put(data->sysmmu);
 
 	return disabled;
-}
-
-static void sysmmu_tlb_invalidate_entry(struct device *dev, unsigned long iova)
-{
-	unsigned long flags;
-	struct sysmmu_drvdata *data = dev_get_drvdata(dev->archdata.iommu);
-
-	read_lock_irqsave(&data->lock, flags);
-
-	if (is_sysmmu_active(data)) {
-		int i;
-		for (i = 0; i < data->nsfrs; i++) {
-			if (sysmmu_block(data->sfrbases[i])) {
-				__sysmmu_tlb_invalidate_entry(
-						data->sfrbases[i], iova);
-				sysmmu_unblock(data->sfrbases[i]);
-			}
-		}
-	} else {
-		dev_dbg(data->sysmmu,
-			"(%s) Disabled. Skipping invalidating TLB.\n",
-			data->dbgname);
-	}
-
-	read_unlock_irqrestore(&data->lock, flags);
 }
 
 void exynos_sysmmu_tlb_invalidate(struct device *dev)
@@ -942,7 +911,6 @@ static size_t exynos_iommu_unmap(struct iommu_domain *domain,
 					       unsigned long iova, size_t size)
 {
 	struct exynos_iommu_domain *priv = domain->priv;
-	struct sysmmu_drvdata *data;
 	unsigned long flags;
 	unsigned long *ent;
 
@@ -992,12 +960,6 @@ static size_t exynos_iommu_unmap(struct iommu_domain *domain,
 	priv->lv2entcnt[lv1ent_offset(iova)] += SPAGES_PER_LPAGE;
 done:
 	spin_unlock_irqrestore(&priv->pgtablelock, flags);
-
-	spin_lock_irqsave(&priv->lock, flags);
-	list_for_each_entry(data, &priv->clients, node)
-		sysmmu_tlb_invalidate_entry(data->dev, iova);
-	spin_unlock_irqrestore(&priv->lock, flags);
-
 
 	return size;
 }

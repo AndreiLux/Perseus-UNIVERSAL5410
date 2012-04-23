@@ -12,11 +12,14 @@
 #define DEBUG
 #endif
 
+#include <linux/kernel.h>
+#include <linux/hardirq.h>
 #include <linux/slab.h>
 #include <linux/scatterlist.h>
 #include <linux/err.h>
 
 #include <plat/iovmm.h>
+#include <plat/sysmmu.h>
 
 #include "exynos-iommu.h"
 
@@ -56,7 +59,6 @@ dma_addr_t iovmm_map(struct device *dev, struct scatterlist *sg, off_t offset,
 	struct exynos_iovmm *vmm = exynos_get_iovmm(dev);
 	int order;
 	int ret;
-	unsigned long flags;
 #ifdef CONFIG_EXYNOS_IOVMM_ALIGN64K
 	size_t iova_size = 0;
 #endif
@@ -75,10 +77,6 @@ dma_addr_t iovmm_map(struct device *dev, struct scatterlist *sg, off_t offset,
 		goto err_map_nomem;
 	}
 
-	INIT_LIST_HEAD(&region->node);
-
-	spin_lock_irqsave(&vmm->lock, flags);
-
 #ifdef CONFIG_EXYNOS_IOVMM_ALIGN64K
 	iova_size = ALIGN(size, SZ_64K);
 	start = (dma_addr_t)gen_pool_alloc_aligned(vmm->vmm_pool, iova_size,
@@ -88,7 +86,7 @@ dma_addr_t iovmm_map(struct device *dev, struct scatterlist *sg, off_t offset,
 #endif
 	if (!start) {
 		ret = -ENOMEM;
-		goto err_map_nomem_lock;
+		goto err_map_noiomem;
 	}
 
 	addr = start;
@@ -147,9 +145,13 @@ dma_addr_t iovmm_map(struct device *dev, struct scatterlist *sg, off_t offset,
 	region->start = start + start_off;
 	region->size = size;
 
+	INIT_LIST_HEAD(&region->node);
+
+	spin_lock(&vmm->lock);
+
 	list_add(&region->node, &vmm->regions_list);
 
-	spin_unlock_irqrestore(&vmm->lock, flags);
+	spin_unlock(&vmm->lock);
 
 	dev_dbg(dev, "IOVMM: Allocated VM region @ %#x/%#X bytes.\n",
 					region->start, region->size);
@@ -159,8 +161,7 @@ dma_addr_t iovmm_map(struct device *dev, struct scatterlist *sg, off_t offset,
 err_map_map:
 	iommu_unmap(vmm->domain, start, mapped_size);
 	gen_pool_free(vmm->vmm_pool, start, size);
-err_map_nomem_lock:
-	spin_unlock_irqrestore(&vmm->lock, flags);
+err_map_noiomem:
 	kfree(region);
 err_map_nomem:
 	dev_dbg(dev, "IOVMM: Failed to allocated VM region for %#x bytes.\n",
@@ -172,36 +173,42 @@ void iovmm_unmap(struct device *dev, dma_addr_t iova)
 {
 	struct exynos_vm_region *region;
 	struct exynos_iovmm *vmm = exynos_get_iovmm(dev);
-	unsigned long flags;
 	size_t unmapped_size;
 
-	spin_lock_irqsave(&vmm->lock, flags);
+	/* This function must not be called in IRQ handlers */
+	BUG_ON(in_irq());
+
+	spin_lock(&vmm->lock);
 
 	region = find_region(vmm, iova);
-	if (WARN_ON(!region))
-		goto err_region_not_found;
+	if (WARN_ON(!region)) {
+		spin_unlock(&vmm->lock);
+		return;
+	}
+
+	list_del(&region->node);
+
+	spin_unlock(&vmm->lock);
 
 	region->start = round_down(region->start, PAGE_SIZE);
 
 	gen_pool_free(vmm->vmm_pool, region->start, region->size);
-	list_del(&region->node);
 
 	unmapped_size = iommu_unmap(vmm->domain, region->start, region->size);
+
+	exynos_sysmmu_tlb_invalidate(dev);
 
 	WARN_ON(unmapped_size != region->size);
 	dev_dbg(dev, "IOVMM: Unmapped %#x bytes from %#x.\n",
 					unmapped_size, region->start);
 
 	kfree(region);
-err_region_not_found:
-	spin_unlock_irqrestore(&vmm->lock, flags);
 }
 
 int iovmm_map_oto(struct device *dev, phys_addr_t phys, size_t size)
 {
 	struct exynos_vm_region *region;
 	struct exynos_iovmm *vmm = exynos_get_iovmm(dev);
-	unsigned long flags;
 	int ret;
 
 	if (WARN_ON((phys + size) >= IOVA_START)) {
@@ -218,11 +225,9 @@ int iovmm_map_oto(struct device *dev, phys_addr_t phys, size_t size)
 	if (WARN_ON(phys & ~PAGE_MASK))
 		phys = round_down(phys, PAGE_SIZE);
 
-	spin_lock_irqsave(&vmm->lock, flags);
 
 	ret = iommu_map(vmm->domain, (dma_addr_t)phys, phys, size, 0);
 	if (ret < 0) {
-		spin_unlock_irqrestore(&vmm->lock, flags);
 		kfree(region);
 		return ret;
 	}
@@ -231,9 +236,11 @@ int iovmm_map_oto(struct device *dev, phys_addr_t phys, size_t size)
 	region->size = size;
 	INIT_LIST_HEAD(&region->node);
 
+	spin_lock(&vmm->lock);
+
 	list_add(&region->node, &vmm->regions_list);
 
-	spin_unlock_irqrestore(&vmm->lock, flags);
+	spin_unlock(&vmm->lock);
 
 	return 0;
 }
@@ -242,29 +249,35 @@ void iovmm_unmap_oto(struct device *dev, phys_addr_t phys)
 {
 	struct exynos_vm_region *region;
 	struct exynos_iovmm *vmm = exynos_get_iovmm(dev);
-	unsigned long flags;
 	size_t unmapped_size;
+
+	/* This function must not be called in IRQ handlers */
+	BUG_ON(in_irq());
 
 	if (WARN_ON(phys & ~PAGE_MASK))
 		phys = round_down(phys, PAGE_SIZE);
 
-	spin_lock_irqsave(&vmm->lock, flags);
+	spin_lock(&vmm->lock);
 
 	region = find_region(vmm, (dma_addr_t)phys);
-	if (WARN_ON(!region))
-		goto err_region_not_found;
+	if (WARN_ON(!region)) {
+		spin_unlock(&vmm->lock);
+		return;
+	}
 
 	list_del(&region->node);
 
+	spin_unlock(&vmm->lock);
+
 	unmapped_size = iommu_unmap(vmm->domain, region->start, region->size);
+
+	exynos_sysmmu_tlb_invalidate(dev);
 
 	WARN_ON(unmapped_size != region->size);
 	dev_dbg(dev, "IOVMM: Unmapped %#x bytes from %#x.\n",
 					unmapped_size, region->start);
 
 	kfree(region);
-err_region_not_found:
-	spin_unlock_irqrestore(&vmm->lock, flags);
 }
 
 int exynos_init_iovmm(struct device *sysmmu, struct exynos_iovmm *vmm)
