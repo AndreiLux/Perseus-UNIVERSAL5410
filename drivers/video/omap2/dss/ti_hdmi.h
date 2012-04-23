@@ -286,4 +286,6 @@ int ti_hdmi_5xxx_read_edid(struct hdmi_ip_data *ip_data,
 int ti_hdmi_5xxx_irq_process(struct hdmi_ip_data *ip_data);
 int ti_hdmi_5xxx_configure_range(struct hdmi_ip_data *ip_data);
 
+int pio_a_read_byte(int reg);
+int pio_a_i2c_write(u8 reg, u8 value);
 #endif
