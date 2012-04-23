@@ -679,7 +679,9 @@ bool omapdss_hdmi_detect(void)
 	r = hdmi_runtime_get();
 	BUG_ON(r);
 
-	r = hdmi.ip_data.ops->detect(&hdmi.ip_data);
+	r = 1;
+	if (hdmi.ip_data.ops->detect)
+		r = hdmi.ip_data.ops->detect(&hdmi.ip_data);
 
 	hdmi_runtime_put();
 	mutex_unlock(&hdmi.lock);
