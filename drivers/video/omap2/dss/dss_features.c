@@ -355,6 +355,7 @@ static const struct dss_param_range omap2_dss_param_range[] = {
 	[FEAT_PARAM_LINEWIDTH]			= { 1, 768 },
 	[FEAT_PARAM_MGR_WIDTH]			= { 1, 2048 },
 	[FEAT_PARAM_MGR_HEIGHT]			= { 1, 2048 },
+	[FEAT_PARAM_HDMI_MAXPCLK]		= { 0, 0 },
 };
 
 static const struct dss_param_range omap3_dss_param_range[] = {
@@ -370,6 +371,7 @@ static const struct dss_param_range omap3_dss_param_range[] = {
 	[FEAT_PARAM_LINEWIDTH]			= { 1, 1024 },
 	[FEAT_PARAM_MGR_WIDTH]			= { 1, 2048 },
 	[FEAT_PARAM_MGR_HEIGHT]			= { 1, 2048 },
+	[FEAT_PARAM_HDMI_MAXPCLK]		= { 0, 0 },
 };
 
 static const struct dss_param_range omap4_dss_param_range[] = {
@@ -385,6 +387,7 @@ static const struct dss_param_range omap4_dss_param_range[] = {
 	[FEAT_PARAM_LINEWIDTH]			= { 1, 2048 },
 	[FEAT_PARAM_MGR_WIDTH]			= { 1, 2048 },
 	[FEAT_PARAM_MGR_HEIGHT]			= { 1, 2048 },
+	[FEAT_PARAM_HDMI_MAXPCLK]               = { 0, 148500000 },
 };
 
 static const struct dss_param_range omap5_dss_param_range[] = {
@@ -400,6 +403,7 @@ static const struct dss_param_range omap5_dss_param_range[] = {
 	[FEAT_PARAM_LINEWIDTH]			= { 1, 2048 },
 	[FEAT_PARAM_MGR_WIDTH]			= { 1, 4096 },
 	[FEAT_PARAM_MGR_HEIGHT]			= { 1, 4096 },
+	[FEAT_PARAM_HDMI_MAXPCLK]               = { 0, 148500000 },
 };
 
 static const enum dss_feat_id omap2_dss_feat_list[] = {

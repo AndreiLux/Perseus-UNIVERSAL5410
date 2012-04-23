@@ -518,8 +518,9 @@ int omapdss_hdmi_display_check_timing(struct omap_dss_device *dssdev,
 	struct hdmi_cm cm;
 
 	cm = hdmi_get_code(timings);
-	if (cm.code == -1) {
-		return -EINVAL;
+	if (cm.code == -1 && (timings->pixel_clock >
+		dss_feat_get_param_max(FEAT_PARAM_HDMI_MAXPCLK))) {
+			return -EINVAL;
 	}
 
 	return 0;
@@ -619,8 +620,14 @@ void omapdss_hdmi_display_set_timing(struct omap_dss_device *dssdev)
 	struct hdmi_cm cm;
 
 	cm = hdmi_get_code(&dssdev->panel.timings);
-	hdmi.ip_data.cfg.cm.code = cm.code;
-	hdmi.ip_data.cfg.cm.mode = cm.mode;
+	if (cm.code == -1) {
+		hdmi.ip_data.cfg.cm.code = 0;
+		/* Assume VESA timing if non-standard */
+		hdmi.ip_data.cfg.cm.mode = 0;
+	} else {
+		hdmi.ip_data.cfg.cm.code = cm.code;
+		hdmi.ip_data.cfg.cm.mode = cm.mode;
+	};
 
 	if (dssdev->state == OMAP_DSS_DISPLAY_ACTIVE) {
 		int r;
