@@ -269,6 +269,8 @@ struct mxt_data {
 	unsigned int max_x;
 	unsigned int max_y;
 
+	u32 config_csum;
+
 	/* Cached parameters from object table */
 	u16 T5_address;
 	u8 T6_reportid;
@@ -643,11 +645,11 @@ static int mxt_proc_messages(struct mxt_data *data, u8 count)
 			mxt_input_button(data, msg);
 			update_input = true;
 		} else if (msg->reportid == data->T6_reportid) {
-			unsigned csum = msg->message[1] |
-					(msg->message[2] << 8) |
-					(msg->message[3] << 16);
+			data->config_csum = msg->message[1] |
+					    (msg->message[2] << 8) |
+					    (msg->message[3] << 16);
 			dev_info(dev, "Status: %02x Config Checksum: %06x\n",
-				 msg->message[0], csum);
+				 msg->message[0], data->config_csum);
 		}
 	}
 
@@ -965,7 +967,13 @@ static ssize_t mxt_calibrate_store(struct device *dev,
 	return count;
 }
 
-/* Firmware Version is <Major>.<Minor>.<Build> */
+static ssize_t mxt_config_csum_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	struct mxt_data *data = dev_get_drvdata(dev);
+	return scnprintf(buf, PAGE_SIZE, "%06x\n", data->config_csum);
+}
+
 static ssize_t mxt_fw_version_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
@@ -1095,6 +1103,7 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 
 static DEVICE_ATTR(backupnv, S_IWUSR, NULL, mxt_backupnv_store);
 static DEVICE_ATTR(calibrate, S_IWUSR, NULL, mxt_calibrate_store);
+static DEVICE_ATTR(config_csum, S_IRUGO, mxt_config_csum_show, NULL);
 static DEVICE_ATTR(fw_version, S_IRUGO, mxt_fw_version_show, NULL);
 static DEVICE_ATTR(hw_version, S_IRUGO, mxt_hw_version_show, NULL);
 static DEVICE_ATTR(object, S_IRUGO | S_IWUSR, mxt_object_show,
@@ -1104,6 +1113,7 @@ static DEVICE_ATTR(update_fw, S_IWUSR, NULL, mxt_update_fw_store);
 static struct attribute *mxt_attrs[] = {
 	&dev_attr_backupnv.attr,
 	&dev_attr_calibrate.attr,
+	&dev_attr_config_csum.attr,
 	&dev_attr_fw_version.attr,
 	&dev_attr_hw_version.attr,
 	&dev_attr_object.attr,
