@@ -1172,7 +1172,9 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	data->is_tp = !strcmp(id->name, "atmel_mxt_tp");
 	input_dev->name = (data->is_tp) ? "Atmel maXTouch Touchpad" :
 					  "Atmel maXTouch Touchscreen";
+	input_dev->phys = client->adapter->name;
 	input_dev->id.bustype = BUS_I2C;
+	input_dev->dev.parent = &client->dev;
 	input_dev->dev.parent = &client->dev;
 	input_dev->open = mxt_input_open;
 	input_dev->close = mxt_input_close;
