@@ -426,6 +426,8 @@ static int dw_mci_idmac_init(struct dw_mci *host)
 	p->des3 = host->sg_dma;
 	p->des0 = IDMAC_DES0_ER;
 
+	mci_writel(host, BMOD, SDMMC_IDMAC_SWRESET);
+
 	/* Mask out interrupts - get Tx & Rx complete only */
 	mci_writel(host, IDINTEN, SDMMC_IDMAC_INT_NI | SDMMC_IDMAC_INT_RI |
 		   SDMMC_IDMAC_INT_TI);
@@ -2033,9 +2035,6 @@ int __devinit dw_mci_probe(struct dw_mci *host)
 	spin_lock_init(&host->lock);
 	INIT_LIST_HEAD(&host->queue);
 
-	host->dma_ops = host->pdata->dma_ops;
-	dw_mci_init_dma(host);
-
 	/*
 	 * Get the host data width - this assumes that HCON has been set with
 	 * the correct values.
@@ -2067,6 +2066,9 @@ int __devinit dw_mci_probe(struct dw_mci *host)
 		ret = -ENODEV;
 		goto err_dmaunmap;
 	}
+
+	host->dma_ops = host->pdata->dma_ops;
+	dw_mci_init_dma(host);
 
 	/* Clear the interrupts for the host controller */
 	mci_writel(host, RINTSTS, 0xFFFFFFFF);
@@ -2271,13 +2273,13 @@ int dw_mci_resume(struct dw_mci *host)
 	if (host->vmmc)
 		regulator_enable(host->vmmc);
 
-	if (host->dma_ops->init)
-		host->dma_ops->init(host);
-
 	if (!mci_wait_reset(&host->dev, host)) {
 		ret = -ENODEV;
 		return ret;
 	}
+
+	if (host->dma_ops->init)
+		host->dma_ops->init(host);
 
 	/* Restore the old value at FIFOTH register */
 	mci_writel(host, FIFOTH, host->fifoth_val);
