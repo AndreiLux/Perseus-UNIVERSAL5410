@@ -1600,6 +1600,9 @@ static int cyapa_create_input_dev(struct cyapa *cyapa)
 
 	__set_bit(BTN_LEFT, input->keybit);
 
+	__set_bit(INPUT_PROP_POINTER, input->propbit);
+	__set_bit(INPUT_PROP_BUTTONPAD, input->propbit);
+
 	/* Register the device in input subsystem */
 	ret = input_register_device(input);
 	if (ret) {
