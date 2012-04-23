@@ -761,6 +761,7 @@ static void ion_exynos_user_heap_destroy(struct ion_heap *heap)
 	kfree(heap);
 }
 
+#if 0
 enum ION_MSYNC_TYPE {
 	IMSYNC_DEV_TO_READ = 0,
 	IMSYNC_DEV_TO_WRITE = 1,
@@ -873,6 +874,7 @@ static long exynos_heap_ioctl(struct ion_client *client, unsigned int cmd,
 
 	return ret;
 }
+#endif
 
 static struct ion_heap *__ion_heap_create(struct ion_platform_heap *heap_data)
 {
@@ -937,7 +939,7 @@ static int exynos_ion_probe(struct platform_device *pdev)
 	if (!heaps)
 		return -ENOMEM;
 
-	ion_exynos = ion_device_create(&exynos_heap_ioctl);
+	ion_exynos = ion_device_create(NULL);
 	if (IS_ERR_OR_NULL(ion_exynos)) {
 		kfree(heaps);
 		return PTR_ERR(ion_exynos);
