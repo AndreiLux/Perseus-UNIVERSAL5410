@@ -181,7 +181,7 @@ static struct i2c_driver pio_a_i2c_driver = {
 	.id_table	= pio_a_i2c_id,
 };
 
-static int __init pio_a_init(void)
+int pio_a_init(void)
 {
 	int r = 0;
 
@@ -196,10 +196,7 @@ static int __init pio_a_init(void)
 	return r;
 }
 
-static void __exit pio_a_exit(void)
+void pio_a_exit(void)
 {
 	i2c_del_driver(&pio_a_i2c_driver);
 }
-
-module_init(pio_a_init);
-module_exit(pio_a_exit);

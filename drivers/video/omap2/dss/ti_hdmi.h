@@ -286,6 +286,12 @@ int ti_hdmi_5xxx_read_edid(struct hdmi_ip_data *ip_data,
 int ti_hdmi_5xxx_irq_process(struct hdmi_ip_data *ip_data);
 int ti_hdmi_5xxx_configure_range(struct hdmi_ip_data *ip_data);
 
+/* Ideally PIO driver(tca6424) should be a generic driver in gpio path as a
+additional device in pca953x family devices but currently it is used only by
+HDMI and added here  */
+
+int pio_a_init(void);
+void pio_a_exit(void);
 int pio_a_read_byte(int reg);
 int pio_a_i2c_write(u8 reg, u8 value);
 #endif
