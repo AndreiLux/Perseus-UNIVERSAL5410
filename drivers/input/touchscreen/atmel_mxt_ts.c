@@ -990,46 +990,44 @@ static ssize_t mxt_object_show(struct device *dev,
 {
 	struct mxt_data *data = dev_get_drvdata(dev);
 	int count = 0;
-	int i, j, k;
-	int error;
+	size_t i, j, k;
+	int error = 0;
+	u8 *obuf = NULL;
 
-	for (i = 0; i < data->info.object_num; i++) {
+	for (i = 0; i < data->info.object_num && count < PAGE_SIZE - 1; i++) {
 		struct mxt_object *object = &data->object_table[i];
 
 		if (!mxt_object_readable(object->type))
 			continue;
 
+		count += scnprintf(&buf[count], PAGE_SIZE - count,
+				   "\nType: %u\n", object->type);
+
+		obuf = krealloc(obuf, object->size, GFP_KERNEL);
+		if (!obuf)
+			return -ENOMEM;
+
 		for (j = 0; j < object->instances; j++) {
-			u8 obuf[object->size];
-
-			count += snprintf(buf + count, PAGE_SIZE - count,
-					  "Object[%d] Type: T%d Instance: %d/%d\n",
-					  i + 1, object->type, j + 1,
-					  object->instances);
-			if (count >= PAGE_SIZE)
-				return PAGE_SIZE - 1;
-
+			if (object->instances > 1)
+				count += scnprintf(&buf[count],
+						   PAGE_SIZE - count,
+						   "Instance: %zu\n", j);
 
 			error = mxt_read_object(data, object, j, obuf);
 			if (error)
-				return error;
+				goto free_obuf;
 
-			for (k = 0; k < object->size; k++) {
-				count += snprintf(buf + count,
-						  PAGE_SIZE - count,
-						  "\t[%2d]: %02x (%d)\n",
-						  k, obuf[k], obuf[k]);
-				if (count >= PAGE_SIZE)
-					return PAGE_SIZE - 1;
-			}
-
-			count += snprintf(buf + count, PAGE_SIZE - count, "\n");
-			if (count >= PAGE_SIZE)
-				return PAGE_SIZE - 1;
+			for (k = 0; k < object->size; k++)
+				count += scnprintf(&buf[count],
+						   PAGE_SIZE - count,
+						   "\t[%2zu]: %02x (%d)\n",
+						   k, obuf[k], obuf[k]);
 		}
 	}
 
-	return count;
+free_obuf:
+	kfree(obuf);
+	return error ?: count;
 }
 
 static ssize_t mxt_object_store(struct device *dev,
