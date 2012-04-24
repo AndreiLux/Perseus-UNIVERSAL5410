@@ -1202,7 +1202,6 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	input_dev->phys = client->adapter->name;
 	input_dev->id.bustype = BUS_I2C;
 	input_dev->dev.parent = &client->dev;
-	input_dev->dev.parent = &client->dev;
 	input_dev->open = mxt_input_open;
 	input_dev->close = mxt_input_close;
 
@@ -1240,7 +1239,9 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	input_abs_set_res(input_dev, ABS_Y, MXT_PIXELS_PER_MM);
 
 	/* For multi touch */
-	input_mt_init_slots(input_dev, MXT_MAX_FINGER);
+	error = input_mt_init_slots(input_dev, MXT_MAX_FINGER);
+	if (error)
+		goto err_free_mem;
 	input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR,
 			     0, MXT_MAX_AREA, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_X,
