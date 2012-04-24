@@ -130,6 +130,8 @@ struct hdmi_context {
 	unsigned int			default_bpp;
 	bool				hpd_handle;
 	bool				enabled;
+	bool				has_hdmi_sink;
+	bool				has_hdmi_audio;
 
 	struct resource			*regs_res;
 	void __iomem			*regs;
@@ -794,10 +796,16 @@ static int hdmi_get_edid(void *ctx, struct drm_connector *connector,
 
 	raw_edid = drm_get_edid(connector, hdata->ddc_port->adapter);
 	if (raw_edid) {
+	/* TODO : Need to call this in exynos_drm_connector.c, do a drm_get_edid
+	 * to get the edid and then call drm_detect_hdmi_monitor.
+	 */
+		hdata->has_hdmi_sink = drm_detect_hdmi_monitor(raw_edid);
+		hdata->has_hdmi_audio = drm_detect_monitor_audio(raw_edid);
 		memcpy(edid, raw_edid, min((1 + raw_edid->extensions)
 					* EDID_LENGTH, len));
-		DRM_DEBUG_KMS("width[%d] x height[%d]\n",
-				raw_edid->width_cm, raw_edid->height_cm);
+		DRM_DEBUG_KMS("%s : width[%d] x height[%d]\n",
+			(hdata->has_hdmi_sink ? "hdmi monitor" : "dvi monitor"),
+			raw_edid->width_cm, raw_edid->height_cm);
 	} else {
 		return -ENODEV;
 	}
@@ -1046,10 +1054,7 @@ static void hdmi_audio_init(struct hdmi_context *hdata)
 
 static void hdmi_audio_control(struct hdmi_context *hdata, bool onoff)
 {
-	u32 mod;
-
-	mod = hdmi_reg_read(hdata, HDMI_MODE_SEL);
-	if (mod & HDMI_DVI_MODE_EN)
+	if (!hdata->has_hdmi_audio)
 		return;
 
 	hdmi_reg_writeb(hdata, HDMI_AUI_CON, onoff ? 2 : 0);
@@ -1096,6 +1101,14 @@ static void hdmi_conf_init(struct hdmi_context *hdata)
 		HDMI_MODE_HDMI_EN, HDMI_MODE_MASK);
 	/* disable bluescreen */
 	hdmi_reg_writemask(hdata, HDMI_CON_0, 0, HDMI_BLUE_SCR_EN);
+
+	if (!hdata->has_hdmi_sink) {
+		/* choose DVI mode */
+		hdmi_reg_writemask(hdata, HDMI_MODE_SEL,
+				HDMI_MODE_DVI_EN, HDMI_MODE_MASK);
+		hdmi_reg_writeb(hdata, HDMI_CON_2,
+				HDMI_VID_PREAMBLE_DIS | HDMI_GUARD_BAND_DIS);
+	}
 
 	if (hdata->is_v13) {
 		/* choose bluescreen (fecal) color */
