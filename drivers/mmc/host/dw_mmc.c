@@ -547,7 +547,7 @@ static int dw_mci_submit_data_dma(struct dw_mci *host, struct mmc_data *data)
 	}
 
 	if (host->quirks & DW_MCI_QUIRK_DMA_DELAY)
-		mdelay(1);
+		udelay(100);
 
 	host->using_dma = 1;
 
@@ -2137,6 +2137,9 @@ int __devinit dw_mci_probe(struct dw_mci *host)
 		host->data_offset = DATA_OFFSET;
 	else
 		host->data_offset = DATA_240A_OFFSET;
+
+	if (host->pdata->caps & MMC_CAP_UHS_SDR50)
+		clk_set_rate(host->cclk, 200 * 1000 * 1000);
 
 	/*
 	 * Enable interrupts for command done, data over, data empty, card det,
