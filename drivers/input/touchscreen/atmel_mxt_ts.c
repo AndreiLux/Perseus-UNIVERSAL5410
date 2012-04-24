@@ -274,6 +274,8 @@ struct mxt_data {
 	u16 T44_address;
 };
 
+static int mxt_initialize(struct mxt_data *data);
+
 static bool mxt_object_readable(unsigned int type)
 {
 	switch (type) {
@@ -827,55 +829,6 @@ static int mxt_get_object_table(struct mxt_data *data)
 	return 0;
 }
 
-static int mxt_initialize(struct mxt_data *data)
-{
-	struct i2c_client *client = data->client;
-	struct device *dev = &client->dev;
-	struct mxt_info *info = &data->info;
-	int error;
-
-	/* Read 7-byte info block starting at address 0 */
-	error = mxt_read_reg(client, MXT_INFO, sizeof(*info), info);
-	if (error)
-		return error;
-
-	/* Get object table information */
-	error = mxt_get_object_table(data);
-	if (error)
-		return error;
-
-	/* Check register init values */
-	error = mxt_check_reg_init(data);
-	if (error)
-		return error;
-
-	mxt_handle_pdata(data);
-
-	/* Backup to memory */
-	mxt_write_object(data, MXT_GEN_COMMAND_T6, 0,
-			 MXT_COMMAND_BACKUPNV, MXT_BACKUP_VALUE);
-	msleep(MXT_BACKUP_TIME);
-
-	/* Soft reset */
-	mxt_write_object(data, MXT_GEN_COMMAND_T6, 0, MXT_COMMAND_RESET, 1);
-	msleep(MXT_RESET_TIME);
-
-	/* Update matrix size, since it may have been modified by pdata */
-	error = mxt_read_reg(client, MXT_MATRIX_X_SIZE, 2,
-			     &info->matrix_xsize);
-	if (error)
-		return error;
-
-	dev_info(dev, "Family ID: %d Variant ID: %d Major.Minor.Build: %d.%d.%d\n",
-		 info->family_id, info->variant_id, info->version >> 4,
-		 info->version & 0xf, info->build);
-
-	dev_info(dev, "Matrix X Size: %d Matrix Y Size: %d Object Num: %d\n",
-		 info->matrix_xsize, info->matrix_ysize, info->object_num);
-
-	return 0;
-}
-
 static void mxt_calc_resolution(struct mxt_data *data)
 {
 	unsigned int max_x = data->pdata->x_size - 1;
@@ -1175,6 +1128,55 @@ static void mxt_input_close(struct input_dev *dev)
 	struct mxt_data *data = input_get_drvdata(dev);
 
 	mxt_stop(data);
+}
+
+static int mxt_initialize(struct mxt_data *data)
+{
+	struct i2c_client *client = data->client;
+	struct device *dev = &client->dev;
+	struct mxt_info *info = &data->info;
+	int error;
+
+	/* Read 7-byte info block starting at address 0 */
+	error = mxt_read_reg(client, MXT_INFO, sizeof(*info), info);
+	if (error)
+		return error;
+
+	/* Get object table information */
+	error = mxt_get_object_table(data);
+	if (error)
+		return error;
+
+	/* Check register init values */
+	error = mxt_check_reg_init(data);
+	if (error)
+		return error;
+
+	mxt_handle_pdata(data);
+
+	/* Backup to memory */
+	mxt_write_object(data, MXT_GEN_COMMAND_T6, 0,
+			 MXT_COMMAND_BACKUPNV, MXT_BACKUP_VALUE);
+	msleep(MXT_BACKUP_TIME);
+
+	/* Soft reset */
+	mxt_write_object(data, MXT_GEN_COMMAND_T6, 0, MXT_COMMAND_RESET, 1);
+	msleep(MXT_RESET_TIME);
+
+	/* Update matrix size, since it may have been modified by pdata */
+	error = mxt_read_reg(client, MXT_MATRIX_X_SIZE, 2,
+			     &info->matrix_xsize);
+	if (error)
+		return error;
+
+	dev_info(dev, "Family ID: %d Variant ID: %d Major.Minor.Build: %d.%d.%d\n",
+		 info->family_id, info->variant_id, info->version >> 4,
+		 info->version & 0xf, info->build);
+
+	dev_info(dev, "Matrix X Size: %d Matrix Y Size: %d Object Num: %d\n",
+		 info->matrix_xsize, info->matrix_ysize, info->object_num);
+
+	return 0;
 }
 
 static int __devinit mxt_probe(struct i2c_client *client,
