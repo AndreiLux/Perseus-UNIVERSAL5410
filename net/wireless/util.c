@@ -862,8 +862,7 @@ int cfg80211_change_iface(struct cfg80211_registered_device *rdev,
 		case NL80211_IFTYPE_MONITOR:
 			/* monitor can't bridge anyway */
 			break;
-		case NL80211_IFTYPE_UNSPECIFIED:
-		case NUM_NL80211_IFTYPES:
+		default:
 			/* not happening */
 			break;
 		}
