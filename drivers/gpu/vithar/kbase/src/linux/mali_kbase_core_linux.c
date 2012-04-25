@@ -2058,7 +2058,7 @@ static struct platform_driver kbase_platform_driver =
 #endif /* MALI_LICENSE_IS_GPL */
 
 #if MALI_LICENSE_IS_GPL && MALI_FAKE_PLATFORM_DEVICE
-static struct platform_device *mali_device;
+struct platform_device *mali_device;
 #endif /* MALI_LICENSE_IS_GPL && MALI_FAKE_PLATFORM_DEVICE */
 
 #ifdef MALI_PCI_DEVICE

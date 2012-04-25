@@ -18,143 +18,93 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
+#include <linux/dma-buf.h>
+#include <linux/scatterlist.h>
+#include <linux/platform_device.h>
 
-extern struct ion_device *ion_exynos;
+extern struct platform_device *mali_device;
 
-struct ion_wrapping_info
+struct dmabuf_wrapping_info
 {
-	struct ion_client *   ion_client;
-	struct ion_handle *   ion_handle;
-	int                   num_phys_blocks;
-	struct scatterlist *  sglist;
+	struct dma_buf *dma_buf;
+	struct dma_buf_attachment *attachment;
+	struct sg_table *sg_table;
 };
 
-static struct ion_device * ion_device_get(void)
+static void import_ion_final_release_callback(const ump_dd_handle handle, void * priv)
 {
-	/* Samsung TODO:
-	 * Return a pointer to the global ion_device on the system
-	 */
-	return ion_exynos;
-}
+	struct dmabuf_wrapping_info * info;
+	struct scatterlist *sg;
+	int i;
 
-static unsigned int ion_heap_mask_get(void)
-{
-	/* Samsung TODO:
-	 * Retrun the heap mask to use with UMP clients.
-	 * Suspect this can be kept as 0 as we won't allocate memory, just import.
-	 */
-	return -1;
-}
+	BUG_ON(!priv);
+	info = priv;
 
-static int import_ion_client_create(void** custom_session_data)
-{
-	struct ion_client ** ion_client;
-	
-	ion_client = (struct ion_client**)custom_session_data;
-	*ion_client = ion_client_create(ion_device_get(), ion_heap_mask_get(), "ump");
-
-	if (IS_ERR(*ion_client))
-	{
-		return PTR_ERR(*ion_client);
+	for_each_sg(info->sg_table->sgl, sg, info->sg_table->nents, i) {
 	}
-	return 0;
-}
-
-
-static void import_ion_client_destroy(void* custom_session_data)
-{
-	struct ion_client * ion_client;
-
-	ion_client = (struct ion_client*)custom_session_data;
-	BUG_ON(!ion_client);
-
-	ion_client_destroy(ion_client);
-}
-
-
-static void import_ion_final_release_callback(const ump_dd_handle handle, void * info)
-{
-	struct ion_wrapping_info * ion_info;
-
-	BUG_ON(!info);
-
-	(void)handle;
-	ion_info = (struct ion_wrapping_info*)info;
-
-	dma_unmap_sg(NULL, ion_info->sglist, ion_info->num_phys_blocks, DMA_BIDIRECTIONAL);
-	ion_unmap_dma(ion_info->ion_client, ion_info->ion_handle);
-	ion_free(ion_info->ion_client, ion_info->ion_handle);
-	kfree(ion_info);
+	dma_unmap_sg(&mali_device->dev, info->sg_table->sgl,
+		     info->sg_table->nents, DMA_BIDIRECTIONAL);
+	dma_buf_unmap_attachment(info->attachment, info->sg_table,
+				 DMA_BIDIRECTIONAL);
+	dma_buf_detach(info->dma_buf, info->attachment);
+	dma_buf_put(info->dma_buf);
+	kfree(info);
 	module_put(THIS_MODULE);
 }
 
-static ump_dd_handle import_ion_import(void * custom_session_data, void * pfd, ump_alloc_flags flags)
+static ump_dd_handle import_ion_import(void *custom_session_data, void *pfd,
+				       ump_alloc_flags flags)
 {
 	int fd;
 	ump_dd_handle ump_handle;
-	struct scatterlist * sg;
-	int num_dma_blocks;
-	ump_dd_physical_block_64 * phys_blocks;
+	struct scatterlist *sg;
+	ump_dd_physical_block_64 *phys_blocks;
 	unsigned long i;
-
-	struct ion_wrapping_info * ion_info;
+	struct dmabuf_wrapping_info *info;
 
 	BUG_ON(!custom_session_data);
 	BUG_ON(!pfd);
 
-	ion_info = kzalloc(GFP_KERNEL, sizeof(*ion_info));
-	if (NULL == ion_info)
-	{
+	info = kzalloc(sizeof(*info), GFP_KERNEL);
+	if (!info)
 		return UMP_DD_INVALID_MEMORY_HANDLE;
-	}
-
-	ion_info->ion_client = (struct ion_client*)custom_session_data;
 
 	if (get_user(fd, (int*)pfd))
-	{
 		goto out;
-	}
 
-	ion_info->ion_handle = ion_import_fd(ion_info->ion_client, fd);
-
-	if (IS_ERR_OR_NULL(ion_info->ion_handle))
-	{
+	info->dma_buf = dma_buf_get(fd);
+	if (IS_ERR_OR_NULL(info->dma_buf))
 		goto out;
-	}
 
-	ion_info->sglist = ion_map_dma(ion_info->ion_client, ion_info->ion_handle);
-	if (IS_ERR_OR_NULL(ion_info->sglist))
-	{
-		goto ion_dma_map_failed;
-	}
+	info->attachment = dma_buf_attach(info->dma_buf, &mali_device->dev);
+	if (IS_ERR_OR_NULL(info->attachment))
+		goto out1;
 
-	sg = ion_info->sglist;
-	while (sg)
-	{
-		ion_info->num_phys_blocks++;
-		sg = sg_next(sg);
-	}
+	info->sg_table = dma_buf_map_attachment(info->attachment,
+						DMA_BIDIRECTIONAL);
+	if (IS_ERR_OR_NULL(info->sg_table))
+		goto out2;
 
-	num_dma_blocks = dma_map_sg(NULL, ion_info->sglist, ion_info->num_phys_blocks, DMA_BIDIRECTIONAL);
+	i = dma_map_sg(&mali_device->dev, info->sg_table->sgl,
+		       info->sg_table->nents,
+		       DMA_BIDIRECTIONAL);
+	if (i == 0)
+		goto out3;
 
-	if (0 == num_dma_blocks)
-	{
-		goto linux_dma_map_failed;
-	}
+	phys_blocks = vmalloc(info->sg_table->nents * sizeof(*phys_blocks));
+	if (phys_blocks == NULL)
+		goto out4;
 
-	phys_blocks = vmalloc(num_dma_blocks * sizeof(*phys_blocks));
-	if (NULL == phys_blocks)
-	{
-		goto vmalloc_failed;
-	}
-
-	for_each_sg(ion_info->sglist, sg, num_dma_blocks, i)
-	{
+	for_each_sg(info->sg_table->sgl, sg, info->sg_table->nents, i) {
 		phys_blocks[i].addr = sg_phys(sg);
 		phys_blocks[i].size = sg_dma_len(sg);
 	}
 
-	ump_handle = ump_dd_create_from_phys_blocks_64(phys_blocks, num_dma_blocks, flags, NULL, import_ion_final_release_callback, ion_info);
+	ump_handle = ump_dd_create_from_phys_blocks_64(phys_blocks,
+						       info->sg_table->nents,
+						       flags, NULL,
+						       import_ion_final_release_callback,
+						       info);
 
 	vfree(phys_blocks);
 
@@ -169,30 +119,48 @@ static ump_dd_handle import_ion_import(void * custom_session_data, void * pfd, u
 		return ump_handle;
 	}
 
-	/* failed*/
-vmalloc_failed:
-	dma_unmap_sg(NULL, ion_info->sglist, ion_info->num_phys_blocks, DMA_BIDIRECTIONAL);
-linux_dma_map_failed:
-	ion_unmap_dma(ion_info->ion_client, ion_info->ion_handle);
-ion_dma_map_failed:
-	ion_free(ion_info->ion_client, ion_info->ion_handle);
+out4:
+	dma_unmap_sg(&mali_device->dev, info->sg_table->sgl,
+		     info->sg_table->nents, DMA_BIDIRECTIONAL);
+out3:
+	dma_buf_unmap_attachment(info->attachment, info->sg_table,
+				 DMA_BIDIRECTIONAL);
+out2:
+	dma_buf_detach(info->dma_buf, info->attachment);
+
+out1:
+	dma_buf_put(info->dma_buf);
 out:
-	kfree(ion_info);
+	kfree(info);
 	return UMP_DD_INVALID_MEMORY_HANDLE;
+
 }
+
+static int import_ion_session_begin(void** custom_session_data)
+{
+	*custom_session_data = mali_device;
+	return 0;
+}
+
+static void import_ion_session_end(void* custom_session_data)
+{
+	return;
+}
+
 
 struct ump_import_handler import_handler_ion =
 {
 	.linux_module =  THIS_MODULE,
-	.session_begin = import_ion_client_create,
-	.session_end =   import_ion_client_destroy,
+	.session_begin = import_ion_session_begin,
+	.session_end =   import_ion_session_end,
 	.import =        import_ion_import
 };
 
 static int __init import_ion_initialize_module(void)
 {
 	/* register with UMP */
-	return ump_import_module_register(UMP_EXTERNAL_MEM_TYPE_ION, &import_handler_ion);
+	return ump_import_module_register(UMP_EXTERNAL_MEM_TYPE_ION,
+					  &import_handler_ion);
 }
 
 static void __exit import_ion_cleanup_module(void)
