@@ -12,6 +12,7 @@
  */
 
 #include <linux/debugfs.h>
+#include <linux/completion.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/delay.h>
@@ -268,6 +269,9 @@ struct mxt_data {
 
 	bool irq_wake;  /* irq wake is enabled */
 
+	/* for fw update in bootloader */
+	struct completion bl_completion;
+
 	unsigned int irq;
 	unsigned int max_x;
 	unsigned int max_y;
@@ -387,13 +391,50 @@ static void mxt_dump_message(struct device *dev,
 		message->message[5], message->message[6]);
 }
 
-static int mxt_check_bootloader(struct i2c_client *client,
-				     unsigned int state)
+static int mxt_wait_for_chg(struct mxt_data *data, unsigned int timeout_ms)
 {
+	struct device *dev = &data->client->dev;
+	struct completion *comp = &data->bl_completion;
+	unsigned long timeout = msecs_to_jiffies(timeout_ms);
+	long ret;
+
+	ret = wait_for_completion_interruptible_timeout(comp, timeout);
+	if (ret < 0) {
+		dev_err(dev, "Wait for completion interrupted.\n");
+		/*
+		 * TODO: handle -EINTR better by terminating fw update process
+		 * before returning to userspace by writing length 0x000 to
+		 * device (iff we are in WAITING_FRAME_DATA state).
+		 */
+		return -EINTR;
+	} else if (ret == 0) {
+		dev_err(dev, "Wait for completion timed out.\n");
+		return -ETIMEDOUT;
+	}
+	return 0;
+}
+
+static int mxt_check_bootloader(struct mxt_data *data, unsigned int state)
+{
+	struct i2c_client *client = data->client;
 	int count;
 	u8 val;
 
 recheck:
+	if (state != MXT_WAITING_BOOTLOAD_CMD) {
+		/*
+		 * In application update mode, the interrupt
+		 * line signals state transitions. We must wait for the
+		 * CHG assertion before reading the status byte.
+		 * Once the status byte has been read, the line is deasserted.
+		 */
+		int ret = mxt_wait_for_chg(data, 300);
+		if (ret) {
+			dev_err(&client->dev, "Update wait error %d\n", ret);
+			return ret;
+		}
+	}
+
 	count = i2c_master_recv(client, &val, 1);
 	if (count != 1) {
 		dev_err(&client->dev, "%s: i2c recv failed\n", __func__);
@@ -402,6 +443,8 @@ recheck:
 
 	switch (state) {
 	case MXT_WAITING_BOOTLOAD_CMD:
+		dev_info(&client->dev, "bootloader version: %d\n",
+			 val & MXT_BOOT_STATUS_MASK);
 	case MXT_WAITING_FRAME_DATA:
 		val &= ~MXT_BOOT_STATUS_MASK;
 		break;
@@ -784,8 +827,12 @@ static irqreturn_t mxt_interrupt(int irq, void *dev_id)
 {
 	struct mxt_data *data = (struct mxt_data *)dev_id;
 
-	if (!mxt_in_bootloader(data))
-		mxt_handle_messages(dev_id);
+	if (mxt_in_bootloader(data)) {
+		/* bootloader state transition completion */
+		complete(&data->bl_completion);
+	} else {
+		mxt_handle_messages(data);
+	}
 	return IRQ_HANDLED;
 }
 
@@ -1079,18 +1126,18 @@ static int mxt_load_fw(struct device *dev, const char *fn)
 		}
 	}
 
-	ret = mxt_check_bootloader(client, MXT_WAITING_BOOTLOAD_CMD);
+	ret = mxt_check_bootloader(data, MXT_WAITING_BOOTLOAD_CMD);
 	if (ret)
 		goto out;
 
+	INIT_COMPLETION(data->bl_completion);
 	/* Unlock bootloader */
 	ret = mxt_unlock_bootloader(client);
 	if (ret)
 		goto out;
 
 	while (pos < fw->size) {
-		ret = mxt_check_bootloader(client,
-					   MXT_WAITING_FRAME_DATA);
+		ret = mxt_check_bootloader(data, MXT_WAITING_FRAME_DATA);
 		if (ret)
 			goto out;
 
@@ -1106,13 +1153,11 @@ static int mxt_load_fw(struct device *dev, const char *fn)
 		if (ret)
 			goto out;
 
-		ret = mxt_check_bootloader(client,
-					   MXT_FRAME_CRC_PASS);
+		ret = mxt_check_bootloader(data, MXT_FRAME_CRC_PASS);
 		if (ret)
 			goto out;
 
 		pos += frame_size;
-
 		dev_dbg(dev, "Updated %d bytes / %zd bytes\n", pos, fw->size);
 	}
 
@@ -1568,6 +1613,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	} else {
 		dev_info(&client->dev, "device came up in bootloader mode.\n");
 	}
+	init_completion(&data->bl_completion);
 
 	error = mxt_input_dev_create(data);
 	if (error)
