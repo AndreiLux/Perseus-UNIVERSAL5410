@@ -210,9 +210,9 @@ int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
 		tcnt = period_ns / tin_ns;
 	} else
 		tin_ns = NS_IN_HZ / clk_get_rate(pwm->clk);
+	pwm->duty_ns = duty_ns;
 
 	/* Note, counters count down */
-
 	tcmp = duty_ns / tin_ns;
 	tcmp = tcnt - tcmp;
 	/* the pwm hw only checks the compare register after a decrement,
@@ -363,8 +363,8 @@ static int s3c_pwm_suspend(struct platform_device *pdev, pm_message_t state)
 	 * Otherwise driver leaves PWM unconfigured if same values
 	 * passed to pwm_config
 	 */
-	pwm->period_ns = 0;
-	pwm->duty_ns = 0;
+	pwm->duty_ns = -1;
+	pwm->period_ns = -1;
 
 	return 0;
 }
