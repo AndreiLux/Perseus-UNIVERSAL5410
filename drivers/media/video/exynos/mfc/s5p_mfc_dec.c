@@ -493,7 +493,7 @@ static struct s5p_mfc_ctrl_cfg mfc_ctrl_list[] = {
 #define NUM_CTRL_CFGS ARRAY_SIZE(mfc_ctrl_list)
 
 /* Check whether a context should be run on hardware */
-static int s5p_mfc_ctx_ready(struct s5p_mfc_ctx *ctx)
+int s5p_mfc_dec_ctx_ready(struct s5p_mfc_ctx *ctx)
 {
 	mfc_debug(2, "src=%d, dst=%d, state=%d capstat=%d\n",
 		  ctx->src_queue_cnt, ctx->dst_queue_cnt,
@@ -524,7 +524,7 @@ static int s5p_mfc_ctx_ready(struct s5p_mfc_ctx *ctx)
 		ctx->src_queue_cnt >= 1)
 		return 1;
 
-	mfc_debug(2, "s5p_mfc_ctx_ready: ctx is not ready.\n");
+	mfc_debug(2, "s5p_mfc_dec_ctx_ready: ctx is not ready.\n");
 
 	return 0;
 }
@@ -1429,7 +1429,7 @@ static int vidioc_reqbufs(struct file *file, void *priv,
 			}
 		}
 
-		if (s5p_mfc_ctx_ready(ctx)) {
+		if (s5p_mfc_dec_ctx_ready(ctx)) {
 			spin_lock_irqsave(&dev->condlock, flags);
 			set_bit(ctx->num, &dev->ctx_work_bits);
 			spin_unlock_irqrestore(&dev->condlock, flags);
@@ -2119,7 +2119,7 @@ static int s5p_mfc_start_streaming(struct vb2_queue *q, unsigned int count)
 		ctx->state = MFCINST_RUNNING;
 
 	/* If context is ready then dev = work->data;schedule it to run */
-	if (s5p_mfc_ctx_ready(ctx)) {
+	if (s5p_mfc_dec_ctx_ready(ctx)) {
 		spin_lock_irqsave(&dev->condlock, flags);
 		set_bit(ctx->num, &dev->ctx_work_bits);
 		spin_unlock_irqrestore(&dev->condlock, flags);
@@ -2251,7 +2251,7 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 		mfc_err("Unsupported buffer type (%d)\n", vq->type);
 	}
 
-	if (s5p_mfc_ctx_ready(ctx)) {
+	if (s5p_mfc_dec_ctx_ready(ctx)) {
 		spin_lock_irqsave(&dev->condlock, flags);
 		set_bit(ctx->num, &dev->ctx_work_bits);
 		spin_unlock_irqrestore(&dev->condlock, flags);

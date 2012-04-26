@@ -39,6 +39,8 @@
 #include "s5p_mfc_inst.h"
 #include "s5p_mfc_pm.h"
 #include "s5p_mfc_debug.h"
+#include "s5p_mfc_dec.h"
+#include "s5p_mfc_enc.h"
 
 /* #define S5P_MFC_DEBUG_REGWRITE  */
 #ifdef S5P_MFC_DEBUG_REGWRITE
@@ -1474,7 +1476,7 @@ static inline int s5p_mfc_get_new_ctx(struct s5p_mfc_dev *dev)
 	return new_ctx;
 }
 
-static inline void s5p_mfc_run_dec_last_frames(struct s5p_mfc_ctx *ctx)
+static inline int s5p_mfc_run_dec_last_frames(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_buf *temp_vb;
@@ -1486,7 +1488,7 @@ static inline void s5p_mfc_run_dec_last_frames(struct s5p_mfc_ctx *ctx)
 	if (list_empty(&ctx->src_queue)) {
 		mfc_debug(2, "No src buffers.\n");
 		spin_unlock_irqrestore(&dev->irqlock, flags);
-		return;
+		return -EAGAIN;
 	}
 	/* Get the next source buffer */
 	temp_vb = list_entry(ctx->src_queue.next, struct s5p_mfc_buf, list);
@@ -1498,6 +1500,8 @@ static inline void s5p_mfc_run_dec_last_frames(struct s5p_mfc_ctx *ctx)
 	dev->curr_ctx = ctx->num;
 	s5p_mfc_clean_ctx_int_flags(ctx);
 	s5p_mfc_decode_one_frame(ctx, 1);
+
+	return 0;
 }
 
 static inline int s5p_mfc_run_dec_frame(struct s5p_mfc_ctx *ctx)
@@ -1626,13 +1630,14 @@ static inline void s5p_mfc_run_init_dec(struct s5p_mfc_ctx *ctx)
 	s5p_mfc_init_decode(ctx);
 }
 
-static inline void s5p_mfc_run_init_enc(struct s5p_mfc_ctx *ctx)
+static inline int s5p_mfc_run_init_enc(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	unsigned long flags;
 	struct s5p_mfc_buf *dst_mb;
 	dma_addr_t dst_addr;
 	unsigned int dst_size;
+	int ret;
 
 	spin_lock_irqsave(&dev->irqlock, flags);
 
@@ -1647,7 +1652,9 @@ static inline void s5p_mfc_run_init_enc(struct s5p_mfc_ctx *ctx)
 	mfc_debug(2, "Header addr: 0x%08lx\n",
 		(unsigned long)s5p_mfc_mem_plane_addr(ctx, &dst_mb->vb, 0));
 	s5p_mfc_clean_ctx_int_flags(ctx);
-	s5p_mfc_init_encode(ctx);
+
+	ret = s5p_mfc_init_encode(ctx);
+	return ret;
 }
 
 static inline int s5p_mfc_run_init_dec_buffers(struct s5p_mfc_ctx *ctx)
@@ -1706,6 +1713,16 @@ static inline int s5p_mfc_run_init_enc_buffers(struct s5p_mfc_ctx *ctx)
 	return ret;
 }
 
+static inline int s5p_mfc_ctx_ready(struct s5p_mfc_ctx *ctx)
+{
+	if (ctx->type == MFCINST_DECODER)
+		return s5p_mfc_dec_ctx_ready(ctx);
+	else if (ctx->type == MFCINST_ENCODER)
+		return s5p_mfc_enc_ctx_ready(ctx);
+
+	return 0;
+}
+
 /* Try running an operation on hardware */
 void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 {
@@ -1758,7 +1775,7 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 	if (ctx->type == MFCINST_DECODER) {
 		switch (ctx->state) {
 		case MFCINST_FINISHING:
-			s5p_mfc_run_dec_last_frames(ctx);
+			ret = s5p_mfc_run_dec_last_frames(ctx);
 			break;
 		case MFCINST_RUNNING:
 			ret = s5p_mfc_run_dec_frame(ctx);
@@ -1776,10 +1793,10 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 			ret = s5p_mfc_run_init_dec_buffers(ctx);
 			break;
 		case MFCINST_RES_CHANGE_INIT:
-			s5p_mfc_run_dec_last_frames(ctx);
+			ret = s5p_mfc_run_dec_last_frames(ctx);
 			break;
 		case MFCINST_RES_CHANGE_FLUSH:
-			s5p_mfc_run_dec_last_frames(ctx);
+			ret = s5p_mfc_run_dec_last_frames(ctx);
 			break;
 		case MFCINST_RES_CHANGE_END:
 			mfc_debug(2, "Finished remaining frames after resolution change.\n");
@@ -1804,7 +1821,7 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 			ret = s5p_mfc_close_inst(ctx);
 			break;
 		case MFCINST_GOT_INST:
-			s5p_mfc_run_init_enc(ctx);
+			ret = s5p_mfc_run_init_enc(ctx);
 			break;
 		case MFCINST_HEAD_PARSED: /* Only for MFC6.x */
 			ret = s5p_mfc_run_init_enc_buffers(ctx);
@@ -1818,10 +1835,21 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 	}
 
 	if (ret) {
+		/* Check again the ctx condition and clear work bits
+		 * if ctx is not available. */
+		if (s5p_mfc_ctx_ready(ctx) == 0) {
+			spin_lock_irqsave(&dev->condlock, flags);
+			clear_bit(ctx->num, &dev->ctx_work_bits);
+			spin_unlock_irqrestore(&dev->condlock, flags);
+		}
 		/* Free hardware lock */
 		if (test_and_clear_bit(0, &dev->hw_lock) == 0)
 			mfc_err("Failed to unlock hardware.\n");
 		s5p_mfc_clock_off();
+
+		/* Trigger again if other instance's work is waiting */
+		if (dev->ctx_work_bits)
+			queue_work(dev->irq_workqueue, &dev->work_struct);
 	}
 }
 

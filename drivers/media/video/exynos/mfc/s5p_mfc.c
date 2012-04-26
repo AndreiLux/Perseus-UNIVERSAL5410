@@ -760,7 +760,13 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 						dec->dpb_flush = 0;
 				}
 			} else if (ctx->type == MFCINST_ENCODER) {
-				s5p_mfc_enc_ctx_ready(ctx);
+				if (s5p_mfc_enc_ctx_ready(ctx)) {
+					spin_lock_irqsave(&dev->condlock,
+									flags);
+					set_bit(ctx->num, &dev->ctx_work_bits);
+					spin_unlock_irqrestore(&dev->condlock,
+									flags);
+				}
 			}
 
 			if (test_and_clear_bit(0, &dev->hw_lock) == 0)

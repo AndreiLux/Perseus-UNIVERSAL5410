@@ -941,7 +941,7 @@ static struct s5p_mfc_ctrl_cfg mfc_ctrl_list[] = {
 
 #define NUM_CTRL_CFGS ARRAY_SIZE(mfc_ctrl_list)
 
-static int s5p_mfc_ctx_ready(struct s5p_mfc_ctx *ctx)
+int s5p_mfc_enc_ctx_ready(struct s5p_mfc_ctx *ctx)
 {
 	mfc_debug(2, "src=%d, dst=%d, state=%d\n",
 		  ctx->src_queue_cnt, ctx->dst_queue_cnt, ctx->state);
@@ -1456,7 +1456,7 @@ static int enc_post_seq_start(struct s5p_mfc_ctx *ctx)
 	else {
 		ctx->state = MFCINST_RUNNING;
 
-		if (s5p_mfc_ctx_ready(ctx)) {
+		if (s5p_mfc_enc_ctx_ready(ctx)) {
 			spin_lock_irqsave(&dev->condlock, flags);
 			set_bit(ctx->num, &dev->ctx_work_bits);
 			spin_unlock_irqrestore(&dev->condlock, flags);
@@ -3067,7 +3067,7 @@ static int s5p_mfc_start_streaming(struct vb2_queue *q, unsigned int count)
 	unsigned long flags;
 
 	/* If context is ready then dev = work->data;schedule it to run */
-	if (s5p_mfc_ctx_ready(ctx)) {
+	if (s5p_mfc_enc_ctx_ready(ctx)) {
 		spin_lock_irqsave(&dev->condlock, flags);
 		set_bit(ctx->num, &dev->ctx_work_bits);
 		spin_unlock_irqrestore(&dev->condlock, flags);
@@ -3180,7 +3180,7 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 		mfc_err("unsupported buffer type (%d)\n", vq->type);
 	}
 
-	if (s5p_mfc_ctx_ready(ctx)) {
+	if (s5p_mfc_enc_ctx_ready(ctx)) {
 		spin_lock_irqsave(&dev->condlock, flags);
 		set_bit(ctx->num, &dev->ctx_work_bits);
 		spin_unlock_irqrestore(&dev->condlock, flags);
@@ -3188,20 +3188,6 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 	s5p_mfc_try_run(dev);
 
 	mfc_debug_leave();
-}
-
-int s5p_mfc_enc_ctx_ready(struct s5p_mfc_ctx *ctx)
-{
-	struct s5p_mfc_dev *dev = ctx->dev;
-	unsigned long flags;
-
-	if (s5p_mfc_ctx_ready(ctx)) {
-		spin_lock_irqsave(&dev->condlock, flags);
-		set_bit(ctx->num, &dev->ctx_work_bits);
-		spin_unlock_irqrestore(&dev->condlock, flags);
-	}
-
-	return 0;
 }
 
 static struct vb2_ops s5p_mfc_enc_qops = {
