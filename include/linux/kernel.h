@@ -450,6 +450,9 @@ int tracing_is_on(void);
 extern void tracing_start(void);
 extern void tracing_stop(void);
 extern void ftrace_off_permanent(void);
+struct timespec;
+extern void trace_clock_gettime(struct timespec *);
+extern void trace_clock_getres(struct timespec *);
 
 static inline __printf(1, 2)
 void ____trace_printk_check_format(const char *fmt, ...)
@@ -530,6 +533,15 @@ int trace_printk(const char *fmt, ...);
 static inline void tracing_start(void) { }
 static inline void tracing_stop(void) { }
 static inline void ftrace_off_permanent(void) { }
+struct timespec;
+static inline void trace_clock_gettime(struct timespec *tp)
+{
+	getrawmonotonic(tp);
+}
+static inline void trace_clock_getres(struct timespec *tp)
+{
+	*tp = ktime_to_timespec(KTIME_LOW_RES);
+}
 static inline void trace_dump_stack(void) { }
 
 static inline void tracing_on(void) { }

@@ -302,6 +302,7 @@ struct itimerval {
  * The IDs of various hardware clocks:
  */
 #define CLOCK_SGI_CYCLE			10
+#define CLOCK_SYSTEM_TRACE		11
 #define MAX_CLOCKS			16
 #define CLOCKS_MASK			(CLOCK_REALTIME | CLOCK_MONOTONIC)
 #define CLOCKS_MONO			CLOCK_MONOTONIC
