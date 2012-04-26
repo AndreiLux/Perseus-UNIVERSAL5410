@@ -612,33 +612,9 @@ static struct gpio panda_dvi_gpios_phy[] = {
 	{ DVI_GPIO_MSEN,      GPIOF_DIR_IN, "dvi_msen" },
 };
 
-static struct gpio panda_hdmi_gpios_phy[] = {
-	{ HDMI_GPIO_LS_OE,	GPIOF_OUT_INIT_HIGH, "hdmi_gpio_ls_oe" },
-};
-
-static struct gpio panda_hdmi_gpios_hpd[] = {
-	{ HDMI_GPIO_CT_CP_HPD, GPIOF_OUT_INIT_HIGH, "hdmi_gpio_ct_cp_hpd" },
-	{ HDMI_GPIO_HPD, GPIOF_DIR_IN, "hdmi_gpio_hpd" },
-};
-
-static int omap4_panda_panel_enable_hdmi(struct omap_dss_device *dssdev)
-{
-	int status;
-
-	status = gpio_request_array(panda_hdmi_gpios_phy,
-				    ARRAY_SIZE(panda_hdmi_gpios_phy));
-//	if (status)
-//		pr_err("Cannot request HDMI GPIOs\n");
-
-	return status;
-}
-
-static void omap4_panda_panel_disable_hdmi(struct omap_dss_device *dssdev)
-{
-	gpio_free_array(panda_hdmi_gpios_phy, ARRAY_SIZE(panda_hdmi_gpios_phy));
-}
-
 static struct omap_dss_hdmi_data omap4_panda_hdmi_data = {
+	.ct_cp_hpd_gpio = HDMI_GPIO_CT_CP_HPD,
+	.ls_oe_gpio = HDMI_GPIO_LS_OE,
 	.hpd_gpio = HDMI_GPIO_HPD,
 };
 
@@ -646,8 +622,6 @@ static struct omap_dss_device  omap4_panda_hdmi_device = {
 	.name = "hdmi",
 	.driver_name = "hdmi_panel",
 	.type = OMAP_DISPLAY_TYPE_HDMI,
-	.platform_enable = omap4_panda_panel_enable_hdmi,
-	.platform_disable = omap4_panda_panel_disable_hdmi,
 	.channel = OMAP_DSS_CHANNEL_DIGIT,
 	.data = &omap4_panda_hdmi_data,
 	.clocks.fck_div = 9,
@@ -681,7 +655,6 @@ void __init omap4_panda_display_init(void)
 	status = gpio_request_array(panda_dvi_gpios_phy,
                                     ARRAY_SIZE(panda_dvi_gpios_phy));
 
-	gpio_request_array(panda_hdmi_gpios_hpd, ARRAY_SIZE(panda_hdmi_gpios_hpd));
 	omap_display_init(&omap4_panda_dss_data);
 
 	/*
