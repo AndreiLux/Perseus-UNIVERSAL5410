@@ -432,6 +432,8 @@
 #define S5P_FIMV_NEW_I_PERIOD			S5P_FIMV_E_GOP_CONFIG
 #define S5P_FIMV_NEW_RC_FRAME_RATE		S5P_FIMV_E_RC_FRAME_RATE
 #define S5P_FIMV_NEW_RC_BIT_RATE		S5P_FIMV_E_RC_BIT_RATE
+
+#define S5P_FIMV_ERR_FRAME_CONCEAL		150
 /*** End of MFCv5 compatibility definitions ***/
 
 /***      old definitions     ***/

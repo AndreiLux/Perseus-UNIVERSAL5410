@@ -641,7 +641,10 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 
 			queue_work(dev->irq_workqueue, &dev->work_struct);
 		} else {
-			s5p_mfc_handle_frame(ctx, reason, err);
+			if (s5p_mfc_err_dec(err) == S5P_FIMV_ERR_FRAME_CONCEAL)
+				s5p_mfc_handle_frame_error(ctx, reason, err);
+			else
+				s5p_mfc_handle_frame(ctx, reason, err);
 		}
 		break;
 	case S5P_FIMV_R2H_CMD_SEQ_DONE_RET:
