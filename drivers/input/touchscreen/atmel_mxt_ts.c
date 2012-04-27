@@ -1305,8 +1305,13 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		return -EINVAL;
 
 	data = kzalloc(sizeof(struct mxt_data), GFP_KERNEL);
+	if (!data) {
+		dev_err(&client->dev, "Failed to allocate memory\n");
+		return -ENOMEM;
+	}
+
 	input_dev = input_allocate_device();
-	if (!data || !input_dev) {
+	if (!input_dev) {
 		dev_err(&client->dev, "Failed to allocate memory\n");
 		error = -ENOMEM;
 		goto err_free_mem;
@@ -1356,8 +1361,10 @@ static int __devinit mxt_probe(struct i2c_client *client,
 
 	/* For multi touch */
 	error = input_mt_init_slots(input_dev, MXT_MAX_FINGER);
-	if (error)
+	if (error) {
+		input_free_device(input_dev);
 		goto err_free_mem;
+	}
 	input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR,
 			     0, MXT_MAX_AREA, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_X,
@@ -1374,10 +1381,18 @@ static int __devinit mxt_probe(struct i2c_client *client,
 
 	if (client->addr == MXT_APP_LOW || client->addr == MXT_APP_HIGH) {
 		error = mxt_initialize(data);
-		if (error)
+		if (error) {
+			input_free_device(input_dev);
 			goto err_free_object;
+		}
 	} else {
 		dev_info(&client->dev, "device came up in bootloader mode.\n");
+	}
+
+	error = input_register_device(input_dev);
+	if (error) {
+		input_free_device(input_dev);
+		goto err_free_object;
 	}
 
 	error = request_threaded_irq(client->irq,
@@ -1388,7 +1403,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 				     data);
 	if (error) {
 		dev_err(&client->dev, "Failed to register interrupt\n");
-		goto err_free_object;
+		goto err_unregister_device;
 	}
 
 	if (client->addr == MXT_APP_LOW || client->addr == MXT_APP_HIGH) {
@@ -1396,10 +1411,6 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		if (error)
 			goto err_free_irq;
 	}
-
-	error = input_register_device(input_dev);
-	if (error)
-		goto err_free_irq;
 
 	error = sysfs_create_group(&client->dev.kobj, &mxt_attr_group);
 	if (error)
@@ -1409,10 +1420,11 @@ static int __devinit mxt_probe(struct i2c_client *client,
 
 err_free_irq:
 	free_irq(client->irq, data);
+err_unregister_device:
+	input_unregister_device(data->input_dev);
 err_free_object:
 	kfree(data->object_table);
 err_free_mem:
-	input_free_device(input_dev);
 	kfree(data);
 	return error;
 }
