@@ -74,6 +74,17 @@ static struct sleep_save exynos4_vpll_save[] = {
 	SAVE_ITEM(EXYNOS4_VPLL_CON1),
 };
 
+static struct sleep_save exynos5_set_clksrc[] = {
+	{ .reg = EXYNOS5_CLKSRC_MASK_TOP,		.val = 0xffffffff, },
+	{ .reg = EXYNOS5_CLKSRC_MASK_GSCL,		.val = 0xffffffff, },
+	{ .reg = EXYNOS5_CLKSRC_MASK_DISP1_0,		.val = 0xffffffff, },
+	{ .reg = EXYNOS5_CLKSRC_MASK_MAUDIO,		.val = 0xffffffff, },
+	{ .reg = EXYNOS5_CLKSRC_MASK_FSYS,		.val = 0xffffffff, },
+	{ .reg = EXYNOS5_CLKSRC_MASK_PERIC0,		.val = 0xffffffff, },
+	{ .reg = EXYNOS5_CLKSRC_MASK_PERIC1,		.val = 0xffffffff, },
+	{ .reg = EXYNOS5_CLKSRC_MASK_ISP,		.val = 0xffffffff, },
+};
+
 static struct sleep_save exynos_core_save[] = {
 	/* SROM side */
 	SAVE_ITEM(S5P_SROM_BW),
@@ -96,6 +107,7 @@ static int exynos_cpu_suspend(unsigned long arg)
 	outer_flush_all();
 #endif
 
+	exynos_reset_assert_ctrl(false);
 #ifdef CONFIG_ARM_TRUSTZONE
 	exynos_smc(SMC_CMD_SLEEP, 0, 0, 0);
 #else
@@ -110,16 +122,14 @@ static void exynos_pm_prepare(void)
 {
 	unsigned int tmp;
 
-	s3c_pm_do_save(exynos_core_save, ARRAY_SIZE(exynos_core_save));
+	/* Decides whether to use retention capability */
+	tmp = __raw_readl(EXYNOS5_ARM_L2_OPTION);
+	tmp &= ~EXYNOS5_USE_RETENTION;
+	__raw_writel(tmp, EXYNOS5_ARM_L2_OPTION);
 
 	if (!soc_is_exynos5250()) {
 		s3c_pm_do_save(exynos4_epll_save, ARRAY_SIZE(exynos4_epll_save));
 		s3c_pm_do_save(exynos4_vpll_save, ARRAY_SIZE(exynos4_vpll_save));
-	} else {
-		/* Disable USE_RETENTION of JPEG_MEM_OPTION */
-		tmp = __raw_readl(EXYNOS5_JPEG_MEM_OPTION);
-		tmp &= ~EXYNOS5_OPTION_USE_RETENTION;
-		__raw_writel(tmp, EXYNOS5_JPEG_MEM_OPTION);
 	}
 
 	/* Set value of power down register for sleep mode */
@@ -140,6 +150,7 @@ static void exynos_pm_prepare(void)
 	if (soc_is_exynos4210())
 		s3c_pm_do_restore_core(exynos4210_set_clksrc, ARRAY_SIZE(exynos4210_set_clksrc));
 
+	s3c_pm_do_restore_core(exynos5_set_clksrc, ARRAY_SIZE(exynos5_set_clksrc));
 }
 
 static int exynos_pm_add(struct device *dev, struct subsys_interface *sif)
@@ -232,16 +243,10 @@ static struct subsys_interface exynos5_pm_interface = {
 static __init int exynos_pm_drvinit(void)
 {
 	struct clk *pll_base;
-	unsigned int tmp;
 
 	s3c_pm_init();
 
-	/* All wakeup disable */
-	tmp = __raw_readl(EXYNOS_WAKEUP_MASK);
-	tmp |= ((0xFF << 8) | (0x1F << 1));
-	__raw_writel(tmp, EXYNOS_WAKEUP_MASK);
-
-	if(!soc_is_exynos5250()) {
+	if (!soc_is_exynos5250()) {
 		pll_base = clk_get(NULL, "xtal");
 
 		if (!IS_ERR(pll_base)) {
@@ -259,6 +264,8 @@ arch_initcall(exynos_pm_drvinit);
 static int exynos_pm_suspend(void)
 {
 	unsigned long tmp;
+
+	s3c_pm_do_save(exynos_core_save, ARRAY_SIZE(exynos_core_save));
 
 	/* Setting Central Sequence Register for power down mode */
 	tmp = __raw_readl(EXYNOS_CENTRAL_SEQ_CONFIGURATION);
@@ -287,6 +294,8 @@ static int exynos_pm_suspend(void)
 static void exynos_pm_resume(void)
 {
 	unsigned long tmp;
+
+	exynos_reset_assert_ctrl(true);
 
 	/*
 	 * If PMU failed while entering sleep mode, WFI will be
@@ -324,6 +333,8 @@ static void exynos_pm_resume(void)
 	__raw_writel((1 << 28), EXYNOS_PAD_RET_MMCB_OPTION);
 	__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIA_OPTION);
 	__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIB_OPTION);
+	__raw_writel((1 << 28), EXYNOS5_PAD_RETENTION_SPI_OPTION);
+	__raw_writel((1 << 28), EXYNOS5_PAD_RETENTION_GPIO_SYSMEM_OPTION);
 
 	s3c_pm_do_restore_core(exynos_core_save, ARRAY_SIZE(exynos_core_save));
 

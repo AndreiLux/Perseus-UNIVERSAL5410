@@ -31,5 +31,6 @@ struct exynos_pmu_conf {
 extern void exynos_sys_powerdown_conf(enum sys_powerdown mode);
 extern void exynos_xxti_sys_powerdown(bool enable);
 extern void s3c_cpu_resume(void);
+extern void exynos_reset_assert_ctrl(bool on);
 
 #endif /* __ASM_ARCH_PMU_H */
