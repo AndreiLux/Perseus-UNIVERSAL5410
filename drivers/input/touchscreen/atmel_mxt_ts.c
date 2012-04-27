@@ -1244,6 +1244,78 @@ static void mxt_input_close(struct input_dev *dev)
 	mxt_stop(data);
 }
 
+static int mxt_input_dev_create(struct mxt_data *data)
+{
+	struct input_dev *input_dev;
+	int error;
+
+	data->input_dev = input_dev = input_allocate_device();
+	if (!input_dev)
+		return -ENOMEM;
+
+	input_dev->name = (data->is_tp) ? "Atmel maXTouch Touchpad" :
+					  "Atmel maXTouch Touchscreen";
+	input_dev->phys = data->client->adapter->name;
+	input_dev->id.bustype = BUS_I2C;
+	input_dev->dev.parent = &data->client->dev;
+	input_dev->open = mxt_input_open;
+	input_dev->close = mxt_input_close;
+
+	__set_bit(EV_ABS, input_dev->evbit);
+	__set_bit(EV_KEY, input_dev->evbit);
+	__set_bit(BTN_TOUCH, input_dev->keybit);
+
+	if (data->is_tp) {
+		__set_bit(INPUT_PROP_POINTER, input_dev->propbit);
+		__set_bit(INPUT_PROP_BUTTONPAD, input_dev->propbit);
+
+		__set_bit(BTN_LEFT, input_dev->keybit);
+		__set_bit(BTN_TOOL_FINGER, input_dev->keybit);
+		__set_bit(BTN_TOOL_DOUBLETAP, input_dev->keybit);
+		__set_bit(BTN_TOOL_TRIPLETAP, input_dev->keybit);
+		__set_bit(BTN_TOOL_QUADTAP, input_dev->keybit);
+		__set_bit(BTN_TOOL_QUINTTAP, input_dev->keybit);
+	}
+
+	/* For single touch */
+	input_set_abs_params(input_dev, ABS_X,
+			     0, data->max_x, 0, 0);
+	input_set_abs_params(input_dev, ABS_Y,
+			     0, data->max_y, 0, 0);
+	input_set_abs_params(input_dev, ABS_PRESSURE,
+			     0, 255, 0, 0);
+	input_abs_set_res(input_dev, ABS_X, MXT_PIXELS_PER_MM);
+	input_abs_set_res(input_dev, ABS_Y, MXT_PIXELS_PER_MM);
+
+	/* For multi touch */
+	error = input_mt_init_slots(input_dev, MXT_MAX_FINGER);
+	if (error)
+		goto err_free_device;
+	input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR,
+			     0, MXT_MAX_AREA, 0, 0);
+	input_set_abs_params(input_dev, ABS_MT_POSITION_X,
+			     0, data->max_x, 0, 0);
+	input_set_abs_params(input_dev, ABS_MT_POSITION_Y,
+			     0, data->max_y, 0, 0);
+	input_set_abs_params(input_dev, ABS_MT_PRESSURE,
+			     0, 255, 0, 0);
+	input_abs_set_res(input_dev, ABS_MT_POSITION_X, MXT_PIXELS_PER_MM);
+	input_abs_set_res(input_dev, ABS_MT_POSITION_Y, MXT_PIXELS_PER_MM);
+
+	input_set_drvdata(input_dev, data);
+
+	error = input_register_device(input_dev);
+	if (error)
+		goto err_free_device;
+
+	return 0;
+
+err_free_device:
+	input_free_device(data->input_dev);
+	data->input_dev = NULL;
+	return error;
+}
+
 static int mxt_initialize(struct mxt_data *data)
 {
 	struct i2c_client *client = data->client;
@@ -1298,7 +1370,6 @@ static int __devinit mxt_probe(struct i2c_client *client,
 {
 	const struct mxt_platform_data *pdata = client->dev.platform_data;
 	struct mxt_data *data;
-	struct input_dev *input_dev;
 	int error;
 
 	if (!pdata)
@@ -1310,90 +1381,27 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
-	input_dev = input_allocate_device();
-	if (!input_dev) {
-		dev_err(&client->dev, "Failed to allocate memory\n");
-		error = -ENOMEM;
-		goto err_free_mem;
-	}
-
 	data->is_tp = !strcmp(id->name, "atmel_mxt_tp");
-	input_dev->name = (data->is_tp) ? "Atmel maXTouch Touchpad" :
-					  "Atmel maXTouch Touchscreen";
-	input_dev->phys = client->adapter->name;
-	input_dev->id.bustype = BUS_I2C;
-	input_dev->dev.parent = &client->dev;
-	input_dev->open = mxt_input_open;
-	input_dev->close = mxt_input_close;
 
 	data->client = client;
-	data->input_dev = input_dev;
+	i2c_set_clientdata(client, data);
+
 	data->pdata = pdata;
 	data->irq = client->irq;
 
 	mxt_calc_resolution(data);
 
-	__set_bit(EV_ABS, input_dev->evbit);
-	__set_bit(EV_KEY, input_dev->evbit);
-	__set_bit(BTN_TOUCH, input_dev->keybit);
-
-	if (data->is_tp) {
-		__set_bit(INPUT_PROP_POINTER, input_dev->propbit);
-		__set_bit(INPUT_PROP_BUTTONPAD, input_dev->propbit);
-
-		__set_bit(BTN_LEFT, input_dev->keybit);
-		__set_bit(BTN_TOOL_FINGER, input_dev->keybit);
-		__set_bit(BTN_TOOL_DOUBLETAP, input_dev->keybit);
-		__set_bit(BTN_TOOL_TRIPLETAP, input_dev->keybit);
-		__set_bit(BTN_TOOL_QUADTAP, input_dev->keybit);
-		__set_bit(BTN_TOOL_QUINTTAP, input_dev->keybit);
-	}
-
-	/* For single touch */
-	input_set_abs_params(input_dev, ABS_X,
-			     0, data->max_x, 0, 0);
-	input_set_abs_params(input_dev, ABS_Y,
-			     0, data->max_y, 0, 0);
-	input_set_abs_params(input_dev, ABS_PRESSURE,
-			     0, 255, 0, 0);
-	input_abs_set_res(input_dev, ABS_X, MXT_PIXELS_PER_MM);
-	input_abs_set_res(input_dev, ABS_Y, MXT_PIXELS_PER_MM);
-
-	/* For multi touch */
-	error = input_mt_init_slots(input_dev, MXT_MAX_FINGER);
-	if (error) {
-		input_free_device(input_dev);
-		goto err_free_mem;
-	}
-	input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR,
-			     0, MXT_MAX_AREA, 0, 0);
-	input_set_abs_params(input_dev, ABS_MT_POSITION_X,
-			     0, data->max_x, 0, 0);
-	input_set_abs_params(input_dev, ABS_MT_POSITION_Y,
-			     0, data->max_y, 0, 0);
-	input_set_abs_params(input_dev, ABS_MT_PRESSURE,
-			     0, 255, 0, 0);
-	input_abs_set_res(input_dev, ABS_MT_POSITION_X, MXT_PIXELS_PER_MM);
-	input_abs_set_res(input_dev, ABS_MT_POSITION_Y, MXT_PIXELS_PER_MM);
-
-	input_set_drvdata(input_dev, data);
-	i2c_set_clientdata(client, data);
-
 	if (client->addr == MXT_APP_LOW || client->addr == MXT_APP_HIGH) {
 		error = mxt_initialize(data);
-		if (error) {
-			input_free_device(input_dev);
+		if (error)
 			goto err_free_object;
-		}
 	} else {
 		dev_info(&client->dev, "device came up in bootloader mode.\n");
 	}
 
-	error = input_register_device(input_dev);
-	if (error) {
-		input_free_device(input_dev);
+	error = mxt_input_dev_create(data);
+	if (error)
 		goto err_free_object;
-	}
 
 	error = request_threaded_irq(client->irq,
 				     NULL,
@@ -1424,7 +1432,6 @@ err_unregister_device:
 	input_unregister_device(data->input_dev);
 err_free_object:
 	kfree(data->object_table);
-err_free_mem:
 	kfree(data);
 	return error;
 }
