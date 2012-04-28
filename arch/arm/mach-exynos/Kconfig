@@ -172,6 +172,12 @@ config EXYNOS4_SETUP_SPI
 	help
 	  Common setup code for SPI GPIO configurations.
 
+config EXYNOS4_SETUP_MIPI_DSIM
+	bool
+	depends on FB_MIPI_DSIM
+	help
+	  Common setup code for MIPI_DSIM to support mainline style fimd.
+
 config EXYNOS4_SETUP_TVOUT
 	bool
 	help
