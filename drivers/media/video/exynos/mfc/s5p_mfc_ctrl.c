@@ -340,7 +340,7 @@ static inline void s5p_mfc_clear_cmds(struct s5p_mfc_dev *dev)
 /* Initialize hardware */
 int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
 {
-	char dvx_info;
+	char fimv_info;
 	int mfc_info;
 	int ret = 0;
 
@@ -408,14 +408,14 @@ int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
 		goto err_init_hw;
 	}
 
-	dvx_info = MFC_GET_REG(SYS_FW_DVX_INFO);
-	if (dvx_info != 'D' && dvx_info != 'E')
-		dvx_info = 'N';
+	fimv_info = MFC_GET_REG(SYS_FW_FIMV_INFO);
+	if (fimv_info != 'D' && fimv_info != 'E')
+		fimv_info = 'N';
 
 	mfc_info("MFC v%x.%x, F/W : (%c) %02xyy, %02xmm, %02xdd\n",
 		 MFC_VER_MAJOR(dev->fw.ver),
 		 MFC_VER_MINOR(dev->fw.ver),
-		 dvx_info,
+		 fimv_info,
 		 MFC_GET_REG(SYS_FW_VER_YEAR),
 		 MFC_GET_REG(SYS_FW_VER_MONTH),
 		 MFC_GET_REG(SYS_FW_VER_DATE));
