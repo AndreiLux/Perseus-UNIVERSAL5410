@@ -1326,7 +1326,7 @@ static void __init smdk5250_ss_udc_init(void)
 static void __init smdk5250_dwmci_init(void)
 {
 	exynos_dwmci_set_platdata(&exynos_dwmci0_pdata, 0);
-	dev_set_name(&exynos5_device_dwmci0.dev, "s3c-sdhci.0");
+	dev_set_name(&exynos5_device_dwmci0.dev, "exynos4-sdhci.0");
 	clk_add_alias("dwmci", "dw_mmc.0", "hsmmc", &exynos5_device_dwmci0.dev);
 	clk_add_alias("sclk_dwmci", "dw_mmc.0", "sclk_mmc",
 		      &exynos5_device_dwmci0.dev);
