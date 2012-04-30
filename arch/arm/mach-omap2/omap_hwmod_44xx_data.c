@@ -2772,7 +2772,6 @@ static struct omap_hwmod omap44xx_gpu_hwmod = {
 	.mpu_irqs	= omap44xx_gpu_irqs,
 	.main_clk	= "gpu_fck",
 	.clkdm_name	= "l3_gfx_clkdm",
-	.vdd_name	= "core",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = OMAP4_CM_GFX_GFX_CLKCTRL_OFFSET,
