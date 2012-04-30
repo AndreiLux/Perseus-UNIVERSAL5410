@@ -11,6 +11,7 @@
 
 #include <linux/of_platform.h>
 #include <linux/serial_core.h>
+#include <linux/smsc911x.h>
 
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
@@ -18,8 +19,32 @@
 
 #include <plat/cpu.h>
 #include <plat/regs-serial.h>
+#include <plat/regs-srom.h>
 
 #include "common.h"
+
+static void __init smsc911x_init(int ncs)
+{
+	u32 data;
+
+	/* configure nCS1 width to 16 bits */
+	data = __raw_readl(S5P_SROM_BW) &
+		~(S5P_SROM_BW__CS_MASK << (ncs * 4));
+	data |= ((1 << S5P_SROM_BW__DATAWIDTH__SHIFT) |
+		(1 << S5P_SROM_BW__WAITENABLE__SHIFT) |
+		(1 << S5P_SROM_BW__BYTEENABLE__SHIFT)) << (ncs * 4);
+	__raw_writel(data, S5P_SROM_BW);
+
+	/* set timing for nCS1 suitable for ethernet chip */
+	__raw_writel((0x1 << S5P_SROM_BCX__PMC__SHIFT) |
+		(0x9 << S5P_SROM_BCX__TACP__SHIFT) |
+		(0xc << S5P_SROM_BCX__TCAH__SHIFT) |
+		(0x1 << S5P_SROM_BCX__TCOH__SHIFT) |
+		(0x6 << S5P_SROM_BCX__TACC__SHIFT) |
+		(0x1 << S5P_SROM_BCX__TCOS__SHIFT) |
+		(0x1 << S5P_SROM_BCX__TACS__SHIFT),
+		S5P_SROM_BC0 + (ncs * 4));
+}
 
 /*
  * The following lookup table is used to override device names when devices
@@ -61,6 +86,9 @@ static void __init exynos5250_dt_map_io(void)
 
 static void __init exynos5250_dt_machine_init(void)
 {
+	if (of_machine_is_compatible("samsung,smdk5250"))
+		smsc911x_init(1);
+
 	of_platform_populate(NULL, of_default_bus_match_table,
 				exynos5250_auxdata_lookup, NULL);
 }
