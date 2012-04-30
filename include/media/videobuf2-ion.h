@@ -27,9 +27,9 @@
  */
 
 /* Allocate physically contiguous memory */
-#define VB2ION_CTX_PHCONTIG	ION_HEAP_EXYNOS_CONTIG_MASK
+#define VB2ION_CTX_PHCONTIG	ION_HEAP_CARVEOUT_MASK
 /* Allocate virtually contiguous memory */
-#define VB2ION_CTX_VMCONTIG	ION_HEAP_EXYNOS_MASK
+#define VB2ION_CTX_VMCONTIG	ION_HEAP_SYSTEM_MASK
 /* Provide device a virtual address space */
 #define VB2ION_CTX_IOMMU	(1 << (ION_NUM_HEAPS + 1))
 /* Non-cached mapping to user when mmap */
