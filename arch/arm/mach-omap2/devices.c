@@ -1038,7 +1038,7 @@ static void omap_init_gpu(void)
 	struct omap_hwmod *oh;
 	struct platform_device *od;
 	struct gpu_platform_data *pdata;
-    const char *oh_name = "gpu";
+	const char *oh_name = "gpu";
 	char *name = "omapdrm_pvr";
 
 	oh = omap_hwmod_lookup(oh_name);
