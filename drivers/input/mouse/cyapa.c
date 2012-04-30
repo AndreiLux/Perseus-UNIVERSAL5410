@@ -1443,6 +1443,8 @@ static int cyapa_debugfs_init(struct cyapa *cyapa)
 	if (!cyapa->dentry_dev)
 		return -ENODEV;
 
+	mutex_init(&cyapa->debugfs_mutex);
+
 	debugfs_create_file(CYAPA_DEBUGFS_READ_FW, S_IRUSR, cyapa->dentry_dev,
 			    cyapa, &cyapa_read_fw_fops);
 	return 0;
@@ -1696,8 +1698,6 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 	cyapa->state = CYAPA_STATE_NO_DEVICE;
 	cyapa->suspend_power_mode = PWR_MODE_IDLE;
 
-	mutex_init(&cyapa->debugfs_mutex);
-
 	/*
 	 * Note: There is no way to request an irq that is initially disabled.
 	 * Thus, there is a little race here, which is resolved in cyapa_irq()
@@ -1750,8 +1750,10 @@ static int __devexit cyapa_remove(struct i2c_client *client)
 	if (cyapa->input)
 		input_unregister_device(cyapa->input);
 
-	if (cyapa->dentry_dev)
+	if (cyapa->dentry_dev) {
 		debugfs_remove_recursive(cyapa->dentry_dev);
+		mutex_destroy(&cyapa->debugfs_mutex);
+	}
 
 	kfree(cyapa->read_fw_image);
 	cyapa->read_fw_image = NULL;
