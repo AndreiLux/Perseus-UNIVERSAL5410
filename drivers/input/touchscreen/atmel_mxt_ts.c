@@ -1082,6 +1082,16 @@ static ssize_t mxt_info_csum_show(struct device *dev,
 	return scnprintf(buf, PAGE_SIZE, "%06x\n", data->info_csum);
 }
 
+/* Matrix Size is <MatrixSizeX> <MatrixSizeY> */
+static ssize_t mxt_matrix_size_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	struct mxt_data *data = dev_get_drvdata(dev);
+	struct mxt_info *info = &data->info;
+	return scnprintf(buf, PAGE_SIZE, "%u %u\n",
+			 info->matrix_xsize, info->matrix_ysize);
+}
+
 static ssize_t mxt_object_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
@@ -1196,6 +1206,7 @@ static DEVICE_ATTR(config_csum, S_IRUGO, mxt_config_csum_show, NULL);
 static DEVICE_ATTR(fw_version, S_IRUGO, mxt_fw_version_show, NULL);
 static DEVICE_ATTR(hw_version, S_IRUGO, mxt_hw_version_show, NULL);
 static DEVICE_ATTR(info_csum, S_IRUGO, mxt_info_csum_show, NULL);
+static DEVICE_ATTR(matrix_size, S_IRUGO, mxt_matrix_size_show, NULL);
 static DEVICE_ATTR(object, S_IRUGO | S_IWUSR, mxt_object_show,
 		   mxt_object_store);
 static DEVICE_ATTR(update_fw, S_IWUSR, NULL, mxt_update_fw_store);
@@ -1207,6 +1218,7 @@ static struct attribute *mxt_attrs[] = {
 	&dev_attr_fw_version.attr,
 	&dev_attr_hw_version.attr,
 	&dev_attr_info_csum.attr,
+	&dev_attr_matrix_size.attr,
 	&dev_attr_object.attr,
 	&dev_attr_update_fw.attr,
 	NULL
