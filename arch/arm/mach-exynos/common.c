@@ -614,6 +614,8 @@ void __init exynos5_init_irq(void)
 
 #ifdef CONFIG_OF
 	of_irq_init(exynos4_dt_irq_match);
+#else
+	gic_init(0, IRQ_PPI(0), S5P_VA_GIC_DIST, S5P_VA_GIC_CPU);
 #endif
 
 	for (irq = 0; irq < EXYNOS5_MAX_COMBINER_NR; irq++) {
