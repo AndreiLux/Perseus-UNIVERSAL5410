@@ -546,9 +546,6 @@ static int dw_mci_submit_data_dma(struct dw_mci *host, struct mmc_data *data)
 		return sg_len;
 	}
 
-	if (host->quirks & DW_MCI_QUIRK_DMA_DELAY)
-		udelay(100);
-
 	host->using_dma = 1;
 
 	dev_vdbg(&host->dev,
