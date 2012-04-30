@@ -332,7 +332,7 @@
 #define DESC_BUFFER2_SZ_OFFSET	16
 
 struct xgmac_dma_desc {
-	__le32 flags;
+	volatile __le32 flags;
 	__le32 buf_size;
 	__le32 buf1_addr;		/* Buffer 1 Address Pointer */
 	__le32 buf2_addr;		/* Buffer 2 Address Pointer */
@@ -451,15 +451,20 @@ static inline int desc_get_owner(struct xgmac_dma_desc *p)
 static inline void desc_set_rx_owner(struct xgmac_dma_desc *p)
 {
 	/* Clear all fields and set the owner */
+	wmb();
 	p->flags = cpu_to_le32(DESC_OWN);
+	wmb();
 }
 
 static inline void desc_set_tx_owner(struct xgmac_dma_desc *p, u32 flags)
 {
-	u32 tmpflags = le32_to_cpu(p->flags);
+	u32 tmpflags;
+	wmb();
+	tmpflags = le32_to_cpu(p->flags);
 	tmpflags &= TXDESC_END_RING;
 	tmpflags |= flags | DESC_OWN;
 	p->flags = cpu_to_le32(tmpflags);
+	wmb();
 }
 
 static inline int desc_get_tx_ls(struct xgmac_dma_desc *p)
