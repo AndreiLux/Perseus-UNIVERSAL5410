@@ -34,6 +34,7 @@
 #include <plat/board.h>
 #include <plat/mmc.h>
 #include <plat/dma.h>
+#include <plat/gpu.h>
 #include <plat/omap_hwmod.h>
 #include <plat/omap_device.h>
 #include <plat/omap4-keypad.h>
@@ -1102,6 +1103,7 @@ static int __init omap2_init_devices(void)
 	omap_init_fdif();
 	omap_init_sl2if();
 	omap_init_iss();
+	omap_init_gpu();
 
 	return 0;
 }
