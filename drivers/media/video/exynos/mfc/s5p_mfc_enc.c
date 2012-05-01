@@ -3174,6 +3174,20 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 	mfc_debug_leave();
 }
 
+int s5p_mfc_enc_ctx_ready(struct s5p_mfc_ctx *ctx)
+{
+	struct s5p_mfc_dev *dev = ctx->dev;
+	unsigned long flags;
+
+	if (s5p_mfc_ctx_ready(ctx)) {
+		spin_lock_irqsave(&dev->condlock, flags);
+		set_bit(ctx->num, &dev->ctx_work_bits);
+		spin_unlock_irqrestore(&dev->condlock, flags);
+	}
+
+	return 0;
+}
+
 static struct vb2_ops s5p_mfc_enc_qops = {
 	.queue_setup		= s5p_mfc_queue_setup,
 	.wait_prepare		= s5p_mfc_unlock,

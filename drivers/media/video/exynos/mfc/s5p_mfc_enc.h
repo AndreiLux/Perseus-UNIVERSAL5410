@@ -15,5 +15,6 @@
 
 const struct v4l2_ioctl_ops *get_enc_v4l2_ioctl_ops(void);
 int s5p_mfc_init_enc_ctx(struct s5p_mfc_ctx *ctx);
+int s5p_mfc_enc_ctx_ready(struct s5p_mfc_ctx *ctx);
 
-#endif /* __S5P_MFC_ENC_H_  */
+#endif /* __S5P_MFC_ENC_H_ */

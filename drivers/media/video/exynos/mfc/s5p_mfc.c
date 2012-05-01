@@ -743,15 +743,7 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 						dec->dpb_flush = 0;
 				}
 			} else if (ctx->type == MFCINST_ENCODER) {
-				spin_lock_irqsave(&dev->irqlock, flags);
-				if (!list_empty(&ctx->src_queue)) {
-					src_buf = list_entry(ctx->src_queue.next,
-							struct s5p_mfc_buf, list);
-					list_del(&src_buf->list);
-					ctx->src_queue_cnt--;
-					vb2_buffer_done(&src_buf->vb, VB2_BUF_STATE_DONE);
-				}
-				spin_unlock_irqrestore(&dev->irqlock, flags);
+				s5p_mfc_enc_ctx_ready(ctx);
 			}
 
 			if (test_and_clear_bit(0, &dev->hw_lock) == 0)
