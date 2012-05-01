@@ -1389,12 +1389,6 @@ static int mxt_initialize(struct mxt_data *data)
 	mxt_write_object(data, MXT_GEN_COMMAND_T6, 0, MXT_COMMAND_RESET, 1);
 	msleep(MXT_RESET_TIME);
 
-	/* Update matrix size, since it may have been modified by pdata */
-	error = mxt_read_reg(client, MXT_MATRIX_X_SIZE, 2,
-			     &info->matrix_xsize);
-	if (error)
-		return error;
-
 	dev_info(dev, "Family ID: %d Variant ID: %d Major.Minor.Build: %d.%d.%d\n",
 		 info->family_id, info->variant_id, info->version >> 4,
 		 info->version & 0xf, info->build);
