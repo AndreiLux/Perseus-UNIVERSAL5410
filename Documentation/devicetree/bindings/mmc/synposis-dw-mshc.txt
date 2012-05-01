@@ -7,6 +7,8 @@ Required Properties:
 
 * compatible: should be one of the following
 	- synopsis,dw-mshc: for controllers compliant with synopsis dw-mshc.
+	- synopsis,dw-mshc-exynos5250: for controllers with Samsung
+	  Exynos5250 specific extentions.
 
 * reg: physical base address of the dw-mshc controller and size of its memory
   region.
@@ -55,13 +57,40 @@ Optional properties:
 * no-write-protect: The write protect pad of the controller is not connected
   to the write protect pin on the slot.
 
+Samsung Exynos5250 specific properties:
+
+* samsung,dw-mshc-sdr-timing: Specifies the value of CUI clock divider, CIU
+  clock phase shift value in transmit mode and CIU clock phase shift value in
+  receive mode for single data rate mode operation. Refer notes of the valid
+  values below.
+
+* samsung,dw-mshc-ddr-timing: Specifies the value of CUI clock divider, CIU
+  clock phase shift value in transmit mode and CIU clock phase shift value in
+  receive mode for double data rate mode operation. Refer notes of the valid
+  values below. The order of the cells should be
+
+    - First Cell: 	CIU clock divider value.
+    - Second Cell:	CIU clock phase shift value for tx mode.
+    - Third Cell:	CIU clock phase shift value for rx mode.
+
+  Valid values for SDR and DDR CIU clock timing:
+
+    - valid values for CIU clock divider, tx phase shift and rx phase shift
+      is 0 to 7.
+
+    - When CIU clock divider value is set to 3, all possible 8 phase shift
+      values can be used.
+
+    - If CIU clock divider value is 0 (that is divide by 1), both tx and rx
+      phase shift clocks should be 0.
+
 Example:
 
   The MSHC controller node can be split into two portions, SoC specific and
   board specific portions as listed below.
 
 	dwmmc0@12200000 {
-		compatible = "synopsis,dw-mshc";
+		compatible = "synopsis,dw-mshc-exynos5250";
 		reg = <0x12200000 0x1000>;
 		interrupts = <0 75 0>;
 	};
@@ -72,6 +101,8 @@ Example:
 		no-write-protect;
 		fifo-depth = <0x80>;
 		card-detect-delay = <200>;
+		samsung,dw-mshc-sdr-timing = <2 3 3>;
+		samsung,dw-mshc-ddr-timing = <1 2 3>;
 
 		slot0 {
 			bus-width = <8>;

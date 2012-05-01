@@ -82,6 +82,8 @@ struct mmc_data;
  * @biu_clk: Pointer to bus interface unit clock instance.
  * @ciu_clk: Pointer to card interface unit clock instance.
  * @slot: Slots sharing this MMC controller.
+ * @sdr_timing: Clock phase shifting for driving and sampling in sdr mode
+ * @ddr_timing: Clock phase shifting for driving and sampling in ddr mode
  * @fifo_depth: depth of FIFO.
  * @data_shift: log2 of FIFO item size.
  * @part_buf_start: Start index in part_buf.
@@ -165,6 +167,10 @@ struct dw_mci {
 	struct clk		*biu_clk;
 	struct clk		*ciu_clk;
 	struct dw_mci_slot	*slot[MAX_MCI_SLOTS];
+
+	/* Phase Shift Value (for exynos5250 variant) */
+	u32			sdr_timing;
+	u32			ddr_timing;
 
 	/* FIFO push and pull */
 	int			fifo_depth;

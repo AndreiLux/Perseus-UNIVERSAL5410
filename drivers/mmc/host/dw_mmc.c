@@ -236,6 +236,7 @@ static void dw_mci_set_timeout(struct dw_mci *host)
 static u32 dw_mci_prepare_command(struct mmc_host *mmc, struct mmc_command *cmd)
 {
 	struct mmc_data	*data;
+	struct dw_mci_slot *slot = mmc_priv(mmc);
 	u32 cmdr;
 	cmd->error = -EINPROGRESS;
 
@@ -264,6 +265,10 @@ static u32 dw_mci_prepare_command(struct mmc_host *mmc, struct mmc_command *cmd)
 		if (data->flags & MMC_DATA_WRITE)
 			cmdr |= SDMMC_CMD_DAT_WR;
 	}
+
+	if (slot->host->drv_data->ctrl_type == DW_MCI_TYPE_EXYNOS5250)
+		if (SDMMC_CLKSEL_GET_SELCLK_DRV(mci_readl(slot->host, CLKSEL)))
+			cmdr |= SDMMC_USE_HOLD_REG;
 
 	return cmdr;
 }
@@ -787,10 +792,19 @@ static void dw_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	regs = mci_readl(slot->host, UHS_REG);
 
 	/* DDR mode set */
-	if (ios->timing == MMC_TIMING_UHS_DDR50)
+	if (ios->timing == MMC_TIMING_UHS_DDR50) {
 		regs |= (0x1 << slot->id) << 16;
-	else
+		mci_writel(slot->host, CLKSEL, slot->host->ddr_timing);
+	} else {
 		regs &= ~(0x1 << slot->id) << 16;
+		mci_writel(slot->host, CLKSEL, slot->host->sdr_timing);
+	}
+
+	if (slot->host->drv_data->ctrl_type == DW_MCI_TYPE_EXYNOS5250) {
+		slot->host->bus_hz = clk_get_rate(slot->host->ciu_clk);
+		slot->host->bus_hz /= SDMMC_CLKSEL_GET_DIVRATIO(
+					mci_readl(slot->host, CLKSEL));
+	}
 
 	mci_writel(slot->host, UHS_REG, regs);
 
@@ -2072,6 +2086,20 @@ static struct dw_mci_board *dw_mci_parse_dt(struct dw_mci *host)
 	for (idx = 0; idx < cnt; idx++)
 		if (of_get_property(np, of_quriks[idx].quirk, NULL))
 			pdata->quirks |= of_quriks[idx].id;
+
+	if (of_property_read_u32_array(dev->of_node,
+			"samsung,dw-mshc-sdr-timing", timing, 3))
+		host->sdr_timing = DW_MCI_DEF_SDR_TIMING;
+	else
+		host->sdr_timing = SDMMC_CLKSEL_TIMING(timing[0],
+					timing[1], timing[2]);
+
+	if (of_property_read_u32_array(dev->of_node,
+			"samsung,dw-mshc-ddr-timing", timing, 3))
+		host->ddr_timing = DW_MCI_DEF_DDR_TIMING;
+	else
+		host->ddr_timing = SDMMC_CLKSEL_TIMING(timing[0],
+					timing[1], timing[2]);
 
 	if (of_property_read_u32(np, "fifo-depth", &pdata->fifo_depth))
 		dev_info(dev, "fifo-depth property not found, using "

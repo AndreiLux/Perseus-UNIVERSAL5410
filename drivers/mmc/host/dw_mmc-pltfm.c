@@ -27,9 +27,17 @@ static struct dw_mci_drv_data synopsis_drv_data = {
 	.ctrl_type	= DW_MCI_TYPE_SYNOPSIS,
 };
 
+static struct dw_mci_drv_data exynos5250_drv_data = {
+	.ctrl_type	= DW_MCI_TYPE_EXYNOS5250,
+	.caps		= MMC_CAP_UHS_DDR50 | MMC_CAP_1_8V_DDR |
+				MMC_CAP_8_BIT_DATA | MMC_CAP_CMD23,
+};
+
 static const struct of_device_id dw_mci_pltfm_match[] = {
 	{ .compatible = "synopsis,dw-mshc",
 			.data = (void *)&synopsis_drv_data, },
+	{ .compatible = "synopsis,dw-mshc-exynos5250",
+			.data = (void *)&exynos5250_drv_data, },
 	{},
 };
 MODULE_DEVICE_TABLE(of, dw_mci_pltfm_match);
