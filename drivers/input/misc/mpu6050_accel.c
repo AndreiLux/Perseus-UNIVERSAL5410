@@ -646,7 +646,7 @@ struct mpu6050_accel_data *mpu6050_accel_init(
 
 	/* if no IRQ return error */
 	if (!mpu_data->irq) {
-		printk(KERN_ERR "MPU6050 Accelerometer Irq not assigned\n");
+		dev_err(mpu_data->accel_data->dev, "MPU6050 Accelerometer Irq not assigned\n");
 		error = -EINVAL;
 		goto err_out;
 	}
