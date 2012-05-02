@@ -20,6 +20,11 @@
 #ifndef _LINUX_MPU6050_H
 #define _LINUX_MPU6050_H
 
+/* Accelerometer operational modes */
+#define MPU605_MODE_FF		0  /*Free Fall mode*/
+#define MPU605_MODE_MD		1  /*Motion Detection mode*/
+#define MPU605_MODE_ZD		2  /*Zero Motion Detection mode*/
+
 /* Accelerometer full scale range */
 #define MPU6050_RANGE_2G	0
 #define MPU6050_RANGE_4G	1
