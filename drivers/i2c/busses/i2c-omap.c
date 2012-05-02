@@ -297,9 +297,24 @@ static void omap_i2c_hwspinlock_unlock(struct omap_i2c_dev *dev)
 		pdata->hwspin_unlock(pdata->handle);
 }
 
-static void omap_i2c_unidle(struct omap_i2c_dev *dev)
+static int omap_i2c_unidle(struct omap_i2c_dev *dev)
 {
-	if (dev->flags & OMAP_I2C_FLAG_RESET_REGS_POSTIDLE) {
+	struct platform_device *pdev;
+	struct omap_i2c_bus_platform_data *pdata;
+	int ret = 0;
+
+	WARN_ON(!dev->idle);
+
+	pdev = to_platform_device(dev->dev);
+	pdata = pdev->dev.platform_data;
+
+	ret = pm_runtime_get_sync(&pdev->dev);
+	if (ret < 0)
+		return ret;
+
+
+	if ((dev->flags & OMAP_I2C_FLAG_RESET_REGS_POSTIDLE) ||
+		 cpu_is_omap34xx() || cpu_is_omap44xx() || cpu_is_omap54xx()) {
 		omap_i2c_write_reg(dev, OMAP_I2C_CON_REG, 0);
 		omap_i2c_write_reg(dev, OMAP_I2C_PSC_REG, dev->pscstate);
 		omap_i2c_write_reg(dev, OMAP_I2C_SCLL_REG, dev->scllstate);
@@ -315,6 +330,8 @@ static void omap_i2c_unidle(struct omap_i2c_dev *dev)
 	 */
 	if (dev->iestate)
 		omap_i2c_write_reg(dev, OMAP_I2C_IE_REG, dev->iestate);
+
+	return ret;
 }
 
 static void omap_i2c_idle(struct omap_i2c_dev *dev)
@@ -662,11 +679,17 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	if (r != 0)
 		return r;
 
+	r = omap_i2c_unidle(dev);
+	if (r < 0) {
+		dev_dbg(dev->dev, "i2c_unidle failed\n");
+		goto out2;
+	}
+
 	r = omap_i2c_wait_for_bb(dev);
 	if (r < 0)
 		r = omap_i2c_bus_clear(dev);
 	if (r < 0)
-		goto out;
+		goto out1;
 
 	if (dev->set_mpu_wkup_lat != NULL)
 		dev->set_mpu_wkup_lat(dev->dev, dev->latency);
@@ -684,7 +707,9 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		r = num;
 
 	omap_i2c_wait_for_bb(dev);
-out:
+out1:
+	omap_i2c_idle(dev);
+out2:
 	omap_i2c_hwspinlock_unlock(dev);
 	pm_runtime_put(dev->dev);
 	return r;
