@@ -628,4 +628,15 @@
 		reg = <0x14450000 0x10000>;
 		interrupts = <0 94 0>;
 	};
+
+	sromc-bus {
+		compatible = "samsung,exynos-sromc-bus", "simple-bus";
+
+		#address-cells = <2>;
+		#size-cells = <1>;
+		ranges = < 0 0 0x04000000 0x20000
+			   1 0 0x05000000 0x20000
+			   2 0 0x06000000 0x20000
+			   3 0 0x07000000 0x20000>;
+	};
 };
