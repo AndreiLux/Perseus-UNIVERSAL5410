@@ -168,13 +168,16 @@ int mpu6050_init(struct mpu6050_data *data, const struct mpu6050_bus_ops *bops)
 	 * Initializing built in sensors on MPU.
 	 * If init for individual sensor fails, report an error and move on.
 	 */
+#ifdef CONFIG_INPUT_MPU6050_ACCEL
 	data->accel_data = mpu6050_accel_init(data);
 	if (IS_ERR(data->accel_data))
 		dev_err(data->dev, "MPU6050: mpu6050_accel_init failed\n");
+#endif
+#ifdef CONFIG_INPUT_MPU6050_GYRO
 	data->gyro_data = mpu6050_gyro_init(data);
 	if (IS_ERR(data->gyro_data))
 		dev_err(data->dev, "MPU6050: mpu6050_gyro_init failed\n");
-
+#endif
 	return 0;
 
 err_out:
