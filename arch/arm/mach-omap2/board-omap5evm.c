@@ -1216,7 +1216,8 @@ static void __init omap_5430evm_init(void)
 	omap5_mux_init(board_mux, NULL, OMAP_PACKAGE_CBL);
 	omap5evm_touch_init();
 	omap_5430evm_i2c_init();
-	omap_serial_init();
+	omap_serial_board_init(NULL, 2);
+	omap_serial_board_init(NULL, 4);
 	platform_device_register(&dummy_sd_regulator_device);
 
 	omap5_sdp5430_wifi_init();
