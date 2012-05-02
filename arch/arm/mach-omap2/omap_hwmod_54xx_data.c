@@ -3240,7 +3240,7 @@ static struct omap_hwmod_class_sysconfig omap54xx_kbd_sysc = {
 	.sysc_flags	= (SYSC_HAS_EMUFREE | SYSC_HAS_SIDLEMODE |
 			   SYSC_HAS_SOFTRESET | SYSC_HAS_RESET_STATUS),
 	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART),
-	.sysc_fields	= &omap_hwmod_sysc_custom,
+	.sysc_fields	= &omap_hwmod_sysc_type1,
 };
 
 static struct omap_hwmod_class omap54xx_kbd_hwmod_class = {
