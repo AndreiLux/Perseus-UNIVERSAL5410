@@ -12,6 +12,8 @@
 #include <linux/gpio.h>
 #include <linux/of_platform.h>
 #include <linux/platform_data/dwc3-exynos.h>
+#include <linux/regulator/fixed.h>
+#include <linux/regulator/machine.h>
 #include <linux/serial_core.h>
 #include <linux/smsc911x.h>
 #include <linux/delay.h>
@@ -630,6 +632,11 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&exynos_drm_device,
 };
 
+static struct regulator_consumer_supply dummy_supplies[] = {
+	REGULATOR_SUPPLY("vddvario", "7000000.lan9215"),
+	REGULATOR_SUPPLY("vdd33a", "7000000.lan9215"),
+};
+
 static void __init exynos5250_dt_map_io(void)
 {
 	exynos_init_io(NULL, 0);
@@ -661,8 +668,24 @@ static void exynos5_i2c_setup(void)
 
 static void __init exynos5250_dt_machine_init(void)
 {
-	if (of_machine_is_compatible("samsung,smdk5250"))
-		smsc911x_init(1);
+	struct device_node *srom_np, *np;
+
+	regulator_register_fixed(0, dummy_supplies, ARRAY_SIZE(dummy_supplies));
+
+	/* Setup pins for any SMSC 911x controller on the SROMC bus */
+	srom_np = of_find_node_by_path("/sromc-bus");
+	if (!srom_np) {
+		printk(KERN_ERR "No /sromc-bus property.\n");
+		goto out;
+	}
+	for_each_child_of_node(srom_np, np) {
+		if (of_device_is_compatible(np, "smsc,lan9115")) {
+			u32 reg;
+			of_property_read_u32(np, "reg", &reg);
+			smsc911x_init(reg);
+		}
+	}
+
 	samsung_bl_set(&smdk5250_bl_gpio_info, &smdk5250_bl_data);
 
 	if (gpio_request_one(EXYNOS5_GPX2(6), GPIOF_OUT_INIT_HIGH,
@@ -686,6 +709,9 @@ static void __init exynos5250_dt_machine_init(void)
 	s5p_tv_setup();
 
 	platform_add_devices(smdk5250_devices, ARRAY_SIZE(smdk5250_devices));
+out:
+	of_node_put(srom_np);
+	return;
 }
 
 static char const *exynos5250_dt_compat[] __initdata = {

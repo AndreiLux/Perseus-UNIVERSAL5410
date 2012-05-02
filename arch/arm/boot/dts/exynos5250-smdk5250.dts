@@ -48,15 +48,16 @@
 		i2s0 = &i2s_0;
 	};
 
-	lan9215@0x05000000 {
-		compatible = "smsc,lan9215", "smsc,lan9115";
-		reg = <0x05000000 0x20000>;
-		interrupts = <5 0>;
-		interrupt-parent = <&wakeup_eint>;
-		phy-mode = "mii";
-		smsc,irq-push-pull;
-		smsc,force-internal-phy;
-		local-mac-address = [00 80 00 23 45 67];
+	sromc-bus {
+		lan9215@1,0 {
+			compatible = "smsc,lan9215", "smsc,lan9115";
+			reg = <1 0 0x20000>;
+			interrupts = <5 0>;
+			interrupt-parent = <&wakeup_eint>;
+			phy-mode = "mii";
+			smsc,irq-push-pull;
+			smsc,force-internal-phy;
+		};
 	};
 
 	i2c@12C60000 {
