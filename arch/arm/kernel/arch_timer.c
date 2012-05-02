@@ -27,7 +27,11 @@ static unsigned long arch_timer_rate;
 static int arch_timer_ppi;
 static int arch_timer_ppi2 = -1;
 
-static struct clock_event_device __percpu *arch_timer_evt;
+static struct clock_event_device __percpu **arch_timer_evt;
+
+extern void smp_timer_broadcast(const struct cpumask *mask);
+extern struct clock_event_device percpu_clockevent;
+
 
 /*
  * Architected system timer support.
@@ -77,7 +81,7 @@ static u32 arch_timer_reg_read(int reg)
 
 static irqreturn_t arch_timer_handler(int irq, void *dev_id)
 {
-	struct clock_event_device *evt = dev_id;
+	struct clock_event_device *evt = *(struct clock_event_device **)dev_id;
 	unsigned long ctrl;
 
 	ctrl = arch_timer_reg_read(ARCH_TIMER_REG_CTRL);
@@ -131,6 +135,7 @@ static int arch_timer_set_next_event(unsigned long evt,
 static void __cpuinit arch_timer_setup(void *data)
 {
 	struct clock_event_device *clk = data;
+	struct clock_event_device **this_cpu_clk;
 
 	/* Be safe... */
 	arch_timer_stop();
@@ -144,7 +149,8 @@ static void __cpuinit arch_timer_setup(void *data)
 
 	clockevents_config_and_register(clk, arch_timer_rate,
 					0xf, 0x7fffffff);
-
+	this_cpu_clk = __this_cpu_ptr(arch_timer_evt);
+	*this_cpu_clk = clk;
 	enable_percpu_irq(clk->irq, 0);
 }
 
@@ -256,7 +262,7 @@ static int __cpuinit arch_timer_cpu_notify(struct notifier_block *self,
 					   unsigned long action, void *data)
 {
 	int cpu = (int)data;
-	struct clock_event_device *clk = per_cpu_ptr(arch_timer_evt, cpu);
+	struct clock_event_device *clk = &__get_cpu_var(percpu_clockevent);
 
 	switch (action) {
 	case CPU_STARTING:
@@ -291,7 +297,7 @@ int __init arch_timer_register(struct resource *res, int res_nr)
 	if (err)
 		return err;
 
-	arch_timer_evt = alloc_percpu(struct clock_event_device);
+	arch_timer_evt = alloc_percpu(struct clock_event_device *);
 	if (!arch_timer_evt)
 		return -ENOMEM;
 
@@ -320,7 +326,7 @@ int __init arch_timer_register(struct resource *res, int res_nr)
 	}
 
 	/* Immediately configure the timer on the boot CPU */
-	arch_timer_setup(per_cpu_ptr(arch_timer_evt, smp_processor_id()));
+	arch_timer_setup(&__get_cpu_var(percpu_clockevent));
 
 	register_cpu_notifier(&arch_timer_cpu_nb);
 

@@ -420,7 +420,7 @@ u64 smp_irq_stat_cpu(unsigned int cpu)
 /*
  * Timer (local or broadcast) support
  */
-static DEFINE_PER_CPU(struct clock_event_device, percpu_clockevent);
+DEFINE_PER_CPU(struct clock_event_device, percpu_clockevent);
 
 static void ipi_timer(void)
 {
