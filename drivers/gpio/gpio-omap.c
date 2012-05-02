@@ -126,6 +126,7 @@ static void _set_gpio_dataout_reg(struct gpio_bank *bank, int gpio, int enable)
 		bank->context.dataout &= ~l;
 	}
 
+	l |= __raw_readl(bank->base + bank->regs->set_dataout);
 	__raw_writel(l, reg);
 	bank->context.dataout = l;
 }
