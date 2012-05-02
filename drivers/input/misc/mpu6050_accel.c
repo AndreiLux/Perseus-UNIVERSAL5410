@@ -361,6 +361,9 @@ static ssize_t mpu6050_accel_store_attr_confmode(struct device *dev,
 	if (error)
 		return error;
 
+	if (val < FREE_FALL_MODE || val > ZERO_MOT_DET_MODE)
+		return -EINVAL;
+
 	mutex_lock(&data->mutex);
 	data->mode = (enum accel_op_mode) val;
 	if (data->mode == FREE_FALL_MODE)
