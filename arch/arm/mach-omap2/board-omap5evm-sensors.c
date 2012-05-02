@@ -47,10 +47,10 @@ static struct mpu6050_platform_data mpu6050_platform_data = {
 		.y_axis = 2,
 		.z_axis = 2,
 		.fsr = MPU6050_RANGE_2G,
-		.hpf = 4,               /* HPF ON and cut off 0.63HZ */
-		.ctrl_mode = 2,         /* ZERO MOTION DETECTION */
-		.mode_thr_val = 0,      /* Threshold val */
-		.mode_thr_dur = 0,      /* Threshold duration */
+		.hpf = 4, /* HPF ON and cut off 0.63HZ */
+		.ctrl_mode = MPU605_MODE_MD,
+		.mode_thr_val = 1, /* Threshold value */
+		.mode_thr_dur = 5, /* Threshold duration */
 		.irqflags = IRQF_TRIGGER_HIGH,
 	},
 	.mpu6050_gyro = {
