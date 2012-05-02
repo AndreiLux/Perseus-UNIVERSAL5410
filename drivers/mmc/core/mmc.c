@@ -1312,6 +1312,9 @@ static void mmc_detect(struct mmc_host *host)
 
 	mmc_claim_host(host);
 
+	/* Initialization should be done at 3.3 V I/O voltage. */
+	mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_330, 0);
+
 	/*
 	 * Just check if our card has been removed.
 	 */

@@ -2078,6 +2078,9 @@ void mmc_rescan(struct work_struct *work)
 		goto out;
 	}
 
+	/* Initialization should be done at 3.3 V I/O voltage. */
+	mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_330, 0);
+
 	/*
 	 * Only we can add a new handler, so it's safe to
 	 * release the lock here.
