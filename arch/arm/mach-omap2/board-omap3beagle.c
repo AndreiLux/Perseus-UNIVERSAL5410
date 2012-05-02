@@ -537,9 +537,6 @@ static void __init omap3_beagle_init(void)
 	omap_serial_board_init(NULL, 2);
 	omap_serial_board_init(NULL, 3);
 
-	omap_sdrc_init(mt46h32m32lf6_sdrc_params,
-				  mt46h32m32lf6_sdrc_params);
-
 	omap_mux_init_gpio(170, OMAP_PIN_INPUT);
 	/* REVISIT leave DVI powered down until it's needed ... */
 	gpio_request_one(170, GPIOF_OUT_INIT_HIGH, "DVI_nPD");
