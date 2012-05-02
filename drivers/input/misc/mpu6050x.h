@@ -173,6 +173,7 @@ struct mpu6050_accel_data {
 	struct mutex mutex;
 	bool opened;
 	bool suspended;
+	u8 enabled;
 };
 
 struct mpu6050_data {

@@ -380,6 +380,69 @@ static ssize_t mpu6050_accel_store_attr_confmode(struct device *dev,
 }
 
 /**
+ * mpu6050_accel_show_attr_enable - sys entry to show accel enable state.
+ * @dev: device entry
+ * @attr: device attribute entry
+ * @buf: pointer to the buffer which holds enable state value.
+ *
+ * Returns 'enable' state.
+ */
+static ssize_t mpu6050_accel_show_attr_enable(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct mpu6050_data *mpu_data = platform_get_drvdata(pdev);
+	struct mpu6050_accel_data *data = mpu_data->accel_data;
+	int val;
+
+	val = data->enabled;
+	if (val < 0)
+		return val;
+
+	return sprintf(buf, "%d\n", val);
+}
+
+/**
+ * mpu6050_accel_store_attr_enable - sys entry to set accel enable state.
+ * @dev: device entry
+ * @attr: device attribute entry
+ * @buf: pointer to the buffer which holds enable state value.
+ *
+ * Returns 'count' on success.
+ */
+static ssize_t mpu6050_accel_store_attr_enable(struct device *dev,
+				       struct device_attribute *attr,
+				       const char *buf, size_t count)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct mpu6050_data *mpu_data = platform_get_drvdata(pdev);
+	struct mpu6050_accel_data *data = mpu_data->accel_data;
+	unsigned long val;
+	int error;
+
+	error = strict_strtoul(buf, 0, &val);
+	if (error)
+		return error;
+
+	if (val < 0 || val > 1)
+		return -EINVAL;
+
+	if (val) {
+		if (!data->suspended)
+			mpu6050_accel_set_standby(data, 0);
+		data->opened = true;
+		data->enabled = 1;
+	} else {
+		if (!data->suspended)
+			mpu6050_accel_set_standby(data, 1);
+		data->opened = false;
+		data->enabled = 0;
+	}
+	return count;
+}
+
+/**
  * mpu6050_accel_store_attr_ast - sys entry to set the axis for self test
  * @dev: device entry
  * @attr: device attribute entry
@@ -550,6 +613,10 @@ static DEVICE_ATTR(modedur, S_IWUSR | S_IRUGO,
 static DEVICE_ATTR(modethr, S_IWUSR | S_IRUGO,
 		mpu6050_accel_show_attr_modethr,
 		mpu6050_accel_store_attr_modethr);
+static DEVICE_ATTR(enable, S_IWUSR | S_IRUGO,
+		mpu6050_accel_show_attr_enable,
+		mpu6050_accel_store_attr_enable);
+
 
 static struct attribute *mpu6050_accel_attrs[] = {
 	&dev_attr_fsr.attr,
@@ -558,6 +625,7 @@ static struct attribute *mpu6050_accel_attrs[] = {
 	&dev_attr_confmode.attr,
 	&dev_attr_modedur.attr,
 	&dev_attr_modethr.attr,
+	&dev_attr_enable.attr,
 	NULL,
 };
 
@@ -594,6 +662,7 @@ struct mpu6050_accel_data *mpu6050_accel_init(
 	accel_data->input_dev = input_dev;
 	accel_data->bus_ops = mpu_data->bus_ops;
 	accel_data->irq = mpu_data->irq;
+	accel_data->enabled = 0;
 	mutex_init(&accel_data->mutex);
 
 	/* Configure the init values from platform data */
@@ -676,6 +745,12 @@ struct mpu6050_accel_data *mpu6050_accel_init(
 	/* Clear interrupts for Defined mode */
 	MPU6050_READ(accel_data, MPU6050_CHIP_I2C_ADDR,
 		MPU6050_REG_INT_STATUS, 1, &val, "Clear Isr");
+
+	/* Disable Accelerometer by default */
+	if (!accel_data->suspended)
+		mpu6050_accel_set_standby(accel_data, 1);
+	accel_data->opened = false;
+
 	return accel_data;
 
 err_free_gpio:
