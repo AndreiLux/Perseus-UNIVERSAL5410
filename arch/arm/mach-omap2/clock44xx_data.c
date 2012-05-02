@@ -3443,13 +3443,7 @@ int __init omap4xxx_clk_init(void)
 	}
 
 	clk_init(&omap2_clk_functions);
-
-	/*
-	 * Must stay commented until all OMAP SoC drivers are
-	 * converted to runtime PM, or drivers may start crashing
-	 *
-	 * omap2_clk_disable_clkdm_control();
-	 */
+	omap2_clk_disable_clkdm_control();
 
 	for (c = omap44xx_clks; c < omap44xx_clks + ARRAY_SIZE(omap44xx_clks);
 									  c++)
