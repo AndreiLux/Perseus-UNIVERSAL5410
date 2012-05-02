@@ -1787,6 +1787,7 @@ static int omap_start_signal_voltage_switch(struct mmc_host *mmc,
 	unsigned long notimeout = 0;
 
 	host  = mmc_priv(mmc);
+	pm_runtime_get_sync(host->dev);
 
 	if (ios->signal_voltage == MMC_SIGNAL_VOLTAGE_330) {
 		omap_hsmmc_conf_bus_power(host);
@@ -1795,6 +1796,7 @@ static int omap_start_signal_voltage_switch(struct mmc_host *mmc,
 		value &= ~OMAP_V1V8_SIGEN_V1V8;
 		OMAP_HSMMC_WRITE(host->base, AC12, value);
 		dev_dbg(mmc_dev(host->mmc), " i/o voltage switch to 3V\n");
+		pm_runtime_put_autosuspend(host->dev);
 		return 0;
 	}
 
@@ -1880,6 +1882,7 @@ static int omap_start_signal_voltage_switch(struct mmc_host *mmc,
 
 	value = OMAP_HSMMC_READ(host->base, CON);
 	OMAP_HSMMC_WRITE(host->base, CON, (value & ~(CLKEXTFREE | PADEN)));
+	pm_runtime_put_autosuspend(host->dev);
 
 	return 0;
 }
