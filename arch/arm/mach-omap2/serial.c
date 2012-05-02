@@ -590,20 +590,21 @@ void __init omap_serial_board_init(struct omap_uart_port_info *info, u8 port_id)
 	struct omap_uart_state *uart;
 	struct omap_board_data bdata;
 
-	list_for_each_entry(uart, &uart_list, node) {
-		bdata.id = uart->num;
-		bdata.flags = 0;
-		bdata.pads = NULL;
-		bdata.pads_cnt = 0;
+	list_for_each_entry(uart, &uart_list, node)
+		if (uart->num == port_id) {
+			bdata.id = uart->num;
+			bdata.flags = 0;
+			bdata.pads = NULL;
+			bdata.pads_cnt = 0;
 
-		if (cpu_is_omap44xx() || cpu_is_omap34xx() || cpu_is_omap54xx())
-			omap_serial_fill_default_pads(&bdata);
+			if (cpu_is_omap44xx() || cpu_is_omap34xx() || cpu_is_omap54xx())
+				omap_serial_fill_default_pads(&bdata);
 
-		if (!info)
-			omap_serial_init_port(&bdata, NULL);
-		else
-			omap_serial_init_port(&bdata, info);
-	}
+			if (!info)
+				omap_serial_init_port(&bdata, NULL);
+			else
+				omap_serial_init_port(&bdata, info);
+		}
 }
 
 /**
