@@ -59,6 +59,7 @@ config ARCH_OMAP4
 
 config ARCH_OMAP5
 	bool "TI OMAP5"
+	default y
 	depends on ARCH_OMAP2PLUS
 	select CPU_V7
 	select ARM_GIC
@@ -362,6 +363,7 @@ config MACH_OMAP4_PANDA
 
 config MACH_OMAP5_SEVM
 	bool "OMAP5 EVM board"
+	default y
 	depends on ARCH_OMAP5
 
 config SECURE_REGS
