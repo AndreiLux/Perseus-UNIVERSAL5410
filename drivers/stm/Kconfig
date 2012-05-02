@@ -12,4 +12,12 @@ config STM_OMAP_TI1_0
 	 STM OMAP TI1.0 Driver - provides Syet, Trace Macrocell
 	 support for V1.0 implementation found in, eg, OMAP4
 
+config STM_ARM
+           tristate "STM ARM Driver"
+           depends on STM_FW
+           default n
+           help
+	 STM ARM Driver - provides System Trace Macrocell
+	 support for ARM V2.0 implementation found in, eg, OMAP5
+
 
