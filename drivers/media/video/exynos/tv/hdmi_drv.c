@@ -35,6 +35,7 @@
 #include <media/v4l2-dev.h>
 #include <media/v4l2-device.h>
 #include <media/exynos_mc.h>
+#include "regs-hdmi-5250.h"
 
 MODULE_AUTHOR("Tomasz Stanislawski, <t.stanislaws@samsung.com>");
 MODULE_DESCRIPTION("Samsung HDMI");
@@ -131,6 +132,7 @@ static int hdmi_streamon(struct hdmi_device *hdev)
 	struct device *dev = hdev->dev;
 	struct hdmi_resources *res = &hdev->res;
 	int ret, tries;
+	u32 val0, val1, val2;
 
 	dev_dbg(dev, "%s\n", __func__);
 
@@ -180,6 +182,14 @@ static int hdmi_streamon(struct hdmi_device *hdev)
 	/* enable HDMI and timing generator */
 	hdmi_enable(hdev, 1);
 	hdmi_tg_enable(hdev, 1);
+
+	mdelay(5);
+	val0 = hdmi_read(hdev, HDMI_ACR_MCTS0);
+	val1 = hdmi_read(hdev, HDMI_ACR_MCTS1);
+	val2 = hdmi_read(hdev, HDMI_ACR_MCTS2);
+	dev_dbg(dev, "HDMI_ACR_MCTS0 : 0x%08x\n", val0);
+	dev_dbg(dev, "HDMI_ACR_MCTS1 : 0x%08x\n", val1);
+	dev_dbg(dev, "HDMI_ACR_MCTS2 : 0x%08x\n", val2);
 
 	/* start HDCP if enabled */
 	if (hdev->hdcp_info.hdcp_enable) {
