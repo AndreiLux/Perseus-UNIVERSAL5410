@@ -127,33 +127,6 @@ static irqreturn_t mpu6050_accel_thread_irq(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static int mpu6050_accel_open(struct input_dev *input_dev)
-{
-	struct mpu6050_accel_data *data = input_get_drvdata(input_dev);
-
-	mutex_lock(&data->mutex);
-
-	if (!data->suspended)
-		mpu6050_accel_set_standby(data, 0);
-
-	data->opened = true;
-
-	mutex_unlock(&data->mutex);
-
-	return 0;
-}
-
-static void mpu6050_accel_close(struct input_dev *input_dev)
-{
-	struct mpu6050_accel_data *data = input_get_drvdata(input_dev);
-
-	mutex_lock(&data->mutex);
-	if (!data->suspended)
-		mpu6050_accel_set_standby(data, 1);
-	data->opened = false;
-	mutex_unlock(&data->mutex);
-}
-
 void mpu6050_accel_suspend(struct mpu6050_accel_data *data)
 {
 	mutex_lock(&data->mutex);
@@ -692,8 +665,6 @@ struct mpu6050_accel_data *mpu6050_accel_init(
 
 	input_dev->name = "mpu6050-accelerometer";
 	input_dev->id.bustype = mpu_data->bus_ops->bustype;
-	input_dev->open = mpu6050_accel_open;
-	input_dev->close = mpu6050_accel_close;
 
 	 __set_bit(EV_ABS, input_dev->evbit);
 
