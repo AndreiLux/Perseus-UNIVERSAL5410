@@ -30,6 +30,15 @@
 #include <linux/gpio.h>
 #include "mpu6050x.h"
 
+
+/*MPU6050 full scale range types*/
+static int mpu6050_grange_table[4] = {
+	2000,
+	4000,
+	8000,
+	16000,
+};
+
 /**
  * mpu6050_accel_set_standby - Put's the axis of acceleromter in standby or not
  * @mpu6050_accel_data: accelerometer data
@@ -69,6 +78,28 @@ static int mpu6050_accel_reset(struct mpu6050_accel_data *data)
 	return 0;
 }
 
+/**
+ * mpu6050_data_decode_mg - Data in 2's complement, convert to mg
+ * @mpu6050_accel_data: accelerometer data
+ * @datax: X axis data value
+ * @datay: Y axis data value
+ * @dataz: Z axis data value
+ */
+static void mpu6050_data_decode_mg(struct mpu6050_accel_data *data,
+				s16 *datax, s16 *datay, s16 *dataz)
+{
+	u8 fsr;
+	int range;
+
+	MPU6050_READ(data, MPU6050_CHIP_I2C_ADDR,
+		MPU6050_REG_ACCEL_CONFIG, 1, &fsr, "full scale range");
+	range = mpu6050_grange_table[(fsr >> 3)];
+	/* Data in 2's complement, convert to mg */
+	*datax = (*datax * range) / MPU6050_ABS_READING;
+	*datay = (*datay * range) / MPU6050_ABS_READING;
+	*dataz = (*dataz * range) / MPU6050_ABS_READING;
+}
+
 static irqreturn_t mpu6050_accel_thread_irq(int irq, void *dev_id)
 {
 	struct mpu6050_accel_data *data = dev_id;
@@ -85,6 +116,8 @@ static irqreturn_t mpu6050_accel_thread_irq(int irq, void *dev_id)
 	datax = be16_to_cpu(buffer[0]);
 	datay = be16_to_cpu(buffer[1]);
 	dataz = be16_to_cpu(buffer[2]);
+
+	mpu6050_data_decode_mg(data, &datax, &datay, &dataz);
 
 	input_report_abs(data->input_dev, ABS_X, datax);
 	input_report_abs(data->input_dev, ABS_Y, datay);
@@ -593,13 +626,14 @@ struct mpu6050_accel_data *mpu6050_accel_init(
 	 __set_bit(EV_ABS, input_dev->evbit);
 
 	input_set_abs_params(input_dev, ABS_X,
-			MPU6050_ACCEL_MIN_VALUE,
-			MPU6050_ACCEL_MAX_VALUE, pdata->x_axis, 0);
+			-mpu6050_grange_table[pdata->fsr],
+			mpu6050_grange_table[pdata->fsr], pdata->x_axis, 0);
 	input_set_abs_params(input_dev, ABS_Y,
-			MPU6050_ACCEL_MIN_VALUE,
-			MPU6050_ACCEL_MAX_VALUE, pdata->y_axis, 0);
-	input_set_abs_params(input_dev, ABS_Z, MPU6050_ACCEL_MIN_VALUE,
-				MPU6050_ACCEL_MAX_VALUE, pdata->z_axis, 0);
+			-mpu6050_grange_table[pdata->fsr],
+			mpu6050_grange_table[pdata->fsr], pdata->y_axis, 0);
+	input_set_abs_params(input_dev, ABS_Z,
+			-mpu6050_grange_table[pdata->fsr],
+			mpu6050_grange_table[pdata->fsr], pdata->z_axis, 0);
 
 	input_set_drvdata(input_dev, accel_data);
 
