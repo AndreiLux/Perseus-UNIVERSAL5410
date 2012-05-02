@@ -321,6 +321,10 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 				s5p_mfc_err_dspl(err) ?
 					VB2_BUF_STATE_ERROR : VB2_BUF_STATE_DONE);
 
+			if (s5p_mfc_err_dspl(err))
+				mfc_err("Warning for displayed frame: %d\n",
+							s5p_mfc_err_dspl(err));
+
 			index = dst_buf->vb.v4l2_buf.index;
 			if (call_cop(ctx, get_buf_ctrls_val, ctx, &ctx->dst_ctrls[index]) < 0)
 				mfc_err("failed in get_buf_ctrls_val\n");
@@ -641,9 +645,6 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 
 			queue_work(dev->irq_workqueue, &dev->work_struct);
 		} else {
-			if (s5p_mfc_err_dec(err) == S5P_FIMV_ERR_FRAME_CONCEAL)
-				s5p_mfc_handle_frame_error(ctx, reason, err);
-			else
 				s5p_mfc_handle_frame(ctx, reason, err);
 		}
 		break;
