@@ -36,7 +36,7 @@ static struct powerdomain core_54xx_pwrdm = {
 	.voltdm           = { .name = "core" },
 	.prcm_offs	  = OMAP54XX_PRM_CORE_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
-	.pwrsts		  = PWRSTS_RET_ON,
+	.pwrsts		  = PWRSTS_RET_INA_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 5,
 	.pwrsts_mem_ret	= {
@@ -62,7 +62,7 @@ static struct powerdomain abe_54xx_pwrdm = {
 	.voltdm           = { .name = "iva" },
 	.prcm_offs	  = OMAP54XX_PRM_ABE_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
-	.pwrsts		  = PWRSTS_OFF_RET_ON,
+	.pwrsts		  = PWRSTS_OFF_RET_INA_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF,
 	.banks		  = 2,
 	.pwrsts_mem_ret	= {
@@ -91,7 +91,7 @@ static struct powerdomain dss_54xx_pwrdm = {
 	.voltdm           = { .name = "core" },
 	.prcm_offs	  = OMAP54XX_PRM_DSS_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
-	.pwrsts		  = PWRSTS_OFF_RET_ON,
+	.pwrsts		  = PWRSTS_OFF_RET_INA_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF,
 	.banks		  = 1,
 	.pwrsts_mem_ret	= {
@@ -109,7 +109,7 @@ static struct powerdomain cpu0_54xx_pwrdm = {
 	.voltdm           = { .name = "mpu" },
 	.prcm_offs	  = OMAP54XX_PRCM_MPU_PRM_C0_INST,
 	.prcm_partition	  = OMAP54XX_PRCM_MPU_PARTITION,
-	.pwrsts		  = PWRSTS_OFF_RET_ON,
+	.pwrsts		  = PWRSTS_OFF_RET_INA_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 1,
 	.pwrsts_mem_ret	= {
@@ -126,7 +126,7 @@ static struct powerdomain cpu1_54xx_pwrdm = {
 	.voltdm           = { .name = "mpu" },
 	.prcm_offs	  = OMAP54XX_PRCM_MPU_PRM_C1_INST,
 	.prcm_partition	  = OMAP54XX_PRCM_MPU_PARTITION,
-	.pwrsts		  = PWRSTS_OFF_RET_ON,
+	.pwrsts		  = PWRSTS_OFF_RET_INA_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 1,
 	.pwrsts_mem_ret	= {
@@ -144,7 +144,7 @@ static struct powerdomain emu_54xx_pwrdm = {
 	.voltdm           = { .name = "wakeup" },
 	.prcm_offs	  = OMAP54XX_PRM_EMU_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
-	.pwrsts		  = PWRSTS_OFF_ON,
+	.pwrsts		  = PWRSTS_OFF_INA_ON,
 	.banks		  = 1,
 	.pwrsts_mem_ret	= {
 		[0] = PWRSTS_OFF_RET,	/* emu_bank */
@@ -160,7 +160,7 @@ static struct powerdomain mpu_54xx_pwrdm = {
 	.voltdm           = { .name = "mpu" },
 	.prcm_offs	  = OMAP54XX_PRM_MPU_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
-	.pwrsts		  = PWRSTS_RET_ON,
+	.pwrsts		  = PWRSTS_RET_INA_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 2,
 	.pwrsts_mem_ret	= {
@@ -189,7 +189,7 @@ static struct powerdomain dsp_54xx_pwrdm = {
 	.voltdm           = { .name = "iva" },
 	.prcm_offs	  = OMAP54XX_PRM_DSP_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
-	.pwrsts		  = PWRSTS_OFF_RET_ON,
+	.pwrsts		  = PWRSTS_OFF_RET_INA_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 3,
 	.pwrsts_mem_ret	= {
@@ -211,7 +211,7 @@ static struct powerdomain cam_54xx_pwrdm = {
 	.voltdm           = { .name = "iva" },
 	.prcm_offs	  = OMAP54XX_PRM_CAM_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
-	.pwrsts		  = PWRSTS_OFF_ON,
+	.pwrsts		  = PWRSTS_OFF_INA_ON,
 	.banks		  = 1,
 	.pwrsts_mem_ret	= {
 		[0] = PWRSTS_OFF_RET,	/* cam_mem */
@@ -228,7 +228,7 @@ static struct powerdomain l3init_54xx_pwrdm = {
 	.voltdm           = { .name = "core" },
 	.prcm_offs	  = OMAP54XX_PRM_L3INIT_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
-	.pwrsts		  = PWRSTS_RET_ON,
+	.pwrsts		  = PWRSTS_RET_INA_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 2,
 	.pwrsts_mem_ret	= {
@@ -248,7 +248,7 @@ static struct powerdomain l4per_54xx_pwrdm = {
 	.voltdm           = { .name = "core" },
 	.prcm_offs	  = OMAP54XX_PRM_L4PER_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
-	.pwrsts		  = PWRSTS_RET_ON,
+	.pwrsts		  = PWRSTS_RET_INA_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 2,
 	.pwrsts_mem_ret	= {
@@ -268,7 +268,7 @@ static struct powerdomain gpu_54xx_pwrdm = {
 	.voltdm           = { .name = "core" },
 	.prcm_offs	  = OMAP54XX_PRM_GPU_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
-	.pwrsts		  = PWRSTS_OFF_ON,
+	.pwrsts		  = PWRSTS_OFF_INA_ON,
 	.banks		  = 1,
 	.pwrsts_mem_ret	= {
 		[0] = PWRSTS_OFF_RET,	/* gpu_mem */
@@ -300,7 +300,7 @@ static struct powerdomain iva_54xx_pwrdm = {
 	.voltdm           = { .name = "iva" },
 	.prcm_offs	  = OMAP54XX_PRM_IVA_INST,
 	.prcm_partition	  = OMAP54XX_PRM_PARTITION,
-	.pwrsts		  = PWRSTS_OFF_RET_ON,
+	.pwrsts		  = PWRSTS_OFF_RET_INA_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF,
 	.banks		  = 4,
 	.pwrsts_mem_ret	= {
