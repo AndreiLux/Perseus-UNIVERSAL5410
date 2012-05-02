@@ -1308,6 +1308,11 @@ static int omap_gpio_runtime_resume(struct device *dev)
 		}
 	}
 
+	if (!bank->workaround_enabled) {
+		spin_unlock_irqrestore(&bank->lock, flags);
+		return 0;
+	}
+
 	__raw_writel(bank->context.fallingdetect,
 			bank->base + bank->regs->fallingdetect);
 	__raw_writel(bank->context.risingdetect,
@@ -1363,6 +1368,7 @@ static int omap_gpio_runtime_resume(struct device *dev)
 	}
 
 	bank->workaround_enabled = false;
+
 	spin_unlock_irqrestore(&bank->lock, flags);
 
 	return 0;
