@@ -47,6 +47,8 @@ struct s3c_fb_pd_win {
 	unsigned short		max_bpp;
 	unsigned short		virtual_x;
 	unsigned short		virtual_y;
+	unsigned short		width;
+	unsigned short		height;
 };
 
 /**
@@ -128,4 +130,15 @@ extern void exynos4_fimd0_gpio_setup_24bpp(void);
  */
 extern void s5p64x0_fb_gpio_setup_24bpp(void);
 
+/**
+ * exynos4_fimd0_setup_clock() = Exynos4 setup function for parent clock.
+ * @dev: device pointer
+ * @parent: parent clock used for LCD pixel clock
+ * @clk_rate: clock rate for parent clock
+ */
+int __init exynos4_fimd0_setup_clock(struct device *dev, const char *parent,
+				unsigned long clk_rate);
+
+int __init exynos4_fimd_setup_clock(struct device *dev, const char *bus_clk,
+				const char *parent, unsigned long clk_rate);
 #endif /* __PLAT_S3C_FB_H */

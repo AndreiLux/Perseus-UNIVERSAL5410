@@ -86,6 +86,11 @@ config EXYNOS4_SETUP_FIMD0
 	help
 	  Common setup code for FIMD0.
 
+config EXYNOS4_SETUP_FIMD
+	bool
+	help
+	  Common setup code for FIMD.
+
 config EXYNOS4_DEV_SYSMMU
 	bool
 	help
