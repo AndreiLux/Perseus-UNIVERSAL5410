@@ -72,6 +72,7 @@ config ARCH_OMAP5
 	select EMIF if !MACH_OMAP_5430ZEBU
 	select USB_ARCH_HAS_EHCI if USB_SUPPORT
 	select LOCAL_TIMERS if SMP                                              
+	select ARCH_NEEDS_CPU_IDLE_COUPLED if CPU_IDLE
 
 comment "OMAP Core Type"
 	depends on ARCH_OMAP2
