@@ -403,6 +403,11 @@ static int __cpuidle_register_device(struct cpuidle_device *dev)
 		goto err_coupled;
 
 
+	ret = cpuidle_coupled_register_device(dev);
+	if (ret)
+		goto err_coupled;
+
+
 	dev->registered = 1;
 	return 0;
 
