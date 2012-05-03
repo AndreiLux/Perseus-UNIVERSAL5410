@@ -1456,11 +1456,9 @@ int s5p_mfc_encode_one_frame(struct s5p_mfc_ctx *ctx)
 
 static inline int s5p_mfc_get_new_ctx(struct s5p_mfc_dev *dev)
 {
-	unsigned long flags;
 	int new_ctx;
 	int cnt;
 
-	spin_lock_irqsave(&dev->condlock, flags);
 	mfc_debug(2, "Previos context: %d (bits %08lx)\n", dev->curr_ctx,
 							dev->ctx_work_bits);
 	new_ctx = (dev->curr_ctx + 1) % MFC_NUM_CONTEXTS;
@@ -1470,11 +1468,9 @@ static inline int s5p_mfc_get_new_ctx(struct s5p_mfc_dev *dev)
 		cnt++;
 		if (cnt > MFC_NUM_CONTEXTS) {
 			/* No contexts to run */
-			spin_unlock_irqrestore(&dev->condlock, flags);
 			return -EAGAIN;
 		}
 	}
-	spin_unlock_irqrestore(&dev->condlock, flags);
 	return new_ctx;
 }
 
@@ -1712,11 +1708,14 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 	struct s5p_mfc_ctx *ctx;
 	int new_ctx;
 	unsigned int ret = 0;
+	unsigned long flags;
 
 	mfc_debug(1, "Try run dev: %p\n", dev);
 
+	spin_lock_irqsave(&dev->condlock, flags);
 	/* Check whether hardware is not running */
 	if (test_and_set_bit(0, &dev->hw_lock) != 0) {
+		spin_unlock_irqrestore(&dev->condlock, flags);
 		/* This is perfectly ok, the scheduled ctx should wait */
 		mfc_debug(1, "Couldn't lock HW.\n");
 		return;
@@ -1727,13 +1726,16 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 	if (new_ctx < 0) {
 		/* No contexts to run */
 		if (test_and_clear_bit(0, &dev->hw_lock) == 0) {
+			spin_unlock_irqrestore(&dev->condlock, flags);
 			mfc_err("Failed to unlock hardware.\n");
 			return;
 		}
 
+		spin_unlock_irqrestore(&dev->condlock, flags);
 		mfc_debug(1, "No ctx is scheduled to be run.\n");
 		return;
 	}
+	spin_unlock_irqrestore(&dev->condlock, flags);
 
 	mfc_debug(1, "New context: %d\n", new_ctx);
 	ctx = dev->ctx[new_ctx];
