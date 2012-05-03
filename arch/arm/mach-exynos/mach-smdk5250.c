@@ -1899,8 +1899,8 @@ static void __init smdk5250_machine_init(void)
 
 #ifdef CONFIG_FB_S3C
 #if defined(CONFIG_S5P_DP)
-	exynos5_fimd1_setup_clock(&s5p_device_fimd1.dev, "sclk_fimd", "mout_mpll_user",
-				267 * MHZ);
+	exynos5_fimd1_setup_clock(&s5p_device_fimd1.dev,
+			"sclk_fimd", "sclk_vpll", 268 * MHZ);
 #else
 	exynos5_fimd1_setup_clock(&s5p_device_fimd1.dev, "sclk_fimd", "mout_mpll_user",
 				800 * MHZ);
