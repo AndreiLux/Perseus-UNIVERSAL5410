@@ -56,6 +56,7 @@ config ARCH_OMAP4
 	select ARM_CPU_SUSPEND if PM
 	select MISC_DEVICES
 	select EMIF
+	select ARCH_NEEDS_CPU_IDLE_COUPLED if CPU_IDLE
 
 config ARCH_OMAP5
 	bool "TI OMAP5"
