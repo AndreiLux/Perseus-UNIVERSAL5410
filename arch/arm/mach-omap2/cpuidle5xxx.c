@@ -51,17 +51,21 @@ static DEFINE_RAW_SPINLOCK(mpuss_idle_lock);
 /**
  * omap5_enter_idle - Programs OMAP5 to enter the specified state
  * @dev: cpuidle device
- * @state: The target state to be programmed
+ * @drv: cpuidle driver
+ * @index: the index of state to be entered
  *
  * Called from the CPUidle framework to program the device to the
  * specified low power state selected by the governor.
  * Returns the amount of time spent in the low power state.
  */
 static int omap5_enter_idle(struct cpuidle_device *dev,
-			struct cpuidle_state *state)
+			struct cpuidle_driver *drv,
+			int index)
 {
-	struct omap5_idle_statedata *cx = cpuidle_get_statedata(state);
+	struct omap5_idle_statedata *cx =
+			cpuidle_get_statedata(&dev->states_usage[index]);
 	struct timespec ts_preidle, ts_postidle, ts_idle;
+	int idle_time;
 	int cpu_id = smp_processor_id();
 
 	/* Used to keep track of the total time in idle */
@@ -70,7 +74,7 @@ static int omap5_enter_idle(struct cpuidle_device *dev,
 	local_irq_disable();
 	local_fiq_disable();
 
-	if (state > &dev->states[0])
+	if (index > 0)
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu_id);
 
 	/*
@@ -118,7 +122,7 @@ static int omap5_enter_idle(struct cpuidle_device *dev,
 	if (omap_mpuss_read_prev_context_state())
 		cpu_cluster_pm_exit();
 
-	if (state > &dev->states[0])
+	if (index > 0)
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu_id);
 
 	getnstimeofday(&ts_postidle);
@@ -127,7 +131,12 @@ static int omap5_enter_idle(struct cpuidle_device *dev,
 	local_irq_enable();
 	local_fiq_enable();
 
-	return ts_idle.tv_nsec / NSEC_PER_USEC + ts_idle.tv_sec * USEC_PER_SEC;
+	idle_time = ts_idle.tv_nsec / NSEC_PER_USEC + ts_idle.tv_sec * \
+								USEC_PER_SEC;
+	/* Update cpuidle counters */
+	dev->last_residency = idle_time;
+
+	return index;
 }
 
 DEFINE_PER_CPU(struct cpuidle_device, omap5_idle_dev);
@@ -137,26 +146,28 @@ struct cpuidle_driver omap5_idle_driver = {
 	.owner =	THIS_MODULE,
 };
 
-static inline struct omap5_idle_statedata *_fill_cstate(
-					struct cpuidle_device *dev,
+static inline void _fill_cstate(struct cpuidle_driver *drv,
 					int idx, const char *descr)
 {
-	struct omap5_idle_statedata *cx;
-	struct cpuidle_state *state;
+	struct cpuidle_state *state = &drv->states[idx];
 
-	if (!cpuidle_params_table[idx].valid && idx)
-		return NULL;
-
-	cx = &omap5_idle_data[idx];
-	state =  &dev->states[idx];
 	state->exit_latency	= cpuidle_params_table[idx].exit_latency;
 	state->target_residency	= cpuidle_params_table[idx].target_residency;
 	state->flags		= CPUIDLE_FLAG_TIME_VALID;
 	state->enter		= omap5_enter_idle;
-	cx->valid		= cpuidle_params_table[idx].valid;
 	sprintf(state->name, "C%d", idx + 1);
 	strncpy(state->desc, descr, CPUIDLE_DESC_LEN);
-	cpuidle_set_statedata(state, cx);
+}
+
+static inline struct omap5_idle_statedata *_fill_cstate_usage(
+					struct cpuidle_device *dev,
+					int idx)
+{
+	struct omap5_idle_statedata *cx = &omap5_idle_data[idx];
+	struct cpuidle_state_usage *state_usage = &dev->states_usage[idx];
+
+	cx->valid = cpuidle_params_table[idx].valid;
+	cpuidle_set_statedata(state_usage, cx);
 
 	return cx;
 }
@@ -171,6 +182,7 @@ int __init omap5_idle_init(void)
 {
 	struct omap5_idle_statedata *cx;
 	struct cpuidle_device *dev;
+	struct cpuidle_driver *drv = &omap5_idle_driver;
 	unsigned int cpu_id = 0;
 
 	mpu_pd = pwrdm_lookup("mpu_pwrdm");
@@ -179,41 +191,50 @@ int __init omap5_idle_init(void)
 	if ((!mpu_pd) || (!cpu_pd[0]) || (!cpu_pd[1]))
 		return -ENODEV;
 
-	cpuidle_register_driver(&omap5_idle_driver);
-
 	for_each_cpu(cpu_id, cpu_online_mask) {
+		drv->safe_state_index = -1;
 		dev = &per_cpu(omap5_idle_dev, cpu_id);
 		dev->cpu = cpu_id;
+		dev->state_count = 0;
+		drv->state_count = 0;
 
 		/* C1 - CPU0 ON + CPU1 ON + MPU ON */
-		cx = _fill_cstate(dev, 0, "MPUSS ON");
-		dev->safe_state = &dev->states[0];
+		_fill_cstate(drv, 0, "MPUSS ON");
+		drv->safe_state_index = 0;
+		cx = _fill_cstate_usage(dev, 0);
 		cx->valid = 1;	/* C1 is always valid */
 		cx->cpu_state = PWRDM_POWER_ON;
 		cx->mpu_state = PWRDM_POWER_ON;
 		cx->mpu_state_vote = 0;
 		cx->mpu_logic_state = PWRDM_POWER_RET;
 		dev->state_count++;
+		drv->state_count++;
 
 		/* C2 - CPU0 INA + CPU1 INA + MPU INA */
-		cx = _fill_cstate(dev, 1, "MPUSS INACTIVE");
+		_fill_cstate(drv, 1, "MPUSS CSWR");
+		cx = _fill_cstate_usage(dev, 1);
 		if (cx != NULL) {
 			cx->cpu_state = PWRDM_POWER_INACTIVE;
 			cx->mpu_state = PWRDM_POWER_INACTIVE;
 			cx->mpu_state_vote = 0;
 			cx->mpu_logic_state = PWRDM_POWER_RET;
 			dev->state_count++;
+			drv->state_count++;
 		}
 
 		/* C3 - CPU0 CSWR + CPU1 CSWR + MPU CSWR */
-		cx = _fill_cstate(dev, 2, "MPUSS CSWR");
+		_fill_cstate(drv, 2, "MPUSS OSWR");
+		cx = _fill_cstate_usage(dev, 2);
 		if (cx != NULL) {
 			cx->cpu_state = PWRDM_POWER_RET;
 			cx->mpu_state = PWRDM_POWER_RET;
 			cx->mpu_state_vote = 0;
 			cx->mpu_logic_state = PWRDM_POWER_RET;
 			dev->state_count++;
+			drv->state_count++;
 		}
+
+		cpuidle_register_driver(&omap5_idle_driver);
 
 		pr_debug("Register %d C-states on CPU%d\n",
 						dev->state_count, cpu_id);
