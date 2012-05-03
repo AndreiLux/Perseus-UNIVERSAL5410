@@ -54,6 +54,7 @@
 #include "control.h"
 #include "mux.h"
 #include "common-board-devices.h"
+#include "pm.h"
 
 #define GPIO_HUB_POWER		1
 #define GPIO_HUB_NRESET		62
@@ -62,6 +63,7 @@
 #define HDMI_GPIO_CT_CP_HPD 60 /* HPD mode enable/disable */
 #define HDMI_GPIO_LS_OE 41 /* Level shifter for HDMI */
 #define HDMI_GPIO_HPD  63 /* Hotplug detect */
+#define TPS62361_GPIO   7
 
 /* wl127x BT, FM, GPS connectivity chip */
 struct ti_st_plat_data kim_plat_data = {
@@ -675,6 +677,16 @@ static void __init omap4_panda_init(void)
 	omap4_ehci_init();
 	usb_musb_init(&musb_board_data);
 	omap4_panda_display_init();
+#ifdef CONFIG_MACH_OMAP4_PANDA_CAMERA_SUPPORT
+	panda_camera_init(&panda_camera_board_info);
+#endif
+	if (cpu_is_omap446x()) {
+		/* Vsel0 = gpio, vsel1 = gnd */
+		ret = omap_tps6236x_board_setup(true, TPS62361_GPIO, -1,
+				OMAP_PIN_OFF_OUTPUT_HIGH, -1);
+		if (ret)
+			pr_err("TPS62361 initialization failed: %d\n", ret);
+	}
 }
 
 MACHINE_START(OMAP4_PANDA, "OMAP4 Panda board")
