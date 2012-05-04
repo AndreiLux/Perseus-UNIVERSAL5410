@@ -182,4 +182,14 @@ extern int dw_mci_suspend(struct dw_mci *host);
 extern int dw_mci_resume(struct dw_mci *host);
 #endif
 
+/* Variations in the dw_mci controller */
+#define DW_MCI_TYPE_SYNOPSIS		0
+#define DW_MCI_TYPE_EXYNOS5250		1 /* Samsung Exynos5250 Extensions */
+
+/* dw_mci platform driver data */
+struct dw_mci_drv_data {
+	unsigned long		ctrl_type;
+	unsigned long		caps;
+};
+
 #endif /* _DW_MMC_H_ */

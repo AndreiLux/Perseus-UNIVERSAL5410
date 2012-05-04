@@ -33,8 +33,12 @@
 #include <linux/bitops.h>
 #include <linux/regulator/consumer.h>
 #include <linux/workqueue.h>
+#include <linux/of.h>
+#include <linux/of_gpio.h>
 
 #include "dw_mmc.h"
+
+#define NUM_PINS(x) (x + 2)
 
 /* Common flag combinations */
 #define DW_MCI_DATA_ERROR_FLAGS	(SDMMC_INT_DTO | SDMMC_INT_DCRC | \
@@ -86,6 +90,8 @@ struct idmac_desc {
 struct dw_mci_slot {
 	struct mmc_host		*mmc;
 	struct dw_mci		*host;
+	int			wp_gpio;
+	int			cd_gpio;
 
 	u32			ctype;
 
@@ -816,6 +822,8 @@ static int dw_mci_get_ro(struct mmc_host *mmc)
 		read_only = 0;
 	else if (brd->get_ro)
 		read_only = brd->get_ro(slot->id);
+	else if (gpio_is_valid(slot->wp_gpio))
+		read_only = gpio_get_value(slot->wp_gpio);
 	else
 		read_only =
 			mci_readl(slot->host, WRTPRT) & (1 << slot->id) ? 1 : 0;
@@ -837,6 +845,8 @@ static int dw_mci_get_cd(struct mmc_host *mmc)
 		present = 1;
 	else if (brd->get_cd)
 		present = !brd->get_cd(slot->id);
+	else if (gpio_is_valid(slot->cd_gpio))
+		present = gpio_get_value(slot->cd_gpio);
 	else
 		present = (mci_readl(slot->host, CDETECT) & (1 << slot->id))
 			== 0 ? 1 : 0;
@@ -1747,6 +1757,96 @@ static void dw_mci_work_routine_card(struct work_struct *work)
 	}
 }
 
+#ifdef CONFIG_OF
+static struct device_node *dw_mci_of_find_slot_node(struct device *dev, u8 slot)
+{
+	struct device_node *np;
+	char name[7];
+
+	if (!dev || !dev->of_node)
+		return NULL;
+
+	for_each_child_of_node(dev->of_node, np) {
+		sprintf(name, "slot%d", slot);
+		if (!strcmp(name, np->name))
+			return np;
+	}
+	return NULL;
+}
+
+static u32 dw_mci_of_get_bus_wd(struct device *dev, u8 slot)
+{
+	struct device_node *np = dw_mci_of_find_slot_node(dev, slot);
+	u32 bus_wd = 1;
+
+	if (!np)
+		return 1;
+
+	if (of_property_read_u32(np, "bus-width", &bus_wd))
+		dev_err(dev, "bus-width property not found, assuming width"
+			       " as 1\n");
+	return bus_wd;
+}
+
+static int dw_mci_of_setup_bus(struct dw_mci *host, u8 slot, u32 bus_wd)
+{
+	struct device_node *np = dw_mci_of_find_slot_node(&host->dev, slot);
+	int idx, gpio, ret;
+
+	for (idx = 0; idx < NUM_PINS(bus_wd); idx++) {
+		gpio = of_get_gpio(np, idx);
+		if (!gpio_is_valid(gpio)) {
+			dev_err(&host->dev, "invalid gpio: %d\n", gpio);
+			return -EINVAL;
+		}
+
+		ret = devm_gpio_request(&host->dev, gpio, "dw-mci-bus");
+		if (ret) {
+			dev_err(&host->dev, "gpio [%d] request failed\n", gpio);
+			return -EBUSY;
+		}
+	}
+
+	host->slot[slot]->wp_gpio = -1;
+	gpio = of_get_named_gpio(np, "wp_gpios", 0);
+	if (!gpio_is_valid(gpio)) {
+		dev_info(&host->dev, "wp gpio not available");
+	} else {
+		ret = devm_gpio_request(&host->dev, gpio, "dw-mci-wp");
+		if (ret)
+			dev_info(&host->dev, "gpio [%d] request failed\n",
+						gpio);
+		else
+			host->slot[slot]->wp_gpio = gpio;
+	}
+
+	host->slot[slot]->cd_gpio = -1;
+	gpio = of_get_named_gpio(np, "cd-gpios", 0);
+	if (!gpio_is_valid(gpio)) {
+		dev_info(&host->dev, "cd gpio not available");
+	} else {
+		ret = devm_gpio_request(&host->dev, gpio, "dw-mci-cd");
+		if (ret)
+			dev_err(&host->dev, "gpio [%d] request failed\n", gpio);
+		else
+			host->slot[slot]->cd_gpio = gpio;
+	}
+
+	return 0;
+}
+
+#else /* CONFIG_OF */
+static u32 dw_mci_of_get_bus_wd(struct device *dev, u8 slot)
+{
+	return 1;
+}
+
+static int dw_mci_of_setup_bus(struct dw_mci *host, u8 slot, u32 bus_wd)
+{
+	return -EINVAL;
+}
+#endif /* CONFIG_OF */
+
 static int __init dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 {
 	struct mmc_host *mmc;
@@ -1760,6 +1860,7 @@ static int __init dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 	slot->id = id;
 	slot->mmc = mmc;
 	slot->host = host;
+	host->slot[id] = slot;
 
 	mmc->ops = &dw_mci_ops;
 	mmc->f_min = DIV_ROUND_UP(host->bus_hz, 510);
@@ -1780,12 +1881,21 @@ static int __init dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 	if (host->pdata->caps)
 		mmc->caps = host->pdata->caps;
 
+	mmc->caps |= host->drv_data->caps;
+
 	if (host->pdata->caps2)
 		mmc->caps2 = host->pdata->caps2;
 
-	if (host->pdata->get_bus_wd)
+	if (host->pdata->get_bus_wd) {
 		if (host->pdata->get_bus_wd(slot->id) >= 4)
 			mmc->caps |= MMC_CAP_4_BIT_DATA;
+	} else if (host->dev.of_node) {
+		unsigned int bus_width;
+		bus_width = dw_mci_of_get_bus_wd(&host->dev, slot->id);
+		if (bus_width >= 4)
+			mmc->caps |= MMC_CAP_4_BIT_DATA;
+		dw_mci_of_setup_bus(host, slot->id, bus_width);
+	}
 
 	if (host->pdata->quirks & DW_MCI_QUIRK_HIGHSPEED)
 		mmc->caps |= MMC_CAP_SD_HIGHSPEED | MMC_CAP_MMC_HIGHSPEED;
@@ -1830,7 +1940,6 @@ static int __init dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 	else
 		clear_bit(DW_MMC_CARD_PRESENT, &slot->flags);
 
-	host->slot[id] = slot;
 	mmc_add_host(mmc);
 
 #if defined(CONFIG_DEBUG_FS)
@@ -1923,15 +2032,74 @@ static bool mci_wait_reset(struct device *dev, struct dw_mci *host)
 	return false;
 }
 
+#ifdef CONFIG_OF
+static struct dw_mci_of_quirks {
+	char *quirk;
+	int id;
+} of_quriks[] = {
+	{
+		.quirk	= "supports-highspeed",
+		.id 	= DW_MCI_QUIRK_HIGHSPEED,
+	}, {
+		.quirk 	= "card-detection-broken",
+		.id 	= DW_MCI_QUIRK_BROKEN_CARD_DETECTION,
+	}, {
+		.quirk 	= "no-write-protect",
+		.id	= DW_MCI_QUIRK_NO_WRITE_PROTECT,
+	}
+};
+
+static struct dw_mci_board *dw_mci_parse_dt(struct dw_mci *host)
+{
+	struct dw_mci_board *pdata;
+	struct device *dev = &host->dev;
+	struct device_node *np = dev->of_node, *slot;
+	u32 timing[3];
+	int idx, cnt;
+
+	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
+	if (!pdata) {
+		dev_err(dev, "could not allocate memory for pdata\n");
+		return ERR_PTR(-ENOMEM);
+	}
+
+	/* find out number of slots supported */
+	for_each_child_of_node(np, slot)
+		pdata->num_slots++;
+
+	/* get quirks */
+	cnt = sizeof(of_quriks) / sizeof(struct dw_mci_of_quirks);
+	for (idx = 0; idx < cnt; idx++)
+		if (of_get_property(np, of_quriks[idx].quirk, NULL))
+			pdata->quirks |= of_quriks[idx].id;
+
+	if (of_property_read_u32(np, "fifo-depth", &pdata->fifo_depth))
+		dev_info(dev, "fifo-depth property not found, using "
+				"value of FIFOTH register as default\n");
+
+	of_property_read_u32(np, "card-detect-delay", &pdata->detect_delay_ms);
+
+	return pdata;
+}
+
+#else /* CONFIG_OF */
+static struct dw_mci_board *dw_mci_parse_dt(struct dw_mci *host)
+{
+	return ERR_PTR(-EINVAL);
+}
+#endif /* CONFIG_OF */
+
 int dw_mci_probe(struct dw_mci *host)
 {
 	int width, i, ret = 0;
 	u32 fifo_size;
 
-	if (!host->pdata || !host->pdata->init) {
-		dev_err(&host->dev,
-			"Platform data must supply init function\n");
-		return -ENODEV;
+	if (!host->pdata) {
+		host->pdata = dw_mci_parse_dt(host);
+		if (IS_ERR(host->pdata)) {
+			dev_err(&host->dev, "platform data not available\n");
+			return -EINVAL;
+		}
 	}
 
 	if (!host->pdata->select_slot && host->pdata->num_slots > 1) {

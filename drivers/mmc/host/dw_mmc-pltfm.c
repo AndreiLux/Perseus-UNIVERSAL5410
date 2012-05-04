@@ -19,7 +19,23 @@
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
 #include <linux/mmc/dw_mmc.h>
+#include <linux/of.h>
 #include "dw_mmc.h"
+
+#ifdef CONFIG_OF
+static struct dw_mci_drv_data synopsis_drv_data = {
+	.ctrl_type	= DW_MCI_TYPE_SYNOPSIS,
+};
+
+static const struct of_device_id dw_mci_pltfm_match[] = {
+	{ .compatible = "synopsis,dw-mshc",
+			.data = (void *)&synopsis_drv_data, },
+	{},
+};
+MODULE_DEVICE_TABLE(of, dw_mci_pltfm_match);
+#else
+static const struct of_device_id dw_mci_pltfm_match[];
+#endif
 
 static int dw_mci_pltfm_probe(struct platform_device *pdev)
 {
@@ -51,6 +67,13 @@ static int dw_mci_pltfm_probe(struct platform_device *pdev)
 	if (!host->regs)
 		goto err_free;
 	platform_set_drvdata(pdev, host);
+
+	if (pdev->dev.of_node) {
+		const struct of_device_id *match;
+		match = of_match_node(dw_mci_pltfm_match, pdev->dev.of_node);
+		host->drv_data = match->data;
+	}
+
 	ret = dw_mci_probe(host);
 	if (ret)
 		goto err_out;
@@ -111,6 +134,7 @@ static struct platform_driver dw_mci_pltfm_driver = {
 	.remove		= __exit_p(dw_mci_pltfm_remove),
 	.driver		= {
 		.name		= "dw_mmc",
+		.of_match_table	= of_match_ptr(dw_mci_pltfm_match),
 		.pm		= &dw_mci_pltfm_pmops,
 	},
 };
