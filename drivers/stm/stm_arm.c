@@ -1,9 +1,10 @@
 /*
- * stm_omap_ti1.0.c
+ * stm_arm.c
  *
  * System Trace Module (STM) Framework Driver Implementation
  *
  * Copyright (C) 2012 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2012 Linaro - http://www.linaro.org
  *
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -46,7 +47,7 @@
 #include <linux/io.h>
 #include <linux/err.h>
 
-#include <plat/omap44xx.h>
+//RMH#include <plat/omap44xx.h>
 
 #include "stm_fw.h"
 #include "stm_msg.h"
@@ -88,14 +89,14 @@ static bool stm_test_clock(void);
 #define ATTRIBUTE_BUF_SIZE    256
 static char attribute_buf[ATTRIBUTE_BUF_SIZE];
 
-static const uint32_t stm_base_address = L4_EMU_44XX_BASE;
+//RMH static const uint32_t stm_base_address = L4_EMU_44XX_BASE;
 static const uint32_t stm_resolution = 0x1000;
-static uint32_t stm_iobase;
+//RMH static uint32_t stm_iobase;
 #define STM_ADDRESS_SPACE (stm_resolution * STM_CHANNEL_TOTAL)
 
-static const uint32_t stm_control_base = L4_EMU_44XX_BASE + 0x161000;
-static const uint32_t stm_control_size = 4096;
-static uint32_t stm_cntl_iobase;
+//RMH static const uint32_t stm_control_base = L4_EMU_44XX_BASE + 0x161000;
+//RMH static const uint32_t stm_control_size = 4096;
+//RMH static uint32_t stm_cntl_iobase;
 
 /* These are offsets from stm_control_base */
 #define STM_SWMCTRL0_OFFSET     0x024
@@ -542,24 +543,27 @@ int stm_config_write(int chn, char *config_buf, int count)
 
 		if (data[0] & HW_MASTER_MASK) {
 			/* set hw master select value */
-			master_select = ioread32((void *)(stm_cntl_iobase +
-							STM_HWMCTRL_OFFSET));
+//RMH			master_select = ioread32((void *)(stm_cntl_iobase +
+//RMH							STM_HWMCTRL_OFFSET));
+			master_select = 0; //RMH
 			master_select |= data[0] << (i * 8);
-			iowrite32(master_select, (void *)(stm_cntl_iobase +
-							STM_HWMCTRL_OFFSET));
+//RMH			iowrite32(master_select, (void *)(stm_cntl_iobase +
+//RMH							STM_HWMCTRL_OFFSET));
 		} else {
 			/* set sw master select value */
-			master_select = ioread32((void *)(stm_cntl_iobase +
-						       STM_SWMCTRL1_OFFSET));
+//RMH			master_select = ioread32((void *)(stm_cntl_iobase +
+//RMH						       STM_SWMCTRL1_OFFSET));
+			master_select = 0; //RMH
 			master_select |= data[0] << (i * 8);
-			iowrite32(master_select, (void *)(stm_cntl_iobase +
-						       STM_SWMCTRL1_OFFSET));
+//RMH			iowrite32(master_select, (void *)(stm_cntl_iobase +
+//RMH						       STM_SWMCTRL1_OFFSET));
 			/* set master mask value */
-			master_mask = ioread32((void *)stm_cntl_iobase +
-							STM_SWMCTRL2_OFFSET);
+//RMH			master_mask = ioread32((void *)stm_cntl_iobase +
+//RMH							STM_SWMCTRL2_OFFSET);
+			master_mask = 0; //RMH
 			master_mask |= data[1] << (i * 8);
-			iowrite32(master_mask, (void *)(stm_cntl_iobase +
-							STM_SWMCTRL2_OFFSET));
+//RMH			iowrite32(master_mask, (void *)(stm_cntl_iobase +
+//RMH							STM_SWMCTRL2_OFFSET));
 /* TODO:: Add fixed values for other domain master selection registers. */
 /*	These may not actually need to be set.			*/
 
@@ -576,11 +580,12 @@ int stm_config_write(int chn, char *config_buf, int count)
 			goto stm_config_write_exit;
 		}
 
-		iowrite32(STM_MODULE_ENABLE, (void *)(stm_cntl_iobase
-						       + STM_SWMCTRL0_OFFSET));
+//RMH		iowrite32(STM_MODULE_ENABLE, (void *)(stm_cntl_iobase
+//RMH						       + STM_SWMCTRL0_OFFSET));
 
-		control = ioread32((void *)(stm_cntl_iobase
-						       + STM_SWMCTRL0_OFFSET));
+//RMH		control = ioread32((void *)(stm_cntl_iobase
+//RMH						       + STM_SWMCTRL0_OFFSET));
+		control = 0; //RMH
 
 		if ((control & STM_OWNERSHIP_MASK) != STM_OWNERSHIP_ENABLED)
 			return -EFAULT;
@@ -598,11 +603,12 @@ int stm_config_write(int chn, char *config_buf, int count)
 			goto stm_config_write_exit;
 		}
 
-		iowrite32(STM_MODULE_DISABLE, (void *)(stm_cntl_iobase
-						       + STM_SWMCTRL0_OFFSET));
+//RMH		iowrite32(STM_MODULE_DISABLE, (void *)(stm_cntl_iobase
+//RMH						       + STM_SWMCTRL0_OFFSET));
 
-		control = ioread32((void *)(stm_cntl_iobase
-						       + STM_SWMCTRL0_OFFSET));
+//RMH		control = ioread32((void *)(stm_cntl_iobase
+//RMH						       + STM_SWMCTRL0_OFFSET));
+		control = 0; //RMH
 
 		if ((control & STM_OWNERSHIP_MASK) != STM_OWNERSHIP_AVAILABLE)
 			return -EFAULT;
@@ -676,7 +682,7 @@ int stm_config_read(int chn, char *config_string, int count)
 
 
 static struct stm_operations stm_ti_ops = {
-	.name = "stm_ti1.0",
+	.name = "stm_arm",
 	.get_global_info = get_global_info,
 	.write = stm_write,
 	.allocate_channel = stm_allocate_channel,
@@ -696,19 +702,19 @@ void stm_ti_clean(void)
 		kfree(chn_obj);
 	}
 
-	release_mem_region(stm_base_address, STM_ADDRESS_SPACE);
-	release_mem_region(stm_control_base, STM_ADDRESS_SPACE);
+//RMH 	release_mem_region(stm_base_address, STM_ADDRESS_SPACE);
+//RMH	release_mem_region(stm_control_base, STM_ADDRESS_SPACE);
 
 
-	if (!stm_iobase) {
-		iounmap((void *)stm_iobase);
-		stm_iobase = 0;
-	}
+//RMH 	if (!stm_iobase) {
+//RMH 		iounmap((void *)stm_iobase);
+//RMH 		stm_iobase = 0;
+//RMH	}
 
-	if (!stm_cntl_iobase) {
-		iounmap((void *)stm_cntl_iobase);
-		stm_cntl_iobase = 0;
-	}
+//RMH	if (!stm_cntl_iobase) {
+//RMH		iounmap((void *)stm_cntl_iobase);
+//RMH		stm_cntl_iobase = 0;
+//RMH	}
 }
 
 
@@ -716,33 +722,33 @@ int __init stm_ti_init(void)
 {
 
 	int ret = 0;
-	char *mod_name = "STM 1.0 Module";
+//RMH	char *mod_name = "STM ARM Module";
 
-	if (!request_mem_region(stm_base_address, STM_ADDRESS_SPACE,
-								mod_name)) {
-		ret = -ENODEV;
-		goto init_err;
-	}
+//RMH 	if (!request_mem_region(stm_base_address, STM_ADDRESS_SPACE,
+//RMH								mod_name)) {
+//RMH		ret = -ENODEV;
+//RMH		goto init_err;
+//RMH	}
 
-	stm_iobase = (unsigned long)ioremap_nocache(stm_base_address,
-							    STM_ADDRESS_SPACE);
-	if (!stm_iobase) {
-		ret = -ENODEV;
-		goto init_err;
-	}
+//RMH 	stm_iobase = (unsigned long)ioremap_nocache(stm_base_address,
+//RMH							    STM_ADDRESS_SPACE);
+//RMH 	if (!stm_iobase) {
+//RMH 		ret = -ENODEV;
+//RMH 		goto init_err;
+//RMH 	}
 
-	if (!request_mem_region(stm_control_base, STM_ADDRESS_SPACE,
-								mod_name)) {
-		ret = -ENODEV;
-		goto init_err;
-	}
+//RMH	if (!request_mem_region(stm_control_base, STM_ADDRESS_SPACE,
+//RMH								mod_name)) {
+//RMH		ret = -ENODEV;
+//RMH		goto init_err;
+//RMH	}
 
-	stm_cntl_iobase = (unsigned long)ioremap_nocache(stm_control_base,
-							     stm_control_size);
-	if (!stm_cntl_iobase) {
-		ret = -ENODEV;
-		goto init_err;
-	}
+//RMH	stm_cntl_iobase = (unsigned long)ioremap_nocache(stm_control_base,
+//RMH							     stm_control_size);
+//RMH	if (!stm_cntl_iobase) {
+//RMH		ret = -ENODEV;
+//RMH		goto init_err;
+//RMH	}
 
 	/* Register with the STM Framework Drvier */
 	ret = stm_register(&stm_ti_ops);
@@ -757,21 +763,21 @@ int __init stm_ti_init(void)
 
 init_err:
 	stm_ti_clean();
-	pr_err("stm_ti1.0: driver registration error %d\n", ret);
+	pr_err("stm_arm: driver registration error %d\n", ret);
 	return ret;
 
 }
 
 void __exit stm_ti_exit(void)
 {
-	pr_info("stm_ti1.0: driver exit\n");
+	pr_info("stm_arm: driver exit\n");
 	stm_ti_clean();
 }
 
 module_init(stm_ti_init);
 module_exit(stm_ti_exit);
-MODULE_AUTHOR("Texas Instruments");
-MODULE_DESCRIPTION("STM TI 1.0 module");
+MODULE_AUTHOR("Linaro");
+MODULE_DESCRIPTION("STM ARM module");
 MODULE_LICENSE("Dual BSD/GPL");
 
 /*****************************************************************************
@@ -831,7 +837,7 @@ static inline uint32_t compose_address(uint32_t addr_type, int32_t stm_chn)
 
 	offset = (addr_type == STM_TIMESTAMP) ? stm_resolution / 2 : 0;
 
-	return (uint32_t)(stm_iobase +
+	return (uint32_t)(/*RMH stm_iobase + */
 			 (stm_resolution * (uint32_t)stm_chn) +
 			  offset);
 }
@@ -854,92 +860,6 @@ static void build_ost_header(uint32_t protocol_id, uint32_t size,
 static int32_t stm_put_msg(void *phdr_buf, int32_t hdr_size, void *pmsg_buf,
 			   uint32_t msg_size, int32_t stm_chn, bool timestamp)
 {
-	volatile void * __restrict msg_address;
-	volatile void * __restrict end_address;
-	uint32_t msg_buf_alignemnt;
-	uint32_t hdr_wrd_cnt;
-	uint16_t *short_address;
-
-	if (!msg_size)
-		return 0;
-
-	msg_address = (void *)compose_address(STM_REGULAR, stm_chn);
-	if (timestamp)
-		end_address = (void *)compose_address(STM_TIMESTAMP, stm_chn);
-	else
-		end_address = msg_address;
-
-	/* If the header pointer is not null and the header
-	 * word count is greater than 0, send the header.
-	 * Else (header word count 0 or header pointer null)
-	 * then it's assumed the header is contained in the message.
-	 */
-	if (hdr_size && phdr_buf) {
-		hdr_wrd_cnt = hdr_size / STM_WORD_SIZE;
-		while (hdr_wrd_cnt--)
-			iowrite32(*(uint32_t *)phdr_buf++,
-						(uint32_t *)msg_address);
-	}
-
-	/* Process the front end of the message */
-	msg_buf_alignemnt = (uint32_t)pmsg_buf & 3;
-
-	switch (msg_buf_alignemnt) {
-	case STM_BYTE1_ALIGN:
-		/*1 byte and 1 short to write - so fall through */
-
-	case STM_BYTE3_ALIGN:
-		/* 1 byte to write and it's not the last byte */
-		if (msg_size > STM_BYTE_SIZE) {
-			iowrite8(*(uint8_t *)pmsg_buf, (uint8_t *)msg_address);
-			pmsg_buf++;
-			msg_size--;
-		}
-		if (STM_BYTE3_ALIGN == msg_buf_alignemnt)
-			break;
-
-	case STM_SHORT_ALIGN:
-		/* 1 short to write and it's not the last short */
-		if (msg_size > STM_SHORT_SIZE) {
-			iowrite16(*(uint16_t *)pmsg_buf,
-						(uint16_t *)msg_address);
-			pmsg_buf += STM_SHORT_SIZE;
-			msg_size -= STM_SHORT_SIZE;
-		}
-		break;
-	}
-
-	/* Send words if more than 1 word */
-	while (msg_size > STM_WORD_SIZE) {
-		iowrite32(*(uint32_t *)pmsg_buf, (uint32_t *)msg_address);
-		pmsg_buf += STM_WORD_SIZE;
-		msg_size -= STM_WORD_SIZE;
-	}
-
-	/* Process last element - add timestamp */
-	switch (msg_size) {
-	case 4:
-		iowrite32(*(uint32_t *)pmsg_buf, (uint32_t *)end_address);
-		break;
-	case 3:
-		/* a short and a byte left so fall through*/
-		/* fallthru */
-	case 2:
-		/* at least one short left at end  */
-		short_address = (STM_SHORT_SIZE == msg_size)
-					   ? (uint16_t *)end_address
-					   : (uint16_t *)msg_address;
-		iowrite16(*(uint16_t *)pmsg_buf, short_address);
-		if (STM_SHORT_SIZE == msg_size)
-			break;
-
-		pmsg_buf += STM_SHORT_SIZE;
-		/* fallthru */
-	case 1:
-		/* a byte left at the end */
-		iowrite8(*(uint8_t *)pmsg_buf, (uint8_t *)end_address);
-	}
-
 	return 0;
 }
 
@@ -950,7 +870,7 @@ static bool stm_app_ownership(void)
 	int retry = 100;
 	bool ret = true;
 
-	control = ioread32((void *)stm_cntl_iobase + STM_SWMCTRL0_OFFSET);
+	control = 0; //RMH ioread32((void *)stm_cntl_iobase + STM_SWMCTRL0_OFFSET);
 
 	/* If driver already owns the STM module then exit*/
 	if ((control &  STM_CURRENT_OWNER_MASK) == STM_CURRENT_OWNER_APP) {
@@ -965,11 +885,12 @@ static bool stm_app_ownership(void)
 	}
 
 	/* Since it's avaiable can attempt to claim - so unlock the module*/
-	iowrite32(STM_MODULE_UNLOCK, (void *)stm_cntl_iobase + STM_LOCK_OFFSET);
+//RMH	iowrite32(STM_MODULE_UNLOCK, (void *)stm_cntl_iobase + STM_LOCK_OFFSET);
 
 	/* Test that it unlocked properly */
-	lock_status = ioread32((void *)stm_cntl_iobase +
-						STM_LOCK_STATUS_OFFSET);
+//RMH	lock_status = ioread32((void *)stm_cntl_iobase +
+//RMH						STM_LOCK_STATUS_OFFSET);
+	lock_status = 0;
 
 	/*
 	 * If locked set or the implemented bit is not readable (in cases where
@@ -983,7 +904,7 @@ static bool stm_app_ownership(void)
 
 	/* claim */
 	control = STM_OWNERSHIP_CLAIMED;
-	iowrite32(control, (void *)stm_cntl_iobase + STM_SWMCTRL0_OFFSET);
+//RMH	iowrite32(control, (void *)stm_cntl_iobase + STM_SWMCTRL0_OFFSET);
 
 	/* Test for claim and app owns */
 	do {
@@ -994,8 +915,9 @@ static bool stm_app_ownership(void)
 		const uint32_t enabled = STM_OWNERSHIP_ENABLED |
 					STM_CURRENT_OWNER_APP;
 
-		control = ioread32((void *)stm_cntl_iobase +
-							STM_SWMCTRL0_OFFSET);
+//RMH		control = ioread32((void *)stm_cntl_iobase +
+//RMH							STM_SWMCTRL0_OFFSET);
+		control = 0; //RMH
 		if ((control & mask) == claimed || (control & mask) == enabled)
 			break;
 
@@ -1012,7 +934,8 @@ static bool stm_test_enable()
 {
 	uint32_t control;
 
-	control = ioread32((void *)stm_cntl_iobase + STM_SWMCTRL0_OFFSET);
+//RMH	control = ioread32((void *)stm_cntl_iobase + STM_SWMCTRL0_OFFSET);
+	control = 0; // RMH
 
 	if ((control & STM_MODULE_ENABLE) == STM_MODULE_ENABLE)
 		return true;
@@ -1025,7 +948,8 @@ static bool stm_test_clock()
 	bool app_owns = false;
 	uint32_t control;
 
-	control = ioread32((void *)stm_cntl_iobase + STM_SWMCTRL0_OFFSET);
+//RMH	control = ioread32((void *)stm_cntl_iobase + STM_SWMCTRL0_OFFSET);
+	control = 0; //RMH
 
 	/* If driver already owns the STM module then it miust be
 	 * powered up and clock enabled.
@@ -1042,8 +966,8 @@ static bool stm_test_clock()
 	/* If ownership is avaialbe test driver (app) can own*/
 	app_owns = stm_app_ownership();
 	if (app_owns) {
-		iowrite32(STM_MODULE_DISABLE, (void *)(stm_cntl_iobase
-						       + STM_SWMCTRL0_OFFSET));
+//RMH		iowrite32(STM_MODULE_DISABLE, (void *)(stm_cntl_iobase
+//RMH						       + STM_SWMCTRL0_OFFSET));
 		return true;
 	}
 
