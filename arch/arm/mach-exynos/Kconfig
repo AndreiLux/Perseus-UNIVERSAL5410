@@ -167,6 +167,11 @@ config EXYNOS4_SETUP_SPI
 	help
 	  Common setup code for SPI GPIO configurations.
 
+config EXYNOS4_SETUP_TVOUT
+	bool
+	help
+	  Common setup code for TVOUT
+
 # machine support
 
 if ARCH_EXYNOS4
@@ -393,6 +398,7 @@ config MACH_EXYNOS5_DT
 	select EXYNOS4_SETUP_USB_PHY
 	select SAMSUNG_DEV_BACKLIGHT
 	select SAMSUNG_DEV_PWM
+	select EXYNOS4_SETUP_TVOUT
 	help
 	  Machine support for Samsung Exynos4 machine with device tree enabled.
 	  Select this if a fdt blob is available for the EXYNOS4 SoC based board.
