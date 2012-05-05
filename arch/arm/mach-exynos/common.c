@@ -384,6 +384,7 @@ static void __init exynos4_init_clocks(int xtal)
 
 	exynos4_register_clocks();
 	exynos4_setup_clocks();
+	exynos_register_audss_clocks();
 }
 
 static void __init exynos5_init_clocks(int xtal)
@@ -395,6 +396,7 @@ static void __init exynos5_init_clocks(int xtal)
 
 	exynos5_register_clocks();
 	exynos5_setup_clocks();
+	exynos_register_audss_clocks();
 }
 
 #define COMBINER_ENABLE_SET	0x0
