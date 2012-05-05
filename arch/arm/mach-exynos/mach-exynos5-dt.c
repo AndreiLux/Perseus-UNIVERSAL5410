@@ -14,7 +14,10 @@
 #include <linux/serial_core.h>
 #include <linux/smsc911x.h>
 #include <linux/delay.h>
+#include <linux/i2c.h>
 #include <linux/pwm_backlight.h>
+#include <linux/mfd/wm8994/pdata.h>
+#include <linux/regulator/machine.h>
 
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
@@ -140,6 +143,47 @@ struct platform_device exynos_device_md2 = {
 	.id = 2,
 };
 
+static struct regulator_consumer_supply wm8994_avdd1_supply =
+	REGULATOR_SUPPLY("AVDD1", "1-001a");
+
+static struct regulator_consumer_supply wm8994_dcvdd_supply =
+	REGULATOR_SUPPLY("DCVDD", "1-001a");
+
+static struct regulator_init_data wm8994_ldo1_data = {
+	.constraints	= {
+		.name		= "AVDD1",
+	},
+	.num_consumer_supplies	= 1,
+	.consumer_supplies	= &wm8994_avdd1_supply,
+};
+
+static struct regulator_init_data wm8994_ldo2_data = {
+	.constraints	= {
+	.name			= "DCVDD",
+		},
+	.num_consumer_supplies	= 1,
+	.consumer_supplies	= &wm8994_dcvdd_supply,
+};
+
+static struct wm8994_pdata wm8994_platform_data = {
+	/* configure gpio1 function: 0x0001(Logic level input/output) */
+	.gpio_defaults[0] = 0x0001,
+	/* If the i2s0 and i2s2 is enabled simultaneously */
+	.gpio_defaults[7] = 0x8100, /* GPIO8  DACDAT3 in */
+	.gpio_defaults[8] = 0x0100, /* GPIO9  ADCDAT3 out */
+	.gpio_defaults[9] = 0x0100, /* GPIO10 LRCLK3  out */
+	.gpio_defaults[10] = 0x0100,/* GPIO11 BCLK3   out */
+	.ldo[0] = { 0, &wm8994_ldo1_data },
+	.ldo[1] = { 0, &wm8994_ldo2_data },
+};
+
+static struct i2c_board_info i2c_devs1[] __initdata = {
+	{
+		I2C_BOARD_INFO("wm8994", 0x1a),
+		.platform_data  = &wm8994_platform_data,
+	},
+};
+
 /*
  * The following lookup table is used to override device names when devices
  * are registered from device tree. This is temporarily added to enable
@@ -206,6 +250,7 @@ static void __init exynos5250_dt_machine_init(void)
 		s3c_gpio_setpull(EXYNOS5_GPX2(6), S3C_GPIO_PULL_NONE);
 		gpio_free(EXYNOS5_GPX2(6));
 	}
+	i2c_register_board_info(1, i2c_devs1, ARRAY_SIZE(i2c_devs1));
 
 	of_platform_populate(NULL, of_default_bus_match_table,
 				exynos5250_auxdata_lookup, NULL);
