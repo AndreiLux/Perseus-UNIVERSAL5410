@@ -38,6 +38,7 @@
 		gsc1 = &gsc_1;
 		gsc2 = &gsc_2;
 		gsc3 = &gsc_3;
+		i2s0 = &i2s_0;
 	};
 
 	lan9215@0x05000000 {

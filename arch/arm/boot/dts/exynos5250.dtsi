@@ -280,6 +280,14 @@
 		interrupts = <0 78 0>;
 	};
 
+	i2s_0: i2s@03830000 {
+		compatible = "samsung,i2s";
+		reg = <0x03830000 0x100>;
+		tx-dma-channel-secondary = <&pdma0 8>;
+		tx-dma-channel = <&pdma0 10>;
+		rx-dma-channel = <&pdma0 9>;
+	};
+
 	amba {
 		#address-cells = <1>;
 		#size-cells = <1>;

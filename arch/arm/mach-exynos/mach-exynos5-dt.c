@@ -27,7 +27,9 @@
 #include <mach/regs-pmu.h>
 #include <mach/sysmmu.h>
 #include <mach/ohci.h>
+#include <mach/regs-audss.h>
 
+#include <plat/audio.h>
 #include <plat/cpu.h>
 #include <plat/dsim.h>
 #include <plat/fb.h>
@@ -405,6 +407,57 @@ static struct dwc3_exynos_data smdk5250_xhci_pdata = {
 	.phy_exit = s5p_usb_phy_exit,
 };
 
+struct exynos_gpio_cfg {
+	unsigned int    addr;
+	unsigned int    num;
+	unsigned int    bit;
+};
+
+static const char *rclksrc[] = {
+	[0] = "busclk",
+	[1] = "i2sclk",
+};
+
+static int exynos_cfg_i2s_gpio(struct platform_device *pdev)
+{
+	int id;
+	/* configure GPIO for i2s port */
+	struct exynos_gpio_cfg exynos5_cfg[3] = {
+		{ EXYNOS5_GPZ(0),  7, S3C_GPIO_SFN(2) },
+		{ EXYNOS5_GPB0(0), 5, S3C_GPIO_SFN(2) },
+		{ EXYNOS5_GPB1(0), 5, S3C_GPIO_SFN(2) }
+	};
+
+	if (pdev->dev.of_node) {
+		id = of_alias_get_id(pdev->dev.of_node, "i2s");
+		if (id < 0)
+			dev_err(&pdev->dev, "failed to get alias id:%d\n", id);
+	} else {
+		id = pdev->id;
+	}
+
+	if (id < 0 || id > 2) {
+		printk(KERN_ERR "Invalid Device %d\n", id);
+		return -EINVAL;
+	}
+
+	s3c_gpio_cfgpin_range(exynos5_cfg[id].addr,
+		exynos5_cfg[id].num, exynos5_cfg[id].bit);
+
+	return 0;
+}
+
+static struct s3c_audio_pdata i2sv5_pdata = {
+	.cfg_gpio = exynos_cfg_i2s_gpio,
+	.type = {
+		.i2s = {
+			.quirks = QUIRK_PRI_6CHAN | QUIRK_SEC_DAI
+					 | QUIRK_NEED_RSTCLR,
+			.src_clk = rclksrc,
+			.idma_addr = EXYNOS4_AUDSS_INT_MEM,
+		},
+	},
+};
 /*
  * The following lookup table is used to override device names when devices
  * are registered from device tree. This is temporarily added to enable
@@ -483,6 +536,8 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 				"s5p-ehci", &smdk5250_ehci_pdata),
 	OF_DEV_AUXDATA("samsung,exynos-xhci", 0x12000000,
 				"exynos-dwc3", &smdk5250_xhci_pdata),
+	OF_DEV_AUXDATA("samsung,i2s", 0x03830000,
+				"samsung-i2s.0", &i2sv5_pdata),
 	{},
 };
 
