@@ -736,7 +736,6 @@ static struct clk exynos5_init_clocks_off[] = {
 		.ctrlbit	= (1 << 13),
 	}, {
 		.name		= "i2c",
-		.devname	= "s3c2440-hdmiphy-i2c",
 		.parent		= &exynos5_clk_aclk_66.clk,
 		.enable		= exynos5_clk_ip_peric_ctrl,
 		.ctrlbit	= (1 << 14),
