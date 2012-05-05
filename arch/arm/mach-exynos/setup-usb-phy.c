@@ -18,6 +18,7 @@
 #include <mach/regs-usb-phy.h>
 #include <plat/cpu.h>
 #include <plat/usb-phy.h>
+#include <plat/regs-usb3-exynos-drd-phy.h>
 
 #define PHY_ENABLE	1
 #define PHY_DISABLE	0
@@ -154,6 +155,78 @@ static u32 exynos_usb_phy_set_clock(struct platform_device *pdev)
 	clk_put(ref_clk);
 
 	return refclk_freq;
+}
+
+static int exynos5_usb_phy30_init(struct platform_device *pdev)
+{
+	int ret;
+	u32 reg;
+	bool use_ext_clk = true;
+
+	ret = exynos_usb_phy_clock_enable(pdev);
+	if (ret)
+		return ret;
+
+	exynos_usb_phy_control(USB_PHY0, PHY_ENABLE);
+
+	/* Reset USB 3.0 PHY */
+	writel(0x00000000, EXYNOS_USB3_PHYREG0);
+	writel(0x24d4e6e4, EXYNOS_USB3_PHYPARAM0);
+	writel(0x03fff820, EXYNOS_USB3_PHYPARAM1);
+	writel(0x00000000, EXYNOS_USB3_PHYRESUME);
+
+		writel(0x08000000, EXYNOS_USB3_LINKSYSTEM);
+		writel(0x00000004, EXYNOS_USB3_PHYBATCHG);
+		/* REVISIT :use externel clock 100MHz */
+		if (use_ext_clk)
+			writel(readl(EXYNOS_USB3_PHYPARAM0) | (0x1<<31),
+				EXYNOS_USB3_PHYPARAM0);
+		else
+			writel(readl(EXYNOS_USB3_PHYPARAM0) & ~(0x1<<31),
+				EXYNOS_USB3_PHYPARAM0);
+
+	/* UTMI Power Control */
+	writel(EXYNOS_USB3_PHYUTMI_OTGDISABLE, EXYNOS_USB3_PHYUTMI);
+
+	/* Set 100MHz external clock */
+	reg = EXYNOS_USB3_PHYCLKRST_PORTRESET |
+		/* HS PLL uses ref_pad_clk{p,m} or ref_alt_clk_{p,m}
+		 * as reference */
+		EXYNOS_USB3_PHYCLKRST_REFCLKSEL(2) |
+		/* Digital power supply in normal operating mode */
+		EXYNOS_USB3_PHYCLKRST_RETENABLEN |
+		/* 0x27-100MHz, 0x2a-24MHz, 0x31-20MHz, 0x38-19.2MHz */
+		EXYNOS_USB3_PHYCLKRST_FSEL(0x27) |
+		/* 0x19-100MHz, 0x68-24MHz, 0x7d-20Mhz */
+		EXYNOS_USB3_PHYCLKRST_MPLL_MULTIPLIER(0x19) |
+		/* Enable ref clock for SS function */
+		EXYNOS_USB3_PHYCLKRST_REF_SSP_EN |
+		/* Enable spread spectrum */
+		EXYNOS_USB3_PHYCLKRST_SSC_EN |
+		EXYNOS_USB3_PHYCLKRST_COMMONONN;
+
+	writel(reg, EXYNOS_USB3_PHYCLKRST);
+
+	udelay(10);
+
+	reg &= ~(EXYNOS_USB3_PHYCLKRST_PORTRESET);
+	writel(reg, EXYNOS_USB3_PHYCLKRST);
+
+	return 0;
+}
+
+static int exynos5_usb_phy30_exit(struct platform_device *pdev)
+{
+	u32 reg;
+
+	reg = EXYNOS_USB3_PHYUTMI_OTGDISABLE |
+		EXYNOS_USB3_PHYUTMI_FORCESUSPEND |
+		EXYNOS_USB3_PHYUTMI_FORCESLEEP;
+	writel(reg, EXYNOS_USB3_PHYUTMI);
+
+	exynos_usb_phy_control(USB_PHY0, PHY_DISABLE);
+
+	return 0;
 }
 
 static int exynos5_usb_phy20_init(struct platform_device *pdev)
@@ -379,6 +452,11 @@ int s5p_usb_phy_init(struct platform_device *pdev, int type)
 			return exynos5_usb_phy20_init(pdev);
 		else
 			return exynos4_usb_phy1_init(pdev);
+	} else if (type == S5P_USB_PHY_DRD) {
+		if (soc_is_exynos5250())
+			return exynos5_usb_phy30_init(pdev);
+		else
+			dev_err(&pdev->dev, "USB 3.0 DRD not present\n");
 	}
 	return -EINVAL;
 }
@@ -390,6 +468,11 @@ int s5p_usb_phy_exit(struct platform_device *pdev, int type)
 			return exynos5_usb_phy20_exit(pdev);
 		else
 			return exynos4_usb_phy1_exit(pdev);
+	} else if (type == S5P_USB_PHY_DRD) {
+		if (soc_is_exynos5250())
+			return exynos5_usb_phy30_exit(pdev);
+		else
+			dev_err(&pdev->dev, "USB 3.0 DRD not present\n");
 	}
 	return -EINVAL;
 }
