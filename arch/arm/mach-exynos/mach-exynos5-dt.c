@@ -229,6 +229,7 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&exynos_device_md0, /* for media device framework */
 	&exynos_device_md1, /* for media device framework */
 	&exynos_device_md2, /* for media device framework */
+	&samsung_asoc_dma,  /* for audio dma interface device */
 };
 
 static void __init exynos5250_dt_map_io(void)
