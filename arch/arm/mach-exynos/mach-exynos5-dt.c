@@ -14,6 +14,8 @@
 #include <linux/serial_core.h>
 #include <linux/smsc911x.h>
 #include <linux/delay.h>
+#include <linux/pwm_backlight.h>
+
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
 #include <mach/map.h>
@@ -21,6 +23,8 @@
 #include <plat/cpu.h>
 #include <plat/regs-serial.h>
 #include <plat/regs-srom.h>
+#include <plat/backlight.h>
+#include <plat/devs.h>
 
 #include <video/platform_lcd.h>
 
@@ -97,6 +101,28 @@ static struct platform_device smdk5250_mipi_lcd = {
 	.dev.platform_data	= &smdk5250_mipi_lcd_data,
 };
 
+static int smdk5250_bl_notify(struct device *unused, int brightness)
+{
+	/* manage lcd_bl_en signal */
+	if (brightness)
+		gpio_set_value(EXYNOS5_GPX3(0), 1);
+	else
+		gpio_set_value(EXYNOS5_GPX3(0), 0);
+
+	return brightness;
+}
+
+/* LCD Backlight data */
+static struct samsung_bl_gpio_info smdk5250_bl_gpio_info = {
+	.no	= EXYNOS5_GPB2(0),
+	.func	= S3C_GPIO_SFN(2),
+};
+
+static struct platform_pwm_backlight_data smdk5250_bl_data = {
+	.pwm_period_ns	= 1000,
+	.notify		= smdk5250_bl_notify,
+};
+
 /*
  * The following lookup table is used to override device names when devices
  * are registered from device tree. This is temporarily added to enable
@@ -151,6 +177,7 @@ static void __init exynos5250_dt_machine_init(void)
 {
 	if (of_machine_is_compatible("samsung,smdk5250"))
 		smsc911x_init(1);
+	samsung_bl_set(&smdk5250_bl_gpio_info, &smdk5250_bl_data);
 
 	of_platform_populate(NULL, of_default_bus_match_table,
 				exynos5250_auxdata_lookup, NULL);
