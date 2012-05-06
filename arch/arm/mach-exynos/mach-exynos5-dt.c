@@ -123,6 +123,21 @@ static struct platform_pwm_backlight_data smdk5250_bl_data = {
 	.notify		= smdk5250_bl_notify,
 };
 
+struct platform_device exynos_device_md0 = {
+	.name = "exynos-mdev",
+	.id = 0,
+};
+
+struct platform_device exynos_device_md1 = {
+	.name = "exynos-mdev",
+	.id = 1,
+};
+
+struct platform_device exynos_device_md2 = {
+	.name = "exynos-mdev",
+	.id = 2,
+};
+
 /*
  * The following lookup table is used to override device names when devices
  * are registered from device tree. This is temporarily added to enable
@@ -164,7 +179,10 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 };
 
 static struct platform_device *smdk5250_devices[] __initdata = {
-	&smdk5250_mipi_lcd,
+	&smdk5250_mipi_lcd, /* for platform_lcd device */
+	&exynos_device_md0, /* for media device framework */
+	&exynos_device_md1, /* for media device framework */
+	&exynos_device_md2, /* for media device framework */
 };
 
 static void __init exynos5250_dt_map_io(void)
