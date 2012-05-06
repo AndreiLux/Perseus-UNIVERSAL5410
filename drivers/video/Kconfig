@@ -2053,6 +2053,11 @@ config FB_S3C
 
 	  Currently the support is only for the S3C6400 and S3C6410 SoCs.
 
+config FB_EXYNOS_FIMD_V8
+	bool "register extensions for FIMD version 8"
+	depends on ARCH_EXYNOS5
+	---help---
+	This uses register extensions for FIMD version 8
 config FB_S3C_DEBUG_REGWRITE
        bool "Debug register writes"
        depends on FB_S3C
