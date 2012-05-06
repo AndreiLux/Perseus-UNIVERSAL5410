@@ -238,6 +238,16 @@ static void __init exynos5250_dt_map_io(void)
 	s3c24xx_init_clocks(24000000);
 }
 
+static void s5p_tv_setup(void)
+{
+	/* direct HPD to HDMI chip */
+	gpio_request(EXYNOS5_GPX3(7), "hpd-plug");
+
+	gpio_direction_input(EXYNOS5_GPX3(7));
+	s3c_gpio_cfgpin(EXYNOS5_GPX3(7), S3C_GPIO_SFN(0x3));
+	s3c_gpio_setpull(EXYNOS5_GPX3(7), S3C_GPIO_PULL_NONE);
+}
+
 static void __init exynos5250_dt_machine_init(void)
 {
 	if (of_machine_is_compatible("samsung,smdk5250"))
@@ -255,6 +265,8 @@ static void __init exynos5250_dt_machine_init(void)
 
 	of_platform_populate(NULL, of_default_bus_match_table,
 				exynos5250_auxdata_lookup, NULL);
+
+	s5p_tv_setup();
 
 	platform_add_devices(smdk5250_devices, ARRAY_SIZE(smdk5250_devices));
 }
