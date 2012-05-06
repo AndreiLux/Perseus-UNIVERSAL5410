@@ -32,12 +32,28 @@
 
 #define VIDCON0					(0x00)
 #define VIDCON0_INTERLACE			(1 << 29)
+
+#ifdef CONFIG_FB_EXYNOS_FIMD_V8
+#define VIDOUT_CON				(0x20000)
+#define VIDOUT_CON_VIDOUT_UP_MASK		(0x1 << 16)
+#define VIDOUT_CON_VIDOUT_UP_SHIFT		(16)
+#define VIDOUT_CON_VIDOUT_UP_ALWAYS		(0x0 << 16)
+#define VIDOUT_CON_VIDOUT_UP_START_FRAME	(0x1 << 16)
+#define VIDOUT_CON_VIDOUT_F_MASK		(0x7 << 8)
+#define VIDOUT_CON_VIDOUT_F_SHIFT		(8)
+#define VIDOUT_CON_VIDOUT_F_RGB			(0x0 << 8)
+#define VIDOUT_CON_VIDOUT_F_I80_LDI0		(0x2 << 8)
+#define VIDOUT_CON_VIDOUT_F_I80_LDI1		(0x3 << 8)
+#define VIDOUT_CON_VIDOUT_F_WB			(0x4 << 8)
+#endif
+
 #define VIDCON0_VIDOUT_MASK			(0x3 << 26)
 #define VIDCON0_VIDOUT_SHIFT			(26)
 #define VIDCON0_VIDOUT_RGB			(0x0 << 26)
 #define VIDCON0_VIDOUT_TV			(0x1 << 26)
 #define VIDCON0_VIDOUT_I80_LDI0			(0x2 << 26)
 #define VIDCON0_VIDOUT_I80_LDI1			(0x3 << 26)
+#define VIDCON0_VIDOUT_WB                       (0x4 << 26)
 
 #define VIDCON0_L1_DATA_MASK			(0x7 << 23)
 #define VIDCON0_L1_DATA_SHIFT			(23)
@@ -81,7 +97,13 @@
 #define VIDCON0_ENVID				(1 << 1)
 #define VIDCON0_ENVID_F				(1 << 0)
 
+#ifdef CONFIG_FB_EXYNOS_FIMD_V8
+#define VIDOUT_CON                              (0x20000)
+#define VIDCON1                                 (0x20004)
+#else
 #define VIDCON1					(0x04)
+#endif
+
 #define VIDCON1_LINECNT_MASK			(0x7ff << 16)
 #define VIDCON1_LINECNT_SHIFT			(16)
 #define VIDCON1_LINECNT_GET(_v)			(((_v) >> 16) & 0x7ff)
@@ -108,6 +130,14 @@
 
 #define VIDCON2_TVFMTSEL1_MASK			(0x3 << 12)
 #define VIDCON2_TVFMTSEL1_SHIFT			(12)
+#define VIDCON2_TVFMTSEL1_RGB			(0x0 << 12)
+#define VIDCON2_TVFMTSEL1_YUV422		(0x1 << 12)
+#define VIDCON2_TVFMTSEL1_YUV444		(0x2 << 12)
+#define VIDCON2_TVFMTSEL1_SHIFT			(12)
+#define VIDCON2_TVFMTSEL_SW			(1 << 14)
+#define VIDCON2_TVFORMATSEL_YUV444		(0x2 << 12)
+
+#define VIDCON2_TVFMTSEL1_MASK			(0x3 << 12)
 #define VIDCON2_TVFMTSEL1_RGB			(0x0 << 12)
 #define VIDCON2_TVFMTSEL1_YUV422		(0x1 << 12)
 #define VIDCON2_TVFMTSEL1_YUV444		(0x2 << 12)
@@ -165,8 +195,15 @@
 #define VIDTCON1_HSPW_SHIFT			(0)
 #define VIDTCON1_HSPW_LIMIT			(0xff)
 #define VIDTCON1_HSPW(_x)			((_x) << 0)
+#define VIDCON1_VCLK_MASK                       (0x3 << 9)
+#define VIDCON1_VCLK_HOLD                       (0x0 << 9)
+#define VIDCON1_VCLK_RUN                        (0x1 << 9)
 
+#ifdef CONFIG_FB_EXYNOS_FIMD_V8
+#define VIDTCON2				(0x20018)
+#else
 #define VIDTCON2				(0x18)
+#endif
 #define VIDTCON2_LINEVAL_E(_x)			((((_x) & 0x800) >> 11) << 23)
 #define VIDTCON2_LINEVAL_MASK			(0x7ff << 11)
 #define VIDTCON2_LINEVAL_SHIFT			(11)
@@ -186,6 +223,9 @@
 #define WINCONx_BYTSWP				(1 << 17)
 #define WINCONx_HAWSWP				(1 << 16)
 #define WINCONx_WSWP				(1 << 15)
+#define WINCONx_ENLOCAL_MASK			(0xf << 15)
+#define WINCONx_INRGB_RGB			(0 << 13)
+#define WINCONx_INRGB_YCBCR			(1 << 13)
 #define WINCONx_BURSTLEN_MASK			(0x3 << 9)
 #define WINCONx_BURSTLEN_SHIFT			(9)
 #define WINCONx_BURSTLEN_16WORD			(0x0 << 9)
@@ -205,6 +245,7 @@
 #define WINCON0_BPPMODE_24BPP_888		(0xb << 2)
 
 #define WINCON1_BLD_PIX				(1 << 6)
+#define WINCON1_BLD_PLANE			(0 << 6)
 
 #define WINCON1_ALPHA_SEL			(1 << 1)
 #define WINCON1_BPPMODE_MASK			(0xf << 2)
@@ -395,9 +436,17 @@
 #define WPALCON_W0PAL_16BPP_A555		(0x5 << 0)
 #define WPALCON_W0PAL_16BPP_565			(0x6 << 0)
 
+/* Clock gate mode control */
+#define REG_CLKGATE_MODE			(0x1b0)
+#define REG_CLKGATE_MODE_AUTO_CLOCK_GATE	(0 << 0)
+#define REG_CLKGATE_MODE_NON_CLOCK_GATE		(1 << 0)
+
 /* Blending equation control */
 #define BLENDCON				(0x260)
 #define BLENDCON_NEW_MASK			(1 << 0)
 #define BLENDCON_NEW_8BIT_ALPHA_VALUE		(1 << 0)
 #define BLENDCON_NEW_4BIT_ALPHA_VALUE		(0 << 0)
 
+/* Window alpha control */
+#define VIDW0ALPHA0				(0x200)
+#define VIDW0ALPHA1				(0x204)

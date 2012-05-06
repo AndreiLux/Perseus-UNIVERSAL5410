@@ -22,6 +22,18 @@
  */
 #define S3C_FB_MAX_WIN	(5)
 
+/* IOCTL commands */
+#define S3CFB_WIN_POSITION		_IOW('F', 203, \
+						struct s3c_fb_user_window)
+#define S3CFB_WIN_SET_PLANE_ALPHA	_IOW('F', 204, \
+						struct s3c_fb_user_plane_alpha)
+#define S3CFB_WIN_SET_CHROMA		_IOW('F', 205, \
+						struct s3c_fb_user_chroma)
+#define S3CFB_SET_VSYNC_INT		_IOW('F', 206, u32)
+
+#define S3CFB_GET_ION_USER_HANDLE       _IOWR('F', 208, \
+						struct s3c_fb_user_ion_client)
+
 /**
  * struct s3c_fb_pd_win - per window setup data
  * @win_mode: The display parameters to initialise (not for window 0)
