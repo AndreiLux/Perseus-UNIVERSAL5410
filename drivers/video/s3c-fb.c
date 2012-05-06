@@ -1560,6 +1560,34 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	int i, win, default_win;
 	int ret = 0;
 	u32 reg;
+	struct clk *clk_parent;
+	struct clk *sclk;
+
+	/* HACK: This should be added from pdata/device tree */
+	sclk = clk_get(&pdev->dev, "sclk_fimd");
+	if (IS_ERR(sclk))
+		return PTR_ERR(sclk);
+
+	clk_parent = clk_get(NULL, "mout_mpll_user");
+	if (IS_ERR(clk_parent)) {
+		clk_put(sclk);
+		return PTR_ERR(clk_parent);
+	}
+
+	if (clk_set_parent(sclk, clk_parent)) {
+		clk_put(sclk);
+		clk_put(clk_parent);
+		return PTR_ERR(sclk);
+	}
+
+	if (clk_set_rate(sclk, 800 * 1000 * 1000)) {
+		clk_put(sclk);
+		clk_put(clk_parent);
+		return PTR_ERR(sclk);
+	}
+
+	clk_put(sclk);
+	clk_put(clk_parent);
 
 	platid = platform_get_device_id(pdev);
 	fbdrv = (struct s3c_fb_driverdata *)platid->driver_data;
