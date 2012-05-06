@@ -27,6 +27,9 @@
 #include <mach/sysmmu.h>
 
 #include <plat/cpu.h>
+#include <plat/fb.h>
+#include <plat/gpio-cfg.h>
+#include <plat/regs-fb.h>
 #include <plat/regs-serial.h>
 #include <plat/regs-srom.h>
 #include <plat/backlight.h>
@@ -60,6 +63,90 @@ static void __init smsc911x_init(int ncs)
 		(0x1 << S5P_SROM_BCX__TACS__SHIFT),
 		S5P_SROM_BC0 + (ncs * 4));
 }
+
+static struct s3c_fb_pd_win smdk5250_fb_win0 = {
+	.win_mode = {
+		.left_margin	= 4,
+		.right_margin	= 4,
+		.upper_margin	= 4,
+		.lower_margin	= 4,
+		.hsync_len	= 4,
+		.vsync_len	= 4,
+		.xres		= 1280,
+		.yres		= 800,
+	},
+	.virtual_x		= 1280,
+	.virtual_y		= 800 * 2,
+	.width			= 223,
+	.height			= 125,
+	.max_bpp		= 32,
+	.default_bpp		= 24,
+};
+
+static struct s3c_fb_pd_win smdk5250_fb_win1 = {
+	.win_mode = {
+		.left_margin	= 4,
+		.right_margin	= 4,
+		.upper_margin	= 4,
+		.lower_margin	= 4,
+		.hsync_len	= 4,
+		.vsync_len	= 4,
+		.xres		= 1280,
+		.yres		= 800,
+	},
+	.virtual_x		= 1280,
+	.virtual_y		= 800 * 2,
+	.width			= 223,
+	.height			= 125,
+	.max_bpp		= 32,
+	.default_bpp		= 24,
+};
+
+static struct s3c_fb_pd_win smdk5250_fb_win2 = {
+	.win_mode = {
+		.left_margin	= 0x4,
+		.right_margin	= 0x4,
+		.upper_margin	= 4,
+		.lower_margin	= 4,
+		.hsync_len	= 4,
+		.vsync_len	= 4,
+		.xres		= 1280,
+		.yres		= 800,
+	},
+	.virtual_x		= 1280,
+	.virtual_y		= 800 * 2,
+	.width			= 223,
+	.height			= 125,
+	.max_bpp		= 32,
+	.default_bpp		= 24,
+};
+
+static void exynos_fimd_gpio_setup_24bpp(void)
+{
+	unsigned int reg = 0;
+
+	/*
+	 * Set DISP1BLK_CFG register for Display path selection
+	 * FIMD of DISP1_BLK Bypass selection : DISP1BLK_CFG[15]
+	 * ---------------------
+	 * 0 | MIE/MDNIE
+	 * 1 | FIMD : selected
+	 */
+	reg = __raw_readl(S3C_VA_SYS + 0x0214);
+	reg &= ~(1 << 15);	/* To save other reset values */
+	reg |= (1 << 15);
+	__raw_writel(reg, S3C_VA_SYS + 0x0214);
+}
+
+static struct s3c_fb_platdata smdk5250_lcd1_pdata __initdata = {
+	.win[0]		= &smdk5250_fb_win0,
+	.win[1]		= &smdk5250_fb_win1,
+	.win[2]		= &smdk5250_fb_win2,
+	.default_win	= 0,
+	.vidcon0	= VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB,
+	.vidcon1	= VIDCON1_INV_VCLK,
+	.setup_gpio	= exynos_fimd_gpio_setup_24bpp,
+};
 
 static struct platform_device exynos_drm_device = {
 	.name           = "exynos-drm",
@@ -280,6 +367,8 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 				"s5p-sysmmu.25", &platdata_sysmmu_gsc),
 	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x13EB0000,
 				"s5p-sysmmu.26", &platdata_sysmmu_gsc),
+	OF_DEV_AUXDATA("samsung,exynos5-fb", 0x14400000,
+				"exynos5-fb", &smdk5250_lcd1_pdata),
 	{},
 };
 

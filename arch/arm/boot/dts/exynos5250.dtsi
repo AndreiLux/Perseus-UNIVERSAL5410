@@ -534,4 +534,11 @@
 			#gpio-cells = <4>;
 		};
 	};
+
+	fimd {
+		compatible = "samsung,exynos5-fb";
+		interrupt-parent = <&combiner>;
+		reg = <0x14400000 0x40000>;
+		interrupts = <18 4>, <18 5>, <18 6>;
+	};
 };
