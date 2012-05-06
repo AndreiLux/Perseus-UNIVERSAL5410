@@ -623,4 +623,9 @@
 		interrupt-parent = <&wakeup_eint>;
 	};
 
+	mixer {
+		compatible = "samsung,s5p-mixer";
+		reg = <0x14450000 0x10000>;
+		interrupts = <0 94 0>;
+	};
 };
