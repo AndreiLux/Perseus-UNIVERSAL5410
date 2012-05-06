@@ -9,10 +9,11 @@
  * published by the Free Software Foundation.
 */
 
+#include <linux/gpio.h>
 #include <linux/of_platform.h>
 #include <linux/serial_core.h>
 #include <linux/smsc911x.h>
-
+#include <linux/delay.h>
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
 #include <mach/map.h>
@@ -20,6 +21,8 @@
 #include <plat/cpu.h>
 #include <plat/regs-serial.h>
 #include <plat/regs-srom.h>
+
+#include <video/platform_lcd.h>
 
 #include "common.h"
 
@@ -45,6 +48,54 @@ static void __init smsc911x_init(int ncs)
 		(0x1 << S5P_SROM_BCX__TACS__SHIFT),
 		S5P_SROM_BC0 + (ncs * 4));
 }
+
+static void mipi_lcd_set_power(struct plat_lcd_data *pd,
+			unsigned int power)
+{
+	/* reset */
+	gpio_request_one(EXYNOS5_GPX1(5), GPIOF_OUT_INIT_HIGH, "GPX1");
+
+	mdelay(20);
+	if (power) {
+		/* fire nRESET on power up */
+		gpio_set_value(EXYNOS5_GPX1(5), 0);
+		mdelay(20);
+		gpio_set_value(EXYNOS5_GPX1(5), 1);
+		mdelay(20);
+		gpio_free(EXYNOS5_GPX1(5));
+	} else {
+		/* fire nRESET on power off */
+		gpio_set_value(EXYNOS5_GPX1(5), 0);
+		mdelay(20);
+		gpio_set_value(EXYNOS5_GPX1(5), 1);
+		mdelay(20);
+		gpio_free(EXYNOS5_GPX1(5));
+	}
+	mdelay(20);
+	/*
+	 * Request lcd_bl_en GPIO for smdk5250_bl_notify().
+	 * TODO: Fix this so we are not at risk of requesting the GPIO
+	 * multiple times, this should be done with device tree, and
+	 * likely integrated into the plat-samsung/dev-backlight.c init.
+	 */
+	gpio_request_one(EXYNOS5_GPX3(0), GPIOF_OUT_INIT_LOW, "GPX3");
+}
+
+static int smdk5250_match_fb(struct plat_lcd_data *pd, struct fb_info *info)
+{
+	/* Don't call .set_power callback while unblanking */
+	return 0;
+}
+
+static struct plat_lcd_data smdk5250_mipi_lcd_data = {
+	.set_power	= mipi_lcd_set_power,
+	.match_fb	= smdk5250_match_fb,
+};
+
+static struct platform_device smdk5250_mipi_lcd = {
+	.name			= "platform-lcd",
+	.dev.platform_data	= &smdk5250_mipi_lcd_data,
+};
 
 /*
  * The following lookup table is used to override device names when devices
@@ -86,6 +137,10 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 	{},
 };
 
+static struct platform_device *smdk5250_devices[] __initdata = {
+	&smdk5250_mipi_lcd,
+};
+
 static void __init exynos5250_dt_map_io(void)
 {
 	exynos_init_io(NULL, 0);
@@ -99,6 +154,8 @@ static void __init exynos5250_dt_machine_init(void)
 
 	of_platform_populate(NULL, of_default_bus_match_table,
 				exynos5250_auxdata_lookup, NULL);
+
+	platform_add_devices(smdk5250_devices, ARRAY_SIZE(smdk5250_devices));
 }
 
 static char const *exynos5250_dt_compat[] __initdata = {
