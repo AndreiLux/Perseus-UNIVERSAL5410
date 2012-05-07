@@ -11,6 +11,7 @@
 
 #include <linux/gpio.h>
 #include <linux/of_platform.h>
+#include <linux/platform_data/dwc3-exynos.h>
 #include <linux/serial_core.h>
 #include <linux/smsc911x.h>
 #include <linux/delay.h>
@@ -398,6 +399,12 @@ static struct s5p_ehci_platdata smdk5250_ehci_pdata = {
 	.phy_exit = s5p_usb_phy_exit,
 };
 
+static struct dwc3_exynos_data smdk5250_xhci_pdata = {
+	.phy_type = S5P_USB_PHY_DRD,
+	.phy_init = s5p_usb_phy_init,
+	.phy_exit = s5p_usb_phy_exit,
+};
+
 /*
  * The following lookup table is used to override device names when devices
  * are registered from device tree. This is temporarily added to enable
@@ -474,6 +481,8 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 				"exynos-ohci", &smdk5250_ohci_pdata),
 	OF_DEV_AUXDATA("samsung,exynos-ehci", 0x12110000,
 				"s5p-ehci", &smdk5250_ehci_pdata),
+	OF_DEV_AUXDATA("samsung,exynos-xhci", 0x12000000,
+				"exynos-dwc3", &smdk5250_xhci_pdata),
 	{},
 };
 
