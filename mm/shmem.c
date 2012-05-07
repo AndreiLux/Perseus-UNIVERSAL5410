@@ -768,6 +768,31 @@ redirty:
 	return 0;
 }
 
+/*
+ * Some intel GPUs can't use those pages in the GTT, which results in
+ * graphics corruption. Sadly, it's impossible to prevent usage of those
+ * pages in the intel allocator.
+ *
+ * Instead, we test for those areas here and leak the corresponding pages.
+ *
+ * Some day, when the intel GPU memory is not backed by shmem any more,
+ * we'll be able to come up with a solution which is contained in i915.
+ */
+static bool i915_usable_page(struct page *page)
+{
+	dma_addr_t addr = page_to_phys(page);
+
+	if (unlikely((addr < 1 * 1024 * 1024) ||
+		(addr == 0x20050000) ||
+		(addr == 0x20110000) ||
+		(addr == 0x20130000) ||
+		(addr == 0x20138000) ||
+		(addr == 0x40004000)))
+		return false;
+
+	return true;
+}
+
 #ifdef CONFIG_NUMA
 #ifdef CONFIG_TMPFS
 static void shmem_show_mpol(struct seq_file *seq, struct mempolicy *mpol)
@@ -816,6 +841,7 @@ static struct page *shmem_alloc_page(gfp_t gfp,
 			struct shmem_inode_info *info, pgoff_t index)
 {
 	struct vm_area_struct pvma;
+	struct page *page;
 
 	/* Create a pseudo vma that just contains the policy */
 	pvma.vm_start = 0;
@@ -826,7 +852,11 @@ static struct page *shmem_alloc_page(gfp_t gfp,
 	/*
 	 * alloc_page_vma() will drop the shared policy reference
 	 */
-	return alloc_page_vma(gfp, &pvma, 0);
+	do {
+		page = alloc_page_vma(gfp, &pvma, 0);
+	} while (!i915_usable_page(page));
+
+	return page;
 }
 #else /* !CONFIG_NUMA */
 #ifdef CONFIG_TMPFS
@@ -844,7 +874,12 @@ static inline struct page *shmem_swapin(swp_entry_t swap, gfp_t gfp,
 static inline struct page *shmem_alloc_page(gfp_t gfp,
 			struct shmem_inode_info *info, pgoff_t index)
 {
-	return alloc_page(gfp);
+	struct page *page;
+	do {
+		page = alloc_page(gfp);
+	} while (!i915_usable_page(page));
+
+	return page;
 }
 #endif /* CONFIG_NUMA */
 
