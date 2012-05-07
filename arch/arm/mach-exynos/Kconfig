@@ -62,9 +62,9 @@ config SOC_EXYNOS5250
 	default y
 	depends on ARCH_EXYNOS5
 	select SAMSUNG_DMADEV
-	select ARM_CPU_SUSPEND if PM
+	select ARM_CPU_SUSPEND if (PM || CPU_IDLE)
 	select S5P_PM if PM
-	select S5P_SLEEP if PM
+	select S5P_SLEEP if (PM || CPU_IDLE)
 
 	help
 	  Enable EXYNOS5250 SoC support
