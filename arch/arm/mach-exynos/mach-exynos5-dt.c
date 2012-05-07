@@ -19,12 +19,14 @@
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
 #include <mach/map.h>
+#include <mach/ohci.h>
 
 #include <plat/cpu.h>
 #include <plat/regs-serial.h>
 #include <plat/regs-srom.h>
 #include <plat/backlight.h>
 #include <plat/devs.h>
+#include <plat/usb-phy.h>
 
 #include <video/platform_lcd.h>
 
@@ -196,6 +198,14 @@ static void __init exynos5250_dt_machine_init(void)
 	if (of_machine_is_compatible("samsung,smdk5250"))
 		smsc911x_init(1);
 	samsung_bl_set(&smdk5250_bl_gpio_info, &smdk5250_bl_data);
+
+	if (gpio_request_one(EXYNOS5_GPX2(6), GPIOF_OUT_INIT_HIGH,
+		"HOST_VBUS_CONTROL")) {
+		printk(KERN_ERR "failed to request gpio_host_vbus\n");
+	} else {
+		s3c_gpio_setpull(EXYNOS5_GPX2(6), S3C_GPIO_PULL_NONE);
+		gpio_free(EXYNOS5_GPX2(6));
+	}
 
 	of_platform_populate(NULL, of_default_bus_match_table,
 				exynos5250_auxdata_lookup, NULL);
