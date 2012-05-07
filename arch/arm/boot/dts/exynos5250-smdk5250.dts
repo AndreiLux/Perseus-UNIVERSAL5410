@@ -64,6 +64,70 @@
 			compatible = "samsung,s524ad0xd1";
 			reg = <0x50>;
 		};
+
+		max77686_pmic@9 {
+			compatible = "maxim,max77686-pmic";
+			interrupt-parent = <&wakeup_eint>;
+			interrupts = <26 0>;
+			reg = <0x9>;
+
+			max77686,buck_ramp_delay = <2>;		/* default */
+
+			voltage-regulators {
+				ldo11_reg: LDO11 {
+					regulator-name = "vdd_ldo11";
+					regulator-min-microvolt = <1900000>;
+					regulator-max-microvolt = <1900000>;
+					regulator-always-on;
+				};
+
+				ldo14_reg: LDO14 {
+					regulator-name = "vdd_ldo14";
+					regulator-min-microvolt = <1900000>;
+					regulator-max-microvolt = <1900000>;
+					regulator-always-on;
+				};
+
+				buck1_reg: BUCK1 {
+					regulator-name = "vdd_mif";
+					regulator-min-microvolt = <950000>;
+					regulator-max-microvolt = <1300000>;
+					regulator-always-on;
+					regulator-boot-on;
+				};
+
+				buck2_reg: BUCK2 {
+					regulator-name = "vdd_arm";
+					regulator-min-microvolt = <850000>;
+					regulator-max-microvolt = <1350000>;
+					regulator-always-on;
+					regulator-boot-on;
+				};
+
+				buck3_reg: BUCK3 {
+					regulator-name = "vdd_int";
+					regulator-min-microvolt = <900000>;
+					regulator-max-microvolt = <1200000>;
+					regulator-always-on;
+					regulator-boot-on;
+				};
+
+				buck4_reg: BUCK4 {
+					regulator-name = "vdd_g3d";
+					regulator-min-microvolt = <850000>;
+					regulator-max-microvolt = <1300000>;
+					regulator-boot-on;
+				};
+
+				buck8_reg: BUCK8 {
+					regulator-name = "vdd_ummc";
+					regulator-min-microvolt = <900000>;
+					regulator-max-microvolt = <3000000>;
+					regulator-always-on;
+					regulator-boot-on;
+				};
+			};
+		};
 	};
 
 	i2c@12C70000 {
