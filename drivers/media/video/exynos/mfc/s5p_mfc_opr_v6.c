@@ -213,7 +213,7 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 
 	/* Allocate only if memory from bank 1 is necessary */
 	if (ctx->port_a_size > 0) {
-		ctx->port_a_buf = s5p_mfc_mem_allocate(
+		ctx->port_a_buf = s5p_mfc_mem_alloc(
 				alloc_ctx, ctx->port_a_size);
 		if (IS_ERR(ctx->port_a_buf)) {
 			ctx->port_a_buf = 0;
@@ -221,7 +221,7 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 			       "Buf alloc for decoding failed (port A).\n");
 			return -ENOMEM;
 		}
-		ctx->port_a_phys = s5p_mfc_mem_dma_addr(ctx->port_a_buf);
+		ctx->port_a_phys = s5p_mfc_mem_daddr(ctx->port_a_buf);
 	}
 
 	mfc_debug_leave();
@@ -284,13 +284,13 @@ int s5p_mfc_alloc_instance_buffer(struct s5p_mfc_ctx *ctx)
 		alloc_ctx = dev->alloc_ctx_drm;
 	}
 
-	ctx->ctx.alloc = s5p_mfc_mem_allocate(alloc_ctx, ctx->ctx_buf_size);
+	ctx->ctx.alloc = s5p_mfc_mem_alloc(alloc_ctx, ctx->ctx_buf_size);
 	if (IS_ERR(ctx->ctx.alloc)) {
 		mfc_err("Allocating context buffer failed.\n");
 		return PTR_ERR(ctx->ctx.alloc);
 	}
 
-	ctx->ctx.ofs = s5p_mfc_mem_dma_addr(ctx->ctx.alloc);
+	ctx->ctx.ofs = s5p_mfc_mem_daddr(ctx->ctx.alloc);
 	ctx->ctx.virt = s5p_mfc_mem_vaddr(ctx->ctx.alloc);
 	if (!ctx->ctx.virt) {
 		s5p_mfc_mem_free(ctx->ctx.alloc);
@@ -303,7 +303,7 @@ int s5p_mfc_alloc_instance_buffer(struct s5p_mfc_ctx *ctx)
 	}
 
 	memset(ctx->ctx.virt, 0, ctx->ctx_buf_size);
-	s5p_mfc_cache_clean_fw(ctx->ctx.alloc);
+	s5p_mfc_cache_clean_priv(ctx->ctx.alloc);
 	/*
 	ctx->ctx.dma = dma_map_single(ctx->dev->v4l2_dev.dev,
 					  ctx->ctx.virt, ctx->ctx_buf_size,
@@ -346,13 +346,13 @@ int s5p_mfc_alloc_dev_context_buffer(struct s5p_mfc_dev *dev)
 #ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
 	alloc_ctx = dev->alloc_ctx_drm;
 #endif
-	dev->ctx_buf.alloc = s5p_mfc_mem_allocate(alloc_ctx, buf_size->dev_ctx);
+	dev->ctx_buf.alloc = s5p_mfc_mem_alloc(alloc_ctx, buf_size->dev_ctx);
 	if (IS_ERR(dev->ctx_buf.alloc)) {
 		mfc_err("Allocating DESC buffer failed.\n");
 		return PTR_ERR(dev->ctx_buf.alloc);
 	}
 
-	dev->ctx_buf.ofs = s5p_mfc_mem_dma_addr(dev->ctx_buf.alloc);
+	dev->ctx_buf.ofs = s5p_mfc_mem_daddr(dev->ctx_buf.alloc);
 #ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
 	iovmm_map_oto(&dev->plat_dev->dev, dev->ctx_buf.ofs,
 			buf_size->dev_ctx);
@@ -368,7 +368,7 @@ int s5p_mfc_alloc_dev_context_buffer(struct s5p_mfc_dev *dev)
 	}
 
 	memset(dev->ctx_buf.virt, 0, buf_size->dev_ctx);
-	s5p_mfc_cache_clean_fw(dev->ctx_buf.alloc);
+	s5p_mfc_cache_clean_priv(dev->ctx_buf.alloc);
 
 	mfc_debug_leave();
 
@@ -435,7 +435,7 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx)
 }
 
 /* Set registers for decoding stream buffer */
-int s5p_mfc_set_dec_stream_buffer(struct s5p_mfc_ctx *ctx, int buf_addr,
+int s5p_mfc_set_dec_stream_buffer(struct s5p_mfc_ctx *ctx, dma_addr_t buf_addr,
 		  unsigned int start_num_byte, unsigned int strm_size)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
@@ -499,10 +499,10 @@ int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 		buf_queue = &dec->dpb_queue;
 	i = 0;
 	list_for_each_entry(buf, buf_queue, list) {
-		mfc_debug(2, "Luma %x\n", buf->cookie.raw.luma);
-		WRITEL(buf->cookie.raw.luma, S5P_FIMV_D_LUMA_DPB + i * 4);
-		mfc_debug(2, "\tChroma %x\n", buf->cookie.raw.chroma);
-		WRITEL(buf->cookie.raw.chroma, S5P_FIMV_D_CHROMA_DPB + i * 4);
+		mfc_debug(2, "Luma %x\n", buf->planes.raw.luma);
+		WRITEL(buf->planes.raw.luma, S5P_FIMV_D_LUMA_DPB + i * 4);
+		mfc_debug(2, "\tChroma %x\n", buf->planes.raw.chroma);
+		WRITEL(buf->planes.raw.chroma, S5P_FIMV_D_CHROMA_DPB + i * 4);
 
 		if ((i == 0) && (!ctx->is_drm)) {
 			dpb_vir = vb2_plane_vaddr(&buf->vb, 0);
@@ -553,7 +553,7 @@ int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 
 /* Set registers for encoding stream buffer */
 int s5p_mfc_set_enc_stream_buffer(struct s5p_mfc_ctx *ctx,
-		unsigned long addr, unsigned int size)
+		dma_addr_t addr, unsigned int size)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 
@@ -561,25 +561,25 @@ int s5p_mfc_set_enc_stream_buffer(struct s5p_mfc_ctx *ctx,
 	WRITEL(size, S5P_FIMV_E_STREAM_BUFFER_SIZE);
 
 	mfc_debug(2, "stream buf addr: 0x%08lx, size: 0x%d",
-		addr, size);
+		(unsigned long)addr, size);
 
 	return 0;
 }
 
 void s5p_mfc_set_enc_frame_buffer(struct s5p_mfc_ctx *ctx,
-		unsigned long y_addr, unsigned long c_addr)
+		dma_addr_t y_addr, dma_addr_t c_addr)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 
 	WRITEL(y_addr, S5P_FIMV_E_SOURCE_LUMA_ADDR); /* 256B align */
 	WRITEL(c_addr, S5P_FIMV_E_SOURCE_CHROMA_ADDR);
 
-	mfc_debug(2, "enc src y buf addr: 0x%08lx", y_addr);
-	mfc_debug(2, "enc src c buf addr: 0x%08lx", c_addr);
+	mfc_debug(2, "enc src y buf addr: 0x%08lx", (unsigned long)y_addr);
+	mfc_debug(2, "enc src c buf addr: 0x%08lx", (unsigned long)c_addr);
 }
 
 void s5p_mfc_get_enc_frame_buffer(struct s5p_mfc_ctx *ctx,
-		unsigned long *y_addr, unsigned long *c_addr)
+		dma_addr_t *y_addr, dma_addr_t *c_addr)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	unsigned long enc_recon_y_addr, enc_recon_c_addr;
@@ -1491,7 +1491,8 @@ static inline void s5p_mfc_run_dec_last_frames(struct s5p_mfc_ctx *ctx)
 	/* Get the next source buffer */
 	temp_vb = list_entry(ctx->src_queue.next, struct s5p_mfc_buf, list);
 	temp_vb->used = 1;
-	s5p_mfc_set_dec_stream_buffer(ctx, mfc_plane_cookie(&temp_vb->vb, 0), 0, 0);
+	s5p_mfc_set_dec_stream_buffer(ctx,
+			s5p_mfc_mem_plane_addr(ctx, &temp_vb->vb, 0), 0, 0);
 	spin_unlock_irqrestore(&dev->irqlock, flags);
 
 	dev->curr_ctx = ctx->num;
@@ -1523,9 +1524,11 @@ static inline int s5p_mfc_run_dec_frame(struct s5p_mfc_ctx *ctx)
 	temp_vb = list_entry(ctx->src_queue.next, struct s5p_mfc_buf, list);
 	temp_vb->used = 1;
 	mfc_debug(2, "Temp vb: %p\n", temp_vb);
-	mfc_debug(2, "Src Addr: %08lx\n", mfc_plane_cookie(&temp_vb->vb, 0));
-	s5p_mfc_set_dec_stream_buffer(ctx, mfc_plane_cookie(&temp_vb->vb, 0),
-				0, temp_vb->vb.v4l2_planes[0].bytesused);
+	mfc_debug(2, "Src Addr: 0x%08lx\n",
+		(unsigned long)s5p_mfc_mem_plane_addr(ctx, &temp_vb->vb, 0));
+	s5p_mfc_set_dec_stream_buffer(ctx,
+			s5p_mfc_mem_plane_addr(ctx, &temp_vb->vb, 0),
+			0, temp_vb->vb.v4l2_planes[0].bytesused);
 	spin_unlock_irqrestore(&dev->irqlock, flags);
 
 	index = temp_vb->vb.v4l2_buf.index;
@@ -1550,7 +1553,7 @@ static inline int s5p_mfc_run_enc_frame(struct s5p_mfc_ctx *ctx)
 	unsigned long flags;
 	struct s5p_mfc_buf *dst_mb;
 	struct s5p_mfc_buf *src_mb;
-	unsigned long src_y_addr, src_c_addr, dst_addr;
+	dma_addr_t src_y_addr, src_c_addr, dst_addr;
 	/*
 	unsigned int src_y_size, src_c_size;
 	*/
@@ -1573,17 +1576,17 @@ static inline int s5p_mfc_run_enc_frame(struct s5p_mfc_ctx *ctx)
 
 	src_mb = list_entry(ctx->src_queue.next, struct s5p_mfc_buf, list);
 	src_mb->used = 1;
-	src_y_addr = mfc_plane_cookie(&src_mb->vb, 0);
-	src_c_addr = mfc_plane_cookie(&src_mb->vb, 1);
+	src_y_addr = s5p_mfc_mem_plane_addr(ctx, &src_mb->vb, 0);
+	src_c_addr = s5p_mfc_mem_plane_addr(ctx, &src_mb->vb, 1);
 
-	mfc_debug(2, "enc src y addr: 0x%08lx", src_y_addr);
-	mfc_debug(2, "enc src c addr: 0x%08lx", src_c_addr);
+	mfc_debug(2, "enc src y addr: 0x%08lx", (unsigned long)src_y_addr);
+	mfc_debug(2, "enc src c addr: 0x%08lx", (unsigned long)src_c_addr);
 
 	s5p_mfc_set_enc_frame_buffer(ctx, src_y_addr, src_c_addr);
 
 	dst_mb = list_entry(ctx->dst_queue.next, struct s5p_mfc_buf, list);
 	dst_mb->used = 1;
-	dst_addr = mfc_plane_cookie(&dst_mb->vb, 0);
+	dst_addr = s5p_mfc_mem_plane_addr(ctx, &dst_mb->vb, 0);
 	dst_size = vb2_plane_size(&dst_mb->vb, 0);
 
 	s5p_mfc_set_enc_stream_buffer(ctx, dst_addr, dst_size);
@@ -1612,12 +1615,13 @@ static inline void s5p_mfc_run_init_dec(struct s5p_mfc_ctx *ctx)
 	mfc_debug(2, "Preparing to init decoding.\n");
 	temp_vb = list_entry(ctx->src_queue.next, struct s5p_mfc_buf, list);
 	mfc_debug(2, "Header size: %d\n", temp_vb->vb.v4l2_planes[0].bytesused);
-	s5p_mfc_set_dec_stream_buffer(ctx, mfc_plane_cookie(&temp_vb->vb, 0),
-				0, temp_vb->vb.v4l2_planes[0].bytesused);
+	s5p_mfc_set_dec_stream_buffer(ctx,
+			s5p_mfc_mem_plane_addr(ctx, &temp_vb->vb, 0),
+			0, temp_vb->vb.v4l2_planes[0].bytesused);
 	spin_unlock_irqrestore(&dev->irqlock, flags);
 	dev->curr_ctx = ctx->num;
-	mfc_debug(2, "paddr: %08x\n",
-			(int)phys_to_virt(mfc_plane_cookie(&temp_vb->vb, 0)));
+	mfc_debug(2, "Header addr: 0x%08lx\n",
+		(unsigned long)s5p_mfc_mem_plane_addr(ctx, &temp_vb->vb, 0));
 	s5p_mfc_clean_ctx_int_flags(ctx);
 	s5p_mfc_init_decode(ctx);
 }
@@ -1627,21 +1631,21 @@ static inline void s5p_mfc_run_init_enc(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_dev *dev = ctx->dev;
 	unsigned long flags;
 	struct s5p_mfc_buf *dst_mb;
-	unsigned long dst_addr;
+	dma_addr_t dst_addr;
 	unsigned int dst_size;
 
 	spin_lock_irqsave(&dev->irqlock, flags);
 
 	dst_mb = list_entry(ctx->dst_queue.next, struct s5p_mfc_buf, list);
-	dst_addr = mfc_plane_cookie(&dst_mb->vb, 0);
+	dst_addr = s5p_mfc_mem_plane_addr(ctx, &dst_mb->vb, 0);
 	dst_size = vb2_plane_size(&dst_mb->vb, 0);
 	s5p_mfc_set_enc_stream_buffer(ctx, dst_addr, dst_size);
 
 	spin_unlock_irqrestore(&dev->irqlock, flags);
 
 	dev->curr_ctx = ctx->num;
-	mfc_debug(2, "paddr: %08x\n",
-			(int)phys_to_virt(mfc_plane_cookie(&dst_mb->vb, 0)));
+	mfc_debug(2, "Header addr: 0x%08lx\n",
+		(unsigned long)s5p_mfc_mem_plane_addr(ctx, &dst_mb->vb, 0));
 	s5p_mfc_clean_ctx_int_flags(ctx);
 	s5p_mfc_init_encode(ctx);
 }

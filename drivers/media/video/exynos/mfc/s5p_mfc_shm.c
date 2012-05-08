@@ -30,10 +30,10 @@ int s5p_mfc_init_shm(struct s5p_mfc_ctx *ctx)
 	}
 
 	/* shm_ofs only keeps the offset from base (port a) */
-	ctx->shm.ofs = s5p_mfc_mem_cookie(shm_alloc_ctx, ctx->shm.alloc) - dev->port_a;
-	ctx->shm.virt = s5p_mfc_mem_vaddr(shm_alloc_ctx, ctx->shm.alloc);
+	ctx->shm.ofs = s5p_mfc_mem_daddr(ctx->shm.alloc) - dev->port_a;
+	ctx->shm.virt = s5p_mfc_mem_vaddr(ctx->shm.alloc);
 	if (!ctx->shm.virt) {
-		s5p_mfc_mem_put(shm_alloc_ctx, ctx->shm.alloc);
+		s5p_mfc_mem_free(ctx->shm.alloc);
 		ctx->shm.ofs = 0;
 		ctx->shm.alloc = NULL;
 
@@ -42,7 +42,7 @@ int s5p_mfc_init_shm(struct s5p_mfc_ctx *ctx)
 	}
 
 	memset((void *)ctx->shm.virt, 0, buf_size->shared_buf);
-	s5p_mfc_cache_clean(ctx->shm.alloc);
+	s5p_mfc_cache_clean_priv(ctx->shm.alloc);
 
 	mfc_debug(2, "shm info addr: 0x%08x, phys: 0x%08lx\n",
 		 (unsigned int)ctx->shm.virt, ctx->shm.ofs);

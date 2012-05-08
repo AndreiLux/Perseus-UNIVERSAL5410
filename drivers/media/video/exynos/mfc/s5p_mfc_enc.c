@@ -1379,17 +1379,19 @@ static void cleanup_ref_queue(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
 	struct s5p_mfc_buf *mb_entry;
-	unsigned long mb_y_addr, mb_c_addr;
+	dma_addr_t mb_y_addr, mb_c_addr;
 
 	/* move buffers in ref queue to src queue */
 	while (!list_empty(&enc->ref_queue)) {
 		mb_entry = list_entry((&enc->ref_queue)->next, struct s5p_mfc_buf, list);
 
-		mb_y_addr = mfc_plane_cookie(&mb_entry->vb, 0);
-		mb_c_addr = mfc_plane_cookie(&mb_entry->vb, 1);
+		mb_y_addr = s5p_mfc_mem_plane_addr(ctx, &mb_entry->vb, 0);
+		mb_c_addr = s5p_mfc_mem_plane_addr(ctx, &mb_entry->vb, 1);
 
-		mfc_debug(2, "enc ref y addr: 0x%08lx", mb_y_addr);
-		mfc_debug(2, "enc ref c addr: 0x%08lx", mb_c_addr);
+		mfc_debug(2, "enc ref y addr: 0x%08lx",
+				(unsigned long)mb_y_addr);
+		mfc_debug(2, "enc ref c addr: 0x%08lx",
+				(unsigned long)mb_c_addr);
 
 		list_del(&mb_entry->list);
 		enc->ref_queue_cnt--;
@@ -1409,14 +1411,14 @@ static int enc_pre_seq_start(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_buf *dst_mb;
-	unsigned long dst_addr;
+	dma_addr_t dst_addr;
 	unsigned int dst_size;
 	unsigned long flags;
 
 	spin_lock_irqsave(&dev->irqlock, flags);
 
 	dst_mb = list_entry(ctx->dst_queue.next, struct s5p_mfc_buf, list);
-	dst_addr = mfc_plane_cookie(&dst_mb->vb, 0);
+	dst_addr = s5p_mfc_mem_plane_addr(ctx, &dst_mb->vb, 0);
 	dst_size = vb2_plane_size(&dst_mb->vb, 0);
 	s5p_mfc_set_enc_stream_buffer(ctx, dst_addr, dst_size);
 
@@ -1473,31 +1475,31 @@ static int enc_pre_frame_start(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_buf *dst_mb;
 	struct s5p_mfc_buf *src_mb;
 	unsigned long flags;
-	unsigned long src_y_addr, src_c_addr, dst_addr;
+	dma_addr_t src_y_addr, src_c_addr, dst_addr;
 	unsigned int dst_size;
 
 	spin_lock_irqsave(&dev->irqlock, flags);
 
 	src_mb = list_entry(ctx->src_queue.next, struct s5p_mfc_buf, list);
-	src_y_addr = mfc_plane_cookie(&src_mb->vb, 0);
-	src_c_addr = mfc_plane_cookie(&src_mb->vb, 1);
+	src_y_addr = s5p_mfc_mem_plane_addr(ctx, &src_mb->vb, 0);
+	src_c_addr = s5p_mfc_mem_plane_addr(ctx, &src_mb->vb, 1);
 	s5p_mfc_set_enc_frame_buffer(ctx, src_y_addr, src_c_addr);
 
 	spin_unlock_irqrestore(&dev->irqlock, flags);
 
-	mfc_debug(2, "enc src y addr: 0x%08lx", src_y_addr);
-	mfc_debug(2, "enc src c addr: 0x%08lx", src_c_addr);
+	mfc_debug(2, "enc src y addr: 0x%08lx",	(unsigned long)src_y_addr);
+	mfc_debug(2, "enc src c addr: 0x%08lx", (unsigned long)src_c_addr);
 
 	spin_lock_irqsave(&dev->irqlock, flags);
 
 	dst_mb = list_entry(ctx->dst_queue.next, struct s5p_mfc_buf, list);
-	dst_addr = mfc_plane_cookie(&dst_mb->vb, 0);
+	dst_addr = s5p_mfc_mem_plane_addr(ctx, &dst_mb->vb, 0);
 	dst_size = vb2_plane_size(&dst_mb->vb, 0);
 	s5p_mfc_set_enc_stream_buffer(ctx, dst_addr, dst_size);
 
 	spin_unlock_irqrestore(&dev->irqlock, flags);
 
-	mfc_debug(2, "enc dst addr: 0x%08lx", dst_addr);
+	mfc_debug(2, "enc dst addr: 0x%08lx", (unsigned long)dst_addr);
 
 	return 0;
 }
@@ -1507,8 +1509,8 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
 	struct s5p_mfc_buf *mb_entry;
-	unsigned long enc_y_addr, enc_c_addr;
-	unsigned long mb_y_addr, mb_c_addr;
+	dma_addr_t enc_y_addr, enc_c_addr;
+	dma_addr_t mb_y_addr, mb_c_addr;
 	int slice_type;
 	unsigned int strm_size;
 	unsigned int pic_count;
@@ -1534,15 +1536,21 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 
 		s5p_mfc_get_enc_frame_buffer(ctx, &enc_y_addr, &enc_c_addr);
 
-		mfc_debug(2, "encoded y addr: 0x%08lx", enc_y_addr);
-		mfc_debug(2, "encoded c addr: 0x%08lx", enc_c_addr);
+		mfc_debug(2, "encoded y addr: 0x%08lx",
+				(unsigned long)enc_y_addr);
+		mfc_debug(2, "encoded c addr: 0x%08lx",
+				(unsigned long)enc_c_addr);
 
 		list_for_each_entry(mb_entry, &ctx->src_queue, list) {
-			mb_y_addr = mfc_plane_cookie(&mb_entry->vb, 0);
-			mb_c_addr = mfc_plane_cookie(&mb_entry->vb, 1);
+			mb_y_addr = s5p_mfc_mem_plane_addr(ctx,
+						&mb_entry->vb, 0);
+			mb_c_addr = s5p_mfc_mem_plane_addr(ctx,
+						&mb_entry->vb, 1);
 
-			mfc_debug(2, "enc src y addr: 0x%08lx", mb_y_addr);
-			mfc_debug(2, "enc src c addr: 0x%08lx", mb_c_addr);
+			mfc_debug(2, "enc src y addr: 0x%08lx",
+					(unsigned long)mb_y_addr);
+			mfc_debug(2, "enc src c addr: 0x%08lx",
+					(unsigned long)mb_c_addr);
 
 			mb_entry = list_entry(ctx->src_queue.next, struct s5p_mfc_buf, list);
 			index = mb_entry->vb.v4l2_buf.index;
@@ -1559,11 +1567,15 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 		}
 
 		list_for_each_entry(mb_entry, &enc->ref_queue, list) {
-			mb_y_addr = mfc_plane_cookie(&mb_entry->vb, 0);
-			mb_c_addr = mfc_plane_cookie(&mb_entry->vb, 1);
+			mb_y_addr = s5p_mfc_mem_plane_addr(ctx,
+						&mb_entry->vb, 0);
+			mb_c_addr = s5p_mfc_mem_plane_addr(ctx,
+						&mb_entry->vb, 1);
 
-			mfc_debug(2, "enc ref y addr: 0x%08lx", mb_y_addr);
-			mfc_debug(2, "enc ref c addr: 0x%08lx", mb_c_addr);
+			mfc_debug(2, "enc ref y addr: 0x%08lx",
+					(unsigned long)mb_y_addr);
+			mfc_debug(2, "enc ref c addr: 0x%08lx",
+					(unsigned long)mb_c_addr);
 
 			if ((enc_y_addr == mb_y_addr) && (enc_c_addr == mb_c_addr)) {
 				list_del(&mb_entry->list);
@@ -2787,6 +2799,8 @@ static const struct v4l2_ioctl_ops s5p_mfc_enc_ioctl_ops = {
 
 static int check_vb_with_fmt(struct s5p_mfc_fmt *fmt, struct vb2_buffer *vb)
 {
+	struct vb2_queue *vq = vb->vb2_queue;
+	struct s5p_mfc_ctx *ctx = vq->drv_priv;
 	int i;
 
 	if (!fmt)
@@ -2798,14 +2812,14 @@ static int check_vb_with_fmt(struct s5p_mfc_fmt *fmt, struct vb2_buffer *vb)
 	}
 
 	for (i = 0; i < fmt->num_planes; i++) {
-		if (!mfc_plane_cookie(vb, i)) {
+		if (!s5p_mfc_mem_plane_addr(ctx, vb, i)) {
 			mfc_err("failed to get plane cookie\n");
 			return -EINVAL;
 		}
 
 		mfc_debug(2, "index: %d, plane[%d] cookie: 0x%08lx",
-				vb->v4l2_buf.index, i,
-				mfc_plane_cookie(vb, i));
+			vb->v4l2_buf.index, i,
+			(unsigned long)s5p_mfc_mem_plane_addr(ctx, vb, i));
 	}
 
 	return 0;
@@ -2921,7 +2935,7 @@ static int s5p_mfc_buf_init(struct vb2_buffer *vb)
 		if (ret < 0)
 			return ret;
 
-		buf->cookie.stream = mfc_plane_cookie(vb, 0);
+		buf->planes.stream = s5p_mfc_mem_plane_addr(ctx, vb, 0);
 
 		if (call_cop(ctx, init_buf_ctrls, ctx, MFC_CTRL_TYPE_DST,
 					vb->v4l2_buf.index) < 0)
@@ -2932,8 +2946,8 @@ static int s5p_mfc_buf_init(struct vb2_buffer *vb)
 		if (ret < 0)
 			return ret;
 
-		buf->cookie.raw.luma = mfc_plane_cookie(vb, 0);
-		buf->cookie.raw.chroma = mfc_plane_cookie(vb, 1);
+		buf->planes.raw.luma = s5p_mfc_mem_plane_addr(ctx, vb, 0);
+		buf->planes.raw.chroma = s5p_mfc_mem_plane_addr(ctx, vb, 1);
 
 		if (call_cop(ctx, init_buf_ctrls, ctx, MFC_CTRL_TYPE_SRC,
 					vb->v4l2_buf.index) < 0)
@@ -3128,8 +3142,8 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 		buf->used = 0;
 		mfc_debug(2, "dst queue: %p\n", &ctx->dst_queue);
 		mfc_debug(2, "adding to dst: %p (%08lx, %08x)\n", vb,
-			mfc_plane_cookie(vb, 0),
-			buf->cookie.stream);
+			(unsigned long)s5p_mfc_mem_plane_addr(ctx, vb, 0),
+			buf->planes.stream);
 
 		/* Mark destination as available for use by MFC */
 		spin_lock_irqsave(&dev->irqlock, flags);
@@ -3140,10 +3154,10 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 		buf->used = 0;
 		mfc_debug(2, "src queue: %p\n", &ctx->src_queue);
 		mfc_debug(2, "adding to src: %p (%08lx, %08lx, %08x, %08x)\n", vb,
-			mfc_plane_cookie(vb, 0),
-			mfc_plane_cookie(vb, 1),
-			buf->cookie.raw.luma,
-			buf->cookie.raw.chroma);
+			(unsigned long)s5p_mfc_mem_plane_addr(ctx, vb, 0),
+			(unsigned long)s5p_mfc_mem_plane_addr(ctx, vb, 1),
+			buf->planes.raw.luma,
+			buf->planes.raw.chroma);
 
 		spin_lock_irqsave(&dev->irqlock, flags);
 

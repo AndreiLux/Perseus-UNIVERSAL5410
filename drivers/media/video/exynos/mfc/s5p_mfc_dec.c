@@ -1975,14 +1975,14 @@ static int s5p_mfc_buf_init(struct vb2_buffer *vb)
 			return 0;
 		}
 		for (i = 0; i <= ctx->src_fmt->num_planes ; i++) {
-			if (mfc_plane_cookie(vb, i) == 0) {
+			if (s5p_mfc_mem_plane_addr(ctx, vb, i) == 0) {
 				mfc_err("Plane mem not allocated.\n");
 				return -EINVAL;
 			}
 		}
 
-		buf->cookie.raw.luma = mfc_plane_cookie(vb, 0);
-		buf->cookie.raw.chroma = mfc_plane_cookie(vb, 1);
+		buf->planes.raw.luma = s5p_mfc_mem_plane_addr(ctx, vb, 0);
+		buf->planes.raw.chroma = s5p_mfc_mem_plane_addr(ctx, vb, 1);
 
 		spin_lock_irqsave(&dev->irqlock, flags);
 		list_add_tail(&buf->list, &dec->dpb_queue);
@@ -1993,11 +1993,11 @@ static int s5p_mfc_buf_init(struct vb2_buffer *vb)
 					vb->v4l2_buf.index) < 0)
 			mfc_err("failed in init_buf_ctrls\n");
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		if (mfc_plane_cookie(vb, 0)  == 0) {
+		if (s5p_mfc_mem_plane_addr(ctx, vb, 0) == 0) {
 			mfc_err("Plane memory not allocated.\n");
 			return -EINVAL;
 		}
-		buf->cookie.stream = mfc_plane_cookie(vb, 0);
+		buf->planes.stream = s5p_mfc_mem_plane_addr(ctx, vb, 0);
 
 		if (call_cop(ctx, init_buf_ctrls, ctx, MFC_CTRL_TYPE_SRC,
 					vb->v4l2_buf.index) < 0)
@@ -2185,9 +2185,9 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 	if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		buf->used = 0;
 		mfc_debug(2, "Src queue: %p\n", &ctx->src_queue);
-		mfc_debug(2, "Adding to src: %p (%08lx, %08x)\n", vb,
-				mfc_plane_cookie(vb, 0),
-				buf->cookie.stream);
+		mfc_debug(2, "Adding to src: %p (0x%08lx, 0x%08lx)\n", vb,
+			(unsigned long)s5p_mfc_mem_plane_addr(ctx, vb, 0),
+			(unsigned long)buf->planes.stream);
 		spin_lock_irqsave(&dev->irqlock, flags);
 		list_add_tail(&buf->list, &ctx->src_queue);
 		ctx->src_queue_cnt++;
@@ -2195,8 +2195,8 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		buf->used = 0;
 		mfc_debug(2, "Dst queue: %p\n", &ctx->dst_queue);
-		mfc_debug(2, "Adding to dst: %p (%lx)\n", vb,
-						  mfc_plane_cookie(vb, 0));
+		mfc_debug(2, "Adding to dst: %p (0x%08lx)\n", vb,
+			(unsigned long)s5p_mfc_mem_plane_addr(ctx, vb, 0));
 		mfc_debug(2, "ADDING Flag before: %lx (%d)\n",
 					dec->dpb_status, vb->v4l2_buf.index);
 		/* Mark destination as available for use by MFC */
@@ -2211,7 +2211,8 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 				}
 			}
 			if (remove_flag == 0) {
-				mfc_err("Can't find buf(0x%x)\n", buf->cookie.raw.luma);
+				mfc_err("Can't find buf(0x%08lx)\n",
+					(unsigned long)buf->planes.raw.luma);
 				spin_unlock_irqrestore(&dev->irqlock, flags);
 				return;
 			}

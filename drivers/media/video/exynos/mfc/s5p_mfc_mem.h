@@ -39,26 +39,29 @@
 #define MFC_CMA_BANK2_ALIGN	0x2000	/* 8KB */
 #define MFC_CMA_FW_ALIGN	0x20000	/* 128KB */
 
-#define mfc_plane_cookie(v, n)	vb2_cma_phys_plane_paddr(v, n)
+#define s5p_mfc_mem_plane_addr(c, v, n)					\
+		do {							\
+			(dma_addr_t)vb2_cma_phys_plane_paddr(v, n)	\
+		} while (0)
 
-static inline void *s5p_mfc_mem_allocate(void *a, unsigned int s)
+static inline void *s5p_mfc_mem_alloc(void *alloc_ctx, unsigned long size)
 {
-	return vb2_cma_phys_memops.alloc(a, s);
+	return vb2_cma_phys_memops.alloc(alloc_ctx, size);
 }
 
-static inline size_t s5p_mfc_mem_dma_addr(void *b)
+static inline void s5p_mfc_mem_free(void *vb_priv)
 {
-	return (size_t)vb2_cma_phys_memops.cookie(b);
+	vb2_cma_phys_memops.put(vb_priv);
 }
 
-static inline void s5p_mfc_mem_free(void *b)
+static inline dma_addr_t s5p_mfc_mem_daddr(void *vb_priv)
 {
-	vb2_cma_phys_memops.put(b);
+	return (dma_addr_t)vb2_cma_phys_memops.cookie(vb_priv);
 }
 
-static inline void *s5p_mfc_mem_vaddr(void *b)
+static inline void *s5p_mfc_mem_vaddr(void *vb_priv)
 {
-	return vb2_cma_phys_memops.vaddr(b);
+	return vb2_cma_phys_memops.vaddr(vb_priv);
 }
 #elif defined(CONFIG_VIDEOBUF2_ION)
 #define MFC_ALLOC_CTX_NUM	2
@@ -73,33 +76,34 @@ static inline void *s5p_mfc_mem_vaddr(void *b)
 #define MFC_CMA_BANK2_ALLOC_CTX MFC_BANK_B_ALLOC_CTX
 #define MFC_CMA_FW_ALLOC_CTX	MFC_BANK_A_ALLOC_CTX
 
-static inline unsigned long mfc_plane_cookie(
-					struct vb2_buffer *v, unsigned int n)
+static inline dma_addr_t s5p_mfc_mem_plane_addr(
+	struct s5p_mfc_ctx *c, struct vb2_buffer *v, unsigned int n)
 {
 	void *cookie = vb2_plane_cookie(v, n);
-	dma_addr_t dva;
+	dma_addr_t addr = 0;
 
-	WARN_ON(vb2_ion_dma_address(cookie, &dva) != 0);
-	return (unsigned long)dva;
+	WARN_ON(vb2_ion_dma_address(cookie, &addr) != 0);
+
+	return (unsigned long)addr;
 }
 
-static inline void *s5p_mfc_mem_allocate(void *alloc_ctx, unsigned int size)
+static inline void *s5p_mfc_mem_alloc(void *alloc_ctx, unsigned int size)
 {
 	return vb2_ion_private_alloc(alloc_ctx, size);
-}
-
-static inline dma_addr_t s5p_mfc_mem_dma_addr(void *cookie)
-{
-	dma_addr_t dva = 0;
-
-	WARN_ON(vb2_ion_dma_address(cookie, &dva) != 0);
-
-	return dva;
 }
 
 static inline void s5p_mfc_mem_free(void *cookie)
 {
 	vb2_ion_private_free(cookie);
+}
+
+static inline dma_addr_t s5p_mfc_mem_daddr(void *cookie)
+{
+	dma_addr_t addr = 0;
+
+	WARN_ON(vb2_ion_dma_address(cookie, &addr) != 0);
+
+	return addr;
 }
 
 static inline void *s5p_mfc_mem_vaddr(void *cookie)
@@ -112,7 +116,8 @@ struct vb2_mem_ops *s5p_mfc_mem_ops(void);
 void **s5p_mfc_mem_init_multi(struct device *dev, unsigned int ctx_num);
 void s5p_mfc_mem_cleanup_multi(void **alloc_ctxes, unsigned int ctx_num);
 
-void s5p_mfc_cache_clean_fw(void *cookie);
+void s5p_mfc_cache_clean_priv(void *cookie);
+void s5p_mfc_cache_inv_priv(void *cookie);
 void s5p_mfc_cache_clean(struct vb2_buffer *vb, int plane_no);
 void s5p_mfc_cache_inv(struct vb2_buffer *vb, int plane_no);
 

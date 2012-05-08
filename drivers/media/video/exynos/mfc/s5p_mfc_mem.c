@@ -166,7 +166,7 @@ int s5p_mfc_mem_cache_flush(struct vb2_buffer *vb, u32 plane_no)
 	return 0;
 }
 #elif defined(CONFIG_VIDEOBUF2_ION)
-void s5p_mfc_cache_clean_fw(void *cookie)
+void s5p_mfc_cache_clean_priv(void *cookie)
 {
 	int nents = 0;
 	struct scatterlist *sg;
@@ -174,6 +174,16 @@ void s5p_mfc_cache_clean_fw(void *cookie)
 	sg = vb2_ion_get_sg(cookie, &nents);
 
 	dma_sync_sg_for_device(NULL, sg, nents, DMA_TO_DEVICE);
+}
+
+void s5p_mfc_cache_inv_priv(void *cookie)
+{
+	int nents = 0;
+	struct scatterlist *sg;
+
+	sg = vb2_ion_get_sg(cookie, &nents);
+
+	dma_sync_sg_for_device(NULL, sg, nents, DMA_FROM_DEVICE);
 }
 
 void s5p_mfc_cache_clean(struct vb2_buffer *vb, int plane_no)

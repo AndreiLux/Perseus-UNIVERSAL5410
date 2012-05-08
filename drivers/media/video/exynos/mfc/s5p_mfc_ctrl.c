@@ -89,14 +89,14 @@ int s5p_mfc_alloc_firmware(struct s5p_mfc_dev *dev)
 	alloc_ctx = dev->alloc_ctx_fw;
 #endif
 
-	s5p_mfc_bitproc_buf = s5p_mfc_mem_allocate(alloc_ctx, firmware_size);
+	s5p_mfc_bitproc_buf = s5p_mfc_mem_alloc(alloc_ctx, firmware_size);
 	if (IS_ERR(s5p_mfc_bitproc_buf)) {
 		s5p_mfc_bitproc_buf = 0;
 		printk(KERN_ERR "Allocating bitprocessor buffer failed\n");
 		return -ENOMEM;
 	}
 
-	s5p_mfc_bitproc_phys = s5p_mfc_mem_dma_addr(s5p_mfc_bitproc_buf);
+	s5p_mfc_bitproc_phys = s5p_mfc_mem_daddr(s5p_mfc_bitproc_buf);
 	if (s5p_mfc_bitproc_phys & ((1 << base_align) - 1)) {
 		mfc_err("The base memory is not aligned to %dBytes.\n",
 				(1 << base_align));
@@ -206,7 +206,7 @@ int s5p_mfc_load_firmware(struct s5p_mfc_dev *dev)
 					     FIRMWARE_CODE_SIZE,
 					     DMA_TO_DEVICE);
 	*/
-	s5p_mfc_cache_clean_fw(s5p_mfc_bitproc_buf);
+	s5p_mfc_cache_clean_priv(s5p_mfc_bitproc_buf);
 	release_firmware(fw_blob);
 	mfc_debug_leave();
 	return 0;

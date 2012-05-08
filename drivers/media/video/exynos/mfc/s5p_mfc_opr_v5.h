@@ -36,16 +36,16 @@ int s5p_mfc_set_wakeup(struct s5p_mfc_ctx *ctx);
 */
 
 int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx);
-int s5p_mfc_set_dec_stream_buffer(struct s5p_mfc_ctx *ctx, int buf_addr,
+int s5p_mfc_set_dec_stream_buffer(struct s5p_mfc_ctx *ctx, dma_addr_t buf_addr,
 						  unsigned int start_num_byte,
 						  unsigned int buf_size);
 
 void s5p_mfc_set_enc_frame_buffer(struct s5p_mfc_ctx *ctx,
-		unsigned long y_addr, unsigned long c_addr);
+		dma_addr_t y_addr, dma_addr_t c_addr);
 int s5p_mfc_set_enc_stream_buffer(struct s5p_mfc_ctx *ctx,
-		unsigned long addr, unsigned int size);
+		dma_addr_t addr, unsigned int size);
 void s5p_mfc_get_enc_frame_buffer(struct s5p_mfc_ctx *ctx,
-		unsigned long *y_addr, unsigned long *c_addr);
+		dma_addr_t *y_addr, dma_addr_t *c_addr);
 int s5p_mfc_set_enc_ref_buffer(struct s5p_mfc_ctx *mfc_ctx);
 
 int s5p_mfc_decode_one_frame(struct s5p_mfc_ctx *ctx, int last_frame);

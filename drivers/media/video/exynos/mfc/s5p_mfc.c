@@ -258,7 +258,7 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 	struct s5p_mfc_dec *dec = ctx->dec_priv;
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_buf *dst_buf;
-	size_t dspl_y_addr = MFC_GET_ADR(DEC_DISPLAY_Y);
+	dma_addr_t dspl_y_addr = MFC_GET_ADR(DEC_DISPLAY_Y);
 	unsigned int index;
 	unsigned int frame_type = s5p_mfc_get_disp_frame_type();
 	unsigned int mvc_view_id = s5p_mfc_get_mvc_disp_view_id();
@@ -278,9 +278,12 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 	list_for_each_entry(dst_buf, &ctx->dst_queue, list) {
 		mfc_debug(2, "Listing: %d\n", dst_buf->vb.v4l2_buf.index);
 		/* Check if this is the buffer we're looking for */
-		mfc_debug(2, "0x%08lx, 0x%08x", mfc_plane_cookie(&dst_buf->vb, 0),
-			dspl_y_addr);
-		if (mfc_plane_cookie(&dst_buf->vb, 0) == dspl_y_addr) {
+		mfc_debug(2, "0x%08lx, 0x%08x",
+				(unsigned long)s5p_mfc_mem_plane_addr(
+							ctx, &dst_buf->vb, 0),
+				dspl_y_addr);
+		if (s5p_mfc_mem_plane_addr(ctx, &dst_buf->vb, 0)
+							== dspl_y_addr) {
 			list_del(&dst_buf->list);
 			ctx->dst_queue_cnt--;
 			dst_buf->vb.v4l2_buf.sequence = ctx->sequence;
@@ -490,7 +493,7 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 				dec->consumed += offset;
 
 			s5p_mfc_set_dec_stream_buffer(ctx,
-				src_buf->cookie.stream, dec->consumed,
+				src_buf->planes.stream, dec->consumed,
 				src_buf->vb.v4l2_planes[0].bytesused -
 							dec->consumed);
 			dev->curr_ctx = ctx->num;
@@ -1350,8 +1353,7 @@ static int __devinit s5p_mfc_probe(struct platform_device *pdev)
 		goto alloc_ctx_sh_fail;
 	}
 
-	dev->drm_info.alloc =
-			s5p_mfc_mem_allocate(dev->alloc_ctx_sh, PAGE_SIZE);
+	dev->drm_info.alloc = s5p_mfc_mem_alloc(dev->alloc_ctx_sh, PAGE_SIZE);
 	if (IS_ERR(dev->drm_info.alloc)) {
 		mfc_err("failed to allocate shared region\n");
 		ret = PTR_ERR(dev->drm_info.alloc);

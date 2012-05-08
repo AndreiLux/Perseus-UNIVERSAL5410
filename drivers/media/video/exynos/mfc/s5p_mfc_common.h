@@ -136,11 +136,11 @@ struct s5p_mfc_buf {
 	struct list_head list;
 	union {
 		struct {
-			size_t luma;
-			size_t chroma;
+			dma_addr_t luma;
+			dma_addr_t chroma;
 		} raw;
-		size_t stream;
-	} cookie;
+		dma_addr_t stream;
+	} planes;
 	int used;
 };
 
