@@ -21,6 +21,7 @@
 #include <linux/mfd/max8997.h>
 #include <linux/lcd.h>
 #include <linux/rfkill-gpio.h>
+#include <linux/pm_domain.h>
 
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
@@ -730,6 +731,25 @@ static void __init origen_machine_init(void)
 
 	origen_bt_setup();
 }
+
+/**
+ * This function will wait for platform device to be
+ * added and then change status. So subsys_initcall is used
+ */
+static __init int origen_pm_late_initcall(void)
+{
+	struct generic_pm_domain *p;
+
+	p = pd_to_genpd(s5p_device_g3d.dev.pm_domain);
+
+	/* This is flag not to call power_off callback */
+	/* pm_genpd_dev_always_on doesn't work with Mali */
+
+	p->status = GPD_STATE_WAIT_MASTER;
+
+	return 0;
+}
+subsys_initcall(origen_pm_late_initcall);
 
 MACHINE_START(ORIGEN, "ORIGEN")
 	/* Maintainer: JeongHyeon Kim <jhkim@insignal.co.kr> */
