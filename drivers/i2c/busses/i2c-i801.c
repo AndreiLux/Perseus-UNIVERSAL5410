@@ -170,6 +170,13 @@ struct i801_priv {
 	wait_queue_head_t waitq;
 	spinlock_t lock;
 	u8 status;
+
+	/* Command state used during by isr */
+	u8 cmd;
+	bool is_read;
+	int count;
+	int len;
+	u8 *data;
 };
 
 static struct pci_driver i801_driver;
@@ -370,18 +377,24 @@ static int i801_block_transaction_by_block(struct i801_priv *priv,
 }
 
 /*
- * i801 signals transaction completion with one of these interrupts:
+ * There are two kinds of interrupts:
+ *
+ * (1) i801 signals transaction completion with one of these interrupts:
  *   INTR - Success
  *   DEV_ERR - Invalid command, NAK or communication timeout
  *   BUS_ERR - SMI# transaction collision
  *   FAILED - transaction was canceled due to a KILL request
  * When any of these occur, update ->status and wake up the waitq.
  * ->status must be cleared before kicking off the next transaction.
+ *
+* (2) For byte-by-byte (I2C read/write) transactions, one BYTE_DONE interrupt
+*     occurs for each byte of a byte-by-byte to prepare the next byte.
  */
 static irqreturn_t i801_isr(int irq, void *dev_id)
 {
 	struct i801_priv *priv = dev_id;
 	u8 pcists, hststs;
+	u8 cmd;
 
 	/* Confirm this is our interrupt */
 	pci_read_config_byte(priv->pci_dev, SMBPCISTS, &pcists);
@@ -392,6 +405,27 @@ static irqreturn_t i801_isr(int irq, void *dev_id)
 
 	hststs = inb(SMBHSTSTS(priv));
 	dev_dbg(&priv->pci_dev->dev, "irq: hststs = %02x\n", hststs);
+
+	if (hststs & SMBHSTSTS_BYTE_DONE) {
+		if (priv->is_read) {
+			priv->data[priv->count++] = inb(SMBBLKDAT(priv));
+
+			/* Set LAST_BYTE for last byte of read transaction */
+			cmd = priv->cmd;
+			if (priv->count == priv->len - 1)
+				cmd |= I801_LAST_BYTE;
+			outb_p(cmd | I801_START, SMBHSTCNT(priv));
+		} else if (priv->count < priv->len - 1) {
+			outb(priv->data[++priv->count], SMBBLKDAT(priv));
+			outb_p(priv->cmd | I801_START, SMBHSTCNT(priv));
+		}
+
+		/* Clear BYTE_DONE to start next transaction. */
+		outb(SMBHSTSTS_BYTE_DONE, SMBHSTSTS(priv));
+
+		/* Clear BYTE_DONE so it does not wake_up waitq */
+		hststs &= ~SMBHSTSTS_BYTE_DONE;
+	}
 
 	/*
 	 * Clear irq sources and report transaction result.
@@ -433,19 +467,31 @@ static int i801_block_transaction_byte_by_byte(struct i801_priv *priv,
 		outb_p(data->block[1], SMBBLKDAT(priv));
 	}
 
+	if (command == I2C_SMBUS_I2C_BLOCK_DATA &&
+	    read_write == I2C_SMBUS_READ)
+		smbcmd = I801_I2C_BLOCK_DATA;
+	else
+		smbcmd = I801_BLOCK_DATA;
+
+	if (priv->features & FEATURE_IRQ) {
+		priv->is_read = (read_write == I2C_SMBUS_READ);
+		if (len == 1 && priv->is_read)
+			smbcmd |= I801_LAST_BYTE;
+		priv->cmd = smbcmd | I801_INTREN;
+		priv->len = len;
+		priv->count = 0;
+		priv->data = &data->block[1];
+
+		outb(priv->cmd | I801_START, SMBHSTCNT(priv));
+		wait_event(priv->waitq, (status = priv->status));
+		priv->status = 0;
+		return i801_check_post(priv, status, 0);
+	}
+
 	for (i = 1; i <= len; i++) {
-		if (i == len && read_write == I2C_SMBUS_READ) {
-			if (command == I2C_SMBUS_I2C_BLOCK_DATA)
-				smbcmd = I801_I2C_BLOCK_LAST;
-			else
-				smbcmd = I801_BLOCK_LAST;
-		} else {
-			if (command == I2C_SMBUS_I2C_BLOCK_DATA
-			 && read_write == I2C_SMBUS_READ)
-				smbcmd = I801_I2C_BLOCK_DATA;
-			else
-				smbcmd = I801_BLOCK_DATA;
-		}
+		if (i == len && read_write == I2C_SMBUS_READ)
+			smbcmd |= I801_LAST_BYTE;
+		
 		outb_p(smbcmd, SMBHSTCNT(priv));
 
 		if (i == 1)
