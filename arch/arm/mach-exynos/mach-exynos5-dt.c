@@ -23,6 +23,7 @@
 #include <asm/hardware/gic.h>
 #include <mach/map.h>
 #include <mach/ohci.h>
+#include <mach/regs-pmu.h>
 
 #include <plat/cpu.h>
 #include <plat/regs-serial.h>
@@ -248,6 +249,12 @@ static void s5p_tv_setup(void)
 	s3c_gpio_setpull(EXYNOS5_GPX3(7), S3C_GPIO_PULL_NONE);
 }
 
+static void exynos5_i2c_setup(void)
+{
+	/* Setup the low-speed i2c controller interrupts */
+	writel(0x0, EXYNOS5_SYS_I2C_CFG);
+}
+
 static void __init exynos5250_dt_machine_init(void)
 {
 	if (of_machine_is_compatible("samsung,smdk5250"))
@@ -261,6 +268,9 @@ static void __init exynos5250_dt_machine_init(void)
 		s3c_gpio_setpull(EXYNOS5_GPX2(6), S3C_GPIO_PULL_NONE);
 		gpio_free(EXYNOS5_GPX2(6));
 	}
+
+	exynos5_i2c_setup();
+
 	i2c_register_board_info(1, i2c_devs1, ARRAY_SIZE(i2c_devs1));
 
 	of_platform_populate(NULL, of_default_bus_match_table,
