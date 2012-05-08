@@ -82,7 +82,15 @@ static inline dma_addr_t s5p_mfc_mem_plane_addr(
 	void *cookie = vb2_plane_cookie(v, n);
 	dma_addr_t addr = 0;
 
+#ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
+	if (c->is_drm)
+		WARN_ON(vb2_ion_phys_address(cookie,
+					(phys_addr_t *)&addr) != 0);
+	else
+		WARN_ON(vb2_ion_dma_address(cookie, &addr) != 0);
+#else
 	WARN_ON(vb2_ion_dma_address(cookie, &addr) != 0);
+#endif
 
 	return (unsigned long)addr;
 }
