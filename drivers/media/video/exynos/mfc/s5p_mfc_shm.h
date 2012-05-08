@@ -73,6 +73,11 @@ enum MFC_SHM_OFS {
 	FRAME_PACK_SEI_INFO	= 0x17c, /* E */
 };
 
+#define S5P_FIMV_DISPLAY_FRAME_NOT_CODED	0
+#define S5P_FIMV_DISPLAY_FRAME_I		1
+#define S5P_FIMV_DISPLAY_FRAME_P		2
+#define S5P_FIMV_DISPLAY_FRAME_B		3
+
 int s5p_mfc_init_shm(struct s5p_mfc_ctx *ctx);
 
 static inline void s5p_mfc_write_shm(struct s5p_mfc_ctx *ctx, unsigned int data, unsigned int ofs)
