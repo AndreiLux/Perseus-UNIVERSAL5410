@@ -885,6 +885,14 @@ static const struct dev_pm_ops mipi_dsi_pm_ops = {
 	.runtime_resume		= s5p_mipi_dsi_runtime_resume,
 };
 
+#ifdef CONFIG_OF
+	static const struct of_device_id exynos_mipi_match[] = {
+		{ .compatible = "samsung,exynos-mipi" },
+		{},
+	};
+	MODULE_DEVICE_TABLE(of, exynos_mipi_match);
+#endif
+
 static struct platform_driver s5p_mipi_dsi_driver = {
 	.probe = s5p_mipi_dsi_probe,
 	.remove = __devexit_p(s5p_mipi_dsi_remove),
@@ -892,6 +900,7 @@ static struct platform_driver s5p_mipi_dsi_driver = {
 		   .name = "s5p-mipi-dsim",
 		   .owner = THIS_MODULE,
 		   .pm = &mipi_dsi_pm_ops,
+		   .of_match_table = of_match_ptr(exynos_mipi_match),
 	},
 };
 
