@@ -261,7 +261,7 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 	dma_addr_t dspl_y_addr = MFC_GET_ADR(DEC_DISPLAY_Y);
 	unsigned int index;
 	unsigned int frame_type = s5p_mfc_get_disp_frame_type();
-	unsigned int mvc_view_id = s5p_mfc_get_mvc_disp_view_id();
+	int mvc_view_id = s5p_mfc_get_mvc_disp_view_id();
 
 	if (ctx->codec_mode == S5P_FIMV_CODEC_H264_MVC_DEC) {
 		if (mvc_view_id == 0)
