@@ -1865,6 +1865,7 @@ static int __init dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 {
 	struct mmc_host *mmc;
 	struct dw_mci_slot *slot;
+	unsigned int ctrl_id;
 
 	mmc = mmc_alloc_host(sizeof(struct dw_mci_slot), &host->dev);
 	if (!mmc)
@@ -1895,7 +1896,12 @@ static int __init dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 	if (host->pdata->caps)
 		mmc->caps = host->pdata->caps;
 
-	mmc->caps |= host->drv_data->caps;
+	if (host->dev.of_node) {
+		ctrl_id = of_alias_get_id(host->dev.of_node, "mshc");
+		if (ctrl_id < 0)
+			ctrl_id = 0;
+	}
+	mmc->caps |= host->drv_data->caps[ctrl_id];
 
 	if (host->pdata->caps2)
 		mmc->caps2 = host->pdata->caps2;

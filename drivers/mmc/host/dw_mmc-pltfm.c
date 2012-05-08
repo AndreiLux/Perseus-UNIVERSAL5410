@@ -27,10 +27,17 @@ static struct dw_mci_drv_data synopsis_drv_data = {
 	.ctrl_type	= DW_MCI_TYPE_SYNOPSIS,
 };
 
+static unsigned long exynos5250_dwmmc_caps[4] = {
+	MMC_CAP_UHS_DDR50 | MMC_CAP_1_8V_DDR |
+		MMC_CAP_8_BIT_DATA | MMC_CAP_CMD23,
+	MMC_CAP_CMD23,
+	MMC_CAP_CMD23,
+	MMC_CAP_CMD23,
+};
+
 static struct dw_mci_drv_data exynos5250_drv_data = {
 	.ctrl_type	= DW_MCI_TYPE_EXYNOS5250,
-	.caps		= MMC_CAP_UHS_DDR50 | MMC_CAP_1_8V_DDR |
-				MMC_CAP_8_BIT_DATA | MMC_CAP_CMD23,
+	.caps		= &exynos5250_dwmmc_caps,
 };
 
 static const struct of_device_id dw_mci_pltfm_match[] = {
