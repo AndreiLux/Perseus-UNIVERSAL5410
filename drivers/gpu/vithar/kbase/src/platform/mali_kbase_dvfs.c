@@ -50,11 +50,7 @@
 
 #ifdef CONFIG_REGULATOR
 static struct regulator *g3d_regulator=NULL;
-#ifdef CONFIG_VITHAR_HWVER_R0P0
 static int mali_gpu_vol = 1250000; /* 1.25V @ 533 MHz */
-#else
-static int mali_gpu_vol = 1050000; /* 1.05V @ 266 MHz */
-#endif
 #endif
 
 #ifdef CONFIG_VITHAR_DVFS
@@ -112,6 +108,9 @@ static void kbase_platform_dvfs_set_clock(kbase_device *kbdev, int freq)
 
 	switch(freq)
 	{
+	case 533:
+		rate = 533000000;
+		break;
 	case 400:
 		rate = 400000000;
 		break;
@@ -156,6 +155,7 @@ static void kbase_platform_dvfs_set_vol(int vol)
 
 	switch(vol)
 	{
+	case 1250000:
 	case 1150000:
 	case 1050000:
 	case 1000000:

@@ -49,13 +49,13 @@
 #include <kbase/src/platform/mali_kbase_runtime_pm.h>
 #include <kbase/src/platform/mali_kbase_dvfs.h>
 
-#define VITHAR_DEFAULT_CLOCK 267000000
+#define VITHAR_DEFAULT_CLOCK 533000000
 static int kbase_platform_power_clock_init(struct device *dev)
 {
 	int timeout;
-#ifndef CONFIG_VITHAR_HWVER_R0P0
-	struct clk *mpll = NULL;
-#endif
+	int err;
+	struct clk *gpll = NULL;
+
 	struct kbase_device *kbdev;
 	kbdev = dev_get_drvdata(dev);
 	if (!kbdev)
@@ -77,39 +77,30 @@ static int kbase_platform_power_clock_init(struct device *dev)
 	}
 
 	/* Turn on G3D clock */
-
-#ifdef CONFIG_VITHAR_HWVER_R0P0
-	kbdev->sclk_g3d = clk_get(dev, "aclk_400");
-	if(IS_ERR(kbdev->sclk_g3d)) {
-		OSK_PRINT_ERROR(OSK_BASE_PM, "failed to clk_get [sclk_g3d]\n");
-		goto out;
-	}
-#else
-	mpll = clk_get(dev, "mout_mpll_user");
-	if(IS_ERR(mpll)) {
-		OSK_PRINT_ERROR(OSK_BASE_PM, "failed to clk_get [mout_mpll_user]\n");
+	gpll = clk_get(dev, "mout_gpll");
+	if(IS_ERR(gpll)) {
+		OSK_PRINT_ERROR(OSK_BASE_PM, "failed to clk_get [mout_gpll]\n");
 		goto out;
 	}
 
-	kbdev->sclk_g3d = clk_get(dev, "sclk_g3d");
+	kbdev->sclk_g3d = clk_get(dev, "aclk_400_g3d");
 	if(IS_ERR(kbdev->sclk_g3d)) {
-		OSK_PRINT_ERROR(OSK_BASE_PM, "failed to clk_get [sclk_g3d]\n");
+		OSK_PRINT_ERROR(OSK_BASE_PM, "failed to clk_get [aclk_400_g3d]\n");
 		goto out;
 	}
 
-	clk_set_parent(kbdev->sclk_g3d, mpll);
-	if(IS_ERR(kbdev->sclk_g3d)) {
+	err = clk_set_parent(kbdev->sclk_g3d, gpll);
+	if(err < 0) {
 		OSK_PRINT_ERROR(OSK_BASE_PM, "failed to clk_set_parent\n");
 		goto out;
 	}
 
-	clk_set_rate(kbdev->sclk_g3d, VITHAR_DEFAULT_CLOCK);
-	if(IS_ERR(kbdev->sclk_g3d)) {
+	err = clk_set_rate(kbdev->sclk_g3d, VITHAR_DEFAULT_CLOCK);
+	if(err < 0) {
 		OSK_PRINT_ERROR(OSK_BASE_PM, "failed to clk_set_rate [sclk_g3d] = %d\n", VITHAR_DEFAULT_CLOCK);
 		goto out;
 	}
 
-#endif
 	(void) clk_enable(kbdev->sclk_g3d);
 
 	return 0;
@@ -274,7 +265,7 @@ static ssize_t show_clock(struct device *dev, struct device_attribute *attr, cha
 	ret += snprintf(buf+ret, PAGE_SIZE-ret, "Current sclk_g3d[G3D_BLK] = %dMhz", clkrate/1000000);
 
 	/* To be revised  */
-	ret += snprintf(buf+ret, PAGE_SIZE-ret, "\nPossible settings : 400, 266, 200, 160, 133, 100, 50Mhz");
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "\nPossible settings : 533, 400, 266, 200, 160, 133, 100, 50Mhz");
 
 	if (ret < PAGE_SIZE - 1)
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
@@ -301,7 +292,10 @@ static ssize_t set_clock(struct device *dev, struct device_attribute *attr, cons
 	if(!kbdev->sclk_g3d)
 		return -ENODEV;
 
-	if (sysfs_streq("400", buf)) {
+	if (sysfs_streq("533", buf)) {
+	    cmd = 1;
+	    clk_set_rate(kbdev->sclk_g3d, 533000000);
+	} else if (sysfs_streq("400", buf)) {
 	    cmd = 1;
 	    clk_set_rate(kbdev->sclk_g3d, 400000000);
 	} else if (sysfs_streq("266", buf)) {
