@@ -560,8 +560,8 @@ int s5p_mfc_set_enc_stream_buffer(struct s5p_mfc_ctx *ctx,
 	WRITEL(addr, S5P_FIMV_E_STREAM_BUFFER_ADDR); /* 16B align */
 	WRITEL(size, S5P_FIMV_E_STREAM_BUFFER_SIZE);
 
-	mfc_debug(2, "stream buf addr: 0x%08lx, size: 0x%d",
-		(unsigned long)addr, size);
+	mfc_debug(2, "stream buf addr: 0x%08lx, size: 0x%08x(%d)",
+		(unsigned long)addr, size, size);
 
 	return 0;
 }
