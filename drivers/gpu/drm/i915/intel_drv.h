@@ -40,7 +40,8 @@
 			ret__ = -ETIMEDOUT;				\
 			break;						\
 		}							\
-		if (W && drm_can_sleep()) msleep(W);	\
+		if (W && drm_can_sleep())				\
+			usleep_range(W * 50, W * 100);			\
 	}								\
 	ret__;								\
 })
