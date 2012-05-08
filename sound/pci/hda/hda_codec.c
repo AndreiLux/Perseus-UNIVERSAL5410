@@ -5541,10 +5541,6 @@ int snd_hda_resume(struct hda_bus *bus)
 	list_for_each_entry(codec, &bus->codec_list, list) {
 		if (codec->patch_ops.pre_resume)
 			codec->patch_ops.pre_resume(codec);
-#ifdef CONFIG_SND_HDA_POWER_SAVE
-		if (!codec->power_count)
-			continue;
-#endif
 		hda_call_codec_resume(codec);
 	}
 	return 0;
