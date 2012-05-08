@@ -16,6 +16,13 @@
 	model = "SAMSUNG SMDK5250 board based on EXYNOS5250";
 	compatible = "samsung,smdk5250", "samsung,exynos5250";
 
+	aliases {
+		mshc0 = &mshc_0;
+		mshc1 = &mshc_1;
+		mshc2 = &mshc_2;
+		mshc3 = &mshc_3;
+	};
+
 	memory {
 		reg = <0x40000000 0x80000000>;
 	};
@@ -178,7 +185,7 @@
 		status = "disabled";
 	};
 
-	dwmmc0@12200000 {
+	mshc_0: dwmmc0@12200000 {
 		supports-highspeed;
 		card-detection-broken;
 		no-write-protect;
@@ -198,12 +205,11 @@
 		};
 	};
 
-	dwmmc1@12210000 {
+	mshc_1: dwmmc1@12210000 {
 		status = "disabled";
 	};
 
-	dwmmc2@12220000 {
-		supports-highspeed;
+	mshc_2: dwmmc2@12220000 {
 		card-detection-broken;
 		no-write-protect;
 		fifo-depth = <0x80>;
@@ -222,7 +228,7 @@
 		};
 	};
 
-	dwmmc3@12230000 {
+	mshc_3: dwmmc3@12230000 {
 		status = "disabled";
 	};
 
