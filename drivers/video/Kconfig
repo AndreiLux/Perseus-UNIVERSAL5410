@@ -2089,7 +2089,7 @@ config FB_S3C2410_DEBUG
 
 config FB_MIPI_DSIM
 	bool "Samsung MIPI DSIM"
-	depends on FB_S3C
+	depends on FB_S3C || DRM_EXYNOS_FIMD
 	default n
 	---help---
 	  This enables support for Samsung MIPI DSIM feature
