@@ -79,6 +79,9 @@ struct thermal_cooling_device {
 	void *devdata;
 	const struct thermal_cooling_device_ops *ops;
 	struct list_head node;
+	unsigned long delay_until;
+	/* 0: off, 1: on, 2: in delay */
+	int cur_state;
 };
 
 #define KELVIN_TO_CELSIUS(t)	(long)(((long)t-2732 >= 0) ?	\
@@ -104,6 +107,8 @@ struct thermal_zone_device {
 	struct mutex lock;	/* protect cooling devices list */
 	struct list_head node;
 	struct delayed_work poll_queue;
+	unsigned int fan_on_delay; /* time in seconds to delay fan turn on */
+	int cdevs_in_delay;
 };
 /* Adding event notification support elements */
 #define THERMAL_GENL_FAMILY_NAME                "thermal_event"

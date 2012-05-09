@@ -164,6 +164,29 @@ mode_store(struct device *dev, struct device_attribute *attr,
 }
 
 static ssize_t
+fan_on_delay_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+
+	return sprintf(buf, "%d\n", tz->fan_on_delay);
+}
+
+static ssize_t
+fan_on_delay_store(struct device *dev, struct device_attribute *attr,
+		   const char *buf, size_t count)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	int value;
+
+	if (!sscanf(buf, "%d\n", &value))
+		return -EINVAL;
+	if (value < 0 || value > (tz->polling_delay / 1000))
+		return -EINVAL;
+	tz->fan_on_delay = (unsigned int) value;
+	return count;
+}
+
+static ssize_t
 trip_point_type_show(struct device *dev, struct device_attribute *attr,
 		     char *buf)
 {
@@ -282,6 +305,7 @@ static DEVICE_ATTR(type, 0444, type_show, NULL);
 static DEVICE_ATTR(temp, 0444, temp_show, NULL);
 static DEVICE_ATTR(mode, 0644, mode_show, mode_store);
 static DEVICE_ATTR(passive, S_IRUGO | S_IWUSR, passive_show, passive_store);
+static DEVICE_ATTR(fan_on_delay, 0644, fan_on_delay_show, fan_on_delay_store);
 
 static struct device_attribute trip_point_attrs[] = {
 	__ATTR(trip_point_0_type, 0444, trip_point_type_show, NULL),
@@ -651,19 +675,34 @@ thermal_remove_hwmon_sysfs(struct thermal_zone_device *tz)
 #endif
 
 static void thermal_zone_device_set_polling(struct thermal_zone_device *tz,
-					    int delay)
+					    int delay_ms)
 {
+	unsigned long delay;
+	struct thermal_cooling_device_instance *instance;
+	struct thermal_cooling_device *cdev;
+
 	cancel_delayed_work(&(tz->poll_queue));
 
-	if (!delay)
+	if (!delay_ms)
 		return;
 
-	if (delay > 1000)
-		queue_delayed_work(system_freezable_wq, &(tz->poll_queue),
-				      round_jiffies(msecs_to_jiffies(delay)));
-	else
-		queue_delayed_work(system_freezable_wq, &(tz->poll_queue),
-				      msecs_to_jiffies(delay));
+	delay = msecs_to_jiffies(delay_ms);
+
+	if (tz->cdevs_in_delay > 0) {
+		list_for_each_entry(instance, &tz->cooling_devices, node) {
+			cdev = instance->cdev;
+			if ((cdev->cur_state == 2) &&
+			    time_before(cdev->delay_until, (jiffies + delay)))
+				delay = cdev->delay_until - jiffies;
+		}
+	}
+
+	delay = max_t(long, delay, 1);
+
+	if (delay > HZ)
+		delay = round_jiffies(delay);
+
+	queue_delayed_work(system_freezable_wq, &(tz->poll_queue), delay);
 }
 
 static void thermal_zone_device_passive(struct thermal_zone_device *tz,
@@ -917,6 +956,7 @@ thermal_cooling_device_register(char *type, void *devdata,
 	cdev->ops = ops;
 	cdev->device.class = &thermal_class;
 	cdev->devdata = devdata;
+	cdev->cur_state = 0;
 	dev_set_name(&cdev->device, "cooling_device%d", cdev->id);
 	result = device_register(&cdev->device);
 	if (result) {
@@ -1020,7 +1060,6 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 	struct thermal_cooling_device *cdev;
 
 	mutex_lock(&tz->lock);
-
 	if (tz->ops->get_temp(tz, &temp)) {
 		/* get_temp failed - retry it later */
 		pr_warn("failed to read out thermal zone %d\n", tz->id);
@@ -1057,10 +1096,29 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 
 				cdev = instance->cdev;
 
-				if (temp >= trip_temp)
-					cdev->ops->set_cur_state(cdev, 1);
-				else
+				if (temp < trip_temp) {
+					if (cdev->cur_state == 2)
+						tz->cdevs_in_delay--;
+					cdev->cur_state = 0;
 					cdev->ops->set_cur_state(cdev, 0);
+					continue;
+				}
+
+				if (cdev->cur_state == 1)
+					continue;
+
+				if (cdev->cur_state == 0) {
+					tz->cdevs_in_delay++;
+					cdev->cur_state = 2;
+					cdev->delay_until = jiffies +
+						tz->fan_on_delay * HZ;
+				}
+
+				if (time_after_eq(jiffies, cdev->delay_until)) {
+					tz->cdevs_in_delay--;
+					cdev->cur_state = 1;
+					cdev->ops->set_cur_state(cdev, 1);
+				}
 			}
 			break;
 		case THERMAL_TRIP_PASSIVE:
@@ -1149,6 +1207,7 @@ struct thermal_zone_device *thermal_zone_device_register(char *type,
 	tz->tc2 = tc2;
 	tz->passive_delay = passive_delay;
 	tz->polling_delay = polling_delay;
+	tz->fan_on_delay = 2;
 
 	dev_set_name(&tz->device, "thermal_zone%d", tz->id);
 	result = device_register(&tz->device);
@@ -1174,6 +1233,10 @@ struct thermal_zone_device *thermal_zone_device_register(char *type,
 		if (result)
 			goto unregister;
 	}
+
+	result = device_create_file(&tz->device, &dev_attr_fan_on_delay);
+	if (result)
+		goto unregister;
 
 	for (count = 0; count < trips; count++) {
 		result = device_create_file(&tz->device,
@@ -1259,6 +1322,7 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 	device_remove_file(&tz->device, &dev_attr_temp);
 	if (tz->ops->get_mode)
 		device_remove_file(&tz->device, &dev_attr_mode);
+	device_remove_file(&tz->device, &dev_attr_fan_on_delay);
 
 	for (count = 0; count < tz->trips; count++) {
 		device_remove_file(&tz->device,
