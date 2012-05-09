@@ -699,8 +699,16 @@ static void thermal_zone_device_set_polling(struct thermal_zone_device *tz,
 
 	delay = max_t(long, delay, 1);
 
-	if (delay > HZ)
-		delay = round_jiffies(delay);
+	/*
+	 * round_jiffies_relative rounds delay down in most cases to values
+	 * just under delay (10 seconds to 9.99).  When cdevs_in_delay is set,
+	 * this rounds to 1.99.  This makes the next poll period trigger just
+	 * before the fan can turn on, causing another poll to be scheduled
+	 * immediately afterwards and causing an extra interrupt.  As such,
+	 * do not round when fans are in delay.
+	 */
+	if (delay > HZ && tz->cdevs_in_delay == 0)
+		delay = round_jiffies_relative(delay);
 
 	queue_delayed_work(system_freezable_wq, &(tz->poll_queue), delay);
 }
