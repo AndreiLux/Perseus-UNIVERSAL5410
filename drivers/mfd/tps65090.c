@@ -27,6 +27,7 @@
 #include <linux/mfd/tps65090.h>
 #include <linux/regmap.h>
 #include <linux/err.h>
+#include <linux/irqdomain.h>
 
 #define NUM_INT_REG 2
 #define TOTAL_NUM_REG 0x18
@@ -199,15 +200,20 @@ static irqreturn_t tps65090_irq(int irq, void *data)
 	return acks ? IRQ_HANDLED : IRQ_NONE;
 }
 
-static int __devinit tps65090_irq_init(struct tps65090 *tps65090, int irq,
-	int irq_base)
+static int __devinit tps65090_irq_init(struct tps65090 *tps65090, int irq)
 {
 	int i, ret;
+	int irq_base;
+	int nr_irqs = ARRAY_SIZE(tps65090_irqs);
 
-	if (!irq_base) {
-		dev_err(tps65090->dev, "IRQ base not set\n");
-		return -EINVAL;
+	irq_base = irq_alloc_descs(-1, 0, nr_irqs, 0);
+	if (IS_ERR_VALUE(irq_base)) {
+		dev_err(tps65090->dev, "Fail to allocate IRQ descs\n");
+		return irq_base;
 	}
+
+	irq_domain_add_legacy(tps65090->dev->of_node, nr_irqs, irq_base, 0,
+			      &irq_domain_simple_ops, NULL);
 
 	mutex_init(&tps65090->irq_lock);
 
@@ -237,12 +243,16 @@ static int __devinit tps65090_irq_init(struct tps65090 *tps65090, int irq,
 
 	ret = request_threaded_irq(irq, NULL, tps65090_irq, IRQF_ONESHOT,
 				"tps65090", tps65090);
-	if (!ret) {
-		device_init_wakeup(tps65090->dev, 1);
-		enable_irq_wake(irq);
+	if (ret) {
+		dev_err(tps65090->dev, "failed to request threaded irq\n");
+		irq_free_descs(tps65090->irq_base, nr_irqs);
+		return ret;
 	}
 
-	return ret;
+	device_init_wakeup(tps65090->dev, 1);
+	enable_irq_wake(irq);
+
+	return 0;
 }
 
 static bool is_volatile_reg(struct device *dev, unsigned int reg)
@@ -286,7 +296,7 @@ static int __devinit tps65090_i2c_probe(struct i2c_client *client,
 	mutex_init(&tps65090->lock);
 
 	if (client->irq) {
-		ret = tps65090_irq_init(tps65090, client->irq, pdata->irq_base);
+		ret = tps65090_irq_init(tps65090, client->irq);
 		if (ret) {
 			dev_err(&client->dev, "IRQ init failed with err: %d\n",
 				ret);
@@ -316,8 +326,10 @@ err_regmap_exit:
 	regmap_exit(tps65090->rmap);
 
 err_irq_exit:
-	if (client->irq)
+	if (client->irq) {
 		free_irq(client->irq, tps65090);
+		irq_free_descs(tps65090->irq_base, ARRAY_SIZE(tps65090_irqs));
+	}
 err_exit:
 	return ret;
 }
@@ -328,8 +340,10 @@ static int __devexit tps65090_i2c_remove(struct i2c_client *client)
 
 	mfd_remove_devices(tps65090->dev);
 	regmap_exit(tps65090->rmap);
-	if (client->irq)
+	if (client->irq) {
 		free_irq(client->irq, tps65090);
+		irq_free_descs(tps65090->irq_base, ARRAY_SIZE(tps65090_irqs));
+	}
 
 	return 0;
 }
