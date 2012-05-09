@@ -1006,6 +1006,16 @@ static int fimd_runtime_resume(struct device *dev)
 }
 #endif
 
+static struct platform_device_id exynos_drm_driver_ids[] = {
+	{
+		.name		= "exynos4-fb",
+	}, {
+		.name		= "exynos5-fb",
+	},
+	{},
+};
+MODULE_DEVICE_TABLE(platform, exynos_drm_driver_ids);
+
 static const struct dev_pm_ops fimd_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(fimd_suspend, fimd_resume)
 	SET_RUNTIME_PM_OPS(fimd_runtime_suspend, fimd_runtime_resume, NULL)
@@ -1014,8 +1024,9 @@ static const struct dev_pm_ops fimd_pm_ops = {
 struct platform_driver fimd_driver = {
 	.probe		= fimd_probe,
 	.remove		= __devexit_p(fimd_remove),
+	.id_table       = exynos_drm_driver_ids,
 	.driver		= {
-		.name	= "exynos4-fb",
+		.name	= "exynos-drm-fimd",
 		.owner	= THIS_MODULE,
 		.pm	= &fimd_pm_ops,
 	},
