@@ -34,6 +34,7 @@
 
 #include <video/platform_lcd.h>
 
+#include "drm/exynos_drm.h"
 #include "common.h"
 
 static void __init smsc911x_init(int ncs)
@@ -58,6 +59,14 @@ static void __init smsc911x_init(int ncs)
 		(0x1 << S5P_SROM_BCX__TACS__SHIFT),
 		S5P_SROM_BC0 + (ncs * 4));
 }
+
+static struct platform_device exynos_drm_device = {
+	.name           = "exynos-drm",
+	.dev = {
+		.dma_mask = &exynos_drm_device.dev.coherent_dma_mask,
+		.coherent_dma_mask = 0xffffffffUL,
+	}
+};
 
 static void mipi_lcd_set_power(struct plat_lcd_data *pd,
 			unsigned int power)
@@ -231,6 +240,7 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&exynos_device_md1, /* for media device framework */
 	&exynos_device_md2, /* for media device framework */
 	&samsung_asoc_dma,  /* for audio dma interface device */
+	&exynos_drm_device,
 };
 
 static void __init exynos5250_dt_map_io(void)
