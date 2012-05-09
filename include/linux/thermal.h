@@ -44,6 +44,12 @@ enum thermal_trip_type {
 	THERMAL_TRIP_CRITICAL,
 };
 
+enum cooling_device_state {
+	CDEV_STATE_OFF = 0,
+	CDEV_STATE_ON,
+	CDEV_STATE_DELAY,
+};
+
 struct thermal_zone_device_ops {
 	int (*bind) (struct thermal_zone_device *,
 		     struct thermal_cooling_device *);
@@ -80,8 +86,7 @@ struct thermal_cooling_device {
 	const struct thermal_cooling_device_ops *ops;
 	struct list_head node;
 	unsigned long delay_until;
-	/* 0: off, 1: on, 2: in delay */
-	int cur_state;
+	enum cooling_device_state cur_state;
 };
 
 #define KELVIN_TO_CELSIUS(t)	(long)(((long)t-2732 >= 0) ?	\

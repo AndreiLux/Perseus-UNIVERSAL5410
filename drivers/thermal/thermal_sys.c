@@ -691,7 +691,7 @@ static void thermal_zone_device_set_polling(struct thermal_zone_device *tz,
 	if (tz->cdevs_in_delay > 0) {
 		list_for_each_entry(instance, &tz->cooling_devices, node) {
 			cdev = instance->cdev;
-			if ((cdev->cur_state == 2) &&
+			if ((cdev->cur_state == CDEV_STATE_DELAY) &&
 			    time_before(cdev->delay_until, (jiffies + delay)))
 				delay = cdev->delay_until - jiffies;
 		}
@@ -956,7 +956,7 @@ thermal_cooling_device_register(char *type, void *devdata,
 	cdev->ops = ops;
 	cdev->device.class = &thermal_class;
 	cdev->devdata = devdata;
-	cdev->cur_state = 0;
+	cdev->cur_state = CDEV_STATE_OFF;
 	dev_set_name(&cdev->device, "cooling_device%d", cdev->id);
 	result = device_register(&cdev->device);
 	if (result) {
@@ -1097,26 +1097,26 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 				cdev = instance->cdev;
 
 				if (temp < trip_temp) {
-					if (cdev->cur_state == 2)
+					if (cdev->cur_state == CDEV_STATE_DELAY)
 						tz->cdevs_in_delay--;
-					cdev->cur_state = 0;
+					cdev->cur_state = CDEV_STATE_OFF;
 					cdev->ops->set_cur_state(cdev, 0);
 					continue;
 				}
 
-				if (cdev->cur_state == 1)
+				if (cdev->cur_state == CDEV_STATE_ON)
 					continue;
 
-				if (cdev->cur_state == 0) {
+				if (cdev->cur_state == CDEV_STATE_OFF) {
 					tz->cdevs_in_delay++;
-					cdev->cur_state = 2;
+					cdev->cur_state = CDEV_STATE_DELAY;
 					cdev->delay_until = jiffies +
 						tz->fan_on_delay * HZ;
 				}
 
 				if (time_after_eq(jiffies, cdev->delay_until)) {
 					tz->cdevs_in_delay--;
-					cdev->cur_state = 1;
+					cdev->cur_state = CDEV_STATE_ON;
 					cdev->ops->set_cur_state(cdev, 1);
 				}
 			}
