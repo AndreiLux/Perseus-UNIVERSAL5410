@@ -43,6 +43,8 @@
 #include <linux/debugfs.h>
 #endif
 
+#include <trace/events/power.h>
+
 #include <mach/hardware.h>
 #include <asm/irq.h>
 
@@ -93,8 +95,10 @@ int clk_enable(struct clk *clk)
 
 	spin_lock_irqsave(&clocks_lock, flags);
 
-	if ((clk->usage++) == 0)
+	if ((clk->usage++) == 0) {
+		trace_clock_enable(clk->name, 1, smp_processor_id());
 		(clk->enable)(clk, 1);
+	}
 
 	spin_unlock_irqrestore(&clocks_lock, flags);
 	return 0;
@@ -116,8 +120,10 @@ void clk_disable(struct clk *clk)
 		return;
 	}
 
-	if ((--clk->usage) == 0)
+	if ((--clk->usage) == 0) {
+		trace_clock_disable(clk->name, 0, smp_processor_id());
 		(clk->enable)(clk, 0);
+	}
 
 	spin_unlock_irqrestore(&clocks_lock, flags);
 	clk_disable(clk->parent);
@@ -168,6 +174,7 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 		return -EINVAL;
 
 	spin_lock_irqsave(&clocks_lock, flags);
+	trace_clock_set_rate(clk->name, rate, smp_processor_id());
 	ret = (clk->ops->set_rate)(clk, rate);
 	spin_unlock_irqrestore(&clocks_lock, flags);
 
@@ -189,8 +196,10 @@ int clk_set_parent(struct clk *clk, struct clk *parent)
 
 	spin_lock_irqsave(&clocks_lock, flags);
 
-	if (clk->ops && clk->ops->set_parent)
+	if (clk->ops && clk->ops->set_parent) {
+		trace_clock_set_parent(clk->name, parent->name);
 		ret = (clk->ops->set_parent)(clk, parent);
+	}
 
 	spin_unlock_irqrestore(&clocks_lock, flags);
 
