@@ -36,14 +36,13 @@ struct vb2_ion_context {
 };
 
 struct vb2_ion_buf {
-	struct vm_area_struct		**vmas;
-	int				vma_count;
 	struct vb2_ion_context		*ctx;
 	struct vb2_vmarea_handler	handler;
 	struct ion_handle		*handle;
 	struct dma_buf			*dma_buf;
 	struct dma_buf_attachment	*attachment;
 	struct sg_table			*sg_table;
+	enum dma_data_direction		direction;
 	void				*kva;
 	unsigned long			size;
 	atomic_t			ref;
@@ -149,7 +148,6 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 {
 	struct vb2_ion_context *ctx = alloc_ctx;
 	struct vb2_ion_buf *buf;
-	struct scatterlist *sg;
 	int fd;
 	struct file *file;
 	int ret = 0;
@@ -184,7 +182,8 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 
 	if (ctx_iommu(ctx)) {
 		buf->cookie.ioaddr = iovmm_map(ctx->dev,
-					       buf->cookie.sg, 0, size);
+					       buf->cookie.sg, 0,
+					       buf->size);
 		if (!buf->cookie.ioaddr) {
 			ret = -EFAULT;
 			goto err_ion_map_io;
@@ -250,6 +249,7 @@ static void *vb2_ion_alloc(void *alloc_ctx, unsigned long size)
 
 	return buf;
 }
+
 
 void *vb2_ion_private_vaddr(void *cookie)
 {
@@ -332,12 +332,126 @@ static int vb2_ion_mmap(void *buf_priv, struct vm_area_struct *vma)
 	return ret;
 }
 
+static int vb2_ion_map_dmabuf(void *mem_priv)
+{
+	struct vb2_ion_buf *buf = mem_priv;
+	struct sg_table *sgt;
+	struct vb2_ion_context *ctx = buf->ctx;
+
+	if (WARN_ON(!buf->attachment)) {
+		pr_err("trying to pin a non attached buffer\n");
+		return -EINVAL;
+	}
+
+	if (WARN_ON(buf->sg_table)) {
+		pr_err("dmabuf buffer is already pinned\n");
+		return 0;
+	}
+
+	/* get the associated scatterlist for this buffer */
+	sgt = dma_buf_map_attachment(buf->attachment, buf->direction);
+	if (IS_ERR_OR_NULL(sgt)) {
+		pr_err("Error getting dmabuf scatterlist\n");
+		return -EINVAL;
+	}
+
+	buf->sg_table = sgt;
+	buf->cookie.sg = buf->sg_table->sgl;
+	buf->cookie.nents = buf->sg_table->nents;
+	buf->cookie.offset = 0;
+	buf->kva = NULL;
+
+	if (ctx_iommu(ctx) && buf->cookie.ioaddr == 0) {
+		buf->cookie.ioaddr = iovmm_map(ctx->dev,
+					       buf->cookie.sg, 0, buf->size);
+		if (!buf->cookie.ioaddr)
+			goto err_iovmm_map;
+	}
+
+	return 0;
+
+err_iovmm_map:
+	dma_buf_unmap_attachment(buf->attachment, sgt,
+				 buf->direction);
+	return -EFAULT;
+}
+
+static void vb2_ion_unmap_dmabuf(void *mem_priv)
+{
+	struct vb2_ion_buf *buf = mem_priv;
+	struct sg_table *sgt = buf->sg_table;
+
+
+	if (WARN_ON(!buf->attachment)) {
+		pr_err("trying to unpin a not attached buffer\n");
+		return;
+	}
+
+	if (WARN_ON(!sgt)) {
+		pr_err("dmabuf buffer is already unpinned\n");
+		return;
+	}
+
+	dma_buf_unmap_attachment(buf->attachment, sgt, buf->direction);
+
+	buf->sg_table = NULL;
+}
+
+static void vb2_ion_detach_dmabuf(void *mem_priv)
+{
+	struct vb2_ion_buf *buf = mem_priv;
+	struct vb2_ion_context *ctx = buf->ctx;
+
+	if (buf->cookie.ioaddr && ctx_iommu(ctx)) {
+		iovmm_unmap(ctx->dev, buf->cookie.ioaddr);
+		buf->cookie.ioaddr = 0;
+	}
+
+	/* detach this attachment */
+	dma_buf_detach(buf->dma_buf, buf->attachment);
+	kfree(buf);
+}
+
+static void *vb2_ion_attach_dmabuf(void *alloc_ctx, struct dma_buf *dbuf,
+				  unsigned long size, int write)
+{
+	struct vb2_ion_buf *buf;
+	struct dma_buf_attachment *attachment;
+
+	if (dbuf->size < size)
+		return ERR_PTR(-EFAULT);
+
+	buf = kzalloc(sizeof *buf, GFP_KERNEL);
+	if (!buf)
+		return ERR_PTR(-ENOMEM);
+
+	buf->ctx = alloc_ctx;
+	/* create attachment for the dmabuf with the user device */
+	attachment = dma_buf_attach(dbuf, buf->ctx->dev);
+	if (IS_ERR(attachment)) {
+		pr_err("failed to attach dmabuf\n");
+		kfree(buf);
+		return attachment;
+	}
+
+	buf->direction = write ? DMA_FROM_DEVICE : DMA_TO_DEVICE;
+	buf->size = size;
+	buf->dma_buf = dbuf;
+	buf->attachment = attachment;
+
+	return buf;
+}
+
 const struct vb2_mem_ops vb2_ion_memops = {
 	.alloc		= vb2_ion_alloc,
 	.put		= vb2_ion_put,
 	.cookie		= vb2_ion_cookie,
 	.vaddr		= vb2_ion_vaddr,
 	.mmap		= vb2_ion_mmap,
+	.map_dmabuf	= vb2_ion_map_dmabuf,
+	.unmap_dmabuf	= vb2_ion_unmap_dmabuf,
+	.attach_dmabuf	= vb2_ion_attach_dmabuf,
+	.detach_dmabuf	= vb2_ion_detach_dmabuf,
 	.num_users	= vb2_ion_num_users,
 };
 EXPORT_SYMBOL_GPL(vb2_ion_memops);
