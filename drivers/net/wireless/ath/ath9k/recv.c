@@ -1841,11 +1841,8 @@ int ath_rx_tasklet(struct ath_softc *sc, int flush, bool hp)
 
 		memset(rxs, 0, sizeof(struct ieee80211_rx_status));
 
-		if (rs.is_mybeacon) {
-			atomic_set(&sc->stop_rx_poll, 1);
-			mod_timer(&sc->rx_poll_timer,
-				  jiffies + msecs_to_jiffies(300));
-		}
+		if (rs.is_mybeacon)
+			ath_start_rx_poll(sc, 300);
 
 		rxs->mactime = (tsf & ~0xffffffffULL) | rs.rs_tstamp;
 		if (rs.rs_tstamp > tsf_lower &&

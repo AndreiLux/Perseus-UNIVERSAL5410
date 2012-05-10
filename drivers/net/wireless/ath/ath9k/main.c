@@ -290,13 +290,11 @@ static bool ath_complete_reset(struct ath_softc *sc, bool start)
 		if (sc->sc_flags & SC_OP_BEACONS)
 			ath_set_beacon(sc);
 
-		if (sc->sc_flags & SC_OP_PRIM_STA_VIF)
-			mod_timer(&sc->rx_poll_timer,
-				  jiffies + msecs_to_jiffies(10));
 		ieee80211_queue_delayed_work(sc->hw, &sc->tx_complete_work, 0);
 		ieee80211_queue_delayed_work(sc->hw, &sc->hw_pll_work, HZ/2);
 		if (!common->disable_ani)
 			ath_start_ani(common);
+		ath_start_rx_poll(sc, 100);
 	}
 
 	if ((ah->caps.hw_caps & ATH9K_HW_CAP_ANT_DIV_COMB) && sc->ant_rx != 3) {
@@ -674,6 +672,17 @@ static void ath_node_detach(struct ath_softc *sc, struct ieee80211_sta *sta)
 		ath_tx_node_cleanup(sc, an);
 }
 
+void ath_start_rx_poll(struct ath_softc *sc, u32 nmsec)
+{
+	if (!AR_SREV_9300(sc->sc_ah))
+		return;
+
+	if (!(sc->sc_flags & SC_OP_PRIM_STA_VIF))
+		return;
+
+	mod_timer(&sc->rx_poll_timer, jiffies + msecs_to_jiffies(nmsec));
+}
+
 void ath_rx_poll_work(unsigned long data)
 {
 	struct ath_softc *sc = (struct ath_softc *)data;
@@ -684,21 +693,16 @@ void ath_rx_poll_work(unsigned long data)
 	static u32 iter, match_count;
 	static u64 last_run;
 	unsigned long flags;
-	u32 rx_clear, rx, tx, delay = 10, reg;
-	int i, j;
+	u32 rx_clear, rx, tx, reg;
+	int i, j, len;
 	u8 chainmask = (ah->rxchainmask << 3) | ah->rxchainmask;
-	u8 nread;
+	u8 nread, nmsec = 10, buf[200];
 
 	if (jiffies_to_msecs(jiffies - last_run) > 30)
 		iter = match_count = 0;
-	else {
-		if (atomic_read(&sc->stop_rx_poll) && iter) {
-			iter = match_count = 0;
-			return;
-		}
+	else
 		iter += 1;
-	}
-	sc->ps_flags |= PS_WAIT_FOR_BEACON;
+
 	ath9k_ps_wakeup(sc);
 
 	spin_lock_irqsave(&common->cc_lock, flags);
@@ -708,7 +712,6 @@ void ath_rx_poll_work(unsigned long data)
 	rx = common->cc_rxpoll.rx_frame * 100 / common->cc_rxpoll.cycles;
 	tx = common->cc_rxpoll.tx_frame * 100 / common->cc_rxpoll.cycles;
 	memset(&common->cc_rxpoll, 0, sizeof(common->cc_rxpoll));
-
 	spin_unlock_irqrestore(&common->cc_lock, flags);
 
 	ath_dbg(common, RX_STUCK,
@@ -723,7 +726,7 @@ void ath_rx_poll_work(unsigned long data)
 		REG_READ(ah, AR_IMR), REG_READ(ah, AR_IER),
 		atomic_read(&ah->intr_ref_cnt));
 
-	ar9003_hw_dump_txdesc(ah);
+	ath_dbg(common, RX_STUCK, "ts tail %d\n", ah->ts_tail);
 
 	REG_SET_BIT(ah, AR_DIAG_SW, 0x8080000);
 	for (i = 0; i < 5; i++) {
@@ -902,42 +905,40 @@ void ath_rx_poll_work(unsigned long data)
 		"Chain | privNF | # Readings | NF Readings\n");
 	for (i = 0; i < 6; i++) {
 		if (!(chainmask & (1 << i)) ||
-				((i >= 3) && !conf_is_ht40(conf)))
+		    ((i >= 3) && !conf_is_ht40(conf)))
 			continue;
 
+		memset(buf, 0, sizeof(buf));
+		len = 0;
 		nread = 5 - h[i].invalidNFcount;
-		ath_dbg(common, RX_STUCK,
-		" %d\t %d\t %d\t\t", i, h[i].privNF, nread);
 		for (j = 0; j < nread; j++)
-			ath_dbg(common, RX_STUCK,
-				" %d", h[i].nfCalBuffer[j]);
-		ath_dbg(common, RX_STUCK, "\n");
+			len += snprintf(buf + len, sizeof(buf) - len,
+					"%d ", h[i].nfCalBuffer[j]);
+		ath_dbg(common, RX_STUCK, " %d\t %d\t %d\t\t %s",
+			i, h[i].privNF, nread, buf);
 	}
 
 	last_run = jiffies;
 	if (rx_clear > 98) {
-		ath_dbg(common, RX_STUCK,
-			"rx clear %d tx %d matched count %d\n",
-			rx_clear, tx, match_count);
-		if (match_count++ > 9) {
-			ath9k_ps_restore(sc);
-			ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
-			iter = match_count = 0;
-			return;
-		}
-	} else if (ath9k_hw_detect_mac_hang(ah)) {
-		ath_dbg(common, RX_STUCK, "MAC hang signature found\n");
-		ath9k_ps_restore(sc);
-		ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
+		ath_dbg(common, RESET,
+			"rx clear %d match count %d iteration %d\n",
+			rx_clear, match_count, iter);
+		if (match_count++ > 15)
+			goto queue_reset_work;
+	} else if (ath9k_hw_detect_mac_hang(ah))
+		goto queue_reset_work;
+	else if (iter >= 9) {
 		iter = match_count = 0;
-		return;
-	} else if (iter >= 15) {
-		iter = match_count = 0;
-		delay = 200;
+		nmsec = 200;
 	}
 	ath9k_ps_restore(sc);
-	atomic_set(&sc->stop_rx_poll, 0);
-	mod_timer(&sc->rx_poll_timer, jiffies + msecs_to_jiffies(delay));
+	ath_start_rx_poll(sc, nmsec);
+	return;
+
+queue_reset_work:
+	ath9k_ps_restore(sc);
+	ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
+	iter = match_count = 0;
 }
 
 void ath9k_tasklet(unsigned long data)
@@ -1195,9 +1196,7 @@ static int ath_reset(struct ath_softc *sc, bool retry_tx)
 	if ((sc->sc_flags & SC_OP_BEACONS) || !(sc->sc_flags & (SC_OP_OFFCHANNEL)))
 		ath_set_beacon(sc);	/* restart beacons */
 
-	if (sc->sc_flags & SC_OP_PRIM_STA_VIF)
-		mod_timer(&sc->rx_poll_timer, jiffies + msecs_to_jiffies(300));
-
+	ath_start_rx_poll(sc, 300);
 	ath9k_hw_set_interrupts(ah);
 	ath9k_hw_enable_interrupts(ah);
 
@@ -2232,11 +2231,8 @@ static void ath9k_bss_iter(void *data, u8 *mac, struct ieee80211_vif *vif)
 		if (!common->disable_ani) {
 			sc->sc_flags |= SC_OP_ANI_RUN;
 			ath_start_ani(common);
-			atomic_set(&sc->stop_rx_poll, 0);
-			mod_timer(&sc->rx_poll_timer,
-				  jiffies + msecs_to_jiffies(300));
 		}
-
+		ath_start_rx_poll(sc, 300);
 	}
 }
 
