@@ -535,6 +535,7 @@ static struct clksrc_clk exynos5_clk_mout_cpu = {
 	},
 	.sources = &exynos5_clkset_mout_cpu,
 	.reg_src = { .reg = EXYNOS5_CLKSRC_CPU, .shift = 16, .size = 1 },
+	.reg_src_stat = {.reg = EXYNOS5_CLKMUX_STATCPU, .shift = 16, .size = 3},
 };
 
 static struct clksrc_clk exynos5_clk_dout_armclk = {
@@ -1812,6 +1813,47 @@ static struct clk_ops exynos5_epll_ops = {
 	.set_rate = exynos5_epll_set_rate,
 };
 
+
+#define APLL_FREQ(f, a0, a1, a2, a3, a4, a5, a6, a7, b0, b1, m, p, s) \
+	{ \
+		.freq = (f) * 1000000, \
+		.clk_div_cpu0 = ((a0) | (a1) << 4 | (a2) << 8 |	(a3) << 12 | \
+			(a4) << 16 | (a5) << 20 | (a6) << 24 | (a7) << 28), \
+		.clk_div_cpu1 = (b0 << 0 | b1 << 4), \
+		.mps = ((m) << 16 | (p) << 8 | (s)), \
+	}
+
+static struct {
+	unsigned long freq;
+	u32 clk_div_cpu0;
+	u32 clk_div_cpu1;
+	u32 mps;
+} apll_freq[] = {
+	/*
+	 * values:
+	 * freq
+	 * clock divider for ARM, CPUD, ACP, PERIPH, ATB, PCLK_DBG, APLL, ARM2
+	 * clock divider for COPY, HPM
+	 * PLL M, P, S
+	 */
+	APLL_FREQ(1700, 0, 3, 7, 7, 6, 1, 3, 0, 0, 2, 0,   0, 0),
+	APLL_FREQ(1600, 0, 3, 7, 7, 6, 1, 3, 0, 0, 2, 0,   0, 0),
+	APLL_FREQ(1500, 0, 3, 7, 7, 5, 1, 3, 0, 0, 2, 0,   0, 0),
+	APLL_FREQ(1400, 0, 3, 7, 7, 6, 1, 3, 0, 0, 2, 0,   0, 0),
+	APLL_FREQ(1300, 0, 3, 7, 7, 6, 1, 3, 0, 0, 2, 325, 6, 0),
+	APLL_FREQ(1200, 0, 3, 7, 7, 5, 1, 3, 0, 0, 2, 200, 4, 0),
+	APLL_FREQ(1100, 0, 2, 7, 7, 5, 1, 2, 0, 0, 2, 275, 6, 0),
+	APLL_FREQ(1000, 0, 2, 7, 7, 4, 1, 2, 0, 0, 2, 125, 3, 0),
+	APLL_FREQ(900,  0, 2, 7, 7, 4, 1, 2, 0, 0, 2, 150, 4, 0),
+	APLL_FREQ(800,  0, 2, 7, 7, 3, 1, 1, 0, 0, 2, 100, 3, 0),
+	APLL_FREQ(700,  0, 1, 7, 7, 3, 1, 1, 0, 0, 2, 175, 3, 1),
+	APLL_FREQ(600,  0, 1, 7, 7, 2, 1, 1, 0, 0, 2, 200, 4, 1),
+	APLL_FREQ(500,  0, 1, 7, 7, 2, 1, 1, 0, 0, 2, 125, 3, 1),
+	APLL_FREQ(400,  0, 1, 7, 7, 1, 1, 1, 0, 0, 2, 100, 3, 1),
+	APLL_FREQ(300,  0, 1, 7, 7, 1, 1, 1, 0, 0, 2, 200, 4, 2),
+	APLL_FREQ(200,  0, 1, 7, 7, 1, 1, 1, 0, 0, 2, 100, 3, 2),
+};
+
 static int xtal_rate;
 
 static unsigned long exynos5_fout_apll_get_rate(struct clk *clk)
@@ -1819,8 +1861,84 @@ static unsigned long exynos5_fout_apll_get_rate(struct clk *clk)
 	return s5p_get_pll35xx(xtal_rate, __raw_readl(EXYNOS5_APLL_CON0));
 }
 
+static void exynos5_apll_set_clkdiv(unsigned int div_index)
+{
+	unsigned int tmp;
+
+	/* Change Divider - CPU0 */
+
+	tmp = apll_freq[div_index].clk_div_cpu0;
+
+	__raw_writel(tmp, EXYNOS5_CLKDIV_CPU0);
+
+	while (__raw_readl(EXYNOS5_CLKDIV_STATCPU0) & 0x11111111)
+		cpu_relax();
+
+	/* Change Divider - CPU1 */
+	tmp = apll_freq[div_index].clk_div_cpu1;
+
+	__raw_writel(tmp, EXYNOS5_CLKDIV_CPU1);
+
+	while (__raw_readl(EXYNOS5_CLKDIV_STATCPU1) & 0x11)
+		cpu_relax();
+}
+
+static void exynos5_apll_set_apll(unsigned int index)
+{
+	unsigned int tmp, pdiv;
+
+	/* Set APLL Lock time */
+	pdiv = ((apll_freq[index].mps >> 8) & 0x3f);
+
+	__raw_writel((pdiv * 250), EXYNOS5_APLL_LOCK);
+
+	/* Change PLL PMS values */
+	tmp = __raw_readl(EXYNOS5_APLL_CON0);
+	tmp &= ~((0x3ff << 16) | (0x3f << 8) | (0x7 << 0));
+	tmp |= apll_freq[index].mps;
+	__raw_writel(tmp, EXYNOS5_APLL_CON0);
+
+	/* wait_lock_time */
+	do {
+		cpu_relax();
+		tmp = __raw_readl(EXYNOS5_APLL_CON0);
+	} while (!(tmp & (0x1 << 29)));
+
+}
+
+static int exynos5_fout_apll_set_rate(struct clk *clk, unsigned long rate)
+{
+	int index;
+
+	for (index = 0; index < ARRAY_SIZE(apll_freq); index++)
+		if (apll_freq[index].freq == rate)
+			break;
+
+	if (index == ARRAY_SIZE(apll_freq))
+		return -EINVAL;
+
+	if (rate > clk->rate) {
+		/* Clock Configuration Procedure */
+		/* 1. Change the system clock divider values */
+		exynos5_apll_set_clkdiv(index);
+		/* 2. Change the apll m,p,s value */
+		exynos5_apll_set_apll(index);
+	} else if (rate < clk->rate) {
+		/* Clock Configuration Procedure */
+		/* 1. Change the apll m,p,s value */
+		exynos5_apll_set_apll(index);
+		/* 2. Change the system clock divider values */
+		exynos5_apll_set_clkdiv(index);
+	}
+
+	clk->rate = rate;
+
+	return 0;
+}
+
 static struct clk_ops exynos5_fout_apll_ops = {
 	.get_rate = exynos5_fout_apll_get_rate,
+	.set_rate = exynos5_fout_apll_set_rate
 };
 
 #ifdef CONFIG_PM
@@ -1901,6 +2019,7 @@ void __init_or_cpufreq exynos5_setup_clocks(void)
 	clk_fout_mpll_div2.rate = clk_fout_mpll.rate / 2;
 	clk_fout_epll.rate = epll;
 	clk_fout_vpll.rate = vpll;
+	clk_fout_apll.rate = apll;
 
 	if (clk_set_parent(&exynos5_clk_mout_mpll.clk,
 			   &exynos5_clk_mout_mpll_fout.clk))
