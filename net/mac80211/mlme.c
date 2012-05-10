@@ -177,6 +177,15 @@ static int ecw2cw(int ecw)
 	return (1 << ecw) - 1;
 }
 
+static bool ieee80211_bss_get_htinfo(struct ieee80211_bss *bss,
+				     struct ieee80211_ht_info *hti) {
+	if (bss == NULL || !bss->has_ht_info)
+		return false;
+
+	memcpy(hti, &bss->ht_info, sizeof(*hti));
+	return true;
+}
+
 /*
  * ieee80211_enable_ht should be called only after the operating band
  * has been determined as ht configuration depends on the hw's
@@ -185,7 +194,8 @@ static int ecw2cw(int ecw)
 static u32 ieee80211_enable_ht(struct ieee80211_sub_if_data *sdata,
 			       struct ieee80211_ht_info *hti,
 			       const u8 *bssid, u16 ap_ht_cap_flags,
-			       bool beacon_htcap_ie)
+			       bool beacon_htcap_ie,
+			       struct ieee80211_bss *bss)
 {
 	struct ieee80211_local *local = sdata->local;
 	struct ieee80211_supported_band *sband;
@@ -194,9 +204,11 @@ static u32 ieee80211_enable_ht(struct ieee80211_sub_if_data *sdata,
 	int hti_cfreq;
 	u16 ht_opmode;
 	bool enable_ht = true;
+	bool disable_tx_ht = false;
 	enum nl80211_channel_type prev_chantype;
 	enum nl80211_channel_type rx_channel_type = NL80211_CHAN_NO_HT;
 	enum nl80211_channel_type tx_channel_type;
+	struct ieee80211_ht_info bss_hti;
 
 	sband = local->hw.wiphy->bands[local->hw.conf.channel->band];
 	prev_chantype = sdata->vif.bss_conf.channel_type;
@@ -210,16 +222,45 @@ static u32 ieee80211_enable_ht(struct ieee80211_sub_if_data *sdata,
 		 * Netgear WNDR3700 sometimes reports 4 higher than
 		 * the actual channel, for instance.
 		 */
-		printk(KERN_DEBUG
-		       "%s: Wrong control channel in association"
-		       " response: configured center-freq: %d"
-		       " hti-cfreq: %d  hti->control_chan: %d"
-		       " band: %d.  Disabling HT.\n",
-		       sdata->name,
-		       local->hw.conf.channel->center_freq,
-		       hti_cfreq, hti->control_chan,
-		       sband->band);
-		enable_ht = false;
+		if (ieee80211_bss_get_htinfo(bss, &bss_hti) &&
+		    local->hw.conf.channel->center_freq ==
+		    ieee80211_channel_to_frequency(
+			   bss_hti.control_chan, sband->band)) {
+			/*
+			 * If we disable HT overall, then we
+			 * will have associated saying we can
+			 * receive HT40, but then turned
+			 * around and become deaf to it.  Use
+			 * the HT information from the beacon
+			 * to configure receive, but restrain
+			 * ourselves from ever transmitting in
+			 * HT.
+			 */
+			printk(KERN_DEBUG
+			       "%s: Wrong control channel in "
+			       " association response: configured"
+			       " center-freq: %d hti-cfreq: %d "
+			       " hti->control_chan: %d band: %d. "
+			       " Disabling HT transmit.\n",
+			       sdata->name,
+			       local->hw.conf.channel->center_freq,
+			       hti_cfreq, hti->control_chan,
+			       sband->band);
+			hti = &bss_hti;
+			disable_tx_ht = true;
+		} else {
+			printk(KERN_DEBUG
+			       "%s: Wrong control channel in "
+			       " association response: configured"
+			       " center-freq: %d hti-cfreq: %d "
+			       " hti->control_chan: %d band: %d. "
+			       " Disabling HT.\n",
+			       sdata->name,
+			       local->hw.conf.channel->center_freq,
+			       hti_cfreq, hti->control_chan,
+			       sband->band);
+			enable_ht = false;
+		}
 	}
 
 	if (enable_ht) {
@@ -241,6 +282,8 @@ static u32 ieee80211_enable_ht(struct ieee80211_sub_if_data *sdata,
 	}
 
 	tx_channel_type = ieee80211_get_tx_channel_type(local, rx_channel_type);
+	if (disable_tx_ht)
+		tx_channel_type = NL80211_CHAN_NO_HT;
 
 	if (local->tmp_channel)
 		local->tmp_channel_type = rx_channel_type;
@@ -2104,7 +2147,9 @@ static bool ieee80211_assoc_success(struct ieee80211_sub_if_data *sdata,
 	    !(ifmgd->flags & IEEE80211_STA_DISABLE_11N))
 		changed |= ieee80211_enable_ht(sdata, elems.ht_info_elem,
 					       cbss->bssid, ap_ht_cap_flags,
-					       false);
+					       false,
+					       (struct ieee80211_bss *)
+					       cbss->priv);
 
 	/* set AID and assoc capability,
 	 * ieee80211_set_associated() will tell the driver */
@@ -2537,7 +2582,8 @@ static void ieee80211_rx_mgmt_beacon(struct ieee80211_sub_if_data *sdata,
 		rcu_read_unlock();
 
 		changed |= ieee80211_enable_ht(sdata, elems.ht_info_elem,
-					       bssid, ap_ht_cap_flags, true);
+					       bssid, ap_ht_cap_flags, true,
+					       NULL);
 	}
 
 	/* Note: country IE parsing is done for us by cfg80211 */

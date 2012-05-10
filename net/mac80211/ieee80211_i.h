@@ -106,6 +106,9 @@ struct ieee80211_bss {
 	bool has_erp_value;
 	u8 erp_value;
 
+	bool has_ht_info;
+	struct ieee80211_ht_info ht_info;
+
 	/* Keep track of the corruption of the last beacon/probe response. */
 	u8 corrupt_data;
 
@@ -132,6 +135,7 @@ enum ieee80211_bss_corrupt_data_flags {
  * @IEEE80211_BSS_VALID_WMM: WMM/UAPSD data was gathered from non-corrupt IE
  * @IEEE80211_BSS_VALID_RATES: Supported rates were gathered from non-corrupt IE
  * @IEEE80211_BSS_VALID_ERP: ERP flag was gathered from non-corrupt IE
+ * @IEEE80211_BSS_VALID_HT: HT information was gathered from non-corrupt IE
  *
  * These are bss flags that are attached to a bss in the
  * @valid_data field of &struct ieee80211_bss.  They show which parts
@@ -142,7 +146,8 @@ enum ieee80211_bss_valid_data_flags {
 	IEEE80211_BSS_VALID_DTIM		= BIT(0),
 	IEEE80211_BSS_VALID_WMM			= BIT(1),
 	IEEE80211_BSS_VALID_RATES		= BIT(2),
-	IEEE80211_BSS_VALID_ERP			= BIT(3)
+	IEEE80211_BSS_VALID_ERP			= BIT(3),
+	IEEE80211_BSS_VALID_HT			= BIT(4)
 };
 
 static inline u8 *bss_mesh_cfg(struct ieee80211_bss *bss)
