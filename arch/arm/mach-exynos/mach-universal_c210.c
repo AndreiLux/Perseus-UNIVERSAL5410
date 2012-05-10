@@ -43,6 +43,7 @@
 #include <plat/s5p-time.h>
 #include <plat/camport.h>
 #include <plat/mipi_csis.h>
+#include <plat/udc-hs.h>
 
 #include <mach/map.h>
 
