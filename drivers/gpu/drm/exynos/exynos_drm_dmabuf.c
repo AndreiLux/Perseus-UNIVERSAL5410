@@ -28,6 +28,7 @@
 #include "exynos_drm_drv.h"
 #include "exynos_drm_gem.h"
 
+#include "exynos_drm.h"
 #include <linux/dma-buf.h>
 
 static struct sg_table *exynos_pages_to_sg(struct page **pages, int nr_pages,
@@ -158,7 +159,37 @@ static void exynos_gem_dmabuf_kunmap(struct dma_buf *dma_buf,
 	/* TODO */
 }
 
+static int exynos_drm_gem_dmabuf_mmap(struct dma_buf *dmabuf,
+                                     struct vm_area_struct *vma)
+{
+	struct drm_gem_object *obj = dmabuf->priv;
+	struct exynos_drm_gem_obj *exynos_gem_obj = to_exynos_gem_obj(obj);
+	struct exynos_drm_gem_buf *buffer = exynos_gem_obj->buffer;
+	unsigned long uaddr = vma->vm_start;
+	int ret;
+
+	if (exynos_gem_obj->flags & EXYNOS_BO_NONCONTIG) {
+		unsigned long usize = buffer->size, i=0;
+
+		if (!buffer->pages)
+			return -EINVAL;
+
+		do {
+			ret = vm_insert_page(vma, uaddr, buffer->pages[i++]);
+			if (ret) {
+				DRM_ERROR("failed to remap user space.\n");
+				return ret;
+			}
+
+			uaddr += PAGE_SIZE;
+			usize -= PAGE_SIZE;
+		} while (usize > 0);
+	}
+	return 0;
+}
+
 static struct dma_buf_ops exynos_dmabuf_ops = {
+	.mmap                   = exynos_drm_gem_dmabuf_mmap,
 	.map_dma_buf		= exynos_gem_map_dma_buf,
 	.unmap_dma_buf		= exynos_gem_unmap_dma_buf,
 	.kmap			= exynos_gem_dmabuf_kmap,
@@ -174,7 +205,7 @@ struct dma_buf *exynos_dmabuf_prime_export(struct drm_device *drm_dev,
 	struct exynos_drm_gem_obj *exynos_gem_obj = to_exynos_gem_obj(obj);
 
 	return dma_buf_export(exynos_gem_obj, &exynos_dmabuf_ops,
-				exynos_gem_obj->base.size, 0600);
+				exynos_gem_obj->base.size, 0666);
 }
 
 struct drm_gem_object *exynos_dmabuf_prime_import(struct drm_device *drm_dev,
