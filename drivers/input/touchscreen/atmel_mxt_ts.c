@@ -311,11 +311,17 @@ struct mxt_data {
 	struct dentry *dentry_dev;
 	struct dentry *dentry_deltas;
 	struct dentry *dentry_refs;
+	struct dentry *dentry_object;
 
 	/* Protect access to the T37 object buffer, used by debugfs */
 	struct mutex T37_buf_mutex;
 	u8 *T37_buf;
 	size_t T37_buf_size;
+
+	/* Protect access to the object register buffer */
+	struct mutex object_str_mutex;
+	char *object_str;
+	size_t object_str_size;
 };
 
 /* global root node of the atmel_mxt_ts debugfs directory. */
@@ -1407,51 +1413,6 @@ static ssize_t mxt_matrix_size_show(struct device *dev,
 			 info->matrix_xsize, info->matrix_ysize);
 }
 
-static ssize_t mxt_object_show(struct device *dev,
-			       struct device_attribute *attr, char *buf)
-{
-	struct mxt_data *data = dev_get_drvdata(dev);
-	int count = 0;
-	size_t i, j, k;
-	int error = 0;
-	u8 *obuf = NULL;
-
-	for (i = 0; i < data->info.object_num && count < PAGE_SIZE - 1; i++) {
-		struct mxt_object *object = &data->object_table[i];
-
-		if (!mxt_object_readable(object->type))
-			continue;
-
-		count += scnprintf(&buf[count], PAGE_SIZE - count,
-				   "\nType: %u\n", object->type);
-
-		obuf = krealloc(obuf, object->size, GFP_KERNEL);
-		if (!obuf)
-			return -ENOMEM;
-
-		for (j = 0; j < object->instances; j++) {
-			if (object->instances > 1)
-				count += scnprintf(&buf[count],
-						   PAGE_SIZE - count,
-						   "Instance: %zu\n", j);
-
-			error = mxt_read_object(data, object, j, obuf);
-			if (error)
-				goto free_obuf;
-
-			for (k = 0; k < object->size; k++)
-				count += scnprintf(&buf[count],
-						   PAGE_SIZE - count,
-						   "\t[%2zu]: %02x (%d)\n",
-						   k, obuf[k], obuf[k]);
-		}
-	}
-
-free_obuf:
-	kfree(obuf);
-	return error ?: count;
-}
-
 static ssize_t mxt_object_store(struct device *dev,
 				struct device_attribute *attr,
 				const char *buf, size_t count)
@@ -1505,8 +1466,7 @@ static DEVICE_ATTR(fw_version, S_IRUGO, mxt_fw_version_show, NULL);
 static DEVICE_ATTR(hw_version, S_IRUGO, mxt_hw_version_show, NULL);
 static DEVICE_ATTR(info_csum, S_IRUGO, mxt_info_csum_show, NULL);
 static DEVICE_ATTR(matrix_size, S_IRUGO, mxt_matrix_size_show, NULL);
-static DEVICE_ATTR(object, S_IRUGO | S_IWUSR, mxt_object_show,
-		   mxt_object_store);
+static DEVICE_ATTR(object, S_IWUSR, NULL, mxt_object_store);
 static DEVICE_ATTR(update_fw, S_IWUSR, NULL, mxt_update_fw_store);
 
 static struct attribute *mxt_attrs[] = {
@@ -1525,6 +1485,112 @@ static struct attribute *mxt_attrs[] = {
 static const struct attribute_group mxt_attr_group = {
 	.attrs = mxt_attrs,
 };
+
+/*
+ **************************************************************
+ * debugfs helper functions
+ **************************************************************
+*/
+
+/*
+ * Print the formatted string into the end of string |*str| which has size
+ * |*str_size|. Extra space will be allocated to hold the formatted string
+ * and |*str_size| will be updated accordingly.
+ */
+static int mxt_asprintf(char **str, size_t *str_size, const char *fmt, ...)
+{
+	unsigned int len;
+	va_list ap, aq;
+	int ret;
+	char *str_tmp;
+
+	va_start(ap, fmt);
+	va_copy(aq, ap);
+	len = vsnprintf(NULL, 0, fmt, aq);
+	va_end(aq);
+
+	str_tmp = krealloc(*str, *str_size + len + 1, GFP_KERNEL);
+	if (str_tmp == NULL)
+		return -ENOMEM;
+
+	*str = str_tmp;
+
+	ret = vsnprintf(*str + *str_size, len + 1, fmt, ap);
+	va_end(ap);
+
+	if (ret != len)
+		return -EINVAL;
+
+	*str_size += len;
+
+	return 0;
+}
+
+static int mxt_object_fetch(struct mxt_data *data)
+{
+	size_t count = 0;
+	size_t i, j, k;
+	int ret = 0;
+	char *str = NULL;
+	u8 *obuf = NULL;
+	u8 *obuf_tmp = NULL;
+
+	if (data->object_str)
+		return -EINVAL;
+
+	for (i = 0; i < data->info.object_num; i++) {
+		struct mxt_object *object = &data->object_table[i];
+
+		if (!mxt_object_readable(object->type))
+			continue;
+
+		ret = mxt_asprintf(&str, &count, "\nType: %u\n",
+				   object->type);
+		if (ret)
+			goto err;
+
+		obuf_tmp = krealloc(obuf, object->size, GFP_KERNEL);
+		if (!obuf_tmp) {
+			ret = -ENOMEM;
+			goto err;
+		}
+
+		obuf = obuf_tmp;
+
+		for (j = 0; j < object->instances; j++) {
+			if (object->instances > 1) {
+				ret = mxt_asprintf(&str, &count,
+						   "Instance: %zu\n", j);
+				if (ret)
+					goto err;
+			}
+
+			ret = mxt_read_object(data, object, j, obuf);
+			if (ret)
+				goto err;
+
+			for (k = 0; k < object->size; k++) {
+				ret = mxt_asprintf(&str, &count,
+						   "\t[%2zu]: %02x (%d)\n",
+						   k, obuf[k], obuf[k]);
+				if (ret)
+					goto err;
+			}
+		}
+	}
+
+	goto done;
+
+err:
+	kfree(str);
+	str = NULL;
+	count = 0;
+done:
+	data->object_str = str;
+	data->object_str_size = count;
+	kfree(obuf);
+	return ret;
+}
 
 /*
  **************************************************************
@@ -1617,6 +1683,78 @@ static const struct file_operations mxt_debugfs_T37_fops = {
 	.read = mxt_debugfs_T37_read
 };
 
+static int mxt_debugfs_object_open(struct inode *inode, struct file *file)
+{
+	struct mxt_data *mxt = inode->i_private;
+	int ret;
+
+	/* Only allow one object debugfs file to be opened at a time */
+	ret = mutex_lock_interruptible(&mxt->object_str_mutex);
+	if (ret)
+		return ret;
+
+	if (!i2c_use_client(mxt->client)) {
+		ret = -ENODEV;
+		goto err_object_unlock;
+	}
+
+	ret = mxt_object_fetch(mxt);
+	if (ret)
+		goto err_object_i2c_release;
+	file->private_data = mxt;
+
+	return 0;
+
+err_object_i2c_release:
+	i2c_release_client(mxt->client);
+err_object_unlock:
+	mutex_unlock(&mxt->object_str_mutex);
+	return ret;
+}
+
+static int mxt_debugfs_object_release(struct inode *inode, struct file *file)
+{
+	struct mxt_data *mxt = file->private_data;
+	file->private_data = NULL;
+
+	kfree(mxt->object_str);
+	mxt->object_str = NULL;
+	mxt->object_str_size = 0;
+
+	i2c_release_client(mxt->client);
+	mutex_unlock(&mxt->object_str_mutex);
+
+	return 0;
+}
+
+static ssize_t mxt_debugfs_object_read(struct file *file, char __user* buffer,
+				   size_t count, loff_t *ppos)
+{
+	struct mxt_data *mxt = file->private_data;
+	if (!mxt->object_str)
+		return -ENODEV;
+
+	if (*ppos >= mxt->object_str_size)
+		return 0;
+
+	if (count + *ppos > mxt->object_str_size)
+		count = mxt->object_str_size - *ppos;
+
+	if (copy_to_user(buffer, &mxt->object_str[*ppos], count))
+		return -EFAULT;
+
+	*ppos += count;
+
+	return count;
+}
+
+static const struct file_operations mxt_debugfs_object_fops = {
+	.owner = THIS_MODULE,
+	.open = mxt_debugfs_object_open,
+	.release = mxt_debugfs_object_release,
+	.read = mxt_debugfs_object_read,
+};
+
 static int mxt_debugfs_init(struct mxt_data *mxt)
 {
 	struct device *dev = &mxt->client->dev;
@@ -1638,7 +1776,23 @@ static int mxt_debugfs_init(struct mxt_data *mxt)
 	mxt->dentry_refs = debugfs_create_file("refs", S_IRUSR,
 					       mxt->dentry_dev, mxt,
 					       &mxt_debugfs_T37_fops);
+	mutex_init(&mxt->object_str_mutex);
+
+	mxt->dentry_object = debugfs_create_file("object", S_IRUGO,
+						 mxt->dentry_dev, mxt,
+						 &mxt_debugfs_object_fops);
 	return 0;
+}
+
+static void mxt_debugfs_remove(struct mxt_data *mxt)
+{
+	if (mxt->dentry_dev) {
+		debugfs_remove_recursive(mxt->dentry_dev);
+		mutex_destroy(&mxt->object_str_mutex);
+		kfree(mxt->object_str);
+		mutex_destroy(&mxt->T37_buf_mutex);
+		kfree(mxt->T37_buf);
+	}
 }
 
 static int mxt_save_regs(struct mxt_data *data, u8 type, u8 instance,
@@ -1909,11 +2063,7 @@ static int __devexit mxt_remove(struct i2c_client *client)
 {
 	struct mxt_data *data = i2c_get_clientdata(client);
 
-	if (data->dentry_dev) {
-		debugfs_remove_recursive(data->dentry_dev);
-		mutex_destroy(&data->T37_buf_mutex);
-		kfree(data->T37_buf);
-	}
+	mxt_debugfs_remove(data);
 	sysfs_remove_group(&client->dev.kobj, &mxt_attr_group);
 	free_irq(data->irq, data);
 	input_unregister_device(data->input_dev);
