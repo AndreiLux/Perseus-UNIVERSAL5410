@@ -1250,7 +1250,7 @@ static int __devinit s5p_mfc_probe(struct platform_device *pdev)
 	if (!vfd) {
 		v4l2_err(&dev->v4l2_dev, "Failed to allocate video device\n");
 		ret = -ENOMEM;
-		goto unreg_dev;
+		goto alloc_vdev_dec;
 	}
 	*vfd = s5p_mfc_dec_videodev;
 
@@ -1264,7 +1264,7 @@ static int __devinit s5p_mfc_probe(struct platform_device *pdev)
 	if (ret) {
 		v4l2_err(&dev->v4l2_dev, "Failed to register video device\n");
 		video_device_release(vfd);
-		goto rel_vdev_dec;
+		goto reg_vdev_dec;
 	}
 	v4l2_info(&dev->v4l2_dev, "decoder registered as /dev/video%d\n",
 								vfd->num);
@@ -1277,7 +1277,7 @@ static int __devinit s5p_mfc_probe(struct platform_device *pdev)
 	if (!vfd) {
 		v4l2_err(&dev->v4l2_dev, "Failed to allocate video device\n");
 		ret = -ENOMEM;
-		goto unreg_vdev_dec;
+		goto alloc_vdev_enc;
 	}
 	*vfd = s5p_mfc_enc_videodev;
 
@@ -1291,7 +1291,7 @@ static int __devinit s5p_mfc_probe(struct platform_device *pdev)
 	if (ret) {
 		v4l2_err(&dev->v4l2_dev, "Failed to register video device\n");
 		video_device_release(vfd);
-		goto rel_vdev_enc;
+		goto reg_vdev_enc;
 	}
 	v4l2_info(&dev->v4l2_dev, "encoder registered as /dev/video%d\n",
 								vfd->num);
@@ -1445,13 +1445,11 @@ workqueue_fail:
 			alloc_ctx_num);
 alloc_ctx_fail:
 	video_unregister_device(dev->vfd_enc);
-rel_vdev_enc:
-	video_device_release(dev->vfd_enc);
-unreg_vdev_dec:
+reg_vdev_enc:
+alloc_vdev_enc:
 	video_unregister_device(dev->vfd_dec);
-rel_vdev_dec:
-	video_device_release(dev->vfd_dec);
-unreg_dev:
+reg_vdev_dec:
+alloc_vdev_dec:
 	v4l2_device_unregister(&dev->v4l2_dev);
 probe_out6:
 	free_irq(dev->irq, dev);
