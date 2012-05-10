@@ -77,6 +77,7 @@ static int s3c_setparent_clksrc(struct clk *clk, struct clk *parent)
 	struct clksrc_sources *srcs = sclk->sources;
 	u32 clksrc = __raw_readl(sclk->reg_src.reg);
 	u32 mask = bit_mask(sclk->reg_src.shift, sclk->reg_src.size);
+	u32 tmp;
 	int src_nr = -1;
 	int ptr;
 
@@ -86,17 +87,28 @@ static int s3c_setparent_clksrc(struct clk *clk, struct clk *parent)
 			break;
 		}
 
-	if (src_nr >= 0) {
-		clk->parent = parent;
+	if (src_nr < 0)
+		return -EINVAL;
 
-		clksrc &= ~mask;
-		clksrc |= src_nr << sclk->reg_src.shift;
 
-		__raw_writel(clksrc, sclk->reg_src.reg);
-		return 0;
+	clk->parent = parent;
+
+	clksrc &= ~mask;
+	clksrc |= src_nr << sclk->reg_src.shift;
+
+	__raw_writel(clksrc, sclk->reg_src.reg);
+
+	if (sclk->reg_src_stat.reg) {
+		mask = bit_mask(sclk->reg_src_stat.shift,
+				sclk->reg_src_stat.size);
+		do {
+			cpu_relax();
+			tmp = __raw_readl(sclk->reg_src_stat.reg);
+			tmp &= mask;
+		} while (tmp != BIT(src_nr + sclk->reg_src.shift));
 	}
 
-	return -EINVAL;
+	return 0;
 }
 
 static unsigned long s3c_roundrate_clksrc(struct clk *clk,
