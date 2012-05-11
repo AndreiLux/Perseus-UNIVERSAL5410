@@ -2039,6 +2039,14 @@ static const struct dev_pm_ops s3cfb_pm_ops = {
 			   NULL)
 };
 
+#ifdef CONFIG_OF
+static const struct of_device_id exynos_fimd_match[] = {
+	{ .compatible = "samsung,s3c-fb" },
+	{},
+};
+MODULE_DEVICE_TABLE(of, exynos_fimd_match);
+#endif
+
 static struct platform_driver s3c_fb_driver = {
 	.probe		= s3c_fb_probe,
 	.remove		= __devexit_p(s3c_fb_remove),
@@ -2047,6 +2055,7 @@ static struct platform_driver s3c_fb_driver = {
 		.name	= "s3c-fb",
 		.owner	= THIS_MODULE,
 		.pm	= &s3cfb_pm_ops,
+		.of_match_table = of_match_ptr(exynos_fimd_match),
 	},
 };
 
