@@ -853,7 +853,7 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 		goto err_req_region_io;
 	}
 
-	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	res = platform_get_resource(pdev, IORESOURCE_IRQ, 1);
 	if (!res) {
 		dev_err(dev, "irq request failed.\n");
 		goto err_req_region_irq;
