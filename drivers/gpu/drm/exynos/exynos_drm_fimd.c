@@ -796,6 +796,7 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 	struct exynos_drm_fimd_pdata *pdata;
 	struct exynos_drm_panel_info *panel;
 	struct resource *res;
+	struct clk *clk_parent;
 	int win;
 	int ret = -EINVAL;
 
@@ -830,6 +831,24 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 		ret = PTR_ERR(ctx->lcd_clk);
 		goto err_bus_clk;
 	}
+
+	clk_parent = clk_get(NULL, "mout_mpll_user");
+	if (IS_ERR(clk_parent)) {
+		ret = PTR_ERR(clk_parent);
+		goto err_clk;
+	}
+
+	if (clk_set_parent(ctx->lcd_clk, clk_parent)) {
+		ret = PTR_ERR(ctx->lcd_clk);
+		goto err_clk;
+	}
+
+	if (clk_set_rate(ctx->lcd_clk, pdata->clock_rate)) {
+		ret = PTR_ERR(ctx->lcd_clk);
+		goto err_clk;
+	}
+
+	clk_put(clk_parent);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
