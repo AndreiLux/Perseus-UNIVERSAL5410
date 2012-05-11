@@ -34,11 +34,6 @@ static int exynos_dwmci_get_bus_wd(u32 slot_id)
 
 static int exynos_dwmci_init(u32 slot_id, irq_handler_t handler, void *data)
 {
-	struct dw_mci *host = (struct dw_mci *)data;
-
-	host->pdata->sdr_timing = 0x03020001;
-	host->pdata->ddr_timing = 0x03030002;
-
 	return 0;
 }
 
