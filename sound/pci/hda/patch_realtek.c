@@ -5879,7 +5879,8 @@ static void alc271_fixup_dmic(struct hda_codec *codec,
 	};
 	unsigned int cfg;
 
-	if (strcmp(codec->chip_name, "ALC271X"))
+	if (strcmp(codec->chip_name, "ALC271X") &&
+	    strcmp(codec->chip_name, "ALC269VB"))
 		return;
 	cfg = snd_hda_codec_get_pincfg(codec, 0x12);
 	if (get_defcfg_connect(cfg) == AC_JACK_PORT_FIXED)
@@ -6119,6 +6120,8 @@ static const struct alc_fixup alc269_fixups[] = {
 			{ 0x21, 0x0321101f }, /* HP out */
 			{ }
 		},
+		.chained = true,
+		.chain_id = ALC271_FIXUP_DMIC,
 	},
 };
 
