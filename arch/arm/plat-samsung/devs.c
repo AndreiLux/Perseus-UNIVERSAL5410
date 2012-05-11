@@ -65,6 +65,7 @@
 #include <plat/regs-spi.h>
 #include <plat/s3c64xx-spi.h>
 #include <plat/tv-core.h>
+#include <plat/pwm.h>
 
 static u64 samsung_device_dma_mask = DMA_BIT_MASK(32);
 
@@ -1190,6 +1191,22 @@ struct platform_device s3c_device_timer[] = {
 	[3] = { DEFINE_S3C_TIMER(3, IRQ_TIMER3) },
 	[4] = { DEFINE_S3C_TIMER(4, IRQ_TIMER4) },
 };
+
+void __init samsung_pwm_set_platdata(struct samsung_pwm_platdata *pd)
+{
+	int i;
+	struct samsung_pwm_platdata *npd;
+
+	BUG_ON(!pd);
+
+	/*
+	 * Each 5 PWM Timers have own platform_device, but
+	 * only one platform_data is valid for all of PWMs
+	 */
+	for (i = 0 ; i < 5; i++)
+		npd = s3c_set_platdata(pd, sizeof(struct samsung_pwm_platdata),
+				       &s3c_device_timer[i]);
+}
 #endif /* CONFIG_SAMSUNG_DEV_PWM */
 
 /* RTC */

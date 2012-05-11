@@ -25,6 +25,7 @@
 
 #include <plat/cpu.h>
 #include <plat/regs-timer.h>
+#include <plat/pwm.h>
 
 enum duty_cycle {
 	DUTY_CYCLE_ZERO,
@@ -48,6 +49,8 @@ struct pwm_device {
 	unsigned char		 use_count;
 	unsigned char		 pwm_id;
 	enum duty_cycle		 duty_cycle;
+
+	unsigned int		 tcfg0;
 };
 
 #define pwm_dbg(_pwm, msg...) dev_dbg(&(_pwm)->pdev->dev, msg)
@@ -362,13 +365,34 @@ static int s3c_pwm_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct pwm_device *pwm;
+	struct samsung_pwm_platdata *pdata = pdev->dev.platform_data;
 	unsigned long flags;
 	unsigned int id = pdev->id;
+	unsigned int prescaler0;
+	unsigned int prescaler1;
 	int ret;
 
 	if (id == 4) {
 		dev_err(dev, "TIMER4 is currently not supported\n");
 		return -ENXIO;
+	}
+
+	if (pdata) {
+		prescaler0 = pdata->prescaler0;
+		prescaler1 = pdata->prescaler1;
+
+		if ((prescaler0 < 1) || (prescaler0 > 255)) {
+			dev_err(dev, "wrong prescaler0 value\n");
+			return -EINVAL;
+		}
+
+		if ((prescaler1 < 1) || (prescaler1 > 255)) {
+			dev_err(dev, "wrong prescaler1 value\n");
+			return -EINVAL;
+		}
+	} else {
+		prescaler0 = 1;
+		prescaler1 = 1;
 	}
 
 	pwm = kzalloc(sizeof(struct pwm_device), GFP_KERNEL);
@@ -379,6 +403,11 @@ static int s3c_pwm_probe(struct platform_device *pdev)
 
 	pwm->pdev = pdev;
 	pwm->pwm_id = id;
+
+	/* setup prescaler */
+	pwm->tcfg0 = (prescaler1 << S3C2410_TCFG_PRESCALER1_SHIFT) | prescaler0;
+
+	__raw_writel(pwm->tcfg0, S3C2410_TCFG0);
 
 	/* calculate base of control bits in TCON */
 	pwm->tcon_base = id == 0 ? 0 : (id * 4) + 4;
@@ -482,7 +511,12 @@ static int s3c_pwm_suspend(struct platform_device *pdev, pm_message_t state)
 static int s3c_pwm_resume(struct platform_device *pdev)
 {
 	struct pwm_device *pwm = platform_get_drvdata(pdev);
+
+	/* Restore prescaler */
+	__raw_writel(pwm->tcfg0, S3C2410_TCFG0);
+
 	s3c_pwm_init(pwm);
+
 	return 0;
 }
 
