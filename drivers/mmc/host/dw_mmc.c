@@ -635,7 +635,8 @@ static void dw_mci_setup_bus(struct dw_mci_slot *slot)
 	u32 div;
 
 	if (slot->clock != host->current_speed) {
-		if (host->bus_hz % slot->clock)
+		if ((host->bus_hz % slot->clock) &&
+			(host->bus_hz > slot->clock))
 			/*
 			 * move the + 1 after the divide to prevent
 			 * over-clocking the card.
