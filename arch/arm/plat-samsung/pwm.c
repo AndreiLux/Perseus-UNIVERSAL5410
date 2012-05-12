@@ -233,6 +233,11 @@ int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
 	__raw_writel(tcnt, S3C2410_TCNTB(pwm->pwm_id));
 
 	tcon = __raw_readl(S3C2410_TCON);
+
+	/* Ensure manual update is off before turning it on. */
+	tcon &= ~pwm_tcon_manulupdate(pwm);
+	__raw_writel(tcon, S3C2410_TCON);
+
 	tcon |= pwm_tcon_manulupdate(pwm);
 	tcon |= pwm_tcon_autoreload(pwm);
 	__raw_writel(tcon, S3C2410_TCON);
