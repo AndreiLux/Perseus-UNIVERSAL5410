@@ -1364,9 +1364,6 @@ static bool ath9k_hw_set_reset_reg(struct ath_hw *ah, u32 type)
 		break;
 	}
 
-	if (ah->caps.hw_caps & ATH9K_HW_CAP_MCI)
-		REG_WRITE(ah, AR_RTC_KEEP_AWAKE, 0x2);
-
 	return ret;
 }
 
@@ -2019,10 +2016,6 @@ bool ath9k_hw_setpower(struct ath_hw *ah, enum ath9k_power_mode mode)
 	switch (mode) {
 	case ATH9K_PM_AWAKE:
 		status = ath9k_hw_set_power_awake(ah, setChip);
-
-		if (ah->caps.hw_caps & ATH9K_HW_CAP_MCI)
-			REG_WRITE(ah, AR_RTC_KEEP_AWAKE, 0x2);
-
 		break;
 	case ATH9K_PM_FULL_SLEEP:
 		if (ah->caps.hw_caps & ATH9K_HW_CAP_MCI)
@@ -2032,10 +2025,6 @@ bool ath9k_hw_setpower(struct ath_hw *ah, enum ath9k_power_mode mode)
 		ah->chip_fullsleep = true;
 		break;
 	case ATH9K_PM_NETWORK_SLEEP:
-
-		if (ah->caps.hw_caps & ATH9K_HW_CAP_MCI)
-			REG_WRITE(ah, AR_RTC_KEEP_AWAKE, 0x2);
-
 		ath9k_set_power_network_sleep(ah, setChip);
 		break;
 	default:
