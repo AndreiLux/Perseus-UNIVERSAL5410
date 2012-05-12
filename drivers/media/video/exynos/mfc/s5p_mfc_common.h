@@ -151,6 +151,7 @@ struct s5p_mfc_pm {
 	struct clk	*clock;
 	atomic_t	power;
 	struct device	*device;
+	spinlock_t	clklock;
 };
 
 struct s5p_mfc_fw {

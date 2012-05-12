@@ -114,6 +114,7 @@ int s5p_mfc_init_pm(struct s5p_mfc_dev *dev)
 	pdata = dev->platdata;
 	clk_set_rate(parent_clk, pdata->clock_rate);
 
+	spin_lock_init(&pm->clklock);
 	atomic_set(&pm->power, 0);
 	atomic_set(&clk_ref, 0);
 
@@ -144,10 +145,7 @@ int s5p_mfc_clock_on(void)
 	int ret = 0;
 	int state, val;
 	struct s5p_mfc_dev *dev = platform_get_drvdata(to_platform_device(pm->device));
-
-	state = atomic_inc_return(&clk_ref);
-
-	mfc_debug(3, "+ %d", state);
+	unsigned long flags;
 
 	ret = clk_enable(pm->clock);
 	if (ret < 0)
@@ -161,11 +159,16 @@ int s5p_mfc_clock_on(void)
 		}
 	}
 
-	if (dev->fw.date >= 0x120206) {
+	spin_lock_irqsave(&pm->clklock, flags);
+	if ((atomic_inc_return(&clk_ref) == 1) && (dev->fw.date >= 0x120206)) {
 		val = s5p_mfc_read_reg(S5P_FIMV_MFC_BUS_RESET_CTRL);
 		val &= ~(0x1);
 		s5p_mfc_write_reg(val, S5P_FIMV_MFC_BUS_RESET_CTRL);
 	}
+	spin_unlock_irqrestore(&pm->clklock, flags);
+
+	state = atomic_read(&clk_ref);
+	mfc_debug(3, "+ %d", state);
 
 	return 0;
 }
@@ -173,16 +176,11 @@ int s5p_mfc_clock_on(void)
 void s5p_mfc_clock_off(void)
 {
 	int state, val;
-	unsigned long timeout;
+	unsigned long timeout, flags;
 	struct s5p_mfc_dev *dev = platform_get_drvdata(to_platform_device(pm->device));
 
-	state = atomic_dec_return(&clk_ref);
-	if (state < 0)
-		mfc_err("Clock state is wrong(%d)\n", state);
-
-	mfc_debug(3, "- %d", state);
-
-	if (dev->fw.date >= 0x120206) {
+	spin_lock_irqsave(&pm->clklock, flags);
+	if ((atomic_dec_return(&clk_ref) == 0) && (dev->fw.date >= 0x120206)) {
 		s5p_mfc_write_reg(0x1, S5P_FIMV_MFC_BUS_RESET_CTRL);
 
 		timeout = jiffies + msecs_to_jiffies(MFC_BW_TIMEOUT);
@@ -195,6 +193,11 @@ void s5p_mfc_clock_off(void)
 			val = s5p_mfc_read_reg(S5P_FIMV_MFC_BUS_RESET_CTRL);
 		} while ((val & 0x2) == 0);
 	}
+	spin_unlock_irqrestore(&pm->clklock, flags);
+
+	state = atomic_read(&clk_ref);
+	if (state < 0)
+		mfc_err("Clock state is wrong(%d)\n", state);
 
 	if (!dev->curr_ctx_drm)
 		s5p_mfc_mem_suspend(dev->alloc_ctx[0]);
