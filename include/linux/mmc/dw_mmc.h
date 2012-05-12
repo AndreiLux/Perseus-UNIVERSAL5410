@@ -152,6 +152,7 @@ struct dw_mci {
 	struct list_head	queue;
 
 	u32			bus_hz;
+	u32			max_bus_hz;
 	u32			current_speed;
 	u32			num_slots;
 	u32			fifoth_val;
@@ -220,6 +221,7 @@ struct dw_mci_board {
 
 	u32 quirks; /* Workaround / Quirk flags */
 	unsigned int bus_hz; /* Bus speed */
+	unsigned int max_bus_hz; /* MAXIMUM Bus speed */
 
 	unsigned int caps;	/* Capabilities */
 	unsigned int caps2;	/* More capabilities */
