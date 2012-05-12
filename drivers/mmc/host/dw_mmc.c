@@ -1849,7 +1849,7 @@ static int __devinit dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 
 	mmc->ops = &dw_mci_ops;
 	mmc->f_min = DIV_ROUND_UP(host->bus_hz, 510);
-	mmc->f_max = host->bus_hz;
+	mmc->f_max = host->max_bus_hz;
 
 	if (host->pdata->get_ocr)
 		mmc->ocr_avail = host->pdata->get_ocr(id);
@@ -2069,6 +2069,7 @@ int __devinit dw_mci_probe(struct dw_mci *host)
 	clk_enable(host->cclk);
 
 	host->bus_hz = host->pdata->bus_hz;
+	host->max_bus_hz = host->pdata->max_bus_hz;
 	host->quirks = host->pdata->quirks;
 
 	spin_lock_init(&host->lock);
