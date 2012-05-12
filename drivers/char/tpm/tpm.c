@@ -357,55 +357,24 @@ static void needs_resume(struct tpm_chip *chip)
 	mutex_unlock(&chip->resume_mutex);
 }
 
-/* The maximum time in milliseconds that the TPM self test will take to
- * complete.  TODO(semenzato): 1s should be plenty for all TPMs, but how can we
- * ensure it?
- */
-#define TPM_SELF_TEST_DURATION_MSEC 1000
+#define TPM_ORD_CONTINUE_SELFTEST 83
+#define CONTINUE_SELFTEST_RESULT_SIZE 10
 
-static void resume_if_needed(struct tpm_chip *chip)
-{
-	mutex_lock(&chip->resume_mutex);
-	if (chip->needs_resume) {
-		/* If it's been TPM_SELF_TEST_DURATION_MSEC msec since resume,
-		 * then selftest has completed and we don't need to wait.
-		 */
-		if (jiffies - chip->resume_time <
-		    msecs_to_jiffies(TPM_SELF_TEST_DURATION_MSEC)) {
-			dev_info(chip->dev, "waiting for TPM self test");
-			tpm_continue_selftest(chip);
-		}
-		chip->needs_resume = 0;
-		dev_info(chip->dev, "TPM delayed resume completed");
-	}
-	mutex_unlock(&chip->resume_mutex);
-}
+#define TPM_INTERNAL_RESULT_SIZE 200
+#define TPM_TAG_RQU_COMMAND cpu_to_be16(193)
+#define TPM_ORD_GET_CAP cpu_to_be32(101)
 
-/*
- * Returns max number of jiffies to wait
- */
-unsigned long tpm_calc_ordinal_duration(struct tpm_chip *chip,
-					   u32 ordinal)
-{
-	int duration_idx = TPM_UNDEFINED;
-	int duration = 0;
+static const struct tpm_input_header tpm_getcap_header = {
+	.tag = TPM_TAG_RQU_COMMAND,
+	.length = cpu_to_be32(22),
+	.ordinal = TPM_ORD_GET_CAP
+};
 
-	if (ordinal < TPM_MAX_ORDINAL)
-		duration_idx = tpm_ordinal_duration[ordinal];
-	else if ((ordinal & TPM_PROTECTED_ORDINAL_MASK) <
-		 TPM_MAX_PROTECTED_ORDINAL)
-		duration_idx =
-		    tpm_protected_ordinal_duration[ordinal &
-						   TPM_PROTECTED_ORDINAL_MASK];
-
-	if (duration_idx != TPM_UNDEFINED)
-		duration = chip->vendor.duration[duration_idx];
-	if (duration <= 0)
-		return 2 * 60 * HZ;
-	else
-		return duration;
-}
-EXPORT_SYMBOL_GPL(tpm_calc_ordinal_duration);
+static struct tpm_input_header continue_selftest_header = {
+	.tag = TPM_TAG_RQU_COMMAND,
+	.length = cpu_to_be32(10),
+	.ordinal = cpu_to_be32(TPM_ORD_CONTINUE_SELFTEST),
+};
 
 /*
  * Internal kernel interface to transmit TPM commands
@@ -473,26 +442,46 @@ out:
 	return rc;
 }
 
-#define TPM_DIGEST_SIZE 20
-#define TPM_RET_CODE_IDX 6
+/**
+ * tpm_continue_selftest -- run TPM's selftest
+ * @chip: TPM chip to use
+ *
+ * Returns 0 on success, < 0 in case of fatal error or a value > 0 representing
+ * a TPM error code.
+ */
+static int tpm_continue_selftest(struct tpm_chip *chip)
+{
+	int rc;
+	struct tpm_cmd_t cmd;
 
-enum tpm_capabilities {
-	TPM_CAP_FLAG = cpu_to_be32(4),
-	TPM_CAP_PROP = cpu_to_be32(5),
-	CAP_VERSION_1_1 = cpu_to_be32(0x06),
-	CAP_VERSION_1_2 = cpu_to_be32(0x1A)
-};
+	cmd.header.in = continue_selftest_header;
+	rc = tpm_transmit(chip, &cmd, CONTINUE_SELFTEST_RESULT_SIZE);
+	return rc;
+}
 
-enum tpm_sub_capabilities {
-	TPM_CAP_PROP_PCR = cpu_to_be32(0x101),
-	TPM_CAP_PROP_MANUFACTURER = cpu_to_be32(0x103),
-	TPM_CAP_FLAG_PERM = cpu_to_be32(0x108),
-	TPM_CAP_FLAG_VOL = cpu_to_be32(0x109),
-	TPM_CAP_PROP_OWNER = cpu_to_be32(0x111),
-	TPM_CAP_PROP_TIS_TIMEOUT = cpu_to_be32(0x115),
-	TPM_CAP_PROP_TIS_DURATION = cpu_to_be32(0x120),
+/* The maximum time in milliseconds that the TPM self test will take to
+ * complete.  TODO(semenzato): 1s should be plenty for all TPMs, but how can we
+ * ensure it?
+ */
+#define TPM_SELF_TEST_DURATION_MSEC 1000
 
-};
+static void resume_if_needed(struct tpm_chip *chip)
+{
+	mutex_lock(&chip->resume_mutex);
+	if (chip->needs_resume) {
+		/* If it's been TPM_SELF_TEST_DURATION_MSEC msec since resume,
+		 * then selftest has completed and we don't need to wait.
+		 */
+		if (jiffies - chip->resume_time <
+		    msecs_to_jiffies(TPM_SELF_TEST_DURATION_MSEC)) {
+			dev_info(chip->dev, "waiting for TPM self test");
+			tpm_continue_selftest(chip);
+		}
+		chip->needs_resume = 0;
+		dev_info(chip->dev, "TPM delayed resume completed");
+	}
+	mutex_unlock(&chip->resume_mutex);
+}
 
 static ssize_t transmit_cmd(struct tpm_chip *chip, struct tpm_cmd_t *cmd,
 			    int len, const char *desc)
@@ -514,14 +503,51 @@ static ssize_t transmit_cmd(struct tpm_chip *chip, struct tpm_cmd_t *cmd,
 	return err;
 }
 
-#define TPM_INTERNAL_RESULT_SIZE 200
-#define TPM_TAG_RQU_COMMAND cpu_to_be16(193)
-#define TPM_ORD_GET_CAP cpu_to_be32(101)
+/*
+ * Returns max number of jiffies to wait
+ */
+unsigned long tpm_calc_ordinal_duration(struct tpm_chip *chip,
+					   u32 ordinal)
+{
+	int duration_idx = TPM_UNDEFINED;
+	int duration = 0;
 
-static const struct tpm_input_header tpm_getcap_header = {
-	.tag = TPM_TAG_RQU_COMMAND,
-	.length = cpu_to_be32(22),
-	.ordinal = TPM_ORD_GET_CAP
+	if (ordinal < TPM_MAX_ORDINAL)
+		duration_idx = tpm_ordinal_duration[ordinal];
+	else if ((ordinal & TPM_PROTECTED_ORDINAL_MASK) <
+		 TPM_MAX_PROTECTED_ORDINAL)
+		duration_idx =
+		    tpm_protected_ordinal_duration[ordinal &
+						   TPM_PROTECTED_ORDINAL_MASK];
+
+	if (duration_idx != TPM_UNDEFINED)
+		duration = chip->vendor.duration[duration_idx];
+	if (duration <= 0)
+		return 2 * 60 * HZ;
+	else
+		return duration;
+}
+EXPORT_SYMBOL_GPL(tpm_calc_ordinal_duration);
+
+#define TPM_DIGEST_SIZE 20
+#define TPM_RET_CODE_IDX 6
+
+enum tpm_capabilities {
+	TPM_CAP_FLAG = cpu_to_be32(4),
+	TPM_CAP_PROP = cpu_to_be32(5),
+	CAP_VERSION_1_1 = cpu_to_be32(0x06),
+	CAP_VERSION_1_2 = cpu_to_be32(0x1A)
+};
+
+enum tpm_sub_capabilities {
+	TPM_CAP_PROP_PCR = cpu_to_be32(0x101),
+	TPM_CAP_PROP_MANUFACTURER = cpu_to_be32(0x103),
+	TPM_CAP_FLAG_PERM = cpu_to_be32(0x108),
+	TPM_CAP_FLAG_VOL = cpu_to_be32(0x109),
+	TPM_CAP_PROP_OWNER = cpu_to_be32(0x111),
+	TPM_CAP_PROP_TIS_TIMEOUT = cpu_to_be32(0x115),
+	TPM_CAP_PROP_TIS_DURATION = cpu_to_be32(0x120),
+
 };
 
 ssize_t tpm_getcap(struct device *dev, __be32 subcap_id, cap_t *cap,
@@ -650,33 +676,6 @@ duration:
 	return 0;
 }
 EXPORT_SYMBOL_GPL(tpm_get_timeouts);
-
-#define TPM_ORD_CONTINUE_SELFTEST 83
-#define CONTINUE_SELFTEST_RESULT_SIZE 10
-
-static struct tpm_input_header continue_selftest_header = {
-	.tag = TPM_TAG_RQU_COMMAND,
-	.length = cpu_to_be32(10),
-	.ordinal = cpu_to_be32(TPM_ORD_CONTINUE_SELFTEST),
-};
-
-/**
- * tpm_continue_selftest -- run TPM's selftest
- * @chip: TPM chip to use
- *
- * Returns 0 on success, < 0 in case of fatal error or a value > 0 representing
- * a TPM error code.
- */
-static int tpm_continue_selftest(struct tpm_chip *chip)
-{
-	int rc;
-	struct tpm_cmd_t cmd;
-
-	cmd.header.in = continue_selftest_header;
-	rc = transmit_cmd(chip, &cmd, CONTINUE_SELFTEST_RESULT_SIZE,
-			  "continue selftest");
-	return rc;
-}
 
 ssize_t tpm_show_enabled(struct device * dev, struct device_attribute * attr,
 			char *buf)
