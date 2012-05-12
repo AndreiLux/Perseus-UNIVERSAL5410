@@ -164,7 +164,7 @@ static struct s5p_mfc_fmt formats[] = {
 		.num_planes = 1,
 	},
 	{
-		.name = "VC8 Encoded Stream",
+		.name = "VP8 Encoded Stream",
 		.fourcc = V4L2_PIX_FMT_VP8,
 		.codec_mode = S5P_FIMV_CODEC_VP8_DEC,
 		.type = MFC_FMT_DEC,
