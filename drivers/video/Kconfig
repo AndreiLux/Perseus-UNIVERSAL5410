@@ -2087,6 +2087,13 @@ config FB_S3C2410_DEBUG
 	  Turn on debugging messages. Note that you can set/unset at run time
 	  through sysfs
 
+config FB_MIPI_DSIM
+	bool "Samsung MIPI DSIM"
+	depends on FB_S3C
+	default n
+	---help---
+	  This enables support for Samsung MIPI DSIM feature
+
 config FB_NUC900
         bool "NUC900 LCD framebuffer support"
         depends on FB && ARCH_W90X900
