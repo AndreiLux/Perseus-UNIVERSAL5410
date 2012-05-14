@@ -172,54 +172,72 @@
 		compatible = "samsung,s3c2440-i2c";
 		reg = <0x12C60000 0x100>;
 		interrupts = <0 56 0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 	};
 
 	i2c@12C70000 {
 		compatible = "samsung,s3c2440-i2c";
 		reg = <0x12C70000 0x100>;
 		interrupts = <0 57 0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 	};
 
 	i2c@12C80000 {
 		compatible = "samsung,s3c2440-i2c";
 		reg = <0x12C80000 0x100>;
 		interrupts = <0 58 0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 	};
 
 	i2c@12C90000 {
 		compatible = "samsung,s3c2440-i2c";
 		reg = <0x12C90000 0x100>;
 		interrupts = <0 59 0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 	};
 
 	i2c@12CA0000 {
 		compatible = "samsung,s3c2440-i2c";
 		reg = <0x12CA0000 0x100>;
 		interrupts = <0 60 0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 	};
 
 	i2c@12CB0000 {
 		compatible = "samsung,s3c2440-i2c";
 		reg = <0x12CB0000 0x100>;
 		interrupts = <0 61 0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 	};
 
 	i2c@12CC0000 {
 		compatible = "samsung,s3c2440-i2c";
 		reg = <0x12CC0000 0x100>;
 		interrupts = <0 62 0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 	};
 
 	i2c@12CD0000 {
 		compatible = "samsung,s3c2440-i2c";
 		reg = <0x12CD0000 0x100>;
 		interrupts = <0 63 0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 	};
 
 	i2c@12CE0000 {
 		compatible = "samsung,s3c2440-hdmiphy-i2c";
 		reg = <0x12CE0000 0x1000>;
 		interrupts = <0 64 0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 	};
 
 	sysmmu_2: sysmmu@0x10A60000 {
