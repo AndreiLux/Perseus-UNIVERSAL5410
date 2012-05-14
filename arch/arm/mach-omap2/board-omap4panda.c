@@ -379,11 +379,6 @@ static void __init omap_i2c_hwspinlock_init(int bus_id, int spinlock_id,
 	}
 }
 
-static struct omap_i2c_bus_board_data __initdata panda_i2c_1_bus_pdata;
-static struct omap_i2c_bus_board_data __initdata panda_i2c_2_bus_pdata;
-static struct omap_i2c_bus_board_data __initdata panda_i2c_3_bus_pdata;
-static struct omap_i2c_bus_board_data __initdata panda_i2c_4_bus_pdata;
-
 static int __init omap4_panda_i2c_init(void)
 {
 	omap_i2c_hwspinlock_init(1, 0, &panda_i2c_1_bus_pdata);
