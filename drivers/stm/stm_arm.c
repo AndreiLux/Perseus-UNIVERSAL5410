@@ -58,11 +58,69 @@
 #include <linux/io.h>
 #include <linux/err.h>
 
+#ifdef CONFIG_ARM_AMBA
 //RMH_ARM - includes from the ARM driver
 #include <linux/amba/bus.h>
+#endif // CONFIG_ARM_AMBA
 
 #include "stm_fw.h"
 #include "stm_msg.h"
+
+
+/*****************************************************************************
+ * ARM STM Register Offsets
+ *****************************************************************************/
+#define STMPPER_OFFSET         0xE00 // RW	Stimulus Port Enable Register, STMSPER
+#define STMPSPTER_OFFSET       0xE20 // RW	Stimulus Port Trigger Enable Register, STMSPTER
+#define STMPRIVMASKR_OFFSET    0xE40 // RW	Trace Privilege Register, STMPRIVMASKR
+#define STMSPSCR_OFFSET        0xE60 // RW	Stimulus Port Select Configuration Register, STMSPSCR
+#define STMSPMSCR_OFFSET       0xE64 // RW	Stimulus Port Master Select Configuration Register, STMSPMSCR
+#define STMSPOVERRIDER_OFFSET  0xE68 // RW	Stimulus Port Override Register, STMSPOVERRIDER
+#define STMSPMOVERRIDER_OFFSET 0xE6C // RW	Stimulus Port Master Override Register, STMSPMOVERRIDER
+#define STMSPTRIGCSR_OFFSET    0xE70 // RW	Stimulus Port Trigger Control and Status Register, STMSPTRIGCSR
+
+// 0xE80-0xE9C	Primary Control and Status Registers
+#define STMTCSR_OFFSET         0xE80 // RW	Trace Control and Status Register, STMTCSR
+#define STMTSSTIMR_OFFSET      0xE84 // WO	Timestamp Stimulus Register, STMTSSTIMR
+#define STMTSFREQR_OFFSET      0xE8C // RW	Timestamp Frequency Register, STMTSFREQR
+#define STMSYNCR_OFFSET        0xE90 // RW	Synchronization Control Register, STMSYNCR
+#define STMAUXCR_OFFSET        0xE94 // RW	Auxiliary Control Register, STMAUXCR
+
+// 0xEA0-0xEAC	Identification Registers
+#define STMFEAT1R_OFFSET       0xEA0 // RO	Features 1 Register, STMFEAT1R
+#define STMFEAT2R_OFFSET       0xEA4 // RO	Features 2 Register, STMFEAT2R
+#define STMFEAT3R_OFFSET       0xEA8 // RO	Features 3 Register, STMFEAT3R
+
+// 0xF00-0xFFC	CoreSight Management Registers
+#define STMITCTRL_OFFSET       0xF00 // RW	Integration Mode Control Register, STMITCTRL
+#define STMCLAIMSET_OFFSET     0xFA0 // RW	Claim Tag Set Register, STMCLAIMSET
+#define STMCLAIMCLR_OFFSET     0xFA4 // RW	Claim Tag Clear Register, STMCLAIMCLR
+#define STMLAR_OFFSET          0xFB0 // WO	Lock Access Register, STMLAR
+#define STMLSR_OFFSET          0xFB4 // RO	Lock Status Register, STMLSR
+#define STMAUTHSTATUS_OFFSET   0xFB8 // RO	Authentication Status Register, STMAUTHSTATUS
+#define STMDEVID_OFFSET        0xFC8 // RO  Device Configuration Register, STMDEVID
+#define STMDEVTYPE_OFFSET      0xFCC // RO  Device Type	Device Type Register, STMDEVTYPE
+
+// 0xFD0-0xFEC	Peripheral ID	RO  Peripheral ID Registers, STMPIDR0-7
+#define STMPIDR0_OFFSET        0xFD0
+#define STMPIDR1_OFFSET        0xFD4
+#define STMPIDR2_OFFSET        0xFD8
+#define STMPIDR3_OFFSET        0xFDC
+#define STMPIDR4_OFFSET        0xFE0
+#define STMPIDR5_OFFSET        0xFE4
+#define STMPIDR6_OFFSET        0xFE8
+#define STMPIDR7_OFFSET        0xFEC
+
+// 0xFF0-0xFFC	Component ID	RO  Component ID Registers, STMCIDR0-3
+#define STMCIDR0_OFFSET        0xFF0
+#define STMCIDR1_OFFSET        0xFF4
+#define STMCIDR2_OFFSET        0xFF8
+#define STMCIDR3_OFFSET        0xFFC
+
+#define STMCIDR0_VALUE         0x0D
+#define STMCIDR1_VALUE         0x90
+#define STMCIDR2_VALUE         0x05
+#define STMCIDR3_VALUE         0xB1
 
 /*****************************************************************************
  * Support function prototypes
@@ -101,7 +159,10 @@ static bool stm_test_clock(void);
 #define ATTRIBUTE_BUF_SIZE    256
 static char attribute_buf[ATTRIBUTE_BUF_SIZE];
 
+static const uint32_t stm_base_address = 0x5415a000; //RMH_TI - L4_EMU_44XX_BASE;
+static const uint32_t stm_size = 0x1000; // RMH - STM device memory region size from TI TRM
 static const uint32_t stm_resolution = 0x1000;
+static uint32_t stm_iobase; // RMH - I'm currently maintaining both stm_iobase and stm_state.regs to make it easier to port the ARM code into the TI fw
 #define STM_ADDRESS_SPACE (stm_resolution * STM_CHANNEL_TOTAL)
 
 /* These are offsets from stm_control_base */
@@ -725,14 +786,13 @@ void stm_arm_clean(void)
 		kfree(chn_obj);
 	}
 
-//RMH_TI 	release_mem_region(stm_base_address, STM_ADDRESS_SPACE);
+ 	release_mem_region(stm_base_address, STM_ADDRESS_SPACE);
 //RMH_TI	release_mem_region(stm_control_base, STM_ADDRESS_SPACE);
 
-
-//RMH_TI 	if (!stm_iobase) {
-//RMH_TI 		iounmap((void *)stm_iobase);
-//RMH_TI 		stm_iobase = 0;
-//RMH_TI	}
+ 	if (!stm_iobase) {
+ 		iounmap((void *)stm_iobase);
+ 		stm_iobase = 0;
+	}
 
 //RMH_TI	if (!stm_cntl_iobase) {
 //RMH_TI		iounmap((void *)stm_cntl_iobase);
@@ -741,6 +801,52 @@ void stm_arm_clean(void)
 }
 
 
+static int stm_device_setup(uint32_t base_address, uint32_t size)
+{
+	int ret = 0;
+	uint32_t regs[8];
+	printk(KERN_INFO"RMH: STM: %d: stm_device_setup\n", __LINE__);
+
+	stm_state.base_addr = (void *) base_address;
+	stm_state.num_channels = size / STM_CHNL_SIZE;
+	stm_state.regs = ioremap_nocache(base_address, size);
+	stm_iobase = (uint32_t) stm_state.regs; // RMH - I'm currently maintaining both stm_iobase and stm_state.regs to make it easier to port the ARM code into the TI fw
+
+	printk(KERN_INFO"RMH: STM: %d: stm_probe: base_addr=0x%x regs=0x%x\n", __LINE__, (uint32_t)stm_state.base_addr, (uint32_t)stm_state.regs);
+
+	if (!stm_state.regs) {
+		ret = -ENOMEM;
+		printk(KERN_INFO"RMH: STM: %d: stm_probe: ioremap_nocache returned %d\n", __LINE__, ret);
+	}
+	else {
+		// try to probe the device to see if it really is an ARM STM chip
+		printk(KERN_INFO"RMH: STM: %d: stm_device_setup: probing device\n", __LINE__);
+
+		regs[0] = ioread32((void *)stm_state.regs + STMDEVTYPE_OFFSET); // RO  Device Type	Device Type Register, STMDEVTYPE
+		printk(KERN_INFO"RMH: STM: %d: DEVTYPE = 0x%x\n", __LINE__, regs[0]);
+
+		regs[0] = ioread32((void *)stm_state.regs + STMPIDR0_OFFSET);
+		regs[1] = ioread32((void *)stm_state.regs + STMPIDR1_OFFSET);
+		regs[2] = ioread32((void *)stm_state.regs + STMPIDR2_OFFSET);
+		regs[3] = ioread32((void *)stm_state.regs + STMPIDR3_OFFSET);
+		regs[4] = ioread32((void *)stm_state.regs + STMPIDR4_OFFSET);
+		regs[5] = ioread32((void *)stm_state.regs + STMPIDR5_OFFSET);
+		regs[6] = ioread32((void *)stm_state.regs + STMPIDR6_OFFSET);
+		regs[7] = ioread32((void *)stm_state.regs + STMPIDR7_OFFSET);
+		printk(KERN_INFO"RMH: STM: %d: PID=0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n", __LINE__, regs[0],regs[1],regs[2],regs[3], regs[4],regs[5],regs[6],regs[7]);
+
+		regs[0] = ioread32((void *)stm_state.regs + STMCIDR0_OFFSET);
+		regs[1] = ioread32((void *)stm_state.regs + STMCIDR1_OFFSET);
+		regs[2] = ioread32((void *)stm_state.regs + STMCIDR2_OFFSET);
+		regs[3] = ioread32((void *)stm_state.regs + STMCIDR3_OFFSET);
+		
+		printk(KERN_INFO"RMH: STM: %d: CID=0x%x 0x%x 0x%x 0x%x\n", __LINE__, regs[0],regs[1],regs[2],regs[3]);
+	}
+
+	return ret;
+}
+
+#ifdef CONFIG_ARM_AMBA
 static int stm_probe(struct amba_device *dev, struct amba_id *id)
 {
 	int ret = 0;
@@ -751,18 +857,8 @@ static int stm_probe(struct amba_device *dev, struct amba_id *id)
 		printk(KERN_INFO"RMH: STM: %d: stm_probe: amba_request_regions returned %d\n", __LINE__, ret);
 		goto out;
 	}
-	stm_state.base_addr = (void *) dev->res.start;
-	stm_state.regs = ioremap_nocache(dev->res.start,
-						resource_size(&dev->res));
-	printk(KERN_INFO"RMH: STM: %d: stm_probe: base_addr=0x%x regs=0x%x\n", __LINE__, stm_state.base_addr, stm_state.regs);
 
-	if (!stm_state.regs) {
-		ret = -ENOMEM;
-		printk(KERN_INFO"RMH: STM: %d: stm_probe: ioremap_nocache returned %d\n", __LINE__, ret);
-		goto out;
-	}
-
-	stm_state.num_channels = resource_size(&dev->res) / STM_CHNL_SIZE;
+	stm_device_setup(dev->res.start, resource_size(dev->res.size));
 
 #if 0 //RMH_ARM - use the framework for managing channels
 	ret = stm_block_pool_create(stm_state.regs, resource_size(&dev->res));
@@ -824,18 +920,19 @@ static struct amba_driver stm_driver = {
 	.probe = stm_probe,
 	.remove = stm_remove,
 };
+#endif // CONFIG_ARM_AMBA
 
 int __init stm_arm_init(void)
 {
 
 	int ret = 0;
-//RMH_TI	char *mod_name = "STM ARM Module";
+	char *mod_name = "STM ARM Module";
 
-//RMH_TI 	if (!request_mem_region(stm_base_address, STM_ADDRESS_SPACE,
-//RMH_TI								mod_name)) {
-//RMH_TI		ret = -ENODEV;
-//RMH_TI		goto init_err;
-//RMH_TI	}
+ 	if (!request_mem_region(stm_base_address, STM_ADDRESS_SPACE,
+								mod_name)) {
+		ret = -ENODEV;
+		goto init_err;
+	}
 
 //RMH_TI 	stm_iobase = (unsigned long)ioremap_nocache(stm_base_address,
 //RMH_TI							    STM_ADDRESS_SPACE);
@@ -858,12 +955,18 @@ int __init stm_arm_init(void)
 //RMH_TI	}
 	printk(KERN_INFO"RMH: STM: %d: stm_arm_init\n", __LINE__);	
 
+#ifdef CONFIG_ARM_AMBA
 	ret = amba_driver_register(&stm_driver);
 	if (ret){
 		printk(KERN_INFO"RMH: STM device failed amba registeration\n");
 		return -1;
 	}
-	printk(KERN_INFO"RMH: STM device registered\n");
+	printk(KERN_INFO"RMH: STM AMBA device registered\n");
+#else
+	printk(KERN_INFO"RMH: STM device init\n");
+	stm_device_setup(stm_base_address, stm_size);
+	printk(KERN_INFO"RMH: STM device init'd\n");
+#endif // CONFIG_ARM_AMBA
 
 	/* Register with the STM Framework Drvier */
 	ret = stm_register(&stm_arm_ops);
