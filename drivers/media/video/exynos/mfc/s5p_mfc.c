@@ -551,7 +551,7 @@ static inline void s5p_mfc_handle_error(struct s5p_mfc_ctx *ctx,
 		return;
 
 	dev = ctx->dev;
-	mfc_err("Interrupt Error: %08d\n", err);
+	mfc_err("Interrupt Error: %d\n", err);
 	s5p_mfc_clear_int_flags();
 	wake_up_dev(dev, reason, err);
 
