@@ -1190,8 +1190,6 @@ static const struct of_device_id exynos_i2s_match[] = {
 	{},
 };
 MODULE_DEVICE_TABLE(of, exynos_i2s_match);
-#else
-#define exynos_i2s_match NULL
 #endif
 
 static struct platform_driver samsung_i2s_driver = {
@@ -1200,7 +1198,7 @@ static struct platform_driver samsung_i2s_driver = {
 	.driver = {
 		.name = "samsung-i2s",
 		.owner = THIS_MODULE,
-		.of_match_table = exynos_i2s_match,
+		.of_match_table = of_match_ptr(exynos_i2s_match),
 	},
 };
 
