@@ -698,13 +698,41 @@ static void omap4460_mpu_dpll_update_children(unsigned long rate)
 	__raw_writel(v, OMAP4430_CM_MPU_MPU_CLKCTRL);
 }
 
+static int omap4460_dcc(struct clk *clk, unsigned long rate)
+{
+        struct dpll_data *dd;
+        u32 v;
+
+        if (!clk || !rate || !clk->parent)
+                return -EINVAL;
+
+        dd = clk->parent->dpll_data;
+
+        if (!dd)
+                return -EINVAL;
+
+        v = __raw_readl(dd->mult_div1_reg);
+        if (rate < OMAP_1GHz) {
+                /* If DCC is enabled, disable it */
+                if (v & OMAP4460_DCC_EN_MASK) {
+                        v &= ~OMAP4460_DCC_EN_MASK;
+                        __raw_writel(v, dd->mult_div1_reg);
+                }
+        } else {
+                v &= ~OMAP4460_DCC_COUNT_MAX_MASK;
+                v |= (5 << OMAP4460_DCC_COUNT_MAX_SHIFT);
+                v |= OMAP4460_DCC_EN_MASK;
+                __raw_writel(v, dd->mult_div1_reg);
+	}
+
+	return 0;
+}
+
 int omap4460_mpu_dpll_set_rate(struct clk *clk, unsigned long rate)
 {
 	struct dpll_data *dd;
 	u32 v;
 	unsigned long dpll_rate;
-	unsigned long eff_rate = rate;
-	int ret = 0;
 
 	if (!clk || !rate || !clk->parent)
 		return -EINVAL;
@@ -729,41 +757,34 @@ int omap4460_mpu_dpll_set_rate(struct clk *clk, unsigned long rate)
 	if (v & OMAP4460_DCC_EN_MASK)
 		dpll_rate *= 2;
 
-	/* bypass the DPLL */
-
-	v = __raw_readl(dd->control_reg);
-	v &= ~OMAP4430_DPLL_EN_MASK;                              
-	v |= 5 << OMAP4430_DPLL_EN_SHIFT;
-	__raw_writel(v, dd->control_reg);
-
 	pr_debug("omap4460_mpu_dpll_set_rate: %ld -> %ld\n", dpll_rate, rate);
 
-	if (rate > OMAP_1GHz)
-		eff_rate /= 2;
-
-	ret = clk->parent->set_rate(clk->parent, eff_rate);
-	if (ret)
-		goto bail;
-	
-        v = __raw_readl(dd->mult_div1_reg);
-	if (rate > OMAP_1GHz)
-		v &= ~OMAP4460_DCC_EN_MASK;
-	else
-		v |= ~OMAP4460_DCC_EN_MASK;
-	__raw_writel(v, dd->mult_div1_reg);
-
-bail:
-	omap4460_mpu_dpll_update_children(rate);
-
-        /* lock the DPLL */
-
-	v = __raw_readl(dd->control_reg);
-        v |= 7 << OMAP4430_DPLL_EN_SHIFT;
-	__raw_writel(v, dd->control_reg); 
+	if (rate < OMAP_1GHz) {
+		omap4460_dcc(clk, rate);
+		if (clk->parent->set_rate(clk->parent, rate)) {
+			omap4460_dcc(clk, dpll_rate);
+			return -EINVAL;
+		}
+	} else {
+		/*
+		 * On 4460, the MPU clk for frequencies higher than 1Ghz
+		 * is sourced from CLKOUTX2_M3, instead of CLKOUT_M2, while
+		 * value of M3 is fixed to 1. Hence for frequencies higher
+		 * than 1 Ghz, lock the DPLL at half the rate so the
+		 * CLKOUTX2_M3 then matches the requested rate.
+		 */
+		if (clk->parent->set_rate(clk->parent, rate/2)) {
+			omap4460_dcc(clk, dpll_rate);
+			return -EINVAL;
+		}
+		 omap4460_dcc(clk, rate);
+	}
 
 	clk->rate = rate;
 
-	return ret;
+	omap4460_mpu_dpll_update_children(rate);
+
+	return 0;
 }
 
 long omap4460_mpu_dpll_round_rate(struct clk *clk, unsigned long rate)
