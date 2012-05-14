@@ -28,6 +28,7 @@
 #include <mach/map.h>
 #include <plat/regs-fb-v4.h>
 #include <plat/fb.h>
+#include <mach/regs-pmu.h>
 
 /* This driver will export a number of framebuffer interfaces depending
  * on the configuration passed in via the platform data. Each fb instance
@@ -1783,6 +1784,15 @@ static int __devexit s3c_fb_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static inline void s3c_fb_enable_fimd_bypass_disp1()
+{
+	u32 reg;
+
+	reg = __raw_readl(EXYNOS5_SYS_DISP1BLK_CFG);
+	reg |= ENABLE_FIMDBYPASS_DISP1;
+	__raw_writel(reg, EXYNOS5_SYS_DISP1BLK_CFG);
+}
+
 #ifdef CONFIG_PM_SLEEP
 static int s3c_fb_suspend(struct device *dev)
 {
@@ -1811,7 +1821,6 @@ static int s3c_fb_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct s3c_fb *sfb = platform_get_drvdata(pdev);
-	struct s3c_fb_platdata *pd = sfb->pdata;
 	struct s3c_fb_win *win;
 	int win_no;
 	u32 reg;
@@ -1821,9 +1830,9 @@ static int s3c_fb_resume(struct device *dev)
 	if (!sfb->variant.has_clksel)
 		clk_enable(sfb->lcd_clk);
 
-	/* setup gpio and output polarity controls */
-	pd->setup_gpio();
-	writel(pd->vidcon1, sfb->regs + VIDCON1);
+	s3c_fb_enable_fimd_bypass_disp1();
+
+	writel(VIDCON1_INV_VCLK, sfb->regs + VIDCON1);
 
 	/* set video clock running at under-run */
 	if (sfb->variant.has_fixvclk) {
@@ -1835,10 +1844,6 @@ static int s3c_fb_resume(struct device *dev)
 
 	/* disable auto-clock gate mode */
 	writel(REG_CLKGATE_MODE_NON_CLOCK_GATE, sfb->regs + REG_CLKGATE_MODE);
-
-	/* disable auto-clock gate mode */
-	writel(REG_CLKGATE_MODE_NON_CLOCK_GATE, sfb->regs + REG_CLKGATE_MODE);
-
 	/* zero all windows before we do anything */
 	for (win_no = 0; win_no < sfb->variant.nr_windows; win_no++)
 		s3c_fb_clear_win(sfb, win_no);
@@ -1888,7 +1893,7 @@ static int s3c_fb_runtime_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct s3c_fb *sfb = platform_get_drvdata(pdev);
-	struct s3c_fb_platdata *pd = sfb->pdata;
+	unsigned int  reg;
 
 	clk_enable(sfb->bus_clk);
 
@@ -1896,8 +1901,7 @@ static int s3c_fb_runtime_resume(struct device *dev)
 		clk_enable(sfb->lcd_clk);
 
 	/* setup gpio and output polarity controls */
-	pd->setup_gpio();
-	writel(pd->vidcon1, sfb->regs + VIDCON1);
+	s3c_fb_enable_fimd_bypass_disp1();
 
 	return 0;
 }
