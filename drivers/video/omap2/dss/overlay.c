@@ -634,6 +634,11 @@ int dss_ovl_simple_check(struct omap_overlay *ovl,
 		return -EINVAL;
 	}
 
+	if ((info->burst_type != OMAP_DSS_BURST_INC) && !cpu_is_omap44xx()) {
+		DSSERR("check_overlay: invalid burst_type\n", info->burst_type);
+		return -EINVAL;
+	}
+
 	return 0;
 }
 
