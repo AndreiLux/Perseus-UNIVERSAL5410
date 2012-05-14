@@ -618,6 +618,9 @@ struct drm_plane_funcs {
 			    uint32_t src_w, uint32_t src_h);
 	int (*disable_plane)(struct drm_plane *plane);
 	void (*destroy)(struct drm_plane *plane);
+
+	int (*set_property)(struct drm_plane *plane,
+			    struct drm_property *property, uint64_t val);
 };
 
 /**
@@ -657,6 +660,8 @@ struct drm_plane {
 
 	const struct drm_plane_funcs *funcs;
 	void *helper_private;
+
+	struct drm_object_properties properties;
 };
 
 /**
