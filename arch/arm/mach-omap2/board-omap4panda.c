@@ -687,6 +687,7 @@ static void __init omap4_panda_init(void)
 		if (ret)
 			pr_err("TPS62361 initialization failed: %d\n", ret);
 	}
+	omap_enable_smartreflex_on_init();
 }
 
 MACHINE_START(OMAP4_PANDA, "OMAP4 Panda board")
