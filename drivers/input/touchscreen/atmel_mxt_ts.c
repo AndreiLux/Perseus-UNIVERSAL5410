@@ -1990,6 +1990,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 {
 	const struct mxt_platform_data *pdata = client->dev.platform_data;
 	struct mxt_data *data;
+	unsigned long irqflags;
 	int error;
 
 	if (!pdata)
@@ -2022,10 +2023,12 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	if (error)
 		goto err_free_object;
 
+	/* Default to falling edge if no platform data provided */
+	irqflags = pdata ? pdata->irqflags : IRQF_TRIGGER_FALLING;
 	error = request_threaded_irq(client->irq,
 				     NULL,
 				     mxt_interrupt,
-				     pdata->irqflags,
+				     irqflags,
 				     client->name,
 				     data);
 	if (error) {
