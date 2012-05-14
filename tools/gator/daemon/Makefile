@@ -18,7 +18,7 @@ GCC=$(CROSS_COMPILE)gcc
 # -std=c++98 is the 1998 c++ standard
 # -march=armv5t is required to set the minimum architecture
 # -mthumb-interwork is required for interworking to ARM or Thumb stdlibc
-CFLAGS=-O3 -Wall -Werror
+CFLAGS=-O3 -Wall -Werror -Wno-error=sequence-point
 TARGET=gatord
 C_SRC = $(wildcard mxml/*.c)
 CPP_SRC  = $(wildcard *.cpp)
