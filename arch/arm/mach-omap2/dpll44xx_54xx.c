@@ -745,6 +745,9 @@ int omap4460_mpu_dpll_set_rate(struct clk *clk, unsigned long rate)
 	if (!clk->parent->set_rate)
 		return -EINVAL;
 
+	if (rate > clk->rate)
+		omap4460_mpu_dpll_update_children(rate);
+
 	/*
 	 * On OMAP4460, to obtain MPU DPLL frequency higher
 	 * than 1GHz, DCC (Duty Cycle Correction) needs to
@@ -780,9 +783,10 @@ int omap4460_mpu_dpll_set_rate(struct clk *clk, unsigned long rate)
 		 omap4460_dcc(clk, rate);
 	}
 
-	clk->rate = rate;
+	if (rate < clk->rate)
+		omap4460_mpu_dpll_update_children(rate);
 
-	omap4460_mpu_dpll_update_children(rate);
+	clk->rate = rate;
 
 	return 0;
 }
