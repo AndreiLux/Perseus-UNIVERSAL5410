@@ -1229,12 +1229,6 @@ static int gsc_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_irq;
 
-	if (gsc->pdata)	{
-		ret = gsc_register_capture_device(gsc);
-		if (ret)
-			goto err_irq;
-	}
-
 	sprintf(workqueue_name, "gsc%d_irq_wq_name", gsc->id);
 	gsc->irq_workqueue = create_singlethread_workqueue(workqueue_name);
 	if (gsc->irq_workqueue == NULL) {
