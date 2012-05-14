@@ -648,24 +648,24 @@ static inline int __get_file_write_access(struct inode *inode,
 	return error;
 }
 
-static struct file *__dentry_open(struct dentry *dentry, struct vfsmount *mnt,
-					struct file *f,
-					int (*open)(struct inode *, struct file *),
-					const struct cred *cred)
+static struct file *__dentry_open(struct path *path, struct file *f,
+				  int (*open)(struct inode *, struct file *),
+				  const struct cred *cred)
 {
 	static const struct file_operations empty_fops = {};
 	struct inode *inode;
 	int error;
 
+	path_get(path);
 	f->f_mode = OPEN_FMODE(f->f_flags) | FMODE_LSEEK |
 				FMODE_PREAD | FMODE_PWRITE;
 
 	if (unlikely(f->f_flags & O_PATH))
 		f->f_mode = FMODE_PATH;
 
-	inode = dentry->d_inode;
+	inode = path->dentry->d_inode;
 	if (f->f_mode & FMODE_WRITE) {
-		error = __get_file_write_access(inode, mnt);
+		error = __get_file_write_access(inode, path->mnt);
 		if (error)
 			goto cleanup_file;
 		if (!special_file(inode->i_mode))
@@ -673,8 +673,7 @@ static struct file *__dentry_open(struct dentry *dentry, struct vfsmount *mnt,
 	}
 
 	f->f_mapping = inode->i_mapping;
-	f->f_path.dentry = dentry;
-	f->f_path.mnt = mnt;
+	f->f_path = *path;
 	f->f_pos = 0;
 	file_sb_list_add(f, inode->i_sb);
 
@@ -731,7 +730,7 @@ cleanup_all:
 			 * here, so just reset the state.
 			 */
 			file_reset_write(f);
-			mnt_drop_write(mnt);
+			mnt_drop_write(path->mnt);
 		}
 	}
 	file_sb_list_del(f);
@@ -739,8 +738,7 @@ cleanup_all:
 	f->f_path.mnt = NULL;
 cleanup_file:
 	put_filp(f);
-	dput(dentry);
-	mntput(mnt);
+	path_put(path);
 	return ERR_PTR(error);
 }
 
@@ -766,14 +764,14 @@ cleanup_file:
 struct file *lookup_instantiate_filp(struct nameidata *nd, struct dentry *dentry,
 		int (*open)(struct inode *, struct file *))
 {
+	struct path path = { .dentry = dentry, .mnt = nd->path.mnt };
 	const struct cred *cred = current_cred();
 
 	if (IS_ERR(nd->intent.open.file))
 		goto out;
 	if (IS_ERR(dentry))
 		goto out_err;
-	nd->intent.open.file = __dentry_open(dget(dentry), mntget(nd->path.mnt),
-					     nd->intent.open.file,
+	nd->intent.open.file = __dentry_open(&path, nd->intent.open.file,
 					     open, cred);
 out:
 	return nd->intent.open.file;
@@ -801,11 +799,9 @@ struct file *nameidata_to_filp(struct nameidata *nd)
 	nd->intent.open.file = NULL;
 
 	/* Has the filesystem initialised the file for us? */
-	if (filp->f_path.dentry == NULL) {
-		path_get(&nd->path);
-		filp = __dentry_open(nd->path.dentry, nd->path.mnt, filp,
-				     NULL, cred);
-	}
+	if (filp->f_path.dentry == NULL)
+		filp = __dentry_open(&nd->path, filp, NULL, cred);
+
 	return filp;
 }
 
@@ -816,24 +812,24 @@ struct file *nameidata_to_filp(struct nameidata *nd)
 struct file *dentry_open(struct dentry *dentry, struct vfsmount *mnt, int flags,
 			 const struct cred *cred)
 {
-	int error;
 	struct file *f;
+	struct file *ret;
+	struct path path = { .dentry = dentry, .mnt = mnt };
 
 	validate_creds(cred);
 
 	/* We must always pass in a valid mount pointer. */
 	BUG_ON(!mnt);
 
-	error = -ENFILE;
+	ret = ERR_PTR(-ENFILE);
 	f = get_empty_filp();
-	if (f == NULL) {
-		dput(dentry);
-		mntput(mnt);
-		return ERR_PTR(error);
+	if (f != NULL) {
+		f->f_flags = flags;
+		ret = __dentry_open(&path, f, NULL, cred);
 	}
+	path_put(&path);
 
-	f->f_flags = flags;
-	return __dentry_open(dentry, mnt, f, NULL, cred);
+	return ret;
 }
 EXPORT_SYMBOL(dentry_open);
 
