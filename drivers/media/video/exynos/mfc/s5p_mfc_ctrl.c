@@ -393,8 +393,6 @@ int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
 	if (s5p_mfc_wait_for_done_dev(dev, S5P_FIMV_R2H_CMD_SYS_INIT_RET)) {
 		mfc_err("Failed to load firmware\n");
 		ret = -EIO;
-		/* Disable the clock that enabled in s5p_mfc_sys_init_cmd() */
-		s5p_mfc_clock_off();
 		goto err_init_hw;
 	}
 
