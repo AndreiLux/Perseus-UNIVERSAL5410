@@ -233,60 +233,7 @@ static struct omap_voltdm_pmic omap443x_core_pmic = {
 	.uv_to_vsel		= twl6030_uv_to_vsel,
 };
 
-/* Core uses the MPU rail of 4430 */
-static struct omap_voltdm_pmic omap446x_core_pmic = {
-	.slew_rate		= 9000,
-	.step_size		= 12660,
-	.startup_time		= 500,
-	.shutdown_time		= 500,
-	.volt_setup_time	= 0,
-	.switch_on_time		= 549,
-	.vp_erroroffset		= OMAP4_VP_CONFIG_ERROROFFSET,
-	.vp_vstepmin		= OMAP4_VP_VSTEPMIN_VSTEPMIN,
-	.vp_vstepmax		= OMAP4_VP_VSTEPMAX_VSTEPMAX,
-	.vp_vddmin		= OMAP4_VP_CORE_VLIMITTO_VDDMIN,
-	.vp_vddmax		= OMAP4_VP_CORE_VLIMITTO_VDDMAX,
-	.vp_timeout_us		= OMAP4_VP_VLIMITTO_TIMEOUT_US,
-	.i2c_slave_addr		= OMAP4_SRI2C_SLAVE_ADDR,
-	.i2c_high_speed		= true,
-	.i2c_scll_low		= 0x28,
-	.i2c_scll_high		= 0x2C,
-	.i2c_hscll_low		= 0x0B,
-	.i2c_hscll_high		= 0x00,
-	.volt_reg_addr		= OMAP4_VDD_MPU_SR_VOLT_REG,
-	.cmd_reg_addr		= OMAP4_VDD_MPU_SR_CMD_REG,
-	.vsel_to_uv		= twl6030_vsel_to_uv,
-	.uv_to_vsel		= twl6030_uv_to_vsel,
-};
-
-static int __init twl_set_sr(struct voltagedomain *voltdm)
-{
-	int r = 0;
-
-	/*
-	 * The smartreflex bit on twl4030 specifies if the setting of voltage
-	 * is done over the I2C_SR path. Since this setting is independent of
-	 * the actual usage of smartreflex AVS module, we enable TWL SR bit
-	 * by default irrespective of whether smartreflex AVS module is enabled
-	 * on the OMAP side or not. This is because without this bit enabled,
-	 * the voltage scaling through vp forceupdate/bypass mechanism of
-	 * voltage scaling will not function on TWL over I2C_SR.
-	 */
-	if (!twl_sr_enable_autoinit)
-		r = omap3_twl_set_sr_bit(true);
-	return r;
-}
-
 static __initdata struct omap_pmic_map omap_twl_map[] = {
-	{
-		.name = "mpu",
-		.pmic_data = &omap3_mpu_pmic,
-		.special_action = twl_set_sr,
-	},
-	{
-		.name = "core",
-		.pmic_data = &omap3_core_pmic,
-	},
 	{
 		.name = "mpu",
 		.pmic_data = &omap4_mpu_pmic,
@@ -298,10 +245,6 @@ static __initdata struct omap_pmic_map omap_twl_map[] = {
 	{
 		.name = "iva",
 		.pmic_data = &omap4_iva_pmic,
-	},
-	{
-		.name = "core",
-		.pmic_data = &omap446x_core_pmic,
 	},
 	/* Terminator */
 	{ .name = NULL, .pmic_data = NULL},
@@ -317,7 +260,12 @@ int __init omap_twl4030_init(void)
 		omap3_core_pmic.vp_vddmax = OMAP3630_VP2_VLIMITTO_VDDMAX;
 	}
 
-	return omap_pmic_register_data(omap_twl_map);
+	if (cpu_is_omap443x())
+		return omap_pmic_register_data(&omap_twl_map[0]);
+	else if (cpu_is_omap446x()) /* mpu from tps6236x */
+		return omap_pmic_register_data(&omap_twl_map[1]);
+	else
+		return 0;
 }
 
 /**

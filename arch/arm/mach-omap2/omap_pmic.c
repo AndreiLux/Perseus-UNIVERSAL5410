@@ -23,8 +23,10 @@ void __init omap_init_all_pmic(void)
 {
 	if (cpu_is_omap44xx())
 		omap_twl4030_init();
-	omap_palmas_init();
-	omap_tps6236x_init();
+	if (cpu_is_omap54xx())
+		omap_palmas_init();
+	if (cpu_is_omap446x())
+		omap_tps6236x_init();
 }
 
 /**
