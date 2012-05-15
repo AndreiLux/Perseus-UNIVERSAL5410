@@ -1784,7 +1784,7 @@ static int __devexit s3c_fb_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static inline void s3c_fb_enable_fimd_bypass_disp1()
+static inline void s3c_fb_enable_fimd_bypass_disp1(void)
 {
 	u32 reg;
 
