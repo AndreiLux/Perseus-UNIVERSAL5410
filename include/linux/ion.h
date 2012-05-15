@@ -295,19 +295,6 @@ struct ion_handle *ion_import_fd(struct ion_client *client, int fd);
 struct ion_handle *ion_import_uva(struct ion_client *client, unsigned long uva,
 								off_t *offset);
 
-#ifdef CONFIG_ION_EXYNOS
-struct ion_handle *ion_exynos_get_user_pages(struct ion_client *client,
-			unsigned long uvaddr, size_t len, unsigned int flags);
-#else
-#include <linux/err.h>
-static inline struct ion_handle *ion_exynos_get_user_pages(
-				struct ion_client *client, unsigned long uvaddr,
-				size_t len, unsigned int flags)
-{
-	return ERR_PTR(-ENOSYS);
-}
-#endif
-
 #endif /* __KERNEL__ */
 
 /**
