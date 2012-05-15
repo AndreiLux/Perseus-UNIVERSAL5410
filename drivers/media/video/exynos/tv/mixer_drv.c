@@ -786,6 +786,10 @@ static void mxr_set_layer_src_fmt(struct sub_mxr_device *sub_mxr, u32 pad)
 	case V4L2_MBUS_FMT_XRGB8888_4X8_LE:
 		fourcc = V4L2_PIX_FMT_BGR32;
 		break;
+	default:
+		fourcc = V4L2_PIX_FMT_RGB565;
+		dev_warn(layer->mdev->dev, "unknown source format - falling back to RGB565\n");
+		break;
 	}
 	/* This will be applied to hardware right after streamon */
 	layer->fmt = find_format_by_fourcc(layer, fourcc);
