@@ -58,7 +58,7 @@ static struct hdmi_driver_data hdmi_driver_data[] = {
 static const struct of_device_id exynos_hdmi_match[] = {
 	{
 		.compatible = "samsung,exynos5-hdmi",
-		.data = (unsigned long)&hdmi_driver_data[2],
+		.data = &hdmi_driver_data[2],
 	},
 	{},
 };
