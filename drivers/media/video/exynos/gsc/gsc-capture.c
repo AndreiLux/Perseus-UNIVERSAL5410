@@ -1035,6 +1035,10 @@ static void gsc_cap_check_limit_size(struct gsc_dev *gsc, unsigned int pad,
 		max_w = variant->pix_max->target_rot_dis_w;
 		max_h = variant->pix_max->target_rot_dis_h;
 		break;
+
+	default:
+		BUG();
+		return;
 	}
 
 	fmt->width = clamp_t(u32, fmt->width, min_w, max_w);
