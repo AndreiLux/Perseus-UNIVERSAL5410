@@ -314,10 +314,11 @@ struct mxr_vb2 {
 
 	dma_addr_t (*plane_addr)(struct vb2_buffer *vb, u32 plane_no);
 
-	int (*resume)(void *alloc_ctx);
+	void (*resume)(void *alloc_ctx);
 	void (*suspend)(void *alloc_ctx);
 
-	int (*cache_flush)(struct vb2_buffer *vb, u32 num_planes);
+	int (*cache_flush)(void *alloc_ctx, struct vb2_buffer *vb,
+				u32 num_planes);
 	void (*set_cacheable)(void *alloc_ctx, bool cacheable);
 	void		*(*attach_dmabuf)(void *alloc_ctx, struct dma_buf *dbuf,
 				unsigned long size, int write);

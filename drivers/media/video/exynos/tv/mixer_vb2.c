@@ -24,11 +24,11 @@ void *mxr_cma_init(struct mxr_device *mdev)
 	return vb2_cma_phys_init(mdev->dev, NULL, 0, false);
 }
 
-int mxr_cma_resume(void *alloc_ctx) {}
+void mxr_cma_resume(void *alloc_ctx) {}
 void mxr_cma_suspend(void *alloc_ctx) {}
 void mxr_cma_set_cacheable(void *alloc_ctx, bool cacheable) {}
 
-int mxr_cma_cache_flush(struct vb2_buffer *vb, u32 plane_no)
+int mxr_cma_cache_flush(void *alloc_ctx, struct vb2_buffer *vb, u32 plane_no)
 {
 	return 0;
 }
