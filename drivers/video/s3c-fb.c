@@ -1893,7 +1893,6 @@ static int s3c_fb_runtime_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct s3c_fb *sfb = platform_get_drvdata(pdev);
-	unsigned int  reg;
 
 	clk_enable(sfb->bus_clk);
 
