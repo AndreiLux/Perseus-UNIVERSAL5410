@@ -567,32 +567,6 @@ end:
 
 static const struct file_operations ion_share_fops;
 
-int ion_share_fd(struct ion_client *client, struct ion_handle *handle)
-{
-	int fd = get_unused_fd();
-	struct file *filp;
-	struct ion_buffer *buffer;
-
-	if (fd < 0)
-		return fd;
-
-	buffer = ion_share(client, handle);
-	if (IS_ERR(buffer))
-		goto err;
-
-	filp = anon_inode_getfile("ion_share_fd", &ion_share_fops, buffer,
-				O_RDWR);
-	if (IS_ERR_OR_NULL(filp))
-		goto err;
-
-	ion_buffer_get(buffer);
-	fd_install(fd, filp);
-	return fd;
-err:
-	put_unused_fd(fd);
-	return -ENFILE;
-}
-
 struct ion_handle *ion_import_fd(struct ion_client *client, int fd)
 {
 	struct file *file = fget(fd);
@@ -612,30 +586,6 @@ struct ion_handle *ion_import_fd(struct ion_client *client, int fd)
 end:
 	fput(file);
 	return handle;
-}
-
-struct ion_handle *ion_import_uva(struct ion_client *client, unsigned long uva)
-{
-	struct vm_area_struct *vma;
-
-	vma = find_vma(current->mm, uva);
-	if (!vma) {
-		pr_err("%s: invalid user address %#lx.\n", __func__, uva);
-		return ERR_PTR(-EINVAL);
-	}
-
-	if (!vma->vm_file) {
-		pr_err("%s: imported address is not file-mapped.\n", __func__);
-		return ERR_PTR(-ENXIO);
-	}
-
-	if (vma->vm_file->f_op != &ion_share_fops) {
-		pr_err("%s: imported file is not a shared ion file.\n",
-		__func__);
-		return ERR_PTR(-ENXIO);
-	}
-
-	return ion_import(client, vma->vm_file->private_data);
 }
 
 static int ion_debug_client_show(struct seq_file *s, void *unused)
@@ -830,40 +780,6 @@ static int ion_client_put(struct ion_client *client)
 void ion_client_destroy(struct ion_client *client)
 {
 	ion_client_put(client);
-}
-
-struct ion_client *ion_get_user_client(unsigned int fd_client)
-{
-	struct file *file;
-	struct ion_client *client = NULL;
-
-	file = fget(fd_client);
-	if (!file)
-		return NULL;
-
-	if (file->private_data) {
-		client = file->private_data;
-		client = ion_client_lookup(client->dev, current->group_leader);
-
-		if (client && (file->private_data != client)) {
-			ion_client_put(client);
-			client = NULL;
-		}
-
-	}
-
-	fput(file);
-
-	if (client == NULL)
-		pr_err("%s: not a valid file descriptor of user client for the"
-			" current process\n", __func__);
-
-	return client;
-}
-
-void ion_put_user_client(struct ion_client *user_client)
-{
-	ion_client_put(user_client);
 }
 
 static int ion_share_release(struct inode *inode, struct file* file)
@@ -1238,7 +1154,7 @@ void ion_device_add_heap(struct ion_device *dev, struct ion_heap *heap)
 
 		if (heap->id < entry->id) {
 			p = &(*p)->rb_left;
-		} else if (heap->id > entry->id) {
+		} else if (heap->id > entry->id ) {
 			p = &(*p)->rb_right;
 		} else {
 			pr_err("%s: can not insert multiple heaps with "

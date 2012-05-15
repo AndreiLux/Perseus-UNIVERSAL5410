@@ -129,27 +129,6 @@ struct ion_client *ion_client_create(struct ion_device *dev,
 void ion_client_destroy(struct ion_client *client);
 
 /**
- * ion_get_client() - obtain a user client from file descriptor from user
- * @fd:		the user client created by the request from user. This is
- *		passed from user.
- *
- * This function is requested by the device drivers that implement V4L2 and VB2
- * interfaces. Those device drivers just obtains virtual address of a buffer
- * even though it is allocated and mapped by ION. While they can retrieve the
- * handle of the buffer, they are unable to access it because they do not know
- * what client the handle belongs to.
- * Note that the client obtained by this function is not released until
- * ion_put_client() is called and the client is given.
- */
-struct ion_client *ion_get_user_client(unsigned int fd_client);
-
-/**
- * ion_put_client() - release the user client obtained by ion_get_client()
- * @client - The user client to release.
- */
-void ion_put_user_client(struct ion_client *user_client);
-
-/**
  * ion_alloc - allocate ion memory
  * @client:	the client
  * @len:	size of the allocation
@@ -256,17 +235,6 @@ struct ion_handle *ion_import(struct ion_client *client,
 			      struct ion_buffer *buffer);
 
 /**
- * ion_share_fd() - given a handle, obtain a buffer(fd) to pass to userspace
- * @client:	the client
- * @handle:	the handle to share
- *
- * Given a handle, return a fd of a buffer which can be passed to userspace.
- * Should be passed into userspace or ion_import_fd to obtain a new handle for
- * this buffer.
- */
-int ion_share_fd(struct ion_client *client, struct ion_handle *handle);
-
-/**
  * ion_import_fd() - given an fd obtained via ION_IOC_SHARE ioctl, import it
  * @client:	this blocks client
  * @fd:		the fd
@@ -278,21 +246,6 @@ int ion_share_fd(struct ion_client *client, struct ion_handle *handle);
  * the handle to use to refer to it further.
  */
 struct ion_handle *ion_import_fd(struct ion_client *client, int fd);
-
-/**
- * ion_import_uva() - given a virtual address from user, that is mmapped on an
- *                    fd obtained via ION_IOCTL_SHARE ioctl, import it
- * @client:    this blocks client
- * @uva:       virtual address in userspace.
- *
- * A helper function for drivers that will be recieving ion buffers shared
- * with them from userspace.  These buffers are represented by a virtual
- * address that is mmaped on a file descriptor obtained as the return from the
- * ION_IOC_SHARE ioctl.
- * This function does same job with ion_import_fd().
- */
-struct ion_handle *ion_import_uva(struct ion_client *client, unsigned long uva);
-
 #endif /* __KERNEL__ */
 
 /**
