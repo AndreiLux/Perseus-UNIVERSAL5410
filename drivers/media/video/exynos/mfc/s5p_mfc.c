@@ -1325,7 +1325,8 @@ static int __devinit s5p_mfc_probe(struct platform_device *pdev)
 	}
 
 	sprintf(workqueue_name, "mfc_workqueue");
-	dev->irq_workqueue = create_workqueue(workqueue_name);
+	dev->irq_workqueue = alloc_workqueue((workqueue_name), WQ_UNBOUND
+					| WQ_MEM_RECLAIM | WQ_HIGHPRI, 1);
 	if (dev->irq_workqueue == NULL) {
 		dev_err(&pdev->dev, "failed to create workqueue for mfc\n");
 		goto workqueue_fail;
