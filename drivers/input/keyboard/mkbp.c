@@ -31,6 +31,7 @@
 #include <linux/input.h>
 #include <linux/kernel.h>
 #include <linux/mfd/chromeos_ec.h>
+#include <linux/mfd/chromeos_ec_commands.h>
 #include <linux/notifier.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
@@ -238,8 +239,8 @@ static int mkbp_work(struct notifier_block *nb,
 						    notifier);
 	uint8_t kb_state[MKBP_NUM_COLS];
 
-	ret = mkbp_dev->ec->send_command(mkbp_dev->ec, MKBP_CMDC_KEY_STATE,
-				    kb_state, MKBP_NUM_COLS);
+	ret = mkbp_dev->ec->command_recv(mkbp_dev->ec, EC_CMD_MKBP_STATE,
+					 kb_state, MKBP_NUM_COLS);
 	if (ret >= 0)
 		mkbp_process(mkbp_dev, kb_state, ret);
 

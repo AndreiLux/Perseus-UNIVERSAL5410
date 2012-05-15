@@ -27,88 +27,164 @@
 #include <linux/interrupt.h>
 #include <linux/mfd/core.h>
 #include <linux/mfd/chromeos_ec.h>
+#include <linux/mfd/chromeos_ec_commands.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
 
-#define MKBP_MAX_TRIES 3
+#define COMMAND_MAX_TRIES 3
 
-/* Send a one-byte command to the keyboard and receive a response of length
- * BUF_LEN.  Return BUF_LEN, or a negative error code.
- */
-static int mkbp_command_noretry(struct chromeos_ec_device *ec_dev,
-				char cmd, uint8_t *buf, int buf_len)
+static int cros_ec_command_xfer_noretry(struct chromeos_ec_device *ec_dev,
+					struct chromeos_ec_msg *msg)
 {
 	int ret;
 	int i;
 	int packet_len;
-	uint8_t *packet;
-	uint8_t sum;
+	u8 res_code;
+	u8 *out_buf = NULL;
+	u8 *in_buf = NULL;
+	u8 sum;
+	struct i2c_msg i2c_msg[2];
 
-	/* allocate larger packet (one extra byte for checksum) */
-	packet_len = buf_len + MKBP_MSG_PROTO_BYTES;
-	packet = kzalloc(packet_len, GFP_KERNEL);
-	if (!packet)
-		return -ENOMEM;
+	i2c_msg[0].addr = ec_dev->client->addr;
+	i2c_msg[0].flags = 0;
+	i2c_msg[1].addr = ec_dev->client->addr;
+	i2c_msg[1].flags = I2C_M_RD;
 
-	/* send command to EC */
-	ret = i2c_master_send(ec_dev->client, &cmd, 1);
-	if (ret < 0) {
-		dev_err(ec_dev->dev, "i2c send failed: %d\n", ret);
-		goto done;
+	if (msg->in_len) {
+		/* allocate larger packet
+		 * (one byte for checksum, one for result code)
+		 */
+		packet_len = msg->in_len + 2;
+		in_buf = kzalloc(packet_len, GFP_KERNEL);
+		if (!in_buf)
+			goto done;
+		i2c_msg[1].len = packet_len;
+		i2c_msg[1].buf = (char *)in_buf;
+	} else {
+		i2c_msg[1].len = 1;
+		i2c_msg[1].buf = (char *)&res_code;
 	}
-	/* receive response */
-	ret = i2c_master_recv(ec_dev->client, packet, packet_len);
+
+	if (msg->out_len) {
+		/* allocate larger packet
+		 * (one byte for checksum, one for command code)
+		 */
+		packet_len = msg->out_len + 2;
+		out_buf = kzalloc(packet_len, GFP_KERNEL);
+		if (!out_buf)
+			goto done;
+		i2c_msg[0].len = packet_len;
+		i2c_msg[0].buf = (char *)out_buf;
+		out_buf[0] = msg->cmd;
+
+		/* copy message payload and compute checksum */
+		for (i = 0, sum = 0; i < msg->out_len; i++) {
+			out_buf[i + 1] = msg->out_buf[i];
+			sum += out_buf[i + 1];
+		}
+		out_buf[msg->out_len + 1] = sum;
+	} else {
+		i2c_msg[0].len = 1;
+		i2c_msg[0].buf = (char *)&msg->cmd;
+	}
+
+	/* send command to EC and read answer */
+	ret = i2c_transfer(ec_dev->client->adapter, i2c_msg, 2);
 	if (ret < 0) {
-		dev_err(ec_dev->dev, "i2c receive failed: %d\n", ret);
+		dev_err(ec_dev->dev, "i2c transfer failed: %d\n", ret);
 		goto done;
-	} else if (ret != packet_len) {
-		dev_err(ec_dev->dev, "expected %d bytes, got %d\n",
-			packet_len, ret);
+	} else if (ret != 2) {
+		dev_err(ec_dev->dev, "failed to get response: %d\n", ret);
 		ret = -EIO;
 		goto done;
 	}
-	/* copy response packet payload and compute checksum */
-	for (i = 0, sum = 0; i < buf_len; i++) {
-		buf[i] = packet[i];
-		sum += buf[i];
+
+	/* check response error code */
+	if (i2c_msg[1].buf[0]) {
+		dev_warn(ec_dev->dev, "command 0x%02x returned an error %d\n",
+			 msg->cmd, i2c_msg[1].buf[0]);
+		ret = -EINVAL;
+		goto done;
 	}
+	if (msg->in_len) {
+		/* copy response packet payload and compute checksum */
+		for (i = 0, sum = 0; i < msg->in_len; i++) {
+			msg->in_buf[i] = in_buf[i + 1];
+			sum += in_buf[i + 1];
+		}
 #ifdef DEBUG
-	dev_dbg(ec_dev->dev, "packet: ");
-	for (i = 0; i < packet_len; i++) {
-		printk(" %02x", packet[i]);
-	}
-	printk(", sum = %02x\n", sum);
+		dev_dbg(ec_dev->dev, "packet: ");
+		for (i = 0; i < i2c_msg[1].len; i++)
+			dev_dbg(ec_dev->dev, " %02x", in_buf[i]);
+		dev_dbg(ec_dev->dev, ", sum = %02x\n", sum);
 #endif
-	if (sum != packet[packet_len - 1]) {
-		dev_err(ec_dev->dev, "bad keyboard packet checksum\n");
-		ret = -EIO;
-		goto done;
+		if (sum != in_buf[msg->in_len + 1]) {
+			dev_err(ec_dev->dev, "bad packet checksum\n");
+			ret = -EBADMSG;
+			goto done;
+		}
 	}
-	ret = buf_len;
+
+	ret = 0;
  done:
-	kfree(packet);
+	kfree(in_buf);
+	kfree(out_buf);
 	return ret;
 }
 
-static int mkbp_command(struct chromeos_ec_device *ec_dev,
-			char cmd, uint8_t *buf, int buf_len)
+static int cros_ec_command_xfer(struct chromeos_ec_device *ec_dev,
+				 struct chromeos_ec_msg *msg)
 {
-	int try;
+	int tries;
 	int ret;
 	/*
 	 * Try the command a few times in case there are transmission errors.
 	 * It is possible that this is overkill, but we don't completely trust
 	 * i2c.
 	 */
-	for (try = 0; try < MKBP_MAX_TRIES; try++) {
-		ret = mkbp_command_noretry(ec_dev, cmd, buf, buf_len);
+	for (tries = 0; tries < COMMAND_MAX_TRIES; tries++) {
+		ret = cros_ec_command_xfer_noretry(ec_dev, msg);
 		if (ret >= 0)
 			return ret;
 	}
 	dev_err(ec_dev->dev, "mkbp_command failed with %d (%d tries)\n",
-		ret, try);
+		ret, tries);
 	return ret;
+}
+
+static int cros_ec_command_raw(struct chromeos_ec_device *ec_dev,
+			       struct i2c_msg *msgs, int num)
+{
+	return i2c_transfer(ec_dev->client->adapter, msgs, num);
+}
+
+static int cros_ec_command_recv(struct chromeos_ec_device *ec_dev,
+				char cmd, void *buf, int buf_len)
+{
+	struct chromeos_ec_msg msg;
+
+	msg.cmd = cmd;
+	msg.in_buf = buf;
+	msg.in_len = buf_len;
+	msg.out_buf = NULL;
+	msg.out_len = 0;
+
+	return cros_ec_command_xfer(ec_dev, &msg);
+}
+
+static int cros_ec_command_send(struct chromeos_ec_device *ec_dev,
+				char cmd, void *buf, int buf_len)
+{
+	struct chromeos_ec_msg msg;
+
+	msg.cmd = cmd;
+	msg.out_buf = buf;
+	msg.out_len = buf_len;
+	msg.in_buf = NULL;
+	msg.in_len = 0;
+
+	return cros_ec_command_xfer(ec_dev, &msg);
 }
 
 static irqreturn_t ec_irq_thread(int irq, void *data)
@@ -120,20 +196,19 @@ static irqreturn_t ec_irq_thread(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static int __devinit mkbp_check_protocol_version(struct chromeos_ec_device *ec)
+static int __devinit check_protocol_version(struct chromeos_ec_device *ec)
 {
 	int ret;
-	char buf[4];
-	static char expected_version[4] = {1, 0, 0, 0};
-	int i;
+	struct ec_response_proto_version data;
 
-	ret = mkbp_command(ec, MKBP_CMDC_PROTO_VER, buf, sizeof(buf));
+	ret = cros_ec_command_recv(ec, EC_CMD_PROTO_VERSION,
+				   &data, sizeof(data));
 	if (ret < 0)
 		return ret;
-	for (i = 0; i < sizeof(expected_version); i++) {
-		if (buf[i] != expected_version[i])
-			return -EPROTONOSUPPORT;
-	}
+	dev_info(ec->dev, "protocol version: %d\n", data.version);
+	if (data.version != EC_PROTO_VERSION)
+		return -EPROTONOSUPPORT;
+
 	return 0;
 }
 
@@ -164,7 +239,10 @@ static int __devinit cros_ec_probe(struct i2c_client *client,
 	ec_dev->dev = dev;
 	i2c_set_clientdata(client, ec_dev);
 	ec_dev->irq = client->irq;
-	ec_dev->send_command = mkbp_command;
+	ec_dev->command_send = cros_ec_command_send;
+	ec_dev->command_recv = cros_ec_command_recv;
+	ec_dev->command_xfer = cros_ec_command_xfer;
+	ec_dev->command_raw  = cros_ec_command_raw;
 
 	BLOCKING_INIT_NOTIFIER_HEAD(&ec_dev->event_notifier);
 
@@ -176,13 +254,14 @@ static int __devinit cros_ec_probe(struct i2c_client *client,
 		goto fail;
 	}
 
-	err = mkbp_check_protocol_version(ec_dev);
+	err = check_protocol_version(ec_dev);
 	if (err < 0) {
 		dev_err(dev, "protocol version check failed: %d\n", err);
 		goto fail_irq;
 	}
 
-	err = mfd_add_devices(dev, 0, cros_devs, ARRAY_SIZE(cros_devs),
+	err = mfd_add_devices(dev, 0, cros_devs,
+			      ARRAY_SIZE(cros_devs),
 			      NULL, ec_dev->irq);
 	if (err)
 		goto fail_irq;

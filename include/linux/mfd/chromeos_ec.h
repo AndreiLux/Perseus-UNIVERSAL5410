@@ -17,38 +17,34 @@
  *
  *
  * ChromeOS EC multi function device
- * and MKBP (matrix keyboard protocol) message-based protocol definitions.
  */
 
 #ifndef __LINUX_MFD_CHROMEOS_EC_H
 #define __LINUX_MFD_CHROMEOS_EC_H
 
-enum {
-	/* Mask to convert a command byte into a command */
-	MKBP_MSG_TRAILER_BYTES	= 1,
-	MKBP_MSG_PROTO_BYTES	= MKBP_MSG_TRAILER_BYTES,
+struct i2c_msg;
+
+struct chromeos_ec_msg {
+	u8 cmd;
+	uint8_t *out_buf;
+	int out_len;
+	uint8_t *in_buf;
+	int in_len;
 };
-
-/* The EC command codes */
-
-enum message_cmd_t {
-	/* EC control/status messages */
-	MKBP_CMDC_PROTO_VER =	0x00,	/* Read protocol version */
-	MKBP_CMDC_NOP =		0x01,	/* No operation / ping */
-	MKBP_CMDC_ID =		0x02,	/* Read EC ID */
-
-	/* Functional messages */
-	MKBP_CMDC_KEY_STATE =	0x20,	/* Read key state */
-};
-
 
 struct chromeos_ec_device {
 	struct device *dev;
 	struct i2c_client *client;
 	int irq;
 	struct blocking_notifier_head event_notifier;
-	int (*send_command)(struct chromeos_ec_device *ec,
-			char cmd, uint8_t *buf, int buf_len);
+	int (*command_send)(struct chromeos_ec_device *ec,
+			char cmd, void *out_buf, int out_len);
+	int (*command_recv)(struct chromeos_ec_device *ec,
+			char cmd, void *in_buf, int in_len);
+	int (*command_xfer)(struct chromeos_ec_device *ec,
+			struct chromeos_ec_msg *msg);
+	int (*command_raw)(struct chromeos_ec_device *ec,
+			struct i2c_msg *msgs, int num);
 };
 
 #endif /* __LINUX_MFD_CHROMEOS_EC_H */
