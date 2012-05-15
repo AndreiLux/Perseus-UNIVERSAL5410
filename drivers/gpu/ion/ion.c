@@ -625,12 +625,12 @@ struct ion_handle *ion_import_uva(struct ion_client *client, unsigned long uva)
 	}
 
 	if (!vma->vm_file) {
-		pr_debug("%s: imported address is not file-mapped\n", __func__);
+		pr_err("%s: imported address is not file-mapped.\n", __func__);
 		return ERR_PTR(-ENXIO);
 	}
 
 	if (vma->vm_file->f_op != &ion_share_fops) {
-		pr_debug("%s: imported file is not a shared ion file.\n",
+		pr_err("%s: imported file is not a shared ion file.\n",
 		__func__);
 		return ERR_PTR(-ENXIO);
 	}
