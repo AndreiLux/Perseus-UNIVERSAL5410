@@ -214,6 +214,30 @@ static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 	return 0;
 }
 
+/*
+ * When using local path between gscaler and mixer, below stop sequence
+ * must be processed
+ */
+static void mxr_streamer_off(struct mxr_device *mdev, struct v4l2_subdev *sd)
+{
+	struct media_pad *pad;
+	struct v4l2_subdev *gsc_sd;
+	struct exynos_entity_data *md_data;
+
+	if (mdev->mxr_data_from == FROM_GSC_SD) {
+		pad = &sd->entity.pads[MXR_PAD_SINK_GSCALER];
+		pad = media_entity_remote_source(pad);
+		if (pad) {
+			gsc_sd = media_entity_to_v4l2_subdev(
+					pad->entity);
+			mxr_dbg(mdev, "stop from %s\n", gsc_sd->name);
+			md_data = (struct exynos_entity_data *)
+				gsc_sd->dev_priv;
+			md_data->media_ops->power_off(gsc_sd);
+		}
+	}
+}
+
 static int mxr_streamer_put(struct mxr_device *mdev, struct v4l2_subdev *sd)
 {
 	int ret, i;
@@ -222,8 +246,6 @@ static int mxr_streamer_put(struct mxr_device *mdev, struct v4l2_subdev *sd)
 	struct sub_mxr_device *sub_mxr;
 	struct mxr_layer *layer;
 	struct v4l2_subdev *hdmi_sd;
-	struct v4l2_subdev *gsc_sd;
-	struct exynos_entity_data *md_data;
 
 	mutex_lock(&mdev->s_mutex);
 	--mdev->n_streamer;
@@ -267,31 +289,19 @@ static int mxr_streamer_put(struct mxr_device *mdev, struct v4l2_subdev *sd)
 					ret);
 			return ret;
 		}
-	}
-	/* When using local path between gscaler and mixer, below stop sequence
-	 * must be processed */
-	if (mdev->mxr_data_from == FROM_GSC_SD) {
-		pad = &sd->entity.pads[MXR_PAD_SINK_GSCALER];
-		pad = media_entity_remote_source(pad);
-		if (pad) {
-			gsc_sd = media_entity_to_v4l2_subdev(
-					pad->entity);
-			mxr_dbg(mdev, "stop from %s\n", gsc_sd->name);
-			md_data = (struct exynos_entity_data *)
-				gsc_sd->dev_priv;
-			md_data->media_ops->power_off(gsc_sd);
-		}
-	}
 
-	if ((mdev->n_streamer == 0 && local == 1) ||
-	    (mdev->n_streamer == 1 && local == 2)) {
+		mxr_streamer_off(mdev, sd);
+
 		ret = v4l2_subdev_call(hdmi_sd, video, s_stream, 0);
 		if (ret) {
 			mxr_err(mdev, "stopping stream failed for output %s\n",
 					hdmi_sd->name);
 			return ret;
 		}
+	} else {
+		mxr_streamer_off(mdev, sd);
 	}
+
 	/* turn off connected output device through link
 	 * with mixer */
 	if (mdev->mxr_data_from == FROM_GSC_SD) {
