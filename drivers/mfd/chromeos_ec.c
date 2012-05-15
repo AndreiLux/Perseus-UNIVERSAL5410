@@ -217,6 +217,14 @@ static struct mfd_cell cros_devs[] = {
 		.name = "mkbp",
 		.id = 1,
 	},
+	{
+		.name = "cros_ec-fw",
+		.id = 2,
+	},
+	{
+		.name = "cros_ec-i2c",
+		.id = 3,
+	},
 };
 
 static int __devinit cros_ec_probe(struct i2c_client *client,
