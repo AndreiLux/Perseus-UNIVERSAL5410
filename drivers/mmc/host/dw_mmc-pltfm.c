@@ -37,7 +37,7 @@ static unsigned long exynos5250_dwmmc_caps[4] = {
 
 static struct dw_mci_drv_data exynos5250_drv_data = {
 	.ctrl_type	= DW_MCI_TYPE_EXYNOS5250,
-	.caps		= &exynos5250_dwmmc_caps,
+	.caps		= exynos5250_dwmmc_caps,
 };
 
 static const struct of_device_id dw_mci_pltfm_match[] = {
