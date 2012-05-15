@@ -1006,7 +1006,8 @@ struct i2s_dai *i2s_alloc_dai(struct platform_device *pdev, bool sec)
 
 static __devinit int samsung_i2s_probe(struct platform_device *pdev)
 {
-	u32 dma_pl_chan, dma_cp_chan, dma_pl_sec_chan;
+	u32 dma_pl_chan, dma_cp_chan;
+	u32 dma_pl_sec_chan = 0;
 	struct i2s_dai *pri_dai, *sec_dai = NULL;
 	struct s3c_audio_pdata *i2s_pdata;
 	struct samsung_i2s *i2s_cfg;
@@ -1080,8 +1081,6 @@ static __devinit int samsung_i2s_probe(struct platform_device *pdev)
 		res = platform_get_resource(pdev, IORESOURCE_DMA, 2);
 		if (res)
 			dma_pl_sec_chan = res->start;
-		else
-			dma_pl_sec_chan = 0;
 	} else {
 		prop = of_find_property(pdev->dev.of_node,
 					"tx-dma-channel", NULL);
@@ -1126,7 +1125,6 @@ static __devinit int samsung_i2s_probe(struct platform_device *pdev)
 			prop = of_find_property(pdev->dev.of_node,
 						"tx-dma-channel-secondary",
 						NULL);
-			dma_pl_sec_chan = 0;
 			sec_dai->dma_playback.dma_prop = prop;
 		}
 
