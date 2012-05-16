@@ -510,9 +510,11 @@ static int ioctl_gem_cpu_prep(struct drm_device *dev, void *data,
 
 	ret = omap_gem_op_sync(obj, args->op);
 
-	if (!ret) {
-		ret = omap_gem_op_start(obj, args->op);
-	}
+// TODO: need a way to kick sgx after omap_gem_op_finish() but for now
+// just disable this:
+//	if (!ret) {
+//		ret = omap_gem_op_start(obj, args->op);
+//	}
 
 	drm_gem_object_unreference_unlocked(obj);
 
@@ -536,9 +538,11 @@ static int ioctl_gem_cpu_fini(struct drm_device *dev, void *data,
 	/* XXX flushy, flushy */
 	ret = 0;
 
-	if (!ret) {
-		ret = omap_gem_op_finish(obj, args->op);
-	}
+// TODO: need a way to kick sgx after omap_gem_op_finish() but for now
+// just disable this:
+//	if (!ret) {
+//		ret = omap_gem_op_finish(obj, args->op);
+//	}
 
 	drm_gem_object_unreference_unlocked(obj);
 
