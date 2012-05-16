@@ -106,5 +106,6 @@ struct drm_omap_dce_codec_delete {
 #define DRM_OMAP_DCE_CODEC_DELETE	0x05
 
 #define XDM_MEMTYPE_BO 10
+#define XDM_MEMTYPE_BO_OFFSET 11
 
 #endif /* __OMAP_DCE_H__ */

@@ -671,18 +671,32 @@ static inline int cfu(void **top, uint64_t from, int n, void *end)
 
 static inline struct drm_gem_object * handle_single_buf_desc(
 		struct dce_file_priv *priv, struct dce_rpc_hdr *req,
-		struct xdm2_single_buf_desc *desc)
+		uint32_t base_bo, struct xdm2_single_buf_desc *desc)
 {
 	struct drm_gem_object *obj;
 	uint32_t flags;
+	int32_t offset;
 
 	/* maybe support remapping user ptrs later on.. */
-	if (desc->mem_type != XDM_MEMTYPE_BO)
+	if (desc->mem_type != XDM_MEMTYPE_BO &&
+			desc->mem_type != XDM_MEMTYPE_BO_OFFSET)
 		return ERR_PTR(-EINVAL);
+
+	if (desc->mem_type == XDM_MEMTYPE_BO_OFFSET) {
+		/* desc->buf is an offset to base_bo, which is descs[0].buf as
+		 * passed to _process */
+		offset = desc->buf;
+		desc->buf = base_bo;
+	} else {
+		offset = -1;
+	}
 
 	obj = get_paddr(priv, req, &desc->buf, desc->buf);
 	if (IS_ERR(obj))
 		return obj;
+
+	if (offset != -1)
+		desc->buf += offset;
 
 	flags = omap_gem_flags(obj);
 	switch(flags & OMAP_BO_TILED) {
@@ -707,8 +721,6 @@ static inline struct drm_gem_object * handle_single_buf_desc(
 		omap_gem_tiled_size(obj, &w, &h);
 		desc->buf_size.tiled.width = w;
 		desc->buf_size.tiled.height = h;
-	} else {
-		desc->buf_size.bytes = obj->size;
 	}
 
 	// XXX not sure if the codecs care about usage_mode.. but we
@@ -723,6 +735,7 @@ static inline int handle_buf_desc(struct dce_file_priv *priv,
 		struct drm_gem_object **o1, struct drm_gem_object **o2, uint8_t *len)
 {
 	struct xdm2_buf_desc *bufs = *ptr;
+	uint32_t base_bo;
 	int i, ret;
 
 	/* read num_bufs field: */
@@ -737,13 +750,18 @@ static inline int handle_buf_desc(struct dce_file_priv *priv,
 
 	*len = (4 + bufs->num_bufs * sizeof(bufs->descs[0])) / 4;
 
+	/* the bo used as a base for XDM_MEMTYPE_BO_OFFSET descriptors */
+	base_bo = bufs->descs[0].buf;
+
 	/* handle buffer mapping.. */
 	for (i = 0; i < bufs->num_bufs; i++) {
 		struct drm_gem_object *obj =
-				handle_single_buf_desc(priv, req, &bufs->descs[i]);
+				handle_single_buf_desc(priv, req, base_bo,
+						&bufs->descs[i]);
 		if (IS_ERR(obj)) {
 			return PTR_ERR(obj);
 		}
+
 		if (i == 0)
 			*o1 = obj;
 		if (o2 && (i == 1))
