@@ -325,6 +325,9 @@ struct mxt_data {
 	struct mutex object_str_mutex;
 	char *object_str;
 	size_t object_str_size;
+
+	/* firmware file name */
+	char *fw_file;
 };
 
 /* global root node of the atmel_mxt_ts debugfs directory. */
@@ -1395,6 +1398,56 @@ static ssize_t mxt_config_csum_show(struct device *dev,
 	return scnprintf(buf, PAGE_SIZE, "%06x\n", data->config_csum);
 }
 
+static ssize_t mxt_fw_file_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct mxt_data *data = dev_get_drvdata(dev);
+	return scnprintf(buf, PAGE_SIZE, "%s\n", data->fw_file);
+}
+
+static int mxt_update_file_name(struct device *dev, char** file_name,
+				const char *buf, size_t count)
+{
+	char *file_name_tmp;
+
+	/* Simple sanity check */
+	if (count > 64) {
+		dev_warn(dev, "File name too long\n");
+		return -EINVAL;
+	}
+
+	file_name_tmp = krealloc(*file_name, count + 1, GFP_KERNEL);
+	if (!file_name_tmp) {
+		dev_warn(dev, "no memory\n");
+		return -ENOMEM;
+	}
+
+	*file_name = file_name_tmp;
+	memcpy(*file_name, buf, count);
+
+	/* Echo into the sysfs entry may append newline at the end of buf */
+	if (buf[count - 1] == '\n')
+		(*file_name)[count - 1] = '\0';
+	else
+		(*file_name)[count] = '\0';
+
+	return 0;
+}
+
+static ssize_t mxt_fw_file_store(struct device *dev,
+				 struct device_attribute *attr,
+				 const char *buf, size_t count)
+{
+	struct mxt_data *data = dev_get_drvdata(dev);
+	int ret;
+
+	ret = mxt_update_file_name(dev, &data->fw_file, buf, count);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
 static ssize_t mxt_fw_version_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
@@ -1467,7 +1520,7 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 	struct mxt_data *data = dev_get_drvdata(dev);
 	int error;
 
-	error = mxt_load_fw(dev, MXT_FW_NAME);
+	error = mxt_load_fw(dev, data->fw_file);
 	if (error) {
 		dev_err(dev, "The firmware update failed(%d)\n", error);
 		count = error;
@@ -1480,6 +1533,8 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 static DEVICE_ATTR(backupnv, S_IWUSR, NULL, mxt_backupnv_store);
 static DEVICE_ATTR(calibrate, S_IWUSR, NULL, mxt_calibrate_store);
 static DEVICE_ATTR(config_csum, S_IRUGO, mxt_config_csum_show, NULL);
+static DEVICE_ATTR(fw_file, S_IRUGO | S_IWUSR, mxt_fw_file_show,
+		   mxt_fw_file_store);
 static DEVICE_ATTR(fw_version, S_IRUGO, mxt_fw_version_show, NULL);
 static DEVICE_ATTR(hw_version, S_IRUGO, mxt_hw_version_show, NULL);
 static DEVICE_ATTR(info_csum, S_IRUGO, mxt_info_csum_show, NULL);
@@ -1491,6 +1546,7 @@ static struct attribute *mxt_attrs[] = {
 	&dev_attr_backupnv.attr,
 	&dev_attr_calibrate.attr,
 	&dev_attr_config_csum.attr,
+	&dev_attr_fw_file.attr,
 	&dev_attr_fw_version.attr,
 	&dev_attr_hw_version.attr,
 	&dev_attr_info_csum.attr,
@@ -2023,6 +2079,11 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	data->pdata = pdata;
 	data->irq = client->irq;
 
+	error = mxt_update_file_name(&client->dev, &data->fw_file, MXT_FW_NAME,
+				     strlen(MXT_FW_NAME));
+	if (error)
+		goto err_free_object;
+
 	if (!mxt_in_bootloader(data)) {
 		error = mxt_initialize(data);
 		if (error)
@@ -2072,6 +2133,7 @@ err_unregister_device:
 	input_unregister_device(data->input_dev);
 err_free_object:
 	kfree(data->object_table);
+	kfree(data->fw_file);
 	kfree(data);
 	return error;
 }
@@ -2085,6 +2147,7 @@ static int __devexit mxt_remove(struct i2c_client *client)
 	free_irq(data->irq, data);
 	input_unregister_device(data->input_dev);
 	kfree(data->object_table);
+	kfree(data->fw_file);
 	kfree(data);
 
 	return 0;
