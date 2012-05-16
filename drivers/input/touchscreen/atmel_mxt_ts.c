@@ -280,6 +280,9 @@ struct mxt_data {
 	/* for fw update in bootloader */
 	struct completion bl_completion;
 
+	/* for auto-calibration in suspend */
+	struct completion auto_cal_completion;
+
 	unsigned int irq;
 	unsigned int max_x;
 	unsigned int max_y;
@@ -746,6 +749,8 @@ static int mxt_proc_messages(struct mxt_data *data, u8 count)
 					    (msg->message[3] << 16);
 			dev_info(dev, "Status: %02x Config Checksum: %06x\n",
 				 msg->message[0], data->config_csum);
+			if (msg->message[0] == 0x00)
+				complete(&data->auto_cal_completion);
 		}
 	}
 
@@ -2026,6 +2031,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		dev_info(&client->dev, "device came up in bootloader mode.\n");
 	}
 	init_completion(&data->bl_completion);
+	init_completion(&data->auto_cal_completion);
 
 	error = mxt_input_dev_create(data);
 	if (error)
@@ -2085,6 +2091,30 @@ static int __devexit mxt_remove(struct i2c_client *client)
 }
 
 #ifdef CONFIG_PM_SLEEP
+
+static void mxt_suspend_enable_T9(struct mxt_data *data)
+{
+	struct device *dev = &data->client->dev;
+	u8 T9_ctrl = 0x03;
+	int ret;
+	unsigned long timeout = msecs_to_jiffies(350);
+
+	INIT_COMPLETION(data->auto_cal_completion);
+
+	/* Enable T9 object */
+	ret = mxt_set_regs(data, MXT_TOUCH_MULTI_T9, 0, 0,
+			   &T9_ctrl, 1);
+	if (ret) {
+		dev_err(dev, "Set T9 ctrl config failed, %d\n", ret);
+		return;
+	}
+
+	ret = wait_for_completion_interruptible_timeout(
+		&data->auto_cal_completion, timeout);
+	if (ret <= 0)
+		dev_err(dev, "Wait for auto cal completion failed.\n");
+}
+
 static int mxt_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
@@ -2093,7 +2123,6 @@ static int mxt_suspend(struct device *dev)
 	u8 T7_config_idle[3] = {0xfe, 0xfe, 0};
 	u8 T7_config_deepsleep[3] = {0x00, 0x00, 0};
 	u8 *power_config;
-	u8 T9_ctrl = 0x03;
 	int ret;
 
 	mutex_lock(&input_dev->mutex);
@@ -2129,11 +2158,9 @@ static int mxt_suspend(struct device *dev)
 			dev_err(dev, "Save T9 ctrl config failed, %d\n", ret);
 		data->T9_ctrl_valid = (ret == 0);
 
-		/* Enable T9 objcet */
-		ret = mxt_set_regs(data, MXT_TOUCH_MULTI_T9, 0, 0,
-				   &T9_ctrl, 1);
-		if (ret)
-			dev_err(dev, "Set T9 ctrl config failed, %d\n", ret);
+		/* Enable T9 only if it is not currently enabled */
+		if (data->T9_ctrl_valid && !(data->T9_ctrl & 0x01))
+			mxt_suspend_enable_T9(data);
 
 		/* Enable wake from IRQ */
 		data->irq_wake = (enable_irq_wake(data->irq) == 0);
