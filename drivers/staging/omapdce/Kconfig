@@ -1,0 +1,10 @@
+config DRM_OMAP_DCE
+	tristate "OMAP DRM Distributed Codec Engine"
+	depends on DRM_OMAP 
+	select OMAP_RPMSG
+	select OMAP_REMOTEPROC
+	default n
+	help
+	  Plugin for OMAP DRM driver to support hw accellerated video
+	  decoders/encoders
+
