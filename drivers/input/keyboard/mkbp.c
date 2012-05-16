@@ -40,7 +40,6 @@ struct mkbp_device {
 	struct input_dev *idev;
 	struct chromeos_ec_device *ec;
 	struct notifier_block notifier;
-	struct work_struct work;
 };
 
 
@@ -219,38 +218,30 @@ static int mkbp_open(struct input_dev *dev)
 {
 	struct mkbp_device *mkbp_dev = input_get_drvdata(dev);
 
-	return atomic_notifier_chain_register(&mkbp_dev->ec->event_notifier,
-					      &mkbp_dev->notifier);
+	return blocking_notifier_chain_register(&mkbp_dev->ec->event_notifier,
+						&mkbp_dev->notifier);
 }
 
 static void mkbp_close(struct input_dev *dev)
 {
 	struct mkbp_device *mkbp_dev = input_get_drvdata(dev);
 
-	atomic_notifier_chain_unregister(&mkbp_dev->ec->event_notifier,
-					 &mkbp_dev->notifier);
+	blocking_notifier_chain_unregister(&mkbp_dev->ec->event_notifier,
+					   &mkbp_dev->notifier);
 }
 
-static void mkbp_work(struct work_struct *work)
+static int mkbp_work(struct notifier_block *nb,
+		     unsigned long state, void *_notify)
 {
 	int ret;
-	struct mkbp_device *mkbp_dev =
-			container_of(work, struct mkbp_device, work);
+	struct mkbp_device *mkbp_dev = container_of(nb, struct mkbp_device,
+						    notifier);
 	uint8_t kb_state[MKBP_NUM_COLS];
 
 	ret = mkbp_dev->ec->send_command(mkbp_dev->ec, MKBP_CMDC_KEY_STATE,
 				    kb_state, MKBP_NUM_COLS);
 	if (ret >= 0)
 		mkbp_process(mkbp_dev, kb_state, ret);
-}
-
-static int mkbp_notify(struct notifier_block *nb,
-			    unsigned long state, void *_notify)
-{
-	struct mkbp_device *mkbp_dev = container_of(nb, struct mkbp_device,
-						    notifier);
-
-	schedule_work(&mkbp_dev->work);
 
 	return NOTIFY_DONE;
 }
@@ -275,10 +266,8 @@ static int __devinit mkbp_probe(struct platform_device *pdev)
 	}
 
 	mkbp_dev->ec = ec;
-	mkbp_dev->notifier.notifier_call = mkbp_notify;
+	mkbp_dev->notifier.notifier_call = mkbp_work;
 	mkbp_dev->dev = dev;
-
-	INIT_WORK(&mkbp_dev->work, &mkbp_work);
 
 	idev->name = ec->client->name;
 	idev->phys = ec->client->adapter->name;

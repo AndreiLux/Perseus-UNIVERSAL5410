@@ -111,11 +111,11 @@ static int mkbp_command(struct chromeos_ec_device *ec_dev,
 	return ret;
 }
 
-static irqreturn_t mkbp_isr(int irq, void *data)
+static irqreturn_t ec_irq_thread(int irq, void *data)
 {
 	struct chromeos_ec_device *ec = data;
 
-	atomic_notifier_call_chain(&ec->event_notifier, 1, ec);
+	blocking_notifier_call_chain(&ec->event_notifier, 1, ec);
 
 	return IRQ_HANDLED;
 }
@@ -166,10 +166,11 @@ static int __devinit cros_ec_probe(struct i2c_client *client,
 	ec_dev->irq = client->irq;
 	ec_dev->send_command = mkbp_command;
 
-	ATOMIC_INIT_NOTIFIER_HEAD(&ec_dev->event_notifier);
+	BLOCKING_INIT_NOTIFIER_HEAD(&ec_dev->event_notifier);
 
-	err = request_irq(ec_dev->irq, mkbp_isr,
-			  IRQF_TRIGGER_FALLING, "chromeos-ec", ec_dev);
+	err = request_threaded_irq(ec_dev->irq, NULL, ec_irq_thread,
+				   IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+				   "chromeos-ec", ec_dev);
 	if (err) {
 		dev_err(dev, "request irq %d: error %d\n", ec_dev->irq, err);
 		goto fail;

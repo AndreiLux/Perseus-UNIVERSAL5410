@@ -46,7 +46,7 @@ struct chromeos_ec_device {
 	struct device *dev;
 	struct i2c_client *client;
 	int irq;
-	struct atomic_notifier_head event_notifier;
+	struct blocking_notifier_head event_notifier;
 	int (*send_command)(struct chromeos_ec_device *ec,
 			char cmd, uint8_t *buf, int buf_len);
 };
