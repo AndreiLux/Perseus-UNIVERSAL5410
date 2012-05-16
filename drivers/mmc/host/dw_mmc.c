@@ -1899,8 +1899,8 @@ static int __init dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 		ctrl_id = of_alias_get_id(host->dev.of_node, "mshc");
 		if (ctrl_id < 0)
 			ctrl_id = 0;
+		mmc->caps |= host->drv_data->caps[ctrl_id];
 	}
-	mmc->caps |= host->drv_data->caps[ctrl_id];
 
 	if (host->pdata->caps2)
 		mmc->caps2 = host->pdata->caps2;
