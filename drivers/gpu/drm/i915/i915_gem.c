@@ -3317,7 +3317,10 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret;
 
-	BUG_ON(obj->pin_count == DRM_I915_GEM_OBJECT_MAX_PIN_COUNT);
+	if (obj->pin_count == DRM_I915_GEM_OBJECT_MAX_PIN_COUNT) {
+		WARN(obj->pin_count, "pin count has reached its max\n");
+		return -ENOSPC;
+	}
 	WARN_ON(i915_verify_lists(dev));
 
 	if (obj->gtt_space != NULL) {
