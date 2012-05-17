@@ -21,6 +21,9 @@
 #include <plat/iommu.h>
 #include <plat/omap_hwmod.h>
 #include "clockdomain.h"
+#include <plat/cpu.h>
+
+#include "iomap.h"
 
 /*
  * omap2 architecture specific register bit definitions
@@ -77,6 +80,16 @@ static void __iommu_set_twl(struct omap_iommu *obj, bool on)
 static int omap2_iommu_enable(struct omap_iommu *obj)
 {
 	u32 l, pa;
+
+	/*
+	 * HACK: without this, we blow imprecise external abort on uEVM
+	 * followed by L3 bus exception spew
+	 */
+
+	if (cpu_is_omap54xx()) {
+		pr_info("omap2_iommu_enable: doing Benelli reset HACK\n");
+		__raw_writel(3, OMAP2_L4_IO_ADDRESS(0x4AE06910));
+	}
 
 	if (!obj->iopgd || !IS_ALIGNED((u32)obj->iopgd,  SZ_16K))
 		return -EINVAL;
