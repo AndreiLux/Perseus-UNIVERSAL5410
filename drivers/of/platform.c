@@ -349,6 +349,7 @@ static int of_platform_bus_create(struct device_node *bus,
 	struct platform_device *dev;
 	const char *bus_id = NULL;
 	void *platform_data = NULL;
+	int id = -1;
 	int rc = 0;
 
 	/* Make sure it has a compatible property */
@@ -361,6 +362,7 @@ static int of_platform_bus_create(struct device_node *bus,
 	auxdata = of_dev_lookup(lookup, bus);
 	if (auxdata) {
 		bus_id = auxdata->name;
+		id = auxdata->id;
 		platform_data = auxdata->platform_data;
 	}
 
@@ -370,6 +372,11 @@ static int of_platform_bus_create(struct device_node *bus,
 	}
 
 	dev = of_platform_device_create_pdata(bus, bus_id, platform_data, parent);
+
+	/* override the id if auxdata gives an id */
+	if (id != -1)
+		dev->id = id;
+
 	if (!dev || !of_match_node(matches, bus))
 		return 0;
 
