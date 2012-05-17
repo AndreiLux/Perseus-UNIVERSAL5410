@@ -1661,6 +1661,7 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 }
 
 static struct s5p_mfc_codec_ops encoder_codec_ops = {
+	.get_buf_update_val	= NULL,
 	.init_ctx_ctrls		= enc_init_ctx_ctrls,
 	.cleanup_ctx_ctrls	= enc_cleanup_ctx_ctrls,
 	.init_buf_ctrls		= enc_init_buf_ctrls,

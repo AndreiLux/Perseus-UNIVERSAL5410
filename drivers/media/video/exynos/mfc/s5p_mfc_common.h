@@ -472,6 +472,8 @@ struct s5p_mfc_codec_ops {
 			struct list_head *head);
 	int (*recover_buf_ctrls_val) (struct s5p_mfc_ctx *ctx,
 			struct list_head *head);
+	int (*get_buf_update_val) (struct s5p_mfc_ctx *ctx,
+			struct list_head *head, unsigned int id, int value);
 };
 
 #define call_cop(c, op, args...)				\
@@ -505,6 +507,7 @@ struct s5p_mfc_dec {
 
 	enum v4l2_memory dst_memtype;
 	int sei_parse;
+	int eos_tag;
 
 	/* For 6.x */
 	int remained;

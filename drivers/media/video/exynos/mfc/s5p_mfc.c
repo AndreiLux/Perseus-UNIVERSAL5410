@@ -218,7 +218,7 @@ static void s5p_mfc_handle_frame_all_extracted(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dec *dec = ctx->dec_priv;
 	struct s5p_mfc_buf *dst_buf;
-	int index;
+	int index, is_first = 1;
 
 	mfc_debug(2, "Decided to finish\n");
 	ctx->sequence++;
@@ -244,6 +244,19 @@ static void s5p_mfc_handle_frame_all_extracted(struct s5p_mfc_ctx *ctx)
 		index = dst_buf->vb.v4l2_buf.index;
 		if (call_cop(ctx, get_buf_ctrls_val, ctx, &ctx->dst_ctrls[index]) < 0)
 			mfc_err("failed in get_buf_ctrls_val\n");
+
+		if (is_first) {
+			call_cop(ctx, get_buf_update_val, ctx,
+				&ctx->dst_ctrls[index],
+				V4L2_CID_MPEG_MFC51_VIDEO_FRAME_TAG,
+				dec->eos_tag);
+			is_first = 0;
+		} else {
+			call_cop(ctx, get_buf_update_val, ctx,
+				&ctx->dst_ctrls[index],
+				V4L2_CID_MPEG_MFC51_VIDEO_FRAME_TAG,
+				DEFAULT_TAG);
+		}
 
 		vb2_buffer_done(&dst_buf->vb, VB2_BUF_STATE_DONE);
 		mfc_debug(2, "Cleaned up buffer: %d\n",

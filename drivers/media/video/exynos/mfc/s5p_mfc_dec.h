@@ -14,6 +14,7 @@
 #define __S5P_MFC_DEC_H_ __FILE__
 
 #define MAX_FRAME_SIZE		(2*1024*1024)
+#define DEFAULT_TAG		(-1)
 
 const struct v4l2_ioctl_ops *get_dec_v4l2_ioctl_ops(void);
 int s5p_mfc_init_dec_ctx(struct s5p_mfc_ctx *ctx);
