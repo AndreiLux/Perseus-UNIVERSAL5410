@@ -88,8 +88,8 @@ static const mali_dvfs_info mali_dvfs_infotbl[MALI_DVFS_STEP]=
 #elif (MALI_DVFS_STEP == 4)
 	{900000, 100, 0, 25},
 	{950000, 160, 20, 40},
-	{1000000, 200, 35, 65},
-	{1050000, 266, 55, 100},
+	{1050000, 266, 35, 65},
+	{1250000, 533, 60, 100},
 #else
 #error no table
 #endif
