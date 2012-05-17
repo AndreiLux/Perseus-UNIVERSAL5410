@@ -1211,11 +1211,6 @@ int __pm_genpd_add_device(struct generic_pm_domain *genpd, struct device *dev,
 
 	genpd_acquire_lock(genpd);
 
-	if (genpd->status == GPD_STATE_POWER_OFF) {
-		ret = -EINVAL;
-		goto out;
-	}
-
 	if (genpd->prepared_count > 0) {
 		ret = -EAGAIN;
 		goto out;
@@ -1239,7 +1234,7 @@ int __pm_genpd_add_device(struct generic_pm_domain *genpd, struct device *dev,
 	dev_pm_get_subsys_data(dev);
 	dev->power.subsys_data->domain_data = &gpd_data->base;
 	gpd_data->base.dev = dev;
-	gpd_data->need_restore = false;
+	gpd_data->need_restore = true;
 	list_add_tail(&gpd_data->base.list_node, &genpd->dev_list);
 	if (td)
 		gpd_data->td = *td;
