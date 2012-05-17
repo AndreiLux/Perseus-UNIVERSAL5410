@@ -6545,6 +6545,7 @@ static __initdata struct omap_hwmod *omap54xx_hwmods[] = {
 	/* dsp class */
 #ifndef CONFIG_OMAP_PM_STANDALONE
 	&omap54xx_dsp_hwmod,
+	&omap54xx_dsp_c0_hwmod,                                                 
 #endif
 
 	/* dss class */
@@ -6594,6 +6595,8 @@ static __initdata struct omap_hwmod *omap54xx_hwmods[] = {
 #ifndef CONFIG_OMAP_PM_STANDALONE
 	/* ipu class */
 	&omap54xx_ipu_hwmod,
+	&omap54xx_ipu_c0_hwmod,                                                 
+	&omap54xx_ipu_c1_hwmod,
 #endif
 
 	/* iss class */
