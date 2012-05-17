@@ -512,8 +512,7 @@ static int s5p_mfc_ctx_ready(struct s5p_mfc_ctx *ctx)
 	    ctx->dst_queue_cnt >= ctx->dpb_count)
 		return 1;
 	/* Context is to set buffers */
-	if (ctx->src_queue_cnt >= 1 &&
-	    ctx->state == MFCINST_HEAD_PARSED &&
+	if (ctx->state == MFCINST_HEAD_PARSED &&
 	    ctx->capture_state == QUEUE_BUFS_MMAPED)
 		return 1;
 	/* Resolution change */
@@ -1844,9 +1843,11 @@ static int s5p_mfc_buf_init(struct vb2_buffer *vb)
 {
 	struct vb2_queue *vq = vb->vb2_queue;
 	struct s5p_mfc_ctx *ctx = vq->drv_priv;
+	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_dec *dec = ctx->dec_priv;
 	struct s5p_mfc_buf *buf = vb_to_mfc_buf(vb);
 	int i;
+	unsigned long flags;
 
 	mfc_debug_enter();
 
@@ -1865,8 +1866,10 @@ static int s5p_mfc_buf_init(struct vb2_buffer *vb)
 		buf->cookie.raw.luma = mfc_plane_cookie(vb, 0);
 		buf->cookie.raw.chroma = mfc_plane_cookie(vb, 1);
 
+		spin_lock_irqsave(&dev->irqlock, flags);
 		list_add_tail(&buf->list, &dec->dpb_queue);
 		dec->dpb_queue_cnt++;
+		spin_unlock_irqrestore(&dev->irqlock, flags);
 
 		if (call_cop(ctx, init_buf_ctrls, ctx, MFC_CTRL_TYPE_DST, vb->v4l2_buf.index) < 0)
 			mfc_err("failed in init_buf_ctrls\n");

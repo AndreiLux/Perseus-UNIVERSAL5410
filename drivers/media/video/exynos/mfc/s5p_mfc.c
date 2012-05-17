@@ -220,7 +220,6 @@ static void s5p_mfc_handle_frame_all_extracted(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_buf *dst_buf;
 	int index;
 
-	ctx->state = MFCINST_FINISHED;
 	mfc_debug(2, "Decided to finish\n");
 	ctx->sequence++;
 	while (!list_empty(&ctx->dst_queue)) {
