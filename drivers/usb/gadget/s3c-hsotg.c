@@ -27,6 +27,7 @@
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/clk.h>
+#include <linux/regulator/consumer.h>
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
@@ -35,11 +36,16 @@
 
 #include <plat/regs-usb-hsotg-phy.h>
 #include <plat/regs-usb-hsotg.h>
-#include <mach/regs-sys.h>
 #include <plat/udc-hs.h>
 #include <plat/cpu.h>
+#include <plat/usb-phy.h>
 
 #define DMA_ADDR_INVALID (~((dma_addr_t)0))
+
+static const char * const s3c_hsotg_supply_names[] = {
+	"vusb_d",		/* digital USB supply, 1.2V */
+	"vusb_a",		/* analog USB supply, 1.1V */
+};
 
 /* EP0_MPS_LIMIT
  *
@@ -125,8 +131,6 @@ struct s3c_hsotg_ep {
 	char			name[10];
 };
 
-#define S3C_HSOTG_EPS	(8+1)	/* limit to 9 for the moment */
-
 /**
  * struct s3c_hsotg - driver state.
  * @dev: The parent device supplied to the probe function
@@ -135,7 +139,9 @@ struct s3c_hsotg_ep {
  * @regs: The memory area mapped for accessing registers.
  * @regs_res: The resource that was allocated when claiming register space.
  * @irq: The IRQ number we are using
+ * @supplies: Definition of USB power supplies
  * @dedicated_fifos: Set if the hardware has dedicated IN-EP fifos.
+ * @num_of_eps: Number of available EPs (excluding EP0)
  * @debug_root: root directrory for debugfs.
  * @debug_file: main status file for debugfs.
  * @debug_fifo: FIFO status file for debugfs.
@@ -143,6 +149,8 @@ struct s3c_hsotg_ep {
  * @ep0_buff: Buffer for EP0 reply data, if needed.
  * @ctrl_buff: Buffer for EP0 control requests.
  * @ctrl_req: Request for EP0 control packets.
+ * @setup: NAK management for EP0 SETUP
+ * @last_rst: Time of last reset
  * @eps: The endpoints being supplied to the gadget framework
  */
 struct s3c_hsotg {
@@ -155,7 +163,10 @@ struct s3c_hsotg {
 	int			irq;
 	struct clk		*clk;
 
+	struct regulator_bulk_data supplies[ARRAY_SIZE(s3c_hsotg_supply_names)];
+
 	unsigned int		dedicated_fifos:1;
+	unsigned char           num_of_eps;
 
 	struct dentry		*debug_root;
 	struct dentry		*debug_file;
@@ -167,7 +178,9 @@ struct s3c_hsotg {
 	u8			ctrl_buff[8];
 
 	struct usb_gadget	gadget;
-	struct s3c_hsotg_ep	eps[];
+	unsigned int		setup;
+	unsigned long           last_rst;
+	struct s3c_hsotg_ep	*eps;
 };
 
 /**
@@ -690,7 +703,8 @@ static void s3c_hsotg_start_req(struct s3c_hsotg *hsotg,
 	}
 
 	length = ureq->length - ureq->actual;
-
+	dev_dbg(hsotg->dev, "ureq->length:%d ureq->actual:%d\n",
+		ureq->length, ureq->actual);
 	if (0)
 		dev_dbg(hsotg->dev,
 			"REQ buf %p len %d dma 0x%08x noi=%d zp=%d snok=%d\n",
@@ -756,7 +770,15 @@ static void s3c_hsotg_start_req(struct s3c_hsotg *hsotg,
 
 	ctrl |= S3C_DxEPCTL_EPEna;	/* ensure ep enabled */
 	ctrl |= S3C_DxEPCTL_USBActEp;
-	ctrl |= S3C_DxEPCTL_CNAK;	/* clear NAK set by core */
+
+	dev_dbg(hsotg->dev, "setup req:%d\n", hsotg->setup);
+
+	/* For Setup request do not clear NAK */
+	if (hsotg->setup && index == 0)
+		hsotg->setup = 0;
+	else
+		ctrl |= S3C_DxEPCTL_CNAK;	/* clear NAK set by core */
+
 
 	dev_dbg(hsotg->dev, "%s: DxEPCTL=0x%08x\n", __func__, ctrl);
 	writel(ctrl, hsotg->regs + epctrl_reg);
@@ -933,7 +955,7 @@ static struct s3c_hsotg_ep *ep_from_windex(struct s3c_hsotg *hsotg,
 	if (windex >= 0x100)
 		return NULL;
 
-	if (idx > S3C_HSOTG_EPS)
+	if (idx > hsotg->num_of_eps)
 		return NULL;
 
 	if (idx && ep->dir_in != dir)
@@ -1521,6 +1543,10 @@ static void s3c_hsotg_handle_outdone(struct s3c_hsotg *hsotg,
 	if (req->actual < req->length && size_left == 0) {
 		s3c_hsotg_start_req(hsotg, hs_ep, hs_req, true);
 		return;
+	} else if (epnum == 0) {
+		/* After was_setup = 1 =>
+		 * set CNAK for non Setup requests */
+		hsotg->setup = was_setup ? 0 : 1;
 	}
 
 	if (req->actual < req->length && req->short_not_ok) {
@@ -1532,8 +1558,11 @@ static void s3c_hsotg_handle_outdone(struct s3c_hsotg *hsotg,
 	}
 
 	if (epnum == 0) {
+		/* Condition req->complete != s3c_hsotg_complete_setup says:
+		 * send ZLP when we have an asynchronous request from gadget */
 		if (!was_setup && req->complete != s3c_hsotg_complete_setup)
 			s3c_hsotg_send_zlp(hsotg, hs_req);
+
 	}
 
 	s3c_hsotg_complete_request_lock(hsotg, hs_ep, hs_req, result);
@@ -1786,6 +1815,13 @@ static void s3c_hsotg_complete_in(struct s3c_hsotg *hsotg,
 		return;
 	}
 
+	/* Finish ZLP handling for IN EP0 transactions */
+	if (hsotg->eps[0].sent_zlp) {
+		dev_dbg(hsotg->dev, "zlp packet received\n");
+		s3c_hsotg_complete_request_lock(hsotg, hs_ep, hs_req, 0);
+		return;
+	}
+
 	/* Calculate the size of the transfer by checking how much is left
 	 * in the endpoint size register and then working it out from
 	 * the amount we loaded for the transfer.
@@ -1805,9 +1841,27 @@ static void s3c_hsotg_complete_in(struct s3c_hsotg *hsotg,
 			__func__, hs_req->req.actual, size_done);
 
 	hs_req->req.actual = size_done;
+	dev_dbg(hsotg->dev, "req->length:%d req->actual:%d req->zero:%d\n",
+		hs_req->req.length, hs_req->req.actual, hs_req->req.zero);
 
-	/* if we did all of the transfer, and there is more data left
-	 * around, then try restarting the rest of the request */
+	/* Check if dealing with Maximum Packet Size(MPS) IN transfer at EP0
+	 * When sent data is a multiple MPS size (e.g. 64B ,128B ,192B
+	 * ,256B ... ), after last MPS sized packet send IN ZLP packet to
+	 * inform the host that no more data is available.
+	 * The state of req.zero member is checked to be sure that the value to
+	 * send is smaller than wValue expected from host.
+	 * Check req.length to NOT send another ZLP when the current one is
+	 * under completion (the one for which this completion has been called).
+	 */
+	if (hs_req->req.length && hs_ep->index == 0 && hs_req->req.zero
+	    && hs_req->req.length == hs_req->req.actual
+	    && !(hs_req->req.length % hs_ep->ep.maxpacket)) {
+
+		dev_dbg(hsotg->dev, "ep0 zlp IN packet sent\n");
+		s3c_hsotg_send_zlp(hsotg, hs_req);
+
+		return;
+	}
 
 	if (!size_left && hs_req->req.actual < hs_req->req.length) {
 		dev_dbg(hsotg->dev, "%s trying more for req...\n", __func__);
@@ -1981,7 +2035,7 @@ static void s3c_hsotg_irq_enumdone(struct s3c_hsotg *hsotg)
 	if (ep0_mps) {
 		int i;
 		s3c_hsotg_set_ep_maxpacket(hsotg, 0, ep0_mps);
-		for (i = 1; i < S3C_HSOTG_EPS; i++)
+		for (i = 1; i < hsotg->num_of_eps; i++)
 			s3c_hsotg_set_ep_maxpacket(hsotg, i, ep_mps);
 	}
 
@@ -2033,18 +2087,18 @@ static void kill_all_requests(struct s3c_hsotg *hsotg,
 		(_hs)->driver->_entry(&(_hs)->gadget);
 
 /**
- * s3c_hsotg_disconnect_irq - disconnect irq service
+ * s3c_hsotg_disconnect - disconnect service
  * @hsotg: The device state.
  *
- * A disconnect IRQ has been received, meaning that the host has
- * lost contact with the bus. Remove all current transactions
- * and signal the gadget driver that this has happened.
+ * The device has been disconnected. Remove all current
+ * transactions and signal the gadget driver that this
+ * has happened.
 */
-static void s3c_hsotg_disconnect_irq(struct s3c_hsotg *hsotg)
+static void s3c_hsotg_disconnect(struct s3c_hsotg *hsotg)
 {
 	unsigned ep;
 
-	for (ep = 0; ep < S3C_HSOTG_EPS; ep++)
+	for (ep = 0; ep < hsotg->num_of_eps; ep++)
 		kill_all_requests(hsotg, &hsotg->eps[ep], -ESHUTDOWN, true);
 
 	call_gadget(hsotg, disconnect);
@@ -2062,7 +2116,7 @@ static void s3c_hsotg_irq_fifoempty(struct s3c_hsotg *hsotg, bool periodic)
 
 	/* look through for any more data to transmit */
 
-	for (epno = 0; epno < S3C_HSOTG_EPS; epno++) {
+	for (epno = 0; epno < hsotg->num_of_eps; epno++) {
 		ep = &hsotg->eps[epno];
 
 		if (!ep->dir_in)
@@ -2084,6 +2138,172 @@ static struct s3c_hsotg *our_hsotg;
 #define IRQ_RETRY_MASK (S3C_GINTSTS_NPTxFEmp | \
 			S3C_GINTSTS_PTxFEmp |  \
 			S3C_GINTSTS_RxFLvl)
+
+/**
+ * s3c_hsotg_corereset - issue softreset to the core
+ * @hsotg: The device state
+ *
+ * Issue a soft reset to the core, and await the core finishing it.
+*/
+static int s3c_hsotg_corereset(struct s3c_hsotg *hsotg)
+{
+	int timeout;
+	u32 grstctl;
+
+	dev_dbg(hsotg->dev, "resetting core\n");
+
+	/* issue soft reset */
+	writel(S3C_GRSTCTL_CSftRst, hsotg->regs + S3C_GRSTCTL);
+
+	timeout = 1000;
+	do {
+		grstctl = readl(hsotg->regs + S3C_GRSTCTL);
+	} while ((grstctl & S3C_GRSTCTL_CSftRst) && timeout-- > 0);
+
+	if (grstctl & S3C_GRSTCTL_CSftRst) {
+		dev_err(hsotg->dev, "Failed to get CSftRst asserted\n");
+		return -EINVAL;
+	}
+
+	timeout = 1000;
+
+	while (1) {
+		u32 grstctl = readl(hsotg->regs + S3C_GRSTCTL);
+
+		if (timeout-- < 0) {
+			dev_info(hsotg->dev,
+				 "%s: reset failed, GRSTCTL=%08x\n",
+				 __func__, grstctl);
+			return -ETIMEDOUT;
+		}
+
+		if (!(grstctl & S3C_GRSTCTL_AHBIdle))
+			continue;
+
+		break;		/* reset done */
+	}
+
+	dev_dbg(hsotg->dev, "reset successful\n");
+	return 0;
+}
+
+static void s3c_hsotg_core_init(struct s3c_hsotg *hsotg)
+{
+	s3c_hsotg_corereset(hsotg);
+
+	/* we must now enable ep0 ready for host detection and then
+	 * set configuration. */
+
+	/* set the PLL on, remove the HNP/SRP and set the PHY */
+	writel(S3C_GUSBCFG_PHYIf16 | S3C_GUSBCFG_TOutCal(7) |
+	       (0x5 << 10), hsotg->regs + S3C_GUSBCFG);
+
+	/* looks like soft-reset changes state of FIFOs */
+	s3c_hsotg_init_fifo(hsotg);
+
+	__orr32(hsotg->regs + S3C_DCTL, S3C_DCTL_SftDiscon);
+
+	writel(1 << 18 | S3C_DCFG_DevSpd_HS,  hsotg->regs + S3C_DCFG);
+
+	/* Clear any pending OTG interrupts */
+	writel(0xffffffff, hsotg->regs + S3C_GOTGINT);
+
+	/* Clear any pending interrupts */
+	writel(0xffffffff, hsotg->regs + S3C_GINTSTS);
+
+	writel(S3C_GINTSTS_ErlySusp | S3C_GINTSTS_SessReqInt |
+	       S3C_GINTSTS_ConIDStsChng | S3C_GINTSTS_USBRst |
+	       S3C_GINTSTS_EnumDone | S3C_GINTSTS_OTGInt |
+	       S3C_GINTSTS_USBSusp | S3C_GINTSTS_WkUpInt |
+	       S3C_GINTSTS_GOUTNakEff | S3C_GINTSTS_GINNakEff,
+	       hsotg->regs + S3C_GINTMSK);
+
+	if (using_dma(hsotg))
+		writel(S3C_GAHBCFG_GlblIntrEn | S3C_GAHBCFG_DMAEn |
+		       S3C_GAHBCFG_HBstLen_Incr4,
+		       hsotg->regs + S3C_GAHBCFG);
+	else
+		writel(S3C_GAHBCFG_GlblIntrEn, hsotg->regs + S3C_GAHBCFG);
+
+	/* Enabling INTknTXFEmpMsk here seems to be a big mistake, we end
+	 * up being flooded with interrupts if the host is polling the
+	 * endpoint to try and read data.
+	 */
+
+	writel(S3C_DIEPMSK_TimeOUTMsk | S3C_DIEPMSK_AHBErrMsk |
+	       S3C_DIEPMSK_INTknEPMisMsk |
+	       S3C_DIEPMSK_EPDisbldMsk | S3C_DIEPMSK_XferComplMsk |
+	       ((hsotg->dedicated_fifos) ? S3C_DIEPMSK_TxFIFOEmpty : 0),
+	       hsotg->regs + S3C_DIEPMSK);
+
+	/* don't need XferCompl, we get that from RXFIFO in slave mode. In
+	 * DMA mode we may need this.
+	 */
+	writel(S3C_DOEPMSK_SetupMsk | S3C_DOEPMSK_AHBErrMsk |
+	       S3C_DOEPMSK_EPDisbldMsk |
+	       (using_dma(hsotg) ? (S3C_DIEPMSK_XferComplMsk |
+				   S3C_DIEPMSK_TimeOUTMsk) : 0),
+	       hsotg->regs + S3C_DOEPMSK);
+
+	writel(0, hsotg->regs + S3C_DAINTMSK);
+
+	dev_dbg(hsotg->dev, "EP0: DIEPCTL0=0x%08x, DOEPCTL0=0x%08x\n",
+		readl(hsotg->regs + S3C_DIEPCTL0),
+		readl(hsotg->regs + S3C_DOEPCTL0));
+
+	/* enable in and out endpoint interrupts */
+	s3c_hsotg_en_gsint(hsotg, S3C_GINTSTS_OEPInt | S3C_GINTSTS_IEPInt);
+
+	/* Enable the RXFIFO when in slave mode, as this is how we collect
+	 * the data. In DMA mode, we get events from the FIFO but also
+	 * things we cannot process, so do not use it.
+	 */
+	if (!using_dma(hsotg))
+		s3c_hsotg_en_gsint(hsotg, S3C_GINTSTS_RxFLvl);
+
+	/* Enable interrupts for EP0 in and out */
+	s3c_hsotg_ctrl_epint(hsotg, 0, 0, 1);
+	s3c_hsotg_ctrl_epint(hsotg, 0, 1, 1);
+
+	__orr32(hsotg->regs + S3C_DCTL, S3C_DCTL_PWROnPrgDone);
+	udelay(10);  /* see openiboot */
+	__bic32(hsotg->regs + S3C_DCTL, S3C_DCTL_PWROnPrgDone);
+
+	dev_dbg(hsotg->dev, "DCTL=0x%08x\n", readl(hsotg->regs + S3C_DCTL));
+
+	/* S3C_DxEPCTL_USBActEp says RO in manual, but seems to be set by
+	 * writing to the EPCTL register..
+	 */
+
+	/* set to read 1 8byte packet */
+	writel(S3C_DxEPTSIZ_MC(1) | S3C_DxEPTSIZ_PktCnt(1) |
+	       S3C_DxEPTSIZ_XferSize(8), hsotg->regs + DOEPTSIZ0);
+
+	writel(s3c_hsotg_ep0_mps(hsotg->eps[0].ep.maxpacket) |
+	       S3C_DxEPCTL_CNAK | S3C_DxEPCTL_EPEna |
+	       S3C_DxEPCTL_USBActEp,
+	       hsotg->regs + S3C_DOEPCTL0);
+
+	/* enable, but don't activate EP0in */
+	writel(s3c_hsotg_ep0_mps(hsotg->eps[0].ep.maxpacket) |
+	       S3C_DxEPCTL_USBActEp, hsotg->regs + S3C_DIEPCTL0);
+
+	s3c_hsotg_enqueue_setup(hsotg);
+
+	dev_dbg(hsotg->dev, "EP0: DIEPCTL0=0x%08x, DOEPCTL0=0x%08x\n",
+		readl(hsotg->regs + S3C_DIEPCTL0),
+		readl(hsotg->regs + S3C_DOEPCTL0));
+
+	/* clear global NAKs */
+	writel(S3C_DCTL_CGOUTNak | S3C_DCTL_CGNPInNAK,
+	       hsotg->regs + S3C_DCTL);
+
+	/* must be at-least 3ms to allow bus to see disconnect */
+	mdelay(3);
+
+	/* remove the soft-disconnect and let's go */
+	__bic32(hsotg->regs + S3C_DCTL, S3C_DCTL_SftDiscon);
+}
 
 /**
  * s3c_hsotg_irq - handle device interrupt
@@ -2112,13 +2332,6 @@ irq_retry:
 		dev_info(hsotg->dev, "OTGInt: %08x\n", otgint);
 
 		writel(otgint, hsotg->regs + S3C_GOTGINT);
-	}
-
-	if (gintsts & S3C_GINTSTS_DisconnInt) {
-		dev_dbg(hsotg->dev, "%s: DisconnInt\n", __func__);
-		writel(S3C_GINTSTS_DisconnInt, hsotg->regs + S3C_GINTSTS);
-
-		s3c_hsotg_disconnect_irq(hsotg);
 	}
 
 	if (gintsts & S3C_GINTSTS_SessReqInt) {
@@ -2160,23 +2373,26 @@ irq_retry:
 	}
 
 	if (gintsts & S3C_GINTSTS_USBRst) {
+
+		u32 usb_status = readl(hsotg->regs + S3C_GOTGCTL);
+
 		dev_info(hsotg->dev, "%s: USBRst\n", __func__);
 		dev_dbg(hsotg->dev, "GNPTXSTS=%08x\n",
 			readl(hsotg->regs + S3C_GNPTXSTS));
 
 		writel(S3C_GINTSTS_USBRst, hsotg->regs + S3C_GINTSTS);
 
-		kill_all_requests(hsotg, &hsotg->eps[0], -ECONNRESET, true);
+		if (usb_status & S3C_GOTGCTL_BSESVLD) {
+			if (time_after(jiffies, hsotg->last_rst +
+				       msecs_to_jiffies(200))) {
 
-		/* it seems after a reset we can end up with a situation
-		 * where the TXFIFO still has data in it... the docs
-		 * suggest resetting all the fifos, so use the init_fifo
-		 * code to relayout and flush the fifos.
-		 */
+				kill_all_requests(hsotg, &hsotg->eps[0],
+							  -ECONNRESET, true);
 
-		s3c_hsotg_init_fifo(hsotg);
-
-		s3c_hsotg_enqueue_setup(hsotg);
+				s3c_hsotg_core_init(hsotg);
+				hsotg->last_rst = jiffies;
+			}
+		}
 	}
 
 	/* check both FIFOs */
@@ -2219,6 +2435,7 @@ irq_retry:
 		writel(S3C_GINTSTS_USBSusp, hsotg->regs + S3C_GINTSTS);
 
 		call_gadget(hsotg, suspend);
+		s3c_hsotg_disconnect(hsotg);
 	}
 
 	if (gintsts & S3C_GINTSTS_WkUpInt) {
@@ -2231,6 +2448,8 @@ irq_retry:
 	if (gintsts & S3C_GINTSTS_ErlySusp) {
 		dev_dbg(hsotg->dev, "S3C_GINTSTS_ErlySusp\n");
 		writel(S3C_GINTSTS_ErlySusp, hsotg->regs + S3C_GINTSTS);
+
+		s3c_hsotg_disconnect(hsotg);
 	}
 
 	/* these next two seem to crop-up occasionally causing the core
@@ -2526,55 +2745,81 @@ static struct usb_ep_ops s3c_hsotg_ep_ops = {
 };
 
 /**
- * s3c_hsotg_corereset - issue softreset to the core
- * @hsotg: The device state
+ * s3c_hsotg_phy_enable - enable platform phy dev
  *
- * Issue a soft reset to the core, and await the core finishing it.
-*/
-static int s3c_hsotg_corereset(struct s3c_hsotg *hsotg)
+ * @param: The driver state
+ *
+ * A wrapper for platform code responsible for controlling
+ * low-level USB code
+ */
+static void s3c_hsotg_phy_enable(struct s3c_hsotg *hsotg)
 {
-	int timeout;
-	u32 grstctl;
+	struct platform_device *pdev =
+		container_of(hsotg->dev, struct platform_device, dev);
 
-	dev_dbg(hsotg->dev, "resetting core\n");
-
-	/* issue soft reset */
-	writel(S3C_GRSTCTL_CSftRst, hsotg->regs + S3C_GRSTCTL);
-
-	timeout = 1000;
-	do {
-		grstctl = readl(hsotg->regs + S3C_GRSTCTL);
-	} while ((grstctl & S3C_GRSTCTL_CSftRst) && timeout-- > 0);
-
-	if (grstctl & S3C_GRSTCTL_CSftRst) {
-		dev_err(hsotg->dev, "Failed to get CSftRst asserted\n");
-		return -EINVAL;
-	}
-
-	timeout = 1000;
-
-	while (1) {
-		u32 grstctl = readl(hsotg->regs + S3C_GRSTCTL);
-
-		if (timeout-- < 0) {
-			dev_info(hsotg->dev,
-				 "%s: reset failed, GRSTCTL=%08x\n",
-				 __func__, grstctl);
-			return -ETIMEDOUT;
-		}
-
-		if (!(grstctl & S3C_GRSTCTL_AHBIdle))
-			continue;
-
-		break;		/* reset done */
-	}
-
-	dev_dbg(hsotg->dev, "reset successful\n");
-	return 0;
+	printk(KERN_ERR "%s: pdev 0x%p\n", __func__, pdev);
+	if (hsotg->plat->phy_init)
+		hsotg->plat->phy_init(pdev, S5P_USB_PHY_DEVICE);
 }
 
-static int s3c_hsotg_start(struct usb_gadget_driver *driver,
-		int (*bind)(struct usb_gadget *))
+/**
+ * s3c_hsotg_phy_disable - disable platform phy dev
+ *
+ * @param: The driver state
+ *
+ * A wrapper for platform code responsible for controlling
+ * low-level USB code
+ */
+static void s3c_hsotg_phy_disable(struct s3c_hsotg *hsotg)
+{
+	struct platform_device *pdev =
+		container_of(hsotg->dev, struct platform_device, dev);
+
+	if (hsotg->plat->phy_exit)
+		hsotg->plat->phy_exit(pdev, S5P_USB_PHY_DEVICE);
+}
+
+static void s3c_hsotg_init(struct s3c_hsotg *hsotg)
+{
+	/* unmask subset of endpoint interrupts */
+
+	writel(S3C_DIEPMSK_TimeOUTMsk | S3C_DIEPMSK_AHBErrMsk |
+	       S3C_DIEPMSK_EPDisbldMsk | S3C_DIEPMSK_XferComplMsk,
+	       hsotg->regs + S3C_DIEPMSK);
+
+	writel(S3C_DOEPMSK_SetupMsk | S3C_DOEPMSK_AHBErrMsk |
+	       S3C_DOEPMSK_EPDisbldMsk | S3C_DOEPMSK_XferComplMsk,
+	       hsotg->regs + S3C_DOEPMSK);
+
+	writel(0, hsotg->regs + S3C_DAINTMSK);
+
+	/* Be in disconnected state until gadget is registered */
+	__orr32(hsotg->regs + S3C_DCTL, S3C_DCTL_SftDiscon);
+
+	if (0) {
+		/* post global nak until we're ready */
+		writel(S3C_DCTL_SGNPInNAK | S3C_DCTL_SGOUTNak,
+		       hsotg->regs + S3C_DCTL);
+	}
+
+	/* setup fifos */
+
+	dev_dbg(hsotg->dev, "GRXFSIZ=0x%08x, GNPTXFSIZ=0x%08x\n",
+		readl(hsotg->regs + S3C_GRXFSIZ),
+		readl(hsotg->regs + S3C_GNPTXFSIZ));
+
+	s3c_hsotg_init_fifo(hsotg);
+
+	/* set the PLL on, remove the HNP/SRP and set the PHY */
+	writel(S3C_GUSBCFG_PHYIf16 | S3C_GUSBCFG_TOutCal(7) | (0x5 << 10),
+	       hsotg->regs + S3C_GUSBCFG);
+
+	writel(using_dma(hsotg) ? S3C_GAHBCFG_DMAEn : 0x0,
+	       hsotg->regs + S3C_GAHBCFG);
+}
+
+static int s3c_hsotg_udc_start(struct usb_gadget *gadget,
+			   struct usb_gadget_driver *driver)
 {
 	struct s3c_hsotg *hsotg = our_hsotg;
 	int ret;
@@ -2592,7 +2837,7 @@ static int s3c_hsotg_start(struct usb_gadget_driver *driver,
 	if (driver->max_speed < USB_SPEED_FULL)
 		dev_err(hsotg->dev, "%s: bad speed\n", __func__);
 
-	if (!bind || !driver->setup) {
+	if (!driver->setup) {
 		dev_err(hsotg->dev, "%s: missing entry points\n", __func__);
 		return -EINVAL;
 	}
@@ -2605,135 +2850,17 @@ static int s3c_hsotg_start(struct usb_gadget_driver *driver,
 	hsotg->gadget.dev.dma_mask = hsotg->dev->dma_mask;
 	hsotg->gadget.speed = USB_SPEED_UNKNOWN;
 
-	ret = device_add(&hsotg->gadget.dev);
+	ret = regulator_bulk_enable(ARRAY_SIZE(hsotg->supplies),
+				    hsotg->supplies);
 	if (ret) {
-		dev_err(hsotg->dev, "failed to register gadget device\n");
+		dev_err(hsotg->dev, "failed to enable supplies: %d\n", ret);
 		goto err;
 	}
 
-	ret = bind(&hsotg->gadget);
-	if (ret) {
-		dev_err(hsotg->dev, "failed bind %s\n", driver->driver.name);
+	s3c_hsotg_phy_enable(hsotg);
 
-		hsotg->gadget.dev.driver = NULL;
-		hsotg->driver = NULL;
-		goto err;
-	}
-
-	/* we must now enable ep0 ready for host detection and then
-	 * set configuration. */
-
-	s3c_hsotg_corereset(hsotg);
-
-	/* set the PLL on, remove the HNP/SRP and set the PHY */
-	writel(S3C_GUSBCFG_PHYIf16 | S3C_GUSBCFG_TOutCal(7) |
-	       (0x5 << 10), hsotg->regs + S3C_GUSBCFG);
-
-	/* looks like soft-reset changes state of FIFOs */
-	s3c_hsotg_init_fifo(hsotg);
-
-	__orr32(hsotg->regs + S3C_DCTL, S3C_DCTL_SftDiscon);
-
-	writel(1 << 18 | S3C_DCFG_DevSpd_HS,  hsotg->regs + S3C_DCFG);
-
-	/* Clear any pending OTG interrupts */
-	writel(0xffffffff, hsotg->regs + S3C_GOTGINT);
-
-	/* Clear any pending interrupts */
-	writel(0xffffffff, hsotg->regs + S3C_GINTSTS);
-
-	writel(S3C_GINTSTS_DisconnInt | S3C_GINTSTS_SessReqInt |
-	       S3C_GINTSTS_ConIDStsChng | S3C_GINTSTS_USBRst |
-	       S3C_GINTSTS_EnumDone | S3C_GINTSTS_OTGInt |
-	       S3C_GINTSTS_USBSusp | S3C_GINTSTS_WkUpInt |
-	       S3C_GINTSTS_GOUTNakEff | S3C_GINTSTS_GINNakEff |
-	       S3C_GINTSTS_ErlySusp,
-	       hsotg->regs + S3C_GINTMSK);
-
-	if (using_dma(hsotg))
-		writel(S3C_GAHBCFG_GlblIntrEn | S3C_GAHBCFG_DMAEn |
-		       S3C_GAHBCFG_HBstLen_Incr4,
-		       hsotg->regs + S3C_GAHBCFG);
-	else
-		writel(S3C_GAHBCFG_GlblIntrEn, hsotg->regs + S3C_GAHBCFG);
-
-	/* Enabling INTknTXFEmpMsk here seems to be a big mistake, we end
-	 * up being flooded with interrupts if the host is polling the
-	 * endpoint to try and read data. */
-
-	writel(S3C_DIEPMSK_TimeOUTMsk | S3C_DIEPMSK_AHBErrMsk |
-	       S3C_DIEPMSK_INTknEPMisMsk |
-	       S3C_DIEPMSK_EPDisbldMsk | S3C_DIEPMSK_XferComplMsk |
-	       ((hsotg->dedicated_fifos) ? S3C_DIEPMSK_TxFIFOEmpty : 0),
-	       hsotg->regs + S3C_DIEPMSK);
-
-	/* don't need XferCompl, we get that from RXFIFO in slave mode. In
-	 * DMA mode we may need this. */
-	writel(S3C_DOEPMSK_SetupMsk | S3C_DOEPMSK_AHBErrMsk |
-	       S3C_DOEPMSK_EPDisbldMsk |
-	       (using_dma(hsotg) ? (S3C_DIEPMSK_XferComplMsk |
-				   S3C_DIEPMSK_TimeOUTMsk) : 0),
-	       hsotg->regs + S3C_DOEPMSK);
-
-	writel(0, hsotg->regs + S3C_DAINTMSK);
-
-	dev_dbg(hsotg->dev, "EP0: DIEPCTL0=0x%08x, DOEPCTL0=0x%08x\n",
-		readl(hsotg->regs + S3C_DIEPCTL0),
-		readl(hsotg->regs + S3C_DOEPCTL0));
-
-	/* enable in and out endpoint interrupts */
-	s3c_hsotg_en_gsint(hsotg, S3C_GINTSTS_OEPInt | S3C_GINTSTS_IEPInt);
-
-	/* Enable the RXFIFO when in slave mode, as this is how we collect
-	 * the data. In DMA mode, we get events from the FIFO but also
-	 * things we cannot process, so do not use it. */
-	if (!using_dma(hsotg))
-		s3c_hsotg_en_gsint(hsotg, S3C_GINTSTS_RxFLvl);
-
-	/* Enable interrupts for EP0 in and out */
-	s3c_hsotg_ctrl_epint(hsotg, 0, 0, 1);
-	s3c_hsotg_ctrl_epint(hsotg, 0, 1, 1);
-
-	__orr32(hsotg->regs + S3C_DCTL, S3C_DCTL_PWROnPrgDone);
-	udelay(10);  /* see openiboot */
-	__bic32(hsotg->regs + S3C_DCTL, S3C_DCTL_PWROnPrgDone);
-
-	dev_dbg(hsotg->dev, "DCTL=0x%08x\n", readl(hsotg->regs + S3C_DCTL));
-
-	/* S3C_DxEPCTL_USBActEp says RO in manual, but seems to be set by
-	   writing to the EPCTL register.. */
-
-	/* set to read 1 8byte packet */
-	writel(S3C_DxEPTSIZ_MC(1) | S3C_DxEPTSIZ_PktCnt(1) |
-	       S3C_DxEPTSIZ_XferSize(8), hsotg->regs + DOEPTSIZ0);
-
-	writel(s3c_hsotg_ep0_mps(hsotg->eps[0].ep.maxpacket) |
-	       S3C_DxEPCTL_CNAK | S3C_DxEPCTL_EPEna |
-	       S3C_DxEPCTL_USBActEp,
-	       hsotg->regs + S3C_DOEPCTL0);
-
-	/* enable, but don't activate EP0in */
-	writel(s3c_hsotg_ep0_mps(hsotg->eps[0].ep.maxpacket) |
-	       S3C_DxEPCTL_USBActEp, hsotg->regs + S3C_DIEPCTL0);
-
-	s3c_hsotg_enqueue_setup(hsotg);
-
-	dev_dbg(hsotg->dev, "EP0: DIEPCTL0=0x%08x, DOEPCTL0=0x%08x\n",
-		readl(hsotg->regs + S3C_DIEPCTL0),
-		readl(hsotg->regs + S3C_DOEPCTL0));
-
-	/* clear global NAKs */
-	writel(S3C_DCTL_CGOUTNak | S3C_DCTL_CGNPInNAK,
-	       hsotg->regs + S3C_DCTL);
-
-	/* must be at-least 3ms to allow bus to see disconnect */
-	msleep(3);
-
-	/* remove the soft-disconnect and let's go */
-	__bic32(hsotg->regs + S3C_DCTL, S3C_DCTL_SftDiscon);
-
-	/* report to the user, and return */
-
+	s3c_hsotg_core_init(hsotg);
+	hsotg->last_rst = jiffies;
 	dev_info(hsotg->dev, "bound driver %s\n", driver->driver.name);
 	return 0;
 
@@ -2743,7 +2870,8 @@ err:
 	return ret;
 }
 
-static int s3c_hsotg_stop(struct usb_gadget_driver *driver)
+static int s3c_hsotg_udc_stop(struct usb_gadget *gadget,
+			  struct usb_gadget_driver *driver)
 {
 	struct s3c_hsotg *hsotg = our_hsotg;
 	int ep;
@@ -2755,16 +2883,15 @@ static int s3c_hsotg_stop(struct usb_gadget_driver *driver)
 		return -EINVAL;
 
 	/* all endpoints should be shutdown */
-	for (ep = 0; ep < S3C_HSOTG_EPS; ep++)
+	for (ep = 0; ep < hsotg->num_of_eps; ep++)
 		s3c_hsotg_ep_disable(&hsotg->eps[ep].ep);
 
-	call_gadget(hsotg, disconnect);
+	s3c_hsotg_phy_disable(hsotg);
+	regulator_bulk_disable(ARRAY_SIZE(hsotg->supplies), hsotg->supplies);
 
-	driver->unbind(&hsotg->gadget);
 	hsotg->driver = NULL;
 	hsotg->gadget.speed = USB_SPEED_UNKNOWN;
-
-	device_del(&hsotg->gadget.dev);
+	hsotg->gadget.dev.driver = NULL;
 
 	dev_info(hsotg->dev, "unregistered gadget driver '%s'\n",
 		 driver->driver.name);
@@ -2779,8 +2906,8 @@ static int s3c_hsotg_gadget_getframe(struct usb_gadget *gadget)
 
 static struct usb_gadget_ops s3c_hsotg_gadget_ops = {
 	.get_frame	= s3c_hsotg_gadget_getframe,
-	.start		= s3c_hsotg_start,
-	.stop		= s3c_hsotg_stop,
+	.udc_start		= s3c_hsotg_udc_start,
+	.udc_stop		= s3c_hsotg_udc_stop,
 };
 
 /**
@@ -2847,97 +2974,27 @@ static void __devinit s3c_hsotg_initep(struct s3c_hsotg *hsotg,
 }
 
 /**
- * s3c_hsotg_otgreset - reset the OtG phy block
- * @hsotg: The host state.
+ * s3c_hsotg_hw_cfg - read HW configuration registers
+ * @param: The device state
  *
- * Power up the phy, set the basic configuration and start the PHY.
+ * Read the USB core HW configuration registers
  */
-static void s3c_hsotg_otgreset(struct s3c_hsotg *hsotg)
+static void s3c_hsotg_hw_cfg(struct s3c_hsotg *hsotg)
 {
-	struct clk *xusbxti;
-	u32 pwr, osc;
-
-	pwr = readl(S3C_PHYPWR);
-	pwr &= ~0x19;
-	writel(pwr, S3C_PHYPWR);
-	mdelay(1);
-
-	osc = hsotg->plat->is_osc ? S3C_PHYCLK_EXT_OSC : 0;
-
-	xusbxti = clk_get(hsotg->dev, "xusbxti");
-	if (xusbxti && !IS_ERR(xusbxti)) {
-		switch (clk_get_rate(xusbxti)) {
-		case 12*MHZ:
-			osc |= S3C_PHYCLK_CLKSEL_12M;
-			break;
-		case 24*MHZ:
-			osc |= S3C_PHYCLK_CLKSEL_24M;
-			break;
-		default:
-		case 48*MHZ:
-			/* default reference clock */
-			break;
-		}
-		clk_put(xusbxti);
-	}
-
-	writel(osc | 0x10, S3C_PHYCLK);
-
-	/* issue a full set of resets to the otg and core */
-
-	writel(S3C_RSTCON_PHY, S3C_RSTCON);
-	udelay(20);	/* at-least 10uS */
-	writel(0, S3C_RSTCON);
-}
-
-
-static void s3c_hsotg_init(struct s3c_hsotg *hsotg)
-{
-	u32 cfg4;
-
-	/* unmask subset of endpoint interrupts */
-
-	writel(S3C_DIEPMSK_TimeOUTMsk | S3C_DIEPMSK_AHBErrMsk |
-	       S3C_DIEPMSK_EPDisbldMsk | S3C_DIEPMSK_XferComplMsk,
-	       hsotg->regs + S3C_DIEPMSK);
-
-	writel(S3C_DOEPMSK_SetupMsk | S3C_DOEPMSK_AHBErrMsk |
-	       S3C_DOEPMSK_EPDisbldMsk | S3C_DOEPMSK_XferComplMsk,
-	       hsotg->regs + S3C_DOEPMSK);
-
-	writel(0, hsotg->regs + S3C_DAINTMSK);
-
-	/* Be in disconnected state until gadget is registered */
-	__orr32(hsotg->regs + S3C_DCTL, S3C_DCTL_SftDiscon);
-
-	if (0) {
-		/* post global nak until we're ready */
-		writel(S3C_DCTL_SGNPInNAK | S3C_DCTL_SGOUTNak,
-		       hsotg->regs + S3C_DCTL);
-	}
-
-	/* setup fifos */
-
-	dev_dbg(hsotg->dev, "GRXFSIZ=0x%08x, GNPTXFSIZ=0x%08x\n",
-		readl(hsotg->regs + S3C_GRXFSIZ),
-		readl(hsotg->regs + S3C_GNPTXFSIZ));
-
-	s3c_hsotg_init_fifo(hsotg);
-
-	/* set the PLL on, remove the HNP/SRP and set the PHY */
-	writel(S3C_GUSBCFG_PHYIf16 | S3C_GUSBCFG_TOutCal(7) | (0x5 << 10),
-	       hsotg->regs + S3C_GUSBCFG);
-
-	writel(using_dma(hsotg) ? S3C_GAHBCFG_DMAEn : 0x0,
-	       hsotg->regs + S3C_GAHBCFG);
-
+	u32 cfg2, cfg4;
 	/* check hardware configuration */
+
+	cfg2 = readl(hsotg->regs + 0x48);
+	hsotg->num_of_eps = (cfg2 >> 10) & 0xF;
+
+	dev_info(hsotg->dev, "EPs:%d\n", hsotg->num_of_eps);
 
 	cfg4 = readl(hsotg->regs + 0x50);
 	hsotg->dedicated_fifos = (cfg4 >> 25) & 1;
 
 	dev_info(hsotg->dev, "%s fifos\n",
 		 hsotg->dedicated_fifos ? "dedicated" : "shared");
+
 }
 
 static void s3c_hsotg_dump(struct s3c_hsotg *hsotg)
@@ -3231,7 +3288,7 @@ static void __devinit s3c_hsotg_create_debug(struct s3c_hsotg *hsotg)
 
 	/* create one file for each endpoint */
 
-	for (epidx = 0; epidx < S3C_HSOTG_EPS; epidx++) {
+	for (epidx = 0; epidx < hsotg->num_of_eps; epidx++) {
 		struct s3c_hsotg_ep *ep = &hsotg->eps[epidx];
 
 		ep->debugfs = debugfs_create_file(ep->name, 0444,
@@ -3253,7 +3310,7 @@ static void __devexit s3c_hsotg_delete_debug(struct s3c_hsotg *hsotg)
 {
 	unsigned epidx;
 
-	for (epidx = 0; epidx < S3C_HSOTG_EPS; epidx++) {
+	for (epidx = 0; epidx < hsotg->num_of_eps; epidx++) {
 		struct s3c_hsotg_ep *ep = &hsotg->eps[epidx];
 		debugfs_remove(ep->debugfs);
 	}
@@ -3263,49 +3320,31 @@ static void __devexit s3c_hsotg_delete_debug(struct s3c_hsotg *hsotg)
 	debugfs_remove(hsotg->debug_root);
 }
 
-/**
- * s3c_hsotg_gate - set the hardware gate for the block
- * @pdev: The device we bound to
- * @on: On or off.
- *
- * Set the hardware gate setting into the block. If we end up on
- * something other than an S3C64XX, then we might need to change this
- * to using a platform data callback, or some other mechanism.
- */
-static void s3c_hsotg_gate(struct platform_device *pdev, bool on)
+static void s3c_hsotg_gadget_release(struct device *dev)
 {
-	unsigned long flags;
-	u32 others;
+	struct s3c_hsotg *hsotg = dev_get_drvdata(dev);
 
-	local_irq_save(flags);
-
-	others = __raw_readl(S3C64XX_OTHERS);
-	if (on)
-		others |= S3C64XX_OTHERS_USBMASK;
-	else
-		others &= ~S3C64XX_OTHERS_USBMASK;
-	__raw_writel(others, S3C64XX_OTHERS);
-
-	local_irq_restore(flags);
+	kfree(hsotg);
 }
-
-static struct s3c_hsotg_plat s3c_hsotg_default_pdata;
 
 static int __devinit s3c_hsotg_probe(struct platform_device *pdev)
 {
 	struct s3c_hsotg_plat *plat = pdev->dev.platform_data;
 	struct device *dev = &pdev->dev;
+	struct s3c_hsotg_ep *eps;
 	struct s3c_hsotg *hsotg;
 	struct resource *res;
 	int epnum;
 	int ret;
+	int i;
 
-	if (!plat)
-		plat = &s3c_hsotg_default_pdata;
+	plat = pdev->dev.platform_data;
+	if (!plat) {
+		dev_err(&pdev->dev, "no platform data defined\n");
+		return -EINVAL;
+	}
 
-	hsotg = kzalloc(sizeof(struct s3c_hsotg) +
-			sizeof(struct s3c_hsotg_ep) * S3C_HSOTG_EPS,
-			GFP_KERNEL);
+	hsotg = kzalloc(sizeof(struct s3c_hsotg), GFP_KERNEL);
 	if (!hsotg) {
 		dev_err(dev, "cannot get memory\n");
 		return -ENOMEM;
@@ -3371,6 +3410,50 @@ static int __devinit s3c_hsotg_probe(struct platform_device *pdev)
 
 	hsotg->gadget.dev.parent = dev;
 	hsotg->gadget.dev.dma_mask = dev->dma_mask;
+	hsotg->gadget.dev.release = s3c_hsotg_gadget_release;
+
+	/* reset the system */
+
+	clk_enable(hsotg->clk);
+
+	/* usb phy enable */
+
+	s3c_hsotg_phy_enable(hsotg);
+
+	/* regulators */
+
+	for (i = 0; i < ARRAY_SIZE(hsotg->supplies); i++)
+		hsotg->supplies[i].supply = s3c_hsotg_supply_names[i];
+
+	ret = regulator_bulk_get(dev, ARRAY_SIZE(hsotg->supplies),
+				 hsotg->supplies);
+	if (ret) {
+		dev_err(dev, "failed to request supplies: %d\n", ret);
+		goto err_supplies;
+	}
+
+	ret = regulator_bulk_enable(ARRAY_SIZE(hsotg->supplies),
+				    hsotg->supplies);
+
+	if (ret) {
+		dev_err(hsotg->dev, "failed to enable supplies: %d\n", ret);
+		goto err_supplies;
+	}
+
+	s3c_hsotg_corereset(hsotg);
+	s3c_hsotg_init(hsotg);
+	s3c_hsotg_hw_cfg(hsotg);
+
+	/* hsotg->num_of_eps holds number of EPs other than ep0 */
+
+	eps = kzalloc(sizeof(struct s3c_hsotg_ep) * (hsotg->num_of_eps + 1),
+		      GFP_KERNEL);
+	if (!eps) {
+		dev_err(dev, "cannot get memory\n");
+		goto err_supplies;
+	}
+
+	hsotg->eps = eps;
 
 	/* setup endpoint information */
 
@@ -3383,26 +3466,33 @@ static int __devinit s3c_hsotg_probe(struct platform_device *pdev)
 						     GFP_KERNEL);
 	if (!hsotg->ctrl_req) {
 		dev_err(dev, "failed to allocate ctrl req\n");
-		goto err_regs;
+		goto err_ep_mem;
 	}
 
-	/* reset the system */
-
-	clk_enable(hsotg->clk);
-
-	s3c_hsotg_gate(pdev, true);
-
-	s3c_hsotg_otgreset(hsotg);
-	s3c_hsotg_corereset(hsotg);
-	s3c_hsotg_init(hsotg);
-
 	/* initialise the endpoints now the core has been initialised */
-	for (epnum = 0; epnum < S3C_HSOTG_EPS; epnum++)
+	for (epnum = 0; epnum < hsotg->num_of_eps; epnum++)
 		s3c_hsotg_initep(hsotg, &hsotg->eps[epnum], epnum);
+
+	/* disable power and clock */
+
+	ret = regulator_bulk_disable(ARRAY_SIZE(hsotg->supplies),
+				    hsotg->supplies);
+	if (ret) {
+		dev_err(hsotg->dev, "failed to disable supplies: %d\n", ret);
+		goto err_ep_mem;
+	}
+
+	s3c_hsotg_phy_disable(hsotg);
+
+	ret = device_add(&hsotg->gadget.dev);
+	if (ret) {
+		put_device(&hsotg->gadget.dev);
+		goto err_ep_mem;
+	}
 
 	ret = usb_add_gadget_udc(&pdev->dev, &hsotg->gadget);
 	if (ret)
-		goto err_add_udc;
+		goto err_ep_mem;
 
 	s3c_hsotg_create_debug(hsotg);
 
@@ -3411,8 +3501,14 @@ static int __devinit s3c_hsotg_probe(struct platform_device *pdev)
 	our_hsotg = hsotg;
 	return 0;
 
-err_add_udc:
-	s3c_hsotg_gate(pdev, false);
+ err_ep_mem:
+	kfree(eps);
+
+err_supplies:
+	s3c_hsotg_phy_disable(hsotg);
+
+	regulator_bulk_free(ARRAY_SIZE(hsotg->supplies), hsotg->supplies);
+
 	clk_disable(hsotg->clk);
 	clk_put(hsotg->clk);
 
@@ -3437,7 +3533,10 @@ static int __devexit s3c_hsotg_remove(struct platform_device *pdev)
 
 	s3c_hsotg_delete_debug(hsotg);
 
-	usb_gadget_unregister_driver(hsotg->driver);
+	if (hsotg->driver) {
+		/* should have been done already by driver model core */
+		usb_gadget_unregister_driver(hsotg->driver);
+	}
 
 	free_irq(hsotg->irq, hsotg);
 	iounmap(hsotg->regs);
@@ -3445,12 +3544,13 @@ static int __devexit s3c_hsotg_remove(struct platform_device *pdev)
 	release_resource(hsotg->regs_res);
 	kfree(hsotg->regs_res);
 
-	s3c_hsotg_gate(pdev, false);
+	s3c_hsotg_phy_disable(hsotg);
+	regulator_bulk_free(ARRAY_SIZE(hsotg->supplies), hsotg->supplies);
 
 	clk_disable(hsotg->clk);
 	clk_put(hsotg->clk);
 
-	kfree(hsotg);
+	device_unregister(&hsotg->gadget.dev);
 	return 0;
 }
 
