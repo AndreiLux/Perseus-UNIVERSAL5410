@@ -553,6 +553,7 @@ static int tpm_tis_i2c_init(struct device *dev)
 	u32 vendor;
 	int rc = 0;
 	struct tpm_chip *chip;
+	extern void tpm_continue_selftest(struct tpm_chip *);
 
 	chip = tpm_register_hardware(dev, &tpm_tis_i2c);
 	if (!chip) {

@@ -449,7 +449,7 @@ out:
  * Returns 0 on success, < 0 in case of fatal error or a value > 0 representing
  * a TPM error code.
  */
-static int tpm_continue_selftest(struct tpm_chip *chip)
+int tpm_continue_selftest(struct tpm_chip *chip)
 {
 	int rc;
 	struct tpm_cmd_t cmd;
@@ -458,6 +458,7 @@ static int tpm_continue_selftest(struct tpm_chip *chip)
 	rc = tpm_transmit(chip, &cmd, CONTINUE_SELFTEST_RESULT_SIZE);
 	return rc;
 }
+EXPORT_SYMBOL_GPL(tpm_continue_selftest);
 
 /* The maximum time in milliseconds that the TPM self test will take to
  * complete.  TODO(semenzato): 1s should be plenty for all TPMs, but how can we
