@@ -386,7 +386,6 @@ int drm_fb_helper_init(struct drm_device *dev,
 		       int crtc_count, int max_conn_count)
 {
 	struct drm_crtc *crtc;
-	int ret = 0;
 	int i;
 
 	fb_helper->dev = dev;
@@ -411,10 +410,8 @@ int drm_fb_helper_init(struct drm_device *dev,
 				sizeof(struct drm_connector *),
 				GFP_KERNEL);
 
-		if (!fb_helper->crtc_info[i].mode_set.connectors) {
-			ret = -ENOMEM;
+		if (!fb_helper->crtc_info[i].mode_set.connectors)
 			goto out_free;
-		}
 		fb_helper->crtc_info[i].mode_set.num_connectors = 0;
 	}
 

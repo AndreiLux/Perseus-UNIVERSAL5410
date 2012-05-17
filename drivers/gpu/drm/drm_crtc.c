@@ -1841,7 +1841,7 @@ int drm_mode_setcrtc(struct drm_device *dev, void *data,
 	struct drm_display_mode *mode = NULL;
 	struct drm_mode_set set;
 	uint32_t __user *set_connectors_ptr;
-	int ret = 0;
+	int ret;
 	int i;
 
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
@@ -2226,7 +2226,7 @@ int drm_mode_addfb2(struct drm_device *dev,
 	struct drm_mode_fb_cmd2 *r = data;
 	struct drm_mode_config *config = &dev->mode_config;
 	struct drm_framebuffer *fb;
-	int ret = 0;
+	int ret;
 
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
 		return -EINVAL;
@@ -2383,7 +2383,7 @@ int drm_mode_dirtyfb_ioctl(struct drm_device *dev,
 	struct drm_framebuffer *fb;
 	unsigned flags;
 	int num_clips;
-	int ret = 0;
+	int ret;
 
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
 		return -EINVAL;
@@ -2582,7 +2582,7 @@ int drm_mode_attachmode_ioctl(struct drm_device *dev,
 	struct drm_display_mode *mode;
 	struct drm_mode_object *obj;
 	struct drm_mode_modeinfo *umode = &mode_cmd->mode;
-	int ret = 0;
+	int ret;
 
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
 		return -EINVAL;
@@ -2636,7 +2636,7 @@ int drm_mode_detachmode_ioctl(struct drm_device *dev,
 	struct drm_connector *connector;
 	struct drm_display_mode mode;
 	struct drm_mode_modeinfo *umode = &mode_cmd->mode;
-	int ret = 0;
+	int ret;
 
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
 		return -EINVAL;
@@ -3077,7 +3077,7 @@ int drm_mode_connector_update_edid_property(struct drm_connector *connector,
 					    struct edid *edid)
 {
 	struct drm_device *dev = connector->dev;
-	int ret = 0, size;
+	int ret, size;
 
 	if (connector->edid_blob_ptr)
 		drm_property_destroy_blob(dev, connector->edid_blob_ptr);
