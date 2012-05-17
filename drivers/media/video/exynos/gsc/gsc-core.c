@@ -1459,8 +1459,7 @@ struct gsc_pix_max gsc_v_max = {
 	.target_rot_en_h	= 2016,
 };
 
-struct gsc_pix_min gsc_v_min[2] = {
-	[0] = {
+struct gsc_pix_min gsc_v_min = {
 		.org_w			= 64,
 		.org_h			= 32,
 		.real_w			= 64,
@@ -1469,21 +1468,9 @@ struct gsc_pix_min gsc_v_min[2] = {
 		.target_rot_dis_h	= 32,
 		.target_rot_en_w	= 32,
 		.target_rot_en_h	= 16,
-	},
-	[1] = {
-		.org_w			= 16,
-		.org_h			= 8,
-		.real_w			= 16,
-		.real_h			= 16,
-		.target_rot_dis_w	= 16,
-		.target_rot_dis_h	= 8,
-		.target_rot_en_w	= 16,
-		.target_rot_en_h	= 8,
-	},
 };
 
-struct gsc_pix_align gsc_v_align[2] = {
-	[0] = {
+struct gsc_pix_align gsc_v_align = {
 		.org_h			= 16,
 		.org_w			= 16,
 		.offset_h		= 2,
@@ -1491,35 +1478,12 @@ struct gsc_pix_align gsc_v_align[2] = {
 		.real_h			= 2,
 		.target_w		= 2,
 		.target_h		= 2,
-	},
-	[1] = {
-		.org_h			= 16,
-		.org_w			= 16,
-		.offset_h		= 2,
-		.real_w			= 1,
-		.real_h			= 1,
-		.target_w		= 2,
-		.target_h		= 2,
-	},
-};
-
-struct gsc_variant gsc_v_100_variant = {
-	.pix_max		= &gsc_v_max,
-	.pix_min		= &gsc_v_min[0],
-	.pix_align		= &gsc_v_align[0],
-	.in_buf_cnt		= 8,
-	.out_buf_cnt		= 16,
-	.sc_up_max		= 8,
-	.sc_down_max		= 16,
-	.poly_sc_down_max	= 4,
-	.pre_sc_down_max	= 4,
-	.local_sc_down		= 2,
 };
 
 struct gsc_variant gsc_v_200_variant = {
 	.pix_max		= &gsc_v_max,
-	.pix_min		= &gsc_v_min[1],
-	.pix_align		= &gsc_v_align[1],
+	.pix_min		= &gsc_v_min,
+	.pix_align		= &gsc_v_align,
 	.in_buf_cnt		= 4,
 	.out_buf_cnt		= 16,
 	.sc_up_max		= 8,
@@ -1527,16 +1491,6 @@ struct gsc_variant gsc_v_200_variant = {
 	.poly_sc_down_max	= 4,
 	.pre_sc_down_max	= 4,
 	.local_sc_down		= 4,
-};
-
-static struct gsc_driverdata gsc_v_100_drvdata = {
-	.variant = {
-		[0] = &gsc_v_100_variant,
-		[1] = &gsc_v_100_variant,
-		[2] = &gsc_v_100_variant,
-		[3] = &gsc_v_100_variant,
-	},
-	.num_entities = 4,
 };
 
 static struct gsc_driverdata gsc_v_200_drvdata = {
@@ -1552,10 +1506,6 @@ static struct gsc_driverdata gsc_v_200_drvdata = {
 static struct platform_device_id gsc_driver_ids[] = {
 	{
 		.name		= "exynos-gsc",
-		.driver_data	= (unsigned long)&gsc_v_100_drvdata,
-	},
-	{
-		.name		= "exynos5250-gsc",
 		.driver_data	= (unsigned long)&gsc_v_200_drvdata,
 	},
 	{},
