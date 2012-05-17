@@ -34,13 +34,8 @@ static const kbase_pm_policy * const policy_list[] =
 	&kbase_pm_always_on_policy_ops,
 	&kbase_pm_demand_policy_ops
 #else
-#ifdef CONFIG_VITHAR_RT_PM
 	&kbase_pm_demand_policy_ops,
 	&kbase_pm_always_on_policy_ops
-#else
-	&kbase_pm_always_on_policy_ops,
-	&kbase_pm_demand_policy_ops
-#endif
 #endif
 };
 
