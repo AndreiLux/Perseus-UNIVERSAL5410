@@ -359,7 +359,12 @@ int i915_gem_gtt_bind_object(struct drm_i915_gem_object *obj)
 	unsigned int agp_type = cache_level_to_agp_type(dev, obj->cache_level);
 	int ret;
 
-	if (dev_priv->mm.gtt->needs_dmar) {
+	if (obj->sg_table) {
+		intel_gtt_insert_sg_entries(obj->sg_table->sgl,
+					    obj->sg_table->nents,
+					    obj->gtt_space->start >> PAGE_SHIFT,
+					    agp_type);
+	} else if (dev_priv->mm.gtt->needs_dmar) {
 		ret = intel_gtt_map_memory(obj->pages,
 					   obj->base.size >> PAGE_SHIFT,
 					   &obj->sg_list,
@@ -387,7 +392,12 @@ void i915_gem_gtt_rebind_object(struct drm_i915_gem_object *obj,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned int agp_type = cache_level_to_agp_type(dev, cache_level);
 
-	if (dev_priv->mm.gtt->needs_dmar) {
+	if (obj->sg_table) {
+		intel_gtt_insert_sg_entries(obj->sg_table->sgl,
+					    obj->sg_table->nents,
+					    obj->gtt_space->start >> PAGE_SHIFT,
+					    agp_type);
+	} else if (dev_priv->mm.gtt->needs_dmar) {
 		BUG_ON(!obj->sg_list);
 
 		intel_gtt_insert_sg_entries(obj->sg_list,
@@ -412,7 +422,9 @@ void i915_gem_gtt_unbind_object(struct drm_i915_gem_object *obj)
 	intel_gtt_clear_range(obj->gtt_space->start >> PAGE_SHIFT,
 			      obj->base.size >> PAGE_SHIFT);
 
-	if (obj->sg_list) {
+	if (obj->sg_table) {
+		intel_gtt_unmap_memory(obj->sg_table->sgl, obj->sg_table->nents);
+	} else if (obj->sg_list) {
 		intel_gtt_unmap_memory(obj->sg_list, obj->num_sg);
 		obj->sg_list = NULL;
 	}

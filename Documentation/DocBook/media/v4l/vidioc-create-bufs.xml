@@ -98,6 +98,7 @@ information.</para>
 	    <entry><structfield>memory</structfield></entry>
 	    <entry>Applications set this field to
 <constant>V4L2_MEMORY_MMAP</constant> or
+<constant>V4L2_MEMORY_DMABUF</constant> or
 <constant>V4L2_MEMORY_USERPTR</constant>.</entry>
 	  </row>
 	  <row>
