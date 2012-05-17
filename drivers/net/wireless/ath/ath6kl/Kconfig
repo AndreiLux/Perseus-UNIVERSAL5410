@@ -30,3 +30,15 @@ config ATH6KL_DEBUG
 	depends on ATH6KL
 	---help---
 	  Enables debug support
+
+config ATH6KL_PLATFORM_DATA
+        bool "Atheros ath6kl Platform data support"
+        depends on ATH6KL
+        ---help---
+          Enables ath6kl platform data
+
+config ATH6KL_POLL
+        bool "Atheros ath6kl Polling support"
+        depends on ATH6KL
+        ---help---
+          Enables workaround for ar6003 hw2.0
