@@ -10,6 +10,7 @@
 
 /dts-v1/;
 /include/ "exynos5250.dtsi"
+/include/ "cros5250-common.dtsi"
 
 / {
 	model = "Google Snow";
