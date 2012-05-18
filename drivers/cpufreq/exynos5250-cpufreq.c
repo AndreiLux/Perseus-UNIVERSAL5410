@@ -61,9 +61,10 @@ static struct cpufreq_frequency_table exynos5250_freq_table[] = {
 
 /* ASV group voltage table */
 static const unsigned int asv_voltage_5250[CPUFREQ_LEVEL_END] = {
-	0, 0, 0, 0, 0, 0, 0,	/* 1700 MHz ~ 1100 MHz Not supported */
-	1175000, 1125000, 1075000, 1050000, 1000000,
-	950000, 925000, 925000, 900000
+	1300000, 1250000, 1225000, 1200000, 1150000,
+	1125000, 1100000, 1075000, 1050000, 1025000,
+	1012500, 1000000,  975000,  950000,  937500,
+	925000
 };
 
 static void __init set_volt_table(void)
