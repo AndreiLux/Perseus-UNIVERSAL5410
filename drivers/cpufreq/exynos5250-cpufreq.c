@@ -65,7 +65,7 @@ static unsigned int clkdiv_cpu0_5250[CPUFREQ_LEVEL_END][8] = {
 	 * Clock divider value for following
 	 * { ARM, CPUD, ACP, PERIPH, ATB, PCLK_DBG, APLL, ARM2 }
 	 */
-	{ 0, 3, 7, 7, 7, 3, 5, 0 },	/* 1700 MHz */
+	{ 0, 3, 7, 7, 7, 2, 5, 0 },	/* 1700 MHz */
 	{ 0, 3, 7, 7, 7, 1, 4, 0 },	/* 1600 MHz */
 	{ 0, 2, 7, 7, 7, 1, 4, 0 },	/* 1500 MHz */
 	{ 0, 2, 7, 7, 6, 1, 4, 0 },	/* 1400 MHz */
@@ -126,22 +126,22 @@ static unsigned int exynos5_apll_pms_table[CPUFREQ_LEVEL_END] = {
 
 /* ASV group voltage table */
 static const unsigned int asv_voltage_5250[CPUFREQ_LEVEL_END] = {
-	1275000,    /* L0 */
-	1237500,    /* L1 */
-	1200000,    /* L2 */
-	1175000,    /* L3 */
-	1125000,    /* L4 */
-	1112500,    /* L5 */
-	1087500,    /* L6 */
-	1050000,    /* L7 */
-	1037500,    /* L8 */
-	1012500,    /* L9 */
-	1000000,    /* L10 */
-	975000,     /* L11 */
-	962500,     /* L12 */
-	937500,     /* L13 */
-	925000,     /* L14 */
-	912500,     /* L15 */
+	1300000,    /* L0 */
+	1250000,    /* L1 */
+	1225000,    /* L2 */
+	1200000,    /* L3 */
+	1150000,    /* L4 */
+	1125000,    /* L5 */
+	1100000,    /* L6 */
+	1075000,    /* L7 */
+	1050000,    /* L8 */
+	1025000,    /* L9 */
+	1012500,    /* L10 */
+	1000000,    /* L11 */
+	975000,     /* L12 */
+	950000,     /* L13 */
+	937500,     /* L14 */
+	925000,     /* L15 */
 };
 
 static void set_clkdiv(unsigned int div_index)
