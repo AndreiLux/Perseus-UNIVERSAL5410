@@ -1287,18 +1287,13 @@ static ssize_t cyapa_update_suspend_scanrate(struct device *dev,
 					     const char *buf, size_t count)
 {
 	struct cyapa *cyapa = dev_get_drvdata(dev);
-	const char *btnonly = BTN_ONLY_MODE_NAME;
 	u8 pwr_cmd;
 	u16 sleep_time;
-	size_t len;
 
 	if (buf == NULL || count == 0)
 		goto invalidparam;
 
-	len = (buf[count - 1] == '\n') ? count - 1 : count;
-
-	if (len == strlen(btnonly) &&
-	    !strncasecmp(buf, btnonly, strlen(btnonly)))
+	if (sysfs_streq(buf, BTN_ONLY_MODE_NAME))
 		pwr_cmd = PWR_MODE_BTN_ONLY;
 	else if (!kstrtou16(buf, 10, &sleep_time))
 		pwr_cmd = cyapa_sleep_time_to_pwr_cmd(sleep_time);
