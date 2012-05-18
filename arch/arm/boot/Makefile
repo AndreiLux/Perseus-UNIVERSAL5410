@@ -51,8 +51,14 @@ $(obj)/Image: vmlinux FORCE
 $(obj)/compressed/vmlinux: $(obj)/Image FORCE
 	$(Q)$(MAKE) $(build)=$(obj)/compressed $@
 
-$(obj)/zImage:	$(obj)/compressed/vmlinux FORCE
+# Rule to optionally append a DTB
+dtbfile := $(shell echo $(CONFIG_ARM_APPENDED_DTB_FILE))
+quiet_cmd_append = CAT     $@
+      cmd_append = (cat /dev/null $(dtbfile) >> $@)
+
+$(obj)/zImage:	$(obj)/compressed/vmlinux $(dtbfile) FORCE
 	$(call if_changed,objcopy)
+	$(call if_changed,append)
 	@echo '  Kernel: $@ is ready'
 
 endif
