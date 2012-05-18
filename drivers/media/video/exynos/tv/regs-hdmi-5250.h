@@ -799,7 +799,8 @@
 /* AVI InfoFrame Register */
 
 /* AVI_CON */
-#define HDMI_AVI_CON_EVERY_VSYNC               (1 << 1)
+#define HDMI_AVI_CON_DO_NOT_TRANSMIT		(0 << 1)
+#define HDMI_AVI_CON_EVERY_VSYNC		(1 << 1)
 
 /* AVI_CHECK_SUM */
 

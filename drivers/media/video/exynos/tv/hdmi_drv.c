@@ -129,8 +129,7 @@ static int hdmi_set_infoframe(struct hdmi_device *hdev)
 
 static int hdmi_set_packets(struct hdmi_device *hdev)
 {
-	if (!hdev->dvi_mode)
-		hdmi_reg_set_acr(hdev);
+	hdmi_reg_set_acr(hdev);
 	return 0;
 }
 
@@ -181,7 +180,7 @@ static int hdmi_streamon(struct hdmi_device *hdev)
 	hdmi_reg_spdif_audio_init(hdev);
 #endif
 	/* enbale HDMI audio */
-	if (hdev->audio_enable && !hdev->dvi_mode)
+	if (hdev->audio_enable)
 		hdmi_audio_enable(hdev, 1);
 
 	hdmi_set_dvi_mode(hdev);

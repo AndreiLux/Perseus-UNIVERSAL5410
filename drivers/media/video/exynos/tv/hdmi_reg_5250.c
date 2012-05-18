@@ -2286,12 +2286,11 @@ void hdmi_reg_init(struct hdmi_device *hdev)
 	/* disable bluescreen */
 	hdmi_write_mask(hdev, HDMI_CON_0, 0, HDMI_BLUE_SCR_EN);
 	/* enable AVI packet every vsync, fixes purple line problem */
-	hdmi_writeb(hdev, HDMI_AVI_CON, 0x02);
+	hdmi_writeb(hdev, HDMI_AVI_CON, HDMI_AVI_CON_EVERY_VSYNC);
 	/* RGB888 is default output format of HDMI,
 	 * look to CEA-861-D, table 7 for more detail */
 	hdmi_writeb(hdev, HDMI_AVI_BYTE(1), 0 << 5);
 	hdmi_write_mask(hdev, HDMI_CON_1, 2, 3 << 5);
-
 }
 
 void hdmi_set_dvi_mode(struct hdmi_device *hdev)
@@ -2522,6 +2521,16 @@ void hdmi_reg_infoframe(struct hdmi_device *hdev,
 	u8 chksum;
 	dev_dbg(dev, "%s: InfoFrame type = 0x%x\n", __func__, infoframe->type);
 
+	/* Packets must NOT be transferred in case of DVI mode
+	 * DVI mode doesn't allow Data Island Period. If any packet is tranferred,
+	 * It makes Data Island Period */
+	if (hdev->dvi_mode) {
+		hdmi_writeb(hdev, HDMI_VSI_CON, HDMI_VSI_CON_DO_NOT_TRANSMIT);
+		hdmi_writeb(hdev, HDMI_AVI_CON, HDMI_AVI_CON_DO_NOT_TRANSMIT);
+		hdmi_write(hdev, HDMI_AUI_CON, HDMI_AUI_CON_NO_TRAN);
+		return;
+	}
+
 	switch (infoframe->type) {
 	case HDMI_PACKET_TYPE_VSI:
 		hdmi_writeb(hdev, HDMI_VSI_CON, HDMI_VSI_CON_EVERY_VSYNC);
@@ -2560,6 +2569,7 @@ void hdmi_reg_infoframe(struct hdmi_device *hdev,
 		hdmi_writeb(hdev, HDMI_AVI_CHECK_SUM, chksum);
 		break;
 	case HDMI_PACKET_TYPE_AUI:
+		hdmi_write(hdev, HDMI_AUI_CON, HDMI_AUI_CON_TRANS_EVERY_VSYNC);
 		hdmi_writeb(hdev, HDMI_AUI_HEADER0, infoframe->type);
 		hdmi_writeb(hdev, HDMI_AUI_HEADER1, infoframe->ver);
 		hdmi_writeb(hdev, HDMI_AUI_HEADER2, infoframe->len);
@@ -2577,6 +2587,11 @@ void hdmi_reg_set_acr(struct hdmi_device *hdev)
 {
 	u32 n, cts;
 	int sample_rate = hdev->sample_rate;
+
+	if (hdev->dvi_mode) {
+		hdmi_write(hdev, HDMI_ACR_CON, HDMI_ACR_CON_TX_MODE_NO_TX);
+		return;
+	}
 
 	if (sample_rate == 32000) {
 		n = 4096;
@@ -2741,12 +2756,11 @@ void hdmi_reg_i2s_audio_init(struct hdmi_device *hdev)
 void hdmi_audio_enable(struct hdmi_device *hdev, int on)
 {
 	if (on) {
-		hdmi_write(hdev, HDMI_AUI_CON, HDMI_AUI_CON_TRANS_EVERY_VSYNC);
+		if (hdev->dvi_mode)
+			return;
 		hdmi_write_mask(hdev, HDMI_CON_0, ~0, HDMI_ASP_ENABLE);
-	} else {
-		hdmi_write(hdev, HDMI_AUI_CON, HDMI_AUI_CON_NO_TRAN);
+	} else
 		hdmi_write_mask(hdev, HDMI_CON_0, 0, HDMI_ASP_ENABLE);
-	}
 }
 
 void hdmi_bluescreen_enable(struct hdmi_device *hdev, int on)
