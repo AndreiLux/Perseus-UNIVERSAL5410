@@ -227,6 +227,7 @@ struct hdmi_preset_conf {
 	struct hdmi_core_regs core;
 	struct hdmi_tg_regs tg;
 	struct v4l2_mbus_framefmt mbus_fmt;
+	u8 vic;
 };
 
 struct hdmi_driver_data {
