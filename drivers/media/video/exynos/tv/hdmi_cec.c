@@ -22,6 +22,7 @@
 #include <linux/module.h>
 #include <plat/devs.h>
 #include <plat/tv-core.h>
+#include <plat/tvout.h>
 
 #include "cec.h"
 

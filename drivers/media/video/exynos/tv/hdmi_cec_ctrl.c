@@ -14,13 +14,13 @@
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/videodev2.h>
-#include <linux/videodev2_exynos_media.h>
 #include <linux/irqreturn.h>
 #include <linux/stddef.h>
 
 #include <mach/regs-clock.h>
 #include <mach/regs-clock.h>
 #include <mach/regs-cec.h>
+#include <mach/regs-pmu.h>
 
 #include "cec.h"
 
@@ -53,10 +53,10 @@ void s5p_cec_set_divider(void)
 
 	div_ratio  = S5P_HDMI_FIN / CEC_DIV_RATIO - 1;
 
-	reg = readl(EXYNOS_HDMI_PHY_CONTROL);
+	reg = readl(S5P_HDMI_PHY_CONTROL);
 	reg = (reg & ~(0x3FF << 16)) | (div_ratio << 16);
 
-	writel(reg, EXYNOS_HDMI_PHY_CONTROL);
+	writel(reg, S5P_HDMI_PHY_CONTROL);
 
 	div_val = CEC_DIV_RATIO * 0.00005 - 1;
 
