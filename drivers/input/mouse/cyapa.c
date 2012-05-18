@@ -145,7 +145,8 @@ enum cyapa_gen {
 
 #define PWR_MODE_MASK   0xFC
 #define PWR_MODE_FULL_ACTIVE (0x3F << 2)
-#define PWR_MODE_IDLE        (0x05 << 2) /* default sleep time is 50 ms. */
+#define PWR_MODE_IDLE        (0x03 << 2) /* default rt suspend scanrate: 30ms */
+#define PWR_MODE_SLEEP       (0x05 << 2) /* default suspend scanrate: 50ms */
 #define PWR_MODE_BTN_ONLY    (0x01 << 2)
 #define PWR_MODE_OFF         (0x00 << 2)
 
@@ -1770,7 +1771,7 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 	if (cyapa->adapter_func == CYAPA_ADAPTER_FUNC_SMBUS)
 		cyapa->smbus = true;
 	cyapa->state = CYAPA_STATE_NO_DEVICE;
-	cyapa->suspend_power_mode = PWR_MODE_IDLE;
+	cyapa->suspend_power_mode = PWR_MODE_SLEEP;
 
 	/*
 	 * Note: There is no way to request an irq that is initially disabled.
