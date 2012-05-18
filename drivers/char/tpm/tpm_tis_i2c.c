@@ -557,6 +557,7 @@ static int tpm_tis_i2c_init(struct device *dev)
 
 	chip = tpm_register_hardware(dev, &tpm_tis_i2c);
 	if (!chip) {
+		dev_dbg(dev, "could not register hardware\n");
 		rc = -ENODEV;
 		goto out_err;
 	}
@@ -571,6 +572,7 @@ static int tpm_tis_i2c_init(struct device *dev)
 	chip->vendor.timeout_d = msecs_to_jiffies(TIS_SHORT_TIMEOUT);
 
 	if (request_locality(chip, 0) != 0) {
+		dev_dbg(dev, "could not request locality\n");
 		rc = -ENODEV;
 		goto out_vendor;
 	}
@@ -578,6 +580,7 @@ static int tpm_tis_i2c_init(struct device *dev)
 	/* read four bytes from DID_VID register */
 	if (iic_tpm_read(TPM_DID_VID(0), (u8 *) &vendor, 4) < 0) {
 		rc = -EIO;
+		dev_dbg(dev, "could not read vendor id\n");
 		goto out_vendor;
 	}
 
@@ -585,6 +588,7 @@ static int tpm_tis_i2c_init(struct device *dev)
 	vendor = be32_to_cpu((__be32) vendor);
 
 	if (vendor != TPM_TIS_I2C_DID_VID) {
+		dev_dbg(dev, "bad vendor id\n");
 		rc = -ENODEV;
 		goto out_release;
 	}
@@ -616,6 +620,7 @@ static const struct i2c_device_id tpm_i2c_tis_table[] = {
 	{ "tpm_tis_i2c", 0 },
 	{ },
 };
+MODULE_DEVICE_TABLE(i2c, tpm_i2c_id);
 
 #ifdef CONFIG_PM
 /* NOTE:
@@ -643,22 +648,13 @@ static const struct dev_pm_ops tpm_tis_i2c_ops = {
 #endif
 
 
-static int dummy_probe(struct i2c_client *client,
-	const struct i2c_device_id *id)
-{
-	return 0;
-}
-
-static int dummy_remove(struct i2c_client *client)
-{
-	return 0;
-}
+static int tpm_tis_i2c_probe(struct i2c_client *client,
+				const struct i2c_device_id *dev_id);
 
 static struct i2c_driver tpm_i2c_tis_driver = {
 
 	.id_table = tpm_i2c_tis_table,
-	.probe = dummy_probe,
-	.remove = dummy_remove,
+	.probe = tpm_tis_i2c_probe,
 	.driver	= {
 		.name	= "tpm_tis_i2c",
 		.owner	= THIS_MODULE,
@@ -669,59 +665,12 @@ static struct i2c_driver tpm_i2c_tis_driver = {
 };
 
 
-static struct i2c_adapter *adap;
-static struct i2c_client *client;
-static	struct i2c_board_info info = {
-	I2C_BOARD_INFO("tpm_tis_i2c", 0x20),
-};
-
-
-static int addr = 0x20;
-module_param(addr, int, S_IRUGO);
-MODULE_PARM_DESC(addr, "TPM I2C Device Address (default: 0x20)");
-
-static int bus_id = 1;
-module_param(bus_id, int, S_IRUGO);
-MODULE_PARM_DESC(bus_id, "TPM I2C Bus Id (default: 1)");
-
-static int __init init_tis_i2c(void)
+static int __devinit tpm_tis_i2c_probe(struct i2c_client *client,
+					const struct i2c_device_id *dev_id)
 {
-
-	int rc = 0;
-	info.addr = addr;
-
-
-	if (tpm_dev.client != NULL)
-		return -EBUSY;
-
-	adap = i2c_get_adapter(bus_id);
-	if (!adap)
-		return -ENODEV;
-
-	client = i2c_new_device(adap, &info);
-	if (!client) {
-		i2c_put_adapter(adap);
-		return -ENODEV;
-	}
-
-	rc = i2c_add_driver(&tpm_i2c_tis_driver);
-	if (rc != 0) {
-		i2c_del_driver(&tpm_i2c_tis_driver);
-		i2c_put_adapter(tpm_dev.client->adapter);
-		return -ENODEV;
-	}
-	client->driver = &tpm_i2c_tis_driver;
-
 	tpm_dev.client = client;
-
-	rc = tpm_tis_i2c_init(&client->dev);
-	if (rc < 0) {
-		i2c_del_driver(&tpm_i2c_tis_driver);
-		i2c_put_adapter(tpm_dev.client->adapter);
-		device_del(&(tpm_dev.client->dev));
-	}
-
-	return rc;
+	dev_dbg(&client->dev, "tpm_tis_i2c probe\n");
+	return tpm_tis_i2c_init(&client->dev);
 }
 
 static void __exit cleanup_tis_i2c(void)
@@ -745,8 +694,8 @@ static void __exit cleanup_tis_i2c(void)
 	device_del(&(tpm_dev.client->dev));
 }
 
-module_init(init_tis_i2c);
-module_exit(cleanup_tis_i2c);
+module_i2c_driver(tpm_i2c_tis_driver);
+
 MODULE_AUTHOR("Peter Huewe <huewe.external@infineon.com>");
 MODULE_DESCRIPTION("TPM TIS I2C Driver");
 MODULE_VERSION("2.1.2");
