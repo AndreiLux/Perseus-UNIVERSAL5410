@@ -29,10 +29,12 @@
 
 #define INFOFRAME_CNT          2
 
-#define HDMI_VSI_VERSION       0x01;
-#define HDMI_AVI_VERSION       0x02;
-#define HDMI_VSI_LENGTH                0x05;
-#define HDMI_AVI_LENGTH                0x0d;
+#define HDMI_VSI_VERSION	0x01;
+#define HDMI_AVI_VERSION	0x02;
+#define HDMI_AUI_VERSION	0x01;
+#define HDMI_VSI_LENGTH		0x05;
+#define HDMI_AVI_LENGTH		0x0d;
+#define HDMI_AUI_LENGTH		0x0a;
 
 /* HDMI audio configuration value */
 #define DEFAULT_SAMPLE_RATE	44100
@@ -84,7 +86,9 @@ enum HDMI_PACKET_TYPE {
 	/** Vendor-Specific InfoFrame */
 	HDMI_PACKET_TYPE_VSI = HDMI_PACKET_TYPE_INFOFRAME + 1,
 	/** Auxiliary Video information InfoFrame */
-	HDMI_PACKET_TYPE_AVI = HDMI_PACKET_TYPE_INFOFRAME + 2
+	HDMI_PACKET_TYPE_AVI = HDMI_PACKET_TYPE_INFOFRAME + 2,
+	/** Audio information InfoFrame */
+	HDMI_PACKET_TYPE_AUI = HDMI_PACKET_TYPE_INFOFRAME + 4
 };
 
 enum HDMI_AUDIO_CODEC {

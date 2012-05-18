@@ -2559,6 +2559,15 @@ void hdmi_reg_infoframe(struct hdmi_device *hdev,
 		dev_dbg(dev, "AVI checksum = 0x%x\n", chksum);
 		hdmi_writeb(hdev, HDMI_AVI_CHECK_SUM, chksum);
 		break;
+	case HDMI_PACKET_TYPE_AUI:
+		hdmi_writeb(hdev, HDMI_AUI_HEADER0, infoframe->type);
+		hdmi_writeb(hdev, HDMI_AUI_HEADER1, infoframe->ver);
+		hdmi_writeb(hdev, HDMI_AUI_HEADER2, infoframe->len);
+		hdr_sum = infoframe->type + infoframe->ver + infoframe->len;
+		chksum = hdmi_chksum(hdev, HDMI_AUI_BYTE(1), infoframe->len, hdr_sum);
+		dev_dbg(dev, "AUI checksum = 0x%x\n", chksum);
+		hdmi_writeb(hdev, HDMI_AUI_CHECK_SUM, chksum);
+		break;
 	default:
 		break;
 	}
@@ -2976,6 +2985,8 @@ void hdmi_dumpregs(struct hdmi_device *hdev, char *prefix)
 	DUMPREG(HDMI_VSI_HEADER2);
 	for (i = 0; i < 7; ++i)
 		DUMPREG(HDMI_VSI_DATA(i));
+	DUMPREG(HDMI_AUI_CON);
+	DUMPREG(HDMI_ACR_CON);
 
 #undef DUMPREG
 }

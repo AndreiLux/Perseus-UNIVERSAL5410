@@ -117,6 +117,13 @@ static int hdmi_set_infoframe(struct hdmi_device *hdev)
 	infoframe.len = HDMI_AVI_LENGTH;
 	hdmi_reg_infoframe(hdev, &infoframe);
 
+	if (hdev->audio_enable) {
+		infoframe.type = HDMI_PACKET_TYPE_AUI;
+		infoframe.ver = HDMI_AUI_VERSION;
+		infoframe.len = HDMI_AUI_LENGTH;
+		hdmi_reg_infoframe(hdev, &infoframe);
+	}
+
 	return 0;
 }
 
