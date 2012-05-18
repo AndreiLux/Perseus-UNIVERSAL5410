@@ -29,12 +29,15 @@
 
 #define INFOFRAME_CNT          2
 
-#define HDMI_VSI_VERSION	0x01;
-#define HDMI_AVI_VERSION	0x02;
-#define HDMI_AUI_VERSION	0x01;
-#define HDMI_VSI_LENGTH		0x05;
-#define HDMI_AVI_LENGTH		0x0d;
-#define HDMI_AUI_LENGTH		0x0a;
+#define HDMI_VSI_VERSION	0x01
+#define HDMI_AVI_VERSION	0x02
+#define HDMI_AUI_VERSION	0x01
+#define HDMI_VSI_LENGTH		0x05
+#define HDMI_AVI_LENGTH		0x0d
+#define HDMI_AUI_LENGTH		0x0a
+
+#define AVI_PIC_ASPECT_RATIO_4_3	(1 << 4)
+#define AVI_PIC_ASPECT_RATIO_16_9	(2 << 4)
 
 /* HDMI audio configuration value */
 #define DEFAULT_SAMPLE_RATE	44100

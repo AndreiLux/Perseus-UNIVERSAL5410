@@ -80,7 +80,7 @@ static const struct hdmi_preset_conf hdmi_conf_480p60 = {
 		.code = V4L2_MBUS_FMT_FIXED, /* means RGB888 */
 		.field = V4L2_FIELD_NONE,
 	},
-	.vic = 2,
+	.vic = 3,
 };
 
 static const struct hdmi_preset_conf hdmi_conf_720p60 = {
@@ -324,7 +324,7 @@ static const struct hdmi_preset_conf hdmi_conf_576p50 = {
 		.code = V4L2_MBUS_FMT_FIXED, /* means RGB888 */
 		.field = V4L2_FIELD_NONE,
 	},
-	.vic = 17,
+	.vic = 18,
 };
 
 static const struct hdmi_preset_conf hdmi_conf_720p50 = {
@@ -772,7 +772,7 @@ static const struct hdmi_preset_conf hdmi_conf_480p59_94 = {
 		.code = V4L2_MBUS_FMT_FIXED, /* means RGB888 */
 		.field = V4L2_FIELD_NONE,
 	},
-	.vic = 2,
+	.vic = 3,
 };
 
 static const struct hdmi_preset_conf hdmi_conf_720p59_94 = {
@@ -2519,6 +2519,7 @@ void hdmi_reg_infoframe(struct hdmi_device *hdev,
 	const struct hdmi_3d_info *info = hdmi_preset2info(hdev->cur_preset);
 	u32 hdr_sum;
 	u8 chksum;
+
 	dev_dbg(dev, "%s: InfoFrame type = 0x%x\n", __func__, infoframe->type);
 
 	/* Packets must NOT be transferred in case of DVI mode
@@ -2562,9 +2563,10 @@ void hdmi_reg_infoframe(struct hdmi_device *hdev,
 		hdmi_writeb(hdev, HDMI_AVI_HEADER2, infoframe->len);
 		hdmi_writeb(hdev, HDMI_AVI_BYTE(1), hdev->output_fmt << 5);
 		hdr_sum = infoframe->type + infoframe->ver + infoframe->len;
-		chksum = hdmi_chksum(hdev, HDMI_AVI_BYTE(1), infoframe->len, hdr_sum);
+		hdmi_writeb(hdev, HDMI_AVI_BYTE(2), AVI_PIC_ASPECT_RATIO_16_9);
 		dev_dbg(dev, "VIC code = %d\n", hdev->cur_conf->vic);
 		hdmi_writeb(hdev, HDMI_AVI_BYTE(4), hdev->cur_conf->vic);
+		chksum = hdmi_chksum(hdev, HDMI_AVI_BYTE(1), infoframe->len, hdr_sum);
 		dev_dbg(dev, "AVI checksum = 0x%x\n", chksum);
 		hdmi_writeb(hdev, HDMI_AVI_CHECK_SUM, chksum);
 		break;
