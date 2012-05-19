@@ -899,11 +899,18 @@ static void
 s3c24xx_i2c_parse_dt(struct device_node *np, struct s3c24xx_i2c *i2c)
 {
 	struct s3c2410_platform_i2c *pdata = i2c->pdata;
+	int id;
 
 	if (!np)
 		return;
 
-	pdata->bus_num = -1; /* i2c bus number is dynamically assigned */
+	id = of_alias_get_id(np, "i2c");
+	if (id < 0) {
+		dev_warn(i2c->dev, "failed to get alias id:%d\n", id);
+		pdata->bus_num = -1;
+	} else
+		/* i2c bus number is statically assigned from alias*/
+		pdata->bus_num = id;
 	of_property_read_u32(np, "samsung,i2c-sda-delay", &pdata->sda_delay);
 	of_property_read_u32(np, "samsung,i2c-slave-addr", &pdata->slave_addr);
 	of_property_read_u32(np, "samsung,i2c-max-bus-freq",
