@@ -992,7 +992,7 @@ struct i2s_dai *i2s_alloc_dai(struct platform_device *pdev, bool sec)
 		}
 
 		i2s->pdev = platform_device_register_resndata(NULL,
-				pdev->name, id + SAMSUNG_I2S_SECOFF,
+				"samsung-i2s", id + SAMSUNG_I2S_SECOFF,
 				NULL, 0, NULL, 0);
 		if (IS_ERR(i2s->pdev))
 			return NULL;
