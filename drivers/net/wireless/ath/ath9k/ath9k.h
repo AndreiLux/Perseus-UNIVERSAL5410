@@ -592,6 +592,7 @@ struct ath_ant_comb {
 #define SC_OP_BT_SCAN                BIT(6)
 #define SC_OP_ANI_RUN                BIT(7)
 #define SC_OP_PRIM_STA_VIF           BIT(8)
+#define SC_OP_BB_WATCHDOG            BIT(9)
 
 /* Powersave flags */
 #define PS_WAIT_FOR_BEACON        BIT(0)
@@ -630,6 +631,7 @@ struct ath_softc {
 	spinlock_t sc_serial_rw;
 	spinlock_t sc_pm_lock;
 	spinlock_t sc_pcu_lock;
+	spinlock_t sc_bb_lock;
 	struct mutex mutex;
 	struct work_struct paprd_work;
 	struct work_struct hw_check_work;

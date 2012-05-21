@@ -279,6 +279,7 @@ static bool ath_complete_reset(struct ath_softc *sc, bool start)
 {
 	struct ath_hw *ah = sc->sc_ah;
 	struct ath_common *common = ath9k_hw_common(ah);
+	unsigned long flags;
 
 	if (ath_startrecv(sc) != 0) {
 		ath_err(common, "Unable to restart recv logic\n");
@@ -318,6 +319,10 @@ static bool ath_complete_reset(struct ath_softc *sc, bool start)
 	}
 
 	ieee80211_wake_queues(sc->hw);
+
+	spin_lock_irqsave(&sc->sc_bb_lock, flags);
+	sc->sc_flags &= ~SC_OP_BB_WATCHDOG;
+	spin_unlock_irqrestore(&sc->sc_bb_lock, flags);
 
 	return true;
 }
@@ -969,6 +974,9 @@ void ath9k_tasklet(unsigned long data)
 
 		RESET_STAT_INC(sc, type);
 #endif
+		spin_lock(&sc->sc_bb_lock);
+		sc->sc_flags |= SC_OP_BB_WATCHDOG;
+		spin_unlock(&sc->sc_bb_lock);
 		ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
 		goto out;
 	}
@@ -1056,6 +1064,12 @@ irqreturn_t ath_isr(int irq, void *dev)
 	if (sc->sc_flags & SC_OP_INVALID)
 		return IRQ_NONE;
 
+	spin_lock(&sc->sc_bb_lock);
+	if (sc->sc_flags & SC_OP_BB_WATCHDOG) {
+		spin_unlock(&sc->sc_bb_lock);
+		return IRQ_NONE;
+	}
+	spin_unlock(&sc->sc_bb_lock);
 
 	/* shared irq, not for us */
 
