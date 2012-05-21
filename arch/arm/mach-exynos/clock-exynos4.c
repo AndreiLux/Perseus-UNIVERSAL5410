@@ -308,6 +308,25 @@ static struct clksrc_clk exynos4_clk_periphclk = {
 	.reg_div = { .reg = EXYNOS4_CLKDIV_CPU, .shift = 12, .size = 3 },
 };
 
+static struct clk *exynos4_clkset_mout_hpm_list[] = {
+	[0] = &exynos4_clk_mout_apll.clk,
+	[1] = &exynos4_clk_mout_mpll.clk,
+};
+
+static struct clksrc_sources exynos4_clkset_sclk_hpm = {
+	.sources	= exynos4_clkset_mout_hpm_list,
+	.nr_sources	= ARRAY_SIZE(exynos4_clkset_mout_hpm_list),
+};
+
+static struct clksrc_clk exynos4_clk_dout_copy = {
+	.clk	= {
+		.name		= "dout_copy",
+	},
+	.sources = &exynos4_clkset_sclk_hpm,
+	.reg_src = { .reg = EXYNOS4_CLKSRC_CPU, .shift = 20, .size = 1 },
+	.reg_div = { .reg = EXYNOS4_CLKDIV_CPU1, .shift = 0, .size = 3 },
+};
+
 /* Core list of CMU_CORE side */
 
 static struct clk *exynos4_clkset_corebus_list[] = {
@@ -1152,7 +1171,20 @@ static struct clksrc_clk exynos4_clksrcs[] = {
 			.ctrlbit	= (1 << 16),
 		},
 		.reg_div = { .reg = EXYNOS4_CLKDIV_FSYS3, .shift = 8, .size = 8 },
-	}
+	}, {
+		.clk		= {
+			.name		= "sclk_hpm",
+			.parent		= &exynos4_clk_dout_copy.clk,
+		},
+		.reg_div = { .reg = EXYNOS4_CLKDIV_CPU1, .shift = 4, .size = 3 },
+	}, {
+		.clk		= {
+			.name		= "sclk_pwi",
+		},
+		.sources = &exynos4_clkset_group,
+		.reg_src = { .reg = EXYNOS4_CLKSRC_DMC, .shift = 16, .size = 4 },
+		.reg_div = { .reg = EXYNOS4_CLKDIV_DMC1, .shift = 8, .size = 4 },
+	},
 };
 
 static struct clksrc_clk exynos4_clk_sclk_uart0 = {
@@ -1294,6 +1326,7 @@ static struct clksrc_clk *exynos4_sysclks[] = {
 	&exynos4_clk_armclk,
 	&exynos4_clk_aclk_corem0,
 	&exynos4_clk_aclk_cores,
+	&exynos4_clk_dout_copy,
 	&exynos4_clk_aclk_corem1,
 	&exynos4_clk_periphclk,
 	&exynos4_clk_mout_corebus,
