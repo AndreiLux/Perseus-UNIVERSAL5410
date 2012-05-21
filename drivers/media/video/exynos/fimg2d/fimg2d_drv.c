@@ -62,7 +62,8 @@ static irqreturn_t fimg2d_irq(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static int fimg2d_sysmmu_fault_handler(enum exynos_sysmmu_inttype itype,
+static int fimg2d_sysmmu_fault_handler(struct sysmmu_drvdata *data,
+		enum exynos_sysmmu_inttype itype,
 		unsigned long pgtable_base, unsigned long fault_addr)
 {
 	struct fimg2d_bltcmd *cmd;
