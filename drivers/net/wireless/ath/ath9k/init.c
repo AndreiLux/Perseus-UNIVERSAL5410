@@ -241,11 +241,6 @@ static void setup_ht_cap(struct ath_softc *sc,
 	u8 tx_streams, rx_streams;
 	int i, max_streams;
 
-	if (AR_SREV_9462(ah)) {
-		/* Disable HT on 9462 until it is better supported */
-		ht_info->ht_supported = false;
-		return;
-	}
 	ht_info->ht_supported = true;
 	ht_info->cap = IEEE80211_HT_CAP_SUP_WIDTH_20_40 |
 		       IEEE80211_HT_CAP_SM_PS |
