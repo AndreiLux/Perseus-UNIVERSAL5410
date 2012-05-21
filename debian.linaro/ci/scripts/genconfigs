@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# script for configs from ci config seeds
+
+flavours=$(ls debian.linaro/ci/flavourseeds/ | sed -e 's/.*\.//' -e 's/common//')
+
+# generate minimal defconfigs for each flavour and find out
+# what is common to all of them
+for f in $flavours
+do
+    cat \
+        debian.linaro/ci/flavourseeds/defconfig.common \
+	debian.linaro/ci/flavourseeds/defconfig.uniq.$f \
+	debian.linaro/ci/otherseeds/* \
+	> .config
+    yes '' | make ARCH=arm oldconfig
+    cp .config debian.linaro/config/armel/config.flavour.linaro-$f
+done
+
+echo '' > debian.linaro/config/config.common.ubuntu
+echo '' > debian.linaro/config/armel/config.common.armel
+
+fakeroot ./debian/rules clean 
+fakeroot ./debian/rules updateconfigs 
+

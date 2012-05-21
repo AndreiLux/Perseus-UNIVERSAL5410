@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# scripts for generating seed configs from current configs in
+# ./debian.linaro/config/*
+
+# the genconfigs rule creates configs for all flavours in a
+# directory ./CONFIGS
+rm -rf CONFIGS
+fakeroot ./debian/rules clean
+fakeroot ./debian/rules genconfigs
+flavours=$(ls CONFIGS | sed -e ' s/.*-//')
+
+# generate minimal defconfigs for each flavour and find out
+# what is common to all of them
+for f in $flavours
+do
+    mv CONFIGS/armel-config.flavour.linaro-$f .config
+    make ARCH=arm savedefconfig
+    sort defconfig > CONFIGS/defconfig.$f
+    test -f CONFIGS/defconfig.common || cp CONFIGS/defconfig.$f CONFIGS/defconfig.common
+    comm -1 -2 CONFIGS/defconfig.common CONFIGS/defconfig.$f > CONFIGS/defconfig.tmp && mv CONFIGS/defconfig.tmp CONFIGS/defconfig.common
+done
+
+# now for each flavour find what is uniq for each defconfig
+for f in $flavours
+do
+    comm -1 -3 CONFIGS/defconfig.common CONFIGS/defconfig.$f  > CONFIGS/defconfig.uniq.$f
+    rm CONFIGS/defconfig.$f
+done
+
+# copy the seeds
+cp CONFIGS/* debian.linaro/ci/flavourseeds

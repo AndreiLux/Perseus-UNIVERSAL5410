@@ -1,0 +1,71 @@
+#!/bin/bash
+#set -x
+#set -e
+
+DEBIAN=debian.linaro
+arches="armel armhf"
+flavour_prefix=linaro-
+# exisiting SOC flavour to use as prototype for additions
+proto_flavour=omap
+
+
+echo Gathering SOC info
+soc_vendor="SOC vendor name. Examples: TI, Freescale, ARM, Samsung, ST-Ericsson"
+soc_flavour="Short lowercase SOC name, usually at least partially matches an arch/arm/mach-* directory"
+soc_family="Potentially more verbose mixed case SOC family description. Examples: OMAP[34], U[58]500"
+sample_boards="At least one board based on this SOC that is supported by this kernel"
+soc_proto_config="File in arch/arm/configs to use as initial SOC specific config"
+
+read -p "Enter $soc_vendor: " soc_vendor
+read -p "Enter $soc_flavour: " soc_flavour
+read -p "Enter $soc_family: " soc_family
+read -p "Enter $sample_boards: " sample_boards
+read -i "" -p "Enter $soc_proto_config: " soc_proto_config
+
+
+print_vars_file()
+{
+	cat << __ENDVARS__
+arch="armel armhf"
+supported="$soc_vendor $soc_family"
+desc="$soc_vendor $soc_family-based systems"
+target="Targeted towards boards such as $sample_boards, etc."
+bootloader="uboot-mkimage, flash-kernel"
+provides=""
+section_image="universe/base"
+do_debug="Yes"
+__ENDVARS__
+}
+
+echo '***' Adding file $DEBIAN/control.d/vars.$flavour_prefix$soc_flavour
+print_vars_file > $DEBIAN/control.d/vars.$flavour_prefix$soc_flavour
+git add $DEBIAN/control.d/vars.$flavour_prefix$soc_flavour
+git diff HEAD -- $DEBIAN/control.d/vars.$flavour_prefix$soc_flavour
+
+for arm in $arches; do
+	test -f arch/arm/configs/$soc_proto_config || {
+		echo arch/arm/configs/$soc_proto_config does not exist
+		exit 1
+	}
+
+	echo '***' Adding $DEBIAN/config/$arm/config.flavour.$flavour_prefix$soc_flavour
+	cp arch/arm/configs/$soc_proto_config $DEBIAN/config/$arm/config.flavour.$flavour_prefix$soc_flavour
+	git add $DEBIAN/config/$arm/config.flavour.$flavour_prefix$soc_flavour
+	git diff HEAD -- $DEBIAN/config/$arm/config.flavour.$flavour_prefix$soc_flavour
+
+	echo '***' Adding line for $arm/$soc_flavour to $DEBIAN/d-i/kernel-versions.in
+	grep $arm.*$proto_flavour $DEBIAN/d-i/kernel-versions.in \
+		| sed s/omap/$soc_flavour/g \
+		>> $DEBIAN/d-i/kernel-versions.in
+	git add $DEBIAN/d-i/kernel-versions.in
+	git diff HEAD -- $DEBIAN/d-i/kernel-versions.in
+
+	sed -i -e  "s/\(flavours.*$\)/\1 $flavour_prefix$soc_flavour/" debian.linaro/rules.d/$arm.mk 
+	git add $DEBIAN/rules.d/$arm.mk
+	git diff HEAD -- $DEBIAN/rules.d/$arm.mk
+done
+
+exit 0
+
+
+

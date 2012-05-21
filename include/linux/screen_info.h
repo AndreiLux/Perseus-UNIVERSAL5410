@@ -67,6 +67,7 @@ struct screen_info {
 #define VIDEO_TYPE_EFI		0x70	/* EFI graphic mode		*/
 
 #define VIDEO_FLAGS_NOCURSOR	(1 << 0) /* The video mode has no cursor set */
+#define VIDEO_FLAGS_HANDOFF	(1 << 1) /* Video buffer is alredy painted */
 
 #ifdef __KERNEL__
 extern struct screen_info screen_info;

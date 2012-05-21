@@ -1,0 +1,6 @@
+repo_list=(
+	http://launchpad.net/~linaro-maintainers/+archive/overlay/+files
+)
+
+getall armel linaro-omap linaro-vexpress
+getall armhf linaro-omap linaro-vexpress

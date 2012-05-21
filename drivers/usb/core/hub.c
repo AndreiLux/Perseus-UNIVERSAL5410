@@ -24,6 +24,7 @@
 #include <linux/kthread.h>
 #include <linux/mutex.h>
 #include <linux/freezer.h>
+#include <linux/rcupdate.h>
 
 #include <asm/uaccess.h>
 #include <asm/byteorder.h>
@@ -1996,6 +1997,10 @@ fail:
  */
 int usb_deauthorize_device(struct usb_device *usb_dev)
 {
+	char *product = NULL;
+	char *manufacturer = NULL;
+	char *serial = NULL;
+
 	usb_lock_device(usb_dev);
 	if (usb_dev->authorized == 0)
 		goto out_unauthorized;
@@ -2003,11 +2008,12 @@ int usb_deauthorize_device(struct usb_device *usb_dev)
 	usb_dev->authorized = 0;
 	usb_set_configuration(usb_dev, -1);
 
-	kfree(usb_dev->product);
+	product = usb_dev->product;
+	manufacturer = usb_dev->manufacturer;
+	serial = usb_dev->serial;
+
 	usb_dev->product = kstrdup("n/a (unauthorized)", GFP_KERNEL);
-	kfree(usb_dev->manufacturer);
 	usb_dev->manufacturer = kstrdup("n/a (unauthorized)", GFP_KERNEL);
-	kfree(usb_dev->serial);
 	usb_dev->serial = kstrdup("n/a (unauthorized)", GFP_KERNEL);
 
 	usb_destroy_configuration(usb_dev);
@@ -2015,6 +2021,12 @@ int usb_deauthorize_device(struct usb_device *usb_dev)
 
 out_unauthorized:
 	usb_unlock_device(usb_dev);
+	if (product || manufacturer || serial) {
+		synchronize_rcu();
+		kfree(product);
+		kfree(manufacturer);
+		kfree(serial);
+	}
 	return 0;
 }
 
@@ -2022,6 +2034,9 @@ out_unauthorized:
 int usb_authorize_device(struct usb_device *usb_dev)
 {
 	int result = 0, c;
+	char *product = NULL;
+	char *manufacturer = NULL;
+	char *serial = NULL;
 
 	usb_lock_device(usb_dev);
 	if (usb_dev->authorized == 1)
@@ -2040,11 +2055,12 @@ int usb_authorize_device(struct usb_device *usb_dev)
 		goto error_device_descriptor;
 	}
 
-	kfree(usb_dev->product);
+	product = usb_dev->product;
+	manufacturer = usb_dev->manufacturer;
+	serial = usb_dev->serial;
+	
 	usb_dev->product = NULL;
-	kfree(usb_dev->manufacturer);
 	usb_dev->manufacturer = NULL;
-	kfree(usb_dev->serial);
 	usb_dev->serial = NULL;
 
 	usb_dev->authorized = 1;
@@ -2072,6 +2088,12 @@ error_device_descriptor:
 error_autoresume:
 out_authorized:
 	usb_unlock_device(usb_dev);	// complements locktree
+	if (product || manufacturer || serial) {
+		synchronize_rcu();
+		kfree(product);
+		kfree(manufacturer);
+		kfree(serial);
+	}
 	return result;
 }
 

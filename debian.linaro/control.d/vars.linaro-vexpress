@@ -1,0 +1,8 @@
+arch="armel armhf"
+supported="ARM Versatile Express"
+desc="ARM Versatile Express with CortexA9x4 tile"
+target="CA9x4"
+bootloader="uboot-mkimage, flash-kernel"
+provides=""
+section_image="universe/base"
+do_debug="Yes"
