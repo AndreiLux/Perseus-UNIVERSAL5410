@@ -55,6 +55,66 @@
 			<&gpk0 6 2 3 3>;
 	};
 
+	lcd_fimd0: lcd_panel0 {
+		compatible = "lcd-powercontrol";
+		vcc-lcd-supply = <&buck7_reg>;
+		lcd-reset-gpio = <&gpe3 4 1 0 0>;
+		lcd-htiming = <64 16 48 1024>;
+		lcd-vtiming = <64 16 3 600>;
+	};
+
+	fimd@11C00000 {
+		samsung,fimd-display = <&lcd_fimd0>;
+		samsung,fimd-vidout-rgb;
+		samsung,fimd-inv-hsync;
+		samsung,fimd-inv-vsync;
+		samsung,fimd-inv-vclk;
+		samsung,fimd-frame-rate = <60>;
+
+		gpios = <&gpf0 0 2 0 0>,
+			<&gpf0 1 2 0 0>,
+			<&gpf0 2 2 0 0>,
+			<&gpf0 3 2 0 0>,
+			<&gpf0 4 2 0 0>,
+			<&gpf0 5 2 0 0>,
+			<&gpf0 6 2 0 0>,
+			<&gpf0 7 2 0 0>,
+			<&gpf1 0 2 0 0>,
+			<&gpf1 1 2 0 0>,
+			<&gpf1 2 2 0 0>,
+			<&gpf1 3 2 0 0>,
+			<&gpf1 4 2 0 0>,
+			<&gpf1 5 2 0 0>,
+			<&gpf1 6 2 0 0>,
+			<&gpf1 7 2 0 0>,
+			<&gpf2 0 2 0 0>,
+			<&gpf2 1 2 0 0>,
+			<&gpf2 2 2 0 0>,
+			<&gpf2 3 2 0 0>,
+			<&gpf2 4 2 0 0>,
+			<&gpf2 5 2 0 0>,
+			<&gpf2 6 2 0 0>,
+			<&gpf2 7 2 0 0>,
+			<&gpf3 0 2 0 0>,
+			<&gpf3 1 2 0 0>,
+			<&gpf3 2 2 0 0>,
+			<&gpf3 3 2 0 0>;
+
+		window0 {
+			samsung,fimd-win-id = <0>;
+			samsung,fimd-win-bpp = <32 24>;
+			samsung,fimd-win-res = <1024 600>;
+			samsung,fimd-win-vres = <1024 600>;
+		};
+
+		window1 {
+			samsung,fimd-win-id = <1>;
+			samsung,fimd-win-bpp = <32 24>;
+			samsung,fimd-win-res = <1024 600>;
+			samsung,fimd-win-vres = <1024 600>;
+		};
+	};
+
 	gpio_keys {
 		compatible = "gpio-keys";
 		#address-cells = <1>;
@@ -104,7 +164,89 @@
 	};
 
 	i2c@13860000 {
-		status = "disabled";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		samsung,i2c-sda-delay = <100>;
+		samsung,i2c-max-bus-freq = <20000>;
+		gpios = <&gpd1 0 2 3 0>,
+			<&gpd1 1 2 3 0>;
+
+		max8997_pmic@66 {
+			compatible = "maxim,max8997-pmic";
+			interrupt-parent = <&wakeup_eint>;
+			reg = <0x66>;
+			interrupts = <4 0>, <3 0>;
+
+			max8997,pmic-buck1-uses-gpio-dvs;
+			max8997,pmic-buck2-uses-gpio-dvs;
+			max8997,pmic-buck5-uses-gpio-dvs;
+			max8997,pmic-ignore-gpiodvs-side-effect;
+			max8997,pmic-buck125-default-dvs-idx = <0>;
+			max8997,pmic-buck125-dvs-gpios = <&gpx0 0 1 0 0>, /* SET1 */
+							 <&gpx0 1 1 0 0>, /* SET2 */
+							 <&gpx0 2 1 0 0>; /* SET3 */
+			max8997,pmic-buck1-dvs-voltage = <1350000>, <1300000>,
+							 <1250000>, <1200000>,
+							 <1150000>, <1100000>,
+							 <1000000>, <950000>;
+			max8997,pmic-buck2-dvs-voltage = <1100000>, <1100000>,
+							 <1100000>, <1100000>,
+							 <1000000>, <1000000>,
+							 <1000000>, <1000000>;
+			max8997,pmic-buck5-dvs-voltage = <1200000>, <1200000>,
+							 <1200000>, <1200000>,
+							 <1200000>, <1200000>,
+							 <1200000>, <1200000>;
+
+			regulators {
+				ldo1_reg: LDO1 {
+					regulator-name = "VDD_ABB_3.3V";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <3300000>;
+				};
+
+				ldo2_reg: LDO2 {
+					regulator-name = "VDD_ALIVE_1.1V";
+					regulator-min-microvolt = <1100000>;
+					regulator-max-microvolt = <1100000>;
+					regulator-always-on;
+				};
+
+				ldo3_reg: LDO3 {
+					regulator-name = "VMIPI_1.1V";
+					regulator-min-microvolt = <1100000>;
+					regulator-max-microvolt = <1100000>;
+				};
+
+				ldo4_reg: LDO4 {
+					regulator-name = "VDD_RTC_1.8V";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt	= <1800000>;
+					regulator-always-on;
+				};
+
+				ldo6_reg: LDO6 {
+					regulator-name = "VMIPI_1.8V";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt	= <1800000>;
+					regulator-always-on;
+				};
+
+				ldo7_reg: LDO7 {
+					regulator-name = "VDD_AUD_1.8V";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt	= <1800000>;
+					regulator-always-on;
+				};
+
+				buck7_reg: BUCK7 {
+					regulator-name = "VDD_LCD_3.3V";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <3300000>;
+					regulator-boot-on;
+				};
+			};
+		};
 	};
 
 	i2c@13870000 {
