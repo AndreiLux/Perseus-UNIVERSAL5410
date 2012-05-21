@@ -273,6 +273,9 @@ static struct vm_area_struct *vb2_dc_get_user_vma(
 static int vb2_dc_get_user_pages(unsigned long start, struct page **pages,
 	int n_pages, struct vm_area_struct *vma, int write)
 {
+	if (vma->vm_mm == NULL)
+		vma->vm_mm = current->mm;
+
 	if (vma_is_io(vma)) {
 		unsigned int i;
 
