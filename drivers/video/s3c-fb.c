@@ -1147,26 +1147,30 @@ static irqreturn_t s3c_fb_irq(int irq, void *dev_id)
 /**
  * s3c_fb_wait_for_vsync() - sleep until next VSYNC interrupt or timeout
  * @sfb: main hardware state
- * @crtc: head index.
+ * @timeout: timeout in msecs, or 0 to wait indefinitely.
  */
-static int s3c_fb_wait_for_vsync(struct s3c_fb *sfb, u32 crtc)
+static int s3c_fb_wait_for_vsync(struct s3c_fb *sfb, u32 timeout)
 {
 	ktime_t timestamp;
 	int ret;
 
-	if (crtc != 0)
-		return -ENODEV;
-
 	pm_runtime_get_sync(sfb->dev);
 
 	timestamp = sfb->vsync_info.timestamp;
-	ret = wait_event_interruptible_timeout(sfb->vsync_info.wait,
-			!ktime_equal(timestamp, sfb->vsync_info.timestamp),
-			msecs_to_jiffies(VSYNC_TIMEOUT_MSEC));
+	if (timeout) {
+		ret = wait_event_interruptible_timeout(sfb->vsync_info.wait,
+				!ktime_equal(timestamp,
+						sfb->vsync_info.timestamp),
+				msecs_to_jiffies(timeout));
+	} else {
+		ret = wait_event_interruptible(sfb->vsync_info.wait,
+				!ktime_equal(timestamp,
+						sfb->vsync_info.timestamp));
+	}
 
 	pm_runtime_put_sync(sfb->dev);
 
-	if (ret == 0)
+	if (timeout && ret == 0)
 		return -ETIMEDOUT;
 
 	return 0;
@@ -1350,7 +1354,11 @@ static int s3c_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			break;
 		}
 
-		ret = s3c_fb_wait_for_vsync(sfb, crtc);
+		if (crtc == 0)
+			ret = s3c_fb_wait_for_vsync(sfb, VSYNC_TIMEOUT_MSEC);
+		else
+			ret = -ENODEV;
+
 		break;
 
 	case S3CFB_WIN_POSITION:
@@ -2241,7 +2249,7 @@ static int s3c_fb_sd_wb_s_stream(struct v4l2_subdev *sd_wb, int enable)
 		vidcon2 |= VIDCON2_WB_DISABLE;
 	}
 
-	ret = s3c_fb_wait_for_vsync(sfb, 0);
+	ret = s3c_fb_wait_for_vsync(sfb, VSYNC_TIMEOUT_MSEC);
 	if (ret) {
 		dev_err(sfb->dev, "wait timeout(writeback) : %s\n", __func__);
 		return ret;
