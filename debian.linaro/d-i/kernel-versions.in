@@ -1,0 +1,9 @@
+# arch	version		flavour		installedname			suffix	bdep
+armel	PKGVER-ABINUM	linaro-omap	PKGVER-ABINUM-linaro-omap	-
+armhf	PKGVER-ABINUM	linaro-omap	PKGVER-ABINUM-linaro-omap	-
+armel	PKGVER-ABINUM	linaro-vexpress	PKGVER-ABINUM-linaro-vexpress	-
+armhf	PKGVER-ABINUM	linaro-vexpress	PKGVER-ABINUM-linaro-vexpress	-
+armel	PKGVER-ABINUM	linaro-exynos	PKGVER-ABINUM-linaro-exynos	-
+armhf	PKGVER-ABINUM	linaro-exynos	PKGVER-ABINUM-linaro-exynos	-
+armel	PKGVER-ABINUM	linaro-u8500	PKGVER-ABINUM-linaro-u8500	-
+armhf	PKGVER-ABINUM	linaro-u8500	PKGVER-ABINUM-linaro-u8500	-

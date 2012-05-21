@@ -1,0 +1,97 @@
+#
+# SECURITY items
+#
+# Ensure this option is enabled.
+value CONFIG_COMPAT_BRK n
+value CONFIG_DEVKMEM n
+value CONFIG_LSM_MMAP_MIN_ADDR 0
+value CONFIG_SECURITY y
+!exists CONFIG_SECURITY_FILE_CAPABILITIES | value CONFIG_SECURITY_FILE_CAPABILITIES y
+value CONFIG_SECURITY_SELINUX y
+value CONFIG_SECURITY_SMACK y
+value CONFIG_SECURITY_YAMA y
+value CONFIG_SYN_COOKIES y
+value CONFIG_DEFAULT_SECURITY_APPARMOR y
+# For architectures which support this option ensure it is enabled.
+!exists CONFIG_SECCOMP | value CONFIG_SECCOMP y
+!exists CONFIG_CC_STACKPROTECTOR | value CONFIG_CC_STACKPROTECTOR y
+!exists CONFIG_DEBUG_RODATA | value CONFIG_DEBUG_RODATA y
+!exists CONFIG_STRICT_DEVMEM | value CONFIG_STRICT_DEVMEM y
+# For architectures which support this option ensure it is disabled.
+!exists CONFIG_COMPAT_VDSO | value CONFIG_COMPAT_VDSO n
+# Default to 32768 for armel, 65536 for everything else.
+( arch armel armhf & value CONFIG_DEFAULT_MMAP_MIN_ADDR 32768 ) | \
+	( value CONFIG_DEFAULT_MMAP_MIN_ADDR 65536)
+
+# CONFIG_USB_DEVICE_FS breaks udev USB firmware loading and is deprecated
+# ensure it is disabled.
+value CONFIG_USB_DEVICEFS n
+
+# upstart requires DEVTMPFS be enabled and mounted by default.
+value CONFIG_DEVTMPFS y
+value CONFIG_DEVTMPFS_MOUNT y
+
+# some /dev nodes require POSIX ACLs, like /dev/dsp
+value CONFIG_TMPFS_POSIX_ACL y
+
+# Ramdisk size should be a minimum of 64M
+value CONFIG_BLK_DEV_RAM_SIZE 65536
+
+# LVM requires dm_mod built in to activate correctly (LP: #560717)
+value CONFIG_BLK_DEV_DM y
+
+# sysfs: ensure all DEPRECATED items are off
+!exists CONFIG_SYSFS_DEPRECATED_V2 | value CONFIG_SYSFS_DEPRECATED_V2 n
+!exists CONFIG_SYSFS_DEPRECATED | value CONFIG_SYSFS_DEPRECATED n
+
+# automatically add local version will cause packaging failure
+value CONFIG_LOCALVERSION_AUTO n
+
+# provide framebuffer console form the start
+# UbuntuSpec:foundations-m-grub2-boot-framebuffer
+value CONFIG_FRAMEBUFFER_CONSOLE y
+
+# GRUB changes will rely on built in vesafb on x86,
+# UbuntuSpec:foundations-m-grub2-boot-framebuffer
+(( arch i386 | arch amd64 ) & value CONFIG_FB_VESA y) | \
+	value CONFIG_FB_VESA m | !exists CONFIG_FB_VESA
+
+# Build in uinput module so that it's always available (LP: 584812)
+value CONFIG_INPUT_UINPUT y
+
+# upstart relies on getting all of the kernel arguments
+value CONFIG_INIT_PASS_ALL_PARAMS y
+
+# Enabling CONFIG_IMA is vastly expensive, ensure it is off
+value CONFIG_IMA n
+
+# Ensure CONFIG_INTEL_IDLE is turned off for -virtual.
+!exists CONFIG_INTEL_IDLE | \
+	(flavour virtual & value CONFIG_INTEL_IDLE n) | \
+	value CONFIG_INTEL_IDLE y
+
+# Ensure CONFIG_IPV6 is y, if this is a module we get a module load for
+# every ipv6 packet, bad.
+value CONFIG_IPV6 y
+
+value CONFIG_PRINTK_TIME y
+
+# LINARO kernels should be able to boot with a BTRFS rootfs without an initrd
+value CONFIG_BTRFS_FS y
+value CONFIG_LIBCRC32C y
+
+# LINARO kernels should have TIMER_STATS on (LP: 718677)
+value CONFIG_TIMER_STATS y
+
+# LINARO kernels should have basic profiling and tracing options on (LP: 764796)
+value CONFIG_PROFILING y
+value CONFIG_PERF_EVENTS y
+value CONFIG_HW_PERF_EVENTS y
+value CONFIG_FTRACE y
+value CONFIG_ENABLE_DEFAULT_TRACERS y | value CONFIG_GENERIC_TRACER y
+value CONFIG_HIGH_RES_TIMERS y
+
+# LINARO kernels should be able to boot with any EXT rootfs without an initrd
+value CONFIG_EXT2_FS y
+value CONFIG_EXT3_FS y
+value CONFIG_EXT4_FS y

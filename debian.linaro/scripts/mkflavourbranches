@@ -1,0 +1,135 @@
+#!/bin/bash
+#set -x
+#set -e
+
+DEBIAN=debian.linaro
+source_pkg_name=$(dpkg-parsechangelog -l${DEBIAN}/changelog|grep Source|sed 's/^.*Source: //')
+source_pkg_version=$(dpkg-parsechangelog -l${DEBIAN}/changelog|grep Version|sed 's/^.*Version: //')
+common_flavour_prefix=linaro
+
+git_tag_cmd="git tag -s"
+test -n "$NO_TAG_SIGN" && git_tag_cmd="git tag "
+
+
+function fail {
+    echo $1
+    exit -1
+}
+
+function checkclean {
+    status=$(git status -s)
+    test -z "$status" || fail "Only run this script in a clean repo"
+}
+
+function setup_working_branch {
+    hoser=$(git branch -a | grep "  $1$")
+    test -z "$hoser" || fail "$1 already exists"
+    git checkout -b $1
+}
+
+function cleanup {
+    git reset --hard  HEAD
+    git clean -d -f -x
+}
+
+flavours=(shared ${DEBIAN}/control.d/vars.*)
+flavours=(${flavours[*]##*vars.${common_flavour_prefix}-})
+sharedflavour=${flavours[0]}
+
+function do_flavour_branches {
+    for flavour in ${flavours[*]}; do
+        echo sharedflavour is $sharedflavour
+        echo flavour is $flavour
+        otherflavours=(${flavours[*]##$flavour})
+        echo otherflavours are ${otherflavours[*]}
+
+        single_flavour_branch=${working_branch}-$flavour-only
+        git branch -f $single_flavour_branch HEAD
+        git checkout $single_flavour_branch
+
+	suffix=""
+	test "$ubv" && suffix="-$ubv"
+
+        sed -i -e "s/^${source_pkg_name}/${source_pkg_name}-$flavour$suffix/" ${DEBIAN}/changelog
+        git add ${DEBIAN}/changelog
+
+	for arm in armel armhf; do
+	    for otherflavour in ${otherflavours[*]}; do
+		git rm ${DEBIAN}/config/${arm}/config.flavour.${common_flavour_prefix}-$otherflavour
+		git rm ${DEBIAN}/control.d/vars.${common_flavour_prefix}-$otherflavour
+		sed -i -e "/${common_flavour_prefix}-$otherflavour/d" ${DEBIAN}/d-i/kernel-versions.in
+		git add ${DEBIAN}/d-i/kernel-versions.in
+		sed -i -e "s/${common_flavour_prefix}-$otherflavour//" ${DEBIAN}/rules.d/${arm}.mk
+		if [ "$flavour" = "$sharedflavour" ]; then
+		    # shared is where arch headers and tools debs are made
+		    sed -i -e "s/do_common_headers_indep.*=.*/do_common_headers_indep = false/" ${DEBIAN}/rules.d/${arm}.mk
+		    sed -i -e "s/do_tools.*=.*/do_tools = true/" ${DEBIAN}/rules.d/${arm}.mk
+		else
+		    sed -i -e "s/do_common_headers_indep.*=.*/do_common_headers_indep = true/" ${DEBIAN}/rules.d/${arm}.mk
+		    sed -i -e "s/do_tools.*=.*/do_tools = false/" ${DEBIAN}/rules.d/${arm}.mk
+		fi
+		git add ${DEBIAN}/rules.d/${arm}.mk
+	    done
+	done
+
+	for arm in armel armhf; do
+	    git status
+	    if [ "$flavour" != "$sharedflavour" ]; then
+		fakeroot ./debian/rules clean
+		fakeroot ./debian/rules updateconfigs
+		cat >> debian.linaro/config/${arm}/config.flavour.${common_flavour_prefix}-$flavour << END
+#
+# Single flavour kernel packages have no flavour dependent config options
+# look in ../config.common.ubuntu for full config
+#
+END
+		cat >> debian.linaro/config/${arm}/config.common.${arm} << END
+#
+# Single flavour kernel packages have no arch dependent config options
+# look in ../config.common.ubuntu for full config
+#
+END
+		git commit -s -m "LINARO: Cleanup configs after removing other flavours" debian.linaro/config
+	    fi
+	done
+        git commit -s -m "LINARO: Linaro-${source_pkg_version} $flavour only"
+        tagname="Linaro-${source_pkg_version}-${flavour}-only"
+	tagname=$(echo $tagname | sed 's/~/-/g')
+        $git_tag_cmd -f -m "$tagname" $tagname HEAD
+
+        git push $remote_push -f HEAD:$flavour-only
+        git push $remote_push -f $tagname
+
+        git reset --hard HEAD
+        git checkout $working_branch
+
+        cleanup
+    done
+}
+
+test $# -eq 1 || fail "must provide a pushable remote"
+
+working_branch="tbranch$(dd 2>/dev/null if=/dev/urandom bs=10 count=1 | od -X | awk '{ print $2 }')"
+echo Using $working_branch as working branch name
+
+remote_push=$1
+
+orig_branch=$(git symbolic-ref HEAD 2>/dev/null)
+orig_branch=${orig_branch##refs/heads/}
+
+checkclean
+
+setup_working_branch $working_branch
+
+git push $remote_push -f $working_branch:master
+tagname="Linaro-${source_pkg_version}"
+tagname=$(echo $tagname | sed 's/~/-/g')
+$git_tag_cmd -f -m "$tagname" $tagname HEAD
+git push $remote_push -f $tagname
+
+do_flavour_branches
+
+git checkout $orig_branch
+git branch -D $working_branch
+
+cleanup

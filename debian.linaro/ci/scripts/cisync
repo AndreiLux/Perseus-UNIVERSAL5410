@@ -1,0 +1,33 @@
+#!/bin/bash
+set -x
+set -e
+
+. debian/debian.env
+
+git clean -d -f -x
+git reset --hard HEAD
+fakeroot debian/rules clean
+
+commit_msg="sync with $(git log --oneline -1)"
+prev_revision=$(fakeroot debian/rules printenv \
+	| grep ^prev_revision[^s] \
+	| awk '{print $3}')
+
+dch -i -c $DEBIAN/changelog $commit_msg
+sed -i -e "1 s/~.*ubuntu1//" $DEBIAN/changelog
+
+release=$(fakeroot debian/rules printenv | grep ^release | awk '{print $3}')
+ci_revision=$(fakeroot debian/rules printenv | grep ^prev_revision[^s] | awk '{print $3}')
+revision=$(fakeroot debian/rules printenv | grep ^revision[^s] | awk '{print $3}')
+abiname=$(echo $revision | awk -F. '{print $1}')
+
+./debian/scripts/misc/getabis $release $ci_revision
+
+git rm -r $DEBIAN/abi/$release-$prev_revision
+
+git add $DEBIAN/abi/$release-$ci_revision
+git add $DEBIAN/changelog
+
+git commit -s -m "LINARO: $commit_msg"
+
+exit 0
