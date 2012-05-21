@@ -417,6 +417,11 @@ static struct sys_timer mx51_babbage_timer = {
 	.init = mx51_babbage_timer_init,
 };
 
+static const char *mx51_babbage_dt_match[] __initdata = {
+	"fsl,mx51-babbage",
+	NULL
+};
+
 MACHINE_START(MX51_BABBAGE, "Freescale MX51 Babbage Board")
 	/* Maintainer: Amit Kucheria <amit.kucheria@canonical.com> */
 	.atag_offset = 0x100,
@@ -427,4 +432,5 @@ MACHINE_START(MX51_BABBAGE, "Freescale MX51 Babbage Board")
 	.timer = &mx51_babbage_timer,
 	.init_machine = mx51_babbage_init,
 	.restart	= mxc_restart,
+	.dt_compat = mx51_babbage_dt_match,
 MACHINE_END
