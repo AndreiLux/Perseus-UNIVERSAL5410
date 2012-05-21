@@ -1,0 +1,95 @@
+#!/bin/bash
+
+. debian/debian.env
+
+if [ "$#" != "2" ]; then
+	echo "Usage: $0 <release> <revision>" 1>&2
+	exit 1
+fi
+
+ver=$1
+revision=$2
+abi=$(echo $revision | awk -F. '{print $1}')
+
+verabi=$ver-$abi
+verfull=$ver-$revision
+
+WGET="wget --quiet -c"
+
+abidir="`pwd`/$DEBIAN/abi/$verfull"
+tmpdir="`pwd`/abi-tmp-$verfull"
+origdir="`pwd`"
+
+test -d $tmpdir || mkdir $tmpdir
+
+getall() {
+	arch=$1
+	shift
+
+	mkdir -p $abidir/$arch
+
+	for sub in $@; do
+		if [ -f $abidir/$arch/$sub ]; then
+			echo "Exists: $sub"
+			continue
+		fi
+		echo -n "Fetching $sub..."
+		filename=linux-image-${verabi}-${sub}_${verfull}_${arch}.deb
+		cd $tmpdir
+		for r in "${repo_list[@]}"
+		do
+			if ! [ -f $filename ]; then
+				$WGET $r/$filename
+			fi
+		done
+		if [ "$?" = "0" ]; then
+			echo -n "extracting..."
+			dpkg-deb --extract $filename tmp
+			if [ -f tmp/boot/abi-* ]; then
+				mv tmp/boot/abi-* $abidir/$arch/$sub
+			else
+				echo -n "NO ABI FILE..."
+			fi
+			(cd tmp; find lib/modules/$verabi-$sub/kernel -name '*.ko') | \
+				sed -e 's/.*\/\([^\/]*\)\.ko/\1/' | sort > \
+				$abidir/$arch/$sub.modules
+			(
+				cd tmp;
+				ko=`find lib/modules/$verabi-$sub/kernel -name '*.ko' | head -1`
+				readelf -p .comment "$ko" | awk '
+					($1 == "[") {
+						printf("%s", $3);
+						for (n=4; n<=NF; n++) {
+							printf(" %s", $n);
+						}
+						print ""
+					}' | sort -u >$abidir/$arch/$sub.compiler
+				version=`cat $abidir/$arch/$sub.compiler`
+				echo -n "$version..."
+			)
+			rm -rf tmp $filename
+			echo "done."
+		else
+			echo "FAILED."
+		fi
+		cd $origdir
+	done
+}
+
+# MAIN
+
+# Setup abi directory
+mkdir -p $abidir
+echo $abi > $abidir/abiname
+
+# NOTE: The flavours are hardcoded, because they may have changed from the
+# current build.
+
+. $DEBIAN/etc/getabis
+
+compilers=`cat $abidir/*/*.compiler | sort -u | wc -l`
+if [ "$compilers" != 1 ]; then
+	echo "WARNING: inconsistant compiler versions detected" 1>&2
+fi
+
+rmdir $tmpdir

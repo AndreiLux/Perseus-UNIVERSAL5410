@@ -1,0 +1,6 @@
+arch="i386"
+supported="Generic"
+target="Geared toward 32 bit i386 systems with CPU PAE support."
+desc="=HUMAN= SMP"
+bootloader="grub-pc | grub | lilo (>= 19.1)"
+provides="kvm-api-4, redhat-cluster-modules, ivtv-modules, ndiswrapper-modules-1.9"
