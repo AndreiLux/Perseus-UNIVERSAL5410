@@ -166,6 +166,7 @@ extern unsigned int __mxc_cpu_type;
 
 struct cpu_op {
 	u32 cpu_rate;
+	int cpu_voltage;
 };
 
 int tzic_enable_wake(void);
