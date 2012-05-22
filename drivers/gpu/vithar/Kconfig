@@ -18,6 +18,13 @@ config VITHAR_DVFS
 	help
 	  Choose this option to enable DVFS on vithar DDK.
 
+config VITHAR_DEMAND_POLICY
+	bool "Enable demand power policy by default"
+	depends on VITHAR
+	default n
+	help
+	  Sets the default power policy to "demand"
+
 config VITHAR_ENABLE_DS5
 	bool "Enable DS5"
 	depends on VITHAR
