@@ -21,6 +21,7 @@
 
 #ifndef _LINUX_EXYNOS4_TMU_H
 #define _LINUX_EXYNOS4_TMU_H
+#include <linux/cpu_cooling.h>
 
 enum calibration_type {
 	TYPE_ONE_POINT_TRIMMING,
@@ -64,6 +65,9 @@ enum calibration_type {
  *	in the positive-TC generator block
  *	0 <= reference_voltage <= 31
  * @cal_type: calibration type for temperature
+ * @freq_clip_table: Table representing frequency reduction percentage.
+ * @freq_tab_count: Count of the above table as frequency reduction may
+ *	applicable to only some of the trigger levels.
  *
  * This structure is required for configuration of exynos4_tmu driver.
  */
@@ -79,5 +83,8 @@ struct exynos4_tmu_platform_data {
 	u8 reference_voltage;
 
 	enum calibration_type cal_type;
+
+	struct freq_clip_table freq_tab[4];
+	unsigned int freq_tab_count;
 };
 #endif /* _LINUX_EXYNOS4_TMU_H */
