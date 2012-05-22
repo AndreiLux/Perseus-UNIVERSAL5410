@@ -1,0 +1,48 @@
+commit 5682113d637f133163ad226b9bb70fcc2801ae34
+Author: Tushar Behera <tushar.behera@linaro.org>
+
+    gpu: mali/ump: Set default selection option to 'n'
+
+diff --git a/drivers/gpu/arm/mali/Kconfig b/drivers/gpu/arm/mali/Kconfig
+index 416c231..1404f59 100644
+--- a/drivers/gpu/arm/mali/Kconfig
++++ b/drivers/gpu/arm/mali/Kconfig
+@@ -1,6 +1,6 @@
+ config MALI400MP
+         bool "Enable MALI integration"
+-        default y
++        default n
+         ---help---
+                 This enables MALI 3D graphics driver. Required to use hardware accelerated OpenGL ES 2.0 and 1.1.
+ 
+diff --git a/drivers/gpu/arm/ump/Kconfig b/drivers/gpu/arm/ump/Kconfig
+index db7b45b..62f1cec 100644
+--- a/drivers/gpu/arm/ump/Kconfig
++++ b/drivers/gpu/arm/ump/Kconfig
+@@ -1,6 +1,6 @@
+ config UMP
+         bool "Enable UMP(Unified Memory Provider)"
+-        default y
++        default n
+ 	---help---
+ 		This enables UMP memory provider
+ 
+commit 0451268778c13c6eee96fa1654c512de75483323
+Author: Tushar Behera <tushar.behera@linaro.org>
+
+    configs: origen: Enable MALI and UMP
+
+diff --git a/configs/origen.conf b/configs/origen.conf
+index 28789c5..29de32d 100644
+--- a/configs/origen.conf
++++ b/configs/origen.conf
+@@ -70,7 +70,9 @@ CONFIG_V4L_MEM2MEM_DRIVERS=y
+ CONFIG_VIDEO_SAMSUNG_S5P_G2D=y
+ CONFIG_VIDEO_SAMSUNG_S5P_JPEG=y
+ CONFIG_VIDEO_SAMSUNG_S5P_MFC=y
++CONFIG_MALI400MP=y
+ CONFIG_USING_PMM=y
++CONFIG_UMP=y
+ CONFIG_FB=y
+ CONFIG_FB_S3C=y
+ CONFIG_BACKLIGHT_LCD_SUPPORT=y

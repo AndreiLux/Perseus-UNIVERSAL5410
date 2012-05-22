@@ -1,0 +1,13 @@
+dm-crypt ?
+dm-zero ?
+faulty ?
+linear ?
+multipath ?
+raid0 ?
+raid1 ?
+raid10 ?
+raid456 ?
+
+# Extras
+dm-raid4-5 ?
+dm-loop ?

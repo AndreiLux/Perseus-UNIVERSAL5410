@@ -561,6 +561,12 @@ static unsigned char swap_entry_free(struct swap_info_struct *p,
 			disk->fops->swap_slot_free_notify(p->bdev, offset);
 	}
 
+	if (!swap_count(count)) {
+		mem_cgroup_uncharge_swap(entry);
+			if (p->notify_swap_entry_free_fn)
+				p->notify_swap_entry_free_fn(offset);
+	}
+
 	return usage;
 }
 
@@ -2291,6 +2297,23 @@ int swapcache_prepare(swp_entry_t entry)
 {
 	return __swap_duplicate(entry, SWAP_HAS_CACHE);
 }
+
+/*
+ * Sets callback for event when swap_map[offset] == 0
+ * i.e. page at this swap offset is not longer used.
+ *
+ * type: identifies swap file
+ * fn: callback function
+ */
+void set_notify_swap_entry_free(unsigned type, void (*fn) (unsigned long))
+{
+	struct swap_info_struct *sis;
+	sis = swap_info[type];
+	BUG_ON(!sis);
+	sis->notify_swap_entry_free_fn = fn;
+	return;
+}
+EXPORT_SYMBOL(set_notify_swap_entry_free);
 
 /*
  * add_swap_count_continuation - called when a swap count is duplicated

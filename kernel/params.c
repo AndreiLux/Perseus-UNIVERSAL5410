@@ -89,7 +89,7 @@ static int parse_one(char *param,
 		     unsigned num_params,
 		     s16 min_level,
 		     s16 max_level,
-		     int (*handle_unknown)(char *param, char *val))
+		     int (*handle_arg)(char *param, char *val, int known))
 {
 	unsigned int i;
 	int err;
@@ -104,6 +104,14 @@ static int parse_one(char *param,
 			if (!val && params[i].ops->set != param_set_bool
 			    && params[i].ops->set != param_set_bint)
 				return -EINVAL;
+			if (handle_arg) {
+				int ret;
+				pr_debug("Valid argument: calling %p\n",
+				       handle_arg);
+				ret = handle_arg(param, val, 1);
+				if (ret)
+					return ret;
+			}
 			pr_debug("They are equal!  Calling %p\n",
 			       params[i].ops->set);
 			mutex_lock(&param_lock);
@@ -113,9 +121,9 @@ static int parse_one(char *param,
 		}
 	}
 
-	if (handle_unknown) {
-		pr_debug("Unknown argument: calling %p\n", handle_unknown);
-		return handle_unknown(param, val);
+	if (handle_arg) {
+		pr_debug("Unknown argument: calling %p\n", handle_arg);
+		return handle_arg(param, val, 0);
 	}
 
 	pr_debug("Unknown argument `%s'\n", param);
@@ -181,7 +189,7 @@ int parse_args(const char *name,
 	       unsigned num,
 	       s16 min_level,
 	       s16 max_level,
-	       int (*unknown)(char *param, char *val))
+	       int (*handle_arg)(char *param, char *val, int arg))
 {
 	char *param, *val;
 
@@ -197,7 +205,7 @@ int parse_args(const char *name,
 		args = next_arg(args, &param, &val);
 		irq_was_disabled = irqs_disabled();
 		ret = parse_one(param, val, params, num,
-				min_level, max_level, unknown);
+				min_level, max_level, handle_arg);
 		if (irq_was_disabled && !irqs_disabled()) {
 			printk(KERN_WARNING "parse_args(): option '%s' enabled "
 					"irq's!\n", param);

@@ -73,6 +73,7 @@
 #define do_div(n, base)							\
 ({									\
 	unsigned int __r, __b = (base);					\
+	asm("" : "+r" (__b));						\
 	if (!__builtin_constant_p(__b) || __b == 0 ||			\
 	    (__LINUX_ARM_ARCH__ < 4 && (__b & (__b - 1)) != 0)) {	\
 		/* non-constant divisor (or zero): slow path */		\
