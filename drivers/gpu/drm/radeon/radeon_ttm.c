@@ -614,9 +614,16 @@ static int radeon_ttm_tt_populate(struct ttm_tt *ttm)
 	struct radeon_ttm_tt *gtt = (void *)ttm;
 	unsigned i;
 	int r;
+	bool slave = !!(ttm->page_flags & TTM_PAGE_FLAG_SG);
 
 	if (ttm->state != tt_unpopulated)
 		return 0;
+
+	/* SG has pages already in correct space */
+	if (slave && ttm->sg) {
+		ttm->state = tt_unbound;
+		return 0;
+	}
 
 	rdev = radeon_get_rdev(ttm->bdev);
 #if __OS_HAS_AGP
@@ -658,6 +665,12 @@ static void radeon_ttm_tt_unpopulate(struct ttm_tt *ttm)
 	struct radeon_device *rdev;
 	struct radeon_ttm_tt *gtt = (void *)ttm;
 	unsigned i;
+	bool slave = !!(ttm->page_flags & TTM_PAGE_FLAG_SG);
+
+	if (slave) {
+		ttm->state = tt_unpopulated;
+		return;
+	}
 
 	rdev = radeon_get_rdev(ttm->bdev);
 #if __OS_HAS_AGP
