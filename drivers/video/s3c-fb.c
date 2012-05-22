@@ -668,16 +668,6 @@ static int s3c_fb_set_par(struct fb_info *info)
 		data |= VIDCON0_ENVID | VIDCON0_ENVID_F;
 		writel(data, regs + VIDCON0);
 
-		/*
-		 * HACK: force swap R & B in the pixel order. 0x4 is
-		 * technically BGR, and the default in RGB, so we reverse
-		 * them here. This due to a broken egl in current mali DDK
-		 */
-		data = readl(regs + VIDCON2);
-		data &= ~(VIDCON2_RGB_ORDER_E_MASK | VIDCON2_RGB_ORDER_O_MASK);
-		data |= VIDCON2_RGB_ORDER_E(0x4) | VIDCON2_RGB_ORDER_O(0x4);
-		writel(data, regs + VIDCON2);
-
 		data = VIDTCON0_VBPD(var->upper_margin - 1) |
 		       VIDTCON0_VFPD(var->lower_margin - 1) |
 		       VIDTCON0_VSPW(var->vsync_len - 1);

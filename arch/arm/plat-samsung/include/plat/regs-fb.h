@@ -110,10 +110,6 @@
 
 #define VIDCON2					(0x08)
 #define VIDCON2_EN601				(1 << 23)
-#define VIDCON2_RGB_ORDER_E_MASK	(0x7 << 19)
-#define VIDCON2_RGB_ORDER_E(_x)		((_x) << 19)
-#define VIDCON2_RGB_ORDER_O_MASK	(0x7 << 16)
-#define VIDCON2_RGB_ORDER_O(_x)		((_x) << 16)
 #define VIDCON2_WB_DISABLE		(0 << 15)
 #define VIDCON2_WB_ENABLE		(1 << 15)
 #define VIDCON2_WB_MASK			(1 << 15)
