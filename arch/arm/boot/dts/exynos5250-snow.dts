@@ -13,12 +13,10 @@
 
 / {
 	model = "Google Snow";
-	compatible = "google,snow", "google,daisy", "samsung,smdk5250", "samsung,exynos5250";
+	compatible = "google,snow", "google,daisy", "samsung,smdk5250",
+		"samsung,exynos5250";
 
-	memory {
-		reg = <0x40000000 0x80000000>;
-	};
-
-	chosen {
+	mipi {
+		status = "disabled";
 	};
 };
