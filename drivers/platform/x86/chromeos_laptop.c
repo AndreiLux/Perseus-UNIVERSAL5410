@@ -24,6 +24,7 @@
 #include <linux/i2c/atmel_mxt_ts.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
+#include <linux/platform_device.h>
 #include "chromeos_laptop.h"
 
 #define ATMEL_TP_I2C_ADDR	0x4b
@@ -394,6 +395,23 @@ static int setup_tsl2563_als(const struct dmi_system_id *id)
 	return 0;
 }
 
+static struct platform_device *kb_backlight_device;
+
+static int setup_keyboard_backlight(const struct dmi_system_id *id)
+{
+	/* add keyboard backlight */
+	int err = 0;
+	kb_backlight_device =
+		platform_device_register_simple("chromeos-keyboard-backlight",
+						-1, NULL, 0);
+	if (IS_ERR(kb_backlight_device)) {
+		pr_warn("Error registering Chrome OS keyboard backlight device"
+			);
+		kb_backlight_device = NULL;
+	}
+	return 0;
+}
+
 static const struct dmi_system_id chromeos_laptop_dmi_table[] = {
 	{
 		.ident = "Lumpy - Touchpads",
@@ -451,6 +469,13 @@ static const struct dmi_system_id chromeos_laptop_dmi_table[] = {
 		},
 		.callback = setup_tsl2563_als,
 	},
+	{
+		.ident = "Link - Keyboard backlight",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Link"),
+		},
+		.callback = setup_keyboard_backlight,
+	},
 	{ }
 };
 
@@ -476,6 +501,10 @@ static void __exit chromeos_laptop_exit(void)
 	if (tp2) {
 		i2c_unregister_device(tp2);
 		tp2 = NULL;
+	}
+	if (kb_backlight_device) {
+		platform_device_unregister(kb_backlight_device);
+		kb_backlight_device = NULL;
 	}
 }
 
