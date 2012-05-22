@@ -292,9 +292,19 @@ static bool ath_complete_reset(struct ath_softc *sc, bool start)
 	ath9k_hw_set_interrupts(ah);
 	ath9k_hw_enable_interrupts(ah);
 
-	if (!(sc->sc_flags & (SC_OP_OFFCHANNEL)) && start) {
-		if (sc->sc_flags & SC_OP_BEACONS)
-			ath_set_beacon(sc);
+	if (!(sc->sc_flags & SC_OP_OFFCHANNEL) && start) {
+		if (sc->sc_flags & SC_OP_BEACONS) {
+			if (ah->opmode == NL80211_IFTYPE_AP) {
+				ath_set_beacon(sc);
+			} else if (ah->opmode == NL80211_IFTYPE_ADHOC) {
+				sc->ps_flags |= PS_BEACON_SYNC |
+						PS_WAIT_FOR_BEACON;
+				ath_set_beacon(sc);
+			} else {
+				sc->ps_flags |= PS_BEACON_SYNC |
+						PS_WAIT_FOR_BEACON;
+			}
+		}
 
 		ieee80211_queue_delayed_work(sc->hw, &sc->tx_complete_work, 0);
 		ieee80211_queue_delayed_work(sc->hw, &sc->hw_pll_work, HZ/2);
@@ -2314,6 +2324,7 @@ static void ath9k_bss_info_changed(struct ieee80211_hw *hw,
 		ath9k_hw_write_associd(sc->sc_ah);
 
 		if (bss_conf->ibss_joined) {
+			ath_dbg(common, CONFIG, "Joined an IBSS network\n");
 			sc->sc_ah->stats.avgbrssi = ATH_RSSI_DUMMY_MARKER;
 
 			if (!common->disable_ani) {
@@ -2324,6 +2335,8 @@ static void ath9k_bss_info_changed(struct ieee80211_hw *hw,
 		} else {
 			sc->sc_flags &= ~SC_OP_ANI_RUN;
 			del_timer_sync(&common->ani.timer);
+			ath_dbg(common, CONFIG,
+				"Not joined to any IBSS network\n");
 		}
 	}
 
@@ -2341,10 +2354,14 @@ static void ath9k_bss_info_changed(struct ieee80211_hw *hw,
 	     (changed & BSS_CHANGED_BEACON_ENABLED) ||
 	     (changed & BSS_CHANGED_BEACON_INT))) {
 		ath9k_set_beaconing_status(sc, false);
-		if (bss_conf->enable_beacon)
+		if (bss_conf->enable_beacon) {
 			ath_beacon_alloc(sc, vif);
-		else
+			if (vif->type == NL80211_IFTYPE_ADHOC)
+				sc->ps_flags |= PS_BEACON_SYNC |
+						PS_WAIT_FOR_BEACON;
+		} else {
 			avp->is_bslot_active = false;
+		}
 		ath_beacon_config(sc, vif);
 		ath9k_set_beaconing_status(sc, true);
 	}
