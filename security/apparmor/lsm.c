@@ -35,6 +35,7 @@
 #include "include/path.h"
 #include "include/policy.h"
 #include "include/procattr.h"
+#include "include/mount.h"
 
 /* Flag indicating whether initialization completed */
 int apparmor_initialized __initdata;
@@ -503,6 +504,60 @@ static int apparmor_file_mprotect(struct vm_area_struct *vma,
 			   !(vma->vm_flags & VM_SHARED) ? MAP_PRIVATE : 0);
 }
 
+static int apparmor_sb_mount(char *dev_name, struct path *path, char *type,
+			     unsigned long flags, void *data)
+{
+	struct aa_profile *profile;
+	int error = 0;
+
+	/* Discard magic */
+	if ((flags & MS_MGC_MSK) == MS_MGC_VAL)
+		flags &= ~MS_MGC_MSK;
+
+	flags &= ~AA_MS_IGNORE_MASK;
+
+	profile = __aa_current_profile();
+	if (!unconfined(profile)) {
+		if (flags & MS_REMOUNT)
+			error = aa_remount(profile, path, flags, data);
+		else if (flags & MS_BIND)
+			error = aa_bind_mount(profile, path, dev_name, flags);
+		else if (flags & (MS_SHARED | MS_PRIVATE | MS_SLAVE |
+				  MS_UNBINDABLE))
+			error = aa_mount_change_type(profile, path, flags);
+		else if (flags & MS_MOVE)
+			error = aa_move_mount(profile, path, dev_name);
+		else
+			error = aa_new_mount(profile, dev_name, path, type,
+					     flags, data);
+	}
+	return error;
+}
+
+static int apparmor_sb_umount(struct vfsmount *mnt, int flags)
+{
+	struct aa_profile *profile;
+	int error = 0;
+
+	profile = __aa_current_profile();
+	if (!unconfined(profile))
+		error = aa_umount(profile, mnt, flags);
+
+	return error;
+}
+
+static int apparmor_sb_pivotroot(struct path *old_path, struct path *new_path)
+{
+	struct aa_profile *profile;
+	int error = 0;
+
+	profile = __aa_current_profile();
+	if (!unconfined(profile))
+		error = aa_pivotroot(profile, old_path, new_path);
+
+	return error;
+}
+
 static int apparmor_getprocattr(struct task_struct *task, char *name,
 				char **value)
 {
@@ -621,6 +676,10 @@ static struct security_operations apparmor_ops = {
 	.ptrace_traceme =		apparmor_ptrace_traceme,
 	.capget =			apparmor_capget,
 	.capable =			apparmor_capable,
+
+	.sb_mount =			apparmor_sb_mount,
+	.sb_umount =			apparmor_sb_umount,
+	.sb_pivotroot =			apparmor_sb_pivotroot,
 
 	.path_link =			apparmor_path_link,
 	.path_unlink =			apparmor_path_unlink,
