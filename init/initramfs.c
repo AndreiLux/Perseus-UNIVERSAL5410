@@ -589,7 +589,7 @@ void populate_rootfs_wait(void)
 }
 EXPORT_SYMBOL(populate_rootfs_wait);
 
-static void __init async_populate_rootfs(void)
+static void __init async_populate_rootfs(void *data, async_cookie_t cookie)
 {
 	char *err = unpack_to_rootfs(__initramfs_start, __initramfs_size);
 	if (err)
@@ -638,12 +638,14 @@ static int __init populate_rootfs_early(void)
 		async_schedule_domain(async_populate_rootfs, NULL,
 						&populate_rootfs_domain);
 	}
+	return 0;
 }
 static int __init populate_rootfs(void)
 {
 	if (!rootfs_populated)
 		async_schedule_domain(async_populate_rootfs, NULL,
 						&populate_rootfs_domain);
+	return 0;
 }
 
 earlyrootfs_initcall(populate_rootfs_early);
