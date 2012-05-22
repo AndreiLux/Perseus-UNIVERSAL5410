@@ -1271,8 +1271,11 @@ enum v4l2_colorfx {
 
 #define V4L2_CID_ALPHA_COMPONENT		(V4L2_CID_BASE+41)
 
+#define V4L2_CID_CODEC_FRAME_TAG		(V4L2_CID_BASE+42)
+
 /* last CID + 1 */
-#define V4L2_CID_LASTP1                         (V4L2_CID_BASE+42)
+#define V4L2_CID_LASTP1                         (V4L2_CID_BASE+43)
+
 
 /*  MPEG-class control IDs defined by V4L2 */
 #define V4L2_CID_MPEG_BASE 			(V4L2_CTRL_CLASS_MPEG | 0x900)
