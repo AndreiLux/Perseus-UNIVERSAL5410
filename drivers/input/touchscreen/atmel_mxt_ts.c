@@ -340,6 +340,7 @@ struct mxt_data {
 static struct dentry *mxt_debugfs_root;
 
 static int mxt_initialize(struct mxt_data *data);
+static int mxt_input_dev_create(struct mxt_data *data);
 
 static bool mxt_object_readable(unsigned int type)
 {
@@ -863,6 +864,11 @@ static void mxt_exit_bl(struct mxt_data *data)
 		dev_err(dev, "Failed to initialize on exit bl. error = %d\n",
 			error);
 	}
+
+	error = mxt_input_dev_create(data);
+	if (error)
+		dev_err(dev, "Create input dev failed after init. error = %d\n",
+			error);
 
 	error = mxt_handle_messages(data);
 	if (error)
@@ -1967,6 +1973,21 @@ static int mxt_input_dev_create(struct mxt_data *data)
 	struct input_dev *input_dev;
 	int error;
 
+	/* Don't need to register input_dev in bl mode */
+	if (mxt_in_bootloader(data))
+		return 0;
+
+	error = mxt_calc_resolution(data);
+	if (error)
+		return error;
+
+	/* Clear the existing one if it exists */
+	if (data->input_dev) {
+		input_unregister_device(data->input_dev);
+		input_free_device(data->input_dev);
+		data->input_dev = NULL;
+	}
+
 	data->input_dev = input_dev = input_allocate_device();
 	if (!input_dev)
 		return -ENOMEM;
@@ -2076,10 +2097,6 @@ static int mxt_initialize(struct mxt_data *data)
 
 	dev_info(dev, "Matrix X Size: %d Matrix Y Size: %d Object Num: %d\n",
 		 info->matrix_xsize, info->matrix_ysize, info->object_num);
-
-	error = mxt_calc_resolution(data);
-	if (error)
-		return error;
 
 	return 0;
 }
