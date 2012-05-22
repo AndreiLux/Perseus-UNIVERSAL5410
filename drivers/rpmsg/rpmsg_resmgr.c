@@ -438,7 +438,10 @@ static void rprm_cb(struct rpmsg_channel *rpdev, void *data, int len,
 		/* no ack for release resource */
 		return;
 	case RPRM_SET_CONSTRAINTS:
+		ret=0;
+		break;
 	case RPRM_CLEAR_CONSTRAINTS:
+		return;
 		len -= sizeof *c;
 		if (len < 0) {
 			dev_err(dev, "Bad message\n");
