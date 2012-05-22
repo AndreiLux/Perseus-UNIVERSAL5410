@@ -22,55 +22,51 @@
 #include <linux/scatterlist.h>
 #include <linux/platform_device.h>
 
+#define MAX_FDS 3
+
 extern struct platform_device *mali_device;
 
-struct dmabuf_wrapping_info
-{
+struct dmabuf_info {
 	struct dma_buf *dma_buf;
 	struct dma_buf_attachment *attachment;
 	struct sg_table *sg_table;
 };
 
-static void import_ion_final_release_callback(const ump_dd_handle handle, void * priv)
+struct dmabuf_wrapping_info
 {
-	struct dmabuf_wrapping_info * info;
-	struct scatterlist *sg;
-	int i;
+	int n;
+	struct dmabuf_info info[];
+};
 
-	BUG_ON(!priv);
-	info = priv;
-
-	for_each_sg(info->sg_table->sgl, sg, info->sg_table->nents, i) {
-	}
+static void import_ion_release_helper(struct dmabuf_info *info)
+{
 	dma_unmap_sg(&mali_device->dev, info->sg_table->sgl,
 		     info->sg_table->nents, DMA_BIDIRECTIONAL);
 	dma_buf_unmap_attachment(info->attachment, info->sg_table,
 				 DMA_BIDIRECTIONAL);
 	dma_buf_detach(info->dma_buf, info->attachment);
 	dma_buf_put(info->dma_buf);
-	kfree(info);
-	module_put(THIS_MODULE);
 }
 
-static ump_dd_handle import_ion_import(void *custom_session_data, void *pfd,
-				       ump_alloc_flags flags)
+static void import_ion_final_release_callback(const ump_dd_handle handle,
+					      void * priv)
 {
-	int fd;
-	ump_dd_handle ump_handle;
-	struct scatterlist *sg;
-	ump_dd_physical_block_64 *phys_blocks;
-	unsigned long i;
 	struct dmabuf_wrapping_info *info;
+	int i;
 
-	BUG_ON(!custom_session_data);
-	BUG_ON(!pfd);
+	BUG_ON(!priv);
+	info = priv;
 
-	info = kzalloc(sizeof(*info), GFP_KERNEL);
-	if (!info)
-		return UMP_DD_INVALID_MEMORY_HANDLE;
+	for (i = 0; i < info->n; i++)
+		import_ion_release_helper(&info->info[i]);
 
-	if (get_user(fd, (int*)pfd))
-		goto out;
+	module_put(THIS_MODULE);
+	kfree(info);
+}
+
+static int import_ion_import_helper(int fd, struct dmabuf_info *info)
+{
+	int ret;
 
 	info->dma_buf = dma_buf_get(fd);
 	if (IS_ERR_OR_NULL(info->dma_buf))
@@ -85,55 +81,97 @@ static ump_dd_handle import_ion_import(void *custom_session_data, void *pfd,
 	if (IS_ERR_OR_NULL(info->sg_table))
 		goto out2;
 
-	i = dma_map_sg(&mali_device->dev, info->sg_table->sgl,
+	ret = dma_map_sg(&mali_device->dev, info->sg_table->sgl,
 		       info->sg_table->nents,
 		       DMA_BIDIRECTIONAL);
-	if (i == 0)
+	if (ret == 0)
 		goto out3;
+	return 0;
+out3:
+	dma_buf_unmap_attachment(info->attachment, info->sg_table,
+				 DMA_BIDIRECTIONAL);
+out2:
+	dma_buf_detach(info->dma_buf, info->attachment);
+out1:
+	dma_buf_put(info->dma_buf);
+out:
+	return -1;
+}
 
-	phys_blocks = vmalloc(info->sg_table->nents * sizeof(*phys_blocks));
-	if (phys_blocks == NULL)
-		goto out4;
+static ump_dd_handle import_ion_import(void *custom_session_data, void *pfd,
+				       ump_alloc_flags flags)
+{
+	int *fds = pfd;
+	ump_dd_handle ump_handle;
+	struct scatterlist *sg;
+	ump_dd_physical_block_64 *phys_blocks;
+	int num_fds;
+	int i, k = 0;
+	unsigned int nents = 0;
+	struct dmabuf_wrapping_info *info;
 
-	for_each_sg(info->sg_table->sgl, sg, info->sg_table->nents, i) {
-		phys_blocks[i].addr = sg_phys(sg);
-		phys_blocks[i].size = sg_dma_len(sg);
+	BUG_ON(!custom_session_data);
+	BUG_ON(!pfd);
+
+	if (get_user(num_fds, fds++) || num_fds > MAX_FDS)
+		return UMP_DD_INVALID_MEMORY_HANDLE;
+
+	info = kzalloc(sizeof(*info) + (sizeof(struct dmabuf_info) * num_fds),
+		       GFP_KERNEL);
+	if (!info)
+		return UMP_DD_INVALID_MEMORY_HANDLE;
+
+	info->n = num_fds;
+	for (i = 0; i < info->n; i++) {
+		int fd, ret;
+		get_user(fd, fds + i);
+		ret = import_ion_import_helper(fd, &info->info[i]);
+		if (ret)
+			goto out;
+		nents += info->info[i].sg_table->nents;
 	}
 
-	ump_handle = ump_dd_create_from_phys_blocks_64(phys_blocks,
-						       info->sg_table->nents,
+
+	phys_blocks = vmalloc(nents * sizeof(*phys_blocks));
+	if (phys_blocks == NULL)
+		goto out;
+
+	for (i = 0; i < info->n; i++) {
+		struct dmabuf_info *buf_info = &info->info[i];
+		unsigned long j;
+		for_each_sg(buf_info->sg_table->sgl, sg,
+			    buf_info->sg_table->nents, j) {
+			phys_blocks[k].addr = sg_phys(sg);
+			phys_blocks[k].size = sg_dma_len(sg);
+			k++;
+		}
+	}
+	BUG_ON(k != nents);
+
+	ump_handle = ump_dd_create_from_phys_blocks_64(phys_blocks, nents,
 						       flags, NULL,
 						       import_ion_final_release_callback,
 						       info);
 
 	vfree(phys_blocks);
 
-	if (ump_handle != UMP_DD_INVALID_MEMORY_HANDLE)
-	{
-		/*
-		 * As we have a final release callback installed
-		 * we must keep the module locked until
-		 * the callback has been triggered
-		 * */
-		__module_get(THIS_MODULE);
-		return ump_handle;
-	}
+	if (ump_handle == UMP_DD_INVALID_MEMORY_HANDLE)
+		goto out;
+	/*
+	 * As we have a final release callback installed
+	 * we must keep the module locked until
+	 * the callback has been triggered
+	 * */
+	__module_get(THIS_MODULE);
+	return ump_handle;
 
-out4:
-	dma_unmap_sg(&mali_device->dev, info->sg_table->sgl,
-		     info->sg_table->nents, DMA_BIDIRECTIONAL);
-out3:
-	dma_buf_unmap_attachment(info->attachment, info->sg_table,
-				 DMA_BIDIRECTIONAL);
-out2:
-	dma_buf_detach(info->dma_buf, info->attachment);
-
-out1:
-	dma_buf_put(info->dma_buf);
 out:
+	pr_err("Failed to import handle\n");
+	for (i--; i >= 0; i--)
+		import_ion_release_helper(&info->info[i]);
+
 	kfree(info);
 	return UMP_DD_INVALID_MEMORY_HANDLE;
-
 }
 
 static int import_ion_session_begin(void** custom_session_data)
