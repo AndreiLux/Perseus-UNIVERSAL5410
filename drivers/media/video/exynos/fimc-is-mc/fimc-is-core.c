@@ -1622,7 +1622,7 @@ static int fimc_is_probe(struct platform_device *pdev)
 	scalerc_q = &isp->video[FIMC_IS_VIDEO_NUM_SCALERC].vbq;
 	memset(scalerc_q, 0, sizeof(*scalerc_q));
 	scalerc_q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-	scalerc_q->io_modes = VB2_MMAP | VB2_USERPTR;
+	scalerc_q->io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	scalerc_q->drv_priv = &isp->video[FIMC_IS_VIDEO_NUM_SCALERC];
 	scalerc_q->ops = &fimc_is_scalerc_qops;
 	scalerc_q->mem_ops = isp->vb2->ops;
@@ -1667,7 +1667,7 @@ static int fimc_is_probe(struct platform_device *pdev)
 	scalerp_q = &isp->video[FIMC_IS_VIDEO_NUM_SCALERP].vbq;
 	memset(scalerp_q, 0, sizeof(*scalerp_q));
 	scalerp_q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-	scalerp_q->io_modes = VB2_MMAP | VB2_USERPTR;
+	scalerp_q->io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	scalerp_q->drv_priv = &isp->video[FIMC_IS_VIDEO_NUM_SCALERP];
 	scalerp_q->ops = &fimc_is_scalerp_qops;
 	scalerp_q->mem_ops = isp->vb2->ops;
@@ -1714,7 +1714,7 @@ static int fimc_is_probe(struct platform_device *pdev)
 	dnr_q = &isp->video[FIMC_IS_VIDEO_NUM_3DNR].vbq;
 	memset(dnr_q, 0, sizeof(*dnr_q));
 	dnr_q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-	dnr_q->io_modes = VB2_MMAP | VB2_USERPTR;
+	dnr_q->io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	dnr_q->drv_priv = &isp->video[FIMC_IS_VIDEO_NUM_3DNR];
 	dnr_q->ops = &fimc_is_3dnr_qops;
 	dnr_q->mem_ops = isp->vb2->ops;
@@ -1757,7 +1757,7 @@ static int fimc_is_probe(struct platform_device *pdev)
 	bayer_q = &isp->video[FIMC_IS_VIDEO_NUM_BAYER].vbq;
 	memset(bayer_q, 0, sizeof(*bayer_q));
 	bayer_q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-	bayer_q->io_modes = VB2_MMAP | VB2_USERPTR;
+	bayer_q->io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	bayer_q->drv_priv = &isp->video[FIMC_IS_VIDEO_NUM_BAYER];
 	bayer_q->ops = &fimc_is_bayer_qops;
 	bayer_q->mem_ops = isp->vb2->ops;
