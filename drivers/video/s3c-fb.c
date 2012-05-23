@@ -474,9 +474,6 @@ static int s3c_fb_calc_pixclk(struct s3c_fb *sfb, unsigned int pixclk)
 	do_div(tmp, 1000000000UL);
 	result = (unsigned int)tmp / 1000;
 
-	dev_dbg(sfb->dev, "pixclk=%u, clk=%lu, div=%d (%lu)\n",
-		pixclk, clk, result, clk / result);
-
 	return result;
 }
 
