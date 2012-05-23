@@ -39,6 +39,38 @@ struct s3c_fb_user_ion_client {
 	int	offset;
 };
 
+enum s3c_fb_pixel_format {
+	S3C_FB_PIXEL_FORMAT_RGBA_8888 = 0,
+	S3C_FB_PIXEL_FORMAT_RGB_888 = 1,
+	S3C_FB_PIXEL_FORMAT_RGB_565 = 2,
+	S3C_FB_PIXEL_FORMAT_BGRA_8888 = 3,
+	S3C_FB_PIXEL_FORMAT_RGBA_5551 = 4,
+	S3C_FB_PIXEL_FORMAT_RGBA_4444 = 5,
+	S3C_FB_PIXEL_FORMAT_MAX = 6,
+};
+
+struct s3c_fb_win_config {
+	enum {
+		S3C_FB_WIN_STATE_DISABLED = 0,
+		S3C_FB_WIN_STATE_COLOR,
+		S3C_FB_WIN_STATE_BUFFER,
+	} state;
+
+	union {
+		__u32 color;
+		struct {
+			int	fd;
+			__u32	offset;
+			__u32	stride;
+			int	x;
+			int	y;
+			__u32	w;
+			__u32	h;
+			enum s3c_fb_pixel_format format;
+		};
+	};
+};
+
 /* S3C_FB_MAX_WIN
  * Set to the maximum number of windows that any of the supported hardware
  * can use. Since the platform data uses this for an array size, having it
@@ -57,5 +89,8 @@ struct s3c_fb_user_ion_client {
 
 #define S3CFB_GET_ION_USER_HANDLE	_IOWR('F', 208, \
 						struct s3c_fb_user_ion_client)
+#define S3CFB_WIN_CONFIG		_IOW('F', 209, \
+						struct s3c_fb_win_config\
+							[S3C_FB_MAX_WIN])
 
 #endif /* __S3C_FB_H__ */
