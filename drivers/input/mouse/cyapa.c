@@ -1266,19 +1266,20 @@ static u16 cyapa_pwr_cmd_to_sleep_time(u8 pwr_mode)
 				   : (encoded_time - 5) * 20;
 }
 
+#ifdef CONFIG_PM_SLEEP
 static ssize_t cyapa_show_suspend_scanrate(struct device *dev,
 					   struct device_attribute *attr,
 					   char *buf)
 {
 	struct cyapa *cyapa = dev_get_drvdata(dev);
-	int len = 0;
+	int len;
 	u8 pwr_cmd = cyapa->suspend_power_mode;
 
 	if (pwr_cmd == PWR_MODE_BTN_ONLY)
-		len = sprintf(buf, "%s\n", BTN_ONLY_MODE_NAME);
+		len = scnprintf(buf, PAGE_SIZE, "%s\n", BTN_ONLY_MODE_NAME);
 	else
-		len = sprintf(buf, "%u\n",
-			      cyapa_pwr_cmd_to_sleep_time(pwr_cmd));
+		len = scnprintf(buf, PAGE_SIZE, "%u\n",
+				cyapa_pwr_cmd_to_sleep_time(pwr_cmd));
 	return len;
 }
 
@@ -1308,6 +1309,21 @@ invalidparam:
 	return -EINVAL;
 }
 
+static DEVICE_ATTR(suspend_scanrate_ms, S_IRUGO|S_IWUSR,
+		   cyapa_show_suspend_scanrate,
+		   cyapa_update_suspend_scanrate);
+
+static struct attribute *cyapa_power_wakeup_entries[] = {
+	&dev_attr_suspend_scanrate_ms.attr,
+	NULL,
+};
+
+static const struct attribute_group cyapa_power_wakeup_group = {
+	.name = power_group_name,
+	.attrs = cyapa_power_wakeup_entries,
+};
+#endif /* CONFIG_PM_SLEEP */
+
 static DEVICE_ATTR(firmware_version, S_IRUGO, cyapa_show_fm_ver, NULL);
 static DEVICE_ATTR(hardware_version, S_IRUGO, cyapa_show_hw_ver, NULL);
 static DEVICE_ATTR(product_id, S_IRUGO, cyapa_show_product_id, NULL);
@@ -1326,22 +1342,6 @@ static struct attribute *cyapa_sysfs_entries[] = {
 static const struct attribute_group cyapa_sysfs_group = {
 	.attrs = cyapa_sysfs_entries,
 };
-
-#ifdef CONFIG_PM
-static DEVICE_ATTR(suspend_scanrate_ms, S_IRUGO|S_IWUSR,
-		   cyapa_show_suspend_scanrate,
-		   cyapa_update_suspend_scanrate);
-
-static struct attribute *cyapa_power_wakeup_entries[] = {
-	&dev_attr_suspend_scanrate_ms.attr,
-	NULL,
-};
-
-static const struct attribute_group cyapa_power_wakeup_group = {
-	.name = power_group_name,
-	.attrs = cyapa_power_wakeup_entries,
-};
-#endif
 
 /*
  **************************************************************
@@ -1718,11 +1718,11 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 	if (cyapa_debugfs_init(cyapa))
 		dev_warn(dev, "error creating debugfs entries.\n");
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 	if (device_can_wakeup(dev) &&
 	    sysfs_merge_group(&client->dev.kobj, &cyapa_power_wakeup_group))
 		dev_warn(dev, "error creating wakeup power entries.\n");
-#endif
+#endif /* CONFIG_PM_SLEEP */
 
 	cyapa_detect(cyapa);
 
@@ -1797,7 +1797,7 @@ static int cyapa_resume(struct device *dev)
 
 	return 0;
 }
-#endif
+#endif /* CONFIG_PM_SLEEP */
 
 static SIMPLE_DEV_PM_OPS(cyapa_pm_ops, cyapa_suspend, cyapa_resume);
 
