@@ -167,31 +167,8 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 		goto err_alloc;
 	}
 
-	fd = ion_share_dma_buf(ctx->client, buf->handle);
-	if (fd < 0) {
-		ret = -ENOMEM;
-		goto err_share;
-	}
-	buf->dma_buf = dma_buf_get(fd);
-	file = fget(fd);
-	fput(file);
-	fput(file);
-	if (IS_ERR_OR_NULL(buf->dma_buf)) {
-		ret = -ENOMEM;
-		goto err_dma_buf;
-	}
-	buf->attachment = dma_buf_attach(buf->dma_buf, ctx->dev);
-	if (IS_ERR_OR_NULL(buf->attachment)) {
-		ret = -ENOMEM;
-		goto err_attach;
-	}
-	buf->sg_table = dma_buf_map_attachment(buf->attachment,
-					       DMA_BIDIRECTIONAL);
+	buf->sg_table = ion_sg_table(ctx->client, buf->handle);
 	buf->cookie.sg = buf->sg_table->sgl;
-	if (IS_ERR(buf->cookie.sg)) {
-		ret = -ENOMEM;
-		goto err_map_dma;
-	}
 	buf->cookie.nents = buf->sg_table->nents;
 
 	buf->ctx = ctx;
@@ -219,14 +196,6 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 err_ion_map_io:
 	ion_unmap_kernel(ctx->client, buf->handle);
 err_map_kernel:
-	dma_buf_unmap_attachment(buf->attachment, buf->sg_table,
-				 DMA_BIDIRECTIONAL);
-err_map_dma:
-	dma_buf_detach(buf->dma_buf, buf->attachment);
-err_attach:
-	dma_buf_put(buf->dma_buf);
-err_dma_buf:
-err_share:
 	ion_free(ctx->client, buf->handle);
 err_alloc:
 	kfree(buf);
@@ -249,10 +218,6 @@ void vb2_ion_private_free(void *cookie)
 		iovmm_unmap(ctx->dev, buf->cookie.ioaddr);
 
 	ion_unmap_kernel(ctx->client, buf->handle);
-	dma_buf_unmap_attachment(buf->attachment, buf->sg_table,
-				 DMA_BIDIRECTIONAL);
-	dma_buf_detach(buf->dma_buf, buf->attachment);
-	dma_buf_put(buf->dma_buf);
 
 	ion_free(ctx->client, buf->handle);
 
