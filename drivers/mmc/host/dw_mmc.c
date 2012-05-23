@@ -1765,7 +1765,8 @@ static void dw_mci_work_routine_card(struct work_struct *work)
 
 #ifdef CONFIG_MMC_DW_IDMAC
 				ctrl = mci_readl(host, BMOD);
-				ctrl |= 0x01; /* Software reset of DMA */
+				/* Software reset of DMA */
+				ctrl |= SDMMC_IDMAC_SWRESET;
 				mci_writel(host, BMOD, ctrl);
 #endif
 
@@ -2064,7 +2065,7 @@ int __devinit dw_mci_probe(struct dw_mci *host)
 	/* Reset all blocks */
 	if (!mci_wait_reset(&host->dev, host)) {
 		ret = -ENODEV;
-		goto err_dmaunmap;
+		goto err_free_hclk;
 	}
 
 	host->dma_ops = host->pdata->dma_ops;
