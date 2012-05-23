@@ -114,6 +114,10 @@ struct thermal_zone_device {
 	struct delayed_work poll_queue;
 	unsigned int fan_on_delay; /* time in seconds to delay fan turn on */
 	int cdevs_in_delay;
+	unsigned int cdevs_aborted_turn_on;
+	unsigned int cdevs_multiple_trips;
+	unsigned int cdevs_turned_on;
+	struct dentry *debugfs_dir;
 };
 /* Adding event notification support elements */
 #define THERMAL_GENL_FAMILY_NAME                "thermal_event"

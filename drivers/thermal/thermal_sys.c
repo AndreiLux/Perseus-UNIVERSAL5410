@@ -26,6 +26,7 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/module.h>
+#include <linux/debugfs.h>
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/slab.h>
@@ -59,6 +60,10 @@ static DEFINE_MUTEX(thermal_idr_lock);
 static LIST_HEAD(thermal_tz_list);
 static LIST_HEAD(thermal_cdev_list);
 static DEFINE_MUTEX(thermal_list_lock);
+
+static unsigned int thermal_event_seqnum;
+
+static struct dentry *debugfs_root;
 
 static int get_idr(struct idr *idr, struct mutex *lock, int *id)
 {
@@ -1062,6 +1067,7 @@ EXPORT_SYMBOL(thermal_cooling_device_unregister);
 void thermal_zone_device_update(struct thermal_zone_device *tz)
 {
 	int count, ret = 0;
+	int num_tripped = 0;
 	long temp, trip_temp;
 	enum thermal_trip_type trip_type;
 	struct thermal_cooling_device_instance *instance;
@@ -1105,8 +1111,10 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 				cdev = instance->cdev;
 
 				if (temp < trip_temp) {
-					if (cdev->cur_state == CDEV_STATE_DELAY)
+					if (cdev->cur_state == CDEV_STATE_DELAY) {
 						tz->cdevs_in_delay--;
+						tz->cdevs_aborted_turn_on++;
+					}
 					cdev->cur_state = CDEV_STATE_OFF;
 					cdev->ops->set_cur_state(cdev, 0);
 					continue;
@@ -1116,6 +1124,7 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 					continue;
 
 				if (cdev->cur_state == CDEV_STATE_OFF) {
+					num_tripped++;
 					tz->cdevs_in_delay++;
 					cdev->cur_state = CDEV_STATE_DELAY;
 					cdev->delay_until = jiffies +
@@ -1123,6 +1132,7 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 				}
 
 				if (time_after_eq(jiffies, cdev->delay_until)) {
+					tz->cdevs_turned_on++;
 					tz->cdevs_in_delay--;
 					cdev->cur_state = CDEV_STATE_ON;
 					cdev->ops->set_cur_state(cdev, 1);
@@ -1136,6 +1146,9 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 			break;
 		}
 	}
+
+	if (num_tripped > 1)
+		tz->cdevs_multiple_trips++;
 
 	if (tz->forced_passive)
 		thermal_zone_device_passive(tz, temp, tz->forced_passive,
@@ -1271,6 +1284,23 @@ struct thermal_zone_device *thermal_zone_device_register(char *type,
 	if (result)
 		goto unregister;
 
+	tz->debugfs_dir = debugfs_create_dir(dev_name(&tz->device),
+					     debugfs_root);
+	if (!IS_ERR_OR_NULL(tz->debugfs_dir)) {
+		debugfs_create_u32("cdevs_aborted_turn_on", 0444,
+				   tz->debugfs_dir,
+				   &tz->cdevs_aborted_turn_on);
+		debugfs_create_u32("cdevs_in_delay", 0444,
+				   tz->debugfs_dir,
+				   &tz->cdevs_in_delay);
+		debugfs_create_u32("cdevs_turned_on", 0444,
+				   tz->debugfs_dir,
+				   &tz->cdevs_turned_on);
+		debugfs_create_u32("cdevs_multiple_trips", 0444,
+				   tz->debugfs_dir,
+				   &tz->cdevs_multiple_trips);
+	}
+
 	mutex_lock(&thermal_list_lock);
 	list_add_tail(&tz->node, &thermal_tz_list);
 	if (ops->bind)
@@ -1339,6 +1369,10 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 				   &trip_point_attrs[count * 2 + 1]);
 	}
 	thermal_remove_hwmon_sysfs(tz);
+
+	if (tz->debugfs_dir)
+		debugfs_remove_recursive(tz->debugfs_dir);
+
 	release_idr(&thermal_tz_idr, &thermal_idr_lock, tz->id);
 	idr_destroy(&tz->idr);
 	mutex_destroy(&tz->lock);
@@ -1456,6 +1490,13 @@ static int __init thermal_init(void)
 		mutex_destroy(&thermal_idr_lock);
 		mutex_destroy(&thermal_list_lock);
 	}
+	debugfs_root = debugfs_create_dir("thermal", NULL);
+	if (IS_ERR(debugfs_root)) {
+		if (debugfs_root != ERR_PTR(-ENODEV))
+			pr_warn("Could not create debugfs entry %ld\n",
+			        PTR_ERR(debugfs_root));
+		debugfs_root = NULL;
+	}
 	result = genetlink_init();
 	return result;
 }
@@ -1463,6 +1504,8 @@ static int __init thermal_init(void)
 static void __exit thermal_exit(void)
 {
 	class_unregister(&thermal_class);
+	if (debugfs_root)
+		debugfs_remove_recursive(debugfs_root);
 	idr_destroy(&thermal_tz_idr);
 	idr_destroy(&thermal_cdev_idr);
 	mutex_destroy(&thermal_idr_lock);
