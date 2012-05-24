@@ -32,7 +32,6 @@ static int exynos_dp_init_dp(struct exynos_dp_device *dp)
 	/* SW defined function Normal operation */
 	exynos_dp_enable_sw_function(dp);
 
-	exynos_dp_config_interrupt(dp);
 	exynos_dp_init_analog_func(dp);
 
 	exynos_dp_init_hpd(dp);
@@ -478,7 +477,7 @@ static int exynos_dp_process_clock_recovery(struct exynos_dp_device *dp)
 	int lane_count;
 	u8 buf[5];
 
-	u8 *adjust_request;
+	u8 adjust_request[2];
 	u8 voltage_swing;
 	u8 pre_emphasis;
 	u8 training_lane;
@@ -493,8 +492,8 @@ static int exynos_dp_process_clock_recovery(struct exynos_dp_device *dp)
 		/* set training pattern 2 for EQ */
 		exynos_dp_set_training_pattern(dp, TRAINING_PTN2);
 
-		adjust_request = link_status + (DPCD_ADDR_ADJUST_REQUEST_LANE0_1
-						- DPCD_ADDR_LANE0_1_STATUS);
+		adjust_request[0] = link_status[4];
+		adjust_request[1] = link_status[5];
 
 		exynos_dp_get_adjust_train(dp, adjust_request);
 
@@ -566,7 +565,7 @@ static int exynos_dp_process_equalizer_training(struct exynos_dp_device *dp)
 	u8 buf[5];
 	u32 reg;
 
-	u8 *adjust_request;
+	u8 adjust_request[2];
 
 	udelay(400);
 
@@ -575,8 +574,8 @@ static int exynos_dp_process_equalizer_training(struct exynos_dp_device *dp)
 	lane_count = dp->link_train.lane_count;
 
 	if (exynos_dp_clock_recovery_ok(link_status, lane_count) == 0) {
-		adjust_request = link_status + (DPCD_ADDR_ADJUST_REQUEST_LANE0_1
-						- DPCD_ADDR_LANE0_1_STATUS);
+		adjust_request[0] = link_status[4];
+		adjust_request[1] = link_status[5];
 
 		if (exynos_dp_channel_eq_ok(link_status, lane_count) == 0) {
 			/* traing pattern Set to Normal */
@@ -1045,13 +1044,26 @@ static struct platform_driver exynos_dp_driver = {
 	.probe		= exynos_dp_probe,
 	.remove		= __devexit_p(exynos_dp_remove),
 	.driver		= {
-		.name	= "exynos-dp",
+		.name	= "s5p-dp",
 		.owner	= THIS_MODULE,
 		.pm	= &exynos_dp_pm_ops,
 	},
 };
 
-module_platform_driver(exynos_dp_driver);
+static int __init exynos_dp_init(void)
+{
+	return platform_driver_probe(&exynos_dp_driver, exynos_dp_probe);
+}
+
+static void __exit exynos_dp_exit(void)
+{
+	platform_driver_unregister(&exynos_dp_driver);
+}
+/* TODO: Register as module_platform_driver */
+/* Currently, we make it late_initcall to make */
+/* sure that s3c-fb is probed before DP driver */
+late_initcall(exynos_dp_init);
+module_exit(exynos_dp_exit);
 
 MODULE_AUTHOR("Jingoo Han <jg1.han@samsung.com>");
 MODULE_DESCRIPTION("Samsung SoC DP Driver");

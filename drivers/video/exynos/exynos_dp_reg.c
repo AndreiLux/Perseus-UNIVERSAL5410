@@ -21,12 +21,6 @@
 #include "exynos_dp_core.h"
 #include "exynos_dp_reg.h"
 
-#define COMMON_INT_MASK_1 (0)
-#define COMMON_INT_MASK_2 (0)
-#define COMMON_INT_MASK_3 (0)
-#define COMMON_INT_MASK_4 (0)
-#define INT_STA_MASK (0)
-
 void exynos_dp_enable_video_mute(struct exynos_dp_device *dp, bool enable)
 {
 	u32 reg;
@@ -63,6 +57,17 @@ void exynos_dp_lane_swap(struct exynos_dp_device *dp, bool enable)
 			LANE1_MAP_LOGIC_LANE_1 | LANE0_MAP_LOGIC_LANE_0;
 
 	writel(reg, dp->reg_base + EXYNOS_DP_LANE_MAP);
+}
+
+void exynos_dp_init_analog_param(struct exynos_dp_device *dp)
+{
+	/* Set analog parameters for Tx */
+	/* Set power source and terminal resistor values */
+	writel(0x10, dp->reg_base + EXYNOS_DP_ANALOG_CTL_1);
+	writel(0x0C, dp->reg_base + EXYNOS_DP_ANALOG_CTL_2);
+	writel(0x85, dp->reg_base + EXYNOS_DP_ANALOG_CTL_3);
+	writel(0x66, dp->reg_base + EXYNOS_DP_PLL_FILTER_CTL_1);
+	writel(0x0, dp->reg_base + EXYNOS_DP_TX_AMP_TUNING_CTL);
 }
 
 void exynos_dp_init_interrupt(struct exynos_dp_device *dp)
@@ -131,28 +136,8 @@ void exynos_dp_reset(struct exynos_dp_device *dp)
 
 	writel(0x00000101, dp->reg_base + EXYNOS_DP_SOC_GENERAL_CTL);
 
+	exynos_dp_init_analog_param(dp);
 	exynos_dp_init_interrupt(dp);
-}
-
-void exynos_dp_config_interrupt(struct exynos_dp_device *dp)
-{
-	u32 reg;
-
-	/* 0: mask, 1: unmask */
-	reg = COMMON_INT_MASK_1;
-	writel(reg, dp->reg_base + EXYNOS_DP_COMMON_INT_MASK_1);
-
-	reg = COMMON_INT_MASK_2;
-	writel(reg, dp->reg_base + EXYNOS_DP_COMMON_INT_MASK_2);
-
-	reg = COMMON_INT_MASK_3;
-	writel(reg, dp->reg_base + EXYNOS_DP_COMMON_INT_MASK_3);
-
-	reg = COMMON_INT_MASK_4;
-	writel(reg, dp->reg_base + EXYNOS_DP_COMMON_INT_MASK_4);
-
-	reg = INT_STA_MASK;
-	writel(reg, dp->reg_base + EXYNOS_DP_INT_STA_MASK);
 }
 
 u32 exynos_dp_get_pll_lock_status(struct exynos_dp_device *dp)
@@ -271,6 +256,7 @@ void exynos_dp_set_analog_power_down(struct exynos_dp_device *dp,
 void exynos_dp_init_analog_func(struct exynos_dp_device *dp)
 {
 	u32 reg;
+	int timeout_loop = 0;
 
 	exynos_dp_set_analog_power_down(dp, POWER_ALL, 0);
 
@@ -282,8 +268,18 @@ void exynos_dp_init_analog_func(struct exynos_dp_device *dp)
 	writel(reg, dp->reg_base + EXYNOS_DP_DEBUG_CTL);
 
 	/* Power up PLL */
-	if (exynos_dp_get_pll_lock_status(dp) == PLL_UNLOCKED)
+	if (exynos_dp_get_pll_lock_status(dp) == PLL_UNLOCKED) {
 		exynos_dp_set_pll_power_down(dp, 0);
+
+		while (exynos_dp_get_pll_lock_status(dp) == PLL_UNLOCKED) {
+			timeout_loop++;
+			if (DP_TIMEOUT_LOOP_COUNT < timeout_loop) {
+				dev_err(dp->dev, "failed to get pll lock status\n");
+				return;
+			}
+			udelay(10);
+		}
+	}
 
 	/* Enable Serdes FIFO function and Link symbol clock domain module */
 	reg = readl(dp->reg_base + EXYNOS_DP_FUNC_EN_2);
