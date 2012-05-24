@@ -16,36 +16,12 @@
 	model = "SAMSUNG SMDK5250 board based on EXYNOS5250";
 	compatible = "samsung,smdk5250", "samsung,exynos5250";
 
-	aliases {
-		mshc0 = &mshc_0;
-		mshc1 = &mshc_1;
-		mshc2 = &mshc_2;
-		mshc3 = &mshc_3;
-	};
-
 	memory {
 		reg = <0x40000000 0x80000000>;
 	};
 
 	chosen {
 		bootargs = "root=/dev/ram0 rw ramdisk=8192 initrd=0x41000000,8M console=ttySAC3,115200 init=/linuxrc";
-	};
-
-	aliases {
-		sysmmu2 = &sysmmu_2;
-		sysmmu3 = &sysmmu_3;
-		sysmmu4 = &sysmmu_4;
-		sysmmu27 = &sysmmu_27;
-		sysmmu28 = &sysmmu_28;
-		sysmmu23 = &sysmmu_23;
-		sysmmu24 = &sysmmu_24;
-		sysmmu25 = &sysmmu_25;
-		sysmmu26 = &sysmmu_26;
-		gsc0 = &gsc_0;
-		gsc1 = &gsc_1;
-		gsc2 = &gsc_2;
-		gsc3 = &gsc_3;
-		i2s0 = &i2s_0;
 	};
 
 	sromc-bus {
@@ -186,7 +162,7 @@
 		status = "disabled";
 	};
 
-	mshc_0: dwmmc0@12200000 {
+	dwmmc0@12200000 {
 		supports-highspeed;
 		card-detection-broken;
 		no-write-protect;
@@ -194,7 +170,7 @@
 		card-detect-delay = <200>;
 		samsung,dw-mshc-sdr-timing = <2 3 3>;
 		samsung,dw-mshc-ddr-timing = <1 2 3>;
-		
+
 		slot0 {
 			bus-width = <8>;
 			cd-gpios = <&gpc0 2 2 3 3>;
@@ -206,18 +182,18 @@
 		};
 	};
 
-	mshc_1: dwmmc1@12210000 {
+	dwmmc1@12210000 {
 		status = "disabled";
 	};
 
-	mshc_2: dwmmc2@12220000 {
+	dwmmc2@12220000 {
 		card-detection-broken;
 		no-write-protect;
 		fifo-depth = <0x80>;
 		card-detect-delay = <200>;
 		samsung,dw-mshc-sdr-timing = <2 3 3>;
 		samsung,dw-mshc-ddr-timing = <1 2 3>;
-		
+
 		slot0 {
 			bus-width = <4>;
 			cd-gpios = <&gpc3 2 2 3 3>;
@@ -229,7 +205,7 @@
 		};
 	};
 
-	mshc_3: dwmmc3@12230000 {
+	dwmmc3@12230000 {
 		status = "disabled";
 	};
 

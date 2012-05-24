@@ -23,6 +23,27 @@
 	compatible = "samsung,exynos5250";
 	interrupt-parent = <&gic>;
 
+	aliases {
+		mshc0 = &mshc_0;
+		mshc1 = &mshc_1;
+		mshc2 = &mshc_2;
+		mshc3 = &mshc_3;
+		sysmmu2 = &sysmmu_2;
+		sysmmu3 = &sysmmu_3;
+		sysmmu4 = &sysmmu_4;
+		sysmmu27 = &sysmmu_27;
+		sysmmu28 = &sysmmu_28;
+		sysmmu23 = &sysmmu_23;
+		sysmmu24 = &sysmmu_24;
+		sysmmu25 = &sysmmu_25;
+		sysmmu26 = &sysmmu_26;
+		gsc0 = &gsc_0;
+		gsc1 = &gsc_1;
+		gsc2 = &gsc_2;
+		gsc3 = &gsc_3;
+		i2s0 = &i2s_0;
+	};
+
 	gic:interrupt-controller@10481000 {
 		compatible = "arm,cortex-a9-gic";
 		#interrupt-cells = <3>;
@@ -264,25 +285,25 @@
                 interrupt-parent = <&combiner>;
 	};
 
-	dwmmc0@12200000 {
+	mshc_0: dwmmc0@12200000 {
 		compatible = "synopsis,dw-mshc-exynos5250";
 		reg = <0x12200000 0x1000>;
 		interrupts = <0 75 0>;
 	};
 
-	dwmmc1@12210000 {
+	mshc_1: dwmmc1@12210000 {
 		compatible = "synopsis,dw-mshc-exynos5250";
 		reg = <0x12210000 0x1000>;
 		interrupts = <0 76 0>;
 	};
 
-	dwmmc2@12220000 {
+	mshc_2: dwmmc2@12220000 {
 		compatible = "synopsis,dw-mshc-exynos5250";
 		reg = <0x12220000 0x1000>;
 		interrupts = <0 77 0>;
 	};
-	
-	dwmmc3@12230000 {
+
+	mshc_3: dwmmc3@12230000 {
 		compatible = "synopsis,dw-mshc-exynos5250";
 		reg = <0x12230000 0x1000>;
 		interrupts = <0 78 0>;
