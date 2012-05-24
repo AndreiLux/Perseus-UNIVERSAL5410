@@ -52,6 +52,10 @@
 		};
 	};
 
+	display-port-controller {
+		status = "disabled";
+	};
+
 	i2c@12C60000 {
 		#address-cells = <1>;
 		#size-cells = <0>;
