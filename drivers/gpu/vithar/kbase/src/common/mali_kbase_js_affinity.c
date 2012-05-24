@@ -333,7 +333,7 @@ void kbase_js_affinity_submit_to_blocked_slots( kbase_device *kbdev )
 
 }
 
-#if MALI_DEBUG != 0
+#if KBASE_TRACE_ENABLE != 0
 void kbase_js_debug_log_current_affinities( kbase_device *kbdev )
 {
 	kbasep_js_device_data *js_devdata;
@@ -347,4 +347,5 @@ void kbase_js_debug_log_current_affinities( kbase_device *kbdev )
 		KBASE_TRACE_ADD_SLOT_INFO( kbdev, JS_AFFINITY_CURRENT, NULL, NULL, 0u, slot_nr, (u32)js_devdata->runpool_irq.slot_affinities[slot_nr] );
 	}
 }
+
 #endif /* MALI_DEBUG != 0 */

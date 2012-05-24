@@ -128,7 +128,7 @@ void kbase_js_affinity_submit_to_blocked_slots( kbase_device *kbdev );
 /**
  * @brief Output to the Trace log the current tracked affinities on all slots
  */
-#if MALI_DEBUG != 0
+#if KBASE_TRACE_ENABLE != 0
 void kbase_js_debug_log_current_affinities( kbase_device *kbdev );
 #else /*  MALI_DEBUG != 0 */
 OSK_STATIC_INLINE void kbase_js_debug_log_current_affinities( kbase_device *kbdev )
