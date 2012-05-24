@@ -31,3 +31,11 @@ config VITHAR_ENABLE_DS5
 	default n
 	help
 	  Choose this option to enable DS5 on vithar DDK.
+
+config VITHAR_ENABLE_TRACE
+       bool "Enable kbase tracing"
+       depends on VITHAR
+       default n
+       help
+         Enables tracing in the kbase.  Trace log available through
+	 the "mali_trace" debugfs file

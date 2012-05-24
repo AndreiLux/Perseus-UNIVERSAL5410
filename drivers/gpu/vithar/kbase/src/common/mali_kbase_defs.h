@@ -32,6 +32,10 @@
 #endif
 
 /** Enable SW tracing when set */
+#ifdef CONFIG_VITHAR_ENABLE_TRACE
+#define KBASE_TRACE_ENABLE 1
+#endif
+
 #ifndef KBASE_TRACE_ENABLE
 #if MALI_DEBUG
 #define KBASE_TRACE_ENABLE 1
