@@ -585,7 +585,7 @@
 #define IRQ_TIMER_BASE			(IRQ_GPIO_END + 64)
 
 #define IRQ_BOARD_START			(IRQ_TIMER_BASE + IRQ_TIMER_COUNT)
-#define IRQ_NR_BOARD			16
+#define IRQ_NR_BOARD			48
 
 /* Set the default NR_IRQS */
 #define NR_IRQS				(IRQ_BOARD_START + IRQ_NR_BOARD)
