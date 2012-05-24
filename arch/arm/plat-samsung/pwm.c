@@ -245,7 +245,10 @@ int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
 	tcon |= pwm_tcon_autoreload(pwm);
 	__raw_writel(tcon, S3C2410_TCON);
 
+	pwm_was_enabled = (tcon & pwm_tcon_start(pwm)) != 0;
+
 	tcon &= ~pwm_tcon_manulupdate(pwm);
+	tcon &= ~pwm_tcon_start(pwm);
 	__raw_writel(tcon, S3C2410_TCON);
 
 	if (pwm_was_enabled) {
