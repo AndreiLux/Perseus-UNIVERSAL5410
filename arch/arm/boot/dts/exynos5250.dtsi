@@ -670,6 +670,13 @@
 		interrupts = <0 82 0>;
 	};
 
+	display-port-controller {
+		compatible = "samsung,exynos5-dp";
+		reg = <0x145B0000 0x10000>;
+		interrupts = <10 3>;
+		interrupt-parent = <&combiner>;
+	};
+
 	gsc_0:  gsc@0x13e00000 {
 		compatible = "samsung,exynos-gsc";
 		reg = <0x13e00000 0x1000>;
