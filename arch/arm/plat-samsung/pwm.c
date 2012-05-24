@@ -167,6 +167,7 @@ int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
 	unsigned long tcon;
 	unsigned long tcnt;
 	long tcmp;
+	int pwm_was_enabled;
 
 	/* We currently avoid using 64bit arithmetic by using the
 	 * fact that anything faster than 1Hz is easily representable
@@ -246,6 +247,11 @@ int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
 
 	tcon &= ~pwm_tcon_manulupdate(pwm);
 	__raw_writel(tcon, S3C2410_TCON);
+
+	if (pwm_was_enabled) {
+		tcon |= pwm_tcon_start(pwm);
+		__raw_writel(tcon, S3C2410_TCON);
+	}
 
 	local_irq_restore(flags);
 
