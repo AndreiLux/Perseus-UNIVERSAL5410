@@ -20,6 +20,7 @@
 #include <mach/map.h>
 #include <mach/regs-clock.h>
 #include <mach/cpufreq.h>
+#include <mach/asv-exynos.h>
 
 #define CPUFREQ_LEVEL_END	(L15 + 1)
 
@@ -59,30 +60,21 @@ static struct cpufreq_frequency_table exynos5250_freq_table[] = {
 	{0, CPUFREQ_TABLE_END},
 };
 
-/* ASV group voltage table */
-static const unsigned int asv_voltage_5250[CPUFREQ_LEVEL_END] = {
-	1300000, 1250000, 1225000, 1200000, 1150000,
-	1125000, 1100000, 1075000, 1050000, 1025000,
-	1012500, 1000000,  975000,  950000,  937500,
-	925000
-};
-
-static void __init set_volt_table(void)
+static int __init set_volt_table(void)
 {
 	unsigned int i;
 
-	exynos5250_freq_table[L0].frequency = CPUFREQ_ENTRY_INVALID;
-	exynos5250_freq_table[L1].frequency = CPUFREQ_ENTRY_INVALID;
-	exynos5250_freq_table[L2].frequency = CPUFREQ_ENTRY_INVALID;
-	exynos5250_freq_table[L3].frequency = CPUFREQ_ENTRY_INVALID;
-	exynos5250_freq_table[L4].frequency = CPUFREQ_ENTRY_INVALID;
-	exynos5250_freq_table[L5].frequency = CPUFREQ_ENTRY_INVALID;
-	exynos5250_freq_table[L6].frequency = CPUFREQ_ENTRY_INVALID;
+	max_support_idx = L0;
 
-	max_support_idx = L7;
+	for (i = 0; i < CPUFREQ_LEVEL_END; i++) {
+		exynos5250_volt_table[i] = asv_get_volt(ID_ARM, exynos5250_freq_table[i].frequency);
+		if (exynos5250_volt_table[i] == 0) {
+			pr_err("%s: invalid value\n", __func__);
+			return -EINVAL;
+		}
+	}
 
-	for (i = 0 ; i < CPUFREQ_LEVEL_END ; i++)
-		exynos5250_volt_table[i] = asv_voltage_5250[i];
+	return 0;
 }
 
 static void exynos5250_set_frequency(unsigned int old_index,
@@ -105,11 +97,12 @@ static bool exynos5250_pms_change(unsigned int old_index,
 	return true;
 }
 
-int exynos5250_cpufreq_init(struct exynos_dvfs_info *info)
+int __init exynos5250_cpufreq_init(struct exynos_dvfs_info *info)
 {
 	unsigned long rate;
 
-	set_volt_table();
+	if (set_volt_table())
+		return -EINVAL;
 
 	cpu_clk = clk_get(NULL, "armclk");
 	if (IS_ERR(cpu_clk))
