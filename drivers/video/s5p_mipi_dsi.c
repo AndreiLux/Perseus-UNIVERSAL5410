@@ -647,7 +647,7 @@ static irqreturn_t s5p_mipi_dsi_interrupt_handler(int irq, void *dev_id)
 	int_src = readl(dsim->reg_base + S5P_DSIM_INTSRC);
 	s5p_mipi_dsi_clear_interrupt(dsim, int_src);
 
-	if (!(int_src && INTSRC_PLL_STABLE))
+	if (!(int_src & INTSRC_PLL_STABLE))
 		printk(KERN_ERR "mipi dsi interrupt source (%x).\n", int_src);
 
 	s5p_mipi_dsi_set_interrupt_mask(dsim, 0xffffffff, 0);
