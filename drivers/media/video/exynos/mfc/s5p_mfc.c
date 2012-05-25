@@ -241,11 +241,11 @@ static void s5p_mfc_handle_frame_all_extracted(struct s5p_mfc_ctx *ctx)
 
 		clear_bit(dst_buf->vb.v4l2_buf.index, &dec->dpb_status);
 
-		vb2_buffer_done(&dst_buf->vb, VB2_BUF_STATE_DONE);
 		index = dst_buf->vb.v4l2_buf.index;
 		if (call_cop(ctx, get_buf_ctrls_val, ctx, &ctx->dst_ctrls[index]) < 0)
 			mfc_err("failed in get_buf_ctrls_val\n");
 
+		vb2_buffer_done(&dst_buf->vb, VB2_BUF_STATE_DONE);
 		mfc_debug(2, "Cleaned up buffer: %d\n",
 			  dst_buf->vb.v4l2_buf.index);
 	}
@@ -320,10 +320,6 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 				break;
 			}
 
-			vb2_buffer_done(&dst_buf->vb,
-				s5p_mfc_err_dspl(err) ?
-					VB2_BUF_STATE_ERROR : VB2_BUF_STATE_DONE);
-
 			if (s5p_mfc_err_dspl(err))
 				mfc_err("Warning for displayed frame: %d\n",
 							s5p_mfc_err_dspl(err));
@@ -331,6 +327,10 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 			index = dst_buf->vb.v4l2_buf.index;
 			if (call_cop(ctx, get_buf_ctrls_val, ctx, &ctx->dst_ctrls[index]) < 0)
 				mfc_err("failed in get_buf_ctrls_val\n");
+
+			vb2_buffer_done(&dst_buf->vb,
+				s5p_mfc_err_dspl(err) ?
+				VB2_BUF_STATE_ERROR : VB2_BUF_STATE_DONE);
 
 			break;
 		}
@@ -376,10 +376,10 @@ static void s5p_mfc_handle_frame_error(struct s5p_mfc_ctx *ctx,
 		list_del(&src_buf->list);
 		ctx->src_queue_cnt--;
 
-		vb2_buffer_done(&src_buf->vb, VB2_BUF_STATE_ERROR);
-
 		if (call_cop(ctx, get_buf_ctrls_val, ctx, &ctx->src_ctrls[index]) < 0)
 			mfc_err("failed in get_buf_ctrls_val\n");
+
+		vb2_buffer_done(&src_buf->vb, VB2_BUF_STATE_ERROR);
 	}
 	spin_unlock_irqrestore(&dev->irqlock, flags);
 
@@ -514,10 +514,10 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 			list_del(&src_buf->list);
 			ctx->src_queue_cnt--;
 
-			vb2_buffer_done(&src_buf->vb, VB2_BUF_STATE_DONE);
-
 			if (call_cop(ctx, get_buf_ctrls_val, ctx, &ctx->src_ctrls[index]) < 0)
 				mfc_err("failed in get_buf_ctrls_val\n");
+
+			vb2_buffer_done(&src_buf->vb, VB2_BUF_STATE_DONE);
 		}
 	}
 leave_handle_frame:

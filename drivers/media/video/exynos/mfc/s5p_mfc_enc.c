@@ -1641,11 +1641,12 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 		list_del(&mb_entry->list);
 		ctx->dst_queue_cnt--;
 		vb2_set_plane_payload(&mb_entry->vb, 0, strm_size);
-		vb2_buffer_done(&mb_entry->vb, VB2_BUF_STATE_DONE);
 
 		index = mb_entry->vb.v4l2_buf.index;
 		if (call_cop(ctx, get_buf_ctrls_val, ctx, &ctx->dst_ctrls[index]) < 0)
 			mfc_err("failed in get_buf_ctrls_val\n");
+
+		vb2_buffer_done(&mb_entry->vb, VB2_BUF_STATE_DONE);
 	}
 
 	spin_unlock_irqrestore(&dev->irqlock, flags);
