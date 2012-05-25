@@ -730,7 +730,13 @@ static void __init exynos5250_dt_machine_init(void)
 
 	exynos5_i2c_setup();
 
-	i2c_register_board_info(1, i2c_devs1, ARRAY_SIZE(i2c_devs1));
+	/*
+	 * BIG HACK: The wm8994 is not device tree enabled apparently, so
+	 * needs to be added manually.  ...but it's only on SMDK5250.
+	 */
+	if (of_machine_is_compatible("samsung,smdk5250")) {
+		i2c_register_board_info(1, i2c_devs1, ARRAY_SIZE(i2c_devs1));
+	}
 
 	spi_register_board_info(spi1_board_info, ARRAY_SIZE(spi1_board_info));
 
