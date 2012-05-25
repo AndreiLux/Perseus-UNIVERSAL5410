@@ -15,6 +15,7 @@
 #include <linux/clk.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/of_gpio.h>
 #include <plat/ehci.h>
 #include <plat/usb-phy.h>
 
@@ -64,6 +65,29 @@ static const struct hc_driver s5p_ehci_hc_driver = {
 	.clear_tt_buffer_complete	= ehci_clear_tt_buffer_complete,
 };
 
+static int s5p_ehci_setup_gpio(struct platform_device *pdev)
+{
+	int err = 0;
+	int gpio;
+
+	if (!pdev->dev.of_node)
+		return 0;
+
+	gpio = of_get_named_gpio(pdev->dev.of_node,
+			"samsung,vbus-gpio", 0);
+	if (!gpio_is_valid(gpio))
+		return 0;
+
+	err = gpio_request(gpio, "ehci_vbus_gpio");
+	if (err) {
+		dev_err(&pdev->dev, "can't request ehci vbus gpio %d", gpio);
+		return err;
+	}
+	gpio_set_value(gpio, 1);
+
+	return err;
+}
+
 static u64 ehci_s5p_dma_mask = DMA_BIT_MASK(32);
 static int __devinit s5p_ehci_probe(struct platform_device *pdev)
 {
@@ -83,6 +107,8 @@ static int __devinit s5p_ehci_probe(struct platform_device *pdev)
 
 	pdev->dev.dma_mask = &ehci_s5p_dma_mask;
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
+
+	s5p_ehci_setup_gpio(pdev);
 
 	s5p_ehci = kzalloc(sizeof(struct s5p_ehci_hcd), GFP_KERNEL);
 	if (!s5p_ehci)
