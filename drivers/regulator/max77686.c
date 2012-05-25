@@ -440,18 +440,18 @@ static struct regulator_desc regulators[] = {
 	regulator_desc_buck(8),
 	regulator_desc_buck(9),
 	{
-	 .name = "EN32KHz_AP",
-	 .id = MAX77686_EN32KHZ_AP,
-	 .ops = &max77686_fixedvolt_ops,
-	 .type = REGULATOR_VOLTAGE,
-	 .owner = THIS_MODULE,
-	 }, {
-	     .name = "EN32KHz_CP",
-	     .id = MAX77686_EN32KHZ_CP,
-	     .ops = &max77686_fixedvolt_ops,
-	     .type = REGULATOR_VOLTAGE,
-	     .owner = THIS_MODULE,
-	     },
+		.name = "EN32KHz_AP",
+		.id = MAX77686_EN32KHZ_AP,
+		.ops = &max77686_fixedvolt_ops,
+		.type = REGULATOR_VOLTAGE,
+		.owner = THIS_MODULE,
+	}, {
+		.name = "EN32KHz_CP",
+		.id = MAX77686_EN32KHZ_CP,
+		.ops = &max77686_fixedvolt_ops,
+		.type = REGULATOR_VOLTAGE,
+		.owner = THIS_MODULE,
+	},
 };
 
 #ifdef CONFIG_OF
