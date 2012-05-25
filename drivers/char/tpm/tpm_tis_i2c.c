@@ -612,6 +612,7 @@ out_err:
 
 
 static const struct i2c_device_id tpm_i2c_tis_table[] = {
+	{ "slb9635tt", 0 },
 	{ "tpm_tis_i2c", 0 },
 	{ },
 };
