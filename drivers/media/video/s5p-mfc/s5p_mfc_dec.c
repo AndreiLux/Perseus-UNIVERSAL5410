@@ -195,6 +195,16 @@ static struct mfc_control controls[] = {
 		.default_value = 1,
 		.is_volatile = 1,
 	},
+	{
+		.id = V4L2_CID_CODEC_DISPLAY_STATUS,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Display Status",
+		.minimum = 0,
+		.maximum = 3,
+		.step = 1,
+		.default_value = 0,
+		.is_volatile = 1,
+	},
 };
 
 #define NUM_CTRLS ARRAY_SIZE(controls)
@@ -761,6 +771,10 @@ static int s5p_mfc_dec_g_v_ctrl(struct v4l2_ctrl *ctrl)
 			v4l2_err(&dev->v4l2_dev, "Decoding not initialised\n");
 			return -EINVAL;
 		}
+		break;
+	case V4L2_CID_CODEC_DISPLAY_STATUS:
+		ctrl->val = s5p_mfc_get_dspl_status()
+				& S5P_FIMV_DEC_STATUS_DECODING_STATUS_MASK;
 		break;
 	}
 	return 0;
