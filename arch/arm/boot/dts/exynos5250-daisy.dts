@@ -14,7 +14,7 @@
 
 / {
 	model = "Google Daisy";
-	compatible = "google,daisy", "samsung,smdk5250", "samsung,exynos5250";
+	compatible = "google,daisy", "samsung,exynos5250";
 
 	sromc-bus {
 		lan9215@3,0 {
