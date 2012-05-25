@@ -521,6 +521,7 @@ static int __devinit s3c_rtc_probe(struct platform_device *pdev)
 	}
 
 	clk_enable(rtc_clk);
+	s3c_rtc_cpu_type = s3c_rtc_get_driver_data(pdev);
 
 	/* check to see if everything is setup correctly */
 
@@ -541,8 +542,6 @@ static int __devinit s3c_rtc_probe(struct platform_device *pdev)
 		ret = PTR_ERR(rtc);
 		goto err_nortc;
 	}
-
-	s3c_rtc_cpu_type = s3c_rtc_get_driver_data(pdev);
 
 	/* Check RTC Time */
 
