@@ -1157,30 +1157,6 @@ static int s3c_fb_wait_for_vsync(struct s3c_fb *sfb, u32 timeout)
 	return 0;
 }
 
-struct s3c_fb_user_window {
-	int x;
-	int y;
-};
-
-struct s3c_fb_user_plane_alpha {
-	int		channel;
-	unsigned char	red;
-	unsigned char	green;
-	unsigned char	blue;
-};
-
-struct s3c_fb_user_chroma {
-	int		enabled;
-	unsigned char	red;
-	unsigned char	green;
-	unsigned char	blue;
-};
-
-struct s3c_fb_user_ion_client {
-	int	fd;
-	int	offset;
-};
-
 int s3c_fb_set_window_position(struct fb_info *info,
 				struct s3c_fb_user_window user_window)
 {

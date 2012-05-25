@@ -1,0 +1,61 @@
+/* include/linux/s3c-fb.h
+ *
+ * Copyright 2008 Openmoko Inc.
+ * Copyright 2008-2010 Simtec Electronics
+ *      Ben Dooks <ben@simtec.co.uk>
+ *      http://armlinux.simtec.co.uk/
+ *
+ * Samsung SoC Framebuffer driver
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software FoundatIon.
+*/
+
+#ifndef __S3C_FB_H__
+#define __S3C_FB_H__
+
+struct s3c_fb_user_window {
+	int x;
+	int y;
+};
+
+struct s3c_fb_user_plane_alpha {
+	int		channel;
+	unsigned char	red;
+	unsigned char	green;
+	unsigned char	blue;
+};
+
+struct s3c_fb_user_chroma {
+	int		enabled;
+	unsigned char	red;
+	unsigned char	green;
+	unsigned char	blue;
+};
+
+struct s3c_fb_user_ion_client {
+	int	fd;
+	int	offset;
+};
+
+/* S3C_FB_MAX_WIN
+ * Set to the maximum number of windows that any of the supported hardware
+ * can use. Since the platform data uses this for an array size, having it
+ * set to the maximum of any version of the hardware can do is safe.
+ */
+#define S3C_FB_MAX_WIN	(5)
+
+/* IOCTL commands */
+#define S3CFB_WIN_POSITION		_IOW('F', 203, \
+						struct s3c_fb_user_window)
+#define S3CFB_WIN_SET_PLANE_ALPHA	_IOW('F', 204, \
+						struct s3c_fb_user_plane_alpha)
+#define S3CFB_WIN_SET_CHROMA		_IOW('F', 205, \
+						struct s3c_fb_user_chroma)
+#define S3CFB_SET_VSYNC_INT		_IOW('F', 206, u32)
+
+#define S3CFB_GET_ION_USER_HANDLE	_IOWR('F', 208, \
+						struct s3c_fb_user_ion_client)
+
+#endif /* __S3C_FB_H__ */
