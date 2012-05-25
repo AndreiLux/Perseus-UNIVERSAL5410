@@ -151,7 +151,10 @@
 		gpios = <&gpa1 2 3 3 0>,
 			<&gpa1 3 3 3 0>;
 
-		// i2c3 tpm will go here
+		tpm {
+			compatible = "infineon,slb9635tt";
+			reg = <0x20>;
+		};
 	};
 
 	i2c@12CA0000 {
