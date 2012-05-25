@@ -107,6 +107,7 @@ static const struct voltage_map_desc *reg_voltage_map[] = {
 	[MAX77686_BUCK9] = &buck_voltage_map_desc,
 	[MAX77686_EN32KHZ_AP] = NULL,
 	[MAX77686_EN32KHZ_CP] = NULL,
+	[MAX77686_P32KH] = NULL,
 };
 
 static int max77686_get_voltage_unit(int rid)
@@ -182,7 +183,7 @@ static int max77686_get_enable_register(struct regulator_dev *rdev,
 		*mask = 0x03;
 		*pattern = 0x03;
 		break;
-	case MAX77686_EN32KHZ_AP...MAX77686_EN32KHZ_CP:
+	case MAX77686_EN32KHZ_AP...MAX77686_P32KH:
 		*reg = MAX77686_REG_32KHZ_;
 		*mask = 0x01 << (rid - MAX77686_EN32KHZ_AP);
 		*pattern = 0x01 << (rid - MAX77686_EN32KHZ_AP);
@@ -448,6 +449,12 @@ static struct regulator_desc regulators[] = {
 	}, {
 		.name = "EN32KHz_CP",
 		.id = MAX77686_EN32KHZ_CP,
+		.ops = &max77686_fixedvolt_ops,
+		.type = REGULATOR_VOLTAGE,
+		.owner = THIS_MODULE,
+	}, {
+		.name = "ENP32KHz",
+		.id = MAX77686_P32KH,
 		.ops = &max77686_fixedvolt_ops,
 		.type = REGULATOR_VOLTAGE,
 		.owner = THIS_MODULE,
