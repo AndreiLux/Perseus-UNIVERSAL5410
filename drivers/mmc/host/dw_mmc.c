@@ -234,15 +234,21 @@ static u32 dw_mci_prepare_command(struct mmc_host *mmc, struct mmc_command *cmd)
 	struct mmc_data	*data;
 	struct dw_mci_slot *slot = mmc_priv(mmc);
 
-	u32 cmdr;
+	u32 cmdr, argr;
 	cmd->error = -EINPROGRESS;
 
 	cmdr = cmd->opcode;
+	argr = ((cmd->arg >> 9) & 0xFF);
 
 	if (cmdr == MMC_STOP_TRANSMISSION)
 		cmdr |= SDMMC_CMD_STOP;
 	else
 		cmdr |= SDMMC_CMD_PRV_DAT_WAIT;
+
+	if ((cmd->opcode == 52) && (argr == 0x06)) {
+		cmdr &= ~SDMMC_CMD_PRV_DAT_WAIT;
+		cmdr |= SDMMC_CMD_STOP;
+	}
 
 	if (cmd->flags & MMC_RSP_PRESENT) {
 		/* We expect a response, so set this bit */
@@ -1071,6 +1077,12 @@ static void dw_mci_tasklet_func(unsigned long priv)
 					 */
 					data->bytes_xfered = 0;
 					data->error = -ETIMEDOUT;
+				} else if (status & SDMMC_INT_SBE) {
+					dev_err(&host->dev,
+						"Start bit error "
+						"(status=%08x)\n",
+						status);
+					data->error = -EIO;
 				} else {
 					dev_err(&host->dev,
 						"data FIFO error "
@@ -1605,9 +1617,12 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 			host->data_status = status;
 			smp_wmb();
 			set_bit(EVENT_DATA_ERROR, &host->pending_events);
-			if (!(pending & (SDMMC_INT_DTO | SDMMC_INT_DCRC |
-					 SDMMC_INT_SBE | SDMMC_INT_EBE)))
-				tasklet_schedule(&host->tasklet);
+			if (pending & SDMMC_INT_SBE)
+				set_bit(EVENT_DATA_COMPLETE,
+					&host->pending_events);
+
+			set_bit(EVENT_XFER_COMPLETE, &host->pending_events);
+			tasklet_schedule(&host->tasklet);
 		}
 
 		if (pending & SDMMC_INT_DATA_OVER) {
