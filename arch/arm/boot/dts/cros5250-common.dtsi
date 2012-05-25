@@ -174,6 +174,12 @@
 		// i2c5 conn? ts?
 	};
 
+	i2c@12CC0000 {
+		status = "disabled";
+
+		// i2c6 is not used on any cros5250 boards
+	};
+
 	i2c@12CD0000 {
 		samsung,i2c-sda-delay = <100>;
 		samsung,i2c-max-bus-freq = <20000>;
