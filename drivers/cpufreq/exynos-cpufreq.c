@@ -72,49 +72,40 @@ static unsigned int exynos_get_safe_armvolt(unsigned int old_index, unsigned int
 	return safe_arm_volt;
 }
 
-static int exynos_target(struct cpufreq_policy *policy,
-			  unsigned int target_freq,
-			  unsigned int relation)
+static int exynos_cpufreq_scale(unsigned int target_freq, unsigned int curr_freq)
 {
-	unsigned int index, old_index;
-	unsigned int arm_volt, safe_arm_volt = 0;
-	int ret = 0;
 	struct cpufreq_frequency_table *freq_table = exynos_info->freq_table;
 	unsigned int *volt_table = exynos_info->volt_table;
+	struct cpufreq_policy *policy = cpufreq_cpu_get(0);
+	unsigned int new_index, old_index;
+	unsigned int arm_volt, safe_arm_volt = 0;
+	int ret = 0;
 
-	mutex_lock(&cpufreq_lock);
+	freqs.new = target_freq;
 
-	if (exynos_cpufreq_disable)
+	if (curr_freq == freqs.new)
 		goto out;
 
-	freqs.old = policy->cur;
-
 	if (cpufreq_frequency_table_target(policy, freq_table,
-					   freqs.old, relation, &old_index)) {
+					   curr_freq, CPUFREQ_RELATION_H, &old_index)) {
 		ret = -EINVAL;
 		goto out;
 	}
 
 	if (cpufreq_frequency_table_target(policy, freq_table,
-					   target_freq, relation, &index)) {
+					   freqs.new, CPUFREQ_RELATION_H, &new_index)) {
 		ret = -EINVAL;
 		goto out;
 	}
-
-	freqs.new = freq_table[index].frequency;
-	freqs.cpu = policy->cpu;
-
-	if (freqs.old == freqs.new)
-		goto out;
 
 	/*
 	 * ARM clock source will be changed APLL to MPLL temporary
 	 * To support this level, need to control regulator for
 	 * required voltage level
 	 */
-	safe_arm_volt = exynos_get_safe_armvolt(old_index, index);
+	safe_arm_volt = exynos_get_safe_armvolt(old_index, new_index);
 
-	arm_volt = volt_table[index];
+	arm_volt = volt_table[new_index];
 
 	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
 
@@ -129,7 +120,7 @@ static int exynos_target(struct cpufreq_policy *policy,
 		regulator_set_voltage(arm_regulator, safe_arm_volt,
 				      safe_arm_volt);
 
-	exynos_info->set_freq(old_index, index);
+	exynos_info->set_freq(old_index, new_index);
 
 	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
 
@@ -140,6 +131,37 @@ static int exynos_target(struct cpufreq_policy *policy,
 		regulator_set_voltage(arm_regulator, arm_volt,
 				arm_volt);
 	}
+
+out:
+	return ret;
+}
+
+
+static int exynos_target(struct cpufreq_policy *policy,
+			  unsigned int target_freq,
+			  unsigned int relation)
+{
+	struct cpufreq_frequency_table *freq_table = exynos_info->freq_table;
+	unsigned int index;
+	unsigned int new_freq;
+	int ret = 0;
+
+	mutex_lock(&cpufreq_lock);
+
+	if (exynos_cpufreq_disable)
+		goto out;
+
+	freqs.old = policy->cur;
+
+	if (cpufreq_frequency_table_target(policy, freq_table,
+					   target_freq, relation, &index)) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	new_freq = freq_table[index].frequency;
+
+	exynos_cpufreq_scale(new_freq, freqs.old);
 
 out:
 	mutex_unlock(&cpufreq_lock);
@@ -181,15 +203,14 @@ static int exynos_cpufreq_pm_notifier(struct notifier_block *notifier,
 
 	switch (pm_event) {
 	case PM_SUSPEND_PREPARE:
-		ret = cpufreq_driver_target(cpufreq_cpu_get(0), boot_freq,
-					CPUFREQ_RELATION_H);
-
-		if (ret < 0)
-			return NOTIFY_BAD;
-
 		mutex_lock(&cpufreq_lock);
 		exynos_cpufreq_disable = true;
 		mutex_unlock(&cpufreq_lock);
+
+		ret = exynos_cpufreq_scale(boot_freq, exynos_getspeed(0));
+
+		if (ret < 0)
+			return NOTIFY_BAD;
 
 		pr_debug("PM_SUSPEND_PREPARE for CPUFREQ\n");
 		break;
@@ -253,14 +274,14 @@ static int exynos_cpufreq_reboot_notifier_call(struct notifier_block *this,
 {
 	int ret;
 
-	ret = cpufreq_driver_target(cpufreq_cpu_get(0), boot_freq,
-			CPUFREQ_RELATION_H);
-	if (ret < 0)
-		return NOTIFY_BAD;
-
 	mutex_lock(&cpufreq_lock);
 	exynos_cpufreq_disable = true;
 	mutex_unlock(&cpufreq_lock);
+
+	ret = exynos_cpufreq_scale(boot_freq, exynos_getspeed(0));
+
+	if (ret < 0)
+		return NOTIFY_BAD;
 
 	return NOTIFY_DONE;
 }
