@@ -409,7 +409,8 @@ static int __cpuinit exynos4_local_timer_setup(struct clock_event_device *evt)
 	evt->cpumask = cpumask_of(cpu);
 	evt->set_next_event = exynos4_tick_set_next_event;
 	evt->set_mode = exynos4_tick_set_mode;
-	evt->features = CLOCK_EVT_FEAT_PERIODIC | CLOCK_EVT_FEAT_ONESHOT;
+	evt->features = CLOCK_EVT_FEAT_PERIODIC | CLOCK_EVT_FEAT_ONESHOT |
+			CLOCK_EVT_FEAT_C3STOP;
 	evt->rating = 450;
 
 	clockevents_calc_mult_shift(evt, clk_rate / (TICK_BASE_CNT + 1), 5);
