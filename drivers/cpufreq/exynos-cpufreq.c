@@ -26,6 +26,8 @@
 
 /* Use boot_freq when entering sleep mode */
 static unsigned int boot_freq;
+static unsigned int max_freq;
+static unsigned int max_thermal_freq;
 
 static struct exynos_dvfs_info *exynos_info;
 
@@ -152,6 +154,12 @@ static int exynos_target(struct cpufreq_policy *policy,
 		goto out;
 
 	freqs.old = policy->cur;
+	/*
+	 * If the new frequency is more than the thermal max allowed
+	 * frequency, use max_thermal_freq as a new frequency.
+	 */
+	if (target_freq > max_thermal_freq)
+		target_freq = max_thermal_freq;
 
 	if (cpufreq_frequency_table_target(policy, freq_table,
 					   target_freq, relation, &index)) {
@@ -167,6 +175,83 @@ out:
 	mutex_unlock(&cpufreq_lock);
 
 	return ret;
+}
+
+static unsigned int exynos_thermal_lower_speed(void)
+{
+	unsigned int max = 0;
+	unsigned int curr;
+	int i;
+	struct cpufreq_frequency_table *freq_table = exynos_info->freq_table;
+
+	curr = max_thermal_freq;
+
+	for (i = 0; freq_table[i].frequency != CPUFREQ_TABLE_END; i++)
+		if (freq_table[i].frequency != CPUFREQ_ENTRY_INVALID &&
+				freq_table[i].frequency < curr) {
+			max = freq_table[i].frequency;
+			break;
+		}
+
+	if (!max)
+		return curr;
+
+	return max;
+}
+
+void exynos_thermal_throttle(void)
+{
+	unsigned int cur;
+
+	if (!exynos_cpufreq_init_done) {
+		pr_warn_once("%s: Thermal throttle prior to CPUFREQ ready\n",
+				__func__);
+		return;
+	}
+
+	mutex_lock(&cpufreq_lock);
+
+	max_thermal_freq = exynos_thermal_lower_speed();
+
+	pr_debug("%s: temperature too high, cpu throttle at max %u\n",
+			__func__, max_thermal_freq);
+
+	if (!exynos_cpufreq_disable) {
+		cur = exynos_getspeed(0);
+		if (cur > max_thermal_freq)
+			cpufreq_driver_target(cpufreq_cpu_get(0), max_thermal_freq,
+					CPUFREQ_RELATION_H);
+	}
+
+	mutex_unlock(&cpufreq_lock);
+}
+
+void exynos_thermal_unthrottle(void)
+{
+	unsigned int cur;
+
+	if (!exynos_cpufreq_init_done)
+		return;
+
+	mutex_lock(&cpufreq_lock);
+
+	if (max_thermal_freq == max_freq) {
+		pr_warn("%s: not throttling\n", __func__);
+		goto out;
+	}
+
+	max_thermal_freq = max_freq;
+
+	pr_debug("%s: temperature reduced, ending cpu throttling\n", __func__);
+
+	if (!exynos_cpufreq_disable) {
+		cur = exynos_getspeed(0);
+		cpufreq_driver_target(cpufreq_cpu_get(0), cur,
+				CPUFREQ_RELATION_H);
+	}
+
+out:
+	mutex_unlock(&cpufreq_lock);
 }
 
 #ifdef CONFIG_PM
@@ -320,6 +405,9 @@ static int __init exynos_cpufreq_init(void)
 		pr_err("%s: failed to get resource vdd_arm\n", __func__);
 		goto err_vdd_arm;
 	}
+
+	max_freq = exynos_info->freq_table[exynos_info->max_support_idx].frequency;
+	max_thermal_freq = max_freq;
 
 	exynos_cpufreq_disable = false;
 
