@@ -779,32 +779,43 @@ static struct twl6040_platform_data twl6040_data = {
 	.irq_base	= TWL6040_CODEC_IRQ_BASE,
 };
 
-static struct omap_abe_twl6040_data omap5sevm_abe_audio_data = {                    
-        /* Audio out */                                                         
-        .has_hs         = ABE_TWL6040_LEFT | ABE_TWL6040_RIGHT,                 
-        /* HandsFree through expasion connector */                              
-        .has_hf         = ABE_TWL6040_LEFT | ABE_TWL6040_RIGHT,                 
-        /* PandaBoard: FM TX, PandaBoardES: can be connected to audio out */    
-        .has_aux        = ABE_TWL6040_LEFT | ABE_TWL6040_RIGHT,                 
-        /* PandaBoard: FM RX, PandaBoardES: audio in */                         
-        .has_afm        = ABE_TWL6040_LEFT | ABE_TWL6040_RIGHT,                 
-        .has_abe        = 1,                                                    
-        /* No jack detection. */                                                
-        .jack_detection = 1,                                                    
-        /* MCLK input is 38.4MHz */                                             
-        .mclk_freq      = 19200000,                                             
-        .card_name      = "omap5sevm",
-	.has_hsmic	= 1,                                                                        
-	.has_dmic	= 0, // was  1
-}; 
+static struct platform_device omap5evm_dmic_codec = {
+	.name	= "dmic-codec",
+	.id	= -1,
+};
 
-static struct platform_device omap5sevm_abe_audio = {                               
-        .name           = "omap-abe-twl6040",                                   
-        .id             = -1,                                                   
-        .dev = {                                                                
-                .platform_data = &omap5sevm_abe_audio_data,                         
-        },                                                                      
-};  
+static struct omap_abe_twl6040_data omap5evm_abe_audio_data = {
+	/* Audio out */
+	.has_hs		= ABE_TWL6040_LEFT | ABE_TWL6040_RIGHT,
+	/* HandsFree through expasion connector */
+	.has_hf		= ABE_TWL6040_LEFT | ABE_TWL6040_RIGHT,
+	/* PandaBoard: FM TX, PandaBoardES: can be connected to audio out */
+	.has_aux	= ABE_TWL6040_LEFT | ABE_TWL6040_RIGHT,
+	/* PandaBoard: FM RX, PandaBoardES: audio in */
+	.has_afm	= ABE_TWL6040_LEFT | ABE_TWL6040_RIGHT,
+	.has_hsmic	= 1,
+	.has_abe	= 1,
+	.has_dmic	= 1,
+	/* Jack detection. */
+	.jack_detection	= 1,
+	/* MCLK input is 19.2MHz */
+	.mclk_freq	= 19200000,
+	.card_name = "OMAP5EVM",
+
+};
+
+static struct platform_device omap5evm_abe_audio = {
+	.name		= "omap-abe-twl6040",
+	.id		= -1,
+	.dev = {
+		.platform_data = &omap5evm_abe_audio_data,
+	},
+};
+
+static struct platform_device *omap5evm_devices[] __initdata = {
+	&omap5evm_dmic_codec,
+	&omap5evm_abe_audio,
+};
 
 static struct i2c_board_info __initdata omap5evm_i2c_1_boardinfo[] = {
 #ifdef CONFIG_OMAP5_SEVM_PALMAS
