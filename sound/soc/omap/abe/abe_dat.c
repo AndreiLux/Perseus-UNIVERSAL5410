@@ -157,7 +157,7 @@
  *	/ gain / name
  */
 struct omap_aess_port abe_port[LAST_PORT_ID];	/* list of ABE ports */
-const struct omap_aess_port abe_port_init[LAST_PORT_ID] = {
+struct omap_aess_port abe_port_init[LAST_PORT_ID] = {
 	/* Status Data Format Drift Call-Back Protocol+selector desc_addr;
 	   buf_addr; buf_size; iter; irq_addr irq_data DMA_T $Features
 	   reseted at start Port Name for the debug trace */

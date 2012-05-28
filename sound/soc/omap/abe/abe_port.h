@@ -59,7 +59,7 @@
 #ifndef _ABE_PORT_H_
 #define _ABE_PORT_H_
 
-extern const struct omap_aess_port abe_port_init[];
+extern struct omap_aess_port abe_port_init[];
 extern struct omap_aess_port abe_port[];
 extern const u32 abe_port_priority[];
 
