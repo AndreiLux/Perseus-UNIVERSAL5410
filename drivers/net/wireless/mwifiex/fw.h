@@ -92,16 +92,19 @@ enum MWIFIEX_802_11_PRIVACY_FILTER {
 #define TLV_TYPE_KEY_MATERIAL       (PROPRIETARY_TLV_BASE_ID + 0)
 #define TLV_TYPE_CHANLIST           (PROPRIETARY_TLV_BASE_ID + 1)
 #define TLV_TYPE_NUMPROBES          (PROPRIETARY_TLV_BASE_ID + 2)
+#define TLV_TYPE_RSSI_LOW           (PROPRIETARY_TLV_BASE_ID + 4)
 #define TLV_TYPE_PASSTHROUGH        (PROPRIETARY_TLV_BASE_ID + 10)
 #define TLV_TYPE_WMMQSTATUS         (PROPRIETARY_TLV_BASE_ID + 16)
 #define TLV_TYPE_WILDCARDSSID       (PROPRIETARY_TLV_BASE_ID + 18)
 #define TLV_TYPE_TSFTIMESTAMP       (PROPRIETARY_TLV_BASE_ID + 19)
+#define TLV_TYPE_RSSI_HIGH          (PROPRIETARY_TLV_BASE_ID + 22)
 #define TLV_TYPE_AUTH_TYPE          (PROPRIETARY_TLV_BASE_ID + 31)
 #define TLV_TYPE_CHANNELBANDLIST    (PROPRIETARY_TLV_BASE_ID + 42)
 #define TLV_TYPE_RATE_DROP_CONTROL  (PROPRIETARY_TLV_BASE_ID + 82)
 #define TLV_TYPE_RATE_SCOPE         (PROPRIETARY_TLV_BASE_ID + 83)
 #define TLV_TYPE_POWER_GROUP        (PROPRIETARY_TLV_BASE_ID + 84)
 #define TLV_TYPE_WAPI_IE            (PROPRIETARY_TLV_BASE_ID + 94)
+#define TLV_TYPE_MGMT_IE            (PROPRIETARY_TLV_BASE_ID + 105)
 #define TLV_TYPE_AUTO_DS_PARAM      (PROPRIETARY_TLV_BASE_ID + 113)
 #define TLV_TYPE_PS_PARAM           (PROPRIETARY_TLV_BASE_ID + 114)
 
@@ -194,6 +197,7 @@ enum MWIFIEX_802_11_PRIVACY_FILTER {
 #define HostCmd_CMD_802_11_KEY_MATERIAL               0x005e
 #define HostCmd_CMD_802_11_BG_SCAN_QUERY              0x006c
 #define HostCmd_CMD_WMM_GET_STATUS                    0x0071
+#define HostCmd_CMD_802_11_SUBSCRIBE_EVENT            0x0075
 #define HostCmd_CMD_802_11_TX_RATE_QUERY              0x007f
 #define HostCmd_CMD_802_11_IBSS_COALESCING_STATUS     0x0083
 #define HostCmd_CMD_VERSION_EXT                       0x0097
@@ -228,6 +232,8 @@ enum ENH_PS_MODES {
 #define HostCmd_RET_BIT                       0x8000
 #define HostCmd_ACT_GEN_GET                   0x0000
 #define HostCmd_ACT_GEN_SET                   0x0001
+#define HostCmd_ACT_BITWISE_SET               0x0002
+#define HostCmd_ACT_BITWISE_CLR               0x0003
 #define HostCmd_RESULT_OK                     0x0000
 
 #define HostCmd_ACT_MAC_RX_ON                 0x0001
@@ -813,7 +819,7 @@ struct host_cmd_ds_txpwr_cfg {
 struct mwifiex_bcn_param {
 	u8 bssid[ETH_ALEN];
 	u8 rssi;
-	__le32 timestamp[2];
+	__le64 timestamp;
 	__le16 beacon_period;
 	__le16 cap_info_bitmap;
 } __packed;
@@ -1007,7 +1013,7 @@ struct ieee_types_wmm_parameter {
 	struct ieee_types_vendor_header vend_hdr;
 	u8 qos_info_bitmap;
 	u8 reserved;
-	struct ieee_types_wmm_ac_parameters ac_params[IEEE80211_MAX_QUEUES];
+	struct ieee_types_wmm_ac_parameters ac_params[IEEE80211_NUM_ACS];
 } __packed;
 
 struct ieee_types_wmm_info {
@@ -1028,7 +1034,7 @@ struct ieee_types_wmm_info {
 
 struct host_cmd_ds_wmm_get_status {
 	u8 queue_status_tlv[sizeof(struct mwifiex_ie_types_wmm_queue_status) *
-			      IEEE80211_MAX_QUEUES];
+			      IEEE80211_NUM_ACS];
 	u8 wmm_param_tlv[sizeof(struct ieee_types_wmm_parameter) + 2];
 } __packed;
 
@@ -1146,6 +1152,17 @@ struct host_cmd_ds_pcie_details {
 	u32 sleep_cookie_addr_hi;
 } __packed;
 
+struct mwifiex_ie_types_rssi_threshold {
+	struct mwifiex_ie_types_header header;
+	u8 abs_value;
+	u8 evt_freq;
+} __packed;
+
+struct host_cmd_ds_802_11_subsc_evt {
+	__le16 action;
+	__le16 events;
+} __packed;
+
 struct host_cmd_ds_command {
 	__le16 command;
 	__le16 size;
@@ -1195,6 +1212,7 @@ struct host_cmd_ds_command {
 		struct host_cmd_ds_set_bss_mode bss_mode;
 		struct host_cmd_ds_pcie_details pcie_host_spec;
 		struct host_cmd_ds_802_11_eeprom_access eeprom;
+		struct host_cmd_ds_802_11_subsc_evt subsc_evt;
 	} params;
 } __packed;
 
