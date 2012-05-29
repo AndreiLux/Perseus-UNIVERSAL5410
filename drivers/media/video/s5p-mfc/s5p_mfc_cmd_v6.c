@@ -93,8 +93,7 @@ int s5p_mfc_open_inst_cmd(struct s5p_mfc_ctx *ctx)
 
 	mfc_debug(2, "Requested codec mode: %d\n", ctx->codec_mode);
 
-	mfc_write(dev, 3, S5P_FIMV_CODEC_TYPE);
-	//mfc_write(dev, ctx->codec_mode, S5P_FIMV_CODEC_TYPE);
+	mfc_write(dev, ctx->codec_mode, S5P_FIMV_CODEC_TYPE);
 	mfc_write(dev, ctx->ctx.dma, S5P_FIMV_CONTEXT_MEM_ADDR);
 	mfc_write(dev, ctx->ctx_size, S5P_FIMV_CONTEXT_MEM_SIZE);
 	mfc_write(dev, 0, S5P_FIMV_D_CRC_CTRL); /* no crc */
