@@ -281,4 +281,9 @@ config CMA_AREAS
 
 endif
 
+config KDS
+	bool "Kernel dependency system"
+	help
+	  This option enables the generic kernel dependency system
+
 endmenu

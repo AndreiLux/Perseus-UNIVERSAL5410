@@ -1,0 +1,113 @@
+#
+# (C) COPYRIGHT 2012 ARM Limited. All rights reserved.
+#
+# This program is free software and is provided to you under the terms of the GNU General Public License version 2
+# as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+#
+# A copy of the licence is included with the program, and can also be obtained from Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+#
+#
+
+
+==============================
+kds - Kernel Dependency System
+==============================
+
+Introduction
+------------
+kds provides a mechanism for clients to atomically lock down multiple abstract resources.
+This can be done either synchronously or asynchronously.
+Abstract resources is used to allow a set of clients to use kds to control access to any
+resource, an example is structured memory buffers.
+
+kds supports that buffer is locked for exclusive access and sharing of buffers.
+
+kds can be built as either a integrated feature of the kernel or as a module.
+It supports being compiled as a module both in-tree and out-of-tree.
+
+
+Concepts
+--------
+A core concept in kds is abstract resources.
+A kds resource is just an abstraction for some client object, kds doesn't care what it is.
+Typically EGL will consider UMP buffers as being a resource, thus each UMP buffer has
+a kds resource for synchronization to the buffer.
+
+kds allows a client to create and destroy the abstract resource objects.
+A new resource object is made available asap (it is just a simple malloc with some initializations),
+while destroy it requires some external synchronization.
+
+The other core concept in kds is consumer of resources.
+kds is requested to allow a client to consume a set of resources and the client will be notified when it can consume the resources.
+
+Exclusive access allows only one client to consume a resource.
+Shared access permits multiple consumers to acceess a resource concurrently.
+
+
+APIs
+----
+kds provides simple resource allocate and destroy functions.
+Clients use this to instantiate and control the lifetime of the resources kds manages.
+
+kds provides two ways to wait for resources:
+- Asynchronous wait: the client specifies a function pointer to be called when wait is over
+- Synchronous wait: Function blocks until access is gained.
+
+The synchronous API has a timeout for the wait.
+The call can early out if a signal is delivered.
+
+After a client is done consuming the resource kds must be notified to release the resources and let some other client take ownership.
+This is done via resource set release call.
+
+A Windows comparison:
+kds implements WaitForMultipleObjectsEx(..., bWaitAll = TRUE, ...) but also has an asynchronous version in addition.
+kds resources can be seen as being the same as NT object manager resources.
+
+Internals
+---------
+kds guarantees atomicity when a set of resources is operated on.
+This is implemented via a global resource lock which is taken by kds when it updates resource objects.
+
+Internally a resource in kds is a linked list head with some flags.
+
+When a consumer requests access to a set of resources it is queued on each of the resources.
+The link from the consumer to the resources can be triggered. Once all links are triggered
+the registered callback is called or the blocking function returns.
+A link is considered triggered if it is the first on the list of consumers of a resource,
+or if all the links ahead of it is marked as shared and itself is of the type shared.
+
+When the client is done consuming the consumer object is removed from the linked lists of
+the resources and a potential new consumer becomes the head of the resources.
+As we add and remove consumers atomically across all resources we can guarantee that
+we never introduces a A->B + B->A type of loops/deadlocks.
+
+
+kbase/base implementation
+-------------------------
+A HW job needs access to a set of shared resources.
+EGL tracks this and encodes the set along with the atom in the ringbuffer.
+EGL allocates a (k)base dep object to represent the dependency to the set of resources and encodes that along with the list of resources.
+This dep object is use to create a dependency from a job chain(atom) to the resources it needs to run.
+When kbase decodes the atom in the ringbuffer it finds the set of resources and calls kds to request all the needed resources.
+As EGL needs to know when the kds request is delivered a new base event object is needed: atom enqueued. This event is only delivered for atoms which uses kds.
+The callback kbase registers trigger the dependency object described which would trigger the existing JD system to release the job chain.
+When the atom is done kds resource set release is call to release the resources.
+
+EGL will typically use exclusive access to the render target, while all buffers used as input can be marked as shared.
+
+
+Buffer publish/vsync
+--------------------
+EGL will use a separate ioctl or DRM flip to request the flip.
+If the LCD driver is integrated with kds EGL can do these operations early.
+The LCD driver must then implement the ioctl or DRM flip to be asynchronous with kds async call.
+The LCD driver binds a kds resource to each virtual buffer (2 buffers in case of double-buffering).
+EGL will make a dependency to the target kds resource in the kbase atom.
+After EGL receives a atom enqueued event it can ask the LCD driver to pan to the target kds resource.
+When the atom is completed it'll release the resource and the LCD driver will get its callback.
+In the callback it'll load the target buffer into the DMA unit of the LCD hardware.
+The LCD driver will be the consumer of both buffers for a short period.
+The LCD driver will call kds resource set release on the previous on-screen buffer when the next vsync/dma read end is handled.
+
+
