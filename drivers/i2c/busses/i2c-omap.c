@@ -1162,7 +1162,7 @@ omap_i2c_probe(struct platform_device *pdev)
 
 	isr = (dev->rev < OMAP_I2C_OMAP1_REV_2) ? omap_i2c_omap1_isr :
 								   omap_i2c_isr;
-	r = request_irq(dev->irq, isr, 0, pdev->name, dev);
+	r = request_irq(dev->irq, isr, IRQF_NO_SUSPEND, pdev->name, dev);
 
 	/* We enable IRQ only when request for I2C from master */
 	disable_irq(dev->irq);
