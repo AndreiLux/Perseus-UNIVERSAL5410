@@ -51,14 +51,13 @@ static struct i2c_board_info hdmiphy_info = {
 static struct hdmi_driver_data hdmi_driver_data[] = {
 	{ .hdmiphy_bus = 3 },
 	{ .hdmiphy_bus = 8 },
-	{ .hdmiphy_bus = 5 },
 };
 
 #ifdef CONFIG_OF
 static const struct of_device_id exynos_hdmi_match[] = {
 	{
 		.compatible = "samsung,exynos5-hdmi",
-		.data = &hdmi_driver_data[2],
+		.data = &hdmi_driver_data[1],
 	},
 	{},
 };
@@ -84,7 +83,7 @@ static struct platform_device_id hdmi_driver_types[] = {
 		.driver_data	= (unsigned long)&hdmi_driver_data[1],
 	}, {
 		.name		= "exynos5-hdmi",
-		.driver_data	= (unsigned long)&hdmi_driver_data[2],
+		.driver_data	= (unsigned long)&hdmi_driver_data[1],
 	}, {
 		/* end node */
 	}
