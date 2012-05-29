@@ -1564,6 +1564,12 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	struct clk *clk_parent;
 	struct clk *sclk;
 
+	pd = pdev->dev.platform_data;
+	if (!pd) {
+		dev_err(dev, "no platform data specified\n");
+		return -EINVAL;
+	}
+
 	/* HACK: This should be added from pdata/device tree */
 	sclk = clk_get(&pdev->dev, "sclk_fimd");
 	if (IS_ERR(sclk))
@@ -1581,7 +1587,7 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 		return PTR_ERR(sclk);
 	}
 
-	if (clk_set_rate(sclk, 800 * 1000 * 1000)) {
+	if (clk_set_rate(sclk, pd->clock_rate)) {
 		clk_put(sclk);
 		clk_put(clk_parent);
 		return PTR_ERR(sclk);
@@ -1595,12 +1601,6 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 
 	if (fbdrv->variant.nr_windows > S3C_FB_MAX_WIN) {
 		dev_err(dev, "too many windows, cannot attach\n");
-		return -EINVAL;
-	}
-
-	pd = pdev->dev.platform_data;
-	if (!pd) {
-		dev_err(dev, "no platform data specified\n");
 		return -EINVAL;
 	}
 
