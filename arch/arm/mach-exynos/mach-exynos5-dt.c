@@ -196,6 +196,7 @@ static struct s3c_fb_platdata smdk5250_lcd1_pdata __initdata = {
 	.vidcon0	= VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB,
 	.vidcon1	= VIDCON1_INV_VCLK,
 	.setup_gpio	= exynos_fimd_gpio_setup_24bpp,
+	.clock_rate	= 800 * 1000 * 1000,
 };
 #endif
 

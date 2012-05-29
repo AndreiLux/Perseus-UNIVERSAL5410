@@ -57,6 +57,7 @@ struct s3c_fb_pd_win {
  *		the data from the display system to the connected display
  *		device.
  * @default_win: default window layer number to be used for UI layer.
+ * @clock_rate: To Setup FIMD source clock rate.
  * @vidcon0: The base vidcon0 values to control the panel data format.
  * @vidcon1: The base vidcon1 values to control the panel data output.
  * @win: The setup data for each hardware window, or NULL for unused.
@@ -74,7 +75,7 @@ struct s3c_fb_platdata {
 	struct s3c_fb_pd_win	*win[S3C_FB_MAX_WIN];
 
 	u32			 default_win;
-
+	u32			 clock_rate;
 	u32			 vidcon0;
 	u32			 vidcon1;
 };
