@@ -40,6 +40,7 @@ static int dma_buf_release(struct inode *inode, struct file *file)
 	dmabuf = file->private_data;
 
 	dmabuf->ops->release(dmabuf);
+	kds_resource_term(&dmabuf->kds);
 	kfree(dmabuf);
 	return 0;
 }
@@ -119,6 +120,8 @@ struct dma_buf *dma_buf_export(void *priv, const struct dma_buf_ops *ops,
 
 	mutex_init(&dmabuf->lock);
 	INIT_LIST_HEAD(&dmabuf->attachments);
+
+	kds_resource_init(&dmabuf->kds);
 
 	return dmabuf;
 }

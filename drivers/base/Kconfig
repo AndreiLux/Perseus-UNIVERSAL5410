@@ -185,6 +185,8 @@ config DMA_SHARED_BUFFER
 	bool
 	default n
 	select ANON_INODES
+	select KDS
+	select DMA_SHARED_BUFFER_USES_KDS
 	depends on EXPERIMENTAL
 	help
 	  This option enables the framework for buffer-sharing between
@@ -280,6 +282,12 @@ config CMA_AREAS
 	  If unsure, leave the default value "7".
 
 endif
+
+config DMA_SHARED_BUFFER_USES_KDS
+	bool
+	default n
+	help
+	  This option adds a KDS resource within every dma_buf allocation.
 
 config KDS
 	bool "Kernel dependency system"
