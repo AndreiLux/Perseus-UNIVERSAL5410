@@ -434,7 +434,6 @@ void gsc_hw_set_output_path(struct gsc_ctx *ctx)
 	else
 		cfg |= GSC_OUT_PATH_LOCAL;
 
-
 	writel(cfg, dev->regs + GSC_OUT_CON);
 }
 

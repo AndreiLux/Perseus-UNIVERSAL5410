@@ -26,6 +26,7 @@
 #include <linux/slab.h>
 #include <linux/clk.h>
 #include <media/v4l2-ioctl.h>
+#include <mach/videonode.h>
 
 #include "gsc-core.h"
 
@@ -362,8 +363,14 @@ static int gsc_m2m_reqbufs(struct file *file, void *fh,
 	return v4l2_m2m_reqbufs(file, ctx->m2m_ctx, reqbufs);
 }
 
-static int gsc_m2m_querybuf(struct file *file, void *fh,
-			   struct v4l2_buffer *buf)
+static int gsc_m2m_expbuf(struct file *file, void *fh,
+					struct v4l2_exportbuffer *eb)
+{
+	struct gsc_ctx *ctx = fh_to_ctx(fh);
+	return v4l2_m2m_expbuf(file, ctx->m2m_ctx, eb);
+}
+
+static int gsc_m2m_querybuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 {
 	struct gsc_ctx *ctx = fh_to_ctx(fh);
 	return v4l2_m2m_querybuf(file, ctx->m2m_ctx, buf);
@@ -493,6 +500,8 @@ static const struct v4l2_ioctl_ops gsc_m2m_ioctl_ops = {
 	.vidioc_reqbufs			= gsc_m2m_reqbufs,
 	.vidioc_querybuf		= gsc_m2m_querybuf,
 
+	.vidioc_expbuf                  = gsc_m2m_expbuf,
+
 	.vidioc_qbuf			= gsc_m2m_qbuf,
 	.vidioc_dqbuf			= gsc_m2m_dqbuf,
 
@@ -513,7 +522,7 @@ static int queue_init(void *priv, struct vb2_queue *src_vq,
 
 	memset(src_vq, 0, sizeof(*src_vq));
 	src_vq->type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-	src_vq->io_modes = VB2_MMAP | VB2_USERPTR;
+	src_vq->io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	src_vq->drv_priv = ctx;
 	src_vq->ops = &gsc_m2m_qops;
 	src_vq->mem_ops = &vb2_dma_contig_memops;
@@ -525,7 +534,7 @@ static int queue_init(void *priv, struct vb2_queue *src_vq,
 
 	memset(dst_vq, 0, sizeof(*dst_vq));
 	dst_vq->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-	dst_vq->io_modes = VB2_MMAP | VB2_USERPTR;
+	dst_vq->io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	dst_vq->drv_priv = ctx;
 	dst_vq->ops = &gsc_m2m_qops;
 	dst_vq->mem_ops = &vb2_dma_contig_memops;

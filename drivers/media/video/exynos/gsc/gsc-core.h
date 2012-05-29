@@ -27,6 +27,7 @@
 #include <media/v4l2-mediabus.h>
 #include <media/exynos_mc.h>
 #include <media/exynos_gscaler.h>
+#define CONFIG_VB2_GSC_DMA_CONTIG	1
 #include <media/videobuf2-dma-contig.h>
 #include "regs-gsc.h"
 extern int gsc_dbg;
@@ -451,6 +452,19 @@ struct gsc_driverdata {
 	int		num_entities;
 };
 
+struct gsc_vb2 {
+	const struct vb2_mem_ops *ops;
+	void *(*init)(struct gsc_dev *gsc);
+	void (*cleanup)(void *alloc_ctx);
+
+	void (*resume)(void *alloc_ctx);
+	void (*suspend)(void *alloc_ctx);
+
+	int (*cache_flush)(struct vb2_buffer *vb, u32 num_planes);
+	void (*set_cacheable)(void *alloc_ctx, bool cacheable);
+	void (*set_sharable)(void *alloc_ctx, bool sharable);
+};
+
 struct gsc_pipeline {
 	struct media_pipeline *pipe;
 	struct v4l2_subdev *sd_gsc;
@@ -498,6 +512,7 @@ struct gsc_dev {
 	struct exynos_platform_gscaler	*pdata;
 	unsigned long			state;
 	struct vb2_alloc_ctx		*alloc_ctx;
+	const struct gsc_vb2		*vb2;
 	struct exynos_md		*mdev[MAX_MDEV];
 	struct gsc_pipeline		pipeline;
 	struct exynos_entity_data	md_data;

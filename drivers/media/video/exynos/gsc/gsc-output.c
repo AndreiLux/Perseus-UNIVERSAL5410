@@ -953,6 +953,7 @@ int gsc_register_output_device(struct gsc_dev *gsc)
 	vfd->v4l2_dev	= &gsc->mdev[MDEV_OUTPUT]->v4l2_dev;
 	vfd->release	= video_device_release;
 	vfd->lock	= &gsc->lock;
+	vfd->minor	= -1;
 	video_set_drvdata(vfd, gsc);
 
 	gsc_out	= &gsc->out;

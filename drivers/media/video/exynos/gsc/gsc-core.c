@@ -25,10 +25,8 @@
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/clk.h>
-#include <linux/of.h>
 #include <media/v4l2-ioctl.h>
-
-#include <linux/videodev2.h>
+#include <linux/of.h>
 #include "gsc-core.h"
 #define GSC_CLOCK_GATE_NAME		"gscl"
 
@@ -1079,6 +1077,10 @@ isr_unlock:
 	return IRQ_HANDLED;
 }
 
+/* Below piece of code shall stay disabled as there is no media device
+ *  support for exynos as of now.
+ */
+#if 0
 static int gsc_get_media_info(struct device *dev, void *p)
 {
 	struct exynos_md **mdev = p;
@@ -1090,6 +1092,7 @@ static int gsc_get_media_info(struct device *dev, void *p)
 
 	return 0;
 }
+#endif
 
 static int gsc_runtime_suspend(struct device *dev)
 {
@@ -1114,7 +1117,6 @@ static int gsc_runtime_resume(struct device *dev)
 	set_bit(ST_PWR_ON, &gsc->state);
 	return 0;
 }
-
 static inline void *gsc_get_drv_data(struct platform_device *pdev);
 
 static int gsc_probe(struct platform_device *pdev)
@@ -1122,14 +1124,20 @@ static int gsc_probe(struct platform_device *pdev)
 	struct gsc_dev *gsc;
 	struct resource *res;
 	struct gsc_driverdata *drv_data;
+
+	/* Below piece of code shall stay disabled as there is no media device
+	 *  support for exynos as of now.
+	 */
+#if 0
 	struct device_driver *driver;
 	struct exynos_md *mdev[MDEV_MAX_NUM] = {NULL,};
+#endif
 	int ret = 0;
 	char workqueue_name[WORKQUEUE_NAME_SIZE];
 
 	dev_dbg(&pdev->dev, "%s():\n", __func__);
-
-	drv_data = (struct gsc_driverdata *) gsc_get_drv_data(pdev);
+	drv_data = (struct gsc_driverdata *)
+				gsc_get_drv_data(pdev);
 
 
 	if (pdev->dev.of_node) {
@@ -1207,6 +1215,11 @@ static int gsc_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_irq;
 
+	/* G-Scaler driver shall be used as only a color-space-convert
+	 * and scaling device. Below piece of code shall stay disabled
+	 * as there is no media device support for exynos as of now.
+	 */
+#if 0
 	/* find media device */
 	driver = driver_find(MDEV_MODULE_NAME, &platform_bus_type);
 	if (!driver)
@@ -1228,7 +1241,7 @@ static int gsc_probe(struct platform_device *pdev)
 	ret = gsc_register_output_device(gsc);
 	if (ret)
 		goto err_irq;
-
+#endif
 	sprintf(workqueue_name, "gsc%d_irq_wq_name", gsc->id);
 	gsc->irq_workqueue = create_singlethread_workqueue(workqueue_name);
 	if (gsc->irq_workqueue == NULL) {
@@ -1418,7 +1431,7 @@ MODULE_DEVICE_TABLE(platform, gsc_driver_ids);
 #ifdef CONFIG_OF
 static const struct of_device_id exynos_gsc_match[] = {
 	{ .compatible = "samsung,exynos-gsc",
-	  .data = &gsc_v_100_drvdata, },
+	.data = &gsc_v_100_drvdata, },
 	{},
 };
 MODULE_DEVICE_TABLE(of, exynos_gsc_match);
@@ -1431,8 +1444,8 @@ static inline void *gsc_get_drv_data(struct platform_device *pdev)
 #ifdef CONFIG_OF
 	if (pdev->dev.of_node) {
 		const struct of_device_id *match;
-		match = of_match_node(exynos_gsc_match, pdev->dev.of_node);
-		return (struct gsc_driverdata *) match->data;
+	match = of_match_node(exynos_gsc_match, pdev->dev.of_node);
+	return (struct gsc_driverdata *) match->data;
 	}
 #endif
 	return (struct gsc_driverdata *)platform_get_device_id(pdev)->driver_data;
