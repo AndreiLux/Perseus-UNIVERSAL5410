@@ -1728,6 +1728,9 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 		}
 	}
 
+	if (pd->panel_type == DP_LCD)
+		writel(DPCLKCON_ENABLE, sfb->regs + DPCLKCON);
+
 	platform_set_drvdata(pdev, sfb);
 	pm_runtime_put_sync(sfb->dev);
 
@@ -1821,6 +1824,7 @@ static int s3c_fb_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct s3c_fb *sfb = platform_get_drvdata(pdev);
+	struct s3c_fb_platdata *pd;
 	struct s3c_fb_win *win;
 	int win_no;
 	u32 reg;
@@ -1870,6 +1874,11 @@ static int s3c_fb_resume(struct device *dev)
 		dev_dbg(&pdev->dev, "resuming window %d\n", win_no);
 		s3c_fb_set_par(win->fbinfo);
 	}
+
+	pd = pdev->dev.platform_data;
+
+	if (pd->panel_type == DP_LCD)
+		writel(DPCLKCON_ENABLE, sfb->regs + DPCLKCON);
 
 	return 0;
 }
