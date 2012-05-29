@@ -172,7 +172,7 @@ static int s3c_rtc_setfreq(struct device *dev, int freq)
 
 /* Time read/write */
 
-static int s3c_rtc_gettime(struct device *dev, struct rtc_time *rtc_tm)
+static int s3c_rtc_gettime_internal(struct rtc_time *rtc_tm)
 {
 	unsigned int have_retried = 0;
 	void __iomem *base = s3c_rtc_base;
@@ -213,6 +213,11 @@ static int s3c_rtc_gettime(struct device *dev, struct rtc_time *rtc_tm)
 
 	clk_disable(rtc_clk);
 	return rtc_valid_tm(rtc_tm);
+}
+
+static int s3c_rtc_gettime(struct device *dev, struct rtc_time *rtc_tm)
+{
+	return s3c_rtc_gettime_internal(rtc_tm);
 }
 
 static int s3c_rtc_settime(struct device *dev, struct rtc_time *tm)
@@ -421,6 +426,25 @@ static void s3c_rtc_enable(struct platform_device *pdev, int en)
 		}
 	}
 	clk_disable(rtc_clk);
+}
+
+/**
+ * read_persistent_clock -  Return time from a persistent clock.
+ */
+void read_persistent_clock(struct timespec *ts)
+{
+	struct rtc_time rtc_tm;
+	unsigned long time;
+
+	if ((s3c_rtc_base == NULL) || s3c_rtc_gettime_internal(&rtc_tm)) {
+		ts->tv_sec = 0;
+		ts->tv_nsec = 0;
+		return;
+	}
+
+	rtc_tm_to_time(&rtc_tm, &time);
+	ts->tv_sec = time;
+	ts->tv_nsec = 0;
 }
 
 static int __devexit s3c_rtc_remove(struct platform_device *dev)
