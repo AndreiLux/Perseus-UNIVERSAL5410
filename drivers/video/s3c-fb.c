@@ -47,10 +47,12 @@
 #ifdef CONFIG_ION_EXYNOS
 #include <linux/dma-buf.h>
 #include <linux/ion.h>
+#include <linux/sw_sync.h>
 #include <plat/devs.h>
 #include <plat/iovmm.h>
 #include <mach/sysmmu.h>
 #endif
+
 
 /* This driver will export a number of framebuffer interfaces depending
  * on the configuration passed in via the platform data. Each fb instance
@@ -317,6 +319,9 @@ struct s3c_fb {
 	struct kthread_worker	update_regs_worker;
 	struct task_struct	*update_regs_thread;
 	struct kthread_work	update_regs_work;
+
+	struct sw_sync_timeline *timeline;
+	int			timeline_max;
 #endif
 
 #ifdef CONFIG_FB_EXYNOS_FIMD_MC
@@ -1637,17 +1642,23 @@ err_import:
 }
 
 static int s3c_fb_set_win_config(struct s3c_fb *sfb,
-		struct s3c_fb_win_config *win_config)
+		struct s3c_fb_win_config_data *win_data)
 {
+	struct s3c_fb_win_config *win_config = win_data->config;
 	int ret = 0;
 	unsigned short i;
 	struct s3c_reg_data *regs = kzalloc(sizeof(struct s3c_reg_data),
 			GFP_KERNEL);
+	struct sync_fence *fence;
+	struct sync_pt *pt;
+	int fd;
 
 	if (!regs) {
 		dev_err(sfb->dev, "could not allocate s3c_reg_data");
 		return -ENOMEM;
 	}
+
+	fd = get_unused_fd();
 
 	for (i = 0; i < sfb->variant.nr_windows && !ret; i++) {
 		struct s3c_fb_win_config *config = &win_config[i];
@@ -1685,9 +1696,16 @@ static int s3c_fb_set_win_config(struct s3c_fb *sfb,
 	}
 
 	if (ret) {
+		put_unused_fd(fd);
 		kfree(regs);
 	} else {
 		mutex_lock(&sfb->update_regs_list_lock);
+		sfb->timeline_max++;
+		pt = sw_sync_pt_create(sfb->timeline, sfb->timeline_max);
+		fence = sync_fence_create("display", pt);
+		sync_fence_install(fence, fd);
+		win_data->fence = fd;
+
 		list_add_tail(&regs->list, &sfb->update_regs_list);
 		mutex_unlock(&sfb->update_regs_list_lock);
 		queue_kthread_work(&sfb->update_regs_worker, &sfb->update_regs_work);
@@ -1701,9 +1719,10 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 	struct s3c_dma_buf_data old_dma_bufs[S3C_FB_MAX_WIN];
 	unsigned short i;
 
-	for (i = 0; i < sfb->variant.nr_windows; i++) {
+	for (i = 0; i < sfb->variant.nr_windows; i++)
 		shadow_protect_win(sfb->windows[i], 1);
 
+	for (i = 0; i < sfb->variant.nr_windows; i++) {
 		writel(regs->wincon[i], sfb->regs + WINCON(i));
 		writel(regs->vidosd_a[i],
 				sfb->regs + VIDOSD_A(i, sfb->variant));
@@ -1730,13 +1749,15 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 				!!(regs->wincon[i] & WINCONx_ENWIN);
 		sfb->windows[i]->dma_enabled =
 				!!(regs->shadowcon & SHADOWCON_CHx_ENABLE(i));
-
-		shadow_protect_win(sfb->windows[i], 0);
 	}
 	if (sfb->variant.has_shadowcon)
 		writel(regs->shadowcon, sfb->regs + SHADOWCON);
 
+	for (i = 0; i < sfb->variant.nr_windows; i++)
+		shadow_protect_win(sfb->windows[i], 0);
 	s3c_fb_wait_for_vsync(sfb, 0);
+
+	sw_sync_timeline_inc(sfb->timeline, 1);
 
 	for (i = 0; i < sfb->variant.nr_windows; i++) {
 		struct s3c_dma_buf_data *dma = &old_dma_bufs[i];
@@ -1795,7 +1816,7 @@ static int s3c_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		struct s3c_fb_user_plane_alpha user_alpha;
 		struct s3c_fb_user_chroma user_chroma;
 		struct s3c_fb_user_ion_client user_ion_client;
-		struct s3c_fb_win_config win_config[S3C_FB_MAX_WIN];
+		struct s3c_fb_win_config_data win_data;
 		u32 vsync;
 	} p;
 
@@ -1863,15 +1884,24 @@ static int s3c_fb_ioctl(struct fb_info *info, unsigned int cmd,
 
 #ifdef CONFIG_ION_EXYNOS
 	case S3CFB_WIN_CONFIG:
-		if (copy_from_user(p.win_config,
-				(struct s3c_fb_win_config __user *)arg,
-				sizeof(p.win_config[0]) *
-					sfb->variant.nr_windows)) {
+		if (copy_from_user(&p.win_data,
+				   (struct s3c_fb_win_config_data __user *)arg,
+				   sizeof(p.win_data))) {
 			ret = -EFAULT;
 			break;
 		}
 
-		ret = s3c_fb_set_win_config(sfb, p.win_config);
+		ret = s3c_fb_set_win_config(sfb, &p.win_data);
+		if (ret)
+			break;
+
+		if (copy_to_user((struct s3c_fb_win_config_data __user *)arg,
+				 &p.win_data,
+				 sizeof(p.user_ion_client))) {
+			ret = -EFAULT;
+			break;
+		}
+
 		break;
 
 	case S3CFB_GET_ION_USER_HANDLE:
@@ -3042,6 +3072,9 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 		return err;
 	}
 	init_kthread_work(&sfb->update_regs_work, s3c_fb_update_regs_handler);
+	sfb->timeline = sw_sync_timeline_create("s3c-fb");
+	sfb->timeline_max = 0;
+	/* XXX need to cleanup on errors */
 #endif
 
 	sfb->bus_clk = clk_get(dev, "lcd");

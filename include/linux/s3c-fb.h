@@ -78,6 +78,11 @@ struct s3c_fb_win_config {
  */
 #define S3C_FB_MAX_WIN	(5)
 
+struct s3c_fb_win_config_data {
+	int	fence;
+	struct s3c_fb_win_config config[S3C_FB_MAX_WIN];
+};
+
 /* IOCTL commands */
 #define S3CFB_WIN_POSITION		_IOW('F', 203, \
 						struct s3c_fb_user_window)
