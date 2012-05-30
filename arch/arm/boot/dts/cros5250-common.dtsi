@@ -244,6 +244,11 @@
 		gpios = <&gpb2 2 3 3 0>,
 			<&gpb2 3 3 3 0>;
 
+		light-sensor {
+			compatible = "invn,isl29018";
+			reg = <0x44>;
+		};
+
 		// i2c7
 		// mipi cam  codec 0x11 gyro @0x68
 		// LCD @0x50-57 ALS @? mic-detect @0x3b
