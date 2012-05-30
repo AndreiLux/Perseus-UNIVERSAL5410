@@ -1,4 +1,4 @@
-z/* linux/drivers/i2c/busses/i2c-s3c2410.c
+/* linux/drivers/i2c/busses/i2c-s3c2410.c
  *
  * Copyright (C) 2004,2005,2009 Simtec Electronics
  *	Ben Dooks <ben@simtec.co.uk>
