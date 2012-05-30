@@ -105,6 +105,11 @@ enum analog_power_block {
 	POWER_ALL
 };
 
+enum link_training_type {
+	SW_LINK_TRAINING,
+	HW_LINK_TRAINING,
+};
+
 struct video_info {
 	char *name;
 
@@ -123,6 +128,8 @@ struct video_info {
 
 struct exynos_dp_platdata {
 	struct video_info *video_info;
+
+	enum link_training_type	training_type;
 
 	void (*phy_init)(void);
 	void (*phy_exit)(void);

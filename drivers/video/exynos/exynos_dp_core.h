@@ -128,6 +128,8 @@ void exynos_dp_config_video_slave_mode(struct exynos_dp_device *dp,
 void exynos_dp_enable_scrambling(struct exynos_dp_device *dp);
 void exynos_dp_disable_scrambling(struct exynos_dp_device *dp);
 
+u32 exynos_dp_enable_hw_link_training(struct exynos_dp_device *dp);
+
 /* I2C EDID Chip ID, Slave Address */
 #define I2C_EDID_DEVICE_ADDR			0x50
 #define I2C_E_EDID_DEVICE_ADDR			0x30

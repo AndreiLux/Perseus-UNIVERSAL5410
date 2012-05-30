@@ -13,6 +13,7 @@
 #include <linux/device.h>
 #include <linux/io.h>
 #include <linux/delay.h>
+#include <linux/jiffies.h>
 
 #include <video/exynos_dp.h>
 
@@ -1166,4 +1167,25 @@ void exynos_dp_disable_scrambling(struct exynos_dp_device *dp)
 	reg = readl(dp->reg_base + EXYNOS_DP_TRAINING_PTN_SET);
 	reg |= SCRAMBLING_DISABLE;
 	writel(reg, dp->reg_base + EXYNOS_DP_TRAINING_PTN_SET);
+}
+
+u32 exynos_dp_enable_hw_link_training(struct exynos_dp_device *dp)
+{
+	u32 reg;
+	unsigned long timeout;
+
+	reg = HW_TRAINING_EN;
+	writel(reg, dp->reg_base + EXYNOS_DP_HW_LINK_TRAINING_CTL);
+
+	/* wait for maximum of 100 msec */
+	timeout = jiffies + msecs_to_jiffies(100);
+	do {
+		reg = readl(dp->reg_base + EXYNOS_DP_HW_LINK_TRAINING_CTL);
+		if (!(reg & HW_TRAINING_EN))
+			return 0;
+		udelay(10);
+	} while (time_before(jiffies, timeout));
+
+	dev_warn(dp->dev, "H/W Link training failed\n");
+	return -ETIMEDOUT;
 }

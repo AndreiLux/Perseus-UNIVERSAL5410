@@ -722,6 +722,82 @@ static int exynos_dp_sw_link_training(struct exynos_dp_device *dp)
 	return retval;
 }
 
+static int exynos_dp_set_hw_link_train(struct exynos_dp_device *dp,
+				u32 max_lane,
+				u32 max_rate)
+{
+	u32 status;
+	int lane;
+
+	exynos_dp_stop_video(dp);
+
+	if (exynos_dp_get_pll_lock_status(dp) == PLL_UNLOCKED) {
+		dev_err(dp->dev, "PLL is not locked yet.\n");
+		return -EINVAL;
+	}
+
+	exynos_dp_reset_macro(dp);
+
+	/* Set TX pre-emphasis to minimum */
+	for (lane = 0; lane < max_lane; lane++)
+		exynos_dp_set_lane_lane_pre_emphasis(dp,
+				PRE_EMPHASIS_LEVEL_0, lane);
+
+	/* All DP analog module power up */
+	exynos_dp_set_analog_power_down(dp, POWER_ALL, 0);
+
+	/* Initialize by reading RX's DPCD */
+	exynos_dp_get_max_rx_bandwidth(dp, &dp->link_train.link_rate);
+	exynos_dp_get_max_rx_lane_count(dp, &dp->link_train.lane_count);
+
+	if ((dp->link_train.link_rate != LINK_RATE_1_62GBPS) &&
+		(dp->link_train.link_rate != LINK_RATE_2_70GBPS)) {
+		dev_err(dp->dev, "Rx Max Link Rate is abnormal :%x !\n",
+			dp->link_train.link_rate);
+		dp->link_train.link_rate = LINK_RATE_1_62GBPS;
+	}
+
+	if (dp->link_train.lane_count == 0) {
+		dev_err(dp->dev, "Rx Max Lane count is abnormal :%x !\n",
+			dp->link_train.lane_count);
+		dp->link_train.lane_count = (u8)LANE_COUNT1;
+	}
+
+	/* Setup TX lane count & rate */
+	if (dp->link_train.lane_count > max_lane)
+		dp->link_train.lane_count = max_lane;
+	if (dp->link_train.link_rate > max_rate)
+		dp->link_train.link_rate = max_rate;
+
+	/* Set link rate and count as you want to establish*/
+	exynos_dp_set_lane_count(dp, dp->video_info->lane_count);
+	exynos_dp_set_link_bandwidth(dp, dp->video_info->link_rate);
+
+	/* Set sink to D0 (Sink Not Ready) mode. */
+	exynos_dp_write_byte_to_dpcd(dp, DPCD_ADDR_SINK_POWER_STATE,
+						DPCD_SET_POWER_STATE_D0);
+
+	/* Enable H/W Link Training */
+	status = exynos_dp_enable_hw_link_training(dp);
+
+	if (status != 0) {
+		dev_err(dp->dev, " H/W link training failure: 0x%x\n", status);
+		return -EINVAL;
+	}
+
+	exynos_dp_get_link_bandwidth(dp, &status);
+	dp->link_train.link_rate = status;
+	dev_dbg(dp->dev, "final bandwidth = %.2x\n",
+				dp->link_train.link_rate);
+
+	exynos_dp_get_lane_count(dp, &status);
+	dp->link_train.lane_count = status;
+	dev_dbg(dp->dev, "final lane count = %.2x\n",
+				dp->link_train.lane_count);
+
+	return 0;
+}
+
 static int exynos_dp_set_link_train(struct exynos_dp_device *dp,
 				u32 count,
 				u32 bwtype)
@@ -928,8 +1004,12 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 
 	exynos_dp_handle_edid(dp);
 
-	ret = exynos_dp_set_link_train(dp, dp->video_info->lane_count,
-				dp->video_info->link_rate);
+	if (pdata->training_type == SW_LINK_TRAINING)
+		ret = exynos_dp_set_link_train(dp, dp->video_info->lane_count,
+						dp->video_info->link_rate);
+	else
+		ret = exynos_dp_set_hw_link_train(dp,
+			dp->video_info->lane_count, dp->video_info->link_rate);
 	if (ret) {
 		dev_err(&pdev->dev, "unable to do link train\n");
 		goto err_irq;
@@ -1019,8 +1099,12 @@ static int exynos_dp_resume(struct device *dev)
 	exynos_dp_detect_hpd(dp);
 	exynos_dp_handle_edid(dp);
 
-	exynos_dp_set_link_train(dp, dp->video_info->lane_count,
-				dp->video_info->link_rate);
+	if (pdata->training_type == SW_LINK_TRAINING)
+		exynos_dp_set_link_train(dp, dp->video_info->lane_count,
+						dp->video_info->link_rate);
+	else
+		exynos_dp_set_hw_link_train(dp,
+			dp->video_info->lane_count, dp->video_info->link_rate);
 
 	exynos_dp_enable_scramble(dp, 1);
 	exynos_dp_enable_rx_to_enhanced_mode(dp, 1);

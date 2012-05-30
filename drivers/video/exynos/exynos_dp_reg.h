@@ -338,4 +338,7 @@
 #define VIDEO_MODE_SLAVE_MODE			(0x1 << 0)
 #define VIDEO_MODE_MASTER_MODE			(0x0 << 0)
 
+#define EXYNOS_DP_HW_LINK_TRAINING_CTL		0x6A0
+#define HW_TRAINING_EN				(0x1<<0)
+
 #endif /* _EXYNOS_DP_REG_H */
