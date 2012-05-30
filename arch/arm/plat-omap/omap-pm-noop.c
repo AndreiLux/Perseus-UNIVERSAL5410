@@ -20,6 +20,7 @@
 #include <linux/init.h>
 #include <linux/cpufreq.h>
 #include <linux/device.h>
+#include <linux/module.h>
 #include <linux/platform_device.h>
 
 /* Interface documentation is in mach/omap-pm.h */
@@ -265,6 +266,7 @@ int omap_pm_get_dev_context_loss_count(struct device *dev)
 }
 
 #endif
+EXPORT_SYMBOL(omap_pm_get_dev_context_loss_count);
 
 /* Should be called before clk framework init */
 int __init omap_pm_if_early_init(void)
