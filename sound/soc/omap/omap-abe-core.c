@@ -125,8 +125,8 @@ static int abe_init_fw(struct omap_abe *abe)
 #endif
 	const u8 *fw_data;
 	int ret = 0, i, offset;
-
-#if defined(CONFIG_SND_OMAP_SOC_ABE_MODULE)
+#if 0
+//#if defined(CONFIG_SND_OMAP_SOC_ABE_MODULE)
 	/* request firmware & coefficients */
 	ret = request_firmware(&fw, "omap4_abe", abe->dev);
 	if (ret != 0) {
