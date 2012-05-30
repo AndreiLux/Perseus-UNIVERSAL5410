@@ -275,14 +275,8 @@ static const struct regmap_config tps65090_regmap_config = {
 static int __devinit tps65090_i2c_probe(struct i2c_client *client,
 					const struct i2c_device_id *id)
 {
-	struct tps65090_platform_data *pdata = client->dev.platform_data;
 	struct tps65090 *tps65090;
 	int ret;
-
-	if (!pdata) {
-		dev_err(&client->dev, "tps65090 requires platform data\n");
-		return -EINVAL;
-	}
 
 	tps65090 = devm_kzalloc(&client->dev, sizeof(struct tps65090),
 		GFP_KERNEL);
