@@ -587,6 +587,12 @@ void omap_mcpdm_configure_dn_offsets(struct snd_soc_pcm_runtime *rtd,
 }
 EXPORT_SYMBOL_GPL(omap_mcpdm_configure_dn_offsets);
 
+/* Dummy symbol used to enforce loading of snd_soc_mcpdm */
+void omap_mcpdm_dummy(void) {
+	pr_info("omap_mcpdm_dummy() init\n");
+}
+EXPORT_SYMBOL_GPL(omap_mcpdm_dummy);
+
 static __devinit int asoc_mcpdm_probe(struct platform_device *pdev)
 {
 	struct omap_mcpdm *mcpdm;

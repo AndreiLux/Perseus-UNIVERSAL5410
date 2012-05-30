@@ -1261,6 +1261,9 @@ static struct snd_soc_card omap_abe_card = {
 
 };
 
+extern void omap_pcm_dummy(void);
+extern void omap_mcpdm_dummy(void);
+
 static __devinit int omap_abe_probe(struct platform_device *pdev)
 {
 	struct omap_abe_twl6040_data *pdata = dev_get_platdata(&pdev->dev);
@@ -1313,6 +1316,12 @@ static __devinit int omap_abe_probe(struct platform_device *pdev)
 	if (card_data == NULL)
 		return -ENOMEM;
 	snd_soc_card_set_drvdata(card, card_data);
+
+	/*
+	* Dummy symbols to enforce loading of snd-soc-omap and snd-soc-mcpdm
+	*/
+	omap_pcm_dummy();
+	omap_mcpdm_dummy();
 
 	ret = snd_soc_register_card(card);
 	if (ret)
