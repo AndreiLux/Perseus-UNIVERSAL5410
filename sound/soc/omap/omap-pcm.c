@@ -408,6 +408,12 @@ out:
 	return ret;
 }
 
+/* Dummy symbol used to enforce loading of snd_soc_omap */
+void omap_pcm_dummy(void) {
+	pr_info("omap_pcm_dummy() init\n");
+}
+EXPORT_SYMBOL_GPL(omap_pcm_dummy);
+
 static struct snd_soc_platform_driver omap_soc_platform = {
 	.ops		= &omap_pcm_ops,
 	.pcm_new	= omap_pcm_new,

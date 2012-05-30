@@ -260,6 +260,8 @@ static struct snd_soc_dai_driver omap_hdmi_dai = {
 	.ops = &omap_hdmi_dai_ops,
 };
 
+extern void omap_pcm_dummy(void);
+
 static __devinit int omap_hdmi_probe(struct platform_device *pdev)
 {
 	int ret;
@@ -291,6 +293,9 @@ static __devinit int omap_hdmi_probe(struct platform_device *pdev)
 	hdmi_data->dma_params.dma_req =  hdmi_rsrc->start;
 	hdmi_data->dma_params.name = "HDMI playback";
 	hdmi_data->dma_params.sync_mode = OMAP_DMA_SYNC_PACKET;
+
+	/* Dummy symbol to enforce loading of snd-soc-omap */
+	omap_pcm_dummy();
 
 	/*
 	 * TODO: We assume that there is only one DSS HDMI device. Future
