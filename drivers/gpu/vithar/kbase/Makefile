@@ -1,3 +1,4 @@
+#
 # (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
 #
 # This program is free software and is provided to you under the terms of the GNU General Public License version 2
@@ -10,27 +11,27 @@
 
 
 # Defaults
-#export MALI_KBASE_SCHEDULING_POLICY?=cfs
-#export PLATFORM?=dummy
-#export MALI_BACKEND_KERNEL?=1
-#export MALI_NO_MALI?=0
-#export MALI_USE_UMP?=1
-#export MALI_DEBUG?=0
-#export MALI_ERROR_INJECT_ON?=0
-#export MALI_ANDROID?=0
-#export MALI_BASE_TRACK_MEMLEAK?=0
-#export MALI_KERNEL_TEST_API?=0
-#export MALI_UNIT_TEST?=0
-#export MALI_INFINITE_CACHE?=0
-#export MALI_LICENSE_IS_GPL?=1
-#export MALI_FAKE_PLATFORM_DEVICE?=0
-#export MALI_MOCK_TEST?=0
-#export MALI_HW_VERSION?=r0p0
-#export MALI_UNCACHED?=0
-#export MALI_INSTRUMENTATION_LEVEL?=0
-#export MALI_CUSTOMER_RELEASE?=1
-#export MALI_GATOR_SUPPORT?=0
-#export MALI_COVERAGE?=0
+export MALI_KBASE_SCHEDULING_POLICY?=cfs
+export PLATFORM?=dummy
+export MALI_BACKEND_KERNEL?=1
+export MALI_NO_MALI?=0
+export MALI_USE_UMP?=1
+export MALI_DEBUG?=0
+export MALI_ERROR_INJECT_ON?=0
+export MALI_ANDROID?=0
+export MALI_BASE_TRACK_MEMLEAK?=0
+export MALI_KERNEL_TEST_API?=0
+export MALI_UNIT_TEST?=0
+export MALI_INFINITE_CACHE?=0
+export MALI_LICENSE_IS_GPL?=1
+export MALI_FAKE_PLATFORM_DEVICE?=0
+export MALI_MOCK_TEST?=0
+export MALI_UNCACHED?=0
+export MALI_INSTRUMENTATION_LEVEL?=0
+export MALI_CUSTOMER_RELEASE?=1
+export MALI_GATOR_SUPPORT?=0
+export MALI_COVERAGE?=0
+export MALI_KBASEP_MODEL?=0
 
 KDIR ?= /lib/modules/$(shell uname -r)/build
 
@@ -45,16 +46,14 @@ MROOT=$(PWD)
 endif
 
 all:
-	$(MAKE) -C $(KDIR) M=$(MROOT)/osk/src/linux
-	$(MAKE) -C $(KDIR) M=$(MROOT)/uk/src/ukk/linux
-	$(MAKE) -C $(KDIR) M=$(MROOT)/kds/lib/kds
-	$(MAKE) -C $(KDIR) M=$(MROOT)/ump/src/devicedrv
-	$(MAKE) -C $(KDIR) M=$(MROOT)/kbase/src KBUILD_EXTRA_SYMBOLS="$(MROOT)/uk/src/ukk/linux/Module.symvers $(MROOT)/ump/src/devicedrv/Module.symvers"
+	$(MAKE) -C $(MROOT)/osk/src/linux
+	$(MAKE) -C $(MROOT)/kds/lib/kds
+	$(MAKE) -C $(MROOT)/ump/src/devicedrv
+	$(MAKE) -C $(MROOT)/kbase/src
 
 clean:
-	$(MAKE) -C $(KDIR) M=$(MROOT)/osk/src/linux clean
-	$(MAKE) -C $(KDIR) M=$(MROOT)/uk/src/ukk/linux clean
-	$(MAKE) -C $(KDIR) M=$(MROOT)/kds/lib/kds clean
-	$(MAKE) -C $(KDIR) M=$(MROOT)/ump/src/devicedrv clean
-	$(MAKE) -C $(KDIR) M=$(MROOT)/kbase/src clean
+	$(MAKE) -C $(MROOT)/osk/src/linux clean
+	$(MAKE) -C $(MROOT)/kds/lib/kds clean
+	$(MAKE) -C $(MROOT)/ump/src/devicedrv clean
+	$(MAKE) -C $(MROOT)/kbase/src clean
 

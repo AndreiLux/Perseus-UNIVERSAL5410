@@ -17,7 +17,7 @@
 
 #include <malisw/mali_malisw.h>
 #include <osk/mali_osk.h>
-#include <uk/mali_ukk.h>
+#include <kbase/mali_ukk.h>
 
 #include <kbase/mali_base_kernel.h>
 #include <kbase/src/common/mali_kbase_uku.h>
@@ -26,7 +26,7 @@
 #include "mali_kbase_cpuprops.h"
 #include "mali_kbase_gpuprops.h"
 
-#if defined(CSTD_OS_LINUX_KERNEL)
+#if CSTD_OS_LINUX_KERNEL
 #include <kbase/src/linux/mali_kbase_linux.h>
 #elif defined(MALI_KBASE_USERSPACE)
 #include <kbase/src/userspace/mali_kbase_userspace.h>
@@ -59,8 +59,10 @@
 
 extern const kbase_device_info kbase_dev_info[];
 
-kbase_device *kbase_device_create(const kbase_device_info *dev_info);
-void kbase_device_destroy(kbase_device *kbdev);
+kbase_device *kbase_device_alloc(void);
+/* note: configuration attributes member of kbdev needs to have been setup before calling kbase_device_init */
+mali_error kbase_device_init(kbase_device *kbdev, const kbase_device_info *dev_info);
+void kbase_device_term(kbase_device *kbdev);
 void kbase_device_free(kbase_device *kbdev);
 int kbase_device_has_feature(kbase_device *kbdev, u32 feature);
 kbase_midgard_type kbase_device_get_type(kbase_device *kbdev);

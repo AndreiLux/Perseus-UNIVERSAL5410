@@ -21,7 +21,7 @@
  * executed within the driver rather than being handed over to the GPU.
  */
 
-static base_jd_event_code kbase_dump_cpu_gpu_time(kbase_context *kctx, mali_addr64 jc)
+static base_jd_event_code kbase_dump_cpu_gpu_time(kbase_context *kctx, kbase_jd_atom *katom)
 {
 	kbase_va_region *reg;
 	osk_phy_addr addr;
@@ -32,10 +32,18 @@ static base_jd_event_code kbase_dump_cpu_gpu_time(kbase_context *kctx, mali_addr
 	base_dump_cpu_gpu_counters data;
 	u64 system_time;
 	u64 cycle_counter;
+	mali_addr64 jc = katom->jc;
 
 	u32 hi1, hi2;
 
 	OSK_MEMSET(&data, 0, sizeof(data));
+
+	/* GPU needs to be powered to read the cycle counters, the jctx->lock protects this check */
+	if (!katom->bag->has_pm_ctx_reference)
+	{
+		kbase_pm_context_active(kctx->kbdev);
+		katom->bag->has_pm_ctx_reference = MALI_TRUE;
+	}
 
 	/* Read hi, lo, hi to ensure that overflow from lo to hi is handled correctly */
 	do {
@@ -70,7 +78,7 @@ static base_jd_event_code kbase_dump_cpu_gpu_time(kbase_context *kctx, mali_addr
 		return BASE_JD_EVENT_JOB_CANCELLED;
 	}
 
-	reg = kbase_region_lookup(kctx, jc);
+	reg = kbase_region_tracker_find_region_enclosing_address(kctx, jc);
 	if (!reg)
 	{
 		return BASE_JD_EVENT_JOB_CANCELLED;
@@ -108,7 +116,7 @@ void kbase_process_soft_job( kbase_context *kctx, kbase_jd_atom *katom )
 {
 	switch(katom->core_req) {
 		case BASE_JD_REQ_SOFT_DUMP_CPU_GPU_TIME:
-			katom->event.event_code = kbase_dump_cpu_gpu_time( kctx, katom->jc);
+			katom->event.event_code = kbase_dump_cpu_gpu_time( kctx, katom);
 			break;
 	}
 }

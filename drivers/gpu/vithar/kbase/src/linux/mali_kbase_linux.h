@@ -26,12 +26,14 @@
 #include <linux/miscdevice.h>
 #endif
 #include <linux/list.h>
+#include <linux/module.h>
 
 typedef struct kbase_os_context
 {
 	u64			cookies;
 	osk_dlist		reg_pending;
 	wait_queue_head_t	event_queue;
+	pid_t tgid;
 } kbase_os_context;
 
 

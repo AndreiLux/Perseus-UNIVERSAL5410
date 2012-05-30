@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010, 2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -28,14 +28,14 @@ extern "C"
 
 #include <osk/mali_osk.h>
 #include <malisw/mali_stdtypes.h>
-#include <uk/mali_uk.h>
+#include <kbase/mali_uk.h>
 
 /**
  * Incomplete definitions of ukk_session, ukk_call_context to satisfy header file dependency in plat/mali_ukk_os.h
  */
 typedef struct ukk_session ukk_session;
 typedef struct ukk_call_context ukk_call_context;
-#include <plat/mali_ukk_os.h> /* needed for ukkp_session definition */
+#include <mali_ukk_os.h> /* needed for ukkp_session definition */
 
 /**
  * @addtogroup uk_api User-Kernel Interface API

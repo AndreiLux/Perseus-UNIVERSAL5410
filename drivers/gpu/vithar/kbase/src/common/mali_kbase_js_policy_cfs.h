@@ -38,7 +38,7 @@
  *
  * Must be a power of 2 to keep the lookup math simple
  */
-#define KBASEP_JS_MAX_NR_CORE_REQ_VARIANTS_LOG2 2
+#define KBASEP_JS_MAX_NR_CORE_REQ_VARIANTS_LOG2 3
 #define KBASEP_JS_MAX_NR_CORE_REQ_VARIANTS      (1u << KBASEP_JS_MAX_NR_CORE_REQ_VARIANTS_LOG2 )
 
 /** Bits needed in the lookup to support all slots */
@@ -68,6 +68,7 @@ typedef struct kbasep_js_policy_cfs
 
 	/* Lookups per job slot against which core_req_variants match it */
 	u32 slot_to_variant_lookup_ss_state[KBASEP_JS_VARIANT_LOOKUP_WORDS_NEEDED];
+	u32 slot_to_variant_lookup_ss_allcore_state[KBASEP_JS_VARIANT_LOOKUP_WORDS_NEEDED];
 	u32 slot_to_variant_lookup_nss_state[KBASEP_JS_VARIANT_LOOKUP_WORDS_NEEDED];
 
 	/* The timer tick used for rescheduling jobs */

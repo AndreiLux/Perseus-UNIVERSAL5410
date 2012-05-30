@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -177,8 +177,13 @@ static void always_on_event(kbase_device *kbdev, kbase_pm_event event)
 		break;
 	case KBASE_PM_EVENT_GPU_ACTIVE:
 	case KBASE_PM_EVENT_GPU_IDLE:
+		break;
 	case KBASE_PM_EVENT_CHANGE_GPU_STATE:
-		/* Not used - the GPU is always kept on */
+		/*
+		 * Note that the GPU is always kept on, however we still may
+		 * be required to update anyone waiting for power up events.
+		 */
+		kbase_pm_check_transitions(kbdev);
 		break;
 	default:
 		/* Unrecognised event - this should never happen */

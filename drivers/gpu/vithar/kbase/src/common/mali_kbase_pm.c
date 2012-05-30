@@ -30,24 +30,52 @@ extern const kbase_pm_policy kbase_pm_demand_policy_ops;
 /** A list of the power policies available in the system */
 static const kbase_pm_policy * const policy_list[] =
 {
-#if MALI_NO_MALI
+/* It is not possible to modify power management run-time in a model build. Therefore an 
+ * instrumented model build must use always on power management policy. */
+#if MALI_NO_MALI || ( MALI_KBASEP_MODEL && MALI_INSTRUMENTATION_LEVEL )
 	&kbase_pm_always_on_policy_ops,
 	&kbase_pm_demand_policy_ops
 #else
 #ifdef CONFIG_VITHAR_DEMAND_POLICY
-	&kbase_pm_demand_policy_ops,
-	&kbase_pm_always_on_policy_ops,
+       &kbase_pm_demand_policy_ops,
+       &kbase_pm_always_on_policy_ops
 #else
-	&kbase_pm_always_on_policy_ops,
-	&kbase_pm_demand_policy_ops,
+       &kbase_pm_always_on_policy_ops,
+       &kbase_pm_demand_policy_ops
 #endif
 #endif
 };
 
 /** The number of policies available in the system.
- * This is devired from the number of functions listed in policy_get_functions.
+ * This is derived from the number of functions listed in policy_get_functions.
  */
 #define POLICY_COUNT (sizeof(policy_list)/sizeof(*policy_list))
+
+void kbase_pm_register_access_enable(kbase_device *kbdev)
+{
+	kbase_pm_callback_conf *callbacks;
+
+	callbacks = (kbase_pm_callback_conf*) kbasep_get_config_value(kbdev, kbdev->config_attributes,
+	                                                              KBASE_CONFIG_ATTR_POWER_MANAGEMENT_CALLBACKS);
+
+	if (callbacks)
+	{
+		callbacks->power_on_callback(kbdev);
+	}
+}
+
+void kbase_pm_register_access_disable(kbase_device *kbdev)
+{
+	kbase_pm_callback_conf *callbacks;
+
+	callbacks = (kbase_pm_callback_conf*) kbasep_get_config_value(kbdev, kbdev->config_attributes,
+	                                                              KBASE_CONFIG_ATTR_POWER_MANAGEMENT_CALLBACKS);
+
+	if (callbacks)
+	{
+		callbacks->power_off_callback(kbdev);
+	}
+}
 
 mali_error kbase_pm_init(kbase_device *kbdev)
 {
@@ -59,17 +87,25 @@ mali_error kbase_pm_init(kbase_device *kbdev)
 
 	kbdev->pm.gpu_powered = MALI_FALSE;
 
-	callbacks = (kbase_pm_callback_conf*) kbasep_get_config_value(kbdev->config_attributes,
+	callbacks = (kbase_pm_callback_conf*) kbasep_get_config_value(kbdev, kbdev->config_attributes,
 	                                                              KBASE_CONFIG_ATTR_POWER_MANAGEMENT_CALLBACKS);
 	if (callbacks)
 	{
 		kbdev->pm.callback_power_on = callbacks->power_on_callback;
 		kbdev->pm.callback_power_off = callbacks->power_off_callback;
+		kbdev->pm.callback_power_runtime_init = callbacks->power_runtime_init_callback;
+		kbdev->pm.callback_power_runtime_term = callbacks->power_runtime_term_callback;
+		kbdev->pm.callback_power_runtime_on = callbacks->power_runtime_on_callback;
+		kbdev->pm.callback_power_runtime_off = callbacks->power_runtime_off_callback;
 	}
 	else
 	{
 		kbdev->pm.callback_power_on = NULL;
 		kbdev->pm.callback_power_off = NULL;
+		kbdev->pm.callback_power_runtime_init = NULL;
+		kbdev->pm.callback_power_runtime_term = NULL;
+		kbdev->pm.callback_power_runtime_on = NULL;
+		kbdev->pm.callback_power_runtime_off = NULL;
 	}
 
 	/* Initialise the metrics subsystem */
@@ -77,6 +113,11 @@ mali_error kbase_pm_init(kbase_device *kbdev)
 	if (MALI_ERROR_NONE != ret)
 	{
 		return ret;
+	}
+	osk_err = osk_waitq_init(&kbdev->pm.l2_powered_waitqueue);
+	if (OSK_ERR_NONE != osk_err)
+	{
+		goto l2_powered_waitq_fail;
 	}
 
 	osk_err = osk_waitq_init(&kbdev->pm.power_up_waitqueue);
@@ -90,6 +131,13 @@ mali_error kbase_pm_init(kbase_device *kbdev)
 	{
 		goto power_down_waitq_fail;
 	}
+
+	osk_err = osk_waitq_init(&kbdev->pm.policy_outstanding_event);
+	if (OSK_ERR_NONE != osk_err)
+	{
+		goto policy_outstanding_event_waitq_fail;
+	}
+	osk_waitq_set(&kbdev->pm.policy_outstanding_event);
 
 	osk_err = osk_workq_init(&kbdev->pm.workqueue, "kbase_pm", OSK_WORKQ_NON_REENTRANT);
 	if (OSK_ERR_NONE != osk_err)
@@ -115,20 +163,16 @@ mali_error kbase_pm_init(kbase_device *kbdev)
 		goto gpu_cycle_counter_requests_lock_fail;
 	}
 
-#ifdef CONFIG_VITHAR_RT_PM
-	osk_err = osk_spinlock_irq_init(&kbdev->pm.cmu_pmu_lock, OSK_LOCK_ORDER_CMU_PMU);
+	osk_err = osk_spinlock_irq_init(&kbdev->pm.gpu_powered_lock, OSK_LOCK_ORDER_POWER_MGMT);
 	if (OSK_ERR_NONE != osk_err)
 	{
-		goto cmu_pmu_lock_fail;
+		goto gpu_powered_lock_fail;
 	}
-#endif
 
 	return MALI_ERROR_NONE;
 
-#ifdef CONFIG_VITHAR_RT_PM
-cmu_pmu_lock_fail:
-    osk_spinlock_irq_term(&kbdev->pm.active_count_lock);
-#endif
+gpu_powered_lock_fail:
+	osk_spinlock_irq_term(&kbdev->pm.gpu_cycle_counter_requests_lock);
 gpu_cycle_counter_requests_lock_fail:
 	osk_spinlock_irq_term(&kbdev->pm.active_count_lock);
 active_count_lock_fail:
@@ -137,9 +181,13 @@ power_change_lock_fail:
 	osk_workq_term(&kbdev->pm.workqueue);
 workq_fail:
 	osk_waitq_term(&kbdev->pm.power_down_waitqueue);
+policy_outstanding_event_waitq_fail:
+	osk_waitq_term(&kbdev->pm.policy_outstanding_event);
 power_down_waitq_fail:
 	osk_waitq_term(&kbdev->pm.power_up_waitqueue);
 power_up_waitq_fail:
+	osk_waitq_term( &kbdev->pm.l2_powered_waitqueue);
+l2_powered_waitq_fail:
 	kbasep_pm_metrics_term(kbdev);
 	return MALI_ERROR_FUNCTION_FAILED;
 }
@@ -224,15 +272,22 @@ void kbase_pm_power_down_done(kbase_device *kbdev)
 }
 KBASE_EXPORT_TEST_API(kbase_pm_power_down_done)
 
+static void kbase_pm_wait_for_no_outstanding_events(kbase_device *kbdev)
+{
+	osk_waitq_wait(&kbdev->pm.policy_outstanding_event);
+}
+
 void kbase_pm_context_active(kbase_device *kbdev)
 {
 	int c;
 
 	OSK_ASSERT(kbdev != NULL);
-	
+
 	osk_spinlock_irq_lock(&kbdev->pm.active_count_lock);
 	c = ++kbdev->pm.active_count;
 	osk_spinlock_irq_unlock(&kbdev->pm.active_count_lock);
+
+	KBASE_TRACE_ADD_REFCOUNT( kbdev, PM_CONTEXT_ACTIVE, NULL, NULL, 0u, c );
 
 	if (c == 1)
 	{
@@ -241,26 +296,12 @@ void kbase_pm_context_active(kbase_device *kbdev)
 
 		kbasep_pm_record_gpu_active(kbdev);
 	}
+	/* Synchronise with the power policy to ensure that the event has been noticed */
+	kbase_pm_wait_for_no_outstanding_events(kbdev);
+
 	kbase_pm_wait_for_power_up(kbdev);
 }
 KBASE_EXPORT_TEST_API(kbase_pm_context_active)
-
-mali_error kbase_pm_context_active_irq(kbase_device *kbdev)
-{
-	mali_error ret = MALI_ERROR_NONE;
-	osk_spinlock_irq_lock(&kbdev->pm.active_count_lock);
-	if (kbdev->pm.active_count)
-	{
-		kbdev->pm.active_count ++;
-	}
-	else
-	{
-		ret = MALI_ERROR_FUNCTION_FAILED;
-	}
-	osk_spinlock_irq_unlock(&kbdev->pm.active_count_lock);
-	return ret;
-}
-KBASE_EXPORT_TEST_API(kbase_pm_context_active_irq)
 
 void kbase_pm_context_idle(kbase_device *kbdev)
 {
@@ -271,6 +312,8 @@ void kbase_pm_context_idle(kbase_device *kbdev)
 	osk_spinlock_irq_lock(&kbdev->pm.active_count_lock);
 
 	c = --kbdev->pm.active_count;
+
+	KBASE_TRACE_ADD_REFCOUNT( kbdev, PM_CONTEXT_IDLE, NULL, NULL, 0u, c );
 
 	OSK_ASSERT(c >= 0);
 	
@@ -309,6 +352,7 @@ void kbase_pm_term(kbase_device *kbdev)
 	OSK_ASSERT(kbdev != NULL);
 	OSK_ASSERT(kbdev->pm.active_count == 0);
 	OSK_ASSERT(kbdev->pm.gpu_cycle_counter_requests == 0);
+
 	/* Destroy the workqueue - this ensures that all messages have been processed */
 	osk_workq_term(&kbdev->pm.workqueue);
 
@@ -319,8 +363,10 @@ void kbase_pm_term(kbase_device *kbdev)
 	}
 
 	/* Free the wait queues */
+	osk_waitq_term(&kbdev->pm.l2_powered_waitqueue );
 	osk_waitq_term(&kbdev->pm.power_up_waitqueue);
 	osk_waitq_term(&kbdev->pm.power_down_waitqueue);
+	osk_waitq_term(&kbdev->pm.policy_outstanding_event);
 	
 	/* Synchronise with other threads */
 	osk_spinlock_irq_lock(&kbdev->pm.power_change_lock);
@@ -330,6 +376,8 @@ void kbase_pm_term(kbase_device *kbdev)
 	osk_spinlock_irq_term(&kbdev->pm.power_change_lock);
 	osk_spinlock_irq_term(&kbdev->pm.active_count_lock);
 	osk_spinlock_irq_term(&kbdev->pm.gpu_cycle_counter_requests_lock);
+	osk_spinlock_irq_term(&kbdev->pm.gpu_powered_lock);
+
 	/* Shut down the metrics subsystem */
 	kbasep_pm_metrics_term(kbdev);
 }
@@ -445,6 +493,7 @@ STATIC void kbase_pm_worker(osk_workq_work *data)
 						(u32)KBASE_PM_WORK_ACTIVE_STATE_PROCESSING,
 						(u32)KBASE_PM_WORK_ACTIVE_STATE_INACTIVE);
 	} while (i == (u32)KBASE_PM_WORK_ACTIVE_STATE_PENDING_EVT);
+	osk_waitq_set(&kbdev->pm.policy_outstanding_event);
 }
 KBASE_EXPORT_TEST_API(kbase_pm_worker)
 
@@ -556,10 +605,10 @@ void kbase_pm_send_event(kbase_device *kbdev, kbase_pm_event event)
 
 	if (old_value == KBASE_PM_WORK_ACTIVE_STATE_INACTIVE)
 	{
+		osk_waitq_clear(&kbdev->pm.policy_outstanding_event);
 		osk_workq_work_init(&kbdev->pm.work, kbase_pm_worker);
 		osk_workq_submit(&kbdev->pm.workqueue, &kbdev->pm.work);
 	}
 }
-
 
 KBASE_EXPORT_TEST_API(kbase_pm_send_event)

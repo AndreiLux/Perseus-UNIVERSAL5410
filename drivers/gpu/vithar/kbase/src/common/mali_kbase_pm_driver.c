@@ -20,7 +20,7 @@
 #include <osk/mali_osk.h>
 #include <kbase/src/common/mali_kbase.h>
 #include <kbase/src/common/mali_midg_regmap.h>
-
+#include <kbase/src/common/mali_kbase_gator.h>
 #include <kbase/src/common/mali_kbase_pm.h>
 
 #if MALI_MOCK_TEST
@@ -83,7 +83,19 @@ STATIC void kbase_pm_invoke(kbase_device *kbdev, kbase_pm_core_type core_type, u
 	reg = core_type_to_reg(core_type, action);
 
 	OSK_ASSERT(reg);
-
+#if MALI_GATOR_SUPPORT
+	if (cores)
+	{
+		if (action == ACTION_PWRON )
+		{
+			kbase_trace_mali_pm_power_on(core_type, cores);
+		}
+		else if ( action == ACTION_PWROFF )
+		{
+			kbase_trace_mali_pm_power_off(core_type, cores);
+		}
+	}
+#endif
 	/* Tracing */
 	if ( cores != 0 && core_type == KBASE_PM_CORE_SHADER )
 	{
@@ -196,6 +208,7 @@ void kbasep_pm_read_present_cores(kbase_device *kbdev)
 	kbdev->tiler_needed_bitmap = 0;
 	kbdev->shader_available_bitmap = 0;
 	kbdev->tiler_available_bitmap = 0;
+	kbdev->l2_users_count = 0;
 
 	OSK_MEMSET(kbdev->shader_needed_cnt, 0, sizeof(kbdev->shader_needed_cnt));
 	OSK_MEMSET(kbdev->shader_needed_cnt, 0, sizeof(kbdev->tiler_needed_cnt));
@@ -310,16 +323,13 @@ STATIC mali_bool kbase_pm_transition_core_type(kbase_device *kbdev, kbase_pm_cor
 	 */
 	desired_state |= in_use;
 
-	/* Workaround for MIDBASE-1258 (L2 usage should be refcounted).
-	 * Keep the L2 from being turned off.
-	 */
-	if (type == KBASE_PM_CORE_L2)
-	{
-		desired_state = present;
-	}
-
 	if (desired_state == ready && trans == 0)
 	{
+		/* If l2 cache user registered and l2 cache powered, notify the users waiting */
+		if ( ( type == KBASE_PM_CORE_L2 ) && ( kbdev->l2_users_count > 0 ) && (ready == present) )
+		{
+			osk_waitq_set(&kbdev->pm.l2_powered_waitqueue);
+		}
 		return MALI_TRUE;
 	}
 
@@ -617,6 +627,44 @@ mali_bool kbase_pm_register_inuse_cores(kbase_device *kbdev, u64 shader_cores, u
 }
 KBASE_EXPORT_TEST_API(kbase_pm_register_inuse_cores)
 
+void kbase_pm_request_l2_caches( kbase_device *kbdev )
+{
+	u32 prior_l2_users_count;
+	osk_spinlock_irq_lock(&kbdev->pm.power_change_lock);
+
+	prior_l2_users_count = kbdev->l2_users_count++;
+
+	OSK_ASSERT( kbdev->l2_users_count != 0 );
+
+	if ( !prior_l2_users_count )
+	{
+		kbase_pm_send_event(kbdev, KBASE_PM_EVENT_CHANGE_GPU_STATE);
+	}
+	osk_spinlock_irq_unlock(&kbdev->pm.power_change_lock);
+	osk_waitq_wait(&kbdev->pm.l2_powered_waitqueue);
+}
+KBASE_EXPORT_TEST_API(kbase_pm_request_l2_caches)
+
+void kbase_pm_release_l2_caches(kbase_device *kbdev )
+{
+	u32 l2_user_count;
+	osk_spinlock_irq_lock(&kbdev->pm.power_change_lock);
+
+	OSK_ASSERT( kbdev->l2_users_count > 0 );
+
+	l2_user_count = --kbdev->l2_users_count;
+
+	if ( !kbdev->l2_users_count )
+	{
+		/* Any new requesters must now wait for the l2 to be powered up. */
+		osk_waitq_clear(&kbdev->pm.l2_powered_waitqueue);
+		kbase_pm_send_event(kbdev, KBASE_PM_EVENT_CHANGE_GPU_STATE);
+	}
+	osk_spinlock_irq_unlock(&kbdev->pm.power_change_lock);
+}
+KBASE_EXPORT_TEST_API(kbase_pm_release_l2_caches)
+
+
 void kbase_pm_release_cores(kbase_device *kbdev, u64 shader_cores, u64 tiler_cores)
 {
 	mali_bool change_gpu_state = MALI_FALSE;
@@ -690,10 +738,17 @@ void MOCKABLE(kbase_pm_check_transitions)(kbase_device *kbdev)
 
 	osk_spinlock_irq_lock(&kbdev->pm.power_change_lock);
 
-	cores_powered = (kbdev->pm.desired_shader_state | kbdev->pm.desired_tiler_state);
+	/* If any cores are already powered then, we must keep the caches on */
+	cores_powered = kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_TILER);
+	cores_powered |= kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_SHADER);
 
-	/* We need to keep the inuse cores powered */
-	cores_powered |= kbdev->shader_inuse_bitmap | kbdev->tiler_inuse_bitmap;
+	cores_powered |= (kbdev->pm.desired_shader_state | kbdev->pm.desired_tiler_state);
+
+	/* If there are l2 cache users registered, keep all l2s powered even if all other cores are off.*/
+	if ( kbdev->l2_users_count > 0 )
+	{
+		cores_powered |= kbdev->l2_present_bitmap;
+	}
 
 	desired_l2_state = get_desired_cache_status(kbdev->l2_present_bitmap, cores_powered);
 	desired_l3_state = get_desired_cache_status(kbdev->l3_present_bitmap, desired_l2_state);
@@ -741,6 +796,12 @@ void MOCKABLE(kbase_pm_check_transitions)(kbase_device *kbdev)
 
 	if (in_desired_state)
 	{
+#if MALI_GATOR_SUPPORT
+		kbase_trace_mali_pm_status(KBASE_PM_CORE_L3, kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_L3));
+		kbase_trace_mali_pm_status(KBASE_PM_CORE_L2, kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_L2));
+		kbase_trace_mali_pm_status(KBASE_PM_CORE_SHADER, kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_SHADER));
+		kbase_trace_mali_pm_status(KBASE_PM_CORE_TILER, kbase_pm_get_ready_cores(kbdev, KBASE_PM_CORE_TILER));
+#endif
 		kbase_pm_send_event(kbdev, KBASE_PM_EVENT_GPU_STATE_CHANGED);
 	}
 
@@ -792,8 +853,7 @@ KBASE_EXPORT_TEST_API(kbase_pm_disable_interrupts)
  * 0x0004: PMU VERSION ID (RO) (0x00000000)
  * 0x0008: CLOCK ENABLE (RW) (31:1 SBZ, 0 CLOCK STATE)
  */
-static void kbase_pm_hw_issues(kbase_device *kbdev);
-void MOCKABLE(kbase_pm_clock_on)(kbase_device *kbdev)
+void kbase_pm_clock_on(kbase_device *kbdev)
 {
 	OSK_ASSERT( NULL != kbdev );
 
@@ -803,25 +863,29 @@ void MOCKABLE(kbase_pm_clock_on)(kbase_device *kbdev)
 		return;
 	}
 
+	KBASE_TRACE_ADD( kbdev, PM_GPU_ON, NULL, NULL, 0u, 0u );
+
 	/* The GPU is going to transition, so unset the wait queues until the policy
 	 * informs us that the transition is complete */
 	osk_waitq_clear(&kbdev->pm.power_up_waitqueue);
 	osk_waitq_clear(&kbdev->pm.power_down_waitqueue);
 
-	kbdev->pm.gpu_powered = MALI_TRUE;
-
 	if (kbase_device_has_feature(kbdev, KBASE_FEATURE_HAS_MODEL_PMU))
-		kbase_reg_write(kbdev, 0x4008, 1, NULL);
+		kbase_os_reg_write(kbdev, 0x4008, 1);
 
 	if (kbdev->pm.callback_power_on && kbdev->pm.callback_power_on(kbdev))
 	{
 		/* GPU state was lost, reset GPU to ensure it is in a consistent state */
 		kbase_pm_init_hw(kbdev);
 	}
+	
+	osk_spinlock_irq_lock(&kbdev->pm.gpu_powered_lock);
+	kbdev->pm.gpu_powered = MALI_TRUE;
+	osk_spinlock_irq_unlock(&kbdev->pm.gpu_powered_lock);
 }
 KBASE_EXPORT_TEST_API(kbase_pm_clock_on)
 
-void MOCKABLE(kbase_pm_clock_off)(kbase_device *kbdev)
+void kbase_pm_clock_off(kbase_device *kbdev)
 {
 	OSK_ASSERT( NULL != kbdev );
 
@@ -831,19 +895,23 @@ void MOCKABLE(kbase_pm_clock_off)(kbase_device *kbdev)
 		return;
 	}
 
+	KBASE_TRACE_ADD( kbdev, PM_GPU_OFF, NULL, NULL, 0u, 0u );
+
 	/* Ensure that any IRQ handlers have finished */
 	kbase_synchronize_irqs(kbdev);
 
-	if (kbase_device_has_feature(kbdev, KBASE_FEATURE_HAS_MODEL_PMU))
-		kbase_reg_write(kbdev, 0x4008, 0, NULL);
+	/* The GPU power may be turned off from this point */
+	osk_spinlock_irq_lock(&kbdev->pm.gpu_powered_lock);
+	kbdev->pm.gpu_powered = MALI_FALSE;
+	osk_spinlock_irq_unlock(&kbdev->pm.gpu_powered_lock);
 
 	if (kbdev->pm.callback_power_off)
 	{
 		kbdev->pm.callback_power_off(kbdev);
 	}
 
-	/* The GPU power may be turned off from this point */
-	kbdev->pm.gpu_powered = MALI_FALSE;
+	if (kbase_device_has_feature(kbdev, KBASE_FEATURE_HAS_MODEL_PMU))
+		kbase_os_reg_write(kbdev, 0x4008, 0);
 }
 KBASE_EXPORT_TEST_API(kbase_pm_clock_off)
 
@@ -865,17 +933,7 @@ static void kbasep_reset_timeout(void *data)
 
 static void kbase_pm_hw_issues(kbase_device *kbdev)
 {
-	uint32_t gpu_id = kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_ID), NULL);
-	if (gpu_id == 0x69560000)
-	{
-		/* Needed due to MIDBASE-748 */
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(PWR_KEY), 0x2968A819, NULL);
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(PWR_OVERRIDE0), 0x80, NULL);
-
-		/* Needed due to MIDBASE-1092 */
-		kbase_reg_write(kbdev, GPU_CONTROL_REG(L2_MMU_CONFIG), 0x80000000, NULL);
-	}
-	if (gpu_id == 0x69560000 || gpu_id == 0x69560001)
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8443))
 	{
 		/* Needed due to MIDBASE-1494: LS_PAUSEBUFFER_DISABLE. See PRLAM-8443. */
 		kbase_reg_write(kbdev, GPU_CONTROL_REG(SHADER_CONFIG), 0x00010000, NULL);
@@ -884,7 +942,6 @@ static void kbase_pm_hw_issues(kbase_device *kbdev)
 
 mali_error kbase_pm_init_hw(kbase_device *kbdev)
 {
-	uint32_t gpu_id;
 	osk_timer timer;
 	struct kbasep_reset_timeout_data rtdata;
 	osk_error osk_err;
@@ -899,28 +956,15 @@ mali_error kbase_pm_init_hw(kbase_device *kbdev)
 		osk_waitq_clear(&kbdev->pm.power_up_waitqueue);
 		osk_waitq_clear(&kbdev->pm.power_down_waitqueue);
 
-		kbdev->pm.gpu_powered = MALI_TRUE;
-
 		if (kbase_device_has_feature(kbdev, KBASE_FEATURE_HAS_MODEL_PMU))
-			kbase_reg_write(kbdev, 0x4008, 1, NULL);
+			kbase_os_reg_write(kbdev, 0x4008, 1);
 
 		if (kbdev->pm.callback_power_on)
 			kbdev->pm.callback_power_on(kbdev);
-	}
-	/* Read the ID register */
-	gpu_id = kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_ID), NULL);
-	OSK_PRINT_INFO(OSK_BASE_PM, "GPU identified as '%c%c' r%dp%d v%d",
-	            (gpu_id>>16) & 0xFF,
-	            (gpu_id>>24) & 0xFF,
-	            (gpu_id>>12) & 0xF,
-	            (gpu_id>>4) & 0xFF,
-	            (gpu_id) & 0xF);
 
-	/* Only support for T60x or T65x at present. */
-	if ( ((gpu_id >> 16) != 0x6956 ) && ((gpu_id >> 16) != 0x3456 ) )
-	{
-		OSK_PRINT_ERROR(OSK_BASE_PM, "This GPU is not supported by this driver (GPU_ID=0x%lx)\n", gpu_id);
-		return MALI_ERROR_FUNCTION_FAILED;
+		osk_spinlock_irq_lock(&kbdev->pm.gpu_powered_lock);
+		kbdev->pm.gpu_powered = MALI_TRUE;
+		osk_spinlock_irq_unlock(&kbdev->pm.gpu_powered_lock);
 	}
 
 	/* Ensure interrupts are off to begin with, this also clears any outstanding interrupts */

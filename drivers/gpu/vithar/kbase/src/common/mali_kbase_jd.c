@@ -11,7 +11,9 @@
  */
 
 
-
+#ifdef CONFIG_DMA_SHARED_BUFFER
+#include <linux/dma-buf.h>
+#endif /* CONFIG_DMA_SHARED_BUFFER */
 #include <kbase/src/common/mali_kbase.h>
 #include <kbase/src/common/mali_kbase_uku.h>
 #include <kbase/src/common/mali_kbase_js_affinity.h>
@@ -139,110 +141,285 @@ static void kds_dep_clear(void * callback_parameter, void * callback_extra_param
 }
 #endif
 
-static mali_error kbase_jd_pre_external_resources(kbase_jd_atom * katom)
+#ifdef CONFIG_DMA_SHARED_BUFFER
+static mali_error kbase_jd_umm_map(struct kbase_context * kctx, struct kbase_va_region * reg)
 {
-#ifdef CONFIG_KDS
-	u32 res_id;
-	struct kds_resource ** kds_resources;
-	unsigned long * kds_access_bitmap;
-#endif
+	struct sg_table * st;
+	struct scatterlist * s;
+	int i;
+	osk_phy_addr * pa;
+	mali_error err;
 
-	OSK_ASSERT(katom);
-	OSK_ASSERT(katom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES);
+	OSK_ASSERT(NULL == reg->imported_metadata.umm.st);
+	st = dma_buf_map_attachment(reg->imported_metadata.umm.dma_attachment, DMA_BIDIRECTIONAL);
 
-	if (!katom->nr_extres)
+	if (!st)
 	{
-		/* nothing to wait for, KDS dependencies have been met */
-		return MALI_ERROR_NONE;
+		return MALI_ERROR_FUNCTION_FAILED;
 	}
 
-#ifdef CONFIG_KDS
+	/* save for later */
+	reg->imported_metadata.umm.st = st;
 
-	/* We haven't met the KDS dependency yet */
-	katom->kds_dep_satisfied = MALI_FALSE;
+	pa = kbase_get_phy_pages(reg);
+	OSK_ASSERT(pa);
 
-	/* assume we have to wait for all */
-	kds_resources = osk_malloc(sizeof(struct kds_resource *) * katom->nr_extres);
-	if (NULL == kds_resources)
-		return MALI_ERROR_OUT_OF_MEMORY;
-
-	kds_access_bitmap = osk_calloc(sizeof(unsigned long) * ((katom->nr_extres + OSK_BITS_PER_LONG - 1) / OSK_BITS_PER_LONG));
-	if (NULL == kds_access_bitmap)
+	for_each_sg(st->sgl, s, st->nents, i)
 	{
-		osk_free(kds_resources);
-		return MALI_ERROR_OUT_OF_MEMORY;
+		int j;
+		size_t pages = PFN_DOWN(sg_dma_len(s));
+
+		for (j = 0; j < pages; j++)
+			*pa++ = sg_dma_address(s) + (j << PAGE_SHIFT);
 	}
 
-	for (res_id = 0; res_id < katom->nr_extres; res_id++)
+	err = kbase_mmu_insert_pages(kctx, reg->start_pfn, kbase_get_phy_pages(reg), reg->nr_alloc_pages, reg->flags | KBASE_REG_GPU_WR | KBASE_REG_GPU_RD);
+
+	if (MALI_ERROR_NONE != err)
 	{
-		int exclusive;
-		kbase_va_region * reg;
-		base_external_resource * res;
-		struct kds_resource * kds_res = NULL;
-
-		res = base_jd_get_external_resource(katom->user_atom, res_id);
-		exclusive = res->ext_resource & BASE_EXT_RES_ACCESS_EXCLUSIVE;
-		reg = kbase_region_lookup(katom->kctx, res->ext_resource & ~BASE_EXT_RES_ACCESS_EXCLUSIVE);
-
-		/* did we find a matching region object? */
-		if (NULL == reg)
-			break;
-
-		switch (reg->imported_type)
-		{
-			case BASE_TMEM_IMPORT_TYPE_UMP:
-				kds_res = ump_dd_kds_resource_get(reg->imported_metadata.ump_handle);
-				break;
-			default:
-				break;
-		}
-
-		/* no kds resource for the region ? */
-		if (!kds_res)
-			break;
-
-		kds_resources[res_id] = kds_res;
-		if (exclusive)
-			osk_bitarray_set_bit(res_id, kds_access_bitmap);
+		dma_buf_unmap_attachment(reg->imported_metadata.umm.dma_attachment, reg->imported_metadata.umm.st, DMA_BIDIRECTIONAL);
+		reg->imported_metadata.umm.st = NULL;
 	}
 
-	/* did the loop run to completion? */
-	if (res_id == katom->nr_extres)
-	{
-		int res;
-		res = kds_async_waitall(&katom->kds_rset, KDS_FLAG_LOCKED_IGNORE, &katom->kctx->jctx.kds_cb, katom, NULL, res_id, kds_access_bitmap, kds_resources);
-		if (res)
-		{
-			/* kds returned failure, zero out the pointer */
-			katom->kds_rset = NULL;
-		}
-	}
-
-	osk_free(kds_resources);
-	osk_free(kds_access_bitmap);
-
-	if (katom->kds_rset)
-	{
-		return MALI_ERROR_NONE;
-	}
-	return MALI_ERROR_FUNCTION_FAILED;
-#else
-	return MALI_ERROR_NONE;
-#endif
+	return err;
 }
+
+static void kbase_jd_umm_unmap(struct kbase_context * kctx, struct kbase_va_region * reg)
+{
+	OSK_ASSERT(kctx);
+	OSK_ASSERT(reg);
+	OSK_ASSERT(reg->imported_metadata.umm.dma_attachment);
+	OSK_ASSERT(reg->imported_metadata.umm.st);
+	kbase_mmu_teardown_pages(kctx, reg->start_pfn, reg->nr_alloc_pages);
+	dma_buf_unmap_attachment(reg->imported_metadata.umm.dma_attachment, reg->imported_metadata.umm.st, DMA_BIDIRECTIONAL);
+	reg->imported_metadata.umm.st = NULL;
+}
+#endif /* CONFIG_DMA_SHARED_BUFFER */ 
 
 void kbase_jd_post_external_resources(kbase_jd_atom * katom)
 {
+#ifdef CONFIG_DMA_SHARED_BUFFER
+	u32 res_no;
+#endif /* CONFIG_DMA_SHARED_BUFFER */
+
 	OSK_ASSERT(katom);
 	OSK_ASSERT(katom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES);
+
 #ifdef CONFIG_KDS
 	if (katom->kds_rset)
 	{
 		kds_resource_set_release(&katom->kds_rset);
 	}
 #endif
+
+#if defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0)
+	/* Lock also used in debug mode just for lock order checking */
+	kbase_gpu_vm_lock(katom->kctx);
+#endif /* defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0) */
+#ifdef CONFIG_DMA_SHARED_BUFFER
+	res_no = katom->nr_extres;
+	while (res_no-- > 0)
+	{
+		base_external_resource * res;
+		kbase_va_region * reg;
+
+		res = base_jd_get_external_resource(katom->user_atom, res_no);
+		reg = kbase_region_tracker_find_region_enclosing_address(katom->kctx, res->ext_resource & ~BASE_EXT_RES_ACCESS_EXCLUSIVE);
+		/* if reg wasn't found then it has been freed while the job ran */
+		if (reg)
+		{
+			if (1 == reg->imported_metadata.umm.current_mapping_usage_count--)
+			{
+				/* last job using */
+				kbase_jd_umm_unmap(katom->kctx, reg);
+			}
+		}
+	}
+#endif /* CONFIG_DMA_SHARED_BUFFER */
+#if defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0)
+	/* Lock also used in debug mode just for lock order checking */
+	kbase_gpu_vm_unlock(katom->kctx);
+#endif /* defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0) */
 }
 
+static mali_error kbase_jd_pre_external_resources(kbase_jd_atom * katom)
+{
+	mali_error err_ret_val = MALI_ERROR_FUNCTION_FAILED;
+	u32 res_no;
+#ifdef CONFIG_KDS
+	u32 kds_res_count = 0;
+	struct kds_resource ** kds_resources = NULL;
+	unsigned long * kds_access_bitmap = NULL;
+#endif /* CONFIG_KDS */
+
+	OSK_ASSERT(katom);
+	OSK_ASSERT(katom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES);
+
+	if (!katom->nr_extres)
+	{
+		/* no resources encoded, early out */
+		return MALI_ERROR_NONE;
+	}
+
+#ifdef CONFIG_KDS
+	/* assume we have to wait for all */
+	kds_resources = osk_malloc(sizeof(struct kds_resource *) * katom->nr_extres);
+	if (NULL == kds_resources)
+	{
+		err_ret_val = MALI_ERROR_OUT_OF_MEMORY;
+		goto early_err_out;
+	}
+
+	kds_access_bitmap = osk_calloc(sizeof(unsigned long) * ((katom->nr_extres + OSK_BITS_PER_LONG - 1) / OSK_BITS_PER_LONG));
+	if (NULL == kds_access_bitmap)
+	{
+		err_ret_val = MALI_ERROR_OUT_OF_MEMORY;
+		goto early_err_out;
+	}
+#endif /* CONFIG_KDS */
+
+#if defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0)
+	/* need to keep the GPU VM locked while we set up UMM buffers */
+	/* Lock also used in debug mode just for lock order checking */
+	kbase_gpu_vm_lock(katom->kctx);
+#endif /* defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0) */
+
+	for (res_no = 0; res_no < katom->nr_extres; res_no++)
+	{
+		base_external_resource * res;
+		kbase_va_region * reg;
+
+		res = base_jd_get_external_resource(katom->user_atom, res_no);
+		reg = kbase_region_tracker_find_region_enclosing_address(katom->kctx, res->ext_resource & ~BASE_EXT_RES_ACCESS_EXCLUSIVE);
+		/* did we find a matching region object? */
+		if (NULL == reg)
+		{
+			/* roll back */
+			goto failed_loop;
+		}
+
+		/* decide what needs to happen for this resource */
+		switch (reg->imported_type)
+		{
+			case BASE_TMEM_IMPORT_TYPE_UMP:
+			{
+#if defined(CONFIG_KDS) && (MALI_USE_UMP == 1)
+				struct kds_resource * kds_res;
+				kds_res = ump_dd_kds_resource_get(reg->imported_metadata.ump_handle);
+				if (kds_res)
+				{
+					kds_resources[kds_res_count] = kds_res;
+					if (res->ext_resource & BASE_EXT_RES_ACCESS_EXCLUSIVE)
+						osk_bitarray_set_bit(kds_res_count, kds_access_bitmap);
+					kds_res_count++;
+				}
+#endif /*defined(CONFIG_KDS) && (MALI_USE_UMP == 1)*/
+				break;
+			}
+#ifdef CONFIG_DMA_SHARED_BUFFER
+			case BASE_TMEM_IMPORT_TYPE_UMM:
+			{
+				reg->imported_metadata.umm.current_mapping_usage_count++;
+				if (1 == reg->imported_metadata.umm.current_mapping_usage_count)
+				{
+					err_ret_val = kbase_jd_umm_map(katom->kctx, reg);
+					if (MALI_ERROR_NONE != err_ret_val)
+					{
+						/* failed to map this buffer, roll back */
+						goto failed_loop;
+					}
+				}
+				break;
+			}
+#endif
+			default:
+				goto failed_loop;
+		}
+	}
+	/* successfully parsed the extres array */
+#if defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0)
+	/* drop the vm lock before we call into kds */
+	/* Lock also used in debug mode just for lock order checking */
+	kbase_gpu_vm_unlock(katom->kctx);
+#endif /* defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0) */
+
+#ifdef CONFIG_KDS
+	if (kds_res_count)
+	{
+		/* We have resources to wait for with kds */
+		katom->kds_dep_satisfied = MALI_FALSE;
+		if (kds_async_waitall(&katom->kds_rset, KDS_FLAG_LOCKED_IGNORE, &katom->kctx->jctx.kds_cb, katom, NULL, kds_res_count, kds_access_bitmap, kds_resources))
+		{
+			goto failed_kds_setup;
+		}
+	}
+	else
+	{
+		/* Nothing to wait for, so kds dep met */
+		katom->kds_dep_satisfied = MALI_TRUE;
+	}
+	osk_free(kds_resources);
+	osk_free(kds_access_bitmap);
+#endif /* CONFIG_KDS */
+
+	/* all done OK */
+	return MALI_ERROR_NONE;
+
+
+/* error handling section */
+
+#ifdef CONFIG_KDS
+failed_kds_setup:
+
+#if defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0)
+	/* lock before we unmap */
+	/* Lock also used in debug mode just for lock order checking */
+	kbase_gpu_vm_lock(katom->kctx);
+#endif /* defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0) */
+#endif /* CONFIG_KDS */
+
+
+
+
+failed_loop:
+#ifdef CONFIG_DMA_SHARED_BUFFER
+	/* undo the loop work */
+	while (res_no-- > 0)
+	{
+		base_external_resource * res;
+		kbase_va_region * reg;
+
+		res = base_jd_get_external_resource(katom->user_atom, res_no);
+		reg = kbase_region_tracker_find_region_enclosing_address(katom->kctx, res->ext_resource & ~BASE_EXT_RES_ACCESS_EXCLUSIVE);
+		/* if reg wasn't found then it has been freed when we set up kds */
+		if (reg)
+		{
+			reg->imported_metadata.umm.current_mapping_usage_count--;
+			if (0 == reg->imported_metadata.umm.current_mapping_usage_count)
+			{
+				kbase_jd_umm_unmap(katom->kctx, reg);
+			}
+		}
+	}
+#endif /* CONFIG_DMA_SHARED_BUFFER */
+#if defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0)
+	/* Lock also used in debug mode just for lock order checking */
+	kbase_gpu_vm_unlock(katom->kctx);
+#endif /* defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0) */
+
+#ifdef CONFIG_KDS
+early_err_out:
+	if (kds_resources)
+	{
+		osk_free(kds_resources);
+	}
+	if (kds_access_bitmap)
+	{
+		osk_free(kds_access_bitmap);
+	}
+#endif /* CONFIG_KDS */
+	return err_ret_val;
+}
 /*
  * This will check atom for correctness and if so, initialize its js policy.
  */
@@ -269,20 +446,21 @@ STATIC INLINE kbase_jd_atom *jd_validate_atom(struct kbase_context *kctx,
 	nr_extres = atom->nr_extres;
 	pre_dep = atom->pre_dep;
 
-#if BASE_HW_ISSUE_8987 != 0
-	/* For this HW workaround, we scheduled differently on the 'ONLY_COMPUTE'
-	 * flag, at the expense of ignoring the NSS flag.
-	 *
-	 * NOTE: We could allow the NSS flag still (and just ensure that we still
-	 * submit on slot 2 when the NSS flag is set), but we don't because:
-	 * - If we only have NSS contexts, the NSS jobs get all the cores, delaying
-	 * a non-NSS context from getting cores for a long time.
-	 * - A single compute context won't be subject to any timers anyway -
-	 * only when there are >1 contexts (GLES *or* CL) will it get subject to
-	 * timers.
-	 */
-	core_req &= ~((base_jd_core_req)BASE_JD_REQ_NSS);
-#endif /*  BASE_HW_ISSUE_8987 != 0 */
+	if (kbase_hw_has_issue(kctx->kbdev, BASE_HW_ISSUE_8987))
+	{
+		/* For this HW workaround, we scheduled differently on the 'ONLY_COMPUTE'
+		 * flag, at the expense of ignoring the NSS flag.
+		 *
+		 * NOTE: We could allow the NSS flag still (and just ensure that we still
+		 * submit on slot 2 when the NSS flag is set), but we don't because:
+		 * - If we only have NSS contexts, the NSS jobs get all the cores, delaying
+		 * a non-NSS context from getting cores for a long time.
+		 * - A single compute context won't be subject to any timers anyway -
+		 * only when there are >1 contexts (GLES *or* CL) will it get subject to
+		 * timers.
+		 */
+		core_req &= ~((base_jd_core_req)BASE_JD_REQ_NSS);
+	}
 
 	/*
 	 * Check that dependencies are sensible: the atom cannot have
@@ -329,6 +507,7 @@ STATIC INLINE kbase_jd_atom *jd_validate_atom(struct kbase_context *kctx,
 	katom->kctx         = kctx;
 	katom->nr_syncsets  = nr_syncsets;
 	katom->nr_extres    = nr_extres;
+	katom->device_nr    = atom->device_nr;
 	katom->affinity     = 0;
 	katom->jc           = atom->jc;
 	katom->coreref_state= KBASE_ATOM_COREREF_STATE_NO_CORES_REQUESTED;
@@ -382,7 +561,7 @@ STATIC INLINE kbase_jd_atom *jd_validate_atom(struct kbase_context *kctx,
 
 
 	/* Initialize the jobscheduler policy for this atom. Function will
-	 * return error if the atom is malformed. Then inmediatelly terminate
+	 * return error if the atom is malformed. Then immediately terminate
 	 * the policy to free allocated resources and return error.
 	 *
 	 * Soft-jobs never enter the job scheduler so we don't initialise the policy for these
@@ -390,8 +569,12 @@ STATIC INLINE kbase_jd_atom *jd_validate_atom(struct kbase_context *kctx,
 	if ((katom->core_req & BASE_JD_REQ_SOFT_JOB) == 0)
 	{
 		kbasep_js_policy *js_policy = &(kctx->kbdev->js_data.policy);
-		if (MALI_ERROR_NONE != kbasep_js_policy_init_job( js_policy, katom ))
+		if (MALI_ERROR_NONE != kbasep_js_policy_init_job( js_policy, kctx, katom ))
 		{
+			if ( katom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES )
+			{
+				kbase_jd_post_external_resources(katom);
+			}
 			osk_free( katom );
 			return NULL;
 		}
@@ -411,7 +594,8 @@ static void kbase_jd_cancel_bag(kbase_context *kctx, kbase_jd_bag *bag,
 STATIC void kbase_jd_katom_dtor(kbase_event *event)
 {
 	kbase_jd_atom *katom = CONTAINER_OF(event, kbase_jd_atom, event);
-	kbasep_js_policy *js_policy = &(katom->kctx->kbdev->js_data.policy);
+	kbase_context *kctx = katom->kctx;
+	kbasep_js_policy *js_policy = &(kctx->kbdev->js_data.policy);
 
 	/* Soft-jobs never enter the job scheduler (see jd_validate_atom) therefore we
 	 * do not need to terminate any of these jobs in the scheduler. We could get a
@@ -419,7 +603,7 @@ STATIC void kbase_jd_katom_dtor(kbase_event *event)
 	 * a soft-job has already been validated and added to the event list */
 	if ((katom->core_req & BASE_JD_REQ_SOFT_JOB) == 0)
 	{
-		kbasep_js_policy_term_job( js_policy, katom );
+		kbasep_js_policy_term_job( js_policy, kctx, katom );
 	}
 
 	if ( katom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES )
@@ -435,7 +619,6 @@ STATIC mali_error kbase_jd_validate_bag(kbase_context *kctx,
                                         osk_dlist *klistp)
 {
 	kbase_jd_context *jctx;
-	kbasep_js_kctx_info *js_kctx_info;
 	kbase_jd_atom *katom;
 	base_jd_atom *atom;
 	mali_error err = MALI_ERROR_NONE;
@@ -443,11 +626,15 @@ STATIC mali_error kbase_jd_validate_bag(kbase_context *kctx,
 	u32 i;
 
 	OSK_ASSERT( kctx != NULL );
-	jctx =  &kctx->jctx;
-	js_kctx_info = &kctx->jctx.sched_info;
 
-	/* jsctx_mutex needed for updating Job Scheduler state when receiving new atoms */
-	osk_mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
+	/* Bags without any atoms are not allowed */
+	if (bag->nr_atoms == 0)
+	{
+		kbase_jd_cancel_bag(kctx, bag, BASE_JD_EVENT_BAG_INVALID);
+		return MALI_ERROR_FUNCTION_FAILED;
+	}
+
+	jctx =  &kctx->jctx;
 
 	atom = jd_get_first_atom(jctx, bag);
 	if (!atom)
@@ -476,7 +663,6 @@ STATIC mali_error kbase_jd_validate_bag(kbase_context *kctx,
 	}
 
 out:
-	osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 	return err;
 }
 KBASE_EXPORT_TEST_API(kbase_jd_validate_bag)
@@ -660,11 +846,22 @@ STATIC mali_bool jd_done_nolock(kbase_jd_atom *katom, int zapping)
 			kbase_event_post(kctx, &node->event);
 			beenthere("done atom %p\n", (void*)node);
 
+			OSK_ASSERT( kctx->nr_outstanding_atoms > 0 );
+			if (--kctx->nr_outstanding_atoms < MAX_KCTX_OUTSTANDING_ATOMS)
+			{
+				osk_waitq_set(&kctx->complete_outstanding_waitq);
+			}
 			if (--bag->nr_atoms == 0)
 			{
+				if (bag->has_pm_ctx_reference)
+				{
+					/* This bag had a pm reference on the GPU, release it */
+					kbase_pm_context_idle(kctx->kbdev);
+				}
+				beenthere("done bag %p\n", (void*)bag);
 				/* This atom was the last, signal userspace */
 				kbase_event_post(kctx, &bag->event);
-				beenthere("done bag %p\n", (void*)bag);
+				/* The bag may be freed by this point - it is a bug to try to access it after this point */
 			}
 
 			/* Decrement and check the TOTAL number of jobs. This includes
@@ -704,7 +901,6 @@ mali_error kbase_jd_submit(kbase_context *kctx, const kbase_uk_job_submit *user_
 	 * kbase_jd_submit isn't expected to fail and so all errors with the jobs
 	 * are reported by immediately falling them (through event system)
 	 */
-
 	kbdev = kctx->kbdev;
 
 	beenthere("%s", "Enter");
@@ -720,9 +916,15 @@ mali_error kbase_jd_submit(kbase_context *kctx, const kbase_uk_job_submit *user_
 	bag->nr_atoms               = user_bag->nr_atoms;
 	bag->event.event_code       = BASE_JD_EVENT_BAG_DONE;
 	bag->event.data             = (void *)(uintptr_t)user_bag->bag_uaddr;
+	bag->has_pm_ctx_reference   = MALI_FALSE;
 
 	osk_mutex_lock(&jctx->lock);
-
+	while (kctx->nr_outstanding_atoms >= MAX_KCTX_OUTSTANDING_ATOMS)
+	{
+		osk_mutex_unlock(&jctx->lock);
+		osk_waitq_wait(&kctx->complete_outstanding_waitq);
+		osk_mutex_lock(&jctx->lock);
+	}
 	/*
 	 * Use a transient list to store all the validated atoms.
 	 * Once we're sure nothing is wrong, there's no going back.
@@ -742,6 +944,12 @@ mali_error kbase_jd_submit(kbase_context *kctx, const kbase_uk_job_submit *user_
 	{
 		err = MALI_ERROR_FUNCTION_FAILED;
 		goto out;
+	}
+
+	kctx->nr_outstanding_atoms += user_bag->nr_atoms;
+	if (kctx->nr_outstanding_atoms >= MAX_KCTX_OUTSTANDING_ATOMS )
+	{
+		osk_waitq_clear(&kctx->complete_outstanding_waitq);
 	}
 
 	while(!OSK_DLIST_IS_EMPTY(klistp))

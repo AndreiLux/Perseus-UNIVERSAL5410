@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -33,14 +33,15 @@ OSK_STATIC_INLINE void osk_workq_flush(osk_workq *wq);
 
 OSK_STATIC_INLINE osk_error osk_workq_init(osk_workq * const wq, const char *name, u32 flags)
 {
-#if MALI_LICENSE_IS_GPL 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,36)
+#if (MALI_LICENSE_IS_GPL) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,36))
 	unsigned int wqflags = 0;
-#endif
+#endif /*(MALI_LICENSE_IS_GPL) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,36))*/
+
 	OSK_ASSERT(NULL != wq);
 	OSK_ASSERT(NULL != name);
 	OSK_ASSERT(0 == (flags & ~(OSK_WORKQ_NON_REENTRANT|OSK_WORKQ_HIGH_PRIORITY|OSK_WORKQ_RESCUER)));
 
+#if MALI_LICENSE_IS_GPL 
 	if(OSK_SIMULATE_FAILURE(OSK_OSK))
 	{
 		return OSK_ERR_FAIL;

@@ -53,44 +53,37 @@ STATIC void kbase_gpuprops_dump_registers(kbase_device * kbdev, kbase_gpuprops_r
 	OSK_ASSERT(NULL != kbdev);
 	OSK_ASSERT(NULL != regdump);
 
-	/* Ensure that the GPU is powered */
-	kbase_pm_context_active(kbdev);
-
 	/* Fill regdump with the content of the relevant registers */
-
-	regdump->gpu_id = kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_ID), NULL);
-
-	regdump->l2_features = kbase_reg_read(kbdev, GPU_CONTROL_REG(L2_FEATURES), NULL);
-	regdump->l3_features = kbase_reg_read(kbdev, GPU_CONTROL_REG(L3_FEATURES), NULL);
-	regdump->tiler_features = kbase_reg_read(kbdev, GPU_CONTROL_REG(TILER_FEATURES), NULL);
-	regdump->mem_features = kbase_reg_read(kbdev, GPU_CONTROL_REG(MEM_FEATURES), NULL);
-	regdump->mmu_features = kbase_reg_read(kbdev, GPU_CONTROL_REG(MMU_FEATURES), NULL);
-	regdump->as_present = kbase_reg_read(kbdev, GPU_CONTROL_REG(AS_PRESENT), NULL);
-	regdump->js_present = kbase_reg_read(kbdev, GPU_CONTROL_REG(JS_PRESENT), NULL);
+	regdump->gpu_id = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(GPU_ID));
+	regdump->l2_features = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(L2_FEATURES));
+	regdump->l3_features = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(L3_FEATURES));
+	regdump->tiler_features = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(TILER_FEATURES));
+	regdump->mem_features = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(MEM_FEATURES));
+	regdump->mmu_features = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(MMU_FEATURES));
+	regdump->as_present = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(AS_PRESENT));
+	regdump->js_present = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(JS_PRESENT));
 
 	for(i = 0; i < MIDG_MAX_JOB_SLOTS; i++)
 	{
-		regdump->js_features[i] = kbase_reg_read(kbdev, GPU_CONTROL_REG(JS_FEATURES_REG(i)), NULL);
+		regdump->js_features[i] = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(JS_FEATURES_REG(i)));
 	}
 
 	for(i = 0; i < BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS; i++)
 	{
-		regdump->texture_features[i] =  kbase_reg_read(kbdev, GPU_CONTROL_REG(TEXTURE_FEATURES_REG(i)), NULL); 
+		regdump->texture_features[i] =  kbase_os_reg_read(kbdev, GPU_CONTROL_REG(TEXTURE_FEATURES_REG(i))); 
 	}
 
-	regdump->shader_present_lo = kbase_reg_read(kbdev, GPU_CONTROL_REG(SHADER_PRESENT_LO), NULL);
-	regdump->shader_present_hi = kbase_reg_read(kbdev, GPU_CONTROL_REG(SHADER_PRESENT_HI), NULL);
+	regdump->shader_present_lo = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(SHADER_PRESENT_LO));
+	regdump->shader_present_hi = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(SHADER_PRESENT_HI));
 
-	regdump->tiler_present_lo = kbase_reg_read(kbdev, GPU_CONTROL_REG(TILER_PRESENT_LO), NULL);
-	regdump->tiler_present_hi = kbase_reg_read(kbdev, GPU_CONTROL_REG(TILER_PRESENT_HI), NULL);
+	regdump->tiler_present_lo = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(TILER_PRESENT_LO));
+	regdump->tiler_present_hi = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(TILER_PRESENT_HI));
 
-	regdump->l2_present_lo = kbase_reg_read(kbdev, GPU_CONTROL_REG(L2_PRESENT_LO), NULL);
-	regdump->l2_present_hi = kbase_reg_read(kbdev, GPU_CONTROL_REG(L2_PRESENT_HI), NULL);
+	regdump->l2_present_lo = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(L2_PRESENT_LO));
+	regdump->l2_present_hi = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(L2_PRESENT_HI));
 
-	regdump->l3_present_lo = kbase_reg_read(kbdev, GPU_CONTROL_REG(L3_PRESENT_LO), NULL);
-	regdump->l3_present_hi = kbase_reg_read(kbdev, GPU_CONTROL_REG(L3_PRESENT_HI), NULL);
-
-	kbase_pm_context_idle(kbdev);
+	regdump->l3_present_lo = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(L3_PRESENT_LO));
+	regdump->l3_present_hi = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(L3_PRESENT_HI));
 }
 
 STATIC void kbase_gpuprops_construct_coherent_groups(base_gpu_props * const props)
@@ -213,6 +206,7 @@ static void kbase_gpuprops_get_props(base_gpu_props * gpu_props, kbase_device * 
 	gpu_props->tiler_props.bin_size_bytes = 1 << KBASE_UBFX32(regdump.tiler_features, 0U, 6);
 	gpu_props->tiler_props.max_active_levels = KBASE_UBFX32(regdump.tiler_features, 8U, 4);
 
+	gpu_props->raw_props.gpu_id = regdump.gpu_id;
 	gpu_props->raw_props.tiler_features = regdump.tiler_features;
 	gpu_props->raw_props.mem_features = regdump.mem_features;
 	gpu_props->raw_props.mmu_features = regdump.mmu_features;
@@ -263,5 +257,7 @@ void kbase_gpuprops_set(kbase_device *kbdev)
 	gpu_props->num_cores = osk_count_set_bits64(raw->shader_present);
 	gpu_props->num_core_groups = osk_count_set_bits64(raw->l2_present);
 	gpu_props->num_supergroups = osk_count_set_bits64(raw->l3_present);
+	gpu_props->num_address_spaces = osk_count_set_bits(raw->as_present);
+	gpu_props->num_job_slots = osk_count_set_bits(raw->js_present);
 }
 

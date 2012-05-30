@@ -165,5 +165,10 @@ typedef struct device osk_power_info;
 
 typedef struct timeval osk_timeval;
 
+/**
+ * Physical address
+ */
+typedef phys_addr_t osk_phy_addr;
+
 #endif /* _OSK_ARCH_TYPES_H_ */
 

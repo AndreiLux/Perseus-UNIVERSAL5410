@@ -58,26 +58,120 @@ STATIC void debug_print_affinity_info(const kbase_device *kbdev, const kbase_jd_
 
 #endif /* MALI_DEBUG */
 
-OSK_STATIC_INLINE mali_bool affinity_job_uses_high_cores( kbase_jd_atom *katom )
+OSK_STATIC_INLINE mali_bool affinity_job_uses_high_cores( kbase_device *kbdev, kbase_jd_atom *katom )
 {
-#if BASE_HW_ISSUE_8987 != 0
-	kbase_context *kctx;
-	kbase_context_flags ctx_flags;
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8987))
+	{
+			kbase_context *kctx;
+			kbase_context_flags ctx_flags;
 
-	kctx = katom->kctx;
-	ctx_flags = kctx->jctx.sched_info.ctx.flags;
+			kctx = katom->kctx;
+			ctx_flags = kctx->jctx.sched_info.ctx.flags;
 
-	/* In this HW Workaround, compute-only jobs/contexts use the high cores
-	 * during a core-split, all other contexts use the low cores. */
-	return (mali_bool)((katom->core_req & BASE_JD_REQ_ONLY_COMPUTE) != 0
-					   || (ctx_flags & KBASE_CTX_FLAG_HINT_ONLY_COMPUTE) != 0);
+			/* In this HW Workaround, compute-only jobs/contexts use the high cores
+			 * during a core-split, all other contexts use the low cores. */
+			return (mali_bool)((katom->core_req & BASE_JD_REQ_ONLY_COMPUTE) != 0
+							   || (ctx_flags & KBASE_CTX_FLAG_HINT_ONLY_COMPUTE) != 0);
+	}
+	else
+	{
+			base_jd_core_req core_req = katom->core_req;
+			/* NSS-ness determines whether the high cores in a core split are used */
+			return (mali_bool)(core_req & BASE_JD_REQ_NSS);
+	}
+}
 
-#else /* BASE_HW_ISSUE_8987 != 0 */
-	base_jd_core_req core_req = katom->core_req;
-	/* NSS-ness determines whether the high cores in a core split are used */
-	return (mali_bool)(core_req & BASE_JD_REQ_NSS);
 
-#endif /* BASE_HW_ISSUE_8987 != 0 */
+/**
+ * @brief Decide whether a split in core affinity is required across job slots
+ *
+ * The following locking conditions are made on the caller:
+ * - it must hold kbasep_js_device_data::runpool_irq::lock
+ *
+ * @param kbdev The kbase device structure of the device
+ * @return MALI_FALSE if a core split is not required
+ * @return != MALI_FALSE if a core split is required.
+ */
+OSK_STATIC_INLINE mali_bool kbase_affinity_requires_split(kbase_device *kbdev)
+{
+	OSK_ASSERT( kbdev != NULL );
+
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8987))
+	{
+		s8 nr_compute_ctxs = kbasep_js_ctx_attr_count_on_runpool( kbdev, KBASEP_JS_CTX_ATTR_COMPUTE );
+		s8 nr_noncompute_ctxs = kbasep_js_ctx_attr_count_on_runpool( kbdev, KBASEP_JS_CTX_ATTR_NON_COMPUTE );
+
+		/* In this case, a mix of Compute+Non-Compute determines whether a
+		 * core-split is required, to ensure jobs with different numbers of RMUs
+		 * don't use the same cores.
+		 *
+		 * When it's entirely compute, or entirely non-compute, then no split is
+		 * required.
+		 *
+		 * A context can be both Compute and Non-compute, in which case this will
+		 * correctly decide that a core-split is required. */
+
+		return (mali_bool)( nr_compute_ctxs > 0 && nr_noncompute_ctxs > 0 );
+	}
+	else
+	{
+		/* NSS/SS state determines whether a core-split is required */
+		return kbasep_js_ctx_attr_is_attr_on_runpool( kbdev, KBASEP_JS_CTX_ATTR_NSS );
+	}
+}
+
+
+
+
+mali_bool kbase_js_can_run_job_on_slot_no_lock( kbase_device *kbdev, int js )
+{
+	/*
+	 * Here are the reasons for using job slot 2:
+	 * - BASE_HW_ISSUE_8987 (which is entirely used for that purpose)
+	 * - NSS atoms (in NSS state, this is entirely used for that)
+	 * - In absence of the above two, then:
+	 *  - Atoms with BASE_JD_REQ_COHERENT_GROUP
+	 *  - But, only when there aren't contexts with
+	 *  KBASEP_JS_CTX_ATTR_COMPUTE_ALL_CORES, because the atoms that run on
+	 *  all cores on slot 1 could be blocked by those using a coherent group
+	 *  on slot 2
+	 *  - And, only when you actually have 2 or more coregroups - if you only
+	 *  have 1 coregroup, then having jobs for slot 2 implies they'd also be
+	 *  for slot 1, meaning you'll get interference from them. Jobs able to
+	 *  run on slot 2 could also block jobs that can only run on slot 1
+	 *  (tiler jobs)
+	 */
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8987))
+	{
+		return MALI_TRUE;
+	}
+
+	if ( js != 2 )
+	{
+		return MALI_TRUE;
+	}
+
+	/* Only deal with js==2 now: */
+	if ( kbasep_js_ctx_attr_is_attr_on_runpool( kbdev, KBASEP_JS_CTX_ATTR_NSS ) != MALI_FALSE )
+	{
+		/* In NSS state, slot 2 is used, and exclusively for NSS jobs (which cause a coresplit) */
+		return MALI_TRUE;
+	}
+
+	if ( kbdev->gpu_props.num_core_groups > 1 )
+	{
+		/* Otherwise, only use slot 2 in the 2+ coregroup case */
+		if ( kbasep_js_ctx_attr_is_attr_on_runpool( kbdev, KBASEP_JS_CTX_ATTR_COMPUTE_ALL_CORES ) == MALI_FALSE )
+		{
+			/* ...But only when we *don't* have atoms that run on all cores */
+
+			/* No specific check for BASE_JD_REQ_COHERENT_GROUP atoms - the policy will sort that out */
+			return MALI_TRUE;
+		}
+	}
+
+	/* Above checks failed mean we shouldn't use slot 2 */
+	return MALI_FALSE;
 }
 
 /*
@@ -100,9 +194,10 @@ void kbase_js_choose_affinity(u64 *affinity, kbase_device *kbdev, kbase_jd_atom 
 {
 	base_jd_core_req core_req = katom->core_req;
 	u64 shader_present_bitmap = kbdev->shader_present_bitmap;
-	CSTD_UNUSED(js);
+	unsigned int num_core_groups = kbdev->gpu_props.num_core_groups;
 
 	OSK_ASSERT(0 != shader_present_bitmap);
+	OSK_ASSERT( js >= 0 );
 
 	if (1 == kbdev->gpu_props.num_cores)
 	{
@@ -111,13 +206,24 @@ void kbase_js_choose_affinity(u64 *affinity, kbase_device *kbdev, kbase_jd_atom 
 	}
 	else if ( kbase_affinity_requires_split( kbdev ) == MALI_FALSE )
 	{
-		/* All cores are available when no core split is required */
-		if (core_req & (BASE_JD_REQ_COHERENT_GROUP))
+		if ( (core_req & (BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_SPECIFIC_COHERENT_GROUP)) )
 		{
-			*affinity = kbdev->gpu_props.props.coherency_info.group[0].core_mask;
+			if ( js == 0 || num_core_groups == 1 )
+			{
+				/* js[0] and single-core-group systems just get the first core group */
+				*affinity = kbdev->gpu_props.props.coherency_info.group[0].core_mask;
+			}
+			else
+			{
+				/* js[1], js[2] use core groups 0, 1 for dual-core-group systems */
+				u32 core_group_idx = ((u32)js) - 1;
+				OSK_ASSERT( core_group_idx < num_core_groups );
+				*affinity = kbdev->gpu_props.props.coherency_info.group[core_group_idx].core_mask;
+			}
 		}
 		else
 		{
+			/* All cores are available when no core split is required */
 			*affinity = shader_present_bitmap;
 		}
 	}
@@ -139,12 +245,12 @@ void kbase_js_choose_affinity(u64 *affinity, kbase_device *kbdev, kbase_jd_atom 
 
 		/* now decide 4 different situations depending on the low or high
 		 * set of cores and requiring coherent group or not */
-		if (affinity_job_uses_high_cores( katom ))
+		if (affinity_job_uses_high_cores( kbdev, katom ))
 		{
-			unsigned int num_core_groups = kbdev->gpu_props.num_core_groups;
 			OSK_ASSERT(0 != num_core_groups);
 
-			if ((core_req & BASE_JD_REQ_COHERENT_GROUP) && (1 != num_core_groups))
+			if ( (core_req & (BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_SPECIFIC_COHERENT_GROUP))
+				 && (1 != num_core_groups))
 			{
 				/* high set of cores requiring coherency and coherency matters
 				 * because we got more than one core group */
@@ -162,7 +268,7 @@ void kbase_js_choose_affinity(u64 *affinity, kbase_device *kbdev, kbase_jd_atom 
 		{
 			low_bitmap = shader_present_bitmap ^ high_bitmap;
 		
-			if (core_req & BASE_JD_REQ_COHERENT_GROUP)
+			if ( core_req & (BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_SPECIFIC_COHERENT_GROUP))
 			{
 				/* low set of cores and req coherent group */
 				u64 group0_mask = kbdev->gpu_props.props.coherency_info.group[0].core_mask;
@@ -180,17 +286,17 @@ void kbase_js_choose_affinity(u64 *affinity, kbase_device *kbdev, kbase_jd_atom 
 	OSK_ASSERT(*affinity != 0);
 }
 
-OSK_STATIC_INLINE mali_bool kbase_js_affinity_is_violating( u64 *affinities )
+OSK_STATIC_INLINE mali_bool kbase_js_affinity_is_violating( kbase_device *kbdev, u64 *affinities )
 {
 	/* This implementation checks whether:
 	 * - the two slots involved in Generic thread creation have intersecting affinity
-	 * - Cores for the fragment slot (slot 0) would compete with cores for slot 2.
+	 * - Cores for the fragment slot (slot 0) would compete with cores for slot 2 when NSS atoms are in use.
 	 *  - This is due to micro-architectural issues where a job in slot A targetting
 	 * cores used by slot B could prevent the job in slot B from making progress
 	 * until the job in slot A has completed.
-	 *  - In our case, slot 2 is used for batch/NSS jobs, so if their affinity
-	 * intersected with slot 0, then fragment jobs would be delayed by the batch/NSS
-	 * jobs.
+	 *  - In our case, when slot 2 is used for batch/NSS atoms, the affinity
+	 * intersecting with slot 0 would cause fragment atoms to be delayed by the batch/NSS
+	 * atoms.
 	 *
 	 * @note It just so happens that these restrictions also allow
 	 * BASE_HW_ISSUE_8987 to be worked around by placing on job slot 2 the
@@ -201,7 +307,17 @@ OSK_STATIC_INLINE mali_bool kbase_js_affinity_is_violating( u64 *affinities )
 	u64 intersection;
 	OSK_ASSERT( affinities != NULL );
 
-	affinity_set_left = affinities[0] | affinities[1];
+	affinity_set_left = affinities[1];
+
+	if ( kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8987)
+		 || kbasep_js_ctx_attr_is_attr_on_runpool(kbdev, KBASEP_JS_CTX_ATTR_NSS) != MALI_FALSE )
+	{
+		/* The left set also includes those on the Fragment slot when:
+		 * - We are using the HW workaround for BASE_HW_ISSUE_8987
+		 * - We're in NSS state - to prevent NSS atoms using the same cores as Fragment atoms */
+		affinity_set_left |= affinities[0];
+	}
+
 	affinity_set_right = affinities[2];
 
 	/* A violation occurs when any bit in the left_set is also in the right_set */
@@ -223,7 +339,7 @@ mali_bool kbase_js_affinity_would_violate( kbase_device *kbdev, int js, u64 affi
 
 	new_affinities[ js ] |= affinity;
 
-	return kbase_js_affinity_is_violating( new_affinities );
+	return kbase_js_affinity_is_violating( kbdev, new_affinities );
 }
 
 void kbase_js_affinity_retain_slot_cores( kbase_device *kbdev, int js, u64 affinity )

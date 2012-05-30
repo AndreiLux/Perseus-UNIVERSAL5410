@@ -44,7 +44,7 @@ mali_error kbase_cpuprops_uk_get_props(struct kbase_context *kctx, kbase_uk_cpup
 	kbase_props->props.cpu_page_size_log2 = OSK_PAGE_SHIFT;
 	kbase_props->props.available_memory_size = OSK_MEM_PAGES << OSK_PAGE_SHIFT;
 
-	kbase_cpuprops_uk_get_clock_speed = (kbase_cpuprops_clock_speed_function)kbasep_get_config_value( kctx->kbdev->config_attributes, KBASE_CONFIG_ATTR_CPU_SPEED_FUNC );
+	kbase_cpuprops_uk_get_clock_speed = (kbase_cpuprops_clock_speed_function)kbasep_get_config_value( kctx->kbdev, kctx->kbdev->config_attributes, KBASE_CONFIG_ATTR_CPU_SPEED_FUNC );
 	result = kbase_cpuprops_uk_get_clock_speed(&kbase_props->props.max_cpu_clock_speed_mhz);
 	if (result != 0)
 	{

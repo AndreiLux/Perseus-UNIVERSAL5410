@@ -20,18 +20,21 @@
 #define beenthere(f, a...)	OSK_PRINT_INFO(OSK_BASE_EVENT, "%s:" f, __func__, ##a)
 #endif
 
-static void *kbase_event_process(kbase_context *ctx,
+STATIC void *kbase_event_process(kbase_context *ctx,
 				 kbase_event *event)
 {
 	void *data;
 	void *ptr = event;
+	kbasep_js_policy *js_policy;
 
 	/*
 	 * We're in the right user context, do some post processing
 	 * before returning to user-mode.
 	 */
 
+	OSK_ASSERT(ctx != NULL);
 	OSK_ASSERT(event->event_code);
+	js_policy = &(ctx->kbdev->js_data.policy);
 
 	if ((event->event_code & BASE_JD_SW_EVENT_TYPE_MASK) == BASE_JD_SW_EVENT_JOB)
 	{
@@ -50,6 +53,12 @@ static void *kbase_event_process(kbase_context *ctx,
 					base_jd_get_atom_syncset(katom->user_atom, 0),
 					katom->nr_syncsets);
 		}
+
+		if ((katom->core_req & BASE_JD_REQ_SOFT_JOB) == 0)
+		{
+			kbasep_js_policy_term_job( js_policy, ctx, katom );
+		}
+
 		ptr = katom;
 		/* As the event is integral part of the katom, return
 		 * immediatly... */

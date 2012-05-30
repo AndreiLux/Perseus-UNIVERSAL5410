@@ -54,23 +54,3 @@ void oskp_debug_assert_call_hook( void )
 	}
 }
 
-#if MALI_DEBUG
-#include <linux/percpu.h>
-DEFINE_PER_CPU(int[2], slot_in_use);
-
-void osk_kmap_debug(int slot)
-{
-	int slot_was_in_use = get_cpu_var(slot_in_use[slot])++;
-	put_cpu_var(slot_in_use);
-	OSK_ASSERT(slot_was_in_use == 0);
-	BUG_ON(slot_was_in_use);
-}
-
-void osk_kunmap_debug(int slot)
-{
-	int slot_was_in_use = get_cpu_var(slot_in_use[slot])--;
-	put_cpu_var(slot_in_use);
-	OSK_ASSERT(slot_was_in_use == 1);
-	BUG_ON(!slot_was_in_use);
-}
-#endif /* MALI_DEBUG */

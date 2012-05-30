@@ -323,10 +323,19 @@ typedef u16 base_jd_core_req;
 #define BASE_JD_REQ_ONLY_COMPUTE    (1U << 10)
 
 /**
+ * HW Requirement: Use the base_jd_atom::device_nr field to specify a
+ * particular core group
+ *
+ * If both BASE_JD_REQ_COHERENT_GROUP and this flag are set, this flag takes priority
+ *
+ * This is only guaranteed to work for BASE_JD_REQ_ONLY_COMPUTE atoms.
+ */
+#define BASE_JD_REQ_SPECIFIC_COHERENT_GROUP ( 1U << 11 )
+
+/**
 * These requirement bits are currently unused in base_jd_core_req (currently a u16)
 */
 
-#define BASEP_JD_REQ_RESERVED_BIT11 ( 1U << 11 )
 #define BASEP_JD_REQ_RESERVED_BIT12 ( 1U << 12 )
 #define BASEP_JD_REQ_RESERVED_BIT13 ( 1U << 13 )
 #define BASEP_JD_REQ_RESERVED_BIT14 ( 1U << 14 )
@@ -336,8 +345,7 @@ typedef u16 base_jd_core_req;
 * Mask of all the currently unused requirement bits in base_jd_core_req.
 */
 
-#define BASEP_JD_REQ_RESERVED ( BASEP_JD_REQ_RESERVED_BIT11 |\
-                                BASEP_JD_REQ_RESERVED_BIT12 | BASEP_JD_REQ_RESERVED_BIT13 |\
+#define BASEP_JD_REQ_RESERVED ( BASEP_JD_REQ_RESERVED_BIT12 | BASEP_JD_REQ_RESERVED_BIT13 |\
                                 BASEP_JD_REQ_RESERVED_BIT14 | BASEP_JD_REQ_RESERVED_BIT15 )
 
 
@@ -368,6 +376,40 @@ typedef struct base_jd_atom
 	 * be interpreted as zero.
 	 */
 	s8                  prio;
+
+	/**
+	 * @brief Device number to use, depending on @ref base_jd_core_req flags set.
+	 *
+	 * When BASE_JD_REQ_SPECIFIC_COHERENT_GROUP is set, a 'device' is one of
+	 * the coherent core groups, and so this targets a particular coherent
+	 * core-group. They are numbered from 0 to (mali_base_gpu_coherent_group_info::num_groups - 1),
+	 * and the cores targeted by this device_nr will usually be those specified by
+	 * (mali_base_gpu_coherent_group_info::group[device_nr].core_mask).
+	 * Further, two atoms from different processes using the same \a device_nr
+	 * at the same time will always target the same coherent core-group.
+	 *
+	 * There are exceptions to when the device_nr is ignored:
+	 * - when any process in the system uses a BASE_JD_REQ_CS or
+	 * BASE_JD_REQ_ONLY_COMPUTE atom that can run on all cores across all
+	 * coherency groups (i.e. also does \b not have the
+	 * BASE_JD_REQ_COHERENT_GROUP or BASE_JD_REQ_SPECIFIC_COHERENT_GROUP flags
+	 * set). In this case, such atoms would block device_nr==1 being used due
+	 * to restrictions on affinity, perhaps indefinitely. To ensure progress is
+	 * made, the atoms targeted for device_nr 1 will instead be redirected to
+	 * device_nr 0
+	 * - When any process in the system is using 'NSS' (BASE_JD_REQ_NSS) atoms,
+	 * because there'd be very high latency on atoms targeting a coregroup
+	 * that is also in use by NSS atoms. To ensure progress is
+	 * made, the atoms targeted for device_nr 1 will instead be redirected to
+	 * device_nr 0
+	 * - During certain HW workarounds, such as BASE_HW_ISSUE_8987, where
+	 * BASE_JD_REQ_ONLY_COMPUTE atoms must not use the same cores as other
+	 * atoms. In this case, all atoms are targeted to device_nr == min( num_groups, 1 )
+	 *
+	 * Note that the 'device' number for a coherent coregroup cannot exceed
+	 * (BASE_MAX_COHERENT_GROUPS - 1).
+	 */
+	u8                  device_nr;
 } base_jd_atom;
 
 /* Structure definition works around the fact that C89 doesn't allow arrays of size 0 */
@@ -399,8 +441,8 @@ static INLINE size_t base_jd_atom_size_ex(u32 syncset_count, u32 external_res_co
 {
 	LOCAL_ASSERT( 0 == syncset_count || 0 == external_res_count );
 
-	return syncset_count      ? offsetof(basep_jd_atom_ss, syncsets[syncset_count]) :
-	       external_res_count ? offsetof(basep_jd_atom_ext_res, resources[external_res_count]) :
+	return syncset_count      ? offsetof(basep_jd_atom_ss, syncsets[0]) + (sizeof(base_syncset) * syncset_count) :
+		   external_res_count ? offsetof(basep_jd_atom_ext_res, resources[0]) + (sizeof(base_external_resource) * external_res_count) :
 	                            sizeof(base_jd_atom);
 }
 
@@ -1101,6 +1143,8 @@ struct midg_raw_gpu_props
 	u32 js_present;
 	midg_js_features js_features[MIDG_MAX_JOB_SLOTS];
 	midg_tiler_features tiler_features;
+
+	u32 gpu_id;
 };
 
 

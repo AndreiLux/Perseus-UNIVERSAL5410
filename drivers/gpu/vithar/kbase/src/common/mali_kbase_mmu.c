@@ -21,11 +21,12 @@
 #include <osk/mali_osk.h>
 #include <kbase/src/common/mali_kbase.h>
 #include <kbase/src/common/mali_midg_regmap.h>
+#include <kbase/src/common/mali_kbase_gator.h>
 
 #define beenthere(f, a...)  OSK_PRINT_INFO(OSK_BASE_MMU, "%s:" f, __func__, ##a)
 
 #include <kbase/src/common/mali_kbase_defs.h>
-
+#include <kbase/src/common/mali_kbase_hw.h>
 
 #define KBASE_MMU_PAGE_ENTRIES 512
 
@@ -39,7 +40,7 @@
  */
 
 static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, mali_addr64 fault_addr);
-static u64 lock_region(u64 pfn, u32 num_pages);
+static u64 lock_region(kbase_device * kbdev, u64 pfn, u32 num_pages);
 
 static void ksync_kern_vrange_gpu(osk_phy_addr paddr, osk_virt_addr vaddr, size_t size)
 {
@@ -81,6 +82,8 @@ static void page_fault_worker(osk_workq_work *data)
 	kbase_va_region *region;
 	mali_error err;
 
+	u32 fault_status;
+
 	faulting_as = CONTAINER_OF(data, kbase_as, work_pagefault);
 	fault_pfn = faulting_as->fault_addr >> OSK_PAGE_SHIFT;
 	as_no = faulting_as->number;
@@ -111,13 +114,14 @@ static void page_fault_worker(osk_workq_work *data)
 		return;
 	}
 
+	fault_status = kbase_reg_read(kbdev, MMU_AS_REG(as_no, ASn_FAULTSTATUS), NULL);
 
 	OSK_ASSERT( kctx->kbdev == kbdev );
 
 	kbase_gpu_vm_lock(kctx);
 
 	/* find the region object for this VA */
-	region = kbase_region_lookup(kctx, faulting_as->fault_addr);
+	region = kbase_region_tracker_find_region_enclosing_address(kctx, faulting_as->fault_addr);
 	if (NULL == region || (GROWABLE_FLAGS_REQUIRED != (region->flags & GROWABLE_FLAGS_MASK)))
 	{
 		kbase_gpu_vm_unlock(kctx);
@@ -126,10 +130,33 @@ static void page_fault_worker(osk_workq_work *data)
 		goto fault_done;
 	}
 
+	if ((((fault_status & ASn_FAULTSTATUS_ACCESS_TYPE_MASK) == ASn_FAULTSTATUS_ACCESS_TYPE_READ) &&
+	        !(region->flags & KBASE_REG_GPU_RD)) ||
+	    (((fault_status & ASn_FAULTSTATUS_ACCESS_TYPE_MASK) == ASn_FAULTSTATUS_ACCESS_TYPE_WRITE) &&
+	        !(region->flags & KBASE_REG_GPU_WR)) ||
+	    (((fault_status & ASn_FAULTSTATUS_ACCESS_TYPE_MASK) == ASn_FAULTSTATUS_ACCESS_TYPE_EX) &&
+	        (region->flags & KBASE_REG_GPU_NX)))
+	{
+		OSK_PRINT_WARN(OSK_BASE_MMU, "Access permissions don't match: region->flags=0x%x", region->flags);
+		kbase_gpu_vm_unlock(kctx);
+		kbase_mmu_report_fault_and_kill(kctx, faulting_as, faulting_as->fault_addr);
+		goto fault_done;
+	}
+
 	/* find the size we need to grow it by */
-	/* we know the result fit in a u32 due to kbase_region_lookup
+	/* we know the result fit in a u32 due to kbase_region_tracker_find_region_enclosing_address
 	 * validating the fault_adress to be within a u32 from the start_pfn */
 	fault_rel_pfn = fault_pfn - region->start_pfn;
+	
+	if (fault_rel_pfn < region->nr_alloc_pages)
+	{
+		OSK_PRINT_WARN(OSK_BASE_MMU, "Fault in allocated region of growable TMEM: Ignoring");
+		kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_CLEAR), (1UL << as_no), NULL);
+		mmu_mask_reenable(kbdev, kctx, faulting_as);
+		kbase_gpu_vm_unlock(kctx);
+		goto fault_done;
+	}
+
 	new_pages = make_multiple(fault_rel_pfn - region->nr_alloc_pages + 1, region->extent);
 	if (new_pages + region->nr_alloc_pages > region->nr_pages)
 	{
@@ -156,7 +183,7 @@ static void page_fault_worker(osk_workq_work *data)
 		osk_mutex_lock(&faulting_as->transaction_mutex);
 
 		/* Lock the VA region we're about to update */
-		lock_addr = lock_region(faulting_as->fault_addr >> OSK_PAGE_SHIFT, new_pages);
+		lock_addr = lock_region(kbdev, faulting_as->fault_addr >> OSK_PAGE_SHIFT, new_pages);
 		kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_LOCKADDR_LO), lock_addr & 0xFFFFFFFFUL, kctx);
 		kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_LOCKADDR_HI), lock_addr >> 32, kctx);
 		kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_COMMAND), ASn_COMMAND_LOCK, kctx);
@@ -175,6 +202,9 @@ static void page_fault_worker(osk_workq_work *data)
 			goto fault_done;
 		}
 
+#if MALI_GATOR_SUPPORT
+		kbase_trace_mali_page_fault_insert_pages(as_no, new_pages);
+#endif
 		/* clear the irq */
 		/* MUST BE BEFORE THE FLUSH/UNLOCK */
 		kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_CLEAR), (1UL << as_no), NULL);
@@ -184,6 +214,20 @@ static void page_fault_worker(osk_workq_work *data)
 
 		/* wait for the flush to complete */
 		while (kbase_reg_read(kbdev, MMU_AS_REG(as_no, ASn_STATUS), kctx) & 1);
+
+		if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_9630))
+		{
+			/* Issue an UNLOCK command to ensure that valid page tables are re-read by the GPU after an update.
+			Note that, the FLUSH command should perform all the actions necessary, however the bus logs show
+			that if multiple page faults occur within an 8 page region the MMU does not always re-read the
+			updated page table entries for later faults or is only partially read, it subsequently raises the 
+			page fault IRQ for the same addresses, the unlock ensures that the MMU cache is flushed, so updates 
+			can be re-read.  As the region is now unlocked we need to issue 2 UNLOCK commands in order to flush the
+			MMU/uTLB, see PRLAM-8812.
+                        */
+			kbase_reg_write(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_COMMAND), ASn_COMMAND_UNLOCK, kctx);
+			kbase_reg_write(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_COMMAND), ASn_COMMAND_UNLOCK, kctx);
+		}
 
 		osk_mutex_unlock(&faulting_as->transaction_mutex);
 		/* AS transaction end */
@@ -339,7 +383,7 @@ static osk_phy_addr mmu_insert_pages_recover_get_next_pgd(struct kbase_context *
 	vpfn >>= (3 - level) * 9;
 	vpfn &= 0x1FF;
 
-	page = osk_kmap_atomic(pgd, OSK_KMAP_SLOT_0);
+	page = osk_kmap_atomic(pgd);
 	/* osk_kmap_atomic should NEVER fail */
 	OSK_ASSERT(NULL != page);
 
@@ -347,7 +391,7 @@ static osk_phy_addr mmu_insert_pages_recover_get_next_pgd(struct kbase_context *
 	/* As we are recovering from what has already been set up, we should have a target_pgd */
 	OSK_ASSERT(0 != target_pgd);
 
-	osk_kunmap_atomic(pgd, page, OSK_KMAP_SLOT_0);
+	osk_kunmap_atomic(pgd, page);
 	return target_pgd;
 }
 
@@ -390,7 +434,7 @@ static void mmu_insert_pages_failure_recovery(struct kbase_context *kctx, u64 vp
 		pgd = mmu_insert_pages_recover_get_bottom_pgd(kctx, vpfn);
 		OSK_ASSERT(0 != pgd);
 
-		pgd_page = osk_kmap_atomic(pgd, OSK_KMAP_SLOT_0);
+		pgd_page = osk_kmap_atomic(pgd);
 		OSK_ASSERT(NULL != pgd_page);
 
 		/* Invalidate the entries we added */
@@ -404,7 +448,7 @@ static void mmu_insert_pages_failure_recovery(struct kbase_context *kctx, u64 vp
 
 		ksync_kern_vrange_gpu(pgd + (index * sizeof(u64)), pgd_page + index, count * sizeof(u64));
 
-		osk_kunmap_atomic(pgd, pgd_page, OSK_KMAP_SLOT_0);
+		osk_kunmap_atomic(pgd, pgd_page);
 	}
 }
 
@@ -508,6 +552,12 @@ KBASE_EXPORT_TEST_API(kbase_mmu_insert_pages)
  * pages. There is a potential DoS here, as we'll leak memory by
  * having PTEs that are potentially unused.  Will require physical
  * page accounting, so MMU pages are part of the process allocation.
+ *
+ * IMPORTANT: This uses kbasep_js_runpool_release_ctx() when the context is
+ * currently scheduled into the runpool, and so potentially uses a lot of locks.
+ * These locks must be taken in the correct order with respect to others
+ * already held by the caller. Refer to kbasep_js_runpool_release_ctx() for more
+ * information.
  */
  mali_error kbase_mmu_teardown_pages(struct kbase_context *kctx, u64 vpfn, u32 nr)
 {
@@ -552,7 +602,6 @@ KBASE_EXPORT_TEST_API(kbase_mmu_insert_pages)
 		}
 
 		for (i = 0; i < count; i++) {
-			OSK_ASSERT(pgd_page[index+i] != ENTRY_IS_INVAL);
 			/*
 			 * Possible micro-optimisation: only write to the
 			 * low 32bits. That's enough to invalidate the mapping.
@@ -581,7 +630,7 @@ KBASE_EXPORT_TEST_API(kbase_mmu_insert_pages)
 		if ( kbdev->js_data.runpool_irq.per_as_data[kctx->as_nr].as_busy_refcount >= 2 )
 		{
 			/* Lock the VA region we're about to update */
-			u64 lock_addr = lock_region( vpfn, requested_nr );
+			u64 lock_addr = lock_region(kbdev, vpfn, requested_nr);
 
 			/* AS transaction begin */
 			osk_mutex_lock(&kbdev->as[kctx->as_nr].transaction_mutex);
@@ -594,6 +643,20 @@ KBASE_EXPORT_TEST_API(kbase_mmu_insert_pages)
 
 			/* wait for the flush to complete */
 			while (kbase_reg_read(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_STATUS), kctx) & ASn_STATUS_FLUSH_ACTIVE);
+
+			if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_9630))
+			{
+				/* Issue an UNLOCK command to ensure that valid page tables are re-read by the GPU after an update.
+				Note that, the FLUSH command should perform all the actions necessary, however the bus logs show
+				that if multiple page faults occur within an 8 page region the MMU does not always re-read the
+				updated page table entries for later faults or is only partially read, it subsequently raises the 
+				page fault IRQ for the same addresses, the unlock ensures that the MMU cache is flushed, so updates 
+				can be re-read.  As the region is now unlocked we need to issue 2 UNLOCK commands in order to flush the
+				MMU/uTLB, see PRLAM-8812.
+                                */
+				kbase_reg_write(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_COMMAND), ASn_COMMAND_UNLOCK, kctx);
+				kbase_reg_write(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_COMMAND), ASn_COMMAND_UNLOCK, kctx);
+			}
 
 			osk_mutex_unlock(&kbdev->as[kctx->as_nr].transaction_mutex);
 			/* AS transaction end */
@@ -616,7 +679,7 @@ static void mmu_check_unused(kbase_context *kctx, osk_phy_addr pgd)
 	int i;
 	CSTD_UNUSED(kctx);
 
-	page = osk_kmap_atomic(pgd, OSK_KMAP_SLOT_0);
+	page = osk_kmap_atomic(pgd);
 	/* kmap_atomic should NEVER fail. */
 	OSK_ASSERT(NULL != page);
 
@@ -627,7 +690,7 @@ static void mmu_check_unused(kbase_context *kctx, osk_phy_addr pgd)
 			beenthere("live pte %016lx", (unsigned long)page[i]);
 		}
 	}
-	osk_kunmap_atomic(pgd, page, OSK_KMAP_SLOT_0);
+	osk_kunmap_atomic(pgd, page);
 }
 
 static void mmu_teardown_level(kbase_context *kctx, osk_phy_addr pgd, int level, int zap, u64 *pgd_page_buffer)
@@ -636,12 +699,12 @@ static void mmu_teardown_level(kbase_context *kctx, osk_phy_addr pgd, int level,
 	u64 *pgd_page;
 	int i;
 
-	pgd_page = osk_kmap_atomic(pgd, OSK_KMAP_SLOT_1);
+	pgd_page = osk_kmap_atomic(pgd);
 	/* kmap_atomic should NEVER fail. */
 	OSK_ASSERT(NULL != pgd_page);
 	/* Copy the page to our preallocated buffer so that we can minimize kmap_atomic usage */
 	memcpy(pgd_page_buffer, pgd_page, OSK_PAGE_SIZE);
-	osk_kunmap_atomic(pgd, pgd_page, OSK_KMAP_SLOT_1);
+	osk_kunmap_atomic(pgd, pgd_page);
 	pgd_page = pgd_page_buffer;
 
 	for (i = 0; i < KBASE_MMU_PAGE_ENTRIES; i++) {
@@ -728,8 +791,8 @@ static size_t kbasep_mmu_dump_level(kbase_context *kctx, osk_phy_addr pgd, int l
 		u64 m_pgd = pgd | level;
 
 		/* Put the modified physical address in the output buffer */
-		memcpy(*buffer, &m_pgd, sizeof(u64));
-		*buffer += sizeof(osk_phy_addr);
+		memcpy(*buffer, &m_pgd, sizeof(m_pgd));
+		*buffer += sizeof(m_pgd);
 
 		/* Followed by the page table itself */
 		memcpy(*buffer, pgd_page, sizeof(u64)*KBASE_MMU_PAGE_ENTRIES);
@@ -803,7 +866,7 @@ void *kbase_mmu_dump(struct kbase_context *kctx,int nr_pages)
 }
 KBASE_EXPORT_TEST_API(kbase_mmu_dump)
 
-static u64 lock_region(u64 pfn, u32 num_pages)
+static u64 lock_region(kbase_device *kbdev, u64 pfn, u32 num_pages)
 {
 	u64 region;
 
@@ -852,9 +915,7 @@ static void bus_fault_worker(osk_workq_work *data)
 	kbase_context * kctx;
 	kbase_device * kbdev;
 	u32 reg;
-#if BASE_HW_ISSUE_8245
-	mali_bool reset_status;
-#endif
+	mali_bool reset_status= MALI_FALSE;
 
 	faulting_as = CONTAINER_OF(data, kbase_as, work_busfault);
 	as_no = faulting_as->number;
@@ -870,13 +931,16 @@ static void bus_fault_worker(osk_workq_work *data)
 	/* switch to UNMAPPED mode, will abort all jobs and stop any hw counter dumping */
 	/* AS transaction begin */
 	osk_mutex_lock(&kbdev->as[as_no].transaction_mutex);
-#if BASE_HW_ISSUE_8245
-	/* Due to H/W issue 8245 we need to reset the GPU after using UNMAPPED mode.
-	 * We start the reset before switching to UNMAPPED to ensure that unrelated jobs
-	 * are evicted from the GPU before the switch.
-	 */
-	reset_status = kbase_prepare_to_reset_gpu(kbdev);
-#endif
+
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245))
+	{
+		/* Due to H/W issue 8245 we need to reset the GPU after using UNMAPPED mode.
+		 * We start the reset before switching to UNMAPPED to ensure that unrelated jobs
+		 * are evicted from the GPU before the switch.
+		 */
+		reset_status = kbase_prepare_to_reset_gpu(kbdev);
+	}
+
 	reg = kbase_reg_read(kbdev, MMU_AS_REG(as_no, ASn_TRANSTAB_LO), kctx);
 	reg &= ~3;
 	kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_TRANSTAB_LO), reg, kctx);
@@ -888,12 +952,10 @@ static void bus_fault_worker(osk_workq_work *data)
 
 	mmu_mask_reenable( kbdev, kctx, faulting_as );
 	
-#if BASE_HW_ISSUE_8245
-	if (reset_status)
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245) && reset_status)
 	{
 		kbase_reset_gpu(kbdev);
 	}
-#endif
 
 	/* By this point, the fault was handled in some way, so release the ctx refcount */
 	if ( kctx != NULL )
@@ -1094,15 +1156,14 @@ const char *kbase_exception_name(u32 exception_code)
 static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, mali_addr64 fault_addr)
 {
 	u32 fault_status;
+	u32 reg;
 	int exception_type;
 	int access_type;
 	int source_id;
 	int as_no;
 	kbase_device * kbdev;
 	kbasep_js_device_data *js_devdata;
-#if BASE_HW_ISSUE_8245
-	mali_bool reset_status;
-#endif
+	mali_bool reset_status = MALI_FALSE;
 #if MALI_DEBUG
 	static const char *access_type_names[] = { "RESERVED", "EXECUTE", "READ", "WRITE" };
 #endif
@@ -1138,8 +1199,11 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 	    (kbdev->hwcnt.kctx->as_nr == as_no) && 
 		(kbdev->hwcnt.state == KBASE_INSTR_STATE_DUMPING))
 	{
-		/* See MIDBASE-1631 */
-		kbdev->hwcnt.state = KBASE_INSTR_STATE_FAULT;
+		u32 num_core_groups = kbdev->gpu_props.num_core_groups;
+		if ((fault_addr >= kbdev->hwcnt.addr) && (fault_addr < (kbdev->hwcnt.addr + (num_core_groups * 2048))))
+		{
+			kbdev->hwcnt.state = KBASE_INSTR_STATE_FAULT;
+		}
 	}
 
 	/* Stop the kctx from submitting more jobs and cause it to be scheduled
@@ -1154,35 +1218,32 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 	/* AS transaction begin */
 	osk_mutex_lock(&as->transaction_mutex);
 
-#if BASE_HW_ISSUE_8245
-	/* Due to H/W issue 8245 we need to reset the GPU after using UNMAPPED mode.
-	 * We start the reset before switching to UNMAPPED to ensure that unrelated jobs
-	 * are evicted from the GPU before the switch.
-	 */
-	reset_status = kbase_prepare_to_reset_gpu(kbdev);
-#endif
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245))
 	{
-		u32 reg;
-		/* switch to UNMAPPED mode, will abort all jobs and stop any hw counter dumping */
-		reg = kbase_reg_read(kbdev, MMU_AS_REG(as_no, ASn_TRANSTAB_LO), kctx);
-		reg &= ~3;
-		kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_TRANSTAB_LO), reg, kctx);
-		kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_COMMAND), ASn_COMMAND_UPDATE, kctx);
+		/* Due to H/W issue 8245 we need to reset the GPU after using UNMAPPED mode.
+		 * We start the reset before switching to UNMAPPED to ensure that unrelated jobs
+		 * are evicted from the GPU before the switch.
+		 */
+		reset_status = kbase_prepare_to_reset_gpu(kbdev);
 	}
+
+	/* switch to UNMAPPED mode, will abort all jobs and stop any hw counter dumping */
+	reg = kbase_reg_read(kbdev, MMU_AS_REG(as_no, ASn_TRANSTAB_LO), kctx);
+	reg &= ~3;
+	kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_TRANSTAB_LO), reg, kctx);
+	kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_COMMAND), ASn_COMMAND_UPDATE, kctx);
+
 	kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_CLEAR), (1UL << as_no), NULL);
 
 	osk_mutex_unlock(&as->transaction_mutex);
 	/* AS transaction end */
 	mmu_mask_reenable(kbdev, kctx, as);
-#if BASE_HW_ISSUE_8245
-	if (reset_status)
+
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245) && reset_status)
 	{
 		kbase_reset_gpu(kbdev);
 	}
-#endif
 }
-
-#if BASE_HW_ISSUE_8316
 
 void kbasep_as_do_poke(osk_workq_work * work)
 {
@@ -1241,4 +1302,3 @@ void kbase_as_poking_timer_release(kbase_as * as)
 	osk_atomic_dec(&as->poke_refcount);
 }
 
-#endif /* BASE_HW_ISSUE_8316 */

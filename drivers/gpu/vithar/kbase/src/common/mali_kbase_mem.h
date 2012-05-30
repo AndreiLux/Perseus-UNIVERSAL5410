@@ -33,19 +33,25 @@
 #include <ump/ump_kernel_interface.h>
 #endif /* MALI_USE_UMP */
 #include <kbase/mali_base_kernel.h>
+#include <kbase/src/common/mali_kbase_hw.h>
 #include "mali_kbase_pm.h"
 #include "mali_kbase_defs.h"
 
-#if BASE_HW_ISSUE_8316 != 0
 /* Part of the workaround for uTLB invalid pages is to ensure we grow/shrink tmem by 4 pages at a time */
-#define KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_LOG2 2 /* round to 4 pages */
-#else
-#define KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_LOG2 0 /* round to 1 page */
-#endif /* BASE_HW_ISSUE_8316 != 0 */
+#define KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_LOG2_HW_ISSUE_8316 (2) /* round to 4 pages */
+
+/* Part of the workaround for PRLAM-9630 requires us to grow/shrink memory by 8 pages. 
+The MMU reads in 8 page table entries from memory at a time, if we have more than one page fault within the same 8 pages and 
+page tables are updated accordingly, the MMU does not re-read the page table entries from memory for the subsequent page table
+updates and generates duplicate page faults as the page table information used by the MMU is not valid.   */
+#define KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_LOG2_HW_ISSUE_9630 (3) /* round to 8 pages */
+
+#define KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_LOG2 (0) /* round to 1 page */
 
 /* This must always be a power of 2 */
 #define KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES (1u << KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_LOG2)
-
+#define KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_HW_ISSUE_8316 (1u << KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_LOG2_HW_ISSUE_8316)
+#define KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_HW_ISSUE_9630 (1u << KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_LOG2_HW_ISSUE_9630)
 /**
  * A CPU mapping
  */
@@ -77,6 +83,9 @@ typedef struct kbase_mem_commit
  */  
 typedef struct kbase_va_region
 {
+#if MALI_KBASEP_REGION_RBTREE
+	struct rb_node          rblink;
+#endif
 	osk_dlist_item          link;
 
 	struct kbase_context    *kctx; /* Backlink to base context */
@@ -101,9 +110,9 @@ typedef struct kbase_va_region
 #define KBASE_REG_SHARE_IN   (1ul << 11) /* inner shareable coherency */
 #define KBASE_REG_SHARE_BOTH (1ul << 12) /* inner & outer shareable coherency */
 
-#define KBASE_REG_NO_CPU_MAP (1ul << 13) /* buffer can not be mapped on the CPU, only available for the GPU */
+/*bit 13 unused*/
 
-#define KBASE_REG_ZONE_MASK  (3ul << 14) /* Space for 4 different zones. Only use 3 for now */
+#define KBASE_REG_ZONE_MASK  (3ul << 14) /* Space for 4 different zones */
 #define KBASE_REG_ZONE(x)    (((x) & 3) << 14)
 
 #define KBASE_REG_GPU_RD     (1ul<<16) /* GPU write access */
@@ -120,8 +129,13 @@ typedef struct kbase_va_region
  * the Linux mmap() interface limits us to 2^32 pages (2^44 bytes, see
  * mmap64 man page for reference).
  */
-#define KBASE_REG_ZONE_TMEM         KBASE_REG_ZONE(1)
-#define KBASE_REG_ZONE_TMEM_BASE    ((1ULL << 32) >> OSK_PAGE_SHIFT)
+#define KBASE_REG_ZONE_EXEC         KBASE_REG_ZONE(1) /* Dedicated 4GB region for shader code */
+#define KBASE_REG_ZONE_EXEC_BASE    ((1ULL << 32) >> OSK_PAGE_SHIFT)
+#define KBASE_REG_ZONE_EXEC_SIZE    (((1ULL << 33) >> OSK_PAGE_SHIFT) - \
+                                    KBASE_REG_ZONE_EXEC_BASE)
+
+#define KBASE_REG_ZONE_TMEM         KBASE_REG_ZONE(2)
+#define KBASE_REG_ZONE_TMEM_BASE    ((1ULL << 33) >> OSK_PAGE_SHIFT) /* Starting after KBASE_REG_ZONE_EXEC */
 #define KBASE_REG_ZONE_TMEM_SIZE    (((1ULL << 44) >> OSK_PAGE_SHIFT) - \
                                     KBASE_REG_ZONE_TMEM_BASE)
 #endif
@@ -165,7 +179,18 @@ typedef struct kbase_va_region
 	/* member in union valid based on imported_type */
 	union
 	{
+#if MALI_USE_UMP == 1
 		ump_dd_handle ump_handle;
+#endif /*MALI_USE_UMP == 1*/
+#ifdef CONFIG_DMA_SHARED_BUFFER
+		struct
+		{
+			struct dma_buf *            dma_buf;
+			struct dma_buf_attachment * dma_attachment;
+			unsigned int                current_mapping_usage_count;
+			struct sg_table *           st;
+		} umm;
+#endif /* CONFIG_DMA_SHARED_BUFFER */
 	} imported_metadata;
 
 } kbase_va_region;
@@ -290,13 +315,31 @@ mali_error kbase_mem_usage_request_pages(kbasep_mem_usage *usage, u32 nr_pages);
  */
 void kbase_mem_usage_release_pages(kbasep_mem_usage *usage, u32 nr_pages);
 
+
+mali_error kbase_region_tracker_init(struct kbase_context *kctx);
+void kbase_region_tracker_term(struct kbase_context *kctx);
+
+struct kbase_va_region * kbase_region_tracker_find_region_enclosing_range( 
+	struct kbase_context *kctx, u64 start_pgoff, u32 nr_pages );
+
+struct kbase_va_region * kbase_region_tracker_find_region_enclosing_address( 
+	struct kbase_context *kctx, mali_addr64 gpu_addr );
+
+/**
+ * @brief Check that a pointer is actually a valid region.
+ *
+ * Must be called with context lock held.
+ */
+struct kbase_va_region * kbase_region_tracker_find_region_base_address( 
+	struct kbase_context *kctx, mali_addr64 gpu_addr );
+
+
 struct kbase_va_region *kbase_alloc_free_region(struct kbase_context *kctx, u64 start_pfn, u32 nr_pages, u32 zone);
 void kbase_free_alloced_region(struct kbase_va_region *reg);
 mali_error kbase_add_va_region(struct kbase_context *kctx,
                                struct kbase_va_region *reg,
                                mali_addr64 addr, u32 nr_pages,
                                u32 align);
-kbase_va_region *kbase_region_lookup(kbase_context *kctx, mali_addr64 gpu_addr);
 
 mali_error kbase_gpu_mmap(struct kbase_context *kctx,
                           struct kbase_va_region *reg,
@@ -321,13 +364,6 @@ void kbase_mmu_free_pgd(struct kbase_context *kctx);
 mali_error kbase_mmu_insert_pages(struct kbase_context *kctx, u64 vpfn,
                                   osk_phy_addr *phys, u32 nr, u32 flags);
 mali_error kbase_mmu_teardown_pages(struct kbase_context *kctx, u64 vpfn, u32 nr);
-
-/**
- * @brief Check that a pointer is actually a valid region.
- *
- * Must be called with context lock held.
- */
-struct kbase_va_region *kbase_validate_region(struct kbase_context *kctx, mali_addr64 gpu_addr);
 
 /**
  * @brief Register region and map it on the GPU.
@@ -483,16 +519,25 @@ struct kbase_cpu_mapping *kbasep_find_enclosing_cpu_mapping(
  * @param[in] nr_pages Size value (in pages) to round
  * @return the rounded-up number of pages (which may have wraped around to zero)
  */
-static INLINE u32 kbasep_tmem_growable_round_size( u32 nr_pages )
+static INLINE u32 kbasep_tmem_growable_round_size( kbase_device *kbdev, u32 nr_pages )
 {
-	return (nr_pages + KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES - 1) & ~(KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES-1);
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_9630))
+	{
+		return (nr_pages + KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_HW_ISSUE_9630 - 1) & ~(KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_HW_ISSUE_9630 - 1);
+	}	
+	else if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8316))
+	{
+		return (nr_pages + KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_HW_ISSUE_8316 - 1) & ~(KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_HW_ISSUE_8316 - 1);
+	}
+	else
+	{
+		return (nr_pages + KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES - 1) & ~(KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES-1);
+	}
 }
 
-#if BASE_HW_ISSUE_8316
 void kbasep_as_poke_timer_callback(void* arg);
 void kbase_as_poking_timer_retain(kbase_as * as);
 void kbase_as_poking_timer_release(kbase_as * as);
-#endif /* BASE_HW_ISSUE_8316 */
 
 
 #endif /* _KBASE_MEM_H_ */

@@ -15,7 +15,7 @@
 #ifndef _KBASE_UKU_H_
 #define _KBASE_UKU_H_
 
-#include <uk/mali_uk.h>
+#include <kbase/mali_uk.h>
 #include <ump/ump_common.h>
 #include <malisw/mali_malisw.h>
 #include <kbase/mali_base_kernel.h>
@@ -188,7 +188,7 @@ typedef struct kbase_uk_set_flags
 	u32       create_flags;
 } kbase_uk_set_flags;
 
-#if MALI_DEBUG
+#if MALI_UNIT_TEST
 #define TEST_ADDR_COUNT 4
 #define KBASE_TEST_BUFFER_SIZE 128
 typedef struct kbase_exported_test_data
@@ -208,7 +208,7 @@ typedef struct kbase_uk_set_test_data
 	kbase_exported_test_data test_data;
 } kbase_uk_set_test_data;
 
-#endif /* MALI_DEBUG */
+#endif /* MALI_UNIT_TEST */
 #if MALI_ERROR_INJECT_ON
 typedef struct kbase_uk_error_params
 {

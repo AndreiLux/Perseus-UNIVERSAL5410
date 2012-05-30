@@ -12,13 +12,26 @@
 
 
 
-#ifndef _KBASE_CPU_VEXPRESS_H_
-#define _KBASE_CPU_VEXPRESS_H_
+/**
+ * @file
+ * Run-time work-arounds helpers
+ */
+
+#ifndef _KBASE_HW_H_
+#define _KBASE_HW_H_
+
+#include <osk/mali_osk.h>
+#include "mali_kbase_defs.h"
 
 /**
- * Versatile Express implementation of @ref kbase_cpuprops_clock_speed_function.
+ * @brief Tell whether a work-around should be enabled
  */
-int kbase_get_vexpress_cpu_clock_speed(u32* cpu_clock);
+#define kbase_hw_has_issue(kbdev, issue)\
+        osk_bitarray_test_bit(issue, &(kbdev)->hw_issues_mask[0])
 
-#endif /* _KBASE_CPU_VEXPRESS_H_ */
+/**
+ * @brief Set the HW issues mask depending on the GPU ID
+ */
+mali_error kbase_hw_set_issues_mask(kbase_device *kbdev);
 
+#endif /* _KBASE_HW_H_ */

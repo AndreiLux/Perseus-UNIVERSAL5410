@@ -60,6 +60,7 @@ typedef struct kbasep_atom_req
 {
 	base_jd_core_req core_req;
 	kbase_context_flags ctx_req;
+	u32 device_nr;
 } kbasep_atom_req;
 
 #include "mali_kbase_js_policy_cfs.h"
@@ -166,6 +167,30 @@ typedef enum
 	 * both types of jobs.
 	 */
 	KBASEP_JS_CTX_ATTR_NON_COMPUTE,
+
+	/** Attribute indicating that a context contains compute-job atoms that
+	 * aren't restricted to a coherent group, and can run on all cores.
+	 *
+	 * Specifically, this is when the atom's \a core_req satisfy:
+	 * - (\a core_req & (BASE_JD_REQ_CS | BASE_JD_REQ_ONLY_COMPUTE | BASE_JD_REQ_T) // uses slot 1 or slot 2
+	 * - && !(\a core_req & BASE_JD_REQ_COHERENT_GROUP) // not restricted to coherent groups
+	 *
+	 * Such atoms could be blocked from running if one of the coherent groups
+	 * is being used by another job slot, so tracking this context attribute
+	 * allows us to prevent such situations.
+	 *
+	 * @note This doesn't take into account the 1-coregroup case, where all
+	 * compute atoms would effectively be able to run on 'all cores', but
+	 * contexts will still not always get marked with this attribute. Instead,
+	 * it is the caller's responsibility to take into account the number of
+	 * coregroups when interpreting this attribute.
+	 *
+	 * @note Whilst Tiler atoms are normally combined with
+	 * BASE_JD_REQ_COHERENT_GROUP, it is possible to send such atoms without
+	 * BASE_JD_REQ_COHERENT_GROUP set. This is an unlikely case, but it's easy
+	 * enough to handle anyway.
+	 */
+	KBASEP_JS_CTX_ATTR_COMPUTE_ALL_CORES,
 
 	/** Must be the last in the enum */
 	KBASEP_JS_CTX_ATTR_COUNT
@@ -326,7 +351,10 @@ typedef struct kbasep_js_device_data
 	u32 ctx_timeslice_ns;            /**< Value for KBASE_CONFIG_ATTR_JS_CTX_TIMESLICE_NS */
 	u32 cfs_ctx_runtime_init_slices; /**< Value for KBASE_CONFIG_ATTR_JS_CFS_CTX_RUNTIME_INIT_SLICES */
 	u32 cfs_ctx_runtime_min_slices;  /**< Value for  KBASE_CONFIG_ATTR_JS_CFS_CTX_RUNTIME_MIN_SLICES */
-
+#if MALI_DEBUG
+	/* Support soft-stop on a single context */
+	mali_bool softstop_always;
+#endif /* MALI_DEBUG */
 	/** The initalized-flag is placed at the end, to avoid cache-pollution (we should
 	 * only be using this during init/term paths).
 	 * @note This is a write-once member, and so no locking is required to read */

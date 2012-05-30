@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010, 2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -12,12 +12,11 @@
 
 
 
-#include <linux/module.h>	/* Needed by all modules */
-#include <linux/kernel.h>	/* Needed for KERN_INFO */
-#include <linux/init.h>		/* Needed for the macros */
+#include <linux/kernel.h>  /* Needed for KERN_INFO */
+#include <linux/init.h>    /* Needed for the macros */
 
 #include <osk/mali_osk.h>
-#include <uk/mali_ukk.h>
+#include <kbase/mali_ukk.h>
 
 mali_error ukk_session_init(ukk_session *ukk_session, ukk_dispatch_function dispatch, u16 version_major, u16 version_minor)
 {
@@ -56,37 +55,4 @@ mali_error ukk_copy_to_user( size_t bytes, void * user_buffer, const void * cons
 	}
 	return MALI_ERROR_NONE;
 }
-
-static int __init ukk_module_init(void)
-{
-	if (MALI_ERROR_NONE != ukk_start())
-	{
-		return -EINVAL;
-	}
-	return 0;
-}
-
-static void __exit ukk_module_exit(void)
-{
-	ukk_stop();
-}
-
-EXPORT_SYMBOL(ukk_copy_from_user);
-EXPORT_SYMBOL(ukk_copy_to_user);
-EXPORT_SYMBOL(ukk_session_init);
-EXPORT_SYMBOL(ukk_session_term);
-EXPORT_SYMBOL(ukk_session_get);
-EXPORT_SYMBOL(ukk_call_prepare);
-EXPORT_SYMBOL(ukk_dispatch);
-
-module_init(ukk_module_init);
-module_exit(ukk_module_exit);
-
-#if MALI_LICENSE_IS_GPL || MALI_UNIT_TEST /* See MIDBASE-1204 */
-MODULE_LICENSE("GPL");
-#else
-MODULE_LICENSE("Proprietary");
-#endif
-MODULE_AUTHOR("ARM Ltd.");
-MODULE_VERSION("0.0");
 

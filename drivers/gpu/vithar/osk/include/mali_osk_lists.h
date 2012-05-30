@@ -184,8 +184,8 @@ typedef struct osk_dlist
 /**
  * @brief Check whether or not @c container_ptr is a member of @c osk_dlist_ptr.
  *
- * @param [in, out] osk_dlist_ptr        Pointer to a list
- * @param [in, out] container_ptr           Pointer to the item to check.
+ * @param [in] osk_dlist_ptr                Pointer to a list
+ * @param [in] container_ptr                Pointer to the item to check.
  * @param [in] attribute                    Attribute of the container of type @c osk_dlist_item
  *
  * @return MALI_TRUE if @c container_ptr is a member of @c osk_dlist_ptr, MALI_FALSE if not.
@@ -637,7 +637,7 @@ OSK_STATIC_INLINE osk_dlist_item* oskp_dlist_remove(osk_dlist * const list_ptr,
  *
  * @return MALI_TRUE if @c item is a member of @c list or MALI_FALSE otherwise.
  */
-OSK_STATIC_INLINE mali_bool oskp_dlist_member_of(osk_dlist* const list, osk_dlist_item* const item) CHECK_RESULT;
+OSK_STATIC_INLINE mali_bool oskp_dlist_member_of(const osk_dlist* const list, const osk_dlist_item* const item) CHECK_RESULT;
 
 /**
  * @brief remove @c item_to_remove from @c front
@@ -668,10 +668,10 @@ OSK_STATIC_INLINE void oskp_dlist_remove_item(osk_dlist* const front, osk_dlist_
  * @{
  */
 
-CHECK_RESULT OSK_STATIC_INLINE mali_bool oskp_dlist_member_of(osk_dlist* const list, osk_dlist_item* const item)
+CHECK_RESULT OSK_STATIC_INLINE mali_bool oskp_dlist_member_of(const osk_dlist* const list, const osk_dlist_item* const item)
 {
 	mali_bool return_value = MALI_FALSE;
-	osk_dlist_item* it;
+	const osk_dlist_item* it;
 
 	OSK_ASSERT(NULL != list);
 

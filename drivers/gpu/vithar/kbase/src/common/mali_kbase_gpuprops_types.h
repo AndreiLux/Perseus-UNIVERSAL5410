@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -77,6 +77,8 @@ typedef struct mali_kbase_gpu_props
 	u8 num_cores;
 	u8 num_core_groups;
 	u8 num_supergroups;
+	u8 num_address_spaces;
+	u8 num_job_slots;
 
 	kbase_gpu_cache_props l2_props;
 	kbase_gpu_cache_props l3_props;

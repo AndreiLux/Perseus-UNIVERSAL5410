@@ -276,7 +276,10 @@ typedef struct kbase_pm_device_data
 	osk_waitq               power_up_waitqueue;
 	/** The wait queue for power down events. */
 	osk_waitq               power_down_waitqueue;
-
+	/** Wait queue for whether there is an outstanding event for the policy */
+	osk_waitq               policy_outstanding_event;
+	/** Wait queue for whether the l2 cache has been powered as requested */
+	osk_waitq               l2_powered_waitqueue;
 	/** The reference count of active contexts on this device. */
 	int                     active_count;
 	/** Lock to protect active_count */
@@ -305,6 +308,8 @@ typedef struct kbase_pm_device_data
 
 	/** Set to true when the GPU is powered and register accesses are possible, false otherwise */
 	mali_bool               gpu_powered;
+	/** Spinlock that must be held when writing gpu_powered */
+	osk_spinlock_irq        gpu_powered_lock;
 
 	/** Structure to hold metrics for the GPU */
 	kbasep_pm_metrics_data  metrics;
@@ -322,12 +327,35 @@ typedef struct kbase_pm_device_data
 	 * @param kbdev         The kbase device
 	 */
 	void (*callback_power_off)(struct kbase_device *kbdev);
-#ifdef CONFIG_VITHAR
-	/** Indicator if system clock to mail-t604 is active */
-	int			cmu_pmu_status;
-	/** cmd & pmu lock */
-	osk_spinlock_irq		cmu_pmu_lock;
-#endif
+
+	/** Callback for initializing the runtime power management.
+	 *
+	 * @param kbdev         The kbase device
+	 *
+	 * @return MALI_ERROR_NONE on success, else error code
+	 */
+	mali_error (*callback_power_runtime_init)(struct kbase_device *kbdev);
+
+	/** Callback for terminating the runtime power management.
+	 *
+	 * @param kbdev         The kbase device
+	 */
+	void (*callback_power_runtime_term)(struct kbase_device *kbdev);
+
+	/** Callback when the GPU needs to be turned on. See @ref kbase_pm_callback_conf
+	 *
+	 * @param kbdev         The kbase device
+	 *
+	 * @return 1 if GPU state was lost, 0 otherwise
+	 */
+	int (*callback_power_runtime_on)(struct kbase_device *kbdev);
+
+	/** Callback when the GPU may be turned off. See @ref kbase_pm_callback_conf
+	 *
+	 * @param kbdev         The kbase device
+	 */
+	void (*callback_power_runtime_off)(struct kbase_device *kbdev);
+
 } kbase_pm_device_data;
 
 /** Get the current policy.
@@ -590,24 +618,6 @@ void kbase_pm_wait_for_power_down(struct kbase_device *kbdev);
  */
 void kbase_pm_context_active(struct kbase_device *kbdev);
 
-/** Increment the count of active contexts without waiting.
- *
- * This function increments the count of active contexts like @ref kbase_pm_context_active, however it is safe for use 
- * in atomic contexts. It will only succeed when the GPU is already active, if the GPU is idle then it will return 
- * MALI_ERROR_FUNCTION_FAILED and the count of active contexts will @b not be increased.
- *
- * WARNING: Unlike kbase_pm_context_active this function will not wait for the GPU to be powered, so if another thread 
- * is blocked in kbase_pm_context_active this function will return success even though the GPU has not finished 
- * powering up (although the reference count will have been incremented). For this reason this function must be used 
- * very carefully.
- *
- * @param kbdev     The kbase device structure for the device (must be a valid pointer)
- *
- * @return MALI_ERROR_NONE if the count of active contexts was incremented, MALI_ERROR_FUNCTION_FAILED if the GPU is 
- * not active
- */
-mali_error kbase_pm_context_active_irq(struct kbase_device *kbdev);
-
 /** Decrement the reference count of active contexts.
  *
  * This function should be called when a context becomes idle. After this call the GPU may be turned off by the power 
@@ -803,5 +813,65 @@ void kbase_pm_request_gpu_cycle_counter(struct kbase_device *kbdev);
  */
 
 void kbase_pm_release_gpu_cycle_counter(struct kbase_device *kbdev);
+
+/** Enables access to the GPU registers before power management has powered up the GPU
+ *  with kbase_pm_powerup().
+ *
+ *  Access to registers should be done using kbase_os_reg_read/write() at this stage,
+ *  not kbase_reg_read/write().
+ *
+ *  This results in the power management callbacks provided in the driver configuration
+ *  to get called to turn on power and/or clocks to the GPU.
+ *  See @ref kbase_pm_callback_conf.
+ *
+ * This should only be used before power management is powered up with kbase_pm_powerup()
+ *
+ * @param kbdev    The kbase device structure for the device (must be a valid pointer)
+ */
+void kbase_pm_register_access_enable(struct kbase_device *kbdev);
+
+/** Disables access to the GPU registers enabled earlier by a call to
+ *  kbase_pm_register_access_enable().
+ *
+ *  This results in the power management callbacks provided in the driver configuration
+ *  to get called to turn off power and/or clocks to the GPU.
+ *  See @ref kbase_pm_callback_conf
+ *
+ * This should only be used before power management is powered up with kbase_pm_powerup()
+ *
+ * @param kbdev    The kbase device structure for the device (must be a valid pointer)
+ */
+void kbase_pm_register_access_disable(struct kbase_device *kbdev);
+
+/** Request the use of l2 caches for all core groups, power up, wait and prevent the power manager from
+ *  powering down the l2 caches.
+ *
+ *  This tells the power management that the caches should be powered up, and they
+ *  should remain powered, irrespective of the usage of tiler and shader cores. This does not
+ *  return until the l2 caches are powered up.
+ *
+ *  The caller must call @ref kbase_pm_release_l2_caches when they are finished to
+ *  allow normal power management of the l2 caches to resume.
+ *
+ *  This should only be used when power management is active.
+ *
+ * @param kbdev    The kbase device structure for the device (must be a valid pointer)
+ */
+
+void kbase_pm_request_l2_caches(struct kbase_device *kbdev);
+
+/** Release the use of l2 caches for all core groups and allow the power manager to
+ *  power them down when necessary.
+ *
+ *  This tells the power management that the caches can be powered down if necessary, with respect
+ *  to the usage of tiler and shader cores.
+ *
+ *  The caller must have called @ref kbase_pm_request_l2_caches prior to a call to this.
+ *
+ *  This should only be used when power management is active.
+ *
+ * @param kbdev    The kbase device structure for the device (must be a valid pointer)
+ */
+void kbase_pm_release_l2_caches(struct kbase_device *kbdev);
 
 #endif /* _KBASE_PM_H_ */

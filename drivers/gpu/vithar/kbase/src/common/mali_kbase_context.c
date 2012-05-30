@@ -29,8 +29,6 @@
 struct kbase_context *kbase_create_context(kbase_device *kbdev)
 {
 	struct kbase_context *kctx;
-	struct kbase_va_region *pmem_reg;
-	struct kbase_va_region *tmem_reg;
 	osk_error osk_err;
 	mali_error mali_err;
 
@@ -66,8 +64,6 @@ struct kbase_context *kbase_create_context(kbase_device *kbdev)
 	if (OSK_ERR_NONE != osk_err)
 		goto free_event;
 
-	OSK_DLIST_INIT(&kctx->reg_list);
-
 	/* Use a new *Shared Memory* allocator for GPU page tables.
 	 * See MIDBASE-1534 for details. */
 	osk_err = osk_phy_allocator_init(&kctx->pgd_allocator, 0, 0, NULL);
@@ -85,27 +81,23 @@ struct kbase_context *kbase_create_context(kbase_device *kbdev)
 	if (kbase_create_os_context(&kctx->osctx))
 		goto free_pgd;
 
-	/* Make sure page 0 is not used... */
-	pmem_reg = kbase_alloc_free_region(kctx, 1,
-	                                   KBASE_REG_ZONE_TMEM_BASE - 1, KBASE_REG_ZONE_PMEM);
-	tmem_reg = kbase_alloc_free_region(kctx, KBASE_REG_ZONE_TMEM_BASE,
-	                                   KBASE_REG_ZONE_TMEM_SIZE, KBASE_REG_ZONE_TMEM);
-
-	if (!pmem_reg || !tmem_reg)
+	kctx->nr_outstanding_atoms = 0;
+	if ( OSK_ERR_NONE != osk_waitq_init(&kctx->complete_outstanding_waitq))
 	{
-		if (pmem_reg)
-			kbase_free_alloced_region(pmem_reg);
-		if (tmem_reg)
-			kbase_free_alloced_region(tmem_reg);
-
-		kbase_destroy_context(kctx);
-		return NULL;
+		goto free_osctx;
 	}
+	osk_waitq_set(&kctx->complete_outstanding_waitq);
 
-	OSK_DLIST_PUSH_FRONT(&kctx->reg_list, pmem_reg, struct kbase_va_region, link);
-	OSK_DLIST_PUSH_BACK(&kctx->reg_list, tmem_reg, struct kbase_va_region, link);
+	/* Make sure page 0 is not used... */
+	if(kbase_region_tracker_init(kctx))
+		goto free_waitq;
 
 	return kctx;
+
+free_waitq:
+	osk_waitq_term(&kctx->complete_outstanding_waitq);
+free_osctx:
+	kbase_destroy_os_context(&kctx->osctx);
 free_pgd:
 	kbase_mmu_free_pgd(kctx);
 free_mmu:
@@ -168,8 +160,7 @@ void kbase_destroy_context(struct kbase_context *kctx)
 	/* MMU is disabled as part of scheduling out the context */
 	kbase_mmu_free_pgd(kctx);
 	osk_phy_allocator_term(&kctx->pgd_allocator);
-	OSK_DLIST_EMPTY_LIST(&kctx->reg_list, struct kbase_va_region,
-	                     link, kbase_free_alloced_region);
+	kbase_region_tracker_term(kctx);
 	kbase_destroy_os_context(&kctx->osctx);
 	kbase_gpu_vm_unlock(kctx);
 
@@ -184,6 +175,8 @@ void kbase_destroy_context(struct kbase_context *kctx)
 	kbase_mmu_term(kctx);
 
 	kbase_mem_usage_term(&kctx->usage);
+
+	osk_waitq_term(&kctx->complete_outstanding_waitq);
 	osk_free(kctx);
 }
 KBASE_EXPORT_SYMBOL(kbase_destroy_context)

@@ -141,7 +141,7 @@
  *  - If Completed: job is just removed from the system
  *  - If Hard-stop or failure: job is removed from the system
  *  - If Soft-stop: queue the book-keeping work onto a work-queue: have a
- * work-queue call kbasep_js_policy_requeue_job()
+ * work-queue call kbasep_js_policy_enqueue_job()
  * - Check the timeslice used by the owning context
  *  - call kbasep_js_policy_should_remove_ctx() <em>in the context of the irq
  * handler.</em>
@@ -254,7 +254,7 @@
  * Scheduler Policy:
  *  - 'Ready to run' means they've satisified their dependencies in the
  * Kernel-side Job Dispatch system.
- *  - Call kbasep_js_policy_init_job()
+ *  - Call kbasep_js_policy_enqueue_job()
  *  - This indicates that the job should be scheduled (it is ready to run).
  * - As soon as a ctx changes from having 0 jobs 'ready to run' to >0 jobs
  * 'ready to run', we enqueue the context on the policy queue:
@@ -626,31 +626,73 @@ union kbasep_js_policy_job_info;
 /**
  * @brief Initialize a job for use with the Job Scheduler Policy
  *
- * This function initializes the kbasep_js_policy_job_info structure within
- * the kbase_jd_atom.
+ * This function initializes the kbasep_js_policy_job_info structure within the
+ * kbase_jd_atom. It will only initialize/allocate resources that are specific
+ * to the job.
  *
- * Note that the job is not enqueued by this function, so
- * kbasep_js_policy_enqueue_job() must be called to do so.
+ * That is, this function makes \b no attempt to:
+ * - initialize any context/policy-wide information
+ * - enqueue the job on the policy.
+ *
+ * At some later point, the following functions must be called on the job, in this order:
+ * - kbasep_js_policy_register_job() to register the job and initialize policy/context wide data.
+ * - kbasep_js_policy_enqueue_job() to enqueue the job
  *
  * A job must only ever be initialized on the Policy once, and must be
- * terminated on the Policy on completion (whether or not that completion was
- * success/failure).
+ * terminated on the Policy before the job is freed.
  *
- * The caller has the following conditions on locking:
- * - kbasep_js_kctx_info::ctx::jsctx_mutex will be held.
+ * The caller will not be holding any locks, and so this function will not
+ * modify any information in \a kctx or \a js_policy.
  *
  * @return MALI_ERROR_NONE if initialization was correct.
  */
-mali_error kbasep_js_policy_init_job( kbasep_js_policy *js_policy, kbase_jd_atom *atom );
+mali_error kbasep_js_policy_init_job( const kbasep_js_policy *js_policy, const kbase_context *kctx, kbase_jd_atom *katom );
 
 /**
  * @brief Terminate resources associated with using a job in the Job Scheduler
  * Policy.
  *
+ * kbasep_js_policy_deregister_job() must have been called on \a katom before
+ * calling this.
+ *
+ * The caller will not be holding any locks, and so this function will not
+ * modify any information in \a kctx or \a js_policy.
+ */
+void kbasep_js_policy_term_job( const kbasep_js_policy *js_policy, const kbase_context *kctx, kbase_jd_atom *katom );
+
+/**
+ * @brief Register context/policy-wide information for a job on the Job Scheduler Policy.
+ *
+ * Registers the job with the policy. This is used to track the job before it
+ * has been enqueued/requeued by kbasep_js_policy_enqueue_job(). Specifically,
+ * it is used to update information under a lock that could not be updated at
+ * kbasep_js_policy_init_job() time (such as context/policy-wide data).
+ *
+ * @note This function will not fail, and hence does not allocate any
+ * resources. Any failures that could occur on registration will be caught
+ * during kbasep_js_policy_init_job() instead.
+ *
+ * A job must only ever be registerd on the Policy once, and must be
+ * deregistered on the Policy on completion (whether or not that completion was
+ * success/failure).
+ *
  * The caller has the following conditions on locking:
  * - kbasep_js_kctx_info::ctx::jsctx_mutex will be held.
  */
-void kbasep_js_policy_term_job( kbasep_js_policy *js_policy, kbase_jd_atom *atom );
+void kbasep_js_policy_register_job( kbasep_js_policy *js_policy, kbase_context *kctx, kbase_jd_atom *katom );
+
+/**
+ * @brief De-register context/policy-wide information for a on the Job Scheduler Policy.
+ *
+ * This must be used before terminating the resources associated with using a
+ * job in the Job Scheduler Policy. That is, it must be called before
+ * kbasep_js_policy_term_job(). This function does not itself terminate any
+ * resources, at most it just updates information in the policy and context.
+ *
+ * The caller has the following conditions on locking:
+ * - kbasep_js_kctx_info::ctx::jsctx_mutex will be held.
+ */
+void kbasep_js_policy_deregister_job( kbasep_js_policy *js_policy, kbase_context *kctx, kbase_jd_atom *katom );
 
 
 /**

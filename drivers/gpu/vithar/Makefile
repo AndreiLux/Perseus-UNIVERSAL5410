@@ -20,7 +20,7 @@ MALI_LICENSE_IS_GPL=1
 MALI_FAKE_PLATFORM_DEVICE=1
 MALI_MOCK_TEST=0
 MALI_HW_VERSION=r0p0
-MALI_UNCACHED=0
+MALI_UNCACHED=1
 MALI_INSTRUMENTATION_LEVEL=0
 MALI_CUSTOMER_RELEASE=1
 ifeq ($(CONFIG_VITHAR_ENABLE_DS5),y)
@@ -29,6 +29,7 @@ else
 MALI_GATOR_SUPPORT=0
 endif
 MALI_COVERAGE=0
+MALI_KBASEP_MODEL=0
 
 MALI_PLATFORM_CONFIG=exynos5
 
@@ -73,19 +74,6 @@ KBUILD_EXTMOD=$(VITHAR_ROOT)/$(KBASE_PATH)
 include $(ROOT)/$(KBASE_PATH)/Makefile
 
 obj-$(CONFIG_VITHAR) += $(addprefix $(KBASE_PATH)/,$(SRC:.c=.o))
-
-##############################################################################################
-# UKK
-##############################################################################################
-
-ROOT=$(VITHAR_ROOT)
-UKK_PATH=uk/src/ukk/linux
-KBUILD_EXTMOD=$(VITHAR_ROOT)/$(UKK_PATH)
-
-include $(ROOT)/$(UKK_PATH)/Makefile
-
-obj-$(CONFIG_VITHAR) += $(addprefix $(UKK_PATH)/,$(SRC:.c=.o))
-
 
 ##############################################################################################
 # UMP

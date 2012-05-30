@@ -52,11 +52,8 @@
  * Default minimum number of scheduling ticks before Soft-Stoppable
  * (BASE_JD_REQ_NSS bit clear) jobs are hard-stopped
  */
-#if BASE_HW_ISSUE_8408 != 0
-#define DEFAULT_JS_HARD_STOP_TICKS_SS 12 /* 1.2s before hard-stop, for a certain GLES2 test at 128x128 (bound by combined vertex+tiler job) */
-#else
+#define DEFAULT_JS_HARD_STOP_TICKS_SS_HW_ISSUE_8408 12 /* 1.2s before hard-stop, for a certain GLES2 test at 128x128 (bound by combined vertex+tiler job) */
 #define DEFAULT_JS_HARD_STOP_TICKS_SS 2 /* Between 0.2 and 0.3s before hard-stop */
-#endif
 
 /**
  * Default minimum number of scheduling ticks before Non-Soft-Stoppable
@@ -68,11 +65,8 @@
  * Default minimum number of scheduling ticks before the GPU is reset
  * to clear a "stuck" Soft-Stoppable job
  */
-#if BASE_HW_ISSUE_8408 != 0
-#define DEFAULT_JS_RESET_TICKS_SS 18 /* 1.8s before resetting GPU, for a certain GLES2 test at 128x128 (bound by combined vertex+tiler job) */
-#else
+#define DEFAULT_JS_RESET_TICKS_SS_HW_ISSUE_8408 18 /* 1.8s before resetting GPU, for a certain GLES2 test at 128x128 (bound by combined vertex+tiler job) */
 #define DEFAULT_JS_RESET_TICKS_SS 3 /* 0.3-0.4s before GPU is reset */
-#endif
 
 /**
  * Default minimum number of scheduling ticks before the GPU is reset
@@ -187,7 +181,6 @@ const char *kbasep_midgard_type_to_string(kbase_midgard_type midgard_type)
 	return midgard_type_strings[midgard_type];
 }
 
-KBASE_EXPORT_TEST_API(kbasep_get_next_attribute)
 const kbase_attribute *kbasep_get_next_attribute(const kbase_attribute *attributes, int attribute_id)
 {
 	OSK_ASSERT(attributes != NULL);
@@ -202,9 +195,9 @@ const kbase_attribute *kbasep_get_next_attribute(const kbase_attribute *attribut
 	}
 	return NULL;
 }
+KBASE_EXPORT_TEST_API(kbasep_get_next_attribute)
 
-KBASE_EXPORT_TEST_API(kbasep_get_config_value)
-uintptr_t kbasep_get_config_value(const kbase_attribute *attributes, int attribute_id)
+uintptr_t kbasep_get_config_value(struct kbase_device *kbdev, const kbase_attribute *attributes, int attribute_id)
 {
 	const kbase_attribute *attr;
 
@@ -235,7 +228,14 @@ uintptr_t kbasep_get_config_value(const kbase_attribute *attributes, int attribu
 		case KBASE_CONFIG_ATTR_JS_SOFT_STOP_TICKS:
 			return     DEFAULT_JS_SOFT_STOP_TICKS;
 		case KBASE_CONFIG_ATTR_JS_HARD_STOP_TICKS_SS:
-			return     DEFAULT_JS_HARD_STOP_TICKS_SS;
+			if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8408))
+			{
+				return DEFAULT_JS_HARD_STOP_TICKS_SS_HW_ISSUE_8408;
+			}
+			else
+			{
+				return DEFAULT_JS_HARD_STOP_TICKS_SS;
+			}
 		case KBASE_CONFIG_ATTR_JS_HARD_STOP_TICKS_NSS:
 			return     DEFAULT_JS_HARD_STOP_TICKS_NSS;
 		case KBASE_CONFIG_ATTR_JS_CTX_TIMESLICE_NS:
@@ -245,13 +245,22 @@ uintptr_t kbasep_get_config_value(const kbase_attribute *attributes, int attribu
 		case KBASE_CONFIG_ATTR_JS_CFS_CTX_RUNTIME_MIN_SLICES:
 			return     DEFAULT_JS_CFS_CTX_RUNTIME_MIN_SLICES;
 		case KBASE_CONFIG_ATTR_JS_RESET_TICKS_SS:
-			return     DEFAULT_JS_RESET_TICKS_SS;
+			if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8408))
+			{
+				return DEFAULT_JS_RESET_TICKS_SS_HW_ISSUE_8408;
+			}
+			else
+			{
+				return DEFAULT_JS_RESET_TICKS_SS;
+			}
 		case KBASE_CONFIG_ATTR_JS_RESET_TICKS_NSS:
 			return     DEFAULT_JS_RESET_TICKS_NSS;
 		case KBASE_CONFIG_ATTR_JS_RESET_TIMEOUT_MS:
 			return     DEFAULT_JS_RESET_TIMEOUT_MS;
 		/* End scheduling defaults */
 		case KBASE_CONFIG_ATTR_POWER_MANAGEMENT_CALLBACKS:
+			return 0;
+		case KBASE_CONFIG_ATTR_PLATFORM_FUNCS:
 			return 0;
 		case  KBASE_CONFIG_ATTR_SECURE_BUT_LOSS_OF_PERFORMANCE:
 			return DEFAULT_SECURE_BUT_LOSS_OF_PERFORMANCE;
@@ -264,7 +273,36 @@ uintptr_t kbasep_get_config_value(const kbase_attribute *attributes, int attribu
 			return 0;
 	}
 }
+KBASE_EXPORT_TEST_API(kbasep_get_config_value)
 
+mali_bool kbasep_platform_device_init(kbase_device *kbdev)
+{
+	kbase_platform_funcs_conf *platform_funcs;
+
+	platform_funcs = (kbase_platform_funcs_conf *) kbasep_get_config_value(kbdev, kbdev->config_attributes, KBASE_CONFIG_ATTR_PLATFORM_FUNCS);
+	if(platform_funcs)
+	{
+		if(platform_funcs->platform_init_func)
+		{
+			return platform_funcs->platform_init_func(kbdev);
+		}
+	}
+	return MALI_TRUE;
+}
+
+void kbasep_platform_device_term(kbase_device *kbdev)
+{
+	kbase_platform_funcs_conf *platform_funcs;
+
+	platform_funcs = (kbase_platform_funcs_conf *) kbasep_get_config_value(kbdev, kbdev->config_attributes, KBASE_CONFIG_ATTR_PLATFORM_FUNCS);
+	if(platform_funcs)
+	{
+		if(platform_funcs->platform_term_func)
+		{
+			platform_funcs->platform_term_func(kbdev);
+		}
+	}
+}
 
 void kbasep_get_memory_performance(const kbase_memory_resource *resource, kbase_memory_performance *cpu_performance,
 		kbase_memory_performance *gpu_performance)
@@ -388,10 +426,10 @@ static mali_bool kbasep_validate_memory_resource(const kbase_memory_resource *me
 }
 
 
-static mali_bool kbasep_validate_gpu_clock_freq(const kbase_attribute *attributes)
+static mali_bool kbasep_validate_gpu_clock_freq(kbase_device *kbdev, const kbase_attribute *attributes)
 {
-	uintptr_t freq_min = kbasep_get_config_value(attributes, KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MIN);
-	uintptr_t freq_max = kbasep_get_config_value(attributes, KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX);
+	uintptr_t freq_min = kbasep_get_config_value(kbdev, attributes, KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MIN);
+	uintptr_t freq_max = kbasep_get_config_value(kbdev, attributes, KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX);
 
 	if ((freq_min > MAX_GPU_ALLOWED_FREQ_KHZ) ||
 		(freq_min < MIN_GPU_ALLOWED_FREQ_KHZ) ||
@@ -427,7 +465,7 @@ static mali_bool kbasep_validate_cpu_speed_func(kbase_cpuprops_clock_speed_funct
 	return fcn != NULL;
 }
 
-mali_bool kbasep_validate_configuration_attributes(const kbase_attribute *attributes)
+mali_bool kbasep_validate_configuration_attributes(kbase_device *kbdev, const kbase_attribute *attributes)
 {
 	int i;
 	mali_bool had_gpu_freq_min = MALI_FALSE, had_gpu_freq_max = MALI_FALSE;
@@ -486,7 +524,7 @@ mali_bool kbasep_validate_configuration_attributes(const kbase_attribute *attrib
 
 			case KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MIN:
 				had_gpu_freq_min = MALI_TRUE;
-				if (MALI_FALSE == kbasep_validate_gpu_clock_freq(attributes))
+				if (MALI_FALSE == kbasep_validate_gpu_clock_freq(kbdev, attributes))
 				{
 					/* Warning message handled by kbasep_validate_gpu_clock_freq() */
 					return MALI_FALSE;
@@ -495,7 +533,7 @@ mali_bool kbasep_validate_configuration_attributes(const kbase_attribute *attrib
 
 			case KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX:
 				had_gpu_freq_max = MALI_TRUE;
-				if (MALI_FALSE == kbasep_validate_gpu_clock_freq(attributes))
+				if (MALI_FALSE == kbasep_validate_gpu_clock_freq(kbdev, attributes))
 				{
 					/* Warning message handled by kbasep_validate_gpu_clock_freq() */
 					return MALI_FALSE;
@@ -575,6 +613,10 @@ mali_bool kbasep_validate_configuration_attributes(const kbase_attribute *attrib
 					OSK_PRINT_WARN(OSK_BASE_CORE, "Invalid function pointer in KBASE_CONFIG_ATTR_CPU_SPEED_FUNC");
 					return MALI_FALSE;
 				}
+				break;
+
+			case KBASE_CONFIG_ATTR_PLATFORM_FUNCS:
+				/* any value is allowed */
 				break;
 
 			default:

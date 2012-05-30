@@ -25,12 +25,12 @@
 
 #if MALI_UNIT_TEST
 /* Kernel testing helpers */
-void      osk_kernel_test_init(void);
-void      osk_kernel_test_term(void);
-void      osk_kernel_test_wait(void);
-void      osk_kernel_test_signal(void);
-mali_bool osk_kernel_test_has_asserted(void);
-void      oskp_kernel_test_exit(void);
+void      kassert_test_init(void);
+void      kassert_test_term(void);
+void      kassert_test_wait(void);
+void      kassert_test_signal(void);
+mali_bool kassert_test_has_asserted(void);
+void      kassertp_test_exit(void);
 #endif
 
 /** Maximum number of bytes (incl. end of string character) supported in the generated debug output string */
@@ -137,7 +137,7 @@ void oskp_debug_print(const char *fmt, ...);
 #endif
 
 #if MALI_UNIT_TEST
-#define OSKP_KERNEL_TEST_ASSERT()		oskp_kernel_test_exit()
+#define OSKP_KERNEL_TEST_ASSERT()		kassertp_test_exit()
 #else
 #define OSKP_KERNEL_TEST_ASSERT()		CSTD_NOP()
 #endif

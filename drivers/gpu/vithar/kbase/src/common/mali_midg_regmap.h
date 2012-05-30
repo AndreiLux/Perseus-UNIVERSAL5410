@@ -47,8 +47,8 @@
 #define CLEAN_CACHES_COMPLETED  (1 << 17)   /* Set when a cache clean operation has completed. */
 
 #define GPU_IRQ_REG_ALL (GPU_FAULT | MULTIPLE_GPU_FAULTS | RESET_COMPLETED \
-                        | POWER_CHANGED_SINGLE | POWER_CHANGED_ALL \
-                        | PRFCNT_SAMPLE_COMPLETED | CLEAN_CACHES_COMPLETED)
+                        | POWER_CHANGED_ALL | PRFCNT_SAMPLE_COMPLETED \
+                        | CLEAN_CACHES_COMPLETED)
 
 #define GPU_COMMAND             0x030   /* (WO) */
 #define GPU_STATUS              0x034   /* (RO) */
@@ -300,6 +300,11 @@
  */
 #define ASn_STATUS_FLUSH_ACTIVE 0x01
 
+#define ASn_FAULTSTATUS_ACCESS_TYPE_MASK    (0x3<<8)
+#define ASn_FAULTSTATUS_ACCESS_TYPE_EX      (0x1<<8)
+#define ASn_FAULTSTATUS_ACCESS_TYPE_READ    (0x2<<8)
+#define ASn_FAULTSTATUS_ACCESS_TYPE_WRITE   (0x3<<8)
+
 /*
  * Begin Command Values
  */
@@ -393,6 +398,49 @@
 /* AS<n>_MEMATTR values */
 #define ASn_MEMATTR_IMPL_DEF_CACHE_POLICY 0x48484848    /* Use GPU implementation-defined caching policy. */ 
 #define ASn_MEMATTR_FORCE_TO_CACHE_ALL    0x4F4F4F4F    /* The attribute set to force all resources to be cached. */ 
+
+/* GPU_ID register */
+#define GPU_ID_VERSION_STATUS_SHIFT       0
+#define GPU_ID_VERSION_MINOR_SHIFT        4
+#define GPU_ID_VERSION_MAJOR_SHIFT        12
+#define GPU_ID_VERSION_PRODUCT_ID_SHIFT   16
+#define GPU_ID_VERSION_STATUS             (0xF  << GPU_ID_VERSION_STATUS_SHIFT)
+#define GPU_ID_VERSION_MINOR              (0xFF << GPU_ID_VERSION_MINOR_SHIFT)
+#define GPU_ID_VERSION_MAJOR              (0xF  << GPU_ID_VERSION_MAJOR_SHIFT)
+#define GPU_ID_VERSION_PRODUCT_ID         (0xFFFF << GPU_ID_VERSION_PRODUCT_ID_SHIFT)
+
+/* Values for GPU_ID_VERSION_PRODUCT_ID bitfield */
+#define GPU_ID_PI_T60X                    0x6956
+#define GPU_ID_PI_T65X                    0x3456
+#define GPU_ID_PI_T62X                    0x0620
+#define GPU_ID_PI_T67X                    0x0670
+
+/* Values for GPU_ID_VERSION_STATUS field for PRODUCT_ID GPU_ID_PI_T60X and GPU_ID_PI_T65X */
+#define GPU_ID_S_15DEV0                   0x1
+#define GPU_ID_S_EAC                      0x2
+
+/* Helper macro to create a GPU_ID assuming valid values for id, major, minor, status */
+#define GPU_ID_MAKE(id, major, minor, status) \
+                                          (((id) << GPU_ID_VERSION_PRODUCT_ID_SHIFT) | \
+								           ((major) << GPU_ID_VERSION_MAJOR_SHIFT) |   \
+				                           ((minor) << GPU_ID_VERSION_MINOR_SHIFT) |   \
+				                           ((status) << GPU_ID_VERSION_STATUS_SHIFT))
+
+/* End GPU_ID register */
+
+/* JS<n>_FEATURES register */
+
+#define JSn_FEATURE_NULL_JOB              (1u << 1)
+#define JSn_FEATURE_SET_VALUE_JOB         (1u << 2)
+#define JSn_FEATURE_CACHE_FLUSH_JOB       (1u << 3)
+#define JSn_FEATURE_COMPUTE_JOB           (1u << 4)
+#define JSn_FEATURE_VERTEX_JOB            (1u << 5)
+#define JSn_FEATURE_GEOMETRY_JOB          (1u << 6)
+#define JSn_FEATURE_TILER_JOB             (1u << 7)
+#define JSn_FEATURE_FUSED_JOB             (1u << 8)
+#define JSn_FEATURE_FRAGMENT_JOB          (1u << 9)
+
+/* End JS<n>_FEATURES register */
 
 #endif /* _MIDGARD_REGMAP_H_ */
 

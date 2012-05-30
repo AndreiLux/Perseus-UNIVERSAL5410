@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -66,6 +66,9 @@ extern "C"
  * The timer may be reinitialized but only after having called osk_timer_term()
  * on \a tim.
  *
+ * It is a programming error to pass a NULL pointer for \a tim. This will raise
+ * an assertion in debug builds.
+ *
  * @param[out] tim  an osk timer object to initialize
  * @return OSK_ERR_NONE on success. Any other value indicates failure.
  */
@@ -78,6 +81,9 @@ OSK_STATIC_INLINE osk_error osk_timer_init(osk_timer * const tim) CHECK_RESULT;
  *
  * The timer may be reinitialized but only after having called osk_timer_term()
  * on \a tim.
+ *
+ * It is a programming error to pass a NULL pointer for \a tim. This will raise
+ * an assertion in debug builds.
  *
  * @param[out] tim  an osk timer object to initialize
  * @return OSK_ERR_NONE on success. Any other value indicates failure.
@@ -103,6 +109,9 @@ OSK_STATIC_INLINE osk_error osk_timer_on_stack_init(osk_timer * const tim) CHECK
  * A timer may fail to start and is important to check the result of this
  * function to prevent waiting for a callback that will never get called.
  *
+ * It is a programming error to pass a NULL pointer for \a tim or to specify
+ * 0 for \a delay. This will raise an assertion in debug builds.
+ * 
  * @param[in] tim   an initialized osk timer object
  * @param[in] delay timer expiration in milliseconds, at least 1.
  * @return OSK_ERR_NONE on success. Any other value indicates failure.
@@ -119,6 +128,9 @@ OSK_STATIC_INLINE osk_error osk_timer_start(osk_timer *tim, u32 delay) CHECK_RES
  * timer may be much more coarse than nanoseconds. In this case, \a delay_ns
  * will be rounded up to the timer resolution.
  *
+ * It is a programming error to pass a NULL pointer for \a tim or to specify
+ * 0 for \a delay_ns. This will raise an assertion in debug builds.
+ *
  * @param[in] tim   an initialized osk timer object
  * @param[in] delay_ns timer expiration in nanoseconds, at least 1.
  * @return OSK_ERR_NONE on success. Any other value indicates failure.
@@ -132,6 +144,9 @@ OSK_STATIC_INLINE osk_error osk_timer_start_ns(osk_timer *tim, u64 delay_ns) CHE
  *
  * The only difference of this function from \a osk_timer_start is:
  * If the timer was already set to expire the timer is modified to expire in \a new_delay milliseconds.
+ *
+ * It is a programming error to pass a NULL pointer for \a tim or to specify
+ * 0 for \a new_delay. This will raise an assertion in debug builds.
  *
  * @param[in] tim       an initialized osk timer object
  * @param[in] new_delay timer expiration in milliseconds, at least 1.
@@ -149,6 +164,9 @@ OSK_STATIC_INLINE osk_error osk_timer_modify(osk_timer *tim, u32 new_delay) CHEC
  * timer may be much more coarse than nanoseconds. In this case, \a new_delay_ns
  * will be rounded up to the timer resolution.
  *
+ * It is a programming error to pass a NULL pointer for \a tim or to specify
+ * 0 for \a new_delay_ns. This will raise an assertion in debug builds.
+ *
  * @param[in] tim          an initialized osk timer object
  * @param[in] new_delay_ns timer expiration in nanoseconds, at least 1.
  * @return OSK_ERR_NONE on success. Any other value indicates failure.
@@ -164,6 +182,9 @@ OSK_STATIC_INLINE osk_error osk_timer_modify_ns(osk_timer *tim, u64 new_delay_ns
  *
  * A non-expired timer will have to be stopped before it can be
  * started again with osk_timer_start().
+ *
+ * It is a programming error to pass a NULL pointer for \a tim. This will raise
+ * an assertion in debug builds.
  *
  * @param[in] tim   an initialized osk timer object
  */
@@ -185,6 +206,9 @@ OSK_STATIC_INLINE void osk_timer_stop(osk_timer *tim);
  * If a timer requires more work to be done than can be achieved in an IRQ
  * context, then it should defer the work to an OSK workqueue.
  *
+ * It is a programming error to pass a NULL pointer for \a tim, \a callback.
+ * This will raise an assertion in debug builds. NULL is allowed for \a data.
+ *
  * @param[in] tim      an initialized osk timer object
  * @param[in] callback timer callback function
  * @param[in] data     argument to pass to timer callback
@@ -201,6 +225,9 @@ OSK_STATIC_INLINE void osk_timer_callback_set(osk_timer *tim, osk_timer_callback
  *
  * A timer may be reinitialized after it has been terminated.
  *
+ * It is a programming error to pass a NULL pointer for \a tim. This will raise
+ * an assertion in debug builds.
+ *
  * @param[in] tim an initialized osk timer object
  */
 OSK_STATIC_INLINE void osk_timer_term(osk_timer *tim);
@@ -212,6 +239,9 @@ OSK_STATIC_INLINE void osk_timer_term(osk_timer *tim);
  * stopped with osk_timer_stop() before a timer can be terminated.
  *
  * A timer may be reinitialized after it has been terminated.
+ *
+ * It is a programming error to pass a NULL pointer for \a tim. This will raise
+ * an assertion in debug builds.
  *
  * @param[in] tim an initialized osk timer object
  */

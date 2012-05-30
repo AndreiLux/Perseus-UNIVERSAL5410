@@ -24,8 +24,9 @@
 
 #define KBASE_DRV_NAME  "mali"
 
-#include <mali_base_hwconfig.h>
 #include <kbase/mali_kbase_config.h>
+#include <kbase/mali_base_hwconfig.h>
+#include <osk/mali_osk.h>
 
 #ifdef CONFIG_KDS
 #include <kds/include/linux/kds.h>
@@ -43,6 +44,11 @@
 #define KBASE_TRACE_ENABLE 0
 #endif /*MALI_DEBUG*/
 #endif /*KBASE_TRACE_ENABLE*/
+
+/* Maximum number of outstanding atoms per kbase context
+ * this is set for security reasons to prevent a malicious app
+ * from hanging the driver */
+#define MAX_KCTX_OUTSTANDING_ATOMS (1ul << 6)
 
 /** Dump Job slot trace on error (only active if KBASE_TRACE_ENABLE != 0) */
 #define KBASE_TRACE_DUMP_ON_JOB_SLOT_ERROR 1
@@ -164,6 +170,9 @@ typedef struct kbase_jd_bag {
 	u64         core_restriction;
 	size_t      offset;
 	u32         nr_atoms;
+	/** Set when the bag has a power management reference. This is used to ensure that the GPU is
+	 * not turned off after a soft-job has read the GPU counters until the bag has completed */
+	mali_bool8  has_pm_ctx_reference;
 } kbase_jd_bag;
 
 /**
@@ -218,6 +227,7 @@ typedef struct kbase_jd_atom {
 	base_jd_dep     post_dep;
 	u32             nr_syncsets;
 	u32             nr_extres;
+	u32             device_nr;
 	u64             affinity;
 	u64             jc;
 	kbase_atom_coreref_state   coreref_state;
@@ -236,9 +246,7 @@ typedef struct kbase_jd_atom {
 	/* atom priority scaled to nice range with +20 offset 0..39 */
 	int             nice_prio;
 
-#if BASE_HW_ISSUE_8316
-	int             poking;
-#endif /* BASE_HW_ISSUE_8316 */
+	int             poking; /* BASE_HW_ISSUE_8316 */
 } kbase_jd_atom;
 
 /*
@@ -345,19 +353,6 @@ typedef struct kbase_device_info
 	u32                 features;
 } kbase_device_info;
 
-
-/* NOTE: Move into Property Query */
-#define KBASE_JSn_FEATURE_NULL_JOB         (1u << 1)
-#define KBASE_JSn_FEATURE_SET_VALUE_JOB    (1u << 2)
-#define KBASE_JSn_FEATURE_CACHE_FLUSH_JOB  (1u << 3)
-#define KBASE_JSn_FEATURE_COMPUTE_JOB      (1u << 4)
-#define KBASE_JSn_FEATURE_VERTEX_JOB       (1u << 5)
-#define KBASE_JSn_FEATURE_GEOMETRY_JOB     (1u << 6)
-#define KBASE_JSn_FEATURE_TILER_JOB        (1u << 7)
-#define KBASE_JSn_FEATURE_FUSED_JOB        (1u << 8)
-#define KBASE_JSn_FEATURE_FRAGMENT_JOB     (1u << 9)
-typedef u16 kbasep_jsn_feature;
-
 /**
  * Important: Our code makes assumptions that a kbase_as structure is always at
  * kbase_device->as[number]. This is used to recover the containing
@@ -375,12 +370,11 @@ typedef struct kbase_as
 	mali_addr64       fault_addr;
 	osk_mutex         transaction_mutex;
 
-#if BASE_HW_ISSUE_8316
+	/* BASE_HW_ISSUE_8316  */
 	osk_workq         poke_wq;
 	osk_workq_work    poke_work;
 	osk_atomic        poke_refcount;
 	osk_timer         poke_timer;
-#endif /* BASE_HW_ISSUE_8316 */
 } kbase_as;
 
 /* tracking of memory usage */
@@ -481,6 +475,7 @@ typedef enum
 
 typedef struct kbase_trace
 {
+	osk_timeval timestamp;
 	u32   thread_id;
 	u32   cpu;
 	void *ctx;
@@ -510,6 +505,9 @@ struct kbase_device {
 
 	kbase_gpu_props         gpu_props;
 
+	/**< List of SW workarounds for HW issues */
+	unsigned long           hw_issues_mask[(BASE_HW_ISSUE_END + OSK_BITS_PER_LONG - 1)/OSK_BITS_PER_LONG];
+
 	/* Cached present bitmaps - these are the same as the corresponding hardware registers */
 	u64                     shader_present_bitmap;
 	u64                     tiler_present_bitmap;
@@ -538,6 +536,9 @@ struct kbase_device {
 	u32                      shader_needed_cnt[64];
 	u32                      tiler_needed_cnt[64];
 
+	/* Refcount for tracking users of the l2 cache, e.g. when using hardware counter instrumentation. */
+	u32                      l2_users_count;
+
 	/* Bitmaps of cores that are currently available (powered up and the power policy is happy for jobs to be
 	 * submitted to these cores. These are updated by the power management code. The job scheduler should avoid
 	 * submitting new jobs to any cores that are not marked as available.
@@ -547,13 +548,8 @@ struct kbase_device {
 	u64                     shader_available_bitmap;
 	u64                     tiler_available_bitmap;
 
-	s8                      nr_hw_address_spaces;     /**< Number of address spaces in the GPU (constant) */
+	s8                      nr_hw_address_spaces;     /**< Number of address spaces in the GPU (constant after driver initialisation) */
 	s8                      nr_user_address_spaces;   /**< Number of address spaces available to user contexts */
-	s8                      nr_job_slots;          /**< Number of job slots in the GPU (constant) */
-
-	/** GPU's JSn_FEATURES registers - not directly applicable to a base_jd_atom's
-	 * core_req member. Instead, see the kbasep_js_device_data's js_reqs[] member */
-	kbasep_jsn_feature      job_slot_features[BASE_JM_MAX_NR_SLOTS];
 
 	/* Structure used for instrumentation and HW counters dumping */
 	struct {
@@ -585,14 +581,15 @@ struct kbase_device {
 	/*value to be written to the irq_throttle register each time an irq is served */
 	osk_atomic irq_throttle_cycles;
 
-	kbase_attribute        *config_attributes;
+	const kbase_attribute   *config_attributes;
 
-#if BASE_HW_ISSUE_8401
+	/* >> BASE_HW_ISSUE_8401 >> */
 #define KBASE_8401_WORKAROUND_COMPUTEJOB_COUNT 3
 	kbase_context           *workaround_kctx;
 	osk_virt_addr           workaround_compute_job_va[KBASE_8401_WORKAROUND_COMPUTEJOB_COUNT];
 	osk_phy_addr            workaround_compute_job_pa[KBASE_8401_WORKAROUND_COMPUTEJOB_COUNT];
-#endif
+	/* << BASE_HW_ISSUE_8401 << */
+
 #if KBASE_TRACE_ENABLE != 0
 	osk_spinlock_irq        trace_lock;
 	u16                     trace_first_out;
@@ -617,9 +614,8 @@ struct kbase_device {
 	u32                     js_reset_ticks_nss;
 #endif
 
-#ifdef CONFIG_VITHAR
-	struct clk *sclk_g3d;
-#endif
+	/* Platform specific private data to be accessed by mali_kbase_config_xxx.c only */
+	void                    *platform_context;
 };
 
 struct kbase_context
@@ -634,12 +630,21 @@ struct kbase_context
 	u64                     *mmu_teardown_pages;
 
 	osk_mutex               reg_lock; /* To be converted to a rwlock? */
-	osk_dlist               reg_list; /* Ordered list of GPU regions */
+#if MALI_KBASEP_REGION_RBTREE
+	struct rb_root			reg_rbtree; /* Red-Black tree of GPU regions (live regions) */
+#else
+	osk_dlist               reg_list;   /* Ordered list of GPU regions (all regions) */
+#endif
 
 	kbase_os_context        osctx;
 	kbase_jd_context        jctx;
 	kbasep_mem_usage        usage;
 	ukk_session             ukk_session;
+	u32                     nr_outstanding_atoms;
+	osk_waitq           	complete_outstanding_waitq; /*if there are too many outstanding atoms
+														 *per context we wait on this waitqueue
+														 *to be signaled before submitting more jobs
+														 */
 
 	/** This is effectively part of the Run Pool, because it only has a valid
 	 * setting (!=KBASEP_AS_NR_INVALID) whilst the context is scheduled in

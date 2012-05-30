@@ -20,9 +20,9 @@
 #ifndef _KBASE_JM_H_
 #define _KBASE_JM_H_
 
-#if BASE_HW_ISSUE_8401
 #include <kbase/src/common/mali_kbase_8401_workaround.h>
-#endif
+#include <kbase/src/common/mali_kbase_hw.h>
+
 
 /**
  * @addtogroup base_api
@@ -44,7 +44,7 @@
 static INLINE int kbasep_jm_is_js_free(kbase_device *kbdev, int js, kbase_context *kctx)
 {
 	OSK_ASSERT( kbdev != NULL );
-	OSK_ASSERT( 0 <= js && js < kbdev->nr_job_slots  );
+	OSK_ASSERT( 0 <= js && js < kbdev->gpu_props.num_job_slots  );
 
 	return !kbase_reg_read(kbdev, JOB_SLOT_REG(js, JSn_COMMAND_NEXT), kctx);
 }
@@ -58,7 +58,7 @@ static INLINE int kbasep_jm_is_js_free(kbase_device *kbdev, int js, kbase_contex
 static INLINE mali_bool kbasep_jm_is_submit_slots_free(kbase_device *kbdev, int js, kbase_context *kctx)
 {
 	OSK_ASSERT( kbdev != NULL );
-	OSK_ASSERT( 0 <= js && js < kbdev->nr_job_slots  );
+	OSK_ASSERT( 0 <= js && js < kbdev->gpu_props.num_job_slots  );
 	
 	if (osk_atomic_get(&kbdev->reset_gpu) != KBASE_RESET_GPU_NOT_PENDING)
 	{
@@ -162,23 +162,23 @@ static INLINE void kbasep_jm_enqueue_submit_slot( kbase_jm_slot *slot, kbase_jd_
  * to use \a atom</b>. This is because its members will not necessarily be
  * initialized, and so could lead to a fault if they were used.
  *
+ * @param[in] kbdev kbase device pointer
  * @param[in] atom The atom to query
  *
  * @return    MALI_TRUE if \a atom is for a dummy job, in which case you must not
  *            attempt to use it.
  * @return    MALI_FALSE otherwise, and \a atom is safe to use.
  */
-static INLINE mali_bool kbasep_jm_is_dummy_workaround_job( kbase_jd_atom *atom )
+static INLINE mali_bool kbasep_jm_is_dummy_workaround_job( kbase_device *kbdev, kbase_jd_atom *atom )
 {
 	/* Query the set of workaround jobs here */
-#if BASE_HW_ISSUE_8401
-	if ( kbasep_8401_is_workaround_job( atom ) != MALI_FALSE )
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8401))
 	{
-		return MALI_TRUE;
+		if ( kbasep_8401_is_workaround_job( atom ) != MALI_FALSE )
+		{
+			return MALI_TRUE;
+		}
 	}
-#else
-	CSTD_UNUSED(atom);
-#endif
 
 	/* This job is not a workaround job, so it will be processed as normal */
 	return MALI_FALSE;

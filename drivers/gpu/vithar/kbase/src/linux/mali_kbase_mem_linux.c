@@ -24,6 +24,9 @@
 #include <linux/mm.h>
 #include <linux/fs.h>
 #include <linux/dma-mapping.h>
+#ifdef CONFIG_DMA_SHARED_BUFFER
+#include <linux/dma-buf.h>
+#endif /* CONFIG_DMA_SHARED_BUFFER */
 
 #include <kbase/src/common/mali_kbase.h>
 #include <kbase/src/linux/mali_kbase_mem_linux.h>
@@ -509,7 +512,7 @@ int kbase_mmap(struct file *file, struct vm_area_struct *vma)
 		err = -ENOMEM;
 		goto out_unlock;
 	}
-	else if (vma->vm_pgoff < KBASE_REG_ZONE_TMEM_BASE)
+	else if (vma->vm_pgoff < KBASE_REG_ZONE_EXEC_BASE)
 	{
 		/* invalid offset as it identifies an already mapped pmem */
 		err = -ENOMEM;
@@ -517,18 +520,29 @@ int kbase_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 	else
 	{
-		/* TMEM case */
-		OSK_DLIST_FOREACH(&kctx->reg_list,
-				     struct kbase_va_region, link, reg)
+		u32 zone;
+
+		/* TMEM case or EXEC case */
+		if (vma->vm_pgoff < KBASE_REG_ZONE_TMEM_BASE)
 		{
-			if (reg->start_pfn <= vma->vm_pgoff &&
-			    (reg->start_pfn + reg->nr_alloc_pages) >= (vma->vm_pgoff + nr_pages) &&
-			    (reg->flags & (KBASE_REG_ZONE_MASK | KBASE_REG_FREE | KBASE_REG_NO_CPU_MAP)) == KBASE_REG_ZONE_TMEM)
+			zone = KBASE_REG_ZONE_EXEC;
+		}
+		else
+		{
+			zone = KBASE_REG_ZONE_TMEM;
+		}
+		
+		reg = kbase_region_tracker_find_region_enclosing_range( kctx, vma->vm_pgoff, nr_pages );
+		if( reg && 
+		   (reg->flags & (KBASE_REG_ZONE_MASK | KBASE_REG_FREE )) == zone )
+		{
+#ifdef CONFIG_DMA_SHARED_BUFFER
+			if (reg->imported_type == BASE_TMEM_IMPORT_TYPE_UMM)
 			{
-				/* Match! */
-				goto map;
+				goto dma_map;
 			}
-			    
+#endif
+			goto map;
 		}
 
 		err = -ENOMEM;
@@ -542,6 +556,12 @@ map:
 		 * the pages, so we can now free the kernel mapping */
 		osk_vfree(kaddr);
 	}
+	goto out_unlock;
+
+#ifdef CONFIG_DMA_SHARED_BUFFER
+dma_map:
+	err = dma_buf_mmap(reg->imported_metadata.umm.dma_buf, vma, vma->vm_pgoff - reg->start_pfn);
+#endif
 out_unlock:
 	kbase_gpu_vm_unlock(kctx);
 out:
@@ -559,6 +579,7 @@ mali_error kbase_create_os_context(kbase_os_context *osctx)
 
 	OSK_DLIST_INIT(&osctx->reg_pending);
 	osctx->cookies = ~KBASE_REG_RESERVED_COOKIES;
+	osctx->tgid = current->tgid;
 	init_waitqueue_head(&osctx->event_queue);
 
 	return MALI_ERROR_NONE;
@@ -667,7 +688,7 @@ void kbase_va_free(kbase_context *kctx, void *va)
 	
 	kbase_gpu_vm_lock(kctx);
 	
-	reg = kbase_validate_region(kctx, (uintptr_t)va);
+	reg = kbase_region_tracker_find_region_base_address(kctx, (uintptr_t)va);
 	OSK_ASSERT(reg);
 
 	err = kbase_gpu_munmap(kctx, reg);

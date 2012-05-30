@@ -22,8 +22,6 @@
 #include <kbase/src/common/mali_kbase_jm.h>
 #include <kbase/src/common/mali_kbase_8401_workaround.h>
 
-#if BASE_HW_ISSUE_8401
-
 #define WORKAROUND_PAGE_OFFSET (2)
 #define URT_POINTER_INDEX      (20)
 #define RMU_POINTER_INDEX      (23)
@@ -200,10 +198,10 @@ static void kbasep_8401_workaround_update_job_pointers(u32 *dummy_compute_job, i
 	OSK_ASSERT(dummy_compute_job);
 
 	/* determin where each job section goes taking alignment restrictions into consideration */
-	dummy_job_urt = (u8*) ((((u32)dummy_job + sizeof(compute_job_32bit_header))+7) & ~7);
-	dummy_job_rmu = (u8*) ((((u32)dummy_job_urt + sizeof(compute_job_32bit_urt))+15) & ~15);
-	dummy_job_rsd = (u8*) ((((u32)dummy_job_rmu + sizeof(compute_job_32bit_rmu))+63) & ~63);
-	dummy_job_tsd = (u8*) ((((u32)dummy_job_rsd + sizeof(compute_job_32bit_rsd))+63) & ~63);
+	dummy_job_urt = (u8*) ((((uintptr_t)dummy_job + sizeof(compute_job_32bit_header))+7) & ~7);
+	dummy_job_rmu = (u8*) ((((uintptr_t)dummy_job_urt + sizeof(compute_job_32bit_urt))+15) & ~15);
+	dummy_job_rsd = (u8*) ((((uintptr_t)dummy_job_rmu + sizeof(compute_job_32bit_rmu))+63) & ~63);
+	dummy_job_tsd = (u8*) ((((uintptr_t)dummy_job_rsd + sizeof(compute_job_32bit_rsd))+63) & ~63);
 
 	/* Make sure the job fits within a single page */
 	OSK_ASSERT(OSK_PAGE_SIZE > ((dummy_job_tsd+sizeof(compute_job_32bit_tsd)) - dummy_job));
@@ -367,6 +365,7 @@ void kbasep_8401_submit_dummy_job(kbase_device *kbdev, int js)
 {
 	u32 cfg;
 	mali_addr64 jc;
+	u32 pgd_high;	
 
 	/* While this workaround is active we reserve the last address space just for submitting the dummy jobs */
 	int as = kbdev->nr_hw_address_spaces;
@@ -396,7 +395,13 @@ void kbasep_8401_submit_dummy_job(kbase_device *kbdev, int js)
 	                       (kbdev->workaround_kctx->pgd & ASn_TRANSTAB_ADDR_SPACE_MASK) | ASn_TRANSTAB_READ_INNER
 	                       | ASn_TRANSTAB_ADRMODE_TABLE, NULL);
 
-	kbase_reg_write(kbdev, MMU_AS_REG(as, ASn_TRANSTAB_HI), (kbdev->workaround_kctx->pgd >> 32), NULL);
+	/* Need to use a conditional expression to avoid "right shift count >= width of type"
+	 * error when using an if statement - although the size_of condition is evaluated at compile
+	 * time the unused branch is not removed until after it is type-checked and the error
+	 * produced.
+	 */
+	pgd_high = sizeof(kbdev->workaround_kctx->pgd) > 4 ? (kbdev->workaround_kctx->pgd >> 32) : 0;
+	kbase_reg_write(kbdev, MMU_AS_REG(as, ASn_TRANSTAB_HI), pgd_high, NULL);
 
 	kbase_reg_write(kbdev, MMU_AS_REG(as, ASn_MEMATTR_LO), ASn_MEMATTR_IMPL_DEF_CACHE_POLICY, NULL);
 	kbase_reg_write(kbdev, MMU_AS_REG(as, ASn_MEMATTR_HI), ASn_MEMATTR_IMPL_DEF_CACHE_POLICY, NULL);
@@ -441,4 +446,3 @@ mali_bool kbasep_8401_is_workaround_job(kbase_jd_atom *katom)
 	return MALI_FALSE;
 }
 
-#endif

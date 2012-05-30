@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010, 2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -13,17 +13,8 @@
 
 
 #include <osk/mali_osk.h>
-#include <uk/mali_ukk.h>
-#include <plat/mali_ukk_os.h>
-
-mali_error ukk_start(void)
-{
-	return MALI_ERROR_NONE;
-}
-
-void ukk_stop(void)
-{
-}
+#include <kbase/mali_ukk.h>
+#include <mali_ukk_os.h>
 
 void ukk_call_prepare(ukk_call_context * const ukk_ctx, ukk_session * const session)
 {

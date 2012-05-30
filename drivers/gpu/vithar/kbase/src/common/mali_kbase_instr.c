@@ -125,9 +125,11 @@ mali_error kbase_instr_hwcnt_enable(kbase_context * kctx, kbase_uk_hwcnt_setup *
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_SHADER_EN),   setup->shader_bm,                kctx);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_L3_CACHE_EN), setup->l3_cache_bm,              kctx);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_MMU_L2_EN),   setup->mmu_l2_bm,                kctx);
-#if BASE_HW_ISSUE_8186
-	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_TILER_EN),    0,                               kctx);
-#endif
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8186))
+	{
+		kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_TILER_EN), 0, kctx);
+	}
+
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_CONFIG), (kctx->as_nr << PRFCNT_CONFIG_AS_SHIFT) | PRFCNT_CONFIG_MODE_MANUAL, kctx);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_TILER_EN),    setup->tiler_bm,                 kctx);
 
@@ -382,6 +384,7 @@ mali_error kbase_instr_hwcnt_dump(kbase_context * kctx)
 
 	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_FAULT)
 	{
+		err = MALI_ERROR_FUNCTION_FAILED;
 		kbdev->hwcnt.state = KBASE_INSTR_STATE_IDLE;
 	}
 	else

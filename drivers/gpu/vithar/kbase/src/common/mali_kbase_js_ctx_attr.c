@@ -276,25 +276,30 @@ void kbasep_js_ctx_attr_ctx_retain_atom( kbase_device *kbdev,
 											  kbase_jd_atom *katom )
 {
 	mali_bool runpool_state_changed = MALI_FALSE;
+	base_jd_core_req core_req;
 
 	OSK_ASSERT( katom );
+	core_req = katom->core_req;
 
-	/* Currently, the only registered attribute is the NSS core req
-	 *
-	 * For more attributes, it's less elegant to do this by testing each, and
-	 * to repeat this in both retain+release functions. */
-	if ( katom->core_req & BASE_JD_REQ_NSS )
+	if ( core_req & BASE_JD_REQ_NSS )
 	{
 		runpool_state_changed |= kbasep_js_ctx_attr_ctx_retain_attr( kbdev, kctx, KBASEP_JS_CTX_ATTR_NSS );
 	}
 
-	if ( katom->core_req & BASE_JD_REQ_ONLY_COMPUTE )
+	if ( core_req & BASE_JD_REQ_ONLY_COMPUTE )
 	{
 		runpool_state_changed |= kbasep_js_ctx_attr_ctx_retain_attr( kbdev, kctx, KBASEP_JS_CTX_ATTR_COMPUTE );
 	}
 	else
 	{
 		runpool_state_changed |= kbasep_js_ctx_attr_ctx_retain_attr( kbdev, kctx, KBASEP_JS_CTX_ATTR_NON_COMPUTE );
+	}
+
+	if ( (core_req & ( BASE_JD_REQ_CS | BASE_JD_REQ_ONLY_COMPUTE | BASE_JD_REQ_T)) != 0
+		 && (core_req & ( BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_SPECIFIC_COHERENT_GROUP )) == 0 )
+	{
+		/* Atom that can run on slot1 or slot2, and can use all cores */
+		runpool_state_changed |= kbasep_js_ctx_attr_ctx_retain_attr( kbdev, kctx, KBASEP_JS_CTX_ATTR_COMPUTE_ALL_CORES );
 	}
 
 	/* We don't need to know about state changed, because retaining an
@@ -308,24 +313,30 @@ mali_bool kbasep_js_ctx_attr_ctx_release_atom( kbase_device *kbdev,
 										  kbase_jd_atom *katom )
 {
 	mali_bool runpool_state_changed = MALI_FALSE;
+	base_jd_core_req core_req;
 
 	OSK_ASSERT( katom );
+	core_req = katom->core_req;
 
-	/* Currently, the only registered attribute is the NSS core req
-	 *
-	 * For more attributes, it's less elegant to do this by testing each, and
-	 * to repeat this in both retain+release functions. */
-	if ( katom->core_req & BASE_JD_REQ_NSS )
+	if ( core_req & BASE_JD_REQ_NSS )
 	{
 		runpool_state_changed |= kbasep_js_ctx_attr_ctx_release_attr( kbdev, kctx, KBASEP_JS_CTX_ATTR_NSS );
 	}
-	if ( katom->core_req & BASE_JD_REQ_ONLY_COMPUTE )
+
+	if ( core_req & BASE_JD_REQ_ONLY_COMPUTE )
 	{
 		runpool_state_changed |= kbasep_js_ctx_attr_ctx_release_attr( kbdev, kctx, KBASEP_JS_CTX_ATTR_COMPUTE );
 	}
 	else
 	{
 		runpool_state_changed |= kbasep_js_ctx_attr_ctx_release_attr( kbdev, kctx, KBASEP_JS_CTX_ATTR_NON_COMPUTE );
+	}
+
+	if ( (core_req & ( BASE_JD_REQ_CS | BASE_JD_REQ_ONLY_COMPUTE | BASE_JD_REQ_T )) != 0
+		 && (core_req & ( BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_SPECIFIC_COHERENT_GROUP )) == 0 )
+	{
+		/* Atom that can run on slot1 or slot2, and can use all cores */
+		runpool_state_changed |= kbasep_js_ctx_attr_ctx_release_attr( kbdev, kctx, KBASEP_JS_CTX_ATTR_COMPUTE_ALL_CORES );
 	}
 
 

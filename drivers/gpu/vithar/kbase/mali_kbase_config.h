@@ -44,6 +44,13 @@
 #define KBASE_HWCNT_DUMP_BYPASS_ROOT 0
 #endif
 
+#if CSTD_OS_LINUX_KERNEL || CSTD_OS_ANDROID_KERNEL
+#define MALI_KBASEP_REGION_RBTREE 1
+#include <linux/rbtree.h>
+#else
+#define MALI_KBASEP_REGION_RBTREE 0
+#endif
+
 /**
  * Relative memory performance indicators. Enum elements should always be defined in slowest to fastest order.
  */
@@ -426,6 +433,14 @@ enum
 	KBASE_CONFIG_ATTR_CPU_SPEED_FUNC,
 
 	/**
+	 * Platform specific configuration functions
+	 *
+	 * Attached value: pointer to @ref kbase_platform_funcs_conf
+	 * Default value: See @ref kbase_platform_funcs_conf
+	 */
+	KBASE_CONFIG_ATTR_PLATFORM_FUNCS,
+
+	/**
 	 * End of attribute list indicator.
 	 * The configuration loader will stop processing any more elements
 	 * when it encounters this attribute.
@@ -504,6 +519,30 @@ typedef struct kbase_memory_resource
 struct kbase_device;
 
 /*
+ * @brief Specifies the functions for platform specific initialization and termination
+ *
+ * By default no functions are required. No additional platform specific control is necessary.
+ */
+typedef struct kbase_platform_funcs_conf
+{
+	/**
+	 * Function pointer for platform specific initialization or NULL if no initialization function is required.
+	 * This function will be called \em before any other callbacks listed in the kbase_attribute struct (such as
+	 * Power Management callbacks).
+	 * The platform specific private pointer kbase_device::platform_context can be accessed (and possibly initialized) in here.
+	 */
+	mali_bool (*platform_init_func)(struct kbase_device *kbdev);
+	/**
+	 * Function pointer for platform specific termination or NULL if no termination function is required.
+	 * This function will be called \em after any other callbacks listed in the kbase_attribute struct (such as
+	 * Power Management callbacks).
+	 * The platform specific private pointer kbase_device::platform_context can be accessed (and possibly terminated) in here.
+	 */
+	void (*platform_term_func)(struct kbase_device *kbdev);
+
+} kbase_platform_funcs_conf;
+
+/*
  * @brief Specifies the callbacks for power management
  *
  * By default no callbacks will be made and the GPU must not be powered off.
@@ -514,6 +553,8 @@ typedef struct kbase_pm_callback_conf
 	 *
 	 * The system integrator can decide whether to either do nothing, just switch off
 	 * the clocks to the GPU, or to completely power down the GPU.
+	 * The platform specific private pointer kbase_device::platform_context can be accessed and modified in here. It is the
+	 * platform \em callbacks responsiblity to initialize and terminate this pointer if used (see @ref kbase_platform_funcs_conf).
 	 */
 	void (*power_off_callback)(struct kbase_device *kbdev);
 
@@ -522,12 +563,50 @@ typedef struct kbase_pm_callback_conf
 	 * This function must not return until the GPU is powered and clocked sufficiently for register access to
 	 * succeed.  The return value specifies whether the GPU was powered down since the call to power_off_callback.
 	 * If the GPU state has been lost then this function must return 1, otherwise it should return 0.
+	 * The platform specific private pointer kbase_device::platform_context can be accessed and modified in here. It is the
+	 * platform \em callbacks responsiblity to initialize and terminate this pointer if used (see @ref kbase_platform_funcs_conf).
 	 *
 	 * The return value of the first call to this function is ignored.
 	 *
 	 * @return 1 if the GPU state may have been lost, 0 otherwise.
 	 */
 	int (*power_on_callback)(struct kbase_device *kbdev);
+
+	/** Callback for handling runtime power management initialization.
+	 *
+	 * The runtime power management callbacks @ref power_runtime_off_callback and @ref power_runtime_on_callback
+	 * will become active from calls made to the OS from within this function.
+	 * The runtime calls can be triggered by calls from @ref power_off_callback and @ref power_on_callback.
+	 * Note: for linux the kernel must have CONFIG_PM_RUNTIME enabled to use this feature.
+	 *
+	 * @return MALI_ERROR_NONE on success, else mali_error erro code.
+	 */
+	mali_error (*power_runtime_init_callback)(struct kbase_device *kbdev);
+
+	/** Callback for handling runtime power management termination.
+	 *
+	 * The runtime power management callbacks @ref power_runtime_off_callback and @ref power_runtime_on_callback
+	 * should no longer be called by the OS on completion of this function.
+	 * Note: for linux the kernel must have CONFIG_PM_RUNTIME enabled to use this feature.
+	 */
+	void (*power_runtime_term_callback)(struct kbase_device *kbdev);
+
+	/** Callback for runtime power-off power management callback
+	 *
+	 * For linux this callback will be called by the kernel runtime_suspend callback.
+	 * Note: for linux the kernel must have CONFIG_PM_RUNTIME enabled to use this feature.
+	 *
+	 * @return 0 on success, else OS error code.
+	 */
+	void (*power_runtime_off_callback)(struct kbase_device *kbdev);
+
+	/** Callback for runtime power-on power management callback
+	 *
+	 * For linux this callback will be called by the kernel runtime_resume callback.
+	 * Note: for linux the kernel must have CONFIG_PM_RUNTIME enabled to use this feature.
+	 */
+	int (*power_runtime_on_callback)(struct kbase_device *kbdev);
+
 } kbase_pm_callback_conf;
 
 /**
@@ -620,12 +699,13 @@ const kbase_attribute *kbasep_get_next_attribute(const kbase_attribute *attribut
  * Function gets the value of attribute specified as parameter. If no such attribute is found in the array of
  * attributes, default value is used.
  *
+ * @param[in]  kbdev          Kbase device pointer
  * @param[in]  attributes     Array of attributes in which lookup is performed
  * @param[in]  attribute_id   ID of attribute
  *
  * @return Value of attribute with the given id
  */
-uintptr_t kbasep_get_config_value(const kbase_attribute *attributes, int attribute_id);
+uintptr_t kbasep_get_config_value(struct kbase_device *kbdev, const kbase_attribute *attributes, int attribute_id);
 
 /**
  * @brief Obtain memory performance values from kbase_memory_resource structure.
@@ -647,11 +727,12 @@ void kbasep_get_memory_performance(const kbase_memory_resource *resource,
  * with invalid value or attribute list that is not correctly terminated. It will also fail if
  * KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MIN or KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX are not specified. 
  *
+ * @param[in]  kbdev       Kbase device pointer
  * @param[in]  attributes  Array of attributes to validate
  *
  * @return   MALI_TRUE if no errors have been found in the config. MALI_FALSE otherwise.
  */
-mali_bool kbasep_validate_configuration_attributes(const kbase_attribute *attributes);
+mali_bool kbasep_validate_configuration_attributes(struct kbase_device *kbdev, const kbase_attribute *attributes);
 
 #if !MALI_LICENSE_IS_GPL || (defined(MALI_FAKE_PLATFORM_DEVICE) && MALI_FAKE_PLATFORM_DEVICE)
 /**
@@ -661,6 +742,31 @@ mali_bool kbasep_validate_configuration_attributes(const kbase_attribute *attrib
  */
 kbase_platform_config *kbasep_get_platform_config(void);
 #endif /* !MALI_LICENSE_IS_GPL || (defined(MALI_FAKE_PLATFORM_DEVICE) && MALI_FAKE_PLATFORM_DEVICE) */
+
+/**
+ * @brief Platform specific call to initialize hardware
+ *
+ * Function calls a platform defined routine if specified in the configuration attributes.
+ * The routine can initialize any hardware and context state that is required for the GPU block to function.
+ *
+ * @param[in]  kbdev       Kbase device pointer
+ *
+ * @return   MALI_TRUE if no errors have been found in the config. MALI_FALSE otherwise.
+ */
+mali_bool kbasep_platform_device_init(struct kbase_device *kbdev);
+
+/**
+ * @brief Platform specific call to terminate hardware
+ *
+ * Function calls a platform defined routine if specified in the configuration attributes.
+ * The routine can destroy any platform specific context state and shut down any hardware functionality that are
+ * outside of the Power Management callbacks.
+ *
+ * @param[in]  kbdev       Kbase device pointer
+ *
+ */
+void kbasep_platform_device_term(struct kbase_device *kbdev);
+
 
 /** @} */ /* end group kbase_config */
 /** @} */ /* end group base_kbase_api */
