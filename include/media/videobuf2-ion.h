@@ -101,8 +101,7 @@ int vb2_ion_set_alignment(void *ctx, size_t alignment);
  */
 struct vb2_ion_cookie {
 	dma_addr_t ioaddr;
-	struct scatterlist *sg;
-	int nents;
+	struct sg_table	*sgt;
 	off_t offset;
 };
 
@@ -120,8 +119,8 @@ static inline int vb2_ion_phys_address(void *cookie, phys_addr_t *phys_addr)
 	if (WARN_ON(!phys_addr || IS_ERR_OR_NULL(cookie)))
 		return -EINVAL;
 
-	if (vb2cookie->nents == 1)
-		*phys_addr = sg_phys(vb2cookie->sg) + vb2cookie->offset;
+	if (vb2cookie->sgt->nents == 1)
+		*phys_addr = sg_phys(vb2cookie->sgt->sgl) + vb2cookie->offset;
 	else
 		return -EINVAL;
 
@@ -168,8 +167,8 @@ static inline struct scatterlist *vb2_ion_get_sg(void *cookie, int *nents)
 	if (WARN_ON(!nents || IS_ERR_OR_NULL(cookie)))
 		return NULL;
 
-	*nents = vb2cookie->nents;
-	return vb2cookie->sg;
+	*nents = vb2cookie->sgt->nents;
+	return vb2cookie->sgt->sgl;
 }
 
 /***** Device's internal/context buffer support *****/

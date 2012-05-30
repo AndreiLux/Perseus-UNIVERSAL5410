@@ -41,7 +41,6 @@ struct vb2_ion_buf {
 	struct ion_handle		*handle;
 	struct dma_buf			*dma_buf;
 	struct dma_buf_attachment	*attachment;
-	struct sg_table			*sg_table;
 	enum dma_data_direction		direction;
 	void				*kva;
 	unsigned long			size;
@@ -134,8 +133,6 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 {
 	struct vb2_ion_context *ctx = alloc_ctx;
 	struct vb2_ion_buf *buf;
-	int fd;
-	struct file *file;
 	int ret = 0;
 
 	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
@@ -151,9 +148,7 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 		goto err_alloc;
 	}
 
-	buf->sg_table = ion_sg_table(ctx->client, buf->handle);
-	buf->cookie.sg = buf->sg_table->sgl;
-	buf->cookie.nents = buf->sg_table->nents;
+	buf->cookie.sgt = ion_sg_table(ctx->client, buf->handle); 
 
 	buf->ctx = ctx;
 	buf->size = size;
@@ -168,7 +163,7 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 
 	if (ctx_iommu(ctx)) {
 		buf->cookie.ioaddr = iovmm_map(ctx->dev,
-					       buf->cookie.sg, 0,
+					       buf->cookie.sgt->sgl, 0,
 					       buf->size);
 		if (IS_ERR_VALUE(buf->cookie.ioaddr)) {
 			ret = (int)buf->cookie.ioaddr;
@@ -280,7 +275,7 @@ static int vb2_ion_mmap(void *buf_priv, struct vm_area_struct *vma)
 	struct vb2_ion_buf *buf = buf_priv;
 	unsigned long vm_start = vma->vm_start;
 	unsigned long vm_end = vma->vm_end;
-	struct scatterlist *sg = buf->cookie.sg;
+	struct scatterlist *sg = buf->cookie.sgt->sgl;
 	unsigned long size;
 	int ret = -EINVAL;
 
@@ -321,7 +316,6 @@ static int vb2_ion_mmap(void *buf_priv, struct vm_area_struct *vma)
 static int vb2_ion_map_dmabuf(void *mem_priv)
 {
 	struct vb2_ion_buf *buf = mem_priv;
-	struct sg_table *sgt;
 	struct vb2_ion_context *ctx = buf->ctx;
 
 	if (WARN_ON(!buf->attachment)) {
@@ -329,30 +323,27 @@ static int vb2_ion_map_dmabuf(void *mem_priv)
 		return -EINVAL;
 	}
 
-	if (WARN_ON(buf->sg_table)) {
+	if (WARN_ON(buf->cookie.sgt)) {
 		pr_err("dmabuf buffer is already pinned\n");
 		return 0;
 	}
 
 	/* get the associated scatterlist for this buffer */
-	sgt = dma_buf_map_attachment(buf->attachment, buf->direction);
-	if (IS_ERR_OR_NULL(sgt)) {
+	buf->cookie.sgt = dma_buf_map_attachment(buf->attachment, buf->direction);
+	if (IS_ERR_OR_NULL(buf->cookie.sgt)) {
 		pr_err("Error getting dmabuf scatterlist\n");
 		return -EINVAL;
 	}
 
-	buf->sg_table = sgt;
-	buf->cookie.sg = buf->sg_table->sgl;
-	buf->cookie.nents = buf->sg_table->nents;
 	buf->cookie.offset = 0;
 	buf->kva = NULL;
 
 	if (ctx_iommu(ctx) && buf->cookie.ioaddr == 0) {
 		buf->cookie.ioaddr = iovmm_map(ctx->dev,
-					       buf->cookie.sg, 0, buf->size);
+				       buf->cookie.sgt->sgl, 0, buf->size);
 		if (IS_ERR_VALUE(buf->cookie.ioaddr)) {
 			dma_buf_unmap_attachment(buf->attachment,
-					sgt, buf->direction);
+					buf->cookie.sgt, buf->direction);
 			return (int)buf->cookie.ioaddr;
 		}
 	}
@@ -363,22 +354,19 @@ static int vb2_ion_map_dmabuf(void *mem_priv)
 static void vb2_ion_unmap_dmabuf(void *mem_priv)
 {
 	struct vb2_ion_buf *buf = mem_priv;
-	struct sg_table *sgt = buf->sg_table;
-
 
 	if (WARN_ON(!buf->attachment)) {
 		pr_err("trying to unpin a not attached buffer\n");
 		return;
 	}
 
-	if (WARN_ON(!sgt)) {
+	if (WARN_ON(!buf->cookie.sgt)) {
 		pr_err("dmabuf buffer is already unpinned\n");
 		return;
 	}
 
-	dma_buf_unmap_attachment(buf->attachment, sgt, buf->direction);
-
-	buf->sg_table = NULL;
+	dma_buf_unmap_attachment(buf->attachment, buf->cookie.sgt, buf->direction);
+	buf->cookie.sgt = NULL;
 }
 
 static void vb2_ion_detach_dmabuf(void *mem_priv)
@@ -448,7 +436,7 @@ void vb2_ion_sync_for_device(void *cookie, off_t offset, size_t size,
 			container_of(cookie, struct vb2_ion_buf, cookie)->ctx;
 	struct scatterlist *sg;
 
-	for (sg = vb2cookie->sg; sg != NULL; sg = sg_next(sg)) {
+	for (sg = vb2cookie->sgt->sgl; sg != NULL; sg = sg_next(sg)) {
 		if (sg_dma_len(sg) <= offset)
 			offset -= sg_dma_len(sg);
 		else
@@ -482,7 +470,7 @@ void vb2_ion_sync_for_cpu(void *cookie, off_t offset, size_t size,
 			container_of(cookie, struct vb2_ion_buf, cookie)->ctx;
 	struct scatterlist *sg;
 
-	for (sg = vb2cookie->sg; sg != NULL; sg = sg_next(sg)) {
+	for (sg = vb2cookie->sgt->sgl; sg != NULL; sg = sg_next(sg)) {
 		if (sg_dma_len(sg) <= offset)
 			offset -= sg_dma_len(sg);
 		else
@@ -546,7 +534,7 @@ int vb2_ion_cache_flush(struct vb2_buffer *vb, u32 num_planes)
 		if (!buf->cached)
 			continue;
 
-		sg = buf->cookie.sg;
+		sg = buf->cookie.sgt->sgl;
 		start_off = buf->cookie.offset;
 		sz = buf->size;
 
