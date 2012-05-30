@@ -21,6 +21,7 @@
 #include <linux/pwm_backlight.h>
 #include <linux/mfd/wm8994/pdata.h>
 #include <linux/regulator/machine.h>
+#include <linux/spi/spi.h>
 
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
@@ -45,6 +46,7 @@
 #include <plat/usb-phy.h>
 #include <plat/ehci.h>
 #include <plat/dp.h>
+#include <plat/s3c64xx-spi.h>
 
 #include <video/platform_lcd.h>
 
@@ -399,6 +401,25 @@ static struct i2c_board_info i2c_devs1[] __initdata = {
 	},
 };
 
+static struct s3c64xx_spi_csinfo spi1_csi[] = {
+	[0] = {
+		.line		= EXYNOS5_GPA2(5),
+		.fb_delay	= 0x2,
+	},
+};
+
+static struct spi_board_info spi1_board_info[] __initdata = {
+	{
+		.modalias		= "spidev",
+		.platform_data		= NULL,
+		.max_speed_hz		= 10*1000*1000,
+		.bus_num		= 1,
+		.chip_select		= 0,
+		.mode			= SPI_MODE_0,
+		.controller_data	= spi1_csi,
+	}
+};
+
 struct sysmmu_platform_data platdata_sysmmu_mfc_l = {
 	.dbgname = "mfc_l",
 	.clockname = "sysmmu",
@@ -710,6 +731,8 @@ static void __init exynos5250_dt_machine_init(void)
 	exynos5_i2c_setup();
 
 	i2c_register_board_info(1, i2c_devs1, ARRAY_SIZE(i2c_devs1));
+
+	spi_register_board_info(spi1_board_info, ARRAY_SIZE(spi1_board_info));
 
 	of_platform_populate(NULL, of_default_bus_match_table,
 				exynos5250_auxdata_lookup, NULL);
