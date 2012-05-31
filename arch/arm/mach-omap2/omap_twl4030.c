@@ -261,6 +261,12 @@ int __init omap_twl4030_init(void)
 		omap3_core_pmic.vp_vddmax = OMAP3630_VP2_VLIMITTO_VDDMAX;
 	}
 
+	if (cpu_is_omap446x()) {
+		/* use SMPS1  for CORE instead of SMPS3 on 4430 */
+		omap_twl_map[1].pmic_data->volt_reg_addr = OMAP4_VDD_MPU_SR_VOLT_REG;
+		omap_twl_map[1].pmic_data->cmd_reg_addr = OMAP4_VDD_MPU_SR_CMD_REG;
+	}
+
 	if (cpu_is_omap443x())
 		return omap_pmic_register_data(&omap_twl_map[0]);
 	else if (cpu_is_omap446x()) /* mpu from tps6236x */
