@@ -17,6 +17,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/stringify.h>
+#include <linux/delay.h>
 
 #include <plat/iommu.h>
 #include <plat/omap_hwmod.h>
@@ -89,6 +90,10 @@ static int omap2_iommu_enable(struct omap_iommu *obj)
 	if (cpu_is_omap54xx()) {
 		pr_info("omap2_iommu_enable: doing Benelli reset HACK\n");
 		__raw_writel(3, OMAP2_L4_IO_ADDRESS(0x4AE06910));
+
+		/* We need some ugly wait here as reread or mb() are not
+		 * sufficient... */
+		mdelay(500);
 	}
 
 	if (!obj->iopgd || !IS_ALIGNED((u32)obj->iopgd,  SZ_16K))
