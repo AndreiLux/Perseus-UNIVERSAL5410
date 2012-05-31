@@ -445,6 +445,7 @@ static void s5p_mfc_handle_seq_done(struct s5p_mfc_ctx *ctx,
 		s5p_mfc_dec_calc_dpb_size(ctx);
 
 		ctx->dpb_count = s5p_mfc_get_dpb_count();
+		ctx->mv_count = s5p_mfc_get_mv_count();
 		if (ctx->img_width == 0 || ctx->img_height == 0)
 			ctx->state = MFCINST_ERROR;
 		else

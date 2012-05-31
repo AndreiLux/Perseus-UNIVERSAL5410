@@ -91,11 +91,11 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 	switch (ctx->codec_mode) {
 	case S5P_FIMV_CODEC_H264_DEC:
 	case S5P_FIMV_CODEC_H264_MVC_DEC:
-		ctx->scratch_buf_size = (mb_width * 128) + 65536;
+		ctx->scratch_buf_size = (mb_width * 192) + 64;
 		ctx->scratch_buf_size = ALIGN(ctx->scratch_buf_size, 256);
 		ctx->bank1_size =
 			ctx->scratch_buf_size +
-			(ctx->total_dpb_count * ctx->mv_size);
+			(ctx->mv_count * ctx->mv_size);
 		break;
 	case S5P_FIMV_CODEC_MPEG4_DEC:
 		/* mb_width * (mb_height * 64 + 144) + 8192 * mb_height + 41088 */
@@ -393,15 +393,16 @@ int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 	buf_size1 -= ctx->scratch_buf_size;
 
 	if (ctx->codec_mode == S5P_FIMV_CODEC_H264_DEC ||
-			ctx->codec_mode == S5P_FIMV_CODEC_H264_MVC_DEC)
+			ctx->codec_mode == S5P_FIMV_CODEC_H264_MVC_DEC){
 		WRITEL(ctx->mv_size, S5P_FIMV_D_MV_BUFFER_SIZE);
+		WRITEL(ctx->mv_count, S5P_FIMV_D_NUM_MV);
+	}
 
 	frame_size = ctx->luma_size;
 	frame_size_ch = ctx->chroma_size;
 	frame_size_mv = ctx->mv_size;
 	mfc_debug(2, "Frame size: %d ch: %d mv: %d\n", frame_size, frame_size_ch,
 								frame_size_mv);
-
 	for (i = 0; i < ctx->total_dpb_count; i++) {
 		/* Bank2 */
 		mfc_debug(2, "Luma %d: %x\n", i,
@@ -412,9 +413,10 @@ int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 					ctx->dst_bufs[i].cookie.raw.chroma);
 		WRITEL(ctx->dst_bufs[i].cookie.raw.chroma,
 				S5P_FIMV_D_CHROMA_DPB + i * 4);
-
-		if (ctx->codec_mode == S5P_FIMV_CODEC_H264_DEC ||
-				ctx->codec_mode == S5P_FIMV_CODEC_H264_MVC_DEC) {
+	}
+	if (ctx->codec_mode == S5P_FIMV_CODEC_H264_DEC ||
+			ctx->codec_mode == S5P_FIMV_CODEC_H264_MVC_DEC) {
+		for (i = 0; i < ctx->mv_count; i++) {
 			/* To test alignment */
 			align_gap = buf_addr1;
 			buf_addr1 = ALIGN(buf_addr1, 16);

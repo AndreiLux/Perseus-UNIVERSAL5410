@@ -569,7 +569,7 @@ struct s5p_mfc_ctx {
 
 	int dpb_count;
 	int total_dpb_count;
-
+	int mv_count;
 	/* Buffers */
 	unsigned int ctx_size;
 	struct s5p_mfc_priv_buf ctx;
