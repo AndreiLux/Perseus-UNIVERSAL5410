@@ -30,6 +30,8 @@ struct s5p_dp_device {
 	struct clk		*clock;
 	unsigned int		irq;
 	void __iomem		*reg_base;
+	int 			enabled;
+	struct mutex		lock;
 
 	struct video_info	*video_info;
 	struct link_train	link_train;

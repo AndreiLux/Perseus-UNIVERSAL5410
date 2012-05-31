@@ -804,6 +804,95 @@ static irqreturn_t s5p_dp_irq_handler(int irq, void *arg)
 	return IRQ_HANDLED;
 }
 
+static int s5p_dp_enable(struct s5p_dp_device *dp)
+{
+	int ret = 0;
+	struct s5p_dp_platdata *pdata = dp->dev->platform_data;
+
+	mutex_lock(&dp->lock);
+
+	if (dp->enabled)
+		goto out;
+
+	dp->enabled = 1;
+
+	clk_enable(dp->clock);
+	pm_runtime_get_sync(dp->dev);
+
+	if (pdata->phy_init)
+		pdata->phy_init();
+
+	s5p_dp_init_dp(dp);
+
+	if (!soc_is_exynos5250()) {
+		ret = s5p_dp_detect_hpd(dp);
+		if (ret) {
+			dev_err(dp->dev, "unable to detect hpd\n");
+			goto out;
+		}
+	}
+
+	s5p_dp_handle_edid(dp);
+
+	ret = s5p_dp_set_link_train(dp, dp->video_info->lane_count,
+				dp->video_info->link_rate);
+	if (ret) {
+		dev_err(dp->dev, "unable to do link train\n");
+		goto out;
+	}
+
+	if (soc_is_exynos5250()) {
+		s5p_dp_enable_scramble(dp, 1);
+		s5p_dp_enable_rx_to_enhanced_mode(dp, 1);
+		s5p_dp_enable_enhanced_mode(dp, 1);
+	} else {
+		s5p_dp_enable_scramble(dp, 0);
+		s5p_dp_enable_rx_to_enhanced_mode(dp, 0);
+		s5p_dp_enable_enhanced_mode(dp, 0);
+	}
+
+	s5p_dp_set_lane_count(dp, dp->video_info->lane_count);
+	s5p_dp_set_link_bandwidth(dp, dp->video_info->link_rate);
+
+	s5p_dp_init_video(dp);
+	ret = s5p_dp_config_video(dp, dp->video_info);
+	if (ret) {
+		dev_err(dp->dev, "unable to config video\n");
+		goto out;
+	}
+
+	if (pdata->backlight_on)
+		pdata->backlight_on();
+
+out:
+	mutex_unlock(&dp->lock);
+	return ret;
+}
+
+static void s5p_dp_disable(struct s5p_dp_device *dp)
+{
+	struct s5p_dp_platdata *pdata = dp->dev->platform_data;
+
+	mutex_lock(&dp->lock);
+
+	if (!dp->enabled)
+		goto out;
+
+	dp->enabled = 0;
+
+	if (pdata->backlight_off)
+		pdata->backlight_off();
+
+	if (pdata && pdata->phy_exit)
+		pdata->phy_exit();
+
+	clk_disable(dp->clock);
+	pm_runtime_put_sync(dp->dev);
+
+out:
+	mutex_unlock(&dp->lock);
+}
+
 static int __devinit s5p_dp_probe(struct platform_device *pdev)
 {
 	int ret;
@@ -823,6 +912,8 @@ static int __devinit s5p_dp_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
+	mutex_init(&dp->lock);
+
 	dp->dev = &pdev->dev;
 
 	dp->clock = clk_get(&pdev->dev, "dp");
@@ -831,8 +922,6 @@ static int __devinit s5p_dp_probe(struct platform_device *pdev)
 		ret = PTR_ERR(dp->clock);
 		goto err_dp;
 	}
-
-	clk_enable(dp->clock);
 
 	pm_runtime_enable(dp->dev);
 
@@ -860,8 +949,6 @@ static int __devinit s5p_dp_probe(struct platform_device *pdev)
 		goto err_req_region;
 	}
 
-	pm_runtime_get_sync(dp->dev);
-
 	dp->irq = platform_get_irq(pdev, 0);
 	if (!dp->irq) {
 		dev_err(&pdev->dev, "failed to get irq\n");
@@ -877,52 +964,12 @@ static int __devinit s5p_dp_probe(struct platform_device *pdev)
 	}
 
 	dp->video_info = pdata->video_info;
-	if (pdata->phy_init)
-		pdata->phy_init();
-
-	s5p_dp_init_dp(dp);
-
-	if (!soc_is_exynos5250()) {
-		ret = s5p_dp_detect_hpd(dp);
-		if (ret) {
-			dev_err(&pdev->dev, "unable to detect hpd\n");
-			goto err_irq;
-		}
-	}
-
-	s5p_dp_handle_edid(dp);
-
-	ret = s5p_dp_set_link_train(dp, dp->video_info->lane_count,
-				dp->video_info->link_rate);
-	if (ret) {
-		dev_err(&pdev->dev, "unable to do link train\n");
-		return ret;
-	}
-
-	if (soc_is_exynos5250()) {
-		s5p_dp_enable_scramble(dp, 1);
-		s5p_dp_enable_rx_to_enhanced_mode(dp, 1);
-		s5p_dp_enable_enhanced_mode(dp, 1);
-	} else {
-		s5p_dp_enable_scramble(dp, 0);
-		s5p_dp_enable_rx_to_enhanced_mode(dp, 0);
-		s5p_dp_enable_enhanced_mode(dp, 0);
-	}
-
-	s5p_dp_set_lane_count(dp, dp->video_info->lane_count);
-	s5p_dp_set_link_bandwidth(dp, dp->video_info->link_rate);
-
-	s5p_dp_init_video(dp);
-	ret = s5p_dp_config_video(dp, dp->video_info);
-	if (ret) {
-		dev_err(&pdev->dev, "unable to config video\n");
-		goto err_irq;
-	}
-
-	if (pdata->backlight_on)
-		pdata->backlight_on();
 
 	platform_set_drvdata(pdev, dp);
+
+	ret = s5p_dp_enable(dp);
+	if (ret)
+		goto err_irq;
 
 	return 0;
 
@@ -935,6 +982,7 @@ err_req_region:
 err_clock:
 	clk_put(dp->clock);
 err_dp:
+	mutex_destroy(&dp->lock);
 	kfree(dp);
 
 	return ret;
@@ -942,24 +990,17 @@ err_dp:
 
 static int __devexit s5p_dp_remove(struct platform_device *pdev)
 {
-	struct s5p_dp_platdata *pdata = pdev->dev.platform_data;
 	struct s5p_dp_device *dp = platform_get_drvdata(pdev);
 
-	if (pdata->backlight_off)
-		pdata->backlight_off();
-
-	if (pdata && pdata->phy_exit)
-		pdata->phy_exit();
-
 	free_irq(dp->irq, dp);
-	iounmap(dp->reg_base);
 
-	clk_disable(dp->clock);
+	s5p_dp_disable(dp);
+
+	iounmap(dp->reg_base);
 	clk_put(dp->clock);
 
 	release_mem_region(dp->res->start, resource_size(dp->res));
 
-	pm_runtime_put_sync(dp->dev);
 	pm_runtime_disable(dp->dev);
 
 	kfree(dp);
