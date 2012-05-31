@@ -13,7 +13,9 @@
 #include <kbase/src/common/mali_kbase.h>
 #include <kbase/src/common/mali_kbase_uku.h>
 #include <kbase/src/common/mali_kbase_js_affinity.h>
+#if MALI_USE_UMP == 1
 #include <ump/ump_kernel_interface.h>
+#endif /* MALI_USE_UMP == 1 */
 
 #define beenthere(f, a...)  OSK_PRINT_INFO(OSK_BASE_JD, "%s:" f, __func__, ##a)
 

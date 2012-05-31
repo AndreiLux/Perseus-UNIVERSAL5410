@@ -12,7 +12,9 @@
 #define _KBASE_UKU_H_
 
 #include <uk/mali_uk.h>
+#if MALI_USE_UMP == 1
 #include <ump/ump_common.h>
+#endif /*MALI_USE_UMP == 1*/
 #include <malisw/mali_malisw.h>
 #include <kbase/mali_base_kernel.h>
 #if (MALI_ERROR_INJECT_ON || MALI_NO_MALI)

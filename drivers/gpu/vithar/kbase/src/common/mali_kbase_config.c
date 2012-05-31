@@ -12,7 +12,9 @@
 #include <kbase/src/common/mali_kbase_defs.h>
 #include <kbase/src/common/mali_kbase_cpuprops.h>
 #include <osk/mali_osk.h>
+#if MALI_USE_UMP == 1
 #include <ump/ump_common.h>
+#endif /* MALI_USE_UMP == 1 */
 
 /* Specifies how many attributes are permitted in the config (excluding terminating attribute).
  * This is used in validation function so we can detect if configuration is properly terminated. This value can be
@@ -210,8 +212,10 @@ uintptr_t kbasep_get_config_value(struct kbase_device *kbdev, const kbase_attrib
 	{
 		case KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT:
 			return (uintptr_t)-1;
+#if MALI_USE_UMP == 1
 		case KBASE_CONFIG_ATTR_UMP_DEVICE:
 			return UMP_DEVICE_W_SHIFT;
+#endif /* MALI_USE_UMP == 1 */
 		case KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_MAX:
 			return (uintptr_t)-1;
 		case KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_PERF_GPU:
@@ -331,6 +335,7 @@ void kbasep_get_memory_performance(const kbase_memory_resource *resource, kbase_
 	}
 }
 
+#if MALI_USE_UMP == 1
 static mali_bool kbasep_validate_ump_device(int ump_device)
 {
 	mali_bool valid;
@@ -349,6 +354,7 @@ static mali_bool kbasep_validate_ump_device(int ump_device)
 	}
 	return valid;
 }
+#endif /* MALI_USE_UMP == 1 */
 
 static mali_bool kbasep_validate_memory_performance(kbase_memory_performance performance)
 {
@@ -508,7 +514,7 @@ mali_bool kbasep_validate_configuration_attributes(kbase_device *kbdev, const kb
 			case KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT:
 				/* any value is allowed */
 				break;
-
+#if MALI_USE_UMP == 1
 			case KBASE_CONFIG_ATTR_UMP_DEVICE:
 				if (MALI_FALSE == kbasep_validate_ump_device(attributes[i].data))
 				{
@@ -517,6 +523,7 @@ mali_bool kbasep_validate_configuration_attributes(kbase_device *kbdev, const kb
 					return MALI_FALSE;
 				}
 				break;
+#endif /* MALI_USE_UMP == 1 */
 
 			case KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MIN:
 				had_gpu_freq_min = MALI_TRUE;

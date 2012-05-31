@@ -54,7 +54,9 @@
 #include <uk/mali_ukk.h>
 #include <kbase/src/common/mali_kbase_defs.h>
 #include <kbase/src/linux/mali_kbase_config_linux.h>
+#if MALI_USE_UMP == 1
 #include <ump/ump_common.h>
+#endif /*MALI_USE_UMP == 1*/
 
 #if MALI_UNCACHED == 0
 #error MALI_UNCACHED should equal 1 for Exynos5 support, your scons commandline should contain 'no_syncsets=1'
@@ -231,11 +233,12 @@ kbase_platform_funcs_conf platform_funcs =
 };
 
 static kbase_attribute config_attributes[] = {
+#if MALI_USE_UMP == 1
 	{
 		KBASE_CONFIG_ATTR_UMP_DEVICE,
 		UMP_DEVICE_Z_SHIFT
 	},
-
+#endif /* MALI_USE_UMP == 1 */
 	{
 		KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_MAX,
 		2048 * 1024 * 1024UL /* 2048MB */

@@ -437,8 +437,11 @@ typedef enum
 
 typedef struct kbasep_mem_device
 {
+#if MALI_USE_UMP == 1
 	u32                        ump_device_id;            /* Which UMP device this GPU should be mapped to.
 	                                                        Read-only, copied from platform configuration on startup.*/
+#endif /* MALI_USE_UMP == 1 */
+
 	u32                        per_process_memory_limit; /* How much memory (in bytes) a single process can access.
 	                                                        Read-only, copied from platform configuration on startup. */
 	kbasep_mem_usage           usage;                    /* Tracks usage of OS shared memory. Initialized with platform

@@ -446,9 +446,11 @@ static mali_error kbase_dispatch(ukk_call_context * const ukk_ctx, void * const 
 			/* code should be in kbase_tmem_import and its helpers, but uk dropped its get_user abstraction */
 			switch (tmem_import->type)
 			{
+#if MALI_USE_UMP == 1
 				case BASE_TMEM_IMPORT_TYPE_UMP:
 					get_user(handle, phandle);
 					break;
+#endif /* MALI_USE_UMP == 1 */
 				case BASE_TMEM_IMPORT_TYPE_UMM:
 					get_user(handle, phandle);
 					break;
@@ -1967,8 +1969,11 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 		goto out_reg_unmap;
 	}
 
+#if MALI_USE_UMP == 1
 	kbdev->memdev.ump_device_id = kbasep_get_config_value(kbdev, platform_data,
 			KBASE_CONFIG_ATTR_UMP_DEVICE);
+#endif /* MALI_USE_UMP == 1 */
+
 	kbdev->memdev.per_process_memory_limit = kbasep_get_config_value(kbdev, platform_data,
 			KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT);
 
@@ -2184,10 +2189,12 @@ static kbase_attribute pci_attributes[] =
 		KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT,
 		512 * 1024 * 1024UL /* 512MB */
 	},
+#if MALI_USE_UMP == 1
 	{
 		KBASE_CONFIG_ATTR_UMP_DEVICE,
 		UMP_DEVICE_Z_SHIFT
 	},
+#endif /* MALI_USE_UMP == 1 */
 	{
 		KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_MAX,
 		768 * 1024 * 1024UL /* 768MB */
@@ -2275,8 +2282,11 @@ static int kbase_pci_device_probe(struct pci_dev *pdev,
 	/* Use the master passed in instead of the pci attributes */
 	kbdev->config_attributes = platform_data;
 
+#if MALI_USE_UMP == 1
 	kbdev->memdev.ump_device_id = kbasep_get_config_value(kbdev, pci_attributes,
 			KBASE_CONFIG_ATTR_UMP_DEVICE);
+#endif /* MALI_USE_UMP == 1 */
+
 	kbdev->memdev.per_process_memory_limit = kbasep_get_config_value(kbdev, pci_attributes,
 			KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT);
 
@@ -2505,7 +2515,10 @@ static int __init kbase_driver_init(void)
 
 	kbdev->memdev.per_process_memory_limit = kbasep_get_config_value(kbdev, config->attributes,
 			KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT);
+
+#if MALI_USE_UMP == 1
 	kbdev->memdev.ump_device_id = kbasep_get_config_value(kbdev, config->attributes, KBASE_CONFIG_ATTR_UMP_DEVICE);
+#endif /* MALI_USE_UMP == 1 */
 
 	/* obtain min/max configured gpu frequencies */
 	core_props = &(kbdev->gpu_props.props.core_props);
