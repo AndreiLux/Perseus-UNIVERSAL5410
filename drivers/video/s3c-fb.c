@@ -40,10 +40,6 @@
 #include <plat/regs-fb-v4.h>
 #include <plat/fb.h>
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-#include <linux/earlysuspend.h>
-#endif
-
 #ifdef CONFIG_ION_EXYNOS
 #include <linux/dma-buf.h>
 #include <linux/exynos_ion.h>
@@ -312,10 +308,6 @@ struct s3c_fb {
 
 	int			 irq_no;
 	struct s3c_fb_vsync	 vsync_info;
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	struct early_suspend	early_suspend;
-#endif
 
 #ifdef CONFIG_ION_EXYNOS
 	struct ion_client	*fb_ion_client;
@@ -2381,109 +2373,6 @@ static void s3c_fb_clear_win(struct s3c_fb *sfb, int win)
 	}
 }
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void s3c_fb_early_suspend(struct early_suspend *handler)
-{
-	struct s3c_fb *sfb;
-	struct device *dev;
-	struct s3c_fb_win *win;
-	int win_no;
-	u32 reg;
-
-	sfb = container_of(handler, struct s3c_fb, early_suspend);
-
-	for (win_no = S3C_FB_MAX_WIN - 1; win_no >= 0; win_no--) {
-		win = sfb->windows[win_no];
-		if (!win)
-			continue;
-
-		dev_dbg(dev, "early_suspending window %d\n", win_no);
-		/* use the blank function to push into power-down */
-		s3c_fb_blank(FB_BLANK_POWERDOWN, win->fbinfo);
-	}
-
-	/* wait for next frame */
-	mdelay(20);
-
-	if (!sfb->variant.has_clksel)
-		clk_disable(sfb->lcd_clk);
-
-	clk_disable(sfb->bus_clk);
-
-	return;
-}
-static void s3c_fb_late_resume(struct early_suspend *handler)
-{
-	struct s3c_fb *sfb;
-	struct device *dev;
-	struct s3c_fb_platdata *pd;
-	struct s3c_fb_win *win;
-	int win_no;
-	int default_win;
-	int i;
-	u32 reg;
-
-	sfb = container_of(handler, struct s3c_fb, early_suspend);
-	pd = sfb->pdata;
-
-	clk_enable(sfb->bus_clk);
-
-	if (!sfb->variant.has_clksel)
-		clk_enable(sfb->lcd_clk);
-
-	/* setup gpio and output polarity controls */
-	pd->setup_gpio();
-	writel(pd->vidcon1, sfb->regs + VIDCON1);
-
-	/* set video clock running at under-run */
-	if (sfb->variant.has_fixvclk) {
-		reg = readl(sfb->regs + VIDCON1);
-		reg &= ~VIDCON1_VCLK_MASK;
-		reg |= VIDCON1_VCLK_RUN;
-		writel(reg, sfb->regs + VIDCON1);
-	}
-
-	/* zero all windows before we do anything */
-	for (win_no = 0; win_no < sfb->variant.nr_windows; win_no++)
-		s3c_fb_clear_win(sfb, win_no);
-
-	for (win_no = 0; win_no < sfb->variant.nr_windows - 1; win_no++) {
-		void __iomem *regs = sfb->regs + sfb->variant.keycon;
-		win = sfb->windows[win_no];
-		if (!win)
-			continue;
-
-		shadow_protect_win(win, 1);
-		regs += (win_no * 8);
-		writel(0xffffff, regs + WKEYCON0);
-		writel(0xffffff, regs + WKEYCON1);
-		shadow_protect_win(win, 0);
-	}
-
-	/* restore framebuffers */
-	default_win = sfb->pdata->default_win;
-	for (i = 0; i < S3C_FB_MAX_WIN; i++) {
-		win_no = i;
-		if (i == 0)
-			win_no = default_win;
-		if (i == default_win)
-			win_no = 0;
-		win = sfb->windows[win_no];
-		if (!win)
-			continue;
-
-		dev_dbg(dev, "late_resuming window %d\n", win_no);
-		s3c_fb_set_par(win->fbinfo);
-	}
-
-#ifdef CONFIG_S5P_DP
-	writel(DPCLKCON_ENABLE, sfb->regs + DPCLKCON);
-#endif
-
-	return;
-}
-#endif
-
 /* --------------------For Local path from Gscaler ------------------------*/
 #ifdef CONFIG_FB_EXYNOS_FIMD_MC
 static inline struct s3c_fb_win *v4l2_subdev_to_s3c_fb_win(struct v4l2_subdev *sd)
@@ -3346,13 +3235,6 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 #endif
 	platform_set_drvdata(pdev, sfb);
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	sfb->early_suspend.suspend = s3c_fb_early_suspend;
-	sfb->early_suspend.resume = s3c_fb_late_resume;
-	sfb->early_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB;
-	register_early_suspend(&sfb->early_suspend);
-#endif
-
 	mutex_init(&sfb->vsync_info.irq_lock);
 
 	sfb->vsync_info.thread = kthread_run(s3c_fb_wait_for_vsync_thread,
@@ -3432,10 +3314,6 @@ static int __devexit s3c_fb_remove(struct platform_device *pdev)
 		if (sfb->windows[win])
 			s3c_fb_release_win(sfb, sfb->windows[win]);
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	unregister_early_suspend(&sfb->early_suspend);
-#endif
-
 	if (sfb->vsync_info.thread)
 		kthread_stop(sfb->vsync_info.thread);
 
@@ -3454,7 +3332,6 @@ static int __devexit s3c_fb_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM_SLEEP
-#ifndef CONFIG_HAS_EARLYSUSPEND
 static int s3c_fb_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -3563,7 +3440,6 @@ static int s3c_fb_resume(struct device *dev)
 
 	return 0;
 }
-#endif
 #endif
 
 #ifdef CONFIG_PM_RUNTIME
@@ -3967,9 +3843,7 @@ static struct platform_device_id s3c_fb_driver_ids[] = {
 MODULE_DEVICE_TABLE(platform, s3c_fb_driver_ids);
 
 static const struct dev_pm_ops s3cfb_pm_ops = {
-#ifndef CONFIG_HAS_EARLYSUSPEND
 	SET_SYSTEM_SLEEP_PM_OPS(s3c_fb_suspend, s3c_fb_resume)
-#endif
 	SET_RUNTIME_PM_OPS(s3c_fb_runtime_suspend, s3c_fb_runtime_resume,
 			   NULL)
 };
