@@ -19,10 +19,20 @@
 #include <linux/suspend.h>
 #include <linux/module.h>
 #include <linux/reboot.h>
+#include <linux/delay.h>
 
 #include <mach/cpufreq.h>
 
 #include <plat/cpu.h>
+
+#ifdef CONFIG_SMP
+struct lpj_info {
+	unsigned long   ref;
+	unsigned int    freq;
+};
+
+static struct lpj_info global_lpj_ref;
+#endif
 
 /* Use boot_freq when entering sleep mode */
 static unsigned int boot_freq;
@@ -123,6 +133,15 @@ static int exynos_cpufreq_scale(unsigned int target_freq, unsigned int curr_freq
 				      safe_arm_volt);
 
 	exynos_info->set_freq(old_index, new_index);
+
+#ifdef CONFIG_SMP
+	if (!global_lpj_ref.freq) {
+		global_lpj_ref.ref = loops_per_jiffy;
+		global_lpj_ref.freq = freqs.old;
+	}
+	loops_per_jiffy = cpufreq_scale(global_lpj_ref.ref, global_lpj_ref.freq,
+			freqs.new);
+#endif
 
 	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
 
