@@ -544,11 +544,14 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 	switch (reason) {
 	case S5P_FIMV_R2H_CMD_ERR_RET:
 		/* An error has occured */
-		if (ctx->state == MFCINST_RUNNING &&
-			s5p_mfc_err_dec(err) >= S5P_FIMV_ERR_WARNINGS_START)
-			s5p_mfc_handle_frame(ctx, reason, err);
-		else
+		if (ctx->state == MFCINST_RUNNING) {
+			if (s5p_mfc_err_dec(err) >= S5P_FIMV_ERR_WARNINGS_START)
+				s5p_mfc_handle_frame(ctx, reason, err);
+			else
+				s5p_mfc_handle_error(ctx, reason, err);
+		} else {
 			s5p_mfc_handle_error(ctx, reason, err);
+		}
 		clear_bit(0, &dev->enter_suspend);
 		break;
 
