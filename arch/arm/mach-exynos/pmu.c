@@ -322,7 +322,6 @@ void __iomem *exynos5_list_both_cnt_feed[] = {
 };
 
 void __iomem *exynos5_list_diable_wfi_wfe[] = {
-	EXYNOS5_ARM_CORE1_OPTION,
 	EXYNOS5_FSYS_ARM_OPTION,
 	EXYNOS5_ISP_ARM_OPTION,
 };
