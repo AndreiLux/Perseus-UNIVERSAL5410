@@ -1066,7 +1066,6 @@ static int vidioc_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 	    ctx->state == MFCINST_RES_CHANGE_END) {
 		/* If the MFC is parsing the header,
 		 * so wait until it is finished */
-		s5p_mfc_clean_ctx_int_flags(ctx);
 		s5p_mfc_wait_for_done_ctx(ctx,
 			S5P_FIMV_R2H_CMD_SEQ_DONE_RET, 1);
 	}
@@ -1241,7 +1240,6 @@ static int vidioc_s_fmt_vid_out_mplane(struct file *file, void *priv,
 		spin_lock_irqsave(&dev->condlock, flags);
 		set_bit(ctx->num, &dev->ctx_work_bits);
 		spin_unlock_irqrestore(&dev->condlock, flags);
-		s5p_mfc_clean_ctx_int_flags(ctx);
 		s5p_mfc_try_run(dev);
 		/* Wait until instance is returned or timeout occured */
 		if (s5p_mfc_wait_for_done_ctx
@@ -1303,7 +1301,6 @@ static int vidioc_s_fmt_vid_out_mplane(struct file *file, void *priv,
 	spin_lock_irqsave(&dev->condlock, flags);
 	set_bit(ctx->num, &dev->ctx_work_bits);
 	spin_unlock_irqrestore(&dev->condlock, flags);
-	s5p_mfc_clean_ctx_int_flags(ctx);
 	s5p_mfc_try_run(dev);
 	if (s5p_mfc_wait_for_done_ctx(ctx,
 				S5P_FIMV_R2H_CMD_OPEN_INSTANCE_RET, 1)) {
@@ -1604,7 +1601,6 @@ static int get_ctrl_val(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 		}
 
 		/* Should wait for the header to be parsed */
-		s5p_mfc_clean_ctx_int_flags(ctx);
 		s5p_mfc_wait_for_done_ctx(ctx,
 				S5P_FIMV_R2H_CMD_SEQ_DONE_RET, 1);
 		if (ctx->state >= MFCINST_HEAD_PARSED &&
@@ -2141,7 +2137,7 @@ static int s5p_mfc_stop_streaming(struct vb2_queue *q)
 
 	if ((ctx->state == MFCINST_FINISHING ||
 		ctx->state ==  MFCINST_RUNNING) &&
-		(dev->curr_ctx == ctx->num) && test_bit(0, &dev->hw_lock)) {
+		test_bit(ctx->num, &dev->hw_lock)) {
 		ctx->state = MFCINST_ABORT;
 		s5p_mfc_wait_for_done_ctx(ctx, S5P_FIMV_R2H_CMD_FRAME_DONE_RET,
 					  0);

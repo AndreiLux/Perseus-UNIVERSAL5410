@@ -1735,7 +1735,7 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 
 	spin_lock_irqsave(&dev->condlock, flags);
 	/* Check whether hardware is not running */
-	if (test_and_set_bit(0, &dev->hw_lock) != 0) {
+	if (dev->hw_lock != 0) {
 		spin_unlock_irqrestore(&dev->condlock, flags);
 		/* This is perfectly ok, the scheduled ctx should wait */
 		mfc_debug(1, "Couldn't lock HW.\n");
@@ -1746,20 +1746,20 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 	new_ctx = s5p_mfc_get_new_ctx(dev);
 	if (new_ctx < 0) {
 		/* No contexts to run */
-		if (test_and_clear_bit(0, &dev->hw_lock) == 0) {
-			spin_unlock_irqrestore(&dev->condlock, flags);
-			mfc_err("Failed to unlock hardware.\n");
-			return;
-		}
-
 		spin_unlock_irqrestore(&dev->condlock, flags);
 		mfc_debug(1, "No ctx is scheduled to be run.\n");
+		return;
+	}
+
+	ctx = dev->ctx[new_ctx];
+	if (test_and_set_bit(ctx->num, &dev->hw_lock) != 0) {
+		spin_unlock_irqrestore(&dev->condlock, flags);
+		mfc_err("Failed to lock hardware.\n");
 		return;
 	}
 	spin_unlock_irqrestore(&dev->condlock, flags);
 
 	mfc_debug(1, "New context: %d\n", new_ctx);
-	ctx = dev->ctx[new_ctx];
 	mfc_debug(1, "Seting new context to %p\n", ctx);
 	/* Got context to run in ctx */
 	mfc_debug(1, "ctx->dst_queue_cnt=%d ctx->dpb_count=%d ctx->src_queue_cnt=%d\n",
@@ -1843,7 +1843,7 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 			spin_unlock_irqrestore(&dev->condlock, flags);
 		}
 		/* Free hardware lock */
-		if (test_and_clear_bit(0, &dev->hw_lock) == 0)
+		if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
 			mfc_err("Failed to unlock hardware.\n");
 		s5p_mfc_clock_off();
 

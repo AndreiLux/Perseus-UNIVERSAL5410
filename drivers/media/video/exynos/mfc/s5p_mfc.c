@@ -121,7 +121,7 @@ void s5p_mfc_watchdog(unsigned long arg)
 {
 	struct s5p_mfc_dev *dev = (struct s5p_mfc_dev *)arg;
 
-	if (test_bit(0, &dev->hw_lock))
+	if (dev->hw_lock)
 		atomic_inc(&dev->watchdog_cnt);
 	if (atomic_read(&dev->watchdog_cnt) >= MFC_WATCHDOG_CNT) {
 		/* This means that hw is busy and no interrupts were
@@ -170,7 +170,7 @@ static void s5p_mfc_watchdog_worker(struct work_struct *work)
 			wake_up_ctx(ctx, S5P_FIMV_R2H_CMD_ERR_RET, 0);
 		}
 	}
-	clear_bit(0, &dev->hw_lock);
+	dev->hw_lock = 0;
 	spin_unlock_irqrestore(&dev->irqlock, flags);
 	/* Double check if there is at least one instance running.
 	 * If no instance is in memory than no firmware should be present */
@@ -262,7 +262,8 @@ static void s5p_mfc_handle_frame_all_extracted(struct s5p_mfc_ctx *ctx)
 		mfc_debug(2, "Cleaned up buffer: %d\n",
 			  dst_buf->vb.v4l2_buf.index);
 	}
-	ctx->state = MFCINST_RUNNING;
+	if (ctx->state != MFCINST_ABORT)
+		ctx->state = MFCINST_RUNNING;
 	mfc_debug(2, "After cleanup\n");
 }
 
@@ -406,7 +407,7 @@ static void s5p_mfc_handle_frame_error(struct s5p_mfc_ctx *ctx,
 
 	s5p_mfc_clear_int_flags();
 	wake_up_ctx(ctx, reason, err);
-	if (test_and_clear_bit(0, &dev->hw_lock) == 0)
+	if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
 		BUG();
 
 	s5p_mfc_clock_off();
@@ -443,7 +444,7 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 
 		s5p_mfc_clear_int_flags();
 		wake_up_ctx(ctx, reason, err);
-		if (test_and_clear_bit(0, &dev->hw_lock) == 0)
+		if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
 			BUG();
 
 		s5p_mfc_clock_off();
@@ -545,7 +546,7 @@ leave_handle_frame:
 	mfc_debug(2, "After assesing whether this context should be run again.\n");
 	s5p_mfc_clear_int_flags();
 	wake_up_ctx(ctx, reason, err);
-	if (test_and_clear_bit(0, &dev->hw_lock) == 0)
+	if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
 		BUG();
 
 	s5p_mfc_clock_off();
@@ -580,7 +581,7 @@ static inline void s5p_mfc_handle_error(struct s5p_mfc_ctx *ctx,
 		/* This error had to happen while releasing instance */
 		clear_work_bit(ctx);
 		wake_up_ctx(ctx, reason, err);
-		if (test_and_clear_bit(0, &dev->hw_lock) == 0)
+		if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
 			BUG();
 
 		s5p_mfc_clock_off();
@@ -598,7 +599,7 @@ static inline void s5p_mfc_handle_error(struct s5p_mfc_ctx *ctx,
 		/* Mark all src buffers as having an error */
 		s5p_mfc_cleanup_queue(&ctx->src_queue, &ctx->vq_src);
 		spin_unlock_irqrestore(&dev->irqlock, flags);
-		if (test_and_clear_bit(0, &dev->hw_lock) == 0)
+		if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
 			BUG();
 
 		s5p_mfc_clock_off();
@@ -654,7 +655,7 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 
 			s5p_mfc_clear_int_flags();
 			wake_up_ctx(ctx, reason, err);
-			if (test_and_clear_bit(0, &dev->hw_lock) == 0)
+			if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
 				BUG();
 
 			s5p_mfc_clock_off();
@@ -702,7 +703,7 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 
 		s5p_mfc_clear_int_flags();
 		clear_work_bit(ctx);
-		if (test_and_clear_bit(0, &dev->hw_lock) == 0)
+		if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
 			BUG();
 
 		s5p_mfc_clock_off();
@@ -730,7 +731,8 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 	case S5P_FIMV_R2H_CMD_WAKEUP_RET:
 		s5p_mfc_clear_int_flags();
 		wake_up_dev(dev, reason, err);
-		clear_bit(0, &dev->hw_lock);
+		/* Initialize hw_lock */
+		dev->hw_lock = 0;
 		break;
 	case S5P_FIMV_R2H_CMD_INIT_BUFFERS_RET:
 		s5p_mfc_clear_int_flags();
@@ -769,7 +771,7 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 				}
 			}
 
-			if (test_and_clear_bit(0, &dev->hw_lock) == 0)
+			if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
 				BUG();
 
 			s5p_mfc_clock_off();
@@ -778,7 +780,7 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 
 			queue_work(dev->irq_workqueue, &dev->work_struct);
 		} else {
-			if (test_and_clear_bit(0, &dev->hw_lock) == 0)
+			if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
 				BUG();
 
 			s5p_mfc_clock_off();
@@ -797,7 +799,7 @@ irq_cleanup_hw:
 	ctx->int_type = reason;
 	ctx->int_err = err;
 	ctx->int_cond = 1;
-	if (test_and_clear_bit(0, &dev->hw_lock) == 0)
+	if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
 		mfc_err("Failed to unlock hw.\n");
 
 	s5p_mfc_clock_off();
@@ -1035,7 +1037,6 @@ static int s5p_mfc_release(struct file *file)
 		spin_lock_irqsave(&dev->condlock, flags);
 		set_bit(ctx->num, &dev->ctx_work_bits);
 		spin_unlock_irqrestore(&dev->condlock, flags);
-		s5p_mfc_clean_ctx_int_flags(ctx);
 		s5p_mfc_try_run(dev);
 		/* Wait until instance is returned or timeout occured */
 		if (s5p_mfc_wait_for_done_ctx
@@ -1052,7 +1053,7 @@ static int s5p_mfc_release(struct file *file)
 	}
 	/* hardware locking scheme */
 	if (dev->curr_ctx == ctx->num)
-		clear_bit(0, &dev->hw_lock);
+		clear_bit(ctx->num, &dev->hw_lock);
 
 	if (ctx->is_drm)
 		dev->num_drm_inst--;
