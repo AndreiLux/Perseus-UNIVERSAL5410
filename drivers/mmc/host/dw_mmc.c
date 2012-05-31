@@ -30,6 +30,7 @@
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
 #include <linux/mmc/card.h>
+#include <linux/mmc/sdio.h>
 #include <linux/mmc/dw_mmc.h>
 #include <linux/bitops.h>
 #include <linux/regulator/consumer.h>
@@ -303,6 +304,39 @@ static u32 dw_mci_prepare_command(struct mmc_host *mmc, struct mmc_command *cmd)
 
 	/* Use hold bit register */
 	if (slot->host->pdata->set_io_timing)
+		cmdr |= SDMMC_USE_HOLD_REG;
+
+	return cmdr;
+}
+
+static u32 dw_mci_prep_stop(struct dw_mci *host, struct mmc_command *cmd)
+{
+	struct mmc_command *stop = &host->stop;
+	u32 cmdr = cmd->opcode;
+
+	memset(stop, 0, sizeof(struct mmc_command));
+
+	if (cmdr == MMC_READ_SINGLE_BLOCK ||
+			cmdr == MMC_READ_MULTIPLE_BLOCK ||
+			cmdr == MMC_WRITE_BLOCK ||
+			cmdr == MMC_WRITE_MULTIPLE_BLOCK) {
+		stop->opcode = MMC_STOP_TRANSMISSION;
+		stop->arg = 0;
+		stop->flags = MMC_RSP_R1B | MMC_CMD_AC;
+	} else if (cmdr == SD_IO_RW_EXTENDED) {
+		stop->opcode = SD_IO_RW_DIRECT;
+		stop->arg = 0x80000000;
+		/* stop->arg &= ~(1 << 28); */
+		stop->arg |= (cmd->arg >> 28) & 0x7;
+		stop->arg |= SDIO_CCCR_ABORT << 9;
+		stop->flags = MMC_RSP_SPI_R5 | MMC_RSP_R5 | MMC_CMD_AC;;
+	} else
+		return 0;
+
+	cmdr = stop->opcode | SDMMC_CMD_STOP;
+
+	/* Use hold bit register */
+	if (host->pdata->set_io_timing)
 		cmdr |= SDMMC_USE_HOLD_REG;
 
 	return cmdr;
@@ -839,6 +873,8 @@ static void __dw_mci_start_request(struct dw_mci *host,
 
 	host->prv_err = false;
 	mrq = slot->mrq;
+	host->stop_cmdr = 0;
+	host->stop_snd = false;
 	if (host->pdata->select_slot)
 		host->pdata->select_slot(slot->id);
 
@@ -874,6 +910,10 @@ static void __dw_mci_start_request(struct dw_mci *host,
 
 	if (mrq->stop)
 		host->stop_cmdr = dw_mci_prepare_command(slot->mmc, mrq->stop);
+	else {
+		if (data)
+			host->stop_cmdr = dw_mci_prep_stop(host, cmd);
+	}
 }
 
 static void dw_mci_start_request(struct dw_mci *host,
@@ -1352,15 +1392,15 @@ static void dw_mci_tasklet_func(unsigned long priv)
 
 			if (data && cmd->error &&
 					cmd != data->stop) {
-				if (host->mrq->data->stop) {
-					host->data = host->mrq->data;
+				if (host->mrq->data->stop)
 					send_stop_cmd(host, host->mrq->data);
-					state = STATE_SENDING_STOP;
-					break;
-				} else {
-					host->data = NULL;
+				else {
+					dw_mci_start_command(host, &host->stop,
+							host->stop_cmdr);
+					host->stop_snd = true;
 				}
-
+				state = STATE_SENDING_STOP;
+				break;
 			}
 
 			if (!host->mrq->data || cmd->error) {
@@ -1378,7 +1418,12 @@ static void dw_mci_tasklet_func(unsigned long priv)
 						&host->pending_events);
 				if (data->stop)
 					send_stop_cmd(host, data);
-
+				else {
+					dw_mci_start_command(host,
+							&host->stop,
+							host->stop_cmdr);
+					host->stop_snd = true;
+				}
 				state = STATE_DATA_ERROR;
 				break;
 			}
@@ -1449,7 +1494,7 @@ static void dw_mci_tasklet_func(unsigned long priv)
 				data->error = 0;
 			}
 
-			if (!data->stop) {
+			if (!data->stop && !host->stop_snd) {
 				dw_mci_request_end(host, host->mrq);
 				goto unlock;
 			}
@@ -1481,7 +1526,12 @@ static void dw_mci_tasklet_func(unsigned long priv)
 
 			host->cmd = NULL;
 			host->data = NULL;
-			dw_mci_command_complete(host, host->mrq->stop);
+
+			if (host->mrq->stop)
+				dw_mci_command_complete(host, host->mrq->stop);
+			else
+				host->cmd_status = 0;
+
 			dw_mci_request_end(host, host->mrq);
 			goto unlock;
 
@@ -1951,7 +2001,6 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 			if (pending & SDMMC_INT_SBE)
 				set_bit(EVENT_DATA_COMPLETE,
 					&host->pending_events);
-
 			tasklet_schedule(&host->tasklet);
 		}
 
@@ -2072,11 +2121,10 @@ static void dw_mci_work_routine_card(struct work_struct *work)
 					case STATE_DATA_ERROR:
 						if (mrq->data->error == -EINPROGRESS)
 							mrq->data->error = -ENOMEDIUM;
-						if (!mrq->stop)
-							break;
 						/* fall through */
 					case STATE_SENDING_STOP:
-						mrq->stop->error = -ENOMEDIUM;
+						if (!mrq->stop)
+							mrq->stop->error = -ENOMEDIUM;
 						break;
 					}
 
