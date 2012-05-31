@@ -36,6 +36,7 @@
 #include <sound/soc.h>
 
 #include <plat/omap-pm.h>
+#include "../../../arch/arm/mach-omap2/dvfs.h"
 
 #include "omap-abe-priv.h"
 
@@ -374,7 +375,7 @@ static int __devinit abe_engine_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_PM
 	abe->get_context_lost_count = omap_pm_get_dev_context_loss_count;
-	abe->device_scale = NULL;
+	abe->device_scale = omap_device_scale;
 #endif
 	abe->dev = &pdev->dev;
 	mutex_init(&abe->mutex);
