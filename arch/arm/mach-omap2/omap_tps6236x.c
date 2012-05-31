@@ -42,7 +42,7 @@
 /* I2C access parameters */
 #define I2C_TPS6236X_SLAVE_ADDR		0x60
 
-#define DEF_SET_REG(VSEL0, VSEL1)	(((VSEL1) << 1) | ((VSEL0) << 0) & 0x3)
+#define DEF_SET_REG(VSEL0, VSEL1)	(((VSEL1) << 1| (VSEL0) << 0) & 0x3)
 #define REG_TPS6236X_SET_0		0x00
 #define REG_TPS6236X_SET_1		0x01
 #define REG_TPS6236X_SET_2		0x02
