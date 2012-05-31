@@ -66,7 +66,6 @@
 #define OMAP5_RPROC_CMA_BASE_DSP	(0xa4800000)
 #define OMAP4_RPROC_CMA_BASE_DSP	(0xa8800000)
 
-
 #ifdef CONFIG_OMAP_REMOTEPROC_DSP
 static struct omap_rproc_timers_info dsp_timers[] = {
 	{ .id = 5 },
@@ -76,6 +75,7 @@ static struct omap_rproc_timers_info dsp_timers[] = {
 #ifdef CONFIG_OMAP_REMOTEPROC_IPU
 static struct omap_rproc_timers_info ipu_timers[] = {
 	{ .id = 3 },
+	{ .id = 4 },
 };
 
 static int
