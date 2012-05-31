@@ -437,8 +437,8 @@ static INLINE size_t base_jd_atom_size_ex(u32 syncset_count, u32 external_res_co
 {
 	LOCAL_ASSERT( 0 == syncset_count || 0 == external_res_count );
 
-	return syncset_count      ? offsetof(basep_jd_atom_ss, syncsets[syncset_count]) :
-	       external_res_count ? offsetof(basep_jd_atom_ext_res, resources[external_res_count]) :
+	return syncset_count      ? offsetof(basep_jd_atom_ss, syncsets[0]) + (sizeof(base_syncset) * syncset_count) :
+		   external_res_count ? offsetof(basep_jd_atom_ext_res, resources[0]) + (sizeof(base_external_resource) * external_res_count) :
 	                            sizeof(base_jd_atom);
 }
 

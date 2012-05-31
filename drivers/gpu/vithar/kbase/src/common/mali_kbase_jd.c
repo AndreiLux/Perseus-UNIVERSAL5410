@@ -210,9 +210,12 @@ void kbase_jd_post_external_resources(kbase_jd_atom * katom)
 	}
 #endif
 
+#if defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0)
+	/* Lock also used in debug mode just for lock order checking */
+	kbase_gpu_vm_lock(katom->kctx);
+#endif /* defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0) */
 #ifdef CONFIG_DMA_SHARED_BUFFER
 	res_no = katom->nr_extres;
-	kbase_gpu_vm_lock(katom->kctx);
 	while (res_no-- > 0)
 	{
 		base_external_resource * res;
@@ -230,8 +233,11 @@ void kbase_jd_post_external_resources(kbase_jd_atom * katom)
 			}
 		}
 	}
-	kbase_gpu_vm_unlock(katom->kctx);
 #endif /* CONFIG_DMA_SHARED_BUFFER */
+#if defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0)
+	/* Lock also used in debug mode just for lock order checking */
+	kbase_gpu_vm_unlock(katom->kctx);
+#endif /* defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0) */
 }
 
 static mali_error kbase_jd_pre_external_resources(kbase_jd_atom * katom)
@@ -270,10 +276,11 @@ static mali_error kbase_jd_pre_external_resources(kbase_jd_atom * katom)
 	}
 #endif /* CONFIG_KDS */
 
-#ifdef CONFIG_DMA_SHARED_BUFFER
+#if defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0)
 	/* need to keep the GPU VM locked while we set up UMM buffers */
+	/* Lock also used in debug mode just for lock order checking */
 	kbase_gpu_vm_lock(katom->kctx);
-#endif /* CONFIG_DMA_SHARED_BUFFER */
+#endif /* defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0) */
 
 	for (res_no = 0; res_no < katom->nr_extres; res_no++)
 	{
@@ -329,10 +336,11 @@ static mali_error kbase_jd_pre_external_resources(kbase_jd_atom * katom)
 		}
 	}
 	/* successfully parsed the extres array */
-#ifdef CONFIG_DMA_SHARED_BUFFER
+#if defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0)
 	/* drop the vm lock before we call into kds */
+	/* Lock also used in debug mode just for lock order checking */
 	kbase_gpu_vm_unlock(katom->kctx);
-#endif /* CONFIG_DMA_SHARED_BUFFER */
+#endif /* defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0) */
 
 #ifdef CONFIG_KDS
 	if (kds_res_count)
@@ -362,10 +370,11 @@ static mali_error kbase_jd_pre_external_resources(kbase_jd_atom * katom)
 #ifdef CONFIG_KDS
 failed_kds_setup:
 #endif /* CONFIG_KDS */
-#ifdef CONFIG_DMA_SHARED_BUFFER
+#if defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0)
 	/* lock before we unmap */
+	/* Lock also used in debug mode just for lock order checking */
 	kbase_gpu_vm_lock(katom->kctx);
-#endif /* CONFIG_DMA_SHARED_BUFFER */
+#endif /* defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0) */
 
 failed_loop:
 #ifdef CONFIG_DMA_SHARED_BUFFER
@@ -386,8 +395,11 @@ failed_loop:
 			}
 		}
 	}
-	kbase_gpu_vm_unlock(katom->kctx);
 #endif /* CONFIG_DMA_SHARED_BUFFER */
+#if defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0)
+	/* Lock also used in debug mode just for lock order checking */
+	kbase_gpu_vm_unlock(katom->kctx);
+#endif /* defined(CONFIG_DMA_SHARED_BUFFER) || (MALI_DEBUG != 0) */
 
 #ifdef CONFIG_KDS
 early_err_out:
@@ -543,7 +555,7 @@ STATIC INLINE kbase_jd_atom *jd_validate_atom(struct kbase_context *kctx,
 
 
 	/* Initialize the jobscheduler policy for this atom. Function will
-	 * return error if the atom is malformed. Then inmediatelly terminate
+	 * return error if the atom is malformed. Then immediately terminate
 	 * the policy to free allocated resources and return error.
 	 *
 	 * Soft-jobs never enter the job scheduler so we don't initialise the policy for these
@@ -551,8 +563,12 @@ STATIC INLINE kbase_jd_atom *jd_validate_atom(struct kbase_context *kctx,
 	if ((katom->core_req & BASE_JD_REQ_SOFT_JOB) == 0)
 	{
 		kbasep_js_policy *js_policy = &(kctx->kbdev->js_data.policy);
-		if (MALI_ERROR_NONE != kbasep_js_policy_init_job( js_policy, katom ))
+		if (MALI_ERROR_NONE != kbasep_js_policy_init_job( js_policy, kctx, katom ))
 		{
+			if ( katom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES )
+			{
+				kbase_jd_post_external_resources(katom);
+			}
 			osk_free( katom );
 			return NULL;
 		}
@@ -572,7 +588,8 @@ static void kbase_jd_cancel_bag(kbase_context *kctx, kbase_jd_bag *bag,
 STATIC void kbase_jd_katom_dtor(kbase_event *event)
 {
 	kbase_jd_atom *katom = CONTAINER_OF(event, kbase_jd_atom, event);
-	kbasep_js_policy *js_policy = &(katom->kctx->kbdev->js_data.policy);
+	kbase_context *kctx = katom->kctx;
+	kbasep_js_policy *js_policy = &(kctx->kbdev->js_data.policy);
 
 	/* Soft-jobs never enter the job scheduler (see jd_validate_atom) therefore we
 	 * do not need to terminate any of these jobs in the scheduler. We could get a
@@ -580,7 +597,7 @@ STATIC void kbase_jd_katom_dtor(kbase_event *event)
 	 * a soft-job has already been validated and added to the event list */
 	if ((katom->core_req & BASE_JD_REQ_SOFT_JOB) == 0)
 	{
-		kbasep_js_policy_term_job( js_policy, katom );
+		kbasep_js_policy_term_job( js_policy, kctx, katom );
 	}
 
 	if ( katom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES )
@@ -615,9 +632,6 @@ STATIC mali_error kbase_jd_validate_bag(kbase_context *kctx,
 	jctx =  &kctx->jctx;
 	js_kctx_info = &kctx->jctx.sched_info;
 
-	/* jsctx_mutex needed for updating Job Scheduler state when receiving new atoms */
-	osk_mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
-
 	atom = jd_get_first_atom(jctx, bag);
 	if (!atom)
 	{
@@ -645,7 +659,6 @@ STATIC mali_error kbase_jd_validate_bag(kbase_context *kctx,
 	}
 
 out:
-	osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 	return err;
 }
 KBASE_EXPORT_TEST_API(kbase_jd_validate_bag)

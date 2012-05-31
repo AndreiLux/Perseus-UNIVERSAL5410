@@ -548,6 +548,12 @@ KBASE_EXPORT_TEST_API(kbase_mmu_insert_pages)
  * pages. There is a potential DoS here, as we'll leak memory by
  * having PTEs that are potentially unused.  Will require physical
  * page accounting, so MMU pages are part of the process allocation.
+ *
+ * IMPORTANT: This uses kbasep_js_runpool_release_ctx() when the context is
+ * currently scheduled into the runpool, and so potentially uses a lot of locks.
+ * These locks must be taken in the correct order with respect to others
+ * already held by the caller. Refer to kbasep_js_runpool_release_ctx() for more
+ * information.
  */
  mali_error kbase_mmu_teardown_pages(struct kbase_context *kctx, u64 vpfn, u32 nr)
 {

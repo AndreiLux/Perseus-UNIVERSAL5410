@@ -490,7 +490,7 @@ void kbasep_trace_dump_msg( kbase_trace *trace_msg )
 
 	/* Initial part of message */
 	written += MAX( osk_snprintf(buffer+written, MAX((int)OSK_DEBUG_MESSAGE_SIZE-written,0),
-								 "%d.%6d,%d,%d,%s,%p,%p,%.8llx,",
+								 "%d.%.6d,%d,%d,%s,%p,%p,%.8llx,",
 								 trace_msg->timestamp.tv_sec,
 								 trace_msg->timestamp.tv_usec,
 								 trace_msg->thread_id,

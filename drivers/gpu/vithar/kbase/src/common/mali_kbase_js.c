@@ -888,6 +888,10 @@ mali_bool kbasep_js_add_job( kbase_context *kctx, kbase_jd_atom *atom )
 	js_kctx_info = &kctx->jctx.sched_info;
 
 	osk_mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
+	/* Policy-specific initialization of atoms (which cannot fail). Anything that
+	 * could've failed must've been done at kbasep_jd_policy_init_job() time. */
+	kbasep_js_policy_register_job( js_policy, kctx, atom );
+
 	osk_mutex_lock( &js_devdata->runpool_mutex );
 	{
 		KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_ADD_JOB, kctx, atom->user_atom, atom->jc,
@@ -991,7 +995,7 @@ void kbasep_js_remove_job( kbase_context *kctx, kbase_jd_atom *atom )
 	osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
 
 	/* De-register the job from the system */
-	kbasep_js_policy_term_job( js_policy, atom );
+	kbasep_js_policy_deregister_job( js_policy, kctx, atom );
 
 	if ( attr_state_changed != MALI_FALSE )
 	{

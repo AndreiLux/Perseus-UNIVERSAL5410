@@ -624,21 +624,21 @@ STATIC void build_slot_lookups( kbase_device *kbdev, kbasep_js_policy_cfs *polic
 
 }
 
-STATIC mali_error cached_variant_idx_init( kbasep_js_policy_cfs *policy_info, kbase_context *kctx, kbase_jd_atom *atom )
+STATIC mali_error cached_variant_idx_init( const kbasep_js_policy_cfs *policy_info, const kbase_context *kctx, kbase_jd_atom *atom )
 {
 	kbasep_js_policy_cfs_job *job_info;
 	u32 i;
 	base_jd_core_req job_core_req;
 	u32 job_device_nr;
 	kbase_context_flags ctx_flags;
-	kbasep_js_kctx_info *js_kctx_info;
-	kbase_device *kbdev;
+	const kbasep_js_kctx_info *js_kctx_info;
+	const kbase_device *kbdev;
 
 	OSK_ASSERT( policy_info != NULL );
 	OSK_ASSERT( kctx != NULL );
 	OSK_ASSERT( atom != NULL );
 
-	kbdev = CONTAINER_OF(policy_info, kbase_device, js_data.policy.cfs);
+	kbdev = CONTAINER_OF(policy_info, const kbase_device, js_data.policy.cfs);
 	job_info = &atom->sched_info.cfs;
 	job_core_req = atom->core_req;
 	job_device_nr = atom->device_nr;
@@ -1425,54 +1425,76 @@ mali_bool kbasep_js_policy_should_remove_ctx( kbasep_js_policy *js_policy, kbase
  * Job Chain Management
  */
 
-mali_error kbasep_js_policy_init_job( kbasep_js_policy *js_policy, kbase_jd_atom *atom )
+mali_error kbasep_js_policy_init_job( const kbasep_js_policy *js_policy, const kbase_context *kctx, kbase_jd_atom *katom )
 {
-	kbasep_js_policy_cfs_ctx *ctx_info;
-	kbasep_js_policy_cfs *policy_info;
-	kbase_context *parent_ctx;
+	const kbasep_js_policy_cfs *policy_info;
 
 	OSK_ASSERT( js_policy != NULL );
-	OSK_ASSERT( atom != NULL );
-	parent_ctx = atom->kctx;
-	OSK_ASSERT( parent_ctx != NULL );
+	OSK_ASSERT( katom != NULL );
+	OSK_ASSERT( kctx != NULL );
 
 	policy_info = &js_policy->cfs;
-	ctx_info = &parent_ctx->jctx.sched_info.runpool.policy_ctx.cfs;
+
+	/* Determine the job's index into the job list head, will return error if the
+	 * atom is malformed and so is reported. */
+	return cached_variant_idx_init( policy_info, kctx, katom );
+}
+
+void kbasep_js_policy_term_job( const kbasep_js_policy *js_policy, const kbase_context *kctx, kbase_jd_atom *katom )
+{
+	kbasep_js_policy_cfs_job *job_info;
+	const kbasep_js_policy_cfs_ctx *ctx_info;
+
+	OSK_ASSERT( js_policy != NULL );
+	CSTD_UNUSED(js_policy);
+	OSK_ASSERT( katom != NULL );
+	OSK_ASSERT( kctx != NULL );
+
+	job_info = &katom->sched_info.cfs;
+	ctx_info = &kctx->jctx.sched_info.runpool.policy_ctx.cfs;
+
+	/* We need not do anything, so we just ASSERT that this job was correctly removed from the relevant lists */
+	OSK_ASSERT( OSK_DLIST_MEMBER_OF( &ctx_info->job_list_head[job_info->cached_variant_idx],
+	                                 katom,
+	                                 sched_info.cfs.list ) == MALI_FALSE );
+}
+
+void kbasep_js_policy_register_job( kbasep_js_policy *js_policy, kbase_context *kctx, kbase_jd_atom *katom )
+{
+	kbasep_js_policy_cfs_ctx *ctx_info;
+
+	OSK_ASSERT( js_policy != NULL );
+	OSK_ASSERT( katom != NULL );
+	OSK_ASSERT( kctx != NULL );
+
+	ctx_info = &kctx->jctx.sched_info.runpool.policy_ctx.cfs;
 
 	/* Adjust context priority to include the new job */
 	ctx_info->bag_total_nr_atoms++;
-	ctx_info->bag_total_priority += atom->nice_prio;
+	ctx_info->bag_total_priority += katom->nice_prio;
 
 	/* Get average priority and convert to NICE range -20..19 */
 	if(ctx_info->bag_total_nr_atoms)
 	{
 		ctx_info->bag_priority = (ctx_info->bag_total_priority / ctx_info->bag_total_nr_atoms) - 20;
 	}
-
-	/* Determine the job's index into the job list head, will return error if the
-	 * atom is malformed and so is reported. */
-	return cached_variant_idx_init( policy_info, parent_ctx, atom );
 }
 
-void kbasep_js_policy_term_job( kbasep_js_policy *js_policy, kbase_jd_atom *atom )
+void kbasep_js_policy_deregister_job( kbasep_js_policy *js_policy, kbase_context *kctx, kbase_jd_atom *katom )
 {
-	kbasep_js_policy_cfs_job *job_info;
 	kbasep_js_policy_cfs_ctx *ctx_info;
-	kbase_context *parent_ctx;
 
 	OSK_ASSERT( js_policy != NULL );
 	CSTD_UNUSED(js_policy);
-	OSK_ASSERT( atom != NULL );
-	parent_ctx = atom->kctx;
-	OSK_ASSERT( parent_ctx != NULL );
+	OSK_ASSERT( katom != NULL );
+	OSK_ASSERT( kctx != NULL );
 
-	job_info = &atom->sched_info.cfs;
-	ctx_info = &parent_ctx->jctx.sched_info.runpool.policy_ctx.cfs;
+	ctx_info = &kctx->jctx.sched_info.runpool.policy_ctx.cfs;
 
 	/* Adjust context priority to no longer include removed job */
 	OSK_ASSERT(ctx_info->bag_total_nr_atoms > 0);
 	ctx_info->bag_total_nr_atoms--;
-	ctx_info->bag_total_priority -= atom->nice_prio;
+	ctx_info->bag_total_priority -= katom->nice_prio;
 	OSK_ASSERT(ctx_info->bag_total_priority >= 0);
 
 	/* Get average priority and convert to NICE range -20..19 */
@@ -1480,12 +1502,8 @@ void kbasep_js_policy_term_job( kbasep_js_policy *js_policy, kbase_jd_atom *atom
 	{
 		ctx_info->bag_priority = (ctx_info->bag_total_priority / ctx_info->bag_total_nr_atoms) - 20;
 	}
-
-	/* In any case, we'll ASSERT that this job was correctly removed from the relevant lists */
-	OSK_ASSERT( OSK_DLIST_MEMBER_OF( &ctx_info->job_list_head[job_info->cached_variant_idx],
-	                                 atom,
-	                                 sched_info.cfs.list ) == MALI_FALSE );
 }
+KBASE_EXPORT_TEST_API(kbasep_js_policy_deregister_job)
 
 mali_bool kbasep_js_policy_dequeue_job( kbase_device *kbdev,
                                         int job_slot_idx,
