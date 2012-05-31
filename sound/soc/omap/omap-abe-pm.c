@@ -31,6 +31,13 @@
 
 #include "omap-abe-priv.h"
 //#include "abe/abe_main.h"
+#include "abe/abe_aess.h"
+
+void abe_dsp_pm_get(struct omap_abe *abe)
+{
+	pm_runtime_get_sync(abe->dev);
+	omap_aess_set_auto_gating(abe->aess);
+}
 
 int abe_mixer_enable_mono(struct omap_abe* abe, int id, int enable);
 int abe_mixer_set_equ_profile(struct omap_abe* abe,

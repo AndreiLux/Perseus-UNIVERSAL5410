@@ -80,7 +80,7 @@ irqreturn_t abe_irq_handler(int irq, void *dev_id)
 {
 	struct omap_abe *abe = dev_id;
 
-	pm_runtime_get_sync(abe->dev);
+	abe_dsp_pm_get(abe);
 	omap_aess_clear_irq(abe->aess);
 	omap_aess_irq_processing(abe->aess);
 	pm_runtime_put_sync_suspend(abe->dev);

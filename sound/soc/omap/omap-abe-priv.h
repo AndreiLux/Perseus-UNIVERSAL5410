@@ -323,6 +323,7 @@ struct omap_abe {
 /* External API for client component drivers */
 
 /* Power Management */
+extern void abe_dsp_pm_get(struct omap_abe *abe);
 void omap_abe_pm_shutdown(struct snd_soc_platform *platform);
 void omap_abe_pm_get(struct snd_soc_platform *platform);
 void omap_abe_pm_put(struct snd_soc_platform *platform);
