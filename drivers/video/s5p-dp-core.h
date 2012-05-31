@@ -13,6 +13,8 @@
 #ifndef _S5P_DP_CORE_H
 #define _S5P_DP_CORE_H
 
+#include <linux/lcd.h>
+
 struct link_train {
 	int eq_loop;
 	int cr_loop[4];
@@ -31,10 +33,13 @@ struct s5p_dp_device {
 	unsigned int		irq;
 	void __iomem		*reg_base;
 	int 			enabled;
+	bool			user_disabled;
 	struct mutex		lock;
 
 	struct video_info	*video_info;
 	struct link_train	link_train;
+
+	struct lcd_device	*lcd;
 };
 
 /* s5p_dp_reg.c */

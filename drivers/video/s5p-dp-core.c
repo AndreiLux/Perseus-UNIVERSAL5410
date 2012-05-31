@@ -19,6 +19,7 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/pm_runtime.h>
+#include <linux/lcd.h>
 
 #include <video/s5p-dp.h>
 
@@ -893,6 +894,22 @@ out:
 	mutex_unlock(&dp->lock);
 }
 
+static int s5p_dp_set_power(struct lcd_device *lcd, int power)
+{
+	struct s5p_dp_device *dp = lcd_get_data(lcd);
+
+	if (power == FB_BLANK_UNBLANK)
+		s5p_dp_enable(dp);
+	else
+		s5p_dp_disable(dp);
+
+	return 0;
+}
+
+struct lcd_ops s5p_dp_lcd_ops = {
+	.set_power = s5p_dp_set_power,
+};
+
 static int __devinit s5p_dp_probe(struct platform_device *pdev)
 {
 	int ret;
@@ -967,12 +984,20 @@ static int __devinit s5p_dp_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, dp);
 
+	dp->lcd = lcd_device_register("s5p_dp", &pdev->dev, dp, &s5p_dp_lcd_ops);
+	if (IS_ERR(dp->lcd)) {
+		ret = PTR_ERR(dp->lcd);
+		goto err_irq;
+	}
+
 	ret = s5p_dp_enable(dp);
 	if (ret)
-		goto err_irq;
+		goto err_fb;
 
 	return 0;
 
+err_fb:
+	lcd_device_unregister(dp->lcd);
 err_irq:
 	free_irq(dp->irq, dp);
 err_ioremap:
@@ -993,6 +1018,8 @@ static int __devexit s5p_dp_remove(struct platform_device *pdev)
 	struct s5p_dp_device *dp = platform_get_drvdata(pdev);
 
 	free_irq(dp->irq, dp);
+
+	lcd_device_unregister(dp->lcd);
 
 	s5p_dp_disable(dp);
 
