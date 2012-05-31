@@ -185,6 +185,7 @@
 					regulator-name = "wwan_r";
 					regulator-min-microvolt = <3300000>;
 					regulator-max-microvolt = <3300000>;
+					regulator-always-on;
 				};
 				VFET4 {
 					tps65090-control-reg-offset = <18>;
