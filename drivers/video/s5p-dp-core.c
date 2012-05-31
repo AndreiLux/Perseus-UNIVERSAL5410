@@ -20,10 +20,6 @@
 #include <linux/delay.h>
 #include <linux/pm_runtime.h>
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-#include <linux/earlysuspend.h>
-#endif
-
 #include <video/s5p-dp.h>
 
 #include <plat/cpu.h>
@@ -808,78 +804,6 @@ static irqreturn_t s5p_dp_irq_handler(int irq, void *arg)
 	return IRQ_HANDLED;
 }
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void s5p_dp_early_suspend(struct early_suspend *handler)
-{
-	struct platform_device *pdev;
-	struct s5p_dp_platdata *pdata;
-	struct s5p_dp_device *dp;
-
-	dp = container_of(handler, struct s5p_dp_device, early_suspend);
-	pdev = to_platform_device(dp->dev);
-	pdata = pdev->dev.platform_data;
-
-	if (pdata->backlight_off)
-		pdata->backlight_off();
-
-	if (pdata && pdata->phy_exit)
-		pdata->phy_exit();
-
-	clk_disable(dp->clock);
-	pm_runtime_put_sync(dp->dev);
-
-	return;
-}
-
-static void s5p_dp_late_resume(struct early_suspend *handler)
-{
-	struct platform_device *pdev;
-	struct s5p_dp_platdata *pdata;
-	struct s5p_dp_device *dp;
-
-	dp = container_of(handler, struct s5p_dp_device, early_suspend);
-	pdev = to_platform_device(dp->dev);
-	pdata = pdev->dev.platform_data;
-
-	if (pdata && pdata->phy_init)
-		pdata->phy_init();
-
-	pm_runtime_get_sync(dp->dev);
-	clk_enable(dp->clock);
-
-	s5p_dp_init_dp(dp);
-
-	if (!soc_is_exynos5250()) {
-		s5p_dp_detect_hpd(dp);
-		s5p_dp_handle_edid(dp);
-	}
-
-	s5p_dp_set_link_train(dp, dp->video_info->lane_count,
-				dp->video_info->link_rate);
-
-	if (soc_is_exynos5250()) {
-		s5p_dp_enable_scramble(dp, 1);
-		s5p_dp_enable_rx_to_enhanced_mode(dp, 1);
-		s5p_dp_enable_enhanced_mode(dp, 1);
-	} else {
-		s5p_dp_enable_scramble(dp, 0);
-		s5p_dp_enable_rx_to_enhanced_mode(dp, 0);
-		s5p_dp_enable_enhanced_mode(dp, 0);
-	}
-
-	s5p_dp_set_lane_count(dp, dp->video_info->lane_count);
-	s5p_dp_set_link_bandwidth(dp, dp->video_info->link_rate);
-
-	s5p_dp_init_video(dp);
-	s5p_dp_config_video(dp, dp->video_info);
-
-	if (pdata->backlight_on)
-		pdata->backlight_on();
-
-	return;
-}
-#endif
-
 static int __devinit s5p_dp_probe(struct platform_device *pdev)
 {
 	int ret;
@@ -1000,12 +924,6 @@ static int __devinit s5p_dp_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, dp);
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	dp->early_suspend.suspend = s5p_dp_early_suspend;
-	dp->early_suspend.resume = s5p_dp_late_resume;
-	dp->early_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB - 1;
-	register_early_suspend(&dp->early_suspend);
-#endif
 	return 0;
 
 err_irq:
@@ -1026,10 +944,6 @@ static int __devexit s5p_dp_remove(struct platform_device *pdev)
 {
 	struct s5p_dp_platdata *pdata = pdev->dev.platform_data;
 	struct s5p_dp_device *dp = platform_get_drvdata(pdev);
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	unregister_early_suspend(&dp->early_suspend);
-#endif
 
 	if (pdata->backlight_off)
 		pdata->backlight_off();
@@ -1053,102 +967,12 @@ static int __devexit s5p_dp_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM
-#ifndef CONFIG_HAS_EARLYSUSPEND
-static int s5p_dp_suspend(struct device *dev)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct s5p_dp_platdata *pdata = pdev->dev.platform_data;
-	struct s5p_dp_device *dp = platform_get_drvdata(pdev);
-
-	if (pdata->backlight_off)
-		pdata->backlight_off();
-
-	if (pdata && pdata->phy_exit)
-		pdata->phy_exit();
-
-	clk_disable(dp->clock);
-	pm_runtime_put_sync(dp->dev);
-
-	return 0;
-}
-
-static int s5p_dp_resume(struct device *dev)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct s5p_dp_platdata *pdata = pdev->dev.platform_data;
-	struct s5p_dp_device *dp = platform_get_drvdata(pdev);
-
-	if (pdata && pdata->phy_init)
-		pdata->phy_init();
-
-	pm_runtime_get_sync(dp->dev);
-	clk_enable(dp->clock);
-
-	s5p_dp_init_dp(dp);
-
-	if (!soc_is_exynos5250()) {
-		s5p_dp_detect_hpd(dp);
-		s5p_dp_handle_edid(dp);
-	}
-
-	s5p_dp_set_link_train(dp, dp->video_info->lane_count,
-				dp->video_info->link_rate);
-
-	if (soc_is_exynos5250()) {
-		s5p_dp_enable_scramble(dp, 1);
-		s5p_dp_enable_rx_to_enhanced_mode(dp, 1);
-		s5p_dp_enable_enhanced_mode(dp, 1);
-	} else {
-		s5p_dp_enable_scramble(dp, 0);
-		s5p_dp_enable_rx_to_enhanced_mode(dp, 0);
-		s5p_dp_enable_enhanced_mode(dp, 0);
-	}
-
-	s5p_dp_set_lane_count(dp, dp->video_info->lane_count);
-	s5p_dp_set_link_bandwidth(dp, dp->video_info->link_rate);
-
-	s5p_dp_init_video(dp);
-	s5p_dp_config_video(dp, dp->video_info);
-
-	if (pdata->backlight_on)
-		pdata->backlight_on();
-
-	return 0;
-}
-#endif
-static int s5p_dp_runtime_suspend(struct device *dev)
-{
-	return 0;
-}
-
-static int s5p_dp_runtime_resume(struct device *dev)
-{
-	return 0;
-}
-#else
-#define s5p_dp_suspend NULL
-#define s5p_dp_resume NULL
-#define s5p_dp_runtime_suspend NULL
-#define s5p_dp_runtime_resume NULL
-#endif
-
-static const struct dev_pm_ops s5p_dp_pm_ops = {
-#ifndef CONFIG_HAS_EARLYSUSPEND
-	.suspend		= s5p_dp_suspend,
-	.resume			= s5p_dp_resume,
-#endif
-	.runtime_suspend	= s5p_dp_runtime_suspend,
-	.runtime_resume		= s5p_dp_runtime_resume,
-};
-
 static struct platform_driver s5p_dp_driver = {
 	.probe		= s5p_dp_probe,
 	.remove		= __devexit_p(s5p_dp_remove),
 	.driver		= {
 		.name	= "s5p-dp",
 		.owner	= THIS_MODULE,
-		.pm	= &s5p_dp_pm_ops,
 	},
 };
 

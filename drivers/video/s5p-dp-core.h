@@ -13,10 +13,6 @@
 #ifndef _S5P_DP_CORE_H
 #define _S5P_DP_CORE_H
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-#include <linux/earlysuspend.h>
-#endif
-
 struct link_train {
 	int eq_loop;
 	int cr_loop[4];
@@ -37,10 +33,6 @@ struct s5p_dp_device {
 
 	struct video_info	*video_info;
 	struct link_train	link_train;
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	struct early_suspend	early_suspend;
-#endif
 };
 
 /* s5p_dp_reg.c */
