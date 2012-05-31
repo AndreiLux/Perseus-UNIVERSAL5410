@@ -198,6 +198,7 @@
 					regulator-name = "camout";
 					regulator-min-microvolt = <3300000>;
 					regulator-max-microvolt = <3300000>;
+					regulator-always-on;
 				};
 				VFET6 {
 					tps65090-control-reg-offset = <20>;
