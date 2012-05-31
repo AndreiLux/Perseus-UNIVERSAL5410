@@ -325,4 +325,12 @@
 	xhci {
 		samsung,vbus-gpio = <&gpx2 7 1 3 3>;
 	};
+
+	fixed-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "hsichub-reset-l";
+		gpio = <&gpe1 0 1 0 0>;
+		enable-active-high;
+		regulator-always-on;
+	};
 };
