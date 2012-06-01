@@ -28,6 +28,10 @@
 #include "s5p_mfc_enc.h"
 #include "s5p_mfc_intr.h"
 #include "s5p_mfc_pm.h"
+#ifdef CONFIG_EXYNOS_IOMMU
+#include <mach/sysmmu.h>
+#include <linux/of_platform.h>
+#endif
 
 #define S5P_MFC_NAME		"s5p-mfc"
 #define S5P_MFC_DEC_NAME	"s5p-mfc-dec"
@@ -937,12 +941,42 @@ static const struct v4l2_file_operations s5p_mfc_fops = {
 	.mmap = s5p_mfc_mmap,
 };
 
-static int match_child(struct device *dev, void *data)
+#ifdef CONFIG_EXYNOS_IOMMU
+static int iommu_init(struct platform_device *pdev,
+				struct device *mfc_l,
+				struct device *mfc_r)
 {
-	if (!dev_name(dev))
-		return 0;
-	return !strcmp(dev_name(dev), (char *)data);
+	struct platform_device *pds;
+	struct dma_iommu_mapping *mapping;
+
+	pds = find_sysmmu_dt(pdev, "sysmmu_l");
+	if (pds==NULL) {
+		printk(KERN_ERR "no sysmmu_l found\n");
+		return -1;
+	}
+	platform_set_sysmmu(&pds->dev, mfc_l);
+	mapping = s5p_create_iommu_mapping(mfc_l, 0x20000000,
+						SZ_128M, 4, NULL);
+	if (mapping == NULL) {
+		printk(KERN_ERR "IOMMU mapping failed\n");
+		return -1;
+	}
+
+	pds = find_sysmmu_dt(pdev, "sysmmu_r");
+	if (pds==NULL) {
+		printk(KERN_ERR "no sysmmu_r found\n");
+		return -1;
+	}
+	platform_set_sysmmu(&pds->dev, mfc_r);
+	if (!s5p_create_iommu_mapping(mfc_r, 0x20000000,
+					SZ_128M, 4, mapping)) {
+		printk(KERN_ERR "IOMMU mapping failed\n");
+		return -1;
+	}
+
+	return 0;
 }
+#endif
 
 /* MFC probe function */
 static int s5p_mfc_probe(struct platform_device *pdev)
@@ -1009,21 +1043,16 @@ static int s5p_mfc_probe(struct platform_device *pdev)
 		goto err_req_irq;
 	}
 
-	dev->mem_dev_l = device_find_child(&dev->plat_dev->dev, "s5p-mfc-r",
-					   match_child);
-	if (!dev->mem_dev_l) {
-		mfc_err("Mem child (L) device get failed\n");
-		ret = -ENODEV;
-		goto err_find_child;
+	dev->mem_dev_l = kzalloc(sizeof *dev, GFP_KERNEL);
+	dev->mem_dev_r = kzalloc(sizeof *dev, GFP_KERNEL);
+#ifdef CONFIG_EXYNOS_IOMMU
+	dev->mem_dev_l->init_name = "mfc_l";
+	dev->mem_dev_r->init_name = "mfc_r";
+	if (iommu_init(pdev, dev->mem_dev_r, dev->mem_dev_l)) {
+		v4l2_err(&dev->v4l2_dev, "failed to initialize IOMMU\n");
+		goto err_iommu_init;
 	}
-	dev->mem_dev_r = device_find_child(&dev->plat_dev->dev, "s5p-mfc-l",
-					   match_child);
-	if (!dev->mem_dev_r) {
-		mfc_err("Mem child (R) device get failed\n");
-		ret = -ENODEV;
-		goto err_find_child;
-	}
-
+#endif
 	dev->alloc_ctx[0] = vb2_dma_contig_init_ctx(dev->mem_dev_l);
 	if (IS_ERR_OR_NULL(dev->alloc_ctx[0])) {
 		ret = PTR_ERR(dev->alloc_ctx[0]);
@@ -1119,7 +1148,7 @@ err_v4l2_dev_reg:
 err_mem_init_ctx_1:
 	vb2_dma_contig_cleanup_ctx(dev->alloc_ctx[0]);
 err_mem_init_ctx_0:
-err_find_child:
+err_iommu_init:
 	free_irq(dev->irq, dev);
 err_req_irq:
 err_get_res:
