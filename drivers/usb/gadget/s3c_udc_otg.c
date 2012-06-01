@@ -1161,6 +1161,28 @@ static int s3c_udc_probe(struct platform_device *pdev)
 
 	udc_reinit(dev);
 
+	dev->clk = clk_get(&pdev->dev, "usbotg");
+	if (IS_ERR(dev->clk)) {
+		dev_err(&pdev->dev, "Failed to get clock\n");
+		retval = -ENXIO;
+		goto err_irq;
+	}
+	clk_enable(dev->clk);
+
+	dev->usb_ctrl = dma_alloc_coherent(&pdev->dev,
+			sizeof(struct usb_ctrlrequest)*BACK2BACK_SIZE,
+			&dev->usb_ctrl_dma, GFP_KERNEL);
+
+	if (!dev->usb_ctrl) {
+		DEBUG(KERN_ERR "%s: can't get usb_ctrl dma memory\n",
+			driver_name);
+		retval = -ENOMEM;
+		goto err_clk;
+	}
+
+	/* Mask any interrupt left unmasked by the bootloader */
+	__raw_writel(0, dev->regs + S3C_UDC_OTG_GINTMSK);
+
 	/* irq setup after old hardware state is cleaned up */
 	irq = platform_get_irq(pdev, 0);
 	retval =
@@ -1173,25 +1195,9 @@ static int s3c_udc_probe(struct platform_device *pdev)
 		goto err_regs;
 	}
 	dev->irq = irq;
+
 	disable_irq(dev->irq);
-
-	dev->clk = clk_get(&pdev->dev, "usbotg");
-
-	if (IS_ERR(dev->clk)) {
-		dev_err(&pdev->dev, "Failed to get clock\n");
-		goto err_irq;
-	}
-
-	dev->usb_ctrl = dma_alloc_coherent(&pdev->dev,
-			sizeof(struct usb_ctrlrequest)*BACK2BACK_SIZE,
-			&dev->usb_ctrl_dma, GFP_KERNEL);
-
-	if (!dev->usb_ctrl) {
-		DEBUG(KERN_ERR "%s: can't get usb_ctrl dma memory\n",
-			driver_name);
-		retval = -ENOMEM;
-		goto err_clk;
-	}
+	clk_disable(dev->clk);
 
 	retval = device_register(&dev->gadget.dev);
 	if (retval) {
