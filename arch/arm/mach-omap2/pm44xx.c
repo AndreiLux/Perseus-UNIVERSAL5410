@@ -115,6 +115,22 @@ static int __init pwrdms_setup(struct powerdomain *pwrdm, void *unused)
 	return omap_set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
 }
 
+void omap4_pm_oswr_mode_enable(int enable)
+{
+	u32 next_logic_state;
+	struct power_state *pwrst;
+
+	if (enable)
+		next_logic_state = PWRDM_POWER_OFF;
+	else
+		next_logic_state = PWRDM_POWER_RET;
+
+	list_for_each_entry(pwrst, &pwrst_list, node) {
+		pwrst->next_logic_state = next_logic_state;
+		pwrdm_set_logic_retst(pwrst->pwrdm, pwrst->next_logic_state);
+	}
+}
+
 /**
  * omap_default_idle - OMAP4 default ilde routine.'
  *
