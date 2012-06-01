@@ -616,6 +616,9 @@ struct kbase_device {
 
 	/* Platform specific private data to be accessed by mali_kbase_config_xxx.c only */
 	void                    *platform_context;
+#ifdef CONFIG_VITHAR_RT_PM
+	struct delayed_work runtime_pm_workqueue;
+#endif
 };
 
 struct kbase_context

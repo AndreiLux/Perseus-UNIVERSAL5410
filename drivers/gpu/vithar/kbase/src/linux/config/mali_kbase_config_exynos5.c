@@ -10,8 +10,6 @@
  * 
  */
 
-
-
 #include <linux/ioport.h>
 #include <linux/clk.h>
 #include <kbase/src/common/mali_kbase.h>
@@ -20,6 +18,11 @@
 #include <kbase/src/platform/mali_kbase_runtime_pm.h>
 #include <ump/ump_common.h>
 #include <mach/map.h>
+#include <plat/devs.h>
+#include <plat/pd.h>
+#include <linux/pm_runtime.h>
+#include <kbase/src/platform/mali_kbase_platform.h>
+#include <kbase/src/platform/mali_kbase_runtime_pm.h>
 
 #define HZ_IN_MHZ                           (1000000)
 
@@ -47,13 +50,48 @@ int get_cpu_clock_speed(u32* cpu_clock)
 	return 0;
 }
 
+/**
+ *  * Exynos5 hardware specific initialization
+ *   */
+mali_bool kbase_platform_exynos5_init(kbase_device *kbdev)
+{
+	if(MALI_ERROR_NONE == kbase_platform_init(kbdev))
+	{
+#ifdef CONFIG_VITHAR_DEBUG_SYS
+		if(kbase_platform_create_sysfs_file(kbdev->osdev.dev))
+		{
+			return MALI_TRUE;
+		}
+#endif /* CONFIG_VITHAR_DEBUG_SYS */
+		return MALI_TRUE;
+	}
+
+	return MALI_FALSE;
+}
+
+/**
+ *  * Exynos5 hardware specific termination
+ *   */
+void kbase_platform_exynos5_term(kbase_device *kbdev)
+{
+#ifdef CONFIG_VITHAR_DEBUG_SYS
+	kbase_platform_remove_sysfs_file(kbdev->osdev.dev);
+#endif /* CONFIG_VITHAR_DEBUG_SYS */
+	kbase_platform_term(kbdev);
+}
+kbase_platform_funcs_conf platform_funcs =
+{
+	.platform_init_func = &kbase_platform_exynos5_init,
+	.platform_term_func = &kbase_platform_exynos5_term,
+};
+
 #ifdef CONFIG_VITHAR_RT_PM
 static int pm_callback_power_on(kbase_device *kbdev)
 {
 	/* Nothing is needed on VExpress, but we may have destroyed GPU state (if the below HARD_RESET code is active) */
 	struct kbase_os_device *osdev = &kbdev->osdev;
 	kbase_device_runtime_get_sync(osdev->dev);
-	return 1;
+	return 0;
 }
 
 static void pm_callback_power_off(kbase_device *kbdev)
@@ -66,9 +104,21 @@ static void pm_callback_power_off(kbase_device *kbdev)
 static kbase_pm_callback_conf pm_callbacks =
 {
 	.power_on_callback = pm_callback_power_on,
-	.power_off_callback = pm_callback_power_off
+	.power_off_callback = pm_callback_power_off,
+#ifdef CONFIG_PM_RUNTIME
+	.power_runtime_init_callback = kbase_device_runtime_init,
+	.power_runtime_term_callback = kbase_device_runtime_disable,
+	.power_runtime_on_callback = pm_callback_power_on,
+	.power_runtime_off_callback = pm_callback_power_off,
+#else /* CONFIG_PM_RUNTIME */
+	.power_runtime_init_callback = NULL,
+	.power_runtime_term_callback = NULL,
+	.power_runtime_on_callback = NULL,
+	.power_runtime_off_callback = NULL,
+#endif /* CONFIG_PM_RUNTIME */
 };
 #endif
+
 
 static kbase_attribute config_attributes[] = {
 	{
@@ -91,6 +141,10 @@ static kbase_attribute config_attributes[] = {
 		(uintptr_t)&pm_callbacks
 	},
 #endif
+	{
+		KBASE_CONFIG_ATTR_PLATFORM_FUNCS,
+		(uintptr_t)&platform_funcs
+	},
 	{
 		KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX,
 		533000

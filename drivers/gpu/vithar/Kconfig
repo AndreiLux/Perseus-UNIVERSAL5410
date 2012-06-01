@@ -32,3 +32,10 @@ config VITHAR_ENABLE_TRACE
        help
          Enables tracing in the kbase.  Trace log available through
 	 the "mali_trace" debugfs file
+
+config VITHAR_DEBUG_SYS
+       bool "Enable sysfs for vithar"
+       depends on VITHAR
+       default n
+       help
+         Enables sysfs for vithar device. Set/Monitor Vithar Device

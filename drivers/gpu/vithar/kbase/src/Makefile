@@ -47,6 +47,10 @@ SRC=\
 	linux/mali_kbase_core_linux.c \
 	linux/mali_kbase_config_linux.c
 
+obj-$(CONFIG_VITHAR) += $(KBASE_PATH)/platform/mali_kbase_platform.o
+obj-$(CONFIG_VITHAR_RT_PM) += $(KBASE_PATH)/platform/mali_kbase_runtime_pm.o
+obj-$(CONFIG_VITHAR) += $(KBASE_PATH)/platform/mali_kbase_dvfs.o
+
 RELATIVE_ROOT=../..
 ROOT=$(KBUILD_EXTMOD)/$(RELATIVE_ROOT)
 MALI_KBASE_SRC_LINUX_PATH ?= $(KBUILD_EXTMOD)/linux
