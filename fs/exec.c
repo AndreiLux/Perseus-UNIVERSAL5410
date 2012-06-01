@@ -56,6 +56,8 @@
 #include <linux/oom.h>
 #include <linux/compat.h>
 
+#include <trace/events/fs.h>
+
 #include <asm/uaccess.h>
 #include <asm/mmu_context.h>
 #include <asm/tlb.h>
@@ -784,6 +786,8 @@ struct file *open_exec(const char *name)
 		goto exit;
 
 	fsnotify_open(file);
+
+	trace_open_exec(name);
 
 	err = deny_write_access(file);
 	if (err)
@@ -2021,7 +2025,7 @@ static void wait_for_dump_helpers(struct file *file)
 	pipe->readers++;
 	pipe->writers--;
 
-	while ((pipe->readers > 1) && (!signal_pending(current))) {
+	while ((pipe->readers > 1) && (!fatal_signal_pending(current))) {
 		wake_up_interruptible_sync(&pipe->wait);
 		kill_fasync(&pipe->fasync_readers, SIGIO, POLL_IN);
 		pipe_wait(pipe);

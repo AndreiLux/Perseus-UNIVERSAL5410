@@ -704,6 +704,7 @@ struct rtl8169_private {
 	u16 cp_cmd;
 
 	u16 event_slow;
+	bool runtime_suspended;
 
 	struct mdio_ops {
 		void (*write)(void __iomem *, int, int);
@@ -755,6 +756,10 @@ struct rtl8169_private {
 	} *rtl_fw;
 #define RTL_FIRMWARE_UNKNOWN	ERR_PTR(-EAGAIN)
 };
+
+static int aspm_disable = 0;
+module_param(aspm_disable, bool, 0444);
+MODULE_PARM_DESC(aspm_disable, "Disable ASPM completely.");
 
 MODULE_AUTHOR("Realtek and the Linux r8169 crew <netdev@vger.kernel.org>");
 MODULE_DESCRIPTION("RealTek RTL-8169 Gigabit Ethernet driver");
@@ -5720,6 +5725,7 @@ static int rtl_open(struct net_device *dev)
 	rtl_unlock_work(tp);
 
 	tp->saved_wolopts = 0;
+	tp->runtime_suspended = false;
 	pm_runtime_put_noidle(&pdev->dev);
 
 	rtl8169_check_link_status(dev, tp, ioaddr);
@@ -5848,6 +5854,7 @@ static int rtl8169_runtime_suspend(struct device *device)
 	rtl_lock_work(tp);
 	tp->saved_wolopts = __rtl8169_get_wol(tp);
 	__rtl8169_set_wol(tp, WAKE_ANY);
+	tp->runtime_suspended = true;
 	rtl_unlock_work(tp);
 
 	rtl8169_net_suspend(dev);
@@ -5867,6 +5874,7 @@ static int rtl8169_runtime_resume(struct device *device)
 	rtl_lock_work(tp);
 	__rtl8169_set_wol(tp, tp->saved_wolopts);
 	tp->saved_wolopts = 0;
+	tp->runtime_suspended = false;
 	rtl_unlock_work(tp);
 
 	rtl8169_init_phy(dev, tp);
@@ -5882,6 +5890,7 @@ static int rtl8169_runtime_idle(struct device *device)
 	struct net_device *dev = pci_get_drvdata(pdev);
 	struct rtl8169_private *tp = netdev_priv(dev);
 
+	__rtl8169_check_link_status(dev, tp, tp->mmio_addr, true);
 	return tp->TxDescArray ? -EBUSY : 0;
 }
 
@@ -5933,12 +5942,20 @@ static void rtl_shutdown(struct pci_dev *pdev)
 
 	pm_runtime_get_sync(d);
 
+	/* Get the device back to D0 state if it was runtime suspended. */
+	if (tp->runtime_suspended)
+		pci_set_power_state(pdev, PCI_D0);
+
 	rtl8169_net_suspend(dev);
 
 	/* Restore original MAC address */
 	rtl_rar_set(tp, dev->perm_addr);
 
 	rtl8169_hw_reset(tp);
+
+	/* Restore WOL flags if they were messed around with. */
+	if (tp->saved_wolopts)
+		__rtl8169_set_wol(tp, tp->saved_wolopts);
 
 	if (system_state == SYSTEM_POWER_OFF) {
 		if (__rtl8169_get_wol(tp) & WAKE_ANY) {
@@ -6052,8 +6069,7 @@ static unsigned rtl_try_msi(struct rtl8169_private *tp,
 			msi = RTL_FEATURE_MSI;
 		}
 	}
-	if (tp->mac_version <= RTL_GIGA_MAC_VER_06)
-		RTL_W8(Config2, cfg2);
+	RTL_W8(Config2, cfg2);
 	return msi;
 }
 
@@ -6097,8 +6113,12 @@ rtl_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	/* disable ASPM completely as that cause random device stop working
 	 * problems as well as full system hangs for some PCIe devices users */
-	pci_disable_link_state(pdev, PCIE_LINK_STATE_L0S | PCIE_LINK_STATE_L1 |
-				     PCIE_LINK_STATE_CLKPM);
+	if (aspm_disable) {
+		pci_disable_link_state(pdev, PCIE_LINK_STATE_L0S |
+				       PCIE_LINK_STATE_L1 |
+				       PCIE_LINK_STATE_CLKPM);
+		dprintk("ASPM disabled");
+	}
 
 	/* enable device (incl. PCI PM wakeup and hotplug setup) */
 	rc = pci_enable_device(pdev);
@@ -6190,11 +6210,8 @@ rtl_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	RTL_W8(Cfg9346, Cfg9346_Unlock);
 	RTL_W8(Config1, RTL_R8(Config1) | PMEnable);
-	RTL_W8(Config5, RTL_R8(Config5) & PMEStatus);
-	if ((RTL_R8(Config3) & (LinkUp | MagicPacket)) != 0)
-		tp->features |= RTL_FEATURE_WOL;
-	if ((RTL_R8(Config5) & (UWF | BWF | MWF)) != 0)
-		tp->features |= RTL_FEATURE_WOL;
+	RTL_W8(Config3, 0);
+	RTL_W8(Config5, PMEStatus);
 	tp->features |= rtl_try_msi(tp, cfg);
 	RTL_W8(Cfg9346, Cfg9346_Lock);
 

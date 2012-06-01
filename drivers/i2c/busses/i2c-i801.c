@@ -60,10 +60,12 @@
   Block process call transaction   no
   I2C block read transaction       yes  (doesn't use the block buffer)
   Slave mode                       no
+  Interrupt processing             yes
 
   See the file Documentation/i2c/busses/i2c-i801 for details.
 */
 
+#include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/kernel.h>
@@ -91,12 +93,16 @@
 
 /* PCI Address Constants */
 #define SMBBAR		4
+#define SMBPCISTS	0x006
 #define SMBHSTCFG	0x040
 
 /* Host configuration bits for SMBHSTCFG */
 #define SMBHSTCFG_HST_EN	1
 #define SMBHSTCFG_SMB_SMI_EN	2
 #define SMBHSTCFG_I2C_EN	4
+
+/* Host status bits for SMBHSTSTS */
+#define SMBPCISTS_INTS		8
 
 /* Auxiliary control register bits, ICH4+ only */
 #define SMBAUXCTL_CRC		1
@@ -107,7 +113,6 @@
 
 /* Other settings */
 #define MAX_RETRIES		400
-#define ENABLE_INT9		0	/* set to 0x01 to enable - untested */
 
 /* I801 command constants */
 #define I801_QUICK		0x00
@@ -117,8 +122,11 @@
 #define I801_PROC_CALL		0x10	/* unimplemented */
 #define I801_BLOCK_DATA		0x14
 #define I801_I2C_BLOCK_DATA	0x18	/* ICH5 and later */
-#define I801_BLOCK_LAST		0x34
-#define I801_I2C_BLOCK_LAST	0x38	/* ICH5 and later */
+
+/* I801 Hosts Control register bits */
+#define I801_INTREN		0x01
+#define I801_KILL		0x02
+#define I801_LAST_BYTE		0x20	/* ICH5 and later */
 #define I801_START		0x40
 #define I801_PEC_EN		0x80	/* ICH3 and later */
 
@@ -135,6 +143,9 @@
 #define STATUS_FLAGS		(SMBHSTSTS_BYTE_DONE | SMBHSTSTS_FAILED | \
 				 SMBHSTSTS_BUS_ERR | SMBHSTSTS_DEV_ERR | \
 				 SMBHSTSTS_INTR)
+
+#define STATUS_RESULT_FLAGS	(SMBHSTSTS_FAILED | SMBHSTSTS_BUS_ERR | \
+				 SMBHSTSTS_DEV_ERR | SMBHSTSTS_INTR)
 
 /* Older devices have their ID defined in <linux/pci_ids.h> */
 #define PCI_DEVICE_ID_INTEL_COUGARPOINT_SMBUS	0x1c22
@@ -154,6 +165,18 @@ struct i801_priv {
 	unsigned char original_hstcfg;
 	struct pci_dev *pci_dev;
 	unsigned int features;
+
+	/* isr processing */
+	wait_queue_head_t waitq;
+	spinlock_t lock;
+	u8 status;
+
+	/* Command state used during by isr */
+	u8 cmd;
+	bool is_read;
+	int count;
+	int len;
+	u8 *data;
 };
 
 static struct pci_driver i801_driver;
@@ -162,6 +185,7 @@ static struct pci_driver i801_driver;
 #define FEATURE_BLOCK_BUFFER	(1 << 1)
 #define FEATURE_BLOCK_PROC	(1 << 2)
 #define FEATURE_I2C_BLOCK_READ	(1 << 3)
+#define FEATURE_IRQ		(1 << 4)
 /* Not really a feature, but it's convenient to handle it as such */
 #define FEATURE_IDF		(1 << 15)
 
@@ -170,6 +194,7 @@ static const char *i801_feature_names[] = {
 	"Block buffer",
 	"Block process call",
 	"I2C block read",
+	"Interrupt"
 };
 
 static unsigned int disable_features;
@@ -210,7 +235,12 @@ static int i801_check_post(struct i801_priv *priv, int status, int timeout)
 {
 	int result = 0;
 
-	/* If the SMBus is still busy, we give up */
+	/*
+	 * If the SMBus is still busy, we give up
+	 * Note: This timeout condition only happens when using polling
+	 * transactions.  For interrupt operation, NAK/timeout is indicated by
+	 * DEV_ERR.
+	 */
 	if (timeout) {
 		dev_err(&priv->pci_dev->dev, "Transaction timeout\n");
 		/* try to stop the current command */
@@ -268,8 +298,15 @@ static int i801_transaction(struct i801_priv *priv, int xact)
 	if (result < 0)
 		return result;
 
+	if (priv->features & FEATURE_IRQ) {
+		outb(xact | I801_INTREN | I801_START, SMBHSTCNT(priv));
+		wait_event(priv->waitq, (status = priv->status));
+		priv->status = 0;
+		return i801_check_post(priv, status, 0);
+	}
+
 	/* the current contents of SMBHSTCNT can be overwritten, since PEC,
-	 * INTREN, SMBSCMD are passed in xact */
+	 * SMBSCMD are passed in xact */
 	outb_p(xact | I801_START, SMBHSTCNT(priv));
 
 	/* We will always wait for a fraction of a second! */
@@ -283,6 +320,7 @@ static int i801_transaction(struct i801_priv *priv, int xact)
 		return result;
 
 	outb_p(SMBHSTSTS_INTR, SMBHSTSTS(priv));
+
 	return 0;
 }
 
@@ -321,8 +359,8 @@ static int i801_block_transaction_by_block(struct i801_priv *priv,
 			outb_p(data->block[i+1], SMBBLKDAT(priv));
 	}
 
-	status = i801_transaction(priv, I801_BLOCK_DATA | ENABLE_INT9 |
-				  I801_PEC_EN * hwpec);
+	status = i801_transaction(priv, I801_BLOCK_DATA |
+				  (hwpec ? I801_PEC_EN : 0));
 	if (status)
 		return status;
 
@@ -338,6 +376,75 @@ static int i801_block_transaction_by_block(struct i801_priv *priv,
 	return 0;
 }
 
+/*
+ * There are two kinds of interrupts:
+ *
+ * (1) i801 signals transaction completion with one of these interrupts:
+ *   INTR - Success
+ *   DEV_ERR - Invalid command, NAK or communication timeout
+ *   BUS_ERR - SMI# transaction collision
+ *   FAILED - transaction was canceled due to a KILL request
+ * When any of these occur, update ->status and wake up the waitq.
+ * ->status must be cleared before kicking off the next transaction.
+ *
+* (2) For byte-by-byte (I2C read/write) transactions, one BYTE_DONE interrupt
+*     occurs for each byte of a byte-by-byte to prepare the next byte.
+ */
+static irqreturn_t i801_isr(int irq, void *dev_id)
+{
+	struct i801_priv *priv = dev_id;
+	u8 pcists, hststs;
+	u8 cmd;
+
+	/* Confirm this is our interrupt */
+	pci_read_config_byte(priv->pci_dev, SMBPCISTS, &pcists);
+	if (!(pcists & SMBPCISTS_INTS)) {
+		dev_dbg(&priv->pci_dev->dev, "irq: pcists.ints not set\n");
+		return IRQ_NONE;
+	}
+
+	hststs = inb(SMBHSTSTS(priv));
+	dev_dbg(&priv->pci_dev->dev, "irq: hststs = %02x\n", hststs);
+
+	if (hststs & SMBHSTSTS_BYTE_DONE) {
+		if (priv->is_read) {
+			priv->data[priv->count++] = inb(SMBBLKDAT(priv));
+
+			/* Set LAST_BYTE for last byte of read transaction */
+			cmd = priv->cmd;
+			if (priv->count == priv->len - 1)
+				cmd |= I801_LAST_BYTE;
+			outb_p(cmd | I801_START, SMBHSTCNT(priv));
+		} else if (priv->count < priv->len - 1) {
+			outb(priv->data[++priv->count], SMBBLKDAT(priv));
+			outb_p(priv->cmd | I801_START, SMBHSTCNT(priv));
+		}
+
+		/* Clear BYTE_DONE to start next transaction. */
+		outb(SMBHSTSTS_BYTE_DONE, SMBHSTSTS(priv));
+
+		/* Clear BYTE_DONE so it does not wake_up waitq */
+		hststs &= ~SMBHSTSTS_BYTE_DONE;
+	}
+
+	/*
+	 * Clear irq sources and report transaction result.
+	 * ->status must be cleared before the next transaction is started.
+	 */
+	hststs &= STATUS_RESULT_FLAGS;
+	if (hststs) {
+		outb(hststs, SMBHSTSTS(priv));
+		priv->status |= hststs;
+		wake_up(&priv->waitq);
+	}
+
+	return IRQ_HANDLED;
+}
+
+/*
+ * i2c write uses cmd=I801_BLOCK_DATA, I2C_EN=1
+ * i2c read uses cmd=I801_I2C_BLOCK_DATA
+ */
 static int i801_block_transaction_byte_by_byte(struct i801_priv *priv,
 					       union i2c_smbus_data *data,
 					       char read_write, int command,
@@ -360,20 +467,32 @@ static int i801_block_transaction_byte_by_byte(struct i801_priv *priv,
 		outb_p(data->block[1], SMBBLKDAT(priv));
 	}
 
+	if (command == I2C_SMBUS_I2C_BLOCK_DATA &&
+	    read_write == I2C_SMBUS_READ)
+		smbcmd = I801_I2C_BLOCK_DATA;
+	else
+		smbcmd = I801_BLOCK_DATA;
+
+	if (priv->features & FEATURE_IRQ) {
+		priv->is_read = (read_write == I2C_SMBUS_READ);
+		if (len == 1 && priv->is_read)
+			smbcmd |= I801_LAST_BYTE;
+		priv->cmd = smbcmd | I801_INTREN;
+		priv->len = len;
+		priv->count = 0;
+		priv->data = &data->block[1];
+
+		outb(priv->cmd | I801_START, SMBHSTCNT(priv));
+		wait_event(priv->waitq, (status = priv->status));
+		priv->status = 0;
+		return i801_check_post(priv, status, 0);
+	}
+
 	for (i = 1; i <= len; i++) {
-		if (i == len && read_write == I2C_SMBUS_READ) {
-			if (command == I2C_SMBUS_I2C_BLOCK_DATA)
-				smbcmd = I801_I2C_BLOCK_LAST;
-			else
-				smbcmd = I801_BLOCK_LAST;
-		} else {
-			if (command == I2C_SMBUS_I2C_BLOCK_DATA
-			 && read_write == I2C_SMBUS_READ)
-				smbcmd = I801_I2C_BLOCK_DATA;
-			else
-				smbcmd = I801_BLOCK_DATA;
-		}
-		outb_p(smbcmd | ENABLE_INT9, SMBHSTCNT(priv));
+		if (i == len && read_write == I2C_SMBUS_READ)
+			smbcmd |= I801_LAST_BYTE;
+		
+		outb_p(smbcmd, SMBHSTCNT(priv));
 
 		if (i == 1)
 			outb_p(inb(SMBHSTCNT(priv)) | I801_START,
@@ -564,7 +683,7 @@ static s32 i801_access(struct i2c_adapter *adap, u16 addr,
 		ret = i801_block_transaction(priv, data, read_write, size,
 					     hwpec);
 	else
-		ret = i801_transaction(priv, xact | ENABLE_INT9);
+		ret = i801_transaction(priv, xact);
 
 	/* Some BIOSes don't like it when PEC is enabled at reboot or resume
 	   time, so we forcibly disable it after every transaction. Turn off
@@ -799,6 +918,10 @@ static int __devinit i801_probe(struct pci_dev *dev,
 		break;
 	}
 
+	/* IRQ processing only tested on CougarPoint PCH */
+	if (dev->device == PCI_DEVICE_ID_INTEL_COUGARPOINT_SMBUS)
+		priv->features |= FEATURE_IRQ;
+
 	/* Disable features on user request */
 	for (i = 0; i < ARRAY_SIZE(i801_feature_names); i++) {
 		if (priv->features & disable_features & (1 << i))
@@ -873,8 +996,24 @@ static int __devinit i801_probe(struct pci_dev *dev,
 	i801_probe_optional_slaves(priv);
 
 	pci_set_drvdata(dev, priv);
+
+	if (priv->features & FEATURE_IRQ) {
+		init_waitqueue_head(&priv->waitq);
+		spin_lock_init(&priv->lock);
+
+		err = request_irq(dev->irq, i801_isr, IRQF_SHARED,
+				  i801_driver.name, priv);
+		if (err) {
+			dev_err(&dev->dev, "Failed to allocate irq %d: %d",
+				dev->irq, err);
+			goto exit_del_adapter;
+		}
+	}
 	return 0;
 
+exit_del_adapter:
+	pci_set_drvdata(dev, NULL);
+	i2c_del_adapter(&priv->adapter);
 exit_release:
 	pci_release_region(dev, SMBBAR);
 exit:
@@ -885,6 +1024,9 @@ exit:
 static void __devexit i801_remove(struct pci_dev *dev)
 {
 	struct i801_priv *priv = pci_get_drvdata(dev);
+
+	if (priv->features & FEATURE_IRQ)
+		free_irq(dev->irq, priv);
 
 	i2c_del_adapter(&priv->adapter);
 	pci_write_config_byte(dev, SMBHSTCFG, priv->original_hstcfg);

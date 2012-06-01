@@ -1111,6 +1111,17 @@ netdev_tx_t usbnet_start_xmit (struct sk_buff *skb,
 	}
 	length = skb->len;
 
+#ifdef CONFIG_ARCH_TEGRA
+	// check and do the proper 32 byte alignment for sk buff
+	if ((int)skb->data & 0x0000001F) {
+		struct sk_buff *new_skb = skb_copy_expand(skb, 32, 0, GFP_ATOMIC);
+		if(unlikely(!(new_skb)))
+			return -1;
+		kfree_skb(skb);
+		skb = new_skb;
+	}
+#endif
+
 	if (!(urb = usb_alloc_urb (0, GFP_ATOMIC))) {
 		netif_dbg(dev, tx_err, dev->net, "no urb\n");
 		goto drop;

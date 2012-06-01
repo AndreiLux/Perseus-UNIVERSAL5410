@@ -25,6 +25,7 @@
 
 #include <linux/poll.h>
 #include <linux/slab.h>
+#include <linux/jiffies.h>
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
 #include <linux/freezer.h>
@@ -348,31 +349,32 @@ static void timeout_work(struct work_struct *work)
 	mutex_unlock(&chip->buffer_mutex);
 }
 
-/*
- * Returns max number of jiffies to wait
- */
-unsigned long tpm_calc_ordinal_duration(struct tpm_chip *chip,
-					   u32 ordinal)
+static void set_needs_resume(struct tpm_chip *chip)
 {
-	int duration_idx = TPM_UNDEFINED;
-	int duration = 0;
-
-	if (ordinal < TPM_MAX_ORDINAL)
-		duration_idx = tpm_ordinal_duration[ordinal];
-	else if ((ordinal & TPM_PROTECTED_ORDINAL_MASK) <
-		 TPM_MAX_PROTECTED_ORDINAL)
-		duration_idx =
-		    tpm_protected_ordinal_duration[ordinal &
-						   TPM_PROTECTED_ORDINAL_MASK];
-
-	if (duration_idx != TPM_UNDEFINED)
-		duration = chip->vendor.duration[duration_idx];
-	if (duration <= 0)
-		return 2 * 60 * HZ;
-	else
-		return duration;
+	mutex_lock(&chip->resume_mutex);
+	chip->resume_time = jiffies;
+	chip->needs_resume = 1;
+	mutex_unlock(&chip->resume_mutex);
 }
-EXPORT_SYMBOL_GPL(tpm_calc_ordinal_duration);
+
+#define TPM_ORD_CONTINUE_SELFTEST 83
+#define CONTINUE_SELFTEST_RESULT_SIZE 10
+
+#define TPM_INTERNAL_RESULT_SIZE 200
+#define TPM_TAG_RQU_COMMAND cpu_to_be16(193)
+#define TPM_ORD_GET_CAP cpu_to_be32(101)
+
+static const struct tpm_input_header tpm_getcap_header = {
+	.tag = TPM_TAG_RQU_COMMAND,
+	.length = cpu_to_be32(22),
+	.ordinal = TPM_ORD_GET_CAP
+};
+
+static struct tpm_input_header continue_selftest_header = {
+	.tag = TPM_TAG_RQU_COMMAND,
+	.length = cpu_to_be32(10),
+	.ordinal = cpu_to_be32(TPM_ORD_CONTINUE_SELFTEST),
+};
 
 /*
  * Internal kernel interface to transmit TPM commands
@@ -440,6 +442,112 @@ out:
 	return rc;
 }
 
+void tpm_continue_selftest_nocheck(struct tpm_chip *chip)
+{
+	struct tpm_cmd_t cmd;
+	cmd.header.in = continue_selftest_header;
+	tpm_transmit(chip, (u8 *) &cmd, CONTINUE_SELFTEST_RESULT_SIZE);
+}
+
+/* The maximum time in milliseconds that the TPM self test will take to
+ * complete.  TODO(semenzato): 1s should be plenty for all TPMs, but how can we
+ * ensure it?
+ */
+#define TPM_SELF_TEST_DURATION_MSEC 1000
+
+/* We don't want to wait for the self test to complete at resume, because it
+ * impacts the resume speed.  TPM commands are infrequent so the wait is
+ * usually not needed and is wasteful.  Instead, before we send any command, we
+ * check that enough time has elapsed from the resume so that we are
+ * comfortable that the self test has completed.  If not, we wait.  Unlike at
+ * boot, here we don't check the return code of continue_self_test, so we can
+ * use a code path which avoids recursion.  Furthermore, this only works when
+ * ContinueSelfTest is blocking, that is it returns only after the self test
+ * has completed, which is the case for the Infineon TPM.
+ */
+static void resume_if_needed(struct tpm_chip *chip)
+{
+	mutex_lock(&chip->resume_mutex);
+	if (chip->needs_resume) {
+		/* If it's been TPM_SELF_TEST_DURATION_MSEC msec since resume,
+		 * then selftest has completed and we don't need to wait.
+		 */
+		if (jiffies - chip->resume_time <
+		    msecs_to_jiffies(TPM_SELF_TEST_DURATION_MSEC)) {
+			dev_info(chip->dev, "waiting for TPM self test");
+			tpm_continue_selftest_nocheck(chip);
+		}
+		chip->needs_resume = 0;
+		dev_info(chip->dev, "TPM delayed resume completed");
+	}
+	mutex_unlock(&chip->resume_mutex);
+}
+
+static ssize_t transmit_cmd(struct tpm_chip *chip, struct tpm_cmd_t *cmd,
+			    int len, const char *desc)
+{
+	int err;
+
+	resume_if_needed(chip);
+
+	len = tpm_transmit(chip,(u8 *) cmd, len);
+	if (len <  0)
+		return len;
+	else if (len < TPM_HEADER_SIZE)
+		return -EFAULT;
+
+	err = be32_to_cpu(cmd->header.out.return_code);
+	if (err != 0)
+		dev_err(chip->dev, "A TPM error (%d) occurred %s\n", err, desc);
+
+	return err;
+}
+
+/**
+ * tpm_continue_selftest -- run TPM's selftest
+ * @chip: TPM chip to use
+ *
+ * Returns 0 on success, < 0 in case of fatal error or a value > 0 representing
+ * a TPM error code.
+ */
+int tpm_continue_selftest(struct tpm_chip *chip)
+{
+	int rc;
+	struct tpm_cmd_t cmd;
+
+	cmd.header.in = continue_selftest_header;
+	rc = transmit_cmd(chip, (const u8 *) &cmd,
+			  CONTINUE_SELFTEST_RESULT_SIZE, "continue selftest");
+	return rc;
+}
+EXPORT_SYMBOL_GPL(tpm_continue_selftest);
+
+/*
+ * Returns max number of jiffies to wait
+ */
+unsigned long tpm_calc_ordinal_duration(struct tpm_chip *chip,
+					   u32 ordinal)
+{
+	int duration_idx = TPM_UNDEFINED;
+	int duration = 0;
+
+	if (ordinal < TPM_MAX_ORDINAL)
+		duration_idx = tpm_ordinal_duration[ordinal];
+	else if ((ordinal & TPM_PROTECTED_ORDINAL_MASK) <
+		 TPM_MAX_PROTECTED_ORDINAL)
+		duration_idx =
+		    tpm_protected_ordinal_duration[ordinal &
+						   TPM_PROTECTED_ORDINAL_MASK];
+
+	if (duration_idx != TPM_UNDEFINED)
+		duration = chip->vendor.duration[duration_idx];
+	if (duration <= 0)
+		return 2 * 60 * HZ;
+	else
+		return duration;
+}
+EXPORT_SYMBOL_GPL(tpm_calc_ordinal_duration);
+
 #define TPM_DIGEST_SIZE 20
 #define TPM_RET_CODE_IDX 6
 
@@ -459,34 +567,6 @@ enum tpm_sub_capabilities {
 	TPM_CAP_PROP_TIS_TIMEOUT = cpu_to_be32(0x115),
 	TPM_CAP_PROP_TIS_DURATION = cpu_to_be32(0x120),
 
-};
-
-static ssize_t transmit_cmd(struct tpm_chip *chip, struct tpm_cmd_t *cmd,
-			    int len, const char *desc)
-{
-	int err;
-
-	len = tpm_transmit(chip,(u8 *) cmd, len);
-	if (len <  0)
-		return len;
-	else if (len < TPM_HEADER_SIZE)
-		return -EFAULT;
-
-	err = be32_to_cpu(cmd->header.out.return_code);
-	if (err != 0)
-		dev_err(chip->dev, "A TPM error (%d) occurred %s\n", err, desc);
-
-	return err;
-}
-
-#define TPM_INTERNAL_RESULT_SIZE 200
-#define TPM_TAG_RQU_COMMAND cpu_to_be16(193)
-#define TPM_ORD_GET_CAP cpu_to_be32(101)
-
-static const struct tpm_input_header tpm_getcap_header = {
-	.tag = TPM_TAG_RQU_COMMAND,
-	.length = cpu_to_be32(22),
-	.ordinal = TPM_ORD_GET_CAP
 };
 
 ssize_t tpm_getcap(struct device *dev, __be32 subcap_id, cap_t *cap,
@@ -615,33 +695,6 @@ duration:
 	return 0;
 }
 EXPORT_SYMBOL_GPL(tpm_get_timeouts);
-
-#define TPM_ORD_CONTINUE_SELFTEST 83
-#define CONTINUE_SELFTEST_RESULT_SIZE 10
-
-static struct tpm_input_header continue_selftest_header = {
-	.tag = TPM_TAG_RQU_COMMAND,
-	.length = cpu_to_be32(10),
-	.ordinal = cpu_to_be32(TPM_ORD_CONTINUE_SELFTEST),
-};
-
-/**
- * tpm_continue_selftest -- run TPM's selftest
- * @chip: TPM chip to use
- *
- * Returns 0 on success, < 0 in case of fatal error or a value > 0 representing
- * a TPM error code.
- */
-static int tpm_continue_selftest(struct tpm_chip *chip)
-{
-	int rc;
-	struct tpm_cmd_t cmd;
-
-	cmd.header.in = continue_selftest_header;
-	rc = transmit_cmd(chip, &cmd, CONTINUE_SELFTEST_RESULT_SIZE,
-			  "continue selftest");
-	return rc;
-}
 
 ssize_t tpm_show_enabled(struct device * dev, struct device_attribute * attr,
 			char *buf)
@@ -990,7 +1043,7 @@ ssize_t tpm_show_caps(struct device *dev, struct device_attribute *attr,
 		       be32_to_cpu(cap.manufacturer_id));
 
 	rc = tpm_getcap(dev, CAP_VERSION_1_1, &cap,
-		        "attempting to determine the 1.1 version");
+			"attempting to determine the 1.1 version");
 	if (rc)
 		return 0;
 	str += sprintf(str,
@@ -1185,6 +1238,8 @@ ssize_t tpm_write(struct file *file, const char __user *buf,
 	while (atomic_read(&chip->data_pending) != 0)
 		msleep(TPM_TIMEOUT);
 
+	resume_if_needed(chip);
+
 	mutex_lock(&chip->buffer_mutex);
 
 	if (in_size > TPM_BUFSIZE)
@@ -1219,6 +1274,7 @@ ssize_t tpm_read(struct file *file, char __user *buf,
 	del_singleshot_timer_sync(&chip->user_read_timer);
 	flush_work_sync(&chip->work);
 	ret_size = atomic_read(&chip->data_pending);
+	/* TODO(wad): atomic_set should come AFTER the buffer is copied. */
 	atomic_set(&chip->data_pending, 0);
 	if (ret_size > 0) {	/* relay data */
 		ssize_t orig_ret_size = ret_size;
@@ -1314,6 +1370,7 @@ int tpm_pm_resume(struct device *dev)
 	if (chip == NULL)
 		return -ENODEV;
 
+	set_needs_resume(chip);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(tpm_pm_resume);
@@ -1370,6 +1427,7 @@ struct tpm_chip *tpm_register_hardware(struct device *dev,
 
 	mutex_init(&chip->buffer_mutex);
 	mutex_init(&chip->tpm_mutex);
+	mutex_init(&chip->resume_mutex);
 	INIT_LIST_HEAD(&chip->list);
 
 	INIT_WORK(&chip->work, timeout_work);

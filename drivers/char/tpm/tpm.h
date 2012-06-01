@@ -113,6 +113,10 @@ struct tpm_chip {
 	atomic_t data_pending;
 	struct mutex buffer_mutex;
 
+	int needs_resume;
+	unsigned long resume_time;
+	struct mutex resume_mutex;
+
 	struct timer_list user_read_timer;	/* user needs to claim result */
 	struct work_struct work;
 	struct mutex tpm_mutex;	/* tpm is processing */
