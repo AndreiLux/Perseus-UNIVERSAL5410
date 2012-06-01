@@ -1494,7 +1494,7 @@ static int _reset(struct omap_hwmod *oh)
 }
 
 /**
- * _omap4_update_context_lost - increment hwmod context loss counter if
+ * _omap_update_context_lost - increment hwmod context loss counter if
  * hwmod context was lost, and clear hardware context loss reg
  * @oh: hwmod to check for context loss
  *
@@ -1502,11 +1502,15 @@ static int _reset(struct omap_hwmod *oh)
  * our in-memory context loss counter, and clear the RM_*_CONTEXT
  * bits. No return value.
  */
-static void _omap4_update_context_lost(struct omap_hwmod *oh)
+static void _omap_update_context_lost(struct omap_hwmod *oh)
 {
 	u32 r;
 
-	if (!(oh->flags & HWMOD_CONTEXT_REG))
+	/*
+	 * FIXME Not yet supported for OMAP2/3
+	 */
+
+	if (!(cpu_is_omap24xx() || cpu_is_omap34xx()))
 		return;
 
 	r = omap4_prminst_read_inst_reg(oh->clkdm->pwrdm.ptr->prcm_partition,
@@ -1607,7 +1611,7 @@ static int _enable(struct omap_hwmod *oh)
 	_enable_clocks(oh);
 	_enable_module(oh);
 
-	_omap4_update_context_lost(oh);
+	_omap_update_context_lost(oh);
 
 	r = _wait_target_ready(oh);
 	if (!r) {
@@ -2763,12 +2767,15 @@ int omap_hwmod_get_context_loss_count(struct omap_hwmod *oh)
 	struct powerdomain *pwrdm;
 	int ret = 0;
 
-	if (oh->flags & HWMOD_CONTEXT_REG)
-		return oh->prcm.omap4.context_lost_counter;
-
-	pwrdm = omap_hwmod_get_pwrdm(oh);
-	if (pwrdm)
-		ret = pwrdm_get_context_loss_count(pwrdm);
+	/* OMAP2/3 don't have hw context lost flags for all modules */
+	if (cpu_is_omap24xx() || cpu_is_omap34xx()) {
+		pwrdm = omap_hwmod_get_pwrdm(oh);
+		if (pwrdm)
+			ret = pwrdm_get_context_loss_count(pwrdm);
+	}
+	else {
+		ret = oh->prcm.omap4.context_lost_counter;
+	}
 
 	return ret;
 }
