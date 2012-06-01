@@ -1,0 +1,71 @@
+dm-verity
+==========
+
+Device-Mapper's "verity" target provides transparent integrity checking of
+block devices using a cryptographic digest provided by the kernel crypto API.
+This target is read-only.
+
+Parameters: <device path> <hash device path> <tree depth> <alg> <parent-hash>
+
+<device path>
+    This is the device that is going to be integrity checked.  It may be
+    a subset of the full device as specified to dmsetup (start sector and count)
+    It may be specified as a path, like /dev/sdaX, or a device number,
+    <major>:<minor>.
+
+<hash device path>
+    This is the device that that supplies the dm-bht hash data.  It may be
+    specified similarly to the device path and may be the same device.  If the
+    same device is used, the hash offset should be outside of the dm-verity
+    configured device size.
+
+<tree depth>
+    The tree depth determines how many levels of hashes are used when building
+    the tree of hashes.  The root of the tree not included and the leaves of
+    the tree are the hashes of the blocks on disk.
+
+<alg>
+    The cryptographic hash algorithm used for this device.  This should
+    be the name of the algorithm, like "sha1".
+
+<root hash>
+    The hexadecimal encoding of the cryptographic hash of all of the
+    neighboring nodes at the first level of the tree.  This hash should be
+    trusted as there is no other authenticity beyond this point.
+
+
+Theory of operation
+===================
+
+dm-verity is meant to be setup as part of a verified boot path.  This
+may be anything ranging from a boot using tboot or trustedgrub to just
+booting from a known-good device (like a USB drive or CD).
+
+When a dm-verity device is configured, it is expected that the caller
+has been authenticated in some way (cryptographic signatures, etc).
+After instantiation, all hashes will be verified on-demand during
+disk access.  If they cannot be verified up to the root node of the
+tree, the root hash, then the I/O will fail.  This should identify
+tampering with any data on the device and the hash data.
+
+Cryptographic hashes are used to assert the integrity of the device on a
+per-block basis.  This allows for a lightweight hash computation on first read
+into the page cache.  Block hashes are stored linearly aligned to the nearest
+block the size of a page.
+
+For more information on the hashing process, see dm-bht.txt.
+
+
+Example
+=======
+
+Setup a device;
+[[
+  dmsetup create vroot --table \
+    "0 204800 verity /dev/sda1 /dev/sda2 0 3 sha1 "\
+    "9f74809a2ee7607b16fcc70d9399a4de9725a727"
+]]
+
+A command line tool is available to compute the hash tree and return the
+root hash value.
+  http://git.chromium.org/cgi-bin/gitweb.cgi?p=dm-verity.git;a=tree
