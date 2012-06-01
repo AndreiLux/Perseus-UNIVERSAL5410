@@ -102,3 +102,4 @@ obj-$(CONFIG_EXYNOS5_SETUP_TVOUT)	+= setup-tvout.o
 obj-$(CONFIG_ION_EXYNOS)		+= dev-ion.o
 obj-$(CONFIG_CMA)			+= reserve-mem.o
 obj-$(CONFIG_EXYNOS5_SETUP_JPEG)			+= setup-jpeg.o
+obj-$(CONFIG_ARCH_EXYNOS5)		+= resetreason.o
