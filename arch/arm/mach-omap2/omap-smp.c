@@ -34,6 +34,8 @@
 
 /* SCU base address */
 static void __iomem *scu_base;
+bool omap4_smp_romcode_errata;
+
 static DEFINE_SPINLOCK(boot_lock);
 
 void __iomem *omap4_get_scu_base(void)
@@ -118,6 +120,24 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 *	4.3.4.2 Power States of CPU0 and CPU1
 	 */
 	if (booted) {
+		/*
+		 * GIC distributor control register has changed between
+		 * CortexA9 r1pX and r2pX. The Control Register secure
+		 * banked version is now composed of 2 bits:
+		 * bit 0 == Secure Enable
+		 * bit 1 == Non-Secure Enable
+		 * The Non-Secure banked register has not changed
+		 * Because the ROM Code is based on the r1pX GIC, the CPU1
+		 * GIC restoration will cause a problem to CPU0 Non-Secure SW.
+		 * The workaround must be:
+		 * 1) Before doing the CPU1 wakeup, CPU0 must disable
+		 * the GIC distributor
+		 * 2) CPU1 must re-enable the GIC distributor on
+		 * it's wakeup path.
+		 */
+		if (omap4_smp_romcode_errata)
+			gic_dist_disable();
+
 		clkdm_wakeup(cpu1_clkdm);
 		clkdm_allow_idle(cpu1_clkdm);
 	} else {
@@ -138,20 +158,22 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 
 static void __init wakeup_secondary(void)
 {
-	void __iomem *base = omap_get_wakeupgen_base();
+	void *startup_addr = omap_secondary_startup;
+
 	/*
 	 * Write the address of secondary startup routine into the
 	 * AuxCoreBoot1 where ROM code will jump and start executing
 	 * on secondary core once out of WFE
 	 * A barrier is added to ensure that write buffer is drained
 	 */
-	if (cpu_is_omap44xx())
-		omap_auxcoreboot_addr(virt_to_phys(omap_secondary_startup));
-	else
-		__raw_writel(virt_to_phys(omap5_secondary_startup),
-						base + OMAP_AUX_CORE_BOOT_1);
 
-	wmb();
+	if (cpu_is_omap446x()) {
+		startup_addr = omap_secondary_startup_4460;
+		omap4_smp_romcode_errata = true;
+	}
+
+	omap_auxcoreboot_addr(virt_to_phys(startup_addr));
+	smp_wmb();
 
 	/*
 	 * Send a 'sev' to wake the secondary core from WFE.
