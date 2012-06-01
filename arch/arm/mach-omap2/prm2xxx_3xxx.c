@@ -330,14 +330,6 @@ void omap3_trigger_io_chain(void)
 	omap2_prm_read_mod_reg(WKUP_MOD, PM_WKST);
 }
 
-/* OMAP3 Daisychain disable sequence */
-void omap3_disable_io_chain(void)
-{
-	if (omap_rev() >= OMAP3430_REV_ES3_1)
-		omap2_prm_clear_mod_reg_bits(OMAP3430_EN_IO_CHAIN_MASK,
-					     WKUP_MOD, PM_WKEN);
-}
-
 static void __init omap3_enable_io_wakeup(void)
 {
 	if (omap3_has_io_wakeup())
