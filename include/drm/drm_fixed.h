@@ -24,6 +24,8 @@
 #ifndef DRM_FIXED_H
 #define DRM_FIXED_H
 
+#include <asm/div64.h>
+
 typedef union dfixed {
 	u32 full;
 } fixed20_12;
@@ -37,6 +39,7 @@ typedef union dfixed {
 #define dfixed_init(A) { .full = dfixed_const((A)) }
 #define dfixed_init_half(A) { .full = dfixed_const_half((A)) }
 #define dfixed_trunc(A) ((A).full >> 12)
+#define dfixed_frac(A) ((A).full & ((1 << 12) - 1))
 
 static inline u32 dfixed_floor(fixed20_12 A)
 {

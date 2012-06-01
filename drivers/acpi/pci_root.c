@@ -34,6 +34,7 @@
 #include <linux/pci-acpi.h>
 #include <linux/pci-aspm.h>
 #include <linux/acpi.h>
+#include <linux/dmi.h>
 #include <linux/slab.h>
 #include <acpi/acpi_bus.h>
 #include <acpi/acpi_drivers.h>
@@ -449,6 +450,26 @@ out:
 }
 EXPORT_SYMBOL(acpi_pci_osc_control_set);
 
+const struct dmi_system_id acpi_pci_retain_aspm[] = {
+	{
+		.callback = NULL,
+		.ident = "IEC Mario",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "IEC"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Mario"),
+		},
+	},
+	{
+		.callback = NULL,
+		.ident = "SAMSUNG Alex",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "SAMSUNG"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Alex"),
+		},
+	},
+	{ }
+};
+
 static int __devinit acpi_pci_root_add(struct acpi_device *device)
 {
 	unsigned long long segment, bus;
@@ -601,7 +622,8 @@ static int __devinit acpi_pci_root_add(struct acpi_device *device)
 				 * We have ASPM control, but the FADT indicates
 				 * that it's unsupported. Clear it.
 				 */
-				pcie_clear_aspm(root->bus);
+				if (!dmi_check_system(acpi_pci_retain_aspm))
+					pcie_clear_aspm(root->bus);
 			}
 		} else {
 			dev_info(root->bus->bridge,

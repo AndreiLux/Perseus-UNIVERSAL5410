@@ -100,6 +100,8 @@ acpi_status acpi_hw_set_mode(u32 mode)
 					    (u32) acpi_gbl_FADT.acpi_enable, 8);
 		ACPI_DEBUG_PRINT((ACPI_DB_INFO,
 				  "Attempting to enable ACPI mode\n"));
+		pr_info("ACPI mode enable smi_command = 0x%x val = 0x%x\n",
+			acpi_gbl_FADT.smi_command, acpi_gbl_FADT.acpi_enable);
 		break;
 
 	case ACPI_SYS_MODE_LEGACY:
@@ -113,6 +115,9 @@ acpi_status acpi_hw_set_mode(u32 mode)
 					    8);
 		ACPI_DEBUG_PRINT((ACPI_DB_INFO,
 				  "Attempting to enable Legacy (non-ACPI) mode\n"));
+		pr_info("ACPI mode disable smi_command = 0x%x val = 0x%x\n",
+			acpi_gbl_FADT.smi_command, acpi_gbl_FADT.acpi_disable);
+		dump_stack();
 		break;
 
 	default:

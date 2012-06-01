@@ -119,7 +119,6 @@ config DRM_I915
 	select BACKLIGHT_CLASS_DEVICE if ACPI
 	select VIDEO_OUTPUT_CONTROL if ACPI
 	select INPUT if ACPI
-	select ACPI_VIDEO if ACPI
 	select ACPI_BUTTON if ACPI
 	help
 	  Choose this option if you have a system that has "Intel Graphics

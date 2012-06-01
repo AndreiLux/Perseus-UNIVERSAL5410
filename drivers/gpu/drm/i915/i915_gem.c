@@ -3317,7 +3317,10 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret;
 
-	BUG_ON(obj->pin_count == DRM_I915_GEM_OBJECT_MAX_PIN_COUNT);
+	if (obj->pin_count == DRM_I915_GEM_OBJECT_MAX_PIN_COUNT) {
+		WARN(obj->pin_count, "pin count has reached its max\n");
+		return -ENOSPC;
+	}
 	WARN_ON(i915_verify_lists(dev));
 
 	if (obj->gtt_space != NULL) {
@@ -3494,7 +3497,8 @@ i915_gem_busy_ioctl(struct drm_device *dev, void *data,
 		if (obj->base.write_domain & I915_GEM_GPU_DOMAINS) {
 			ret = i915_gem_flush_ring(obj->ring,
 						  0, obj->base.write_domain);
-		} else if (obj->ring->outstanding_lazy_request ==
+		}
+		if (obj->ring->outstanding_lazy_request ==
 			   obj->last_rendering_seqno) {
 			struct drm_i915_gem_request *request;
 
