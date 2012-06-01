@@ -32,6 +32,7 @@
 
 #include "omap4-sar-layout.h"
 #include "common.h"
+#include "pm.h"
 
 #define MAX_NR_BANKS		5
 #define MAX_IRQS		160
@@ -52,6 +53,8 @@ static unsigned int irq_target_cpu[NR_IRQS];
 static unsigned int irq_banks = MAX_NR_BANKS;
 static unsigned int max_irqs = MAX_IRQS;
 static unsigned int secure_api_index;
+
+static struct powerdomain *mpuss_pd;
 
 /*
  * Static helper functions.
@@ -295,7 +298,7 @@ static void irq_save_context(void)
 /*
  * Clear WakeupGen SAR backup status.
  */
-void irq_sar_clear(void)
+static void irq_sar_clear(void)
 {
 	u32 val;
 	u32 offset = SAR_BACKUP_STATUS_OFFSET;
@@ -312,7 +315,7 @@ void irq_sar_clear(void)
  * Save GIC and Wakeupgen interrupt context using secure API
  * for HS/EMU devices.
  */
-static void irq_save_secure_context(void)
+static void irq_save_secure_gic(void)
 {
 	u32 ret;
 	ret = omap_secure_dispatcher(secure_api_index,
@@ -322,6 +325,40 @@ static void irq_save_secure_context(void)
 		pr_err("GIC and Wakeupgen context save failed\n");
 }
 #endif
+
+static void save_secure_ram(void)
+{
+	u32 ret;
+	ret = omap_secure_dispatcher(OMAP4_HAL_SAVESECURERAM_INDEX,
+				FLAG_START_CRITICAL,
+				1, omap_secure_ram_mempool_base(),
+				0, 0, 0);
+	if (ret != API_HAL_RET_VALUE_OK)
+		pr_err("Secure ram context save failed\n");
+}
+
+static void save_secure_all(void)
+{
+	u32 ret;
+	ret = omap_secure_dispatcher(OMAP4_HAL_SAVEALL_INDEX,
+				FLAG_START_CRITICAL,
+				1, omap_secure_ram_mempool_base(),
+				0, 0, 0);
+	if (ret != API_HAL_RET_VALUE_OK)
+		pr_err("Secure all context save failed\n");
+}
+
+static void irq_save_secure_context(void)
+{
+	if (omap4_device_next_state_off()) {
+		save_secure_all();
+	} else if (pwrdm_read_next_pwrst(mpuss_pd) == PWRDM_POWER_OFF) {
+		irq_save_secure_gic();
+		save_secure_ram();
+	} else {
+		irq_save_secure_gic();
+	}
+}
 
 #ifdef CONFIG_HOTPLUG_CPU
 static int __cpuinit irq_cpu_hotplug_notify(struct notifier_block *self,
@@ -441,6 +478,12 @@ int __init omap_wakeupgen_init(void)
 
 	irq_hotplug_init();
 	irq_pm_init();
+
+	mpuss_pd = pwrdm_lookup("mpu_pwrdm");
+	if (!mpuss_pd) {
+		pr_err("wakeupgen: unable to get mpu_pwrdm\n");
+		return -EINVAL;
+	}
 
 	return 0;
 }

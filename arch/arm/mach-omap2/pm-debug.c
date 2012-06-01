@@ -41,6 +41,7 @@
 u32 enable_off_mode;
 u32 wakeup_timer_seconds = 0;
 static u32 enable_oswr_mode;
+static void (*off_mode_enable_func) (int);
 
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
@@ -250,7 +251,8 @@ static int option_set(void *data, u64 val)
 		else
 			omap_pm_disable_off_mode();
 
-		omap3_pm_off_mode_enable(val);
+		if (off_mode_enable_func)
+			off_mode_enable_func(val);
 	}
 
 	if (option == &enable_oswr_mode)
@@ -279,15 +281,20 @@ static int __init pm_dbg_init(void)
 
 	pwrdm_for_each(pwrdms_setup, (void *)d);
 
-	if (cpu_is_omap34xx())
-		(void) debugfs_create_file("enable_off_mode",
-			S_IRUGO | S_IWUSR, d, &enable_off_mode,
-			&pm_dbg_option_fops);
+	(void) debugfs_create_file("enable_off_mode",
+		S_IRUGO | S_IWUSR, d, &enable_off_mode,
+		&pm_dbg_option_fops);
 
 	if (cpu_is_omap44xx() || cpu_is_omap54xx())
 		(void) debugfs_create_file("enable_oswr_mode",
 			S_IRUGO | S_IWUSR, d, &enable_oswr_mode,
 			&pm_dbg_option_fops);
+
+	if (cpu_is_omap34xx())
+		off_mode_enable_func = omap3_pm_off_mode_enable;
+
+	if (cpu_is_omap44xx())
+		off_mode_enable_func = omap4_pm_off_mode_enable;
 
 	pm_dbg_init_done = 1;
 

@@ -87,6 +87,27 @@ static int omap4_pm_suspend(void)
 }
 #endif /* CONFIG_SUSPEND */
 
+/**
+ * get_achievable_state() - Provide achievable state
+ * @available_states:	what states are available
+ * @req_min_state:	what state is the minimum we'd like to hit
+ *
+ * Power domains have varied capabilities. When attempting a low power
+ * state such as OFF/RET, a specific min requested state may not be
+ * supported on the power domain, in which case, the next higher power
+ * state which is supported is returned. This is because a combination
+ * of system power states where the parent PD's state is not in line
+ * with expectation can result in system instabilities.
+ */
+static inline u8 get_achievable_state(u8 available_states, u8 req_min_state)
+{
+	u16 mask = 0xFF << req_min_state;
+
+	if (available_states & mask)
+		return __ffs(available_states & mask);
+	return PWRDM_POWER_ON;
+}
+
 static int __init pwrdms_setup(struct powerdomain *pwrdm, void *unused)
 {
 	struct power_state *pwrst;
@@ -113,6 +134,30 @@ static int __init pwrdms_setup(struct powerdomain *pwrdm, void *unused)
 	list_add(&pwrst->node, &pwrst_list);
 
 	return omap_set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
+}
+
+void omap4_pm_off_mode_enable(int enable)
+{
+	u32 next_state = PWRDM_POWER_RET;
+	u32 next_logic_state = PWRDM_POWER_ON;
+	struct power_state *pwrst;
+
+	if (enable) {
+		next_state = PWRDM_POWER_OFF;
+		next_logic_state = PWRDM_POWER_OFF;
+	}
+
+	omap4_device_set_state_off(enable);
+
+	list_for_each_entry(pwrst, &pwrst_list, node) {
+		pwrst->next_state =
+			get_achievable_state(pwrst->pwrdm->pwrsts, next_state);
+		pwrst->next_logic_state =
+			get_achievable_state(pwrst->pwrdm->pwrsts_logic_ret,
+				next_logic_state);
+		omap_set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
+		pwrdm_set_logic_retst(pwrst->pwrdm, pwrst->next_logic_state);
+	}
 }
 
 void omap4_pm_oswr_mode_enable(int enable)
