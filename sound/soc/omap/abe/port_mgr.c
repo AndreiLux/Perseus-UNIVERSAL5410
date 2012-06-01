@@ -67,9 +67,9 @@ static int get_physical_id(int logical_id)
 		return OMAP_ABE_BT_VX_DL_PORT;
 	case OMAP_ABE_BE_PORT_BT_VX_UL:
 		return OMAP_ABE_BT_VX_UL_PORT;
-	case OMAP_ABE_BE_PORT_MM_EXT_UL:
-		return OMAP_ABE_MM_EXT_OUT_PORT;
 	case OMAP_ABE_BE_PORT_MM_EXT_DL:
+		return OMAP_ABE_MM_EXT_OUT_PORT;
+	case OMAP_ABE_BE_PORT_MM_EXT_UL:
 		return OMAP_ABE_MM_EXT_IN_PORT;
 	/* front end ports */
 	case OMAP_ABE_FE_PORT_MM_DL1:
