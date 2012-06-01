@@ -29,8 +29,12 @@
 #include "clockdomain.h"
 #include "pm.h"
 #include "twl-common.h"
+#include "prm2xxx_3xxx.h"
+#include "prm44xx.h"
 
 static struct omap_device_pm_latency *pm_lats;
+static void (*io_chain_trigger_func) (void);
+static DEFINE_SPINLOCK(io_chain_lock);
 
 /*
  * omap_pm_suspend: points to a function that does the SoC-specific
@@ -71,6 +75,17 @@ static void __init omap2_init_processor_devices(void)
 		_init_omap_device("iva");
 	} else {
 		_init_omap_device("l3_main");
+	}
+}
+
+void omap_trigger_io_chain(void)
+{
+	unsigned long flags;
+
+	if (io_chain_trigger_func) {
+		spin_lock_irqsave(&io_chain_lock, flags);
+		io_chain_trigger_func();
+		spin_unlock_irqrestore(&io_chain_lock, flags);
 	}
 }
 
@@ -296,6 +311,12 @@ static int __init omap2_common_pm_init(void)
                 omap2_init_processor_devices(); 
 
 	omap_pm_if_init();
+
+	if (cpu_is_omap34xx() && omap3_has_io_chain_ctrl())
+		io_chain_trigger_func = omap3_trigger_io_chain;
+
+	if (cpu_is_omap44xx())
+		io_chain_trigger_func = omap4_trigger_io_chain;
 
 	return 0;
 }
