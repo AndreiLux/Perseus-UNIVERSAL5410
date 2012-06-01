@@ -37,7 +37,6 @@
 static void __iomem *l2cache_base;
 #endif
 
-static void __iomem *sar_ram_base;
 static void __iomem *gic_dist_base_addr;
 
 #ifdef CONFIG_OMAP4_ERRATA_I688
