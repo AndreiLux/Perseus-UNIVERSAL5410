@@ -5134,6 +5134,11 @@ unsigned int ar9003_get_paprd_scale_factor(struct ath_hw *ah,
 static u32 ath9k_hw_ar9003_dump_eep_power(struct ath_hw *ah, u8 *buf,
 					  u32 len, u32 size)
 {
+#undef PR_EEP
+#define PR_EEP(_s, _val) \
+	do {								\
+		len += snprintf(buf + len, size - len, _s, (_val));	\
+	} while (0)
 	struct ar9300_eeprom *eep = &ah->eeprom.ar9300_eep;
 	int i, j;
 
