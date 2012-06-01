@@ -535,6 +535,9 @@ static int ptrace_setoptions(struct task_struct *child, unsigned long data)
 	flags |= (data << PT_OPT_FLAG_SHIFT);
 	child->ptrace = flags;
 
+	if (data & PTRACE_O_TRACESECCOMP)
+		child->ptrace |= PT_TRACE_SECCOMP;
+
 	return 0;
 }
 

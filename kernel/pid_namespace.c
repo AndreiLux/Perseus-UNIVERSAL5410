@@ -102,6 +102,14 @@ static struct pid_namespace *create_pid_namespace(struct pid_namespace *parent_p
 	if (err)
 		goto out_put_parent_pid_ns;
 
+#ifdef CONFIG_SECURITY_YAMA
+	ns->ptrace_scope = parent_pid_ns->ptrace_scope;
+	ns->protected_sticky_symlinks =
+		parent_pid_ns->protected_sticky_symlinks;
+	ns->protected_nonaccess_hardlinks =
+		parent_pid_ns->protected_nonaccess_hardlinks;
+#endif
+
 	return ns;
 
 out_put_parent_pid_ns:
