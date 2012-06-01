@@ -789,8 +789,8 @@ static struct resource s5p_i2c_resource[] = {
 };
 
 struct platform_device s5p_device_i2c_hdmiphy = {
-	.name		= "s3c2440-hdmiphy-i2c",
-	.id		= -1,
+	.name		= "s3c2440-i2c",
+	.id		= 8,
 	.num_resources	= ARRAY_SIZE(s5p_i2c_resource),
 	.resource	= s5p_i2c_resource,
 };
