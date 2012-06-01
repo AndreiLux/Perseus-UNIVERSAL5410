@@ -44,6 +44,12 @@ enum thermal_trip_type {
 	THERMAL_TRIP_CRITICAL,
 };
 
+enum cooling_device_state {
+	CDEV_STATE_OFF = 0,
+	CDEV_STATE_ON,
+	CDEV_STATE_DELAY,
+};
+
 struct thermal_zone_device_ops {
 	int (*bind) (struct thermal_zone_device *,
 		     struct thermal_cooling_device *);
@@ -79,6 +85,8 @@ struct thermal_cooling_device {
 	void *devdata;
 	const struct thermal_cooling_device_ops *ops;
 	struct list_head node;
+	unsigned long delay_until;
+	enum cooling_device_state cur_state;
 };
 
 #define KELVIN_TO_CELSIUS(t)	(long)(((long)t-2732 >= 0) ?	\
@@ -104,6 +112,12 @@ struct thermal_zone_device {
 	struct mutex lock;	/* protect cooling devices list */
 	struct list_head node;
 	struct delayed_work poll_queue;
+	unsigned int fan_on_delay; /* time in seconds to delay fan turn on */
+	int cdevs_in_delay;
+	unsigned int cdevs_aborted_turn_on;
+	unsigned int cdevs_multiple_trips;
+	unsigned int cdevs_turned_on;
+	struct dentry *debugfs_dir;
 };
 /* Adding event notification support elements */
 #define THERMAL_GENL_FAMILY_NAME                "thermal_event"

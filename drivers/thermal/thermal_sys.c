@@ -26,6 +26,7 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/module.h>
+#include <linux/debugfs.h>
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/slab.h>
@@ -59,6 +60,10 @@ static DEFINE_MUTEX(thermal_idr_lock);
 static LIST_HEAD(thermal_tz_list);
 static LIST_HEAD(thermal_cdev_list);
 static DEFINE_MUTEX(thermal_list_lock);
+
+static unsigned int thermal_event_seqnum;
+
+static struct dentry *debugfs_root;
 
 static int get_idr(struct idr *idr, struct mutex *lock, int *id)
 {
@@ -160,6 +165,29 @@ mode_store(struct device *dev, struct device_attribute *attr,
 	if (result)
 		return result;
 
+	return count;
+}
+
+static ssize_t
+fan_on_delay_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+
+	return sprintf(buf, "%d\n", tz->fan_on_delay);
+}
+
+static ssize_t
+fan_on_delay_store(struct device *dev, struct device_attribute *attr,
+		   const char *buf, size_t count)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	int value;
+
+	if (!sscanf(buf, "%d\n", &value))
+		return -EINVAL;
+	if (value < 0 || value > (tz->polling_delay / 1000))
+		return -EINVAL;
+	tz->fan_on_delay = (unsigned int) value;
 	return count;
 }
 
@@ -282,6 +310,7 @@ static DEVICE_ATTR(type, 0444, type_show, NULL);
 static DEVICE_ATTR(temp, 0444, temp_show, NULL);
 static DEVICE_ATTR(mode, 0644, mode_show, mode_store);
 static DEVICE_ATTR(passive, S_IRUGO | S_IWUSR, passive_show, passive_store);
+static DEVICE_ATTR(fan_on_delay, 0644, fan_on_delay_show, fan_on_delay_store);
 
 static struct device_attribute trip_point_attrs[] = {
 	__ATTR(trip_point_0_type, 0444, trip_point_type_show, NULL),
@@ -651,19 +680,42 @@ thermal_remove_hwmon_sysfs(struct thermal_zone_device *tz)
 #endif
 
 static void thermal_zone_device_set_polling(struct thermal_zone_device *tz,
-					    int delay)
+					    int delay_ms)
 {
+	unsigned long delay;
+	struct thermal_cooling_device_instance *instance;
+	struct thermal_cooling_device *cdev;
+
 	cancel_delayed_work(&(tz->poll_queue));
 
-	if (!delay)
+	if (!delay_ms)
 		return;
 
-	if (delay > 1000)
-		queue_delayed_work(system_freezable_wq, &(tz->poll_queue),
-				      round_jiffies(msecs_to_jiffies(delay)));
-	else
-		queue_delayed_work(system_freezable_wq, &(tz->poll_queue),
-				      msecs_to_jiffies(delay));
+	delay = msecs_to_jiffies(delay_ms);
+
+	if (tz->cdevs_in_delay > 0) {
+		list_for_each_entry(instance, &tz->cooling_devices, node) {
+			cdev = instance->cdev;
+			if ((cdev->cur_state == CDEV_STATE_DELAY) &&
+			    time_before(cdev->delay_until, (jiffies + delay)))
+				delay = cdev->delay_until - jiffies;
+		}
+	}
+
+	delay = max_t(long, delay, 1);
+
+	/*
+	 * round_jiffies_relative rounds delay down in most cases to values
+	 * just under delay (10 seconds to 9.99).  When cdevs_in_delay is set,
+	 * this rounds to 1.99.  This makes the next poll period trigger just
+	 * before the fan can turn on, causing another poll to be scheduled
+	 * immediately afterwards and causing an extra interrupt.  As such,
+	 * do not round when fans are in delay.
+	 */
+	if (delay > HZ && tz->cdevs_in_delay == 0)
+		delay = round_jiffies_relative(delay);
+
+	queue_delayed_work(system_freezable_wq, &(tz->poll_queue), delay);
 }
 
 static void thermal_zone_device_passive(struct thermal_zone_device *tz,
@@ -917,6 +969,7 @@ thermal_cooling_device_register(char *type, void *devdata,
 	cdev->ops = ops;
 	cdev->device.class = &thermal_class;
 	cdev->devdata = devdata;
+	cdev->cur_state = CDEV_STATE_OFF;
 	dev_set_name(&cdev->device, "cooling_device%d", cdev->id);
 	result = device_register(&cdev->device);
 	if (result) {
@@ -1014,13 +1067,13 @@ EXPORT_SYMBOL(thermal_cooling_device_unregister);
 void thermal_zone_device_update(struct thermal_zone_device *tz)
 {
 	int count, ret = 0;
+	int num_tripped = 0;
 	long temp, trip_temp;
 	enum thermal_trip_type trip_type;
 	struct thermal_cooling_device_instance *instance;
 	struct thermal_cooling_device *cdev;
 
 	mutex_lock(&tz->lock);
-
 	if (tz->ops->get_temp(tz, &temp)) {
 		/* get_temp failed - retry it later */
 		pr_warn("failed to read out thermal zone %d\n", tz->id);
@@ -1057,10 +1110,33 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 
 				cdev = instance->cdev;
 
-				if (temp >= trip_temp)
-					cdev->ops->set_cur_state(cdev, 1);
-				else
+				if (temp < trip_temp) {
+					if (cdev->cur_state == CDEV_STATE_DELAY) {
+						tz->cdevs_in_delay--;
+						tz->cdevs_aborted_turn_on++;
+					}
+					cdev->cur_state = CDEV_STATE_OFF;
 					cdev->ops->set_cur_state(cdev, 0);
+					continue;
+				}
+
+				if (cdev->cur_state == CDEV_STATE_ON)
+					continue;
+
+				if (cdev->cur_state == CDEV_STATE_OFF) {
+					num_tripped++;
+					tz->cdevs_in_delay++;
+					cdev->cur_state = CDEV_STATE_DELAY;
+					cdev->delay_until = jiffies +
+						tz->fan_on_delay * HZ;
+				}
+
+				if (time_after_eq(jiffies, cdev->delay_until)) {
+					tz->cdevs_turned_on++;
+					tz->cdevs_in_delay--;
+					cdev->cur_state = CDEV_STATE_ON;
+					cdev->ops->set_cur_state(cdev, 1);
+				}
 			}
 			break;
 		case THERMAL_TRIP_PASSIVE:
@@ -1070,6 +1146,9 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 			break;
 		}
 	}
+
+	if (num_tripped > 1)
+		tz->cdevs_multiple_trips++;
 
 	if (tz->forced_passive)
 		thermal_zone_device_passive(tz, temp, tz->forced_passive,
@@ -1149,6 +1228,7 @@ struct thermal_zone_device *thermal_zone_device_register(char *type,
 	tz->tc2 = tc2;
 	tz->passive_delay = passive_delay;
 	tz->polling_delay = polling_delay;
+	tz->fan_on_delay = 2;
 
 	dev_set_name(&tz->device, "thermal_zone%d", tz->id);
 	result = device_register(&tz->device);
@@ -1175,6 +1255,10 @@ struct thermal_zone_device *thermal_zone_device_register(char *type,
 			goto unregister;
 	}
 
+	result = device_create_file(&tz->device, &dev_attr_fan_on_delay);
+	if (result)
+		goto unregister;
+
 	for (count = 0; count < trips; count++) {
 		result = device_create_file(&tz->device,
 					    &trip_point_attrs[count * 2]);
@@ -1199,6 +1283,23 @@ struct thermal_zone_device *thermal_zone_device_register(char *type,
 	result = thermal_add_hwmon_sysfs(tz);
 	if (result)
 		goto unregister;
+
+	tz->debugfs_dir = debugfs_create_dir(dev_name(&tz->device),
+					     debugfs_root);
+	if (!IS_ERR_OR_NULL(tz->debugfs_dir)) {
+		debugfs_create_u32("cdevs_aborted_turn_on", 0444,
+				   tz->debugfs_dir,
+				   &tz->cdevs_aborted_turn_on);
+		debugfs_create_u32("cdevs_in_delay", 0444,
+				   tz->debugfs_dir,
+				   &tz->cdevs_in_delay);
+		debugfs_create_u32("cdevs_turned_on", 0444,
+				   tz->debugfs_dir,
+				   &tz->cdevs_turned_on);
+		debugfs_create_u32("cdevs_multiple_trips", 0444,
+				   tz->debugfs_dir,
+				   &tz->cdevs_multiple_trips);
+	}
 
 	mutex_lock(&thermal_list_lock);
 	list_add_tail(&tz->node, &thermal_tz_list);
@@ -1259,6 +1360,7 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 	device_remove_file(&tz->device, &dev_attr_temp);
 	if (tz->ops->get_mode)
 		device_remove_file(&tz->device, &dev_attr_mode);
+	device_remove_file(&tz->device, &dev_attr_fan_on_delay);
 
 	for (count = 0; count < tz->trips; count++) {
 		device_remove_file(&tz->device,
@@ -1267,6 +1369,10 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 				   &trip_point_attrs[count * 2 + 1]);
 	}
 	thermal_remove_hwmon_sysfs(tz);
+
+	if (tz->debugfs_dir)
+		debugfs_remove_recursive(tz->debugfs_dir);
+
 	release_idr(&thermal_tz_idr, &thermal_idr_lock, tz->id);
 	idr_destroy(&tz->idr);
 	mutex_destroy(&tz->lock);
@@ -1384,6 +1490,13 @@ static int __init thermal_init(void)
 		mutex_destroy(&thermal_idr_lock);
 		mutex_destroy(&thermal_list_lock);
 	}
+	debugfs_root = debugfs_create_dir("thermal", NULL);
+	if (IS_ERR(debugfs_root)) {
+		if (debugfs_root != ERR_PTR(-ENODEV))
+			pr_warn("Could not create debugfs entry %ld\n",
+			        PTR_ERR(debugfs_root));
+		debugfs_root = NULL;
+	}
 	result = genetlink_init();
 	return result;
 }
@@ -1391,6 +1504,8 @@ static int __init thermal_init(void)
 static void __exit thermal_exit(void)
 {
 	class_unregister(&thermal_class);
+	if (debugfs_root)
+		debugfs_remove_recursive(debugfs_root);
 	idr_destroy(&thermal_tz_idr);
 	idr_destroy(&thermal_cdev_idr);
 	mutex_destroy(&thermal_idr_lock);
