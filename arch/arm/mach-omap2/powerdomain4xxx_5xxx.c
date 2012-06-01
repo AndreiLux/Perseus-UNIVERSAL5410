@@ -23,6 +23,10 @@
 #include "prm44xx.h"
 #include "prminst44xx.h"
 #include "prm-regbits-44xx.h"
+#include "cm-regbits-44xx.h"
+#include "prcm44xx.h"
+#include "cm2_44xx.h"
+#include "cminst44xx.h"
 
 static int omap4_pwrdm_set_next_pwrst(struct powerdomain *pwrdm, u8 pwrst)
 {
@@ -227,6 +231,40 @@ static int omap5_pwrdm_disable_force_off(struct powerdomain *pwrdm)
 	return 0;
 }
 
+static int omap4_pwrdm_enable_hdwr_sar(struct powerdomain *pwrdm)
+{
+	/*
+	 * FIXME: This should be fixed right way by moving it into HWMOD
+	 * or clock framework since sar control is moved to module level
+	 */
+	omap4_cminst_rmw_inst_reg_bits(OMAP4430_SAR_MODE_MASK,
+		1 << OMAP4430_SAR_MODE_SHIFT, OMAP4430_CM2_PARTITION,
+		OMAP4430_CM2_L3INIT_INST,
+		OMAP4_CM_L3INIT_USB_HOST_CLKCTRL_OFFSET);
+	omap4_cminst_rmw_inst_reg_bits(OMAP4430_SAR_MODE_MASK,
+		1 << OMAP4430_SAR_MODE_SHIFT, OMAP4430_CM2_PARTITION,
+		OMAP4430_CM2_L3INIT_INST,
+		OMAP4_CM_L3INIT_USB_TLL_CLKCTRL_OFFSET);
+	return 0;
+}
+
+static int omap4_pwrdm_disable_hdwr_sar(struct powerdomain *pwrdm)
+{
+	/*
+	 * FIXME: This should be fixed right way by moving it into HWMOD
+	 * or clock framework since sar control is moved to module level
+	 */
+	omap4_cminst_rmw_inst_reg_bits(OMAP4430_SAR_MODE_MASK,
+		0 << OMAP4430_SAR_MODE_SHIFT, OMAP4430_CM2_PARTITION,
+		OMAP4430_CM2_L3INIT_INST,
+		OMAP4_CM_L3INIT_USB_HOST_CLKCTRL_OFFSET);
+	omap4_cminst_rmw_inst_reg_bits(OMAP4430_SAR_MODE_MASK,
+		0 << OMAP4430_SAR_MODE_SHIFT, OMAP4430_CM2_PARTITION,
+		OMAP4430_CM2_L3INIT_INST,
+		OMAP4_CM_L3INIT_USB_TLL_CLKCTRL_OFFSET);
+
+	return 0;
+}
 
 struct pwrdm_ops omap4_pwrdm_operations = {
 	.pwrdm_set_next_pwrst	= omap4_pwrdm_set_next_pwrst,
@@ -243,6 +281,8 @@ struct pwrdm_ops omap4_pwrdm_operations = {
 	.pwrdm_set_mem_onst	= omap4_pwrdm_set_mem_onst,
 	.pwrdm_set_mem_retst	= omap4_pwrdm_set_mem_retst,
 	.pwrdm_wait_transition	= omap4_pwrdm_wait_transition,
+	.pwrdm_enable_hdwr_sar	= omap4_pwrdm_enable_hdwr_sar,
+	.pwrdm_disable_hdwr_sar	= omap4_pwrdm_disable_hdwr_sar,
 };
 
 struct pwrdm_ops omap5_pwrdm_operations = {
