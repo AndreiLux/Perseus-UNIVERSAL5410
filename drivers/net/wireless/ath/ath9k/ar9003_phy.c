@@ -823,56 +823,6 @@ static bool ar9003_hw_ani_control(struct ath_hw *ah,
 		 * on == 0 means more noise imm
 		 */
 		u32 on = param ? 1 : 0;
-		/*
-		 * make register setting for default
-		 * (weak sig detect ON) come from INI file
-		 */
-		int m1ThreshLow = on ?
-			aniState->iniDef.m1ThreshLow : m1ThreshLow_off;
-		int m2ThreshLow = on ?
-			aniState->iniDef.m2ThreshLow : m2ThreshLow_off;
-		int m1Thresh = on ?
-			aniState->iniDef.m1Thresh : m1Thresh_off;
-		int m2Thresh = on ?
-			aniState->iniDef.m2Thresh : m2Thresh_off;
-		int m2CountThr = on ?
-			aniState->iniDef.m2CountThr : m2CountThr_off;
-		int m2CountThrLow = on ?
-			aniState->iniDef.m2CountThrLow : m2CountThrLow_off;
-		int m1ThreshLowExt = on ?
-			aniState->iniDef.m1ThreshLowExt : m1ThreshLowExt_off;
-		int m2ThreshLowExt = on ?
-			aniState->iniDef.m2ThreshLowExt : m2ThreshLowExt_off;
-		int m1ThreshExt = on ?
-			aniState->iniDef.m1ThreshExt : m1ThreshExt_off;
-		int m2ThreshExt = on ?
-			aniState->iniDef.m2ThreshExt : m2ThreshExt_off;
-
-		REG_RMW_FIELD(ah, AR_PHY_SFCORR_LOW,
-			      AR_PHY_SFCORR_LOW_M1_THRESH_LOW,
-			      m1ThreshLow);
-		REG_RMW_FIELD(ah, AR_PHY_SFCORR_LOW,
-			      AR_PHY_SFCORR_LOW_M2_THRESH_LOW,
-			      m2ThreshLow);
-		REG_RMW_FIELD(ah, AR_PHY_SFCORR,
-			      AR_PHY_SFCORR_M1_THRESH, m1Thresh);
-		REG_RMW_FIELD(ah, AR_PHY_SFCORR,
-			      AR_PHY_SFCORR_M2_THRESH, m2Thresh);
-		REG_RMW_FIELD(ah, AR_PHY_SFCORR,
-			      AR_PHY_SFCORR_M2COUNT_THR, m2CountThr);
-		REG_RMW_FIELD(ah, AR_PHY_SFCORR_LOW,
-			      AR_PHY_SFCORR_LOW_M2COUNT_THR_LOW,
-			      m2CountThrLow);
-
-		REG_RMW_FIELD(ah, AR_PHY_SFCORR_EXT,
-			      AR_PHY_SFCORR_EXT_M1_THRESH_LOW, m1ThreshLowExt);
-		REG_RMW_FIELD(ah, AR_PHY_SFCORR_EXT,
-			      AR_PHY_SFCORR_EXT_M2_THRESH_LOW, m2ThreshLowExt);
-		REG_RMW_FIELD(ah, AR_PHY_SFCORR_EXT,
-			      AR_PHY_SFCORR_EXT_M1_THRESH, m1ThreshExt);
-		REG_RMW_FIELD(ah, AR_PHY_SFCORR_EXT,
-			      AR_PHY_SFCORR_EXT_M2_THRESH, m2ThreshExt);
-
 		if (on)
 			REG_SET_BIT(ah, AR_PHY_SFCORR_LOW,
 				    AR_PHY_SFCORR_LOW_USE_SELF_CORR_LOW);
@@ -1504,3 +1454,51 @@ void ar9003_hw_disable_phy_restart(struct ath_hw *ah)
 	REG_WRITE(ah, AR_PHY_RESTART, val);
 }
 EXPORT_SYMBOL(ar9003_hw_disable_phy_restart);
+
+void ar9003_hw_dump_ani_reg(struct ath_hw *ah)
+{
+	u32 reg;
+	struct ath_common *common = ath9k_hw_common(ah);
+
+	reg = REG_READ(ah, AR_PHY_FIND_SIG_LOW);
+	ath_dbg(common, RX_STUCK, "FIRStep Low = 0x%x (%d)\n",
+			MS(reg, AR_PHY_FIND_SIG_LOW_FIRSTEP_LOW),
+			MS(reg, AR_PHY_FIND_SIG_LOW_FIRSTEP_LOW));
+	reg = REG_READ(ah, AR_PHY_DESIRED_SZ);
+	ath_dbg(common, RX_STUCK, "Total Desired = 0x%x (%d)\n",
+			MS(reg, AR_PHY_DESIRED_SZ_TOT_DES),
+			MS(reg, AR_PHY_DESIRED_SZ_TOT_DES));
+	ath_dbg(common, RX_STUCK, "ADC Desired = 0x%x (%d)\n",
+			MS(reg, AR_PHY_DESIRED_SZ_ADC),
+			MS(reg, AR_PHY_DESIRED_SZ_ADC));
+	reg = REG_READ(ah, AR_PHY_FIND_SIG);
+	ath_dbg(common, RX_STUCK, "FIRStep = 0x%x (%d)\n",
+			MS(reg, AR_PHY_FIND_SIG_FIRSTEP),
+			MS(reg, AR_PHY_FIND_SIG_FIRSTEP));
+	reg = REG_READ(ah, AR_PHY_AGC);
+	ath_dbg(common, RX_STUCK, "Coarse High = 0x%x (%d)\n",
+			MS(reg, AR_PHY_AGC_COARSE_HIGH),
+			MS(reg, AR_PHY_AGC_COARSE_HIGH));
+	ath_dbg(common, RX_STUCK, "Coarse Low = 0x%x (%d)\n",
+			MS(reg, AR_PHY_AGC_COARSE_LOW),
+			MS(reg, AR_PHY_AGC_COARSE_LOW));
+	ath_dbg(common, RX_STUCK, "Coarse Power Constant = 0x%x (%d)\n",
+			MS(reg, AR_PHY_AGC_COARSE_PWR_CONST),
+			MS(reg, AR_PHY_AGC_COARSE_PWR_CONST));
+	reg = REG_READ(ah, AR_PHY_TIMING5);
+	ath_dbg(common, RX_STUCK, "Enable Cyclic Power Thresh = %d\n",
+			MS(reg, AR_PHY_TIMING5_CYCPWR_THR1_ENABLE));
+	ath_dbg(common, RX_STUCK, "Cyclic Power Thresh = 0x%x (%d)\n",
+			MS(reg, AR_PHY_TIMING5_CYCPWR_THR1),
+			MS(reg, AR_PHY_TIMING5_CYCPWR_THR1));
+	ath_dbg(common, RX_STUCK, "Cyclic Power Thresh 1A= 0x%x (%d)\n",
+			MS(reg, AR_PHY_TIMING5_CYCPWR_THR1A),
+			MS(reg, AR_PHY_TIMING5_CYCPWR_THR1A));
+	reg = REG_READ(ah, AR_PHY_DAG_CTRLCCK);
+	ath_dbg(common, RX_STUCK, "Barker RSSI Thresh Enable = %d\n",
+			MS(reg, AR_PHY_DAG_CTRLCCK_EN_RSSI_THR));
+	ath_dbg(common, RX_STUCK, "Barker RSSI Thresh = 0x%x (%d)\n",
+			MS(reg, AR_PHY_DAG_CTRLCCK_RSSI_THR),
+			MS(reg, AR_PHY_DAG_CTRLCCK_RSSI_THR));
+}
+EXPORT_SYMBOL(ar9003_hw_dump_ani_reg);

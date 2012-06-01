@@ -241,6 +241,11 @@ static void setup_ht_cap(struct ath_softc *sc,
 	u8 tx_streams, rx_streams;
 	int i, max_streams;
 
+	if (AR_SREV_9462(ah)) {
+		/* Disable HT on 9462 until it is better supported */
+		ht_info->ht_supported = false;
+		return;
+	}
 	ht_info->ht_supported = true;
 	ht_info->cap = IEEE80211_HT_CAP_SUP_WIDTH_20_40 |
 		       IEEE80211_HT_CAP_SM_PS |
@@ -760,6 +765,7 @@ int ath9k_init_device(u16 devid, struct ath_softc *sc,
 	INIT_WORK(&sc->hw_check_work, ath_hw_check);
 	INIT_WORK(&sc->paprd_work, ath_paprd_calibrate);
 	INIT_DELAYED_WORK(&sc->hw_pll_work, ath_hw_pll_work);
+	setup_timer(&sc->rx_poll_timer, ath_rx_poll_work, (unsigned long)sc);
 
 	/* Register with mac80211 */
 	error = ieee80211_register_hw(hw);

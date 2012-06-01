@@ -36,10 +36,16 @@
 #define IEEE80211_ASSOC_TIMEOUT (HZ / 5)
 #define IEEE80211_ASSOC_MAX_TRIES 3
 
-static int max_nullfunc_tries = 2;
+static int max_nullfunc_tries = 100;
 module_param(max_nullfunc_tries, int, 0644);
 MODULE_PARM_DESC(max_nullfunc_tries,
 		 "Maximum nullfunc tx tries before disconnecting (reason 4).");
+
+static int max_nullfunc_tries_resume = 2;
+module_param(max_nullfunc_tries_resume, int, 0644);
+MODULE_PARM_DESC(max_nullfunc_tries_resume,
+		 "Maximum nullfunc tx tries on resume before disconnecting "
+		 "(reason 4).");
 
 static int max_probe_tries = 5;
 module_param(max_probe_tries, int, 0644);
@@ -54,7 +60,7 @@ MODULE_PARM_DESC(max_probe_tries,
  * probe on beacon miss before declaring the connection lost
  * default to what we want.
  */
-#define IEEE80211_BEACON_LOSS_COUNT	7
+#define IEEE80211_BEACON_LOSS_COUNT	14
 
 /*
  * Time the connection can be idle before we probe
@@ -171,6 +177,15 @@ static int ecw2cw(int ecw)
 	return (1 << ecw) - 1;
 }
 
+static bool ieee80211_bss_get_htinfo(struct ieee80211_bss *bss,
+				     struct ieee80211_ht_info *hti) {
+	if (bss == NULL || !bss->has_ht_info)
+		return false;
+
+	memcpy(hti, &bss->ht_info, sizeof(*hti));
+	return true;
+}
+
 /*
  * ieee80211_enable_ht should be called only after the operating band
  * has been determined as ht configuration depends on the hw's
@@ -179,7 +194,8 @@ static int ecw2cw(int ecw)
 static u32 ieee80211_enable_ht(struct ieee80211_sub_if_data *sdata,
 			       struct ieee80211_ht_info *hti,
 			       const u8 *bssid, u16 ap_ht_cap_flags,
-			       bool beacon_htcap_ie)
+			       bool beacon_htcap_ie,
+			       struct ieee80211_bss *bss)
 {
 	struct ieee80211_local *local = sdata->local;
 	struct ieee80211_supported_band *sband;
@@ -188,9 +204,11 @@ static u32 ieee80211_enable_ht(struct ieee80211_sub_if_data *sdata,
 	int hti_cfreq;
 	u16 ht_opmode;
 	bool enable_ht = true;
+	bool disable_tx_ht = false;
 	enum nl80211_channel_type prev_chantype;
 	enum nl80211_channel_type rx_channel_type = NL80211_CHAN_NO_HT;
 	enum nl80211_channel_type tx_channel_type;
+	struct ieee80211_ht_info bss_hti;
 
 	sband = local->hw.wiphy->bands[local->hw.conf.channel->band];
 	prev_chantype = sdata->vif.bss_conf.channel_type;
@@ -204,16 +222,45 @@ static u32 ieee80211_enable_ht(struct ieee80211_sub_if_data *sdata,
 		 * Netgear WNDR3700 sometimes reports 4 higher than
 		 * the actual channel, for instance.
 		 */
-		printk(KERN_DEBUG
-		       "%s: Wrong control channel in association"
-		       " response: configured center-freq: %d"
-		       " hti-cfreq: %d  hti->control_chan: %d"
-		       " band: %d.  Disabling HT.\n",
-		       sdata->name,
-		       local->hw.conf.channel->center_freq,
-		       hti_cfreq, hti->control_chan,
-		       sband->band);
-		enable_ht = false;
+		if (ieee80211_bss_get_htinfo(bss, &bss_hti) &&
+		    local->hw.conf.channel->center_freq ==
+		    ieee80211_channel_to_frequency(
+			   bss_hti.control_chan, sband->band)) {
+			/*
+			 * If we disable HT overall, then we
+			 * will have associated saying we can
+			 * receive HT40, but then turned
+			 * around and become deaf to it.  Use
+			 * the HT information from the beacon
+			 * to configure receive, but restrain
+			 * ourselves from ever transmitting in
+			 * HT.
+			 */
+			printk(KERN_DEBUG
+			       "%s: Wrong control channel in "
+			       " association response: configured"
+			       " center-freq: %d hti-cfreq: %d "
+			       " hti->control_chan: %d band: %d. "
+			       " Disabling HT transmit.\n",
+			       sdata->name,
+			       local->hw.conf.channel->center_freq,
+			       hti_cfreq, hti->control_chan,
+			       sband->band);
+			hti = &bss_hti;
+			disable_tx_ht = true;
+		} else {
+			printk(KERN_DEBUG
+			       "%s: Wrong control channel in "
+			       " association response: configured"
+			       " center-freq: %d hti-cfreq: %d "
+			       " hti->control_chan: %d band: %d. "
+			       " Disabling HT.\n",
+			       sdata->name,
+			       local->hw.conf.channel->center_freq,
+			       hti_cfreq, hti->control_chan,
+			       sband->band);
+			enable_ht = false;
+		}
 	}
 
 	if (enable_ht) {
@@ -235,6 +282,8 @@ static u32 ieee80211_enable_ht(struct ieee80211_sub_if_data *sdata,
 	}
 
 	tx_channel_type = ieee80211_get_tx_channel_type(local, rx_channel_type);
+	if (disable_tx_ht)
+		tx_channel_type = NL80211_CHAN_NO_HT;
 
 	if (local->tmp_channel)
 		local->tmp_channel_type = rx_channel_type;
@@ -664,7 +713,6 @@ void ieee80211_send_nullfunc(struct ieee80211_local *local,
 {
 	struct sk_buff *skb;
 	struct ieee80211_hdr_3addr *nullfunc;
-	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
 
 	skb = ieee80211_nullfunc_get(&local->hw, &sdata->vif);
 	if (!skb)
@@ -675,9 +723,7 @@ void ieee80211_send_nullfunc(struct ieee80211_local *local,
 		nullfunc->frame_control |= cpu_to_le16(IEEE80211_FCTL_PM);
 
 	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_DONT_ENCRYPT;
-	if (ifmgd->flags & (IEEE80211_STA_BEACON_POLL |
-			    IEEE80211_STA_CONNECTION_POLL))
-		IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_CTL_USE_MINRATE;
+	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_CTL_USE_MINRATE;
 
 	ieee80211_tx_skb(sdata, skb);
 }
@@ -1334,7 +1380,8 @@ static void ieee80211_set_associated(struct ieee80211_sub_if_data *sdata,
 
 	/* just to be sure */
 	sdata->u.mgd.flags &= ~(IEEE80211_STA_CONNECTION_POLL |
-				IEEE80211_STA_BEACON_POLL);
+				IEEE80211_STA_BEACON_POLL |
+				IEEE80211_STA_RESUME_POLL);
 
 	ieee80211_led_assoc(local, 1);
 
@@ -1498,11 +1545,13 @@ static void ieee80211_reset_ap_probe(struct ieee80211_sub_if_data *sdata)
 	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
 
 	if (!(ifmgd->flags & (IEEE80211_STA_BEACON_POLL |
-			      IEEE80211_STA_CONNECTION_POLL)))
+			      IEEE80211_STA_CONNECTION_POLL |
+			      IEEE80211_STA_RESUME_POLL)))
 	    return;
 
 	ifmgd->flags &= ~(IEEE80211_STA_CONNECTION_POLL |
-			  IEEE80211_STA_BEACON_POLL);
+			  IEEE80211_STA_BEACON_POLL |
+			  IEEE80211_STA_RESUME_POLL);
 	mutex_lock(&sdata->local->iflist_mtx);
 	ieee80211_recalc_ps(sdata->local, -1);
 	mutex_unlock(&sdata->local->iflist_mtx);
@@ -1575,6 +1624,8 @@ static void ieee80211_mgd_probe_ap_send(struct ieee80211_sub_if_data *sdata)
 	ifmgd->probe_send_count++;
 	ifmgd->probe_timeout = jiffies + msecs_to_jiffies(probe_wait_ms);
 	run_again(ifmgd, ifmgd->probe_timeout);
+	if (sdata->local->hw.flags & IEEE80211_HW_REPORTS_TX_ACK_STATUS)
+		drv_flush(sdata->local, false);
 }
 
 static void ieee80211_mgd_probe_ap(struct ieee80211_sub_if_data *sdata,
@@ -2096,7 +2147,9 @@ static bool ieee80211_assoc_success(struct ieee80211_sub_if_data *sdata,
 	    !(ifmgd->flags & IEEE80211_STA_DISABLE_11N))
 		changed |= ieee80211_enable_ht(sdata, elems.ht_info_elem,
 					       cbss->bssid, ap_ht_cap_flags,
-					       false);
+					       false,
+					       (struct ieee80211_bss *)
+					       cbss->priv);
 
 	/* set AID and assoc capability,
 	 * ieee80211_set_associated() will tell the driver */
@@ -2472,7 +2525,8 @@ static void ieee80211_rx_mgmt_beacon(struct ieee80211_sub_if_data *sdata,
 				ieee80211_hw_config(local,
 						    IEEE80211_CONF_CHANGE_PS);
 				ieee80211_send_nullfunc(local, sdata, 0);
-			} else {
+			} else if (!local->pspolling &&
+					sdata->u.mgd.powersave) {
 				local->pspolling = true;
 
 				/*
@@ -2528,7 +2582,8 @@ static void ieee80211_rx_mgmt_beacon(struct ieee80211_sub_if_data *sdata,
 		rcu_read_unlock();
 
 		changed |= ieee80211_enable_ht(sdata, elems.ht_info_elem,
-					       bssid, ap_ht_cap_flags, true);
+					       bssid, ap_ht_cap_flags, true,
+					       NULL);
 	}
 
 	/* Note: country IE parsing is done for us by cfg80211 */
@@ -2639,7 +2694,8 @@ static void ieee80211_sta_connection_lost(struct ieee80211_sub_if_data *sdata,
 	u8 frame_buf[DEAUTH_DISASSOC_LEN];
 
 	ifmgd->flags &= ~(IEEE80211_STA_CONNECTION_POLL |
-			  IEEE80211_STA_BEACON_POLL);
+			  IEEE80211_STA_BEACON_POLL |
+			  IEEE80211_STA_RESUME_POLL);
 
 	ieee80211_set_disassoc(sdata, IEEE80211_STYPE_DEAUTH, reason,
 			       false, frame_buf);
@@ -2797,16 +2853,20 @@ void ieee80211_sta_work(struct ieee80211_sub_if_data *sdata)
 		run_again(ifmgd, ifmgd->assoc_data->timeout);
 
 	if (ifmgd->flags & (IEEE80211_STA_BEACON_POLL |
-			    IEEE80211_STA_CONNECTION_POLL) &&
+			    IEEE80211_STA_CONNECTION_POLL |
+			    IEEE80211_STA_RESUME_POLL) &&
 	    ifmgd->associated) {
 		u8 bssid[ETH_ALEN];
 		int max_tries;
 
 		memcpy(bssid, ifmgd->associated->bssid, ETH_ALEN);
 
-		if (local->hw.flags & IEEE80211_HW_REPORTS_TX_ACK_STATUS)
-			max_tries = max_nullfunc_tries;
-		else
+		if (local->hw.flags & IEEE80211_HW_REPORTS_TX_ACK_STATUS) {
+			if (ifmgd->flags & IEEE80211_STA_RESUME_POLL)
+				max_tries = max_nullfunc_tries_resume;
+			else
+				max_tries = max_nullfunc_tries;
+		} else
 			max_tries = max_probe_tries;
 
 		/* ACK received for nullfunc probing frame */
@@ -2918,7 +2978,8 @@ static void ieee80211_restart_sta_timer(struct ieee80211_sub_if_data *sdata)
 
 	if (sdata->vif.type == NL80211_IFTYPE_STATION) {
 		sdata->u.mgd.flags &= ~(IEEE80211_STA_BEACON_POLL |
-					IEEE80211_STA_CONNECTION_POLL);
+					IEEE80211_STA_CONNECTION_POLL |
+					IEEE80211_STA_RESUME_POLL);
 
 		/* let's probe the connection once */
 		flags = sdata->local->hw.flags;
@@ -2988,6 +3049,8 @@ void ieee80211_sta_restart(struct ieee80211_sub_if_data *sdata)
 		add_timer(&ifmgd->chswitch_timer);
 	ieee80211_sta_reset_beacon_monitor(sdata);
 	ieee80211_restart_sta_timer(sdata);
+	ifmgd->flags |= IEEE80211_STA_RESUME_POLL;
+	ieee80211_queue_work(&sdata->local->hw, &sdata->u.mgd.monitor_work);
 }
 #endif
 

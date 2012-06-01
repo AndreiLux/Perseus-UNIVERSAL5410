@@ -150,6 +150,7 @@ struct ath_common {
 	spinlock_t cc_lock;
 	struct ath_cycle_counters cc_ani;
 	struct ath_cycle_counters cc_survey;
+	struct ath_cycle_counters cc_rxpoll;
 
 	struct ath_regulatory regulatory;
 	struct ath_regulatory reg_world_copy;
@@ -242,6 +243,7 @@ enum ATH_DEBUG {
 	ATH_DBG_BSTUCK		= 0x00008000,
 	ATH_DBG_MCI		= 0x00010000,
 	ATH_DBG_DFS		= 0x00020000,
+	ATH_DBG_RX_STUCK	= 0x00040000,
 	ATH_DBG_ANY		= 0xffffffff
 };
 

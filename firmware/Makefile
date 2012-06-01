@@ -40,6 +40,9 @@ fw-shipped-$(CONFIG_BNX2) += bnx2/bnx2-mips-09-6.2.1a.fw \
 			     bnx2/bnx2-rv2p-09ax-6.0.17.fw \
 			     bnx2/bnx2-mips-06-6.2.1.fw \
 			     bnx2/bnx2-rv2p-06-6.0.15.fw
+fw-shipped-$(CONFIG_BRCM80211_PCI) += brcm/bcm43xx-0.fw \
+				  brcm/bcm43xx_hdr-0.fw
+fw-shipped-$(CONFIG_BT_ATH3K) += ath3k-1.fw
 fw-shipped-$(CONFIG_CASSINI) += sun/cassini.bin
 fw-shipped-$(CONFIG_COMPUTONE) += intelliport2.bin
 fw-shipped-$(CONFIG_CHELSIO_T3) += cxgb3/t3b_psram-1.1.0.bin \
@@ -140,6 +143,7 @@ fw-shipped-$(CONFIG_USB_SERIAL_XIRCOM) += keyspan_pda/xircom_pgs.fw
 fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
+fw-shipped-$(CONFIG_RT2X00) += rt2860.bin
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 

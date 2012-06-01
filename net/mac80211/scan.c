@@ -173,6 +173,16 @@ ieee80211_bss_info_update(struct ieee80211_local *local,
 			bss->valid_data |= IEEE80211_BSS_VALID_WMM;
 	}
 
+	if (elems->ht_info_elem != NULL &&
+	    (!elems->parse_error ||
+	     !(bss->valid_data & IEEE80211_BSS_VALID_HT))) {
+		memcpy(&bss->ht_info, elems->ht_info_elem,
+		       sizeof(bss->ht_info));
+		bss->has_ht_info = true;
+		if (!elems->parse_error)
+			bss->valid_data |= IEEE80211_BSS_VALID_HT;
+	}
+
 	if (!beacon)
 		bss->last_probe_resp = jiffies;
 
