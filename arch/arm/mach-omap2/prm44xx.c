@@ -244,13 +244,6 @@ void omap4_trigger_io_chain(void)
 {
 	int i = 0;
 
-	/* Enable GLOBAL_WUEN */
-	if (!(omap4_prm_read_inst_reg(OMAP4430_PRM_DEVICE_INST,
-		OMAP4_PRM_IO_PMCTRL_OFFSET) & OMAP4430_GLOBAL_WUEN_MASK))
-		omap4_prm_rmw_inst_reg_bits(OMAP4430_GLOBAL_WUEN_MASK,
-			OMAP4430_GLOBAL_WUEN_MASK, OMAP4430_PRM_DEVICE_INST,
-			OMAP4_PRM_IO_PMCTRL_OFFSET);
-
 	/* Trigger WUCLKIN enable */
 	omap4_prm_rmw_inst_reg_bits(OMAP4430_WUCLK_CTRL_MASK,
 			OMAP4430_WUCLK_CTRL_MASK, OMAP4430_PRM_DEVICE_INST,
@@ -274,10 +267,19 @@ void omap4_trigger_io_chain(void)
 	return;
 }
 
+static void __init omap4_enable_io_wakeup(void)
+{
+	omap4_prm_rmw_inst_reg_bits(OMAP4430_GLOBAL_WUEN_MASK,
+			OMAP4430_GLOBAL_WUEN_MASK, OMAP4430_PRM_DEVICE_INST,
+			OMAP4_PRM_IO_PMCTRL_OFFSET);
+}
+
 static int __init omap4xxx_prcm_init(void)
 {
-	if (cpu_is_omap44xx())
+	if (cpu_is_omap44xx()) {
+		omap4_enable_io_wakeup();
 		return omap_prcm_register_chain_handler(&omap4_prcm_irq_setup);
+	}
 	return 0;
 }
 subsys_initcall(omap4xxx_prcm_init);

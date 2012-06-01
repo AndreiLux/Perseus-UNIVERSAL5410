@@ -338,10 +338,19 @@ void omap3_disable_io_chain(void)
 					     WKUP_MOD, PM_WKEN);
 }
 
+static void __init omap3_enable_io_wakeup(void)
+{
+	if (omap3_has_io_wakeup())
+		omap2_prm_set_mod_reg_bits(OMAP3430_EN_IO_MASK, WKUP_MOD,
+					   PM_WKEN);
+}
+
 static int __init omap3xxx_prcm_init(void)
 {
-	if (cpu_is_omap34xx())
+	if (cpu_is_omap34xx()) {
+		omap3_enable_io_wakeup();
 		return omap_prcm_register_chain_handler(&omap3_prcm_irq_setup);
+	}
 	return 0;
 }
 subsys_initcall(omap3xxx_prcm_init);
