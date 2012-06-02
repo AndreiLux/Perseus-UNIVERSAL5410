@@ -6,7 +6,7 @@ ccflags-$(CONFIG_VITHAR) += -DMALI_DEBUG=1 -DMALI_HW_TYPE=2 \
        -DMALI_UNIT_TEST=0 -DMALI_GATOR_SUPPORT=0 -DUMP_LICENSE_IS_GPL=1 \
        -DUMP_SVN_REV_STRING="\"dummy\"" -DMALI_RELEASE_NAME="\"dummy\""
 
-ROOTDIR = $(src)/../../../..
+ROOTDIR = $(src)/../../..
 
 ccflags-$(CONFIG_VITHAR) += -I$(ROOTDIR)/kbase
 ccflags-$(CONFIG_VITHAR) += -I$(ROOTDIR)
@@ -14,4 +14,6 @@ ccflags-$(CONFIG_VITHAR) += -I$(ROOTDIR)
 ccflags-y += -I$(ROOTDIR) -I$(ROOTDIR)/include -I$(ROOTDIR)/osk/src/linux/include -I$(ROOTDIR)/uk/platform_dummy
 ccflags-y += -I$(ROOTDIR)/kbase/midg_gpus/r0p0
 
-obj-y += mali_ukk_os.o
+obj-y += mali_ukk.o
+
+obj-y += linux/

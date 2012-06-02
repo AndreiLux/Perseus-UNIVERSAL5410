@@ -1,48 +1,17 @@
-# Copyright:
-# ----------------------------------------------------------------------------
-# This confidential and proprietary software may be used only as authorized
-# by a licensing agreement from ARM Limited.
-#      (C) COPYRIGHT 2010-2011 ARM Limited, ALL RIGHTS RESERVED
-# The entire notice above must be reproduced on all authorized copies and
-# copies may only be made to the extent permitted by a licensing agreement
-# from ARM Limited.
-# ----------------------------------------------------------------------------
-#
+ccflags-$(CONFIG_VITHAR) += -DMALI_DEBUG=1 -DMALI_HW_TYPE=2 \
+       -DMALI_USE_UMP=0 -DMALI_HW_VERSION=r0p0 -DMALI_BASE_TRACK_MEMLEAK=0 \
+       -DMALI_ANDROID=1 -DMALI_ERROR_INJECT_ON=0 -DMALI_NO_MALI=0 -DMALI_BACKEND_KERNEL=1 \
+       -DMALI_FAKE_PLATFORM_DEVICE=1 -DMALI_MOCK_TEST=0 -DMALI_KERNEL_TEST_API=0 \
+       -DMALI_INFINITE_CACHE=0 -DMALI_LICENSE_IS_GPL=1 -DMALI_PLATFORM_CONFIG=exynos5 \
+       -DMALI_UNIT_TEST=0 -DMALI_GATOR_SUPPORT=0 -DUMP_LICENSE_IS_GPL=1 \
+       -DUMP_SVN_REV_STRING="\"dummy\"" -DMALI_RELEASE_NAME="\"dummy\""
 
-ifneq ($(KERNELRELEASE),)
+ROOTDIR = $(src)/../../..
 
-ROOT=$(KBUILD_EXTMOD)/../../..
+ccflags-$(CONFIG_VITHAR) += -I$(ROOTDIR)/kbase
+ccflags-$(CONFIG_VITHAR) += -I$(ROOTDIR)
 
-SRC=\
-	mali_osk_debug.c \
-	mali_osk_workq.c \
-	../common/mali_osk_bitops_cmn.c \
-	../common/mali_osk_debug_cmn.c
+ccflags-y += -I$(ROOTDIR) -I$(ROOTDIR)/include -I$(ROOTDIR)/osk/src/linux/include -I$(ROOTDIR)/uk/platform_dummy
+ccflags-y += -I$(ROOTDIR)/kbase/midg_gpus/r0p0
 
-ifeq ($(MALI_BASE_TRACK_MEMLEAK), 1)
-SRC += ../common/mali_osk_failure.c ../common/mali_osk_mem_track.c
-endif
-
-ifeq ($(MALI_LICENSE_IS_GPL), 1)
-SRC += mali_osk_timers.c
-# ensure GPL version of malisw gets pulled in
-EXTRA_CFLAGS += -I$(ROOT)/kbase
-endif
-
-lib-y := $(SRC:.c=.o)
-
-include $(KBUILD_EXTMOD)/Makefile.osk
-
-EXTRA_CFLAGS += -DMALI_DEBUG=$(MALI_DEBUG) -DMALI_BASE_TRACK_MEMLEAK=$(MALI_BASE_TRACK_MEMLEAK) -DMALI_UNIT_TEST=$(MALI_UNIT_TEST) -DMALI_LICENSE_IS_GPL=$(MALI_LICENSE_IS_GPL) -DMALI_USE_UMP=$(MALI_USE_UMP)
-
-else
-
-KDIR ?= /lib/modules/$(shell uname -r)/build
-
-all:
-	$(MAKE) -C $(KDIR) M=$(CURDIR)
-
-clean:
-	$(MAKE) -C $(KDIR) M=$(CURDIR) clean
-
-endif
+obj-y += mali_osk_timers.o mali_osk_debug.o
