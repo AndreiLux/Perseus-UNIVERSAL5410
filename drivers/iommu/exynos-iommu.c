@@ -12,6 +12,8 @@
 #define DEBUG
 #endif
 
+#include <linux/module.h>
+#include <linux/of.h>
 #include <linux/io.h>
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
@@ -687,12 +689,23 @@ const struct dev_pm_ops exynos_pm_ops = {
 	.resume = &exynos_pm_resume,
 };
 
+#ifdef CONFIG_OF
+static const struct of_device_id sysmmu_of_match[] = {
+	{ .compatible = "samsung,s5p-sysmmu" },
+	{},
+};
+MODULE_DEVICE_TABLE(of, sysmmu_of_match);
+#else
+#define sysmmu_of_match NULL
+#endif
+
 static struct platform_driver exynos_sysmmu_driver = {
 	.probe		= exynos_sysmmu_probe,
 	.driver		= {
 		.owner		= THIS_MODULE,
-		.name		= "exynos-sysmmu",
+		.name		= "s5p-sysmmu",
 		.pm		= &exynos_pm_ops,
+		.of_match_table = sysmmu_of_match,
 	}
 };
 
