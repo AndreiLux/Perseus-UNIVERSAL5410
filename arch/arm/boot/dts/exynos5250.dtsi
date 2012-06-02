@@ -206,16 +206,16 @@
                 interrupt-parent = <&combiner>;
 	};
 
-	sysmmu_3: sysmmu@0x11200000 {
+	sysmmu_3: sysmmu@0x11210000 {
 		compatible = "samsung,s5p-sysmmu";
-		reg = <0x11200000 0x100>;
+		reg = <0x11210000 0x100>;
 		interrupts = <8 5>;
                 interrupt-parent = <&combiner>;
 	};
 
-	sysmmu_4: sysmmu@0x11210000 {
+	sysmmu_4: sysmmu@0x11200000 {
 		compatible = "samsung,s5p-sysmmu";
-		reg = <0x11210000 0x100>;
+		reg = <0x11200000 0x100>;
 		interrupts = <6 2>;
                 interrupt-parent = <&combiner>;
 	};
