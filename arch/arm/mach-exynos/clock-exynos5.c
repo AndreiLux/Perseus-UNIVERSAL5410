@@ -72,6 +72,11 @@ static int exynos5_clksrc_mask_fsys_ctrl(struct clk *clk, int enable)
 	return s5p_gatectrl(EXYNOS5_CLKSRC_MASK_FSYS, clk, enable);
 }
 
+static int exynos5_clk_ip_gscl_ctrl(struct clk *clk, int enable)
+{
+	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_GSCL, clk, enable);
+}
+
 static int exynos5_clksrc_mask_gscl_ctrl(struct clk *clk, int enable)
 {
 	return s5p_gatectrl(EXYNOS5_CLKSRC_MASK_GSCL, clk, enable);
@@ -125,6 +130,26 @@ static int exynos5_clk_ip_peric_ctrl(struct clk *clk, int enable)
 static int exynos5_clk_ip_peris_ctrl(struct clk *clk, int enable)
 {
 	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_PERIS, clk, enable);
+}
+
+static int exynos5_clksrc_mask_peric1_ctrl(struct clk *clk, int enable)
+{
+	return s5p_gatectrl(EXYNOS5_CLKSRC_MASK_PERIC1, clk, enable);
+}
+
+static int exynos5_clk_ip_acp_ctrl(struct clk *clk, int enable)
+{
+	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_ACP, clk, enable);
+}
+
+static int exynos5_clk_ip_isp0_ctrl(struct clk *clk, int enable)
+{
+	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_ISP0, clk, enable);
+}
+
+static int exynos5_clk_ip_isp1_ctrl(struct clk *clk, int enable)
+{
+	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_ISP1, clk, enable);
 }
 
 static int exynos5_clk_hdmiphy_ctrl(struct clk *clk, int enable)
@@ -739,6 +764,74 @@ static struct clk exynos5_init_clocks_off[] = {
 		.devname	= "s5p-dp",
 		.enable		= exynos5_clk_ip_disp1_ctrl,
 		.ctrlbit	= (1 << 4),
+	}, {
+		.name		= SYSMMU_CLOCK_NAME,
+		.devname	= SYSMMU_CLOCK_DEVNAME(mfc_l, 3),
+		.enable		= &exynos5_clk_ip_mfc_ctrl,
+		/* There is change in the MFC_L & MFC_R in v6.5 */
+		.ctrlbit	= (1 << 2),
+		.parent         = &exynos5_init_clocks_off[10],
+	}, {
+		.name		= SYSMMU_CLOCK_NAME,
+		.devname	= SYSMMU_CLOCK_DEVNAME(mfc_r, 4),
+		.enable		= &exynos5_clk_ip_mfc_ctrl,
+		.ctrlbit	= (1 << 1),
+		.parent         = &exynos5_init_clocks_off[10],
+	}, {
+		.name		= SYSMMU_CLOCK_NAME,
+		.devname	= SYSMMU_CLOCK_DEVNAME(tv, 28),
+		.enable		= &exynos5_clk_ip_disp1_ctrl,
+		.ctrlbit	= (1 << 9),
+		.parent         = &exynos5_init_clocks_off[13],
+	}, {
+		.name		= SYSMMU_CLOCK_NAME,
+		.devname	= SYSMMU_CLOCK_DEVNAME(jpeg, 7),
+		.enable		= &exynos5_clk_ip_gen_ctrl,
+		.ctrlbit	= (1 << 7),
+	}, {
+		.name		= SYSMMU_CLOCK_NAME,
+		.devname	= SYSMMU_CLOCK_DEVNAME(rot, 5),
+		.enable		= &exynos5_clk_ip_gen_ctrl,
+		.ctrlbit	= (1 << 6)
+	}, {
+		.name		= SYSMMU_CLOCK_NAME,
+		.devname	= SYSMMU_CLOCK_DEVNAME(gsc0, 23),
+		.enable		= &exynos5_clk_ip_gscl_ctrl,
+		.ctrlbit	= (1 << 7),
+		.parent		= &exynos5_init_clocks_off[40],
+	}, {
+		.name		= SYSMMU_CLOCK_NAME,
+		.devname	= SYSMMU_CLOCK_DEVNAME(gsc1, 24),
+		.enable		= &exynos5_clk_ip_gscl_ctrl,
+		.ctrlbit	= (1 << 8),
+		.parent		= &exynos5_init_clocks_off[41],
+	}, {
+		.name		= SYSMMU_CLOCK_NAME,
+		.devname	= SYSMMU_CLOCK_DEVNAME(gsc2, 25),
+		.enable		= &exynos5_clk_ip_gscl_ctrl,
+		.ctrlbit	= (1 << 9),
+		.parent		= &exynos5_init_clocks_off[42],
+	}, {
+		.name		= SYSMMU_CLOCK_NAME,
+		.devname	= SYSMMU_CLOCK_DEVNAME(gsc3, 26),
+		.enable		= &exynos5_clk_ip_gscl_ctrl,
+		.ctrlbit	= (1 << 10),
+		.parent		= &exynos5_init_clocks_off[43],
+	}, {
+		.name		= SYSMMU_CLOCK_NAME,
+		.devname	= SYSMMU_CLOCK_DEVNAME(isp, 11),
+		.enable		= &exynos5_clk_ip_isp0_ctrl,
+		.ctrlbit	= (0x3F << 8),
+	}, {
+		.name		= SYSMMU_CLOCK_NAME2,
+		.devname	= SYSMMU_CLOCK_DEVNAME(isp, 11),
+		.enable		= &exynos5_clk_ip_isp1_ctrl,
+		.ctrlbit	= (0xF << 4),
+	}, {
+		.name		= SYSMMU_CLOCK_NAME,
+		.devname	= SYSMMU_CLOCK_DEVNAME(2d, 2),
+		.enable		= &exynos5_clk_ip_acp_ctrl,
+		.ctrlbit	= (1 << 7),
 	}
 };
 

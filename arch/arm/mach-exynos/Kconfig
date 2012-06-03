@@ -91,10 +91,10 @@ config EXYNOS4_SETUP_FIMD
 	help
 	  Common setup code for FIMD.
 
-config EXYNOS4_DEV_SYSMMU
+config EXYNOS_DEV_SYSMMU
 	bool
 	help
-	  Common setup code for SYSTEM MMU in EXYNOS4
+	  Common setup code for SYSTEM MMU in EXYNOS
 
 config EXYNOS4_DEV_DWMCI
 	bool
@@ -405,6 +405,7 @@ config MACH_EXYNOS5_DT
 	select SOC_EXYNOS5250
 	select USE_OF
 	select ARM_AMBA
+	select EXYNOS_DEV_SYSMMU
 	select EXYNOS4_SETUP_MIPI_DSIM
 	select EXYNOS4_SETUP_USB_PHY
 	select SAMSUNG_DEV_BACKLIGHT
