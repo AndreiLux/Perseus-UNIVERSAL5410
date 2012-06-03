@@ -258,9 +258,38 @@ static struct drm_driver exynos_drm_driver = {
 	.minor	= DRIVER_MINOR,
 };
 
+#ifdef CONFIG_EXYNOS_IOMMU
+static int iommu_init(struct platform_device *pdev)
+{
+	/* DRM device expects a IOMMU mapping to be already
+	 * created in FIMD. Else this function should
+	 * throw an error.
+	 */
+	if (exynos_drm_common_mapping==NULL) {
+		printk(KERN_ERR "exynos drm common mapping is invalid\n");
+		return -1;
+	}
+
+	if (!s5p_create_iommu_mapping(&pdev->dev, 0,
+				0, 0, exynos_drm_common_mapping)) {
+		printk(KERN_ERR "failed to create IOMMU mapping\n");
+		return -1;
+	}
+
+	return 0;
+}
+#endif
+
 static int exynos_drm_platform_probe(struct platform_device *pdev)
 {
 	DRM_DEBUG_DRIVER("%s\n", __FILE__);
+
+#ifdef CONFIG_EXYNOS_IOMMU
+	if (iommu_init(pdev)) {
+		DRM_ERROR("failed to initialize IOMMU\n");
+		return -ENODEV;
+	}
+#endif
 
 	exynos_drm_driver.num_ioctls = DRM_ARRAY_SIZE(exynos_ioctls);
 

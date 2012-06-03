@@ -788,6 +788,30 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable)
 	return 0;
 }
 
+#ifdef CONFIG_EXYNOS_IOMMU
+static int iommu_init(struct platform_device *pdev)
+{
+	struct platform_device *pds;
+
+	pds = find_sysmmu_dt(pdev, "sysmmu");
+	if (pds==NULL) {
+		printk(KERN_ERR "No sysmmu found\n");
+		return -1;
+	}
+
+	platform_set_sysmmu(&pds->dev, &pdev->dev);
+	exynos_drm_common_mapping = s5p_create_iommu_mapping(&pdev->dev,
+					0x20000000, SZ_128M, 4,
+					exynos_drm_common_mapping);
+
+	if (!exynos_drm_common_mapping) {
+		printk(KERN_ERR "IOMMU mapping not created\n");
+		return -1;
+	}
+
+	return 0;
+}
+#endif
 static int __devinit fimd_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -800,6 +824,13 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 	int win;
 	int ret = -EINVAL;
 
+#ifdef CONFIG_EXYNOS_IOMMU
+	ret = iommu_init(pdev);
+	if (ret < 0) {
+		dev_err(dev, "failed to initialize IOMMU\n");
+		return -ENODEV;
+	}
+#endif
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
 	pdata = pdev->dev.platform_data;

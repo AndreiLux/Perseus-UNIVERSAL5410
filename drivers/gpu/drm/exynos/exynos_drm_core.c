@@ -34,6 +34,9 @@
 
 static LIST_HEAD(exynos_drm_subdrv_list);
 static struct drm_device *drm_dev;
+#ifdef CONFIG_EXYNOS_IOMMU
+struct dma_iommu_mapping *exynos_drm_common_mapping;
+#endif
 
 static int exynos_drm_subdrv_probe(struct drm_device *dev,
 					struct exynos_drm_subdrv *subdrv)
