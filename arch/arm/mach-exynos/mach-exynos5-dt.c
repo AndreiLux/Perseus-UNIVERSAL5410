@@ -239,6 +239,13 @@ static void __init exynos5250_dt_map_io(void)
 	s3c24xx_init_clocks(24000000);
 }
 
+static void __init exynos5_reserve(void)
+{
+	/* required to have enough address range to remap the IOMMU
+	 * allocated buffers */
+	init_consistent_dma_size(SZ_64M);
+}
+
 static void s5p_tv_setup(void)
 {
 	/* direct HPD to HDMI chip */
@@ -289,6 +296,7 @@ static char const *exynos5250_dt_compat[] __initdata = {
 DT_MACHINE_START(EXYNOS5_DT, "SAMSUNG EXYNOS5 (Flattened Device Tree)")
 	/* Maintainer: Kukjin Kim <kgene.kim@samsung.com> */
 	.init_irq	= exynos5_init_irq,
+	.reserve	= exynos5_reserve,
 	.map_io		= exynos5250_dt_map_io,
 	.handle_irq	= gic_handle_irq,
 	.init_machine	= exynos5250_dt_machine_init,
