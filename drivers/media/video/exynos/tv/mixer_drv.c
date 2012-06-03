@@ -25,6 +25,10 @@
 
 #if defined(CONFIG_VIDEOBUF2_DMA_CONTIG)
 #include <media/videobuf2-dma-contig.h>
+#ifdef CONFIG_EXYNOS_IOMMU
+#include <mach/sysmmu.h>
+#include <linux/of_platform.h>
+#endif
 #endif
 #include <media/exynos_mc.h>
 
@@ -1320,6 +1324,27 @@ static int mxr_create_links(struct mxr_device *mdev)
 	return 0;
 }
 
+#ifdef CONFIG_EXYNOS_IOMMU
+static int iommu_init(struct platform_device *pdev)
+{
+	struct platform_device *pds;
+
+	pds = find_sysmmu_dt(pdev, "sysmmu");
+	if (pds==NULL) {
+		printk(KERN_ERR "No sysmmu found\n");
+		return -1;
+	}
+
+	platform_set_sysmmu(&pds->dev, &pdev->dev);
+	if (!s5p_create_iommu_mapping(&pdev->dev, 0x20000000,
+						SZ_128M, 4, NULL)) {
+		printk(KERN_ERR "IOMMU mapping not created\n");
+		return -1;
+	}
+
+	return 0;
+}
+#endif
 /* --------- DRIVER INITIALIZATION ---------- */
 
 static int __devinit mxr_probe(struct platform_device *pdev)
@@ -1339,6 +1364,13 @@ static int __devinit mxr_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
+#ifdef CONFIG_EXYNOS_IOMMU
+	if (iommu_init(pdev)) {
+		mxr_err(mdev, "failed to initialize IOMMU.\n");
+		ret = -EINVAL;
+		goto fail;
+	}
+#endif
 	/* setup pointer to master device */
 	mdev->dev = dev;
 	/* use only sub mixer0 as default */
