@@ -28,6 +28,10 @@
 #include <media/v4l2-ioctl.h>
 #include <linux/of.h>
 #include "gsc-core.h"
+#ifdef CONFIG_EXYNOS_IOMMU
+#include <mach/sysmmu.h>
+#include <linux/of_platform.h>
+#endif
 #define GSC_CLOCK_GATE_NAME		"gscl"
 
 int gsc_dbg = 6;
@@ -1119,6 +1123,27 @@ static int gsc_runtime_resume(struct device *dev)
 }
 static inline void *gsc_get_drv_data(struct platform_device *pdev);
 
+#ifdef CONFIG_EXYNOS_IOMMU
+static int iommu_init(struct platform_device *pdev)
+{
+	struct platform_device *pds;
+
+	pds = find_sysmmu_dt(pdev, "sysmmu");
+	if (pds==NULL) {
+		printk(KERN_ERR "No sysmmu found\n");
+		return -1;
+	}
+
+	platform_set_sysmmu(&pds->dev, &pdev->dev);
+	if (!s5p_create_iommu_mapping(&pdev->dev, 0x20000000,
+						SZ_128M, 4, NULL)) {
+		printk(KERN_ERR "IOMMU mapping failed\n");
+		return -1;
+	}
+
+	return 0;
+}
+#endif
 static int gsc_probe(struct platform_device *pdev)
 {
 	struct gsc_dev *gsc;
@@ -1139,6 +1164,12 @@ static int gsc_probe(struct platform_device *pdev)
 	drv_data = (struct gsc_driverdata *)
 				gsc_get_drv_data(pdev);
 
+#ifdef CONFIG_EXYNOS_IOMMU
+	if (iommu_init(pdev)) {
+		dev_err(&pdev->dev, "IOMMU Initialization failed\n");
+		return -EINVAL;
+	}
+#endif
 
 	if (pdev->dev.of_node) {
 		pdev->id = of_alias_get_id(pdev->dev.of_node, "gsc");
