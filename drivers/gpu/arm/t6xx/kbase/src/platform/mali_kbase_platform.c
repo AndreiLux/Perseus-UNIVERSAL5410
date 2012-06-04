@@ -46,7 +46,6 @@
 #include <mach/regs-pmu.h>
 #include <asm/delay.h>
 #include <kbase/src/platform/mali_kbase_platform.h>
-#include <kbase/src/platform/mali_kbase_runtime_pm.h>
 #include <kbase/src/platform/mali_kbase_dvfs.h>
 
 #include <kbase/src/common/mali_kbase_gator.h>
@@ -131,6 +130,7 @@ int kbase_platform_clock_on(struct kbase_device *kbdev)
 	{
 		(void) clk_enable(platform->sclk_g3d);
 	}
+	clk_g3d_status = 1;
 
 	return 0;
 }
@@ -156,6 +156,8 @@ int kbase_platform_clock_off(struct kbase_device *kbdev)
 	{
 		(void)clk_disable(platform->sclk_g3d);
 	}
+	clk_g3d_status = 0;
+
 	return 0;
 }
 
@@ -246,7 +248,7 @@ int kbase_platform_cmu_pmu_control(struct kbase_device *kbdev, int control)
 			panic("failed to turn off sclk_g3d\n");
 
 		platform->cmu_pmu_status = 0;
-#if MALI_RTPM_DEBUG
+#ifdef MALI_RTPM_DEBUG
 		printk( KERN_ERR "3D cmu_pmu_control - off\n" );
 #endif /* MALI_RTPM_DEBUG */
 	}
@@ -265,7 +267,7 @@ int kbase_platform_cmu_pmu_control(struct kbase_device *kbdev, int control)
 			panic("failed to turn on g3d power\n");
 
 		platform->cmu_pmu_status = 1;
-#if MALI_RTPM_DEBUG
+#ifdef MALI_RTPM_DEBUG
 		printk( KERN_ERR "3D cmu_pmu_control - on\n");
 #endif /* MALI_RTPM_DEBUG */
 	}
@@ -642,7 +644,7 @@ static ssize_t show_vol(struct device *dev, struct device_attribute *attr, char 
 		return -ENODEV;
 
 	kbase_platform_get_voltage(dev, &vol);
-	ret += snprintf(buf+ret, PAGE_SIZE-ret, "Current operating voltage for mali t6xx = %d", vol);
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "Current operating voltage for mali t6xx = %d, 0x%x", vol, __raw_readl(EXYNOS5_G3D_STATUS));
 
 	if (ret < PAGE_SIZE - 1)
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");

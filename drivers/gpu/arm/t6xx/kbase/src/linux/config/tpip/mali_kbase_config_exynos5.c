@@ -15,14 +15,15 @@
 #include <kbase/src/common/mali_kbase.h>
 #include <kbase/src/common/mali_kbase_defs.h>
 #include <kbase/src/linux/mali_kbase_config_linux.h>
-#include <kbase/src/platform/mali_kbase_runtime_pm.h>
 #include <mach/map.h>
 #include <plat/devs.h>
 #include <linux/pm_runtime.h>
 #include <kbase/src/platform/mali_kbase_platform.h>
-#include <kbase/src/platform/mali_kbase_runtime_pm.h>
 
 #define HZ_IN_MHZ                           (1000000)
+#ifdef CONFIG_MALI_T6XX_RT_PM
+#define RUNTIME_PM_DELAY_TIME 100
+#endif
 
 static kbase_io_resources io_resources =
 {
@@ -55,12 +56,6 @@ mali_bool kbase_platform_exynos5_init(kbase_device *kbdev)
 {
 	if(MALI_ERROR_NONE == kbase_platform_init(kbdev))
 	{
-#ifdef CONFIG_MALI_T6XX_DEBUG_SYS
-		if(kbase_platform_create_sysfs_file(kbdev->osdev.dev))
-		{
-			return MALI_TRUE;
-		}
-#endif /* CONFIG_MALI_T6XX_DEBUG_SYS */
 		return MALI_TRUE;
 	}
 
@@ -86,18 +81,61 @@ kbase_platform_funcs_conf platform_funcs =
 #ifdef CONFIG_MALI_T6XX_RT_PM
 static int pm_callback_power_on(kbase_device *kbdev)
 {
-	/* Nothing is needed on VExpress, but we may have destroyed GPU state (if the below HARD_RESET code is active) */
+	int result;
 	struct kbase_os_device *osdev = &kbdev->osdev;
-	kbase_device_runtime_get_sync(osdev->dev);
+	struct exynos_context *platform;
+
+	platform = (struct exynos_context *) kbdev->platform_context;
+
+	if(osdev->dev->power.disable_depth > 0) {
+		if(platform->cmu_pmu_status == 0)
+			kbase_platform_cmu_pmu_control(kbdev, 1);
+		return 0;
+	}
+	result = pm_runtime_resume(osdev->dev);
+
+	if(result < 0 && result == -EAGAIN)
+		kbase_platform_cmu_pmu_control(kbdev, 1);
+	else if(result < 0)
+		OSK_PRINT_ERROR(OSK_BASE_PM, "pm_runtime_get_sync failed (%d)\n", result);
+
 	return 0;
 }
 
 static void pm_callback_power_off(kbase_device *kbdev)
 {
 	struct kbase_os_device *osdev = &kbdev->osdev;
-	kbase_device_runtime_put_sync(osdev->dev);
+	pm_schedule_suspend(osdev->dev, RUNTIME_PM_DELAY_TIME);
 }
 
+mali_error kbase_device_runtime_init(struct kbase_device *kbdev)
+{
+	pm_suspend_ignore_children(kbdev->osdev.dev, true);
+	pm_runtime_enable(kbdev->osdev.dev);
+#ifdef CONFIG_MALI_T6XX_DEBUG_SYS
+	if(kbase_platform_create_sysfs_file(kbdev->osdev.dev))
+	{
+		return MALI_TRUE;
+	}
+#endif /* CONFIG_MALI_T6XX_DEBUG_SYS */
+	return MALI_ERROR_NONE;
+}
+
+void kbase_device_runtime_disable(struct kbase_device *kbdev)
+{
+	pm_runtime_disable(kbdev->osdev.dev);
+}
+
+static int pm_callback_runtime_on(kbase_device *kbdev)
+{
+	kbase_platform_clock_on(kbdev);
+	return 0;
+}
+
+static void pm_callback_runtime_off(kbase_device *kbdev)
+{
+	kbase_platform_clock_off(kbdev);
+}
 
 static kbase_pm_callback_conf pm_callbacks =
 {
@@ -106,8 +144,8 @@ static kbase_pm_callback_conf pm_callbacks =
 #ifdef CONFIG_PM_RUNTIME
 	.power_runtime_init_callback = kbase_device_runtime_init,
 	.power_runtime_term_callback = kbase_device_runtime_disable,
-	.power_runtime_on_callback = pm_callback_power_on,
-	.power_runtime_off_callback = pm_callback_power_off,
+	.power_runtime_on_callback = pm_callback_runtime_on,
+	.power_runtime_off_callback = pm_callback_runtime_off,
 #else /* CONFIG_PM_RUNTIME */
 	.power_runtime_init_callback = NULL,
 	.power_runtime_term_callback = NULL,
