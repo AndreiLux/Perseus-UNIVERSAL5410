@@ -398,8 +398,8 @@ static int calc_plane(int width, int height)
 	mbX = (width + 15)/16;
 	mbY = (height + 15)/16;
 
-	if (width * height < 2048 * 1024)
-		mbY = (mbY + 1) / 2 * 2;
+	/* Alignment for interlaced processing */
+	mbY = (mbY + 1) / 2 * 2;
 
 	return (mbX * 16) * (mbY * 16);
 }
