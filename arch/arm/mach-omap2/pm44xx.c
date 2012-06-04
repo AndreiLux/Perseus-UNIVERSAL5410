@@ -17,6 +17,9 @@
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <asm/system_misc.h>
+#include <linux/io.h>
+
+#include <mach/ctrl_module_wkup_44xx.h>
 
 #include "common.h"
 #include "clockdomain.h"
@@ -204,6 +207,45 @@ static inline int omap4_init_static_deps(void)
 	int ret;
 	struct clockdomain *emif_clkdm, *mpuss_clkdm, *l3_1_clkdm, *l4wkup;
 	struct clockdomain *ducati_clkdm, *l3_2_clkdm, *l4_per_clkdm;
+
+	if (!cpu_is_omap44xx())
+		return -ENODEV;
+
+	if (omap_rev() == OMAP4430_REV_ES1_0) {
+		WARN(1, "Power Management not supported on OMAP4430 ES1.0\n");
+		return -ENODEV;
+	}
+
+	pr_err("Power Management for TI OMAP4.\n");
+
+	/*
+	 * Work around for OMAP443x Errata i632: "LPDDR2 Corruption After OFF
+	 * Mode Transition When CS1 Is Used On EMIF":
+	 * Overwrite EMIF1/EMIF2
+	 * SECURE_EMIF1_SDRAM_CONFIG2_REG
+	 * SECURE_EMIF2_SDRAM_CONFIG2_REG
+	 */
+	if (cpu_is_omap443x()) {
+		void __iomem *secure_ctrl_mod;
+
+		secure_ctrl_mod = ioremap(OMAP4_CTRL_MODULE_WKUP, SZ_4K);
+		BUG_ON(!secure_ctrl_mod);
+
+		__raw_writel(0x10, secure_ctrl_mod +
+			     OMAP4_CTRL_SECURE_EMIF1_SDRAM_CONFIG2_REG);
+		__raw_writel(0x10, secure_ctrl_mod +
+			     OMAP4_CTRL_SECURE_EMIF2_SDRAM_CONFIG2_REG);
+		wmb();
+		iounmap(secure_ctrl_mod);
+	}rch/arm/mach-omap2/pm44xx.c
+
+
+	ret = pwrdm_for_each(pwrdms_setup, NULL);
+	if (ret) {
+		pr_err("Failed to setup powerdomains\n");
+		goto err2;
+	}
+
 	/*
 	 * The dynamic dependency between MPUSS -> MEMIF and
 	 * MPUSS -> L4_PER/L3_* and DUCATI -> L3_* doesn't work as
