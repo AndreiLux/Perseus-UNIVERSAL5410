@@ -188,12 +188,12 @@ static int __init ramoops_probe(struct platform_device *pdev)
 	 * probes.
 	 */
 	if (cxt->max_count)
-		goto fail3;
+		goto fail5;
 
 	if (!pdata->mem_size || !pdata->record_size) {
 		pr_err("The memory size and the record size must be "
 			"non-zero\n");
-		goto fail3;
+		goto fail5;
 	}
 
 	pdata->mem_size = rounddown_pow_of_two(pdata->mem_size);
@@ -203,13 +203,13 @@ static int __init ramoops_probe(struct platform_device *pdev)
 	if (pdata->mem_size < MIN_MEM_SIZE &&
 			pdata->record_size < MIN_MEM_SIZE) {
 		pr_err("memory size too small, minium is %lu\n", MIN_MEM_SIZE);
-		goto fail3;
+		goto fail5;
 	}
 
 	if (pdata->mem_size < pdata->record_size) {
 		pr_err("The memory size must be larger than the "
 			"records size\n");
-		goto fail3;
+		goto fail5;
 	}
 
 	cxt->max_count = pdata->mem_size / pdata->record_size;
@@ -255,6 +255,7 @@ fail3:
 	kfree(cxt->pstore.buf);
 fail4:
 	cxt->pstore.bufsize = 0;
+fail5:
 	return err;
 }
 
