@@ -1343,7 +1343,7 @@ mali_error kbase_platform_init(kbase_device *kbdev)
 #endif /* CONFIG_VITHAR_DEBUG_SYS */
 
 #ifdef CONFIG_VITHAR_DVFS
-	kbase_platform_dvfs_init(dev);
+	kbase_platform_dvfs_init(kbdev);
 #endif /* CONFIG_VITHAR_DVFS */
 
 	/* Enable power */
@@ -1751,7 +1751,7 @@ int kbase_platform_get_voltage(struct device *dev, int *vol)
 }
 #endif /* CONFIG_VITHAR_DEBUG_SYS */
 
-#ifdef CONFIG_VITHAR_DEBUG_SYS
+#if defined CONFIG_VITHAR_DEBUG_SYS || defined CONFIG_VITHAR_DVFS
 int kbase_platform_set_voltage(struct device *dev, int vol)
 {
 #ifdef CONFIG_REGULATOR

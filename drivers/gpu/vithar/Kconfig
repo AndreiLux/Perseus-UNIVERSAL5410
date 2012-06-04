@@ -17,3 +17,10 @@ config VITHAR_RT_PM
 	default n
 	help
 	  Choose this option to enable runtime power management on vithar DDK.
+
+config VITHAR_DVFS
+	bool "Enable Dynamic frequency and volatge scaling"
+	depends on VITHAR
+	default n
+	help
+	  Choose this option to enable dynamic frequency and volatge scaling
