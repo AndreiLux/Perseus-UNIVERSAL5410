@@ -32,6 +32,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/ramoops.h>
+#include <linux/of_address.h>
 
 #define RAMOOPS_KERNMSG_HDR "===="
 #define MIN_MEM_SIZE 4096UL
@@ -178,6 +179,39 @@ static int ramoops_pstore_erase(enum pstore_type_id type, u64 id,
 	return 0;
 }
 
+#ifdef CONFIG_OF
+static struct ramoops_platform_data * __init
+of_ramoops_platform_data(struct device *dev)
+{
+	struct device_node *node = dev->of_node;
+	struct ramoops_platform_data *pdata;
+	const __be32 *addrp;
+	u64 size;
+	u32 val;
+
+	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
+	if (pdata == NULL)
+		return NULL;
+
+	addrp = of_get_address(node, 0, &size, NULL);
+	if (addrp == NULL)
+		return NULL;
+	pdata->mem_address = of_translate_address(node, addrp);
+	pdata->mem_size = size;
+
+	if (of_property_read_u32(node, "record-size", &val))
+		return NULL;
+	pdata->record_size = val;
+
+	if (of_get_property(node, "dump-oops", NULL))
+		pdata->dump_oops = 1;
+
+	return pdata;
+}
+#else
+#define of_ramoops_platform_data(dev) NULL
+#endif
+
 static int __init ramoops_probe(struct platform_device *pdev)
 {
 	struct ramoops_platform_data *pdata = pdev->dev.platform_data;
@@ -189,6 +223,14 @@ static int __init ramoops_probe(struct platform_device *pdev)
 	 */
 	if (cxt->max_count)
 		goto fail5;
+
+	if (!pdata && pdev->dev.of_node) {
+		pdata = of_ramoops_platform_data(&pdev->dev);
+		if (!pdata) {
+			pr_err("Invalid ramoops device tree data\n");
+			goto fail5;
+		}
+	}
 
 	if (!pdata->mem_size || !pdata->record_size) {
 		pr_err("The memory size and the record size must be "
@@ -280,11 +322,20 @@ static int __exit ramoops_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_OF
+static const struct of_device_id ramoops_of_match[] = {
+	{ .compatible = "ramoops", },
+	{ },
+};
+MODULE_DEVICE_TABLE(of, ramoops_of_match);
+#endif
+
 static struct platform_driver ramoops_driver = {
 	.remove		= __exit_p(ramoops_remove),
 	.driver		= {
 		.name	= "ramoops",
 		.owner	= THIS_MODULE,
+		.of_match_table = of_match_ptr(ramoops_of_match),
 	},
 };
 
