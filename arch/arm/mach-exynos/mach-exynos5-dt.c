@@ -22,6 +22,8 @@
 #include <linux/mfd/wm8994/pdata.h>
 #include <linux/regulator/machine.h>
 #include <linux/spi/spi.h>
+#include <linux/memblock.h>
+#include <linux/of_fdt.h>
 
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
@@ -781,11 +783,54 @@ static void __init exynos5250_dt_map_io(void)
 	s3c24xx_init_clocks(24000000);
 }
 
+static unsigned long ramoops_dt_start, ramoops_dt_size;
+static int __init init_dt_scan_ramoops(unsigned long node, const char *uname,
+					int depth, void *data)
+{
+	__be32 *reg, *endp;
+	unsigned long l;
+
+	if (!of_flat_dt_is_compatible(node, "ramoops"))
+		return 0;
+
+	reg = of_get_flat_dt_prop(node, "reg", &l);
+	if (!reg)
+		return 0;
+	endp = reg + (l / sizeof(__be32));
+
+	/* This architecture uses single cells for address and size.
+	 * Other architectures may differ. */
+	ramoops_dt_start = be32_to_cpu(reg[0]);
+	ramoops_dt_size = be32_to_cpu(reg[1]);
+	return 0;
+}
+
+static void __init exynos5_ramoops_reserve(void)
+{
+	unsigned long start, size;
+
+	of_scan_flat_dt(init_dt_scan_ramoops, NULL);
+
+	/* If necessary, lower start and raise size to align to 1M. */
+	start = round_down(ramoops_dt_start, SZ_1M);
+	size = ramoops_dt_size + ramoops_dt_start - start;
+	size = round_up(size, SZ_1M);
+
+	if (memblock_remove(start, size)) {
+		pr_err("Failed to remove ramoops %08lx@%08lx from memory\n",
+			size, start);
+	} else {
+		pr_info("Ramoops: %08lx - %08lx\n", start, start + size - 1);
+	}
+}
+
 static void __init exynos5_reserve(void)
 {
 	/* required to have enough address range to remap the IOMMU
 	 * allocated buffers */
 	init_consistent_dma_size(SZ_64M);
+
+	exynos5_ramoops_reserve();
 }
 
 static void s5p_tv_setup(void)
