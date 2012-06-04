@@ -53,6 +53,8 @@
 
 #include <plat/omap44xx.h>
 
+#include <mach/omap-secure.h>
+
 #include "iomap.h"
 #include "common.h"
 #include "omap4-sar-layout.h"
@@ -446,6 +448,17 @@ int omap_enter_lowpower(unsigned int cpu, unsigned int power_state)
 	set_cpu_next_pwrst(wakeup_cpu, PWRDM_POWER_ON);
 
 	if (omap4_mpuss_read_prev_context_state()) {
+		/*
+		 * Dummy dispatcher call after OSWR and OFF
+		 * Restore the right return Kernel address (with MMU on) for
+		 * subsequent calls to secure ROM. Otherwise the return address
+		 * will be to a PA return address and the system will hang.
+		 */
+		if (omap_type() != OMAP2_DEVICE_TYPE_GP)
+			omap_secure_dispatcher(OMAP4_PPA_SERVICE_0,
+					       FLAG_START_CRITICAL,
+					       0, 0, 0, 0, 0);
+
 		restore_ivahd_tesla_regs();
 		restore_l3instr_regs();
 	}
