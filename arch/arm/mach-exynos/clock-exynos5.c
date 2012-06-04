@@ -1130,6 +1130,21 @@ static struct clk exynos5_init_clocks_off[] = {
 		.devname	= "s5p-fimg2d",
 		.enable		= exynos5_clk_ip_acp_ctrl,
 		.ctrlbit	= (1 << 3),
+	}, {
+		.name		= "spi",
+		.devname	= "s3c64xx-spi.0",
+		.enable		= exynos5_clk_ip_peric_ctrl,
+		.ctrlbit	= (1 << 16),
+	}, {
+		.name		= "spi",
+		.devname	= "s3c64xx-spi.1",
+		.enable		= exynos5_clk_ip_peric_ctrl,
+		.ctrlbit	= (1 << 17),
+	}, {
+		.name		= "spi",
+		.devname	= "s3c64xx-spi.2",
+		.enable		= exynos5_clk_ip_peric_ctrl,
+		.ctrlbit	= (1 << 18),
 	}
 };
 
@@ -1531,6 +1546,66 @@ static struct clksrc_clk exynos5_clk_sclk_mmc3 = {
 	.reg_div = { .reg = EXYNOS5_CLKDIV_FSYS2, .shift = 24, .size = 8 },
 };
 
+static struct clksrc_clk exynos5_clk_dout_spi0 = {
+	.clk		= {
+		.name		= "dout_spi0",
+	},
+	.sources = &exynos5_clkset_group,
+	.reg_src = { .reg = EXYNOS5_CLKSRC_PERIC1, .shift = 16, .size = 4 },
+	.reg_div = { .reg = EXYNOS5_CLKDIV_PERIC1, .shift = 0, .size = 4 },
+};
+
+static struct clksrc_clk exynos5_clk_dout_spi1 = {
+	.clk		= {
+		.name		= "dout_spi1",
+	},
+	.sources = &exynos5_clkset_group,
+	.reg_src = { .reg = EXYNOS5_CLKSRC_PERIC1, .shift = 20, .size = 4 },
+	.reg_div = { .reg = EXYNOS5_CLKDIV_PERIC1, .shift = 16, .size = 4 },
+};
+
+static struct clksrc_clk exynos5_clk_dout_spi2 = {
+	.clk		= {
+		.name		= "dout_spi2",
+	},
+	.sources = &exynos5_clkset_group,
+	.reg_src = { .reg = EXYNOS5_CLKSRC_PERIC1, .shift = 24, .size = 4 },
+	.reg_div = { .reg = EXYNOS5_CLKDIV_PERIC2, .shift = 0, .size = 4 },
+};
+
+static struct clksrc_clk exynos5_clk_sclk_spi0 = {
+	.clk	= {
+		.name		= "sclk_spi",
+		.devname	= "s3c64xx-spi.0",
+		.parent		= &exynos5_clk_dout_spi0.clk,
+		.enable		= exynos5_clksrc_mask_peric1_ctrl,
+		.ctrlbit	= (1 << 16),
+	},
+	.reg_div = { .reg = EXYNOS5_CLKDIV_PERIC1, .shift = 8, .size = 8 },
+};
+
+static struct clksrc_clk exynos5_clk_sclk_spi1 = {
+	.clk	= {
+		.name		= "sclk_spi",
+		.devname	= "s3c64xx-spi.1",
+		.parent		= &exynos5_clk_dout_spi1.clk,
+		.enable		= exynos5_clksrc_mask_peric1_ctrl,
+		.ctrlbit	= (1 << 20),
+	},
+	.reg_div = { .reg = EXYNOS5_CLKDIV_PERIC1, .shift = 24, .size = 8 },
+};
+
+static struct clksrc_clk exynos5_clk_sclk_spi2 = {
+	.clk	= {
+		.name		= "sclk_spi",
+		.devname	= "s3c64xx-spi.2",
+		.parent		= &exynos5_clk_dout_spi2.clk,
+		.enable		= exynos5_clksrc_mask_peric1_ctrl,
+		.ctrlbit	= (1 << 24),
+	},
+	.reg_div = { .reg = EXYNOS5_CLKDIV_PERIC2, .shift = 8, .size = 8 },
+};
+
 static struct clksrc_clk exynos5_clksrcs[] = {
 	{
 		.clk	= {
@@ -1706,6 +1781,9 @@ static struct clksrc_clk *exynos5_sysclks[] = {
 	&exynos5_clk_aclk_266_isp,
 	&exynos5_clk_sclk_uart_isp,
 	&exynos5_clk_clkout,
+	&exynos5_clk_dout_spi0,
+	&exynos5_clk_dout_spi1,
+	&exynos5_clk_dout_spi2,
 };
 
 static struct clk *exynos5_clk_cdev[] = {
@@ -1727,6 +1805,9 @@ static struct clksrc_clk *exynos5_clksrc_cdev[] = {
 	&exynos5_clk_sclk_audio1,
 	&exynos5_clk_sclk_audio2,
 	&exynos5_clk_sclk_spdif,
+	&exynos5_clk_sclk_spi0,
+	&exynos5_clk_sclk_spi1,
+	&exynos5_clk_sclk_spi2,
 };
 
 static struct clk_lookup exynos5_clk_lookup[] = {
@@ -1741,6 +1822,9 @@ static struct clk_lookup exynos5_clk_lookup[] = {
 	CLKDEV_INIT("dma-pl330.0", "apb_pclk", &exynos5_clk_pdma0),
 	CLKDEV_INIT("dma-pl330.1", "apb_pclk", &exynos5_clk_pdma1),
 	CLKDEV_INIT("dma-pl330.2", "apb_pclk", &exynos5_clk_mdma1),
+	CLKDEV_INIT("s3c64xx-spi.0", "spi_busclk0", &exynos5_clk_sclk_spi0.clk),
+	CLKDEV_INIT("s3c64xx-spi.1", "spi_busclk0", &exynos5_clk_sclk_spi1.clk),
+	CLKDEV_INIT("s3c64xx-spi.2", "spi_busclk0", &exynos5_clk_sclk_spi2.clk),
 };
 
 static unsigned long exynos5_epll_get_rate(struct clk *clk)
