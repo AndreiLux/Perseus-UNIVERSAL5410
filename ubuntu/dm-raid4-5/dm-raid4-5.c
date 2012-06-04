@@ -54,6 +54,7 @@ static const char *version = "v0.2594b";
 #include "dm-region-hash.h"
 
 #include <linux/slab.h>
+#include <linux/module.h>
 
 /*
  * Configurable parameters
@@ -173,9 +174,13 @@ enum chunk_flags {
 	CHUNK_UPTODATE,		/* Chunk pages are uptodate. */
 };
 
+/*
+ * This does not work anymore with __REQ_* values being enums
+ *
 #if READ != 0 || WRITE != 1
 #error dm-raid45: READ/WRITE != 0/1 used as index!!!
 #endif
+*/
 
 enum bl_type {
 	WRITE_QUEUED = WRITE + 1,

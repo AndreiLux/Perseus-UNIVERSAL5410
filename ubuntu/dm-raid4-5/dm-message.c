@@ -14,6 +14,7 @@
 #include "dm.h"
 #include "dm-message.h"
 #include <linux/kernel.h>
+#include <linux/module.h>
 
 #define DM_MSG_PREFIX	"dm_message"
 
