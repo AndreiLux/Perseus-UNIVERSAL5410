@@ -29,10 +29,12 @@
 
 #include <mach/omap-wakeupgen.h>
 #include <mach/omap-secure.h>
+#include <plat/omap_hwmod.h>
 
 #include "omap4-sar-layout.h"
 #include "common.h"
 #include "pm.h"
+#include "clockdomain.h"
 
 #define MAX_NR_BANKS		5
 #define MAX_IRQS		160
@@ -56,6 +58,8 @@ static unsigned int max_irqs = MAX_IRQS;
 static unsigned int secure_api_index;
 
 static struct powerdomain *mpuss_pd;
+static struct clockdomain *l4_secure_clkdm;
+static struct omap_hwmod *l3_main_3_oh;
 
 /*
  * Static helper functions.
@@ -341,10 +345,18 @@ static void save_secure_ram(void)
 static void save_secure_all(void)
 {
 	u32 ret;
+
+	omap_hwmod_enable(l3_main_3_oh);
+	clkdm_wakeup(l4_secure_clkdm);
+
 	ret = omap_secure_dispatcher(OMAP4_HAL_SAVEALL_INDEX,
 				FLAG_START_CRITICAL,
 				1, omap_secure_ram_mempool_base(),
 				0, 0, 0);
+
+	clkdm_allow_idle(l4_secure_clkdm);
+	omap_hwmod_idle(l3_main_3_oh);
+
 	if (ret != API_HAL_RET_VALUE_OK)
 		pr_err("Secure all context save failed\n");
 }
@@ -495,6 +507,14 @@ int __init omap_wakeupgen_init(void)
 			sar_writel(GIC_ISR_NON_SECURE, ICDISR_SPI_OFFSET, i);
 		iounmap(sar_base);
 		sar_base = NULL;
+	} else {
+		l3_main_3_oh = omap_hwmod_lookup("l3_main_3");
+		if (!l3_main_3_oh)
+			pr_err("%s: failed to get l3_main_3_oh\n", __func__);
+
+		l4_secure_clkdm = clkdm_lookup("l4_secure_clkdm");
+		if (!l4_secure_clkdm)
+			pr_err("%s: failed to get l4_secure_clkdm\n", __func__);
 	}
 
 	irq_hotplug_init();
