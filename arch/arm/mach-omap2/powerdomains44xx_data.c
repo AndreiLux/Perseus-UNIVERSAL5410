@@ -36,7 +36,9 @@ static struct powerdomain core_44xx_pwrdm = {
 	.voltdm		  = { .name = "core" },
 	.prcm_offs	  = OMAP4430_PRM_CORE_INST,
 	.prcm_partition	  = OMAP4430_PRM_PARTITION,
-	.pwrsts		  = PWRSTS_RET_INA_ON,
+//	.pwrsts		  = PWRSTS_RET_INA_ON,
+	.context_offs	  = OMAP4_RM_L3_1_L3_1_CONTEXT_OFFSET,
+	.pwrsts		  = PWRSTS_RET_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 5,
 	.pwrsts_mem_ret	= {
@@ -205,7 +207,9 @@ static struct powerdomain mpu_44xx_pwrdm = {
 	.voltdm		  = { .name = "mpu" },
 	.prcm_offs	  = OMAP4430_PRM_MPU_INST,
 	.prcm_partition	  = OMAP4430_PRM_PARTITION,
-	.pwrsts		  = PWRSTS_RET_INA_ON,
+//	.pwrsts		  = PWRSTS_RET_INA_ON,
+	.context_offs	  = OMAP4_RM_MPU_MPU_CONTEXT_OFFSET,
+	.pwrsts		  = PWRSTS_RET_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 3,
 	.pwrsts_mem_ret	= {

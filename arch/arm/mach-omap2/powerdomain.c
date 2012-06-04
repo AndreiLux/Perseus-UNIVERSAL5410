@@ -160,6 +160,15 @@ static int _pwrdm_state_switch(struct powerdomain *pwrdm, int flag)
 		break;
 	case PWRDM_STATE_PREV:
 		prev = pwrdm_read_prev_pwrst(pwrdm);
+
+		/*
+		 * If powerdomain has context offset defined, check if
+		 * the domain has lost context (i.e. entered off)
+		 */
+		if (pwrdm->context_offs)
+			if (omap4_pwrdm_lost_context_rff(pwrdm->prcm_offs,
+							 pwrdm->context_offs))
+				prev = PWRDM_POWER_OFF;
 		if (pwrdm->state != prev)
 			pwrdm->state_counter[prev]++;
 		if (prev == PWRDM_POWER_RET)

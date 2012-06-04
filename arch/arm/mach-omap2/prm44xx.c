@@ -274,6 +274,21 @@ static void __init omap4_enable_io_wakeup(void)
 			OMAP4_PRM_IO_PMCTRL_OFFSET);
 }
 
+bool omap4_pwrdm_lost_context_rff(s16 inst, s16 offset)
+{
+	u32 val;
+
+	val = omap4_prminst_read_inst_reg(OMAP4430_PRM_PARTITION, inst, offset);
+
+	if (val & OMAP4430_LOSTCONTEXT_RFF_MASK) {
+		omap4_prminst_write_inst_reg(val, OMAP4430_PRM_PARTITION, inst,
+					     offset);
+		return true;
+	}
+
+	return false;
+}
+
 /**
  * omap4_device_set_state_off() - setup device off state
  * @enable:	set to off or not.

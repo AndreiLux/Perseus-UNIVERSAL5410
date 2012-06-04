@@ -466,7 +466,6 @@ int omap_enter_lowpower(unsigned int cpu, unsigned int power_state)
 	if (omap4_device_prev_state_off()) {
 		omap4_dpll_resume_off();
 		omap4_cm_resume_off();
-		omap4_device_clear_prev_off_state();
 	}
 
 	pwrdm_post_transition();
