@@ -17,8 +17,14 @@
 
 #include <linux/linkage.h>
 #include <linux/init.h>
+#include <mach/omap-secure.h>
+#include "prcm_mpu44xx.h"
+
+#define CPU1_PWRSTCTRL (OMAP4430_PRCM_MPU_BASE + OMAP4430_PRCM_MPU_CPU1_INST + \
+			OMAP4_PM_CPU1_PWRSTCTRL_OFFSET)
 
 	__CPUINIT
+
 /* Physical address needed since MMU not enabled yet on secondary core */
 #define AUX_CORE_BOOT0_PA			0x48281800
 
@@ -40,6 +46,29 @@ wait:	ldr	r2, =AUX_CORE_BOOT0_PA	@ read from AuxCoreBoot0
 	b	secondary_startup
 END(omap5_secondary_startup)
 
+ENTRY(omap_cpu1_off)
+	ldr	r12, =CPU1_PWRSTCTRL
+	ldr	r0, [r12]
+	and	r0, #3
+	cmp	r0, #2
+	beq	exit_cpu1_off
+
+	mov	r0, #0x3
+	mov	r1, #0x0
+	ldr	r12, =OMAP4_MON_SCU_PWR_INDEX
+	dsb
+	smc     #0
+
+	isb
+	dsb
+	dmb
+	wfi
+	nop
+	nop
+exit_cpu1_off:
+	mov	pc, lr
+ENDPROC(omap_cpu1_off)
+
 /*
  * OMAP4 specific entry point for secondary CPU to jump from ROM
  * code.  This routine also provides a holding flag into which
@@ -48,32 +77,40 @@ END(omap5_secondary_startup)
  * register AuxCoreBoot0.
  */
 ENTRY(omap_secondary_startup)
-hold:	ldr	r12,=0x103
+	ldr	r12,=0x103
 	dsb
 	smc	#0			@ read from AuxCoreBoot0
 	mov	r0, r0, lsr #9
 	mrc	p15, 0, r4, c0, c0, 5
 	and	r4, r4, #0x0f
 	cmp	r0, r4
-	bne	hold
+	beq	omap_cont_boot
+
+	bl	omap_cpu1_off
+	b	omap_secondary_startup
 
 	/*
 	 * we've been released from the wait loop,secondary_stack
 	 * should now contain the SVC stack for this core
 	 */
+omap_cont_boot:
 	b	secondary_startup
 ENDPROC(omap_secondary_startup)
 
 ENTRY(omap_secondary_startup_4460)
-hold_2:	ldr	r12,=0x103
+	ldr	r12,=0x103
 	dsb
 	smc	#0			@ read from AuxCoreBoot0
 	mov	r0, r0, lsr #9
 	mrc	p15, 0, r4, c0, c0, 5
 	and	r4, r4, #0x0f
 	cmp	r0, r4
-	bne	hold_2
+	beq	omap4460_cont_boot
 
+	bl	omap_cpu1_off
+	b	omap_secondary_startup_4460
+
+omap4460_cont_boot:
 	/*
 	 * GIC distributor control register has changed between
 	 * CortexA9 r1pX and r2pX. The Control Register secure
