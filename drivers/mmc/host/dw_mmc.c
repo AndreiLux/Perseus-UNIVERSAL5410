@@ -693,6 +693,9 @@ static void __dw_mci_start_request(struct dw_mci *host,
 	if (host->pdata->select_slot)
 		host->pdata->select_slot(slot->id);
 
+	if (host->quirks & DW_MCI_QUIRK_REQUEST_DELAY)
+		udelay(50);
+
 	/* Slot specific timing and width adjustment */
 	dw_mci_setup_bus(slot, 0);
 
