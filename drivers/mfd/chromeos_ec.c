@@ -116,8 +116,8 @@ static int cros_ec_command_xfer_noretry(struct chromeos_ec_device *ec_dev,
 #ifdef DEBUG
 		dev_dbg(ec_dev->dev, "packet: ");
 		for (i = 0; i < i2c_msg[1].len; i++)
-			dev_dbg(ec_dev->dev, " %02x", in_buf[i]);
-		dev_dbg(ec_dev->dev, ", sum = %02x\n", sum);
+			printk(" %02x", in_buf[i]);
+		printk(", sum = %02x\n", sum);
 #endif
 		if (sum != in_buf[msg->in_len + 1]) {
 			dev_err(ec_dev->dev, "bad packet checksum\n");
@@ -255,7 +255,7 @@ static int __devinit cros_ec_probe(struct i2c_client *client,
 	BLOCKING_INIT_NOTIFIER_HEAD(&ec_dev->event_notifier);
 
 	err = request_threaded_irq(ec_dev->irq, NULL, ec_irq_thread,
-				   IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+				   IRQF_TRIGGER_LOW | IRQF_ONESHOT,
 				   "chromeos-ec", ec_dev);
 	if (err) {
 		dev_err(dev, "request irq %d: error %d\n", ec_dev->irq, err);
