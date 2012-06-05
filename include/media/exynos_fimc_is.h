@@ -13,6 +13,12 @@
 
 #include <linux/videodev2.h>
 
+#if defined CONFIG_VIDEO_EXYNOS5_FIMC_IS
+#define FIMC_IS_MODULE_NAME			"exynos5-fimc-is"
+#elif defined CONFIG_VIDEO_EXYNOS5_FIMC_IS2
+#define FIMC_IS_MODULE_NAME			"exynos5-fimc-is2"
+#endif
+
 #define FIMC_IS_MAX_CAMIF_CLIENTS	2
 #define FIMC_IS_MAX_NAME_LEN		32
 #define FIMC_IS_MAX_GPIO_NUM		32

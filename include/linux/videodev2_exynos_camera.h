@@ -175,6 +175,8 @@ enum scenario_mode {
 	IS_MODE_MAX
 };
 
+#define V4L2_CID_IS_G_CAPABILITY		(V4L2_CID_FIMC_IS_BASE + 17)
+
 /* global */
 #define V4L2_CID_IS_CAMERA_SHOT_MODE_NORMAL	(V4L2_CID_FIMC_IS_BASE + 101)
 /* value : 1 : single shot , >=2 : continuous shot */
