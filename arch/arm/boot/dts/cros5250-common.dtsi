@@ -364,4 +364,15 @@
 		regulator-boot-on;
 		regulator-always-on;
 	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+
+		power {
+			label = "Power";
+			gpios = <&gpx1 3 0 0 0>;
+			linux,code = <116>; /* KEY_POWER */
+			gpio-key,wakeup;
+		};
+	};
 };
