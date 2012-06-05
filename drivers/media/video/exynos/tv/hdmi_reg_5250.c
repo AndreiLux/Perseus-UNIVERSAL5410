@@ -2519,6 +2519,8 @@ void hdmi_reg_infoframe(struct hdmi_device *hdev,
 	const struct hdmi_3d_info *info = hdmi_preset2info(hdev->cur_preset);
 	u32 hdr_sum;
 	u8 chksum;
+	u32 aspect_ratio;
+	u32 vic;
 
 	dev_dbg(dev, "%s: InfoFrame type = 0x%x\n", __func__, infoframe->type);
 
@@ -2561,11 +2563,29 @@ void hdmi_reg_infoframe(struct hdmi_device *hdev,
 		hdmi_writeb(hdev, HDMI_AVI_HEADER0, infoframe->type);
 		hdmi_writeb(hdev, HDMI_AVI_HEADER1, infoframe->ver);
 		hdmi_writeb(hdev, HDMI_AVI_HEADER2, infoframe->len);
-		hdmi_writeb(hdev, HDMI_AVI_BYTE(1), hdev->output_fmt << 5);
 		hdr_sum = infoframe->type + infoframe->ver + infoframe->len;
-		hdmi_writeb(hdev, HDMI_AVI_BYTE(2), AVI_PIC_ASPECT_RATIO_16_9);
-		dev_dbg(dev, "VIC code = %d\n", hdev->cur_conf->vic);
-		hdmi_writeb(hdev, HDMI_AVI_BYTE(4), hdev->cur_conf->vic);
+		hdmi_writeb(hdev, HDMI_AVI_BYTE(1), hdev->output_fmt << 5 |
+				AVI_ACTIVE_FORMAT_VALID);
+		if (hdev->aspect == HDMI_ASPECT_RATIO_4_3 &&
+				(hdev->cur_preset == V4L2_DV_480P59_94 ||
+				 hdev->cur_preset == V4L2_DV_480P60)) {
+			aspect_ratio = AVI_PIC_ASPECT_RATIO_4_3;
+			/* 2 : 480P59.94/60Hz 4:3 aspect ratio */
+			vic = 2;
+		} else if (hdev->aspect == HDMI_ASPECT_RATIO_4_3 &&
+				hdev->cur_preset == V4L2_DV_576P50) {
+			aspect_ratio = AVI_PIC_ASPECT_RATIO_4_3;
+			/* 17 : 576P50Hz 4:3 aspect ratio */
+			vic = 17;
+		} else {
+			aspect_ratio = AVI_PIC_ASPECT_RATIO_16_9;
+			vic = hdev->cur_conf->vic;
+		}
+
+		hdmi_writeb(hdev, HDMI_AVI_BYTE(2), aspect_ratio |
+				AVI_SAME_AS_PIC_ASPECT_RATIO);
+		dev_dbg(dev, "VIC code = %d\n", vic);
+		hdmi_writeb(hdev, HDMI_AVI_BYTE(4), vic);
 		chksum = hdmi_chksum(hdev, HDMI_AVI_BYTE(1), infoframe->len, hdr_sum);
 		dev_dbg(dev, "AVI checksum = 0x%x\n", chksum);
 		hdmi_writeb(hdev, HDMI_AVI_CHECK_SUM, chksum);
@@ -2993,7 +3013,8 @@ void hdmi_dumpregs(struct hdmi_device *hdev, char *prefix)
 	DUMPREG(HDMI_AVI_HEADER1);
 	DUMPREG(HDMI_AVI_HEADER2);
 	DUMPREG(HDMI_AVI_CHECK_SUM);
-	DUMPREG(HDMI_AVI_BYTE(1));
+	for (i = 1; i < 6; ++i)
+		DUMPREG(HDMI_AVI_BYTE(i));
 
 	DUMPREG(HDMI_VSI_CON);
 	DUMPREG(HDMI_VSI_HEADER0);

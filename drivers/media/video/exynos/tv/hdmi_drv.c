@@ -316,6 +316,9 @@ int hdmi_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 	case V4L2_CID_TV_SET_DVI_MODE:
 		hdev->dvi_mode = ctrl->value;
 		break;
+	case V4L2_CID_TV_SET_ASPECT_RATIO:
+		hdev->aspect = ctrl->value;
+		break;
 	default:
 		dev_err(dev, "invalid control id\n");
 		ret = -EINVAL;
@@ -787,6 +790,9 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 	hdmi_dev->sample_rate = DEFAULT_SAMPLE_RATE;
 	hdmi_dev->bits_per_sample = DEFAULT_BITS_PER_SAMPLE;
 	hdmi_dev->audio_codec = DEFAULT_AUDIO_CODEC;
+
+	/* default aspect ratio is 16:9 */
+	hdmi_dev->aspect = HDMI_ASPECT_RATIO_16_9;
 
 	/* register hdmi subdev as entity */
 	ret = hdmi_register_entity(hdmi_dev);

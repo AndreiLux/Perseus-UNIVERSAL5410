@@ -36,8 +36,10 @@
 #define HDMI_AVI_LENGTH		0x0d
 #define HDMI_AUI_LENGTH		0x0a
 
+#define AVI_ACTIVE_FORMAT_VALID		(1 << 4)
 #define AVI_PIC_ASPECT_RATIO_4_3	(1 << 4)
 #define AVI_PIC_ASPECT_RATIO_16_9	(2 << 4)
+#define AVI_SAME_AS_PIC_ASPECT_RATIO	8
 
 /* HDMI audio configuration value */
 #define DEFAULT_SAMPLE_RATE	44100
@@ -98,6 +100,11 @@ enum HDMI_AUDIO_CODEC {
 	HDMI_AUDIO_PCM,
 	HDMI_AUDIO_AC3,
 	HDMI_AUDIO_MP3
+};
+
+enum HDMI_ASPECT_RATIO {
+	HDMI_ASPECT_RATIO_16_9,
+	HDMI_ASPECT_RATIO_4_3
 };
 
 enum HDCP_EVENT {
@@ -295,6 +302,8 @@ struct hdmi_device {
 	enum HDMI_AUDIO_CODEC audio_codec;
 	/** HDMI output format */
 	enum HDMI_OUTPUT_FMT output_fmt;
+	/** Aspect ratio information */
+	enum HDMI_ASPECT_RATIO aspect;
 
 	/** HDCP information */
 	struct hdcp_info hdcp_info;
