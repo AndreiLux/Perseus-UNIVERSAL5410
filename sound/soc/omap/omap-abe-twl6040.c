@@ -893,8 +893,8 @@ static struct snd_soc_dai_link omap_abe_dai[] = {
 		.ignore_suspend = 1,
 	},
 	{
-		.name = OMAP_ABE_BE_MM_EXT0,
-		.stream_name = "FM",
+		.name = OMAP_ABE_BE_MM_EXT0_DL,
+		.stream_name = "FM Playback",
 
 		/* ABE components - MCBSP2 - MM-EXT */
 		.cpu_dai_name = "omap-mcbsp.2",
@@ -910,6 +910,23 @@ static struct snd_soc_dai_link omap_abe_dai[] = {
 		.be_id = OMAP_ABE_DAI_MM_FM,
 	},
 #if 0
+	{
+		.name = OMAP_ABE_BE_MM_EXT0_UL,
+		.stream_name = "FM Capture",
+
+		/* ABE components - MCBSP1 - MM-EXT */
+		.cpu_dai_name = "omap-mcbsp.2",
+		.platform_name = "aess",
+
+		/* FM */
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+
+		.no_pcm = 1, /* don't create ALSA pcm for this */
+		.be_hw_params_fixup = mcbsp_be_hw_params_fixup,
+		.ops = &omap_abe_mcbsp_ops,
+		.be_id = OMAP_ABE_DAI_MM_FM,
+	},
 	{
 		.name = OMAP_ABE_BE_MM_EXT1,
 		.stream_name = "MODEM",
@@ -1230,8 +1247,25 @@ static struct snd_soc_dai_link omap_abe_no_dmic_dai[] = {
 		.ignore_suspend = 1,
 	},
 	{
-		.name = OMAP_ABE_BE_MM_EXT0,
-		.stream_name = "FM",
+		.name = OMAP_ABE_BE_MM_EXT0_DL,
+		.stream_name = "FM Playback",
+
+		/* ABE components - MCBSP2 - MM-EXT */
+		.cpu_dai_name = "omap-mcbsp.2",
+		.platform_name = "aess",
+
+		/* FM */
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+
+		.no_pcm = 1, /* don't create ALSA pcm for this */
+		.be_hw_params_fixup = mcbsp_be_hw_params_fixup,
+		.ops = &omap_abe_mcbsp_ops,
+		.be_id = OMAP_ABE_DAI_MM_FM,
+	},
+	{
+		.name = OMAP_ABE_BE_MM_EXT0_UL,
+		.stream_name = "FM Capture",
 
 		/* ABE components - MCBSP2 - MM-EXT */
 		.cpu_dai_name = "omap-mcbsp.2",
