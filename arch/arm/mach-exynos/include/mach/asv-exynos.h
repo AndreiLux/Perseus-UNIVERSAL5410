@@ -26,5 +26,6 @@ struct asv_common {
 };
 
 extern unsigned int asv_get_volt(enum asv_type_id target_type, unsigned int target_freq);
+extern int exynos5250_init_asv(struct asv_common *asv_info);
 
 #endif /* __ASM_ARCH_ASV_EXYNOS_H */

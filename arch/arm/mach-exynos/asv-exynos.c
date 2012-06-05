@@ -33,8 +33,18 @@ unsigned int asv_get_volt(enum asv_type_id target_type, unsigned int target_freq
 
 static int __init asv_init(void)
 {
-	/* SoC-specific entries will be added here */
+	int ret;
 
-	return 0;
+	if (soc_is_exynos5250()) {
+		ret = exynos5250_init_asv(&exynos_asv);
+	} else {
+		pr_err("%s: Unknown SoC type\n", __func__);
+		return -ENODEV;
+	}
+
+	if (ret)
+		pr_err("%s: initialization failed\n", __func__);
+
+	return ret;
 }
 device_initcall(asv_init);
