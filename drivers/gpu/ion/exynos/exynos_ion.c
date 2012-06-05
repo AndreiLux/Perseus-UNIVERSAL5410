@@ -443,7 +443,7 @@ static struct sg_table *ion_exynos_contig_heap_map_dma(struct ion_heap *heap,
 	ret = sg_alloc_table(table, 1, GFP_KERNEL);
 	if (ret)
 		return ERR_PTR(ret);
-	sg_init_one(table->sgl, phys_to_page(buffer->priv_phys), buffer->size);
+	sg_init_one(table->sgl, phys_to_virt(buffer->priv_phys), buffer->size);
 	return table;
 }
 
