@@ -111,8 +111,8 @@
 					regulator-boot-on;
 				};
 
-				en32kh: EN32KHZ {
-					regulator-name = "en32khz";
+				enp32kh: ENP32KHZ {
+					regulator-name = "enp32khz";
 					regulator-boot-on;
 				};
 			};
