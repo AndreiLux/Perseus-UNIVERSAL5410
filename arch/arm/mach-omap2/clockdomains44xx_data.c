@@ -181,7 +181,7 @@ static struct clockdomain tesla_44xx_clkdm = {
 	.dep_bit	  = OMAP4430_TESLA_STATDEP_SHIFT,
 	.wkdep_srcs	  = tesla_wkup_sleep_deps,
 	.sleepdep_srcs	  = tesla_wkup_sleep_deps,
-	.flags		  = CLKDM_CAN_HWSUP_SWSUP,
+	.flags		  = CLKDM_CAN_HWSUP,
 };
 
 static struct clockdomain l3_gfx_44xx_clkdm = {
