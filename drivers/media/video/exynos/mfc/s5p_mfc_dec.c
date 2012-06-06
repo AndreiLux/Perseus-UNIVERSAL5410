@@ -2160,6 +2160,8 @@ int s5p_mfc_init_dec_ctx(struct s5p_mfc_ctx *ctx)
 	for (i = 0; i < MFC_MAX_BUFFERS; i++) {
 		ctx->src_ctrls_flag[i] = 0;
 		ctx->dst_ctrls_flag[i] = 0;
+		INIT_LIST_HEAD(&ctx->src_ctrls[i]);
+		INIT_LIST_HEAD(&ctx->dst_ctrls[i]);
 	}
 
 	ctx->capture_state = QUEUE_FREE;
