@@ -27,6 +27,13 @@
 
 #define DWMCI_CLKSEL	0x09c
 
+static int exynos_dwmci_get_ocr(u32 slot_id)
+{
+	u32 ocr_avail = MMC_VDD_165_195 | MMC_VDD_32_33 | MMC_VDD_33_34;
+
+	return ocr_avail;
+}
+
 static int exynos_dwmci_get_bus_wd(u32 slot_id)
 {
 	return 4;
@@ -102,6 +109,7 @@ struct dw_mci_board exynos5_dwmci##_channel##_def_platdata = {	\
 	.init			= exynos_dwmci_init,		\
 	.get_bus_wd		= exynos_dwmci_get_bus_wd,	\
 	.set_io_timing		= exynos_dwmci_set_io_timing,	\
+	.get_ocr		= exynos_dwmci_get_ocr		\
 }
 
 EXYNOS5_DWMCI_DEF_PLATDATA(0);
@@ -163,4 +171,6 @@ void __init exynos_dwmci_set_platdata(struct dw_mci_board *pd, u32 slot_id)
 		npd->get_bus_wd = exynos_dwmci_get_bus_wd;
 	if (!npd->set_io_timing)
 		npd->set_io_timing = exynos_dwmci_set_io_timing;
+	if (!npd->get_ocr)
+		npd->get_ocr = exynos_dwmci_get_ocr;
 }
