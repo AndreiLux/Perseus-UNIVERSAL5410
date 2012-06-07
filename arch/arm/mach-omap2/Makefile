@@ -320,3 +320,7 @@ obj-$(CONFIG_EMIF)			+= emif_omap.o
 # Serial ATA support
 s-ata-$(CONFIG_SATA_AHCI_PLATFORM)	:= sata.o
 obj-$(CONFIG_ARCH_OMAP5) 		+= $(s-ata-m) $(s-ata-y)
+
+ifneq ($(CONFIG_OMAP_REMOTEPROC),)
+obj-y					+= remoteproc.o
+endif
