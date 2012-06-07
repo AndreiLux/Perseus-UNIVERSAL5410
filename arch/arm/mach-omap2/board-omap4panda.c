@@ -23,6 +23,7 @@
 #include <linux/io.h>
 #include <linux/leds.h>
 #include <linux/gpio.h>
+#include <linux/gpio_keys.h>
 #include <linux/usb/otg.h>
 #include <linux/hwspinlock.h>
 #include <linux/i2c/twl.h>
@@ -97,6 +98,28 @@ static struct platform_device leds_gpio = {
 	},
 };
 
+static struct gpio_keys_button gpio_buttons[] = {
+	{
+		.code                   = BTN_EXTRA,
+		.gpio                   = 121,
+		.desc                   = "user",
+		.wakeup                 = 1,
+	},
+};
+
+static struct gpio_keys_platform_data gpio_key_info = {
+	.buttons        = gpio_buttons,
+	.nbuttons       = ARRAY_SIZE(gpio_buttons),
+};
+
+static struct platform_device keys_gpio = {
+	.name   = "gpio-keys",
+	.id     = -1,
+	.dev    = {
+		.platform_data  = &gpio_key_info,
+	},
+};
+
 static struct omap_abe_twl6040_data panda_abe_audio_data = {
 	/* Audio out */
 	.has_hs		= ABE_TWL6040_LEFT | ABE_TWL6040_RIGHT,
@@ -128,6 +151,7 @@ static struct platform_device btwilink_device = {
 
 static struct platform_device *panda_devices[] __initdata = {
 	&leds_gpio,
+	&keys_gpio,
 	&wl1271_device,
 	&panda_abe_audio,
 	&btwilink_device,
