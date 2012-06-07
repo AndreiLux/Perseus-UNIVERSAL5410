@@ -95,7 +95,6 @@ struct s3c_fb_win_config_data {
 #define S3CFB_GET_ION_USER_HANDLE	_IOWR('F', 208, \
 						struct s3c_fb_user_ion_client)
 #define S3CFB_WIN_CONFIG		_IOW('F', 209, \
-						struct s3c_fb_win_config\
-							[S3C_FB_MAX_WIN])
+						struct s3c_fb_win_config_data)
 
 #endif /* __S3C_FB_H__ */
