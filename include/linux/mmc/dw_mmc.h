@@ -158,6 +158,7 @@ struct dw_mci {
 	u32			current_speed;
 	u32			num_slots;
 	u32			fifoth_val;
+	u32			cd_rd_thr;
 	u16			verid;
 	u16			data_offset;
 	struct device		dev;
@@ -205,6 +206,8 @@ struct dw_mci_dma_ops {
 #define DW_MCI_QUIRK_HIGHSPEED			BIT(2)
 /* Unreliable card detection */
 #define DW_MCI_QUIRK_BROKEN_CARD_DETECTION	BIT(3)
+/* No detect end bit during read */
+#define DW_MCI_QUIRK_NO_DETECT_EBIT             BIT(4)
 
 enum dw_mci_cd_types {
 	DW_MCI_CD_INTERNAL,	/* use mmc internal CD line */
@@ -260,6 +263,9 @@ struct dw_mci_board {
 	/* Phase Shift Value */
 	unsigned int sdr_timing;
 	unsigned int ddr_timing;
+	u8 clk_drv;
+	u8 clk_smpl;
+	bool tuned;
 
 	/* cd_type: Type of Card Detection method (see cd_types enum above) */
 	enum dw_mci_cd_types cd_type;
