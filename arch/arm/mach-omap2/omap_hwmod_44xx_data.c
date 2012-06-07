@@ -31,6 +31,7 @@
 #include <plat/dmtimer.h>
 #include <plat/common.h>
 #include <plat/scm.h>
+#include <plat/iommu.h>
 
 #include "omap_hwmod_common_data.h"
 
@@ -1432,9 +1433,39 @@ static struct omap_hwmod omap44xx_dmic_hwmod = {
 };
 
 /*
+ * 'mmu' class
+ * The memory management unit performs virtual to physical address translation
+ * for its requestors (remote processors: i.e, dsp, ipu)
+ * Adding a separate class for that to control the mmu module
+ */
+
+static struct omap_hwmod_class_sysconfig omap44xx_mmu_sysc = {
+	.rev_offs	= 0x000,
+	.sysc_offs	= 0x010,
+	.syss_offs	= 0x014,
+	.sysc_flags	= (SYSC_HAS_CLOCKACTIVITY | SYSC_HAS_SIDLEMODE |
+			   SYSC_HAS_SOFTRESET | SYSC_HAS_AUTOIDLE),
+	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART),
+	.sysc_fields	= &omap_hwmod_sysc_type1,
+};
+
+static struct omap_hwmod_class omap44xx_mmu_hwmod_class = {
+	.name = "mmu",
+	.sysc = &omap44xx_mmu_sysc,
+};
+
+/*
  * 'dsp' class
  * dsp sub-system
  */
+
+/* dsp mmu attr */
+
+static struct omap_mmu_dev_attr omap44xx_dsp_mmu_dev_attr = {
+	.da_start = 0x0,
+	.da_end = 0xfffff000,
+	.nr_tlb_entries = 32,
+};
 
 static struct omap_hwmod_class omap44xx_dsp_hwmod_class = {
 	.name	= "dsp",
@@ -1460,6 +1491,7 @@ static struct omap_hwmod_addr_space omap44xx_dsp_addrs[] = {
 		.pa_end         = 0x4A0660ff,
 		.flags          = ADDR_TYPE_RT
 	},
+	{}
 };
 
 /* dsp -> iva */
@@ -1490,7 +1522,6 @@ static struct omap_hwmod_ocp_if omap44xx_l4_cfg__dsp = {
 	.slave		= &omap44xx_dsp_hwmod,
 	.clk		= "l4_div_ck",
 	.addr		= omap44xx_dsp_addrs,
-	.addr_cnt	= ARRAY_SIZE(omap44xx_dsp_addrs),
 	.user		= OCP_USER_MPU | OCP_USER_SDMA,
 };
 
@@ -1507,6 +1538,7 @@ static struct omap_hwmod omap44xx_dsp_c0_hwmod = {
 	.flags		= HWMOD_INIT_NO_RESET,
 	.rst_lines	= omap44xx_dsp_c0_resets,
 	.rst_lines_cnt	= ARRAY_SIZE(omap44xx_dsp_c0_resets),
+	.main_clk	= "dsp_fck",
 	.prcm = {
 		.omap4 = {
 			.rstctrl_offs = OMAP4_RM_TESLA_RSTCTRL_OFFSET,
@@ -1516,7 +1548,7 @@ static struct omap_hwmod omap44xx_dsp_c0_hwmod = {
 
 static struct omap_hwmod omap44xx_dsp_hwmod = {
 	.name		= "dsp",
-	.class		= &omap44xx_dsp_hwmod_class,
+	.class		= &omap44xx_mmu_hwmod_class,
 	.clkdm_name	= "tesla_clkdm",
 	.flags		= HWMOD_INIT_NO_RESET,
 	.mpu_irqs	= omap44xx_dsp_irqs,
@@ -1531,6 +1563,7 @@ static struct omap_hwmod omap44xx_dsp_hwmod = {
 			.modulemode   = MODULEMODE_HWCTRL,
 		},
 	},
+	.dev_attr	= &omap44xx_dsp_mmu_dev_attr,
 	.slaves		= omap44xx_dsp_slaves,
 	.slaves_cnt	= ARRAY_SIZE(omap44xx_dsp_slaves),
 	.masters	= omap44xx_dsp_masters,
@@ -2925,6 +2958,14 @@ static struct omap_hwmod omap44xx_i2c4_hwmod = {
  * imaging processor unit
  */
 
+/* ipu mmu attr */
+
+static struct omap_mmu_dev_attr omap44xx_ipu_mmu_dev_attr = {
+	.da_start = 0x0,
+	.da_end = 0xfffff000,
+	.nr_tlb_entries = 32,
+};
+
 static struct omap_hwmod_class omap44xx_ipu_hwmod_class = {
 	.name	= "ipu",
 };
@@ -2953,6 +2994,7 @@ static struct omap_hwmod_addr_space omap44xx_ipu_addrs[] = {
 		.pa_end         = 0x550820ff,
 		.flags          = ADDR_TYPE_RT
 	},
+	{ }
 };
 
 /* ipu master ports */
@@ -2960,13 +3002,13 @@ static struct omap_hwmod_ocp_if *omap44xx_ipu_masters[] = {
 	&omap44xx_ipu__l3_main_2,
 };
 
+
 /* l3_main_2 -> ipu */
 static struct omap_hwmod_ocp_if omap44xx_l3_main_2__ipu = {
 	.master		= &omap44xx_l3_main_2_hwmod,
 	.slave		= &omap44xx_ipu_hwmod,
 	.clk		= "l3_div_ck",
 	.addr		= omap44xx_ipu_addrs,
-	.addr_cnt	= ARRAY_SIZE(omap44xx_ipu_addrs),
 	.user		= OCP_USER_MPU | OCP_USER_SDMA,
 };
 
@@ -2980,6 +3022,7 @@ static struct omap_hwmod omap44xx_ipu_c0_hwmod = {
 	.name		= "ipu_c0",
 	.class		= &omap44xx_ipu_hwmod_class,
 	.clkdm_name	= "ducati_clkdm",
+	.main_clk	= "ipu_fck",
 	.flags		= HWMOD_INIT_NO_RESET,
 	.rst_lines	= omap44xx_ipu_c0_resets,
 	.rst_lines_cnt	= ARRAY_SIZE(omap44xx_ipu_c0_resets),
@@ -2995,6 +3038,7 @@ static struct omap_hwmod omap44xx_ipu_c1_hwmod = {
 	.name		= "ipu_c1",
 	.class		= &omap44xx_ipu_hwmod_class,
 	.clkdm_name	= "ducati_clkdm",
+	.main_clk	= "ipu_fck",
 	.flags		= HWMOD_INIT_NO_RESET,
 	.rst_lines	= omap44xx_ipu_c1_resets,
 	.rst_lines_cnt	= ARRAY_SIZE(omap44xx_ipu_c1_resets),
@@ -3007,7 +3051,7 @@ static struct omap_hwmod omap44xx_ipu_c1_hwmod = {
 
 static struct omap_hwmod omap44xx_ipu_hwmod = {
 	.name		= "ipu",
-	.class		= &omap44xx_ipu_hwmod_class,
+	.class		= &omap44xx_mmu_hwmod_class,
 	.clkdm_name	= "ducati_clkdm",
 	.mpu_irqs	= omap44xx_ipu_irqs,
 	.rst_lines	= omap44xx_ipu_resets,
@@ -3021,6 +3065,7 @@ static struct omap_hwmod omap44xx_ipu_hwmod = {
 			.modulemode   = MODULEMODE_HWCTRL,
 		},
 	},
+	.dev_attr	= &omap44xx_ipu_mmu_dev_attr,
 	.slaves		= omap44xx_ipu_slaves,
 	.slaves_cnt	= ARRAY_SIZE(omap44xx_ipu_slaves),
 	.masters	= omap44xx_ipu_masters,
