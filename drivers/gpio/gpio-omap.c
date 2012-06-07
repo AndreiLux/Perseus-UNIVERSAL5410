@@ -1249,9 +1249,6 @@ static int omap_gpio_runtime_suspend(struct device *dev)
 	l1 = __raw_readl(bank->base + bank->regs->fallingdetect);
 	l2 = __raw_readl(bank->base + bank->regs->risingdetect);
 
-	bank->saved_fallingdetect = l1;
-	bank->saved_risingdetect = l2;
-
 	l1 &= ~bank->enabled_non_wakeup_gpios;
 	l2 &= ~bank->enabled_non_wakeup_gpios;
 
@@ -1332,7 +1329,7 @@ static int omap_gpio_runtime_resume(struct device *dev)
 	gen0 = l & bank->context.fallingdetect;
 	gen0 &= bank->saved_datain;
 
-	gen1 = l & bank->saved_risingdetect;
+	gen1 = l & bank->context.risingdetect;
 	gen1 &= ~(bank->saved_datain);
 
 	/* FIXME: Consider GPIO IRQs with level detections properly! */

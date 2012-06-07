@@ -402,8 +402,8 @@ int __cpuinit omap4_hotplug_cpu(unsigned int cpu, unsigned int power_state)
 	 * FORCE_OFF doesn't work reliably.
 	 */
 	if (cpu_is_omap54xx()) {
-		omap_writel(0xf0, OMAP54XX_GIC_CPU_BASE + 0x04);
-		omap_writel(0x1, OMAP54XX_GIC_CPU_BASE);
+		__raw_writel(0xf0, OMAP54XX_GIC_CPU_BASE + 0x04);
+		__raw_writel(0x1, OMAP54XX_GIC_CPU_BASE);
 	}
 
 	set_cpu_next_pwrst(cpu, PWRDM_POWER_ON);

@@ -261,7 +261,7 @@ static int omap_hsmmc_resume_cdirq(struct device *dev, int slot)
 
 #ifdef CONFIG_REGULATOR
 
-static int omap_hsmmc_set_power(struct device *dev, int slot, int power_on,
+static int omap_hsmmc_1_set_power(struct device *dev, int slot, int power_on,
 				  int vdd_iopower)
 {
 	struct omap_hsmmc_host *host =
@@ -378,7 +378,8 @@ static int omap_hsmmc_reg_get(struct omap_hsmmc_host *host)
 	struct regulator *reg;
 	int ocr_value = 0;
 
-	mmc_slot(host).set_power = omap_hsmmc_set_power;
+        /* On-chip level shifting via PBIAS0/PBIAS1 */
+        mmc_slot(host).set_power = omap_hsmmc_1_set_power;
 
 	reg = regulator_get(host->dev, "vmmc");
 	if (IS_ERR(reg)) {

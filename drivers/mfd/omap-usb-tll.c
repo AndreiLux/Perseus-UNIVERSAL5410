@@ -28,6 +28,8 @@
 #include <plat/usb.h>
 #include <linux/pm_runtime.h>
 
+#include <plat/cpu.h>
+
 #define USBTLL_DRIVER_NAME	"usbhs_tll"
 
 /* TLL Register Set */

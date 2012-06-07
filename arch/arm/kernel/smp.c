@@ -477,9 +477,6 @@ static void __cpuinit percpu_timer_setup(void)
 	evt->broadcast = smp_timer_broadcast;
 
 	if (!lt_ops || lt_ops->setup(evt))
-		broadcast_timer_setup(evt);
-
-	if (local_timer_setup(evt))
 		broadcast_timer_setup();
 }
 

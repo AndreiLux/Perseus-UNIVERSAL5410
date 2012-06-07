@@ -412,23 +412,6 @@ static void __init gic_dist_init(struct gic_chip_data *gic)
 		gic_writel_relaxed(0xffffffff, base + GIC_DIST_ENABLE_CLEAR +
 								i * 4 / 32);
 
-	/*
-	 * Setup the Linux IRQ subsystem.
-	 */
-	irq_domain_for_each_irq(domain, i, irq) {
-		if (i < 32) {
-			irq_set_percpu_devid(irq);
-			irq_set_chip_and_handler(irq, &gic_chip,
-						 handle_percpu_devid_irq);
-			set_irq_flags(irq, IRQF_VALID | IRQF_NOAUTOEN);
-		} else {
-			irq_set_chip_and_handler(irq, &gic_chip,
-						 handle_fasteoi_irq);
-			set_irq_flags(irq, IRQF_VALID | IRQF_PROBE);
-		}
-		irq_set_chip_data(irq, gic);
-	}
-
 	gic_writel_relaxed(1, base + GIC_DIST_CTRL);
 }
 

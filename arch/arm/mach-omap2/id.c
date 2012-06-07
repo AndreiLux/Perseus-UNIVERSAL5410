@@ -32,6 +32,8 @@ static unsigned int omap_revision;
 static const char *cpu_rev;
 u32 omap_features;
 
+static void __init omap3_cpuinfo(void);
+
 unsigned int omap_rev(void)
 {
 	return omap_revision;
@@ -177,52 +179,6 @@ void __init omap2xxx_check_revision(void)
 	if (omap3_has_ ##feat())		\
 		printk(#feat" ");
 
-static void __init omap3_cpuinfo(void)
-{
-	const char *cpu_name;
-
-	/*
-	 * OMAP3430 and OMAP3530 are assumed to be same.
-	 *
-	 * OMAP3525, OMAP3515 and OMAP3503 can be detected only based
-	 * on available features. Upon detection, update the CPU id
-	 * and CPU class bits.
-	 */
-	if (cpu_is_omap3630()) {
-		cpu_name = "OMAP3630";
-	} else if (cpu_is_omap3517()) {
-		/* AM35xx devices */
-		cpu_name = (omap3_has_sgx()) ? "AM3517" : "AM3505";
-	} else if (cpu_is_ti816x()) {
-		cpu_name = "TI816X";
-	} else if (cpu_is_am335x()) {
-		cpu_name =  "AM335X";
-	} else if (cpu_is_ti814x()) {
-		cpu_name = "TI814X";
-	} else if (omap3_has_iva() && omap3_has_sgx()) {
-		/* OMAP3430, OMAP3525, OMAP3515, OMAP3503 devices */
-		cpu_name = "OMAP3430/3530";
-	} else if (omap3_has_iva()) {
-		cpu_name = "OMAP3525";
-	} else if (omap3_has_sgx()) {
-		cpu_name = "OMAP3515";
-	} else {
-		cpu_name = "OMAP3503";
-	}
-
-	/* Print verbose information */
-	pr_info("%s ES%s (", cpu_name, cpu_rev);
-
-	OMAP3_SHOW_FEATURE(l2cache);
-	OMAP3_SHOW_FEATURE(iva);
-	OMAP3_SHOW_FEATURE(sgx);
-	OMAP3_SHOW_FEATURE(neon);
-	OMAP3_SHOW_FEATURE(isp);
-	OMAP3_SHOW_FEATURE(192mhz_clk);
-
-	printk(")\n");
-}
-
 #define OMAP3_CHECK_FEATURE(status,feat)				\
 	if (((status & OMAP3_ ##feat## _MASK) 				\
 		>> OMAP3_ ##feat## _SHIFT) != FEAT_ ##feat## _NONE) { 	\
@@ -251,11 +207,6 @@ void __init omap3xxx_check_features(void)
 		omap_features |= OMAP3_HAS_IO_CHAIN_CTRL;
 
 	omap_features |= OMAP3_HAS_SDRC;
-
-	/*
-	 * TODO: Get additional info (where applicable)
-	 *       e.g. Size of L2 cache.
-	 */
 
 	omap3_cpuinfo();
 }
@@ -505,7 +456,7 @@ void __init omap4xxx_check_revision(void)
 		((omap_rev() >> 12) & 0xf), ((omap_rev() >> 8) & 0xf));
 }
 
-static void __init omap5_check_revision(void)
+void __init omap5_check_revision(void)
 {
 	u32 idcode;
 	u16 hawkeye;
@@ -547,7 +498,7 @@ static void __init omap5_check_revision(void)
 	if (omap3_has_ ##feat())		\
 		printk(#feat" ");
 
-static void __init omap3_cpuinfo(const char *cpu_rev)
+static void __init omap3_cpuinfo(void)
 {
 	const char *cpu_name;
 
@@ -591,42 +542,6 @@ static void __init omap3_cpuinfo(const char *cpu_rev)
 	OMAP3_SHOW_FEATURE(192mhz_clk);
 
 	printk(")\n");
-}
-
-/*
- * Try to detect the exact revision of the omap we're running on
- */
-void __init omap2_check_revision(void)
-{
-	const char *cpu_rev;
-
-	/*
-	 * At this point we have an idea about the processor revision set
-	 * earlier with omap2_set_globals_tap().
-	 */
-	if (cpu_is_omap24xx()) {
-		omap24xx_check_revision();
-	} else if (cpu_is_omap34xx()) {
-		omap3_check_revision(&cpu_rev);
-
-		/* TI81XX doesn't have feature register */
-		if (!cpu_is_ti81xx())
-			omap3_check_features();
-		else
-			ti81xx_check_features();
-
-		omap3_cpuinfo(cpu_rev);
-		return;
-	} else if (cpu_is_omap44xx()) {
-		omap4_check_revision();
-		omap4_check_features();
-		return;
-	} else if (cpu_is_omap54xx()) {
-		omap5_check_revision();
-		return;
-	} else {
-		pr_err("OMAP revision unknown, please fix!\n");
-	}
 }
 
 /*

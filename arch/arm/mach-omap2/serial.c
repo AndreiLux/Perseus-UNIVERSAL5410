@@ -57,6 +57,7 @@ struct omap_uart_state {
 
 	struct list_head node;
 	struct omap_hwmod *oh;
+	struct platform_device *pdev;
 };
 
 static LIST_HEAD(uart_list);

@@ -357,6 +357,7 @@ static struct platform_device omap_pcm = {
 
 static void omap_init_audio(void)
 {
+#if 0
 	platform_device_register(&omap_mcbsp1);
 	platform_device_register(&omap_mcbsp2);
 	if (cpu_class_is_omap2() && !cpu_is_omap242x()) {
@@ -368,6 +369,7 @@ static void omap_init_audio(void)
 		platform_device_register(&omap_mcbsp5);
 
 	platform_device_register(&omap_pcm);
+#endif
 }
 
 #else

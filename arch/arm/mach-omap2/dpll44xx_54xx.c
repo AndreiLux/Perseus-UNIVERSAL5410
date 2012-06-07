@@ -19,6 +19,8 @@
 #include <plat/cpu.h>
 #include <plat/clock.h>
 #include <plat/common.h>
+                                                                                
+#include <asm/io.h>
 
 #include "clock.h"
 #include "clock44xx.h"
@@ -30,6 +32,7 @@
 #include "clockdomain.h"
 #include "cm1_44xx.h"
 #include "cm-regbits-54xx.h"
+#include "iomap.h"
 
 #define MAX_FREQ_UPDATE_TIMEOUT  100000
 #define OMAP_1_4GHz	1400000000

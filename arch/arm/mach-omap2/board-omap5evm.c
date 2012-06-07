@@ -19,6 +19,9 @@
 #include <linux/hwspinlock.h>
 #include <linux/i2c/tsl2771.h>
 #include <linux/input/mpu6050.h>
+#include <linux/input/matrix_keypad.h>
+
+#include <linux/platform_data/omap4-keypad.h>
 
 #include <linux/regulator/machine.h>
 #include <linux/regulator/fixed.h>
@@ -1218,14 +1221,14 @@ static void __init omap_5430evm_init(void)
 
 	omap5_sdp5430_wifi_init();
 
-	omap2_hsmmc_init(mmc);
+//	omap2_hsmmc_init(mmc);
 	omap_ehci_ohci_init();
 }
 
 static void __init omap_5430evm_map_io(void)
 {
 	omap2_set_globals_543x();
-	omap54xx_map_common_io();
+//	omap54xx_map_common_io();
 }
 
 MACHINE_START(OMAP5_SEVM, "OMAP5430 evm board")

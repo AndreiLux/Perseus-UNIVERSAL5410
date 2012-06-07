@@ -176,33 +176,6 @@ static void wakeupgen_unmask(struct irq_data *d)
 	spin_unlock_irqrestore(&wakeupgen_lock, flags);
 }
 
-#ifdef CONFIG_HOTPLUG_CPU
-static DEFINE_PER_CPU(u32 [NR_REG_BANKS], irqmasks);
-
-static void _wakeupgen_save_masks(unsigned int cpu)
-{
-	u8 i;
-
-	for (i = 0; i < NR_REG_BANKS; i++)
-		per_cpu(irqmasks, cpu)[i] = wakeupgen_readl(i, cpu);
-}
-
-static void _wakeupgen_restore_masks(unsigned int cpu)
-{
-	u8 i;
-
-	for (i = 0; i < NR_REG_BANKS; i++)
-		wakeupgen_writel(per_cpu(irqmasks, cpu)[i], i, cpu);
-}
-
-static void _wakeupgen_set_all(unsigned int cpu, unsigned int reg)
-{
-	u8 i;
-
-	for (i = 0; i < NR_REG_BANKS; i++)
-		wakeupgen_writel(reg, i, cpu);
-}
-
 /*
  * Mask or unmask all interrupts on given CPU.
  *	0 = Mask all interrupts on the 'cpu'
@@ -224,7 +197,6 @@ static void wakeupgen_irqmask_all(unsigned int cpu, unsigned int set)
 	}
 	spin_unlock_irqrestore(&wakeupgen_lock, flags);
 }
-#endif
 
 #ifdef CONFIG_CPU_PM
 static inline void omap4_irq_save_context(void)

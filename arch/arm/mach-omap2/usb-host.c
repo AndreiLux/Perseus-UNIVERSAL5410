@@ -531,11 +531,11 @@ void __init usbhs_init(const struct usbhs_omap_board_data *pdata)
 	usbhs_data.ohci_data = &ohci_data;
 
 	if (cpu_is_omap34xx()) {
-		setup_34xx_ehci_io_mux(pdata->port_mode);
-		setup_34xx_ohci_io_mux(pdata->port_mode);
-	} else if (cpu_is_omap44xx() || cpu_is_omap54xx()) {
 		setup_ehci_io_mux(pdata->port_mode);
 		setup_ohci_io_mux(pdata->port_mode);
+	} else if (cpu_is_omap44xx() || cpu_is_omap54xx()) {
+		setup_4430ehci_io_mux(pdata->port_mode);
+		setup_4430ohci_io_mux(pdata->port_mode);
 	}
 
 	oh[0] = omap_hwmod_lookup(USBHS_UHH_HWMODNAME);

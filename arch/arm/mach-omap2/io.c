@@ -28,6 +28,7 @@
 #include <plat/sram.h>
 #include <plat/sdrc.h>
 #include <plat/serial.h>
+#include <plat/cpu.h>
 
 #include "clock2xxx.h"
 #include "clock3xxx.h"
@@ -335,7 +336,7 @@ static void __init _omap2_map_common_io(void)
 	local_flush_tlb_all();
 	flush_cache_all();
 
-	omap2_check_revision();
+	omap2xxx_check_revision();
 	omap_sram_init();
 }
 

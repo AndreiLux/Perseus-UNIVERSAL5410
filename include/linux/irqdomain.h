@@ -183,4 +183,9 @@ static inline void irq_domain_generate_simple(const struct of_device_id *match,
 static inline void irq_dispose_mapping(unsigned int virq) { }
 #endif /* !CONFIG_IRQ_DOMAIN */
 
+#define irq_domain_for_each_irq(d, hw, irq) \
+        for (hw = d->hwirq_base, irq = irq_domain_to_irq(d, hw); \
+             hw < d->hwirq_base + d->nr_irq; \
+             hw++, irq = irq_domain_to_irq(d, hw))
+
 #endif /* _LINUX_IRQDOMAIN_H */
