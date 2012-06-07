@@ -298,7 +298,6 @@ static inline void omap3_trigger_io_chain(void)
 {
 	WARN(1, "prm: omap2xxx/omap3xxx specific function and "
 		"not suppose to be used on omap4\n");
-	return 0;
 }
 #else
 /* Power/reset management domain register get/set */

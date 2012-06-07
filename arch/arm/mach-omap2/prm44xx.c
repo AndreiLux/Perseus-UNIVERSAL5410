@@ -50,6 +50,9 @@ static struct omap_prcm_irq_setup omap4_prcm_irq_setup = {
 	.restore_irqen		= &omap44xx_prm_restore_irqen,
 };
 
+static inline u32 _read_pending_irq_reg(u16 irqen_offs, u16 irqst_offs);
+
+
 /* PRM low-level functions */
 
 /* Read a register in a CM/PRM instance in the PRM module */
@@ -176,7 +179,7 @@ u32 omap4_prm_vcvp_rmw(u32 mask, u32 bits, u8 offset)
 					       OMAP4430_PRM_DEVICE_INST,
 					       offset);
 }
-
+#if 0
 /**
  * omap44xx_prm_read_pending_irqs - read pending PRM MPU IRQs into @events
  * @events: ptr to two consecutive u32s, preallocated by caller
@@ -255,13 +258,7 @@ void omap44xx_prm_restore_irqen(u32 *saved_mask)
 	omap4_prm_write_inst_reg(saved_mask[1], OMAP4430_PRM_OCP_SOCKET_INST,
 				 OMAP4_PRM_IRQENABLE_MPU_2_OFFSET);
 }
-
-/*
- * Maximum time(us) it takes to output the signal WUCLKOUT of the last pad of
- * the I/O ring after asserting WUCLKIN high
- */
-#define MAX_IOPAD_LATCH_TIME 100
-
+#endif
 /* OMAP4 IO Daisychain trigger sequence */
 void omap4_trigger_io_chain(void)
 {
@@ -417,16 +414,6 @@ bool omap4_device_next_state_off(void)
 			& OMAP4430_DEVICE_OFF_ENABLE_MASK ? true : false;
 }
 
-static int __init omap4xxx_prcm_init(void)
-{
-	if (cpu_is_omap44xx()) {
-		omap4_enable_io_wakeup();
-		return omap_prcm_register_chain_handler(&omap4_prcm_irq_setup);
-	}
-	return 0;
-}
-subsys_initcall(omap4xxx_prcm_init);
-
 /* PRM ABB */
 
 /*
@@ -564,8 +551,12 @@ void omap44xx_prm_restore_irqen(u32 *saved_mask)
 
 static int __init omap4xxx_prcm_init(void)
 {
-	if (cpu_is_omap44xx() || cpu_is_omap54xx())
+
+	if (cpu_is_omap44xx() || cpu_is_omap54xx()) {
+		omap4_enable_io_wakeup();
 		return omap_prcm_register_chain_handler(&omap4_prcm_irq_setup);
+	}
+
 	return 0;
 }
 subsys_initcall(omap4xxx_prcm_init);

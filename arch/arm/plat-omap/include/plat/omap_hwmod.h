@@ -379,7 +379,6 @@ struct omap_hwmod_omap4_prcm {
 	unsigned	context_lost_counter;
 	u8		submodule_wkdep_bit;
 	u8		modulemode;
-	unsigned	context_lost_counter;
 };
 
 

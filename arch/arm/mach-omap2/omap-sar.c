@@ -415,10 +415,17 @@ static int sar_layout_generate(void)
 
 	pr_info("generating sar_ram layout...\n");
 
-	rombase = OMAP44XX_SAR_ROM_BASE;
-	romend = rombase + SZ_8K;
-	rambase = OMAP44XX_SAR_RAM_BASE;
-	ramend = rambase + SAR_BANK4_OFFSET - 1;
+	if (cpu_is_omap44xx()) {
+		rombase = OMAP44XX_SAR_ROM_BASE;
+		romend = rombase + SZ_8K;
+		rambase = OMAP44XX_SAR_RAM_BASE;
+		ramend = rambase + SAR_BANK4_OFFSET - 1;
+	} else {
+		rombase = OMAP54XX_SAR_ROM_BASE;
+		romend = rombase + SZ_8K;
+		rambase = OMAP54XX_SAR_RAM_BASE;
+		ramend = rambase + SAR_BANK4_OFFSET - 1;
+	}
 
 	sarrom = ioremap(rombase, SZ_8K);
 
@@ -503,6 +510,8 @@ static struct sar_module omap44xx_sar_modules[] = {
  */
 static int __init omap4_sar_ram_init(void)
 {
+	pr_info("omap4_sar_ram_init\n");
+
 	/*
 	 * To avoid code running on other OMAPs in
 	 * multi-omap builds
@@ -605,6 +614,7 @@ static struct sar_module omap54xx_sar_modules[] = {
 
 static int __init omap5_sar_ram_init(void)
 {
+	pr_info("omap5_sar_ram_init\n");
 	/*
 	 * To avoid code running on other OMAPs in
 	 * multi-omap builds

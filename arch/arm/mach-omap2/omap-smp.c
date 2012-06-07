@@ -135,7 +135,7 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 		 * 2) CPU1 must re-enable the GIC distributor on
 		 * it's wakeup path.
 		 */
-		if (omap4_smp_romcode_errata || cpu_is_omap446x())
+		if (omap4_smp_romcode_errata)
 			gic_dist_disable();
 
 		clkdm_wakeup(cpu1_clkdm);
@@ -159,6 +159,7 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 static void __init wakeup_secondary(void)
 {
 	void *startup_addr = omap_secondary_startup;
+	void __iomem *base = omap_get_wakeupgen_base();
 
 	/*
 	 * Write the address of secondary startup routine into the
@@ -172,7 +173,12 @@ static void __init wakeup_secondary(void)
 		omap4_smp_romcode_errata = true;
 	}
 
-	omap_auxcoreboot_addr(virt_to_phys(startup_addr));
+	if (cpu_is_omap44xx())
+		omap_auxcoreboot_addr(virt_to_phys(startup_addr));
+	else
+		__raw_writel(virt_to_phys(omap5_secondary_startup),
+						base + OMAP_AUX_CORE_BOOT_1);
+
 	smp_wmb();
 
 	/*

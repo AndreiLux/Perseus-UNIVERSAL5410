@@ -1072,7 +1072,6 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
 	map.type = MT_MINICLEAN;
 	create_mapping(&map);
 #endif
-
 	/*
 	 * Create a mapping for the machine vectors at the high-vectors
 	 * location (0xffff0000).  If we aren't using high-vectors, also
@@ -1162,14 +1161,12 @@ void __init paging_init(struct machine_desc *mdesc)
 	void *zero_page;
 
 	memblock_set_current_limit(arm_lowmem_limit);
-
 	build_mem_type_table();
 	prepare_page_table();
 	map_lowmem();
 	dma_contiguous_remap();
 	devicemaps_init(mdesc);
 	kmap_init();
-
 	top_pmd = pmd_off_k(0xffff0000);
 
 	/* allocate the zero page. */

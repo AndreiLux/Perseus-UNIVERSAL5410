@@ -75,6 +75,8 @@ config ARCH_OMAP5
 	select ARCH_NEEDS_CPU_IDLE_COUPLED if CPU_IDLE
 	select ARCH_HAS_OPP
 	select PM_OPP if PM
+	select USB_ARCH_HAS_XHCI
+	select ARM_SMP_TWD if SMP
 
 comment "OMAP Core Type"
 	depends on ARCH_OMAP2

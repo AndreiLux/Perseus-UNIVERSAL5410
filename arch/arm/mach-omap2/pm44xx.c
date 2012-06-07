@@ -75,107 +75,6 @@ u16 pm44xx_errata;
 
 static struct powerdomain *mpu_pwrdm, *core_pwrdm, *per_pwrdm;
 
-/**
- * omap4_device_set_state_off() - setup device off state
- * @enable:	set to off or not.
- *
- * When Device OFF is enabled, Device is allowed to perform
- * transition to off mode as soon as all power domains in MPU, IVA
- * and CORE voltage are in OFF or OSWR state (open switch retention)
- */
-void omap4_device_set_state_off(u8 enable)
-{
-	u16 offset;
-
-	if (cpu_is_omap44xx())
-		offset = OMAP4_PRM_DEVICE_OFF_CTRL_OFFSET;
-	else
-		offset = OMAP54XX_PRM_DEVICE_OFF_CTRL_OFFSET;
-
-#ifdef CONFIG_OMAP_ALLOW_OSWR
-	if (enable)
-		omap4_prminst_write_inst_reg(0x1 <<
-				OMAP4430_DEVICE_OFF_ENABLE_SHIFT,
-		OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST,
-		offset);
-	else
-#endif
-		omap4_prminst_write_inst_reg(0x0 <<
-				OMAP4430_DEVICE_OFF_ENABLE_SHIFT,
-		OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST,
-		offset);
-
-#ifdef CONFIG_OMAP_PM_STANDALONE
-	/*
-	 * XXX: We must toggle auto-ret control for MM when changing
-	 * device off state. This should be removed once MM is used
-	 * properly
-	 */
-	if (cpu_is_omap54xx()) {
-		u32 val;
-
-		val = omap4_prminst_read_inst_reg(OMAP54XX_PRM_PARTITION,
-			OMAP54XX_PRM_DEVICE_INST, OMAP54XX_PRM_VOLTCTRL_OFFSET);
-		if (enable)
-			val &= ~(0x3 << 4);
-		else
-			val |= 0x2 << 4;
-
-		omap4_prminst_write_inst_reg(val, OMAP54XX_PRM_PARTITION,
-			OMAP54XX_PRM_DEVICE_INST, OMAP54XX_PRM_VOLTCTRL_OFFSET);
-	}
-#endif
-}
-
-/**
- * omap4_device_prev_state_off:
- * returns true if the device hit OFF mode
- * This is API to check whether OMAP is waking up from device OFF mode.
- * There is no other status bit available for SW to read whether last state
- * entered was device OFF. To work around this, CORE PD, RFF context state
- * is used which is lost only when we hit device OFF state
- */
-bool omap4_device_prev_state_off(void)
-{
-	u32 reg;
-
-	reg = omap4_prminst_read_inst_reg(OMAP4430_PRM_PARTITION,
-				OMAP4430_PRM_CORE_INST,
-				OMAP4_RM_L3_1_L3_1_CONTEXT_OFFSET)
-		& OMAP4430_LOSTCONTEXT_RFF_MASK;
-
-	return reg ? true : false;
-}
-
-void omap4_device_clear_prev_off_state(void)
-{
-	omap4_prminst_write_inst_reg(OMAP4430_LOSTCONTEXT_RFF_MASK |
-				OMAP4430_LOSTCONTEXT_DFF_MASK,
-				OMAP4430_PRM_PARTITION,
-				OMAP4430_PRM_CORE_INST,
-				OMAP4_RM_L3_1_L3_1_CONTEXT_OFFSET);
-}
-
-/**
- * omap4_device_next_state_off:
- * returns true if the device next state is OFF
- * This is API to check whether OMAP is programmed for device OFF
- */
-bool omap4_device_next_state_off(void)
-{
-	u16 offset;
-
-	if (cpu_is_omap44xx())
-		offset = OMAP4_PRM_DEVICE_OFF_CTRL_OFFSET;
-	else
-		offset = OMAP54XX_PRM_DEVICE_OFF_CTRL_OFFSET;
-
-	return omap4_prminst_read_inst_reg(OMAP4430_PRM_PARTITION,
-			OMAP4430_PRM_DEVICE_INST,
-			offset)
-			& OMAP4430_DEVICE_OFF_ENABLE_MASK ? true : false;
-}
-
 
 void omap_pm_idle(u32 cpu_id, int state)
 {
@@ -274,7 +173,7 @@ static int omap4_restore_pwdms_after_suspend(void)
 static int omap4_pm_suspend(void)
 {
 	struct power_state *pwrst;
-	int ret = 0;
+	int ret = 0, logic_state;
 	u32 cpu_id = smp_processor_id();
 
 	/*
@@ -537,8 +436,7 @@ static inline int omap4_init_static_deps(void)
 			     OMAP4_CTRL_SECURE_EMIF2_SDRAM_CONFIG2_REG);
 		wmb();
 		iounmap(secure_ctrl_mod);
-	}rch/arm/mach-omap2/pm44xx.c
-
+	}
 
 	ret = pwrdm_for_each(pwrdms_setup, NULL);
 	if (ret) {
@@ -579,6 +477,7 @@ static inline int omap4_init_static_deps(void)
 				"wakeup dependency\n");
 	}
 
+err2:
 	return ret;
 }
 
@@ -698,6 +597,7 @@ static void __init prcm_setup_regs(void)
 static int __init omap_pm_init(void)
 {
 	int ret, i;
+	struct voltagedomain *mpu_voltdm;
 
 	if (!(cpu_is_omap44xx() || cpu_is_omap54xx()))
 		return -ENODEV;
@@ -803,4 +703,4 @@ static int __init omap_pm_init(void)
 err2:
 	return ret;
 }
-late_initcall(omap4_pm_init);
+late_initcall(omap_pm_init);

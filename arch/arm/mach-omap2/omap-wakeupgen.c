@@ -500,8 +500,8 @@ static int irq_notifier(struct notifier_block *self, unsigned long cmd,	void *v)
 {
 	switch (cmd) {
 	case CPU_CLUSTER_PM_ENTER:
-		if (omap_type() == OMAP2_DEVICE_TYPE_GP)
-		else
+		// !!! use to be == with stray else following
+		if (omap_type() != OMAP2_DEVICE_TYPE_GP)
 			irq_save_secure_context();
 		break;
 	case CPU_CLUSTER_PM_EXIT:

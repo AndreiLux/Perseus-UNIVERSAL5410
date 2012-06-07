@@ -479,7 +479,7 @@ int omap_enter_lowpower(unsigned int cpu, unsigned int power_state)
 			gic_dist_enable();
 	set_cpu_next_pwrst(wakeup_cpu, PWRDM_POWER_ON);
 
-	if (omap4_mpuss_read_prev_context_state()) {
+	if (omap_mpuss_read_prev_context_state()) {
 		/*
 		 * Dummy dispatcher call after OSWR and OFF
 		 * Restore the right return Kernel address (with MMU on) for
@@ -579,7 +579,7 @@ static void enable_mercury_retention_mode(void)
 int __init omap_mpuss_init(void)
 {
 	struct omap4_cpu_pm_info *pm_info;
-	u32 cpu_wakeup_addr;
+	u32 cpu_wakeup_addr = 0;
 
 	if (omap_rev() == OMAP4430_REV_ES1_0) {
 		WARN(1, "Power Management not supported on OMAP4430 ES1.0\n");

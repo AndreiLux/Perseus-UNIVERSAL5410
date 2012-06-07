@@ -305,9 +305,9 @@ static struct omap4_cm_regs omap4_cm2_regs[] = {
 static void omap4_cm1_prepare_off(void)
 {
 	u32 i, j;
-	struct omap4_cm_regs *cm_reg = cm1_regs;
+	struct omap4_cm_regs *cm_reg = omap4_cm1_regs;
 
-	for (i = 0; i < ARRAY_SIZE(cm1_regs); i++, cm_reg++) {
+	for (i = 0; i < ARRAY_SIZE(omap4_cm1_regs); i++, cm_reg++) {
 		for (j = 0; j < cm_reg->no_reg; j++) {
 			cm_reg->reg[j].val =
 			    omap4_cminst_read_inst_reg(OMAP4430_CM1_PARTITION,
@@ -500,13 +500,18 @@ static void omap4_cm_part_restore(struct omap4_cm_regs *cm_reg, int size,
 static void omap4_cm2_resume_off(void)
 {
 	u32 i, j;
-	struct omap4_cm_regs *cm_reg = cm2_regs;
+	struct omap4_cm_regs *cm_reg = omap4_cm2_regs;
+	int size = ARRAY_SIZE(omap4_cm2_regs);
 
-	for (i = 0; i < ARRAY_SIZE(cm2_regs); i++, cm_reg++) {
+	if (cpu_is_omap54xx()) {
+		cm_reg = omap5_cm2_regs;
+		size = ARRAY_SIZE(omap4_cm2_regs);
+	}
+
+	for (i = 0; i < size; i++, cm_reg++) {
 		for (j = 0; j < cm_reg->no_reg; j++) {
 			omap4_cminst_write_inst_reg(cm_reg->reg[j].val,
 						    OMAP4430_CM2_PARTITION,
-						    partition,
 						    cm_reg->mod_off,
 						    cm_reg->reg[j].offset);
 		}
