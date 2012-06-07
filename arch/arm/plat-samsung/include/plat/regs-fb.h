@@ -450,3 +450,5 @@
 /* Window alpha control */
 #define VIDW0ALPHA0				(0x200)
 #define VIDW0ALPHA1				(0x204)
+#define DPCLKCON				(0x27c)
+#define DPCLKCON_ENABLE				(1 << 1)
