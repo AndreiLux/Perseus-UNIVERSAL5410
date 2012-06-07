@@ -107,6 +107,8 @@ struct omap_device *omap_device_alloc(struct platform_device *pdev,
 void omap_device_delete(struct omap_device *od);
 int omap_device_register(struct platform_device *pdev);
 
+extern void omap_device_delete(struct omap_device *od);
+
 void __iomem *omap_device_get_rt_va(struct omap_device *od);
 struct device *omap_device_get_by_hwmod_name(const char *oh_name);
 

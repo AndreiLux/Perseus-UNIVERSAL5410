@@ -103,7 +103,7 @@ struct omap_device *omap_device_alloc(struct platform_device *pdev,
 				      struct omap_hwmod **ohs, int oh_cnt,
 				      struct omap_device_pm_latency *pm_lats,
 				      int pm_lats_cnt);
-static void omap_device_delete(struct omap_device *od);
+void omap_device_delete(struct omap_device *od);
 
 static struct omap_device_pm_latency omap_default_latency[] = {
 	{
@@ -590,7 +590,7 @@ oda_exit1:
 
 EXPORT_SYMBOL_GPL(omap_device_alloc);
 
-static void omap_device_delete(struct omap_device *od)
+void omap_device_delete(struct omap_device *od)
 {
 	if (!od)
 		return;
@@ -600,6 +600,8 @@ static void omap_device_delete(struct omap_device *od)
 	kfree(od->hwmods);
 	kfree(od);
 }
+
+EXPORT_SYMBOL_GPL(omap_device_delete);
 
 /**
  * omap_device_build - build and register an omap_device with one omap_hwmod
