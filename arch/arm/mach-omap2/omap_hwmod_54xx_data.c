@@ -3087,6 +3087,15 @@ static struct omap_hwmod_irq_info omap54xx_ipu_irqs[] = {
 	{ .irq = -1 }
 };
 
+/* IPU rst info structures changed back to omap4 scheme. */
+static struct omap_hwmod_rst_info omap54xx_ipu_c0_resets[] = {
+	{ .name = "cpu0", .rst_shift = 0 },
+};
+
+static struct omap_hwmod_rst_info omap54xx_ipu_c1_resets[] = {
+	{ .name = "cpu1", .rst_shift = 1 },
+};
+
 static struct omap_hwmod_rst_info omap54xx_ipu_resets[] = {
 	{ .name = "rst_cpu0", .rst_shift = 0 },
 	{ .name = "rst_cpu1", .rst_shift = 1 },
@@ -3100,8 +3109,8 @@ static struct omap_hwmod_ocp_if *omap54xx_ipu_masters[] = {
 
 static struct omap_hwmod_addr_space omap54xx_ipu_addrs[] = {
 	{
-		.pa_start	= 0x55080800,
-		.pa_end		= 0x550827ff,
+		.pa_start	= 0x55082000,
+		.pa_end		= 0x550820ff,
 		.flags		= ADDR_TYPE_RT
 	},
 	{ }
@@ -3121,6 +3130,38 @@ static struct omap_hwmod_ocp_if *omap54xx_ipu_slaves[] = {
 	&omap54xx_l3_main_2__ipu,
 };
 
+/* Pseudo hwmod for reset control purpose only */
+static struct omap_hwmod omap54xx_ipu_c0_hwmod = {
+	.name		= "ipu_c0",
+	.class		= &omap54xx_ipu_hwmod_class,
+	.clkdm_name	= "ipu_clkdm",
+	.flags		= HWMOD_INIT_NO_RESET,
+	.main_clk	= "ipu_fck",
+	.rst_lines	= omap54xx_ipu_c0_resets,
+	.rst_lines_cnt	= ARRAY_SIZE(omap54xx_ipu_c0_resets),
+	.prcm = {
+		.omap4 = {
+			.rstctrl_offs = OMAP54XX_RM_IPU_RSTCTRL_OFFSET,
+		},
+	},
+};
+
+/* Pseudo hwmod for reset control purpose only */
+static struct omap_hwmod omap54xx_ipu_c1_hwmod = {
+	.name		= "ipu_c1",
+	.class		= &omap54xx_ipu_hwmod_class,
+	.clkdm_name	= "ipu_clkdm",
+	.flags		= HWMOD_INIT_NO_RESET,
+	.main_clk	= "ipu_fck",
+	.rst_lines	= omap54xx_ipu_c1_resets,
+	.rst_lines_cnt	= ARRAY_SIZE(omap54xx_ipu_c1_resets),
+	.prcm = {
+		.omap4 = {
+			.rstctrl_offs = OMAP54XX_RM_IPU_RSTCTRL_OFFSET,
+		},
+	},
+};
+
 static struct omap_hwmod omap54xx_ipu_hwmod = {
 	.name		= "ipu",
 	.class		= &omap54xx_ipu_hwmod_class,
@@ -3128,7 +3169,7 @@ static struct omap_hwmod omap54xx_ipu_hwmod = {
 	.mpu_irqs	= omap54xx_ipu_irqs,
 	.rst_lines	= omap54xx_ipu_resets,
 	.rst_lines_cnt	= ARRAY_SIZE(omap54xx_ipu_resets),
-	.main_clk	= "dpll_core_h22x2_ck",
+
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = OMAP54XX_CM_IPU_IPU_CLKCTRL_OFFSET,
