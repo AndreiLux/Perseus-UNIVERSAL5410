@@ -658,7 +658,9 @@ int omap_aess_enable_data_transfer(struct omap_aess *abe, u32 id)
 
 	omap_aess_clean_temporary_buffers(abe, id);
 
-	omap_aess_update_scheduling_table1(abe, &(abe_port_init[id].task), 1);
+	// !!! we are casting away the const from the task struct !!!
+	omap_aess_update_scheduling_table1(abe, (struct omap_aess_init_task1 *)
+			&(abe_port_init[id].task), 1);
 
 	switch (id) {
 	case OMAP_ABE_PDM_UL_PORT:
@@ -1137,7 +1139,7 @@ void omap_aess_init_io_tasks(struct omap_aess *abe, u32 id, struct omap_aess_dat
 		 */
 		switch (id) {
 		case OMAP_ABE_VX_DL_PORT:
-			omap_aess_update_scheduling_table1(abe, &(abe_port_init[id].task), 1);
+			omap_aess_update_scheduling_table1(abe, (struct omap_aess_init_task1 *)&(abe_port_init[id].task), 1);
 
 			/* check for 8kHz/16kHz */
 			if (abe_port[id].format.f == 8000) {
@@ -1194,7 +1196,7 @@ void omap_aess_init_io_tasks(struct omap_aess *abe, u32 id, struct omap_aess_dat
 			}
 			break;
 		case OMAP_ABE_VX_UL_PORT:
-			omap_aess_update_scheduling_table1(abe, &(abe_port_init[id].task), 1);
+			omap_aess_update_scheduling_table1(abe, (struct omap_aess_init_task1 *)&(abe_port_init[id].task), 1);
 			/* check for 8kHz/16kHz */
 			if (abe_port[id].format.f == 8000) {
 				smem1 = omap_aess_update_io_task(abe, aess_enable_vx_ul_8k_asrc.task, 1);

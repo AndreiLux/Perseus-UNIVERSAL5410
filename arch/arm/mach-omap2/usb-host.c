@@ -634,7 +634,7 @@ static void __init setup_ehci_io_mux(const enum usbhs_omap_port_mode *port_mode)
 static struct omap_hwmod_mux_info * __init
 setup_4430ehci_io_mux(const enum usbhs_omap_port_mode *port_mode)
 {
-	struct omap_device_pad *pads;
+	struct omap_device_pad *pads = NULL;
 	int pads_cnt = 0;
 
 	switch (port_mode[0]) {
@@ -786,7 +786,7 @@ static void __init setup_ohci_io_mux(const enum usbhs_omap_port_mode *port_mode)
 static struct omap_hwmod_mux_info * __init
 setup_4430ohci_io_mux(const enum usbhs_omap_port_mode *port_mode)
 {
-	struct omap_device_pad *pads;
+	struct omap_device_pad *pads = NULL;
 	int pads_cnt = 0;
 
 	switch (port_mode[0]) {

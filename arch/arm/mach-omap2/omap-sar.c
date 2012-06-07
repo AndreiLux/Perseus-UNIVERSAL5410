@@ -536,7 +536,7 @@ static struct sar_module omap54xx_sar_modules[] = {
  */
 static int __init omap_sar_ram_init(void)
 {
-	void *base;
+	unsigned long base;
 	pr_info("omap_sar_ram_init\n");
 
 	/*

@@ -262,7 +262,7 @@ int __init omap_mux_init_signal(const char *muxname, int val)
 	return 0;
 }
 
-int omap_mux_init_array(struct omap_mux_setting *muxarray, int count)
+int __init omap_mux_init_array(struct omap_mux_setting *muxarray, int count)
 {
 	int r;
 

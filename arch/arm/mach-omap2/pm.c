@@ -40,7 +40,6 @@
 #include "prm2xxx_3xxx.h"
 #include "prm44xx.h"
 
-static struct omap_device_pm_latency *pm_lats;
 static void (*io_chain_trigger_func) (void);
 static DEFINE_SPINLOCK(io_chain_lock);
 
@@ -473,7 +472,7 @@ static int omap2_dev_pm_qos_handler(struct notifier_block *nb,
 
 	// !!! says incompatible pointer type?
 	/* Find the associated omap_device for dev */
-	od = container_of(p_dev, struct omap_device, pdev);
+	od = to_omap_device(p_dev);
 
 	/* Find the primary omap_hwmod for dev */
 	oh = od->hwmods[0];

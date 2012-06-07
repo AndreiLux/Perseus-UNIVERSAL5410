@@ -105,6 +105,7 @@ error:
 	return;
 }
 
+#if 0
 /*
  * Reconfigure EMIF timing registers to known values by doing a setrate
  * at the current frequency that will in turn invoke EMIF driver APIs
@@ -129,3 +130,4 @@ error:
 	pr_err("init_emif_timings failed\n");
 	return -1;
 }
+#endif

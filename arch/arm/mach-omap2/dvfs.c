@@ -702,8 +702,7 @@ int omap_device_scale(struct device *req_dev, struct device *target_dev,
 		return -EINVAL;
 	}
 
-	// !!! incompatible pointer type
-	od = container_of(p_dev, struct omap_device, pdev);
+	od = to_omap_device(p_dev);
 	if (IS_ERR_OR_NULL(od)) {
 		pr_err("%s: od is null!\n", __func__);
 		return -EINVAL;

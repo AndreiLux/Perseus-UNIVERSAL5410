@@ -270,9 +270,10 @@ static int omap_mcbsp_dma_reg_params(struct omap_mcbsp *mcbsp,
 	defined(CONFIG_ARCH_OMAP5)
 static struct omap_device *find_omap_device_by_dev(struct device *dev)
 {
-	struct platform_device *pdev = container_of(dev,
+	struct platform_device *pdev =
+		(struct platform_device *)container_of(dev,
 					struct platform_device, dev);
-	return container_of(pdev, struct omap_device, pdev);
+	return to_omap_device(pdev);
 }
 #endif
 

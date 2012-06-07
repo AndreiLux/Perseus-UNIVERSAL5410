@@ -298,7 +298,7 @@ int __init omap_register_i2c_bus(int bus_id, u32 clkrate,
  * @bus_id: bus id counting from number 1
  * @pdata: pointer to the I2C bus board data
  */
-void omap_register_i2c_bus_board_data(int bus_id,
+void __init omap_register_i2c_bus_board_data(int bus_id,
 				struct omap_i2c_bus_board_data *pdata)
 {
 	BUG_ON(bus_id < 1 || bus_id > omap_i2c_nr_ports());

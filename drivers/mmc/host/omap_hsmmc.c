@@ -310,6 +310,7 @@ static int omap_hsmmc_1_set_power(struct device *dev, int slot, int power_on,
 	return ret;
 }
 
+#if 0
 static int omap_hsmmc_235_set_power(struct device *dev, int slot, int power_on,
 				   int vdd)
 {
@@ -372,6 +373,7 @@ static int omap_hsmmc_235_set_power(struct device *dev, int slot, int power_on,
 
 	return ret;
 }
+#endif
 
 static int omap_hsmmc_reg_get(struct omap_hsmmc_host *host)
 {

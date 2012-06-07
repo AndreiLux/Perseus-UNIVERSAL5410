@@ -59,11 +59,11 @@ static const char * const *mac_device_fixup_paths;
 int count_mac_device_fixup_paths;
 
 /* macro for building platform_device for McBSP ports */                        
-#define OMAP_MCBSP_PLATFORM_DEVICE(port_nr)             \                       
-static struct platform_device omap_mcbsp##port_nr = {   \                       
-        .name   = "omap-mcbsp-dai",                     \                       
-        .id     = port_nr - 1,                  \                               
-} 
+#define OMAP_MCBSP_PLATFORM_DEVICE(port_nr)             \
+static struct platform_device omap_mcbsp##port_nr = {   \
+        .name   = "omap-mcbsp-dai",                     \
+        .id     = port_nr - 1,                  \
+}
 
 OMAP_MCBSP_PLATFORM_DEVICE(1);
 OMAP_MCBSP_PLATFORM_DEVICE(2);

@@ -60,6 +60,7 @@ static struct musb_hdrc_platform_data musb_plat = {
 
 static u64 musb_dmamask = DMA_BIT_MASK(32);
 
+#if 0
 static struct omap_device_pm_latency omap_musb_latency[] = {
 	{
 		.deactivate_func	= omap_device_idle_hwmods,
@@ -67,6 +68,7 @@ static struct omap_device_pm_latency omap_musb_latency[] = {
 		.flags			= OMAP_DEVICE_LATENCY_AUTO_ADJUST,
 	},
 };
+#endif
 
 static struct omap_musb_board_data musb_default_board_data = {
 	.interface_type		= MUSB_INTERFACE_ULPI,

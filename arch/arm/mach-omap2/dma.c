@@ -115,7 +115,7 @@ u32 omap_context_registers[] = {
 	CNDP,
 	CCDN
 };
-
+#if 0
 static struct omap_device_pm_latency omap2_dma_latency[] = {
 	{
 		.deactivate_func = omap_device_idle_hwmods,
@@ -123,7 +123,7 @@ static struct omap_device_pm_latency omap2_dma_latency[] = {
 		.flags		 = OMAP_DEVICE_LATENCY_AUTO_ADJUST,
 	},
 };
-
+#endif
 static void __iomem *dma_base;
 static inline void dma_write(u32 val, int reg, int lch)
 {

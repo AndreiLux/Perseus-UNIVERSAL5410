@@ -54,9 +54,6 @@
 #define SPI_TARGET_OFFSET		0x20
 #define SPI_CONFIG_OFFSET		0x20
 
-/* Variables to store maximum spi(Shared Peripheral Interrupts) registers. */
-static u32 max_spi_irq, max_spi_reg;
-
 static void __iomem *wakeupgen_base;
 static void __iomem *sar_base;
 static DEFINE_PER_CPU(u32 [MAX_NR_BANKS], irqmasks);

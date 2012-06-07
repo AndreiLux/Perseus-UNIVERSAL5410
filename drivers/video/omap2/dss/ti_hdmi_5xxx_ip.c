@@ -246,7 +246,7 @@ static int hdmi_core_ddc_edid(struct hdmi_ip_data *ip_data,
 int ti_hdmi_5xxx_read_edid(struct hdmi_ip_data *ip_data,
 				u8 *edid, int len)
 {
-	int r, l;
+	int r;
 
 	if (len < 128)
 		return -EINVAL;

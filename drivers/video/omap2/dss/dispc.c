@@ -1047,7 +1047,7 @@ void dispc_ovl_set_fifo_threshold(enum omap_plane plane, u32 low, u32 high)
 
 	if (dss_has_feature(FEAT_PRELOAD)) {
 		/* might as well set it to be the same high ..*/
-		dispc_write_reg(DISPC_OVL_PRELOAD(plane), min(high, 0xfff));
+		dispc_write_reg(DISPC_OVL_PRELOAD(plane), min((u32)high, (u32)0xfff));
 	}
 }
 

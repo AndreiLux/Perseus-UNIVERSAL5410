@@ -63,7 +63,7 @@ struct omap_mcbsp_dev_attr {
 
 extern int omap_mcbsp_count;
 
-int omap_mcbsp_init(void);
+//int omap_mcbsp_init(void);
 
 #if defined(CONFIG_ARCH_OMAP3) || defined(CONFIG_ARCH_OMAP4) || \
 	defined(CONFIG_ARCH_OMAP5)

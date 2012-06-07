@@ -169,7 +169,7 @@ static const struct file_operations emif_mr4_fops = {
 	.release		= single_release,
 };
 
-static int __init emif_debugfs_init(struct emif_data *emif)
+static int __devinit emif_debugfs_init(struct emif_data *emif)
 {
 	struct dentry	*dentry;
 	int		ret;
@@ -951,7 +951,7 @@ static void clear_all_interrupts(struct emif_data *emif)
 			base + EMIF_LL_OCP_INTERRUPT_STATUS);
 }
 
-static int __init setup_interrupts(struct emif_data *emif)
+static int __devinit setup_interrupts(struct emif_data *emif)
 {
 	u32		interrupts, type;
 	void __iomem	*base = emif->base;

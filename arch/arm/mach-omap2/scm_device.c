@@ -31,7 +31,7 @@
 
 static DEFINE_IDR(scm_device_idr);
 
-static int scm_dev_init(struct omap_hwmod *oh, void *user)
+static int __init scm_dev_init(struct omap_hwmod *oh, void *user)
 {
 	struct	omap4plus_scm_pdata		*scm_pdata;
 	struct	platform_device			*pd;

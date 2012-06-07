@@ -1125,7 +1125,7 @@ static int __init omap_sr_probe(struct platform_device *pdev)
 	struct omap_sr_data *pdata = pdev->dev.platform_data;
 	struct resource *mem, *irq;
 	struct dentry *nvalue_dir;
-	struct dentry *lvt_nvalue_dir;
+	struct dentry *lvt_nvalue_dir = NULL;
 	struct omap_volt_data *volt_data;
 	int i, ret = 0;
 	char *name;

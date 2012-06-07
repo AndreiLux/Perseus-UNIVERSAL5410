@@ -327,19 +327,6 @@ static struct map_desc omap54xx_io_desc[] __initdata = {
 	},
 };
 #endif
-static void __init _omap2_map_common_io(void)
-{
-	/* Normally devicemaps_init() would flush caches and tlb after
-	 * mdesc->map_io(), but we must also do it here because of the CPU
-	 * revision check below.
-	 * AG Now moved by Jassi's patch to be earlier... leaving this in
-	 */
-	local_flush_tlb_all();
-	flush_cache_all();
-
-	omap2xxx_check_revision();
-	omap_sram_init();
-}
 
 #ifdef CONFIG_SOC_OMAP2420
 void __init omap242x_map_common_io(void)

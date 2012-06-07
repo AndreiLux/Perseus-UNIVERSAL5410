@@ -276,6 +276,23 @@ static int __init pwrdms_setup(struct powerdomain *pwrdm, void *unused)
 	return omap_set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
 }
 
+#if 0
+/*
+ * Enable hardware supervised mode for all clockdomains if it's
+ * supported. Initiate sleep transition for other clockdomains, if
+ * they are not used
+ */
+static int __init clkdms_setup(struct clockdomain *clkdm, void *unused)
+{
+	if (clkdm->flags & CLKDM_CAN_ENABLE_AUTO)
+		clkdm_allow_idle(clkdm);
+	else if (clkdm->flags & CLKDM_CAN_FORCE_SLEEP &&
+			atomic_read(&clkdm->usecount) == 0)
+		clkdm_sleep(clkdm);
+	return 0;
+}
+#endif
+
 void omap4_pm_off_mode_enable(int enable)
 {
 	u32 next_state = PWRDM_POWER_RET;
@@ -523,7 +540,6 @@ static void __init prcm_setup_regs(void)
 static int __init omap_pm_init(void)
 {
 	int ret, i;
-	struct voltagedomain *mpu_voltdm;
 #ifdef CONFIG_SUSPEND
 	struct power_state *pwrst;
 #endif

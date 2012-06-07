@@ -398,7 +398,6 @@ out:
 
 static irqreturn_t twl_rtc_interrupt(int irq, void *rtc)
 {
-	struct twl_rtc_device *twl_rtc = rtc;
 	unsigned long events = 0;
 	int ret = IRQ_NONE;
 	int res;
