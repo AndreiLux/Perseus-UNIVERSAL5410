@@ -1294,6 +1294,22 @@ static struct omap_hwmod_ocp_if *omap54xx_dsp_slaves[] = {
 	&omap54xx_l4_cfg__dsp,
 };
 
+/* Pseudo hwmod for reset control purpose only */
+static struct omap_hwmod omap54xx_dsp_c0_hwmod = {
+	.name		= "dsp_c0",
+	.class		= &omap54xx_dsp_hwmod_class,
+	.clkdm_name	= "dsp_clkdm",
+	.flags		= HWMOD_INIT_NO_RESET,
+	.rst_lines	= omap54xx_dsp_c0_resets,
+	.rst_lines_cnt	= ARRAY_SIZE(omap54xx_dsp_c0_resets),
+	.main_clk	= "dsp_fck",
+	.prcm = {
+		.omap4 = {
+			.rstctrl_offs = OMAP54XX_RM_DSP_RSTCTRL_OFFSET,
+		},
+	},
+};
+
 static struct omap_hwmod omap54xx_dsp_hwmod = {
 	.name		= "dsp",
 	.class		= &omap54xx_dsp_hwmod_class,
