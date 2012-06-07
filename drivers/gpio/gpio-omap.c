@@ -1090,7 +1090,8 @@ static int __devinit omap_gpio_probe(struct platform_device *pdev)
 	bank->is_mpuio = pdata->is_mpuio;
 	bank->non_wakeup_gpios = pdata->non_wakeup_gpios;
 	bank->loses_context = pdata->loses_context;
-	bank->get_context_loss_count = pdata->get_context_loss_count;
+	/* there's confusion about int or U32 return at the moment */
+	bank->get_context_loss_count = (void *)pdata->get_context_loss_count;
 	bank->regs = pdata->regs;
 #ifdef CONFIG_OF_GPIO
 	bank->chip.of_node = of_node_get(node);

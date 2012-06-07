@@ -109,7 +109,8 @@ obj-$(CONFIG_ARCH_OMAP4)		+= prcm.o cm2xxx_3xxx.o cminst44xx.o \
 					   cm44xx.o prcm_mpu44xx.o \
 					   prminst44xx.o vc44xx_data.o \
 					   vp44xx_data.o prm44xx.o dvfs.o \
-					   abb44xx_data.o scrm444xx.o
+					   abb44xx_data.o scrm44xx.o \
+					   omap-sar.o
 obj-$(CONFIG_ARCH_OMAP5)                += prcm.o cm2xxx_3xxx.o cminst44xx.o \
                                            cm44xx.o prcm_mpu44xx.o \
                                            prminst44xx.o vc54xx_data.o \

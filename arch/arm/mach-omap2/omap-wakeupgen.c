@@ -216,6 +216,9 @@ static void wakeupgen_irqmask_all(unsigned int cpu, unsigned int set)
 }
 
 #ifdef CONFIG_CPU_PM
+
+#if 0
+/* currently unused, avoid warnings */
 /*
  * Save GIC context in SAR RAM. Restore is done by ROM code
  * GIC is lost only when MPU hits OSWR or OFF. It consists
@@ -294,6 +297,7 @@ static void gic_save_context(void)
 	val |= (SAR_BACKUP_STATUS_GIC_CPU0 | SAR_BACKUP_STATUS_GIC_CPU1);
 	__raw_writel(val, sar_base + SAR_BACKUP_STATUS_OFFSET);
 }
+#endif
 
 static inline void omap4_wakeupgen_save_context(void)
 {

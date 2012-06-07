@@ -74,6 +74,9 @@
 
 #define TPS62361_GPIO   7
 
+static struct omap_board_config_kernel sdp4430_config[] __initdata = {
+};
+
 static const int sdp4430_keymap[] = {
 	KEY(0, 0, KEY_E),
 	KEY(0, 1, KEY_R),

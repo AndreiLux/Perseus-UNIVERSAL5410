@@ -614,9 +614,12 @@ static irqreturn_t prcm_interrupt_handler (int irq, void *dev_id)
 
 static void __init prcm_setup_regs(void)
 {
+#if defined(CONFIG_MACH_OMAP_5430ZEBU) || defined(CONFIG_OMAP_ALLOW_OSWR)
 	struct omap_hwmod *oh;
+#endif
 
 #ifdef CONFIG_MACH_OMAP_5430ZEBU
+	struct omap_hwmod *oh;  
 	/* Idle gpmc */
 	oh = omap_hwmod_lookup("gpmc");
 	omap_hwmod_idle(oh);

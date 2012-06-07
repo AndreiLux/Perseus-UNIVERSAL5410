@@ -19,6 +19,9 @@
 
 #include "iomap.h"
 #include "pm.h"
+#include <mach/ctrl_module_wkup_44xx.h>
+
+#include "common.h"
 #include "clockdomain.h"
 
 #include "omap4-sar-layout.h"

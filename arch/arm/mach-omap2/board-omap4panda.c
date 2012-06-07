@@ -304,24 +304,6 @@ static struct twl6040_platform_data twl6040_data = {
 /* Panda board uses the common PMIC configuration */
 static struct twl4030_platform_data omap4_panda_twldata;
 
-static void __init omap_i2c_hwspinlock_init(int bus_id, int spinlock_id,
-				   struct omap_i2c_bus_board_data *pdata)
-{
-	/* spinlock_id should be -1 for a generic lock request */
-	if (spinlock_id < 0)
-		pdata->handle = hwspin_lock_request();
-	else
-		pdata->handle = hwspin_lock_request_specific(spinlock_id);
-
-	if (pdata->handle != NULL) {
-		pdata->hwspin_lock_timeout = hwspin_lock_timeout;
-		pdata->hwspin_unlock = hwspin_unlock;
-	} else {
-		pr_err("I2C hwspinlock request failed for bus %d\n", \
-									bus_id);
-	}
-}
-
 static struct omap_i2c_bus_board_data __initdata panda_i2c_1_bus_pdata;
 static struct omap_i2c_bus_board_data __initdata panda_i2c_2_bus_pdata;
 static struct omap_i2c_bus_board_data __initdata panda_i2c_3_bus_pdata;

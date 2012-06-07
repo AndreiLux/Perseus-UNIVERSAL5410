@@ -137,17 +137,14 @@ static struct omap_voltdm_pmic omap5_core_pmic = {
 static __initdata struct omap_pmic_map omap_twl_map[] = {
 	{
 		.name = "mpu",
-		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP5430),
 		.pmic_data = &omap5_mpu_pmic,
 	},
 	{
 		.name = "core",
-		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP5430),
 		.pmic_data = &omap5_core_pmic,
 	},
 	{
 		.name = "mm",
-		.omap_chip = OMAP_CHIP_INIT(CHIP_IS_OMAP5430),
 		.pmic_data = &omap5_mm_pmic,
 
 	},

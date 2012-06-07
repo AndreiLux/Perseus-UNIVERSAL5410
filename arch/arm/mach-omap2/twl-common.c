@@ -79,11 +79,13 @@ void __init omap4_pmic_init(const char *pmic_type,
 
 void __init omap_pmic_late_init(void)
 {
-	/* Init the OMAP TWL parameters (if PMIC has been registerd) */
+#if 0
+	/* Init the OMAP TWL parameters (if PMIC has been registered) */
 	if (pmic_i2c_board_info.irq)
 		omap3_twl_init();
 	if (omap4_i2c1_board_info[0].irq)
 		omap4_twl_init();
+#endif
 }
 
 #if defined(CONFIG_ARCH_OMAP3)
