@@ -98,6 +98,7 @@
 #define USE_WAKEUP_LAT			0
 #define IGNORE_WAKEUP_LAT		1
 
+int omap_device_register(struct platform_device *pdev);
 static int omap_early_device_register(struct platform_device *pdev);
 struct omap_device *omap_device_alloc(struct platform_device *pdev,
 				      struct omap_hwmod **ohs, int oh_cnt,
@@ -821,7 +822,7 @@ int omap_device_register(struct platform_device *pdev)
 	pdev->dev.pm_domain = &omap_device_pm_domain;
 	return platform_device_add(pdev);
 }
-
+EXPORT_SYMBOL_GPL(omap_device_register);
 
 /* Public functions for use by device drivers through struct platform_data */
 
