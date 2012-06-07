@@ -52,7 +52,11 @@ static inline u32 mxr_read(struct mxr_device *mdev, u32 reg_id)
 
 static inline void mxr_write(struct mxr_device *mdev, u32 reg_id, u32 val)
 {
-	writel(val, mdev->res.mxr_regs + reg_id);
+	if (reg_id == MXR_GRAPHIC_BASE(0)) {
+		if (val != 0)
+			writel(val, mdev->res.mxr_regs + reg_id);
+	} else
+		writel(val, mdev->res.mxr_regs + reg_id);
 }
 
 static inline void mxr_write_mask(struct mxr_device *mdev, u32 reg_id,
@@ -327,7 +331,7 @@ void mxr_reg_graph_buffer(struct mxr_device *mdev, int idx, dma_addr_t addr)
 	mxr_vsync_set_update(mdev, MXR_DISABLE);
 
 	if (idx == 0) {
-		mxr_write_mask(mdev, MXR_CFG, val, MXR_CFG_GRP0_ENABLE);
+		mxr_write_mask(mdev, MXR_CFG, 0x195, MXR_CFG_GRP0_ENABLE);
 		mxr_write(mdev, MXR_GRAPHIC_BASE(0), addr);
 	} else if (idx == 1) {
 		mxr_write_mask(mdev, MXR_CFG, val, MXR_CFG_GRP1_ENABLE);
