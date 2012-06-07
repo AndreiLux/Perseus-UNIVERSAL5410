@@ -21,6 +21,7 @@
 #include <linux/netdevice.h>
 #include <linux/if_ether.h>
 #include <linux/pm_runtime.h>
+#include <media/omap3isp.h>
 
 #include <mach/hardware.h>
 #include <mach/irqs.h>
@@ -144,6 +145,8 @@ static struct platform_device omap2cam_device = {
 };
 #endif
 
+static struct isp_platform_data bogus_isp_pdata;
+
 #if defined(CONFIG_IOMMU_API)
 
 #include <plat/iommu.h>
@@ -235,12 +238,6 @@ static struct platform_device omap3isp_device = {
 static struct omap_iommu_arch_data omap3_isp_iommu = {
 	.name = "isp",
 };
-
-struct isp_platform_data {
-	struct isp_v4l2_subdevs_group *subdevs;
-	void (*set_constraints)(struct isp_device *isp, bool enable);
-};
-static struct isp_platform_data bogus_isp_pdata;
 
 int omap3_init_camera(struct isp_platform_data *pdata)
 {
