@@ -786,6 +786,14 @@ static int exynos_iommu_attach_device(struct iommu_domain *domain,
 	unsigned long flags;
 	int ret;
 
+	/* If there is no SYSMMU, this could be a virtual device with a common
+	 * IOMMU mapping shared with another device e.g. DRM with DRM-FIMD
+	 */
+	if (data==NULL) {
+		dev_err(dev, "No SYSMMU found\n");
+		return 0;
+	}
+
 	ret = pm_runtime_get_sync(data->sysmmu);
 	if (ret < 0)
 		return ret;
