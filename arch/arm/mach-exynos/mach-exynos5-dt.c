@@ -68,7 +68,7 @@ static struct platform_device exynos_drm_device = {
 	}
 };
 
-static void mipi_lcd_set_power(struct plat_lcd_data *pd,
+static void lcd_set_power(struct plat_lcd_data *pd,
 			unsigned int power)
 {
 	/* reset */
@@ -106,14 +106,14 @@ static int smdk5250_match_fb(struct plat_lcd_data *pd, struct fb_info *info)
 	return 0;
 }
 
-static struct plat_lcd_data smdk5250_mipi_lcd_data = {
-	.set_power	= mipi_lcd_set_power,
+static struct plat_lcd_data smdk5250_lcd_data = {
+	.set_power	= lcd_set_power,
 	.match_fb	= smdk5250_match_fb,
 };
 
-static struct platform_device smdk5250_mipi_lcd = {
+static struct platform_device smdk5250_lcd = {
 	.name			= "platform-lcd",
-	.dev.platform_data	= &smdk5250_mipi_lcd_data,
+	.dev.platform_data	= &smdk5250_lcd_data,
 };
 
 static int smdk5250_bl_notify(struct device *unused, int brightness)
@@ -235,7 +235,7 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 };
 
 static struct platform_device *smdk5250_devices[] __initdata = {
-	&smdk5250_mipi_lcd, /* for platform_lcd device */
+	&smdk5250_lcd, /* for platform_lcd device */
 	&exynos_device_md0, /* for media device framework */
 	&exynos_device_md1, /* for media device framework */
 	&exynos_device_md2, /* for media device framework */
