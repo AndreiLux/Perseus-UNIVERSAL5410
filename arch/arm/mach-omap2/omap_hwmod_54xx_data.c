@@ -3297,6 +3297,10 @@ static struct omap_hwmod_class omap54xx_iva_hwmod_class = {
 	.sysc	= &omap54xx_iva_sysc,
 };
 
+static struct omap_hwmod_class omap54xx_iva_seq_hwmod_class = {
+	.name	= "iva-seq",
+};
+
 /* iva */
 static struct omap_hwmod_irq_info omap54xx_iva_irqs[] = {
 	{ .name = "sync_1", .irq = 103 + OMAP54XX_IRQ_GIC_START },
@@ -3306,9 +3310,15 @@ static struct omap_hwmod_irq_info omap54xx_iva_irqs[] = {
 };
 
 static struct omap_hwmod_rst_info omap54xx_iva_resets[] = {
-	{ .name = "rst_seq1", .rst_shift = 0 },
-	{ .name = "rst_seq2", .rst_shift = 1 },
-	{ .name = "rst_logic", .rst_shift = 2 },
+	{ .name = "logic", .rst_shift = 2 },
+};
+
+static struct omap_hwmod_rst_info omap54xx_iva_seq0_resets[] = {
+	{ .name = "seq0", .rst_shift = 0 },
+};
+
+static struct omap_hwmod_rst_info omap54xx_iva_seq1_resets[] = {
+	{ .name = "seq1", .rst_shift = 1 },
 };
 
 /* iva -> sl2if */
@@ -3349,14 +3359,47 @@ static struct omap_hwmod_ocp_if *omap54xx_iva_slaves[] = {
 	&omap54xx_l3_main_2__iva,
 };
 
+/* Pseudo hwmod for reset control purpose only */
+static struct omap_hwmod omap54xx_iva_seq0_hwmod = {
+	.name		= "iva_seq0",
+	.class		= &omap54xx_iva_seq_hwmod_class,
+	.clkdm_name	= "iva_clkdm",
+	.flags		= HWMOD_INIT_NO_RESET,
+	.rst_lines	= omap54xx_iva_seq0_resets,
+	.rst_lines_cnt	= ARRAY_SIZE(omap54xx_iva_seq0_resets),
+	.main_clk	= "iva_fck",
+	.prcm = {
+		.omap4 = {
+			.rstctrl_offs = OMAP54XX_RM_IVA_RSTCTRL_OFFSET,
+		},
+	},
+};
+
+/* Pseudo hwmod for reset control purpose only */
+static struct omap_hwmod omap54xx_iva_seq1_hwmod = {
+	.name		= "iva_seq1",
+	.class		= &omap54xx_iva_seq_hwmod_class,
+	.clkdm_name	= "iva_clkdm",
+	.flags		= HWMOD_INIT_NO_RESET,
+	.rst_lines	= omap54xx_iva_seq1_resets,
+	.rst_lines_cnt	= ARRAY_SIZE(omap54xx_iva_seq1_resets),
+	.main_clk	= "iva_fck",
+	.prcm = {
+		.omap4 = {
+			.rstctrl_offs = OMAP54XX_RM_IVA_RSTCTRL_OFFSET,
+		},
+	},
+};
+
 static struct omap_hwmod omap54xx_iva_hwmod = {
 	.name		= "iva",
 	.class		= &omap54xx_iva_hwmod_class,
+	.flags		= HWMOD_INIT_NO_RESET,
 	.clkdm_name	= "iva_clkdm",
 	.mpu_irqs	= omap54xx_iva_irqs,
 	.rst_lines	= omap54xx_iva_resets,
 	.rst_lines_cnt	= ARRAY_SIZE(omap54xx_iva_resets),
-	.main_clk	= "dpll_iva_h12x2_ck",
+	.main_clk	= "iva_fck",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_offs = OMAP54XX_CM_IVA_IVA_CLKCTRL_OFFSET,
@@ -6466,6 +6509,8 @@ static __initdata struct omap_hwmod *omap54xx_hwmods[] = {
 #ifndef CONFIG_OMAP_PM_STANDALONE
 	/* iva class */
 	&omap54xx_iva_hwmod,
+	&omap54xx_iva_seq0_hwmod,
+	&omap54xx_iva_seq1_hwmod,
 #endif
 	/* kbd class */
 	&omap54xx_kbd_hwmod,
