@@ -104,6 +104,7 @@ void kbase_jd_done(kbase_jd_atom *katom, int slot_nr, kbasep_js_tick *end_timest
 void kbase_jd_cancel(kbase_jd_atom *katom);
 void kbase_jd_flush_workqueues(kbase_context *kctx);
 void kbase_jd_zap_context(kbase_context *kctx);
+mali_bool jd_done_nolock(kbase_jd_atom *katom, int zapping);
 
 mali_error kbase_job_slot_init(kbase_device *kbdev);
 void kbase_job_slot_halt(kbase_device *kbdev);
@@ -122,7 +123,10 @@ void kbase_event_close(kbase_context *kctx);
 void kbase_event_cleanup(kbase_context *kctx);
 void kbase_event_wakeup(kbase_context *kctx);
 
-void kbase_process_soft_job( kbase_context *kctx, kbase_jd_atom *katom );
+int kbase_process_soft_job(kbase_jd_atom *katom);
+mali_error kbase_prepare_soft_job(kbase_jd_atom *katom);
+void kbase_finish_soft_job(kbase_jd_atom *katom);
+void kbase_cancel_soft_job(kbase_jd_atom *katom);
 
 /* api used internally for register access. Contains validation and tracing */
 void kbase_reg_write(kbase_device *kbdev, u16 offset, u32 value, kbase_context * kctx);

@@ -52,6 +52,9 @@
 #include <linux/compat.h>            /* is_compat_task */
 #include <kbase/src/common/mali_kbase_8401_workaround.h>
 #include <kbase/src/common/mali_kbase_hw.h>
+#ifdef CONFIG_SYNC
+#include <kbase/src/linux/mali_kbase_sync.h>
+#endif /* CONFIG_SYNC */
 
 #if MALI_LICENSE_IS_GPL && MALI_CUSTOMER_RELEASE == 0 && MALI_COVERAGE == 0
 #include <linux/pci.h>
@@ -701,6 +704,37 @@ bad_type:
 			get_version->version_string_size = sizeof(KERNEL_SIDE_DDK_VERSION_STRING);
 			break;
 		}
+#ifdef CONFIG_SYNC
+		case KBASE_FUNC_STREAM_CREATE:
+		{
+			kbase_uk_stream_create * screate = (kbase_uk_stream_create*)args;
+			
+			if (sizeof(*screate) != args_size)
+			{
+				goto bad_size;
+			}
+
+			if (strnlen(screate->name, sizeof(screate->name)) >= sizeof(screate->name))
+			{
+				/* not NULL terminated */
+				ukh->ret = MALI_ERROR_FUNCTION_FAILED;
+				break;
+			}
+
+			ukh->ret = kbase_stream_create(screate->name, &screate->fd);
+			break;
+		}
+		case KBASE_FUNC_FENCE_VALIDATE:
+		{
+			kbase_uk_fence_validate * fence_validate = (kbase_uk_fence_validate*)args;
+			if (sizeof(*fence_validate) != args_size)
+			{
+				goto bad_size;
+			}
+			ukh->ret = kbase_fence_validate(fence_validate->fd);
+			break;
+		}
+#endif /* CONFIG_SYNC */
 #ifdef CONFIG_KDS
 		case KBASE_FUNC_EXT_BUFFER_LOCK:
 		{

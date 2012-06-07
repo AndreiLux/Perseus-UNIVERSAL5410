@@ -32,6 +32,10 @@
 #include <kds/include/linux/kds.h>
 #endif
 
+#ifdef CONFIG_SYNC
+#include <linux/sync.h>
+#endif
+
 /** Enable SW tracing when set */
 #ifdef CONFIG_VITHAR_ENABLE_TRACE
 #define KBASE_TRACE_ENABLE 1
@@ -235,6 +239,10 @@ typedef struct kbase_jd_atom {
 	struct kds_resource_set *  kds_rset;
 	mali_bool                  kds_dep_satisfied;
 #endif
+#ifdef CONFIG_SYNC
+	struct sync_fence           *fence;
+	struct sync_fence_waiter    sync_waiter;
+#endif
 
 	base_jd_core_req    core_req;       /**< core requirements */
 
@@ -277,7 +285,7 @@ typedef struct kbase_jd_dep_queue {
 
 typedef struct kbase_jd_context {
 	osk_mutex           lock;
-	kbasep_js_kctx_info	sched_info;
+	kbasep_js_kctx_info sched_info;
 	kbase_jd_dep_queue  dep_queue;
 	base_jd_atom        *pool;
 	size_t              pool_size;
@@ -644,10 +652,12 @@ struct kbase_context
 	kbasep_mem_usage        usage;
 	ukk_session             ukk_session;
 	u32                     nr_outstanding_atoms;
-	osk_waitq           	complete_outstanding_waitq; /*if there are too many outstanding atoms
-														 *per context we wait on this waitqueue
-														 *to be signaled before submitting more jobs
-														 */
+	osk_waitq               complete_outstanding_waitq; /*if there are too many outstanding atoms
+	                                                     *per context we wait on this waitqueue
+	                                                     *to be signaled before submitting more jobs
+	                                                     */
+
+	osk_dlist               waiting_soft_jobs;
 
 	/** This is effectively part of the Run Pool, because it only has a valid
 	 * setting (!=KBASEP_AS_NR_INVALID) whilst the context is scheduled in

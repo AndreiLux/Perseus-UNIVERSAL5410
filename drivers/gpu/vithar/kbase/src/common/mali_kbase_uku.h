@@ -130,6 +130,23 @@ typedef struct kbase_uk_hwcnt_clear
 	uk_header   header;
 } kbase_uk_hwcnt_clear;
 
+typedef struct kbase_uk_fence_validate
+{
+	uk_header  header;
+	/* IN */
+	int        fd;
+	/* OUT */
+} kbase_uk_fence_validate;
+
+typedef struct kbase_uk_stream_create
+{
+	uk_header     header;
+	/* IN */
+	char          name[32];
+	/* OUT */
+	int           fd;
+} kbase_uk_stream_create;
+
 typedef struct kbase_uk_cpuprops
 {
 	uk_header header;
@@ -263,18 +280,14 @@ typedef enum kbase_uk_function_id
 
 	KBASE_FUNC_GET_VERSION,
 	KBASE_FUNC_EXT_BUFFER_LOCK,
-	KBASE_FUNC_SET_FLAGS
+	KBASE_FUNC_SET_FLAGS,
 
-#if MALI_DEBUG
-	, KBASE_FUNC_SET_TEST_DATA
-#endif /* MALI_DEBUG */
-#if MALI_ERROR_INJECT_ON
-	, KBASE_FUNC_INJECT_ERROR
-#endif
-#if MALI_NO_MALI
-	, KBASE_FUNC_MODEL_CONTROL
-#endif /* MALI_NO_MALI */
+	KBASE_FUNC_SET_TEST_DATA,
+	KBASE_FUNC_INJECT_ERROR,
+	KBASE_FUNC_MODEL_CONTROL,
 
+	KBASE_FUNC_FENCE_VALIDATE,
+	KBASE_FUNC_STREAM_CREATE
 } kbase_uk_function_id;
 
 #endif /* _KBASE_UKU_H_ */

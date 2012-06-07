@@ -45,7 +45,9 @@ SRC=\
 	linux/mali_kbase_ukk_os.c \
 	linux/mali_kbase_mem_linux.c \
 	linux/mali_kbase_core_linux.c \
-	linux/mali_kbase_config_linux.c
+	linux/mali_kbase_config_linux.c \
+	linux/mali_kbase_sync.c \
+	linux/mali_kbase_sync_user.c
 
 obj-$(CONFIG_VITHAR) += $(KBASE_PATH)/platform/mali_kbase_platform.o
 obj-$(CONFIG_VITHAR_RT_PM) += $(KBASE_PATH)/platform/mali_kbase_runtime_pm.o

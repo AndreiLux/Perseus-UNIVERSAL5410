@@ -559,7 +559,6 @@ STATIC INLINE kbase_jd_atom *jd_validate_atom(struct kbase_context *kctx,
 		}
 	}
 
-
 	/* Initialize the jobscheduler policy for this atom. Function will
 	 * return error if the atom is malformed. Then immediately terminate
 	 * the policy to free allocated resources and return error.
@@ -571,16 +570,26 @@ STATIC INLINE kbase_jd_atom *jd_validate_atom(struct kbase_context *kctx,
 		kbasep_js_policy *js_policy = &(kctx->kbdev->js_data.policy);
 		if (MALI_ERROR_NONE != kbasep_js_policy_init_job( js_policy, kctx, katom ))
 		{
-			if ( katom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES )
-			{
-				kbase_jd_post_external_resources(katom);
-			}
-			osk_free( katom );
-			return NULL;
+			goto err;
+		}
+	}
+	else
+	{
+		if (kbase_prepare_soft_job(katom) != MALI_ERROR_NONE)
+		{
+			goto err;
 		}
 	}
 
 	return katom;
+
+err:
+	if (katom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES)
+	{
+		kbase_jd_post_external_resources(katom);
+	}
+	osk_free(katom);
+	return NULL;
 }
 KBASE_EXPORT_TEST_API(jd_validate_atom)
 
@@ -604,6 +613,10 @@ STATIC void kbase_jd_katom_dtor(kbase_event *event)
 	if ((katom->core_req & BASE_JD_REQ_SOFT_JOB) == 0)
 	{
 		kbasep_js_policy_term_job( js_policy, kctx, katom );
+	}
+	else
+	{
+		kbase_finish_soft_job(katom);
 	}
 
 	if ( katom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES )
@@ -763,7 +776,7 @@ KBASE_EXPORT_TEST_API(jd_resolve_dep)
  *
  * When not zapping, the caller must hold the kbasep_js_kctx_info::ctx::jsctx_mutex.
  */
-STATIC mali_bool jd_done_nolock(kbase_jd_atom *katom, int zapping)
+mali_bool jd_done_nolock(kbase_jd_atom *katom, int zapping)
 {
 	kbase_jd_atom *dep_katom;
 	struct kbase_context *kctx = katom->kctx;
@@ -834,9 +847,19 @@ STATIC mali_bool jd_done_nolock(kbase_jd_atom *katom, int zapping)
 			{
 				node->event.event_code = event_code;
 			}
-			else if (node->core_req & BASE_JD_REQ_SOFT_JOB)
+			else if ((node->core_req & BASE_JD_REQ_SOFT_JOB) && (node != katom))
 			{
-				kbase_process_soft_job( kctx, node );
+				if (kbase_process_soft_job(node) == 0)
+				{
+					kbase_finish_soft_job(node);
+				}
+				else
+				{
+					/* The job has not completed */
+					OSK_DLIST_PUSH_BACK(&kctx->waiting_soft_jobs, node,
+					                    kbase_jd_atom, event.entry);
+					continue;
+				}
 			}
 
 			/* This will signal our per-context worker
@@ -1004,9 +1027,17 @@ mali_error kbase_jd_submit(kbase_context *kctx, const kbase_uk_job_submit *user_
 
 		if (katom->core_req & BASE_JD_REQ_SOFT_JOB)
 		{
-			kbase_process_soft_job( kctx, katom );
-			/* Pure software job, so resolve it immediately */
-			need_to_try_schedule_context |= jd_done_nolock(katom, 0);
+			if (kbase_process_soft_job( katom ) == 0)
+			{
+				/* Pure software job which has immediately completed so resolve it */
+				need_to_try_schedule_context |= jd_done_nolock(katom, 0);
+			}
+			else
+			{
+				/* Job has not completed */
+				OSK_DLIST_PUSH_BACK(&kctx->waiting_soft_jobs, katom,
+				                    kbase_jd_atom, event.entry);
+			}
 		}
 		else if (katom->core_req != BASE_JD_REQ_DEP)
 		{
@@ -1336,6 +1367,15 @@ void kbase_jd_zap_context(kbase_context *kctx)
 	
 	KBASE_TRACE_ADD( kbdev, JD_ZAP_CONTEXT, kctx, NULL, 0u, 0u );
 	kbase_job_zap_context(kctx);
+
+	osk_mutex_lock(&kctx->jctx.lock);
+	while(!OSK_DLIST_IS_EMPTY(&kctx->waiting_soft_jobs))
+	{
+		kbase_jd_atom *katom = OSK_DLIST_POP_FRONT(&kctx->waiting_soft_jobs, kbase_jd_atom, event.entry);
+
+		kbase_cancel_soft_job(katom);
+	}
+	osk_mutex_unlock(&kctx->jctx.lock);
 
 	ret = osk_timer_on_stack_init(&zap_timeout);
 	if (ret != OSK_ERR_NONE)

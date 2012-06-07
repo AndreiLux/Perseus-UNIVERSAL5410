@@ -202,6 +202,36 @@ typedef struct base_import_handle
  * @{
  */
 
+typedef int platform_fence_type;
+
+/**
+ * Base stream handle.
+ *
+ * References an underlying base stream object.
+ */
+typedef struct base_stream
+{
+	struct
+	{
+		int fd;
+	}
+	basep;
+} base_stream;
+
+/**
+ * Base fence handle.
+ *
+ * References an underlying base fence object.
+ */
+typedef struct base_fence
+{
+	struct
+	{
+		int fd;
+	}
+	basep;
+} base_fence;
+
 /**
  * @brief A pre- or post- dual dependency.
  *
@@ -308,6 +338,9 @@ typedef u16 base_jd_core_req;
 #define BASE_JD_REQ_SOFT_JOB        (1U << 9)
 
 #define BASE_JD_REQ_SOFT_DUMP_CPU_GPU_TIME      (BASE_JD_REQ_SOFT_JOB | 0x1)
+#define BASE_JD_REQ_SOFT_FENCE_TRIGGER          (BASE_JD_REQ_SOFT_JOB | 0x2)
+#define BASE_JD_REQ_SOFT_FENCE_WAIT             (BASE_JD_REQ_SOFT_JOB | 0x3)
+
 
 /**
  * HW Requirement: Requires Compute shaders (but not Vertex or Geometry Shaders)
@@ -477,6 +510,61 @@ static INLINE base_syncset *base_jd_get_atom_syncset(base_jd_atom *atom, int n)
 	LOCAL_ASSERT(0 == (atom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES));
 	LOCAL_ASSERT( (n >= 0) && (n <= atom->nr_syncsets) );
 	return &((basep_jd_atom_ss *)atom)->syncsets[n];
+}
+
+/**
+ * @brief Soft-atom fence trigger setup.
+ *
+ * Sets up an atom to be a SW-only atom signaling a fence
+ * when it reaches the run state.
+ *
+ * Using the existing base dependency system the fence can
+ * be set to trigger when a GPU job has finished.
+ *
+ * The base fence object must not be terminated until the atom 
+ * has been submitted to @a base_jd_submit_bag and @a base_jd_submit_bag has returned.
+ *
+ * @a fence must be a valid fence set up with @a base_fence_init or @a base_fence_import.
+ * Calling this function with a uninitialized fence results in undefined behavior.
+ *
+ * @param[out] atom A pre-allocated atom to configure as a fence trigger SW atom
+ * @param[in] fence The base fence object to trigger. 
+ */
+static INLINE void base_jd_fence_trigger_setup(base_jd_atom * atom, base_fence * fence)
+{
+	LOCAL_ASSERT(atom);
+	LOCAL_ASSERT(fence);
+	LOCAL_ASSERT(fence->basep.fd >= 0);
+	atom->jc = fence->basep.fd;
+	atom->core_req = BASE_JD_REQ_SOFT_FENCE_TRIGGER;
+}
+
+/**
+ * @brief Soft-atom fence wait setup.
+ *
+ * Sets up an atom to be a SW-only atom waiting on a fence.
+ * When the fence becomes triggered the atom becomes runnable
+ * and completes immediately.
+ *
+ * Using the existing base dependency system the fence can
+ * be set to block a GPU job until it has been triggered.
+ *
+ * The base fence object must not be terminated until the atom 
+ * has been submitted to @a base_jd_submit_bag and @a base_jd_submit_bag has returned.
+ *
+ * @a fence must be a valid fence set up with @a base_fence_init or @a base_fence_import.
+ * Calling this function with a uninitialized fence results in undefined behavior.
+ *
+ * @param[out] atom A pre-allocated atom to configure as a fence wait SW atom
+ * @param[in] fence The base fence object to wait on 
+ */
+static INLINE void base_jd_fence_wait_setup(base_jd_atom * atom, base_fence * fence)
+{
+	LOCAL_ASSERT(atom);
+	LOCAL_ASSERT(fence);
+	LOCAL_ASSERT(fence->basep.fd >= 0);
+	atom->jc = fence->basep.fd;
+	atom->core_req = BASE_JD_REQ_SOFT_FENCE_WAIT;
 }
 
 /**
