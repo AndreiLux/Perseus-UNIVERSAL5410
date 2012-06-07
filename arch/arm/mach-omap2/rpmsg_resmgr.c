@@ -29,11 +29,11 @@ static int omap2_rprm_set_min_bus_tput(struct device *rdev,
 	return omap_pm_set_min_bus_tput(rdev, OCP_INITIATOR_AGENT, val);
 }
 
-static int omap2_rprm_set_max_dev_wakeup_lat(struct device *rdev,
-		struct device *tdev, unsigned long val)
-{
-	return omap_pm_set_max_dev_wakeup_lat(rdev, tdev, val);
-}
+//static int omap2_rprm_set_max_dev_wakeup_lat(struct device *rdev,
+//		struct device *tdev, unsigned long val)
+//{
+//	return omap_pm_set_max_dev_wakeup_lat(rdev, tdev, val);
+//}
 
 #ifdef CONFIG_OMAP_DVFS
 static int omap2_rprm_device_scale(struct device *rdev, struct device *tdev,
@@ -47,7 +47,7 @@ static int omap2_rprm_device_scale(struct device *rdev, struct device *tdev,
 
 static struct omap_rprm_ops omap2_rprm_ops = {
 	.set_min_bus_tput	= omap2_rprm_set_min_bus_tput,
-	.set_max_dev_wakeup_lat	= omap2_rprm_set_max_dev_wakeup_lat,
+//	.set_max_dev_wakeup_lat	= omap2_rprm_set_max_dev_wakeup_lat,
 	.device_scale		= omap2_rprm_device_scale,
 };
 
