@@ -197,8 +197,9 @@ static void mkbp_process(struct mkbp_device *mkbp_dev,
 	for (col = 0; col < MKBP_NUM_COLS; col++) {
 		for (row = 0; row < MKBP_NUM_ROWS; row++) {
 			new_state = kb_state[col] & (1 << row);
-			if (new_state != mkbp_old_state[row][col]) {
-			  dev_dbg(mkbp_dev->dev, "[r%d c%d]: byte %02x\n",
+			if (!!new_state != mkbp_old_state[row][col]) {
+			  dev_dbg(mkbp_dev->dev,
+				  "changed: [r%d c%d]: byte %02x\n",
 				  row, col, new_state);
 			}
 			if (new_state && !mkbp_old_state[row][col]) {
