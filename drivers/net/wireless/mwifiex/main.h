@@ -87,6 +87,9 @@ enum {
 
 #define MWIFIEX_MAX_TOTAL_SCAN_TIME	(MWIFIEX_TIMER_10S - MWIFIEX_TIMER_1S)
 
+#define MWIFIEX_MAX_SCAN_DELAY_CNT			50
+#define MWIFIEX_SCAN_DELAY_MSEC				20
+
 #define RSN_GTK_OUI_OFFSET				2
 
 #define MWIFIEX_OUI_NOT_PRESENT			0
@@ -463,6 +466,7 @@ struct mwifiex_private {
 	s32 cqm_rssi_thold;
 	u32 cqm_rssi_hyst;
 	u8 subsc_evt_rssi_state;
+	struct timer_list scan_delay_timer;
 };
 
 enum mwifiex_ba_status {
@@ -661,6 +665,7 @@ struct mwifiex_adapter {
 	struct cmd_ctrl_node *cmd_queued;
 	spinlock_t queue_lock;		/* lock for tx queues */
 	struct completion fw_load;
+	u8 scan_delay_cnt;
 };
 
 int mwifiex_init_lock_list(struct mwifiex_adapter *adapter);
