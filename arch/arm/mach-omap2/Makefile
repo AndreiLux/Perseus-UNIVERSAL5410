@@ -324,3 +324,7 @@ obj-$(CONFIG_ARCH_OMAP5) 		+= $(s-ata-m) $(s-ata-y)
 ifneq ($(CONFIG_OMAP_REMOTEPROC),)
 obj-y					+= remoteproc.o
 endif
+
+ifneq ($(CONFIG_OMAP_RPMSG_RESMGR),)
+obj-y					+= rpmsg_resmgr.o
+endif
