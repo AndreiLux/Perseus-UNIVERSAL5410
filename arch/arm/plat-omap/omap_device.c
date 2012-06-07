@@ -99,6 +99,11 @@
 #define IGNORE_WAKEUP_LAT		1
 
 static int omap_early_device_register(struct platform_device *pdev);
+struct omap_device *omap_device_alloc(struct platform_device *pdev,
+				      struct omap_hwmod **ohs, int oh_cnt,
+				      struct omap_device_pm_latency *pm_lats,
+				      int pm_lats_cnt);
+static void omap_device_delete(struct omap_device *od);
 
 static struct omap_device_pm_latency omap_default_latency[] = {
 	{
@@ -583,7 +588,9 @@ oda_exit1:
 	return ERR_PTR(ret);
 }
 
-void omap_device_delete(struct omap_device *od)
+EXPORT_SYMBOL_GPL(omap_device_alloc);
+
+static void omap_device_delete(struct omap_device *od)
 {
 	if (!od)
 		return;
