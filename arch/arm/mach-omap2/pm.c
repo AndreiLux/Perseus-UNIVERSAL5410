@@ -159,15 +159,6 @@ void omap_trigger_io_chain(void)
 	}
 }
 
-void omap_trigger_wuclk_ctrl(void)
-{
-	if (cpu_is_omap34xx())
-		omap3_trigger_wuclk_ctrl();
-
-	if (cpu_is_omap44xx() || cpu_is_omap54xx())
-		omap4_trigger_wuclk_ctrl();
-}
-
 /* Types of sleep_switch used in omap_set_pwrdm_state */
 #define FORCEWAKEUP_SWITCH	0
 #define LOWPOWERSTATE_SWITCH	1
@@ -583,7 +574,7 @@ static int __init omap2_common_pm_init(void)
 	if (cpu_is_omap34xx() && omap3_has_io_chain_ctrl())
 		io_chain_trigger_func = omap3_trigger_io_chain;
 
-	if (cpu_is_omap44xx())
+	if (cpu_is_omap44xx() || cpu_is_omap54xx())
 		io_chain_trigger_func = omap4_trigger_io_chain;
 
 	/* Register to the per-device PM QoS framework */

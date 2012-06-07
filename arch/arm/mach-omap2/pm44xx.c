@@ -99,7 +99,8 @@ void omap_pm_idle(u32 cpu_id, int state)
 		omap4_dpll_prepare_off();
 	}
 
-	omap_trigger_wuclk_ctrl();
+	/* FIXME remove this after mux framework for OMAP5 is in place */
+	omap_trigger_io_chain();
 
 	omap_enter_lowpower(cpu_id, state);
 
