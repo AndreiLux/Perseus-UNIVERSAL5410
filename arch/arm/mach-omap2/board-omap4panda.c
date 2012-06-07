@@ -621,7 +621,7 @@ MACHINE_START(OMAP4_PANDA, "OMAP4 Panda board")
 	/* Maintainer: David Anders - Texas Instruments Inc */
 	.atag_offset	= 0x100,
 	.reserve	= omap_reserve,
-	.map_io		= omap4_map_io,
+	.map_io		= omap4_panda_map_io,
 	.init_early	= omap4430_init_early,
 	.init_irq	= gic_init_irq,
 	.handle_irq	= gic_handle_irq,

@@ -26,7 +26,7 @@
 #include <linux/list.h>
 #include <linux/notifier.h>
 #include "emif_regs.h"
-#include <mach/omap4-common.h>
+#include <plat/common.h>
 
 /** struct emif_data - Per device static data for driver's use
  * @thermal_handling_pending:	Whether thermal handling is pending or not

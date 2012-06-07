@@ -69,6 +69,7 @@ config ARCH_OMAP5
 	select MISC_DEVICES  if !MACH_OMAP_5430ZEBU
 	select EMIF if !MACH_OMAP_5430ZEBU
 	select USB_ARCH_HAS_EHCI if USB_SUPPORT
+	select LOCAL_TIMERS if SMP                                              
 
 comment "OMAP Core Type"
 	depends on ARCH_OMAP2
@@ -359,7 +360,7 @@ config MACH_OMAP4_PANDA
 	select REGULATOR_FIXED_VOLTAGE if REGULATOR
 	select OMAP_TPS6236X
 
-config MACH_OMAP_5430EVM
+config MACH_OMAP5_SEVM
 	bool "OMAP5 EVM board"
 	depends on ARCH_OMAP5
 

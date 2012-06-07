@@ -736,7 +736,7 @@ config MFD_CS5535
 	depends on PCI && X86
 	---help---
 	  This is the core driver for CS5535/CS5536 MFD functions.  This is
-          necessary for using the board's GPIO and MFGPT functionality.
+          necessary for using the board s GPIO and MFGPT functionality.
 
 config MFD_TIMBERDALE
 	tristate "Support for the Timberdale FPGA"
@@ -922,7 +922,6 @@ config MFD_PALMAS_RESOURCE
 	  If you say yes here you get support for the misc RESOURCES on
 	  Palmas series of PMIC chips from Texas Instruments.
 
-endif # MFD_SUPPORT
 
 menu "Multimedia Capabilities Port drivers"
 	depends on ARCH_SA1100

@@ -177,7 +177,7 @@ static inline void __arch_decomp_setup(unsigned long arch_id)
 		DEBUG_LL_OMAP4(3, omap4_panda);
 
 		/* omap5 based boards using UART3 */
-		DEBUG_LL_OMAP5(3, omap_5430evm);
+		DEBUG_LL_OMAP5(3, omap5_sevm);
 
 		/* zoom2/3 external uart */
 		DEBUG_LL_ZOOM(omap_zoom2);

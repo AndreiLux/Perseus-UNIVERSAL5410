@@ -855,7 +855,7 @@ static __devinit int palmas_probe(struct platform_device *pdev)
 		}
 
 		rdev = regulator_register(&pmic->desc[id],
-				&pdev->dev, reg_data, pmic);
+				&pdev->dev, reg_data, pmic, NULL);
 		if (IS_ERR(rdev)) {
 			dev_err(&pdev->dev,
 				"failed to register %s regulator\n",
@@ -888,7 +888,7 @@ static __devinit int palmas_probe(struct platform_device *pdev)
 		pmic->desc[id].owner = THIS_MODULE;
 
 		rdev = regulator_register(&pmic->desc[id],
-				&pdev->dev, reg_data, pmic);
+				&pdev->dev, reg_data, pmic, NULL);
 		if (IS_ERR(rdev)) {
 			dev_err(&pdev->dev,
 				"failed to register %s regulator\n",

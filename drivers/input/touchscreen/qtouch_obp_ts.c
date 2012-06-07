@@ -16,6 +16,7 @@
  * Derived from the Motorola OBP touch driver.
  *
  */
+#include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/gpio.h>

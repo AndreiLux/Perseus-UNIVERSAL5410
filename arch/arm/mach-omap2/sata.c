@@ -306,7 +306,6 @@ static void omap_ahci_plat_exit(struct device *dev)
 void __init omap_sata_init(void)
 {
 	struct omap_hwmod	*hwmod[2];
-	struct omap_device	*od;
 	struct platform_device	*pdev;
 	struct device		*dev;
 	int			oh_cnt = 1;
@@ -330,16 +329,15 @@ void __init omap_sata_init(void)
 	else
 		pr_err("Could not look up %s\n", OMAP_OCP2SCP3_HWMODNAME);
 
-	od = omap_device_build_ss(AHCI_PLAT_DEVNAME, -1, hwmod, oh_cnt,
+	pdev = omap_device_build_ss(AHCI_PLAT_DEVNAME, -1, hwmod, oh_cnt,
 				(void *) &sata_pdata, sizeof(sata_pdata),
 				omap_sata_latency,
 				ARRAY_SIZE(omap_sata_latency), false);
-	if (IS_ERR(od)) {
+	if (IS_ERR(pdev)) {
 		pr_err("Could not build hwmod device %s\n",
 					OMAP_SATA_HWMODNAME);
 		return;
 	}
-	pdev = &od->pdev;
 	dev = &pdev->dev;
 	get_device(dev);
 	dev->dma_mask = &sata_dmamask;

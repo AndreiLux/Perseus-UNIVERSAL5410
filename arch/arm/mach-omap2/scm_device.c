@@ -34,7 +34,7 @@ static DEFINE_IDR(scm_device_idr);
 static int scm_dev_init(struct omap_hwmod *oh, void *user)
 {
 	struct	omap4plus_scm_pdata		*scm_pdata;
-	struct	omap_device			*od;
+	struct	platform_device			*pd;
 	struct	omap4plus_scm_dev_attr	*scm_dev_attr;
 	int					ret = 0;
 	int					num;
@@ -42,7 +42,7 @@ static int scm_dev_init(struct omap_hwmod *oh, void *user)
 	scm_pdata =
 	    kzalloc(sizeof(*scm_pdata), GFP_KERNEL);
 	if (!scm_pdata) {
-		dev_err(&oh->od->pdev.dev,
+		dev_err(&oh->od->pdev->dev,
 			"Unable to allocate memory for scm pdata\n");
 		return -ENOMEM;
 	}
@@ -59,13 +59,13 @@ static int scm_dev_init(struct omap_hwmod *oh, void *user)
 	if (cpu_is_omap446x())
 		scm_pdata->accurate = 1;
 
-	od = omap_device_build("omap4plus_scm", num,
+	pd = omap_device_build("omap4plus_scm", num,
 		oh, scm_pdata, sizeof(*scm_pdata), NULL, 0, false);
 
-	if (IS_ERR(od)) {
-		dev_warn(&oh->od->pdev.dev,
+	if (IS_ERR(pd)) {
+		dev_warn(&oh->od->pdev->dev,
 			"Could not build omap_device for %s\n", oh->name);
-		ret = PTR_ERR(od);
+		ret = PTR_ERR(pd);
 	}
 
 fail_id:

@@ -39,23 +39,70 @@
 #define TTB_FLAGS_SMP	(TTB_IRGN_WBWA|TTB_S|TTB_RGN_OC_WBWA)
 #define PMD_FLAGS_SMP	(PMD_SECT_WBWA|PMD_SECT_S)
 
-/*
- * cpu_v7_switch_mm(pgd_phys, tsk)
- *
- * Set the translation table base pointer to be pgd_phys (physical address of
- * the new TTB).
- */
-ENTRY(cpu_v7_switch_mm)
-#ifdef CONFIG_MMU
-	ldr	r1, [r1, #MM_CONTEXT_ID]	@ get mm->context.id
-	and	r3, r1, #0xff
-	mov	r3, r3, lsl #(48 - 32)		@ ASID
-	mcrr	p15, 0, r0, r3, c2		@ set TTB 0
-	isb
-#endif
-	mov	pc, lr
-ENDPROC(cpu_v7_switch_mm)
 
+/* 
+ * alternate versions of these two functions came from the omap5
+ * patchset...since v3.1 their definition migrated here and to -2stage
+ * archived them defaulting to keeping mainline versions
+ */
+
+#define MAINLINE_V7_FUNCS
+
+#ifdef MAINLINE_V7_FUNCS 
+
+/*                                                                              
+ * cpu_v7_switch_mm(pgd_phys, tsk)                                              
+ *                                                                              
+ * Set the translation table base pointer to be pgd_phys (physical address of   
+ * the new TTB).                                                                
+ */                                                                             
+ENTRY(cpu_v7_switch_mm)                                                         
+#ifdef CONFIG_MMU                                                               
+        ldr     r1, [r1, #MM_CONTEXT_ID]        @ get mm->context.id            
+        and     r3, r1, #0xff                                                   
+        mov     r3, r3, lsl #(48 - 32)          @ ASID                          
+        mcrr    p15, 0, r0, r3, c2              @ set TTB 0                     
+        isb                                                                     
+#endif                                                                          
+        mov     pc, lr                                                          
+ENDPROC(cpu_v7_switch_mm)
+#else
+
+/*                                                                              
+ *      cpu_v7_switch_mm(pgd_phys, tsk)                                         
+ *                                                                              
+ *      Set the translation table base pointer to be pgd_phys                   
+ *                                                                              
+ *      - pgd_phys - physical address of new TTB                                
+ *                                                                              
+ *      It is assumed that:                                                     
+ *      - we are not using split page tables                                    
+ */                                                                             
+ENTRY(cpu_v7_switch_mm)                                                         
+#ifdef CONFIG_MMU                                                               
+        mov     r2, #0                                                          
+        ldr     r1, [r1, #MM_CONTEXT_ID]        @ get mm->context.id            
+        ALT_SMP(orr     r0, r0, #TTB_FLAGS_SMP)                                 
+        ALT_UP(orr      r0, r0, #TTB_FLAGS_UP)                                  
+#ifdef CONFIG_ARM_ERRATA_430973                                                 
+        mcr     p15, 0, r2, c7, c5, 6           @ flush BTAC/BTB                
+#endif                                                                          
+        mrc     p15, 0, r2, c2, c0, 1           @ load TTB 1                    
+        mcr     p15, 0, r2, c2, c0, 0           @ into TTB 0                    
+        isb                                                                     
+#ifdef CONFIG_ARM_ERRATA_754322                                                 
+        dsb                                                                     
+#endif                                                                          
+        mcr     p15, 0, r1, c13, c0, 1          @ set context ID                
+        isb                                                                     
+        mcr     p15, 0, r0, c2, c0, 0           @ set TTB 0                     
+        isb                                                                     
+#endif                                                                          
+        mov     pc, lr                                                          
+ENDPROC(cpu_v7_switch_mm) 
+#endif
+
+#ifdef MAINLINE_V7_FUNCS
 /*
  * cpu_v7_set_pte_ext(ptep, pte)
  *
@@ -74,6 +121,57 @@ ENTRY(cpu_v7_set_pte_ext)
 #endif
 	mov	pc, lr
 ENDPROC(cpu_v7_set_pte_ext)
+#else
+
+/*                                                                              
+ *      cpu_v7_set_pte_ext(ptep, pte)                                           
+ *                                                                              
+ *      Set a level 2 translation table entry.                                  
+ *                                                                              
+ *      - ptep  - pointer to level 2 translation table entry                    
+ *                (hardware version is stored at +2048 bytes)                   
+ *      - pte   - PTE value to store                                            
+ *      - ext   - value for extended PTE bits                                   
+ */                                                                             
+ENTRY(cpu_v7_set_pte_ext)                                                       
+#ifdef CONFIG_MMU                                                               
+        str     r1, [r0]                        @ linux version                 
+                                                                                
+        bic     r3, r1, #0x000003f0                                             
+        bic     r3, r3, #PTE_TYPE_MASK                                          
+        orr     r3, r3, r2                                                      
+        orr     r3, r3, #PTE_EXT_AP0 | 2                                        
+                                                                                
+        tst     r1, #1 << 4                                                     
+        orrne   r3, r3, #PTE_EXT_TEX(1)                                         
+                                                                                
+        eor     r1, r1, #L_PTE_DIRTY                                            
+        tst     r1, #L_PTE_RDONLY | L_PTE_DIRTY                                 
+        orrne   r3, r3, #PTE_EXT_APX                                            
+                                                                                
+        tst     r1, #L_PTE_USER                                                 
+        orrne   r3, r3, #PTE_EXT_AP1                                            
+#ifdef CONFIG_CPU_USE_DOMAINS                                                   
+        @ allow kernel read/write access to read-only user pages                
+        tstne   r3, #PTE_EXT_APX                                                
+        bicne   r3, r3, #PTE_EXT_APX | PTE_EXT_AP0                              
+#endif                                                                          
+                                                                                
+        tst     r1, #L_PTE_XN                                                   
+        orrne   r3, r3, #PTE_EXT_XN                                             
+                                                                                
+        tst     r1, #L_PTE_YOUNG                                                
+        tstne   r1, #L_PTE_PRESENT                                              
+        moveq   r3, #0                                                          
+                                                                                
+ ARM(   str     r3, [r0, #2048]! )                                              
+ THUMB( add     r0, r0, #2048 )                                                 
+ THUMB( str     r3, [r0] )                                                      
+        mcr     p15, 0, r0, c7, c10, 1          @ flush_pte                     
+#endif                                                                          
+        mov     pc, lr                                                          
+ENDPROC(cpu_v7_set_pte_ext)
+#endif
 
 	/*
 	 * Memory region attributes for LPAE (defined in pgtable-3level.h):

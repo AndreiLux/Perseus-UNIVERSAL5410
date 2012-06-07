@@ -113,7 +113,7 @@ int main(int argc, char *argv[])
 	minsize    = 0;
 	padsize    = 0;
 
-	while ((opt = getopt(argc, argv, "hI:O:o:V:d:R:S:p:fcqb:vH:s"))
+	while ((opt = getopt(argc, argv, "hI:O:o:V:d:R:S:p:fqb:vH:s"))
 			!= EOF) {
 		switch (opt) {
 		case 'I':

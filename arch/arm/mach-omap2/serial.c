@@ -65,6 +65,29 @@ static u8 console_uart_id = -1;
 static u8 no_console_suspend;
 static u8 uart_debug;
 
+static int uart_idle_hwmod(struct omap_device *od)
+{
+        omap_hwmod_idle(od->hwmods[0]);
+
+        return 0;
+}
+
+static int uart_enable_hwmod(struct omap_device *od)
+{
+        omap_hwmod_enable(od->hwmods[0]);
+
+        return 0;
+}
+
+
+static struct omap_device_pm_latency omap_uart_latency[] = {
+        {
+                .deactivate_func = uart_idle_hwmod,
+                .activate_func   = uart_enable_hwmod,
+                .flags = OMAP_DEVICE_LATENCY_AUTO_ADJUST,
+        },
+};
+
 #define DEFAULT_RXDMA_POLLRATE		1	/* RX DMA polling rate (us) */
 #define DEFAULT_RXDMA_BUFSIZE		4096	/* RX DMA buffer size */
 #define DEFAULT_RXDMA_TIMEOUT		(3 * HZ)/* RX DMA timeout (jiffies) */
@@ -237,6 +260,9 @@ core_initcall(omap_serial_early_init);
 void __init omap_serial_init_port(struct omap_board_data *bdata,
 			struct omap_uart_port_info *info)
 {
+
+#if 0
+
 	struct omap_uart_state *uart;
 	struct omap_hwmod *oh;
 	struct platform_device *pdev;
@@ -387,6 +413,77 @@ void __init omap_serial_init_port(struct omap_board_data *bdata,
 	/* Enable the MDR1 errata for OMAP3 */
 	if (cpu_is_omap34xx() && !cpu_is_ti816x())
 		uart->errata |= UART_ERRATA_i202_MDR1_ACCESS;
+#endif
+#else
+        struct omap_uart_state *uart;
+        struct omap_hwmod *oh;
+        struct platform_device *pd;
+        void *pdata = NULL;
+        u32 pdata_size = 0;
+        char *name;
+        struct omap_uart_port_info omap_up;
+
+        if (WARN_ON(!bdata))
+                return;
+        if (WARN_ON(bdata->id < 0))
+                return;
+        if (WARN_ON(bdata->id >= num_uarts))
+                return;
+
+        list_for_each_entry(uart, &uart_list, node)
+                if (bdata->id == uart->num)
+                        break;
+        if (!info)
+                info = omap_serial_default_info;
+
+        oh = uart->oh;
+        name = DRIVER_NAME;
+
+        omap_up.dma_enabled = info->dma_enabled;
+        omap_up.uartclk = OMAP24XX_BASE_BAUD * 16;
+        omap_up.flags = UPF_BOOT_AUTOCONF;
+        omap_up.get_context_loss_count = omap_pm_get_dev_context_loss_count;
+        omap_up.set_forceidle = omap_uart_set_smartidle;
+        omap_up.set_noidle = omap_uart_set_noidle;
+        omap_up.enable_wakeup = omap_uart_enable_wakeup;
+        omap_up.dma_rx_buf_size = info->dma_rx_buf_size;
+        omap_up.dma_rx_timeout = info->dma_rx_timeout;
+        omap_up.dma_rx_poll_rate = info->dma_rx_poll_rate;
+        omap_up.autosuspend_timeout = info->autosuspend_timeout;
+        omap_up.wer = info->wer;
+
+        /* Enable the MDR1 Errata i202 for OMAP2430/3xxx/44xx */
+        if (!cpu_is_omap2420() && !cpu_is_ti816x())
+                omap_up.errata |= UART_ERRATA_i202_MDR1_ACCESS;
+
+        /* Enable DMA Mode Force Idle Errata i291 for omap34xx/3630 */
+        if (cpu_is_omap34xx() || cpu_is_omap3630())
+                omap_up.errata |= UART_ERRATA_i291_DMA_FORCEIDLE;
+
+        pdata = &omap_up;
+        pdata_size = sizeof(struct omap_uart_port_info);
+
+        if (WARN_ON(!oh))
+                return;
+
+        pd = omap_device_build(name, uart->num, oh, pdata, pdata_size,
+                               omap_uart_latency,
+                               ARRAY_SIZE(omap_uart_latency), false);
+        WARN(IS_ERR(pd), "Could not build omap_device for %s: %s.\n",
+             name, oh->name);
+
+        if ((console_uart_id == bdata->id) && no_console_suspend)
+                omap_device_disable_idle_on_suspend(pd);
+
+        oh->mux = omap_hwmod_mux_init(bdata->pads, bdata->pads_cnt);
+
+        uart->pdev = pd;
+
+        oh->dev_attr = uart;
+        if ((cpu_is_omap34xx() || cpu_is_omap44xx() || cpu_is_omap54xx())
+                        && bdata->pads && !uart_debug)
+                device_init_wakeup(&pd->dev, true);
+#endif
 }
 
 /**

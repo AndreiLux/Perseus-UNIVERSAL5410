@@ -32,7 +32,7 @@
 #include <asm/hardware/gic.h>
 
 #include <mach/hardware.h>
-#include <mach/omap4-common.h>
+#include "common.h"
 #include <plat/common.h>
 #include <plat/usb.h>
 #include <plat/mmc.h>
@@ -270,12 +270,6 @@ static struct smsc_keypad_data omap5_kp_data = {
 	.cols           = 16,
 	.rep            = 1,
 };
-
-static void __init omap_5430evm_init_early(void)
-{
-	omap2_init_common_infrastructure();
-	omap2_init_common_devices(NULL, NULL);
-}
 
 #ifndef CONFIG_MACH_OMAP_5430ZEBU
 static struct __devinitdata emif_custom_configs custom_configs = {
@@ -1140,12 +1134,12 @@ static void __init omap_5430evm_map_io(void)
 	omap54xx_map_common_io();
 }
 
-MACHINE_START(OMAP_5430EVM, "OMAP5430 evm board")
+MACHINE_START(OMAP5_SEVM, "OMAP5430 evm board")
 	/* Maintainer: Santosh Shilimkar - Texas Instruments Inc */
-	.boot_params	= 0x80000100,
+	.atag_offset    = 0x100,  
 	.map_io		= omap_5430evm_map_io,
 	.reserve	= omap_reserve,
-	.init_early	= omap_5430evm_init_early,
+	.init_early	= omap54xx_init_early,
 	.init_irq	= gic_init_irq,
 	.handle_irq     = gic_handle_irq,
 	.init_machine	= omap_5430evm_init,

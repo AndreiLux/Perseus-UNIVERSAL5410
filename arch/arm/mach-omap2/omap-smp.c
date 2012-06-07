@@ -170,11 +170,11 @@ void __init smp_init_cpus(void)
 	unsigned int i, ncores = 1;
 
 	/* Static mapping, never released */
-	if (cpu_is_omap44xx())
+	if (cpu_is_omap44xx()) {
 		scu_base = ioremap(OMAP44XX_SCU_BASE, SZ_256);
 		BUG_ON(!scu_base);
 		ncores = scu_get_core_count(scu_base);
-	else if (cpu_is_omap54xx())
+	} else if (cpu_is_omap54xx())
 		ncores = get_a15_core_count();
 
 	/* sanity check */

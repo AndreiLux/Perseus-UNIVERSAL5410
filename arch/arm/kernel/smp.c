@@ -478,6 +478,9 @@ static void __cpuinit percpu_timer_setup(void)
 
 	if (!lt_ops || lt_ops->setup(evt))
 		broadcast_timer_setup(evt);
+
+	if (local_timer_setup(evt))
+		broadcast_timer_setup();
 }
 
 #ifdef CONFIG_HOTPLUG_CPU

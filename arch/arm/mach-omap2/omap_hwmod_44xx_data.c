@@ -938,7 +938,6 @@ static struct omap_hwmod omap44xx_ctrl_module_core_hwmod = {
 	.slaves_cnt     = ARRAY_SIZE(omap44xx_ctrl_module_core_slaves),
 	.dev_attr	= &scm_dev_attr,
 	.clkdm_name     = "l4_wkup_clkdm",
-	.omap_chip      = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
 };
 
 /*
@@ -5828,7 +5827,6 @@ static struct omap_hwmod omap44xx_emif1_hwmod = {
 	},
 	.slaves		= omap44xx_emif1_slaves,
 	.slaves_cnt	= ARRAY_SIZE(omap44xx_emif1_slaves),
-	.omap_chip	= OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
 };
 
 /* emif2 */
@@ -5877,7 +5875,6 @@ static struct omap_hwmod omap44xx_emif2_hwmod = {
 	},
 	.slaves		= omap44xx_emif2_slaves,
 	.slaves_cnt	= ARRAY_SIZE(omap44xx_emif2_slaves),
-	.omap_chip	= OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
 };
 
 static __initdata struct omap_hwmod *omap44xx_hwmods[] = {

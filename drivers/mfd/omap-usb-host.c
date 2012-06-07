@@ -59,6 +59,36 @@
 #define OMAP_UHH_HOSTCONFIG_P3_CONNECT_STATUS		(1 << 10)
 #define OMAP4_UHH_HOSTCONFIG_APP_START_CLK		(1 << 31)
 
+#define OMAP_TLL_SHARED_CONF                            (0x30)                  
+#define OMAP_TLL_SHARED_CONF_USB_90D_DDR_EN             (1 << 6)                
+#define OMAP_TLL_SHARED_CONF_USB_180D_SDR_EN            (1 << 5)                
+#define OMAP_TLL_SHARED_CONF_USB_DIVRATION              (1 << 2)                
+#define OMAP_TLL_SHARED_CONF_FCLK_REQ                   (1 << 1)                
+#define OMAP_TLL_SHARED_CONF_FCLK_IS_ON                 (1 << 0)                
+                                                                                
+#define OMAP_TLL_CHANNEL_CONF(num)                      (0x040 + 0x004 * num)   
+#define OMAP_TLL_CHANNEL_CONF_FSLSMODE_SHIFT            24                      
+#define OMAP_TLL_CHANNEL_CONF_DRVVBUS                   (1 << 16)               
+#define OMAP_TLL_CHANNEL_CONF_CHRGVBUS                  (1 << 15)               
+#define OMAP_TLL_CHANNEL_CONF_ULPINOBITSTUFF            (1 << 11)               
+#define OMAP_TLL_CHANNEL_CONF_ULPI_ULPIAUTOIDLE         (1 << 10)               
+#define OMAP_TLL_CHANNEL_CONF_UTMIAUTOIDLE              (1 << 9)                
+#define OMAP_TLL_CHANNEL_CONF_ULPIDDRMODE               (1 << 8)                
+#define OMAP_TLL_CHANNEL_CONF_CHANMODE_TRANSPARENT_UTMI (2 << 1)                
+#define OMAP_TLL_CHANNEL_CONF_CHANMODE_FSLS             (1 << 1)                
+#define OMAP_TLL_CHANNEL_CONF_CHANEN                    (1 << 0)                
+                                                                                
+#define OMAP_TLL_FSLSMODE_6PIN_PHY_DAT_SE0              0x0                     
+#define OMAP_TLL_FSLSMODE_6PIN_PHY_DP_DM                0x1                     
+#define OMAP_TLL_FSLSMODE_3PIN_PHY                      0x2                     
+#define OMAP_TLL_FSLSMODE_4PIN_PHY                      0x3                     
+#define OMAP_TLL_FSLSMODE_6PIN_TLL_DAT_SE0              0x4                     
+#define OMAP_TLL_FSLSMODE_6PIN_TLL_DP_DM                0x5                     
+#define OMAP_TLL_FSLSMODE_3PIN_TLL                      0x6                     
+#define OMAP_TLL_FSLSMODE_4PIN_TLL                      0x7                     
+#define OMAP_TLL_FSLSMODE_2PIN_TLL_DAT_SE0              0xA                     
+#define OMAP_TLL_FSLSMODE_2PIN_DAT_DP_DM                0xB  
+
 /* OMAP4-specific defines */
 #define OMAP4_UHH_SYSCONFIG_IDLEMODE_CLEAR		(3 << 2)
 #define OMAP4_UHH_SYSCONFIG_NOIDLE			(1 << 2)
@@ -73,6 +103,17 @@
 #define OMAP4_P2_MODE_TLL				(1 << 18)
 #define OMAP4_P2_MODE_HSIC				(3 << 18)
 #define OMAP5_P3_MODE_HSIC				(3 << 20)
+
+#define OMAP_TLL_ULPI_FUNCTION_CTRL(num)                (0x804 + 0x100 * num)   
+#define OMAP_TLL_ULPI_INTERFACE_CTRL(num)               (0x807 + 0x100 * num)   
+#define OMAP_TLL_ULPI_OTG_CTRL(num)                     (0x80A + 0x100 * num)   
+#define OMAP_TLL_ULPI_INT_EN_RISE(num)                  (0x80D + 0x100 * num)   
+#define OMAP_TLL_ULPI_INT_EN_FALL(num)                  (0x810 + 0x100 * num)   
+#define OMAP_TLL_ULPI_INT_STATUS(num)                   (0x813 + 0x100 * num)   
+#define OMAP_TLL_ULPI_INT_LATCH(num)                    (0x814 + 0x100 * num)   
+#define OMAP_TLL_ULPI_DEBUG(num)                        (0x815 + 0x100 * num)   
+#define OMAP_TLL_ULPI_SCRATCH_REGISTER(num)             (0x816 + 0x100 * num)   
+
 
 #define	OMAP_UHH_DEBUG_CSR				(0x44)
 
@@ -106,6 +147,7 @@ struct usbhs_hcd_omap {
 	struct clk			*usb_host_hs_hsic480m_p3_clk;
 
 	void __iomem			*uhh_base;
+	void __iomem			*tll_base;
 
 	struct usbhs_omap_platform_data	platdata;
 
@@ -491,9 +533,6 @@ static void omap_usbhs_deinit(struct device *dev)
 		if (gpio_is_valid(pdata->ehci_data->reset_gpio_port[1]))
 			gpio_free(pdata->ehci_data->reset_gpio_port[1]);
 	}
-
-	usbhs_write(omap->uhh_base, OMAP_UHH_HOSTCONFIG, reg);
-	dev_dbg(dev, "UHH setup done, uhh_hostconfig=%x\n", reg);
 }
 
 /**
@@ -702,6 +741,13 @@ static int __devinit usbhs_omap_probe(struct platform_device *pdev)
 		goto err_usb_host_hs_hsic480m_p3_clk;
 	}
 
+        omap->tll_base = ioremap(res->start, resource_size(res));
+        if (!omap->tll_base) {
+                dev_err(dev, "TLL ioremap failed\n");
+                ret = -ENOMEM;
+                goto err_tll;
+        }
+
 	platform_set_drvdata(pdev, omap);
 
 	omap_usbhs_init(dev);
@@ -714,7 +760,10 @@ static int __devinit usbhs_omap_probe(struct platform_device *pdev)
 	goto end_probe;
 
 err_alloc:
-	iounmap(omap->uhh_base);
+        iounmap(omap->tll_base);
+
+err_tll:
+        iounmap(omap->uhh_base);
 
 err_usb_host_hs_hsic480m_p3_clk:
 	clk_put(omap->usb_host_hs_hsic480m_p3_clk);

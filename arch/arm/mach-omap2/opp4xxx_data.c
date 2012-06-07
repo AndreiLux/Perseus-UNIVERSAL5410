@@ -64,6 +64,7 @@ struct omap_volt_data omap44xx_vdd_core_volt_data[] = {
 	VOLT_DATA_DEFINE(0, 0, 0, 0),
 };
 
+#ifdef CONFIG_PM_OPP
 
 static struct omap_opp_def __initdata omap44xx_opp_def_list[] = {
 	/* MPU OPP1 - OPP50 */
@@ -103,3 +104,4 @@ int __init omap4_opp_init(void)
 	return r;
 }
 device_initcall(omap4_opp_init);
+#endif

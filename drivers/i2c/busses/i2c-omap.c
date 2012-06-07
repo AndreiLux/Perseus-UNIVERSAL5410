@@ -162,6 +162,23 @@ enum {
 #define I2C_OMAP_ERRATA_I207		(1 << 0)
 #define I2C_OMAP3_1P153			(1 << 1)
 
+/* OCP_SYSSTATUS bit definitions */
+#define SYSS_RESETDONE_MASK            (1 << 0)
+
+/* OCP_SYSCONFIG bit definitions */
+#define SYSC_CLOCKACTIVITY_MASK                (0x3 << 8)
+#define SYSC_SIDLEMODE_MASK            (0x3 << 3)
+#define SYSC_ENAWAKEUP_MASK            (1 << 2)
+#define SYSC_SOFTRESET_MASK            (1 << 1)
+#define SYSC_AUTOIDLE_MASK             (1 << 0)
+
+#define SYSC_IDLEMODE_SMART            0x2
+#define SYSC_CLOCKACTIVITY_FCLK                0x2
+ 
+/* I2C System Configuration Register (OMAP_I2C_SYSC): */
+#define OMAP_I2C_SYSC_SRST             (1 << 1)        /* Soft Reset */
+
+
 struct omap_i2c_dev {
 	struct device		*dev;
 	void __iomem		*base;		/* virtual */

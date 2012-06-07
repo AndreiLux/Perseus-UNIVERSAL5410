@@ -16,7 +16,7 @@
 #include <linux/emif.h>
 #include <plat/omap_hwmod.h>
 #include <plat/omap_device.h>
-#include <mach/omap4-common.h>
+#include "common.h"
 
 static struct omap_device_pm_latency omap_emif_latency[] = {
 	[0] = {
@@ -56,7 +56,7 @@ void __init omap_emif_set_device_details(u32 emif_nr,
 			struct ddr_min_tck *min_tck,
 			struct emif_custom_configs *custom_configs)
 {
-	struct omap_device	*od;
+	struct platform_device	*pd;
 	struct omap_hwmod	*oh;
 	char			oh_name[10];
 
@@ -91,12 +91,12 @@ void __init omap_emif_set_device_details(u32 emif_nr,
 	if (!oh)
 		goto error;
 
-	od = omap_device_build("emif", emif_nr, oh,
+	pd = omap_device_build("emif", emif_nr, oh,
 				&omap_emif_platform_data,
 				sizeof(omap_emif_platform_data),
 				omap_emif_latency,
 				ARRAY_SIZE(omap_emif_latency), false);
-	if (!od)
+	if (!pd)
 		goto error;
 
 	return;
