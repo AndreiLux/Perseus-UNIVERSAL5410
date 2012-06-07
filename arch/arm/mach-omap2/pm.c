@@ -50,7 +50,7 @@ static DEFINE_SPINLOCK(io_chain_lock);
  */
 int (*omap_pm_suspend)(void);
 
-static int __init _init_omap_device(char *name)
+static int __init _init_omap_device(char *name);
 static struct device *mpu_dev;
 static struct device *iva_dev;
 static struct device *l3_dev;

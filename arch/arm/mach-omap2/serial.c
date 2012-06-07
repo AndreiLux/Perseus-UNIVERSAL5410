@@ -605,14 +605,13 @@ void __init omap_serial_board_init(struct omap_uart_port_info *info, u8 port_id)
 			else
 				omap_serial_init_port(&bdata, &info[uart->num]);
 		}
-	}
 
 	/* XXX: temporary hack to enable wakeup for UART3 RX pad */
 	if (cpu_is_omap54xx()) {
 		u32 val;
-		val = omap_readl(0x4a0029dc);
+		val = __raw_readl(0x4a0029dc);
 		val |= 0x4000;
-		omap_writel(val, 0x4a0029dc);
+		__raw_writel(val, 0x4a0029dc);
 	}
 }
 

@@ -30,6 +30,8 @@
 #include "prminst44xx.h"
 #include <plat/irqs.h>
 
+#define MAX_IOPAD_LATCH_TIME 1000
+
 static const struct omap_prcm_irq omap4_prcm_irqs[] = {
 	OMAP_PRCM_IRQ("wkup",   0,      0),
 	OMAP_PRCM_IRQ("io",     9,      1),
@@ -74,6 +76,38 @@ u32 omap4_prm_rmw_inst_reg_bits(u32 mask, u32 bits, s16 inst, s16 reg)
 
 	return v;
 }
+#if 0
+void omap4_trigger_wuclk_ctrl(void)
+{
+        int i = 0;
+
+        /* Disable GLOBAL_WUEN + enable clock to clear pending status */
+        omap4_prm_rmw_inst_reg_bits(OMAP4430_GLOBAL_WUEN_MASK |
+                OMAP4430_WUCLK_CTRL_MASK, OMAP4430_WUCLK_CTRL_MASK,
+                OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_IO_PMCTRL_OFFSET);
+
+        /* Wait until ready */
+        omap_test_timeout(
+                (((omap4_prm_read_inst_reg(OMAP4430_PRM_DEVICE_INST,
+                OMAP4_PRM_IO_PMCTRL_OFFSET) & OMAP4430_WUCLK_STATUS_MASK) >>
+                OMAP4430_WUCLK_STATUS_SHIFT) == 1), MAX_IOPAD_LATCH_TIME, i);
+
+        /* Enable GLOBAL_WUEN + enable clock to populate daisy chain */
+        omap4_prm_rmw_inst_reg_bits(OMAP4430_GLOBAL_WUEN_MASK |
+                OMAP4430_WUCLK_CTRL_MASK, OMAP4430_GLOBAL_WUEN_MASK |
+                OMAP4430_WUCLK_CTRL_MASK, OMAP4430_PRM_DEVICE_INST,
+                OMAP4_PRM_IO_PMCTRL_OFFSET);
+
+        omap_test_timeout(
+                (((omap4_prm_read_inst_reg(OMAP4430_PRM_DEVICE_INST,
+                OMAP4_PRM_IO_PMCTRL_OFFSET) & OMAP4430_WUCLK_STATUS_MASK) >>
+                OMAP4430_WUCLK_STATUS_SHIFT) == 1), MAX_IOPAD_LATCH_TIME, i);
+
+        /* Trigger WUCLKIN disable */
+        omap4_prm_rmw_inst_reg_bits(OMAP4430_WUCLK_CTRL_MASK, 0x0,
+                        OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_IO_PMCTRL_OFFSET);
+}
+#endif
 
 /* PRM VP */
 
@@ -141,18 +175,6 @@ u32 omap4_prm_vcvp_rmw(u32 mask, u32 bits, u8 offset)
 					       OMAP4430_PRM_PARTITION,
 					       OMAP4430_PRM_DEVICE_INST,
 					       offset);
-}
-
-static inline u32 _read_pending_irq_reg(u16 irqen_offs, u16 irqst_offs)
-{
-	u32 mask, st;
-
-	/* XXX read mask from RAM? */
-	mask = omap4_prm_read_inst_reg(OMAP4430_PRM_OCP_SOCKET_INST,
-				       irqen_offs);
-	st = omap4_prm_read_inst_reg(OMAP4430_PRM_OCP_SOCKET_INST, irqst_offs);
-
-	return mask & st;
 }
 
 /**

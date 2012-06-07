@@ -29,6 +29,7 @@
 #include "cm-regbits-54xx.h"
 #include "prcm44xx.h"
 #include "cminst44xx.h"
+#include "iomap.h"
 
 /*
  * These SECURE control registers are used to work-around

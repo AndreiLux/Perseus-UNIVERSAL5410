@@ -29,6 +29,7 @@
 >>>>>>> patched
 
 #include <asm/smp_twd.h>
+#include <asm/localtimer.h>
 
 <<<<<<< current
 /* set up by the platform code */
@@ -102,12 +103,13 @@ static int twd_timer_ack(void)
 
 	return 0;
 }
-
+#if 1
 static void twd_timer_stop(struct clock_event_device *clk)
 {
 	twd_set_mode(CLOCK_EVT_MODE_UNUSED, clk);
 	disable_percpu_irq(clk->irq);
 }
+#endif
 
 #ifdef CONFIG_CPU_FREQ
 
@@ -364,7 +366,7 @@ void __init twd_local_timer_of_register(void)
 out:
 	WARN(err, "twd_local_timer_of_register failed (%d)\n", err);
 }
-
+#endif
 static int twd_ppi;
 
 static void __cpuinit twd_setup(void *data)

@@ -27,7 +27,9 @@
 #include <plat/cpu.h>
 #include <plat/usb.h>
 #include <plat/omap_device.h>
+#include <plat/cpu.h>
 #include <linux/pm_runtime.h>
+#include <linux/gpio.h>
 
 #define USBHS_DRIVER_NAME	"usbhs_omap"
 #define OMAP_EHCI_DEVICE	"ehci-omap"

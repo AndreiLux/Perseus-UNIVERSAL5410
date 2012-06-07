@@ -646,6 +646,12 @@ static void __init omap4_panda_init(void)
 	omap4_panda_display_init();
 }
 
+static void __init omap4_panda_map_io(void)
+{
+        omap2_set_globals_443x();
+        omap44xx_map_common_io();
+}
+
 MACHINE_START(OMAP4_PANDA, "OMAP4 Panda board")
 	/* Maintainer: David Anders - Texas Instruments Inc */
 	.atag_offset	= 0x100,

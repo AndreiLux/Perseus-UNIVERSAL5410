@@ -19,6 +19,8 @@
 #ifndef __ARCH_ARM_MACH_OMAP2_SCRM_44XX_H
 #define __ARCH_ARM_MACH_OMAP2_SCRM_44XX_H
 
+#include "iomap.h"
+
 #define OMAP4_SCRM_BASE				0x4a30a000
 #define OMAP5_SCRM_BASE				0x4ae0a000
 

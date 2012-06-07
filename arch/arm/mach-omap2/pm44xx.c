@@ -493,6 +493,7 @@ static void omap_default_idle(void)
 	omap_do_wfi();
 
 	local_fiq_enable();
+	local_irq_enable();
 }
 
 /**
@@ -783,6 +784,10 @@ static int __init omap_pm_init(void)
 
 	/* Overwrite the default cpu_do_idle() */
 	arm_pm_idle = omap_default_idle;
+
+	mpu_pwrdm = pwrdm_lookup("mpu_pwrdm");
+	core_pwrdm = pwrdm_lookup("core_pwrdm");
+	per_pwrdm = pwrdm_lookup("l4per_pwrdm");
 
 	 /* Enable wakeup for PRCM IRQ for system wide suspend */
 	enable_irq_wake(OMAP44XX_IRQ_PRCM);

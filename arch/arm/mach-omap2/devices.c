@@ -909,7 +909,6 @@ static int __init omap2_init_devices(void)
 	omap_init_audio();
 	omap_init_dmic();
 	omap_init_mcpdm();
-	omap_init_dmic();
 	omap_init_camera();
 	omap_init_mbox();
 	omap_init_mcspi();

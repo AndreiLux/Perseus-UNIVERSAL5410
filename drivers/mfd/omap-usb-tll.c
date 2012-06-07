@@ -25,9 +25,9 @@
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/err.h>
-#include <plat/usb.h>
 #include <linux/pm_runtime.h>
 
+#include <plat/usb.h>
 #include <plat/cpu.h>
 
 #define USBTLL_DRIVER_NAME	"usbhs_tll"
@@ -87,8 +87,6 @@
 #define	OMAP_TLL_ULPI_DEBUG(num)			(0x815 + 0x100 * num)
 #define	OMAP_TLL_ULPI_SCRATCH_REGISTER(num)		(0x816 + 0x100 * num)
 
-#define OMAP_REV2_TLL_CHANNEL_COUNT			2
-#define OMAP_TLL_CHANNEL_COUNT				3
 #define OMAP_TLL_CHANNEL_1_EN_MASK			(1 << 0)
 #define OMAP_TLL_CHANNEL_2_EN_MASK			(1 << 1)
 #define OMAP_TLL_CHANNEL_3_EN_MASK			(1 << 2)

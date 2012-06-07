@@ -16,8 +16,8 @@
 #include "prm-regbits-54xx.h"
 
 static const struct omap_abb_ops omap5_abb_ops = {
-	.check_tranxdone   = &omap4_prm_abb_check_txdone,
-	.clear_tranxdone   = &omap4_prm_abb_clear_txdone,
+	.check_tranxdone   = &omap4_prm_vp_check_txdone,
+	.clear_tranxdone   = &omap4_prm_vp_clear_txdone,
 };
 
 static const struct omap_abb_common omap5_abb_common = {
