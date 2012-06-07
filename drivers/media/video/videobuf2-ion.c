@@ -145,7 +145,7 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 	size = PAGE_ALIGN(size);
 
 	buf->handle = ion_alloc(ctx->client, size, ctx->alignment,
-				ion_heapflag(ctx->flags));
+				ion_heapflag(ctx->flags), 0);
 	if (IS_ERR(buf->handle)) {
 		ret = -ENOMEM;
 		goto err_alloc;
