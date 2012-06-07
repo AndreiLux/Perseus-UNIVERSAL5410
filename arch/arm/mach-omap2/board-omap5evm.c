@@ -49,6 +49,8 @@
 #include <plat/omap4-keypad.h>
 #include <plat/omap_hwmod.h>
 #include "hsmmc.h"
+#include <plat/remoteproc.h>
+#include "common-board-devices.h"
 #include "mux.h"
 #include <linux/qtouch_obp_ts.h>
 
@@ -1437,11 +1439,17 @@ static const char *omap5_sevm_match[] __initdata = {
         NULL,
 };
 
-MACHINE_START(OMAP5_SEVM, "TI OMAP5 Eval Board")
+static void __init omap_5430evm_reserve(void)
+{
+	omap_rproc_reserve_cma(RPROC_CMA_OMAP5);
+	omap_reserve();
+}
+
+MACHINE_START(OMAP5_SEVM, "OMAP5430 evm board")
 	/* Maintainer: Santosh Shilimkar - Texas Instruments Inc */
-	.atag_offset    = 0x100,  
-	.map_io		= omap5_map_io,
-	.reserve	= omap_reserve,
+	.atag_offset	= 0x100,
+	.reserve	= omap_5430evm_reserve,
+	.map_io		= omap_5430evm_map_io,
 	.init_early	= omap54xx_init_early,
 	.init_irq	= gic_init_irq,
 	.handle_irq     = gic_handle_irq,
