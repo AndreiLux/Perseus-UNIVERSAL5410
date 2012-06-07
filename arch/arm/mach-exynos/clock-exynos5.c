@@ -734,6 +734,11 @@ static struct clk exynos5_init_clocks_off[] = {
 		.name		= "fimg2d",
 		.enable		= exynos5_clk_ip_acp_ctrl,
 		.ctrlbit	= (1 << 3),
+	}, {
+		.name		= "dp",
+		.devname	= "s5p-dp",
+		.enable		= exynos5_clk_ip_disp1_ctrl,
+		.ctrlbit	= (1 << 4),
 	}
 };
 
