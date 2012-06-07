@@ -560,8 +560,8 @@ void __init omap4430_init_early(void)
 #ifdef CONFIG_ARCH_OMAP5                                                                                
 void __init omap54xx_init_early(void)                              
 { 
-// set_globals was called by omap_5430evm_map_io already                                                                              
-//	omap2_set_globals_543x();
+	omap2_set_globals_543x();
+	omap5xxx_check_revision();
 	omap_common_init_early(); 
 	omap54xx_voltagedomains_init();
 	omap54xx_powerdomains_init();                                   

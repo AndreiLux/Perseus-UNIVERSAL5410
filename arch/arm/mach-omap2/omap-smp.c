@@ -23,6 +23,7 @@
 #include <asm/cacheflush.h>
 #include <asm/hardware/gic.h>
 #include <asm/smp_scu.h>
+#include <asm/cputype.h>
 
 #include <mach/hardware.h>
 #include <mach/omap-secure.h>
@@ -31,6 +32,10 @@
 #include "iomap.h"
 #include "common.h"
 #include "clockdomain.h"
+
+#define CPU_MASK		0xff0ffff0
+#define CPU_CORTEX_A9		0x410FC090
+#define CPU_CORTEX_A15		0x410FC0F0
 
 /* SCU base address */
 static void __iomem *scu_base;
@@ -195,15 +200,24 @@ static void __init wakeup_secondary(void)
  */
 void __init smp_init_cpus(void)
 {
-	unsigned int i, ncores = 1;
+	unsigned int i, ncores, cpu_id;
 
-	/* Static mapping, never released */
-	if (cpu_is_omap44xx()) {
-		scu_base = ioremap(OMAP44XX_SCU_BASE, SZ_256);
+	/* SoC detection does not work this early so use ARM cpuid */
+	cpu_id = read_cpuid(CPUID_ID) & CPU_MASK;
+	if (cpu_id == CPU_CORTEX_A9) {
+		/*
+		 * Currently we can't call ioremap here because
+		 * SoC detection won't work until after init_early.
+		 */
+		scu_base =  OMAP2_L4_IO_ADDRESS(OMAP44XX_SCU_BASE);
 		BUG_ON(!scu_base);
 		ncores = scu_get_core_count(scu_base);
-	} else if (cpu_is_omap54xx())
+	} else if (cpu_id == CPU_CORTEX_A15) {
 		ncores = get_a15_core_count();
+	} else {
+		ncores = 1;
+		pr_warn("%s: Unidentified CPU. ncores set to 1\n", __func__);
+	}
 
 	/* sanity check */
 	if (ncores > nr_cpu_ids) {

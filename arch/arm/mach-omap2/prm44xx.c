@@ -50,9 +50,6 @@ static struct omap_prcm_irq_setup omap4_prcm_irq_setup = {
 	.restore_irqen		= &omap44xx_prm_restore_irqen,
 };
 
-static inline u32 _read_pending_irq_reg(u16 irqen_offs, u16 irqst_offs);
-
-
 /* PRM low-level functions */
 
 /* Read a register in a CM/PRM instance in the PRM module */
@@ -147,7 +144,19 @@ u32 omap4_prm_vcvp_rmw(u32 mask, u32 bits, u8 offset)
 					       OMAP4430_PRM_DEVICE_INST,
 					       offset);
 }
-#if 0
+
+static inline u32 _read_pending_irq_reg(u16 irqen_offs, u16 irqst_offs)
+{
+	u32 mask, st;
+
+	/* XXX read mask from RAM? */
+	mask = omap4_prm_read_inst_reg(OMAP4430_PRM_OCP_SOCKET_INST,
+		irqen_offs);
+	st = omap4_prm_read_inst_reg(OMAP4430_PRM_OCP_SOCKET_INST, irqst_offs);
+
+	return mask & st;
+}
+
 /**
  * omap44xx_prm_read_pending_irqs - read pending PRM MPU IRQs into @events
  * @events: ptr to two consecutive u32s, preallocated by caller
@@ -226,7 +235,7 @@ void omap44xx_prm_restore_irqen(u32 *saved_mask)
 	omap4_prm_write_inst_reg(saved_mask[1], OMAP4430_PRM_OCP_SOCKET_INST,
 				 OMAP4_PRM_IRQENABLE_MPU_2_OFFSET);
 }
-#endif
+
 /* OMAP4 IO Daisychain trigger sequence */
 void omap4_trigger_io_chain(void)
 {
@@ -386,97 +395,6 @@ void omap4_prm_abb_clear_txdone(u8 abb_id)
 				     OMAP4430_PRM_OCP_SOCKET_INST,
 				     abb->irqstatus_mpu);
 };
-
-static inline u32 _read_pending_irq_reg(u16 irqen_offs, u16 irqst_offs)
-{
-	u32 mask, st;
-
-	/* XXX read mask from RAM? */
-	mask = omap4_prm_read_inst_reg(OMAP4430_PRM_OCP_SOCKET_INST,
-		irqen_offs);
-	st = omap4_prm_read_inst_reg(OMAP4430_PRM_OCP_SOCKET_INST, irqst_offs);
-
-	return mask & st;
-}
-
-/**
- * omap44xx_prm_read_pending_irqs - read pending PRM MPU IRQs into @events
- * @events: ptr to two consecutive u32s, preallocated by caller
- *
- * Read PRM_IRQSTATUS_MPU* bits, AND'ed with the currently-enabled PRM
- * MPU IRQs, and store the result into the two u32s pointed to by @events.
- * No return value.
- */
-void omap44xx_prm_read_pending_irqs(unsigned long *events)
-{
-	events[0] = _read_pending_irq_reg(OMAP4_PRM_IRQENABLE_MPU_OFFSET,
-					  OMAP4_PRM_IRQSTATUS_MPU_OFFSET);
-
-	events[1] = _read_pending_irq_reg(OMAP4_PRM_IRQENABLE_MPU_2_OFFSET,
-					  OMAP4_PRM_IRQSTATUS_MPU_2_OFFSET);
-}
-
-/**
- * omap44xx_prm_ocp_barrier - force buffered MPU writes to the PRM to complete
- *
- * Force any buffered writes to the PRM IP block to complete.  Needed
- * by the PRM IRQ handler, which reads and writes directly to the IP
- * block, to avoid race conditions after acknowledging or clearing IRQ
- * bits.  No return value.
- */
-void omap44xx_prm_ocp_barrier(void)
-{
-	omap4_prm_read_inst_reg(OMAP4430_PRM_OCP_SOCKET_INST,
-				OMAP4_REVISION_PRM_OFFSET);
-}
-
-/**
- * omap44xx_prm_save_and_clear_irqen - save/clear PRM_IRQENABLE_MPU* regs
- * @saved_mask: ptr to a u32 array to save IRQENABLE bits
- *
- * Save the PRM_IRQENABLE_MPU and PRM_IRQENABLE_MPU_2 registers to
- * @saved_mask.  @saved_mask must be allocated by the caller.
- * Intended to be used in the PRM interrupt handler suspend callback.
- * The OCP barrier is needed to ensure the write to disable PRM
- * interrupts reaches the PRM before returning; otherwise, spurious
- * interrupts might occur.  No return value.
- */
-void omap44xx_prm_save_and_clear_irqen(u32 *saved_mask)
-{
-	saved_mask[0] =
-		omap4_prm_read_inst_reg(OMAP4430_PRM_OCP_SOCKET_INST,
-					OMAP4_PRM_IRQSTATUS_MPU_OFFSET);
-	saved_mask[1] =
-		omap4_prm_read_inst_reg(OMAP4430_PRM_OCP_SOCKET_INST,
-					OMAP4_PRM_IRQSTATUS_MPU_2_OFFSET);
-
-	omap4_prm_write_inst_reg(0, OMAP4430_PRM_OCP_SOCKET_INST,
-				 OMAP4_PRM_IRQENABLE_MPU_OFFSET);
-	omap4_prm_write_inst_reg(0, OMAP4430_PRM_OCP_SOCKET_INST,
-				 OMAP4_PRM_IRQENABLE_MPU_2_OFFSET);
-
-	/* OCP barrier */
-	omap4_prm_read_inst_reg(OMAP4430_PRM_OCP_SOCKET_INST,
-				OMAP4_REVISION_PRM_OFFSET);
-}
-
-/**
- * omap44xx_prm_restore_irqen - set PRM_IRQENABLE_MPU* registers from args
- * @saved_mask: ptr to a u32 array of IRQENABLE bits saved previously
- *
- * Restore the PRM_IRQENABLE_MPU and PRM_IRQENABLE_MPU_2 registers from
- * @saved_mask.  Intended to be used in the PRM interrupt handler resume
- * callback to restore values saved by omap44xx_prm_save_and_clear_irqen().
- * No OCP barrier should be needed here; any pending PRM interrupts will fire
- * once the writes reach the PRM.  No return value.
- */
-void omap44xx_prm_restore_irqen(u32 *saved_mask)
-{
-	omap4_prm_write_inst_reg(saved_mask[0], OMAP4430_PRM_OCP_SOCKET_INST,
-				 OMAP4_PRM_IRQENABLE_MPU_OFFSET);
-	omap4_prm_write_inst_reg(saved_mask[1], OMAP4430_PRM_OCP_SOCKET_INST,
-				 OMAP4_PRM_IRQENABLE_MPU_2_OFFSET);
-}
 
 static int __init omap4xxx_prcm_init(void)
 {

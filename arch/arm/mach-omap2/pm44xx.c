@@ -55,8 +55,6 @@ static const char * const autoidle_hwmods[] = {
 	"emif1",
 	"emif2",
 	"gpmc",
-	"l3_instr",
-	"l3_main_3"
 };
 
 struct power_state {
@@ -74,44 +72,6 @@ static LIST_HEAD(pwrst_list);
 u16 pm44xx_errata;
 
 static struct powerdomain *mpu_pwrdm, *core_pwrdm, *per_pwrdm;
-
-
-void omap_pm_idle(u32 cpu_id, int state)
-{
-	pwrdm_clear_all_prev_pwrst(mpu_pwrdm);
-	pwrdm_clear_all_prev_pwrst(core_pwrdm);
-	pwrdm_clear_all_prev_pwrst(per_pwrdm);
-	omap4_device_clear_prev_off_state();
-
-	/*
-	 * Just return if we detect a scenario where we conflict
-	 * with DVFS
-	 */
-	if (omap_dvfs_is_any_dev_scaling())
-		return;
-
-	if (omap4_device_next_state_off()) {
-		/* Save the device context to SAR RAM */
-		if (omap_sar_save())
-			return;
-		omap_sar_overwrite();
-		omap4_cm_prepare_off();
-		omap4_dpll_prepare_off();
-	}
-
-	/* FIXME remove this after mux framework for OMAP5 is in place */
-	omap_trigger_io_chain();
-
-	omap_enter_lowpower(cpu_id, state);
-
-	if (omap4_device_prev_state_off()) {
-		omap4_dpll_resume_off();
-		omap4_cm_resume_off();
-#ifdef CONFIG_PM_DEBUG
-		omap4_device_off_counter++;
-#endif
-	}
-}
 
 #ifdef CONFIG_SUSPEND
 /**
@@ -174,7 +134,7 @@ static int omap4_restore_pwdms_after_suspend(void)
 static int omap4_pm_suspend(void)
 {
 	struct power_state *pwrst;
-	int ret = 0, logic_state;
+	int ret = 0;
 	u32 cpu_id = smp_processor_id();
 
 	/*
@@ -196,20 +156,8 @@ static int omap4_pm_suspend(void)
 
 	/* Set targeted power domain states by suspend */
 	list_for_each_entry(pwrst, &pwrst_list, node) {
-		logic_state = PWRDM_POWER_RET;
-
-#ifdef CONFIG_OMAP_ALLOW_OSWR
-	/*OSWR is supported on silicon > ES2.0 */
-		if ((pwrst->pwrdm->pwrsts_logic_ret == PWRSTS_OFF_RET)
-					&& (omap_rev() >= OMAP4430_REV_ES2_1))
-			logic_state = PWRDM_POWER_OFF;
-#endif
 		omap_set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
-
-		// !!!
-
-//		pwrdm_set_logic_retst(pwrst->pwrdm, pwrst->next_logic_state);
-		pwrdm_set_logic_retst(pwrst->pwrdm, logic_state);
+		pwrdm_set_logic_retst(pwrst->pwrdm, pwrst->next_logic_state);
 	}
 
 	/*
@@ -339,6 +287,8 @@ void omap4_pm_off_mode_enable(int enable)
 		next_logic_state = PWRDM_POWER_OFF;
 	}
 
+	omap4_device_set_state_off(enable);
+
 	list_for_each_entry(pwrst, &pwrst_list, node) {
 		bool parent_power_domain = false;
 
@@ -393,7 +343,6 @@ static void omap_default_idle(void)
 	omap_do_wfi();
 
 	local_fiq_enable();
-	local_irq_enable();
 }
 
 /**
@@ -407,16 +356,6 @@ static inline int omap4_init_static_deps(void)
 	int ret;
 	struct clockdomain *emif_clkdm, *mpuss_clkdm, *l3_1_clkdm, *l4wkup;
 	struct clockdomain *ducati_clkdm, *l3_2_clkdm, *l4_per_clkdm;
-
-	if (!cpu_is_omap44xx())
-		return -ENODEV;
-
-	if (omap_rev() == OMAP4430_REV_ES1_0) {
-		WARN(1, "Power Management not supported on OMAP4430 ES1.0\n");
-		return -ENODEV;
-	}
-
-	pr_err("Power Management for TI OMAP4.\n");
 
 	/*
 	 * Work around for OMAP443x Errata i632: "LPDDR2 Corruption After OFF
@@ -437,12 +376,6 @@ static inline int omap4_init_static_deps(void)
 			     OMAP4_CTRL_SECURE_EMIF2_SDRAM_CONFIG2_REG);
 		wmb();
 		iounmap(secure_ctrl_mod);
-	}
-
-	ret = pwrdm_for_each(pwrdms_setup, NULL);
-	if (ret) {
-		pr_err("Failed to setup powerdomains\n");
-		goto err2;
 	}
 
 	/*
@@ -478,7 +411,6 @@ static inline int omap4_init_static_deps(void)
 				"wakeup dependency\n");
 	}
 
-err2:
 	return ret;
 }
 
@@ -507,15 +439,9 @@ static inline int omap5_init_static_deps(void)
 	return ret;
 }
 
-static irqreturn_t prcm_interrupt_handler (int irq, void *dev_id)
-{
-	/* Do nothing, we just need the interrupt handler to enable it */
-	return IRQ_HANDLED;
-}
-
 static void __init prcm_setup_regs(void)
 {
-#if defined(CONFIG_MACH_OMAP_5430ZEBU) || defined(CONFIG_OMAP_ALLOW_OSWR)
+#if defined(CONFIG_MACH_OMAP_5430ZEBU)
 	struct omap_hwmod *oh;
 #endif
 
@@ -532,32 +458,26 @@ static void __init prcm_setup_regs(void)
 	__raw_writel(0, OMAP54XX_CM_L4PER_HDQ1W_CLKCTRL);
 #endif
 
-#ifdef CONFIG_OMAP_ALLOW_OSWR
-	/* Enable L3 hwmods, otherwise dev off will fail */
-	oh = omap_hwmod_lookup("l3_main_3");
-	omap_hwmod_enable(oh);
-	oh = omap_hwmod_lookup("l3_instr");
-	omap_hwmod_enable(oh);
-#endif
-
-/*
+	/*
 	 * Errata ID: i608 Impacted OMAP4430 ES 1.0,2.0,2.1,2.2
 	 * On OMAP4, Retention-Till-Access Memory feature is not working
 	 * reliably and hardware recommondation is keep it disabled by
 	 * default
 	 */
-	omap4_prminst_rmw_inst_reg_bits(OMAP4430_DISABLE_RTA_EXPORT_MASK,
+	if (cpu_is_omap443x()) {
+	 omap4_prminst_rmw_inst_reg_bits(OMAP4430_DISABLE_RTA_EXPORT_MASK,
 		0x1 << OMAP4430_DISABLE_RTA_EXPORT_SHIFT,
 		OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_SRAM_WKUP_SETUP_OFFSET);
-	omap4_prminst_rmw_inst_reg_bits(OMAP4430_DISABLE_RTA_EXPORT_MASK,
+	 omap4_prminst_rmw_inst_reg_bits(OMAP4430_DISABLE_RTA_EXPORT_MASK,
 		0x1 << OMAP4430_DISABLE_RTA_EXPORT_SHIFT,
 		OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_LDO_SRAM_CORE_SETUP_OFFSET);
-	omap4_prminst_rmw_inst_reg_bits(OMAP4430_DISABLE_RTA_EXPORT_MASK,
+	 omap4_prminst_rmw_inst_reg_bits(OMAP4430_DISABLE_RTA_EXPORT_MASK,
 		0x1 << OMAP4430_DISABLE_RTA_EXPORT_SHIFT,
 		OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_LDO_SRAM_MPU_SETUP_OFFSET);
-	omap4_prminst_rmw_inst_reg_bits(OMAP4430_DISABLE_RTA_EXPORT_MASK,
+	 omap4_prminst_rmw_inst_reg_bits(OMAP4430_DISABLE_RTA_EXPORT_MASK,
 		0x1 << OMAP4430_DISABLE_RTA_EXPORT_SHIFT,
 		OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_LDO_SRAM_IVA_SETUP_OFFSET);
+	}
 
 	/* Toggle CLKREQ in RET and OFF states */
 	omap4_prminst_write_inst_reg(0x2, OMAP4430_PRM_PARTITION,
@@ -618,22 +538,6 @@ static int __init omap_pm_init(void)
 		goto err2;
 	}
 
-#ifdef CONFIG_PM
-		/* Enable GLOBAL_WUEN */
-		omap4_prminst_rmw_inst_reg_bits(OMAP4430_GLOBAL_WUEN_MASK, OMAP4430_GLOBAL_WUEN_MASK,
-			OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_IO_PMCTRL_OFFSET);
-
-		ret = request_irq(omap_prcm_event_to_irq("io"),
-						(irq_handler_t)prcm_interrupt_handler,
-						IRQF_SHARED | IRQF_NO_SUSPEND, "pm_io",
-						omap_pm_init);
-		if (ret) {
-				printk(KERN_ERR "request_irq failed to register for pm_io\n");
-				goto err2;
-		}
-
-#endif
-
 	if (cpu_is_omap44xx())
 		ret = omap4_init_static_deps();
 	else
@@ -690,12 +594,7 @@ static int __init omap_pm_init(void)
 	core_pwrdm = pwrdm_lookup("core_pwrdm");
 	per_pwrdm = pwrdm_lookup("l4per_pwrdm");
 
-	 /* Enable wakeup for PRCM IRQ for system wide suspend */
-	enable_irq_wake(OMAP44XX_IRQ_PRCM);
-
 	if (cpu_is_omap44xx()) {
-		/* Overwrite the default arch_idle() */
-		pm_idle = omap_default_idle;
 		omap4_idle_init();
 	} else if (cpu_is_omap54xx()) {
 		omap5_idle_init();

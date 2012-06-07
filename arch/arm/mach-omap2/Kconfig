@@ -432,14 +432,6 @@ config OMAP_PM_STANDALONE
 	  Enable this option to enable Power Management with minimal set of
 	  drivers.
 
-config OMAP_ALLOW_OSWR
-	bool  "Enable Open Switch Retention"
-	depends on ARCH_OMAP4 || ARCH_OMAP5
-	default n
-	help
-	  Select this option to enable OSWR support.
-	  Which means the Logic of power domains can be lost now
-	  unlike the CSWR wherein the logic is retained
 endmenu
 
 endif

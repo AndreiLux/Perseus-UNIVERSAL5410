@@ -273,13 +273,6 @@ extern void omap_writel(u32 v, u32 pa);
 struct omap_sdrc_params;
 extern void omap_sdrc_init(struct omap_sdrc_params *sdrc_cs0,
 				      struct omap_sdrc_params *sdrc_cs1);
-#ifdef CONFIG_ARCH_OMAP5
-extern void omap54xx_map_common_io(void);
-#else
-static inline void omap54xx_map_common_io(void)
-{
-}
-#endif
 
 extern void __init omap_init_consistent_dma_size(void);
 

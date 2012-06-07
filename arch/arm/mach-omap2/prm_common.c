@@ -281,6 +281,8 @@ int omap_prcm_register_chain_handler(struct omap_prcm_irq_setup *irq_setup)
 
 	irq_set_chained_handler(irq_setup->irq, omap_prcm_irq_handler);
 
+	enable_irq_wake(irq_setup->irq);
+
 	irq_setup->base_irq = irq_alloc_descs(-1, 0, irq_setup->nr_regs * 32,
 		0);
 

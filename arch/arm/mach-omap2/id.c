@@ -456,7 +456,7 @@ void __init omap4xxx_check_revision(void)
 		((omap_rev() >> 12) & 0xf), ((omap_rev() >> 8) & 0xf));
 }
 
-void __init omap5_check_revision(void)
+void __init omap5xxx_check_revision(void)
 {
 	u32 idcode;
 	u16 hawkeye;

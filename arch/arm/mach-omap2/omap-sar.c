@@ -504,88 +504,6 @@ static struct sar_module omap44xx_sar_modules[] = {
 	{ .base = 0 },
 };
 
-/*
- * SAR RAM used to save and restore the HW
- * context in low power modes
- */
-static int __init omap4_sar_ram_init(void)
-{
-	pr_info("omap4_sar_ram_init\n");
-
-	/*
-	 * To avoid code running on other OMAPs in
-	 * multi-omap builds
-	 */
-	if (!cpu_is_omap44xx())
-		return -ENODEV;
-
-	/*
-	 * Static mapping, never released Actual SAR area used is 8K it's
-	 * spaced over 16K address with some part is reserved.
-	 */
-	sar_ram_base = ioremap(OMAP44XX_SAR_RAM_BASE, SZ_16K);
-	BUG_ON(!sar_ram_base);
-
-	sar_modules = omap44xx_sar_modules;
-	sar_overwrite_data = omap4_sar_overwrite_data;
-
-	sar_ioremap_modules();
-
-	sar_layout_generate();
-
-	/*
-	 * SAR BANK3 contains all firewall settings and it's saved through
-	 * secure API on HS device. On GP device these registers are
-	 * meaningless but still needs to be saved. Otherwise Auto-restore
-	 * phase DMA takes an abort. Hence save these conents only once
-	 * in init to avoid the issue while waking up from device OFF
-	 */
-	if (omap_type() == OMAP2_DEVICE_TYPE_GP)
-		save_sar_bank3();
-	/*
-	 * Work around for OMAP443x Errata i632: "LPDDR2 Corruption After OFF
-	 * Mode Transition When CS1 Is Used On EMIF":
-	 * Overwrite EMIF1/EMIF2
-	 * SECURE_EMIF1_SDRAM_CONFIG2_REG
-	 * SECURE_EMIF2_SDRAM_CONFIG2_REG
-	 */
-	if (!cpu_is_omap446x()) {
-		void __iomem *secure_ctrl_mod;
-
-		secure_ctrl_mod = ioremap(OMAP4_CTRL_MODULE_WKUP, SZ_4K);
-		BUG_ON(!secure_ctrl_mod);
-
-		__raw_writel(0x10, secure_ctrl_mod +
-				OMAP4_CTRL_SECURE_EMIF1_SDRAM_CONFIG2_REG);
-		__raw_writel(0x10, secure_ctrl_mod +
-				OMAP4_CTRL_SECURE_EMIF2_SDRAM_CONFIG2_REG);
-		wmb();
-		iounmap(secure_ctrl_mod);
-	}
-
-	/*
-	 * L3INIT PD and clocks are needed for SAR save phase
-	 */
-	l3init_pwrdm = pwrdm_lookup("l3init_pwrdm");
-	if (!l3init_pwrdm)
-		pr_err("Failed to get l3init_pwrdm\n");
-
-	l3init_clkdm = clkdm_lookup("l3_init_clkdm");
-	if (!l3init_clkdm)
-		pr_err("Failed to get l3_init_clkdm\n");
-
-	usb_host_ck = clk_get_sys("usbhs_omap", "hs_fck");
-	if (IS_ERR(usb_host_ck))
-		pr_err("Could not get usb_host_ck\n");
-
-	usb_tll_ck = clk_get_sys("usbhs_omap", "usbtll_ick");
-	if (IS_ERR(usb_tll_ck))
-		pr_err("Could not get usb_tll_ck\n");
-
-	return 0;
-}
-early_initcall(omap4_sar_ram_init);
-
 static struct sar_module omap54xx_sar_modules[] = {
 	{ .base = OMAP54XX_EMIF1_BASE, .size = SZ_1M },
 	{ .base = OMAP54XX_EMIF2_BASE, .size = SZ_1M },
@@ -612,25 +530,39 @@ static struct sar_module omap54xx_sar_modules[] = {
 	{ .base = 0 },
 };
 
-static int __init omap5_sar_ram_init(void)
+/*
+ * SAR RAM used to save and restore the HW
+ * context in low power modes
+ */
+static int __init omap_sar_ram_init(void)
 {
-	pr_info("omap5_sar_ram_init\n");
+	void *base;
+	pr_info("omap_sar_ram_init\n");
+
 	/*
 	 * To avoid code running on other OMAPs in
 	 * multi-omap builds
 	 */
-	if (!cpu_is_omap54xx())
+	if (!cpu_is_omap44xx() && !cpu_is_omap54xx())
 		return -ENODEV;
 
 	/*
 	 * Static mapping, never released Actual SAR area used is 8K it's
 	 * spaced over 16K address with some part is reserved.
 	 */
-	sar_ram_base = ioremap(OMAP54XX_SAR_RAM_BASE, SZ_16K);
-	BUG_ON(!sar_ram_base);
 
-	sar_modules = omap54xx_sar_modules;
-	sar_overwrite_data = omap5_sar_overwrite_data;
+	if (cpu_is_omap44xx()) {
+		base = OMAP44XX_SAR_RAM_BASE;
+		sar_modules = omap44xx_sar_modules;
+		sar_overwrite_data = omap4_sar_overwrite_data;
+	} else {
+		base = OMAP54XX_SAR_RAM_BASE,
+		sar_modules = omap54xx_sar_modules;
+		sar_overwrite_data = omap5_sar_overwrite_data;
+	}
+
+	sar_ram_base = ioremap(base, SZ_16K);
+	BUG_ON(!sar_ram_base);
 
 	sar_ioremap_modules();
 
@@ -653,18 +585,29 @@ static int __init omap5_sar_ram_init(void)
 	if (!l3init_pwrdm)
 		pr_err("Failed to get l3init_pwrdm\n");
 
-	l3init_clkdm = clkdm_lookup("l3init_clkdm");
+	l3init_clkdm = clkdm_lookup("l3_init_clkdm");
 	if (!l3init_clkdm)
-		pr_err("Failed to get l3init_clkdm\n");
+		pr_err("Failed to get l3_init_clkdm\n");
 
-	usb_host_ck = clk_get(NULL, "usb_host_hs_fck");
-	if (IS_ERR(usb_host_ck))
-		pr_err("Could not get usb_host_ck\n");
+	if (cpu_is_omap54xx()) {
+		usb_host_ck = clk_get(NULL, "usb_host_hs_fck");
+		if (IS_ERR(usb_host_ck))
+			pr_err("Could not get usb_host_ck\n");
 
-	usb_tll_ck = clk_get(NULL, "usb_tll_hs_ick");
-	if (IS_ERR(usb_tll_ck))
-		pr_err("Could not get usb_tll_ck\n");
+		usb_tll_ck = clk_get(NULL, "usb_tll_hs_ick");
+		if (IS_ERR(usb_tll_ck))
+			pr_err("Could not get usb_tll_ck\n");
+	} else {
+		usb_host_ck = clk_get_sys("usbhs_omap", "hs_fck");
+		if (IS_ERR(usb_host_ck))
+			pr_err("Could not get usb_host_ck\n");
+
+		usb_tll_ck = clk_get_sys("usbhs_omap", "usbtll_ick");
+		if (IS_ERR(usb_tll_ck))
+			pr_err("Could not get usb_tll_ck\n");
+	}
 
 	return 0;
 }
-early_initcall(omap5_sar_ram_init);
+early_initcall(omap_sar_ram_init);
+

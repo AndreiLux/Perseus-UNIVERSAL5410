@@ -329,23 +329,6 @@ void omap3_trigger_io_chain(void)
 	omap2_prm_read_mod_reg(WKUP_MOD, PM_WKST);
 }
 
-static void __init omap3_enable_io_wakeup(void)
-{
-	if (omap3_has_io_wakeup())
-		omap2_prm_set_mod_reg_bits(OMAP3430_EN_IO_MASK, WKUP_MOD,
-					   PM_WKEN);
-}
-
-static int __init omap3xxx_prcm_init(void)
-{
-	if (cpu_is_omap34xx()) {
-		omap3_enable_io_wakeup();
-		return omap_prcm_register_chain_handler(&omap3_prcm_irq_setup);
-	}
-	return 0;
-}
-subsys_initcall(omap3xxx_prcm_init);
-
 /* PRM ABB */
 
 /*
@@ -382,79 +365,20 @@ void omap3_prm_abb_clear_txdone(u8 abb_id)
 				OCP_MOD, OMAP3_PRM_IRQSTATUS_MPU_OFFSET);
 }
 
-/**
- * omap3xxx_prm_read_pending_irqs - read pending PRM MPU IRQs into @events
- * @events: ptr to a u32, preallocated by caller
- *
- * Read PRM_IRQSTATUS_MPU bits, AND'ed with the currently-enabled PRM
- * MPU IRQs, and store the result into the u32 pointed to by @events.
- * No return value.
- */
-void omap3xxx_prm_read_pending_irqs(unsigned long *events)
+static void __init omap3_enable_io_wakeup(void)
 {
-	u32 mask, st;
-
-	/* XXX Can the mask read be avoided (e.g., can it come from RAM?) */
-	mask = omap2_prm_read_mod_reg(OCP_MOD, OMAP3_PRM_IRQENABLE_MPU_OFFSET);
-	st = omap2_prm_read_mod_reg(OCP_MOD, OMAP3_PRM_IRQSTATUS_MPU_OFFSET);
-
-	events[0] = mask & st;
-}
-
-/**
- * omap3xxx_prm_ocp_barrier - force buffered MPU writes to the PRM to complete
- *
- * Force any buffered writes to the PRM IP block to complete.  Needed
- * by the PRM IRQ handler, which reads and writes directly to the IP
- * block, to avoid race conditions after acknowledging or clearing IRQ
- * bits.  No return value.
- */
-void omap3xxx_prm_ocp_barrier(void)
-{
-	omap2_prm_read_mod_reg(OCP_MOD, OMAP3_PRM_REVISION_OFFSET);
-}
-
-/**
- * omap3xxx_prm_save_and_clear_irqen - save/clear PRM_IRQENABLE_MPU reg
- * @saved_mask: ptr to a u32 array to save IRQENABLE bits
- *
- * Save the PRM_IRQENABLE_MPU register to @saved_mask.  @saved_mask
- * must be allocated by the caller.  Intended to be used in the PRM
- * interrupt handler suspend callback.  The OCP barrier is needed to
- * ensure the write to disable PRM interrupts reaches the PRM before
- * returning; otherwise, spurious interrupts might occur.  No return
- * value.
- */
-void omap3xxx_prm_save_and_clear_irqen(u32 *saved_mask)
-{
-	saved_mask[0] = omap2_prm_read_mod_reg(OCP_MOD,
-					       OMAP3_PRM_IRQENABLE_MPU_OFFSET);
-	omap2_prm_write_mod_reg(0, OCP_MOD, OMAP3_PRM_IRQENABLE_MPU_OFFSET);
-
-	/* OCP barrier */
-	omap2_prm_read_mod_reg(OCP_MOD, OMAP3_PRM_REVISION_OFFSET);
-}
-
-/**
- * omap3xxx_prm_restore_irqen - set PRM_IRQENABLE_MPU register from args
- * @saved_mask: ptr to a u32 array of IRQENABLE bits saved previously
- *
- * Restore the PRM_IRQENABLE_MPU register from @saved_mask.  Intended
- * to be used in the PRM interrupt handler resume callback to restore
- * values saved by omap3xxx_prm_save_and_clear_irqen().  No OCP
- * barrier should be needed here; any pending PRM interrupts will fire
- * once the writes reach the PRM.  No return value.
- */
-void omap3xxx_prm_restore_irqen(u32 *saved_mask)
-{
-	omap2_prm_write_mod_reg(saved_mask[0], OCP_MOD,
-				OMAP3_PRM_IRQENABLE_MPU_OFFSET);
+	if (omap3_has_io_wakeup())
+		omap2_prm_set_mod_reg_bits(OMAP3430_EN_IO_MASK, WKUP_MOD,
+					   PM_WKEN);
 }
 
 static int __init omap3xxx_prcm_init(void)
 {
-	if (cpu_is_omap34xx())
+	if (cpu_is_omap34xx()) {
+		omap3_enable_io_wakeup();
 		return omap_prcm_register_chain_handler(&omap3_prcm_irq_setup);
+	}
 	return 0;
 }
 subsys_initcall(omap3xxx_prcm_init);
+

@@ -15,8 +15,8 @@ secure-common				= omap-smc.o omap-secure.o
 
 obj-$(CONFIG_ARCH_OMAP2) += $(omap-2-3-common) $(hwmod-common)
 obj-$(CONFIG_ARCH_OMAP3) += $(omap-2-3-common) $(hwmod-common) $(secure-common)
-obj-$(CONFIG_ARCH_OMAP4) += prm44xx.o $(hwmod-common) $(secure-common)
-obj-$(CONFIG_ARCH_OMAP5) += prm44xx.o $(hwmod-common) $(secure-common)
+obj-$(CONFIG_ARCH_OMAP4) += $(hwmod-common) $(secure-common)
+obj-$(CONFIG_ARCH_OMAP5) += $(hwmod-common) $(secure-common)
 
 ifneq ($(CONFIG_SND_OMAP_SOC_MCBSP),)
 obj-y += mcbsp.o
@@ -31,7 +31,7 @@ obj-$(CONFIG_MFD_PALMAS) += omap_palmas.o
 obj-$(CONFIG_SMP)			+= omap-smp.o omap-headsmp.o
 obj-$(CONFIG_HOTPLUG_CPU)		+= omap-hotplug.o
 obj-$(CONFIG_ARCH_OMAP4)		+= omap4-common.o omap-wakeupgen.o \
-					   sleep44xx.o
+					   sleep44xx.o omap-sar.o
 obj-$(CONFIG_ARCH_OMAP5)                += omap4-common.o omap-wakeupgen.o \
 					   sleep44xx.o omap-sar.o
 
@@ -108,14 +108,13 @@ obj-$(CONFIG_ARCH_OMAP3)		+= prcm.o cm2xxx_3xxx.o prm2xxx_3xxx.o \
 obj-$(CONFIG_ARCH_OMAP4)		+= prcm.o cm2xxx_3xxx.o cminst44xx.o \
 					   cm44xx.o prcm_mpu44xx.o \
 					   prminst44xx.o vc44xx_data.o \
-					   vp44xx_data.o prm44xx.o dvfs.o \
-					   abb44xx_data.o scrm44xx.o \
-					   omap-sar.o
+					   vp44xx_data.o prm44xx.o \
+					   abb44xx_data.o scrm44xx.o
 obj-$(CONFIG_ARCH_OMAP5)                += prcm.o cm2xxx_3xxx.o cminst44xx.o \
                                            cm44xx.o prcm_mpu44xx.o \
                                            prminst44xx.o vc54xx_data.o \
-                                           vp54xx_data.o dvfs.o abb54xx_data.o \
-					   prm44xx.o scrm44xx.o omap-sar.o
+                                           vp54xx_data.o abb54xx_data.o \
+					   prm44xx.o scrm44xx.o
 
 # OMAP voltage domains
 voltagedomain-common			:= voltage.o vc.o vp.o abb.o

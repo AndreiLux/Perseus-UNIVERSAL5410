@@ -506,11 +506,11 @@ int omap_enter_lowpower(unsigned int cpu, unsigned int power_state)
 }
 
 /**
- * omap4_hotplug_cpu: OMAP4 CPU hotplug entry
+ * omap_hotplug_cpu: OMAP4+ CPU hotplug entry
  * @cpu : CPU ID
  * @power_state: CPU low power state.
  */
-int __cpuinit omap4_hotplug_cpu(unsigned int cpu, unsigned int power_state)
+int __cpuinit omap_hotplug_cpu(unsigned int cpu, unsigned int power_state)
 {
 	unsigned int cpu_state = 0;
 	struct omap4_cpu_pm_info *pm_info = &per_cpu(omap4_pm_info, cpu);
@@ -621,6 +621,8 @@ int __init omap_mpuss_init(void)
 	pm_info->l2x0_sar_addr = sar_base + L2X0_SAVE_OFFSET1;
 	if (cpu_is_omap446x())
 		pm_info->secondary_startup = omap_secondary_startup_4460;
+	else if (cpu_is_omap54xx())
+		pm_info->secondary_startup = omap5_secondary_startup;
 	else
 		pm_info->secondary_startup = omap_secondary_startup;
 

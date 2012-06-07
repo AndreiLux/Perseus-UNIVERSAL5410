@@ -112,7 +112,7 @@ static inline int _wakeupgen_get_irq_info(u32 irq, u32 *bit_posn, u8 *reg_index)
 	 * Subtract the GIC offset.
 	 */
 	spi_irq = irq - OMAP44XX_IRQ_GIC_START;
-	if (spi_irq > MAX_IRQS) {
+	if (spi_irq > max_irqs) {
 		pr_err("omap wakeupGen: Invalid IRQ%d\n", irq);
 		return -EINVAL;
 	}
@@ -400,6 +400,9 @@ static void irq_sar_clear(void)
 	u32 val;
 	u32 offset = SAR_BACKUP_STATUS_OFFSET;
 
+	if (!sar_base)
+		sar_base = omap4_get_sar_ram_base();
+
 	if (cpu_is_omap54xx())
 		offset = OMAP5_SAR_BACKUP_STATUS_OFFSET;
 
@@ -500,8 +503,9 @@ static int irq_notifier(struct notifier_block *self, unsigned long cmd,	void *v)
 {
 	switch (cmd) {
 	case CPU_CLUSTER_PM_ENTER:
-		// !!! use to be == with stray else following
-		if (omap_type() != OMAP2_DEVICE_TYPE_GP)
+		if (omap_type() == OMAP2_DEVICE_TYPE_GP)
+			irq_save_context();
+		else
 			irq_save_secure_context();
 		break;
 	case CPU_CLUSTER_PM_EXIT:
@@ -620,23 +624,6 @@ int __init omap_wakeupgen_init(void)
 		l4_secure_clkdm = clkdm_lookup("l4_secure_clkdm");
 		if (!l4_secure_clkdm)
 			pr_err("%s: failed to get l4_secure_clkdm\n", __func__);
-	}
-
-	max_spi_irq = max_spi_reg * 32;
-
-	/*
-	 * Mark the PPI and SPI interrupts as non-secure.
-	 * program the SAR locations for interrupt security registers to
-	 * reflect the same.
-	 */
-	if (omap_type() == OMAP2_DEVICE_TYPE_GP) {
-		sar_base = ioremap(OMAP44XX_SAR_RAM_BASE, SZ_16K);
-		sar_writel(GIC_ISR_NON_SECURE, ICDISR_CPU0_OFFSET, 0);
-		sar_writel(GIC_ISR_NON_SECURE, ICDISR_CPU1_OFFSET, 0);
-		for (i = 0; i < max_spi_reg; i++)
-			sar_writel(GIC_ISR_NON_SECURE, ICDISR_SPI_OFFSET, i);
-		iounmap(sar_base);
-		sar_base = NULL;
 	}
 
 	irq_hotplug_init();

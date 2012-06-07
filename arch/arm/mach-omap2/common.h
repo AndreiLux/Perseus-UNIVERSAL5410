@@ -86,6 +86,14 @@ static inline void omap44xx_map_common_io(void)
 }
 #endif
 
+#ifdef CONFIG_ARCH_OMAP5
+extern void omap54xx_map_common_io(void);
+#else
+static inline void omap54xx_map_common_io(void)
+{
+}
+#endif
+
 extern void omap2_init_common_infrastructure(void);
 extern int omap_register_mac_device_fixup_paths(const char * const *paths,
 								    int count); 
@@ -145,6 +153,7 @@ void am33xx_map_io(void);
 void omap4_map_io(void);
 void ti81xx_map_io(void);
 void omap_barriers_init(void);
+void omap5_map_io(void);
 
 extern void __init omap_init_consistent_dma_size(void);
 

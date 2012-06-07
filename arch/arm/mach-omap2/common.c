@@ -200,4 +200,9 @@ void __init omap2_set_globals_543x(void)
 	omap2_set_globals_control(&omap5_globals);
 	omap2_set_globals_prcm(&omap5_globals);
 }
+
+void __init omap5_map_io(void)
+{
+	omap54xx_map_common_io();
+}
 #endif
