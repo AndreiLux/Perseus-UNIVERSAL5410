@@ -21,20 +21,15 @@
 #include <linux/clockchips.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
-<<<<<<< current
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
-=======
 #include <linux/interrupt.h>
->>>>>>> patched
+#include <linux/cpu.h>
 
 #include <asm/smp_twd.h>
 #include <asm/localtimer.h>
 
-<<<<<<< current
 /* set up by the platform code */
-=======
->>>>>>> patched
 static void __iomem *twd_base;
 
 static struct clk *twd_clk;
@@ -44,12 +39,9 @@ static struct clock_event_device __percpu **twd_clock_event;
 extern void smp_timer_broadcast(const struct cpumask *mask);
 extern struct clock_event_device percpu_clockevent;
 
-<<<<<<< current
 static struct clock_event_device __percpu **twd_evt;
 static int twd_ppi;
 
-=======
->>>>>>> patched
 static void twd_set_mode(enum clock_event_mode mode,
 			struct clock_event_device *clk)
 {
@@ -242,11 +234,7 @@ extern void smp_timer_broadcast(const struct cpumask *mask);
 /*
  * Setup the local clock events for a CPU.
  */
-<<<<<<< current
 static int __cpuinit twd_timer_setup(struct clock_event_device *clk)
-=======
-static void __cpuinit twd_timer_setup(struct clock_event_device *clk)
->>>>>>> patched
 {
 	struct clock_event_device **this_cpu_clk;
 

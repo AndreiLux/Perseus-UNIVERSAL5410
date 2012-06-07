@@ -1240,13 +1240,8 @@ static void __init omap54xx_common_init(void)
         omap_register_mac_device_fixup_paths(omap5evm_fixup_mac_device_paths,
                                   ARRAY_SIZE(omap5evm_fixup_mac_device_paths));
 
-	omap5evm_touch_init();
-	omap_5430evm_i2c_init();
-	omap5evm_sensor_init();
 	omap_serial_board_init(NULL, 2);
 	omap_serial_board_init(NULL, 4);
-	platform_device_register(&dummy_sd_regulator_device);
-	omap_serial_init();
 	omap_sdrc_init(NULL, NULL);
 	omap_hsmmc_init(mmc);
 	omap_ehci_ohci_init();
@@ -1279,6 +1274,7 @@ static void __init omap_5430_sevm_init(void)
         omap_writel(0x50000000, 0x4A002E20);                                    
 	
 	omap5evm_touch_init();
+        omap5evm_sensor_init();
 
 	omap54xx_common_init();
 

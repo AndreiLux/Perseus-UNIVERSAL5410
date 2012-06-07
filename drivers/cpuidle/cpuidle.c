@@ -103,6 +103,35 @@ int cpuidle_play_dead(void)
 }
 
 /**
+ * cpuidle_enter_state - enter the state and update stats
+ * @dev: cpuidle device for this cpu
+ * @drv: cpuidle driver for this cpu
+ * @next_state: index into drv->states of the state to enter
+ */
+int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
+		int next_state)
+{
+	int entered_state;
+	struct cpuidle_state *target_state;
+
+	target_state = &drv->states[next_state];
+
+	entered_state = target_state->enter(dev, drv, next_state);
+
+	if (entered_state >= 0) {
+		/* Update cpuidle counters */
+		/* This can be moved to within driver enter routine
+		 * but that results in multiple copies of same code.
+		 */
+		dev->states_usage[entered_state].time +=
+				(unsigned long long)dev->last_residency;
+		dev->states_usage[entered_state].usage++;
+	}
+
+	return entered_state;
+}
+
+/**
  * cpuidle_idle_call - the main idle loop
  *
  * NOTE: no locks or semaphores should be used here
@@ -144,6 +173,7 @@ int cpuidle_idle_call(void)
 	trace_cpu_idle_rcuidle(next_state, dev->cpu);
 
 	entered_state = cpuidle_enter_ops(dev, drv, next_state);
+// ???	entered_state = cpuidle_enter_state(dev, drv, next_state);
 
 	trace_power_end_rcuidle(dev->cpu);
 	trace_cpu_idle_rcuidle(PWR_EVENT_EXIT, dev->cpu);
@@ -412,9 +442,7 @@ static int __cpuidle_register_device(struct cpuidle_device *dev)
 	return 0;
 
 err_coupled:
-	cpuidle_remove_sysfs(sys_dev);
 	wait_for_completion(&dev->kobj_unregister);
-err_sysfs:
 	list_del(&dev->device_list);
 	per_cpu(cpuidle_devices, dev->cpu) = NULL;
 	module_put(cpuidle_driver->owner);

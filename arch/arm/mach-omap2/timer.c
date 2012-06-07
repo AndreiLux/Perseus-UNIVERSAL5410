@@ -42,7 +42,7 @@
 #include <asm/smp_twd.h>
 #include <asm/sched_clock.h>
 #include "common.h"
-#include <asm/arch_timer.h>
+//#include <asm/arch_timer.h>
 #include <plat/omap_hwmod.h>
 #include <plat/omap_device.h>
 #include <plat/omap-pm.h>
