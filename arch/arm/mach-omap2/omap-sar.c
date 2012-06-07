@@ -589,23 +589,13 @@ static int __init omap_sar_ram_init(void)
 	if (!l3init_clkdm)
 		pr_err("Failed to get l3_init_clkdm\n");
 
-	if (cpu_is_omap54xx()) {
-		usb_host_ck = clk_get(NULL, "usb_host_hs_fck");
-		if (IS_ERR(usb_host_ck))
-			pr_err("Could not get usb_host_ck\n");
+	usb_host_ck = clk_get(NULL, "usb_host_hs_fck");
+	if (IS_ERR(usb_host_ck))
+		pr_err("Could not get usb_host_hs_ck\n");
 
-		usb_tll_ck = clk_get(NULL, "usb_tll_hs_ick");
-		if (IS_ERR(usb_tll_ck))
-			pr_err("Could not get usb_tll_ck\n");
-	} else {
-		usb_host_ck = clk_get_sys("usbhs_omap", "hs_fck");
-		if (IS_ERR(usb_host_ck))
-			pr_err("Could not get usb_host_ck\n");
-
-		usb_tll_ck = clk_get_sys("usbhs_omap", "usbtll_ick");
-		if (IS_ERR(usb_tll_ck))
-			pr_err("Could not get usb_tll_ck\n");
-	}
+	usb_tll_ck = clk_get(NULL, "usb_tll_hs_ick");
+	if (IS_ERR(usb_tll_ck))
+		pr_err("Could not get usb_tll_hs_ck\n");
 
 	return 0;
 }
