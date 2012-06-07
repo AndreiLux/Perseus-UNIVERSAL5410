@@ -914,6 +914,9 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 	for (win = 0; win < WINDOWS_NR; win++)
 		fimd_clear_win(ctx, win);
 
+	if (pdata->panel_type == DP_LCD)
+		writel(DPCLKCON_ENABLE, ctx->regs + DPCLKCON);
+
 	exynos_drm_subdrv_register(subdrv);
 
 	return 0;

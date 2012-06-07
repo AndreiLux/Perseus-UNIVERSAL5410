@@ -137,6 +137,11 @@ struct exynos_drm_panel_info {
 	u32 height_mm;
 };
 
+enum disp_panel_type {
+	MIPI_LCD,
+	DP_LCD
+};
+
 /**
  * Platform Specific Structure for DRM based FIMD.
  *
@@ -151,6 +156,7 @@ struct exynos_drm_fimd_pdata {
 	unsigned int			default_win;
 	unsigned int			bpp;
 	unsigned int			clock_rate;
+	enum disp_panel_type		panel_type;
 };
 
 /**
