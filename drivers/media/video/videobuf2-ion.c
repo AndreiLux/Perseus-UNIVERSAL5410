@@ -87,7 +87,7 @@ void *vb2_ion_create_context(struct device *dev, size_t alignment, long flags)
 {
 	struct vb2_ion_context *ctx;
 	int ret;
-	unsigned int heapmask = ION_HEAP_EXYNOS_USER_MASK;
+	unsigned int heapmask = ION_HEAP_SYSTEM_MASK;
 
 	/* ion_client_create() expects the current thread to be a kernel thread
 	 * to create a new ion_client

@@ -46,6 +46,7 @@
 
 #ifdef CONFIG_ION_EXYNOS
 #include <linux/dma-buf.h>
+#include <linux/exynos_ion.h>
 #include <linux/ion.h>
 #include <linux/sw_sync.h>
 #include <plat/devs.h>
