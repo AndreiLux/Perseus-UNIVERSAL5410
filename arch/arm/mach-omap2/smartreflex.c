@@ -1101,12 +1101,16 @@ static int omap_sr_autocomp_store(void *data, u64 val)
 	/* control enable/disable only if there is a delta in value */
 	if (sr_info->autocomp_active != val) {
 		/* Pause dvfs from interfereing with our operations */
+#ifdef CONFIG_CPU_FREQ
 		mutex_lock(&omap_dvfs_lock);
+#endif
 		if (!val)
 			sr_stop_vddautocomp(sr_info, true, 1);
 		else
 			sr_start_vddautocomp(sr_info, true);
+#ifdef CONFIG_CPU_FREQ
 		mutex_unlock(&omap_dvfs_lock);
+#endif
 	}
 
 	return 0;
