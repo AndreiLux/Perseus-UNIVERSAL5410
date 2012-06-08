@@ -20,6 +20,7 @@
 #include <linux/io.h>
 #include <linux/err.h>
 #include <linux/clk.h>
+#include <linux/interrupt.h>
 
 #include <asm/cacheflush.h>
 #include <asm/hardware/cache-l2x0.h>
@@ -47,6 +48,9 @@
 #endif
 
 #define EXYNOS_I2C_CFG		(S3C_VA_SYS + 0x234)
+
+#define EXYNOS_WAKEUP_STAT_EINT		(1 << 0)
+#define EXYNOS_WAKEUP_STAT_RTC_ALARM	(1 << 1)
 
 static struct sleep_save exynos4_set_clksrc[] = {
 	{ .reg = EXYNOS4_CLKSRC_MASK_TOP		, .val = 0x00000001, },
@@ -261,6 +265,59 @@ static __init int exynos_pm_drvinit(void)
 }
 arch_initcall(exynos_pm_drvinit);
 
+static void exynos_show_wakeup_reason_eint(void)
+{
+	int bit;
+	int reg_eintstart;
+	long unsigned int ext_int_pend;
+	unsigned long eint_wakeup_mask;
+	bool found = 0;
+	extern void __iomem *exynos_eint_base;
+
+	eint_wakeup_mask = __raw_readl(EXYNOS_EINT_WAKEUP_MASK);
+
+	for (reg_eintstart = 0; reg_eintstart <= 31; reg_eintstart += 8) {
+		ext_int_pend =
+			__raw_readl(EINT_PEND(exynos_eint_base,
+					      IRQ_EINT(reg_eintstart)));
+
+		for_each_set_bit(bit, &ext_int_pend, 8) {
+			int irq = IRQ_EINT(reg_eintstart) + bit;
+			struct irq_desc *desc = irq_to_desc(irq);
+
+			if (eint_wakeup_mask & (1 << (reg_eintstart + bit)))
+				continue;
+
+			if (desc && desc->action && desc->action->name)
+				pr_info("Resume caused by IRQ %d, %s\n", irq,
+					desc->action->name);
+			else
+				pr_info("Resume caused by IRQ %d\n", irq);
+
+			found = 1;
+		}
+	}
+
+	if (!found)
+		pr_info("Resume caused by unknown EINT\n");
+}
+
+static void exynos_show_wakeup_reason(void)
+{
+	unsigned long wakeup_stat;
+
+	wakeup_stat = __raw_readl(EXYNOS_WAKEUP_STAT);
+
+	if (wakeup_stat & EXYNOS_WAKEUP_STAT_RTC_ALARM)
+		pr_info("Resume caused by RTC alarm\n");
+	else if (wakeup_stat & EXYNOS_WAKEUP_STAT_EINT)
+		exynos_show_wakeup_reason_eint();
+	else
+		pr_info("Resume caused by wakeup_stat=0x%08lx\n",
+			wakeup_stat);
+}
+
+
 static int exynos_pm_suspend(void)
 {
 	unsigned long tmp;
@@ -349,6 +406,7 @@ static void exynos_pm_resume(void)
 	}
 
 early_wakeup:
+	exynos_show_wakeup_reason();
 	return;
 }
 
