@@ -26,7 +26,7 @@
 #define OMAP5_VDD_CORE_SR_VOLT_REG	0x37
 #define OMAP5_VDD_CORE_SR_CMD_REG	0x36
 
-u8 twl6035_uv_to_vsel(unsigned long uv)
+static u8 twl6035_uv_to_vsel(unsigned long uv)
 {
 	if (uv > 1650000) {
 		pr_err("%s:OUT OF RANGE! non mapped uv for %ld\n",
@@ -40,7 +40,7 @@ u8 twl6035_uv_to_vsel(unsigned long uv)
 	return ((uv - 500000)/10000) + 6;
 }
 
-unsigned long twl6035_vsel_to_uv(const u8 vsel)
+static unsigned long twl6035_vsel_to_uv(const u8 vsel)
 {
 	u8 temp_vsel = vsel;
 
@@ -154,6 +154,9 @@ static __initdata struct omap_pmic_map omap_twl_map[] = {
 
 int __init omap_palmas_init(void)
 {
-	return omap_pmic_register_data(omap_twl_map);
+	if (cpu_is_omap54xx())
+		return omap_pmic_register_data(omap_twl_map);
+
+	return 0;
 }
 
