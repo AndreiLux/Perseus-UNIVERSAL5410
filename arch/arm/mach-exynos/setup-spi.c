@@ -38,6 +38,43 @@ int exynos_spi_cfg_cs(int gpio, int ch_num)
 
 }
 
+void exynos_spi_clock_setup(struct device *spi_dev, int ch_num)
+{
+	struct clk *child_clk = NULL;
+	struct clk *parent_clk = NULL;
+	char clk_name[EXYNOS_SPI_NAME_SIZE];
+
+	snprintf(clk_name, EXYNOS_SPI_NAME_SIZE, "dout_spi%d", ch_num);
+	child_clk = clk_get(spi_dev, clk_name);
+
+	if (IS_ERR(child_clk)) {
+		pr_err("%s: Failed to get %s clk\n", __func__, clk_name);
+		return;
+	}
+
+	parent_clk = clk_get(spi_dev, "mout_mpll_user");
+
+	if (IS_ERR(parent_clk)) {
+		pr_err("%s: Failed to get mout_mpll_user clk\n", __func__);
+		goto err1;
+	}
+
+	if (clk_set_parent(child_clk, parent_clk)) {
+		pr_err("%s: Unable to set parent %s of clock %s\n",
+				__func__, parent_clk->name, child_clk->name);
+		goto err2;
+	}
+
+	if (clk_set_rate(child_clk, 100 * 1000 * 1000))
+		pr_err("%s: Unable to set rate of clock %s\n",
+				__func__, child_clk->name);
+
+err2:
+	clk_put(parent_clk);
+err1:
+	clk_put(child_clk);
+}
+
 #ifdef CONFIG_S3C64XX_DEV_SPI0
 struct s3c64xx_spi_info s3c64xx_spi0_pdata __initdata = {
 	.fifo_lvl_mask	= 0x1ff,

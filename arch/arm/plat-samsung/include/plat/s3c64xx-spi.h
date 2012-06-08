@@ -76,6 +76,7 @@ extern void s3c64xx_spi2_set_platdata(struct s3c64xx_spi_info *pd,
 
 /* defined to setup chip select GPIO and clock of SPI */
 extern int exynos_spi_cfg_cs(int gpio, int ch_num);
+extern void exynos_spi_clock_setup(struct device *spi_dev, int ch_num);
 
 /* defined by architecture to configure gpio */
 extern int s3c64xx_spi0_cfg_gpio(struct platform_device *dev);
