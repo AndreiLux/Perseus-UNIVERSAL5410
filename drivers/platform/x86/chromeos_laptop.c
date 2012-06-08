@@ -28,12 +28,15 @@
 
 #define ATMEL_TP_I2C_ADDR	0x4b
 #define ATMEL_TP_I2C_BL_ADDR	0x25
+#define ATMEL_TP2_I2C_ADDR	0x4a
+#define ATMEL_TP2_I2C_BL_ADDR	0x26
 #define CYAPA_TP_I2C_ADDR	0x67
 #define ISL_ALS_I2C_ADDR	0x44
 #define TAOS_ALS_I2C_ADDR	0x29
 
 static struct i2c_client *als;
 static struct i2c_client *tp;
+static struct i2c_client *tp2;
 
 const char *i2c_adapter_names[] = {
 	"SMBus I801 adapter",
@@ -200,6 +203,13 @@ static struct i2c_board_info __initdata atmel_224s_tp_device = {
 	.flags		= I2C_CLIENT_WAKE,
 };
 
+static struct i2c_board_info __initdata atmel_tp2_device = {
+	I2C_BOARD_INFO("atmel_mxt_ts", ATMEL_TP2_I2C_ADDR),
+	.platform_data = NULL,
+	.irq = 22,
+	.flags		= I2C_CLIENT_WAKE,
+};
+
 static struct i2c_client *__add_probed_i2c_device(const char *name, int bus,
 						  struct i2c_board_info *info,
 						  const unsigned short *addrs)
@@ -306,6 +316,19 @@ static struct i2c_client *add_smbus_device(const char *name,
 	return chromeos_laptop_add_i2c_device(name, I2C_ADAPTER_SMBUS, info);
 }
 
+static int setup_link_tp2(const struct dmi_system_id *id)
+{
+	const unsigned short addr_list[] = { ATMEL_TP2_I2C_BL_ADDR,
+					     ATMEL_TP2_I2C_ADDR,
+					     I2C_CLIENT_END };
+
+	tp2 = chromeos_laptop_add_probed_i2c_device(NULL,
+						    I2C_ADAPTER_PANEL,
+						    &atmel_tp2_device,
+						    addr_list);
+	return 0;
+}
+
 static int setup_link_tp(const struct dmi_system_id *id)
 {
 	const unsigned short atmel_addr_list[] = { ATMEL_TP_I2C_BL_ADDR,
@@ -380,6 +403,13 @@ static const struct dmi_system_id chromeos_laptop_dmi_table[] = {
 		.callback = setup_lumpy_tp,
 	},
 	{
+		.ident = "Link - Touchpads2",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Link"),
+		},
+		.callback = setup_link_tp2,
+	},
+	{
 		.ident = "Link - Touchpads",
 		.matches = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Link"),
@@ -442,6 +472,10 @@ static void __exit chromeos_laptop_exit(void)
 	if (tp) {
 		i2c_unregister_device(tp);
 		tp = NULL;
+	}
+	if (tp2) {
+		i2c_unregister_device(tp2);
+		tp2 = NULL;
 	}
 }
 
