@@ -23,6 +23,8 @@
 #include <linux/gpio_event.h>
 #include <linux/platform_data/exynos_usb3_drd.h>
 #include <linux/persistent_ram.h>
+#include <linux/clk.h>
+#include <linux/spi/spi.h>
 
 #include <video/platform_lcd.h>
 #include <video/s5p-dp.h>
@@ -49,6 +51,7 @@
 #include <plat/jpeg.h>
 #include <plat/tv-core.h>
 #include <plat/ehci.h>
+#include <plat/s3c64xx-spi.h>
 
 #include <mach/exynos_fiq_debugger.h>
 #include <mach/map.h>
@@ -57,6 +60,7 @@
 #include <mach/exynos-mfc.h>
 #include <mach/dwmci.h>
 #include <mach/ohci.h>
+#include <mach/spi-clocks.h>
 
 #include <plat/dsim.h>
 #include <plat/mipi_dsi.h>
@@ -1391,6 +1395,9 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 #ifdef CONFIG_S5P_DEV_ACE
 	&s5p_device_ace,
 #endif
+	&s3c64xx_device_spi0,
+	&s3c64xx_device_spi1,
+	&s3c64xx_device_spi2,
 };
 
 
@@ -1536,6 +1543,66 @@ static struct s5p_mfc_platdata smdk5250_mfc_pd = {
 	.clock_rate = 300 * MHZ,
 };
 #endif
+
+static struct s3c64xx_spi_csinfo spi0_csi[] = {
+	[0] = {
+		.line		= EXYNOS5_GPA2(1),
+		.set_level	= gpio_set_value,
+		.fb_delay	= 0x2,
+	},
+};
+
+static struct spi_board_info spi0_board_info[] __initdata = {
+	{
+		.modalias		= "spidev",
+		.platform_data		= NULL,
+		.max_speed_hz		= 10 * 1000 * 1000,
+		.bus_num		= 0,
+		.chip_select		= 0,
+		.mode			= SPI_MODE_0,
+		.controller_data	= &spi0_csi[0],
+	}
+};
+
+static struct s3c64xx_spi_csinfo spi1_csi[] = {
+	[0] = {
+		.line		= EXYNOS5_GPA2(5),
+		.set_level	= gpio_set_value,
+		.fb_delay	= 0x2,
+	},
+};
+
+static struct spi_board_info spi1_board_info[] __initdata = {
+	{
+		.modalias		= "spidev",
+		.platform_data		= NULL,
+		.max_speed_hz		= 10 * 1000 * 1000,
+		.bus_num		= 1,
+		.chip_select		= 0,
+		.mode			= SPI_MODE_0,
+		.controller_data	= &spi1_csi[0],
+	}
+};
+
+static struct s3c64xx_spi_csinfo spi2_csi[] = {
+	[0] = {
+		.line		= EXYNOS5_GPB1(2),
+		.set_level	= gpio_set_value,
+		.fb_delay	= 0x2,
+	},
+};
+
+static struct spi_board_info spi2_board_info[] __initdata = {
+	{
+		.modalias		= "spidev",
+		.platform_data		= NULL,
+		.max_speed_hz		= 10 * 1000 * 1000,
+		.bus_num		= 2,
+		.chip_select		= 0,
+		.mode			= SPI_MODE_0,
+		.controller_data	= &spi2_csi[0],
+	}
+};
 
 static void __init smdk5250_map_io(void)
 {
@@ -1793,6 +1860,35 @@ static void __init smdk5250_machine_init(void)
 #endif
 #endif
 
+	if (!exynos_spi_cfg_cs(spi0_csi[0].line, 0)) {
+		s3c64xx_spi0_set_platdata(&s3c64xx_spi0_pdata,
+				EXYNOS_SPI_SRCCLK_SCLK, ARRAY_SIZE(spi0_csi));
+
+		spi_register_board_info(spi0_board_info,
+				ARRAY_SIZE(spi0_board_info));
+	} else {
+		pr_err("%s: Error requesting gpio for SPI-CH0 CS\n", __func__);
+	}
+
+	if (!exynos_spi_cfg_cs(spi1_csi[0].line, 1)) {
+		s3c64xx_spi1_set_platdata(&s3c64xx_spi1_pdata,
+				EXYNOS_SPI_SRCCLK_SCLK, ARRAY_SIZE(spi1_csi));
+
+		spi_register_board_info(spi1_board_info,
+				ARRAY_SIZE(spi1_board_info));
+	} else {
+		pr_err("%s: Error requesting gpio for SPI-CH1 CS\n", __func__);
+	}
+
+	if (!exynos_spi_cfg_cs(spi2_csi[0].line, 2)) {
+		s3c64xx_spi2_set_platdata(&s3c64xx_spi2_pdata,
+				EXYNOS_SPI_SRCCLK_SCLK, ARRAY_SIZE(spi2_csi));
+
+		spi_register_board_info(spi2_board_info,
+				ARRAY_SIZE(spi2_board_info));
+	} else {
+		pr_err("%s: Error requesting gpio for SPI-CH2 CS\n", __func__);
+	}
 }
 
 MACHINE_START(SMDK5250, "SMDK5250")
