@@ -251,6 +251,19 @@ static __initdata struct omap_pmic_map omap_twl_map[] = {
 	{ .name = NULL, .pmic_data = NULL},
 };
 
+static __initdata struct omap_pmic_map omap3_twl_map[] = {
+	{
+		.name = "mpu",
+		.pmic_data = &omap3_mpu_pmic,
+	},
+	{
+		.name = "core",
+		.pmic_data = &omap3_core_pmic,
+	},
+	/* Terminator */
+	{ .name = NULL, .pmic_data = NULL},
+};
+
 int __init omap_twl4030_init(void)
 {
 	/* Reuse OMAP3430 values */
@@ -267,7 +280,9 @@ int __init omap_twl4030_init(void)
 		omap_twl_map[1].pmic_data->cmd_reg_addr = OMAP4_VDD_MPU_SR_CMD_REG;
 	}
 
-	if (cpu_is_omap443x())
+	if (cpu_is_omap34xx())
+		return omap_pmic_register_data(omap3_twl_map);
+	else if (cpu_is_omap443x())
 		return omap_pmic_register_data(&omap_twl_map[0]);
 	else if (cpu_is_omap446x()) /* mpu from tps6236x */
 		return omap_pmic_register_data(&omap_twl_map[1]);
