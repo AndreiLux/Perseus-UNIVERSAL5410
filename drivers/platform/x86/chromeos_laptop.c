@@ -27,6 +27,7 @@
 #include "chromeos_laptop.h"
 
 #define ATMEL_TP_I2C_ADDR	0x4b
+#define ATMEL_TP_I2C_BL_ADDR	0x25
 #define CYAPA_TP_I2C_ADDR	0x67
 #define ISL_ALS_I2C_ADDR	0x44
 #define TAOS_ALS_I2C_ADDR	0x29
@@ -307,6 +308,10 @@ static struct i2c_client *add_smbus_device(const char *name,
 
 static int setup_link_tp(const struct dmi_system_id *id)
 {
+	const unsigned short atmel_addr_list[] = { ATMEL_TP_I2C_BL_ADDR,
+						   ATMEL_TP_I2C_ADDR,
+						   I2C_CLIENT_END };
+
 	/* first try cyapa touchpad */
 	tp = chromeos_laptop_add_i2c_device("trackpad",
 					    I2C_ADAPTER_VGADDC,
@@ -315,9 +320,10 @@ static int setup_link_tp(const struct dmi_system_id *id)
 		return 0;
 
 	/* then try atmel mxt touchpad */
-	tp = chromeos_laptop_add_i2c_device("trackpad",
-					    I2C_ADAPTER_VGADDC,
-					    &atmel_224s_tp_device);
+	tp = chromeos_laptop_add_probed_i2c_device("trackpad",
+						   I2C_ADAPTER_VGADDC,
+						   &atmel_224s_tp_device,
+						   atmel_addr_list);
 	return 0;
 }
 
