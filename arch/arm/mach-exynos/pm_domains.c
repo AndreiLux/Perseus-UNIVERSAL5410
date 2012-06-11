@@ -19,30 +19,64 @@
 #include <linux/pm_domain.h>
 #include <linux/delay.h>
 #include <linux/of_address.h>
+#include <linux/clk.h>
+#include <linux/list.h>
 
 #include <mach/regs-pmu.h>
+#include <mach/regs-clock.h>
 #include <plat/cpu.h>
+#include <plat/clock.h>
 #include <plat/devs.h>
 
 /*
  * Exynos specific wrapper around the generic power domain
  */
 struct exynos_pm_domain {
+	struct list_head list;
 	void __iomem *base;
 	char const *name;
 	bool is_off;
 	struct generic_pm_domain pd;
 };
 
+struct exynos_pm_clk {
+	struct list_head node;
+	struct clk *clk;
+};
+
+struct exynos_pm_dev {
+	struct exynos_pm_domain *pd;
+	struct platform_device *pdev;
+	char const *con_id;
+};
+
+#define EXYNOS_PM_DEV(NAME, PD, DEV, CON)		\
+static struct exynos_pm_dev exynos5_pm_dev_##NAME = {	\
+	.pd = &exynos5_pd_##PD,				\
+	.pdev = DEV,					\
+	.con_id = CON,					\
+}
+
 static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 {
 	struct exynos_pm_domain *pd;
+	struct exynos_pm_clk *pclk;
 	void __iomem *base;
 	u32 timeout, pwr;
 	char *op;
+	int ret = 0;
 
 	pd = container_of(domain, struct exynos_pm_domain, pd);
 	base = pd->base;
+
+	/* Enable all the clocks of IPs in power domain */
+	if (power_on)
+		list_for_each_entry(pclk, &pd->list, node) {
+			if (clk_enable(pclk->clk)) {
+				ret = -EINVAL;
+				goto unwind;
+			}
+		}
 
 	pwr = power_on ? EXYNOS_INT_LOCAL_PWR_EN : 0;
 	__raw_writel(pwr, base);
@@ -54,13 +88,26 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 		if (!timeout) {
 			op = (power_on) ? "enable" : "disable";
 			pr_err("Power domain %s %s failed\n", domain->name, op);
-			return -ETIMEDOUT;
+			ret = -ETIMEDOUT;
+			break;
 		}
 		timeout--;
 		cpu_relax();
 		usleep_range(80, 100);
 	}
-	return 0;
+
+	/* Disable all the clocks of IPs in power domain */
+	if (power_on)
+		list_for_each_entry(pclk, &pd->list, node)
+			clk_disable(pclk->clk);
+
+	return ret;
+
+unwind:
+	list_for_each_entry_continue_reverse(pclk, &pd->list, node)
+		clk_disable(pclk->clk);
+
+	return ret;
 }
 
 static int exynos_pd_power_on(struct generic_pm_domain *domain)
@@ -75,6 +122,7 @@ static int exynos_pd_power_off(struct generic_pm_domain *domain)
 
 #define EXYNOS_GPD(PD, BASE, NAME)			\
 static struct exynos_pm_domain PD = {			\
+	.list = LIST_HEAD_INIT((PD).list),		\
 	.base = (void __iomem *)BASE,			\
 	.name = NAME,					\
 	.pd = {						\
@@ -213,6 +261,58 @@ static struct exynos_pm_domain *exynos5_pm_domains[] = {
 	&exynos5_pd_gscl,
 };
 
+#ifdef CONFIG_S5P_DEV_MFC
+EXYNOS_PM_DEV(mfc, mfc, &s5p_device_mfc, "mfc");
+#endif
+#ifdef CONFIG_EXYNOS5_DEV_GSC
+EXYNOS_PM_DEV(gscl0, gscl, &exynos5_device_gsc0, "gscl");
+EXYNOS_PM_DEV(gscl1, gscl, &exynos5_device_gsc1, "gscl");
+EXYNOS_PM_DEV(gscl2, gscl, &exynos5_device_gsc2, "gscl");
+EXYNOS_PM_DEV(gscl3, gscl, &exynos5_device_gsc3, "gscl");
+#endif
+
+static struct exynos_pm_dev *exynos_pm_devs[] = {
+#ifdef CONFIG_S5P_DEV_MFC
+	&exynos5_pm_dev_mfc,
+#endif
+#ifdef CONFIG_EXYNOS5_DEV_GSC
+	&exynos5_pm_dev_gscl0,
+	&exynos5_pm_dev_gscl1,
+	&exynos5_pm_dev_gscl2,
+	&exynos5_pm_dev_gscl3,
+#endif
+};
+
+static void __init exynos5_add_device_to_pd(struct exynos_pm_dev **pm_dev, int size)
+{
+	struct exynos_pm_dev *tdev;
+	struct exynos_pm_clk *pclk;
+	struct clk *clk;
+	int i;
+
+	for (i = 0; i < size; i++) {
+		tdev = pm_dev[i];
+
+		pclk = kzalloc(sizeof(struct exynos_pm_clk), GFP_KERNEL);
+
+		if (!pclk) {
+			pr_err("Unable to create new exynos_pm_clk\n");
+			continue;
+		}
+
+		clk = clk_get(&tdev->pdev->dev, tdev->con_id);
+
+		if (!IS_ERR(clk)) {
+			pclk->clk =  clk;
+			list_add(&pclk->node, &tdev->pd->list);
+		} else {
+			pr_err("Failed to get %s clock\n", dev_name(&tdev->pdev->dev));
+			kfree(pclk);
+		}
+
+	}
+}
+
 static int __init exynos5_pm_init_power_domain(void)
 {
 	int idx;
@@ -233,6 +333,8 @@ static int __init exynos5_pm_init_power_domain(void)
 	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc2, &exynos5_pd_gscl);
 	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc3, &exynos5_pd_gscl);
 #endif
+
+	exynos5_add_device_to_pd(exynos_pm_devs, ARRAY_SIZE(exynos_pm_devs));
 
 	return 0;
 }
