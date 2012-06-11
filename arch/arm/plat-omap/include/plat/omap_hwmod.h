@@ -457,6 +457,7 @@ struct omap_hwmod_omap4_prcm {
  * @rev: revision of the IP class
  * @pre_shutdown: ptr to fn to be executed immediately prior to device shutdown
  * @reset: ptr to fn to be executed in place of the standard hwmod reset fn
+ * @setup_preprogram: ptr to fn to be executed after the reset in _setup()
  *
  * Represent the class of a OMAP hardware "modules" (e.g. timer,
  * smartreflex, gpio, uart...)
@@ -473,6 +474,13 @@ struct omap_hwmod_omap4_prcm {
  * executed in place of the standard hwmod _reset() code in
  * mach-omap2/omap_hwmod.c.  This is needed for IP blocks which have
  * unusual reset sequences - usually processor IP blocks like the IVA.
+ *
+ * @setup_preprogram is called between the calls to _setup_reset() and
+ * _setup_postsetup().  It is intended to be used for IP blocks that
+ * require some initial configuration during their first
+ * initialization.  (For example, the AESS IP block on OMAP4+ cannot
+ * enter idle until its internal autogating bit is set.)  Most IP blocks
+ * will not need this.
  */
 struct omap_hwmod_class {
 	const char				*name;
@@ -480,6 +488,7 @@ struct omap_hwmod_class {
 	u32					rev;
 	int					(*pre_shutdown)(struct omap_hwmod *oh);
 	int					(*reset)(struct omap_hwmod *oh);
+	int					(*setup_preprogram)(struct omap_hwmod *oh);
 };
 
 /**
