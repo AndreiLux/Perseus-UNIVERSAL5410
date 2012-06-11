@@ -2722,7 +2722,10 @@ static __init int samsung_gpiolib_init(void)
 	struct samsung_gpio_chip *chip;
 	int i, nr_chips;
 #if defined(CONFIG_CPU_EXYNOS4210) || defined(CONFIG_SOC_EXYNOS5250)
-	void __iomem *gpio_base1, *gpio_base2, *gpio_base3, *gpio_base4;
+	void __iomem *gpio_base1, *gpio_base2, *gpio_base3;
+#endif
+#if defined(CONFIG_SOC_EXYNOS5250)
+	void __iomem *gpio_base4;
 #endif
 	int group = 0;
 
@@ -2975,9 +2978,11 @@ static __init int samsung_gpiolib_init(void)
 
 	return 0;
 
-#if defined(CONFIG_CPU_EXYNOS4210) || defined(CONFIG_SOC_EXYNOS5250)
+#if defined(CONFIG_SOC_EXYNOS5250)
 err_ioremap4:
 	iounmap(gpio_base3);
+#endif
+#if defined(CONFIG_CPU_EXYNOS4210) || defined(CONFIG_SOC_EXYNOS5250)
 err_ioremap3:
 	iounmap(gpio_base2);
 err_ioremap2:
