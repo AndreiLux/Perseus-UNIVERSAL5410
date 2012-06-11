@@ -1506,28 +1506,24 @@ static int _reset(struct omap_hwmod *oh)
  */
 static void _omap_update_context_lost(struct omap_hwmod *oh)
 {
-	u32 r;
+	if (oh->prcm.omap4.context_offs) {
+		u32 r;
 
-	/*
-	 * FIXME Not yet supported for OMAP2/3
-	 */
+		r = omap4_prminst_read_inst_reg(oh->clkdm->pwrdm.ptr->prcm_partition,
+				oh->clkdm->pwrdm.ptr->prcm_offs,
+				oh->prcm.omap4.context_offs);
 
-	if (cpu_is_omap24xx() || cpu_is_omap34xx())
-		return;
+		if (!r)
+			return;
 
-	r = omap4_prminst_read_inst_reg(oh->clkdm->pwrdm.ptr->prcm_partition,
-					oh->clkdm->pwrdm.ptr->prcm_offs,
-					oh->prcm.omap4.context_offs);
+		oh->prcm.omap4.context_lost_counter++;
 
-	if (!r)
-		return;
-
-	oh->prcm.omap4.context_lost_counter++;
-
-	omap4_prminst_write_inst_reg(r, oh->clkdm->pwrdm.ptr->prcm_partition,
-				     oh->clkdm->pwrdm.ptr->prcm_offs,
-				     oh->prcm.omap4.context_offs);
+		omap4_prminst_write_inst_reg(r, oh->clkdm->pwrdm.ptr->prcm_partition,
+				oh->clkdm->pwrdm.ptr->prcm_offs,
+				oh->prcm.omap4.context_offs);
+	}
 }
+
 
 /**
  * _enable - enable an omap_hwmod
