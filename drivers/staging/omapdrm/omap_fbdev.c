@@ -23,7 +23,7 @@
 #include "drm_fb_helper.h"
 
 MODULE_PARM_DESC(ywrap, "Enable ywrap scrolling (omap44xx and later, default 'y')");
-static bool ywrap_enabled = true;
+static bool ywrap_enabled = false;
 module_param_named(ywrap, ywrap_enabled, bool, 0644);
 
 /*
@@ -177,7 +177,11 @@ static int omap_fbdev_create(struct drm_fb_helper *helper,
 
 	/* allocate backing bo */
 	gsize = (union omap_gem_size){
+#ifdef CONFIG_ANDROID
+		.bytes = PAGE_ALIGN(mode_cmd.pitches[0] * mode_cmd.height * 2),
+#else
 		.bytes = PAGE_ALIGN(mode_cmd.pitches[0] * mode_cmd.height),
+#endif
 	};
 	DBG("allocating %d bytes for fb %d", gsize.bytes, dev->primary->index);
 	fbdev->bo = omap_gem_new(dev, gsize, OMAP_BO_SCANOUT | OMAP_BO_WC);
