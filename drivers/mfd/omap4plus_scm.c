@@ -163,21 +163,21 @@ static int __devinit omap4plus_scm_probe(struct platform_device *pdev)
 	if (!mem) {
 		dev_err(&pdev->dev, "no mem resource\n");
 		ret = -ENOMEM;
-		goto plat_res_err;
+		goto destroy_mutex;
 	}
 
 	scm_ptr->irq = platform_get_irq_byname(pdev, "thermal_alert");
 	if (scm_ptr->irq < 0) {
 		dev_err(&pdev->dev, "get_irq_byname failed\n");
 		ret = scm_ptr->irq;
-		goto plat_res_err;
+		goto destroy_mutex;
 	}
 
 	scm_ptr->base = ioremap(mem->start, resource_size(mem));
 	if (!scm_ptr->base) {
 		dev_err(&pdev->dev, "ioremap failed\n");
 		ret = -ENOMEM;
-		goto plat_res_err;
+		goto destroy_mutex;
 	}
 
 	scm_ptr->rev = pdata->rev;
@@ -190,29 +190,69 @@ static int __devinit omap4plus_scm_probe(struct platform_device *pdev)
 #ifdef CONFIG_OMAP4460PLUS_TEMP_SENSOR
 	scm_ptr->tsh_ptr = kzalloc(sizeof(*scm_ptr->tsh_ptr) * scm_ptr->cnt,
 					GFP_KERNEL);
-	if (!scm_ptr)
-		dev_err(&pdev->dev, "Memory allocation failed for tsh\n");
+	if (!scm_ptr->tsh_ptr) {
+		dev_err(&pdev->dev, "Failed to allocate memory for tsh_ptr\n");
+		ret = -ENOMEM;
+		goto unmap;
+	}
 
 	if (scm_ptr->rev == 1 && pdata->accurate) {
 		scm_ptr->fclock = clk_get(&pdev->dev, "fck");
+		ret = IS_ERR_OR_NULL(scm_ptr->fclock);
+		if (ret) {
+			dev_err(&pdev->dev, "Couldn't get functional clock\n");
+			goto free_tsh;
+		}
+
 		scm_ptr->div_clk = clk_get(&pdev->dev, "div_ck");
-	} else if (scm_ptr->rev == 2)
+		ret = IS_ERR_OR_NULL(scm_ptr->div_clk);
+		if (ret) {
+			dev_err(&pdev->dev, "Couldn't get div_ck clock\n");
+			goto put_fclock;
+		}
+	} else if (scm_ptr->rev == 2) {
 		scm_ptr->fclock = clk_get(&pdev->dev, "ts_fck");
+		ret = IS_ERR_OR_NULL(scm_ptr->fclock);
+		if (ret) {
+			dev_err(&pdev->dev, "Couldn't get functional clock\n");
+			goto free_tsh;
+		}
+	}
 
 	ret = request_threaded_irq(scm_ptr->irq, NULL,
 					talert_irq_handler,
 					IRQF_TRIGGER_RISING | IRQF_ONESHOT,
 					"TAlert", scm_ptr);
-	if (ret)
-		dev_err(&pdev->dev, "Request threaded irq failed.\n");
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to request IRQ %d\n for TAlert\n",
+				scm_ptr->irq);
+		goto put_clocks;
+	}
 /* Initialize temperature sensors */
-	if ((scm_ptr->rev == 1 && pdata->accurate) || (scm_ptr->rev == 2)) {
+	if ((scm_ptr->accurate) || (scm_ptr->rev == 2)) {
 		ret = omap4460plus_temp_sensor_init(scm_ptr);
-
-		if (ret)
+		if (ret) {
 			dev_err(&pdev->dev, "Temperature sensor init failed\n");
-		if (scm_ptr->rev == 1)
+			goto free_irq;
+		}
+
+		if (scm_ptr->rev == 1) {
+			scm_ptr->gpio_tshut = 86;
+
 			ret = omap4460_tshut_init(scm_ptr);
+			if (ret)
+				goto sensor_deinit;
+
+			ret = request_threaded_irq(gpio_to_irq(scm_ptr->gpio_tshut), NULL,
+						   omap4460_tshut_irq_handler,
+						   IRQF_TRIGGER_RISING, "tshut",
+						   NULL);
+			if (ret) {
+				dev_err(&pdev->dev, "Failed to request IRQ %d for tshut\n",
+						gpio_to_irq(scm_ptr->gpio_tshut));
+				goto tshut_deinit;
+			}
+		}
 
 		for (i = 0; i < scm_ptr->cnt; i++) {
 			scm_ptr->tsh_ptr[i].scm_ptr = scm_ptr;
@@ -220,23 +260,36 @@ static int __devinit omap4plus_scm_probe(struct platform_device *pdev)
 						      i, "temp_sensor_hwmon");
 		}
 
-		if (scm_ptr->rev == 1) {
-			ret = request_threaded_irq(gpio_to_irq(86), NULL,
-						   omap4460_tshut_irq_handler,
-						   IRQF_TRIGGER_RISING, "tshut",
-						   NULL);
-			if (ret) {
-				gpio_free(86);
-				pr_err("request irq failed for TSHUT");
-			}
-		}
 	}
 #endif
 	return 0;
 
-plat_res_err:
-	mutex_destroy(&scm_ptr->scm_mutex);
+#ifdef CONFIG_OMAP4460PLUS_TEMP_SENSOR
+tshut_deinit:
+	omap4460_tshut_deinit(scm_ptr);
 
+sensor_deinit:
+	omap4460plus_temp_sensor_deinit(scm_ptr);
+
+free_irq:
+	free_irq(scm_ptr->irq, scm_ptr);
+
+put_clocks:
+	if (scm_ptr->rev == 1)
+		clk_put(scm_ptr->div_clk);
+put_fclock:
+	clk_put(scm_ptr->fclock);
+
+free_tsh:
+	kfree(scm_ptr->tsh_ptr);
+
+unmap:
+	iounmap(scm_ptr->base);
+#endif
+
+destroy_mutex:
+	mutex_destroy(&scm_ptr->scm_mutex);
+	kfree(scm_ptr);
 	return ret;
 }
 
@@ -244,10 +297,22 @@ static int __devexit omap4plus_scm_remove(struct platform_device *pdev)
 {
 	struct scm *scm_ptr = platform_get_drvdata(pdev);
 
+#ifdef CONFIG_OMAP4460PLUS_TEMP_SENSOR
+	if ((scm_ptr->accurate) || (scm_ptr->rev == 2)) {
+		if (scm_ptr->rev == 1) {
+			free_irq(gpio_to_irq(scm_ptr->gpio_tshut), NULL);
+			omap4460_tshut_deinit(scm_ptr);
+		}
+		omap4460plus_temp_sensor_deinit(scm_ptr);
+	}
+
 	free_irq(scm_ptr->irq, scm_ptr);
 	clk_disable(scm_ptr->fclock);
+	if (scm_ptr->rev == 1)
+		clk_put(scm_ptr->div_clk);
 	clk_put(scm_ptr->fclock);
-	clk_put(scm_ptr->div_clk);
+	kfree(scm_ptr->tsh_ptr);
+#endif
 	iounmap(scm_ptr->base);
 	dev_set_drvdata(&pdev->dev, NULL);
 	mutex_destroy(&scm_ptr->scm_mutex);
@@ -261,12 +326,12 @@ static void omap4plus_scm_save_ctxt(struct scm *scm_ptr)
 {
 	int i;
 
-	if (!scm_ptr)
+	if (!((scm_ptr->accurate) || (scm_ptr->rev == 2)))
 		return;
 
 	for (i = 0; i < scm_ptr->cnt; i++) {
 
-		pr_err("omap4plus_scm_save_ctxt: %d / %d\n", i, scm_ptr->cnt);
+		pr_err("omap4plus_scm_save_ctxt: %d / %d\n", i + 1, scm_ptr->cnt);
 
 		if (!scm_ptr->registers[i])
 			continue;
@@ -331,6 +396,9 @@ static void omap_temp_sensor_force_single_read(struct scm *scm_ptr, int id)
 static void omap4plus_scm_restore_ctxt(struct scm *scm_ptr)
 {
 	int i, temp = 0;
+
+	if (!((scm_ptr->accurate) || (scm_ptr->rev == 2)))
+		return;
 
 	for (i = 0; i < scm_ptr->cnt; i++) {
 		if ((omap4plus_scm_readl(scm_ptr,

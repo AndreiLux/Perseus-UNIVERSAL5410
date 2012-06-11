@@ -792,21 +792,28 @@ static void enable_continuous_mode(struct scm *scm_ptr)
 
 int omap4460_tshut_init(struct scm *scm_ptr)
 {
-	int status, gpio_nr = 86;
+	int status, gpio_nr = scm_ptr->gpio_tshut;
 
-	/* Request for gpio_86 line */
 	status = gpio_request(gpio_nr, "tshut");
 	if (status < 0) {
-		pr_err("Could not request for TSHUT GPIO:%i\n", 86);
+		pr_err("Could not request for TSHUT GPIO:%i\n", gpio_nr);
 		return status;
 	}
+
 	status = gpio_direction_input(gpio_nr);
 	if (status) {
 		pr_err("Cannot set input TSHUT GPIO %d\n", gpio_nr);
+
+		gpio_free(gpio_nr);
 		return status;
 	}
 
 	return 0;
+}
+
+void omap4460_tshut_deinit(struct scm *scm_ptr)
+{
+	gpio_free(scm_ptr->gpio_tshut);
 }
 
 #ifdef CONFIG_THERMAL_FRAMEWORK

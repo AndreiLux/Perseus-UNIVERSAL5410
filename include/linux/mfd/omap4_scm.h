@@ -123,6 +123,7 @@ struct scm_regval {
  * @conv_table: Pointer to adc to temperature conversion table
  * @scm_mutex: Mutex for sysfs, irq and PM
  * @irq: MPU Irq number for thermal alert
+ * @gpio_tshut: GPIO number for tshut
  * @base: Base of the temp I/O
  * @clk_rate: Holds current clock rate
  * @cnt: count of temperature sensor device in scm
@@ -146,6 +147,7 @@ struct scm {
 	int			*conv_table;
 	struct mutex		scm_mutex; /* Mutex for sysfs, irq and PM */
 	unsigned int		irq;
+	unsigned int		gpio_tshut;
 	void __iomem		*base;
 	u32			clk_rate;
 	u32			cnt;
@@ -175,6 +177,7 @@ void temp_sensor_unmask_interrupts(struct scm *scm_ptr, int id, u32 t_hot,
 int omap4460plus_temp_sensor_init(struct scm *scm_ptr);
 void omap4460plus_temp_sensor_deinit(struct scm *scm_ptr);
 int omap4460_tshut_init(struct scm *scm_ptr);
+void omap4460_tshut_deinit(struct scm *scm_ptr);
 int omap4460plus_scm_show_temp_max(struct scm *scm_ptr, int id);
 int omap4460plus_scm_show_temp_max_hyst(struct scm *scm_ptr, int id);
 int omap4460plus_scm_set_temp_max(struct scm *scm_ptr, int id, int val);
