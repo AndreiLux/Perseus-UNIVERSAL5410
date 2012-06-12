@@ -984,18 +984,18 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 		goto err_ioremap;
 	}
 
+	dp->video_info = pdata->video_info;
+	if (pdata->phy_init)
+		pdata->phy_init();
+
+	exynos_dp_init_dp(dp);
+
 	ret = request_irq(dp->irq, exynos_dp_irq_handler, 0,
 			"exynos-dp", dp);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to request irq\n");
 		goto err_ioremap;
 	}
-
-	dp->video_info = pdata->video_info;
-	if (pdata->phy_init)
-		pdata->phy_init();
-
-	exynos_dp_init_dp(dp);
 
 	ret = exynos_dp_detect_hpd(dp);
 	if (ret) {
