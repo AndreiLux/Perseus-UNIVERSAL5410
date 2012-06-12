@@ -26,7 +26,7 @@ void __init exynos_ion_set_platdata(void)
 	pdata = kzalloc(sizeof(struct ion_platform_data)
 			+ 5 * sizeof(struct ion_platform_heap), GFP_KERNEL);
 	if (pdata) {
-		pdata->nr = 5;
+		pdata->nr = 4;
 		pdata->heaps[0].type = ION_HEAP_TYPE_SYSTEM;
 		pdata->heaps[0].name = "ion_noncontig_heap";
 		pdata->heaps[0].id = ION_HEAP_TYPE_SYSTEM;
@@ -39,9 +39,6 @@ void __init exynos_ion_set_platdata(void)
 		pdata->heaps[3].type = ION_HEAP_TYPE_EXYNOS_CONTIG;
 		pdata->heaps[3].name = "exynos_contig_heap";
 		pdata->heaps[3].id = ION_HEAP_TYPE_EXYNOS_CONTIG;
-		pdata->heaps[4].type = ION_HEAP_TYPE_EXYNOS_USER;
-		pdata->heaps[4].name = "exynos_user_heap";
-		pdata->heaps[4].id = ION_HEAP_TYPE_EXYNOS_USER;
 		exynos_device_ion.dev.platform_data = pdata;
 	}
 }
