@@ -533,6 +533,22 @@ static struct exynos_dp_platdata smdk5250_dp_data __initdata = {
 	.phy_exit       = s5p_dp_phy_exit,
 };
 
+#define S5P_PMU_DEBUG				S5P_PMUREG(0x0A00)
+/* PMU_DEBUG bits [12:8] = 0x10000 selects XXTI clock source */
+#define PMU_DEBUG_XXTI				(0x10 << 8)
+/* Mask bit[12:8] for xxti clock selection */
+#define PMU_DEBUG_CLKOUT_SEL_MASK		0x1f00
+
+static void __init enable_xclkout(void)
+{
+       unsigned int tmp;
+
+       tmp = readl(S5P_PMU_DEBUG);
+       tmp &= ~PMU_DEBUG_CLKOUT_SEL_MASK;
+       tmp |= PMU_DEBUG_XXTI;
+       writel(tmp, S5P_PMU_DEBUG);
+}
+
 static int exynos_cfg_i2s_gpio(struct platform_device *pdev)
 {
 	int id;
@@ -807,6 +823,11 @@ static void __init exynos5250_dt_machine_init(void)
 	if (of_machine_is_compatible("samsung,smdk5250")) {
 		i2c_register_board_info(1, i2c_devs1, ARRAY_SIZE(i2c_devs1));
 	}
+
+	/* XCLKOUT needs to be moved over to the clock interface, but enable it
+	 * here for now.
+	 */
+	enable_xclkout();
 
 	spi_register_board_info(spi1_board_info, ARRAY_SIZE(spi1_board_info));
 
