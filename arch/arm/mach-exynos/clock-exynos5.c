@@ -20,10 +20,13 @@
 #include <plat/pll.h>
 #include <plat/s5p-clock.h>
 #include <plat/clock-clksrc.h>
+#include <plat/devs.h>
 #include <plat/pm.h>
+#include <plat/cpu.h>
 
 #include <mach/map.h>
 #include <mach/regs-clock.h>
+#include <mach/regs-audss.h>
 #include <mach/sysmmu.h>
 
 #include "common.h"
@@ -107,6 +110,13 @@ static struct clk exynos5_clk_sclk_usbphy = {
 	.rate		= 48000000,
 };
 
+struct clksrc_clk exynos5_clk_audiocdclk0 = {
+	.clk	= {
+		.name		= "audiocdclk",
+		.rate		= 16934400,
+	},
+};
+
 static int exynos5_clksrc_mask_top_ctrl(struct clk *clk, int enable)
 {
 	return s5p_gatectrl(EXYNOS5_CLKSRC_MASK_TOP, clk, enable);
@@ -165,6 +175,16 @@ static int exynos5_clk_ip_gen_ctrl(struct clk *clk, int enable)
 static int exynos5_clk_ip_gps_ctrl(struct clk *clk, int enable)
 {
 	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_GPS, clk, enable);
+}
+
+static int exynos5_clksrc_mask_maudio_ctrl(struct clk *clk, int enable)
+{
+	return s5p_gatectrl(EXYNOS5_CLKSRC_MASK_MAUDIO, clk, enable);
+}
+
+static int exynos5_clk_audss_ctrl(struct clk *clk, int enable)
+{
+	return s5p_gatectrl(EXYNOS_CLKGATE_AUDSS, clk, enable);
 }
 
 static int exynos5_clk_ip_mfc_ctrl(struct clk *clk, int enable)
@@ -941,6 +961,93 @@ static struct clk exynos5_init_clocks_on[] = {
 	}
 };
 
+static struct clk *clkset_sclk_audio0_list[] = {
+	[0] = &exynos5_clk_audiocdclk0.clk,
+	[1] = &clk_ext_xtal_mux,
+	[2] = &exynos5_clk_sclk_hdmi27m,
+	[3] = &exynos5_clk_sclk_dptxphy,
+	[4] = &exynos5_clk_sclk_usbphy,
+	[5] = &exynos5_clk_sclk_hdmiphy,
+	[6] = &exynos5_clk_mout_mpll.clk,
+	[7] = &exynos5_clk_mout_epll.clk,
+	[8] = &exynos5_clk_sclk_vpll.clk,
+	[9] = &exynos5_clk_mout_cpll.clk,
+};
+
+static struct clksrc_sources exynos5_clkset_sclk_audio0 = {
+	.sources	= clkset_sclk_audio0_list,
+	.nr_sources	= ARRAY_SIZE(clkset_sclk_audio0_list),
+};
+
+static struct clksrc_clk exynos5_clk_sclk_audio0 = {
+	.clk	= {
+		.name		= "audio-bus",
+		.enable		= exynos5_clksrc_mask_maudio_ctrl,
+		.ctrlbit	= (1 << 0),
+	},
+	.sources = &exynos5_clkset_sclk_audio0,
+	.reg_src = { .reg = EXYNOS5_CLKSRC_MAUDIO, .shift = 0, .size = 4 },
+	.reg_div = { .reg = EXYNOS5_CLKDIV_MAUDIO, .shift = 0, .size = 4 },
+};
+
+static struct clk *exynos5_clkset_mout_audss_list[] = {
+	&clk_ext_xtal_mux,
+	&clk_fout_epll,
+};
+
+static struct clksrc_sources clkset_mout_audss = {
+	.sources	= exynos5_clkset_mout_audss_list,
+	.nr_sources	= ARRAY_SIZE(exynos5_clkset_mout_audss_list),
+};
+
+static struct clksrc_clk exynos5_clk_mout_audss = {
+	.clk	= {
+		.name		= "mout_audss",
+	},
+	.sources = &clkset_mout_audss,
+	.reg_src = { .reg = EXYNOS_CLKSRC_AUDSS, .shift = 0, .size = 1 },
+};
+
+static struct clk *exynos5_clkset_sclk_audss_list[] = {
+	&exynos5_clk_mout_audss.clk,
+	&exynos5_clk_audiocdclk0.clk,
+	&exynos5_clk_sclk_audio0.clk,
+};
+
+static struct clksrc_sources exynos5_clkset_sclk_audss = {
+	.sources	= exynos5_clkset_sclk_audss_list,
+	.nr_sources	= ARRAY_SIZE(exynos5_clkset_sclk_audss_list),
+};
+
+static struct clksrc_clk exynos5_clk_sclk_audss_i2s = {
+	.clk		= {
+		.name		= "i2sclk",
+		.enable		= exynos5_clk_audss_ctrl,
+		.ctrlbit	= EXYNOS_AUDSS_CLKGATE_I2SSPECIAL,
+	},
+	.sources = &exynos5_clkset_sclk_audss,
+	.reg_src = { .reg = EXYNOS_CLKSRC_AUDSS, .shift = 2, .size = 2 },
+	.reg_div = { .reg = EXYNOS_CLKDIV_AUDSS, .shift = 8, .size = 4 },
+};
+
+static struct clksrc_clk exynos5_clk_dout_audss_srp = {
+	.clk	= {
+		.name		= "dout_srp",
+		.parent		= &exynos5_clk_mout_audss.clk,
+	},
+	.reg_div = { .reg = EXYNOS_CLKDIV_AUDSS, .shift = 0, .size = 4 },
+};
+
+static struct clksrc_clk exynos5_clk_sclk_audss_bus = {
+	.clk	= {
+		.name		= "busclk",
+		.parent		= &exynos5_clk_dout_audss_srp.clk,
+		.enable		= exynos5_clk_audss_ctrl,
+		.ctrlbit	= EXYNOS_AUDSS_CLKGATE_I2SBUS,
+	},
+	.reg_div = { .reg = EXYNOS_CLKDIV_AUDSS, .shift = 4, .size = 4 },
+};
+
 static struct clk exynos5_clk_pdma0 = {
 	.name		= "dma",
 	.devname	= "dma-pl330.0",
@@ -1384,6 +1491,11 @@ static struct clksrc_clk *exynos5_sysclks[] = {
 	&exynos5_clk_mdout_spi0,
 	&exynos5_clk_mdout_spi1,
 	&exynos5_clk_mdout_spi2,
+	&exynos5_clk_mout_audss,
+	&exynos5_clk_sclk_audss_bus,
+	&exynos5_clk_sclk_audss_i2s,
+	&exynos5_clk_dout_audss_srp,
+	&exynos5_clk_sclk_audio0,
 };
 
 static struct clk *exynos5_clk_cdev[] = {
