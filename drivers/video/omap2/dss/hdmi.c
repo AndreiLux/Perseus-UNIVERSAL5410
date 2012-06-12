@@ -34,6 +34,9 @@
 #include <linux/regulator/consumer.h>
 #include <linux/clk.h>
 #include <video/omapdss.h>
+#if defined(CONFIG_OMAP4_DSS_HDMI_AUDIO) || defined(CONFIG_OMAP4_DSS_HDMI_AUDIO)
+#include <plat/omap_hwmod.h>
+#endif
 
 #include "ti_hdmi.h"
 #include "dss.h"
@@ -63,6 +66,7 @@ static struct {
 	int hdmi_irq;
 
 	struct clk *sys_clk;
+
 
 	struct regulator *vdds_hdmi;
 } hdmi;
@@ -983,6 +987,17 @@ static int __init omapdss_hdmihw_probe(struct platform_device *pdev)
 		iounmap(hdmi.ip_data.base_wp);
 		return r;
 	}
+
+#if defined(CONFIG_OMAP4_DSS_HDMI_AUDIO) || defined(CONFIG_OMAP5_DSS_HDMI_AUDIO)
+	/* obtain HDMI hwmod data */
+	hdmi.ip_data.oh = omap_hwmod_lookup("dss_hdmi");
+	if (!hdmi.ip_data.oh) {
+		DSSERR("can't get HDMI hwmod data\n");
+		hdmi_put_clocks();
+		iounmap(hdmi.ip_data.base_wp);
+		return -ENODEV;
+	}
+#endif
 
 	pm_runtime_enable(&pdev->dev);
 
