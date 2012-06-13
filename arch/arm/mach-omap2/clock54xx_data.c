@@ -2154,6 +2154,7 @@ static struct clk dpll_core_m3x2_opt_ck = {
 	.enable_reg	= OMAP54XX_CM_WKUPAON_SCRM_CLKCTRL,
 	.enable_bit	= OMAP54XX_OPTFCLKEN_SCRM_CORE_SHIFT,
 	.clkdm_name	= "wkupaon_clkdm",
+	.set_rate	= &followparent_set_rate,
 };
 
 static struct clk dpll_per_m3x2_opt_ck = {
@@ -2164,6 +2165,7 @@ static struct clk dpll_per_m3x2_opt_ck = {
 	.enable_reg	= OMAP54XX_CM_WKUPAON_SCRM_CLKCTRL,
 	.enable_bit	= OMAP54XX_OPTFCLKEN_SCRM_PER_SHIFT,
 	.clkdm_name	= "wkupaon_clkdm",
+	.set_rate	= &followparent_set_rate,
 };
 
 /* SCRM aux clk nodes */
