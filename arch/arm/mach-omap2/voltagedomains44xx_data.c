@@ -126,9 +126,9 @@ void __init omap44xx_voltagedomains_init(void)
 
 		omap4_voltdm_core.volt_data = omap443x_vdd_core_volt_data;
 
-		omap4_voltdm_mpu.vp_param = &omap44xx_mpu_vp_data;
-		omap4_voltdm_iva.vp_param = &omap44xx_iva_vp_data;
-		omap4_voltdm_core.vp_param = &omap44xx_core_vp_data;
+		omap4_voltdm_mpu.vp_param = &omap443x_mpu_vp_data;
+		omap4_voltdm_iva.vp_param = &omap443x_iva_vp_data;
+		omap4_voltdm_core.vp_param = &omap443x_core_vp_data;
 
 		omap4_voltdm_mpu.vc_param = &omap44xx_mpu_vc_data;
 		omap4_voltdm_iva.vc_param = &omap44xx_iva_vc_data;
@@ -142,8 +142,8 @@ void __init omap44xx_voltagedomains_init(void)
 
 		omap4_voltdm_core.volt_data = omap446x_vdd_core_volt_data;
 
-		omap4_voltdm_mpu.vp_param = &omap44xx_mpu_vp_data;
-		omap4_voltdm_iva.vp_param = &omap44xx_iva_vp_data;
+		omap4_voltdm_mpu.vp_param = &omap446x_mpu_vp_data;
+		omap4_voltdm_iva.vp_param = &omap446x_iva_vp_data;
 		omap4_voltdm_core.vp_param = &omap446x_core_vp_data;
 
 		omap4_voltdm_mpu.vc_param = &omap44xx_mpu_vc_data;

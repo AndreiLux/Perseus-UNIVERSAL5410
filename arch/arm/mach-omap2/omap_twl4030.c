@@ -278,6 +278,13 @@ int __init omap_twl4030_init(void)
 		/* use SMPS1  for CORE instead of SMPS3 on 4430 */
 		omap_twl_map[1].pmic_data->volt_reg_addr = OMAP4_VDD_MPU_SR_VOLT_REG;
 		omap_twl_map[1].pmic_data->cmd_reg_addr = OMAP4_VDD_MPU_SR_CMD_REG;
+		/* Adjust min / max voltages */
+		omap_twl_map[0].pmic_data->vp_vddmin = OMAP4460_VP_MPU_VLIMITTO_VDDMIN;
+		omap_twl_map[0].pmic_data->vp_vddmax = OMAP4460_VP_MPU_VLIMITTO_VDDMAX;
+		omap_twl_map[1].pmic_data->vp_vddmin = OMAP4460_VP_CORE_VLIMITTO_VDDMIN;
+		omap_twl_map[1].pmic_data->vp_vddmax = OMAP4460_VP_CORE_VLIMITTO_VDDMAX;
+		omap_twl_map[2].pmic_data->vp_vddmin = OMAP4460_VP_IVA_VLIMITTO_VDDMIN;
+		omap_twl_map[2].pmic_data->vp_vddmax = OMAP4460_VP_IVA_VLIMITTO_VDDMAX;
 	}
 
 	if (cpu_is_omap34xx())

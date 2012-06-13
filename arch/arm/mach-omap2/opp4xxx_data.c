@@ -36,12 +36,12 @@
 
 #define OMAP4_ON_VOLTAGE_UV			1375000
 #define OMAP4_ONLP_VOLTAGE_UV			1375000
-#define OMAP4_RET_VOLTAGE_UV			837500
+#define OMAP4_RET_VOLTAGE_UV			750000
 #define OMAP4_OFF_VOLTAGE_UV			0
 
 #define OMAP4460_ON_VOLTAGE_UV			1200000
 #define OMAP4460_ONLP_VOLTAGE_UV		1200000
-#define OMAP4460_RET_VOLTAGE_UV			830000
+#define OMAP4460_RET_VOLTAGE_UV			750000
 #define OMAP4460_OFF_VOLTAGE_UV			0
 
 #define OMAP4430_VDD_MPU_OPP50_UV		1025000
@@ -57,7 +57,7 @@ struct omap_volt_data omap443x_vdd_mpu_volt_data[] = {
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0),
 };
 
-struct omap_vp_param omap44xx_mpu_vp_data = {
+struct omap_vp_param omap443x_mpu_vp_data = {
 	.vddmin			= OMAP4_VP_MPU_VLIMITTO_VDDMIN,
 	.vddmax			= OMAP4_VP_MPU_VLIMITTO_VDDMAX,
 };
@@ -79,7 +79,7 @@ struct omap_volt_data omap443x_vdd_iva_volt_data[] = {
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0),
 };
 
-struct omap_vp_param omap44xx_iva_vp_data = {
+struct omap_vp_param omap443x_iva_vp_data = {
 	.vddmin			= OMAP4_VP_IVA_VLIMITTO_VDDMIN,
 	.vddmax			= OMAP4_VP_IVA_VLIMITTO_VDDMAX,
 };
@@ -99,7 +99,7 @@ struct omap_volt_data omap443x_vdd_core_volt_data[] = {
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0),
 };
 
-struct omap_vp_param omap44xx_core_vp_data = {
+struct omap_vp_param omap443x_core_vp_data = {
 	.vddmin			= OMAP4_VP_CORE_VLIMITTO_VDDMIN,
 	.vddmax			= OMAP4_VP_CORE_VLIMITTO_VDDMAX,
 };
@@ -183,6 +183,11 @@ struct omap_volt_data omap446x_vdd_mpu_volt_data[] = {
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0),
 };
 
+struct omap_vp_param omap446x_mpu_vp_data = {
+	.vddmin			= OMAP4460_VP_MPU_VLIMITTO_VDDMIN,
+	.vddmax			= OMAP4460_VP_MPU_VLIMITTO_VDDMAX,
+};
+
 #define OMAP4460_VDD_IVA_OPP50_UV		 950000
 #define OMAP4460_VDD_IVA_OPP100_UV		1140000
 #define OMAP4460_VDD_IVA_OPPTURBO_UV		1291000
@@ -196,6 +201,11 @@ struct omap_volt_data omap446x_vdd_iva_volt_data[] = {
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0),
 };
 
+struct omap_vp_param omap446x_iva_vp_data = {
+	.vddmin			= OMAP4460_VP_IVA_VLIMITTO_VDDMIN,
+	.vddmax			= OMAP4460_VP_IVA_VLIMITTO_VDDMAX,
+};
+
 #define OMAP4460_VDD_CORE_OPP50_UV		 962000
 #define OMAP4460_VDD_CORE_OPP100_UV		1127000
 #define OMAP4460_VDD_CORE_OPP100_OV_UV		1250000
@@ -206,8 +216,8 @@ struct omap_volt_data omap446x_vdd_core_volt_data[] = {
 };
 
 struct omap_vp_param omap446x_core_vp_data = {
-	.vddmin			= OMAP4_VP_CORE_VLIMITTO_VDDMIN,
-	.vddmax			= OMAP4_VP_CORE_VLIMITTO_VDDMAX,
+	.vddmin			= OMAP4460_VP_CORE_VLIMITTO_VDDMIN,
+	.vddmax			= OMAP4460_VP_CORE_VLIMITTO_VDDMAX,
 };
 
 struct omap_vc_param omap446x_core_vc_data = {
