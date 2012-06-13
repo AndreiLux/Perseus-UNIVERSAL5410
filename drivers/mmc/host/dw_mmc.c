@@ -2400,7 +2400,7 @@ int dw_mci_resume(struct dw_mci *host)
 	if (host->vmmc)
 		regulator_enable(host->vmmc);
 
-	if (host->dma_ops->init)
+	if (host->use_dma && host->dma_ops->init)
 		host->dma_ops->init(host);
 
 	if (!mci_wait_reset(&host->dev, host)) {
