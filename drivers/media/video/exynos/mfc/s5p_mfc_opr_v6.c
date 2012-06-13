@@ -506,12 +506,16 @@ int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 
 		if ((i == 0) && (!ctx->is_drm)) {
 			dpb_vir = vb2_plane_vaddr(&buf->vb, 0);
-			memset(dpb_vir, 0x0, ctx->luma_size);
-			s5p_mfc_cache_inv(&buf->vb, 0);
+			if (dpb_vir) {
+				memset(dpb_vir, 0x0, ctx->luma_size);
+				s5p_mfc_cache_inv(&buf->vb, 0);
+			}
 
 			dpb_vir = vb2_plane_vaddr(&buf->vb, 1);
-			memset(dpb_vir, 0x80, ctx->chroma_size);
-			s5p_mfc_cache_inv(&buf->vb, 1);
+			if (dpb_vir) {
+				memset(dpb_vir, 0x80, ctx->chroma_size);
+				s5p_mfc_cache_inv(&buf->vb, 1);
+			}
 		}
 		i++;
 	}
