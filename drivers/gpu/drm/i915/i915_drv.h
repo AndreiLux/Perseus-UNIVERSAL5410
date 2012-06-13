@@ -401,6 +401,13 @@ typedef struct drm_i915_private {
 	struct drm_display_mode *lfp_lvds_vbt_mode; /* if any */
 	struct drm_display_mode *sdvo_lvds_vbt_mode; /* if any */
 
+	/* Adaptive backlight */
+	bool adaptive_backlight_enabled;
+	int backlight_correction_level;
+	int backlight_correction_count;
+	int backlight_correction_direction;
+	int adaptive_backlight_panel_gamma; /* as 16.16 fixed point */
+
 	/* Feature bits from the VBIOS */
 	unsigned int int_tv_support:1;
 	unsigned int lvds_dither:1;
@@ -783,6 +790,8 @@ typedef struct drm_i915_private {
 
 	struct drm_property *broadcast_rgb_property;
 	struct drm_property *force_audio_property;
+	struct drm_property *adaptive_backlight_property;
+	struct drm_property *panel_gamma_property;
 } drm_i915_private_t;
 
 enum hdmi_force_audio {
@@ -1357,6 +1366,12 @@ extern int i915_restore_state(struct drm_device *dev);
 /* i915_suspend.c */
 extern int i915_save_state(struct drm_device *dev);
 extern int i915_restore_state(struct drm_device *dev);
+
+/* intel_adaptive_backlight.c */
+extern void intel_adaptive_backlight(struct drm_device *dev, int pipe);
+extern void intel_adaptive_backlight_enable(struct drm_i915_private *dev_priv);
+extern void intel_adaptive_backlight_disable(struct drm_i915_private *dev_priv,
+					     struct drm_connector *connector);
 
 /* intel_i2c.c */
 extern int intel_setup_gmbus(struct drm_device *dev);

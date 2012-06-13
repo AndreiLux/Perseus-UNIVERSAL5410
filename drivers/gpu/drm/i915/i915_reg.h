@@ -3590,6 +3590,28 @@
 #define  PWM_PIPE_B		(1 << 29)
 #define BLC_PWM_CPU_CTL		0x48254
 
+#define BLM_HIST_CTL			0x48260
+#define  ENH_HIST_ENABLE		(1<<31)
+#define  ENH_MODIF_TBL_ENABLE		(1<<30)
+#define  ENH_PIPE_A_SELECT		(0<<29)
+#define  ENH_PIPE_B_SELECT		(1<<29)
+#define  ENH_PIPE(pipe) _PIPE(pipe, ENH_PIPE_A_SELECT, ENH_PIPE_B_SELECT)
+#define  HIST_MODE_YUV			(0<<24)
+#define  HIST_MODE_HSV			(1<<24)
+#define  ENH_MODE_DIRECT		(0<<13)
+#define  ENH_MODE_ADDITIVE		(1<<13)
+#define  ENH_MODE_MULTIPLICATIVE	(2<<13)
+#define  BIN_REGISTER_SET		(1<<11)
+#define  ENH_NUM_BINS			32
+
+#define BLM_HIST_ENH			0x48264
+
+#define BLM_HIST_GUARD_BAND		0x48268
+#define  BLM_HIST_INTR_ENABLE		(1<<31)
+#define  BLM_HIST_EVENT_STATUS		(1<<30)
+#define  BLM_HIST_INTR_DELAY_MASK	(0xFF<<22)
+#define  BLM_HIST_INTR_DELAY_SHIFT	22
+
 #define BLC_PWM_PCH_CTL1	0xc8250
 #define  PWM_PCH_ENABLE		(1 << 31)
 #define  PWM_POLARITY_ACTIVE_LOW	(1 << 29)

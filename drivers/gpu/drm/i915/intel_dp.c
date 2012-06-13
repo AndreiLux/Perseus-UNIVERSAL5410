@@ -2258,6 +2258,23 @@ intel_dp_set_property(struct drm_connector *connector,
 		goto done;
 	}
 
+	if (property == dev_priv->adaptive_backlight_property) {
+		dev_priv->adaptive_backlight_enabled = !!val;
+
+		if (dev_priv->adaptive_backlight_enabled)
+			intel_adaptive_backlight_enable(dev_priv);
+		else
+			intel_adaptive_backlight_disable(dev_priv, connector);
+
+		goto done_nomodeset;
+	}
+
+	if (property == dev_priv->panel_gamma_property) {
+		dev_priv->adaptive_backlight_panel_gamma = (u32)val * 65536 / 100;
+
+		goto done_nomodeset;
+	}
+
 	return -EINVAL;
 
 done:
@@ -2267,6 +2284,7 @@ done:
 					 crtc->x, crtc->y,
 					 crtc->fb);
 	}
+done_nomodeset:
 
 	return 0;
 }
@@ -2375,10 +2393,18 @@ bool intel_dpd_is_edp(struct drm_device *dev)
 }
 
 static void
-intel_dp_add_properties(struct intel_dp *intel_dp, struct drm_connector *connector)
+intel_dp_add_properties(struct drm_device *dev,
+			struct intel_dp *intel_dp,
+			struct drm_connector *connector)
 {
 	intel_attach_force_audio_property(connector);
 	intel_attach_broadcast_rgb_property(connector);
+
+	if ((INTEL_INFO(dev)->gen >= 6) &&
+	    (connector->connector_type == DRM_MODE_CONNECTOR_eDP)) {
+		intel_attach_adaptive_backlight_property(connector);
+		intel_attach_panel_gamma_property(connector);
+	}
 }
 
 void
@@ -2549,7 +2575,7 @@ intel_dp_init(struct drm_device *dev, int output_reg)
 		intel_panel_setup_backlight(dev);
 	}
 
-	intel_dp_add_properties(intel_dp, connector);
+	intel_dp_add_properties(dev, intel_dp, connector);
 
 	/* For G4X desktop chip, PEG_BAND_GAP_DATA 3:0 must first be written
 	 * 0xd.  Failure to do so will result in spurious interrupts being
