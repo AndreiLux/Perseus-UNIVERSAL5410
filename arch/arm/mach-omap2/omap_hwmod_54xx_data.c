@@ -3713,6 +3713,11 @@ static struct omap_hwmod_ocp_if *omap54xx_mcbsp1_slaves[] = {
 	&omap54xx_l4_abe__mcbsp1_dma,
 };
 
+static struct omap_hwmod_opt_clk mcbsp1_opt_clks[] = {
+	{ .role = "pad_fck", .clk = "pad_clks" },
+	{ .role = "prcm_fck", .clk = "mcbsp1_sync_mux_ck" },
+};
+
 static struct omap_hwmod omap54xx_mcbsp1_hwmod = {
 	.name		= "mcbsp1",
 	.class		= &omap54xx_mcbsp_hwmod_class,
@@ -3788,6 +3793,11 @@ static struct omap_hwmod_ocp_if *omap54xx_mcbsp2_slaves[] = {
 	&omap54xx_l4_abe__mcbsp2_dma,
 };
 
+static struct omap_hwmod_opt_clk mcbsp2_opt_clks[] = {
+	{ .role = "pad_fck", .clk = "pad_clks" },
+	{ .role = "prcm_fck", .clk = "mcbsp2_sync_mux_ck" },
+};
+
 static struct omap_hwmod omap54xx_mcbsp2_hwmod = {
 	.name		= "mcbsp2",
 	.class		= &omap54xx_mcbsp_hwmod_class,
@@ -3861,6 +3871,11 @@ static struct omap_hwmod_ocp_if omap54xx_l4_abe__mcbsp3_dma = {
 static struct omap_hwmod_ocp_if *omap54xx_mcbsp3_slaves[] = {
 	&omap54xx_l4_abe__mcbsp3,
 	&omap54xx_l4_abe__mcbsp3_dma,
+};
+
+static struct omap_hwmod_opt_clk mcbsp3_opt_clks[] = {
+	{ .role = "pad_fck", .clk = "pad_clks" },
+	{ .role = "prcm_fck", .clk = "mcbsp3_sync_mux_ck" },
 };
 
 static struct omap_hwmod omap54xx_mcbsp3_hwmod = {
