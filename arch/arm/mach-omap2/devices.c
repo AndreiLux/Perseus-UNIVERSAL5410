@@ -895,6 +895,90 @@ int omap_register_mac_device_fixup_paths(const char * const *paths, int count)
 	return register_netdevice_notifier(&omap_panda_netdev_notifier);
 }
 
+static struct omap_device_pm_latency omap_drm_latency[] = {
+	[0] = {
+		.deactivate_func	= omap_device_idle_hwmods,
+		.activate_func		= omap_device_enable_hwmods,
+		.flags			= OMAP_DEVICE_LATENCY_AUTO_ADJUST,
+	},
+};
+
+/**
+ * change_clock_parent - try to change a clock's parent
+ * @dev: device pointer to change parent
+ * @name: string containing the new requested parent's name
+ */
+static int change_clock_parent(struct device *dev, char *name)
+{
+	int ret;
+	struct clk *fclk, *parent;
+
+	fclk = clk_get(dev, "fck");
+	if (IS_ERR_OR_NULL(fclk)) {
+		dev_err(dev, "%s: %d: clk_get() FAILED\n",
+				__func__, __LINE__);
+		return -EINVAL;
+	}
+
+	parent = clk_get(dev, name);
+	if (IS_ERR_OR_NULL(parent)) {
+		dev_err(dev, "%s: %d: clk_get() %s FAILED\n",
+			__func__, __LINE__, name);
+		clk_put(fclk);
+		return -EINVAL;
+	}
+
+	ret = clk_set_parent(fclk, parent);
+	if (IS_ERR_VALUE(ret)) {
+		dev_err(dev, "%s: clk_set_parent() to %s FAILED\n",
+			__func__, name);
+		ret = -EINVAL;
+	}
+
+	clk_put(parent);
+	clk_put(fclk);
+
+	return ret;
+}
+
+static void omap_init_gpu(void)
+{
+	struct omap_hwmod *oh;
+	struct platform_device *od;
+	struct gpu_platform_data *pdata;
+    const char *oh_name = "gpu";
+	char *name = "omapdrm_pvr";
+
+	oh = omap_hwmod_lookup(oh_name);
+	if (!oh) {
+		pr_err("omap_init_gpu: Could not look up %s\n", oh_name);
+		return;
+	}
+
+	pdata = kzalloc(sizeof(struct gpu_platform_data),
+					GFP_KERNEL);
+	if (!pdata) {
+		pr_err("omap_init_gpu: Platform data memory allocation failed\n");
+		return;
+	}
+
+	pdata->device_enable = omap_device_enable;
+	pdata->device_idle = omap_device_idle;
+	pdata->device_shutdown = omap_device_shutdown;
+
+	od = omap_device_build(name, 0, oh, pdata,
+			     sizeof(struct gpu_platform_data),
+			     omap_drm_latency, ARRAY_SIZE(omap_drm_latency), 0);
+	WARN(IS_ERR(od), "Could not build omap_device for %s %s\n",
+	     name, oh_name);
+
+	if (od && cpu_is_omap44xx()) {
+		change_clock_parent(&((*od).dev), "dpll_per_m7x2_ck");
+		pr_info("Updated GPU clock source to be dpll_per_m7x2_ck\n");
+	}
+
+	kfree(pdata);
+}
 
 /*-------------------------------------------------------------------------*/
 
