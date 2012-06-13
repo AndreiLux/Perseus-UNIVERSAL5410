@@ -1497,28 +1497,41 @@ static int _reset(struct omap_hwmod *oh)
 
 /**
  * _omap_update_context_lost - increment hwmod context loss counter if
- * hwmod context was lost, and clear hardware context loss reg
+ * hwmod context was lost
  * @oh: hwmod to check for context loss
  *
  * If the PRCM indicates that the hwmod @oh lost context, increment
- * our in-memory context loss counter, and clear the RM_*_CONTEXT
- * bits. No return value.
+ * our in-memory context loss counter. No return value.
  */
 static void _omap_update_context_lost(struct omap_hwmod *oh)
 {
 	if (oh->prcm.omap4.context_offs) {
-		u32 r;
+		if (omap4_prminst_read_inst_reg(
+			oh->clkdm->pwrdm.ptr->prcm_partition,
+			oh->clkdm->pwrdm.ptr->prcm_offs,
+			oh->prcm.omap4.context_offs))
+				oh->prcm.omap4.context_lost_counter++;
+	}
+}
 
-		r = omap4_prminst_read_inst_reg(oh->clkdm->pwrdm.ptr->prcm_partition,
+/**
+ * _omap_clear_context_lost - clear the hardware context loss register
+ *
+ * @oh: hwmod to clear context loss register
+ *
+ * No return value
+ */
+static void _omap_clear_context_lost(struct omap_hwmod *oh)
+{
+	if (oh->prcm.omap4.context_offs) {
+		u32 context_reg;
+
+		context_reg = omap4_prminst_read_inst_reg(
+				oh->clkdm->pwrdm.ptr->prcm_partition,
 				oh->clkdm->pwrdm.ptr->prcm_offs,
 				oh->prcm.omap4.context_offs);
-
-		if (!r)
-			return;
-
-		oh->prcm.omap4.context_lost_counter++;
-
-		omap4_prminst_write_inst_reg(r, oh->clkdm->pwrdm.ptr->prcm_partition,
+		omap4_prminst_write_inst_reg(context_reg,
+				oh->clkdm->pwrdm.ptr->prcm_partition,
 				oh->clkdm->pwrdm.ptr->prcm_offs,
 				oh->prcm.omap4.context_offs);
 	}
@@ -1661,6 +1674,7 @@ static int _idle(struct omap_hwmod *oh)
 	if (oh->class->sysc)
 		_idle_sysc(oh);
 	_del_initiator_dep(oh, mpu_oh);
+	_omap_clear_context_lost(oh);
 	_omap4_disable_module(oh);
 
 	/*
