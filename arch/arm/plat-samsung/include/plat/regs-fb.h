@@ -311,6 +311,10 @@
 #define VIDW_BUF_SIZE_PAGEWIDTH_LIMIT		(0x1fff)
 #define VIDW_BUF_SIZE_PAGEWIDTH(_x)		(((_x) & 0x1fff) << 0)
 
+#define SHD_VIDW_BUF_START(_buff)		(0x40A0 + ((_buff) * 8))
+#define SHD_VIDW_BUF_END(_buff)			(0x40D0 + ((_buff) * 8))
+#define SHD_VIDW_BUF_SIZE(_buff)		(0x4100 + ((_buff) * 8))
+
 /* Interrupt controls and status */
 
 #define VIDINTCON0_FIFOINTERVAL_MASK		(0x3f << 20)

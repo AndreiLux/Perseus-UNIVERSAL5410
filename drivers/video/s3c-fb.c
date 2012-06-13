@@ -1719,6 +1719,7 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 {
 	struct s3c_dma_buf_data old_dma_bufs[S3C_FB_MAX_WIN];
 	unsigned short i;
+	bool wait_for_vsync;
 
 	for (i = 0; i < sfb->variant.nr_windows; i++)
 		shadow_protect_win(sfb->windows[i], 1);
@@ -1735,14 +1736,12 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 		if (sfb->windows[i]->variant.has_osd_d)
 			writel(regs->vidosd_d[i],
 					sfb->regs + VIDOSD_D(i, sfb->variant));
-		if (regs->vidw_buf_start[i]) {
-			writel(regs->vidw_buf_start[i],
-					sfb->regs + VIDW_BUF_START(i));
-			writel(regs->vidw_buf_end[i],
-					sfb->regs + VIDW_BUF_END(i));
-			writel(regs->vidw_buf_size[i],
-					sfb->regs + VIDW_BUF_SIZE(i));
-		}
+		writel(regs->vidw_buf_start[i],
+				sfb->regs + VIDW_BUF_START(i));
+		writel(regs->vidw_buf_end[i],
+				sfb->regs + VIDW_BUF_END(i));
+		writel(regs->vidw_buf_size[i],
+				sfb->regs + VIDW_BUF_SIZE(i));
 
 		old_dma_bufs[i] = sfb->windows[i]->dma_buf_data;
 		sfb->windows[i]->dma_buf_data = regs->dma_buf_data[i];
@@ -1756,7 +1755,21 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 
 	for (i = 0; i < sfb->variant.nr_windows; i++)
 		shadow_protect_win(sfb->windows[i], 0);
-	s3c_fb_wait_for_vsync(sfb, 0);
+
+	do {
+		s3c_fb_wait_for_vsync(sfb, 0);
+		wait_for_vsync = false;
+
+		for (i = 0; i < sfb->variant.nr_windows; i++) {
+			u32 new_start = regs->vidw_buf_start[i];
+			u32 shadow_start = readl(sfb->regs +
+					SHD_VIDW_BUF_START(i));
+			if (unlikely(new_start != shadow_start)) {
+				wait_for_vsync = true;
+				break;
+			}
+		}
+	} while (wait_for_vsync);
 
 	sw_sync_timeline_inc(sfb->timeline, 1);
 
