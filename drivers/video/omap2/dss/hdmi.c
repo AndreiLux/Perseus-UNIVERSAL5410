@@ -518,7 +518,7 @@ int omapdss_hdmi_display_check_timing(struct omap_dss_device *dssdev,
 	struct hdmi_cm cm;
 
 	cm = hdmi_get_code(timings);
-	if (cm.code == -1 && (timings->pixel_clock >
+	if (cm.code == -1 || (timings->pixel_clock >
 		dss_feat_get_param_max(FEAT_PARAM_HDMI_MAXPCLK))) {
 			return -EINVAL;
 	}
