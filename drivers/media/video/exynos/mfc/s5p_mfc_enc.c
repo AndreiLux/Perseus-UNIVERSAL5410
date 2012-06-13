@@ -1962,7 +1962,8 @@ static int vidioc_reqbufs(struct file *file, void *priv,
 
 	/* if memory is not mmp or userptr return error */
 	if ((reqbufs->memory != V4L2_MEMORY_MMAP) &&
-		(reqbufs->memory != V4L2_MEMORY_USERPTR))
+		(reqbufs->memory != V4L2_MEMORY_USERPTR) &&
+		(reqbufs->memory != V4L2_MEMORY_DMABUF))
 		return -EINVAL;
 
 	if (reqbufs->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
@@ -2049,7 +2050,8 @@ static int vidioc_querybuf(struct file *file, void *priv,
 
 	/* if memory is not mmp or userptr return error */
 	if ((buf->memory != V4L2_MEMORY_MMAP) &&
-		(buf->memory != V4L2_MEMORY_USERPTR))
+		(buf->memory != V4L2_MEMORY_USERPTR) &&
+		(buf->memory != V4L2_MEMORY_DMABUF))
 		return -EINVAL;
 
 	mfc_debug(2, "state: %d, buf->type: %d\n", ctx->state, buf->type);
@@ -3245,7 +3247,7 @@ int s5p_mfc_init_enc_ctx(struct s5p_mfc_ctx *ctx)
 	ctx->vq_src.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
 	ctx->vq_src.drv_priv = ctx;
 	ctx->vq_src.buf_struct_size = sizeof(struct s5p_mfc_buf);
-	ctx->vq_src.io_modes = VB2_MMAP | VB2_USERPTR;
+	ctx->vq_src.io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	ctx->vq_src.ops = &s5p_mfc_enc_qops;
 	ctx->vq_src.mem_ops = s5p_mfc_mem_ops();
 	ret = vb2_queue_init(&ctx->vq_src);
@@ -3258,7 +3260,7 @@ int s5p_mfc_init_enc_ctx(struct s5p_mfc_ctx *ctx)
 	ctx->vq_dst.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	ctx->vq_dst.drv_priv = ctx;
 	ctx->vq_dst.buf_struct_size = sizeof(struct s5p_mfc_buf);
-	ctx->vq_dst.io_modes = VB2_MMAP | VB2_USERPTR;
+	ctx->vq_dst.io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	ctx->vq_dst.ops = &s5p_mfc_enc_qops;
 	ctx->vq_dst.mem_ops = s5p_mfc_mem_ops();
 	ret = vb2_queue_init(&ctx->vq_dst);
