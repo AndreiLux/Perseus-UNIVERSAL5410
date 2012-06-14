@@ -439,6 +439,14 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 	OF_DEV_AUXDATA("samsung,exynos5-mipi", 0x14500000,
 				"s5p-mipi-dsim", &dsim_platform_data),
 	OF_DEV_AUXDATA("samsung,s5p-mfc-v6", 0x11000000, "s5p-mfc-v6", NULL),
+	OF_DEV_AUXDATA("samsung,exynos-gsc", 0x13E00000,
+				"exynos-gsc.0", NULL),
+	OF_DEV_AUXDATA("samsung,exynos-gsc", 0x13E10000,
+				"exynos-gsc.1", NULL),
+	OF_DEV_AUXDATA("samsung,exynos-gsc", 0x13E20000,
+				"exynos-gsc.2", NULL),
+	OF_DEV_AUXDATA("samsung,exynos-gsc", 0x13E30000,
+				"exynos-gsc.3", NULL),
 	{},
 };
 

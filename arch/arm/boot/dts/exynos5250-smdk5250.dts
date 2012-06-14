@@ -34,6 +34,10 @@
 		sysmmu24 = &sysmmu_24;
 		sysmmu25 = &sysmmu_25;
 		sysmmu26 = &sysmmu_26;
+		gsc0 = &gsc_0;
+		gsc1 = &gsc_1;
+		gsc2 = &gsc_2;
+		gsc3 = &gsc_3;
 	};
 
 	lan9215@0x05000000 {
