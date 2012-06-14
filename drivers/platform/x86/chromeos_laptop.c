@@ -1,7 +1,8 @@
 /*
- *  chromeos_laptop.c - Driver to instantiate Chromebook platform devices.
+ *  chromeos_laptop.c - Driver to instantiate Chromebook i2c/smbus and platform
+ *                      devices.
  *
- *  Copyright (C) 2012 The Chromium OS Authors
+ *  Copyright (C) 2012 Google, Inc.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -511,6 +512,6 @@ static void __exit chromeos_laptop_exit(void)
 module_init(chromeos_laptop_init);
 module_exit(chromeos_laptop_exit);
 
-MODULE_DESCRIPTION("Chrome OS Laptop");
-MODULE_AUTHOR("bleung@chromium.org");
+MODULE_DESCRIPTION("Chrome OS Laptop driver");
+MODULE_AUTHOR("Benson Leung <bleung@chromium.org>");
 MODULE_LICENSE("GPL");
