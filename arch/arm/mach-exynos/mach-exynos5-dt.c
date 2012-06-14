@@ -145,6 +145,25 @@ static void exynos_fimd_gpio_setup_24bpp(void)
 	__raw_writel(reg, S3C_VA_SYS + 0x0214);
 }
 
+#ifdef CONFIG_DRM_EXYNOS_FIMD
+static struct exynos_drm_fimd_pdata smdk5250_lcd1_pdata = {
+	.panel.timing   = {
+		.xres           = 1280,
+		.yres           = 800,
+		.hsync_len      = 4,
+		.left_margin    = 0x4,
+		.right_margin   = 0x4,
+		.vsync_len      = 4,
+		.upper_margin   = 4,
+		.lower_margin   = 4,
+		.refresh        = 60,
+	},
+	.vidcon0        = VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB,
+	.vidcon1        = VIDCON1_INV_VCLK,
+	.default_win    = 0,
+	.bpp            = 32,
+};
+#else
 static struct s3c_fb_platdata smdk5250_lcd1_pdata __initdata = {
 	.win[0]		= &smdk5250_fb_win0,
 	.win[1]		= &smdk5250_fb_win1,
@@ -154,6 +173,7 @@ static struct s3c_fb_platdata smdk5250_lcd1_pdata __initdata = {
 	.vidcon1	= VIDCON1_INV_VCLK,
 	.setup_gpio	= exynos_fimd_gpio_setup_24bpp,
 };
+#endif
 
 static struct mipi_dsim_config dsim_info = {
 	.e_interface		= DSIM_VIDEO,
@@ -607,6 +627,9 @@ static void __init exynos5250_dt_machine_init(void)
 	of_platform_populate(NULL, of_default_bus_match_table,
 				exynos5250_auxdata_lookup, NULL);
 
+#ifdef CONFIG_DRM_EXYNOS_FIMD
+	exynos_fimd_gpio_setup_24bpp();
+#endif
 	s5p_tv_setup();
 
 	platform_add_devices(smdk5250_devices, ARRAY_SIZE(smdk5250_devices));
