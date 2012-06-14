@@ -1860,6 +1860,10 @@ static void __init smdk5250_machine_init(void)
 #endif
 #endif
 
+	exynos_spi_clock_setup(&s3c64xx_device_spi0.dev, 0);
+	exynos_spi_clock_setup(&s3c64xx_device_spi1.dev, 1);
+	exynos_spi_clock_setup(&s3c64xx_device_spi2.dev, 2);
+
 	if (!exynos_spi_cfg_cs(spi0_csi[0].line, 0)) {
 		s3c64xx_spi0_set_platdata(&s3c64xx_spi0_pdata,
 				EXYNOS_SPI_SRCCLK_SCLK, ARRAY_SIZE(spi0_csi));
