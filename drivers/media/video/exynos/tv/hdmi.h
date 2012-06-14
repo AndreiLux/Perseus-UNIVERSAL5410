@@ -22,6 +22,7 @@
 #include <linux/clk.h>
 #include <linux/interrupt.h>
 #include <linux/regulator/consumer.h>
+#include <linux/switch.h>
 
 #include <media/v4l2-subdev.h>
 #include <media/v4l2-device.h>
@@ -255,7 +256,6 @@ struct hdmi_device {
 	/** HDMI interrupt */
 	unsigned int int_irq;
 	unsigned int ext_irq;
-	unsigned int curr_irq;
 
 	/** pointer to device parent */
 	struct device *dev;
@@ -291,14 +291,12 @@ struct hdmi_device {
 	/** HDCP information */
 	struct hdcp_info hdcp_info;
 	struct work_struct work;
-	struct work_struct hpd_work;
 	struct workqueue_struct	*hdcp_wq;
-	struct workqueue_struct *hpd_wq;
 
 	/* HPD releated */
-	bool hpd_user_checked;
-	atomic_t hpd_state;
-	spinlock_t hpd_lock;
+	struct work_struct hpd_work;
+	struct work_struct hpd_work_ext;
+	struct switch_dev hpd_switch;
 
 	/* choose DVI or HDMI mode */
 	int dvi_mode;

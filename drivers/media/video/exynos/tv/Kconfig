@@ -26,6 +26,7 @@ config VIDEO_EXYNOS_HDMI
 	tristate "Samsung HDMI Driver"
 	depends on VIDEO_V4L2
 	depends on VIDEO_EXYNOS_TV
+	depends on SWITCH
 	select VIDEO_EXYNOS_HDMIPHY
 	help
 	  Say Y here if you want support for the HDMI output
