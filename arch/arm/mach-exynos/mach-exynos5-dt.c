@@ -24,6 +24,7 @@
 #include <mach/map.h>
 #include <mach/ohci.h>
 #include <mach/regs-pmu.h>
+#include <mach/sysmmu.h>
 
 #include <plat/cpu.h>
 #include <plat/regs-serial.h>
@@ -194,6 +195,36 @@ static struct i2c_board_info i2c_devs1[] __initdata = {
 	},
 };
 
+struct sysmmu_platform_data platdata_sysmmu_mfc_l = {
+	.dbgname = "mfc_l",
+	.clockname = "sysmmu",
+};
+
+struct sysmmu_platform_data platdata_sysmmu_mfc_r = {
+	.dbgname = "mfc_r",
+	.clockname = "sysmmu",
+};
+
+struct sysmmu_platform_data platdata_sysmmu_gsc = {
+	.dbgname = "gsc",
+	.clockname = "sysmmu",
+};
+
+struct sysmmu_platform_data platdata_sysmmu_g2d = {
+	.dbgname = "g2d",
+	.clockname = "sysmmu",
+};
+
+struct sysmmu_platform_data platdata_sysmmu_fimd = {
+	.dbgname = "fimd",
+	.clockname = "sysmmu",
+};
+
+struct sysmmu_platform_data platdata_sysmmu_tv = {
+	.dbgname = "tv",
+	.clockname = "sysmmu",
+};
+
 /*
  * The following lookup table is used to override device names when devices
  * are registered from device tree. This is temporarily added to enable
@@ -231,6 +262,24 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 	OF_DEV_AUXDATA("arm,pl330", EXYNOS5_PA_PDMA0, "dma-pl330.0", NULL),
 	OF_DEV_AUXDATA("arm,pl330", EXYNOS5_PA_PDMA1, "dma-pl330.1", NULL),
 	OF_DEV_AUXDATA("arm,pl330", EXYNOS5_PA_MDMA1, "dma-pl330.2", NULL),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x10A60000,
+				"s5p-sysmmu.2", &platdata_sysmmu_g2d),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x11210000,
+				"s5p-sysmmu.3", &platdata_sysmmu_mfc_l),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x11200000,
+				"s5p-sysmmu.4", &platdata_sysmmu_mfc_r),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x14640000,
+				"s5p-sysmmu.27", &platdata_sysmmu_fimd),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x14650000,
+				"s5p-sysmmu.28", &platdata_sysmmu_tv),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x13E80000,
+				"s5p-sysmmu.23", &platdata_sysmmu_gsc),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x13E90000,
+				"s5p-sysmmu.24", &platdata_sysmmu_gsc),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x13EA0000,
+				"s5p-sysmmu.25", &platdata_sysmmu_gsc),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x13EB0000,
+				"s5p-sysmmu.26", &platdata_sysmmu_gsc),
 	{},
 };
 

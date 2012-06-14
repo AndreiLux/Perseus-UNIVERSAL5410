@@ -24,6 +24,18 @@
 		bootargs = "root=/dev/ram0 rw ramdisk=8192 initrd=0x41000000,8M console=ttySAC3,115200 init=/linuxrc";
 	};
 
+	aliases {
+		sysmmu2 = &sysmmu_2;
+		sysmmu3 = &sysmmu_3;
+		sysmmu4 = &sysmmu_4;
+		sysmmu27 = &sysmmu_27;
+		sysmmu28 = &sysmmu_28;
+		sysmmu23 = &sysmmu_23;
+		sysmmu24 = &sysmmu_24;
+		sysmmu25 = &sysmmu_25;
+		sysmmu26 = &sysmmu_26;
+	};
+
 	lan9215@0x05000000 {
 		compatible = "smsc,lan9215", "smsc,lan9115";
 		reg = <0x05000000 0x20000>;
