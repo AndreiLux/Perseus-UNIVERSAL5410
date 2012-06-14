@@ -212,6 +212,7 @@ static struct v4l2_ioctl_info v4l2_ioctls[] = {
 	IOCTL_INFO(VIDIOC_S_FBUF, INFO_FL_PRIO),
 	IOCTL_INFO(VIDIOC_OVERLAY, INFO_FL_PRIO),
 	IOCTL_INFO(VIDIOC_QBUF, 0),
+	IOCTL_INFO(VIDIOC_EXPBUF, 0),
 	IOCTL_INFO(VIDIOC_DQBUF, 0),
 	IOCTL_INFO(VIDIOC_STREAMON, INFO_FL_PRIO),
 	IOCTL_INFO(VIDIOC_STREAMOFF, INFO_FL_PRIO),
@@ -924,6 +925,11 @@ static long __video_do_ioctl(struct file *file,
 		ret = ops->vidioc_qbuf(file, fh, p);
 		if (!ret)
 			dbgbuf(cmd, vfd, p);
+		break;
+	}
+	case VIDIOC_EXPBUF:
+	{
+		ret = ops->vidioc_expbuf(file, fh, arg);
 		break;
 	}
 	case VIDIOC_DQBUF:
