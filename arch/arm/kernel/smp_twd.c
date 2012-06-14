@@ -313,6 +313,7 @@ const static struct of_device_id twd_of_match[] __initconst = {
 	{ .compatible = "arm,cortex-a9-twd-timer",	},
 	{ .compatible = "arm,cortex-a5-twd-timer",	},
 	{ .compatible = "arm,arm11mp-twd-timer",	},
+	{ .compatible = "arm,smp-twd",	},
 	{ },
 };
 
