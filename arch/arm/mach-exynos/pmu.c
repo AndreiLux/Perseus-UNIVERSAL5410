@@ -416,6 +416,14 @@ static int __init exynos_pmu_init(void)
 		pr_info("EXYNOS4212 PMU Initialize\n");
 	} else if (soc_is_exynos5250()) {
 		/*
+		 * Set logic reset duration
+		 */
+		value = __raw_readl(EXYNOS5_LOGIC_RESET_DURATION3);
+		value &= ~EXYNOS5_DUR_WAIT_RESET_MASK;
+		value |= EXYNOS5_DUR_WAIT_RESET_MIN;
+		__raw_writel(value, EXYNOS5_LOGIC_RESET_DURATION3);
+
+		/*
 		 * When SYS_WDTRESET is set, watchdog timer reset request
 		 * is ignored by power management unit.
 		 */
