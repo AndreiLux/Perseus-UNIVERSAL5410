@@ -577,4 +577,10 @@
 		reg = <0x13e30000 0x1000>;
 		interrupts = <0 88 0>;
 	};
+
+	g2d {
+		compatible = "samsung,s5p-g2d";
+		reg = <0x10850000 0x400>;
+		interrupts = <0 91 0>;
+	};
 };

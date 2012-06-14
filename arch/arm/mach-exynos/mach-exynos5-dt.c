@@ -379,6 +379,13 @@ struct sysmmu_platform_data platdata_sysmmu_tv = {
 	.clockname = "sysmmu",
 };
 
+#ifdef CONFIG_VIDEO_FIMG2D4X
+static struct fimg2d_platdata fimg2d_data __initdata = {
+	.hw_ver		= 0x42,
+	.gate_clkname	= "fimg2d",
+};
+#endif
+
 /*
  * The following lookup table is used to override device names when devices
  * are registered from device tree. This is temporarily added to enable
@@ -447,6 +454,10 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 				"exynos-gsc.2", NULL),
 	OF_DEV_AUXDATA("samsung,exynos-gsc", 0x13E30000,
 				"exynos-gsc.3", NULL),
+#ifdef CONFIG_VIDEO_FIMG2D4X
+	OF_DEV_AUXDATA("samsung,s5p-g2d", 0x10850000,
+				"s5p-g2d", &fimg2d_data),
+#endif
 	{},
 };
 
