@@ -25,6 +25,7 @@
 #include <mach/ohci.h>
 #include <mach/regs-pmu.h>
 #include <mach/sysmmu.h>
+#include <mach/ohci.h>
 
 #include <plat/cpu.h>
 #include <plat/dsim.h>
@@ -386,6 +387,11 @@ static struct fimg2d_platdata fimg2d_data __initdata = {
 };
 #endif
 
+static struct exynos4_ohci_platdata smdk5250_ohci_pdata = {
+	.phy_init = s5p_usb_phy_init,
+	.phy_exit = s5p_usb_phy_exit,
+};
+
 /*
  * The following lookup table is used to override device names when devices
  * are registered from device tree. This is temporarily added to enable
@@ -458,6 +464,8 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 	OF_DEV_AUXDATA("samsung,s5p-g2d", 0x10850000,
 				"s5p-g2d", &fimg2d_data),
 #endif
+	OF_DEV_AUXDATA("samsung,exynos-ohci", 0x12120000,
+				"exynos-ohci", &smdk5250_ohci_pdata),
 	{},
 };
 
