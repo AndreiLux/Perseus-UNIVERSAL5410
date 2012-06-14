@@ -541,4 +541,10 @@
 		reg = <0x14400000 0x40000>;
 		interrupts = <18 4>, <18 5>, <18 6>;
 	};
+
+	mipi {
+		compatible = "samsung,exynos5-mipi";
+		reg = <0x14500000 0x10000>;
+		interrupts = <0 82 0>;
+	};
 };

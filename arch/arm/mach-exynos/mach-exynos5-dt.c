@@ -27,7 +27,9 @@
 #include <mach/sysmmu.h>
 
 #include <plat/cpu.h>
+#include <plat/dsim.h>
 #include <plat/fb.h>
+#include <plat/mipi_dsi.h>
 #include <plat/gpio-cfg.h>
 #include <plat/regs-fb.h>
 #include <plat/regs-serial.h>
@@ -146,6 +148,71 @@ static struct s3c_fb_platdata smdk5250_lcd1_pdata __initdata = {
 	.vidcon0	= VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB,
 	.vidcon1	= VIDCON1_INV_VCLK,
 	.setup_gpio	= exynos_fimd_gpio_setup_24bpp,
+};
+
+static struct mipi_dsim_config dsim_info = {
+	.e_interface		= DSIM_VIDEO,
+	.e_pixel_format		= DSIM_24BPP_888,
+	/* main frame fifo auto flush at VSYNC pulse */
+	.auto_flush		= false,
+	.eot_disable		= false,
+	.auto_vertical_cnt	= false,
+	.hse			= false,
+	.hfp			= false,
+	.hbp			= false,
+	.hsa			= false,
+
+	.e_no_data_lane		= DSIM_DATA_LANE_4,
+	.e_byte_clk		= DSIM_PLL_OUT_DIV8,
+	.e_burst_mode		= DSIM_BURST,
+
+	.p			= 3,
+	.m			= 115,
+	.s			= 1,
+
+	/* D-PHY PLL stable time spec :min = 200usec ~ max 400usec */
+	.pll_stable_time	= 500,
+
+	.esc_clk		= 0.4 * 1000000, /* escape clk : 10MHz */
+
+	/* stop state holding counter after bta change count 0 ~ 0xfff */
+	.stop_holding_cnt	= 0x0f,
+	.bta_timeout		= 0xff,		/* bta timeout 0 ~ 0xff */
+	.rx_timeout		= 0xffff,	/* lp rx timeout 0 ~ 0xffff */
+
+	.dsim_ddi_pd = &tc358764_mipi_lcd_driver,
+};
+
+static struct mipi_dsim_lcd_config dsim_lcd_info = {
+	.rgb_timing.left_margin		= 0x4,
+	.rgb_timing.right_margin	= 0x4,
+	.rgb_timing.upper_margin	= 0x4,
+	.rgb_timing.lower_margin	=  0x4,
+	.rgb_timing.hsync_len		= 0x4,
+	.rgb_timing.vsync_len		= 0x4,
+	.cpu_timing.cs_setup		= 0,
+	.cpu_timing.wr_setup		= 1,
+	.cpu_timing.wr_act		= 0,
+	.cpu_timing.wr_hold		= 0,
+	.lcd_size.width			= 1280,
+	.lcd_size.height		= 800,
+};
+
+static struct s5p_platform_mipi_dsim dsim_platform_data = {
+	.clk_name		= "dsim0",
+	.dsim_config		= &dsim_info,
+	.dsim_lcd_config	= &dsim_lcd_info,
+
+	.part_reset		= s5p_dsim_part_reset,
+	.init_d_phy		= s5p_dsim_init_d_phy,
+	.get_fb_frame_done	= NULL,
+	.trigger		= NULL,
+
+	/*
+	 * the stable time of needing to write data on SFR
+	 * when the mipi mode becomes LP mode.
+	 */
+	.delay_for_stabilization = 600,
 };
 
 static struct platform_device exynos_drm_device = {
@@ -369,6 +436,8 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 				"s5p-sysmmu.26", &platdata_sysmmu_gsc),
 	OF_DEV_AUXDATA("samsung,exynos5-fb", 0x14400000,
 				"exynos5-fb", &smdk5250_lcd1_pdata),
+	OF_DEV_AUXDATA("samsung,exynos5-mipi", 0x14500000,
+				"s5p-mipi-dsim", &dsim_platform_data),
 	{},
 };
 
