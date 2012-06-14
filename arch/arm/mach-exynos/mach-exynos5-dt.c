@@ -42,6 +42,7 @@
 #include <plat/devs.h>
 #include <plat/usb-phy.h>
 #include <plat/ehci.h>
+#include <plat/dp.h>
 
 #include <video/platform_lcd.h>
 
@@ -128,6 +129,17 @@ static struct s3c_fb_pd_win smdk5250_fb_win2 = {
 	.default_bpp		= 24,
 };
 
+static struct fb_videomode snow_fb_window = {
+	.left_margin    = 0x80,
+	.right_margin   = 0x48,
+	.upper_margin   = 14,
+	.lower_margin   = 3,
+	.hsync_len      = 5,
+	.vsync_len      = 32,
+	.xres           = 1366,
+	.yres           = 768,
+};
+
 static void exynos_fimd_gpio_setup_24bpp(void)
 {
 	unsigned int reg = 0;
@@ -143,6 +155,15 @@ static void exynos_fimd_gpio_setup_24bpp(void)
 	reg &= ~(1 << 15);	/* To save other reset values */
 	reg |= (1 << 15);
 	__raw_writel(reg, S3C_VA_SYS + 0x0214);
+}
+
+static void exynos_dp_gpio_setup_24bpp(void)
+{
+	exynos_fimd_gpio_setup_24bpp();
+
+	/* Set Hotplug detect for DP */
+	gpio_request(EXYNOS5_GPX0(7), "DP hotplug");
+	s3c_gpio_cfgpin(EXYNOS5_GPX0(7), S3C_GPIO_SFN(3));
 }
 
 #ifdef CONFIG_DRM_EXYNOS_FIMD
@@ -162,6 +183,7 @@ static struct exynos_drm_fimd_pdata smdk5250_lcd1_pdata = {
 	.vidcon1        = VIDCON1_INV_VCLK,
 	.default_win    = 0,
 	.bpp            = 32,
+	.clock_rate     = 800 * 1000 * 1000,
 };
 #else
 static struct s3c_fb_platdata smdk5250_lcd1_pdata __initdata = {
@@ -438,6 +460,29 @@ static const char *rclksrc[] = {
 	[1] = "i2sclk",
 };
 
+static struct video_info smdk5250_dp_config = {
+	.name                   = "eDP-LVDS NXP PTN3460",
+
+	.h_sync_polarity        = 0,
+	.v_sync_polarity        = 0,
+	.interlaced             = 0,
+
+	.color_space            = COLOR_RGB,
+	.dynamic_range          = VESA,
+	.ycbcr_coeff            = COLOR_YCBCR601,
+	.color_depth            = COLOR_8,
+
+	.link_rate              = LINK_RATE_2_70GBPS,
+	.lane_count             = LANE_COUNT2,
+};
+
+static struct exynos_dp_platdata smdk5250_dp_data __initdata = {
+	.video_info     = &smdk5250_dp_config,
+	.training_type  = HW_LINK_TRAINING,
+	.phy_init       = s5p_dp_phy_init,
+	.phy_exit       = s5p_dp_phy_exit,
+};
+
 static int exynos_cfg_i2s_gpio(struct platform_device *pdev)
 {
 	int id;
@@ -547,6 +592,8 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 				"exynos5-fb", &smdk5250_lcd1_pdata),
 	OF_DEV_AUXDATA("samsung,exynos5-mipi", 0x14500000,
 				"s5p-mipi-dsim", &dsim_platform_data),
+	OF_DEV_AUXDATA("samsung,exynos5-dp", 0x145B0000,
+				"s5p-dp", &smdk5250_dp_data),
 	OF_DEV_AUXDATA("samsung,s5p-mfc-v6", 0x11000000, "s5p-mfc-v6", NULL),
 	OF_DEV_AUXDATA("samsung,exynos-gsc", 0x13E00000,
 				"exynos-gsc.0", NULL),
