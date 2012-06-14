@@ -695,6 +695,7 @@ static void __dw_mci_start_request(struct dw_mci *host,
 	struct mmc_data	*data;
 	u32 cmdflags;
 
+	host->prv_err = false;
 	mrq = slot->mrq;
 	if (host->pdata->select_slot)
 		host->pdata->select_slot(slot->id);
@@ -767,8 +768,30 @@ static void dw_mci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 {
 	struct dw_mci_slot *slot = mmc_priv(mmc);
 	struct dw_mci *host = slot->host;
+	int timeout = 100000; /* ~ 1 - 2 sec */
+	u32 status;
 
 	WARN_ON(slot->mrq);
+
+	do {
+		if (mrq->cmd->opcode == MMC_STOP_TRANSMISSION)
+			break;
+
+		status = mci_readl(host, STATUS);
+		if (!(status & BIT(9)))
+			break;
+
+		if (!timeout--) {
+			printk(KERN_ERR "%s: Data0: Never released\n",
+					mmc_hostname(mmc));
+			mrq->cmd->error = -ENOTRECOVERABLE;
+			host->prv_err = true;
+			mmc_request_done(mmc, mrq);
+			return;
+		}
+
+		usleep_range(10, 20);
+	} while(1);
 
 	/*
 	 * The check for card presence and queueing of the request must be
@@ -780,6 +803,7 @@ static void dw_mci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	if (!test_bit(DW_MMC_CARD_PRESENT, &slot->flags)) {
 		spin_unlock_bh(&host->lock);
 		mrq->cmd->error = -ENOMEDIUM;
+		host->prv_err = true;
 		mmc_request_done(mmc, mrq);
 		return;
 	}
@@ -983,6 +1007,7 @@ static void dw_mci_command_complete(struct dw_mci *host, struct mmc_command *cmd
 			dw_mci_stop_dma(host);
 			host->data = NULL;
 		}
+		host->prv_err = true;
 	}
 }
 
@@ -1101,6 +1126,7 @@ static void dw_mci_tasklet_func(unsigned long priv)
 				ctrl = mci_readl(host, CTRL);
 				ctrl |= SDMMC_CTRL_FIFO_RESET;
 				mci_writel(host, CTRL, ctrl);
+				host->prv_err = true;
 			} else {
 				data->bytes_xfered = data->blocks * data->blksz;
 				data->error = 0;
@@ -1730,6 +1756,7 @@ static void dw_mci_work_routine_card(struct work_struct *work)
 						break;
 					case STATE_SENDING_CMD:
 						mrq->cmd->error = -ENOMEDIUM;
+						host->prv_err = true;
 						if (!mrq->data)
 							break;
 						/* fall through */
@@ -1753,6 +1780,7 @@ static void dw_mci_work_routine_card(struct work_struct *work)
 				} else {
 					list_del(&slot->queue_node);
 					mrq->cmd->error = -ENOMEDIUM;
+					host->prv_err = true;
 					if (mrq->data)
 						mrq->data->error = -ENOMEDIUM;
 					if (mrq->stop)
