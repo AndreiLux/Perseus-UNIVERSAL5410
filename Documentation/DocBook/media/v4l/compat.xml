@@ -2523,6 +2523,10 @@ ioctls.</para>
         <listitem>
 	  <para>Selection API. <xref linkend="selection-api" /></para>
         </listitem>
+        <listitem>
+	  <para>Importing DMABUF file descriptors as a new IO method described
+	  in <xref linkend="dmabuf" />.</para>
+        </listitem>
       </itemizedlist>
     </section>
 
