@@ -1444,7 +1444,7 @@ static u32 s3c_fb_red_length(int format)
 {
 	switch (format) {
 	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
-	case S3C_FB_PIXEL_FORMAT_RGB_888:
+	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
 	case S3C_FB_PIXEL_FORMAT_BGRA_8888:
 		return 8;
 
@@ -1465,7 +1465,7 @@ static u32 s3c_fb_red_offset(int format)
 {
 	switch (format) {
 	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
-	case S3C_FB_PIXEL_FORMAT_RGB_888:
+	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
 	case S3C_FB_PIXEL_FORMAT_RGB_565:
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 	case S3C_FB_PIXEL_FORMAT_RGBA_4444:
@@ -1492,7 +1492,7 @@ static u32 s3c_fb_green_offset(int format)
 {
 	switch (format) {
 	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
-	case S3C_FB_PIXEL_FORMAT_RGB_888:
+	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
 	case S3C_FB_PIXEL_FORMAT_BGRA_8888:
 		return 8;
 
@@ -1518,7 +1518,7 @@ static u32 s3c_fb_blue_offset(int format)
 {
 	switch (format) {
 	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
-	case S3C_FB_PIXEL_FORMAT_RGB_888:
+	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
 		return 16;
 
 	case S3C_FB_PIXEL_FORMAT_RGB_565:
@@ -1552,7 +1552,7 @@ static u32 s3c_fb_transp_length(int format)
 	case S3C_FB_PIXEL_FORMAT_RGBA_4444:
 		return 4;
 
-	case S3C_FB_PIXEL_FORMAT_RGB_888:
+	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
 	case S3C_FB_PIXEL_FORMAT_RGB_565:
 		return 0;
 
@@ -1575,7 +1575,7 @@ static u32 s3c_fb_transp_offset(int format)
 	case S3C_FB_PIXEL_FORMAT_RGBA_4444:
 		return 12;
 
-	case S3C_FB_PIXEL_FORMAT_RGB_888:
+	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
 	case S3C_FB_PIXEL_FORMAT_RGB_565:
 		return s3c_fb_blue_offset(format);
 
@@ -1583,6 +1583,26 @@ static u32 s3c_fb_transp_offset(int format)
 		pr_warn("s3c-fb: unrecognized pixel format %u\n", format);
 		return 0;
 	}
+}
+
+static u32 s3c_fb_padding(int format)
+{
+	switch (format) {
+	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
+		return 8;
+
+	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
+	case S3C_FB_PIXEL_FORMAT_BGRA_8888:
+	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
+	case S3C_FB_PIXEL_FORMAT_RGBA_4444:
+	case S3C_FB_PIXEL_FORMAT_RGB_565:
+		return 0;
+
+	default:
+		pr_warn("s3c-fb: unrecognized pixel format %u\n", format);
+		return 0;
+	}
+
 }
 
 static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
@@ -1614,7 +1634,8 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 	win->fbinfo->var.bits_per_pixel = win->fbinfo->var.red.length +
 			win->fbinfo->var.green.length +
 			win->fbinfo->var.blue.length +
-			win->fbinfo->var.transp.length;
+			win->fbinfo->var.transp.length +
+			s3c_fb_padding(win_config->format);
 
 	handle = ion_import_dma_buf(sfb->fb_ion_client, win_config->fd);
 	if (IS_ERR(handle)) {
