@@ -430,6 +430,8 @@ static void __init exynos5_map_io(void)
 	s3c_device_i2c0.resource[1].start = EXYNOS5_IRQ_IIC;
 	s3c_device_i2c0.resource[1].end   = EXYNOS5_IRQ_IIC;
 
+	s3c_adc_setname("samsung-adc-v4");
+
 	s3c_sdhci_setname(0, "exynos4-sdhci");
 	s3c_sdhci_setname(1, "exynos4-sdhci");
 	s3c_sdhci_setname(2, "exynos4-sdhci");
