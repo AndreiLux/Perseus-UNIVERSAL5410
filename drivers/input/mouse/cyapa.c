@@ -95,6 +95,7 @@ enum cyapa_gen {
 #define BL_STATUS_RUNNING    0x10
 #define BL_STATUS_DATA_VALID 0x08
 #define BL_STATUS_CSUM_VALID 0x01
+
 /*
  * bit 7: Invalid
  * bit 6: Invalid security key
@@ -682,6 +683,7 @@ static int cyapa_bl_enter(struct cyapa *cyapa)
 
 	return 0;
 }
+
 static int cyapa_bl_activate(struct cyapa *cyapa)
 {
 	int ret;
@@ -918,7 +920,6 @@ static int cyapa_check_is_operational(struct cyapa *cyapa)
 	return 0;
 }
 
-
 static u16 cyapa_csum(const u8 *buf, size_t count)
 {
 	int i;
@@ -956,7 +957,6 @@ static int cyapa_write_buffer(struct cyapa *cyapa, const u8 *buf, size_t len)
 	}
 	return 0;
 }
-
 
 /*
  * A firmware block write command writes 64 bytes of data to a single flash
