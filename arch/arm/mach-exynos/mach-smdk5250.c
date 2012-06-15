@@ -37,6 +37,8 @@
 #include <media/exynos_gscaler.h>
 #include <media/exynos_flite.h>
 #include <media/exynos_fimc_is.h>
+
+#include <plat/adc.h>
 #include <plat/clock.h>
 #include <plat/cpu.h>
 #include <plat/fb.h>
@@ -643,6 +645,12 @@ static struct i2c_board_info i2c_devs7[] __initdata = {
 		I2C_BOARD_INFO("egalax_i2c", 0x04),
 		.irq		= IRQ_EINT(25),
 	},
+};
+
+/* ADC */
+static struct s3c_adc_platdata smdk5250_adc_data __initdata = {
+	.phy_init       = s3c_adc_phy_init,
+	.phy_exit       = s3c_adc_phy_exit,
 };
 
 #if defined(CONFIG_VIDEO_EXYNOS_TV) && defined(CONFIG_VIDEO_EXYNOS_HDMI)
@@ -1319,6 +1327,7 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&s3c_device_i2c4,
 	&s3c_device_i2c5,
 	&s3c_device_i2c7,
+	&s3c_device_adc,
 	&smdk5250_input_device,
 #ifdef CONFIG_VIDEO_EXYNOS_MFC
 	&s5p_device_mfc,
@@ -1705,6 +1714,8 @@ static void __init smdk5250_machine_init(void)
 	s3c_i2c5_set_platdata(NULL);
 	s3c_i2c7_set_platdata(NULL);
 	i2c_register_board_info(7, i2c_devs7, ARRAY_SIZE(i2c_devs7));
+
+	s3c_adc_set_platdata(&smdk5250_adc_data);
 
 	exynos_sysmmu_init();
 	exynos_ion_set_platdata();
