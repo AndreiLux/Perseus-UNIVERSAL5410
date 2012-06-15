@@ -383,8 +383,7 @@ static int s3c_adc_probe(struct platform_device *pdev)
 	adc->vdd = regulator_get(dev, "vdd");
 	if (IS_ERR(adc->vdd)) {
 		dev_err(dev, "operating without regulator \"vdd\" .\n");
-		ret = PTR_ERR(adc->vdd);
-		goto err_alloc;
+		adc->vdd = NULL;
 	}
 
 	adc->irq = platform_get_irq_byname(pdev, "samsung-adc");
@@ -421,9 +420,11 @@ static int s3c_adc_probe(struct platform_device *pdev)
 		goto err_clk;
 	}
 
-	ret = regulator_enable(adc->vdd);
-	if (ret)
-		goto err_ioremap;
+	if (adc->vdd) {
+		ret = regulator_enable(adc->vdd);
+		if (ret)
+			goto err_ioremap;
+	}
 
 	clk_enable(adc->clk);
 
@@ -458,8 +459,8 @@ static int s3c_adc_probe(struct platform_device *pdev)
  err_irq:
 	free_irq(adc->irq, adc);
  err_reg:
-	regulator_put(adc->vdd);
- err_alloc:
+	if (adc->vdd)
+		regulator_put(adc->vdd);
 	kfree(adc);
 	return ret;
 }
@@ -471,8 +472,10 @@ static int __devexit s3c_adc_remove(struct platform_device *pdev)
 	iounmap(adc->regs);
 	free_irq(adc->irq, adc);
 	clk_disable(adc->clk);
-	regulator_disable(adc->vdd);
-	regulator_put(adc->vdd);
+	if (adc->vdd) {
+		regulator_disable(adc->vdd);
+		regulator_put(adc->vdd);
+	}
 	clk_put(adc->clk);
 	kfree(adc);
 
@@ -497,7 +500,8 @@ static int s3c_adc_suspend(struct device *dev)
 	disable_irq(adc->irq);
 	spin_unlock_irqrestore(&adc->lock, flags);
 	clk_disable(adc->clk);
-	regulator_disable(adc->vdd);
+	if (adc->vdd)
+		regulator_disable(adc->vdd);
 
 	return 0;
 }
@@ -511,9 +515,11 @@ static int s3c_adc_resume(struct device *dev)
 	int ret;
 	unsigned long tmp;
 
-	ret = regulator_enable(adc->vdd);
-	if (ret)
-		return ret;
+	if (adc->vdd) {
+		ret = regulator_enable(adc->vdd);
+		if (ret)
+			return ret;
+	}
 	clk_enable(adc->clk);
 	enable_irq(adc->irq);
 
