@@ -109,6 +109,12 @@ static int omap_drm_notifier(struct notifier_block *nb,
 }
 #endif
 
+void omapdrm_hpd_change(void)
+{
+	if (drm_device)
+		drm_helper_hpd_irq_event(drm_device);
+}
+
 static void dump_video_chains(void)
 {
 	int i;
