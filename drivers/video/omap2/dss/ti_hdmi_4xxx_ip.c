@@ -158,6 +158,10 @@ static int hdmi_pll_init(struct hdmi_ip_data *ip_data)
 /* PHY_PWR_CMD */
 static int hdmi_set_phy_pwr(struct hdmi_ip_data *ip_data, enum hdmi_phy_pwr val)
 {
+	/* Return if already the state */
+	if (REG_GET(hdmi_wp_base(ip_data), HDMI_WP_PWR_CTRL, 5, 4) == val)
+		return 0;
+
 	/* Command for power control of HDMI PHY */
 	REG_FLD_MOD(hdmi_wp_base(ip_data), HDMI_WP_PWR_CTRL, val, 7, 6);
 
@@ -247,11 +251,6 @@ static int hdmi_check_hpd_state(struct hdmi_ip_data *ip_data)
 
 	hpd = gpio_get_value(ip_data->hpd_gpio);
 
-	if (hpd == ip_data->phy_tx_enabled) {
-		spin_unlock_irqrestore(&phy_tx_lock, flags);
-		return 0;
-	}
-
 	if (hpd)
 		r = hdmi_set_phy_pwr(ip_data, HDMI_PHYPWRCMD_TXON);
 	else
@@ -266,9 +265,6 @@ static int hdmi_check_hpd_state(struct hdmi_ip_data *ip_data)
 				hpd ? "enable" : "disable");
 		goto err;
 	}
-#endif
-	ip_data->phy_tx_enabled = hpd;
-#if 0
 err:
 #endif
 	spin_unlock_irqrestore(&phy_tx_lock, flags);
@@ -364,7 +360,6 @@ void ti_hdmi_4xxx_phy_disable(struct hdmi_ip_data *ip_data)
 	free_irq(gpio_to_irq(ip_data->hpd_gpio), ip_data);
 
 	hdmi_set_phy_pwr(ip_data, HDMI_PHYPWRCMD_OFF);
-	ip_data->phy_tx_enabled = false;
 }
 
 static int hdmi_core_ddc_init(struct hdmi_ip_data *ip_data)
