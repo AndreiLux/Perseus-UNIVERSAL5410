@@ -697,6 +697,7 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto fail;
 	}
+	spin_lock_init(&hdmi_dev->hpd_lock);
 
 	hdmi_dev->dev = dev;
 	ret = hdmi_resources_init(hdmi_dev);
