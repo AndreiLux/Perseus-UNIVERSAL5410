@@ -350,6 +350,13 @@ static void *vb2_dc_dmabuf_ops_vmap(struct dma_buf *dbuf)
 	return buf->vaddr;
 }
 
+/* a dummy function to support the mmap functionality for now */
+static void *vb2_dc_dmabuf_ops_mmap(struct dma_buf *dbuf)
+{
+	/* do nothing */
+	return NULL;
+}
+
 static struct dma_buf_ops vb2_dc_dmabuf_ops = {
 	.attach = vb2_dc_dmabuf_ops_attach,
 	.detach = vb2_dc_dmabuf_ops_detach,
@@ -358,6 +365,7 @@ static struct dma_buf_ops vb2_dc_dmabuf_ops = {
 	.kmap = vb2_dc_dmabuf_ops_kmap,
 	.kmap_atomic = vb2_dc_dmabuf_ops_kmap,
 	.vmap = vb2_dc_dmabuf_ops_vmap,
+	.mmap = vb2_dc_dmabuf_ops_mmap,
 	.release = vb2_dc_dmabuf_ops_release,
 };
 
@@ -373,7 +381,7 @@ static struct sg_table *vb2_dc_get_base_sgt(struct vb2_dc_buf *buf)
 	}
 
 	ret = dma_get_sgtable(buf->dev, sgt, buf->vaddr, buf->dma_addr,
-		buf->size, NULL);
+		buf->size);
 	if (ret < 0) {
 		dev_err(buf->dev, "failed to get scatterlist from DMA API\n");
 		kfree(sgt);
