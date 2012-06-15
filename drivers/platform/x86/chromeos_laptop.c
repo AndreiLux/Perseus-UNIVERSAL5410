@@ -242,6 +242,10 @@ static struct i2c_client *__add_probed_i2c_device(const char *name, int bus,
 	}
 
 	adapter = i2c_get_adapter(bus);
+	if (!adapter) {
+		pr_err("%s failed to get i2c adapter %d.\n", __func__, bus);
+		return NULL;
+	}
 
 	/* add the i2c device */
 	client = i2c_new_probed_device(adapter, info, addrs, NULL);
