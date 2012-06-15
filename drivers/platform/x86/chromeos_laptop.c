@@ -491,22 +491,14 @@ static int __init chromeos_laptop_init(void)
 
 static void __exit chromeos_laptop_exit(void)
 {
-	if (als) {
+	if (als)
 		i2c_unregister_device(als);
-		als = NULL;
-	}
-	if (tp) {
+	if (tp)
 		i2c_unregister_device(tp);
-		tp = NULL;
-	}
-	if (tp2) {
+	if (tp2)
 		i2c_unregister_device(tp2);
-		tp2 = NULL;
-	}
-	if (kb_backlight_device) {
+	if (kb_backlight_device)
 		platform_device_unregister(kb_backlight_device);
-		kb_backlight_device = NULL;
-	}
 }
 
 module_init(chromeos_laptop_init);
