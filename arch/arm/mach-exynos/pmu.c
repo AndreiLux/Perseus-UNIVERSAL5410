@@ -307,7 +307,7 @@ static struct exynos_pmu_conf exynos5250_pmu_config[] = {
 	{ PMU_TABLE_END,},
 };
 
-void __iomem *exynos5_list_both_cnt_feed[] = {
+void __iomem *exynos5_list_feed[] = {
 	EXYNOS5_ARM_CORE0_OPTION,
 	EXYNOS5_ARM_CORE1_OPTION,
 	EXYNOS5_ARM_COMMON_OPTION,
@@ -331,14 +331,12 @@ static void exynos5_init_pmu(void)
 	unsigned int i;
 	unsigned int tmp;
 
-	/*
-	 * Enable both SC_FEEDBACK and SC_COUNTER
-	 */
-	for (i = 0 ; i < ARRAY_SIZE(exynos5_list_both_cnt_feed) ; i++) {
-		tmp = __raw_readl(exynos5_list_both_cnt_feed[i]);
-		tmp |= (EXYNOS5_USE_SC_FEEDBACK |
-			EXYNOS5_USE_SC_COUNTER);
-		__raw_writel(tmp, exynos5_list_both_cnt_feed[i]);
+	/* Enable only SC_FEEDBACK */
+	for (i = 0 ; i < ARRAY_SIZE(exynos5_list_feed) ; i++) {
+		tmp = __raw_readl(exynos5_list_feed[i]);
+		tmp &= ~(EXYNOS5_USE_SC_COUNTER);
+		tmp |= EXYNOS5_USE_SC_FEEDBACK;
+		__raw_writel(tmp, exynos5_list_feed[i]);
 	}
 
 	/*
