@@ -620,18 +620,6 @@ static int vidioc_querybuf(struct file *file, void *priv,
 	return ret;
 }
 
-/* export a buffer */
-static int vidioc_expbuf(struct file *file, void *priv,
-					struct v4l2_exportbuffer *eb)
-{
-	struct s5p_mfc_ctx *ctx = fh_to_ctx(priv);
-
-	/* refer to vidioc_querybuf for knowing why? */
-	eb->mem_offset -= DST_QUEUE_OFF_BASE;
-
-	return vb2_expbuf(&ctx->vq_dst, eb);
-}
-
 /* Queue a buffer */
 static int vidioc_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 {
@@ -841,7 +829,6 @@ static const struct v4l2_ioctl_ops s5p_mfc_dec_ioctl_ops = {
 	.vidioc_s_fmt_vid_out_mplane = vidioc_s_fmt,
 	.vidioc_reqbufs = vidioc_reqbufs,
 	.vidioc_querybuf = vidioc_querybuf,
-	.vidioc_expbuf = vidioc_expbuf,
 	.vidioc_qbuf = vidioc_qbuf,
 	.vidioc_dqbuf = vidioc_dqbuf,
 	.vidioc_streamon = vidioc_streamon,
