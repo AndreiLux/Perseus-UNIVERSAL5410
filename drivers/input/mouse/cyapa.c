@@ -46,10 +46,10 @@ enum cyapa_gen {
 #define CYAPA_CMD_BL_STATUS        0x07
 #define CYAPA_CMD_BL_HEAD          0x08
 #define CYAPA_CMD_BL_CMD           0x09
-#define CYAPA_CMD_BL_DATA          0x0A
-#define CYAPA_CMD_BL_ALL           0x0B
-#define CYAPA_CMD_BLK_PRODUCT_ID   0x0C
-#define CYAPA_CMD_BLK_HEAD         0x0D
+#define CYAPA_CMD_BL_DATA          0x0a
+#define CYAPA_CMD_BL_ALL           0x0b
+#define CYAPA_CMD_BLK_PRODUCT_ID   0x0c
+#define CYAPA_CMD_BLK_HEAD         0x0d
 
 /* report data start reg offset address. */
 #define DATA_REG_START_OFFSET  0x0000
@@ -65,7 +65,7 @@ enum cyapa_gen {
  */
 #define REG_OP_STATUS     0x00
 #define OP_STATUS_SRC     0x80
-#define OP_STATUS_POWER   0x0C
+#define OP_STATUS_POWER   0x0c
 #define OP_STATUS_DEV     0x03
 #define OP_STATUS_MASK (OP_STATUS_SRC | OP_STATUS_POWER | OP_STATUS_DEV)
 
@@ -113,12 +113,12 @@ enum cyapa_gen {
 #define BL_ERROR_FLASH_PROT  0x08
 #define BL_ERROR_FLASH_CSUM  0x04
 
-#define REG_BL_KEY1 0x0D
-#define REG_BL_KEY2 0x0E
-#define REG_BL_KEY3 0x0F
-#define BL_KEY1 0xC0
-#define BL_KEY2 0xC1
-#define BL_KEY3 0xC2
+#define REG_BL_KEY1 0x0d
+#define REG_BL_KEY2 0x0e
+#define REG_BL_KEY3 0x0f
+#define BL_KEY1 0xc0
+#define BL_KEY2 0xc1
+#define BL_KEY3 0xc2
 
 #define BL_STATUS_SIZE  3  /* length of bootloader status registers */
 #define BLK_HEAD_BYTES 32
@@ -133,7 +133,7 @@ enum cyapa_gen {
 #define REG_OFFSET_DATA_BASE     0x0000
 #define REG_OFFSET_CONTROL_BASE  0x0000
 #define REG_OFFSET_COMMAND_BASE  0x0028
-#define REG_OFFSET_QUERY_BASE    0x002A
+#define REG_OFFSET_QUERY_BASE    0x002a
 
 #define CYAPA_OFFSET_SOFT_RESET  REG_OFFSET_COMMAND_BASE
 
@@ -141,8 +141,8 @@ enum cyapa_gen {
 #define SET_POWER_MODE_DELAY   10000  /* unit: us */
 #define SET_POWER_MODE_TRIES   5
 
-#define PWR_MODE_MASK   0xFC
-#define PWR_MODE_FULL_ACTIVE (0x3F << 2)
+#define PWR_MODE_MASK   0xfc
+#define PWR_MODE_FULL_ACTIVE (0x3f << 2)
 #define PWR_MODE_IDLE        (0x03 << 2) /* default rt suspend scanrate: 30ms */
 #define PWR_MODE_SLEEP       (0x05 << 2) /* default suspend scanrate: 50ms */
 #define PWR_MODE_BTN_ONLY    (0x01 << 2)
@@ -150,7 +150,7 @@ enum cyapa_gen {
 
 #define BTN_ONLY_MODE_NAME   "buttononly"
 
-#define PWR_STATUS_MASK      0x0C
+#define PWR_STATUS_MASK      0x0c
 #define PWR_STATUS_ACTIVE    (0x03 << 2)
 #define PWR_STATUS_IDLE      (0x02 << 2)
 #define PWR_STATUS_BTN_ONLY  (0x01 << 2)
@@ -253,11 +253,11 @@ struct cyapa {
 	u8 *read_fw_image;
 };
 
-static const u8 bl_activate[] = { 0x00, 0xFF, 0x38, 0x00, 0x01, 0x02, 0x03,
+static const u8 bl_activate[] = { 0x00, 0xff, 0x38, 0x00, 0x01, 0x02, 0x03,
 		0x04, 0x05, 0x06, 0x07 };
-static const u8 bl_deactivate[] = { 0x00, 0xFF, 0x3B, 0x00, 0x01, 0x02, 0x03,
+static const u8 bl_deactivate[] = { 0x00, 0xff, 0x3b, 0x00, 0x01, 0x02, 0x03,
 		0x04, 0x05, 0x06, 0x07 };
-static const u8 bl_exit[] = { 0x00, 0xFF, 0xA5, 0x00, 0x01, 0x02, 0x03, 0x04,
+static const u8 bl_exit[] = { 0x00, 0xff, 0xa5, 0x00, 0x01, 0x02, 0x03, 0x04,
 		0x05, 0x06, 0x07 };
 
 /* global root node of the cyapa debugfs directory. */
@@ -290,7 +290,7 @@ struct cyapa_cmd_len {
 #define CMD_RESET 0
 #define CMD_POWER_MODE 1
 #define CMD_DEV_STATUS 2
-#define SMBUS_BYTE_CMD(cmd) (((cmd) & 0x3F) << 1)
+#define SMBUS_BYTE_CMD(cmd) (((cmd) & 0x3f) << 1)
 #define CYAPA_SMBUS_RESET SMBUS_BYTE_CMD(CMD_RESET)
 #define CYAPA_SMBUS_POWER_MODE SMBUS_BYTE_CMD(CMD_POWER_MODE)
 #define CYAPA_SMBUS_DEV_STATUS SMBUS_BYTE_CMD(CMD_DEV_STATUS)
@@ -314,7 +314,7 @@ struct cyapa_cmd_len {
 #define CMD_BL_ALL 4
 #define CMD_BLK_PRODUCT_ID 5
 #define CMD_BLK_HEAD 6
-#define SMBUS_BLOCK_CMD(cmd) (0xC0 | (((cmd) & 0x1F) << 1))
+#define SMBUS_BLOCK_CMD(cmd) (0xc0 | (((cmd) & 0x1f) << 1))
 /* register block read/write command in bootloader mode */
 #define CYAPA_SMBUS_BL_STATUS SMBUS_BLOCK_CMD(CMD_BL_STATUS)
 #define CYAPA_SMBUS_BL_HEAD SMBUS_BLOCK_CMD(CMD_BL_HEAD)
@@ -844,15 +844,15 @@ static int cyapa_get_query_data(struct cyapa *cyapa)
 	cyapa->hw_maj_ver = query_data[17];
 	cyapa->hw_min_ver = query_data[18];
 
-	cyapa->gen = query_data[20] & 0x0F;
+	cyapa->gen = query_data[20] & 0x0f;
 
-	cyapa->max_abs_x = ((query_data[21] & 0xF0) << 4) | query_data[22];
-	cyapa->max_abs_y = ((query_data[21] & 0x0F) << 8) | query_data[23];
+	cyapa->max_abs_x = ((query_data[21] & 0xf0) << 4) | query_data[22];
+	cyapa->max_abs_y = ((query_data[21] & 0x0f) << 8) | query_data[23];
 
 	cyapa->physical_size_x =
-		((query_data[24] & 0xF0) << 4) | query_data[25];
+		((query_data[24] & 0xf0) << 4) | query_data[25];
 	cyapa->physical_size_y =
-		((query_data[24] & 0x0F) << 8) | query_data[26];
+		((query_data[24] & 0x0f) << 8) | query_data[26];
 
 	return 0;
 }
@@ -961,15 +961,15 @@ static int cyapa_write_buffer(struct cyapa *cyapa, const u8 *buf, size_t len)
 /*
  * A firmware block write command writes 64 bytes of data to a single flash
  * page in the device.  The 78-byte block write command has the format:
- *   <0xFF> <CMD> <Key> <Start> <Data> <Data-Checksum> <CMD Checksum>
+ *   <0xff> <CMD> <Key> <Start> <Data> <Data-Checksum> <CMD Checksum>
  *
- *  <0xFF>  - every command starts with 0xFF
+ *  <0xff>  - every command starts with 0xff
  *  <CMD>   - the write command value is 0x39
  *  <Key>   - write commands include an 8-byte key: { 00 01 02 03 04 05 06 07 }
  *  <Block> - Memory Block number (address / 64) (16-bit, big-endian)
  *  <Data>  - 64 bytes of firmware image data
- *  <Data Checksum> - sum of 64 <Data> bytes, modulo 0xFF
- *  <CMD Checksum> - sum of 77 bytes, from 0xFF to <Data Checksum>
+ *  <Data Checksum> - sum of 64 <Data> bytes, modulo 0xff
+ *  <CMD Checksum> - sum of 77 bytes, from 0xff to <Data Checksum>
  *
  * Each write command is split into 5 i2c write transactions of up to 16 bytes.
  * Each transaction starts with an i2c register offset: (00, 10, 20, 30, 40).
@@ -982,7 +982,7 @@ static int cyapa_write_fw_block(struct cyapa *cyapa, u16 block, const u8 *data)
 	int tries = 3;
 
 	/* set write command and security key bytes. */
-	cmd[0] = 0xFF;
+	cmd[0] = 0xff;
 	cmd[1] = 0x39;
 	cmd[2] = 0x00;
 	cmd[3] = 0x01;
@@ -1020,10 +1020,10 @@ static int cyapa_write_fw_block(struct cyapa *cyapa, u16 block, const u8 *data)
 /*
  * A firmware block read command reads 16 bytes of data from flash starting
  * from a given address.  The 12-byte block read command has the format:
- *   <0xFF> <CMD> <Key> <Addr>
+ *   <0xff> <CMD> <Key> <Addr>
  *
- *  <0xFF>  - every command starts with 0xFF
- *  <CMD>   - the read command value is 0x3C
+ *  <0xff>  - every command starts with 0xff
+ *  <CMD>   - the read command value is 0x3c
  *  <Key>   - read commands include an 8-byte key: { 00 01 02 03 04 05 06 07 }
  *  <Addr>  - Memory address (16-bit, big-endian)
  *
@@ -1032,7 +1032,7 @@ static int cyapa_write_fw_block(struct cyapa *cyapa, u16 block, const u8 *data)
 static int cyapa_read_fw_bytes(struct cyapa *cyapa, u16 addr, u8 *data)
 {
 	int ret;
-	u8 cmd[] = { 0xFF, 0x3C, 0, 1, 2, 3, 4, 5, 6, 7, addr >> 8, addr };
+	u8 cmd[] = { 0xff, 0x3c, 0, 1, 2, 3, 4, 5, 6, 7, addr >> 8, addr };
 
 	ret = cyapa_write_buffer(cyapa, cmd, sizeof(cmd));
 	if (ret)
@@ -1058,7 +1058,7 @@ static int cyapa_read_fw_bytes(struct cyapa *cyapa, u16 addr, u8 *data)
  * The first two bytes of the header hold the header checksum, computed by
  * summing the other 126 bytes of the header.
  * The last two bytes of the header hold the firmware image checksum, computed
- * by summing the 30720 bytes of the image modulo 0xFFFF.
+ * by summing the 30720 bytes of the image modulo 0xffff.
  *
  * Both checksums are stored little-endian.
  */
@@ -1542,7 +1542,7 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 	}
 
 	mask = 0;
-	num_fingers = (data.finger_btn >> 4) & 0x0F;
+	num_fingers = (data.finger_btn >> 4) & 0x0f;
 	for (i = 0; i < num_fingers; i++) {
 		const struct cyapa_touch *touch = &data.touches[i];
 		/* Note: touch->id range is 1 to 15; slots are 0 to 14. */
@@ -1552,9 +1552,9 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 		input_mt_slot(input, slot);
 		input_mt_report_slot_state(input, MT_TOOL_FINGER, true);
 		input_report_abs(input, ABS_MT_POSITION_X,
-				 ((touch->xy & 0xF0) << 4) | touch->x);
+				 ((touch->xy & 0xf0) << 4) | touch->x);
 		input_report_abs(input, ABS_MT_POSITION_Y,
-				 ((touch->xy & 0x0F) << 8) | touch->y);
+				 ((touch->xy & 0x0f) << 8) | touch->y);
 		input_report_abs(input, ABS_MT_PRESSURE, touch->pressure);
 	}
 
