@@ -1642,6 +1642,14 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 			win->fbinfo->var.transp.length +
 			s3c_fb_padding(win_config->format);
 
+	if (win_config->stride <
+			win_config->w * win->fbinfo->var.bits_per_pixel / 8) {
+		dev_err(sfb->dev, "stride shorter than buffer width (stride = %u, width = %u, bpp = %u)\n",
+				win_config->stride, win_config->w,
+				win->fbinfo->var.bits_per_pixel);
+		return -EINVAL;
+	}
+
 	if (!s3c_fb_validate_x_alignment(sfb, win_config->x, win_config->w,
 			win->fbinfo->var.bits_per_pixel))
 		return -EINVAL;
