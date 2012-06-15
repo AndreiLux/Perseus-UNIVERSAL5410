@@ -1210,21 +1210,23 @@ static ssize_t cyapa_show_fm_ver(struct device *dev,
 				 struct device_attribute *attr, char *buf)
 {
 	struct cyapa *cyapa = dev_get_drvdata(dev);
-	return sprintf(buf, "%d.%d\n", cyapa->fw_maj_ver, cyapa->fw_min_ver);
+	return scnprintf(buf, PAGE_SIZE, "%d.%d\n", cyapa->fw_maj_ver,
+			 cyapa->fw_min_ver);
 }
 
 static ssize_t cyapa_show_hw_ver(struct device *dev,
 				 struct device_attribute *attr, char *buf)
 {
 	struct cyapa *cyapa = dev_get_drvdata(dev);
-	return sprintf(buf, "%d.%d\n", cyapa->hw_maj_ver, cyapa->hw_min_ver);
+	return scnprintf(buf, PAGE_SIZE, "%d.%d\n", cyapa->hw_maj_ver,
+			 cyapa->hw_min_ver);
 }
 
 static ssize_t cyapa_show_product_id(struct device *dev,
 				     struct device_attribute *attr, char *buf)
 {
 	struct cyapa *cyapa = dev_get_drvdata(dev);
-	return sprintf(buf, "%s\n", cyapa->product_id);
+	return scnprintf(buf, PAGE_SIZE, "%s\n", cyapa->product_id);
 }
 
 static ssize_t cyapa_show_protocol_version(struct device *dev,
@@ -1232,7 +1234,7 @@ static ssize_t cyapa_show_protocol_version(struct device *dev,
 					   char *buf)
 {
 	struct cyapa *cyapa = dev_get_drvdata(dev);
-	return sprintf(buf, "%d\n", cyapa->gen);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", cyapa->gen);
 }
 
 static ssize_t cyapa_update_fw_store(struct device *dev,
