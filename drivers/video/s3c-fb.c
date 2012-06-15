@@ -383,6 +383,25 @@ static int s3cfb_ump_wrapper(struct fb_fix_screeninfo *fix)
 }
 #endif
 
+static bool s3c_fb_validate_x_alignment(struct s3c_fb *sfb, int x, u32 w,
+		u32 bits_per_pixel)
+{
+	uint8_t pixel_alignment = 32 / bits_per_pixel;
+
+	if (x % pixel_alignment) {
+		dev_err(sfb->dev, "left X coordinate not properly aligned to %u-pixel boundary (bpp = %u, x = %u)\n",
+				pixel_alignment, bits_per_pixel, x);
+		return 0;
+	}
+	if ((x + w) % pixel_alignment) {
+		dev_err(sfb->dev, "right X coordinate not properly aligned to %u-pixel boundary (bpp = %u, x = %u, w = %u)\n",
+				pixel_alignment, bits_per_pixel, x, w);
+		return 0;
+	}
+
+	return 1;
+}
+
 /**
  * s3c_fb_validate_win_bpp - validate the bits-per-pixel for this mode.
  * @win: The device window.
@@ -417,6 +436,10 @@ static int s3c_fb_check_var(struct fb_var_screeninfo *var,
 			win->index, var->bits_per_pixel);
 		return -EINVAL;
 	}
+
+	if (!s3c_fb_validate_x_alignment(sfb, 0, var->xres,
+			var->bits_per_pixel))
+		return -EINVAL;
 
 	/* always ensure these are zero, for drop through cases below */
 	var->transp.offset = 0;
@@ -522,25 +545,6 @@ static int s3c_fb_calc_pixclk(struct s3c_fb *sfb, unsigned int pixclk)
 	result = (unsigned int)tmp / 1000;
 
 	return result;
-}
-
-/**
- * s3c_fb_align_word() - align pixel count to word boundary
- * @bpp: The number of bits per pixel
- * @pix: The value to be aligned.
- *
- * Align the given pixel count so that it will start on an 32bit word
- * boundary.
- */
-static int s3c_fb_align_word(unsigned int bpp, unsigned int pix)
-{
-	int pix_per_word;
-
-	if (bpp > 16)
-		return pix;
-
-	pix_per_word = (8 * 32) / bpp;
-	return ALIGN(pix, pix_per_word);
 }
 
 /**
@@ -669,13 +673,11 @@ static inline u32 vidosd_a(int x, int y)
 			VIDOSDxA_TOPLEFT_Y_E(y);
 }
 
-static inline u32 vidosd_b(int x, int y, u32 xres, u32 yres, u32 bits_per_pixel)
+static inline u32 vidosd_b(int x, int y, u32 xres, u32 yres)
 {
-	return VIDOSDxB_BOTRIGHT_X(s3c_fb_align_word(bits_per_pixel,
-			x + xres - 1)) |
+	return VIDOSDxB_BOTRIGHT_X(x + xres - 1) |
 		VIDOSDxB_BOTRIGHT_Y(y + yres - 1) |
-		VIDOSDxB_BOTRIGHT_X_E(s3c_fb_align_word(bits_per_pixel,
-			x + xres - 1)) |
+		VIDOSDxB_BOTRIGHT_X_E(x + xres - 1) |
 		VIDOSDxB_BOTRIGHT_Y_E(y + yres - 1);
 }
 
@@ -859,7 +861,7 @@ static int s3c_fb_set_par(struct fb_info *info)
 	data = vidosd_a(0, 0);
 	writel(data, regs + VIDOSD_A(win_no, sfb->variant));
 
-	data = vidosd_b(0, 0, var->xres, var->yres, var->bits_per_pixel);
+	data = vidosd_b(0, 0, var->xres, var->yres);
 	writel(data, regs + VIDOSD_B(win_no, sfb->variant));
 
 	data = var->xres * var->yres;
@@ -1274,12 +1276,15 @@ int s3c_fb_set_window_position(struct fb_info *info,
 
 	shadow_protect_win(win, 1);
 
+	if (!s3c_fb_validate_x_alignment(sfb, user_window.x, var->xres,
+			var->bits_per_pixel))
+		return -EINVAL;
+
 	/* write 'OSD' registers to control position of framebuffer */
 	data = vidosd_a(user_window.x, user_window.y);
 	writel(data, regs + VIDOSD_A(win_no, sfb->variant));
 
-	data = vidosd_b(user_window.x, user_window.y, var->xres, var->yres,
-			var->bits_per_pixel);
+	data = vidosd_b(user_window.x, user_window.y, var->xres, var->yres);
 	writel(data, regs + VIDOSD_B(win_no, sfb->variant));
 
 	shadow_protect_win(win, 0);
@@ -1637,6 +1642,10 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 			win->fbinfo->var.transp.length +
 			s3c_fb_padding(win_config->format);
 
+	if (!s3c_fb_validate_x_alignment(sfb, win_config->x, win_config->w,
+			win->fbinfo->var.bits_per_pixel))
+		return -EINVAL;
+
 	handle = ion_import_dma_buf(sfb->fb_ion_client, win_config->fd);
 	if (IS_ERR(handle)) {
 		dev_err(sfb->dev, "failed to import fd\n");
@@ -1685,8 +1694,7 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 
 	regs->vidosd_a[win_no] = vidosd_a(win_config->x, win_config->y);
 	regs->vidosd_b[win_no] = vidosd_b(win_config->x, win_config->y,
-			win_config->w, win_config->h,
-			win->fbinfo->var.bits_per_pixel);
+			win_config->w, win_config->h);
 
 	if (win->variant.has_osd_alpha)
 		regs->vidosd_c[win_no] = vidosd_c(0xff, 0xff, 0xff);
