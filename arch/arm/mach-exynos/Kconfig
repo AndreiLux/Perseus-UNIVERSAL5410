@@ -99,6 +99,11 @@ config EXYNOS_SETUP_FIMD1
 	help
 	  Common setup code for FIMD1.
 
+config EXYNOS_SETUP_ADC
+	bool
+	help
+	  Common setup code for ADC.
+
 config EXYNOS4_SETUP_MIPI_DSIM
 	bool
 	depends on FB_MIPI_DSIM

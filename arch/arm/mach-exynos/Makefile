@@ -101,6 +101,7 @@ obj-$(CONFIG_EXYNOS4_SETUP_SDHCI_GPIO)	+= setup-sdhci-gpio.o
 obj-$(CONFIG_EXYNOS4_SETUP_USB_PHY)	+= setup-usb-phy.o
 obj-$(CONFIG_EXYNOS_SETUP_SPI)		+= setup-spi.o
 obj-$(CONFIG_EXYNOS5_SETUP_TVOUT)	+= setup-tvout.o
+obj-$(CONFIG_EXYNOS_SETUP_ADC)		+= setup-adc.o
 obj-$(CONFIG_ION_EXYNOS)		+= dev-ion.o
 obj-$(CONFIG_CMA)			+= reserve-mem.o
 obj-$(CONFIG_EXYNOS5_SETUP_JPEG)			+= setup-jpeg.o
