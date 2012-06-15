@@ -81,7 +81,8 @@ enum cyapa_gen {
 #define OP_DATA_MIDDLE_BTN 0x04
 #define OP_DATA_RIGHT_BTN  0x02
 #define OP_DATA_LEFT_BTN   0x01
-#define OP_DATA_BTN_MASK (OP_DATA_MIDDLE_BTN | OP_DATA_RIGHT_BTN | OP_DATA_LEFT_BTN)
+#define OP_DATA_BTN_MASK (OP_DATA_MIDDLE_BTN | OP_DATA_RIGHT_BTN | \
+			  OP_DATA_LEFT_BTN)
 
 /*
  * bit 7: Busy
@@ -1079,8 +1080,8 @@ static int cyapa_check_fw(struct cyapa *cyapa, const struct firmware *fw)
 	csum_expected = (fw->data[0] << 8) | fw->data[1];
 	csum = cyapa_csum(&fw->data[2], CYAPA_FW_HDR_SIZE - 2);
 	if (csum != csum_expected) {
-		dev_err(dev, "invalid firmware header checksum = %04x, expected: %04x\n",
-			csum, csum_expected);
+		dev_err(dev, "invalid firmware header checksum = %04x,"
+			       " expected: %04x\n", csum, csum_expected);
 		return -EINVAL;
 	}
 
@@ -1089,8 +1090,8 @@ static int cyapa_check_fw(struct cyapa *cyapa, const struct firmware *fw)
 			 fw->data[CYAPA_FW_HDR_SIZE - 1];
 	csum = cyapa_csum(&fw->data[CYAPA_FW_HDR_SIZE], CYAPA_FW_DATA_SIZE);
 	if (csum != csum_expected) {
-		dev_err(dev, "invalid firmware checksum = %04x, expected: %04x\n",
-			csum, csum_expected);
+		dev_err(dev, "invalid firmware header checksum = %04x,"
+			       " expected: %04x\n", csum, csum_expected);
 		return -EINVAL;
 	}
 	return 0;
@@ -1381,7 +1382,8 @@ static const struct attribute_group cyapa_power_wakeup_group = {
 static DEVICE_ATTR(firmware_version, S_IRUGO, cyapa_show_fm_ver, NULL);
 static DEVICE_ATTR(hardware_version, S_IRUGO, cyapa_show_hw_ver, NULL);
 static DEVICE_ATTR(product_id, S_IRUGO, cyapa_show_product_id, NULL);
-static DEVICE_ATTR(protocol_version, S_IRUGO, cyapa_show_protocol_version, NULL);
+static DEVICE_ATTR(protocol_version, S_IRUGO, cyapa_show_protocol_version,
+		   NULL);
 static DEVICE_ATTR(update_fw, S_IWUSR, NULL, cyapa_update_fw_store);
 
 static struct attribute *cyapa_sysfs_entries[] = {
@@ -1636,8 +1638,10 @@ static int cyapa_create_input_dev(struct cyapa *cyapa)
 	input_set_abs_params(input, ABS_PRESSURE, 0, 255, 0, 0);
 
 	/* finger position */
-	input_set_abs_params(input, ABS_MT_POSITION_X, 0, cyapa->max_abs_x, 0, 0);
-	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, cyapa->max_abs_y, 0, 0);
+	input_set_abs_params(input, ABS_MT_POSITION_X, 0, cyapa->max_abs_x, 0,
+			     0);
+	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, cyapa->max_abs_y, 0,
+			     0);
 	input_set_abs_params(input, ABS_MT_PRESSURE, 0, 255, 0, 0);
 	ret = input_mt_init_slots(input, CYAPA_MAX_MT_SLOTS);
 	if (ret < 0) {
