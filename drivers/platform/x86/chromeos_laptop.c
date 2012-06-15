@@ -48,7 +48,6 @@ const char *i2c_adapter_names[] = {
 
 static struct i2c_board_info __initdata cyapa_device = {
 	I2C_BOARD_INFO("cyapa", CYAPA_TP_I2C_ADDR),
-	.irq		= -1,
 	.flags		= I2C_CLIENT_WAKE,
 };
 
@@ -124,7 +123,6 @@ static struct mxt_platform_data atmel_224e_tp_platform_data = {
 static struct i2c_board_info __initdata atmel_224e_tp_device = {
 	I2C_BOARD_INFO("atmel_mxt_tp", ATMEL_TP_I2C_ADDR),
 	.platform_data = &atmel_224e_tp_platform_data,
-	.irq = -1,
 	.flags		= I2C_CLIENT_WAKE,
 };
 
@@ -201,7 +199,6 @@ static struct mxt_platform_data atmel_224s_tp_platform_data = {
 static struct i2c_board_info __initdata atmel_224s_tp_device = {
 	I2C_BOARD_INFO("atmel_mxt_tp", ATMEL_TP_I2C_ADDR),
 	.platform_data = &atmel_224s_tp_platform_data,
-	.irq = -1,
 	.flags		= I2C_CLIENT_WAKE,
 };
 
