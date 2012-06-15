@@ -401,8 +401,6 @@ static struct platform_device *kb_backlight_device;
 
 static int setup_keyboard_backlight(const struct dmi_system_id *id)
 {
-	int err = 0;
-
 	kb_backlight_device =
 		platform_device_register_simple("chromeos-keyboard-backlight",
 						-1, NULL, 0);
