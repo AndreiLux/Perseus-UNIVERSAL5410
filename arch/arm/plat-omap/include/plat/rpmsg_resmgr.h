@@ -65,6 +65,7 @@ struct omap_rprm_ops {
 /*
  * struct omap_rprm_pdata - omap resmgr platform data
  * @iss_opt_clk_name	name of the ISS optional clock name
+ * @iss_opt_clk		clk handle reference to the ISS optional clock
  * @ops:		ops exported by this module
  */
 struct omap_rprm_pdata {

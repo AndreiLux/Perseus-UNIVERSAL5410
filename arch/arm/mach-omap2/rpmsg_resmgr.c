@@ -179,6 +179,16 @@ static int __init omap2_rprm_init(void)
 	if (!pdev)
 		return -ENOMEM;
 
+	if (pdata->iss_opt_clk_name) {
+		pdata->iss_opt_clk =
+				omap_clk_get_by_name(pdata->iss_opt_clk_name);
+		if (!pdata->iss_opt_clk) {
+			dev_err(&pdev->dev, "error getting iss opt clk\n");
+			ret = -ENOENT;
+			goto err;
+		}
+	}
+
 	ret = platform_device_add_data(pdev, pdata, sizeof *pdata);
 	if (ret)
 		goto err;
