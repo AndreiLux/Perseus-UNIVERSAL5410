@@ -379,7 +379,7 @@ static int s3c_adc_probe(struct platform_device *pdev)
 		goto err_alloc;
 	}
 
-	adc->irq = platform_get_irq(pdev, 1);
+	adc->irq = platform_get_irq_byname(pdev, "samsung-adc");
 	if (adc->irq <= 0) {
 		dev_err(dev, "failed to get adc irq\n");
 		ret = -ENOENT;
