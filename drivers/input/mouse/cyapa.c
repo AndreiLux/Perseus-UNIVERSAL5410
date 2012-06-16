@@ -823,21 +823,11 @@ static int cyapa_get_query_data(struct cyapa *cyapa)
 	if (ret != QUERY_DATA_SIZE)
 		return -EIO;
 
-	cyapa->product_id[0] = query_data[0];
-	cyapa->product_id[1] = query_data[1];
-	cyapa->product_id[2] = query_data[2];
-	cyapa->product_id[3] = query_data[3];
-	cyapa->product_id[4] = query_data[4];
+	memcpy(&cyapa->product_id[0], &query_data[0], 5);
 	cyapa->product_id[5] = '-';
-	cyapa->product_id[6] = query_data[5];
-	cyapa->product_id[7] = query_data[6];
-	cyapa->product_id[8] = query_data[7];
-	cyapa->product_id[9] = query_data[8];
-	cyapa->product_id[10] = query_data[9];
-	cyapa->product_id[11] = query_data[10];
+	memcpy(&cyapa->product_id[6], &query_data[5], 6);
 	cyapa->product_id[12] = '-';
-	cyapa->product_id[13] = query_data[11];
-	cyapa->product_id[14] = query_data[12];
+	memcpy(&cyapa->product_id[13], &query_data[11], 2);
 	cyapa->product_id[15] = '\0';
 
 	cyapa->fw_maj_ver = query_data[15];
