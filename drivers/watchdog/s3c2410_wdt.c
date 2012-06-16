@@ -42,6 +42,7 @@
 #include <linux/err.h>
 
 #include <mach/map.h>
+#include <plat/cpu.h>
 
 #undef S3C_VA_WATCHDOG
 #define S3C_VA_WATCHDOG (0)
@@ -281,12 +282,18 @@ static struct notifier_block s3c2410wdt_cpufreq_transition_nb = {
 
 static inline int s3c2410wdt_cpufreq_register(void)
 {
+	if (soc_is_exynos5250())
+		return 0;
+
 	return cpufreq_register_notifier(&s3c2410wdt_cpufreq_transition_nb,
 					 CPUFREQ_TRANSITION_NOTIFIER);
 }
 
 static inline void s3c2410wdt_cpufreq_deregister(void)
 {
+	if (soc_is_exynos5250())
+		return;
+
 	cpufreq_unregister_notifier(&s3c2410wdt_cpufreq_transition_nb,
 				    CPUFREQ_TRANSITION_NOTIFIER);
 }
