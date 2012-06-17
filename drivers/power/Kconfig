@@ -295,6 +295,14 @@ config CHARGER_SMB347
 	  Say Y to include support for Summit Microelectronics SMB347
 	  Battery Charger.
 
+config CHARGER_TPS65090
+	bool "TPS65090 MFD Battery Charger driver"
+	depends on MFD_TPS65090
+	help
+	  Say Y to include support for the battery charging function of the
+	  TI TPS65090 PMIC.  This is used to detect AC status and determine
+	  charging/discharging state.
+
 config AB8500_BM
 	bool "AB8500 Battery Management Driver"
 	depends on AB8500_CORE && AB8500_GPADC
