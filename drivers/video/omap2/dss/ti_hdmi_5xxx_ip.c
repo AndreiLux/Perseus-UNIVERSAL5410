@@ -191,6 +191,12 @@ int ti_hdmi_5xxx_read_edid(struct hdmi_ip_data *ip_data,
 
 	return l;
 }
+
+bool ti_hdmi_5xxx_detect(struct hdmi_ip_data *ip_data)
+{
+	return gpio_get_value(ip_data->hpd_gpio);
+}
+
 void ti_hdmi_5xxx_core_dump(struct hdmi_ip_data *ip_data, struct seq_file *s)
 {
 

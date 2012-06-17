@@ -285,6 +285,7 @@ void ti_hdmi_5xxx_basic_configure(struct hdmi_ip_data *ip_data);
 void ti_hdmi_5xxx_core_dump(struct hdmi_ip_data *ip_data, struct seq_file *s);
 int ti_hdmi_5xxx_read_edid(struct hdmi_ip_data *ip_data,
 				u8 *edid, int len);
+bool ti_hdmi_5xxx_detect(struct hdmi_ip_data *ip_data);
 int ti_hdmi_5xxx_irq_process(struct hdmi_ip_data *ip_data);
 int ti_hdmi_5xxx_configure_range(struct hdmi_ip_data *ip_data);
 
