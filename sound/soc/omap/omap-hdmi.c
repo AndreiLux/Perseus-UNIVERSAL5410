@@ -323,6 +323,13 @@ static __devinit int omap_hdmi_probe(struct platform_device *pdev)
 	}
 
 	dev_set_drvdata(&pdev->dev, hdmi_data);
+
+	if (cpu_is_omap54xx()) {
+		omap_hdmi_dai.playback.channels_max = 2;
+		omap_hdmi_dai.playback.rates = SNDRV_PCM_RATE_44100;
+		omap_hdmi_dai.playback.formats = SNDRV_PCM_FMTBIT_S16_LE;
+	}
+
 	ret = snd_soc_register_dai(&pdev->dev, &omap_hdmi_dai);
 
 	return ret;

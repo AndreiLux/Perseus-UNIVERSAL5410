@@ -719,7 +719,9 @@ static const struct ti_hdmi_ip_ops omap5_hdmi_functions = {
 	.configure_range	=	ti_hdmi_5xxx_configure_range,
 #if defined(CONFIG_OMAP5_DSS_HDMI_AUDIO)
 	.audio_enable		=       ti_hdmi_5xxx_wp_audio_enable,
+	.audio_disable		=       ti_hdmi_5xxx_wp_audio_disable,
 	.audio_start		=       ti_hdmi_5xxx_audio_start,
+	.audio_stop		=       ti_hdmi_5xxx_audio_stop,
 	.audio_config		=	ti_hdmi_5xxx_audio_config,
 #endif
 
