@@ -1529,11 +1529,42 @@ static void __init omap_5432_uevm_init(void)
 	omap54xx_common_init();
 }
 
-static void __init omap_54xx_init(void)
+static void omap5evm_hdmi_init(void)
 {
+	int r;
 
-	// this is part of the hack patch around virtual mapping of dt blob
+	r = gpio_request_one(HDMI_GPIO_HPD, GPIOF_DIR_IN,
+				"hdmi_gpio_hpd");
+	if (r)
+		pr_err("%s: Could not get HDMI\n", __func__);
 
+	/* Need to configure HPD as a gpio in mux */
+	omap_hdmi_init(0);
+}
+
+static void __init omap5evm_display_init(void)
+{
+	omap5evm_lcd_init();
+	omap5evm_hdmi_init();
+	omap_display_init(&omap5evm_dss_data);
+}
+
+static struct omap_dss_hdmi_data sdp54xx_hdmi_data = {
+        .hpd_gpio = HDMI_GPIO_HPD,
+};
+
+static struct omap_dss_device omap5evm_hdmi_device = {
+	.name = "hdmi",
+	.driver_name = "hdmi_panel",
+        .platform_enable = omap5evm_panel_enable_hdmi,                          
+        .platform_disable = omap5evm_panel_disable_hdmi,                        
+        .channel = OMAP_DSS_CHANNEL_DIGIT,                                      
+        .data = &sdp54xx_hdmi_data,
+};
+
+static void __init omap_54xx_init(void)                                         
+{                                                                               
+        // this is part of the hack patch around virtual mapping of dt blob   
 	extern char dt_selected_model[64];
 #if 0
 	const char *model;
