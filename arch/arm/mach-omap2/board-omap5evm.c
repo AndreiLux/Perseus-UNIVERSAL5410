@@ -1475,6 +1475,26 @@ struct omap_mux_setting omap5432_uevm_mux[] __initdata = {
         },
 };
 
+static struct panel_lg4591_data dsi_panel = {
+	.reset_gpio = 183,
+	.set_power = lg_panel_set_power,
+	.pin_config = {
+		.num_pins = 8,
+		.pins = {0, 1, 2, 3, 4, 5, 6, 7},
+	},
+};
+
+static struct omap_dss_device omap5evm_lcd_device = {
+	.driver_name		= "lg4591",
+	.type			= OMAP_DISPLAY_TYPE_DSI,
+	.data			= &dsi_panel,
+	.clocks = {
+		.dispc = {
+			.channel = {
+			}
+		}
+	}
+};
 
 static void __init omap_5432_uevm_init(void)
 {
