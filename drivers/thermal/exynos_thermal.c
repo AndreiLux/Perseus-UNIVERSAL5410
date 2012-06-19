@@ -41,6 +41,7 @@
 #include <linux/of.h>
 
 #include <plat/cpu.h>
+#include <mach/regs-pmu.h>	/* for EXYNOS5_PS_HOLD_CONTROL */
 
 /*Exynos generic registers*/
 #define EXYNOS_TMU_REG_TRIMINFO		0x0
@@ -84,6 +85,7 @@
 #define EXYNOS5_TRIMINFO_RELOAD		0x1
 #define EXYNOS5_TMU_CLEAR_RISE_INT	0x111
 #define EXYNOS5_TMU_CLEAR_FALL_INT	(0x111 << 16)
+#define EXYNOS5_TMU_HWTRIG_ENABLE	(1 << 31)
 #define EXYNOS5_MUX_ADDR_VALUE		6
 #define EXYNOS5_MUX_ADDR_SHIFT		20
 #define EXYNOS5_TMU_TRIP_MODE_SHIFT	13
@@ -400,7 +402,6 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 	th_zone->mode = THERMAL_DEVICE_ENABLED;
 
 	pr_info("Exynos: Kernel Thermal management registered\n");
-
 	return 0;
 
 err_unregister:
@@ -543,32 +544,73 @@ static int exynos_tmu_initialize(struct platform_device *pdev)
 		writel(EXYNOS4_TMU_INTCLEAR_VAL,
 			data->base + EXYNOS_TMU_REG_INTCLEAR);
 	} else if (data->soc == SOC_ARCH_EXYNOS5) {
-		/* Write temperature code for threshold */
+		u8 hwtrig_code, hwtrig_temp;
+
+		/* Write temperature code for thresholds */
 		threshold_code = temp_to_code(data, pdata->trigger_levels[0]);
 		if (threshold_code < 0) {
 			ret = threshold_code;
 			goto out;
 		}
 		rising_threshold = threshold_code;
+
 		threshold_code = temp_to_code(data, pdata->trigger_levels[1]);
 		if (threshold_code < 0) {
 			ret = threshold_code;
 			goto out;
 		}
 		rising_threshold |= (threshold_code << 8);
+
 		threshold_code = temp_to_code(data, pdata->trigger_levels[2]);
 		if (threshold_code < 0) {
 			ret = threshold_code;
 			goto out;
 		}
+
 		rising_threshold |= (threshold_code << 16);
 
-		writel(rising_threshold,
-				data->base + EXYNOS5_THD_TEMP_RISE);
+		/* On "warm" and "cold" reset, hwtrig_enable remains set
+		 * but TEMP_RISE gets cleared. :(
+		 * Value ranges copied from "62.3 Temperature Code Table"
+		 * of "S5PC520 User's Manual" version 0.01 Oct 2011.
+		 */
+		hwtrig_code = readl(data->base + EXYNOS5_THD_TEMP_RISE) >> 24;
+		hwtrig_temp = code_to_temp(data, hwtrig_code);
+		if (hwtrig_temp >= 25 && hwtrig_temp <= 125 
+				&& (hwtrig_code < threshold_code)) {
+			/* Boot FW set the HW trig value.  */
+			pr_warn("Thermal: HW poweroff threshold (%d) "
+				"< Kernel shutdown threshold (%d). "
+				"Changing Kernel shutdown to %d C.\n",
+				hwtrig_code, threshold_code,
+				code_to_temp(data, hwtrig_code - 2));
+
+			rising_threshold &= ~(0xff << 16);
+
+			/* don't have to use temp. 1:1 mapping of temp:code */
+			rising_threshold |= (hwtrig_code - 2) << 16;
+		} else {
+			/* Boot FW did NOT set HW poweroff trigger.
+			 * or trigger is set to invalid value.
+			 */
+			threshold_code = temp_to_code(data,
+						pdata->trigger_levels[3]);
+
+			if (threshold_code < 0) {
+				ret = threshold_code;
+				goto out;
+			}
+			rising_threshold |= (threshold_code << 24);
+		}
+
+		writel(rising_threshold, data->base + EXYNOS5_THD_TEMP_RISE);
 		writel(0, data->base + EXYNOS5_THD_TEMP_FALL);
 
-		writel(EXYNOS5_TMU_CLEAR_RISE_INT|EXYNOS5_TMU_CLEAR_FALL_INT,
-				data->base + EXYNOS_TMU_REG_INTCLEAR);
+		/* clear all interrupt status bits regardless of which ones
+		 * we will enable. HW Trigger seems to depend on REISE_LEVEL3
+		 * being cleared.
+		 */
+		writel(~0, data->base + EXYNOS_TMU_REG_INTCLEAR);
 	}
 out:
 	clk_disable(data->clk);
@@ -591,7 +633,10 @@ static void exynos_tmu_control(struct platform_device *pdev, bool on)
 
 	if (data->soc == SOC_ARCH_EXYNOS5) {
 		con |= pdata->noise_cancel_mode << EXYNOS5_TMU_TRIP_MODE_SHIFT;
-		con |= (EXYNOS5_MUX_ADDR_VALUE << EXYNOS5_MUX_ADDR_SHIFT);
+		con |= EXYNOS5_MUX_ADDR_VALUE << EXYNOS5_MUX_ADDR_SHIFT;
+
+		/* enable HW Trigger (must set multiple bits to enable) */
+		con |= 1 << 12;
 	}
 
 	if (on) {
@@ -604,8 +649,18 @@ static void exynos_tmu_control(struct platform_device *pdev, bool on)
 		con |= EXYNOS_TMU_CORE_OFF;
 		interrupt_en = 0; /* Disable all interrupts */
 	}
+
 	writel(interrupt_en, data->base + EXYNOS_TMU_REG_INTEN);
 	writel(con, data->base + EXYNOS_TMU_REG_CONTROL);
+
+	if (data->soc == SOC_ARCH_EXYNOS5) {
+		/* enable overtemp HW poweroff.
+		 * Enable this *after* thresholds have been set.
+		 */
+		con = readl(EXYNOS5_PS_HOLD_CONTROL);
+		con |= EXYNOS5_TMU_HWTRIG_ENABLE;
+		writel(con, EXYNOS5_PS_HOLD_CONTROL);
+	}
 
 	clk_disable(data->clk);
 	mutex_unlock(&data->lock);
@@ -695,19 +750,21 @@ static struct exynos_tmu_platform_data const exynos4_default_tmu_data = {
 
 #if defined(CONFIG_SOC_EXYNOS5250)
 static struct exynos_tmu_platform_data const exynos5_default_tmu_data = {
-	.trigger_levels[0] = 85,
-	.trigger_levels[1] = 103,
-	.trigger_levels[2] = 110,
+	.trigger_levels[0] = 85,	/* slow e.g. 800Mhz */
+	.trigger_levels[1] = 103,	/* very slow e.g. 200Mhz */
+	.trigger_levels[2] = 108,	/* kernel issues shutdown */
+	.trigger_levels[3] = 110,	/* HW poweroff trigger */
 	.trigger_level0_en = 1,
 	.trigger_level1_en = 1,
 	.trigger_level2_en = 1,
-	.trigger_level3_en = 0,
+	.trigger_level3_en = 0,		/* HW Trig is enabled differently */
 	.gain = 8,
 	.reference_voltage = 16,
 	.noise_cancel_mode = 4,
 	.cal_type = TYPE_ONE_POINT_TRIMMING,
 	.efuse_value = 55,
 	.freq_tab[0] = {
+
 		.freq_clip_max = 800 * 1000,
 		.temp_level = 85,
 	},
@@ -878,6 +935,7 @@ static int __devinit exynos_tmu_probe(struct platform_device *pdev)
 		goto err_clk;
 	}
 	return 0;
+
 err_clk:
 	platform_set_drvdata(pdev, NULL);
 	clk_put(data->clk);
