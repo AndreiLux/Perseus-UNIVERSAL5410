@@ -697,4 +697,5 @@ MACHINE_START(OMAP4_PANDA, "OMAP4 Panda board")
 	.init_machine	= omap4_panda_init,
 	.timer		= &omap4_timer,
 	.restart	= omap_prcm_restart,
+	.dt_compat      = omap4_panda_match,
 MACHINE_END
