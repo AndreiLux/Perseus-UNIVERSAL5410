@@ -380,6 +380,14 @@
 		regulator-boot-on;
 		regulator-always-on;
 	};
+	wwan-en {
+		compatible = "regulator-fixed";
+		regulator-name = "wwan-en";
+		gpio = <&gpe0 0 0 0 0>;
+		enable-active-high;
+		regulator-boot-on;
+		regulator-always-on;
+	};
 
 	gpio-keys {
 		compatible = "gpio-keys";
