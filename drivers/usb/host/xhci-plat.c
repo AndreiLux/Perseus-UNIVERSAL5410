@@ -111,18 +111,15 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	hcd->rsrc_start = res->start;
 	hcd->rsrc_len = resource_size(res);
 
-	if (!request_mem_region(hcd->rsrc_start, hcd->rsrc_len,
-				driver->description)) {
-		dev_dbg(&pdev->dev, "controller already in use\n");
-		ret = -EBUSY;
-		goto put_hcd;
-	}
+	/* Hack: Removing the request_mem_region here
+	 * to make DWC3 host work on exynos5
+	 */
 
 	hcd->regs = ioremap(hcd->rsrc_start, hcd->rsrc_len);
 	if (!hcd->regs) {
 		dev_dbg(&pdev->dev, "error mapping memory\n");
 		ret = -EFAULT;
-		goto release_mem_region;
+		goto put_hcd;
 	}
 
 	ret = usb_add_hcd(hcd, irq, IRQF_SHARED);
@@ -159,9 +156,6 @@ dealloc_usb2_hcd:
 
 unmap_registers:
 	iounmap(hcd->regs);
-
-release_mem_region:
-	release_mem_region(hcd->rsrc_start, hcd->rsrc_len);
 
 put_hcd:
 	usb_put_hcd(hcd);
