@@ -19,11 +19,12 @@
 #include <asm/cp15.h>
 #include <asm/smp_plat.h>
 
+#include <plat/cpu.h>
 #include <mach/regs-pmu.h>
 
 extern volatile int pen_release;
 
-static inline void cpu_enter_lowpower(void)
+static inline void cpu_enter_lowpower_a9(void)
 {
 	unsigned int v;
 
@@ -43,6 +44,35 @@ static inline void cpu_enter_lowpower(void)
 	  : "=&r" (v)
 	  : "r" (0), "Ir" (CR_C), "Ir" (0x40)
 	  : "cc");
+}
+
+static inline void cpu_enter_lowpower_a15(void)
+{
+	unsigned int v;
+
+	asm volatile(
+	"       mrc     p15, 0, %0, c1, c0, 0\n"
+	"       bic     %0, %0, %1\n"
+	"       mcr     p15, 0, %0, c1, c0, 0\n"
+	  : "=&r" (v)
+	  : "Ir" (CR_C)
+	  : "cc");
+
+	flush_cache_all();
+
+	asm volatile(
+	/*
+	* Turn off coherency
+	*/
+	"       mrc     p15, 0, %0, c1, c0, 1\n"
+	"       bic     %0, %0, %1\n"
+	"       mcr     p15, 0, %0, c1, c0, 1\n"
+	: "=&r" (v)
+	: "Ir" (0x40)
+	: "cc");
+
+	isb();
+	dsb();
 }
 
 static inline void cpu_leave_lowpower(void)
@@ -112,7 +142,10 @@ void platform_cpu_die(unsigned int cpu)
 	/*
 	 * we're ready for shutdown now, so do it
 	 */
-	cpu_enter_lowpower();
+	if (soc_is_exynos5250())
+		cpu_enter_lowpower_a15();
+	else
+		cpu_enter_lowpower_a9();
 	platform_do_lowpower(cpu, &spurious);
 
 	/*

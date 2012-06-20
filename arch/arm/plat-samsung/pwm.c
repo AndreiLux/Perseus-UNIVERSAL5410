@@ -156,23 +156,24 @@ static unsigned long pwm_calc_tin(struct pwm_device *pwm, unsigned long freq)
 	return tin_parent_rate / 16;
 }
 
-#define NS_IN_HZ (1000000000UL)
+#define NS_IN_SEC (1000000000UL)
 
 int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
 {
 	unsigned long tin_rate;
 	unsigned long tin_ns;
-	unsigned long period;
+	unsigned long frequency;
 	unsigned long flags;
 	unsigned long tcon;
 	unsigned long tcnt;
 	long tcmp;
+	int pwm_was_enabled;
 
 	/* We currently avoid using 64bit arithmetic by using the
 	 * fact that anything faster than 1Hz is easily representable
 	 * by 32bits. */
 
-	if (period_ns > NS_IN_HZ || duty_ns > NS_IN_HZ)
+	if (period_ns > NS_IN_SEC || duty_ns > NS_IN_SEC)
 		return -ERANGE;
 
 	if (duty_ns > period_ns)
@@ -188,16 +189,16 @@ int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
 	tcmp = __raw_readl(S3C2410_TCMPB(pwm->pwm_id));
 	tcnt = __raw_readl(S3C2410_TCNTB(pwm->pwm_id));
 
-	period = NS_IN_HZ / period_ns;
+	frequency = NS_IN_SEC / period_ns;
 
 	pwm_dbg(pwm, "duty_ns=%d, period_ns=%d (%lu)\n",
-		duty_ns, period_ns, period);
+		duty_ns, period_ns, frequency);
 
 	/* Check to see if we are changing the clock rate of the PWM */
 
 	if (pwm->period_ns != period_ns) {
 		if (pwm_is_tdiv(pwm)) {
-			tin_rate = pwm_calc_tin(pwm, period);
+			tin_rate = pwm_calc_tin(pwm, frequency);
 			clk_set_rate(pwm->clk_div, tin_rate);
 		} else
 			tin_rate = clk_get_rate(pwm->clk);
@@ -206,10 +207,10 @@ int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
 
 		pwm_dbg(pwm, "tin_rate=%lu\n", tin_rate);
 
-		tin_ns = NS_IN_HZ / tin_rate;
+		tin_ns = NS_IN_SEC / tin_rate;
 		tcnt = period_ns / tin_ns;
 	} else
-		tin_ns = NS_IN_HZ / clk_get_rate(pwm->clk);
+		tin_ns = NS_IN_SEC / clk_get_rate(pwm->clk);
 
 	/* Note, counters count down */
 
@@ -233,12 +234,24 @@ int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
 	__raw_writel(tcnt, S3C2410_TCNTB(pwm->pwm_id));
 
 	tcon = __raw_readl(S3C2410_TCON);
+	pwm_was_enabled = (tcon & pwm_tcon_start(pwm)) != 0;
+
+	/* Ensure manual update is off before turning it on. */
+	tcon &= ~pwm_tcon_manulupdate(pwm);
+	tcon &= ~pwm_tcon_start(pwm);
+	__raw_writel(tcon, S3C2410_TCON);
+
 	tcon |= pwm_tcon_manulupdate(pwm);
 	tcon |= pwm_tcon_autoreload(pwm);
 	__raw_writel(tcon, S3C2410_TCON);
 
 	tcon &= ~pwm_tcon_manulupdate(pwm);
 	__raw_writel(tcon, S3C2410_TCON);
+
+	if (pwm_was_enabled) {
+		tcon |= pwm_tcon_start(pwm);
+		__raw_writel(tcon, S3C2410_TCON);
+	}
 
 	local_irq_restore(flags);
 
