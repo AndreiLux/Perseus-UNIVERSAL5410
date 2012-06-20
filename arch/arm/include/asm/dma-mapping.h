@@ -226,7 +226,7 @@ static inline int dma_mmap_writecombine(struct device *dev, struct vm_area_struc
  * DMA region above it's default value of 2MB. It must be called before the
  * memory allocator is initialised, i.e. before any core_initcall.
  */
-extern void __init init_consistent_dma_size(unsigned long size);
+static inline void init_consistent_dma_size(unsigned long size) { }
 
 /*
  * For SA-1111, IXP425, and ADI systems  the dma-mapping functions are "magic"
@@ -280,6 +280,9 @@ extern void arm_dma_sync_sg_for_cpu(struct device *, struct scatterlist *, int,
 		enum dma_data_direction);
 extern void arm_dma_sync_sg_for_device(struct device *, struct scatterlist *, int,
 		enum dma_data_direction);
+extern int arm_dma_get_sgtable(struct device *dev, struct sg_table *sgt,
+		void *cpu_addr, dma_addr_t dma_addr, size_t size,
+		struct dma_attrs *attrs);
 
 #endif /* __KERNEL__ */
 #endif
