@@ -469,19 +469,17 @@ static int omap_abe_twl6040_init(struct snd_soc_pcm_runtime *rtd)
 	}
 
 	/* Headset jack detection only if it is supported */
-	if (pdata->jack_detection) {
-		ret = snd_soc_jack_new(codec, "Headset Jack",
-					SND_JACK_HEADSET, &hs_jack);
-		if (ret)
-			return ret;
+	ret = snd_soc_jack_new(codec, "Headset Jack",
+				SND_JACK_HEADSET, &hs_jack);
+	if (ret)
+		return ret;
 
-		ret = snd_soc_jack_add_pins(&hs_jack, ARRAY_SIZE(hs_jack_pins),
-					hs_jack_pins);
-		if (machine_is_omap_4430sdp())
-			twl6040_hs_jack_detect(codec, &hs_jack, SND_JACK_HEADSET);
-		else
-			snd_soc_jack_report(&hs_jack, SND_JACK_HEADSET, SND_JACK_HEADSET);
-	}
+	ret = snd_soc_jack_add_pins(&hs_jack, ARRAY_SIZE(hs_jack_pins),
+				hs_jack_pins);
+	if (pdata->jack_detection)
+		twl6040_hs_jack_detect(codec, &hs_jack, SND_JACK_HEADSET);
+	else
+		snd_soc_jack_report(&hs_jack, SND_JACK_HEADSET, SND_JACK_HEADSET);
 
 	/* Only configure the TPS6130x on SDP4430 */
 	if (machine_is_omap_4430sdp()) {
