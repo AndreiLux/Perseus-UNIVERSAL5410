@@ -303,6 +303,11 @@ void omap4_pm_off_mode_enable(int enable)
 		pwrst->next_logic_state =
 			get_achievable_state(pwrst->pwrdm->pwrsts_logic_ret,
 				next_logic_state, parent_power_domain);
+		pr_debug("%s: %20s - next state / next logic state: %d (%d) / %d (%d)\n",
+			__func__, pwrst->pwrdm->name, pwrst->next_state,
+			pwrst->saved_state, pwrst->next_logic_state,
+						pwrst->saved_logic_state);
+
 		if (pwrst->pwrdm->pwrsts &&
 		    pwrst->next_state < pwrst->saved_state)
 			omap_set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
@@ -519,6 +524,9 @@ static int __init omap_pm_init(void)
 {
 	int ret, i;
 	struct voltagedomain *mpu_voltdm;
+#ifdef CONFIG_SUSPEND
+	struct power_state *pwrst;
+#endif
 
 	if (!(cpu_is_omap44xx() || cpu_is_omap54xx()))
 		return -ENODEV;
@@ -600,6 +608,17 @@ static int __init omap_pm_init(void)
 		omap5_idle_init();
 	}
 
+#ifdef CONFIG_SUSPEND
+	/* Initialize current powerdomain state */
+	list_for_each_entry(pwrst, &pwrst_list, node) {
+		pwrst->saved_state = pwrdm_read_next_pwrst(pwrst->pwrdm);
+		pwrst->saved_logic_state = pwrdm_read_logic_retst(pwrst->pwrdm);
+	}
+
+	/* Enable device OFF mode */
+	if (cpu_is_omap44xx())
+		omap4_pm_off_mode_enable(1);
+#endif
 err2:
 	return ret;
 }
