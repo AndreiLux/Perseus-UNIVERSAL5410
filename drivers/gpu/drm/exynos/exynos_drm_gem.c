@@ -80,7 +80,7 @@ out:
 	return roundup(size, PAGE_SIZE);
 }
 
-static struct page **exynos_gem_get_pages(struct drm_gem_object *obj,
+struct page **exynos_gem_get_pages(struct drm_gem_object *obj,
 						gfp_t gfpmask)
 {
 	struct inode *inode;
@@ -180,6 +180,7 @@ static int exynos_drm_gem_get_pages(struct drm_gem_object *obj)
 	}
 
 	npages = obj->size >> PAGE_SHIFT;
+	buf->page_size = PAGE_SIZE;
 
 	buf->sgt = kzalloc(sizeof(struct sg_table), GFP_KERNEL);
 	if (!buf->sgt) {
@@ -205,6 +206,15 @@ static int exynos_drm_gem_get_pages(struct drm_gem_object *obj)
 		sgl = sg_next(sgl);
 	}
 
+	/* Map the SGT to create a IOMMU mapping for this buffer */
+	ret = dma_map_sg(obj->dev->dev, buf->sgt->sgl, buf->sgt->orig_nents, DMA_BIDIRECTIONAL);
+	if (!ret) {
+		DRM_ERROR("failed to map sg\n");
+		ret = -ENOMEM;
+		goto err1;
+	}
+	buf->dma_addr = buf->sgt->sgl->dma_address;
+
 	/* add some codes for UNCACHED type here. TODO */
 
 	buf->pages = pages;
@@ -222,6 +232,9 @@ static void exynos_drm_gem_put_pages(struct drm_gem_object *obj)
 {
 	struct exynos_drm_gem_obj *exynos_gem_obj = to_exynos_gem_obj(obj);
 	struct exynos_drm_gem_buf *buf = exynos_gem_obj->buffer;
+
+	/* Unmap the SGT to remove the IOMMU mapping created for this buffer */
+	dma_unmap_sg(obj->dev->dev, buf->sgt->sgl, buf->sgt->orig_nents, DMA_BIDIRECTIONAL);
 
 	/*
 	 * if buffer typs is EXYNOS_BO_NONCONTIG then release all pages
@@ -292,7 +305,7 @@ void exynos_drm_gem_destroy(struct exynos_drm_gem_obj *exynos_gem_obj)
 	exynos_gem_obj = NULL;
 }
 
-static struct exynos_drm_gem_obj *exynos_drm_gem_init(struct drm_device *dev,
+struct exynos_drm_gem_obj *exynos_drm_gem_init(struct drm_device *dev,
 						      unsigned long size)
 {
 	struct exynos_drm_gem_obj *exynos_gem_obj;
@@ -597,7 +610,16 @@ int exynos_drm_gem_init_object(struct drm_gem_object *obj)
 
 void exynos_drm_gem_free_object(struct drm_gem_object *obj)
 {
+	struct exynos_drm_gem_obj *exynos_gem_obj;
+	struct exynos_drm_gem_buf *buf;
+
 	DRM_DEBUG_KMS("%s\n", __FILE__);
+
+	exynos_gem_obj = to_exynos_gem_obj(obj);
+	buf = exynos_gem_obj->buffer;
+
+	if (obj->import_attach)
+		drm_prime_gem_destroy(obj, buf->sgt);
 
 	exynos_drm_gem_destroy(to_exynos_gem_obj(obj));
 }
@@ -617,7 +639,8 @@ int exynos_drm_gem_dumb_create(struct drm_file *file_priv,
 	 *	with DRM_IOCTL_MODE_CREATE_DUMB command.
 	 */
 
-	args->pitch = args->width * args->bpp >> 3;
+	args->pitch = args->width * ALIGN(args->bpp, 8) >> 3;
+
 	args->size = PAGE_ALIGN(args->pitch * args->height);
 
 	exynos_gem_obj = exynos_drm_gem_create(dev, args->flags, args->size);
