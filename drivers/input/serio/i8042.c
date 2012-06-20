@@ -991,7 +991,7 @@ static int i8042_controller_init(void)
  * Reset the controller and reset CRT to the original value set by BIOS.
  */
 
-static void i8042_controller_reset(bool force_reset)
+static void i8042_controller_reset(void)
 {
 	i8042_flush();
 
@@ -1016,7 +1016,7 @@ static void i8042_controller_reset(bool force_reset)
  * Reset the controller if requested.
  */
 
-	if (i8042_reset || force_reset)
+	if (i8042_reset)
 		i8042_controller_selftest();
 
 /*
@@ -1139,9 +1139,9 @@ static int i8042_controller_resume(bool force_reset)
  * upsetting it.
  */
 
-static int i8042_pm_suspend(struct device *dev)
+static int i8042_pm_reset(struct device *dev)
 {
-	i8042_controller_reset(true);
+	i8042_controller_reset();
 
 	return 0;
 }
@@ -1163,20 +1163,13 @@ static int i8042_pm_thaw(struct device *dev)
 	return 0;
 }
 
-static int i8042_pm_reset(struct device *dev)
-{
-	i8042_controller_reset(false);
-
-	return 0;
-}
-
 static int i8042_pm_restore(struct device *dev)
 {
 	return i8042_controller_resume(false);
 }
 
 static const struct dev_pm_ops i8042_pm_ops = {
-	.suspend	= i8042_pm_suspend,
+	.suspend	= i8042_pm_reset,
 	.resume		= i8042_pm_resume,
 	.thaw		= i8042_pm_thaw,
 	.poweroff	= i8042_pm_reset,
@@ -1192,7 +1185,7 @@ static const struct dev_pm_ops i8042_pm_ops = {
 
 static void i8042_shutdown(struct platform_device *dev)
 {
-	i8042_controller_reset(false);
+	i8042_controller_reset();
 }
 
 static int __init i8042_create_kbd_port(void)
@@ -1431,7 +1424,7 @@ static int __init i8042_probe(struct platform_device *dev)
  out_fail:
 	i8042_free_aux_ports();	/* in case KBD failed but AUX not */
 	i8042_free_irqs();
-	i8042_controller_reset(false);
+	i8042_controller_reset();
 	i8042_platform_device = NULL;
 
 	return error;
@@ -1441,7 +1434,7 @@ static int __devexit i8042_remove(struct platform_device *dev)
 {
 	i8042_unregister_ports();
 	i8042_free_irqs();
-	i8042_controller_reset(false);
+	i8042_controller_reset();
 	i8042_platform_device = NULL;
 
 	return 0;
