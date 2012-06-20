@@ -864,6 +864,13 @@ config I2C_STUB
 
 	  If you don't know what to do here, definitely say N.
 
+config I2C_CHROMEOS_EC
+	tristate "ChromeOS EC pass-through I2C bus"
+	depends on MFD_CHROMEOS_EC
+	help
+	  If you say yes here you get an I2C pass-through to use services of the
+	  ChromeOS Embedded Controller and the chips behind it.
+
 config SCx200_I2C
 	tristate "NatSemi SCx200 I2C using GPIO pins (DEPRECATED)"
 	depends on SCx200_GPIO
