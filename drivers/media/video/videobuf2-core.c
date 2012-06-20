@@ -1592,8 +1592,26 @@ static void __vb2_queue_cancel(struct vb2_queue *q)
 	/*
 	 * Reinitialize all buffers for next use.
 	 */
-	for (i = 0; i < q->num_buffers; ++i)
-		q->bufs[i]->state = VB2_BUF_STATE_DEQUEUED;
+	for (i = 0; i < q->num_buffers; ++i) {
+		struct vb2_buffer *vb = q->bufs[i];
+		int plane;
+
+		vb->state = VB2_BUF_STATE_DEQUEUED;
+
+		if (q->memory != V4L2_MEMORY_DMABUF)
+			continue;
+
+		for (plane = 0; plane < vb->num_planes; ++plane) {
+			struct vb2_plane *p = &vb->planes[plane];
+
+			if (!p->mem_priv)
+				continue;
+			if (p->dbuf_mapped) {
+				call_memop(q, unmap_dmabuf, p->mem_priv);
+				p->dbuf_mapped = 0;
+			}
+		}
+	}
 }
 
 /**
