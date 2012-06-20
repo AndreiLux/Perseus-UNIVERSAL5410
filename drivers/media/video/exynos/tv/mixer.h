@@ -66,6 +66,13 @@
 #define MXR_PAD_SOURCE_GRP0	4
 #define MXR_PAD_SOURCE_GRP1	5
 #define MXR_PADS_NUM		6
+
+#define V4L2_CID_TV_LAYER_BLEND_ENABLE		(V4L2_CID_LASTP1 + 2)
+#define V4L2_CID_TV_LAYER_BLEND_ALPHA		(V4L2_CID_LASTP1 + 3)
+#define V4L2_CID_TV_PIXEL_BLEND_ENABLE		(V4L2_CID_LASTP1 + 4)
+#define V4L2_CID_TV_CHROMA_ENABLE		(V4L2_CID_LASTP1 + 5)
+#define V4L2_CID_TV_CHROMA_VALUE		(V4L2_CID_LASTP1 + 6)
+
 /** description of a macroblock for packed formats */
 struct mxr_block {
 	/** vertical number of pixels in macroblock */
