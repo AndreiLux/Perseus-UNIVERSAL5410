@@ -1165,6 +1165,7 @@ config VIDEO_S5P_MIPI_CSIS
 	  module will be called s5p-csis.
 
 source "drivers/media/video/s5p-tv/Kconfig"
+source "drivers/media/video/exynos/Kconfig"
 
 endif # V4L_PLATFORM_DRIVERS
 endif # VIDEO_CAPTURE_DRIVERS

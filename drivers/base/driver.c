@@ -123,6 +123,16 @@ void driver_remove_file(struct device_driver *drv,
 }
 EXPORT_SYMBOL_GPL(driver_remove_file);
 
+/**
+ * put_driver - decrement driver's refcount.
+ * @drv: driver.
+ */
+void put_driver(struct device_driver *drv)
+{
+	kobject_put(&drv->p->kobj);
+}
+EXPORT_SYMBOL_GPL(put_driver);
+
 static int driver_add_groups(struct device_driver *drv,
 			     const struct attribute_group **groups)
 {
