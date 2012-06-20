@@ -95,6 +95,18 @@ extern int gsc_dbg;
 #define	GSC_CTX_CAP			(1 << 10)
 #define MAX_MDEV			2
 
+#define V4L2_CID_CACHEABLE			(V4L2_CID_LASTP1 + 1)
+#define V4L2_CID_TV_LAYER_BLEND_ENABLE		(V4L2_CID_LASTP1 + 2)
+#define V4L2_CID_TV_LAYER_BLEND_ALPHA		(V4L2_CID_LASTP1 + 3)
+#define V4L2_CID_TV_PIXEL_BLEND_ENABLE		(V4L2_CID_LASTP1 + 4)
+#define V4L2_CID_TV_CHROMA_ENABLE		(V4L2_CID_LASTP1 + 5)
+#define V4L2_CID_TV_CHROMA_VALUE		(V4L2_CID_LASTP1 + 6)
+/* for color space conversion equation selection */
+#define V4L2_CID_CSC_EQ_MODE			(V4L2_CID_LASTP1 + 8)
+#define V4L2_CID_CSC_EQ				(V4L2_CID_LASTP1 + 9)
+#define V4L2_CID_CSC_RANGE			(V4L2_CID_LASTP1 + 10)
+#define V4L2_CID_GLOBAL_ALPHA			(V4L2_CID_LASTP1 + 11)
+
 enum gsc_dev_flags {
 	/* for global */
 	ST_PWR_ON,
