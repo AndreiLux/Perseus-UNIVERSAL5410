@@ -202,7 +202,7 @@ extern int dw_mci_resume(struct dw_mci *host);
 /* dw_mci platform driver data */
 struct dw_mci_drv_data {
 	unsigned long		ctrl_type;
-	unsigned long		caps;
+	unsigned long		*caps;
 };
 
 #endif /* _DW_MMC_H_ */
