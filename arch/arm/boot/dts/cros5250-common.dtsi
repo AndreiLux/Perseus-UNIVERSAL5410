@@ -1,0 +1,394 @@
+/*
+ * Common device tree include for all Exynos 5250 boards based off of Daisy.
+ *
+ * Copyright (c) 2012 Google, Inc
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+*/
+
+/ {
+	memory {
+		reg = <0x40000000 0x80000000>;
+	};
+
+	chosen {
+	};
+
+	aliases {
+		sysmmu2 = &sysmmu_2;
+		sysmmu3 = &sysmmu_3;
+		sysmmu4 = &sysmmu_4;
+		sysmmu27 = &sysmmu_27;
+		sysmmu28 = &sysmmu_28;
+		sysmmu23 = &sysmmu_23;
+		sysmmu24 = &sysmmu_24;
+		sysmmu25 = &sysmmu_25;
+		sysmmu26 = &sysmmu_26;
+		gsc0 = &gsc_0;
+		gsc1 = &gsc_1;
+		gsc2 = &gsc_2;
+		gsc3 = &gsc_3;
+		i2s0 = &i2s_0;
+	};
+
+	i2c@12C60000 {
+		samsung,i2c-sda-delay = <100>;
+		samsung,i2c-max-bus-freq = <66000>;
+		gpios = <&gpb3 0 2 3 0>,
+			<&gpb3 1 2 3 0>;
+
+		max77686_pmic@9 {
+			compatible = "maxim,max77686-pmic";
+			interrupt-parent = <&wakeup_eint>;
+			interrupts = <26 0>;
+			reg = <0x9>;
+
+			max77686,buck_ramp_delay = <2>;		/* default */
+
+			voltage-regulators {
+				ldo11_reg: LDO11 {
+					regulator-name = "vdd_ldo11";
+					regulator-min-microvolt = <1900000>;
+					regulator-max-microvolt = <1900000>;
+					regulator-always-on;
+				};
+
+				ldo14_reg: LDO14 {
+					regulator-name = "vdd_ldo14";
+					regulator-min-microvolt = <1900000>;
+					regulator-max-microvolt = <1900000>;
+					regulator-always-on;
+				};
+
+				buck1_reg: BUCK1 {
+					regulator-name = "vdd_mif";
+					regulator-min-microvolt = <950000>;
+					regulator-max-microvolt = <1300000>;
+					regulator-always-on;
+					regulator-boot-on;
+				};
+
+				buck2_reg: BUCK2 {
+					regulator-name = "vdd_arm";
+					regulator-min-microvolt = <850000>;
+					regulator-max-microvolt = <1350000>;
+					regulator-always-on;
+					regulator-boot-on;
+				};
+
+				buck3_reg: BUCK3 {
+					regulator-name = "vdd_int";
+					regulator-min-microvolt = <900000>;
+					regulator-max-microvolt = <1200000>;
+					regulator-always-on;
+					regulator-boot-on;
+				};
+
+				buck4_reg: BUCK4 {
+					regulator-name = "vdd_g3d";
+					regulator-min-microvolt = <850000>;
+					regulator-max-microvolt = <1300000>;
+					regulator-boot-on;
+				};
+
+				buck8_reg: BUCK8 {
+					regulator-name = "vdd_ummc";
+					regulator-min-microvolt = <900000>;
+					regulator-max-microvolt = <3000000>;
+					regulator-always-on;
+					regulator-boot-on;
+				};
+
+				en32khz_ap: EN32KHZ_AP {
+					regulator-name = "en32khz_ap";
+					regulator-boot-on;
+				};
+
+				en32khz_cp: EN32KHZ_CP {
+					regulator-name = "en32khz_cp";
+					regulator-boot-on;
+				};
+
+				enp32kh: ENP32KHZ {
+					regulator-name = "enp32khz";
+					regulator-boot-on;
+				};
+			};
+		};
+	};
+
+	i2c@12C70000 {
+		samsung,i2c-sda-delay = <100>;
+		samsung,i2c-max-bus-freq = <66000>;
+		gpios = <&gpb3 2 2 3 0>,
+			<&gpb3 3 2 3 0>;
+
+		trackpad {
+			reg = <0x67>;
+			compatible = "cypress,cyapa";
+			interrupts = <10 0>;
+			interrupt-parent = <&wakeup_eint>;
+		};
+	};
+
+	i2c@12C80000 {
+		samsung,i2c-sda-delay = <100>;
+		samsung,i2c-max-bus-freq = <66000>;
+		gpios = <&gpa0 6 3 3 0>,
+			<&gpa0 7 3 3 0>;
+
+		exynos_hdcp@3a {
+			compatible = "samsung,exynos_hdcp";
+			reg = <0x3a>;
+		};
+	};
+
+	i2c@12C90000 {
+		samsung,i2c-sda-delay = <100>;
+		samsung,i2c-max-bus-freq = <66000>;
+		gpios = <&gpa1 2 3 3 0>,
+			<&gpa1 3 3 3 0>;
+
+		tpm {
+			compatible = "infineon,slb9635tt";
+			reg = <0x20>;
+		};
+	};
+
+	i2c@12CA0000 {
+		samsung,i2c-sda-delay = <100>;
+		samsung,i2c-max-bus-freq = <66000>;
+		gpios = <&gpa2 0 3 3 0>,
+			<&gpa2 1 3 3 0>;
+
+		power-regulator {
+			compatible = "ti,tps65090";
+			reg = <0x48>;
+
+			voltage-regulators {
+				VFET1 {
+					tps65090-control-reg-offset = <15>;
+					regulator-name = "vcd_led";
+					regulator-min-microvolt = <12000000>;
+					regulator-max-microvolt = <12000000>;
+				};
+				VFET2 {
+					tps65090-control-reg-offset = <16>;
+					regulator-name = "video_mid";
+					regulator-min-microvolt = <5000000>;
+					regulator-max-microvolt = <5000000>;
+				};
+				VFET3 {
+					tps65090-control-reg-offset = <17>;
+					regulator-name = "wwan_r";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <3300000>;
+					regulator-always-on;
+				};
+				VFET4 {
+					tps65090-control-reg-offset = <18>;
+					regulator-name = "sdcard";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <3300000>;
+				};
+				VFET5 {
+					tps65090-control-reg-offset = <19>;
+					regulator-name = "camout";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <3300000>;
+					regulator-always-on;
+				};
+				VFET6 {
+					tps65090-control-reg-offset = <20>;
+					regulator-name = "lcd_vdd";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <3300000>;
+				};
+				VFET7 {
+					tps65090-control-reg-offset = <21>;
+					regulator-name = "ts";
+					regulator-min-microvolt = <5000000>;
+					regulator-max-microvolt = <5000000>;
+				};
+			};
+		};
+
+                ec {
+			compatible = "google,chromeos-ec";
+                        reg = <0x1e>;
+                        interrupts = <14 0>;
+			interrupt-parent = <&wakeup_eint>;
+                };
+
+		// i2c4 hsic hub @0x8, eeprom @0x50, batt @0xb
+	};
+
+	i2c@12CB0000 {
+		samsung,i2c-sda-delay = <100>;
+		samsung,i2c-max-bus-freq = <66000>;
+		gpios = <&gpa2 2 3 3 0>,
+			<&gpa2 3 3 3 0>;
+
+		// i2c5 conn? ts?
+	};
+
+	i2c@12CC0000 {
+		status = "disabled";
+
+		// i2c6 is not used on any cros5250 boards
+	};
+
+	i2c@12CD0000 {
+		samsung,i2c-sda-delay = <100>;
+		samsung,i2c-max-bus-freq = <66000>;
+		gpios = <&gpb2 2 3 3 0>,
+			<&gpb2 3 3 3 0>;
+
+		light-sensor {
+			compatible = "invn,isl29018";
+			reg = <0x44>;
+		};
+
+		// i2c7
+		// mipi cam  codec 0x11 gyro @0x68
+		// LCD @0x50-57 ALS @? mic-detect @0x3b
+	};
+
+	spi_0: spi@12d20000 {
+		status = "disabled";
+	};
+
+	spi_1: spi@12d30000 {
+		gpios = <&gpa2 4 2 3 0>,
+			<&gpa2 6 2 3 0>,
+			<&gpa2 7 2 3 0>;
+		samsung,spi-src-clk = <0>;
+		num-cs = <1>;
+	};
+
+	spi_2: spi@12d40000 {
+		status = "disabled";
+	};
+
+	dwmmc0@12200000 {
+		supports-highspeed;
+		card-detection-broken;
+		no-write-protect;
+		fifo-depth = <0x80>;
+		card-detect-delay = <200>;
+		samsung,dw-mshc-sdr-timing = <2 3 3>;
+		samsung,dw-mshc-ddr-timing = <1 2 3>;
+
+		slot0 {
+			bus-width = <8>;
+			cd-gpios = <&gpc0 2 2 3 3>;
+			gpios = <&gpc0 0 2 0 3>, <&gpc0 1 2 0 3>,
+				<&gpc1 0 2 3 3>, <&gpc1 1 2 3 3>,
+				<&gpc1 2 2 3 3>, <&gpc1 3 2 3 3>,
+				<&gpc0 3 2 3 3>, <&gpc0 4 2 3 3>,
+				<&gpc0 5 2 3 3>, <&gpc0 6 2 3 3>;
+		};
+	};
+
+	dwmmc1@12210000 {
+		status = "disabled";
+	};
+
+	dwmmc2@12220000 {
+		supports-highspeed;
+		card-detection-broken;
+		no-write-protect;
+		fifo-depth = <0x80>;
+		card-detect-delay = <200>;
+		samsung,dw-mshc-sdr-timing = <2 3 3>;
+		samsung,dw-mshc-ddr-timing = <1 2 3>;
+
+		slot0 {
+			bus-width = <4>;
+			cd-gpios = <&gpc3 2 2 3 3>;
+			gpios = <&gpc3 1 2 0 3>, <&gpc3 0 2 0 3>,
+				<&gpc3 3 2 3 3>, <&gpc3 4 2 3 3>,
+				<&gpc3 5 2 3 3>, <&gpc3 6 2 3 3>;
+		};
+	};
+
+	dwmmc3@12230000 {
+		supports-highspeed;
+		card-detection-broken;
+		no-write-protect;
+		fifo-depth = <0x80>;
+		card-detect-delay = <200>;
+		samsung,dw-mshc-sdr-timing = <2 3 3>;
+		samsung,dw-mshc-ddr-timing = <1 2 3>;
+
+		slot0 {
+			bus-width = <4>;
+			gpios = <&gpc4 1 2 3 3>, <&gpc4 0 2 0 3>,
+				<&gpc4 3 2 3 3>, <&gpc4 4 2 3 3>,
+				<&gpc4 5 2 3 3>, <&gpc4 6 2 3 3>;
+		};
+	};
+
+	i2c@12CE0000 {
+		samsung,i2c-sda-delay = <100>;
+		samsung,i2c-max-bus-freq = <66000>;
+	};
+
+	ehci {
+		samsung,vbus-gpio = <&gpx1 1 1 3 3>;
+	};
+
+	xhci {
+		samsung,vbus-gpio = <&gpx2 7 1 3 3>;
+	};
+
+	fixed-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "hsichub-reset-l";
+		gpio = <&gpe1 0 1 0 0>;
+		enable-active-high;
+		regulator-always-on;
+	};
+
+	// NB: nodes must be at root for regulator-fixed to probe
+	// NB: must set regulator-boot-on for enable-active-high to be used
+	// NB: set regulator-always-on to suppress complaints
+	//     "incomplete constraints, leaving on"
+	wifi-en {
+		compatible = "regulator-fixed";
+		regulator-name = "wifi-en";
+		gpio = <&gpx0 1 0 0 0>;
+		enable-active-high;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+	wifi-rst {
+		compatible = "regulator-fixed";
+		regulator-name = "wifi-rst-l";
+		gpio = <&gpx0 2 0 0 0>;
+		enable-active-high;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+	bt-rst {
+		compatible = "regulator-fixed";
+		regulator-name = "bt-reset-l";
+		gpio = <&gpx3 2 0 0 0>;
+		enable-active-high;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+
+		power {
+			label = "Power";
+			gpios = <&gpx1 3 0 0 0>;
+			linux,code = <116>; /* KEY_POWER */
+			gpio-key,wakeup;
+		};
+	};
+};

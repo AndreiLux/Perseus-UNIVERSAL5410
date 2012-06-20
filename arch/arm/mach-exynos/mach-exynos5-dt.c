@@ -21,6 +21,7 @@
 #include <linux/pwm_backlight.h>
 #include <linux/mfd/wm8994/pdata.h>
 #include <linux/regulator/machine.h>
+#include <linux/spi/spi.h>
 
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
@@ -45,6 +46,7 @@
 #include <plat/usb-phy.h>
 #include <plat/ehci.h>
 #include <plat/dp.h>
+#include <plat/s3c64xx-spi.h>
 
 #include <video/platform_lcd.h>
 
@@ -276,6 +278,24 @@ static struct platform_device exynos_drm_device = {
 static void lcd_set_power(struct plat_lcd_data *pd,
 			unsigned int power)
 {
+	if (of_machine_is_compatible("google,daisy") ||
+			of_machine_is_compatible("google,snow")) {
+		struct regulator *lcd_fet;
+
+		lcd_fet = regulator_get(NULL, "lcd_vdd");
+		if (!IS_ERR(lcd_fet)) {
+			if (power)
+				regulator_enable(lcd_fet);
+			else
+				regulator_disable(lcd_fet);
+
+			regulator_put(lcd_fet);
+		}
+	}
+
+	/* TODO(dianders): GPX1(5) isn't reset for snow.  Fix to hold high? */
+
+
 	/* reset */
 	gpio_request_one(EXYNOS5_GPX1(5), GPIOF_OUT_INIT_HIGH, "GPX1");
 
@@ -296,6 +316,26 @@ static void lcd_set_power(struct plat_lcd_data *pd,
 		gpio_free(EXYNOS5_GPX1(5));
 	}
 	mdelay(20);
+
+
+	/* Turn on regulator for backlight */
+	if (of_machine_is_compatible("google,daisy") ||
+			of_machine_is_compatible("google,snow")) {
+		struct regulator *backlight_fet;
+
+		backlight_fet = regulator_get(NULL, "vcd_led");
+		if (!IS_ERR(backlight_fet)) {
+			if (power)
+				regulator_enable(backlight_fet);
+			else
+				regulator_disable(backlight_fet);
+
+			regulator_put(backlight_fet);
+		}
+		/* Wait 10 ms between regulator on and PWM start per spec */
+		mdelay(10);
+	}
+
 	/*
 	 * Request lcd_bl_en GPIO for smdk5250_bl_notify().
 	 * TODO: Fix this so we are not at risk of requesting the GPIO
@@ -339,7 +379,7 @@ static struct samsung_bl_gpio_info smdk5250_bl_gpio_info = {
 };
 
 static struct platform_pwm_backlight_data smdk5250_bl_data = {
-	.pwm_period_ns	= 1000,
+	.pwm_period_ns	= 1000000,
 	.notify		= smdk5250_bl_notify,
 };
 
@@ -397,6 +437,25 @@ static struct i2c_board_info i2c_devs1[] __initdata = {
 		I2C_BOARD_INFO("wm8994", 0x1a),
 		.platform_data  = &wm8994_platform_data,
 	},
+};
+
+static struct s3c64xx_spi_csinfo spi1_csi[] = {
+	[0] = {
+		.line		= EXYNOS5_GPA2(5),
+		.fb_delay	= 0x2,
+	},
+};
+
+static struct spi_board_info spi1_board_info[] __initdata = {
+	{
+		.modalias		= "spidev",
+		.platform_data		= NULL,
+		.max_speed_hz		= 10*1000*1000,
+		.bus_num		= 1,
+		.chip_select		= 0,
+		.mode			= SPI_MODE_0,
+		.controller_data	= spi1_csi,
+	}
 };
 
 struct sysmmu_platform_data platdata_sysmmu_mfc_l = {
@@ -699,6 +758,46 @@ static void __init exynos5250_dt_machine_init(void)
 
 	samsung_bl_set(&smdk5250_bl_gpio_info, &smdk5250_bl_data);
 
+	/*
+	 * HACK ALERT! TODO: FIXME!
+	 *
+	 * We're going to hack in Daisy LCD info here for bringup purposes.
+	 * Lots of things wrong with what we're doing here, but it works for
+	 * bringup purposes.
+	 */
+
+	if (of_machine_is_compatible("google,daisy")) {
+#ifdef CONFIG_DRM_EXYNOS_FIMD
+		smdk5250_lcd1_pdata.panel.timing.xres = 1366;
+		smdk5250_lcd1_pdata.panel.timing.yres = 768;
+		smdk5250_lcd1_pdata.panel_type = MIPI_LCD;
+#else
+		smdk5250_fb_win0.win_mode.xres = 1366;
+		smdk5250_fb_win0.win_mode.yres = 768;
+		smdk5250_fb_win0.virtual_x = 1366;
+		smdk5250_fb_win0.virtual_y = 768 * 2;
+
+		smdk5250_fb_win1.win_mode.xres = 1366;
+		smdk5250_fb_win1.win_mode.yres = 768;
+		smdk5250_fb_win1.virtual_x = 1366;
+		smdk5250_fb_win1.virtual_y = 768 * 2;
+
+		smdk5250_fb_win2.win_mode.xres = 1366;
+		smdk5250_fb_win2.win_mode.yres = 768;
+		smdk5250_fb_win2.virtual_x = 1366;
+		smdk5250_fb_win2.virtual_y = 768 * 2;
+#endif
+		dsim_lcd_info.lcd_size.width = 1366;
+		dsim_lcd_info.lcd_size.height = 768;
+	} else if (of_machine_is_compatible("google,snow")) {
+#ifdef CONFIG_DRM_EXYNOS_FIMD
+		smdk5250_lcd1_pdata.panel.timing = snow_fb_window;
+		smdk5250_lcd1_pdata.panel_type = DP_LCD;
+		smdk5250_lcd1_pdata.clock_rate = 267 * 1000 * 1000;
+		smdk5250_lcd1_pdata.vidcon1 = 0;
+#endif
+	}
+
 	if (gpio_request_one(EXYNOS5_GPX2(6), GPIOF_OUT_INIT_HIGH,
 		"HOST_VBUS_CONTROL")) {
 		printk(KERN_ERR "failed to request gpio_host_vbus\n");
@@ -709,13 +808,24 @@ static void __init exynos5250_dt_machine_init(void)
 
 	exynos5_i2c_setup();
 
-	i2c_register_board_info(1, i2c_devs1, ARRAY_SIZE(i2c_devs1));
+	/*
+	 * BIG HACK: The wm8994 is not device tree enabled apparently, so
+	 * needs to be added manually.  ...but it's only on SMDK5250.
+	 */
+	if (of_machine_is_compatible("samsung,smdk5250")) {
+		i2c_register_board_info(1, i2c_devs1, ARRAY_SIZE(i2c_devs1));
+	}
+
+	spi_register_board_info(spi1_board_info, ARRAY_SIZE(spi1_board_info));
 
 	of_platform_populate(NULL, of_default_bus_match_table,
 				exynos5250_auxdata_lookup, NULL);
 
 #ifdef CONFIG_DRM_EXYNOS_FIMD
-	exynos_fimd_gpio_setup_24bpp();
+	if (of_machine_is_compatible("google,snow"))
+		exynos_dp_gpio_setup_24bpp();
+	else
+		exynos_fimd_gpio_setup_24bpp();
 #endif
 	s5p_tv_setup();
 
