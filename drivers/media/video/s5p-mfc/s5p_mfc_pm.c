@@ -20,7 +20,11 @@
 #include "s5p_mfc_debug.h"
 #include "s5p_mfc_pm.h"
 
-#define MFC_CLKNAME		"sclk_mfc"
+#ifdef CONFIG_VIDEO_SAMSUNG_S5P_MFC_V5
+#define MFC_CLKNAME            "sclk_mfc"
+#elif CONFIG_VIDEO_SAMSUNG_S5P_MFC_V6
+#define MFC_CLKNAME            "aclk_333"
+#endif
 #define MFC_GATE_CLK_NAME	"mfc"
 
 #define CLK_DEBUG

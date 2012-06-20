@@ -21,6 +21,9 @@ struct s5p_mfc_cmd_args {
 	unsigned int	arg[MAX_H2R_ARG];
 };
 
+int s5p_mfc_cmd_host2risc(struct s5p_mfc_dev *dev, int cmd,
+	struct s5p_mfc_cmd_args *args);
+
 int s5p_mfc_sys_init_cmd(struct s5p_mfc_dev *dev);
 int s5p_mfc_sleep_cmd(struct s5p_mfc_dev *dev);
 int s5p_mfc_wakeup_cmd(struct s5p_mfc_dev *dev);

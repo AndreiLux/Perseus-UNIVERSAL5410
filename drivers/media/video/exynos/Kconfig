@@ -1,0 +1,17 @@
+config VIDEO_EXYNOS
+	bool "Exynos Multimedia Devices"
+	depends on ARCH_EXYNOS5
+	default n
+	select VIDEO_FIXED_MINOR_RANGES
+	select VIDEOBUF2_DMA_CONTIG
+	help
+	  This is a representative exynos multimedia device.
+
+if VIDEO_EXYNOS
+	source "drivers/media/video/exynos/tv/Kconfig"
+endif
+
+config MEDIA_EXYNOS
+	bool
+	help
+	  Compile mdev to use exynos5 media device driver.

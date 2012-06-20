@@ -50,8 +50,17 @@ void s5p_mfc_release_codec_buffers(struct s5p_mfc_ctx *ctx);
 int s5p_mfc_alloc_instance_buffer(struct s5p_mfc_ctx *ctx);
 void s5p_mfc_release_instance_buffer(struct s5p_mfc_ctx *ctx);
 
+int s5p_mfc_alloc_dev_context_buffer(struct s5p_mfc_dev *dev);
+void s5p_mfc_release_dev_context_buffer(struct s5p_mfc_dev *dev);
+
+void s5p_mfc_dec_calc_dpb_size(struct s5p_mfc_ctx *ctx);
+void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
+
 void s5p_mfc_try_run(struct s5p_mfc_dev *dev);
 void s5p_mfc_cleanup_queue(struct list_head *lh, struct vb2_queue *vq);
+
+void s5p_mfc_write_info(struct s5p_mfc_ctx *ctx, unsigned int data, unsigned int ofs);
+unsigned int s5p_mfc_read_info(struct s5p_mfc_ctx *ctx, unsigned int ofs);
 
 #define s5p_mfc_get_dspl_y_adr()	(readl(dev->regs_base + \
 					S5P_FIMV_SI_DISPLAY_Y_ADR) << \
@@ -61,8 +70,11 @@ void s5p_mfc_cleanup_queue(struct list_head *lh, struct vb2_queue *vq);
 					MFC_OFFSET_SHIFT)
 #define s5p_mfc_get_dspl_status()	readl(dev->regs_base + \
 						S5P_FIMV_SI_DISPLAY_STATUS)
-#define s5p_mfc_get_frame_type()	(readl(dev->regs_base + \
+#define s5p_mfc_get_dec_frame_type()	(readl(dev->regs_base + \
 						S5P_FIMV_DECODE_FRAME_TYPE) \
+					& S5P_FIMV_DECODE_FRAME_MASK)
+#define s5p_mfc_get_disp_frame_type()	((s5p_mfc_read_shm(ctx, DISP_PIC_FRAME_TYPE) \
+						>> S5P_FIMV_SHARED_DISP_FRAME_TYPE_SHIFT) \
 					& S5P_FIMV_DECODE_FRAME_MASK)
 #define s5p_mfc_get_consumed_stream()	readl(dev->regs_base + \
 						S5P_FIMV_SI_CONSUMED_BYTES)
@@ -87,5 +99,11 @@ void s5p_mfc_cleanup_queue(struct list_head *lh, struct vb2_queue *vq);
 						S5P_FIMV_ENC_SI_STRM_SIZE)
 #define s5p_mfc_get_enc_slice_type()	readl(dev->regs_base + \
 						S5P_FIMV_ENC_SI_SLICE_TYPE)
+#define s5p_mfc_get_enc_dpb_count()	-1
+#define s5p_mfc_get_enc_pic_count()	readl(dev->regs_base + \
+						S5P_FIMV_ENC_SI_PIC_CNT)
+#define s5p_mfc_get_sei_avail_status()	s5p_mfc_read_shm(ctx, FRAME_PACK_SEI_AVAIL)
+#define s5p_mfc_get_mvc_num_views()	-1
+#define s5p_mfc_get_mvc_view_id()	-1
 
 #endif /* S5P_MFC_OPR_H_ */
