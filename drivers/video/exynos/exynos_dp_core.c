@@ -392,7 +392,7 @@ static unsigned int exynos_dp_get_lane_link_training(
 				struct exynos_dp_device *dp,
 				int lane)
 {
-	u32 reg;
+	u32 reg = 0;
 
 	switch (lane) {
 	case 0:
@@ -479,7 +479,7 @@ static int exynos_dp_process_clock_recovery(struct exynos_dp_device *dp)
 	u8 buf[5];
 
 	u8 adjust_request[2];
-	u8 voltage_swing;
+	u8 voltage_swing = 0;
 	u8 pre_emphasis;
 	u8 training_lane;
 
