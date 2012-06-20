@@ -2265,6 +2265,7 @@ static inline void handle_cyclic_desc_list(struct list_head *list)
 		dma_async_tx_callback callback;
 
 		/* Change status to reload it */
+		dma_cookie_assign(&desc->txd);
 		desc->status = PREP;
 		pch = desc->pchan;
 		callback = desc->txd.callback;

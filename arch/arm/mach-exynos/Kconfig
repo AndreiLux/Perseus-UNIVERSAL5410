@@ -86,10 +86,20 @@ config EXYNOS4_SETUP_FIMD0
 	help
 	  Common setup code for FIMD0.
 
-config EXYNOS4_DEV_SYSMMU
+config EXYNOS4_SETUP_DP
 	bool
 	help
-	  Common setup code for SYSTEM MMU in EXYNOS4
+	  Common setup code for DP.
+
+config EXYNOS4_SETUP_FIMD
+	bool
+	help
+	  Common setup code for FIMD.
+
+config EXYNOS_DEV_SYSMMU
+	bool
+	help
+	  Common setup code for SYSTEM MMU in EXYNOS
 
 config EXYNOS4_DEV_DWMCI
 	bool
@@ -166,6 +176,17 @@ config EXYNOS4_SETUP_SPI
 	bool
 	help
 	  Common setup code for SPI GPIO configurations.
+
+config EXYNOS4_SETUP_MIPI_DSIM
+	bool
+	depends on FB_MIPI_DSIM
+	help
+	  Common setup code for MIPI_DSIM to support mainline style fimd.
+
+config EXYNOS4_SETUP_TVOUT
+	bool
+	help
+	  Common setup code for TVOUT
 
 # machine support
 
@@ -389,6 +410,13 @@ config MACH_EXYNOS5_DT
 	select SOC_EXYNOS5250
 	select USE_OF
 	select ARM_AMBA
+	select EXYNOS_DEV_SYSMMU
+	select EXYNOS4_SETUP_MIPI_DSIM
+	select EXYNOS4_SETUP_DP
+	select EXYNOS4_SETUP_USB_PHY
+	select SAMSUNG_DEV_BACKLIGHT
+	select SAMSUNG_DEV_PWM
+	select EXYNOS4_SETUP_TVOUT
 	help
 	  Machine support for Samsung Exynos4 machine with device tree enabled.
 	  Select this if a fdt blob is available for the EXYNOS4 SoC based board.

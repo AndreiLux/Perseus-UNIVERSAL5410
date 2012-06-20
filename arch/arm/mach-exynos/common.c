@@ -195,6 +195,11 @@ static struct map_desc exynos4_iodesc[] __initdata = {
 		.pfn		= __phys_to_pfn(EXYNOS4_PA_HSPHY),
 		.length		= SZ_4K,
 		.type		= MT_DEVICE,
+	}, {
+		.virtual	= (unsigned long)S5P_VA_AUDSS,
+		.pfn		= __phys_to_pfn(EXYNOS_PA_AUDSS),
+		.length		= SZ_4K,
+		.type		= MT_DEVICE,
 	},
 };
 
@@ -277,6 +282,16 @@ static struct map_desc exynos5_iodesc[] __initdata = {
 		.pfn		= __phys_to_pfn(EXYNOS5_PA_GIC_DIST),
 		.length		= SZ_4K,
 		.type		= MT_DEVICE,
+	}, {
+		.virtual	= (unsigned long)S3C_VA_USB_HSPHY,
+		.pfn		= __phys_to_pfn(EXYNOS5_PA_USB_PHY),
+		.length		= SZ_256K,
+		.type		= MT_DEVICE,
+	}, {
+		.virtual	= (unsigned long)S5P_VA_AUDSS,
+		.pfn		= __phys_to_pfn(EXYNOS_PA_AUDSS),
+		.length		= SZ_4K,
+		.type		= MT_DEVICE,
 	},
 };
 
@@ -288,6 +303,19 @@ void exynos4_restart(char mode, const char *cmd)
 void exynos5_restart(char mode, const char *cmd)
 {
 	__raw_writel(0x1, EXYNOS_SWRESET);
+}
+
+static void wdt_reset_init(void)
+{
+	unsigned int value;
+
+	value = __raw_readl(EXYNOS5_AUTOMATIC_WDT_RESET_DISABLE);
+	value &= ~EXYNOS5_SYS_WDTRESET;
+	__raw_writel(value, EXYNOS5_AUTOMATIC_WDT_RESET_DISABLE);
+
+	value = __raw_readl(EXYNOS5_MASK_WDT_RESET_REQUEST);
+	value &= ~EXYNOS5_SYS_WDTRESET;
+	__raw_writel(value, EXYNOS5_MASK_WDT_RESET_REQUEST);
 }
 
 /*
@@ -307,6 +335,9 @@ void __init exynos_init_io(struct map_desc *mach_desc, int size)
 	s5p_init_cpu(S5P_VA_CHIPID);
 
 	s3c_init_cpu(samsung_cpu_id, cpu_ids, ARRAY_SIZE(cpu_ids));
+
+	/* TO support Watch dog reset */
+	wdt_reset_init();
 }
 
 static void __init exynos4_map_io(void)
@@ -379,6 +410,7 @@ static void __init exynos4_init_clocks(int xtal)
 
 	exynos4_register_clocks();
 	exynos4_setup_clocks();
+	exynos_register_audss_clocks();
 }
 
 static void __init exynos5_init_clocks(int xtal)
@@ -390,6 +422,7 @@ static void __init exynos5_init_clocks(int xtal)
 
 	exynos5_register_clocks();
 	exynos5_setup_clocks();
+	exynos_register_audss_clocks();
 }
 
 #define COMBINER_ENABLE_SET	0x0
