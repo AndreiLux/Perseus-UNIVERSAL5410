@@ -525,6 +525,7 @@ and discussions on the V4L mailing list.</revremark>
     &sub-log-status;
     &sub-overlay;
     &sub-qbuf;
+    &sub-expbuf;
     &sub-querybuf;
     &sub-querycap;
     &sub-queryctrl;

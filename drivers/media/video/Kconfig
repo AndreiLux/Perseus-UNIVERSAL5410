@@ -625,6 +625,7 @@ config VIDEO_VIVI
 	depends on FRAMEBUFFER_CONSOLE || STI_CONSOLE
 	select FONT_8x16
 	select VIDEOBUF2_VMALLOC
+	select DMA_SHARED_BUFFER
 	default n
 	---help---
 	  Enables a virtual video driver. This device shows a color bar
