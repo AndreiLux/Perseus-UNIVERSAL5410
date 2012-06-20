@@ -11,6 +11,9 @@
 
 #include <linux/gpio.h>
 #include <linux/of_platform.h>
+#include <linux/platform_data/dwc3-exynos.h>
+#include <linux/regulator/fixed.h>
+#include <linux/regulator/machine.h>
 #include <linux/serial_core.h>
 #include <linux/smsc911x.h>
 #include <linux/delay.h>
@@ -24,13 +27,24 @@
 #include <mach/map.h>
 #include <mach/ohci.h>
 #include <mach/regs-pmu.h>
+#include <mach/sysmmu.h>
+#include <mach/ohci.h>
+#include <mach/regs-audss.h>
 
+#include <plat/audio.h>
 #include <plat/cpu.h>
+#include <plat/dsim.h>
+#include <plat/fb.h>
+#include <plat/mipi_dsi.h>
+#include <plat/gpio-cfg.h>
+#include <plat/regs-fb.h>
 #include <plat/regs-serial.h>
 #include <plat/regs-srom.h>
 #include <plat/backlight.h>
 #include <plat/devs.h>
 #include <plat/usb-phy.h>
+#include <plat/ehci.h>
+#include <plat/dp.h>
 
 #include <video/platform_lcd.h>
 
@@ -59,6 +73,197 @@ static void __init smsc911x_init(int ncs)
 		(0x1 << S5P_SROM_BCX__TACS__SHIFT),
 		S5P_SROM_BC0 + (ncs * 4));
 }
+
+static struct s3c_fb_pd_win smdk5250_fb_win0 = {
+	.win_mode = {
+		.left_margin	= 4,
+		.right_margin	= 4,
+		.upper_margin	= 4,
+		.lower_margin	= 4,
+		.hsync_len	= 4,
+		.vsync_len	= 4,
+		.xres		= 1280,
+		.yres		= 800,
+	},
+	.virtual_x		= 1280,
+	.virtual_y		= 800 * 2,
+	.width			= 223,
+	.height			= 125,
+	.max_bpp		= 32,
+	.default_bpp		= 24,
+};
+
+static struct s3c_fb_pd_win smdk5250_fb_win1 = {
+	.win_mode = {
+		.left_margin	= 4,
+		.right_margin	= 4,
+		.upper_margin	= 4,
+		.lower_margin	= 4,
+		.hsync_len	= 4,
+		.vsync_len	= 4,
+		.xres		= 1280,
+		.yres		= 800,
+	},
+	.virtual_x		= 1280,
+	.virtual_y		= 800 * 2,
+	.width			= 223,
+	.height			= 125,
+	.max_bpp		= 32,
+	.default_bpp		= 24,
+};
+
+static struct s3c_fb_pd_win smdk5250_fb_win2 = {
+	.win_mode = {
+		.left_margin	= 0x4,
+		.right_margin	= 0x4,
+		.upper_margin	= 4,
+		.lower_margin	= 4,
+		.hsync_len	= 4,
+		.vsync_len	= 4,
+		.xres		= 1280,
+		.yres		= 800,
+	},
+	.virtual_x		= 1280,
+	.virtual_y		= 800 * 2,
+	.width			= 223,
+	.height			= 125,
+	.max_bpp		= 32,
+	.default_bpp		= 24,
+};
+
+static struct fb_videomode snow_fb_window = {
+	.left_margin    = 0x80,
+	.right_margin   = 0x48,
+	.upper_margin   = 14,
+	.lower_margin   = 3,
+	.hsync_len      = 5,
+	.vsync_len      = 32,
+	.xres           = 1366,
+	.yres           = 768,
+};
+
+static void exynos_fimd_gpio_setup_24bpp(void)
+{
+	unsigned int reg = 0;
+
+	/*
+	 * Set DISP1BLK_CFG register for Display path selection
+	 * FIMD of DISP1_BLK Bypass selection : DISP1BLK_CFG[15]
+	 * ---------------------
+	 * 0 | MIE/MDNIE
+	 * 1 | FIMD : selected
+	 */
+	reg = __raw_readl(S3C_VA_SYS + 0x0214);
+	reg &= ~(1 << 15);	/* To save other reset values */
+	reg |= (1 << 15);
+	__raw_writel(reg, S3C_VA_SYS + 0x0214);
+}
+
+static void exynos_dp_gpio_setup_24bpp(void)
+{
+	exynos_fimd_gpio_setup_24bpp();
+
+	/* Set Hotplug detect for DP */
+	gpio_request(EXYNOS5_GPX0(7), "DP hotplug");
+	s3c_gpio_cfgpin(EXYNOS5_GPX0(7), S3C_GPIO_SFN(3));
+}
+
+#ifdef CONFIG_DRM_EXYNOS_FIMD
+static struct exynos_drm_fimd_pdata smdk5250_lcd1_pdata = {
+	.panel.timing   = {
+		.xres           = 1280,
+		.yres           = 800,
+		.hsync_len      = 4,
+		.left_margin    = 0x4,
+		.right_margin   = 0x4,
+		.vsync_len      = 4,
+		.upper_margin   = 4,
+		.lower_margin   = 4,
+		.refresh        = 60,
+	},
+	.vidcon0        = VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB,
+	.vidcon1        = VIDCON1_INV_VCLK,
+	.default_win    = 0,
+	.bpp            = 32,
+	.clock_rate     = 800 * 1000 * 1000,
+};
+#else
+static struct s3c_fb_platdata smdk5250_lcd1_pdata __initdata = {
+	.win[0]		= &smdk5250_fb_win0,
+	.win[1]		= &smdk5250_fb_win1,
+	.win[2]		= &smdk5250_fb_win2,
+	.default_win	= 0,
+	.vidcon0	= VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB,
+	.vidcon1	= VIDCON1_INV_VCLK,
+	.setup_gpio	= exynos_fimd_gpio_setup_24bpp,
+	.clock_rate	= 800 * 1000 * 1000,
+};
+#endif
+
+static struct mipi_dsim_config dsim_info = {
+	.e_interface		= DSIM_VIDEO,
+	.e_pixel_format		= DSIM_24BPP_888,
+	/* main frame fifo auto flush at VSYNC pulse */
+	.auto_flush		= false,
+	.eot_disable		= false,
+	.auto_vertical_cnt	= false,
+	.hse			= false,
+	.hfp			= false,
+	.hbp			= false,
+	.hsa			= false,
+
+	.e_no_data_lane		= DSIM_DATA_LANE_4,
+	.e_byte_clk		= DSIM_PLL_OUT_DIV8,
+	.e_burst_mode		= DSIM_BURST,
+
+	.p			= 3,
+	.m			= 115,
+	.s			= 1,
+
+	/* D-PHY PLL stable time spec :min = 200usec ~ max 400usec */
+	.pll_stable_time	= 500,
+
+	.esc_clk		= 0.4 * 1000000, /* escape clk : 10MHz */
+
+	/* stop state holding counter after bta change count 0 ~ 0xfff */
+	.stop_holding_cnt	= 0x0f,
+	.bta_timeout		= 0xff,		/* bta timeout 0 ~ 0xff */
+	.rx_timeout		= 0xffff,	/* lp rx timeout 0 ~ 0xffff */
+
+	.dsim_ddi_pd = &tc358764_mipi_lcd_driver,
+};
+
+static struct mipi_dsim_lcd_config dsim_lcd_info = {
+	.rgb_timing.left_margin		= 0x4,
+	.rgb_timing.right_margin	= 0x4,
+	.rgb_timing.upper_margin	= 0x4,
+	.rgb_timing.lower_margin	=  0x4,
+	.rgb_timing.hsync_len		= 0x4,
+	.rgb_timing.vsync_len		= 0x4,
+	.cpu_timing.cs_setup		= 0,
+	.cpu_timing.wr_setup		= 1,
+	.cpu_timing.wr_act		= 0,
+	.cpu_timing.wr_hold		= 0,
+	.lcd_size.width			= 1280,
+	.lcd_size.height		= 800,
+};
+
+static struct s5p_platform_mipi_dsim dsim_platform_data = {
+	.clk_name		= "dsim0",
+	.dsim_config		= &dsim_info,
+	.dsim_lcd_config	= &dsim_lcd_info,
+
+	.part_reset		= s5p_dsim_part_reset,
+	.init_d_phy		= s5p_dsim_init_d_phy,
+	.get_fb_frame_done	= NULL,
+	.trigger		= NULL,
+
+	/*
+	 * the stable time of needing to write data on SFR
+	 * when the mipi mode becomes LP mode.
+	 */
+	.delay_for_stabilization = 600,
+};
 
 static struct platform_device exynos_drm_device = {
 	.name           = "exynos-drm",
@@ -194,6 +399,133 @@ static struct i2c_board_info i2c_devs1[] __initdata = {
 	},
 };
 
+struct sysmmu_platform_data platdata_sysmmu_mfc_l = {
+	.dbgname = "mfc_l",
+	.clockname = "sysmmu",
+};
+
+struct sysmmu_platform_data platdata_sysmmu_mfc_r = {
+	.dbgname = "mfc_r",
+	.clockname = "sysmmu",
+};
+
+struct sysmmu_platform_data platdata_sysmmu_gsc = {
+	.dbgname = "gsc",
+	.clockname = "sysmmu",
+};
+
+struct sysmmu_platform_data platdata_sysmmu_g2d = {
+	.dbgname = "g2d",
+	.clockname = "sysmmu",
+};
+
+struct sysmmu_platform_data platdata_sysmmu_fimd = {
+	.dbgname = "fimd",
+	.clockname = "sysmmu",
+};
+
+struct sysmmu_platform_data platdata_sysmmu_tv = {
+	.dbgname = "tv",
+	.clockname = "sysmmu",
+};
+
+#ifdef CONFIG_VIDEO_FIMG2D4X
+static struct fimg2d_platdata fimg2d_data __initdata = {
+	.hw_ver		= 0x42,
+	.gate_clkname	= "fimg2d",
+};
+#endif
+
+static struct exynos4_ohci_platdata smdk5250_ohci_pdata = {
+	.phy_init = s5p_usb_phy_init,
+	.phy_exit = s5p_usb_phy_exit,
+};
+
+static struct s5p_ehci_platdata smdk5250_ehci_pdata = {
+	.phy_init = s5p_usb_phy_init,
+	.phy_exit = s5p_usb_phy_exit,
+};
+
+static struct dwc3_exynos_data smdk5250_xhci_pdata = {
+	.phy_type = S5P_USB_PHY_DRD,
+	.phy_init = s5p_usb_phy_init,
+	.phy_exit = s5p_usb_phy_exit,
+};
+
+struct exynos_gpio_cfg {
+	unsigned int    addr;
+	unsigned int    num;
+	unsigned int    bit;
+};
+
+static const char *rclksrc[] = {
+	[0] = "busclk",
+	[1] = "i2sclk",
+};
+
+static struct video_info smdk5250_dp_config = {
+	.name                   = "eDP-LVDS NXP PTN3460",
+
+	.h_sync_polarity        = 0,
+	.v_sync_polarity        = 0,
+	.interlaced             = 0,
+
+	.color_space            = COLOR_RGB,
+	.dynamic_range          = VESA,
+	.ycbcr_coeff            = COLOR_YCBCR601,
+	.color_depth            = COLOR_8,
+
+	.link_rate              = LINK_RATE_2_70GBPS,
+	.lane_count             = LANE_COUNT2,
+};
+
+static struct exynos_dp_platdata smdk5250_dp_data __initdata = {
+	.video_info     = &smdk5250_dp_config,
+	.training_type  = HW_LINK_TRAINING,
+	.phy_init       = s5p_dp_phy_init,
+	.phy_exit       = s5p_dp_phy_exit,
+};
+
+static int exynos_cfg_i2s_gpio(struct platform_device *pdev)
+{
+	int id;
+	/* configure GPIO for i2s port */
+	struct exynos_gpio_cfg exynos5_cfg[3] = {
+		{ EXYNOS5_GPZ(0),  7, S3C_GPIO_SFN(2) },
+		{ EXYNOS5_GPB0(0), 5, S3C_GPIO_SFN(2) },
+		{ EXYNOS5_GPB1(0), 5, S3C_GPIO_SFN(2) }
+	};
+
+	if (pdev->dev.of_node) {
+		id = of_alias_get_id(pdev->dev.of_node, "i2s");
+		if (id < 0)
+			dev_err(&pdev->dev, "failed to get alias id:%d\n", id);
+	} else {
+		id = pdev->id;
+	}
+
+	if (id < 0 || id > 2) {
+		printk(KERN_ERR "Invalid Device %d\n", id);
+		return -EINVAL;
+	}
+
+	s3c_gpio_cfgpin_range(exynos5_cfg[id].addr,
+		exynos5_cfg[id].num, exynos5_cfg[id].bit);
+
+	return 0;
+}
+
+static struct s3c_audio_pdata i2sv5_pdata = {
+	.cfg_gpio = exynos_cfg_i2s_gpio,
+	.type = {
+		.i2s = {
+			.quirks = QUIRK_PRI_6CHAN | QUIRK_SEC_DAI
+					 | QUIRK_NEED_RSTCLR,
+			.src_clk = rclksrc,
+			.idma_addr = EXYNOS4_AUDSS_INT_MEM,
+		},
+	},
+};
 /*
  * The following lookup table is used to override device names when devices
  * are registered from device tree. This is temporarily added to enable
@@ -220,6 +552,26 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 				"s3c2440-i2c.0", NULL),
 	OF_DEV_AUXDATA("samsung,s3c2440-i2c", EXYNOS5_PA_IIC(1),
 				"s3c2440-i2c.1", NULL),
+	OF_DEV_AUXDATA("samsung,s3c2440-i2c", EXYNOS5_PA_IIC(2),
+				"s3c2440-i2c.2", NULL),
+	OF_DEV_AUXDATA("samsung,s3c2440-i2c", EXYNOS5_PA_IIC(3),
+				"s3c2440-i2c.3", NULL),
+	OF_DEV_AUXDATA("samsung,s3c2440-i2c", EXYNOS5_PA_IIC(4),
+				"s3c2440-i2c.4", NULL),
+	OF_DEV_AUXDATA("samsung,s3c2440-i2c", EXYNOS5_PA_IIC(5),
+				"s3c2440-i2c.5", NULL),
+	OF_DEV_AUXDATA("samsung,s3c2440-i2c", EXYNOS5_PA_IIC(6),
+				"s3c2440-i2c.6", NULL),
+	OF_DEV_AUXDATA("samsung,s3c2440-i2c", EXYNOS5_PA_IIC(7),
+				"s3c2440-i2c.7", NULL),
+	OF_DEV_AUXDATA("samsung,s3c2440-i2c", EXYNOS5_PA_IIC(8),
+				"s3c2440-hdmiphy-i2c", NULL),
+	OF_DEV_AUXDATA("samsung,exynos4210-spi", EXYNOS5_PA_SPI0,
+				"exynos4210-spi.0", NULL),
+	OF_DEV_AUXDATA("samsung,exynos4210-spi", EXYNOS5_PA_SPI1,
+				"exynos4210-spi.1", NULL),
+	OF_DEV_AUXDATA("samsung,exynos4210-spi", EXYNOS5_PA_SPI2,
+				"exynos4210-spi.2", NULL),
 	OF_DEV_AUXDATA("synopsis,dw-mshc-exynos5250", 0x12200000,
 				"dw_mmc.0", NULL),
 	OF_DEV_AUXDATA("synopsis,dw-mshc-exynos5250", 0x12210000,
@@ -231,6 +583,54 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 	OF_DEV_AUXDATA("arm,pl330", EXYNOS5_PA_PDMA0, "dma-pl330.0", NULL),
 	OF_DEV_AUXDATA("arm,pl330", EXYNOS5_PA_PDMA1, "dma-pl330.1", NULL),
 	OF_DEV_AUXDATA("arm,pl330", EXYNOS5_PA_MDMA1, "dma-pl330.2", NULL),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x10A60000,
+				"s5p-sysmmu.2", &platdata_sysmmu_g2d),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x11210000,
+				"s5p-sysmmu.3", &platdata_sysmmu_mfc_l),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x11200000,
+				"s5p-sysmmu.4", &platdata_sysmmu_mfc_r),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x14640000,
+				"s5p-sysmmu.27", &platdata_sysmmu_fimd),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x14650000,
+				"s5p-sysmmu.28", &platdata_sysmmu_tv),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x13E80000,
+				"s5p-sysmmu.23", &platdata_sysmmu_gsc),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x13E90000,
+				"s5p-sysmmu.24", &platdata_sysmmu_gsc),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x13EA0000,
+				"s5p-sysmmu.25", &platdata_sysmmu_gsc),
+	OF_DEV_AUXDATA("samsung,s5p-sysmmu", 0x13EB0000,
+				"s5p-sysmmu.26", &platdata_sysmmu_gsc),
+	OF_DEV_AUXDATA("samsung,exynos5-fb", 0x14400000,
+				"exynos5-fb", &smdk5250_lcd1_pdata),
+	OF_DEV_AUXDATA("samsung,exynos5-mipi", 0x14500000,
+				"s5p-mipi-dsim", &dsim_platform_data),
+	OF_DEV_AUXDATA("samsung,exynos5-dp", 0x145B0000,
+				"s5p-dp", &smdk5250_dp_data),
+	OF_DEV_AUXDATA("samsung,s5p-mfc-v6", 0x11000000, "s5p-mfc-v6", NULL),
+	OF_DEV_AUXDATA("samsung,exynos-gsc", 0x13E00000,
+				"exynos-gsc.0", NULL),
+	OF_DEV_AUXDATA("samsung,exynos-gsc", 0x13E10000,
+				"exynos-gsc.1", NULL),
+	OF_DEV_AUXDATA("samsung,exynos-gsc", 0x13E20000,
+				"exynos-gsc.2", NULL),
+	OF_DEV_AUXDATA("samsung,exynos-gsc", 0x13E30000,
+				"exynos-gsc.3", NULL),
+#ifdef CONFIG_VIDEO_FIMG2D4X
+	OF_DEV_AUXDATA("samsung,s5p-g2d", 0x10850000,
+				"s5p-g2d", &fimg2d_data),
+#endif
+	OF_DEV_AUXDATA("samsung,exynos-ohci", 0x12120000,
+				"exynos-ohci", &smdk5250_ohci_pdata),
+	OF_DEV_AUXDATA("samsung,exynos-ehci", 0x12110000,
+				"s5p-ehci", &smdk5250_ehci_pdata),
+	OF_DEV_AUXDATA("samsung,exynos-xhci", 0x12000000,
+				"exynos-dwc3", &smdk5250_xhci_pdata),
+	OF_DEV_AUXDATA("samsung,i2s", 0x03830000,
+				"samsung-i2s.0", &i2sv5_pdata),
+	OF_DEV_AUXDATA("samsung,exynos5-hdmi", 0x14530000,
+				"exynos5-hdmi", NULL),
+	OF_DEV_AUXDATA("samsung,s5p-mixer", 0x14450000, "s5p-mixer", NULL),
 	{},
 };
 
@@ -241,6 +641,11 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&exynos_device_md2, /* for media device framework */
 	&samsung_asoc_dma,  /* for audio dma interface device */
 	&exynos_drm_device,
+};
+
+static struct regulator_consumer_supply dummy_supplies[] = {
+	REGULATOR_SUPPLY("vddvario", "7000000.lan9215"),
+	REGULATOR_SUPPLY("vdd33a", "7000000.lan9215"),
 };
 
 static void __init exynos5250_dt_map_io(void)
@@ -274,8 +679,24 @@ static void exynos5_i2c_setup(void)
 
 static void __init exynos5250_dt_machine_init(void)
 {
-	if (of_machine_is_compatible("samsung,smdk5250"))
-		smsc911x_init(1);
+	struct device_node *srom_np, *np;
+
+	regulator_register_fixed(0, dummy_supplies, ARRAY_SIZE(dummy_supplies));
+
+	/* Setup pins for any SMSC 911x controller on the SROMC bus */
+	srom_np = of_find_node_by_path("/sromc-bus");
+	if (!srom_np) {
+		printk(KERN_ERR "No /sromc-bus property.\n");
+		goto out;
+	}
+	for_each_child_of_node(srom_np, np) {
+		if (of_device_is_compatible(np, "smsc,lan9115")) {
+			u32 reg;
+			of_property_read_u32(np, "reg", &reg);
+			smsc911x_init(reg);
+		}
+	}
+
 	samsung_bl_set(&smdk5250_bl_gpio_info, &smdk5250_bl_data);
 
 	if (gpio_request_one(EXYNOS5_GPX2(6), GPIOF_OUT_INIT_HIGH,
@@ -293,9 +714,15 @@ static void __init exynos5250_dt_machine_init(void)
 	of_platform_populate(NULL, of_default_bus_match_table,
 				exynos5250_auxdata_lookup, NULL);
 
+#ifdef CONFIG_DRM_EXYNOS_FIMD
+	exynos_fimd_gpio_setup_24bpp();
+#endif
 	s5p_tv_setup();
 
 	platform_add_devices(smdk5250_devices, ARRAY_SIZE(smdk5250_devices));
+out:
+	of_node_put(srom_np);
+	return;
 }
 
 static char const *exynos5250_dt_compat[] __initdata = {

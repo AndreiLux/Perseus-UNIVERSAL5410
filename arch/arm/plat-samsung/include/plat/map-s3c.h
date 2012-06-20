@@ -53,6 +53,7 @@
 
 #define S3C_VA_USB_HSPHY	S3C64XX_VA_USB_HSPHY
 
+#define S5P_VA_DRD_PHY		S3C_ADDR_CPU(0x00300000)
 /*
  * ISA style IO, for each machine to sort out mappings for,
  * if it implements it. We reserve two 16M regions for ISA.
