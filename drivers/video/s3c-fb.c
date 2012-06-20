@@ -3232,11 +3232,6 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 
 	/* setup vmm */
 	platform_set_sysmmu(&SYSMMU_PLATDEV(fimd1).dev, &s5p_device_fimd1.dev);
-	ret = iovmm_setup(&s5p_device_fimd1.dev);
-	if (ret < 0) {
-		dev_err(sfb->dev, "failed to setup vmm\n");
-		goto err_pm_runtime;
-	}
 #endif
 
 	/* we have the register setup, start allocating framebuffers */
