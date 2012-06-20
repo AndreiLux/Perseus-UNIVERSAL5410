@@ -38,6 +38,8 @@
 #include <linux/i2c/smsc.h>
 #include <linux/wl12xx.h>
 
+#include <drm/drm_edid.h>
+
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
@@ -63,6 +65,9 @@
 #define OMAP5_TOUCH_RESET              230
 
 #define GPIO_WIFI_PMENA			140
+
+#define HDMI_OE_GPIO                   256
+#define HDMI_HPD_EN_GPIO               257
 
 static int gpio_wlan_irq = 9; /* correct for sEVM */
 
@@ -317,8 +322,14 @@ static struct omap_i2c_bus_board_data __initdata sdp4430_i2c_3_bus_pdata;
 static struct omap_i2c_bus_board_data __initdata sdp4430_i2c_4_bus_pdata;
 static struct omap_i2c_bus_board_data __initdata sdp4430_i2c_5_bus_pdata;
 
+#include <video/omapdss.h>
+#include <video/omap-panel-lg4591.h>
+
+#define HDMI_GPIO_HPD 193
+
 #ifdef CONFIG_OMAP5_SEVM_PALMAS
 #define OMAP5_GPIO_END	0
+
 static struct palmas_gpadc_platform_data omap5_palmas_gpadc = {
 	.ch3_current = 0,
 	.ch0_current = 0,
@@ -561,6 +572,10 @@ static struct regulator_init_data omap5_ldo1 = {
 	},
 };
 
+static struct regulator_consumer_supply omap5evm_lcd_panel_supply[] = {
+	REGULATOR_SUPPLY("panel_supply", "omapdss_dsi.0"),
+};
+
 static struct regulator_init_data omap5_ldo2 = {
 	.constraints = {
 		.min_uV			= 2900000,
@@ -572,6 +587,8 @@ static struct regulator_init_data omap5_ldo2 = {
 					| REGULATOR_CHANGE_STATUS,
 		.always_on              = true,
 	},
+	.num_consumer_supplies	= ARRAY_SIZE(omap5evm_lcd_panel_supply),
+	.consumer_supplies	= omap5evm_lcd_panel_supply,
 };
 
 static struct regulator_init_data omap5_ldo3 = {
@@ -618,6 +635,13 @@ static struct regulator_init_data omap5_ldo6 = {
 	},
 };
 
+static struct regulator_consumer_supply omap5_dss_phy_supply[] = {
+	REGULATOR_SUPPLY("vdds_dsi", "omapdss"),
+	REGULATOR_SUPPLY("vdds_dsi", "omapdss_dsi.0"),
+	REGULATOR_SUPPLY("vdds_dsi", "omapdss_dsi.1"),
+	REGULATOR_SUPPLY("vdds_hdmi", "omapdss_hdmi"),
+};
+
 static struct regulator_init_data omap5_ldo7 = {
 	.constraints = {
 		.min_uV			= 1500000,
@@ -626,7 +650,10 @@ static struct regulator_init_data omap5_ldo7 = {
 					| REGULATOR_MODE_STANDBY,
 		.valid_ops_mask		= REGULATOR_CHANGE_MODE
 					| REGULATOR_CHANGE_STATUS,
+		.apply_uV		= 1,
 	},
+	.num_consumer_supplies	= ARRAY_SIZE(omap5_dss_phy_supply),
+	.consumer_supplies	= omap5_dss_phy_supply,
 };
 
 static struct regulator_init_data omap5_ldo8 = {
@@ -814,9 +841,40 @@ static struct platform_device omap5evm_abe_audio = {
 	},
 };
 
+static struct platform_device omap5evm_hdmi_audio_codec = {
+	.name	= "hdmi-audio-codec",
+	.id	= -1,
+};
+
 static struct platform_device *omap5evm_devices[] __initdata = {
 	&omap5evm_dmic_codec,
+	&omap5evm_hdmi_audio_codec,
 	&omap5evm_abe_audio,
+	&leds_gpio,
+};
+
+/*
+ * Display monitor features are burnt in their EEPROM as EDID data. The EEPROM
+ * is connected as I2C slave device, and can be accessed at address 0x50
+ */
+static struct i2c_board_info __initdata hdmi_i2c_eeprom[] = {
+        {
+                I2C_BOARD_INFO("eeprom", DDC_ADDR),
+        },
+};
+
+static struct i2c_gpio_platform_data i2c_gpio_pdata = {
+        .sda_pin                = 195,
+        .sda_is_open_drain      = 0,
+        .scl_pin                = 194,
+        .scl_is_open_drain      = 0,
+        .udelay                 = 2,            /* ~100 kHz */
+};
+
+static struct platform_device hdmi_edid_device = {
+        .name                   = "i2c-gpio",
+        .id                     = -1,
+        .dev.platform_data      = &i2c_gpio_pdata,
 };
 
 static struct i2c_board_info __initdata omap5evm_i2c_1_boardinfo[] = {
@@ -1314,6 +1372,138 @@ static const char * const omap5evm_fixup_mac_device_paths[] = {
        "mmc2:0001:2",
 };
 
+static struct panel_lg4591_data dsi_panel;
+static struct omap_dss_board_info omap5evm_dss_data;
+
+static void omap5evm_lcd_init(void)
+{
+	int r;
+
+	r = gpio_request_one(dsi_panel.reset_gpio, GPIOF_DIR_OUT,
+		"lcd1_reset_gpio");
+	if (r)
+		pr_err("%s: Could not get lcd1_reset_gpio\n", __func__);
+}
+
+static void omap5evm_hdmi_init(void)
+{
+	int r;
+
+	r = gpio_request_one(HDMI_GPIO_HPD, GPIOF_DIR_IN,
+				"hdmi_gpio_hpd");
+	if (r)
+		pr_err("%s: Could not get HDMI\n", __func__);
+
+	/* Need to configure HPD as a gpio in mux */
+	omap_hdmi_init(0);
+}
+
+static void __init omap5evm_display_init(void)
+{
+	omap5evm_lcd_init();
+	omap5evm_hdmi_init();
+	omap_display_init(&omap5evm_dss_data);
+}
+
+static void lg_panel_set_power(bool enable)
+{
+}
+
+static struct panel_lg4591_data dsi_panel = {
+	.reset_gpio = 183,
+	.set_power = lg_panel_set_power,
+	.pin_config = {
+		.num_pins = 8,
+		.pins = {0, 1, 2, 3, 4, 5, 6, 7},
+	},
+};
+
+static struct omap_dss_device omap5evm_lcd_device = {
+	.name			= "lcd",
+	.driver_name		= "lg4591",
+	.type			= OMAP_DISPLAY_TYPE_DSI,
+	.data			= &dsi_panel,
+	.clocks = {
+		.dispc = {
+			.channel = {
+				.lck_div	= 1,	/* LCD */
+				.pck_div	= 2,	/* PCD */
+				.lcd_clk_src	= OMAP_DSS_CLK_SRC_DSI_PLL_HSDIV_DISPC,
+			},
+			.dispc_fclk_src = OMAP_DSS_CLK_SRC_DSI_PLL_HSDIV_DISPC,
+		},
+		.dsi = {
+			.regn		= 19,	/* DSI_PLL_REGN */
+			.regm		= 233,	/* DSI_PLL_REGM */
+
+			.regm_dispc	= 3,	/* PLL_CLK1 (M4) */
+			.regm_dsi	= 3,	/* PLL_CLK2 (M5) */
+			.lp_clk_div	= 9,	/* LPDIV */
+
+			.dsi_fclk_src	= OMAP_DSS_CLK_SRC_DSI_PLL_HSDIV_DSI,
+		},
+	},
+	.panel.dsi_mode		= OMAP_DSS_DSI_VIDEO_MODE,
+	.channel		= OMAP_DSS_CHANNEL_LCD,
+};
+
+static int omap5evm_panel_enable_hdmi(struct omap_dss_device *dssdev)
+{
+        int r;
+
+	pr_info("omap5evm_panel_enable_hdmi\n");
+
+        /* Requesting HDMI OE GPIO and enable it, at bootup */
+        r = gpio_request_one(HDMI_OE_GPIO,
+                                GPIOF_OUT_INIT_HIGH, "HDMI_OE");
+        if (r)
+                pr_err("Failed to get HDMI OE GPIO\n");
+
+        /* Requesting HDMI HPD_EN GPIO and enable it, at bootup */
+        r = gpio_request_one(HDMI_HPD_EN_GPIO,
+                        GPIOF_OUT_INIT_HIGH, "HDMI_HPD_EN");
+        if (r)
+                pr_err("Failed to get HDMI HPD EN GPIO\n");
+
+        return 0;
+}
+
+static void omap5evm_panel_disable_hdmi(struct omap_dss_device *dssdev)
+{
+	pr_info("omap5evm_panel_disable_hdmi\n");
+
+	gpio_set_value_cansleep(HDMI_HPD_EN_GPIO, 0);
+	gpio_set_value_cansleep(HDMI_OE_GPIO, 0);
+
+	gpio_free(HDMI_HPD_EN_GPIO);
+	gpio_free(HDMI_OE_GPIO);
+}
+
+static struct omap_dss_hdmi_data sdp54xx_hdmi_data = {
+        .hpd_gpio = HDMI_GPIO_HPD,
+};
+
+static struct omap_dss_device omap5evm_hdmi_device = {
+	.name = "hdmi",
+	.driver_name = "hdmi_panel",
+	.type = OMAP_DISPLAY_TYPE_HDMI,
+	.platform_enable = omap5evm_panel_enable_hdmi,
+	.platform_disable = omap5evm_panel_disable_hdmi,
+	.channel = OMAP_DSS_CHANNEL_DIGIT,
+	.data = &sdp54xx_hdmi_data,
+};
+
+static struct omap_dss_device *omap5evm_dss_devices[] = {
+	&omap5evm_lcd_device,
+	&omap5evm_hdmi_device,
+};
+
+static struct omap_dss_board_info omap5evm_dss_data = {
+	.num_devices	= ARRAY_SIZE(omap5evm_dss_devices),
+	.devices	= omap5evm_dss_devices,
+	.default_device	= &omap5evm_hdmi_device,
+};
+
 static void __init omap54xx_common_init(void)
 {
         omap_mux_init_array(omap5432_common_mux,                                
@@ -1342,9 +1532,12 @@ static void __init omap54xx_common_init(void)
 	omap_serial_board_init(NULL, 4);
 	omap_sdrc_init(NULL, NULL);
 	omap_hsmmc_init(mmc);
-	platform_device_register(&omap5sevm_abe_audio);
+	i2c_register_board_info(0, hdmi_i2c_eeprom, ARRAY_SIZE(hdmi_i2c_eeprom));
+	platform_device_register(&hdmi_edid_device);
 	omap_ehci_ohci_init();
-	platform_device_register(&leds_gpio);
+
+	platform_add_devices(omap5evm_devices, ARRAY_SIZE(omap5evm_devices));
+	omap5evm_display_init();
 }
 
 struct omap_mux_setting omap5432_sevm_mux[] __initdata = {                                   
@@ -1380,6 +1573,9 @@ static void __init omap_5430_sevm_init(void)
 	status = omap4_keyboard_init(&evm5430_keypad_data, &keypad_data);
 	if (status)
 		pr_err("Keypad initialization failed: %d\n", status);
+
+        /* Disable pulls on DCC lines - necessary for EDID detection */         
+        omap_writel(0x50000000, 0x4A002E20);
 }
 
 struct omap_mux_setting omap5432_uevm_mux[] __initdata = {
@@ -1425,8 +1621,8 @@ struct omap_mux_setting omap5432_uevm_mux[] __initdata = {
         },                                                                      
         {                                                                       
                 /* HDMI HPD */                                           
-		.name = "hdmi_hpd.hdmi_hpd",
-                .mode = OMAP_PIN_INPUT | OMAP_MUX_MODE0,
+		.name = "hdmi_hpd.gpio7_193",
+                .mode = OMAP_PIN_INPUT | OMAP_MUX_MODE6,
         },
         {                                                                       
                 /* GPIO 194 HDMI EDID BITBANG I2C scl */                                       
@@ -1475,26 +1671,6 @@ struct omap_mux_setting omap5432_uevm_mux[] __initdata = {
         },
 };
 
-static struct panel_lg4591_data dsi_panel = {
-	.reset_gpio = 183,
-	.set_power = lg_panel_set_power,
-	.pin_config = {
-		.num_pins = 8,
-		.pins = {0, 1, 2, 3, 4, 5, 6, 7},
-	},
-};
-
-static struct omap_dss_device omap5evm_lcd_device = {
-	.driver_name		= "lg4591",
-	.type			= OMAP_DISPLAY_TYPE_DSI,
-	.data			= &dsi_panel,
-	.clocks = {
-		.dispc = {
-			.channel = {
-			}
-		}
-	}
-};
 
 static void __init omap_5432_uevm_init(void)
 {
@@ -1529,42 +1705,11 @@ static void __init omap_5432_uevm_init(void)
 	omap54xx_common_init();
 }
 
-static void omap5evm_hdmi_init(void)
+static void __init omap_54xx_init(void)
 {
-	int r;
 
-	r = gpio_request_one(HDMI_GPIO_HPD, GPIOF_DIR_IN,
-				"hdmi_gpio_hpd");
-	if (r)
-		pr_err("%s: Could not get HDMI\n", __func__);
+	// this is part of the hack patch around virtual mapping of dt blob
 
-	/* Need to configure HPD as a gpio in mux */
-	omap_hdmi_init(0);
-}
-
-static void __init omap5evm_display_init(void)
-{
-	omap5evm_lcd_init();
-	omap5evm_hdmi_init();
-	omap_display_init(&omap5evm_dss_data);
-}
-
-static struct omap_dss_hdmi_data sdp54xx_hdmi_data = {
-        .hpd_gpio = HDMI_GPIO_HPD,
-};
-
-static struct omap_dss_device omap5evm_hdmi_device = {
-	.name = "hdmi",
-	.driver_name = "hdmi_panel",
-        .platform_enable = omap5evm_panel_enable_hdmi,                          
-        .platform_disable = omap5evm_panel_disable_hdmi,                        
-        .channel = OMAP_DSS_CHANNEL_DIGIT,                                      
-        .data = &sdp54xx_hdmi_data,
-};
-
-static void __init omap_54xx_init(void)                                         
-{                                                                               
-        // this is part of the hack patch around virtual mapping of dt blob   
 	extern char dt_selected_model[64];
 #if 0
 	const char *model;
