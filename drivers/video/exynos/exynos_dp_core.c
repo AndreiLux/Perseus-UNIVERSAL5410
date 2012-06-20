@@ -18,6 +18,7 @@
 #include <linux/io.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
+#include <linux/of.h>
 
 #include <video/exynos_dp.h>
 
@@ -32,7 +33,6 @@ static int exynos_dp_init_dp(struct exynos_dp_device *dp)
 	/* SW defined function Normal operation */
 	exynos_dp_enable_sw_function(dp);
 
-	exynos_dp_config_interrupt(dp);
 	exynos_dp_init_analog_func(dp);
 
 	exynos_dp_init_hpd(dp);
@@ -392,7 +392,7 @@ static unsigned int exynos_dp_get_lane_link_training(
 				struct exynos_dp_device *dp,
 				int lane)
 {
-	u32 reg;
+	u32 reg = 0;
 
 	switch (lane) {
 	case 0:
@@ -478,8 +478,8 @@ static int exynos_dp_process_clock_recovery(struct exynos_dp_device *dp)
 	int lane_count;
 	u8 buf[5];
 
-	u8 *adjust_request;
-	u8 voltage_swing;
+	u8 adjust_request[2];
+	u8 voltage_swing = 0;
 	u8 pre_emphasis;
 	u8 training_lane;
 
@@ -493,8 +493,8 @@ static int exynos_dp_process_clock_recovery(struct exynos_dp_device *dp)
 		/* set training pattern 2 for EQ */
 		exynos_dp_set_training_pattern(dp, TRAINING_PTN2);
 
-		adjust_request = link_status + (DPCD_ADDR_ADJUST_REQUEST_LANE0_1
-						- DPCD_ADDR_LANE0_1_STATUS);
+		adjust_request[0] = link_status[4];
+		adjust_request[1] = link_status[5];
 
 		exynos_dp_get_adjust_train(dp, adjust_request);
 
@@ -566,7 +566,7 @@ static int exynos_dp_process_equalizer_training(struct exynos_dp_device *dp)
 	u8 buf[5];
 	u32 reg;
 
-	u8 *adjust_request;
+	u8 adjust_request[2];
 
 	udelay(400);
 
@@ -575,8 +575,8 @@ static int exynos_dp_process_equalizer_training(struct exynos_dp_device *dp)
 	lane_count = dp->link_train.lane_count;
 
 	if (exynos_dp_clock_recovery_ok(link_status, lane_count) == 0) {
-		adjust_request = link_status + (DPCD_ADDR_ADJUST_REQUEST_LANE0_1
-						- DPCD_ADDR_LANE0_1_STATUS);
+		adjust_request[0] = link_status[4];
+		adjust_request[1] = link_status[5];
 
 		if (exynos_dp_channel_eq_ok(link_status, lane_count) == 0) {
 			/* traing pattern Set to Normal */
@@ -721,6 +721,82 @@ static int exynos_dp_sw_link_training(struct exynos_dp_device *dp)
 	}
 
 	return retval;
+}
+
+static int exynos_dp_set_hw_link_train(struct exynos_dp_device *dp,
+				u32 max_lane,
+				u32 max_rate)
+{
+	u32 status;
+	int lane;
+
+	exynos_dp_stop_video(dp);
+
+	if (exynos_dp_get_pll_lock_status(dp) == PLL_UNLOCKED) {
+		dev_err(dp->dev, "PLL is not locked yet.\n");
+		return -EINVAL;
+	}
+
+	exynos_dp_reset_macro(dp);
+
+	/* Set TX pre-emphasis to minimum */
+	for (lane = 0; lane < max_lane; lane++)
+		exynos_dp_set_lane_lane_pre_emphasis(dp,
+				PRE_EMPHASIS_LEVEL_0, lane);
+
+	/* All DP analog module power up */
+	exynos_dp_set_analog_power_down(dp, POWER_ALL, 0);
+
+	/* Initialize by reading RX's DPCD */
+	exynos_dp_get_max_rx_bandwidth(dp, &dp->link_train.link_rate);
+	exynos_dp_get_max_rx_lane_count(dp, &dp->link_train.lane_count);
+
+	if ((dp->link_train.link_rate != LINK_RATE_1_62GBPS) &&
+		(dp->link_train.link_rate != LINK_RATE_2_70GBPS)) {
+		dev_err(dp->dev, "Rx Max Link Rate is abnormal :%x !\n",
+			dp->link_train.link_rate);
+		dp->link_train.link_rate = LINK_RATE_1_62GBPS;
+	}
+
+	if (dp->link_train.lane_count == 0) {
+		dev_err(dp->dev, "Rx Max Lane count is abnormal :%x !\n",
+			dp->link_train.lane_count);
+		dp->link_train.lane_count = (u8)LANE_COUNT1;
+	}
+
+	/* Setup TX lane count & rate */
+	if (dp->link_train.lane_count > max_lane)
+		dp->link_train.lane_count = max_lane;
+	if (dp->link_train.link_rate > max_rate)
+		dp->link_train.link_rate = max_rate;
+
+	/* Set link rate and count as you want to establish*/
+	exynos_dp_set_lane_count(dp, dp->video_info->lane_count);
+	exynos_dp_set_link_bandwidth(dp, dp->video_info->link_rate);
+
+	/* Set sink to D0 (Sink Not Ready) mode. */
+	exynos_dp_write_byte_to_dpcd(dp, DPCD_ADDR_SINK_POWER_STATE,
+						DPCD_SET_POWER_STATE_D0);
+
+	/* Enable H/W Link Training */
+	status = exynos_dp_enable_hw_link_training(dp);
+
+	if (status != 0) {
+		dev_err(dp->dev, " H/W link training failure: 0x%x\n", status);
+		return -EINVAL;
+	}
+
+	exynos_dp_get_link_bandwidth(dp, &status);
+	dp->link_train.link_rate = status;
+	dev_dbg(dp->dev, "final bandwidth = %.2x\n",
+				dp->link_train.link_rate);
+
+	exynos_dp_get_lane_count(dp, &status);
+	dp->link_train.lane_count = status;
+	dev_dbg(dp->dev, "final lane count = %.2x\n",
+				dp->link_train.lane_count);
+
+	return 0;
 }
 
 static int exynos_dp_set_link_train(struct exynos_dp_device *dp,
@@ -908,18 +984,18 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 		goto err_ioremap;
 	}
 
+	dp->video_info = pdata->video_info;
+	if (pdata->phy_init)
+		pdata->phy_init();
+
+	exynos_dp_init_dp(dp);
+
 	ret = request_irq(dp->irq, exynos_dp_irq_handler, 0,
 			"exynos-dp", dp);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to request irq\n");
 		goto err_ioremap;
 	}
-
-	dp->video_info = pdata->video_info;
-	if (pdata->phy_init)
-		pdata->phy_init();
-
-	exynos_dp_init_dp(dp);
 
 	ret = exynos_dp_detect_hpd(dp);
 	if (ret) {
@@ -929,8 +1005,12 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 
 	exynos_dp_handle_edid(dp);
 
-	ret = exynos_dp_set_link_train(dp, dp->video_info->lane_count,
-				dp->video_info->link_rate);
+	if (pdata->training_type == SW_LINK_TRAINING)
+		ret = exynos_dp_set_link_train(dp, dp->video_info->lane_count,
+						dp->video_info->link_rate);
+	else
+		ret = exynos_dp_set_hw_link_train(dp,
+			dp->video_info->lane_count, dp->video_info->link_rate);
 	if (ret) {
 		dev_err(&pdev->dev, "unable to do link train\n");
 		goto err_irq;
@@ -1020,8 +1100,12 @@ static int exynos_dp_resume(struct device *dev)
 	exynos_dp_detect_hpd(dp);
 	exynos_dp_handle_edid(dp);
 
-	exynos_dp_set_link_train(dp, dp->video_info->lane_count,
-				dp->video_info->link_rate);
+	if (pdata->training_type == SW_LINK_TRAINING)
+		exynos_dp_set_link_train(dp, dp->video_info->lane_count,
+						dp->video_info->link_rate);
+	else
+		exynos_dp_set_hw_link_train(dp,
+			dp->video_info->lane_count, dp->video_info->link_rate);
 
 	exynos_dp_enable_scramble(dp, 1);
 	exynos_dp_enable_rx_to_enhanced_mode(dp, 1);
@@ -1041,17 +1125,39 @@ static const struct dev_pm_ops exynos_dp_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(exynos_dp_suspend, exynos_dp_resume)
 };
 
+#ifdef CONFIG_OF
+static const struct of_device_id exynos_dp_match[] = {
+	{ .compatible = "samsung,exynos5-dp" },
+	{},
+};
+MODULE_DEVICE_TABLE(of, exynos_dp_match);
+#endif
+
 static struct platform_driver exynos_dp_driver = {
 	.probe		= exynos_dp_probe,
 	.remove		= __devexit_p(exynos_dp_remove),
 	.driver		= {
-		.name	= "exynos-dp",
+		.name	= "s5p-dp",
 		.owner	= THIS_MODULE,
 		.pm	= &exynos_dp_pm_ops,
+		.of_match_table = of_match_ptr(exynos_dp_match),
 	},
 };
 
-module_platform_driver(exynos_dp_driver);
+static int __init exynos_dp_init(void)
+{
+	return platform_driver_probe(&exynos_dp_driver, exynos_dp_probe);
+}
+
+static void __exit exynos_dp_exit(void)
+{
+	platform_driver_unregister(&exynos_dp_driver);
+}
+/* TODO: Register as module_platform_driver */
+/* Currently, we make it late_initcall to make */
+/* sure that s3c-fb is probed before DP driver */
+late_initcall(exynos_dp_init);
+module_exit(exynos_dp_exit);
 
 MODULE_AUTHOR("Jingoo Han <jg1.han@samsung.com>");
 MODULE_DESCRIPTION("Samsung SoC DP Driver");
