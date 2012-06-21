@@ -293,29 +293,17 @@ static void lcd_set_power(struct plat_lcd_data *pd,
 		}
 	}
 
-	/* TODO(dianders): GPX1(5) isn't reset for snow.  Fix to hold high? */
-
-
-	/* reset */
-	gpio_request_one(EXYNOS5_GPX1(5), GPIOF_OUT_INIT_HIGH, "GPX1");
-
-	mdelay(20);
-	if (power) {
-		/* fire nRESET on power up */
+	if (!of_machine_is_compatible("google,snow")) {
+		/* reset */
+		gpio_request_one(EXYNOS5_GPX1(5), GPIOF_OUT_INIT_HIGH, "GPX1");
+		mdelay(20);
 		gpio_set_value(EXYNOS5_GPX1(5), 0);
 		mdelay(20);
 		gpio_set_value(EXYNOS5_GPX1(5), 1);
 		mdelay(20);
 		gpio_free(EXYNOS5_GPX1(5));
-	} else {
-		/* fire nRESET on power off */
-		gpio_set_value(EXYNOS5_GPX1(5), 0);
 		mdelay(20);
-		gpio_set_value(EXYNOS5_GPX1(5), 1);
-		mdelay(20);
-		gpio_free(EXYNOS5_GPX1(5));
 	}
-	mdelay(20);
 
 
 	/* Turn on regulator for backlight */
@@ -739,6 +727,7 @@ static void exynos5_i2c_setup(void)
 static void __init exynos5250_dt_machine_init(void)
 {
 	struct device_node *srom_np, *np;
+	int ret;
 
 	regulator_register_fixed(0, dummy_supplies, ARRAY_SIZE(dummy_supplies));
 
@@ -796,6 +785,9 @@ static void __init exynos5250_dt_machine_init(void)
 		smdk5250_lcd1_pdata.clock_rate = 267 * 1000 * 1000;
 		smdk5250_lcd1_pdata.vidcon1 = 0;
 #endif
+		ret = gpio_request_one(EXYNOS5_GPX1(5), GPIOF_OUT_INIT_HIGH,
+					"DP_PD_N");
+		WARN_ON(ret);
 	}
 
 	if (gpio_request_one(EXYNOS5_GPX2(6), GPIOF_OUT_INIT_HIGH,
