@@ -1577,9 +1577,11 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 			ret = s5p_mfc_run_dec_frame(ctx);
 			break;
 		case MFCINST_INIT:
+			s5p_mfc_clean_ctx_int_flags(ctx);
 			ret = s5p_mfc_open_inst_cmd(ctx);
 			break;
 		case MFCINST_RETURN_INST:
+			s5p_mfc_clean_ctx_int_flags(ctx);
 			ret = s5p_mfc_close_inst_cmd(ctx);
 			break;
 		case MFCINST_GOT_INST:

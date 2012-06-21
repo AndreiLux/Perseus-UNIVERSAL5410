@@ -14,6 +14,7 @@
 
 #include "s5p_mfc_debug.h"
 #include "s5p_mfc_cmd.h"
+#include "s5p_mfc_intr.h"
 
 int s5p_mfc_cmd_host2risc(struct s5p_mfc_dev *dev, int cmd,
 						struct s5p_mfc_cmd_args *args)
@@ -92,7 +93,7 @@ int s5p_mfc_open_inst_cmd(struct s5p_mfc_ctx *ctx)
 	mfc_debug_enter();
 
 	mfc_debug(2, "Requested codec mode: %d\n", ctx->codec_mode);
-
+	dev->curr_ctx = ctx->num;
 	mfc_write(dev, ctx->codec_mode, S5P_FIMV_CODEC_TYPE);
 	mfc_write(dev, ctx->ctx.dma, S5P_FIMV_CONTEXT_MEM_ADDR);
 	mfc_write(dev, ctx->ctx_size, S5P_FIMV_CONTEXT_MEM_SIZE);
@@ -114,6 +115,7 @@ int s5p_mfc_close_inst_cmd(struct s5p_mfc_ctx *ctx)
 
 	mfc_debug_enter();
 
+	dev->curr_ctx = ctx->num;
 	if (ctx->state != MFCINST_FREE) {
 		mfc_write(dev, ctx->inst_no, S5P_FIMV_INSTANCE_ID);
 
