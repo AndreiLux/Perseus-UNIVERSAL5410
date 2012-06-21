@@ -3951,15 +3951,11 @@ static int ca0132_build_pcms(struct hda_codec *codec)
 	codec->pcm_info = info;
 	codec->num_pcms = 0;
 
-	info->name = "CA0132 Playback";
+	info->name = "CA0132 Analog";
 	info->stream[SNDRV_PCM_STREAM_PLAYBACK] = ca0132_pcm_analog_playback;
 	info->stream[SNDRV_PCM_STREAM_PLAYBACK].nid = spec->dacs[0];
 	info->stream[SNDRV_PCM_STREAM_PLAYBACK].channels_max =
 						spec->multiout.max_channels;
-	codec->num_pcms++;
-
-	info++;
-	info->name = "CA0132 Digital-Mic / Analog-Mic1";
 	info->stream[SNDRV_PCM_STREAM_CAPTURE] = ca0132_pcm_analog_capture;
 	info->stream[SNDRV_PCM_STREAM_CAPTURE].substreams = 1;
 	info->stream[SNDRV_PCM_STREAM_CAPTURE].nid = spec->adcs[0];
