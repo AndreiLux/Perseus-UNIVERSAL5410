@@ -61,10 +61,11 @@
  * DMA API in place.
  */
 
-#define OMAP_RPROC_CMA_BASE_IPU        (0xa9000000)
+#define OMAP5_RPROC_CMA_BASE_IPU	(0x95800000)
+#define OMAP5_RPROC_CMA_BASE_DSP	(0x95000000)
 
-#define OMAP5_RPROC_CMA_BASE_DSP	(0xa4800000)
-#define OMAP4_RPROC_CMA_BASE_DSP	(0xa8800000)
+#define OMAP4_RPROC_CMA_BASE_IPU	(0x99800000)
+#define OMAP4_RPROC_CMA_BASE_DSP	(0x99000000)
 
 #ifdef CONFIG_OMAP_REMOTEPROC_DSP
 static struct omap_rproc_timers_info dsp_timers[] = {
@@ -197,10 +198,10 @@ void __init omap_rproc_reserve_cma(int platform_type)
 #ifdef CONFIG_OMAP_REMOTEPROC_IPU
 	if (platform_type == RPROC_CMA_OMAP4) {
 		cma_size = CONFIG_OMAP4_IPU_CMA_SIZE;
-		cma_addr = OMAP_RPROC_CMA_BASE_IPU;
+		cma_addr = OMAP4_RPROC_CMA_BASE_IPU;
 	} else if (platform_type == RPROC_CMA_OMAP5) {
 		cma_size = CONFIG_OMAP5_IPU_CMA_SIZE;
-		cma_addr = OMAP_RPROC_CMA_BASE_IPU;
+		cma_addr = OMAP5_RPROC_CMA_BASE_IPU;
 	}
 
 	/* reserve CMA memory for OMAP4's M3 "ducati" remote processor */
