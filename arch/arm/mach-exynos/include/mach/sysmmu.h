@@ -22,6 +22,7 @@ struct sysmmu_platform_data {
 
 #define SYSMMU_CLOCK_NAME "sysmmu"
 #define SYSMMU_CLOCK_NAME2 "sysmmu_mc"
+#define SYSMMU_CLOCK_NAME3 "sysmmu_mc2"
 
 #ifdef CONFIG_EXYNOS_DEV_SYSMMU
 #include <linux/device.h>

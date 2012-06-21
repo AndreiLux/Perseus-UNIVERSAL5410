@@ -90,7 +90,7 @@ struct sysmmu_resource_map {
 	.pdev = &SYSMMU_PLATDEV(ipname),				\
 	.res = SYSMMU_RESOURCE_NAME(EXYNOS##core, resname),		\
 	.rnum = ARRAY_SIZE(SYSMMU_RESOURCE_NAME(EXYNOS##core, resname)),\
-	.clocknames = SYSMMU_CLOCK_NAME "," SYSMMU_CLOCK_NAME2,		\
+	.clocknames = SYSMMU_CLOCK_NAME "," SYSMMU_CLOCK_NAME2 "," SYSMMU_CLOCK_NAME3,		\
 }
 
 #define SYSMMU_RESOURCE_MAPPING_PD(core, ipname, resname, pd)		\

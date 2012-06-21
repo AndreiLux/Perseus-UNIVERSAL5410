@@ -45,7 +45,7 @@ struct sysmmu_drvdata {
 	char *dbgname;
 	int nsfrs;
 	void __iomem **sfrbases;
-	struct clk *clk[2];
+	struct clk *clk[3];
 	int activations;
 	rwlock_t lock;
 	struct iommu_domain *domain; /* domain given to iommu_attach_device() */

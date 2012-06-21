@@ -369,6 +369,8 @@ static bool __exynos_sysmmu_disable(struct sysmmu_drvdata *data)
 	for (i = 0; i < data->nsfrs; i++)
 		__raw_writel(CTRL_DISABLE, data->sfrbases[i] + REG_MMU_CTRL);
 
+	if (data->clk[2])
+		clk_disable(data->clk[2]);
 	if (data->clk[1])
 		clk_disable(data->clk[1]);
 	if (data->clk[0])
@@ -419,6 +421,8 @@ static int __exynos_sysmmu_enable(struct sysmmu_drvdata *data,
 		clk_enable(data->clk[0]);
 	if (data->clk[1])
 		clk_enable(data->clk[1]);
+	if (data->clk[2])
+		clk_enable(data->clk[2]);
 
 	data->pgtable = pgtable;
 
@@ -591,9 +595,34 @@ static int exynos_sysmmu_probe(struct platform_device *pdev)
 
 		if (data->clk[0] && deli) {
 			*deli = ',';
-			data->clk[1] = clk_get(dev, deli + 1);
+			beg = ++deli;
+			while ((*deli != '\0') && (*deli != ','))
+				++deli;
+
+			if (*deli == '\0')
+				deli = NULL;
+			else
+				*deli = '\0';
+
+			data->clk[1] = clk_get(dev, beg);
 			if (IS_ERR(data->clk[1]))
 				data->clk[1] = NULL;
+		}
+
+		if (data->clk[1] && deli) {
+			*deli = ',';
+			beg = ++deli;
+			while ((*deli != '\0') && (*deli != ','))
+				++deli;
+
+			if (*deli == '\0')
+				deli = NULL;
+			else
+				*deli = '\0';
+
+			data->clk[2] = clk_get(dev, beg);
+			if (IS_ERR(data->clk[2]))
+				data->clk[2] = NULL;
 		}
 
 		data->dbgname = platdata->dbgname;
