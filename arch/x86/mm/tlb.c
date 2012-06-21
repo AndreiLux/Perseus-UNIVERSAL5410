@@ -185,6 +185,8 @@ static void flush_tlb_others_ipi(const struct cpumask *cpumask,
 	f->flush_mm = mm;
 	f->flush_va = va;
 	if (cpumask_andnot(to_cpumask(f->flush_cpumask), cpumask, cpumask_of(smp_processor_id()))) {
+		DECLARE_BITMAP(tmp_cpumask, NR_CPUS);
+
 		/*
 		 * We have to send the IPI only to
 		 * CPUs affected.
@@ -192,8 +194,13 @@ static void flush_tlb_others_ipi(const struct cpumask *cpumask,
 		apic->send_IPI_mask(to_cpumask(f->flush_cpumask),
 			      INVALIDATE_TLB_VECTOR_START + sender);
 
-		while (!cpumask_empty(to_cpumask(f->flush_cpumask)))
+		/* Only wait for online cpus */
+		do {
+			cpumask_and(to_cpumask(tmp_cpumask),
+				    to_cpumask(f->flush_cpumask),
+				    cpu_online_mask);
 			cpu_relax();
+		} while (!cpumask_empty(to_cpumask(tmp_cpumask)));
 	}
 
 	f->flush_mm = NULL;
