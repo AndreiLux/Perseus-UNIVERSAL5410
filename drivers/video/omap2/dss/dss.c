@@ -732,6 +732,9 @@ static int dss_runtime_get(void)
 
 	DSSDBG("dss_runtime_get\n");
 
+	if (!pm_runtime_enabled(&dss.pdev->dev))
+		return 0;
+
 	r = pm_runtime_get_sync(&dss.pdev->dev);
 	WARN_ON(r < 0);
 	return r < 0 ? r : 0;
@@ -742,6 +745,9 @@ static void dss_runtime_put(void)
 	int r;
 
 	DSSDBG("dss_runtime_put\n");
+
+	if (!pm_runtime_enabled(&dss.pdev->dev))
+		return;
 
 	r = pm_runtime_put_sync(&dss.pdev->dev);
 	WARN_ON(r < 0 && r != -EBUSY);

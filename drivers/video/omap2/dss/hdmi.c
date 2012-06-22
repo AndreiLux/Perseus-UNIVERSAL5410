@@ -137,6 +137,9 @@ static int hdmi_runtime_get(void)
 
 	DSSDBG("hdmi_runtime_get\n");
 
+	if (!pm_runtime_enabled(&hdmi.pdev->dev))
+		return 0;
+
 	r = pm_runtime_get_sync(&hdmi.pdev->dev);
 	WARN_ON(r < 0);
 	if (r < 0)
@@ -150,6 +153,9 @@ static void hdmi_runtime_put(void)
 	int r;
 
 	DSSDBG("hdmi_runtime_put\n");
+
+	if (!pm_runtime_enabled(&hdmi.pdev->dev))
+		return;
 
 	r = pm_runtime_put_sync(&hdmi.pdev->dev);
 	WARN_ON(r < 0);

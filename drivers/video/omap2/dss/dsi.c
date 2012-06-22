@@ -1065,6 +1065,9 @@ int dsi_runtime_get(struct platform_device *dsidev)
 
 	DSSDBG("dsi_runtime_get\n");
 
+	if (!pm_runtime_enabled(&dsi->pdev->dev))
+		return 0;
+
 	r = pm_runtime_get_sync(&dsi->pdev->dev);
 	WARN_ON(r < 0);
 	return r < 0 ? r : 0;
@@ -1076,6 +1079,9 @@ void dsi_runtime_put(struct platform_device *dsidev)
 	int r;
 
 	DSSDBG("dsi_runtime_put\n");
+
+	if (!pm_runtime_enabled(&dsi->pdev->dev))
+		return;
 
 	r = pm_runtime_put_sync(&dsi->pdev->dev);
 	WARN_ON(r < 0);

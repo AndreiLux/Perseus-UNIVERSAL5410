@@ -372,6 +372,9 @@ int dispc_runtime_get(void)
 
 	DSSDBG("dispc_runtime_get\n");
 
+	if (!pm_runtime_enabled(&dispc.pdev->dev))
+		return 0;
+
 	r = pm_runtime_get_sync(&dispc.pdev->dev);
 	WARN_ON(r < 0);
 	return r < 0 ? r : 0;
@@ -382,6 +385,9 @@ void dispc_runtime_put(void)
 	int r;
 
 	DSSDBG("dispc_runtime_put\n");
+
+	if (!pm_runtime_enabled(&dispc.pdev->dev))
+		return;
 
 	r = pm_runtime_put_sync(&dispc.pdev->dev);
 	WARN_ON(r < 0);

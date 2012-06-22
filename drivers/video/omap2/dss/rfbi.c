@@ -129,6 +129,9 @@ static int rfbi_runtime_get(void)
 
 	DSSDBG("rfbi_runtime_get\n");
 
+	if (!pm_runtime_enabled(&rfbi.pdev->dev))
+		return 0;
+
 	r = pm_runtime_get_sync(&rfbi.pdev->dev);
 	WARN_ON(r < 0);
 	return r < 0 ? r : 0;
@@ -139,6 +142,9 @@ static void rfbi_runtime_put(void)
 	int r;
 
 	DSSDBG("rfbi_runtime_put\n");
+
+	if (!pm_runtime_enabled(&rfbi.pdev->dev))
+		return;
 
 	r = pm_runtime_put_sync(&rfbi.pdev->dev);
 	WARN_ON(r < 0);
