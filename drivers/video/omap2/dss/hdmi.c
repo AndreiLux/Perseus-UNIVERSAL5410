@@ -627,7 +627,8 @@ void omapdss_hdmi_display_set_timing(struct omap_dss_device *dssdev)
 		dss_mgr_set_timings(dssdev->manager, &dssdev->panel.timings);
 	}
 
-      //  omapdss_hdmi_display_enable(dssdev);                                    
+//	if (cpu_is_omap54xx())
+  //      	omapdss_hdmi_display_enable(dssdev);                                    
 }
 
 static void hdmi_dump_regs(struct seq_file *s)

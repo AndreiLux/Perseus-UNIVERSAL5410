@@ -349,8 +349,8 @@ int ti_hdmi_4xxx_phy_enable(struct hdmi_ip_data *ip_data)
 				 IRQF_ONESHOT, "hpd", ip_data);
 	if (r) {
 		DSSERR("HPD IRQ request failed\n");
-		hdmi_set_phy_pwr(ip_data, HDMI_PHYPWRCMD_OFF);
-		return r;
+//		hdmi_set_phy_pwr(ip_data, HDMI_PHYPWRCMD_OFF);
+//		return r;
 	}
 
 	r = hdmi_check_hpd_state(ip_data);
