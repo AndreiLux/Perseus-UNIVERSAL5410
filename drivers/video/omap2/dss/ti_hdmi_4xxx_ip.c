@@ -1500,6 +1500,7 @@ void ti_hdmi_4xxx_wp_audio_disable(struct hdmi_ip_data *ip_data)
 
 int ti_hdmi_4xxx_audio_start(struct hdmi_ip_data *ip_data)
 {
+	omap_hwmod_set_slave_idlemode(ip_data->oh, HWMOD_IDLEMODE_NO);
 	REG_FLD_MOD(hdmi_av_base(ip_data),
 		    HDMI_CORE_AV_AUD_MODE, true, 0, 0);
 	REG_FLD_MOD(hdmi_wp_base(ip_data),
@@ -1509,11 +1510,7 @@ int ti_hdmi_4xxx_audio_start(struct hdmi_ip_data *ip_data)
 
 void ti_hdmi_4xxx_audio_stop(struct hdmi_ip_data *ip_data)
 {
-	if (enable)
-		omap_hwmod_set_slave_idlemode(ip_data->oh, HWMOD_IDLEMODE_NO);
-	else
-		omap_hwmod_set_slave_idlemode(ip_data->oh,
-					      HWMOD_IDLEMODE_SMART_WKUP);
+	omap_hwmod_set_slave_idlemode(ip_data->oh, HWMOD_IDLEMODE_SMART_WKUP);
 	REG_FLD_MOD(hdmi_av_base(ip_data),
 		    HDMI_CORE_AV_AUD_MODE, false, 0, 0);
 	REG_FLD_MOD(hdmi_wp_base(ip_data),
