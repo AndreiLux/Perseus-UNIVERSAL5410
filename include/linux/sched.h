@@ -331,7 +331,7 @@ static inline void touch_all_softlockup_watchdogs(void)
 static inline void lockup_detector_init(void)
 {
 }
-static void lockup_detector_bootcpu_resume(void)
+static inline void lockup_detector_bootcpu_resume(void)
 {
 }
 #endif
