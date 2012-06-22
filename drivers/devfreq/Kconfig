@@ -46,6 +46,11 @@ config DEVFREQ_GOV_PERFORMANCE
 	  the DEVFREQ framework returns the highest frequency available
 	  at any time.
 
+config DEVFREQ_GOV_PM_QOS
+	bool "PM QOS"
+	help
+	  Sets the frequency based on pm_qos throughput constraints.
+
 config DEVFREQ_GOV_POWERSAVE
 	bool "Powersave"
 	help

@@ -210,7 +210,20 @@ struct devfreq_simple_ondemand_data {
 	unsigned int downdifferential;
 };
 #endif
-
+#ifdef CONFIG_DEVFREQ_GOV_PM_QOS
+extern const struct devfreq_governor devfreq_pm_qos;
+/**
+ * struct devfreq_pm_qos_data - void *data fed to struct devfreq
+ *	and devfreq_add_device
+ * @ bytes_per_sec_per_hz	Ratio to convert throughput request to devfreq
+ * 				frequency.
+ * @ pm_qos_class		pm_qos class to query for requested throughput
+ */
+struct devfreq_pm_qos_data {
+	unsigned int bytes_per_sec_per_hz;
+	int pm_qos_class;
+};
+#endif
 #else /* !CONFIG_PM_DEVFREQ */
 static struct devfreq *devfreq_add_device(struct device *dev,
 					  struct devfreq_dev_profile *profile,
@@ -247,6 +260,7 @@ static int devfreq_unregister_opp_notifier(struct device *dev,
 #define devfreq_performance	NULL
 #define devfreq_userspace	NULL
 #define devfreq_simple_ondemand	NULL
+#define devfreq_pm_qos		NULL
 
 #endif /* CONFIG_PM_DEVFREQ */
 
