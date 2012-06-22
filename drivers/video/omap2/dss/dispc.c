@@ -374,7 +374,7 @@ int dispc_runtime_get(void)
 
 	r = pm_runtime_get_sync(&dispc.pdev->dev);
 	WARN_ON(r < 0);
-	return r < 0 ? r : 0;
+	return 0;//r < 0 ? r : 0;
 }
 
 void dispc_runtime_put(void)
