@@ -204,8 +204,6 @@ struct dw_mci_dma_ops {
 #define DW_MCI_QUIRK_HIGHSPEED			BIT(2)
 /* Unreliable card detection */
 #define DW_MCI_QUIRK_BROKEN_CARD_DETECTION	BIT(3)
-/* Unreliable SDIO operation */
-#define DW_MCI_QUIRK_REQUEST_DELAY		BIT(4)
 
 enum dw_mci_cd_types {
 	DW_MCI_CD_INTERNAL,	/* use mmc internal CD line */
