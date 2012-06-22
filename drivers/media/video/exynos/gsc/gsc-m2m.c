@@ -689,7 +689,7 @@ int gsc_register_m2m_device(struct gsc_dev *gsc)
 		goto err_m2m_r1;
 	}
 
-	ret = video_register_device(vfd, VFL_TYPE_GRABBER, -1);
+	ret = video_register_device(vfd, VFL_TYPE_GRABBER, 10);
 	if (ret) {
 		dev_err(&pdev->dev,
 			 "%s(): failed to register video device\n", __func__);
