@@ -455,7 +455,7 @@ int __devinit mxr_acquire_video(struct mxr_device *mdev,
 	struct mxr_output_conf *output_cont, int output_count);
 
 /** releasing common video resources */
-void __devexit mxr_release_video(struct mxr_device *mdev);
+void mxr_release_video(struct mxr_device *mdev);
 
 struct mxr_layer *mxr_graph_layer_create(struct mxr_device *mdev, int cur_mxr,
 	int idx, int nr);
