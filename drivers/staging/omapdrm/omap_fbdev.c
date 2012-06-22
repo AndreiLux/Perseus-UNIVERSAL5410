@@ -22,8 +22,13 @@
 #include "drm_crtc.h"
 #include "drm_fb_helper.h"
 
-MODULE_PARM_DESC(ywrap, "Enable ywrap scrolling (omap44xx and later, default 'y')");
+#ifdef CONFIG_ANDROID
+MODULE_PARM_DESC(ywrap, "Enable ywrap scrolling (omap44xx and later, default 'n')");
 static bool ywrap_enabled = false;
+#else
+MODULE_PARM_DESC(ywrap, "Enable ywrap scrolling (omap44xx and later, default 'y')");
+static bool ywrap_enabled = true;
+#endif
 module_param_named(ywrap, ywrap_enabled, bool, 0644);
 
 /*
