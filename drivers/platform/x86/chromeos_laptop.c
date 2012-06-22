@@ -319,7 +319,7 @@ static struct i2c_client *add_smbus_device(const char *name,
 	return chromeos_laptop_add_i2c_device(name, I2C_ADAPTER_SMBUS, info);
 }
 
-static int setup_link_tp2(const struct dmi_system_id *id)
+static int __init setup_link_tp2(const struct dmi_system_id *id)
 {
 	const unsigned short addr_list[] = { ATMEL_TP2_I2C_BL_ADDR,
 					     ATMEL_TP2_I2C_ADDR,
@@ -332,7 +332,7 @@ static int setup_link_tp2(const struct dmi_system_id *id)
 	return 0;
 }
 
-static int setup_link_tp(const struct dmi_system_id *id)
+static int __init setup_link_tp(const struct dmi_system_id *id)
 {
 	const unsigned short atmel_addr_list[] = { ATMEL_TP_I2C_BL_ADDR,
 						   ATMEL_TP_I2C_ADDR,
@@ -353,7 +353,7 @@ static int setup_link_tp(const struct dmi_system_id *id)
 	return 0;
 }
 
-static int setup_lumpy_tp(const struct dmi_system_id *id)
+static int __init setup_lumpy_tp(const struct dmi_system_id *id)
 {
 	/* first try cyapa touchpad on smbus */
 	tp = add_smbus_device("trackpad", &cyapa_device);
@@ -367,14 +367,14 @@ static int setup_lumpy_tp(const struct dmi_system_id *id)
 	return 0;
 }
 
-static int setup_isl29018_als(const struct dmi_system_id *id)
+static int __init setup_isl29018_als(const struct dmi_system_id *id)
 {
 	/* add isl29018 light sensor */
 	als = add_smbus_device("lightsensor", &isl_als_device);
 	return 0;
 }
 
-static int setup_isl29023_als(const struct dmi_system_id *id)
+static int __init setup_isl29023_als(const struct dmi_system_id *id)
 {
 	/* add isl29023 light sensor on Panel DDC GMBus */
 	als = chromeos_laptop_add_i2c_device("lightsensor",
@@ -383,14 +383,14 @@ static int setup_isl29023_als(const struct dmi_system_id *id)
 	return 0;
 }
 
-static int setup_tsl2583_als(const struct dmi_system_id *id)
+static int __init setup_tsl2583_als(const struct dmi_system_id *id)
 {
 	/* add tsl2583 light sensor */
 	als = add_smbus_device(NULL, &tsl2583_als_device);
 	return 0;
 }
 
-static int setup_tsl2563_als(const struct dmi_system_id *id)
+static int __init setup_tsl2563_als(const struct dmi_system_id *id)
 {
 	/* add tsl2563 light sensor */
 	als = add_smbus_device(NULL, &tsl2563_als_device);
@@ -399,7 +399,7 @@ static int setup_tsl2563_als(const struct dmi_system_id *id)
 
 static struct platform_device *kb_backlight_device;
 
-static int setup_keyboard_backlight(const struct dmi_system_id *id)
+static int __init setup_keyboard_backlight(const struct dmi_system_id *id)
 {
 	kb_backlight_device =
 		platform_device_register_simple("chromeos-keyboard-backlight",
@@ -412,7 +412,7 @@ static int setup_keyboard_backlight(const struct dmi_system_id *id)
 	return 0;
 }
 
-static const struct dmi_system_id chromeos_laptop_dmi_table[] = {
+static const struct __initdata dmi_system_id chromeos_laptop_dmi_table[] = {
 	{
 		.ident = "Lumpy - Touchpads",
 		.matches = {
