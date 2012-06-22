@@ -239,6 +239,9 @@ void ti_hdmi_4xxx_pll_disable(struct hdmi_ip_data *ip_data)
 	hdmi_set_pll_pwr(ip_data, HDMI_PLLPWRCMD_ALLOFF);
 }
 
+static u8 edid_cached[512];
+static int edid_len;
+
 static int hdmi_check_hpd_state(struct hdmi_ip_data *ip_data)
 {
 	unsigned long flags;
@@ -251,10 +254,13 @@ static int hdmi_check_hpd_state(struct hdmi_ip_data *ip_data)
 
 	hpd = gpio_get_value(ip_data->hpd_gpio);
 
-	if (hpd)
+	if (hpd) {
 		r = hdmi_set_phy_pwr(ip_data, HDMI_PHYPWRCMD_TXON);
-	else
+	} else {
+		/* Clear EDID Cache */
+		edid_len = 0;
 		r = hdmi_set_phy_pwr(ip_data, HDMI_PHYPWRCMD_LDOON);
+	}
 	/*
 	 * HDMI_WP_PWR_CTRL doesn't seem to reflect the change in power
 	 * states, ignore the error for now
@@ -500,6 +506,11 @@ int ti_hdmi_4xxx_read_edid(struct hdmi_ip_data *ip_data,
 	if (len < 128)
 		return -EINVAL;
 
+	if (edid_len) {
+		memcpy(edid, edid_cached, edid_len);
+		return edid_len;
+	}
+
 	r = hdmi_core_ddc_init(ip_data);
 	if (r)
 		return r;
@@ -517,12 +528,21 @@ int ti_hdmi_4xxx_read_edid(struct hdmi_ip_data *ip_data,
 		l += 128;
 	}
 
+	edid_len = l;
+	memcpy(edid_cached, edid, edid_len);
+
 	return l;
 }
 
 bool ti_hdmi_4xxx_detect(struct hdmi_ip_data *ip_data)
 {
-	return gpio_get_value(ip_data->hpd_gpio);
+	if (gpio_get_value(ip_data->hpd_gpio))
+		return true;
+
+	/* Clear EDID Cache */
+	edid_len = 0;
+
+	return false;
 }
 
 static void hdmi_core_init(struct hdmi_core_video_config *video_cfg,
