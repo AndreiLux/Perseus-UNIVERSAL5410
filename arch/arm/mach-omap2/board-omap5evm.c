@@ -1396,6 +1396,12 @@ static void omap5evm_hdmi_init(void)
 	if (r)
 		pr_err("%s: Could not get HDMI\n", __func__);
 
+        /* Requesting HDMI HPD_EN GPIO and enable it, at bootup */              
+        r = gpio_request_one(HDMI_HPD_EN_GPIO,                                  
+                        GPIOF_OUT_INIT_HIGH, "HDMI_HPD_EN");                    
+        if (r)                                                                  
+                pr_err("Failed to get HDMI HPD EN GPIO\n");
+
 	/* Need to configure HPD as a gpio in mux */
 	omap_hdmi_init(0);
 }
@@ -1455,17 +1461,13 @@ static int omap5evm_panel_enable_hdmi(struct omap_dss_device *dssdev)
 
 	pr_info("omap5evm_panel_enable_hdmi\n");
 
-        /* Requesting HDMI OE GPIO and enable it, at bootup */
+	r = gpio_request_one(HDMI_HPD_EN_GPIO,                                  
+                        GPIOF_OUT_INIT_HIGH, "HDMI_HPD_EN");
+
         r = gpio_request_one(HDMI_OE_GPIO,
                                 GPIOF_OUT_INIT_HIGH, "HDMI_OE");
         if (r)
                 pr_err("Failed to get HDMI OE GPIO\n");
-
-        /* Requesting HDMI HPD_EN GPIO and enable it, at bootup */
-        r = gpio_request_one(HDMI_HPD_EN_GPIO,
-                        GPIOF_OUT_INIT_HIGH, "HDMI_HPD_EN");
-        if (r)
-                pr_err("Failed to get HDMI HPD EN GPIO\n");
 
         return 0;
 }
@@ -1474,10 +1476,8 @@ static void omap5evm_panel_disable_hdmi(struct omap_dss_device *dssdev)
 {
 	pr_info("omap5evm_panel_disable_hdmi\n");
 
-	gpio_set_value_cansleep(HDMI_HPD_EN_GPIO, 0);
 	gpio_set_value_cansleep(HDMI_OE_GPIO, 0);
 
-	gpio_free(HDMI_HPD_EN_GPIO);
 	gpio_free(HDMI_OE_GPIO);
 }
 
