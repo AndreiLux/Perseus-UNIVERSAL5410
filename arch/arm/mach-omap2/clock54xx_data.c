@@ -1371,6 +1371,20 @@ static struct clk mcbsp1_sync_mux_ck = {
 	.recalc		= &omap2_clksel_recalc,
 };
 
+#define OMAP54XX_MODULEMODE_SWCTRL 1
+
+static struct clk dss_fck = {
+	.name		= "dss_fck",
+	.ops		= &clkops_omap2_dflt,
+	.enable_reg	= OMAP54XX_CM_DSS_DSS_CLKCTRL,
+	.enable_bit	= OMAP54XX_MODULEMODE_SWCTRL,
+	.clkdm_name	= "dss_clkdm",
+	.parent		= &l3_div_ck,
+	.recalc		= &followparent_recalc,
+};
+
+/* Leaf clocks controlled by modules */
+
 static const struct clksel mcbsp1_gfclk_sel[] = {
 	{ .parent = &mcbsp1_sync_mux_ck, .rates = div_1_0_rates },
 	{ .parent = &pad_clks_ck, .rates = div_1_1_rates },
@@ -2555,10 +2569,13 @@ static struct omap_clk omap54xx_clks[] = {
 	CLK("omap4plus_scm.0",	"ts_fck",	&ts_clk_div_ck,	CK_54XX),
 	CLK(NULL,	"utmi_p1_gfclk",		&utmi_p1_gfclk,	CK_54XX),
 	CLK(NULL,	"utmi_p2_gfclk",		&utmi_p2_gfclk,	CK_54XX),
+	CLK(NULL,	"dpll_core_m3x2_opt_ck",	&dpll_core_m3x2_opt_ck,	CK_54XX),
+	CLK(NULL,	"dpll_per_m3x2_opt_ck",		&dpll_per_m3x2_opt_ck,	CK_54XX),
+	CLK(NULL,	"dss_sys_clk",			&dss_sys_clk,	CK_54XX),
 	CLK(NULL,	"dss_32khz_clk",		&dss_32khz_clk,	CK_54XX),
-	CLK("omapdss_dss",	"video_clk",		&dss_48mhz_clk,	CK_54XX),
-	CLK("omapdss_dss",	"fck",			&dss_dss_clk,	CK_54XX),
-	CLK("omapdss_dss",	"sys_clk",		&dss_sys_clk,	CK_54XX),
+	CLK(NULL,	"dss_48mhz_clk",		&dss_48mhz_clk,	CK_54XX),
+	CLK(NULL,	"dss_dss_clk",			&dss_dss_clk,	CK_54XX),
+	CLK("omapdss_dss",	"ick",			&dss_fck,	CK_54XX),
 	CLK(NULL,	"gpio1_dbclk",			&gpio1_dbclk,	CK_54XX),
 	CLK(NULL,	"gpio2_dbclk",			&gpio2_dbclk,	CK_54XX),
 	CLK(NULL,	"gpio3_dbclk",			&gpio3_dbclk,	CK_54XX),
