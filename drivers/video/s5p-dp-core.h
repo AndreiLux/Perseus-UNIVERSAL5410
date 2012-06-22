@@ -91,10 +91,6 @@ void s5p_dp_set_link_bandwidth(struct s5p_dp_device *dp, u32 bwtype);
 void s5p_dp_get_link_bandwidth(struct s5p_dp_device *dp, u32 *bwtype);
 void s5p_dp_set_lane_count(struct s5p_dp_device *dp, u32 count);
 void s5p_dp_get_lane_count(struct s5p_dp_device *dp, u32 *count);
-void s5p_dp_set_link_bandwidth(struct s5p_dp_device *dp, u32 bwtype);
-void s5p_dp_get_link_bandwidth(struct s5p_dp_device *dp, u32 *bwtype);
-void s5p_dp_set_lane_count(struct s5p_dp_device *dp, u32 count);
-void s5p_dp_get_lane_count(struct s5p_dp_device *dp, u32 *count);
 void s5p_dp_enable_enhanced_mode(struct s5p_dp_device *dp, bool enable);
 void s5p_dp_set_training_pattern(struct s5p_dp_device *dp,
 				 enum pattern_set pattern);
@@ -154,7 +150,7 @@ void s5p_dp_disable_scrambling(struct s5p_dp_device *dp);
 #define DPCD_ADDR_TRAINING_PATTERN_SET		0x0102
 #define DPCD_ADDR_TRAINING_LANE0_SET		0x0103
 #define DPCD_ADDR_LANE0_1_STATUS		0x0202
-#define DPCD_ADDR_LANE_ALIGN__STATUS_UPDATED	0x0204
+#define DPCD_ADDR_LANE_ALIGN_STATUS_UPDATED	0x0204
 #define DPCD_ADDR_ADJUST_REQUEST_LANE0_1	0x0206
 #define DPCD_ADDR_ADJUST_REQUEST_LANE2_3	0x0207
 #define DPCD_ADDR_TEST_REQUEST			0x0218

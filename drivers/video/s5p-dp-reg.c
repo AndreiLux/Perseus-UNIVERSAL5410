@@ -754,7 +754,8 @@ int s5p_dp_read_bytes_from_i2c(struct s5p_dp_device *dp,
 				reg = AUX_LENGTH(16) |
 					AUX_TX_COMM_I2C_TRANSACTION |
 					AUX_TX_COMM_READ;
-				writel(reg, dp->reg_base + S5P_DP_AUX_CH_CTL_1);
+				writel(reg, dp->reg_base +
+					S5P_DP_AUX_CH_CTL_1);
 
 				/* Start AUX transaction */
 				retval = s5p_dp_start_aux_transaction(dp);
@@ -895,7 +896,8 @@ void s5p_dp_set_lane3_pre_emphasis(struct s5p_dp_device *dp, u32 level)
 	writel(reg, dp->reg_base + S5P_DP_LN3_LINK_TRAINING_CTL);
 }
 
-void s5p_dp_set_lane0_link_training(struct s5p_dp_device *dp, u32 training_lane)
+void s5p_dp_set_lane0_link_training(struct s5p_dp_device *dp,
+					u32 training_lane)
 {
 	u32 reg;
 
@@ -903,7 +905,8 @@ void s5p_dp_set_lane0_link_training(struct s5p_dp_device *dp, u32 training_lane)
 	writel(reg, dp->reg_base + S5P_DP_LN0_LINK_TRAINING_CTL);
 }
 
-void s5p_dp_set_lane1_link_training(struct s5p_dp_device *dp, u32 training_lane)
+void s5p_dp_set_lane1_link_training(struct s5p_dp_device *dp,
+					u32 training_lane)
 {
 	u32 reg;
 
@@ -911,7 +914,8 @@ void s5p_dp_set_lane1_link_training(struct s5p_dp_device *dp, u32 training_lane)
 	writel(reg, dp->reg_base + S5P_DP_LN1_LINK_TRAINING_CTL);
 }
 
-void s5p_dp_set_lane2_link_training(struct s5p_dp_device *dp, u32 training_lane)
+void s5p_dp_set_lane2_link_training(struct s5p_dp_device *dp,
+					u32 training_lane)
 {
 	u32 reg;
 
@@ -919,7 +923,8 @@ void s5p_dp_set_lane2_link_training(struct s5p_dp_device *dp, u32 training_lane)
 	writel(reg, dp->reg_base + S5P_DP_LN2_LINK_TRAINING_CTL);
 }
 
-void s5p_dp_set_lane3_link_training(struct s5p_dp_device *dp, u32 training_lane)
+void s5p_dp_set_lane3_link_training(struct s5p_dp_device *dp,
+					u32 training_lane)
 {
 	u32 reg;
 
