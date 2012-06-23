@@ -192,6 +192,11 @@ static int exynos5_clk_ip_mfc_ctrl(struct clk *clk, int enable)
 	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_MFC, clk, enable);
 }
 
+static int exynos5_clk_ip_g3d_ctrl(struct clk *clk, int enable)
+{
+	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_G3D, clk, enable);
+}
+
 static int exynos5_clk_ip_peric_ctrl(struct clk *clk, int enable)
 {
 	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_PERIC, clk, enable);
@@ -228,6 +233,23 @@ static int exynos5_clk_hdmiphy_ctrl(struct clk *clk, int enable)
 }
 
 /* Core list of CMU_CPU side */
+
+/* GPLL clock output */
+static struct clk clk_fout_gpll = {
+	.name		= "fout_gpll",
+	.id		= -1,
+};
+
+/* Possible clock sources for GPLL Mux */
+static struct clk *clk_src_gpll_list[] = {
+	[0] = &clk_fin_gpll,
+	[1] = &clk_fout_gpll,
+};
+
+static struct clksrc_sources clk_src_gpll = {
+	.sources	= clk_src_gpll_list,
+	.nr_sources	= ARRAY_SIZE(clk_src_gpll_list),
+};
 
 static struct clksrc_clk exynos5_clk_mout_apll = {
 	.clk	= {
@@ -535,6 +557,14 @@ struct clk *exynos5_clkset_aclk_top_list[] = {
 struct clksrc_sources exynos5_clkset_aclk = {
 	.sources	= exynos5_clkset_aclk_top_list,
 	.nr_sources	= ARRAY_SIZE(exynos5_clkset_aclk_top_list),
+};
+
+static struct clksrc_clk exynos5_clk_mout_gpll = {
+	.clk	= {
+		.name		= "mout_gpll",
+	},
+	.sources = &clk_src_gpll,
+	.reg_src = { .reg = EXYNOS5_CLKSRC_TOP2, .shift = 24, .size = 1 },
 };
 
 static struct clksrc_clk exynos5_clk_aclk_400 = {
@@ -929,6 +959,10 @@ static struct clk exynos5_init_clocks_off[] = {
 		.parent		= &exynos5_clk_aclk_66.clk,
 		.enable		= exynos5_clk_ip_peris_ctrl,
 		.ctrlbit	= (1 << 21),
+	}, {
+		.name		= "g3d",
+		.enable		= exynos5_clk_ip_g3d_ctrl,
+		.ctrlbit	= ((1 << 1) | (1 << 0)),
 	}
 };
 
@@ -1464,6 +1498,7 @@ static struct clksrc_clk *exynos5_sysclks[] = {
 	&exynos5_clk_mout_cpll,
 	&exynos5_clk_mout_epll,
 	&exynos5_clk_mout_mpll,
+	&exynos5_clk_mout_gpll,
 	&exynos5_clk_mout_mpll_fout,
 	&exynos5_clk_mout_mpll_user,
 	&exynos5_clk_vpllsrc,
@@ -1549,8 +1584,28 @@ static struct clk *exynos5_clks[] __initdata = {
 	&clk_fout_bpll_div2,
 	&clk_fout_mpll_div2,
 	&clk_fout_cpll,
+	&clk_fout_gpll,
 	&exynos5_clk_armclk,
 };
+
+static u32 exynos5_gpll_div[][6] = {
+	/*rate, P, M, S, AFC_DNB, AFC*/
+	{1400000000, 3, 175, 0, 0, 0}, /* for 466MHz */
+	{800000000, 3, 100, 0, 0, 0},  /* for 400MHz, 200MHz */
+	{667000000, 7, 389, 1, 0, 0},  /* for 333MHz, 222MHz, 166MHz */
+	{600000000, 4, 200, 1, 0, 0},  /* for 300MHz, 200MHz, 150MHz */
+	{533000000, 12, 533, 1, 0, 0}, /* for 533MHz, 266MHz, 133MHz */
+	{450000000, 12, 450, 1, 0, 0}, /* for 450 Hz */
+	{400000000, 3, 100, 1, 0, 0},
+	{333000000, 4, 222, 2, 0, 0},
+	{200000000, 3, 100, 2, 0, 0},
+};
+
+static unsigned long exynos5_gpll_get_rate(struct clk *clk)
+{
+	return clk->rate;
+}
+
 
 static u32 epll_div[][6] = {
 	{ 192000000, 0, 48, 3, 1, 0 },
@@ -1560,6 +1615,58 @@ static u32 epll_div[][6] = {
 	{  49152000, 0, 49, 3, 3, 9961 },
 	{  45158400, 0, 45, 3, 3, 10381 },
 	{ 180633600, 0, 45, 3, 1, 10381 },
+};
+
+static int exynos5_gpll_set_rate(struct clk *clk, unsigned long rate)
+{
+	unsigned int gpll_con0;
+	unsigned int locktime;
+	unsigned int tmp;
+	unsigned int i;
+
+	/* Return if no rate changed */
+	if (clk->rate == rate)
+		return 0;
+
+	gpll_con0 = __raw_readl(EXYNOS5_GPLL_CON0);
+	gpll_con0 &= ~(PLL35XX_MDIV_MASK << PLL35XX_MDIV_SHIFT |	\
+			 PLL35XX_PDIV_MASK << PLL35XX_PDIV_SHIFT |	\
+			 PLL35XX_SDIV_MASK << PLL35XX_SDIV_SHIFT);
+
+	for (i = 0; i < ARRAY_SIZE(exynos5_gpll_div); i++) {
+		if (exynos5_gpll_div[i][0] == rate) {
+			gpll_con0 |=
+				exynos5_gpll_div[i][1] << PLL35XX_PDIV_SHIFT;
+			gpll_con0 |=
+				exynos5_gpll_div[i][2] << PLL35XX_MDIV_SHIFT;
+			gpll_con0 |=
+				exynos5_gpll_div[i][3] << PLL35XX_SDIV_SHIFT;
+			break;
+		}
+	}
+
+	if (i == ARRAY_SIZE(exynos5_gpll_div)) {
+		printk(KERN_ERR "%s: Invalid GPLL clock frequency\n", __func__);
+		return -EINVAL;
+	}
+
+	locktime = 270 * exynos5_gpll_div[i][1] + 1;
+	__raw_writel(locktime, EXYNOS5_GPLL_LOCK);
+
+	__raw_writel(gpll_con0, EXYNOS5_GPLL_CON0);
+
+	do {
+		tmp = __raw_readl(EXYNOS5_GPLL_CON0);
+	} while (!(tmp & (0x1 << EXYNOS5_GPLLCON0_LOCKED_SHIFT)));
+
+	clk->rate = rate;
+
+	return 0;
+}
+
+static struct clk_ops exynos5_gpll_ops = {
+	.get_rate = exynos5_gpll_get_rate,
+	.set_rate = exynos5_gpll_set_rate,
 };
 
 static int exynos5_epll_set_rate(struct clk *clk, unsigned long rate)
@@ -1675,6 +1782,7 @@ void __init_or_cpufreq exynos5_setup_clocks(void)
 	unsigned long mpll;
 	unsigned long epll;
 	unsigned long vpll;
+	unsigned long gpll;
 	unsigned long vpllsrc;
 	unsigned long xtal;
 	unsigned long armclk;
@@ -1720,6 +1828,9 @@ void __init_or_cpufreq exynos5_setup_clocks(void)
 	clk_fout_epll.rate = epll;
 	clk_fout_vpll.rate = vpll;
 
+	gpll = s5p_get_pll35xx(xtal, __raw_readl(EXYNOS5_GPLL_CON0));
+	clk_fout_gpll.rate = gpll;
+
 	printk(KERN_INFO "EXYNOS5: PLL settings, A=%ld, B=%ld, C=%ld\n"
 			"M=%ld, E=%ld V=%ld",
 			apll, bpll, cpll, mpll, epll, vpll);
@@ -1743,6 +1854,7 @@ void __init_or_cpufreq exynos5_setup_clocks(void)
 
 
 	clk_fout_epll.ops = &exynos5_epll_ops;
+	clk_fout_gpll.ops = &exynos5_gpll_ops;
 
 	if (clk_set_parent(&exynos5_clk_mout_epll.clk, &clk_fout_epll))
 		printk(KERN_ERR "Unable to set parent %s of clock %s.\n",
