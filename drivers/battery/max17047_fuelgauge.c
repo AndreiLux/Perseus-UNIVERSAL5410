@@ -65,6 +65,9 @@
 #define MAX17047_REG_VFOCV		0xFB
 #define MAX17047_REG_SOC_VF		0xFF
 
+#define MAX17047_REG_CURRENT		0x0A
+#define MAX17047_REG_AVGCURRENT		0x0B
+
 /* Polling work */
 #undef	DEBUG_FUELGAUGE_POLLING
 #define MAX17047_POLLING_INTERVAL	10000
@@ -99,6 +102,9 @@ struct max17047_fuelgauge_data {
 	unsigned int			soc;
 	unsigned int			rawsoc;
 	unsigned int			temperature;
+
+	s32				amperagenow;
+	s32				avgamperage;
 
 #if defined(CONFIG_TARGET_LOCALE_KOR)
 	int				full_soc;
@@ -310,6 +316,64 @@ static int max17047_get_soc(struct i2c_client *client)
 	return soc;
 }
 
+static int max17047_get_amperage(struct i2c_client *client)
+{
+	struct max17047_fuelgauge_data *fg_data = i2c_get_clientdata(client);
+	u32 temp, sign;
+	s32 amps;
+	u8 data[2]; 
+
+	int ret = max17047_i2c_read(client, MAX17047_REG_CURRENT, data);
+	if (ret < 0)
+		return ret;
+
+	temp = ((data[1]<<8) | data[0]) & 0xFFFF;
+	if (temp & (0x1 << 15)) {
+		sign = 1;
+		temp = (~temp & 0xFFFF) + 1;
+	} else
+		sign = 0;
+
+	amps = temp * 15625 / 100000;
+	if (sign)
+		amps *= -1;
+	
+	fg_data->amperagenow = amps;
+
+	printk("MAX17047: %s: curr reg: 0x%x 0x%x val: %d\n", __func__, data[0], data[1], amps);
+
+	return amps;
+}
+
+static int max17047_get_avgamperage(struct i2c_client *client)
+{
+	struct max17047_fuelgauge_data *fg_data = i2c_get_clientdata(client);
+	u32 temp, sign;
+	s32 avgamperage;
+	u8 data[2]; 
+
+	int ret = max17047_i2c_read(client, MAX17047_REG_AVGCURRENT, data);
+	if (ret < 0)
+		return ret;
+	
+	temp = ((data[1]<<8) | data[0]) & 0xFFFF;
+	if (temp & (0x1 << 15)) {
+		sign = 1;
+		temp = (~temp & 0xFFFF) + 1;
+	} else
+		sign = 0;
+
+	avgamperage = temp * 15625 / 100000;
+	if (sign)
+		avgamperage *= -1;
+
+	fg_data->avgamperage = avgamperage;
+
+	printk("MAX17047: %s: reg: 0x%x 0x%x val: %d", __func__, data[0], data[1], avgamperage);
+
+	return avgamperage;
+}
+
 static void max17047_reset_soc(struct i2c_client *client)
 {
 	struct max17047_fuelgauge_data *fg_data =
@@ -443,10 +507,11 @@ static void max17047_reg_init(struct max17047_fuelgauge_data *fg_data)
 	i2c_data[0] = 0x50;
 	max17047_i2c_write(client, MAX17047_REG_RCOMP, i2c_data);
 #else /* Use MG1 */
+#if 0
 	i2c_data[1] = 0x00;
 	i2c_data[0] = 0x00;
 	max17047_i2c_write(client, MAX17047_REG_CGAIN, i2c_data);
-
+#endif
 	i2c_data[1] = 0x00;
 	i2c_data[0] = 0x03;
 	max17047_i2c_write(client, MAX17047_REG_MISCCFG, i2c_data);
@@ -533,6 +598,8 @@ static enum power_supply_property max17047_fuelgauge_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_AVG,
 	POWER_SUPPLY_PROP_CAPACITY,
 	POWER_SUPPLY_PROP_TEMP,
+	POWER_SUPPLY_PROP_CURRENT_NOW,
+	POWER_SUPPLY_PROP_CURRENT_AVG,
 };
 
 #ifdef USE_TRIM_ERROR_DETECTION
@@ -577,6 +644,12 @@ static int max17047_get_property(struct power_supply *psy,
 			break;
 		case POWER_SUPPLY_PROP_TEMP:
 			val->intval = 300;
+			break;
+		case POWER_SUPPLY_PROP_CURRENT_NOW:
+			val->intval = 2000;
+			break;		
+		case POWER_SUPPLY_PROP_CURRENT_AVG:
+			val->intval = 2000;
 			break;
 		default:
 			return -EINVAL;
@@ -623,6 +696,12 @@ static int max17047_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
 		val->intval = max17047_get_temperature(fg_data->client);
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_NOW:
+		val->intval = max17047_get_amperage(fg_data->client);
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_AVG:
+		val->intval = max17047_get_avgamperage(fg_data->client);
 		break;
 	default:
 		return -EINVAL;
