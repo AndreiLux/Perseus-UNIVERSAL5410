@@ -204,8 +204,8 @@ int battery_get_info(struct battery_info *info,
 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
 	case POWER_SUPPLY_PROP_HEALTH:
 	case POWER_SUPPLY_PROP_PRESENT:
-//	case POWER_SUPPLY_PROP_CURRENT_MAX:
-//	case POWER_SUPPLY_PROP_CURRENT_NOW:
+	case POWER_SUPPLY_PROP_CURRENT_MAX:
+	case POWER_SUPPLY_PROP_CURRENT_NOW:
 #if defined(CONFIG_TARGET_LOCALE_KOR) || defined(CONFIG_MACH_M0_CTC)
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
 #endif
@@ -218,8 +218,6 @@ int battery_get_info(struct battery_info *info,
 	/* Update from fuelgauge */
 	case POWER_SUPPLY_PROP_CAPACITY:	/* Only Adjusted SOC */
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:	/* Only VCELL */
-	case POWER_SUPPLY_PROP_CURRENT_NOW:
-	case POWER_SUPPLY_PROP_CURRENT_AVG:
 		info->psy_fuelgauge->get_property(info->psy_fuelgauge,
 						  property, &value);
 		break;
@@ -321,19 +319,6 @@ void battery_update_info(struct battery_info *info)
 					  POWER_SUPPLY_PROP_VOLTAGE_NOW,
 					  &value);
 	info->battery_vfocv = value.intval;
-
-	value.intval = CURRENT_TYPE_MEASURE;
-	info->psy_fuelgauge->get_property(info->psy_fuelgauge,
-					  POWER_SUPPLY_PROP_CURRENT_NOW,
-					  &value);
-	info->battery_current_now = value.intval;
-
-	value.intval = CURRENT_TYPE_MEASURE;
-	info->psy_fuelgauge->get_property(info->psy_fuelgauge,
-					  POWER_SUPPLY_PROP_CURRENT_NOW,
-					  &value);
-	info->battery_current_avg = value.intval;
-
 	info->battery_v_diff = info->battery_vcell - info->battery_vfocv;
 
 	temper = battery_get_temper(info);
@@ -374,13 +359,12 @@ update_finish:
 		 "health(%d), present(%d), "
 		 "cable(%d), curr(%d), "
 		 "soc(%d), raw(%d), "
-		 "vol(%d), ocv(%d), fgcur(%d), fgcuravg(%d), tmp(%d)\n", __func__,
+		 "vol(%d), ocv(%d), tmp(%d)\n", __func__,
 		 info->charge_real_state, info->charge_type,
 		 info->battery_health, info->battery_present,
 		 info->cable_type, info->charge_current,
 		 info->battery_soc, info->battery_raw_soc,
 		 info->battery_vcell, info->battery_vfocv,
-		 info->battery_current_now, info->battery_current_avg,
 		 info->battery_temper);
 }
 

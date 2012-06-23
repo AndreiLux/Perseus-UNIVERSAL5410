@@ -91,10 +91,6 @@ struct battery_info {
 	unsigned int battery_raw_soc;
 	int battery_r_s_delta;
 
-	/* current consumption */
-	s32 battery_current_now;
-	s32 battery_current_avg;
-
 	/* temperature */
 	int battery_temper;
 	int battery_temper_adc;
@@ -162,7 +158,6 @@ enum charger_state {
 enum current_type {
 	CURRENT_TYPE_CHRAGE	= 0,
 	CURRENT_TYPE_INPUT	= 1,
-	CURRENT_TYPE_MEASURE	= 2,
 };
 
 /*
