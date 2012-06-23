@@ -440,6 +440,7 @@ struct combiner_chip_data {
 	unsigned int irq_offset;
 	unsigned int irq_mask;
 	void __iomem *base;
+	unsigned int gic_irq;
 };
 
 static struct irq_domain *combiner_irq_domain;
@@ -465,6 +466,17 @@ static void combiner_unmask_irq(struct irq_data *data)
 	u32 mask = 1 << (data->hwirq % 32);
 
 	__raw_writel(mask, combiner_base(data) + COMBINER_ENABLE_SET);
+}
+
+static int combiner_set_affinity(struct irq_data *data, const struct
+				 cpumask *dest, bool force)
+{
+	struct combiner_chip_data *chip_data = data->chip_data;
+
+	if (!chip_data)
+		return -EINVAL;
+
+	return irq_set_affinity(chip_data->gic_irq, dest);
 }
 
 static void combiner_handle_cascade_irq(unsigned int irq, struct irq_desc *desc)
@@ -500,6 +512,7 @@ static struct irq_chip combiner_chip = {
 	.name		= "COMBINER",
 	.irq_mask	= combiner_mask_irq,
 	.irq_unmask	= combiner_unmask_irq,
+	.irq_set_affinity = combiner_set_affinity,
 };
 
 static void __init combiner_cascade_irq(unsigned int combiner_nr, unsigned int irq)
@@ -516,6 +529,7 @@ static void __init combiner_cascade_irq(unsigned int combiner_nr, unsigned int i
 	if (irq_set_handler_data(irq, &combiner_data[combiner_nr]) != 0)
 		BUG();
 	irq_set_chained_handler(irq, combiner_handle_cascade_irq);
+	combiner_data[combiner_nr].gic_irq = irq;
 }
 
 static void __init combiner_init_one(unsigned int combiner_nr,
