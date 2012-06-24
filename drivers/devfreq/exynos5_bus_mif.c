@@ -22,6 +22,7 @@
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
 #include <linux/module.h>
+#include <linux/pm_qos.h>
 
 #include <mach/map.h>
 #include <mach/regs-clock.h>
@@ -320,6 +321,11 @@ unlock:
 	return NOTIFY_DONE;
 }
 
+static struct devfreq_pm_qos_data exynos5_devfreq_mif_pm_qos_data = {
+	.bytes_per_sec_per_hz = 8,
+	.pm_qos_class = PM_QOS_MEMORY_THROUGHPUT,
+};
+
 static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 {
 	struct busfreq_data_mif *data;
@@ -388,7 +394,8 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 	busfreq_mon_reset(data);
 
 	data->devfreq = devfreq_add_device(dev, &exynos5_devfreq_mif_profile,
-					   &devfreq_simple_ondemand, NULL);
+					   &devfreq_pm_qos,
+					   &exynos5_devfreq_mif_pm_qos_data);
 
 	if (IS_ERR(data->devfreq)) {
 		err = PTR_ERR(data->devfreq);
