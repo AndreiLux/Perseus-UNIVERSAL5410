@@ -331,6 +331,7 @@ static void lcd_set_power(struct plat_lcd_data *pd,
 	 * likely integrated into the plat-samsung/dev-backlight.c init.
 	 */
 	gpio_request_one(EXYNOS5_GPX3(0), GPIOF_OUT_INIT_LOW, "GPX3");
+	gpio_free(EXYNOS5_GPX3(0));
 }
 
 static int smdk5250_match_fb(struct plat_lcd_data *pd, struct fb_info *info)
