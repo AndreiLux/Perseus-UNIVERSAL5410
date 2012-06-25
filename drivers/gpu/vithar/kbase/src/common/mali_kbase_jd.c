@@ -1030,6 +1030,7 @@ mali_error kbase_jd_submit(kbase_context *kctx, const kbase_uk_job_submit *user_
 			if (kbase_process_soft_job( katom ) == 0)
 			{
 				/* Pure software job which has immediately completed so resolve it */
+				kbase_finish_soft_job(katom);
 				need_to_try_schedule_context |= jd_done_nolock(katom, 0);
 			}
 			else
