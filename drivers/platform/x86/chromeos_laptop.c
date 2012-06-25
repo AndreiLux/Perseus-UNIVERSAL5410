@@ -26,7 +26,6 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
-#include "chromeos_laptop.h"
 
 #define ATMEL_TP_I2C_ADDR	0x4b
 #define ATMEL_TP_I2C_BL_ADDR	0x25
@@ -44,6 +43,13 @@ const char *i2c_adapter_names[] = {
 	"SMBus I801 adapter",
 	"i915 gmbus vga",
 	"i915 gmbus panel",
+};
+
+/* Keep this enum consistent with i2c_adapter_names */
+enum i2c_adapter_type {
+	I2C_ADAPTER_SMBUS = 0,
+	I2C_ADAPTER_VGADDC,
+	I2C_ADAPTER_PANEL,
 };
 
 static struct i2c_board_info __initdata cyapa_device = {
@@ -288,6 +294,14 @@ static int find_i2c_adapter_num(enum i2c_adapter_type type)
 	return adapter->nr;
 }
 
+/*
+ * Takes a list of addresses in addrs as such :
+ * { addr1, ... , addrn, I2C_CLIENT_END };
+ * chromeos_laptop_add_probed_i2c_device will use i2c_new_probed_device
+ * and probe for devices at all of the addresses listed.
+ * Returns NULL if no devices found.
+ * See Documentation/i2c/instantiating-devices for more information.
+ */
 struct i2c_client *chromeos_laptop_add_probed_i2c_device(
 		const char *name,
 		enum i2c_adapter_type type,
@@ -299,8 +313,12 @@ struct i2c_client *chromeos_laptop_add_probed_i2c_device(
 				       info,
 				       addrs);
 }
-EXPORT_SYMBOL(chromeos_laptop_add_probed_i2c_device);
 
+/*
+ * Probes for a device at a single address, the one provided by
+ * info->addr.
+ * Returns NULL if no device found.
+ */
 struct i2c_client *chromeos_laptop_add_i2c_device(const char *name,
 						  enum i2c_adapter_type type,
 						  struct i2c_board_info *info)
@@ -311,7 +329,6 @@ struct i2c_client *chromeos_laptop_add_i2c_device(const char *name,
 				       info,
 				       addr_list);
 }
-EXPORT_SYMBOL(chromeos_laptop_add_i2c_device);
 
 static struct i2c_client *add_smbus_device(const char *name,
 					   struct i2c_board_info *info)
