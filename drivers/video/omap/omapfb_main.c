@@ -1035,7 +1035,7 @@ void omapfb_notify_clients(struct omapfb_device *fbdev, unsigned long event)
 }
 EXPORT_SYMBOL(omapfb_notify_clients);
 
-static int omapfb_set_update_mode(struct omapfb_device *fbdev,
+int omapfb_set_update_mode(struct omapfb_device *fbdev,
 				   enum omapfb_update_mode mode)
 {
 	int r;
@@ -1046,8 +1046,9 @@ static int omapfb_set_update_mode(struct omapfb_device *fbdev,
 
 	return r;
 }
+EXPORT_SYMBOL(omapfb_set_update_mode);
 
-static enum omapfb_update_mode omapfb_get_update_mode(struct omapfb_device *fbdev)
+enum omapfb_update_mode omapfb_get_update_mode(struct omapfb_device *fbdev)
 {
 	int r;
 
@@ -1057,6 +1058,7 @@ static enum omapfb_update_mode omapfb_get_update_mode(struct omapfb_device *fbde
 
 	return r;
 }
+EXPORT_SYMBOL(omapfb_get_update_mode);
 
 static void omapfb_get_caps(struct omapfb_device *fbdev, int plane,
 				     struct omapfb_caps *caps)
