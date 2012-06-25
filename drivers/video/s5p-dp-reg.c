@@ -791,12 +791,12 @@ void s5p_dp_set_link_bandwidth(struct s5p_dp_device *dp, u32 bwtype)
 		writel(reg, dp->reg_base + S5P_DP_LINK_BW_SET);
 }
 
-void s5p_dp_get_link_bandwidth(struct s5p_dp_device *dp, u8 *bwtype)
+void s5p_dp_get_link_bandwidth(struct s5p_dp_device *dp, u32 *bwtype)
 {
 	u32 reg;
 
 	reg = readl(dp->reg_base + S5P_DP_LINK_BW_SET);
-	*bwtype = (u8)(reg & 0xff);
+	*bwtype = reg;
 }
 
 void s5p_dp_set_lane_count(struct s5p_dp_device *dp, u32 count)
@@ -807,12 +807,12 @@ void s5p_dp_set_lane_count(struct s5p_dp_device *dp, u32 count)
 	writel(reg, dp->reg_base + S5P_DP_LANE_COUNT_SET);
 }
 
-void s5p_dp_get_lane_count(struct s5p_dp_device *dp, u8 *count)
+void s5p_dp_get_lane_count(struct s5p_dp_device *dp, u32 *count)
 {
 	u32 reg;
 
 	reg = readl(dp->reg_base + S5P_DP_LANE_COUNT_SET);
-	*count = (u8)(reg & 0xff);
+	*count = reg;
 }
 
 void s5p_dp_enable_enhanced_mode(struct s5p_dp_device *dp, bool enable)

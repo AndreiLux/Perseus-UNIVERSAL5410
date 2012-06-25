@@ -88,10 +88,13 @@ int s5p_dp_read_bytes_from_i2c(struct s5p_dp_device *dp,
 				unsigned int count,
 				unsigned char edid[]);
 void s5p_dp_set_link_bandwidth(struct s5p_dp_device *dp, u32 bwtype);
-void s5p_dp_get_link_bandwidth(struct s5p_dp_device *dp, u8 *bwtype);
+void s5p_dp_get_link_bandwidth(struct s5p_dp_device *dp, u32 *bwtype);
 void s5p_dp_set_lane_count(struct s5p_dp_device *dp, u32 count);
-void s5p_dp_get_lane_count(struct s5p_dp_device *dp, u8 *count);
-
+void s5p_dp_get_lane_count(struct s5p_dp_device *dp, u32 *count);
+void s5p_dp_set_link_bandwidth(struct s5p_dp_device *dp, u32 bwtype);
+void s5p_dp_get_link_bandwidth(struct s5p_dp_device *dp, u32 *bwtype);
+void s5p_dp_set_lane_count(struct s5p_dp_device *dp, u32 count);
+void s5p_dp_get_lane_count(struct s5p_dp_device *dp, u32 *count);
 void s5p_dp_enable_enhanced_mode(struct s5p_dp_device *dp, bool enable);
 void s5p_dp_set_training_pattern(struct s5p_dp_device *dp,
 				 enum pattern_set pattern);
@@ -151,7 +154,7 @@ void s5p_dp_disable_scrambling(struct s5p_dp_device *dp);
 #define DPCD_ADDR_TRAINING_PATTERN_SET		0x0102
 #define DPCD_ADDR_TRAINING_LANE0_SET		0x0103
 #define DPCD_ADDR_LANE0_1_STATUS		0x0202
-#define DPCD_ADDR_LANE_ALIGN_STATUS_UPDATED	0x0204
+#define DPCD_ADDR_LANE_ALIGN__STATUS_UPDATED	0x0204
 #define DPCD_ADDR_ADJUST_REQUEST_LANE0_1	0x0206
 #define DPCD_ADDR_ADJUST_REQUEST_LANE2_3	0x0207
 #define DPCD_ADDR_TEST_REQUEST			0x0218
@@ -206,23 +209,5 @@ void s5p_dp_disable_scrambling(struct s5p_dp_device *dp);
 /* DPCD_ADDR_SINK_POWER_STATE */
 #define DPCD_SET_POWER_STATE_D0			(0x1 << 0)
 #define DPCD_SET_POWER_STATE_D4			(0x2 << 0)
-
-enum {
-	DP_VOLTAGE_SWING_LEVEL_0 = 0,
-	DP_VOLTAGE_SWING_LEVEL_1,
-	DP_VOLTAGE_SWING_LEVEL_2,
-	DP_VOLTAGE_SWING_LEVEL_3,
-};
-
-enum {
-	DP_PRE_EMPHASIS_LEVEL_0 = 0,
-	DP_PRE_EMPHASIS_LEVEL_1,
-	DP_PRE_EMPHASIS_LEVEL_2,
-	DP_PRE_EMPHASIS_LEVEL_3,
-};
-
-
-#define DP_VOLTAGE_SWING_REACH_MAX		(0x01 << 2)
-#define DP_PRE_EMPHASIS_REACH_MAX		(0x01 << 5)
 
 #endif /* _S5P_DP_CORE_H */
