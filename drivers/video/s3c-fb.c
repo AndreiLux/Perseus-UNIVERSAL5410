@@ -729,8 +729,11 @@ static inline u32 wincon(u32 bits_per_pixel, u32 transp_length, u32 red_length)
 		data |= WINCONx_BYTSWP;
 		break;
 	case 16:
-		if (transp_length != 0)
+		if (transp_length == 1)
 			data |= WINCON1_BPPMODE_16BPP_A1555;
+		else if (transp_length == 4)
+			data |= WINCON1_BPPMODE_16BPP_A4444
+				| WINCON1_BLD_PIX | WINCON1_ALPHA_SEL;
 		else
 			data |= WINCON0_BPPMODE_16BPP_565;
 		data |= WINCONx_HAWSWP;
