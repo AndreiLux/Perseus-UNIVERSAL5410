@@ -823,6 +823,11 @@ static int s3c_fb_set_par(struct fb_info *info)
 		data |= VIDCON0_ENVID | VIDCON0_ENVID_F;
 		writel(data, regs + VIDCON0);
 
+		data = readl(regs + VIDCON2);
+		data &= ~(VIDCON2_RGB_ORDER_E_MASK | VIDCON2_RGB_ORDER_O_MASK);
+		data |= VIDCON2_RGB_ORDER_E_BGR | VIDCON2_RGB_ORDER_O_BGR;
+		writel(data, regs + VIDCON2);
+
 		data = VIDTCON0_VBPD(var->upper_margin - 1) |
 		       VIDTCON0_VFPD(var->lower_margin - 1) |
 		       VIDTCON0_VSPW(var->vsync_len - 1);
@@ -1453,10 +1458,8 @@ static u32 s3c_fb_red_length(int format)
 	switch (format) {
 	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
 	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
-	case S3C_FB_PIXEL_FORMAT_BGRA_8888:
 		return 8;
 
-	case S3C_FB_PIXEL_FORMAT_RGB_565:
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 		return 5;
 
@@ -1474,13 +1477,9 @@ static u32 s3c_fb_red_offset(int format)
 	switch (format) {
 	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
 	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
-	case S3C_FB_PIXEL_FORMAT_RGB_565:
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 	case S3C_FB_PIXEL_FORMAT_RGBA_4444:
 		return 0;
-
-	case S3C_FB_PIXEL_FORMAT_BGRA_8888:
-		return 16;
 
 	default:
 		pr_warn("s3c-fb: unrecognized pixel format %u\n", format);
@@ -1490,9 +1489,6 @@ static u32 s3c_fb_red_offset(int format)
 
 static u32 s3c_fb_green_length(int format)
 {
-	if (format == S3C_FB_PIXEL_FORMAT_RGB_565)
-		return 6;
-
 	return s3c_fb_red_length(format);
 }
 
@@ -1501,10 +1497,8 @@ static u32 s3c_fb_green_offset(int format)
 	switch (format) {
 	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
 	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
-	case S3C_FB_PIXEL_FORMAT_BGRA_8888:
 		return 8;
 
-	case S3C_FB_PIXEL_FORMAT_RGB_565:
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 		return 5;
 
@@ -1529,17 +1523,11 @@ static u32 s3c_fb_blue_offset(int format)
 	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
 		return 16;
 
-	case S3C_FB_PIXEL_FORMAT_RGB_565:
-		return 11;
-
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 		return 10;
 
 	case S3C_FB_PIXEL_FORMAT_RGBA_4444:
 		return 8;
-
-	case S3C_FB_PIXEL_FORMAT_BGRA_8888:
-		return 0;
 
 	default:
 		pr_warn("s3c-fb: unrecognized pixel format %u\n", format);
@@ -1551,7 +1539,6 @@ static u32 s3c_fb_transp_length(int format)
 {
 	switch (format) {
 	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
-	case S3C_FB_PIXEL_FORMAT_BGRA_8888:
 		return 8;
 
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
@@ -1561,7 +1548,6 @@ static u32 s3c_fb_transp_length(int format)
 		return 4;
 
 	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
-	case S3C_FB_PIXEL_FORMAT_RGB_565:
 		return 0;
 
 	default:
@@ -1574,7 +1560,6 @@ static u32 s3c_fb_transp_offset(int format)
 {
 	switch (format) {
 	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
-	case S3C_FB_PIXEL_FORMAT_BGRA_8888:
 		return 24;
 
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
@@ -1584,7 +1569,6 @@ static u32 s3c_fb_transp_offset(int format)
 		return 12;
 
 	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
-	case S3C_FB_PIXEL_FORMAT_RGB_565:
 		return s3c_fb_blue_offset(format);
 
 	default:
@@ -1600,10 +1584,8 @@ static u32 s3c_fb_padding(int format)
 		return 8;
 
 	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
-	case S3C_FB_PIXEL_FORMAT_BGRA_8888:
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 	case S3C_FB_PIXEL_FORMAT_RGBA_4444:
-	case S3C_FB_PIXEL_FORMAT_RGB_565:
 		return 0;
 
 	default:
