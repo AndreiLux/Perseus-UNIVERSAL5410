@@ -2723,8 +2723,9 @@ void dispc_mgr_set_timings(enum omap_channel channel,
 
 		source = dss_get_hdmi_venc_clk_source();
 
-		if (source == DSS_VENC_TV_CLK)
-			t.y_res /= 2;
+// Hack!
+//		if (source == DSS_VENC_TV_CLK)
+//			t.y_res /= 2;
 	}
 
 	dispc_mgr_set_size(channel, t.x_res, t.y_res);
