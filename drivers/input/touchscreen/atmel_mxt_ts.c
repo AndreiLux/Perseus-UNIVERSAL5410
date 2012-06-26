@@ -2359,7 +2359,7 @@ static int mxt_input_dev_create(struct mxt_data *data)
 	if (error)
 		goto err_free_device;
 
-	max_area_channels = min(255, data->max_area_channels);
+	max_area_channels = min(255U, data->max_area_channels);
 	max_touch_major = get_touch_major_pixels(data, max_area_channels);
 	input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR,
 			     0, max_touch_major, 0, 0);
