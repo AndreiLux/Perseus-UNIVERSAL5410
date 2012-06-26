@@ -627,6 +627,10 @@ static void fimd_finish_pageflip(struct drm_device *drm_dev, int crtc)
 			drm_vblank_off(drm_dev, crtc);
 	}
 
+	/* set wait vsync event to zero and wake up queue. */
+	atomic_set(&dev_priv->wait_vsync_event, 0);
+	DRM_WAKEUP(&dev_priv->wait_vsync_queue);
+
 	spin_unlock_irqrestore(&drm_dev->event_lock, flags);
 }
 

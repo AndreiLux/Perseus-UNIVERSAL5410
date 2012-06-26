@@ -63,6 +63,9 @@ static int exynos_drm_load(struct drm_device *dev, unsigned long flags)
 		return -ENOMEM;
 	}
 
+	DRM_INIT_WAITQUEUE(&private->wait_vsync_queue);
+	atomic_set(&private->wait_vsync_event, 0);
+
 	INIT_LIST_HEAD(&private->pageflip_event_list);
 	dev->dev_private = (void *)private;
 

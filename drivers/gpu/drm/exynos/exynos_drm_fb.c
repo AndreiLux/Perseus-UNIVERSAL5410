@@ -48,6 +48,27 @@ struct exynos_drm_fb {
 	struct exynos_drm_gem_obj	*exynos_gem_obj[MAX_FB_BUFFER];
 };
 
+static void exynos_drm_wait_for_vsync(struct drm_device *drm_dev)
+{
+	struct exynos_drm_private *dev_priv = drm_dev->dev_private;
+
+	atomic_set(&dev_priv->wait_vsync_event, 1);
+
+	/*
+	 * wait for FIMD to signal VSYNC interrupt or return after
+	 * timeout which is set to 50ms (refresh rate of 20)
+	 * Cannot use DRM_WAIT_ON or wait_event_interruptible_timeout
+	 * here since they exit if there is a signal pending. This
+	 * happens when X is killed and DRM release is called which
+	 * makes these functions return without waiting.
+	 */
+	wait_event_timeout(dev_priv->wait_vsync_queue,
+				!atomic_read(&dev_priv->wait_vsync_event),
+				DRM_HZ/20);
+
+	/* TODO: Add wait for vsync for HDMI*/
+}
+
 static void exynos_drm_fb_destroy(struct drm_framebuffer *fb)
 {
 	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
@@ -55,6 +76,9 @@ static void exynos_drm_fb_destroy(struct drm_framebuffer *fb)
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
 	drm_framebuffer_cleanup(fb);
+
+	/* wait for vsync from CRTC to safely remove a FB*/
+	exynos_drm_wait_for_vsync(fb->dev);
 
 	kfree(exynos_fb);
 	exynos_fb = NULL;
