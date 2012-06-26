@@ -411,5 +411,14 @@
 			linux,code = <116>; /* KEY_POWER */
 			gpio-key,wakeup;
 		};
+
+		lid-switch {
+			label = "Lid";
+			gpios = <&gpx3 5 0 0x10000 0>;
+			linux,input-type = <5>; /* EV_SW */
+			linux,code = <0>; /* SW_LID */
+			debounce-interval = <1>;
+			gpio-key,wakeup;
+		};
 	};
 };
