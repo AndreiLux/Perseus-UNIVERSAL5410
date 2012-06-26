@@ -1261,6 +1261,7 @@ static struct omap_mmu_dev_attr omap54xx_dsp_mmu_dev_attr = {
 	.da_start = 0x0,
 	.da_end = 0xfffff000,
 	.nr_tlb_entries = 32,
+	.has_bus_err_back = 0,
 };
 
 static struct omap_hwmod_class omap54xx_dsp_hwmod_class = {
@@ -3177,6 +3178,7 @@ static struct omap_mmu_dev_attr omap54xx_ipu_mmu_dev_attr = {
 	.da_start = 0x0,
 	.da_end = 0xfffff000,
 	.nr_tlb_entries = 32,
+	.has_bus_err_back = 1,
 };
 
 static struct omap_hwmod_class omap54xx_ipu_hwmod_class = {
