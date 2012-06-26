@@ -97,6 +97,13 @@ dma_addr_t iovmm_map(struct device *dev, struct scatterlist *sg, off_t offset,
 		phys = sg_phys(sg);
 		len = sg_dma_len(sg);
 
+		/* if back to back sg entries are contiguous consolidate them */
+		while (sg_next(sg) &&
+		       sg_phys(sg) + sg_dma_len(sg) == sg_phys(sg_next(sg))) {
+			len += sg_dma_len(sg_next(sg));
+			sg = sg_next(sg);
+		}
+
 		if (offset > 0) {
 			len -= offset;
 			phys += offset;
