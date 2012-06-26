@@ -215,9 +215,11 @@ static struct i2c_board_info __initdata atmel_tp2_device = {
 	.flags		= I2C_CLIENT_WAKE,
 };
 
-static struct i2c_client *__add_probed_i2c_device(const char *name, int bus,
-						  struct i2c_board_info *info,
-						  const unsigned short *addrs)
+static __init struct i2c_client *__add_probed_i2c_device(
+		const char *name,
+		int bus,
+		struct i2c_board_info *info,
+		const unsigned short *addrs)
 {
 	const struct dmi_device *dmi_dev;
 	const struct dmi_dev_onboard *dev_data;
@@ -266,7 +268,7 @@ static struct i2c_client *__add_probed_i2c_device(const char *name, int bus,
 	return client;
 }
 
-static int __find_i2c_adap(struct device *dev, void *data)
+static int __init __find_i2c_adap(struct device *dev, void *data)
 {
 	const char *name = data;
 	const char *prefix = "i2c-";
@@ -277,7 +279,7 @@ static int __find_i2c_adap(struct device *dev, void *data)
 	return !strncmp(adapter->name, name, strlen(name));
 }
 
-static int find_i2c_adapter_num(enum i2c_adapter_type type)
+static int __init find_i2c_adapter_num(enum i2c_adapter_type type)
 {
 	struct device *dev = NULL;
 	struct i2c_adapter *adapter;
@@ -302,7 +304,7 @@ static int find_i2c_adapter_num(enum i2c_adapter_type type)
  * Returns NULL if no devices found.
  * See Documentation/i2c/instantiating-devices for more information.
  */
-struct i2c_client *chromeos_laptop_add_probed_i2c_device(
+static __init struct i2c_client *chromeos_laptop_add_probed_i2c_device(
 		const char *name,
 		enum i2c_adapter_type type,
 		struct i2c_board_info *info,
@@ -319,9 +321,10 @@ struct i2c_client *chromeos_laptop_add_probed_i2c_device(
  * info->addr.
  * Returns NULL if no device found.
  */
-struct i2c_client *chromeos_laptop_add_i2c_device(const char *name,
-						  enum i2c_adapter_type type,
-						  struct i2c_board_info *info)
+static __init struct i2c_client *chromeos_laptop_add_i2c_device(
+		const char *name,
+		enum i2c_adapter_type type,
+		struct i2c_board_info *info)
 {
 	const unsigned short addr_list[] = { info->addr, I2C_CLIENT_END };
 	return __add_probed_i2c_device(name,
@@ -330,8 +333,8 @@ struct i2c_client *chromeos_laptop_add_i2c_device(const char *name,
 				       addr_list);
 }
 
-static struct i2c_client *add_smbus_device(const char *name,
-					   struct i2c_board_info *info)
+static __init struct i2c_client *add_smbus_device(const char *name,
+						  struct i2c_board_info *info)
 {
 	return chromeos_laptop_add_i2c_device(name, I2C_ADAPTER_SMBUS, info);
 }
