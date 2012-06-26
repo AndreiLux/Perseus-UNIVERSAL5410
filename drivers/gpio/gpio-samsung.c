@@ -2681,10 +2681,17 @@ static int exynos_gpio_xlate(struct gpio_chip *gc,
 
 	if (s3c_gpio_cfgpin(pin, S3C_GPIO_SFN(gpiospec->args[1])))
 		pr_warn("gpio_xlate: failed to set pin function\n");
-	if (s3c_gpio_setpull(pin, gpiospec->args[2]))
+	if (s3c_gpio_setpull(pin, gpiospec->args[2] & 0xffff))
 		pr_warn("gpio_xlate: failed to set pin pull up/down\n");
 	if (s5p_gpio_set_drvstr(pin, gpiospec->args[3]))
 		pr_warn("gpio_xlate: failed to set pin drive strength\n");
+
+	/* flags are the upper 16 bits of the pull up/down cell, and currently
+	 * they correspond to the of_gpio_flags so we can just do a straight
+	 * assignment here.
+	 */
+	if (flags)
+		*flags = gpiospec->args[2] >> 16;
 
 	return gpiospec->args[0];
 }
