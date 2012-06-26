@@ -221,6 +221,7 @@ struct s3c_reg_data {
 	u32			vidosd_b[S3C_FB_MAX_WIN];
 	u32			vidosd_c[S3C_FB_MAX_WIN];
 	u32			vidosd_d[S3C_FB_MAX_WIN];
+	u32			vidw_alpha0[S3C_FB_MAX_WIN];
 	u32			vidw_buf_start[S3C_FB_MAX_WIN];
 	u32			vidw_buf_end[S3C_FB_MAX_WIN];
 	u32			vidw_buf_size[S3C_FB_MAX_WIN];
@@ -559,20 +560,6 @@ static void vidosd_set_size(struct s3c_fb_win *win, u32 size)
 }
 
 /**
- * vidosd_set_alpha() - set alpha transparency for a window
- *
- * @win: the window to set OSD size for
- * @alpha: alpha register value
- */
-static void vidosd_set_alpha(struct s3c_fb_win *win, u32 alpha)
-{
-	struct s3c_fb *sfb = win->parent;
-
-	if (win->variant.has_osd_alpha)
-		writel(alpha, sfb->regs + VIDOSD_C(win->index, sfb->variant));
-}
-
-/**
  * shadow_protect_win() - disable updating values from shadow registers at vsync
  *
  * @win: window to protect registers for
@@ -674,7 +661,7 @@ static inline u32 vidw_buf_size(u32 xres, u32 line_length, u32 bits_per_pixel)
 	       VIDW_BUF_SIZE_PAGEWIDTH_E(pagewidth);
 }
 
-inline u32 vidosd_a(int x, int y)
+static inline u32 vidosd_a(int x, int y)
 {
 	return VIDOSDxA_TOPLEFT_X(x) |
 			VIDOSDxA_TOPLEFT_Y(y) |
@@ -682,7 +669,7 @@ inline u32 vidosd_a(int x, int y)
 			VIDOSDxA_TOPLEFT_Y_E(y);
 }
 
-inline u32 vidosd_b(int x, int y, u32 xres, u32 yres, u32 bits_per_pixel)
+static inline u32 vidosd_b(int x, int y, u32 xres, u32 yres, u32 bits_per_pixel)
 {
 	return VIDOSDxB_BOTRIGHT_X(s3c_fb_align_word(bits_per_pixel,
 			x + xres - 1)) |
@@ -690,6 +677,25 @@ inline u32 vidosd_b(int x, int y, u32 xres, u32 yres, u32 bits_per_pixel)
 		VIDOSDxB_BOTRIGHT_X_E(s3c_fb_align_word(bits_per_pixel,
 			x + xres - 1)) |
 		VIDOSDxB_BOTRIGHT_Y_E(y + yres - 1);
+}
+
+static inline u32 vidosd_c(u8 r, u8 g, u8 b)
+{
+	return VIDOSDxC_ALPHA0_R_H(r) |
+		VIDOSDxC_ALPHA0_G_H(g) |
+		VIDOSDxC_ALPHA0_B_H(b);
+}
+
+static inline u32 vidw_alpha0(bool has_osd_alpha, u8 r, u8 g, u8 b)
+{
+	if (has_osd_alpha)
+		return VIDWxALPHAx_R_L(r) |
+			VIDWxALPHAx_G_L(g) |
+			VIDWxALPHAx_B_L(b);
+	else
+		return VIDWxALPHAx_R(r) |
+			VIDWxALPHAx_G(g) |
+			VIDWxALPHAx_B(b);
 }
 
 static inline u32 wincon(u32 bits_per_pixel, u32 transp_length, u32 red_length)
@@ -768,7 +774,6 @@ static int s3c_fb_set_par(struct fb_info *info)
 	void __iomem *regs = sfb->regs;
 	void __iomem *buf = regs;
 	int win_no = win->index;
-	u32 alpha = 0;
 	u32 data;
 	int clkdiv;
 	int old_wincon;
@@ -859,12 +864,12 @@ static int s3c_fb_set_par(struct fb_info *info)
 
 	data = var->xres * var->yres;
 
-	alpha = VIDISD14C_ALPHA1_R(0xf) |
-		VIDISD14C_ALPHA1_G(0xf) |
-		VIDISD14C_ALPHA1_B(0xf);
-
-	vidosd_set_alpha(win, alpha);
-	vidosd_set_size(win, data);
+	if (win->variant.has_osd_alpha) {
+		data = vidosd_c(0xff, 0xff, 0xff);
+		writel(data, regs + VIDOSD_C(win_no, sfb->variant));
+	}
+	data = vidw_alpha0(win->variant.has_osd_alpha, 0xff, 0xff, 0xff);
+	writel(data, regs + VIDW_ALPHA0(win_no));
 
 	/* preserve whether window was enabled */
 	data = old_wincon & WINCONx_ENWIN;
@@ -1319,9 +1324,9 @@ int s3c_fb_set_plane_alpha_blending(struct fb_info *info,
 
 	if (sfb->variant.has_alphacon) {
 		if (user_alpha.channel == 0)
-			writel(alpha_low, regs + VIDW0ALPHA0 + (win_no * 8));
+			writel(alpha_low, regs + VIDW_ALPHA0(win_no));
 		else
-			writel(alpha_low, regs + VIDW0ALPHA1 + (win_no * 8));
+			writel(alpha_low, regs + VIDW_ALPHA1(win_no));
 	}
 
 	shadow_protect_win(win, 0);
@@ -1662,12 +1667,11 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 			win_config->w, win_config->h,
 			win->fbinfo->var.bits_per_pixel);
 
-	if (win->variant.has_osd_alpha) {
-		u32 alpha = VIDISD14C_ALPHA1_R(0xf) |
-				VIDISD14C_ALPHA1_G(0xf) |
-				VIDISD14C_ALPHA1_B(0xf);
-		regs->vidosd_c[win_no] = alpha;
-	}
+	if (win->variant.has_osd_alpha)
+		regs->vidosd_c[win_no] = vidosd_c(0xff, 0xff, 0xff);
+	regs->vidw_alpha0[win_no] = vidw_alpha0(win->variant.has_osd_alpha,
+			0xff, 0xff, 0xff);
+
 	if (win->variant.osd_size_off) {
 		u32 size = win_config->w * win_config->h;
 		if (win->variant.has_osd_alpha)
@@ -1786,6 +1790,8 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 		if (sfb->windows[i]->variant.has_osd_d)
 			writel(regs->vidosd_d[i],
 					sfb->regs + VIDOSD_D(i, sfb->variant));
+		writel(regs->vidw_alpha0[i],
+				sfb->regs + VIDW_ALPHA0(i));
 		writel(regs->vidw_buf_start[i],
 				sfb->regs + VIDW_BUF_START(i));
 		writel(regs->vidw_buf_end[i],
