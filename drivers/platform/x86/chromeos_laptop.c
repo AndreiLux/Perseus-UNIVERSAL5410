@@ -387,6 +387,13 @@ static int __init setup_lumpy_tp(const struct dmi_system_id *id)
 	return 0;
 }
 
+static int __init setup_parrot_tp(const struct dmi_system_id *id)
+{
+	/* add cyapa touchpad */
+	tp = add_smbus_device("trackpad", &cyapa_device);
+	return 0;
+}
+
 static int __init setup_isl29018_als(const struct dmi_system_id *id)
 {
 	/* add isl29018 light sensor */
@@ -467,6 +474,13 @@ static const struct __initdata dmi_system_id chromeos_laptop_dmi_table[] = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Link"),
 		},
 		.callback = setup_isl29023_als,
+	},
+	{
+		.ident = "Parrot - Touchpad",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Parrot"),
+		},
+		.callback = setup_parrot_tp,
 	},
 	{
 		.ident = "tsl2583 - Light Sensor",
