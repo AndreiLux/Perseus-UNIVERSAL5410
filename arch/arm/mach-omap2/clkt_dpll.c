@@ -380,7 +380,7 @@ long omap2_dpll_round_rate(struct clk *clk, unsigned long target_rate)
 		dd->last_rounded_m = bestm;
 		dd->last_rounded_n = bestn;
 		dd->last_rounded_rate = bestrate;
-		rs = kzalloc(sizeof (struct dpll_rate_list), GFP_KERNEL);
+		rs = kzalloc(sizeof (struct dpll_rate_list), GFP_ATOMIC);
 		if (rs) {
 			rs->m = bestm;
 			rs->n = bestn;
