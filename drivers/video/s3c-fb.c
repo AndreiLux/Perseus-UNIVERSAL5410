@@ -2743,8 +2743,8 @@ static int s3c_fb_register_mc_components(struct s3c_fb_win *win)
 	struct exynos_md *md;
 	struct s3c_fb *sfb = win->parent;
 
-	/* Local paths have been set up only between Gscaler0~3 and Winwow0~3 */
-	if (win->index >= 4)
+	/* Local paths have been set up only between Gscaler0~2 and Window0~2 */
+	if (win->index >= 3)
 		return -ENODEV;
 
 	if (sfb->md == NULL) {
@@ -3291,6 +3291,10 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 		}
 
 #ifdef CONFIG_FB_EXYNOS_FIMD_MC
+		/* local path is only supported for windows 0-2 */
+		if (win > 2)
+			continue;
+
 		/* register a window subdev as entity */
 		ret = s3c_fb_register_mc_components(sfb->windows[win]);
 		if (ret) {
