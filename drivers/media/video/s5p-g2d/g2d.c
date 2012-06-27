@@ -77,7 +77,7 @@ struct g2d_frame def_frame = {
 	.bottom		= DEFAULT_HEIGHT,
 };
 
-struct g2d_fmt *find_fmt(struct v4l2_format *f)
+static struct g2d_fmt *find_fmt(struct v4l2_format *f)
 {
 	unsigned int i;
 	for (i = 0; i < NUM_FORMATS; i++) {

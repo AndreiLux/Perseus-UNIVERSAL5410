@@ -20,6 +20,15 @@ config MFD_88PM860X
 	  select individual components like voltage regulators, RTC and
 	  battery-charger under the corresponding menus.
 
+config MFD_CHROMEOS_EC
+	tristate "ChromeOS Embedded Controller"
+	select MFD_CORE
+	depends on I2C
+	help
+	  If you say yes here you get support for the ChromeOS Embedded
+	  Controller providing keyboard, battery and power services
+	  over I2C bus.
+
 config MFD_SM501
 	tristate "Support for Silicon Motion SM501"
 	 ---help---
@@ -440,6 +449,26 @@ config MFD_MAX8998
 	  This driver provies common support for accessing the device,
 	  additional drivers must be enabled in order to use the functionality
 	  of the device.
+
+config MFD_MAX77686
+	bool "Maxim Semiconductor MAX77686 PMIC Support"
+	depends on I2C=y && GENERIC_HARDIRQS
+	select MFD_CORE
+	help
+	  Say yes here to support for Maxim Semiconductor MAX77686.
+	  This is a Power Management IC with RTC on chip.
+	  This driver provides common support for accessing the device;
+	  additional drivers must be enabled in order to use the functionality
+	  of the device.
+
+config DEBUG_MAX77686
+	bool "MAX77686 PMIC debugging"
+	depends on MFD_MAX77686
+	help
+	  Say yes, if you need enable debug messages in
+	  MFD_MAX77686 driver.
+	  Further for enabling/disabling particular type of debug
+	  messages set max77686_debug_mask accordingly.
 
 config MFD_S5M_CORE
 	bool "SAMSUNG S5M Series Support"

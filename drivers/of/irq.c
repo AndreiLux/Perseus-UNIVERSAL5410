@@ -66,14 +66,16 @@ struct device_node *of_irq_find_parent(struct device_node *child)
 		if (parp == NULL)
 			p = of_get_parent(child);
 		else {
+			of_node_put(child);
 			if (of_irq_workarounds & OF_IMAP_NO_PHANDLE)
 				p = of_node_get(of_irq_dflt_pic);
 			else
 				p = of_find_node_by_phandle(be32_to_cpup(parp));
+			return p;
 		}
 		of_node_put(child);
 		child = p;
-	} while (p && of_get_property(p, "#interrupt-cells", NULL) == NULL);
+	} while (p);
 
 	return p;
 }
@@ -416,8 +418,6 @@ void __init of_irq_init(const struct of_device_id *matches)
 	INIT_LIST_HEAD(&intc_parent_list);
 
 	for_each_matching_node(np, matches) {
-		if (!of_find_property(np, "interrupt-controller", NULL))
-			continue;
 		/*
 		 * Here, we allocate and populate an intc_desc with the node
 		 * pointer, interrupt-parent device_node etc.
@@ -452,7 +452,6 @@ void __init of_irq_init(const struct of_device_id *matches)
 			if (desc->interrupt_parent != parent)
 				continue;
 
-			list_del(&desc->list);
 			match = of_match_node(matches, desc->dev);
 			if (WARN(!match->data,
 			    "of_irq_init: no init function for %s\n",
@@ -466,6 +465,15 @@ void __init of_irq_init(const struct of_device_id *matches)
 				 desc->dev, desc->interrupt_parent);
 			irq_init_cb = match->data;
 			ret = irq_init_cb(desc->dev, desc->interrupt_parent);
+			if (ret == -EAGAIN)
+				/* 
+				 * Interrupt controller's initialization did not
+				 * complete and should be retried. So let its
+				 * intc_desc be on intc_desc_list.
+				 */
+				continue;
+			list_del(&desc->list);
+
 			if (ret) {
 				kfree(desc);
 				continue;
@@ -482,7 +490,18 @@ void __init of_irq_init(const struct of_device_id *matches)
 		desc = list_first_entry(&intc_parent_list, typeof(*desc), list);
 		if (list_empty(&intc_parent_list) || !desc) {
 			pr_err("of_irq_init: children remain, but no parents\n");
-			break;
+			/*
+			 * If a search with NULL as parent did not result in any
+			 * new parent being found, then the scan for matching
+			 * interrupt controller nodes is considered as complete.
+			 * Otherwise, if there are pending elements on the
+			 * intc_desc_list, then retry this process again with
+			 * NULL as parent.
+			 */
+			if (!parent)
+				break;
+			parent = NULL;
+			continue;
 		}
 		list_del(&desc->list);
 		parent = desc->dev;

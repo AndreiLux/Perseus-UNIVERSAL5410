@@ -64,6 +64,7 @@
 #include <plat/regs-serial.h>
 #include <plat/regs-spi.h>
 #include <plat/s3c64xx-spi.h>
+#include <plat/fimg2d.h>
 
 static u64 samsung_device_dma_mask = DMA_BIT_MASK(32);
 
@@ -268,34 +269,6 @@ struct platform_device s5p_device_fimc3 = {
 };
 #endif /* CONFIG_S5P_DEV_FIMC3 */
 
-/* G2D */
-
-#ifdef CONFIG_S5P_DEV_G2D
-static struct resource s5p_g2d_resource[] = {
-	[0] = {
-		.start	= S5P_PA_G2D,
-		.end	= S5P_PA_G2D + SZ_4K - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	[1] = {
-		.start	= IRQ_2D,
-		.end	= IRQ_2D,
-		.flags	= IORESOURCE_IRQ,
-	},
-};
-
-struct platform_device s5p_device_g2d = {
-	.name		= "s5p-g2d",
-	.id		= 0,
-	.num_resources	= ARRAY_SIZE(s5p_g2d_resource),
-	.resource	= s5p_g2d_resource,
-	.dev		= {
-		.dma_mask		= &samsung_device_dma_mask,
-		.coherent_dma_mask	= DMA_BIT_MASK(32),
-	},
-};
-#endif /* CONFIG_S5P_DEV_G2D */
-
 #ifdef CONFIG_S5P_DEV_JPEG
 static struct resource s5p_jpeg_resource[] = {
 	[0] = DEFINE_RES_MEM(S5P_PA_JPEG, SZ_4K),
@@ -341,6 +314,49 @@ void __init s5p_fimd0_set_platdata(struct s3c_fb_platdata *pd)
 			 &s5p_device_fimd0);
 }
 #endif /* CONFIG_S5P_DEV_FIMD0 */
+
+/* G2D */
+
+#ifdef CONFIG_S5P_DEV_G2D
+static struct resource s5p_g2d_resource[] = {
+	[0] = DEFINE_RES_MEM(S5P_PA_G2D, SZ_4K),
+	[1] = DEFINE_RES_IRQ(IRQ_2D),
+};
+
+struct platform_device s5p_device_g2d = {
+	.name		= "s5p-g2d",
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(s5p_g2d_resource),
+	.resource	= s5p_g2d_resource,
+	.dev		= {
+		.dma_mask		= &samsung_device_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+};
+
+#ifdef CONFIG_VIDEO_FIMG2D4X
+static struct fimg2d_platdata default_g2d_data __initdata = {
+	.parent_clkname = "mout_g2d0",
+	.clkname = "sclk_fimg2d",
+	.gate_clkname = "fimg2d",
+	.clkrate = 250 * 1000000,
+};
+
+void __init s5p_fimg2d_set_platdata(struct fimg2d_platdata *pd)
+{
+	struct fimg2d_platdata *npd;
+
+	if (!pd)
+		pd = &default_g2d_data;
+
+	npd = kmemdup(pd, sizeof(*pd), GFP_KERNEL);
+	if (!npd)
+		printk(KERN_ERR "no memory for fimg2d platform data\n");
+	else
+		s5p_device_g2d.dev.platform_data = npd;
+}
+#endif /* CONFIG_VIDEO_FIMG2D4X */
+#endif /* CONFIG_S5P_DEV_G2D */
 
 /* HWMON */
 
@@ -1109,7 +1125,7 @@ struct platform_device s5p_device_onenand = {
 
 /* PMU */
 
-#ifdef CONFIG_PLAT_S5P
+#if defined(CONFIG_PLAT_S5P) && !defined(CONFIG_OF)
 static struct resource s5p_pmu_resource[] = {
 	DEFINE_RES_IRQ(IRQ_PMU)
 };
@@ -1524,7 +1540,7 @@ static struct resource s3c64xx_spi0_resource[] = {
 };
 
 struct platform_device s3c64xx_device_spi0 = {
-	.name		= "s3c64xx-spi",
+	.name		= "s3c6410-spi",
 	.id		= 0,
 	.num_resources	= ARRAY_SIZE(s3c64xx_spi0_resource),
 	.resource	= s3c64xx_spi0_resource,
@@ -1534,13 +1550,10 @@ struct platform_device s3c64xx_device_spi0 = {
 	},
 };
 
-void __init s3c64xx_spi0_set_platdata(struct s3c64xx_spi_info *pd,
-				      int src_clk_nr, int num_cs)
+void __init s3c64xx_spi0_set_platdata(int (*cfg_gpio)(void), int src_clk_nr,
+						int num_cs)
 {
-	if (!pd) {
-		pr_err("%s:Need to pass platform data\n", __func__);
-		return;
-	}
+	struct s3c64xx_spi_info pd;
 
 	/* Reject invalid configuration */
 	if (!num_cs || src_clk_nr < 0) {
@@ -1548,12 +1561,11 @@ void __init s3c64xx_spi0_set_platdata(struct s3c64xx_spi_info *pd,
 		return;
 	}
 
-	pd->num_cs = num_cs;
-	pd->src_clk_nr = src_clk_nr;
-	if (!pd->cfg_gpio)
-		pd->cfg_gpio = s3c64xx_spi0_cfg_gpio;
+	pd.num_cs = num_cs;
+	pd.src_clk_nr = src_clk_nr;
+	pd.cfg_gpio = (cfg_gpio) ? cfg_gpio : s3c64xx_spi0_cfg_gpio;
 
-	s3c_set_platdata(pd, sizeof(*pd), &s3c64xx_device_spi0);
+	s3c_set_platdata(&pd, sizeof(pd), &s3c64xx_device_spi0);
 }
 #endif /* CONFIG_S3C64XX_DEV_SPI0 */
 
@@ -1566,7 +1578,7 @@ static struct resource s3c64xx_spi1_resource[] = {
 };
 
 struct platform_device s3c64xx_device_spi1 = {
-	.name		= "s3c64xx-spi",
+	.name		= "s3c6410-spi",
 	.id		= 1,
 	.num_resources	= ARRAY_SIZE(s3c64xx_spi1_resource),
 	.resource	= s3c64xx_spi1_resource,
@@ -1576,26 +1588,20 @@ struct platform_device s3c64xx_device_spi1 = {
 	},
 };
 
-void __init s3c64xx_spi1_set_platdata(struct s3c64xx_spi_info *pd,
-				      int src_clk_nr, int num_cs)
+void __init s3c64xx_spi1_set_platdata(int (*cfg_gpio)(void), int src_clk_nr,
+						int num_cs)
 {
-	if (!pd) {
-		pr_err("%s:Need to pass platform data\n", __func__);
-		return;
-	}
-
 	/* Reject invalid configuration */
 	if (!num_cs || src_clk_nr < 0) {
 		pr_err("%s: Invalid SPI configuration\n", __func__);
 		return;
 	}
 
-	pd->num_cs = num_cs;
-	pd->src_clk_nr = src_clk_nr;
-	if (!pd->cfg_gpio)
-		pd->cfg_gpio = s3c64xx_spi1_cfg_gpio;
+	pd.num_cs = num_cs;
+	pd.src_clk_nr = src_clk_nr;
+	pd.cfg_gpio = (cfg_gpio) ? cfg_gpio : s3c64xx_spi1_cfg_gpio;
 
-	s3c_set_platdata(pd, sizeof(*pd), &s3c64xx_device_spi1);
+	s3c_set_platdata(&pd, sizeof(pd), &s3c64xx_device_spi1);
 }
 #endif /* CONFIG_S3C64XX_DEV_SPI1 */
 
@@ -1608,7 +1614,7 @@ static struct resource s3c64xx_spi2_resource[] = {
 };
 
 struct platform_device s3c64xx_device_spi2 = {
-	.name		= "s3c64xx-spi",
+	.name		= "s3c6410-spi",
 	.id		= 2,
 	.num_resources	= ARRAY_SIZE(s3c64xx_spi2_resource),
 	.resource	= s3c64xx_spi2_resource,
@@ -1618,13 +1624,10 @@ struct platform_device s3c64xx_device_spi2 = {
 	},
 };
 
-void __init s3c64xx_spi2_set_platdata(struct s3c64xx_spi_info *pd,
-				      int src_clk_nr, int num_cs)
+void __init s3c64xx_spi2_set_platdata(int (*cfg_gpio)(void), int src_clk_nr,
+						int num_cs)
 {
-	if (!pd) {
-		pr_err("%s:Need to pass platform data\n", __func__);
-		return;
-	}
+	struct s3c64xx_spi_info pd;
 
 	/* Reject invalid configuration */
 	if (!num_cs || src_clk_nr < 0) {
@@ -1632,11 +1635,10 @@ void __init s3c64xx_spi2_set_platdata(struct s3c64xx_spi_info *pd,
 		return;
 	}
 
-	pd->num_cs = num_cs;
-	pd->src_clk_nr = src_clk_nr;
-	if (!pd->cfg_gpio)
-		pd->cfg_gpio = s3c64xx_spi2_cfg_gpio;
+	pd.num_cs = num_cs;
+	pd.src_clk_nr = src_clk_nr;
+	pd.cfg_gpio = (cfg_gpio) ? cfg_gpio : s3c64xx_spi2_cfg_gpio;
 
-	s3c_set_platdata(pd, sizeof(*pd), &s3c64xx_device_spi2);
+	s3c_set_platdata(&pd, sizeof(pd), &s3c64xx_device_spi2);
 }
 #endif /* CONFIG_S3C64XX_DEV_SPI2 */

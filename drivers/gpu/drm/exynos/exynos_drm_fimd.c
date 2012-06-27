@@ -788,6 +788,30 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable)
 	return 0;
 }
 
+#ifdef CONFIG_EXYNOS_IOMMU
+static int iommu_init(struct platform_device *pdev)
+{
+	struct platform_device *pds;
+
+	pds = find_sysmmu_dt(pdev, "sysmmu");
+	if (pds==NULL) {
+		printk(KERN_ERR "No sysmmu found\n");
+		return -1;
+	}
+
+	platform_set_sysmmu(&pds->dev, &pdev->dev);
+	exynos_drm_common_mapping = s5p_create_iommu_mapping(&pdev->dev,
+					0x20000000, SZ_128M, 4,
+					exynos_drm_common_mapping);
+
+	if (!exynos_drm_common_mapping) {
+		printk(KERN_ERR "IOMMU mapping not created\n");
+		return -1;
+	}
+
+	return 0;
+}
+#endif
 static int __devinit fimd_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -796,9 +820,17 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 	struct exynos_drm_fimd_pdata *pdata;
 	struct exynos_drm_panel_info *panel;
 	struct resource *res;
+	struct clk *clk_parent;
 	int win;
 	int ret = -EINVAL;
 
+#ifdef CONFIG_EXYNOS_IOMMU
+	ret = iommu_init(pdev);
+	if (ret < 0) {
+		dev_err(dev, "failed to initialize IOMMU\n");
+		return -ENODEV;
+	}
+#endif
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
 	pdata = pdev->dev.platform_data;
@@ -831,6 +863,24 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 		goto err_bus_clk;
 	}
 
+	clk_parent = clk_get(NULL, "mout_mpll_user");
+	if (IS_ERR(clk_parent)) {
+		ret = PTR_ERR(clk_parent);
+		goto err_clk;
+	}
+
+	if (clk_set_parent(ctx->lcd_clk, clk_parent)) {
+		ret = PTR_ERR(ctx->lcd_clk);
+		goto err_clk;
+	}
+
+	if (clk_set_rate(ctx->lcd_clk, pdata->clock_rate)) {
+		ret = PTR_ERR(ctx->lcd_clk);
+		goto err_clk;
+	}
+
+	clk_put(clk_parent);
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		dev_err(dev, "failed to find registers\n");
@@ -853,7 +903,7 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 		goto err_req_region_io;
 	}
 
-	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	res = platform_get_resource(pdev, IORESOURCE_IRQ, 1);
 	if (!res) {
 		dev_err(dev, "irq request failed.\n");
 		goto err_req_region_irq;
@@ -894,6 +944,9 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 
 	for (win = 0; win < WINDOWS_NR; win++)
 		fimd_clear_win(ctx, win);
+
+	if (pdata->panel_type == DP_LCD)
+		writel(DPCLKCON_ENABLE, ctx->regs + DPCLKCON);
 
 	exynos_drm_subdrv_register(subdrv);
 
@@ -1006,6 +1059,16 @@ static int fimd_runtime_resume(struct device *dev)
 }
 #endif
 
+static struct platform_device_id exynos_drm_driver_ids[] = {
+	{
+		.name		= "exynos4-fb",
+	}, {
+		.name		= "exynos5-fb",
+	},
+	{},
+};
+MODULE_DEVICE_TABLE(platform, exynos_drm_driver_ids);
+
 static const struct dev_pm_ops fimd_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(fimd_suspend, fimd_resume)
 	SET_RUNTIME_PM_OPS(fimd_runtime_suspend, fimd_runtime_resume, NULL)
@@ -1014,8 +1077,9 @@ static const struct dev_pm_ops fimd_pm_ops = {
 struct platform_driver fimd_driver = {
 	.probe		= fimd_probe,
 	.remove		= __devexit_p(fimd_remove),
+	.id_table       = exynos_drm_driver_ids,
 	.driver		= {
-		.name	= "exynos4-fb",
+		.name	= "exynos-drm-fimd",
 		.owner	= THIS_MODULE,
 		.pm	= &fimd_pm_ops,
 	},

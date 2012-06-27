@@ -31,6 +31,10 @@
 
 #include <linux/module.h>
 #include "drm.h"
+#ifdef CONFIG_EXYNOS_IOMMU
+#include <mach/sysmmu.h>
+#include <linux/of_platform.h>
+#endif
 
 #define MAX_CRTC	3
 #define MAX_PLANE	5
@@ -287,4 +291,7 @@ extern struct platform_driver hdmi_driver;
 extern struct platform_driver mixer_driver;
 extern struct platform_driver exynos_drm_common_hdmi_driver;
 extern struct platform_driver vidi_driver;
+#ifdef CONFIG_EXYNOS_IOMMU
+extern struct dma_iommu_mapping *exynos_drm_common_mapping;
+#endif
 #endif

@@ -46,8 +46,23 @@ struct exynos_drm_fbdev {
 	struct exynos_drm_gem_obj	*exynos_gem_obj;
 };
 
+static int
+exynos_drm_fb_mmap(struct fb_info *info, struct vm_area_struct * vma)
+{
+	int ret;
+
+	vma->vm_pgoff = 0;
+	ret = dma_mmap_writecombine(info->device, vma, info->screen_base,
+			info->fix.smem_start, vma->vm_end - vma->vm_start);
+	if (ret)
+		printk(KERN_ERR "Remapping memory failed, error: %d\n", ret);
+
+	return ret;
+}
+
 static struct fb_ops exynos_drm_fb_ops = {
 	.owner		= THIS_MODULE,
+	.fb_mmap	= exynos_drm_fb_mmap,
 	.fb_fillrect	= cfb_fillrect,
 	.fb_copyarea	= cfb_copyarea,
 	.fb_imageblit	= cfb_imageblit,

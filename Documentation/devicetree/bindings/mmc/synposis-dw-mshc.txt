@@ -1,0 +1,116 @@
+* Synopsis Designware Mobile Storage Host Controller
+
+The Synopsis designware mobile storage host controller is used to interface
+a SoC with storage medium such as eMMC or SD/MMC cards.
+
+Required Properties:
+
+* compatible: should be one of the following
+	- synopsis,dw-mshc: for controllers compliant with synopsis dw-mshc.
+	- synopsis,dw-mshc-exynos5250: for controllers with Samsung
+	  Exynos5250 specific extentions.
+
+* reg: physical base address of the dw-mshc controller and size of its memory
+  region.
+
+* interrupts: interrupt specifier for the controller. The format and value of
+  the interrupt specifier depends on the interrupt parent for the controller.
+
+# Slots: The slot specific information are contained within child-nodes with
+  each child-node representing a supported slot. There should be atleast one
+  child node representing a card slot. The name of the slot child node should
+  be 'slot{n}' where n is the unique number of the slot connnected to the
+  controller. The following are optional properties which can be included in
+  the slot child node.
+
+	* bus-width: specifies the width of the data bus connected from the
+	  controller to the card slot. The value should be 1, 4 or 8. In case
+	  this property is not specified, a default value of 1 is assumed for
+	  this property.
+
+	* cd-gpios: specifies the card detect gpio line. The format of the
+	  gpio specifier depends on the gpio controller.
+
+	* wp-gpios: specifies the write protect gpio line. The format of the
+	  gpio specifier depends on the gpio controller.
+
+	* gpios: specifies a list of gpios used for command, clock and data
+	  bus. The first gpio is the command line and the second gpio is the
+	  clock line. The rest of the gpios (depending on the bus-width
+	  property) are the data lines in no particular order. The format of
+	  the gpio specifier depends on the gpio controller.
+
+Optional properties:
+
+* fifo-depth: The maximum size of the tx/rx fifo's. If this property is not
+  specified, the default value of the fifo size is determined from the
+  controller registers.
+
+*  card-detect-delay: Delay in milli-seconds before detecting card after card
+   insert event. The default value is 0.
+
+* supports-highspeed: Enables support for high speed cards (upto 50MHz)
+
+* card-detection-broken: The card detection functionality is not available on
+  any of the slots.
+
+* no-write-protect: The write protect pad of the controller is not connected
+  to the write protect pin on the slot.
+
+Samsung Exynos5250 specific properties:
+
+* samsung,dw-mshc-sdr-timing: Specifies the value of CUI clock divider, CIU
+  clock phase shift value in transmit mode and CIU clock phase shift value in
+  receive mode for single data rate mode operation. Refer notes of the valid
+  values below.
+
+* samsung,dw-mshc-ddr-timing: Specifies the value of CUI clock divider, CIU
+  clock phase shift value in transmit mode and CIU clock phase shift value in
+  receive mode for double data rate mode operation. Refer notes of the valid
+  values below. The order of the cells should be
+
+    - First Cell: 	CIU clock divider value.
+    - Second Cell:	CIU clock phase shift value for tx mode.
+    - Third Cell:	CIU clock phase shift value for rx mode.
+
+  Valid values for SDR and DDR CIU clock timing:
+
+    - valid values for CIU clock divider, tx phase shift and rx phase shift
+      is 0 to 7.
+
+    - When CIU clock divider value is set to 3, all possible 8 phase shift
+      values can be used.
+
+    - If CIU clock divider value is 0 (that is divide by 1), both tx and rx
+      phase shift clocks should be 0.
+
+Example:
+
+  The MSHC controller node can be split into two portions, SoC specific and
+  board specific portions as listed below.
+
+	dwmmc0@12200000 {
+		compatible = "synopsis,dw-mshc-exynos5250";
+		reg = <0x12200000 0x1000>;
+		interrupts = <0 75 0>;
+	};
+
+	dwmmc0@12200000 {
+		supports-highspeed;
+		card-detection-broken;
+		no-write-protect;
+		fifo-depth = <0x80>;
+		card-detect-delay = <200>;
+		samsung,dw-mshc-sdr-timing = <2 3 3>;
+		samsung,dw-mshc-ddr-timing = <1 2 3>;
+
+		slot0 {
+			bus-width = <8>;
+			cd-gpios = <&gpc0 2 2 3 3>;
+			gpios = <&gpc0 0 2 0 3>, <&gpc0 1 2 0 3>,
+				<&gpc1 0 2 3 3>, <&gpc1 1 2 3 3>,
+				<&gpc1 2 2 3 3>, <&gpc1 3 2 3 3>,
+				<&gpc0 3 2 3 3>, <&gpc0 4 2 3 3>,
+				<&gpc0 5 2 3 3>, <&gpc0 6 2 3 3>;
+		};
+	};

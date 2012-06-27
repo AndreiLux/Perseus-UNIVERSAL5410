@@ -115,17 +115,6 @@ struct clksrc_sources clk_src_apll = {
 	.nr_sources	= ARRAY_SIZE(clk_src_apll_list),
 };
 
-/* Possible clock sources for BPLL Mux */
-static struct clk *clk_src_bpll_list[] = {
-	[0] = &clk_fin_bpll,
-	[1] = &clk_fout_bpll,
-};
-
-struct clksrc_sources clk_src_bpll = {
-	.sources	= clk_src_bpll_list,
-	.nr_sources	= ARRAY_SIZE(clk_src_bpll_list),
-};
-
 /* Possible clock sources for CPLL Mux */
 static struct clk *clk_src_cpll_list[] = {
 	[0] = &clk_fin_cpll,

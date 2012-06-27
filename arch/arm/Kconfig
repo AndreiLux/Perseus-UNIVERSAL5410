@@ -4,6 +4,9 @@ config ARM
 	select HAVE_AOUT
 	select HAVE_DMA_API_DEBUG
 	select HAVE_IDE if PCI || ISA || PCMCIA
+	select HAVE_DMA_ATTRS
+	select HAVE_DMA_CONTIGUOUS if (CPU_V6 || CPU_V6K || CPU_V7)
+	select CMA if (CPU_V6 || CPU_V6K || CPU_V7)
 	select HAVE_MEMBLOCK
 	select RTC_LIB
 	select SYS_SUPPORTS_APM_EMULATION
@@ -45,6 +48,14 @@ config ARM
 	  <http://www.arm.linux.org.uk/>.
 
 config ARM_HAS_SG_CHAIN
+	bool
+
+config NEED_SG_DMA_LENGTH
+	bool
+
+config ARM_DMA_USE_IOMMU
+	select NEED_SG_DMA_LENGTH
+	select ARM_HAS_SG_CHAIN
 	bool
 
 config HAVE_PWM
@@ -893,6 +904,7 @@ config ARCH_EXYNOS
 	select HAVE_S3C2410_I2C if I2C
 	select HAVE_S3C2410_WATCHDOG if WATCHDOG
 	select NEED_MACH_MEMORY_H
+	select USB_ARCH_HAS_XHCI
 	help
 	  Support for SAMSUNG's EXYNOS SoCs (EXYNOS4/5)
 

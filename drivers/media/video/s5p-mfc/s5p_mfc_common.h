@@ -16,7 +16,6 @@
 #ifndef S5P_MFC_COMMON_H_
 #define S5P_MFC_COMMON_H_
 
-#include "regs-mfc.h"
 #include <linux/platform_device.h>
 #include <linux/videodev2.h>
 #include <media/v4l2-ctrls.h>
@@ -34,10 +33,6 @@
 #define MFC_OFFSET_SHIFT	11
 
 #define FIRMWARE_ALIGN		0x20000		/* 128KB */
-#define MFC_H264_CTX_BUF_SIZE	0x96000		/* 600KB per H264 instance */
-#define MFC_CTX_BUF_SIZE	0x2800		/* 10KB per instance */
-#define DESC_BUF_SIZE		0x20000		/* 128KB for DESC buffer */
-#define SHARED_BUF_SIZE		0x2000		/* 8KB for shared buffer */
 
 #define DEF_CPB_SIZE		0x40000		/* 512KB */
 
@@ -174,6 +169,54 @@ struct s5p_mfc_pm {
 	struct device	*device;
 };
 
+struct s5p_mfc_buf_size_v5 {
+	unsigned int h264_ctx;
+	unsigned int non_h264_ctx;
+	unsigned int dsc;
+	unsigned int shm;
+};
+
+struct s5p_mfc_buf_size_v6 {
+	unsigned int dev_ctx;
+	unsigned int h264_dec_ctx;
+	unsigned int other_dec_ctx;
+	unsigned int h264_enc_ctx;
+	unsigned int other_enc_ctx;
+};
+
+struct s5p_mfc_buf_size {
+	unsigned int fw;
+	unsigned int cpb;
+	void *priv;
+};
+
+struct s5p_mfc_buf_align {
+	unsigned int base;
+};
+
+struct s5p_mfc_variant {
+	unsigned int version;
+	unsigned int port_num;
+	struct s5p_mfc_buf_size *buf_size;
+	struct s5p_mfc_buf_align *buf_align;
+};
+
+/**
+ * struct s5p_mfc_priv_buf - represents internal used buffer
+ * @alloc:		allocation-specific context for each buffer
+ *			(videobuf2 allocator)
+ * @ofs:		offset of each buffer, will be used for MFC
+ * @virt:		kernel virtual address, only valid when the
+ *			buffer accessed by driver
+ * @dma:		DMA address, only valid when kernel DMA API used
+ */
+struct s5p_mfc_priv_buf {
+	void		*alloc;
+	unsigned long	ofs;
+	void		*virt;
+	dma_addr_t	dma;
+};
+
 /**
  * struct s5p_mfc_dev - The struct containing driver internal parameters.
  *
@@ -210,6 +253,7 @@ struct s5p_mfc_pm {
  * @watchdog_work:	worker for the watchdog
  * @alloc_ctx:		videobuf2 allocator contexts for two memory banks
  * @enter_suspend:	flag set when entering suspend
+ * @ctx_buf:		common context memory (MFCv6)
  *
  */
 struct s5p_mfc_dev {
@@ -225,6 +269,7 @@ struct s5p_mfc_dev {
 	struct v4l2_ctrl_handler dec_ctrl_handler;
 	struct v4l2_ctrl_handler enc_ctrl_handler;
 	struct s5p_mfc_pm	pm;
+	struct s5p_mfc_variant	*variant;
 	int num_inst;
 	spinlock_t irqlock;	/* lock when operating on videobuf2 queues */
 	spinlock_t condlock;	/* lock when changing/checking if a context is
@@ -247,6 +292,8 @@ struct s5p_mfc_dev {
 	struct work_struct watchdog_work;
 	void *alloc_ctx[2];
 	unsigned long enter_suspend;
+
+	struct s5p_mfc_priv_buf ctx_buf;
 };
 
 /**
@@ -280,6 +327,23 @@ struct s5p_mfc_h264_enc_params {
 	enum v4l2_mpeg_video_h264_level level_v4l2;
 	int level;
 	u16 cpb_size;
+	int interlace;
+	u8 hier_qp;
+	enum v4l2_mpeg_video_h264_hierarchical_coding_type hier_qp_type;
+	u8 hier_qp_layer;
+	u8 hier_qp_layer_qp[7];
+	u8 sei_frame_packing;
+	u8 sei_fp_curr_frame_0;
+	enum v4l2_mpeg_video_h264_sei_fp_arrangement_type sei_fp_arrangement_type;
+
+	u8 fmo;
+	enum v4l2_mpeg_video_h264_fmo_map_type fmo_map_type;
+	u8 fmo_slice_grp;
+	enum v4l2_mpeg_video_h264_fmo_change_dir fmo_chg_dir;
+	u32 fmo_chg_rate;
+	u32 fmo_run_len[4];
+	u8 aso;
+	u32 aso_slice_order[8];
 };
 
 /**
@@ -290,8 +354,6 @@ struct s5p_mfc_mpeg4_enc_params {
 	enum v4l2_mpeg_video_mpeg4_profile profile;
 	int quarter_pixel;
 	/* Common for MPEG4, H263 */
-	u16 vop_time_res;
-	u16 vop_frm_delta;
 	u8 rc_frame_qp;
 	u8 rc_min_qp;
 	u8 rc_max_qp;
@@ -318,9 +380,11 @@ struct s5p_mfc_enc_params {
 	u8 pad_cb;
 	u8 pad_cr;
 	int rc_frame;
+	int rc_mb;
 	u32 rc_bitrate;
 	u16 rc_reaction_coeff;
 	u16 vbv_size;
+	u32 vbv_delay;
 
 	enum v4l2_mpeg_video_header_mode seq_hdr_mode;
 	enum v4l2_mpeg_mfc51_video_frame_skip_mode frame_skip_mode;
@@ -329,7 +393,6 @@ struct s5p_mfc_enc_params {
 	u8 num_b_frame;
 	u32 rc_framerate_num;
 	u32 rc_framerate_denom;
-	int interlace;
 
 	union {
 		struct s5p_mfc_h264_enc_params h264;
@@ -471,7 +534,8 @@ struct s5p_mfc_ctx {
 
 	unsigned long consumed_stream;
 
-	unsigned int dpb_flush_flag;
+	unsigned int dpb_flush;
+	unsigned int remained;
 
 	/* Buffers */
 	void *bank1_buf;
@@ -501,37 +565,42 @@ struct s5p_mfc_ctx {
 	int display_delay;
 	int display_delay_enable;
 	int after_packed_pb;
+	int sei_fp_parse;
 
 	int dpb_count;
 	int total_dpb_count;
-
+	int mv_count;
 	/* Buffers */
-	void *ctx_buf;
-	size_t ctx_phys;
-	size_t ctx_ofs;
-	size_t ctx_size;
-
-	void *desc_buf;
-	size_t desc_phys;
-
-
-	void *shm_alloc;
-	void *shm;
-	size_t shm_ofs;
+	unsigned int ctx_size;
+	struct s5p_mfc_priv_buf ctx;
+	struct s5p_mfc_priv_buf dsc;
+	struct s5p_mfc_priv_buf shm;
 
 	struct s5p_mfc_enc_params enc_params;
 
 	size_t enc_dst_buf_size;
+	size_t luma_dpb_size;
+	size_t chroma_dpb_size;
+	size_t me_buffer_size;
+	size_t tmv_buffer_size;
 
 	enum v4l2_mpeg_mfc51_video_force_frame_type force_frame_type;
 
 	struct list_head ref_queue;
 	unsigned int ref_queue_cnt;
 
+	enum v4l2_mpeg_video_multi_slice_mode slice_mode;
+	union {
+		unsigned int mb;
+		unsigned int bits;
+	} slice_size;
+
 	struct s5p_mfc_codec_ops *c_ops;
 
 	struct v4l2_ctrl *ctrls[MFC_MAX_CTRLS];
 	struct v4l2_ctrl_handler ctrl_handler;
+
+	size_t scratch_buf_size;
 };
 
 /*
@@ -568,5 +637,19 @@ struct mfc_control {
 #define fh_to_ctx(__fh) container_of(__fh, struct s5p_mfc_ctx, fh)
 #define ctrl_to_ctx(__ctrl) \
 	container_of((__ctrl)->handler, struct s5p_mfc_ctx, ctrl_handler)
+
+#define HAS_PORTNUM(dev)	(dev ? (dev->variant ? \
+				(dev->variant->port_num ? 1 : 0) : 0) : 0)
+#define IS_TWOPORT(dev)		(dev->variant->port_num == 2 ? 1 : 0)
+#define IS_MFCV6(dev)		(dev->variant->version >= 0x60 ? 1 : 0)
+
+#if defined(CONFIG_VIDEO_SAMSUNG_S5P_MFC_V5)
+#include "regs-mfc.h"
+#include "s5p_mfc_opr.h"
+#include "s5p_mfc_shm.h"
+#elif defined(CONFIG_VIDEO_SAMSUNG_S5P_MFC_V6)
+#include "regs-mfc-v6.h"
+#include "s5p_mfc_opr_v6.h"
+#endif
 
 #endif /* S5P_MFC_COMMON_H_ */

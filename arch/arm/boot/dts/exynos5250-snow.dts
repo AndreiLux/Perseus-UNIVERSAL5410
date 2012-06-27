@@ -1,0 +1,22 @@
+/*
+ * Google Snow board device tree source
+ *
+ * Copyright (c) 2012 Google, Inc
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+*/
+
+/dts-v1/;
+/include/ "exynos5250.dtsi"
+/include/ "cros5250-common.dtsi"
+
+/ {
+	model = "Google Snow";
+	compatible = "google,snow", "samsung,exynos5250";
+
+	mipi {
+		status = "disabled";
+	};
+};

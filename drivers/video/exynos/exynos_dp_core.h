@@ -41,7 +41,6 @@ void exynos_dp_stop_video(struct exynos_dp_device *dp);
 void exynos_dp_lane_swap(struct exynos_dp_device *dp, bool enable);
 void exynos_dp_init_interrupt(struct exynos_dp_device *dp);
 void exynos_dp_reset(struct exynos_dp_device *dp);
-void exynos_dp_config_interrupt(struct exynos_dp_device *dp);
 u32 exynos_dp_get_pll_lock_status(struct exynos_dp_device *dp);
 void exynos_dp_set_pll_power_down(struct exynos_dp_device *dp, bool enable);
 void exynos_dp_set_analog_power_down(struct exynos_dp_device *dp,
@@ -128,6 +127,8 @@ void exynos_dp_config_video_slave_mode(struct exynos_dp_device *dp,
 			struct video_info *video_info);
 void exynos_dp_enable_scrambling(struct exynos_dp_device *dp);
 void exynos_dp_disable_scrambling(struct exynos_dp_device *dp);
+
+u32 exynos_dp_enable_hw_link_training(struct exynos_dp_device *dp);
 
 /* I2C EDID Chip ID, Slave Address */
 #define I2C_EDID_DEVICE_ADDR			0x50

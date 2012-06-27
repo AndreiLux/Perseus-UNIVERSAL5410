@@ -580,4 +580,13 @@ config KEYBOARD_W90P910
 	  To compile this driver as a module, choose M here: the
 	  module will be called w90p910_keypad.
 
+config KEYBOARD_MKBP
+       tristate "Matrix Keyboard Protocol keyboard"
+       help
+	 Say Y here to enable the Matrix Keyboard Protocol keyboard
+	 used by Chrome devices.
+
+	 To compile this driver as a module, choose M here: the
+	 module will be called mkbp.
+
 endif

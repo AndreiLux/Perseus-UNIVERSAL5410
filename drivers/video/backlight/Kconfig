@@ -109,6 +109,14 @@ config LCD_S6E63M0
 	  If you have an S6E63M0 LCD Panel, say Y to enable its
 	  LCD control driver.
 
+config LCD_MIPI_TC358764
+        tristate "1280 X 800 TC358764 AMOLED MIPI LCD Driver"
+        depends on BACKLIGHT_CLASS_DEVICE
+        default n
+        help
+          If you have an TC358764 MIPI LCD Panel, say Y to enable its
+          LCD control driver.
+
 config LCD_LD9040
 	tristate "LD9040 AMOLED LCD Driver"
 	depends on SPI && BACKLIGHT_CLASS_DEVICE

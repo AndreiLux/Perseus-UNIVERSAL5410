@@ -195,6 +195,15 @@ config REGULATOR_MAX8998
 	  via I2C bus. The provided regulator is suitable for S3C6410
 	  and S5PC1XX chips to control VCC_CORE and VCC_USIM voltages.
 
+config REGULATOR_MAX77686
+	tristate "Maxim 77686 regulator"
+	depends on MFD_MAX77686
+	help
+	  This driver controls a Maxim 77686 voltage regulator via I2C
+	  bus. The provided regulator is suitable for Exynos5 chips to
+	  control VDD_ARM and VDD_INT voltages.It supports LDOs[1-26]
+	  and BUCKs[1-9].
+
 config REGULATOR_PCAP
 	tristate "Motorola PCAP2 regulator driver"
 	depends on EZX_PCAP
@@ -280,6 +289,7 @@ config REGULATOR_TPS62360
 config REGULATOR_TPS65023
 	tristate "TI TPS65023 Power regulators"
 	depends on I2C
+	depends on OF
 	select REGMAP_I2C
 	help
 	  This driver supports TPS65023 voltage regulator chips. TPS65023 provides
@@ -293,6 +303,13 @@ config REGULATOR_TPS6507X
 	  This driver supports TPS6507X voltage regulator chips. TPS6507X provides
 	  three step-down converters and two general-purpose LDO voltage regulators.
 	  It supports TI's software based Class-2 SmartReflex implementation.
+
+config REGULATOR_TPS65090
+	tristate "TI TPS65090 Power regulator"
+	depends on MFD_TPS65090
+	help
+	  This driver provides support for the voltage regulators on the
+	  TI TPS65090 PMIC.
 
 config REGULATOR_TPS65217
 	tristate "TI TPS65217 Power regulators"

@@ -72,20 +72,23 @@ enum MFC_SHM_OFS
 	DBG_HISTORY_INPUT1	= 0xD4,	/* C */
 	DBG_HISTORY_OUTPUT	= 0xD8,	/* C */
 	HIERARCHICAL_P_QP	= 0xE0, /* E, H.264 */
+	FRAME_PACK_SEI_ENABLE	= 0x168, /* C */
+	FRAME_PACK_SEI_AVAIL	= 0x16c, /* D */
+	FRAME_PACK_SEI_INFO	= 0x17c, /* E */
 };
 
 int s5p_mfc_init_shm(struct s5p_mfc_ctx *ctx);
 
-#define s5p_mfc_write_shm(ctx, x, ofs)		\
-	do {					\
-		writel(x, (ctx->shm + ofs));	\
-		wmb();				\
+#define s5p_mfc_write_shm(ctx, x, ofs)			\
+	do {						\
+		writel(x, (ctx->shm.virt + ofs));	\
+		wmb();					\
 	} while (0)
 
 static inline u32 s5p_mfc_read_shm(struct s5p_mfc_ctx *ctx, unsigned int ofs)
 {
 	rmb();
-	return readl(ctx->shm + ofs);
+	return readl(ctx->shm.virt + ofs);
 }
 
 #endif /* S5P_MFC_SHM_H_ */

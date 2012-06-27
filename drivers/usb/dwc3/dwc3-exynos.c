@@ -20,6 +20,8 @@
 #include <linux/dma-mapping.h>
 #include <linux/module.h>
 #include <linux/clk.h>
+#include <linux/of.h>
+#include <linux/of_gpio.h>
 
 #include "core.h"
 
@@ -29,6 +31,31 @@ struct dwc3_exynos {
 
 	struct clk		*clk;
 };
+
+static int dwc3_setup_vbus_gpio(struct platform_device *pdev)
+{
+	int err = 0;
+	int gpio;
+
+	if (!pdev->dev.of_node)
+		return 0;
+
+	gpio = of_get_named_gpio(pdev->dev.of_node,
+				"samsung,vbus-gpio", 0);
+	if (!gpio_is_valid(gpio))
+		return 0;
+
+	err = gpio_request(gpio, "dwc3_vbus_gpio");
+	if (err) {
+		dev_err(&pdev->dev, "can't request dwc3 vbus gpio %d", gpio);
+		return err;
+	}
+	gpio_set_value(gpio, 1);
+
+	return err;
+}
+
+static u64 dwc3_exynos_dma_mask = DMA_BIT_MASK(32);
 
 static int __devinit dwc3_exynos_probe(struct platform_device *pdev)
 {
@@ -45,6 +72,14 @@ static int __devinit dwc3_exynos_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "not enough memory\n");
 		goto err0;
 	}
+
+	if (!pdev->dev.dma_mask)
+		pdev->dev.dma_mask = &dwc3_exynos_dma_mask;
+
+	if (!pdev->dev.coherent_dma_mask)
+		pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
+
+	dwc3_setup_vbus_gpio(pdev);
 
 	platform_set_drvdata(pdev, exynos);
 
@@ -135,11 +170,20 @@ static int __devexit dwc3_exynos_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_OF
+static const struct of_device_id exynos_xhci_match[] = {
+	{ .compatible = "samsung,exynos-xhci" },
+	{},
+};
+MODULE_DEVICE_TABLE(of, exynos_xhci_match);
+#endif
+
 static struct platform_driver dwc3_exynos_driver = {
 	.probe		= dwc3_exynos_probe,
 	.remove		= __devexit_p(dwc3_exynos_remove),
 	.driver		= {
 		.name	= "exynos-dwc3",
+		.of_match_table = of_match_ptr(exynos_xhci_match),
 	},
 };
 

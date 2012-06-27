@@ -21,6 +21,240 @@
 	};
 
 	chosen {
-		bootargs = "root=/dev/ram0 rw ramdisk=8192 console=ttySAC1,115200";
+		bootargs = "root=/dev/ram0 rw ramdisk=8192 initrd=0x41000000,8M console=ttySAC3,115200 init=/linuxrc";
+	};
+
+	sromc-bus {
+		lan9215@1,0 {
+			compatible = "smsc,lan9215", "smsc,lan9115";
+			reg = <1 0 0x20000>;
+			interrupts = <5 0>;
+			interrupt-parent = <&wakeup_eint>;
+			phy-mode = "mii";
+			smsc,irq-push-pull;
+			smsc,force-internal-phy;
+		};
+	};
+
+	i2c@12C60000 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		samsung,i2c-sda-delay = <100>;
+		samsung,i2c-max-bus-freq = <66000>;
+		gpios = <&gpb3 0 2 3 0>,
+			<&gpb3 1 2 3 0>;
+
+		eeprom@50 {
+			compatible = "samsung,s524ad0xd1";
+			reg = <0x50>;
+		};
+
+		max77686_pmic@9 {
+			compatible = "maxim,max77686-pmic";
+			interrupt-parent = <&wakeup_eint>;
+			interrupts = <26 0>;
+			reg = <0x9>;
+
+			max77686,buck_ramp_delay = <2>;		/* default */
+
+			voltage-regulators {
+				ldo11_reg: LDO11 {
+					regulator-name = "vdd_ldo11";
+					regulator-min-microvolt = <1900000>;
+					regulator-max-microvolt = <1900000>;
+					regulator-always-on;
+				};
+
+				ldo14_reg: LDO14 {
+					regulator-name = "vdd_ldo14";
+					regulator-min-microvolt = <1900000>;
+					regulator-max-microvolt = <1900000>;
+					regulator-always-on;
+				};
+
+				buck1_reg: BUCK1 {
+					regulator-name = "vdd_mif";
+					regulator-min-microvolt = <950000>;
+					regulator-max-microvolt = <1300000>;
+					regulator-always-on;
+					regulator-boot-on;
+				};
+
+				buck2_reg: BUCK2 {
+					regulator-name = "vdd_arm";
+					regulator-min-microvolt = <850000>;
+					regulator-max-microvolt = <1350000>;
+					regulator-always-on;
+					regulator-boot-on;
+				};
+
+				buck3_reg: BUCK3 {
+					regulator-name = "vdd_int";
+					regulator-min-microvolt = <900000>;
+					regulator-max-microvolt = <1200000>;
+					regulator-always-on;
+					regulator-boot-on;
+				};
+
+				buck4_reg: BUCK4 {
+					regulator-name = "vdd_g3d";
+					regulator-min-microvolt = <850000>;
+					regulator-max-microvolt = <1300000>;
+					regulator-boot-on;
+				};
+
+				buck8_reg: BUCK8 {
+					regulator-name = "vdd_ummc";
+					regulator-min-microvolt = <900000>;
+					regulator-max-microvolt = <3000000>;
+					regulator-always-on;
+					regulator-boot-on;
+				};
+			};
+		};
+	};
+
+	i2c@12C70000 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		samsung,i2c-sda-delay = <100>;
+		samsung,i2c-max-bus-freq = <66000>;
+		gpios = <&gpb3 2 2 3 0>,
+			<&gpb3 3 2 3 0>;
+
+		eeprom@51 {
+			compatible = "samsung,s524ad0xd1";
+			reg = <0x51>;
+		};
+	};
+
+	i2c@12C80000 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		samsung,i2c-sda-delay = <100>;
+		samsung,i2c-max-bus-freq = <66000>;
+		gpios = <&gpa0 6 3 3 0>,
+			<&gpa0 7 3 3 0>;
+
+		exynos_hdcp@3a {
+			compatible = "samsung,exynos_hdcp";
+			reg = <0x3a>;
+		};
+	};
+
+	i2c@12C90000 {
+		status = "disabled";
+	};
+
+	i2c@12CA0000 {
+		status = "disabled";
+	};
+
+	i2c@12CB0000 {
+		status = "disabled";
+	};
+
+	i2c@12CC0000 {
+		status = "disabled";
+	};
+
+	i2c@12CD0000 {
+		status = "disabled";
+	};
+
+	dwmmc0@12200000 {
+		supports-highspeed;
+		card-detection-broken;
+		no-write-protect;
+		fifo-depth = <0x80>;
+		card-detect-delay = <200>;
+		samsung,dw-mshc-sdr-timing = <2 3 3>;
+		samsung,dw-mshc-ddr-timing = <1 2 3>;
+
+		slot0 {
+			bus-width = <8>;
+			cd-gpios = <&gpc0 2 2 3 3>;
+			gpios = <&gpc0 0 2 0 3>, <&gpc0 1 2 0 3>,
+				<&gpc1 0 2 3 3>, <&gpc1 1 2 3 3>,
+				<&gpc1 2 2 3 3>, <&gpc1 3 2 3 3>,
+				<&gpc0 3 2 3 3>, <&gpc0 4 2 3 3>,
+				<&gpc0 5 2 3 3>, <&gpc0 6 2 3 3>;
+		};
+	};
+
+	dwmmc1@12210000 {
+		status = "disabled";
+	};
+
+	dwmmc2@12220000 {
+		card-detection-broken;
+		no-write-protect;
+		fifo-depth = <0x80>;
+		card-detect-delay = <200>;
+		samsung,dw-mshc-sdr-timing = <2 3 3>;
+		samsung,dw-mshc-ddr-timing = <1 2 3>;
+
+		slot0 {
+			bus-width = <4>;
+			cd-gpios = <&gpc3 2 2 3 3>;
+			gpios = <&gpc3 0 2 0 3>, <&gpc3 1 2 0 3>,
+				<&gpc3 3 2 3 3>, <&gpc3 4 2 3 3>,
+				<&gpc3 5 2 3 3>, <&gpc3 6 2 3 3>,
+				<&gpc4 3 3 3 3>, <&gpc4 3 3 3 3>,
+				<&gpc4 5 3 3 3>, <&gpc4 6 3 3 3>;
+		};
+	};
+
+	dwmmc3@12230000 {
+		status = "disabled";
+	};
+
+	i2c@12CE0000 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		samsung,i2c-sda-delay = <100>;
+		samsung,i2c-max-bus-freq = <66000>;
+	};
+
+	spi_0: spi@12d20000 {
+		status = "disabled";
+	};
+
+	spi_1: spi@12d30000 {
+		gpios = <&gpa2 4 2 3 0>,
+			<&gpa2 6 2 3 0>,
+			<&gpa2 7 2 3 0>;
+
+		w25q80bw@0 {
+			#address-cells = <1>;
+			#size-cells = <1>;
+			compatible = "w25x80";
+			reg = <0>;
+			spi-max-frequency = <1000000>;
+
+			controller-data {
+				cs-gpio = <&gpa2 5 1 0 3>;
+				samsung,spi-feedback-delay = <0>;
+			};
+
+			partition@0 {
+				label = "U-Boot";
+				reg = <0x0 0x40000>;
+				read-only;
+			};
+
+			partition@40000 {
+				label = "Kernel";
+				reg = <0x40000 0xc0000>;
+			};
+		};
+	};
+
+	spi_2: spi@12d40000 {
+		status = "disabled";
+	};
+
+	display-port-controller {
+		status = "disabled";
 	};
 };

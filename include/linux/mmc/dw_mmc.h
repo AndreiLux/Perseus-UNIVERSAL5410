@@ -78,7 +78,12 @@ struct mmc_data;
  * @data_offset: Set the offset of DATA register according to VERID.
  * @dev: Device associated with the MMC controller.
  * @pdata: Platform data associated with the MMC controller.
+ * @drv_data: Driver specific data for identified variant of the controller
+ * @biu_clk: Pointer to bus interface unit clock instance.
+ * @ciu_clk: Pointer to card interface unit clock instance.
  * @slot: Slots sharing this MMC controller.
+ * @sdr_timing: Clock phase shifting for driving and sampling in sdr mode
+ * @ddr_timing: Clock phase shifting for driving and sampling in ddr mode
  * @fifo_depth: depth of FIFO.
  * @data_shift: log2 of FIFO item size.
  * @part_buf_start: Start index in part_buf.
@@ -125,6 +130,7 @@ struct dw_mci {
 	struct mmc_request	*mrq;
 	struct mmc_command	*cmd;
 	struct mmc_data		*data;
+	struct workqueue_struct	*card_workqueue;
 
 	/* DMA interface members*/
 	int			use_dma;
@@ -157,7 +163,14 @@ struct dw_mci {
 	u16			data_offset;
 	struct device		dev;
 	struct dw_mci_board	*pdata;
+	struct dw_mci_drv_data	*drv_data;
+	struct clk		*biu_clk;
+	struct clk		*ciu_clk;
 	struct dw_mci_slot	*slot[MAX_MCI_SLOTS];
+
+	/* Phase Shift Value (for exynos5250 variant) */
+	u32			sdr_timing;
+	u32			ddr_timing;
 
 	/* FIFO push and pull */
 	int			fifo_depth;
@@ -200,7 +213,8 @@ struct dw_mci_dma_ops {
 #define DW_MCI_QUIRK_HIGHSPEED			BIT(2)
 /* Unreliable card detection */
 #define DW_MCI_QUIRK_BROKEN_CARD_DETECTION	BIT(3)
-
+/* Write Protect detection not available */
+#define DW_MCI_QUIRK_NO_WRITE_PROTECT		BIT(4)
 
 struct dma_pdata;
 

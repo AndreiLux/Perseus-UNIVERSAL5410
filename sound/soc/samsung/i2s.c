@@ -15,12 +15,14 @@
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/pm_runtime.h>
 
 #include <sound/soc.h>
 #include <sound/pcm_params.h>
 
 #include <plat/audio.h>
+#include <plat/dma-pl330.h>
 
 #include "dma.h"
 #include "idma.h"
@@ -954,6 +956,7 @@ static __devinit
 struct i2s_dai *i2s_alloc_dai(struct platform_device *pdev, bool sec)
 {
 	struct i2s_dai *i2s;
+	int id;
 
 	i2s = devm_kzalloc(&pdev->dev, sizeof(struct i2s_dai), GFP_KERNEL);
 	if (i2s == NULL)
@@ -979,8 +982,17 @@ struct i2s_dai *i2s_alloc_dai(struct platform_device *pdev, bool sec)
 		i2s->i2s_dai_drv.capture.rates = SAMSUNG_I2S_RATES;
 		i2s->i2s_dai_drv.capture.formats = SAMSUNG_I2S_FMTS;
 	} else {	/* Create a new platform_device for Secondary */
+		if (pdev->dev.of_node) {
+			id = of_alias_get_id(pdev->dev.of_node, "i2s");
+			if (id < 0)
+				dev_err(&pdev->dev,
+					"failed to get alias id:%d\n", id);
+		} else {
+			id = pdev->id;
+		}
+
 		i2s->pdev = platform_device_register_resndata(NULL,
-				pdev->name, pdev->id + SAMSUNG_I2S_SECOFF,
+				"samsung-i2s", id + SAMSUNG_I2S_SECOFF,
 				NULL, 0, NULL, 0);
 		if (IS_ERR(i2s->pdev))
 			return NULL;
@@ -994,16 +1006,26 @@ struct i2s_dai *i2s_alloc_dai(struct platform_device *pdev, bool sec)
 
 static __devinit int samsung_i2s_probe(struct platform_device *pdev)
 {
-	u32 dma_pl_chan, dma_cp_chan, dma_pl_sec_chan;
+	u32 dma_pl_chan, dma_cp_chan;
+	u32 dma_pl_sec_chan = 0;
 	struct i2s_dai *pri_dai, *sec_dai = NULL;
 	struct s3c_audio_pdata *i2s_pdata;
 	struct samsung_i2s *i2s_cfg;
 	struct resource *res;
 	u32 regs_base, quirks;
-	int ret = 0;
+	struct property *prop;
+	int ret = 0, id;
 
 	/* Call during Seconday interface registration */
-	if (pdev->id >= SAMSUNG_I2S_SECOFF) {
+	if (pdev->dev.of_node) {
+		id = of_alias_get_id(pdev->dev.of_node, "i2s");
+		if (id < 0)
+			dev_err(&pdev->dev, "failed to get alias id:%d\n", id);
+	} else {
+		id = pdev->id;
+	}
+
+	if (id >= SAMSUNG_I2S_SECOFF) {
 		sec_dai = dev_get_drvdata(&pdev->dev);
 		snd_soc_register_dai(&sec_dai->pdev->dev,
 			&sec_dai->i2s_dai_drv);
@@ -1015,26 +1037,6 @@ static __devinit int samsung_i2s_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Can't work without s3c_audio_pdata\n");
 		return -EINVAL;
 	}
-
-	res = platform_get_resource(pdev, IORESOURCE_DMA, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "Unable to get I2S-TX dma resource\n");
-		return -ENXIO;
-	}
-	dma_pl_chan = res->start;
-
-	res = platform_get_resource(pdev, IORESOURCE_DMA, 1);
-	if (!res) {
-		dev_err(&pdev->dev, "Unable to get I2S-RX dma resource\n");
-		return -ENXIO;
-	}
-	dma_cp_chan = res->start;
-
-	res = platform_get_resource(pdev, IORESOURCE_DMA, 2);
-	if (res)
-		dma_pl_sec_chan = res->start;
-	else
-		dma_pl_sec_chan = 0;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
@@ -1057,6 +1059,38 @@ static __devinit int samsung_i2s_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Unable to alloc I2S_pri\n");
 		ret = -ENOMEM;
 		goto err;
+	}
+
+	if (!pdev->dev.of_node) {
+		res = platform_get_resource(pdev, IORESOURCE_DMA, 0);
+		if (!res) {
+			dev_err(&pdev->dev,
+				"Unable to get I2S-TX dma resource\n");
+			return -ENXIO;
+		}
+		dma_pl_chan = res->start;
+
+		res = platform_get_resource(pdev, IORESOURCE_DMA, 1);
+		if (!res) {
+			dev_err(&pdev->dev,
+				"Unable to get I2S-RX dma resource\n");
+			return -ENXIO;
+		}
+		dma_cp_chan = res->start;
+
+		res = platform_get_resource(pdev, IORESOURCE_DMA, 2);
+		if (res)
+			dma_pl_sec_chan = res->start;
+	} else {
+		prop = of_find_property(pdev->dev.of_node,
+					"tx-dma-channel", NULL);
+		dma_pl_chan = DMACH_DT_PROP;
+		pri_dai->dma_playback.dma_prop = prop;
+
+		prop = of_find_property(pdev->dev.of_node,
+					"rx-dma-channel", NULL);
+		dma_cp_chan = DMACH_DT_PROP;
+		pri_dai->dma_capture.dma_prop = prop;
 	}
 
 	pri_dai->dma_playback.dma_addr = regs_base + I2STXD;
@@ -1086,6 +1120,14 @@ static __devinit int samsung_i2s_probe(struct platform_device *pdev)
 		sec_dai->dma_playback.dma_addr = regs_base + I2STXDS;
 		sec_dai->dma_playback.client =
 			(struct s3c2410_dma_client *)&sec_dai->dma_playback;
+
+		if (pdev->dev.of_node) {
+			prop = of_find_property(pdev->dev.of_node,
+						"tx-dma-channel-secondary",
+						NULL);
+			sec_dai->dma_playback.dma_prop = prop;
+		}
+
 		/* Use iDMA always if SysDMA not provided */
 		sec_dai->dma_playback.channel = dma_pl_sec_chan ? : -1;
 		sec_dai->src_clk = i2s_cfg->src_clk;
@@ -1140,12 +1182,21 @@ static __devexit int samsung_i2s_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_OF
+static const struct of_device_id exynos_i2s_match[] = {
+	{ .compatible = "samsung,i2s" },
+	{},
+};
+MODULE_DEVICE_TABLE(of, exynos_i2s_match);
+#endif
+
 static struct platform_driver samsung_i2s_driver = {
 	.probe  = samsung_i2s_probe,
 	.remove = __devexit_p(samsung_i2s_remove),
 	.driver = {
 		.name = "samsung-i2s",
 		.owner = THIS_MODULE,
+		.of_match_table = of_match_ptr(exynos_i2s_match),
 	},
 };
 

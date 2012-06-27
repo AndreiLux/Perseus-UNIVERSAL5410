@@ -174,6 +174,7 @@ static int dma_hw_params(struct snd_pcm_substream *substream,
 			? DMA_MEM_TO_DEV : DMA_DEV_TO_MEM);
 		dma_info.width = prtd->params->dma_size;
 		dma_info.fifo = prtd->params->dma_addr;
+		dma_info.dt_dmach_prop = prtd->params->dma_prop;
 		prtd->params->ch = prtd->params->ops->request(
 				prtd->params->channel, &dma_info);
 	}

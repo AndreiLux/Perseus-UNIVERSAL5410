@@ -62,8 +62,17 @@ static int exynos_target(struct cpufreq_policy *policy,
 		goto out;
 	}
 
-	if (cpufreq_frequency_table_target(policy, freq_table,
-					   freqs.old, relation, &old_index)) {
+	/*
+	 * The policy may have been changed so that we cannot get proper
+	 * old_index with cpufreq_frequency_table_target(). Thus, ignore
+	 * policy and get the index from the raw frequency table.
+	 */
+	for (old_index = 0;
+	     freq_table[old_index].frequency != CPUFREQ_TABLE_END;
+	     old_index++)
+		if (freq_table[old_index].frequency == freqs.old)
+			break;
+	if (freq_table[old_index].frequency == CPUFREQ_TABLE_END) {
 		ret = -EINVAL;
 		goto out;
 	}
@@ -206,6 +215,8 @@ static struct notifier_block exynos_cpufreq_nb = {
 
 static int exynos_cpufreq_cpu_init(struct cpufreq_policy *policy)
 {
+	int ret;
+
 	policy->cur = policy->min = policy->max = exynos_getspeed(policy->cpu);
 
 	cpufreq_frequency_table_get_attr(exynos_info->freq_table, policy->cpu);
@@ -228,8 +239,25 @@ static int exynos_cpufreq_cpu_init(struct cpufreq_policy *policy)
 		cpumask_setall(policy->cpus);
 	}
 
-	return cpufreq_frequency_table_cpuinfo(policy, exynos_info->freq_table);
+	ret = cpufreq_frequency_table_cpuinfo(policy, exynos_info->freq_table);
+	if (ret)
+		return ret;
+
+	cpufreq_frequency_table_get_attr(exynos_info->freq_table, policy->cpu);
+	return 0;
+
 }
+
+static int exynos_cpufreq_cpu_exit(struct cpufreq_policy *policy)
+{
+	cpufreq_frequency_table_put_attr(policy->cpu);
+	return 0;
+}
+
+static struct freq_attr *exynos_cpufreq_attr[] = {
+	&cpufreq_freq_attr_scaling_available_freqs,
+	NULL,
+};
 
 static struct cpufreq_driver exynos_driver = {
 	.flags		= CPUFREQ_STICKY,
@@ -237,7 +265,9 @@ static struct cpufreq_driver exynos_driver = {
 	.target		= exynos_target,
 	.get		= exynos_getspeed,
 	.init		= exynos_cpufreq_cpu_init,
+	.exit           = exynos_cpufreq_cpu_exit,
 	.name		= "exynos_cpufreq",
+	.attr           = exynos_cpufreq_attr,
 #ifdef CONFIG_PM
 	.suspend	= exynos_cpufreq_suspend,
 	.resume		= exynos_cpufreq_resume,
