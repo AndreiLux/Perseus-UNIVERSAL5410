@@ -68,16 +68,33 @@
 #define HDMI_GPIO_HPD  63 /* Hotplug detect */
 #define TPS62361_GPIO   7
 
-/* wl127x BT, FM, GPS connectivity chip */
-struct ti_st_plat_data kim_plat_data = {
-	.nshutdown_gpio = 46,	/* Bluetooth Enable */
+static int
+panda_kim_suspend(struct platform_device *pdev, pm_message_t msg)
+{
+	return 0;
+}
+
+static int
+panda_kim_resume(struct platform_device *pdev)
+{
+	return 0;
+}
+
+struct ti_st_plat_data panda_bt_platform_data = {
+        .nshutdown_gpio = 46,
+        .dev_name = "/dev/ttyO1",
+        .flow_cntrl = 1,
+        .baud_rate = 3000000,
+        .suspend = panda_kim_suspend,
+        .resume = panda_kim_resume,
+
 };
 
 static struct platform_device wl1271_device = {
 	.name	= "kim",
 	.id	= -1,
 	.dev	= {
-		.platform_data	= &kim_plat_data,
+		.platform_data	= &panda_bt_platform_data,
 	},
 };
 
