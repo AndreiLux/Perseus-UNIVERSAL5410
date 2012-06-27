@@ -1839,12 +1839,12 @@ static void dw_mci_notify_change(struct platform_device *dev, int state)
 		spin_lock_irqsave(&host->lock, flags);
 		if (state) {
 			dev_dbg(&dev->dev, "card inserted.\n");
-			host->quirks |= DW_MCI_QUIRK_BROKEN_CARD_DETECTION;
+			host->pdata->quirks |= DW_MCI_QUIRK_BROKEN_CARD_DETECTION;
 		} else {
 			dev_dbg(&dev->dev, "card removed.\n");
-			 host->quirks &= ~DW_MCI_QUIRK_BROKEN_CARD_DETECTION;
+			host->pdata->quirks &= ~DW_MCI_QUIRK_BROKEN_CARD_DETECTION;
 		}
-		tasklet_schedule(&host->tasklet);
+		queue_work(dw_mci_card_workqueue, &host->card_work);
 		spin_unlock_irqrestore(&host->lock, flags);
 	}
 }
