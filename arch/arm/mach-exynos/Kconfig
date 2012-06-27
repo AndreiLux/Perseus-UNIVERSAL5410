@@ -244,6 +244,13 @@ config EXYNOS5_CORESIGHT
 	help
 	  Enable embedded trace support
 
+config EXYNOS_PERSISTENT_CLOCK
+	bool
+	depends on !RTC_DRV_S3C
+	default n
+	help
+	  Persistent-clock-only driver for EXYNOS RTC.
+
 # machine support
 
 if ARCH_EXYNOS4
