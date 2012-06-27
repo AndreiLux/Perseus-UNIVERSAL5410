@@ -58,6 +58,8 @@ enum cyapa_gen {
 #define BL_DATA_OFFSET 0x10
 
 /*
+ * Operational Device Status Register
+ *
  * bit 7: Valid interrupt source
  * bit 6 - 4: Reserved
  * bit 3 - 2: Power status
@@ -70,6 +72,8 @@ enum cyapa_gen {
 #define OP_STATUS_MASK (OP_STATUS_SRC | OP_STATUS_POWER | OP_STATUS_DEV)
 
 /*
+ * Operational Finger Count/Button Flags Register
+ *
  * bit 7 - 4: Number of touched finger
  * bit 3: Valid data
  * bit 2: Middle Physical Button
@@ -85,6 +89,8 @@ enum cyapa_gen {
 			  OP_DATA_LEFT_BTN)
 
 /*
+ * Bootloader Status Register
+ *
  * bit 7: Busy
  * bit 6 - 5: Reserved
  * bit 4: Bootloader running
@@ -98,6 +104,8 @@ enum cyapa_gen {
 #define BL_STATUS_CSUM_VALID 0x01
 
 /*
+ * Bootloader Error Register
+ *
  * bit 7: Invalid
  * bit 6: Invalid security key
  * bit 5: Bootloading
@@ -768,6 +776,21 @@ static int cyapa_bl_exit(struct cyapa *cyapa)
 /*
  * Set device power mode
  *
+ * Write to the field to configure power state. Power states include :
+ *   Full : Max scans and report rate.
+ *   Idle : Report rate set by user specified time.
+ *   ButtonOnly : No scans for fingers. When the button is triggered,
+ *     a slave interrupt is asserted to notify host to wake up.
+ *   Off : Only awake for i2c commands from host. No function for button
+ *     or touch sensors.
+ *
+ * The power_mode command should conform to the following :
+ *   Full : 0x3f
+ *   Idle : Configurable from 20 to 1000ms. See note below for
+ *     cyapa_sleep_time_to_pwr_cmd and cyapa_pwr_cmd_to_sleep_time
+ *   ButtonOnly : 0x01
+ *   Off : 0x00
+ *
  * Device power mode can only be set when device is in operational mode.
  */
 static int cyapa_set_power_mode(struct cyapa *cyapa, u8 power_mode)
@@ -1244,6 +1267,20 @@ static ssize_t cyapa_update_fw_store(struct device *dev,
 	return ret ? ret : count;
 }
 
+/*
+ * cyapa_sleep_time_to_pwr_cmd and cyapa_pwr_cmd_to_sleep_time
+ *
+ * These are helper functions that convert to and from integer idle
+ * times and register settings to write to the PowerMode register.
+ * The trackpad supports between 20ms to 1000ms scan intervals.
+ * The time will be increased in increments of 10ms from 20ms to 100ms.
+ * From 100ms to 1000ms, time will be increased in increments of 20ms.
+ *
+ * When Idle_Time < 100, the format to convert Idle_Time to Idle_Command is:
+ *   Idle_Command = Idle Time / 10;
+ * When Idle_Time >= 100, the format to convert Idle_Time to Idle_Command is:
+ *   Idle_Command = Idle Time / 20 + 5;
+ */
 static u8 cyapa_sleep_time_to_pwr_cmd(u16 sleep_time)
 {
 	if (sleep_time < 20)
