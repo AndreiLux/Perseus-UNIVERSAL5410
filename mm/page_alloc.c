@@ -5201,6 +5201,15 @@ module_init(init_per_zone_wmark_min)
 int min_free_kbytes_sysctl_handler(ctl_table *table, int write, 
 	void __user *buffer, size_t *length, loff_t *ppos)
 {
+	/* 
+	 * hack for Panda: if reduced below this, smsc ethernet driver
+	 * can blow up with spew of
+	 * smsc95xx 1-1.1:1.0: eth0: kevent 2 may have been dropped
+	 */
+
+	if (min_free_kbytes < 32768)
+		min_free_kbytes = 32768;
+
 	proc_dointvec(table, write, buffer, length, ppos);
 	if (write)
 		setup_per_zone_wmarks();
