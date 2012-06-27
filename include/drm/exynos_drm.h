@@ -186,6 +186,7 @@ struct exynos_drm_hdmi_pdata {
 	unsigned int			default_win;
 	unsigned int			bpp;
 	unsigned int			is_v13:1;
+	unsigned int			is_soc_exynos5:1;
 };
 
 #endif	/* __KERNEL__ */
