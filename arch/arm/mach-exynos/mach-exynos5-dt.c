@@ -170,6 +170,36 @@ static void exynos_dp_gpio_setup_24bpp(void)
 	s3c_gpio_cfgpin(EXYNOS5_GPX0(7), S3C_GPIO_SFN(3));
 }
 
+#ifdef CONFIG_DRM_EXYNOS_HDMI
+static struct platform_device exynos_drm_hdmi_device = {
+	.name           = "exynos-drm-hdmi",
+};
+
+static struct exynos_drm_hdmi_pdata drm_mixer_pdata = {
+	.timing = {
+		.xres    = 1920,
+		.yres    = 1080,
+		.refresh = 60,
+	},
+	.default_win    = 0,
+	.bpp            = 32,
+	.is_v13         = 0,
+	.is_soc_exynos5	= 1,
+};
+
+static struct exynos_drm_hdmi_pdata drm_hdmi_pdata = {
+	.timing = {
+		.xres    = 1920,
+		.yres    = 1080,
+		.refresh    = 60,
+	},
+	.default_win    = 0,
+	.bpp            = 32,
+	.is_v13		= 0,
+	.is_soc_exynos5 = 1,
+};
+#endif
+
 #ifdef CONFIG_DRM_EXYNOS_FIMD
 static struct exynos_drm_fimd_pdata smdk5250_lcd1_pdata = {
 	.panel.timing   = {
@@ -683,9 +713,17 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 				"exynos-dwc3", &smdk5250_xhci_pdata),
 	OF_DEV_AUXDATA("samsung,i2s", 0x03830000,
 				"samsung-i2s.0", &i2sv5_pdata),
+#ifdef CONFIG_DRM_EXYNOS_HDMI
+	OF_DEV_AUXDATA("samsung,exynos5-hdmi", 0x14530000,
+				"exynos5-hdmi", &drm_hdmi_pdata),
+	OF_DEV_AUXDATA("samsung,s5p-mixer", 0x14450000,
+				"s5p-mixer", &drm_mixer_pdata),
+#else
 	OF_DEV_AUXDATA("samsung,exynos5-hdmi", 0x14530000,
 				"exynos5-hdmi", NULL),
-	OF_DEV_AUXDATA("samsung,s5p-mixer", 0x14450000, "s5p-mixer", NULL),
+	OF_DEV_AUXDATA("samsung,s5p-mixer", 0x14450000,
+				"s5p-mixer", NULL),
+#endif
 	{},
 };
 
@@ -696,6 +734,9 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&exynos_device_md2, /* for media device framework */
 	&samsung_asoc_dma,  /* for audio dma interface device */
 	&exynos_drm_device,
+#ifdef CONFIG_DRM_EXYNOS_HDMI
+	&exynos_drm_hdmi_device,
+#endif
 };
 
 static struct regulator_consumer_supply dummy_supplies[] = {
