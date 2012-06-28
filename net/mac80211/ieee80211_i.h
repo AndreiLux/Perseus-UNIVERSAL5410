@@ -814,6 +814,10 @@ enum {
  * @SCAN_SUSPEND: Suspend the scan and go back to operating channel to
  *	send out data
  * @SCAN_RESUME: Resume the scan and scan the next channel
+ * @SCAN_ABORT: Abnormally terminate the scan operation, set only when on the
+ * operating channel
+ * @SCAN_SUSPEND_ABORT: Return to the operating channel then
+ * terminate the scan operation
  */
 enum mac80211_scan_state {
 	SCAN_DECISION,
@@ -821,6 +825,8 @@ enum mac80211_scan_state {
 	SCAN_SEND_PROBE,
 	SCAN_SUSPEND,
 	SCAN_RESUME,
+	SCAN_ABORT,
+	SCAN_SUSPEND_ABORT,
 };
 
 struct ieee80211_local {
