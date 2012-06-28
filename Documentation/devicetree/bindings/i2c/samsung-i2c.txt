@@ -22,6 +22,11 @@ Optional properties:
     specified, default value is 0.
   - samsung,i2c-max-bus-freq: Desired frequency in Hz of the bus. If not
     specified, the default value in Hz is 100000.
+  - samsung,arbitration-gpios : Two GPIOs to use with the GPIO-based bus
+    arbitration protocol (see below). The first should be an output, and is
+    used to claim the I2C bus, the second should be an input, and signals that
+    the other side wants to claim the bus. This allows two masters to share
+    the same I2C bus.
 
 Example:
 
@@ -40,4 +45,45 @@ Example:
 			compatible = "wlf,wm8994";
 			reg = <0x1a>;
 		};
+
+		/* If you want GPIO-based bus arbitration */
+		samsung,arbitration-gpios = <&gpf0 3 1 0 0>,	/* AP_CLAIM */
+			<&gpe0 4 0 3 0>;			/* EC_CLAIM */
 	};
+
+
+GPIO-based Arbitration
+======================
+(documented here for want of a better place - an implementation is in the
+exynos I2C driver)
+
+This uses GPIO lines between the AP (Exynos) and an attached EC (embedded
+controller) which both want to talk on the same I2C bus as master.
+
+The AP and EC each have a 'bus claim' line, which is an output that the
+other can see. These are both active low, with pull-ups enabled.
+
+- AP_CLAIM: output from AP, signalling to the EC that the AP wants the bus
+- EC_CLAIM: output from EC, signalling to the AP that the EC wants the bus
+
+
+Algorithm
+---------
+The basic algorithm is to assert your line when you want the bus, then make
+sure that the other side doesn't want it also. A detailed explanation is best
+done with an example.
+
+Let's say the AP wants to claim the bus. It:
+1. Asserts AP_CLAIM
+2. Waits a little bit for the other side to notice (slew time, say 10
+microseconds)
+3. Checks EC_CLAIM. If this is not asserted, then the AP has the bus, and
+we are done
+4. Otherwise, wait for a few milliseconds and see if EC_CLAIM is released
+5. If not, back off, release the claim and wait for a few more milliseconds
+6. Go back to 1 (until retry time has expired)
+
+To release the bus, just de-assert the claim line. If the other wants the bus
+it will notice soon enough.
+
+The same algorithm applies on the EC side.
