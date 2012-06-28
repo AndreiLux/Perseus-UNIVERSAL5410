@@ -1869,11 +1869,36 @@ static int __init omap_vout_setup_video_data(struct omap_vout_device *vout)
 	struct video_device *vfd;
 	struct v4l2_pix_format *pix;
 	struct v4l2_control *control;
-	struct omap_dss_device *display =
-		vout->vid_info.overlays[0]->manager->device;
+	struct omap_dss_device *display;
+
+	if (!vout) {
+		pr_err("omap_vout_setup_video_data: NULL vout\n");
+		return -EINVAL;
+	}
+	if (!vout->vid_info.overlays[0]) {
+		pr_err("omap_vout_setup_video_data: NULL overlays[0]\n");
+		return -EINVAL;
+	}
+	if (!vout->vid_info.overlays[0]->manager) {
+		pr_err("omap_vout_setup_video_data: "
+					     "NULL manager for overlays[0]\n");
+		return -EINVAL;
+	}
+
+	display = vout->vid_info.overlays[0]->manager->device;
+
+	if (!display) {
+		pr_err("omap_vout_setup_video_data: no display\n");
+		return -ENODEV;
+	}
 
 	/* set the default pix */
 	pix = &vout->pix;
+
+	if (!pix) {
+		pr_err("omap_vout_setup_video_data: pix is NULL\n");
+		return -EINVAL;
+	}
 
 	/* Set the default picture of QVGA  */
 	pix->width = QQVGA_WIDTH;
