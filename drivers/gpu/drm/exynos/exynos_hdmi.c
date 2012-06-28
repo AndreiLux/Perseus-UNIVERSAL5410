@@ -2045,6 +2045,7 @@ static int __devinit hdmi_resources_init(struct hdmi_context *hdata)
 {
 	struct device *dev = hdata->dev;
 	struct hdmi_resources *res = &hdata->res;
+#ifndef CONFIG_ARCH_EXYNOS5
 	static char *supply[] = {
 		"hdmi-en",
 		"vdd",
@@ -2052,6 +2053,7 @@ static int __devinit hdmi_resources_init(struct hdmi_context *hdata)
 		"vdd_pll",
 	};
 	int i, ret;
+#endif
 
 	DRM_DEBUG_KMS("HDMI resource init\n");
 
@@ -2086,6 +2088,7 @@ static int __devinit hdmi_resources_init(struct hdmi_context *hdata)
 
 	clk_set_parent(res->sclk_hdmi, res->sclk_pixel);
 
+#ifndef CONFIG_ARCH_EXYNOS5
 	res->regul_bulk = kzalloc(ARRAY_SIZE(supply) *
 		sizeof res->regul_bulk[0], GFP_KERNEL);
 	if (!res->regul_bulk) {
@@ -2102,6 +2105,7 @@ static int __devinit hdmi_resources_init(struct hdmi_context *hdata)
 		goto fail;
 	}
 	res->regul_count = ARRAY_SIZE(supply);
+#endif
 
 	return 0;
 fail:
@@ -2385,7 +2389,11 @@ struct platform_driver hdmi_driver = {
 	.probe		= hdmi_probe,
 	.remove		= __devexit_p(hdmi_remove),
 	.driver		= {
-		.name	= "exynos4-hdmi",
+#ifdef CONFIG_ARCH_EXYNOS5
+		.name	= "exynos5-hdmi",
+#else
+		.name   = "exynos4-hdmi",
+#endif
 		.owner	= THIS_MODULE,
 		.pm = &hdmi_pm_ops,
 	},
