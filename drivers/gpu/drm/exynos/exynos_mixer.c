@@ -37,6 +37,12 @@
 #include "exynos_drm_drv.h"
 #include "exynos_drm_hdmi.h"
 
+#include <plat/map-base.h>
+#ifdef CONFIG_EXYNOS_IOMMU
+#include <mach/sysmmu.h>
+#include <linux/of_platform.h>
+#endif
+
 #define MIXER_WIN_NR		3
 #define MIXER_DEFAULT_WIN	0
 
@@ -935,6 +941,30 @@ static const struct dev_pm_ops mixer_pm_ops = {
 	.runtime_resume	 = mixer_runtime_resume,
 };
 
+#ifdef CONFIG_EXYNOS_IOMMU
+static int iommu_init(struct platform_device *pdev)
+{
+	struct platform_device *pds;
+
+	pds = find_sysmmu_dt(pdev, "sysmmu");
+	if (pds == NULL) {
+		printk(KERN_ERR "No sysmmu found  :\n");
+		return -EINVAL;
+	}
+
+	platform_set_sysmmu(&pds->dev, &pdev->dev);
+	exynos_drm_common_mapping = s5p_create_iommu_mapping(&pdev->dev,
+			0x20000000, SZ_128M, 4, exynos_drm_common_mapping);
+	if(exynos_drm_common_mapping == NULL) {
+		printk(KERN_ERR"Failed to create iommu mapping for Mixer\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+#endif
+
+
 static int __devinit mixer_resources_init_exynos(
 			struct exynos_drm_hdmi_context *ctx,
 			struct platform_device *pdev,
@@ -1043,6 +1073,13 @@ static int __devinit mixer_resources_init_exynos(
 	}
 	mixer_res->irq = res->start;
 
+#ifdef CONFIG_EXYNOS_IOMMU
+	ret = iommu_init(pdev);
+	if(ret) {
+		dev_err(dev, "iommu init failed.\n");
+		goto fail_mixer_regs;
+	}
+#endif
 	return 0;
 
 fail_vp_regs:
