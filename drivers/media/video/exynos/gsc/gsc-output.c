@@ -28,6 +28,7 @@
 #include <linux/string.h>
 #include <linux/delay.h>
 #include <media/v4l2-ioctl.h>
+#include <plat/bts.h>
 
 #include "gsc-core.h"
 
@@ -276,6 +277,7 @@ static int gsc_subdev_s_stream(struct v4l2_subdev *sd, int enable)
 	} else {
 		INIT_LIST_HEAD(&gsc->out.active_buf_q);
 		clear_bit(ST_OUTPUT_STREAMON, &gsc->state);
+		bts_set_priority(&gsc->pdev->dev, 0);
 		pm_runtime_put_sync(&gsc->pdev->dev);
 	}
 
@@ -715,13 +717,18 @@ static void gsc_out_buffer_queue(struct vb2_buffer *vb)
 	int ret;
 
 	if (!test_and_set_bit(ST_OUTPUT_STREAMON, &gsc->state)) {
-		pm_runtime_get_sync(&gsc->pdev->dev);
+		ret = pm_runtime_get_sync(&gsc->pdev->dev);
+		if (ret < 0) {
+			gsc_err("fail to pm_runtime_get_sync()");
+			return;
+		}
 		gsc_hw_set_sw_reset(gsc);
 		ret = gsc_wait_reset(gsc);
 		if (ret < 0) {
 			gsc_err("gscaler s/w reset timeout");
 			return;
 		}
+		bts_set_priority(&gsc->pdev->dev, 1);
 	}
 
 	if (gsc->out.req_cnt >= atomic_read(&q->queued_count)) {

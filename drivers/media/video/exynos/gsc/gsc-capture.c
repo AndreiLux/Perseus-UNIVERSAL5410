@@ -29,6 +29,7 @@
 #include <linux/i2c.h>
 #include <media/v4l2-ioctl.h>
 #include <media/exynos_gscaler.h>
+#include <plat/bts.h>
 
 #include "gsc-core.h"
 
@@ -340,6 +341,7 @@ static int gsc_cap_stop_capture(struct gsc_dev *gsc)
 		return ret;
 	}
 
+	bts_set_priority(&gsc->pdev->dev, 0);
 	return gsc_capture_state_cleanup(gsc);
 }
 
@@ -902,6 +904,7 @@ static int gsc_capture_streamon(struct file *file, void *priv,
 	if (ret)
 		return ret;
 
+	bts_set_priority(&gsc->pdev->dev, 1);
 	gsc_hw_set_sw_reset(gsc);
 	gsc_wait_reset(gsc);
 	gsc_hw_set_output_buf_mask_all(gsc);
