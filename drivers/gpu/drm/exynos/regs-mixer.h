@@ -137,5 +137,9 @@
 #define MXR_LAYER_CFG_GRP0_VAL(x)	MXR_MASK_VAL(x, 7, 4)
 #define MXR_LAYER_CFG_VP_VAL(x)		MXR_MASK_VAL(x, 3, 0)
 
+/* Adding reset and Layer update registers Exynos5 */
+#define MXR_CFG_LAYER_UPDATE            (1 << 31)
+#define MXR_STATUS_SOFT_RESET           (1 << 8)
+
 #endif /* SAMSUNG_REGS_MIXER_H */
 

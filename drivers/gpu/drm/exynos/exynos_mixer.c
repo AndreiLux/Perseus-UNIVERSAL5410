@@ -795,6 +795,13 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 
 	/* handling VSYNC */
 	if (val & MXR_INT_STATUS_VSYNC) {
+
+		/* layer update mandatory for exynos5 soc,and not present
+		* in exynos4 */
+		if (res->soc_exynos5)
+			mixer_reg_writemask(res, MXR_CFG, ~0,
+						MXR_CFG_LAYER_UPDATE);
+
 		/* interlace scan need to check shadow register */
 		if (ctx->interlace) {
 			val_base = mixer_reg_read(res, MXR_GRAPHIC_BASE_S(0));
@@ -832,6 +839,9 @@ static void mixer_win_reset(struct mixer_context *ctx)
 
 	spin_lock_irqsave(&res->reg_slock, flags);
 	mixer_vsync_set_update(ctx, false);
+
+	/* Mixer Reset */
+	mixer_reg_writemask(res, MXR_STATUS, ~0, MXR_STATUS_SOFT_RESET);
 
 	mixer_reg_writemask(res, MXR_CFG, MXR_CFG_DST_HDMI, MXR_CFG_DST_MASK);
 
@@ -881,6 +891,8 @@ static void mixer_win_reset(struct mixer_context *ctx)
 	mixer_reg_writemask(res, MXR_CFG, 0, MXR_CFG_GRP0_ENABLE);
 	mixer_reg_writemask(res, MXR_CFG, 0, MXR_CFG_GRP1_ENABLE);
 	mixer_reg_writemask(res, MXR_CFG, 0, MXR_CFG_VP_ENABLE);
+
+	mixer_reg_writemask(res, MXR_INT_EN, ~0, MXR_INT_EN_ALL);
 
 	mixer_vsync_set_update(ctx, true);
 	spin_unlock_irqrestore(&res->reg_slock, flags);
