@@ -858,13 +858,12 @@ static const struct hdmi_preset_conf hdmi_conf_1080p60 = {
 	},
 };
 
+/* LCD Support only 60 FPS. Making HDMI Aligned with LCD FPS */
+
 static const struct hdmi_conf hdmi_confs[] = {
-	{ 720, 480, 60, false, hdmiphy_conf27_027, &hdmi_conf_480p60 },
-	{ 1280, 720, 50, false, hdmiphy_conf74_25, &hdmi_conf_720p50 },
 	{ 1280, 720, 60, false, hdmiphy_conf74_25, &hdmi_conf_720p60 },
-	{ 1920, 1080, 50, true, hdmiphy_conf74_25, &hdmi_conf_1080i50 },
+	{ 720, 480, 60, false, hdmiphy_conf27_027, &hdmi_conf_480p60},
 	{ 1920, 1080, 60, true, hdmiphy_conf74_25, &hdmi_conf_1080i60 },
-	{ 1920, 1080, 50, false, hdmiphy_conf148_5, &hdmi_conf_1080p50 },
 	{ 1920, 1080, 60, false, hdmiphy_conf148_5, &hdmi_conf_1080p60 },
 };
 
@@ -1169,6 +1168,11 @@ static int hdmi_v13_conf_index(struct drm_display_mode *mode)
 static int hdmi_v14_conf_index(struct drm_display_mode *mode)
 {
 	int i;
+
+	/* TODO:
+	 * DRM framework passing 0 as the FPS value
+	 * which needs to be corrected.*/
+	mode->vrefresh = 60;
 
 	for (i = 0; i < ARRAY_SIZE(hdmi_confs); ++i)
 		if (hdmi_confs[i].width == mode->hdisplay &&
@@ -1901,6 +1905,24 @@ static void hdmi_conf_apply(struct hdmi_context *hdata)
 	hdmi_regs_dump(hdata, "start");
 }
 
+static void hdmi_mode_copy(struct drm_display_mode *dst,
+	struct drm_display_mode *src)
+{
+	struct drm_mode_object base;
+
+	/* following information should be preserved,
+	 * required for releasing the drm_display_mode node,
+	 * duplicated to recieve adjustment info. */
+
+	base.id = dst->base.id;
+	base.type = dst->base.type;
+
+	memcpy(dst, src, sizeof(struct drm_display_mode));
+
+	dst->base.id = base.id;
+	dst->base.type = base.type;
+}
+
 static void hdmi_mode_fixup(void *ctx, struct drm_connector *connector,
 				struct drm_display_mode *mode,
 				struct drm_display_mode *adjusted_mode)
@@ -1935,7 +1957,7 @@ static void hdmi_mode_fixup(void *ctx, struct drm_connector *connector,
 		if (index >= 0) {
 			DRM_INFO("desired mode doesn't exist so\n");
 			DRM_INFO("use the most suitable mode among modes.\n");
-			memcpy(adjusted_mode, m, sizeof(*m));
+			hdmi_mode_copy(adjusted_mode, m);
 			break;
 		}
 	}

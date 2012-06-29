@@ -74,6 +74,7 @@ struct mixer_resources {
 	void __iomem		*mixer_regs;
 	void __iomem		*vp_regs;
 	spinlock_t		reg_slock;
+	wait_queue_head_t	event_queue;
 	struct clk		*mixer;
 	struct clk		*vp;
 	struct clk		*sclk_mixer;
@@ -89,6 +90,12 @@ struct mixer_context {
 
 	struct mixer_resources	mixer_res;
 	struct hdmi_win_data	win_data[MIXER_WIN_NR];
+	unsigned long event_flags;
+};
+
+/* event flags used  */
+enum mixer_status_flags {
+	MXR_EVENT_VSYNC = 1,
 };
 
 static const u8 filter_y_horiz_tap8[] = {
@@ -119,6 +126,8 @@ static const u8 filter_cr_horiz_tap4[] = {
 	127,	126,	124,	118,	111,	102,	92,	81,
 	70,	59,	48,	37,	27,	19,	11,	5,
 };
+
+static void mixer_win_reset(struct mixer_context *ctx);
 
 static inline u32 vp_reg_read(struct mixer_resources *res, u32 reg_id)
 {
@@ -353,6 +362,20 @@ static void mixer_run(struct mixer_context *ctx)
 	mixer_reg_writemask(res, MXR_STATUS, ~0, MXR_STATUS_REG_RUN);
 
 	mixer_regs_dump(ctx);
+}
+
+static int mixer_wait_for_vsync(struct mixer_context *ctx)
+{
+	int ret;
+
+	ctx->event_flags |= MXR_EVENT_VSYNC;
+
+	ret = wait_event_timeout(ctx->mixer_res.event_queue,
+	((ctx->event_flags & MXR_EVENT_VSYNC) == 0), msecs_to_jiffies(1000));
+	if (ret > 0)
+		return 0;
+
+	return -ETIME;
 }
 
 static void vp_video_buffer(struct mixer_context *ctx, int win)
@@ -606,8 +629,6 @@ static int mixer_enable_vblank(void *ctx, int pipe)
 
 	DRM_DEBUG_KMS("[%d] %s\n", __LINE__, __func__);
 
-	mixer_ctx->pipe = pipe;
-
 	/* enable vsync interrupt */
 	mixer_reg_writemask(res, MXR_INT_EN, MXR_INT_EN_VSYNC,
 			MXR_INT_EN_VSYNC);
@@ -723,13 +744,19 @@ static void mixer_win_disable(void *ctx, int zpos)
 		return;
 	}
 
+	mixer_wait_for_vsync(mixer_ctx);
+
 	spin_lock_irqsave(&res->reg_slock, flags);
 	mixer_vsync_set_update(mixer_ctx, false);
 
 	mixer_cfg_layer(mixer_ctx, win, false);
 
 	mixer_vsync_set_update(mixer_ctx, true);
+
 	spin_unlock_irqrestore(&res->reg_slock, flags);
+
+	mixer_win_reset(ctx);
+	mixer_enable_vblank(ctx, 0);
 }
 
 static struct exynos_mixer_ops mixer_ops = {
@@ -796,11 +823,26 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 	/* handling VSYNC */
 	if (val & MXR_INT_STATUS_VSYNC) {
 
-		/* layer update mandatory for exynos5 soc,and not present
-		* in exynos4 */
-		if (res->soc_exynos5)
-			mixer_reg_writemask(res, MXR_CFG, ~0,
-						MXR_CFG_LAYER_UPDATE);
+		if (ctx->event_flags & MXR_EVENT_VSYNC) {
+			DRM_DEBUG_KMS("ctx->event_flags & MXR_EVENT_VSYNC");
+
+			mixer_reg_write(res, MXR_GRAPHIC_WH(0), 0);
+			mixer_reg_write(res, MXR_GRAPHIC_WH(1), 0);
+
+			mixer_reg_write(res, MXR_GRAPHIC_SPAN(0), 0);
+			mixer_reg_write(res, MXR_GRAPHIC_SPAN(1), 0);
+
+			mixer_reg_write(res, MXR_GRAPHIC_SXY(0), 0);
+			mixer_reg_write(res, MXR_GRAPHIC_SXY(1), 0);
+
+			mixer_reg_write(res, MXR_GRAPHIC_DXY(0), 0);
+			mixer_reg_write(res, MXR_GRAPHIC_DXY(1), 0);
+
+			ctx->event_flags &= ~MXR_EVENT_VSYNC;
+			wake_up(&ctx->mixer_res.event_queue);
+
+			goto out;
+		}
 
 		/* interlace scan need to check shadow register */
 		if (ctx->interlace) {
@@ -815,6 +857,11 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 
 		drm_handle_vblank(drm_hdmi_ctx->drm_dev, ctx->pipe);
 		mixer_finish_pageflip(drm_hdmi_ctx->drm_dev, ctx->pipe);
+
+		/* layer update mandatory for exynos5 soc,and not present
+		* in exynos4 */
+		if (res->is_soc_exynos5)
+			mixer_reg_writemask(res, MXR_CFG, ~0, MXR_CFG_LAYER_UPDATE);
 	}
 
 out:
@@ -838,10 +885,8 @@ static void mixer_win_reset(struct mixer_context *ctx)
 	u32 val; /* value stored to register */
 
 	spin_lock_irqsave(&res->reg_slock, flags);
-	mixer_vsync_set_update(ctx, false);
-
-	/* Mixer Reset */
 	mixer_reg_writemask(res, MXR_STATUS, ~0, MXR_STATUS_SOFT_RESET);
+	mixer_vsync_set_update(ctx, false);
 
 	mixer_reg_writemask(res, MXR_CFG, MXR_CFG_DST_HDMI, MXR_CFG_DST_MASK);
 
@@ -976,7 +1021,6 @@ static int iommu_init(struct platform_device *pdev)
 }
 #endif
 
-
 static int __devinit mixer_resources_init_exynos(
 			struct exynos_drm_hdmi_context *ctx,
 			struct platform_device *pdev,
@@ -993,6 +1037,9 @@ static int __devinit mixer_resources_init_exynos(
 	mixer_res->is_soc_exynos5 = is_exynos5;
 	mixer_res->dev = dev;
 	spin_lock_init(&mixer_res->reg_slock);
+
+	if(is_exynos5)
+		init_waitqueue_head(&mixer_res->event_queue);
 
 	mixer_res->mixer = clk_get(dev, "mixer");
 	if (IS_ERR_OR_NULL(mixer_res->mixer)) {
