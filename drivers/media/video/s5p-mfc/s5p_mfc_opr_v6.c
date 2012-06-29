@@ -1162,7 +1162,7 @@ int s5p_mfc_init_decode(struct s5p_mfc_ctx *ctx)
 	 * set to negative value. */
 	if (ctx->display_delay >= 0) {
 		reg |= (0x1 << S5P_FIMV_D_OPT_DDELAY_EN_SHIFT);
-		WRITEL((ctx->display_delay | 0x8), S5P_FIMV_D_DISPLAY_DELAY);
+		WRITEL(ctx->display_delay, S5P_FIMV_D_DISPLAY_DELAY);
 	}
 	/* Setup loop filter, for decoding this is only valid for MPEG4 */
 	if (ctx->codec_mode == S5P_FIMV_CODEC_MPEG4_DEC) {
