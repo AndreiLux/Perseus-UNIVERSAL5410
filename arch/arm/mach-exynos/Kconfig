@@ -265,6 +265,13 @@ config EXYNOS_THERMAL
 	help
 	  Common setup code for TMU
 
+config EXYNOS5_DEV_BTS
+	bool
+	depends on ARCH_EXYNOS5
+	select S5P_DEV_BTS
+	help
+	  Compile in platform device definitions for BTS devices
+
 # machine support
 
 if ARCH_EXYNOS4
@@ -514,6 +521,7 @@ config MACH_SMDK5250
 	select S3C64XX_DEV_SPI1
 	select S3C64XX_DEV_SPI2
 	select EXYNOS_SETUP_SPI
+	select EXYNOS5_DEV_BTS
 	help
 	  Machine support for Samsung SMDK5250
 endif
