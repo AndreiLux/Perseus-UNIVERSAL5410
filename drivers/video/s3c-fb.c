@@ -1750,6 +1750,9 @@ static int s3c_fb_set_win_config(struct s3c_fb *sfb,
 		case S3C_FB_WIN_STATE_COLOR:
 			enabled = 1;
 			color_map |= WINxMAP_MAP_COLOUR(config->color);
+			regs->vidosd_a[i] = vidosd_a(config->x, config->y);
+			regs->vidosd_b[i] = vidosd_b(config->x, config->y,
+					config->w, config->h);
 			break;
 		case S3C_FB_WIN_STATE_BUFFER:
 			ret = s3c_fb_set_win_buffer(sfb, win, config, regs);
@@ -1802,6 +1805,7 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 
 	for (i = 0; i < sfb->variant.nr_windows; i++) {
 		writel(regs->wincon[i], sfb->regs + WINCON(i));
+		writel(regs->winmap[i], sfb->regs + WINxMAP(i));
 		writel(regs->vidosd_a[i],
 				sfb->regs + VIDOSD_A(i, sfb->variant));
 		writel(regs->vidosd_b[i],
