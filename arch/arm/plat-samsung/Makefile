@@ -55,3 +55,4 @@ obj-$(CONFIG_SAMSUNG_WAKEMASK)	+= wakeup-mask.o
 obj-$(CONFIG_HAVE_PWM)		+= pwm.o
 
 obj-$(CONFIG_S5P_DEV_FIMG2D)	+= dev-fimg2d.o
+obj-$(CONFIG_S5P_DEV_BTS)	+= bts.o

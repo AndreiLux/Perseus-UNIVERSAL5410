@@ -305,6 +305,12 @@ config S5P_DEV_FIMG2D
 	help
 	  Compile in platform device definitions for FIMG2D controller
 
+config S5P_DEV_BTS
+	bool
+	default n
+	help
+	  Compile in platform device definitions for BTS devices
+
 # DMA
 
 config S3C_DMA
