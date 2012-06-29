@@ -998,13 +998,6 @@ int gsc_prepare_addr(struct gsc_ctx *ctx, struct vb2_buffer *vb,
 	return ret;
 }
 
-void gsc_wq_suspend(struct work_struct *work)
-{
-	struct gsc_dev *gsc = container_of(work, struct gsc_dev,
-						work_struct);
-	pm_runtime_put_sync(&gsc->pdev->dev);
-}
-
 void gsc_cap_irq_handler(struct gsc_dev *gsc)
 {
 	int done_index;
@@ -1060,8 +1053,6 @@ static irqreturn_t gsc_irq_handler(int irq, void *priv)
 			}
 			spin_unlock(&ctx->slock);
 		}
-		/* schedule pm_runtime_put_sync */
-		queue_work(gsc->irq_workqueue, &gsc->work_struct);
 	} else if (test_bit(ST_OUTPUT_STREAMON, &gsc->state)) {
 		if (!list_empty(&gsc->out.active_buf_q)) {
 			struct gsc_input_buf *done_buf;
@@ -1158,7 +1149,6 @@ static int gsc_probe(struct platform_device *pdev)
 	struct exynos_md *mdev[MDEV_MAX_NUM] = {NULL,};
 #endif
 	int ret = 0;
-	char workqueue_name[WORKQUEUE_NAME_SIZE];
 
 	dev_dbg(&pdev->dev, "%s():\n", __func__);
 	drv_data = (struct gsc_driverdata *)
@@ -1273,28 +1263,20 @@ static int gsc_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_irq;
 #endif
-	sprintf(workqueue_name, "gsc%d_irq_wq_name", gsc->id);
-	gsc->irq_workqueue = create_singlethread_workqueue(workqueue_name);
-	if (gsc->irq_workqueue == NULL) {
-		dev_err(&pdev->dev, "failed to create workqueue for gsc\n");
-		goto err_irq;
-	}
-	INIT_WORK(&gsc->work_struct, gsc_wq_suspend);
 
 	gsc->alloc_ctx = vb2_dma_contig_init_ctx(&pdev->dev);
 	if (IS_ERR(gsc->alloc_ctx)) {
 		ret = PTR_ERR(gsc->alloc_ctx);
-		goto err_wq;
+		goto err_irq;
 	}
 
 	gsc_runtime_resume(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
 
 	gsc_info("gsc-%d registered successfully", gsc->id);
 
 	return 0;
 
-err_wq:
-	destroy_workqueue(gsc->irq_workqueue);
 err_irq:
 	free_irq(gsc->irq, gsc);
 err_regs_unmap:

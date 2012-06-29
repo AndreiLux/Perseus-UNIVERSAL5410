@@ -516,8 +516,6 @@ struct gsc_dev {
 	struct resource			*regs_res;
 	int				irq;
 	wait_queue_head_t		irq_queue;
-	struct work_struct		work_struct;
-	struct workqueue_struct		*irq_workqueue;
 	struct gsc_m2m_device		m2m;
 	struct gsc_output_device	out;
 	struct gsc_capture_device	cap;

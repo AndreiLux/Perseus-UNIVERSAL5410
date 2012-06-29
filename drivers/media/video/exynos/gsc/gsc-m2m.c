@@ -49,6 +49,15 @@ static int gsc_ctx_stop_req(struct gsc_ctx *ctx)
 	return ret;
 }
 
+static int gsc_m2m_start_streaming(struct vb2_queue *q, unsigned int count)
+{
+	struct gsc_ctx *ctx = q->drv_priv;
+	int ret;
+
+	ret = pm_runtime_get_sync(&ctx->gsc_dev->pdev->dev);
+	return ret > 0 ? 0 : ret;
+}
+
 static int gsc_m2m_stop_streaming(struct vb2_queue *q)
 {
 	struct gsc_ctx *ctx = q->drv_priv;
@@ -59,6 +68,8 @@ static int gsc_m2m_stop_streaming(struct vb2_queue *q)
 	/* FIXME: need to add v4l2_m2m_job_finish(fail) if ret is timeout */
 	if (ret < 0)
 		dev_err(&gsc->pdev->dev, "wait timeout : %s\n", __func__);
+
+	pm_runtime_put(&ctx->gsc_dev->pdev->dev);
 
 	return 0;
 }
@@ -107,7 +118,6 @@ static void gsc_m2m_device_run(void *priv)
 		return;
 
 	gsc = ctx->gsc_dev;
-	pm_runtime_get_sync(&gsc->pdev->dev);
 
 	spin_lock_irqsave(&ctx->slock, flags);
 	/* Reconfigure hardware if the context has changed. */
@@ -184,7 +194,6 @@ static void gsc_m2m_device_run(void *priv)
 put_device:
 	ctx->state &= ~GSC_PARAMS;
 	spin_unlock_irqrestore(&ctx->slock, flags);
-	pm_runtime_put_sync(&gsc->pdev->dev);
 }
 
 static int gsc_m2m_queue_setup(struct vb2_queue *vq, const struct v4l2_format *fmt,
@@ -245,6 +254,7 @@ struct vb2_ops gsc_m2m_qops = {
 	.wait_prepare	 = gsc_unlock,
 	.wait_finish	 = gsc_lock,
 	.stop_streaming	 = gsc_m2m_stop_streaming,
+	.start_streaming = gsc_m2m_start_streaming,
 };
 
 static int gsc_m2m_querycap(struct file *file, void *fh,
