@@ -30,6 +30,7 @@
 #include <plat/pm.h>
 #include <plat/pll.h>
 #include <plat/regs-srom.h>
+#include <plat/bts.h>
 
 #include <mach/regs-irq.h>
 #include <mach/regs-gpio.h>
@@ -396,6 +397,7 @@ static void exynos_pm_resume(void)
 
 	s3c_pm_do_restore_core(exynos_core_save, ARRAY_SIZE(exynos_core_save));
 
+	bts_enable(NULL);
 	if (!soc_is_exynos5250()) {
 		exynos4_restore_pll();
 
