@@ -179,6 +179,7 @@
 					regulator-name = "video_mid";
 					regulator-min-microvolt = <5000000>;
 					regulator-max-microvolt = <5000000>;
+					regulator-always-on;
 				};
 				VFET3 {
 					tps65090-control-reg-offset = <17>;
