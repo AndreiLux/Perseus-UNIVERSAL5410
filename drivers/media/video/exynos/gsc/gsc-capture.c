@@ -1061,7 +1061,7 @@ static void gsc_cap_check_limit_size(struct gsc_dev *gsc, unsigned int pad,
 {
 	struct gsc_variant *variant = gsc->variant;
 	struct gsc_ctx *ctx = gsc->cap.ctx;
-	u32 min_w, min_h, max_w, max_h;
+	u32 min_w = 0, min_h = 0, max_w = 0, max_h = 0;
 
 	switch (pad) {
 	case GSC_PAD_SINK:
@@ -1551,7 +1551,7 @@ int gsc_register_capture_device(struct gsc_dev *gsc)
 	q = &gsc->cap.vbq;
 	memset(q, 0, sizeof(*q));
 	q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-	q->io_modes = VB2_MMAP | VB2_USERPTR;
+	q->io_modes = VB2_MMAP | VB2_DMABUF;
 	q->drv_priv = gsc->cap.ctx;
 	q->ops = &gsc_capture_qops;
 	q->mem_ops = gsc->vb2->ops;
