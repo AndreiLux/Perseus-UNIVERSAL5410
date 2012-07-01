@@ -381,7 +381,7 @@
 	bt-rst {
 		compatible = "regulator-fixed";
 		regulator-name = "bt-reset-l";
-		gpio = <&gpx3 2 0 0 0>;
+		gpio = <&gpx3 1 0 0 0>;
 		enable-active-high;
 		regulator-boot-on;
 		regulator-always-on;
