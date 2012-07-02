@@ -31,6 +31,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/fs.h>
 #include <linux/kds.h>
+#include <linux/wait.h>
 
 struct device;
 struct dma_buf;
@@ -123,6 +124,9 @@ struct dma_buf {
 	/* mutex to serialize list manipulation and attach/detach */
 	struct mutex lock;
 	struct kds_resource kds;
+	wait_queue_head_t wq_exclusive;
+	wait_queue_head_t wq_shared;
+	struct kds_callback kds_cb;
 	void *priv;
 };
 
