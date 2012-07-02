@@ -46,6 +46,18 @@
 	ret__;								\
 })
 
+#define wait_for_atomic_us(COND, US) ({ \
+	int i, ret__ = -ETIMEDOUT;	\
+	for (i = 0; i < (US); i++) {	\
+		if ((COND)) {		\
+			ret__ = 0;	\
+			break;		\
+		}			\
+		udelay(1);		\
+	}				\
+	ret__;				\
+})
+
 #define wait_for(COND, MS) _wait_for(COND, MS, 1)
 #define wait_for_atomic(COND, MS) _wait_for(COND, MS, 0)
 
