@@ -1075,17 +1075,17 @@ irqreturn_t ath_isr(int irq, void *dev)
 	if (sc->sc_flags & SC_OP_INVALID)
 		return IRQ_NONE;
 
-	spin_lock(&sc->sc_bb_lock);
-	if (sc->sc_flags & SC_OP_BB_WATCHDOG) {
-		spin_unlock(&sc->sc_bb_lock);
-		return IRQ_NONE;
-	}
-	spin_unlock(&sc->sc_bb_lock);
-
 	/* shared irq, not for us */
 
 	if (!ath9k_hw_intrpend(ah))
 		return IRQ_NONE;
+
+	spin_lock(&sc->sc_bb_lock);
+	if (sc->sc_flags & SC_OP_BB_WATCHDOG) {
+		spin_unlock(&sc->sc_bb_lock);
+		return IRQ_HANDLED;
+	}
+	spin_unlock(&sc->sc_bb_lock);
 
 	/*
 	 * Figure out the reason(s) for the interrupt.  Note
