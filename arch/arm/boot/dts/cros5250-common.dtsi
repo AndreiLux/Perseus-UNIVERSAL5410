@@ -136,8 +136,13 @@
 	i2c@12C80000 {
 		samsung,i2c-sda-delay = <100>;
 		samsung,i2c-max-bus-freq = <66000>;
-		gpios = <&gpa0 6 3 3 0>,
-			<&gpa0 7 3 3 0>;
+
+		/*
+		 * Disabled pullups since external part has its own pullups and
+		 * double-pulling gets us out of spec in some cases.
+		 */
+		gpios = <&gpa0 6 3 0 0>,
+			<&gpa0 7 3 0 0>;
 
 		exynos_hdcp@3a {
 			compatible = "samsung,exynos_hdcp";
