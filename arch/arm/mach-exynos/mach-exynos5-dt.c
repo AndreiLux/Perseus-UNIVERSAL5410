@@ -817,6 +817,13 @@ static void __init exynos5250_dt_machine_init(void)
 	exynos5_i2c_setup();
 
 	/*
+	 * MAX77686 PMIC interrupt setup code
+	 * TODO: Convert the device tree wakeup_int domain to support
+	 * pull-up flags
+	 */
+	s3c_gpio_setpull(EXYNOS5_GPX3(2), S3C_GPIO_PULL_NONE);
+
+	/*
 	 * BIG HACK: The wm8994 is not device tree enabled apparently, so
 	 * needs to be added manually.  ...but it's only on SMDK5250.
 	 */
