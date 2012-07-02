@@ -54,6 +54,7 @@
 #include <plat/omap_hwmod.h>
 #include "hsmmc.h"
 #include <plat/remoteproc.h>
+#include <plat/rpmsg_resmgr.h>
 #include "common-board-devices.h"
 #include "mux.h"
 #include <linux/qtouch_obp_ts.h>
@@ -1559,6 +1560,18 @@ struct omap_mux_setting omap5432_sevm_mux[] __initdata = {
 };
 
 
+/* camera regulators */
+static struct omap_rprm_regulator omap5evm_rprm_regulators[] = {
+	{
+		.name = "cam2pwr",
+		.fixed = true,
+	},
+	{
+		.name = "cam2csi",
+		.fixed = true,
+	},
+};
+
 static void __init omap_5430_sevm_init(void)
 {
 	int status;
@@ -1581,6 +1594,10 @@ static void __init omap_5430_sevm_init(void)
 
         /* Disable pulls on DCC lines - necessary for EDID detection */         
         omap_writel(0x50000000, 0x4A002E20);
+
+	/* camera regulators */
+	omap_rprm_regulator_init(omap5evm_rprm_regulators,
+					ARRAY_SIZE(omap5evm_rprm_regulators));
 }
 
 struct omap_mux_setting omap5432_uevm_mux[] __initdata = {
