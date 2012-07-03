@@ -57,6 +57,7 @@ config ARCH_OMAP4
 	select MISC_DEVICES
 	select EMIF
 	select ARCH_NEEDS_CPU_IDLE_COUPLED if CPU_IDLE
+	select ARM_SMP_TWD if SMP
 
 config ARCH_OMAP5
 	bool "TI OMAP5"
