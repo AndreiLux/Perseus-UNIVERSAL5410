@@ -12,6 +12,7 @@
  */
 
 
+#include <linux/async.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
@@ -1802,6 +1803,15 @@ static void cyapa_start_runtime(struct cyapa *cyapa)
 static void cyapa_start_runtime(struct cyapa *cyapa) {}
 #endif /* CONFIG_PM_RUNTIME */
 
+static void cyapa_detect_and_start(void *data, async_cookie_t cookie)
+{
+	struct cyapa *cyapa = data;
+
+	cyapa_detect(cyapa);
+
+	cyapa_start_runtime(cyapa);
+}
+
 static int __devinit cyapa_probe(struct i2c_client *client,
 				 const struct i2c_device_id *dev_id)
 {
@@ -1870,9 +1880,7 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 		dev_warn(dev, "error creating wakeup power entries.\n");
 #endif /* CONFIG_PM_SLEEP */
 
-	cyapa_detect(cyapa);
-
-	cyapa_start_runtime(cyapa);
+	async_schedule(cyapa_detect_and_start, cyapa);
 	return 0;
 
 err_mem_free:
