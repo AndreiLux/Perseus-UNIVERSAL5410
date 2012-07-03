@@ -34,6 +34,7 @@
 #include "exynos_drm_fb.h"
 #include "exynos_drm_encoder.h"
 #include "exynos_drm_gem.h"
+#include "exynos_trace.h"
 
 #define to_exynos_crtc(x)	container_of(x, struct exynos_drm_crtc,\
 				drm_crtc)
@@ -313,6 +314,10 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
+	/* Record both request and complete of page flip within the function
+	 * since this implementation is blocking in exynos_drm_crtc_update.
+	 */
+	trace_exynos_flip_request(exynos_crtc->pipe);
 	mutex_lock(&dev->struct_mutex);
 
 	if (event) {
@@ -353,6 +358,8 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	}
 out:
 	mutex_unlock(&dev->struct_mutex);
+
+	trace_exynos_flip_complete(exynos_crtc->pipe);
 	return ret;
 }
 
