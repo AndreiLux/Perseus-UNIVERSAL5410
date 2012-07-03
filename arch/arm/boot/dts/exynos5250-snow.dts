@@ -32,4 +32,11 @@
 			gpio-key,wakeup;
 		};
 	};
+	i2c@12CA0000 {
+		samsung,slew-delay-us = <10>;
+		samsung,wait-retry-us = <3000>;
+		samsung,wait-free-ms = <50000>;
+		samsung,arbitration-gpios = <&gpf0 3 1 0 0>,
+			<&gpe0 4 0 3 0>;
+	};
 };
