@@ -21,6 +21,8 @@
 #include <mach/asv-exynos5250.h>
 
 #include <mach/map.h>
+#include <mach/regs-pmu.h>
+#include <mach/abb-exynos.h>
 
 #include <plat/cpu.h>
 
@@ -73,6 +75,24 @@ asv_volt_info volt_table[] = {
 	[ID_G3D] = g3d_asv_volt_info,
 };
 
+static void exynos5250_pre_set_abb(unsigned int asv_group_number)
+{
+	switch (asv_group_number) {
+	case 0:
+	case 1:
+		set_abb_member(ABB_ARM, ABB_MODE_080V);
+		set_abb_member(ABB_INT, ABB_MODE_080V);
+		set_abb_member(ABB_G3D, ABB_MODE_080V);
+		break;
+	default:
+		set_abb_member(ABB_ARM, ABB_MODE_BYPASS);
+		set_abb_member(ABB_INT, ABB_MODE_BYPASS);
+		set_abb_member(ABB_G3D, ABB_MODE_BYPASS);
+		break;
+	}
+
+	set_abb_member(ABB_MIF, ABB_MODE_130V);
+}
 static unsigned int exynos5250_get_asv_group(unsigned int ids,
 			unsigned int hpm, enum asv_type_id target_type)
 {
@@ -129,6 +149,8 @@ int exynos5250_init_asv(struct asv_common *asv_info)
 
 	for (i = ID_ARM; i < ID_END; i++)
 		asv_group[i] = exynos5250_get_asv_group(ids_value, hpm_value, i);
+
+	exynos5250_pre_set_abb(asv_group[ID_ARM]);
 
 	asv_info->get_voltage = exynos5250_get_volt;
 	asv_info->init_done = true;
