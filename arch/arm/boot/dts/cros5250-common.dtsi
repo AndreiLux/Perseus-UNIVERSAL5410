@@ -148,6 +148,12 @@
 			compatible = "samsung,exynos_hdcp";
 			reg = <0x3a>;
 		};
+
+		exynos_ddc@50 {
+			compatible = "samsung,s5p_ddc";
+			reg = <0x50>;
+		};
+
 	};
 
 	i2c@12C90000 {
@@ -350,6 +356,11 @@
 	i2c@12CE0000 {
 		samsung,i2c-sda-delay = <100>;
 		samsung,i2c-max-bus-freq = <66000>;
+
+		exynos_hdmiphy@38 {
+			compatible = "samsung,s5p_hdmiphy";
+			reg = <0x38>;
+		};
 	};
 
 	ehci {
