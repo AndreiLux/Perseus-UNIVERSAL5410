@@ -157,7 +157,7 @@ enum {
 /* Touch booster */
 #if defined(CONFIG_EXYNOS4_CPUFREQ) &&\
 	defined(CONFIG_BUSFREQ_OPP)
-#define TOUCH_BOOSTER			1
+#define TOUCH_BOOSTER			0
 #define TOUCH_BOOSTER_OFF_TIME		100
 #define TOUCH_BOOSTER_CHG_TIME		200
 #else
