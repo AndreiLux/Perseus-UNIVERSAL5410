@@ -527,7 +527,7 @@ static struct video_info smdk5250_dp_config = {
 	.lane_count             = LANE_COUNT2,
 };
 
-static struct exynos_dp_platdata smdk5250_dp_data __initdata = {
+static struct exynos_dp_platdata smdk5250_dp_data = {
 	.video_info     = &smdk5250_dp_config,
 	.training_type  = HW_LINK_TRAINING,
 	.phy_init       = s5p_dp_phy_init,
