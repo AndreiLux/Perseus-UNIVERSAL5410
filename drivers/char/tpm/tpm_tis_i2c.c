@@ -29,6 +29,7 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/wait.h>
+#include <linux/workqueue.h>
 #include "tpm.h"
 
 /* max. buffer size supported by our tpm */
@@ -59,6 +60,7 @@ struct tpm_inf_dev {
 	u8 buf[TPM_BUFSIZE+sizeof(u8)]; /* max. buffer size + addr */
 	struct tpm_chip *chip;
 	bool powered_while_suspended;
+	struct work_struct init_work;
 };
 
 static struct tpm_inf_dev tpm_dev;
@@ -109,6 +111,9 @@ static int iic_tpm_read(u8 addr, u8 *buffer, size_t len)
 	int rc;
 	int count;
 
+	if (work_pending(&tpm_dev.init_work))
+		flush_work_sync(&tpm_dev.init_work);
+
 	/* Lock the adapter for the duration of the whole sequence. */
 	if (!tpm_dev.client->adapter->algo->master_xfer)
 		return -EOPNOTSUPP;
@@ -153,6 +158,9 @@ static int iic_tpm_write_generic(u8 addr, u8 *buffer, size_t len,
 	int count;
 
 	struct i2c_msg msg1 = { tpm_dev.client->addr, 0, len + 1, tpm_dev.buf };
+
+	if (work_pending(&tpm_dev.init_work))
+		flush_work_sync(&tpm_dev.init_work);
 
 	if (!tpm_dev.client->adapter->algo->master_xfer)
 		return -EOPNOTSUPP;
@@ -549,6 +557,11 @@ static struct tpm_vendor_specific tpm_tis_i2c = {
 		    .fops = &tis_ops,},
 };
 
+static void tpm_tis_i2c_selftest(struct work_struct *work)
+{
+	tpm_do_selftest(tpm_dev.chip);
+}
+
 static int tpm_tis_i2c_init(struct device *dev)
 {
 	u32 vendor;
@@ -604,11 +617,8 @@ static int tpm_tis_i2c_init(struct device *dev)
 		goto out_release;
 	}
 
-	if (tpm_do_selftest(chip)) {
-		dev_err(dev, "TPM self test failed\n");
-		rc = -ENODEV;
-		goto out_release;
-	}
+	INIT_WORK(&tpm_dev.init_work, tpm_tis_i2c_selftest);
+	schedule_work(&tpm_dev.init_work);
 
 	if (dev->of_node &&
 	    of_get_property(dev->of_node, "powered-while-suspended", NULL)) {
@@ -727,6 +737,8 @@ static void __exit cleanup_tis_i2c(void)
 {
 	struct tpm_chip *chip = tpm_dev.chip;
 	release_locality(chip, chip->vendor.locality, 1);
+
+	cancel_work_sync(&tpm_dev.init_work);
 
 	tpm_dev_vendor_release(chip);
 	tpm_remove_hardware(chip->dev);
