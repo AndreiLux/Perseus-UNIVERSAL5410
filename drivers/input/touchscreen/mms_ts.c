@@ -58,6 +58,10 @@
 #include <linux/fb.h>
 #endif
 
+#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
+#include <mach/midas-tsp.h>
+#endif
+
 #define MAX_FINGERS		10
 #define MAX_WIDTH		30
 #define MAX_PRESSURE		255
@@ -957,6 +961,12 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 
 #if TOUCH_BOOSTER
 	set_dvfs_lock(info, !!touch_is_pressed);
+#endif
+
+#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
+	if(!!touch_is_pressed){
+		midas_tsp_request_qos();
+	}
 #endif
 
 out:
