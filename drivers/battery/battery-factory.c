@@ -51,6 +51,10 @@ static struct device_attribute battery_attrs[] = {
 	BATTERY_ATTR(wc_status),
 	BATTERY_ATTR(wpc_pin_state),
 
+	BATTERY_ATTR(batt_current),
+	BATTERY_ATTR(batt_current_avg),
+
+#if 0
 	/* not use */
 	BATTERY_ATTR(batt_vol_adc),
 	BATTERY_ATTR(batt_vol_adc_cal),
@@ -58,6 +62,7 @@ static struct device_attribute battery_attrs[] = {
 	BATTERY_ATTR(batt_temp_adc_cal),
 	BATTERY_ATTR(batt_vf_adc),
 	BATTERY_ATTR(auth_battery),
+#endif
 
 #if defined(CONFIG_TARGET_LOCALE_KOR) || defined(CONFIG_MACH_M0_CTC)
 	BATTERY_ATTR(batt_temp_adc_spec),
@@ -82,7 +87,11 @@ enum {
 	SIOP_ACTIVATED,
 	WC_STATUS,
 	WPC_PIN_STATE,
+	
+	BATT_CURRENT,
+	BATT_CURRENT_AVG,
 
+#if 0
 	/* not use */
 	BATT_VOL_ADC,
 	BATT_VOL_ADC_CAL,
@@ -90,7 +99,7 @@ enum {
 	BATT_TEMP_ADC_CAL,
 	BATT_VF_ADC,
 	AUTH_BATTERY,
-
+#endif
 #if defined(CONFIG_TARGET_LOCALE_KOR) || defined(CONFIG_MACH_M0_CTC)
 	BATT_TEMP_ADC_SPEC,
 	BATT_SYSREV,
@@ -176,6 +185,16 @@ static ssize_t battery_show_property(struct device *dev,
 		val = info->battery_vfocv;
 		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n", val);
 		break;
+	case BATT_CURRENT:
+		battery_update_info(info);
+		val = info->battery_current_now;
+		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n", val);
+		break;
+	case BATT_CURRENT_AVG:
+		battery_update_info(info);
+		val = info->battery_current_avg;
+		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n", val);
+		break;
 	case BATT_LP_CHARGING:
 		val = info->lpm_state;
 		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n", val);
@@ -207,6 +226,8 @@ static ssize_t battery_show_property(struct device *dev,
 #endif
 		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n", val);
 		break;
+
+#if 0
 	case BATT_VOL_ADC:
 	case BATT_VOL_ADC_CAL:
 	case BATT_VOL_ADC_AVER:
@@ -215,6 +236,7 @@ static ssize_t battery_show_property(struct device *dev,
 	case AUTH_BATTERY:
 		i += scnprintf(buf + i, PAGE_SIZE - i, "N/A\n");
 		break;
+#endif
 #if defined(CONFIG_TARGET_LOCALE_KOR) || defined(CONFIG_MACH_M0_CTC)
 	case BATT_SYSREV:
 		val = system_rev;
@@ -335,13 +357,15 @@ int battery_info_proc(char *buf, char **start,
 	cur_time = ktime_to_timespec(ktime);
 
 	len = snprintf(buf, size,
-		"%lu\t%u\t%u\t%u\t%u\t%d\t%u\t%d\t%d\t%u\t"
+		"%lu\t%u\t%u\t%u\t%u\t%d\t%d\t%d\t%u\t%d\t%d\t%u\t"
 		"%u\t%u\t%u\t%u\t%u\t%u\t%d\t%u\t%u\n",
 		cur_time.tv_sec,
 		info->battery_raw_soc,
 		info->battery_soc,
 		info->battery_vcell / 1000,
 		info->battery_vfocv / 1000,
+		info->battery_current_now,
+		info->battery_current_avg,
 		info->battery_full_soc,
 		info->battery_present,
 		info->battery_temper,
@@ -373,13 +397,15 @@ int battery_info_proc(char *buf, char **start,
 	cur_time = ktime_to_timespec(ktime);
 
 	len = snprintf(buf, size,
-		"%lu\t%u\t%u\t%u\t%u\t%u\t%d\t%d\t%u\t"
+		"%lu\t%u\t%u\t%u\t%u\t%d\t%d\t%u\t%d\t%d\t%u\t"
 		"%u\t%u\t%u\t%u\t%u\t%u\t%d\t%u\t%u\n",
 		cur_time.tv_sec,
 		info->battery_raw_soc,
 		info->battery_soc,
 		info->battery_vcell / 1000,
 		info->battery_vfocv / 1000,
+		info->battery_current_now,
+		info->battery_current_avg,
 		info->battery_present,
 		info->battery_temper,
 		info->battery_temper_adc,
