@@ -64,6 +64,7 @@ struct fimd_win_data {
 	unsigned int		ovl_height;
 	unsigned int		fb_width;
 	unsigned int		fb_height;
+	unsigned int		fb_pitch;
 	unsigned int		bpp;
 	dma_addr_t		dma_addr;
 	void __iomem		*vaddr;
@@ -317,9 +318,10 @@ static void fimd_win_mode_set(struct device *dev,
 		return;
 
 	offset = overlay->fb_x * (overlay->bpp >> 3);
-	offset += overlay->fb_y * overlay->pitch;
+	offset += overlay->fb_y * overlay->fb_pitch;
 
-	DRM_DEBUG_KMS("offset = 0x%lx, pitch = %x\n", offset, overlay->pitch);
+	DRM_DEBUG_KMS("offset = 0x%lx, pitch = %x\n",
+		offset, overlay->fb_pitch);
 
 	win_data = &ctx->win_data[win];
 
@@ -329,12 +331,13 @@ static void fimd_win_mode_set(struct device *dev,
 	win_data->ovl_height = overlay->crtc_height;
 	win_data->fb_width = overlay->fb_width;
 	win_data->fb_height = overlay->fb_height;
+	win_data->fb_pitch = overlay->fb_pitch;
 	win_data->dma_addr = overlay->dma_addr[0] + offset;
 	win_data->vaddr = overlay->vaddr[0] + offset;
 	win_data->bpp = overlay->bpp;
-	win_data->buf_offsize = (overlay->fb_width - overlay->crtc_width) *
-				(overlay->bpp >> 3);
-	win_data->line_size = overlay->crtc_width * (overlay->bpp >> 3);
+	win_data->buf_offsize = overlay->fb_pitch -
+		(overlay->fb_width * (overlay->bpp >> 3));
+	win_data->line_size = overlay->fb_width * (overlay->bpp >> 3);
 
 	DRM_DEBUG_KMS("offset_x = %d, offset_y = %d\n",
 			win_data->offset_x, win_data->offset_y);
@@ -464,7 +467,7 @@ static void fimd_win_commit(struct device *dev, int zpos)
 	writel(val, ctx->regs + VIDWx_BUF_START(win, 0));
 
 	/* buffer end address */
-	size = win_data->fb_width * win_data->ovl_height * (win_data->bpp >> 3);
+	size = win_data->fb_height * win_data->fb_pitch;
 	val = (unsigned long)(win_data->dma_addr + size);
 	writel(val, ctx->regs + VIDWx_BUF_END(win, 0));
 

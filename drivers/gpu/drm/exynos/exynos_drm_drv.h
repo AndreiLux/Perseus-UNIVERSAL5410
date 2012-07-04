@@ -81,6 +81,7 @@ struct exynos_drm_overlay_ops {
  *	- the unit is screen coordinates.
  * @fb_width: width of a framebuffer.
  * @fb_height: height of a framebuffer.
+ * @fb_pitch: pitch of a framebuffer.
  * @crtc_x: offset x on hardware screen.
  * @crtc_y: offset y on hardware screen.
  * @crtc_width: window width to be displayed (hardware screen).
@@ -112,6 +113,7 @@ struct exynos_drm_overlay {
 	unsigned int fb_y;
 	unsigned int fb_width;
 	unsigned int fb_height;
+	unsigned int fb_pitch;
 	unsigned int crtc_x;
 	unsigned int crtc_y;
 	unsigned int crtc_width;
@@ -121,7 +123,6 @@ struct exynos_drm_overlay {
 	unsigned int refresh;
 	unsigned int scan_flag;
 	unsigned int bpp;
-	unsigned int pitch;
 	uint32_t pixel_format;
 	dma_addr_t dma_addr[MAX_FB_BUFFER];
 	void __iomem *vaddr[MAX_FB_BUFFER];

@@ -43,6 +43,8 @@ exynos_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 	struct exynos_drm_crtc_pos pos;
 	unsigned int x = src_x >> 16;
 	unsigned int y = src_y >> 16;
+	unsigned int w = src_w >> 16;
+	unsigned int h = src_h >> 16;
 	int ret;
 
 	DRM_DEBUG_KMS("[%d] %s\n", __LINE__, __func__);
@@ -55,6 +57,8 @@ exynos_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 
 	pos.fb_x = x;
 	pos.fb_y = y;
+	pos.fb_w = w;
+	pos.fb_h = h;
 
 	/* TODO: scale feature */
 	ret = exynos_drm_overlay_update(overlay, fb, &crtc->mode, &pos);

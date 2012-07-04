@@ -104,10 +104,10 @@ int exynos_drm_overlay_update(struct exynos_drm_overlay *overlay,
 	/* set drm framebuffer data. */
 	overlay->fb_x = pos->fb_x;
 	overlay->fb_y = pos->fb_y;
-	overlay->fb_width = fb->width;
-	overlay->fb_height = fb->height;
+	overlay->fb_width = min(pos->fb_w, actual_w);
+	overlay->fb_height = min(pos->fb_h, actual_h);
+	overlay->fb_pitch = fb->pitches[0];
 	overlay->bpp = fb->bits_per_pixel;
-	overlay->pitch = fb->pitches[0];
 	overlay->pixel_format = fb->pixel_format;
 
 	/* set overlay range to be displayed. */
@@ -148,6 +148,8 @@ static int exynos_drm_crtc_update(struct drm_crtc *crtc)
 	/* it means the offset of framebuffer to be displayed. */
 	pos.fb_x = crtc->x;
 	pos.fb_y = crtc->y;
+	pos.fb_w = fb->width;
+	pos.fb_h = fb->height;
 
 	/* OSD position to be displayed. */
 	pos.crtc_x = 0;
