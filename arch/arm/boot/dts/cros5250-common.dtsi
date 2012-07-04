@@ -413,7 +413,7 @@
 
 		power {
 			label = "Power";
-			gpios = <&gpx1 3 0 0 0>;
+			gpios = <&gpx1 3 0 0x10000 0>;
 			linux,code = <116>; /* KEY_POWER */
 			gpio-key,wakeup;
 		};
