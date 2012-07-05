@@ -1,0 +1,112 @@
+# Copyright:
+# ----------------------------------------------------------------------------
+# This confidential and proprietary software may be used only as authorized
+# by a licensing agreement from ARM Limited.
+#      (C) COPYRIGHT 2012 ARM Limited, ALL RIGHTS RESERVED
+# The entire notice above must be reproduced on all authorized copies and
+# copies may only be made to the extent permitted by a licensing agreement
+# from ARM Limited.
+# ----------------------------------------------------------------------------
+#
+
+# *WARNING* - Enabling this option and modifying the default settings may produce
+# a driver with performance or other limitations.
+
+menuconfig MALI_T6XX
+	tristate "Mali-T6XX support"
+	default n
+	help
+	  Enable this option to build support for the ARM Mali-T6XX GPU.
+
+	  To compile this driver as a module, choose M here:
+	  this will generate a single module, called mali_kbase.
+
+choice
+	prompt "Mali platform configuration"
+	depends on MALI_T6XX
+	default MALI_PLATFORM_VEXPRESS
+	help
+	  Select the SOC platform that contains a Mali-T6XX
+
+config MALI_PLATFORM_VEXPRESS
+	depends on ARCH_VEXPRESS && (ARCH_VEXPRESS_CA9X4 || ARCH_VEXPRESS_CA15X4)
+	bool "Versatile Express"
+config MALI_PLATFORM_GOLDFISH
+	depends on ARCH_GOLDFISH
+	bool "Android Goldfish virtual CPU"
+config MALI_PLATFORM_PBX
+	depends on ARCH_REALVIEW && REALVIEW_EB_A9MP && MACH_REALVIEW_PBX
+	bool "Realview PBX-A9"
+config MALI_PLATFORM_THIRDPARTY
+	bool "Third Party Platform"
+endchoice
+
+config MALI_PLATFORM_THIRDPARTY_NAME
+	depends on MALI_T6XX && MALI_PLATFORM_THIRDPARTY
+	string "Third party platform name"
+	help
+	  Enter the name of a third party platform that is supported. The third part configuration
+	  file must be in kbase/src/linux/config/tpip/mali_kbase_config_xxx.c where xxx is the name
+	  specifed here.
+
+config MALI_GATOR_SUPPORT
+	bool "Streamline Debug support"
+	depends on MALI_T6XX
+	default n
+	help
+	  Adds diagnostic support for use with the ARM Streamline Performance Analyzer.
+
+config T6XX_DVFS
+        bool "Enable Dynamic frequency and volatge scaling"
+        depends on MALI_T6XX
+	default n
+        help
+          Choose this option to enable dynamic frequency and volatge scaling
+
+
+# MALI_EXPERT configuration options
+
+menuconfig MALI_EXPERT
+	depends on MALI_T6XX
+	bool "Enable Expert Settings"
+	default n
+
+config MALI_DEBUG
+	bool "Mali debug build"
+	depends on MALI_T6XX && MALI_EXPERT
+	default n
+	help
+	  Select this option for increased checking and reporting of errors.
+
+config MALI_UNCACHED
+	bool "Disable CPU caching for GPU memory regions"
+	depends on MALI_T6XX && MALI_EXPERT
+	default n
+	help
+	  Select this option to disable CPU caching for all GPU memory regions.
+
+config MALI_BASE_TRACK_MEMLEAK
+	bool "Enable the tracking of memory leaks and support for simulated failures"
+	depends on MALI_T6XX && MALI_EXPERT
+	default n
+	help
+	  Enables additional memory leak tracking diagnostics.
+
+config MALI_NO_MALI
+	bool "No Mali"
+	depends on MALI_T6XX && MALI_EXPERT
+	default n
+	help
+	  This can be used to test the driver in a simulated environment
+	  whereby the hardware is not physically present. If the hardware is physically
+	  present it will not be used. This can be used to test the majority of the
+	  driver without needing actual hardware or for software benchmarking.
+	  All calls to the simulated hardware will complete immediatly as if the hardware
+	  completed the task.
+
+config MALI_ERROR_INJECTION
+	bool "Error injection"
+	depends on MALI_T6XX && MALI_EXPERT && MALI_NO_MALI
+	default n
+	help
+	  Enables insertion of errors to test module failure and recovery mechanisms.

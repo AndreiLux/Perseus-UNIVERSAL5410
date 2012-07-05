@@ -1,0 +1,206 @@
+#
+# This confidential and proprietary software may be used only as
+# authorised by a licensing agreement from ARM Limited
+# (C) COPYRIGHT 2012 ARM Limited
+# ALL RIGHTS RESERVED
+# The entire notice above must be reproduced on all authorised
+# copies and copies may only be made to the extent permitted
+# by a licensing agreement from ARM Limited.
+#
+
+# Driver version string which is returned to userspace via an ioctl
+MALI_RELEASE_NAME ?= "not_released"
+
+# Paths required for build
+KBASE_PATH = $(src)/../..
+KBASE_SRC_PATH = $(src)/..
+KBASE_PLATFORM_PATH = $(KBASE_SRC_PATH)/platform_dummy
+OSK_PATH = $(src)/../osk/src/linux/include
+UMP_PATH = $(src)/../../..
+
+# Convert kbuild defines to mali defines
+ifeq ($(CONFIG_MALI_SCHEDULING_POLICY_CFS),y)
+MALI_SCHEDULING_POLICY_CFS = 1
+endif
+ifeq ($(CONFIG_MALI_SCHEDULING_POLICY_FCFS),y)
+MALI_SCHEDULING_POLICY_FCFS = 1
+endif
+ifeq ($(CONFIG_MALI_DEBUG),y)
+MALI_DEBUG = 1
+endif
+ifeq ($(CONFIG_MALI_ERROR_INJECTION),y)
+MALI_ERROR_INJECT_ON = 1
+endif
+ifeq ($(CONFIG_MALI_BASE_TRACK_MEMLEAK),y)
+MALI_BASE_TRACK_MEMLEAK = 1
+endif
+ifeq ($(CONFIG_MALI_GATOR_SUPPORT),y)
+MALI_GATOR_SUPPORT = 1
+endif
+ifeq ($(CONFIG_MALI_NO_MALI),y)
+MALI_NO_MALI = 1
+endif
+ifeq ($(CONFIG_MALI_UNCACHED),y)
+MALI_UNCACHED = 1
+endif
+ifeq ($(CONFIG_MALI_PLATFORM_THIRDPARTY),y)
+# remove begin and end quotes from the Kconfig string type
+platform_name := $(shell echo $(CONFIG_MALI_PLATFORM_THIRDPARTY_NAME))
+
+ifeq ($(platform_name),exynos5)
+MALI_UNCACHED = 1
+endif #platform_name
+
+endif #CONFIG_MALI_PLATFORM_THIRDPARTY
+
+# UMP is defined in driver/gpu/arm/ump/Kconfig
+# if it is enabled we will assume we should use it
+ifdef CONFIG_UMP
+MALI_USE_UMP = 1
+endif
+
+# Set up defaults if not defined by build system
+MALI_USE_UMP ?= 0
+MALI_CUSTOMER_RELEASE ?= 0
+MALI_DEBUG ?= 0
+MALI_NO_MALI ?= 0
+MALI_UNIT_TEST ?= 0
+MALI_KERNEL_TEST_API ?= 0
+MALI_ERROR_INJECT_ON ?= 0
+MALI_BASE_TRACK_MEMLEAK ?= 0
+MALI_UNCACHED ?= 1
+MALI_MOCK_TEST ?= 0
+MALI_KBASEP_MODEL ?= 0
+MALI_COVERAGE ?= 0
+MALI_GATOR_SUPPORT ?= 0
+MALI_INSTRUMENTATION_LEVEL ?= 0
+MALI_BASE_TRACK_MEMLEAK ?= 0
+
+MALI_FAKE_PLATFORM_DEVICE ?= 1
+MALI_LICENSE_IS_GPL ?= 1
+
+# Set up our defines, which will be passed to gcc
+DEFINES = \
+	-DMALI_LICENSE_IS_GPL=$(MALI_LICENSE_IS_GPL) \
+	-DMALI_USE_UMP=$(MALI_USE_UMP) \
+	-DMALI_CUSTOMER_RELEASE=$(MALI_CUSTOMER_RELEASE) \
+	-DMALI_DEBUG=$(MALI_DEBUG) \
+	-DMALI_NO_MALI=$(MALI_NO_MALI) \
+	-DMALI_KERNEL_TEST_API=$(MALI_KERNEL_TEST_API) \
+	-DMALI_UNIT_TEST=$(MALI_UNIT_TEST) \
+	-DMALI_ERROR_INJECT_ON=$(MALI_ERROR_INJECT_ON) \
+	-DMALI_BACKEND_KERNEL=1 \
+	-DMALI_FAKE_PLATFORM_DEVICE=$(MALI_FAKE_PLATFORM_DEVICE) \
+	-DMALI_INFINITE_CACHE=0 \
+	-DMALI_UNCACHED=$(MALI_UNCACHED) \
+	-DMALI_MOCK_TEST=$(MALI_MOCK_TEST) \
+	-DMALI_KBASEP_MODEL=$(MALI_KBASEP_MODEL) \
+	-DMALI_COVERAGE=$(MALI_COVERAGE) \
+	-DMALI_KBASE_SRC_LINUX_PATH=$(src)/linux \
+	-DMALI_GATOR_SUPPORT=$(MALI_GATOR_SUPPORT) \
+	-DMALI_INSTRUMENTATION_LEVEL=$(MALI_INSTRUMENTATION_LEVEL) \
+	-DMALI_BASE_TRACK_MEMLEAK=$(MALI_BASE_TRACK_MEMLEAK) \
+	-DMALI_RELEASE_NAME=\"$(MALI_RELEASE_NAME)\"
+
+# Use our defines when compiling
+ccflags-y += $(DEFINES) -I$(KBASE_PATH) -I$(KBASE_SRC_PATH) -I$(KBASE_PLATFORM_PATH) -I$(OSK_PATH) -I$(UMP_PATH)
+
+SRC := \
+	common/mali_kbase_device.c \
+	common/mali_kbase_cache_policy.c \
+	common/mali_kbase_mem.c \
+	common/mali_kbase_mmu.c \
+	common/mali_kbase_jd.c \
+	common/mali_kbase_jm.c \
+	common/mali_kbase_cpuprops.c \
+	common/mali_kbase_gpuprops.c \
+	common/mali_kbase_js.c \
+	common/mali_kbase_js_affinity.c \
+	common/mali_kbase_js_ctx_attr.c \
+	common/mali_kbase_pm.c \
+	common/mali_kbase_event.c \
+	common/mali_kbase_context.c \
+	common/mali_kbase_pm.c \
+	common/mali_kbase_pm_driver.c \
+	common/mali_kbase_pm_metrics.c \
+	common/mali_kbase_pm_always_on.c \
+	common/mali_kbase_pm_demand.c \
+	common/mali_kbase_config.c \
+	common/mali_kbase_security.c \
+	common/mali_kbase_instr.c \
+	common/mali_kbase_softjobs.c \
+	common/mali_kbase_8401_workaround.c \
+	common/mali_kbase_ukk.c \
+	common/mali_kbase_hw.c \
+	linux/mali_kbase_ukk_os.c \
+	linux/mali_kbase_mem_linux.c \
+	linux/mali_kbase_core_linux.c \
+	linux/mali_kbase_config_linux.c \
+	../osk/src/linux/mali_osk_debug.c \
+	../osk/src/linux/mali_osk_workq.c \
+	../osk/src/common/mali_osk_bitops_cmn.c \
+	../osk/src/common/mali_osk_debug_cmn.c
+
+ifeq ($(MALI_LICENSE_IS_GPL), 1)
+	SRC += ../osk/src/linux/mali_osk_timers.c
+	# ensure GPL version of malisw gets pulled in
+	ccflags-y += -I$(KBASE_PATH)
+endif
+
+ifeq ($(CONFIG_MALI_NO_MALI),y)
+	# Dummy model
+	SRC += common/mali_kbase_model_dummy.c
+	SRC += linux/mali_kbase_model_linux.c
+	# HW error simulation
+	SRC += common/mali_kbase_model_error_generator.c
+endif
+
+ifeq ($(MALI_MOCK_TEST),1)
+	# Test functionality
+	SRC += ../tests/internal/src/mock/mali_kbase_pm_driver_mock.c
+endif
+
+ifeq ($(CONFIG_MALI_BASE_TRACK_MEMLEAK),y)
+	# Memory leak tracking
+	SRC += common/mali_kbase_mem_track.c \
+	       ../osk/src/common/mali_osk_failure.c \
+	       ../osk/src/common/mali_osk_mem_track.c
+endif
+
+# Use vsync metrics example using PL111 driver, if available
+ifeq ($(wildcard $(KBUILD_EXTMOD)/linux/mali_kbase_pm_metrics_linux.c),)
+	SRC += common/mali_kbase_pm_metrics_dummy.c
+else
+	SRC += linux/mali_kbase_pm_metrics_linux.c
+endif
+
+ifeq ($(CONFIG_MALI_PLATFORM_VEXPRESS),y)
+	SRC += linux/config/mali_kbase_config_vexpress.c \
+	       linux/config/mali_kbase_cpu_vexpress.c
+endif
+
+ifeq ($(CONFIG_MALI_PLATFORM_GOLDFISH),y)
+	SRC += linux/config/mali_kbase_config_goldfish.c
+endif
+
+ifeq ($(CONFIG_MALI_PLATFORM_PBX),y)
+	SRC += linux/config/mali_kbase_config_pbx.c
+endif
+
+ifeq ($(CONFIG_MALI_PLATFORM_THIRDPARTY),y)
+# remove begin and end quotes from the Kconfig string type
+        SRC += linux/config/tpip/mali_kbase_config_$(platform_name).c
+endif
+
+ifeq ($(CONFIG_MALI_SCHEDULING_POLICY_FCFS),y)
+	SRC += common/mali_kbase_js_policy_fcfs.c
+else
+	# Assume CFS if FCFS is not specified
+	SRC += common/mali_kbase_js_policy_cfs.c
+endif
+
+# Tell the Linux build system from which .o file to create the kernel module
+obj-$(CONFIG_MALI_T6XX) += mali_kbase.o
+
+# Tell the Linux build system to enable building of our .c files
+mali_kbase-y := $(SRC:.c=.o)

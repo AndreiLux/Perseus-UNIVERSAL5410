@@ -1,1 +1,1 @@
-obj-y			+= drm/ vga/ stub/ vithar/
+obj-y			+= drm/ vga/ stub/ vithar/ arm/
