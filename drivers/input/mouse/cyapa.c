@@ -1757,7 +1757,7 @@ static void cyapa_detect(struct cyapa *cyapa)
 
 
 #ifdef CONFIG_PM_RUNTIME
-static int cyapa_start_runtime(struct cyapa *cyapa)
+static void cyapa_start_runtime(struct cyapa *cyapa)
 {
 	struct device *dev = &cyapa->client->dev;
 
@@ -1770,7 +1770,7 @@ static int cyapa_start_runtime(struct cyapa *cyapa)
 	pm_runtime_set_autosuspend_delay(dev, AUTOSUSPEND_DELAY);
 }
 #else
-static int cyapa_start_runtime(struct cyapa *cyapa) {}
+static void cyapa_start_runtime(struct cyapa *cyapa) {}
 #endif /* CONFIG_PM_RUNTIME */
 
 static int __devinit cyapa_probe(struct i2c_client *client,
