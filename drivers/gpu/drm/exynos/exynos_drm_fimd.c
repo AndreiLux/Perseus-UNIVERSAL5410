@@ -805,7 +805,7 @@ static int iommu_init(struct platform_device *pdev)
 
 	platform_set_sysmmu(&pds->dev, &pdev->dev);
 	exynos_drm_common_mapping = s5p_create_iommu_mapping(&pdev->dev,
-					0x20000000, SZ_128M, 4,
+					0x20000000, SZ_256M, 4,
 					exynos_drm_common_mapping);
 
 	if (!exynos_drm_common_mapping) {

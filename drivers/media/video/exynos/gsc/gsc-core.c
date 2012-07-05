@@ -1127,7 +1127,7 @@ static int iommu_init(struct platform_device *pdev)
 
 	platform_set_sysmmu(&pds->dev, &pdev->dev);
 	if (!s5p_create_iommu_mapping(&pdev->dev, 0x20000000,
-						SZ_128M, 4, NULL)) {
+						SZ_256M, 4, NULL)) {
 		printk(KERN_ERR "IOMMU mapping failed\n");
 		return -1;
 	}
