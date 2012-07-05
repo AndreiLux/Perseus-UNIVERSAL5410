@@ -1798,8 +1798,10 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, cyapa);
 	cyapa->phys = kasprintf(GFP_KERNEL, "i2c-%d-%04x/input0",
 				client->adapter->nr, client->addr);
-	if (!cyapa->phys)
+	if (!cyapa->phys) {
+		ret = -ENOMEM;
 		goto err_mem_free;
+	}
 
 	cyapa->adapter_func = adapter_func;
 	/* i2c isn't supported, set smbus */
