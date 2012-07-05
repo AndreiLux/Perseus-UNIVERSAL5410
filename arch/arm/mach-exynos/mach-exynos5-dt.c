@@ -323,15 +323,6 @@ static void lcd_set_power(struct plat_lcd_data *pd,
 		/* Wait 10 ms between regulator on and PWM start per spec */
 		mdelay(10);
 	}
-
-	/*
-	 * Request lcd_bl_en GPIO for smdk5250_bl_notify().
-	 * TODO: Fix this so we are not at risk of requesting the GPIO
-	 * multiple times, this should be done with device tree, and
-	 * likely integrated into the plat-samsung/dev-backlight.c init.
-	 */
-	gpio_request_one(EXYNOS5_GPX3(0), GPIOF_OUT_INIT_LOW, "GPX3");
-	gpio_free(EXYNOS5_GPX3(0));
 }
 
 static int smdk5250_match_fb(struct plat_lcd_data *pd, struct fb_info *info)
@@ -761,6 +752,14 @@ static void __init exynos5250_dt_machine_init(void)
 			smsc911x_init(reg);
 		}
 	}
+
+	/*
+	 * Request lcd_bl_en GPIO for smdk5250_bl_notify().
+	 * TODO: Fix this so we are not at risk of requesting the GPIO
+	 * multiple times, this should be done with device tree, and
+	 * likely integrated into the plat-samsung/dev-backlight.c init.
+	 */
+	gpio_request_one(EXYNOS5_GPX3(0), GPIOF_OUT_INIT_LOW, "lcd_bl_en");
 
 	samsung_bl_set(&smdk5250_bl_gpio_info, &smdk5250_bl_data);
 
