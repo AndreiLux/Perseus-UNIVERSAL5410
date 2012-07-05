@@ -803,15 +803,6 @@ static void dispc_ovl_configure_burst_type(enum omap_plane plane,
 		REG_FLD_MOD(DISPC_OVL_ATTRIBUTES(plane), 0, 29, 29);
 }
 
-static void dispc_ovl_set_burst_type(enum omap_plane plane,
-		enum omap_burst_type burst_type)
-{
-	/* note: for DISPC_WB_ATTRIBUTES, it is bit 8, all others
-	 * are bit 29.. so update this when writeback support is added
-	 */
-	REG_FLD_MOD(DISPC_OVL_ATTRIBUTES(plane), burst_type, 29, 29);
-}
-
 void dispc_ovl_set_channel_out(enum omap_plane plane, enum omap_channel channel)
 {
 	int shift;
@@ -2219,10 +2210,6 @@ int dispc_ovl_setup(enum omap_plane plane, struct omap_overlay_info *oi,
 	dispc_ovl_set_color_mode(plane, oi->color_mode);
 
 	dispc_ovl_configure_burst_type(plane, oi->rotation_type);
-
-	if (cpu_is_omap44xx()) {
-		dispc_ovl_set_burst_type(plane, oi->burst_type);
-	}
 
 	dispc_ovl_set_ba0(plane, oi->paddr + offset0);
 	dispc_ovl_set_ba1(plane, oi->paddr + offset1);

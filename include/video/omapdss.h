@@ -99,11 +99,6 @@ enum omap_color_mode {
 	OMAP_DSS_COLOR_XRGB16_1555	= 1 << 18, /* xRGB16 - 1555 */
 };
 
-enum omap_burst_type {
-	OMAP_DSS_BURST_INC	= 0,
-	OMAP_DSS_BURST_2D	= 1,
-};
-
 enum omap_lcd_display_type {
 	OMAP_DSS_LCD_DISPLAY_STN,
 	OMAP_DSS_LCD_DISPLAY_TFT,
@@ -433,8 +428,6 @@ struct omap_overlay_info {
 	u8 global_alpha;
 	u8 pre_mult_alpha;
 	u8 zorder;
-
-	enum omap_burst_type burst_type;
 };
 
 struct omap_overlay {
