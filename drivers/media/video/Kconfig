@@ -570,7 +570,7 @@ config VIDEO_NOON010PC30
 
 config VIDEO_S5K4E5
         tristate "S5K4E5 sensor support"
-	depends on VIDEO_V4L2 && ((VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS) && VIDEO_EXYNOS_FIMC_IS) || VIDEO_EXYNOS5_FIMC_IS
+	depends on VIDEO_V4L2 && ((VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS) && VIDEO_EXYNOS_FIMC_IS) || VIDEO_EXYNOS5_FIMC_IS || VIDEO_EXYNOS5_FIMC_IS2
         ---help---
           This driver supports S5K4E5 sensor.
 choice
@@ -579,7 +579,7 @@ prompt "MIPI Camera port for S5K4E5"
 default S5K4E5_CSI_C
 config S5K4E5_CSI_C
 	bool "CSI Camera A port"
-	depends on (VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS || VIDEO_EXYNOS5_FIMC_IS)
+	depends on (VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS || VIDEO_EXYNOS5_FIMC_IS || VIDEO_EXYNOS5_FIMC_IS2)
 	help
 	  This enables CSI A port for 4E5 sensor
 	  CSI is camera sensor interface
@@ -588,7 +588,7 @@ config S5K4E5_CSI_C
 
 config S5K4E5_CSI_D
 	bool "CSI Camera B port"
-	depends on (VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS || VIDEO_EXYNOS5_FIMC_IS)
+	depends on (VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS || VIDEO_EXYNOS5_FIMC_IS || VIDEO_EXYNOS5_FIMC_IS2)
 	help
 	  This enables CSI B port for 4E5 sensor
 	  CSI is camera sensor interface
@@ -597,12 +597,12 @@ config S5K4E5_CSI_D
 endchoice
 
 choice
-depends on (VIDEO_S5K4E5 && VIDEO_EXYNOS5_FIMC_IS)
+depends on (VIDEO_S5K4E5 && (VIDEO_EXYNOS5_FIMC_IS || VIDEO_EXYNOS5_FIMC_IS2))
 prompt "Camera position for S5K4E5"
 default S5K4E5_POSITION_REAR
 config S5K4E5_POSITION_FRONT
 	bool "front camera"
-	depends on VIDEO_EXYNOS5_FIMC_IS
+	depends on VIDEO_EXYNOS5_FIMC_IS || VIDEO_EXYNOS5_FIMC_IS2
 	help
 	  This set as front camera
 	  This set as front camera
@@ -611,7 +611,7 @@ config S5K4E5_POSITION_FRONT
 
 config S5K4E5_POSITION_REAR
 	bool "rear camera"
-	depends on VIDEO_EXYNOS5_FIMC_IS
+	depends on VIDEO_EXYNOS5_FIMC_IS || VIDEO_EXYNOS5_FIMC_IS2
 	help
 	  This set as rear camera
 	  This set as rear camera
@@ -621,7 +621,7 @@ endchoice
 
 config VIDEO_S5K6A3
 	tristate "S5K6A3 sensor support"
-	depends on VIDEO_V4L2 && ((VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS) && VIDEO_EXYNOS_FIMC_IS) || VIDEO_EXYNOS5_FIMC_IS
+	depends on VIDEO_V4L2 && ((VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS) && VIDEO_EXYNOS_FIMC_IS) || VIDEO_EXYNOS5_FIMC_IS || VIDEO_EXYNOS5_FIMC_IS2
 	help
 	  This driver supports S5K6A3 sensor.
 choice
@@ -630,7 +630,7 @@ prompt "MIPI Camera port for S5K6A3"
 default S5K6A3_CSI_D
 config S5K6A3_CSI_C
 	bool "CSI Camera A port"
-	depends on (VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS || VIDEO_EXYNOS5_FIMC_IS)
+	depends on (VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS || VIDEO_EXYNOS5_FIMC_IS || VIDEO_EXYNOS5_FIMC_IS2)
 	help
 	  This enables CSI A port for 6A3 sensor
 	  CSI is camera sensor interface
@@ -638,7 +638,7 @@ config S5K6A3_CSI_C
 	  This is only for internal ISP, FIMC-IS
 config S5K6A3_CSI_D
 	bool "CSI Camera B port"
-	depends on (VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS || VIDEO_EXYNOS5_FIMC_IS)
+	depends on (VIDEO_FIMC_MIPI || VIDEO_S5P_MIPI_CSIS || VIDEO_EXYNOS5_FIMC_IS || VIDEO_EXYNOS5_FIMC_IS2)
 	help
 	  This enables CSI B port for 6A3 sensor
 	  CSI is camera sensor interface
@@ -647,13 +647,13 @@ config S5K6A3_CSI_D
 endchoice
 
 choice
-depends on (VIDEO_S5K6A3 && VIDEO_EXYNOS5_FIMC_IS)
+depends on (VIDEO_S5K4E5 && (VIDEO_EXYNOS5_FIMC_IS || VIDEO_EXYNOS5_FIMC_IS2))
 prompt "Camera position for S5K6A3"
 default S5K6A3_POSITION_FRONT
 
 config S5K6A3_POSITION_FRONT
 	bool "front camera"
-	depends on VIDEO_EXYNOS5_FIMC_IS
+	depends on VIDEO_EXYNOS5_FIMC_IS || VIDEO_EXYNOS5_FIMC_IS2
 	help
 	  This set as front camera
 	  This set as front camera
@@ -662,7 +662,7 @@ config S5K6A3_POSITION_FRONT
 
 config S5K6A3_POSITION_REAR
 	bool "rear camera"
-	depends on VIDEO_EXYNOS5_FIMC_IS
+	depends on VIDEO_EXYNOS5_FIMC_IS || VIDEO_EXYNOS5_FIMC_IS2
 	help
 	  This set as rear camera
 	  This set as rear camera
