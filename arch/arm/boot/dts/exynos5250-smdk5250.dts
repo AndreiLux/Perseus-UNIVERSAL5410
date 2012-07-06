@@ -55,7 +55,7 @@
 			interrupts = <26 0>;
 			reg = <0x9>;
 
-			max77686,buck_ramp_delay = <2>;		/* default */
+			max77686,buck_ramp_delay = <1>;		/* default */
 
 			voltage-regulators {
 				ldo11_reg: LDO11 {
