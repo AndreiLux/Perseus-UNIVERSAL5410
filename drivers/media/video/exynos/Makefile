@@ -8,5 +8,6 @@ obj-$(CONFIG_VIDEO_EXYNOS_MFC)	+= mfc/
 obj-$(CONFIG_VIDEO_EXYNOS_TV)		+= tv/
 obj-$(CONFIG_VIDEO_EXYNOS_ROTATOR)	+= rotator/
 obj-$(CONFIG_VIDEO_EXYNOS5_FIMC_IS)	+= fimc-is-mc/
+obj-$(CONFIG_VIDEO_EXYNOS5_FIMC_IS2)	+= fimc-is-mc2/
 
 EXTRA_CLAGS += -Idrivers/media/video
