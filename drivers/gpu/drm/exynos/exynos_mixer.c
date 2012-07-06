@@ -601,6 +601,7 @@ static void mixer_graph_buffer(struct mixer_context *ctx, int win)
 	mixer_cfg_scan(ctx, mode_height);
 	mixer_cfg_rgb_fmt(ctx, mode_height);
 	mixer_cfg_layer(ctx, win, true);
+	mixer_cfg_layer(ctx, MIXER_DEFAULT_WIN, true);
 	mixer_run(ctx);
 
 	mixer_vsync_set_update(ctx, true);
@@ -755,8 +756,10 @@ static void mixer_win_disable(void *ctx, int zpos)
 
 	spin_unlock_irqrestore(&res->reg_slock, flags);
 
-	mixer_win_reset(ctx);
-	mixer_enable_vblank(ctx, 0);
+	if (win == MIXER_DEFAULT_WIN) {
+		mixer_win_reset(ctx);
+		mixer_enable_vblank(ctx, 0);
+	}
 }
 
 static struct exynos_mixer_ops mixer_ops = {
@@ -826,16 +829,10 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 		if (ctx->event_flags & MXR_EVENT_VSYNC) {
 			DRM_DEBUG_KMS("ctx->event_flags & MXR_EVENT_VSYNC");
 
-			mixer_reg_write(res, MXR_GRAPHIC_WH(0), 0);
+
 			mixer_reg_write(res, MXR_GRAPHIC_WH(1), 0);
-
-			mixer_reg_write(res, MXR_GRAPHIC_SPAN(0), 0);
 			mixer_reg_write(res, MXR_GRAPHIC_SPAN(1), 0);
-
-			mixer_reg_write(res, MXR_GRAPHIC_SXY(0), 0);
 			mixer_reg_write(res, MXR_GRAPHIC_SXY(1), 0);
-
-			mixer_reg_write(res, MXR_GRAPHIC_DXY(0), 0);
 			mixer_reg_write(res, MXR_GRAPHIC_DXY(1), 0);
 
 			ctx->event_flags &= ~MXR_EVENT_VSYNC;

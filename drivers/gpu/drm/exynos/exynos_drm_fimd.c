@@ -82,11 +82,12 @@ struct fimd_context {
 	struct resource			*regs_res;
 	void __iomem			*regs;
 	struct fimd_win_data		win_data[WINDOWS_NR];
-	unsigned int			clkdiv;
+	unsigned int			clkdiv[MAX_NR_PANELS];
 	unsigned int			default_win;
 	unsigned long			irq_flags;
 	u32				vidcon0;
 	u32				vidcon1;
+	int				idx;
 	bool				suspended;
 	struct mutex			lock;
 
@@ -113,11 +114,25 @@ static void *fimd_get_panel(struct device *dev)
 
 static int fimd_check_timing(struct device *dev, void *timing)
 {
+	struct fimd_context *ctx = get_fimd_context(dev);
+	struct fb_videomode *check_timing = timing;
+	int i;
+
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
-	/* TODO. */
+	for (i = 0;i< MAX_NR_PANELS;i++) {
+		if (ctx->panel[i].timing.xres == -1 &&
+			 ctx->panel[i].timing.yres == -1)
+			 break;
 
-	return 0;
+		if (ctx->panel[i].timing.xres == check_timing->xres &&
+			 ctx->panel[i].timing.yres == check_timing->yres &&
+			ctx->panel[i].timing.refresh == check_timing->refresh
+			)
+			return 0;
+	}
+
+	return -EINVAL;
 }
 
 static int fimd_display_power_on(struct device *dev, int mode)
@@ -142,6 +157,11 @@ static void fimd_dpms(struct device *subdrv_dev, int mode)
 	struct fimd_context *ctx = get_fimd_context(subdrv_dev);
 
 	DRM_DEBUG_KMS("%s, %d\n", __FILE__, mode);
+	/* TODO:
+	* For Mode Switching, the FIMD need not be turned off, need
+	* to find another way to DPMS off FIMD
+	*/
+	return;
 
 	mutex_lock(&ctx->lock);
 
@@ -194,7 +214,7 @@ static void fimd_apply(struct device *subdrv_dev)
 static void fimd_commit(struct device *dev)
 {
 	struct fimd_context *ctx = get_fimd_context(dev);
-	struct exynos_drm_panel_info *panel = ctx->panel;
+	struct exynos_drm_panel_info *panel = &ctx->panel[ctx->idx];
 	struct fb_videomode *timing = &panel->timing;
 	u32 val;
 
@@ -227,8 +247,8 @@ static void fimd_commit(struct device *dev)
 	val = ctx->vidcon0;
 	val &= ~(VIDCON0_CLKVAL_F_MASK | VIDCON0_CLKDIR);
 
-	if (ctx->clkdiv > 1)
-		val |= VIDCON0_CLKVAL_F(ctx->clkdiv - 1) | VIDCON0_CLKDIR;
+	if (ctx->clkdiv[ctx->idx] > 1)
+		val |= VIDCON0_CLKVAL_F(ctx->clkdiv[ctx->idx] - 1) | VIDCON0_CLKDIR;
 	else
 		val &= ~VIDCON0_CLKDIR;	/* 1:1 clock */
 
@@ -316,6 +336,20 @@ static void fimd_win_mode_set(struct device *dev,
 
 	if (win < 0 || win > WINDOWS_NR)
 		return;
+
+	if(win == ctx->default_win) {
+		for(ctx->idx = 0;ctx->idx < MAX_NR_PANELS;ctx->idx++) {
+			if (ctx->panel[ctx->idx].timing.xres == -1 &&
+				ctx->panel[ctx->idx].timing.yres == -1) {
+					DRM_ERROR("Invalid panel parameters");
+					ctx->idx = 0; /* Reset to first panel index*/
+					break;
+				}
+			if (ctx->panel[ctx->idx].timing.xres == overlay->fb_width &&
+				ctx->panel[ctx->idx].timing.yres == overlay->fb_height)
+					break;
+		}
+	}
 
 	offset = overlay->fb_x * (overlay->bpp >> 3);
 	offset += overlay->fb_y * overlay->fb_pitch;
@@ -562,6 +596,8 @@ static void fimd_win_disable(struct device *dev, int zpos)
 	u32 val;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
+	if (ctx->suspended)
+		return;
 
 	if (win == DEFAULT_ZPOS)
 		win = ctx->default_win;
@@ -828,7 +864,7 @@ static int iommu_init(struct platform_device *pdev)
 
 	platform_set_sysmmu(&pds->dev, &pdev->dev);
 	exynos_drm_common_mapping = s5p_create_iommu_mapping(&pdev->dev,
-					0x20000000, SZ_256M, 4,
+					0x20000000, SZ_128M, 4,
 					exynos_drm_common_mapping);
 
 	if (!exynos_drm_common_mapping) {
@@ -848,7 +884,7 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 	struct exynos_drm_panel_info *panel;
 	struct resource *res;
 	struct clk *clk_parent;
-	int win;
+	int win,i;
 	int ret = -EINVAL;
 
 #ifdef CONFIG_EXYNOS_IOMMU
@@ -866,7 +902,7 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	panel = &pdata->panel;
+	panel = pdata->panel;
 	if (!panel) {
 		dev_err(dev, "panel is null.\n");
 		return -EINVAL;
@@ -963,11 +999,15 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 	pm_runtime_enable(dev);
 	pm_runtime_get_sync(dev);
 
-	ctx->clkdiv = fimd_calc_clkdiv(ctx, &panel->timing);
-	panel->timing.pixclock = clk_get_rate(ctx->lcd_clk) / ctx->clkdiv;
+	for (i = 0;i < MAX_NR_PANELS;i++) {
+		if(panel[i].timing.xres == -1 && panel[i].timing.yres == -1)
+			break;
 
-	DRM_DEBUG_KMS("pixel clock = %d, clkdiv = %d\n",
-			panel->timing.pixclock, ctx->clkdiv);
+		ctx->clkdiv[i] = fimd_calc_clkdiv(ctx, &panel[i].timing);
+		panel[i].timing.pixclock = clk_get_rate(ctx->lcd_clk) / ctx->clkdiv[i];
+		DRM_DEBUG_KMS("pixel clock = %d, clkdiv = %d\n for panel[%d]",
+				panel[i].timing.pixclock, ctx->clkdiv[i],i);
+	}
 
 	for (win = 0; win < WINDOWS_NR; win++)
 		fimd_clear_win(ctx, win);

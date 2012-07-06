@@ -122,9 +122,6 @@ static int exynos_drm_connector_get_modes(struct drm_connector *connector)
 	 * if get_edid() exists then get_edid() callback of hdmi side
 	 * is called to get edid data through i2c interface else
 	 * get timing from the FIMD driver(display controller).
-	 *
-	 * P.S. in case of lcd panel, count is always 1 if success
-	 * because lcd panel has only one mode.
 	 */
 	if (display_ops->get_edid) {
 		int ret;
@@ -151,25 +148,31 @@ static int exynos_drm_connector_get_modes(struct drm_connector *connector)
 		kfree(connector->display_info.raw_edid);
 		connector->display_info.raw_edid = edid;
 	} else {
-		struct drm_display_mode *mode = drm_mode_create(connector->dev);
+		struct drm_display_mode *mode;
 		struct exynos_drm_panel_info *panel;
 
 		if (display_ops->get_panel)
 			panel = display_ops->get_panel(manager->dev);
-		else {
-			drm_mode_destroy(connector->dev, mode);
+		else
 			return 0;
+
+		for (count = 0;count < MAX_NR_PANELS;count++) {
+			if(panel[count].timing.xres == -1 && panel[count].timing.yres == -1) {
+				DRM_DEBUG_KMS("panel %d count%d\n",panel,count);
+				break;
+			}
+			mode = drm_mode_create(connector->dev);
+			/* Only the first panel is preferred mode */
+			mode->type = count ? DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_USERDEF:
+				DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
+
+			convert_to_display_mode(mode, &panel[count]);
+			connector->display_info.width_mm = mode->width_mm;
+			connector->display_info.height_mm = mode->height_mm;
+			drm_mode_set_name(mode);
+			drm_mode_probed_add(connector, mode);
 		}
 
-		convert_to_display_mode(mode, panel);
-		connector->display_info.width_mm = mode->width_mm;
-		connector->display_info.height_mm = mode->height_mm;
-
-		mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-		drm_mode_set_name(mode);
-		drm_mode_probed_add(connector, mode);
-
-		count = 1;
 	}
 
 	return count;
