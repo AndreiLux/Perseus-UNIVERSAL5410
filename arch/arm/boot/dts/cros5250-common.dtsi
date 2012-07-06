@@ -228,6 +228,11 @@
 			interrupt-parent = <&wakeup_eint>;
                 };
 
+		battery: sbs-battery@b {
+			compatible = "sbs,sbs-battery";
+			reg = <0xb>;
+			sbs,poll-retry-count = <1>;
+		};
 		// i2c4 hsic hub @0x8, eeprom @0x50, batt @0xb
 	};
 
