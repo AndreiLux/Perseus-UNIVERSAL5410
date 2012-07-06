@@ -297,15 +297,12 @@ static void exynos_dp_link_start(struct exynos_dp_device *dp)
 	/* Set RX training pattern */
 	buf[0] = DPCD_SCRAMBLING_DISABLED |
 		 DPCD_TRAINING_PATTERN_1;
-	exynos_dp_write_byte_to_dpcd(dp,
-		DPCD_ADDR_TRAINING_PATTERN_SET, buf[0]);
-
-	for (lane = 0; lane < lane_count; lane++)
+	for (lane = 1; lane <= lane_count; lane++)
 		buf[lane] = DPCD_PRE_EMPHASIS_PATTERN2_LEVEL0 |
 			    DPCD_VOLTAGE_SWING_PATTERN1_LEVEL0;
 	exynos_dp_write_bytes_to_dpcd(dp,
 		DPCD_ADDR_TRAINING_PATTERN_SET,
-		lane_count, buf);
+		lane_count + 1, buf);
 }
 
 static unsigned char exynos_dp_get_lane_status(u8 link_status[6], int lane)
@@ -489,19 +486,19 @@ static int exynos_dp_process_clock_recovery(struct exynos_dp_device *dp)
 				6, link_status);
 	lane_count = dp->link_train.lane_count;
 
+	adjust_request[0] = link_status[4];
+	adjust_request[1] = link_status[5];
+
 	if (exynos_dp_clock_recovery_ok(link_status, lane_count) == 0) {
 		/* set training pattern 2 for EQ */
 		exynos_dp_set_training_pattern(dp, TRAINING_PTN2);
-
-		adjust_request[0] = link_status[4];
-		adjust_request[1] = link_status[5];
 
 		exynos_dp_get_adjust_train(dp, adjust_request);
 
 		buf[0] = DPCD_SCRAMBLING_DISABLED |
 			 DPCD_TRAINING_PATTERN_2;
 		exynos_dp_write_byte_to_dpcd(dp,
-			DPCD_ADDR_TRAINING_LANE0_SET,
+			DPCD_ADDR_TRAINING_PATTERN_SET,
 			buf[0]);
 
 		for (lane = 0; lane < lane_count; lane++) {
@@ -515,16 +512,6 @@ static int exynos_dp_process_clock_recovery(struct exynos_dp_device *dp)
 		}
 		dp->link_train.lt_state = EQUALIZER_TRAINING;
 	} else {
-		exynos_dp_read_byte_from_dpcd(dp,
-			DPCD_ADDR_ADJUST_REQUEST_LANE0_1,
-			&data);
-		adjust_request[0] = data;
-
-		exynos_dp_read_byte_from_dpcd(dp,
-			DPCD_ADDR_ADJUST_REQUEST_LANE2_3,
-			&data);
-		adjust_request[1] = data;
-
 		for (lane = 0; lane < lane_count; lane++) {
 			training_lane = exynos_dp_get_lane_link_training(
 							dp, lane);
@@ -695,6 +682,11 @@ static int exynos_dp_sw_link_training(struct exynos_dp_device *dp)
 	/* Turn off unnecessary lane */
 	if (dp->link_train.lane_count == 1)
 		exynos_dp_set_analog_power_down(dp, CH1_BLOCK, 1);
+
+	if (dp->link_train.lane_count <= 2) {
+		exynos_dp_set_analog_power_down(dp, CH2_BLOCK, 1);
+		exynos_dp_set_analog_power_down(dp, CH3_BLOCK, 1);
+	}
 
 	training_finished = 0;
 
