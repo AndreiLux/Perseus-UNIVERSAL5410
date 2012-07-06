@@ -34,6 +34,7 @@
 #define __LINUX_RCUPDATE_H
 
 #include <linux/types.h>
+#include <linux/rcu_types.h>
 #include <linux/cache.h>
 #include <linux/spinlock.h>
 #include <linux/threads.h>

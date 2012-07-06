@@ -77,10 +77,11 @@ struct  seminfo {
 #define SEMUSZ  20		/* sizeof struct sem_undo */
 
 #ifdef __KERNEL__
+
+
 #include <linux/atomic.h>
 #include <linux/rcupdate.h>
 #include <linux/cache.h>
-
 struct task_struct;
 
 /* One sem_array data structure for each set of semaphores in the system. */
