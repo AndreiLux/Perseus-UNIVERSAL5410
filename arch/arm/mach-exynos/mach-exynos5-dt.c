@@ -520,7 +520,7 @@ static struct video_info smdk5250_dp_config = {
 
 static struct exynos_dp_platdata smdk5250_dp_data = {
 	.video_info     = &smdk5250_dp_config,
-	.training_type  = HW_LINK_TRAINING,
+	.training_type  = SW_LINK_TRAINING,
 	.phy_init       = s5p_dp_phy_init,
 	.phy_exit       = s5p_dp_phy_exit,
 };
