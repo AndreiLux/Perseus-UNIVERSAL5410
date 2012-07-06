@@ -14,12 +14,16 @@ struct mmc_blk_request {
 
 enum mmc_packed_cmd {
 	MMC_PACKED_NONE = 0,
+	MMC_PACKED_WR_HDR,
 	MMC_PACKED_WRITE,
+	MMC_PACKED_READ,
 };
 
 enum mmc_packed_sg_flag {
 	MMC_PACKED_NONE_SG = 0,
+	MMC_PACKED_HDR_SG,
 	MMC_PACKED_WR_SG,
+	MMC_PACKED_RD_SG,
 };
 
 struct mmc_queue_req {
@@ -48,9 +52,10 @@ struct mmc_queue {
 	int			(*issue_fn)(struct mmc_queue *, struct request *);
 	void			*data;
 	struct request_queue	*queue;
-	struct mmc_queue_req	mqrq[2];
+	struct mmc_queue_req	mqrq[3];
 	struct mmc_queue_req	*mqrq_cur;
 	struct mmc_queue_req	*mqrq_prev;
+	struct mmc_queue_req	*mqrq_hdr;
 };
 
 extern int mmc_init_queue(struct mmc_queue *, struct mmc_card *, spinlock_t *,
