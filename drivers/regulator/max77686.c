@@ -514,7 +514,7 @@ static int max77686_pmic_dt_parse_pdata(struct max77686_dev *iodev,
 		rdata++;
 	}
 
-	if (of_property_read_u32(pmic_np,
+	if (!of_property_read_u32(pmic_np,
 		"max77686,buck_ramp_delay", &i))
 		pdata->ramp_delay = i & 0xff;
 
