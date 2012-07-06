@@ -26,6 +26,8 @@
 #include <mach/sysmmu.h>
 #include <mach/regs-clock.h>
 
+#include <media/exynos_fimc_is.h>
+
 #include "common.h"
 
 #ifdef CONFIG_PM_SLEEP
@@ -862,12 +864,12 @@ static struct clk exynos5_init_clocks_off[] = {
 		.ctrlbit	= (1 << 0),
 	}, {
 		.name		= "isp0",
-		.devname	= "exynos5-fimc-is",
+		.devname	= FIMC_IS_MODULE_NAME,
 		.enable		= exynos5_clk_ip_isp0_ctrl,
 		.ctrlbit	= (0xDFF000FF << 0),
 	}, {
 		.name		= "isp1",
-		.devname	= "exynos5-fimc-is",
+		.devname	= FIMC_IS_MODULE_NAME,
 		.enable		= exynos5_clk_ip_isp1_ctrl,
 		.ctrlbit	= (0x3007 << 0),
 	},{

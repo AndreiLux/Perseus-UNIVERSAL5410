@@ -17,60 +17,80 @@
 #include <linux/err.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
-#include <plat/clock.h>
-#include <plat/gpio-cfg.h>
+#include <linux/regulator/consumer.h>
+#include <linux/delay.h>
 #include <mach/regs-gpio.h>
-#include <plat/map-s5p.h>
-#include <plat/cpu.h>
 #include <mach/map.h>
 #include <mach/regs-clock.h>
+#include <plat/clock.h>
+#include <plat/gpio-cfg.h>
+#include <plat/map-s5p.h>
+#include <plat/cpu.h>
 #include <media/exynos_fimc_is.h>
-#include <linux/regulator/consumer.h>
+
+
 
 struct platform_device; /* don't need the contents */
 
 /*------------------------------------------------------*/
 /*		Exynos5 series - FIMC-IS		*/
 /*------------------------------------------------------*/
-void exynos5_fimc_is_cfg_gpio(struct platform_device *pdev)
+static int cfg_gpio(struct gpio_set *gpio, int value)
 {
 	int ret;
-	int i;
-	struct exynos5_platform_fimc_is *dev = pdev->dev.platform_data;
-	struct gpio_set *gpio;
 
-	for (i = 0; i < FIMC_IS_MAX_GPIO_NUM; i++) {
-		if (!dev->gpio_info->gpio[i].pin)
-			continue;
-
-		gpio = &dev->gpio_info->gpio[i];
-
-		ret = gpio_request(gpio->pin, gpio->name);
-		if (ret)
-			printk(KERN_ERR "Request GPIO error(%s)\n", gpio->name);
-
-		switch (gpio->act) {
-		case GPIO_PULL_NONE:
-			s3c_gpio_cfgpin(gpio->pin, gpio->value);
-			s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_NONE);
-			break;
-		case GPIO_OUTPUT:
-			s3c_gpio_cfgpin(gpio->pin, S3C_GPIO_OUTPUT);
-			s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_NONE);
-			gpio_set_value(gpio->pin, gpio->value);
-			break;
-		case GPIO_RESET:
-			s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_NONE);
-			gpio_direction_output(gpio->pin, 0);
-			gpio_direction_output(gpio->pin, 1);
-			break;
-		default:
-			printk(KERN_ERR "unknown act for gpio\n");
-		}
-		gpio_free(gpio->pin);
+	printk(KERN_DEBUG "gpio.pin:%d gpio.name:%s\n", gpio->pin, gpio->name);
+	ret = gpio_request(gpio->pin, gpio->name);
+	if (ret) {
+		printk(KERN_ERR "Request GPIO error(%s)\n", gpio->name);
+		return -1;
 	}
+
+	switch (gpio->act) {
+	case GPIO_PULL_NONE:
+		s3c_gpio_cfgpin(gpio->pin, value);
+		s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_NONE);
+		break;
+	case GPIO_OUTPUT:
+		s3c_gpio_cfgpin(gpio->pin, S3C_GPIO_OUTPUT);
+		s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_NONE);
+		gpio_set_value(gpio->pin, value);
+		break;
+	case GPIO_RESET:
+		s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_NONE);
+		gpio_direction_output(gpio->pin, value);
+		break;
+	default:
+		printk(KERN_ERR "unknown act for gpio\n");
+		return -1;
+	}
+	gpio_free(gpio->pin);
+
+	return 0;
+
 }
 
+static int power_control_sensor(char *regulator_name, int on)
+{
+	struct regulator *regulator = NULL;
+
+	printk(KERN_DEBUG "regulator:%s on:%d\n", regulator_name, on);
+	regulator = regulator_get(NULL, regulator_name);
+	if (IS_ERR(regulator)) {
+		printk(KERN_ERR "%s : regulator_get fail\n", __func__);
+		return PTR_ERR(regulator);
+	}
+
+	if (on)
+		regulator_enable(regulator);
+	else{
+		if (regulator_is_enabled(regulator))
+			regulator_disable(regulator);
+	}
+
+	regulator_put(regulator);
+	return 0;
+}
 
 int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 {
@@ -106,8 +126,8 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 	if (IS_ERR(aclk_mcuisp_div1))
 		return PTR_ERR(aclk_mcuisp_div1);
 
-	clk_set_rate(aclk_mcuisp_div0, 400 * 1000000);
-	clk_set_rate(aclk_mcuisp_div1, 400 * 1000000);
+	clk_set_rate(aclk_mcuisp_div0, 200 * 1000000);
+	clk_set_rate(aclk_mcuisp_div1, 100 * 1000000);
 
 	mcu_isp_400 = clk_get_rate(aclk_mcuisp);
 	printk(KERN_DEBUG "mcu_isp_400 : %ld\n", mcu_isp_400);
@@ -138,6 +158,8 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 
 	clk_set_rate(aclk_266_div0, 134 * 1000000);
 	clk_set_rate(aclk_266_div1, 68 * 1000000);
+	/* FIXME */
+	__raw_writel(0x00000001, EXYNOS5_CLKDIV_ISP2);
 
 	isp_266 = clk_get_rate(aclk_266);
 	printk(KERN_DEBUG "isp_266 : %ld\n", isp_266);
@@ -165,6 +187,7 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 	if (IS_ERR(sclk_uart_isp_div))
 		return PTR_ERR(sclk_uart_isp_div);
 
+	clk_set_parent(sclk_uart_isp, clk_get(&pdev->dev, "mout_mpll_user"));
 	clk_set_parent(sclk_uart_isp_div, sclk_uart_isp);
 	clk_set_rate(sclk_uart_isp_div, 50 * 1000000);
 
@@ -242,13 +265,16 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 	return 0;
 }
 
-int exynos5_fimc_is_clk_on(struct platform_device *pdev)
+int exynos5_fimc_is_clk_on(struct platform_device *pdev, int sensor_id)
 {
 	struct clk *gsc_ctrl = NULL;
 	struct clk *isp_ctrl = NULL;
 	struct clk *mipi_ctrl = NULL;
 	struct clk *cam_if_top = NULL;
-	struct clk *cam_A_clk = NULL;
+	struct clk *cam_clk = NULL;
+	struct exynos5_platform_fimc_is *dev = pdev->dev.platform_data;
+	struct exynos5_fimc_is_sensor_info *sensor =
+						dev->sensor_info[sensor_id];
 
 	gsc_ctrl = clk_get(&pdev->dev, "gscl");
 	if (IS_ERR(gsc_ctrl))
@@ -271,20 +297,6 @@ int exynos5_fimc_is_clk_on(struct platform_device *pdev)
 	clk_enable(isp_ctrl);
 	clk_put(isp_ctrl);
 
-	mipi_ctrl = clk_get(&pdev->dev, "gscl_wrap0");
-	if (IS_ERR(mipi_ctrl))
-		return PTR_ERR(mipi_ctrl);
-
-	clk_enable(mipi_ctrl);
-	clk_put(mipi_ctrl);
-
-	mipi_ctrl = clk_get(&pdev->dev, "gscl_wrap1");
-	if (IS_ERR(mipi_ctrl))
-		return PTR_ERR(mipi_ctrl);
-
-	clk_enable(mipi_ctrl);
-	clk_put(mipi_ctrl);
-
 	cam_if_top = clk_get(&pdev->dev, "camif_top");
 	if (IS_ERR(cam_if_top))
 		return PTR_ERR(cam_if_top);
@@ -292,37 +304,90 @@ int exynos5_fimc_is_clk_on(struct platform_device *pdev)
 	clk_enable(cam_if_top);
 	clk_put(cam_if_top);
 
-	cam_A_clk = clk_get(&pdev->dev, "sclk_cam0");
-	if (IS_ERR(cam_A_clk))
-		return PTR_ERR(cam_A_clk);
+	if (sensor->csi_id == CSI_ID_A) {
+		mipi_ctrl = clk_get(&pdev->dev, "gscl_wrap0");
+		if (IS_ERR(mipi_ctrl))
+			return PTR_ERR(mipi_ctrl);
 
-	clk_enable(cam_A_clk);
-	clk_put(cam_A_clk);
+		clk_enable(mipi_ctrl);
+		clk_put(mipi_ctrl);
 
-	cam_A_clk = clk_get(&pdev->dev, "sclk_cam1");
-	if (IS_ERR(cam_A_clk))
-		return PTR_ERR(cam_A_clk);
+		cam_clk = clk_get(&pdev->dev, "sclk_cam0");
+		if (IS_ERR(cam_clk))
+			return PTR_ERR(cam_clk);
 
-	clk_enable(cam_A_clk);
-	clk_put(cam_A_clk);
+		clk_enable(cam_clk);
+		clk_put(cam_clk);
+	}
+
+	if (sensor->csi_id == CSI_ID_B) {
+		mipi_ctrl = clk_get(&pdev->dev, "gscl_wrap1");
+		if (IS_ERR(mipi_ctrl))
+			return PTR_ERR(mipi_ctrl);
+
+		clk_enable(mipi_ctrl);
+		clk_put(mipi_ctrl);
+
+		cam_clk = clk_get(&pdev->dev, "sclk_cam1");
+		if (IS_ERR(cam_clk))
+			return PTR_ERR(cam_clk);
+
+		clk_enable(cam_clk);
+		clk_put(cam_clk);
+	}
 
 	return 0;
 }
 
-int exynos5_fimc_is_clk_off(struct platform_device *pdev)
+int exynos5_fimc_is_clk_off(struct platform_device *pdev, int sensor_id)
 {
 	struct clk *gsc_ctrl = NULL;
 	struct clk *isp_ctrl = NULL;
 	struct clk *mipi_ctrl = NULL;
 	struct clk *cam_if_top = NULL;
-	struct clk *cam_A_clk = NULL;
+	struct clk *cam_clk = NULL;
+	struct exynos5_platform_fimc_is *dev = pdev->dev.platform_data;
+	struct exynos5_fimc_is_sensor_info *sensor =
+						dev->sensor_info[sensor_id];
 
-	gsc_ctrl = clk_get(&pdev->dev, "gscl");
-	if (IS_ERR(gsc_ctrl))
-		return PTR_ERR(gsc_ctrl);
+	if (sensor->csi_id == CSI_ID_A) {
+		cam_clk = clk_get(&pdev->dev, "sclk_cam0");
+		if (IS_ERR(cam_clk))
+			return PTR_ERR(cam_clk);
 
-	clk_disable(gsc_ctrl);
-	clk_put(gsc_ctrl);
+		clk_disable(cam_clk);
+		clk_put(cam_clk);
+
+		mipi_ctrl = clk_get(&pdev->dev, "gscl_wrap0");
+		if (IS_ERR(mipi_ctrl))
+			return PTR_ERR(mipi_ctrl);
+
+		clk_disable(mipi_ctrl);
+		clk_put(mipi_ctrl);
+	}
+
+	if (sensor->csi_id == CSI_ID_B) {
+		cam_clk = clk_get(&pdev->dev, "sclk_cam1");
+		if (IS_ERR(cam_clk))
+			return PTR_ERR(cam_clk);
+
+		clk_disable(cam_clk);
+		clk_put(cam_clk);
+
+		mipi_ctrl = clk_get(&pdev->dev, "gscl_wrap1");
+		if (IS_ERR(mipi_ctrl))
+			return PTR_ERR(mipi_ctrl);
+
+		clk_disable(mipi_ctrl);
+		clk_put(mipi_ctrl);
+	}
+
+	cam_if_top = clk_get(&pdev->dev, "camif_top");
+	if (IS_ERR(cam_if_top))
+		return PTR_ERR(cam_if_top);
+
+	clk_disable(cam_if_top);
+	clk_put(cam_if_top);
 
 	isp_ctrl = clk_get(&pdev->dev, "isp0");
 	if (IS_ERR(isp_ctrl))
@@ -338,144 +403,256 @@ int exynos5_fimc_is_clk_off(struct platform_device *pdev)
 	clk_disable(isp_ctrl);
 	clk_put(isp_ctrl);
 
-	mipi_ctrl = clk_get(&pdev->dev, "gscl_wrap0");
-	if (IS_ERR(mipi_ctrl))
-		return PTR_ERR(mipi_ctrl);
+	gsc_ctrl = clk_get(&pdev->dev, "gscl");
+	if (IS_ERR(gsc_ctrl))
+		return PTR_ERR(gsc_ctrl);
 
-	clk_disable(mipi_ctrl);
-	clk_put(mipi_ctrl);
-
-
-	mipi_ctrl = clk_get(&pdev->dev, "gscl_wrap1");
-	if (IS_ERR(mipi_ctrl))
-		return PTR_ERR(mipi_ctrl);
-
-	clk_disable(mipi_ctrl);
-	clk_put(mipi_ctrl);
-
-
-	cam_if_top = clk_get(&pdev->dev, "camif_top");
-	if (IS_ERR(cam_if_top))
-		return PTR_ERR(cam_if_top);
-
-	clk_disable(cam_if_top);
-	clk_put(cam_if_top);
-
-	cam_A_clk = clk_get(&pdev->dev, "sclk_cam0");
-	if (IS_ERR(cam_A_clk))
-		return PTR_ERR(cam_A_clk);
-
-	clk_disable(cam_A_clk);
-	clk_put(cam_A_clk);
-
-
-	cam_A_clk = clk_get(&pdev->dev, "sclk_cam1");
-	if (IS_ERR(cam_A_clk))
-		return PTR_ERR(cam_A_clk);
-
-	clk_disable(cam_A_clk);
-	clk_put(cam_A_clk);
-
+	clk_disable(gsc_ctrl);
+	clk_put(gsc_ctrl);
 
 	return 0;
 }
 
-int exynos5_fimc_is_regulator_on(struct platform_device *pdev)
+/* sequence is important, don't change order */
+int exynos5_fimc_is_sensor_power_on(struct platform_device *pdev,
+						int sensor_id)
 {
-	struct regulator *regulator = NULL;
+
 	struct exynos5_platform_fimc_is *dev = pdev->dev.platform_data;
+	struct exynos5_fimc_is_sensor_info *sensor =
+						dev->sensor_info[sensor_id];
+	int i;
 
-	if (dev->regulator_info) {
-		/* ldo17 */
-		regulator = regulator_get(NULL, dev->regulator_info->cam_core);
-		if (IS_ERR(regulator)) {
-			printk(KERN_ERR "%s : regulator_get fail\n", __func__);
-			return PTR_ERR(regulator);
+	printk(KERN_INFO "exynos5_fimc_is_sensor_power_on(%d)\n",
+					sensor_id);
+	switch (sensor->sensor_id) {
+	case SENSOR_NAME_S5K4E5:
+		if (sensor->sensor_gpio.reset_peer.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_peer, 0)))
+				goto error_sensor_power_on;
+
+		if (sensor->sensor_gpio.reset_myself.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_myself, 0)))
+				goto error_sensor_power_on;
+
+		if (sensor->sensor_power.cam_core)
+			if (IS_ERR_VALUE(power_control_sensor(
+					sensor->sensor_power.cam_core, 1)))
+				goto error_sensor_power_on;
+		usleep_range(500, 1000);
+
+		if (sensor->sensor_gpio.power.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.power, 1)))
+				goto error_sensor_power_on;
+		usleep_range(500, 1000);
+
+		if (sensor->sensor_power.cam_io_myself)
+			if (IS_ERR_VALUE(power_control_sensor(
+					sensor->sensor_power.cam_io_myself, 1)))
+				goto error_sensor_power_on;
+		usleep_range(500, 1000);
+
+		if (sensor->sensor_power.cam_io_peer)
+			if (IS_ERR_VALUE(power_control_sensor(
+					sensor->sensor_power.cam_io_peer, 1)))
+				goto error_sensor_power_on;
+		usleep_range(500, 1000);
+
+		for (i = 0; i < FIMC_IS_MAX_GPIO_NUM; i++) {
+			if (!sensor->sensor_gpio.cfg[i].pin)
+				continue;
+			if (IS_ERR_VALUE(cfg_gpio(&sensor->sensor_gpio.cfg[i],
+					sensor->sensor_gpio.cfg[i].value)))
+				goto error_sensor_power_on;
 		}
-		regulator_enable(regulator);
-		regulator_put(regulator);
 
-		/* ldo18 */
-		regulator = regulator_get(NULL, dev->regulator_info->cam_io);
-		if (IS_ERR(regulator)) {
-			printk(KERN_ERR "%s : regulator_get fail\n", __func__);
-			return PTR_ERR(regulator);
+		if (sensor->sensor_power.cam_af)
+			if (IS_ERR_VALUE(power_control_sensor(
+					sensor->sensor_power.cam_af, 1)))
+				goto error_sensor_power_on;
+		usleep_range(500, 1000);
+
+		if (sensor->sensor_gpio.reset_myself.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_myself, 1)))
+				goto error_sensor_power_on;
+		usleep_range(500, 1000);
+
+		break;
+
+	case SENSOR_NAME_S5K6A3:
+		if (sensor->sensor_gpio.reset_peer.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_peer, 0)))
+				goto error_sensor_power_on;
+
+		if (sensor->sensor_gpio.reset_myself.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_myself, 0)))
+				goto error_sensor_power_on;
+
+		if (sensor->sensor_power.cam_core)
+			if (IS_ERR_VALUE(power_control_sensor(
+					sensor->sensor_power.cam_core, 1)))
+				goto error_sensor_power_on;
+		usleep_range(500, 1000);
+
+		for (i = 0; i < FIMC_IS_MAX_GPIO_NUM; i++) {
+			if (!sensor->sensor_gpio.cfg[i].pin)
+				continue;
+			if (IS_ERR_VALUE(cfg_gpio(&sensor->sensor_gpio.cfg[i],
+					sensor->sensor_gpio.cfg[i].value)))
+				goto error_sensor_power_on;
 		}
-		regulator_enable(regulator);
-		regulator_put(regulator);
 
+		if (sensor->sensor_gpio.power.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.power, 1)))
+				goto error_sensor_power_on;
 
-		/* ldo24 */
-		regulator = regulator_get(NULL, dev->regulator_info->cam_af);
-		if (IS_ERR(regulator)) {
-			printk(KERN_ERR "%s : regulator_get fail\n", __func__);
-			return PTR_ERR(regulator);
-		}
-		regulator_enable(regulator);
-		regulator_put(regulator);
+		usleep_range(500, 1000);
+		if (sensor->sensor_gpio.reset_myself.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_myself, 1)))
+				goto error_sensor_power_on;
+		usleep_range(500, 1000);
 
+		if (sensor->sensor_power.cam_io_myself)
+			if (IS_ERR_VALUE(power_control_sensor(
+					sensor->sensor_power.cam_io_myself, 1)))
+				goto error_sensor_power_on;
+		usleep_range(500, 1000);
 
+		if (sensor->sensor_power.cam_io_peer)
+			if (IS_ERR_VALUE(power_control_sensor(
+					sensor->sensor_power.cam_io_peer, 1)))
+				goto error_sensor_power_on;
+		usleep_range(500, 1000);
 
-		/* ldo19 */
-		regulator = regulator_get(NULL, dev->regulator_info->cam_vt);
-		if (IS_ERR(regulator)) {
-			printk(KERN_ERR "%s : regulator_get fail\n", __func__);
-			return PTR_ERR(regulator);
-		}
-		regulator_enable(regulator);
-		regulator_put(regulator);
+		if (sensor->sensor_gpio.reset_peer.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_peer, 1)))
+				goto error_sensor_power_on;
+		usleep_range(1200, 2000); /* must stay here more than 1msec */
+
+		if (sensor->sensor_gpio.reset_peer.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_peer, 0)))
+				goto error_sensor_power_on;
+		usleep_range(500, 1000);
+
+		break;
+	default:
+		printk(KERN_ERR "Bad camera senosr ID(%d)",
+				sensor->sensor_id);
+		goto error_sensor_power_on;
 	}
-
 	return 0;
+
+error_sensor_power_on:
+	return -1;
+
 }
 
-int exynos5_fimc_is_regulator_off(struct platform_device *pdev)
+/* sequence is important, don't change order */
+int exynos5_fimc_is_sensor_power_off(struct platform_device *pdev,
+						int sensor_id)
 {
-	struct regulator *regulator = NULL;
 	struct exynos5_platform_fimc_is *dev = pdev->dev.platform_data;
+	struct exynos5_fimc_is_sensor_info *sensor
+					= dev->sensor_info[sensor_id];
 
-	if (dev->regulator_info) {
-		regulator = regulator_get(NULL, dev->regulator_info->cam_vt);
-		if (IS_ERR(regulator)) {
-			printk(KERN_ERR "%s : regulator_get fail\n", __func__);
-			return PTR_ERR(regulator);
-		}
-		if (regulator_is_enabled(regulator))
-			regulator_force_disable(regulator);
+	printk(KERN_INFO "exynos5_fimc_is_sensor_power_off(%d)\n", sensor_id);
+	switch (sensor->sensor_id) {
+	case SENSOR_NAME_S5K4E5:
+		if (sensor->sensor_gpio.reset_peer.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_peer, 0)))
+				goto error_sensor_power_off;
 
-		regulator_put(regulator);
+		if (sensor->sensor_gpio.reset_myself.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_myself, 0)))
+				goto error_sensor_power_off;
 
-		regulator = regulator_get(NULL, dev->regulator_info->cam_af);
-		if (IS_ERR(regulator)) {
-			printk(KERN_ERR "%s : regulator_get fail\n", __func__);
-			return PTR_ERR(regulator);
-		}
-		if (regulator_is_enabled(regulator))
-			regulator_force_disable(regulator);
+		if (sensor->sensor_gpio.power.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.power, 0)))
+				goto error_sensor_power_off;
+		usleep_range(500, 1000);
 
-		regulator_put(regulator);
+		if (sensor->sensor_power.cam_core)
+			if (IS_ERR_VALUE(power_control_sensor(
+					sensor->sensor_power.cam_core, 0)))
+				goto error_sensor_power_off;
 
-		regulator = regulator_get(NULL, dev->regulator_info->cam_io);
-		if (IS_ERR(regulator)) {
-			printk(KERN_ERR "%s : regulator_get fail\n", __func__);
-			return PTR_ERR(regulator);
-		}
-		if (regulator_is_enabled(regulator))
-			regulator_force_disable(regulator);
+		usleep_range(500, 1000);
+		if (sensor->sensor_power.cam_io_myself)
+			if (IS_ERR_VALUE(power_control_sensor(
+					sensor->sensor_power.cam_io_myself, 0)))
+				goto error_sensor_power_off;
 
-		regulator_put(regulator);
+		usleep_range(500, 1000);
+			if (sensor->sensor_power.cam_io_peer)
+				if (IS_ERR_VALUE(power_control_sensor(
+					sensor->sensor_power.cam_io_peer, 0)))
+					goto error_sensor_power_off;
 
-		regulator = regulator_get(NULL, dev->regulator_info->cam_core);
-		if (IS_ERR(regulator)) {
-			printk(KERN_ERR "%s : regulator_get fail\n", __func__);
-			return PTR_ERR(regulator);
-		}
-		if (regulator_is_enabled(regulator))
-			regulator_force_disable(regulator);
+		usleep_range(500, 1000);
+		if (sensor->sensor_power.cam_af)
+			if (IS_ERR_VALUE(power_control_sensor(
+					sensor->sensor_power.cam_af, 0)))
+				goto error_sensor_power_off;
 
-		regulator_put(regulator);
+		usleep_range(500, 1000);
+		break;
 
+	case SENSOR_NAME_S5K6A3:
+		if (sensor->sensor_gpio.reset_peer.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_peer, 0)))
+				goto error_sensor_power_off;
+
+		if (sensor->sensor_gpio.reset_myself.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_myself, 0)))
+				goto error_sensor_power_off;
+
+		if (sensor->sensor_gpio.power.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.power, 0)))
+				goto error_sensor_power_off;
+		usleep_range(500, 1000);
+
+		if (sensor->sensor_power.cam_core)
+			if (IS_ERR_VALUE(power_control_sensor(
+					sensor->sensor_power.cam_core, 0)))
+				goto error_sensor_power_off;
+		usleep_range(500, 1000);
+
+		if (sensor->sensor_power.cam_io_myself)
+			if (IS_ERR_VALUE(power_control_sensor(
+					sensor->sensor_power.cam_io_myself, 0)))
+				goto error_sensor_power_off;
+		usleep_range(500, 1000);
+
+		if (sensor->sensor_power.cam_io_peer)
+			if (IS_ERR_VALUE(power_control_sensor(
+					sensor->sensor_power.cam_io_peer, 0)))
+				goto error_sensor_power_off;
+		usleep_range(500, 1000);
+		break;
+	default:
+		printk(KERN_ERR "Bad camera senosr ID(%d)",
+				sensor->sensor_id);
+		goto error_sensor_power_off;
 	}
-
 	return 0;
+
+error_sensor_power_off:
+	return -1;
+
 }

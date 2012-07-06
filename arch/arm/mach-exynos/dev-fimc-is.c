@@ -38,7 +38,7 @@ static struct resource exynos5_fimc_is_resource[] = {
 };
 
 struct platform_device exynos5_device_fimc_is = {
-	.name		= "exynos5-fimc-is",
+	.name		= FIMC_IS_MODULE_NAME,
 	.id		= -1,
 	.num_resources	= ARRAY_SIZE(exynos5_fimc_is_resource),
 	.resource	= exynos5_fimc_is_resource,
@@ -61,19 +61,17 @@ void __init exynos5_fimc_is_set_platdata(struct exynos5_platform_fimc_is *pd)
 	if (!npd) {
 		printk(KERN_ERR "%s: no memory for platform data\n", __func__);
 	} else {
-
-		if (!npd->cfg_gpio)
-			npd->cfg_gpio = exynos5_fimc_is_cfg_gpio;
 		if (!npd->clk_cfg)
 			npd->clk_cfg = exynos5_fimc_is_cfg_clk;
 		if (!npd->clk_on)
 			npd->clk_on = exynos5_fimc_is_clk_on;
 		if (!npd->clk_off)
 			npd->clk_off = exynos5_fimc_is_clk_off;
-		if (!npd->regulator_on)
-			npd->regulator_on = exynos5_fimc_is_regulator_on;
-		if (!npd->regulator_off)
-			npd->regulator_off = exynos5_fimc_is_regulator_off;
+		if (!npd->sensor_power_on)
+			npd->sensor_power_on = exynos5_fimc_is_sensor_power_on;
+		if (!npd->sensor_power_off)
+			npd->sensor_power_off =
+					exynos5_fimc_is_sensor_power_off;
 
 
 		exynos5_device_fimc_is.dev.platform_data = npd;
