@@ -35,6 +35,8 @@ enum cyapa_gen {
 	CYAPA_GEN3 = 0x03,  /* support MT-protocol B with tracking ID. */
 };
 
+#define CYAPA_NAME   "Cypress APA Trackpad (cyapa)"
+
 /* commands for read/write registers of Cypress trackpad */
 #define CYAPA_CMD_SOFT_RESET       0x00
 #define CYAPA_CMD_POWER_MODE       0x01
@@ -1647,7 +1649,7 @@ static int cyapa_create_input_dev(struct cyapa *cyapa)
 		return -ENOMEM;
 	}
 
-	input->name = cyapa->client->name;
+	input->name = CYAPA_NAME;
 	input->phys = cyapa->phys;
 	input->id.bustype = BUS_I2C;
 	input->id.version = 1;
