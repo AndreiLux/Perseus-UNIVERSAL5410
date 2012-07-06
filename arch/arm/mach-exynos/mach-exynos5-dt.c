@@ -133,15 +133,31 @@ static struct s3c_fb_pd_win smdk5250_fb_win2 = {
 	.default_bpp		= 24,
 };
 
-static struct fb_videomode snow_fb_window = {
-	.left_margin    = 0,
-	.right_margin   = 0,
-	.upper_margin   = 4,
-	.lower_margin   = 4,
-	.hsync_len      = 5,
-	.vsync_len      = 32,
-	.xres           = 1366,
-	.yres           = 768,
+static struct fb_videomode snow_fb_window[] = {
+	[0] = { /* Only LCD Connected */
+		.left_margin    = 0,
+		.right_margin   = 0,
+		.upper_margin   = 4,
+		.lower_margin   = 4,
+		.hsync_len      = 5,
+		.vsync_len      = 32,
+		.xres           = 1366,
+		.yres           = 768,
+	},
+	[1] = { /* TV & LCD Connected */
+		.left_margin    = 70,
+		.right_margin   = 70,
+		.upper_margin   = 12,
+		.lower_margin   = 13,
+		.hsync_len      = 5,
+		.vsync_len      = 32,
+		.xres           = 1280,
+		.yres           = 720,
+	},
+	[2] = {
+		.xres		= -1,
+		.yres		= -1,
+	},
 };
 
 static void exynos_fimd_gpio_setup_24bpp(void)
@@ -202,7 +218,7 @@ static struct exynos_drm_hdmi_pdata drm_hdmi_pdata = {
 
 #ifdef CONFIG_DRM_EXYNOS_FIMD
 static struct exynos_drm_fimd_pdata smdk5250_lcd1_pdata = {
-	.panel.timing   = {
+	.panel[0].timing   = {
 		.xres           = 1280,
 		.yres           = 800,
 		.hsync_len      = 4,
@@ -212,6 +228,21 @@ static struct exynos_drm_fimd_pdata smdk5250_lcd1_pdata = {
 		.upper_margin   = 4,
 		.lower_margin   = 4,
 		.refresh        = 60,
+	},
+	.panel[1].timing   = {
+		.xres           = 1280,
+		.yres           = 720,
+		.hsync_len      = 4,
+		.left_margin    = 0x4,
+		.right_margin   = 0x4,
+		.vsync_len      = 4,
+		.upper_margin   = 4,
+		.lower_margin   = 4,
+		.refresh        = 60,
+	},
+	.panel[2].timing   = {
+		.xres           = -1,
+		.yres           = -1,
 	},
 	.vidcon0        = VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB,
 	.vidcon1        = VIDCON1_INV_VCLK,
@@ -776,7 +807,7 @@ static void exynos5_i2c_setup(void)
 static void __init exynos5250_dt_machine_init(void)
 {
 	struct device_node *srom_np, *np;
-	int ret;
+	int ret,i;
 
 	regulator_register_fixed(0, dummy_supplies, ARRAY_SIZE(dummy_supplies));
 
@@ -814,8 +845,12 @@ static void __init exynos5250_dt_machine_init(void)
 
 	if (of_machine_is_compatible("google,daisy")) {
 #ifdef CONFIG_DRM_EXYNOS_FIMD
-		smdk5250_lcd1_pdata.panel.timing.xres = 1366;
-		smdk5250_lcd1_pdata.panel.timing.yres = 768;
+		smdk5250_lcd1_pdata.panel[0].timing.xres = 1366;
+		smdk5250_lcd1_pdata.panel[0].timing.yres = 768;
+		smdk5250_lcd1_pdata.panel[1].timing.xres = 1280;
+		smdk5250_lcd1_pdata.panel[1].timing.yres = 720;
+		smdk5250_lcd1_pdata.panel[2].timing.xres = -1;
+		smdk5250_lcd1_pdata.panel[2].timing.yres = -1;
 		smdk5250_lcd1_pdata.panel_type = MIPI_LCD;
 #else
 		smdk5250_fb_win0.win_mode.xres = 1366;
@@ -837,7 +872,9 @@ static void __init exynos5250_dt_machine_init(void)
 		dsim_lcd_info.lcd_size.height = 768;
 	} else if (of_machine_is_compatible("google,snow")) {
 #ifdef CONFIG_DRM_EXYNOS_FIMD
-		smdk5250_lcd1_pdata.panel.timing = snow_fb_window;
+		for (i = 0;i < ARRAY_SIZE(snow_fb_window);i++)
+			smdk5250_lcd1_pdata.panel[i].timing = snow_fb_window[i];
+
 		smdk5250_lcd1_pdata.panel_type = DP_LCD;
 		smdk5250_lcd1_pdata.clock_rate = 267 * 1000 * 1000;
 		smdk5250_lcd1_pdata.vidcon1 = 0;
