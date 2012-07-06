@@ -124,6 +124,8 @@ enum e_drm_exynos_gem_mem_type {
 
 #ifdef __KERNEL__
 
+/* FIMD Panels. */
+#define MAX_NR_PANELS	5
 /**
  * A structure for lcd panel information.
  *
@@ -150,7 +152,7 @@ enum disp_panel_type {
  * @bpp: default bit per pixel.
  */
 struct exynos_drm_fimd_pdata {
-	struct exynos_drm_panel_info panel;
+	struct exynos_drm_panel_info panel[MAX_NR_PANELS];
 	u32				vidcon0;
 	u32				vidcon1;
 	unsigned int			default_win;
