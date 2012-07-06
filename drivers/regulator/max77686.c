@@ -335,7 +335,7 @@ static int max77686_set_voltage(struct regulator_dev *rdev,
 	int rid = rdev_get_id(rdev);
 	int reg, shift = 0, mask, ret;
 	int i;
-	int ramp[] = {13, 27, 57, 100};	/* ramp_rate in mV/uS */
+	int ramp[] = {13750, 27500, 55000, 100000};	/* ramp_rate in uV/uS */
 	u8 org;
 
 	unit = max77686_get_voltage_unit(rid);
