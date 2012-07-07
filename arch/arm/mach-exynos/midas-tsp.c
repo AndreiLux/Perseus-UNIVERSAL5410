@@ -1062,7 +1062,7 @@ void __init midas_tsp_init(void)
 #ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
 static void flexrate_work(struct work_struct *work)
 {
-	cpufreq_ondemand_flexrate_request(15000, 5);
+	cpufreq_ondemand_flexrate_request(12500, 4);
 }
 
 #include <linux/pm_qos_params.h>
