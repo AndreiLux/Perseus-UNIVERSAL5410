@@ -168,11 +168,6 @@ static unsigned int get_nr_run_avg(void)
 #define HOTPLUG_DOWN_INDEX			(0)
 #define HOTPLUG_UP_INDEX			(1)
 
-#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
-#define FLEX_MAX_FREQ				(800000)
-#endif
-
-
 #ifdef CONFIG_MACH_MIDAS
 static int hotplug_rq[4][2] = {
 	{0, 100}, {100, 200}, {200, 300}, {300, 0}
@@ -233,9 +228,6 @@ struct cpu_dbs_info_s {
 	 * when user is changing the governor or limits.
 	 */
 	struct mutex timer_mutex;
-#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
-	unsigned int flex_duration;
-#endif
 };
 static DEFINE_PER_CPU(struct cpu_dbs_info_s, od_cpu_dbs_info);
 
@@ -247,9 +239,6 @@ static unsigned int dbs_enable;	/* number of CPUs using this policy */
  * dbs_mutex protects dbs_enable in governor start/stop.
  */
 static DEFINE_MUTEX(dbs_mutex);
-#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
-static DEFINE_MUTEX(flex_mutex);
-#endif
 
 static struct dbs_tuners {
 	unsigned int sampling_rate;
@@ -273,11 +262,6 @@ static struct dbs_tuners {
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	int early_suspend;
 #endif
-#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
-	unsigned int flex_sampling_rate;
-	unsigned int flex_duration;
-	unsigned int flex_max_freq;
-#endif
 	unsigned int up_threshold_at_min_freq;
 	unsigned int freq_for_responsiveness;
 } dbs_tuners_ins = {
@@ -298,9 +282,6 @@ static struct dbs_tuners {
 	.early_suspend = -1,
 	.up_threshold_at_min_freq = UP_THRESHOLD_AT_MIN_FREQ,
 	.freq_for_responsiveness = FREQ_FOR_RESPONSIVENESS,
-#endif
-#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
-	.flex_max_freq = FLEX_MAX_FREQ,
 #endif
 };
 
@@ -466,16 +447,6 @@ show_one(max_cpu_lock, max_cpu_lock);
 show_one(dvfs_debug, dvfs_debug);
 show_one(up_threshold_at_min_freq, up_threshold_at_min_freq);
 show_one(freq_for_responsiveness, freq_for_responsiveness);
-
-#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
-static struct global_attr flexrate_request;
-static struct global_attr flexrate_duration;
-static struct global_attr flexrate_enable;
-static struct global_attr flexrate_forcerate;
-static struct global_attr flexrate_max_freq;
-static struct global_attr flexrate_num_effective_usage;
-#endif
-
 static ssize_t show_hotplug_lock(struct kobject *kobj,
 				struct attribute *attr, char *buf)
 {
@@ -859,14 +830,6 @@ static struct attribute *dbs_attributes[] = {
 	&hotplug_rq_4_0.attr,
 	&up_threshold_at_min_freq.attr,
 	&freq_for_responsiveness.attr,
-#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
-	&flexrate_request.attr,
-	&flexrate_duration.attr,
-	&flexrate_enable.attr,
-	&flexrate_forcerate.attr,
-	&flexrate_max_freq.attr,
-	&flexrate_num_effective_usage.attr,
-#endif
 	NULL
 };
 
@@ -1217,26 +1180,6 @@ static void do_dbs_timer(struct work_struct *work)
 	mutex_lock(&dbs_info->timer_mutex);
 
 	dbs_check_cpu(dbs_info);
-
-
-#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
-	if (dbs_info->flex_duration) {
-		struct cpufreq_policy *policy = dbs_info->cur_policy;
-
-		mutex_lock(&flex_mutex);
-		delay = usecs_to_jiffies(dbs_tuners_ins.flex_sampling_rate);
-
-		/* If it's already max, we don't need to iterate fast */
-		if (policy->cur >= dbs_tuners_ins.flex_max_freq ||
-		    policy->cur >= policy->max)
-			dbs_info->flex_duration = 1;
-
-		if (--dbs_info->flex_duration < dbs_tuners_ins.flex_duration) {
-			dbs_tuners_ins.flex_duration = dbs_info->flex_duration;
-		}
-		mutex_unlock(&flex_mutex);
-	}
-#else
 	/* We want all CPUs to do sampling nearly on
 	 * same jiffy
 	 */
@@ -1245,8 +1188,6 @@ static void do_dbs_timer(struct work_struct *work)
 
 	if (num_online_cpus() > 1)
 		delay -= jiffies % delay;
-
-#endif /* CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE */
 
 	queue_delayed_work_on(cpu, dvfs_workqueue, &dbs_info->work, delay);
 	mutex_unlock(&dbs_info->timer_mutex);
@@ -1496,240 +1437,6 @@ static void __exit cpufreq_gov_dbs_exit(void)
 	kfree(hotplug_history);
 	kfree(rq_data);
 }
-
-#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
-static unsigned int max_duration =
-		(CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE_MAX_DURATION);
-#define DEFAULT_DURATION	(5)
-static unsigned int sysfs_duration = DEFAULT_DURATION;
-static bool flexrate_enabled = true;
-static unsigned int forced_rate;
-static unsigned int flexrate_num_effective;
-
-static int cpufreq_ondemand_flexrate_do(struct cpufreq_policy *policy,
-					bool now)
-{
-	unsigned int cpu = policy->cpu;
-	bool using_ondemand;
-	struct cpu_dbs_info_s *dbs_info = &per_cpu(od_cpu_dbs_info, cpu);
-
-	WARN(!mutex_is_locked(&flex_mutex), "flex_mutex not locked\n");
-
-	dbs_info->flex_duration = dbs_tuners_ins.flex_duration;
-
-	if (now) {
-		flexrate_num_effective++;
-
-		mutex_lock(&dbs_mutex);
-		using_ondemand = dbs_enable && !strncmp(policy->governor->name, "pegasusq", 8);
-		mutex_unlock(&dbs_mutex);
-
-		if (!using_ondemand)
-			return 0;
-
-		mutex_unlock(&flex_mutex);
-		mutex_lock(&dbs_info->timer_mutex);
-
-		/* Do It! */
-		cancel_delayed_work_sync(&dbs_info->work);
-		schedule_delayed_work_on(cpu, &dbs_info->work, 1);
-
-		mutex_unlock(&dbs_info->timer_mutex);
-		mutex_lock(&flex_mutex);
-	}
-
-	return 0;
-}
-
-int cpufreq_ondemand_flexrate_request(unsigned int rate_us,
-				      unsigned int duration)
-{
-	int err = 0;
-
-	if (!flexrate_enabled)
-		return 0;
-
-	if (forced_rate)
-		rate_us = forced_rate;
-
-	mutex_lock(&flex_mutex);
-
-	/* Unnecessary requests are dropped */
-	if (rate_us >= dbs_tuners_ins.sampling_rate)
-		goto out;
-	if (rate_us >= dbs_tuners_ins.flex_sampling_rate &&
-	    duration <= dbs_tuners_ins.flex_duration)
-		goto out;
-
-	duration = min(max_duration, duration);
-	if (rate_us > 0 && rate_us < min_sampling_rate)
-		rate_us = min_sampling_rate;
-
-	err = 1; /* Need update */
-
-	/* Cancel the active flexrate requests */
-	if (rate_us == 0 || duration == 0) {
-		dbs_tuners_ins.flex_duration = 0;
-		dbs_tuners_ins.flex_sampling_rate = 0;
-		goto out;
-	}
-
-	if (dbs_tuners_ins.flex_sampling_rate == 0 ||
-	    dbs_tuners_ins.flex_sampling_rate > rate_us)
-		err = 2; /* Need to poll faster */
-
-	/* Set new flexrate per the request */
-	dbs_tuners_ins.flex_sampling_rate =
-		min(dbs_tuners_ins.flex_sampling_rate, rate_us);
-	dbs_tuners_ins.flex_duration =
-		max(dbs_tuners_ins.flex_duration, duration);
-out:
-	/* Apply new flexrate */
-	if (err > 0) {
-		bool now = (err == 2);
-		int cpu = 0;
-
-		/* TODO: For every CPU using ONDEMAND */
-		err = cpufreq_ondemand_flexrate_do(cpufreq_cpu_get(cpu), now);
-	}
-	mutex_unlock(&flex_mutex);
-	return err;
-}
-EXPORT_SYMBOL_GPL(cpufreq_ondemand_flexrate_request);
-
-static ssize_t store_flexrate_request(struct kobject *a, struct attribute *b,
-				      const char *buf, size_t count)
-{
-	unsigned int rate;
-	int ret;
-
-	ret = sscanf(buf, "%u", &rate);
-	if (ret != 1)
-		return -EINVAL;
-
-	ret = cpufreq_ondemand_flexrate_request(rate, sysfs_duration);
-	if (ret)
-		return ret;
-	return count;
-}
-
-static ssize_t show_flexrate_request(struct kobject *a, struct attribute *b,
-				     char *buf)
-{
-	return sprintf(buf, "Flexrate decreases CPUFreq Ondemand governor's polling rate temporaily.\n"
-			    "Usage Example:\n"
-			    "# echo 8 > flexrate_duration\n"
-			    "# echo 10000 > flexrate_request\n"
-			    "With the second statement, Ondemand polls with 10ms(10000us) interval 8 times.\n"
-			    "run \"echo flexrate_duration\" to see the currecnt duration setting.\n");
-}
-
-static ssize_t store_flexrate_duration(struct kobject *a, struct attribute *b,
-				       const char *buf, size_t count)
-{
-	unsigned int duration;
-	int ret;
-
-	/* mutex not needed for flexrate_sysfs_duration */
-	ret = sscanf(buf, "%u", &duration);
-	if (ret != 1)
-		return -EINVAL;
-
-	if (duration == 0)
-		duration = DEFAULT_DURATION;
-	if (duration > max_duration)
-		duration = max_duration;
-
-	sysfs_duration = duration;
-	return count;
-}
-
-static ssize_t show_flexrate_duration(struct kobject *a, struct attribute *b,
-				      char *buf)
-{
-	return sprintf(buf, "%d\n", sysfs_duration);
-}
-
-static ssize_t store_flexrate_enable(struct kobject *a, struct attribute *b,
-				     const char *buf, size_t count)
-{
-	unsigned int input;
-	int ret;
-
-	ret = sscanf(buf, "%u", &input);
-	if (ret != 1)
-		return -EINVAL;
-
-	if (input > 0)
-		flexrate_enabled = true;
-	else
-		flexrate_enabled = false;
-
-	return count;
-}
-
-static ssize_t show_flexrate_enable(struct kobject *a, struct attribute *b,
-				    char *buf)
-{
-	return sprintf(buf, "%d\n", !!flexrate_enabled);
-}
-
-static ssize_t store_flexrate_forcerate(struct kobject *a, struct attribute *b,
-					 const char *buf, size_t count)
-{
-	unsigned int rate;
-	int ret;
-
-	ret = sscanf(buf, "%u", &rate);
-	if (ret != 1)
-		return -EINVAL;
-
-	forced_rate = rate;
-
-	pr_info("CAUTION: flexrate_forcerate is for debugging/benchmarking only.\n");
-	return count;
-}
-
-static ssize_t show_flexrate_forcerate(struct kobject *a, struct attribute *b,
-					char *buf)
-{
-	return sprintf(buf, "%u\n", forced_rate);
-}
-
-static ssize_t store_flexrate_max_freq(struct kobject *a, struct attribute *b,
-				   const char *buf, size_t count)
-{
-	unsigned int input;
-	int ret;
-
-	ret = sscanf(buf, "%u", &input);
-	if (ret != 1)
-		return -EINVAL;
-
-	dbs_tuners_ins.flex_max_freq = max(input, dbs_tuners_ins.flex_max_freq);
-	return count;
-}
-
-static ssize_t show_flexrate_max_freq(struct kobject *a, struct attribute *b,
-					char *buf)
-{
-	return sprintf(buf, "%u\n", dbs_tuners_ins.flex_max_freq);
-}
-
-static ssize_t show_flexrate_num_effective_usage(struct kobject *a,
-						 struct attribute *b,
-						 char *buf)
-{
-	return sprintf(buf, "%u\n", flexrate_num_effective);
-}
-
-define_one_global_rw(flexrate_request);
-define_one_global_rw(flexrate_duration);
-define_one_global_rw(flexrate_enable);
-define_one_global_rw(flexrate_forcerate);
-define_one_global_rw(flexrate_max_freq);
-define_one_global_ro(flexrate_num_effective_usage);
-#endif
 
 MODULE_AUTHOR("ByungChang Cha <bc.cha@samsung.com>");
 MODULE_DESCRIPTION("'cpufreq_pegasusq' - A dynamic cpufreq/cpuhotplug governor");
