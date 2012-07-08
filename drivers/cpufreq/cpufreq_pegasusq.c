@@ -170,7 +170,6 @@ static unsigned int get_nr_run_avg(void)
 
 #ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
 #define FLEX_MAX_FREQ				(800000)
-#define FLEX_DEFAULT_DURATION			(5)
 #endif
 
 
@@ -200,7 +199,6 @@ static int hotplug_freq[4][2] = {
 
 #ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
 static unsigned int max_duration = (CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE_MAX_DURATION);
-static unsigned int sysfs_duration = FLEX_DEFAULT_DURATION;
 static bool flexrate_enabled = true;
 static unsigned int forced_rate;
 static unsigned int flexrate_num_effective;
@@ -480,7 +478,6 @@ show_one(up_threshold_at_min_freq, up_threshold_at_min_freq);
 show_one(freq_for_responsiveness, freq_for_responsiveness);
 
 #ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
-static struct global_attr flexrate_duration;
 static struct global_attr flexrate_forcerate;
 static struct global_attr flexrate_enable;
 static struct global_attr flexrate_max_freq;
@@ -845,32 +842,6 @@ static ssize_t show_flexrate_enable(struct kobject *a, struct attribute *b,
 	return sprintf(buf, "%d\n", !!flexrate_enabled);
 }
 
-static ssize_t store_flexrate_duration(struct kobject *a, struct attribute *b,
-				       const char *buf, size_t count)
-{
-	unsigned int duration;
-	int ret;
-
-	/* mutex not needed for flexrate_sysfs_duration */
-	ret = sscanf(buf, "%u", &duration);
-	if (ret != 1)
-		return -EINVAL;
-
-	if (duration == 0)
-		duration = FLEX_DEFAULT_DURATION;
-	if (duration > max_duration)
-		duration = max_duration;
-
-	sysfs_duration = duration;
-	return count;
-}
-
-static ssize_t show_flexrate_duration(struct kobject *a, struct attribute *b,
-				      char *buf)
-{
-	return sprintf(buf, "%d\n", sysfs_duration);
-}
-
 static ssize_t store_flexrate_forcerate(struct kobject *a, struct attribute *b,
 					 const char *buf, size_t count)
 {
@@ -939,7 +910,6 @@ define_one_global_rw(dvfs_debug);
 define_one_global_rw(up_threshold_at_min_freq);
 define_one_global_rw(freq_for_responsiveness);
 #ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
-define_one_global_rw(flexrate_duration);
 define_one_global_rw(flexrate_forcerate);
 define_one_global_rw(flexrate_enable);
 define_one_global_rw(flexrate_max_freq);
@@ -980,7 +950,6 @@ static struct attribute *dbs_attributes[] = {
 	&freq_for_responsiveness.attr,
 #ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_FLEXRATE
 	&flexrate_enable.attr,
-	&flexrate_duration.attr,
 	&flexrate_forcerate.attr,
 	&flexrate_max_freq.attr,
 	&flexrate_num_effective_usage.attr,
