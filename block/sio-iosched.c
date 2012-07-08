@@ -23,11 +23,11 @@
 enum { ASYNC, SYNC };
 
 /* Tunables */
-static const int sync_read_expire  = HZ / 2;	/* max time before a sync read is submitted. */
+static const int sync_read_expire  = HZ / 8;	/* max time before a sync read is submitted. */
 static const int sync_write_expire = 2 * HZ;	/* max time before a sync write is submitted. */
 
-static const int async_read_expire  =  4 * HZ;	/* ditto for async, these limits are SOFT! */
-static const int async_write_expire = 16 * HZ;	/* ditto for async, these limits are SOFT! */
+static const int async_read_expire  =  HZ / 8;	/* ditto for async, these limits are SOFT! */
+static const int async_write_expire = 2 * HZ;	/* ditto for async, these limits are SOFT! */
 
 static const int writes_starved = 1;		/* max times reads can starve a write */
 static const int fifo_batch     = 1;		/* # of sequential requests treated as one
