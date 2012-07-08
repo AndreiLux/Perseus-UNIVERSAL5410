@@ -2822,6 +2822,66 @@ static void __devinit fixup_ti816x_class(struct pci_dev* dev)
 }
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_TI, 0xb800, fixup_ti816x_class);
 
+/*
+ * Some BIOS implementations leave the Intel GPU interrupts enabled,
+ * even though no one is handling them (f.e. i915 driver is never loaded).
+ * Additionally the interrupt destination is not set up properly
+ * and the interrupt ends up -somewhere-.
+ *
+ * These spurious interrupts are "sticky" and the kernel disables
+ * the (shared) interrupt line after 100.000+ generated interrupts.
+ *
+ * Fix it by disabling the still enabled interrupts.
+ * This resolves crashes often seen on monitor unplug.
+ */
+#define I915_DEIER_REG 0x4400c
+static void __devinit disable_igfx_irq(struct pci_dev *dev)
+{
+	void __iomem *regs = pci_iomap(dev, 0, 0);
+	if (regs == NULL) {
+		dev_warn(&dev->dev, "igfx quirk: Can't iomap PCI device\n");
+		return;
+	}
+
+	/* Check if any interrupt line is still enabled */
+	if (readl(regs + I915_DEIER_REG) != 0) {
+		dev_warn(&dev->dev, "BIOS left Intel GPU interrupts enabled; "
+			"disabling\n");
+
+		writel(0, regs + I915_DEIER_REG);
+	}
+
+	pci_iounmap(dev, regs);
+}
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0102, disable_igfx_irq);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x010a, disable_igfx_irq);
+
+/*
+ * The Intel 6 Series/C200 Series chipset's EHCI controllers on many
+ * ASUS motherboards will cause memory corruption or a system crash
+ * if they are in D3 while the system is put into S3 sleep.
+ */
+static void __devinit asus_ehci_no_d3(struct pci_dev *dev)
+{
+	const char *sys_info;
+	static const char good_Asus_board[] = "P8Z68-V";
+
+	if (dev->dev_flags & PCI_DEV_FLAGS_NO_D3_DURING_SLEEP)
+		return;
+	if (dev->subsystem_vendor != PCI_VENDOR_ID_ASUSTEK)
+		return;
+	sys_info = dmi_get_system_info(DMI_BOARD_NAME);
+	if (sys_info && memcmp(sys_info, good_Asus_board,
+			sizeof(good_Asus_board) - 1) == 0)
+		return;
+
+	dev_info(&dev->dev, "broken D3 during system sleep on ASUS\n");
+	dev->dev_flags |= PCI_DEV_FLAGS_NO_D3_DURING_SLEEP;
+	device_set_wakeup_capable(&dev->dev, false);
+}
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x1c26, asus_ehci_no_d3);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x1c2d, asus_ehci_no_d3);
+
 static void pci_do_fixups(struct pci_dev *dev, struct pci_fixup *f,
 			  struct pci_fixup *end)
 {
