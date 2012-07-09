@@ -763,6 +763,7 @@ static irqreturn_t blkif_interrupt(int irq, void *dev_id)
 	unsigned long flags;
 	struct blkfront_info *info = (struct blkfront_info *)dev_id;
 	int error;
+	int ring_size = __RING_SIZE((struct blkif_sring *)0, info->num_ring_pages * PAGE_SIZE);
 
 	spin_lock_irqsave(&info->io_lock, flags);
 
@@ -785,7 +786,7 @@ static irqreturn_t blkif_interrupt(int irq, void *dev_id)
 		 * never have given to it (we stamp it up to BLK_RING_SIZE -
 		 * look in get_id_from_freelist.
 		 */
-		if (id >= BLK_RING_SIZE) {
+		if (id >= ring_size) {
 			WARN(1, "%s: response to %s has incorrect id (%ld)\n",
 			     info->gd->disk_name, op_name(bret->operation), id);
 			/* We can't safely get the 'struct request' as
