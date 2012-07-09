@@ -141,6 +141,7 @@ struct dw_mci {
 #else
 	struct dw_mci_dma_data	*dma_data;
 #endif
+	unsigned int		desc_sz;
 	u32			cmd_status;
 	u32			data_status;
 	u32			stop_cmdr;
@@ -262,6 +263,9 @@ struct dw_mci_board {
 
 	/* cd_type: Type of Card Detection method (see cd_types enum above) */
 	enum dw_mci_cd_types cd_type;
+
+	/* Number of descriptors */
+	unsigned int desc_sz;
 
 	/* ext_cd_cleanup: Cleanup external card detect subsystem.
 	* ext_cd_init: Initialize external card detect subsystem.

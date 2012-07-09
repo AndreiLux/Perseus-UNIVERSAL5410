@@ -422,7 +422,7 @@ static int dw_mci_idmac_init(struct dw_mci *host)
 	int i;
 
 	/* Number of descriptors in the ring buffer */
-	host->ring_size = PAGE_SIZE / sizeof(struct idmac_desc);
+	host->ring_size = host->desc_sz * PAGE_SIZE / sizeof(struct idmac_desc);
 
 	/* Forward link the descriptor list */
 	for (i = 0, p = host->sg_cpu; i < host->ring_size - 1; i++, p++)
@@ -1992,8 +1992,13 @@ static void dw_mci_cleanup_slot(struct dw_mci_slot *slot, unsigned int id)
 
 static void dw_mci_init_dma(struct dw_mci *host)
 {
+	if (host->pdata->desc_sz)
+		host->desc_sz = host->pdata->desc_sz;
+	else
+		host->desc_sz = 1;
+
 	/* Alloc memory for sg translation */
-	host->sg_cpu = dma_alloc_coherent(&host->dev, PAGE_SIZE,
+	host->sg_cpu = dma_alloc_coherent(&host->dev, host->desc_sz * PAGE_SIZE,
 					  &host->sg_dma, GFP_KERNEL);
 	if (!host->sg_cpu) {
 		dev_err(&host->dev, "%s: could not alloc DMA memory\n",
@@ -2243,7 +2248,7 @@ err_workqueue:
 err_dmaunmap:
 	if (host->use_dma && host->dma_ops->exit)
 		host->dma_ops->exit(host);
-	dma_free_coherent(&host->dev, PAGE_SIZE,
+	dma_free_coherent(&host->dev, host->desc_sz * PAGE_SIZE,
 			  host->sg_cpu, host->sg_dma);
 
 	if (host->vmmc) {
@@ -2286,7 +2291,8 @@ void dw_mci_remove(struct dw_mci *host)
 
 	free_irq(host->irq, host);
 	destroy_workqueue(dw_mci_card_workqueue);
-	dma_free_coherent(&host->dev, PAGE_SIZE, host->sg_cpu, host->sg_dma);
+	dma_free_coherent(&host->dev, host->desc_sz * PAGE_SIZE,
+			host->sg_cpu, host->sg_dma);
 
 	if (host->use_dma && host->dma_ops->exit)
 		host->dma_ops->exit(host);
