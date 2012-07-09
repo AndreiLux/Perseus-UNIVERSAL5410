@@ -166,7 +166,8 @@ enum gsc_yuv_fmt {
 
 #define fh_to_ctx(__fh) container_of(__fh, struct gsc_ctx, fh)
 
-#define is_rgb(img) ((img == V4L2_PIX_FMT_RGB565X) | (img == V4L2_PIX_FMT_RGB32))
+#define is_rgb(img) ((img == V4L2_PIX_FMT_RGB565X) | (img == V4L2_PIX_FMT_RGB32) | \
+						     (img == V4L2_PIX_FMT_BGR32))
 #define is_yuv422(img) ((img == V4L2_PIX_FMT_YUYV) | (img == V4L2_PIX_FMT_UYVY) | \
 		     (img == V4L2_PIX_FMT_VYUY) | (img == V4L2_PIX_FMT_YVYU) | \
 		     (img == V4L2_PIX_FMT_YUV422P) | (img == V4L2_PIX_FMT_NV16) | \

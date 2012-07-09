@@ -49,6 +49,13 @@ static struct gsc_fmt gsc_formats[] = {
 		.nr_comp	= 1,
 		.mbus_code	= V4L2_MBUS_FMT_XRGB8888_4X8_LE,
 	}, {
+		.name		= "XBGR-8-8-8-8, 32 bpp",
+		.pixelformat	= V4L2_PIX_FMT_BGR32,
+		.depth		= { 32 },
+		.num_planes	= 1,
+		.nr_comp	= 1,
+		.mbus_code	= V4L2_MBUS_FMT_XRGB8888_4X8_LE,
+	}, {
 		.name		= "YUV 4:2:2 packed, YCbYCr",
 		.pixelformat	= V4L2_PIX_FMT_YUYV,
 		.depth		= { 16 },
