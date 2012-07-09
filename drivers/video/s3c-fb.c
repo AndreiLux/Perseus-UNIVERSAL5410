@@ -3168,7 +3168,7 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	}
 	init_kthread_work(&sfb->update_regs_work, s3c_fb_update_regs_handler);
 	sfb->timeline = sw_sync_timeline_create("s3c-fb");
-	sfb->timeline_max = 0;
+	sfb->timeline_max = 1;
 	/* XXX need to cleanup on errors */
 #endif
 
