@@ -8270,13 +8270,6 @@ void intel_init_emon(struct drm_device *dev)
 static int intel_enable_rc6(struct drm_device *dev)
 {
 	/*
-	 * Disable rc6 on ivybridge
-	 * until all our HW/BIOS combinations work.
-	 */
-	if (INTEL_INFO(dev)->gen == 7)
-		return 0;
-
-	/*
 	 * Respect the kernel parameter if it is set
 	 */
 	if (i915_enable_rc6 >= 0)
