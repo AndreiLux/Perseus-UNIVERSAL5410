@@ -36,6 +36,11 @@
 #include <linux/of_platform.h>
 #endif
 
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+#include "linux/kds.h"
+#include <linux/dma-buf.h>
+#endif
+
 #define MAX_CRTC	3
 #define MAX_PLANE	5
 #define MAX_FB_BUFFER	4
@@ -232,6 +237,14 @@ struct exynos_drm_private {
 	 * this array is used to be aware of which crtc did it request vblank.
 	 */
 	struct drm_crtc *crtc[MAX_CRTC];
+
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	struct kds_callback		kds_cb;
+	struct kds_resource_set		*old_kds_res_set;
+	struct kds_resource_set		*kds_res_set;
+	struct dma_buf	*old_dma_buf;
+	struct dma_buf	*dma_buf;
+#endif
 };
 
 /*

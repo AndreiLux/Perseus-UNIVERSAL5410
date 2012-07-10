@@ -34,6 +34,7 @@
 #include "exynos_drm_drv.h"
 #include "exynos_drm_fb.h"
 #include "exynos_drm_gem.h"
+#include "exynos_drm_crtc.h"
 
 #define to_exynos_fb(x)	container_of(x, struct exynos_drm_fb, fb)
 
@@ -72,9 +73,25 @@ static void exynos_drm_wait_for_vsync(struct drm_device *drm_dev)
 static void exynos_drm_fb_destroy(struct drm_framebuffer *fb)
 {
 	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
+	struct exynos_drm_private *private = fb->dev->dev_private;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	kds_callback_term(&private->kds_cb);
+	if (private->old_kds_res_set != NULL) {
+		kds_resource_set_release(&private->old_kds_res_set);
+		private->old_kds_res_set = NULL;
+	}
+	if (private->old_dma_buf != NULL) {
+		dma_buf_put(private->old_dma_buf);
+		private->old_dma_buf = NULL;
+	}
+	if (private->dma_buf != NULL) {
+		dma_buf_put(private->dma_buf);
+		private->dma_buf = NULL;
+	}
+#endif
 	drm_framebuffer_cleanup(fb);
 
 	/* wait for vsync from CRTC to safely remove a FB*/
@@ -149,6 +166,11 @@ exynos_user_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	struct exynos_drm_fb *exynos_fb;
 	int nr;
 	int i;
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	int direct;
+	int ret;
+	struct exynos_drm_private *private = dev->dev_private;
+#endif
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
@@ -180,6 +202,16 @@ exynos_user_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 
 		exynos_fb->exynos_gem_obj[i] = to_exynos_gem_obj(obj);
 	}
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	private->old_kds_res_set = NULL;
+	direct = 1;
+
+	ret = kds_callback_init(&private->kds_cb, direct, exynos_drm_kds_callback);
+	if (ret < 0) {
+		DRM_ERROR("kds alloc queue failed.\n");
+		return -ENOMEM;
+	}
+#endif
 
 	return fb;
 }
