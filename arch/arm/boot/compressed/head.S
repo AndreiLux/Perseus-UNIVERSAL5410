@@ -654,9 +654,6 @@ __armv7_mmu_cache_on:
 #ifdef CONFIG_CPU_ENDIAN_BE8
 		orr	r0, r0, #1 << 25	@ big-endian page tables
 #endif
-#ifdef CONFIG_CPU_EARLY_BPREDICT_DISABLE
-		bic	r0, r0, #1 << 11
-#endif
 		orrne	r0, r0, #1		@ MMU enabled
 		movne	r1, #-1
 		mcrne	p15, 0, r3, c2, c0, 0	@ load page table pointer

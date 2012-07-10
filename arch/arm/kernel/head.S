@@ -414,10 +414,6 @@ __enable_mmu:
 #endif
 #ifdef CONFIG_CPU_BPREDICT_DISABLE
 	bic	r0, r0, #CR_Z
-#else
-#ifdef CONFIG_CPU_EARLY_BPREDICT_DISABLE
-	orr	r0, r0, #CR_Z
-#endif
 #endif
 #ifdef CONFIG_CPU_ICACHE_DISABLE
 	bic	r0, r0, #CR_I
