@@ -45,6 +45,7 @@ enum s3c_cpu_type {
 	TYPE_ADCV12, /* S3C2416, S3C2450 */
 	TYPE_ADCV2, /* S3C64XX, S5P64X0, S5PC100 */
 	TYPE_ADCV3, /* S5PV210, S5PC110, EXYNOS4210 */
+	TYPE_ADCV4, /* EXYNOS4412, EXYNOS5250 */
 };
 
 struct s3c_adc_client {
@@ -106,7 +107,7 @@ static inline void s3c_adc_select(struct adc_device *adc,
 	con &= ~S3C2410_ADCCON_STARTMASK;
 
 	if (!client->is_ts) {
-		if (cpu == TYPE_ADCV3)
+		if (cpu == TYPE_ADCV3 || cpu == TYPE_ADCV4)
 			writel(client->channel & 0xf, adc->regs + S5P_ADCMUX);
 		else if (cpu == TYPE_ADCV11 || cpu == TYPE_ADCV12)
 			writel(client->channel & 0xf,
@@ -286,7 +287,7 @@ static irqreturn_t s3c_adc_irq(int irq, void *pw)
 	struct adc_device *adc = pw;
 	struct s3c_adc_client *client = adc->cur;
 	enum s3c_cpu_type cpu = platform_get_device_id(adc->pdev)->driver_data;
-	unsigned data0, data1;
+	unsigned data0, data1 = 0;
 
 	if (!client) {
 		dev_warn(&adc->pdev->dev, "%s: no adc pending\n", __func__);
@@ -294,7 +295,9 @@ static irqreturn_t s3c_adc_irq(int irq, void *pw)
 	}
 
 	data0 = readl(adc->regs + S3C2410_ADCDAT0);
-	data1 = readl(adc->regs + S3C2410_ADCDAT1);
+	if (cpu != TYPE_ADCV4)
+		data1 = readl(adc->regs + S3C2410_ADCDAT1);
+
 	adc_dbg(adc, "read %d: 0x%04x, 0x%04x\n", client->nr_samples, data0, data1);
 
 	client->nr_samples--;
@@ -326,7 +329,7 @@ static irqreturn_t s3c_adc_irq(int irq, void *pw)
 	}
 
 exit:
-	if (cpu == TYPE_ADCV2 || cpu == TYPE_ADCV3) {
+	if (cpu == TYPE_ADCV2 || cpu == TYPE_ADCV3 || cpu == TYPE_ADCV4) {
 		/* Clear ADC interrupt */
 		writel(0, adc->regs + S3C64XX_ADCCLRINT);
 	}
@@ -405,7 +408,7 @@ static int s3c_adc_probe(struct platform_device *pdev)
 	/* Enable 12-bit ADC resolution */
 	if (cpu == TYPE_ADCV12)
 		tmp |= S3C2416_ADCCON_RESSEL;
-	if (cpu == TYPE_ADCV2 || cpu == TYPE_ADCV3)
+	if (cpu == TYPE_ADCV2 || cpu == TYPE_ADCV3 || cpu == TYPE_ADCV4)
 		tmp |= S3C64XX_ADCCON_RESSEL;
 
 	writel(tmp, adc->regs + S3C2410_ADCCON);
@@ -489,7 +492,7 @@ static int s3c_adc_resume(struct device *dev)
 	/* Enable 12-bit ADC resolution */
 	if (cpu == TYPE_ADCV12)
 		tmp |= S3C2416_ADCCON_RESSEL;
-	if (cpu == TYPE_ADCV2 || cpu == TYPE_ADCV3)
+	if (cpu == TYPE_ADCV2 || cpu == TYPE_ADCV3 || cpu == TYPE_ADCV4)
 		tmp |= S3C64XX_ADCCON_RESSEL;
 
 	writel(tmp, adc->regs + S3C2410_ADCCON);
@@ -518,6 +521,9 @@ static struct platform_device_id s3c_adc_driver_ids[] = {
 	}, {
 		.name		= "samsung-adc-v3",
 		.driver_data	= TYPE_ADCV3,
+	}, {
+		.name		= "samsung-adc-v4",
+		.driver_data	= TYPE_ADCV4,
 	},
 	{ }
 };
