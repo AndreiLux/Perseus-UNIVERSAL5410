@@ -937,6 +937,11 @@ static struct clk exynos5_init_clocks_off[] = {
 		.enable		= &exynos5_clk_ip_acp_ctrl,
 		.ctrlbit	= (1 << 7),
 	}, {
+		.name		= "adc",
+		.parent		= &exynos5_clk_aclk_66.clk,
+		.enable		= exynos5_clk_ip_peric_ctrl,
+		.ctrlbit	= (1 << 15),
+	}, {
 		.name		= "spi",
 		.devname	= "exynos4210-spi.0",
 		.parent		= &exynos5_clk_aclk_66.clk,
