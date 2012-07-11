@@ -8368,8 +8368,14 @@ void gen6_enable_rps(struct drm_i915_private *dev_priv)
 	I915_WRITE(GEN6_RP_INTERRUPT_LIMITS,
 		   18 << 24 |
 		   6 << 16);
-	I915_WRITE(GEN6_RP_UP_THRESHOLD, 10000);
-	I915_WRITE(GEN6_RP_DOWN_THRESHOLD, 100000);
+	/*
+	 * These thresholds found through experimentation. Making them
+	 * symmetric will prevent holding the clock high when the workload is
+	 * light. This allows us to improve our power usage, and lower thermals.
+	 */
+	I915_WRITE(GEN6_RP_UP_THRESHOLD, 0x4000);
+	I915_WRITE(GEN6_RP_DOWN_THRESHOLD, 0x4000);
+
 	I915_WRITE(GEN6_RP_UP_EI, 100000);
 	I915_WRITE(GEN6_RP_DOWN_EI, 5000000);
 	I915_WRITE(GEN6_RP_IDLE_HYSTERSIS, 10);
