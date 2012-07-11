@@ -138,6 +138,7 @@ struct smb347_charger {
 	bool			usb_online;
 	bool			charging_enabled;
 	unsigned int		mains_current_limit;
+	bool			usb_hc_mode;
 	struct dentry		*dentry;
 	const struct smb347_charger_platform_data *pdata;
 };
@@ -814,14 +815,15 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 
 	/*
 	 * If we got an under voltage interrupt it means that AC/USB input
-	 * was connected or disconnected.
+	 * was disconnected.
 	 */
-	if (irqstat_e & (IRQSTAT_E_USBIN_UV_IRQ | IRQSTAT_E_DCIN_UV_IRQ)) {
-		if (smb347_update_status(smb) > 0) {
-			smb347_update_online(smb);
-			power_supply_changed(&smb->mains);
-			power_supply_changed(&smb->usb);
-		}
+	if (irqstat_e & (IRQSTAT_E_USBIN_UV_IRQ | IRQSTAT_E_DCIN_UV_IRQ))
+		ret = IRQ_HANDLED;
+
+	if (smb347_update_status(smb) > 0) {
+		smb347_update_online(smb);
+		power_supply_changed(&smb->mains);
+		power_supply_changed(&smb->usb);
 		ret = IRQ_HANDLED;
 	}
 
@@ -902,8 +904,8 @@ static int smb347_irq_init(struct smb347_charger *smb)
 		goto fail;
 
 	ret = request_threaded_irq(irq, NULL, smb347_interrupt,
-				   IRQF_TRIGGER_FALLING, smb->client->name,
-				   smb);
+				   IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+				   smb->client->name, smb);
 	if (ret < 0)
 		goto fail_gpio;
 
@@ -1012,9 +1014,17 @@ static int smb347_usb_get_property(struct power_supply *psy,
 	struct smb347_charger *smb =
 		container_of(psy, struct smb347_charger, usb);
 
-	if (prop == POWER_SUPPLY_PROP_ONLINE) {
+	switch (prop) {
+	case POWER_SUPPLY_PROP_ONLINE:
 		val->intval = smb->usb_online;
 		return 0;
+
+	case POWER_SUPPLY_PROP_USB_HC:
+		val->intval = smb->usb_hc_mode;
+		return 0;
+
+	default:
+		break;
 	}
 	return -EINVAL;
 }
@@ -1029,12 +1039,12 @@ static int smb347_usb_set_property(struct power_supply *psy,
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_USB_HC:
-		if (smb->usb_online) {
-			smb347_set_writable(smb, true);
-			ret = smb347_write(smb, CMD_B, val->intval ?
-					   CMD_B_HC_MODE : CMD_B_USB59_MODE);
-			smb347_set_writable(smb, false);
-		}
+		smb347_set_writable(smb, true);
+		ret = smb347_write(smb, CMD_B, val->intval ?
+				   CMD_B_HC_MODE : CMD_B_USB59_MODE);
+		smb347_set_writable(smb, false);
+		smb->usb_hc_mode = val->intval;
+		break;
 
 	default:
 		break;
@@ -1073,6 +1083,12 @@ static int smb347_battery_get_property(struct power_supply *psy,
 	ret = smb347_update_status(smb);
 	if (ret < 0)
 		return ret;
+
+	if (ret > 0) {
+		smb347_update_online(smb);
+		power_supply_changed(&smb->mains);
+		power_supply_changed(&smb->usb);
+	}
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_STATUS:
