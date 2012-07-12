@@ -110,6 +110,7 @@ static DEFINE_MUTEX(gator_buffer_mutex);
 bool event_based_sampling;
 
 static DECLARE_WAIT_QUEUE_HEAD(gator_buffer_wait);
+static struct timer_list gator_buffer_wake_up_timer;
 static LIST_HEAD(gator_events);
 
 /******************************************************************************
@@ -162,6 +163,11 @@ u32 gator_cpuid(void)
 	return (val >> 4) & 0xfff;
 }
 #endif
+
+static void gator_buffer_wake_up(unsigned long data)
+{
+	wake_up(&gator_buffer_wait);
+}
 
 /******************************************************************************
  * Commit interface
@@ -283,7 +289,9 @@ static void gator_commit_buffer(int cpu, int buftype)
 
 	per_cpu(gator_buffer_commit, cpu)[buftype] = per_cpu(gator_buffer_write, cpu)[buftype];
 	gator_buffer_header(cpu, buftype);
-	wake_up(&gator_buffer_wait);
+
+	// had to delay scheduling work as attempting to schedule work during the context switch is illegal in kernel versions 3.5 and greater
+	mod_timer(&gator_buffer_wake_up_timer, jiffies + 1);
 }
 
 static void buffer_check(int cpu, int buftype)
@@ -1069,11 +1077,14 @@ static int __init gator_module_init(void)
 		return -1;
 	}
 
+	setup_timer(&gator_buffer_wake_up_timer, gator_buffer_wake_up, 0);
+
 	return 0;
 }
 
 static void __exit gator_module_exit(void)
 {
+	del_timer_sync(&gator_buffer_wake_up_timer);
 	tracepoint_synchronize_unregister();
 	gatorfs_unregister();
 }
