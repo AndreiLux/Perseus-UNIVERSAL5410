@@ -79,6 +79,7 @@ obj-$(CONFIG_EXYNOS_DEV_DMA)		+= dma.o
 obj-$(CONFIG_EXYNOS4_DEV_USB_OHCI)	+= dev-ohci.o
 obj-$(CONFIG_EXYNOS_DEV_SS_UDC)		+= dev-exynos-udc.o
 obj-$(CONFIG_EXYNOS5_DEV_JPEG)			+= dev-jpeg.o
+obj-$(CONFIG_EXYNOS_DEV_TMU)		+= dev-tmu.o
 
 obj-$(CONFIG_ARCH_EXYNOS)		+= setup-i2c0.o
 obj-$(CONFIG_EXYNOS4_SETUP_FIMC)	+= setup-fimc.o
@@ -107,3 +108,4 @@ obj-$(CONFIG_ION_EXYNOS)		+= dev-ion.o
 obj-$(CONFIG_CMA)			+= reserve-mem.o
 obj-$(CONFIG_EXYNOS5_SETUP_JPEG)			+= setup-jpeg.o
 obj-$(CONFIG_ARCH_EXYNOS5)		+= resetreason.o
+obj-$(CONFIG_EXYNOS_THERMAL)		+= tmu-exynos.o

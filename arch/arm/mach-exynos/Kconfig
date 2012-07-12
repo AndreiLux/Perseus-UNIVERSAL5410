@@ -252,6 +252,17 @@ config EXYNOS_PERSISTENT_CLOCK
 	help
 	  Persistent-clock-only driver for EXYNOS RTC.
 
+config EXYNOS_DEV_TMU
+	bool
+	help
+	  Compile in platform device definitions for TMU
+
+config EXYNOS_THERMAL
+	bool "Use thermal management"
+	depends on CPU_FREQ
+	help
+	  Common setup code for TMU
+
 # machine support
 
 if ARCH_EXYNOS4
@@ -482,6 +493,7 @@ config MACH_SMDK5250
 	select EXYNOS_SETUP_DP
 	select EXYNOS_SETUP_FIMD1
 	select EXYNOS_DEV_ROTATOR
+	select EXYNOS_DEV_TMU
 	select EXYNOS4_DEV_FIMC_IS
 	select EXYNOS4_DEV_USB_OHCI
 	select EXYNOS4_SETUP_I2C1
