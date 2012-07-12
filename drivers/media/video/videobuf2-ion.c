@@ -148,7 +148,7 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 		goto err_alloc;
 	}
 
-	buf->cookie.sgt = ion_sg_table(ctx->client, buf->handle); 
+	buf->cookie.sgt = ion_sg_table(ctx->client, buf->handle);
 
 	buf->ctx = ctx;
 	buf->size = size;
@@ -257,6 +257,19 @@ static void *vb2_ion_vaddr(void *buf_priv)
 	if (WARN_ON(!buf))
 		return NULL;
 
+	if (buf->kva != NULL)
+		return buf->kva;
+
+	if (dma_buf_begin_cpu_access(buf->dma_buf,
+		0, buf->size, buf->direction))
+		return NULL;
+
+	buf->kva = dma_buf_kmap(buf->dma_buf, 0);
+
+	if (buf->kva == NULL)
+		dma_buf_end_cpu_access(buf->dma_buf, 0,
+			buf->size, buf->direction);
+
 	return buf->kva;
 }
 
@@ -329,7 +342,8 @@ static int vb2_ion_map_dmabuf(void *mem_priv)
 	}
 
 	/* get the associated scatterlist for this buffer */
-	buf->cookie.sgt = dma_buf_map_attachment(buf->attachment, buf->direction);
+	buf->cookie.sgt = dma_buf_map_attachment(buf->attachment,
+		buf->direction);
 	if (IS_ERR_OR_NULL(buf->cookie.sgt)) {
 		pr_err("Error getting dmabuf scatterlist\n");
 		return -EINVAL;
@@ -365,7 +379,8 @@ static void vb2_ion_unmap_dmabuf(void *mem_priv)
 		return;
 	}
 
-	dma_buf_unmap_attachment(buf->attachment, buf->cookie.sgt, buf->direction);
+	dma_buf_unmap_attachment(buf->attachment,
+		buf->cookie.sgt, buf->direction);
 	buf->cookie.sgt = NULL;
 }
 
@@ -377,6 +392,11 @@ static void vb2_ion_detach_dmabuf(void *mem_priv)
 	if (buf->cookie.ioaddr && ctx_iommu(ctx)) {
 		iovmm_unmap(ctx->dev, buf->cookie.ioaddr);
 		buf->cookie.ioaddr = 0;
+	}
+
+	if (buf->kva != NULL) {
+		dma_buf_kunmap(buf->dma_buf, 0, buf->kva);
+		dma_buf_end_cpu_access(buf->dma_buf, 0, buf->size, 0);
 	}
 
 	/* detach this attachment */
