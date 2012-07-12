@@ -1063,11 +1063,11 @@ static int s3c_fb_blank(int blank_mode, struct fb_info *info)
 
 	switch (blank_mode) {
 	case FB_BLANK_POWERDOWN:
-	case FB_BLANK_UNBLANK:
+	case FB_BLANK_NORMAL:
 		s3c_fb_enable(sfb, 0);
 		break;
 
-	case FB_BLANK_NORMAL:
+	case FB_BLANK_UNBLANK:
 		s3c_fb_enable(sfb, 1);
 		break;
 
