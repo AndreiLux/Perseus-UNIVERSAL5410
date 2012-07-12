@@ -1211,23 +1211,8 @@ static int ath_reset(struct ath_softc *sc, bool retry_tx)
 		ath_err(common,
 			"Unable to reset hardware; reset status %d\n", r);
 
-	if (ath_startrecv(sc) != 0)
-		ath_err(common, "Unable to start recv logic\n");
-
-	/*
-	 * We may be doing a reset in response to a request
-	 * that changes the channel so update any state that
-	 * might change as a result.
-	 */
-	ath9k_cmn_update_txpow(ah, sc->curtxpow,
-			       sc->config.txpowlimit, &sc->curtxpow);
-
-	if ((sc->sc_flags & SC_OP_BEACONS) || !(sc->sc_flags & (SC_OP_OFFCHANNEL)))
-		ath_set_beacon(sc);	/* restart beacons */
-
-	ath_start_rx_poll(sc, 300);
-	ath9k_hw_set_interrupts(ah);
-	ath9k_hw_enable_interrupts(ah);
+	if (!ath_complete_reset(sc, true))
+		r = -EIO;
 
 	if (retry_tx) {
 		int i;
