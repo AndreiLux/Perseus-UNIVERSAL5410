@@ -1116,6 +1116,13 @@ mali_error kbase_platform_init(struct kbase_device *kbdev)
 	kbdev->platform_context = (void *) platform;
 
 	platform->cmu_pmu_status = 0;
+#ifdef CONFIG_MALI_T6XX_DVFS
+	platform->utilisation = 0;
+	platform->time_busy = 0;
+	platform->time_idle = 0;
+	platform->time_tick = 0;
+#endif
+
 	spin_lock_init(&platform->cmu_pmu_lock);
 
 	if(kbase_platform_power_clock_init(kbdev))

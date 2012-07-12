@@ -25,6 +25,13 @@ struct exynos_context
 	/** cmd & pmu lock */
 	spinlock_t cmu_pmu_lock;
 	struct clk *sclk_g3d;
+#ifdef CONFIG_MALI_T6XX_DVFS
+	/*To calculate utilization for x sec*/
+	int time_tick;
+	int utilisation;
+	u32 time_busy;
+	u32 time_idle;
+#endif
 };
 
 /* All things that are needed for the Linux port. */
