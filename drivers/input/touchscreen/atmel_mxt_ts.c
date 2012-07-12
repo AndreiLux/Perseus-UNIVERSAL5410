@@ -2312,7 +2312,6 @@ static int mxt_input_dev_create(struct mxt_data *data)
 	/* Clear the existing one if it exists */
 	if (data->input_dev) {
 		input_unregister_device(data->input_dev);
-		input_free_device(data->input_dev);
 		data->input_dev = NULL;
 	}
 
