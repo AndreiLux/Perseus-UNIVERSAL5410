@@ -17,9 +17,10 @@ struct fimc_is_fmt {
 };
 
 struct fimc_is_frame {
-	struct fimc_is_fmt		format;
-	u16				width;
-	u16				height;
+	struct fimc_is_fmt	format;
+	u16			width;
+	u16			height;
+	u32			size[FIMC_IS_MAX_BUf_PLANE_NUM];
 };
 
 struct fimc_is_video_common {
@@ -27,6 +28,7 @@ struct fimc_is_video_common {
 	struct media_pad		pads;
 	struct vb2_queue		vbq;
 	const struct fimc_is_vb2	*vb2;
+	struct mutex			lock;
 	struct fimc_is_frame		frame;
 	u32				buffers;
 	u32				buf_ref_cnt;
@@ -61,7 +63,19 @@ int fimc_is_video_reqbufs(struct fimc_is_video_common *video,
 	struct v4l2_requestbuffers *request);
 int fimc_is_video_set_format_mplane(struct fimc_is_video_common *video,
 	struct v4l2_format *format);
+int fimc_is_video_qbuf(struct fimc_is_video_common *video,
+	struct v4l2_buffer *buf);
+int fimc_is_video_dqbuf(struct fimc_is_video_common *video,
+	struct v4l2_buffer *buf, bool blocking);
+int fimc_is_video_streamon(struct fimc_is_video_common *video,
+	enum v4l2_buf_type type);
+int fimc_is_video_streamoff(struct fimc_is_video_common *video,
+	enum v4l2_buf_type type);
+int fimc_is_video_queue_setup(struct fimc_is_video_common *video,
+	unsigned int *num_planes,
+	unsigned int sizes[],
+	void *allocators[]);
 int fimc_is_video_buffer_queue(struct fimc_is_video_common *video,
-	struct vb2_buffer *vb);
+	struct vb2_buffer *vb, struct fimc_is_framemgr *framemgr);
 
 #endif

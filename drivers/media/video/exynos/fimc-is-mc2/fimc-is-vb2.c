@@ -33,6 +33,11 @@ int fimc_is_cma_resume(void *alloc_ctx)
 void fimc_is_cma_suspend(void *alloc_ctx) {}
 void fimc_is_cma_set_cacheable(void *alloc_ctx, bool cacheable) {}
 
+int fimc_is_cma_cache_flush(struct vb2_buffer *vb, u32 plane_no)
+{
+	return 0;
+}
+
 const struct fimc_is_vb2 fimc_is_vb2_cma = {
 	.ops		= &vb2_cma_phys_memops,
 	.init		= fimc_is_cma_init,
@@ -40,12 +45,13 @@ const struct fimc_is_vb2 fimc_is_vb2_cma = {
 	.plane_addr	= vb2_cma_phys_plane_paddr,
 	.resume		= fimc_is_cma_resume,
 	.suspend	= fimc_is_cma_suspend,
+	.cache_flush	= fimc_is_cma_cache_flush,
 	.set_cacheable	= fimc_is_cma_set_cacheable,
 };
 #elif defined(CONFIG_VIDEOBUF2_ION)
-static void *fimc_is_ion_init(struct fimc_is_core *isp)
+static void *fimc_is_ion_init(struct platform_device *pdev)
 {
-	return vb2_ion_create_context(&isp->pdev->dev, SZ_4K,
+	return vb2_ion_create_context(&pdev->dev, SZ_4K,
 					VB2ION_CTX_IOMMU | VB2ION_CTX_VMCONTIG);
 }
 

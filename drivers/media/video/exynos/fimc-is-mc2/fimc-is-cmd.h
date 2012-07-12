@@ -12,7 +12,7 @@
 #ifndef FIMC_IS_CMD_H
 #define FIMC_IS_CMD_H
 
-#define IS_COMMAND_VER 121 /* IS COMMAND VERSION 1.21 */
+#define IS_COMMAND_VER 122 /* IS COMMAND VERSION 1.22 */
 
 enum is_cmd {
 	/* HOST -> IS */

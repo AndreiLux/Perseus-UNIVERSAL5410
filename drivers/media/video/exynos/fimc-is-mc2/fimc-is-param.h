@@ -1342,13 +1342,22 @@ enum isp_awb_error {
 
 /* --------------------------  Effect  ----------------------------------- */
 enum isp_imageeffect_command {
-	ISP_IMAGE_EFFECT_DISABLE           = 0,
-	ISP_IMAGE_EFFECT_MONOCHROME        = 1,
-	ISP_IMAGE_EFFECT_NEGATIVE_MONO     = 2,
-	ISP_IMAGE_EFFECT_NEGATIVE_COLOR    = 3,
-	ISP_IMAGE_EFFECT_SEPIA             = 4,
-	ISP_IMAGE_EFFECT_EMBOSS            = 5,
-	ISP_IMAGE_EFFECT_CCM               = 15,
+	ISP_IMAGE_EFFECT_DISABLE		= 0,
+	ISP_IMAGE_EFFECT_MONOCHROME		= 1,
+	ISP_IMAGE_EFFECT_NEGATIVE_MONO		= 2,
+	ISP_IMAGE_EFFECT_NEGATIVE_COLOR		= 3,
+	ISP_IMAGE_EFFECT_SEPIA			= 4,
+	ISP_IMAGE_EFFECT_AQUA			= 5,
+	ISP_IMAGE_EFFECT_EMBOSS			= 6,
+	ISP_IMAGE_EFFECT_EMBOSS_MONO		= 7,
+	ISP_IMAGE_EFFECT_SKETCH			= 8,
+	ISP_IMAGE_EFFECT_RED_YELLOW_POINT	= 9,
+	ISP_IMAGE_EFFECT_GREEN_POINT		= 10,
+	ISP_IMAGE_EFFECT_BLUE_POINT		= 11,
+	ISP_IMAGE_EFFECT_MAGENTA_POINT		= 12,
+	ISP_IMAGE_EFFECT_WARM_VINTAGE		= 13,
+	ISP_IMAGE_EFFECT_COLD_VINTAGE		= 14,
+	ISP_IMAGE_EFFECT_CCM			= 15,
 };
 
 enum isp_imageeffect_error {
@@ -1375,9 +1384,20 @@ enum iso_adjust_command {
 	ISP_ADJUST_COMMAND_MANUAL_BRIGHTNESS	= (1 << 4),
 	ISP_ADJUST_COMMAND_MANUAL_HUE		= (1 << 5),
 	ISP_ADJUST_COMMAND_MANUAL_HOTPIXEL	= (1 << 6),
-	ISP_ADJUST_COMMAND_MANUAL_SHADING	= (1 << 7),
-	ISP_ADJUST_COMMAND_MANUAL_ALL		= 0x7F
+	ISP_ADJUST_COMMAND_MANUAL_NOISEREDUCTION = (1 << 7),
+	ISP_ADJUST_COMMAND_MANUAL_SHADING	= (1 << 8),
+	ISP_ADJUST_COMMAND_MANUAL_GAMMA		= (1 << 9),
+	ISP_ADJUST_COMMAND_MANUAL_EDGEENHANCEMENT = (1 << 10),
+	ISP_ADJUST_COMMAND_MANUAL_SCENE		= (1 << 11),
+	ISP_ADJUST_COMMAND_MANUAL_ALL		= 0xFFF
 };
+
+enum isp_adjust_scene_index {
+	ISP_ADJUST_SCENE_NORMAL			= 0,
+	ISP_ADJUST_SCENE_NIGHT_PREVIEW		= 1,
+	ISP_ADJUST_SCENE_NIGHT_CAPTURE		= 2
+};
+
 
 enum isp_adjust_error {
 	ISP_ADJUST_ERROR_NO		= 0 /* Adjust setting is done */
@@ -1385,10 +1405,16 @@ enum isp_adjust_error {
 
 /* -------------------------  Metering  ---------------------------------- */
 enum isp_metering_command {
-	ISP_METERING_COMMAND_AVERAGE	= 0,
-	ISP_METERING_COMMAND_SPOT	= 1,
-	ISP_METERING_COMMAND_MATRIX	= 2,
-	ISP_METERING_COMMAND_CENTER	= 3
+	ISP_METERING_COMMAND_AVERAGE		= 0,
+	ISP_METERING_COMMAND_SPOT		= 1,
+	ISP_METERING_COMMAND_MATRIX		= 2,
+	ISP_METERING_COMMAND_CENTER		= 3,
+	ISP_METERING_COMMAND_EXPOSURE_MODE	= (1 << 8)
+};
+
+enum isp_exposure_mode {
+	ISP_EXPOSUREMODE_OFF		= 1,
+	ISP_EXPOSUREMODE_AUTO		= 2
 };
 
 enum isp_metering_error {
@@ -1587,15 +1613,15 @@ struct param_dma_input {
 	u32	buffer_number;
 	u32	buffer_address;
 	u32	uiCropOffsetX;
-	u32 uiCropOffsetY;
-	u32 uiCropWidth;
-	u32 uiCropHeight;
-	u32 uiUserMinFrameTime;
-	u32 uiUserMaxFrameTime;
-	u32 uiWideFrameGap;
-	u32 uiFrameGap;
-	u32 uiLineGap;
-	u32 uiReserved[PARAMETER_MAX_MEMBER-19];
+	u32	uiCropOffsetY;
+	u32	uiCropWidth;
+	u32	uiCropHeight;
+	u32	uiUserMinFrameTime;
+	u32	uiUserMaxFrameTime;
+	u32	uiWideFrameGap;
+	u32	uiFrameGap;
+	u32	uiLineGap;
+	u32	uiReserved[PARAMETER_MAX_MEMBER-19];
 	u32	err;
 };
 
@@ -1646,9 +1672,9 @@ struct param_isp_aa {
 	u32	target;
 	u32	mode;
 	u32	scene;
-	u32 uiAfTouch;
-	u32 uiAfFace;
-	u32 uiAfResponse;
+	u32	uiAfTouch;
+	u32	uiAfFace;
+	u32	uiAfResponse;
 	u32	sleep;
 	u32	touch_x;
 	u32	touch_y;
@@ -1693,9 +1719,21 @@ struct param_isp_adjust {
 	s32	exposure;
 	s32	brightness;
 	s32	hue;
-	s32	hot_pixel_enable;
-	s32	shading_correction_enable;
-	u32	reserved[PARAMETER_MAX_MEMBER-10];
+	/* 0 or 1 */
+	u32	uiHotPixelEnable;
+	/* 0 ~ 127 */
+	u32	uiNoiseReductionStrength;
+	/* 0 or 1 */
+	u32	uiShadingCorrectionEnable;
+	/* 0 or 1 */
+	u32	uiUserGammaEnable;
+	/* 0 ~ 127 */
+	u32	uiEdgeEnhancementStrength;
+	/* ISP_AdjustSceneIndexEnum */
+	u32	uiUserSceneMode;
+	u32	uiMinFrameTime;
+	u32	uiMaxFrameTime;
+	u32	uiReserved[PARAMETER_MAX_MEMBER-16];
 	u32	err;
 };
 
@@ -1705,7 +1743,8 @@ struct param_isp_metering {
 	u32	win_pos_y;
 	u32	win_width;
 	u32	win_height;
-	u32	reserved[PARAMETER_MAX_MEMBER-6];
+	u32	exposure_mode;
+	u32	reserved[PARAMETER_MAX_MEMBER-7];
 	u32	err;
 };
 

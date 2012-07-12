@@ -12,8 +12,11 @@
 #ifndef FIMC_IS_CORE_H
 #define FIMC_IS_CORE_H
 
-/*#define DEBUG			1*/
+
+/*#define DEBUG*/
 /*#define FIMC_IS_A5_DEBUG_ON	1*/
+/*#define DBG_STREAMING*/
+
 #define FRAME_RATE_ENABLE
 /*#define ODC_ENABLE*/
 #define TDNR_ENABLE
@@ -54,7 +57,9 @@
 #include "fimc-is-video-isp.h"
 #include "fimc-is-video-scc.h"
 #include "fimc-is-video-scp.h"
+#include "fimc-is-mem.h"
 
+#define FIMC_IS_MODULE_NAME			"exynos5-fimc-is2"
 #define FIMC_IS_SENSOR_ENTITY_NAME		"exynos5-fimc-is2-sensor"
 #define FIMC_IS_FRONT_ENTITY_NAME		"exynos5-fimc-is2-front"
 #define FIMC_IS_BACK_ENTITY_NAME		"exynos5-fimc-is2-back"
@@ -102,39 +107,22 @@
 #define FIMC_IS_BACK_PAD_SOURCE_SCALERP	(2)
 #define FIMC_IS_BACK_PADS_NUM			(3)
 
-#define MAX_ISP_INTERNAL_BUF_WIDTH		(2560)  /* 4808 in HW */
-#define MAX_ISP_INTERNAL_BUF_HEIGHT		(1920)  /* 3356 in HW */
-#define SIZE_ISP_INTERNAL_BUF \
-	(MAX_ISP_INTERNAL_BUF_WIDTH * MAX_ISP_INTERNAL_BUF_HEIGHT * 3)
-
-#define MAX_ODC_INTERNAL_BUF_WIDTH		(2560)  /* 4808 in HW */
-#define MAX_ODC_INTERNAL_BUF_HEIGHT		(1920)  /* 3356 in HW */
-#define SIZE_ODC_INTERNAL_BUF \
-	(MAX_ODC_INTERNAL_BUF_WIDTH * MAX_ODC_INTERNAL_BUF_HEIGHT * 3)
-
-#define MAX_DIS_INTERNAL_BUF_WIDTH		(2400)
-#define MAX_DIS_INTERNAL_BUF_HEIGHT		(1360)
-#define SIZE_DIS_INTERNAL_BUF \
-	(MAX_DIS_INTERNAL_BUF_WIDTH * MAX_DIS_INTERNAL_BUF_HEIGHT * 2)
-
-#define MAX_3DNR_INTERNAL_BUF_WIDTH		(1920)
-#define MAX_3DNR_INTERNAL_BUF_HEIGHT		(1088)
-#define SIZE_3DNR_INTERNAL_BUF \
-	(MAX_3DNR_INTERNAL_BUF_WIDTH * MAX_3DNR_INTERNAL_BUF_HEIGHT * 2)
-
-#define NUM_ISP_INTERNAL_BUF			(3)
-#define NUM_ODC_INTERNAL_BUF			(2)
-#define NUM_DIS_INTERNAL_BUF			(3)
-#define NUM_3DNR_INTERNAL_BUF			(2)
-
+#define FIMC_IS_MAX_SENSOR_NAME_LEN  (16)
 #define is_af_use(dev)				((dev->af.use_af) ? 1 : 0)
 
 #define err(fmt, args...) \
 	printk(KERN_ERR "%s:%d: " fmt "\n", __func__, __LINE__, ##args)
 
+/*#define AUTO_MODE*/
+
+
+
 #ifdef DEBUG
 #define dbg(fmt, args...) \
-	printk(KERN_DEBUG "%s:%d: " fmt "\n", __func__, __LINE__, ##args)
+	/*printk(KERN_DEBUG "%s:%d: " fmt "\n", __func__, __LINE__, ##args)*/
+
+#define dbg_warning(fmt, args...) \
+	printk(KERN_INFO "%s[WAR] Warning! " fmt, __func__, ##args)
 
 #define dbg_sensor(fmt, args...) \
 	printk(KERN_INFO "[SEN] " fmt, ##args)
@@ -148,8 +136,8 @@
 #define dbg_scc(fmt, args...) \
 	printk(KERN_INFO "[SCC] " fmt, ##args)
 
-#define dbg_chain(fmt, args...) \
-	printk(KERN_INFO "[CHA] " fmt, ##args)
+#define dbg_front(fmt, args...) \
+	printk(KERN_INFO "[FRT] " fmt, ##args)
 
 #define dbg_ischain(fmt, args...) \
 	printk(KERN_INFO "[ISC] " fmt, ##args)
@@ -157,18 +145,23 @@
 #define dbg_core(fmt, args...) \
 	printk(KERN_INFO "[COR] " fmt, ##args)
 
+#ifdef DBG_STREAMING
 #define dbg_interface(fmt, args...) \
 	printk(KERN_INFO "[ITF] " fmt, ##args)
-
 #define dbg_frame(fmt, args...) \
 	printk(KERN_INFO "[FRM] " fmt, ##args)
 #else
+#define dbg_interface(fmt, args...)
+#define dbg_frame(fmt, args...)
+#endif
+#else
 #define dbg(fmt, args...)
+#define dbg_warning(fmt, args...)
 #define dbg_sensor(fmt, args...)
 #define dbg_isp(fmt, args...)
 #define dbg_scp(fmt, args...)
 #define dbg_scc(fmt, args...)
-#define dbg_chain(fmt, args...)
+#define dbg_front(fmt, args...)
 #define dbg_ischain(fmt, args...)
 #define dbg_core(fmt, args...)
 #define dbg_interface(fmt, args...)
@@ -234,47 +227,6 @@ enum fimc_is_video_dev_num {
 	FIMC_IS_VIDEO_MAX_NUM,
 };
 
-enum fimc_is_pipe_state {
-	FIMC_IS_STATE_IDLE = 0,
-	FIMC_IS_STATE_FW_DOWNLOADED,
-	FIMC_IS_STATE_SENSOR_INITIALIZED,
-	FIMC_IS_STATE_HW_STREAM_ON,
-	FIMC_IS_STATE_SCALERC_STREAM_ON,
-	FIMC_IS_STATE_SCALERP_STREAM_ON,
-	FIMC_IS_STATE_3DNR_STREAM_ON,
-	FIMC_IS_STATE_BAYER_STREAM_ON,
-	FIMC_IS_STATE_SCALERC_BUFFER_PREPARED,
-	FIMC_IS_STATE_SCALERP_BUFFER_PREPARED,
-	FIMC_IS_STATE_3DNR_BUFFER_PREPARED,
-	FIMC_IS_STATE_BAYER_BUFFER_PREPARED,
-};
-
-enum fimc_is_state {
-	IS_ST_IDLE = 0,
-	IS_ST_PWR_ON,
-	IS_ST_FW_DOWNLOADED,
-	IS_ST_OPEN_SENSOR,
-	IS_ST_SETFILE_LOADED,
-	IS_ST_INIT_PREVIEW_STILL,
-	IS_ST_INIT_PREVIEW_VIDEO,
-	IS_ST_INIT_CAPTURE_STILL,
-	IS_ST_INIT_CAPTURE_VIDEO,
-	IS_ST_RUN,
-	IS_ST_STREAM_ON,
-	IS_ST_STREAM_OFF,
-	IS_ST_CHANGE_MODE,
-	IS_ST_SET_PARAM,
-	IS_ST_PEND,
-	IS_ST_BLOCKED,
-	IS_ST_CHANGE_MODE_DONE,
-	IS_ST_SCALERP_FRAME_DONE,
-	IS_ST_BLOCK_CMD_CLEARED,
-	IS_ST_SCALERP_MASK_DONE,
-	IS_ST_SCALERC_MASK_DONE,
-	IS_ST_TDNR_MASK_DONE,
-	IS_ST_END,
-};
-
 enum af_state {
 	FIMC_IS_AF_IDLE		= 0,
 	FIMC_IS_AF_SETCONFIG	= 1,
@@ -307,21 +259,6 @@ enum fimc_is_power {
 };
 
 struct fimc_is_core;
-
-struct fimc_is_vb2 {
-	const struct vb2_mem_ops *ops;
-	void *(*init)(struct fimc_is_core *isp);
-	void (*cleanup)(void *alloc_ctx);
-
-	unsigned long (*plane_addr)(struct vb2_buffer *vb, u32 plane_no);
-
-	int (*resume)(void *alloc_ctx);
-	void (*suspend)(void *alloc_ctx);
-
-	int (*cache_flush)(struct vb2_buffer *vb, u32 num_planes);
-	void (*set_cacheable)(void *alloc_ctx, bool cacheable);
-	void *(*plane_kvaddr)(struct vb2_buffer *vb, unsigned int plane_no);
-};
 
 struct fimc_is_front_dev {
 	struct v4l2_subdev		sd;
@@ -416,16 +353,17 @@ struct is_af_info {
 
 struct fimc_is_core {
 	struct platform_device			*pdev;
-	struct exynos5_platform_fimc_is		*pdata; /* depended on isp */
+	struct exynos5_platform_fimc_is	*pdata; /* depended on isp */
 	struct exynos_md			*mdev;
 	spinlock_t				slock;
-	struct mutex				vb_lock;
 	struct mutex				lock;
 
 	/*iky*/
 	spinlock_t				mcu_slock;
 
-	struct fimc_is_framemgr			framemgr;
+	struct fimc_is_mem			mem;
+	struct fimc_is_framemgr			framemgr_sensor;
+	struct fimc_is_framemgr			framemgr_ischain;
 	struct fimc_is_interface		interface;
 
 	struct fimc_is_device_sensor	sensor;
@@ -439,7 +377,7 @@ struct fimc_is_core {
 	struct fimc_is_video_scc		video_scc;
 	struct fimc_is_video_scp		video_scp;
 
-	struct vb2_alloc_ctx			*alloc_ctx;
+	/*struct vb2_alloc_ctx			*alloc_ctx;*/
 
 	struct resource				*regs_res;
 	void __iomem				*regs;
@@ -451,7 +389,6 @@ struct fimc_is_core {
 	u32					id;
 	struct is_fw				fw;
 	struct is_setfile			setfile;
-	struct is_meminfo			mem;
 	struct is_to_host_cmd			i2h_cmd;
 	struct is_fd_result_header		fd_header;
 
@@ -466,8 +403,6 @@ struct fimc_is_core {
 	u32					sensor_num;
 	struct is_af_info			af;
 	int					low_power_mode;
-
-	const struct fimc_is_vb2		*vb2;
 };
 
 extern const struct v4l2_file_operations fimc_is_bayer_video_fops;
@@ -502,6 +437,7 @@ void fimc_is_mem_cache_clean(const void *start_addr, unsigned long size);
 void fimc_is_mem_cache_inv(const void *start_addr, unsigned long size);
 int fimc_is_pipeline_s_stream_preview
 	(struct media_entity *start_entity, int on);
+int fimc_is_init_set(struct fimc_is_core *dev , u32 val);
 int fimc_is_load_fw(struct fimc_is_core *dev);
 int fimc_is_load_setfile(struct fimc_is_core *dev);
 

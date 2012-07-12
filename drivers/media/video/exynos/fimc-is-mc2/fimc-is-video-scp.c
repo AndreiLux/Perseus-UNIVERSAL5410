@@ -32,12 +32,10 @@
 #include <linux/v4l2-mediabus.h>
 
 #include "fimc-is-core.h"
-#include "fimc-is-helper.h"
 #include "fimc-is-param.h"
 #include "fimc-is-cmd.h"
 #include "fimc-is-regs.h"
 #include "fimc-is-err.h"
-#include "fimc-is-misc.h"
 #include "fimc-is-video.h"
 
 /*************************************************************************/
@@ -71,6 +69,7 @@ static int fimc_is_scalerp_video_open(struct file *file)
 	dbg_scp("%s\n", __func__);
 
 	file->private_data = video;
+	ischain->scp_video = video;
 	fimc_is_video_open(&video->common, ischain);
 
 	return 0;
@@ -78,15 +77,15 @@ static int fimc_is_scalerp_video_open(struct file *file)
 
 static int fimc_is_scalerp_video_close(struct file *file)
 {
-	struct fimc_is_core *dev = video_drvdata(file);
-	struct fimc_is_video_scp *video = &dev->video_scp;
+	int ret = 0;
+	struct fimc_is_video_scp *video = file->private_data;
 
 	dbg("%s\n", __func__);
 
 	file->private_data = 0;
 	fimc_is_video_close(&video->common);
 
-	return 0;
+	return ret;
 
 }
 
@@ -149,11 +148,10 @@ static int fimc_is_scalerp_video_get_format_mplane(struct file *file, void *fh,
 static int fimc_is_scalerp_video_set_format_mplane(struct file *file, void *fh,
 						struct v4l2_format *format)
 {
+	int ret = 0;
 	struct fimc_is_video_scp *video = file->private_data;
 	struct fimc_is_core *core = video_drvdata(file);
 	struct fimc_is_device_ischain *ischain = &core->ischain;
-	struct fimc_is_interface *interface = &core->interface;
-	int ret = 0;
 
 	dbg_scp("%s\n", __func__);
 
@@ -165,15 +163,16 @@ static int fimc_is_scalerp_video_set_format_mplane(struct file *file, void *fh,
 
 	/*device_sensor_stream_off(sensor, interface);*/
 
-	fimc_is_ischain_s_chain1(ischain, interface,
+/*
+	fimc_is_ischain_s_chain1(ischain,
 		video->common.frame.width,
 		video->common.frame.height);
 
-	fimc_is_ischain_s_chain2(ischain, interface,
+	fimc_is_ischain_s_chain2(ischain,
 		video->common.frame.width,
-		video->common.frame.height);
+		video->common.frame.height);*/
 
-	fimc_is_ischain_s_chain3(ischain, interface,
+	fimc_is_ischain_s_chain3(ischain,
 		video->common.frame.width,
 		video->common.frame.height);
 
@@ -238,64 +237,69 @@ static int fimc_is_scalerp_video_querybuf(struct file *file, void *priv,
 static int fimc_is_scalerp_video_qbuf(struct file *file, void *priv,
 						struct v4l2_buffer *buf)
 {
-	int vb_ret;
+	int ret = 0;
 	struct fimc_is_video_scp *video = file->private_data;
 
-	/*
-	if (test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state)) {
-		video->common.buf_mask |= (1<<buf->index);
+#ifdef DBG_STREAMING
+	dbg_scp("%s(index : %d)\n", __func__, buf->index);
+#endif
 
-		dbg("index(%d) mask(0x%08x)\n", buf->index,
-			video->common.buf_mask);
-	} else
-		dbg("index(%d)\n", buf->index);
-	*/
+	ret = fimc_is_video_qbuf(&video->common, buf);
 
-	vb_ret = vb2_qbuf(&video->common.vbq, buf);
-
-	return vb_ret;
+#ifdef DBG_STREAMING
+	dbg_scp("%s END ret(%d)\n", __func__, ret);
+#endif
+	return ret;
 }
 
 static int fimc_is_scalerp_video_dqbuf(struct file *file, void *priv,
 						struct v4l2_buffer *buf)
 {
-	int vb_ret;
+	int ret = 0;
 	struct fimc_is_video_scp *video = file->private_data;
 
-	vb_ret = vb2_dqbuf(&video->common.vbq, buf, file->f_flags & O_NONBLOCK);
+#ifdef DBG_STREAMING
+	dbg_scp("%s\n", __func__);
+#endif
 
-	video->common.buf_mask &= ~(1<<buf->index);
+	ret = fimc_is_video_dqbuf(&video->common, buf,
+		file->f_flags & O_NONBLOCK);
 
-	dbg("index(%d) mask(0x%08x)\n", buf->index, video->common.buf_mask);
+#ifdef DBG_STREAMING
+	dbg_scp("%s END ret(%d) (index : %d)\n", __func__, ret, buf->index);
+#endif
 
-	return vb_ret;
+	return ret;
 }
 
 static int fimc_is_scalerp_video_streamon(struct file *file, void *priv,
 						enum v4l2_buf_type type)
 {
+	int ret = 0;
 	struct fimc_is_video_scp *video = file->private_data;
 
 	dbg("%s\n", __func__);
 
-	/*TODO*/
+	ret = vb2_streamon(&video->common.vbq, type);
+	if (ret)
+		err("vb2_streamoff is failed\n");
 
-	return vb2_streamon(&video->common.vbq, type);
+	return ret;
 }
 
 static int fimc_is_scalerp_video_streamoff(struct file *file, void *priv,
 						enum v4l2_buf_type type)
 {
+	int ret = 0;
 	struct fimc_is_video_scp *video = file->private_data;
-	int result;
 
 	dbg("%s\n", __func__);
 
-	result = vb2_streamoff(&video->common.vbq, type);
+	ret = vb2_streamoff(&video->common.vbq, type);
+	if (ret)
+		err("vb2_streamoff is failed\n");
 
-	/*TODO:*/
-
-	return result;
+	return ret;
 }
 
 static int fimc_is_scalerp_video_enum_input(struct file *file, void *priv,
@@ -319,7 +323,7 @@ static int fimc_is_scalerp_video_enum_input(struct file *file, void *priv,
 	input->type = V4L2_INPUT_TYPE_CAMERA;
 
 	strncpy(input->name, sensor_info->sensor_name,
-					FIMC_IS_MAX_NAME_LEN);
+					FIMC_IS_MAX_SENSOR_NAME_LEN);
 	return 0;
 }
 
@@ -333,10 +337,7 @@ static int fimc_is_scalerp_video_g_input(struct file *file, void *priv,
 static int fimc_is_scalerp_video_s_input(struct file *file, void *priv,
 					unsigned int input)
 {
-	struct fimc_is_core *core = video_drvdata(file);
-
 	dbg_scp("fimc_is_scalerp_video_s_input\n");
-	core->sensor.id_position = input;
 
 	return 0;
 }
@@ -344,267 +345,22 @@ static int fimc_is_scalerp_video_s_input(struct file *file, void *priv,
 static int fimc_is_scalerp_video_g_ctrl(struct file *file, void *priv,
 					struct v4l2_control *ctrl)
 {
-	struct fimc_is_core *isp = video_drvdata(file);
-	int ret = 0;
-
-	switch (ctrl->id) {
-	/* EXIF information */
-	case V4L2_CID_IS_CAMERA_EXIF_EXPTIME:
-	case V4L2_CID_CAMERA_EXIF_EXPTIME: /* Exposure Time */
-		fimc_is_mem_cache_inv((void *)IS_HEADER(isp),
-			(unsigned long)(sizeof(struct is_frame_header)*4));
-		ctrl->value = isp->is_p_region->header[0].
-			exif.exposure_time.den;
-		break;
-	case V4L2_CID_IS_CAMERA_EXIF_FLASH:
-	case V4L2_CID_CAMERA_EXIF_FLASH: /* Flash */
-		fimc_is_mem_cache_inv((void *)IS_HEADER(isp),
-			(unsigned long)(sizeof(struct is_frame_header)*4));
-		ctrl->value = isp->is_p_region->header[0].exif.flash;
-		break;
-	case V4L2_CID_IS_CAMERA_EXIF_ISO:
-	case V4L2_CID_CAMERA_EXIF_ISO: /* ISO Speed Rating */
-		fimc_is_mem_cache_inv((void *)IS_HEADER(isp),
-			(unsigned long)(sizeof(struct is_frame_header)*4));
-		ctrl->value = isp->is_p_region->header[0].
-			exif.iso_speed_rating;
-		break;
-	case V4L2_CID_IS_CAMERA_EXIF_SHUTTERSPEED:
-	case V4L2_CID_CAMERA_EXIF_TV: /* Shutter Speed */
-		fimc_is_mem_cache_inv((void *)IS_HEADER(isp),
-			(unsigned long)(sizeof(struct is_frame_header)*4));
-		/* Exposure time = shutter speed by FW */
-		ctrl->value = isp->is_p_region->header[0].
-			exif.exposure_time.den;
-		break;
-	case V4L2_CID_IS_CAMERA_EXIF_BRIGHTNESS:
-	case V4L2_CID_CAMERA_EXIF_BV: /* Brightness */
-		fimc_is_mem_cache_inv((void *)IS_HEADER(isp),
-			(unsigned long)(sizeof(struct is_frame_header)*4));
-		ctrl->value = isp->is_p_region->header[0].exif.brightness.num;
-		break;
-	case V4L2_CID_CAMERA_EXIF_EBV: /* exposure bias */
-		fimc_is_mem_cache_inv((void *)IS_HEADER(isp),
-			(unsigned long)(sizeof(struct is_frame_header)*4));
-		ctrl->value = isp->is_p_region->header[0].exif.brightness.den;
-		break;
-	/* Get x and y offset of sensor  */
-	case V4L2_CID_IS_GET_SENSOR_OFFSET_X:
-		ctrl->value = isp->sensor.offset_x;
-		break;
-	case V4L2_CID_IS_GET_SENSOR_OFFSET_Y:
-		ctrl->value = isp->sensor.offset_y;
-		break;
-	case V4L2_CID_IS_FD_GET_DATA:
-		ctrl->value = isp->fd_header.count;
-		fimc_is_mem_cache_inv((void *)IS_FACE(isp),
-		(unsigned long)(sizeof(struct is_face_marker)*MAX_FACE_COUNT));
-		memcpy((void *)isp->fd_header.target_addr,
-			&isp->is_p_region->face[isp->fd_header.index],
-			(sizeof(struct is_face_marker)*isp->fd_header.count));
-		break;
-	/* AF result */
-	case V4L2_CID_CAMERA_AUTO_FOCUS_RESULT:
-		if (!is_af_use(isp))
-			ctrl->value = 0x02;
-		else
-			ctrl->value = isp->af.af_lock_state;
-		break;
-	/* F/W debug region address */
-	case V4L2_CID_IS_FW_DEBUG_REGION_ADDR:
-		ctrl->value = isp->mem.base + FIMC_IS_DEBUG_REGION_ADDR;
-		break;
-	default:
-		return -EINVAL;
-	}
-	return ret;
-}
-
-static int fimc_is_g_ext_ctrls_handler(struct fimc_is_core *dev,
-	struct v4l2_ext_control *ctrl, int index)
-{
-	int ret = 0;
-#if 0 /* will use later*/
-	switch (ctrl->id) {
-	/* Face Detection CID handler */
-	/* 1. Overall information */
-	case V4L2_CID_IS_FD_GET_FACE_COUNT:
-		ctrl->value = dev->fd_header.count;
-		break;
-	case V4L2_CID_IS_FD_GET_FACE_FRAME_NUMBER:
-		if (dev->fd_header.offset < dev->fd_header.count) {
-			ctrl->value =
-				dev->is_p_region->face[dev->fd_header.index
-				+ dev->fd_header.offset].frame_number;
-		} else {
-			ctrl->value = 0;
-			return -255;
-		}
-		break;
-	case V4L2_CID_IS_FD_GET_FACE_CONFIDENCE:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].confidence;
-		break;
-	case V4L2_CID_IS_FD_GET_FACE_SMILE_LEVEL:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].smile_level;
-		break;
-	case V4L2_CID_IS_FD_GET_FACE_BLINK_LEVEL:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].blink_level;
-		break;
-	/* 2. Face information */
-	case V4L2_CID_IS_FD_GET_FACE_TOPLEFT_X:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].uiAfFace.offset_x;
-		break;
-	case V4L2_CID_IS_FD_GET_FACE_TOPLEFT_Y:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].uiAfFace.offset_y;
-		break;
-	case V4L2_CID_IS_FD_GET_FACE_BOTTOMRIGHT_X:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].uiAfFace.offset_x
-			+ dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].uiAfFace.width;
-		break;
-	case V4L2_CID_IS_FD_GET_FACE_BOTTOMRIGHT_Y:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].uiAfFace.offset_y
-			+ dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].uiAfFace.height;
-		break;
-	/* 3. Left eye information */
-	case V4L2_CID_IS_FD_GET_LEFT_EYE_TOPLEFT_X:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].left_eye.offset_x;
-		break;
-	case V4L2_CID_IS_FD_GET_LEFT_EYE_TOPLEFT_Y:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].left_eye.offset_y;
-		break;
-	case V4L2_CID_IS_FD_GET_LEFT_EYE_BOTTOMRIGHT_X:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].left_eye.offset_x
-			+ dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].left_eye.width;
-		break;
-	case V4L2_CID_IS_FD_GET_LEFT_EYE_BOTTOMRIGHT_Y:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].left_eye.offset_y
-			+ dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].left_eye.height;
-		break;
-	/* 4. Right eye information */
-	case V4L2_CID_IS_FD_GET_RIGHT_EYE_TOPLEFT_X:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].right_eye.offset_x;
-		break;
-	case V4L2_CID_IS_FD_GET_RIGHT_EYE_TOPLEFT_Y:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].right_eye.offset_y;
-		break;
-	case V4L2_CID_IS_FD_GET_RIGHT_EYE_BOTTOMRIGHT_X:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].right_eye.offset_x
-			+ dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].right_eye.width;
-		break;
-	case V4L2_CID_IS_FD_GET_RIGHT_EYE_BOTTOMRIGHT_Y:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].right_eye.offset_y
-			+ dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].right_eye.height;
-		break;
-	/* 5. Mouth eye information */
-	case V4L2_CID_IS_FD_GET_MOUTH_TOPLEFT_X:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].mouth.offset_x;
-		break;
-	case V4L2_CID_IS_FD_GET_MOUTH_TOPLEFT_Y:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-				+ dev->fd_header.offset].mouth.offset_y;
-		break;
-	case V4L2_CID_IS_FD_GET_MOUTH_BOTTOMRIGHT_X:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].mouth.offset_x
-			+ dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].mouth.width;
-		break;
-	case V4L2_CID_IS_FD_GET_MOUTH_BOTTOMRIGHT_Y:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].mouth.offset_y
-			+ dev->is_p_region->face[dev->fd_header.index
-			+ dev->fd_header.offset].mouth.height;
-		break;
-	/* 6. Angle information */
-	case V4L2_CID_IS_FD_GET_ANGLE:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-				+ dev->fd_header.offset].roll_angle;
-		break;
-	case V4L2_CID_IS_FD_GET_YAW_ANGLE:
-		ctrl->value = dev->is_p_region->face[dev->fd_header.index
-				+ dev->fd_header.offset].yaw_angle;
-		break;
-	/* 7. Update next face information */
-	case V4L2_CID_IS_FD_GET_NEXT:
-		dev->fd_header.offset++;
-		break;
-	default:
-		return 255;
-		break;
-	}
-#endif
-	return ret;
+	return 0;
 }
 
 static int fimc_is_scalerp_video_g_ext_ctrl(struct file *file, void *priv,
 					struct v4l2_ext_controls *ctrls)
 {
-	struct fimc_is_core *isp = video_drvdata(file);
-	struct v4l2_ext_control *ctrl;
-	int i, ret = 0;
-	unsigned long flags;
-
-	spin_lock_irqsave(&isp->slock, flags);
-	ctrl = ctrls->controls;
-	if (!ctrls->ctrl_class == V4L2_CTRL_CLASS_CAMERA)
-		return -EINVAL;
-
-	fimc_is_mem_cache_inv((void *)IS_FACE(isp),
-		(unsigned long)(sizeof(struct is_face_marker)*MAX_FACE_COUNT));
-
-	isp->fd_header.offset = 0;
-
-	isp->fd_header.width = (s32)isp->sensor.width ;
-	isp->fd_header.height = (s32)isp->sensor.height ;
-
-	for (i = 0; i < ctrls->count; i++) {
-		ctrl = ctrls->controls + i;
-		ret = fimc_is_g_ext_ctrls_handler(isp, ctrl, i);
-		if (ret > 0) {
-			ctrls->error_idx = i;
-			break;
-		} else if (ret < 0) {
-			ret = 0;
-			break;
-		}
-	}
-
-	isp->fd_header.index = 0;
-	isp->fd_header.count = 0;
-	spin_unlock_irqrestore(&isp->slock, flags);
-	return ret;
+	return 0;
 }
 
 static int fimc_is_scalerp_video_s_ctrl(struct file *file, void *priv,
 					struct v4l2_control *ctrl)
 {
-	struct fimc_is_core *isp = video_drvdata(file);
 	int ret = 0;
 
 	dbg("fimc_is_scalerp_video_s_ctrl(%d)(%d)\n", ctrl->id, ctrl->value);
-#if 1
+#if 0
 	switch (ctrl->id) {
 	case V4L2_CID_IS_CAMERA_SHOT_MODE_NORMAL:
 		ret = fimc_is_v4l2_shot_mode(isp, ctrl->value);
@@ -752,7 +508,7 @@ static int fimc_is_scalerp_video_s_ctrl(struct file *file, void *priv,
 #endif
 		break;
 	case V4L2_CID_CAMERA_SCENE_MODE:
-		err("V4L2_CID_CAMERA_SCENE_MODE is not available now.\n");
+		ret = fimc_is_v4l2_isp_scene_mode(isp, ctrl->value);
 		break;
 	case V4L2_CID_CAMERA_VT_MODE:
 		isp->setfile.sub_index = ctrl->value;
@@ -831,245 +587,93 @@ const struct v4l2_ioctl_ops fimc_is_scalerp_video_ioctl_ops = {
 };
 
 static int fimc_is_scalerp_queue_setup(struct vb2_queue *vq,
-			const struct v4l2_format *fmt,
-			unsigned int *num_buffers,
-			unsigned int *num_planes, unsigned int sizes[],
-			void *allocators[])
+	const struct v4l2_format *fmt,
+	unsigned int *num_buffers,
+	unsigned int *num_planes,
+	unsigned int sizes[],
+	void *allocators[])
 {
-
+	int ret = 0;
 	struct fimc_is_video_scp *video = vq->drv_priv;
-	struct fimc_is_core	*dev = video->common.core;
-	int i;
 
-	*num_planes = video->common.frame.format.num_planes;
-	fimc_is_set_plane_size(&video->common.frame, sizes);
+	dbg_scp("%s\n", __func__);
 
-	for (i = 0; i < *num_planes; i++)
-		allocators[i] =  dev->alloc_ctx;
+	ret = fimc_is_video_queue_setup(&video->common,
+		num_planes,
+		sizes,
+		allocators);
 
-	dbg("(num_planes : %d)(size : %d)\n", (int)*num_planes, (int)sizes[0]);
+	dbg_scp("(num_planes : %d)(size : %d)\n",
+		(int)*num_planes, (int)sizes[0]);
 
-	return 0;
+	return ret;
 }
 
 static int fimc_is_scalerp_buffer_prepare(struct vb2_buffer *vb)
 {
-	dbg("--%s\n", __func__);
 	return 0;
 }
 
 
 static inline void fimc_is_scalerp_lock(struct vb2_queue *vq)
 {
-	dbg("%s\n", __func__);
 }
 
 static inline void fimc_is_scalerp_unlock(struct vb2_queue *vq)
 {
-	dbg("%s\n", __func__);
 }
 
 static int fimc_is_scalerp_start_streaming(struct vb2_queue *q,
-						unsigned int count)
+	unsigned int count)
 {
+	int ret = 0;
 	struct fimc_is_video_scp *video = q->drv_priv;
-	struct fimc_is_core	*isp = video->common.core;
-	struct fimc_is_interface *interface = &isp->interface;
-	int i, j;
-	int buf_index;
-	struct scalerp_param *scp_param;
-	u32 lindex, hindex, indexes;
-	u32 planes;
 
-	dbg_scp("fimc_is_scalerp_start_streaming\n");
+	dbg_scp("%s\n", __func__);
 
-	if (test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state)) {
-		dbg_scp("stream_on\n");
-		/* buffer addr setting */
-
-		planes = video->common.frame.format.num_planes;
-		for (i = 0; i < video->common.buffers; i++) {
-			for (j = 0; j < planes; j++) {
-				buf_index = i*planes + j;
-
-				dbg_scp("(%d)set buf(%d:%d) = 0x%08x\n",
-					buf_index, i, j,
-					video->common.buf_dva[i][j]);
-
-				isp->is_p_region->shared[400+buf_index]
-					= video->common.buf_dva[i][j];
-			}
-		}
-
-		dbg_scp("buf_num:%d buf_plane:%d shared[400] : 0x%p\n",
-			video->common.buffers,
-			video->common.frame.format.num_planes,
-			isp->mem.kvaddr_shared + 400 * sizeof(u32));
-
-		video->common.buf_mask = 0;
-		for (i = 0; i < video->common.buffers; i++)
-			video->common.buf_mask |= (1 << i);
-		dbg_scp("initial buffer mask : 0x%08x\n",
-			video->common.buf_mask);
-
-		indexes = 0;
-		lindex = hindex = 0;
-
-		scp_param = &isp->is_p_region->parameter.scalerp;
-		scp_param->dma_output.cmd = DMA_OUTPUT_COMMAND_ENABLE;
-		scp_param->dma_output.dma_out_mask = video->common.buf_mask;
-		scp_param->dma_output.buffer_number = video->common.buffers;
-		scp_param->dma_output.buffer_address =
-			(u32)isp->mem.dvaddr_shared + 400*sizeof(u32);
-
-		lindex |= LOWBIT_OF(PARAM_SCALERP_DMA_OUTPUT);
-		hindex |= HIGHBIT_OF(PARAM_SCALERP_DMA_OUTPUT);
-		indexes++;
-
-		fimc_is_mem_cache_clean((void *)isp->is_p_region,
-			IS_PARAM_SIZE);
-
-		fimc_is_hw_s_param(interface, 0, indexes, lindex, hindex);
-		fimc_is_hw_f_param(interface, 0);
-
+	if (test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state))
 		set_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
-	}
 
-	return 0;
+	return ret;
 }
 
 static int fimc_is_scalerp_stop_streaming(struct vb2_queue *q)
 {
+	int ret = 0;
 	struct fimc_is_video_scp *video = q->drv_priv;
-	struct fimc_is_core	*isp = video->common.core;
-	int ret;
 
-	clear_bit(IS_ST_STREAM_OFF, &isp->state);
-	fimc_is_hw_set_stream(isp, 0);
-	mutex_lock(&isp->lock);
-	ret = wait_event_timeout(isp->irq_queue,
-		test_bit(IS_ST_STREAM_OFF, &isp->state),
-		FIMC_IS_SHUTDOWN_TIMEOUT);
-	mutex_unlock(&isp->lock);
-	if (!ret) {
-		dev_err(&isp->pdev->dev,
-			"wait timeout : %s\n", __func__);
-		if (!ret)
-			err("s_power off failed!!\n");
-		return -EBUSY;
-	}
-	dbg_sensor("-soff\n");
+	dbg_scp("%s\n", __func__);
 
-	IS_SCALERP_SET_PARAM_DMA_OUTPUT_CMD(isp,
-		DMA_OUTPUT_COMMAND_DISABLE);
-	IS_SCALERP_SET_PARAM_DMA_OUTPUT_BUFFERNUM(isp,
-		0);
-	IS_SCALERP_SET_PARAM_DMA_OUTPUT_BUFFERADDR(isp,
-		0);
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state))
+		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
 
-	IS_SET_PARAM_BIT(isp, PARAM_SCALERP_DMA_OUTPUT);
-	IS_INC_PARAM_NUM(isp);
-
-	fimc_is_mem_cache_clean((void *)isp->is_p_region,
-		IS_PARAM_SIZE);
-
-	isp->scenario_id = ISS_PREVIEW_STILL;
-	set_bit(IS_ST_INIT_PREVIEW_STILL,	&isp->state);
-	clear_bit(IS_ST_INIT_PREVIEW_VIDEO, &isp->state);
-
-	dbg_sensor("+setP\n");
-	fimc_is_hw_set_param(isp);
-	mutex_lock(&isp->lock);
-	ret = wait_event_timeout(isp->irq_queue,
-		test_bit(IS_ST_INIT_PREVIEW_VIDEO, &isp->state),
-		FIMC_IS_SHUTDOWN_TIMEOUT);
-	mutex_unlock(&isp->lock);
-	if (!ret) {
-		dev_err(&isp->pdev->dev,
-			"wait timeout 2: %s\n", __func__);
-		return -EBUSY;
-	}
-	dbg_sensor("-setP\n");
-
-	dbg("IS change mode\n");
-	clear_bit(IS_ST_RUN, &isp->state);
-	set_bit(IS_ST_CHANGE_MODE, &isp->state);
-
-	dbg_sensor("+mc\n");
-	fimc_is_hw_change_mode(isp, IS_MODE_PREVIEW_STILL);
-	mutex_lock(&isp->lock);
-	ret = wait_event_timeout(isp->irq_queue,
-		test_bit(IS_ST_CHANGE_MODE_DONE, &isp->state),
-		FIMC_IS_SHUTDOWN_TIMEOUT);
-	mutex_unlock(&isp->lock);
-	if (!ret) {
-		dev_err(&isp->pdev->dev,
-			"Mode change timeout:%s\n", __func__);
-		return -EBUSY;
-	}
-	dbg_sensor("-mc\n");
-
-	dbg("IS Stream On\n");
-	fimc_is_hw_set_stream(isp, 1);
-
-	mutex_lock(&isp->lock);
-	ret = wait_event_timeout(isp->irq_queue,
-		test_bit(IS_ST_STREAM_ON, &isp->state),
-		FIMC_IS_SHUTDOWN_TIMEOUT);
-	mutex_unlock(&isp->lock);
-	if (!ret) {
-		dev_err(&isp->pdev->dev,
-			"wait timeout : %s\n", __func__);
-		return -EBUSY;
-	}
-	clear_bit(IS_ST_STREAM_ON, &isp->state);
-
-	if (!test_bit(FIMC_IS_STATE_SCALERC_STREAM_ON, &isp->pipe_state) &&
-		!test_bit(FIMC_IS_STATE_3DNR_STREAM_ON, &isp->pipe_state) &&
-		test_bit(FIMC_IS_STATE_HW_STREAM_ON, &isp->pipe_state)) {
-		clear_bit(IS_ST_STREAM_OFF, &isp->state);
-
-		printk(KERN_INFO "ScalerP stream disable\n");
-		fimc_is_hw_set_stream(isp, 0);
-		mutex_lock(&isp->lock);
-		ret = wait_event_timeout(isp->irq_queue,
-			test_bit(IS_ST_STREAM_OFF, &isp->state),
-			FIMC_IS_SHUTDOWN_TIMEOUT);
-		mutex_unlock(&isp->lock);
-		if (!ret) {
-			dev_err(&isp->pdev->dev,
-				"wait timeout 4: %s\n", __func__);
-			return -EBUSY;
-		}
-		dbg_sensor("-son\n");
-		clear_bit(FIMC_IS_STATE_HW_STREAM_ON, &isp->pipe_state);
-	}
-	clear_bit(IS_ST_RUN, &isp->state);
-	clear_bit(IS_ST_STREAM_ON, &isp->state);
-	clear_bit(FIMC_IS_STATE_SCALERP_BUFFER_PREPARED, &isp->pipe_state);
-	clear_bit(FIMC_IS_STATE_SCALERP_STREAM_ON, &isp->pipe_state);
-
-	isp->setfile.sub_index = 0;
-
-	return 0;
+	return ret;
 }
 
 static void fimc_is_scalerp_buffer_queue(struct vb2_buffer *vb)
 {
 	struct fimc_is_video_scp *video = vb->vb2_queue->drv_priv;
 
-	dbg_sensor("%s ++\n", __func__);
+#ifdef DBG_STREAMING
+	dbg_scp("%s ++\n", __func__);
+#endif
 
-	fimc_is_video_buffer_queue(&video->common, vb);
-	/*insert request*/
-	/*
-	fimc_is_sensor_buffer_queue(video->common.device,
-		&video->common, vb->v4l2_buf.index);
-	*/
+	fimc_is_video_buffer_queue(&video->common, vb, 0);
 
 	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state))
-		fimc_is_scalerp_start_streaming(vb->vb2_queue,
-					video->common.buffers);
+		fimc_is_scalerp_start_streaming(vb->vb2_queue, 0);
+}
+
+/* HACK ? */
+static void fimc_is_scalerp_buffer_cleanup(struct vb2_buffer *vb)
+{
+	/* struct fimc_is_video_scp *video = vb->vb2_queue->drv_priv; */
+
+#ifdef DBG_STREAMING
+	dbg_scp("%s\n", __func__);
+#endif
+	vb->num_planes = 0;
+
 }
 
 const struct vb2_ops fimc_is_scalerp_qops = {
@@ -1079,5 +683,6 @@ const struct vb2_ops fimc_is_scalerp_qops = {
 	.wait_prepare		= fimc_is_scalerp_unlock,
 	.wait_finish		= fimc_is_scalerp_lock,
 	.start_streaming	= fimc_is_scalerp_start_streaming,
-	.stop_streaming	= fimc_is_scalerp_stop_streaming,
+	.stop_streaming		= fimc_is_scalerp_stop_streaming,
+	.buf_cleanup		= fimc_is_scalerp_buffer_cleanup,
 };

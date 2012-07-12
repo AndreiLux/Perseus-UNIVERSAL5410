@@ -32,12 +32,10 @@
 #include <linux/v4l2-mediabus.h>
 
 #include "fimc-is-core.h"
-#include "fimc-is-helper.h"
 #include "fimc-is-param.h"
 #include "fimc-is-cmd.h"
 #include "fimc-is-regs.h"
 #include "fimc-is-err.h"
-#include "fimc-is-misc.h"
 #include "fimc-is-video.h"
 #include "fimc-is-metadata.h"
 
@@ -70,11 +68,13 @@ static int fimc_is_isp_video_open(struct file *file)
 	struct fimc_is_core *core = video_drvdata(file);
 	struct fimc_is_video_isp *video = &core->video_isp;
 	struct fimc_is_device_ischain *ischain = &core->ischain;
+	struct fimc_is_interface *interface = &core->interface;
 
 	dbg_isp("%s\n", __func__);
 
 	file->private_data = video;
 	fimc_is_video_open(&video->common, ischain);
+	fimc_is_interface_open(interface);
 	fimc_is_ischain_open(ischain);
 
 	return 0;
@@ -97,19 +97,17 @@ static int fimc_is_isp_video_close(struct file *file)
 static unsigned int fimc_is_isp_video_poll(struct file *file,
 				      struct poll_table_struct *wait)
 {
-	struct fimc_is_core *isp = video_drvdata(file);
+	struct fimc_is_video_isp *video = file->private_data;
 
-	dbg_isp("%s\n", __func__);
-	return vb2_poll(&isp->video_isp.common.vbq, file, wait);
-
+	return vb2_poll(&video->common.vbq, file, wait);
 }
 
 static int fimc_is_isp_video_mmap(struct file *file,
 					struct vm_area_struct *vma)
 {
-	struct fimc_is_core *is = video_drvdata(file);
+	struct fimc_is_video_isp *video = file->private_data;
 
-	return vb2_mmap(&is->video_isp.common.vbq, vma);
+	return vb2_mmap(&video->common.vbq, vma);
 }
 
 /*************************************************************************/
@@ -210,12 +208,15 @@ static int fimc_is_isp_video_reqbufs(struct file *file, void *priv,
 {
 	int ret;
 	struct fimc_is_video_isp *video = file->private_data;
+	struct fimc_is_device_ischain *ischain = video->common.device;
 
 	dbg_isp("%s\n", __func__);
 
 	ret = fimc_is_video_reqbufs(&video->common, buf);
 	if (ret)
 		err("fimc_is_video_reqbufs is fail(error %d)", ret);
+	else
+		fimc_is_frame_open(ischain->framemgr, buf->count);
 
 	return ret;
 }
@@ -233,84 +234,66 @@ static int fimc_is_isp_video_querybuf(struct file *file, void *priv,
 }
 
 static int fimc_is_isp_video_qbuf(struct file *file, void *priv,
-						struct v4l2_buffer *buf)
+	struct v4l2_buffer *buf)
 {
-	int vb_ret;
+	int ret = 0;
+	struct fimc_is_video_isp *video = file->private_data;
+
+#ifdef DBG_STREAMING
+	dbg_isp("%s\n", __func__);
+#endif
+
+	ret = fimc_is_video_qbuf(&video->common, buf);
+
+#ifdef DBG_STREAMING
+	dbg_isp("%s END ret(%d)\n", __func__, ret);
+#endif
+	return ret;
+}
+
+static int fimc_is_isp_video_dqbuf(struct file *file, void *priv,
+	struct v4l2_buffer *buf)
+{
+	int ret = 0;
+	struct fimc_is_video_isp *video = file->private_data;
+	bool blocking = file->f_flags & O_NONBLOCK;
+
+#ifdef DBG_STREAMING
+	dbg_isp("%s\n", __func__);
+#endif
+	ret = fimc_is_video_dqbuf(&video->common, buf, blocking);
+
+#ifdef DBG_STREAMING
+	dbg_isp("%s END(index : %d)\n", __func__, buf->index);
+#endif
+
+	return ret;
+}
+
+static int fimc_is_isp_video_streamon(struct file *file, void *priv,
+	enum v4l2_buf_type type)
+{
+	int ret = 0;
 	struct fimc_is_video_isp *video = file->private_data;
 
 	dbg_isp("%s\n", __func__);
 
-	vb_ret = vb2_qbuf(&video->common.vbq, buf);
+	ret = fimc_is_video_streamon(&video->common, type);
 
-	return vb_ret;
-}
-
-static int fimc_is_isp_video_dqbuf(struct file *file, void *priv,
-						struct v4l2_buffer *buf)
-{
-	int vb_ret;
-	struct fimc_is_video_isp *video = file->private_data;
-
-	vb_ret = vb2_dqbuf(&video->common.vbq, buf, file->f_flags & O_NONBLOCK);
-	video->common.buf_mask &= ~(1<<buf->index);
-
-	dbg_isp("%s :: index(%d) mask(0x%08x)\n",
-		__func__, buf->index, video->common.buf_mask);
-
-	/*iky to do here*/
-	/*doesn't work well with old masking method*/
-#if 0
-	IS_ISP_SET_PARAM_DMA_OUTPUT2_CMD(isp,
-		DMA_OUTPUT_UPDATE_MASK_BITS);
-	IS_ISP_SET_PARAM_DMA_OUTPUT2_MASK(isp,
-		video->buf_mask);
-	IS_SET_PARAM_BIT(isp, PARAM_ISP_DMA2_OUTPUT);
-	IS_INC_PARAM_NUM(isp);
-
-	fimc_is_mem_cache_clean((void *)isp->is_p_region,
-		IS_PARAM_SIZE);
-
-	isp->scenario_id = ISS_PREVIEW_STILL;
-	set_bit(IS_ST_INIT_PREVIEW_STILL,	&isp->state);
-	clear_bit(IS_ST_INIT_CAPTURE_STILL, &isp->state);
-	clear_bit(IS_ST_INIT_PREVIEW_VIDEO, &isp->state);
-	fimc_is_hw_set_param(isp);
-	mutex_lock(&isp->lock);
-	ret = wait_event_timeout(isp->irq_queue,
-		test_bit(IS_ST_INIT_PREVIEW_VIDEO, &isp->state),
-		FIMC_IS_SHUTDOWN_TIMEOUT);
-	mutex_unlock(&isp->lock);
-	if (!ret) {
-		dev_err(&isp->pdev->dev,
-			"wait timeout : %s\n", __func__);
-		return -EBUSY;
-	}
-#endif
-
-	return vb_ret;
-}
-
-static int fimc_is_isp_video_streamon(struct file *file, void *priv,
-						enum v4l2_buf_type type)
-{
-	int ret;
-	struct fimc_is_core *dev = video_drvdata(file);
-
-	dbg_isp("%s(%d,%d)\n", __func__, type,
-		dev->video_isp.common.vbq.type);
-	ret = vb2_streamon(&dev->video_isp.common.vbq, type);
-	dbg_isp("return : %d\n", ret);
 	return ret;
 }
 
 static int fimc_is_isp_video_streamoff(struct file *file, void *priv,
-						enum v4l2_buf_type type)
+	enum v4l2_buf_type type)
 {
-	struct fimc_is_core *dev = video_drvdata(file);
-	struct fimc_is_video_isp *video = &dev->video_isp;
+	int ret = 0;
+	struct fimc_is_video_isp *video = file->private_data;
 
 	dbg_isp("%s\n", __func__);
-	return vb2_streamoff(&video->common.vbq, type);
+
+	ret = fimc_is_video_streamoff(&video->common, type);
+
+	return ret;
 }
 
 static int fimc_is_isp_video_enum_input(struct file *file, void *priv,
@@ -335,7 +318,7 @@ static int fimc_is_isp_video_enum_input(struct file *file, void *priv,
 	input->type = V4L2_INPUT_TYPE_CAMERA;
 
 	strncpy(input->name, sensor_info->sensor_name,
-					FIMC_IS_MAX_NAME_LEN);
+					FIMC_IS_MAX_SENSOR_NAME_LEN);
 	return 0;
 }
 
@@ -349,28 +332,40 @@ static int fimc_is_isp_video_g_input(struct file *file, void *priv,
 static int fimc_is_isp_video_s_input(struct file *file, void *priv,
 						unsigned int input)
 {
-	struct fimc_is_core *core = video_drvdata(file);
+	int ret = 0;
+	struct fimc_is_video_isp *video = file->private_data;
+	struct fimc_is_device_ischain *ischain = video->common.device;
+	struct fimc_is_core *core = video->common.core;
+	struct fimc_is_device_sensor *sensor = &core->sensor;
 
-	dbg_isp("fimc_is_isp_video_s_input\n");
+	dbg_isp("%s(input : %d)\n", __func__, input);
 
-	core->sensor.id_position = input;
+	fimc_is_ischain_init(ischain,
+		input,
+		sensor->enum_sensor[input].i2c_ch);
 
-	return 0;
+	return ret;
 }
 
 static int fimc_is_isp_video_s_ctrl(struct file *file, void *priv,
 					struct v4l2_control *ctrl)
 {
-	struct fimc_is_core *core = video_drvdata(file);
-	struct fimc_is_interface *interface = &core->interface;
 	int ret = 0;
+	struct fimc_is_video_isp *video = file->private_data;
+	struct fimc_is_device_ischain *ischain = video->common.device;
+
+	dbg_isp("%s\n", __func__);
 
 	switch (ctrl->id) {
 	case V4L2_CID_IS_S_STREAM:
 		if (ctrl->value == IS_ENABLE_STREAM)
-			ret = fimc_is_hw_process_on(interface, 0);
+			ret = fimc_is_hw_process_on(ischain->interface, 0);
 		else
-			ret = fimc_is_hw_process_off(interface, 0);
+			ret = fimc_is_hw_process_off(ischain->interface, 0);
+		break;
+	case V4L2_CID_IS_G_CAPABILITY:
+		ret = fimc_is_ischain_g_capability(ischain, ctrl->value);
+		dbg_isp("V4L2_CID_IS_G_CAPABILITY : %X\n", ctrl->value);
 		break;
 	}
 
@@ -378,15 +373,19 @@ static int fimc_is_isp_video_s_ctrl(struct file *file, void *priv,
 }
 
 static int fimc_is_isp_video_g_ctrl(struct file *file, void *priv,
-					struct v4l2_control *ctrl)
+	struct v4l2_control *ctrl)
 {
 	int ret = 0;
 
-	switch (ctrl->id) {
-	case V4L2_CID_IS_G_CAPABILITY:
-		dbg_isp("V4L2_CID_IS_G_CAPABILITY : %X\n", ctrl->value);
-		break;
-	}
+	dbg_isp("%s\n", __func__);
+
+	return ret;
+}
+
+static int fimc_is_isp_video_g_ext_ctrl(struct file *file, void *priv,
+	struct v4l2_ext_controls *ctrls)
+{
+	int ret = 0;
 
 	return ret;
 }
@@ -419,46 +418,46 @@ const struct v4l2_ioctl_ops fimc_is_isp_video_ioctl_ops = {
 	.vidioc_g_input			= fimc_is_isp_video_g_input,
 	.vidioc_s_input			= fimc_is_isp_video_s_input,
 	.vidioc_s_ctrl			= fimc_is_isp_video_s_ctrl,
-	.vidioc_g_ctrl			= fimc_is_isp_video_g_ctrl
+	.vidioc_g_ctrl			= fimc_is_isp_video_g_ctrl,
+	.vidioc_g_ext_ctrls		= fimc_is_isp_video_g_ext_ctrl,
 };
 
 static int fimc_is_isp_queue_setup(struct vb2_queue *vq,
-			const struct v4l2_format *fmt,
-			unsigned int *num_buffers,
-			unsigned int *num_planes, unsigned int sizes[],
-			void *allocators[])
+	const struct v4l2_format *fmt,
+	unsigned int *num_buffers, unsigned int *num_planes,
+	unsigned int sizes[],
+	void *allocators[])
 {
+	int ret = 0;
 	struct fimc_is_video_isp *video = vq->drv_priv;
-	struct fimc_is_core	*dev = video->common.core;
-	int i;
 
-	*num_planes = video->common.frame.format.num_planes;
-	fimc_is_set_plane_size(&video->common.frame, sizes);
+	dbg_sensor("%s\n", __func__);
 
-	for (i = 0; i < *num_planes; i++)
-		allocators[i] =  dev->alloc_ctx;
+	ret = fimc_is_video_queue_setup(&video->common,
+		num_planes,
+		sizes,
+		allocators);
 
-	dbg_isp("%s(num_planes : %d)(size : %d)\n",
-		__func__, (int)*num_planes, (int)sizes[0]);
+	dbg_sensor("(num_planes : %d)(size : %d)\n",
+		(int)*num_planes, (int)sizes[0]);
 
-	return 0;
+	return ret;
 }
 
 static int fimc_is_isp_buffer_prepare(struct vb2_buffer *vb)
 {
-	dbg_isp("-%s\n", __func__);
-
+	/*dbg_isp("%s\n", __func__);*/
 	return 0;
 }
 
 static inline void fimc_is_isp_lock(struct vb2_queue *vq)
 {
-	dbg_isp("-%s\n", __func__);
+	/*dbg_isp("%s\n", __func__);*/
 }
 
 static inline void fimc_is_isp_unlock(struct vb2_queue *vq)
 {
-	dbg_isp("-%s\n", __func__);
+	/*dbg_isp("%s\n", __func__);*/
 }
 
 static int fimc_is_isp_start_streaming(struct vb2_queue *q,
@@ -466,12 +465,15 @@ static int fimc_is_isp_start_streaming(struct vb2_queue *q,
 {
 	struct fimc_is_video_isp *video = q->drv_priv;
 	struct fimc_is_device_ischain *ischain = video->common.device;
+	u32 i;
 
-	dbg_sensor("%s\n", __func__);
+	dbg_isp("%s\n", __func__);
 
 	if (test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state)) {
-		fimc_is_ischain_start_streaming(ischain, &video->common);
+		for (i = 0; i < video->common.buffers; ++i)
+			vb2_buffer_done(q->bufs[i], VB2_BUF_STATE_DONE);
 
+		fimc_is_ischain_isp_start(ischain, &video->common);
 		set_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
 	}
 
@@ -480,34 +482,78 @@ static int fimc_is_isp_start_streaming(struct vb2_queue *q,
 
 static int fimc_is_isp_stop_streaming(struct vb2_queue *q)
 {
-	return 0;
+	int ret = 0;
+	struct fimc_is_video_isp *video = q->drv_priv;
+
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state))
+		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
+	return ret;
 }
 
 static void fimc_is_isp_buffer_queue(struct vb2_buffer *vb)
 {
 	struct fimc_is_video_isp *video = vb->vb2_queue->drv_priv;
+	struct fimc_is_device_ischain *ischain = video->common.device;
+	void *cookie;
 
-	dbg_sensor("%s\n", __func__);
+#ifdef DBG_STREAMING
+	dbg_isp("%s(%d)\n", __func__, vb->v4l2_buf.index);
+#endif
 
-	fimc_is_video_buffer_queue(&video->common, vb);
+	fimc_is_video_buffer_queue(&video->common, vb, ischain->framemgr);
 
-	/*insert request*/
-	/*
-	fimc_is_sensor_buffer_queue(video->common.device,
-		&video->common, vb->v4l2_buf.index);
-	*/
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)) {
+		/*flush cache*/
+		cookie = vb2_plane_cookie(vb, 1);
+		vb2_ion_sync_for_device(cookie,
+			0, video->common.frame.size[1], DMA_TO_DEVICE);
 
-	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state))
+		/*insert request*/
+		fimc_is_ischain_buffer_queue(
+			ischain,
+			vb->v4l2_buf.index);
+	} else
 		fimc_is_isp_start_streaming(vb->vb2_queue,
 					video->common.buffers);
+}
+
+static int fimc_is_isp_buffer_finish(struct vb2_buffer *vb)
+{
+	int ret = 0;
+	struct fimc_is_video_sensor *video = vb->vb2_queue->drv_priv;
+	struct fimc_is_device_ischain *ischain = video->common.device;
+
+#ifdef DBG_STREAMING
+	dbg_isp("%s(%d)\n", __func__, vb->v4l2_buf.index);
+#endif
+
+	ret = fimc_is_ischain_buffer_finish(
+		ischain,
+		vb->v4l2_buf.index);
+
+	return ret;
+}
+
+/* HACK ? */
+static void fimc_is_isp_buffer_cleanup(struct vb2_buffer *vb)
+{
+	/* struct fimc_is_video_scp *video = vb->vb2_queue->drv_priv; */
+
+#ifdef DBG_STREAMING
+	dbg_scp("%s\n", __func__);
+#endif
+	vb->num_planes = 0;
+
 }
 
 const struct vb2_ops fimc_is_isp_qops = {
 	.queue_setup		= fimc_is_isp_queue_setup,
 	.buf_prepare		= fimc_is_isp_buffer_prepare,
 	.buf_queue		= fimc_is_isp_buffer_queue,
+	.buf_finish		= fimc_is_isp_buffer_finish,
 	.wait_prepare		= fimc_is_isp_unlock,
 	.wait_finish		= fimc_is_isp_lock,
 	.start_streaming	= fimc_is_isp_start_streaming,
-	.stop_streaming	= fimc_is_isp_stop_streaming,
+	.stop_streaming		= fimc_is_isp_stop_streaming,
+	.buf_cleanup		= fimc_is_isp_buffer_cleanup,
 };

@@ -7,6 +7,6 @@ struct fimc_is_video_scc {
 	struct fimc_is_video_common common;
 };
 
-int fimc_is_scc_video_probe(void *data);
+int fimc_is_scc_video_probe(void *core_data);
 
 #endif
