@@ -175,6 +175,9 @@ static void kbase_fence_wait_worker(osk_workq_work *data)
 	kctx = katom->kctx;
 	zapping = (katom->event.event_code != BASE_JD_EVENT_DONE);
 
+	sync_fence_put(katom->fence);
+	katom->fence = NULL;
+
 	complete_soft_job(katom, zapping);
 }
 
