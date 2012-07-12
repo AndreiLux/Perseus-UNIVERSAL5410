@@ -86,6 +86,7 @@ struct s3c24xx_i2c {
 #ifdef CONFIG_CPU_FREQ
 	struct notifier_block	freq_transition;
 #endif
+	unsigned int freq;
 };
 
 /* default platform data removed, dev should always carry data. */
@@ -690,7 +691,7 @@ static int s3c24xx_i2c_calcdivisor(unsigned long clkin, unsigned int wanted,
  * range of frequencies until something is found
 */
 
-static int s3c24xx_i2c_clockrate(struct s3c24xx_i2c *i2c, unsigned int *got)
+static int s3c24xx_i2c_clockrate(struct s3c24xx_i2c *i2c)
 {
 	struct s3c2410_platform_i2c *pdata = i2c->pdata;
 	unsigned long clkin = clk_get_rate(i2c->clk);
@@ -717,7 +718,7 @@ static int s3c24xx_i2c_clockrate(struct s3c24xx_i2c *i2c, unsigned int *got)
 		return -EINVAL;
 	}
 
-	*got = freq;
+	i2c->freq = freq;
 
 	iiccon = readl(i2c->regs + S3C2410_IICCON);
 	iiccon &= ~(S3C2410_IICCON_SCALEMASK | S3C2410_IICCON_TXDIV_512);
@@ -771,13 +772,13 @@ static int s3c24xx_i2c_cpufreq_transition(struct notifier_block *nb,
 	if ((val == CPUFREQ_POSTCHANGE && delta_f < 0) ||
 	    (val == CPUFREQ_PRECHANGE && delta_f > 0)) {
 		spin_lock_irqsave(&i2c->lock, flags);
-		ret = s3c24xx_i2c_clockrate(i2c, &got);
+		ret = s3c24xx_i2c_clockrate(i2c);
 		spin_unlock_irqrestore(&i2c->lock, flags);
 
 		if (ret < 0)
 			dev_err(i2c->dev, "cannot find frequency\n");
 		else
-			dev_info(i2c->dev, "setting freq %d\n", got);
+			dev_info(i2c->dev, "setting freq %d\n", i2c->freq);
 	}
 
 	return 0;
@@ -860,7 +861,6 @@ static int s3c24xx_i2c_init(struct s3c24xx_i2c *i2c)
 {
 	unsigned long iicon = S3C2410_IICCON_IRQEN | S3C2410_IICCON_ACKEN;
 	struct s3c2410_platform_i2c *pdata;
-	unsigned int freq;
 
 	/* get the plafrom data */
 
@@ -878,13 +878,11 @@ static int s3c24xx_i2c_init(struct s3c24xx_i2c *i2c)
 
 	writeb(pdata->slave_addr, i2c->regs + S3C2410_IICADD);
 
-	dev_info(i2c->dev, "slave address 0x%02x\n", pdata->slave_addr);
-
 	writel(iicon, i2c->regs + S3C2410_IICCON);
 
 	/* we need to work out the divisors for the clock... */
 
-	if (s3c24xx_i2c_clockrate(i2c, &freq) != 0) {
+	if (s3c24xx_i2c_clockrate(i2c) != 0) {
 		writel(0, i2c->regs + S3C2410_IICCON);
 		dev_err(i2c->dev, "cannot meet bus frequency required\n");
 		return -EINVAL;
@@ -892,7 +890,6 @@ static int s3c24xx_i2c_init(struct s3c24xx_i2c *i2c)
 
 	/* todo - check that the i2c lines aren't being dragged anywhere */
 
-	dev_info(i2c->dev, "bus frequency set to %d KHz\n", freq);
 	dev_dbg(i2c->dev, "S3C2410_IICCON=0x%02lx\n", iicon);
 
 	return 0;
@@ -1073,6 +1070,8 @@ static int s3c24xx_i2c_probe(struct platform_device *pdev)
 	pm_runtime_enable(&i2c->adap.dev);
 
 	dev_info(&pdev->dev, "%s: S3C I2C adapter\n", dev_name(&i2c->adap.dev));
+	dev_info(i2c->dev, "slave address 0x%02x\n", pdata->slave_addr);
+	dev_info(i2c->dev, "bus frequency set to %d KHz\n", i2c->freq);
 	clk_disable(i2c->clk);
 	return 0;
 
