@@ -1015,15 +1015,30 @@ static int s5p_mfc_stop_streaming(struct vb2_queue *q)
 					S5P_FIMV_R2H_CMD_FRAME_DONE_RET, 0);
 		aborted = 1;
 	}
-	spin_lock_irqsave(&dev->irqlock, flags);
+
 	if (q->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+#if defined(CONFIG_VIDEO_SAMSUNG_S5P_MFC_V6)
+		if (ctx->dpb_flush == 0) {
+			ctx->state = MFCINST_FLUSH;
+			spin_lock_irqsave(&dev->condlock, flags);
+			set_bit(ctx->num, &dev->ctx_work_bits);
+			spin_unlock_irqrestore(&dev->condlock, flags);
+			s5p_mfc_clean_ctx_int_flags(ctx);
+			s5p_mfc_try_run(dev);
+			if (s5p_mfc_wait_for_done_ctx(ctx,
+				S5P_FIMV_R2H_CMD_DPB_FLUSH_RET, 0))
+				mfc_err("Err flushing buffers\n");
+			ctx->state = MFCINST_FINISHED;
+		}
+#endif
+		spin_lock_irqsave(&dev->irqlock, flags);
 		s5p_mfc_cleanup_queue(&ctx->dst_queue, &ctx->vq_dst);
 		INIT_LIST_HEAD(&ctx->dst_queue);
 		ctx->dst_queue_cnt = 0;
 		ctx->dpb_flush = 1;
 		ctx->dec_dst_flag = 0;
-	}
-	if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+	} else if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+		spin_lock_irqsave(&dev->irqlock, flags);
 		s5p_mfc_cleanup_queue(&ctx->src_queue, &ctx->vq_src);
 		INIT_LIST_HEAD(&ctx->src_queue);
 		ctx->src_queue_cnt = 0;
