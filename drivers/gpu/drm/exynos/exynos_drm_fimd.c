@@ -355,6 +355,7 @@ static void fimd_win_set_pixfmt(struct device *dev, unsigned int win)
 	struct fimd_context *ctx = get_fimd_context(dev);
 	struct fimd_win_data *win_data = &ctx->win_data[win];
 	unsigned long val;
+	unsigned long bytes;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
@@ -364,47 +365,62 @@ static void fimd_win_set_pixfmt(struct device *dev, unsigned int win)
 	case 1:
 		val |= WINCON0_BPPMODE_1BPP;
 		val |= WINCONx_BITSWP;
-		val |= WINCONx_BURSTLEN_4WORD;
+		bytes = win_data->fb_width >> 3;
 		break;
 	case 2:
 		val |= WINCON0_BPPMODE_2BPP;
 		val |= WINCONx_BITSWP;
-		val |= WINCONx_BURSTLEN_8WORD;
+		bytes = win_data->fb_width >> 2;
 		break;
 	case 4:
 		val |= WINCON0_BPPMODE_4BPP;
 		val |= WINCONx_BITSWP;
-		val |= WINCONx_BURSTLEN_8WORD;
+		bytes = win_data->fb_width >> 1;
 		break;
 	case 8:
 		val |= WINCON0_BPPMODE_8BPP_PALETTE;
-		val |= WINCONx_BURSTLEN_8WORD;
 		val |= WINCONx_BYTSWP;
+		bytes = win_data->fb_width;
 		break;
 	case 16:
 		val |= WINCON0_BPPMODE_16BPP_565;
 		val |= WINCONx_HAWSWP;
-		val |= WINCONx_BURSTLEN_16WORD;
+		bytes = win_data->fb_width << 1;
 		break;
 	case 24:
 		val |= WINCON0_BPPMODE_24BPP_888;
 		val |= WINCONx_WSWP;
-		val |= WINCONx_BURSTLEN_16WORD;
+		bytes = win_data->fb_width * 3;
 		break;
 	case 32:
 		val |= WINCON1_BPPMODE_28BPP_A4888
 			| WINCON1_BLD_PIX | WINCON1_ALPHA_SEL;
 		val |= WINCONx_WSWP;
-		val |= WINCONx_BURSTLEN_16WORD;
+		bytes = win_data->fb_width << 2;
 		break;
 	default:
 		DRM_DEBUG_KMS("invalid pixel size so using unpacked 24bpp.\n");
-
+		bytes = win_data->fb_width * 3;
 		val |= WINCON0_BPPMODE_24BPP_888;
 		val |= WINCONx_WSWP;
-		val |= WINCONx_BURSTLEN_16WORD;
 		break;
 	}
+
+	/*
+	 * Adjust the burst size based on the number of bytes to be read.
+	 * Each WORD of the BURST is 8 bytes long. There are 3 BURST sizes
+	 * supported by fimd.
+	 * WINCONx_BURSTLEN_4WORD = 32 bytes
+	 * WINCONx_BURSTLEN_8WORD = 64 bytes
+	 * WINCONx_BURSTLEN_16WORD = 128 bytes
+	 */
+	if (bytes < 128)
+		if (bytes < 64)
+			val |= WINCONx_BURSTLEN_4WORD;
+		else
+			val |= WINCONx_BURSTLEN_8WORD;
+	else
+		val |= WINCONx_BURSTLEN_16WORD;
 
 	DRM_DEBUG_KMS("bpp = %d\n", win_data->bpp);
 
