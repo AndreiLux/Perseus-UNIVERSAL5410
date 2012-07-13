@@ -136,4 +136,6 @@ source "drivers/staging/thermal_framework/Kconfig"
 
 source "drivers/staging/omapdce/Kconfig"
 
+source "drivers/staging/rdaemon/Kconfig"
+
 endif # STAGING

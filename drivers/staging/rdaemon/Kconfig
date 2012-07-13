@@ -1,0 +1,9 @@
+config OMAP_RPMSG_RDAEMON
+	tristate "OMAP Rdaemon for rpmsg"
+	select OMAP_RPMSG
+	select OMAP_REMOTEPROC
+	default n
+	help
+	  Plugin for RPMSG driver on OMAP to test/debug remote processors
+
+

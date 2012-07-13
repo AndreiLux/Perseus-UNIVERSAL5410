@@ -59,3 +59,4 @@ obj-$(CONFIG_RAMSTER)		+= ramster/
 obj-$(CONFIG_USB_WPAN_HCD)	+= ozwpan/
 obj-$(CONFIG_OMAP_THERMAL)      += thermal_framework/
 obj-$(CONFIG_DRM_OMAP_DCE)	+= omapdce/
+obj-$(CONFIG_OMAP_RPMSG_RDAEMON)	+= rdaemon/
