@@ -157,6 +157,37 @@ static u32 exynos_usb_phy_set_clock(struct platform_device *pdev)
 	return refclk_freq;
 }
 
+static u32 exynos_usb_phy30_set_clock(struct platform_device *pdev)
+{
+	u32 reg, refclk;
+
+	refclk = exynos_usb_phy_set_clock(pdev);
+	reg = EXYNOS_USB3_PHYCLKRST_REFCLKSEL(3) |
+	      EXYNOS_USB3_PHYCLKRST_FSEL(refclk);
+
+	switch (refclk) {
+	case EXYNOS5_CLKSEL_50M:
+		reg |= (EXYNOS_USB3_PHYCLKRST_MPLL_MULTIPLIER(0x02) |
+			EXYNOS_USB3_PHYCLKRST_SSC_REF_CLK_SEL(0x00));
+		break;
+	case EXYNOS5_CLKSEL_20M:
+		reg |= (EXYNOS_USB3_PHYCLKRST_MPLL_MULTIPLIER(0x7d) |
+			EXYNOS_USB3_PHYCLKRST_SSC_REF_CLK_SEL(0x00));
+		break;
+	case EXYNOS5_CLKSEL_19200K:
+		reg |= (EXYNOS_USB3_PHYCLKRST_MPLL_MULTIPLIER(0x02) |
+			EXYNOS_USB3_PHYCLKRST_SSC_REF_CLK_SEL(0x88));
+		break;
+	case EXYNOS5_CLKSEL_24M:
+	default:
+		reg |= (EXYNOS_USB3_PHYCLKRST_MPLL_MULTIPLIER(0x68) |
+			EXYNOS_USB3_PHYCLKRST_SSC_REF_CLK_SEL(0x88));
+		break;
+	}
+
+	return reg;
+}
+
 static int exynos5_usb_phy30_init(struct platform_device *pdev)
 {
 	int ret;
@@ -172,37 +203,26 @@ static int exynos5_usb_phy30_init(struct platform_device *pdev)
 	/* Reset USB 3.0 PHY */
 	writel(0x00000000, EXYNOS_USB3_PHYREG0);
 	writel(0x24d4e6e4, EXYNOS_USB3_PHYPARAM0);
-	writel(0x03fff820, EXYNOS_USB3_PHYPARAM1);
+	writel(0x03fff81c, EXYNOS_USB3_PHYPARAM1);
 	writel(0x00000000, EXYNOS_USB3_PHYRESUME);
 
-		writel(0x08000000, EXYNOS_USB3_LINKSYSTEM);
-		writel(0x00000004, EXYNOS_USB3_PHYBATCHG);
-		/* REVISIT :use externel clock 100MHz */
-		if (use_ext_clk)
-			writel(readl(EXYNOS_USB3_PHYPARAM0) | (0x1<<31),
-				EXYNOS_USB3_PHYPARAM0);
-		else
-			writel(readl(EXYNOS_USB3_PHYPARAM0) & ~(0x1<<31),
-				EXYNOS_USB3_PHYPARAM0);
+	/* Setting the Frame length Adj value[6:1] to default 0x20 */
+	writel(0x08000040, EXYNOS_USB3_LINKSYSTEM);
+	writel(0x00000004, EXYNOS_USB3_PHYBATCHG);
 
 	/* UTMI Power Control */
 	writel(EXYNOS_USB3_PHYUTMI_OTGDISABLE, EXYNOS_USB3_PHYUTMI);
 
-	/* Set 100MHz external clock */
-	reg = EXYNOS_USB3_PHYCLKRST_PORTRESET |
-		/* HS PLL uses ref_pad_clk{p,m} or ref_alt_clk_{p,m}
-		 * as reference */
-		EXYNOS_USB3_PHYCLKRST_REFCLKSEL(2) |
+	reg = exynos_usb_phy30_set_clock(pdev);
+
+	reg |= EXYNOS_USB3_PHYCLKRST_PORTRESET |
 		/* Digital power supply in normal operating mode */
 		EXYNOS_USB3_PHYCLKRST_RETENABLEN |
-		/* 0x27-100MHz, 0x2a-24MHz, 0x31-20MHz, 0x38-19.2MHz */
-		EXYNOS_USB3_PHYCLKRST_FSEL(0x27) |
-		/* 0x19-100MHz, 0x68-24MHz, 0x7d-20Mhz */
-		EXYNOS_USB3_PHYCLKRST_MPLL_MULTIPLIER(0x19) |
 		/* Enable ref clock for SS function */
 		EXYNOS_USB3_PHYCLKRST_REF_SSP_EN |
 		/* Enable spread spectrum */
 		EXYNOS_USB3_PHYCLKRST_SSC_EN |
+		/* Power down HS Bias and PLL blocks in suspend mode */
 		EXYNOS_USB3_PHYCLKRST_COMMONONN;
 
 	writel(reg, EXYNOS_USB3_PHYCLKRST);
