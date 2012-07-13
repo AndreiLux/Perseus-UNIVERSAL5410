@@ -34,7 +34,7 @@
 
 #define MAX_VDDS 3
 #define SR1P5_SAMPLING_DELAY_MS	1
-#define SR1P5_STABLE_SAMPLES	5
+#define SR1P5_STABLE_SAMPLES	10
 #define SR1P5_MAX_TRIGGERS	5
 
 /*
@@ -50,6 +50,9 @@
  * @vdata:	voltage data we are calibrating
  * @num_calib_triggers:	number of triggers from calibration loop
  * @num_osc_samples:	number of samples collected by isr
+ * @u_volt_samples:	private data for collecting voltage samples in
+ *			case oscillations. filled by the notifier and
+ *			consumed by the work item.
  * @work_active:	have we scheduled a work item?
  */
 struct sr_class1p5_work_data {
@@ -58,6 +61,7 @@ struct sr_class1p5_work_data {
 	struct omap_volt_data *vdata;
 	u8 num_calib_triggers;
 	u8 num_osc_samples;
+	unsigned long u_volt_samples[SR1P5_STABLE_SAMPLES];
 	bool work_active;
 };
 
@@ -138,6 +142,7 @@ static int sr_class1p5_notify(struct voltagedomain *voltdm, u32 status)
 	vp->common->ops->clear_txdone(vp->id);
 
 	idx = (work_data->num_osc_samples) % SR1P5_STABLE_SAMPLES;
+	work_data->u_volt_samples[idx] = omap_vp_get_curr_volt(voltdm);
 	work_data->num_osc_samples++;
 
 	return 0;
@@ -162,7 +167,7 @@ static void do_calibrate(struct work_struct *work)
 	struct omap_volt_data *volt_data;
 	struct voltagedomain *voltdm;
 	struct omap_vp_instance *vp;
-	int timeout = 0;
+	int timeout = 0, idx = 0;
 
 	work_data = container_of(work, struct sr_class1p5_work_data, work.work);
 
@@ -245,10 +250,35 @@ start_sampling:
 	return;
 
 oscillating_calib:
-	/* Use the nominal voltage as the safe voltage */
-	u_volt_safe = volt_data->volt_nominal;
-	/* pick up current voltage to switch if needed */
+	/*
+	 * We are here for Oscillations due to two scenarios:
+	 * a) SR is attempting to adjust voltage lower than VLIMITO
+	 *    which VP will ignore, but SR will re-attempt
+	 * b) actual oscillations
+	 * NOTE: For debugging, enable debug to see the samples.
+	 */
+	pr_warning("%s: %s Stop sampling: Voltage Nominal=%d samples=%d\n",
+		   __func__, work_data->voltdm->name,
+		   volt_data->volt_nominal, work_data->num_osc_samples);
+
+	/* pick up current voltage */
 	u_volt_current = omap_vp_get_curr_volt(voltdm);
+
+	/* Just in case we got more interrupts than our tiny buffer */
+	if (work_data->num_osc_samples > SR1P5_STABLE_SAMPLES)
+		idx = SR1P5_STABLE_SAMPLES;
+	else
+		idx = work_data->num_osc_samples;
+	/* Index at 0 */
+	idx -= 1;
+	u_volt_safe = u_volt_current;
+	/* Grab the max of the samples as the stable voltage */
+	for (; idx >= 0; idx--) {
+		pr_debug("%s: osc_v[%d]=%ld, safe_v=%ld\n", __func__, idx,
+			work_data->u_volt_samples[idx], u_volt_safe);
+		if (work_data->u_volt_samples[idx] > u_volt_safe)
+			u_volt_safe = work_data->u_volt_samples[idx];
+	}
 
 	/* Fall through to close up common stuff */
 done_calib:
