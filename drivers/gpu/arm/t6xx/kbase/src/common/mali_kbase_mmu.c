@@ -1160,9 +1160,7 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 	kbase_device * kbdev;
 	kbasep_js_device_data *js_devdata;
 	mali_bool reset_status = MALI_FALSE;
-#if MALI_DEBUG
 	static const char *access_type_names[] = { "RESERVED", "EXECUTE", "READ", "WRITE" };
-#endif
 
 	OSK_ASSERT(as);
 	OSK_ASSERT(kctx);
@@ -1183,12 +1181,12 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 	source_id =     (fault_status >> 16);
 
 	/* terminal fault, print info about the fault */
-	OSK_PRINT_WARN(OSK_BASE_MMU, "Fault in AS%d at VA 0x%016llX", as_no, fault_addr);
-	OSK_PRINT_WARN(OSK_BASE_MMU, "raw fault status 0x%X", fault_status);
-	OSK_PRINT_WARN(OSK_BASE_MMU, "decoded fault status (%s):", (fault_status & (1 << 10) ? "DECODER FAULT" : "SLAVE FAULT"));
-	OSK_PRINT_WARN(OSK_BASE_MMU, "exception type 0x%X: %s", exception_type, kbase_exception_name(exception_type));
-	OSK_PRINT_WARN(OSK_BASE_MMU, "access type 0x%X: %s", access_type,  access_type_names[access_type]);
-	OSK_PRINT_WARN(OSK_BASE_MMU, "source id 0x%X", source_id);
+	OSK_PRINT_ERROR(OSK_BASE_MMU, "Fault in AS%d at VA 0x%016llX", as_no, fault_addr);
+	OSK_PRINT_ERROR(OSK_BASE_MMU, "raw fault status 0x%X", fault_status);
+	OSK_PRINT_ERROR(OSK_BASE_MMU, "decoded fault status (%s):", (fault_status & (1 << 10) ? "DECODER FAULT" : "SLAVE FAULT"));
+	OSK_PRINT_ERROR(OSK_BASE_MMU, "exception type 0x%X: %s", exception_type, kbase_exception_name(exception_type));
+	OSK_PRINT_ERROR(OSK_BASE_MMU, "access type 0x%X: %s", access_type,  access_type_names[access_type]);
+	OSK_PRINT_ERROR(OSK_BASE_MMU, "source id 0x%X", source_id);
 
 	/* hardware counters dump fault handling */
 	if ((kbdev->hwcnt.kctx) &&
