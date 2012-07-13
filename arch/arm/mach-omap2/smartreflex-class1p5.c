@@ -157,7 +157,7 @@ static int sr_class1p5_notify(struct voltagedomain *voltdm, u32 status)
 static void do_calibrate(struct work_struct *work)
 {
 	struct sr_class1p5_work_data *work_data;
-	unsigned long u_volt_safe = 0, u_volt_current = 0;
+	unsigned long u_volt_safe = 0, u_volt_current = 0, u_volt_margin = 0;
 	struct omap_volt_data *volt_data;
 	struct voltagedomain *voltdm;
 	struct omap_vp_instance *vp;
@@ -248,6 +248,36 @@ done_calib:
 	omap_vp_disable(voltdm);
 	sr_disable(voltdm);
 
+	/* Add margin if needed */
+	if (volt_data->volt_margin) {
+		struct omap_voltdm_pmic *pmic = voltdm->pmic;
+		/* Convert to rounded to PMIC step level if available */
+		if (pmic && pmic->vsel_to_uv && pmic->uv_to_vsel) {
+			/*
+			 * To ensure conversion works:
+			 * use a proper base voltage - we use the current volt
+			 * then convert it with pmic routine to vsel and back
+			 * to voltage, and finally remove the base voltage
+			 */
+			u_volt_margin = u_volt_current + volt_data->volt_margin;
+			u_volt_margin = pmic->uv_to_vsel(u_volt_margin);
+			u_volt_margin = pmic->vsel_to_uv(u_volt_margin);
+			u_volt_margin -= u_volt_current;
+		} else {
+			u_volt_margin = volt_data->volt_margin;
+		}
+
+		u_volt_safe += u_volt_margin;
+	}
+	/* just warn, dont clamp down on voltage */
+	if (u_volt_safe > volt_data->volt_nominal) {
+		pr_warning("%s: %s Vsafe %ld > Vnom %d. %ld[%d] margin on"
+			"vnom %d curr_v=%ld\n", __func__, voltdm->name,
+			u_volt_safe, volt_data->volt_nominal, u_volt_margin,
+			volt_data->volt_margin, volt_data->volt_nominal,
+			u_volt_current);
+	}
+
 	volt_data->volt_calibrated = u_volt_safe;
 	/* Setup my dynamic voltage for the next calibration for this opp */
 	volt_data->volt_dynamic_nominal = omap_get_dyn_nominal(volt_data);
@@ -262,6 +292,10 @@ done_calib:
 		voltdm_scale(voltdm, volt_data);
 	}
 
+	pr_info("%s: %s: Calibration complete: Voltage Nominal=%d"
+		"Calib=%d margin=%d\n",
+		 __func__, voltdm->name, volt_data->volt_nominal,
+		 volt_data->volt_calibrated, volt_data->volt_margin);
 	/*
 	 * TODO: Setup my wakeup voltage to allow immediate going to OFF and
 	 * on - Pending twl and voltage layer cleanups.
@@ -453,9 +487,6 @@ static void sr_class1p5_reset_calib(struct voltagedomain *voltdm, bool reset,
 
 	if (work_data->work_active)
 		sr_class1p5_disable(voltdm, work_data->vdata, 0);
-
-	/* Ensure worker canceled. */
-	cancel_delayed_work_sync(&work_data->work);
 
 	omap_voltage_calib_reset(voltdm);
 
