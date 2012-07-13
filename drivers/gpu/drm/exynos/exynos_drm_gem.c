@@ -83,14 +83,8 @@ out:
 struct page **exynos_gem_get_pages(struct drm_gem_object *obj,
 						gfp_t gfpmask)
 {
-	struct inode *inode;
-	struct address_space *mapping;
 	struct page *p, **pages;
 	int i, npages;
-
-	/* This is the shared memory object that backs the GEM resource */
-	inode = obj->filp->f_path.dentry->d_inode;
-	mapping = inode->i_mapping;
 
 	npages = obj->size >> PAGE_SHIFT;
 
@@ -98,10 +92,8 @@ struct page **exynos_gem_get_pages(struct drm_gem_object *obj,
 	if (pages == NULL)
 		return ERR_PTR(-ENOMEM);
 
-	gfpmask |= mapping_gfp_mask(mapping);
-
 	for (i = 0; i < npages; i++) {
-		p = shmem_read_mapping_page_gfp(mapping, i, gfpmask);
+		p = alloc_page(gfpmask);
 		if (IS_ERR(p))
 			goto fail;
 		pages[i] = p;
@@ -111,30 +103,21 @@ struct page **exynos_gem_get_pages(struct drm_gem_object *obj,
 
 fail:
 	while (i--)
-		page_cache_release(pages[i]);
+		__free_page(pages[i]);
 
 	drm_free_large(pages);
 	return ERR_PTR(PTR_ERR(p));
 }
 
 static void exynos_gem_put_pages(struct drm_gem_object *obj,
-					struct page **pages,
-					bool dirty, bool accessed)
+					struct page **pages)
 {
 	int i, npages;
 
 	npages = obj->size >> PAGE_SHIFT;
 
-	for (i = 0; i < npages; i++) {
-		if (dirty)
-			set_page_dirty(pages[i]);
-
-		if (accessed)
-			mark_page_accessed(pages[i]);
-
-		/* Undo the reference we took when populating the table */
-		page_cache_release(pages[i]);
-	}
+	for (i = 0; i < npages; i++)
+		__free_page(pages[i]);
 
 	drm_free_large(pages);
 }
@@ -223,7 +206,7 @@ err1:
 	kfree(buf->sgt);
 	buf->sgt = NULL;
 err:
-	exynos_gem_put_pages(obj, pages, true, false);
+	exynos_gem_put_pages(obj, pages);
 	return ret;
 
 }
@@ -244,7 +227,7 @@ static void exynos_drm_gem_put_pages(struct drm_gem_object *obj)
 	kfree(buf->sgt);
 	buf->sgt = NULL;
 
-	exynos_gem_put_pages(obj, buf->pages, true, false);
+	exynos_gem_put_pages(obj, buf->pages);
 	buf->pages = NULL;
 
 	/* add some codes for UNCACHED type here. TODO */
