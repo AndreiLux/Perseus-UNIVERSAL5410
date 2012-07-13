@@ -26,6 +26,7 @@
 #include <linux/kobject.h>
 #include <linux/workqueue.h>
 #include <linux/opp.h>
+#include <plat/cpu.h>
 
 #include "smartreflex.h"
 #include "voltage.h"
