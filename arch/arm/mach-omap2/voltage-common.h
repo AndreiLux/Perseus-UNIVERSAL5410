@@ -31,6 +31,7 @@ struct omap_volt_data {
 	u32	volt_nominal;
 	u32	volt_calibrated;
 	u32	volt_dynamic_nominal;
+	u32	volt_margin;
 	u32	sr_efuse_offs;
 	u32	lvt_sr_efuse_offs;
 	u8	sr_errminlimit;
