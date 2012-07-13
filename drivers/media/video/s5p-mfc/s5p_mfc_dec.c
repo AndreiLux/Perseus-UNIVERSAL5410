@@ -205,6 +205,16 @@ static struct mfc_control controls[] = {
 		.default_value = 0,
 		.is_volatile = 1,
 	},
+	{
+		.id = V4L2_CID_MPEG_MFC51_VIDEO_CHECK_STATE,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Check State",
+		.minimum = 0,
+		.maximum = 3,
+		.step = 1,
+		.default_value = 0,
+		.is_volatile = 1,
+	},
 };
 
 #define NUM_CTRLS ARRAY_SIZE(controls)
@@ -780,6 +790,16 @@ static int s5p_mfc_dec_g_v_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_CODEC_DISPLAY_STATUS:
 		ctrl->val = s5p_mfc_get_dspl_status()
 				& S5P_FIMV_DEC_STATUS_DECODING_STATUS_MASK;
+		break;
+	case V4L2_CID_MPEG_MFC51_VIDEO_CHECK_STATE:
+		if (ctx->state == MFCINST_RES_CHANGE_FLUSH
+				|| ctx->state == MFCINST_RES_CHANGE_END
+				|| ctx->state == MFCINST_HEAD_PARSED)
+			ctrl->val = MFCSTATE_DEC_RES_DETECT;
+		else if (ctx->state == MFCINST_FINISHING)
+			ctrl->val = MFCSTATE_DEC_TERMINATING;
+		else
+			ctrl->val = MFCSTATE_PROCESSING;
 		break;
 	}
 	return 0;

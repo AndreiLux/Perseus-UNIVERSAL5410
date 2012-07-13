@@ -144,6 +144,16 @@ enum s5p_mfc_decode_arg {
 	MFC_DEC_RES_CHANGE,
 };
 
+/**
+ * enum s5p_mfc_check_state - The state for user notification
+ */
+enum s5p_mfc_check_state {
+	MFCSTATE_PROCESSING = 0,
+	MFCSTATE_DEC_RES_DETECT,
+	MFCSTATE_DEC_TERMINATING,
+	MFCSTATE_ENC_NO_OUTPUT,
+};
+
 struct s5p_mfc_ctx;
 
 /**
