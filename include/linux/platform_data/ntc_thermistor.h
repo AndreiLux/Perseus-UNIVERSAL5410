@@ -40,14 +40,13 @@ struct ntc_thermistor_platform_data {
 	 *
 	 * pullup/down_ohm: 0 for infinite / not-connected
 	 */
-	int (*read_uV)(void);
+	int (*read_uV)(struct platform_device *);
+	int (*read_ohm)(struct platform_device *);
 	unsigned int pullup_uV;
 
 	unsigned int pullup_ohm;
 	unsigned int pulldown_ohm;
 	enum { NTC_CONNECTED_POSITIVE, NTC_CONNECTED_GROUND } connect;
-
-	int (*read_ohm)(void);
 };
 
 #endif /* _LINUX_NTC_H */

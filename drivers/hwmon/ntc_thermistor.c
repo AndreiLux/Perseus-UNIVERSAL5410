@@ -121,6 +121,7 @@ struct ntc_data {
 	struct ntc_thermistor_platform_data *pdata;
 	const struct ntc_compensation *comp;
 	struct device *dev;
+	struct platform_device *pdev;
 	int n_comp;
 	char name[PLATFORM_NAME_SIZE];
 };
@@ -250,14 +251,14 @@ static int ntc_thermistor_read(struct ntc_data *data, int *temp)
 	unsigned int ohm = 0;
 
 	if (data->pdata->read_ohm) {
-		read_ohm = data->pdata->read_ohm();
+		read_ohm = data->pdata->read_ohm(data->pdev);
 		if (read_ohm < 0)
 			return read_ohm;
 		ohm = (unsigned int)read_ohm;
 	}
 
 	if (data->pdata->read_uV) {
-		read_uV = data->pdata->read_uV();
+		read_uV = data->pdata->read_uV(data->pdev);
 		if (read_uV < 0)
 			return read_uV;
 		ohm = get_ohm_of_thermistor(data, (unsigned int)read_uV);
@@ -354,6 +355,7 @@ static int __devinit ntc_thermistor_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	data->dev = &pdev->dev;
+	data->pdev = pdev;
 	data->pdata = pdata;
 	strncpy(data->name, pdev->id_entry->name, PLATFORM_NAME_SIZE);
 
