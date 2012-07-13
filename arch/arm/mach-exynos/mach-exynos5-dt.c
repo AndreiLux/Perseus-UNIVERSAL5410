@@ -25,6 +25,8 @@
 #include <linux/spi/spi.h>
 #include <linux/memblock.h>
 #include <linux/of_fdt.h>
+#include <linux/err.h>
+#include <linux/platform_data/ntc_thermistor.h>
 
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
@@ -37,6 +39,7 @@
 #include <mach/regs-pmu.h>
 
 #include <plat/audio.h>
+#include <plat/adc.h>	/* for s3c_adc_register and friends */
 #include <plat/cpu.h>
 #include <plat/dsim.h>
 #include <plat/fb.h>
@@ -660,6 +663,81 @@ struct platform_device exynos5_device_adc = {
 	.resource	= exynos5_adc_resource,
 };
 
+
+/* NTC Thermistor. Attached to S3C-ADC in some Samsung SoC Devices */
+struct s3c_adc_client *ntc_adc_clients[4];
+
+static int __init s3c_adc_ntc_init(struct platform_device *pdev)
+{
+	struct s3c_adc_client *ntc_adc_client;
+
+	ntc_adc_client = s3c_adc_register(pdev, NULL, NULL, 0);
+	if (IS_ERR(ntc_adc_client))
+		return PTR_ERR(ntc_adc_client);
+
+	ntc_adc_clients[pdev->id] = ntc_adc_client;
+
+	return 0;
+}
+
+/*
+ * read_thermistor_uV: is a call back from ntc_thermistor driver.
+ * returns the temperature of the thermistor in celsius
+ */
+static int read_thermistor_uV(struct platform_device *pdev)
+{
+	static unsigned int ntc_adc_ports[] = {3, 4, 5, 6};
+	s64 converted;
+	unsigned int port = ntc_adc_ports[pdev->id];
+	struct s3c_adc_client *client = ntc_adc_clients[pdev->id];
+	struct ntc_thermistor_platform_data *pdata = pdev->dev.platform_data;
+
+	converted = pdata->pullup_uV * (s64) s3c_adc_read(client, port);
+	converted >>= 12;
+
+	return (int) converted;
+}
+
+static struct ntc_thermistor_platform_data ntc_adc_pdata = {
+	.read_uV	= read_thermistor_uV,
+	.pullup_uV	= 1800000, /* voltage of vdd for ADC */
+	.pullup_ohm	= 47000,
+	.pulldown_ohm	= 0,
+	.connect	= NTC_CONNECTED_GROUND,
+};
+
+struct platform_device s3c_device_adc_ntc_thermistor0 = {
+	.name			= "ncp15wb473",
+	.id			= 0,
+	.dev			= {
+		.platform_data = &ntc_adc_pdata,
+	},
+};
+
+struct platform_device s3c_device_adc_ntc_thermistor1 = {
+	.name			= "ncp15wb473",
+	.id			= 1,
+	.dev			= {
+	.platform_data = &ntc_adc_pdata,
+	},
+};
+
+struct platform_device s3c_device_adc_ntc_thermistor2 = {
+	.name			= "ncp15wb473",
+	.id			= 2,
+	.dev			= {
+		.platform_data = &ntc_adc_pdata,
+	},
+};
+
+struct platform_device s3c_device_adc_ntc_thermistor3 = {
+	.name			= "ncp15wb473",
+	.id			= 3,
+	.dev			= {
+		.platform_data = &ntc_adc_pdata,
+	},
+};
+
 /*
  * The following lookup table is used to override device names when devices
  * are registered from device tree. This is temporarily added to enable
@@ -787,6 +865,10 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 #ifdef CONFIG_DRM_EXYNOS_HDMI
 	&exynos_drm_hdmi_device,
 #endif
+	&s3c_device_adc_ntc_thermistor0,
+	&s3c_device_adc_ntc_thermistor1,
+	&s3c_device_adc_ntc_thermistor2,
+	&s3c_device_adc_ntc_thermistor3,
 };
 
 static struct regulator_consumer_supply dummy_supplies[] = {
@@ -1014,6 +1096,11 @@ static void __init exynos5250_dt_machine_init(void)
 
 	/* Enable power to ADC */
 	__raw_writel(0x1, S5P_ADC_PHY_CONTROL);
+
+	s3c_adc_ntc_init(&s3c_device_adc_ntc_thermistor0);
+	s3c_adc_ntc_init(&s3c_device_adc_ntc_thermistor1);
+	s3c_adc_ntc_init(&s3c_device_adc_ntc_thermistor2);
+	s3c_adc_ntc_init(&s3c_device_adc_ntc_thermistor3);
 
 	platform_add_devices(smdk5250_devices, ARRAY_SIZE(smdk5250_devices));
 out:
