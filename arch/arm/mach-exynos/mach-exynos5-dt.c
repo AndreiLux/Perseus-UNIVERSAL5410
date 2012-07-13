@@ -34,6 +34,7 @@
 #include <mach/sysmmu.h>
 #include <mach/ohci.h>
 #include <mach/regs-audss.h>
+#include <mach/regs-pmu.h>
 
 #include <plat/audio.h>
 #include <plat/cpu.h>
@@ -50,6 +51,7 @@
 #include <plat/ehci.h>
 #include <plat/dp.h>
 #include <plat/s3c64xx-spi.h>
+#include <plat/adc.h>
 
 #include <video/platform_lcd.h>
 
@@ -645,6 +647,19 @@ static struct s3c_audio_pdata i2sv5_pdata = {
 		},
 	},
 };
+
+static struct resource exynos5_adc_resource[] = {
+	[0] = DEFINE_RES_MEM(EXYNOS5_PA_ADC, SZ_256),
+	[1] = DEFINE_RES_IRQ(EXYNOS5_IRQ_ADC0),
+};
+
+struct platform_device exynos5_device_adc = {
+	.name		= "samsung-adc-v4",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(exynos5_adc_resource),
+	.resource	= exynos5_adc_resource,
+};
+
 /*
  * The following lookup table is used to override device names when devices
  * are registered from device tree. This is temporarily added to enable
@@ -762,6 +777,7 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 };
 
 static struct platform_device *smdk5250_devices[] __initdata = {
+	&exynos5_device_adc,
 	&smdk5250_lcd, /* for platform_lcd device */
 	&exynos_device_md0, /* for media device framework */
 	&exynos_device_md1, /* for media device framework */
@@ -995,6 +1011,9 @@ static void __init exynos5250_dt_machine_init(void)
 		exynos_fimd_gpio_setup_24bpp();
 #endif
 	s5p_tv_setup();
+
+	/* Enable power to ADC */
+	__raw_writel(0x1, S5P_ADC_PHY_CONTROL);
 
 	platform_add_devices(smdk5250_devices, ARRAY_SIZE(smdk5250_devices));
 out:

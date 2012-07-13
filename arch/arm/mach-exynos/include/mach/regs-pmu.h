@@ -52,6 +52,8 @@
 #define S5P_MIPI_DPHY_SRESETN			(1 << 1)
 #define S5P_MIPI_DPHY_MRESETN			(1 << 2)
 
+#define S5P_ADC_PHY_CONTROL			S5P_PMUREG(0x0718)
+
 #define S5P_DPTX_PHY_CONTROL			S5P_PMUREG(0x720)
 #define S5P_DPTX_PHY_ENABLE			(1 << 0)
 
