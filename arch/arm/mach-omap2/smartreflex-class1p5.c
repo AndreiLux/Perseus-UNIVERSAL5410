@@ -454,6 +454,9 @@ static void sr_class1p5_reset_calib(struct voltagedomain *voltdm, bool reset,
 	if (work_data->work_active)
 		sr_class1p5_disable(voltdm, work_data->vdata, 0);
 
+	/* Ensure worker canceled. */
+	cancel_delayed_work_sync(&work_data->work);
+
 	omap_voltage_calib_reset(voltdm);
 
 	/*
