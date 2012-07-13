@@ -353,6 +353,8 @@
 		supports-highspeed;
 		card-detection-broken;
 		no-write-protect;
+		keep-power-in-suspend;
+		enable-sdio-wakeup;
 		fifo-depth = <0x80>;
 		card-detect-delay = <200>;
 		samsung,dw-mshc-sdr-timing = <2 3 3>;
