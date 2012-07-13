@@ -10,3 +10,4 @@ obj-$(CONFIG_ARCH_VEXPRESS_DCSCB)	+= dcscb.o	dcscb_setup.o
 CFLAGS_REMOVE_dcscb.o			= -pg
 obj-$(CONFIG_SMP)			+= platsmp.o
 obj-$(CONFIG_HOTPLUG_CPU)		+= hotplug.o
+obj-$(CONFIG_ARCH_VEXPRESS_TC2_PM)	+= cpuidle-tc2.o hotplug-asm.o tc2-sleep.o
