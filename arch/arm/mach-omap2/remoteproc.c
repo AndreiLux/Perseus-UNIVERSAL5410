@@ -76,7 +76,6 @@ static struct omap_rproc_timers_info dsp_timers[] = {
 #ifdef CONFIG_OMAP_REMOTEPROC_IPU
 static struct omap_rproc_timers_info ipu_timers[] = {
 	{ .id = 3 },
-	{ .id = 4 },
 };
 
 static int
