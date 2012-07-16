@@ -58,6 +58,7 @@ struct tpm_inf_dev {
 	struct i2c_client *client;
 	u8 buf[TPM_BUFSIZE+sizeof(u8)]; /* max. buffer size + addr */
 	struct tpm_chip *chip;
+	bool powered_while_suspended;
 };
 
 static struct tpm_inf_dev tpm_dev;
@@ -609,6 +610,11 @@ static int tpm_tis_i2c_init(struct device *dev)
 		goto out_release;
 	}
 
+	if (dev->of_node &&
+	    of_get_property(dev->of_node, "powered-while-suspended", NULL)) {
+		tpm_dev.powered_while_suspended = true;
+	}
+
 	return 0;
 
 out_release:
@@ -641,11 +647,17 @@ MODULE_DEVICE_TABLE(i2c, tpm_i2c_id);
  */
 static int tpm_tis_i2c_suspend(struct device *dev)
 {
+	if (tpm_dev.powered_while_suspended)
+		return 0;
+
 	return tpm_pm_suspend(dev, dev->power.power_state);
 }
 
 static int tpm_tis_i2c_resume(struct device *dev)
 {
+	if (tpm_dev.powered_while_suspended)
+		return 0;
+
 	return tpm_pm_resume(dev);
 }
 
