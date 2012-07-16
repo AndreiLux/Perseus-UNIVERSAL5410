@@ -1578,12 +1578,15 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 		pm_wakeup_event(dev, 0);
 
 	ret = cyapa_read_block(cyapa, CYAPA_CMD_GROUP_DATA, (u8 *)&data);
-	if (ret != sizeof(data))
+	if (ret != sizeof(data)) {
+		cyapa_detect(cyapa);
 		goto irqhandled;
+	}
 
 	if ((data.device_status & OP_STATUS_SRC) != OP_STATUS_SRC ||
 	    (data.device_status & OP_STATUS_DEV) != CYAPA_DEV_NORMAL ||
 	    (data.finger_btn & OP_DATA_VALID) != OP_DATA_VALID) {
+		cyapa_detect(cyapa);
 		goto irqhandled;
 	}
 
