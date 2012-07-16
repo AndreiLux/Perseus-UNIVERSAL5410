@@ -775,6 +775,7 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable)
 {
 	struct exynos_drm_subdrv *subdrv = &ctx->subdrv;
 	struct device *dev = subdrv->dev;
+	struct exynos_drm_fimd_pdata *pdata = dev->platform_data;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
@@ -801,6 +802,9 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable)
 			fimd_enable_vblank(dev);
 
 		fimd_apply(dev);
+
+		if (pdata->panel_type == DP_LCD)
+			writel(DPCLKCON_ENABLE, ctx->regs + DPCLKCON);
 	} else {
 		clk_disable(ctx->lcd_clk);
 		clk_disable(ctx->bus_clk);
