@@ -152,7 +152,7 @@ static mali_error kbase_jd_umm_map(struct kbase_context * kctx, struct kbase_va_
 	OSK_ASSERT(NULL == reg->imported_metadata.umm.st);
 	st = dma_buf_map_attachment(reg->imported_metadata.umm.dma_attachment, DMA_BIDIRECTIONAL);
 
-	if (!st)
+	if (IS_ERR_OR_NULL(st))
 	{
 		return MALI_ERROR_FUNCTION_FAILED;
 	}
