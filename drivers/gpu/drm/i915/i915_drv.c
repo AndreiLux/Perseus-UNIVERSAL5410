@@ -342,19 +342,6 @@ void intel_detect_pch(struct drm_device *dev)
 	}
 }
 
-static void __gen6_gt_wait_for_thread_c0(struct drm_i915_private *dev_priv)
-{
-	unsigned long timeout;
-
-	/* w/a for a sporadic read returning 0 by waiting for the GT
-	 * thread to wake up.
-	 */
-	timeout = jiffies + msecs_to_jiffies(1);
-	while (I915_READ_NOTRACE(GEN6_GT_THREAD_STATUS_REG) & GEN6_GT_THREAD_STATUS_CORE_MASK &&
-	       time_before(jiffies, timeout))
-		;
-}
-
 void __gen6_gt_force_wake_get(struct drm_i915_private *dev_priv)
 {
 	int count;
@@ -369,8 +356,6 @@ void __gen6_gt_force_wake_get(struct drm_i915_private *dev_priv)
 	count = 0;
 	while (count++ < 50 && (I915_READ_NOTRACE(FORCEWAKE_ACK) & 1) == 0)
 		udelay(10);
-
-	__gen6_gt_wait_for_thread_c0(dev_priv);
 }
 
 void __gen6_gt_force_wake_mt_get(struct drm_i915_private *dev_priv)
@@ -387,8 +372,6 @@ void __gen6_gt_force_wake_mt_get(struct drm_i915_private *dev_priv)
 	count = 0;
 	while (count++ < 50 && (I915_READ_NOTRACE(FORCEWAKE_MT_ACK) & 1) == 0)
 		udelay(10);
-
-	__gen6_gt_wait_for_thread_c0(dev_priv);
 }
 
 /*
