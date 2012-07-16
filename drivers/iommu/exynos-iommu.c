@@ -412,33 +412,15 @@ finish:
 	return disabled;
 }
 
-/* __exynos_sysmmu_enable: Enables System MMU
- *
- * returns -error if an error occurred and System MMU is not enabled,
- * 0 if the System MMU has been just enabled and 1 if System MMU was already
- * enabled before.
- */
-static int __exynos_sysmmu_enable(struct sysmmu_drvdata *data,
-			unsigned long pgtable, struct iommu_domain *domain)
+/* __exynos_sysmmu_enable: Enables System MMU*/
+static void __exynos_sysmmu_enable(struct sysmmu_drvdata *data,
+				   unsigned long pgtable,
+				   struct iommu_domain *domain)
 {
-	int i, ret;
+	int i;
 	unsigned long flags;
 
 	write_lock_irqsave(&data->lock, flags);
-
-	if (!set_sysmmu_active(data)) {
-		if (WARN_ON(pgtable != data->pgtable)) {
-			ret = -EBUSY;
-			set_sysmmu_inactive(data);
-		} else {
-			ret = 1;
-		}
-
-		dev_dbg(data->sysmmu, "(%s) Already enabled\n", data->dbgname);
-		goto finish;
-	}
-
-	ret = 0;
 
 	if (data->clk[0])
 		clk_enable(data->clk[0]);
@@ -464,35 +446,34 @@ static int __exynos_sysmmu_enable(struct sysmmu_drvdata *data,
 	data->domain = domain;
 
 	dev_dbg(data->sysmmu, "(%s) Enabled\n", data->dbgname);
-finish:
+
 	write_unlock_irqrestore(&data->lock, flags);
-
-	if ((ret < 0) && (ret != -EBUSY)) {
-		__exynos_sysmmu_disable(data);
-		dev_dbg(data->sysmmu, "(%s) Failed to enable\n", data->dbgname);
-	}
-
-	return ret;
 }
 
-int exynos_sysmmu_enable(struct device *dev, unsigned long pgtable)
+/*
+ * exynos_sysmmu_enable: Enables System MMU
+ *
+ * returns -error if an error occurred and System MMU is not enabled,
+ * 0 if the System MMU has been just enabled and 1 if System MMU was already
+ * enabled before.
+ */
+int exynos_sysmmu_enable(struct sysmmu_drvdata *data, unsigned long pgtable,
+						struct iommu_domain *domain)
 {
-	struct sysmmu_drvdata *data = dev_get_drvdata(dev->archdata.iommu);
-	int ret;
-
 	BUG_ON(!memblock_is_memory(pgtable));
 
-	ret = pm_runtime_get_sync(data->sysmmu);
-	if (ret < 0)
-		return ret;
+	if (!set_sysmmu_active(data)) {
+		dev_dbg(data->sysmmu, "(%s) Already enabled\n", data->dbgname);
+		if (WARN_ON(pgtable != data->pgtable)) {
+			set_sysmmu_inactive(data);
+			return -EBUSY;
+		}
+		return 1;
+	}
 
-	ret = __exynos_sysmmu_enable(data, pgtable, NULL);
-	if (ret < 0)
-		pm_runtime_put(data->sysmmu);
-	else
-		data->dev = dev;
+	__exynos_sysmmu_enable(data, pgtable, domain);
 
-	return ret;
+	return 0;
 }
 
 bool exynos_sysmmu_disable(struct device *dev)
@@ -802,7 +783,7 @@ static int exynos_iommu_attach_device(struct iommu_domain *domain,
 
 	spin_lock_irqsave(&priv->lock, flags);
 
-	ret = __exynos_sysmmu_enable(data, __pa(priv->pgtable), domain);
+	ret = exynos_sysmmu_enable(data, __pa(priv->pgtable), domain);
 
 	if (ret == 0) {
 		/* 'data->node' must not appear in priv->clients */
