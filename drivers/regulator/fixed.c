@@ -229,10 +229,17 @@ static int __devinit reg_fixed_voltage_probe(struct platform_device *pdev)
 		/* set output direction without changing state
 		 * to prevent glitch
 		 */
+		if (config->enabled_at_boot) {
+			if (drvdata->startup_delay >= 1000) {
+				mdelay(drvdata->startup_delay / 1000);
+				udelay(drvdata->startup_delay % 1000);
+			} else if (drvdata->startup_delay) {
+				udelay(drvdata->startup_delay);
+			}
+		}
 		drvdata->is_enabled = config->enabled_at_boot;
 		ret = drvdata->is_enabled ?
 				config->enable_high : !config->enable_high;
-
 		ret = gpio_direction_output(config->gpio, ret);
 		if (ret) {
 			dev_err(&pdev->dev,
