@@ -134,10 +134,10 @@ static struct s3c_fb_pd_win smdk5250_fb_win2 = {
 };
 
 static struct fb_videomode snow_fb_window = {
-	.left_margin    = 0x80,
-	.right_margin   = 0x48,
-	.upper_margin   = 14,
-	.lower_margin   = 3,
+	.left_margin    = 0,
+	.right_margin   = 0,
+	.upper_margin   = 4,
+	.lower_margin   = 4,
 	.hsync_len      = 5,
 	.vsync_len      = 32,
 	.xres           = 1366,
