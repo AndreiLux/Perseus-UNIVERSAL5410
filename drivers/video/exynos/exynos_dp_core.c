@@ -26,6 +26,8 @@
 
 #include "exynos_dp_core.h"
 
+#define PLL_MAX_TRIES 100
+
 static int exynos_dp_init_dp(struct exynos_dp_device *dp)
 {
 	exynos_dp_reset(dp);
@@ -260,7 +262,7 @@ static void exynos_dp_set_lane_lane_pre_emphasis(struct exynos_dp_device *dp,
 
 static int exynos_dp_link_start(struct exynos_dp_device *dp)
 {
-	int ret, lane, lane_count;
+	int ret, lane, lane_count, pll_tries;
 	u8 buf[4];
 
 	lane_count = dp->link_train.lane_count;
@@ -292,6 +294,16 @@ static int exynos_dp_link_start(struct exynos_dp_device *dp)
 	for (lane = 0; lane < lane_count; lane++)
 		exynos_dp_set_lane_lane_pre_emphasis(dp,
 			PRE_EMPHASIS_LEVEL_0, lane);
+
+	/* Wait for PLL lock */
+	pll_tries = 0;
+	while (exynos_dp_get_pll_lock_status(dp) == PLL_UNLOCKED) {
+		if (pll_tries == PLL_MAX_TRIES)
+			return -ETIMEDOUT;
+
+		pll_tries++;
+		udelay(100);
+	}
 
 	/* Set training pattern 1 */
 	exynos_dp_set_training_pattern(dp, TRAINING_PTN1);
