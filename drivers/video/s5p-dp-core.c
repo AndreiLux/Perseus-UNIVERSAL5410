@@ -729,7 +729,7 @@ static int s5p_dp_config_video(struct s5p_dp_device *dp,
 			return -ETIMEDOUT;
 		}
 
-		mdelay(100);
+		usleep_range(1, 1);
 	}
 
 	/* Set to use the register calculated M/N video */
@@ -763,7 +763,7 @@ static int s5p_dp_config_video(struct s5p_dp_device *dp,
 			return -ETIMEDOUT;
 		}
 
-		mdelay(100);
+		usleep_range(1000, 1000);
 	}
 
 	if (retval != 0)
