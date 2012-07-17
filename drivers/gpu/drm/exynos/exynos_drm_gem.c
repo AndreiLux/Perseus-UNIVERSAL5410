@@ -623,6 +623,7 @@ int exynos_drm_gem_dumb_create(struct drm_file *file_priv,
 	 */
 
 	args->pitch = args->width * ALIGN(args->bpp, 8) >> 3;
+	args->pitch = round_up(args->pitch, 64);
 
 	args->size = PAGE_ALIGN(args->pitch * args->height);
 
