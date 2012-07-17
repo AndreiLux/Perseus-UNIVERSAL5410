@@ -414,30 +414,6 @@
 	// NB: must set regulator-boot-on for enable-active-high to be used
 	// NB: set regulator-always-on to suppress complaints
 	//     "incomplete constraints, leaving on"
-	wifi-en {
-		compatible = "regulator-fixed";
-		regulator-name = "wifi-en";
-		gpio = <&gpx0 1 0 0 0>;
-		enable-active-high;
-		regulator-boot-on;
-		regulator-always-on;
-	};
-	wifi-rst {
-		compatible = "regulator-fixed";
-		regulator-name = "wifi-rst-l";
-		gpio = <&gpx0 2 0 0 0>;
-		enable-active-high;
-		regulator-boot-on;
-		regulator-always-on;
-	};
-	bt-rst {
-		compatible = "regulator-fixed";
-		regulator-name = "bt-reset-l";
-		gpio = <&gpx3 1 0 0 0>;
-		enable-active-high;
-		regulator-boot-on;
-		regulator-always-on;
-	};
 	wwan-en {
 		compatible = "regulator-fixed";
 		regulator-name = "wwan-en";
@@ -453,6 +429,21 @@
 		enable-active-high;
 		regulator-boot-on;
 		regulator-always-on;
+	};
+
+	// NB: these are manually enabled in platform code
+	wifi-en {
+		compatible = "regulator-fixed";
+		regulator-name = "wifi-en";
+		gpio = <&gpx0 1 0 0 0>;
+		enable-active-high;
+	};
+	wifi-rst {
+		compatible = "regulator-fixed";
+		regulator-name = "wifi-rst-l";
+		gpio = <&gpx0 2 0 0 0>;
+		enable-active-high;
+		startup-delay-us = <1500>;
 	};
 
 	gpio-keys {
