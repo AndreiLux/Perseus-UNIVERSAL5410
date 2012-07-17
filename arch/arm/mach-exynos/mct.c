@@ -127,7 +127,7 @@ static void exynos4_mct_frc_start(u32 hi, u32 lo)
 	exynos4_mct_write(reg, EXYNOS4_MCT_G_TCON);
 }
 
-static u32 exynos4_read_sched_clock(void)
+static notrace u32 exynos4_read_sched_clock(void)
 {
 	return __raw_readl(EXYNOS4_MCT_G_CNT_L);
 }
