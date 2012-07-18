@@ -80,7 +80,7 @@ struct getpkgsrvcstatus_req {
 	u16 tlvsize;
 } __attribute__((__packed__));
 
-struct getmeid_req {
+struct getmeidimei_req {
 	struct qmux header;
 	u8 req;
 	u16 tid;
@@ -170,9 +170,9 @@ struct buffer *qmiwds_new_getpkgsrvcstatus(u8 tid)
 	return buf;
 }
 
-struct buffer *qmidms_new_getmeid(u8 tid)
+struct buffer *qmidms_new_getmeidimei(u8 tid)
 {
-	struct getmeid_req *req;
+	struct getmeidimei_req *req;
 	struct buffer *buf = buffer_new(sizeof *req);
 	if (!buf)
 		return NULL;
@@ -402,9 +402,12 @@ int qmiwds_event_resp(void *buf, u16 size, struct qmiwds_stats *stats)
 	return 0;
 }
 
-int qmidms_meid_resp(void *buf,	u16 size, char *meid, int meidsize)
+int qmidms_meidimei_resp(void *buf, u16 size, char *meid, int meidsize,
+			 char *imei, int imeisize)
 {
 	int result;
+	bool meid_valid = false;
+	bool imei_valid = false;
 
 	u8 offset = sizeof(struct qmux) + 3;
 
@@ -415,8 +418,13 @@ int qmidms_meid_resp(void *buf,	u16 size, char *meid, int meidsize)
 		return -ENOMEM;
 	}
 
-	if (meidsize < 14) {
-		GOBI_ERROR("buffer too small (%d < %d)", meidsize, 14);
+	if (meidsize < MEID_SIZE) {
+		GOBI_ERROR("buffer too small (%d < %d)", meidsize, MEID_SIZE);
+		return -ENOMEM;
+	}
+
+	if (imeisize < IMEI_SIZE) {
+		GOBI_ERROR("buffer too small (%d < %d)", imeisize, IMEI_SIZE);
 		return -ENOMEM;
 	}
 
@@ -435,15 +443,25 @@ int qmidms_meid_resp(void *buf,	u16 size, char *meid, int meidsize)
 		return -EFAULT;
 	}
 
-	result = tlv_get(buf, size, 0x12, meid, 14);
+	result = tlv_get(buf, size, 0x12, meid, MEID_SIZE);
 	if (result < 0) {
-		GOBI_ERROR("tlv_get failed: %d", result);
-		return -EFAULT;
-	}
-	if (result != 14) {
-		GOBI_ERROR("size is wrong (%d != 14)", result);
-		return -EFAULT;
+		GOBI_ERROR("MEID tlv_get failed: %d", result);
+	} else if (result != MEID_SIZE) {
+		GOBI_ERROR("MEID size is wrong (%d != %d)", result, MEID_SIZE);
+		memset(meid, '0', meidsize);
+	} else {
+		meid_valid = true;
 	}
 
-	return 0;
+	result = tlv_get(buf, size, 0x11, imei, IMEI_SIZE);
+	if (result < 0) {
+		GOBI_ERROR("IMEI tlv_get failed: %d", result);
+	} else if (result != IMEI_SIZE) {
+		GOBI_ERROR("IMEI size is wrong (%d != %d)", result, IMEI_SIZE);
+		memset(imei, '0', imeisize);
+	} else {
+		imei_valid = true;
+	}
+
+	return (meid_valid || imei_valid) ? 0 : -EFAULT;
 }

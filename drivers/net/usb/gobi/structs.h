@@ -75,6 +75,9 @@ enum {
 	DOWN_NET_IFACE_STOPPED = 3,
 };
 
+#define MEID_SIZE 14
+#define IMEI_SIZE 15
+
 struct qcusbnet {
 	struct list_head node;
 	struct kref refcount;
@@ -86,7 +89,8 @@ struct qcusbnet {
 	bool valid;
 	bool dying;
 	struct qmidev qmi;
-	char meid[14];
+	char meid[MEID_SIZE];
+	char imei[IMEI_SIZE];
 
 	struct workqueue_struct *workqueue;
 	spinlock_t urbs_lock;

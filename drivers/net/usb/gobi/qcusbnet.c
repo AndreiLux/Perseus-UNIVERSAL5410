@@ -577,7 +577,9 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 	struct qcusbnet *dev;
 	struct net_device_ops *netdevops;
 	int i;
+	int addr_len;
 	u8 *addr;
+	const char *id;
 
 	status = usbnet_probe(iface, vidpids);
 	if (status < 0) {
@@ -639,7 +641,8 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 
 	memset(&(dev->usbnet->net->stats), 0, sizeof(struct net_device_stats));
 
-	memset(&(dev->meid), '0', 14);
+	memset(dev->meid, '0', sizeof(dev->meid));
+	memset(dev->imei, '0', sizeof(dev->imei));
 
 	dev->valid = false;
 	memset(&dev->qmi, 0, sizeof(dev->qmi));
@@ -677,11 +680,16 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 	list_add(&dev->node, &qcusbnet_list);
 	mutex_unlock(&qcusbnet_lock);
 
-	/* After calling qc_register, MEID is valid */
-	addr = &usbnet->net->dev_addr[0];
-	for (i = 0; i < 6; i++)
-		addr[i] = (nibble(dev->meid[i*2+2]) << 4)+
-			nibble(dev->meid[i*2+3]);
+	/* After calling qc_register, either MEID or IMEI is valid */
+	id = memchr_inv(dev->meid, '0', sizeof(dev->meid)) ?
+			dev->meid : dev->imei;
+	addr = usbnet->net->dev_addr;
+	addr_len = usbnet->net->addr_len;
+	if (addr_len > ETH_ALEN)
+		addr_len = ETH_ALEN;
+
+	for (i = 0; i < addr_len; i++)
+		addr[i] = (nibble(id[i*2+2]) << 4) + nibble(id[i*2+3]);
 	addr[0] &= 0xfe;		/* clear multicast bit */
 	addr[0] |= 0x02;		/* set local assignment bit (IEEE802) */
 

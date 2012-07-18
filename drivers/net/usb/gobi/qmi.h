@@ -46,7 +46,7 @@ struct buffer *qmictl_new_releasecid(u8 tid, u16 cid);
 struct buffer *qmictl_new_ready(u8 tid);
 struct buffer *qmiwds_new_seteventreport(u8 tid);
 struct buffer *qmiwds_new_getpkgsrvcstatus(u8 tid);
-struct buffer *qmidms_new_getmeid(u8 tid);
+struct buffer *qmidms_new_getmeidimei(u8 tid);
 
 struct qmiwds_stats {
 	u32 txok;
@@ -64,6 +64,7 @@ struct qmiwds_stats {
 int qmictl_alloccid_resp(void *buf, u16 size, u16 *cid);
 int qmictl_freecid_resp(void *buf, u16 size);
 int qmiwds_event_resp(void *buf, u16 size, struct qmiwds_stats *stats);
-int qmidms_meid_resp(void *buf, u16 size, char *meid, int meidsize);
+int qmidms_meidimei_resp(void *buf, u16 size, char *meid, int meidsize,
+			 char *imei, int imeisize);
 
 #endif /* !QCUSBNET_QMI_H */

@@ -110,7 +110,7 @@ static unsigned devqmi_poll(struct file *file,
 static bool qmi_ready(struct qcusbnet *dev, u16 timeout);
 static void wds_callback(struct qcusbnet *dev, u16 cid, void *data);
 static int setup_wds_callback(struct qcusbnet *dev, int sync_flags);
-static int qmidms_getmeid(struct qcusbnet *dev, int sync_flags);
+static int qmidms_getmeidimei(struct qcusbnet *dev, int sync_flags);
 
 #define IOCTL_QMI_GET_SERVICE_FILE	(0x8BE0 + 1)
 #define IOCTL_QMI_GET_DEVICE_VIDPID	(0x8BE0 + 2)
@@ -1304,7 +1304,8 @@ static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return -EINVAL;
 		}
 
-		result = copy_to_user((unsigned int *)arg, &handle->dev->meid[0], 14);
+		result = copy_to_user((unsigned int *)arg, handle->dev->meid,
+				      sizeof(handle->dev->meid));
 		if (result) {
 			GOBI_WARN("GET_DEVICE_MEID: copy_to_user failed: %d",
 				  result);
@@ -1532,9 +1533,9 @@ int qc_register(struct qcusbnet *dev)
 		goto fail_stopread;
 	}
 
-	result = qmidms_getmeid(dev, sync_flags);
+	result = qmidms_getmeidimei(dev, sync_flags);
 	if (result) {
-		GOBI_ERROR("qmidms_getmeid failed: %d", result);
+		GOBI_ERROR("qmidms_getmeidimei failed: %d", result);
 		goto fail_stopread;
 	}
 
@@ -1835,7 +1836,7 @@ static int setup_wds_callback(struct qcusbnet *dev, int sync_flags)
 	return 0;
 }
 
-static int qmidms_getmeid(struct qcusbnet *dev, int sync_flags)
+static int qmidms_getmeidimei(struct qcusbnet *dev, int sync_flags)
 {
 	u16 cid = CID_NONE;
 	struct buffer *wbuf;
@@ -1843,7 +1844,7 @@ static int qmidms_getmeid(struct qcusbnet *dev, int sync_flags)
 	u16 size;
 	int result;
 
-	if (!device_valid(dev))	{
+	if (!device_valid(dev)) {
 		GOBI_ERROR("invalid device");
 		result = -EFAULT;
 		goto out;
@@ -1856,9 +1857,9 @@ static int qmidms_getmeid(struct qcusbnet *dev, int sync_flags)
 	}
 	cid = result;
 
-	wbuf = qmidms_new_getmeid(1);
+	wbuf = qmidms_new_getmeidimei(1);
 	if (!wbuf) {
-		GOBI_ERROR("failed to create getmeid request: %d", result);
+		GOBI_ERROR("failed to create getmeidimei request: %d", result);
 		result = -ENOMEM;
 		goto out;
 	}
@@ -1866,20 +1867,21 @@ static int qmidms_getmeid(struct qcusbnet *dev, int sync_flags)
 	result = write_sync(dev, wbuf, cid, sync_flags);
 	buffer_put(wbuf);
 	if (result < 0) {
-		GOBI_ERROR("failed to write getmeid request: %d", result);
+		GOBI_ERROR("failed to write getmeidimei request: %d", result);
 		goto out;
 	}
 
 	result = read_sync(dev, &rbuf, cid, 1, sync_flags);
 	if (result < 0) {
-		GOBI_ERROR("failed to read meid response: %d", result);
+		GOBI_ERROR("failed to read meidimei response: %d", result);
 		goto out;
 	}
 	size = result;
 
-	result = qmidms_meid_resp(rbuf, size, &dev->meid[0], 14);
+	result = qmidms_meidimei_resp(rbuf, size, dev->meid, sizeof(dev->meid),
+				      dev->imei, sizeof(dev->imei));
 	if (result < 0) {
-		GOBI_ERROR("failed to parse meid response: %d", result);
+		GOBI_ERROR("failed to parse meidimei response: %d", result);
 		goto out;
 	}
 
