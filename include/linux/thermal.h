@@ -27,6 +27,7 @@
 
 #include <linux/idr.h>
 #include <linux/device.h>
+#include <linux/notifier.h>
 #include <linux/workqueue.h>
 
 struct thermal_zone_device;
@@ -173,5 +174,8 @@ static inline int thermal_generate_netlink_event(u32 orig, enum events event)
 	return 0;
 }
 #endif
+
+extern int register_thermal_notifier(struct notifier_block *);
+extern int unregister_thermal_notifier(struct notifier_block *);
 
 #endif /* __THERMAL_H__ */

@@ -32,6 +32,7 @@
 #include <linux/slab.h>
 #include <linux/kdev_t.h>
 #include <linux/idr.h>
+#include <linux/notifier.h>
 #include <linux/thermal.h>
 #include <linux/spinlock.h>
 #include <linux/reboot.h>
@@ -1059,6 +1060,36 @@ void thermal_cooling_device_unregister(struct
 }
 EXPORT_SYMBOL(thermal_cooling_device_unregister);
 
+BLOCKING_NOTIFIER_HEAD(thermal_notifier_list);
+
+/**
+ * register_thermal_notifier - Register function to be called for
+ *                             critical thermal events.
+ *
+ * @nb: Info about notifier function to be called
+ *
+ * Currently always returns zero, as blocking_notifier_chain_register()
+ * always returns zero.
+ */
+int register_thermal_notifier(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_register(&thermal_notifier_list, nb);
+}
+EXPORT_SYMBOL(register_thermal_notifier);
+
+/**
+ * unregister_thermal_notifier - Unregister thermal notifier
+ *
+ * @nb: Hook to be unregistered
+ *
+ * Returns zero on success, or %-ENOENT on failure.
+ */
+int unregister_thermal_notifier(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_unregister(&thermal_notifier_list, nb);
+}
+EXPORT_SYMBOL(unregister_thermal_notifier);
+
 /**
  * thermal_zone_device_update - force an update of a thermal zone's state
  * @ttz:	the thermal zone to update
@@ -1090,6 +1121,9 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 				if (tz->ops->notify)
 					ret = tz->ops->notify(tz, count,
 							      trip_type);
+				blocking_notifier_call_chain(
+					&thermal_notifier_list,
+					trip_type, NULL);
 				if (!ret) {
 					pr_emerg("Critical temperature reached (%ld C), shutting down\n",
 						 temp/1000);
@@ -1098,9 +1132,13 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 			}
 			break;
 		case THERMAL_TRIP_HOT:
-			if (temp >= trip_temp)
+			if (temp >= trip_temp) {
 				if (tz->ops->notify)
 					tz->ops->notify(tz, count, trip_type);
+				blocking_notifier_call_chain(
+					&thermal_notifier_list,
+					trip_type, NULL);
+			}
 			break;
 		case THERMAL_TRIP_ACTIVE:
 			list_for_each_entry(instance, &tz->cooling_devices,
