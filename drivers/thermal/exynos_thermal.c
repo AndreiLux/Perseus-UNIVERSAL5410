@@ -122,6 +122,7 @@ struct exynos_tmu_data {
 	struct work_struct irq_work;
 	struct mutex lock;
 	struct clk *clk;
+	u32 thd_temp_rise;	/* exynos5 resume support */
 	u8 temp_error1, temp_error2;
 };
 
@@ -492,11 +493,78 @@ out:
 	return temp;
 }
 
+static int exynos5_setup_temp_rise(struct platform_device *pdev)
+{
+	struct exynos_tmu_data *data = platform_get_drvdata(pdev);
+	struct exynos_tmu_platform_data *pdata = data->pdata;
+
+	u8 hwtrig_code, hwtrig_temp;
+	u32 rising_threshold;
+	int threshold_code;
+
+	/* Write temperature code for thresholds */
+	threshold_code = temp_to_code(data, pdata->trigger_levels[0]);
+	if (threshold_code < 0)
+		return threshold_code;
+
+	rising_threshold = threshold_code;
+
+	threshold_code = temp_to_code(data, pdata->trigger_levels[1]);
+	if (threshold_code < 0)
+		return threshold_code;
+
+	rising_threshold |= threshold_code << 8;
+
+	threshold_code = temp_to_code(data, pdata->trigger_levels[2]);
+	if (threshold_code < 0)
+		return threshold_code;
+
+	rising_threshold |= (threshold_code << 16);
+
+	/* On "warm" and "cold" reset, hwtrig_enable remains set
+	 * but TEMP_RISE gets cleared. :(
+	 * Value ranges copied from "62.3 Temperature Code Table"
+	 * of "S5PC520 User's Manual" version 0.01 Oct 2011.
+	 */
+	hwtrig_code = readl(data->base + EXYNOS5_THD_TEMP_RISE) >> 24;
+	hwtrig_temp = code_to_temp(data, hwtrig_code);
+	if (hwtrig_temp >= 25 && hwtrig_temp <= 125
+			&& (hwtrig_code < threshold_code)) {
+		/* Boot FW set the HW trig value.  */
+		pr_warn("Thermal: HW poweroff threshold (%d) "
+			"< Kernel shutdown threshold (%d). "
+			"Changing Kernel shutdown to %d C.\n",
+			hwtrig_code, threshold_code,
+			code_to_temp(data, hwtrig_code - 2));
+
+		/* ckear previous code */
+		rising_threshold &= ~(0xff << 16);
+
+		/* don't have to use temp. 1:1 mapping of temp:code */
+		rising_threshold |= ((hwtrig_code - 2) << 16) |
+			(hwtrig_code << 24);
+	} else {
+		/* Boot FW did NOT set HW poweroff trigger.
+		 * or trigger is set to invalid value.
+		 */
+		threshold_code = temp_to_code(data, pdata->trigger_levels[3]);
+
+		if (threshold_code < 0)
+			return threshold_code;
+
+		rising_threshold |= threshold_code << 24;
+	}
+
+	data->thd_temp_rise = rising_threshold;
+	return 0;
+}
+
+
 static int exynos_tmu_initialize(struct platform_device *pdev)
 {
 	struct exynos_tmu_data *data = platform_get_drvdata(pdev);
 	struct exynos_tmu_platform_data *pdata = data->pdata;
-	unsigned int status, trim_info, rising_threshold;
+	unsigned int status, trim_info;
 	int ret = 0, threshold_code;
 
 	mutex_lock(&data->lock);
@@ -544,66 +612,14 @@ static int exynos_tmu_initialize(struct platform_device *pdev)
 		writel(EXYNOS4_TMU_INTCLEAR_VAL,
 			data->base + EXYNOS_TMU_REG_INTCLEAR);
 	} else if (data->soc == SOC_ARCH_EXYNOS5) {
-		u8 hwtrig_code, hwtrig_temp;
-
-		/* Write temperature code for thresholds */
-		threshold_code = temp_to_code(data, pdata->trigger_levels[0]);
-		if (threshold_code < 0) {
-			ret = threshold_code;
-			goto out;
-		}
-		rising_threshold = threshold_code;
-
-		threshold_code = temp_to_code(data, pdata->trigger_levels[1]);
-		if (threshold_code < 0) {
-			ret = threshold_code;
-			goto out;
-		}
-		rising_threshold |= (threshold_code << 8);
-
-		threshold_code = temp_to_code(data, pdata->trigger_levels[2]);
-		if (threshold_code < 0) {
-			ret = threshold_code;
-			goto out;
-		}
-
-		rising_threshold |= (threshold_code << 16);
-
-		/* On "warm" and "cold" reset, hwtrig_enable remains set
-		 * but TEMP_RISE gets cleared. :(
-		 * Value ranges copied from "62.3 Temperature Code Table"
-		 * of "S5PC520 User's Manual" version 0.01 Oct 2011.
-		 */
-		hwtrig_code = readl(data->base + EXYNOS5_THD_TEMP_RISE) >> 24;
-		hwtrig_temp = code_to_temp(data, hwtrig_code);
-		if (hwtrig_temp >= 25 && hwtrig_temp <= 125 
-				&& (hwtrig_code < threshold_code)) {
-			/* Boot FW set the HW trig value.  */
-			pr_warn("Thermal: HW poweroff threshold (%d) "
-				"< Kernel shutdown threshold (%d). "
-				"Changing Kernel shutdown to %d C.\n",
-				hwtrig_code, threshold_code,
-				code_to_temp(data, hwtrig_code - 2));
-
-			rising_threshold &= ~(0xff << 16);
-
-			/* don't have to use temp. 1:1 mapping of temp:code */
-			rising_threshold |= (hwtrig_code - 2) << 16;
-		} else {
-			/* Boot FW did NOT set HW poweroff trigger.
-			 * or trigger is set to invalid value.
-			 */
-			threshold_code = temp_to_code(data,
-						pdata->trigger_levels[3]);
-
-			if (threshold_code < 0) {
-				ret = threshold_code;
+		/* thd_temp_rise is nonzero on resume. Don't compute again. */
+		if (!data->thd_temp_rise) {
+			ret = exynos5_setup_temp_rise(pdev);
+			if (ret < 0)
 				goto out;
-			}
-			rising_threshold |= (threshold_code << 24);
 		}
 
-		writel(rising_threshold, data->base + EXYNOS5_THD_TEMP_RISE);
+		writel(data->thd_temp_rise, data->base + EXYNOS5_THD_TEMP_RISE);
 		writel(0, data->base + EXYNOS5_THD_TEMP_FALL);
 
 		/* clear all interrupt status bits regardless of which ones
