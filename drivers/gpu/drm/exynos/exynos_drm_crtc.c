@@ -325,6 +325,25 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 	struct drm_device *dev = crtc->dev;
 	struct exynos_drm_private *dev_priv = dev->dev_private;
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
+	struct drm_pending_vblank_event *event = callback_extra_parameter;
+	int ret = -EINVAL;
+
+	mutex_lock(&dev->struct_mutex);
+	/*
+	 * the pipe from user always is 0 so we can set pipe number
+	 * of current owner to event.
+	 */
+	event->pipe = exynos_crtc->pipe;
+
+	ret = drm_vblank_get(dev, exynos_crtc->pipe);
+	if (ret) {
+		DRM_DEBUG("failed to acquire vblank counter\n");
+		mutex_unlock(&dev->struct_mutex);
+		goto callback_out;
+	}
+
+	list_add_tail(&event->base.link,
+			&dev_priv->pageflip_event_list);
 
 	/*
 	 * the values related to a buffer of the drm framebuffer
@@ -332,10 +351,10 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 	 * first, are set to shadow registers and then to
 	 * real registers at vsync front porch period.
 	 */
-	mutex_lock(&dev->struct_mutex);
 	exynos_drm_crtc_apply(crtc);
 	mutex_unlock(&dev->struct_mutex);
 
+callback_out:
 	if (dev_priv->old_kds_res_set != NULL) {
 		kds_resource_set_release(&dev_priv->old_kds_res_set);
 		dev_priv->old_kds_res_set = NULL;
@@ -369,29 +388,10 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 
 	if (event) {
 		mutex_lock(&dev->struct_mutex);
-		/*
-		 * the pipe from user always is 0 so we can set pipe number
-		 * of current owner to event.
-		 */
-		event->pipe = exynos_crtc->pipe;
-
-		ret = drm_vblank_get(dev, exynos_crtc->pipe);
-		if (ret) {
-			DRM_DEBUG("failed to acquire vblank counter\n");
-			list_del(&event->base.link);
-			mutex_unlock(&dev->struct_mutex);
-			goto out;
-		}
-
-		list_add_tail(&event->base.link,
-				&dev_priv->pageflip_event_list);
-
 		crtc->fb = fb;
 		ret = exynos_drm_crtc_update(crtc);
 		if (ret) {
 			crtc->fb = old_fb;
-			drm_vblank_put(dev, exynos_crtc->pipe);
-			list_del(&event->base.link);
 			mutex_unlock(&dev->struct_mutex);
 			goto out;
 		}
@@ -417,7 +417,7 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 
 			/* Waiting for the KDS resource*/
 			kds_async_waitall(&dev_priv->kds_res_set, KDS_FLAG_LOCKED_WAIT,
-				&dev_priv->kds_cb, crtc, fb, 1, shared, resource_list);
+				&dev_priv->kds_cb, crtc, event, 1, shared, resource_list);
 		} else {
 			exynos_drm_kds_callback(crtc, fb);
 			dev_priv->kds_res_set = NULL;
