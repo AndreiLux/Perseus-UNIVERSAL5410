@@ -70,7 +70,7 @@ config SOC_EXYNOS5250
 	select SAMSUNG_DMADEV
 	select S5P_PM if PM
 	select S5P_SLEEP if PM
-	select PM_GENERIC_DOMAINS
+	select PM_GENERIC_DOMAINS if PM_RUNTIME
 	help
 	  Enable EXYNOS5250 SoC support
 
