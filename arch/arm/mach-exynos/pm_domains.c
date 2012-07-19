@@ -69,6 +69,12 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 	pd = container_of(domain, struct exynos_pm_domain, pd);
 	base = pd->base;
 
+	if (!base) {
+		pr_err("%s: Failed to get %s power domain base address\n",
+			__func__, pd->name);
+		return -EINVAL;
+	}
+
 	/* Enable all the clocks of IPs in power domain */
 	if (power_on)
 		list_for_each_entry(pclk, &pd->list, node) {
@@ -120,6 +126,16 @@ static int exynos_pd_power_off(struct generic_pm_domain *domain)
 	return exynos_pd_power(domain, false);
 }
 
+static int exynos_sub_power_on(struct generic_pm_domain *domain)
+{
+	return 0;
+}
+
+static int exynos_sub_power_off(struct generic_pm_domain *domain)
+{
+	return 0;
+}
+
 #define EXYNOS_GPD(PD, BASE, NAME)			\
 static struct exynos_pm_domain PD = {			\
 	.list = LIST_HEAD_INIT((PD).list),		\
@@ -128,6 +144,16 @@ static struct exynos_pm_domain PD = {			\
 	.pd = {						\
 		.power_off = exynos_pd_power_off,	\
 		.power_on = exynos_pd_power_on,	\
+	},						\
+}
+
+#define EXYNOS_SUB_GPD(PD, NAME)			\
+static struct exynos_pm_domain PD = {			\
+	.list = LIST_HEAD_INIT((PD).list),		\
+	.name = NAME,					\
+	.pd = {						\
+		.power_off = exynos_sub_power_off,	\
+		.power_on = exynos_sub_power_on,	\
 	},						\
 }
 
@@ -163,6 +189,21 @@ static __init int exynos_pm_dt_parse_domains(void)
 	return 0;
 }
 #endif /* CONFIG_OF */
+
+static __init void exynos_pm_add_subdomain_to_genpd(struct generic_pm_domain *genpd,
+						struct generic_pm_domain *subdomain)
+{
+	struct exynos_pm_domain *gpd;
+	struct exynos_pm_domain *spd;
+
+	if (pm_genpd_add_subdomain(genpd, subdomain)) {
+		gpd = container_of(genpd, struct exynos_pm_domain, pd);
+		spd = container_of(subdomain, struct exynos_pm_domain, pd);
+
+		pr_info("%s: error in adding %s subdomain to %s power "
+			"domain\n", __func__, spd->name, gpd->name);
+	}
+}
 
 static __init void exynos_pm_add_dev_to_genpd(struct platform_device *pdev,
 						struct exynos_pm_domain *pd)
@@ -257,20 +298,28 @@ static __init int exynos4_pm_init_power_domain(void)
 /* For EXYNOS5 */
 EXYNOS_GPD(exynos5_pd_mfc, EXYNOS5_MFC_CONFIGURATION, "pd-mfc");
 EXYNOS_GPD(exynos5_pd_gscl, EXYNOS5_GSCL_CONFIGURATION, "pd-gscl");
+EXYNOS_SUB_GPD(exynos5_pd_gscl0, "pd-gscl0");
+EXYNOS_SUB_GPD(exynos5_pd_gscl1, "pd-gscl1");
+EXYNOS_SUB_GPD(exynos5_pd_gscl2, "pd-gscl2");
+EXYNOS_SUB_GPD(exynos5_pd_gscl3, "pd-gscl3");
 
 static struct exynos_pm_domain *exynos5_pm_domains[] = {
 	&exynos5_pd_mfc,
 	&exynos5_pd_gscl,
+	&exynos5_pd_gscl0,
+	&exynos5_pd_gscl1,
+	&exynos5_pd_gscl2,
+	&exynos5_pd_gscl3,
 };
 
 #ifdef CONFIG_S5P_DEV_MFC
 EXYNOS_PM_DEV(mfc, mfc, &s5p_device_mfc, "mfc");
 #endif
 #ifdef CONFIG_EXYNOS5_DEV_GSC
-EXYNOS_PM_DEV(gscl0, gscl, &exynos5_device_gsc0, "gscl");
-EXYNOS_PM_DEV(gscl1, gscl, &exynos5_device_gsc1, "gscl");
-EXYNOS_PM_DEV(gscl2, gscl, &exynos5_device_gsc2, "gscl");
-EXYNOS_PM_DEV(gscl3, gscl, &exynos5_device_gsc3, "gscl");
+EXYNOS_PM_DEV(gscl0, gscl0, &exynos5_device_gsc0, "gscl");
+EXYNOS_PM_DEV(gscl1, gscl1, &exynos5_device_gsc1, "gscl");
+EXYNOS_PM_DEV(gscl2, gscl2, &exynos5_device_gsc2, "gscl");
+EXYNOS_PM_DEV(gscl3, gscl3, &exynos5_device_gsc3, "gscl");
 #endif
 
 static struct exynos_pm_dev *exynos_pm_devs[] = {
@@ -330,10 +379,14 @@ static int __init exynos5_pm_init_power_domain(void)
 	exynos_pm_add_dev_to_genpd(&s5p_device_mfc, &exynos5_pd_mfc);
 #endif
 #ifdef CONFIG_EXYNOS5_DEV_GSC
-	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc0, &exynos5_pd_gscl);
-	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc1, &exynos5_pd_gscl);
-	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc2, &exynos5_pd_gscl);
-	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc3, &exynos5_pd_gscl);
+	exynos_pm_add_subdomain_to_genpd(&exynos5_pd_gscl.pd, &exynos5_pd_gscl0.pd);
+	exynos_pm_add_subdomain_to_genpd(&exynos5_pd_gscl.pd, &exynos5_pd_gscl1.pd);
+	exynos_pm_add_subdomain_to_genpd(&exynos5_pd_gscl.pd, &exynos5_pd_gscl2.pd);
+	exynos_pm_add_subdomain_to_genpd(&exynos5_pd_gscl.pd, &exynos5_pd_gscl3.pd);
+	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc0, &exynos5_pd_gscl0);
+	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc1, &exynos5_pd_gscl1);
+	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc2, &exynos5_pd_gscl2);
+	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc3, &exynos5_pd_gscl3);
 #endif
 
 	exynos5_add_device_to_pd(exynos_pm_devs, ARRAY_SIZE(exynos_pm_devs));
