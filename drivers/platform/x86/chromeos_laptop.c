@@ -352,6 +352,13 @@ static int __init setup_link_tp2(const struct dmi_system_id *id)
 	return 0;
 }
 
+static int __init setup_cyapa_smbus_tp(const struct dmi_system_id *id)
+{
+	/* add cyapa touchpad */
+	tp = add_smbus_device("trackpad", &cyapa_device);
+	return 0;
+}
+
 static int __init setup_link_tp(const struct dmi_system_id *id)
 {
 	const unsigned short atmel_addr_list[] = { ATMEL_TP_I2C_BL_ADDR,
@@ -376,7 +383,7 @@ static int __init setup_link_tp(const struct dmi_system_id *id)
 static int __init setup_lumpy_tp(const struct dmi_system_id *id)
 {
 	/* first try cyapa touchpad on smbus */
-	tp = add_smbus_device("trackpad", &cyapa_device);
+	setup_cyapa_smbus_tp(id);
 	if (tp)
 		return 0;
 
@@ -384,13 +391,6 @@ static int __init setup_lumpy_tp(const struct dmi_system_id *id)
 	tp = chromeos_laptop_add_i2c_device("trackpad",
 					    I2C_ADAPTER_VGADDC,
 					    &atmel_224e_tp_device);
-	return 0;
-}
-
-static int __init setup_parrot_tp(const struct dmi_system_id *id)
-{
-	/* add cyapa touchpad */
-	tp = add_smbus_device("trackpad", &cyapa_device);
 	return 0;
 }
 
@@ -480,7 +480,7 @@ static const struct __initdata dmi_system_id chromeos_laptop_dmi_table[] = {
 		.matches = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Parrot"),
 		},
-		.callback = setup_parrot_tp,
+		.callback = setup_cyapa_smbus_tp,
 	},
 	{
 		.ident = "tsl2583 - Light Sensor",
