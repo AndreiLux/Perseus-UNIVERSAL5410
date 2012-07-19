@@ -1,0 +1,24 @@
+MAXIM 98095 audio CODEC
+
+Required properties:
+
+  - compatible : "maxim,max98095"
+
+  - reg : the I2C address of the device.
+
+Optional properties:
+
+  - mic-left-digital :  specifies if the left microphone is a DMIC
+			instead of analog
+  - mic-right-digital : specifies if the right microphone is a DMIC
+			instead of analog
+
+Example:
+
+codec: max98095@11 {
+	compatible = "maxim,max98095";
+	reg = <0x11>;
+
+	mic-left-digital;
+	mic-righ-digital;
+};

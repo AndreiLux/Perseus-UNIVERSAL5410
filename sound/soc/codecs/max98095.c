@@ -2334,6 +2334,25 @@ static struct snd_soc_codec_driver soc_codec_dev_max98095 = {
 	.num_dapm_routes = ARRAY_SIZE(max98095_audio_map),
 };
 
+static struct max98095_pdata *max98095_of_pdata(struct i2c_client *i2c)
+{
+	struct max98095_pdata *pdata;
+	struct device_node *dn = i2c->dev.of_node;
+
+	pdata = devm_kzalloc(&i2c->dev, sizeof(struct max98095_pdata),
+			     GFP_KERNEL);
+	if (!pdata)
+		return NULL;
+
+	if (of_get_property(dn, "mic-left-digital", NULL))
+		pdata->digmic_left_mode = 1;
+
+	if (of_get_property(dn, "mic-right-digital", NULL))
+		pdata->digmic_right_mode = 1;
+
+	return pdata;
+}
+
 static int max98095_i2c_probe(struct i2c_client *i2c,
 			     const struct i2c_device_id *id)
 {
@@ -2348,6 +2367,8 @@ static int max98095_i2c_probe(struct i2c_client *i2c,
 	max98095->devtype = id->driver_data;
 	i2c_set_clientdata(i2c, max98095);
 	max98095->pdata = i2c->dev.platform_data;
+	if (!max98095->pdata && i2c->dev.of_node)
+		max98095->pdata = max98095_of_pdata(i2c);
 
 	ret = snd_soc_register_codec(&i2c->dev, &soc_codec_dev_max98095,
 				     max98095_dai, ARRAY_SIZE(max98095_dai));
