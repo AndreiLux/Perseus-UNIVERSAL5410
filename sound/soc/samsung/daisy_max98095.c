@@ -31,6 +31,7 @@
 #include <sound/max98095.h>
 
 #include <mach/regs-clock.h>
+#include <mach/gpio.h>
 
 #include "i2s.h"
 #include "s3c-i2s-v2.h"
@@ -184,6 +185,19 @@ static struct snd_soc_ops daisy_ops = {
 	.hw_params = daisy_hw_params,
 };
 
+static struct snd_soc_jack daisy_hp_jack;
+static struct snd_soc_jack_pin daisy_hp_jack_pins[] = {
+	{
+		.pin = "Headphone Jack",
+		.mask = SND_JACK_HEADPHONE,
+	},
+};
+
+static struct snd_soc_jack_gpio daisy_hp_jack_gpio = {
+	.name = "headphone detect",
+	.report = SND_JACK_HEADPHONE,
+};
+
 static struct snd_soc_jack daisy_mic_jack;
 static struct snd_soc_jack_pin daisy_mic_jack_pins[] = {
 	{
@@ -199,6 +213,7 @@ static const struct snd_soc_dapm_route daisy_audio_map[] = {
 
 static const struct snd_soc_dapm_widget daisy_dapm_widgets[] = {
 	SND_SOC_DAPM_MIC("Mic Jack", NULL),
+	SND_SOC_DAPM_HP("Headphone Jack", NULL),
 };
 
 static int daisy_init(struct snd_soc_pcm_runtime *rtd)
@@ -216,6 +231,17 @@ static int daisy_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_jack_add_pins(&daisy_mic_jack,
 			      ARRAY_SIZE(daisy_mic_jack_pins),
 			      daisy_mic_jack_pins);
+
+	/* TODO: Move this to device tree */
+	if (of_machine_is_compatible("google,snow")) {
+		daisy_hp_jack_gpio.gpio = EXYNOS5_GPX2(2);
+		snd_soc_jack_new(codec, "Headphone Jack",
+				 SND_JACK_HEADPHONE, &daisy_hp_jack);
+		snd_soc_jack_add_pins(&daisy_hp_jack,
+				      ARRAY_SIZE(daisy_hp_jack_pins),
+				      daisy_hp_jack_pins);
+		snd_soc_jack_add_gpios(&daisy_hp_jack, 1, &daisy_hp_jack_gpio);
+	}
 
 	/* Microphone BIAS is needed to power the analog mic.
 	 * MICBIAS2 is connected to analog mic (MIC3, which is in turn
