@@ -267,6 +267,8 @@
 		codec {
 			compatible = "maxim,max98095";
 			reg = <0x11>;
+			mic-left-digital;
+			mic-right-digital;
 		};
 
 		light-sensor {
