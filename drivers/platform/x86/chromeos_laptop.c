@@ -483,6 +483,13 @@ static const struct __initdata dmi_system_id chromeos_laptop_dmi_table[] = {
 		.callback = setup_cyapa_smbus_tp,
 	},
 	{
+		.ident = "Butterfy - Touchpad",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Butterfly"),
+		},
+		.callback = setup_cyapa_smbus_tp,
+	},
+	{
 		.ident = "tsl2583 - Light Sensor",
 		.matches = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Alex"),
