@@ -888,7 +888,8 @@ u32 omap_rprm_get_regulators(struct omap_rprm_regulator **regulators)
 }
 EXPORT_SYMBOL(omap_rprm_get_regulators);
 
-static __init void omap_init_dev(char *name)
+static __init void omap_init_dev(char *name,
+		struct omap_device_pm_latency *pm_lats, int pm_lats_cnt)
 {
 	struct platform_device *pd;
 	struct omap_hwmod *oh;
@@ -899,7 +900,7 @@ static __init void omap_init_dev(char *name)
 		return;
 	}
 
-	pd = omap_device_build(name, -1, oh, NULL, 0, NULL, 0, 0);
+	pd = omap_device_build(name, -1, oh, NULL, 0, pm_lats, pm_lats_cnt, 0);
 	if (IS_ERR(pd))
 		pr_err("Can't build omap_device for %s.\n", name);
 	else
@@ -911,7 +912,7 @@ static void __init omap_init_fdif(void)
 	if (!cpu_is_omap44xx() && !cpu_is_omap54xx())
 		return;
 
-	omap_init_dev("fdif");
+	omap_init_dev("fdif", NULL, 0);
 }
 
 static void __init omap_init_sl2if(void)
@@ -919,7 +920,7 @@ static void __init omap_init_sl2if(void)
 	if (!cpu_is_omap44xx() && !cpu_is_omap54xx())
 		return;
 
-	omap_init_dev("sl2if");
+	omap_init_dev("sl2if", NULL, 0);
 }
 
 static void __init omap_init_iss(void)
@@ -927,7 +928,7 @@ static void __init omap_init_iss(void)
 	if (!cpu_is_omap44xx() && !cpu_is_omap54xx())
 		return;
 
-	omap_init_dev("iss");
+	omap_init_dev("iss", NULL, 0);
 }
 
 /*-------------------------------------------------------------------------*/
