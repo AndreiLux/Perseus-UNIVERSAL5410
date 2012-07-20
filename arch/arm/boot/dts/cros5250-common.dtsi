@@ -50,6 +50,7 @@
 			compatible = "maxim,max77686-pmic";
 			interrupt-parent = <&wakeup_eint>;
 			interrupts = <26 0>;
+			max77686,wakeup;
 			reg = <0x9>;
 
 			max77686,buck_ramp_delay = <1>;		/* default */
