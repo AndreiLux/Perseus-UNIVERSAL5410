@@ -448,7 +448,7 @@ struct combiner_chip_data {
 };
 
 static struct irq_domain *combiner_irq_domain;
-static struct combiner_chip_data combiner_data[MAX_COMBINER_NR];
+static struct combiner_chip_data *combiner_data;
 static unsigned int rt_max_combiner_nr;
 
 static inline void __iomem *combiner_base(struct irq_data *data)
@@ -522,15 +522,6 @@ static struct irq_chip combiner_chip = {
 
 static void __init combiner_cascade_irq(unsigned int combiner_nr, unsigned int irq)
 {
-	unsigned int max_nr;
-
-	if (soc_is_exynos5250())
-		max_nr = EXYNOS5_MAX_COMBINER_NR;
-	else
-		max_nr = EXYNOS4_MAX_COMBINER_NR;
-
-	if (combiner_nr >= max_nr)
-		BUG();
 	if (irq_set_handler_data(irq, &combiner_data[combiner_nr]) != 0)
 		BUG();
 	irq_set_chained_handler(irq, combiner_handle_cascade_irq);
@@ -641,20 +632,37 @@ static struct irq_domain_ops combiner_irq_domain_ops = {
 void __init combiner_init(void __iomem *combiner_base, struct device_node *np)
 {
 	int i, irq, irq_base;
-	unsigned int nr_irq;
+	unsigned int nr_irq, soc_max_nr;
+
+	soc_max_nr = soc_is_exynos5250() ? EXYNOS5_MAX_COMBINER_NR :
+		EXYNOS4_MAX_COMBINER_NR;
 
 	if (np) {
 		if (of_property_read_u32(np, "samsung,combiner-nr",
 					 &rt_max_combiner_nr)) {
+			rt_max_combiner_nr = soc_max_nr;
 			pr_warning("%s: number of combiners not specified, "
-				"setting default as %d.\n",
-				__func__, EXYNOS4_MAX_COMBINER_NR);
-			rt_max_combiner_nr = EXYNOS4_MAX_COMBINER_NR;
+				   "setting default as %d.\n",
+				   __func__, rt_max_combiner_nr);
 		}
 	} else {
-		rt_max_combiner_nr = soc_is_exynos5250() ?
-			EXYNOS5_MAX_COMBINER_NR : EXYNOS4_MAX_COMBINER_NR;
+		rt_max_combiner_nr = soc_max_nr;
 	}
+	if (WARN_ON(rt_max_combiner_nr > soc_max_nr)) {
+		pr_warning("%s: more combiners specified (%d) than "
+			   "architecture (%d) supports.",
+			   __func__, rt_max_combiner_nr, soc_max_nr);
+		return;
+	}
+
+	combiner_data = kmalloc(sizeof(struct combiner_chip_data) *
+				rt_max_combiner_nr, GFP_KERNEL);
+	if (WARN_ON(!combiner_data)) {
+		pr_warning("%s: combiner_data memory allocation failed for %d "
+			   "entries", __func__, rt_max_combiner_nr);
+		return;
+	}
+
 	nr_irq = rt_max_combiner_nr * MAX_IRQ_IN_COMBINER;
 
 	irq_base = irq_alloc_descs(COMBINER_IRQ(0, 0), 1, nr_irq, 0);
@@ -668,6 +676,7 @@ void __init combiner_init(void __iomem *combiner_base, struct device_node *np)
 				&combiner_irq_domain_ops, &combiner_data);
 	if (WARN_ON(!combiner_irq_domain)) {
 		pr_warning("%s: irq domain init failed\n", __func__);
+		kfree(combiner_data);
 		return;
 	}
 
