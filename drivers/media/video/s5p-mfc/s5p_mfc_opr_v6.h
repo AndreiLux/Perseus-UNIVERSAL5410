@@ -57,7 +57,7 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 #define s5p_mfc_get_dspl_y_adr()	(readl(dev->regs_base + \
 					S5P_FIMV_SI_DISPLAY_Y_ADR) )
 #define s5p_mfc_get_dec_y_adr()		(readl(dev->regs_base + \
-					S5P_FIMV_D_DISPLAY_LUMA_ADDR) )
+					S5P_FIMV_SI_DECODE_Y_ADR))
 #define s5p_mfc_get_dspl_status()	readl(dev->regs_base + \
 						S5P_FIMV_D_DISPLAY_STATUS)
 #define s5p_mfc_get_decoded_status()	readl(dev->regs_base + \
