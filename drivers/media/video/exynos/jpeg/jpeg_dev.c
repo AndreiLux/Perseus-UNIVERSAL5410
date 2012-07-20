@@ -474,17 +474,8 @@ static void jpeg_device_enc_run(void *priv)
 	jpeg_set_stream_buf_address(dev->reg_base, dev->vb2->plane_addr(vb, 0));
 
 	vb = v4l2_m2m_next_src_buf(ctx->m2m_ctx);
-	if (enc_param.in_plane == 1)
-		jpeg_set_frame_buf_address(dev->reg_base,
-			enc_param.in_fmt, dev->vb2->plane_addr(vb, 0), 0, 0);
-	if (enc_param.in_plane == 2)
-		jpeg_set_frame_buf_address(dev->reg_base,
-			enc_param.in_fmt, dev->vb2->plane_addr(vb, 0),
-			dev->vb2->plane_addr(vb, 1), 0);
-	if (enc_param.in_plane == 3)
-		jpeg_set_frame_buf_address(dev->reg_base,
-			enc_param.in_fmt, dev->vb2->plane_addr(vb, 0),
-			dev->vb2->plane_addr(vb, 1), dev->vb2->plane_addr(vb, 2));
+	jpeg_set_frame_buf_address(dev->reg_base,
+	enc_param.in_fmt, dev->vb2->plane_addr(vb, 0), enc_param.in_width, enc_param.in_height);
 
 	jpeg_set_encode_hoff_cnt(dev->reg_base, enc_param.out_fmt);
 
@@ -518,16 +509,8 @@ static void jpeg_device_dec_run(void *priv)
 	jpeg_set_stream_buf_address(dev->reg_base, dev->vb2->plane_addr(vb, 0));
 
 	vb = v4l2_m2m_next_dst_buf(ctx->m2m_ctx);
-	if (dec_param.out_plane == 1)
-		jpeg_set_frame_buf_address(dev->reg_base,
-			dec_param.out_fmt, dev->vb2->plane_addr(vb, 0), 0, 0);
-	else if (dec_param.out_plane == 2) {
-		jpeg_set_frame_buf_address(dev->reg_base,
-		dec_param.out_fmt, dev->vb2->plane_addr(vb, 0), dev->vb2->plane_addr(vb, 1), 0);
-	} else if (dec_param.out_plane == 3)
-		jpeg_set_frame_buf_address(dev->reg_base,
-			dec_param.out_fmt, dev->vb2->plane_addr(vb, 0),
-			dev->vb2->plane_addr(vb, 1), dev->vb2->plane_addr(vb, 2));
+	jpeg_set_frame_buf_address(dev->reg_base,
+	dec_param.out_fmt, dev->vb2->plane_addr(vb, 0), dec_param.in_width, dec_param.in_height);
 
 	if (dec_param.out_width > 0 && dec_param.out_height > 0) {
 		if ((dec_param.out_width * 2 == dec_param.in_width) &&
@@ -590,8 +573,6 @@ static irqreturn_t jpeg_irq(int irq, void *priv)
 	struct jpeg_ctx *ctx;
 	unsigned long payload_size = 0;
 
-	spin_lock(&ctrl->slock);
-
 	jpeg_clean_interrupt(ctrl->reg_base);
 
 	if (ctrl->mode == ENCODING)
@@ -601,10 +582,11 @@ static irqreturn_t jpeg_irq(int irq, void *priv)
 
 	if (ctx == 0) {
 		printk(KERN_ERR "ctx is null.\n");
-		int_status = jpeg_int_pending(ctrl);
 		jpeg_sw_reset(ctrl->reg_base);
 		goto ctx_err;
 	}
+
+	spin_lock(&ctx->slock);
 
 	src_vb = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
 	dst_vb = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
@@ -612,7 +594,7 @@ static irqreturn_t jpeg_irq(int irq, void *priv)
 	int_status = jpeg_int_pending(ctrl);
 
 	if (int_status) {
-		switch (int_status & 0x1f) {
+		switch (int_status & 0x1ff) {
 		case 0x1:
 			ctrl->irq_ret = ERR_PROT;
 			break;
@@ -655,8 +637,9 @@ static irqreturn_t jpeg_irq(int irq, void *priv)
 		v4l2_m2m_job_finish(ctrl->m2m_dev_enc, ctx->m2m_ctx);
 	else
 		v4l2_m2m_job_finish(ctrl->m2m_dev_dec, ctx->m2m_ctx);
+
+	spin_unlock(&ctx->slock);
 ctx_err:
-	spin_unlock(&ctrl->slock);
 	return IRQ_HANDLED;
 }
 
