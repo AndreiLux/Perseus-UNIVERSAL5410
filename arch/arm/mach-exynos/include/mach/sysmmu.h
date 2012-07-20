@@ -32,6 +32,7 @@ static inline void platform_set_sysmmu(
 struct dma_iommu_mapping *s5p_create_iommu_mapping(struct device *client,
 				dma_addr_t base, unsigned int size, int order,
 				struct dma_iommu_mapping *mapping);
+void s5p_destroy_iommu_mapping(struct device *client);
 struct platform_device *find_sysmmu_dt(struct platform_device *pdev,
 					char *name);
 

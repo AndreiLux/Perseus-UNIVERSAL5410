@@ -1358,6 +1358,14 @@ static int iommu_init(struct platform_device *pdev)
 
 	return 0;
 }
+
+static void iommu_deinit(struct platform_device *pdev)
+{
+	s5p_destroy_iommu_mapping(&pdev->dev);
+	printk(KERN_INFO"released the IOMMU mapping\n");
+
+	return;
+}
 #endif
 /* --------- DRIVER INITIALIZATION ---------- */
 
@@ -1450,7 +1458,9 @@ fail_resources:
 
 fail_mem:
 	kfree(mdev);
-
+#ifdef CONFIG_EXYNOS_IOMMU
+	iommu_deinit(pdev);
+#endif
 fail:
 	dev_info(dev, "probe failed\n");
 	return ret;
@@ -1466,7 +1476,9 @@ static int __devexit mxr_remove(struct platform_device *pdev)
 	mxr_release_layers(mdev);
 	mxr_release_video(mdev);
 	mxr_release_resources(mdev);
-
+#ifdef CONFIG_EXYNOS_IOMMU
+	iommu_deinit(pdev);
+#endif
 	kfree(mdev);
 
 	dev_info(dev, "remove sucessful\n");

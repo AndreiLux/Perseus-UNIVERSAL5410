@@ -874,7 +874,16 @@ static int iommu_init(struct platform_device *pdev)
 
 	return 0;
 }
+
+static void iommu_deinit(struct platform_device *pdev)
+{
+	s5p_destroy_iommu_mapping(&pdev->dev);
+	DRM_DEBUG("released the IOMMU mapping\n");
+
+	return;
+}
 #endif
+
 static int __devinit fimd_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1036,6 +1045,9 @@ err_bus_clk:
 	clk_put(ctx->bus_clk);
 
 err_clk_get:
+#ifdef CONFIG_EXYNOS_IOMMU
+	iommu_deinit(pdev);
+#endif
 	kfree(ctx);
 	return ret;
 }
@@ -1068,7 +1080,9 @@ out:
 	release_resource(ctx->regs_res);
 	kfree(ctx->regs_res);
 	free_irq(ctx->irq, ctx);
-
+#ifdef CONFIG_EXYNOS_IOMMU
+	iommu_deinit(pdev);
+#endif
 	kfree(ctx);
 
 	return 0;

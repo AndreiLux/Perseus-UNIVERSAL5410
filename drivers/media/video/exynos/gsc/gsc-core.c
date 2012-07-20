@@ -1134,6 +1134,14 @@ static int iommu_init(struct platform_device *pdev)
 
 	return 0;
 }
+
+static void iommu_deinit(struct platform_device *pdev)
+{
+	s5p_destroy_iommu_mapping(&pdev->dev);
+	printk(KERN_INFO"released the IOMMU mapping\n");
+
+	return;
+}
 #endif
 static int gsc_probe(struct platform_device *pdev)
 {
@@ -1285,6 +1293,9 @@ err_req_region:
 	release_resource(gsc->regs_res);
 	kfree(gsc->regs_res);
 err_info:
+#ifdef CONFIG_EXYNOS_IOMMU
+	iommu_deinit(pdev);
+#endif
 	kfree(gsc);
 
 	return ret;
@@ -1308,7 +1319,9 @@ static int __devexit gsc_remove(struct platform_device *pdev)
 	release_resource(gsc->regs_res);
 	kfree(gsc->regs_res);
 	kfree(gsc);
-
+#ifdef CONFIG_EXYNOS_IOMMU
+	iommu_deinit(pdev);
+#endif
 	dev_info(&pdev->dev, "%s driver unloaded\n", pdev->name);
 	return 0;
 }

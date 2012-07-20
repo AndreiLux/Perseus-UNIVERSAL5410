@@ -281,6 +281,15 @@ static int iommu_init(struct platform_device *pdev)
 
 	return 0;
 }
+
+static void iommu_deinit(struct platform_device *pdev)
+{
+	/* detach the device and mapping */
+	s5p_destroy_iommu_mapping(&pdev->dev);
+	DRM_DEBUG("released the IOMMU mapping\n");
+
+	return;
+}
 #endif
 
 static int exynos_drm_platform_probe(struct platform_device *pdev)
@@ -299,12 +308,15 @@ static int exynos_drm_platform_probe(struct platform_device *pdev)
 	return drm_platform_init(&exynos_drm_driver, pdev);
 }
 
-static int exynos_drm_platform_remove(struct platform_device *pdev)
+static int __devexit exynos_drm_platform_remove(struct platform_device *pdev)
 {
 	DRM_DEBUG_DRIVER("%s\n", __FILE__);
 
 	drm_platform_exit(&exynos_drm_driver, pdev);
 
+#ifdef CONFIG_EXYNOS_IOMMU
+	iommu_deinit(pdev);
+#endif
 	return 0;
 }
 

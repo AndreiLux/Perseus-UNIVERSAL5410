@@ -1571,5 +1571,22 @@ int arm_iommu_attach_device(struct device *dev,
 	pr_info("Attached IOMMU controller to %s device.\n", dev_name(dev));
 	return 0;
 }
-
+/**
+ * @dev: valid struct device pointer
+ * @mapping: io address space mapping structure
+ *
+ * Detaches specified io address space mapping from the provided device
+ */
+void arm_iommu_detach_device(struct device *dev,
+				struct dma_iommu_mapping *mapping)
+{
+	if (!mapping || !mapping->domain) {
+		pr_err("%s(): Trying to detach a device without IOMMU mapping?\n",
+								__func__);
+		return;
+	}
+	iommu_detach_device(mapping->domain, dev);
+	pr_info("Detached IOMMU controller from %s device.\n", dev_name(dev));
+	return;
+}
 #endif

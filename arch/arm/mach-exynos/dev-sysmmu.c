@@ -41,6 +41,21 @@ struct dma_iommu_mapping * s5p_create_iommu_mapping(struct device *client,
 	return mapping;
 }
 
+void s5p_destroy_iommu_mapping(struct device *client)
+{
+	if (!client) {
+		printk(KERN_ERR"Invalid client passed to %s()\n", __func__);
+		return;
+	}
+	/* detach the device from the IOMMU */
+	arm_iommu_detach_device(client, client->archdata.mapping);
+
+	/* release the IOMMU mapping */
+	arm_iommu_release_mapping(client->archdata.mapping);
+
+	return;
+}
+
 struct platform_device *find_sysmmu_dt(struct platform_device *pdev,
 					char *name)
 {

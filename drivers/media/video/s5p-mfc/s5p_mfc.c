@@ -993,6 +993,17 @@ static int iommu_init(struct platform_device *pdev,
 
 	return 0;
 }
+
+static void iommu_deinit(struct device *mfc_l, struct device *mfc_r)
+{
+	s5p_destroy_iommu_mapping(mfc_l);
+	printk(KERN_INFO"released the IOMMU mapping for MFC_L\n");
+
+	s5p_destroy_iommu_mapping(mfc_r);
+	printk(KERN_INFO"released the IOMMU mapping for MFC_R\n");
+
+	return;
+}
 #endif
 
 /* MFC probe function */
@@ -1165,6 +1176,9 @@ err_v4l2_dev_reg:
 err_mem_init_ctx_1:
 	vb2_dma_contig_cleanup_ctx(dev->alloc_ctx[0]);
 err_mem_init_ctx_0:
+#ifdef CONFIG_EXYNOS_IOMMU
+	iommu_deinit(dev->mem_dev_r, dev->mem_dev_l);
+#endif
 err_iommu_init:
 	free_irq(dev->irq, dev);
 err_req_irq:
@@ -1201,7 +1215,9 @@ static int __devexit s5p_mfc_remove(struct platform_device *pdev)
 	v4l2_device_unregister(&dev->v4l2_dev);
 	vb2_dma_contig_cleanup_ctx(dev->alloc_ctx[0]);
 	vb2_dma_contig_cleanup_ctx(dev->alloc_ctx[1]);
-
+#ifdef CONFIG_EXYNOS_IOMMU
+	iommu_deinit(dev->mem_dev_r, dev->mem_dev_l);
+#endif
 	free_irq(dev->irq, dev);
 	iounmap(dev->regs_base);
 	if (dev->mfc_mem) {
