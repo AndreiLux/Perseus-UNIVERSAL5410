@@ -10,6 +10,7 @@
 */
 
 #include <linux/gpio.h>
+#include <linux/of_gpio.h>
 #include <linux/of_platform.h>
 #include <linux/platform_data/dwc3-exynos.h>
 #include <linux/regulator/fixed.h>
@@ -916,6 +917,8 @@ static void __init exynos5250_dt_machine_init(void)
 		dsim_lcd_info.lcd_size.width = 1366;
 		dsim_lcd_info.lcd_size.height = 768;
 	} else if (of_machine_is_compatible("google,snow")) {
+		int pd_n_gpio = -1, rst_n_gpio = -1;
+
 #ifdef CONFIG_DRM_EXYNOS_FIMD
 		for (i = 0;i < ARRAY_SIZE(snow_fb_window);i++)
 			smdk5250_lcd1_pdata.panel[i].timing = snow_fb_window[i];
@@ -924,9 +927,22 @@ static void __init exynos5250_dt_machine_init(void)
 		smdk5250_lcd1_pdata.clock_rate = 267 * 1000 * 1000;
 		smdk5250_lcd1_pdata.vidcon1 = 0;
 #endif
-		ret = gpio_request_one(EXYNOS5_GPX1(5), GPIOF_OUT_INIT_HIGH,
-					"DP_PD_N");
-		WARN_ON(ret);
+
+		np = of_find_compatible_node(NULL, NULL, "nxp,ptn3460");
+		if (np) {
+			pd_n_gpio = of_get_named_gpio(np, "pd_n_gpio", 0);
+			rst_n_gpio = of_get_named_gpio(np, "rst_n_gpio", 0);
+		}
+		if (pd_n_gpio >= 0) {
+			ret = gpio_request_one(pd_n_gpio, GPIOF_OUT_INIT_HIGH,
+						"DP_PD_N");
+			WARN_ON(ret);
+		}
+		if (rst_n_gpio >= 0) {
+			ret = gpio_request_one(rst_n_gpio, GPIOF_OUT_INIT_HIGH,
+						"DP_RST_N");
+			WARN_ON(ret);
+		}
 	}
 
 	if (gpio_request_one(EXYNOS5_GPX2(6), GPIOF_OUT_INIT_HIGH,
