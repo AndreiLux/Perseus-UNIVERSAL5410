@@ -453,10 +453,10 @@ static unsigned int rt_max_combiner_nr;
 
 static inline void __iomem *combiner_base(struct irq_data *data)
 {
-	struct combiner_chip_data *combiner_data =
+	struct combiner_chip_data *irq_combiner_data =
 		irq_data_get_irq_chip_data(data);
 
-	return combiner_data->base;
+	return irq_combiner_data->base;
 }
 
 static void combiner_mask_irq(struct irq_data *data)
