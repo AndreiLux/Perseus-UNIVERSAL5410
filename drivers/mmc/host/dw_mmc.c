@@ -842,6 +842,12 @@ static void dw_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	else
 		regs &= ~(0x1 << slot->id) << 16;
 
+	if (slot->host->pdata->caps &
+				(MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 |
+				 MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR104 |
+				 MMC_CAP_UHS_DDR50))
+		regs |= (0x1 << slot->id);
+
 	if (slot->host->pdata->set_io_timing)
 		slot->host->pdata->set_io_timing(slot->host, ios->timing);
 
