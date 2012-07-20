@@ -52,4 +52,6 @@ struct exynos_drm_gem_buf *exynos_drm_fb_buffer(struct drm_framebuffer *fb,
 
 void exynos_drm_mode_config_init(struct drm_device *dev);
 
+void exynos_drm_wait_for_vsync(struct drm_device *drm_dev);
+
 #endif
