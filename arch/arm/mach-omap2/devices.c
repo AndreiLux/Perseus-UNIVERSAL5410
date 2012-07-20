@@ -1221,7 +1221,11 @@ static void omap_init_gpu(void)
 	struct platform_device *od;
 	struct gpu_platform_data *pdata;
 	const char *oh_name = "gpu";
+#ifdef CONFIG_ANDROID
+	char *name = "pvrsrvkm";
+#else
 	char *name = "omapdrm_pvr";
+#endif
 
 	oh = omap_hwmod_lookup(oh_name);
 	if (!oh) {
