@@ -29,10 +29,11 @@ static struct dw_mci_drv_data synopsis_drv_data = {
 
 static unsigned long exynos5250_dwmmc_caps[4] = {
 	MMC_CAP_UHS_DDR50 | MMC_CAP_1_8V_DDR |
-		MMC_CAP_8_BIT_DATA | MMC_CAP_CMD23,
-	MMC_CAP_CMD23,
-	MMC_CAP_CMD23,
-	MMC_CAP_CMD23,
+		MMC_CAP_8_BIT_DATA | MMC_CAP_CMD23 |
+		MMC_CAP_SDIO_IRQ,
+	MMC_CAP_CMD23 | MMC_CAP_SDIO_IRQ,
+	MMC_CAP_CMD23 | MMC_CAP_SDIO_IRQ,
+	MMC_CAP_CMD23 | MMC_CAP_SDIO_IRQ,
 };
 
 static struct dw_mci_drv_data exynos5250_drv_data = {
