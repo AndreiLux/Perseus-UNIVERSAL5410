@@ -43,7 +43,7 @@ static inline struct chromeos_ec_device *to_ec_dev(struct device *dev)
 static int cros_ec_command_xfer_noretry(struct chromeos_ec_device *ec_dev,
 					struct chromeos_ec_msg *msg)
 {
-	int ret;
+	int ret = -ENOMEM;
 	int i;
 	int packet_len;
 	u8 res_code;
