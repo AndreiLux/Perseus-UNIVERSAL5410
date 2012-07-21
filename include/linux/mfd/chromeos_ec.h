@@ -36,6 +36,7 @@ struct chromeos_ec_device {
 	struct device *dev;
 	struct i2c_client *client;
 	int irq;
+	bool wake_enabled;
 	struct blocking_notifier_head event_notifier;
 	int (*command_send)(struct chromeos_ec_device *ec,
 			char cmd, void *out_buf, int out_len);

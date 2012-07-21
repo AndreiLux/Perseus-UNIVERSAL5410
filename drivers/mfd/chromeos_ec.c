@@ -34,6 +34,12 @@
 
 #define COMMAND_MAX_TRIES 3
 
+static inline struct chromeos_ec_device *to_ec_dev(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	return i2c_get_clientdata(client);
+}
+
 static int cros_ec_command_xfer_noretry(struct chromeos_ec_device *ec_dev,
 					struct chromeos_ec_msg *msg)
 {
@@ -148,7 +154,7 @@ static int cros_ec_command_xfer(struct chromeos_ec_device *ec_dev,
 		if (ret >= 0)
 			return ret;
 	}
-	dev_err(ec_dev->dev, "mkbp_command failed with %d (%d tries)\n",
+	dev_err(ec_dev->dev, "ec_command failed with %d (%d tries)\n",
 		ret, tries);
 	return ret;
 }
@@ -190,6 +196,9 @@ static int cros_ec_command_send(struct chromeos_ec_device *ec_dev,
 static irqreturn_t ec_irq_thread(int irq, void *data)
 {
 	struct chromeos_ec_device *ec = data;
+
+	if (device_may_wakeup(ec->dev))
+		pm_wakeup_event(ec->dev, 0);
 
 	blocking_notifier_call_chain(&ec->event_notifier, 1, ec);
 
@@ -285,11 +294,27 @@ fail:
 #ifdef CONFIG_PM_SLEEP
 static int cros_ec_suspend(struct device *dev)
 {
+	struct chromeos_ec_device *ec = to_ec_dev(dev);
+
+	if (device_may_wakeup(dev))
+		ec->wake_enabled = !enable_irq_wake(ec->irq);
+
+	disable_irq(ec->irq);
+
 	return 0;
 }
 
 static int cros_ec_resume(struct device *dev)
 {
+	struct chromeos_ec_device *ec = to_ec_dev(dev);
+
+	enable_irq(ec->irq);
+
+	if (ec->wake_enabled) {
+		disable_irq_wake(ec->irq);
+		ec->wake_enabled = 0;
+	}
+
 	return 0;
 }
 #endif
