@@ -57,6 +57,10 @@ Optional properties:
 * no-write-protect: The write protect pad of the controller is not connected
   to the write protect pin on the slot.
 
+* keep-power-in-suspend: Preserves card power during a suspend/resume cycle.
+
+* enable-sdio-wakeup: Enables wake up of host system on SDIO IRQ assertion.
+
 Samsung Exynos5250 specific properties:
 
 * samsung,dw-mshc-sdr-timing: Specifies the value of CUI clock divider, CIU

@@ -622,12 +622,12 @@ static void mci_send_cmd(struct dw_mci_slot *slot, u32 cmd, u32 arg)
 		cmd, arg, cmd_status);
 }
 
-static void dw_mci_setup_bus(struct dw_mci_slot *slot)
+static void dw_mci_setup_bus(struct dw_mci_slot *slot, bool force_clkinit)
 {
 	struct dw_mci *host = slot->host;
 	u32 div;
 
-	if (slot->clock != host->current_speed) {
+	if (slot->clock != host->current_speed || force_clkinit) {
 		if (host->bus_hz % slot->clock)
 			/*
 			 * move the + 1 after the divide to prevent
@@ -685,7 +685,7 @@ static void __dw_mci_start_request(struct dw_mci *host,
 		host->pdata->select_slot(slot->id);
 
 	/* Slot specific timing and width adjustment */
-	dw_mci_setup_bus(slot);
+	dw_mci_setup_bus(slot, false);
 
 	host->cur_slot = slot;
 	host->mrq = mrq;
@@ -1931,6 +1931,9 @@ static int __init dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 	if (host->pdata->caps)
 		mmc->caps = host->pdata->caps;
 
+	if (host->pdata->pm_caps)
+		mmc->pm_caps = host->pdata->pm_caps;
+
 	if (host->dev.of_node) {
 		ctrl_id = of_alias_get_id(host->dev.of_node, "mshc");
 		if (ctrl_id < 0)
@@ -2147,6 +2150,12 @@ static struct dw_mci_board *dw_mci_parse_dt(struct dw_mci *host)
 				"value of FIFOTH register as default\n");
 
 	of_property_read_u32(np, "card-detect-delay", &pdata->detect_delay_ms);
+
+	if (of_find_property(np, "keep-power-in-suspend", NULL))
+		pdata->pm_caps |= MMC_PM_KEEP_POWER;
+
+	if (of_find_property(np, "enable-sdio-wakeup", NULL))
+		pdata->pm_caps |= MMC_PM_WAKE_SDIO_IRQ;
 
 	return pdata;
 }
@@ -2456,6 +2465,11 @@ int dw_mci_resume(struct dw_mci *host)
 		struct dw_mci_slot *slot = host->slot[i];
 		if (!slot)
 			continue;
+		if (slot->mmc->pm_flags & MMC_PM_KEEP_POWER) {
+			dw_mci_set_ios(slot->mmc, &slot->mmc->ios);
+			dw_mci_setup_bus(slot, true);
+		}
+
 		ret = mmc_resume_host(host->slot[i]->mmc);
 		if (ret < 0)
 			return ret;
