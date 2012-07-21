@@ -50,7 +50,7 @@
 			compatible = "maxim,max77686-pmic";
 			interrupt-parent = <&wakeup_eint>;
 			interrupts = <26 0>;
-			max77686,wakeup;
+			wakeup-source;
 			reg = <0x9>;
 
 			max77686,buck_ramp_delay = <1>;		/* default */
@@ -138,6 +138,7 @@
 			compatible = "cypress,cyapa";
 			interrupts = <10 0>;
 			interrupt-parent = <&wakeup_eint>;
+			wakeup-source;
 		};
 	};
 
@@ -241,6 +242,7 @@
                         reg = <0x1e>;
                         interrupts = <14 0>;
 			interrupt-parent = <&wakeup_eint>;
+			wakeup-source;
                 };
 
 		battery: sbs-battery@b {
