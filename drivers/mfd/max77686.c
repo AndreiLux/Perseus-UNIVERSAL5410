@@ -134,9 +134,6 @@ static struct max77686_platform_data *max77686_i2c_parse_dt_pdata(struct device
 		return ERR_PTR(-ENOMEM);
 	}
 
-	if (of_get_property(dev->of_node, "max77686,wakeup", NULL))
-		pd->wakeup = true;
-
 	return pd;
 }
 #else
@@ -197,7 +194,6 @@ static int max77686_i2c_probe(struct i2c_client *i2c,
 	max77686->type = max77686_i2c_get_driver_data(i2c, id);
 
 	max77686->pdata = pdata;
-	max77686->wakeup = pdata->wakeup;
 
 	mutex_init(&max77686->iolock);
 
@@ -214,7 +210,6 @@ static int max77686_i2c_probe(struct i2c_client *i2c,
 	}
 
 	pm_runtime_set_active(max77686->dev);
-	device_init_wakeup(max77686->dev, max77686->wakeup);
 
 	if (max77686_read_reg(i2c, MAX77686_REG_DEVICE_ID, &data) < 0) {
 		ret = -EIO;

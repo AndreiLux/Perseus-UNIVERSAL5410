@@ -88,7 +88,6 @@ struct max77686_regulator_data {
 };
 
 struct max77686_platform_data {
-	bool wakeup;
 	u8 ramp_delay;
 	struct max77686_regulator_data *regulators;
 	int num_regulators;
