@@ -86,9 +86,7 @@ void kbase_platform_dvfs_set_clock(kbase_device *kbdev, int freq);
 #ifdef CONFIG_T6XX_DVFS
 int kbase_platform_dvfs_init(kbase_device *kbdev);
 void kbase_platform_dvfs_term(void);
-int kbase_platform_dvfs_event(kbase_device *kbdev, u32 utilisation);
 int kbase_platform_dvfs_get_control_status(void);
-int kbase_pm_get_dvfs_utilisation(kbase_device *kbdev);
 #ifdef CONFIG_T6XX_DVFS_FREQ_LOCK
 static int mali_get_dvfs_upper_locked_freq(void);
 static int mali_get_dvfs_under_locked_freq(void);
@@ -1543,8 +1541,11 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 
 static DECLARE_WORK(mali_dvfs_work, mali_dvfs_event_proc);
 
-int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
+int kbase_platform_dvfs_event(struct kbase_device *kbdev)
 {
+#ifdef CONFIG_T6XX_DVFS
+	int utilisation = kbase_pm_get_dvfs_utilisation(kbdev);
+
 	trace_mali_dvfs_event(utilisation);
 
 	osk_spinlock_lock(&mali_dvfs_spinlock);
@@ -1554,6 +1555,9 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 
 	/*add error handle here*/
 	return MALI_TRUE;
+#else
+	return MALI_FALSE;
+#endif
 }
 
 int kbase_platform_dvfs_get_control_status(void)
@@ -1804,7 +1808,7 @@ void kbase_platform_dvfs_set_clock(kbase_device *kbdev, int freq)
  * instead of:
  *    action = kbase_pm_get_dvfs_action(kbdev);
  * use this:
- *    kbase_platform_dvfs_event(kbdev, kbase_pm_get_dvfs_utilisation(kbdev));
+ *    kbase_platform_dvfs_event(kbdev);
  */
 
 #ifdef CONFIG_T6XX_DVFS

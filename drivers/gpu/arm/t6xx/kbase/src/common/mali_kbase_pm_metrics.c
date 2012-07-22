@@ -37,18 +37,7 @@ static void dvfs_callback(void *data)
 	OSK_ASSERT(data != NULL);
 
 	kbdev = (kbase_device*)data;
-	action = kbase_pm_get_dvfs_action(kbdev);
-
-	switch(action) {
-		case KBASE_PM_DVFS_NOP:
-			break;
-		case KBASE_PM_DVFS_CLOCK_UP:
-			/* Do whatever is required to increase the clock frequency */
-			break;
-		case KBASE_PM_DVFS_CLOCK_DOWN:
-			/* Do whatever is required to decrease the clock frequency */
-			break;
-	}
+	kbase_platform_dvfs_event(kbdev);
 
 	osk_spinlock_irq_lock(&kbdev->pm.metrics.lock);
 	if (kbdev->pm.metrics.timer_active)

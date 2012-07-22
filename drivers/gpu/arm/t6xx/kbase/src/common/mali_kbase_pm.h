@@ -876,4 +876,20 @@ void kbase_pm_request_l2_caches(struct kbase_device *kbdev);
  */
 void kbase_pm_release_l2_caches(struct kbase_device *kbdev);
 
+/** Queue mali_dvfs_work which performs GPU voltage/frequency scaling in mali_dvfs_event_proc
+ *
+ * @param kbdev    The kbase device structure for the device (must be a valid pointer)
+ *
+ * @return MALI_TRUE on success (currently no error handling present)
+ */
+int kbase_platform_dvfs_event(struct kbase_device *kbdev);
+
+/**  Get the GPU utilisation. Used to determine if the frequency/voltage needs to be scaled.
+ *
+ * @param kbdev    The kbase device structure for the device (must be a valid pointer)
+ *
+ * @return The current GPU utilisation
+ */
+int kbase_pm_get_dvfs_utilisation(struct kbase_device *kbdev);
+
 #endif /* _KBASE_PM_H_ */
