@@ -177,6 +177,10 @@ enum cyapa_gen {
  */
 #define CYAPA_DEV_NORMAL  0x03
 
+#ifdef CONFIG_PM_RUNTIME
+#undef CONFIG_PM_RUNTIME
+#endif
+
 enum cyapa_state {
 	CYAPA_STATE_OP,
 	CYAPA_STATE_BL_IDLE,
@@ -1952,7 +1956,9 @@ static int cyapa_runtime_resume(struct device *dev)
 
 static const struct dev_pm_ops cyapa_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(cyapa_suspend, cyapa_resume)
+#ifdef CONFIG_PM_RUNTIME
 	SET_RUNTIME_PM_OPS(cyapa_runtime_suspend, cyapa_runtime_resume, NULL)
+#endif /* CONFIG_PM_RUNTIME */
 };
 
 static const struct i2c_device_id cyapa_id_table[] = {
