@@ -141,8 +141,7 @@ static int isl29018_set_resolution(struct i2c_client *client,
 static int isl29018_read_sensor_input(struct i2c_client *client, int mode)
 {
 	int status;
-	int lsb;
-	int msb;
+	int lux;
 
 	/* Set mode */
 	status = isl29018_write_data(client, ISL29018_REG_ADD_COMMAND1,
@@ -152,20 +151,16 @@ static int isl29018_read_sensor_input(struct i2c_client *client, int mode)
 		return status;
 	}
 	msleep(CONVERSION_TIME_MS);
-	lsb = i2c_smbus_read_byte_data(client, ISL29018_REG_ADD_DATA_LSB);
-	if (lsb < 0) {
-		dev_err(&client->dev, "Error in reading LSB DATA\n");
-		return lsb;
+	status = i2c_smbus_read_word_data(client, ISL29018_REG_ADD_DATA_LSB);
+	if (status < 0) {
+		dev_err(&client->dev, "Error in reading Lux DATA\n");
+		return status;
 	}
 
-	msb = i2c_smbus_read_byte_data(client, ISL29018_REG_ADD_DATA_MSB);
-	if (msb < 0) {
-		dev_err(&client->dev, "Error in reading MSB DATA\n");
-		return msb;
-	}
-	dev_vdbg(&client->dev, "MSB 0x%x and LSB 0x%x\n", msb, lsb);
+	lux = le16_to_cpu(status);
+	dev_vdbg(&client->dev, "lux = %u\n", lux);
 
-	return (msb << 8) | lsb;
+	return lux;
 }
 
 static int isl29018_read_lux(struct i2c_client *client, int *lux)
