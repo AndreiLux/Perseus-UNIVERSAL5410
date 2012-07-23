@@ -49,7 +49,7 @@ struct exynos_drm_fb {
 	struct exynos_drm_gem_obj	*exynos_gem_obj[MAX_FB_BUFFER];
 };
 
-void exynos_drm_wait_for_vsync(struct drm_device *drm_dev)
+static void exynos_drm_wait_for_vsync(struct drm_device *drm_dev)
 {
 	struct exynos_drm_private *dev_priv = drm_dev->dev_private;
 
