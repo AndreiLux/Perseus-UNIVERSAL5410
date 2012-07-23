@@ -264,10 +264,10 @@ struct s3c_fb_win {
  * struct s3c_fb_vsync - vsync information
  * @wait:		a queue for processes waiting for vsync
  * @timestamp:		the time of the last vsync interrupt
- * @active:		whether userspace is requesting vsync uevents
+ * @active:		whether userspace is requesting vsync notifications
  * @irq_refcount:	reference count for the underlying irq
  * @irq_lock:		mutex protecting the irq refcount and register
- * @thread:		uevent-generating thread
+ * @thread:		notification-generating thread
  */
 struct s3c_fb_vsync {
 	wait_queue_head_t	wait;
@@ -2983,21 +2983,23 @@ static int s3c_fb_wait_for_vsync_thread(void *data)
 			sfb->vsync_info.active,
 			msecs_to_jiffies(VSYNC_TIMEOUT_MSEC));
 
-		if (ret > 0) {
-			char *envp[2];
-			char buf[64];
-			snprintf(buf, sizeof(buf), "VSYNC=%llu",
-					ktime_to_ns(sfb->vsync_info.timestamp));
-			envp[0] = buf;
-			envp[1] = NULL;
-			kobject_uevent_env(&sfb->dev->kobj, KOBJ_CHANGE,
-					envp);
-		}
+		if (ret > 0)
+			sysfs_notify(&sfb->dev->kobj, NULL, "vsync");
 	}
 
 	return 0;
 }
 /*------------------------------------------------------------------ */
+
+static ssize_t s3c_fb_vsync_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct s3c_fb *sfb = dev_get_drvdata(dev);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n",
+			ktime_to_ns(sfb->vsync_info.timestamp));
+}
+
+static DEVICE_ATTR(vsync, S_IRUGO, s3c_fb_vsync_show, NULL);
 
 static int __devinit s3c_fb_probe(struct platform_device *pdev)
 {
@@ -3237,6 +3239,12 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 
 	mutex_init(&sfb->vsync_info.irq_lock);
 
+	ret = device_create_file(sfb->dev, &dev_attr_vsync);
+	if (ret) {
+		dev_err(sfb->dev, "failed to create vsync file\n");
+		goto err_create_file;
+	}
+
 	sfb->vsync_info.thread = kthread_run(s3c_fb_wait_for_vsync_thread,
 			sfb, "s3c-fb-vsync");
 	if (sfb->vsync_info.thread == ERR_PTR(-ENOMEM)) {
@@ -3249,7 +3257,7 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	ret = iovmm_activate(&s5p_device_fimd1.dev);
 	if (ret < 0) {
 		dev_err(sfb->dev, "failed to activate vmm\n");
-		goto err_pm_runtime;
+		goto err_iovmm;
 	}
 #endif
 
@@ -3259,6 +3267,10 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 
 	return 0;
 
+err_iovmm:
+	device_remove_file(sfb->dev, &dev_attr_vsync);
+
+err_create_file:
 #ifdef CONFIG_FB_EXYNOS_FIMD_MC_WB
 err_mc_wb_entity_create_fail:
 err_mc_wb_link_create_fail:
@@ -3316,6 +3328,8 @@ static int __devexit s3c_fb_remove(struct platform_device *pdev)
 
 	if (sfb->vsync_info.thread)
 		kthread_stop(sfb->vsync_info.thread);
+
+	device_remove_file(sfb->dev, &dev_attr_vsync);
 
 	if (!sfb->variant.has_clksel) {
 		clk_disable(sfb->lcd_clk);
