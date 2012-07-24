@@ -114,6 +114,8 @@ static int chromeos_read_nvram(u8 *nvram_buffer, int buf_size)
 	return size;
 }
 
+#ifndef CONFIG_USE_OF
+
 /* Set the platform dependent parameters using kernel config parameters */
 static struct ramoops_platform_data chromeos_ramoops_data = {
 	.mem_size		= CONFIG_CHROMEOS_RAMOOPS_RAM_SIZE,
@@ -148,3 +150,4 @@ static int __init chromeos_ramoops_init(void)
 }
 
 subsys_initcall(chromeos_ramoops_init);
+#endif
