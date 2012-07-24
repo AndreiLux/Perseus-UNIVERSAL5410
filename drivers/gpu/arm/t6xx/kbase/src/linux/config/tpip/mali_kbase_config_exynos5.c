@@ -63,6 +63,11 @@
 #error MALI_UNCACHED should equal 1 for Exynos5 support, your scons commandline should contain 'no_syncsets=1'
 #endif
 
+#define MALI_DVFS_DEBUG 0
+#define MALI_DVFS_START_MAX_STEP 1
+#define MALI_DVFS_STEP 6
+#define MALI_DVFS_KEEP_STAY_CNT 10
+
 #define HZ_IN_MHZ            (1000000)
 #define MALI_RTPM_DEBUG      0
 #define VITHAR_DEFAULT_CLOCK 533000000
@@ -84,20 +89,15 @@ void kbase_platform_dvfs_term(void);
 int kbase_platform_dvfs_event(kbase_device *kbdev, u32 utilisation);
 int kbase_platform_dvfs_get_control_status(void);
 int kbase_pm_get_dvfs_utilisation(kbase_device *kbdev);
-#ifdef CONFIG_T6XX_FREQ_LOCK
-int mali_get_dvfs_upper_locked_freq(void);
-int mali_get_dvfs_under_locked_freq(void);
-int mali_dvfs_freq_lock(int level);
-void mali_dvfs_freq_unlock(void);
-int mali_dvfs_freq_under_lock(int level);
-void mali_dvfs_freq_under_unlock(void);
-#endif /* CONFIG_T6XX_FREQ_LOCK */
+#ifdef CONFIG_T6XX_DVFS_FREQ_LOCK
+static int mali_get_dvfs_upper_locked_freq(void);
+static int mali_get_dvfs_under_locked_freq(void);
+static int mali_dvfs_freq_lock(int level);
+static void mali_dvfs_freq_unlock(void);
+static int mali_dvfs_freq_under_lock(int level);
+static void mali_dvfs_freq_under_unlock(void);
+#endif /* CONFIG_T6XX_DVFS_FREQ_LOCK */
 #endif /* CONFIG_T6XX_DVFS */
-
-#ifdef CONFIG_PM_RUNTIME
-static void kbase_platform_runtime_term(struct kbase_device *kbdev);
-static mali_error kbase_platform_runtime_init(struct kbase_device *kbdev);
-#endif /* CONFIG_PM_RUNTIME */
 
 int kbase_platform_cmu_pmu_control(struct kbase_device *kbdev, int control);
 void kbase_platform_remove_sysfs_file(struct device *dev);
@@ -552,7 +552,14 @@ int kbase_platform_cmu_pmu_control(struct kbase_device *kbdev, int control)
 }
 
 #ifdef CONFIG_T6XX_DEBUG_SYS
-static ssize_t show_clock(struct device *dev, struct device_attribute *attr, char *buf)
+/** The sysfs file @c clock, fbdev.
+ *
+ * This is used for obtaining information about the vithar
+ * operating clock & framebuffer address,
+ */
+
+static ssize_t mali_sysfs_show_clock(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct kbase_device *kbdev;
 	struct exynos_context *platform;
@@ -587,72 +594,61 @@ static ssize_t show_clock(struct device *dev, struct device_attribute *attr, cha
 
 	return ret;
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
-static ssize_t set_clock(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t mali_sysfs_set_clock(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
-	struct kbase_device *kbdev;
+	struct kbase_device *kbdev = dev_get_drvdata(dev);
 	struct exynos_context *platform;
-	unsigned int tmp = 0;
-	unsigned int cmd = 0;
-	kbdev = dev_get_drvdata(dev);
 
-	if (!kbdev)
+	if (!kbdev) {
+		pr_err("%s: no kbdev\n", __func__);
 		return -ENODEV;
+	}
 
 	platform = (struct exynos_context *) kbdev->platform_context;
-	if(!platform)
+	if (platform == NULL) {
+		pr_err("%s: no platform\n", __func__);
 		return -ENODEV;
-
-	if(!platform->sclk_g3d)
+	}
+	if (!platform->sclk_g3d) {
+		pr_info("%s: clkout not 3d\n", __func__);
 		return -ENODEV;
+	}
 
+	/* TODO(dianders) need to be more careful fiddling voltage+clock */
 	if (sysfs_streq("533", buf)) {
-		cmd = 1;
 		kbase_platform_set_voltage( dev, 1250000 );
 		kbase_platform_dvfs_set_clock(kbdev, 533);
 	} else if (sysfs_streq("450", buf)) {
-		cmd = 1;
 		kbase_platform_set_voltage( dev, 1150000 );
 		kbase_platform_dvfs_set_clock(kbdev, 450);
 	} else if (sysfs_streq("400", buf)) {
-		cmd = 1;
 		kbase_platform_set_voltage( dev, 1100000 );
 		kbase_platform_dvfs_set_clock(kbdev, 400);
 	} else if (sysfs_streq("266", buf)) {
-		cmd = 1;
 		kbase_platform_set_voltage( dev, 937500);
 		kbase_platform_dvfs_set_clock(kbdev, 266);
 	} else if (sysfs_streq("160", buf)) {
-		cmd = 1;
 		kbase_platform_set_voltage( dev, 937500 );
 		kbase_platform_dvfs_set_clock(kbdev, 160);
 	} else if (sysfs_streq("100", buf)) {
-		cmd = 1;
 		kbase_platform_set_voltage( dev, 937500 );
 		kbase_platform_dvfs_set_clock(kbdev, 100);
 	} else {
-		dev_err(dev, "set_clock: invalid value\n");
+		pr_err("%s: invalid value\n", __func__);
 		return -ENOENT;
 	}
 
-	if(cmd == 1) {
-		/* Waiting for clock is stable */
-		do {
-		tmp = __raw_readl(/*EXYNOS5_CLKDIV_STAT_TOP0*/EXYNOS_CLKREG(0x10610));
-		} while (tmp & 0x1000000);
-	}
-	else if(cmd == 2) {
-		/* Do we need to check */
-	}
+	pr_info("aclk400 %u\n", (unsigned int)clk_get_rate(platform->sclk_g3d));
 
 	return count;
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
+DEVICE_ATTR(clock, S_IRUGO|S_IWUSR, mali_sysfs_show_clock,
+	mali_sysfs_set_clock);
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
-static ssize_t show_fbdev(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t mali_sysfs_show_fbdev(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct kbase_device *kbdev;
 	ssize_t ret = 0;
@@ -678,7 +674,7 @@ static ssize_t show_fbdev(struct device *dev, struct device_attribute *attr, cha
 
 	return ret;
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
+DEVICE_ATTR(fbdev, S_IRUGO, mali_sysfs_show_fbdev, NULL);
 
 typedef enum {
 	L1_I_tag_RAM = 0x00,
@@ -699,7 +695,8 @@ typedef enum {
 	L2_TLB_RAM = 0x18
 } RAMID_type;
 
-static inline void asm_ramindex_mrc(u32 *DL1Data0, u32 *DL1Data1, u32 *DL1Data2, u32 *DL1Data3)
+static inline void asm_ramindex_mrc(u32 *DL1Data0, u32 *DL1Data1,
+	u32 *DL1Data2, u32 *DL1Data3)
 {
 	u32 val;
 
@@ -732,17 +729,16 @@ static inline void asm_ramindex_mcr(u32 val)
 	asm volatile("isb");
 }
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
-static void get_tlb_array(u32 val, u32 *DL1Data0, u32 *DL1Data1, u32 *DL1Data2, u32 *DL1Data3)
+static void get_tlb_array(u32 val, u32 *DL1Data0, u32 *DL1Data1,
+	u32 *DL1Data2, u32 *DL1Data3)
 {
 	asm_ramindex_mcr(val);
 	asm_ramindex_mrc(DL1Data0, DL1Data1, DL1Data2, DL1Data3);
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
 static RAMID_type ramindex = L1_D_load_TLB_array;
-static ssize_t show_dtlb(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t mali_sysfs_show_dtlb(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct kbase_device *kbdev;
 	ssize_t ret = 0;
@@ -870,10 +866,9 @@ static ssize_t show_dtlb(struct device *dev, struct device_attribute *attr, char
 	}
 	return ret;
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
-static ssize_t set_dtlb(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t mali_sysfs_set_dtlb(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct kbase_device *kbdev;
 	kbdev = dev_get_drvdata(dev);
@@ -925,10 +920,10 @@ static ssize_t set_dtlb(struct device *dev, struct device_attribute *attr, const
 
 	return count;
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
+DEVICE_ATTR(dtlb, S_IRUGO|S_IWUSR, mali_sysfs_show_dtlb, mali_sysfs_set_dtlb);
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
-static ssize_t show_vol(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t mali_sysfs_show_vol(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct kbase_device *kbdev;
 	ssize_t ret = 0;
@@ -953,9 +948,8 @@ static ssize_t show_vol(struct device *dev, struct device_attribute *attr, char 
 
 	return ret;
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
+DEVICE_ATTR(vol, S_IRUGO|S_IWUSR, mali_sysfs_show_vol, NULL);
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
 static int get_clkout_cmu_top(int *val)
 {
 	*val = __raw_readl(/*EXYNOS5_CLKOUT_CMU_TOP*/EXYNOS_CLKREG(0x10A00));
@@ -964,9 +958,7 @@ static int get_clkout_cmu_top(int *val)
 	else
 		return 0;
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
 static void set_clkout_for_3d(void)
 {
 	int tmp;
@@ -984,10 +976,9 @@ static void set_clkout_for_3d(void)
 	__raw_writel(tmp, /*S5P_PMU_DEBUG*/S5P_PMUREG(0x0A00));
 #endif /* PMU_XCLKOUT_SET */
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
-static ssize_t show_clkout(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t mali_sysfs_show_clkout(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct kbase_device *kbdev;
 	ssize_t ret = 0;
@@ -1014,29 +1005,25 @@ static ssize_t show_clkout(struct device *dev, struct device_attribute *attr, ch
 
 	return ret;
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
-static ssize_t set_clkout(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t mali_sysfs_set_clkout(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
-	struct kbase_device *kbdev;
-	kbdev = dev_get_drvdata(dev);
+	struct kbase_device *kbdev = dev_get_drvdata(dev);
 
 	if (!kbdev)
 		return -ENODEV;
 
-	if (sysfs_streq("3d", buf)) {
-		set_clkout_for_3d();
-	} else {
-		printk("invalid val (only 3d is accepted\n");
-	}
-
+	set_clkout_for_3d();
+	pr_info("clkout set to 3d\n");
 	return count;
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
+DEVICE_ATTR(clkout, S_IRUGO|S_IWUSR, mali_sysfs_show_clkout,
+	mali_sysfs_set_clkout);
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
-static ssize_t show_dvfs(struct device *dev, struct device_attribute *attr, char *buf)
+#ifdef CONFIG_T6XX_DVFS
+static ssize_t mali_sysfs_show_dvfs(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct kbase_device *kbdev;
 	ssize_t ret = 0;
@@ -1046,103 +1033,67 @@ static ssize_t show_dvfs(struct device *dev, struct device_attribute *attr, char
 	if (!kbdev)
 		return -ENODEV;
 
-#ifdef CONFIG_T6XX_DVFS
-	if(kbdev->pm.metrics.timer.active == MALI_FALSE )
-		ret += snprintf(buf+ret, PAGE_SIZE-ret, "G3D DVFS is off");
+	if (!kbasep_pm_metrics_isactive(kbdev))
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "G3D DVFS is off\n");
 	else
-		ret += snprintf(buf+ret, PAGE_SIZE-ret, "G3D DVFS is on");
-#else /* CONFIG_T6XX_DVFS */
-	ret += snprintf(buf+ret, PAGE_SIZE-ret, "G3D DVFS is disabled");
-#endif /* CONFIG_T6XX_DVFS */
-
-	if (ret < PAGE_SIZE - 1)
-		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	else
-	{
-		buf[PAGE_SIZE-2] = '\n';
-		buf[PAGE_SIZE-1] = '\0';
-		ret = PAGE_SIZE-1;
-	}
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "G3D DVFS is on\n");
 
 	return ret;
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
-static ssize_t set_dvfs(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t mali_sysfs_set_dvfs(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
-#ifdef CONFIG_T6XX_DVFS
-	osk_error ret;
+	mali_error ret;
 	int vol;
-#endif /* CONFIG_T6XX_DVFS */
 	struct kbase_device *kbdev;
 	kbdev = dev_get_drvdata(dev);
 
 	if (!kbdev)
 		return -ENODEV;
 
-#ifdef CONFIG_T6XX_DVFS
 	if (sysfs_streq("off", buf)) {
-		if(kbdev->pm.metrics.timer.active == MALI_FALSE )
-			return count;
+		if (kbasep_pm_metrics_isactive(kbdev)) {
+			kbasep_pm_metrics_term(kbdev);
 
-		osk_spinlock_irq_lock(&kbdev->pm.metrics.lock);
-		kbdev->pm.metrics.timer_active = MALI_FALSE;
-		osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
-
-		osk_timer_stop(&kbdev->pm.metrics.timer);
-
-		kbase_platform_get_default_voltage(dev, &vol);
-		if(vol != 0)
-			kbase_platform_set_voltage(dev, vol);
-		kbase_platform_dvfs_set_clock(kbdev,T6XX_DEFAULT_CLOCK / 1000000);
+			kbase_platform_get_default_voltage(dev, &vol);
+			if (vol != 0)
+				kbase_platform_set_voltage(dev, vol);
+			kbase_platform_dvfs_set_clock(kbdev,
+			    VITHAR_DEFAULT_CLOCK / 1000000);
+			pr_info("G3D DVFS is disabled\n");
+		}
 	} else if (sysfs_streq("on", buf)) {
-		if(kbdev->pm.metrics.timer_active == MALI_TRUE )
-			return count;
-
-		osk_spinlock_irq_lock(&kbdev->pm.metrics.lock);
-		kbdev->pm.metrics.timer_active = MALI_TRUE;
-		osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
-
-		ret = osk_timer_start(&kbdev->pm.metrics.timer, KBASE_PM_DVFS_FREQUENCY);
-		if (ret != OSK_ERR_NONE)
-		{
-			printk("osk_timer_start failed\n");
+		if (!kbasep_pm_metrics_isactive(kbdev)) {
+			ret = kbasep_pm_metrics_init(kbdev);
+			if (ret != MALI_ERROR_NONE)
+				pr_warning("kbase_pm_metrics_init failed,"
+				    " error %u\n", ret);
+			else
+				pr_info("G3D DVFS is enabled\n");
 		}
 	} else {
-		printk("invalid val -only [on, off] is accepted\n");
+		pr_info("%s: invalid, only [on, off] is accepted\n", buf);
 	}
-#else /* CONFIG_T6XX_DVFS */
-	printk("G3D DVFS is disabled\n");
-#endif /* CONFIG_T6XX_DVFS */
 
 	return count;
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
+DEVICE_ATTR(dvfs, S_IRUGO|S_IWUSR, mali_sysfs_show_dvfs, mali_sysfs_set_dvfs);
+#endif /* CONFIG_T6XX_DVFS */
 
-#define KBASE_PM_DVFS_FREQUENCY 100
-
-#define MALI_DVFS_DEBUG 0
-#define MALI_DVFS_START_MAX_STEP 1
-#define MALI_DVFS_STEP 6
-#define MALI_DVFS_KEEP_STAY_CNT 10
-#define CONFIG_T6XX_FREQ_LOCK
-
-#ifdef CONFIG_T6XX_DEBUG_SYS
-static ssize_t show_lock_dvfs(struct device *dev, struct device_attribute *attr, char *buf)
+#ifdef CONFIG_T6XX_DVFS_FREQ_LOCK
+static ssize_t mali_sysfs_show_lock_dvfs(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct kbase_device *kbdev;
 	ssize_t ret = 0;
-#ifdef CONFIG_T6XX_DVFS
-	unsigned int locked_level = -1;
-#endif /*  CONFIG_T6XX_DVFS */
+	int locked_level;
 
 	kbdev = dev_get_drvdata(dev);
 
 	if (!kbdev)
 		return -ENODEV;
 
-#ifdef CONFIG_T6XX_DVFS
 	locked_level = mali_get_dvfs_upper_locked_freq();
 	if( locked_level > 0 )
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "Current Upper Lock Level = %dMhz", locked_level );
@@ -1150,10 +1101,6 @@ static ssize_t show_lock_dvfs(struct device *dev, struct device_attribute *attr,
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "Unset the Upper Lock Level");
 	ret += snprintf(buf+ret, PAGE_SIZE-ret, "\nPossible settings : 450, 400, 266, 160, 100, If you want to unlock : 533");
 
-#else /* CONFIG_T6XX_DVFS */
-	ret += snprintf(buf+ret, PAGE_SIZE-ret, "G3D DVFS is disabled. You can not setting the Upper Lock level.");
-#endif /* CONFIG_T6XX_DVFS */
-
 	if (ret < PAGE_SIZE - 1)
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
 	else
@@ -1165,10 +1112,9 @@ static ssize_t show_lock_dvfs(struct device *dev, struct device_attribute *attr,
 
 	return ret;
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
-static ssize_t set_lock_dvfs(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t mali_sysfs_set_lock_dvfs(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct kbase_device *kbdev;
 	kbdev = dev_get_drvdata(dev);
@@ -1176,7 +1122,6 @@ static ssize_t set_lock_dvfs(struct device *dev, struct device_attribute *attr, 
 	if (!kbdev)
 		return -ENODEV;
 
-#ifdef CONFIG_T6XX_DVFS
 #if (MALI_DVFS_STEP == 6)
 	if (sysfs_streq("533", buf)) {
 		mali_dvfs_freq_unlock();
@@ -1206,26 +1151,12 @@ static ssize_t set_lock_dvfs(struct device *dev, struct device_attribute *attr, 
 		return -ENOENT;
 	}
 #endif /* MALI_DVFS_STEP */
-#else /* CONFIG_T6XX_DVFS */
-	printk("G3D DVFS is disabled. You can not setting the Upper Lock level.\n");
-#endif /* CONFIG_T6XX_DVFS */
 
 	return count;
 }
-#endif /* CONFIG_T6XX_DEBUG_SYS */
-
-/** The sysfs file @c clock, fbdev.
- *
- * This is used for obtaining information about the vithar operating clock & framebuffer address,
- */
-#ifdef CONFIG_T6XX_DEBUG_SYS
-DEVICE_ATTR(clock, S_IRUGO|S_IWUSR, show_clock, set_clock);
-DEVICE_ATTR(fbdev, S_IRUGO, show_fbdev, NULL);
-DEVICE_ATTR(dtlb, S_IRUGO|S_IWUSR, show_dtlb, set_dtlb);
-DEVICE_ATTR(vol, S_IRUGO|S_IWUSR, show_vol, NULL);
-DEVICE_ATTR(clkout, S_IRUGO|S_IWUSR, show_clkout, set_clkout);
-DEVICE_ATTR(dvfs, S_IRUGO|S_IWUSR, show_dvfs, set_dvfs);
-DEVICE_ATTR(dvfs_lock, S_IRUGO|S_IWUSR, show_lock_dvfs, set_lock_dvfs);
+DEVICE_ATTR(dvfs_lock, S_IRUGO|S_IWUSR, mali_sysfs_show_lock_dvfs,
+	mali_sysfs_set_lock_dvfs);
+#endif /* CONFIG_T6XX_DVFS_FREQ_LOCK */
 
 static int kbase_platform_create_sysfs_file(struct device *dev)
 {
@@ -1258,18 +1189,20 @@ static int kbase_platform_create_sysfs_file(struct device *dev)
 		dev_err(dev, "Couldn't create sysfs file [clkout]\n");
 		goto out;
 	}
-
+#ifdef CONFIG_T6XX_DVFS
 	if (device_create_file(dev, &dev_attr_dvfs))
 	{
 		dev_err(dev, "Couldn't create sysfs file [dvfs]\n");
 		goto out;
 	}
-
+#ifdef CONFIG_T6XX_DVFS_FREQ_LOCK
 	if (device_create_file(dev, &dev_attr_dvfs_lock))
 	{
 		dev_err(dev, "Couldn't create sysfs file [dvfs_lock]\n");
 		goto out;
 	}
+#endif /* CONFIG_T6XX_DVFS_FREQ_LOCK */
+#endif /* CONFIG_T6XX_DVFS */
 	return 0;
 out:
 	return -ENOENT;
@@ -1282,8 +1215,12 @@ void kbase_platform_remove_sysfs_file(struct device *dev)
 	device_remove_file(dev, &dev_attr_dtlb);
 	device_remove_file(dev, &dev_attr_vol);
 	device_remove_file(dev, &dev_attr_clkout);
+#ifdef CONFIG_T6XX_DVFS
 	device_remove_file(dev, &dev_attr_dvfs);
+#ifdef CONFIG_T6XX_DVFS_FREQ_LOCK
 	device_remove_file(dev, &dev_attr_dvfs_lock);
+#endif /* CONFIG_T6XX_DVFS_FREQ_LOCK */
+#endif /* CONFIG_T6XX_DVFS */
 }
 #endif /* CONFIG_T6XX_DEBUG_SYS */
 
@@ -1307,7 +1244,6 @@ static mali_error kbase_platform_runtime_init(struct kbase_device *kbdev)
 	return MALI_ERROR_NONE;
 }
 #endif /* CONFIG_PM_RUNTIME */
-
 
 mali_error kbase_platform_init(kbase_device *kbdev)
 {
@@ -1337,13 +1273,6 @@ mali_error kbase_platform_init(kbase_device *kbdev)
 	}
 #endif /* CONFIG_REGULATOR */
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
-	if(kbase_platform_create_sysfs_file(dev))
-	{
-		return create_sysfs_file_fail;
-	}
-#endif /* CONFIG_T6XX_DEBUG_SYS */
-
 #ifdef CONFIG_T6XX_DVFS
 	kbase_platform_dvfs_init(kbdev);
 #endif /* CONFIG_T6XX_DVFS */
@@ -1352,9 +1281,6 @@ mali_error kbase_platform_init(kbase_device *kbdev)
 	kbase_platform_cmu_pmu_control(kbdev, 1);
 	return MALI_ERROR_NONE;
 
-#ifdef CONFIG_T6XX_DEBUG_SYS
-create_sysfs_file_fail:
-#endif /* CONFIG_T6XX_DEBUG_SYS */
 #ifdef CONFIG_REGULATOR
 	kbase_platform_regulator_disable();
 #endif /* CONFIG_REGULATOR */
@@ -1408,10 +1334,10 @@ typedef struct _mali_dvfs_status_type{
 	int utilisation;
 	int keepcnt;
 	uint noutilcnt;
-#ifdef CONFIG_T6XX_FREQ_LOCK
+#ifdef CONFIG_T6XX_DVFS_FREQ_LOCK
 	int upper_lock;
 	int under_lock;
-#endif /* CONFIG_T6XX_FREQ_LOCK */
+#endif /* CONFIG_T6XX_DVFS_FREQ_LOCK */
 }mali_dvfs_status;
 
 static struct workqueue_struct *mali_dvfs_wq = 0;
@@ -1470,19 +1396,21 @@ static void kbase_platform_dvfs_set_vol(unsigned int vol)
 	return;
 }
 
-#ifdef CONFIG_T6XX_FREQ_LOCK
-int mali_get_dvfs_upper_locked_freq(void)
+#ifdef CONFIG_T6XX_DVFS_FREQ_LOCK
+static int mali_get_dvfs_upper_locked_freq(void)
 {
-	unsigned int locked_level = -1;
+	int locked_level = -1;
 
 	osk_spinlock_lock(&mali_dvfs_spinlock);
-	locked_level = mali_dvfs_infotbl[mali_dvfs_status_current.upper_lock].clock;
+	if (mali_dvfs_status_current.upper_lock > 0)
+		locked_level = mali_dvfs_infotbl[
+		    mali_dvfs_status_current.upper_lock].clock;
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
 
 	return locked_level;
 }
 
-int mali_get_dvfs_under_locked_freq(void)
+static int mali_get_dvfs_under_locked_freq(void)
 {
 	unsigned int locked_level = -1;
 
@@ -1494,34 +1422,34 @@ int mali_get_dvfs_under_locked_freq(void)
 }
 
 
-int mali_dvfs_freq_lock(int level)
+static int mali_dvfs_freq_lock(int level)
 {
 	osk_spinlock_lock(&mali_dvfs_spinlock);
 	mali_dvfs_status_current.upper_lock = level;
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
 	return 0;
 }
-void mali_dvfs_freq_unlock(void)
+static void mali_dvfs_freq_unlock(void)
 {
 	osk_spinlock_lock(&mali_dvfs_spinlock);
 	mali_dvfs_status_current.upper_lock = -1;
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
 }
 
-int mali_dvfs_freq_under_lock(int level)
+static int mali_dvfs_freq_under_lock(int level)
 {
 	osk_spinlock_lock(&mali_dvfs_spinlock);
 	mali_dvfs_status_current.under_lock = level;
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
 	return 0;
 }
-void mali_dvfs_freq_under_unlock(void)
+static void mali_dvfs_freq_under_unlock(void)
 {
 	osk_spinlock_lock(&mali_dvfs_spinlock);
 	mali_dvfs_status_current.under_lock = -1;
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
 }
-#endif /* CONFIG_T6XX_FREQ_LOCK */
+#endif /* CONFIG_T6XX_DVFS_FREQ_LOCK */
 
 void kbase_platform_dvfs_set_level(int level)
 {
@@ -1577,7 +1505,7 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 		dvfs_status.keepcnt=0;
 	}
 
-#ifdef CONFIG_T6XX_FREQ_LOCK
+#ifdef CONFIG_T6XX_DVFS_FREQ_LOCK
 	if ((dvfs_status.upper_lock > 0)&&(dvfs_status.step > dvfs_status.upper_lock)) {
 		dvfs_status.step = dvfs_status.upper_lock;
 		if ((dvfs_status.under_lock > 0)&&(dvfs_status.under_lock > dvfs_status.upper_lock)) {
@@ -1588,7 +1516,7 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 		if (dvfs_status.step < dvfs_status.under_lock)
 			dvfs_status.step = dvfs_status.under_lock;
 	}
-#endif /* CONFIG_T6XX_FREQ_LOCK */
+#endif /* CONFIG_T6XX_DVFS_FREQ_LOCK */
 
 	kbase_platform_dvfs_set_level(dvfs_status.step);
 
@@ -1648,10 +1576,10 @@ int kbase_platform_dvfs_init(kbase_device *kbdev)
 	mali_dvfs_status_current.kbdev = kbdev;
 	mali_dvfs_status_current.utilisation = 100;
 	mali_dvfs_status_current.step = MALI_DVFS_STEP-1;
-#ifdef CONFIG_T6XX_FREQ_LOCK
+#ifdef CONFIG_T6XX_DVFS_FREQ_LOCK
 	mali_dvfs_status_current.upper_lock = -1;
 	mali_dvfs_status_current.under_lock = -1;
-#endif /* CONFIG_T6XX_FREQ_LOCK */
+#endif /* CONFIG_T6XX_DVFS_FREQ_LOCK */
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
 
 	return MALI_TRUE;
@@ -1789,24 +1717,22 @@ void kbase_platform_dvfs_set_clock(kbase_device *kbdev, int freq)
 
 
 	if (!kbdev)
-		panic("oops");
+		panic("no kbdev");
 
 	platform = (struct exynos_context *) kbdev->platform_context;
-	if(NULL == platform)
-	{
-		panic("oops");
-	}
+	if (NULL == platform)
+		panic("no platform");
 
-	if (mout_gpll==NULL) {
+	if (platform->sclk_g3d == 0)
+		return;
+
+	if (mout_gpll == NULL) {
 		mout_gpll = clk_get(kbdev->osdev.dev, "mout_gpll");
 		fin_gpll = clk_get(kbdev->osdev.dev, "ext_xtal");
 		fout_gpll = clk_get(kbdev->osdev.dev, "fout_gpll");
-		if(IS_ERR(mout_gpll) || IS_ERR(fin_gpll) || IS_ERR(fout_gpll))
+		if (IS_ERR(mout_gpll) || IS_ERR(fin_gpll) || IS_ERR(fout_gpll))
 			panic("clk_get ERROR");
 	}
-
-	if(platform->sclk_g3d == 0)
-		return;
 
 	if (freq == _freq)
 		return;

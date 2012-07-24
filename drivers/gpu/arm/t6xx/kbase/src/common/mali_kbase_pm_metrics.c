@@ -130,6 +130,20 @@ void kbasep_pm_metrics_term(kbase_device *kbdev)
 }
 KBASE_EXPORT_TEST_API(kbasep_pm_metrics_term)
 
+mali_bool kbasep_pm_metrics_isactive(kbase_device *kbdev)
+{
+	mali_bool isactive;
+
+	OSK_ASSERT(kbdev != NULL);
+
+	osk_spinlock_irq_lock(&kbdev->pm.metrics.lock);
+	isactive = (kbdev->pm.metrics.timer_active == MALI_TRUE);
+	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
+
+	return isactive;
+}
+KBASE_EXPORT_TEST_API(kbasep_pm_metrics_isactive)
+
 void kbasep_pm_record_gpu_idle(kbase_device *kbdev)
 {
 	osk_ticks now = osk_time_now();

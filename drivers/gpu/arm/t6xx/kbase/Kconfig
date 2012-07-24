@@ -57,11 +57,21 @@ config MALI_GATOR_SUPPORT
 	  Adds diagnostic support for use with the ARM Streamline Performance Analyzer.
 
 config T6XX_DVFS
-        bool "Enable Dynamic frequency and volatge scaling"
+        bool "Enable Dynamic frequency and voltage scaling"
         depends on MALI_T6XX
 	default n
-        help
-          Choose this option to enable dynamic frequency and volatge scaling
+	help
+          Choose this option to enable dynamic frequency and voltage scaling
+
+config T6XX_DVFS_FREQ_LOCK
+        bool "Enable dvfs frequency lock support"
+        depends on T6XX_DVFS
+	default n
+	help
+          Choose this option to enable locking the DVFS frequency.  If sysfs
+	  support is enabled files will be created for inspecting and
+	  (potentially) setting a fixed DVFS frequency.  This is used
+	  for debugging; enable only if you know what you are doing.
 
 
 # MALI_EXPERT configuration options
@@ -110,3 +120,12 @@ config MALI_ERROR_INJECTION
 	default n
 	help
 	  Enables insertion of errors to test module failure and recovery mechanisms.
+
+config T6XX_DEBUG_SYS
+        bool "Enable sysfs support"
+	depends on MALI_T6XX && MALI_EXPERT
+	default n
+	help
+          Choose this option to enable creating sysfs files for inspecting
+	  and (potentially) tweaking driver parameters.  This is typically
+	  used for debugging; enable only if you know what you are doing.

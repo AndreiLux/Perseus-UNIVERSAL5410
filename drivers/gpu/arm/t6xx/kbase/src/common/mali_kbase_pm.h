@@ -727,6 +727,12 @@ mali_error kbasep_pm_metrics_init(struct kbase_device *kbdev);
  */
 void kbasep_pm_metrics_term(struct kbase_device *kbdev);
 
+/** Check if the metrics gathering framework is active.
+ *
+ * @param kbdev     The kbase device structure for the device (must be a valid pointer)
+ */
+mali_bool kbasep_pm_metrics_isactive(struct kbase_device *kbdev);
+
 /** Record that the GPU is active.
  *
  * This records that the GPU is now active. The previous GPU state must have been idle, the function will assert if
