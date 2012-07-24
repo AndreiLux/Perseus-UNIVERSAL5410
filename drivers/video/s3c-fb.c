@@ -334,47 +334,6 @@ struct s3c_fb {
 #endif
 };
 
-#ifdef CONFIG_VITHAR
-#include "ump/ump_kernel_interface.h"
-
-#define IOCTL_GET_FB_UMP_SECURE_ID _IOWR('m', 0xF8, __u32)
-
-static ump_dd_handle ump_wrapped_buffer = UMP_DD_INVALID_MEMORY_HANDLE;
-
-/**
- * s3cfb_ump_wrapper - wrap framebuffer memory to ump handle
- * @fix: screen information to wrap
- */
-static int s3cfb_ump_wrapper(struct fb_fix_screeninfo *fix)
-{
-	ump_dd_physical_block_64 ump_memory_description;
-	u64 block_num;
-
-	if (ump_wrapped_buffer != UMP_DD_INVALID_MEMORY_HANDLE)
-		return 1;
-
-	ump_memory_description.addr = fix->smem_start;
-	ump_memory_description.size = fix->smem_len;
-	block_num = 1;
-
-	ump_wrapped_buffer = ump_dd_create_from_phys_blocks_64(
-		&ump_memory_description, block_num,
-		UMP_PROT_CPU_RD | UMP_PROT_CPU_WR | /* CPU access */
-		UMP_PROT_W_RD | UMP_PROT_W_WR | /* Device W access */
-		UMP_PROT_X_RD | UMP_PROT_X_WR | /* Device X access */
-		UMP_PROT_Y_RD | UMP_PROT_Y_WR | /* Device Y access */
-		UMP_PROT_Z_RD | UMP_PROT_Z_WR | /* Device Z access */
-		UMP_CONSTRAINT_PHYSICALLY_LINEAR | /* A single chunk */
-		UMP_PROT_SHAREABLE, /* Free for all */
-		NULL, NULL, NULL);
-
-	if (ump_wrapped_buffer == UMP_DD_INVALID_MEMORY_HANDLE)
-		return 0;
-	else
-		return 1;
-}
-#endif
-
 static bool s3c_fb_validate_x_alignment(struct s3c_fb *sfb, int x, u32 w,
 		u32 bits_per_pixel)
 {
@@ -2019,24 +1978,6 @@ static int s3c_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		}
 		ret = 0;
 		break;
-#endif
-#ifdef CONFIG_VITHAR
-	case IOCTL_GET_FB_UMP_SECURE_ID:
-	{
-		u32 __user *psecureid;
-		ump_secure_id secure_id;
-
-		if (s3cfb_ump_wrapper(&info->fix) == 0) {
-			dev_err(sfb->dev, "Unable to wrap ump memory\n");
-			ret = -ENOMEM;
-			break;
-		}
-
-		psecureid = (u32 __user *)arg;
-		secure_id = ump_dd_secure_id_get(ump_wrapped_buffer);
-		ret = put_user((u32)secure_id, psecureid);
-		break;
-	}
 #endif
 
 	default:
