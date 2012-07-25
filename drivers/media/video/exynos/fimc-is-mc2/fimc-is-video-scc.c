@@ -70,12 +70,13 @@ static int fimc_is_scalerc_video_open(struct file *file)
 	struct fimc_is_core *core = video_drvdata(file);
 	struct fimc_is_video_scc *video = &core->video_scc;
 	struct fimc_is_device_ischain *ischain = &core->ischain;
+	struct fimc_is_ischain_dev *scc = &ischain->scc;
 
 	dbg_scc("%s\n", __func__);
 
 	file->private_data = video;
-	ischain->scc_video = video;
 	fimc_is_video_open(&video->common, ischain);
+	fimc_is_ischain_dev_open(scc, &video->common);
 
 	return 0;
 }
@@ -159,9 +160,9 @@ static int fimc_is_scalerc_video_set_format_mplane(struct file *file, void *fh,
 
 	ret = fimc_is_video_set_format_mplane(&video->common, format);
 
-	dbg_scp("req w : %d req h : %d\n",
+	dbg_scc("req w : %d req h : %d\n",
 		video->common.frame.width,
-		video->common.frame.width);
+		video->common.frame.height);
 
 	return ret;
 }
@@ -394,11 +395,17 @@ static int fimc_is_scalerc_stop_streaming(struct vb2_queue *q)
 {
 	int ret = 0;
 	struct fimc_is_video_scc *video = q->drv_priv;
+	struct fimc_is_device_ischain *ischain = video->common.device;
+	struct fimc_is_ischain_dev *scc = &ischain->scc;
 
 	dbg_scc("%s\n", __func__);
 
-	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state))
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)) {
 		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
+		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state);
+		fimc_is_frame_close(&scc->framemgr);
+		fimc_is_frame_open(&scc->framemgr, NUM_SCC_DMA_BUF);
+	}
 
 	return ret;
 }
@@ -406,21 +413,40 @@ static int fimc_is_scalerc_stop_streaming(struct vb2_queue *q)
 static void fimc_is_scalerc_buffer_queue(struct vb2_buffer *vb)
 {
 	struct fimc_is_video_scc *video = vb->vb2_queue->drv_priv;
+	struct fimc_is_device_ischain *ischain = video->common.device;
+	struct fimc_is_ischain_dev *scc = &ischain->scc;
 
 #ifdef DBG_STREAMING
 	dbg_scc("%s\n", __func__);
 #endif
 
-	fimc_is_video_buffer_queue(&video->common, vb, 0);
+	fimc_is_video_buffer_queue(&video->common, vb, &scc->framemgr);
+	fimc_is_ischain_dev_buffer_queue(scc, vb->v4l2_buf.index);
 
 	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state))
 		fimc_is_scalerc_start_streaming(vb->vb2_queue, 0);
 }
 
+static int fimc_is_scalerc_buffer_finish(struct vb2_buffer *vb)
+{
+	int ret = 0;
+	struct fimc_is_video_scc *video = vb->vb2_queue->drv_priv;
+	struct fimc_is_device_ischain *ischain = video->common.device;
+	struct fimc_is_ischain_dev *scc = &ischain->scc;
+
+#ifdef DBG_STREAMING
+	dbg_scc("%s(%d)\n", __func__, vb->v4l2_buf.index);
+#endif
+
+	ret = fimc_is_ischain_dev_buffer_finish(scc, vb->v4l2_buf.index);
+
+	return ret;
+}
 const struct vb2_ops fimc_is_scalerc_qops = {
 	.queue_setup		= fimc_is_scalerc_queue_setup,
 	.buf_prepare		= fimc_is_scalerc_buffer_prepare,
 	.buf_queue		= fimc_is_scalerc_buffer_queue,
+	.buf_finish		= fimc_is_scalerc_buffer_finish,
 	.wait_prepare		= fimc_is_scalerc_unlock,
 	.wait_finish		= fimc_is_scalerc_lock,
 	.start_streaming	= fimc_is_scalerc_start_streaming,

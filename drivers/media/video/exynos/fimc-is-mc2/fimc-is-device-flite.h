@@ -12,15 +12,7 @@
 #ifndef FIMC_IS_DEVICE_FLITE_H
 #define FIMC_IS_DEVICE_FLITE_H
 
-enum fimc_is_flite_state {
-	/* buffer state*/
-	FIMC_IS_FLITE_A_SLOT_VALID = 0,
-	FIMC_IS_FLITE_B_SLOT_VALID,
-	/* global state */
-	FIMC_IS_FLITE_LAST_CAPTURE
-};
-
-struct fimc_is_flite_frame {
+struct fimc_is_frame_info {
 	u32 o_width;
 	u32 o_height;
 	u32 width;
@@ -29,10 +21,17 @@ struct fimc_is_flite_frame {
 	u32 offs_v;
 };
 
+enum fimc_is_flite_state {
+	/* buffer state*/
+	FIMC_IS_FLITE_A_SLOT_VALID = 0,
+	FIMC_IS_FLITE_B_SLOT_VALID,
+	/* global state */
+	FIMC_IS_FLITE_LAST_CAPTURE
+};
+
 struct fimc_is_device_flite {
 	u32				opened;
 
-	u32				skip_buffer;
 	atomic_t			fcount;
 	wait_queue_head_t		wait_queue;
 
@@ -40,8 +39,10 @@ struct fimc_is_device_flite {
 	spinlock_t			slock_state;
 
 	struct fimc_is_video_common	*video;
-	u32				tasklet_param;
-	struct tasklet_struct		tasklet_flite;
+	u32				tasklet_param_str;
+	struct tasklet_struct		tasklet_flite_str;
+	u32				tasklet_param_end;
+	struct tasklet_struct		tasklet_flite_end;
 
 	u32				channel;
 	u32				regs;
@@ -49,6 +50,7 @@ struct fimc_is_device_flite {
 	struct fimc_is_framemgr		*framemgr;
 
 	u32				work;
+	u32				sw_trigger;
 	struct work_struct		work_queue;
 
 	u32				private_data;
@@ -61,7 +63,7 @@ int fimc_is_flite_probe(struct fimc_is_device_flite *this,
 	u32 data);
 int fimc_is_flite_open(struct fimc_is_device_flite *this);
 int fimc_is_flite_start(struct fimc_is_device_flite *this,
-	struct fimc_is_video_common *video,
-	u32 width, u32 height);
+	struct fimc_is_frame_info *frame,
+	struct fimc_is_video_common *video);
 int fimc_is_flite_stop(struct fimc_is_device_flite *this);
 #endif

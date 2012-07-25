@@ -624,6 +624,9 @@ int fimc_is_runtime_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct fimc_is_core *isp
 		= (struct fimc_is_core *)platform_get_drvdata(pdev);
+	struct fimc_is_device_sensor *sensor = &isp->sensor;
+	struct fimc_is_enum_sensor *sensor_info
+		= &sensor->enum_sensor[sensor->id_position];
 	int ret = 0;
 
 	printk(KERN_INFO "FIMC_IS runtime resume\n");
@@ -641,13 +644,13 @@ int fimc_is_runtime_resume(struct device *dev)
 
 	if (isp->pdata->sensor_power_on) {
 		isp->pdata->sensor_power_on(isp->pdev,
-					0);
+					sensor_info->flite_ch);
 	} else {
 		err("failed to sensor_power_on\n");
 		return -EINVAL;
 	}
 	if (isp->pdata->clk_on) {
-		isp->pdata->clk_on(isp->pdev, 0);
+		isp->pdata->clk_on(isp->pdev, sensor_info->flite_ch);
 	} else {
 		err("failed to clock on\n");
 		return -EINVAL;
@@ -704,11 +707,6 @@ static int fimc_is_probe(struct platform_device *pdev)
 	core->pdata = pdev->dev.platform_data;
 	core->id = pdev->id;
 
-	init_waitqueue_head(&core->irq_queue);
-	spin_lock_init(&core->slock);
-	mutex_init(&core->lock);
-	spin_lock_init(&core->mcu_slock);
-
 	mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!mem_res) {
 		dev_err(&pdev->dev, "Failed to get io memory region\n");
@@ -743,7 +741,7 @@ static int fimc_is_probe(struct platform_device *pdev)
 		core->pdev);
 
 	fimc_is_frame_probe(&core->framemgr_sensor, FRAMEMGR_ID_SENSOR);
-	fimc_is_frame_probe(&core->framemgr_ischain, FRAMEMGR_ID_ISCHAIN);
+	fimc_is_frame_probe(&core->framemgr_ischain, FRAMEMGR_ID_ISP);
 
 	fimc_is_interface_probe(&core->interface,
 		&core->framemgr_ischain,

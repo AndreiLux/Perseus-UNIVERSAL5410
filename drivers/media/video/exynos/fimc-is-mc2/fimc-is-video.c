@@ -257,13 +257,6 @@ int fimc_is_video_reqbufs(struct fimc_is_video_common *video,
 	struct v4l2_requestbuffers *request)
 {
 	int ret = 0;
-	dbg_sensor("%s\n", __func__);
-	dbg_sensor("%s type(%d) memory(%d)\n",
-		__func__, request->type, request->memory);
-	dbg_sensor("%s pixelformat(%d) planes(%d) width(%d) height(%d)\n",
-		__func__, video->frame.format.pixelformat,
-		video->frame.format.num_planes,
-		video->frame.width, video->frame.height);
 
 	ret = vb2_reqbufs(&video->vbq, request);
 	if (!ret)
@@ -277,7 +270,6 @@ int fimc_is_video_reqbufs(struct fimc_is_video_common *video,
 	if (request->count == 0)
 		video->buf_ref_cnt = 0;
 
-	dbg_sensor("%s END\n", __func__);
 	return ret;
 }
 
@@ -310,20 +302,21 @@ int fimc_is_video_qbuf(struct fimc_is_video_common *video,
 	struct v4l2_buffer *buf)
 {
 	int ret = 0;
-	dbg_sensor("%s\n", __func__);
+
 	ret = vb2_qbuf(&video->vbq, buf);
-	dbg_sensor("%s END ret(%d)\n", __func__, ret);
+
 	return ret;
 }
-
 
 int fimc_is_video_dqbuf(struct fimc_is_video_common *video,
 	struct v4l2_buffer *buf, bool blocking)
 {
 	int ret = 0;
+
 	ret = vb2_dqbuf(&video->vbq, buf, blocking);
 
 	video->buf_mask &= ~(1<<buf->index);
+
 	return ret;
 }
 
@@ -362,7 +355,6 @@ int fimc_is_video_queue_setup(struct fimc_is_video_common *video,
 	for (i = 0; i < *num_planes; i++) {
 		allocators[i] =  core->mem.alloc_ctx;
 		video->frame.size[i] = sizes[i];
-	dbg_sensor("%s: size[%d] = %d\n",  __func__, i, video->frame.size[i]);
 	}
 
 	return ret;
@@ -374,7 +366,7 @@ int fimc_is_video_buffer_queue(struct fimc_is_video_common *video,
 {
 	u32 ret = 0, i;
 	u32 index = vb->v4l2_buf.index;
-	u32 extended_size;
+	u32 ext_size;
 	struct fimc_is_core *core = video->core;
 
 	if (!test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->state)) {
@@ -403,35 +395,69 @@ int fimc_is_video_buffer_queue(struct fimc_is_video_common *video,
 		}
 
 		if (framemgr) {
-			extended_size = sizeof(struct camera2_shot_ext) -
-				sizeof(struct camera2_shot);
+			if ((framemgr->id == FRAMEMGR_ID_SENSOR) ||
+				(framemgr->id == FRAMEMGR_ID_ISP)) {
+				ext_size = sizeof(struct camera2_shot_ext) -
+					sizeof(struct camera2_shot);
 
-			framemgr->shot[index].dvaddr_buffer =
-				video->buf_dva[index][0];
+				framemgr->frame[index].dvaddr_buffer[0] =
+					video->buf_dva[index][0];
 
-			framemgr->shot[index].kvaddr_buffer =
-				video->buf_kva[index][0];
+				framemgr->frame[index].kvaddr_buffer[0] =
+					video->buf_kva[index][0];
 
-			framemgr->shot[index].dvaddr_shot =
-				video->buf_dva[index][1] + extended_size;
+				framemgr->frame[index].dvaddr_shot =
+					video->buf_dva[index][1] + ext_size;
 
-			/* framemgr->shot[index].kvaddr_shot =
-				video->buf_kva[index][1] + extended_size; */
+				framemgr->frame[index].kvaddr_shot =
+					video->buf_kva[index][1] + ext_size;
 
-			framemgr->shot[index].shot =
-				(struct camera2_shot *)
-				(video->buf_kva[index][1] + extended_size);
+				framemgr->frame[index].shot =
+					(struct camera2_shot *)
+					(video->buf_kva[index][1] + ext_size);
 
-			framemgr->shot[index].shot_ext =
-				(struct camera2_shot_ext *)
-				(video->buf_kva[index][1]);
+				framemgr->frame[index].shot_ext =
+					(struct camera2_shot_ext *)
+					(video->buf_kva[index][1]);
+
+				framemgr->frame[index].shot_size =
+					video->frame.size[1];
+			} else {
+				for (i = 0; i < vb->num_planes; i++) {
+					framemgr->frame[index].dvaddr_buffer[i]
+						= video->buf_dva[index][i];
+
+					framemgr->frame[index].kvaddr_buffer[i]
+						= video->buf_kva[index][i];
+				}
+			}
+
+			framemgr->frame[index].vb = vb;
+			framemgr->frame[index].planes = vb->num_planes;
 		}
 
 		video->buf_ref_cnt++;
 
-		if (video->buffers == video->buf_ref_cnt)
+		if (video->buffers == video->buf_ref_cnt) {
+			dbg("buffer prepared!!!\n");
 			set_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->state);
+		}
 	}
 
 	return ret;
 }
+
+int buffer_done(struct fimc_is_video_common *video, u32 index)
+{
+	int ret = 0;
+
+	if (index == FIMC_IS_INVALID_BUF_INDEX) {
+		err("buffer done had invalid index(%d)", index);
+		ret = -EINVAL;
+	}
+
+	vb2_buffer_done(video->vbq.bufs[index], VB2_BUF_STATE_DONE);
+
+	return ret;
+}
+

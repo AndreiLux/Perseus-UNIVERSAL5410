@@ -118,7 +118,7 @@ static int set_free_work(struct fimc_is_work_list *this,
 	return ret;
 }
 
-#if 0
+/**
 static int set_free_work_irq(struct fimc_is_work_list *this,
 	struct fimc_is_work *work)
 {
@@ -141,7 +141,7 @@ static int set_free_work_irq(struct fimc_is_work_list *this,
 
 	return ret;
 }
-#endif
+*/
 
 static int get_free_work(struct fimc_is_work_list *this,
 	struct fimc_is_work **work)
@@ -288,7 +288,7 @@ static int get_req_work(struct fimc_is_work_list *this,
 	return ret;
 }
 
-#if 0
+/*
 static int get_request_work_irq(struct fimc_is_work_list *this,
 	struct fimc_is_work **work)
 {
@@ -313,7 +313,7 @@ static int get_request_work_irq(struct fimc_is_work_list *this,
 
 	return ret;
 }
-#endif
+*/
 
 static void init_work_list(struct fimc_is_work_list *this, u32 id, u32 count)
 {
@@ -368,12 +368,18 @@ static int wait_state(struct fimc_is_interface *this,
 
 static int waiting_is_ready(struct fimc_is_interface *interface)
 {
+	u32 try_count = TRY_RECV_AWARE_COUNT;
 	u32 cfg = readl(interface->regs + INTMSR0);
 	u32 status = INTMSR0_GET_INTMSD0(cfg);
 	while (status) {
-		err("INTMSR0's 0 bit is not cleared.\n");
 		cfg = readl(interface->regs + INTMSR0);
 		status = INTMSR0_GET_INTMSD0(cfg);
+
+		try_count--;
+		if (try_count <= 0) {
+			try_count = TRY_RECV_AWARE_COUNT;
+			err("INTMSR0's 0 bit is not cleared.\n");
+		}
 	}
 
 	return 0;
@@ -508,16 +514,6 @@ static int fimc_is_set_cmd_nblk(struct fimc_is_interface *this,
 	send_interrupt(this);
 
 	exit_process_barrier(this);
-
-	switch (msg->command) {
-	case HIC_SET_CAM_CONTROL:
-		break;
-	case HIC_SHOT:
-		break;
-	default:
-		err("unresolved command\n");
-		break;
-	}
 
 	return ret;
 }
@@ -691,14 +687,32 @@ static void wq_func_general(struct work_struct *data)
 			case HIC_SHOT:
 				dbg_interface("shot done\n");
 				get_req_work(&itf->nblk_shot , &nblk_work);
-				nblk_work->msg.command = ISR_DONE;
-				set_free_work(&itf->nblk_shot, nblk_work);
+				if (nblk_work) {
+					nblk_work->msg.command = ISR_DONE;
+					set_free_work(&itf->nblk_shot,
+						nblk_work);
+				} else {
+					err("nblk shot request is empty");
+					print_free_work_list(
+						&itf->nblk_shot);
+					print_req_work_list(
+						&itf->nblk_shot);
+				}
 				break;
 			case HIC_SET_CAM_CONTROL:
 				dbg_interface("camctrl done\n");
 				get_req_work(&itf->nblk_cam_ctrl , &nblk_work);
-				nblk_work->msg.command = ISR_DONE;
-				set_free_work(&itf->nblk_cam_ctrl, nblk_work);
+				if (nblk_work) {
+					nblk_work->msg.command = ISR_DONE;
+					set_free_work(&itf->nblk_cam_ctrl,
+						nblk_work);
+				} else {
+					err("nblk camctrl request is empty");
+					print_free_work_list(
+						&itf->nblk_cam_ctrl);
+					print_req_work_list(
+						&itf->nblk_cam_ctrl);
+				}
 				break;
 			default:
 				err("unknown done is invokded\n");
@@ -729,6 +743,12 @@ static void wq_func_general(struct work_struct *data)
 				break;
 			}
 			break;
+		case IHC_AA_DONE:
+			err("AA_DONE(%d,%d,%d) is not acceptable\n",
+				msg->parameter1,
+				msg->parameter2,
+				msg->parameter3);
+			break;
 		default:
 			err("func_general unknown(%d) end\n", msg->command);
 			break;
@@ -739,21 +759,42 @@ static void wq_func_general(struct work_struct *data)
 	}
 }
 
+static void wq_func_dev_common(struct fimc_is_ischain_dev *dev)
+{
+	unsigned long flags;
+	struct fimc_is_video_common *video;
+	struct fimc_is_framemgr *framemgr;
+	struct fimc_is_frame_shot *frame;
+
+	video = dev->video;
+	framemgr = &dev->framemgr;
+
+	framemgr_e_barrier_irqs(framemgr, FMGR_IDX_4, flags);
+
+	fimc_is_frame_process_head(framemgr, &frame);
+	if (frame) {
+		fimc_is_frame_trans_pro_to_com(framemgr, frame);
+		buffer_done(video, frame->index);
+	} else
+		err("done is occured without request\n");
+
+	framemgr_x_barrier_irqr(framemgr, FMGR_IDX_4, flags);
+}
+
 static void wq_func_scc(struct work_struct *data)
 {
 	struct fimc_is_interface *itf;
 	struct fimc_is_msg *msg;
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_device_ischain *ischain;
-	struct fimc_is_frame_shot *shot;
+	struct fimc_is_frame_shot *frame;
 	struct fimc_is_video_common *video;
 	struct fimc_is_work *work;
 	unsigned long flags;
 	u32 fnumber;
 	u32 index;
-	bool callback;
 
-	callback = false;
+	index = FIMC_IS_INVALID_BUF_INDEX;
 	itf = container_of(data, struct fimc_is_interface,
 		work_queue[INTR_SCC_FDONE]);
 	framemgr = itf->framemgr;
@@ -764,41 +805,24 @@ static void wq_func_scc(struct work_struct *data)
 	while (work) {
 		msg = &work->msg;
 		fnumber = msg->parameter1;
-		index = msg->parameter2;
 
-		spin_lock_irqsave(&framemgr->slock, flags);
+		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_5, flags);
 
-		fimc_is_frame_process_head(framemgr, &shot);
-		if (shot) {
+		fimc_is_frame_process_head(framemgr, &frame);
+		if (frame) {
+			index = frame->index;
 			dbg_interface("C%d %d\n", index, fnumber);
 
-			if (test_bit(FIMC_IS_REQ_SCC, &shot->request_flag)) {
-				clear_bit(FIMC_IS_REQ_SCC, &shot->request_flag);
-				if (!shot->request_flag) {
-#ifdef AUTO_MODE
-					fimc_is_frame_trans_pro_to_free(
-						framemgr, shot);
-#else
-					fimc_is_frame_trans_pro_to_com(
-						framemgr, shot);
-#endif
-					callback = true;
-				}
+			if (test_bit(FIMC_IS_REQ_SCC, &frame->req_flag)) {
+				clear_bit(FIMC_IS_REQ_SCC, &frame->req_flag);
 
-				vb2_buffer_done(video->vbq.bufs[index],
-					VB2_BUF_STATE_DONE);
+				wq_func_dev_common(&ischain->scc);
 			} else
 				err("SCC done is occured without request1\n");
 		} else
 			err("SCC done is occured without request2\n");
 
-		spin_unlock_irqrestore(&framemgr->slock, flags);
-
-		if (callback) {
-			mutex_lock(&ischain->mutex_state);
-			fimc_is_ischain_callback(ischain);
-			mutex_unlock(&ischain->mutex_state);
-		}
+		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_5, flags);
 
 		set_free_work(&itf->work_list[INTR_SCC_FDONE], work);
 		get_req_work(&itf->work_list[INTR_SCC_FDONE], &work);
@@ -811,15 +835,14 @@ static void wq_func_scp(struct work_struct *data)
 	struct fimc_is_msg *msg;
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_device_ischain *ischain;
-	struct fimc_is_frame_shot *shot;
+	struct fimc_is_frame_shot *frame;
 	struct fimc_is_video_common *video;
 	struct fimc_is_work *work;
 	unsigned long flags;
 	u32 fnumber;
 	u32 index;
-	bool callback;
 
-	callback = false;
+	index = FIMC_IS_INVALID_BUF_INDEX;
 	itf = container_of(data, struct fimc_is_interface,
 		work_queue[INTR_SCP_FDONE]);
 	framemgr = itf->framemgr;
@@ -830,41 +853,24 @@ static void wq_func_scp(struct work_struct *data)
 	while (work) {
 		msg = &work->msg;
 		fnumber = msg->parameter1;
-		index = msg->parameter2;
 
-		spin_lock_irqsave(&framemgr->slock, flags);
+		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_6, flags);
 
-		fimc_is_frame_process_head(framemgr, &shot);
-		if (shot) {
+		fimc_is_frame_process_head(framemgr, &frame);
+		if (frame) {
+			index = frame->index;
 			dbg_interface("P%d %d\n", index, fnumber);
 
-			if (test_bit(FIMC_IS_REQ_SCP, &shot->request_flag)) {
-				clear_bit(FIMC_IS_REQ_SCP, &shot->request_flag);
-				if (!shot->request_flag) {
-#ifdef AUTO_MODE
-					fimc_is_frame_trans_pro_to_free(
-						framemgr, shot);
-#else
-					fimc_is_frame_trans_pro_to_com(
-						framemgr, shot);
-#endif
-					callback = true;
-				}
+			if (test_bit(FIMC_IS_REQ_SCP, &frame->req_flag)) {
+				clear_bit(FIMC_IS_REQ_SCP, &frame->req_flag);
 
-				vb2_buffer_done(video->vbq.bufs[index],
-					VB2_BUF_STATE_DONE);
+				wq_func_dev_common(&ischain->scp);
 			} else
 				err("SCP done is occured without request1\n");
 		} else
 			err("SCP done is occured without request2\n");
 
-		spin_unlock_irqrestore(&framemgr->slock, flags);
-
-		if (callback) {
-			mutex_lock(&ischain->mutex_state);
-			fimc_is_ischain_callback(ischain);
-			mutex_unlock(&ischain->mutex_state);
-		}
+		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_6, flags);
 
 		set_free_work(&itf->work_list[INTR_SCP_FDONE], work);
 		get_req_work(&itf->work_list[INTR_SCP_FDONE], &work);
@@ -877,78 +883,89 @@ static void wq_func_meta(struct work_struct *data)
 	struct fimc_is_msg *msg;
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_device_ischain *ischain;
-	struct fimc_is_frame_shot *shot;
+	struct fimc_is_frame_shot *frame;
 	struct fimc_is_video_common *video;
 	struct fimc_is_work *work;
-	struct camera2_uctl *uctl;
 	unsigned long flags;
-	u32 fnumber;
+	u32 fcount;
 	u32 index;
-	bool callback;
+	bool request_done;
+	void *cookie;
 
-	callback = false;
+	index = FIMC_IS_INVALID_BUF_INDEX;
+	request_done = false;
 	itf = container_of(data, struct fimc_is_interface,
 		work_queue[INTR_META_DONE]);
 	framemgr = itf->framemgr;
-#ifdef AUTO_MODE
-	video = itf->video_sensor;
-	ischain = itf->video_isp->device;
-#else
 	video = itf->video_isp;
-	ischain = itf->video_isp->device;
-#endif
+	ischain = video->device;
 
 	get_req_work(&itf->work_list[INTR_META_DONE], &work);
 	while (work) {
 		msg = &work->msg;
-		fnumber = msg->parameter1;
+		fcount = msg->parameter1;
 
-		spin_lock_irqsave(&framemgr->slock, flags);
+		itf->fcount++;
+		if (itf->fcount != fcount) {
+			err("fcount is not correct(%d, %d)",
+				fcount, itf->fcount);
 
-		fimc_is_frame_process_head(framemgr, &shot);
-		if (shot) {
-			index = shot->id;
-			uctl = &shot->shot->uctl;
-			itf->curr_exposure = uctl->sensor.exposureTime;
-			itf->curr_sensitivity = uctl->sensor.sensitivity;
-			itf->curr_fduration = uctl->sensor.frameDuration;
-			dbg_interface("M%d,%d,%d\n",
-				index, fnumber,
-				shot->fnumber);
-			dbg_interface("E(%08X), S(%08X), D(%08X)\n",
-				(u32)itf->curr_exposure,
-				itf->curr_sensitivity,
-				itf->curr_fduration);
-			dbg_interface("request : %X\n",
-				(u32)shot->request_flag);
+			itf->fcount = fcount;
+			goto next;
+		}
 
-			if (test_bit(FIMC_IS_REQ_MDT, &shot->request_flag)) {
-				clear_bit(FIMC_IS_REQ_MDT, &shot->request_flag);
-				if (!shot->request_flag) {
+		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_7, flags);
+
+		fimc_is_frame_process_head(framemgr, &frame);
+		if (frame) {
+			if (fcount != frame->fcount)
+				dbg_warning("frame mismatch(%d != %d)",
+					fcount, frame->fcount);
+
+			index = frame->index;
+			/*printk("@%d", index);*/
+
+			/*flush cache*/
+			cookie = vb2_plane_cookie(frame->vb, 1);
+			vb2_ion_sync_for_device(cookie, 0, frame->shot_size,
+				DMA_FROM_DEVICE);
+
+			memcpy(&itf->isp_peri_ctl, &frame->shot->uctl,
+				sizeof(struct camera2_uctl));
+
+			if (test_bit(FIMC_IS_REQ_MDT, &frame->req_flag)) {
+				clear_bit(FIMC_IS_REQ_MDT, &frame->req_flag);
+
+				request_done = true;
 #ifdef AUTO_MODE
-					fimc_is_frame_trans_pro_to_free(
-						framemgr, shot);
+				fimc_is_frame_trans_pro_to_fre(framemgr, frame);
+				buffer_done(itf->video_sensor, index);
 #else
-					fimc_is_frame_trans_pro_to_com(
-						framemgr, shot);
+				fimc_is_frame_trans_pro_to_com(framemgr, frame);
+				buffer_done(itf->video_isp, index);
 #endif
-					callback = true;
-				}
-
-				vb2_buffer_done(video->vbq.bufs[index],
-					VB2_BUF_STATE_DONE);
 			}
-		} else
-			err("Meta done is occured without request\n");
+		} else {
+			err("Meta done is occured without request");
+			fimc_is_frame_print_free_list(framemgr);
+			fimc_is_frame_print_request_list(framemgr);
+			fimc_is_frame_print_process_list(framemgr);
+			fimc_is_frame_print_complete_list(framemgr);
+		}
 
-		spin_unlock_irqrestore(&framemgr->slock, flags);
+		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_7, flags);
 
-		if (callback) {
+		if (request_done) {
+#ifdef DBG_STREAMING
+			printk(KERN_INFO "M%d %d\n", index, fcount);
+#endif
+
 			mutex_lock(&ischain->mutex_state);
 			fimc_is_ischain_callback(ischain);
 			mutex_unlock(&ischain->mutex_state);
 		}
 
+next:
 		set_free_work(&itf->work_list[INTR_META_DONE], work);
 		get_req_work(&itf->work_list[INTR_META_DONE], &work);
 	}
@@ -1087,6 +1104,7 @@ int fimc_is_interface_open(struct fimc_is_interface *this)
 
 	enter_request_barrier(this);
 
+	this->fcount = 0;
 	set_state(this, IS_IF_STATE_IDLE);
 
 	return ret;
@@ -1171,7 +1189,7 @@ int fimc_is_hw_setfile(struct fimc_is_interface *this,
 }
 
 int fimc_is_hw_open(struct fimc_is_interface *this,
-	u32 instance, u32 sensor, u32 channel)
+	u32 instance, u32 sensor, u32 channel, u32 *mwidth, u32 *mheight)
 {
 	int ret;
 	struct fimc_is_msg msg;
@@ -1191,6 +1209,9 @@ int fimc_is_hw_open(struct fimc_is_interface *this,
 	msg.parameter4 = 0;
 
 	ret = fimc_is_set_cmd(this, &msg);
+
+	*mwidth = this->reply.parameter2;
+	*mheight = this->reply.parameter3;
 
 	return ret;
 }
@@ -1392,6 +1413,7 @@ int fimc_is_hw_power_down(struct fimc_is_interface *this,
 
 	pm_qos_remove_request(&pm_qos_req);
 
+
 	dbg_interface("pwr_down(%d)\n", instance);
 
 	msg.id = 0;
@@ -1469,3 +1491,4 @@ int fimc_is_hw_s_camctrl_nblk(struct fimc_is_interface *this,
 
 	return ret;
 }
+

@@ -157,7 +157,7 @@ static int fimc_is_bayer_video_set_format_mplane(struct file *file, void *fh,
 
 	dbg_sensor("req w : %d req h : %d\n",
 		video->common.frame.width,
-		video->common.frame.width);
+		video->common.frame.height);
 
 	return ret;
 }
@@ -205,7 +205,6 @@ static int fimc_is_bayer_video_reqbufs(struct file *file, void *priv,
 	else
 		fimc_is_frame_open(sensor->framemgr, buf->count);
 
-	dbg_sensor("%s END\n", __func__);
 	return ret;
 }
 
@@ -228,15 +227,12 @@ static int fimc_is_bayer_video_qbuf(struct file *file, void *priv,
 	int ret = 0;
 	struct fimc_is_video_sensor *video = file->private_data;
 
-
 #ifdef DBG_STREAMING
-	dbg_sensor("%s\n", __func__);
+	/*dbg_sensor("%s\n", __func__);*/
 #endif
 
 	ret = fimc_is_video_qbuf(&video->common, buf);
-#ifdef DBG_STREAMING
-	dbg_sensor("%s END, ret(%d)\n", __func__, ret);
-#endif
+
 	return ret;
 }
 
@@ -246,13 +242,11 @@ static int fimc_is_bayer_video_dqbuf(struct file *file, void *priv,
 	int ret = 0;
 	struct fimc_is_video_sensor *video = file->private_data;
 	bool blocking = file->f_flags & O_NONBLOCK;
-#ifdef DBG_STREAMING
-	dbg_sensor("%s\n", __func__);
-#endif
+
 	ret = fimc_is_video_dqbuf(&video->common, buf, blocking);
 
 #ifdef DBG_STREAMING
-	dbg_sensor("%s END(index : %d)\n", __func__, buf->index);
+	/*dbg_sensor("%s(index : %d)\n", __func__, buf->index);*/
 #endif
 
 	return ret;
@@ -268,7 +262,6 @@ static int fimc_is_bayer_video_streamon(struct file *file, void *priv,
 
 	ret = fimc_is_video_streamon(&video->common, type);
 
-	dbg_sensor("%sEND, ret(%d)\n", __func__, ret);
 	return ret;
 }
 
@@ -295,7 +288,7 @@ static int fimc_is_bayer_video_enum_input(struct file *file, void *priv,
 
 	dbg_sensor("index(%d) sensor(%s)\n",
 		input->index, sensor_info->sensor_name);
-	dbg_sensor("pos(%d) sensor_id(%d)\n",
+	printk(KERN_INFO "sensor: pos(%d) sensor_id(%d)\n",
 		sensor_info->sensor_position, sensor_info->sensor_id);
 	dbg_sensor("csi_id(%d) flite_id(%d)\n",
 		sensor_info->csi_id, sensor_info->flite_id);
@@ -325,7 +318,7 @@ static int fimc_is_bayer_video_s_input(struct file *file, void *priv,
 	struct fimc_is_video_sensor *video = file->private_data;
 	struct fimc_is_device_sensor *sensor = video->common.device;
 
-	dbg_sensor("%s(input : %d)\n", __func__, input);
+	printk(KERN_INFO "%s(input : %d)\n", __func__, input);
 
 	fimc_is_sensor_s_active_sensor(sensor, input);
 
@@ -429,9 +422,10 @@ static int fimc_is_bayer_start_streaming(struct vb2_queue *q,
 	dbg_sensor("%s\n", __func__);
 
 	if (test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state)) {
-		fimc_is_sensor_back_start(sensor, &video->common);
 		set_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
+		fimc_is_sensor_back_start(sensor, &video->common);
 	}
+
 	return 0;
 }
 
@@ -442,10 +436,10 @@ static int fimc_is_bayer_stop_streaming(struct vb2_queue *q)
 
 	dbg_sensor("%s\n", __func__);
 
-	fimc_is_sensor_back_stop(sensor);
-
-	clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state);
-	clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)) {
+		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
+		fimc_is_sensor_back_stop(sensor);
+	}
 
 	return 0;
 }
@@ -454,23 +448,13 @@ static void fimc_is_bayer_buffer_queue(struct vb2_buffer *vb)
 {
 	struct fimc_is_video_sensor *video = vb->vb2_queue->drv_priv;
 	struct fimc_is_device_sensor *sensor = video->common.device;
-	void *cookie;
 
 #ifdef DBG_STREAMING
 	dbg_sensor("%s(%d)\n", __func__, vb->v4l2_buf.index);
 #endif
 
 	fimc_is_video_buffer_queue(&video->common, vb, sensor->framemgr);
-
-	/*flush cache*/
-	cookie = vb2_plane_cookie(vb, 1);
-	vb2_ion_sync_for_device(cookie,
-		0, video->common.frame.size[1], DMA_TO_DEVICE);
-
-	/*insert request*/
-	fimc_is_sensor_buffer_queue(
-		sensor,
-		vb->v4l2_buf.index);
+	fimc_is_sensor_buffer_queue(sensor, vb->v4l2_buf.index);
 
 	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state))
 		fimc_is_bayer_start_streaming(vb->vb2_queue, 0);

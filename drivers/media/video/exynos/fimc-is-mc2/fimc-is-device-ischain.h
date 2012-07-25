@@ -49,17 +49,18 @@
 #define NUM_DIS_INTERNAL_BUF		(3)
 #define NUM_3DNR_INTERNAL_BUF		(2)
 
+#define NUM_ISP_DMA_BUF			(8)
+#define NUM_SCC_DMA_BUF			(8)
+#define NUM_SCP_DMA_BUF			(8)
+
+#define SENSOR_MAX_CTL		0x10
+#define SENSOR_MAX_CTL_MASK	(SENSOR_MAX_CTL-1)
+
 /*global state*/
 enum fimc_is_ischain_state {
 	FIMC_IS_ISCHAIN_LOADED,
 	FIMC_IS_ISCHAIN_POWER_ON,
 	FIMC_IS_ISCHAIN_RUN
-};
-
-/*device state*/
-enum fimc_is_isdev_state {
-	FIMC_IS_ISDEV_STOP,
-	FIMC_IS_ISDEV_START
 };
 
 struct fimc_is_ishcain_mem {
@@ -86,9 +87,19 @@ struct fimc_is_ishcain_mem {
 	u32	kvaddr_isp;
 };
 
+/*device state*/
+enum fimc_is_isdev_state {
+	FIMC_IS_ISDEV_DSTART,
+	FIMC_IS_ISDEV_BYPASS
+};
+
 struct fimc_is_ischain_dev {
-	u32					state;
+	unsigned long				state;
 	spinlock_t				slock_state;
+	u32					skip_frames;
+
+	struct fimc_is_framemgr			framemgr;
+	struct fimc_is_video_common		*video;
 };
 
 struct fimc_is_device_ischain {
@@ -111,34 +122,45 @@ struct fimc_is_device_ischain {
 	spinlock_t				slock_state;
 
 	u32					instance;
+	u32					fcount;
 
 	struct camera2_sm			capability;
-	struct camera2_uctl			req_frame_desc;
-	struct camera2_uctl			frame_desc;
+	struct camera2_uctl			cur_peri_ctl;
+	struct camera2_uctl			peri_ctls[SENSOR_MAX_CTL];
+
+	/*isp margin*/
+	u32					margin_width;
+	u32					margin_height;
 
 	/*isp ~ scc*/
 	u32					chain0_width;
 	u32					chain0_height;
+	struct fimc_is_ischain_dev		isp;
+	struct fimc_is_ischain_dev		scc;
 
 	/*scc ~ dis*/
 	u32					chain1_width;
 	u32					chain1_height;
-	struct fimc_is_ischain_dev		scc;
-	struct fimc_is_video_scc		*scc_video;
+	struct fimc_is_ischain_dev		dis;
 
 	/*dis ~ scp*/
 	u32					chain2_width;
 	u32					chain2_height;
+	struct fimc_is_ischain_dev		dnr;
 
 	/*scp ~ fd*/
 	u32					chain3_width;
 	u32					chain3_height;
 	struct fimc_is_ischain_dev		scp;
-	struct fimc_is_video_scp		*scp_video;
+
+	u32					lindex;
+	u32					hindex;
+	u32					indexes;
 
 	u32					private_data;
 };
 
+/*global function*/
 int fimc_is_ischain_probe(struct fimc_is_device_ischain *this,
 	struct fimc_is_interface *interface,
 	struct fimc_is_framemgr *framemgr,
@@ -149,42 +171,50 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this);
 int fimc_is_ischain_close(struct fimc_is_device_ischain *this);
 int fimc_is_ischain_init(struct fimc_is_device_ischain *this,
 	u32 input, u32 channel);
-int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
-	struct fimc_is_video_common *video);
-int fimc_is_ischain_scp_start(struct fimc_is_device_ischain *this);
-int fimc_is_ischain_scp_stop(struct fimc_is_device_ischain *this);
-int fimc_is_ischain_buffer_queue(struct fimc_is_device_ischain *this,
-	u32 index);
-int fimc_is_ischain_buffer_finish(struct fimc_is_device_ischain *this,
-	u32 index);
 int fimc_is_ischain_g_capability(struct fimc_is_device_ischain *this,
 	u32 user_ptr);
 
-int fimc_is_ischain_s_chain0(struct fimc_is_device_ischain *this,
-	u32 width,
-	u32 height);
+/*isp subdev*/
+int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
+	struct fimc_is_video_common *video);
+int fimc_is_ischain_isp_stop(struct fimc_is_device_ischain *this);
+int fimc_is_ischain_isp_s_format(struct fimc_is_device_ischain *this,
+	u32 width, u32 height);
+int fimc_is_ischain_isp_buffer_queue(struct fimc_is_device_ischain *this,
+	u32 index);
+int fimc_is_ischain_isp_buffer_finish(struct fimc_is_device_ischain *this,
+	u32 index);
 
-int fimc_is_ischain_s_chain1(struct fimc_is_device_ischain *this,
-	u32 width,
-	u32 height);
+/*scc subdev*/
+int fimc_is_ischain_scc_start(struct fimc_is_device_ischain *this);
+int fimc_is_ischain_scc_stop(struct fimc_is_device_ischain *this);
 
-int fimc_is_ischain_s_chain2(struct fimc_is_device_ischain *this,
-	u32 width,
-	u32 height);
+/*scp subdev*/
+int fimc_is_ischain_scp_start(struct fimc_is_device_ischain *this);
+int fimc_is_ischain_scp_stop(struct fimc_is_device_ischain *this);
+int fimc_is_ischain_scp_s_format(struct fimc_is_device_ischain *this,
+	u32 width, u32 height);
 
-int fimc_is_ischain_s_chain3(struct fimc_is_device_ischain *this,
-	u32 width,
-	u32 height);
+/*common subdev*/
+int fimc_is_ischain_dev_open(struct fimc_is_ischain_dev *this,
+	struct fimc_is_video_common *video);
+int fimc_is_ischain_dev_buffer_queue(struct fimc_is_ischain_dev *this,
+	u32 index);
+int fimc_is_ischain_dev_buffer_finish(struct fimc_is_ischain_dev *this,
+	u32 index);
 
 /*special api for sensor*/
 int fimc_is_ischain_callback(struct fimc_is_device_ischain *this);
+int fimc_is_ischain_camctl(struct fimc_is_device_ischain *this,
+	struct fimc_is_frame_shot *frame,
+	u32 fcount);
+int fimc_is_ischain_tag(struct fimc_is_device_ischain *ischain,
+	struct fimc_is_frame_shot *frame);
 
+int fimc_is_itf_process_on(struct fimc_is_device_ischain *this);
+int fimc_is_itf_process_off(struct fimc_is_device_ischain *this);
 int fimc_is_itf_stream_on(struct fimc_is_device_ischain *this);
 int fimc_is_itf_stream_off(struct fimc_is_device_ischain *this);
-int fimc_is_itf_stream_ctl(struct fimc_is_device_ischain *this,
-	u32 fcount,
-	u64 *rfduration,
-	u64 *rexposure,
-	u32 *rsensitivity);
+
 int fimc_is_runtime_resume(struct device *dev);
 #endif

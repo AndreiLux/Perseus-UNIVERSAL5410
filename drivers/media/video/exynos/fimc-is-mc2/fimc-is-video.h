@@ -2,7 +2,8 @@
 #define FIMC_IS_VIDEO_H
 
 #define FIMC_IS_MAX_BUF_NUM			(16)
-#define FIMC_IS_MAX_BUf_PLANE_NUM		(3)
+#define FIMC_IS_MAX_PLANES		(3)
+#define FIMC_IS_INVALID_BUF_INDEX		(0xFF)
 
 enum fimc_is_video_state {
 	FIMC_IS_VIDEO_BUFFER_PREPARED,
@@ -20,7 +21,7 @@ struct fimc_is_frame {
 	struct fimc_is_fmt	format;
 	u16			width;
 	u16			height;
-	u32			size[FIMC_IS_MAX_BUf_PLANE_NUM];
+	u32			size[FIMC_IS_MAX_PLANES];
 };
 
 struct fimc_is_video_common {
@@ -39,8 +40,8 @@ struct fimc_is_video_common {
 	void				*core;
 	void				*device;
 
-	u32 buf_dva[FIMC_IS_MAX_BUF_NUM][FIMC_IS_MAX_BUf_PLANE_NUM];
-	u32 buf_kva[FIMC_IS_MAX_BUF_NUM][FIMC_IS_MAX_BUf_PLANE_NUM];
+	u32 buf_dva[FIMC_IS_MAX_BUF_NUM][FIMC_IS_MAX_PLANES];
+	u32 buf_kva[FIMC_IS_MAX_BUF_NUM][FIMC_IS_MAX_PLANES];
 };
 
 struct fimc_is_fmt *fimc_is_find_format(u32 *pixelformat,
@@ -78,4 +79,5 @@ int fimc_is_video_queue_setup(struct fimc_is_video_common *video,
 int fimc_is_video_buffer_queue(struct fimc_is_video_common *video,
 	struct vb2_buffer *vb, struct fimc_is_framemgr *framemgr);
 
+int buffer_done(struct fimc_is_video_common *video, u32 index);
 #endif

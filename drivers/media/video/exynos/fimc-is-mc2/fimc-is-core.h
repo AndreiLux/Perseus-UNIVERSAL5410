@@ -13,7 +13,7 @@
 #define FIMC_IS_CORE_H
 
 
-/*#define DEBUG*/
+#define DEBUG
 /*#define FIMC_IS_A5_DEBUG_ON	1*/
 /*#define DBG_STREAMING*/
 
@@ -114,8 +114,6 @@
 	printk(KERN_ERR "%s:%d: " fmt "\n", __func__, __LINE__, ##args)
 
 /*#define AUTO_MODE*/
-
-
 
 #ifdef DEBUG
 #define dbg(fmt, args...) \
@@ -227,37 +225,6 @@ enum fimc_is_video_dev_num {
 	FIMC_IS_VIDEO_MAX_NUM,
 };
 
-enum af_state {
-	FIMC_IS_AF_IDLE		= 0,
-	FIMC_IS_AF_SETCONFIG	= 1,
-	FIMC_IS_AF_RUNNING	= 2,
-	FIMC_IS_AF_LOCK		= 3,
-	FIMC_IS_AF_ABORT	= 4,
-};
-
-enum af_lock_state {
-	FIMC_IS_AF_UNLOCKED	= 0,
-	FIMC_IS_AF_LOCKED	= 0x02
-};
-
-enum ae_lock_state {
-	FIMC_IS_AE_UNLOCKED	= 0,
-	FIMC_IS_AE_LOCKED	= 1
-};
-
-enum awb_lock_state {
-	FIMC_IS_AWB_UNLOCKED	= 0,
-	FIMC_IS_AWB_LOCKED	= 1
-};
-
-enum fimc_is_power {
-	FIMC_IS_PWR_ST_BASE = 0,
-	FIMC_IS_PWR_ST_POWER_ON_OFF,
-	FIMC_IS_PWR_ST_STREAMING,
-	FIMC_IS_PWR_ST_SUSPENDED,
-	FIMC_IS_PWR_ST_RESUMED,
-};
-
 struct fimc_is_core;
 
 struct fimc_is_front_dev {
@@ -286,88 +253,24 @@ struct fimc_is_back_dev {
 	u32 dis_height;
 };
 
-struct is_meminfo {
-	dma_addr_t	base;		/* buffer base */
-	size_t		size;		/* total length */
-	dma_addr_t	vaddr_base;	/* buffer base */
-	dma_addr_t	vaddr_curr;	/* current addr */
-	void		*bitproc_buf;
-	size_t		dvaddr;
-	unsigned char	*kvaddr;
-	unsigned char	*dvaddr_shared;
-	unsigned char	*kvaddr_shared;
-	unsigned char	*dvaddr_odc;
-	unsigned char	*kvaddr_odc;
-	unsigned char	*dvaddr_dis;
-	unsigned char	*kvaddr_dis;
-	unsigned char	*dvaddr_3dnr;
-	unsigned char	*kvaddr_3dnr;
-	unsigned char	*dvaddr_isp;
-	unsigned char	*kvaddr_isp;
-	void		*fw_cookie;
-
-};
-
-struct is_fw {
-	const struct firmware	*info;
-	int			state;
-	int			ver;
-};
-
-struct is_setfile {
-	const struct firmware	*info;
-	int			state;
-	u32			sub_index;
-	u32			base;
-	u32			size;
-};
-
-struct is_to_host_cmd {
-	u32	cmd;
-	u32	sensor_id;
-	u16	num_valid_args;
-	u32	arg[MAX_I2H_ARG];
-};
-
-struct is_fd_result_header {
-	u32 offset;
-	u32 count;
-	u32 index;
-	u32 target_addr;
-	s32 width;
-	s32 height;
-};
-
-struct is_af_info {
-	u16 mode;
-	u32 af_state;
-	u32 af_lock_state;
-	u32 ae_lock_state;
-	u32 awb_lock_state;
-	u16 pos_x;
-	u16 pos_y;
-	u16 prev_pos_x;
-	u16 prev_pos_y;
-	u16 use_af;
-};
-
 struct fimc_is_core {
 	struct platform_device			*pdev;
-	struct exynos5_platform_fimc_is	*pdata; /* depended on isp */
-	struct exynos_md			*mdev;
-	spinlock_t				slock;
-	struct mutex				lock;
+	struct resource				*regs_res;
+	void __iomem				*regs;
+	int					irq;
+	u32					id;
 
-	/*iky*/
-	spinlock_t				mcu_slock;
+	/* depended on isp */
+	struct exynos5_platform_fimc_is		*pdata;
+	struct exynos_md			*mdev;
 
 	struct fimc_is_mem			mem;
 	struct fimc_is_framemgr			framemgr_sensor;
 	struct fimc_is_framemgr			framemgr_ischain;
 	struct fimc_is_interface		interface;
 
-	struct fimc_is_device_sensor	sensor;
-	struct fimc_is_device_ischain	ischain;
+	struct fimc_is_device_sensor		sensor;
+	struct fimc_is_device_ischain		ischain;
 	struct fimc_is_front_dev		front;
 	struct fimc_is_back_dev			back;
 
@@ -377,32 +280,6 @@ struct fimc_is_core {
 	struct fimc_is_video_scc		video_scc;
 	struct fimc_is_video_scp		video_scp;
 
-	/*struct vb2_alloc_ctx			*alloc_ctx;*/
-
-	struct resource				*regs_res;
-	void __iomem				*regs;
-	int					irq;
-	unsigned long				state;
-	unsigned long				power;
-	unsigned long				pipe_state;
-	wait_queue_head_t			irq_queue;
-	u32					id;
-	struct is_fw				fw;
-	struct is_setfile			setfile;
-	struct is_to_host_cmd			i2h_cmd;
-	struct is_fd_result_header		fd_header;
-
-	/* Shared parameter region */
-	atomic_t				p_region_num;
-	unsigned long				p_region_index1;
-	unsigned long				p_region_index2;
-	struct is_region			*is_p_region;
-	struct is_share_region		*is_shared_region;
-	u32					scenario_id;
-	u32					frame_count;
-	u32					sensor_num;
-	struct is_af_info			af;
-	int					low_power_mode;
 };
 
 extern const struct v4l2_file_operations fimc_is_bayer_video_fops;

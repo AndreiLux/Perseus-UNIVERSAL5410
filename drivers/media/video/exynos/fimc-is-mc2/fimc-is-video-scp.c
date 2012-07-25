@@ -65,12 +65,13 @@ static int fimc_is_scalerp_video_open(struct file *file)
 	struct fimc_is_core *dev = video_drvdata(file);
 	struct fimc_is_video_scp *video = &dev->video_scp;
 	struct fimc_is_device_ischain *ischain = &dev->ischain;
+	struct fimc_is_ischain_dev *scp = &ischain->scp;
 
 	dbg_scp("%s\n", __func__);
 
 	file->private_data = video;
-	ischain->scp_video = video;
 	fimc_is_video_open(&video->common, ischain);
+	fimc_is_ischain_dev_open(scp, &video->common);
 
 	return 0;
 }
@@ -150,8 +151,7 @@ static int fimc_is_scalerp_video_set_format_mplane(struct file *file, void *fh,
 {
 	int ret = 0;
 	struct fimc_is_video_scp *video = file->private_data;
-	struct fimc_is_core *core = video_drvdata(file);
-	struct fimc_is_device_ischain *ischain = &core->ischain;
+	struct fimc_is_device_ischain *ischain = video->common.device;
 
 	dbg_scp("%s\n", __func__);
 
@@ -161,22 +161,9 @@ static int fimc_is_scalerp_video_set_format_mplane(struct file *file, void *fh,
 		video->common.frame.width,
 		video->common.frame.height);
 
-	/*device_sensor_stream_off(sensor, interface);*/
-
-/*
-	fimc_is_ischain_s_chain1(ischain,
+	fimc_is_ischain_scp_s_format(ischain,
 		video->common.frame.width,
 		video->common.frame.height);
-
-	fimc_is_ischain_s_chain2(ischain,
-		video->common.frame.width,
-		video->common.frame.height);*/
-
-	fimc_is_ischain_s_chain3(ischain,
-		video->common.frame.width,
-		video->common.frame.height);
-
-	/*device_sensor_stream_on(sensor, interface);*/
 
 	return ret;
 }
@@ -241,14 +228,11 @@ static int fimc_is_scalerp_video_qbuf(struct file *file, void *priv,
 	struct fimc_is_video_scp *video = file->private_data;
 
 #ifdef DBG_STREAMING
-	dbg_scp("%s(index : %d)\n", __func__, buf->index);
+	/*dbg_scp("%s(index : %d)\n", __func__, buf->index);*/
 #endif
 
 	ret = fimc_is_video_qbuf(&video->common, buf);
 
-#ifdef DBG_STREAMING
-	dbg_scp("%s END ret(%d)\n", __func__, ret);
-#endif
 	return ret;
 }
 
@@ -258,15 +242,11 @@ static int fimc_is_scalerp_video_dqbuf(struct file *file, void *priv,
 	int ret = 0;
 	struct fimc_is_video_scp *video = file->private_data;
 
-#ifdef DBG_STREAMING
-	dbg_scp("%s\n", __func__);
-#endif
-
 	ret = fimc_is_video_dqbuf(&video->common, buf,
 		file->f_flags & O_NONBLOCK);
 
 #ifdef DBG_STREAMING
-	dbg_scp("%s END ret(%d) (index : %d)\n", __func__, ret, buf->index);
+	/*dbg_scp("%s(index : %d)\n", __func__, buf->index);*/
 #endif
 
 	return ret;
@@ -278,7 +258,7 @@ static int fimc_is_scalerp_video_streamon(struct file *file, void *priv,
 	int ret = 0;
 	struct fimc_is_video_scp *video = file->private_data;
 
-	dbg("%s\n", __func__);
+	dbg_scp("%s\n", __func__);
 
 	ret = vb2_streamon(&video->common.vbq, type);
 	if (ret)
@@ -288,12 +268,12 @@ static int fimc_is_scalerp_video_streamon(struct file *file, void *priv,
 }
 
 static int fimc_is_scalerp_video_streamoff(struct file *file, void *priv,
-						enum v4l2_buf_type type)
+	enum v4l2_buf_type type)
 {
 	int ret = 0;
 	struct fimc_is_video_scp *video = file->private_data;
 
-	dbg("%s\n", __func__);
+	dbg_scp("%s\n", __func__);
 
 	ret = vb2_streamoff(&video->common.vbq, type);
 	if (ret)
@@ -337,8 +317,6 @@ static int fimc_is_scalerp_video_g_input(struct file *file, void *priv,
 static int fimc_is_scalerp_video_s_input(struct file *file, void *priv,
 					unsigned int input)
 {
-	dbg_scp("fimc_is_scalerp_video_s_input\n");
-
 	return 0;
 }
 
@@ -641,11 +619,17 @@ static int fimc_is_scalerp_stop_streaming(struct vb2_queue *q)
 {
 	int ret = 0;
 	struct fimc_is_video_scp *video = q->drv_priv;
+	struct fimc_is_device_ischain *ischain = video->common.device;
+	struct fimc_is_ischain_dev *scp = &ischain->scp;
 
 	dbg_scp("%s\n", __func__);
 
-	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state))
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)) {
 		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
+		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state);
+		fimc_is_frame_close(&scp->framemgr);
+		fimc_is_frame_open(&scp->framemgr, NUM_SCP_DMA_BUF);
+	}
 
 	return ret;
 }
@@ -653,18 +637,35 @@ static int fimc_is_scalerp_stop_streaming(struct vb2_queue *q)
 static void fimc_is_scalerp_buffer_queue(struct vb2_buffer *vb)
 {
 	struct fimc_is_video_scp *video = vb->vb2_queue->drv_priv;
+	struct fimc_is_device_ischain *ischain = video->common.device;
+	struct fimc_is_ischain_dev *scp = &ischain->scp;
 
 #ifdef DBG_STREAMING
-	dbg_scp("%s ++\n", __func__);
+	dbg_scp("%s\n", __func__);
 #endif
 
-	fimc_is_video_buffer_queue(&video->common, vb, 0);
+	fimc_is_video_buffer_queue(&video->common, vb, &scp->framemgr);
+	fimc_is_ischain_dev_buffer_queue(scp, vb->v4l2_buf.index);
 
 	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state))
 		fimc_is_scalerp_start_streaming(vb->vb2_queue, 0);
 }
 
-/* HACK ? */
+static int fimc_is_scalerp_buffer_finish(struct vb2_buffer *vb)
+{
+	int ret = 0;
+	struct fimc_is_video_scc *video = vb->vb2_queue->drv_priv;
+	struct fimc_is_device_ischain *ischain = video->common.device;
+	struct fimc_is_ischain_dev *scp = &ischain->scp;
+
+#ifdef DBG_STREAMING
+	dbg_scp("%s(%d)\n", __func__, vb->v4l2_buf.index);
+#endif
+
+	ret = fimc_is_ischain_dev_buffer_finish(scp, vb->v4l2_buf.index);
+
+	return ret;
+}
 static void fimc_is_scalerp_buffer_cleanup(struct vb2_buffer *vb)
 {
 	/* struct fimc_is_video_scp *video = vb->vb2_queue->drv_priv; */
@@ -680,6 +681,7 @@ const struct vb2_ops fimc_is_scalerp_qops = {
 	.queue_setup		= fimc_is_scalerp_queue_setup,
 	.buf_prepare		= fimc_is_scalerp_buffer_prepare,
 	.buf_queue		= fimc_is_scalerp_buffer_queue,
+	.buf_finish		= fimc_is_scalerp_buffer_finish,
 	.wait_prepare		= fimc_is_scalerp_unlock,
 	.wait_finish		= fimc_is_scalerp_lock,
 	.start_streaming	= fimc_is_scalerp_start_streaming,

@@ -1,6 +1,7 @@
 #ifndef FIMC_IS_INTERFACE_H
 #define FIMC_IS_INTERFACE_H
 
+#include "fimc-is-metadata.h"
 #include "fimc-is-framemgr.h"
 #include "fimc-is-video.h"
 
@@ -11,6 +12,8 @@
 
 #define MAX_NBLOCKING_COUNT 3
 #define MAX_WORK_COUNT 10
+
+#define TRY_RECV_AWARE_COUNT 100
 
 #define LOWBIT_OF(num)	(num >= 32 ? 0 : (u32)1<<num)
 #define HIGHBIT_OF(num)	(num >= 32 ? (u32)1<<(num-32) : 0)
@@ -33,7 +36,7 @@ struct fimc_is_msg {
 
 struct fimc_is_work {
 	struct list_head		list;
-	struct fimc_is_msg	msg;
+	struct fimc_is_msg		msg;
 };
 
 struct fimc_is_work_list {
@@ -62,6 +65,7 @@ struct fimc_is_interface {
 	struct work_struct		work_queue[INTR_MAX_MAP];
 	struct fimc_is_work_list	work_list[INTR_MAX_MAP];
 
+	u32				fcount;
 	bool				streaming;
 
 	struct fimc_is_framemgr		*framemgr;
@@ -75,9 +79,7 @@ struct fimc_is_interface {
 	struct fimc_is_work_list	nblk_cam_ctrl;
 	struct fimc_is_work_list	nblk_shot;
 
-	uint64_t			curr_exposure;
-	u32				curr_sensitivity;
-	u32				curr_fduration;
+	struct camera2_uctl		isp_peri_ctl;
 };
 
 int fimc_is_interface_probe(struct fimc_is_interface *this,
@@ -91,7 +93,7 @@ int fimc_is_interface_close(struct fimc_is_interface *this);
 int fimc_is_hw_enum(struct fimc_is_interface *interface,
 	u32 instances);
 int fimc_is_hw_open(struct fimc_is_interface *interface,
-	u32 instance, u32 sensor, u32 channel);
+	u32 instance, u32 sensor, u32 channel, u32 *mwidth, u32 *mheight);
 int fimc_is_hw_saddr(struct fimc_is_interface *interface,
 	u32 instance, u32 *setfile_addr);
 int fimc_is_hw_setfile(struct fimc_is_interface *interface,
@@ -123,3 +125,4 @@ int fimc_is_hw_s_camctrl_nblk(struct fimc_is_interface *this,
 	u32 instance, u32 address, u32 fnumber);
 
 #endif
+

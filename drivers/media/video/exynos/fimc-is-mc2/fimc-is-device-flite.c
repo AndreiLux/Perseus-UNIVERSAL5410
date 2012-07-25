@@ -184,7 +184,7 @@
 #define FLITE_REG_CIFCNTSEQ				0x100
 
 static void flite_hw_set_cam_source_size(unsigned long flite_reg_base,
-					struct fimc_is_flite_frame *f_frame)
+					struct fimc_is_frame_info *f_frame)
 {
 	u32 cfg = 0;
 
@@ -315,6 +315,7 @@ static void flite_hw_set_interrupt_source(unsigned long flite_reg_base)
 	writel(cfg, flite_reg_base + FLITE_REG_CIGCTRL);
 }
 
+/*
 static void flite_hw_set_interrupt_starten0_disable
 					(unsigned long flite_reg_base)
 {
@@ -324,6 +325,7 @@ static void flite_hw_set_interrupt_starten0_disable
 
 	writel(cfg, flite_reg_base + FLITE_REG_CIGCTRL);
 }
+*/
 
 static void flite_hw_set_camera_type(unsigned long flite_reg_base)
 {
@@ -336,7 +338,7 @@ static void flite_hw_set_camera_type(unsigned long flite_reg_base)
 }
 
 static void flite_hw_set_window_offset(unsigned long flite_reg_base,
-					struct fimc_is_flite_frame *f_frame)
+					struct fimc_is_frame_info *f_frame)
 {
 	u32 cfg = 0;
 	u32 hoff2, voff2;
@@ -456,9 +458,8 @@ int init_fimc_lite(unsigned long mipi_reg_base)
 }
 
 int start_fimc_lite(unsigned long mipi_reg_base,
-	struct fimc_is_flite_frame *f_frame)
+	struct fimc_is_frame_info *f_frame)
 {
-#if 1
 	flite_hw_set_cam_channel(mipi_reg_base);
 	flite_hw_set_cam_source_size(mipi_reg_base, f_frame);
 	flite_hw_set_camera_type(mipi_reg_base);
@@ -467,7 +468,7 @@ int start_fimc_lite(unsigned long mipi_reg_base,
 	flite_hw_set_output_local(base_reg, false);*/
 
 	flite_hw_set_interrupt_source(mipi_reg_base);
-	flite_hw_set_interrupt_starten0_disable(mipi_reg_base);
+	/*flite_hw_set_interrupt_starten0_disable(mipi_reg_base);*/
 	flite_hw_set_config_irq(mipi_reg_base);
 	flite_hw_set_window_offset(mipi_reg_base, f_frame);
 	/* flite_hw_set_test_pattern_enable(); */
@@ -477,22 +478,6 @@ int start_fimc_lite(unsigned long mipi_reg_base,
 
 	/*dbg_front("lite config : %08X\n",
 		*((unsigned int*)(base_reg + FLITE_REG_CIFCNTSEQ)));*/
-#else
-	flite_hw_set_cam_channel(base_reg);
-	flite_hw_set_cam_source_size(base_reg, f_frame);
-	flite_hw_set_camera_type(base_reg);
-	flite_hw_set_source_format(base_reg);
-	flite_hw_set_output_dma(base_reg, false);
-
-	flite_hw_set_interrupt_source(base_reg);
-	flite_hw_set_interrupt_starten0_disable(base_reg);
-	flite_hw_set_config_irq(base_reg);
-	flite_hw_set_window_offset(base_reg, f_frame);
-	/* flite_hw_set_test_pattern_enable(); */
-
-	flite_hw_set_last_capture_end_clear(base_reg);
-	flite_hw_set_capture_start(base_reg);
-#endif
 
 	return 0;
 }
@@ -503,7 +488,6 @@ int stop_fimc_lite(unsigned long mipi_reg_base)
 	return 0;
 }
 
-#ifdef AUTO_MODE
 static void wq_func_automode(struct work_struct *data)
 {
 	struct fimc_is_device_flite *flite;
@@ -514,83 +498,140 @@ static void wq_func_automode(struct work_struct *data)
 	sensor = (struct fimc_is_device_sensor *)flite->private_data;
 	ischain = sensor->ischain;
 
-	fimc_is_ischain_buffer_queue(ischain, flite->work);
+	fimc_is_ischain_isp_buffer_queue(ischain, flite->work);
 }
+
+static void tasklet_func_flite_str(unsigned long data)
+{
+	struct fimc_is_device_flite *flite;
+	struct fimc_is_device_sensor *sensor;
+	struct fimc_is_device_ischain *ischain;
+	struct fimc_is_framemgr *framemgr;
+	struct fimc_is_frame_shot *frame;
+	u32 bstart;
+	u32 fcount;
+
+	flite = (struct fimc_is_device_flite *)data;
+	sensor = (struct fimc_is_device_sensor *)flite->private_data;
+	ischain = sensor->ischain;
+	framemgr = flite->framemgr;
+
+	bstart = flite->tasklet_param_str;
+	fcount = atomic_read(&flite->fcount) + 1;
+
+#ifdef DBG_STREAMING
+	printk(KERN_INFO "S%d %d\n", bstart, fcount);
 #endif
 
-static void tasklet_func_flite(unsigned long data)
+	framemgr_e_barrier(framemgr, FMGR_IDX_0 + bstart);
+
+	fimc_is_frame_process_head(framemgr, &frame);
+	if (frame) {
+		frame->fcount = fcount;
+		fimc_is_ischain_camctl(ischain, frame, fcount);
+		fimc_is_ischain_tag(ischain, frame);
+	} else {
+		fimc_is_ischain_camctl(ischain, NULL, fcount);
+
+		err("process shot is empty");
+		fimc_is_frame_print_free_list(framemgr);
+		fimc_is_frame_print_request_list(framemgr);
+		fimc_is_frame_print_process_list(framemgr);
+		fimc_is_frame_print_complete_list(framemgr);
+	}
+
+	framemgr_x_barrier(framemgr, FMGR_IDX_0 + bstart);
+}
+
+static void tasklet_func_flite_end(unsigned long data)
 {
 	struct fimc_is_device_flite *flite;
 	struct fimc_is_device_sensor *sensor;
 	struct fimc_is_framemgr *framemgr;
-	struct fimc_is_frame_shot *item;
-	u32 index, id;
+	struct fimc_is_frame_shot *frame;
+	u32 index, bdone;
 	u32 fcount;
 
 	flite = (struct fimc_is_device_flite *)data;
 	sensor = (struct fimc_is_device_sensor *)flite->private_data;
 	framemgr = flite->framemgr;
-
-	index = flite->tasklet_param;
+	bdone = flite->tasklet_param_end;
 
 	atomic_inc(&flite->fcount);
 	fcount = atomic_read(&flite->fcount);
 
 #ifdef DBG_STREAMING
-	dbg_front("L%d\n", index);
+	printk(KERN_INFO "E%d %d\n", bdone, fcount);
 #endif
 
-	spin_lock(&framemgr->slock);
+	framemgr_e_barrier(framemgr, FMGR_IDX_1 + bdone);
 	spin_lock(&flite->slock_state);
 
-	if (test_bit(index, &flite->state)) {
-		fimc_is_frame_process_head(framemgr, &item);
-		if (item) {
-			id = item->id;
-			item->shot->dm.sensor.frameCount = fcount;
-			/*dbg_front("L%d %d\n", index, item->id);*/
-			fimc_is_frame_trans_pro_to_com(framemgr, item);
+	if (test_bit(bdone, &flite->state)) {
+		fimc_is_frame_process_head(framemgr, &frame);
+		if (frame) {
+			index = frame->index;
+			/*dbg_front("L%d %d\n", index, frame->id);*/
+			fimc_is_frame_trans_pro_to_com(framemgr, frame);
 
 #ifdef AUTO_MODE
 			if (!work_pending(&flite->work_queue)) {
-				flite->work = id;
+				flite->work = index;
 				schedule_work(&flite->work_queue);
-			} else
-				err("work pending, %d frame number drop", id);
+			} else {
+				struct fimc_is_device_ischain *ischain;
+				ischain = sensor->ischain;
+
+				frame->shot_ext->request_scc = 0;
+				frame->shot_ext->request_scp = 0;
+				buffer_done(flite->video, index);
+				err("work pending, %d frame drop", index);
+				fimc_is_frame_print_free_list(
+					ischain->framemgr);
+				fimc_is_frame_print_request_list(
+					ischain->framemgr);
+				fimc_is_frame_print_process_list(
+					ischain->framemgr);
+				fimc_is_frame_print_complete_list(
+					ischain->framemgr);
+			}
 #else
-			vb2_buffer_done(flite->video->vbq.bufs[id],
-				VB2_BUF_STATE_DONE);
+			buffer_done(flite->video, index);
 #endif
 
-			fimc_is_frame_request_head(framemgr, &item);
-			if (item) {
-				flite_hw_set_start_addr(flite->regs, index,
-					item->dvaddr_buffer);
-				fimc_is_frame_trans_req_to_pro(framemgr, item);
+			fimc_is_frame_request_head(framemgr, &frame);
+			if (frame) {
+				flite_hw_set_start_addr(flite->regs, bdone,
+					frame->dvaddr_buffer[0]);
+				set_bit(bdone, &flite->state);
+				fimc_is_frame_trans_req_to_pro(framemgr, frame);
 			} else {
-				clear_bit(index, &flite->state);
-				err("request shot is empty0(%d slot)", index);
+				flite_hw_set_unuse_buffer(flite->regs, bdone);
+				clear_bit(bdone, &flite->state);
+				err("request shot is empty0(%d slot)", bdone);
 				fimc_is_frame_print_free_list(framemgr);
 				fimc_is_frame_print_request_list(framemgr);
 				fimc_is_frame_print_process_list(framemgr);
 				fimc_is_frame_print_complete_list(framemgr);
 			}
 		} else {
-			err("process shot is empty");
+			err("process shot is empty(state is invalid");
+			err("unrecoverable error is occured");
 			fimc_is_frame_print_free_list(framemgr);
 			fimc_is_frame_print_request_list(framemgr);
 			fimc_is_frame_print_process_list(framemgr);
 			fimc_is_frame_print_complete_list(framemgr);
 		}
 	} else {
-		fimc_is_frame_request_head(framemgr, &item);
-		if (item) {
-			flite_hw_set_start_addr(flite->regs, index,
-				item->dvaddr_buffer);
-			fimc_is_frame_trans_req_to_pro(framemgr, item);
-			set_bit(index, &flite->state);
+		fimc_is_frame_request_head(framemgr, &frame);
+		if (frame) {
+			flite_hw_set_start_addr(flite->regs, bdone,
+				frame->dvaddr_buffer[0]);
+			flite_hw_set_use_buffer(flite->regs, bdone);
+			set_bit(bdone, &flite->state);
+			fimc_is_frame_trans_req_to_pro(framemgr, frame);
 		} else {
-			err("request shot is empty1(%d slot)", index);
+			err("request shot is empty1(%d slot)", bdone);
 			fimc_is_frame_print_free_list(framemgr);
 			fimc_is_frame_print_request_list(framemgr);
 			fimc_is_frame_print_process_list(framemgr);
@@ -599,9 +640,7 @@ static void tasklet_func_flite(unsigned long data)
 	}
 
 	spin_unlock(&flite->slock_state);
-	spin_unlock(&framemgr->slock);
-
-	fimc_is_sensor_callback(sensor, fcount);
+	framemgr_x_barrier(framemgr, FMGR_IDX_1 + bdone);
 }
 
 static irqreturn_t fimc_is_flite_irq_handler(int irq, void *data)
@@ -617,13 +656,16 @@ static irqreturn_t fimc_is_flite_irq_handler(int irq, void *data)
 
 	flite_hw_set_status1(flite->regs, 0);
 
-	if (status1 & (1<<4)) {
-		flite->tasklet_param = (status3 - 1);
-		tasklet_schedule(&flite->tasklet_flite);
+	if (status1 & (1<<5)) {
+		flite->sw_trigger = flite->sw_trigger ? 0 : 1;
+		flite->tasklet_param_str = flite->sw_trigger;
+		tasklet_schedule(&flite->tasklet_flite_str);
 	}
 
-	if (status1 & (1<<5))
-		dbg_front("[CamIF_0]Frame start done\n");
+	if (status1 & (1<<4)) {
+		flite->tasklet_param_end = flite->sw_trigger;
+		tasklet_schedule(&flite->tasklet_flite_end);
+	}
 
 	if (status1 & (1<<6)) {
 		/*Last Frame Capture Interrupt*/
@@ -675,8 +717,12 @@ int fimc_is_flite_probe(struct fimc_is_device_flite *this,
 	this->video = video;
 	this->private_data = data;
 
-	tasklet_init(&this->tasklet_flite,
-		tasklet_func_flite,
+	tasklet_init(&this->tasklet_flite_str,
+		tasklet_func_flite_str,
+		(unsigned long)this);
+
+	tasklet_init(&this->tasklet_flite_end,
+		tasklet_func_flite_end,
 		(unsigned long)this);
 
 	if (channel == FLITE_ID_A) {
@@ -702,9 +748,7 @@ int fimc_is_flite_probe(struct fimc_is_device_flite *this,
 	} else
 		err("unresolved channel input");
 
-#ifdef AUTO_MODE
 	INIT_WORK(&this->work_queue, wq_func_automode);
-#endif
 
 	this->opened = 0;
 
@@ -716,7 +760,9 @@ int fimc_is_flite_open(struct fimc_is_device_flite *this)
 	int ret = 0;
 	unsigned long flags;
 
-	this->tasklet_param = 0;
+	this->sw_trigger = 1;
+	this->tasklet_param_str = 0;
+	this->tasklet_param_end = 0;
 
 	atomic_set(&this->fcount, 0);
 	spin_lock_init(&this->slock_state);
@@ -736,14 +782,13 @@ int fimc_is_flite_open(struct fimc_is_device_flite *this)
 }
 
 int fimc_is_flite_start(struct fimc_is_device_flite *this,
-	struct fimc_is_video_common *video,
-	u32 width, u32 height)
+	struct fimc_is_frame_info *frame,
+	struct fimc_is_video_common *video)
 {
 	int ret = 0;
 	unsigned long flags;
 	struct fimc_is_frame_shot *item;
 	struct fimc_is_framemgr *framemgr;
-	struct fimc_is_flite_frame frame;
 
 	framemgr = this->framemgr;
 
@@ -758,7 +803,6 @@ int fimc_is_flite_start(struct fimc_is_device_flite *this,
 		flite_hw_set_use_buffer(this->regs, i);
 		flite_hw_set_start_addr(this->regs, i, video->buf_dva[i][0]);
 	}*/
-
 	spin_lock_irqsave(&framemgr->slock, flags);
 
 	flite_hw_set_use_buffer(this->regs, 0);
@@ -779,24 +823,7 @@ int fimc_is_flite_start(struct fimc_is_device_flite *this,
 	flite_hw_set_output_dma(this->regs, true);
 	flite_hw_set_output_local(this->regs, false);
 
-	frame.o_width = width + 16;
-	frame.o_height = height + 10;
-	frame.offs_h = 0;
-	frame.offs_v = 0;
-	frame.width = width + 16;
-	frame.height = height + 10;
-
-	/*
-	this->flite.skip_buffer = (u32)vb2_ion_private_alloc(
-		this->mem->alloc_ctx,
-		(frame.o_width*frame.height*2));
-		*/
-
-	dbg_front("start_fimc(%dx%d)",
-		(width + 16),
-		(height + 10));
-
-	start_fimc_lite(this->regs, &frame);
+	start_fimc_lite(this->regs, frame);
 
 	return ret;
 }

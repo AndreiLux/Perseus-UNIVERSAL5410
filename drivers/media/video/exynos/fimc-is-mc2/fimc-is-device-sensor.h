@@ -28,10 +28,10 @@ enum fimc_is_sensor_output_entity {
 
 struct fimc_is_enum_sensor {
 	u32 sensor;
-	u32 width;
-	u32 height;
-	u32 margin_x;
-	u32 margin_y;
+	u32 pixel_width;
+	u32 pixel_height;
+	u32 active_width;
+	u32 active_height;
 	u32 max_framerate;
 	u32 csi_ch;
 	u32 flite_ch;
@@ -41,15 +41,6 @@ struct fimc_is_enum_sensor {
 enum fimc_is_sensor_state {
 	FIMC_IS_SENSOR_FRONT_START,
 	FIMC_IS_SENSOR_BACK_START
-};
-
-struct fimc_is_csi_frame {
-	u32 o_width;
-	u32 o_height;
-	u32 width;
-	u32 height;
-	u32 offs_h;
-	u32 offs_v;
 };
 
 struct fimc_is_device_sensor {
@@ -84,6 +75,7 @@ struct fimc_is_device_sensor {
 
 	void *dev_data;
 
+	struct fimc_is_device_flite	*active_flite;
 	struct fimc_is_device_flite	flite0;
 	struct fimc_is_device_flite	flite1;
 };
@@ -107,8 +99,6 @@ int fimc_is_sensor_front_stop(struct fimc_is_device_sensor *this);
 int fimc_is_sensor_back_start(struct fimc_is_device_sensor *this,
 	struct fimc_is_video_common *video);
 int fimc_is_sensor_back_stop(struct fimc_is_device_sensor *this);
-int fimc_is_sensor_callback(struct fimc_is_device_sensor *this,
-	u32 fcount);
 
 int enable_mipi(void);
 

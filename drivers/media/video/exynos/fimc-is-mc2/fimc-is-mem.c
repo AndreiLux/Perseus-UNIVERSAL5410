@@ -83,6 +83,8 @@ int fimc_is_mem_probe(struct fimc_is_mem *this,
 	this->vb2 = &fimc_is_vb2_ion;
 
 	this->alloc_ctx = this->vb2->init(pdev);
+	printk(KERN_INFO "fimc_is_mem_probe(alloc_ctx:0x%08x)\n",
+		(unsigned int)this->alloc_ctx);
 	if (IS_ERR(this->alloc_ctx)) {
 		ret = PTR_ERR(this->alloc_ctx);
 		goto p_err;

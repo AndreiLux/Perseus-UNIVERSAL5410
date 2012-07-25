@@ -1069,6 +1069,9 @@ enum otf_input_bitwidth {
 
 enum otf_input_order {
 	OTF_INPUT_ORDER_BAYER_GR_BG	= 0,
+	OTF_INPUT_ORDER_BAYER_RG_GB	= 1,
+	OTF_INPUT_ORDER_BAYER_BG_GR	= 2,
+	OTF_INPUT_ORDER_BAYER_GB_RG	= 3
 };
 
 enum otf_intput_error {
@@ -1310,7 +1313,9 @@ enum isp_flash_command {
 	ISP_FLASH_COMMAND_AUTO		= 2,
 	ISP_FLASH_COMMAND_TORCH		= 3,   /* 3 sec */
 	ISP_FLASH_COMMAND_FLASH_ON	= 4,
-	ISP_FLASH_COMMAND_CAPTURE	= 5
+	ISP_FLASH_COMMAND_CAPTURE	= 5,
+	ISP_FLASH_COMMAND_TRIGGER	= 6,
+	ISP_FLASH_COMMAND_CALIBRATION	= 7
 };
 
 enum isp_flash_redeye {
@@ -1357,7 +1362,10 @@ enum isp_imageeffect_command {
 	ISP_IMAGE_EFFECT_MAGENTA_POINT		= 12,
 	ISP_IMAGE_EFFECT_WARM_VINTAGE		= 13,
 	ISP_IMAGE_EFFECT_COLD_VINTAGE		= 14,
-	ISP_IMAGE_EFFECT_CCM			= 15,
+	ISP_IMAGE_EFFECT_POSTERIZE		= 15,
+	ISP_IMAGE_EFFECT_SOLARIZE		= 16,
+	ISP_IMAGE_EFFECT_WASHED			= 17,
+	ISP_IMAGE_EFFECT_CCM			= 18,
 };
 
 enum isp_imageeffect_error {
@@ -1389,7 +1397,8 @@ enum iso_adjust_command {
 	ISP_ADJUST_COMMAND_MANUAL_GAMMA		= (1 << 9),
 	ISP_ADJUST_COMMAND_MANUAL_EDGEENHANCEMENT = (1 << 10),
 	ISP_ADJUST_COMMAND_MANUAL_SCENE		= (1 << 11),
-	ISP_ADJUST_COMMAND_MANUAL_ALL		= 0xFFF
+	ISP_ADJUST_COMMAND_MANUAL_FRAMETIME	= (1 << 12),
+	ISP_ADJUST_COMMAND_MANUAL_ALL		= 0x1FFF
 };
 
 enum isp_adjust_scene_index {
@@ -1577,11 +1586,11 @@ enum fd_config_orientation {
 struct param_control {
 	u32	cmd;
 	u32	bypass;
-	u32 buffer_address;
-	u32 buffer_number;
-	u32 first_drop_frame;
-	u32 run_mode;			/* 0: continuous, 1: single */
-	u32	reserved[PARAMETER_MAX_MEMBER-7];
+	u32	buffer_address;
+	u32	buffer_number;
+	/* 0: continuous, 1: single */
+	u32	run_mode;
+	u32	reserved[PARAMETER_MAX_MEMBER-6];
 	u32	err;
 };
 
@@ -1721,14 +1730,14 @@ struct param_isp_adjust {
 	s32	hue;
 	/* 0 or 1 */
 	u32	uiHotPixelEnable;
-	/* 0 ~ 127 */
-	u32	uiNoiseReductionStrength;
+	/* -127 ~ 127 */
+	s32	uiNoiseReductionStrength;
 	/* 0 or 1 */
 	u32	uiShadingCorrectionEnable;
 	/* 0 or 1 */
 	u32	uiUserGammaEnable;
-	/* 0 ~ 127 */
-	u32	uiEdgeEnhancementStrength;
+	/* -127 ~ 127 */
+	s32	uiEdgeEnhancementStrength;
 	/* ISP_AdjustSceneIndexEnum */
 	u32	uiUserSceneMode;
 	u32	uiMinFrameTime;
@@ -2047,8 +2056,10 @@ struct is_face_marker {
 	struct is_fd_rect right_eye;
 	struct is_fd_rect mouth;
 	u32	roll_angle;
-	u32  yaw_angle;
+	u32 yaw_angle;
 	u32	confidence;
+	u32	uiIsTracked;
+	u32	uiTrackedFaceID;
 	u32	smile_level;
 	u32	blink_level;
 };
