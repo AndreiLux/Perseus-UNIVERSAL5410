@@ -317,6 +317,9 @@ static int __init pm_dbg_init(void)
 			S_IRUGO | S_IWUSR, d, &enable_oswr_mode,
 			&pm_dbg_option_fops);
 
+	(void) debugfs_create_file("wakeup_timer_seconds", S_IRUGO | S_IWUSR, d,
+			&wakeup_timer_seconds, &pm_dbg_option_fops);
+
 	if (cpu_is_omap34xx())
 		off_mode_enable_func = omap3_pm_off_mode_enable;
 
