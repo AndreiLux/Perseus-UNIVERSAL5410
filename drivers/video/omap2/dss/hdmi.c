@@ -351,11 +351,11 @@ static int hdmi_power_on(struct omap_dss_device *dssdev)
 
 	timing = hdmi_get_timings();
 	if (timing == NULL) {
-		/* HDMI code 4 corresponds to 640 * 480 VGA */
-		hdmi.ip_data.cfg.cm.code = 4;
+		/* HDMI code 4 corresponds to 1024 * 768 VGA */
+		hdmi.ip_data.cfg.cm.code = 0x10;
 		/* DVI mode 1 corresponds to HDMI 0 to DVI */
 		hdmi.ip_data.cfg.cm.mode = HDMI_DVI;
-		hdmi.ip_data.cfg = vesa_timings[0];
+		hdmi.ip_data.cfg = vesa_timings[8];
 	} else {
 		hdmi.ip_data.cfg = *timing;
 	}
