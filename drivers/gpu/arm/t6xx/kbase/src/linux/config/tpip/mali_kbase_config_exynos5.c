@@ -64,6 +64,7 @@
 #define MALI_RTPM_DEBUG      0
 #define VITHAR_DEFAULT_CLOCK 533000000
 #define RUNTIME_PM_DELAY_TIME 10
+#define CONFIG_T6XX_HWVER_R0P0 1
 
 struct regulator *kbase_platform_get_regulator(void);
 int kbase_platform_regulator_init(void);
@@ -329,7 +330,8 @@ static int kbase_platform_power_clock_init(kbase_device *kbdev)
 		printk("v4 support\n");
 	}
 
-#ifdef CONFIG_T6XX_HWVER_R0P0
+#ifndef CONFIG_T6XX_HWVER_R0P0
+	/* TODO(anush): figure out how to set the gpu clock to 533 */
 	platform->sclk_g3d = clk_get(dev, "aclk_400");
 	if(IS_ERR(platform->sclk_g3d)) {
 		OSK_PRINT_ERROR(OSK_BASE_PM, "failed to clk_get [sclk_g3d]\n");
