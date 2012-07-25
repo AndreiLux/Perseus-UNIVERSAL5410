@@ -83,6 +83,12 @@ static void exynos_drm_fb_destroy(struct drm_framebuffer *fb)
 		kds_resource_set_release(&private->old_kds_res_set);
 		private->old_kds_res_set = NULL;
 	}
+
+	if (private->kds_res_set != NULL) {
+		kds_resource_set_release(&private->kds_res_set);
+		private->kds_res_set = NULL;
+	}
+
 	if (private->old_dma_buf != NULL) {
 		dma_buf_put(private->old_dma_buf);
 		private->old_dma_buf = NULL;
