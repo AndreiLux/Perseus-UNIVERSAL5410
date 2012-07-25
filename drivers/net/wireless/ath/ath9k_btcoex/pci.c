@@ -22,18 +22,7 @@
 #include "ath9k.h"
 
 static DEFINE_PCI_DEVICE_TABLE(ath_pci_id_table) = {
-	{ PCI_VDEVICE(ATHEROS, 0x0023) }, /* PCI   */
-	{ PCI_VDEVICE(ATHEROS, 0x0024) }, /* PCI-E */
-	{ PCI_VDEVICE(ATHEROS, 0x0027) }, /* PCI   */
-	{ PCI_VDEVICE(ATHEROS, 0x0029) }, /* PCI   */
-	{ PCI_VDEVICE(ATHEROS, 0x002A) }, /* PCI-E */
-	{ PCI_VDEVICE(ATHEROS, 0x002B) }, /* PCI-E */
-	{ PCI_VDEVICE(ATHEROS, 0x002C) }, /* PCI-E 802.11n bonded out */
-	{ PCI_VDEVICE(ATHEROS, 0x002D) }, /* PCI   */
-	{ PCI_VDEVICE(ATHEROS, 0x002E) }, /* PCI-E */
-	{ PCI_VDEVICE(ATHEROS, 0x0030) }, /* PCI-E  AR9300 */
-	{ PCI_VDEVICE(ATHEROS, 0x0032) }, /* PCI-E  AR9485 */
-	{ PCI_VDEVICE(ATHEROS, 0x0033) }, /* PCI-E  AR9580 */
+	{ PCI_VDEVICE(ATHEROS, 0x0034) }, /* PCI-E  AR9462 */
 	{ 0 }
 };
 
@@ -76,7 +65,7 @@ static bool ath_pci_eeprom_read(struct ath_common *common, u32 off, u16 *data)
 		common->ops->read(ah, AR5416_EEPROM_OFFSET +
 				      (off << AR5416_EEPROM_S));
 
-		if (!ath9k_hw_wait(ah,
+		if (!ath9k_btcoex_ath9k_hw_wait(ah,
 				   AR_EEPROM_STATUS_DATA,
 				   AR_EEPROM_STATUS_DATA_BUSY |
 				   AR_EEPROM_STATUS_DATA_PROT_ACCESS, 0,
@@ -249,7 +238,7 @@ static int ath_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	sc->mem = mem;
 
 	/* Will be cleared in ath9k_start() */
-	sc->sc_flags |= SC_OP_INVALID;
+	set_bit(SC_OP_INVALID, &sc->sc_flags);
 
 	ret = request_irq(pdev->irq, ath_isr, IRQF_SHARED, "ath9k", sc);
 	if (ret) {
@@ -265,7 +254,7 @@ static int ath_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_init;
 	}
 
-	ath9k_hw_name(sc->sc_ah, hw_name, sizeof(hw_name));
+	ath9k_btcoex_ath9k_hw_name(sc->sc_ah, hw_name, sizeof(hw_name));
 	wiphy_info(hw->wiphy, "%s mem=0x%lx, irq=%d\n",
 		   hw_name, (unsigned long)mem, pdev->irq);
 
@@ -315,8 +304,8 @@ static int ath_pci_suspend(struct device *device)
 	 * Otherwise the chip never moved to full sleep,
 	 * when no interface is up.
 	 */
-	ath9k_hw_disable(sc->sc_ah);
-	ath9k_hw_setpower(sc->sc_ah, ATH9K_PM_FULL_SLEEP);
+	ath9k_btcoex_ath9k_hw_disable(sc->sc_ah);
+	ath9k_btcoex_ath9k_hw_setpower(sc->sc_ah, ATH9K_PM_FULL_SLEEP);
 
 	return 0;
 }
