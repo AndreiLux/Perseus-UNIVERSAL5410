@@ -56,6 +56,9 @@
 #include <ump/ump_common.h>
 #endif /*MALI_USE_UMP == 1*/
 
+#define	CREATE_TRACE_POINTS
+#include <trace/events/mali.h>
+
 #if MALI_UNCACHED == 0
 #error MALI_UNCACHED should equal 1 for Exynos5 support, your scons commandline should contain 'no_syncsets=1'
 #endif
@@ -1443,6 +1446,7 @@ static void kbase_platform_dvfs_set_vol(unsigned int vol)
 	if (_vol == vol)
 		return;
 
+	trace_mali_dvfs_set_voltage(vol);
 
 	switch(vol)
 	{
@@ -1614,6 +1618,8 @@ static DECLARE_WORK(mali_dvfs_work, mali_dvfs_event_proc);
 
 int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 {
+	trace_mali_dvfs_event(utilisation);
+
 	osk_spinlock_lock(&mali_dvfs_spinlock);
 	mali_dvfs_status_current.utilisation = utilisation;
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
@@ -1805,6 +1811,8 @@ void kbase_platform_dvfs_set_clock(kbase_device *kbdev, int freq)
 
 	if (freq == _freq)
 		return;
+
+	trace_mali_dvfs_set_clock(freq);
 
 	switch(freq)
 	{
