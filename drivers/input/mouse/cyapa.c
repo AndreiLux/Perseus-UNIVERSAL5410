@@ -1766,10 +1766,10 @@ static void cyapa_start_runtime(struct cyapa *cyapa)
 	cyapa->runtime_suspend_power_mode = PWR_MODE_IDLE;
 	if (sysfs_merge_group(&dev->kobj, &cyapa_power_runtime_group))
 		dev_warn(dev, "error creating wakeup runtime entries.\n");
-	pm_runtime_enable(dev);
 	pm_runtime_set_active(dev);
 	pm_runtime_use_autosuspend(dev);
 	pm_runtime_set_autosuspend_delay(dev, AUTOSUSPEND_DELAY);
+	pm_runtime_enable(dev);
 }
 #else
 static void cyapa_start_runtime(struct cyapa *cyapa) {}
@@ -1916,6 +1916,10 @@ static int cyapa_resume(struct device *dev)
 	if (ret)
 		dev_warn(dev, "resume active power failed, %d\n", ret);
 
+	/* runtime set active to reflect active state. */
+	pm_runtime_disable(dev);
+	pm_runtime_set_active(dev);
+	pm_runtime_enable(dev);
 	return 0;
 }
 #endif /* CONFIG_PM_SLEEP */
