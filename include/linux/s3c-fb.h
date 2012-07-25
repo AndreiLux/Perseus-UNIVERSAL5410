@@ -89,7 +89,7 @@ struct s3c_fb_win_config_data {
 						struct s3c_fb_user_plane_alpha)
 #define S3CFB_WIN_SET_CHROMA		_IOW('F', 205, \
 						struct s3c_fb_user_chroma)
-#define S3CFB_SET_VSYNC_INT		_IOW('F', 206, u32)
+#define S3CFB_SET_VSYNC_INT		_IOW('F', 206, __u32)
 
 #define S3CFB_GET_ION_USER_HANDLE	_IOWR('F', 208, \
 						struct s3c_fb_user_ion_client)
