@@ -93,11 +93,6 @@ struct sysmmu_resource_map {
 	.clocknames = SYSMMU_CLOCK_NAME "," SYSMMU_CLOCK_NAME2 "," SYSMMU_CLOCK_NAME3,		\
 }
 
-#define SYSMMU_RESOURCE_MAPPING_PD(core, ipname, resname, pd)		\
-		SYSMMU_RESOURCE_MAPPING(core, ipname, resname)
-#define SYSMMU_RESOURCE_MAPPING_MCPD(core, ipname, resname, pd, pdata)	\
-		SYSMMU_RESOURCE_MAPPING_MC(core, ipname, resname, pdata)
-
 #ifdef CONFIG_ARCH_EXYNOS4
 SYSMMU_RESOURCE_DEFINE(EXYNOS4, fimc0,	FIMC0,	FIMC0);
 SYSMMU_RESOURCE_DEFINE(EXYNOS4, fimc1,	FIMC1,	FIMC1);
@@ -124,27 +119,27 @@ SYSMMU_RESOURCE(EXYNOS4, isp) {
 };
 
 static struct sysmmu_resource_map sysmmu_resmap4[] __initdata = {
-	SYSMMU_RESOURCE_MAPPING_PD(4, fimc0,	fimc0,	PD_CAM),
-	SYSMMU_RESOURCE_MAPPING_PD(4, fimc1,	fimc1,	PD_CAM),
-	SYSMMU_RESOURCE_MAPPING_PD(4, fimc2,	fimc2,	PD_CAM),
-	SYSMMU_RESOURCE_MAPPING_PD(4, fimc3,	fimc3,	PD_CAM),
-	SYSMMU_RESOURCE_MAPPING_PD(4, tv,	tv,	PD_TV),
-	SYSMMU_RESOURCE_MAPPING_PD(4, mfc_lr,	mfc_lr,	PD_MFC),
-	SYSMMU_RESOURCE_MAPPING_PD(4, rot,	rot,	PD_LCD0),
-	SYSMMU_RESOURCE_MAPPING_PD(4, jpeg,	jpeg,	PD_CAM),
-	SYSMMU_RESOURCE_MAPPING_PD(4, fimd0,	fimd0,	PD_LCD0),
+	SYSMMU_RESOURCE_MAPPING(4, fimc0,	fimc0),
+	SYSMMU_RESOURCE_MAPPING(4, fimc1,	fimc1),
+	SYSMMU_RESOURCE_MAPPING(4, fimc2,	fimc2),
+	SYSMMU_RESOURCE_MAPPING(4, fimc3,	fimc3),
+	SYSMMU_RESOURCE_MAPPING(4, tv,	tv),
+	SYSMMU_RESOURCE_MAPPING(4, mfc_lr,	mfc_lr),
+	SYSMMU_RESOURCE_MAPPING(4, rot,	rot),
+	SYSMMU_RESOURCE_MAPPING(4, jpeg,	jpeg),
+	SYSMMU_RESOURCE_MAPPING(4, fimd0,	fimd0),
 };
 
 static struct sysmmu_resource_map sysmmu_resmap4210[] __initdata = {
-	SYSMMU_RESOURCE_MAPPING_PD(4, 2d,	2d,	PD_LCD0),
-	SYSMMU_RESOURCE_MAPPING_PD(4, fimd1,	fimd1,	PD_LCD1),
-};
+	SYSMMU_RESOURCE_MAPPING(4, 2d,	2d),
+	SYSMMU_RESOURCE_MAPPING(4, fimd1,	fimd1),
+}
 
 static struct sysmmu_resource_map sysmmu_resmap4212[] __initdata = {
 	SYSMMU_RESOURCE_MAPPING(4,	2d,	2d_acp),
-	SYSMMU_RESOURCE_MAPPING_PD(4,	camif0, flite0,	PD_ISP),
-	SYSMMU_RESOURCE_MAPPING_PD(4,	camif1, flite1,	PD_ISP),
-	SYSMMU_RESOURCE_MAPPING_PD(4,	isp,	isp,	PD_ISP),
+	SYSMMU_RESOURCE_MAPPING(4,	camif0, flite0),
+	SYSMMU_RESOURCE_MAPPING(4,	camif1, flite1),
+	SYSMMU_RESOURCE_MAPPING(4,	isp,	isp),
 };
 #endif /* CONFIG_ARCH_EXYNOS4 */
 
@@ -183,13 +178,13 @@ static struct sysmmu_resource_map sysmmu_resmap5[] __initdata = {
 	SYSMMU_RESOURCE_MAPPING(5,	fimd1,	fimd1),
 	SYSMMU_RESOURCE_MAPPING(5,	2d,	2d),
 	SYSMMU_RESOURCE_MAPPING(5,	rot,	rot),
-	SYSMMU_RESOURCE_MAPPING_PD(5,	tv,	tv,	PD_DISP1),
-	SYSMMU_RESOURCE_MAPPING_PD(5,	gsc0,	gsc0,	PD_GSCL),
-	SYSMMU_RESOURCE_MAPPING_PD(5,	gsc1,	gsc1,	PD_GSCL),
-	SYSMMU_RESOURCE_MAPPING_PD(5,	gsc2,	gsc2,	PD_GSCL),
-	SYSMMU_RESOURCE_MAPPING_PD(5,	gsc3,	gsc3,	PD_GSCL),
-	SYSMMU_RESOURCE_MAPPING_PD(5,	mfc_lr,	mfc_lr,	PD_MFC),
-	SYSMMU_RESOURCE_MAPPING_MCPD(5,	isp,	isp,	PD_ISP, mc_platdata),
+	SYSMMU_RESOURCE_MAPPING(5,	tv,	tv),
+	SYSMMU_RESOURCE_MAPPING(5,	gsc0,	gsc0),
+	SYSMMU_RESOURCE_MAPPING(5,	gsc1,	gsc1),
+	SYSMMU_RESOURCE_MAPPING(5,	gsc2,	gsc2),
+	SYSMMU_RESOURCE_MAPPING(5,	gsc3,	gsc3),
+	SYSMMU_RESOURCE_MAPPING(5,	mfc_lr,	mfc_lr),
+	SYSMMU_RESOURCE_MAPPING_MC(5,	isp,	isp, mc_platdata),
 };
 #endif /* CONFIG_ARCH_EXYNOS5 */
 
