@@ -59,6 +59,9 @@ Status: testing
 #include "comedi_fc.h"
 #include "../comedidev.h"
 
+#define BOARDNAME "usbduxsigma"
+#define FIRMWARE "usbduxsigma_firmware.bin"
+
 /* timeout for the USB-transfer in ms*/
 #define BULK_TIMEOUT 1000
 
@@ -2780,7 +2783,7 @@ static int usbduxsigma_usb_probe(struct usb_interface *uinterf,
 
 	ret = request_firmware_nowait(THIS_MODULE,
 				      FW_ACTION_HOTPLUG,
-				      "usbduxsigma_firmware.bin",
+				      FIRMWARE,
 				      &udev->dev,
 				      GFP_KERNEL,
 				      usbduxsub + index,
@@ -2845,3 +2848,4 @@ module_comedi_usb_driver(usbduxsigma_driver, usbduxsigma_usb_driver);
 MODULE_AUTHOR("Bernd Porr, BerndPorr@f2s.com");
 MODULE_DESCRIPTION("Stirling/ITL USB-DUX SIGMA -- Bernd.Porr@f2s.com");
 MODULE_LICENSE("GPL");
+MODULE_FIRMWARE(FIRMWARE);
