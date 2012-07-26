@@ -37,6 +37,77 @@
 #include "s3c-i2s-v2.h"
 #include "../codecs/max98095.h"
 
+/* Audio clock settings are belonged to board specific part. Every
+ * board can set audio source clock setting which is matched with H/W
+ * like this function-'set_audio_clock_heirachy'.
+ */
+static int set_audio_clock_heirachy(struct platform_device *pdev)
+{
+	struct clk *fout_epll, *mout_epll, *sclk_audbus, *audss, *i2sclk;
+	int ret = 0;
+
+	fout_epll = clk_get(NULL, "fout_epll");
+	if (IS_ERR(fout_epll)) {
+		printk(KERN_WARNING "%s: Cannot find fout_epll.\n",
+				__func__);
+		return -EINVAL;
+	}
+
+	mout_epll = clk_get(NULL, "mout_epll");
+	if (IS_ERR(mout_epll)) {
+		printk(KERN_WARNING "%s: Cannot find mout_epll.\n",
+				__func__);
+		ret = -EINVAL;
+		goto out1;
+	}
+
+	sclk_audbus = clk_get(&pdev->dev, "audio-bus");
+	if (IS_ERR(sclk_audbus)) {
+		printk(KERN_WARNING "%s: Cannot find audio-bus.\n",
+				__func__);
+		ret = -EINVAL;
+		goto out2;
+	}
+
+	audss = clk_get(&pdev->dev, "mout_audss");
+	if (IS_ERR(audss)) {
+		printk(KERN_WARNING "%s: Cannot find audss.\n",
+				__func__);
+		ret = -EINVAL;
+		goto out3;
+	}
+
+	i2sclk = clk_get(NULL, "i2sclk");
+	if (IS_ERR(i2sclk)) {
+		printk(KERN_WARNING "%s: Cannot find i2sclk.\n",
+				__func__);
+		ret = -EINVAL;
+		goto out4;
+	}
+
+	/* Set audio clock hierarchy for S/PDIF */
+	if (clk_set_parent(mout_epll, fout_epll))
+		printk(KERN_WARNING "Failed to set parent of epll.\n");
+	if (clk_set_parent(sclk_audbus, mout_epll))
+		printk(KERN_WARNING "Failed to set parent of audbus.\n");
+	if (clk_set_parent(audss, fout_epll))
+		printk(KERN_WARNING "Failed to set parent of audss.\n");
+	if (clk_set_parent(i2sclk, sclk_audbus))
+		printk(KERN_WARNING "Failed to set parent of i2sclk.\n");
+
+	clk_put(i2sclk);
+out4:
+	clk_put(audss);
+out3:
+	clk_put(sclk_audbus);
+out2:
+	clk_put(mout_epll);
+out1:
+	clk_put(fout_epll);
+
+	return ret;
+}
+
 static int set_epll_rate(unsigned long rate)
 {
 	int ret;
@@ -321,10 +392,12 @@ static int __init daisy_audio_init(void)
 
 	platform_set_drvdata(daisy_snd_device, &daisy_snd);
 	ret = platform_device_add(daisy_snd_device);
-	if (ret)
+	if (ret) {
 		platform_device_put(daisy_snd_device);
+		return ret;
+	}
 
-	return ret;
+	return set_audio_clock_heirachy(daisy_snd_device);
 }
 module_init(daisy_audio_init);
 
