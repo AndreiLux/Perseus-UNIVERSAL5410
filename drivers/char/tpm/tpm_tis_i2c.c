@@ -653,12 +653,42 @@ static int tpm_tis_i2c_suspend(struct device *dev)
 	return tpm_pm_suspend(dev, dev->power.power_state);
 }
 
+#define TPM_TAG_RQU_COMMAND cpu_to_be16(193)
+#define TPM_ORD_STARTUP cpu_to_be32(153)
+#define TPM_ST_STATE cpu_to_be16(0x2)
+#define RESUME_RESULT_SIZE 12
+
+static struct tpm_input_header resume_header = {
+	.tag = TPM_TAG_RQU_COMMAND,
+	.length = cpu_to_be32(12),
+	.ordinal = TPM_ORD_STARTUP
+};
+
 static int tpm_tis_i2c_resume(struct device *dev)
 {
+	struct tpm_chip *chip = dev_get_drvdata(dev);
+	struct tpm_cmd_t cmd;
+	int rc;
+
 	if (tpm_dev.powered_while_suspended)
 		return 0;
 
-	return tpm_pm_resume(dev);
+	if (chip == NULL)
+		return -ENODEV;
+
+	cmd.header.in = resume_header;
+	cmd.params.tpm_startup_arg_in = TPM_ST_STATE;
+	rc = tpm_transmit_cmd(chip, &cmd, RESUME_RESULT_SIZE,
+			      "resuming TPM after suspend");
+	if (rc == 0) {
+		tpm_continue_selftest_nocheck(chip);
+		tpm_pm_resume(dev);
+		dev_warn(chip->dev, "TPM restored in insecure state\n");
+	} else {
+		dev_err(chip->dev, "Error restoring state: %d\n", rc);
+	}
+
+	return 0;
 }
 
 static const struct dev_pm_ops tpm_tis_i2c_ops = {

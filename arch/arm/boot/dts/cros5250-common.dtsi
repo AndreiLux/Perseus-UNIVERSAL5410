@@ -181,7 +181,6 @@
 		tpm {
 			compatible = "infineon,slb9635tt";
 			reg = <0x20>;
-                        powered-while-suspended;
 		};
 	};
 
