@@ -433,7 +433,7 @@ int exynos_dp_write_byte_to_dpcd(struct exynos_dp_device *dp,
 		if (retval == 0)
 			break;
 		else
-			dev_err(dp->dev, "%s: Aux Transaction fail!\n",
+			dev_dbg(dp->dev, "%s: Aux Transaction fail!\n",
 				__func__);
 	}
 
@@ -474,7 +474,7 @@ int exynos_dp_read_byte_from_dpcd(struct exynos_dp_device *dp,
 		if (retval == 0)
 			break;
 		else
-			dev_err(dp->dev, "%s: Aux Transaction fail!\n",
+			dev_dbg(dp->dev, "%s: Aux Transaction fail!\n",
 				__func__);
 	}
 
@@ -539,7 +539,7 @@ int exynos_dp_write_bytes_to_dpcd(struct exynos_dp_device *dp,
 			if (retval == 0)
 				break;
 			else
-				dev_err(dp->dev, "%s: Aux Transaction fail!\n",
+				dev_dbg(dp->dev, "%s: Aux Transaction fail!\n",
 					__func__);
 		}
 
@@ -597,7 +597,7 @@ int exynos_dp_read_bytes_from_dpcd(struct exynos_dp_device *dp,
 			if (retval == 0)
 				break;
 			else
-				dev_err(dp->dev, "%s: Aux Transaction fail!\n",
+				dev_dbg(dp->dev, "%s: Aux Transaction fail!\n",
 					__func__);
 		}
 
@@ -643,7 +643,7 @@ int exynos_dp_select_i2c_device(struct exynos_dp_device *dp,
 	/* Start AUX transaction */
 	retval = exynos_dp_start_aux_transaction(dp);
 	if (retval != 0)
-		dev_err(dp->dev, "%s: Aux Transaction fail!\n", __func__);
+		dev_dbg(dp->dev, "%s: Aux Transaction fail!\n", __func__);
 
 	return retval;
 }
@@ -683,7 +683,7 @@ int exynos_dp_read_byte_from_i2c(struct exynos_dp_device *dp,
 		if (retval == 0)
 			break;
 		else
-			dev_err(dp->dev, "%s: Aux Transaction fail!\n",
+			dev_dbg(dp->dev, "%s: Aux Transaction fail!\n",
 				__func__);
 	}
 
@@ -744,7 +744,7 @@ int exynos_dp_read_bytes_from_i2c(struct exynos_dp_device *dp,
 				if (retval == 0)
 					break;
 				else
-					dev_err(dp->dev,
+					dev_dbg(dp->dev,
 						"%s: Aux Transaction fail!\n",
 						__func__);
 			}
