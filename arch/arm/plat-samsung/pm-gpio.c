@@ -19,6 +19,7 @@
 #include <linux/io.h>
 #include <linux/gpio.h>
 
+#include <plat/cpu.h>
 #include <plat/gpio-core.h>
 #include <plat/pm.h>
 
@@ -27,6 +28,9 @@
 #define OFFS_CON	(0x00)
 #define OFFS_DAT	(0x04)
 #define OFFS_UP		(0x08)
+#define OFFS_DRV	(0x0C)
+#define OFFS_CONPD	(0x10)
+#define OFFS_UPPD	(0x14)
 
 static void samsung_gpio_pm_1bit_save(struct samsung_gpio_chip *chip)
 {
@@ -198,6 +202,11 @@ static void samsung_gpio_pm_4bit_save(struct samsung_gpio_chip *chip)
 	chip->pm_save[1] = __raw_readl(chip->base + OFFS_CON);
 	chip->pm_save[2] = __raw_readl(chip->base + OFFS_DAT);
 	chip->pm_save[3] = __raw_readl(chip->base + OFFS_UP);
+	chip->pm_save[4] = __raw_readl(chip->base + OFFS_DRV);
+	if (soc_is_exynos5250()) {
+		chip->pm_save[5] = __raw_readl(chip->base + OFFS_CONPD);
+		chip->pm_save[6] = __raw_readl(chip->base + OFFS_UPPD);
+	}
 
 	if (chip->chip.ngpio > 8)
 		chip->pm_save[0] = __raw_readl(chip->base - 4);
@@ -284,18 +293,27 @@ static void samsung_gpio_pm_4bit_resume(struct samsung_gpio_chip *chip)
 
 	__raw_writel(chip->pm_save[2], base + OFFS_DAT);
 	__raw_writel(chip->pm_save[3], base + OFFS_UP);
+	__raw_writel(chip->pm_save[4], base + OFFS_DRV);
 
 	if (chip->chip.ngpio > 8) {
-		S3C_PMDBG("%s: CON4 %08x,%08x => %08x,%08x, DAT %08x => %08x\n",
+		S3C_PMDBG("%s: CON4 %08x,%08x => %08x,%08x, DAT %08x => %08x, DRV %08x\n",
 			  chip->chip.label, old_gpcon[0], old_gpcon[1],
 			  __raw_readl(base - 4),
 			  __raw_readl(base + OFFS_CON),
-			  old_gpdat, gps_gpdat);
+			  old_gpdat, gps_gpdat,
+			  __raw_readl(base + OFFS_DRV));
 	} else
-		S3C_PMDBG("%s: CON4 %08x => %08x, DAT %08x => %08x\n",
+		S3C_PMDBG("%s: CON4 %08x => %08x, DAT %08x => %08x, DRV %08x\n",
 			  chip->chip.label, old_gpcon[1],
 			  __raw_readl(base + OFFS_CON),
-			  old_gpdat, gps_gpdat);
+			  old_gpdat, gps_gpdat,
+			  __raw_readl(base + OFFS_DRV));
+
+	if (soc_is_exynos5250()) {
+		__raw_writel(chip->pm_save[5], chip->base + OFFS_CONPD);
+		__raw_writel(chip->pm_save[6], chip->base + OFFS_UPPD);
+	}
+
 }
 
 struct samsung_gpio_pm samsung_gpio_pm_4bit = {
@@ -338,12 +356,15 @@ void samsung_pm_save_gpios(void)
 
 		samsung_pm_save_gpio(ourchip);
 
-		S3C_PMDBG("%s: save %08x,%08x,%08x,%08x\n",
+		S3C_PMDBG("%s: save %08x,%08x,%08x,%08x,%08x,%08x,%08x\n",
 			  ourchip->chip.label,
 			  ourchip->pm_save[0],
 			  ourchip->pm_save[1],
 			  ourchip->pm_save[2],
-			  ourchip->pm_save[3]);
+			  ourchip->pm_save[3],
+			  ourchip->pm_save[4],
+			  ourchip->pm_save[5],
+			  ourchip->pm_save[6]);
 
 		gpio_nr += ourchip->chip.ngpio;
 		gpio_nr += CONFIG_S3C_GPIO_SPACE;
