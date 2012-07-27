@@ -647,6 +647,9 @@ static void fimd_finish_pageflip(struct drm_device *drm_dev, int crtc)
 	unsigned long flags;
 	bool is_checked = false;
 
+	if (WARN_ON(!dev_priv))
+		return NULL;
+
 	spin_lock_irqsave(&drm_dev->event_lock, flags);
 
 	list_for_each_entry_safe(e, t, &dev_priv->pageflip_event_list,
