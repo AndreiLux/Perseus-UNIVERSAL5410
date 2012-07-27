@@ -728,6 +728,14 @@ void ath_rx_poll_work(unsigned long data)
 	spin_lock_irqsave(&common->cc_lock, flags);
 	ath_hw_cycle_counters_update(common);
 
+	if (common->cc_rxpoll.cycles == 0) {
+		spin_unlock_irqrestore(&common->cc_lock, flags);
+		ath_info(common, "rxpoll cycles is zero.  Skipping.");
+		ath9k_ps_restore(sc);
+		ath_start_rx_poll(sc, nmsec);
+		return;
+	}
+
 	rx_clear = common->cc_rxpoll.rx_busy * 100 / common->cc_rxpoll.cycles;
 	rx = common->cc_rxpoll.rx_frame * 100 / common->cc_rxpoll.cycles;
 	tx = common->cc_rxpoll.tx_frame * 100 / common->cc_rxpoll.cycles;
