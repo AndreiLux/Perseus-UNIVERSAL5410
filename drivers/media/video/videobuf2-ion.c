@@ -350,7 +350,7 @@ static int vb2_ion_map_dmabuf(void *mem_priv)
 	}
 
 	buf->cookie.offset = 0;
-	buf->kva = NULL;
+	/* buf->kva = NULL; */
 
 	if (ctx_iommu(ctx) && buf->cookie.ioaddr == 0) {
 		buf->cookie.ioaddr = iovmm_map(ctx->dev,
