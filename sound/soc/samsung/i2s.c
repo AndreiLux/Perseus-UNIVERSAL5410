@@ -73,6 +73,7 @@ struct i2s_dai {
 	struct s3c_dma_params dma_capture;
 	struct s3c_dma_params idma_playback;
 	u32	quirks;
+	u32	opencnt;
 
 	u32	suspend_i2smod;
 	u32	suspend_i2scon;
@@ -679,6 +680,11 @@ static int i2s_startup(struct snd_pcm_substream *substream,
 
 	spin_lock_irqsave(&lock, flags);
 
+	if (i2s->opencnt++) {
+		spin_unlock_irqrestore(&lock, flags);
+		return 0;
+	}
+
 	i2s->mode |= DAI_OPENED;
 
 	if (is_manager(other))
@@ -689,10 +695,10 @@ static int i2s_startup(struct snd_pcm_substream *substream,
 	/* Enforce set_sysclk in Master mode */
 	i2s->rclk_srcrate = 0;
 
-	if (!is_opened(other))
+	if (!is_opened(other)) {
 		i2s_register_restore(i2s);
-
-	clk_enable(i2s->clk);
+		clk_enable(i2s->clk);
+	}
 
 	spin_unlock_irqrestore(&lock, flags);
 
@@ -708,6 +714,11 @@ static void i2s_shutdown(struct snd_pcm_substream *substream,
 
 	spin_lock_irqsave(&lock, flags);
 
+	if (--i2s->opencnt) {
+		spin_unlock_irqrestore(&lock, flags);
+		return;
+	}
+
 	i2s->mode &= ~DAI_OPENED;
 	i2s->mode &= ~DAI_MANAGER;
 
@@ -721,12 +732,13 @@ static void i2s_shutdown(struct snd_pcm_substream *substream,
 	spin_unlock_irqrestore(&lock, flags);
 
 	/* Gate CDCLK by default */
-	if (!is_opened(other))
+	if (!is_opened(other)) {
 		i2s_set_sysclk(dai, SAMSUNG_I2S_CDCLK,
 				0, SND_SOC_CLOCK_IN);
 
-	clk_disable(i2s->clk);
-	i2s_register_save(i2s);
+		clk_disable(i2s->clk);
+		i2s_register_save(i2s);
+	}
 }
 
 static int config_setup(struct i2s_dai *i2s)
@@ -989,6 +1001,7 @@ probe_exit:
 
 	clk_disable(i2s->clk);
 	i2s_register_save(i2s);
+	i2s->opencnt = 0;
 
 	return 0;
 
