@@ -527,16 +527,6 @@ static int fimc_is_isp_buffer_finish(struct vb2_buffer *vb)
 	return ret;
 }
 
-static void fimc_is_isp_buffer_cleanup(struct vb2_buffer *vb)
-{
-	/* struct fimc_is_video_scp *video = vb->vb2_queue->drv_priv; */
-
-#ifdef DBG_STREAMING
-	dbg_scp("%s\n", __func__);
-#endif
-	vb->num_planes = 0;
-
-}
 const struct vb2_ops fimc_is_isp_qops = {
 	.queue_setup		= fimc_is_isp_queue_setup,
 	.buf_prepare		= fimc_is_isp_buffer_prepare,
@@ -546,5 +536,4 @@ const struct vb2_ops fimc_is_isp_qops = {
 	.wait_finish		= fimc_is_isp_lock,
 	.start_streaming	= fimc_is_isp_start_streaming,
 	.stop_streaming		= fimc_is_isp_stop_streaming,
-	.buf_cleanup		= fimc_is_isp_buffer_cleanup,
 };

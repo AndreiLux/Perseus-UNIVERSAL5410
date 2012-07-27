@@ -13,7 +13,7 @@
 #define FIMC_IS_CORE_H
 
 
-#define DEBUG
+/* #define DEBUG */
 /*#define FIMC_IS_A5_DEBUG_ON	1*/
 /*#define DBG_STREAMING*/
 
