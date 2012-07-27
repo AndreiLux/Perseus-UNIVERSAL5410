@@ -1007,7 +1007,7 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 		goto err_irq;
 	}
 
-	exynos_dp_enable_scramble(dp, 1);
+	exynos_dp_enable_scramble(dp, 0);
 	exynos_dp_enable_rx_to_enhanced_mode(dp, 1);
 	exynos_dp_enable_enhanced_mode(dp, 1);
 
@@ -1098,7 +1098,7 @@ static int exynos_dp_resume(struct device *dev)
 		exynos_dp_set_hw_link_train(dp,
 			dp->video_info->lane_count, dp->video_info->link_rate);
 
-	exynos_dp_enable_scramble(dp, 1);
+	exynos_dp_enable_scramble(dp, 0);
 	exynos_dp_enable_rx_to_enhanced_mode(dp, 1);
 	exynos_dp_enable_enhanced_mode(dp, 1);
 
