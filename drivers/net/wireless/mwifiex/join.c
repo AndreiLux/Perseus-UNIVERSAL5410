@@ -645,8 +645,8 @@ int mwifiex_ret_802_11_associate(struct mwifiex_private *priv,
 	/* Set the attempted BSSID Index to current */
 	bss_desc = priv->attempted_bss_desc;
 
-	dev_dbg(priv->adapter->dev, "info: ASSOC_RESP: %s\n",
-		bss_desc->ssid.ssid);
+	dev_info(priv->adapter->dev, "info: ASSOC_RESP: %s\n",
+		 bss_desc->ssid.ssid);
 
 	/* Make a copy of current BSSID descriptor */
 	memcpy(&priv->curr_bss_params.bss_descriptor,

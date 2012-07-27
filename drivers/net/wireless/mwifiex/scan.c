@@ -1744,6 +1744,9 @@ int mwifiex_ret_802_11_scan(struct mwifiex_private *priv,
 			chan = ieee80211_get_channel(priv->wdev->wiphy, freq);
 
 			if (chan && !(chan->flags & IEEE80211_CHAN_DISABLED)) {
+				wiphy_info(priv->wdev->wiphy,
+					   "%s: cfg80211_inform_bss(%pM)\n",
+					   __func__, bssid);
 				bss = cfg80211_inform_bss(priv->wdev->wiphy,
 					      chan, bssid, timestamp,
 					      cap_info_bitmap, beacon_period,
@@ -1784,8 +1787,8 @@ int mwifiex_ret_802_11_scan(struct mwifiex_private *priv,
 		}
 
 		if (priv->user_scan_cfg) {
-			dev_dbg(priv->adapter->dev,
-				"info: %s: sending scan results\n", __func__);
+			dev_info(priv->adapter->dev,
+				 "info: %s: calling scan_done\n", __func__);
 			cfg80211_scan_done(priv->scan_request, 0);
 			priv->scan_request = NULL;
 			kfree(priv->user_scan_cfg);
