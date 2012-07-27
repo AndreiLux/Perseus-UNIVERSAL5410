@@ -376,50 +376,53 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	 */
 	trace_exynos_flip_request(exynos_crtc->pipe);
 
-	if (event) {
-		/*
-		 * the pipe from user always is 0 so we can set pipe number
-		 * of current owner to event.
-		 */
-		event->pipe = exynos_crtc->pipe;
+	/* msb: The event flag is optional but exynos does not support it. */
+	if (!event) {
+		DRM_ERROR("called page_flip with empty event flag\n");
+		return -EINVAL;
+	}
 
-		ret = drm_vblank_get(dev, exynos_crtc->pipe);
-		if (ret) {
-			DRM_DEBUG("failed to acquire vblank counter\n");
-			goto out;
-		}
+	/*
+	 * the pipe from user always is 0 so we can set pipe number
+	 * of current owner to event.
+	 */
+	event->pipe = exynos_crtc->pipe;
 
+	ret = drm_vblank_get(dev, exynos_crtc->pipe);
+	if (ret) {
+		DRM_DEBUG("failed to acquire vblank counter\n");
+		goto out;
+	}
 
-		list_add_tail(&event->base.link,
-				&dev_priv->pageflip_event_list);
+	list_add_tail(&event->base.link,
+		      &dev_priv->pageflip_event_list);
 
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-		if (dev_priv->old_kds_res_set != NULL)
-			kds_resource_set_release(&dev_priv->old_kds_res_set);
-		dev_priv->old_kds_res_set = dev_priv->kds_res_set;
+	if (dev_priv->old_kds_res_set != NULL)
+		kds_resource_set_release(&dev_priv->old_kds_res_set);
+	dev_priv->old_kds_res_set = dev_priv->kds_res_set;
 
-		if (dev_priv->old_dma_buf != NULL)
-			dma_buf_put(dev_priv->old_dma_buf);
-		dev_priv->old_dma_buf = dev_priv->dma_buf;
+	if (dev_priv->old_dma_buf != NULL)
+		dma_buf_put(dev_priv->old_dma_buf);
+	dev_priv->old_dma_buf = dev_priv->dma_buf;
 
-		if (gem_ob->base.export_dma_buf) {
-			struct dma_buf *buf = gem_ob->base.export_dma_buf;
-			unsigned long shared[1] = {0};
-			struct kds_resource *resource_list[1] = {get_dma_buf_kds_resource(buf)};
+	if (gem_ob->base.export_dma_buf) {
+		struct dma_buf *buf = gem_ob->base.export_dma_buf;
+		unsigned long shared[1] = {0};
+		struct kds_resource *resource_list[1] = {get_dma_buf_kds_resource(buf)};
 
-			get_dma_buf(buf);
-			dev_priv->dma_buf = buf;
+		get_dma_buf(buf);
+		dev_priv->dma_buf = buf;
 
-			/* Waiting for the KDS resource*/
-			kds_async_waitall(&dev_priv->kds_res_set, KDS_FLAG_LOCKED_WAIT,
-				&dev_priv->kds_cb, crtc, fb, 1, shared, resource_list);
-		} else {
-			exynos_drm_kds_callback(crtc, fb);
-			dev_priv->kds_res_set = NULL;
-			dev_priv->dma_buf = NULL;
-		}
-#endif
+		/* Waiting for the KDS resource*/
+		kds_async_waitall(&dev_priv->kds_res_set, KDS_FLAG_LOCKED_WAIT,
+				  &dev_priv->kds_cb, crtc, fb, 1, shared, resource_list);
+	} else {
+		exynos_drm_kds_callback(crtc, fb);
+		dev_priv->kds_res_set = NULL;
+		dev_priv->dma_buf = NULL;
 	}
+#endif
 out:
 
 	trace_exynos_flip_complete(exynos_crtc->pipe);
