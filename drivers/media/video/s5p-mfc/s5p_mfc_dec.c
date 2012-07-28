@@ -214,6 +214,7 @@ static struct mfc_control controls[] = {
 		.step = 1,
 		.default_value = 0,
 		.is_volatile = 1,
+		.flags = V4L2_CTRL_FLAG_READ_ONLY,
 	},
 };
 
@@ -1156,6 +1157,7 @@ int s5p_mfc_dec_ctrls_setup(struct s5p_mfc_ctx *ctx)
 			cfg.type = controls[i].type;
 
 			cfg.step = controls[i].step;
+			cfg.flags = controls[i].flags;
 			cfg.menu_skip_mask = 0;
 
 			ctx->ctrls[i] = v4l2_ctrl_new_custom(&ctx->ctrl_handler,
