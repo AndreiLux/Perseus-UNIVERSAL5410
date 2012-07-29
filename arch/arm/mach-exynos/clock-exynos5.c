@@ -564,15 +564,35 @@ static struct clksrc_clk exynos5_clk_mout_gpll = {
 		.name		= "mout_gpll",
 	},
 	.sources = &clk_src_gpll,
-	.reg_src = { .reg = EXYNOS5_CLKSRC_TOP2, .shift = 24, .size = 1 },
+	.reg_src = { .reg = EXYNOS5_CLKSRC_TOP2, .shift = 28, .size = 1 },
 };
 
-static struct clksrc_clk exynos5_clk_aclk_400 = {
+/* For ACLK_400_G3D_MID */
+static struct clksrc_clk exynos5_clk_aclk_400_g3d_mid = {
 	.clk	= {
-		.name		= "aclk_400",
+		.name		= "aclk_400_g3d_mid",
 	},
 	.sources = &exynos5_clkset_aclk,
 	.reg_src = { .reg = EXYNOS5_CLKSRC_TOP0, .shift = 20, .size = 1 },
+};
+
+/* For ACLK_400_G3D */
+struct clk *exynos5_clkset_aclk_g3d_list[] = {
+	[0] = &exynos5_clk_aclk_400_g3d_mid.clk,
+	[1] = &exynos5_clk_mout_gpll.clk,
+};
+
+struct clksrc_sources exynos5_clkset_aclk_g3d = {
+	.sources	= exynos5_clkset_aclk_g3d_list,
+	.nr_sources	= ARRAY_SIZE(exynos5_clkset_aclk_g3d_list),
+};
+
+static struct clksrc_clk exynos5_clk_aclk_400_g3d = {
+	.clk	= {
+		.name		= "aclk_400_g3d",
+	},
+	.sources = &exynos5_clkset_aclk_g3d,
+	.reg_src = { .reg = EXYNOS5_CLKSRC_TOP1, .shift = 28, .size = 1 },
 	.reg_div = { .reg = EXYNOS5_CLKDIV_TOP0, .shift = 24, .size = 3 },
 };
 
@@ -1522,7 +1542,8 @@ static struct clksrc_clk *exynos5_sysclks[] = {
 	&exynos5_clk_dout_armclk,
 	&exynos5_clk_dout_arm2clk,
 	&exynos5_clk_cdrex,
-	&exynos5_clk_aclk_400,
+	&exynos5_clk_aclk_400_g3d,
+	&exynos5_clk_aclk_400_g3d_mid,
 	&exynos5_clk_aclk_333,
 	&exynos5_clk_aclk_266,
 	&exynos5_clk_aclk_200,
@@ -1802,7 +1823,7 @@ void __init_or_cpufreq exynos5_setup_clocks(void)
 	unsigned long xtal;
 	unsigned long armclk;
 	unsigned long mout_cdrex;
-	unsigned long aclk_400;
+	unsigned long aclk_400_g3d;
 	unsigned long aclk_333;
 	unsigned long aclk_266;
 	unsigned long aclk_200;
@@ -1847,23 +1868,23 @@ void __init_or_cpufreq exynos5_setup_clocks(void)
 	clk_fout_gpll.rate = gpll;
 
 	printk(KERN_INFO "EXYNOS5: PLL settings, A=%ld, B=%ld, C=%ld\n"
-			"M=%ld, E=%ld V=%ld",
-			apll, bpll, cpll, mpll, epll, vpll);
+			"M=%ld, E=%ld V=%ld G=%ld",
+			apll, bpll, cpll, mpll, epll, vpll, gpll);
 
 	armclk = clk_get_rate(&exynos5_clk_armclk);
 	mout_cdrex = clk_get_rate(&exynos5_clk_cdrex.clk);
 
-	aclk_400 = clk_get_rate(&exynos5_clk_aclk_400.clk);
+	aclk_400_g3d = clk_get_rate(&exynos5_clk_aclk_400_g3d.clk);
 	aclk_333 = clk_get_rate(&exynos5_clk_aclk_333.clk);
 	aclk_266 = clk_get_rate(&exynos5_clk_aclk_266.clk);
 	aclk_200 = clk_get_rate(&exynos5_clk_aclk_200.clk);
 	aclk_166 = clk_get_rate(&exynos5_clk_aclk_166.clk);
 	aclk_66 = clk_get_rate(&exynos5_clk_aclk_66.clk);
 
-	printk(KERN_INFO "EXYNOS5: ARMCLK=%ld, CDREX=%ld, ACLK400=%ld\n"
+	printk(KERN_INFO "EXYNOS5: ARMCLK=%ld, CDREX=%ld, ACLK400G3D=%ld\n"
 			"ACLK333=%ld, ACLK266=%ld, ACLK200=%ld\n"
 			"ACLK166=%ld, ACLK66=%ld\n",
-			armclk, mout_cdrex, aclk_400,
+			armclk, mout_cdrex, aclk_400_g3d,
 			aclk_333, aclk_266, aclk_200,
 			aclk_166, aclk_66);
 
