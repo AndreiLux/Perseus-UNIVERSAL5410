@@ -333,9 +333,8 @@ static int kbase_platform_power_clock_init(kbase_device *kbdev)
 		printk("v4 support\n");
 	}
 
-#ifndef CONFIG_T6XX_HWVER_R0P0
-	/* TODO(anush): figure out how to set the gpu clock to 533 */
-	platform->sclk_g3d = clk_get(dev, "aclk_400");
+#ifdef CONFIG_T6XX_HWVER_R0P0
+	platform->sclk_g3d = clk_get(dev, "aclk_400_g3d");
 	if(IS_ERR(platform->sclk_g3d)) {
 		OSK_PRINT_ERROR(OSK_BASE_PM, "failed to clk_get [sclk_g3d]\n");
 		goto out;
