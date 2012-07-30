@@ -1011,6 +1011,39 @@ static void dispc_read_plane_fifo_sizes(void)
 	}
 }
 
+static void dispc_transfer_fifo(enum omap_plane src_plane,
+		enum omap_plane dest_plane)
+{
+	u8 top_fifo_start, top_fifo_end, bot_fifo_start, bot_fifo_end;
+
+	/*
+	 * calculate start and end bits corresponding to the source plane
+	 * in DISPC_GLOBAL_BUFFER
+	 */
+	top_fifo_end = src_plane * 6;
+	top_fifo_start = top_fifo_end + 2;
+	bot_fifo_end = top_fifo_start + 1;
+	bot_fifo_start = bot_fifo_end + 2;
+
+	REG_FLD_MOD(DISPC_GLOBAL_BUFFER, src_plane, top_fifo_start,
+			top_fifo_end);
+	REG_FLD_MOD(DISPC_GLOBAL_BUFFER, src_plane, bot_fifo_start,
+			bot_fifo_end);
+
+	dispc.fifo_size[dest_plane] += dispc.fifo_size[src_plane];
+	dispc.fifo_size[src_plane] = 0;
+}
+
+static void dispc_transfer_wb_fifo_to_gfx(void)
+{
+	const int num_wbs = dss_feat_get_num_wbs();
+
+	if (!num_wbs)
+		return;
+
+	dispc_transfer_fifo(OMAP_DSS_WB, OMAP_DSS_GFX);
+}
+
 static u32 dispc_ovl_get_fifo_size(enum omap_plane plane)
 {
 	return dispc.fifo_size[plane];
@@ -3663,6 +3696,8 @@ static void _omap_dispc_initial_config(void)
 	dispc_set_loadmode(OMAP_DSS_LOAD_FRAME_ONLY);
 
 	dispc_read_plane_fifo_sizes();
+
+	dispc_transfer_wb_fifo_to_gfx();
 
 	dispc_configure_burst_sizes();
 
