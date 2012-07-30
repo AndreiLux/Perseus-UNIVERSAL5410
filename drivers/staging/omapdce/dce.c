@@ -675,7 +675,7 @@ static inline struct drm_gem_object * handle_single_buf_desc(
 {
 	struct drm_gem_object *obj;
 	uint32_t flags;
-	int32_t offset;
+	int32_t offset = 0;
 
 	/* maybe support remapping user ptrs later on.. */
 	if (desc->mem_type != XDM_MEMTYPE_BO &&
@@ -687,16 +687,13 @@ static inline struct drm_gem_object * handle_single_buf_desc(
 		 * passed to _process */
 		offset = desc->buf;
 		desc->buf = base_bo;
-	} else {
-		offset = -1;
 	}
 
 	obj = get_paddr(priv, req, &desc->buf, desc->buf);
 	if (IS_ERR(obj))
 		return obj;
 
-	if (offset != -1)
-		desc->buf += offset;
+	desc->buf += offset;
 
 	flags = omap_gem_flags(obj);
 	switch(flags & OMAP_BO_TILED) {
