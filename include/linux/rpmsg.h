@@ -40,6 +40,7 @@
 #include <linux/mod_devicetable.h>
 #include <linux/idr.h>
 #include <linux/kref.h>
+#include <linux/mutex.h>
 
 /* The feature bitmap for virtio rpmsg */
 #define VIRTIO_RPMSG_F_NS	0 /* RP supports name service notifications */
@@ -162,6 +163,7 @@ typedef void (*rpmsg_rx_cb_t)(struct rpmsg_channel *, void *, int, void *, u32);
  * @rpdev: rpmsg channel device
  * @refcount: when this drops to zero, the ept is deallocated
  * @cb: rx callback handler
+ * @cb_lock: must be taken before accessing/changing @cb
  * @addr: local rpmsg address
  * @priv: private data for the driver's use
  *
@@ -183,6 +185,7 @@ struct rpmsg_endpoint {
 	struct rpmsg_channel *rpdev;
 	struct kref refcount;
 	rpmsg_rx_cb_t cb;
+	struct mutex cb_lock;
 	u32 addr;
 	void *priv;
 };
