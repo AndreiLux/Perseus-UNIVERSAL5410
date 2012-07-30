@@ -393,7 +393,6 @@ static struct platform_device sdp4430_vbat = {
 static struct omap_rprm_regulator sdp4430_rprm_regulators[] = {
 	{
 		.name = "cam2pwr",
-		.fixed = true,
 	},
 };
 
@@ -656,7 +655,6 @@ static int __init omap4_i2c_init(void)
 	omap4_pmic_get_config(&sdp4430_twldata, TWL_COMMON_PDATA_USB,
 			TWL_COMMON_REGULATOR_VDAC |
 			TWL_COMMON_REGULATOR_VAUX2 |
-			TWL_COMMON_REGULATOR_VAUX3 |
 			TWL_COMMON_REGULATOR_VMMC |
 			TWL_COMMON_REGULATOR_VPP |
 			TWL_COMMON_REGULATOR_VANA |
