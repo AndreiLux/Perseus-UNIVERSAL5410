@@ -1025,9 +1025,9 @@ static void dispc_transfer_fifo(enum omap_plane src_plane,
 	bot_fifo_end = top_fifo_start + 1;
 	bot_fifo_start = bot_fifo_end + 2;
 
-	REG_FLD_MOD(DISPC_GLOBAL_BUFFER, src_plane, top_fifo_start,
+	REG_FLD_MOD(DISPC_GLOBAL_BUFFER, dest_plane, top_fifo_start,
 			top_fifo_end);
-	REG_FLD_MOD(DISPC_GLOBAL_BUFFER, src_plane, bot_fifo_start,
+	REG_FLD_MOD(DISPC_GLOBAL_BUFFER, dest_plane, bot_fifo_start,
 			bot_fifo_end);
 
 	dispc.fifo_size[dest_plane] += dispc.fifo_size[src_plane];
