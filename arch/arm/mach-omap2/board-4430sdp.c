@@ -506,6 +506,27 @@ static struct platform_device omap_vwlan_device = {
 	},
 };
 
+static struct regulator_consumer_supply sdp4430_cam2_supply[] = {
+	{
+		.supply = "cam2pwr",
+	},
+};
+
+static struct regulator_init_data sdp4430_vaux3 = {
+	.constraints = {
+		.min_uV			= 1000000,
+		.max_uV			= 3000000,
+		.apply_uV		= true,
+		.valid_modes_mask	= REGULATOR_MODE_NORMAL
+					| REGULATOR_MODE_STANDBY,
+		.valid_ops_mask	 = REGULATOR_CHANGE_VOLTAGE
+					| REGULATOR_CHANGE_MODE
+					| REGULATOR_CHANGE_STATUS,
+	},
+	.num_consumer_supplies = 1,
+	.consumer_supplies = sdp4430_cam2_supply,
+};
+
 static int omap4_twl6030_hsmmc_late_init(struct device *dev)
 {
 	int irq = 0;
@@ -606,6 +627,7 @@ static struct twl4030_platform_data sdp4430_twldata = {
 	/* Regulators */
 	.vusim		= &sdp4430_vusim,
 	.vaux1		= &sdp4430_vaux1,
+	.vaux3		= &sdp4430_vaux3,
 };
 
 static struct i2c_board_info __initdata sdp4430_i2c_3_boardinfo[] = {
