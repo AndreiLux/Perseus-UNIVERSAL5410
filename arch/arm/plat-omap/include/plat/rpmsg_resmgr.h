@@ -69,6 +69,7 @@ struct omap_rprm_ops {
  */
 struct omap_rprm_pdata {
 	const char *iss_opt_clk_name;
+	struct clk *iss_opt_clk;
 	struct omap_rprm_ops *ops;
 };
 

@@ -535,12 +535,19 @@ static int omap_rprm_probe(struct platform_device *pdev)
 	struct omap_rprm_pdata *pdata = pdev->dev.platform_data;
 
 	cnstrnt_ops = pdata->ops;
+	/* set iss optional clock */
+
+	iss_opt_clk = pdata->iss_opt_clk;
+	mach_ops = pdata->ops;
+
 	return 0;
 }
 
 static int omap_rprm_remove(struct platform_device *pdev)
 {
 	cnstrnt_ops = NULL;
+	iss_opt_clk = NULL;
+	mach_ops = NULL;
 
 	return 0;
 }
