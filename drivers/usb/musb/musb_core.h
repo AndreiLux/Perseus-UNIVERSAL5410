@@ -456,6 +456,8 @@ struct musb {
 #ifdef MUSB_CONFIG_PROC_FS
 	struct proc_dir_entry *proc_entry;
 #endif
+
+	unsigned		suspended:1;		/* module disabled */
 };
 
 static inline struct musb *gadget_to_musb(struct usb_gadget *g)

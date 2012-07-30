@@ -2327,7 +2327,11 @@ static int musb_suspend(struct device *dev)
 	}
 
 	spin_unlock_irqrestore(&musb->lock, flags);
-	musb_save_context(musb);
+
+	/* Need to save state only if it is not yet runtime suspended */
+	if (!musb->suspended) {
+		musb_save_context(musb);
+	}
 	return 0;
 }
 
@@ -2340,7 +2344,13 @@ static int musb_resume_noirq(struct device *dev)
 	 * module got reset through the PSC (vs just being disabled).
 	 */
 
-	musb_restore_context(musb);
+	/*
+	 * Restore state only if device was not runtime suspended before 
+	 * the system suspend
+	 */
+	if (!musb->suspended) {
+		musb_restore_context(musb);
+	}
 	return 0;
 }
 
@@ -2349,6 +2359,7 @@ static int musb_runtime_suspend(struct device *dev)
 	struct musb	*musb = dev_to_musb(dev);
 
 	musb_save_context(musb);
+	musb->suspended = true;
 
 	return 0;
 }
@@ -2370,6 +2381,7 @@ static int musb_runtime_resume(struct device *dev)
 	if (!first)
 		musb_restore_context(musb);
 	first = 0;
+	musb->suspended = false;
 
 	return 0;
 }
