@@ -43,8 +43,8 @@
 		dp_bridge@20 {
 			compatible = "nxp,ptn3460";
 			reg = <0x20>;
-			pd_n_gpio = <&gpy2 5 0 0 0>;
-			rst_n_gpio = <&gpx1 5 0 0 0>;
+			pd_n_gpio = <&gpy2 5 1 0 0>;
+			rst_n_gpio = <&gpx1 5 1 0 0>;
 		};
 	};
 };
