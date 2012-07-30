@@ -455,12 +455,16 @@
 			compatible = "samsung,exynos4-gpio";
 			reg = <0x11400020 0x20>;
 			#gpio-cells = <4>;
+			powerdown-support;
+			powerdown-settings = <0 0 2 2 0 0>;
 		};
 
 		gpa2: gpio-controller@11400040 {
 			compatible = "samsung,exynos4-gpio";
 			reg = <0x11400040 0x20>;
 			#gpio-cells = <4>;
+			powerdown-support;
+			powerdown-settings = <2 2 2 2 0 0 0 0>;
 		};
 
 		gpb0: gpio-controller@11400060 {
@@ -479,12 +483,16 @@
 			compatible = "samsung,exynos4-gpio";
 			reg = <0x114000A0 0x20>;
 			#gpio-cells = <4>;
+			powerdown-support;
+			powerdown-settings = <0 0 2 2>;
 		};
 
 		gpb3: gpio-controller@114000C0 {
 			compatible = "samsung,exynos4-gpio";
 			reg = <0x114000C0 0x20>;
 			#gpio-cells = <4>;
+			powerdown-support;
+			powerdown-settings = <2 2 2 2>;
 		};
 
 		gpc0: gpio-controller@114000E0 {
