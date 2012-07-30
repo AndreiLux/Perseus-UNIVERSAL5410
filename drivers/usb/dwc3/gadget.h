@@ -100,8 +100,15 @@ static inline void dwc3_gadget_move_request_queued(struct dwc3_request *req)
 void dwc3_gadget_giveback(struct dwc3_ep *dep, struct dwc3_request *req,
 		int status);
 
+#ifdef CONFIG_USB_GADGET
 int dwc3_gadget_set_test_mode(struct dwc3 *dwc, int mode);
 int dwc3_gadget_set_link_state(struct dwc3 *dwc, enum dwc3_link_state state);
+#else
+static inline int dwc3_gadget_set_test_mode(struct dwc3 *dwc, int mode)
+{ return -EINVAL; }
+static inline int dwc3_gadget_set_link_state(struct dwc3 *dwc, enum dwc3_link_state state)
+{ return -EINVAL; }
+#endif
 
 void dwc3_ep0_interrupt(struct dwc3 *dwc,
 		const struct dwc3_event_depevt *event);

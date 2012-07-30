@@ -535,7 +535,8 @@ static ssize_t dwc3_testmode_write(struct file *file,
 		testmode = 0;
 
 	spin_lock_irqsave(&dwc->lock, flags);
-	dwc3_gadget_set_test_mode(dwc, testmode);
+	if (dwc3_gadget_set_test_mode(dwc, testmode))
+		dev_dbg(dwc->dev, "host: Invalid request\n");
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
 	return count;
@@ -638,7 +639,8 @@ static ssize_t dwc3_link_state_write(struct file *file,
 		return -EINVAL;
 
 	spin_lock_irqsave(&dwc->lock, flags);
-	dwc3_gadget_set_link_state(dwc, state);
+	if (dwc3_gadget_set_link_state(dwc, state))
+		dev_dbg(dwc->dev, "host: Invalid request\n");
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
 	return count;
