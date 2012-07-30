@@ -125,9 +125,14 @@ static void *m_start(struct seq_file *m, loff_t *pos)
 	if (!priv->task)
 		return ERR_PTR(-ESRCH);
 
-	mm = mm_for_maps(priv->task);
+	if (priv->mss)
+		mm = get_task_mm(priv->task);
+	else
+		mm = mm_for_maps(priv->task);
+
 	if (!mm || IS_ERR(mm))
 		return mm;
+
 	down_read(&mm->mmap_sem);
 
 	tail_vma = get_gate_vma(priv->task->mm);
@@ -527,6 +532,105 @@ static int show_smap(struct seq_file *m, void *v, int is_pid)
 	return 0;
 }
 
+static void add_smaps_sum(struct mem_size_stats *mss,
+		struct mem_size_stats *mss_sum)
+{
+	mss_sum->resident += mss->resident;
+	mss_sum->pss += mss->pss;
+	mss_sum->shared_clean += mss->shared_clean;
+	mss_sum->shared_dirty += mss->shared_dirty;
+	mss_sum->private_clean += mss->private_clean;
+	mss_sum->private_dirty += mss->private_dirty;
+	mss_sum->referenced += mss->referenced;
+	mss_sum->anonymous += mss->anonymous;
+	mss_sum->anonymous_thp += mss->anonymous_thp;
+	mss_sum->swap += mss->swap;
+}
+
+static int show_totmaps(struct seq_file *m, void *v)
+{
+	struct proc_maps_private *priv = m->private;
+	struct task_struct *task = priv->task;
+	struct vm_area_struct *vma = v;
+	struct mem_size_stats mss;
+	struct mem_size_stats *mss_sum = priv->mss;
+	struct mm_walk smaps_walk = {
+		.pmd_entry = smaps_pte_range,
+		.mm = vma->vm_mm,
+		.private = &mss,
+	};
+	struct vm_area_struct *tail_vma = priv->tail_vma;
+
+	memset(&mss, 0, sizeof mss);
+	mss.vma = vma;
+	/* mmap_sem is held in m_start */
+	if (vma->vm_mm && !is_vm_hugetlb_page(vma))
+		walk_page_range(vma->vm_start, vma->vm_end, &smaps_walk);
+
+	add_smaps_sum(&mss, mss_sum);
+
+	if (vma != tail_vma) {
+		if (m->count < m->size)  /* vma is copied successfully */
+			m->version = (vma != get_gate_vma(task->mm))
+				? vma->vm_start : 0;
+			return SEQ_SKIP;
+	} else {
+		seq_printf(m,
+			"Rss:            %8lu kB\n"
+			"Pss:            %8lu kB\n"
+			"Shared_Clean:   %8lu kB\n"
+			"Shared_Dirty:   %8lu kB\n"
+			"Private_Clean:  %8lu kB\n"
+			"Private_Dirty:  %8lu kB\n"
+			"Referenced:     %8lu kB\n"
+			"Anonymous:      %8lu kB\n"
+			"AnonHugePages:  %8lu kB\n"
+			"Swap:           %8lu kB\n"
+			"Locked:         %8lu kB\n",
+			mss_sum->resident >> 10,
+			(unsigned long)(mss_sum->pss >> (10 + PSS_SHIFT)),
+			mss_sum->shared_clean  >> 10,
+			mss_sum->shared_dirty  >> 10,
+			mss_sum->private_clean >> 10,
+			mss_sum->private_dirty >> 10,
+			mss_sum->referenced >> 10,
+			mss_sum->anonymous >> 10,
+			mss_sum->anonymous_thp >> 10,
+			mss_sum->swap >> 10,
+			(vma->vm_flags & VM_LOCKED) ?
+			(unsigned long)(mss_sum->pss >> (10 + PSS_SHIFT)) : 0);
+	}
+
+	if (m->count < m->size)  /* vma is copied successfully */
+		m->version = (vma != get_gate_vma(task->mm))
+			? vma->vm_start : 0;
+	return 0;
+}
+
+static void *totmaps_start(struct seq_file *m, loff_t *pos)
+{
+	struct proc_maps_private *priv = m->private;
+	priv->mss = kzalloc(sizeof(*priv->mss), GFP_KERNEL);
+	if (!priv->mss)
+		return ERR_PTR(-ENOMEM);
+	return m_start(m, pos);
+}
+
+static void *totmaps_next(struct seq_file *m, void *v, loff_t *pos)
+{
+	return m_next(m, v, pos);
+}
+
+static void totmaps_stop(struct seq_file *m, void *v)
+{
+	struct proc_maps_private *priv = m->private;
+	if (priv != NULL && priv->mss != NULL) {
+		kfree(priv->mss);
+		priv->mss = NULL;
+	}
+	m_stop(m, v);
+}
+
 static int show_pid_smap(struct seq_file *m, void *v)
 {
 	return show_smap(m, v, 1);
@@ -551,6 +655,13 @@ static const struct seq_operations proc_tid_smaps_op = {
 	.show	= show_tid_smap
 };
 
+static const struct seq_operations proc_totmaps_op = {
+	.start	= totmaps_start,
+	.next	= totmaps_next,
+	.stop	= totmaps_stop,
+	.show	= show_totmaps
+};
+
 static int pid_smaps_open(struct inode *inode, struct file *file)
 {
 	return do_maps_open(inode, file, &proc_pid_smaps_op);
@@ -559,6 +670,11 @@ static int pid_smaps_open(struct inode *inode, struct file *file)
 static int tid_smaps_open(struct inode *inode, struct file *file)
 {
 	return do_maps_open(inode, file, &proc_tid_smaps_op);
+}
+
+static int totmaps_open(struct inode *inode, struct file *file)
+{
+	return do_maps_open(inode, file, &proc_totmaps_op);
 }
 
 const struct file_operations proc_pid_smaps_operations = {
@@ -570,6 +686,13 @@ const struct file_operations proc_pid_smaps_operations = {
 
 const struct file_operations proc_tid_smaps_operations = {
 	.open		= tid_smaps_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= seq_release_private,
+};
+
+const struct file_operations proc_totmaps_operations = {
+	.open		= totmaps_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
 	.release	= seq_release_private,

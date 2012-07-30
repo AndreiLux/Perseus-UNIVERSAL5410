@@ -66,12 +66,14 @@ extern const struct file_operations proc_clear_refs_operations;
 extern const struct file_operations proc_pagemap_operations;
 extern const struct file_operations proc_net_operations;
 extern const struct inode_operations proc_net_inode_operations;
+extern const struct file_operations proc_totmaps_operations;
 
 struct proc_maps_private {
 	struct pid *pid;
 	struct task_struct *task;
 #ifdef CONFIG_MMU
 	struct vm_area_struct *tail_vma;
+	struct mem_size_stats *mss;
 #endif
 };
 
