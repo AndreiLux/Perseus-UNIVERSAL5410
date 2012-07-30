@@ -806,6 +806,42 @@ static inline int handle_buf_desc(struct dce_file_priv *priv,
 	return 0;
 }
 
+static inline int handle_video2_buf_desc(struct dce_file_priv *priv,
+		void **ptr, void *end, struct dce_rpc_hdr *req, uint64_t usr,
+		int mem_type, struct drm_gem_object **o1,
+		struct drm_gem_object **o2, uint8_t *len)
+{
+	struct video2_buf_desc *bufs = *ptr;
+	uint32_t base_bo;
+	int i, ret;
+
+	ret = cfu(ptr, usr, sizeof(*bufs), end);
+	if (ret)
+		return ret;
+
+	*len = sizeof(*bufs) / 4;
+
+	/* the bo used as a base for XDM_MEMTYPE_BO_OFFSET descriptors */
+	base_bo = bufs->plane_desc[0].buf;
+
+	/* handle buffer mapping.. */
+	for (i = 0; i < bufs->num_planes; i++) {
+		struct drm_gem_object *obj =
+				handle_single_buf_desc(priv, req, base_bo,
+						mem_type, &bufs->plane_desc[i]);
+		if (IS_ERR(obj)) {
+			return PTR_ERR(obj);
+		}
+
+		if (i == 0)
+			*o1 = obj;
+		if (o2 && (i == 1))
+			*o2 = obj;
+	}
+
+	return 0;
+}
+
 /*
  *   VIDDEC3_process			VIDENC2_process
  *   VIDDEC3_InArgs *inArgs		VIDENC2_InArgs *inArgs
@@ -818,9 +854,43 @@ static inline int handle_videnc2(struct dce_file_priv *priv,
 		struct dce_rpc_codec_process_req *req,
 		struct drm_omap_dce_codec_process *arg)
 {
-	WARN_ON(1); // XXX not implemented
-	//	codec_lockbuf(priv, arg->codec_handle, in_args->input_id, y, uv);
-	return -EFAULT;
+	struct drm_gem_object *out = NULL, *y = NULL, *uv = NULL;
+	struct videnc2_in_args *in_args = *ptr;
+	int ret;
+
+	/* handle in_args: */
+	ret = cfu(ptr, arg->in_args, sizeof(*in_args), end);
+	if (ret)
+		return ret;
+
+	if (in_args->size > sizeof(*in_args)) {
+		int sz = in_args->size - sizeof(*in_args);
+		/* this param can be variable length */
+		ret = cfu(ptr, arg->in_args + sizeof(*in_args), sz, end);
+		if (ret)
+			return ret;
+		/* in case the extra part size is not multiple of 4 */
+		*ptr += round_up(sz, 4) - sz;
+	}
+
+	req->in_args_len = round_up(in_args->size, 4) / 4;
+
+	/* handle out_bufs: */
+	ret = handle_buf_desc(priv, ptr, end, hdr(req), arg->out_bufs,
+			XDM_MEMTYPE_RAW, &out, NULL, &req->out_bufs_len);
+	if (ret)
+		return ret;
+
+	/* handle in_bufs: */
+	ret = handle_video2_buf_desc(priv, ptr, end, hdr(req), arg->in_bufs,
+			XDM_MEMTYPE_TILEDPAGE, &y, &uv, &req->in_bufs_len);
+	if (ret)
+		return ret;
+
+	*input_id = in_args->input_id;
+	codec_lockbuf(priv, arg->codec_handle, in_args->input_id, y, uv);
+
+	return 0;
 }
 
 static inline int handle_viddec3(struct dce_file_priv *priv,
