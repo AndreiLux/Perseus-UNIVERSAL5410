@@ -28,6 +28,16 @@ Required properties:
 - gpio-controller: Specifies that the node is a gpio controller.
 - #address-cells: should be 1.
 - #size-cells: should be 1.
+- powerdown-support: This bank supports powerdown configuration registers
+- powerdown-settings: Configure GPIO behavior on suspend.
+  Array of u32 with ngpio elements.  This properties existence
+  indicates the chip supports CONPDN and PUDPDN
+     0 - Use existing
+     1 - Float (input, no PU/PD)
+     2 - Pull up (input)
+     3 - Pull down (input)
+     4 - Output high
+     5 - Output low
 
 Example:
 
@@ -38,4 +48,6 @@ Example:
 		reg = <0x11400000 0x20>;
 		#gpio-cells = <4>;
 		gpio-controller;
+		powerdown-support;
+		powerdown-settings = <0 0 0 2 0 0>;
 	};

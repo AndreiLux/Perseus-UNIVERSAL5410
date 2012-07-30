@@ -203,7 +203,7 @@ static void samsung_gpio_pm_4bit_save(struct samsung_gpio_chip *chip)
 	chip->pm_save[2] = __raw_readl(chip->base + OFFS_DAT);
 	chip->pm_save[3] = __raw_readl(chip->base + OFFS_UP);
 	chip->pm_save[4] = __raw_readl(chip->base + OFFS_DRV);
-	if (soc_is_exynos5250()) {
+	if (chip->pdn_supported) {
 		chip->pm_save[5] = __raw_readl(chip->base + OFFS_CONPD);
 		chip->pm_save[6] = __raw_readl(chip->base + OFFS_UPPD);
 	}
@@ -309,9 +309,13 @@ static void samsung_gpio_pm_4bit_resume(struct samsung_gpio_chip *chip)
 			  old_gpdat, gps_gpdat,
 			  __raw_readl(base + OFFS_DRV));
 
-	if (soc_is_exynos5250()) {
+	if (chip->pdn_supported) {
 		__raw_writel(chip->pm_save[5], chip->base + OFFS_CONPD);
 		__raw_writel(chip->pm_save[6], chip->base + OFFS_UPPD);
+		S3C_PMDBG("%s: CONPDN %08x PUDPDN %08x\n",
+			  chip->chip.label,
+			  __raw_readl(base + OFFS_CONPD),
+			  __raw_readl(base + OFFS_UPPD));
 	}
 
 }

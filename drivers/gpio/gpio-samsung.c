@@ -893,6 +893,73 @@ static __init void s3c_gpiolib_track(struct samsung_gpio_chip *chip)
 }
 #endif /* CONFIG_S3C_GPIO_TRACK */
 
+static __init void exynos_gpiolib_powerdown_cfg(struct samsung_gpio_chip *chip)
+{
+	struct property *prop;
+	int i, prop_count;
+	const __be32 *val_ptr;
+	u32 con_pdn, pud_pdn;
+
+	if (!of_find_property(chip->chip.of_node, "powerdown-support", NULL))
+		return;
+
+	chip->pdn_supported = true; /* Indicate this chip supports saving */
+	prop = of_find_property(chip->chip.of_node, "powerdown-settings", NULL);
+	if (!prop)
+		return;
+
+	prop_count = prop->length / sizeof(u32);
+	if (prop_count != chip->chip.ngpio) {
+		pr_warn("%s: powerdown-settings has %d entries, %d expected\n",
+			chip->chip.label, prop_count, chip->chip.ngpio);
+		return;
+	}
+	if (prop_count > 16) {
+		pr_warn("%s: powerdown-settings has %d entries (max 16)\n",
+			chip->chip.label, prop_count);
+		return;
+	}
+
+	val_ptr = prop->value;
+	con_pdn = __raw_readl(chip->base + GPIOCONPDN_OFF);
+	pud_pdn = __raw_readl(chip->base + GPIOPUDPDN_OFF);
+
+	for (i = 0; i < prop_count; i++) {
+		u32 value = be32_to_cpup(val_ptr++);
+		if (!value)
+			continue; /* 0 = use existing */
+		con_pdn &= ~(0x3 << (i * 2));
+		pud_pdn &= ~(0x3 << (i * 2));
+		switch (value) {
+		case 1: /* Float */
+			con_pdn |= 0x2 << (i * 2);
+			/* pud_pdn |= 0x0 << (i * 2); */
+			break;
+		case 2: /* Pull up */
+			con_pdn |= 0x2 << (i * 2);
+			pud_pdn |= 0x3 << (i * 2);
+			break;
+		case 3: /* Pull down */
+			con_pdn |= 0x2 << (i * 2);
+			pud_pdn |= 0x1 << (i * 2);
+			break;
+		case 4: /* Drive high */
+			con_pdn |= 0x1 << (i * 2);
+			/* pud_pdn |= 0x0 << (i * 2); */
+			break;
+		case 5: /* Drive low */
+			/* con_pdn |= 0x0 << (i * 2); */
+			/* pud_pdn |= 0x0 << (i * 2); */
+			break;
+		default:
+			pr_warn("%s(%d): powerdown-settings illegal value %d\n",
+				chip->chip.label, i, value);
+		}
+	}
+	__raw_writel(con_pdn, chip->base + GPIOCONPDN_OFF);
+	__raw_writel(pud_pdn, chip->base + GPIOPUDPDN_OFF);
+}
+
 /*
  * samsung_gpiolib_add() - add the Samsung gpio_chip.
  * @chip: The chip to register
@@ -930,6 +997,9 @@ static void __init samsung_gpiolib_add(struct samsung_gpio_chip *chip)
 			       gc->label);
 	} else
 		printk(KERN_ERR "gpio: %s has no PM function\n", gc->label);
+#endif
+#ifdef CONFIG_OF
+	exynos_gpiolib_powerdown_cfg(chip);
 #endif
 
 	/* gpiochip_add() prints own failure message on error. */

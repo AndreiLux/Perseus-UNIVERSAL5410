@@ -13,6 +13,8 @@
 
 #define GPIOCON_OFF	(0x00)
 #define GPIODAT_OFF	(0x04)
+#define GPIOCONPDN_OFF	(0x10)
+#define GPIOPUDPDN_OFF	(0x14)
 
 #define con_4bit_shift(__off) ((__off) * 4)
 
@@ -48,6 +50,7 @@ struct samsung_gpio_cfg;
  * @config: special function and pull-resistor control information.
  * @lock: Lock for exclusive access to this gpio bank.
  * @pm_save: Save information for suspend/resume support.
+ * @pdn_supported: Powerdown config and pullup/down registers supported
  *
  * This wrapper provides the necessary information for the Samsung
  * specific gpios being registered with gpiolib.
@@ -71,6 +74,7 @@ struct samsung_gpio_chip {
 #ifdef CONFIG_PM
 	u32			pm_save[7];
 #endif
+	bool			pdn_supported;
 };
 
 static inline struct samsung_gpio_chip *to_samsung_gpio(struct gpio_chip *gpc)
