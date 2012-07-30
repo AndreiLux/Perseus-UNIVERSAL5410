@@ -305,8 +305,6 @@ static struct drm_crtc_helper_funcs exynos_crtc_helper_funcs = {
 };
 
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-extern void fimd_finish_pageflip(struct drm_device *, int);
-
 #define to_exynos_fb(x)	container_of(x, struct exynos_drm_fb, fb)
 /*
  * exynos specific framebuffer structure.
@@ -324,27 +322,19 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 	struct drm_crtc *crtc = (struct drm_crtc *)callback_parameter;
 	struct drm_device *dev = crtc->dev;
 	struct exynos_drm_private *dev_priv = dev->dev_private;
-	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-	struct drm_pending_vblank_event *event = callback_extra_parameter;
+	struct drm_framebuffer *fb = callback_extra_parameter;
+	struct drm_framebuffer *old_fb = crtc->fb;
 	int ret = -EINVAL;
 
 	mutex_lock(&dev->struct_mutex);
-	/*
-	 * the pipe from user always is 0 so we can set pipe number
-	 * of current owner to event.
-	 */
-	event->pipe = exynos_crtc->pipe;
 
-	ret = drm_vblank_get(dev, exynos_crtc->pipe);
+	crtc->fb = fb;
+	ret = exynos_drm_crtc_update(crtc);
 	if (ret) {
-		DRM_DEBUG("failed to acquire vblank counter\n");
+		crtc->fb = old_fb;
 		mutex_unlock(&dev->struct_mutex);
 		goto callback_out;
 	}
-
-	list_add_tail(&event->base.link,
-			&dev_priv->pageflip_event_list);
-
 	/*
 	 * the values related to a buffer of the drm framebuffer
 	 * to be applied should be set at here. because these values
@@ -352,9 +342,10 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 	 * real registers at vsync front porch period.
 	 */
 	exynos_drm_crtc_apply(crtc);
-	mutex_unlock(&dev->struct_mutex);
 
+	mutex_unlock(&dev->struct_mutex);
 callback_out:
+	exynos_drm_wait_for_vsync(dev);
 	if (dev_priv->old_kds_res_set != NULL) {
 		kds_resource_set_release(&dev_priv->old_kds_res_set);
 		dev_priv->old_kds_res_set = NULL;
@@ -373,7 +364,6 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	struct drm_device *dev = crtc->dev;
 	struct exynos_drm_private *dev_priv = dev->dev_private;
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-	struct drm_framebuffer *old_fb = crtc->fb;
 	int ret = -EINVAL;
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
@@ -387,16 +377,21 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	trace_exynos_flip_request(exynos_crtc->pipe);
 
 	if (event) {
-		mutex_lock(&dev->struct_mutex);
-		crtc->fb = fb;
-		ret = exynos_drm_crtc_update(crtc);
+		/*
+		 * the pipe from user always is 0 so we can set pipe number
+		 * of current owner to event.
+		 */
+		event->pipe = exynos_crtc->pipe;
+
+		ret = drm_vblank_get(dev, exynos_crtc->pipe);
 		if (ret) {
-			crtc->fb = old_fb;
-			mutex_unlock(&dev->struct_mutex);
+			DRM_DEBUG("failed to acquire vblank counter\n");
 			goto out;
 		}
 
-		mutex_unlock(&dev->struct_mutex);
+
+		list_add_tail(&event->base.link,
+				&dev_priv->pageflip_event_list);
 
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 		if (dev_priv->old_kds_res_set != NULL)
@@ -417,7 +412,7 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 
 			/* Waiting for the KDS resource*/
 			kds_async_waitall(&dev_priv->kds_res_set, KDS_FLAG_LOCKED_WAIT,
-				&dev_priv->kds_cb, crtc, event, 1, shared, resource_list);
+				&dev_priv->kds_cb, crtc, fb, 1, shared, resource_list);
 		} else {
 			exynos_drm_kds_callback(crtc, fb);
 			dev_priv->kds_res_set = NULL;
