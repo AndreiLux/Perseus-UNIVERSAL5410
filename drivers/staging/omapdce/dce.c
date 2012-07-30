@@ -888,7 +888,9 @@ static inline int handle_videnc2(struct dce_file_priv *priv,
 		return ret;
 
 	*input_id = in_args->input_id;
-	codec_lockbuf(priv, arg->codec_handle, in_args->input_id, y, uv);
+	/* input_id=0 means no bufs, so we don't need to lock anything */
+	if (in_args->input_id != 0)
+		codec_lockbuf(priv, arg->codec_handle, in_args->input_id, y, uv);
 
 	return 0;
 }
@@ -940,7 +942,9 @@ static inline int handle_viddec3(struct dce_file_priv *priv,
 		return ret;
 
 	*input_id = in_args->input_id;
-	codec_lockbuf(priv, arg->codec_handle, in_args->input_id, y, uv);
+	/* input_id=0 means no bufs, so we don't need to lock anything */
+	if (in_args->input_id != 0)
+		codec_lockbuf(priv, arg->codec_handle, in_args->input_id, y, uv);
 
 	return 0;
 }
