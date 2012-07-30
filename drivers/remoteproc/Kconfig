@@ -8,6 +8,7 @@ config REMOTEPROC
 # OMAP_REMOTEPROC depends on selection of IPU or DSP instances
 config OMAP_REMOTEPROC
 	tristate "OMAP remoteproc support"
+	depends on EXPERIMENTAL
 	depends on ARCH_OMAP4
 	depends on OMAP_IOMMU
 	depends on OMAP_REMOTEPROC_IPU || OMAP_REMOTEPROC_DSP
