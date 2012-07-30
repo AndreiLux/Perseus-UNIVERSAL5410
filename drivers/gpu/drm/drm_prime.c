@@ -184,6 +184,7 @@ int drm_gem_prime_fd_to_handle(struct drm_device *dev,
 
 	mutex_unlock(&file_priv->prime.lock);
 	drm_gem_object_unreference_unlocked(obj);
+	dma_buf_put(dma_buf);
 
 	return 0;
 
