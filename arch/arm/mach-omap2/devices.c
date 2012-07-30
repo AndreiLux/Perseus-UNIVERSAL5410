@@ -368,11 +368,17 @@ static inline void omap_init_abe(void) {}
 #endif
 
 #if defined(CONFIG_SND_SOC) || defined(CONFIG_SND_SOC_MODULE)
-
 static struct platform_device omap_pcm = {
 	.name	= "omap-pcm-audio",
 	.id	= -1,
 };
+
+#if defined(CONFIG_SND_OMAP_SOC_VXREC)
+static struct platform_device omap_abe_vxrec = {
+	.name   = "omap-abe-vxrec-dai",
+	.id     = -1,
+};
+#endif
 
 static void omap_init_audio(void)
 {
@@ -387,6 +393,9 @@ static void omap_init_audio(void)
 		platform_device_register(&omap_mcbsp5);
 
 	platform_device_register(&omap_pcm);
+#if defined(CONFIG_SND_OMAP_SOC_VXREC)
+	platform_device_register(&omap_abe_vxrec);
+#endif
 }
 
 #else
