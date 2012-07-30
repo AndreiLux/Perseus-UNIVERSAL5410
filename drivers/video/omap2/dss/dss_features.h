@@ -26,6 +26,7 @@
 
 #define MAX_DSS_MANAGERS	3
 #define MAX_DSS_OVERLAYS	4
+#define MAX_DSS_WBS		1
 #define MAX_DSS_LCD_MANAGERS	2
 #define MAX_NUM_DSI		2
 
@@ -102,6 +103,7 @@ enum dss_range_param {
 /* DSS Feature Functions */
 int dss_feat_get_num_mgrs(void);
 int dss_feat_get_num_ovls(void);
+int dss_feat_get_num_wbs(void);
 unsigned long dss_feat_get_param_min(enum dss_range_param param);
 unsigned long dss_feat_get_param_max(enum dss_range_param param);
 enum omap_display_type dss_feat_get_supported_displays(enum omap_channel channel);
