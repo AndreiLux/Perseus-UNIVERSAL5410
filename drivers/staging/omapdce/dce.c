@@ -692,8 +692,8 @@ static inline int cfu(void **top, uint64_t from, int n, void *end)
 
 static inline struct drm_gem_object * handle_single_buf_desc(
 		struct dce_file_priv *priv, struct dce_rpc_hdr *req,
-		bool is_inbuf, enum dce_codec_quirks quirks,
-		uint32_t base_bo, struct xdm2_single_buf_desc *desc)
+		uint32_t base_bo, int mem_type,
+		struct xdm2_single_buf_desc *desc)
 {
 	struct drm_gem_object *obj;
 	uint32_t flags;
@@ -730,12 +730,7 @@ static inline struct drm_gem_object * handle_single_buf_desc(
 		desc->mem_type = XDM_MEMTYPE_TILED32;
 		break;
 	default:
-		if (is_inbuf)
-			desc->mem_type = XDM_MEMTYPE_RAW;
-		else if (quirks & DCE_CODEC_QUIRKS_OUTBUFS_MEMTYPE_RAW)
-			desc->mem_type = XDM_MEMTYPE_RAW;
-		else
-			desc->mem_type = XDM_MEMTYPE_TILEDPAGE;
+		desc->mem_type = mem_type;
 		break;
 	}
 
@@ -770,9 +765,8 @@ static inline struct drm_gem_object * handle_single_buf_desc(
 
 static inline int handle_buf_desc(struct dce_file_priv *priv,
 		void **ptr, void *end, struct dce_rpc_hdr *req, uint64_t usr,
-		bool is_inbuf, enum dce_codec_quirks quirks,
-		struct drm_gem_object **o1, struct drm_gem_object **o2,
-		uint8_t *len)
+		int mem_type, struct drm_gem_object **o1,
+		struct drm_gem_object **o2, uint8_t *len)
 {
 	struct xdm2_buf_desc *bufs = *ptr;
 	uint32_t base_bo;
@@ -796,8 +790,8 @@ static inline int handle_buf_desc(struct dce_file_priv *priv,
 	/* handle buffer mapping.. */
 	for (i = 0; i < bufs->num_bufs; i++) {
 		struct drm_gem_object *obj =
-				handle_single_buf_desc(priv, req, is_inbuf,
-						quirks, base_bo, &bufs->descs[i]);
+				handle_single_buf_desc(priv, req, base_bo,
+						mem_type, &bufs->descs[i]);
 		if (IS_ERR(obj)) {
 			return PTR_ERR(obj);
 		}
@@ -838,6 +832,7 @@ static inline int handle_viddec3(struct dce_file_priv *priv,
 {
 	struct drm_gem_object *in, *y = NULL, *uv = NULL;
 	struct viddec3_in_args *in_args = *ptr;
+	int mem_type;
 	int ret;
 
 	/* handle in_args: */
@@ -857,15 +852,20 @@ static inline int handle_viddec3(struct dce_file_priv *priv,
 
 	req->in_args_len = round_up(in_args->size, 4) / 4;
 
+	if (quirks & DCE_CODEC_QUIRKS_OUTBUFS_MEMTYPE_RAW)
+		mem_type = XDM_MEMTYPE_RAW;
+	else
+		mem_type = XDM_MEMTYPE_TILEDPAGE;
+
 	/* handle out_bufs: */
 	ret = handle_buf_desc(priv, ptr, end, hdr(req), arg->out_bufs,
-			false, quirks, &y, &uv, &req->out_bufs_len);
+			mem_type, &y, &uv, &req->out_bufs_len);
 	if (ret)
 		return ret;
 
 	/* handle in_bufs: */
 	ret = handle_buf_desc(priv, ptr, end, hdr(req), arg->in_bufs,
-			true, quirks, &in, NULL, &req->in_bufs_len);
+			XDM_MEMTYPE_RAW, &in, NULL, &req->in_bufs_len);
 	if (ret)
 		return ret;
 
