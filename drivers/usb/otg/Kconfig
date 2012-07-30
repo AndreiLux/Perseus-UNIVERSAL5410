@@ -86,6 +86,19 @@ config TWL6030_USB
 	  are hooked to this driver through platform_data structure.
 	  The definition of internal PHY APIs are in the mach-omap2 layer.
 
+config OMAP4_USB_PHY
+	tristate "Texas Instruments OMAP4+ USB pin control driver"
+	depends on MFD_OMAP_CONTROL
+	help
+	  If you say yes here you get support for the Texas Instruments
+	  OMAP4+ USB pin control driver. The register set is part of system
+	  control module.
+
+	  USB phy in OMAP configures control module register for powering on
+	  the phy, configuring VBUSVALID, AVALID, IDDIG and SESSEND. For
+	  performing the above mentioned configuration, API's are added in
+	  by this children of the control module driver.
+
 config NOP_USB_XCEIV
 	tristate "NOP USB Transceiver Driver"
 	select USB_OTG_UTILS
