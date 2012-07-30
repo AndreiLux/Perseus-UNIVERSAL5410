@@ -30,6 +30,9 @@
  * 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+#ifndef __ARCH_ARM_MACH_OMAP2_IOMAP_H
+#define __ARCH_ARM_MACH_OMAP2_IOMAP_H
+
 #define OMAP2_L3_IO_OFFSET	0x90000000
 #define OMAP2_L3_IO_ADDRESS(pa)	IOMEM((pa) + OMAP2_L3_IO_OFFSET) /* L3 */
 
@@ -224,3 +227,4 @@ extern void __init omap_init_consistent_dma_size(void);
 
 #endif
 
+#endif
