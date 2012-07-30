@@ -687,11 +687,13 @@ int drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 		goto out_unlock;
 	}
 
+#if 0
 	/* Check for valid size. */
 	if (map->size < vma->vm_end - vma->vm_start) {
 		ret = -EINVAL;
 		goto out_unlock;
 	}
+#endif
 
 	obj = map->handle;
 	if (!obj->dev->driver->gem_vm_ops) {
