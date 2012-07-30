@@ -67,11 +67,7 @@ void i915_gem_dmabuf_release(struct dma_buf *dma_buf)
 {
 	struct drm_i915_gem_object *obj = dma_buf->priv;
 
-	if (obj->base.export_dma_buf == dma_buf) {
-		/* drop the reference on the export fd holds */
-		obj->base.export_dma_buf = NULL;
-		drm_gem_object_unreference_unlocked(&obj->base);
-	}
+	drm_gem_object_unreference_unlocked(&obj->base);
 }
 
 static void *i915_gem_dmabuf_vmap(struct dma_buf *dma_buf)

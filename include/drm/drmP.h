@@ -669,10 +669,23 @@ struct drm_gem_object {
 
 	void *driver_private;
 
-	/* dma buf exported from this GEM object */
-	struct dma_buf *export_dma_buf;
+	/** dma_buf - dma buf associated with this GEM object
+	 *
+	 * This is a cache of the dma buf associated to this GEM object to
+	 * ensure that there is only ever one dma buf for a given GEM object.
+	 * Only kept around as long as there are still userspace handles around.
+	 * If only the dma buf holds the last userspace-visible reference on
+	 * this GEM object, dma_buf will be NULL, but set again on import.
+	 * Protected by dev->prime_lock.
+	 */
+	struct dma_buf *dma_buf;
 
-	/* dma buf attachment backing this object */
+	/**
+	 * import_attach - dma buf attachment backing this object.
+	 *
+	 * Invariant over the lifetime
+	 * of an object, hence needs no locking.
+	 */
 	struct dma_buf_attachment *import_attach;
 };
 
@@ -1204,6 +1217,15 @@ struct drm_device {
 	/*@{ */
 	spinlock_t object_name_lock;
 	struct idr object_name_idr;
+
+	/**
+	 * prime_lock - protects dma buf state of exported GEM objects
+	 *
+	 * Specifically obj->dma_buf, but this can be used by drivers for
+	 * other things.
+	 */
+	struct mutex prime_lock;
+
 	/*@} */
 	int switch_power_state;
 
@@ -1659,24 +1681,6 @@ drm_gem_object_handle_reference(struct drm_gem_object *obj)
 {
 	drm_gem_object_reference(obj);
 	atomic_inc(&obj->handle_count);
-}
-
-static inline void
-drm_gem_object_handle_unreference(struct drm_gem_object *obj)
-{
-	if (obj == NULL)
-		return;
-
-	if (atomic_read(&obj->handle_count) == 0)
-		return;
-	/*
-	 * Must bump handle count first as this may be the last
-	 * ref, in which case the object would disappear before we
-	 * checked for a name
-	 */
-	if (atomic_dec_and_test(&obj->handle_count))
-		drm_gem_object_handle_free(obj);
-	drm_gem_object_unreference(obj);
 }
 
 static inline void

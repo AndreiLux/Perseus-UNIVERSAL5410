@@ -84,36 +84,47 @@ int drm_gem_prime_handle_to_fd(struct drm_device *dev,
 		return 0;
 	}
 
-	if (obj->export_dma_buf) {
-		get_dma_buf(obj->export_dma_buf);
-		*prime_fd = dma_buf_fd(obj->export_dma_buf, flags);
-		drm_gem_object_unreference_unlocked(obj);
+	mutex_lock(&dev->prime_lock);
+	if (obj->dma_buf) {
+		get_dma_buf(obj->dma_buf);
 	} else {
 		buf = dev->driver->gem_prime_export(dev, obj, flags);
 		if (IS_ERR(buf)) {
 			/* normally the created dma-buf takes ownership of the ref,
 			 * but if that fails then drop the ref
 			 */
-			drm_gem_object_unreference_unlocked(obj);
-			mutex_unlock(&file_priv->prime.lock);
-			return PTR_ERR(buf);
+			ret = PTR_ERR(buf);
+			goto out;
 		}
-		obj->export_dma_buf = buf;
-		*prime_fd = dma_buf_fd(buf, flags);
+		/* Allocate a reference for the dma buf. */
+		drm_gem_object_reference(obj);
+
+		/* Allocate a reference for the re-export cache. */
+		get_dma_buf(buf);
+		obj->dma_buf = buf;
 	}
 	/* if we've exported this buffer the cheat and add it to the import list
 	 * so we get the correct handle back
 	 */
 	ret = drm_prime_add_imported_buf_handle(&file_priv->prime,
-			obj->export_dma_buf, handle);
-	if (ret) {
-		drm_gem_object_unreference_unlocked(obj);
-		mutex_unlock(&file_priv->prime.lock);
-		return ret;
-	}
+			obj->dma_buf, handle);
+	if (ret)
+		goto out;
 
+	/* Only set up the userspace fd once everything is done. */
+	*prime_fd = dma_buf_fd(obj->dma_buf, flags);
+out:
+	mutex_unlock(&dev->prime_lock);
 	mutex_unlock(&file_priv->prime.lock);
-	return 0;
+
+	/* Check whether someone sneaky dropped the last userspace gem handle,
+	 * clean up the mess if so. */
+	if (atomic_read(&obj->handle_count) == 0)
+		drm_gem_object_handle_free(obj);
+
+	drm_gem_object_unreference_unlocked(obj);
+
+	return ret;
 }
 EXPORT_SYMBOL(drm_gem_prime_handle_to_fd);
 
@@ -133,21 +144,38 @@ int drm_gem_prime_fd_to_handle(struct drm_device *dev,
 	ret = drm_prime_lookup_imported_buf_handle(&file_priv->prime,
 			dma_buf, handle);
 	if (!ret) {
-		ret = 0;
-		goto out_put;
+		mutex_unlock(&file_priv->prime.lock);
+		dma_buf_put(dma_buf);
+
+		return 0;
 	}
 
 	/* never seen this one, need to import */
 	obj = dev->driver->gem_prime_import(dev, dma_buf);
 	if (IS_ERR(obj)) {
-		ret = PTR_ERR(obj);
-		goto out_put;
+		mutex_unlock(&file_priv->prime.lock);
+		dma_buf_put(dma_buf);
+
+		return PTR_ERR(obj);
 	}
 
+	mutex_lock(&dev->prime_lock);
+	/* Refill the export cache - this is only really important if the dma
+	 * buf was the only userspace visible handle left and we're re-importing
+	 * into the original exporter, in which case we've cleared obj->dma_buf
+	 * already. Because we will create a GEM userspace handle below we only
+	 * need to check for gem_close races if that fails.
+	 */
+	if (!obj->dma_buf) {
+		obj->dma_buf = dma_buf;
+		get_dma_buf(dma_buf);
+	} else
+		WARN_ON(obj->dma_buf != dma_buf);
+	mutex_unlock(&dev->prime_lock);
+
 	ret = drm_gem_handle_create(file_priv, obj, handle);
-	drm_gem_object_unreference_unlocked(obj);
 	if (ret)
-		goto out_put;
+		goto fail_handle;
 
 	ret = drm_prime_add_imported_buf_handle(&file_priv->prime,
 			dma_buf, *handle);
@@ -155,6 +183,8 @@ int drm_gem_prime_fd_to_handle(struct drm_device *dev,
 		goto fail;
 
 	mutex_unlock(&file_priv->prime.lock);
+	drm_gem_object_unreference_unlocked(obj);
+
 	return 0;
 
 fail:
@@ -162,9 +192,13 @@ fail:
 	 * to detach.. which seems ok..
 	 */
 	drm_gem_object_handle_unreference_unlocked(obj);
-out_put:
-	dma_buf_put(dma_buf);
+fail_handle:
+	if (atomic_read(&obj->handle_count) == 0)
+		drm_gem_object_handle_free(obj);
 	mutex_unlock(&file_priv->prime.lock);
+	drm_gem_object_unreference_unlocked(obj);
+	dma_buf_put(dma_buf);
+
 	return ret;
 }
 EXPORT_SYMBOL(drm_gem_prime_fd_to_handle);

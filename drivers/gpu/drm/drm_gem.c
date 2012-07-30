@@ -94,6 +94,7 @@ drm_gem_init(struct drm_device *dev)
 
 	spin_lock_init(&dev->object_name_lock);
 	idr_init(&dev->object_name_idr);
+	mutex_init(&dev->prime_lock);
 
 	mm = kzalloc(sizeof(struct drm_gem_mm), GFP_KERNEL);
 	if (!mm) {
@@ -208,9 +209,9 @@ drm_gem_remove_prime_handles(struct drm_gem_object *obj, struct drm_file *filp)
 		drm_prime_remove_imported_buf_handle(&filp->prime,
 				obj->import_attach->dmabuf);
 	}
-	if (obj->export_dma_buf) {
+	if (obj->dma_buf) {
 		drm_prime_remove_imported_buf_handle(&filp->prime,
-				obj->export_dma_buf);
+				obj->dma_buf);
 	}
 }
 
@@ -606,6 +607,9 @@ static void drm_gem_object_ref_bug(struct kref *list_kref)
  * Removes any name for the object. Note that this must be
  * called before drm_gem_object_free or we'll be touching
  * freed memory
+ *
+ * Must _not_ be called while the dev->struct_mutex lock is held, or any
+ * driver-specific lock that is required in the dma buf's ->release callback.
  */
 void drm_gem_object_handle_free(struct drm_gem_object *obj)
 {
@@ -626,6 +630,18 @@ void drm_gem_object_handle_free(struct drm_gem_object *obj)
 		kref_put(&obj->refcount, drm_gem_object_ref_bug);
 	} else
 		spin_unlock(&dev->object_name_lock);
+
+	mutex_lock(&dev->prime_lock);
+	if (obj->dma_buf) {
+		struct dma_buf *buf = obj->dma_buf;
+		obj->dma_buf = NULL;
+		mutex_unlock(&dev->prime_lock);
+
+		/* We still hold a reference to the underlying GEM object, so
+		 * this will free at most the dma buf object itself. */
+		dma_buf_put(buf);
+	} else
+		mutex_unlock(&dev->prime_lock);
 
 }
 EXPORT_SYMBOL(drm_gem_object_handle_free);
