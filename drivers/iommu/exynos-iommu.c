@@ -15,7 +15,6 @@
 #include <linux/io.h>
 #include <linux/interrupt.h>
 #include <linux/slab.h>
-#include <linux/pm_runtime.h>
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/mm.h>
@@ -456,15 +455,8 @@ int exynos_sysmmu_enable(struct device *dev, unsigned long pgtable)
 
 	BUG_ON(!memblock_is_memory(pgtable));
 
-	ret = pm_runtime_get_sync(data->sysmmu);
-	if (ret < 0) {
-		dev_dbg(data->sysmmu, "(%s) Failed to enable\n", data->dbgname);
-		return ret;
-	}
-
 	ret = __exynos_sysmmu_enable(data, pgtable, NULL);
 	if (WARN_ON(ret < 0)) {
-		pm_runtime_put(data->sysmmu);
 		dev_err(data->sysmmu,
 			"(%s) Already enabled with page table %#lx\n",
 			data->dbgname, data->pgtable);
@@ -481,7 +473,6 @@ bool exynos_sysmmu_disable(struct device *dev)
 	bool disabled;
 
 	disabled = __exynos_sysmmu_disable(data);
-	pm_runtime_put(data->sysmmu);
 
 	return disabled;
 }
@@ -638,9 +629,6 @@ static int exynos_sysmmu_probe(struct platform_device *pdev)
 
 	__set_fault_handler(data, &default_fault_handler);
 
-	if (dev->parent)
-		pm_runtime_enable(dev);
-
 	dev_dbg(dev, "(%s) Initialized\n", data->dbgname);
 	return 0;
 err_iovmm:
@@ -755,12 +743,6 @@ static int exynos_iommu_attach_device(struct iommu_domain *domain,
 	unsigned long flags;
 	int ret;
 
-	ret = pm_runtime_get_sync(data->sysmmu);
-	if (ret < 0)
-		return ret;
-
-	ret = 0;
-
 	spin_lock_irqsave(&priv->lock, flags);
 
 	ret = __exynos_sysmmu_enable(data, __pa(priv->pgtable), domain);
@@ -777,7 +759,6 @@ static int exynos_iommu_attach_device(struct iommu_domain *domain,
 	if (ret < 0) {
 		dev_err(dev, "%s: Failed to attach IOMMU with pgtable %#lx\n",
 				__func__, __pa(priv->pgtable));
-		pm_runtime_put(data->sysmmu);
 	} else if (ret > 0) {
 		dev_dbg(dev, "%s: IOMMU with pgtable 0x%lx already attached\n",
 					__func__, __pa(priv->pgtable));
@@ -823,9 +804,6 @@ static void exynos_iommu_detach_device(struct iommu_domain *domain,
 
 finish:
 	spin_unlock_irqrestore(&priv->lock, flags);
-
-	if (found)
-		pm_runtime_put(data->sysmmu);
 }
 
 static unsigned long *alloc_lv2entry(unsigned long *sent, unsigned long iova,
