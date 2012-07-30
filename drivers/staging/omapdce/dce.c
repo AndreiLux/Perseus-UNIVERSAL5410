@@ -676,6 +676,7 @@ static inline struct drm_gem_object * handle_single_buf_desc(
 	struct drm_gem_object *obj;
 	uint32_t flags;
 	int32_t offset = 0;
+	int ret;
 
 	/* maybe support remapping user ptrs later on.. */
 	if (desc->mem_type != XDM_MEMTYPE_BO &&
@@ -723,6 +724,21 @@ static inline struct drm_gem_object * handle_single_buf_desc(
 	// XXX not sure if the codecs care about usage_mode.. but we
 	// know if the buffer is cached or not so we could set DATASYNC
 	// bit if needed..
+
+	/* if we are using the GPU to render, it might still be reading
+	 * from the buffer.. we don't want to overwrite it yet!
+	 *
+	 * Note: this is an interruptible wait, but in case we are
+	 * interrupted the normal error cleanup paths (rpabort(), etc)
+	 * will handle the cleanup
+	 *
+	 * Note: this is only for decoder output frames.. for encoder
+	 * input frames, we don't care if anyone is reading, use
+	 * instead OMAP_GEM_READ ad the access mode..
+	 */
+	ret = omap_gem_op_sync(obj, OMAP_GEM_WRITE);
+	if (ret)
+		return ERR_PTR(ret);
 
 	return obj;
 }
