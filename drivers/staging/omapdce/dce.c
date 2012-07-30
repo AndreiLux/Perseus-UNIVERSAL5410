@@ -51,6 +51,11 @@ static long mark(long *last)
 #define MAX_BUFFER_OBJECTS	((2 * MAX_LOCKED_BUFFERS) + 4)
 #define MAX_TRANSACTIONS	MAX_CODECS
 
+enum dce_codec_quirks {
+	DCE_CODEC_QUIRKS_NONE = 0,
+	DCE_CODEC_QUIRKS_OUTBUFS_MEMTYPE_RAW = 1
+};
+
 struct dce_buffer {
 	int32_t id;		/* zero for unused */
 	struct drm_gem_object *y, *uv;
@@ -63,6 +68,7 @@ struct dce_engine {
 struct dce_codec {
 	enum omap_dce_codec codec_id;
 	uint32_t codec;
+	enum dce_codec_quirks quirks;
 	struct dce_buffer locked_buffers[MAX_LOCKED_BUFFERS];
 };
 
@@ -328,13 +334,14 @@ static void codec_unlockbuf(struct dce_file_priv *priv,
 		uint32_t codec_handle, int32_t id);
 
 static uint32_t codec_register(struct dce_file_priv *priv, uint32_t codec,
-		enum omap_dce_codec codec_id)
+		enum omap_dce_codec codec_id, enum dce_codec_quirks quirks)
 {
 	int i;
 	for (i = 0; i < ARRAY_SIZE(priv->codecs); i++) {
 		if (!priv->codecs[i].codec) {
 			priv->codecs[i].codec_id = codec_id;
 			priv->codecs[i].codec = codec;
+			priv->codecs[i].quirks = quirks;
 			return i+1;
 		}
 	}
@@ -366,6 +373,16 @@ static int codec_get(struct dce_file_priv *priv, uint32_t codec_handle,
 	*codec_id = priv->codecs[codec_handle-1].codec_id;
 	return 0;
 }
+
+static int codec_get_quirks(struct dce_file_priv *priv, uint32_t codec_handle,
+		enum dce_codec_quirks *quirks)
+{
+	if (!codec_valid(priv, codec_handle))
+		return -EINVAL;
+	*quirks = priv->codecs[codec_handle-1].quirks;
+	return 0;
+}
+
 
 static int codec_lockbuf(struct dce_file_priv *priv,
 		uint32_t codec_handle, int32_t id,
@@ -519,6 +536,7 @@ static int ioctl_codec_create(struct drm_device *dev, void *data,
 	struct dce_file_priv *priv = omap_drm_file_priv(file, dce_mapper_id);
 	struct drm_omap_dce_codec_create *arg = data;
 	struct dce_rpc_codec_create_rsp *rsp;
+	enum dce_codec_quirks quirks = DCE_CODEC_QUIRKS_NONE;
 	int ret;
 
 	/* if we are not re-starting a syscall, send req */
@@ -529,6 +547,9 @@ static int ioctl_codec_create(struct drm_device *dev, void *data,
 		};
 
 		strncpy(req.name, arg->name, sizeof(req.name));
+		if (!strcmp(req.name, "ivahd_vc1vdec") ||
+			!strcmp(req.name, "ivahd_mpeg2vdec"))
+			quirks |= DCE_CODEC_QUIRKS_OUTBUFS_MEMTYPE_RAW;
 
 		ret = engine_get(priv, arg->eng_handle, &req.engine);
 		if (ret)
@@ -549,7 +570,7 @@ rpsend_out:
 	if (ret)
 		return ret;
 
-	arg->codec_handle = codec_register(priv, rsp->codec, arg->codec_id);
+	arg->codec_handle = codec_register(priv, rsp->codec, arg->codec_id, quirks);
 
 	if (!codec_valid(priv, arg->codec_handle)) {
 		codec_delete(priv, rsp->codec, arg->codec_id);
@@ -671,6 +692,7 @@ static inline int cfu(void **top, uint64_t from, int n, void *end)
 
 static inline struct drm_gem_object * handle_single_buf_desc(
 		struct dce_file_priv *priv, struct dce_rpc_hdr *req,
+		bool is_inbuf, enum dce_codec_quirks quirks,
 		uint32_t base_bo, struct xdm2_single_buf_desc *desc)
 {
 	struct drm_gem_object *obj;
@@ -708,9 +730,12 @@ static inline struct drm_gem_object * handle_single_buf_desc(
 		desc->mem_type = XDM_MEMTYPE_TILED32;
 		break;
 	default:
-		// XXX this is where it gets a bit messy..  some codecs
-		// might want to see XDM_MEMTYPE_RAW for bitstream buffers
-		desc->mem_type = XDM_MEMTYPE_TILEDPAGE;
+		if (is_inbuf)
+			desc->mem_type = XDM_MEMTYPE_RAW;
+		else if (quirks & DCE_CODEC_QUIRKS_OUTBUFS_MEMTYPE_RAW)
+			desc->mem_type = XDM_MEMTYPE_RAW;
+		else
+			desc->mem_type = XDM_MEMTYPE_TILEDPAGE;
 		break;
 	}
 
@@ -745,7 +770,9 @@ static inline struct drm_gem_object * handle_single_buf_desc(
 
 static inline int handle_buf_desc(struct dce_file_priv *priv,
 		void **ptr, void *end, struct dce_rpc_hdr *req, uint64_t usr,
-		struct drm_gem_object **o1, struct drm_gem_object **o2, uint8_t *len)
+		bool is_inbuf, enum dce_codec_quirks quirks,
+		struct drm_gem_object **o1, struct drm_gem_object **o2,
+		uint8_t *len)
 {
 	struct xdm2_buf_desc *bufs = *ptr;
 	uint32_t base_bo;
@@ -769,8 +796,8 @@ static inline int handle_buf_desc(struct dce_file_priv *priv,
 	/* handle buffer mapping.. */
 	for (i = 0; i < bufs->num_bufs; i++) {
 		struct drm_gem_object *obj =
-				handle_single_buf_desc(priv, req, base_bo,
-						&bufs->descs[i]);
+				handle_single_buf_desc(priv, req, is_inbuf,
+						quirks, base_bo, &bufs->descs[i]);
 		if (IS_ERR(obj)) {
 			return PTR_ERR(obj);
 		}
@@ -805,7 +832,9 @@ static inline int handle_videnc2(struct dce_file_priv *priv,
 static inline int handle_viddec3(struct dce_file_priv *priv,
 		void **ptr, void *end, int32_t *input_id,
 		struct dce_rpc_codec_process_req *req,
-		struct drm_omap_dce_codec_process *arg)
+		struct drm_omap_dce_codec_process *arg,
+		enum dce_codec_quirks quirks
+		)
 {
 	struct drm_gem_object *in, *y = NULL, *uv = NULL;
 	struct viddec3_in_args *in_args = *ptr;
@@ -830,13 +859,13 @@ static inline int handle_viddec3(struct dce_file_priv *priv,
 
 	/* handle out_bufs: */
 	ret = handle_buf_desc(priv, ptr, end, hdr(req), arg->out_bufs,
-			&y, &uv, &req->out_bufs_len);
+			false, quirks, &y, &uv, &req->out_bufs_len);
 	if (ret)
 		return ret;
 
 	/* handle in_bufs: */
 	ret = handle_buf_desc(priv, ptr, end, hdr(req), arg->in_bufs,
-			&in, NULL, &req->in_bufs_len);
+			true, quirks, &in, NULL, &req->in_bufs_len);
 	if (ret)
 		return ret;
 
@@ -863,12 +892,15 @@ static int ioctl_codec_process(struct drm_device *dev, void *data,
 		void *ptr = &req->data[0];
 		void *end = ((void *)req) + RPMSG_BUF_SIZE;
 		int32_t input_id = 0;
+		enum dce_codec_quirks quirks = DCE_CODEC_QUIRKS_NONE;
 
 		req->hdr = MKHDR(CODEC_PROCESS);
 
 		ret = codec_get(priv, arg->codec_handle, &req->codec, &req->codec_id);
 		if (ret)
 			goto rpsend_out;
+
+		codec_get_quirks(priv, arg->codec_handle, &quirks);
 
 		ret = PTR_RET(get_paddr(priv, hdr(&req), &req->out_args, arg->out_args_bo));
 		if (ret)
@@ -880,7 +912,7 @@ static int ioctl_codec_process(struct drm_device *dev, void *data,
 			ret = handle_videnc2(priv, &ptr, end, &input_id, req, arg);
 			break;
 		case OMAP_DCE_VIDDEC3:
-			ret = handle_viddec3(priv, &ptr, end, &input_id, req, arg);
+			ret = handle_viddec3(priv, &ptr, end, &input_id, req, arg, quirks);
 			break;
 		default:
 			ret = -EINVAL;
