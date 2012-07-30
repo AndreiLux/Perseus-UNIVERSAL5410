@@ -73,4 +73,8 @@ struct omap_rprm_pdata {
 	struct omap_rprm_ops *ops;
 };
 
+void __init omap_rprm_regulator_init(struct omap_rprm_regulator *regulators,
+			     u32 regulator_cnt);
+u32 omap_rprm_get_regulators(struct omap_rprm_regulator **regulators);
+
 #endif /* _PLAT_RPMSG_RESMGR_H */
