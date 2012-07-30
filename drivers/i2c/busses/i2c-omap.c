@@ -177,7 +177,7 @@ enum {
 
 #define SYSC_IDLEMODE_SMART            0x2
 #define SYSC_CLOCKACTIVITY_FCLK                0x2
- 
+
 /* I2C System Configuration Register (OMAP_I2C_SYSC): */
 #define OMAP_I2C_SYSC_SRST             (1 << 1)        /* Soft Reset */
 
@@ -679,6 +679,9 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	if (r)
 		goto out2;
 #endif
+	/* We have the bus, enable IRQ */
+	enable_irq(dev->irq);
+
 	r = omap_i2c_wait_for_bb(dev);
 	if (r < 0)
 		r = omap_i2c_bus_clear(dev);
@@ -707,6 +710,7 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 
 	omap_i2c_wait_for_bb(dev);
 out:
+	disable_irq(dev->irq);
 #if USE_HW_SPINLOCK
 	omap_i2c_hwspinlock_unlock(dev);
 out2:
@@ -1156,6 +1160,9 @@ omap_i2c_probe(struct platform_device *pdev)
 	isr = (dev->rev < OMAP_I2C_OMAP1_REV_2) ? omap_i2c_omap1_isr :
 								   omap_i2c_isr;
 	r = request_irq(dev->irq, isr, 0, pdev->name, dev);
+
+	/* We enable IRQ only when request for I2C from master */
+	disable_irq(dev->irq);
 
 	if (r) {
 		dev_err(dev->dev, "failure requesting irq %i\n", dev->irq);
