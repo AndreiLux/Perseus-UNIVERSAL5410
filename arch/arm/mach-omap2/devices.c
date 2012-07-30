@@ -71,6 +71,31 @@ OMAP_MCBSP_PLATFORM_DEVICE(3);
 OMAP_MCBSP_PLATFORM_DEVICE(4);
 OMAP_MCBSP_PLATFORM_DEVICE(5);
 
+static int __init omap_init_control(void)
+{
+	struct omap_hwmod		*oh;
+	struct platform_device		*pdev;
+	const char			*oh_name, *name;
+
+	oh_name = "ctrl_module_core";
+	name = "omap-control-core";
+
+	oh = omap_hwmod_lookup(oh_name);
+	if (!oh) {
+		pr_err("Could not lookup hwmod for %s\n", oh_name);
+		return PTR_ERR(oh);
+	}
+
+	pdev = omap_device_build(name, -1, oh, NULL, 0, NULL, 0, true);
+	if (IS_ERR(pdev)) {
+		pr_err("Could not build omap_device for %s %s\n",
+		       name, oh_name);
+		return PTR_ERR(pdev);
+	}
+
+	return 0;
+}
+postcore_initcall(omap_init_control);
 
 static int __init omap3_l3_init(void)
 {
