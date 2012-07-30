@@ -918,8 +918,9 @@ static int __devinit i801_probe(struct pci_dev *dev,
 		break;
 	}
 
-	/* IRQ processing only tested on CougarPoint PCH */
-	if (dev->device == PCI_DEVICE_ID_INTEL_COUGARPOINT_SMBUS)
+	/* IRQ processing only tested on CougarPoint PCH and PantherPoint PCH */
+	if (dev->device == PCI_DEVICE_ID_INTEL_COUGARPOINT_SMBUS ||
+	    dev->device == PCI_DEVICE_ID_INTEL_PANTHERPOINT_SMBUS)
 		priv->features |= FEATURE_IRQ;
 
 	/* Disable features on user request */
