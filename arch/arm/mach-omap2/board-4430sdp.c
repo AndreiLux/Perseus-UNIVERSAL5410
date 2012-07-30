@@ -35,6 +35,7 @@
 #include <asm/mach/map.h>
 
 #include <plat/board.h>
+#include <plat/rpmsg_resmgr.h>
 #include "common.h"
 #include <plat/usb.h>
 #include <plat/mmc.h>
@@ -386,6 +387,13 @@ static struct platform_device sdp4430_vbat = {
 	.id		= FIXED_REG_VBAT_ID,
 	.dev = {
 		.platform_data = &sdp4430_vbat_pdata,
+	},
+};
+
+static struct omap_rprm_regulator sdp4430_rprm_regulators[] = {
+	{
+		.name = "cam2pwr",
+		.fixed = true,
 	},
 };
 
@@ -1008,6 +1016,9 @@ static void __init omap_4430sdp_init(void)
 			pr_err("TPS62361 initialization failed: %d\n", status);
 	}
 	omap_enable_smartreflex_on_init();
+	omap_rprm_regulator_init(sdp4430_rprm_regulators,
+				 ARRAY_SIZE(sdp4430_rprm_regulators));
+
 }
 
 static void __init omap_4430sdp_reserve(void)
