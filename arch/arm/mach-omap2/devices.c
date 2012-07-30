@@ -524,7 +524,7 @@ static struct omap_device_pm_latency omap_aess_latency[] = {
 	},
 };
 
-static void omap_init_aess(void)
+static void __init omap_init_aess(void)
 {
 	struct omap_hwmod *oh;
 //	struct omap4_abe_dsp_pdata *pdata;
