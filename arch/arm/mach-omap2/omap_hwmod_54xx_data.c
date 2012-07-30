@@ -2871,7 +2871,7 @@ static struct omap_hwmod omap54xx_hsi_hwmod = {
  * multimaster high-speed i2c controller
  */
 
-static struct omap_i2c_dev_attr i2c_dev_attr = {                                
+static struct omap_i2c_dev_attr i2c_dev_attr = {
 	.flags	= OMAP_I2C_FLAG_BUS_SHIFT_NONE | OMAP_I2C_FLAG_RESET_REGS_POSTIDLE,
 };
 
@@ -6320,6 +6320,56 @@ static struct omap_hwmod omap54xx_usb_host_hs_hwmod = {
  *	Don't use smart standby; use only force standby,
  *	hence HWMOD_SWSUP_MSTANDBY
  */
+static struct omap_hwmod_class_sysconfig omap54xx_usb_otg_ss_sysc = {
+	.rev_offs	= 0x0000,
+	.sysc_offs	= 0x0010,
+	.sysc_flags	= (SYSC_HAS_MIDLEMODE | SYSC_HAS_SIDLEMODE
+				| SYSC_HAS_DMADISABLE),
+	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART |
+			   SIDLE_SMART_WKUP | MSTANDBY_FORCE | MSTANDBY_NO |
+			   MSTANDBY_SMART | MSTANDBY_SMART_WKUP),
+	.sysc_fields	= &omap_hwmod_sysc_type2,
+};
+
+static struct omap_hwmod_class omap54xx_usb_otg_ss_hwmod_class = {
+	.name	= "usb_otg_ss",
+	.sysc	= &omap54xx_usb_otg_ss_sysc,
+};
+
+/* usb_otg_ss */
+static struct omap_hwmod_irq_info omap54xx_usb_otg_ss_irqs[] = {
+	{ .name = "core", .irq = 92 + OMAP54XX_IRQ_GIC_START },
+	{ .name = "wrp", .irq = 93 + OMAP54XX_IRQ_GIC_START },
+	{ .irq = -1 }
+};
+
+/* usb_otg_ss master ports */
+static struct omap_hwmod_ocp_if *omap54xx_usb_otg_ss_masters[] = {
+	&omap54xx_usb_otg_ss__l3_main_2,
+};
+
+static struct omap_hwmod_addr_space omap54xx_usb_otg_ss_addrs[] = {
+	{
+		.pa_start	= 0x4a020000,
+		.pa_end		= 0x4a03ffff,
+		.flags		= ADDR_TYPE_RT
+	},
+	{ }
+};
+
+/* l4_cfg -> usb_otg_ss */
+static struct omap_hwmod_ocp_if omap54xx_l4_cfg__usb_otg_ss = {
+	.master		= &omap54xx_l4_cfg_hwmod,
+	.slave		= &omap54xx_usb_otg_ss_hwmod,
+	.clk		= "l4_div_ck",
+	.addr		= omap54xx_usb_otg_ss_addrs,
+	.user		= OCP_USER_MPU | OCP_USER_SDMA,
+};
+
+/* usb_otg_ss slave ports */
+static struct omap_hwmod_ocp_if *omap54xx_usb_otg_ss_slaves[] = {
+	&omap54xx_l4_cfg__usb_otg_ss,
+};
 
 /*	During system boot; If the hwmod framework resets the module
  *	the module will have smart idle settings; which can lead to deadlock
@@ -6586,7 +6636,7 @@ static __initdata struct omap_hwmod *omap54xx_hwmods[] = {
 	/* dsp class */
 #ifndef CONFIG_OMAP_PM_STANDALONE
 	&omap54xx_dsp_hwmod,
-	&omap54xx_dsp_c0_hwmod,                                                 
+	&omap54xx_dsp_c0_hwmod,
 #endif
 
 	/* dss class */
@@ -6636,7 +6686,7 @@ static __initdata struct omap_hwmod *omap54xx_hwmods[] = {
 #ifndef CONFIG_OMAP_PM_STANDALONE
 	/* ipu class */
 	&omap54xx_ipu_hwmod,
-	&omap54xx_ipu_c0_hwmod,                                                 
+	&omap54xx_ipu_c0_hwmod,
 	&omap54xx_ipu_c1_hwmod,
 #endif
 
