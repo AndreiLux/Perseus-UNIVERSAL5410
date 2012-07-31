@@ -20,6 +20,7 @@
 #include <linux/slab.h>
 #include <linux/videodev2.h>
 #include <linux/workqueue.h>
+#include <linux/pm_domain.h>
 #include <media/videobuf2-core.h>
 #include "s5p_mfc_common.h"
 #include "s5p_mfc_ctrl.h"
@@ -1031,6 +1032,9 @@ static int s5p_mfc_probe(struct platform_device *pdev)
 	dev->variant = (struct s5p_mfc_variant *)
 		platform_get_device_id(pdev)->driver_data;
 
+	if (pm_genpd_of_add_device_by_name(pdev->dev.of_node, &pdev->dev,
+								"samsung,pd"))
+		dev_err(&pdev->dev, "failed to add to genpd\n");
 	ret = s5p_mfc_init_pm(dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to get mfc clock source\n");
