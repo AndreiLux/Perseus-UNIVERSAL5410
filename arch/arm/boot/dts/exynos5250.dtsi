@@ -154,6 +154,7 @@
 		interrupts = <0 96 0>;
 		sysmmu_l = <&sysmmu_3>;
 		sysmmu_r = <&sysmmu_4>;
+		samsung,pd = <&mfc_pd>;
 	};
 
 	ohci {
@@ -294,6 +295,7 @@
 		reg = <0x11210000 0x100>;
 		interrupts = <8 5>;
                 interrupt-parent = <&combiner>;
+		samsung,pd = <&mfc_pd>;
 	};
 
 	sysmmu_4: sysmmu@0x11200000 {
@@ -301,6 +303,7 @@
 		reg = <0x11200000 0x100>;
 		interrupts = <6 2>;
                 interrupt-parent = <&combiner>;
+		samsung,pd = <&mfc_pd>;
 	};
 
 	sysmmu_27: sysmmu@0x14640000 {
@@ -322,6 +325,7 @@
 		reg = <0x13E80000 0x100>;
 		interrupts = <2 0>;
                 interrupt-parent = <&combiner>;
+		samsung,pd = <&gsc_pd>;
 	};
 
 	sysmmu_24: sysmmu@0x13E90000 {
@@ -329,6 +333,7 @@
 		reg = <0x13E90000 0x100>;
 		interrupts = <2 2>;
                 interrupt-parent = <&combiner>;
+		samsung,pd = <&gsc_pd>;
 	};
 
 	sysmmu_25: sysmmu@0x13EA0000 {
@@ -336,6 +341,7 @@
 		reg = <0x13EA0000 0x100>;
 		interrupts = <2 4>;
                 interrupt-parent = <&combiner>;
+		samsung,pd = <&gsc_pd>;
 	};
 
 	sysmmu_26: sysmmu@0x13EB0000 {
@@ -343,6 +349,7 @@
 		reg = <0x13EB0000 0x100>;
 		interrupts = <2 6>;
                 interrupt-parent = <&combiner>;
+		samsung,pd = <&gsc_pd>;
 	};
 
 	mshc_0: dwmmc0@12200000 {
@@ -802,6 +809,7 @@
 		reg = <0x13e00000 0x1000>;
 		interrupts = <0 85 0>;
 		sysmmu = <&sysmmu_23>;
+		samsung,pd = <&gsc_pd>;
 	};
 
 	gsc_1:  gsc@0x13e10000 {
@@ -809,6 +817,7 @@
 		reg = <0x13e10000 0x1000>;
 		interrupts = <0 86 0>;
 		sysmmu = <&sysmmu_24>;
+		samsung,pd = <&gsc_pd>;
 	};
 
 	gsc_2:  gsc@0x13e20000 {
@@ -816,6 +825,7 @@
 		reg = <0x13e20000 0x1000>;
 		interrupts = <0 87 0>;
 		sysmmu = <&sysmmu_25>;
+		samsung,pd = <&gsc_pd>;
 	};
 
 	gsc_3:  gsc@0x13e30000 {
@@ -823,6 +833,7 @@
 		reg = <0x13e30000 0x1000>;
 		interrupts = <0 88 0>;
 		sysmmu = <&sysmmu_26>;
+		samsung,pd = <&gsc_pd>;
 	};
 
 	g2d {
