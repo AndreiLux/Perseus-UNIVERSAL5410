@@ -16,6 +16,7 @@
 #ifdef CONFIG_PM_RUNTIME
 #include <linux/pm_runtime.h>
 #endif
+#include <mach/sysmmu.h>
 #include "s5p_mfc_common.h"
 #include "s5p_mfc_debug.h"
 #include "s5p_mfc_pm.h"
@@ -116,7 +117,27 @@ void s5p_mfc_clock_off(void)
 int s5p_mfc_power_on(void)
 {
 #ifdef CONFIG_PM_RUNTIME
-	return pm_runtime_get_sync(pm->device);
+	int ret;
+	ret = pm_runtime_get_sync(pm->device);
+	if (ret < 0)
+		goto out;
+
+	ret = platform_sysmmu_on(p_dev->mem_dev_l);
+	if (ret < 0)
+		goto out_err;
+
+	ret = platform_sysmmu_on(p_dev->mem_dev_r);
+	if (ret < 0)
+		goto out_err2;
+
+	return ret;
+
+out_err2:
+	platform_sysmmu_off(p_dev->mem_dev_l);
+out_err:
+	pm_runtime_put_sync(pm->device);
+out:
+	return ret;
 #else
 	atomic_set(&pm->power, 1);
 	return 0;
@@ -126,7 +147,10 @@ int s5p_mfc_power_on(void)
 int s5p_mfc_power_off(void)
 {
 #ifdef CONFIG_PM_RUNTIME
-	return pm_runtime_put_sync(pm->device);
+	pm_runtime_put_sync(pm->device);
+	platform_sysmmu_off(p_dev->mem_dev_l);
+	platform_sysmmu_off(p_dev->mem_dev_r);
+	return 0;
 #else
 	atomic_set(&pm->power, 0);
 	return 0;
