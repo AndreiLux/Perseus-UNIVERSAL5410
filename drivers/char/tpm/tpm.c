@@ -475,11 +475,11 @@ static void resume_if_needed(struct tpm_chip *chip)
 		 */
 		if (jiffies - chip->resume_time <
 		    msecs_to_jiffies(TPM_SELF_TEST_DURATION_MSEC)) {
-			dev_info(chip->dev, "waiting for TPM self test");
+			dev_info(chip->dev, "waiting for TPM self test\n");
 			tpm_continue_selftest_nocheck(chip);
 		}
 		chip->needs_resume = 0;
-		dev_info(chip->dev, "TPM delayed resume completed");
+		dev_info(chip->dev, "TPM delayed resume completed\n");
 	}
 	mutex_unlock(&chip->resume_mutex);
 }
@@ -692,7 +692,7 @@ duration:
 		chip->vendor.duration[TPM_MEDIUM] *= 1000;
 		chip->vendor.duration[TPM_LONG] *= 1000;
 		chip->vendor.duration_adjusted = true;
-		dev_info(chip->dev, "Adjusting TPM timeout parameters.");
+		dev_info(chip->dev, "Adjusting TPM timeout parameters.\n");
 	}
 	return 0;
 }
