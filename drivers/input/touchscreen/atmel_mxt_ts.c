@@ -391,6 +391,7 @@ static bool mxt_object_readable(unsigned int type)
 	case MXT_SPT_DIGITIZER_T43:
 	case MXT_SPT_CTECONFIG_T46:
 	case MXT_SPT_TIMER_T61:
+	case MXT_SPT_USERDATA_T38:
 		return true;
 	default:
 		return false;
