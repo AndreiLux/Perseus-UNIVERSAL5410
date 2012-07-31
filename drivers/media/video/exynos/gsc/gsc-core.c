@@ -25,6 +25,7 @@
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/clk.h>
+#include <linux/pm_domain.h>
 #include <media/v4l2-ioctl.h>
 #include <linux/of.h>
 #include "gsc-core.h"
@@ -1143,6 +1144,7 @@ static void iommu_deinit(struct platform_device *pdev)
 	return;
 }
 #endif
+
 static int gsc_probe(struct platform_device *pdev)
 {
 	struct gsc_dev *gsc;
@@ -1278,6 +1280,9 @@ static int gsc_probe(struct platform_device *pdev)
 		goto err_irq;
 	}
 
+	if (pm_genpd_of_add_device_by_name(pdev->dev.of_node, &pdev->dev,
+								"samsung,pd"))
+		dev_err(&pdev->dev, "failed to add to genpd\n");
 	gsc_runtime_resume(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 
