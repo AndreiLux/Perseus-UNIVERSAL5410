@@ -5991,6 +5991,37 @@ static void alc269_fixup_mic2_mute(struct hda_codec *codec,
 	}
 }
 
+/* Ignore Mic sense if HP Jack isn't plugged. Some mic-detect circuits default
+ * to signalling that a mic is present if the combo-jack is empty.  The mic
+ * sense should be ignored until hp jack detect is asserted in these cases.
+ */
+static void alc269_mic_hook_ignore_without_hp(struct hda_codec *codec)
+{
+	struct alc_spec *spec = codec->spec;
+
+	if (!spec->hp_jack_present)
+		alc_mux_select(codec, 0, spec->int_mic_idx, false);
+	else
+		update_inputs(codec);
+}
+
+static void alc269_hp_hook_check_mic(struct hda_codec *codec)
+{
+	alc269_mic_hook_ignore_without_hp(codec);
+	update_outputs(codec);
+}
+
+static void alc269_ignore_mic_without_hp(struct hda_codec *codec,
+					 const struct alc_fixup *fix,
+					 int action)
+{
+	struct alc_spec *spec = codec->spec;
+	if (action == ALC_FIXUP_ACT_BUILD) {
+		spec->automic_hook = alc269_mic_hook_ignore_without_hp;
+		spec->automute_hook = alc269_hp_hook_check_mic;
+	}
+}
+
 enum {
 	ALC269_FIXUP_SONY_VAIO,
 	ALC275_FIXUP_SONY_VAIO_GPIO2,
@@ -6010,6 +6041,7 @@ enum {
 	ALC269VB_FIXUP_DMIC,
 	ALC269_FIXUP_MIC2_MUTE_LED,
 	ALC271_FIXUP_ACER_ZGB,
+	ALC269_FIXUP_PARROT,
 };
 
 static const struct alc_fixup alc269_fixups[] = {
@@ -6147,6 +6179,10 @@ static const struct alc_fixup alc269_fixups[] = {
 		.chained = true,
 		.chain_id = ALC271_FIXUP_DMIC,
 	},
+	[ALC269_FIXUP_PARROT] = {
+		.type = ALC_FIXUP_FUNC,
+		.v.func = alc269_ignore_mic_without_hp,
+	},
 };
 
 static const struct snd_pci_quirk alc269_fixup_tbl[] = {
@@ -6229,6 +6265,7 @@ static const struct snd_pci_quirk alc269_fixup_tbl[] = {
 static const struct alc_model_fixup alc269_fixup_models[] = {
 	{.id = ALC269_FIXUP_AMIC, .name = "laptop-amic"},
 	{.id = ALC269_FIXUP_DMIC, .name = "laptop-dmic"},
+	{.id = ALC269_FIXUP_PARROT, .name = "parrot"},
 	{}
 };
 
