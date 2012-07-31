@@ -365,6 +365,7 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	struct exynos_drm_private *dev_priv = dev->dev_private;
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 	int ret = -EINVAL;
+	unsigned long flags;
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
 	struct exynos_drm_gem_obj *gem_ob = (struct exynos_drm_gem_obj *)exynos_fb->exynos_gem_obj[0];
@@ -394,8 +395,10 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 		goto out;
 	}
 
+	spin_lock_irqsave(&dev->event_lock, flags);
 	list_add_tail(&event->base.link,
 		      &dev_priv->pageflip_event_list);
+	spin_unlock_irqrestore(&dev->event_lock, flags);
 
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 	if (dev_priv->old_kds_res_set != NULL)
