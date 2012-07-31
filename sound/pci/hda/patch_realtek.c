@@ -166,6 +166,7 @@ struct alc_spec {
 #endif
 	void (*shutup)(struct hda_codec *codec);
 	void (*automute_hook)(struct hda_codec *codec);
+	void (*automic_hook)(struct hda_codec *codec);
 
 	/* for pin sensing */
 	unsigned int hp_jack_present:1;
@@ -616,18 +617,10 @@ static void alc_line_automute(struct hda_codec *codec)
 #define get_connection_index(codec, mux, nid) \
 	snd_hda_get_conn_index(codec, mux, nid, 0)
 
-/* standard mic auto-switch helper */
-static void alc_mic_automute(struct hda_codec *codec)
+static void update_inputs(struct hda_codec *codec)
 {
 	struct alc_spec *spec = codec->spec;
 	hda_nid_t *pins = spec->imux_pins;
-
-	if (!spec->auto_mic || !spec->auto_mic_valid_imux)
-		return;
-	if (snd_BUG_ON(!spec->adc_nids))
-		return;
-	if (snd_BUG_ON(spec->int_mic_idx < 0 || spec->ext_mic_idx < 0))
-		return;
 
 	if (snd_hda_jack_detect(codec, pins[spec->ext_mic_idx]))
 		alc_mux_select(codec, 0, spec->ext_mic_idx, false);
@@ -636,6 +629,30 @@ static void alc_mic_automute(struct hda_codec *codec)
 		alc_mux_select(codec, 0, spec->dock_mic_idx, false);
 	else
 		alc_mux_select(codec, 0, spec->int_mic_idx, false);
+}
+
+static void call_update_inputs(struct hda_codec *codec)
+{
+	struct alc_spec *spec = codec->spec;
+	if (spec->automic_hook)
+		spec->automic_hook(codec);
+	else
+		update_inputs(codec);
+}
+
+/* standard mic auto-switch helper */
+static void alc_mic_automute(struct hda_codec *codec)
+{
+	struct alc_spec *spec = codec->spec;
+
+	if (!spec->auto_mic || !spec->auto_mic_valid_imux)
+		return;
+	if (snd_BUG_ON(!spec->adc_nids))
+		return;
+	if (snd_BUG_ON(spec->int_mic_idx < 0 || spec->ext_mic_idx < 0))
+		return;
+
+	call_update_inputs(codec);
 }
 
 /* handle the specified unsol action (ALC_XXX_EVENT) */
