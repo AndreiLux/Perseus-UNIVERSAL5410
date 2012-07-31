@@ -448,11 +448,8 @@ static void fimd_win_set_pixfmt(struct device *dev, unsigned int win)
 	 * WINCONx_BURSTLEN_8WORD = 64 bytes
 	 * WINCONx_BURSTLEN_16WORD = 128 bytes
 	 */
-	if (bytes < 128)
-		if (bytes < 64)
-			val |= WINCONx_BURSTLEN_4WORD;
-		else
-			val |= WINCONx_BURSTLEN_8WORD;
+	if (win_data->fb_width <= 64)
+		val |= WINCONx_BURSTLEN_4WORD;
 	else
 		val |= WINCONx_BURSTLEN_16WORD;
 
