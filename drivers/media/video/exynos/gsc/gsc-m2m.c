@@ -27,6 +27,7 @@
 #include <linux/clk.h>
 #include <media/v4l2-ioctl.h>
 #include <mach/videonode.h>
+#include <mach/sysmmu.h>
 
 #include "gsc-core.h"
 
@@ -52,9 +53,15 @@ static int gsc_ctx_stop_req(struct gsc_ctx *ctx)
 static int gsc_m2m_start_streaming(struct vb2_queue *q, unsigned int count)
 {
 	struct gsc_ctx *ctx = q->drv_priv;
+	struct device *dev = &ctx->gsc_dev->pdev->dev;
 	int ret;
 
-	ret = pm_runtime_get_sync(&ctx->gsc_dev->pdev->dev);
+	ret = pm_runtime_get_sync(dev);
+	if (ret < 0)
+		return ret;
+	ret = platform_sysmmu_on(dev);
+	if (ret < 0)
+		pm_runtime_put_sync(dev);
 	return ret > 0 ? 0 : ret;
 }
 
@@ -62,6 +69,7 @@ static int gsc_m2m_stop_streaming(struct vb2_queue *q)
 {
 	struct gsc_ctx *ctx = q->drv_priv;
 	struct gsc_dev *gsc = ctx->gsc_dev;
+	struct device *dev = &gsc->pdev->dev;
 	int ret;
 
 	ret = gsc_ctx_stop_req(ctx);
@@ -69,8 +77,8 @@ static int gsc_m2m_stop_streaming(struct vb2_queue *q)
 	if (ret < 0)
 		dev_err(&gsc->pdev->dev, "wait timeout : %s\n", __func__);
 
-	pm_runtime_put(&ctx->gsc_dev->pdev->dev);
-
+	pm_runtime_put_sync(dev);
+	platform_sysmmu_off(dev);
 	return 0;
 }
 
