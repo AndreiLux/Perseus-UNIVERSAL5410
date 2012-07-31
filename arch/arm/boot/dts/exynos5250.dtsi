@@ -700,6 +700,82 @@
 		};
 	};
 
+	power-domains {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		isp_arm_pd: pd@0x10042280 {
+			compatible = "samsung,exynos4210-pd";
+			reg = <0x10042280 0x20>;
+		};
+
+		usbotg_pd: pd@0x10042E00 {
+			compatible = "samsung,exynos4210-pd";
+			reg = <0x10042E00 0x20>;
+		};
+
+		g2d_pd: pd@0x10042E40 {
+			compatible = "samsung,exynos4210-pd";
+			reg = <0x10042E40 0x20>;
+		};
+
+		efnand_pd: pd@0x10042E80 {
+			compatible = "samsung,exynos4210-pd";
+			reg = <0x10042E80 0x20>;
+		};
+
+		cssys_pd: pd@0x10042EA0 {
+			compatible = "samsung,exynos4210-pd";
+			reg = <0x10042EA0 0x20>;
+		};
+
+		secss_pd: pd@0x10042EC0 {
+			compatible = "samsung,exynos4210-pd";
+			reg = <0x10042EC0 0x20>;
+		};
+
+		rot_pd: pd@0x10042EE0 {
+			compatible = "samsung,exynos4210-pd";
+			reg = <0x10042EE0 0x20>;
+		};
+
+		jpeg_pd: pd@0x10042F40 {
+			compatible = "samsung,exynos4210-pd";
+			reg = <0x10042F40 0x20>;
+		};
+
+		hsi_pd: pd@0x10042F60 {
+			compatible = "samsung,exynos4210-pd";
+			reg = <0x10042F60 0x20>;
+		};
+
+		mcuiop_pd: pd@0x10042FA0 {
+			compatible = "samsung,exynos4210-pd";
+			reg = <0x10042FA0 0x20>;
+		};
+
+		sata_pd: pd@0x10042FC0 {
+			compatible = "samsung,exynos4210-pd";
+			reg = <0x10042FC0 0x20>;
+		};
+
+		gsc_pd: pd@0x10044000 {
+			compatible = "samsung,exynos4210-pd";
+			reg = <0x10044000 0x20>;
+		};
+
+		isp_pd: pd@0x10044020 {
+			compatible = "samsung,exynos4210-pd";
+			reg = <0x10044020 0x20>;
+		};
+
+		mfc_pd: pd@0x10044040 {
+			compatible = "samsung,exynos4210-pd";
+			reg = <0x10044040 0x20>;
+		};
+	};
+
 	fimd {
 		compatible = "samsung,exynos5-fb";
 		interrupt-parent = <&combiner>;
