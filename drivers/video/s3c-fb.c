@@ -47,6 +47,7 @@
 #include <linux/sw_sync.h>
 #include <plat/devs.h>
 #include <plat/iovmm.h>
+#include <plat/sysmmu.h>
 #include <mach/sysmmu.h>
 #endif
 
@@ -333,6 +334,21 @@ struct s3c_fb {
 	struct v4l2_subdev sd_wb;	/* Take a FIMD1 as a v4l2_subdevice */
 #endif
 };
+
+static void s3c_fb_dump_registers(struct s3c_fb *sfb)
+{
+#ifdef CONFIG_FB_EXYNOS_FIMD_V8
+	pr_err("dumping registers\n");
+	print_hex_dump(KERN_ERR, "", DUMP_PREFIX_ADDRESS, 32, 4, sfb->regs,
+			0x0280, false);
+	pr_err("...\n");
+	print_hex_dump(KERN_ERR, "", DUMP_PREFIX_ADDRESS, 32, 4,
+			sfb->regs + SHD_VIDW_BUF_START(0), 0x74, false);
+	pr_err("...\n");
+	print_hex_dump(KERN_ERR, "", DUMP_PREFIX_ADDRESS, 32, 4,
+			sfb->regs + 0x20000, 0x20, false);
+#endif
+}
 
 static bool s3c_fb_validate_x_alignment(struct s3c_fb *sfb, int x, u32 w,
 		u32 bits_per_pixel)
@@ -2963,6 +2979,27 @@ static ssize_t s3c_fb_vsync_show(struct device *dev,
 
 static DEVICE_ATTR(vsync, S_IRUGO, s3c_fb_vsync_show, NULL);
 
+#ifdef CONFIG_ION_EXYNOS
+int s3c_fb_sysmmu_fault_handler(struct device *dev,
+		enum exynos_sysmmu_inttype itype, unsigned long pgtable_base,
+		unsigned long fault_addr)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct s3c_fb *sfb = platform_get_drvdata(pdev);
+
+	pr_err("FIMD1 PAGE FAULT occurred at 0x%lx (Page table base: 0x%lx)\n",
+			fault_addr, pgtable_base);
+
+	s3c_fb_dump_registers(sfb);
+
+	pr_err("Generating Kernel OOPS... because it is unrecoverable.\n");
+
+	BUG();
+
+	return 0;
+}
+#endif
+
 static int __devinit s3c_fb_probe(struct platform_device *pdev)
 {
 	const struct platform_device_id *platid;
@@ -3117,6 +3154,8 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 
 	/* setup vmm */
 	platform_set_sysmmu(&SYSMMU_PLATDEV(fimd1).dev, &s5p_device_fimd1.dev);
+	exynos_sysmmu_set_fault_handler(&s5p_device_fimd1.dev,
+			s3c_fb_sysmmu_fault_handler);
 #endif
 
 	/* we have the register setup, start allocating framebuffers */
