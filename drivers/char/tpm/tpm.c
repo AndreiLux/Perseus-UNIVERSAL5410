@@ -518,7 +518,7 @@ int tpm_continue_selftest(struct tpm_chip *chip)
 	struct tpm_cmd_t cmd;
 
 	cmd.header.in = continue_selftest_header;
-	rc = tpm_transmit_cmd(chip, (const u8 *) &cmd,
+	rc = tpm_transmit_cmd(chip, &cmd,
 			      CONTINUE_SELFTEST_RESULT_SIZE, "continue selftest");
 	return rc;
 }
