@@ -406,6 +406,7 @@ static void exynos_pm_resume(void)
 	}
 
 early_wakeup:
+	__raw_writel(0x0, REG_INFORM1);
 	exynos_show_wakeup_reason();
 	return;
 }
