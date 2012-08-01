@@ -153,6 +153,7 @@ struct omap_dev_user_list {
 struct omap_vdd_dev_list {
 	struct device *dev;
 	struct list_head node;
+	struct plist_head freq_user_list;
 	struct clk *clk;
 	spinlock_t user_lock; /* spinlock for plist */
 };
@@ -385,6 +386,128 @@ static int _remove_vdd_user(struct omap_vdd_dvfs_info *dvfs_info,
 
 	spin_unlock(&dvfs_info->user_lock);
 	kfree(user);
+
+	return ret;
+}
+
+/**
+ * _add_freq_request() - Add a requested device frequency
+ * @dvfs_info:	omap_vdd_dvfs_info pointer for the required vdd
+ * @req_dev:	device making the request
+ * @target_dev:	target device for which frequency request is being made
+ * @freq:	target device frequency
+ *
+ * This adds a requested frequency into target device's frequency list.
+ *
+ * Returns 0 on success.
+ */
+static int _add_freq_request(struct omap_vdd_dvfs_info *dvfs_info,
+	struct device *req_dev, struct device *target_dev, unsigned long freq)
+{
+	struct omap_dev_user_list *dev_user = NULL, *tmp_user;
+	struct omap_vdd_dev_list *temp_dev;
+
+	if (!dvfs_info || IS_ERR(dvfs_info)) {
+		dev_warn(target_dev, "%s: VDD specified does not exist!\n",
+			__func__);
+		return -EINVAL;
+	}
+
+	list_for_each_entry(temp_dev, &dvfs_info->dev_list, node) {
+		if (temp_dev->dev == target_dev)
+			break;
+	}
+
+	if (temp_dev->dev != target_dev) {
+		dev_warn(target_dev, "%s: target_dev does not exist!\n",
+			__func__);
+		return -EINVAL;
+	}
+
+	spin_lock(&temp_dev->user_lock);
+	plist_for_each_entry(tmp_user, &temp_dev->freq_user_list, node) {
+		if (tmp_user->dev == req_dev) {
+			dev_user = tmp_user;
+			break;
+		}
+	}
+
+	if (!dev_user) {
+		dev_user = kzalloc(sizeof(struct omap_dev_user_list),
+					GFP_ATOMIC);
+		if (!dev_user) {
+			dev_err(target_dev,
+				"%s: Unable to creat a new user for vdd_%s\n",
+				__func__, dvfs_info->voltdm->name);
+			spin_unlock(&temp_dev->user_lock);
+			return -ENOMEM;
+		}
+		dev_user->dev = req_dev;
+	} else {
+		plist_del(&dev_user->node, &temp_dev->freq_user_list);
+	}
+
+	plist_node_init(&dev_user->node, freq);
+	plist_add(&dev_user->node, &temp_dev->freq_user_list);
+	spin_unlock(&temp_dev->user_lock);
+	return 0;
+}
+
+/**
+ * _remove_freq_request() - Remove the requested device frequency
+ *
+ * @dvfs_info:	omap_vdd_dvfs_info pointer for the required vdd
+ * @req_dev:	device removing the request
+ * @target_dev:	target device from which frequency request is being removed
+ *
+ * This removes a requested frequency from target device's frequency list.
+ *
+ * Returns 0 on success.
+ */
+static int _remove_freq_request(struct omap_vdd_dvfs_info *dvfs_info,
+	struct device *req_dev, struct device *target_dev)
+{
+	struct omap_dev_user_list *dev_user = NULL, *tmp_user;
+	int ret = 0;
+	struct omap_vdd_dev_list *temp_dev;
+
+	if (!dvfs_info || IS_ERR(dvfs_info)) {
+		dev_warn(target_dev, "%s: VDD specified does not exist!\n",
+			__func__);
+		return -EINVAL;
+	}
+
+
+	list_for_each_entry(temp_dev, &dvfs_info->dev_list, node) {
+		if (temp_dev->dev == target_dev)
+			break;
+	}
+
+	if (temp_dev->dev != target_dev) {
+		dev_warn(target_dev, "%s: target_dev does not exist!\n",
+			__func__);
+		return -EINVAL;
+	}
+
+	spin_lock(&temp_dev->user_lock);
+	plist_for_each_entry(tmp_user, &temp_dev->freq_user_list, node) {
+		if (tmp_user->dev == req_dev) {
+			dev_user = tmp_user;
+			break;
+		}
+	}
+
+	if (dev_user) {
+		plist_del(&dev_user->node, &temp_dev->freq_user_list);
+	} else {
+		dev_err(target_dev,
+			"%s: Unable to remove the user for vdd_%s\n",
+			__func__, dvfs_info->voltdm->name);
+		ret = -EINVAL;
+	}
+
+	spin_unlock(&temp_dev->user_lock);
+	kfree(dev_user);
 
 	return ret;
 }
@@ -624,13 +747,19 @@ static int _dvfs_scale(struct device *req_dev, struct device *target_dev,
 		int r;
 
 		dev = temp_dev->dev;
-		rcu_read_lock();
-		opp = _volt_to_opp(dev, new_volt);
-		if (!IS_ERR(opp))
-			freq = opp_get_freq(opp);
-		rcu_read_unlock();
-		if (!freq)
-			continue;
+		if (!plist_head_empty(&temp_dev->freq_user_list)) {
+			node = plist_last(&temp_dev->freq_user_list);
+			freq = node->prio;
+		} else {
+			/* dep domain? we'd probably have a voltage request */
+			rcu_read_lock();
+			opp = _volt_to_opp(dev, new_volt);
+			if (!IS_ERR(opp))
+				freq = opp_get_freq(opp);
+			rcu_read_unlock();
+			if (!freq)
+				continue;
+		}
 
 		if (freq == clk_get_rate(temp_dev->clk)) {
 			dev_dbg(dev, "%s: Already at the requested"
@@ -739,10 +868,19 @@ int omap_device_scale(struct device *req_dev, struct device *target_dev,
 		goto out;
 	}
 
+	ret = _add_freq_request(tdvfs_info, req_dev, target_dev, freq);
+	if (ret) {
+		dev_err(target_dev, "%s: freqadd(%s) failed %d[f=%ld, v=%ld]\n",
+			__func__, dev_name(req_dev), ret, freq, volt);
+		goto out;
+	}
+
 	ret = _add_vdd_user(tdvfs_info, req_dev, volt);
 	if (ret) {
 		dev_err(target_dev, "%s: vddadd(%s) failed %d[f=%ld, v=%ld]\n",
 			__func__, dev_name(req_dev), ret, freq, volt);
+		_remove_freq_request(tdvfs_info, req_dev,
+			target_dev);
 		goto out;
 	}
 
@@ -760,6 +898,8 @@ int omap_device_scale(struct device *req_dev, struct device *target_dev,
 	if (ret) {
 		dev_err(target_dev, "%s: scale by %s failed %d[f=%ld, v=%ld]\n",
 			__func__, dev_name(req_dev), ret, freq, volt);
+		_remove_freq_request(tdvfs_info, req_dev,
+			target_dev);
 		_remove_vdd_user(tdvfs_info, target_dev);
 		/* Fall through */
 	}
@@ -775,12 +915,15 @@ static int dvfs_dump_vdd(struct seq_file *sf, void *unused)
 {
 	int k;
 	struct omap_vdd_dvfs_info *dvfs_info;
+	struct omap_vdd_dev_list *tdev;
+	struct omap_dev_user_list *duser;
 	struct omap_vdd_user_list *vuser;
 	struct omap_vdd_info *vdd;
 	struct omap_vdd_dep_info *dep_info;
 	struct voltagedomain *voltdm;
 	struct omap_volt_data *volt_data;
 	int anyreq;
+	int anyreq2;
 
 	dvfs_info = (struct omap_vdd_dvfs_info *)sf->private;
 	if (IS_ERR_OR_NULL(dvfs_info)) {
@@ -820,6 +963,34 @@ static int dvfs_dump_vdd(struct seq_file *sf, void *unused)
 	else
 		seq_printf(sf, "|  X\n");
 	seq_printf(sf, "|\n");
+
+	seq_printf(sf, "|- frequency requests\n|  |\n");
+	anyreq2 = 0;
+	list_for_each_entry(tdev, &dvfs_info->dev_list, node) {
+		anyreq = 0;
+		seq_printf(sf, "|  |- %s:%s\n",
+			   dev_driver_string(tdev->dev), dev_name(tdev->dev));
+		spin_lock(&tdev->user_lock);
+		plist_for_each_entry(duser, &tdev->freq_user_list, node) {
+			seq_printf(sf, "|  |  |-%d: %s:%s\n",
+				   duser->node.prio,
+				   dev_driver_string(duser->dev),
+				   dev_name(duser->dev));
+			anyreq = 1;
+		}
+
+		spin_unlock(&tdev->user_lock);
+
+		if (!anyreq)
+			seq_printf(sf, "|  |  `-none\n");
+		else
+			seq_printf(sf, "|  |  X\n");
+		anyreq2 = 1;
+	}
+	if (!anyreq2)
+		seq_printf(sf, "|  `-none\n");
+	else
+		seq_printf(sf, "|  X\n");
 
 	volt_data = vdd->volt_data;
 	seq_printf(sf, "|- Supported voltages\n|  |\n");
@@ -997,6 +1168,7 @@ int __init omap_dvfs_register_device(struct device *dev, char *voltdm_name,
 
 	/* Initialize priority ordered list */
 	spin_lock_init(&temp_dev->user_lock);
+	plist_head_init(&temp_dev->freq_user_list);
 
 	temp_dev->dev = dev;
 	temp_dev->clk = clk;
