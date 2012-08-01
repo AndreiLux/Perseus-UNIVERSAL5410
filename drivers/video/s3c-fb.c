@@ -52,6 +52,11 @@
 #include <mach/sysmmu.h>
 #endif
 
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
+#endif
+
+
 /* This driver will export a number of framebuffer interfaces depending
  * on the configuration passed in via the platform data. Each fb instance
  * maps to a hardware window. Currently there is no support for runtime
@@ -284,6 +289,18 @@ struct s3c_fb_vsync {
 	struct task_struct	*thread;
 };
 
+#ifdef CONFIG_DEBUG_FS
+#define S3C_FB_DEBUG_FIFO_TIMESTAMPS 32
+#define S3C_FB_DEBUG_REGS_SIZE 0x0280
+
+struct s3c_fb_debug {
+	ktime_t		fifo_timestamps[S3C_FB_DEBUG_FIFO_TIMESTAMPS];
+	unsigned int	num_timestamps;
+	unsigned int	first_timestamp;
+	u8		regs_at_underflow[S3C_FB_DEBUG_REGS_SIZE];
+};
+#endif
+
 /**
  * struct s3c_fb - overall hardware state of the hardware
  * @slock: The spinlock protection for this data sturcture.
@@ -338,6 +355,11 @@ struct s3c_fb {
 	int local_wb;	/* use of writeback path to gscaler in fimd */
 	struct media_pad pads_wb;	/* FIMD1's pad */
 	struct v4l2_subdev sd_wb;	/* Take a FIMD1 as a v4l2_subdevice */
+#endif
+
+#ifdef CONFIG_DEBUG_FS
+	struct dentry		*debug_dentry;
+	struct s3c_fb_debug	debug_data;
 #endif
 };
 
@@ -1150,6 +1172,16 @@ static void s3c_fb_enable_irq(struct s3c_fb *sfb)
 
 	irq_ctrl_reg |= VIDINTCON0_INT_ENABLE;
 	irq_ctrl_reg |= VIDINTCON0_INT_FRAME;
+#ifdef CONFIG_DEBUG_FS
+	irq_ctrl_reg &= ~VIDINTCON0_FIFOLEVEL_MASK;
+	irq_ctrl_reg |= VIDINTCON0_FIFOLEVEL_EMPTY;
+	irq_ctrl_reg |= VIDINTCON0_INT_FIFO;
+	irq_ctrl_reg |= VIDINTCON0_FIFIOSEL_WINDOW0;
+	irq_ctrl_reg |= VIDINTCON0_FIFIOSEL_WINDOW1;
+	irq_ctrl_reg |= VIDINTCON0_FIFIOSEL_WINDOW2;
+	irq_ctrl_reg |= VIDINTCON0_FIFIOSEL_WINDOW3;
+	irq_ctrl_reg |= VIDINTCON0_FIFIOSEL_WINDOW4;
+#endif
 
 	irq_ctrl_reg &= ~VIDINTCON0_FRAMESEL0_MASK;
 	irq_ctrl_reg |= VIDINTCON0_FRAMESEL0_VSYNC;
@@ -1170,6 +1202,9 @@ static void s3c_fb_disable_irq(struct s3c_fb *sfb)
 
 	irq_ctrl_reg = readl(regs + VIDINTCON0);
 
+#ifdef CONFIG_DEBUG_FS
+	irq_ctrl_reg &= VIDINTCON0_INT_FIFO;
+#endif
 	irq_ctrl_reg &= ~VIDINTCON0_INT_FRAME;
 	irq_ctrl_reg &= ~VIDINTCON0_INT_ENABLE;
 
@@ -1203,11 +1238,36 @@ static void s3c_fb_deactivate_vsync(struct s3c_fb *sfb)
 	mutex_unlock(&sfb->vsync_info.irq_lock);
 }
 
+/**
+ * sfb_fb_log_fifo_underflow_locked - log a FIFO underflow event.  Caller must
+ * hold the driver's spin lock while calling.
+ *
+ * @sfb: main hardware state
+ * @timestamp: timestamp of the FIFO underflow event
+ */
+void s3c_fb_log_fifo_underflow_locked(struct s3c_fb *sfb, ktime_t timestamp)
+{
+#ifdef CONFIG_DEBUG_FS
+	unsigned int idx = sfb->debug_data.num_timestamps %
+			S3C_FB_DEBUG_FIFO_TIMESTAMPS;
+	sfb->debug_data.fifo_timestamps[idx] = timestamp;
+	sfb->debug_data.num_timestamps++;
+	if (sfb->debug_data.num_timestamps > S3C_FB_DEBUG_FIFO_TIMESTAMPS) {
+		sfb->debug_data.first_timestamp++;
+		sfb->debug_data.first_timestamp %= S3C_FB_DEBUG_FIFO_TIMESTAMPS;
+	}
+
+	memcpy(sfb->debug_data.regs_at_underflow, sfb->regs,
+			sizeof(sfb->debug_data.regs_at_underflow));
+#endif
+}
+
 static irqreturn_t s3c_fb_irq(int irq, void *dev_id)
 {
 	struct s3c_fb *sfb = dev_id;
 	void __iomem  *regs = sfb->regs;
 	u32 irq_sts_reg;
+	ktime_t timestamp = ktime_get();
 
 	spin_lock(&sfb->slock);
 
@@ -1218,8 +1278,12 @@ static irqreturn_t s3c_fb_irq(int irq, void *dev_id)
 		/* VSYNC interrupt, accept it */
 		writel(VIDINTCON1_INT_FRAME, regs + VIDINTCON1);
 
-		sfb->vsync_info.timestamp = ktime_get();
+		sfb->vsync_info.timestamp = timestamp;
 		wake_up_interruptible_all(&sfb->vsync_info.wait);
+	}
+	if (irq_sts_reg & VIDINTCON1_INT_FIFO) {
+		writel(VIDINTCON1_INT_FIFO, regs + VIDINTCON1);
+		s3c_fb_log_fifo_underflow_locked(sfb, timestamp);
 	}
 
 	spin_unlock(&sfb->slock);
@@ -3095,6 +3159,90 @@ int s3c_fb_sysmmu_fault_handler(struct device *dev,
 }
 #endif
 
+#ifdef CONFIG_DEBUG_FS
+
+static int s3c_fb_debugfs_show(struct seq_file *f, void *offset)
+{
+	struct s3c_fb *sfb = f->private;
+	struct s3c_fb_debug *debug_data = kzalloc(sizeof(struct s3c_fb_debug),
+			GFP_KERNEL);
+
+	if (!debug_data) {
+		seq_printf(f, "kmalloc() failed; can't generate file\n");
+		return -ENOMEM;
+	}
+
+	spin_lock(&sfb->slock);
+	memcpy(debug_data, &sfb->debug_data, sizeof(sfb->debug_data));
+	spin_unlock(&sfb->slock);
+
+	seq_printf(f, "%u FIFO underflows\n", debug_data->num_timestamps);
+	if (debug_data->num_timestamps) {
+		unsigned int i;
+		unsigned int temp = S3C_FB_DEBUG_FIFO_TIMESTAMPS;
+		unsigned int n = min(debug_data->num_timestamps, temp);
+
+		seq_printf(f, "Last %u FIFO underflow timestamps:\n", n);
+		for (i = 0; i < n; i++) {
+			unsigned int idx = (debug_data->first_timestamp + i) %
+					S3C_FB_DEBUG_FIFO_TIMESTAMPS;
+			ktime_t timestamp = debug_data->fifo_timestamps[idx];
+			seq_printf(f, "\t%lld\n", ktime_to_ns(timestamp));
+		}
+
+		seq_printf(f, "Registers at time of last underflow:\n");
+		for (i = 0; i < S3C_FB_DEBUG_REGS_SIZE; i += 32) {
+			unsigned char buf[128];
+			hex_dump_to_buffer(debug_data->regs_at_underflow + i,
+					32, 32, 4, buf,
+					sizeof(buf), false);
+			seq_printf(f, "%.8x: %s\n", i, buf);
+		}
+	}
+
+	kfree(debug_data);
+	return 0;
+}
+
+static int s3c_fb_debugfs_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, s3c_fb_debugfs_show, inode->i_private);
+}
+
+static const struct file_operations s3c_fb_debugfs_fops = {
+	.owner		= THIS_MODULE,
+	.open		= s3c_fb_debugfs_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int s3c_fb_debugfs_init(struct s3c_fb *sfb)
+{
+	sfb->debug_dentry = debugfs_create_file("s3c-fb", S_IRUGO, NULL, sfb,
+			&s3c_fb_debugfs_fops);
+	if (IS_ERR_OR_NULL(sfb->debug_dentry)) {
+		sfb->debug_dentry = NULL;
+		dev_err(sfb->dev, "debugfs_create_file() failed\n");
+		return -EIO;
+	}
+
+	return 0;
+}
+
+static void s3c_fb_debugfs_cleanup(struct s3c_fb *sfb)
+{
+	if (sfb->debug_dentry)
+		debugfs_remove(sfb->debug_dentry);
+}
+
+#else
+
+static int s3c_fb_debugfs_init(struct s3c_fb *sfb) { return 0; }
+static void s3c_fb_debugfs_cleanup(struct s3c_fb *sfb) { }
+
+#endif
+
 static int __devinit s3c_fb_probe(struct platform_device *pdev)
 {
 	const struct platform_device_id *platid;
@@ -3137,6 +3285,10 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 
 	spin_lock_init(&sfb->slock);
 	mutex_init(&sfb->output_lock);
+
+	ret = s3c_fb_debugfs_init(sfb);
+	if (ret)
+		dev_warn(dev, "failed to initialize debugfs entry\n");
 
 #ifdef CONFIG_ION_EXYNOS
 	INIT_LIST_HEAD(&sfb->update_regs_list);
@@ -3440,6 +3592,8 @@ static int __devexit s3c_fb_remove(struct platform_device *pdev)
 
 	clk_disable(sfb->bus_clk);
 	clk_put(sfb->bus_clk);
+
+	s3c_fb_debugfs_cleanup(sfb);
 
 	pm_runtime_put_sync(sfb->dev);
 	pm_runtime_disable(sfb->dev);
