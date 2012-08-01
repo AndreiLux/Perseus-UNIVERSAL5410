@@ -1787,6 +1787,76 @@ static struct clk_ops exynos5_fout_apll_ops = {
 	.get_rate = exynos5_fout_apll_get_rate,
 };
 
+static u32 exynos5_vpll_div[][5] = {
+	{281000000, 3, 281, 3, 0},
+};
+
+static unsigned long exynos5_vpll_get_rate(struct clk *clk)
+{
+	return clk->rate;
+}
+
+static int exynos5_vpll_set_rate(struct clk *clk, unsigned long rate)
+{
+	unsigned int vpll_con0, vpll_con1;
+	unsigned int locktime;
+	unsigned int tmp;
+	unsigned int i;
+
+	/* Return if nothing changed */
+	if (clk->rate == rate)
+		return 0;
+
+	vpll_con0 = __raw_readl(EXYNOS5_VPLL_CON0);
+	vpll_con0 &= ~(PLL36XX_MDIV_MASK << PLL36XX_MDIV_SHIFT |
+		       PLL36XX_PDIV_MASK << PLL36XX_PDIV_SHIFT |
+		       PLL36XX_SDIV_MASK << PLL36XX_SDIV_SHIFT);
+
+	vpll_con1 = __raw_readl(EXYNOS5_VPLL_CON1);
+	vpll_con1 &= ~(0xffff << 0);
+
+	for (i = 0; i < ARRAY_SIZE(exynos5_vpll_div); i++) {
+		if (exynos5_vpll_div[i][0] == rate) {
+			vpll_con0 |= exynos5_vpll_div[i][1] <<
+							PLL36XX_PDIV_SHIFT;
+			vpll_con0 |= exynos5_vpll_div[i][2] <<
+							PLL36XX_MDIV_SHIFT;
+			vpll_con0 |= exynos5_vpll_div[i][3] <<
+							PLL36XX_SDIV_SHIFT;
+			vpll_con1 |= exynos5_vpll_div[i][4] << 0;
+			break;
+		}
+	}
+
+	if (i == ARRAY_SIZE(exynos5_vpll_div)) {
+		printk(KERN_ERR "%s: Invalid Clock VPLL Frequency\n",
+				__func__);
+		return -EINVAL;
+	}
+
+	/* 3000 max_cycls : specification data */
+	locktime = 3000 * exynos5_vpll_div[i][1] + 1;
+
+	__raw_writel(locktime, EXYNOS5_VPLL_LOCK);
+
+	__raw_writel(vpll_con0, EXYNOS5_VPLL_CON0);
+	__raw_writel(vpll_con1, EXYNOS5_VPLL_CON1);
+
+	do {
+		tmp = __raw_readl(EXYNOS5_VPLL_CON0);
+	} while (!(tmp & (0x1 << EXYNOS5_VPLLCON0_LOCKED_SHIFT)));
+
+	clk->rate = rate;
+
+	return 0;
+}
+
+static struct clk_ops exynos5_vpll_ops = {
+	.get_rate = exynos5_vpll_get_rate,
+	.set_rate = exynos5_vpll_set_rate,
+};
+
+
 #ifdef CONFIG_PM
 static int exynos5_clock_suspend(void)
 {
@@ -1890,6 +1960,7 @@ void __init_or_cpufreq exynos5_setup_clocks(void)
 
 
 	clk_fout_epll.ops = &exynos5_epll_ops;
+	clk_fout_vpll.ops = &exynos5_vpll_ops;
 	clk_fout_gpll.ops = &exynos5_gpll_ops;
 
 	if (clk_set_parent(&exynos5_clk_mout_epll.clk, &clk_fout_epll))
@@ -1901,6 +1972,8 @@ void __init_or_cpufreq exynos5_setup_clocks(void)
 
 	clk_set_rate(&exynos5_clk_aclk_acp.clk, 267000000);
 	clk_set_rate(&exynos5_clk_pclk_acp.clk, 134000000);
+
+	clk_set_rate(&clk_fout_vpll, 281000000);
 
 	for (ptr = 0; ptr < ARRAY_SIZE(exynos5_clksrcs); ptr++)
 		s3c_set_clksrc(&exynos5_clksrcs[ptr], true);
