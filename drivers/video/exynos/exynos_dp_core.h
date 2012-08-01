@@ -33,6 +33,7 @@ struct exynos_dp_device {
 
 	struct video_info	*video_info;
 	struct link_train	link_train;
+	struct work_struct	config_work;
 };
 
 /* exynos_dp_reg.c */

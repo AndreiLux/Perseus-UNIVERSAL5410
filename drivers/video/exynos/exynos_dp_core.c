@@ -19,6 +19,7 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/of.h>
+#include <linux/workqueue.h>
 
 #include <video/exynos_dp.h>
 
@@ -809,11 +810,14 @@ static int exynos_dp_set_link_train(struct exynos_dp_device *dp,
 	return retval;
 }
 
-static int exynos_dp_config_video(struct exynos_dp_device *dp)
+static void exynos_dp_config_video(struct work_struct *work)
 {
+	struct exynos_dp_device *dp;
 	int retval = 0;
 	int timeout_loop = 0;
 	int done_count = 0;
+
+	dp = container_of(work, struct exynos_dp_device, config_work);
 
 	exynos_dp_config_video_slave_mode(dp);
 
@@ -821,7 +825,7 @@ static int exynos_dp_config_video(struct exynos_dp_device *dp)
 
 	if (exynos_dp_get_pll_lock_status(dp) == PLL_UNLOCKED) {
 		dev_err(dp->dev, "PLL is not locked yet.\n");
-		return -EINVAL;
+		return;
 	}
 
 	for (;;) {
@@ -830,7 +834,7 @@ static int exynos_dp_config_video(struct exynos_dp_device *dp)
 			break;
 		if (DP_TIMEOUT_LOOP_COUNT < timeout_loop) {
 			dev_err(dp->dev, "Timeout of video streamclk ok\n");
-			return -ETIMEDOUT;
+			return;
 		}
 
 		mdelay(100);
@@ -864,7 +868,7 @@ static int exynos_dp_config_video(struct exynos_dp_device *dp)
 		}
 		if (DP_TIMEOUT_LOOP_COUNT < timeout_loop) {
 			dev_err(dp->dev, "Timeout of video streamclk ok\n");
-			return -ETIMEDOUT;
+			return;
 		}
 
 		mdelay(100);
@@ -872,8 +876,6 @@ static int exynos_dp_config_video(struct exynos_dp_device *dp)
 
 	if (retval != 0)
 		dev_err(dp->dev, "Video stream is not detected!\n");
-
-	return retval;
 }
 
 static void exynos_dp_enable_scramble(struct exynos_dp_device *dp, bool enable)
@@ -1011,11 +1013,9 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 	exynos_dp_set_link_bandwidth(dp, dp->video_info->link_rate);
 
 	exynos_dp_init_video(dp);
-	ret = exynos_dp_config_video(dp);
-	if (ret) {
-		dev_err(&pdev->dev, "unable to config video\n");
-		goto err_irq;
-	}
+
+	INIT_WORK(&dp->config_work, exynos_dp_config_video);
+	schedule_work(&dp->config_work);
 
 	platform_set_drvdata(pdev, dp);
 
@@ -1040,6 +1040,9 @@ static int __devexit exynos_dp_remove(struct platform_device *pdev)
 	struct exynos_dp_platdata *pdata = pdev->dev.platform_data;
 	struct exynos_dp_device *dp = platform_get_drvdata(pdev);
 
+	if (work_pending(&dp->config_work))
+		flush_work_sync(&dp->config_work);
+
 	if (pdata && pdata->phy_exit)
 		pdata->phy_exit();
 
@@ -1062,6 +1065,9 @@ static int exynos_dp_suspend(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct exynos_dp_platdata *pdata = pdev->dev.platform_data;
 	struct exynos_dp_device *dp = platform_get_drvdata(pdev);
+
+	if (work_pending(&dp->config_work))
+		flush_work_sync(&dp->config_work);
 
 	if (pdata && pdata->phy_exit)
 		pdata->phy_exit();
@@ -1102,7 +1108,7 @@ static int exynos_dp_resume(struct device *dev)
 	exynos_dp_set_link_bandwidth(dp, dp->video_info->link_rate);
 
 	exynos_dp_init_video(dp);
-	exynos_dp_config_video(dp);
+	schedule_work(&dp->config_work);
 
 	return 0;
 }
