@@ -331,6 +331,13 @@ static inline unsigned long omap_get_dyn_nominal(struct omap_volt_data *vdata)
 	}
 	return vdata->volt_nominal;
 }
+static inline unsigned long omap_get_nominal_voltage(
+				struct omap_volt_data *vdata)
+{
+	if (IS_ERR_OR_NULL(vdata))
+		return 0;
+	return vdata->volt_nominal;
+}
 
 static inline int voltdm_register_notifier(struct voltagedomain *voltdm,
 						struct notifier_block *nb)
