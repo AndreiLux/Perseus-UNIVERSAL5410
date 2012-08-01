@@ -34,7 +34,6 @@
 #include "hda_jack.h"
 
 #include "ca0132_regs.h"
-#include "ca0132_dsp_os.h"
 
 /* Enable this to see more debug messages. */
 /*#define ENABLE_CA0132_DEBUG*/
@@ -52,11 +51,6 @@
 
 #define SUCCEEDED(_x)         (((int)(_x)) >= 0)
 #define FAILED(_x)            (((int)(_x)) < 0)
-#define CT_OK                 (0)
-#define CT_FAIL               (-1)
-
-#define MIN(x, y)             (((x) < (y)) ? (x) : (y))
-#define MAX(x, y)             (((x) > (y)) ? (x) : (y))
 
 #define DSP_DMA_WRITE_BUFLEN_INIT (1UL<<18)
 #define DSP_DMA_WRITE_BUFLEN_OVLY (1UL<<15)
@@ -85,6 +79,10 @@
 
 #define SPEQ_FILE  "ctspeq.bin"
 #define SPEQ_SIZE  0x2040
+#define EFX_FILE   "ctefx.bin"
+
+MODULE_FIRMWARE(SPEQ_FILE);
+MODULE_FIRMWARE(EFX_FILE);
 
 /* Debug message controls */
 #ifdef ENABLE_CA0132_DEBUG
@@ -128,14 +126,12 @@ enum {
 
 enum {
 #define VNODE_START_NID    0x80
-	VNID_HP = VNODE_START_NID,	/* Headphone vnid */
-	VNID_SPK,			/* Speaker vnid */
-	VNID_DMIC,
-	VNID_AMIC1,
+	VNID_SPK = VNODE_START_NID,			/* Speaker vnid */
+	VNID_MIC,
 	VNID_HP_SEL,
 	VNID_AMIC1_SEL,
-	VNID_AUTO_HP_SEL,
-	VNID_AUTO_AMIC1_SEL,
+	VNID_HP_ASEL,
+	VNID_AMIC1_ASEL,
 	VNODE_END_NID,
 #define VNODES_COUNT  (VNODE_END_NID - VNODE_START_NID)
 
@@ -175,7 +171,7 @@ struct ct_effect {
 	int direct; /* 0:output; 1:input*/
 	int params; /* number of default non-on/off params */
 	/*effect default values, 1st is on/off. */
-	float def_vals[EFFECT_VALS_MAX_COUNT];
+	unsigned int def_vals[EFFECT_VALS_MAX_COUNT];
 };
 
 static struct ct_effect ca0132_effects[EFFECTS_COUNT] = {
@@ -185,7 +181,7 @@ static struct ct_effect ca0132_effects[EFFECTS_COUNT] = {
 		{0, 1},
 		0,
 		1,
-		{1.00, 0.67}
+		{0x3F800000, 0x3F2B851F}
 	},
 	{ "Crystalizer",
 		CRYSTALIZER,
@@ -193,7 +189,7 @@ static struct ct_effect ca0132_effects[EFFECTS_COUNT] = {
 		{7, 8},
 		0,
 		1,
-		{1.00, 0.65}
+		{0x3F800000, 0x3F266666}
 	},
 	{ "Dialog Plus",
 		DIALOG_PLUS,
@@ -201,7 +197,7 @@ static struct ct_effect ca0132_effects[EFFECTS_COUNT] = {
 		{2, 3},
 		0,
 		1,
-		{0.00, 0.50}
+		{0x00000000, 0x3F000000}
 	},
 	{ "Smart Volume",
 		SMART_VOLUME,
@@ -209,7 +205,7 @@ static struct ct_effect ca0132_effects[EFFECTS_COUNT] = {
 		{4, 5, 6},
 		0,
 		2,
-		{1.00, 0.74, 0.00}
+		{0x3F800000, 0x3F3D70A4, 0x00000000}
 	},
 	{ "X-Bass",
 		X_BASS,
@@ -217,7 +213,7 @@ static struct ct_effect ca0132_effects[EFFECTS_COUNT] = {
 		{24, 23, 25},
 		0,
 		2,
-		{1.00, 80.00, 0.50}
+		{0x3F800000, 0x42A00000, 0x3F000000}
 	},
 	{ "Equalizer",
 		EQUALIZER,
@@ -226,8 +222,9 @@ static struct ct_effect ca0132_effects[EFFECTS_COUNT] = {
 			15, 16, 17, 18, 19, 20},
 		0,
 		11,
-		{0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
-			0.00, 0.00, 0.00, 0.00, 0.00, 0.00}
+		{0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+		 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+		 0x00000000, 0x00000000}
 	},
 	{ "Echo Cancellation",
 		ECHO_CANCELLATION,
@@ -235,7 +232,7 @@ static struct ct_effect ca0132_effects[EFFECTS_COUNT] = {
 		{0, 1, 2, 3},
 		1,
 		3,
-		{0.00, 0.72886, 0.00, 0.00}
+		{0x00000000, 0x3F3A9692, 0x00000000, 0x00000000}
 	},
 	{ "Voice Focus",
 		VOICE_FOCUS,
@@ -243,7 +240,7 @@ static struct ct_effect ca0132_effects[EFFECTS_COUNT] = {
 		{6, 7, 8, 9},
 		1,
 		3,
-		{1.00, 0.062, 30.00, 30.00}
+		{0x3F800000, 0x3D7DF3B6, 0x41F00000, 0x41F00000}
 	},
 	{ "Mic SVM",
 		MIC_SVM,
@@ -251,7 +248,7 @@ static struct ct_effect ca0132_effects[EFFECTS_COUNT] = {
 		{44, 45},
 		1,
 		1,
-		{0.00, 0.74}
+		{0x00000000, 0x3F3D70A4}
 	},
 	{ "VoiceFX",
 		VOICEFX,
@@ -259,7 +256,8 @@ static struct ct_effect ca0132_effects[EFFECTS_COUNT] = {
 		{10, 11, 12, 13, 14, 15, 16, 17, 18},
 		1,
 		8,
-		{0.00, 400.00, 1400.00, 2000.00, 1.00, 1.00, 1.00, 0.00, 0.00}
+		{0x00000000, 0x43C80000, 0x44AF0000, 0x44FA0000, 0x3F800000,
+		 0x3F800000, 0x3F800000, 0x00000000, 0x00000000}
 	}
 };
 
@@ -292,7 +290,7 @@ struct ct_tuning_ctl {
 	int mid; /*effect module ID*/
 	int req; /*effect module request*/
 	int direct; /* 0:output; 1:input*/
-	float def_val;/*effect default values*/
+	unsigned int def_val;/*effect default values*/
 };
 
 static struct ct_tuning_ctl ca0132_tuning_ctls[] = {
@@ -302,7 +300,7 @@ static struct ct_tuning_ctl ca0132_tuning_ctls[] = {
 		0x95,
 		8,
 		1,
-		30.00
+		0x41F00000
 	},
 	{ "SVM Level",
 		MIC_SVM,
@@ -310,7 +308,7 @@ static struct ct_tuning_ctl ca0132_tuning_ctls[] = {
 		0x95,
 		45,
 		1,
-		0.74
+		0x3F3D70A4
 	},
 	{ "EQ Band0",
 		EQUALIZER,
@@ -318,7 +316,7 @@ static struct ct_tuning_ctl ca0132_tuning_ctls[] = {
 		0x96,
 		11,
 		0,
-		0
+		0x00000000
 	},
 	{ "EQ Band1",
 		EQUALIZER,
@@ -326,7 +324,7 @@ static struct ct_tuning_ctl ca0132_tuning_ctls[] = {
 		0x96,
 		12,
 		0,
-		0
+		0x00000000
 	},
 	{ "EQ Band2",
 		EQUALIZER,
@@ -334,7 +332,7 @@ static struct ct_tuning_ctl ca0132_tuning_ctls[] = {
 		0x96,
 		13,
 		0,
-		0
+		0x00000000
 	},
 	{ "EQ Band3",
 		EQUALIZER,
@@ -342,7 +340,7 @@ static struct ct_tuning_ctl ca0132_tuning_ctls[] = {
 		0x96,
 		14,
 		0,
-		0
+		0x00000000
 	},
 	{ "EQ Band4",
 		EQUALIZER,
@@ -350,7 +348,7 @@ static struct ct_tuning_ctl ca0132_tuning_ctls[] = {
 		0x96,
 		15,
 		0,
-		0
+		0x00000000
 	},
 	{ "EQ Band5",
 		EQUALIZER,
@@ -358,7 +356,7 @@ static struct ct_tuning_ctl ca0132_tuning_ctls[] = {
 		0x96,
 		16,
 		0,
-		0
+		0x00000000
 	},
 	{ "EQ Band6",
 		EQUALIZER,
@@ -366,7 +364,7 @@ static struct ct_tuning_ctl ca0132_tuning_ctls[] = {
 		0x96,
 		17,
 		0,
-		0
+		0x00000000
 	},
 	{ "EQ Band7",
 		EQUALIZER,
@@ -374,7 +372,7 @@ static struct ct_tuning_ctl ca0132_tuning_ctls[] = {
 		0x96,
 		18,
 		0,
-		0
+		0x00000000
 	},
 	{ "EQ Band8",
 		EQUALIZER,
@@ -382,7 +380,7 @@ static struct ct_tuning_ctl ca0132_tuning_ctls[] = {
 		0x96,
 		19,
 		0,
-		0
+		0x00000000
 	},
 	{ "EQ Band9",
 		EQUALIZER,
@@ -390,7 +388,7 @@ static struct ct_tuning_ctl ca0132_tuning_ctls[] = {
 		0x96,
 		20,
 		0,
-		0
+		0x00000000
 	}
 };
 #endif
@@ -407,7 +405,7 @@ struct ct_voicefx {
 
 struct ct_voicefx_preset {
 	char *name; /*preset name*/
-	float vals[VOICEFX_MAX_PARAM_COUNT];
+	unsigned int vals[VOICEFX_MAX_PARAM_COUNT];
 };
 
 struct ct_voicefx ca0132_voicefx = {
@@ -419,74 +417,74 @@ struct ct_voicefx ca0132_voicefx = {
 
 struct ct_voicefx_preset ca0132_voicefx_presets[] = {
 	{ "Neutral",
-		{ 0.000000E+000, 4.000000E+002, 1.400000E+003,
-		  2.000000E+003, 1.000000E+000, 1.000000E+000,
-		  1.000000E+000, 0.000000E+000, 0.000000E+000 }
+		{ 0x00000000, 0x43C80000, 0x44AF0000,
+		  0x44FA0000, 0x3F800000, 0x3F800000,
+		  0x3F800000, 0x00000000, 0x00000000 }
 	},
 	{ "Female2Male",
-		{ 1.000000E+000, 4.000000E+002, 1.400000E+003,
-		  2.000000E+003, 6.000000E-001, 1.050000E+000,
-		  1.000000E+000, 0.000000E+000, 0.000000E+000 }
+		{ 0x3F800000, 0x43C80000, 0x44AF0000,
+		  0x44FA0000, 0x3F19999A, 0x3F866666,
+		  0x3F800000, 0x00000000, 0x00000000 }
 	},
 	{ "Male2Female",
-		{ 1.000000E+000, 4.000000E+002, 1.400000E+003,
-		  2.220000E+003, 2.370000E+000, 9.200000E-001,
-		  1.000000E+000, 0.000000E+000, 0.000000E+000 }
+		{ 0x3F800000, 0x43C80000, 0x44AF0000,
+		  0x450AC000, 0x4017AE14, 0x3F6B851F,
+		  0x3F800000, 0x00000000, 0x00000000 }
 	},
 	{ "ScrappyKid",
-		{ 1.000000E+000, 4.000000E+002, 1.400000E+003,
-		  2.000000E+003, 3.000000E+000, 6.600000E-001,
-		  1.000000E+000, 0.000000E+000, 0.000000E+000 }
+		{ 0x3F800000, 0x43C80000, 0x44AF0000,
+		  0x44FA0000, 0x40400000, 0x3F28F5C3,
+		  0x3F800000, 0x00000000, 0x00000000 }
 	},
 	{ "Elderly",
-		{ 1.000000E+000, 7.130000E+002, 1.500000E+003,
-		  1.800000E+003, 1.400000E+000, 1.450000E+000,
-		  1.000000E+000, 1.818171E-001, 0.000000E+000 }
+		{ 0x3F800000, 0x44324000, 0x44BB8000,
+		  0x44E10000, 0x3FB33333, 0x3FB9999A,
+		  0x3F800000, 0x3E3A2E43, 0x00000000 }
 	},
 	{ "Org",
-		{ 1.000000E+000, 4.680000E+002, 1.321000E+003,
-		  2.200000E+003, 6.500000E-001, 1.500000E+000,
-		  1.000000E+000, 0.000000E+000, 0.000000E+000 }
+		{ 0x3F800000, 0x43EA0000, 0x44A52000,
+		  0x45098000, 0x3F266666, 0x3FC00000,
+		  0x3F800000, 0x00000000, 0x00000000 }
 	},
 	{ "Elf",
-		{ 1.000000E+000, 3.980000E+002, 1.395000E+003,
-		  2.451000E+003, 1.110000E+000, 9.600000E-001,
-		  1.000000E+000, 0.000000E+000, 0.000000E+000 }
+		{ 0x3F800000, 0x43C70000, 0x44AE6000,
+		  0x45193000, 0x3F8E147B, 0x3F75C28F,
+		  0x3F800000, 0x00000000, 0x00000000 }
 	},
 	{ "Dwarf",
-		{ 1.000000E+000, 2.940000E+002, 1.527000E+003,
-		  2.055000E+003, 7.700000E-001, 9.700000E-001,
-		  1.000000E+000, 0.000000E+000, 0.000000E+000 }
+		{ 0x3F800000, 0x43930000, 0x44BEE000,
+		  0x45007000, 0x3F451EB8, 0x3F7851EC,
+		  0x3F800000, 0x00000000, 0x00000000 }
 	},
 	{ "AlienBrute",
-		{ 1.000000E+000, 3.835443E+002, 1.428496E+003,
-		  2.550000E+003, 6.500000E-001, 1.311318E+000,
-		  1.000000E+000, 3.000000E-002, 0.000000E+000 }
+		{ 0x3F800000, 0x43BFC5AC, 0x44B28FDF,
+		  0x451F6000, 0x3F266666, 0x3FA7D945,
+		  0x3F800000, 0x3CF5C28F, 0x00000000 }
 	},
 	{ "Robot",
-		{ 1.000000E+000, 4.000000E+002, 1.400000E+003,
-		  2.000000E+003, 1.394090E+000, 1.000000E+000,
-		 -8.239998E-003, 0.000000E+000, 0.000000E+000 }
+		{ 0x3F800000, 0x43C80000, 0x44AF0000,
+		  0x44FA0000, 0x3FB2718B, 0x3F800000,
+		  0xBC07010E, 0x00000000, 0x00000000 }
 	},
 	{ "Marine",
-		{ 1.000000E+000, 3.880000E+002, 1.155000E+003,
-		  1.848000E+003, 8.000000E-001, 1.080000E+000,
-		  5.400000E-001, 0.000000E+000, 0.000000E+000 }
+		{ 0x3F800000, 0x43C20000, 0x44906000,
+		  0x44E70000, 0x3F4CCCCD, 0x3F8A3D71,
+		  0x3F0A3D71, 0x00000000, 0x00000000 }
 	},
 	{ "Emo",
-		{ 1.000000E+000, 4.000000E+002, 1.400000E+003,
-		  2.000000E+003, 1.000000E+000, 1.000000E+000,
-		  2.000000E-001, 0.000000E+000, 0.000000E+000 }
+		{ 0x3F800000, 0x43C80000, 0x44AF0000,
+		  0x44FA0000, 0x3F800000, 0x3F800000,
+		  0x3E4CCCCD, 0x00000000, 0x00000000 }
 	},
 	{ "DeepVoice",
-		{ 1.000000E+000, 3.395443E+002, 1.362496E+003,
-		  2.046000E+003, 4.291186E-001, 1.201318E+000,
-		  1.000000E+000, 0.000000E+000, 0.000000E+000 }
+		{ 0x3F800000, 0x43A9C5AC, 0x44AA4FDF,
+		  0x44FFC000, 0x3EDBB56F, 0x3F99C4CA,
+		  0x3F800000, 0x00000000, 0x00000000 }
 	},
 	{ "Munchkin",
-		{ 1.000000E+000, 4.000000E+002, 1.400000E+003,
-		  2.000000E+003, 6.016271E-001, 1.000000E+000,
-		  1.000000E+000, 0.000000E+000, 0.000000E+000 }
+		{ 0x3F800000, 0x43C80000, 0x44AF0000,
+		  0x44FA0000, 0x3F1A043C, 0x3F800000,
+		  0x3F800000, 0x00000000, 0x00000000 }
 	}
 };
 
@@ -757,7 +755,7 @@ unsigned int codec_send_command(struct hda_codec *codec, hda_nid_t nid,
 	response = snd_hda_codec_read(codec, nid, 0, verb, parm);
 	*res = response;
 
-	return ((response == -1) ? CT_FAIL : CT_OK);
+	return ((response == -1) ? -1 : 0);
 }
 
 static int codec_set_converter_format(struct hda_codec *codec, hda_nid_t nid,
@@ -793,20 +791,20 @@ static int chipio_send(struct hda_codec *codec,
 		res = snd_hda_codec_read(codec, WIDGET_CHIP_CTRL, 0,
 					 reg, data);
 		if (res == VENDOR_STATUS_CHIPIO_OK)
-			return CT_OK;
+			return 0;
 	} while (--retry);
 
 	CTASSERT(0);
-	return CT_FAIL;
+	return -1;
 }
 
 static int chipio_write_addx(struct hda_codec *codec, u32 chip_addx)
 {
 	struct ca0132_spec *spec = codec->spec;
-	int status = CT_OK;
+	int status = 0;
 
 	if (spec->curr_chip_addx == chip_addx)
-		return CT_OK;
+		return 0;
 
 	/* send low 16 bits of the address */
 	status = chipio_send(codec, VENDOR_CHIPIO_ADDRESS_LOW,
@@ -827,7 +825,7 @@ static int chipio_write_addx(struct hda_codec *codec, u32 chip_addx)
 static int chipio_write_data(struct hda_codec *codec, u32 data)
 {
 	struct ca0132_spec *spec = codec->spec;
-	int status = CT_OK;
+	int status = 0;
 
 	/* send low 16 bits of the data */
 	status = chipio_send(codec, VENDOR_CHIPIO_DATA_LOW, data & 0xffff);
@@ -849,12 +847,12 @@ static int chipio_write_data_multiple(struct hda_codec *codec,
 				      const u32 *data,
 				      unsigned int count)
 {
-	int status = CT_OK;
+	int status = 0;
 
 	if (data == NULL)
-		return FAIL_MSG(CT_FAIL, "chipio_write_data null ptr");
+		return FAIL_MSG(-1, "chipio_write_data null ptr");
 
-	while ((count-- != 0) && (status == CT_OK))
+	while ((count-- != 0) && (status == 0))
 		status = chipio_write_data(codec, *data++);
 
 	return status;
@@ -863,7 +861,7 @@ static int chipio_write_data_multiple(struct hda_codec *codec,
 static int chipio_read_data(struct hda_codec *codec, unsigned int *data)
 {
 	struct ca0132_spec *spec = codec->spec;
-	int status = CT_OK;
+	int status = 0;
 
 	/* post read */
 	status = chipio_send(codec, VENDOR_CHIPIO_HIC_POST_READ, 0);
@@ -958,7 +956,7 @@ static void chipio_set_control_param(struct hda_codec *codec,
 				    VENDOR_CHIPIO_PARAM_SET, val);
 	} else {
 		mutex_lock(&spec->chipio_mutex);
-		if (chipio_send(codec, VENDOR_CHIPIO_STATUS, 0) == CT_OK) {
+		if (chipio_send(codec, VENDOR_CHIPIO_STATUS, 0) == 0) {
 			snd_hda_codec_write(codec, WIDGET_CHIP_CTRL, 0,
 					    VENDOR_CHIPIO_PARAM_EX_ID_SET,
 					    param_id);
@@ -1018,7 +1016,7 @@ static int dspio_send(struct hda_codec *codec, unsigned int reg,
 	} while (--retry);
 
 	CTASSERT(retry);
-	return CT_FAIL;
+	return -1;
 }
 
 static void dspio_write_wait(struct hda_codec *codec)
@@ -1061,22 +1059,22 @@ static int dspio_write(struct hda_codec *codec, unsigned int scp_data)
 		CA0132_LOG("dspio_write: SCP_COMMAND_QUEUE_FULL!!!\n\n");
 
 	return (status == VENDOR_STATUS_DSPIO_SCP_COMMAND_QUEUE_FULL) ?
-			CT_FAIL : CT_OK;
+			-1 : 0;
 }
 
 static int dspio_write_multiple(struct hda_codec *codec,
 				unsigned int *buffer, unsigned int size)
 {
-	int status = CT_OK;
+	int status = 0;
 	unsigned int count;
 
 	if ((buffer == NULL))
-		return CT_FAIL;
+		return -1;
 
 	count = 0;
 	while (count < size) {
 		status = dspio_write(codec, *buffer++);
-		if (status != CT_OK)
+		if (status != 0)
 			break;
 		count++;
 	}
@@ -1092,32 +1090,32 @@ static int dspio_read(struct hda_codec *codec, unsigned int *data)
 	if (SUCCEEDED(status))
 		status = dspio_send(codec, VENDOR_DSPIO_STATUS, 0);
 
-	if (FAILED(status)
-	    || (status == VENDOR_STATUS_DSPIO_SCP_RESPONSE_QUEUE_EMPTY))
-		return CT_FAIL;
+	if (FAILED(status) ||
+	    (status == VENDOR_STATUS_DSPIO_SCP_RESPONSE_QUEUE_EMPTY))
+		return -1;
 
 	*data = snd_hda_codec_read(codec, WIDGET_DSP_CTRL, 0,
 				   VENDOR_DSPIO_SCP_READ_DATA, 0);
 
-	return CT_OK;
+	return 0;
 }
 
 static int dspio_read_multiple(struct hda_codec *codec, unsigned int *buffer,
 			       unsigned int *buf_size, unsigned int size_count)
 {
-	int status = CT_OK;
+	int status = 0;
 	unsigned int size = *buf_size;
 	unsigned int count;
 	unsigned int skip_count;
 	unsigned int dummy;
 
 	if ((buffer == NULL))
-		return CT_FAIL;
+		return -1;
 
 	count = 0;
 	while (count < size && count < size_count) {
 		status = dspio_read(codec, buffer++);
-		if (status != CT_OK)
+		if (status != 0)
 			break;
 		count++;
 	}
@@ -1126,7 +1124,7 @@ static int dspio_read_multiple(struct hda_codec *codec, unsigned int *buffer,
 	if (SUCCEEDED(status)) {
 		while (skip_count < size) {
 			status = dspio_read(codec, &dummy);
-			if (status != CT_OK)
+			if (status != 0)
 				break;
 			skip_count++;
 		}
@@ -1183,27 +1181,21 @@ extract_scp_header(unsigned int header,
 
 #define SCP_MAX_DATA_WORDS  (16)
 
-/* Data type to simplify using floats and integers */
-union _scp_data {
-	float        f;
-	unsigned int ui;
-};
-
 /* Structure to contain any SCP message */
 struct scp_msg {
 	unsigned int hdr;
-	union _scp_data   data[SCP_MAX_DATA_WORDS];
+	unsigned int data[SCP_MAX_DATA_WORDS];
 };
 
 static void dspio_clear_response_queue(struct hda_codec *codec)
 {
 	unsigned int dummy = 0;
-	int status = CT_FAIL;
+	int status = -1;
 
 	/* clear all from the response queue */
 	do {
 		status = dspio_read(codec, &dummy);
-	} while (status == CT_OK);
+	} while (status == 0);
 }
 
 static int dspio_get_response_data(struct hda_codec *codec)
@@ -1213,7 +1205,7 @@ static int dspio_get_response_data(struct hda_codec *codec)
 	unsigned int count;
 
 	if (FAILED(dspio_read(codec, &data)))
-		return CT_FAIL;
+		return -1;
 
 	CA0132_LOG("dspio_get_response_data: 0x%08x\n", data);
 	if ((data & 0x00ffffff) == spec->wait_scp_header) {
@@ -1221,11 +1213,11 @@ static int dspio_get_response_data(struct hda_codec *codec)
 		spec->scp_resp_count = data >> 27;
 		count = spec->wait_num_data;
 		dspio_read_multiple(codec, spec->scp_resp_data,
-					&spec->scp_resp_count, count);
-		return CT_OK;
+				    &spec->scp_resp_count, count);
+		return 0;
 	}
 
-	return CT_FAIL;
+	return -1;
 }
 
 static int dspio_send_scp_message(struct hda_codec *codec,
@@ -1237,7 +1229,7 @@ static int dspio_send_scp_message(struct hda_codec *codec,
 {
 	struct ca0132_spec *spec = codec->spec;
 	int retry;
-	int status = CT_FAIL;
+	int status = -1;
 	unsigned int scp_send_size = 0;
 	unsigned int total_size;
 	bool waiting_for_resp = false;
@@ -1258,12 +1250,12 @@ static int dspio_send_scp_message(struct hda_codec *codec,
 
 	CTASSERT(send_buf_size >= total_size);
 	if (send_buf_size < total_size)
-		return CT_FAIL;
+		return -1;
 
 	if (get_flag || device_flag) {
 		if (!return_buf || return_buf_size < 4 || !bytes_returned) {
 			CTASSERT(0);
-			return CT_FAIL;
+			return -1;
 		}
 		spec->wait_scp_header = *((unsigned int *)send_buf);
 
@@ -1296,12 +1288,12 @@ static int dspio_send_scp_message(struct hda_codec *codec,
 			ret_msg = (struct scp_msg *)return_buf;
 			memcpy(&ret_msg->hdr, &spec->scp_resp_header, 4);
 			memcpy(&ret_msg->data, spec->scp_resp_data,
-				spec->wait_num_data);
+			       spec->wait_num_data);
 			*bytes_returned = (spec->scp_resp_count + 1) * 4;
-			status = CT_OK;
+			status = 0;
 		} else {
 			CTASSERT(*bytes_returned == 0);
-			status = CT_FAIL;
+			status = -1;
 		}
 		spec->wait_scp = 0;
 	}
@@ -1313,7 +1305,7 @@ static int dspio_scp(struct hda_codec *codec,
 		int mod_id, int req, int dir, void *data, unsigned int len,
 		void *reply, unsigned int *reply_len)
 {
-	int status = CT_OK;
+	int status = 0;
 	struct scp_msg scp_send, scp_reply;
 	unsigned int ret_bytes, send_size, ret_size;
 	unsigned int send_get_flag, reply_resp_flag, reply_error_flag;
@@ -1324,20 +1316,20 @@ static int dspio_scp(struct hda_codec *codec,
 
 	CTASSERT((len == 0 || data != NULL) && len <= SCP_MAX_DATA_WORDS);
 	if ((len != 0 && data == NULL) || (len > SCP_MAX_DATA_WORDS))
-		return CT_FAIL;
+		return -1;
 
 	CTASSERT(dir != SCP_GET || reply != NULL);
 	if (dir == SCP_GET && reply == NULL)
-		return FAIL_MSG(CT_FAIL, "dspio_scp get but has no buffer");
+		return FAIL_MSG(-1, "dspio_scp get but has no buffer");
 
 	CTASSERT((reply == NULL) || (reply_len != NULL && (*reply_len > 0)));
 	if (reply != NULL && (reply_len == NULL || (*reply_len == 0)))
-		return FAIL_MSG(CT_FAIL, "dspio_scp bad resp buf len parms");
+		return FAIL_MSG(-1, "dspio_scp bad resp buf len parms");
 
 	scp_send.hdr = make_scp_header(mod_id, 0x20, (dir == SCP_GET), req,
 				       0, 0, 0, len/sizeof(unsigned int));
 	if (data != NULL && len > 0) {
-		len = MIN(sizeof(scp_send.data), len);
+		len = min((unsigned int)(sizeof(scp_send.data)), len);
 		memcpy(scp_send.data, data, len);
 	}
 
@@ -1365,7 +1357,8 @@ static int dspio_scp(struct hda_codec *codec,
 			   &get_flag, &req, &device_flag, &resp_flag,
 			   &error_flag, &data_size);
 
-	snd_printdd("ScpDispatch ----- REQ: "
+	snd_printdd(
+		"ScpDispatch ----- REQ: "
 		"HDR=0x%08x "
 		"SID=%04x "
 		"TID=%04x "
@@ -1391,8 +1384,8 @@ static int dspio_scp(struct hda_codec *codec,
 		if (ret_bytes >= sizeof(scp_reply.hdr)) {
 			memcpy(&x, &scp_reply.hdr, sizeof(unsigned int));
 			extract_scp_header(x, &target_id, &source_id,
-				&get_flag, &req, &device_flag, &resp_flag,
-				&error_flag, &data_size);
+					   &get_flag, &req, &device_flag,
+					   &resp_flag, &error_flag, &data_size);
 
 			snd_printdd(
 				"            ----- REP: "
@@ -1438,7 +1431,7 @@ static int dspio_scp(struct hda_codec *codec,
 			   &reply_data_size);
 
 	if (!send_get_flag)
-		return CT_OK;
+		return 0;
 
 	if (reply_resp_flag && !reply_error_flag) {
 		ret_size = (ret_bytes - sizeof(scp_reply.hdr))
@@ -1447,15 +1440,16 @@ static int dspio_scp(struct hda_codec *codec,
 		CTASSERT(dir == SCP_GET && reply != NULL && reply_len != NULL);
 
 		if (*reply_len < ret_size*sizeof(unsigned int)) {
-			status = FAIL_MSG(CT_FAIL, "reply too long for buf");
+			status = FAIL_MSG(-1, "reply too long for buf");
 		} else if (ret_size != reply_data_size) {
-			status = FAIL_MSG(CT_FAIL, "RetLen and HdrLen .NE.");
+			status = FAIL_MSG(-1, "RetLen and HdrLen .NE.");
 		} else {
 			*reply_len = ret_size*sizeof(unsigned int);
 			memcpy(reply, scp_reply.data, *reply_len);
 		}
-	} else
-		status = FAIL_MSG(CT_FAIL, "reply ill-formed or errflag set");
+	} else {
+		status = FAIL_MSG(-1, "reply ill-formed or errflag set");
+	}
 
 	return status;
 }
@@ -1468,7 +1462,7 @@ static int dspio_set_param(struct hda_codec *codec, int mod_id,
 
 static int dspio_alloc_dma_chan(struct hda_codec *codec, unsigned int *dma_chan)
 {
-	int status = CT_OK;
+	int status = 0;
 	unsigned int size = sizeof(dma_chan);
 
 	CA0132_DSP_LOG("     dspio_alloc_dma_chan() -- begin");
@@ -1477,12 +1471,12 @@ static int dspio_alloc_dma_chan(struct hda_codec *codec, unsigned int *dma_chan)
 
 	if (FAILED(status)) {
 		CA0132_DSP_LOG("dspio_alloc_dma_chan: SCP Failed");
-		return CT_FAIL;
+		return -1;
 	}
 
 	if ((*dma_chan + 1) == 0) {
 		CA0132_DSP_LOG("no free dma channels to allocate");
-		return CT_FAIL;
+		return -1;
 	}
 
 	CA0132_LOG("dspio_alloc_dma_chan: chan=%d\n", *dma_chan);
@@ -1493,7 +1487,7 @@ static int dspio_alloc_dma_chan(struct hda_codec *codec, unsigned int *dma_chan)
 
 static int dspio_free_dma_chan(struct hda_codec *codec, unsigned int dma_chan)
 {
-	int status = CT_OK;
+	int status = 0;
 	unsigned int dummy = 0;
 
 	CA0132_DSP_LOG("     dspio_free_dma_chan() -- begin");
@@ -1504,7 +1498,7 @@ static int dspio_free_dma_chan(struct hda_codec *codec, unsigned int dma_chan)
 
 	if (FAILED(status)) {
 		CA0132_DSP_LOG("dspio_free_dma_chan: SCP Failed");
-		return CT_FAIL;
+		return -1;
 	}
 
 	CA0132_DSP_LOG("     dspio_free_dma_chan() -- complete");
@@ -1544,7 +1538,7 @@ static int dsp_set_run_state(struct hda_codec *codec)
 			return err;
 	}
 
-	return CT_OK;
+	return 0;
 }
 
 static int dsp_reset(struct hda_codec *codec)
@@ -1556,14 +1550,14 @@ static int dsp_reset(struct hda_codec *codec)
 	do {
 		res = dspio_send(codec, VENDOR_DSPIO_DSP_INIT, 0);
 		retry--;
-	} while (res == CT_FAIL && retry);
+	} while (res == -1 && retry);
 
 	if (!retry) {
 		CA0132_LOG("dsp_reset timeout\n");
-		return CT_FAIL;
+		return -1;
 	}
 
-	return CT_OK;
+	return 0;
 }
 
 static unsigned int dsp_chip_to_dsp_addx(unsigned int chip_addx,
@@ -1581,7 +1575,7 @@ static unsigned int dsp_chip_to_dsp_addx(unsigned int chip_addx,
 		return Y_OFF(chip_addx);
 	}
 
-	return INVALID_CHIP_ADDRESS;
+	return (unsigned int)INVALID_CHIP_ADDRESS;
 }
 
 static bool dsp_is_dma_active(struct hda_codec *codec, unsigned int dma_chan)
@@ -1600,7 +1594,7 @@ static int dsp_dma_setup_common(struct hda_codec *codec,
 				unsigned int port_map_mask,
 				bool ovly)
 {
-	int status = CT_OK;
+	int status = 0;
 	unsigned int chnl_prop;
 	unsigned int dsp_addx;
 	unsigned int active;
@@ -1610,15 +1604,15 @@ static int dsp_dma_setup_common(struct hda_codec *codec,
 
 	CTASSERT(dma_chan < DSPDMAC_DMA_CFG_CHANNEL_COUNT);
 	if (dma_chan >= DSPDMAC_DMA_CFG_CHANNEL_COUNT)
-		return FAIL_MSG(CT_FAIL, "dma chan num invalid");
+		return FAIL_MSG(-1, "dma chan num invalid");
 
 	if (dsp_is_dma_active(codec, dma_chan))
-		return FAIL_MSG(CT_FAIL, "dma already active");
+		return FAIL_MSG(-1, "dma already active");
 
 	dsp_addx = dsp_chip_to_dsp_addx(chip_addx, &code, &yram);
 
 	if (dsp_addx == INVALID_CHIP_ADDRESS)
-		return FAIL_MSG(CT_FAIL, "invalid chip addr");
+		return FAIL_MSG(-1, "invalid chip addr");
 
 	chnl_prop = DSPDMAC_CHNLPROP_AC_MASK;
 	active = 0;
@@ -1630,7 +1624,7 @@ static int dsp_dma_setup_common(struct hda_codec *codec,
 				     &chnl_prop);
 
 		if (FAILED(status))
-			return FAIL_MSG(CT_FAIL, "read CHNLPROP Reg fail");
+			return FAIL_MSG(-1, "read CHNLPROP Reg fail");
 
 		CA0132_DSP_LOG("   dsp_dma_setup_common()    Read CHNLPROP");
 	}
@@ -1644,7 +1638,7 @@ static int dsp_dma_setup_common(struct hda_codec *codec,
 
 	status = chipio_write(codec, DSPDMAC_CHNLPROP_INST_OFFSET, chnl_prop);
 	if (FAILED(status))
-		return FAIL_MSG(CT_FAIL, "write CHNLPROP Reg fail");
+		return FAIL_MSG(-1, "write CHNLPROP Reg fail");
 
 	CA0132_DSP_LOG("   dsp_dma_setup_common()    Write CHNLPROP");
 
@@ -1653,7 +1647,7 @@ static int dsp_dma_setup_common(struct hda_codec *codec,
 				     &active);
 
 		if (FAILED(status))
-			return FAIL_MSG(CT_FAIL, "read ACTIVE Reg fail");
+			return FAIL_MSG(-1, "read ACTIVE Reg fail");
 
 		CA0132_DSP_LOG("   dsp_dma_setup_common()    Read ACTIVE");
 	}
@@ -1663,32 +1657,33 @@ static int dsp_dma_setup_common(struct hda_codec *codec,
 
 	status = chipio_write(codec, DSPDMAC_ACTIVE_INST_OFFSET, active);
 	if (FAILED(status))
-		return FAIL_MSG(CT_FAIL, "write ACTIVE Reg fail");
+		return FAIL_MSG(-1, "write ACTIVE Reg fail");
 
 	CA0132_DSP_LOG("   dsp_dma_setup_common()    Write ACTIVE");
 
 	status = chipio_write(codec, DSPDMAC_AUDCHSEL_INST_OFFSET(dma_chan),
 			      port_map_mask);
 	if (FAILED(status))
-		return FAIL_MSG(CT_FAIL, "write AUDCHSEL Reg fail");
+		return FAIL_MSG(-1, "write AUDCHSEL Reg fail");
 
 	CA0132_DSP_LOG("   dsp_dma_setup_common()    Write AUDCHSEL");
 
 	status = chipio_write(codec, DSPDMAC_IRQCNT_INST_OFFSET(dma_chan),
 			DSPDMAC_IRQCNT_BICNT_MASK | DSPDMAC_IRQCNT_CICNT_MASK);
 	if (FAILED(status))
-		return FAIL_MSG(CT_FAIL, "write IRQCNT Reg fail");
+		return FAIL_MSG(-1, "write IRQCNT Reg fail");
 
 	CA0132_DSP_LOG("   dsp_dma_setup_common()    Write IRQCNT");
 
-	CA0132_LOG("ChipA=0x%x,DspA=0x%x,dmaCh=%u,"
+	CA0132_LOG(
+		   "ChipA=0x%x,DspA=0x%x,dmaCh=%u, "
 		   "CHSEL=0x%x,CHPROP=0x%x,Active=0x%x\n",
 		   chip_addx, dsp_addx, dma_chan,
 		   port_map_mask, chnl_prop, active);
 
 	CA0132_DSP_LOG("-- dsp_dma_setup_common() -- Complete ---------");
 
-	return CT_OK;
+	return 0;
 }
 
 static int dsp_dma_setup(struct hda_codec *codec,
@@ -1696,7 +1691,7 @@ static int dsp_dma_setup(struct hda_codec *codec,
 			unsigned int count,
 			unsigned int dma_chan)
 {
-	int status = CT_OK;
+	int status = 0;
 	bool code, yram;
 	unsigned int dsp_addx;
 	unsigned int addr_field;
@@ -1713,11 +1708,11 @@ static int dsp_dma_setup(struct hda_codec *codec,
 
 	CTASSERT(count <= max_dma_count);
 	if (count > max_dma_count)
-		return FAIL_MSG(CT_FAIL, "count too big");
+		return FAIL_MSG(-1, "count too big");
 
 	dsp_addx = dsp_chip_to_dsp_addx(chip_addx, &code, &yram);
 	if (dsp_addx == INVALID_CHIP_ADDRESS)
-		return FAIL_MSG(CT_FAIL, "invalid chip addr");
+		return FAIL_MSG(-1, "invalid chip addr");
 
 	CA0132_DSP_LOG("   dsp_dma_setup()    start reg pgm");
 
@@ -1737,7 +1732,7 @@ static int dsp_dma_setup(struct hda_codec *codec,
 	status = chipio_write(codec, DSPDMAC_DMACFG_INST_OFFSET(dma_chan),
 				dma_cfg);
 	if (FAILED(status))
-		return FAIL_MSG(CT_FAIL, "write DMACFG Reg fail");
+		return FAIL_MSG(-1, "write DMACFG Reg fail");
 
 	CA0132_DSP_LOG("   dsp_dma_setup()    Write DMACFG");
 
@@ -1748,7 +1743,7 @@ static int dsp_dma_setup(struct hda_codec *codec,
 	status = chipio_write(codec, DSPDMAC_DSPADROFS_INST_OFFSET(dma_chan),
 				adr_ofs);
 	if (FAILED(status))
-		return FAIL_MSG(CT_FAIL, "write DSPADROFS Reg fail");
+		return FAIL_MSG(-1, "write DSPADROFS Reg fail");
 
 	CA0132_DSP_LOG("   dsp_dma_setup()    Write DSPADROFS");
 
@@ -1763,24 +1758,25 @@ static int dsp_dma_setup(struct hda_codec *codec,
 	status = chipio_write(codec,
 				DSPDMAC_XFRCNT_INST_OFFSET(dma_chan), xfr_cnt);
 	if (FAILED(status))
-		return FAIL_MSG(CT_FAIL, "write XFRCNT Reg fail");
+		return FAIL_MSG(-1, "write XFRCNT Reg fail");
 
 	CA0132_DSP_LOG("   dsp_dma_setup()    Write XFRCNT");
 
-	CA0132_LOG("ChipA=0x%x, cnt=0x%x, DMACFG=0x%x, "
+	CA0132_LOG(
+		   "ChipA=0x%x, cnt=0x%x, DMACFG=0x%x, "
 		   "ADROFS=0x%x, XFRCNT=0x%x\n",
 		   chip_addx, count, dma_cfg, adr_ofs, xfr_cnt);
 
 	CA0132_DSP_LOG("-- dsp_dma_setup() -- Complete ---------");
 
-	return CT_OK;
+	return 0;
 }
 
 static int dsp_dma_start(struct hda_codec *codec,
 			 unsigned int dma_chan, bool ovly)
 {
 	unsigned int reg = 0;
-	int status = CT_OK;
+	int status = 0;
 
 	CA0132_DSP_LOG("-- dsp_dma_start() -- Begin ---------");
 
@@ -1789,7 +1785,7 @@ static int dsp_dma_start(struct hda_codec *codec,
 				     DSPDMAC_CHNLSTART_INST_OFFSET, &reg);
 
 		if (FAILED(status))
-			return FAIL_MSG(CT_FAIL, "read CHNLSTART reg fail");
+			return FAIL_MSG(-1, "read CHNLSTART reg fail");
 
 		CA0132_DSP_LOG("-- dsp_dma_start()    Read CHNLSTART");
 
@@ -1800,7 +1796,7 @@ static int dsp_dma_start(struct hda_codec *codec,
 	status = chipio_write(codec, DSPDMAC_CHNLSTART_INST_OFFSET,
 			reg | (1 << (dma_chan + DSPDMAC_CHNLSTART_EN_LOBIT)));
 	if (FAILED(status))
-		return FAIL_MSG(CT_FAIL, "write CHNLSTART reg fail");
+		return FAIL_MSG(-1, "write CHNLSTART reg fail");
 
 	CA0132_DSP_LOG("-- dsp_dma_start() -- Complete ---------");
 
@@ -1811,7 +1807,7 @@ static int dsp_dma_stop(struct hda_codec *codec,
 			unsigned int dma_chan, bool ovly)
 {
 	unsigned int reg = 0;
-	int status = CT_OK;
+	int status = 0;
 
 	CA0132_DSP_LOG("-- dsp_dma_stop() -- Begin ---------");
 
@@ -1820,7 +1816,7 @@ static int dsp_dma_stop(struct hda_codec *codec,
 				     DSPDMAC_CHNLSTART_INST_OFFSET, &reg);
 
 		if (FAILED(status))
-			return FAIL_MSG(CT_FAIL, "read CHNLSTART reg fail");
+			return FAIL_MSG(-1, "read CHNLSTART reg fail");
 
 		CA0132_DSP_LOG("-- dsp_dma_stop()    Read CHNLSTART");
 		reg &= ~(DSPDMAC_CHNLSTART_EN_MASK |
@@ -1830,7 +1826,7 @@ static int dsp_dma_stop(struct hda_codec *codec,
 	status = chipio_write(codec, DSPDMAC_CHNLSTART_INST_OFFSET,
 			reg | (1 << (dma_chan + DSPDMAC_CHNLSTART_DIS_LOBIT)));
 	if (FAILED(status))
-		return FAIL_MSG(CT_FAIL, "write CHNLSTART reg fail");
+		return FAIL_MSG(-1, "write CHNLSTART reg fail");
 
 	CA0132_DSP_LOG("-- dsp_dma_stop() -- Complete ---------");
 
@@ -1843,7 +1839,7 @@ static int dsp_allocate_router_ports(struct hda_codec *codec,
 				     unsigned int start_device,
 				     unsigned int *port_map)
 {
-	int status = CT_OK;
+	int status = 0;
 	int res;
 	u8 val;
 
@@ -1872,12 +1868,12 @@ static int dsp_allocate_router_ports(struct hda_codec *codec,
 
 	*port_map = res;
 
-	return (res < 0) ? CT_FAIL : CT_OK;
+	return (res < 0) ? -1 : 0;
 }
 
 static int dsp_free_router_ports(struct hda_codec *codec)
 {
-	int status = CT_OK;
+	int status = 0;
 
 	status = chipio_send(codec, VENDOR_CHIPIO_STATUS, 0);
 	if (FAILED(status))
@@ -1896,7 +1892,7 @@ static int dsp_allocate_ports(struct hda_codec *codec,
 			unsigned int num_chans,
 			unsigned int rate_multi, unsigned int *port_map)
 {
-	int status = CT_FAIL;
+	int status = -1;
 
 	CA0132_DSP_LOG("     dsp_allocate_ports() -- begin");
 
@@ -1919,7 +1915,7 @@ static int dsp_free_ports(struct hda_codec *codec)
 
 	status = dsp_free_router_ports(codec);
 	if (FAILED(status))
-		return FAIL_MSG(CT_FAIL, "free router ports fail");
+		return FAIL_MSG(-1, "free router ports fail");
 
 	CA0132_DSP_LOG("     dsp_free_ports() -- complete");
 
@@ -1930,7 +1926,7 @@ static int dsp_allocate_ports_format(struct hda_codec *codec,
 			const unsigned short fmt,
 			unsigned int *port_map)
 {
-	int status = CT_FAIL;
+	int status = -1;
 	unsigned int num_chans;
 
 	unsigned int sample_rate_div = ((get_hdafmt_rate(fmt) >> 0) & 3) + 1;
@@ -1938,7 +1934,7 @@ static int dsp_allocate_ports_format(struct hda_codec *codec,
 	unsigned int rate_multi = sample_rate_mul / sample_rate_div;
 
 	if ((rate_multi != 1) && (rate_multi != 2) && (rate_multi != 4))
-		return FAIL_MSG(CT_FAIL, "bad rate multiple");
+		return FAIL_MSG(-1, "bad rate multiple");
 
 	num_chans = get_hdafmt_chs(fmt) + 1;
 
@@ -1986,7 +1982,7 @@ static int dma_convert_to_hda_format(
 	if (hda_format)
 		*hda_format = (unsigned short)format_val;
 
-	return CT_OK;
+	return 0;
 }
 
 static int dma_init(
@@ -2025,7 +2021,7 @@ static int dma_init(
 
 	if (NULL == dma->substream) {
 		kfree(dma);
-		return CT_FAIL;
+		return -1;
 	}
 
 	runtime = kzalloc(sizeof(*runtime), GFP_KERNEL);
@@ -2060,7 +2056,7 @@ static int dma_init(
 
 	*pp_dma = dma;
 	CA0132_LOG("dma_init: succeeded.\n");
-	return CT_OK;
+	return 0;
 }
 
 static int dma_prepare(struct dma_engine *dma)
@@ -2073,12 +2069,12 @@ static int dma_prepare(struct dma_engine *dma)
 
 	err = azx_pcm_prepare(dma->substream);
 	if (err < 0)
-		return CT_FAIL;
+		return -1;
 
 	dma->m_buffer_size = snd_pcm_lib_buffer_bytes(dma->substream);
 	dma->m_buffer_addr = runtime->dma_area;
 
-	return CT_OK;
+	return 0;
 }
 
 static int dma_reset(struct dma_engine *dma)
@@ -2093,7 +2089,7 @@ static int dma_reset(struct dma_engine *dma)
 	dma->m_buffer_size = snd_pcm_lib_buffer_bytes(dma->substream);
 	dma->m_buffer_addr = runtime->dma_area;
 
-	return CT_OK;
+	return 0;
 }
 
 static int dma_set_state(struct dma_engine *dma, enum dma_state state)
@@ -2105,7 +2101,7 @@ static int dma_set_state(struct dma_engine *dma, enum dma_state state)
 	switch (state) {
 	case DMA_STATE_RESET:
 		dma_reset(dma);
-		return CT_OK;
+		return 0;
 	case DMA_STATE_STOP:
 		cmd = SNDRV_PCM_TRIGGER_STOP;
 		break;
@@ -2113,12 +2109,12 @@ static int dma_set_state(struct dma_engine *dma, enum dma_state state)
 		cmd = SNDRV_PCM_TRIGGER_START;
 		break;
 	default:
-		return CT_OK;
+		return 0;
 	}
 
 	azx_pcm_trigger(dma->substream, cmd);
 
-	return CT_OK;
+	return 0;
 }
 
 static unsigned int dma_get_buffer_size(struct dma_engine *dma)
@@ -2137,7 +2133,7 @@ static int dma_free_buffer(struct dma_engine *dma)
 	azx_pcm_close(dma->substream);
 	kfree(dma->substream->runtime);
 	dma->substream->runtime = NULL;
-	return CT_OK;
+	return 0;
 }
 
 static int dma_xfer(struct dma_engine *dma,
@@ -2145,7 +2141,7 @@ static int dma_xfer(struct dma_engine *dma,
 		unsigned int count)
 {
 	memcpy(dma->m_buffer_addr, data, count);
-	return CT_OK;
+	return 0;
 }
 
 static void dma_get_converter_format(
@@ -2217,13 +2213,13 @@ static const struct dsp_image_seg *get_next_seg_ptr(
 static int dspxfr_hci_write(struct hda_codec *codec,
 			const struct dsp_image_seg *fls)
 {
-	int status = CT_OK;
+	int status = 0;
 	const u32 *data;
 	unsigned int count;
 
 	CTASSERT(fls != NULL && fls->chip_addr == g_chip_addr_magic_value);
 	if (fls == NULL || fls->chip_addr != g_chip_addr_magic_value)
-		return FAIL_MSG(CT_FAIL, "hci_write invalid params");
+		return FAIL_MSG(-1, "hci_write invalid params");
 
 	count = fls->count;
 	data = (u32 *)(fls->data);
@@ -2245,7 +2241,7 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 			unsigned int port_map_mask,
 			bool ovly)
 {
-	int status = CT_OK;
+	int status = 0;
 	bool comm_dma_setup_done = false;
 	const unsigned int *data;
 	unsigned int chip_addx;
@@ -2266,7 +2262,7 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 
 	CTASSERT(fls != NULL);
 	if (fls == NULL)
-		return CT_FAIL;
+		return -1;
 	if (is_hci_prog_list_seg(fls)) {
 		hci_write = fls;
 		fls = get_next_seg_ptr(fls);
@@ -2279,7 +2275,7 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 
 	if (fls == NULL || dma_engine == NULL || port_map_mask == 0) {
 		CA0132_LOG("Invalid Params\n");
-		return CT_FAIL;
+		return -1;
 	}
 
 	data = fls->data;
@@ -2287,7 +2283,7 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 	words_to_write = fls->count;
 
 	if (!words_to_write)
-		return hci_write ? dspxfr_hci_write(codec, hci_write) : CT_OK;
+		return hci_write ? dspxfr_hci_write(codec, hci_write) : 0;
 	if (reloc)
 		chip_addx = (chip_addx & (0xFFFF0000 << 2)) + (reloc << 2);
 
@@ -2295,7 +2291,7 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 	    !X_RANGE_ALL(chip_addx, words_to_write) &&
 	    !Y_RANGE_ALL(chip_addx, words_to_write)) {
 		CA0132_LOG("Invalid chip_addx Params\n");
-		return CT_FAIL;
+		return -1;
 	}
 
 	buffer_size_words = (unsigned int)dma_get_buffer_size(dma_engine) /
@@ -2304,7 +2300,7 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 	buffer_addx = dma_get_buffer_addr(dma_engine);
 
 	if (buffer_addx == NULL)
-		status = FAIL_MSG(CT_FAIL, "dma_engine buffer NULL");
+		status = FAIL_MSG(-1, "dma_engine buffer NULL");
 
 	dma_get_converter_format(dma_engine, &hda_format);
 	sample_rate_div = ((get_hdafmt_rate(hda_format) >> 0) & 3) + 1;
@@ -2314,10 +2310,12 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 	hda_frame_size_words = ((sample_rate_div == 0) ? 0 :
 			(num_chans * sample_rate_mul / sample_rate_div));
 
-	buffer_size_words = MIN(buffer_size_words, UC_RANGE(chip_addx, 1) ?
-				65536UL : 32768UL);
+	buffer_size_words = min(buffer_size_words,
+				(unsigned int)(UC_RANGE(chip_addx, 1) ?
+				65536 : 32768));
 	buffer_size_words -= buffer_size_words % hda_frame_size_words;
-	CA0132_LOG("chpadr=0x%08x frmsz=%u nchan=%u "
+	CA0132_LOG(
+		   "chpadr=0x%08x frmsz=%u nchan=%u "
 		   "rate_mul=%u div=%u bufsz=%u\n",
 		   chip_addx, hda_frame_size_words, num_chans,
 		   sample_rate_mul, sample_rate_div, buffer_size_words);
@@ -2328,8 +2326,8 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 	CTASSERT(hda_frame_size_words > 0);
 
 	if ((buffer_addx == NULL) || (hda_frame_size_words == 0) ||
-		(buffer_size_words < hda_frame_size_words)) {
-		status = FAIL_MSG(CT_FAIL, "dspxfr_one_seg:failed");
+	    (buffer_size_words < hda_frame_size_words)) {
+		status = FAIL_MSG(-1, "dspxfr_one_seg:failed");
 	}
 
 	if (FAILED(status))
@@ -2344,9 +2342,9 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 	words_to_write -= remainder_words;
 
 	while ((words_to_write != 0) && SUCCEEDED(status)) {
-		run_size_words = MIN(buffer_size_words, words_to_write);
+		run_size_words = min(buffer_size_words, words_to_write);
 		CA0132_LOG("dspxfr (seg loop)cnt=%u rs=%u remainder=%u\n",
-			words_to_write, run_size_words, remainder_words);
+			   words_to_write, run_size_words, remainder_words);
 		dma_set_state(dma_engine, DMA_STATE_STOP);
 		dma_xfer(dma_engine, data, run_size_words*sizeof(u32));
 		if (!comm_dma_setup_done && SUCCEEDED(status)) {
@@ -2363,7 +2361,7 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 		if (SUCCEEDED(status))
 			status = dsp_dma_start(codec, dma_chan, ovly);
 		if (SUCCEEDED(status) && !dsp_is_dma_active(codec, dma_chan))
-			status = FAIL_MSG(CT_FAIL, "dspxfr:DMA did not start");
+			status = FAIL_MSG(-1, "dspxfr:DMA did not start");
 		if (SUCCEEDED(status))
 			status = dma_set_state(dma_engine, DMA_STATE_RUN);
 		if (SUCCEEDED(status)) {
@@ -2407,7 +2405,7 @@ static int dspxfr_image(struct hda_codec *codec,
 			unsigned int reloc, struct hda_stream_format *format,
 			bool ovly)
 {
-	int status = CT_OK;
+	int status = 0;
 	unsigned short hda_format = 0;
 	unsigned int response;
 	unsigned char stream_id = 0;
@@ -2418,13 +2416,13 @@ static int dspxfr_image(struct hda_codec *codec,
 
 	CTASSERT(fls_data != NULL);
 	if (fls_data == NULL)
-		return CT_FAIL;
+		return -1;
 
 	buf_size = ovly ? DSP_DMA_WRITE_BUFLEN_OVLY : DSP_DMA_WRITE_BUFLEN_INIT;
 	status = dma_init(codec, &dma_engine, format, &hda_format, buf_size);
 
 	if (FAILED(status))
-		return CT_FAIL;
+		return -1;
 
 	dma_chan = 0;
 	do {
@@ -2443,7 +2441,7 @@ static int dspxfr_image(struct hda_codec *codec,
 			status = dspio_alloc_dma_chan(codec, &dma_chan);
 			if (FAILED(status)) {
 				status = FAIL_MSG(status, "alloc dmachan fail");
-				dma_chan = INVALID_DMA_CHANNEL;
+				dma_chan = (unsigned int)INVALID_DMA_CHANNEL;
 				break;
 			}
 		}
@@ -2467,7 +2465,7 @@ static int dspxfr_image(struct hda_codec *codec,
 		while (SUCCEEDED(status) && (fls_data != NULL) &&
 					!is_last(fls_data)) {
 			if (!is_valid(fls_data)) {
-				status = FAIL_MSG(CT_FAIL, "FLS check fail");
+				status = FAIL_MSG(-1, "FLS check fail");
 				break;
 			}
 			status = dspxfr_one_seg(codec, fls_data, reloc,
@@ -2531,7 +2529,7 @@ static int dspload_image(struct hda_codec *codec,
 			bool autostart,
 			int router_chans)
 {
-	int status = CT_OK;
+	int status = 0;
 	struct hda_stream_format stream_format;
 
 	CA0132_DSP_LOG("---- dspload_image begin ------");
@@ -2583,7 +2581,7 @@ static int dspload_get_speakereq_addx(struct hda_codec *codec,
 				unsigned int *x,
 				unsigned int *y)
 {
-	int status = CT_OK;
+	int status = 0;
 	struct { unsigned short x, y; } speakereq_info;
 	unsigned int size = sizeof(speakereq_info);
 
@@ -2594,7 +2592,7 @@ static int dspload_get_speakereq_addx(struct hda_codec *codec,
 
 	if (FAILED(status)) {
 		CA0132_DSP_LOG("dspload_get_speakereq_addx: SCP Failed");
-		return CT_FAIL;
+		return -1;
 	}
 
 	*x = speakereq_info.x;
@@ -2608,7 +2606,7 @@ static int dspload_get_speakereq_addx(struct hda_codec *codec,
 
 static int dspload_speakereq(struct hda_codec *codec)
 {
-	int status = CT_OK;
+	int status = 0;
 	const struct dsp_image_seg *image_x, *image_y;
 	const struct firmware *fw_entry;
 	unsigned int x, y;
@@ -2616,10 +2614,10 @@ static int dspload_speakereq(struct hda_codec *codec)
 	CA0132_DSP_LOG("dspload_speakereq() -- begin");
 
 	if (request_firmware(&fw_entry, SPEQ_FILE, codec->bus->card->dev) != 0)
-		return CT_FAIL;
+		return -1;
 
 	if (fw_entry->size != SPEQ_SIZE) {
-		status = CT_FAIL;
+		status = -1;
 		goto done_release_firmware;
 	}
 
@@ -2638,13 +2636,16 @@ static int dspload_speakereq(struct hda_codec *codec)
 
 done_release_firmware:
 	release_firmware(fw_entry);
+
+	CA0132_DSP_LOG("dspload_speakereq() -- complete");
+
 	return status;
 }
 
 static bool dspload_is_loaded(struct hda_codec *codec)
 {
 	unsigned int data = 0;
-	int status = CT_OK;
+	int status = 0;
 
 	status = chipio_read(codec, 0x40004, &data);
 	if (FAILED(status) || (data != 1))
@@ -2660,12 +2661,12 @@ static bool dspload_wait_loaded(struct hda_codec *codec)
 	do {
 		msleep(20);
 		if (dspload_is_loaded(codec)) {
-			printk(KERN_INFO "DOWNLOAD OK :-) DSP IS RUNNING.\n");
+			pr_info("DOWNLOAD OK :-) DSP IS RUNNING.\n");
 			return true;
 		}
 	} while (--retry);
 
-	printk(KERN_ERR "DOWNLOAD FAILED!!! DSP IS NOT RUNNING.\n");
+	pr_err("DOWNLOAD FAILED!!! DSP IS NOT RUNNING.\n");
 	return false;
 }
 
@@ -2681,9 +2682,10 @@ static void ca0132_setup_stream(struct hda_codec *codec, hda_nid_t nid,
 	if (!nid)
 		return;
 
-	CA0132_LOG("ca0132_setup_stream: "
-		"NID=0x%x, stream=0x%x, channel=%d, format=0x%x\n",
-		nid, stream_tag, channel_id, format);
+	CA0132_LOG(
+		   "ca0132_setup_stream: NID=0x%x, stream=0x%x, "
+		   "channel=%d, format=0x%x\n",
+		   nid, stream_tag, channel_id, format);
 
 	/* update the format-id if changed */
 	oldval = snd_hda_codec_read(codec, nid, 0,
@@ -2830,51 +2832,70 @@ static int ca0132_capture_pcm_cleanup(struct hda_pcm_stream *hinfo,
 /* The followings are for tuning of products */
 #ifdef ENABLE_TUNING_CONTROLS
 
-static float voice_focus_vals_lookup[] = {
-20.00, 21.00, 22.00, 23.00, 24.00, 25.00, 26.00, 27.00, 28.00, 29.00,
-30.00, 31.00, 32.00, 33.00, 34.00, 35.00, 36.00, 37.00, 38.00, 39.00,
-40.00, 41.00, 42.00, 43.00, 44.00, 45.00, 46.00, 47.00, 48.00, 49.00,
-50.00, 51.00, 52.00, 53.00, 54.00, 55.00, 56.00, 57.00, 58.00, 59.00,
-60.00, 61.00, 62.00, 63.00, 64.00, 65.00, 66.00, 67.00, 68.00, 69.00,
-70.00, 71.00, 72.00, 73.00, 74.00, 75.00, 76.00, 77.00, 78.00, 79.00,
-80.00, 81.00, 82.00, 83.00, 84.00, 85.00, 86.00, 87.00, 88.00, 89.00,
-90.00, 91.00, 92.00, 93.00, 94.00, 95.00, 96.00, 97.00, 98.00, 99.00,
-100.00, 101.00, 102.00, 103.00, 104.00, 105.00, 106.00, 107.00, 108.00, 109.00,
-110.00, 111.00, 112.00, 113.00, 114.00, 115.00, 116.00, 117.00, 118.00, 119.00,
-120.00, 121.00, 122.00, 123.00, 124.00, 125.00, 126.00, 127.00, 128.00, 129.00,
-130.00, 131.00, 132.00, 133.00, 134.00, 135.00, 136.00, 137.00, 138.00, 139.00,
-140.00, 141.00, 142.00, 143.00, 144.00, 145.00, 146.00, 147.00, 148.00, 149.00,
-150.00, 151.00, 152.00, 153.00, 154.00, 155.00, 156.00, 157.00, 158.00, 159.00,
-160.00, 161.00, 162.00, 163.00, 164.00, 165.00, 166.00, 167.00, 168.00, 169.00,
-170.00, 171.00, 172.00, 173.00, 174.00, 175.00, 176.00, 177.00, 178.00, 179.00,
-180.00
+static unsigned int voice_focus_vals_lookup[] = {
+0x41A00000, 0x41A80000, 0x41B00000, 0x41B80000, 0x41C00000, 0x41C80000,
+0x41D00000, 0x41D80000, 0x41E00000, 0x41E80000, 0x41F00000, 0x41F80000,
+0x42000000, 0x42040000, 0x42080000, 0x420C0000, 0x42100000, 0x42140000,
+0x42180000, 0x421C0000, 0x42200000, 0x42240000, 0x42280000, 0x422C0000,
+0x42300000, 0x42340000, 0x42380000, 0x423C0000, 0x42400000, 0x42440000,
+0x42480000, 0x424C0000, 0x42500000, 0x42540000, 0x42580000, 0x425C0000,
+0x42600000, 0x42640000, 0x42680000, 0x426C0000, 0x42700000, 0x42740000,
+0x42780000, 0x427C0000, 0x42800000, 0x42820000, 0x42840000, 0x42860000,
+0x42880000, 0x428A0000, 0x428C0000, 0x428E0000, 0x42900000, 0x42920000,
+0x42940000, 0x42960000, 0x42980000, 0x429A0000, 0x429C0000, 0x429E0000,
+0x42A00000, 0x42A20000, 0x42A40000, 0x42A60000, 0x42A80000, 0x42AA0000,
+0x42AC0000, 0x42AE0000, 0x42B00000, 0x42B20000, 0x42B40000, 0x42B60000,
+0x42B80000, 0x42BA0000, 0x42BC0000, 0x42BE0000, 0x42C00000, 0x42C20000,
+0x42C40000, 0x42C60000, 0x42C80000, 0x42CA0000, 0x42CC0000, 0x42CE0000,
+0x42D00000, 0x42D20000, 0x42D40000, 0x42D60000, 0x42D80000, 0x42DA0000,
+0x42DC0000, 0x42DE0000, 0x42E00000, 0x42E20000, 0x42E40000, 0x42E60000,
+0x42E80000, 0x42EA0000, 0x42EC0000, 0x42EE0000, 0x42F00000, 0x42F20000,
+0x42F40000, 0x42F60000, 0x42F80000, 0x42FA0000, 0x42FC0000, 0x42FE0000,
+0x43000000, 0x43010000, 0x43020000, 0x43030000, 0x43040000, 0x43050000,
+0x43060000, 0x43070000, 0x43080000, 0x43090000, 0x430A0000, 0x430B0000,
+0x430C0000, 0x430D0000, 0x430E0000, 0x430F0000, 0x43100000, 0x43110000,
+0x43120000, 0x43130000, 0x43140000, 0x43150000, 0x43160000, 0x43170000,
+0x43180000, 0x43190000, 0x431A0000, 0x431B0000, 0x431C0000, 0x431D0000,
+0x431E0000, 0x431F0000, 0x43200000, 0x43210000, 0x43220000, 0x43230000,
+0x43240000, 0x43250000, 0x43260000, 0x43270000, 0x43280000, 0x43290000,
+0x432A0000, 0x432B0000, 0x432C0000, 0x432D0000, 0x432E0000, 0x432F0000,
+0x43300000, 0x43310000, 0x43320000, 0x43330000, 0x43340000
 };
 
-static float mic_svm_vals_lookup[] = {
-0.00, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09,
-0.10, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.19,
-0.20, 0.21, 0.22, 0.23, 0.24, 0.25, 0.26, 0.27, 0.28, 0.29,
-0.30, 0.31, 0.32, 0.33, 0.34, 0.35, 0.36, 0.37, 0.38, 0.39,
-0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.47, 0.48, 0.49,
-0.50, 0.51, 0.52, 0.53, 0.54, 0.55, 0.56, 0.57, 0.58, 0.59,
-0.60, 0.61, 0.62, 0.63, 0.64, 0.65, 0.66, 0.67, 0.68, 0.69,
-0.70, 0.71, 0.72, 0.73, 0.74, 0.75, 0.76, 0.77, 0.78, 0.79,
-0.80, 0.81, 0.82, 0.83, 0.84, 0.85, 0.86, 0.87, 0.88, 0.89,
-0.90, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99,
-1.00
+static unsigned int mic_svm_vals_lookup[] = {
+0x00000000, 0x3C23D70A, 0x3CA3D70A, 0x3CF5C28F, 0x3D23D70A, 0x3D4CCCCD,
+0x3D75C28F, 0x3D8F5C29, 0x3DA3D70A, 0x3DB851EC, 0x3DCCCCCD, 0x3DE147AE,
+0x3DF5C28F, 0x3E051EB8, 0x3E0F5C29, 0x3E19999A, 0x3E23D70A, 0x3E2E147B,
+0x3E3851EC, 0x3E428F5C, 0x3E4CCCCD, 0x3E570A3D, 0x3E6147AE, 0x3E6B851F,
+0x3E75C28F, 0x3E800000, 0x3E851EB8, 0x3E8A3D71, 0x3E8F5C29, 0x3E947AE1,
+0x3E99999A, 0x3E9EB852, 0x3EA3D70A, 0x3EA8F5C3, 0x3EAE147B, 0x3EB33333,
+0x3EB851EC, 0x3EBD70A4, 0x3EC28F5C, 0x3EC7AE14, 0x3ECCCCCD, 0x3ED1EB85,
+0x3ED70A3D, 0x3EDC28F6, 0x3EE147AE, 0x3EE66666, 0x3EEB851F, 0x3EF0A3D7,
+0x3EF5C28F, 0x3EFAE148, 0x3F000000, 0x3F028F5C, 0x3F051EB8, 0x3F07AE14,
+0x3F0A3D71, 0x3F0CCCCD, 0x3F0F5C29, 0x3F11EB85, 0x3F147AE1, 0x3F170A3D,
+0x3F19999A, 0x3F1C28F6, 0x3F1EB852, 0x3F2147AE, 0x3F23D70A, 0x3F266666,
+0x3F28F5C3, 0x3F2B851F, 0x3F2E147B, 0x3F30A3D7, 0x3F333333, 0x3F35C28F,
+0x3F3851EC, 0x3F3AE148, 0x3F3D70A4, 0x3F400000, 0x3F428F5C, 0x3F451EB8,
+0x3F47AE14, 0x3F4A3D71, 0x3F4CCCCD, 0x3F4F5C29, 0x3F51EB85, 0x3F547AE1,
+0x3F570A3D, 0x3F59999A, 0x3F5C28F6, 0x3F5EB852, 0x3F6147AE, 0x3F63D70A,
+0x3F666666, 0x3F68F5C3, 0x3F6B851F, 0x3F6E147B, 0x3F70A3D7, 0x3F733333,
+0x3F75C28F, 0x3F7851EC, 0x3F7AE148, 0x3F7D70A4, 0x3F800000
 };
 
-static float equalizer_vals_lookup[] = {
--24.00, -23.00, -22.00, -21.00, -20.00,
--19.00, -18.00, -17.00, -16.00, -15.00, -14.00, -13.00, -12.00, -11.00, -10.00,
--9.00, -8.00, -7.00, -6.00, -5.00, -4.00, -3.00, -2.00, -1.00, 00.00,
-1.00, 2.00, 3.00, 4.00, 5.00, 6.00, 7.00, 8.00, 9.00, 10.00,
-11.00, 12.00, 13.00, 14.00, 15.00, 16.00, 17.00, 18.00, 19.00, 20.00,
-21.00, 22.00, 23.00, 24.00
+static unsigned int equalizer_vals_lookup[] = {
+0xC1C00000, 0xC1B80000, 0xC1B00000, 0xC1A80000, 0xC1A00000, 0xC1980000,
+0xC1900000, 0xC1880000, 0xC1800000, 0xC1700000, 0xC1600000, 0xC1500000,
+0xC1400000, 0xC1300000, 0xC1200000, 0xC1100000, 0xC1000000, 0xC0E00000,
+0xC0C00000, 0xC0A00000, 0xC0800000, 0xC0400000, 0xC0000000, 0xBF800000,
+0x00000000, 0x3F800000, 0x40000000, 0x40400000, 0x40800000, 0x40A00000,
+0x40C00000, 0x40E00000, 0x41000000, 0x41100000, 0x41200000, 0x41300000,
+0x41400000, 0x41500000, 0x41600000, 0x41700000, 0x41800000, 0x41880000,
+0x41900000, 0x41980000, 0x41A00000, 0x41A80000, 0x41B00000, 0x41B80000,
+0x41C00000
 };
 
 static int tuning_ctl_set(struct hda_codec *codec, hda_nid_t nid,
-			  float *lookup, int idx)
+			  unsigned int *lookup, int idx)
 {
 	int i = 0;
 
@@ -2885,7 +2906,7 @@ static int tuning_ctl_set(struct hda_codec *codec, hda_nid_t nid,
 	snd_hda_power_up(codec);
 	dspio_set_param(codec, ca0132_tuning_ctls[i].mid,
 			ca0132_tuning_ctls[i].req,
-			&(lookup[idx]), sizeof(float));
+			&(lookup[idx]), sizeof(unsigned int));
 	snd_hda_power_down(codec);
 
 	return 1;
@@ -3086,33 +3107,6 @@ static void ca0132_init_tuning_defaults(struct hda_codec *codec)
 }
 #endif
 
-static void ca0132_apply_vnode_settings(struct hda_codec *codec,
-					hda_nid_t vnid,
-					hda_nid_t shared_nid, int type)
-{
-	struct ca0132_spec *spec = codec->spec;
-	int val;
-
-	/* apply selected volume and switch */
-	val = (int)spec->vnode_lvol[vnid - VNODE_START_NID];
-	snd_hda_codec_amp_update(codec, shared_nid, 0,
-				type, 0, HDA_AMP_VOLMASK, val);
-
-	val = (int)spec->vnode_rvol[vnid - VNODE_START_NID];
-	snd_hda_codec_amp_update(codec, shared_nid, 1,
-				type, 0, HDA_AMP_VOLMASK, val);
-
-	val = (int)spec->vnode_lswitch[vnid - VNODE_START_NID];
-	snd_hda_codec_amp_update(codec, shared_nid, 0,
-				type, 0, HDA_AMP_MUTE,
-				val ? 0 : HDA_AMP_MUTE);
-
-	val = (int)spec->vnode_rswitch[vnid - VNODE_START_NID];
-	snd_hda_codec_amp_update(codec, shared_nid, 1,
-				type, 0, HDA_AMP_MUTE,
-				val ? 0 : HDA_AMP_MUTE);
-}
-
 static int ca0132_select_out(struct hda_codec *codec)
 {
 	struct ca0132_spec *spec = codec->spec;
@@ -3126,12 +3120,13 @@ static int ca0132_select_out(struct hda_codec *codec)
 
 	snd_hda_power_up(codec);
 
-	auto_jack = spec->vnode_lswitch[VNID_AUTO_HP_SEL - VNODE_START_NID];
+	auto_jack = spec->vnode_lswitch[VNID_HP_ASEL - VNODE_START_NID];
 
 	if (auto_jack)
 		jack_present = snd_hda_jack_detect(codec, spec->out_pins[1]);
 	else
-		jack_present = spec->vnode_lswitch[VNID_HP_SEL - VNODE_START_NID];
+		jack_present =
+			spec->vnode_lswitch[VNID_HP_SEL - VNODE_START_NID];
 
 	if (jack_present)
 		spec->cur_out_type = HEADPHONE_OUT;
@@ -3163,27 +3158,22 @@ static int ca0132_select_out(struct hda_codec *codec)
 		pin_ctl = snd_hda_codec_read(codec, spec->out_pins[1], 0,
 					AC_VERB_GET_PIN_WIDGET_CONTROL, 0);
 		snd_hda_codec_write(codec, spec->out_pins[1], 0,
-					AC_VERB_SET_PIN_WIDGET_CONTROL,
-					pin_ctl & 0xBF);
+				    AC_VERB_SET_PIN_WIDGET_CONTROL,
+				    pin_ctl & 0xBF);
 		/* disable headphone EAPD */
 		snd_hda_codec_write(codec, spec->out_pins[0], 0,
-					AC_VERB_SET_EAPD_BTLENABLE, 0x00);
-
-		/* apply selected volume and switch */
-		ca0132_apply_vnode_settings(codec, VNID_SPK,
-					spec->shared_out_nid, HDA_OUTPUT);
-
+				    AC_VERB_SET_EAPD_BTLENABLE, 0x00);
 		/* enable speaker node */
 		pin_ctl = snd_hda_codec_read(codec, spec->out_pins[0], 0,
-					AC_VERB_GET_PIN_WIDGET_CONTROL, 0);
+					     AC_VERB_GET_PIN_WIDGET_CONTROL, 0);
 		snd_hda_codec_write(codec, spec->out_pins[0], 0,
-					AC_VERB_SET_PIN_WIDGET_CONTROL,
-					pin_ctl | 0x40);
+				    AC_VERB_SET_PIN_WIDGET_CONTROL,
+				    pin_ctl | 0x40);
 		/* enable speaker EAPD */
 		snd_hda_codec_write(codec, spec->out_pins[0], 0,
-					VENDOR_CHIPIO_EAPD_SEL_SET, 0x00);
+				    VENDOR_CHIPIO_EAPD_SEL_SET, 0x00);
 		snd_hda_codec_write(codec, spec->out_pins[0], 0,
-					AC_VERB_SET_EAPD_BTLENABLE, 0x02);
+				    AC_VERB_SET_EAPD_BTLENABLE, 0x02);
 	} else {
 		CA0132_LOG("ca0132_select_out hp\n");
 		/*headphone out config*/
@@ -3209,27 +3199,22 @@ static int ca0132_select_out(struct hda_codec *codec)
 		pin_ctl = snd_hda_codec_read(codec, spec->out_pins[0], 0,
 					AC_VERB_GET_PIN_WIDGET_CONTROL, 0);
 		snd_hda_codec_write(codec, spec->out_pins[0], 0,
-					AC_VERB_SET_PIN_WIDGET_CONTROL,
-					pin_ctl & 0xBF);
+				    AC_VERB_SET_PIN_WIDGET_CONTROL,
+				    pin_ctl & 0xBF);
 		/* disable speaker EAPD */
 		snd_hda_codec_write(codec, spec->out_pins[0], 0,
-					AC_VERB_SET_EAPD_BTLENABLE, 0x00);
-
-		/* apply selected volume and switch */
-		ca0132_apply_vnode_settings(codec, VNID_HP,
-					spec->shared_out_nid, HDA_OUTPUT);
-
+				    AC_VERB_SET_EAPD_BTLENABLE, 0x00);
 		/* enable headphone*/
 		pin_ctl = snd_hda_codec_read(codec, spec->out_pins[1], 0,
 					AC_VERB_GET_PIN_WIDGET_CONTROL, 0);
 		snd_hda_codec_write(codec, spec->out_pins[1], 0,
-					AC_VERB_SET_PIN_WIDGET_CONTROL,
-					pin_ctl | 0x40);
+				    AC_VERB_SET_PIN_WIDGET_CONTROL,
+				    pin_ctl | 0x40);
 		/* enable headphone EAPD */
 		snd_hda_codec_write(codec, spec->out_pins[1], 0,
-					VENDOR_CHIPIO_EAPD_SEL_SET, 0x02);
+				    VENDOR_CHIPIO_EAPD_SEL_SET, 0x02);
 		snd_hda_codec_write(codec, spec->out_pins[0], 0,
-					AC_VERB_SET_EAPD_BTLENABLE, 0x02);
+				    AC_VERB_SET_EAPD_BTLENABLE, 0x02);
 	}
 
 exit:
@@ -3245,7 +3230,6 @@ static int ca0132_effects_set(struct hda_codec *codec, hda_nid_t nid, long val);
 static int ca0132_select_mic(struct hda_codec *codec)
 {
 	struct ca0132_spec *spec = codec->spec;
-	hda_nid_t vnid;
 	int jack_present;
 	int auto_jack;
 
@@ -3253,12 +3237,13 @@ static int ca0132_select_mic(struct hda_codec *codec)
 
 	snd_hda_power_up(codec);
 
-	auto_jack = spec->vnode_lswitch[VNID_AUTO_AMIC1_SEL - VNODE_START_NID];
+	auto_jack = spec->vnode_lswitch[VNID_AMIC1_ASEL - VNODE_START_NID];
 
 	if (auto_jack)
 		jack_present = snd_hda_jack_detect(codec, spec->input_pins[0]);
 	else
-		jack_present = spec->vnode_lswitch[VNID_AMIC1_SEL - VNODE_START_NID];
+		jack_present =
+			spec->vnode_lswitch[VNID_AMIC1_SEL - VNODE_START_NID];
 
 	if (jack_present)
 		spec->cur_mic_type = LINE_MIC_IN;
@@ -3272,8 +3257,8 @@ static int ca0132_select_mic(struct hda_codec *codec)
 		ca0132_mic_boost_set(codec, 0);
 		/* set voice focus */
 		ca0132_effects_set(codec, VOICE_FOCUS,
-			spec->effects_switch[VOICE_FOCUS - EFFECT_START_NID]);
-		vnid = VNID_DMIC;
+				   spec->effects_switch
+				   [VOICE_FOCUS - EFFECT_START_NID]);
 	} else {
 		/* disable digital Mic */
 		chipio_set_conn_rate(codec, MEM_CONNID_DMIC, SR_96_000);
@@ -3281,12 +3266,7 @@ static int ca0132_select_mic(struct hda_codec *codec)
 		ca0132_mic_boost_set(codec, spec->cur_mic_boost);
 		/* disable voice focus */
 		ca0132_effects_set(codec, VOICE_FOCUS, 0);
-		vnid = VNID_AMIC1;
 	}
-
-	/* apply selected volume and switch */
-	ca0132_apply_vnode_settings(codec, vnid,
-					spec->shared_mic_nid, HDA_INPUT);
 
 	snd_hda_power_down(codec);
 
@@ -3305,29 +3285,13 @@ static bool ca0132_is_vnode_effective(struct hda_codec *codec,
 	bool effective = false;
 
 	switch (vnid) {
-	case VNID_HP:
-		if (spec->cur_out_type == HEADPHONE_OUT) {
-			nid = spec->shared_out_nid;
-			effective = true;
-		}
-		break;
 	case VNID_SPK:
-		if (spec->cur_out_type == SPEAKER_OUT) {
-			nid = spec->shared_out_nid;
-			effective = true;
-		}
+		nid = spec->shared_out_nid;
+		effective = true;
 		break;
-	case VNID_DMIC:
-		if (spec->cur_mic_type == DIGITAL_MIC) {
-			nid = spec->shared_mic_nid;
-			effective = true;
-		}
-		break;
-	case VNID_AMIC1:
-		if (spec->cur_mic_type == LINE_MIC_IN) {
-			nid = spec->shared_mic_nid;
-			effective = true;
-		}
+	case VNID_MIC:
+		nid = spec->shared_mic_nid;
+		effective = true;
 		break;
 	default:
 		break;
@@ -3357,7 +3321,7 @@ static int ca0132_voicefx_set(struct hda_codec *codec, int enable)
 	}
 
 	dspio_set_param(codec, ca0132_voicefx.mid,
-			ca0132_voicefx.reqs[0], &tmp, sizeof(float));
+			ca0132_voicefx.reqs[0], &tmp, sizeof(unsigned int));
 
 	return 1;
 }
@@ -3410,7 +3374,7 @@ static int ca0132_pe_switch_set(struct hda_codec *codec)
 	int i, ret = 0;
 
 	CA0132_LOG("ca0132_pe_switch_set: val=%ld\n",
-		spec->effects_switch[PLAY_ENHANCEMENT - EFFECT_START_NID]);
+		   spec->effects_switch[PLAY_ENHANCEMENT - EFFECT_START_NID]);
 
 	i = OUT_EFFECT_START_NID - EFFECT_START_NID;
 	nid = OUT_EFFECT_START_NID;
@@ -3428,7 +3392,7 @@ static int ca0132_cvoice_switch_set(struct hda_codec *codec)
 	int i, ret = 0;
 
 	CA0132_LOG("ca0132_cvoice_switch_set: val=%ld\n",
-		spec->effects_switch[CRYSTAL_VOICE - EFFECT_START_NID]);
+		   spec->effects_switch[CRYSTAL_VOICE - EFFECT_START_NID]);
 
 	i = IN_EFFECT_START_NID - EFFECT_START_NID;
 	nid = IN_EFFECT_START_NID;
@@ -3468,25 +3432,27 @@ static int ca0132_vnode_switch_set(struct snd_kcontrol *kcontrol,
 	int auto_jack;
 
 	if (nid == VNID_HP_SEL) {
-		auto_jack = spec->vnode_lswitch[VNID_AUTO_HP_SEL - VNODE_START_NID];
+		auto_jack =
+			spec->vnode_lswitch[VNID_HP_ASEL - VNODE_START_NID];
 		if (!auto_jack)
 			ca0132_select_out(codec);
 		return 1;
 	}
 
 	if (nid == VNID_AMIC1_SEL) {
-		auto_jack = spec->vnode_lswitch[VNID_AUTO_AMIC1_SEL - VNODE_START_NID];
+		auto_jack =
+			spec->vnode_lswitch[VNID_AMIC1_ASEL - VNODE_START_NID];
 		if (!auto_jack)
 			ca0132_select_mic(codec);
 		return 1;
 	}
 
-	if (nid == VNID_AUTO_HP_SEL) {
+	if (nid == VNID_HP_ASEL) {
 		ca0132_select_out(codec);
 		return 1;
 	}
 
-	if (nid == VNID_AUTO_AMIC1_SEL) {
+	if (nid == VNID_AMIC1_ASEL) {
 		ca0132_select_mic(codec);
 		return 1;
 	}
@@ -3523,7 +3489,7 @@ static int ca0132_voicefx_info(struct snd_kcontrol *kcontrol,
 	if (uinfo->value.enumerated.item >= items)
 		uinfo->value.enumerated.item = items - 1;
 	strcpy(uinfo->value.enumerated.name,
-		ca0132_voicefx_presets[uinfo->value.enumerated.item].name);
+	       ca0132_voicefx_presets[uinfo->value.enumerated.item].name);
 	return 0;
 }
 
@@ -3551,7 +3517,7 @@ static int ca0132_voicefx_put(struct snd_kcontrol *kcontrol,
 		return 0;
 
 	CA0132_LOG("ca0132_voicefx_put: sel=%d, preset=%s\n",
-			sel, ca0132_voicefx_presets[sel].name);
+		   sel, ca0132_voicefx_presets[sel].name);
 
 	/*
 	 * Idx 0 is default.
@@ -3561,7 +3527,7 @@ static int ca0132_voicefx_put(struct snd_kcontrol *kcontrol,
 		err = dspio_set_param(codec, ca0132_voicefx.mid,
 				ca0132_voicefx.reqs[i],
 				&(ca0132_voicefx_presets[sel].vals[i]),
-				sizeof(float));
+				sizeof(unsigned int));
 		if (err < 0)
 			break;
 	}
@@ -3691,7 +3657,6 @@ static int ca0132_volume_info(struct snd_kcontrol *kcontrol,
 	int err;
 
 	switch (nid) {
-	case VNID_HP:
 	case VNID_SPK:
 		/* follow shared_out info */
 		nid = spec->shared_out_nid;
@@ -3702,8 +3667,7 @@ static int ca0132_volume_info(struct snd_kcontrol *kcontrol,
 		kcontrol->private_value = pval;
 		mutex_unlock(&codec->control_mutex);
 		break;
-	case VNID_DMIC:
-	case VNID_AMIC1:
+	case VNID_MIC:
 		/* follow shared_mic info */
 		nid = spec->shared_mic_nid;
 		mutex_lock(&codec->control_mutex);
@@ -3794,7 +3758,6 @@ static int ca0132_volume_tlv(struct snd_kcontrol *kcontrol, int op_flag,
 	int err;
 
 	switch (nid) {
-	case VNID_HP:
 	case VNID_SPK:
 		/* follow shared_out tlv */
 		nid = spec->shared_out_nid;
@@ -3805,8 +3768,7 @@ static int ca0132_volume_tlv(struct snd_kcontrol *kcontrol, int op_flag,
 		kcontrol->private_value = pval;
 		mutex_unlock(&codec->control_mutex);
 		break;
-	case VNID_DMIC:
-	case VNID_AMIC1:
+	case VNID_MIC:
 		/* follow shared_mic tlv */
 		nid = spec->shared_mic_nid;
 		mutex_lock(&codec->control_mutex);
@@ -3837,7 +3799,7 @@ static int add_voicefx(struct hda_codec *codec)
 {
 	struct snd_kcontrol_new knew =
 		HDA_CODEC_MUTE_MONO(ca0132_voicefx.name,
-					VOICEFX, 1, 0, HDA_INPUT);
+				    VOICEFX, 1, 0, HDA_INPUT);
 	knew.info = ca0132_voicefx_info;
 	knew.get = ca0132_voicefx_get;
 	knew.put = ca0132_voicefx_put;
@@ -3849,28 +3811,24 @@ static int add_voicefx(struct hda_codec *codec)
  * Node IDs in ca0132_config() as well.
  */
 static struct snd_kcontrol_new ca0132_mixer[] = {
-	CA0132_CODEC_VOL("Headphone Playback Volume", VNID_HP, HDA_OUTPUT),
-	CA0132_CODEC_MUTE("Headphone Playback Switch", VNID_HP, HDA_OUTPUT),
-	CA0132_CODEC_VOL("Speaker Playback Volume", VNID_SPK, HDA_OUTPUT),
-	CA0132_CODEC_MUTE("Speaker Playback Switch", VNID_SPK, HDA_OUTPUT),
-	CA0132_CODEC_VOL("Digital-Mic Capture Volume", VNID_DMIC, HDA_INPUT),
-	CA0132_CODEC_MUTE("Digital-Mic Capture Switch", VNID_DMIC, HDA_INPUT),
-	CA0132_CODEC_VOL("Analog-Mic1 Capture Volume", VNID_AMIC1, HDA_INPUT),
-	CA0132_CODEC_MUTE("Analog-Mic1 Capture Switch", VNID_AMIC1, HDA_INPUT),
+	CA0132_CODEC_VOL("Master Playback Volume", VNID_SPK, HDA_OUTPUT),
+	CA0132_CODEC_MUTE("Master Playback Switch", VNID_SPK, HDA_OUTPUT),
+	CA0132_CODEC_VOL("Capture Volume", VNID_MIC, HDA_INPUT),
+	CA0132_CODEC_MUTE("Capture Switch", VNID_MIC, HDA_INPUT),
 	HDA_CODEC_VOLUME("Analog-Mic2 Capture Volume", 0x08, 0, HDA_INPUT),
 	HDA_CODEC_MUTE("Analog-Mic2 Capture Switch", 0x08, 0, HDA_INPUT),
 	HDA_CODEC_VOLUME("What U Hear Capture Volume", 0x0a, 0, HDA_INPUT),
 	HDA_CODEC_MUTE("What U Hear Capture Switch", 0x0a, 0, HDA_INPUT),
 	CA0132_CODEC_MUTE_MONO("Mic1-Boost (30dB) Capture Switch",
-					0x12, 1, HDA_INPUT),
+			       0x12, 1, HDA_INPUT),
 	CA0132_CODEC_MUTE_MONO("HP/Speaker Playback Switch",
-					VNID_HP_SEL, 1, HDA_OUTPUT),
+			       VNID_HP_SEL, 1, HDA_OUTPUT),
 	CA0132_CODEC_MUTE_MONO("AMic1/DMic Capture Switch",
-					VNID_AMIC1_SEL, 1, HDA_INPUT),
+			       VNID_AMIC1_SEL, 1, HDA_INPUT),
 	CA0132_CODEC_MUTE_MONO("HP/Speaker Auto Detect Playback Switch",
-					VNID_AUTO_HP_SEL, 1, HDA_OUTPUT),
+			       VNID_HP_ASEL, 1, HDA_OUTPUT),
 	CA0132_CODEC_MUTE_MONO("AMic1/DMic Auto Detect Capture Switch",
-					VNID_AUTO_AMIC1_SEL, 1, HDA_INPUT),
+			       VNID_AMIC1_ASEL, 1, HDA_INPUT),
 	{ } /* end */
 };
 
@@ -4169,7 +4127,7 @@ static void ca0132_setup_defaults(struct hda_codec *codec)
 			dspio_set_param(codec, ca0132_effects[idx].mid,
 					ca0132_effects[idx].reqs[i],
 					&(ca0132_effects[idx].def_vals[i]),
-					sizeof(float));
+					sizeof(unsigned int));
 		}
 	}
 
@@ -4211,10 +4169,16 @@ static bool ca0132_download_dsp_images(struct hda_codec *codec)
 {
 	bool dsp_loaded = false;
 	const struct dsp_image_seg *dsp_os_image;
+	const struct firmware *fw_entry;
 
-	dsp_os_image = (struct dsp_image_seg *)DspImage_dsp_os;
+	if (request_firmware(&fw_entry, EFX_FILE, codec->bus->card->dev) != 0)
+		return false;
+
+	dsp_os_image = (struct dsp_image_seg *)(fw_entry->data);
 	dspload_image(codec, dsp_os_image, 0, 0, true, 0);
 	dsp_loaded = dspload_wait_loaded(codec);
+
+	release_firmware(fw_entry);
 
 	if (dsp_loaded)
 		dspload_speakereq(codec);
@@ -4264,9 +4228,9 @@ static void ca0132_unsol_event(struct hda_codec *codec, unsigned int res)
 	CA0132_LOG("ca0132_unsol_event: 0x%x\n", res);
 
 
-	if(((res >> AC_UNSOL_RES_TAG_SHIFT) & 0x3f) == UNSOL_TAG_DSP)
+	if (((res >> AC_UNSOL_RES_TAG_SHIFT) & 0x3f) == UNSOL_TAG_DSP) {
 		ca0132_process_dsp_response(codec);
-	else {
+	} else {
 		res = snd_hda_jack_get_action(codec,
 				(res >> AC_UNSOL_RES_TAG_SHIFT) & 0x3f);
 
@@ -4406,7 +4370,7 @@ static int ca0132_init(struct hda_codec *codec)
 	int i;
 
 	spec->dsp_state = DSP_DOWNLOAD_INIT;
-	spec->curr_chip_addx = ~0UL;
+	spec->curr_chip_addx = (unsigned int)INVALID_CHIP_ADDRESS;
 
 	snd_hda_power_up(codec);
 
@@ -4512,7 +4476,7 @@ static int patch_ca0132(struct hda_codec *codec)
 
 	ca0132_config(codec);
 
-	err = snd_hda_parse_pin_def_config(codec, &spec->autocfg, NULL);
+	err = snd_hda_parse_pin_defcfg(codec, &spec->autocfg, NULL, 0);
 	if (err < 0)
 		return err;
 
