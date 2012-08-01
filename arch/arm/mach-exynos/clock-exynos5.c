@@ -2166,14 +2166,56 @@ void __init_or_cpufreq exynos5_setup_clocks(void)
 		printk(KERN_ERR "Unable to set parent %s of clock %s.\n",
 			exynos5_clk_mout_mpll_user.clk.name, exynos5_clk_sclk_uart_isp.clk.name);
 
+	if (clk_set_parent(&exynos5_clk_sclk_mmc0.clk,
+				&exynos5_clk_mout_mpll_user.clk))
+		printk(KERN_ERR "Unable to set parent %s of clock %s.\n",
+				exynos5_clk_mout_mpll_user.clk.name,
+				exynos5_clk_sclk_mmc0.clk.name);
+	if (clk_set_parent(&exynos5_clk_sclk_mmc1.clk,
+				&exynos5_clk_mout_mpll_user.clk))
+		printk(KERN_ERR "Unable to set parent %s of clock %s.\n",
+				exynos5_clk_mout_mpll_user.clk.name,
+				exynos5_clk_sclk_mmc1.clk.name);
+	if (clk_set_parent(&exynos5_clk_sclk_mmc2.clk,
+				&exynos5_clk_mout_mpll_user.clk))
+		printk(KERN_ERR "Unable to set parent %s of clock %s.\n",
+				exynos5_clk_mout_mpll_user.clk.name,
+				exynos5_clk_sclk_mmc2.clk.name);
+
+	clk_set_rate(&exynos5_clk_sclk_mmc0.clk, 800*MHZ);
+	clk_set_rate(&exynos5_clk_sclk_mmc1.clk, 800*MHZ);
+	clk_set_rate(&exynos5_clk_sclk_mmc2.clk, 800*MHZ);
+
 	clk_set_rate(&exynos5_clk_sclk_apll.clk, 100000000);
 	clk_set_rate(&exynos5_clk_aclk_266.clk, 300000000);
 
 	clk_set_rate(&exynos5_clk_aclk_acp.clk, 267000000);
 	clk_set_rate(&exynos5_clk_pclk_acp.clk, 134000000);
 
-	for (ptr = 0; ptr < ARRAY_SIZE(exynos5_clksrcs); ptr++)
+	for (ptr = 0; ptr < ARRAY_SIZE(exynos5_clksrcs); ptr++) {
+		struct clksrc_clk *clksrc;
 		s3c_set_clksrc(&exynos5_clksrcs[ptr], true);
+		if (exynos5_clksrcs[ptr].clk.devname &&
+				!strcmp(exynos5_clksrcs[ptr].clk.devname,
+					"dw_mmc.0")) {
+			clksrc = &exynos5_clksrcs[ptr];
+			clk_set_rate(&clksrc->clk, 800 * MHZ);
+		}
+
+		if (exynos5_clksrcs[ptr].clk.devname &&
+				!strcmp(exynos5_clksrcs[ptr].clk.devname,
+					"dw_mmc.1")) {
+			clksrc = &exynos5_clksrcs[ptr];
+			clk_set_rate(&clksrc->clk, 200 * MHZ);
+		}
+
+		if (exynos5_clksrcs[ptr].clk.devname &&
+				!strcmp(exynos5_clksrcs[ptr].clk.devname,
+					"dw_mmc.2")) {
+			clksrc = &exynos5_clksrcs[ptr];
+			clk_set_rate(&clksrc->clk, 200 * MHZ);
+		}
+	}
 }
 
 void __init exynos5_register_clocks(void)
