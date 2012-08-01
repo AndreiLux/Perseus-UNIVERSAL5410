@@ -18,7 +18,7 @@
  */
 unsigned long omap_vp_get_curr_volt(struct voltagedomain *voltdm)
 {
-	struct omap_vp_instance *vp = voltdm->vp;
+	struct omap_vp_instance *vp;
 	u8 curr_vsel;
 
 	if (IS_ERR_OR_NULL(voltdm)) {
@@ -31,6 +31,8 @@ unsigned long omap_vp_get_curr_volt(struct voltagedomain *voltdm)
 			__func__, voltdm->name);
 		return 0;
 	}
+
+	vp = voltdm->vp;
 
 	curr_vsel = (voltdm->read(vp->voltage) & vp->common->vpvoltage_mask)
 		>> __ffs(vp->common->vpvoltage_mask);
