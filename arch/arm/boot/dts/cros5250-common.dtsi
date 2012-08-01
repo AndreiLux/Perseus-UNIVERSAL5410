@@ -102,7 +102,7 @@
 				};
 
 				buck5_reg: BUCK5 {
-					regulator-name = "vdd";
+					regulator-name = "vdd_1v8";
 					regulator-min-microvolt = <1800000>;
 					regulator-max-microvolt = <1800000>;
 					regulator-always-on;
@@ -312,6 +312,10 @@
 
 	spi_2: spi@12d40000 {
 		status = "disabled";
+	};
+
+	adc@12D10000 {
+		vdd-supply = <&buck5_reg>;
 	};
 
 	dwmmc0@12200000 {
