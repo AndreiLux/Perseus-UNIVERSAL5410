@@ -809,19 +809,15 @@ static int exynos_dp_set_link_train(struct exynos_dp_device *dp,
 	return retval;
 }
 
-static int exynos_dp_config_video(struct exynos_dp_device *dp,
-			struct video_info *video_info)
+static int exynos_dp_config_video(struct exynos_dp_device *dp)
 {
 	int retval = 0;
 	int timeout_loop = 0;
 	int done_count = 0;
 
-	exynos_dp_config_video_slave_mode(dp, video_info);
+	exynos_dp_config_video_slave_mode(dp);
 
-	exynos_dp_set_video_color_format(dp, video_info->color_depth,
-			video_info->color_space,
-			video_info->dynamic_range,
-			video_info->ycbcr_coeff);
+	exynos_dp_set_video_color_format(dp);
 
 	if (exynos_dp_get_pll_lock_status(dp) == PLL_UNLOCKED) {
 		dev_err(dp->dev, "PLL is not locked yet.\n");
@@ -1015,7 +1011,7 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 	exynos_dp_set_link_bandwidth(dp, dp->video_info->link_rate);
 
 	exynos_dp_init_video(dp);
-	ret = exynos_dp_config_video(dp, dp->video_info);
+	ret = exynos_dp_config_video(dp);
 	if (ret) {
 		dev_err(&pdev->dev, "unable to config video\n");
 		goto err_irq;
@@ -1106,7 +1102,7 @@ static int exynos_dp_resume(struct device *dev)
 	exynos_dp_set_link_bandwidth(dp, dp->video_info->link_rate);
 
 	exynos_dp_init_video(dp);
-	exynos_dp_config_video(dp, dp->video_info);
+	exynos_dp_config_video(dp);
 
 	return 0;
 }
