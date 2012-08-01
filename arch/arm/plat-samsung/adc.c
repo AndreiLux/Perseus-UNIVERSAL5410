@@ -21,6 +21,7 @@
 #include <linux/clk.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
+#include <linux/of.h>
 #include <linux/regulator/consumer.h>
 
 #include <plat/regs-adc.h>
@@ -77,6 +78,8 @@ struct adc_device {
 
 	int			 irq;
 	struct regulator	*vdd;
+
+	enum s3c_cpu_type	cpu;
 };
 
 static struct adc_device *adc_dev;
@@ -84,6 +87,43 @@ static struct adc_device *adc_dev;
 static LIST_HEAD(adc_pending);	/* protected by adc_device.lock */
 
 #define adc_dbg(_adc, msg...) dev_dbg(&(_adc)->pdev->dev, msg)
+
+static struct platform_device_id s3c_adc_driver_ids[] = {
+	{
+		.name           = "s3c24xx-adc",
+		.driver_data    = TYPE_ADCV1,
+	}, {
+		.name		= "s3c2443-adc",
+		.driver_data	= TYPE_ADCV11,
+	}, {
+		.name		= "s3c2416-adc",
+		.driver_data	= TYPE_ADCV12,
+	}, {
+		.name           = "s3c64xx-adc",
+		.driver_data    = TYPE_ADCV2,
+	}, {
+		.name		= "samsung-adc-v3",
+		.driver_data	= TYPE_ADCV3,
+	}, {
+		.name		= "samsung-adc-v4",
+		.driver_data	= TYPE_ADCV4,
+	},
+	{ }
+};
+MODULE_DEVICE_TABLE(platform, s3c_adc_driver_ids);
+
+#ifdef CONFIG_OF
+static const struct of_device_id s3c_adc_match[] = {
+	{ .compatible = "samsung,s3c24xx-adc",	.data = (void *)TYPE_ADCV1 },
+	{ .compatible = "samsung,s3c2443-adc",	.data = (void *)TYPE_ADCV11 },
+	{ .compatible = "samsung,s3c2416-adc",	.data = (void *)TYPE_ADCV12 },
+	{ .compatible = "samsung,s3c64xx-adc",	.data = (void *)TYPE_ADCV2 },
+	{ .compatible = "samsung,exynos4-adc",	.data = (void *)TYPE_ADCV3 },
+	{ .compatible = "samsung,exynos5-adc",	.data = (void *)TYPE_ADCV4 },
+	{ },
+};
+MODULE_DEVICE_TABLE(of, s3c_adc_match);
+#endif
 
 static inline void s3c_adc_convert(struct adc_device *adc)
 {
@@ -97,7 +137,7 @@ static inline void s3c_adc_select(struct adc_device *adc,
 				  struct s3c_adc_client *client)
 {
 	unsigned con = readl(adc->regs + S3C2410_ADCCON);
-	enum s3c_cpu_type cpu = platform_get_device_id(adc->pdev)->driver_data;
+	enum s3c_cpu_type cpu = adc->cpu;
 
 	client->select_cb(client, 1);
 
@@ -286,7 +326,7 @@ static irqreturn_t s3c_adc_irq(int irq, void *pw)
 {
 	struct adc_device *adc = pw;
 	struct s3c_adc_client *client = adc->cur;
-	enum s3c_cpu_type cpu = platform_get_device_id(adc->pdev)->driver_data;
+	enum s3c_cpu_type cpu = adc->cpu;
 	unsigned data0, data1 = 0;
 
 	if (!client) {
@@ -336,12 +376,24 @@ exit:
 	return IRQ_HANDLED;
 }
 
+/* Get CPU type either from device tree or platform data. */
+static enum s3c_cpu_type s3c_adc_get_cpu(struct platform_device *pdev)
+{
+	if (pdev->dev.of_node) {
+		const struct of_device_id *match;
+		match = of_match_node(of_match_ptr(s3c_adc_match),
+				      pdev->dev.of_node);
+		return (unsigned int)match->data;
+	}
+
+	return platform_get_device_id(pdev)->driver_data;
+}
+
 static int s3c_adc_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct adc_device *adc;
 	struct resource *regs;
-	enum s3c_cpu_type cpu = platform_get_device_id(pdev)->driver_data;
 	int ret;
 	unsigned tmp;
 
@@ -353,6 +405,8 @@ static int s3c_adc_probe(struct platform_device *pdev)
 
 	spin_lock_init(&adc->lock);
 
+	adc->cpu = s3c_adc_get_cpu(pdev);
+
 	adc->pdev = pdev;
 	adc->prescale = S3C2410_ADCCON_PRSCVL(49);
 
@@ -363,7 +417,7 @@ static int s3c_adc_probe(struct platform_device *pdev)
 		goto err_alloc;
 	}
 
-	if (cpu == TYPE_ADCV4)
+	if (adc->cpu == TYPE_ADCV4)
 		adc->irq = platform_get_irq(pdev, 0);
 	else
 		adc->irq = platform_get_irq(pdev, 1);
@@ -410,9 +464,11 @@ static int s3c_adc_probe(struct platform_device *pdev)
 	tmp = adc->prescale | S3C2410_ADCCON_PRSCEN;
 
 	/* Enable 12-bit ADC resolution */
-	if (cpu == TYPE_ADCV12)
+	if (adc->cpu == TYPE_ADCV12)
 		tmp |= S3C2416_ADCCON_RESSEL;
-	if (cpu == TYPE_ADCV2 || cpu == TYPE_ADCV3 || cpu == TYPE_ADCV4)
+	if (adc->cpu == TYPE_ADCV2 ||
+	    adc->cpu == TYPE_ADCV3 ||
+	    adc->cpu == TYPE_ADCV4)
 		tmp |= S3C64XX_ADCCON_RESSEL;
 
 	writel(tmp, adc->regs + S3C2410_ADCCON);
@@ -481,7 +537,7 @@ static int s3c_adc_resume(struct device *dev)
 	struct platform_device *pdev = container_of(dev,
 			struct platform_device, dev);
 	struct adc_device *adc = platform_get_drvdata(pdev);
-	enum s3c_cpu_type cpu = platform_get_device_id(pdev)->driver_data;
+	enum s3c_cpu_type cpu = adc->cpu;
 	int ret;
 	unsigned long tmp;
 
@@ -509,30 +565,6 @@ static int s3c_adc_resume(struct device *dev)
 #define s3c_adc_resume NULL
 #endif
 
-static struct platform_device_id s3c_adc_driver_ids[] = {
-	{
-		.name           = "s3c24xx-adc",
-		.driver_data    = TYPE_ADCV1,
-	}, {
-		.name		= "s3c2443-adc",
-		.driver_data	= TYPE_ADCV11,
-	}, {
-		.name		= "s3c2416-adc",
-		.driver_data	= TYPE_ADCV12,
-	}, {
-		.name           = "s3c64xx-adc",
-		.driver_data    = TYPE_ADCV2,
-	}, {
-		.name		= "samsung-adc-v3",
-		.driver_data	= TYPE_ADCV3,
-	}, {
-		.name		= "samsung-adc-v4",
-		.driver_data	= TYPE_ADCV4,
-	},
-	{ }
-};
-MODULE_DEVICE_TABLE(platform, s3c_adc_driver_ids);
-
 static const struct dev_pm_ops adc_pm_ops = {
 	.suspend	= s3c_adc_suspend,
 	.resume		= s3c_adc_resume,
@@ -544,6 +576,7 @@ static struct platform_driver s3c_adc_driver = {
 		.name	= "s3c-adc",
 		.owner	= THIS_MODULE,
 		.pm	= &adc_pm_ops,
+		.of_match_table = of_match_ptr(s3c_adc_match),
 	},
 	.probe		= s3c_adc_probe,
 	.remove		= __devexit_p(s3c_adc_remove),

@@ -1,0 +1,21 @@
+* Samsung's adc controller
+
+Required properties:
+  - compatible: value should be any of the following.
+      (a) "samsung,s3c24xx-adc", for adc compatible with s3c24xx adc.
+      (b) "samsung,s3c2443-adc", for adc compatible with s3c2443 adc.
+      (c) "samsung,s3c2416-adc", for adc compatible with s3c2416 adc.
+      (d) "samsung,s3c64xx-adc", for adc compatible with s3c64xx adc.
+      (e) "samsung,exynos4-adc", for adc compatible exynos4 adc.
+      (f) "samsung,exynos5-adc", for adc compatible exynos5 adc.
+  - reg: physical base address of the controller and length of memory mapped
+    region.
+  - interrupts: interrupt number to the cpu.
+
+Example:
+	adc@12D10000 {
+		compatible = "samsung,exynos5-adc";
+		reg = <0x12D10000 0x100>;
+		interrupts = <0 106 0>;
+		vdd-supply = <&buck5_reg>;
+	};
