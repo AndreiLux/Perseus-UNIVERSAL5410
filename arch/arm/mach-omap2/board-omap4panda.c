@@ -635,6 +635,17 @@ static struct __initdata emif_custom_configs custom_configs = {
 	.lpmode = EMIF_LP_MODE_DISABLE
 };
 
+static void __init enable_board_wakeups(void)
+{
+	/* user button on GPIO_121 */
+	omap_mux_init_signal("gpio_121",
+		OMAP_WAKEUP_EN | OMAP_PIN_INPUT_PULLUP);
+
+	/* sys_nirq1 for TWL6030 (USB, PMIC, etc) */
+	omap_mux_init_signal("sys_nirq1",
+		OMAP_WAKEUP_EN | OMAP_PIN_INPUT_PULLUP);
+}
+
 static void __init omap4_panda_init(void)
 {
 	int package = OMAP_PACKAGE_CBS;
@@ -690,6 +701,7 @@ static void __init omap4_panda_init(void)
 			pr_err("TPS62361 initialization failed: %d\n", ret);
 	}
 	omap_enable_smartreflex_on_init();
+	enable_board_wakeups();
 }
 
 static void __init omap4_panda_map_io(void)
