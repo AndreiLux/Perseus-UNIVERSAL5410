@@ -593,7 +593,8 @@ static __devinit int max77686_pmic_probe(struct platform_device *pdev)
 
 		rdev[i] = regulator_register(&regulators[id], max77686->dev,
 					     pdata->regulators[i].initdata,
-					     max77686, NULL);
+					     max77686,
+					     pdata->regulators[i].reg_node);
 		if (IS_ERR(rdev[i])) {
 			ret = PTR_ERR(rdev[i]);
 			dev_err(max77686->dev,
