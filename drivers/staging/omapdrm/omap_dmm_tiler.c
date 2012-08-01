@@ -40,6 +40,9 @@
 static struct tcm *containers[TILFMT_NFORMATS];
 static struct dmm *omap_dmm;
 
+/* global spinlock for protecting lists */
+static DEFINE_SPINLOCK(list_lock);
+
 /* Geometry table */
 #define GEOM(xshift, yshift, bytes_per_pixel) { \
 		.x_shft = (xshift), \
@@ -147,13 +150,13 @@ static struct dmm_txn *dmm_txn_init(struct dmm *dmm, struct tcm *tcm)
 	down(&dmm->engine_sem);
 
 	/* grab an idle engine */
-	spin_lock(&dmm->list_lock);
+	spin_lock(&list_lock);
 	if (!list_empty(&dmm->idle_head)) {
 		engine = list_entry(dmm->idle_head.next, struct refill_engine,
 					idle_node);
 		list_del(&engine->idle_node);
 	}
-	spin_unlock(&dmm->list_lock);
+	spin_unlock(&list_lock);
 
 	BUG_ON(!engine);
 
@@ -260,9 +263,9 @@ static int dmm_txn_commit(struct dmm_txn *txn, bool wait)
 	}
 
 cleanup:
-	spin_lock(&dmm->list_lock);
+	spin_lock(&list_lock);
 	list_add(&engine->idle_node, &dmm->idle_head);
-	spin_unlock(&dmm->list_lock);
+	spin_unlock(&list_lock);
 
 	up(&omap_dmm->engine_sem);
 	return ret;
@@ -360,9 +363,9 @@ struct tiler_block *tiler_reserve_2d(enum tiler_fmt fmt, uint16_t w,
 	}
 
 	/* add to allocation list */
-	spin_lock(&omap_dmm->list_lock);
+	spin_lock(&list_lock);
 	list_add(&block->alloc_node, &omap_dmm->alloc_head);
-	spin_unlock(&omap_dmm->list_lock);
+	spin_unlock(&list_lock);
 
 	return block;
 }
@@ -383,9 +386,9 @@ struct tiler_block *tiler_reserve_1d(size_t size)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	spin_lock(&omap_dmm->list_lock);
+	spin_lock(&list_lock);
 	list_add(&block->alloc_node, &omap_dmm->alloc_head);
-	spin_unlock(&omap_dmm->list_lock);
+	spin_unlock(&list_lock);
 
 	return block;
 }
@@ -398,9 +401,9 @@ int tiler_release(struct tiler_block *block)
 	if (block->area.tcm)
 		dev_err(omap_dmm->dev, "failed to release block\n");
 
-	spin_lock(&omap_dmm->list_lock);
+	spin_lock(&list_lock);
 	list_del(&block->alloc_node);
-	spin_unlock(&omap_dmm->list_lock);
+	spin_unlock(&list_lock);
 
 	kfree(block);
 	return ret;
@@ -523,13 +526,13 @@ static int omap_dmm_remove(struct platform_device *dev)
 
 	if (omap_dmm) {
 		/* free all area regions */
-		spin_lock(&omap_dmm->list_lock);
+		spin_lock(&list_lock);
 		list_for_each_entry_safe(block, _block, &omap_dmm->alloc_head,
 					alloc_node) {
 			list_del(&block->alloc_node);
 			kfree(block);
 		}
-		spin_unlock(&omap_dmm->list_lock);
+		spin_unlock(&list_lock);
 
 		for (i = 0; i < omap_dmm->num_lut; i++)
 			if (omap_dmm->tcm && omap_dmm->tcm[i])
@@ -547,7 +550,7 @@ static int omap_dmm_remove(struct platform_device *dev)
 
 		vfree(omap_dmm->lut);
 
-		if (omap_dmm->irq != -1)
+		if (omap_dmm->irq > 0)
 			free_irq(omap_dmm->irq, omap_dmm);
 
 		iounmap(omap_dmm->base);
@@ -570,6 +573,10 @@ static int omap_dmm_probe(struct platform_device *dev)
 		dev_err(&dev->dev, "failed to allocate driver data section\n");
 		goto fail;
 	}
+
+	/* initialize lists */
+	INIT_LIST_HEAD(&omap_dmm->alloc_head);
+	INIT_LIST_HEAD(&omap_dmm->idle_head);
 
 	/* lookup hwmod data - base address and irq */
 	mem = platform_get_resource(dev, IORESOURCE_MEM, 0);
@@ -683,7 +690,6 @@ static int omap_dmm_probe(struct platform_device *dev)
 	}
 
 	sema_init(&omap_dmm->engine_sem, omap_dmm->num_engines);
-	INIT_LIST_HEAD(&omap_dmm->idle_head);
 	for (i = 0; i < omap_dmm->num_engines; i++) {
 		omap_dmm->engines[i].id = i;
 		omap_dmm->engines[i].dmm = omap_dmm;
@@ -733,9 +739,6 @@ static int omap_dmm_probe(struct platform_device *dev)
 	else
 		containers[TILFMT_PAGE] = omap_dmm->tcm[0];
 
-	INIT_LIST_HEAD(&omap_dmm->alloc_head);
-	spin_lock_init(&omap_dmm->list_lock);
-
 	area = (struct tcm_area) {
 		.is2d = true,
 		.tcm = omap_dmm->tcm[0],
@@ -763,7 +766,8 @@ static int omap_dmm_probe(struct platform_device *dev)
 	return 0;
 
 fail:
-	omap_dmm_remove(dev);
+	if (omap_dmm_remove(dev))
+		dev_err(&dev->dev, "cleanup failed\n");
 	return ret;
 }
 
@@ -880,7 +884,7 @@ int tiler_map_show(struct seq_file *s, void *arg)
 			map[i] = global_map + i * (w_adj + 1);
 			map[i][w_adj] = 0;
 		}
-		spin_lock_irqsave(&omap_dmm->list_lock, flags);
+		spin_lock_irqsave(&list_lock, flags);
 
 		list_for_each_entry(block, &omap_dmm->alloc_head, alloc_node) {
 			if (block->area.tcm->lut_id == lut_idx) {
@@ -914,7 +918,7 @@ int tiler_map_show(struct seq_file *s, void *arg)
 			}
 		}
 
-		spin_unlock_irqrestore(&omap_dmm->list_lock, flags);
+		spin_unlock_irqrestore(&list_lock, flags);
 
 		if (s) {
 			seq_printf(s, "CONTAINER %d DUMP BEGIN\n", lut_idx);
