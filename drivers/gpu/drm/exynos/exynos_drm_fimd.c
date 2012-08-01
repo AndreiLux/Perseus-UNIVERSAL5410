@@ -932,7 +932,7 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 		goto err_bus_clk;
 	}
 
-	clk_parent = clk_get(NULL, "mout_mpll_user");
+	clk_parent = clk_get(NULL, "sclk_vpll");
 	if (IS_ERR(clk_parent)) {
 		ret = PTR_ERR(clk_parent);
 		goto err_clk;
