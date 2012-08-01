@@ -324,7 +324,7 @@ static void sr_start_vddautocomp(struct omap_sr *sr, bool class_start)
 		return;
 	}
 
-	ret = sr_class->enable(sr->voltdm, voltdm_get_voltage(sr->voltdm));
+	ret = sr_class->enable(sr->voltdm, omap_voltage_get_curr_vdata(sr->voltdm));
 	if (!ret && class_start)
 		sr->autocomp_active = true;
 }
@@ -343,7 +343,7 @@ static void sr_stop_vddautocomp(struct omap_sr *sr, bool class_stop,
 	}
 
 	sr_class->disable(sr->voltdm,
-			voltdm_get_voltage(sr->voltdm),
+			omap_voltage_get_curr_vdata(sr->voltdm),
 			is_volt_reset);
 	if (class_stop) {
 		if (sr_class->stop &&

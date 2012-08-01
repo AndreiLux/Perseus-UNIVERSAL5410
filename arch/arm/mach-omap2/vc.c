@@ -112,14 +112,15 @@ static int omap_vc_config_channel(struct voltagedomain *voltdm)
 
 /* Voltage scale and accessory APIs */
 int omap_vc_pre_scale(struct voltagedomain *voltdm,
-			struct omap_volt_data *target_volt,
+		      unsigned long target_volt,
+		      struct omap_volt_data *target_v,
 			u8 *target_vsel, u8 *current_vsel)
 {
 	struct omap_vc_channel *vc = voltdm->vc;
 	u32 vc_cmdval;
 
-	if (IS_ERR_OR_NULL(voltdm) || IS_ERR_OR_NULL(target_volt) ||
-			!target_vsel || !current_vsel) {
+	if (IS_ERR_OR_NULL(voltdm) || IS_ERR_OR_NULL(target_v) ||
+			!target_volt || !target_vsel || !current_vsel) {
 		pr_err("%s: invalid parms!\n", __func__);
 		return -EINVAL;
 	}
@@ -144,8 +145,8 @@ int omap_vc_pre_scale(struct voltagedomain *voltdm,
 		return -EINVAL;
 	}
 
-	*target_vsel = voltdm->pmic->uv_to_vsel(omap_get_operation_voltage(target_volt));
-	*current_vsel = voltdm->pmic->uv_to_vsel(omap_get_operation_voltage(voltdm->nominal_volt));
+	*target_vsel = voltdm->pmic->uv_to_vsel(target_volt);
+	*current_vsel = voltdm->read(voltdm->vp->voltage);
 
 	/* Setting the ON voltage to the new target voltage */
 	vc_cmdval = voltdm->read(vc->cmdval_reg);
@@ -153,15 +154,14 @@ int omap_vc_pre_scale(struct voltagedomain *voltdm,
 	vc_cmdval |= (*target_vsel << vc->common->cmd_on_shift);
 	voltdm->write(vc_cmdval, vc->cmdval_reg);
 
-	voltdm->vc_param->on = target_volt->volt_nominal;
-
-	omap_vp_update_errorgain(voltdm, target_volt);
+	omap_vp_update_errorgain(voltdm, target_v);
 
 	return 0;
 }
 
 void omap_vc_post_scale(struct voltagedomain *voltdm,
-			struct omap_volt_data *target_volt,
+			unsigned long target_volt,
+			struct omap_volt_data *target_vdata,
 			u8 target_vsel, u8 current_vsel)
 {
 	struct omap_vc_channel *vc;
@@ -185,6 +185,8 @@ void omap_vc_post_scale(struct voltagedomain *voltdm,
 	smps_delay = ((smps_steps * voltdm->pmic->step_size) /
 			voltdm->pmic->slew_rate) + 2;
 	udelay(smps_delay);
+
+	voltdm->curr_volt = target_vdata;
 
 	/* Set up the on voltage for wakeup from lp and OFF */
 	on_vsel = onlp_vsel = target_vsel;
@@ -242,62 +244,14 @@ static int omap_vc_bypass_send_value(struct voltagedomain *voltdm,
 
 }
 
-/* vc_bypass_scale - VC bypass method of voltage scaling */
-int omap_vc_bypass_scale(struct voltagedomain *voltdm,
-				struct omap_volt_data *target_volt)
-{
-	struct omap_vc_channel *vc = voltdm->vc;
-	u32 loop_cnt = 0, retries_cnt = 0;
-	u32 vc_valid, vc_bypass_val_reg, vc_bypass_value;
-	u8 target_vsel, current_vsel;
-	int ret;
-
-	ret = omap_vc_pre_scale(voltdm, target_volt, &target_vsel, &current_vsel);
-	if (ret)
-		return ret;
-
-	vc_valid = vc->common->valid;
-	vc_bypass_val_reg = vc->common->bypass_val_reg;
-	vc_bypass_value = (target_vsel << vc->common->data_shift) |
-		(vc->volt_reg_addr << vc->common->regaddr_shift) |
-		(vc->i2c_slave_addr << vc->common->slaveaddr_shift);
-
-	voltdm->write(vc_bypass_value, vc_bypass_val_reg);
-	voltdm->write(vc_bypass_value | vc_valid, vc_bypass_val_reg);
-
-	vc_bypass_value = voltdm->read(vc_bypass_val_reg);
-	/*
-	 * Loop till the bypass command is acknowledged from the SMPS.
-	 * NOTE: This is legacy code. The loop count and retry count needs
-	 * to be revisited.
-	 */
-	while (!(vc_bypass_value & vc_valid)) {
-		loop_cnt++;
-
-		if (retries_cnt > 10) {
-			pr_warning("%s: Retry count exceeded\n", __func__);
-			return -ETIMEDOUT;
-		}
-
-		if (loop_cnt > 50) {
-			retries_cnt++;
-			loop_cnt = 0;
-			udelay(10);
-		}
-		vc_bypass_value = voltdm->read(vc_bypass_val_reg);
-	}
-
-	return 0;
-
-}
-
 /* vc_bypass_scale_voltage - VC bypass method of voltage scaling */
 int omap_vc_bypass_scale_voltage(struct voltagedomain *voltdm,
-				struct omap_volt_data *target_volt)
+			      struct omap_volt_data *target_v)
 {
 	struct omap_vc_channel *vc;
 	u8 target_vsel, current_vsel;
 	int ret;
+	unsigned long target_volt = omap_get_operation_voltage(target_v);
 
 	if (IS_ERR_OR_NULL(voltdm)) {
 		pr_err("%s bad voldm\n", __func__);
@@ -310,7 +264,8 @@ int omap_vc_bypass_scale_voltage(struct voltagedomain *voltdm,
 		return -EINVAL;
 	}
 
-	ret = omap_vc_pre_scale(voltdm, target_volt, &target_vsel, &current_vsel);
+	ret = omap_vc_pre_scale(voltdm, target_volt, target_v, &target_vsel,
+				&current_vsel);
 	if (ret)
 		return ret;
 
@@ -319,7 +274,8 @@ int omap_vc_bypass_scale_voltage(struct voltagedomain *voltdm,
 	if (ret)
 		return ret;
 
-	omap_vc_post_scale(voltdm, target_volt, target_vsel, current_vsel);
+	omap_vc_post_scale(voltdm, target_volt, target_v, target_vsel,
+			current_vsel);
 	return 0;
 }
 

@@ -21,6 +21,7 @@
 #include <plat/irqs.h>
 #include <plat/prcm.h>
 
+#include "voltage.h"
 #include "iomap.h"
 #include "common.h"
 #include "vp.h"

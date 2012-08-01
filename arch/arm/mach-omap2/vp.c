@@ -174,12 +174,13 @@ static u8 __vp_recover_count = _MAX_RETRIES_BEFORE_RECOVER;
 
 /* VP force update method of voltage scaling */
 int omap_vp_forceupdate_scale(struct voltagedomain *voltdm,
-				struct omap_volt_data *target_volt)
+			      struct omap_volt_data *target_v)
 {
 	struct omap_vp_instance *vp = voltdm->vp;
 	u32 vpconfig;
 	u8 target_vsel, current_vsel;
 	int ret, timeout = 0;
+	unsigned long target_volt = omap_get_operation_voltage(target_v);
 
 /*
 	 * Wait for VP idle Typical latency is <2us. Maximum latency is ~100us
@@ -191,10 +192,11 @@ int omap_vp_forceupdate_scale(struct voltagedomain *voltdm,
 
 	if (timeout >= VP_IDLE_TIMEOUT)
 		_vp_controlled_err(vp, voltdm,
-			"%s: vdd_%s idle timedout forceupdate(v=%d)\n",
-			__func__, voltdm->name, target_volt->volt_nominal);
+			"%s:vdd_%s idletimdout forceupdate(v=%ld)\n",
+			__func__, voltdm->name, target_volt);
 
-	ret = omap_vc_pre_scale(voltdm, target_volt, &target_vsel, &current_vsel);
+	ret = omap_vc_pre_scale(voltdm, target_volt, target_v,
+				&target_vsel, &current_vsel);
 	if (ret)
 		return ret;
 
@@ -211,14 +213,14 @@ int omap_vp_forceupdate_scale(struct voltagedomain *voltdm,
 	if (timeout >= VP_TRANXDONE_TIMEOUT) {
 		_vp_controlled_err(vp, voltdm,
 			"%s: vdd_%s TRANXDONE timeout exceeded."
-			"Voltage change aborted target volt=%d,"
+			"Voltage change aborted target volt=%ld,"
 			"target vsel=0x%02x, current_vsel=0x%02x\n",
-			__func__, voltdm->name, target_volt->volt_nominal,
+			__func__, voltdm->name, target_volt,
 			target_vsel, current_vsel);
 		return -ETIMEDOUT;
 	}
 
-	vpconfig = _vp_set_init_voltage(voltdm, omap_get_operation_voltage(target_volt));
+	vpconfig = _vp_set_init_voltage(voltdm, omap_get_operation_voltage(target_v));
 
 	/* Force update of voltage */
 	voltdm->write(vpconfig | vp->common->vpconfig_forceupdate,
@@ -235,12 +237,13 @@ int omap_vp_forceupdate_scale(struct voltagedomain *voltdm,
 		_vp_controlled_err(vp, voltdm,
 			"%s: vdd_%s TRANXDONE timeout exceeded. "
 			"TRANXDONE never got set after the voltage update. "
-			"target volt=%d, target vsel=0x%02x, "
+			"target volt=%ld, target vsel=0x%02x, "
 			"current_vsel=0x%02x\n",
-			__func__, voltdm->name, target_volt->volt_nominal,
+			__func__, voltdm->name, target_volt,
 			target_vsel, current_vsel);
 
-	omap_vc_post_scale(voltdm, target_volt, target_vsel, current_vsel);
+	omap_vc_post_scale(voltdm, target_volt, target_v,
+			   target_vsel, current_vsel);
 
 	/*
 	 * Disable TransactionDone interrupt , clear all status, clear
@@ -294,7 +297,7 @@ void omap_vp_enable(struct voltagedomain *voltdm)
 	if (vp->enabled)
 		return;
 
-	volt = omap_get_operation_voltage(voltdm_get_voltage(voltdm));
+	volt = omap_get_operation_voltage(omap_voltage_get_curr_vdata(voltdm));
 	if (!volt) {
 		pr_warning("%s: unable to find current voltage for %s\n",
 			   __func__, voltdm->name);

@@ -101,7 +101,7 @@ int omap_abb_pre_scale(struct voltagedomain *voltdm,
 	if (!voltdm || !target_volt || IS_ERR(target_volt))
 		return -EINVAL;
 
-	nominal_volt = voltdm_get_voltage(voltdm);
+	nominal_volt = omap_voltage_get_curr_vdata(voltdm);
 
 	if (IS_ERR(nominal_volt))
 		return 0;
@@ -138,7 +138,7 @@ int omap_abb_post_scale(struct voltagedomain *voltdm,
 	if (!voltdm || !target_volt)
 		return -EINVAL;
 
-	nominal_volt = voltdm_get_voltage(voltdm);
+	nominal_volt = omap_voltage_get_curr_vdata(voltdm);
 	if (!nominal_volt)
 		return -EINVAL;
 
