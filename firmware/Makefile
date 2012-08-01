@@ -41,7 +41,6 @@ fw-shipped-$(CONFIG_BNX2) += 	bnx2/bnx2-mips-09-6.2.1b.fw \
 				bnx2/bnx2-rv2p-09ax-6.0.17.fw
 fw-shipped-$(CONFIG_CHELSIO_T3) += cxgb3/t3b_psram-1.1.0.bin \
 				   cxgb3/t3c_psram-1.1.0.bin \
-				   cxgb3/t3fw-7.10.0.bin \
 				   cxgb3/ael2005_opt_edc.bin \
 				   cxgb3/ael2005_twx_edc.bin \
 				   cxgb3/ael2020_twx_edc.bin
