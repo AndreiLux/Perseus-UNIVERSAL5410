@@ -210,6 +210,12 @@ static int exynos5_usb_phy30_init(struct platform_device *pdev)
 	writel(0x08000040, EXYNOS_USB3_LINKSYSTEM);
 	writel(0x00000004, EXYNOS_USB3_PHYBATCHG);
 
+	/* PHYTEST POWERDOWN Control */
+	reg = readl(EXYNOS_USB3_PHYTEST);
+	reg &= ~(EXYNOS_USB3_PHYTEST_POWERDOWN_SSP |
+		EXYNOS_USB3_PHYTEST_POWERDOWN_HSP);
+	writel(reg, EXYNOS_USB3_PHYTEST);
+
 	/* UTMI Power Control */
 	writel(EXYNOS_USB3_PHYUTMI_OTGDISABLE, EXYNOS_USB3_PHYUTMI);
 
@@ -243,6 +249,19 @@ static int exynos5_usb_phy30_exit(struct platform_device *pdev)
 		EXYNOS_USB3_PHYUTMI_FORCESUSPEND |
 		EXYNOS_USB3_PHYUTMI_FORCESLEEP;
 	writel(reg, EXYNOS_USB3_PHYUTMI);
+
+	/* Resetting the PHYCLKRST enable bits to reduce leakage current */
+	reg = readl(EXYNOS_USB3_PHYCLKRST);
+	reg &= ~(EXYNOS_USB3_PHYCLKRST_REF_SSP_EN |
+		EXYNOS_USB3_PHYCLKRST_SSC_EN |
+		EXYNOS_USB3_PHYCLKRST_COMMONONN);
+	writel(reg, EXYNOS_USB3_PHYCLKRST);
+
+	/* Control PHYTEST to remove leakage current */
+	reg = readl(EXYNOS_USB3_PHYTEST);
+	reg |= (EXYNOS_USB3_PHYTEST_POWERDOWN_SSP |
+		EXYNOS_USB3_PHYTEST_POWERDOWN_HSP);
+	writel(reg, EXYNOS_USB3_PHYTEST);
 
 	exynos_usb_phy_control(USB_PHY0, PHY_DISABLE);
 
