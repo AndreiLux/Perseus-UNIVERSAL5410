@@ -64,9 +64,7 @@ static int __init set_volt_table(void)
 {
 	unsigned int i;
 
-	/* Temp hack only support up to 1G freq until thermal patches merged */
-	//max_support_idx = L0;
-	max_support_idx = L7;
+	max_support_idx = L0;
 
 	for (i = 0; i < CPUFREQ_LEVEL_END; i++) {
 		exynos5250_volt_table[i] = asv_get_volt(ID_ARM, exynos5250_freq_table[i].frequency);
