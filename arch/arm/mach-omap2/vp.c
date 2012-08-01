@@ -138,11 +138,17 @@ void __init omap_vp_init(struct voltagedomain *voltdm)
 }
 
 int omap_vp_update_errorgain(struct voltagedomain *voltdm,
-				struct omap_volt_data *target_volt)
+			     struct omap_volt_data *volt_data)
 {
+	if (IS_ERR_OR_NULL(volt_data)) {
+		pr_err("%s: vdm %s bad voltage data %p\n", __func__,
+			voltdm->name, volt_data);
+		return -EINVAL;
+	}
+
 	/* Setting vp errorgain based on the voltage */
 	voltdm->rmw(voltdm->vp->common->vpconfig_errorgain_mask,
-		    target_volt->vp_errgain <<
+		    volt_data->vp_errgain <<
 		    __ffs(voltdm->vp->common->vpconfig_errorgain_mask),
 		    voltdm->vp->vpconfig);
 
