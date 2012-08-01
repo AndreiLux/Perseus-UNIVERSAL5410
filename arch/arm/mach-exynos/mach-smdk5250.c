@@ -60,6 +60,7 @@
 #include <mach/sysmmu.h>
 #include <mach/exynos-ion.h>
 #include <mach/exynos-mfc.h>
+#include <mach/tmu.h>
 #include <mach/dwmci.h>
 #include <mach/ohci.h>
 #include <mach/spi-clocks.h>
@@ -1444,6 +1445,9 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 #ifdef CONFIG_ION_EXYNOS
 	&exynos_device_ion,
 #endif
+#ifdef CONFIG_EXYNOS_DEV_TMU
+	&exynos_device_tmu,
+#endif
 #ifdef CONFIG_EXYNOS_MEDIA_DEVICE
 	&exynos_device_md0,
 	&exynos_device_md1,
@@ -1523,6 +1527,18 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&s3c64xx_device_spi2,
 };
 
+/* TMU */
+static struct tmu_data smdk5250_tmu_pdata __initdata = {
+	.ts = {
+		.stop_throttle		= 78,
+		.start_throttle		= 80,
+		.start_tripping		= 110,
+		.start_emergency	= 120,
+	},
+
+	.efuse_value	= 80,
+	.slope		= 0x07000F02,
+};
 
 #if defined(CONFIG_CMA)
 /* defined in arch/arm/mach-exynos/reserve-mem.c */
@@ -1845,6 +1861,9 @@ static void __init smdk5250_machine_init(void)
 #endif
 #ifdef CONFIG_FB_MIPI_DSIM
 	s5p_dsim_set_platdata(&dsim_platform_data);
+#endif
+#ifdef CONFIG_EXYNOS_DEV_TMU
+	exynos_tmu_set_platdata(&smdk5250_tmu_pdata);
 #endif
 	smdk5250_gpio_power_init();
 
