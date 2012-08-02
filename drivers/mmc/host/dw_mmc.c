@@ -29,6 +29,7 @@
 #include <linux/irq.h>
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
+#include <linux/mmc/card.h>
 #include <linux/mmc/dw_mmc.h>
 #include <linux/bitops.h>
 #include <linux/regulator/consumer.h>
@@ -611,6 +612,8 @@ static int dw_mci_submit_data_dma(struct dw_mci *host, struct mmc_data *data)
 static void dw_mci_submit_data(struct dw_mci *host, struct mmc_data *data)
 {
 	u32 temp;
+	struct dw_mci_slot *slot = host->cur_slot;
+	struct mmc_card *card = slot->mmc->card;
 
 	data->error = -EINPROGRESS;
 
@@ -625,6 +628,47 @@ static void dw_mci_submit_data(struct dw_mci *host, struct mmc_data *data)
 		else
 			temp |= SDMMC_INT_EBE;
 		mci_writel(host, INTMASK, temp);
+	}
+
+	if (card && mmc_card_sdio(card)) {
+		unsigned int rxwmark_val, msize_val, i;
+		unsigned int msize[8] = {1, 4, 8, 16, 32, 64, 128, 256};
+
+		for (i = 1; sizeof(msize) / sizeof(unsigned int); i++) {
+			if ((data->blksz / 4) % msize[i] == 0)
+				continue;
+			else
+				break;
+		}
+		if (data->blksz < host->fifo_depth / 2) {
+			if (i > 1) {
+				msize_val = i - 1;
+				rxwmark_val = msize[i-1] - 1;
+			} else {
+				msize_val = 0;
+				rxwmark_val = 1;
+			}
+		} else {
+			if (i > 2) {
+				msize_val = i - 2;
+				rxwmark_val = msize[i-2] - 1;
+			} else {
+				msize_val = 0;
+				rxwmark_val = 1;
+			}
+		}
+		dev_dbg(&slot->mmc->class_dev,
+			"msize_val : %d, rxwmark_val : %d\n",
+			msize_val, rxwmark_val);
+
+		host->fifoth_val = ((msize_val << 28) | (rxwmark_val << 16) |
+				   ((host->fifo_depth/2) << 0));
+
+		mci_writel(host, FIFOTH, host->fifoth_val);
+
+		if (mmc_card_uhs(card) & card->host->caps & MMC_CAP_UHS_SDR104)
+				mci_writel(host, CDTHRCTL,
+						data->blksz << 16 | 1);
 	}
 
 	if (data->flags & MMC_DATA_READ)
