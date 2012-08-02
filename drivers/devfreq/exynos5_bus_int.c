@@ -56,6 +56,7 @@ struct busfreq_data_int {
 
 	struct notifier_block pm_notifier;
 	struct mutex lock;
+	struct pm_qos_request mif_req;
 
 	struct clk *int_clk;
 };
@@ -163,6 +164,11 @@ static int exynos5_busfreq_int_target(struct device *dev, unsigned long *_freq,
 
 	if (data->disabled)
 		goto out;
+
+	if (freq > exynos5_int_opp_table[0].clk)
+		pm_qos_update_request(&data->mif_req, freq * 16 / 1000);
+	else
+		pm_qos_update_request(&data->mif_req, -1);
 
 	if (old_freq < freq)
 		err = exynos5_int_setvolt(data, opp);
@@ -401,6 +407,8 @@ static __devinit int exynos5_busfreq_int_probe(struct platform_device *pdev)
 		goto err_devfreq_add;
 	}
 
+	pm_qos_add_request(&data->mif_req, PM_QOS_MEMORY_THROUGHPUT, -1);
+
 	return 0;
 
 err_devfreq_add:
@@ -418,6 +426,7 @@ static __devexit int exynos5_busfreq_int_remove(struct platform_device *pdev)
 {
 	struct busfreq_data_int *data = platform_get_drvdata(pdev);
 
+	pm_qos_remove_request(&data->mif_req);
 	unregister_pm_notifier(&data->pm_notifier);
 	devfreq_remove_device(data->devfreq);
 	regulator_put(data->vdd_int);
