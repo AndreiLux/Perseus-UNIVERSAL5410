@@ -32,4 +32,18 @@
 	display-port-controller {
 		status = "disabled";
 	};
+
+	/*
+	 * On Daisy WiFi hooks up through a connector so keep a high drive
+	 * strength for safety.
+	 *
+	 * TODO: Test various drive strengths and see what's really needed
+	 */
+	dwmmc3@12230000 {
+		slot0 {
+			gpios = <&gpc4 1 2 3 3>, <&gpc4 0 2 0 3>,
+				<&gpc4 3 2 3 3>, <&gpc4 4 2 3 3>,
+				<&gpc4 5 2 3 3>, <&gpc4 6 2 3 3>;
+		};
+	};
 };
