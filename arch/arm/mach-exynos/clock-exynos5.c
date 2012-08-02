@@ -589,13 +589,13 @@ static struct clksrc_sources exynos5_clkset_cdrex = {
 	.nr_sources	= ARRAY_SIZE(exynos5_clkset_cdrex_list),
 };
 
-static struct clksrc_clk exynos5_clk_cdrex = {
+static struct clksrc_clk exynos5_clk_mclk_cdrex = {
 	.clk	= {
-		.name		= "clk_cdrex",
+		.name		= "mclk_cdrex",
 	},
 	.sources = &exynos5_clkset_cdrex,
 	.reg_src = { .reg = EXYNOS5_CLKSRC_CDREX, .shift = 4, .size = 1 },
-	.reg_div = { .reg = EXYNOS5_CLKDIV_CDREX, .shift = 16, .size = 3 },
+	.reg_div = { .reg = EXYNOS5_CLKDIV_CDREX, .shift = 28, .size = 3 },
 };
 
 static struct clksrc_clk exynos5_clk_aclk_acp = {
@@ -1739,7 +1739,7 @@ static struct clksrc_clk *exynos5_sysclks[] = {
 	&exynos5_clk_mout_cpu,
 	&exynos5_clk_dout_armclk,
 	&exynos5_clk_dout_arm2clk,
-	&exynos5_clk_cdrex,
+	&exynos5_clk_mclk_cdrex,
 	&exynos5_clk_aclk_400_g3d_mid,
 	&exynos5_clk_aclk_400_g3d,
 	&exynos5_clk_aclk_333,
@@ -2127,7 +2127,7 @@ void __init_or_cpufreq exynos5_setup_clocks(void)
 			apll, bpll, cpll, mpll, epll, vpll, gpll);
 
 	armclk = clk_get_rate(&exynos5_clk_armclk);
-	mout_cdrex = clk_get_rate(&exynos5_clk_cdrex.clk);
+	mout_cdrex = clk_get_rate(&exynos5_clk_mclk_cdrex.clk);
 
 	aclk_400 = clk_get_rate(&exynos5_clk_aclk_400_g3d.clk);
 	aclk_333 = clk_get_rate(&exynos5_clk_aclk_333.clk);
