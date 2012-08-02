@@ -271,6 +271,11 @@ static int exynos5_clk_ip_isp1_ctrl(struct clk *clk, int enable)
 	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_ISP1, clk, enable);
 }
 
+static int exynos5_clk_bus_syslft_ctrl(struct clk *clk, int enable)
+{
+	return s5p_gatectrl(EXYNOS5_CLKGATE_BUS_SYSLFT, clk, enable);
+}
+
 static int exynos5_clk_clkout_ctrl(struct clk *clk, int enable)
 {
 	/*
@@ -1129,6 +1134,10 @@ static struct clk exynos5_init_clocks_off[] = {
 		.devname	= "s3c64xx-spi.2",
 		.enable		= exynos5_clk_ip_peric_ctrl,
 		.ctrlbit	= (1 << 18),
+	}, {
+		.name		= "efclk",
+		.enable		= exynos5_clk_bus_syslft_ctrl,
+		.ctrlbit	= (1 << 16),
 	}
 };
 
