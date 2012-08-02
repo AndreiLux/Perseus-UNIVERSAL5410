@@ -300,8 +300,8 @@ static int exynos5_usb_phy20_init(struct platform_device *pdev)
 	otgphy_sys |= (refclk_freq << OTG_SYS_CLKSEL_SHIFT);
 
 	/* COMMON Block configuration during suspend */
-	hostphy_ctrl0 &= ~(HOST_CTRL0_COMMONON_N);
-	otgphy_sys |= (OTG_SYS_COMMON_ON);
+	hostphy_ctrl0 |= (HOST_CTRL0_COMMONON_N);
+	otgphy_sys &= ~(OTG_SYS_COMMON_ON);
 
 	/* otg phy reset */
 	otgphy_sys &= ~(OTG_SYS_FORCE_SUSPEND | OTG_SYS_SIDDQ_UOTG
