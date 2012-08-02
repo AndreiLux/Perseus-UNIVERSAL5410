@@ -642,6 +642,7 @@ static bool sysrq_filter(struct input_handle *handle,
 			break;
 
 		case KEY_SYSRQ:
+		case KEY_F10:
 			if (value == 1 && sysrq->alt != KEY_RESERVED) {
 				sysrq->active = true;
 				sysrq->alt_use = sysrq->alt;
