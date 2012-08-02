@@ -19,6 +19,7 @@
 #include <linux/ioport.h>
 #include <linux/mmc/dw_mmc.h>
 #include <linux/mmc/host.h>
+#include <linux/clk.h>
 
 #include <plat/devs.h>
 #include <plat/cpu.h>
@@ -47,13 +48,41 @@ static int exynos_dwmci_init(u32 slot_id, irq_handler_t handler, void *data)
 static void exynos_dwmci_set_io_timing(void *data, unsigned char timing)
 {
 	struct dw_mci *host = (struct dw_mci *)data;
+	u32 clksel;
 
-	if (timing == MMC_TIMING_UHS_DDR50)
+	if (timing == MMC_TIMING_MMC_HS200 ||
+			timing == MMC_TIMING_UHS_SDR104) {
+		if (host->bus_hz != 200 * 1000 * 1000) {
+			host->bus_hz = 200 * 1000 * 1000;
+			clk_set_rate(host->cclk, 800 * 1000 * 1000);
+		}
+		clksel = __raw_readl(host->regs + DWMCI_CLKSEL);
+		clksel = (clksel & 0xfff8ffff) | (host->pdata->clk_drv << 16);
+		__raw_writel(clksel, host->regs + DWMCI_CLKSEL);
+	} else if (timing == MMC_TIMING_UHS_SDR50) {
+		if (host->bus_hz != 100 * 1000 * 1000) {
+			host->bus_hz = 100 * 1000 * 1000;
+			clk_set_rate(host->cclk, 400 * 1000 * 1000);
+		}
+		clksel = __raw_readl(host->regs + DWMCI_CLKSEL);
+		clksel = (clksel & 0xfff8ffff) | (host->pdata->clk_drv << 16);
+		__raw_writel(clksel, host->regs + DWMCI_CLKSEL);
+	} else if (timing == MMC_TIMING_UHS_DDR50) {
+		if (host->bus_hz != 100 * 1000 * 1000) {
+			host->bus_hz = 100 * 1000 * 1000;
+			clk_set_rate(host->cclk, 400 * 1000 * 1000);
+			host->current_speed = 0;
+		}
 		__raw_writel(host->pdata->ddr_timing,
 			host->regs + DWMCI_CLKSEL);
-	else
+	} else {
+		if (host->bus_hz != 50 * 1000 * 1000) {
+			host->bus_hz = 50 * 1000 * 1000;
+			clk_set_rate(host->cclk, 200 * 1000 * 1000);
+		}
 		__raw_writel(host->pdata->sdr_timing,
 			host->regs + DWMCI_CLKSEL);
+	}
 }
 
 static struct dw_mci_board exynos4_dwmci_pdata = {
