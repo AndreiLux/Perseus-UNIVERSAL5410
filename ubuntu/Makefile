@@ -19,7 +19,7 @@ obj-$(CONFIG_DM_RAID45)		+= dm-raid4-5/
 ##
 ##
 ##
-#obj-$(CONFIG_AUFS_FS)		+= aufs/
+obj-$(CONFIG_AUFS_FS)		+= aufs/
 ##
 ##
 ##
