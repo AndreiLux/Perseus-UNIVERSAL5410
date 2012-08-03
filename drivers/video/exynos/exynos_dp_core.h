@@ -32,8 +32,9 @@ struct exynos_dp_device {
 	void __iomem		*reg_base;
 
 	struct video_info	*video_info;
+	enum link_training_type	training_type;
 	struct link_train	link_train;
-	struct work_struct	config_work;
+	struct work_struct	hotplug_work;
 };
 
 /* exynos_dp_reg.c */
