@@ -91,7 +91,7 @@ static struct pm_qos_constraints memory_tput_constraints = {
 	.list = PLIST_HEAD_INIT(memory_tput_constraints.list),
 	.target_value = PM_QOS_MEMORY_THROUGHPUT_DEFAULT_VALUE,
 	.default_value = PM_QOS_MEMORY_THROUGHPUT_DEFAULT_VALUE,
-	.type = PM_QOS_MAX,
+	.type = PM_QOS_SUM,
 	.notifiers = &memory_throughput_notifier,
 };
 static struct pm_qos_object memory_throughput_pm_qos = {
@@ -139,6 +139,9 @@ static const struct file_operations pm_qos_power_fops = {
 /* unlocked internal variant */
 static inline int pm_qos_get_value(struct pm_qos_constraints *c)
 {
+	unsigned int sum = 0;
+	struct plist_node *p;
+
 	if (plist_head_empty(&c->list))
 		return c->default_value;
 
@@ -148,6 +151,16 @@ static inline int pm_qos_get_value(struct pm_qos_constraints *c)
 
 	case PM_QOS_MAX:
 		return plist_last(&c->list)->prio;
+
+	case PM_QOS_SUM:
+		plist_for_each(p, &c->list) {
+			if (p->prio < 0)
+				continue;
+			if (sum + p->prio > INT_MAX)
+				return INT_MAX;
+			sum += p->prio;
+		}
+		return sum;
 
 	default:
 		/* runtime check for not using enum */
