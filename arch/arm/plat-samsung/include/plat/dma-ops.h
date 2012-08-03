@@ -45,6 +45,7 @@ struct samsung_dma_ops {
 	int (*prepare)(unsigned ch, struct samsung_dma_prep *param);
 	int (*trigger)(unsigned ch);
 	int (*started)(unsigned ch);
+	int (*getposition)(unsigned ch, dma_addr_t *src, dma_addr_t *dst);
 	int (*flush)(unsigned ch);
 	int (*stop)(unsigned ch);
 };
