@@ -16,6 +16,7 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
 #include <linux/platform_data/dwc3-exynos.h>
 #include <linux/dma-mapping.h>
 #include <linux/module.h>
@@ -261,12 +262,81 @@ static int dwc3_exynos_runtime_resume(struct device *dev)
 
 	return 0;
 }
+#endif /* CONFIG_USB_SUSPEND */
+
+#ifdef CONFIG_PM_SLEEP
+static int dwc3_exynos_suspend(struct device *dev)
+{
+	struct dwc3_exynos_data	*pdata = dev->platform_data;
+	struct dwc3_exynos	*exynos;
+	struct platform_device *pdev = to_platform_device(dev);
+
+	exynos = dev_get_drvdata(dev);
+
+	if (!exynos)
+		return -EINVAL;
+
+	if (pdata && pdata->phy_exit)
+		pdata->phy_exit(pdev, pdata->phy_type);
+
+	clk_disable(exynos->clk);
+
+	/* Always force PLL off no matter previous state */
+	if (gpio_is_valid(exynos->phyclk_gpio))
+		gpio_set_value(exynos->phyclk_gpio, 0);
+
+	return 0;
+}
+
+static int dwc3_exynos_resume(struct device *dev)
+{
+	struct dwc3_exynos_data	*pdata = dev->platform_data;
+	struct dwc3_exynos	*exynos;
+	struct platform_device *pdev = to_platform_device(dev);
+
+	exynos = dev_get_drvdata(dev);
+
+	if (!exynos)
+		return -EINVAL;
+
+	/*
+	 * Init code assumes PLL is on; we'll turn it off again
+	 * later if the system decides we want to be runtime
+	 * suspended again.
+	 */
+	if (gpio_is_valid(exynos->phyclk_gpio))
+		gpio_set_value(exynos->phyclk_gpio, 1);
+
+	clk_enable(exynos->clk);
+
+	/* PHY initialization */
+	if (!pdata) {
+		dev_dbg(&pdev->dev, "missing platform data\n");
+	} else {
+		if (pdata->phy_init)
+			pdata->phy_init(pdev, pdata->phy_type);
+	}
+
+	/* runtime set active to reflect active state. */
+	pm_runtime_disable(dev);
+	pm_runtime_set_active(dev);
+	pm_runtime_enable(dev);
+
+	return 0;
+}
+#endif /* CONFIG_PM_SLEEP */
+
 
 static const struct dev_pm_ops dwc3_exynos_pm_ops = {
+#ifdef CONFIG_PM_SLEEP
+	.suspend		= dwc3_exynos_suspend,
+	.resume			= dwc3_exynos_resume,
+#endif
+#ifdef CONFIG_USB_SUSPEND
 	.runtime_suspend	= dwc3_exynos_runtime_suspend,
 	.runtime_resume		= dwc3_exynos_runtime_resume,
-};
 #endif
+};
 
 #ifdef CONFIG_OF
 static const struct of_device_id exynos_xhci_match[] = {
@@ -282,7 +352,7 @@ static struct platform_driver dwc3_exynos_driver = {
 	.driver		= {
 		.name	= "exynos-dwc3",
 		.of_match_table = of_match_ptr(exynos_xhci_match),
-#ifdef CONFIG_USB_SUSPEND
+#ifdef CONFIG_PM
 		.pm = &dwc3_exynos_pm_ops,
 #endif
 	},
