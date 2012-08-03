@@ -59,4 +59,9 @@
 				<&gpc4 5 2 3 0>, <&gpc4 6 2 3 0>;
 		};
 	};
+
+	sound {
+		samsung,mic-det-gpios = <&gpx2 0 2 0x10000 0>;
+		samsung,hp-det-gpios = <&gpx2 2 2 0 0>;
+	};
 };

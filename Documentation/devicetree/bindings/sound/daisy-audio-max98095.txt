@@ -1,0 +1,17 @@
+Google Daisy audio complex
+
+Required properties:
+- compatible : "google,daisy-audio-max988095"
+
+Optional properties:
+- samsung,hp-det-gpios : The GPIO that detects when headphones are plugged in.
+- samsung,mic-det-gpios : The GPIO that detects when mic is plugged in.
+
+Example:
+
+sound {
+	compatible = "google,daisy-audio-max98095";
+
+	samsung,mic-det-gpios = <&gpx2 0 2 0 0>;
+	samsung,hp-det-gpios = <&gpx2 2 2 0 0>;
+};
