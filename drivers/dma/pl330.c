@@ -2860,6 +2860,28 @@ static irqreturn_t pl330_irq_handler(int irq, void *data)
 		return IRQ_NONE;
 }
 
+int pl330_dma_getposition(struct dma_chan *chan,
+		dma_addr_t *src, dma_addr_t *dst)
+{
+	struct dma_pl330_chan *pch = to_pchan(chan);
+	struct pl330_info *pi;
+	void __iomem *regs;
+	struct pl330_thread *thrd;
+
+	if (unlikely(!pch))
+		return -EINVAL;
+
+	thrd = pch->pl330_chid;
+	pi = &pch->dmac->pif;
+	regs = pi->base;
+
+	*src = readl(regs + SA(thrd->id));
+	*dst = readl(regs + DA(thrd->id));
+
+	return 0;
+}
+EXPORT_SYMBOL(pl330_dma_getposition);
+
 static int __devinit
 pl330_probe(struct amba_device *adev, const struct amba_id *id)
 {
