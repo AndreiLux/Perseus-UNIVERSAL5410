@@ -188,11 +188,55 @@ static int xhci_plat_remove(struct platform_device *dev)
 	return 0;
 }
 
+#ifdef CONFIG_PM
+static int xhci_plat_suspend(struct device *dev)
+{
+	struct usb_hcd		*hcd;
+	struct xhci_hcd		*xhci;
+
+	hcd = dev_get_drvdata(dev);
+	if (!hcd)
+		return -EINVAL;
+
+	xhci = hcd_to_xhci(hcd);
+
+	/* Make sure that the HCD Core as set state HC_STATE_SUSPENDED */
+	if (hcd->state != HC_STATE_SUSPENDED ||
+		xhci->shared_hcd->state != HC_STATE_SUSPENDED)
+		return -EINVAL;
+
+	return xhci_suspend(xhci);
+}
+
+static int xhci_plat_resume(struct device *dev)
+{
+	struct usb_hcd		*hcd;
+	struct xhci_hcd		*xhci;
+
+	hcd = dev_get_drvdata(dev);
+
+	if (!hcd)
+		return -EINVAL;
+
+	xhci = hcd_to_xhci(hcd);
+
+	return xhci_resume(xhci, 0);
+}
+
+static const struct dev_pm_ops xhci_plat_pm_ops = {
+	.suspend		= xhci_plat_suspend,
+	.resume			= xhci_plat_resume,
+};
+#endif
+
 static struct platform_driver usb_xhci_driver = {
 	.probe	= xhci_plat_probe,
 	.remove	= xhci_plat_remove,
 	.driver	= {
 		.name = "xhci-hcd",
+#ifdef CONFIG_PM
+		.pm = &xhci_plat_pm_ops,
+#endif
 	},
 };
 MODULE_ALIAS("platform:xhci-hcd");
