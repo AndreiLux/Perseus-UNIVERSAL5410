@@ -289,7 +289,7 @@ void exynos_dp_init_analog_func(struct exynos_dp_device *dp)
 	writel(reg, dp->reg_base + EXYNOS_DP_FUNC_EN_2);
 }
 
-void exynos_dp_init_hpd(struct exynos_dp_device *dp)
+void exynos_dp_clear_hotplug_interrupts(struct exynos_dp_device *dp)
 {
 	u32 reg;
 
@@ -298,10 +298,43 @@ void exynos_dp_init_hpd(struct exynos_dp_device *dp)
 
 	reg = INT_HPD;
 	writel(reg, dp->reg_base + EXYNOS_DP_INT_STA);
+}
+
+void exynos_dp_init_hpd(struct exynos_dp_device *dp)
+{
+	u32 reg;
+
+	exynos_dp_clear_hotplug_interrupts(dp);
 
 	reg = readl(dp->reg_base + EXYNOS_DP_SYS_CTL_3);
 	reg &= ~(F_HPD | HPD_CTRL);
 	writel(reg, dp->reg_base + EXYNOS_DP_SYS_CTL_3);
+
+	/* Unmask hotplug interrupts */
+	reg = HOTPLUG_CHG | HPD_LOST | PLUG;
+	writel(reg, dp->reg_base + EXYNOS_DP_COMMON_INT_MASK_4);
+
+	reg = INT_HPD;
+	writel(reg, dp->reg_base + EXYNOS_DP_INT_STA_MASK);
+}
+
+enum dp_irq_type exynos_dp_get_irq_type(struct exynos_dp_device *dp)
+{
+	u32 reg;
+
+	/* Parse hotplug interrupt status register */
+	reg = readl(dp->reg_base + EXYNOS_DP_COMMON_INT_STA_4);
+
+	if (reg & PLUG)
+		return DP_IRQ_TYPE_HP_CABLE_IN;
+
+	if (reg & HPD_LOST)
+		return DP_IRQ_TYPE_HP_CABLE_OUT;
+
+	if (reg & HOTPLUG_CHG)
+		return DP_IRQ_TYPE_HP_CHANGE;
+
+	return DP_IRQ_TYPE_UNKNOWN;
 }
 
 void exynos_dp_reset_aux(struct exynos_dp_device *dp)

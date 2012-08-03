@@ -48,10 +48,6 @@ static int exynos_dp_detect_hpd(struct exynos_dp_device *dp)
 {
 	int timeout_loop = 0;
 
-	exynos_dp_init_hpd(dp);
-
-	udelay(200);
-
 	while (exynos_dp_get_plug_in_status(dp) != 0) {
 		timeout_loop++;
 		if (DP_TIMEOUT_LOOP_COUNT < timeout_loop) {
@@ -907,8 +903,32 @@ static void exynos_dp_enable_scramble(struct exynos_dp_device *dp, bool enable)
 static irqreturn_t exynos_dp_irq_handler(int irq, void *arg)
 {
 	struct exynos_dp_device *dp = arg;
+	enum dp_irq_type irq_type;
 
-	dev_err(dp->dev, "exynos_dp_irq_handler\n");
+	irq_type = exynos_dp_get_irq_type(dp);
+	switch (irq_type) {
+	case DP_IRQ_TYPE_HP_CABLE_IN:
+		dev_dbg(dp->dev, "Received irq - cable in\n");
+		schedule_work(&dp->hotplug_work);
+		exynos_dp_clear_hotplug_interrupts(dp);
+		break;
+	case DP_IRQ_TYPE_HP_CABLE_OUT:
+		dev_dbg(dp->dev, "Received irq - cable out\n");
+		exynos_dp_clear_hotplug_interrupts(dp);
+		break;
+	case DP_IRQ_TYPE_HP_CHANGE:
+		/*
+		 * We get these change notifications once in a while, but there
+		 * is nothing we can do with them. Just ignore it for now and
+		 * only handle cable changes.
+		 */
+		dev_dbg(dp->dev, "Received irq - hotplug change; ignoring.\n");
+		exynos_dp_clear_hotplug_interrupts(dp);
+		break;
+	default:
+		dev_err(dp->dev, "Received irq - unknown type!\n");
+		break;
+	}
 	return IRQ_HANDLED;
 }
 
@@ -921,7 +941,7 @@ static void exynos_dp_hotplug(struct work_struct *work)
 
 	ret = exynos_dp_detect_hpd(dp);
 	if (ret) {
-		dev_err(dp->dev, "unable to detect hpd\n");
+		/* Cable has been disconnected, we're done */
 		return;
 	}
 
@@ -1022,6 +1042,8 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 
 	exynos_dp_init_dp(dp);
 
+	INIT_WORK(&dp->hotplug_work, exynos_dp_hotplug);
+
 	ret = request_irq(dp->irq, exynos_dp_irq_handler, 0,
 			"exynos-dp", dp);
 	if (ret) {
@@ -1029,10 +1051,7 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 		goto err_ioremap;
 	}
 
-	INIT_WORK(&dp->hotplug_work, exynos_dp_hotplug);
-
 	platform_set_drvdata(pdev, dp);
-	schedule_work(&dp->hotplug_work);
 
 	return 0;
 
@@ -1102,7 +1121,6 @@ static int exynos_dp_resume(struct device *dev)
 	clk_enable(dp->clock);
 
 	exynos_dp_init_dp(dp);
-	schedule_work(&dp->hotplug_work);
 
 	return 0;
 }
