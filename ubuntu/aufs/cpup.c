@@ -58,6 +58,11 @@ void au_cpup_attr_nlink(struct inode *inode, int force)
 	    && au_plink_test(inode))
 		return;
 
+	/*
+	 * 0 can happen in revalidating.
+	 * h_inode->i_mutex is not held, but it is harmless since once i_nlink
+	 * reaches 0, it will never become positive.
+	 */
 	set_nlink(inode, h_inode->i_nlink);
 
 	/*
@@ -139,7 +144,7 @@ void au_dtime_revert(struct au_dtime *dt)
 
 	err = vfsub_notify_change(&dt->dt_h_path, &attr);
 	if (unlikely(err))
-		pr_warning("restoring timestamps failed(%d). ignored\n", err);
+		pr_warn("restoring timestamps failed(%d). ignored\n", err);
 }
 
 /* ---------------------------------------------------------------------- */

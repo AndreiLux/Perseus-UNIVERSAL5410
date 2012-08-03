@@ -22,6 +22,7 @@
 
 #include <linux/device_cgroup.h>
 #include <linux/fs_stack.h>
+#include <linux/mm.h>
 #include <linux/namei.h>
 #include <linux/security.h>
 #include "aufs.h"
@@ -205,18 +206,13 @@ static struct dentry *aufs_lookup(struct inode *dir, struct dentry *dentry,
 	ret = d_splice_alias(inode, dentry);
 	if (unlikely(IS_ERR(ret) && inode)) {
 		ii_write_unlock(inode);
-		lc_idx = AuLcNonDir_IIINFO;
-		if (S_ISLNK(inode->i_mode))
-			lc_idx = AuLcSymlink_IIINFO;
-		else if (S_ISDIR(inode->i_mode))
-			lc_idx = AuLcDir_IIINFO;
-		au_rw_class(&au_ii(inode)->ii_rwsem, au_lc_key + lc_idx);
 		iput(inode);
+		inode = NULL;
 	}
 
 out_unlock:
 	di_write_unlock(dentry);
-	if (unlikely(IS_ERR(ret) && inode)) {
+	if (inode) {
 		lc_idx = AuLcNonDir_DIINFO;
 		if (S_ISLNK(inode->i_mode))
 			lc_idx = AuLcSymlink_DIINFO;
@@ -702,7 +698,8 @@ static int aufs_setattr(struct dentry *dentry, struct iattr *ia)
 			goto out_unlock;
 	} else if ((ia->ia_valid & (ATTR_UID | ATTR_GID))
 		   && (ia->ia_valid & ATTR_CTIME)) {
-		err = security_path_chown(&a->h_path, ia->ia_uid, ia->ia_gid);
+		err = security_path_chown(&a->h_path, vfsub_ia_uid(ia),
+					  vfsub_ia_gid(ia));
 		if (unlikely(err))
 			goto out_unlock;
 	}
@@ -752,8 +749,8 @@ static void au_refresh_iattr(struct inode *inode, struct kstat *st,
 	unsigned int n;
 
 	inode->i_mode = st->mode;
-	inode->i_uid = st->uid;
-	inode->i_gid = st->gid;
+	i_uid_write(inode, st->uid);
+	i_gid_write(inode, st->gid);
 	inode->i_atime = st->atime;
 	inode->i_mtime = st->mtime;
 	inode->i_ctime = st->ctime;
@@ -763,6 +760,7 @@ static void au_refresh_iattr(struct inode *inode, struct kstat *st,
 		n = inode->i_nlink;
 		n -= nlink;
 		n += st->nlink;
+		/* 0 can happen */
 		set_nlink(inode, n);
 	}
 
@@ -949,11 +947,25 @@ static void aufs_put_link(struct dentry *dentry __maybe_unused,
 
 /* ---------------------------------------------------------------------- */
 
-static void aufs_truncate_range(struct inode *inode __maybe_unused,
-				loff_t start __maybe_unused,
-				loff_t end __maybe_unused)
+static int aufs_update_time(struct inode *inode, struct timespec *ts, int flags)
 {
-	AuUnsupport();
+	int err;
+	struct super_block *sb;
+	struct inode *h_inode;
+
+	sb = inode->i_sb;
+	/* mmap_sem might be acquired already, cf. aufs_mmap() */
+	lockdep_off();
+	si_read_lock(sb, AuLock_FLUSH);
+	ii_write_lock_child(inode);
+	lockdep_on();
+	h_inode = au_h_iptr(inode, au_ibstart(inode));
+	err = vfsub_update_time(h_inode, ts, flags);
+	lockdep_off();
+	ii_write_unlock(inode);
+	si_read_unlock(sb);
+	lockdep_on();
+	return err;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -962,9 +974,12 @@ struct inode_operations aufs_symlink_iop = {
 	.permission	= aufs_permission,
 	.setattr	= aufs_setattr,
 	.getattr	= aufs_getattr,
+
 	.readlink	= aufs_readlink,
 	.follow_link	= aufs_follow_link,
-	.put_link	= aufs_put_link
+	.put_link	= aufs_put_link,
+
+	/* .update_time	= aufs_update_time */
 };
 
 struct inode_operations aufs_dir_iop = {
@@ -980,12 +995,15 @@ struct inode_operations aufs_dir_iop = {
 
 	.permission	= aufs_permission,
 	.setattr	= aufs_setattr,
-	.getattr	= aufs_getattr
+	.getattr	= aufs_getattr,
+
+	.update_time	= aufs_update_time
 };
 
 struct inode_operations aufs_iop = {
 	.permission	= aufs_permission,
 	.setattr	= aufs_setattr,
 	.getattr	= aufs_getattr,
-	.truncate_range	= aufs_truncate_range
+
+	.update_time	= aufs_update_time
 };

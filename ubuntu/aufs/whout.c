@@ -28,10 +28,8 @@
  * If a directory contains this file, then it is opaque.  We start with the
  * .wh. flag so that it is blocked by lookup.
  */
-static struct qstr diropq_name = {
-	.name = AUFS_WH_DIROPQ,
-	.len = sizeof(AUFS_WH_DIROPQ) - 1
-};
+static struct qstr diropq_name = QSTR_INIT(AUFS_WH_DIROPQ,
+					   sizeof(AUFS_WH_DIROPQ) - 1);
 
 /*
  * generate whiteout name, which is NOT terminated by NULL.
@@ -156,7 +154,7 @@ struct dentry *au_whtmp_lkup(struct dentry *h_parent, struct au_branch *br,
 			goto out_name;
 		dput(dentry);
 	}
-	/* pr_warning("could not get random name\n"); */
+	/* pr_warn("could not get random name\n"); */
 	dentry = ERR_PTR(-EEXIST);
 	AuDbg("%.*s\n", AuLNPair(&qs));
 	BUG();
@@ -214,7 +212,7 @@ static int do_unlink_wh(struct inode *h_dir, struct path *h_path)
 	 * this may be a violation of unix fs semantics.
 	 */
 	force = (h_dir->i_mode & S_ISVTX)
-		&& h_path->dentry->d_inode->i_uid != current_fsuid();
+		&& !uid_eq(current_fsuid(), h_path->dentry->d_inode->i_uid);
 	return vfsub_unlink(h_dir, h_path, force);
 }
 
@@ -274,8 +272,8 @@ static void au_wh_clean(struct inode *h_dir, struct path *whpath,
 		mnt_drop_write(whpath->mnt);
 	}
 	if (unlikely(err))
-		pr_warning("failed removing %.*s (%d), ignored.\n",
-			   AuDLNPair(whpath->dentry), err);
+		pr_warn("failed removing %.*s (%d), ignored.\n",
+			AuDLNPair(whpath->dentry), err);
 }
 
 static int test_linkable(struct dentry *h_root)
@@ -448,18 +446,12 @@ int au_wh_init(struct dentry *h_root, struct au_branch *br,
 	struct inode *h_dir;
 	struct au_wbr *wbr = br->br_wbr;
 	static const struct qstr base_name[] = {
-		[AuBrWh_BASE] = {
-			.name	= AUFS_BASE_NAME,
-			.len	= sizeof(AUFS_BASE_NAME) - 1
-		},
-		[AuBrWh_PLINK] = {
-			.name	= AUFS_PLINKDIR_NAME,
-			.len	= sizeof(AUFS_PLINKDIR_NAME) - 1
-		},
-		[AuBrWh_ORPH] = {
-			.name	= AUFS_ORPHDIR_NAME,
-			.len	= sizeof(AUFS_ORPHDIR_NAME) - 1
-		}
+		[AuBrWh_BASE] = QSTR_INIT(AUFS_BASE_NAME,
+					  sizeof(AUFS_BASE_NAME) - 1),
+		[AuBrWh_PLINK] = QSTR_INIT(AUFS_PLINKDIR_NAME,
+					   sizeof(AUFS_PLINKDIR_NAME) - 1),
+		[AuBrWh_ORPH] = QSTR_INIT(AUFS_ORPHDIR_NAME,
+					  sizeof(AUFS_ORPHDIR_NAME) - 1)
 	};
 	struct au_wh_base base[] = {
 		[AuBrWh_BASE] = {
@@ -579,8 +571,8 @@ static void reinit_br_wh(void *arg)
 			mnt_drop_write(a->br->br_mnt);
 		}
 	} else {
-		pr_warning("%.*s is moved, ignored\n",
-			   AuDLNPair(wbr->wbr_whbase));
+		pr_warn("%.*s is moved, ignored\n",
+			AuDLNPair(wbr->wbr_whbase));
 		err = 0;
 	}
 	dput(wbr->wbr_whbase);
@@ -971,8 +963,8 @@ int au_whtmp_rmdir(struct inode *dir, aufs_bindex_t bindex,
 		return 0; /* success */
 	}
 
-	pr_warning("failed removing %.*s(%d), ignored\n",
-		   AuDLNPair(wh_dentry), err);
+	pr_warn("failed removing %.*s(%d), ignored\n",
+		AuDLNPair(wh_dentry), err);
 	return err;
 }
 
@@ -1042,8 +1034,8 @@ void au_whtmp_kick_rmdir(struct inode *dir, aufs_bindex_t bindex,
 	args->wh_dentry = dget(wh_dentry);
 	wkq_err = au_wkq_nowait(call_rmdir_whtmp, args, sb, /*flags*/0);
 	if (unlikely(wkq_err)) {
-		pr_warning("rmdir error %.*s (%d), ignored\n",
-			   AuDLNPair(wh_dentry), wkq_err);
+		pr_warn("rmdir error %.*s (%d), ignored\n",
+			AuDLNPair(wh_dentry), wkq_err);
 		au_whtmp_rmdir_free(args);
 	}
 }

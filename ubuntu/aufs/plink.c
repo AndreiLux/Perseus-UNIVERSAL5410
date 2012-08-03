@@ -228,9 +228,7 @@ struct dentry *au_plink_lkup(struct inode *inode, aufs_bindex_t bindex)
 	struct inode *h_dir;
 	int wkq_err;
 	char a[PLINK_NAME_LEN];
-	struct qstr tgtname = {
-		.name	= a
-	};
+	struct qstr tgtname = QSTR_INIT(a, 0);
 
 	AuDebugOn(au_plink_maint(inode->i_sb, AuLock_NOPLM));
 
@@ -239,7 +237,7 @@ struct dentry *au_plink_lkup(struct inode *inode, aufs_bindex_t bindex)
 	h_dir = h_parent->d_inode;
 	tgtname.len = plink_name(a, sizeof(a), inode, bindex);
 
-	if (current_fsuid()) {
+	if (current_fsuid() != GLOBAL_ROOT_GID) {
 		struct au_do_plink_lkup_args args = {
 			.errp		= &h_dentry,
 			.tgtname	= &tgtname,
@@ -316,9 +314,7 @@ static int whplink(struct dentry *h_dentry, struct inode *inode,
 	struct dentry *h_parent;
 	struct inode *h_dir;
 	char a[PLINK_NAME_LEN];
-	struct qstr tgtname = {
-		.name = a
-	};
+	struct qstr tgtname = QSTR_INIT(a, 0);
 
 	wbr = au_sbr(inode->i_sb, bindex)->br_wbr;
 	h_parent = wbr->wbr_plink;
@@ -326,7 +322,7 @@ static int whplink(struct dentry *h_dentry, struct inode *inode,
 	tgtname.len = plink_name(a, sizeof(a), inode, bindex);
 
 	/* always superio. */
-	if (current_fsuid()) {
+	if (current_fsuid() != GLOBAL_ROOT_GID) {
 		struct do_whplink_args args = {
 			.errp		= &err,
 			.tgt		= &tgtname,
@@ -414,8 +410,8 @@ void au_plink_append(struct inode *inode, aufs_bindex_t bindex,
 	spin_unlock(&sbinfo->si_plink.spin);
 	if (!found) {
 		cnt++;
-//		WARN_ONCE(cnt > AUFS_PLINK_WARN,
-//			  "unexpectedly many pseudo links, %d\n", cnt);
+		WARN_ONCE(cnt > AUFS_PLINK_WARN,
+			  "unexpectedly many pseudo links, %d\n", cnt);
 		err = whplink(h_dentry, inode, bindex, au_sbr(sb, bindex));
 	} else {
 		do_put_plink(tmp, 0);
@@ -424,7 +420,7 @@ void au_plink_append(struct inode *inode, aufs_bindex_t bindex,
 
 out:
 	if (unlikely(err)) {
-		pr_warning("err %d, damaged pseudo link.\n", err);
+		pr_warn("err %d, damaged pseudo link.\n", err);
 		if (tmp) {
 			au_spl_del_rcu(&tmp->list, &sbinfo->si_plink);
 			call_rcu(&tmp->rcu, do_put_plink_rcu);

@@ -31,12 +31,12 @@
 
 /* copied from linux/fs/internal.h */
 /* todo: BAD approach!! */
-DECLARE_BRLOCK(vfsmount_lock);
+extern struct lglock vfsmount_lock;
 extern void file_sb_list_del(struct file *f);
 extern spinlock_t inode_sb_list_lock;
 
 /* copied from linux/fs/file_table.c */
-DECLARE_LGLOCK(files_lglock);
+extern struct lglock files_lglock;
 #ifdef CONFIG_SMP
 /*
  * These macros iterate all files on all CPUs for a given superblock.
@@ -98,6 +98,19 @@ static inline void vfsub_dead_dir(struct inode *inode)
 	AuDebugOn(!S_ISDIR(inode->i_mode));
 	inode->i_flags |= S_DEAD;
 	clear_nlink(inode);
+}
+
+/* ---------------------------------------------------------------------- */
+
+/* cf. i_[ug]id_read() in linux/include/fs.h */
+static inline uid_t vfsub_ia_uid(struct iattr *ia)
+{
+	return from_kuid(&init_user_ns, ia->ia_uid);
+}
+
+static inline gid_t vfsub_ia_gid(struct iattr *ia)
+{
+	return from_kgid(&init_user_ns, ia->ia_gid);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -167,8 +180,15 @@ static inline void vfsub_touch_atime(struct vfsmount *h_mnt,
 		.dentry	= h_dentry,
 		.mnt	= h_mnt
 	};
-	touch_atime(h_mnt, h_dentry);
+	touch_atime(&h_path);
 	vfsub_update_h_iattr(&h_path, /*did*/NULL); /*ignore*/
+}
+
+static inline int vfsub_update_time(struct inode *h_inode, struct timespec *ts,
+				    int flags)
+{
+	return update_time(h_inode, ts, flags);
+	/* no vfsub_update_h_iattr() since we don't have struct path */
 }
 
 long vfsub_splice_to(struct file *in, loff_t *ppos,

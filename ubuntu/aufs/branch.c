@@ -251,14 +251,14 @@ static int test_add(struct super_block *sb, struct au_opt_add *add, int remount)
 	if (au_opt_test(au_mntflags(sb), WARN_PERM)) {
 		h_inode = au_h_dptr(root, 0)->d_inode;
 		if ((h_inode->i_mode & S_IALLUGO) != (inode->i_mode & S_IALLUGO)
-		    || h_inode->i_uid != inode->i_uid
-		    || h_inode->i_gid != inode->i_gid)
-			pr_warning("uid/gid/perm %s %u/%u/0%o, %u/%u/0%o\n",
-				   add->pathname,
-				   inode->i_uid, inode->i_gid,
-				   (inode->i_mode & S_IALLUGO),
-				   h_inode->i_uid, h_inode->i_gid,
-				   (h_inode->i_mode & S_IALLUGO));
+		    || !uid_eq(h_inode->i_uid, inode->i_uid)
+		    || !gid_eq(h_inode->i_gid, inode->i_gid))
+			pr_warn("uid/gid/perm %s %u/%u/0%o, %u/%u/0%o\n",
+				add->pathname,
+				i_uid_read(inode), i_gid_read(inode),
+				(inode->i_mode & S_IALLUGO),
+				i_uid_read(h_inode), i_gid_read(h_inode),
+				(h_inode->i_mode & S_IALLUGO));
 	}
 
 out:
@@ -853,8 +853,8 @@ out_wh:
 	/* revert */
 	rerr = au_br_init_wh(sb, br, br->br_perm, del->h_path.dentry);
 	if (rerr)
-		pr_warning("failed re-creating base whiteout, %s. (%d)\n",
-			   del->pathname, rerr);
+		pr_warn("failed re-creating base whiteout, %s. (%d)\n",
+			del->pathname, rerr);
 out:
 	return err;
 }
@@ -965,7 +965,7 @@ static unsigned long long au_farray_cb(void *a,
 
 	n = 0;
 	p = a;
-	lg_global_lock(files_lglock);
+	lg_global_lock(&files_lglock);
 	do_file_list_for_each_entry(sb, f) {
 		if (au_fi(f)
 		    && file_count(f)
@@ -976,7 +976,7 @@ static unsigned long long au_farray_cb(void *a,
 			AuDebugOn(n > max);
 		}
 	} while_file_list_for_each_entry;
-	lg_global_unlock(files_lglock);
+	lg_global_unlock(&files_lglock);
 
 	return n;
 }
