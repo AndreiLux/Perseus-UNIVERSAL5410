@@ -37,6 +37,12 @@
 #include "s3c-i2s-v2.h"
 #include "../codecs/max98095.h"
 
+#define DRV_NAME "daisy-snd-max98095"
+
+struct daisy_max98095 {
+	struct platform_device *pcm_dev;
+};
+
 /* Audio clock settings are belonged to board specific part. Every
  * board can set audio source clock setting which is matched with H/W
  * like this function-'set_audio_clock_heirachy'.
@@ -361,12 +367,17 @@ static struct snd_soc_card daisy_snd = {
 	.num_dapm_routes = ARRAY_SIZE(daisy_audio_map),
 };
 
-static struct platform_device *daisy_snd_device;
-
-static int __init daisy_audio_init(void)
+static __devinit int daisy_max98095_driver_probe(struct platform_device *pdev)
 {
+	struct snd_soc_card *card = &daisy_snd;
 	struct device_node *dn;
+	struct daisy_max98095 *machine;
 	int i, ret;
+
+	if (!pdev->dev.platform_data && !pdev->dev.of_node) {
+		dev_err(&pdev->dev, "No platform data supplied\n");
+		return -EINVAL;
+	}
 
 	/* The below needs to be replaced with proper full device-tree probing
 	 * of the ASoC device, but the core plumbing hasn't been completed yet
@@ -386,26 +397,69 @@ static int __init daisy_audio_init(void)
 
 	of_node_put(dn);
 
-	daisy_snd_device = platform_device_alloc("soc-audio", -1);
-	if (!daisy_snd_device)
+	machine = devm_kzalloc(&pdev->dev, sizeof(struct daisy_max98095),
+			       GFP_KERNEL);
+	if (!machine) {
+		dev_err(&pdev->dev, "Can't allocate daisy_max98095 struct\n");
 		return -ENOMEM;
+	}
 
-	platform_set_drvdata(daisy_snd_device, &daisy_snd);
-	ret = platform_device_add(daisy_snd_device);
-	if (ret) {
-		platform_device_put(daisy_snd_device);
+	card->dev = &pdev->dev;
+	platform_set_drvdata(pdev, card);
+	snd_soc_card_set_drvdata(card, machine);
+
+	machine->pcm_dev = platform_device_register_simple(
+				"daisy-pcm-audio", -1, NULL, 0);
+	if (IS_ERR(machine->pcm_dev)) {
+		dev_err(&pdev->dev, "Can't instantiate daisy-pcm-audio\n");
+		ret = PTR_ERR(machine->pcm_dev);
 		return ret;
 	}
 
-	return set_audio_clock_heirachy(daisy_snd_device);
-}
-module_init(daisy_audio_init);
+	ret = snd_soc_register_card(card);
+	if (ret) {
+		dev_err(&pdev->dev, "snd_soc_register_card failed (%d)\n", ret);
+		goto err_unregister;
+	}
 
-static void __exit daisy_audio_exit(void)
+	return set_audio_clock_heirachy(pdev);
+
+err_unregister:
+	if (!IS_ERR(machine->pcm_dev))
+		platform_device_unregister(machine->pcm_dev);
+	return ret;
+}
+
+static int __devexit daisy_max98095_driver_remove(struct platform_device *pdev)
 {
-	platform_device_unregister(daisy_snd_device);
-}
-module_exit(daisy_audio_exit);
+	struct snd_soc_card *card = platform_get_drvdata(pdev);
+	struct daisy_max98095 *machine = snd_soc_card_get_drvdata(card);
 
-MODULE_DESCRIPTION("ALSA SoC DAISY MAX98095");
+	snd_soc_unregister_card(card);
+
+	if (!IS_ERR(machine->pcm_dev))
+		platform_device_unregister(machine->pcm_dev);
+
+	return 0;
+}
+
+static const struct of_device_id daisy_max98095_of_match[] __devinitconst = {
+	{ .compatible = "google,daisy-audio-max98095", },
+	{},
+};
+
+static struct platform_driver daisy_max98095_driver = {
+	.driver = {
+		.name = DRV_NAME,
+		.owner = THIS_MODULE,
+		.pm = &snd_soc_pm_ops,
+		.of_match_table = daisy_max98095_of_match,
+	},
+	.probe = daisy_max98095_driver_probe,
+	.remove = __devexit_p(daisy_max98095_driver_remove),
+};
+
+module_platform_driver(daisy_max98095_driver);
+
+MODULE_DESCRIPTION("ALSA SoC DAISY MAX98095 machine driver");
 MODULE_LICENSE("GPL");
