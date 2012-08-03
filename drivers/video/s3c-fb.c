@@ -717,6 +717,15 @@ static void s3c_fb_configure_lcd(struct s3c_fb *sfb,
 	data &= ~(VIDCON2_RGB_ORDER_E_MASK | VIDCON2_RGB_ORDER_O_MASK);
 	data |= VIDCON2_RGB_ORDER_E_BGR | VIDCON2_RGB_ORDER_O_BGR;
 	writel(data, sfb->regs + VIDCON2);
+
+	/* Set alpha value width */
+	if (sfb->variant.has_blendcon) {
+		data = readl(sfb->regs + BLENDCON);
+		data &= ~BLENDCON_NEW_MASK;
+		data |= BLENDCON_NEW_8BIT_ALPHA_VALUE;
+		writel(data, sfb->regs + BLENDCON);
+	}
+
 	data = VIDTCON0_VBPD(win_mode->upper_margin - 1)
 			| VIDTCON0_VFPD(win_mode->lower_margin - 1)
 			| VIDTCON0_VSPW(win_mode->vsync_len - 1);
@@ -830,17 +839,6 @@ static int s3c_fb_set_par(struct fb_info *info)
 
 	writel(data, regs + sfb->variant.wincon + (win_no * 4));
 	writel(0x0, regs + sfb->variant.winmap + (win_no * 4));
-
-	/* Set alpha value width */
-	if (sfb->variant.has_blendcon) {
-		data = readl(sfb->regs + BLENDCON);
-		data &= ~BLENDCON_NEW_MASK;
-		if (var->transp.length > 4)
-			data |= BLENDCON_NEW_8BIT_ALPHA_VALUE;
-		else
-			data |= BLENDCON_NEW_4BIT_ALPHA_VALUE;
-		writel(data, sfb->regs + BLENDCON);
-	}
 
 	shadow_protect_win(win, 0);
 
@@ -1387,9 +1385,6 @@ static u32 s3c_fb_red_length(int format)
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 		return 5;
 
-	case S3C_FB_PIXEL_FORMAT_RGBA_4444:
-		return 4;
-
 	default:
 		pr_warn("s3c-fb: unrecognized pixel format %u\n", format);
 		return 0;
@@ -1402,7 +1397,6 @@ static u32 s3c_fb_red_offset(int format)
 	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
 	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
-	case S3C_FB_PIXEL_FORMAT_RGBA_4444:
 		return 0;
 
 	default:
@@ -1426,9 +1420,6 @@ static u32 s3c_fb_green_offset(int format)
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 		return 5;
 
-	case S3C_FB_PIXEL_FORMAT_RGBA_4444:
-		return 4;
-
 	default:
 		pr_warn("s3c-fb: unrecognized pixel format %u\n", format);
 		return 0;
@@ -1450,9 +1441,6 @@ static u32 s3c_fb_blue_offset(int format)
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 		return 10;
 
-	case S3C_FB_PIXEL_FORMAT_RGBA_4444:
-		return 8;
-
 	default:
 		pr_warn("s3c-fb: unrecognized pixel format %u\n", format);
 		return 0;
@@ -1467,9 +1455,6 @@ static u32 s3c_fb_transp_length(int format)
 
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 		return 1;
-
-	case S3C_FB_PIXEL_FORMAT_RGBA_4444:
-		return 4;
 
 	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
 		return 0;
@@ -1489,9 +1474,6 @@ static u32 s3c_fb_transp_offset(int format)
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 		return 15;
 
-	case S3C_FB_PIXEL_FORMAT_RGBA_4444:
-		return 12;
-
 	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
 		return s3c_fb_blue_offset(format);
 
@@ -1509,7 +1491,6 @@ static u32 s3c_fb_padding(int format)
 
 	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
-	case S3C_FB_PIXEL_FORMAT_RGBA_4444:
 		return 0;
 
 	default:
