@@ -606,10 +606,6 @@ static void dp_phy_init(void)
 		gpio_set_value(rst_n_gpio, 1);
 	}
 
-	/* This really sucks, but we can't trust HPD from the bridge */
-	if (pd_n_gpio >= 0)
-		msleep(90);
-
 	s5p_dp_phy_init();
 }
 
