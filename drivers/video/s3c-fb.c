@@ -26,6 +26,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
 #include <linux/kthread.h>
+#include <linux/pm_qos.h>
 
 #if defined(CONFIG_FB_EXYNOS_FIMD_MC) || defined(CONFIG_FB_EXYNOS_FIMD_MC_WB)
 #include <media/v4l2-subdev.h>
@@ -252,6 +253,9 @@ struct s3c_fb_win {
 	struct s3c_dma_buf_data	dma_buf_data;
 #endif
 
+	int			fps;
+	struct pm_qos_request	mem_bw_req;
+
 #ifdef CONFIG_FB_EXYNOS_FIMD_MC
 	int use;		/* use of widnow subdev in fimd */
 	int local;		/* use of local path gscaler to window in fimd */
@@ -392,6 +396,9 @@ static int s3c_fb_check_var(struct fb_var_screeninfo *var,
 {
 	struct s3c_fb_win *win = info->par;
 	struct s3c_fb *sfb = win->parent;
+	int x;
+	int y;
+	unsigned long long hz;
 
 	dev_dbg(sfb->dev, "checking parameters\n");
 
@@ -481,6 +488,19 @@ static int s3c_fb_check_var(struct fb_var_screeninfo *var,
 	default:
 		dev_err(sfb->dev, "invalid bpp\n");
 	}
+
+	x = var->xres + var->left_margin + var->right_margin + var->hsync_len;
+	y = var->yres + var->upper_margin + var->lower_margin + var->vsync_len;
+
+	hz = 1000000000000ULL;		/* 1e12 picoseconds per second */
+
+	hz += (x * y) / 2;
+	do_div(hz, x * y);		/* divide by x * y with rounding */
+
+	hz += var->pixclock / 2;
+	do_div(hz, var->pixclock);	/* divide by pixclock with rounding */
+
+	win->fps = hz;
 
 	dev_dbg(sfb->dev, "%s: verified parameters\n", __func__);
 	return 0;
@@ -1734,6 +1754,7 @@ static int s3c_fb_set_win_config(struct s3c_fb *sfb,
 	for (i = 0; i < sfb->variant.nr_windows && !ret; i++) {
 		struct s3c_fb_win_config *config = &win_config[i];
 		struct s3c_fb_win *win = sfb->windows[i];
+		int bw;
 
 		bool enabled = 0;
 		u32 color_map = WINxMAP_MAP | WINxMAP_MAP_COLOUR(0);
@@ -1767,6 +1788,18 @@ static int s3c_fb_set_win_config(struct s3c_fb *sfb,
 		else
 			regs->wincon[i] &= ~WINCONx_ENWIN;
 		regs->winmap[i] = color_map;
+
+		if (enabled) {
+			bw = config->w * config->h;
+			bw *= DIV_ROUND_UP(win->fbinfo->var.bits_per_pixel, 8);
+			bw *= win->fps;
+			bw /= 1000000;
+			bw *= 15;
+			bw /= 10;
+		} else {
+			bw = -1;
+		}
+		pm_qos_update_request(&win->mem_bw_req, bw);
 	}
 
 	if (ret) {
@@ -2227,6 +2260,7 @@ static void s3c_fb_release_win(struct s3c_fb *sfb, struct s3c_fb_win *win)
 			writel(data, sfb->regs + SHADOWCON);
 		}
 		unregister_framebuffer(win->fbinfo);
+		pm_qos_remove_request(&win->mem_bw_req);
 		if (win->fbinfo->cmap.len)
 			fb_dealloc_cmap(&win->fbinfo->cmap);
 		s3c_fb_free_memory(sfb, win);
@@ -2325,6 +2359,8 @@ static int __devinit s3c_fb_probe_win(struct s3c_fb *sfb, unsigned int win_no,
 	fbinfo->fbops		= &s3c_fb_ops;
 	fbinfo->flags		= FBINFO_FLAG_DEFAULT;
 	fbinfo->pseudo_palette  = &win->pseudo_palette;
+
+	pm_qos_add_request(&win->mem_bw_req, PM_QOS_MEMORY_THROUGHPUT, -1);
 
 	/* prepare to actually start the framebuffer */
 
@@ -3392,6 +3428,7 @@ static int s3c_fb_disable(struct s3c_fb *sfb)
 {
 	u32 vidcon0;
 	int ret = 0;
+	int i;
 
 	mutex_lock(&sfb->output_lock);
 
@@ -3414,6 +3451,9 @@ static int s3c_fb_disable(struct s3c_fb *sfb)
 		writel(vidcon0, sfb->regs + VIDCON0);
 	} else
 		dev_warn(sfb->dev, "ENVID not set while disabling fb");
+
+	for (i = 0; i < sfb->variant.nr_windows; i++)
+		pm_qos_update_request(&sfb->windows[i]->mem_bw_req, -1);
 
 	if (!sfb->variant.has_clksel)
 		clk_disable(sfb->lcd_clk);
