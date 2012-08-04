@@ -1,0 +1,15 @@
+ps8622-bridge bindings
+
+Required properties:
+	- compatible: "parade,ps8622"
+	- reg: first i2c address of the bridge
+	- sleep-gpio: OF device-tree gpio specification
+	- reset-gpio: OF device-tree gpio specification
+
+Example:
+	ps8622-bridge@48 {
+		compatible = "parade,ps8622";
+		reg = <0x48>;
+		sleep-gpio = <&gpc3 6 1 0 0>;
+		reset-gpio = <&gpc3 1 1 0 0>;
+	};
