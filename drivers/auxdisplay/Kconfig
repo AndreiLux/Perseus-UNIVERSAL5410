@@ -119,4 +119,9 @@ config CFAG12864B_RATE
 	  If you compile this as a module, you can still override this
 	  value using the module parameters.
 
+config PTN3460
+	tristate "PTN3460 DP/LVDS bridge"
+	---help---
+	  Adds the driver for the NXP PTN3460 DP/LVDS bridge chip.
+
 endif # AUXDISPLAY

@@ -1,0 +1,15 @@
+ptn3460-bridge bindings
+
+Required properties:
+	- compatible: "nxp,ptn3460"
+	- reg: i2c address of the bridge
+	- powerdown-gpio: OF device-tree gpio specification
+	- reset-gpio: OF device-tree gpio specification
+
+Example:
+	ptn3460-bridge@20 {
+		compatible = "nxp,ptn3460";
+		reg = <0x20>;
+		powerdown-gpio = <&gpy2 5 1 0 0>;
+		reset-gpio = <&gpx1 5 1 0 0>;
+	};
