@@ -720,7 +720,7 @@ static int exynos_dp_set_hw_link_train(struct exynos_dp_device *dp,
 				u32 max_rate)
 {
 	u32 status;
-	int lane;
+	int ret, lane;
 
 	exynos_dp_stop_video(dp);
 
@@ -771,11 +771,11 @@ static int exynos_dp_set_hw_link_train(struct exynos_dp_device *dp,
 						DPCD_SET_POWER_STATE_D0);
 
 	/* Enable H/W Link Training */
-	status = exynos_dp_enable_hw_link_training(dp);
+	ret = exynos_dp_enable_hw_link_training(dp);
 
-	if (status != 0) {
-		dev_err(dp->dev, " H/W link training failure: 0x%x\n", status);
-		return -EINVAL;
+	if (ret) {
+		dev_err(dp->dev, " H/W link training failure: %d\n", ret);
+		return ret;
 	}
 
 	exynos_dp_get_link_bandwidth(dp, &status);

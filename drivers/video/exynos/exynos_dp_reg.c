@@ -141,7 +141,7 @@ void exynos_dp_reset(struct exynos_dp_device *dp)
 	exynos_dp_init_interrupt(dp);
 }
 
-u32 exynos_dp_get_pll_lock_status(struct exynos_dp_device *dp)
+enum pll_status exynos_dp_get_pll_lock_status(struct exynos_dp_device *dp)
 {
 	u32 reg;
 
@@ -1171,7 +1171,7 @@ void exynos_dp_disable_scrambling(struct exynos_dp_device *dp)
 	writel(reg, dp->reg_base + EXYNOS_DP_TRAINING_PTN_SET);
 }
 
-u32 exynos_dp_enable_hw_link_training(struct exynos_dp_device *dp)
+int exynos_dp_enable_hw_link_training(struct exynos_dp_device *dp)
 {
 	u32 reg;
 	unsigned long timeout;
