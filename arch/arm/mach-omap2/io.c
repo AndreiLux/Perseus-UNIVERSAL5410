@@ -39,6 +39,8 @@
 #include <plat/omap_hwmod.h>
 #include <plat/multi.h>
 
+#include "cm1_44xx.h"
+#include "prm44xx.h"
 #include "iomap.h"
 #include "voltage.h"
 #include "powerdomain.h"
@@ -468,8 +470,105 @@ void __init ti81xx_init_early(void)
 #endif
 
 #ifdef CONFIG_ARCH_OMAP4
+
+struct dpll_params {
+	u32 m;
+	u32 n;
+	s8 m2;
+	s8 m3;
+	s8 m4;
+	s8 m5;
+	s8 m6;
+	s8 m7;
+};
+
+#define CLKMODE		0x00
+#define IDLEST		0x04
+#define AUTOIDLE	0x08
+#define CLKSEL		0x0c
+#define M2_DIV		0x10
+#define M3_DIV		0x14
+#define M4_DIV		0x18
+#define M5_DIV		0x1c
+#define M6_DIV		0x20
+#define M7_DIV		0x24
+#define BYPCLK		0x3c
+
+#define IVA_BASE	0xa0
+#define ABE_BASE	0xe0
+
+#define DPLL_ADDR(reg)	OMAP2_L4_IO_ADDRESS(OMAP4430_CM1_BASE + OMAP4430_CM1_CKGEN_INST + (reg))
+
+static void lock_dpll(u32 base, const struct dpll_params *p)
+{
+	u32 val, loops;
+
+	if (__raw_readl(DPLL_ADDR(base + IDLEST)) & 0x1) /* If already locked */
+		return;
+
+	/* DPLL_IVA bypass clock is CORE_X2_CLK dividedby 2*/
+	__raw_writel(0x1, DPLL_ADDR(base + BYPCLK));
+
+	val = __raw_readl(DPLL_ADDR(base + CLKSEL));
+	/* Set M */
+	val &= ~(0x7FF << 8);
+	val |= (p->m << 8) & (0x7FF << 8);
+	/* Set N */
+	val &= ~0x7F;
+	val |= (p->n << 0) & 0x7F;
+	__raw_writel(val, DPLL_ADDR(base + CLKSEL));
+
+	/* Lock */
+	val = __raw_readl(DPLL_ADDR(base + CLKMODE));
+	val |= 0x7; /* Enables the DPLL in lock mode */
+	__raw_writel(val, DPLL_ADDR(base + CLKMODE));
+
+	if (p->m2 >= 0)
+		__raw_writel(p->m2, DPLL_ADDR(base + M2_DIV));
+	if (p->m3 >= 0)
+		__raw_writel(p->m3, DPLL_ADDR(base + M3_DIV));
+	if (p->m4 >= 0)
+		__raw_writel(p->m4, DPLL_ADDR(base + M4_DIV));
+	if (p->m5 >= 0)
+		__raw_writel(p->m5, DPLL_ADDR(base + M5_DIV));
+	if (p->m6 >= 0)
+		__raw_writel(p->m6, DPLL_ADDR(base + M6_DIV));
+	if (p->m7 >= 0)
+		__raw_writel(p->m7, DPLL_ADDR(base + M7_DIV));
+
+	/* Wait till the DPLL locks */
+	loops = 1000000;
+	do {
+		cpu_relax();
+		val = __raw_readl(DPLL_ADDR(base + IDLEST)) & 0x1;
+	} while (!val && --loops);
+	if (!loops)
+		printk("XXXXXXXXXXXXXX %s:%d\n", __func__, __LINE__);
+}
+
 void __init omap4430_init_early(void)
 {
+	struct dpll_params iva_params = {291, 11, -1, -1, 4, 7, -1, -1};
+	struct dpll_params abe_params = {750, 0, 1, 1, -1, -1, -1, -1};
+	u32 val;
+
+	lock_dpll(IVA_BASE, &iva_params);
+
+	/* We need to enable some additional options to achieve
+	 * 196.608MHz from 32768 Hz
+	 */
+	val = __raw_readl(DPLL_ADDR(ABE_BASE + CLKMODE));
+	val |= (0xf << 8);
+	__raw_writel(val, DPLL_ADDR(ABE_BASE + CLKMODE));
+	/* Spend 4 REFCLK cycles at each stage */
+	val = __raw_readl(DPLL_ADDR(ABE_BASE + CLKMODE));
+	val &= ~(0x7 << 5);
+	val |= (0x1 << 5);
+	__raw_writel(val, DPLL_ADDR(ABE_BASE + CLKMODE));
+	/* Select the right reference clk */
+	__raw_writel(0x1, OMAP4430_CM_ABE_PLL_REF_CLKSEL);
+	lock_dpll(ABE_BASE, &abe_params);
+
 	omap2_set_globals_443x();
 	omap4xxx_check_revision();
 	omap4xxx_check_features();
