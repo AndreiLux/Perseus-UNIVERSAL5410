@@ -166,8 +166,8 @@ int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
 	unsigned long flags;
 	unsigned long tcon;
 	unsigned long tcnt;
+	unsigned long tcnt_o;
 	long tcmp;
-	int pwm_was_enabled;
 
 	/* We currently avoid using 64bit arithmetic by using the
 	 * fact that anything faster than 1Hz is easily representable
@@ -234,24 +234,26 @@ int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
 	__raw_writel(tcnt, S3C2410_TCNTB(pwm->pwm_id));
 
 	tcon = __raw_readl(S3C2410_TCON);
-	pwm_was_enabled = (tcon & pwm_tcon_start(pwm)) != 0;
 
-	/* Ensure manual update is off before turning it on. */
-	tcon &= ~pwm_tcon_manulupdate(pwm);
-	tcon &= ~pwm_tcon_start(pwm);
-	__raw_writel(tcon, S3C2410_TCON);
-
-	tcon |= pwm_tcon_manulupdate(pwm);
-	tcon |= pwm_tcon_autoreload(pwm);
-	__raw_writel(tcon, S3C2410_TCON);
-
-	tcon &= ~pwm_tcon_manulupdate(pwm);
-	__raw_writel(tcon, S3C2410_TCON);
-
-	if (pwm_was_enabled) {
-		tcon |= pwm_tcon_start(pwm);
-		__raw_writel(tcon, S3C2410_TCON);
+	/*
+	 * If we've got a big value stuck in the PWM we need to adjust it using
+	 * manualupdate.  The start bit needs to be off for that to work
+	 * properly so we only do this if strictly necessary since it can cause
+	 * the PWM to blink.
+	 *
+	 * We will also use manualupdate if we find that the autoreload bit
+	 * wasn't set previously since the very first time the timer is
+	 * configured we seem to need to kickstart the PWM.
+	 */
+	tcnt_o = __raw_readl(S3C2410_TCNTO(pwm->pwm_id));
+	if ((tcnt_o > tcnt) || !(tcon & pwm_tcon_autoreload(pwm))) {
+		tcon |= pwm_tcon_manulupdate(pwm);
+		__raw_writel(tcon & ~pwm_tcon_start(pwm), S3C2410_TCON);
 	}
+
+	tcon |= pwm_tcon_autoreload(pwm);
+	tcon &= ~pwm_tcon_manulupdate(pwm);
+	__raw_writel(tcon, S3C2410_TCON);
 
 	local_irq_restore(flags);
 
