@@ -302,6 +302,7 @@ EXYNOS_SUB_GPD(exynos5_pd_gscl0, "pd-gscl0");
 EXYNOS_SUB_GPD(exynos5_pd_gscl1, "pd-gscl1");
 EXYNOS_SUB_GPD(exynos5_pd_gscl2, "pd-gscl2");
 EXYNOS_SUB_GPD(exynos5_pd_gscl3, "pd-gscl3");
+EXYNOS_GPD(exynos5_pd_isp, EXYNOS5_ISP_CONFIGURATION, "pd-isp");
 
 static struct exynos_pm_domain *exynos5_pm_domains[] = {
 	&exynos5_pd_mfc,
@@ -310,6 +311,7 @@ static struct exynos_pm_domain *exynos5_pm_domains[] = {
 	&exynos5_pd_gscl1,
 	&exynos5_pd_gscl2,
 	&exynos5_pd_gscl3,
+	&exynos5_pd_isp,
 };
 
 #ifdef CONFIG_S5P_DEV_MFC
@@ -321,6 +323,9 @@ EXYNOS_PM_DEV(gscl1, gscl1, &exynos5_device_gsc1, "gscl");
 EXYNOS_PM_DEV(gscl2, gscl2, &exynos5_device_gsc2, "gscl");
 EXYNOS_PM_DEV(gscl3, gscl3, &exynos5_device_gsc3, "gscl");
 #endif
+#ifdef CONFIG_EXYNOS4_DEV_FIMC_IS
+EXYNOS_PM_DEV(isp, isp, &exynos5_device_fimc_is, NULL);
+#endif
 
 static struct exynos_pm_dev *exynos_pm_devs[] = {
 #ifdef CONFIG_S5P_DEV_MFC
@@ -331,6 +336,9 @@ static struct exynos_pm_dev *exynos_pm_devs[] = {
 	&exynos5_pm_dev_gscl1,
 	&exynos5_pm_dev_gscl2,
 	&exynos5_pm_dev_gscl3,
+#endif
+#ifdef CONFIG_EXYNOS4_DEV_FIMC_IS
+	&exynos5_pm_dev_isp,
 #endif
 };
 
@@ -387,6 +395,9 @@ static int __init exynos5_pm_init_power_domain(void)
 	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc1, &exynos5_pd_gscl1);
 	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc2, &exynos5_pd_gscl2);
 	exynos_pm_add_dev_to_genpd(&exynos5_device_gsc3, &exynos5_pd_gscl3);
+#endif
+#ifdef CONFIG_EXYNOS4_DEV_FIMC_IS
+	exynos_pm_add_dev_to_genpd(&exynos5_device_fimc_is, &exynos5_pd_isp);
 #endif
 
 	exynos5_add_device_to_pd(exynos_pm_devs, ARRAY_SIZE(exynos_pm_devs));
