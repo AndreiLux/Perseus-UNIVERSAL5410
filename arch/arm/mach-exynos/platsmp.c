@@ -172,7 +172,7 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 			cpu_boot_info[cpu].boot_base);
 #endif
 		watchdog_restore();
-		gic_raise_softirq(cpumask_of(cpu), 1);
+		gic_raise_softirq(cpumask_of(cpu), 0);
 
 		if (pen_release == -1)
 			break;
