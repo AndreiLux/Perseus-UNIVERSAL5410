@@ -162,6 +162,11 @@ struct clocksource mct_frc = {
 
 static void __init exynos4_clocksource_init(void)
 {
+	u64 initial_time = exynos4_frc_read(&mct_frc);
+
+	do_div(initial_time, (clk_rate / 1000000));
+	printk(KERN_INFO "Initial usec timer %llu\n", initial_time);
+
 	exynos4_mct_frc_start(0, 0);
 
 	if (clocksource_register_hz(&mct_frc, clk_rate))
