@@ -376,9 +376,6 @@ mwifiex_cfg80211_set_channel(struct wiphy *wiphy, struct net_device *dev,
 {
 	struct mwifiex_private *priv;
 
-	wiphy_info(wiphy, "entry: %s: channel_type=%d\n",
-		   __func__, channel_type);
-
 	if (dev)
 		priv = mwifiex_netdev_get_priv(dev);
 	else
@@ -781,9 +778,6 @@ static int mwifiex_cfg80211_set_cqm_rssi_config(struct wiphy *wiphy,
 	struct mwifiex_private *priv = mwifiex_netdev_get_priv(dev);
 	struct mwifiex_ds_misc_subsc_evt subsc_evt;
 
-	wiphy_info(wiphy, "entry: %s: thold=%d hyst=%d\n",
-		   __func__, rssi_thold, rssi_hyst);
-
 	priv->cqm_rssi_thold = rssi_thold;
 	priv->cqm_rssi_hyst = rssi_hyst;
 
@@ -821,8 +815,6 @@ mwifiex_cfg80211_disconnect(struct wiphy *wiphy, struct net_device *dev,
 			    u16 reason_code)
 {
 	struct mwifiex_private *priv = mwifiex_netdev_get_priv(dev);
-
-	wiphy_info(wiphy, "entry: %s: reason_code=%d\n", __func__, reason_code);
 
 	if (mwifiex_deauthenticate(priv, NULL))
 		return -EFAULT;
@@ -1052,16 +1044,14 @@ mwifiex_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 	struct mwifiex_private *priv = mwifiex_netdev_get_priv(dev);
 	int ret = 0;
 
-	wiphy_info(wiphy, "entry: %s\n", __func__);
-
 	if (priv->bss_mode == NL80211_IFTYPE_ADHOC) {
 		wiphy_err(wiphy, "received infra assoc request "
 				"when station is in ibss mode\n");
 		goto done;
 	}
 
-	wiphy_info(wiphy, "info: Trying to associate to %s and bssid %pM\n",
-		   (char *)sme->ssid, sme->bssid);
+	wiphy_dbg(wiphy, "info: Trying to associate to %s and bssid %pM\n",
+		  (char *) sme->ssid, sme->bssid);
 
 	ret = mwifiex_cfg80211_assoc(priv, sme->ssid_len, sme->ssid, sme->bssid,
 				     priv->bss_mode, sme->channel, sme, 0);
@@ -1158,7 +1148,6 @@ mwifiex_cfg80211_scan(struct wiphy *wiphy, struct net_device *dev,
 	int i;
 	struct ieee80211_channel *chan;
 
-	wiphy_info(wiphy, "entry: %s\n", __func__);
 	wiphy_dbg(wiphy, "info: received scan request on %s\n", dev->name);
 
 	priv->scan_request = request;
