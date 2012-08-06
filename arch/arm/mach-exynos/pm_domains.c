@@ -398,6 +398,7 @@ static int __init exynos5_pm_init_power_domain(void)
 #endif
 #ifdef CONFIG_EXYNOS4_DEV_FIMC_IS
 	exynos_pm_add_dev_to_genpd(&exynos5_device_fimc_is, &exynos5_pd_isp);
+	exynos_pm_add_subdomain_to_genpd(&exynos5_pd_gscl.pd, &exynos5_pd_isp.pd);
 #endif
 
 	exynos5_add_device_to_pd(exynos_pm_devs, ARRAY_SIZE(exynos_pm_devs));
