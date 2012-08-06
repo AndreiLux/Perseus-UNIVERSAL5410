@@ -110,6 +110,9 @@ extern struct ion_device *ion_exynos;
 #define VIDOSD_C(win, variant) (OSD_BASE(win, variant) + 0x08)
 #define VIDOSD_D(win, variant) (OSD_BASE(win, variant) + 0x0C)
 
+static void s3c_fb_disable(struct s3c_fb *sfb);
+static int s3c_fb_enable(struct s3c_fb *sfb);
+
 /**
  * struct s3c_fb_variant - fb variant information
  * @is_2443: Set if S3C2443/S3C2416 style hardware.
@@ -301,7 +304,8 @@ struct s3c_fb {
 	void __iomem		*regs;
 	struct s3c_fb_variant	 variant;
 
-	bool			 output_on;
+	bool			output_on;
+	bool			iovmm_on;
 
 	struct s3c_fb_platdata	*pdata;
 	struct s3c_fb_win	*windows[S3C_FB_MAX_WIN];
@@ -542,39 +546,6 @@ static void shadow_protect_win(struct s3c_fb_win *win, bool protect)
 				sfb->regs + SHADOWCON);
 		}
 	}
-}
-
-/**
- * s3c_fb_enable() - Set the state of the main LCD output
- * @sfb: The main framebuffer state.
- * @enable: The state to set.
- */
-static void s3c_fb_enable(struct s3c_fb *sfb, int enable)
-{
-	u32 vidcon0 = readl(sfb->regs + VIDCON0);
-
-	if (enable && !sfb->output_on)
-		pm_runtime_get_sync(sfb->dev);
-
-	if (enable) {
-		vidcon0 |= VIDCON0_ENVID | VIDCON0_ENVID_F;
-	} else {
-		/* see the note in the framebuffer datasheet about
-		 * why you cannot take both of these bits down at the
-		 * same time. */
-
-		if (vidcon0 & VIDCON0_ENVID) {
-			vidcon0 |= VIDCON0_ENVID;
-			vidcon0 &= ~VIDCON0_ENVID_F;
-		}
-	}
-
-	writel(vidcon0, sfb->regs + VIDCON0);
-
-	if (!enable && sfb->output_on)
-		pm_runtime_put_sync(sfb->dev);
-
-	sfb->output_on = enable;
 }
 
 static inline u32 fb_visual(u32 bits_per_pixel, unsigned short palette_sz)
@@ -1023,11 +994,11 @@ static int s3c_fb_blank(int blank_mode, struct fb_info *info)
 	switch (blank_mode) {
 	case FB_BLANK_POWERDOWN:
 	case FB_BLANK_NORMAL:
-		s3c_fb_enable(sfb, 0);
+		s3c_fb_disable(sfb);
 		break;
 
 	case FB_BLANK_UNBLANK:
-		s3c_fb_enable(sfb, 1);
+		ret = s3c_fb_enable(sfb);
 		break;
 
 	case FB_BLANK_VSYNC_SUSPEND:
@@ -2942,6 +2913,30 @@ static ssize_t s3c_fb_vsync_show(struct device *dev,
 
 static DEVICE_ATTR(vsync, S_IRUGO, s3c_fb_vsync_show, NULL);
 
+static int s3c_fb_activate_iovmm(struct s3c_fb *sfb)
+{
+	int ret;
+
+	if (sfb->iovmm_on)
+		return 0;
+
+	ret = iovmm_activate(&s5p_device_fimd1.dev);
+	if (!ret)
+		sfb->iovmm_on = true;
+	else
+		dev_err(sfb->dev, "failed to activate iovmm\n");
+
+	return ret;
+}
+
+static void s3c_fb_deactivate_iovmm(struct s3c_fb *sfb)
+{
+	WARN_ON(!sfb->iovmm_on);
+
+	iovmm_deactivate(&s5p_device_fimd1.dev);
+	sfb->iovmm_on = false;
+}
+
 static int __devinit s3c_fb_probe(struct platform_device *pdev)
 {
 	const struct platform_device_id *platid;
@@ -3195,11 +3190,9 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_ION_EXYNOS
 	s3c_fb_wait_for_vsync(sfb, 0);
-	ret = iovmm_activate(&s5p_device_fimd1.dev);
-	if (ret < 0) {
-		dev_err(sfb->dev, "failed to activate vmm\n");
+	ret = s3c_fb_activate_iovmm(sfb);
+	if (ret < 0)
 		goto err_iovmm;
-	}
 #endif
 
 	s3c_fb_activate_window_dma(sfb, pd->default_win);
@@ -3286,26 +3279,50 @@ static int __devexit s3c_fb_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int s3c_fb_suspend(struct device *dev)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct s3c_fb *sfb = platform_get_drvdata(pdev);
 
-	s3c_fb_enable(sfb, 0);
+/**
+ * s3c_fb_disable() - Disable the main LCD output
+ * @sfb: The main framebuffer state.
+ */
+static void s3c_fb_disable(struct s3c_fb *sfb)
+{
+	u32 vidcon0;
+
+#ifdef CONFIG_ION_EXYNOS
+	flush_kthread_worker(&sfb->update_regs_worker);
+#endif
+
+	/* see the note in the framebuffer datasheet about
+	 * why you cannot take both of these bits down at the
+	 * same time. */
+
+	vidcon0 = readl(sfb->regs + VIDCON0);
+	if (vidcon0 & VIDCON0_ENVID) {
+		vidcon0 |= VIDCON0_ENVID;
+		vidcon0 &= ~VIDCON0_ENVID_F;
+	}
+	writel(vidcon0, sfb->regs + VIDCON0);
 
 	if (!sfb->variant.has_clksel)
 		clk_disable(sfb->lcd_clk);
 
 	clk_disable(sfb->bus_clk);
-	iovmm_deactivate(&s5p_device_fimd1.dev);
-	return 0;
+#ifdef CONFIG_ION_EXYNOS
+	s3c_fb_deactivate_iovmm(sfb);
+#endif
+
+	if (sfb->output_on)
+		pm_runtime_put_sync(sfb->dev);
+
+	sfb->output_on = false;
 }
 
-static int s3c_fb_resume(struct device *dev)
+/**
+ * s3c_fb_enable() - Enable the main LCD output
+ * @sfb: The main framebuffer state.
+ */
+static int s3c_fb_enable(struct s3c_fb *sfb)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct s3c_fb *sfb = platform_get_drvdata(pdev);
 	struct s3c_fb_platdata *pd = sfb->pdata;
 	struct s3c_fb_win *win;
 	int win_no;
@@ -3313,6 +3330,15 @@ static int s3c_fb_resume(struct device *dev)
 	int i;
 	int ret;
 	u32 reg;
+
+	if (sfb->output_on)
+		return -EBUSY;
+
+#ifdef CONFIG_ION_EXYNOS
+	ret = s3c_fb_activate_iovmm(sfb);
+	if (ret)
+		return ret;
+#endif
 
 	clk_enable(sfb->bus_clk);
 
@@ -3350,17 +3376,15 @@ static int s3c_fb_resume(struct device *dev)
 
 	/* restore framebuffers */
 	default_win = sfb->pdata->default_win;
-	for (i = 0; i < S3C_FB_MAX_WIN; i++) {
+	for (i = 0; i < sfb->variant.nr_windows; i++) {
 		win_no = i;
 		if (i == 0)
 			win_no = default_win;
 		if (i == default_win)
 			win_no = 0;
 		win = sfb->windows[win_no];
-		if (!win)
-			continue;
 
-		dev_dbg(&pdev->dev, "resuming window %d\n", win_no);
+		dev_dbg(sfb->dev, "resuming window %d\n", win_no);
 		s3c_fb_set_par(win->fbinfo);
 	}
 
@@ -3369,30 +3393,35 @@ static int s3c_fb_resume(struct device *dev)
 		s3c_fb_enable_irq(sfb);
 	mutex_unlock(&sfb->vsync_info.irq_lock);
 
-#ifdef CONFIG_ION_EXYNOS
-	s3c_fb_wait_for_vsync(sfb, 0);
-	ret = iovmm_activate(&s5p_device_fimd1.dev);
-	if (ret < 0) {
-		dev_err(sfb->dev, "failed to reactivate vmm\n");
-		return ret;
-	}
-#endif
+	for (win_no = 0; win_no < sfb->variant.nr_windows; win_no++) {
+		if (sfb->windows[win_no]->dma_enabled)
+			s3c_fb_activate_window_dma(sfb, win_no);
 
-	for (i = 0; i < S3C_FB_MAX_WIN; i++) {
-		if (!sfb->windows[i])
-			continue;
-
-		if (sfb->windows[i]->dma_enabled)
-			s3c_fb_activate_window_dma(sfb, i);
-
-		if (sfb->windows[i]->enabled)
-			s3c_fb_activate_window(sfb, i);
+		if (sfb->windows[win_no]->enabled)
+			s3c_fb_activate_window(sfb, win_no);
 	}
 
 #ifdef CONFIG_S5P_DP
 	writel(DPCLKCON_ENABLE, sfb->regs + DPCLKCON);
 #endif
 
+	sfb->output_on = true;
+
+	return 0;
+}
+
+#ifdef CONFIG_PM_SLEEP
+static int s3c_fb_suspend(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct s3c_fb *sfb = platform_get_drvdata(pdev);
+
+	WARN(sfb->output_on, "suspending while display is still unblanked\n");
+	return 0;
+}
+
+static int s3c_fb_resume(struct device *dev)
+{
 	return 0;
 }
 #endif
