@@ -588,8 +588,8 @@ static void get_dp_bridge_gpios(int *pd_n_gpio, int *rst_n_gpio)
 	struct device_node *np;
 
 	np = of_find_compatible_node(NULL, NULL, "nxp,ptn3460");
-	*pd_n_gpio = np ? of_get_named_gpio(np, "pd_n_gpio", 0) : -1;
-	*rst_n_gpio = np ? of_get_named_gpio(np, "rst_n_gpio", 0) : -1;
+	*pd_n_gpio = np ? of_get_named_gpio(np, "powerdown-gpio", 0) : -1;
+	*rst_n_gpio = np ? of_get_named_gpio(np, "reset-gpio", 0) : -1;
 }
 
 static void dp_phy_init(void)

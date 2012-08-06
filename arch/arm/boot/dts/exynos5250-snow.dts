@@ -40,11 +40,11 @@
 			<&gpe0 4 0 3 0>;
 	};
 	i2c@12CD0000 {
-		dp_bridge@20 {
+		ptn3460-bridge@20 {
 			compatible = "nxp,ptn3460";
 			reg = <0x20>;
-			pd_n_gpio = <&gpy2 5 1 0 0>;
-			rst_n_gpio = <&gpx1 5 1 0 0>;
+			powerdown-gpio = <&gpy2 5 1 0 0>;
+			reset-gpio = <&gpx1 5 1 0 0>;
 		};
 	};
 };
