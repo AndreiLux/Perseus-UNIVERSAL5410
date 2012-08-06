@@ -165,6 +165,22 @@ static struct clk clk_fout_gpll = {
 	.id			= -1,
 };
 
+/*
+ * This clock is for only mif dvfs virtually.
+ */
+static struct clk exynos5_mif_clk = {
+	.name		= "mif_clk",
+	.id		= -1,
+};
+
+/*
+ * This clock is for only int dvfs virtually.
+ */
+static struct clk exynos5_int_clk = {
+	.name		= "int_clk",
+	.id		= -1,
+};
+
 static int exynos5_clksrc_mask_top_ctrl(struct clk *clk, int enable)
 {
 	return s5p_gatectrl(EXYNOS5_CLKSRC_MASK_TOP, clk, enable);
@@ -1836,6 +1852,8 @@ static struct clk *exynos5_clks[] __initdata = {
 	&clk_fout_gpll,
 	&exynos5_clk_armclk,
 	&clk_fout_mpll_div2,
+	&exynos5_mif_clk,
+	&exynos5_int_clk,
 };
 
 static u32 epll_div[][6] = {
@@ -2047,6 +2065,251 @@ static struct clk_ops exynos5_fout_apll_ops = {
 	.set_rate = exynos5_fout_apll_set_rate
 };
 
+#define MIF_FREQ(f, a0, b0, b1, b2, b3, b4, b5, c0, c1) \
+	{ \
+		.freq = (f) * 1000000, \
+		.clk_div_sysrgt = (a0),	\
+		.clk_div_cdrex = ((b0) << 0 | (b1) << 4 | (b2) << 16 | \
+				(b3) << 20 | (b4) << 24 | (b5) << 28), \
+		.clk_div_syslft = ((c0) << 0 | (c1) << 4), \
+	}
+
+static struct {
+	unsigned long freq;
+	u32 clk_div_sysrgt;
+	u32 clk_div_cdrex;
+	u32 clk_div_syslft;
+} mif_freq[] = {
+	/*
+	 * values:
+	 * freq
+	 * clock divider for ACLK_R1BX
+	 * clock divider for ACLK_CDREX, PCLK_CDREX, MCLK_CDREX,
+	 *		MCLK_DPHY, ACLK_SFRTZASCP, MCLK_CDREX2
+	 * clock divider for ACLK_SYSLFT, PCLK_SYSLFT
+	 */
+	MIF_FREQ(800, 1, 1, 1, 2, 0, 1, 0, 1, 1),
+	MIF_FREQ(667, 1, 1, 1, 2, 0, 1, 0, 1, 1),
+	MIF_FREQ(400, 3, 1, 3, 2, 0, 1, 1, 3, 1),
+	MIF_FREQ(160, 7, 1, 5, 2, 0, 1, 4, 7, 1),
+};
+
+static unsigned long exynos5_mif_get_rate(struct clk *clk)
+{
+	return clk->rate;
+}
+
+static void exynos5_mif_set_clkdiv(unsigned int div_index)
+{
+	unsigned int tmp;
+
+	/* Change Divier - SYSRGT */
+	tmp = __raw_readl(EXYNOS5_CLKDIV_SYSRGT);
+	tmp &= ~EXYNOS5_CLKDIV_SYSRGT_ACLK_R1BX_MASK;
+
+	tmp |= mif_freq[div_index].clk_div_sysrgt;
+
+	__raw_writel(tmp, EXYNOS5_CLKDIV_SYSRGT);
+
+	while (__raw_readl(EXYNOS5_CLKDIV_STAT_SYSRGT) & 0x1)
+		cpu_relax();
+
+	/* Change Divider - CDREX */
+	tmp = __raw_readl(EXYNOS5_CLKDIV_CDREX);
+	tmp &= ~(EXYNOS5_CLKDIV_CDREX_ACLK_CDREX_MASK |
+			EXYNOS5_CLKDIV_CDREX_PCLK_CDREX_MASK |
+			EXYNOS5_CLKDIV_CDREX_MCLK_CDREX_MASK |
+			EXYNOS5_CLKDIV_CDREX_MCLK_DPHY_MASK |
+			EXYNOS5_CLKDIV_CDREX_ACLK_EFCON_MASK |
+			EXYNOS5_CLKDIV_CDREX_MCLK_CDREX2_MASK);
+
+	tmp |= mif_freq[div_index].clk_div_cdrex;
+
+	__raw_writel(tmp, EXYNOS5_CLKDIV_CDREX);
+
+	while (__raw_readl(EXYNOS5_CLKDIV_STAT_CDREX) & 0x111011)
+		cpu_relax();
+
+	/* Change Divier - SYSLFT */
+	tmp = __raw_readl(EXYNOS5_CLKDIV_SYSLFT);
+
+	tmp &= ~(EXYNOS5_CLKDIV_SYSLFT_PCLK_SYSLFT_MASK |
+		 EXYNOS5_CLKDIV_SYSLFT_ACLK_SYSLFT_MASK);
+
+	tmp |= mif_freq[div_index].clk_div_syslft;
+
+	__raw_writel(tmp, EXYNOS5_CLKDIV_SYSLFT);
+
+	while (__raw_readl(EXYNOS5_CLKDIV_STAT_SYSLFT) & 0x11)
+		cpu_relax();
+}
+
+static int exynos5_mif_set_rate(struct clk *clk, unsigned long rate)
+{
+	int index;
+
+	for (index = 0; index < ARRAY_SIZE(mif_freq); index++)
+		if (mif_freq[index].freq == rate)
+			break;
+
+	if (index == ARRAY_SIZE(mif_freq))
+		return -EINVAL;
+
+	/* Change the system clock divider values */
+	exynos5_mif_set_clkdiv(index);
+
+	clk->rate = rate;
+
+	return 0;
+}
+
+static struct clk_ops exynos5_mif_ops = {
+	.get_rate = exynos5_mif_get_rate,
+	.set_rate = exynos5_mif_set_rate
+};
+
+#define INT_FREQ(f, a0, a1, a2, a3, a4, a5, b0, b1, b2, b3, \
+			c0, c1, d0, e0) \
+	{ \
+		.freq = (f) * 1000000, \
+		.clk_div_top0 = ((a0) << 0 | (a1) << 8 | (a2) << 12 | \
+				(a3) << 16 | (a4) << 20 | (a5) << 28), \
+		.clk_div_top1 = ((b0) << 12 | (b1) << 16 | (b2) << 20 | \
+				(b3) << 24), \
+		.clk_div_lex = ((c0) << 4 | (c1) << 8), \
+		.clk_div_r0x = ((d0) << 4), \
+		.clk_div_r1x = ((e0) << 4), \
+	}
+
+static struct {
+	unsigned long freq;
+	u32 clk_div_top0;
+	u32 clk_div_top1;
+	u32 clk_div_lex;
+	u32 clk_div_r0x;
+	u32 clk_div_r1x;
+} int_freq[] = {
+	/*
+	 * values:
+	 * freq
+	 * clock divider for ACLK66, ACLK166, ACLK200, ACLK266,
+			ACLK333, ACLK300_DISP1
+	 * clock divider for ACLK300_GSCL, ACLK400_IOP, ACLK400_ISP, ACLK66_PRE
+	 * clock divider for PCLK_LEX, ATCLK_LEX
+	 * clock divider for ACLK_PR0X
+	 * clock divider for ACLK_PR1X
+	 */
+	INT_FREQ(266, 5, 1, 3, 2, 0, 2, 2, 1, 1, 1, 1, 0, 1, 1),
+	INT_FREQ(200, 5, 2, 4, 3, 1, 2, 2, 3, 2, 1, 1, 0, 1, 1),
+	INT_FREQ(160, 5, 3, 4, 4, 2, 2, 2, 3, 3, 1, 1, 0, 1, 1),
+};
+
+static unsigned long exynos5_clk_int_get_rate(struct clk *clk)
+{
+	return clk->rate;
+}
+
+static void exynos5_int_set_clkdiv(unsigned int div_index)
+{
+	unsigned int tmp;
+
+	/* Change Divider - TOP0 */
+	tmp = __raw_readl(EXYNOS5_CLKDIV_TOP0);
+
+	tmp &= ~(EXYNOS5_CLKDIV_TOP0_ACLK266_MASK |
+		EXYNOS5_CLKDIV_TOP0_ACLK200_MASK |
+		EXYNOS5_CLKDIV_TOP0_ACLK66_MASK |
+		EXYNOS5_CLKDIV_TOP0_ACLK333_MASK |
+		EXYNOS5_CLKDIV_TOP0_ACLK166_MASK |
+		EXYNOS5_CLKDIV_TOP0_ACLK300_DISP1_MASK);
+
+	tmp |= int_freq[div_index].clk_div_top0;
+
+	__raw_writel(tmp, EXYNOS5_CLKDIV_TOP0);
+
+	while (__raw_readl(EXYNOS5_CLKDIV_STAT_TOP0) & 0x151101)
+		cpu_relax();
+
+	/* Change Divider - TOP1 */
+	tmp = __raw_readl(EXYNOS5_CLKDIV_TOP1);
+
+	tmp &= ~(EXYNOS5_CLKDIV_TOP1_ACLK400_ISP_MASK |
+		EXYNOS5_CLKDIV_TOP1_ACLK400_IOP_MASK |
+		EXYNOS5_CLKDIV_TOP1_ACLK66_PRE_MASK |
+		EXYNOS5_CLKDIV_TOP1_ACLK300_GSCL_MASK);
+
+	tmp |= int_freq[div_index].clk_div_top1;
+
+	__raw_writel(tmp, EXYNOS5_CLKDIV_TOP1);
+
+	while ((__raw_readl(EXYNOS5_CLKDIV_STAT_TOP1) & 0x1110000) &&
+		(__raw_readl(EXYNOS5_CLKDIV_STAT_TOP0) & 0x80000))
+		cpu_relax();
+
+	/* Change Divider - LEX */
+	tmp = __raw_readl(EXYNOS5_CLKDIV_LEX);
+
+	tmp &= ~(EXYNOS5_CLKDIV_LEX_ATCLK_LEX_MASK |
+		EXYNOS5_CLKDIV_LEX_PCLK_LEX_MASK);
+
+	tmp |= int_freq[div_index].clk_div_lex;
+
+	__raw_writel(tmp, EXYNOS5_CLKDIV_LEX);
+
+	while (__raw_readl(EXYNOS5_CLKDIV_STAT_LEX) & 0x110)
+		cpu_relax();
+
+	/* Change Divider - R0X */
+	tmp = __raw_readl(EXYNOS5_CLKDIV_R0X);
+
+	tmp &= ~EXYNOS5_CLKDIV_R0X_PCLK_R0X_MASK;
+
+	tmp |= int_freq[div_index].clk_div_r0x;
+
+	__raw_writel(tmp, EXYNOS5_CLKDIV_R0X);
+
+	while (__raw_readl(EXYNOS5_CLKDIV_STAT_R0X) & 0x10)
+		cpu_relax();
+
+	/* Change Divider - R1X */
+	tmp = __raw_readl(EXYNOS5_CLKDIV_R1X);
+
+	tmp &= ~EXYNOS5_CLKDIV_R1X_PCLK_R1X_MASK;
+
+	tmp |= int_freq[div_index].clk_div_r1x;
+
+	__raw_writel(tmp, EXYNOS5_CLKDIV_R1X);
+
+	while (__raw_readl(EXYNOS5_CLKDIV_STAT_R1X) & 0x10)
+		cpu_relax();
+}
+
+static int exynos5_clk_int_set_rate(struct clk *clk, unsigned long rate)
+{
+	int index;
+
+	for (index = 0; index < ARRAY_SIZE(int_freq); index++)
+		if (int_freq[index].freq == rate)
+			break;
+
+	if (index == ARRAY_SIZE(int_freq))
+		return -EINVAL;
+
+	/* Change the system clock divider values */
+	exynos5_int_set_clkdiv(index);
+
+	clk->rate = rate;
+
+	return 0;
+}
+
+static struct clk_ops exynos5_clk_int_ops = {
+	.get_rate = exynos5_clk_int_get_rate,
+	.set_rate = exynos5_clk_int_set_rate
+};
+
+
+
 #ifdef CONFIG_PM
 static int exynos5_clock_suspend(void)
 {
@@ -2154,8 +2417,11 @@ void __init_or_cpufreq exynos5_setup_clocks(void)
 			aclk_333, aclk_266, aclk_200,
 			aclk_166, aclk_66);
 
-
 	clk_fout_epll.ops = &exynos5_epll_ops;
+	exynos5_mif_clk.ops = &exynos5_mif_ops;
+	exynos5_mif_clk.rate = mout_cdrex;
+	exynos5_int_clk.ops = &exynos5_clk_int_ops;
+	exynos5_int_clk.rate = aclk_266;
 
 	if (clk_set_parent(&exynos5_clk_mout_epll.clk, &clk_fout_epll))
 		printk(KERN_ERR "Unable to set parent %s of clock %s.\n",
