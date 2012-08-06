@@ -27,10 +27,19 @@
 #include <plat/cpu.h>
 
 /* ASV function for Fused Chip */
-#define IDS_ARM_OFFSET		24
-#define IDS_ARM_MASK		0xFF
-#define HPM_OFFSET		12
-#define HPM_MASK		0x1F
+#define IDS_ARM_OFFSET			24
+#define IDS_ARM_MASK			0xFF
+#define HPM_OFFSET			12
+#define HPM_MASK			0x1F
+#define FUSED_ASV_GROUP_OFFSET		3
+#define ARM_ORG_ASV_GROUP_OFFSET	17
+#define ARM_ORG_ASV_MASK		0xF
+#define ARM_DIFF_ASV_GROUP_OFFSET	21
+#define ARM_DIFF_ASV_MASK		0xF
+#define MIF_ORG_ASV_GROUP_OFFSET	26
+#define MIF_ORG_ASV_MASK		0x3
+#define MIF_DIFF_ASV_GROUP_OFFSET	28
+#define MIF_DIFF_ASV_MASK		0x3
 
 #define CHIP_ID_REG		(S5P_VA_CHIPID + 0x4)
 
@@ -135,20 +144,35 @@ unsigned int exynos5250_get_volt(enum asv_type_id target_type, unsigned int targ
 int exynos5250_init_asv(struct asv_common *asv_info)
 {
 	int i;
-	unsigned int tmp;
+	unsigned int tmp1, tmp2;
 	unsigned hpm_value, ids_value;
 
 	/* read IDS and HPM value from  CHIP ID */
-	tmp = __raw_readl(CHIP_ID_REG);
+	tmp1 = __raw_readl(CHIP_ID_REG);
 
-	hpm_value = (tmp >> HPM_OFFSET) & HPM_MASK;
-	ids_value = (tmp >> IDS_ARM_OFFSET) & IDS_ARM_MASK;
+	/* ASV group is decided by direct fused asv number
+	 * or calcualting with ARM_IDS and HPM value.
+	 */
+	if ((tmp1 >> FUSED_ASV_GROUP_OFFSET) & 0x1) {
+		tmp2 =  __raw_readl(CHIP_ID_REG + 0x4);
+		asv_group[ID_ARM] = ((tmp1 >> ARM_ORG_ASV_GROUP_OFFSET) & ARM_ORG_ASV_MASK)
+				- ((tmp1 >> ARM_DIFF_ASV_GROUP_OFFSET) & ARM_DIFF_ASV_MASK);
+		asv_group[ID_INT] = asv_group[ID_ARM];
+		asv_group[ID_G3D] = asv_group[ID_ARM];
+		asv_group[ID_MIF] = ((tmp2 >> MIF_ORG_ASV_GROUP_OFFSET) & MIF_ORG_ASV_MASK)
+				- ((tmp2 >> MIF_DIFF_ASV_GROUP_OFFSET) & MIF_DIFF_ASV_MASK);
+		pr_info("EXYNOS5250 ASV(ARM : %d MIF : %d) using fused group\n",
+			asv_group[ID_ARM], asv_group[ID_MIF]);
+	} else {
+		hpm_value = (tmp1 >> HPM_OFFSET) & HPM_MASK;
+		ids_value = (tmp1 >> IDS_ARM_OFFSET) & IDS_ARM_MASK;
 
-	pr_info("EXYNOS5250 IDS : %d HPM : %d\n",
-		ids_value, hpm_value);
+		for (i = ID_ARM; i < ID_END; i++)
+			asv_group[i] = exynos5250_get_asv_group(ids_value, hpm_value, i);
 
-	for (i = ID_ARM; i < ID_END; i++)
-		asv_group[i] = exynos5250_get_asv_group(ids_value, hpm_value, i);
+		pr_info("EXYNOS5250 ASV(ARM : %d MIF : %d) using IDS : %d HPM : %d\n",
+			asv_group[ID_ARM], asv_group[ID_MIF], ids_value, hpm_value);
+	}
 
 	exynos5250_pre_set_abb(asv_group[ID_ARM]);
 
