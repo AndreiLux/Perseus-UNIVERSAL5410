@@ -583,36 +583,10 @@ static struct video_info smdk5250_dp_config = {
 	.lane_count             = LANE_COUNT2,
 };
 
-static void get_dp_bridge_gpios(int *pd_n_gpio, int *rst_n_gpio)
-{
-	struct device_node *np;
-
-	np = of_find_compatible_node(NULL, NULL, "nxp,ptn3460");
-	*pd_n_gpio = np ? of_get_named_gpio(np, "powerdown-gpio", 0) : -1;
-	*rst_n_gpio = np ? of_get_named_gpio(np, "reset-gpio", 0) : -1;
-}
-
-static void dp_phy_init(void)
-{
-	int pd_n_gpio, rst_n_gpio;
-
-	get_dp_bridge_gpios(&pd_n_gpio, &rst_n_gpio);
-	if (pd_n_gpio >= 0)
-		gpio_set_value(pd_n_gpio, 1);
-
-	if (rst_n_gpio >= 0) {
-		gpio_set_value(rst_n_gpio, 0);
-		udelay(10);
-		gpio_set_value(rst_n_gpio, 1);
-	}
-
-	s5p_dp_phy_init();
-}
-
 static struct exynos_dp_platdata smdk5250_dp_data = {
 	.video_info     = &smdk5250_dp_config,
 	.training_type  = SW_LINK_TRAINING,
-	.phy_init       = dp_phy_init,
+	.phy_init       = s5p_dp_phy_init,
 	.phy_exit       = s5p_dp_phy_exit,
 };
 
@@ -881,7 +855,7 @@ static void exynos5_i2c_setup(void)
 static void __init exynos5250_dt_machine_init(void)
 {
 	struct device_node *srom_np, *np;
-	int ret,i;
+	int i;
 
 	regulator_register_fixed(0, dummy_supplies, ARRAY_SIZE(dummy_supplies));
 
@@ -945,7 +919,6 @@ static void __init exynos5250_dt_machine_init(void)
 		dsim_lcd_info.lcd_size.width = 1366;
 		dsim_lcd_info.lcd_size.height = 768;
 	} else if (of_machine_is_compatible("google,snow")) {
-		int pd_n_gpio, rst_n_gpio;
 #ifdef CONFIG_DRM_EXYNOS_FIMD
 		for (i = 0;i < ARRAY_SIZE(snow_fb_window);i++)
 			smdk5250_lcd1_pdata.panel[i].timing = snow_fb_window[i];
@@ -954,18 +927,6 @@ static void __init exynos5250_dt_machine_init(void)
 		smdk5250_lcd1_pdata.clock_rate = 70250000;
 		smdk5250_lcd1_pdata.vidcon1 = 0;
 #endif
-
-		get_dp_bridge_gpios(&pd_n_gpio, &rst_n_gpio);
-		if (pd_n_gpio >= 0) {
-			ret = gpio_request_one(pd_n_gpio, GPIOF_OUT_INIT_HIGH,
-						"DP_PD_N");
-			WARN_ON(ret);
-		}
-		if (rst_n_gpio >= 0) {
-			ret = gpio_request_one(rst_n_gpio, GPIOF_OUT_INIT_HIGH,
-						"DP_RST_N");
-			WARN_ON(ret);
-		}
 	}
 
 	if (gpio_request_one(EXYNOS5_GPX2(6), GPIOF_OUT_INIT_HIGH,
