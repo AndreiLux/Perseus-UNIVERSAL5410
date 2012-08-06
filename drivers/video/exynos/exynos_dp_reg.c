@@ -509,7 +509,7 @@ int exynos_dp_write_bytes_to_dpcd(struct exynos_dp_device *dp,
 		else
 			cur_data_count = count - start_offset;
 
-		for (i = 0; i < 10; i++) {
+		for (i = 0; i < 3; i++) {
 			/* Select DPCD device address */
 			reg = AUX_ADDR_7_0(reg_addr + start_offset);
 			writel(reg, dp->reg_base + EXYNOS_DP_AUX_ADDR_7_0);
@@ -574,7 +574,7 @@ int exynos_dp_read_bytes_from_dpcd(struct exynos_dp_device *dp,
 			cur_data_count = count - start_offset;
 
 		/* AUX CH Request Transaction process */
-		for (i = 0; i < 10; i++) {
+		for (i = 0; i < 3; i++) {
 			/* Select DPCD device address */
 			reg = AUX_ADDR_7_0(reg_addr + start_offset);
 			writel(reg, dp->reg_base + EXYNOS_DP_AUX_ADDR_7_0);
@@ -657,7 +657,7 @@ int exynos_dp_read_byte_from_i2c(struct exynos_dp_device *dp,
 	int i;
 	int retval;
 
-	for (i = 0; i < 10; i++) {
+	for (i = 0; i < 3; i++) {
 		/* Clear AUX CH data buffer */
 		reg = BUF_CLR;
 		writel(reg, dp->reg_base + EXYNOS_DP_BUFFER_DATA_CTL);
@@ -665,7 +665,6 @@ int exynos_dp_read_byte_from_i2c(struct exynos_dp_device *dp,
 		/* Select EDID device */
 		retval = exynos_dp_select_i2c_device(dp, device_addr, reg_addr);
 		if (retval != 0) {
-			dev_err(dp->dev, "Select EDID device fail!\n");
 			continue;
 		}
 
@@ -707,7 +706,7 @@ int exynos_dp_read_bytes_from_i2c(struct exynos_dp_device *dp,
 	int retval = 0;
 
 	for (i = 0; i < count; i += 16) {
-		for (j = 0; j < 100; j++) {
+		for (j = 0; j < 3; j++) {
 			/* Clear AUX CH data buffer */
 			reg = BUF_CLR;
 			writel(reg, dp->reg_base + EXYNOS_DP_BUFFER_DATA_CTL);
