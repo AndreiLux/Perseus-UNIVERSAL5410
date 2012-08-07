@@ -67,6 +67,18 @@
 #define MALI_DVFS_STEP 7
 #define MALI_DVFS_KEEP_STAY_CNT 10
 
+#ifdef CONFIG_T6XX_DVFS
+#ifdef CONFIG_CPU_FREQ
+#define MALI_DVFS_ASV_ENABLE
+#endif
+#endif
+
+#ifdef MALI_DVFS_ASV_ENABLE
+#include <mach/busfreq_exynos5.h>
+#define MALI_DVFS_ASV_GROUP_SPECIAL_NUM 10
+#define MALI_DVFS_ASV_GROUP_NUM 12
+#endif
+
 #define HZ_IN_MHZ            (1000000)
 #define MALI_RTPM_DEBUG      0
 #define VITHAR_DEFAULT_CLOCK 533000000
@@ -81,11 +93,18 @@ int kbase_platform_get_default_voltage(struct device *dev, int *vol);
 int kbase_platform_get_voltage(struct device *dev, int *vol);
 int kbase_platform_set_voltage(struct device *dev, int vol);
 void kbase_platform_dvfs_set_clock(kbase_device *kbdev, int freq);
+void kbase_platform_dvfs_set_level(int level);
+int kbase_platform_dvfs_get_level(int freq);
 
 #ifdef CONFIG_T6XX_DVFS
 int kbase_platform_dvfs_init(kbase_device *kbdev);
 void kbase_platform_dvfs_term(void);
 int kbase_platform_dvfs_get_control_status(void);
+int kbase_platform_dvfs_get_utilisation(void);
+#ifdef MALI_DVFS_ASV_ENABLE
+static int kbase_platform_asv_set(int enable);
+static int kbase_platform_dvfs_sprint_avs_table(char *buf);
+#endif /* MALI_DVFS_ASV_ENABLE */
 #endif /* CONFIG_T6XX_DVFS */
 int kbase_platform_cmu_pmu_control(struct kbase_device *kbdev, int control);
 void kbase_platform_remove_sysfs_file(struct device *dev);
@@ -589,6 +608,7 @@ static ssize_t mali_sysfs_set_clock(struct device *dev,
 {
 	struct kbase_device *kbdev = dev_get_drvdata(dev);
 	struct exynos_context *platform;
+	unsigned int tmp = 0, freq = 0 ;
 
 	if (!kbdev) {
 		pr_err("%s: no kbdev\n", __func__);
@@ -607,32 +627,30 @@ static ssize_t mali_sysfs_set_clock(struct device *dev,
 
 	/* TODO(dianders) need to be more careful fiddling voltage+clock */
 	if (sysfs_streq("533", buf)) {
-		kbase_platform_set_voltage( dev, 1250000 );
-		kbase_platform_dvfs_set_clock(kbdev, 533);
+		freq = 533;
 	} else if (sysfs_streq("450", buf)) {
-		kbase_platform_set_voltage( dev, 1150000 );
-		kbase_platform_dvfs_set_clock(kbdev, 450);
+		freq = 450;
 	} else if (sysfs_streq("400", buf)) {
-		kbase_platform_set_voltage( dev, 1100000 );
-		kbase_platform_dvfs_set_clock(kbdev, 400);
+		freq = 400;
 	} else if (sysfs_streq("350", buf)) {
-		kbase_platform_set_voltage(dev, 1075000);
-		kbase_platform_dvfs_set_clock(kbdev, 350);
+		freq = 350;
 	} else if (sysfs_streq("266", buf)) {
-		kbase_platform_set_voltage( dev, 937500);
-		kbase_platform_dvfs_set_clock(kbdev, 266);
+		freq = 266;
 	} else if (sysfs_streq("160", buf)) {
-		kbase_platform_set_voltage( dev, 937500 );
-		kbase_platform_dvfs_set_clock(kbdev, 160);
+		freq = 160;
 	} else if (sysfs_streq("100", buf)) {
-		kbase_platform_set_voltage( dev, 937500 );
-		kbase_platform_dvfs_set_clock(kbdev, 100);
+		freq = 100;
 	} else {
 		pr_err("%s: invalid value\n", __func__);
 		return -ENOENT;
 	}
 
 	pr_info("aclk400 %u\n", (unsigned int)clk_get_rate(platform->sclk_g3d));
+	kbase_platform_dvfs_set_level(kbase_platform_dvfs_get_level(freq));
+	/* Waiting for clock is stable */
+	do {
+		tmp = __raw_readl(EXYNOS5_CLKDIV_STAT_TOP0);
+	} while (tmp & 0x1000000);
 
 	return count;
 }
@@ -1037,7 +1055,6 @@ static ssize_t mali_sysfs_set_dvfs(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
 	mali_error ret;
-	int vol;
 	struct kbase_device *kbdev;
 	kbdev = dev_get_drvdata(dev);
 
@@ -1047,12 +1064,8 @@ static ssize_t mali_sysfs_set_dvfs(struct device *dev,
 	if (sysfs_streq("off", buf)) {
 		if (kbasep_pm_metrics_isactive(kbdev)) {
 			kbasep_pm_metrics_term(kbdev);
-
-			kbase_platform_get_default_voltage(dev, &vol);
-			if (vol != 0)
-				kbase_platform_set_voltage(dev, vol);
-			kbase_platform_dvfs_set_clock(kbdev,
-			    VITHAR_DEFAULT_CLOCK / 1000000);
+			kbase_platform_dvfs_set_level(
+				kbase_platform_dvfs_get_level(VITHAR_DEFAULT_CLOCK / 1000000));
 			pr_info("G3D DVFS is disabled\n");
 		}
 	} else if (sysfs_streq("on", buf)) {
@@ -1072,6 +1085,38 @@ static ssize_t mali_sysfs_set_dvfs(struct device *dev,
 }
 DEVICE_ATTR(dvfs, S_IRUGO|S_IWUSR, mali_sysfs_show_dvfs, mali_sysfs_set_dvfs);
 #endif /* CONFIG_T6XX_DVFS */
+
+#ifdef MALI_DVFS_ASV_ENABLE
+static ssize_t mali_sysfs_show_asv(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+
+	struct kbase_device *kbdev;
+	ssize_t ret = 0;
+	kbdev = dev_get_drvdata(dev);
+
+	if (!kbdev)
+		return -ENODEV;
+
+	ret = kbase_platform_dvfs_sprint_avs_table(buf);
+
+	return ret;
+}
+
+static ssize_t mali_sysfs_set_asv(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	if (sysfs_streq("off", buf))
+		kbase_platform_asv_set(0);
+	else if (sysfs_streq("on", buf))
+		kbase_platform_asv_set(1);
+	else
+		printk(KERN_ERR "invalid val -only [on, off] is accepted\n");
+
+	return count;
+}
+DEVICE_ATTR(asv, S_IRUGO|S_IWUSR, mali_sysfs_show_asv, mali_sysfs_set_asv);
+#endif
 
 static int kbase_platform_create_sysfs_file(struct device *dev)
 {
@@ -1110,7 +1155,14 @@ static int kbase_platform_create_sysfs_file(struct device *dev)
 		dev_err(dev, "Couldn't create sysfs file [dvfs]\n");
 		goto out;
 	}
+#ifdef MALI_DVFS_ASV_ENABLE
+	if (device_create_file(dev, &dev_attr_asv)) {
+		dev_err(dev, "Couldn't create sysfs file [asv]\n");
+		goto out;
+	}
+#endif
 #endif /* CONFIG_T6XX_DVFS */
+
 	return 0;
 out:
 	return -ENOENT;
@@ -1125,6 +1177,9 @@ void kbase_platform_remove_sysfs_file(struct device *dev)
 	device_remove_file(dev, &dev_attr_clkout);
 #ifdef CONFIG_T6XX_DVFS
 	device_remove_file(dev, &dev_attr_dvfs);
+#ifdef MALI_DVFS_ASV_ENABLE
+	device_remove_file(dev, &dev_attr_asv);
+#endif
 #endif /* CONFIG_T6XX_DVFS */
 }
 #endif /* CONFIG_T6XX_DEBUG_SYS */
@@ -1233,6 +1288,14 @@ typedef struct _mali_dvfs_info{
 	int max_threshold;
 }mali_dvfs_info;
 
+#ifdef MALI_DVFS_ASV_ENABLE
+enum asv_update_val {
+	DVFS_NOT_UPDATE_ASV_TBL = 0,
+	DVFS_UPDATE_ASV_TBL = 1,
+	DVFS_UPDATE_ASV_DEFAULT_TBL = 2,
+};
+#endif /* MALI_DVFS_ASV_ENABLE */
+
 typedef struct _mali_dvfs_status_type{
 	kbase_device *kbdev;
 	int step;
@@ -1240,6 +1303,10 @@ typedef struct _mali_dvfs_status_type{
 	int above_threshold;
 	int below_threshold;
 	uint noutilcnt;
+#ifdef MALI_DVFS_ASV_ENABLE
+	enum asv_update_val asv_need_update;
+	int asv_group;
+#endif
 }mali_dvfs_status;
 
 static struct workqueue_struct *mali_dvfs_wq = 0;
@@ -1264,57 +1331,125 @@ static mali_dvfs_info mali_dvfs_infotbl[MALI_DVFS_STEP] = {
 #endif
 };
 
-static void kbase_platform_dvfs_set_vol(unsigned int vol)
+#ifdef MALI_DVFS_ASV_ENABLE
+static const unsigned int mali_dvfs_asv_vol_tbl_special
+	[MALI_DVFS_ASV_GROUP_SPECIAL_NUM][MALI_DVFS_STEP] = {
+	/*  100Mh   160Mh     266Mh   350Mh             400Mh   450Mh   533Mh*/
+	{/*Group 1*/
+		912500, 925000, 1025000, 1075000, 1100000, 1150000, 1225000,
+	},
+	{/*Group 2*/
+		900000, 900000, 1000000, 1037500, 1087500, 1125000, 1200000,
+	},
+	{/*Group 3*/
+	       912500, 925000, 1025000, 1037500, 1100000, 1150000, 1225000,
+	},
+	{/*Group 4*/
+		900000, 900000, 1000000, 1025000, 1087500, 1125000, 1200000,
+	},
+	{/*Group 5*/
+		912500, 925000, 1000000, 1000000, 1125000, 1150000, 1250000,
+	},
+	{/*Group 6*/
+		900000, 912500, 987500, 987500, 1112500, 1150000, 1237500,
+	},
+	{/*Group 7*/
+		900000, 900000, 975000, 987500, 1100000, 1137500, 1225000,
+	},
+	{/*Group 8*/
+		900000, 900000, 975000, 987500, 1100000, 1137500, 1225000,
+	},
+	{/*Group 9*/
+		887500, 900000, 962500, 975000, 1087500, 1125000, 1212500,
+	},
+	{/*Group 10*/
+		887500, 900000, 962500, 962500, 1087500, 1125000, 1212500,
+	},
+};
+
+static const unsigned int mali_dvfs_asv_vol_tbl
+	[MALI_DVFS_ASV_GROUP_NUM][MALI_DVFS_STEP] = {
+       /*  100Mh       160Mh      266Mh        350Mh,  400Mh   450Mh   533Mh*/
+	{/*Group 0*/
+		925000, 925000, 1025000, 1075000, 1125000, 1150000, 1200000,
+	},
+	{/*Group 1*/
+		900000, 900000, 1000000, 1037500, 1087500, 1137500, 1187500,
+	},
+	{/*Group 2*/
+		900000, 900000, 950000, 1037500, 1075000, 1125000, 1187500,
+	},
+	{/*Group 3*/
+		900000, 900000, 950000, 1037500, 1075000, 1125000, 1187500,
+	},
+	{/*Group 4*/
+		900000, 900000, 937500, 1025000, 1075000, 1112500, 1175000,
+	},
+	{/*Group 5*/
+		900000, 900000, 937500, 1000000, 1050000, 1100000, 1150000,
+	},
+	{/*Group 6*/
+		900000, 900000, 925000, 987500, 1037500, 1087500, 1137500,
+	},
+	{/*Group 7*/
+		900000, 900000, 912500, 987500, 1025000, 1075000, 1125000,
+	},
+	{/*Group 8*/
+		900000, 900000, 912500, 987500, 1012500, 1075000, 1125000,
+	},
+	{/*Group 9*/
+		900000, 900000, 900000, 975000, 1012500, 1050000, 1125000,
+	},
+	{/*Group 10*/
+		875000, 900000, 900000, 962500, 1000000, 1050000, 1112500,
+	},
+	{/*Group 11*/
+		875000, 900000, 900000, 962500, 1000000, 1050000, 1112500,
+	},
+};
+
+static const unsigned int mali_dvfs_vol_default[MALI_DVFS_STEP] = {
+	 925000, 925000, 1025000, 1075000, 1125000, 1150000, 120000
+};
+
+static int mali_dvfs_update_asv(int group)
 {
-	static int _vol = -1;
+	int i;
 
-	if (_vol == vol)
-		return;
-
-	trace_mali_dvfs_set_voltage(vol);
-
-	switch(vol)
-	{
-		case 1250000:
-		case 1150000:
-		case 1100000:
-		case 1000000:
-		case 937500:
-		case 812500:
-		case 750000:
-			kbase_platform_set_voltage(NULL, vol);
-			break;
-		default:
-			return;
+	/* TODO(Shariq): Replace exynos_lot_id with api call once ASV code is rebased */
+	if (exynos_lot_id && group == 0) {
+		/* wrong group: Use default table to keep the system running smoothly */
+		for (i = 0; i < MALI_DVFS_STEP; i++)
+			mali_dvfs_infotbl[i].voltage = mali_dvfs_vol_default[i];
+		pr_err("exynos_lot_id has group 0. Using default gpu asv table\n");
+		return 1;
 	}
 
-	_vol = vol;
-
-#if MALI_DVFS_DEBUG
-	printk("dvfs_set_vol %dmV\n", vol);
-#endif /*  MALI_DVFS_DEBUG */
-	return;
-}
-
-void kbase_platform_dvfs_set_level(int level)
-{
-	static int level_prev=-1;
-
-	if (level == level_prev)
-		return;
-
-	if (WARN_ON(level >= MALI_DVFS_STEP))
-		panic("invalid level");
-
-	if (level > level_prev) {
-		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
-		kbase_platform_dvfs_set_clock(mali_dvfs_status_current.kbdev, mali_dvfs_infotbl[level].clock);
-	}else{
-		kbase_platform_dvfs_set_clock(mali_dvfs_status_current.kbdev, mali_dvfs_infotbl[level].clock);
-		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
+	if (group == -1) {
+		for (i = 0; i < MALI_DVFS_STEP; i++)
+			mali_dvfs_infotbl[i].voltage = mali_dvfs_vol_default[i];
+		pr_err("mali_dvfs_update_asv use default table\n");
+		return 1;
 	}
-	level_prev = level;
+	if (group > MALI_DVFS_ASV_GROUP_NUM) {
+		/* unknown group: Use default table to keep the system running smoothly */
+		for (i = 0; i < MALI_DVFS_STEP; i++)
+			mali_dvfs_infotbl[i].voltage = mali_dvfs_vol_default[i];
+		OSK_PRINT_ERROR(OSK_BASE_PM, "invalid asv group (%d)\n", group);
+		return 1;
+	}
+	for (i = 0; i < MALI_DVFS_STEP; i++) {
+		if (exynos_lot_id)
+			mali_dvfs_infotbl[i].voltage =
+				mali_dvfs_asv_vol_tbl_special[group-1][i];
+		 else
+			 mali_dvfs_infotbl[i].voltage =
+				mali_dvfs_asv_vol_tbl[group][i];
+	}
+
+	return 0;
 }
+#endif /* MALI_DVFS_ASV_ENABLE */
 
 static void mali_dvfs_event_proc(struct work_struct *w)
 {
@@ -1326,7 +1461,18 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 
 	osk_spinlock_lock(&mali_dvfs_spinlock);
 	dvfs_status = mali_dvfs_status_current;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+
+#ifdef MALI_DVFS_ASV_ENABLE
+	if (dvfs_status.asv_need_update == DVFS_UPDATE_ASV_DEFAULT_TBL) {
+		mali_dvfs_update_asv(-1);
+		dvfs_status.asv_need_update = DVFS_NOT_UPDATE_ASV_TBL;
+	} else if (dvfs_status.asv_need_update == DVFS_UPDATE_ASV_TBL) {
+		if (mali_dvfs_update_asv(exynos_result_of_asv&0xf) == 0)
+			dvfs_status.asv_group = (exynos_result_of_asv&0xf);
+		dvfs_status.asv_need_update = DVFS_NOT_UPDATE_ASV_TBL;
+	}
+#endif
+	  osk_spinlock_unlock(&mali_dvfs_spinlock);
 
 	 /*If no input is keeping for longtime, first step will be @266MHZ. */
 	 if (dvfs_status.noutilcnt > 3 && dvfs_status.utilisation > 0)
@@ -1414,6 +1560,16 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev)
 #endif
 }
 
+int kbase_platform_dvfs_get_utilisation(void)
+{
+	int utilisation = 0;
+
+	osk_spinlock_lock(&mali_dvfs_spinlock);
+	utilisation = mali_dvfs_status_current.utilisation;
+	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	return utilisation;
+}
+
 int kbase_platform_dvfs_get_control_status(void)
 {
 	return mali_dvfs_control;
@@ -1434,6 +1590,11 @@ int kbase_platform_dvfs_init(kbase_device *kbdev)
 	mali_dvfs_status_current.kbdev = kbdev;
 	mali_dvfs_status_current.utilisation = 100;
 	mali_dvfs_status_current.step = MALI_DVFS_STEP-1;
+#ifdef MALI_DVFS_ASV_ENABLE
+	mali_dvfs_status_current.asv_need_update = DVFS_UPDATE_ASV_TBL;
+	mali_dvfs_status_current.asv_group = -1;
+#endif
+	mali_dvfs_control = 1;
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
 
 	return MALI_TRUE;
@@ -1656,6 +1817,85 @@ void kbase_platform_dvfs_set_clock(kbase_device *kbdev, int freq)
 #endif /* CONFIG_T6XX_DVFS */
 	return;
 }
+
+static void kbase_platform_dvfs_set_vol(unsigned int vol)
+{
+	static int _vol = -1;
+
+	if (_vol == vol)
+		return;
+	trace_mali_dvfs_set_voltage(vol);
+
+	kbase_platform_set_voltage(NULL, vol);
+
+	_vol = vol;
+#if MALI_DVFS_DEBUG
+	printk(KERN_DEBUG "dvfs_set_vol %dmV\n", vol);
+#endif
+	return;
+}
+
+int kbase_platform_dvfs_get_level(int freq)
+{
+	int i;
+	for (i = 0; i < MALI_DVFS_STEP; i++) {
+		if (mali_dvfs_infotbl[i].clock == freq)
+			return i;
+	}
+	return -1;
+}
+
+
+void kbase_platform_dvfs_set_level(int level)
+{
+	static int level_prev = -1;
+
+	if (level == level_prev)
+		return;
+	if (WARN_ON((level >= MALI_DVFS_STEP) || (level < 0)))
+		panic("invalid level");
+
+	if (level > level_prev) {
+		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
+		kbase_platform_dvfs_set_clock(mali_dvfs_status_current.kbdev,
+			mali_dvfs_infotbl[level].clock);
+	} else{
+		kbase_platform_dvfs_set_clock(mali_dvfs_status_current.kbdev,
+			mali_dvfs_infotbl[level].clock);
+		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
+	}
+	level_prev = level;
+}
+
+#ifdef MALI_DVFS_ASV_ENABLE
+static int kbase_platform_dvfs_sprint_avs_table(char *buf)
+{
+	int i, cnt = 0;
+	if (buf == NULL)
+		return 0;
+
+	cnt += sprintf(buf, "asv group:%d exynos_lot_id:%d\n",
+		exynos_result_of_asv&0xf, exynos_lot_id);
+	for (i = MALI_DVFS_STEP-1; i >= 0; i--) {
+		cnt += sprintf(buf+cnt, "%dMhz:%d\n",
+			mali_dvfs_infotbl[i].clock, mali_dvfs_infotbl[i].voltage);
+	}
+	return cnt;
+}
+
+static int kbase_platform_asv_set(int enable)
+{
+	osk_spinlock_lock(&mali_dvfs_spinlock);
+	if (enable) {
+		mali_dvfs_status_current.asv_need_update = DVFS_UPDATE_ASV_TBL;
+		mali_dvfs_status_current.asv_group = -1;
+	} else{
+		mali_dvfs_status_current.asv_need_update = DVFS_UPDATE_ASV_DEFAULT_TBL;
+	}
+	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	return 0;
+}
+#endif /* MALI_DVFS_ASV_ENABLE */
 
 /**
  * Exynos5 alternative dvfs_callback imlpementation.
