@@ -192,6 +192,9 @@ static void exynos_ohci_shutdown(struct platform_device *pdev)
 	struct exynos_ohci_hcd *exynos_ohci = platform_get_drvdata(pdev);
 	struct usb_hcd *hcd = exynos_ohci->hcd;
 
+	if (!hcd->rh_registered)
+		return;
+
 	if (hcd->driver->shutdown)
 		hcd->driver->shutdown(hcd);
 }

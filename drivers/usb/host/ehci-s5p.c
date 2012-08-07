@@ -198,6 +198,9 @@ static void s5p_ehci_shutdown(struct platform_device *pdev)
 	struct s5p_ehci_hcd *s5p_ehci = platform_get_drvdata(pdev);
 	struct usb_hcd *hcd = s5p_ehci->hcd;
 
+	if (!hcd->rh_registered)
+		return;
+
 	if (hcd->driver->shutdown)
 		hcd->driver->shutdown(hcd);
 }
