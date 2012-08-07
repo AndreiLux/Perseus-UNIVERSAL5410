@@ -25,13 +25,9 @@
 #define KBASE_PM_NO_VSYNC_MIN_UTILISATION       10
 #define KBASE_PM_NO_VSYNC_MAX_UTILISATION       40
 
-/* Frequency that DVFS clock frequency decisions should be made */
-#define KBASE_PM_DVFS_FREQUENCY                 500
-
 static void dvfs_callback(void *data)
 {
 	kbase_device *kbdev;
-	kbase_pm_dvfs_action action;
 	osk_error ret;
 
 	OSK_ASSERT(data != NULL);
@@ -180,77 +176,3 @@ void kbase_pm_report_vsync(kbase_device *kbdev, int buffer_updated)
 	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
 }
 KBASE_EXPORT_TEST_API(kbase_pm_report_vsync)
-
-kbase_pm_dvfs_action kbase_pm_get_dvfs_action(kbase_device *kbdev)
-{
-	int utilisation;
-	kbase_pm_dvfs_action action;
-	osk_ticks now = osk_time_now();
-
-	OSK_ASSERT(kbdev != NULL);
-
-	osk_spinlock_irq_lock(&kbdev->pm.metrics.lock);
-
-	if (kbdev->pm.metrics.gpu_active)
-	{
-		kbdev->pm.metrics.time_busy += osk_time_elapsed(kbdev->pm.metrics.time_period_start, now);
-		kbdev->pm.metrics.time_period_start = now;
-	}
-	else
-	{
-		kbdev->pm.metrics.time_idle += osk_time_elapsed(kbdev->pm.metrics.time_period_start, now);
-		kbdev->pm.metrics.time_period_start = now;
-	}
-
-	if (kbdev->pm.metrics.time_idle + kbdev->pm.metrics.time_busy == 0)
-	{
-		/* No data - so we return NOP */
-		action = KBASE_PM_DVFS_NOP;
-		goto out;
-	}
-
-	utilisation = (100*kbdev->pm.metrics.time_busy) / (kbdev->pm.metrics.time_idle + kbdev->pm.metrics.time_busy);
-
-	if (kbdev->pm.metrics.vsync_hit)
-	{
-		/* VSync is being met */
-		if (utilisation < KBASE_PM_VSYNC_MIN_UTILISATION)
-		{
-			action = KBASE_PM_DVFS_CLOCK_DOWN;
-		}
-		else if (utilisation > KBASE_PM_VSYNC_MAX_UTILISATION)
-		{
-			action = KBASE_PM_DVFS_CLOCK_UP;
-		}
-		else
-		{
-			action = KBASE_PM_DVFS_NOP;
-		}
-	}
-	else
-	{
-		/* VSync is being missed */
-		if (utilisation < KBASE_PM_NO_VSYNC_MIN_UTILISATION)
-		{
-			action = KBASE_PM_DVFS_CLOCK_DOWN;
-		}
-		else if (utilisation > KBASE_PM_NO_VSYNC_MAX_UTILISATION)
-		{
-			action = KBASE_PM_DVFS_CLOCK_UP;
-		}
-		else
-		{
-			action = KBASE_PM_DVFS_NOP;
-		}
-	}
-
-out:
-
-	kbdev->pm.metrics.time_idle = 0;
-	kbdev->pm.metrics.time_busy = 0;
-
-	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
-
-	return action;
-}
-KBASE_EXPORT_TEST_API(kbase_pm_get_dvfs_action)

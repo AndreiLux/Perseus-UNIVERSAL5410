@@ -21,6 +21,9 @@
 #include "mali_kbase_pm_always_on.h"
 #include "mali_kbase_pm_demand.h"
 
+/* Frequency that DVFS clock frequency decisions should be made */
+#define KBASE_PM_DVFS_FREQUENCY                 500
+
 /* Forward definition - see mali_kbase.h */
 struct kbase_device;
 
@@ -218,18 +221,6 @@ typedef struct kbasep_pm_metrics_data
 
 	void *              platform_data;
 } kbasep_pm_metrics_data;
-
-/** Actions for DVFS.
- *
- * kbase_pm_get_dvfs_action will return one of these enumerated values to
- * describe the action that the DVFS system should take.
- */
-typedef enum kbase_pm_dvfs_action
-{
-	KBASE_PM_DVFS_NOP,          /**< No change in clock frequency is requested */
-	KBASE_PM_DVFS_CLOCK_UP,     /**< The clock frequency should be increased if possible */
-	KBASE_PM_DVFS_CLOCK_DOWN    /**< The clock frequency should be decreased if possible */
-} kbase_pm_dvfs_action;
 
 /** A value for an atomic @ref kbase_pm_device_data::work_active,
  * which tracks whether the work unit has been enqueued.
@@ -784,18 +775,6 @@ void kbase_pm_register_vsync_callback(struct kbase_device *kbdev);
  * @param kbdev     The kbase device structure for the device (must be a valid pointer)
  */
 void kbase_pm_unregister_vsync_callback(struct kbase_device *kbdev);
-
-/** Determine whether the DVFS system should change the clock speed of the GPU.
- *
- * This function should be called regularly by the DVFS system to check whether the clock speed of the GPU needs
- * updating. It will return one of three enumerated values of kbase_pm_dvfs_action:
- *
- * @param kbdev                     The kbase device structure for the device (must be a valid pointer)
- * @retval KBASE_PM_DVFS_NOP        The clock does not need changing
- * @retval KBASE_PM_DVFS_CLOCK_UP,  The clock frequency should be increased if possible.
- * @retval KBASE_PM_DVFS_CLOCK_DOWN The clock frequency should be decreased if possible.
- */
-kbase_pm_dvfs_action kbase_pm_get_dvfs_action(struct kbase_device *kbdev);
 
 /** Mark that the GPU cycle counter is needed, if the caller is the first caller
  *  then the GPU cycle counters will be enabled.
