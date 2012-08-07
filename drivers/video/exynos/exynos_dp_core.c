@@ -1098,6 +1098,8 @@ static int exynos_dp_suspend(struct device *dev)
 	struct exynos_dp_platdata *pdata = pdev->dev.platform_data;
 	struct exynos_dp_device *dp = platform_get_drvdata(pdev);
 
+	disable_irq(dp->irq);
+
 	if (work_pending(&dp->hotplug_work))
 		flush_work_sync(&dp->hotplug_work);
 
@@ -1121,6 +1123,8 @@ static int exynos_dp_resume(struct device *dev)
 	clk_enable(dp->clock);
 
 	exynos_dp_init_dp(dp);
+
+	enable_irq(dp->irq);
 
 	return 0;
 }
