@@ -22,8 +22,8 @@
 /** Enable mobicore mem traces */
 #define MC_MEM_TRACES
 
-/** Change to Android UID check */
-#define MC_ANDROID_UID_CHECK
+/** don't verify uid */
+#define MC_SKIP_UID_CHECK
 
 #endif /* _MC_DRV_PLATFORM_H_ */
 /** @} */

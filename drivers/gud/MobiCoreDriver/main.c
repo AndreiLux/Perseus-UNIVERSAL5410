@@ -111,6 +111,9 @@ static int is_secure_mode(
 static int is_userland_caller_privileged(
 	void
 ) {
+#if defined(MC_SKIP_UID_CHECK)
+	return true;
+#else
 	/* For some platforms we cannot run the Daemon as root - for Android
 	 * compliance tests it is not allowed, thus we assume the daemon is ran
 	 * as the system user.
@@ -127,6 +130,7 @@ static int is_userland_caller_privileged(
 	/* capable should cover all possibilities, root or sudo, uid checking
 	 * was not very reliable */
 	return capable(CAP_SYS_ADMIN);
+#endif
 #endif
 }
 
