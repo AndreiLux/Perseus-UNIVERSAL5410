@@ -88,12 +88,12 @@
 struct regulator *kbase_platform_get_regulator(void);
 int kbase_platform_regulator_init(void);
 int kbase_platform_regulator_disable(void);
-int kbase_platform_regulator_enable(struct device *dev);
+int kbase_platform_regulator_enable(void);
 int kbase_platform_get_default_voltage(struct device *dev, int *vol);
 int kbase_platform_get_voltage(struct device *dev, int *vol);
 int kbase_platform_set_voltage(struct device *dev, int vol);
 void kbase_platform_dvfs_set_clock(kbase_device *kbdev, int freq);
-void kbase_platform_dvfs_set_level(int level);
+void kbase_platform_dvfs_set_level(kbase_device *kbdev, int level);
 int kbase_platform_dvfs_get_level(int freq);
 
 #ifdef CONFIG_T6XX_DVFS
@@ -646,7 +646,8 @@ static ssize_t mali_sysfs_set_clock(struct device *dev,
 	}
 
 	pr_info("aclk400 %u\n", (unsigned int)clk_get_rate(platform->sclk_g3d));
-	kbase_platform_dvfs_set_level(kbase_platform_dvfs_get_level(freq));
+	kbase_platform_dvfs_set_level(kbdev,
+		kbase_platform_dvfs_get_level(freq));
 	/* Waiting for clock is stable */
 	do {
 		tmp = __raw_readl(EXYNOS5_CLKDIV_STAT_TOP0);
@@ -1064,7 +1065,7 @@ static ssize_t mali_sysfs_set_dvfs(struct device *dev,
 	if (sysfs_streq("off", buf)) {
 		if (kbasep_pm_metrics_isactive(kbdev)) {
 			kbasep_pm_metrics_term(kbdev);
-			kbase_platform_dvfs_set_level(
+			kbase_platform_dvfs_set_level(kbdev,
 				kbase_platform_dvfs_get_level(VITHAR_DEFAULT_CLOCK / 1000000));
 			pr_info("G3D DVFS is disabled\n");
 		}
@@ -1280,13 +1281,28 @@ static int mali_gpu_vol = 1050000; /* 1.05V @ 266 MHz */
 #endif /*  CONFIG_T6XX_HWVER_R0P0 */
 #endif /* CONFIG_REGULATOR */
 
-#ifdef CONFIG_T6XX_DVFS
 typedef struct _mali_dvfs_info{
 	unsigned int voltage;
 	unsigned int clock;
 	int min_threshold;
 	int max_threshold;
 }mali_dvfs_info;
+
+static mali_dvfs_info mali_dvfs_infotbl[MALI_DVFS_STEP] = {
+#if (MALI_DVFS_STEP == 7)
+	{912500, 100, 0, 60},
+	{925000, 160, 40, 65},
+	{1025000, 266, 50, 70},
+	{1075000, 350, 55, 75},
+	{1125000, 400, 65, 80},
+	{1150000, 450, 70, 89},
+	{1250000, 533, 85, 100}
+#else
+#error no table
+#endif
+};
+
+#ifdef CONFIG_T6XX_DVFS
 
 #ifdef MALI_DVFS_ASV_ENABLE
 enum asv_update_val {
@@ -1316,20 +1332,6 @@ osk_spinlock mali_dvfs_spinlock;
 
 /*dvfs status*/
 static mali_dvfs_status mali_dvfs_status_current;
-static mali_dvfs_info mali_dvfs_infotbl[MALI_DVFS_STEP] = {
-#if (MALI_DVFS_STEP == 7)
-	{912500, 100, 0, 60},
-	{925000, 160, 40, 65},
-	{1025000, 266, 50, 70},
-	{1075000, 350, 55, 75},
-	{1125000, 400, 65, 80},
-	{1150000, 450, 70, 89},
-	{1250000, 533, 85, 100}
-
-#else
-#error no table
-#endif
-};
 
 #ifdef MALI_DVFS_ASV_ENABLE
 static const unsigned int mali_dvfs_asv_vol_tbl_special
@@ -1515,7 +1517,8 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 	}
 
 	if (kbasep_pm_metrics_isactive(dvfs_status.kbdev))
-		kbase_platform_dvfs_set_level(dvfs_status.step);
+		kbase_platform_dvfs_set_level(dvfs_status.kbdev,
+		dvfs_status.step);
 
 	if (dvfs_status.utilisation == 0) {
 		dvfs_status.noutilcnt++;
@@ -1540,25 +1543,6 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 }
 
 static DECLARE_WORK(mali_dvfs_work, mali_dvfs_event_proc);
-
-int kbase_platform_dvfs_event(struct kbase_device *kbdev)
-{
-#ifdef CONFIG_T6XX_DVFS
-	int utilisation = kbase_pm_get_dvfs_utilisation(kbdev);
-
-	trace_mali_dvfs_event(utilisation);
-
-	osk_spinlock_lock(&mali_dvfs_spinlock);
-	mali_dvfs_status_current.utilisation = utilisation;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
-	queue_work_on(0, mali_dvfs_wq, &mali_dvfs_work);
-
-	/*add error handle here*/
-	return MALI_TRUE;
-#else
-	return MALI_FALSE;
-#endif
-}
 
 int kbase_platform_dvfs_get_utilisation(void)
 {
@@ -1609,6 +1593,26 @@ void kbase_platform_dvfs_term(void)
 }
 #endif /* CONFIG_T6XX_DVFS */
 
+
+int kbase_platform_dvfs_event(struct kbase_device *kbdev)
+{
+#ifdef CONFIG_T6XX_DVFS
+        int utilisation = kbase_pm_get_dvfs_utilisation(kbdev);
+
+	trace_mali_dvfs_event(utilisation);
+
+	osk_spinlock_lock(&mali_dvfs_spinlock);
+	mali_dvfs_status_current.utilisation = utilisation;
+	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	queue_work_on(0, mali_dvfs_wq, &mali_dvfs_work);
+
+	/*add error handle here*/
+	return MALI_TRUE;
+#else
+	return MALI_FALSE;
+#endif
+}
+
 int kbase_platform_regulator_init(void)
 {
 #ifdef CONFIG_REGULATOR
@@ -1653,7 +1657,7 @@ int kbase_platform_regulator_disable(void)
 	return 0;
 }
 
-int kbase_platform_regulator_enable(struct device *dev)
+int kbase_platform_regulator_enable(void)
 {
 #ifdef CONFIG_REGULATOR
 	if(!g3d_regulator)
@@ -1845,8 +1849,8 @@ int kbase_platform_dvfs_get_level(int freq)
 	return -1;
 }
 
-
-void kbase_platform_dvfs_set_level(int level)
+#if defined CONFIG_T6XX_DVFS || defined CONFIG_T6XX_DEBUG_SYS
+void kbase_platform_dvfs_set_level(kbase_device *kbdev, int level)
 {
 	static int level_prev = -1;
 
@@ -1857,15 +1861,16 @@ void kbase_platform_dvfs_set_level(int level)
 
 	if (level > level_prev) {
 		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
-		kbase_platform_dvfs_set_clock(mali_dvfs_status_current.kbdev,
+		kbase_platform_dvfs_set_clock(kbdev,
 			mali_dvfs_infotbl[level].clock);
 	} else{
-		kbase_platform_dvfs_set_clock(mali_dvfs_status_current.kbdev,
+		kbase_platform_dvfs_set_clock(kbdev,
 			mali_dvfs_infotbl[level].clock);
 		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
 	}
 	level_prev = level;
 }
+#endif
 
 #ifdef MALI_DVFS_ASV_ENABLE
 static int kbase_platform_dvfs_sprint_avs_table(char *buf)
