@@ -2340,6 +2340,37 @@ static struct snd_soc_codec_driver soc_codec_dev_max98095 = {
 	.num_dapm_routes = ARRAY_SIZE(max98095_audio_map),
 };
 
+static struct max98095_eq_cfg built_in_eqs[] = {
+	{
+		/* Band 1 reg[0x10..0x19] F=5, A=-15.0, Q=0.65 */
+		/* Band 2 reg[0x1A..0x23] F=600, A=4.0, Q=1.20 */
+		/* Band 3 reg[0x24..0x2D] F=1000, A=4.0, Q=1.50 */
+		/* Band 4 reg[0x2E..0x37] F=1500, A=4.0, Q=4.00 */
+		/* Band 5 reg[0x38..0x41] F=5000, A=-5.5, Q=1.25 */
+		.name = "Default",
+		.rate = 44100,
+		.band1 = {0x05B0, 0xC001, 0x3E4E, 0x000B, 0x0EA1},
+		.band2 = {0x32B7, 0xC03C, 0x3967, 0x0576, 0x1C4B},
+		.band3 = {0x32B7, 0xC0A7, 0x3816, 0x0916, 0x1ED2},
+		.band4 = {0x32B7, 0xC175, 0x3AEC, 0x0D92, 0x18FB},
+		.band5 = {0x10FD, 0xCF91, 0xFBDA, 0x29D5, 0x3FDD},
+	},
+	{
+		/* Band 1 reg[0x10..0x19] F=5, A=-15.0, Q=0.65 */
+		/* Band 2 reg[0x1A..0x23] F=600, A=4.0, Q=1.20 */
+		/* Band 3 reg[0x24..0x2D] F=1000, A=4.0, Q=1.50 */
+		/* Band 4 reg[0x2E..0x37] F=1500, A=4.0, Q=4.00 */
+		/* Band 5 reg[0x38..0x41] F=5000, A=-5.5, Q=1.25 */
+		.name = "Default",
+		.rate = 48000,
+		.band1 = {0x05B0, 0xC001, 0x3E71, 0x000A, 0x0E09},
+		.band2 = {0x32B7, 0xC033, 0x39EA, 0x0505, 0x1B3C},
+		.band3 = {0x32B7, 0xC08D, 0x38B1, 0x085A, 0x1DB1},
+		.band4 = {0x32B7, 0xC13B, 0x3B52, 0x0C7C, 0x1805},
+		.band5 = {0x10FD, 0xCD3A, 0xFE8E, 0x26F5, 0x3FFB},
+	},
+};
+
 static struct max98095_pdata *max98095_of_pdata(struct i2c_client *i2c)
 {
 	struct max98095_pdata *pdata;
@@ -2355,6 +2386,9 @@ static struct max98095_pdata *max98095_of_pdata(struct i2c_client *i2c)
 
 	if (of_get_property(dn, "mic-right-digital", NULL))
 		pdata->digmic_right_mode = 1;
+
+	pdata->eq_cfgcnt = ARRAY_SIZE(built_in_eqs);
+	pdata->eq_cfg = built_in_eqs;
 
 	return pdata;
 }
