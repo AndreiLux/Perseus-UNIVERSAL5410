@@ -29,7 +29,6 @@
 #include <linux/slab.h>
 #include "../iio.h"
 #include "../sysfs.h"
-#define CONVERSION_TIME_MS		100
 
 #define ISL29018_REG_ADD_COMMAND1	0x00
 #define COMMMAND1_OPMODE_SHIFT		5
@@ -138,6 +137,22 @@ static int isl29018_set_resolution(struct i2c_client *client,
 			COMMANDII_RESOLUTION_SHIFT);
 }
 
+static void integration_wait(struct isl29018_chip *chip)
+{
+	int wait_time;
+
+	/* Integration and conversion time is described in the data sheet
+	 * as 2^n x (constant), and for 16 bits it's 90ms. So calculate
+	 * from there.
+	 *
+	 * Since the time taken depends on a resistor value, leave some
+	 * margin above the 90ms timeout, otherwise we risk reading a
+	 * stale value.
+	 */
+	wait_time = DIV_ROUND_UP(100, 1 << (16 - chip->adc_bit));
+	msleep(wait_time);
+}
+
 static int isl29018_read_sensor_input(struct i2c_client *client, int mode)
 {
 	int status;
@@ -150,7 +165,7 @@ static int isl29018_read_sensor_input(struct i2c_client *client, int mode)
 		dev_err(&client->dev, "Error in setting operating mode\n");
 		return status;
 	}
-	msleep(CONVERSION_TIME_MS);
+	integration_wait(iio_priv(i2c_get_clientdata(client)));
 	status = i2c_smbus_read_word_data(client, ISL29018_REG_ADD_DATA_LSB);
 	if (status < 0) {
 		dev_err(&client->dev, "Error in reading Lux DATA\n");
