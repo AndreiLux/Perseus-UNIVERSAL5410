@@ -20,10 +20,8 @@ ccflags-y += -Wno-declaration-after-statement
 ccflags-$(CONFIG_MOBICORE_DEBUG) += -DDEBUG
 ccflags-$(CONFIG_MOBICORE_VERBOSE) += -DDEBUG_VERBOSE
 
-# Choose one platform from the folder
-MOBICORE_PLATFORM := $(shell (ls -1 $(GUD_ROOT_FOLDER)/MobiCoreDriver/platforms | tail -1) )
-# Use the available platform folder
-ccflags-y += -I$(GUD_ROOT_FOLDER)/MobiCoreDriver/platforms/$(MOBICORE_PLATFORM)
+# Use the selected platform folder
+ccflags-y	+= -I$(GUD_ROOT_FOLDER)/MobiCoreDriver/platforms/$(CONFIG_MOBICORE_PLATFORM)
 # MobiCore Driver includes
 ccflags-y += -I$(GUD_ROOT_FOLDER)/MobiCoreDriver/public
 # MobiCore KernelApi required incldes

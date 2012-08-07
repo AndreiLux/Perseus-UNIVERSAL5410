@@ -1,6 +1,9 @@
 #
 # MobiCore configuration
 #
+
+menu "MobiCore secure driver"
+
 config MOBICORE_DRIVER
 	tristate "MobiCore Driver"
 	depends on ARM_TRUSTZONE
@@ -28,3 +31,22 @@ config MOBICORE_API
 	depends on MOBICORE_DRIVER
 	---help---
 	  Linux Kernel MobiCore API
+
+if MOBICORE_DRIVER
+
+choice
+	prompt "MobiCore platform"
+	default MOBICORE_PLATFORM_EXYNOS5 if ARCH_EXYNOS5
+
+	config MOBICORE_PLATFORM_EXYNOS5
+		bool "MobiCore for Exynos5" if ARCH_EXYNOS5
+
+endchoice
+
+config MOBICORE_PLATFORM
+	string
+	default "EXYNOS_5250_STD" if MOBICORE_PLATFORM_EXYNOS5
+
+endif
+
+endmenu
