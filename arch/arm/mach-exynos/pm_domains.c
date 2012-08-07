@@ -34,7 +34,6 @@
 struct exynos_pm_domain {
 	struct list_head list;
 	void __iomem *base;
-	char const *name;
 	bool is_off;
 	struct generic_pm_domain pd;
 };
@@ -71,7 +70,7 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 
 	if (!base) {
 		pr_err("%s: Failed to get %s power domain base address\n",
-			__func__, pd->name);
+			__func__, domain->name);
 		return -EINVAL;
 	}
 
@@ -140,8 +139,8 @@ static int exynos_sub_power_off(struct generic_pm_domain *domain)
 static struct exynos_pm_domain PD = {			\
 	.list = LIST_HEAD_INIT((PD).list),		\
 	.base = (void __iomem *)BASE,			\
-	.name = NAME,					\
 	.pd = {						\
+		.name = NAME,					\
 		.power_off = exynos_pd_power_off,	\
 		.power_on = exynos_pd_power_on,	\
 	},						\
@@ -150,8 +149,8 @@ static struct exynos_pm_domain PD = {			\
 #define EXYNOS_SUB_GPD(PD, NAME)			\
 static struct exynos_pm_domain PD = {			\
 	.list = LIST_HEAD_INIT((PD).list),		\
-	.name = NAME,					\
 	.pd = {						\
+		.name = NAME,					\
 		.power_off = exynos_sub_power_off,	\
 		.power_on = exynos_sub_power_on,	\
 	},						\
@@ -193,16 +192,9 @@ static __init int exynos_pm_dt_parse_domains(void)
 static __init void exynos_pm_add_subdomain_to_genpd(struct generic_pm_domain *genpd,
 						struct generic_pm_domain *subdomain)
 {
-	struct exynos_pm_domain *gpd;
-	struct exynos_pm_domain *spd;
-
-	if (pm_genpd_add_subdomain(genpd, subdomain)) {
-		gpd = container_of(genpd, struct exynos_pm_domain, pd);
-		spd = container_of(subdomain, struct exynos_pm_domain, pd);
-
+	if (pm_genpd_add_subdomain(genpd, subdomain))
 		pr_info("%s: error in adding %s subdomain to %s power "
-			"domain\n", __func__, spd->name, gpd->name);
-	}
+			"domain\n", __func__, subdomain->name, genpd->name);
 }
 
 static __init void exynos_pm_add_dev_to_genpd(struct platform_device *pdev,
@@ -214,7 +206,7 @@ static __init void exynos_pm_add_dev_to_genpd(struct platform_device *pdev,
 		else
 			pr_info("%s: error in adding %s device to %s power"
 				"domain\n", __func__, dev_name(&pdev->dev),
-				pd->name);
+				pd->pd.name);
 	}
 }
 
