@@ -85,6 +85,11 @@ static int fimc_is_bayer_video_close(struct file *file)
 
 	dbg_sensor("%s\n", __func__);
 
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)){
+		dbg_sensor("fimc_is_video_streamoff\n");
+		fimc_is_video_streamoff(&video->common, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+	}
+
 	file->private_data = 0;
 	fimc_is_sensor_close(sensor);
 	fimc_is_video_close(&video->common);

@@ -86,8 +86,12 @@ static int fimc_is_scalerc_video_close(struct file *file)
 	int ret = 0;
 	struct fimc_is_video_scc *video = file->private_data;
 
-	dbg("%s\n", __func__);
+	dbg_scc("%s\n", __func__);
 
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)){
+		dbg_scc("%s - vb2_streamoff\n", __func__);
+		vb2_streamoff(&video->common.vbq, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+	}
 	file->private_data = 0;
 	fimc_is_video_close(&video->common);
 
@@ -267,7 +271,7 @@ static int fimc_is_scalerc_video_streamoff(struct file *file, void *priv,
 {
 	struct fimc_is_video_scc *video = file->private_data;
 
-	dbg("%s\n", __func__);
+	dbg_scc("%s\n", __func__);
 	return vb2_streamoff(&video->common.vbq, type);
 }
 

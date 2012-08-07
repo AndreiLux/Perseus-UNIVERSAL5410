@@ -87,6 +87,10 @@ static int fimc_is_isp_video_close(struct file *file)
 
 	dbg_isp("%s\n", __func__);
 
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)){
+		dbg_isp("fimc_is_video_streamoff\n");
+		fimc_is_video_streamoff(&video->common, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
+	}
 	file->private_data = 0;
 	fimc_is_ischain_close(ischain);
 	fimc_is_video_close(&video->common);
