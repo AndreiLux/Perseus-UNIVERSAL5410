@@ -658,7 +658,8 @@ static inline void dbs_timer_exit(struct cpu_dbs_info_s *dbs_info)
  * efficient idling at a higher frequency/voltage is.
  * Pavel Machek says this is not so for various generations of AMD and old
  * Intel systems.
- * Mike Chan (androidlcom) calis this is also not true for ARM.
+ * ARM systems v7 and later generally good idle power management as well, so
+ * treat them the same.
  * Because of this, whitelist specific known (series) of CPUs by default, and
  * leave all others up to the user.
  */
@@ -672,6 +673,9 @@ static int should_io_be_busy(void)
 	    boot_cpu_data.x86 == 6 &&
 	    boot_cpu_data.x86_model >= 15)
 		return 1;
+#endif
+#if defined(CONFIG_ARM) && defined(CPU_V7)
+	return 1;
 #endif
 	return 0;
 }
