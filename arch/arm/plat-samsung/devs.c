@@ -1732,3 +1732,23 @@ void __init s3c64xx_spi2_set_platdata(struct s3c64xx_spi_info *pd,
 	s3c_set_platdata(pd, sizeof(*pd), &s3c64xx_device_spi2);
 }
 #endif /* CONFIG_S3C64XX_DEV_SPI2 */
+
+#ifdef CONFIG_MALI_T6XX
+static struct resource g3d_resource[] = {
+	[0] = DEFINE_RES_MEM(EXYNOS5_PA_G3D, (SZ_4K * 5)),
+	[1] = DEFINE_RES_IRQ(JOB_IRQ_NUMBER),
+	[2] = DEFINE_RES_IRQ(MMU_IRQ_NUMBER),
+	[3] = DEFINE_RES_IRQ(GPU_IRQ_NUMBER),
+};
+
+struct platform_device exynos5_device_g3d = {
+	.name	= "mali",
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(g3d_resource),
+	.resource	= g3d_resource,
+	.dev = {
+		.dma_mask	= &samsung_device_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+};
+#endif /*CONFIG_MALI_T6XX*/

@@ -168,7 +168,9 @@ extern struct platform_device samsung_asoc_idma;
 extern struct platform_device samsung_device_keypad;
 
 extern struct platform_device s5p_device_fimg2d;
-
+#ifdef CONFIG_MALI_T6XX
+extern struct platform_device exynos5_device_g3d;
+#endif
 /* s3c2440 specific devices */
 
 #ifdef CONFIG_CPU_S3C2440
