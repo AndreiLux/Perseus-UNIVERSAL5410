@@ -291,6 +291,9 @@ static void exynos4_mct_tick_stop(struct mct_clock_event_device *mevt)
 		tmp &= ~mask;
 		exynos4_mct_write(tmp, addr);
 	}
+
+	/* clear MCT local interrupt */
+	exynos4_mct_write(0x1, mevt->base + MCT_L_INT_CSTAT_OFFSET);
 }
 
 static void exynos4_mct_tick_start(unsigned long cycles,
