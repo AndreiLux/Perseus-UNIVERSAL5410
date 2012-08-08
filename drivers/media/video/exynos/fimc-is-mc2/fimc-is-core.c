@@ -871,7 +871,7 @@ static int fimc_is_probe(struct platform_device *pdev)
 	if (ret)
 		err("v4l2_device_register_subdev_nodes failed\n");
 
-#if defined(CONFIG_EXYNOS_DEV_PD) && defined(CONFIG_PM_RUNTIME)
+#if defined(CONFIG_PM_RUNTIME)
 	pm_runtime_enable(&pdev->dev);
 #endif
 
