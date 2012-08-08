@@ -32,10 +32,11 @@
 
 #define MAX_REGULATORS		10
 
+#define CTRL_EN_BIT		0 /* Regulator enable bit, active high */
+
 struct tps65090_regulator {
 	/* Regulator register address.*/
 	u32		reg_en_reg;
-	u32		en_bit;
 
 	/* used by regulator core */
 	struct regulator_desc	desc;
@@ -65,7 +66,7 @@ static int tps65090_reg_is_enabled(struct regulator_dev *rdev)
 			ri->reg_en_reg);
 		return ret;
 	}
-	return (((control >> ri->en_bit) & 1) == 1);
+	return (((control >> CTRL_EN_BIT) & 1) == 1);
 }
 
 static int tps65090_reg_enable(struct regulator_dev *rdev)
@@ -74,7 +75,7 @@ static int tps65090_reg_enable(struct regulator_dev *rdev)
 	struct device *parent = to_tps65090_dev(rdev);
 	int ret;
 
-	ret = tps65090_set_bits(parent, ri->reg_en_reg, ri->en_bit);
+	ret = tps65090_set_bits(parent, ri->reg_en_reg, CTRL_EN_BIT);
 	if (ret < 0)
 		dev_err(&rdev->dev, "Error in updating reg 0x%x\n",
 			ri->reg_en_reg);
@@ -87,7 +88,7 @@ static int tps65090_reg_disable(struct regulator_dev *rdev)
 	struct device *parent = to_tps65090_dev(rdev);
 	int ret;
 
-	ret = tps65090_clr_bits(parent, ri->reg_en_reg, ri->en_bit);
+	ret = tps65090_clr_bits(parent, ri->reg_en_reg, CTRL_EN_BIT);
 	if (ret < 0)
 		dev_err(&rdev->dev, "Error in updating reg 0x%x\n",
 			ri->reg_en_reg);
