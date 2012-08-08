@@ -1030,6 +1030,9 @@ static int s5p_mfc_probe(struct platform_device *pdev)
 		goto err_dev;
 	}
 
+	dev->variant = (struct s5p_mfc_variant *)
+		platform_get_device_id(pdev)->driver_data;
+
 	ret = s5p_mfc_init_pm(dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to get mfc clock source\n");
@@ -1155,9 +1158,6 @@ static int s5p_mfc_probe(struct platform_device *pdev)
 	init_timer(&dev->watchdog_timer);
 	dev->watchdog_timer.data = (unsigned long)dev;
 	dev->watchdog_timer.function = s5p_mfc_watchdog;
-
-	dev->variant = (struct s5p_mfc_variant *)
-		platform_get_device_id(pdev)->driver_data;
 
 	pr_debug("%s--\n", __func__);
 	return 0;
@@ -1344,6 +1344,7 @@ static struct s5p_mfc_variant mfc_drvdata_v5 = {
 	.port_num	= 2,
 	.buf_size	= &buf_size_v5,
 	.buf_align	= &mfc_buf_align_v5,
+	.mclk_name	= "sclk_mfc"
 };
 
 static struct s5p_mfc_variant mfc_drvdata_v6 = {
@@ -1351,6 +1352,7 @@ static struct s5p_mfc_variant mfc_drvdata_v6 = {
 	.port_num	= 1,
 	.buf_size	= &buf_size_v6,
 	.buf_align	= &mfc_buf_align_v6,
+	.mclk_name	= "aclk_333"
 };
 
 static struct platform_device_id mfc_driver_ids[] = {

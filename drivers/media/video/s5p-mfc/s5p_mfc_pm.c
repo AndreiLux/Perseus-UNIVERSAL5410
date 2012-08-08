@@ -20,11 +20,6 @@
 #include "s5p_mfc_debug.h"
 #include "s5p_mfc_pm.h"
 
-#ifdef CONFIG_VIDEO_SAMSUNG_S5P_MFC_V5
-#define MFC_CLKNAME            "sclk_mfc"
-#elif CONFIG_VIDEO_SAMSUNG_S5P_MFC_V6
-#define MFC_CLKNAME            "aclk_333"
-#endif
 #define MFC_GATE_CLK_NAME	"mfc"
 
 #define CLK_DEBUG
@@ -55,7 +50,7 @@ int s5p_mfc_init_pm(struct s5p_mfc_dev *dev)
 		goto err_p_ip_clk;
 	}
 
-	pm->clock = clk_get(&dev->plat_dev->dev, MFC_CLKNAME);
+	pm->clock = clk_get(&dev->plat_dev->dev, dev->variant->mclk_name);
 	if (IS_ERR(pm->clock)) {
 		mfc_err("Failed to get MFC clock\n");
 		ret = PTR_ERR(pm->clock);
