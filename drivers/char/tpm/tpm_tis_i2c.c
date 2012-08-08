@@ -657,6 +657,9 @@ MODULE_DEVICE_TABLE(i2c, tpm_i2c_id);
  */
 static int tpm_tis_i2c_suspend(struct device *dev)
 {
+	if (work_pending(&tpm_dev.init_work))
+		flush_work_sync(&tpm_dev.init_work);
+
 	if (tpm_dev.powered_while_suspended)
 		return 0;
 
@@ -674,17 +677,11 @@ static struct tpm_input_header resume_header = {
 	.ordinal = TPM_ORD_STARTUP
 };
 
-static int tpm_tis_i2c_resume(struct device *dev)
+static void tpm_tis_async_resume(struct work_struct *work)
 {
-	struct tpm_chip *chip = dev_get_drvdata(dev);
+	struct tpm_chip *chip = tpm_dev.chip;
 	struct tpm_cmd_t cmd;
 	int rc;
-
-	if (tpm_dev.powered_while_suspended)
-		return 0;
-
-	if (chip == NULL)
-		return -ENODEV;
 
 	cmd.header.in = resume_header;
 	cmd.params.tpm_startup_arg_in = TPM_ST_STATE;
@@ -692,11 +689,25 @@ static int tpm_tis_i2c_resume(struct device *dev)
 			      "resuming TPM after suspend");
 	if (rc == 0) {
 		tpm_continue_selftest_nocheck(chip);
-		tpm_pm_resume(dev);
+		tpm_pm_resume(&tpm_dev.client->dev);
 		dev_warn(chip->dev, "TPM restored in insecure state\n");
 	} else {
 		dev_err(chip->dev, "Error restoring state: %d\n", rc);
 	}
+}
+
+static int tpm_tis_i2c_resume(struct device *dev)
+{
+	struct tpm_chip *chip = dev_get_drvdata(dev);
+
+	if (tpm_dev.powered_while_suspended)
+		return 0;
+
+	if (chip == NULL)
+		return -ENODEV;
+
+	INIT_WORK(&tpm_dev.init_work, tpm_tis_async_resume);
+	schedule_work(&tpm_dev.init_work);
 
 	return 0;
 }
