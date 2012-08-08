@@ -277,10 +277,16 @@ dma_pointer(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct runtime_data *prtd = runtime->private_data;
 	unsigned long res;
+	dma_addr_t src, dst;
 
 	pr_debug("Entered %s\n", __func__);
 
-	res = prtd->dma_pos - prtd->dma_start;
+	prtd->params->ops->getposition(prtd->params->ch, &src, &dst);
+
+	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+		res = dst - prtd->dma_start;
+	else
+		res = src - prtd->dma_start;
 
 	pr_debug("Pointer offset: %lu\n", res);
 
