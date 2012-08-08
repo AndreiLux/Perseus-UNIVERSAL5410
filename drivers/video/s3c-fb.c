@@ -1688,6 +1688,11 @@ static int s3c_fb_set_win_config(struct s3c_fb *sfb,
 
 	fd = get_unused_fd();
 
+	if (fd < 0) {
+		kfree(regs);
+		return fd;
+	}
+
 	for (i = 0; i < sfb->variant.nr_windows && !ret; i++) {
 		struct s3c_fb_win_config *config = &win_config[i];
 		struct s3c_fb_win *win = sfb->windows[i];
