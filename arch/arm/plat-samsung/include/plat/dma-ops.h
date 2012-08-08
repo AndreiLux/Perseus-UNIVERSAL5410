@@ -30,6 +30,7 @@ struct samsung_dma_prep {
 	unsigned long len;
 	void (*fp)(void *data);
 	void *fp_param;
+	unsigned int infiniteloop;
 };
 
 struct samsung_dma_config {

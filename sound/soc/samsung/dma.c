@@ -92,25 +92,31 @@ static void dma_enqueue(struct snd_pcm_substream *substream)
 	dma_info.period = prtd->dma_period;
 	dma_info.len = prtd->dma_period*limit;
 
-	while (prtd->dma_loaded < limit) {
-		pr_debug("dma_loaded: %d\n", prtd->dma_loaded);
-
-		if ((pos + dma_info.period) > prtd->dma_end) {
-			dma_info.period  = prtd->dma_end - pos;
-			pr_debug("%s: corrected dma len %ld\n",
-					__func__, dma_info.period);
-		}
-
-		dma_info.buf = pos;
+	if (samsung_dma_has_infiniteloop()) {
+		dma_info.buf = prtd->dma_pos;
+		dma_info.infiniteloop = limit;
 		prtd->params->ops->prepare(prtd->params->ch, &dma_info);
+	} else {
+		dma_info.infiniteloop = 0;
+		while (prtd->dma_loaded < limit) {
+			pr_debug("dma_loaded: %d\n", prtd->dma_loaded);
 
-		prtd->dma_loaded++;
-		pos += prtd->dma_period;
-		if (pos >= prtd->dma_end)
-			pos = prtd->dma_start;
+			if ((pos + dma_info.period) > prtd->dma_end) {
+				dma_info.period  = prtd->dma_end - pos;
+				pr_debug("%s: corrected dma len %ld\n",
+						__func__, dma_info.period);
+			}
+
+			dma_info.buf = pos;
+			prtd->params->ops->prepare(prtd->params->ch, &dma_info);
+
+			prtd->dma_loaded++;
+			pos += prtd->dma_period;
+			if (pos >= prtd->dma_end)
+				pos = prtd->dma_start;
+		}
+		prtd->dma_pos = pos;
 	}
-
-	prtd->dma_pos = pos;
 }
 
 static void audio_buffdone(void *data)
@@ -120,22 +126,18 @@ static void audio_buffdone(void *data)
 
 	pr_debug("Entered %s\n", __func__);
 
-	if (prtd->state & ST_RUNNING) {
-		prtd->dma_pos += prtd->dma_period;
-		if (prtd->dma_pos >= prtd->dma_end)
-			prtd->dma_pos = prtd->dma_start;
+	if (substream)
+		snd_pcm_period_elapsed(substream);
 
-		if (substream)
-			snd_pcm_period_elapsed(substream);
-
-		spin_lock(&prtd->lock);
-		if (!samsung_dma_has_circular()) {
-			prtd->dma_loaded--;
+	spin_lock(&prtd->lock);
+	if (!samsung_dma_has_circular()) {
+		prtd->dma_loaded--;
+		if (!samsung_dma_has_infiniteloop())
 			dma_enqueue(substream);
-		}
-		spin_unlock(&prtd->lock);
 	}
+	spin_unlock(&prtd->lock);
 }
+
 
 static int dma_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params)
