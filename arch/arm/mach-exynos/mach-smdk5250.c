@@ -1949,10 +1949,6 @@ static void __init smdk5250_machine_init(void)
 			&exynos5_device_gsc2);
 	s3c_set_platdata(&exynos_gsc3_default_data, sizeof(exynos_gsc3_default_data),
 			&exynos5_device_gsc3);
-	exynos5_gsc_set_parent_clock("mout_aclk_300_gscl_mid", "mout_mpll_user");
-	exynos5_gsc_set_parent_clock("mout_aclk_300_gscl", "mout_aclk_300_gscl_mid");
-	exynos5_gsc_set_parent_clock("aclk_300_gscl", "dout_aclk_300_gscl");
-	exynos5_gsc_set_clock_rate("dout_aclk_300_gscl", 310000000);
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_JPEG
 	exynos5_jpeg_setup_clock(&s5p_device_jpeg.dev, 150000000);

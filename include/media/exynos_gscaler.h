@@ -39,18 +39,4 @@ extern struct exynos_platform_gscaler exynos_gsc3_default_data;
   * @ name: pdev name for gscaler
   */
 void __init exynos5_gsc_set_pdev_name(int id, char *name);
-
-/**
- * exynos5_gsc_set_parent_clock() = Exynos5 setup function for parent clock.
- * @child: child clock used for gscaler
- * @parent: parent clock used for gscaler
- */
-int __init exynos5_gsc_set_parent_clock(const char *child, const char *parent);
-
-/**
- * exynos5_gsc_set_clock_rate() = Exynos5 setup function for clock rate.
- * @clk: name of clock used for gscaler
- * @clk_rate: clock_rate for gscaler clock
- */
-int __init exynos5_gsc_set_clock_rate(const char *clk, unsigned long clk_rate);
 #endif /* EXYNOS_GSCALER_H_ */
