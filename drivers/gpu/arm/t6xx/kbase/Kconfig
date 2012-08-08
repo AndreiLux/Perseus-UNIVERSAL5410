@@ -95,6 +95,28 @@ config MALI_UNCACHED
 	help
 	  Select this option to disable CPU caching for all GPU memory regions.
 
+config MALI_BASE_ALLOC_FAIL
+	bool "Change allocation GFP flags so that allocations can fail"
+	depends on MALI_T6XX && MALI_EXPERT
+	default n
+	help
+	  Change the default memory allocation GFP flags so that allocations
+	  can fail.
+
+	  By default, kbase memory allocations don't fail. This is consisent
+	  with other GPU drivers. However, kbase (i.e. texture memory)
+	  allocations are accounted to the process which caused the allocation.
+	  This means there's a potential DoS attack an application could make
+	  by just allocating lots and lots of memory (E.g. textures). That
+	  memory wouldn't be seen as being owned by the malicious/buggy
+	  application and so the OOM killer wouldn't kill that app's process.
+	  By permitting allocations to fail in low memory situations, we can
+	  avoid that DoS attack vector at the cost of GL allocations being able
+	  to fail.
+
+	  Turn this on if you're confident your code can handle GL allocations
+	  failures.
+
 config MALI_BASE_TRACK_MEMLEAK
 	bool "Enable the tracking of memory leaks and support for simulated failures"
 	depends on MALI_T6XX && MALI_EXPERT

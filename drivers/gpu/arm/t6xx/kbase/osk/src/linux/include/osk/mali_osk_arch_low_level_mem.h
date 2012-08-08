@@ -59,14 +59,18 @@ OSK_STATIC_INLINE u32 oskp_phy_os_pages_alloc(oskp_phy_os_allocator *allocator,
 		struct page *p;
 		void * mp;
 
+#ifdef CONFIG_MALI_BASE_ALLOC_FAIL
 		p = alloc_page(__GFP_IO |
-		               __GFP_FS |
-		               __GFP_COLD |
-		               __GFP_NOWARN |
-		               __GFP_NORETRY |
-		               __GFP_NOMEMALLOC |
-		               __GFP_HIGHMEM |
-		               __GFP_HARDWALL);
+			       __GFP_FS |
+			       __GFP_COLD |
+			       __GFP_NOWARN |
+			       __GFP_NORETRY |
+			       __GFP_NOMEMALLOC |
+			       __GFP_HIGHMEM |
+			       __GFP_HARDWALL);
+#else
+		p = alloc_page(GFP_KERNEL | __GFP_HIGHMEM);
+#endif
 		if (NULL == p)
 		{
 			break;
