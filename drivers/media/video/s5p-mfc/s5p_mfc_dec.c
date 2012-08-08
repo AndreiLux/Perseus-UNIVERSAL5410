@@ -1038,7 +1038,6 @@ static int s5p_mfc_stop_streaming(struct vb2_queue *q)
 	}
 
 	if (q->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-#if defined(CONFIG_VIDEO_SAMSUNG_S5P_MFC_V6)
 		if (ctx->dpb_flush == 0) {
 			ctx->state = MFCINST_FLUSH;
 			spin_lock_irqsave(&dev->condlock, flags);
@@ -1051,7 +1050,6 @@ static int s5p_mfc_stop_streaming(struct vb2_queue *q)
 				mfc_err("Err flushing buffers\n");
 			ctx->state = MFCINST_FINISHED;
 		}
-#endif
 		spin_lock_irqsave(&dev->irqlock, flags);
 		s5p_mfc_cleanup_queue(&ctx->dst_queue, &ctx->vq_dst);
 		INIT_LIST_HEAD(&ctx->dst_queue);

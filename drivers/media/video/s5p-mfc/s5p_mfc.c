@@ -612,7 +612,6 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 	case S5P_FIMV_R2H_CMD_INIT_BUFFERS_RET:
 		s5p_mfc_handle_init_buffers(ctx, reason, err);
 		break;
-#if defined(CONFIG_VIDEO_SAMSUNG_S5P_MFC_V6)
 	case S5P_FIMV_R2H_CMD_DPB_FLUSH_RET:
 		s5p_mfc_clear_int_flags(dev);
 		ctx->int_type = reason;
@@ -624,7 +623,6 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 		s5p_mfc_clock_off();
 		wake_up(&ctx->queue);
 		break;
-#endif
 	default:
 		mfc_debug(2, "Unknown int reason\n");
 		s5p_mfc_clear_int_flags(dev);

@@ -117,9 +117,7 @@ enum s5p_mfc_inst_state {
 	MFCINST_RETURN_INST,
 	MFCINST_ERROR,
 	MFCINST_ABORT,
-#if defined(CONFIG_VIDEO_SAMSUNG_S5P_MFC_V6)
 	MFCINST_FLUSH,
-#endif
 	MFCINST_RES_CHANGE_INIT,
 	MFCINST_RES_CHANGE_FLUSH,
 	MFCINST_RES_CHANGE_END,
@@ -658,12 +656,12 @@ struct mfc_control {
 #define IS_MFCV6(dev)		(dev->variant->version >= 0x60 ? 1 : 0)
 
 #if defined(CONFIG_VIDEO_SAMSUNG_S5P_MFC_V5)
+#error "MFC_v5 is not supported for EXYNOS5/Chrome."
 #include "regs-mfc.h"
 #include "s5p_mfc_opr.h"
 #include "s5p_mfc_shm.h"
-#elif defined(CONFIG_VIDEO_SAMSUNG_S5P_MFC_V6)
+#endif
 #include "regs-mfc-v6.h"
 #include "s5p_mfc_opr_v6.h"
-#endif
 
 #endif /* S5P_MFC_COMMON_H_ */
