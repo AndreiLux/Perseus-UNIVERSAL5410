@@ -1022,6 +1022,24 @@ static void __init samsung_gpiolib_add_4bit_chips(struct samsung_gpio_chip *chip
 	}
 }
 
+static void __init samsung_gpiolib_add_4bit_chips_no_pm(struct samsung_gpio_chip *chip,
+						  int nr_chips, void __iomem *base)
+{
+	int i;
+
+	for (i = 0 ; i < nr_chips; i++, chip++) {
+		chip->chip.direction_input = samsung_gpiolib_4bit_input;
+		chip->chip.direction_output = samsung_gpiolib_4bit_output;
+
+		if (!chip->config)
+			chip->config = &samsung_gpio_cfgs[2];
+		if ((base != NULL) && (chip->base == NULL))
+			chip->base = base + ((i) * 0x20);
+
+		samsung_gpiolib_add(chip);
+	}
+}
+
 static void __init samsung_gpiolib_add_4bit2_chips(struct samsung_gpio_chip *chip,
 						   int nr_chips)
 {
@@ -2953,7 +2971,7 @@ static __init int samsung_gpiolib_init(void)
 		samsung_gpiolib_add_4bit_chips(exynos5_gpios_3,
 					       nr_chips, gpio_base3);
 
-		/* gpio part4 */
+		/* gpio part4, no PM part */
 		gpio_base4 = ioremap(EXYNOS5_PA_GPIO4, SZ_4K);
 		if (gpio_base4 == NULL) {
 			pr_err("unable to ioremap for gpio_base4\n");
@@ -2971,7 +2989,7 @@ static __init int samsung_gpiolib_init(void)
 			exynos_gpiolib_attach_ofnode(chip,
 					EXYNOS5_PA_GPIO4, i * 0x20);
 		}
-		samsung_gpiolib_add_4bit_chips(exynos5_gpios_4,
+		samsung_gpiolib_add_4bit_chips_no_pm(exynos5_gpios_4,
 					       nr_chips, gpio_base4);
 #if defined(CONFIG_SOC_EXYNOS5250) && defined(CONFIG_S5P_GPIO_INT)
 		s5p_register_gpioint_bank(EXYNOS5_IRQ_GPIO_XA, 0,
