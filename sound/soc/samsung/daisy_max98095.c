@@ -22,6 +22,7 @@
 #include <linux/platform_device.h>
 #include <linux/clk.h>
 #include <linux/io.h>
+#include <linux/of_gpio.h>
 
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
@@ -283,6 +284,11 @@ static struct snd_soc_jack_pin daisy_mic_jack_pins[] = {
 	},
 };
 
+static struct snd_soc_jack_gpio daisy_mic_jack_gpio = {
+	.name = "mic detect",
+	.report = SND_JACK_MICROPHONE,
+};
+
 static const struct snd_soc_dapm_route daisy_audio_map[] = {
 	{"Mic Jack", "NULL", "MICBIAS2"},
 	{"MIC2", "NULL", "Mic Jack"},
@@ -297,27 +303,39 @@ static int daisy_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_codec *codec = rtd->codec;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
+	struct snd_soc_card *card = codec->card;
+	struct device_node *dn = card->dev->of_node;
 
-	/* TODO(thutt): This must be hooked up to the headphone-switch
-	 * & microphone-detect GPIOs on the Exynos and plumbed through
-	 * to to /dev/input.  These two GPIOs are presently done as a
-	 * rework to existing boards.
-	 */
-	snd_soc_jack_new(codec, "Mic Jack", SND_JACK_MICROPHONE,
-			 &daisy_mic_jack);
-	snd_soc_jack_add_pins(&daisy_mic_jack,
-			      ARRAY_SIZE(daisy_mic_jack_pins),
-			      daisy_mic_jack_pins);
+	if (dn) {
+		enum of_gpio_flags flags;
 
-	/* TODO: Move this to device tree */
-	if (of_machine_is_compatible("google,snow")) {
-		daisy_hp_jack_gpio.gpio = EXYNOS5_GPX2(2);
+		daisy_mic_jack_gpio.gpio = of_get_named_gpio_flags(
+				dn, "samsung,mic-det-gpios", 0, &flags);
+		daisy_mic_jack_gpio.invert = !!(flags & OF_GPIO_ACTIVE_LOW);
+
+		daisy_hp_jack_gpio.gpio = of_get_named_gpio_flags(
+				dn, "samsung,hp-det-gpios", 0, &flags);
+		daisy_hp_jack_gpio.invert = !!(flags & OF_GPIO_ACTIVE_LOW);
+	}
+
+	if (gpio_is_valid(daisy_mic_jack_gpio.gpio)) {
+		snd_soc_jack_new(codec, "Mic Jack", SND_JACK_MICROPHONE,
+				 &daisy_mic_jack);
+		snd_soc_jack_add_pins(&daisy_mic_jack,
+				      ARRAY_SIZE(daisy_mic_jack_pins),
+				      daisy_mic_jack_pins);
+		snd_soc_jack_add_gpios(&daisy_mic_jack, 1,
+				       &daisy_mic_jack_gpio);
+	}
+
+	if (gpio_is_valid(daisy_hp_jack_gpio.gpio)) {
 		snd_soc_jack_new(codec, "Headphone Jack",
 				 SND_JACK_HEADPHONE, &daisy_hp_jack);
 		snd_soc_jack_add_pins(&daisy_hp_jack,
 				      ARRAY_SIZE(daisy_hp_jack_pins),
 				      daisy_hp_jack_pins);
-		snd_soc_jack_add_gpios(&daisy_hp_jack, 1, &daisy_hp_jack_gpio);
+		snd_soc_jack_add_gpios(&daisy_hp_jack, 1,
+				       &daisy_hp_jack_gpio);
 	}
 
 	/* Microphone BIAS is needed to power the analog mic.
