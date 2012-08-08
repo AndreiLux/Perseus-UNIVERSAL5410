@@ -678,6 +678,11 @@ static int i2s_startup(struct snd_pcm_substream *substream,
 	struct i2s_dai *other = i2s->pri_dai ? : i2s->sec_dai;
 	unsigned long flags;
 
+#ifdef CONFIG_SND_PM_RUNTIME
+	struct platform_device *pdev = i2s->pri_dai ?
+				       i2s->pri_dai->pdev : i2s->pdev;
+	struct s3c_audio_pdata *i2s_pdata = pdev->dev.platform_data;
+#endif
 	spin_lock_irqsave(&lock, flags);
 
 	if (i2s->opencnt++) {
@@ -695,12 +700,23 @@ static int i2s_startup(struct snd_pcm_substream *substream,
 	/* Enforce set_sysclk in Master mode */
 	i2s->rclk_srcrate = 0;
 
+	spin_unlock_irqrestore(&lock, flags);
+
 	if (!is_opened(other)) {
+#ifdef CONFIG_SND_PM_RUNTIME
+		pm_runtime_get_sync(&pdev->dev);
+#endif
 		i2s_register_restore(i2s);
 		clk_enable(i2s->clk);
-	}
 
-	spin_unlock_irqrestore(&lock, flags);
+#ifdef CONFIG_SND_PM_RUNTIME
+		if (i2s_pdata->cfg_gpio && i2s_pdata->cfg_gpio(pdev))
+			dev_err(&pdev->dev, "Unable to configure gpio\n");
+
+		if (i2s->quirks & QUIRK_NEED_RSTCLR)
+			writel(CON_RSTCLR, i2s->addr + I2SCON);
+#endif
+	}
 
 	return 0;
 }
@@ -712,6 +728,10 @@ static void i2s_shutdown(struct snd_pcm_substream *substream,
 	struct i2s_dai *other = i2s->pri_dai ? : i2s->sec_dai;
 	unsigned long flags;
 
+#ifdef CONFIG_SND_PM_RUNTIME
+	struct platform_device *pdev = i2s->pri_dai ?
+				       i2s->pri_dai->pdev : i2s->pdev;
+#endif
 	spin_lock_irqsave(&lock, flags);
 
 	if (--i2s->opencnt) {
@@ -736,8 +756,11 @@ static void i2s_shutdown(struct snd_pcm_substream *substream,
 		i2s_set_sysclk(dai, SAMSUNG_I2S_CDCLK,
 				0, SND_SOC_CLOCK_IN);
 
-		clk_disable(i2s->clk);
 		i2s_register_save(i2s);
+		clk_disable(i2s->clk);
+#ifdef CONFIG_SND_PM_RUNTIME
+		pm_runtime_put_sync(&pdev->dev);
+#endif
 	}
 }
 
@@ -921,6 +944,13 @@ static int samsung_i2s_dai_probe(struct snd_soc_dai *dai)
 	struct i2s_dai *other = i2s->pri_dai ? : i2s->sec_dai;
 	int ret;
 
+#ifdef CONFIG_SND_PM_RUNTIME
+	struct platform_device *pdev = i2s->pri_dai ?
+				       i2s->pri_dai->pdev : i2s->pdev;
+
+	pm_runtime_get_sync(&pdev->dev);
+#endif
+
 	if (other && other->clk) /* If this is second dai probe */
 		goto probe_exit;
 
@@ -999,9 +1029,12 @@ probe_exit:
 		i2s_set_sysclk(dai, SAMSUNG_I2S_CDCLK,
 				0, SND_SOC_CLOCK_IN);
 
-	clk_disable(i2s->clk);
 	i2s_register_save(i2s);
+	clk_disable(i2s->clk);
 	i2s->opencnt = 0;
+#ifdef CONFIG_SND_PM_RUNTIME
+	pm_runtime_put_sync(&pdev->dev);
+#endif
 
 	return 0;
 
@@ -1209,12 +1242,13 @@ static __devinit int samsung_i2s_probe(struct platform_device *pdev)
 		pri_dai->sec_dai = sec_dai;
 	}
 
+#ifndef CONFIG_SND_PM_RUNTIME
 	if (i2s_pdata->cfg_gpio && i2s_pdata->cfg_gpio(pdev)) {
 		dev_err(&pdev->dev, "Unable to configure gpio\n");
 		ret = -EINVAL;
 		goto err;
 	}
-
+#endif
 	snd_soc_register_dai(&pri_dai->pdev->dev, &pri_dai->i2s_dai_drv);
 
 	pm_runtime_enable(&pdev->dev);
