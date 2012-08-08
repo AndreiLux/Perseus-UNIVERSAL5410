@@ -87,7 +87,15 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 		!power_on && base == EXYNOS5_ISP_CONFIGURATION)
 		__raw_writel(0x0, EXYNOS5_CMU_RESET_ISP_SYS_PWR_REG);
 
+	if (soc_is_exynos5250() &&
+		!power_on && base == EXYNOS5_MAU_CONFIGURATION) {
+		__raw_writel(0x0, EXYNOS5_CMU_CLKSTOP_MAU_SYS_PWR_REG);
+		__raw_writel(0x0, EXYNOS5_CMU_RESET_MAU_SYS_PWR_REG);
+		__raw_writel(0x0, EXYNOS5_PAD_RETENTION_MAU_SYS_PWR_REG);
+	}
+
 	pwr = power_on ? EXYNOS_INT_LOCAL_PWR_EN : 0;
+
 	__raw_writel(pwr, base);
 
 	/* Wait max 1ms */
@@ -103,6 +111,11 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 		timeout--;
 		cpu_relax();
 		usleep_range(80, 100);
+	}
+
+	if (soc_is_exynos5250() &&
+		power_on && base == EXYNOS5_MAU_CONFIGURATION) {
+		__raw_writel(0x10000000, EXYNOS_PAD_RET_MAUDIO_OPTION);
 	}
 
 	/* Disable all the clocks of IPs in power domain */
@@ -293,6 +306,7 @@ static __init int exynos4_pm_init_power_domain(void)
 
 /* For EXYNOS5 */
 EXYNOS_GPD(exynos5_pd_mfc, EXYNOS5_MFC_CONFIGURATION, "pd-mfc");
+EXYNOS_GPD(exynos5_pd_maudio, EXYNOS5_MAU_CONFIGURATION, "pd-maudio");
 EXYNOS_GPD(exynos5_pd_gscl, EXYNOS5_GSCL_CONFIGURATION, "pd-gscl");
 EXYNOS_SUB_GPD(exynos5_pd_gscl0, "pd-gscl0");
 EXYNOS_SUB_GPD(exynos5_pd_gscl1, "pd-gscl1");
@@ -302,6 +316,7 @@ EXYNOS_GPD(exynos5_pd_isp, EXYNOS5_ISP_CONFIGURATION, "pd-isp");
 
 static struct exynos_pm_domain *exynos5_pm_domains[] = {
 	&exynos5_pd_mfc,
+	&exynos5_pd_maudio,
 	&exynos5_pd_gscl,
 	&exynos5_pd_gscl0,
 	&exynos5_pd_gscl1,
@@ -312,6 +327,9 @@ static struct exynos_pm_domain *exynos5_pm_domains[] = {
 
 #ifdef CONFIG_S5P_DEV_MFC
 EXYNOS_PM_DEV(mfc, mfc, &s5p_device_mfc, "mfc");
+#endif
+#ifdef CONFIG_SND_SAMSUNG_I2S
+EXYNOS_PM_DEV(maudio, maudio, &exynos5_device_i2s0, NULL);
 #endif
 #ifdef CONFIG_EXYNOS5_DEV_GSC
 EXYNOS_PM_DEV(gscl0, gscl0, &exynos5_device_gsc0, "gscl");
@@ -326,6 +344,9 @@ EXYNOS_PM_DEV(isp, isp, &exynos5_device_fimc_is, NULL);
 static struct exynos_pm_dev *exynos_pm_devs[] = {
 #ifdef CONFIG_S5P_DEV_MFC
 	&exynos5_pm_dev_mfc,
+#endif
+#ifdef CONFIG_SND_SAMSUNG_I2S
+	&exynos5_pm_dev_maudio,
 #endif
 #ifdef CONFIG_EXYNOS5_DEV_GSC
 	&exynos5_pm_dev_gscl0,
@@ -384,6 +405,9 @@ static int __init exynos5_pm_init_power_domain(void)
 
 #ifdef CONFIG_S5P_DEV_MFC
 	exynos_pm_add_dev_to_genpd(&s5p_device_mfc, &exynos5_pd_mfc);
+#endif
+#ifdef CONFIG_SND_SAMSUNG_I2S
+	exynos_pm_add_dev_to_genpd(&exynos5_device_i2s0, &exynos5_pd_maudio);
 #endif
 #ifdef CONFIG_EXYNOS5_DEV_GSC
 	exynos_pm_add_subdomain_to_genpd(&exynos5_pd_gscl.pd, &exynos5_pd_gscl0.pd);
