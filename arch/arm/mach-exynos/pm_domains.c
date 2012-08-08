@@ -355,6 +355,9 @@ static void __init exynos5_add_device_to_pd(struct exynos_pm_dev **pm_dev, int s
 			continue;
 		}
 
+		if (!tdev->con_id)
+			continue;
+
 		clk = clk_get(&tdev->pdev->dev, tdev->con_id);
 
 		if (!IS_ERR(clk)) {
