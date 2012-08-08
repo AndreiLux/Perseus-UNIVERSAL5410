@@ -83,6 +83,10 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 			}
 		}
 
+	if (soc_is_exynos5250() &&
+		!power_on && base == EXYNOS5_ISP_CONFIGURATION)
+		__raw_writel(0x0, EXYNOS5_CMU_RESET_ISP_SYS_PWR_REG);
+
 	pwr = power_on ? EXYNOS_INT_LOCAL_PWR_EN : 0;
 	__raw_writel(pwr, base);
 
