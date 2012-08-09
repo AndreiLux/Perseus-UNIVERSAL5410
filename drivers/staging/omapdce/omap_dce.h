@@ -48,6 +48,11 @@
  * response from coprocessor rather than starting a new request.
  */
 
+struct dce_pm_device {
+	char name[32];
+	struct device *dev;
+};
+
 enum omap_dce_codec {
 	OMAP_DCE_VIDENC2 = 1,
 	OMAP_DCE_VIDDEC3 = 2,

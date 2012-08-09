@@ -20,6 +20,9 @@
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/rpmsg.h>
+#include <linux/pm_runtime.h>
+#include <plat/omap-pm.h>
+#include <plat/clock.h>
 
 #include "../omapdrm/omap_drm.h"
 #include "../omapdrm/omap_drv.h"
@@ -115,6 +118,34 @@ static int dce_mapper_id = -1;
 static atomic_t next_req_id = ATOMIC_INIT(0);
 static DECLARE_WAIT_QUEUE_HEAD(wq);
 static DEFINE_MUTEX(lock);  // TODO probably more locking needed..
+
+/* PM runtime implementation */
+/* PM dependencies of each "device" is defined by its position in the array */
+/* get_sync : iva -> sl2if -> seq0 -> seq1 */
+/* put_sync: seq1 -> seq0 -> sl2if -> iva */
+
+#define NB_PM_DEVICES 4
+
+struct dce_pm_device dce_pm_device_list[NB_PM_DEVICES] = {
+	{.name = "iva.0", .dev = NULL},
+	{.name = "sl2if", .dev = NULL},
+	{.name = "iva_seq0.0", .dev = NULL},
+	{.name = "iva_seq1.0", .dev = NULL}
+};
+
+static void dce_pm_runtime_get_sync(void)
+{
+	int i;
+	for (i = 0; i < NB_PM_DEVICES; i++)
+		pm_runtime_get_sync(dce_pm_device_list[i].dev);
+}
+
+static void dce_pm_runtime_put_sync(void)
+{
+	int i;
+	for (i = (NB_PM_DEVICES - 1); i >= 0; i--)
+		pm_runtime_put_sync(dce_pm_device_list[i].dev);
+}
 
 /*
  * Utils:
@@ -1160,6 +1191,18 @@ static struct omap_drm_plugin plugin = {
  * RPMSG API:
  */
 
+static int dce_pm_find_device(struct dce_pm_device *pm_device)
+{
+	int ret = 0;
+
+	pm_device->dev = bus_find_device_by_name(&platform_bus_type,
+						     NULL, pm_device->name);
+	if (!pm_device->dev)
+		ret = -1;
+
+	return ret;
+}
+
 static int rpmsg_probe(struct rpmsg_channel *_rpdev)
 {
 	struct dce_rpc_connect_req req = {
@@ -1167,10 +1210,25 @@ static int rpmsg_probe(struct rpmsg_channel *_rpdev)
 			.chipset_id = GET_OMAP_TYPE,
 			.debug = drm_debug ? 1 : 3,
 	};
-	int ret;
+	int ret, i;
 
 	DBG("");
 	rpdev = _rpdev;
+
+	/* pm_runtime initialisation */
+	for (i = 0 ;i < NB_PM_DEVICES; i++) {
+		ret = dce_pm_find_device(&dce_pm_device_list[i]);
+		if (ret) {
+			DBG("couldn't find pm device %s \n",
+			    dce_pm_device_list[i].name);
+			return ret;
+		}
+
+		if (!pm_runtime_enabled(dce_pm_device_list[i].dev))
+			pm_runtime_enable(dce_pm_device_list[i].dev);
+	}
+
+	dce_pm_runtime_get_sync();
 
 	/* send connect msg: */
 	ret = rpsend(NULL, NULL, hdr(&req), sizeof(req));
@@ -1186,6 +1244,7 @@ static void __devexit rpmsg_remove(struct rpmsg_channel *_rpdev)
 {
 	DBG("");
 	omap_drm_unregister_plugin(&plugin);
+	dce_pm_runtime_put_sync();
 	rpdev = NULL;
 }
 
