@@ -1414,8 +1414,11 @@ static int gsc_suspend(struct device *dev)
 		gsc_err("capture device is running!!");
 		return -EINVAL;
 	}
-
+#ifdef CONFIG_PM_RUNTIME
 	pm_runtime_put_sync(dev);
+#else
+	gsc_runtime_suspend(dev);
+#endif
 
 	return ret;
 }
@@ -1432,7 +1435,11 @@ static int gsc_resume(struct device *dev)
 	drv_data = (struct gsc_driverdata *)
 		platform_get_device_id(pdev)->driver_data;
 
+#ifdef CONFIG_PM_RUNTIME
 	pm_runtime_get_sync(dev);
+#else
+	gsc_runtime_resume(dev);
+#endif
 	if (gsc_m2m_opened(gsc)) {
 		ctx = v4l2_m2m_get_curr_priv(gsc->m2m.m2m_dev);
 		if (ctx != NULL) {
