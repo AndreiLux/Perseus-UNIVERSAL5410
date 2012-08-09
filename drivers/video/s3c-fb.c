@@ -731,6 +731,44 @@ static inline u32 wincon(u32 bits_per_pixel, u32 transp_length, u32 red_length)
 	return data;
 }
 
+static void s3c_fb_configure_lcd(struct s3c_fb *sfb,
+		struct fb_videomode *win_mode)
+{
+	int clkdiv = s3c_fb_calc_pixclk(sfb, win_mode->pixclock);
+	u32 data = sfb->pdata->vidcon0;
+	data &= ~(VIDCON0_CLKVAL_F_MASK | VIDCON0_CLKDIR);
+	if (clkdiv > 1)
+		data |= VIDCON0_CLKVAL_F(clkdiv-1) | VIDCON0_CLKDIR;
+	else
+		data &= ~VIDCON0_CLKDIR;
+
+	/* write the timing data to the panel */
+	if (sfb->variant.is_2443)
+		data |= (1 << 5);
+
+	data |= VIDCON0_ENVID | VIDCON0_ENVID_F;
+	writel(data, sfb->regs + VIDCON0);
+	data = readl(sfb->regs + VIDCON2);
+	data &= ~(VIDCON2_RGB_ORDER_E_MASK | VIDCON2_RGB_ORDER_O_MASK);
+	data |= VIDCON2_RGB_ORDER_E_BGR | VIDCON2_RGB_ORDER_O_BGR;
+	writel(data, sfb->regs + VIDCON2);
+	data = VIDTCON0_VBPD(win_mode->upper_margin - 1)
+			| VIDTCON0_VFPD(win_mode->lower_margin - 1)
+			| VIDTCON0_VSPW(win_mode->vsync_len - 1);
+	writel(data, sfb->regs + sfb->variant.vidtcon);
+	data = VIDTCON1_HBPD(win_mode->left_margin - 1)
+			| VIDTCON1_HFPD(win_mode->right_margin - 1)
+			| VIDTCON1_HSPW(win_mode->hsync_len - 1);
+	/* VIDTCON1 */
+	writel(data, sfb->regs + sfb->variant.vidtcon + 4);
+	data = VIDTCON2_LINEVAL(win_mode->yres - 1)
+			| VIDTCON2_HOZVAL(win_mode->xres - 1)
+			| VIDTCON2_LINEVAL_E(win_mode->yres - 1)
+			| VIDTCON2_HOZVAL_E(win_mode->xres - 1);
+	/* VIDTCON2 */
+	writel(data, sfb->regs + sfb->variant.vidtcon + 8);
+}
+
 /**
  * s3c_fb_set_par() - framebuffer request to set new framebuffer state.
  * @info: The framebuffer to change.
@@ -741,13 +779,11 @@ static int s3c_fb_set_par(struct fb_info *info)
 {
 	struct fb_var_screeninfo *var = &info->var;
 	struct s3c_fb_win *win = info->par;
-	struct s3c_fb_pd_win *windata = win->windata;
 	struct s3c_fb *sfb = win->parent;
 	void __iomem *regs = sfb->regs;
 	void __iomem *buf = regs;
 	int win_no = win->index;
 	u32 data;
-	int clkdiv;
 	int old_wincon;
 
 	dev_dbg(sfb->dev, "setting framebuffer parameters\n");
@@ -768,54 +804,6 @@ static int s3c_fb_set_par(struct fb_info *info)
 	/* disable the window whilst we update it */
 	old_wincon = readl(regs + WINCON(win_no));
 	writel(0, regs + WINCON(win_no));
-
-	/* use platform specified window as the basis for the lcd timings */
-
-	if (win_no == sfb->pdata->default_win) {
-		clkdiv = s3c_fb_calc_pixclk(sfb, var->pixclock);
-
-		data = sfb->pdata->vidcon0;
-		data &= ~(VIDCON0_CLKVAL_F_MASK | VIDCON0_CLKDIR);
-
-		if (clkdiv > 1)
-			data |= VIDCON0_CLKVAL_F(clkdiv-1) | VIDCON0_CLKDIR;
-		else
-			data &= ~VIDCON0_CLKDIR;	/* 1:1 clock */
-
-		/* write the timing data to the panel */
-
-		if (sfb->variant.is_2443)
-			data |= (1 << 5);
-
-		data |= VIDCON0_ENVID | VIDCON0_ENVID_F;
-		writel(data, regs + VIDCON0);
-
-		data = readl(regs + VIDCON2);
-		data &= ~(VIDCON2_RGB_ORDER_E_MASK | VIDCON2_RGB_ORDER_O_MASK);
-		data |= VIDCON2_RGB_ORDER_E_BGR | VIDCON2_RGB_ORDER_O_BGR;
-		writel(data, regs + VIDCON2);
-
-		data = VIDTCON0_VBPD(var->upper_margin - 1) |
-		       VIDTCON0_VFPD(var->lower_margin - 1) |
-		       VIDTCON0_VSPW(var->vsync_len - 1);
-
-		writel(data, regs + sfb->variant.vidtcon);
-
-		data = VIDTCON1_HBPD(var->left_margin - 1) |
-		       VIDTCON1_HFPD(var->right_margin - 1) |
-		       VIDTCON1_HSPW(var->hsync_len - 1);
-
-		/* VIDTCON1 */
-		writel(data, regs + sfb->variant.vidtcon + 4);
-
-		data = VIDTCON2_LINEVAL(windata->win_mode.yres - 1) |
-		       VIDTCON2_HOZVAL(windata->win_mode.xres - 1) |
-		       VIDTCON2_LINEVAL_E(windata->win_mode.yres - 1) |
-		       VIDTCON2_HOZVAL_E(windata->win_mode.xres - 1);
-
-		/* VIDTCON2 */
-		writel(data, regs + sfb->variant.vidtcon + 8);
-	}
 
 	/* write the buffer address */
 
@@ -3158,20 +3146,25 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 			s3c_fb_sysmmu_fault_handler);
 #endif
 
-	/* we have the register setup, start allocating framebuffers */
 	default_win = sfb->pdata->default_win;
+	for (win = 0; win < fbdrv->variant.nr_windows; win++) {
+		if (!pd->win[win])
+			continue;
+
+		if (!pd->win[win]->win_mode.pixclock)
+			s3c_fb_missing_pixclock(&pd->win[win]->win_mode);
+	}
+
+	/* use platform specified window as the basis for the lcd timings */
+	s3c_fb_configure_lcd(sfb, &pd->win[default_win]->win_mode);
+
+	/* we have the register setup, start allocating framebuffers */
 	for (i = 0; i < fbdrv->variant.nr_windows; i++) {
 		win = i;
 		if (i == 0)
 			win = default_win;
 		if (i == default_win)
 			win = 0;
-
-		if (!pd->win[win])
-			continue;
-
-		if (!pd->win[win]->win_mode.pixclock)
-			s3c_fb_missing_pixclock(&pd->win[win]->win_mode);
 
 		ret = s3c_fb_probe_win(sfb, win, fbdrv->win[win],
 				       &sfb->windows[win]);
@@ -3408,8 +3401,11 @@ static int s3c_fb_resume(struct device *dev)
 		shadow_protect_win(win, 0);
 	}
 
-	/* restore framebuffers */
+	/* use platform specified window as the basis for the lcd timings */
 	default_win = sfb->pdata->default_win;
+	s3c_fb_configure_lcd(sfb, &pd->win[default_win]->win_mode);
+
+	/* restore framebuffers */
 	for (i = 0; i < S3C_FB_MAX_WIN; i++) {
 		win_no = i;
 		if (i == 0)
