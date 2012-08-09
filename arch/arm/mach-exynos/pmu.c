@@ -419,6 +419,10 @@ static int __init exynos_pmu_init(void)
 		exynos_pmu_config = exynos4212_pmu_config;
 		pr_info("EXYNOS4212 PMU Initialize\n");
 	} else if (soc_is_exynos5250()) {
+
+		/* Initialize for using delay reset assertion */
+		exynos_reset_assert_ctrl(true);
+
 		/*
 		 * Set logic reset duration
 		 */
