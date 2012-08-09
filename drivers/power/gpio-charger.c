@@ -68,14 +68,96 @@ static enum power_supply_property gpio_charger_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 };
 
+#if defined(CONFIG_OF)
+
+#include <linux/of_device.h>
+#include <linux/of_gpio.h>
+
+static const struct of_device_id gpio_charger_match[] = {
+	{ .compatible = "gpio-charger" },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, gpio_charger_match);
+
+static void gpio_of_read_pdata(struct platform_device *pdev)
+{
+	struct device_node *of_node = pdev->dev.of_node;
+	struct gpio_charger_platform_data *pdata = pdev->dev.platform_data;
+	enum of_gpio_flags flags;
+	u32 prop;
+
+	/* If platform data is already set, use it. */
+	if (pdata)
+		return;
+
+	/* Verify this driver matches this device. */
+	if (!of_node)
+		return;
+
+	/* Check for essential properties. */
+	if (!of_get_property(of_node, "gpio", NULL))
+		return;
+
+	pdata = devm_kzalloc(&pdev->dev,
+			     sizeof(struct gpio_charger_platform_data),
+			     GFP_KERNEL);
+	if (!pdata)
+		return;
+
+	pdata->name = "gpio-charger";
+	pdata->type = POWER_SUPPLY_TYPE_UNKNOWN;
+	if (!of_property_read_u32(of_node, "charger-type", &prop)) {
+		switch (prop) {
+		default:
+		case 0:
+			pdata->type = POWER_SUPPLY_TYPE_UNKNOWN;
+			break;
+		case 1:
+			pdata->type = POWER_SUPPLY_TYPE_BATTERY;
+			break;
+		case 2:
+			pdata->type = POWER_SUPPLY_TYPE_UPS;
+			break;
+		case 3:
+			pdata->type = POWER_SUPPLY_TYPE_MAINS;
+			break;
+		case 4:
+			pdata->type = POWER_SUPPLY_TYPE_USB;
+			break;
+		case 5:
+			pdata->type = POWER_SUPPLY_TYPE_USB_DCP;
+			break;
+		case 6:
+			pdata->type = POWER_SUPPLY_TYPE_USB_CDP;
+			break;
+		case 7:
+			pdata->type = POWER_SUPPLY_TYPE_USB_ACA;
+			break;
+		}
+	}
+	pdata->gpio = of_get_named_gpio_flags(of_node, "gpio", 0, &flags);
+	pdata->gpio_active_low = !!(flags & OF_GPIO_ACTIVE_LOW);
+
+	pdev->dev.platform_data = pdata;
+}
+#else
+static inline void gpio_of_read_pdata(struct platform_device *pdev)
+{
+}
+#endif
+
 static int __devinit gpio_charger_probe(struct platform_device *pdev)
 {
-	const struct gpio_charger_platform_data *pdata = pdev->dev.platform_data;
+	const struct gpio_charger_platform_data *pdata;
 	struct gpio_charger *gpio_charger;
 	struct power_supply *charger;
 	int ret;
 	int irq;
 
+	if (!pdev->dev.platform_data)
+		gpio_of_read_pdata(pdev);
+
+	pdata = pdev->dev.platform_data;
 	if (!pdata) {
 		dev_err(&pdev->dev, "No platform data\n");
 		return -EINVAL;
@@ -182,6 +264,7 @@ static struct platform_driver gpio_charger_driver = {
 		.name = "gpio-charger",
 		.owner = THIS_MODULE,
 		.pm = &gpio_charger_pm_ops,
+		.of_match_table = of_match_ptr(gpio_charger_match),
 	},
 };
 

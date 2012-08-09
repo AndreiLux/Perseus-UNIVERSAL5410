@@ -1,0 +1,24 @@
+gpio-charger
+~~~~~~~~~~~~
+
+Required properties :
+ - compatible : "gpio-charger"
+ - gpio : A GPIO to be used by the gpio-charger driver.
+   See bindings/gpio/gpio.txt for the GPIO specification format.
+ - charger-type : power supply type.
+     0 = Unknown
+     1 = Battery
+     2 = UPS
+     3 = Mains
+     4 = USB standard downstream port
+     5 = USB dedicated charging port
+     6 = USB charging downstream port
+     7 = USB accessory charger adapter
+
+Example:
+
+	charger {
+		compatible = "gpio-charger";
+		charger-type = <3>;
+		gpio = <&gpf0 2 0 0 0>;
+	}
