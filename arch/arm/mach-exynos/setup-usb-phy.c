@@ -19,6 +19,7 @@
 #include <mach/regs-usb3-exynos-drd-phy.h>
 #include <plat/cpu.h>
 #include <plat/usb-phy.h>
+#include <plat/udc-hs.h>
 
 #define EXYNOS5_USB_CFG	(S3C_VA_SYS + 0x230)
 #define PHY_ENABLE	(1 << 0)
@@ -483,6 +484,50 @@ static int exynos5_usb_phy30_exit(struct platform_device *pdev)
 	return 0;
 }
 
+static int s5p_usb_otg_phy_tune(struct s3c_hsotg_plat *pdata, int def_mode)
+{
+	u32 phytune;
+
+	if (!pdata)
+		return -EINVAL;
+
+	pr_debug("usb: %s read original tune\n", __func__);
+	phytune = readl(EXYNOS5_PHY_OTG_TUNE);
+	if (!pdata->def_phytune) {
+		pdata->def_phytune = phytune;
+		pr_debug("usb: %s save default phytune (0x%x)\n",
+				__func__, pdata->def_phytune);
+	}
+
+	pr_debug("usb: %s original tune=0x%x\n",
+			__func__, phytune);
+
+	pr_debug("usb: %s tune_mask=0x%x, tune=0x%x\n",
+			__func__, pdata->phy_tune_mask, pdata->phy_tune);
+
+	if (pdata->phy_tune_mask) {
+		if (def_mode) {
+			pr_debug("usb: %s set defult tune=0x%x\n",
+					__func__, pdata->def_phytune);
+			writel(pdata->def_phytune, EXYNOS5_PHY_OTG_TUNE);
+		} else {
+			phytune &= ~(pdata->phy_tune_mask);
+			phytune |= pdata->phy_tune;
+			udelay(10);
+			pr_debug("usb: %s custom tune=0x%x\n",
+					__func__, phytune);
+			writel(phytune, EXYNOS5_PHY_OTG_TUNE);
+		}
+		phytune = readl(EXYNOS5_PHY_OTG_TUNE);
+		pr_debug("usb: %s modified tune=0x%x\n",
+				__func__, phytune);
+	} else {
+		pr_debug("usb: %s default tune\n", __func__);
+	}
+
+	return 0;
+}
+
 static void set_exynos_usb_phy_tune(int type)
 {
 	u32 phytune;
@@ -534,6 +579,9 @@ int s5p_usb_phy_init(struct platform_device *pdev, int type)
 	} else if (type == S5P_USB_PHY_DEVICE) {
 		ret = exynos_usb_dev_phy20_init(pdev);
 		set_exynos_usb_phy_tune(type);
+		/* set custom usb phy tune */
+		if (pdev->dev.platform_data)
+			ret = s5p_usb_otg_phy_tune(pdev->dev.platform_data, 0);
 	} else if (type == S5P_USB_PHY_DRD)
 		ret = exynos5_usb_phy30_init(pdev);
 
@@ -542,15 +590,21 @@ int s5p_usb_phy_init(struct platform_device *pdev, int type)
 
 int s5p_usb_phy_exit(struct platform_device *pdev, int type)
 {
+	int ret = -EINVAL;
+
 	if (type == S5P_USB_PHY_HOST) {
 		if (soc_is_exynos5250())
-			return exynos5_usb_phy20_exit(pdev);
+			ret = exynos5_usb_phy20_exit(pdev);
 		else
-			return exynos4_usb_phy1_exit(pdev);
-	} else if (type == S5P_USB_PHY_DEVICE)
-		return exynos_usb_dev_phy20_exit(pdev);
-	else if (type == S5P_USB_PHY_DRD)
-		return exynos5_usb_phy30_exit(pdev);
+			ret = exynos4_usb_phy1_exit(pdev);
+	} else if (type == S5P_USB_PHY_DEVICE) {
+		/* set custom usb phy tune */
+		if (pdev->dev.platform_data)
+			ret = s5p_usb_otg_phy_tune(pdev->dev.platform_data, 1);
+		ret = exynos_usb_dev_phy20_exit(pdev);
+	} else if (type == S5P_USB_PHY_DRD) {
+		ret = exynos5_usb_phy30_exit(pdev);
+	}
 
-	return -EINVAL;
+	return ret;
 }
