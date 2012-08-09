@@ -46,7 +46,6 @@ struct omap_dss_features {
 
 	const int num_mgrs;
 	const int num_ovls;
-	const int num_wbs;
 	const enum omap_display_type *supported_displays;
 	const enum omap_color_mode *supported_color_modes;
 	const enum omap_overlay_caps *overlay_caps;
@@ -599,7 +598,6 @@ static const struct omap_dss_features omap4430_es1_0_dss_features  = {
 
 	.num_mgrs = 3,
 	.num_ovls = 4,
-	.num_wbs = 1,
 	.supported_displays = omap4_dss_supported_displays,
 	.supported_color_modes = omap4_dss_supported_color_modes,
 	.overlay_caps = omap4_dss_overlay_caps,
@@ -622,7 +620,6 @@ static const struct omap_dss_features omap4430_es2_0_1_2_dss_features = {
 
 	.num_mgrs = 3,
 	.num_ovls = 4,
-	.num_wbs = 1,
 	.supported_displays = omap4_dss_supported_displays,
 	.supported_color_modes = omap4_dss_supported_color_modes,
 	.overlay_caps = omap4_dss_overlay_caps,
@@ -645,7 +642,6 @@ static const struct omap_dss_features omap4_dss_features = {
 
 	.num_mgrs = 3,
 	.num_ovls = 4,
-	.num_wbs = 1,
 	.supported_displays = omap4_dss_supported_displays,
 	.supported_color_modes = omap4_dss_supported_color_modes,
 	.overlay_caps = omap4_dss_overlay_caps,
@@ -751,11 +747,6 @@ int dss_feat_get_num_mgrs(void)
 int dss_feat_get_num_ovls(void)
 {
 	return omap_current_dss_features->num_ovls;
-}
-
-int dss_feat_get_num_wbs(void)
-{
-	return omap_current_dss_features->num_wbs;
 }
 
 unsigned long dss_feat_get_param_min(enum dss_range_param param)
