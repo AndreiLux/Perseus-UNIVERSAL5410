@@ -483,19 +483,61 @@ static int exynos5_usb_phy30_exit(struct platform_device *pdev)
 	return 0;
 }
 
+static void set_exynos_usb_phy_tune(int type)
+{
+	u32 phytune;
+
+	if (!soc_is_exynos5250()) {
+		pr_debug("usb: %s it is not exynos5250.(t=%d)\n",
+						__func__, type);
+		return;
+	}
+
+	if (type == S5P_USB_PHY_DEVICE) {
+		phytune = readl(EXYNOS5_PHY_OTG_TUNE);
+		pr_debug("usb: %s old phy tune for device =0x%x\n",
+					__func__, phytune);
+		/* sqrxtune [13:11] 3b110 : -15% */
+		phytune &= ~OTG_TUNE_SQRXTUNE(0x7);
+		phytune |= OTG_TUNE_SQRXTUNE(0x6);
+		udelay(10);
+		writel(phytune, EXYNOS5_PHY_OTG_TUNE);
+		phytune = readl(EXYNOS5_PHY_OTG_TUNE);
+		pr_debug("usb: %s new phy tune for device =0x%x\n",
+					__func__, phytune);
+	} else if (type == S5P_USB_PHY_HOST) {
+		phytune = readl(EXYNOS5_PHY_HOST_TUNE0);
+		pr_debug("usb: %s old phy tune for host =0x%x\n",
+				__func__, phytune);
+		/* sqrxtune [14:12] 3b110 : -15% */
+		phytune &= ~HOST_TUNE0_SQRXTUNE(0x7);
+		phytune |= HOST_TUNE0_SQRXTUNE(0x6);
+		udelay(10);
+		writel(phytune, EXYNOS5_PHY_HOST_TUNE0);
+		phytune = readl(EXYNOS5_PHY_HOST_TUNE0);
+		pr_debug("usb: %s new phy tune for host =0x%x\n",
+					__func__, phytune);
+	}
+}
+
 int s5p_usb_phy_init(struct platform_device *pdev, int type)
 {
-	if (type == S5P_USB_PHY_HOST) {
-		if (soc_is_exynos5250())
-			return exynos5_usb_phy20_init(pdev);
-		else
-			return exynos4_usb_phy1_init(pdev);
-	} else if (type == S5P_USB_PHY_DEVICE)
-		return exynos_usb_dev_phy20_init(pdev);
-	else if (type == S5P_USB_PHY_DRD)
-		return exynos5_usb_phy30_init(pdev);
+	int ret = -EINVAL;
 
-	return -EINVAL;
+	if (type == S5P_USB_PHY_HOST) {
+		if (soc_is_exynos5250()) {
+			ret = exynos5_usb_phy20_init(pdev);
+			set_exynos_usb_phy_tune(type);
+		} else {
+			ret = exynos4_usb_phy1_init(pdev);
+		}
+	} else if (type == S5P_USB_PHY_DEVICE) {
+		ret = exynos_usb_dev_phy20_init(pdev);
+		set_exynos_usb_phy_tune(type);
+	} else if (type == S5P_USB_PHY_DRD)
+		ret = exynos5_usb_phy30_init(pdev);
+
+	return ret;
 }
 
 int s5p_usb_phy_exit(struct platform_device *pdev, int type)
