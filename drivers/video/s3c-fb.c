@@ -1750,11 +1750,9 @@ static int s3c_fb_set_win_config(struct s3c_fb *sfb,
 	return ret;
 }
 
-static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
+static void __s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 {
-	struct s3c_dma_buf_data old_dma_bufs[S3C_FB_MAX_WIN];
 	unsigned short i;
-	bool wait_for_vsync;
 
 	for (i = 0; i < sfb->variant.nr_windows; i++)
 		shadow_protect_win(sfb->windows[i], 1);
@@ -1781,7 +1779,6 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 		writel(regs->vidw_buf_size[i],
 				sfb->regs + VIDW_BUF_SIZE(i));
 
-		old_dma_bufs[i] = sfb->windows[i]->dma_buf_data;
 		sfb->windows[i]->dma_buf_data = regs->dma_buf_data[i];
 		sfb->windows[i]->enabled =
 				!!(regs->wincon[i] & WINCONx_ENWIN);
@@ -1793,8 +1790,20 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 
 	for (i = 0; i < sfb->variant.nr_windows; i++)
 		shadow_protect_win(sfb->windows[i], 0);
+}
+
+static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
+{
+	struct s3c_dma_buf_data old_dma_bufs[S3C_FB_MAX_WIN];
+	bool wait_for_vsync;
+	int count = 100;
+	int i;
+
+	for (i = 0; i < sfb->variant.nr_windows; i++)
+		old_dma_bufs[i] = sfb->windows[i]->dma_buf_data;
 
 	do {
+		__s3c_fb_update_regs(sfb, regs);
 		s3c_fb_wait_for_vsync(sfb, 0);
 		wait_for_vsync = false;
 
@@ -1807,7 +1816,14 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 				break;
 			}
 		}
-	} while (wait_for_vsync);
+	} while (wait_for_vsync && count--);
+	if (wait_for_vsync) {
+		pr_err("%s: failed to update registers\n", __func__);
+		for (i = 0; i < sfb->variant.nr_windows; i++)
+			pr_err("window %d new value %08x register value %08x\n",
+				i, regs->vidw_buf_start[i],
+				readl(sfb->regs + SHD_VIDW_BUF_START(i)));
+	}
 
 	sw_sync_timeline_inc(sfb->timeline, 1);
 
