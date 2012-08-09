@@ -13,6 +13,7 @@
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
 #include <linux/of_platform.h>
+#include <linux/export.h>
 #include <mach/map.h>
 #include <mach/irqs.h>
 #include <mach/sysmmu.h>
@@ -21,7 +22,7 @@
 #include <linux/slab.h>
 
 #ifdef CONFIG_ARM_DMA_USE_IOMMU
-struct dma_iommu_mapping * s5p_create_iommu_mapping(struct device *client,
+struct dma_iommu_mapping *s5p_create_iommu_mapping(struct device *client,
 				dma_addr_t base, unsigned int size,
 				int order, struct dma_iommu_mapping *mapping)
 {
@@ -40,6 +41,7 @@ struct dma_iommu_mapping * s5p_create_iommu_mapping(struct device *client,
 	arm_iommu_attach_device(client, mapping);
 	return mapping;
 }
+EXPORT_SYMBOL(s5p_create_iommu_mapping);
 
 void s5p_destroy_iommu_mapping(struct device *client)
 {
@@ -55,6 +57,7 @@ void s5p_destroy_iommu_mapping(struct device *client)
 
 	return;
 }
+EXPORT_SYMBOL(s5p_destroy_iommu_mapping);
 
 struct platform_device *find_sysmmu_dt(struct platform_device *pdev,
 					char *name)
@@ -82,6 +85,7 @@ struct platform_device *find_sysmmu_dt(struct platform_device *pdev,
 	}
 	return pds;
 }
+EXPORT_SYMBOL(find_sysmmu_dt);
 #endif
 
 
