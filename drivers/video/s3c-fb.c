@@ -1794,7 +1794,7 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 
 	do {
 		__s3c_fb_update_regs(sfb, regs);
-		s3c_fb_wait_for_vsync(sfb, 0);
+		s3c_fb_wait_for_vsync(sfb, VSYNC_TIMEOUT_MSEC);
 		wait_for_vsync = false;
 
 		for (i = 0; i < sfb->variant.nr_windows; i++) {
