@@ -1787,6 +1787,8 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 	int count = 100;
 	int i;
 
+	pm_runtime_get_sync(sfb->dev);
+
 	for (i = 0; i < sfb->variant.nr_windows; i++)
 		old_dma_bufs[i] = sfb->windows[i]->dma_buf_data;
 
@@ -1813,6 +1815,7 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 				readl(sfb->regs + SHD_VIDW_BUF_START(i)));
 	}
 
+	pm_runtime_put_sync(sfb->dev);
 	sw_sync_timeline_inc(sfb->timeline, 1);
 
 	for (i = 0; i < sfb->variant.nr_windows; i++) {
