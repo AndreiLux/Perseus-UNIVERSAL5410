@@ -28,6 +28,8 @@
  */
 extern int tps65090_write(struct device *dev, int reg, uint8_t val);
 extern int tps65090_read(struct device *dev, int reg, uint8_t *val);
+extern int tps65090_update_bits(struct device *dev, int reg, unsigned int mask,
+				unsigned int val);
 extern int tps65090_set_bits(struct device *dev, int reg, uint8_t bit_num);
 extern int tps65090_clr_bits(struct device *dev, int reg, uint8_t bit_num);
 

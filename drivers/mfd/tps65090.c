@@ -109,6 +109,14 @@ int tps65090_read(struct device *dev, int reg, uint8_t *val)
 }
 EXPORT_SYMBOL_GPL(tps65090_read);
 
+int tps65090_update_bits(struct device *dev, int reg, unsigned int mask,
+			 unsigned int val)
+{
+	struct tps65090 *tps = dev_get_drvdata(dev);
+	return regmap_update_bits(tps->rmap, reg, mask, val);
+}
+EXPORT_SYMBOL_GPL(tps65090_update_bits);
+
 int tps65090_set_bits(struct device *dev, int reg, uint8_t bit_num)
 {
 	struct tps65090 *tps = dev_get_drvdata(dev);

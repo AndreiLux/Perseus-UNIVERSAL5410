@@ -33,10 +33,14 @@
 #define MAX_REGULATORS		10
 
 #define CTRL_EN_BIT		0 /* Regulator enable bit, active high */
+#define CTRL_WT_BIT		2 /* Regulator wait time 0 bit */
+
+#define MAX_OVERCURRENT_WAIT	3 /* Overcurrent wait must be less than this */
 
 struct tps65090_regulator {
 	/* Regulator register address.*/
 	u32		reg_en_reg;
+	u32		reg_overcurrent_wait;
 
 	/* used by regulator core */
 	struct regulator_desc	desc;
@@ -69,11 +73,34 @@ static int tps65090_reg_is_enabled(struct regulator_dev *rdev)
 	return (((control >> CTRL_EN_BIT) & 1) == 1);
 }
 
+static int tps65090_reg_set_overcurrent_wait(struct regulator_dev *rdev)
+{
+	struct tps65090_regulator *ri = rdev_get_drvdata(rdev);
+	struct device *parent = to_tps65090_dev(rdev);
+	int ret;
+
+	if (ri->reg_overcurrent_wait > MAX_OVERCURRENT_WAIT)
+		return 0;
+
+	ret = tps65090_update_bits(parent, ri->reg_en_reg,
+			MAX_OVERCURRENT_WAIT << CTRL_WT_BIT,
+			ri->reg_overcurrent_wait << CTRL_WT_BIT);
+	if (ret)
+		dev_err(&rdev->dev, "Error updating overcurrent wait 0x%x\n",
+			ri->reg_en_reg);
+
+	return ret;
+}
+
 static int tps65090_reg_enable(struct regulator_dev *rdev)
 {
 	struct tps65090_regulator *ri = rdev_get_drvdata(rdev);
 	struct device *parent = to_tps65090_dev(rdev);
 	int ret;
+
+	ret = tps65090_reg_set_overcurrent_wait(rdev);
+	if (ret)
+		return ret;
 
 	ret = tps65090_set_bits(parent, ri->reg_en_reg, CTRL_EN_BIT);
 	if (ret < 0)
@@ -181,6 +208,12 @@ static int __devinit tps65090_regulator_probe(struct platform_device *pdev)
 				np->full_name);
 			kfree(reg->desc.name);
 			goto out;
+		}
+
+		if (of_property_read_u32(np, "tps65090-overcurrent-wait",
+					 &reg->reg_overcurrent_wait)) {
+			/* Overcurrent wait is optional, set to invalid */
+			reg->reg_overcurrent_wait = MAX_OVERCURRENT_WAIT + 1;
 		}
 
 		reg->desc.id = id;
