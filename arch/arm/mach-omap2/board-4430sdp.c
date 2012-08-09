@@ -955,6 +955,13 @@ static struct __initdata emif_custom_configs custom_configs = {
 	.lpmode = EMIF_LP_MODE_DISABLE
 };
 
+static void __init enable_board_wakeups(void)
+{
+	/* sys_nirq1 for TWL6030 (USB, PMIC, etc) */
+	omap_mux_init_signal("sys_nirq1",
+			OMAP_WAKEUP_EN | OMAP_PIN_INPUT_PULLUP);
+}
+
 static void __init omap_4430sdp_init(void)
 {
 	int status;
@@ -1016,6 +1023,7 @@ static void __init omap_4430sdp_init(void)
 	omap_rprm_regulator_init(sdp4430_rprm_regulators,
 				 ARRAY_SIZE(sdp4430_rprm_regulators));
 
+	enable_board_wakeups();
 }
 
 static void __init omap_4430sdp_reserve(void)
