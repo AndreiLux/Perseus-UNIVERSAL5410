@@ -34,6 +34,7 @@
 
 #define CTRL_EN_BIT		0 /* Regulator enable bit, active high */
 #define CTRL_WT_BIT		2 /* Regulator wait time 0 bit */
+#define CTRL_PG_BIT		4 /* Regulator power good bit, 1=good */
 
 #define MAX_OVERCURRENT_WAIT	3 /* Overcurrent wait must be less than this */
 
@@ -57,19 +58,28 @@ static inline struct device *to_tps65090_dev(struct regulator_dev *rdev)
 	return rdev_get_dev(rdev)->parent->parent;
 }
 
-static int tps65090_reg_is_enabled(struct regulator_dev *rdev)
+static int tps65090_reg_read_ctrl(struct regulator_dev *rdev, uint8_t *ctrl)
 {
 	struct tps65090_regulator *ri = rdev_get_drvdata(rdev);
 	struct device *parent = to_tps65090_dev(rdev);
-	uint8_t control;
 	int ret;
 
-	ret = tps65090_read(parent, ri->reg_en_reg, &control);
-	if (ret < 0) {
+	ret = tps65090_read(parent, ri->reg_en_reg, ctrl);
+	if (ret < 0)
 		dev_err(&rdev->dev, "Error in reading reg 0x%x\n",
 			ri->reg_en_reg);
+	return ret;
+}
+
+static int tps65090_reg_is_enabled(struct regulator_dev *rdev)
+{
+	int ret;
+	uint8_t control;
+
+	ret = tps65090_reg_read_ctrl(rdev, &control);
+	if (ret < 0)
 		return ret;
-	}
+
 	return (((control >> CTRL_EN_BIT) & 1) == 1);
 }
 
@@ -97,16 +107,29 @@ static int tps65090_reg_enable(struct regulator_dev *rdev)
 	struct tps65090_regulator *ri = rdev_get_drvdata(rdev);
 	struct device *parent = to_tps65090_dev(rdev);
 	int ret;
+	uint8_t control;
 
 	ret = tps65090_reg_set_overcurrent_wait(rdev);
 	if (ret)
 		return ret;
 
 	ret = tps65090_set_bits(parent, ri->reg_en_reg, CTRL_EN_BIT);
-	if (ret < 0)
+	if (ret < 0) {
 		dev_err(&rdev->dev, "Error in updating reg 0x%x\n",
 			ri->reg_en_reg);
-	return ret;
+		return ret;
+	}
+
+	ret = tps65090_reg_read_ctrl(rdev, &control);
+	if (ret < 0)
+		return ret;
+
+	if (!(control & (1 << CTRL_PG_BIT))) {
+		dev_err(&rdev->dev, "reg 0x%x enable failed\n", ri->reg_en_reg);
+		return -EIO;
+	}
+
+	return 0;
 }
 
 static int tps65090_reg_disable(struct regulator_dev *rdev)
