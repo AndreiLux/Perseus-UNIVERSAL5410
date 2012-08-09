@@ -41,6 +41,8 @@
 #include <linux/platform_device.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
 
 #include <linux/uaccess.h>
 #include <linux/export.h>
@@ -541,6 +543,47 @@ static ssize_t pm_qos_power_write(struct file *filp, const char __user *buf,
 	return count;
 }
 
+static void pm_qos_debug_show_one(struct seq_file *s, struct pm_qos_object *qos)
+{
+	struct plist_node *p;
+	unsigned long flags;
+
+	spin_lock_irqsave(&pm_qos_lock, flags);
+
+	seq_printf(s, "%s\n", qos->name);
+	seq_printf(s, "   default value: %d\n", qos->constraints->default_value);
+	seq_printf(s, "   target value: %d\n", qos->constraints->target_value);
+	seq_printf(s, "   requests:\n");
+	plist_for_each(p, &qos->constraints->list)
+		seq_printf(s, "      %pk: %d\n",
+				container_of(p, struct pm_qos_request, node),
+				p->prio);
+
+	spin_unlock_irqrestore(&pm_qos_lock, flags);
+
+}
+
+static int pm_qos_debug_show(struct seq_file *s, void *d)
+{
+	int i;
+
+	for (i = 1; i < PM_QOS_NUM_CLASSES; i++)
+		pm_qos_debug_show_one(s, pm_qos_array[i]);
+
+	return 0;
+}
+
+static int pm_qos_debug_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pm_qos_debug_show, inode->i_private);
+}
+
+const static struct file_operations pm_qos_debug_fops = {
+	.open		= pm_qos_debug_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 
 static int __init pm_qos_power_init(void)
 {
@@ -557,6 +600,8 @@ static int __init pm_qos_power_init(void)
 			return ret;
 		}
 	}
+
+	debugfs_create_file("pm_qos", S_IRUGO, NULL, NULL, &pm_qos_debug_fops);
 
 	return ret;
 }
