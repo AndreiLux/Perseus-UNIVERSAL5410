@@ -198,12 +198,14 @@
 			voltage-regulators {
 				VFET1 {
 					tps65090-control-reg-offset = <15>;
+					tps65090-overcurrent-wait = <3>;
 					regulator-name = "vcd_led";
 					regulator-min-microvolt = <12000000>;
 					regulator-max-microvolt = <12000000>;
 				};
 				VFET2 {
 					tps65090-control-reg-offset = <16>;
+					tps65090-overcurrent-wait = <3>;
 					regulator-name = "video_mid";
 					regulator-min-microvolt = <5000000>;
 					regulator-max-microvolt = <5000000>;
@@ -211,6 +213,7 @@
 				};
 				VFET3 {
 					tps65090-control-reg-offset = <17>;
+					tps65090-overcurrent-wait = <3>;
 					regulator-name = "wwan_r";
 					regulator-min-microvolt = <3300000>;
 					regulator-max-microvolt = <3300000>;
@@ -218,12 +221,14 @@
 				};
 				VFET4 {
 					tps65090-control-reg-offset = <18>;
+					tps65090-overcurrent-wait = <3>;
 					regulator-name = "sdcard";
 					regulator-min-microvolt = <3300000>;
 					regulator-max-microvolt = <3300000>;
 				};
 				VFET5 {
 					tps65090-control-reg-offset = <19>;
+					tps65090-overcurrent-wait = <3>;
 					regulator-name = "camout";
 					regulator-min-microvolt = <3300000>;
 					regulator-max-microvolt = <3300000>;
@@ -231,12 +236,14 @@
 				};
 				VFET6 {
 					tps65090-control-reg-offset = <20>;
+					tps65090-overcurrent-wait = <3>;
 					regulator-name = "lcd_vdd";
 					regulator-min-microvolt = <3300000>;
 					regulator-max-microvolt = <3300000>;
 				};
 				VFET7 {
 					tps65090-control-reg-offset = <21>;
+					tps65090-overcurrent-wait = <3>;
 					regulator-name = "ts";
 					regulator-min-microvolt = <5000000>;
 					regulator-max-microvolt = <5000000>;
