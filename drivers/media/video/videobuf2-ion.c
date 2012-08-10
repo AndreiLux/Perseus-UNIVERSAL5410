@@ -85,17 +85,12 @@ EXPORT_SYMBOL(vb2_ion_set_alignment);
 void *vb2_ion_create_context(struct device *dev, size_t alignment, long flags)
 {
 	struct vb2_ion_context *ctx;
-	unsigned int heapmask = ION_HEAP_SYSTEM_MASK;
+	unsigned int heapmask = ion_heapflag(flags);
 
 	/* ion_client_create() expects the current thread to be a kernel thread
 	 * to create a new ion_client
 	 */
 	WARN_ON(!(current->group_leader->flags & PF_KTHREAD));
-
-	if (flags & VB2ION_CTX_PHCONTIG)
-		heapmask |= ION_HEAP_CARVEOUT_MASK;
-	if (flags & VB2ION_CTX_VMCONTIG)
-		heapmask |= ION_HEAP_SYSTEM_MASK;
 
 	 /* non-contigous memory without H/W virtualization is not supported */
 	if ((flags & VB2ION_CTX_VMCONTIG) && !(flags & VB2ION_CTX_IOMMU))
@@ -133,6 +128,7 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 {
 	struct vb2_ion_context *ctx = alloc_ctx;
 	struct vb2_ion_buf *buf;
+	int flags = ion_heapflag(ctx->flags);
 	int ret = 0;
 
 	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
@@ -142,7 +138,7 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 	size = PAGE_ALIGN(size);
 
 	buf->handle = ion_alloc(ctx->client, size, ctx->alignment,
-				ion_heapflag(ctx->flags), 0);
+				flags, flags);
 	if (IS_ERR(buf->handle)) {
 		ret = -ENOMEM;
 		goto err_alloc;
