@@ -22,12 +22,15 @@
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
 #include <linux/module.h>
+#include <linux/pm_qos.h>
 
 #include <mach/map.h>
 #include <mach/regs-clock.h>
 #include <mach/asv-exynos.h>
 
 #include "exynos_ppmu.h"
+#include "exynos5_ppmu.h"
+#include "governor.h"
 
 #define MAX_SAFEVOLT	1050000 /* 1.05V */
 
@@ -41,24 +44,21 @@ enum int_level_idx {
 	_LV_END
 };
 
-enum exynos_ppmu_list {
-	PPMU_DDR_L0,
-	PPMU_END,
-};
-
 struct busfreq_data_int {
 	struct device *dev;
 	struct devfreq *devfreq;
 	bool disabled;
 	struct regulator *vdd_int;
 	struct opp *curr_opp;
-	struct exynos_ppmu ppmu[PPMU_END];
 
 	struct notifier_block pm_notifier;
 	struct mutex lock;
 	struct pm_qos_request mif_req;
 
 	struct clk *int_clk;
+
+	struct exynos5_ppmu_handle *ppmu;
+	int busy;
 };
 
 struct int_bus_opp_table {
@@ -73,49 +73,6 @@ static struct int_bus_opp_table exynos5_int_opp_table[] = {
 	{LV_2, 160000, 1050000},
 	{0, 0, 0},
 };
-
-static void busfreq_mon_reset(struct busfreq_data_int *data)
-{
-	unsigned int i;
-
-	for (i = PPMU_DDR_L0; i < PPMU_END; i++) {
-		void __iomem *ppmu_base = data->ppmu[i].hw_base;
-
-		/* Reset PPMU */
-		exynos_ppmu_reset(ppmu_base);
-
-		/* Set PPMU Event */
-		data->ppmu[i].event[PPMU_PMNCNT3] = RDWR_DATA_COUNT;
-		exynos_ppmu_setevent(ppmu_base, PPMU_PMNCNT3, data->ppmu[i].event[PPMU_PMNCNT3]);
-
-		/* Start PPMU */
-		exynos_ppmu_start(ppmu_base);
-	}
-}
-
-static void exynos5_read_ppmu(struct busfreq_data_int *data)
-{
-	int i, j;
-
-	for (i = PPMU_DDR_L0; i < PPMU_END; i++) {
-		void __iomem *ppmu_base = data->ppmu[i].hw_base;
-
-		/* Stop PPMU */
-		exynos_ppmu_stop(ppmu_base);
-
-		/* Update local data from PPMU */
-		data->ppmu[i].ccnt = __raw_readl(ppmu_base + PPMU_CCNT);
-
-		for (j = PPMU_PMNCNT0; j < PPMU_PMNCNT_MAX; j++) {
-			if (data->ppmu[i].event[j] == 0)
-				data->ppmu[i].count[j] = 0;
-			else
-				data->ppmu[i].count[j] = exynos_ppmu_read(ppmu_base, j);
-		}
-	}
-
-	busfreq_mon_reset(data);
-}
 
 static int exynos5_int_setvolt(struct busfreq_data_int *data, struct opp *opp)
 {
@@ -191,45 +148,32 @@ out:
 	return err;
 }
 
-static int exynos5_get_busier_dmc(struct busfreq_data_int *data)
-{
-	int i, j;
-	int busy = 0;
-	unsigned int temp = 0;
-
-	for (i = PPMU_DDR_L0; i < PPMU_END; i++) {
-		for (j = PPMU_PMNCNT0; j < PPMU_PMNCNT_MAX; j++) {
-			if (data->ppmu[i].count[j] > temp) {
-				temp = data->ppmu[i].count[j];
-				busy = i;
-			}
-		}
-	}
-
-	return busy;
-}
-
 static int exynos5_int_get_dev_status(struct device *dev,
 				      struct devfreq_dev_status *stat)
 {
 	struct platform_device *pdev = container_of(dev, struct platform_device,
 						    dev);
 	struct busfreq_data_int *data = platform_get_drvdata(pdev);
-	int busier_dmc;
-
-	exynos5_read_ppmu(data);
-	busier_dmc = exynos5_get_busier_dmc(data);
 
 	rcu_read_lock();
 	stat->current_frequency = opp_get_freq(data->curr_opp);
 	rcu_read_unlock();
 
-	/* Number of cycles spent on memory access */
-	stat->busy_time = data->ppmu[busier_dmc].count[PPMU_PMNCNT3];
-	stat->busy_time *= 100 / INT_BUS_SATURATION_RATIO;
-	stat->total_time = data->ppmu[busier_dmc].ccnt;
+	stat->busy_time = data->busy;
+	stat->total_time = 100;
 
 	return 0;
+}
+
+static void exynos5_int_poll(int busy, void *_data)
+{
+	struct busfreq_data_int *data = _data;
+
+	data->busy = busy;
+
+	mutex_lock(&data->devfreq->lock);
+	update_devfreq(data->devfreq);
+	mutex_unlock(&data->devfreq->lock);
 }
 
 static void exynos5_int_exit(struct device *dev)
@@ -243,7 +187,7 @@ static void exynos5_int_exit(struct device *dev)
 
 static struct devfreq_dev_profile exynos5_devfreq_int_profile = {
 	.initial_freq		= 160000,
-	.polling_ms		= 100,
+	.polling_ms		= 0,
 	.target			= exynos5_busfreq_int_target,
 	.get_dev_status		= exynos5_int_get_dev_status,
 	.exit			= exynos5_int_exit,
@@ -272,6 +216,10 @@ static int exynos5250_init_int_tables(struct busfreq_data_int *data)
 
 	return 0;
 }
+static struct devfreq_simple_ondemand_data exynos5_int_ondemand_data = {
+	.downdifferential = 5,
+	.upthreshold = INT_BUS_SATURATION_RATIO,
+};
 
 static int exynos5_busfreq_int_pm_notifier_event(struct notifier_block *this,
 		unsigned long event, void *ptr)
@@ -341,7 +289,6 @@ static __devinit int exynos5_busfreq_int_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	data->ppmu[PPMU_DDR_L0].hw_base = S5P_VA_PPMU_RIGHT,
 	data->pm_notifier.notifier_call = exynos5_busfreq_int_pm_notifier_event;
 	data->dev = dev;
 	mutex_init(&data->lock);
@@ -389,10 +336,13 @@ static __devinit int exynos5_busfreq_int_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, data);
 
-	busfreq_mon_reset(data);
+	data->ppmu = exynos5_ppmu_poll(exynos5_int_poll, data, PPMU_SET_RIGHT);
+	if (!data->ppmu)
+		goto err_ppmu_poll;
 
 	data->devfreq = devfreq_add_device(dev, &exynos5_devfreq_int_profile,
-					   &devfreq_simple_ondemand, NULL);
+					   &devfreq_simple_ondemand,
+					   &exynos5_int_ondemand_data);
 
 	if (IS_ERR(data->devfreq)) {
 		err = PTR_ERR(data->devfreq);
@@ -413,6 +363,8 @@ static __devinit int exynos5_busfreq_int_probe(struct platform_device *pdev)
 
 err_devfreq_add:
 	devfreq_remove_device(data->devfreq);
+	exynos5_ppmu_poll_off(data->ppmu);
+err_ppmu_poll:
 	platform_set_drvdata(pdev, NULL);
 err_opp_add:
 	clk_put(data->int_clk);
@@ -436,19 +388,32 @@ static __devexit int exynos5_busfreq_int_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int exynos5_busfreq_int_suspend(struct device *dev)
+{
+	struct platform_device *pdev = container_of(dev, struct platform_device,
+						    dev);
+	struct busfreq_data_int *data = platform_get_drvdata(pdev);
+
+	exynos5_ppmu_poll_off(data->ppmu);
+
+	return 0;
+}
+
 static int exynos5_busfreq_int_resume(struct device *dev)
 {
 	struct platform_device *pdev = container_of(dev, struct platform_device,
 						    dev);
 	struct busfreq_data_int *data = platform_get_drvdata(pdev);
 
-	busfreq_mon_reset(data);
+	exynos5_ppmu_poll_on(data->ppmu);
+
 	return 0;
 }
+#endif
 
-static const struct dev_pm_ops exynos5_busfreq_int_pm = {
-	.resume	= exynos5_busfreq_int_resume,
-};
+static SIMPLE_DEV_PM_OPS(exynos5_busfreq_int_pm, exynos5_busfreq_int_suspend,
+		exynos5_busfreq_int_resume);
 
 static struct platform_driver exynos5_busfreq_int_driver = {
 	.probe		= exynos5_busfreq_int_probe,
