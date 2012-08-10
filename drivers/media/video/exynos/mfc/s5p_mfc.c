@@ -1603,30 +1603,30 @@ static const struct dev_pm_ops s5p_mfc_pm_ops = {
 };
 
 struct s5p_mfc_buf_size_v5 mfc_buf_size_v5 = {
-	.h264_ctx_buf = 0x96000,
-	.non_h264_ctx_buf = 0x2800,
-	.desc_buf = 0x20000,
-	.shared_buf = 0x1000,
+	.h264_ctx_buf 		= PAGE_ALIGN(0x96000),	/* 600KB */
+	.non_h264_ctx_buf 	= PAGE_ALIGN(0x2800),	/*  10KB */
+	.desc_buf 		= PAGE_ALIGN(0x20000),	/* 128KB */
+	.shared_buf 		= PAGE_ALIGN(0x1000),	/*   4KB */
 };
 
 struct s5p_mfc_buf_size_v6 mfc_buf_size_v6 = {
-	.dev_ctx = 0x6400,
-	.h264_dec_ctx = 0x200000,	/*  1.6MB */
-	.other_dec_ctx = 0x5000,	/*  20KB */
-	.h264_enc_ctx = 0x19000,	/* 100KB */
-	.other_enc_ctx = 0x2800,	/*  10KB */
+	.dev_ctx	= PAGE_ALIGN(0x6400),	/*  25KB */
+	.h264_dec_ctx	= PAGE_ALIGN(0x200000),	/* 1.6MB */
+	.other_dec_ctx	= PAGE_ALIGN(0x5000),	/*  20KB */
+	.h264_enc_ctx	= PAGE_ALIGN(0x19000),	/* 100KB */
+	.other_enc_ctx	= PAGE_ALIGN(0x2800),	/*  10KB */
 };
 
 struct s5p_mfc_buf_size buf_size_v5 = {
-	.firmware_code = 0x60000,
-	.cpb_buf = 0x400000,		/*   4MB */
-	.buf = &mfc_buf_size_v5,
+	.firmware_code	= PAGE_ALIGN(0x60000),	/* 384KB */
+	.cpb_buf	= PAGE_ALIGN(0x400000),	/*   4MB */
+	.buf		= &mfc_buf_size_v5,
 };
 
 struct s5p_mfc_buf_size buf_size_v6 = {
-	.firmware_code = 0x100000,	/* 1MB */
-	.cpb_buf = 0x300000,		/* 3MB */
-	.buf = &mfc_buf_size_v6,
+	.firmware_code	= PAGE_ALIGN(0x100000),	/* 1MB */
+	.cpb_buf	= PAGE_ALIGN(0x300000),	/* 3MB */
+	.buf		= &mfc_buf_size_v6,
 };
 
 struct s5p_mfc_buf_align mfc_buf_align_v5 = {
