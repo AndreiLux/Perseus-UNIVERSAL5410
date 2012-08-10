@@ -2989,8 +2989,13 @@ static __init int samsung_gpiolib_init(void)
 			exynos_gpiolib_attach_ofnode(chip,
 					EXYNOS5_PA_GPIO4, i * 0x20);
 		}
+#if defined(CONFIG_PM_RUNTIME)
 		samsung_gpiolib_add_4bit_chips_no_pm(exynos5_gpios_4,
 					       nr_chips, gpio_base4);
+#else
+		samsung_gpiolib_add_4bit_chips(exynos5_gpios_4,
+					       nr_chips, gpio_base4);
+#endif
 #if defined(CONFIG_SOC_EXYNOS5250) && defined(CONFIG_S5P_GPIO_INT)
 		s5p_register_gpioint_bank(EXYNOS5_IRQ_GPIO_XA, 0,
 				EXYNOS5_IRQ_GPIO1_NR_GROUPS);
