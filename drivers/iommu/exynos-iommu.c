@@ -263,7 +263,7 @@ void exynos_sysmmu_set_fault_handler(struct device *dev,
 	__set_fault_handler(data, handler);
 }
 
-static int default_fault_handler(struct sysmmu_drvdata *data,
+static int default_fault_handler(struct device *dev,
 					enum exynos_sysmmu_inttype itype,
 					unsigned long pgtable_base,
 					unsigned long fault_addr)
@@ -276,8 +276,8 @@ static int default_fault_handler(struct sysmmu_drvdata *data,
 	pr_err("%s occured at 0x%lx(Page table base: 0x%lx)\n",
 		sysmmu_fault_name[itype], fault_addr, pgtable_base);
 
-	if (data && data->dev)
-		pr_err("iommu %s\n", dev_name(data->dev));
+	if (dev)
+		pr_err("iommu %s\n", dev_name(dev));
 
 	ent = section_entry(__va(pgtable_base), fault_addr);
 	pr_err("\tLv1 entry: 0x%lx\n", *ent);
@@ -337,7 +337,7 @@ static irqreturn_t exynos_sysmmu_irq(int irq, void *dev_id)
 		if (itype != SYSMMU_FAULT_UNKNOWN)
 			base = __raw_readl(
 					data->sfrbases[i] + REG_PT_BASE_ADDR);
-		ret = data->fault_handler(data, itype, base, addr);
+		ret = data->fault_handler(data->dev, itype, base, addr);
 	}
 
 	if (!ret && (itype != SYSMMU_FAULT_UNKNOWN))

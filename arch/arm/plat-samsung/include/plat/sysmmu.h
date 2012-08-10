@@ -37,7 +37,7 @@ struct sysmmu_drvdata;
  * @fault_addr: the device (virtual) address that the System MMU tried to
  *             translated. This is 0 if @itype is SYSMMU_BUSERROR.
  */
-typedef int (*sysmmu_fault_handler_t)(struct sysmmu_drvdata *data,
+typedef int (*sysmmu_fault_handler_t)(struct device *dev,
 				      enum exynos_sysmmu_inttype itype,
 				      unsigned long pgtable_base,
 				      unsigned long fault_addr);
