@@ -34,6 +34,13 @@ config SND_SAMSUNG_SPDIF
 config SND_SAMSUNG_I2S
 	tristate
 
+config SND_SAMSUNG_USE_IDMA
+	depends on SND_SAMSUNG_I2S && ARCH_EXYNOS5
+	bool "Internal DMA for low power playback"
+	default y
+	help
+	  Say Y if you want to support internal DMA for low power playback.
+
 config SND_PM_RUNTIME
 	tristate "Support Runtime PM for audio subsystem"
 	depends on SND_SOC_SAMSUNG && PM_RUNTIME
