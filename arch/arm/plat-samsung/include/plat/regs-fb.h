@@ -421,6 +421,28 @@
 #define WPALCON_W0PAL_16BPP_A555		(0x5 << 0)
 #define WPALCON_W0PAL_16BPP_565			(0x6 << 0)
 
+/* Blending equation */
+#define BLENDEQ(_x)				(0x240 + (_x) * 4)
+#define BLENDEQ_COEF_ZERO			0x0
+#define BLENDEQ_COEF_ONE			0x1
+#define BLENDEQ_COEF_ALPHA_A			0x2
+#define BLENDEQ_COEF_ONE_MINUS_ALPHA_A		0x3
+#define BLENDEQ_COEF_ALPHA_B			0x4
+#define BLENDEQ_COEF_ONE_MINUS_ALPHA_B		0x5
+#define BLENDEQ_COEF_ALPHA0			0x6
+#define BLENDEQ_COEF_A				0xA
+#define BLENDEQ_COEF_ONE_MINUS_A		0xB
+#define BLENDEQ_COEF_B				0xC
+#define BLENDEQ_COEF_ONE_MINUS_B		0xD
+#define BLENDEQ_Q_FUNC(_x)			((_x) << 18)
+#define BLENDEQ_Q_FUNC_MASK			BLENDEQ_Q_FUNC(0xF)
+#define BLENDEQ_P_FUNC(_x)			((_x) << 12)
+#define BLENDEQ_P_FUNC_MASK			BLENDEQ_P_FUNC(0xF)
+#define BLENDEQ_B_FUNC(_x)			((_x) << 6)
+#define BLENDEQ_B_FUNC_MASK			BLENDEQ_B_FUNC(0xF)
+#define BLENDEQ_A_FUNC(_x)			((_x) << 0)
+#define BLENDEQ_A_FUNC_MASK			BLENDEQ_A_FUNC(0xF)
+
 /* Blending equation control */
 #define BLENDCON				(0x260)
 #define BLENDCON_NEW_MASK			(1 << 0)
