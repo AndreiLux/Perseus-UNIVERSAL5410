@@ -346,15 +346,16 @@ struct kds_resource_set *kds_waitall(
 
 	if (!triggered)
 	{
-		long wait_res;
-		if (KDS_WAIT_BLOCKING == jiffies_timeout)
+		long wait_res = 0;
+		long timeout = (jiffies_timeout == KDS_WAIT_BLOCKING) ?
+				MAX_SCHEDULE_TIMEOUT : jiffies_timeout;
+
+		if (timeout)
 		{
-			wait_res = wait_event_interruptible(wake, rset->pending == 0);
+			wait_res = wait_event_interruptible_timeout(wake,
+					rset->pending == 0, timeout);
 		}
-		else
-		{
-			wait_res = wait_event_interruptible_timeout(wake, rset->pending == 0, jiffies_timeout);
-		}
+
 		if ((wait_res == -ERESTARTSYS) || (wait_res == 0))
 		{
 			/* use \a kds_resource_set_release to roll back */

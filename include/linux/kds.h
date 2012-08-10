@@ -118,6 +118,11 @@ int kds_async_waitall(
  * - timeout lapsed while waiting
  * - a signal was received while waiting
  *
+ * To wait without a timeout, specify KDS_WAIT_BLOCKING for \a jifies_timeout,
+ * otherwise the timeout in jiffies. A zero timeout attempts to obtain all
+ * resources and returns immediately without a timeout if all resources could
+ * not be obtained.
+ *
  * Caller considered to own/use the resources when the function returns.
  * Caller must release the resources using \a kds_rset_release.
  *
