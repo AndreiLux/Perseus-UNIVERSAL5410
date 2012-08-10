@@ -12,6 +12,8 @@
 #ifndef __DEVFREQ_EXYNOS_PPMU_H
 #define __DEVFREQ_EXYNOS_PPMU_H __FILE__
 
+#include <linux/ktime.h>
+
 #define PPMU_CNTENS		0x10
 
 #define PPMU_CCNT		0x100
@@ -49,6 +51,8 @@ struct exynos_ppmu {
 	unsigned int ccnt;
 	unsigned int event[PPMU_PMNCNT_MAX];
 	unsigned int count[PPMU_PMNCNT_MAX];
+	unsigned long long ns;
+	ktime_t reset_time;
 	bool ccnt_overflow;
 	bool count_overflow[PPMU_PMNCNT_MAX];
 };
