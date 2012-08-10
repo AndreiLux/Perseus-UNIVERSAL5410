@@ -76,6 +76,13 @@ config SOC_EXYNOS5250
 	help
 	  Enable EXYNOS5250 SoC support
 
+config EXYNOS_CONTENT_PATH_PROTECTION
+	bool "Exynos Content Path Protection"
+	depends on (ARM_TRUSTZONE && ARCH_EXYNOS5)
+	default n
+	help
+	  Enable content path protection of EXYNOS.
+
 config EXYNOS4_MCT
 	bool
 	default y

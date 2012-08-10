@@ -14,6 +14,9 @@
 #define __ASM_ARCH_SECMEM_H __FILE__
 
 #include <linux/miscdevice.h>
+#if defined(CONFIG_ION)
+#include <linux/ion.h>
+#endif
 
 struct secchunk_info {
 	int		index;
@@ -22,13 +25,25 @@ struct secchunk_info {
 };
 
 extern struct miscdevice secmem;
+#if defined(CONFIG_ION)
+struct secfd_info {
+	int	fd;
+	ion_phys_addr_t phys;
+};
+#endif
 
 struct secmem_crypto_driver_ftn {
 	int (*lock) (void);
 	int (*release) (void);
 };
 
-#if defined(CONFIG_EXYNOS4_CONTENT_PATH_PROTECTION)
+struct secmem_region {
+	char		*virt_addr;
+	unsigned long	phys_addr;
+	unsigned long	len;
+};
+
+#if defined(CONFIG_EXYNOS_CONTENT_PATH_PROTECTION)
 void secmem_crypto_register(struct secmem_crypto_driver_ftn *ftn);
 void secmem_crypto_deregister(void);
 #else
@@ -41,5 +56,10 @@ void secmem_crypto_deregister(void);
 #define SECMEM_IOC_GET_DRM_ONOFF	_IOWR('S', 3, int)
 #define SECMEM_IOC_GET_CRYPTO_LOCK	_IOR('S', 4, int)
 #define SECMEM_IOC_RELEASE_CRYPTO_LOCK	_IOR('S', 5, int)
+#define SECMEM_IOC_GET_ADDR             _IOWR('S', 6, int)
+#define SECMEM_IOC_RELEASE_ADDR         _IOWR('S', 7, int)
+#if defined(CONFIG_SOC_EXYNOS5250)
+#define SECMEM_IOC_GET_FD_PHYS_ADDR    _IOWR('S', 8, int)
+#endif
 
 #endif /* __ASM_ARCH_SECMEM_H */
