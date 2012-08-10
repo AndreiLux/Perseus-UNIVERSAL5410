@@ -138,7 +138,7 @@ static struct s3c_fb_pd_win smdk5250_fb_win2 = {
 };
 
 static struct fb_videomode snow_fb_window[] = {
-	[0] = { /* Only LCD Connected */
+	{
 		.left_margin    = 40,
 		.right_margin   = 40,
 		.upper_margin   = 10,
@@ -147,18 +147,7 @@ static struct fb_videomode snow_fb_window[] = {
 		.vsync_len      = 5,
 		.xres           = 1366,
 		.yres           = 768,
-	},
-	[1] = { /* TV & LCD Connected */
-		.left_margin    = 83,
-		.right_margin   = 83,
-		.upper_margin   = 34,
-		.lower_margin   = 34,
-		.hsync_len      = 32,
-		.vsync_len      = 5,
-		.xres           = 1280,
-		.yres           = 720,
-	},
-	[2] = {
+	}, {
 		.xres		= -1,
 		.yres		= -1,
 	},
