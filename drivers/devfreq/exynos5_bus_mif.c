@@ -29,6 +29,7 @@
 #include <mach/asv-exynos.h>
 
 #include "exynos_ppmu.h"
+#include "exynos5_ppmu.h"
 
 #define MAX_SAFEVOLT	1100000 /* 1.1V */
 
@@ -43,20 +44,12 @@ enum mif_level_idx {
 	_LV_END
 };
 
-enum exynos_ppmu_list {
-	PPMU_DDR_L0,
-	PPMU_DDR_L1,
-	PPMU_DDR_L2,
-	PPMU_END,
-};
-
 struct busfreq_data_mif {
 	struct device *dev;
 	struct devfreq *devfreq;
 	bool disabled;
 	struct regulator *vdd_mif;
 	struct opp *curr_opp;
-	struct exynos_ppmu ppmu[PPMU_END];
 
 	struct notifier_block pm_notifier;
 	struct mutex lock;
@@ -76,49 +69,6 @@ static struct mif_bus_opp_table exynos5_mif_opp_table[] = {
 	{LV_2, 160000, 1000000},
 	{0, 0, 0},
 };
-
-static void busfreq_mon_reset(struct busfreq_data_mif *data)
-{
-	unsigned int i;
-
-	for (i = PPMU_DDR_L0; i < PPMU_END; i++) {
-		void __iomem *ppmu_base = data->ppmu[i].hw_base;
-
-		/* Reset PPMU */
-		exynos_ppmu_reset(ppmu_base);
-
-		/* Set PPMU Event */
-		data->ppmu[i].event[PPMU_PMNCNT3] = RDWR_DATA_COUNT;
-		exynos_ppmu_setevent(ppmu_base, PPMU_PMNCNT3, data->ppmu[i].event[PPMU_PMNCNT3]);
-
-		/* Start PPMU */
-		exynos_ppmu_start(ppmu_base);
-	}
-}
-
-static void exynos5_read_ppmu(struct busfreq_data_mif *data)
-{
-	int i, j;
-
-	for (i = PPMU_DDR_L0; i < PPMU_END; i++) {
-		void __iomem *ppmu_base = data->ppmu[i].hw_base;
-
-		/* Stop PPMU */
-		exynos_ppmu_stop(ppmu_base);
-
-		/* Update local data from PPMU */
-		data->ppmu[i].ccnt = __raw_readl(ppmu_base + PPMU_CCNT);
-
-		for (j = PPMU_PMNCNT0; j < PPMU_PMNCNT_MAX; j++) {
-			if (data->ppmu[i].event[j] == 0)
-				data->ppmu[i].count[j] = 0;
-			else
-				data->ppmu[i].count[j] = exynos_ppmu_read(ppmu_base, j);
-		}
-	}
-
-	busfreq_mon_reset(data);
-}
 
 static int exynos5_mif_setvolt(struct busfreq_data_mif *data, struct opp *opp)
 {
@@ -186,47 +136,6 @@ out:
 	return err;
 }
 
-static int exynos5_get_busier_dmc(struct busfreq_data_mif *data)
-{
-	int i, j;
-	int busy = 0;
-	unsigned int temp = 0;
-
-	for (i = PPMU_DDR_L0; i < PPMU_END; i++) {
-		for (j = PPMU_PMNCNT0; j < PPMU_PMNCNT_MAX; j++) {
-			if (data->ppmu[i].count[j] > temp) {
-				temp = data->ppmu[i].count[j];
-				busy = i;
-			}
-		}
-	}
-
-	return busy;
-}
-
-static int exynos5_mif_get_dev_status(struct device *dev,
-				      struct devfreq_dev_status *stat)
-{
-	struct platform_device *pdev = container_of(dev, struct platform_device,
-						    dev);
-	struct busfreq_data_mif *data = platform_get_drvdata(pdev);
-	int busier_dmc;
-
-	exynos5_read_ppmu(data);
-	busier_dmc = exynos5_get_busier_dmc(data);
-
-	rcu_read_lock();
-	stat->current_frequency = opp_get_freq(data->curr_opp);
-	rcu_read_unlock();
-
-	/* Number of cycles spent on memory access */
-	stat->busy_time = data->ppmu[busier_dmc].count[PPMU_PMNCNT3];
-	stat->busy_time *= 100 / MIF_BUS_SATURATION_RATIO;
-	stat->total_time = data->ppmu[busier_dmc].ccnt;
-
-	return 0;
-}
-
 static void exynos5_mif_exit(struct device *dev)
 {
 	struct platform_device *pdev = container_of(dev, struct platform_device,
@@ -238,9 +147,7 @@ static void exynos5_mif_exit(struct device *dev)
 
 static struct devfreq_dev_profile exynos5_devfreq_mif_profile = {
 	.initial_freq		= 400000,
-	.polling_ms		= 100,
 	.target			= exynos5_busfreq_mif_target,
-	.get_dev_status		= exynos5_mif_get_dev_status,
 	.exit			= exynos5_mif_exit,
 };
 
@@ -340,9 +247,6 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	data->ppmu[PPMU_DDR_L0].hw_base = S5P_VA_PPMU_DDR_C,
-	data->ppmu[PPMU_DDR_L1].hw_base = S5P_VA_PPMU_DDR_R1,
-	data->ppmu[PPMU_DDR_L2].hw_base = S5P_VA_PPMU_DDR_L,
 	data->pm_notifier.notifier_call = exynos5_busfreq_mif_pm_notifier_event;
 	data->dev = dev;
 	mutex_init(&data->lock);
@@ -391,8 +295,6 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, data);
 
-	busfreq_mon_reset(data);
-
 	data->devfreq = devfreq_add_device(dev, &exynos5_devfreq_mif_profile,
 					   &devfreq_pm_qos,
 					   &exynos5_devfreq_mif_pm_qos_data);
@@ -436,27 +338,12 @@ static __devexit int exynos5_busfreq_mif_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static int exynos5_busfreq_mif_resume(struct device *dev)
-{
-	struct platform_device *pdev = container_of(dev, struct platform_device,
-						    dev);
-	struct busfreq_data_mif *data = platform_get_drvdata(pdev);
-
-	busfreq_mon_reset(data);
-	return 0;
-}
-
-static const struct dev_pm_ops exynos5_busfreq_mif_pm = {
-	.resume	= exynos5_busfreq_mif_resume,
-};
-
 static struct platform_driver exynos5_busfreq_mif_driver = {
 	.probe		= exynos5_busfreq_mif_probe,
 	.remove		= __devexit_p(exynos5_busfreq_mif_remove),
 	.driver		= {
 		.name		= "exynos5-bus-mif",
 		.owner		= THIS_MODULE,
-		.pm		= &exynos5_busfreq_mif_pm,
 	},
 };
 
