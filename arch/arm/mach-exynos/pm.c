@@ -246,6 +246,9 @@ static int exynos_pm_suspend(void)
 {
 	unsigned long tmp;
 
+	/* Powering on ISP before suspend */
+	__raw_writel(S5P_INT_LOCAL_PWR_EN, EXYNOS5_ISP_CONFIGURATION);
+
 	/* Setting Central Sequence Register for power down mode */
 	tmp = __raw_readl(S5P_CENTRAL_SEQ_CONFIGURATION);
 	tmp &= ~S5P_CENTRAL_LOWPWR_CFG;
@@ -323,6 +326,9 @@ static void exynos_pm_resume(void)
 #endif
 	}
 early_wakeup:
+
+	/* Powering off ISP */
+	__raw_writel(0x0, EXYNOS5_ISP_CONFIGURATION);
 
 	/* Clear SLEEP mode set in INFORM1 */
 	__raw_writel(0x0, S5P_INFORM1);
