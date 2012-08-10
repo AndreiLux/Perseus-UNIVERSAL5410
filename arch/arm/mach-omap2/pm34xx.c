@@ -410,18 +410,22 @@ void omap_sram_idle(void)
 
 static void omap3_pm_idle(void)
 {
+	unsigned cpu;
+
 	local_fiq_disable();
 
 	if (omap_irq_pending())
 		goto out;
 
-	trace_power_start(POWER_CSTATE, 1, smp_processor_id());
-	trace_cpu_idle(1, smp_processor_id());
+	cpu = get_cpu();
+	trace_power_start(POWER_CSTATE, 1, cpu);
+	trace_cpu_idle(1, cpu);
 
 	omap_sram_idle();
 
-	trace_power_end(smp_processor_id());
-	trace_cpu_idle(PWR_EVENT_EXIT, smp_processor_id());
+	trace_power_end(cpu);
+	trace_cpu_idle(PWR_EVENT_EXIT, cpu);
+	put_cpu();
 
 out:
 	local_fiq_enable();

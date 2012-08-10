@@ -285,7 +285,8 @@ void omap2_clk_disable(struct clk *clk)
 	pr_debug("clock: %s: disabling in hardware\n", clk->name);
 
 	if (clk->ops && clk->ops->disable) {
-		trace_clock_disable(clk->name, 0, smp_processor_id());
+		trace_clock_disable(clk->name, 0, get_cpu());
+		put_cpu();
 		clk->ops->disable(clk);
 	}
 
@@ -339,7 +340,8 @@ int omap2_clk_enable(struct clk *clk)
 	}
 
 	if (clk->ops && clk->ops->enable) {
-		trace_clock_enable(clk->name, 1, smp_processor_id());
+		trace_clock_enable(clk->name, 1, get_cpu());
+		put_cpu();
 		ret = clk->ops->enable(clk);
 		if (ret) {
 			WARN(1, "clock: %s: could not enable: %d\n",
@@ -380,7 +382,8 @@ int omap2_clk_set_rate(struct clk *clk, unsigned long rate)
 
 	/* dpll_ck, core_ck, virt_prcm_set; plus all clksel clocks */
 	if (clk->set_rate) {
-		trace_clock_set_rate(clk->name, rate, smp_processor_id());
+		trace_clock_set_rate(clk->name, rate, get_cpu());
+		put_cpu();
 		ret = clk->set_rate(clk, rate);
 	}
 
