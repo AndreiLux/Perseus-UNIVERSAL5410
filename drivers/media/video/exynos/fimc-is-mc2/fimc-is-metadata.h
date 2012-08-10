@@ -15,6 +15,7 @@
 /*2012.04.23 Version 0.2 Added static metadata (draft)*/
 /*2012.07.04 Version 0.3 Applied google's undocumented changes (draft)*/
 /*2012.07.11 Version 0.4 Added FD parameters */
+/*2012.07.27 Version 0.5 Modified HSB control and DM */
 
 
 #ifndef FIMC_IS_METADATA_H_
@@ -67,7 +68,7 @@ enum lens_facing {
 };
 
 struct camera2_lens_ctl {
-	float					focusDistance;
+	uint32_t				focusDistance;
 	float					aperture;
 	float					focalLength;
 	float					filterDensity;
@@ -76,7 +77,7 @@ struct camera2_lens_ctl {
 };
 
 struct camera2_lens_dm {
-	float					focusDistance;
+	uint32_t				focusDistance;
 	float					aperture;
 	float					focalLength;
 	float					filterDensity;
@@ -182,7 +183,8 @@ struct camera2_sensor_sm {
 enum flash_mode {
 	CAM2_FLASH_MODE_OFF = 1,
 	CAM2_FLASH_MODE_SINGLE,
-	CAM2_FLASH_MODE_TORCH
+	CAM2_FLASH_MODE_TORCH,
+	CAM2_FLASH_MODE_BEST
 };
 
 struct camera2_flash_ctl {
@@ -193,10 +195,12 @@ struct camera2_flash_ctl {
 
 struct camera2_flash_dm {
 	enum flash_mode		flashMode;
-	uint8_t			firingPower;
 	/*10 is max power*/
-	uint64_t		firingTime;
+	uint8_t			firingPower;
 	/*unit : microseconds*/
+	uint64_t		firingTime;
+	/*1 : stable, 0 : unstable*/
+	uint32_t		firingStable;
 };
 
 struct camera2_flash_sm {
@@ -279,20 +283,41 @@ struct camera2_geometric_dm {
 enum colorcorrection_mode {
 	COLORCORRECTION_MODE_FAST = 1,
 	COLORCORRECTION_MODE_HIGH_QUALITY,
-	COLORCORRECTION_MODE_TRANSFORM_MATRIX
+	COLORCORRECTION_MODE_TRANSFORM_MATRIX,
+	COLORCORRECTION_MODE_EFFECT_MONO,
+	COLORCORRECTION_MODE_EFFECT_NEGATIVE,
+	COLORCORRECTION_MODE_EFFECT_SOLARIZE,
+	COLORCORRECTION_MODE_EFFECT_SEPIA,
+	COLORCORRECTION_MODE_EFFECT_POSTERIZE,
+	COLORCORRECTION_MODE_EFFECT_WHITEBOARD,
+	COLORCORRECTION_MODE_EFFECT_BLACKBOARD,
+	COLORCORRECTION_MODE_EFFECT_AQUA
 };
 
 
 struct camera2_colorcorrection_ctl {
 	enum colorcorrection_mode	mode;
 	float				transform[9];
+	uint32_t			hue;
+	uint32_t			saturation;
+	uint32_t			brightness;
 };
 
 struct camera2_colorcorrection_dm {
 	enum colorcorrection_mode	mode;
 	float				transform[9];
+	uint32_t			hue;
+	uint32_t			saturation;
+	uint32_t			brightness;
 };
 
+struct camera2_colorcorrection_sm {
+	/*assuming 10 supported modes*/
+	uint8_t			availableModes[CAMERA2_MAX_AVAILABLE_MODE];
+	uint32_t		hueRange[2];
+	uint32_t		saturationRange[2];
+	uint32_t		brightnessRange[2];
+};
 
 
 /* android.tonemap */
@@ -501,6 +526,17 @@ enum aa_aemode {
 	AA_AEMODE_ON_AUTO_FLASH_REDEYE
 };
 
+enum aa_ae_flashmode {
+	/*all flash control stop*/
+	AA_FLASHMODE_OFF = 1,
+	/*internal 3A can control flash*/
+	AA_FLASHMODE_ON,
+	/*internal 3A can do auto flash algorithm*/
+	AA_FLASHMODE_AUTO,
+	/*internal 3A can fire flash by auto result*/
+	AA_FLASHMODE_CAPTURE
+};
+
 enum aa_ae_antibanding_mode {
 	AA_AE_ANTIBANDING_OFF = 1,
 	AA_AE_ANTIBANDING_50HZ,
@@ -538,10 +574,14 @@ enum aa_afstate {
 	AA_AFSTATE_AF_FAILED_FOCUS
 };
 
+enum aa_isomode {
+	AA_ISOMODE_AUTO = 1,
+	AA_ISOMODE_MANUAL,
+};
+
 struct camera2_aa_ctl {
 	enum aa_capture_intent		captureIntent;
 	enum aa_mode			mode;
-	enum aa_effect_mode		effectMode;
 	enum aa_scene_mode		sceneMode;
 	uint8_t				videoStabilizationMode;
 	enum aa_aemode			aeMode;
@@ -550,13 +590,16 @@ struct camera2_aa_ctl {
 	int32_t				aeExpCompensation;
 	uint32_t			aeTargetFpsRange[2];
 	enum aa_ae_antibanding_mode	aeAntibandingMode;
+	enum aa_ae_flashmode		aeflashMode;
 	enum aa_awbmode			awbMode;
 	uint32_t			awbRegions[5];
 	/*5 per region(x1,y1,x2,y2,weight). currently assuming 1 region.*/
 	enum aa_afmode			afMode;
 	uint32_t			afRegions[5];
 	/*5 per region(x1,y1,x2,y2,weight). currently assuming 1 region.*/
-	uint8_t				afState;
+	uint8_t				afTrigger;
+	enum aa_isomode			isoMode;
+	uint32_t			isoValue;
 
 };
 
@@ -570,6 +613,7 @@ struct camera2_aa_dm {
 	uint32_t				aeRegions[5];
 	/*5 per region(x1,y1,x2,y2,weight). currently assuming 1 region.*/
 	uint8_t					aeState;
+	enum aa_ae_flashmode			aeflashMode;
 	/*needs check*/
 	enum aa_awbmode				awbMode;
 	uint32_t				awbRegions[5];
@@ -579,6 +623,8 @@ struct camera2_aa_dm {
 	uint32_t				afRegions[5];
 	/*5 per region(x1,y1,x2,y2,weight). currently assuming 1 region*/
 	enum aa_afstate				afState;
+	enum aa_isomode				isoMode;
+	uint32_t				isoValue;
 };
 
 struct camera2_aa_sm {
@@ -598,6 +644,7 @@ struct camera2_aa_sm {
 	/*assuming # of afAvailableModes = 4*/
 	uint8_t availableVideoStabilizationModes[4];
 	/*assuming # of availableVideoStabilizationModes = 4*/
+	uint32_t	isoRange[2];
 };
 
 struct camera2_lens_usm {
@@ -661,6 +708,7 @@ struct camera2_sm {
 	struct camera2_lens_sm			lens;
 	struct camera2_sensor_sm		sensor;
 	struct camera2_flash_sm			flash;
+	struct camera2_colorcorrection_sm	color;
 	struct camera2_tonemap_sm		tonemap;
 	struct camera2_scaler_sm		scaler;
 	struct camera2_jpeg_sm			jpeg;
@@ -734,8 +782,8 @@ struct camera2_uctl {
 	Set sensor, lens, flash control for next frame.
 	\remarks
 	This flag can be combined.
-	[0 bit] sensor
-	[1 bit] lens
+	[0 bit] lens
+	[1 bit] sensor
 	[2 bit] flash
 	*/
 	uint32_t uUpdateBitMap;
@@ -773,6 +821,13 @@ struct camera2_shot {
 */
 struct camera2_shot_ext {
 	/**	\brief
+		setfile change
+		\remarks
+		[x] mode for setfile
+	*/
+	uint32_t		setfile;
+
+	/**	\brief
 		stream control
 		\remarks
 		[0] disable stream out
@@ -797,6 +852,27 @@ struct camera2_shot_ext {
 		[1] bypass on
 	*/
 	uint32_t		dnr_bypass;
+
+	/**	\brief
+		post processing control(FD)
+		\remarks
+		[0] bypass off
+		[1] bypass on
+	*/
+	uint32_t		fd_bypass;
+
+	/**	\brief
+		processing time debugging
+		\remarks
+		taken time(unit : struct timeval)
+		[0][x] flite start
+		[1][x] flite end
+		[2][x] DRV Shot
+		[3][x] DRV Shot done
+		[4][x] DRV Meta done
+	*/
+	uint32_t		timeZone[10][2];
+
 	struct camera2_shot	shot;
 };
 

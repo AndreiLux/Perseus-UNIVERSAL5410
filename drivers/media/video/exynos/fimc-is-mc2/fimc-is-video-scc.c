@@ -76,7 +76,7 @@ static int fimc_is_scalerc_video_open(struct file *file)
 
 	file->private_data = video;
 	fimc_is_video_open(&video->common, ischain);
-	fimc_is_ischain_dev_open(scc, &video->common);
+	fimc_is_ischain_dev_open(scc, &video->common, NUM_SCC_DMA_BUF);
 
 	return 0;
 }
@@ -85,13 +85,17 @@ static int fimc_is_scalerc_video_close(struct file *file)
 {
 	int ret = 0;
 	struct fimc_is_video_scc *video = file->private_data;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
+	struct fimc_is_ischain_dev *scc = &ischain->scc;
 
-	dbg_scc("%s\n", __func__);
+	dbg("%s\n", __func__);
 
-	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)){
-		dbg_scc("%s - vb2_streamoff\n", __func__);
-		vb2_streamoff(&video->common.vbq, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state)) {
+		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
+		fimc_is_frame_close(&scc->framemgr);
 	}
+
 	file->private_data = 0;
 	fimc_is_video_close(&video->common);
 

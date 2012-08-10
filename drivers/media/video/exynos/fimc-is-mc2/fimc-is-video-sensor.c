@@ -81,14 +81,13 @@ static int fimc_is_bayer_video_open(struct file *file)
 static int fimc_is_bayer_video_close(struct file *file)
 {
 	struct fimc_is_video_sensor *video = file->private_data;
-	struct fimc_is_device_sensor *sensor = video->common.device;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_sensor *sensor = common->device;
 
 	dbg_sensor("%s\n", __func__);
 
-	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)){
-		dbg_sensor("fimc_is_video_streamoff\n");
-		fimc_is_video_streamoff(&video->common, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
-	}
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state))
+		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
 
 	file->private_data = 0;
 	fimc_is_sensor_close(sensor);
@@ -293,7 +292,7 @@ static int fimc_is_bayer_video_enum_input(struct file *file, void *priv,
 
 	dbg_sensor("index(%d) sensor(%s)\n",
 		input->index, sensor_info->sensor_name);
-	printk(KERN_INFO "sensor: pos(%d) sensor_id(%d)\n",
+	dbg_sensor("pos(%d) sensor_id(%d)\n",
 		sensor_info->sensor_position, sensor_info->sensor_id);
 	dbg_sensor("csi_id(%d) flite_id(%d)\n",
 		sensor_info->csi_id, sensor_info->flite_id);
@@ -323,7 +322,7 @@ static int fimc_is_bayer_video_s_input(struct file *file, void *priv,
 	struct fimc_is_video_sensor *video = file->private_data;
 	struct fimc_is_device_sensor *sensor = video->common.device;
 
-	printk(KERN_INFO "%s(input : %d)\n", __func__, input);
+	dbg_sensor("%s(input : %d)\n", __func__, input);
 
 	fimc_is_sensor_s_active_sensor(sensor, input);
 
@@ -443,7 +442,10 @@ static int fimc_is_bayer_stop_streaming(struct vb2_queue *q)
 
 	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)) {
 		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
+		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state);
 		fimc_is_sensor_back_stop(sensor);
+		fimc_is_frame_close(sensor->framemgr);
+		fimc_is_frame_open(sensor->framemgr, 8);
 	}
 
 	return 0;

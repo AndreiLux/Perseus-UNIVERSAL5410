@@ -12,7 +12,7 @@
 #ifndef FIMC_IS_PARAMS_H
 #define FIMC_IS_PARAMS_H
 
-#define IS_REGION_VER 134  /* IS REGION VERSION 1.34 */
+#define IS_REGION_VER 145  /* IS REGION VERSION 1.45 */
 
 /* MACROs */
 #define IS_SET_PARAM_BIT(dev, num) \
@@ -1017,16 +1017,6 @@ enum is_param_set_bit {
 /* Enumerations
 *
 */
-/* ----------------------  INTR map-------------------------------- */
-enum interrupt_map {
-	INTR_GENERAL = 0,
-	INTR_FRAME_DONE_ISP = 1,
-	INTR_SCC_FDONE = 2,
-	INTR_FRAME_DONE_TDNR = 3,
-	INTR_SCP_FDONE = 4,
-	INTR_META_DONE = 6,
-	INTR_MAX_MAP
-};
 
 /* ----------------------  Input  ----------------------------------- */
 enum control_command {
@@ -1264,6 +1254,7 @@ enum isp_af_mode {
 	ISP_AF_MANUAL = 0,
 	ISP_AF_SINGLE,
 	ISP_AF_CONTINUOUS,
+	ISP_AF_REGION,
 	ISP_AF_SLEEP,
 	ISP_AF_INIT,
 	ISP_AF_SET_CENTER_WINDOW,
@@ -1688,7 +1679,21 @@ struct param_isp_aa {
 	u32	touch_x;
 	u32	touch_y;
 	u32	manual_af_setting;
-	u32	reserved[PARAMETER_MAX_MEMBER-12];
+	/*0: Legacy, 1: Camera 2.0*/
+	u32	uiCamApi2P0;
+	/* For android.control.afRegions in Camera 2.0,
+	Resolution based on YUV output size*/
+	u32	uiAfRegionLeft;
+	/* For android.control.afRegions in Camera 2.0,
+	Resolution based on YUV output size*/
+	u32	uiAfRegionTop;
+	/* For android.control.afRegions in Camera 2.0,
+	Resolution based on YUV output size*/
+	u32	uiAfRegionRight;
+	/* For android.control.afRegions in Camera 2.0,
+	Resolution based on YUV output size*/
+	u32	uiAfRegionBottom;
+	u32	reserved[PARAMETER_MAX_MEMBER-17];
 	u32	err;
 };
 
@@ -1753,7 +1758,9 @@ struct param_isp_metering {
 	u32	win_width;
 	u32	win_height;
 	u32	exposure_mode;
-	u32	reserved[PARAMETER_MAX_MEMBER-7];
+	/* 0: Legacy, 1: Camera 2.0 */
+	u32	uiCamApi2P0;
+	u32	reserved[PARAMETER_MAX_MEMBER-8];
 	u32	err;
 };
 

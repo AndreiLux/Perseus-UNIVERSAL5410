@@ -8,7 +8,13 @@
 /*#define TRACE_WORK*/
 /* cam_ctrl : 1
    shot :     2 */
-#define TRACE_WORK_ID 0xFF
+#define TRACE_WORK_ID_CAMCTRL	0x1
+#define TRACE_WORK_ID_SHOT	0x2
+#define TRACE_WORK_ID_GENERAL	0x4
+#define TRACE_WORK_ID_SCC	0x8
+#define TRACE_WORK_ID_SCP	0x10
+#define TRACE_WORK_ID_META	0x20
+#define TRACE_WORK_ID_MASK	0xFF
 
 #define MAX_NBLOCKING_COUNT 3
 #define MAX_WORK_COUNT 10
@@ -24,6 +30,16 @@ enum fimc_is_interface_state {
 	IS_IF_STATE_NBLOCK_IO
 };
 
+enum interrupt_map {
+	INTR_GENERAL		= 0,
+	INTR_ISP_FDONE		= 1,
+	INTR_SCC_FDONE		= 2,
+	INTR_DNR_FDONE		= 3,
+	INTR_SCP_FDONE		= 4,
+	INTR_META_DONE		= 6,
+	INTR_MAX_MAP
+};
+
 struct fimc_is_msg {
 	u32	id;
 	u32	command;
@@ -37,6 +53,8 @@ struct fimc_is_msg {
 struct fimc_is_work {
 	struct list_head		list;
 	struct fimc_is_msg		msg;
+	u32				fcount;
+	struct fimc_is_frame_shot	*frame;
 };
 
 struct fimc_is_work_list {
@@ -48,6 +66,8 @@ struct fimc_is_work_list {
 	u32				work_free_cnt;
 	struct list_head		work_request_head;
 	u32				work_request_cnt;
+
+	wait_queue_head_t		wait_queue;
 };
 
 struct fimc_is_interface {
@@ -90,10 +110,15 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 int fimc_is_interface_open(struct fimc_is_interface *this);
 int fimc_is_interface_close(struct fimc_is_interface *this);
 
+/*for debugging*/
+int print_fre_work_list(struct fimc_is_work_list *this);
+int print_req_work_list(struct fimc_is_work_list *this);
+
 int fimc_is_hw_enum(struct fimc_is_interface *interface,
 	u32 instances);
-int fimc_is_hw_open(struct fimc_is_interface *interface,
-	u32 instance, u32 sensor, u32 channel, u32 *mwidth, u32 *mheight);
+int fimc_is_hw_open(struct fimc_is_interface *this,
+	u32 instance, u32 sensor, u32 channel, u32 ext,
+	u32 *mwidth, u32 *mheight);
 int fimc_is_hw_saddr(struct fimc_is_interface *interface,
 	u32 instance, u32 *setfile_addr);
 int fimc_is_hw_setfile(struct fimc_is_interface *interface,
@@ -108,8 +133,8 @@ int fimc_is_hw_stream_off(struct fimc_is_interface *interface,
 	u32 instance);
 int fimc_is_hw_s_param(struct fimc_is_interface *interface,
 	u32 instance, u32 indexes, u32 lindex, u32 hindex);
-int fimc_is_hw_a_param(struct fimc_is_interface *interface,
-	u32 instance);
+int fimc_is_hw_a_param(struct fimc_is_interface *this,
+	u32 instance, u32 mode, u32 sub_mode);
 int fimc_is_hw_f_param(struct fimc_is_interface *interface,
 	u32 instance);
 int fimc_is_hw_g_capability(struct fimc_is_interface *this,
@@ -120,9 +145,10 @@ int fimc_is_hw_power_down(struct fimc_is_interface *interface,
 	u32 instance);
 
 int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
-	u32 instance, u32 byaer, u32 shot, u32 frame);
+	u32 instance, u32 byaer, u32 shot, u32 fcount,
+	struct fimc_is_frame_shot *frame);
 int fimc_is_hw_s_camctrl_nblk(struct fimc_is_interface *this,
-	u32 instance, u32 address, u32 fnumber);
+	u32 instance, u32 address, u32 fcount);
 
 #endif
 

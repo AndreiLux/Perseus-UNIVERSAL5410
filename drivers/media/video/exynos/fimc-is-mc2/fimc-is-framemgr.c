@@ -279,7 +279,7 @@ int fimc_is_frame_print_process_list(struct fimc_is_framemgr *this)
 
 	list_for_each(temp, &this->frame_process_head) {
 		shot = list_entry(temp, struct fimc_is_frame_shot, list);
-		printk(KERN_CONT "%d->", shot->index);
+		printk(KERN_CONT "%d(%d)->", shot->index, shot->fcount);
 	}
 
 	printk(KERN_CONT "X\n");
@@ -577,4 +577,14 @@ int fimc_is_frame_close(struct fimc_is_framemgr *this)
 	this->opened = 0;
 
 	return ret;
+}
+
+int fimc_is_frame_print_all(struct fimc_is_framemgr *this)
+{
+	fimc_is_frame_print_free_list(this);
+	fimc_is_frame_print_request_list(this);
+	fimc_is_frame_print_process_list(this);
+	fimc_is_frame_print_complete_list(this);
+
+	return 0;
 }

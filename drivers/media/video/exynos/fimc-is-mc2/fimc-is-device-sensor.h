@@ -36,6 +36,8 @@ struct fimc_is_enum_sensor {
 	u32 csi_ch;
 	u32 flite_ch;
 	u32 i2c_ch;
+	struct sensor_open_extended ext;
+	char *setfile_name;
 };
 
 enum fimc_is_sensor_state {
@@ -63,9 +65,6 @@ struct fimc_is_device_sensor {
 
 	struct fimc_is_enum_sensor	enum_sensor[SENSOR_MAX_ENUM];
 	struct fimc_is_enum_sensor	*active_sensor;
-
-	struct camera2_uctl		frame_desc;
-	u32				nframe;
 
 	unsigned long			state;
 	struct mutex			state_barrier;

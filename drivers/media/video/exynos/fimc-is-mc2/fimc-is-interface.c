@@ -1,6 +1,7 @@
 #include <linux/workqueue.h>
 #include <linux/pm_qos.h>
 
+#include "fimc-is-time.h"
 #include "fimc-is-core.h"
 #include "fimc-is-cmd.h"
 #include "fimc-is-regs.h"
@@ -73,12 +74,12 @@ static int exit_state_barrier(struct fimc_is_interface *interface)
 	return 0;
 }
 
-static int print_free_work_list(struct fimc_is_work_list *this)
+int print_fre_work_list(struct fimc_is_work_list *this)
 {
 	struct list_head *temp;
 	struct fimc_is_work *work;
 
-	if (!(this->id & TRACE_WORK_ID))
+	if (!(this->id & TRACE_WORK_ID_MASK))
 		return 0;
 
 	printk(KERN_CONT "[INF] fre(%02X, %02d) :",
@@ -86,7 +87,7 @@ static int print_free_work_list(struct fimc_is_work_list *this)
 
 	list_for_each(temp, &this->work_free_head) {
 		work = list_entry(temp, struct fimc_is_work, list);
-		printk(KERN_CONT "%02d->", work->msg.command);
+		printk(KERN_CONT "%X(%d)->", work->msg.command, work->fcount);
 	}
 
 	printk(KERN_CONT "X\n");
@@ -106,7 +107,7 @@ static int set_free_work(struct fimc_is_work_list *this,
 		list_add_tail(&work->list, &this->work_free_head);
 		this->work_free_cnt++;
 #ifdef TRACE_WORK
-		print_free_work_list(this);
+		print_fre_work_list(this);
 #endif
 
 		spin_unlock_irqrestore(&this->slock_free, flags);
@@ -118,7 +119,6 @@ static int set_free_work(struct fimc_is_work_list *this,
 	return ret;
 }
 
-/**
 static int set_free_work_irq(struct fimc_is_work_list *this,
 	struct fimc_is_work *work)
 {
@@ -130,7 +130,7 @@ static int set_free_work_irq(struct fimc_is_work_list *this,
 		list_add_tail(&work->list, &this->work_free_head);
 		this->work_free_cnt++;
 #ifdef TRACE_WORK
-		print_free_work_list(this);
+		print_fre_work_list(this);
 #endif
 
 		spin_unlock(&this->slock_free);
@@ -141,7 +141,6 @@ static int set_free_work_irq(struct fimc_is_work_list *this,
 
 	return ret;
 }
-*/
 
 static int get_free_work(struct fimc_is_work_list *this,
 	struct fimc_is_work **work)
@@ -194,12 +193,12 @@ static int get_free_work_irq(struct fimc_is_work_list *this,
 	return ret;
 }
 
-static int print_req_work_list(struct fimc_is_work_list *this)
+int print_req_work_list(struct fimc_is_work_list *this)
 {
 	struct list_head *temp;
 	struct fimc_is_work *work;
 
-	if (!(this->id & TRACE_WORK_ID))
+	if (!(this->id & TRACE_WORK_ID_MASK))
 		return 0;
 
 	printk(KERN_CONT "[INF] req(%02X, %02d) :",
@@ -207,7 +206,7 @@ static int print_req_work_list(struct fimc_is_work_list *this)
 
 	list_for_each(temp, &this->work_request_head) {
 		work = list_entry(temp, struct fimc_is_work, list);
-		printk(KERN_CONT "%02d->", work->msg.command);
+		printk(KERN_CONT "%X(%d)->", work->msg.command, work->fcount);
 	}
 
 	printk(KERN_CONT "X\n");
@@ -288,7 +287,6 @@ static int get_req_work(struct fimc_is_work_list *this,
 	return ret;
 }
 
-/*
 static int get_request_work_irq(struct fimc_is_work_list *this,
 	struct fimc_is_work **work)
 {
@@ -313,7 +311,6 @@ static int get_request_work_irq(struct fimc_is_work_list *this,
 
 	return ret;
 }
-*/
 
 static void init_work_list(struct fimc_is_work_list *this, u32 id, u32 count)
 {
@@ -328,6 +325,8 @@ static void init_work_list(struct fimc_is_work_list *this, u32 id, u32 count)
 	spin_lock_init(&this->slock_request);
 	for (i = 0; i < count; ++i)
 		set_free_work(this, &this->work[i]);
+
+	init_waitqueue_head(&this->wait_queue);
 }
 
 static void init_wait_queue(struct fimc_is_interface *this)
@@ -689,11 +688,21 @@ static void wq_func_general(struct work_struct *data)
 				get_req_work(&itf->nblk_shot , &nblk_work);
 				if (nblk_work) {
 					nblk_work->msg.command = ISR_DONE;
+					nblk_work->fcount =
+						nblk_work->msg.parameter3;
 					set_free_work(&itf->nblk_shot,
 						nblk_work);
+#ifdef MEASURE_TIME
+			{
+				struct fimc_is_frame_shot *frame;
+				frame = nblk_work->frame;
+				do_gettimeofday(&frame->tzone[TM_SHOT_D]);
+			}
+#endif
+
 				} else {
 					err("nblk shot request is empty");
-					print_free_work_list(
+					print_fre_work_list(
 						&itf->nblk_shot);
 					print_req_work_list(
 						&itf->nblk_shot);
@@ -708,7 +717,7 @@ static void wq_func_general(struct work_struct *data)
 						nblk_work);
 				} else {
 					err("nblk camctrl request is empty");
-					print_free_work_list(
+					print_fre_work_list(
 						&itf->nblk_cam_ctrl);
 					print_req_work_list(
 						&itf->nblk_cam_ctrl);
@@ -743,11 +752,20 @@ static void wq_func_general(struct work_struct *data)
 				break;
 			}
 			break;
+		case IHC_SET_FACE_MARK:
+			err("FACE_MARK(%d,%d,%d) is not acceptable\n",
+				msg->parameter1,
+				msg->parameter2,
+				msg->parameter3);
+			break;
 		case IHC_AA_DONE:
 			err("AA_DONE(%d,%d,%d) is not acceptable\n",
 				msg->parameter1,
 				msg->parameter2,
 				msg->parameter3);
+			break;
+		case IHC_FLASH_READY:
+			/*err("IHC_FLASH_READY is not acceptable");*/
 			break;
 		default:
 			err("func_general unknown(%d) end\n", msg->command);
@@ -759,34 +777,13 @@ static void wq_func_general(struct work_struct *data)
 	}
 }
 
-static void wq_func_dev_common(struct fimc_is_ischain_dev *dev)
-{
-	unsigned long flags;
-	struct fimc_is_video_common *video;
-	struct fimc_is_framemgr *framemgr;
-	struct fimc_is_frame_shot *frame;
-
-	video = dev->video;
-	framemgr = &dev->framemgr;
-
-	framemgr_e_barrier_irqs(framemgr, FMGR_IDX_4, flags);
-
-	fimc_is_frame_process_head(framemgr, &frame);
-	if (frame) {
-		fimc_is_frame_trans_pro_to_com(framemgr, frame);
-		buffer_done(video, frame->index);
-	} else
-		err("done is occured without request\n");
-
-	framemgr_x_barrier_irqr(framemgr, FMGR_IDX_4, flags);
-}
-
 static void wq_func_scc(struct work_struct *data)
 {
 	struct fimc_is_interface *itf;
 	struct fimc_is_msg *msg;
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_device_ischain *ischain;
+	struct fimc_is_ischain_dev *dev;
 	struct fimc_is_frame_shot *frame;
 	struct fimc_is_video_common *video;
 	struct fimc_is_work *work;
@@ -797,32 +794,31 @@ static void wq_func_scc(struct work_struct *data)
 	index = FIMC_IS_INVALID_BUF_INDEX;
 	itf = container_of(data, struct fimc_is_interface,
 		work_queue[INTR_SCC_FDONE]);
-	framemgr = itf->framemgr;
 	video = itf->video_scc;
 	ischain = video->device;
+	dev = &ischain->scc;
+	framemgr = &dev->framemgr;
 
 	get_req_work(&itf->work_list[INTR_SCC_FDONE], &work);
 	while (work) {
 		msg = &work->msg;
 		fnumber = msg->parameter1;
 
-		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_5, flags);
+		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_4, flags);
 
 		fimc_is_frame_process_head(framemgr, &frame);
-		if (frame) {
+		if (frame && test_bit(FIMC_IS_REQ, &frame->req_flag)) {
+			clear_bit(FIMC_IS_REQ, &frame->req_flag);
+
 			index = frame->index;
 			dbg_interface("C%d %d\n", index, fnumber);
 
-			if (test_bit(FIMC_IS_REQ_SCC, &frame->req_flag)) {
-				clear_bit(FIMC_IS_REQ_SCC, &frame->req_flag);
-
-				wq_func_dev_common(&ischain->scc);
-			} else
-				err("SCC done is occured without request1\n");
+			fimc_is_frame_trans_pro_to_com(framemgr, frame);
+			buffer_done(video, frame->index);
 		} else
-			err("SCC done is occured without request2\n");
+			err("done(%p) is occured without request\n", frame);
 
-		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_5, flags);
+		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_4, flags);
 
 		set_free_work(&itf->work_list[INTR_SCC_FDONE], work);
 		get_req_work(&itf->work_list[INTR_SCC_FDONE], &work);
@@ -835,11 +831,12 @@ static void wq_func_scp(struct work_struct *data)
 	struct fimc_is_msg *msg;
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_device_ischain *ischain;
+	struct fimc_is_ischain_dev *dev;
 	struct fimc_is_frame_shot *frame;
 	struct fimc_is_video_common *video;
 	struct fimc_is_work *work;
 	unsigned long flags;
-	u32 fnumber;
+	u32 fcount;
 	u32 index;
 
 	index = FIMC_IS_INVALID_BUF_INDEX;
@@ -848,29 +845,31 @@ static void wq_func_scp(struct work_struct *data)
 	framemgr = itf->framemgr;
 	video = itf->video_scp;
 	ischain = video->device;
+	dev = &ischain->scp;
+	framemgr = &dev->framemgr;
 
 	get_req_work(&itf->work_list[INTR_SCP_FDONE], &work);
 	while (work) {
 		msg = &work->msg;
-		fnumber = msg->parameter1;
+		fcount = msg->parameter1;
 
-		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_6, flags);
+		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_4, flags);
 
 		fimc_is_frame_process_head(framemgr, &frame);
-		if (frame) {
+		if (frame && test_bit(FIMC_IS_REQ, &frame->req_flag)) {
+			clear_bit(FIMC_IS_REQ, &frame->req_flag);
+
 			index = frame->index;
-			dbg_interface("P%d %d\n", index, fnumber);
+#ifdef DBG_STREAMING
+			printk(KERN_INFO "P%d %d\n", index, fcount);
+#endif
 
-			if (test_bit(FIMC_IS_REQ_SCP, &frame->req_flag)) {
-				clear_bit(FIMC_IS_REQ_SCP, &frame->req_flag);
-
-				wq_func_dev_common(&ischain->scp);
-			} else
-				err("SCP done is occured without request1\n");
+			fimc_is_frame_trans_pro_to_com(framemgr, frame);
+			buffer_done(video, frame->index);
 		} else
-			err("SCP done is occured without request2\n");
+			err("done is occured without request(%p)\n", frame);
 
-		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_6, flags);
+		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_4, flags);
 
 		set_free_work(&itf->work_list[INTR_SCP_FDONE], work);
 		get_req_work(&itf->work_list[INTR_SCP_FDONE], &work);
@@ -885,22 +884,32 @@ static void wq_func_meta(struct work_struct *data)
 	struct fimc_is_device_ischain *ischain;
 	struct fimc_is_frame_shot *frame;
 	struct fimc_is_video_common *video;
+	struct fimc_is_work_list *work_list;
 	struct fimc_is_work *work;
+	struct camera2_lens_uctl *isp_lens_uctl;
+	struct camera2_lens_uctl *lens_uctl;
+	struct camera2_sensor_uctl *isp_sensor_uctl;
+	struct camera2_sensor_uctl *sensor_uctl;
+	struct camera2_flash_uctl *isp_flash_uctl;
+	struct camera2_flash_uctl *flash_uctl;
 	unsigned long flags;
 	u32 fcount;
 	u32 index;
-	bool request_done;
 	void *cookie;
+	bool req_done = false;
 
 	index = FIMC_IS_INVALID_BUF_INDEX;
-	request_done = false;
 	itf = container_of(data, struct fimc_is_interface,
 		work_queue[INTR_META_DONE]);
+	work_list = &itf->work_list[INTR_META_DONE];
 	framemgr = itf->framemgr;
 	video = itf->video_isp;
 	ischain = video->device;
+	isp_lens_uctl = &itf->isp_peri_ctl.lensUd;
+	isp_sensor_uctl = &itf->isp_peri_ctl.sensorUd;
+	isp_flash_uctl = &itf->isp_peri_ctl.flashUd;
 
-	get_req_work(&itf->work_list[INTR_META_DONE], &work);
+	get_req_work(work_list, &work);
 	while (work) {
 		msg = &work->msg;
 		fcount = msg->parameter1;
@@ -923,20 +932,60 @@ static void wq_func_meta(struct work_struct *data)
 					fcount, frame->fcount);
 
 			index = frame->index;
-			/*printk("@%d", index);*/
+#ifdef DBG_STREAMING
+			printk(KERN_INFO "M%d %d\n", index, fcount);
+#endif
 
 			/*flush cache*/
 			cookie = vb2_plane_cookie(frame->vb, 1);
 			vb2_ion_sync_for_device(cookie, 0, frame->shot_size,
 				DMA_FROM_DEVICE);
 
-			memcpy(&itf->isp_peri_ctl, &frame->shot->uctl,
-				sizeof(struct camera2_uctl));
+			if (frame->shot->uctl.uUpdateBitMap & CAM_SENSOR_CMD) {
+				sensor_uctl = &frame->shot->uctl.sensorUd;
+				isp_sensor_uctl->ctl.exposureTime =
+					sensor_uctl->ctl.exposureTime;
+				isp_sensor_uctl->ctl.frameDuration =
+					sensor_uctl->ctl.frameDuration;
+				isp_sensor_uctl->ctl.sensitivity =
+					sensor_uctl->ctl.sensitivity;
 
-			if (test_bit(FIMC_IS_REQ_MDT, &frame->req_flag)) {
-				clear_bit(FIMC_IS_REQ_MDT, &frame->req_flag);
+				frame->shot->uctl.uUpdateBitMap &=
+					~CAM_SENSOR_CMD;
+			}
 
-				request_done = true;
+			if (frame->shot->uctl.uUpdateBitMap & CAM_LENS_CMD) {
+				lens_uctl = &frame->shot->uctl.lensUd;
+				isp_lens_uctl->ctl.focusDistance =
+					lens_uctl->ctl.focusDistance;
+				isp_lens_uctl->maxPos =
+					lens_uctl->maxPos;
+				isp_lens_uctl->slewRate =
+					lens_uctl->slewRate;
+
+				frame->shot->uctl.uUpdateBitMap &=
+					~CAM_LENS_CMD;
+			}
+
+			if (frame->shot->uctl.uUpdateBitMap & CAM_FLASH_CMD) {
+				flash_uctl = &frame->shot->uctl.flashUd;
+				isp_flash_uctl->ctl.flashMode =
+					flash_uctl->ctl.flashMode;
+				isp_flash_uctl->ctl.firingPower =
+					flash_uctl->ctl.firingPower;
+				isp_flash_uctl->ctl.firingTime =
+					flash_uctl->ctl.firingTime;
+
+				frame->shot->uctl.uUpdateBitMap &=
+					~CAM_FLASH_CMD;
+			}
+
+#ifdef MEASURE_TIME
+			do_gettimeofday(&frame->tzone[TM_META_D]);
+#endif
+
+			if (test_bit(FIMC_IS_REQ, &frame->req_flag)) {
+				clear_bit(FIMC_IS_REQ, &frame->req_flag);
 #ifdef AUTO_MODE
 				fimc_is_frame_trans_pro_to_fre(framemgr, frame);
 				buffer_done(itf->video_sensor, index);
@@ -944,50 +993,51 @@ static void wq_func_meta(struct work_struct *data)
 				fimc_is_frame_trans_pro_to_com(framemgr, frame);
 				buffer_done(itf->video_isp, index);
 #endif
+				req_done = true;
 			}
 		} else {
 			err("Meta done is occured without request");
-			fimc_is_frame_print_free_list(framemgr);
-			fimc_is_frame_print_request_list(framemgr);
-			fimc_is_frame_print_process_list(framemgr);
-			fimc_is_frame_print_complete_list(framemgr);
+			fimc_is_frame_print_all(framemgr);
 		}
 
 		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_7, flags);
 
-		if (request_done) {
-#ifdef DBG_STREAMING
-			printk(KERN_INFO "M%d %d\n", index, fcount);
-#endif
-
+#if 1
+		if (req_done) {
 			mutex_lock(&ischain->mutex_state);
 			fimc_is_ischain_callback(ischain);
 			mutex_unlock(&ischain->mutex_state);
 		}
+#endif
 
 next:
-		set_free_work(&itf->work_list[INTR_META_DONE], work);
-		get_req_work(&itf->work_list[INTR_META_DONE], &work);
+		set_free_work(work_list, work);
+		get_req_work(work_list, &work);
 	}
 }
 
 static irqreturn_t interface_isr(int irq, void *data)
 {
 	struct fimc_is_interface *itf;
+	struct work_struct *work_queue;
+	struct fimc_is_work_list *work_list;
 	struct fimc_is_work *work;
 	u32 status;
 
 	itf = (struct fimc_is_interface *)data;
-	status = readl(itf->regs + INTSR1);
+	status = readl(itf->regs + INTMSR1);
 
 	if (status & (1<<INTR_GENERAL)) {
+		work_queue = &itf->work_queue[INTR_GENERAL];
+		work_list = &itf->work_list[INTR_GENERAL];
+
 		get_free_work_irq(&itf->work_list[INTR_GENERAL], &work);
 		if (work) {
 			fimc_is_get_cmd(itf, &work->msg, INTR_GENERAL);
-			set_req_work_irq(&itf->work_list[INTR_GENERAL], work);
+			set_req_work_irq(work_list, work);
 
-			if (!work_pending(&itf->work_queue[INTR_GENERAL]))
-				schedule_work(&itf->work_queue[INTR_GENERAL]);
+			if (!work_pending(work_queue))
+				schedule_work(work_queue);
 		} else
 			err("free work item is empty1");
 
@@ -995,13 +1045,16 @@ static irqreturn_t interface_isr(int irq, void *data)
 	}
 
 	if (status & (1<<INTR_SCC_FDONE)) {
-		get_free_work_irq(&itf->work_list[INTR_SCC_FDONE], &work);
+		work_queue = &itf->work_queue[INTR_SCC_FDONE];
+		work_list = &itf->work_list[INTR_SCC_FDONE];
+
+		get_free_work_irq(work_list, &work);
 		if (work) {
 			fimc_is_get_cmd(itf, &work->msg, INTR_SCC_FDONE);
-			set_req_work_irq(&itf->work_list[INTR_SCC_FDONE], work);
+			set_req_work_irq(work_list, work);
 
-			if (!work_pending(&itf->work_queue[INTR_SCC_FDONE]))
-				schedule_work(&itf->work_queue[INTR_SCC_FDONE]);
+			if (!work_pending(work_queue))
+				schedule_work(work_queue);
 		} else
 			err("free work item is empty2");
 
@@ -1009,13 +1062,16 @@ static irqreturn_t interface_isr(int irq, void *data)
 	}
 
 	if (status & (1<<INTR_SCP_FDONE)) {
-		get_free_work_irq(&itf->work_list[INTR_SCP_FDONE], &work);
+		work_queue = &itf->work_queue[INTR_SCP_FDONE];
+		work_list = &itf->work_list[INTR_SCP_FDONE];
+
+		get_free_work_irq(work_list, &work);
 		if (work) {
 			fimc_is_get_cmd(itf, &work->msg, INTR_SCP_FDONE);
-			set_req_work_irq(&itf->work_list[INTR_SCP_FDONE], work);
+			set_req_work_irq(work_list, work);
 
-			if (!work_pending(&itf->work_queue[INTR_SCP_FDONE]))
-				schedule_work(&itf->work_queue[INTR_SCP_FDONE]);
+			if (!work_pending(work_queue))
+				schedule_work(work_queue);
 		} else
 			err("free work item is empty3");
 
@@ -1023,13 +1079,17 @@ static irqreturn_t interface_isr(int irq, void *data)
 	}
 
 	if (status & (1<<INTR_META_DONE)) {
-		get_free_work_irq(&itf->work_list[INTR_META_DONE], &work);
+		work_queue = &itf->work_queue[INTR_META_DONE];
+		work_list = &itf->work_list[INTR_META_DONE];
+
+		get_free_work_irq(work_list, &work);
 		if (work) {
 			fimc_is_get_cmd(itf, &work->msg, INTR_META_DONE);
-			set_req_work_irq(&itf->work_list[INTR_META_DONE], work);
+			work->fcount = work->msg.parameter1;
+			set_req_work_irq(work_list, work);
 
-			if (!work_pending(&itf->work_queue[INTR_META_DONE]))
-				schedule_work(&itf->work_queue[INTR_META_DONE]);
+			if (!work_pending(work_queue))
+				schedule_work(work_queue);
 		} else
 			err("free work item is empty4");
 
@@ -1080,12 +1140,18 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 	this->video_scp			= &core->video_scp.common;
 	this->video_scc			= &core->video_scc.common;
 
-	init_work_list(&this->nblk_cam_ctrl, 0x1, MAX_NBLOCKING_COUNT);
-	init_work_list(&this->nblk_shot, 0x2, MAX_NBLOCKING_COUNT);
-	init_work_list(&this->work_list[INTR_GENERAL], 0x4, MAX_WORK_COUNT);
-	init_work_list(&this->work_list[INTR_SCC_FDONE], 0x8, MAX_WORK_COUNT);
-	init_work_list(&this->work_list[INTR_SCP_FDONE], 0x10, MAX_WORK_COUNT);
-	init_work_list(&this->work_list[INTR_META_DONE], 0x20, MAX_WORK_COUNT);
+	init_work_list(&this->nblk_cam_ctrl, TRACE_WORK_ID_CAMCTRL,
+		MAX_NBLOCKING_COUNT);
+	init_work_list(&this->nblk_shot, TRACE_WORK_ID_SHOT,
+		MAX_NBLOCKING_COUNT);
+	init_work_list(&this->work_list[INTR_GENERAL],
+		TRACE_WORK_ID_GENERAL, MAX_WORK_COUNT);
+	init_work_list(&this->work_list[INTR_SCC_FDONE],
+		TRACE_WORK_ID_SCC, MAX_WORK_COUNT);
+	init_work_list(&this->work_list[INTR_SCP_FDONE],
+		TRACE_WORK_ID_SCP, MAX_WORK_COUNT);
+	init_work_list(&this->work_list[INTR_META_DONE],
+		TRACE_WORK_ID_META, MAX_WORK_COUNT);
 
 	return ret;
 }
@@ -1189,7 +1255,8 @@ int fimc_is_hw_setfile(struct fimc_is_interface *this,
 }
 
 int fimc_is_hw_open(struct fimc_is_interface *this,
-	u32 instance, u32 sensor, u32 channel, u32 *mwidth, u32 *mheight)
+	u32 instance, u32 sensor, u32 channel, u32 ext,
+	u32 *mwidth, u32 *mheight)
 {
 	int ret;
 	struct fimc_is_msg msg;
@@ -1197,7 +1264,6 @@ int fimc_is_hw_open(struct fimc_is_interface *this,
 	dbg_interface("open(%d)\n", sensor);
 
 	pm_qos_add_request(&pm_qos_req, PM_QOS_CPU_DMA_LATENCY, 100);
-
 	wait_state(this, IS_IF_STATE_IDLE);
 
 	msg.id = 0;
@@ -1205,7 +1271,7 @@ int fimc_is_hw_open(struct fimc_is_interface *this,
 	msg.instance = instance;
 	msg.parameter1 = sensor;
 	msg.parameter2 = channel;
-	msg.parameter3 = ISS_PREVIEW_STILL;
+	msg.parameter3 = ext;
 	msg.parameter4 = 0;
 
 	ret = fimc_is_set_cmd(this, &msg);
@@ -1322,7 +1388,7 @@ int fimc_is_hw_s_param(struct fimc_is_interface *this,
 }
 
 int fimc_is_hw_a_param(struct fimc_is_interface *this,
-	u32 instance)
+	u32 instance, u32 mode, u32 sub_mode)
 {
 	int ret = 0;
 	struct fimc_is_msg msg;
@@ -1330,9 +1396,9 @@ int fimc_is_hw_a_param(struct fimc_is_interface *this,
 	dbg_interface("a_param(%d)\n", instance);
 
 	msg.id = 0;
-	msg.command = HIC_PREVIEW_STILL;
+	msg.command = mode;
 	msg.instance = instance;
-	msg.parameter1 = 0;
+	msg.parameter1 = sub_mode;
 	msg.parameter2 = 0;
 	msg.parameter3 = 0;
 	msg.parameter4 = 0;
@@ -1430,29 +1496,32 @@ int fimc_is_hw_power_down(struct fimc_is_interface *this,
 }
 
 int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
-	u32 instance, u32 bayer, u32 shot, u32 frame)
+	u32 instance, u32 bayer, u32 shot, u32 fcount,
+	struct fimc_is_frame_shot *frame)
 {
 	int ret = 0;
 	struct fimc_is_work *work;
 	struct fimc_is_msg *msg;
 
-	dbg_interface("shot_nblk(%d)\n", instance);
+	dbg_interface("shot_nblk(%d, %d)\n", instance, fcount);
 
 	get_free_work(&this->nblk_shot, &work);
 	if (work) {
+		work->fcount = fcount;
+		work->frame = frame;
 		msg = &work->msg;
 		msg->id = 0;
 		msg->command = HIC_SHOT;
 		msg->instance = instance;
 		msg->parameter1 = bayer;
 		msg->parameter2 = shot;
-		msg->parameter3 = frame;
+		msg->parameter3 = fcount;
 		msg->parameter4 = 0;
 
 		ret = fimc_is_set_cmd_nblk(this, work);
 	} else {
 		err("g_free_nblk return NULL");
-		print_free_work_list(&this->nblk_shot);
+		print_fre_work_list(&this->nblk_shot);
 		print_req_work_list(&this->nblk_shot);
 		ret = 1;
 	}
@@ -1461,7 +1530,7 @@ int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
 }
 
 int fimc_is_hw_s_camctrl_nblk(struct fimc_is_interface *this,
-	u32 instance, u32 address, u32 fnumber)
+	u32 instance, u32 address, u32 fcount)
 {
 	int ret = 0;
 	struct fimc_is_work *work;
@@ -1472,19 +1541,20 @@ int fimc_is_hw_s_camctrl_nblk(struct fimc_is_interface *this,
 	get_free_work(&this->nblk_cam_ctrl, &work);
 	/*printk("%d %d\n", fnumber, this->nblk_cam_ctrl.work_free_cnt);*/
 	if (work) {
+		work->fcount = fcount;
 		msg = &work->msg;
 		msg->id = 0;
 		msg->command = HIC_SET_CAM_CONTROL;
 		msg->instance = instance;
 		msg->parameter1 = address;
-		msg->parameter2 = fnumber;
+		msg->parameter2 = fcount;
 		msg->parameter3 = 0;
 		msg->parameter4 = 0;
 
 		ret = fimc_is_set_cmd_nblk(this, work);
 	} else {
 		err("g_free_nblk return NULL");
-		print_free_work_list(&this->nblk_cam_ctrl);
+		print_fre_work_list(&this->nblk_cam_ctrl);
 		print_req_work_list(&this->nblk_cam_ctrl);
 		ret = 1;
 	}

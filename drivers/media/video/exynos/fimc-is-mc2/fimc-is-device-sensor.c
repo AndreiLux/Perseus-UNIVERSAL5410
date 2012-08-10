@@ -248,7 +248,10 @@ int fimc_is_sensor_probe(struct fimc_is_device_sensor *this,
 	struct fimc_is_mem *mem)
 {
 	int ret = 0;
-	struct fimc_is_enum_sensor *enum_sensor = this->enum_sensor;
+	struct sensor_open_extended *ext;
+	struct fimc_is_enum_sensor *enum_sensor;
+
+	enum_sensor = this->enum_sensor;
 
 	do {
 		mutex_init(&this->state_barrier);
@@ -269,6 +272,11 @@ int fimc_is_sensor_probe(struct fimc_is_device_sensor *this,
 		enum_sensor[SENSOR_NAME_S5K3H2].csi_ch = 0;
 		enum_sensor[SENSOR_NAME_S5K3H2].flite_ch = 0;
 		enum_sensor[SENSOR_NAME_S5K3H2].i2c_ch = 0;
+		enum_sensor[SENSOR_NAME_S5K3H2].setfile_name =
+			"setfile_3h2.bin";
+
+		ext = &enum_sensor[SENSOR_NAME_S5K3H2].ext;
+		memset(ext, 0x0, sizeof(struct sensor_open_extended));
 
 		enum_sensor[SENSOR_NAME_S5K6A3].sensor = SENSOR_NAME_S5K6A3;
 		enum_sensor[SENSOR_NAME_S5K6A3].pixel_width = 1392 + 16;
@@ -279,6 +287,11 @@ int fimc_is_sensor_probe(struct fimc_is_device_sensor *this,
 		enum_sensor[SENSOR_NAME_S5K6A3].csi_ch = 1;
 		enum_sensor[SENSOR_NAME_S5K6A3].flite_ch = FLITE_ID_B;
 		enum_sensor[SENSOR_NAME_S5K6A3].i2c_ch = 1;
+		enum_sensor[SENSOR_NAME_S5K6A3].setfile_name =
+			"setfile_6a3.bin";
+
+		ext = &enum_sensor[SENSOR_NAME_S5K6A3].ext;
+		memset(ext, 0x0, sizeof(struct sensor_open_extended));
 
 		enum_sensor[SENSOR_NAME_S5K4E5].sensor = SENSOR_NAME_S5K4E5;
 		enum_sensor[SENSOR_NAME_S5K4E5].pixel_width = 2560 + 16;
@@ -289,16 +302,56 @@ int fimc_is_sensor_probe(struct fimc_is_device_sensor *this,
 		enum_sensor[SENSOR_NAME_S5K4E5].csi_ch = 0;
 		enum_sensor[SENSOR_NAME_S5K4E5].flite_ch = FLITE_ID_A;
 		enum_sensor[SENSOR_NAME_S5K4E5].i2c_ch = 0;
+		enum_sensor[SENSOR_NAME_S5K4E5].setfile_name =
+			"setfile_4e5.bin";
+
+		ext = &enum_sensor[SENSOR_NAME_S5K4E5].ext;
+		ext->actuator_con.product_name = ACTUATOR_NAME_DWXXXX;
+		ext->actuator_con.peri_type = SE_GPIO;
+		ext->actuator_con.peri_setting.i2c.channel
+			= SENSOR_CONTROL_I2C0;
+
+		ext->flash_con.product_name = FLADRV_NAME_KTD267;
+		ext->flash_con.peri_type = SE_GPIO;
+		ext->flash_con.peri_setting.gpio.first_gpio_port_no = 3;
+		ext->flash_con.peri_setting.gpio.second_gpio_port_no = 4;
+
+		ext->from_con.product_name = FROMDRV_NAME_NOTHING;
+		ext->mclk = 0;
+		ext->mipi_lane_num = 0;
+		ext->mipi_speed = 0;
+		ext->fast_open_sensor = 0;
+		ext->self_calibration_mode = 0;
 
 		enum_sensor[SENSOR_NAME_S5K3H7].sensor = SENSOR_NAME_S5K3H7;
-		enum_sensor[SENSOR_NAME_S5K3H7].pixel_width = 0;
-		enum_sensor[SENSOR_NAME_S5K3H7].pixel_height = 0;
-		enum_sensor[SENSOR_NAME_S5K3H7].active_width = 0;
-		enum_sensor[SENSOR_NAME_S5K3H7].active_height = 0;
-		enum_sensor[SENSOR_NAME_S5K3H7].max_framerate = 0;
+		enum_sensor[SENSOR_NAME_S5K3H7].pixel_width = 3200 + 16;
+		enum_sensor[SENSOR_NAME_S5K3H7].pixel_height = 2400 + 10;
+		enum_sensor[SENSOR_NAME_S5K3H7].active_width = 3200;
+		enum_sensor[SENSOR_NAME_S5K3H7].active_height = 2400;
+		enum_sensor[SENSOR_NAME_S5K3H7].max_framerate = 30;
 		enum_sensor[SENSOR_NAME_S5K3H7].csi_ch = 0;
-		enum_sensor[SENSOR_NAME_S5K3H7].flite_ch = 0;
+		enum_sensor[SENSOR_NAME_S5K3H7].flite_ch = FLITE_ID_A;
 		enum_sensor[SENSOR_NAME_S5K3H7].i2c_ch = 0;
+		enum_sensor[SENSOR_NAME_S5K3H7].setfile_name =
+			"setfile_3h7.bin";
+
+		ext = &enum_sensor[SENSOR_NAME_S5K3H7].ext;
+		ext->actuator_con.product_name = ACTUATOR_NAME_AK7343;
+		ext->actuator_con.peri_type = SE_I2C;
+		ext->actuator_con.peri_setting.i2c.channel
+			= SENSOR_CONTROL_I2C0;
+
+		ext->flash_con.product_name = FLADRV_NAME_KTD267;
+		ext->flash_con.peri_type = SE_GPIO;
+		ext->flash_con.peri_setting.gpio.first_gpio_port_no = 17;
+		ext->flash_con.peri_setting.gpio.second_gpio_port_no = 16;
+
+		ext->from_con.product_name = FROMDRV_NAME_NOTHING;
+		ext->mclk = 0;
+		ext->mipi_lane_num = 0;
+		ext->mipi_speed = 0;
+		ext->fast_open_sensor = 0;
+		ext->self_calibration_mode = 0;
 	} while (0);
 
 	fimc_is_flite_probe(&this->flite0,
@@ -323,7 +376,6 @@ int fimc_is_sensor_open(struct fimc_is_device_sensor *this)
 	dbg_front("%s\n", __func__);
 
 	this->state = 0;
-	memset(&this->frame_desc, 0x0, sizeof(struct camera2_uctl));
 	this->active_sensor = &this->enum_sensor[SENSOR_NAME_S5K4E5];
 
 	fimc_is_frame_open(this->framemgr, 8);
@@ -335,6 +387,8 @@ int fimc_is_sensor_close(struct fimc_is_device_sensor *this)
 {
 	int ret = 0;
 
+	fimc_is_sensor_back_stop(this);
+	fimc_is_sensor_front_stop(this);
 	fimc_is_frame_close(this->framemgr);
 
 	return ret;
@@ -379,10 +433,7 @@ int fimc_is_sensor_buffer_queue(struct fimc_is_device_sensor *this,
 		fimc_is_frame_trans_fre_to_req(framemgr, frame);
 	else {
 		err("frame(%d) is not free state(%d)", index, frame->state);
-		fimc_is_frame_print_free_list(framemgr);
-		fimc_is_frame_print_request_list(framemgr);
-		fimc_is_frame_print_process_list(framemgr);
-		fimc_is_frame_print_complete_list(framemgr);
+		fimc_is_frame_print_all(framemgr);
 	}
 
 	framemgr_x_barrier_irqr(framemgr, FMGR_IDX_2 + index, flags);
@@ -434,7 +485,7 @@ int fimc_is_sensor_back_start(struct fimc_is_device_sensor *this,
 	struct fimc_is_enum_sensor *active_sensor;
 	struct fimc_is_device_flite *active_flite;
 
-	dbg_sensor("%s\n", __func__);
+	dbg_back("%s\n", __func__);
 
 	if (!test_bit(FIMC_IS_SENSOR_BACK_START, &this->state)) {
 		active_sensor = this->active_sensor;
@@ -455,7 +506,7 @@ int fimc_is_sensor_back_start(struct fimc_is_device_sensor *this,
 		fimc_is_flite_start(active_flite, &frame, video);
 
 		/*start mipi*/
-		dbg_front("start flite (pos:%d) (port:%d) : %d x %d\n",
+		dbg_back("start flite (pos:%d) (port:%d) : %d x %d\n",
 			active_sensor->sensor,
 			active_sensor->flite_ch,
 			frame.width, frame.height);
@@ -509,7 +560,7 @@ int fimc_is_sensor_front_start(struct fimc_is_device_sensor *this)
 		start_mipi_csi(active_sensor->csi_ch, &frame);
 
 		/*start mipi*/
-		dbg_front("start mipi (pos:%d) (port:%d) : %d x %d\n",
+		dbg_front("start mipi (snesor id:%d) (port:%d) : %d x %d\n",
 			active_sensor->sensor,
 			active_sensor->csi_ch,
 			frame.width, frame.height);

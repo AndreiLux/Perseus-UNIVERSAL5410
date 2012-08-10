@@ -40,7 +40,10 @@
 #include <mach/map.h>
 #include <mach/regs-clock.h>
 
+#include "fimc-is-time.h"
 #include "fimc-is-core.h"
+#include "fimc-is-regs.h"
+#include "fimc-is-interface.h"
 #include "fimc-is-device-flite.h"
 
 #define FIMCLITE0_REG_BASE	(S5P_VA_FIMCLITE0)  /* phy : 0x13c0_0000 */
@@ -315,7 +318,6 @@ static void flite_hw_set_interrupt_source(unsigned long flite_reg_base)
 	writel(cfg, flite_reg_base + FLITE_REG_CIGCTRL);
 }
 
-/*
 static void flite_hw_set_interrupt_starten0_disable
 					(unsigned long flite_reg_base)
 {
@@ -325,7 +327,6 @@ static void flite_hw_set_interrupt_starten0_disable
 
 	writel(cfg, flite_reg_base + FLITE_REG_CIGCTRL);
 }
-*/
 
 static void flite_hw_set_camera_type(unsigned long flite_reg_base)
 {
@@ -518,6 +519,7 @@ static void tasklet_func_flite_str(unsigned long data)
 
 	bstart = flite->tasklet_param_str;
 	fcount = atomic_read(&flite->fcount) + 1;
+	*((u32 *)(ischain->minfo.kvaddr + DEBUG_FCOUNT)) = fcount;
 
 #ifdef DBG_STREAMING
 	printk(KERN_INFO "S%d %d\n", bstart, fcount);
@@ -527,6 +529,9 @@ static void tasklet_func_flite_str(unsigned long data)
 
 	fimc_is_frame_process_head(framemgr, &frame);
 	if (frame) {
+#ifdef MEASURE_TIME
+		do_gettimeofday(&frame->tzone[TM_FLITE_STR]);
+#endif
 		frame->fcount = fcount;
 		fimc_is_ischain_camctl(ischain, frame, fcount);
 		fimc_is_ischain_tag(ischain, frame);
@@ -541,6 +546,42 @@ static void tasklet_func_flite_str(unsigned long data)
 	}
 
 	framemgr_x_barrier(framemgr, FMGR_IDX_0 + bstart);
+
+#ifdef FW_DEBUG
+	{
+		int debug_cnt;
+		char *debug;
+		char letter;
+		int digit;
+		int count = 0, i;
+
+		vb2_ion_sync_for_device(ischain->minfo.fw_cookie,
+			DEBUG_OFFSET, DEBUG_CNT, DMA_FROM_DEVICE);
+
+		debug = (char *)(ischain->minfo.kvaddr + DEBUG_OFFSET);
+		debug_cnt = *((int *)(ischain->minfo.kvaddr + DEBUGCTL_OFFSET))
+				- DEBUG_OFFSET;
+
+		if (ischain->debug_cnt > debug_cnt)
+			count = (DEBUG_CNT - ischain->debug_cnt) + debug_cnt;
+		else
+			count = debug_cnt - ischain->debug_cnt;
+
+		if (count) {
+			printk(KERN_INFO "start(%d %d)\n", debug_cnt, count);
+			for (i = ischain->debug_cnt; count > 0; count--) {
+				digit = letter = debug[i];
+				if (digit)
+					printk(KERN_INFO "%c", letter);
+				i++;
+				if (i > DEBUG_CNT)
+					i = 0;
+			}
+			ischain->debug_cnt = debug_cnt;
+			printk(KERN_INFO "end\n");
+		}
+	}
+#endif
 }
 
 static void tasklet_func_flite_end(unsigned long data)
@@ -570,8 +611,10 @@ static void tasklet_func_flite_end(unsigned long data)
 	if (test_bit(bdone, &flite->state)) {
 		fimc_is_frame_process_head(framemgr, &frame);
 		if (frame) {
+#ifdef MEASURE_TIME
+			do_gettimeofday(&frame->tzone[TM_FLITE_END]);
+#endif
 			index = frame->index;
-			/*dbg_front("L%d %d\n", index, frame->id);*/
 			fimc_is_frame_trans_pro_to_com(framemgr, frame);
 
 #ifdef AUTO_MODE
@@ -586,19 +629,11 @@ static void tasklet_func_flite_end(unsigned long data)
 				frame->shot_ext->request_scp = 0;
 				buffer_done(flite->video, index);
 				err("work pending, %d frame drop", index);
-				fimc_is_frame_print_free_list(
-					ischain->framemgr);
-				fimc_is_frame_print_request_list(
-					ischain->framemgr);
-				fimc_is_frame_print_process_list(
-					ischain->framemgr);
-				fimc_is_frame_print_complete_list(
-					ischain->framemgr);
+				fimc_is_frame_print_all(ischain->framemgr);
 			}
 #else
 			buffer_done(flite->video, index);
 #endif
-
 			fimc_is_frame_request_head(framemgr, &frame);
 			if (frame) {
 				flite_hw_set_start_addr(flite->regs, bdone,
@@ -609,18 +644,22 @@ static void tasklet_func_flite_end(unsigned long data)
 				flite_hw_set_unuse_buffer(flite->regs, bdone);
 				clear_bit(bdone, &flite->state);
 				err("request shot is empty0(%d slot)", bdone);
-				fimc_is_frame_print_free_list(framemgr);
-				fimc_is_frame_print_request_list(framemgr);
-				fimc_is_frame_print_process_list(framemgr);
-				fimc_is_frame_print_complete_list(framemgr);
+				fimc_is_frame_print_all(framemgr);
+
+				/*this is debugging ponit for deadlock*/
+				/*
+				fimc_is_ischain_print_status(sensor->ischain);
+				*/
 			}
 		} else {
 			err("process shot is empty(state is invalid");
 			err("unrecoverable error is occured");
-			fimc_is_frame_print_free_list(framemgr);
-			fimc_is_frame_print_request_list(framemgr);
-			fimc_is_frame_print_process_list(framemgr);
-			fimc_is_frame_print_complete_list(framemgr);
+			fimc_is_frame_print_all(framemgr);
+
+			/*this is debugging ponit for deadlock*/
+			/*
+			fimc_is_ischain_print_status(sensor->ischain);
+			*/
 		}
 	} else {
 		fimc_is_frame_request_head(framemgr, &frame);
@@ -632,10 +671,7 @@ static void tasklet_func_flite_end(unsigned long data)
 			fimc_is_frame_trans_req_to_pro(framemgr, frame);
 		} else {
 			err("request shot is empty1(%d slot)", bdone);
-			fimc_is_frame_print_free_list(framemgr);
-			fimc_is_frame_print_request_list(framemgr);
-			fimc_is_frame_print_process_list(framemgr);
-			fimc_is_frame_print_complete_list(framemgr);
+			fimc_is_frame_print_all(framemgr);
 		}
 	}
 

@@ -46,7 +46,7 @@
 
 #define NUM_ISP_INTERNAL_BUF		(3)
 #define NUM_ODC_INTERNAL_BUF		(2)
-#define NUM_DIS_INTERNAL_BUF		(3)
+#define NUM_DIS_INTERNAL_BUF		(5)
 #define NUM_3DNR_INTERNAL_BUF		(2)
 
 #define NUM_ISP_DMA_BUF			(8)
@@ -73,6 +73,10 @@ struct fimc_is_ishcain_mem {
 
 	u32	dvaddr;
 	u32	kvaddr;
+	u32	dvaddr_debug;
+	u32	kvaddr_debug;
+	u32	dvaddr_fshared;
+	u32	kvaddr_fshared;
 	u32	dvaddr_region;
 	u32	kvaddr_region;
 	u32	dvaddr_shared; /*shared region of is region*/
@@ -89,8 +93,7 @@ struct fimc_is_ishcain_mem {
 
 /*device state*/
 enum fimc_is_isdev_state {
-	FIMC_IS_ISDEV_DSTART,
-	FIMC_IS_ISDEV_BYPASS
+	FIMC_IS_ISDEV_DSTART
 };
 
 struct fimc_is_ischain_dev {
@@ -122,7 +125,9 @@ struct fimc_is_device_ischain {
 	spinlock_t				slock_state;
 
 	u32					instance;
+	u32					setfile;
 	u32					fcount;
+	u32					debug_cnt;
 
 	struct camera2_sm			capability;
 	struct camera2_uctl			cur_peri_ctl;
@@ -152,6 +157,7 @@ struct fimc_is_device_ischain {
 	u32					chain3_width;
 	u32					chain3_height;
 	struct fimc_is_ischain_dev		scp;
+	struct fimc_is_ischain_dev		fd;
 
 	u32					lindex;
 	u32					hindex;
@@ -167,12 +173,15 @@ int fimc_is_ischain_probe(struct fimc_is_device_ischain *this,
 	struct fimc_is_mem *mem,
 	struct platform_device *pdev,
 	u32 regs);
-int fimc_is_ischain_open(struct fimc_is_device_ischain *this);
+int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
+	struct fimc_is_video_common *video, struct fimc_is_interface *itf);
 int fimc_is_ischain_close(struct fimc_is_device_ischain *this);
 int fimc_is_ischain_init(struct fimc_is_device_ischain *this,
-	u32 input, u32 channel);
+	u32 input, u32 channel, struct sensor_open_extended *ext,
+	char *setfile_name);
 int fimc_is_ischain_g_capability(struct fimc_is_device_ischain *this,
 	u32 user_ptr);
+int fimc_is_ischain_print_status(struct fimc_is_device_ischain *this);
 
 /*isp subdev*/
 int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
@@ -197,7 +206,7 @@ int fimc_is_ischain_scp_s_format(struct fimc_is_device_ischain *this,
 
 /*common subdev*/
 int fimc_is_ischain_dev_open(struct fimc_is_ischain_dev *this,
-	struct fimc_is_video_common *video);
+	struct fimc_is_video_common *video, u32 buffers);
 int fimc_is_ischain_dev_buffer_queue(struct fimc_is_ischain_dev *this,
 	u32 index);
 int fimc_is_ischain_dev_buffer_finish(struct fimc_is_ischain_dev *this,
@@ -216,5 +225,4 @@ int fimc_is_itf_process_off(struct fimc_is_device_ischain *this);
 int fimc_is_itf_stream_on(struct fimc_is_device_ischain *this);
 int fimc_is_itf_stream_off(struct fimc_is_device_ischain *this);
 
-int fimc_is_runtime_resume(struct device *dev);
 #endif

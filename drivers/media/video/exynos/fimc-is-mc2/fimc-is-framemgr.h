@@ -18,8 +18,8 @@
 #define FRAMEMGR_ID_SCP		0x800
 
 /*#define TRACE_FRAME*/
-#define TRACE_ID		(0xF00)
-/*#define TRACE_ID		(0x0)*/
+/*#define TRACE_ID		(0xF00)*/
+#define TRACE_ID		(0x0)
 
 #define FRAMEMGR_MAX_REQUEST 20
 
@@ -72,9 +72,7 @@ enum fimc_is_frame_shot_state {
 };
 
 enum fimc_is_frame_reqeust {
-	FIMC_IS_REQ_MDT,
-	FIMC_IS_REQ_SCC,
-	FIMC_IS_REQ_SCP
+	FIMC_IS_REQ
 };
 
 struct fimc_is_frame_shot {
@@ -83,10 +81,6 @@ struct fimc_is_frame_shot {
 	struct camera2_shot *shot;
 	struct camera2_shot_ext *shot_ext;
 	u32 shot_size;
-
-	struct vb2_buffer *vb;
-
-	unsigned long req_flag;
 
 	u32 planes;
 	u32 kvaddr_buffer[4];
@@ -97,8 +91,12 @@ struct fimc_is_frame_shot {
 	u32 dvaddr_shot;
 	u32 state;
 
+	struct timeval *tzone;
+
 	u32 fcount;
 	u32 index;
+	unsigned long req_flag;
+	struct vb2_buffer *vb;
 };
 
 struct fimc_is_framemgr {
@@ -126,6 +124,7 @@ struct fimc_is_framemgr {
 int fimc_is_frame_probe(struct fimc_is_framemgr *this, u32 id);
 int fimc_is_frame_open(struct fimc_is_framemgr *this, u32 buffers);
 int fimc_is_frame_close(struct fimc_is_framemgr *this);
+int fimc_is_frame_print_all(struct fimc_is_framemgr *this);
 
 int fimc_is_frame_s_free_shot(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot *frame);

@@ -59,7 +59,8 @@ enum is_cmd {
 	/* PARAM1 : frame start number */
 	/* PARAM2 : frame count */
 	IHC_AA_DONE,
-	IHC_NOT_READY
+	IHC_NOT_READY,
+	IHC_FLASH_READY
 };
 
 enum is_reply {
@@ -73,6 +74,15 @@ enum is_scenario_id {
 	ISS_CAPTURE_STILL,
 	ISS_CAPTURE_VIDEO,
 	ISS_END
+};
+
+enum is_subscenario_id {
+	ISS_SUB_SCENARIO_STILL,
+	ISS_SUB_SCENARIO_VIDEO,
+	ISS_SUB_SCENARIO_SCENE1,
+	ISS_SUB_SCENARIO_SCENE2,
+	ISS_SUB_SCENARIO_SCENE3,
+	ISS_SUB_END
 };
 
 struct is_setfile_header_element {

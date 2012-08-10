@@ -37,6 +37,7 @@
 #include <mach/map.h>
 #include <mach/regs-clock.h>
 
+#include "fimc-is-time.h"
 #include "fimc-is-core.h"
 #include "fimc-is-param.h"
 #include "fimc-is-cmd.h"
@@ -47,8 +48,8 @@
 #include "fimc-is-device-ischain.h"
 
 #define SDCARD_FW
-#define FIMC_IS_SETFILE_SDCARD "/sdcard/setfile.bin"
-#define FIMC_IS_FW_SDCARD "/sdcard/fimc_is_fw2.bin"
+#define FIMC_IS_SETFILE_SDCARD_PATH "/data/"
+#define FIMC_IS_FW_SDCARD "/data/fimc_is_fw2.bin"
 /* Default setting values */
 #define DEFAULT_PREVIEW_STILL_WIDTH		(1280) /* sensor margin : 16 */
 #define DEFAULT_PREVIEW_STILL_HEIGHT		(720) /* sensor margin : 12 */
@@ -547,8 +548,7 @@ static int fimc_is_ischain_allocmem(struct fimc_is_device_ischain *this)
 	void *fimc_is_bitproc_buf;
 	int ret;
 
-	dbg_ischain("Allocating memory for FIMC-IS firmware.(alloc_ctx: 0x%08x)\n",
-		(unsigned int)this->mem->alloc_ctx);
+	dbg_ischain("Allocating memory for FIMC-IS firmware.\n");
 
 	fimc_is_bitproc_buf = vb2_ion_private_alloc(this->mem->alloc_ctx,
 				FIMC_IS_A5_MEM_SIZE +
@@ -608,6 +608,10 @@ static int fimc_is_ishcain_initmem(struct fimc_is_device_ischain *this)
 		SIZE_DIS_INTERNAL_BUF * NUM_DIS_INTERNAL_BUF +
 		SIZE_3DNR_INTERNAL_BUF * NUM_3DNR_INTERNAL_BUF +
 		SIZE_ISP_INTERNAL_BUF * NUM_ISP_INTERNAL_BUF);
+
+	offset = FW_SHARED_OFFSET;
+	this->minfo.dvaddr_fshared = this->minfo.dvaddr + offset;
+	this->minfo.kvaddr_fshared = this->minfo.kvaddr + offset;
 
 	offset = FIMC_IS_A5_MEM_SIZE - FIMC_IS_REGION_SIZE;
 	this->minfo.dvaddr_region = this->minfo.dvaddr + offset;
@@ -713,8 +717,8 @@ static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *this)
 	} else {
 		memcpy((void *)this->minfo.kvaddr, (void *)buf, fsize);
 		fimc_is_ischain_cache_flush(this, 0, fsize + 1);
-		dbg_ischain("FIMC_IS F/W loaded successfully - size:%d\n",
-				fw_blob->size);
+		printk(KERN_INFO "FIMC_IS F/W loaded from %s - size:%d\n",
+				FIMC_IS_FW_SDCARD, nread);
 	}
 
 request_fw:
@@ -737,24 +741,10 @@ request_fw:
 		    memcpy((void *)this->minfo.kvaddr, fw_blob->data,
 			fw_blob->size);
 		    fimc_is_ischain_cache_flush(this, 0, fw_blob->size + 1);
-		    dbg_ischain("FIMC_IS F/W loaded successfully - size:%d\n",
+		    dbg_ischain("FIMC_IS F/W is loaded - size:%d\n",
 				fw_blob->size);
 		}
 
-#if 0
-#ifndef SDCARD_FW
-		/*TODO: delete or not*/
-		memcpy((void *)dev->fw.fw_info,
-			(fw_blob->data + fw_blob->size - 0x1F), 0x17);
-		dev->fw.fw_info[24] = '\0';
-		memcpy((void *)dev->fw.fw_version,
-			(fw_blob->data + fw_blob->size - 0x7), 0x6);
-		dev->fw.state = 1;
-#endif
-#endif
-
-		dbg_ischain("FIMC_IS F/W loaded successfully - size:%d\n",
-			fw_blob->size);
 		release_firmware(fw_blob);
 #ifdef SDCARD_FW
 	}
@@ -773,7 +763,7 @@ out:
 }
 
 static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
-	u32 load_addr)
+	u32 load_addr, char *setfile_name)
 {
 	int ret;
 	void *address;
@@ -784,15 +774,19 @@ static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
 	mm_segment_t old_fs;
 	long fsize, nread;
 	int fw_requested = 1;
+	char setfile_path[256];
 
 	dbg_ischain("%s\n", __func__);
 
 	ret = 0;
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
-	fp = filp_open(FIMC_IS_SETFILE_SDCARD, O_RDONLY, 0);
+	memset(setfile_path, 0x00, sizeof(setfile_path));
+	sprintf(setfile_path, "%s%s",
+		FIMC_IS_SETFILE_SDCARD_PATH, setfile_name);
+	fp = filp_open(setfile_path, O_RDONLY, 0);
 	if (IS_ERR(fp)) {
-		err("failed to open %s\n", FIMC_IS_SETFILE_SDCARD);
+		err("failed to open %s\n", setfile_path);
 		goto request_fw;
 	}
 	fw_requested = 0;
@@ -819,8 +813,8 @@ static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
 		address = (void *)(this->minfo.kvaddr + load_addr);
 		memcpy((void *)address, (void *)buf, fsize);
 		fimc_is_ischain_cache_flush(this, load_addr, fsize + 1);
-		dbg_ischain("FIMC_IS F/W loaded successfully - size:%d\n",
-				fw_blob->size);
+		printk(KERN_INFO "FIMC_IS setfile is loaded from %s - size:%d\n",
+				setfile_path, nread);
 	}
 
 request_fw:
@@ -829,10 +823,10 @@ request_fw:
 #endif
 
 		ret = request_firmware((const struct firmware **)&fw_blob,
-					FIMC_IS_SETFILE, &this->pdev->dev);
+					setfile_name, &this->pdev->dev);
 		if (ret) {
 			dev_err(&this->pdev->dev,
-				"could not load firmware (err=%d)\n", ret);
+				"could not load setfile (err=%d)\n", ret);
 			return -EINVAL;
 		}
 
@@ -882,159 +876,6 @@ static void fimc_is_ischain_lowpower(struct fimc_is_device_ischain *this,
 	}
 }
 
-int fimc_is_ischain_power_on(struct fimc_is_device_ischain *this)
-{
-	int ret = 0;
-	u32 timeout;
-
-	dbg_ischain("%s\n", __func__);
-
-	do {
-		/* 1. force poweroff setting */
-		fimc_is_ischain_lowpower(this, false);
-
-		/* 2. isp power on */
-		writel(0x7, PMUREG_ISP_CONFIGURATION);
-		timeout = 1000;
-		while ((__raw_readl(PMUREG_ISP_STATUS) & 0x7) != 0x7) {
-			if (timeout == 0)
-				err("A5 power on failed1\n");
-			timeout--;
-			udelay(1);
-		}
-
-		/* 3. mipi power on */
-		enable_mipi();
-
-		/* 4. config gpio */
-/*		if (this->pdata->cfg_gpio) {
-			this->pdata->cfg_gpio(this->pdev);
-		} else {
-			err("failed to init GPIO config\n");
-			ret = -EINVAL;
-			break;
-		}*/
-
-		/* 5. config clocks */
-		if (this->pdata->clk_cfg) {
-			this->pdata->clk_cfg(this->pdev);
-		} else {
-			err("failed to config clock\n");
-			ret = -EINVAL;
-			break;
-		}
-
-		if (this->pdata->sensor_power_on) {
-			this->pdata->sensor_power_on(this->pdev, 1);
-		} else {
-			err("failed to sensor_power_on\n");
-			return -EINVAL;
-		}
-
-		if (this->pdata->clk_on) {
-			this->pdata->clk_on(this->pdev, 1);
-		} else {
-			err("failed to clock on\n");
-			ret = -EINVAL;
-			break;
-		}
-
-		/* 6. config system mmu */
-		printk(KERN_INFO "alloc_ctx : 0x%08x\n",
-			(unsigned int)this->mem->alloc_ctx);
-		if (this->mem->alloc_ctx)
-			vb2_ion_attach_iommu(this->mem->alloc_ctx);
-
-		/* 7. A5 start address setting */
-		/*
-		dbg_ischain("minfo.base(dvaddr) : 0x%08x\n",
-			this->minfo.dvaddr);
-		dbg_ischain("minfo.base(kvaddr) : 0x%08X\n",
-			this->minfo.kvaddr);
-		*/
-		writel(this->minfo.dvaddr, this->regs + BBOAR);
-
-		/* 8. A5 power on*/
-		writel(0x1, PMUREG_ISP_ARM_CONFIGURATION);
-
-		/* 9. enable A5 */
-		writel(0x00018000, PMUREG_ISP_ARM_OPTION);
-		timeout = 1000;
-		while ((__raw_readl(PMUREG_ISP_ARM_STATUS) & 0x1) != 0x1) {
-			if (timeout == 0)
-				err("A5 power on failed2\n");
-			timeout--;
-			udelay(1);
-		}
-		set_bit(FIMC_IS_ISCHAIN_POWER_ON, &this->state);
-	} while (0);
-
-	return ret;
-}
-
-int fimc_is_ischain_power_off(struct fimc_is_device_ischain *this)
-{
-	int ret = 0;
-	u32 timeout;
-
-	dbg("%s\n", __func__);
-
-	do {
-		/* 1. config system mmu */
-		vb2_ion_detach_iommu(this->mem->alloc_ctx);
-
-		/* 2. config clocks */
-		if (this->pdata->clk_off) {
-			this->pdata->clk_off(this->pdev, 0);
-		} else {
-			dev_err(&this->pdev->dev, "failed to clock on\n");
-			ret = -EINVAL;
-			break;
-		}
-
-		/* 3. disable A5 */
-		writel(0x0, PMUREG_ISP_ARM_OPTION);
-
-		/* 4. A5 power off*/
-		writel(0x0, PMUREG_ISP_ARM_CONFIGURATION);
-
-		/* 5. Check A5 power off status register */
-		timeout = 1000;
-		while (__raw_readl(PMUREG_ISP_ARM_STATUS) & 0x1) {
-			if (timeout == 0)
-				err("A5 power off failed\n");
-			timeout--;
-			udelay(1);
-		}
-
-		/* 6. ISP Power down mode (LOWPWR) */
-		writel(0x0, PMUREG_CMU_RESET_ISP_SYS_PWR_REG);
-
-		writel(0x0, PMUREG_ISP_CONFIGURATION);
-
-		timeout = 1000;
-		while ((__raw_readl(PMUREG_ISP_STATUS) & 0x7)) {
-			if (timeout == 0) {
-				err("ISP power off failed --> Retry\n");
-				/* Retry */
-				__raw_writel(0x1CF82000,
-					PMUREG_ISP_LOW_POWER_OFF);
-				timeout = 1000;
-				while ((__raw_readl(PMUREG_ISP_STATUS) & 0x7)) {
-					if (timeout == 0)
-						err("ISP power off failed\n");
-					timeout--;
-					udelay(1);
-				}
-			}
-			timeout--;
-			udelay(1);
-		}
-	} while (0);
-
-	return ret;
-}
-
 void fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 {
 	u32 timeout;
@@ -1044,51 +885,65 @@ void fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 	struct fimc_is_device_sensor *sensor = &core->sensor;
 	struct fimc_is_enum_sensor *sensor_info
 		= &sensor->enum_sensor[sensor->id_position];
+	char buf[FIMC_IS_MAX_CAL_SIZE];
+	char *cal_ptr;
+	int ret;
+
 
 	printk(KERN_INFO "%s(%d)\n", __func__, on);
-
 	if (on) {
-		/* 1. Bus lock */
-#if defined(CONFIG_BUSFREQ_OPP) && defined(CONFIG_CPU_EXYNOS5250)
-		dev_lock(this->bus_dev, &this->pdev->dev,
-			(FIMC_IS_FREQ_MIF * 1000) + FIMC_IS_FREQ_INT);
-		dbg_ischain("busfreq locked on <%d/%d>MHz\n",
-			FIMC_IS_FREQ_MIF, FIMC_IS_FREQ_INT);
-#endif
+		/* 1. force poweroff setting */
+		/*
+		if (this->lpower)
+			fimc_is_ischain_lowpower(this, false);
+		*/
 
-		/* 2. force poweroff setting */
-	/*		if (this->lpower)
-			fimc_is_ischain_lowpower(this, false); */
-
-		/* 3. FIMC-IS local power enable */
+		/* 2. FIMC-IS local power enable */
+#if defined(CONFIG_PM_RUNTIME)
 		pm_runtime_get_sync(dev);
-		/* printk(KERN_INFO "PMUREG_ISP_STATUS = 0x%08x\n",
-					__raw_readl(PMUREG_ISP_STATUS)); */
+		dbg_ischain("pm_runtime_suspended = %d\n",
+				pm_runtime_suspended(dev));
+#else
+		fimc_is_runtime_resume(dev);
+#endif
+		writel((__raw_readl(EXYNOS5_CLKSRC_TOP3) | (1 << 16) |
+			(1 << 20)), EXYNOS5_CLKSRC_TOP3);
 
-		printk(KERN_INFO "sensor channel : %d id : %d\n",
-			sensor_info->flite_ch, sensor->id_position);
-
-		if (this->pdata->clk_on) {
-			this->pdata->clk_on(this->pdev, sensor_info->flite_ch);
-		} else {
-			err("failed to clock on\n");
-			return;
+		memset(buf, 0xff, FIMC_IS_MAX_CAL_SIZE);
+		ret = fimc_is_spi_read(buf, FIMC_IS_MAX_CAL_SIZE);
+		if (ret < 0) {
+			err("failed to fimc_is_spi_read (%d)\n", ret);
+			return -EINVAL;
 		}
 
-		/* 4. config system mmu */
-		vb2_ion_attach_iommu(this->mem->alloc_ctx);
+		cal_ptr = this->minfo.kvaddr;
+		cal_ptr += FIMC_IS_CAL_START_ADDR;
 
-		/* 5. A5 start address setting */
+		if (sensor_info->sensor == SENSOR_NAME_S5K6A3) {
+			buf[0x1a] = 0;
+			buf[0x1b] = 0;
+		}
+
+		dbg_ischain("sensor name : %s\n",
+			(sensor_info->sensor == SENSOR_NAME_S5K6A3)
+			? "6A3" : "4E5");
+		dbg_ischain("FROM DATA(0x1A): 0x%08x\n", buf[0x1a]);
+		dbg_ischain("FROM DATA(0x1B): 0x%08x\n", buf[0x1b]);
+		memcpy(cal_ptr, buf, FIMC_IS_MAX_CAL_SIZE);
+		fimc_is_ischain_cache_flush(this, FIMC_IS_CAL_START_ADDR,
+					FIMC_IS_MAX_CAL_SIZE + 1);
+
+		/* 3. A5 start address setting */
 		dbg_ischain("minfo.base(dvaddr) : 0x%08x\n",
 			this->minfo.dvaddr);
 		dbg_ischain("minfo.base(kvaddr) : 0x%08X\n",
 			this->minfo.kvaddr);
 		writel(this->minfo.dvaddr, this->regs + BBOAR);
 
-		/* 6. A5 power on*/
+		/* 4. A5 power on*/
 		writel(0x1, PMUREG_ISP_ARM_CONFIGURATION);
 
-		/* 7. enable A5 */
+		/* 5. enable A5 */
 		writel(0x00018000, PMUREG_ISP_ARM_OPTION);
 		timeout = 1000;
 		while ((__raw_readl(PMUREG_ISP_ARM_STATUS) & 0x1) != 0x1) {
@@ -1099,21 +954,13 @@ void fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 		}
 
 		set_bit(FIMC_IS_ISCHAIN_POWER_ON, &this->state);
-	/* HACK */
-	fimc_is_runtime_resume(dev);
 	} else {
-		/* 1. A5 power down */
-		/* 1). disable A5 */
-#if 0
-		if (this->lpower)
-			writel(0x0, PMUREG_ISP_ARM_OPTION);
-		else
-			writel(0x10000, PMUREG_ISP_ARM_OPTION);
-#endif
-		/* 2). A5 power off*/
+		/* 1. disable A5 */
+		writel(0x10000, PMUREG_ISP_ARM_OPTION);
+		/* 2. A5 power off*/
 		writel(0x0, PMUREG_ISP_ARM_CONFIGURATION);
 
-		/* 3). Check A5 power off status register */
+		/* 3. Check A5 power off status register */
 		timeout = 1000;
 		while (__raw_readl(PMUREG_ISP_ARM_STATUS) & 0x1) {
 			if (timeout == 0) {
@@ -1126,44 +973,16 @@ void fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 
 		writel(0x0, PMUREG_CMU_RESET_ISP_SYS_PWR_REG);
 
-		/* 2. FIMC-IS local power down */
+		/* 4. FIMC-IS local power down */
+#if defined(CONFIG_PM_RUNTIME)
 		pm_runtime_put_sync(dev);
-		printk(KERN_INFO "PMUREG_ISP_STATUS = 0x%08x\n",
-					__raw_readl(PMUREG_ISP_STATUS));
-#if defined(CONFIG_BUSFREQ_OPP) && defined(CONFIG_CPU_EXYNOS5250)
-		dev_unlock(this->bus_dev, &this->pdev->dev);
-		printk(KERN_INFO "busfreq locked off\n");
+		dbg_ischain("pm_runtime_suspended = %d\n",
+					pm_runtime_suspended(dev));
+#else
+		fimc_is_runtime_suspend(dev);
 #endif
+
 	}
-#if 0
-	if (on) {
-#if defined(CONFIG_BUSFREQ_OPP) && defined(CONFIG_CPU_EXYNOS5250)
-		mutex_lock(&isp->busfreq_lock);
-		isp->busfreq_num++;
-		if (isp->busfreq_num == 1) {
-			dev_lock(isp->bus_dev, &isp->pdev->dev,
-				(FIMC_IS_FREQ_MIF * 1000) + FIMC_IS_FREQ_INT);
-			dbg("busfreq locked on <%d/%d>MHz\n",
-				FIMC_IS_FREQ_MIF, FIMC_IS_FREQ_INT);
-		}
-		mutex_unlock(&isp->busfreq_lock);
-#endif
-		fimc_is_ischain_power_on(this);
-	} else {
-		fimc_is_ischain_power_off(this);
-#if defined(CONFIG_BUSFREQ_OPP) && defined(CONFIG_CPU_EXYNOS5250)
-		mutex_lock(&isp->busfreq_lock);
-		if (isp->busfreq_num == 1) {
-			dev_unlock(isp->bus_dev, &isp->pdev->dev);
-			printk(KERN_DEBUG "busfreq locked off\n");
-		}
-		isp->busfreq_num--;
-		if (isp->busfreq_num < 0)
-			isp->busfreq_num = 0;
-		mutex_unlock(&isp->busfreq_lock);
-#endif
-	}
-#endif
 }
 
 static int fimc_is_itf_s_param(struct fimc_is_device_ischain *this,
@@ -1188,7 +1007,8 @@ static int fimc_is_itf_a_param(struct fimc_is_device_ischain *this)
 {
 	int ret = 0;
 
-	ret = fimc_is_hw_a_param(this->interface, this->instance);
+	ret = fimc_is_hw_a_param(this->interface, this->instance,
+		HIC_PREVIEW_STILL, this->setfile);
 
 	return ret;
 }
@@ -1300,6 +1120,13 @@ static int fimc_is_itf_f_param(struct fimc_is_device_ischain *this)
 		region->parameter.scalerp.otf_output.height,
 		region->parameter.scalerp.otf_output.format
 		);
+	dbg_ischain(" FD OI : %2d    %4d  %04dx%04d      %d\n",
+		region->parameter.fd.control.cmd,
+		region->parameter.fd.control.bypass,
+		region->parameter.fd.otf_input.width,
+		region->parameter.fd.otf_input.height,
+		region->parameter.fd.otf_input.format
+		);
 	dbg_ischain(" NAME   CMD    IN_SZIE   OT_SIZE      CROP       POS\n");
 	dbg_ischain("SCC CI :  %d  %04dx%04d %04dx%04d %04dx%04d %04dx%04d\n",
 		region->parameter.scalerc.input_crop.cmd,
@@ -1357,21 +1184,22 @@ static int fimc_is_itf_f_param(struct fimc_is_device_ischain *this)
 }
 
 static int fimc_is_itf_open(struct fimc_is_device_ischain *this,
-	u32 input, u32 channel)
+	u32 input, u32 channel, u32 ext)
 {
 	int ret = 0;
 	struct is_region *region = this->is_region;
 
+	fimc_is_ischain_region_flush(this);
+
 	ret = fimc_is_hw_open(this->interface, this->instance, input, channel,
-		&this->margin_width, &this->margin_height);
+		ext, &this->margin_width, &this->margin_height);
 	/*hack*/
 	this->margin_width = 16;
 	this->margin_height = 10;
 
 	if (!ret)
 		dbg_ischain("margin %dx%d\n",
-			this->margin_width,
-			this->margin_height);
+			this->margin_width, this->margin_height);
 
 	if (region->shared[MAX_SHARED_COUNT-1] != MAGIC_NUMBER) {
 		err("MAGIC NUMBER error\n");
@@ -1404,13 +1232,16 @@ exit:
 	return ret;
 }
 
-static int fimc_is_itf_setfile(struct fimc_is_device_ischain *this)
+static int fimc_is_itf_setfile(struct fimc_is_device_ischain *this,
+	char *setfile_name)
 {
 	int ret = 0;
 	u32 setfile_addr;
 
+	dbg_ischain("%s(setfile : %s)\n", __func__, setfile_name);
+
 	ret = fimc_is_hw_saddr(this->interface, this->instance, &setfile_addr);
-	fimc_is_ischain_loadsetf(this, setfile_addr);
+	fimc_is_ischain_loadsetf(this, setfile_addr, setfile_name);
 	fimc_is_hw_setfile(this->interface, this->instance);
 
 	return ret;
@@ -1613,16 +1444,6 @@ static int fimc_is_itf_shot(struct fimc_is_device_ischain *this,
 	cookie = vb2_plane_cookie(frame->vb, 1);
 	vb2_ion_sync_for_device(cookie, 0, frame->shot_size, DMA_TO_DEVICE);
 
-#if 0
-	dbg_ischain("magic number : 0x%X\n", frame->shot->magicNumber);
-	dbg_ischain("crop %d, %d, %d\n",
-		frame->shot->ctl.scaler.cropRegion[0],
-		frame->shot->ctl.scaler.cropRegion[1],
-		frame->shot->ctl.scaler.cropRegion[2]);
-	dbg_ischain("request : SCC(%d), SCP(%d)\n",
-		frame->shot_ext->request_scc, frame->shot_ext->request_scp);
-#endif
-
 	if (frame->shot->magicNumber != 0x23456789) {
 		err("shot magic number error(0x%08X)\n",
 			frame->shot->magicNumber);
@@ -1630,10 +1451,14 @@ static int fimc_is_itf_shot(struct fimc_is_device_ischain *this,
 		goto exit;
 	}
 
+#ifdef MEASURE_TIME
+	do_gettimeofday(&frame->tzone[TM_SHOT]);
+#endif
 	ret = fimc_is_hw_shot_nblk(this->interface, this->instance,
 		frame->dvaddr_buffer[0],
 		frame->dvaddr_shot,
-		frame->shot->dm.request.frameCount);
+		frame->shot->dm.request.frameCount,
+		frame);
 
 exit:
 	return ret;
@@ -1682,7 +1507,8 @@ int fimc_is_ischain_probe(struct fimc_is_device_ischain *this,
 	return 0;
 }
 
-int fimc_is_ischain_open(struct fimc_is_device_ischain *this)
+int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
+	struct fimc_is_video_common *video, struct fimc_is_interface *itf)
 {
 	int ret = 0;
 	struct fimc_is_ischain_dev *scc, *scp;
@@ -1727,31 +1553,27 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this)
 			sizeof(struct camera2_sm));
 
 		/* initial state, it's real apply to setting when opening*/
-		this->chain0_width	= 0;
+		/*this->chain0_width	= 0;
 		this->chain0_height	= 0;
 		this->chain1_width	= 0;
 		this->chain1_height	= 0;
 		this->chain2_width	= 0;
 		this->chain2_height	= 0;
 		this->chain3_width	= 0;
-		this->chain3_height	= 0;
+		this->chain3_height	= 0;*/
 
 		this->fcount = 0;
+		this->setfile = 0;
+		this->debug_cnt = 0;
 
 		/*isp open*/
-		fimc_is_frame_open(this->framemgr, 8);
+		fimc_is_interface_open(itf);
+		fimc_is_frame_open(this->framemgr, NUM_ISP_DMA_BUF);
 
-		clear_bit(FIMC_IS_ISDEV_DSTART, &this->scc.state);
-		clear_bit(FIMC_IS_ISDEV_BYPASS, &this->scc.state);
-
-		clear_bit(FIMC_IS_ISDEV_DSTART, &this->scp.state);
-		clear_bit(FIMC_IS_ISDEV_BYPASS, &this->scp.state);
-
-		fimc_is_ischain_dev_open(&this->dis, NULL);
-		set_bit(FIMC_IS_ISDEV_BYPASS, &this->dis.state);
-
-		fimc_is_ischain_dev_open(&this->dnr, NULL);
-		set_bit(FIMC_IS_ISDEV_BYPASS, &this->dnr.state);
+		fimc_is_ischain_dev_open(&this->isp, video, NUM_ISP_DMA_BUF);
+		fimc_is_ischain_dev_open(&this->dis, NULL, 0);
+		fimc_is_ischain_dev_open(&this->dnr, NULL, 0);
+		fimc_is_ischain_dev_open(&this->fd, NULL, 0);
 
 		clear_bit(FIMC_IS_ISCHAIN_RUN, &this->state);
 		/*fimc_is_fw_clear_irq1_all(core);*/
@@ -1763,73 +1585,46 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this)
 int fimc_is_ischain_close(struct fimc_is_device_ischain *this)
 {
 	int ret = 0;
-	struct fimc_is_ischain_dev *scc, *scp;
 
 	dbg_ischain("%s\n", __func__);
 
-	scc = &this->scc;
-	scp = &this->scp;
+	fimc_is_ischain_isp_stop(this);
 
 	ret = fimc_is_itf_power_down(this);
 	if (ret) {
-		err("power down is failed\n");
+		err("power down is failed, retry forcelly\n");
 		fimc_is_ischain_lowpower(this, true);
 	}
 
 	fimc_is_ischain_power(this, 0);
+
 	fimc_is_interface_close(this->interface);
-
-	/*isp close*/
-	fimc_is_frame_close(this->framemgr);
-
-	/*scc close*/
-	fimc_is_frame_close(&scc->framemgr);
-
-	/*scp close*/
-	fimc_is_frame_close(&scp->framemgr);
 
 	return ret;
 }
 
 int fimc_is_ischain_init(struct fimc_is_device_ischain *this,
-	u32 input, u32 channel)
+	u32 input, u32 channel, struct sensor_open_extended *ext,
+	char *setfile_name)
 {
 	int ret = 0;
 
-	dbg_ischain("%s(input : %d, channel : %d)\n",
-		__func__, input, channel);
+	dbg_ischain("%s(input : %d, channel : %d, Af : %d)\n",
+		__func__, input, channel, ext->actuator_con.product_name);
 
-	if (input == SENSOR_NAME_S5K4E5) {
-		this->margin_width = 16;
-		this->margin_height = 10;
-		this->chain0_width = 2560;
-		this->chain0_height = 1920;
-		this->chain1_width = 1920;
-		this->chain1_height = 1080;
-		this->chain2_width = 1920;
-		this->chain2_height = 1080;
-		this->chain3_width = 1920;
-		this->chain3_height = 1080;
-	} else {
-		this->margin_width = 16;
-		this->margin_height = 10;
-		this->chain0_width = 1392;
-		this->chain0_height = 1392;
-		this->chain1_width = 1280;
-		this->chain1_height = 720;
-		this->chain2_width = 1280;
-		this->chain2_height = 720;
-		this->chain3_width = 1280;
-		this->chain3_height = 720;
-	}
+	this->margin_width = 16;
+	this->margin_height = 10;
 
-	ret = fimc_is_itf_open(this, input, channel);
+	memcpy(&this->is_region->shared[0], ext,
+		sizeof(struct sensor_open_extended));
+
+	ret = fimc_is_itf_open(this, input, channel, this->minfo.dvaddr_shared);
 	if (ret) {
 		err("open fail\n");
 		goto exit;
 	}
 
-	ret = fimc_is_itf_setfile(this);
+	ret = fimc_is_itf_setfile(this, setfile_name);
 	if (ret) {
 		err("setfile fail\n");
 		goto exit;
@@ -1844,6 +1639,32 @@ int fimc_is_ischain_init(struct fimc_is_device_ischain *this,
 	ret = fimc_is_itf_process_off(this);
 	if (ret) {
 		err("processoff fail\n");
+		goto exit;
+	}
+
+exit:
+	return ret;
+}
+
+static int fimc_is_ischain_s_setfile(struct fimc_is_device_ischain *this)
+{
+	int ret = 0;
+
+	ret = fimc_is_itf_process_off(this);
+	if (ret) {
+		err("fimc_is_itf_process_off fail\n");
+		goto exit;
+	}
+
+	ret = fimc_is_itf_a_param(this);
+	if (ret) {
+		err("fimc_is_itf_a_param is fail\n");
+		goto exit;
+	}
+
+	ret = fimc_is_itf_process_on(this);
+	if (ret) {
+		err("fimc_is_itf_process_on fail\n");
 		goto exit;
 	}
 
@@ -2145,7 +1966,6 @@ static int fimc_is_ischain_s_chain2_size(struct fimc_is_device_ischain *this,
 
 	tdnr_param->otf_output.width = chain2_width;
 	tdnr_param->otf_output.height = chain2_height;
-
 	lindex |= LOWBIT_OF(PARAM_TDNR_OTF_OUTPUT);
 	hindex |= HIGHBIT_OF(PARAM_TDNR_OTF_OUTPUT);
 	indexes++;
@@ -2195,7 +2015,6 @@ static int fimc_is_ischain_s_chain3_size(struct fimc_is_device_ischain *this,
 	dbg_ischain("current chain3 size : %dx%d\n",
 		this->chain3_width, this->chain3_height);
 
-
 	/*SCALERP*/
 	scp_param->input_crop.cmd = SCALER_CROP_COMMAND_ENABLE;
 	scp_param->input_crop.pos_x = scp_crop_x;
@@ -2206,28 +2025,24 @@ static int fimc_is_ischain_s_chain3_size(struct fimc_is_device_ischain *this,
 	scp_param->input_crop.in_height = chain2_height;
 	scp_param->input_crop.out_width = chain3_width;
 	scp_param->input_crop.out_height = chain3_height;
-
 	lindex |= LOWBIT_OF(PARAM_SCALERP_INPUT_CROP);
 	hindex |= HIGHBIT_OF(PARAM_SCALERP_INPUT_CROP);
 	indexes++;
 
 	scp_param->output_crop.crop_width = chain3_width;
 	scp_param->output_crop.crop_height = chain3_height;
-
 	lindex |= LOWBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
 	hindex |= HIGHBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
 	indexes++;
 
 	scp_param->otf_output.width = chain3_width;
 	scp_param->otf_output.height = chain3_height;
-
 	lindex |= LOWBIT_OF(PARAM_SCALERP_OTF_OUTPUT);
 	hindex |= HIGHBIT_OF(PARAM_SCALERP_OTF_OUTPUT);
 	indexes++;
 
 	scp_param->dma_output.width = chain3_width;
 	scp_param->dma_output.height = chain3_height;
-
 	lindex |= LOWBIT_OF(PARAM_SCALERP_DMA_OUTPUT);
 	hindex |= HIGHBIT_OF(PARAM_SCALERP_DMA_OUTPUT);
 	indexes++;
@@ -2246,7 +2061,6 @@ static int fimc_is_ischain_s_chain3_size(struct fimc_is_device_ischain *this,
 	return ret;
 }
 
-#if 0
 static int fimc_is_ischain_s_chain1_stop(struct fimc_is_device_ischain *this)
 {
 	int ret = 0;
@@ -2323,7 +2137,6 @@ static int fimc_is_ischain_s_chain1_start(struct fimc_is_device_ischain *this)
 
 	return ret;
 }
-#endif
 
 static int fimc_is_ischain_dis_bypass(struct fimc_is_device_ischain *this,
 	bool bypass)
@@ -2392,11 +2205,11 @@ static int fimc_is_ischain_dis_bypass(struct fimc_is_device_ischain *this,
 	}
 
 	if (bypass) {
-		set_bit(FIMC_IS_ISDEV_BYPASS, &this->dis.state);
+		clear_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state);
 		dbg_ischain("DIS off\n");
 	} else {
-		clear_bit(FIMC_IS_ISDEV_BYPASS, &this->dis.state);
-		this->dis.skip_frames = 2;
+		set_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state);
+		this->dis.skip_frames = 1;
 		dbg_ischain("DIS on\n");
 	}
 
@@ -2438,103 +2251,59 @@ static int fimc_is_ischain_dnr_bypass(struct fimc_is_device_ischain *this,
 		goto exit;
 	}
 
-	if (bypass)
-		set_bit(FIMC_IS_ISDEV_BYPASS, &this->dnr.state);
-	else
-		clear_bit(FIMC_IS_ISDEV_BYPASS, &this->dnr.state);
+	if (bypass) {
+		clear_bit(FIMC_IS_ISDEV_DSTART, &this->dnr.state);
+		dbg_ischain("TDNR off\n");
+	} else {
+		set_bit(FIMC_IS_ISDEV_DSTART, &this->dnr.state);
+		dbg_ischain("TNDR on\n");
+	}
 
 exit:
 	return ret;
 }
 
-int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
-	struct fimc_is_video_common *video)
+static int fimc_is_ischain_fd_bypass(struct fimc_is_device_ischain *this,
+	bool bypass)
 {
 	int ret = 0;
-	struct isp_param *isp_param;
-	struct fimc_is_framemgr *framemgr;
-	u32 lindex, hindex, indexes;
-	u32 i;
+	struct fd_param *fd_param;
+	u32 indexes, lindex, hindex;
 
-	dbg_front("%s\n", __func__);
+	dbg_ischain("%s(%d)\n", __func__, bypass);
 
+	fd_param = &this->is_region->parameter.fd;
 	indexes = lindex = hindex = 0;
 
-	framemgr = this->framemgr;
-	isp_param = &this->is_region->parameter.isp;
-
-	for (i = 0; i < video->buffers; i++) {
-		fimc_is_hw_cfg_mem(this->interface, 0,
-			video->buf_dva[i][1], video->frame.size[1]);
+	ret = fimc_is_itf_process_off(this);
+	if (ret) {
+		err("fimc_is_itf_process_off is fail\n");
+		ret = -EINVAL;
+		goto exit;
 	}
 
-	fimc_is_ischain_s_chain0_size(this,
-		this->chain0_width, this->chain0_height);
+	if (bypass) {
+		fd_param->control.cmd = CONTROL_COMMAND_STOP;
+		fd_param->control.bypass = CONTROL_BYPASS_DISABLE;
+	} else {
+		fd_param->control.cmd = CONTROL_COMMAND_START;
+		fd_param->control.bypass = CONTROL_BYPASS_DISABLE;
+	}
 
-	fimc_is_ischain_s_chain1_size(this,
-		this->chain1_width, this->chain1_height);
-
-	fimc_is_ischain_s_chain2_size(this,
-		this->chain2_width, this->chain2_height);
-
-	fimc_is_ischain_s_chain3_size(this,
-		this->chain3_width, this->chain3_height);
-
-	isp_param->control.cmd = CONTROL_COMMAND_START;
-	isp_param->control.bypass = CONTROL_BYPASS_DISABLE;
-	isp_param->control.run_mode = 1;
-	lindex |= LOWBIT_OF(PARAM_ISP_CONTROL);
-	hindex |= HIGHBIT_OF(PARAM_ISP_CONTROL);
+	lindex |= LOWBIT_OF(PARAM_FD_CONTROL);
+	hindex |= HIGHBIT_OF(PARAM_FD_CONTROL);
 	indexes++;
 
-	isp_param->otf_input.cmd = OTF_INPUT_COMMAND_DISABLE;
-	isp_param->otf_input.format = OTF_INPUT_FORMAT_BAYER_DMA;
-	isp_param->otf_input.bitwidth = OTF_INPUT_BIT_WIDTH_10BIT;
-	isp_param->otf_input.order = OTF_INPUT_ORDER_BAYER_GR_BG;
-	isp_param->otf_input.frametime_max = 33333;
-	lindex |= LOWBIT_OF(PARAM_ISP_OTF_INPUT);
-	hindex |= HIGHBIT_OF(PARAM_ISP_OTF_INPUT);
-	indexes++;
-
-	isp_param->dma1_input.cmd = DMA_INPUT_COMMAND_BUF_MNGR;
-	isp_param->dma1_input.uiCropOffsetX = 0;
-	isp_param->dma1_input.uiCropOffsetY = 0;
-	isp_param->dma1_input.uiCropWidth = 0;
-	isp_param->dma1_input.uiCropHeight = 0;
-	isp_param->dma1_input.uiUserMinFrameTime = 0;
-	isp_param->dma1_input.uiUserMaxFrameTime = 66666;
-	isp_param->dma1_input.uiWideFrameGap = 1;
-	isp_param->dma1_input.uiFrameGap = 4096;
-	isp_param->dma1_input.uiLineGap = 45;
-	isp_param->dma1_input.bitwidth = DMA_INPUT_BIT_WIDTH_10BIT;
-	isp_param->dma1_input.order = DMA_INPUT_ORDER_GR_BG;
-	isp_param->dma1_input.plane = 1;
-	isp_param->dma1_input.buffer_number = 1;
-	isp_param->dma1_input.buffer_address = 0;
-	lindex |= LOWBIT_OF(PARAM_ISP_DMA1_INPUT);
-	hindex |= HIGHBIT_OF(PARAM_ISP_DMA1_INPUT);
-	indexes++;
-
-	lindex = 0xFFFFFFFF;
-	hindex = 0xFFFFFFFF;
-
-	ret = fimc_is_itf_s_param(this , indexes, lindex, hindex);
+	ret = fimc_is_itf_s_param(this, indexes, lindex, hindex);
 	if (ret) {
 		err("fimc_is_itf_s_param is fail\n");
 		ret = -EINVAL;
 		goto exit;
 	}
 
-	ret = fimc_is_itf_f_param(this);
+	ret = fimc_is_itf_a_param(this);
 	if (ret) {
-		err("fimc_is_itf_f_param is fail\n");
-		ret = -EINVAL;
-		goto exit;
-	}
-
-	ret = fimc_is_itf_g_capability(this);
-	if (ret) {
-		err("fimc_is_itf_g_capability is fail\n");
+		err("fimc_is_itf_a_param is fail\n");
 		ret = -EINVAL;
 		goto exit;
 	}
@@ -2546,6 +2315,161 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 		goto exit;
 	}
 
+	if (bypass) {
+		clear_bit(FIMC_IS_ISDEV_DSTART, &this->fd.state);
+		dbg_ischain("FD off\n");
+	} else {
+		set_bit(FIMC_IS_ISDEV_DSTART, &this->fd.state);
+		dbg_ischain("FD on\n");
+	}
+
+exit:
+	return ret;
+}
+
+int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
+	struct fimc_is_video_common *video)
+{
+	int ret = 0;
+	struct isp_param *isp_param;
+	struct fimc_is_framemgr *framemgr;
+	struct fimc_is_ischain_dev *isp;
+	u32 lindex, hindex, indexes;
+	u32 i;
+
+	dbg_front("%s\n", __func__);
+
+	indexes = lindex = hindex = 0;
+
+	isp = &this->isp;
+	framemgr = this->framemgr;
+	isp_param = &this->is_region->parameter.isp;
+
+	if (!test_bit(FIMC_IS_ISDEV_DSTART, &isp->state)) {
+		for (i = 0; i < video->buffers; i++) {
+			fimc_is_hw_cfg_mem(this->interface, 0,
+				video->buf_dva[i][1], video->frame.size[1]);
+		}
+
+		fimc_is_ischain_s_chain0_size(this,
+			this->chain0_width, this->chain0_height);
+
+		fimc_is_ischain_s_chain1_size(this,
+			this->chain1_width, this->chain1_height);
+
+		fimc_is_ischain_s_chain2_size(this,
+			this->chain2_width, this->chain2_height);
+
+		fimc_is_ischain_s_chain3_size(this,
+			this->chain3_width, this->chain3_height);
+
+		isp_param->control.cmd = CONTROL_COMMAND_START;
+		isp_param->control.bypass = CONTROL_BYPASS_DISABLE;
+		isp_param->control.run_mode = 1;
+		lindex |= LOWBIT_OF(PARAM_ISP_CONTROL);
+		hindex |= HIGHBIT_OF(PARAM_ISP_CONTROL);
+		indexes++;
+
+		isp_param->otf_input.cmd = OTF_INPUT_COMMAND_DISABLE;
+		isp_param->otf_input.format = OTF_INPUT_FORMAT_BAYER_DMA;
+		isp_param->otf_input.bitwidth = OTF_INPUT_BIT_WIDTH_10BIT;
+		isp_param->otf_input.order = OTF_INPUT_ORDER_BAYER_GR_BG;
+		isp_param->otf_input.frametime_max = 33333;
+		lindex |= LOWBIT_OF(PARAM_ISP_OTF_INPUT);
+		hindex |= HIGHBIT_OF(PARAM_ISP_OTF_INPUT);
+		indexes++;
+
+		isp_param->dma1_input.cmd = DMA_INPUT_COMMAND_BUF_MNGR;
+		isp_param->dma1_input.uiCropOffsetX = 0;
+		isp_param->dma1_input.uiCropOffsetY = 0;
+		isp_param->dma1_input.uiCropWidth = 0;
+		isp_param->dma1_input.uiCropHeight = 0;
+		isp_param->dma1_input.uiUserMinFrameTime = 0;
+		isp_param->dma1_input.uiUserMaxFrameTime = 66666;
+		isp_param->dma1_input.uiWideFrameGap = 1;
+		isp_param->dma1_input.uiFrameGap = 4096;
+		isp_param->dma1_input.uiLineGap = 45;
+		isp_param->dma1_input.bitwidth = DMA_INPUT_BIT_WIDTH_10BIT;
+		isp_param->dma1_input.order = DMA_INPUT_ORDER_GR_BG;
+		isp_param->dma1_input.plane = 1;
+		isp_param->dma1_input.buffer_number = 1;
+		isp_param->dma1_input.buffer_address = 0;
+		lindex |= LOWBIT_OF(PARAM_ISP_DMA1_INPUT);
+		hindex |= HIGHBIT_OF(PARAM_ISP_DMA1_INPUT);
+		indexes++;
+
+		lindex = 0xFFFFFFFF;
+		hindex = 0xFFFFFFFF;
+
+		ret = fimc_is_itf_s_param(this , indexes, lindex, hindex);
+		if (ret) {
+			err("fimc_is_itf_s_param is fail\n");
+			ret = -EINVAL;
+			goto exit;
+		}
+
+		ret = fimc_is_itf_f_param(this);
+		if (ret) {
+			err("fimc_is_itf_f_param is fail\n");
+			ret = -EINVAL;
+			goto exit;
+		}
+
+		ret = fimc_is_itf_g_capability(this);
+		if (ret) {
+			err("fimc_is_itf_g_capability is fail\n");
+			ret = -EINVAL;
+			goto exit;
+		}
+
+		ret = fimc_is_itf_process_on(this);
+		if (ret) {
+			err("fimc_is_itf_process_on is fail\n");
+			ret = -EINVAL;
+			goto exit;
+		}
+
+#ifdef FW_DEBUG
+		{
+			int debug_cnt;
+			char *debug;
+			char letter;
+			int digit;
+			int count = 0, i;
+
+			vb2_ion_sync_for_device(this->minfo.fw_cookie,
+				DEBUG_OFFSET, DEBUG_CNT, DMA_FROM_DEVICE);
+
+			debug = (char *)(this->minfo.kvaddr + DEBUG_OFFSET);
+			debug_cnt = *((int *)(this->minfo.kvaddr +
+				DEBUGCTL_OFFSET)) - DEBUG_OFFSET;
+
+			if (this->debug_cnt > debug_cnt)
+				count = (DEBUG_CNT - this->debug_cnt) +
+					debug_cnt;
+			else
+				count = debug_cnt - this->debug_cnt;
+
+			if (count) {
+				printk(KERN_INFO "start(%d %d)\n",
+					debug_cnt, count);
+				for (i = this->debug_cnt; count > 0; count--) {
+					digit = letter = debug[i];
+					if (digit)
+						printk(KERN_INFO "%c", letter);
+					i++;
+					if (i > DEBUG_CNT)
+						i = 0;
+				}
+				this->debug_cnt = debug_cnt;
+				printk(KERN_INFO "end\n");
+			}
+		}
+#endif
+
+		set_bit(FIMC_IS_ISDEV_DSTART, &isp->state);
+	}
+
 exit:
 	return ret;
 }
@@ -2553,35 +2477,58 @@ exit:
 int fimc_is_ischain_isp_stop(struct fimc_is_device_ischain *this)
 {
 	int ret = 0;
+	int retry;
+	struct fimc_is_ischain_dev *isp;
 	struct fimc_is_interface *itf;
 	struct fimc_is_framemgr *framemgr;
 
+	isp = &this->isp;
 	itf = this->interface;
 	framemgr = this->framemgr;
 
-	while (framemgr->frame_request_cnt) {
-		printk(KERN_INFO "%d frame reqs waiting...\n",
-			framemgr->frame_request_cnt);
-		mdelay(1);
-	}
+	if (test_bit(FIMC_IS_ISDEV_DSTART, &isp->state)) {
+		retry = 100;
+		while (framemgr->frame_request_cnt && retry) {
+			printk(KERN_INFO "%d frame reqs waiting...\n",
+				framemgr->frame_request_cnt);
+			mdelay(1);
+			retry--;
+		}
 
-	while (framemgr->frame_process_cnt) {
-		printk(KERN_INFO "%d frame pros waiting...\n",
-			framemgr->frame_process_cnt);
-		mdelay(1);
-	}
+		if (!retry)
+			err("waiting complete is fail1");
 
-	while (itf->nblk_shot.work_request_cnt) {
-		printk(KERN_INFO "%d shot reqs waiting...\n",
-			itf->nblk_shot.work_request_cnt);
-		mdelay(1);
-	}
+		retry = 100;
+		while (framemgr->frame_process_cnt && retry) {
+			printk(KERN_INFO "%d frame pros waiting...\n",
+				framemgr->frame_process_cnt);
+			mdelay(1);
+			retry--;
+		}
 
-	ret = fimc_is_itf_process_off(this);
-	if (ret) {
-		err("fimc_is_itf_process_off is fail\n");
-		ret = -EINVAL;
-		goto exit;
+		if (!retry)
+			err("waiting complete is fail2");
+
+		retry = 100;
+		while (itf->nblk_shot.work_request_cnt && retry) {
+			printk(KERN_INFO "%d shot reqs waiting...\n",
+				itf->nblk_shot.work_request_cnt);
+			mdelay(1);
+			retry--;
+		}
+
+		if (!retry)
+			err("waiting complete is fail3");
+
+
+		ret = fimc_is_itf_process_off(this);
+		if (ret) {
+			err("fimc_is_itf_process_off is fail\n");
+			ret = -EINVAL;
+			goto exit;
+		}
+
+		clear_bit(FIMC_IS_ISDEV_DSTART, &isp->state);
 	}
 
 	fimc_is_frame_close(this->framemgr);
@@ -2606,10 +2553,9 @@ int fimc_is_ischain_isp_buffer_queue(struct fimc_is_device_ischain *this,
 	u32 index)
 {
 	int ret = 0;
+	unsigned long flags;
 	struct fimc_is_frame_shot *frame;
 	struct fimc_is_framemgr *framemgr;
-
-	framemgr = this->framemgr;
 
 #ifdef DBG_STREAMING
 	dbg_ischain("%s\n", __func__);
@@ -2621,9 +2567,11 @@ int fimc_is_ischain_isp_buffer_queue(struct fimc_is_device_ischain *this,
 		goto exit;
 	}
 
-	framemgr_e_barrier_irq(framemgr, index);
-
+	framemgr = this->framemgr;
 	frame = &framemgr->frame[index];
+
+	framemgr_e_barrier_irqs(framemgr, index, flags);
+
 	if (frame->state == FIMC_IS_FRAME_STATE_FREE) {
 		if (frame->req_flag) {
 			dbg_warning("%d request flag is not clear(%08X)\n",
@@ -2631,24 +2579,14 @@ int fimc_is_ischain_isp_buffer_queue(struct fimc_is_device_ischain *this,
 			frame->req_flag = 0;
 		}
 
-		set_bit(FIMC_IS_REQ_MDT, &frame->req_flag);
-		if (frame->shot_ext->request_scc)
-			set_bit(FIMC_IS_REQ_SCC, &frame->req_flag);
-		if (frame->shot_ext->request_scp)
-			set_bit(FIMC_IS_REQ_SCP, &frame->req_flag);
-
 		frame->fcount = frame->shot->dm.request.frameCount;
-
 		fimc_is_frame_trans_fre_to_req(framemgr, frame);
 	} else {
 		err("frame(%d) is not free state(%d)\n", index, frame->state);
-		fimc_is_frame_print_free_list(framemgr);
-		fimc_is_frame_print_request_list(framemgr);
-		fimc_is_frame_print_process_list(framemgr);
-		fimc_is_frame_print_complete_list(framemgr);
+		fimc_is_frame_print_all(framemgr);
 	}
 
-	framemgr_x_barrier_irq(framemgr, index);
+	framemgr_x_barrier_irqr(framemgr, index, flags);
 
 	mutex_lock(&this->mutex_state);
 	if (!test_bit(FIMC_IS_ISCHAIN_RUN, &this->state))
@@ -2914,15 +2852,15 @@ int fimc_is_ischain_scp_s_format(struct fimc_is_device_ischain *this,
 }
 
 int fimc_is_ischain_dev_open(struct fimc_is_ischain_dev *this,
-	struct fimc_is_video_common *video)
+	struct fimc_is_video_common *video, u32 buffers)
 {
 	int ret = 0;
 
 	spin_lock_init(&this->slock_state);
-	fimc_is_frame_open(&this->framemgr, 8);
+
+	fimc_is_frame_open(&this->framemgr, buffers);
 
 	clear_bit(FIMC_IS_ISDEV_DSTART, &this->state);
-	clear_bit(FIMC_IS_ISDEV_BYPASS, &this->state);
 
 	this->skip_frames = 0;
 	this->video = video;
@@ -2941,25 +2879,28 @@ int fimc_is_ischain_dev_buffer_queue(struct fimc_is_ischain_dev *this,
 	dbg_ischain("%s\n", __func__);
 #endif
 
-	framemgr = &this->framemgr;
-
 	if (index >= FRAMEMGR_MAX_REQUEST) {
 		err("index(%d) is invalid", index);
 		ret = -EINVAL;
 		goto exit;
 	}
 
+	framemgr = &this->framemgr;
+	frame = &framemgr->frame[index];
+
 	framemgr_e_barrier_irq(framemgr, index);
 
-	frame = &framemgr->frame[index];
-	if (frame->state == FIMC_IS_FRAME_STATE_FREE)
+	if (frame->state == FIMC_IS_FRAME_STATE_FREE) {
+		if (frame->req_flag) {
+			dbg_warning("%d request flag is not clear(%08X)\n",
+				frame->index, (u32)frame->req_flag);
+			frame->req_flag = 0;
+		}
+
 		fimc_is_frame_trans_fre_to_req(framemgr, frame);
-	else {
+	} else {
 		err("frame(%d) is not free state(%d)\n", index, frame->state);
-		fimc_is_frame_print_free_list(framemgr);
-		fimc_is_frame_print_request_list(framemgr);
-		fimc_is_frame_print_process_list(framemgr);
-		fimc_is_frame_print_complete_list(framemgr);
+		fimc_is_frame_print_all(framemgr);
 	}
 
 	framemgr_x_barrier_irq(framemgr, index);
@@ -3019,6 +2960,27 @@ int fimc_is_ischain_g_capability(struct fimc_is_device_ischain *this,
 	return ret;
 }
 
+int fimc_is_ischain_print_status(struct fimc_is_device_ischain *this)
+{
+	int ret = 0;
+	struct fimc_is_framemgr *framemgr;
+	struct fimc_is_interface *itf;
+
+	framemgr = this->framemgr;
+	itf = this->interface;
+
+	fimc_is_frame_print_free_list(framemgr);
+	fimc_is_frame_print_request_list(framemgr);
+	fimc_is_frame_print_process_list(framemgr);
+	fimc_is_frame_print_complete_list(framemgr);
+	print_fre_work_list(&itf->nblk_shot);
+	print_req_work_list(&itf->nblk_shot);
+	print_fre_work_list(&itf->work_list[INTR_META_DONE]);
+	print_req_work_list(&itf->work_list[INTR_META_DONE]);
+
+	return ret;
+}
+
 int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 {
 	int ret = 0;
@@ -3055,7 +3017,13 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 		goto exit;
 	}
 
-	if (test_bit(FIMC_IS_REQ_SCC, &isp_frame->req_flag)) {
+	if (isp_frame->shot_ext->setfile != this->setfile) {
+		this->setfile = isp_frame->shot_ext->setfile;
+		fimc_is_ischain_s_setfile(this);
+		dbg_ischain("setfile is changed to %d\n", this->setfile);
+	}
+
+	if (isp_frame->shot_ext->request_scc) {
 		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->scc.state))
 			fimc_is_ischain_scc_start(this);
 
@@ -3065,7 +3033,7 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 			fimc_is_ischain_scc_stop(this);
 	}
 
-	if (test_bit(FIMC_IS_REQ_SCP, &isp_frame->req_flag)) {
+	if (isp_frame->shot_ext->request_scp) {
 		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->scp.state))
 			fimc_is_ischain_scp_start(this);
 
@@ -3076,22 +3044,28 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 	}
 
 	if (isp_frame->shot_ext->dis_bypass) {
-		if (!test_bit(FIMC_IS_ISDEV_BYPASS, &this->dis.state))
+		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state))
 			fimc_is_ischain_dis_bypass(this, true);
 	} else {
-		if (test_bit(FIMC_IS_ISDEV_BYPASS, &this->dis.state))
+		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state))
 			fimc_is_ischain_dis_bypass(this, false);
 	}
 
 	if (isp_frame->shot_ext->dnr_bypass) {
-		if (!test_bit(FIMC_IS_ISDEV_BYPASS, &this->dnr.state))
+		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dnr.state))
 			fimc_is_ischain_dnr_bypass(this, true);
 	} else {
-		if (test_bit(FIMC_IS_ISDEV_BYPASS, &this->dnr.state))
+		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->dnr.state))
 			fimc_is_ischain_dnr_bypass(this, false);
 	}
-	set_bit(FIMC_IS_ISCHAIN_RUN, &this->state);
-	fimc_is_frame_trans_req_to_pro(isp_framemgr, isp_frame);
+
+	if (isp_frame->shot_ext->fd_bypass) {
+		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->fd.state))
+			fimc_is_ischain_fd_bypass(this, true);
+	} else {
+		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->fd.state))
+			fimc_is_ischain_fd_bypass(this, false);
+	}
 
 	if (scc_req) {
 		framemgr_e_barrier_irqs(scc_framemgr, FMGR_IDX_8, flags);
@@ -3105,13 +3079,13 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 			isp_frame->shot->uctl.scalerUd.sccTargetAddress[2] =
 				scc_frame->dvaddr_buffer[2];
 
+			set_bit(FIMC_IS_REQ, &scc_frame->req_flag);
 			fimc_is_frame_trans_req_to_pro(scc_framemgr, scc_frame);
 		} else {
 			isp_frame->shot->uctl.scalerUd.sccTargetAddress[0] = 0;
 			isp_frame->shot->uctl.scalerUd.sccTargetAddress[1] = 0;
 			isp_frame->shot->uctl.scalerUd.sccTargetAddress[2] = 0;
 			isp_frame->shot_ext->request_scc = 0;
-			clear_bit(FIMC_IS_REQ_SCC, &isp_frame->req_flag);
 			err("scc %d frame is drop", isp_frame->fcount);
 		}
 
@@ -3121,7 +3095,6 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 		isp_frame->shot->uctl.scalerUd.sccTargetAddress[1] = 0;
 		isp_frame->shot->uctl.scalerUd.sccTargetAddress[2] = 0;
 		isp_frame->shot_ext->request_scc = 0;
-		clear_bit(FIMC_IS_REQ_SCC, &isp_frame->req_flag);
 	}
 
 	if (scp_req) {
@@ -3136,14 +3109,14 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 			isp_frame->shot->uctl.scalerUd.scpTargetAddress[2] =
 				scp_frame->dvaddr_buffer[2];
 
+			set_bit(FIMC_IS_REQ, &scp_frame->req_flag);
 			fimc_is_frame_trans_req_to_pro(scp_framemgr, scp_frame);
 		} else {
 			isp_frame->shot->uctl.scalerUd.scpTargetAddress[0] = 0;
 			isp_frame->shot->uctl.scalerUd.scpTargetAddress[1] = 0;
 			isp_frame->shot->uctl.scalerUd.scpTargetAddress[2] = 0;
 			isp_frame->shot_ext->request_scp = 0;
-			clear_bit(FIMC_IS_REQ_SCP, &isp_frame->req_flag);
-			err("scp %d frame is drop", isp_frame->fcount);
+			err("scp %d frame is drop1", isp_frame->fcount);
 		}
 
 		framemgr_x_barrier_irqr(scp_framemgr, FMGR_IDX_9, flags);
@@ -3152,7 +3125,7 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 		isp_frame->shot->uctl.scalerUd.scpTargetAddress[1] = 0;
 		isp_frame->shot->uctl.scalerUd.scpTargetAddress[2] = 0;
 		isp_frame->shot_ext->request_scp = 0;
-		clear_bit(FIMC_IS_REQ_SCP, &isp_frame->req_flag);
+		err("scp %d frame is drop2", isp_frame->fcount);
 	}
 
 	/*skip frame check*/
@@ -3160,15 +3133,18 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 		this->dis.skip_frames--;
 		isp_frame->shot_ext->request_scc = 0;
 		isp_frame->shot_ext->request_scp = 0;
-		/*clear_bit(FIMC_IS_REQ_SCC, &isp_frame->req_flag);
-		clear_bit(FIMC_IS_REQ_SCP, &isp_frame->req_flag);*/
 	}
+
+	set_bit(FIMC_IS_ISCHAIN_RUN, &this->state);
+	set_bit(FIMC_IS_REQ, &isp_frame->req_flag);
+	fimc_is_frame_trans_req_to_pro(isp_framemgr, isp_frame);
 
 	fimc_is_itf_shot(this, isp_frame);
 exit:
 	return ret;
 }
 
+#if 0 /* will be used if host control sensor */
 int fimc_is_ischain_camctl(struct fimc_is_device_ischain *this,
 	struct fimc_is_frame_shot *frame,
 	u32 fcount)
@@ -3176,28 +3152,66 @@ int fimc_is_ischain_camctl(struct fimc_is_device_ischain *this,
 	int ret = 0;
 	u32 updated = 0;
 	struct fimc_is_interface *itf;
+	struct camera2_uctl *applied_ctl;
+
+	struct camera2_sensor_uctl *cur_sensor_uctl;
+	struct camera2_sensor_uctl *isp_sensor_uctl;
 	struct camera2_sensor_ctl *cur_sensor_ctl;
 	struct camera2_sensor_ctl *isp_sensor_ctl;
 	struct camera2_sensor_ctl *req_sensor_ctl;
+
+	struct camera2_lens_uctl *cur_lens_uctl;
+	struct camera2_lens_uctl *isp_lens_uctl;
+	struct camera2_lens_ctl *cur_lens_ctl;
+	struct camera2_lens_ctl *isp_lens_ctl;
+	struct camera2_lens_ctl *req_lens_ctl;
+
+	struct camera2_flash_uctl *cur_flash_uctl;
+	struct camera2_flash_uctl *isp_flash_uctl;
+	struct camera2_flash_ctl *cur_flash_ctl;
+	struct camera2_flash_ctl *isp_flash_ctl;
+	struct camera2_flash_ctl *req_flash_ctl;
 
 	u32 index;
 	u64 frameDuration;
 	u64 exposureTime;
 	u32 sensitivity;
+	u32 focusDistance;
+	u32 flashMode;
 
 #ifdef DBG_STREAMING
 	dbg_ischain("%s\n", __func__);
 #endif
 
 	itf = this->interface;
-	cur_sensor_ctl = &this->cur_peri_ctl.sensorUd.ctl;
-	isp_sensor_ctl = &itf->isp_peri_ctl.sensorUd.ctl;
+	cur_sensor_uctl = &this->cur_peri_ctl.sensorUd;
+	cur_sensor_ctl = &cur_sensor_uctl->ctl;
+	isp_sensor_uctl = &itf->isp_peri_ctl.sensorUd;
+	isp_sensor_ctl = &isp_sensor_uctl->ctl;
 
-	if (frame)
+	cur_lens_uctl = &this->cur_peri_ctl.lensUd;
+	cur_lens_ctl = &cur_lens_uctl->ctl;
+	isp_lens_uctl = &itf->isp_peri_ctl.lensUd;
+	isp_lens_ctl = &isp_lens_uctl->ctl;
+
+	cur_flash_uctl = &this->cur_peri_ctl.flashUd;
+	cur_flash_ctl = &cur_flash_uctl->ctl;
+	isp_flash_uctl = &itf->isp_peri_ctl.flashUd;
+	isp_flash_ctl = &isp_flash_uctl->ctl;
+
+	this->cur_peri_ctl.uUpdateBitMap = 0;
+
+	if (frame) {
 		req_sensor_ctl = &frame->shot->ctl.sensor;
-	else
+		req_lens_ctl = &frame->shot->ctl.lens;
+		req_flash_ctl = &frame->shot->ctl.flash;
+	} else {
 		req_sensor_ctl = NULL;
+		req_lens_ctl = NULL;
+		req_flash_ctl = NULL;
+	}
 
+	/*sensor part*/
 	if (req_sensor_ctl && req_sensor_ctl->frameDuration)
 		frameDuration = req_sensor_ctl->frameDuration;
 	else
@@ -3206,7 +3220,7 @@ int fimc_is_ischain_camctl(struct fimc_is_device_ischain *this,
 	if (cur_sensor_ctl->frameDuration != frameDuration) {
 		cur_sensor_ctl->frameDuration = frameDuration;
 		/*dbg_ischain("fduration : %d\n", (u32)duration);*/
-		updated |= (1<<1);
+		updated |= CAM_SENSOR_CMD;
 	}
 
 	if (req_sensor_ctl && req_sensor_ctl->exposureTime)
@@ -3217,7 +3231,7 @@ int fimc_is_ischain_camctl(struct fimc_is_device_ischain *this,
 	if (cur_sensor_ctl->exposureTime != exposureTime) {
 		cur_sensor_ctl->exposureTime = exposureTime;
 		/*dbg_ischain("exposure : %d\n", (u32)exposure);*/
-		updated |= (1<<1);
+		updated |= CAM_SENSOR_CMD;
 	}
 
 	if (req_sensor_ctl && req_sensor_ctl->sensitivity)
@@ -3228,8 +3242,55 @@ int fimc_is_ischain_camctl(struct fimc_is_device_ischain *this,
 	if (cur_sensor_ctl->sensitivity != sensitivity) {
 		cur_sensor_ctl->sensitivity = sensitivity;
 		/*dbg_ischain("sensitivity : %d\n", (u32)exposure);*/
-		updated |= (1<<1);
+		updated |= CAM_SENSOR_CMD;
 	}
+
+	/*lens part*/
+	if (req_lens_ctl && req_lens_ctl->focusDistance)
+		focusDistance = req_lens_ctl->focusDistance;
+	else
+		focusDistance = isp_lens_ctl->focusDistance;
+
+	if (cur_lens_ctl->focusDistance != focusDistance) {
+		cur_lens_ctl->focusDistance = focusDistance;
+		/*dbg_ischain("focusDistance : %d\n", focusDistance);*/
+		updated |= CAM_LENS_CMD;
+	}
+
+	if (cur_lens_uctl->slewRate != isp_lens_uctl->slewRate) {
+		cur_lens_uctl->slewRate = isp_lens_uctl->slewRate;
+		updated |= CAM_LENS_CMD;
+	}
+
+	if (cur_lens_uctl->maxPos != isp_lens_uctl->maxPos) {
+		cur_lens_uctl->maxPos = isp_lens_uctl->maxPos;
+		updated |= CAM_LENS_CMD;
+	}
+
+	/*flash part*/
+	if (req_flash_ctl && req_flash_ctl->flashMode)
+		flashMode = req_flash_ctl->flashMode;
+	else
+		flashMode = isp_flash_ctl->flashMode;
+
+	if (cur_flash_ctl->flashMode != flashMode) {
+		cur_flash_ctl->flashMode = flashMode;
+		dbg_ischain("flashMode : %d\n", flashMode);
+		updated |= CAM_FLASH_CMD;
+	}
+
+	if (cur_flash_ctl->firingPower != isp_flash_ctl->firingPower) {
+		cur_flash_ctl->firingPower = isp_flash_ctl->firingPower;
+		updated |= CAM_FLASH_CMD;
+	}
+
+	if (cur_flash_ctl->firingTime != isp_flash_ctl->firingTime) {
+		cur_flash_ctl->firingTime = isp_flash_ctl->firingTime;
+		updated |= CAM_FLASH_CMD;
+	}
+	/*printk("%d %d %d\n", cur_lens_ctl->focusDistance,
+		cur_lens_uctl->maxPos,
+		cur_lens_uctl->slewRate);*/
 
 	if (updated) {
 		this->cur_peri_ctl.uUpdateBitMap = updated;
@@ -3238,12 +3299,75 @@ int fimc_is_ischain_camctl(struct fimc_is_device_ischain *this,
 		fimc_is_itf_s_camctrl(this, this->minfo.dvaddr_shared, fcount);
 	}
 
-	index = SENSOR_MAX_CTL_MASK & (fcount + 3);
-	memcpy(&this->peri_ctls[index], &this->cur_peri_ctl,
-		sizeof(struct camera2_uctl));
+	/*lens*/
+	index = (fcount + 1) & SENSOR_MAX_CTL_MASK;
+	applied_ctl = &this->peri_ctls[index];
+	applied_ctl->lensUd.ctl.focusDistance = cur_lens_ctl->focusDistance;
+	applied_ctl->lensUd.maxPos = cur_lens_uctl->maxPos;
+	applied_ctl->lensUd.slewRate = cur_lens_uctl->slewRate;
+
+	/*sensor*/
+	index = (fcount + 3) & SENSOR_MAX_CTL_MASK;
+	applied_ctl = &this->peri_ctls[index];
+	applied_ctl->sensorUd.ctl.exposureTime = cur_sensor_ctl->exposureTime;
+	applied_ctl->sensorUd.ctl.frameDuration = cur_sensor_ctl->frameDuration;
+	applied_ctl->sensorUd.ctl.sensitivity = cur_sensor_ctl->sensitivity;
+
+	/*flash*/
+	index = (fcount + 0) & SENSOR_MAX_CTL_MASK;
+	applied_ctl = &this->peri_ctls[index];
+	applied_ctl->flashUd.ctl.flashMode = cur_flash_ctl->flashMode;
+	applied_ctl->flashUd.ctl.firingPower = cur_flash_ctl->firingPower;
+	applied_ctl->flashUd.ctl.firingTime = cur_flash_ctl->firingTime;
 
 	return ret;
 }
+#else
+int fimc_is_ischain_camctl(struct fimc_is_device_ischain *this,
+	struct fimc_is_frame_shot *frame,
+	u32 fcount)
+{
+	int ret = 0;
+	struct fimc_is_interface *itf;
+	struct camera2_uctl *applied_ctl;
+
+	struct camera2_sensor_ctl *isp_sensor_ctl;
+	struct camera2_lens_ctl *isp_lens_ctl;
+	struct camera2_flash_ctl *isp_flash_ctl;
+
+	u32 index;
+
+#ifdef DBG_STREAMING
+	dbg_ischain("%s\n", __func__);
+#endif
+
+	itf = this->interface;
+	isp_sensor_ctl = &itf->isp_peri_ctl.sensorUd.ctl;
+	isp_lens_ctl = &itf->isp_peri_ctl.lensUd.ctl;
+	isp_flash_ctl = &itf->isp_peri_ctl.flashUd.ctl;
+
+	/*lens*/
+	index = (fcount + 1) & SENSOR_MAX_CTL_MASK;
+	applied_ctl = &this->peri_ctls[index];
+	applied_ctl->lensUd.ctl.focusDistance = isp_lens_ctl->focusDistance;
+
+	/*sensor*/
+	index = (fcount + 3) & SENSOR_MAX_CTL_MASK;
+	applied_ctl = &this->peri_ctls[index];
+	applied_ctl->sensorUd.ctl.exposureTime = isp_sensor_ctl->exposureTime;
+	applied_ctl->sensorUd.ctl.frameDuration = isp_sensor_ctl->frameDuration;
+	applied_ctl->sensorUd.ctl.sensitivity = isp_sensor_ctl->sensitivity;
+
+	/*flash*/
+	index = (fcount + 0) & SENSOR_MAX_CTL_MASK;
+	applied_ctl = &this->peri_ctls[index];
+	applied_ctl->flashUd.ctl.flashMode = isp_flash_ctl->flashMode;
+	applied_ctl->flashUd.ctl.firingPower = isp_flash_ctl->firingPower;
+	applied_ctl->flashUd.ctl.firingTime = isp_flash_ctl->firingTime;
+
+	return ret;
+}
+#endif
 
 int fimc_is_ischain_tag(struct fimc_is_device_ischain *ischain,
 	struct fimc_is_frame_shot *frame)
@@ -3258,6 +3382,11 @@ int fimc_is_ischain_tag(struct fimc_is_device_ischain *ischain,
 
 	do_gettimeofday(&curtime);
 
+	/*lens*/
+	frame->shot->dm.lens.focusDistance =
+		applied_ctl->lensUd.ctl.focusDistance;
+
+	/*sensor*/
 	frame->shot->dm.sensor.exposureTime =
 		applied_ctl->sensorUd.ctl.exposureTime;
 	frame->shot->dm.sensor.sensitivity =
@@ -3267,6 +3396,14 @@ int fimc_is_ischain_tag(struct fimc_is_device_ischain *ischain,
 	frame->shot->dm.sensor.timeStamp =
 		curtime.tv_sec*1000000 + curtime.tv_usec;
 	frame->shot->dm.request.frameCount = fcount;
+
+	/*flash*/
+	frame->shot->dm.flash.flashMode =
+		applied_ctl->flashUd.ctl.flashMode;
+	frame->shot->dm.flash.firingPower =
+		applied_ctl->flashUd.ctl.firingPower;
+	frame->shot->dm.flash.firingTime =
+		applied_ctl->flashUd.ctl.firingTime;
 
 	return ret;
 }

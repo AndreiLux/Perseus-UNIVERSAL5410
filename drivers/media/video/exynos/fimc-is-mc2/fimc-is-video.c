@@ -32,6 +32,7 @@
 #include <linux/videodev2_exynos_camera.h>
 #include <linux/v4l2-mediabus.h>
 
+#include "fimc-is-time.h"
 #include "fimc-is-core.h"
 #include "fimc-is-param.h"
 #include "fimc-is-cmd.h"
@@ -137,6 +138,7 @@ void fimc_is_set_plane_size(struct fimc_is_frame *frame, unsigned int sizes[])
 		sizes[0] = frame->width*frame->height;
 		sizes[1] = frame->width*frame->height/2;
 		break;
+	case V4L2_PIX_FMT_YUV420M:
 	case V4L2_PIX_FMT_YVU420M:
 		dbg("V4L2_PIX_FMT_YVU420M(w:%d)(h:%d)\n",
 				frame->width, frame->height);
@@ -159,6 +161,9 @@ void fimc_is_set_plane_size(struct fimc_is_frame *frame, unsigned int sizes[])
 		dbg("V4L2_PIX_FMT_SBGGR12(w:%d)(h:%d)\n",
 				frame->width, frame->height);
 		sizes[0] = frame->width*frame->height*2;
+		break;
+	default:
+		err("unknown pixelformat\n");
 		break;
 	}
 }
@@ -368,6 +373,7 @@ int fimc_is_video_buffer_queue(struct fimc_is_video_common *video,
 	u32 index = vb->v4l2_buf.index;
 	u32 ext_size;
 	struct fimc_is_core *core = video->core;
+	struct fimc_is_frame_shot *frame;
 
 	if (!test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->state)) {
 		if (video->frame.format.pixelformat == V4L2_PIX_FMT_YVU420M) {
@@ -395,45 +401,51 @@ int fimc_is_video_buffer_queue(struct fimc_is_video_common *video,
 		}
 
 		if (framemgr) {
+			frame = &framemgr->frame[index];
 			if ((framemgr->id == FRAMEMGR_ID_SENSOR) ||
 				(framemgr->id == FRAMEMGR_ID_ISP)) {
 				ext_size = sizeof(struct camera2_shot_ext) -
 					sizeof(struct camera2_shot);
 
-				framemgr->frame[index].dvaddr_buffer[0] =
+				frame->dvaddr_buffer[0] =
 					video->buf_dva[index][0];
 
-				framemgr->frame[index].kvaddr_buffer[0] =
+				frame->kvaddr_buffer[0] =
 					video->buf_kva[index][0];
 
-				framemgr->frame[index].dvaddr_shot =
+				frame->dvaddr_shot =
 					video->buf_dva[index][1] + ext_size;
 
-				framemgr->frame[index].kvaddr_shot =
+				frame->kvaddr_shot =
 					video->buf_kva[index][1] + ext_size;
 
-				framemgr->frame[index].shot =
+				frame->shot =
 					(struct camera2_shot *)
 					(video->buf_kva[index][1] + ext_size);
 
-				framemgr->frame[index].shot_ext =
+				frame->shot_ext =
 					(struct camera2_shot_ext *)
 					(video->buf_kva[index][1]);
 
-				framemgr->frame[index].shot_size =
+				frame->shot_size =
 					video->frame.size[1];
+
+#ifdef MEASURE_TIME
+				frame->tzone = (struct timeval *)
+					frame->shot_ext->timeZone;
+#endif
 			} else {
 				for (i = 0; i < vb->num_planes; i++) {
-					framemgr->frame[index].dvaddr_buffer[i]
+					frame->dvaddr_buffer[i]
 						= video->buf_dva[index][i];
 
-					framemgr->frame[index].kvaddr_buffer[i]
+					frame->kvaddr_buffer[i]
 						= video->buf_kva[index][i];
 				}
 			}
 
-			framemgr->frame[index].vb = vb;
-			framemgr->frame[index].planes = vb->num_planes;
+			frame->vb = vb;
+			frame->planes = vb->num_planes;
 		}
 
 		video->buf_ref_cnt++;
@@ -451,8 +463,18 @@ int buffer_done(struct fimc_is_video_common *video, u32 index)
 {
 	int ret = 0;
 
+	if (!video) {
+		err("video is NULL");
+		ret = -EINVAL;
+	}
+
 	if (index == FIMC_IS_INVALID_BUF_INDEX) {
 		err("buffer done had invalid index(%d)", index);
+		ret = -EINVAL;
+	}
+
+	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->state)) {
+		err("video state is not stream on");
 		ret = -EINVAL;
 	}
 

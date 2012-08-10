@@ -12,20 +12,14 @@
 #ifndef FIMC_IS_CORE_H
 #define FIMC_IS_CORE_H
 
-
-/* #define DEBUG */
-/*#define FIMC_IS_A5_DEBUG_ON	1*/
-/*#define DBG_STREAMING*/
-
+/*#define DEBUG*/
 #define FRAME_RATE_ENABLE
 /*#define ODC_ENABLE*/
 #define TDNR_ENABLE
 #define DIS_ENABLE
 #define FD_ENABLE
 #define FW_SUPPORT_FACE_AF
-/*#define TASKLET*/
 #define FIMCLITE
-/*#ifdef AE_AWB_LOCK_UNLOCK*/
 
 #include <linux/sched.h>
 #include <linux/spinlock.h>
@@ -70,12 +64,12 @@
 #define FIMC_IS_VIDEO_SCALERP_NAME		"exynos5-fimc-is2-scalerp"
 
 #define FIMC_IS_DEBUG_LEVEL			(3)
+/*#define FIMC_IS_A5_DEBUG_ON			(1)*/
 /*#define FPS_ENABLE				(1)*/
 
 #define MAX_I2H_ARG				(4)
 
 #define FIMC_IS_FW				"fimc_is_fw2.bin"
-#define FIMC_IS_SETFILE				"setfile2.bin"
 
 #define FIMC_IS_SHUTDOWN_TIMEOUT		(10*HZ)
 #define FIMC_IS_SHUTDOWN_TIMEOUT_SENSOR		(3*HZ)
@@ -89,6 +83,9 @@
 #define FIMC_IS_TDNR_MEM_SIZE			(1920*1080*4)
 #define FIMC_IS_DEBUG_REGION_ADDR		(0x00840000)
 #define FIMC_IS_SHARED_REGION_ADDR		(0x008C0000)
+
+#define FIMC_IS_MAX_CAL_SIZE			(1196)
+#define FIMC_IS_CAL_START_ADDR		(0x950000)
 
 #define FIMC_IS_SENSOR_MAX_ENTITIES		(1)
 #define FIMC_IS_SENSOR_PAD_SOURCE_FRONT	(0)
@@ -108,12 +105,19 @@
 #define FIMC_IS_BACK_PADS_NUM			(3)
 
 #define FIMC_IS_MAX_SENSOR_NAME_LEN  (16)
-#define is_af_use(dev)				((dev->af.use_af) ? 1 : 0)
+
+#define FW_SHARED_OFFSET			(0x8C0000)
+#define DEBUG_CNT				(500*1024)
+#define DEBUG_OFFSET				(0x840000)
+#define DEBUGCTL_OFFSET				(0x8BD000)
+#define DEBUG_FCOUNT				(0x8C64C0)
 
 #define err(fmt, args...) \
 	printk(KERN_ERR "%s:%d: " fmt "\n", __func__, __LINE__, ##args)
 
 /*#define AUTO_MODE*/
+/*#define DBG_STREAMING*/
+/*#define FW_DEBUG*/
 
 #ifdef DEBUG
 #define dbg(fmt, args...) \
@@ -137,11 +141,16 @@
 #define dbg_front(fmt, args...) \
 	printk(KERN_INFO "[FRT] " fmt, ##args)
 
+#define dbg_back(fmt, args...) \
+	printk(KERN_INFO "[BAK] " fmt, ##args)
+
 #define dbg_ischain(fmt, args...) \
 	printk(KERN_INFO "[ISC] " fmt, ##args)
 
 #define dbg_core(fmt, args...) \
 	printk(KERN_INFO "[COR] " fmt, ##args)
+
+
 
 #ifdef DBG_STREAMING
 #define dbg_interface(fmt, args...) \
@@ -160,6 +169,7 @@
 #define dbg_scp(fmt, args...)
 #define dbg_scc(fmt, args...)
 #define dbg_front(fmt, args...)
+#define dbg_back(fmt, args...)
 #define dbg_ischain(fmt, args...)
 #define dbg_core(fmt, args...)
 #define dbg_interface(fmt, args...)
@@ -317,5 +327,7 @@ int fimc_is_pipeline_s_stream_preview
 int fimc_is_init_set(struct fimc_is_core *dev , u32 val);
 int fimc_is_load_fw(struct fimc_is_core *dev);
 int fimc_is_load_setfile(struct fimc_is_core *dev);
-
+int fimc_is_spi_read(void *buf, size_t size);
+int fimc_is_runtime_suspend(struct device *dev);
+int fimc_is_runtime_resume(struct device *dev);
 #endif /* FIMC_IS_CORE_H_ */

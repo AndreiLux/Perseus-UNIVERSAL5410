@@ -68,14 +68,11 @@ static int fimc_is_isp_video_open(struct file *file)
 	struct fimc_is_core *core = video_drvdata(file);
 	struct fimc_is_video_isp *video = &core->video_isp;
 	struct fimc_is_device_ischain *ischain = &core->ischain;
-	struct fimc_is_interface *interface = &core->interface;
 
 	dbg_isp("%s\n", __func__);
 
 	file->private_data = video;
 	fimc_is_video_open(&video->common, ischain);
-	fimc_is_interface_open(interface);
-	/* fimc_is_ischain_open(ischain); */
 
 	return 0;
 }
@@ -83,14 +80,14 @@ static int fimc_is_isp_video_open(struct file *file)
 static int fimc_is_isp_video_close(struct file *file)
 {
 	struct fimc_is_video_isp *video = file->private_data;
-	struct fimc_is_device_ischain *ischain = video->common.device;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
 
 	dbg_isp("%s\n", __func__);
 
-	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)){
-		dbg_isp("fimc_is_video_streamoff\n");
-		fimc_is_video_streamoff(&video->common, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
-	}
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state))
+		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
+
 	file->private_data = 0;
 	fimc_is_ischain_close(ischain);
 	fimc_is_video_close(&video->common);
@@ -297,7 +294,7 @@ static int fimc_is_isp_video_enum_input(struct file *file, void *priv,
 
 	dbg_isp("index(%d) sensor(%s)\n",
 		input->index, sensor_info->sensor_name);
-	printk(KERN_INFO "ISP: pos(%d) sensor_id(%d)\n",
+	dbg_isp("pos(%d) sensor_id(%d)\n",
 		sensor_info->sensor_position, sensor_info->sensor_id);
 	dbg_isp("csi_id(%d) flite_id(%d)\n",
 		sensor_info->csi_id, sensor_info->flite_id);
@@ -331,10 +328,12 @@ static int fimc_is_isp_video_s_input(struct file *file, void *priv,
 
 	dbg_isp("%s(input : %d)\n", __func__, input);
 	core->sensor.id_position = input;
-	fimc_is_ischain_open(ischain);
+	fimc_is_ischain_open(ischain, &video->common, &core->interface);
 	fimc_is_ischain_init(ischain,
 		input,
-		sensor->enum_sensor[input].i2c_ch);
+		sensor->enum_sensor[input].i2c_ch,
+		&sensor->enum_sensor[input].ext,
+		sensor->enum_sensor[input].setfile_name);
 
 	return ret;
 }

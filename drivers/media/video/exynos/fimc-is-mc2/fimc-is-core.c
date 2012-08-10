@@ -586,11 +586,14 @@ static int fimc_is_resume(struct device *dev)
 	return 0;
 }
 
-static int fimc_is_runtime_suspend(struct device *dev)
+int fimc_is_runtime_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct fimc_is_core *core
 		= (struct fimc_is_core *)platform_get_drvdata(pdev);
+	struct fimc_is_device_sensor *sensor = &core->sensor;
+	struct fimc_is_enum_sensor *sensor_info
+		= &sensor->enum_sensor[sensor->id_position];
 	int ret = 0;
 
 	printk(KERN_INFO "FIMC_IS runtime suspend\n");
@@ -601,7 +604,7 @@ static int fimc_is_runtime_suspend(struct device *dev)
 #endif
 
 	if (core->pdata->clk_off) {
-		core->pdata->clk_off(core->pdev, 0);
+		core->pdata->clk_off(core->pdev, sensor_info->flite_ch);
 	} else {
 		err("failed to clock on\n");
 		return -EINVAL;
@@ -609,7 +612,7 @@ static int fimc_is_runtime_suspend(struct device *dev)
 
 	if (core->pdata->sensor_power_off) {
 		core->pdata->sensor_power_off(core->pdev,
-					0);
+					sensor_info->flite_ch);
 	} else {
 		err("failed to sensor_power_off\n");
 		return -EINVAL;
@@ -618,44 +621,49 @@ static int fimc_is_runtime_suspend(struct device *dev)
 	return ret;
 }
 
-/* static int fimc_is_runtime_resume(struct device *dev) */
 int fimc_is_runtime_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
-	struct fimc_is_core *isp
+	struct fimc_is_core *core
 		= (struct fimc_is_core *)platform_get_drvdata(pdev);
-	struct fimc_is_device_sensor *sensor = &isp->sensor;
+	struct fimc_is_device_sensor *sensor = &core->sensor;
 	struct fimc_is_enum_sensor *sensor_info
 		= &sensor->enum_sensor[sensor->id_position];
 	int ret = 0;
 
 	printk(KERN_INFO "FIMC_IS runtime resume\n");
 
-
 	/* 1. Enable MIPI */
 	enable_mipi();
+
 	/* 2. Clock setting */
-	if (isp->pdata->clk_cfg) {
-		isp->pdata->clk_cfg(isp->pdev);
+	if (core->pdata->clk_cfg) {
+		core->pdata->clk_cfg(core->pdev);
 	} else {
 		err("failed to config clock\n");
 		return -EINVAL;
 	}
 
-	if (isp->pdata->sensor_power_on) {
-		isp->pdata->sensor_power_on(isp->pdev,
+	printk(KERN_INFO "sensor channel : %d id : %d\n",
+		sensor_info->flite_ch, sensor->id_position);
+	if (core->pdata->sensor_power_on) {
+		core->pdata->sensor_power_on(core->pdev,
 					sensor_info->flite_ch);
 	} else {
 		err("failed to sensor_power_on\n");
 		return -EINVAL;
 	}
-	if (isp->pdata->clk_on) {
-		isp->pdata->clk_on(isp->pdev, sensor_info->flite_ch);
+	if (core->pdata->clk_on) {
+		core->pdata->clk_on(core->pdev, sensor_info->flite_ch);
 	} else {
 		err("failed to clock on\n");
 		return -EINVAL;
 	}
 
+#if defined(CONFIG_VIDEOBUF2_ION)
+	if (core->mem.alloc_ctx)
+		vb2_ion_attach_iommu(core->mem.alloc_ctx);
+#endif
 	return ret;
 }
 
