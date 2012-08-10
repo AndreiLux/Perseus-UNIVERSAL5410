@@ -218,6 +218,8 @@ struct s3c_reg_data {
 	u32			vidosd_c[S3C_FB_MAX_WIN];
 	u32			vidosd_d[S3C_FB_MAX_WIN];
 	u32			vidw_alpha0[S3C_FB_MAX_WIN];
+	u32			vidw_alpha1[S3C_FB_MAX_WIN];
+	u32			blendeq[S3C_FB_MAX_WIN - 1];
 	u32			vidw_buf_start[S3C_FB_MAX_WIN];
 	u32			vidw_buf_end[S3C_FB_MAX_WIN];
 	u32			vidw_buf_size[S3C_FB_MAX_WIN];
@@ -613,14 +615,17 @@ static inline u32 vidosd_b(int x, int y, u32 xres, u32 yres)
 		VIDOSDxB_BOTRIGHT_Y_E(y + yres - 1);
 }
 
-static inline u32 vidosd_c(u8 r, u8 g, u8 b)
+static inline u32 vidosd_c(u8 r0, u8 g0, u8 b0, u8 r1, u8 g1, u8 b1)
 {
-	return VIDOSDxC_ALPHA0_R_H(r) |
-		VIDOSDxC_ALPHA0_G_H(g) |
-		VIDOSDxC_ALPHA0_B_H(b);
+	return VIDOSDxC_ALPHA0_R_H(r0) |
+		VIDOSDxC_ALPHA0_G_H(g0) |
+		VIDOSDxC_ALPHA0_B_H(b0) |
+		VIDOSDxC_ALPHA1_R_H(r1) |
+		VIDOSDxC_ALPHA1_G_H(g1) |
+		VIDOSDxC_ALPHA1_B_H(b1);
 }
 
-static inline u32 vidw_alpha0(bool has_osd_alpha, u8 r, u8 g, u8 b)
+static inline u32 vidw_alpha(bool has_osd_alpha, u8 r, u8 g, u8 b)
 {
 	if (has_osd_alpha)
 		return VIDWxALPHAx_R_L(r) |
@@ -662,10 +667,11 @@ static inline u32 wincon(u32 bits_per_pixel, u32 transp_length, u32 red_length)
 		break;
 	case 16:
 		if (transp_length == 1)
-			data |= WINCON1_BPPMODE_16BPP_A1555;
+			data |= WINCON1_BPPMODE_16BPP_A1555
+				| WINCON1_BLD_PIX;
 		else if (transp_length == 4)
 			data |= WINCON1_BPPMODE_16BPP_A4444
-				| WINCON1_BLD_PIX | WINCON1_ALPHA_SEL;
+				| WINCON1_BLD_PIX;
 		else
 			data |= WINCON0_BPPMODE_16BPP_565;
 		data |= WINCONx_HAWSWP;
@@ -684,7 +690,7 @@ static inline u32 wincon(u32 bits_per_pixel, u32 transp_length, u32 red_length)
 		else if ((transp_length == 4) ||
 			(transp_length == 8))
 			data |= WINCON1_BPPMODE_28BPP_A4888
-				| WINCON1_BLD_PIX | WINCON1_ALPHA_SEL;
+				| WINCON1_BLD_PIX;
 		else
 			data |= WINCON0_BPPMODE_24BPP_888;
 
@@ -693,7 +699,43 @@ static inline u32 wincon(u32 bits_per_pixel, u32 transp_length, u32 red_length)
 		break;
 	}
 
+	if (transp_length != 1)
+		data |= WINCON1_ALPHA_SEL;
+
 	return data;
+}
+
+static inline u32 blendeq(enum s3c_fb_blending blending, u8 transp_length)
+{
+	u8 a, b;
+
+	if (transp_length == 1 && blending == S3C_FB_BLENDING_PREMULT)
+		blending = S3C_FB_BLENDING_COVERAGE;
+
+	switch (blending) {
+	case S3C_FB_BLENDING_NONE:
+		a = BLENDEQ_COEF_ONE;
+		b = BLENDEQ_COEF_ZERO;
+		break;
+
+	case S3C_FB_BLENDING_PREMULT:
+		a = BLENDEQ_COEF_ONE;
+		b = BLENDEQ_COEF_ONE_MINUS_ALPHA_A;
+		break;
+
+	case S3C_FB_BLENDING_COVERAGE:
+		a = BLENDEQ_COEF_ALPHA_A;
+		b = BLENDEQ_COEF_ONE_MINUS_ALPHA_A;
+		break;
+
+	default:
+		return 0;
+	}
+
+	return BLENDEQ_A_FUNC(a) |
+			BLENDEQ_B_FUNC(b) |
+			BLENDEQ_P_FUNC(BLENDEQ_COEF_ZERO) |
+			BLENDEQ_Q_FUNC(BLENDEQ_COEF_ZERO);
 }
 
 static void s3c_fb_configure_lcd(struct s3c_fb *sfb,
@@ -804,11 +846,13 @@ static int s3c_fb_set_par(struct fb_info *info)
 	data = var->xres * var->yres;
 
 	if (win->variant.has_osd_alpha) {
-		data = vidosd_c(0xff, 0xff, 0xff);
+		data = vidosd_c(0, 0, 0, 0xff, 0xff, 0xff);
 		writel(data, regs + VIDOSD_C(win_no, sfb->variant));
 	}
-	data = vidw_alpha0(win->variant.has_osd_alpha, 0xff, 0xff, 0xff);
+	data = vidw_alpha(win->variant.has_osd_alpha, 0, 0, 0);
 	writel(data, regs + VIDW_ALPHA0(win_no));
+	data = vidw_alpha(win->variant.has_osd_alpha, 0xff, 0xff, 0xff);
+	writel(data, regs + VIDW_ALPHA1(win_no));
 
 	/* preserve whether window was enabled */
 	data = old_wincon & WINCONx_ENWIN;
@@ -1509,10 +1553,22 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 	unsigned short win_no = win->index;
 	int ret;
 	size_t buf_size, window_size;
+	u8 alpha0, alpha1;
 
 	if (win_config->format >= S3C_FB_PIXEL_FORMAT_MAX) {
 		dev_err(sfb->dev, "unknown pixel format %u\n",
 				win_config->format);
+		return -EINVAL;
+	}
+
+	if (win_config->blending >= S3C_FB_BLENDING_MAX) {
+		dev_err(sfb->dev, "unknown blending %u\n",
+				win_config->blending);
+		return -EINVAL;
+	}
+
+	if (win_no == 0 && win_config->blending != S3C_FB_BLENDING_NONE) {
+		dev_err(sfb->dev, "blending not allowed on window 0\n");
 		return -EINVAL;
 	}
 
@@ -1594,10 +1650,23 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 	regs->vidosd_b[win_no] = vidosd_b(win_config->x, win_config->y,
 			win_config->w, win_config->h);
 
+	if (win->fbinfo->var.transp.length == 1 &&
+			win_config->blending == S3C_FB_BLENDING_NONE) {
+		alpha0 = 0xff;
+		alpha1 = 0xff;
+	}
+	else {
+		alpha0 = 0;
+		alpha1 = 0xff;
+	}
+
 	if (win->variant.has_osd_alpha)
-		regs->vidosd_c[win_no] = vidosd_c(0xff, 0xff, 0xff);
-	regs->vidw_alpha0[win_no] = vidw_alpha0(win->variant.has_osd_alpha,
-			0xff, 0xff, 0xff);
+		regs->vidosd_c[win_no] = vidosd_c(alpha0, alpha0, alpha0,
+				alpha1, alpha1, alpha1);
+	regs->vidw_alpha0[win_no] = vidw_alpha(win->variant.has_osd_alpha,
+			alpha0, alpha0, alpha0);
+	regs->vidw_alpha1[win_no] = vidw_alpha(win->variant.has_osd_alpha,
+			alpha1, alpha1, alpha1);
 
 	if (win->variant.osd_size_off) {
 		u32 size = win_config->w * win_config->h;
@@ -1612,6 +1681,9 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 	regs->wincon[win_no] = wincon(win->fbinfo->var.bits_per_pixel,
 			win->fbinfo->var.transp.length,
 			win->fbinfo->var.red.length);
+	if (win_no)
+		regs->blendeq[win_no - 1] = blendeq(win_config->blending,
+				win->fbinfo->var.transp.length);
 
 	return 0;
 
@@ -1745,12 +1817,16 @@ static void __s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 					sfb->regs + VIDOSD_D(i, sfb->variant));
 		writel(regs->vidw_alpha0[i],
 				sfb->regs + VIDW_ALPHA0(i));
+		writel(regs->vidw_alpha1[i],
+				sfb->regs + VIDW_ALPHA1(i));
 		writel(regs->vidw_buf_start[i],
 				sfb->regs + VIDW_BUF_START(i));
 		writel(regs->vidw_buf_end[i],
 				sfb->regs + VIDW_BUF_END(i));
 		writel(regs->vidw_buf_size[i],
 				sfb->regs + VIDW_BUF_SIZE(i));
+		if (i)
+			writel(regs->blendeq[i - 1], sfb->regs + BLENDEQ(i));
 
 		sfb->windows[i]->dma_buf_data = regs->dma_buf_data[i];
 	}

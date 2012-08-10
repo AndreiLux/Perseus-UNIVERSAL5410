@@ -46,6 +46,13 @@ enum s3c_fb_pixel_format {
 	S3C_FB_PIXEL_FORMAT_MAX = 3,
 };
 
+enum s3c_fb_blending {
+	S3C_FB_BLENDING_NONE = 0,
+	S3C_FB_BLENDING_PREMULT = 1,
+	S3C_FB_BLENDING_COVERAGE = 2,
+	S3C_FB_BLENDING_MAX = 3,
+};
+
 struct s3c_fb_win_config {
 	enum {
 		S3C_FB_WIN_STATE_DISABLED = 0,
@@ -56,10 +63,11 @@ struct s3c_fb_win_config {
 	union {
 		__u32 color;
 		struct {
-			int	fd;
-			__u32	offset;
-			__u32	stride;
-			enum s3c_fb_pixel_format format;
+			int				fd;
+			__u32				offset;
+			__u32				stride;
+			enum s3c_fb_pixel_format	format;
+			enum s3c_fb_blending		blending;
 		};
 	};
 
