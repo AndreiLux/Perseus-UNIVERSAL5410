@@ -52,6 +52,12 @@ static int ramoops_pstore_erase(enum pstore_type_id type, u64 id,
 
 struct ramoops_context {
 	void *virt_addr;
+#ifdef CONFIG_PSTORE_CONSOLE
+	char *old_con_buf;
+	char *con_buf;
+	size_t *con_headp;
+	size_t con_size;
+#endif
 	phys_addr_t phys_addr;
 	unsigned long size;
 	size_t record_size;
@@ -77,7 +83,11 @@ static int ramoops_pstore_open(struct pstore_info *psi)
 {
 	struct ramoops_context *cxt = &oops_cxt;
 
+#ifdef CONFIG_PSTORE_CONSOLE
+	cxt->read_count = ~0;
+#else
 	cxt->read_count = 0;
+#endif
 	return 0;
 }
 
@@ -95,16 +105,23 @@ static ssize_t ramoops_pstore_read(u64 *id, enum pstore_type_id *type,
 	char *rambuf;
 	struct ramoops_context *cxt = &oops_cxt;
 
+	*id = cxt->read_count++;
 	if (cxt->read_count >= cxt->max_count)
 		return -EINVAL;
-	*id = cxt->read_count++;
-	/* Only supports dmesg output so far. */
 	*type = PSTORE_TYPE_DMESG;
+#ifdef CONFIG_PSTORE_CONSOLE
+	if (cxt->read_count == 0)
+		*type = PSTORE_TYPE_CONSOLE;
+#endif
 	/* TODO(kees): Bogus time for the moment. */
 	time->tv_sec = 0;
 	time->tv_nsec = 0;
 
 	rambuf = cxt->virt_addr + (*id * cxt->record_size);
+#ifdef CONFIG_PSTORE_CONSOLE
+	if (*type == PSTORE_TYPE_CONSOLE)
+		rambuf = cxt->old_con_buf;
+#endif
 	size = strnlen(rambuf, cxt->record_size);
 	*buf = kmalloc(size, GFP_KERNEL);
 	if (*buf == NULL)
@@ -125,6 +142,31 @@ static int ramoops_pstore_write(enum pstore_type_id type,
 	struct timeval timestamp;
 	struct ramoops_context *cxt = &oops_cxt;
 	size_t available = cxt->record_size;
+
+#ifdef CONFIG_PSTORE_CONSOLE
+	if (type == PSTORE_TYPE_CONSOLE) {
+		size_t head = *cxt->con_headp;
+		size_t bytes;
+
+		if (size >= cxt->con_size) {
+			buf = cxt->pstore.buf + size - cxt->con_size;
+			memcpy(cxt->con_buf, buf, cxt->con_size);
+			*cxt->con_headp = 0;
+			return 0;
+		}
+		bytes = min(size, cxt->con_size - head);
+		memcpy(cxt->con_buf + head, cxt->pstore.buf, bytes);
+		size -= bytes;
+		if (size)
+			memcpy(cxt->con_buf, cxt->pstore.buf + bytes, size);
+		else
+			size = head + bytes;
+		if (size == cxt->con_size)
+			size = 0;
+		*cxt->con_headp = size;
+		return 0;
+	}
+#endif
 
 	/* Only store dmesg dumps. */
 	if (type != PSTORE_TYPE_DMESG)
@@ -169,6 +211,11 @@ static int ramoops_pstore_erase(enum pstore_type_id type, u64 id,
 {
 	char *buf;
 	struct ramoops_context *cxt = &oops_cxt;
+
+#ifdef CONFIG_PSTORE_CONSOLE
+	if (type == PSTORE_TYPE_CONSOLE)
+		return 0;
+#endif
 
 	if (id >= cxt->max_count)
 		return -EINVAL;
@@ -280,15 +327,44 @@ static int __init ramoops_probe(struct platform_device *pdev)
 		goto fail2;
 	}
 
+#ifdef CONFIG_PSTORE_CONSOLE
+	cxt->old_con_buf = kmalloc(cxt->record_size, GFP_KERNEL);
+	if (!cxt->old_con_buf) {
+		pr_err("cannot allocate console buffer\n");
+		goto fail1;
+	}
+	cxt->con_buf = cxt->virt_addr + (cxt->max_count - 1) * cxt->record_size;
+	cxt->con_size = cxt->record_size - sizeof(size_t);
+	cxt->con_headp = (size_t *)(cxt->con_buf + cxt->con_size);
+	cxt->old_con_buf[0] = '\0';
+	if (*cxt->con_headp < cxt->con_size) {
+		size_t head = *cxt->con_headp;
+		size_t size = cxt->con_size - head;
+
+		if (cxt->con_buf[head] != '\0')
+			memcpy(cxt->old_con_buf, cxt->con_buf + head, size);
+		else
+			size = 0;
+		if (head)
+			memcpy(cxt->old_con_buf + size, cxt->con_buf, head);
+		cxt->old_con_buf[size + head] = '\0';
+	}
+	memset(cxt->con_buf, '\0', cxt->record_size);
+#endif
+
 	err = pstore_register(&cxt->pstore);
 	if (err) {
 		pr_err("registering with pstore failed\n");
-		goto fail1;
+		goto fail0;
 	}
 
 	return 0;
 
+fail0:
+#ifdef CONFIG_PSTORE_CONSOLE
+	kfree(cxt->old_con_buf);
 fail1:
+#endif
 	iounmap(cxt->virt_addr);
 fail2:
 	release_mem_region(cxt->phys_addr, cxt->size);
@@ -316,6 +392,9 @@ static int __exit ramoops_remove(struct platform_device *pdev)
 	cxt->max_count = 0;
 
 	/* TODO(kees): When pstore supports unregistering, call it here. */
+#ifdef CONFIG_PSTORE_CONSOLE
+	kfree(cxt->old_con_buf);
+#endif
 	kfree(cxt->pstore.buf);
 	cxt->pstore.bufsize = 0;
 
