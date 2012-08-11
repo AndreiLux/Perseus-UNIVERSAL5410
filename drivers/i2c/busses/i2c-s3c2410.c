@@ -69,7 +69,6 @@ enum {
 };
 
 struct s3c24xx_i2c {
-	spinlock_t		lock;
 	wait_queue_head_t	wait;
 	unsigned int            quirks;
 	unsigned int		suspended:1;
@@ -710,12 +709,6 @@ static int s3c24xx_i2c_doxfer(struct s3c24xx_i2c *i2c,
 	if (i2c->suspended)
 		return -EIO;
 
-	/*
-	 * Claim the bus if needed.
-	 *
-	 * Note, this needs a lock. How come s3c24xx_i2c_set_master() below
-	 * is outside the lock?
-	 */
 	if (s3c24xx_i2c_claim(i2c))
 		return -EBUSY;
 
@@ -726,8 +719,6 @@ static int s3c24xx_i2c_doxfer(struct s3c24xx_i2c *i2c,
 		goto out;
 	}
 
-	spin_lock_irq(&i2c->lock);
-
 	i2c->msg     = msgs;
 	i2c->msg_num = num;
 	i2c->msg_ptr = 0;
@@ -736,7 +727,6 @@ static int s3c24xx_i2c_doxfer(struct s3c24xx_i2c *i2c,
 
 	s3c24xx_i2c_enable_irq(i2c);
 	s3c24xx_i2c_message_start(i2c, msgs);
-	spin_unlock_irq(&i2c->lock);
 
 	timeout = wait_event_timeout(i2c->wait, i2c->msg_num == 0, HZ * 5);
 
@@ -919,7 +909,6 @@ static int s3c24xx_i2c_cpufreq_transition(struct notifier_block *nb,
 					  unsigned long val, void *data)
 {
 	struct s3c24xx_i2c *i2c = freq_to_i2c(nb);
-	unsigned long flags;
 	unsigned int got;
 	int delta_f;
 	int ret;
@@ -933,9 +922,9 @@ static int s3c24xx_i2c_cpufreq_transition(struct notifier_block *nb,
 
 	if ((val == CPUFREQ_POSTCHANGE && delta_f < 0) ||
 	    (val == CPUFREQ_PRECHANGE && delta_f > 0)) {
-		spin_lock_irqsave(&i2c->lock, flags);
+		i2c_lock_adapter(&i2c->adap);
 		ret = s3c24xx_i2c_clockrate(i2c, &got);
-		spin_unlock_irqrestore(&i2c->lock, flags);
+		i2c_unlock_adapter(&i2c->adap);
 
 		if (ret < 0)
 			dev_err(i2c->dev, "cannot find frequency\n");
@@ -1209,7 +1198,6 @@ static int s3c24xx_i2c_probe(struct platform_device *pdev)
 	i2c->adap.class   = I2C_CLASS_HWMON | I2C_CLASS_SPD;
 	i2c->tx_setup     = 50;
 
-	spin_lock_init(&i2c->lock);
 	init_waitqueue_head(&i2c->wait);
 
 	/* find the clock and enable it */
