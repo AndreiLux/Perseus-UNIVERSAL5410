@@ -475,6 +475,7 @@ config MACH_SMDK5250
 	select S3C_DEV_I2C5
 	select S3C_DEV_I2C7
 	select S3C_DEV_RTC
+	select S3C_DEV_WDT
 	select S5P_DEV_MFC
 	select S5P_DEV_DP
 	select S5P_DEV_FIMD1

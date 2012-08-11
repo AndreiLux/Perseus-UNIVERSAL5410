@@ -1441,6 +1441,7 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&s3c_device_i2c5,
 	&s3c_device_i2c7,
 	&s3c_device_adc,
+	&s3c_device_wdt,
 	&smdk5250_input_device,
 #ifdef CONFIG_VIDEO_EXYNOS_MFC
 	&s5p_device_mfc,
