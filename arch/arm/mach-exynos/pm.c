@@ -397,7 +397,7 @@ static void exynos_pm_resume(void)
 
 	s3c_pm_do_restore_core(exynos_core_save, ARRAY_SIZE(exynos_core_save));
 
-	bts_enable(NULL);
+	bts_initialize(NULL);
 	if (!soc_is_exynos5250()) {
 		exynos4_restore_pll();
 

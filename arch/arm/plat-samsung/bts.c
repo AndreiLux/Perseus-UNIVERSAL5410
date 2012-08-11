@@ -31,21 +31,22 @@
 #include <plat/bts.h>
 #include <mach/map.h>
 
-/* BTS (Bus traffic shaper) register */
+/* BTS (Bus traffic shaper) registers */
 #define BTS_CONTROL 0x0
 #define BTS_SHAPING_ON_OFF_REG0 0x4
 #define BTS_MASTER_PRIORITY 0x8
 #define BTS_SHAPING_ON_OFF_REG1 0x44
 #define BTS_DEBLOCKING_SOURCE_SELECTION 0x50
 
-/* BTS priority values */
-#define BTS_PRIOR_HARDTIME 15
-#define BTS_PRIOR_BESTEFFORT 8
-
-/* Fields of BTS_CONTROL register */
-#define BTS_ON_OFF (1<<0)
-#define BLOCKING_ON_OFF (1<<2)
-#define DEBLOCKING_ON_OFF (1<<7)
+/*
+ * Fields of BTS_CONTROL register
+ * BTS_CTL_ENABLE indicates BTS_ON_OFF field
+ * BTS_CTL_BLOCKING indicates BLOCKING_ON_OFF field
+ * BTS_CTL_DEBLOCKING indicates DEBLOCKING_ON_OFF field
+ */
+#define BTS_CTL_ENABLE (1<<0)
+#define BTS_CTL_BLOCKING (1<<2)
+#define BTS_CTL_DEBLOCKING (1<<7)
 
 /* Fields of DEBLOCKING_SOURCE_SELECTION register */
 #define SEL_GRP0 (1<<0)
@@ -63,17 +64,21 @@
 #define LOW_SHAPING_VAL1 0x3ff
 #define MASTER_PRIOR_NUMBER (1<<16)
 
-#define BTS_OFF 0
-#define BTS_ON 1
+#define BTS_DISABLE 0
+#define BTS_ENABLE  1
 
 static LIST_HEAD(fbm_list);
 static LIST_HEAD(bts_list);
 
-/* Structure for a physical BTS device  */
+/* Structure for a physical BTS device */
 struct exynos_bts_local_data {
 	void __iomem	*base;
 	enum bts_priority def_priority;
-	bool changable_prior;
+	/*
+	 * Indicate that it could be changable for selecting deblock sources
+	 * in case of controlling bus traffic
+	 */
+	bool deblock_changable;
 };
 
 /* Structure for a BTS driver.
@@ -87,7 +92,7 @@ struct exynos_bts_data {
 	struct clk *clk;
 	struct exynos_bts_local_data *bts_local_data;
 	char *pd_name;
-	enum bts_prior_change_action change_act;
+	enum bts_traffic_control traffic_control_act;
 	u32 listnum;
 };
 
@@ -97,33 +102,27 @@ struct exynos_fbm_data {
 	struct list_head node;
 };
 
-/* find FBM group based on requested priority */
-static enum bts_fbm_group find_fbm_group(enum bts_priority prior)
+/* Find FBM input port name with FBM source order */
+static enum bts_fbm_input_port find_fbm_port(enum bts_deblock_src_order fbm)
 {
 	struct exynos_fbm_data *fbm_data;
-	enum bts_fbm_group fbm_group = 0;
+	enum bts_fbm_input_port fbm_input_port = 0;
 
 	list_for_each_entry(fbm_data, &fbm_list, node) {
-		if (prior == BTS_BE) {
-			if (fbm_data->fbm.priority == BTS_HARDTIME)
-				fbm_group |= fbm_data->fbm.fbm_group;
-		} else if (prior == BTS_HARDTIME) {
-			if ((fbm_data->fbm.priority == BTS_BE) ||
-				(fbm_data->fbm.priority == BTS_HARDTIME))
-				fbm_group |= fbm_data->fbm.fbm_group;
-		}
+		if (fbm & fbm_data->fbm.deblock_src_order)
+			fbm_input_port |= fbm_data->fbm.port_name;
 	}
 
-	return fbm_group;
+	return fbm_input_port;
 }
 
-/* basic control of a BTS device */
+/* Basic control of a BTS device */
 static void bts_set_control(void __iomem *base, enum bts_priority prior)
 {
-	u32 val = BTS_ON_OFF;
+	u32 val = BTS_CTL_ENABLE;
 
-	if (prior == BTS_BE)
-		val |= BLOCKING_ON_OFF|DEBLOCKING_ON_OFF;
+	if (prior == BTS_PRIOR_BE)
+		val |= BTS_CTL_BLOCKING | BTS_CTL_DEBLOCKING;
 	writel(val, base + BTS_CONTROL);
 }
 
@@ -132,66 +131,60 @@ static void bts_onoff(void __iomem *base, bool on)
 {
 	u32 val = readl(base + BTS_CONTROL);
 	if (on)
-		val |= BTS_ON_OFF;
+		val |= BTS_CTL_ENABLE;
 	else
-		val &= ~BTS_ON_OFF;
+		val &= ~BTS_CTL_ENABLE;
 
 	writel(val, base + BTS_CONTROL);
 }
 
-/* set priority to BTS device */
-static void bts_set_master_priority(void __iomem *base, enum bts_priority prior)
+/* set priority of BTS device */
+static void bts_set_priority(void __iomem *base, enum bts_priority prior)
 {
 	u32 val;
-	u32 priority = BTS_PRIOR_BESTEFFORT;
 
-	 if (prior == BTS_HARDTIME)
-		priority = BTS_PRIOR_HARDTIME;
-
-	val = MASTER_PRIOR_NUMBER | (priority<<8) | (priority<<4) | (priority);
+	val = MASTER_PRIOR_NUMBER | (prior<<8) | (prior<<4) | (prior);
 	writel(val, base + BTS_MASTER_PRIORITY);
 }
 
-/* set the shaping value for best effort IPs to BTS device */
-static void bts_set_besteffort_shaping(void __iomem *base)
+/* set the blocking value for best effort IPs to BTS device */
+static void bts_set_blocking(void __iomem *base)
 {
 	writel(LOW_SHAPING_VAL0, base + BTS_SHAPING_ON_OFF_REG0);
 	writel(LOW_SHAPING_VAL1, base + BTS_SHAPING_ON_OFF_REG1);
 }
 
-/* set the deblocking source according to deblocking group to BTS device */
+/* set the deblocking source according to FBM input port name */
 static void bts_set_deblocking(void __iomem *base,
-	enum bts_fbm_group deblocking)
+			       enum bts_fbm_input_port port_name)
 {
 	u32 val = 0;
 
-	if (deblocking & BTS_FBM_G0_L)
+	if (port_name & BTS_FBM_G0_L)
 		val |= SEL_GRP0 | SEL_LEFT0;
-	if (deblocking & BTS_FBM_G0_R)
+	if (port_name & BTS_FBM_G0_R)
 		val |= SEL_GRP0 | SEL_RIGHT0;
-	if (deblocking & BTS_FBM_G1_L)
+	if (port_name & BTS_FBM_G1_L)
 		val |= SEL_GRP1 | SEL_LEFT1;
-	if (deblocking & BTS_FBM_G1_R)
+	if (port_name & BTS_FBM_G1_R)
 		val |= SEL_GRP1 | SEL_RIGHT1;
-	if (deblocking & BTS_FBM_G2_L)
+	if (port_name & BTS_FBM_G2_L)
 		val |= SEL_GRP2 | SEL_LEFT2;
-	if (deblocking & BTS_FBM_G2_R)
+	if (port_name & BTS_FBM_G2_R)
 		val |= SEL_GRP2 | SEL_RIGHT2;
 	writel(val, base + BTS_DEBLOCKING_SOURCE_SELECTION);
 }
 
-/* initialize a BTS device in default setting */
-static void bts_init_config(void __iomem *base, enum bts_priority prior)
+/* initialize a BTS device with default bus traffic values */
+static void bts_set_default_bus_traffic(void __iomem *base,
+					enum bts_priority prior)
 {
 	switch (prior) {
-	case BTS_BE:
-		bts_set_besteffort_shaping(base);
-		bts_set_deblocking(base, find_fbm_group(prior));
-		bts_set_master_priority(base, prior);
-		bts_set_control(base, prior);
-		break;
-	case BTS_HARDTIME:
-		bts_set_master_priority(base, prior);
+	case BTS_PRIOR_BE:
+		bts_set_blocking(base);
+		bts_set_deblocking(base, find_fbm_port(BTS_1ST_FBM_SRC));
+	case BTS_PRIOR_HARDTIME:
+		bts_set_priority(base, prior);
 		bts_set_control(base, prior);
 		break;
 	default:
@@ -199,27 +192,30 @@ static void bts_init_config(void __iomem *base, enum bts_priority prior)
 	}
 }
 
-/* change FBM setting  */
-static void bts_change_fbm_priority(bool on)
+/* change deblocking FBM source */
+static void bts_change_deblock_src(enum bts_bw_change bw_change)
 {
 	struct exynos_bts_data *bts_data;
 	struct exynos_bts_local_data *bts_local_data;
-	enum bts_priority prior = (on) ? BTS_HARDTIME : BTS_BE;
 	int i;
 
 	list_for_each_entry(bts_data, &bts_list, node) {
 		bts_local_data = bts_data->bts_local_data;
 		for (i = 0; i < bts_data->listnum; i++) {
-			if (bts_local_data->changable_prior) {
+			if (bts_local_data->deblock_changable) {
 #if defined(CONFIG_PM_RUNTIME)
 				pm_runtime_get_sync(bts_data->dev->parent);
 #endif
 				if (bts_data->clk)
 					clk_enable(bts_data->clk);
-				bts_onoff(bts_local_data->base, BTS_OFF);
+				bts_onoff(bts_local_data->base, BTS_DISABLE);
 				bts_set_deblocking(bts_local_data->base,
-						find_fbm_group(prior));
-				bts_onoff(bts_local_data->base, BTS_ON);
+					find_fbm_port(
+						(bw_change == BTS_INCREASE_BW)
+						? BTS_1ST_FBM_SRC
+						: (BTS_1ST_FBM_SRC |
+						BTS_2ND_FBM_SRC)));
+				bts_onoff(bts_local_data->base, BTS_ENABLE);
 				if (bts_data->clk)
 					clk_disable(bts_data->clk);
 #if defined(CONFIG_PM_RUNTIME)
@@ -267,8 +263,8 @@ static void bts_devs_init(struct exynos_bts_data *bts_data)
 
 	bts_local_data = bts_data->bts_local_data;
 	for (i = 0; i < bts_data->listnum; i++) {
-		bts_init_config(bts_local_data->base,
-				bts_local_data->def_priority);
+		bts_set_default_bus_traffic(bts_local_data->base,
+					    bts_local_data->def_priority);
 		bts_local_data++;
 	}
 
@@ -276,28 +272,42 @@ static void bts_devs_init(struct exynos_bts_data *bts_data)
 		clk_disable(bts_data->clk);
 }
 
-void exynos_bts_set_priority(struct device *dev, bool on)
+void exynos_bts_change_bus_traffic(struct device *dev,
+				   enum bts_bw_change bw_change)
 {
 	struct exynos_bts_data *bts_data;
 
 	list_for_each_entry(bts_data, &bts_list, node) {
 		if (bts_data->dev->parent == dev) {
-			switch (bts_data->change_act) {
-			case BTS_ACT_OFF:
-				bts_devs_onoff(bts_data, !on);
+			switch (bts_data->traffic_control_act) {
+			/*
+			 * BTS_DISABLE means turning off blocking feature
+			 * to increase bus bandwidth
+			 */
+			case BTS_ON_OFF:
+				bts_devs_onoff(bts_data,
+					(bw_change == BTS_INCREASE_BW)
+					?  BTS_DISABLE : BTS_ENABLE);
 				break;
-			case BTS_ACT_CHANGE_FBM_PRIOR:
-				bts_change_fbm_priority(on);
+			/*
+			 * Increasing the caller device's bus bandwidth
+			 * by decreasing others' bus bandwidth
+			 */
+			case BTS_CHANGE_OTHER_DEBLOCK:
+				bts_change_deblock_src(
+					(bw_change == BTS_INCREASE_BW)
+					? BTS_DECREASE_BW : BTS_INCREASE_BW);
 				break;
 			default:
-				dev_err(bts_data->dev, "unregistered case to change priority!\n");
+				dev_err(bts_data->dev,
+					"Unknown bus traffic control action\n");
 				break;
 			}
 		}
 	}
 }
 
-void exynos_bts_enable(char *pd_name)
+void exynos_bts_initialize(char *pd_name)
 {
 	struct exynos_bts_data *bts_data;
 
@@ -336,8 +346,9 @@ static int bts_probe(struct platform_device *pdev)
 				goto probe_err1;
 			}
 			list_add_tail(&fbm_data->node, &fbm_list);
-			fbm_data->fbm.fbm_group = fbm_res->fbm_group;
-			fbm_data->fbm.priority = fbm_res->priority;
+			fbm_data->fbm.port_name = fbm_res->port_name;
+			fbm_data->fbm.deblock_src_order =
+						fbm_res->deblock_src_order;
 			fbm_res++;
 		}
 	}
@@ -364,7 +375,7 @@ static int bts_probe(struct platform_device *pdev)
 		goto probe_err2;
 	}
 	bts_data->listnum = bts_pdata->res_num;
-	bts_data->change_act = bts_pdata->change_act;
+	bts_data->traffic_control_act = bts_pdata->traffic_control_act;
 	bts_local_data_h = bts_local_data =
 		kzalloc(sizeof(struct exynos_bts_local_data)*bts_data->listnum,
 				GFP_KERNEL);
@@ -380,9 +391,10 @@ static int bts_probe(struct platform_device *pdev)
 			goto probe_err4;
 		}
 		bts_local_data->def_priority = bts_pdata->def_priority;
-		bts_local_data->changable_prior = bts_pdata->changable_prior;
-		bts_init_config(bts_local_data->base,
-				bts_local_data->def_priority);
+		bts_local_data->deblock_changable =
+						bts_pdata->deblock_changable;
+		bts_set_default_bus_traffic(bts_local_data->base,
+						bts_local_data->def_priority);
 		bts_local_data++;
 		res++;
 	}

@@ -162,11 +162,11 @@ static struct resource exynos_bts_disp_resource[] = {
 
 struct exynos_fbm_resource fbm_res[] = {
 	{
-		.fbm_group = BTS_FBM_G1_R,
-		.priority = BTS_BE,
+		.port_name = BTS_FBM_G1_R,
+		.deblock_src_order = BTS_2ND_FBM_SRC,
 	}, {
-		.fbm_group = BTS_FBM_G1_L,
-		.priority = BTS_HARDTIME,
+		.port_name = BTS_FBM_G1_L,
+		.deblock_src_order = BTS_1ST_FBM_SRC,
 	}
 };
 
@@ -182,23 +182,23 @@ static struct exynos_bts_pdata bts_##_name##_res = {			\
 		.clk_name = _clkname,					\
 		.fbm = &fbm_pdata,					\
 		.res_num = ARRAY_SIZE(exynos_bts_##_name##_resource),	\
-		.changable_prior = _changable,	\
-		.change_act = _act,	\
+		.deblock_changable = _changable,	\
+		.traffic_control_act = _act,	\
 }
 
-EXYNOS_BTS_PDATA(cpu, BTS_BE, NULL, NULL, 1, BTS_ACT_NONE);
-EXYNOS_BTS_PDATA(jpeg, BTS_BE, "pd-gscl", "jpeg", 0, BTS_ACT_NONE);
-EXYNOS_BTS_PDATA(gscl0, BTS_BE, "pd-gscl", "gscl", 0, BTS_ACT_OFF);
-EXYNOS_BTS_PDATA(gscl1, BTS_BE, "pd-gscl", "gscl", 0, BTS_ACT_OFF);
-EXYNOS_BTS_PDATA(gscl2, BTS_BE, "pd-gscl", "gscl", 0, BTS_ACT_OFF);
-EXYNOS_BTS_PDATA(gscl3, BTS_BE, "pd-gscl", "gscl", 0, BTS_ACT_OFF);
-EXYNOS_BTS_PDATA(mfc, BTS_BE, "pd-mfc", "mfc", 0, BTS_ACT_NONE);
-EXYNOS_BTS_PDATA(g3dacp, BTS_BE, NULL, NULL, 1, BTS_ACT_NONE);
+EXYNOS_BTS_PDATA(cpu, BTS_PRIOR_BE, NULL, NULL, 1, BTS_NO_ACTION);
+EXYNOS_BTS_PDATA(jpeg, BTS_PRIOR_BE, "pd-gscl", "jpeg", 0, BTS_NO_ACTION);
+EXYNOS_BTS_PDATA(gscl0, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, BTS_ON_OFF);
+EXYNOS_BTS_PDATA(gscl1, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, BTS_ON_OFF);
+EXYNOS_BTS_PDATA(gscl2, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, BTS_ON_OFF);
+EXYNOS_BTS_PDATA(gscl3, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, BTS_ON_OFF);
+EXYNOS_BTS_PDATA(mfc, BTS_PRIOR_BE, "pd-mfc", "mfc", 0, BTS_NO_ACTION);
+EXYNOS_BTS_PDATA(g3dacp, BTS_PRIOR_BE, NULL, NULL, 1, BTS_NO_ACTION);
 #if defined(CONFIG_EXYNOS4_DEV_FIMC_IS)
-EXYNOS_BTS_PDATA(isp0, BTS_BE, NULL, "isp0", 0, BTS_ACT_CHANGE_FBM_PRIOR);
-EXYNOS_BTS_PDATA(isp1, BTS_BE, NULL, "isp1", 0, BTS_ACT_CHANGE_FBM_PRIOR);
+EXYNOS_BTS_PDATA(isp0, BTS_PRIOR_BE, NULL, "isp0", 0, BTS_CHANGE_OTHER_DEBLOCK);
+EXYNOS_BTS_PDATA(isp1, BTS_PRIOR_BE, NULL, "isp1", 0, BTS_CHANGE_OTHER_DEBLOCK);
 #endif
-EXYNOS_BTS_PDATA(disp, BTS_HARDTIME, NULL, "fimd", 0, BTS_ACT_NONE);
+EXYNOS_BTS_PDATA(disp, BTS_PRIOR_HARDTIME, NULL, "fimd", 0, BTS_NO_ACTION);
 
 /* bts platform device lists */
 #define EXYNOS_BTS_DEVICE(_name, _parent)				\

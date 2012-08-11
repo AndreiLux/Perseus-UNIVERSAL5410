@@ -902,7 +902,7 @@ static int fimc_is_scalerp_video_open(struct file *file)
 		dbg("++++ IS load fw (Scaler P open)\n");
 		mutex_unlock(&isp->lock);
 		fimc_is_load_fw(isp);
-		bts_set_priority(&isp->pdev->dev, 1);
+		bts_change_bus_traffic(&isp->pdev->dev, BTS_INCREASE_BW);
 
 		set_bit(FIMC_IS_STATE_FW_DOWNLOADED, &isp->pipe_state);
 		clear_bit(FIMC_IS_STATE_SENSOR_INITIALIZED, &isp->pipe_state);
@@ -955,7 +955,7 @@ static int fimc_is_scalerp_video_close(struct file *file)
 			sensor_info[isp->sensor.id_position]->csi_id);
 
 		fimc_is_hw_a5_power(isp, 0);
-		bts_set_priority(&isp->pdev->dev, 0);
+		bts_change_bus_traffic(&isp->pdev->dev, BTS_DECREASE_BW);
 		clear_bit(FIMC_IS_STATE_FW_DOWNLOADED, &isp->pipe_state);
 		dbg("---- IS local power off (Scaler P close)\n");
 	} else {

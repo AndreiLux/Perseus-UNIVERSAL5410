@@ -277,7 +277,7 @@ static int gsc_subdev_s_stream(struct v4l2_subdev *sd, int enable)
 	} else {
 		INIT_LIST_HEAD(&gsc->out.active_buf_q);
 		clear_bit(ST_OUTPUT_STREAMON, &gsc->state);
-		bts_set_priority(&gsc->pdev->dev, 0);
+		bts_change_bus_traffic(&gsc->pdev->dev, BTS_DECREASE_BW);
 		pm_runtime_put_sync(&gsc->pdev->dev);
 	}
 
@@ -728,7 +728,7 @@ static void gsc_out_buffer_queue(struct vb2_buffer *vb)
 			gsc_err("gscaler s/w reset timeout");
 			return;
 		}
-		bts_set_priority(&gsc->pdev->dev, 1);
+		bts_change_bus_traffic(&gsc->pdev->dev, BTS_INCREASE_BW);
 	}
 
 	if (gsc->out.req_cnt >= atomic_read(&q->queued_count)) {

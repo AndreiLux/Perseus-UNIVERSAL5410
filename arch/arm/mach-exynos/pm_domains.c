@@ -121,7 +121,7 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 
 	/* Disable all the clocks of IPs in power domain */
 	if (power_on) {
-		bts_enable(pd->name);
+		bts_initialize(pd->pd.name);
 		list_for_each_entry(pclk, &pd->list, node)
 			clk_disable(pclk->clk);
 	}
