@@ -1360,7 +1360,8 @@ static inline int s5p_mfc_run_dec_frame(struct s5p_mfc_ctx *ctx)
 	temp_vb = list_entry(ctx->src_queue.next, struct s5p_mfc_buf, list);
 	temp_vb->used = 1;
 	s5p_mfc_set_dec_stream_buffer(ctx,
-		vb2_dma_contig_plane_dma_addr(temp_vb->b, 0), 0,
+		vb2_dma_contig_plane_dma_addr(temp_vb->b, 0),
+			ctx->consumed_stream,
 			temp_vb->b->v4l2_planes[0].bytesused);
 	spin_unlock_irqrestore(&dev->irqlock, flags);
 
