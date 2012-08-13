@@ -167,7 +167,7 @@ static void __init exynos4_clocksource_init(void)
 	if (clocksource_register_hz(&mct_frc, clk_rate))
 		panic("%s: can't register clocksource\n", mct_frc.name);
 
-	setup_sched_clock(exynos4_read_sched_clock, 32, clk_rate);
+	setup_sched_clock_needs_suspend(exynos4_read_sched_clock, 32, clk_rate);
 }
 
 static void exynos4_mct_comp0_stop(void)
