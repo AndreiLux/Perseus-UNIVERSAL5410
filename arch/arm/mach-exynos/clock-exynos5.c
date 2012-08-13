@@ -690,13 +690,38 @@ struct clksrc_sources exynos5_clkset_aclk_333_166 = {
 	.nr_sources	= ARRAY_SIZE(exynos5_clkset_aclk_333_166_list),
 };
 
+static struct clksrc_clk exynos5_clk_mout_aclk_333 = {
+	.clk	= {
+		.name		= "mout_aclk_333",
+	},
+	.sources = &exynos5_clkset_aclk_333_166,
+	.reg_src = { .reg = EXYNOS5_CLKSRC_TOP0, .shift = 16, .size = 1 },
+};
+
+static struct clksrc_clk exynos5_clk_dout_aclk_333 = {
+	.clk	= {
+		.name		= "dout_aclk_333",
+		.parent		= &exynos5_clk_mout_aclk_333.clk,
+	},
+	.reg_div = { .reg = EXYNOS5_CLKDIV_TOP0, .shift = 20, .size = 3 },
+};
+
+struct clk *exynos5_clkset_aclk_333_sub_list[] = {
+	[0] = &clk_ext_xtal_mux,
+	[1] = &exynos5_clk_dout_aclk_333.clk,
+};
+
+struct clksrc_sources exynos5_clkset_aclk_333_sub = {
+	.sources	= exynos5_clkset_aclk_333_sub_list,
+	.nr_sources	= ARRAY_SIZE(exynos5_clkset_aclk_333_sub_list),
+};
+
 static struct clksrc_clk exynos5_clk_aclk_333 = {
 	.clk	= {
 		.name		= "aclk_333",
 	},
-	.sources = &exynos5_clkset_aclk_333_166,
-	.reg_src = { .reg = EXYNOS5_CLKSRC_TOP0, .shift = 16, .size = 1 },
-	.reg_div = { .reg = EXYNOS5_CLKDIV_TOP0, .shift = 20, .size = 3 },
+	.sources = &exynos5_clkset_aclk_333_sub,
+	.reg_src = { .reg = EXYNOS5_CLKSRC_TOP3, .shift = 24, .size = 1 },
 };
 
 static struct clksrc_clk exynos5_clk_aclk_166 = {
@@ -877,6 +902,17 @@ static struct clksrc_clk exynos5_clk_aclk_66 = {
 		.parent		= &exynos5_clk_aclk_66_pre.clk,
 	},
 	.reg_div = { .reg = EXYNOS5_CLKDIV_TOP0, .shift = 0, .size = 3 },
+};
+
+/* Possible clock sources for aclk_200_disp1_sub Mux */
+static struct clk *clk_src_disp1_200_list[] = {
+	[0] = &clk_ext_xtal_mux,
+	[1] = &exynos5_clk_aclk_200.clk,
+};
+
+static struct clksrc_sources clk_src_disp1_200 = {
+	.sources	= clk_src_disp1_200_list,
+	.nr_sources	= ARRAY_SIZE(clk_src_disp1_200_list),
 };
 
 /* For CLKOUT */
@@ -1854,6 +1890,12 @@ static struct clksrc_clk exynos5_clksrcs[] = {
 		.reg_src = { .reg = EXYNOS5_CLKSRC_TOP3, .shift = 8, .size = 1 },
 	}, {
 		.clk	= {
+			.name		= "aclk_200_disp1",
+		},
+		.sources = &clk_src_disp1_200,
+		.reg_src = { .reg = EXYNOS5_CLKSRC_TOP3, .shift = 4, .size = 1 },
+	}, {
+		.clk    = {
 			.name		= "sclk_g3d",
 			.devname	= "mali.0",
 			.enable		= exynos5_clk_block_ctrl,
@@ -1957,6 +1999,8 @@ static struct clksrc_clk *exynos5_sysclks[] = {
 	&exynos5_clk_mclk_cdrex,
 	&exynos5_clk_aclk_400_g3d_mid,
 	&exynos5_clk_aclk_400_g3d,
+	&exynos5_clk_mout_aclk_333,
+	&exynos5_clk_dout_aclk_333,
 	&exynos5_clk_aclk_333,
 	&exynos5_clk_aclk_266,
 	&exynos5_clk_aclk_200,
