@@ -55,6 +55,10 @@ struct i2s_dai {
 	unsigned rfs, bfs;
 	/* I2S Controller's core clock */
 	struct clk *clk;
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA
+	/* SRP clock */
+	struct clk *srpclk;
+#endif
 	/* Clock for generating I2S signals */
 	struct clk *op_clk;
 	/* Array of clock names for op_clk */
@@ -707,6 +711,9 @@ static int i2s_startup(struct snd_pcm_substream *substream,
 		pm_runtime_get_sync(&pdev->dev);
 #endif
 		i2s_register_restore(i2s);
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA
+		clk_enable(i2s->srpclk);
+#endif
 		clk_enable(i2s->clk);
 
 #ifdef CONFIG_SND_PM_RUNTIME
@@ -758,6 +765,10 @@ static void i2s_shutdown(struct snd_pcm_substream *substream,
 
 		i2s_register_save(i2s);
 		clk_disable(i2s->clk);
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA
+		clk_disable(i2s->srpclk);
+#endif
+
 #ifdef CONFIG_SND_PM_RUNTIME
 		pm_runtime_put_sync(&pdev->dev);
 #endif
@@ -975,18 +986,26 @@ static int samsung_i2s_dai_probe(struct snd_soc_dai *dai)
 		goto err3;
 	}
 
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA
+	i2s->srpclk = clk_get(&i2s->pdev->dev, "srpclk");
+	if (IS_ERR(i2s->srpclk)) {
+		dev_err(&i2s->pdev->dev, "failed to get srp clock\n");
+		ret = PTR_ERR(i2s->srpclk);
+		goto err4;
+	}
+#endif
 	mout_audss = clk_get(&i2s->pdev->dev, "mout_audss");
 	if (IS_ERR(mout_audss)) {
 		dev_err(&i2s->pdev->dev, "failed to get mout_audss clock\n");
 		ret = PTR_ERR(mout_audss);
-		goto err4;
+		goto err5;
 	}
 
 	fout_epll = clk_get(&i2s->pdev->dev, "fout_epll");
 	if (IS_ERR(fout_epll)) {
 		dev_err(&i2s->pdev->dev, "failed to get fout_epll clock\n");
 		ret = PTR_ERR(fout_epll);
-		goto err5;
+		goto err6;
 	}
 
 	/* Set audio clock hierarchy for I2S */
@@ -994,13 +1013,16 @@ static int samsung_i2s_dai_probe(struct snd_soc_dai *dai)
 	if (ret) {
 		dev_err(&i2s->pdev->dev, "failed to set parent %s of clock %s.\n",
 				fout_epll->name, mout_audss->name);
-		goto err6;
+		goto err7;
 	}
 
 	if (other) {
 		other->addr = i2s->addr;
 		other->audss_base = i2s->audss_base;
 		other->clk = i2s->clk;
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA
+		other->srpclk = i2s->srpclk;
+#endif
 	}
 	clk_put(fout_epll);
 	clk_put(mout_audss);
@@ -1010,6 +1032,9 @@ probe_exit:
 		idma_reg_addr_init(i2s->addr,
 				   i2s->sec_dai->idma_playback.dma_addr);
 
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA
+	clk_enable(i2s->srpclk);
+#endif
 	clk_enable(i2s->clk);
 
 	if (i2s->quirks & QUIRK_NEED_RSTCLR)
@@ -1031,6 +1056,9 @@ probe_exit:
 
 	i2s_register_save(i2s);
 	clk_disable(i2s->clk);
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA
+	clk_disable(i2s->srpclk);
+#endif
 	i2s->opencnt = 0;
 #ifdef CONFIG_SND_PM_RUNTIME
 	pm_runtime_put_sync(&pdev->dev);
@@ -1038,11 +1066,15 @@ probe_exit:
 
 	return 0;
 
-err6:
+err7:
 	clk_put(fout_epll);
-err5:
+err6:
 	clk_put(mout_audss);
+err5:
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA
+	clk_put(i2s->srpclk);
 err4:
+#endif
 	clk_put(i2s->clk);
 err3:
 	iounmap(i2s->audss_base);
@@ -1062,6 +1094,10 @@ static int samsung_i2s_dai_remove(struct snd_soc_dai *dai)
 		if (i2s->quirks & QUIRK_NEED_RSTCLR)
 			writel(0, i2s->addr + I2SCON);
 
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA
+		clk_disable(i2s->srpclk);
+		clk_put(i2s->srpclk);
+#endif
 		clk_disable(i2s->clk);
 		clk_put(i2s->clk);
 
