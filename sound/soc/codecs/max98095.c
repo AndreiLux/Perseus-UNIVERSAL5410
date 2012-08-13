@@ -871,6 +871,9 @@ static const struct snd_kcontrol_new max98095_snd_controls[] = {
 	SOC_SINGLE("Biquad1 Switch", M98095_088_CFG_LEVEL, 2, 1, 0),
 	SOC_SINGLE("Biquad2 Switch", M98095_088_CFG_LEVEL, 3, 1, 0),
 
+	SOC_SINGLE("DMIC1 Left Capture Switch", M98095_087_CFG_MIC, 2, 1, 0),
+	SOC_SINGLE("DMIC1 Right Capture Switch", M98095_087_CFG_MIC, 3, 1, 0),
+
 	SOC_ENUM("DAI1 Filter Mode", max98095_dai1_filter_mode_enum),
 	SOC_ENUM("DAI2 Filter Mode", max98095_dai2_filter_mode_enum),
 	SOC_ENUM("DAI1 DAC Filter", max98095_dai1_dac_filter_enum),
