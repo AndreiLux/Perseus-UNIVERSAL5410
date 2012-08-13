@@ -84,13 +84,13 @@ err_p_clk:
 
 #elif defined(CONFIG_ARCH_EXYNOS5)
 
-#define MFC_PARENT_CLK_NAME	"aclk_333"
-#define MFC_CLKNAME		"sclk_mfc"
+#define MFC_PARENT_CLK_NAME	"dout_aclk_333"
+#define MFC_CLKNAME		"aclk_333"
 #define MFC_GATE_CLK_NAME	"mfc"
 
 int s5p_mfc_init_pm(struct s5p_mfc_dev *dev)
 {
-	struct clk *parent_clk;
+	struct clk *parent_clk, *sclk;
 	int ret = 0;
 	struct s5p_mfc_platdata *pdata;
 
@@ -111,6 +111,14 @@ int s5p_mfc_init_pm(struct s5p_mfc_dev *dev)
 		goto err_p_clk;
 	}
 
+	sclk = clk_get(&dev->plat_dev->dev, MFC_CLKNAME);
+	if (IS_ERR(sclk)) {
+		printk(KERN_ERR "failed to get source clock\n");
+		ret = -ENOENT;
+		goto err_s_clk;
+	}
+
+	clk_set_parent(sclk, parent_clk);
 	pdata = dev->platdata;
 	clk_set_rate(parent_clk, pdata->clock_rate);
 
@@ -121,10 +129,13 @@ int s5p_mfc_init_pm(struct s5p_mfc_dev *dev)
 	pm->device = &dev->plat_dev->dev;
 	pm_runtime_enable(pm->device);
 
+	clk_put(sclk);
 	clk_put(parent_clk);
 
 	return 0;
 
+err_s_clk:
+	clk_put(parent_clk);
 err_p_clk:
 	clk_put(pm->clock);
 err_g_clk:
