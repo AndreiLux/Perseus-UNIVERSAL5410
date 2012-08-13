@@ -13,6 +13,7 @@
 #ifndef __ASM_ARM_ARCH_SYSMMU_H
 #define __ASM_ARM_ARCH_SYSMMU_H __FILE__
 #include <linux/device.h>
+#include <linux/pm_runtime.h>
 
 #define SYSMMU_CLOCK_NAME "sysmmu"
 #define SYSMMU_CLOCK_NAME2 "sysmmu_mc"
@@ -29,6 +30,27 @@ static inline void platform_set_sysmmu(
 {
 	dev->archdata.iommu = sysmmu;
 }
+
+#ifdef CONFIG_EXYNOS_IOMMU
+static inline int platform_sysmmu_on(struct device *dev)
+{
+	return pm_runtime_get_sync(dev->archdata.iommu);
+}
+static inline int platform_sysmmu_off(struct device *dev)
+{
+	return pm_runtime_put_sync(dev->archdata.iommu);
+}
+#else
+static inline int platform_sysmmu_on(struct device *dev)
+{
+	return 0;
+}
+static inline int platform_sysmmu_off(struct device *dev)
+{
+	return 0;
+}
+#endif
+
 struct dma_iommu_mapping *s5p_create_iommu_mapping(struct device *client,
 				dma_addr_t base, unsigned int size, int order,
 				struct dma_iommu_mapping *mapping);

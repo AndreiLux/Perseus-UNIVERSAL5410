@@ -657,6 +657,31 @@ err_alloc:
 	return ret;
 }
 
+static int exynos_runtime_suspend(struct device *dev)
+{
+	struct sysmmu_drvdata *data;
+	data = dev_get_drvdata(dev);
+
+	if (!is_sysmmu_active(data))
+		return 0;
+
+	if (data->clk[1])
+		clk_disable(data->clk[1]);
+	if (data->clk[0])
+		clk_disable(data->clk[0]);
+	return 0;
+}
+
+static int exynos_runtime_resume(struct device *dev)
+{
+	struct sysmmu_drvdata *data;
+	data = dev_get_drvdata(dev);
+
+	if (is_sysmmu_active(data))
+		__exynos_sysmmu_enable(data, data->pgtable, NULL);
+	return 0;
+}
+
 static int exynos_pm_resume(struct device *dev)
 {
 	struct sysmmu_drvdata *data;
@@ -670,6 +695,8 @@ static int exynos_pm_resume(struct device *dev)
 }
 
 const struct dev_pm_ops exynos_pm_ops = {
+	.runtime_suspend = &exynos_runtime_suspend,
+	.runtime_resume = &exynos_runtime_resume,
 	.resume = &exynos_pm_resume,
 };
 
@@ -778,10 +805,6 @@ static int exynos_iommu_attach_device(struct iommu_domain *domain,
 		return 0;
 	}
 
-	ret = pm_runtime_get_sync(data->sysmmu);
-	if (ret < 0)
-		return ret;
-
 	ret = 0;
 
 	spin_lock_irqsave(&priv->lock, flags);
@@ -846,9 +869,6 @@ static void exynos_iommu_detach_device(struct iommu_domain *domain,
 
 finish:
 	spin_unlock_irqrestore(&priv->lock, flags);
-
-	if (found)
-		pm_runtime_put(data->sysmmu);
 }
 
 static unsigned long *alloc_lv2entry(unsigned long *sent, unsigned long iova,
