@@ -21,6 +21,7 @@
 #include <linux/of_address.h>
 
 #include <mach/regs-pmu.h>
+#include <mach/regs-clock.h>
 #include <plat/devs.h>
 
 /*
@@ -39,9 +40,22 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 	void __iomem *base;
 	u32 timeout, pwr;
 	char *op;
+	u32 tmp;
 
 	pd = container_of(domain, struct exynos_pm_domain, pd);
 	base = pd->base;
+
+	/*
+	 * TODO: It is found that the CLK SRC register gets modified when
+	 * we power off the pd of gsc/mfc/isp/disp1. This happens only after
+	 * the system is suspended and resumed and not before that. The
+	 * following fix is a temporary workaround which will be removed
+	 * once the exact issue is found and fixed in the hardware.
+	 */
+	if (!power_on) {
+		/*  save clock source register */
+		tmp = __raw_readl(EXYNOS5_CLKSRC_TOP3);
+	}
 
 	pwr = power_on ? S5P_INT_LOCAL_PWR_EN : 0;
 	__raw_writel(pwr, base);
@@ -59,6 +73,12 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 		cpu_relax();
 		usleep_range(80, 100);
 	}
+
+	if (!power_on) {
+		/*  restore clock source register */
+		__raw_writel(tmp, EXYNOS5_CLKSRC_TOP3);
+	}
+
 	return 0;
 }
 
