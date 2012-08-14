@@ -58,8 +58,20 @@
 
 #define MSR_SAVE_FLAGS		UART_MSR_ANY_DELTA
 
+/*
+ * (Errata i659) - From OMAP4430 ES 2.0 onwards set
+ * tx_threshold while using UART in DMA Mode
+ * and ensure tx_threshold + tx_trigger <= 63
+ */
+#define UART_MDR3		0x20
+#define UART_TX_DMA_THRESHOLD	0x21
+#define SET_DMA_TX_THRESHOLD	BIT(2)
+/* Setting TX Threshold Level to 62 */
+#define TX_FIFO_THR_LVL		0x3E
+
 #define UART_ERRATA_i202_MDR1_ACCESS	BIT(0)
 #define UART_ERRATA_i291_DMA_FORCEIDLE	BIT(1)
+#define OMAP4_UART_ERRATA_i659_TX_THR	BIT(2)
 
 struct omap_uart_port_info {
 	bool			dma_enabled;	/* To specify DMA Mode */

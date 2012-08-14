@@ -551,6 +551,11 @@ void __init omap_serial_init_port(struct omap_board_data *bdata,
         if (cpu_is_omap34xx() || cpu_is_omap3630())
                 omap_up.errata |= UART_ERRATA_i291_DMA_FORCEIDLE;
 
+	/* Enable errata for i659 for omap44xx */
+	if (omap_up.dma_enabled &&
+			cpu_is_omap44xx() && omap_rev() > OMAP4430_REV_ES1_0)
+		omap_up.errata |= OMAP4_UART_ERRATA_i659_TX_THR;
+
         pdata = &omap_up;
         pdata_size = sizeof(struct omap_uart_port_info);
 

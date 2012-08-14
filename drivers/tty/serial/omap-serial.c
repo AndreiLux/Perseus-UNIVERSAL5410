@@ -829,6 +829,10 @@ serial_omap_set_termios(struct uart_port *port, struct ktermios *termios,
 	if (up->use_dma) {
 		serial_out(up, UART_TI752_TLR, 0);
 		up->scr |= UART_FCR_TRIGGER_4;
+		if (up->errata & OMAP4_UART_ERRATA_i659_TX_THR) {
+			serial_out(up, UART_MDR3, SET_DMA_TX_THRESHOLD);
+			serial_out(up, UART_TX_DMA_THRESHOLD, TX_FIFO_THR_LVL);
+		}
 	} else {
 		/* Set receive FIFO threshold to 1 byte */
 		up->fcr &= ~OMAP_UART_FCR_RX_FIFO_TRIG_MASK;
@@ -1573,6 +1577,17 @@ static void serial_omap_restore_context(struct uart_omap_port *up)
 	else
 		serial_out(up, UART_OMAP_MDR1, up->mdr1);
 	serial_out(up, UART_OMAP_WER, up->wer);
+
+	if (up->use_dma) {
+		if (up->errata & OMAP4_UART_ERRATA_i659_TX_THR) {
+			serial_out(up, UART_MDR3, SET_DMA_TX_THRESHOLD);
+			serial_out(up, UART_TX_DMA_THRESHOLD, TX_FIFO_THR_LVL);
+		}
+
+		serial_out(up, UART_TI752_TLR, 0);
+		serial_out(up, UART_OMAP_SCR,
+			(UART_FCR_TRIGGER_4 | OMAP_UART_SCR_RX_TRIG_GRANU1_MASK));
+	}
 }
 
 static int serial_omap_runtime_suspend(struct device *dev)
