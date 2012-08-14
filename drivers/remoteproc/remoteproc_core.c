@@ -2031,6 +2031,7 @@ static int rproc_loader_thread(struct rproc *rproc)
 	/* make some retries in case FS is not up yet */
 	do {
 		ret = request_firmware(&fw, rproc->firmware, dev);
+		msleep(2000);
 	} while (ret && time_after(to, jiffies));
 
 	if (ret || !fw) {
