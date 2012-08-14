@@ -951,6 +951,10 @@ static __init void exynos_gpiolib_powerdown_cfg(struct samsung_gpio_chip *chip)
 			/* con_pdn |= 0x0 << (i * 2); */
 			/* pud_pdn |= 0x0 << (i * 2); */
 			break;
+		case 6: /* Maintain powerup settings */
+			con_pdn |= 0x3 << (i * 2);
+			/* pud_pdn |= 0x0 << (i * 2); */
+			break;
 		default:
 			pr_warn("%s(%d): powerdown-settings illegal value %d\n",
 				chip->chip.label, i, value);

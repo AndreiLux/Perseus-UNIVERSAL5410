@@ -38,6 +38,7 @@ Required properties:
      3 - Pull down (input)
      4 - Output high
      5 - Output low
+     6 - Maintain powerup settings
 
 Example:
 
