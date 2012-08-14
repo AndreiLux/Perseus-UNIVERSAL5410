@@ -45,6 +45,7 @@ struct intel_hdmi {
 	bool has_hdmi_sink;
 	bool has_audio;
 	enum hdmi_force_audio force_audio;
+	u8 mode_code;
 	void (*write_infoframe)(struct drm_encoder *encoder,
 				struct dip_infoframe *frame);
 };
@@ -191,11 +192,15 @@ static void intel_set_infoframe(struct drm_encoder *encoder,
 
 static void intel_hdmi_set_avi_infoframe(struct drm_encoder *encoder)
 {
+	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(encoder);
+
 	struct dip_infoframe avi_if = {
 		.type = DIP_TYPE_AVI,
 		.ver = DIP_VERSION_AVI,
 		.len = DIP_LEN_AVI,
 	};
+
+	avi_if.body.avi.VIC = intel_hdmi->mode_code;
 
 	intel_set_infoframe(encoder, &avi_if);
 }
@@ -258,6 +263,8 @@ static void intel_hdmi_mode_set(struct drm_encoder *encoder,
 
 	I915_WRITE(intel_hdmi->sdvox_reg, sdvox);
 	POSTING_READ(intel_hdmi->sdvox_reg);
+
+	intel_hdmi->mode_code = drm_match_cea_mode(mode);
 
 	intel_hdmi_set_avi_infoframe(encoder);
 	intel_hdmi_set_spd_infoframe(encoder);
