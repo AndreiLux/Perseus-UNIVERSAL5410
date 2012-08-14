@@ -693,7 +693,7 @@ static void mixer_win_mode_set(void *ctx,
 
 	win_data->fb_x = overlay->fb_x;
 	win_data->fb_y = overlay->fb_y;
-	win_data->fb_width = overlay->fb_width;
+	win_data->fb_width = overlay->fb_pitch / (overlay->bpp >> 3);
 	win_data->fb_height = overlay->fb_height;
 
 	win_data->mode_width = overlay->mode_width;
