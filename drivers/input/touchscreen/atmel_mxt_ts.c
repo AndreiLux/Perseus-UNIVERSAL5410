@@ -780,7 +780,7 @@ static void mxt_input_touch(struct mxt_data *data, struct mxt_message *message)
 	}
 }
 
-static int mxt_proc_messages(struct mxt_data *data, u8 count)
+static int mxt_proc_messages(struct mxt_data *data, u8 count, bool report)
 {
 	struct device *dev = &data->client->dev;
 	struct mxt_message messages[count], *msg;
@@ -792,6 +792,8 @@ static int mxt_proc_messages(struct mxt_data *data, u8 count)
 		dev_err(dev, "Failed to read %u messages (%d).\n", count, ret);
 		return ret;
 	}
+	if (!report)
+		return 0;
 
 	update_input = false;
 	for (msg = messages; msg < &messages[count]; msg++) {
@@ -824,7 +826,7 @@ static int mxt_proc_messages(struct mxt_data *data, u8 count)
 	return 0;
 }
 
-static int mxt_handle_messages(struct mxt_data *data)
+static int mxt_handle_messages(struct mxt_data *data, bool report)
 {
 	struct device *dev = &data->client->dev;
 	int ret;
@@ -837,7 +839,7 @@ static int mxt_handle_messages(struct mxt_data *data)
 	}
 
 	if (count > 0)
-		ret = mxt_proc_messages(data, count);
+		ret = mxt_proc_messages(data, count, report);
 
 	return ret;
 }
@@ -921,7 +923,7 @@ static void mxt_exit_bl(struct mxt_data *data)
 		dev_err(dev, "Create input dev failed after init. error = %d\n",
 			error);
 
-	error = mxt_handle_messages(data);
+	error = mxt_handle_messages(data, false);
 	if (error)
 		dev_err(dev, "Handle messages failed after init. error = %d\n",
 			error);
@@ -936,7 +938,7 @@ static irqreturn_t mxt_interrupt(int irq, void *dev_id)
 		/* bootloader state transition completion */
 		complete(&data->bl_completion);
 	} else {
-		mxt_handle_messages(data);
+		mxt_handle_messages(data, true);
 	}
 	return IRQ_HANDLED;
 }
@@ -1881,7 +1883,7 @@ static ssize_t mxt_update_config_store(struct device *dev,
 		goto err;
 
 	/* Clear message buffer */
-	error = mxt_handle_messages(data);
+	error = mxt_handle_messages(data, true);
 	if (error)
 		goto err;
 
@@ -2509,7 +2511,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	}
 
 	if (!mxt_in_bootloader(data)) {
-		error = mxt_handle_messages(data);
+		error = mxt_handle_messages(data, true);
 		if (error)
 			goto err_free_irq;
 	}
@@ -2646,7 +2648,7 @@ static int mxt_resume(struct device *dev)
 	int ret;
 
 	/* Process any pending message so that CHG line can be de-asserted */
-	ret = mxt_handle_messages(data);
+	ret = mxt_handle_messages(data, false);
 	if (ret)
 		dev_err(dev, "Handling message fails upon resume, %d\n", ret);
 
