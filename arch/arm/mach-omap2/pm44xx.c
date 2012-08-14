@@ -481,12 +481,12 @@ static void __init prcm_setup_regs(void)
 #endif
 
 	/*
-	 * Errata ID: i608 Impacted OMAP4430 ES 1.0,2.0,2.1,2.2
+	 * Errata ID: i608 Impacted OMAP4430 and OMAP4460
 	 * On OMAP4, Retention-Till-Access Memory feature is not working
 	 * reliably and hardware recommondation is keep it disabled by
 	 * default
 	 */
-	if (cpu_is_omap443x()) {
+	if (cpu_is_omap44xx()) {
 	 omap4_prminst_rmw_inst_reg_bits(OMAP4430_DISABLE_RTA_EXPORT_MASK,
 		0x1 << OMAP4430_DISABLE_RTA_EXPORT_SHIFT,
 		OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST, OMAP4_PRM_SRAM_WKUP_SETUP_OFFSET);
