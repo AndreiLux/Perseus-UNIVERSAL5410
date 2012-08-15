@@ -3250,7 +3250,6 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	s3c_fb_activate_window_dma(sfb, pd->default_win);
 	s3c_fb_activate_window(sfb, pd->default_win);
 	sfb->output_on = true;
-	pm_runtime_put_sync(sfb->dev);
 
 	return 0;
 
