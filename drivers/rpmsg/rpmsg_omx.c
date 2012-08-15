@@ -140,6 +140,7 @@ static DEFINE_IDR(rpmsg_omx_services);
 static DEFINE_SPINLOCK(rpmsg_omx_services_lock);
 static LIST_HEAD(rpmsg_omx_services_list);
 
+#if defined(CONFIG_DMA_SHARED_BUFFER) || defined(CONFIG_ION_OMAP)
 static int _rpmsg_pa_to_da(struct rpmsg_omx_instance *omx, u32 pa, u32 *da)
 {
 	int ret;
@@ -162,6 +163,7 @@ static int _rpmsg_pa_to_da(struct rpmsg_omx_instance *omx, u32 pa, u32 *da)
 
 	return ret;
 }
+#endif
 
 #ifdef CONFIG_DMA_SHARED_BUFFER
 /*
@@ -241,11 +243,11 @@ static struct dma_info_t *rpmsg_omx_dma_find(struct rpmsg_omx_instance *omx, int
 static int _rpmsg_omx_buffer_get(struct rpmsg_omx_instance *omx,
 					long buffer, phys_addr_t *da)
 {
-	struct rpmsg_omx_service *omxserv = omx->omxserv;
 	int ret = -EIO;
 
 #ifdef CONFIG_DMA_SHARED_BUFFER
 	{
+		struct rpmsg_omx_service *omxserv = omx->omxserv;
 		int fd = (int) buffer;
 		phys_addr_t pa;
 
@@ -284,11 +286,11 @@ exit:
 static int _rpmsg_omx_buffer_put(struct rpmsg_omx_instance *omx,
 					long buffer, phys_addr_t *da)
 {
-	struct rpmsg_omx_service *omxserv = omx->omxserv;
 	int ret = -EIO;
 
 #ifdef CONFIG_DMA_SHARED_BUFFER
 	{
+		struct rpmsg_omx_service *omxserv = omx->omxserv;
 		int fd = (int) buffer;
 		phys_addr_t pa;
 
