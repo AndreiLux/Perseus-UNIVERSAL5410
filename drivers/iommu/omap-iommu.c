@@ -937,7 +937,6 @@ static struct omap_iommu *omap_iommu_attach(const char *name, u32 *iopgd)
 	int err = -ENOMEM;
 	struct device *dev;
 	struct omap_iommu *obj;
-	int pm_constraint;
 
 	dev = driver_find_device(&omap_iommu_driver.driver, NULL,
 				(void *)name,
@@ -954,13 +953,6 @@ static struct omap_iommu *omap_iommu_attach(const char *name, u32 *iopgd)
 		dev_err(dev, "%s: already attached!\n", obj->name);
 		err = -EBUSY;
 		goto err_enable;
-	}
-
-	pm_constraint = dev_to_pm_constraint(dev);
-	if (pm_constraint) {
-		err = omap_iommu_update_latency(obj, pm_constraint);
-		if (err)
-			goto err_enable;
 	}
 
 	obj->iopgd = iopgd;
@@ -981,10 +973,6 @@ err_module:
 	if (obj->refcount == 1)
 		iommu_disable(obj);
 err_enable:
-	if (!--obj->refcount) {
-		if (pm_constraint)
-			omap_iommu_update_latency(obj, PM_QOS_DEFAULT_VALUE);
-	}
 	spin_unlock(&obj->iommu_lock);
 	return ERR_PTR(err);
 }
@@ -995,19 +983,14 @@ err_enable:
  **/
 static void omap_iommu_detach(struct omap_iommu *obj)
 {
-	int pm_constraint;
-
 	if (!obj || IS_ERR(obj))
 		return;
 
 	spin_lock(&obj->iommu_lock);
 
-	if (--obj->refcount == 0) {
+	if (--obj->refcount == 0)
 		iommu_disable(obj);
-		pm_constraint = dev_to_pm_constraint(obj->dev);
-		if (pm_constraint)
-			omap_iommu_update_latency(obj, PM_QOS_DEFAULT_VALUE);
-	}
+
 	module_put(obj->owner);
 
 	obj->iopgd = NULL;
