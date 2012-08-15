@@ -110,6 +110,9 @@ int max77686_update_reg(struct i2c_client *i2c, u8 reg, u8 val, u8 mask)
 	struct max77686_dev *max77686 = i2c_get_clientdata(i2c);
 	int ret;
 
+	if (mask == 0xff)
+		return max77686_write_reg(i2c, reg, val);
+
 	mutex_lock(&max77686->iolock);
 	ret = i2c_smbus_read_byte_data(i2c, reg);
 	if (ret >= 0) {
