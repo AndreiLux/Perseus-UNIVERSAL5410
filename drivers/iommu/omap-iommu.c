@@ -949,7 +949,7 @@ static struct omap_iommu *omap_iommu_attach(const char *name, u32 *iopgd)
 	spin_lock(&obj->iommu_lock);
 
 	/* an iommu device can only be attached once */
-	if (++obj->refcount > 1) {
+	if (obj->refcount) {
 		dev_err(dev, "%s: already attached!\n", obj->name);
 		err = -EBUSY;
 		goto err_enable;
@@ -964,14 +964,15 @@ static struct omap_iommu *omap_iommu_attach(const char *name, u32 *iopgd)
 	if (!try_module_get(obj->owner))
 		goto err_module;
 
+	/* now we are definately attached, increment refcount */
+	obj->refcount++;
 	spin_unlock(&obj->iommu_lock);
 
 	dev_dbg(obj->dev, "%s: %s\n", __func__, obj->name);
 	return obj;
 
 err_module:
-	if (obj->refcount == 1)
-		iommu_disable(obj);
+	iommu_disable(obj);
 err_enable:
 	spin_unlock(&obj->iommu_lock);
 	return ERR_PTR(err);
@@ -988,13 +989,20 @@ static void omap_iommu_detach(struct omap_iommu *obj)
 
 	spin_lock(&obj->iommu_lock);
 
-	if (--obj->refcount == 0)
-		iommu_disable(obj);
+	if (obj->refcount != 1) {
+		pr_err("%s: Not detaching IOMMU %s as it is not attached\n",
+				__func__, obj->name);
+		goto err;
+	}
+
+	iommu_disable(obj);
+	obj->refcount--;
 
 	module_put(obj->owner);
 
 	obj->iopgd = NULL;
 
+err:
 	spin_unlock(&obj->iommu_lock);
 
 	dev_dbg(obj->dev, "%s: %s\n", __func__, obj->name);
