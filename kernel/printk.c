@@ -41,6 +41,7 @@
 #include <linux/cpu.h>
 #include <linux/notifier.h>
 #include <linux/rculist.h>
+#include <linux/workqueue.h>
 
 #include <asm/uaccess.h>
 
@@ -1253,6 +1254,14 @@ void wake_up_klogd(void)
 		this_cpu_or(printk_pending, PRINTK_PENDING_WAKEUP);
 }
 
+static void console_unlock_work_fn(struct work_struct *work)
+{
+	if (console_trylock())
+		console_unlock();
+}
+
+static DECLARE_WORK(console_unlock_work, console_unlock_work_fn);
+
 /**
  * console_unlock - unlock the console system
  *
@@ -1271,7 +1280,7 @@ void console_unlock(void)
 {
 	unsigned long flags;
 	unsigned _con_start, _log_end;
-	unsigned wake_klogd = 0, retry = 0;
+	unsigned wake_klogd = 0;
 
 	if (console_suspended) {
 		up(&console_sem);
@@ -1280,12 +1289,9 @@ void console_unlock(void)
 
 	console_may_schedule = 0;
 
-again:
-	for ( ; ; ) {
-		raw_spin_lock_irqsave(&logbuf_lock, flags);
-		wake_klogd |= log_start - log_end;
-		if (con_start == log_end)
-			break;			/* Nothing to print */
+	raw_spin_lock_irqsave(&logbuf_lock, flags);
+	wake_klogd |= log_start - log_end;
+	if (con_start != log_end) {
 		_con_start = con_start;
 		_log_end = log_end;
 		con_start = log_end;		/* Flush */
@@ -1293,31 +1299,27 @@ again:
 		stop_critical_timings();	/* don't trace print latency */
 		call_console_drivers(_con_start, _log_end);
 		start_critical_timings();
-		local_irq_restore(flags);
+	} else {
+		raw_spin_unlock(&logbuf_lock);
 	}
+
 	console_locked = 0;
 
 	/* Release the exclusive_console once it is used */
 	if (unlikely(exclusive_console))
 		exclusive_console = NULL;
 
-	raw_spin_unlock(&logbuf_lock);
-
 	up(&console_sem);
 
 	/*
-	 * Someone could have filled up the buffer again, so re-check if there's
-	 * something to flush. In case we cannot trylock the console_sem again,
-	 * there's a new owner and the console_unlock() from them will do the
-	 * flush, no worries.
+	 * Someone could have filled up the buffer again, so re-check and
+	 * schedule work if there's something to flush.
 	 */
 	raw_spin_lock(&logbuf_lock);
 	if (con_start != log_end)
-		retry = 1;
+		if (!work_pending(&console_unlock_work))
+			schedule_work(&console_unlock_work);
 	raw_spin_unlock_irqrestore(&logbuf_lock, flags);
-
-	if (retry && console_trylock())
-		goto again;
 
 	if (wake_klogd)
 		wake_up_klogd();
