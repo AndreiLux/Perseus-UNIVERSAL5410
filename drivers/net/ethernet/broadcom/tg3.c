@@ -13290,12 +13290,6 @@ static void __devinit tg3_get_eeprom_hw_cfg(struct tg3 *tp)
 		    !(nic_cfg & NIC_SRAM_DATA_CFG_FIBER_WOL))
 			tg3_flag_clear(tp, WOL_CAP);
 
-		if (tg3_flag(tp, WOL_CAP) &&
-		    (nic_cfg & NIC_SRAM_DATA_CFG_WOL_ENABLE)) {
-			tg3_flag_set(tp, WOL_ENABLE);
-			device_set_wakeup_enable(&tp->pdev->dev, true);
-		}
-
 		if (cfg2 & (1 << 17))
 			tp->phy_flags |= TG3_PHYFLG_CAPACITIVE_COUPLING;
 
