@@ -132,6 +132,18 @@ static inline int pm_genpd_add_device(struct generic_pm_domain *genpd,
 	return __pm_genpd_add_device(genpd, dev, NULL);
 }
 
+static inline int pm_genpd_of_add_device_by_name(
+					struct device_node *dev_node,
+					struct device *dev,
+					char *propname)
+{
+	u32 val;
+	struct device_node *genpd_node;
+	of_property_read_u32(dev_node, propname, &val);
+	genpd_node = of_find_node_by_phandle(val);
+	return __pm_genpd_of_add_device(genpd_node, dev, NULL);
+}
+
 static inline int pm_genpd_of_add_device(struct device_node *genpd_node,
 					 struct device *dev)
 {
@@ -175,6 +187,13 @@ static inline int __pm_genpd_add_device(struct generic_pm_domain *genpd,
 }
 static inline int pm_genpd_add_device(struct generic_pm_domain *genpd,
 				      struct device *dev)
+{
+	return -ENOSYS;
+}
+static inline int pm_genpd_of_add_device_by_name(
+					struct device_node *dev_node,
+					struct device *dev,
+					char *propname)
 {
 	return -ENOSYS;
 }
