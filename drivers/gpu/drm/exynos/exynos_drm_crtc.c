@@ -36,31 +36,6 @@
 #include "exynos_drm_gem.h"
 #include "exynos_trace.h"
 
-#define to_exynos_crtc(x)	container_of(x, struct exynos_drm_crtc,\
-				drm_crtc)
-
-/*
- * Exynos specific crtc structure.
- *
- * @drm_crtc: crtc object.
- * @overlay: contain information common to display controller and hdmi and
- *	contents of this overlay object would be copied to sub driver size.
- * @pipe: a crtc index created at load() with a new crtc object creation
- *	and the crtc object would be set to private->crtc array
- *	to get a crtc object corresponding to this pipe from private->crtc
- *	array when irq interrupt occured. the reason of using this pipe is that
- *	drm framework doesn't support multiple irq yet.
- *	we can refer to the crtc to current hardware interrupt occured through
- *	this pipe value.
- * @dpms: store the crtc dpms value
- */
-struct exynos_drm_crtc {
-	struct drm_crtc			drm_crtc;
-	struct exynos_drm_overlay	overlay;
-	unsigned int			pipe;
-	unsigned int			dpms;
-};
-
 static void exynos_drm_crtc_apply(struct drm_crtc *crtc)
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
@@ -305,18 +280,6 @@ static struct drm_crtc_helper_funcs exynos_crtc_helper_funcs = {
 };
 
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-#define to_exynos_fb(x)	container_of(x, struct exynos_drm_fb, fb)
-/*
- * exynos specific framebuffer structure.
- *
- * @fb: drm framebuffer obejct.
- * @exynos_gem_obj: array of exynos specific gem object containing a gem object.
-*/
-struct exynos_drm_fb {
-	struct drm_framebuffer		fb;
-	struct exynos_drm_gem_obj	*exynos_gem_obj[MAX_FB_BUFFER];
-};
-
 void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_parameter)
 {
 	struct drm_crtc *crtc = (struct drm_crtc *)callback_parameter;

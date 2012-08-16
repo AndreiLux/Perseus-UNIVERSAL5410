@@ -49,6 +49,7 @@
 struct drm_device;
 struct exynos_drm_overlay;
 struct drm_connector;
+struct exynos_drm_gem_object;
 
 extern unsigned int drm_vblank_offdelay;
 
@@ -307,6 +308,43 @@ int exynos_drm_subdrv_unregister(struct exynos_drm_subdrv *drm_subdrv);
 
 int exynos_drm_subdrv_open(struct drm_device *dev, struct drm_file *file);
 void exynos_drm_subdrv_close(struct drm_device *dev, struct drm_file *file);
+
+/*
+ * exynos specific framebuffer structure.
+ *
+ * @fb: drm framebuffer obejct.
+ * @exynos_gem_obj: array of exynos specific gem object containing a gem object.
+ */
+struct exynos_drm_fb {
+	struct drm_framebuffer		fb;
+	struct exynos_drm_gem_obj	*exynos_gem_obj[MAX_FB_BUFFER];
+};
+
+/*
+ * Exynos specific crtc structure.
+ *
+ * @drm_crtc: crtc object.
+ * @overlay: contain information common to display controller and hdmi and
+ *	contents of this overlay object would be copied to sub driver size.
+ * @pipe: a crtc index created at load() with a new crtc object creation
+ *	and the crtc object would be set to private->crtc array
+ *	to get a crtc object corresponding to this pipe from private->crtc
+ *	array when irq interrupt occured. the reason of using this pipe is that
+ *	drm framework doesn't support multiple irq yet.
+ *	we can refer to the crtc to current hardware interrupt occured through
+ *	this pipe value.
+ * @dpms: store the crtc dpms value
+ */
+struct exynos_drm_crtc {
+	struct drm_crtc			drm_crtc;
+	struct exynos_drm_overlay	overlay;
+	unsigned int			pipe;
+	unsigned int			dpms;
+};
+
+#define to_exynos_fb(x)	container_of(x, struct exynos_drm_fb, fb)
+#define to_exynos_crtc(x)	container_of(x, struct exynos_drm_crtc,\
+				drm_crtc)
 
 extern struct platform_driver fimd_driver;
 extern struct platform_driver hdmi_driver;

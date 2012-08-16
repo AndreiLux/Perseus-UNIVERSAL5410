@@ -36,19 +36,6 @@
 #include "exynos_drm_gem.h"
 #include "exynos_drm_crtc.h"
 
-#define to_exynos_fb(x)	container_of(x, struct exynos_drm_fb, fb)
-
-/*
- * exynos specific framebuffer structure.
- *
- * @fb: drm framebuffer obejct.
- * @exynos_gem_obj: array of exynos specific gem object containing a gem object.
- */
-struct exynos_drm_fb {
-	struct drm_framebuffer		fb;
-	struct exynos_drm_gem_obj	*exynos_gem_obj[MAX_FB_BUFFER];
-};
-
 void exynos_drm_wait_for_vsync(struct drm_device *drm_dev)
 {
 	struct exynos_drm_private *dev_priv = drm_dev->dev_private;
