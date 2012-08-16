@@ -60,30 +60,15 @@ void exynos_drm_wait_for_vsync(struct drm_device *drm_dev)
 static void exynos_drm_fb_destroy(struct drm_framebuffer *fb)
 {
 	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
-	struct exynos_drm_private *private = fb->dev->dev_private;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-	kds_callback_term(&private->kds_cb);
-	if (private->old_kds_res_set != NULL) {
-		kds_resource_set_release(&private->old_kds_res_set);
-		private->old_kds_res_set = NULL;
-	}
-
-	if (private->kds_res_set != NULL) {
-		kds_resource_set_release(&private->kds_res_set);
-		private->kds_res_set = NULL;
-	}
-
-	if (private->old_dma_buf != NULL) {
-		dma_buf_put(private->old_dma_buf);
-		private->old_dma_buf = NULL;
-	}
-	if (private->dma_buf != NULL) {
-		dma_buf_put(private->dma_buf);
-		private->dma_buf = NULL;
-	}
+	kds_callback_term(&exynos_fb->kds_cb);
+	if (exynos_fb->kds_res_set)
+		kds_resource_set_release(&exynos_fb->kds_res_set);
+	if (exynos_fb->dma_buf)
+		dma_buf_put(exynos_fb->dma_buf);
 #endif
 	drm_framebuffer_cleanup(fb);
 
@@ -91,7 +76,6 @@ static void exynos_drm_fb_destroy(struct drm_framebuffer *fb)
 	exynos_drm_wait_for_vsync(fb->dev);
 
 	kfree(exynos_fb);
-	exynos_fb = NULL;
 }
 
 static int exynos_drm_fb_create_handle(struct drm_framebuffer *fb,
@@ -159,11 +143,6 @@ exynos_user_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 	struct exynos_drm_fb *exynos_fb;
 	int nr;
 	int i;
-#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-	int direct;
-	int ret;
-	struct exynos_drm_private *private = dev->dev_private;
-#endif
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
@@ -196,13 +175,10 @@ exynos_user_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 		exynos_fb->exynos_gem_obj[i] = to_exynos_gem_obj(obj);
 	}
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-	private->old_kds_res_set = NULL;
-	direct = 1;
-
-	ret = kds_callback_init(&private->kds_cb, direct, exynos_drm_kds_callback);
-	if (ret < 0) {
+	if (kds_callback_init(&exynos_fb->kds_cb, 1,
+			      exynos_drm_kds_callback) < 0) {
 		DRM_ERROR("kds alloc queue failed.\n");
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 	}
 #endif
 

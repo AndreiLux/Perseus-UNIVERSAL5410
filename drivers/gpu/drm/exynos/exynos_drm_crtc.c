@@ -284,7 +284,6 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 {
 	struct drm_crtc *crtc = (struct drm_crtc *)callback_parameter;
 	struct drm_device *dev = crtc->dev;
-	struct exynos_drm_private *dev_priv = dev->dev_private;
 	struct drm_framebuffer *fb = callback_extra_parameter;
 	struct drm_framebuffer *old_fb = crtc->fb;
 	int ret = -EINVAL;
@@ -296,7 +295,7 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 	if (ret) {
 		crtc->fb = old_fb;
 		mutex_unlock(&dev->struct_mutex);
-		goto callback_out;
+		return;
 	}
 	/*
 	 * the values related to a buffer of the drm framebuffer
@@ -307,15 +306,17 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 	exynos_drm_crtc_apply(crtc);
 
 	mutex_unlock(&dev->struct_mutex);
-callback_out:
-	exynos_drm_wait_for_vsync(dev);
-	if (dev_priv->old_kds_res_set != NULL) {
-		kds_resource_set_release(&dev_priv->old_kds_res_set);
-		dev_priv->old_kds_res_set = NULL;
-	}
-	if (dev_priv->old_dma_buf != NULL) {
-		dma_buf_put(dev_priv->old_dma_buf);
-		dev_priv->old_dma_buf = NULL;
+
+	if (old_fb) {
+		struct exynos_drm_fb *old_exynos_fb = to_exynos_fb(old_fb);
+
+		exynos_drm_wait_for_vsync(dev);
+		if (old_exynos_fb->kds_res_set)
+			kds_resource_set_release(&old_exynos_fb->kds_res_set);
+		if (old_exynos_fb->dma_buf)
+			dma_buf_put(old_exynos_fb->dma_buf);
+		old_exynos_fb->kds_res_set = NULL;
+		old_exynos_fb->dma_buf = NULL;
 	}
 }
 #endif
@@ -364,29 +365,20 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-	if (dev_priv->old_kds_res_set != NULL)
-		kds_resource_set_release(&dev_priv->old_kds_res_set);
-	dev_priv->old_kds_res_set = dev_priv->kds_res_set;
-
-	if (dev_priv->old_dma_buf != NULL)
-		dma_buf_put(dev_priv->old_dma_buf);
-	dev_priv->old_dma_buf = dev_priv->dma_buf;
-
 	if (gem_ob->base.export_dma_buf) {
 		struct dma_buf *buf = gem_ob->base.export_dma_buf;
 		unsigned long shared[1] = {0};
 		struct kds_resource *resource_list[1] = {get_dma_buf_kds_resource(buf)};
 
 		get_dma_buf(buf);
-		dev_priv->dma_buf = buf;
+		exynos_fb->dma_buf = buf;
 
 		/* Waiting for the KDS resource*/
-		kds_async_waitall(&dev_priv->kds_res_set, KDS_FLAG_LOCKED_WAIT,
-				  &dev_priv->kds_cb, crtc, fb, 1, shared, resource_list);
+		kds_async_waitall(&exynos_fb->kds_res_set, KDS_FLAG_LOCKED_WAIT,
+				  &exynos_fb->kds_cb, crtc, fb, 1, shared,
+				  resource_list);
 	} else {
 		exynos_drm_kds_callback(crtc, fb);
-		dev_priv->kds_res_set = NULL;
-		dev_priv->dma_buf = NULL;
 	}
 #endif
 out:
