@@ -369,15 +369,15 @@ static void __init exynos5_add_device_to_pd(struct exynos_pm_dev **pm_dev, int s
 	for (i = 0; i < size; i++) {
 		tdev = pm_dev[i];
 
+		if (!tdev->con_id)
+			continue;
+
 		pclk = kzalloc(sizeof(struct exynos_pm_clk), GFP_KERNEL);
 
 		if (!pclk) {
 			pr_err("Unable to create new exynos_pm_clk\n");
 			continue;
 		}
-
-		if (!tdev->con_id)
-			continue;
 
 		clk = clk_get(&tdev->pdev->dev, tdev->con_id);
 
