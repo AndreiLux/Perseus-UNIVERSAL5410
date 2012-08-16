@@ -41,6 +41,7 @@ enum mif_level_idx {
 	LV_0,
 	LV_1,
 	LV_2,
+	LV_3,
 	_LV_END
 };
 
@@ -55,6 +56,9 @@ struct busfreq_data_mif {
 	struct mutex lock;
 
 	struct clk *mif_clk;
+	struct clk *mclk_cdrex;
+	struct clk *mout_mpll;
+	struct clk *mout_bpll;
 };
 
 struct mif_bus_opp_table {
@@ -65,8 +69,9 @@ struct mif_bus_opp_table {
 
 static struct mif_bus_opp_table exynos5_mif_opp_table[] = {
 	{LV_0, 800000, 1000000},
-	{LV_1, 400000, 1000000},
-	{LV_2, 160000, 1000000},
+	{LV_1, 667000, 1000000},
+	{LV_2, 400000, 1000000},
+	{LV_3, 160000, 1000000},
 	{0, 0, 0},
 };
 
@@ -79,6 +84,72 @@ static int exynos5_mif_setvolt(struct busfreq_data_mif *data, struct opp *opp)
 	rcu_read_unlock();
 
 	return regulator_set_voltage(data->vdd_mif, volt, MAX_SAFEVOLT);
+}
+
+static int exynos5_mif_setclk(struct busfreq_data_mif *data,
+		unsigned long new_freq)
+{
+	unsigned err = 0;
+	struct clk *old_p;
+	struct clk *new_p;
+	unsigned long old_p_rate;
+	unsigned long new_p_rate;
+	int div;
+
+	old_p = clk_get_parent(data->mclk_cdrex);
+	if (IS_ERR(old_p))
+		return PTR_ERR(old_p);
+	old_p_rate = clk_get_rate(old_p);
+	div = DIV_ROUND_CLOSEST(old_p_rate, new_freq);
+
+	if (abs(DIV_ROUND_UP(old_p_rate, div) - new_freq) > 1000000) {
+		new_p = (old_p == data->mout_bpll) ? data->mout_mpll :
+				data->mout_bpll;
+		new_p_rate = clk_get_rate(new_p);
+
+		if (new_p_rate > old_p_rate) {
+			/*
+			 * Needs to change to faster pll.  Change the divider
+			 * first, then switch to the new pll.  This only works
+			 * because the set_rate op on mif_clk doesn't know
+			 * anything about its current parent, it just applies
+			 * the dividers assuming the right pll has been selected
+			 * for the requested frequency.
+			 */
+			err = clk_set_rate(data->mif_clk, new_freq);
+			if (err) {
+				pr_info("clk_set_rate error %d\n", err);
+				goto out;
+			}
+
+			err = clk_set_parent(data->mclk_cdrex, new_p);
+			if (err) {
+				pr_info("clk_set_parent error %d\n", err);
+				goto out;
+			}
+		} else {
+			/*
+			 * Needs to change to a slower pll.  Switch to the new
+			 * pll first, then apply the new divider.
+			 */
+			err = clk_set_parent(data->mclk_cdrex, new_p);
+			if (err) {
+				pr_info("clk_set_parent error %d\n", err);
+				goto out;
+			}
+
+			err = clk_set_rate(data->mif_clk, new_freq);
+			if (err) {
+				pr_info("clk_set_rate error %d\n", err);
+				goto out;
+			}
+		}
+	} else {
+		/* No need to change pll */
+		err = clk_set_rate(data->mif_clk, new_freq);
+	}
+out:
+	return err;
 }
 
 static int exynos5_busfreq_mif_target(struct device *dev, unsigned long *_freq,
@@ -121,7 +192,7 @@ static int exynos5_busfreq_mif_target(struct device *dev, unsigned long *_freq,
 	if (err)
 		goto out;
 
-	err = clk_set_rate(data->mif_clk, freq * 1000);
+	err = exynos5_mif_setclk(data, freq * 1000);
 	if (err)
 		goto out;
 
@@ -206,7 +277,7 @@ static int exynos5_busfreq_mif_pm_notifier_event(struct notifier_block *this,
 		if (err)
 			goto unlock;
 
-		err = clk_set_rate(data->mif_clk, freq * 1000);
+		err = exynos5_mif_setclk(data, freq * 1000);
 		if (err)
 			goto unlock;
 
@@ -269,6 +340,27 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 		goto err_clock;
 	}
 
+	data->mclk_cdrex = clk_get(dev, "mclk_cdrex");
+	if (IS_ERR(data->mclk_cdrex)) {
+		dev_err(dev, "Cannot get clock \"mclk_crex\"\n");
+		err = PTR_ERR(data->mclk_cdrex);
+		goto err_mclk_cdrex;
+	}
+
+	data->mout_mpll = clk_get(dev, "mout_mpll");
+	if (IS_ERR(data->mout_mpll)) {
+		dev_err(dev, "Cannot get clock \"mout_mpll\"\n");
+		err = PTR_ERR(data->mout_mpll);
+		goto err_mout_mpll;
+	}
+
+	data->mout_bpll = clk_get(dev, "mout_bpll");
+	if (IS_ERR(data->mout_bpll)) {
+		dev_err(dev, "Cannot get clock \"mout_bpll\"\n");
+		err = PTR_ERR(data->mout_bpll);
+		goto err_mout_bpll;
+	}
+
 	rcu_read_lock();
 	opp = opp_find_freq_floor(dev, &exynos5_devfreq_mif_profile.initial_freq);
 	if (IS_ERR(opp)) {
@@ -286,6 +378,12 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 	err = clk_set_rate(data->mif_clk, initial_freq * 1000);
 	if (err) {
 		dev_err(dev, "Failed to set initial frequency\n");
+		goto err_opp_add;
+	}
+
+	err = clk_set_parent(data->mclk_cdrex, data->mout_mpll);
+	if (err) {
+		dev_err(dev, "Failed to set initial parent\n");
 		goto err_opp_add;
 	}
 
@@ -318,6 +416,12 @@ err_devfreq_add:
 	devfreq_remove_device(data->devfreq);
 	platform_set_drvdata(pdev, NULL);
 err_opp_add:
+	clk_put(data->mout_bpll);
+err_mout_bpll:
+	clk_put(data->mout_mpll);
+err_mout_mpll:
+	clk_put(data->mclk_cdrex);
+err_mclk_cdrex:
 	clk_put(data->mif_clk);
 err_clock:
 	regulator_put(data->vdd_mif);
@@ -333,6 +437,9 @@ static __devexit int exynos5_busfreq_mif_remove(struct platform_device *pdev)
 	devfreq_remove_device(data->devfreq);
 	regulator_put(data->vdd_mif);
 	clk_put(data->mif_clk);
+	clk_put(data->mclk_cdrex);
+	clk_put(data->mout_mpll);
+	clk_put(data->mout_bpll);
 	platform_set_drvdata(pdev, NULL);
 
 	return 0;
