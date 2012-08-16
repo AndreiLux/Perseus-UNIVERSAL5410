@@ -2481,11 +2481,39 @@ static void pl330_free_chan_resources(struct dma_chan *chan)
 	spin_unlock_irqrestore(&pch->lock, flags);
 }
 
+static unsigned int pl330_tx_residue(struct dma_chan *chan)
+{
+	struct dma_pl330_chan *pch = to_pchan(chan);
+	void __iomem *regs = pch->dmac->pif.base;
+	struct pl330_thread *thrd = pch->pl330_chid;
+	struct dma_pl330_desc *desc;
+	unsigned int sar;
+
+	sar = readl(regs + SA(thrd->id));
+
+	/* Find the desc related to the current buffer. */
+	list_for_each_entry(desc, &pch->work_list, node)
+		if (desc->px.src_addr <= sar &&
+		    sar < (desc->px.src_addr + desc->px.bytes))
+			break;
+
+	if (!desc)
+		return 0;
+
+	return desc->px.bytes - (sar - desc->px.src_addr);
+}
+
 static enum dma_status
 pl330_tx_status(struct dma_chan *chan, dma_cookie_t cookie,
 		 struct dma_tx_state *txstate)
 {
-	return dma_cookie_status(chan, cookie, txstate);
+	enum dma_status ret;
+
+	ret = dma_cookie_status(chan, cookie, txstate);
+	if (ret != DMA_SUCCESS) /* Not complete, check amount left. */
+		dma_set_residue(txstate, pl330_tx_residue(chan));
+
+	return ret;
 }
 
 static void pl330_issue_pending(struct dma_chan *chan)
