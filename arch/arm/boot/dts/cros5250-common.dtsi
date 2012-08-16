@@ -406,6 +406,10 @@
 
 	xhci {
 		samsung,vbus-gpio = <&gpx2 7 1 3 3>;
+		phy {
+			compatible = "samsung,exynos-usbphy";
+			clock-enable-gpio = <&gpy1 1 1 0 3>;
+		};
 	};
 
 	fixed-regulator {
