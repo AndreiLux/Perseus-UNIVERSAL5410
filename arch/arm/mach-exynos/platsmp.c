@@ -161,10 +161,9 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 		smp_rmb();
 
 #ifdef CONFIG_ARM_TRUSTZONE
-		exynos_smc(SMC_CMD_CPU1BOOT, 0, 0, 0);
-
 		__raw_writel(virt_to_phys(exynos4_secondary_startup),
 			S5P_VA_SYSRAM_NS + 0x1C);
+		exynos_smc(SMC_CMD_CPU1BOOT, 0, 0, 0);
 #else
 		__raw_writel(virt_to_phys(exynos4_secondary_startup),
 			cpu_boot_info[cpu].boot_base);
