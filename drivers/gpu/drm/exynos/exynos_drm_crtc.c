@@ -283,6 +283,7 @@ static struct drm_crtc_helper_funcs exynos_crtc_helper_funcs = {
 void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_parameter)
 {
 	struct drm_crtc *crtc = (struct drm_crtc *)callback_parameter;
+	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 	struct drm_device *dev = crtc->dev;
 	struct drm_framebuffer *fb = callback_extra_parameter;
 	struct drm_framebuffer *old_fb = crtc->fb;
@@ -318,6 +319,7 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 		old_exynos_fb->kds_res_set = NULL;
 		old_exynos_fb->dma_buf = NULL;
 	}
+	atomic_inc(&exynos_crtc->flip_pending);
 }
 #endif
 

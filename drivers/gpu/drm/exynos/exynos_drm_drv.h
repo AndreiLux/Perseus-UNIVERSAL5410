@@ -336,12 +336,14 @@ struct exynos_drm_fb {
  *	we can refer to the crtc to current hardware interrupt occured through
  *	this pipe value.
  * @dpms: store the crtc dpms value
+ * @flip_pending: there is a flip pending that we need to process next vblank
  */
 struct exynos_drm_crtc {
 	struct drm_crtc			drm_crtc;
 	struct exynos_drm_overlay	overlay;
 	unsigned int			pipe;
 	unsigned int			dpms;
+	atomic_t			flip_pending;
 };
 
 #define to_exynos_fb(x)	container_of(x, struct exynos_drm_fb, fb)
