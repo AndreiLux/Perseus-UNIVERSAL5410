@@ -631,6 +631,15 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
+static void pm_runtime_ctl(struct i2s_dai *i2s, bool enabled)
+{
+	struct platform_device *pdev = NULL;
+
+	pdev = is_secondary(i2s) ? i2s->pri_dai->pdev : i2s->pdev;
+	enabled ? pm_runtime_get_sync(&pdev->dev)
+		: pm_runtime_put_sync(&pdev->dev);
+}
+
 /* We set constraints on the substream acc to the version of I2S */
 static int i2s_startup(struct snd_pcm_substream *substream,
 	  struct snd_soc_dai *dai)
@@ -638,6 +647,8 @@ static int i2s_startup(struct snd_pcm_substream *substream,
 	struct i2s_dai *i2s = to_info(dai);
 	struct i2s_dai *other = i2s->pri_dai ? : i2s->sec_dai;
 	unsigned long flags;
+
+	pm_runtime_ctl(i2s, true);
 
 	spin_lock_irqsave(&lock, flags);
 
@@ -681,6 +692,8 @@ static void i2s_shutdown(struct snd_pcm_substream *substream,
 	if (!is_opened(other))
 		i2s_set_sysclk(dai, SAMSUNG_I2S_CDCLK,
 				0, SND_SOC_CLOCK_IN);
+
+	 pm_runtime_ctl(i2s, false);
 }
 
 static int config_setup(struct i2s_dai *i2s)
@@ -862,6 +875,26 @@ static int i2s_resume(struct snd_soc_dai *dai)
 #define i2s_resume  NULL
 #endif
 
+#ifdef CONFIG_PM_RUNTIME
+static int i2s_runtime_suspend(struct device *dev)
+{
+	struct i2s_dai *i2s = dev_get_drvdata(dev);
+
+	clk_disable(i2s->clk);
+
+	return 0;
+}
+
+static int i2s_runtime_resume(struct device *dev)
+{
+	struct i2s_dai *i2s = dev_get_drvdata(dev);
+
+	clk_enable(i2s->clk);
+
+	return 0;
+}
+#endif /* CONFIG_PM_RUNTIME */
+
 static int samsung_i2s_dai_probe(struct snd_soc_dai *dai)
 {
 	struct i2s_dai *i2s = to_info(dai);
@@ -911,6 +944,7 @@ probe_exit:
 		i2s_set_sysclk(dai, SAMSUNG_I2S_CDCLK,
 				0, SND_SOC_CLOCK_IN);
 
+	clk_disable(i2s->clk);
 	return 0;
 }
 
@@ -1190,12 +1224,18 @@ static const struct of_device_id exynos_i2s_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_i2s_match);
 #endif
 
+static const struct dev_pm_ops samsung_i2s_pm = {
+	SET_RUNTIME_PM_OPS(i2s_runtime_suspend,
+				i2s_runtime_resume, NULL)
+};
+
 static struct platform_driver samsung_i2s_driver = {
 	.probe  = samsung_i2s_probe,
 	.remove = __devexit_p(samsung_i2s_remove),
 	.driver = {
 		.name = "samsung-i2s",
 		.owner = THIS_MODULE,
+		.pm = &samsung_i2s_pm,
 		.of_match_table = of_match_ptr(exynos_i2s_match),
 	},
 };
