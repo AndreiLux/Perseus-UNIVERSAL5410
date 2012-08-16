@@ -149,6 +149,8 @@ static int daisy_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	int bfs, psr, rfs, ret;
 	unsigned long rclk;
+	unsigned long xtal;
+	struct clk *xtal_clk;
 
 	switch (params_format(params)) {
 	case SNDRV_PCM_FORMAT_U24:
@@ -240,7 +242,16 @@ static int daisy_hw_params(struct snd_pcm_substream *substream,
 	if (ret < 0)
 		return ret;
 
-	ret = snd_soc_dai_set_sysclk(codec_dai, 0, rclk, SND_SOC_CLOCK_IN);
+	xtal_clk = clk_get(NULL, "xtal"); /*xtal clk is input to codec MCLK1*/
+	if (IS_ERR(xtal_clk)) {
+		printk(KERN_ERR "%s: failed to get xtal clock\n", __func__);
+		return PTR_ERR(xtal_clk);
+	}
+
+	xtal = clk_get_rate(xtal_clk);
+	clk_put(xtal_clk);
+
+	ret = snd_soc_dai_set_sysclk(codec_dai, 0, xtal, SND_SOC_CLOCK_IN);
 	if (ret < 0)
 		return ret;
 
