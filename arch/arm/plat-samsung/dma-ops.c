@@ -116,6 +116,19 @@ static inline int samsung_dmadev_flush(unsigned ch)
 	return dmaengine_terminate_all((struct dma_chan *)ch);
 }
 
+static unsigned samsung_dmadev_residue(unsigned ch)
+{
+	struct dma_chan *chan = (struct dma_chan *)ch;
+	enum dma_status ret;
+	struct dma_tx_state state;
+
+	ret = chan->device->device_tx_status(chan, chan->cookie, &state);
+	if (ret == DMA_SUCCESS) /* Transfer complete. */
+		return 0;
+
+	return state.residue;
+}
+
 static struct samsung_dma_ops dmadev_ops = {
 	.request	= samsung_dmadev_request,
 	.release	= samsung_dmadev_release,
@@ -124,6 +137,7 @@ static struct samsung_dma_ops dmadev_ops = {
 	.started	= NULL,
 	.flush		= samsung_dmadev_flush,
 	.stop		= samsung_dmadev_flush,
+	.residue	= samsung_dmadev_residue,
 };
 
 void *samsung_dmadev_get_ops(void)
