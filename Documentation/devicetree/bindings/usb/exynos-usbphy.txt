@@ -1,0 +1,29 @@
+* Samsung's USB phy built in to some SoCs (like exynos5)
+
+The phy's node in the device tree must be a child of the device tree node for
+the USB controller using the phy.
+
+Required properties:
+  - compatible: value should be:
+      (a) "samsung,exynos-usbphy"
+
+Optional properties:
+  - clock-enable-gpio: If present then an external GPIO is used to turn on the
+    external clock for the USB phy.  The external clock is needed to get full
+    USB 3.0 compliance.  This GPIO is turned off and we move to an internal
+    reference clock (which is noisier) when in runtime suspend.
+    If this GPIO isn't specified we'll stay with the internal reference clock
+    always.
+
+Example (including containing node):
+	xhci {
+		compatible = "samsung,exynos-xhci";
+		reg = <0x12000000 0x10000>;
+		interrupts = <0 72 0>;
+
+		samsung,vbus-gpio = <&gpx2 7 1 3 3>;
+		phy {
+			compatible = "samsung,exynos-usbphy";
+			clock-enable-gpio = <&gpy1 1 1 0 3>;
+		};
+	};

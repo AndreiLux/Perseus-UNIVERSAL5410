@@ -22,6 +22,9 @@
 #include <linux/clk.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
+#include <linux/pm_runtime.h>
+
+#include <plat/usb-phy.h>
 
 #include "core.h"
 
@@ -30,6 +33,7 @@ struct dwc3_exynos {
 	struct device		*dev;
 
 	struct clk		*clk;
+	int			phyclk_gpio;
 };
 
 static int dwc3_setup_vbus_gpio(struct platform_device *pdev)
@@ -53,6 +57,42 @@ static int dwc3_setup_vbus_gpio(struct platform_device *pdev)
 	gpio_set_value(gpio, 1);
 
 	return err;
+}
+
+/*
+ * This function gets the GPIO for phyclk from the device tree.
+ *
+ * If there is nothing in the device tree this returns an error.  If there
+ * is something in the device tree it returns that GPIO.
+ *
+ * NOTE: This also has the side effect of initting the GPIO to enable the
+ * phy clock, since that's the default value.
+ */
+static int dwc3_exynos_phyclk_get_gpio(struct platform_device *pdev)
+{
+	struct device_node *usbphy;
+	int gpio;
+	int ret;
+
+	if (!pdev->dev.of_node)
+		return -ENODEV;
+
+	usbphy = of_find_compatible_node(pdev->dev.of_node, NULL,
+					 "samsung,exynos-usbphy");
+	if (usbphy == NULL)
+		ret = -ENODEV;
+
+	gpio = of_get_named_gpio(usbphy, "clock-enable-gpio", 0);
+	if (!gpio_is_valid(gpio))
+		return -ENODEV;
+	dev_dbg(&pdev->dev, "phyclk_gpio = %d\n", gpio);
+
+	ret = gpio_request_one(gpio, GPIOF_INIT_HIGH, "dwc3_phy_clock_en");
+	if (ret) {
+		dev_err(&pdev->dev, "can't request phyclk gpio %d\n", gpio);
+		return ret;
+	}
+	return gpio;
 }
 
 static u64 dwc3_exynos_dma_mask = DMA_BIT_MASK(32);
@@ -112,12 +152,16 @@ static int __devinit dwc3_exynos_probe(struct platform_device *pdev)
 	clk_enable(exynos->clk);
 
 	/* PHY initialization */
+	exynos->phyclk_gpio = dwc3_exynos_phyclk_get_gpio(pdev);
 	if (!pdata) {
 		dev_dbg(&pdev->dev, "missing platform data\n");
 	} else {
 		if (pdata->phy_init)
 			pdata->phy_init(pdev, pdata->phy_type);
 	}
+
+	pm_runtime_set_active(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
 
 	ret = platform_device_add_resources(dwc3, pdev->resource,
 			pdev->num_resources);
@@ -140,6 +184,7 @@ err4:
 
 	clk_disable(clk);
 	clk_put(clk);
+	pm_runtime_disable(&pdev->dev);
 err3:
 	platform_device_put(dwc3);
 err2:
@@ -154,6 +199,8 @@ static int __devexit dwc3_exynos_remove(struct platform_device *pdev)
 {
 	struct dwc3_exynos	*exynos = platform_get_drvdata(pdev);
 	struct dwc3_exynos_data *pdata = pdev->dev.platform_data;
+
+	pm_runtime_disable(&pdev->dev);
 
 	platform_device_unregister(exynos->dwc3);
 
@@ -170,6 +217,57 @@ static int __devexit dwc3_exynos_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_USB_SUSPEND
+static int dwc3_exynos_runtime_suspend(struct device *dev)
+{
+	struct dwc3_exynos	*exynos = dev_get_drvdata(dev);
+	struct platform_device	*pdev = container_of(dev,
+						struct platform_device, dev);
+	struct dwc3_exynos_data	*pdata = pdev->dev.platform_data;
+
+	dev_dbg(dev, "entering runtime suspend\n");
+
+	if (!pdata) {
+		dev_dbg(&pdev->dev, "missing platform data\n");
+	} else {
+		if (pdata->phyclk_switch)
+			pdata->phyclk_switch(pdev, false);
+	}
+
+	if (gpio_is_valid(exynos->phyclk_gpio))
+		gpio_set_value(exynos->phyclk_gpio, 0);
+
+	return 0;
+}
+
+static int dwc3_exynos_runtime_resume(struct device *dev)
+{
+	struct dwc3_exynos	*exynos = dev_get_drvdata(dev);
+	struct platform_device	*pdev = container_of(dev,
+						struct platform_device, dev);
+	struct dwc3_exynos_data	*pdata = pdev->dev.platform_data;
+
+	dev_dbg(dev, "entering runtime resume\n");
+
+	if (gpio_is_valid(exynos->phyclk_gpio))
+		gpio_set_value(exynos->phyclk_gpio, 1);
+
+	if (!pdata) {
+		dev_dbg(&pdev->dev, "missing platform data\n");
+	} else {
+		if (pdata->phyclk_switch)
+			pdata->phyclk_switch(pdev, true);
+	}
+
+	return 0;
+}
+
+static const struct dev_pm_ops dwc3_exynos_pm_ops = {
+	.runtime_suspend	= dwc3_exynos_runtime_suspend,
+	.runtime_resume		= dwc3_exynos_runtime_resume,
+};
+#endif
+
 #ifdef CONFIG_OF
 static const struct of_device_id exynos_xhci_match[] = {
 	{ .compatible = "samsung,exynos-xhci" },
@@ -184,6 +282,9 @@ static struct platform_driver dwc3_exynos_driver = {
 	.driver		= {
 		.name	= "exynos-dwc3",
 		.of_match_table = of_match_ptr(exynos_xhci_match),
+#ifdef CONFIG_USB_SUSPEND
+		.pm = &dwc3_exynos_pm_ops,
+#endif
 	},
 };
 
