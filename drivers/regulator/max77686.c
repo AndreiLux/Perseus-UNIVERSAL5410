@@ -40,6 +40,8 @@ struct max77686_data {
 	int num_regulators;
 	struct regulator_dev **rdev;
 	int ramp_delay;		/* index of ramp_delay */
+	int current_val[MAX77686_REG_MAX];	/* current regulator setting,
+						   or -1 if unknown */
 
 	/*GPIO-DVS feature is not enabled with the
 	 *current version of MAX77686 driver.*/
@@ -283,6 +285,7 @@ static int max77686_get_voltage(struct regulator_dev *rdev)
 {
 	struct max77686_data *max77686 = rdev_get_drvdata(rdev);
 	struct i2c_client *i2c = max77686->iodev->i2c;
+	int rid = rdev_get_id(rdev);
 	int reg, shift, mask, ret;
 	u8 val;
 
@@ -291,11 +294,15 @@ static int max77686_get_voltage(struct regulator_dev *rdev)
 		return ret;
 
 	ret = max77686_read_reg(i2c, reg, &val);
-	if (ret)
+	if (ret) {
+		max77686->current_val[rid] = -1;
 		return ret;
+	}
 
 	val >>= shift;
 	val &= mask;
+
+	max77686->current_val[rid] = val;
 
 	return max77686_list_voltage(rdev, val);
 }
@@ -352,10 +359,16 @@ static int max77686_set_voltage(struct regulator_dev *rdev,
 	if (ret)
 		return ret;
 
-	max77686_read_reg(i2c, reg, &org);
-	org = (org & mask) >> shift;
+	org = max77686->current_val[rid];
+	if (org == -1) {
+		ret = max77686_read_reg(i2c, reg, &org);
+		if (ret)
+			return ret;
+		org = (org & mask) >> shift;
+	}
 
 	ret = max77686_update_reg(i2c, reg, i << shift, mask << shift);
+	max77686->current_val[rid] = (ret) ? -1 : i;
 	*selector = i;
 
 	if (rid == MAX77686_BUCK2 || rid == MAX77686_BUCK3 ||
@@ -566,6 +579,9 @@ static __devinit int max77686_pmic_probe(struct platform_device *pdev)
 	max77686->dev = &pdev->dev;
 	max77686->iodev = iodev;
 	max77686->num_regulators = pdata->num_regulators;
+
+	for (i = 0; i < MAX77686_REG_MAX; i++)
+		max77686->current_val[i] = -1;
 
 	if (pdata->ramp_delay) {
 		max77686->ramp_delay = pdata->ramp_delay;
