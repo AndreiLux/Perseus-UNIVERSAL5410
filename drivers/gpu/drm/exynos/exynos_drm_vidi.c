@@ -413,13 +413,6 @@ static void vidi_finish_pageflip(struct drm_device *drm_dev, int crtc_idx)
 	spin_unlock_irqrestore(&drm_dev->event_lock, flags);
 
 	drm_vblank_put(drm_dev, crtc_idx);
-
-	/*
-	 * don't off vblank if vblank_disable_allowed is 1,
-	 * because vblank would be off by timer handler.
-	 */
-	if (!drm_dev->vblank_disable_allowed)
-		drm_vblank_off(drm_dev, crtc_idx);
 }
 
 static void vidi_fake_vblank_handler(struct work_struct *work)
