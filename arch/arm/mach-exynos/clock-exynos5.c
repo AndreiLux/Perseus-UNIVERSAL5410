@@ -1654,6 +1654,7 @@ static u32 epll_div[][6] = {
 	{  49152000, 0, 49, 3, 3, 9961 },
 	{  45158400, 0, 45, 3, 3, 10381 },
 	{ 180633600, 0, 45, 3, 1, 10381 },
+	{ 32768000, 0, 131, 3, 5, 4719 },
 };
 
 static int exynos5_gpll_set_rate(struct clk *clk, unsigned long rate)
