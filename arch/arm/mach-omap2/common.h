@@ -294,7 +294,12 @@ extern u32 omap_get_arm_rev(void);
 static inline unsigned int omap4_get_diagctrl0_errata_flags(void)
 {
 	unsigned int ret  = 0;
+#if defined(CONFIG_OMAP4_ARM_ERRATA_742230) \
+	|| defined(CONFIG_OMAP4_ARM_ERRATA_751472) \
+	|| defined(CONFIG_OMAP4_ARM_ERRATA_743622)
+
 	u32 arm_rev = omap_get_arm_rev();
+#endif
 #ifdef CONFIG_OMAP4_ARM_ERRATA_742230
 	if ((arm_rev >= 0x10) && (arm_rev <= 0x22))
 		ret |= (1 << 4);
