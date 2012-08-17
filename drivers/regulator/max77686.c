@@ -34,6 +34,12 @@
 #include <linux/mfd/max77686.h>
 #include <linux/mfd/max77686-private.h>
 
+#define MAX77686_OPMODE_BUCK156789_SHIFT	0x0
+#define MAX77686_OPMODE_BUCK234_SHIFT		0x4
+#define MAX77686_OPMODE_LDO_SHIFT		0x6
+#define MAX77686_OPMODE_MASK			0x3
+#define MAX77686_CLOCK_OPMODE_MASK		0x1
+
 struct max77686_data {
 	struct device *dev;
 	struct max77686_dev *iodev;
@@ -153,42 +159,44 @@ static int max77686_get_enable_register(struct regulator_dev *rdev,
 					int *reg, int *mask, int *pattern)
 {
 	int rid = rdev_get_id(rdev);
+	struct max77686_data *max77686 = rdev_get_drvdata(rdev);
+	int i;
+	int op_mode;
+	for (i = 0; i < max77686->iodev->pdata->num_regulators; i++)
+		if (rid == max77686->iodev->pdata->regulators[i].id)
+			break;
+
+	if (i == max77686->iodev->pdata->num_regulators) {
+		dev_err(max77686->iodev->dev, "No matching regulators\n");
+		return -ENODEV;
+	}
+	op_mode = max77686->iodev->pdata->regulators[i].reg_op_mode;
 
 	switch (rid) {
 	case MAX77686_LDO1...MAX77686_LDO26:
 		*reg = MAX77686_REG_LDO1CTRL1 + (rid - MAX77686_LDO1);
-		*mask = 0xC0;
-		*pattern = 0xC0;
+		*mask = MAX77686_OPMODE_MASK << MAX77686_OPMODE_LDO_SHIFT;
+		*pattern = op_mode << MAX77686_OPMODE_LDO_SHIFT;
 		break;
 	case MAX77686_BUCK1:
 		*reg = MAX77686_REG_BUCK1CTRL;
-		*mask = 0x03;
-		*pattern = 0x03;
+		*mask = MAX77686_OPMODE_MASK << MAX77686_OPMODE_BUCK156789_SHIFT;
+		*pattern = op_mode << MAX77686_OPMODE_BUCK156789_SHIFT;
 		break;
-	case MAX77686_BUCK2:
-		*reg = MAX77686_REG_BUCK2CTRL1;
-		*mask = 0x30;
-		*pattern = 0x10;
-		break;
-	case MAX77686_BUCK3:
-		*reg = MAX77686_REG_BUCK3CTRL1;
-		*mask = 0x30;
-		*pattern = 0x10;
-		break;
-	case MAX77686_BUCK4:
-		*reg = MAX77686_REG_BUCK4CTRL1;
-		*mask = 0x30;
-		*pattern = 0x10;
+	case MAX77686_BUCK2...MAX77686_BUCK4:
+		*reg = MAX77686_REG_BUCK2CTRL1 + (rid - MAX77686_BUCK2) * 10;
+		*mask = MAX77686_OPMODE_MASK << MAX77686_OPMODE_BUCK234_SHIFT;
+		*pattern = op_mode << MAX77686_OPMODE_BUCK234_SHIFT;
 		break;
 	case MAX77686_BUCK5...MAX77686_BUCK9:
 		*reg = MAX77686_REG_BUCK5CTRL + (rid - MAX77686_BUCK5) * 2;
-		*mask = 0x03;
-		*pattern = 0x03;
+		*mask = MAX77686_OPMODE_MASK << MAX77686_OPMODE_BUCK156789_SHIFT;
+		*pattern = op_mode << MAX77686_OPMODE_BUCK156789_SHIFT;
 		break;
 	case MAX77686_EN32KHZ_AP...MAX77686_P32KH:
 		*reg = MAX77686_REG_32KHZ_;
-		*mask = 0x01 << (rid - MAX77686_EN32KHZ_AP);
-		*pattern = 0x01 << (rid - MAX77686_EN32KHZ_AP);
+		*mask = MAX77686_CLOCK_OPMODE_MASK << (rid - MAX77686_EN32KHZ_AP);
+		*pattern = MAX77686_CLOCK_OPMODE_MASK << (rid - MAX77686_EN32KHZ_AP);
 		break;
 	default:
 		/* Not controllable or not exists */
@@ -198,7 +206,7 @@ static int max77686_get_enable_register(struct regulator_dev *rdev,
 	return 0;
 }
 
-static int max77686_reg_is_enabled(struct regulator_dev *rdev)
+static int max77686_vreg_is_enabled(struct regulator_dev *rdev)
 {
 	struct max77686_data *max77686 = rdev_get_drvdata(rdev);
 	struct i2c_client *i2c = max77686->iodev->i2c;
@@ -216,7 +224,7 @@ static int max77686_reg_is_enabled(struct regulator_dev *rdev)
 	return (val & mask) == pattern;
 }
 
-static int max77686_reg_enable(struct regulator_dev *rdev)
+static int max77686_vreg_enable(struct regulator_dev *rdev)
 {
 	struct max77686_data *max77686 = rdev_get_drvdata(rdev);
 	struct i2c_client *i2c = max77686->iodev->i2c;
@@ -229,7 +237,7 @@ static int max77686_reg_enable(struct regulator_dev *rdev)
 	return max77686_update_reg(i2c, reg, pattern, mask);
 }
 
-static int max77686_reg_disable(struct regulator_dev *rdev)
+static int max77686_vreg_disable(struct regulator_dev *rdev)
 {
 	struct max77686_data *max77686 = rdev_get_drvdata(rdev);
 	struct i2c_client *i2c = max77686->iodev->i2c;
@@ -384,22 +392,22 @@ static int max77686_set_voltage(struct regulator_dev *rdev,
 
 static struct regulator_ops max77686_ops = {
 	.list_voltage = max77686_list_voltage,
-	.is_enabled = max77686_reg_is_enabled,
-	.enable = max77686_reg_enable,
-	.disable = max77686_reg_disable,
+	.is_enabled = max77686_vreg_is_enabled,
+	.enable = max77686_vreg_enable,
+	.disable = max77686_vreg_disable,
 	.get_voltage = max77686_get_voltage,
 	.set_voltage = max77686_set_voltage,
-	.set_suspend_enable = max77686_reg_enable,
-	.set_suspend_disable = max77686_reg_disable,
+	.set_suspend_enable = max77686_vreg_enable,
+	.set_suspend_disable = max77686_vreg_disable,
 };
 
 static struct regulator_ops max77686_fixedvolt_ops = {
 	.list_voltage = max77686_list_voltage,
-	.is_enabled = max77686_reg_is_enabled,
-	.enable = max77686_reg_enable,
-	.disable = max77686_reg_disable,
-	.set_suspend_enable = max77686_reg_enable,
-	.set_suspend_disable = max77686_reg_disable,
+	.is_enabled = max77686_vreg_is_enabled,
+	.enable = max77686_vreg_enable,
+	.disable = max77686_vreg_disable,
+	.set_suspend_enable = max77686_vreg_enable,
+	.set_suspend_disable = max77686_vreg_disable,
 };
 
 #define regulator_desc_ldo(num)		{	\
@@ -524,6 +532,18 @@ static int max77686_pmic_dt_parse_pdata(struct max77686_dev *iodev,
 		rdata->initdata = of_get_regulator_init_data(
 						iodev->dev, reg_np);
 		rdata->reg_node = reg_np;
+		if (of_property_read_u32(reg_np, "reg_op_mode",
+				&rdata->reg_op_mode)) {
+			dev_warn(iodev->dev, "no op_mode property property at %s\n",
+				reg_np->full_name);
+			/*
+			 * Set operating mode to NORMAL "ON" as default. The
+			 * 32KHz clocks are being turned on and kept on by
+			 * default, so the below mode setting does not impact
+			 * it.
+			 */
+			rdata->reg_op_mode = MAX77686_OPMODE_MASK;
+		}
 		rdata++;
 	}
 

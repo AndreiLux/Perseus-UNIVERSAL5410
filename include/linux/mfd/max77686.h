@@ -85,6 +85,7 @@ struct max77686_regulator_data {
 	int id;
 	struct regulator_init_data *initdata;
 	struct device_node *reg_node;
+	unsigned int reg_op_mode;
 };
 
 struct max77686_platform_data {
