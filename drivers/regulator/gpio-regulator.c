@@ -245,12 +245,6 @@ static int __devinit gpio_regulator_probe(struct platform_device *pdev)
 		 * to prevent glitch
 		 */
 		if (config->enabled_at_boot) {
-			if (drvdata->startup_delay >= 1000) {
-				mdelay(drvdata->startup_delay / 1000);
-				udelay(drvdata->startup_delay % 1000);
-			} else if (drvdata->startup_delay) {
-				udelay(drvdata->startup_delay);
-			}
 			drvdata->is_enabled = true;
 			ret = gpio_direction_output(config->enable_gpio,
 						    config->enable_high);
