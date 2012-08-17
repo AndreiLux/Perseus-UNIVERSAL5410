@@ -648,6 +648,10 @@ static int s3c64xx_spi_transfer_one_message(struct spi_master *master,
 	u32 speed;
 	u8 bpw;
 
+	/* Acquire DMA channels */
+	while (!acquire_dma(sdd))
+		msleep(10);
+
 	/* If Master's(controller) state differs from that needed by Slave */
 	if (sdd->cur_speed != spi->max_speed_hz
 			|| sdd->cur_mode != spi->mode
@@ -767,6 +771,10 @@ out:
 
 	msg->status = status;
 
+	/* Free DMA channels */
+	sdd->ops->release(sdd->rx_dma.ch, &s3c64xx_spi_dma_client);
+	sdd->ops->release(sdd->tx_dma.ch, &s3c64xx_spi_dma_client);
+
 	spi_finalize_current_message(master);
 
 	return 0;
@@ -776,10 +784,6 @@ static int s3c64xx_spi_prepare_transfer(struct spi_master *spi)
 {
 	struct s3c64xx_spi_driver_data *sdd = spi_master_get_devdata(spi);
 
-	/* Acquire DMA channels */
-	while (!acquire_dma(sdd))
-		msleep(10);
-
 	pm_runtime_get_sync(&sdd->pdev->dev);
 
 	return 0;
@@ -788,10 +792,6 @@ static int s3c64xx_spi_prepare_transfer(struct spi_master *spi)
 static int s3c64xx_spi_unprepare_transfer(struct spi_master *spi)
 {
 	struct s3c64xx_spi_driver_data *sdd = spi_master_get_devdata(spi);
-
-	/* Free DMA channels */
-	sdd->ops->release(sdd->rx_dma.ch, &s3c64xx_spi_dma_client);
-	sdd->ops->release(sdd->tx_dma.ch, &s3c64xx_spi_dma_client);
 
 	pm_runtime_put(&sdd->pdev->dev);
 
