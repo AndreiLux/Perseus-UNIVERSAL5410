@@ -546,6 +546,7 @@ static struct dwc3_exynos_data smdk5250_xhci_pdata = {
 	.phy_type = S5P_USB_PHY_DRD,
 	.phy_init = s5p_usb_phy_init,
 	.phy_exit = s5p_usb_phy_exit,
+	.phyclk_switch = exynos5_dwc_phyclk_switch,
 };
 
 struct exynos_gpio_cfg {

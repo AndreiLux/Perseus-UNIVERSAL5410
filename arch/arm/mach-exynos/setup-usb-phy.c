@@ -13,6 +13,8 @@
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/io.h>
+#include <linux/of.h>
+#include <linux/of_gpio.h>
 #include <linux/platform_device.h>
 #include <mach/regs-pmu.h>
 #include <mach/regs-usb-phy.h>
@@ -55,6 +57,7 @@ static int exynos5_usb_host_phy20_is_on(void)
 	return (readl(EXYNOS5_PHY_HOST_CTRL0) & HOST_CTRL0_PHYSWRSTALL) ? 0 : 1;
 }
 
+/* TODO: Shouldn't there be a disable? */
 static int exynos_usb_phy_clock_enable(struct platform_device *pdev)
 {
 	int err;
@@ -157,30 +160,37 @@ static u32 exynos_usb_phy_set_clock(struct platform_device *pdev)
 	return refclk_freq;
 }
 
-static u32 exynos_usb_phy30_set_clock(struct platform_device *pdev)
+/*
+ * Sets the phy clk as EXTREFCLK (XXTI) which is internal clock form clock core.
+ */
+static u32 exynos_usb_phy30_set_clock_int(struct platform_device *pdev)
 {
-	u32 reg, refclk;
+	u32 reg;
+	u32 refclk;
 
 	refclk = exynos_usb_phy_set_clock(pdev);
-	reg = EXYNOS_USB3_PHYCLKRST_REFCLKSEL(3) |
+
+	reg = EXYNOS_USB3_PHYCLKRST_REFCLKSEL_EXT_REF_CLK |
 	      EXYNOS_USB3_PHYCLKRST_FSEL(refclk);
 
 	switch (refclk) {
 	case EXYNOS5_CLKSEL_50M:
+		/* TODO: multiplier seems wrong; others make ~2.5GHz */
 		reg |= (EXYNOS_USB3_PHYCLKRST_MPLL_MULTIPLIER(0x02) |
 			EXYNOS_USB3_PHYCLKRST_SSC_REF_CLK_SEL(0x00));
 		break;
 	case EXYNOS5_CLKSEL_20M:
-		reg |= (EXYNOS_USB3_PHYCLKRST_MPLL_MULTIPLIER(0x7d) |
+		reg |= (EXYNOS_USB3_PHYCLKRST_MPLL_MULTIPLIER_20MHZ_REF |
 			EXYNOS_USB3_PHYCLKRST_SSC_REF_CLK_SEL(0x00));
 		break;
 	case EXYNOS5_CLKSEL_19200K:
+		/* TODO: multiplier seems wrong; others make ~2.5GHz */
 		reg |= (EXYNOS_USB3_PHYCLKRST_MPLL_MULTIPLIER(0x02) |
 			EXYNOS_USB3_PHYCLKRST_SSC_REF_CLK_SEL(0x88));
 		break;
 	case EXYNOS5_CLKSEL_24M:
 	default:
-		reg |= (EXYNOS_USB3_PHYCLKRST_MPLL_MULTIPLIER(0x68) |
+		reg |= (EXYNOS_USB3_PHYCLKRST_MPLL_MULTIPLIER_24MHZ_REF |
 			EXYNOS_USB3_PHYCLKRST_SSC_REF_CLK_SEL(0x88));
 		break;
 	}
@@ -188,21 +198,35 @@ static u32 exynos_usb_phy30_set_clock(struct platform_device *pdev)
 	return reg;
 }
 
-static int exynos5_usb_phy30_init(struct platform_device *pdev)
+/*
+ * Sets the phy clk as ref_pad_clk (XusbXTI) which is clock from external PLL.
+ */
+static u32 exynos_usb_phy30_set_clock_ext(struct platform_device *pdev)
 {
-	int ret;
 	u32 reg;
-	bool use_ext_clk = true;
 
-	ret = exynos_usb_phy_clock_enable(pdev);
-	if (ret)
-		return ret;
+	reg = EXYNOS_USB3_PHYCLKRST_REFCLKSEL_PAD_REF_CLK |
+		EXYNOS_USB3_PHYCLKRST_FSEL_PAD_100MHZ |
+		EXYNOS_USB3_PHYCLKRST_MPLL_MULTIPLIER_100MHZ_REF;
+
+	return reg;
+}
+
+static int _exynos5_usb_phy30_init(struct platform_device *pdev,
+						bool use_ext_clk)
+{
+	u32 reg;
 
 	exynos_usb_phy_control(USB_PHY0, PHY_ENABLE);
 
 	/* Reset USB 3.0 PHY */
 	writel(0x00000000, EXYNOS_USB3_PHYREG0);
-	writel(0x24d4e6e4, EXYNOS_USB3_PHYPARAM0);
+
+	reg = 0x24d4e6e4;
+	if (use_ext_clk)
+		reg |= (0x1 << 31);
+	writel(reg, EXYNOS_USB3_PHYPARAM0);
+
 	writel(0x03fff81c, EXYNOS_USB3_PHYPARAM1);
 	writel(0x00000000, EXYNOS_USB3_PHYRESUME);
 
@@ -219,7 +243,10 @@ static int exynos5_usb_phy30_init(struct platform_device *pdev)
 	/* UTMI Power Control */
 	writel(EXYNOS_USB3_PHYUTMI_OTGDISABLE, EXYNOS_USB3_PHYUTMI);
 
-	reg = exynos_usb_phy30_set_clock(pdev);
+	if (use_ext_clk)
+		reg = exynos_usb_phy30_set_clock_ext(pdev);
+	else
+		reg = exynos_usb_phy30_set_clock_int(pdev);
 
 	reg |= EXYNOS_USB3_PHYCLKRST_PORTRESET |
 		/* Digital power supply in normal operating mode */
@@ -239,6 +266,23 @@ static int exynos5_usb_phy30_init(struct platform_device *pdev)
 	writel(reg, EXYNOS_USB3_PHYCLKRST);
 
 	return 0;
+}
+
+int exynos5_dwc_phyclk_switch(struct platform_device *pdev, bool use_ext_clk)
+{
+	return _exynos5_usb_phy30_init(pdev, use_ext_clk);
+}
+
+static int exynos5_usb_phy30_init(struct platform_device *pdev)
+{
+	int ret;
+
+	ret = exynos_usb_phy_clock_enable(pdev);
+	if (ret)
+		return ret;
+
+	/* We'll start out with the phy clock turned on. */
+	return _exynos5_usb_phy30_init(pdev, true);
 }
 
 static int exynos5_usb_phy30_exit(struct platform_device *pdev)
