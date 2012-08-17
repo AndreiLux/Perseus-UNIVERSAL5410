@@ -1431,12 +1431,16 @@ err_share_dma_buf:
 static void s3c_fb_free_dma_buf(struct s3c_fb *sfb,
 		struct s3c_dma_buf_data *dma)
 {
+	if (!dma->dma_addr)
+		return;
+
 	iovmm_unmap(sfb->dev, dma->dma_addr);
 	dma_buf_unmap_attachment(dma->attachment, dma->sg_table,
 			DMA_BIDIRECTIONAL);
 	dma_buf_detach(dma->dma_buf, dma->attachment);
 	dma_buf_put(dma->dma_buf);
 	ion_free(sfb->fb_ion_client, dma->ion_handle);
+	memset(dma, 0, sizeof(struct s3c_dma_buf_data));
 }
 
 static u32 s3c_fb_red_length(int format)
@@ -1804,9 +1808,7 @@ static int s3c_fb_set_win_config(struct s3c_fb *sfb,
 
 	if (ret) {
 		for (i = 0; i < sfb->variant.nr_windows; i++)
-			if (regs->dma_buf_data[i].dma_addr)
-				s3c_fb_free_dma_buf(sfb,
-						&regs->dma_buf_data[i]);
+			s3c_fb_free_dma_buf(sfb, &regs->dma_buf_data[i]);
 		put_unused_fd(fd);
 		kfree(regs);
 	} else {
@@ -1908,11 +1910,8 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 	pm_runtime_put_sync(sfb->dev);
 	sw_sync_timeline_inc(sfb->timeline, 1);
 
-	for (i = 0; i < sfb->variant.nr_windows; i++) {
-		struct s3c_dma_buf_data *dma = &old_dma_bufs[i];
-		if (dma->dma_addr)
-			s3c_fb_free_dma_buf(sfb, dma);
-	}
+	for (i = 0; i < sfb->variant.nr_windows; i++)
+		s3c_fb_free_dma_buf(sfb, &old_dma_bufs[i]);
 }
 
 static void s3c_fb_update_regs_handler(struct kthread_work *work)
@@ -2227,10 +2226,7 @@ err_share_dma_buf:
 static void s3c_fb_free_memory(struct s3c_fb *sfb, struct s3c_fb_win *win)
 {
 #if defined(CONFIG_ION_EXYNOS)
-	if (win->dma_buf_data.dma_addr) {
-		s3c_fb_free_dma_buf(sfb, &win->dma_buf_data);
-		memset(&win->dma_buf_data, 0, sizeof(win->dma_buf_data));
-	}
+	s3c_fb_free_dma_buf(sfb, &win->dma_buf_data);
 #else
 	struct fb_info *fbi = win->fbinfo;
 
