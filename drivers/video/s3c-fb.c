@@ -1596,6 +1596,12 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 		return -EINVAL;
 	}
 
+	if (win_config->w == 0 || win_config->h == 0) {
+		dev_err(sfb->dev, "window is size 0 (w = %u, h = %u)\n",
+				win_config->w, win_config->h);
+		return -EINVAL;
+	}
+
 	win->fbinfo->var.red.length = s3c_fb_red_length(win_config->format);
 	win->fbinfo->var.red.offset = s3c_fb_red_offset(win_config->format);
 	win->fbinfo->var.green.length = s3c_fb_green_length(win_config->format);
@@ -1637,11 +1643,13 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 		ret = -ENOMEM;
 		goto err_invalid;
 	}
-	window_size = win_config->stride * win_config->h;
+	window_size = win_config->stride * (win_config->h - 1) +
+			win_config->w * win->fbinfo->var.bits_per_pixel / 8;
 	if (win_config->offset + window_size > buf_size) {
-		dev_err(sfb->dev, "window goes past end of buffer (window_size = %u, offset = %u, buf_size = %u)\n",
-				window_size,
-				win_config->offset, buf_size);
+		dev_err(sfb->dev, "window goes past end of buffer (width = %u, height = %u, stride = %u, offset = %u, buf_size = %u)\n",
+				win_config->w, win_config->h,
+				win_config->stride, win_config->offset,
+				buf_size);
 		ret = -EINVAL;
 		goto err_invalid;
 	}
