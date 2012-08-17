@@ -386,41 +386,40 @@ static void vidi_finish_pageflip(struct drm_device *drm_dev, int crtc_idx)
 	struct exynos_drm_private *dev_priv = drm_dev->dev_private;
 	struct drm_crtc *crtc = dev_priv->crtc[crtc_idx];
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-	struct drm_pending_vblank_event *e, *t;
+	struct drm_pending_vblank_event *e;
 	struct timeval now;
 	unsigned long flags;
 
+	/* set wait vsync event to zero and wake up queue. */
+	atomic_set(&dev_priv->wait_vsync_event, 0);
+	DRM_WAKEUP(&dev_priv->wait_vsync_queue);
+
+	if (!atomic_cmpxchg(&exynos_crtc->flip_pending, 1, 0))
+		return;
+
 	spin_lock_irqsave(&drm_dev->event_lock, flags);
-
-	list_for_each_entry_safe(e, t, &dev_priv->pageflip_event_list,
-			base.link) {
-		/* if event's pipe isn't same as crtc then ignore it. */
-		if (crtc_idx != e->pipe)
-			continue;
-
+	if (exynos_crtc->event) {
+		e = exynos_crtc->event;
+		exynos_crtc->event = NULL;
 		do_gettimeofday(&now);
 		e->event.sequence = 0;
 		e->event.tv_sec = now.tv_sec;
 		e->event.tv_usec = now.tv_usec;
 
-		list_move_tail(&e->base.link, &e->base.file_priv->event_list);
+		list_add_tail(&e->base.link,
+			      &e->base.file_priv->event_list);
 		wake_up_interruptible(&e->base.file_priv->event_wait);
 	}
-
-	if (atomic_read(&exynos_crtc->flip_pending)) {
-		atomic_dec(&exynos_crtc->flip_pending);
-
-		drm_vblank_put(drm_dev, crtc_idx);
-
-		/*
-		 * don't off vblank if vblank_disable_allowed is 1,
-		 * because vblank would be off by timer handler.
-		 */
-		if (!drm_dev->vblank_disable_allowed)
-			drm_vblank_off(drm_dev, crtc_idx);
-	}
-
 	spin_unlock_irqrestore(&drm_dev->event_lock, flags);
+
+	drm_vblank_put(drm_dev, crtc_idx);
+
+	/*
+	 * don't off vblank if vblank_disable_allowed is 1,
+	 * because vblank would be off by timer handler.
+	 */
+	if (!drm_dev->vblank_disable_allowed)
+		drm_vblank_off(drm_dev, crtc_idx);
 }
 
 static void vidi_fake_vblank_handler(struct work_struct *work)

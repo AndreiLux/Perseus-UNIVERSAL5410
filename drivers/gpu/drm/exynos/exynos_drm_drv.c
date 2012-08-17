@@ -66,7 +66,6 @@ static int exynos_drm_load(struct drm_device *dev, unsigned long flags)
 	DRM_INIT_WAITQUEUE(&private->wait_vsync_queue);
 	atomic_set(&private->wait_vsync_event, 0);
 
-	INIT_LIST_HEAD(&private->pageflip_event_list);
 	dev->dev_private = (void *)private;
 
 	drm_mode_config_init(dev);
@@ -161,23 +160,9 @@ static int exynos_drm_open(struct drm_device *dev, struct drm_file *file)
 static void exynos_drm_preclose(struct drm_device *dev,
 					struct drm_file *file)
 {
-	struct exynos_drm_private *private = dev->dev_private;
-	struct drm_pending_vblank_event *e, *t;
-	unsigned long flags;
-
 	DRM_DEBUG_DRIVER("%s\n", __FILE__);
 
-	/* release events of current file */
-	spin_lock_irqsave(&dev->event_lock, flags);
-	list_for_each_entry_safe(e, t, &private->pageflip_event_list,
-			base.link) {
-		if (e->base.file_priv == file) {
-			list_del(&e->base.link);
-			e->base.destroy(&e->base);
-		}
-	}
 	drm_prime_destroy_file_private(&file->prime);
-	spin_unlock_irqrestore(&dev->event_lock, flags);
 
 	exynos_drm_subdrv_close(dev, file);
 }

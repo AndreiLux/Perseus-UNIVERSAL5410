@@ -286,18 +286,19 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 	struct drm_device *dev = crtc->dev;
 	struct drm_framebuffer *fb = callback_extra_parameter;
-	struct drm_framebuffer *old_fb = crtc->fb;
-	int ret = -EINVAL;
+	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
+
+	if (exynos_fb->kds_res_set) {
+		kds_resource_set_release(&exynos_fb->kds_res_set);
+		exynos_fb->kds_res_set = NULL;
+	}
+	if (exynos_fb->dma_buf) {
+		dma_buf_put(exynos_fb->dma_buf);
+		exynos_fb->dma_buf = NULL;
+	}
 
 	mutex_lock(&dev->struct_mutex);
 
-	crtc->fb = fb;
-	ret = exynos_drm_crtc_update(crtc);
-	if (ret) {
-		crtc->fb = old_fb;
-		mutex_unlock(&dev->struct_mutex);
-		return;
-	}
 	/*
 	 * the values related to a buffer of the drm framebuffer
 	 * to be applied should be set at here. because these values
@@ -308,33 +309,23 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 
 	mutex_unlock(&dev->struct_mutex);
 
-	if (old_fb) {
-		struct exynos_drm_fb *old_exynos_fb = to_exynos_fb(old_fb);
-
-		exynos_drm_wait_for_vsync(dev);
-		if (old_exynos_fb->kds_res_set)
-			kds_resource_set_release(&old_exynos_fb->kds_res_set);
-		if (old_exynos_fb->dma_buf)
-			dma_buf_put(old_exynos_fb->dma_buf);
-		old_exynos_fb->kds_res_set = NULL;
-		old_exynos_fb->dma_buf = NULL;
-	}
-	atomic_inc(&exynos_crtc->flip_pending);
+	BUG_ON(atomic_read(&exynos_crtc->flip_pending));
+	atomic_set(&exynos_crtc->flip_pending, 1);
 }
 #endif
 
 static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
-				      struct drm_framebuffer *fb,
-				      struct drm_pending_vblank_event *event)
+				     struct drm_framebuffer *fb,
+				     struct drm_pending_vblank_event *event)
 {
 	struct drm_device *dev = crtc->dev;
-	struct exynos_drm_private *dev_priv = dev->dev_private;
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 	int ret = -EINVAL;
 	unsigned long flags;
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
 	struct exynos_drm_gem_obj *gem_ob = (struct exynos_drm_gem_obj *)exynos_fb->exynos_gem_obj[0];
+	struct drm_framebuffer *old_fb;
 #endif
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
@@ -349,6 +340,18 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 		return -EINVAL;
 	}
 
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	spin_lock_irqsave(&dev->event_lock, flags);
+	if (exynos_crtc->event) {
+		spin_unlock_irqrestore(&dev->event_lock, flags);
+
+		DRM_DEBUG_DRIVER("flip queue: crtc already busy\n");
+		return -EBUSY;
+	}
+	exynos_crtc->event = event;
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+#endif
+
 	/*
 	 * the pipe from user always is 0 so we can set pipe number
 	 * of current owner to event.
@@ -356,15 +359,21 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	event->pipe = exynos_crtc->pipe;
 
 	ret = drm_vblank_get(dev, exynos_crtc->pipe);
+	if (ret)
+		goto fail_vblank;
+
+	mutex_lock(&dev->struct_mutex);
+
+	old_fb = crtc->fb;
+	crtc->fb = fb;
+	ret = exynos_drm_crtc_update(crtc);
 	if (ret) {
-		DRM_DEBUG("failed to acquire vblank counter\n");
-		goto out;
+		crtc->fb = old_fb;
+		mutex_unlock(&dev->struct_mutex);
+		goto fail_update;
 	}
 
-	spin_lock_irqsave(&dev->event_lock, flags);
-	list_add_tail(&event->base.link,
-		      &dev_priv->pageflip_event_list);
-	spin_unlock_irqrestore(&dev->event_lock, flags);
+	mutex_unlock(&dev->struct_mutex);
 
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 	if (gem_ob->base.export_dma_buf) {
@@ -383,8 +392,15 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 		exynos_drm_kds_callback(crtc, fb);
 	}
 #endif
-out:
+	trace_exynos_flip_complete(exynos_crtc->pipe);
+	return ret;
 
+fail_update:
+	drm_vblank_put(dev, exynos_crtc->pipe);
+fail_vblank:
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	exynos_crtc->event = NULL;
+#endif
 	trace_exynos_flip_complete(exynos_crtc->pipe);
 	return ret;
 }

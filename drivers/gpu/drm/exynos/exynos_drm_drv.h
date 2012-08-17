@@ -230,17 +230,11 @@ struct exynos_drm_private {
 	wait_queue_head_t wait_vsync_queue;
 	atomic_t wait_vsync_event;
 
-	/* list head for new event to be added. */
-	struct list_head pageflip_event_list;
-
 	/*
 	 * created crtc object would be contained at this array and
 	 * this array is used to be aware of which crtc did it request vblank.
 	 */
 	struct drm_crtc *crtc[MAX_CRTC];
-
-#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-#endif
 };
 
 /*
@@ -328,6 +322,7 @@ struct exynos_drm_fb {
  * @drm_crtc: crtc object.
  * @overlay: contain information common to display controller and hdmi and
  *	contents of this overlay object would be copied to sub driver size.
+ * event: vblank event that is currently queued for flip
  * @pipe: a crtc index created at load() with a new crtc object creation
  *	and the crtc object would be set to private->crtc array
  *	to get a crtc object corresponding to this pipe from private->crtc
@@ -341,6 +336,9 @@ struct exynos_drm_fb {
 struct exynos_drm_crtc {
 	struct drm_crtc			drm_crtc;
 	struct exynos_drm_overlay	overlay;
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	struct drm_pending_vblank_event *event;
+#endif
 	unsigned int			pipe;
 	unsigned int			dpms;
 	atomic_t			flip_pending;
