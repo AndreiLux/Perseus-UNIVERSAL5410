@@ -357,7 +357,6 @@
 
 	dwmmc2@12220000 {
 		supports-highspeed;
-		card-detection-broken;
 		no-write-protect;
 		fifo-depth = <0x80>;
 		card-detect-delay = <200>;
@@ -366,7 +365,8 @@
 
 		slot0 {
 			bus-width = <4>;
-			cd-gpios = <&gpc3 2 2 3 3>;
+			/* Card detect is active low */
+			cd-gpios = <&gpc3 2 2 0x10003 3>;
 			gpios = <&gpc3 1 2 0 3>, <&gpc3 0 2 0 3>,
 				<&gpc3 3 2 3 3>, <&gpc3 4 2 3 3>,
 				<&gpc3 5 2 3 3>, <&gpc3 6 2 3 3>;
