@@ -182,6 +182,8 @@
 #define EXYNOS4_PA_SDRAM		0x40000000
 #define EXYNOS5_PA_SDRAM		0x40000000
 
+#define EXYNOS5_PA_DREXII		0x10DD0000
+
 #define EXYNOS5_PA_G3D			0x11800000
 
 /* Compatibiltiy Defines */

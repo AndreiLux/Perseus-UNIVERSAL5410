@@ -41,6 +41,7 @@
 #define S5P_VA_GIC_DIST		S3C_ADDR(0x02820000)
 
 #define S5P_VA_AUDSS		S3C_ADDR(0x02910000)
+#define S5P_VA_DREXII		S3C_ADDR(0x02930000)
 
 #define VA_VIC(x)		(S3C_VA_IRQ + ((x) * 0x10000))
 #define VA_VIC0			VA_VIC(0)

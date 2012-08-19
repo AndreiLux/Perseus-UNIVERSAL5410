@@ -31,6 +31,8 @@
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
 #include <mach/map.h>
+#include <mach/ppmu.h>
+#include <mach/dev.h>
 #include <mach/ohci.h>
 #include <mach/regs-pmu.h>
 #include <mach/sysmmu.h>
@@ -877,6 +879,16 @@ static const struct of_dev_auxdata exynos5250_auxdata_lookup[] __initconst = {
 	{},
 };
 
+#ifdef CONFIG_BUSFREQ_OPP
+/* BUSFREQ to control memory/bus*/
+static struct device_domain busfreq;
+
+static struct platform_device exynos5_busfreq = {
+	.id = -1,
+	.name = "exynos-busfreq",
+};
+#endif
+
 static struct platform_device *smdk5250_devices[] __initdata = {
 	&smdk5250_lcd, /* for platform_lcd device */
 	&exynos_device_md0, /* for media device framework */
@@ -891,6 +903,9 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&s3c_device_adc_ntc_thermistor1,
 	&s3c_device_adc_ntc_thermistor2,
 	&s3c_device_adc_ntc_thermistor3,
+#ifdef CONFIG_BUSFREQ_OPP
+	&exynos5_busfreq,
+#endif
 };
 
 static struct regulator_consumer_supply dummy_supplies[] = {
@@ -1106,6 +1121,14 @@ static void __init exynos5250_dt_machine_init(void)
 	s3c_adc_ntc_init(&s3c_device_adc_ntc_thermistor2);
 	s3c_adc_ntc_init(&s3c_device_adc_ntc_thermistor3);
 
+#ifdef CONFIG_BUSFREQ_OPP
+	dev_add(&busfreq, &exynos5_busfreq.dev);
+	ppmu_init(&exynos_ppmu[PPMU_CPU], &exynos5_busfreq.dev);
+	ppmu_init(&exynos_ppmu[PPMU_DDR_C], &exynos5_busfreq.dev);
+	ppmu_init(&exynos_ppmu[PPMU_DDR_R1], &exynos5_busfreq.dev);
+	ppmu_init(&exynos_ppmu[PPMU_DDR_L], &exynos5_busfreq.dev);
+	ppmu_init(&exynos_ppmu[PPMU_RIGHT0_BUS], &exynos5_busfreq.dev);
+#endif
 	platform_add_devices(smdk5250_devices, ARRAY_SIZE(smdk5250_devices));
 out:
 	of_node_put(srom_np);

@@ -446,4 +446,13 @@ endif
 
 endmenu
 
+menu "Busfreq Model"
+        depends on ARM_EXYNOS5250_CPUFREQ
+
+config BUSFREQ_OPP
+        bool "Busfreq with OPP"
+        depends on ARM_EXYNOS5250_CPUFREQ
+
+endmenu
+
 endif

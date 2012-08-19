@@ -23,6 +23,11 @@ obj-$(CONFIG_PM_GENERIC_DOMAINS) += pm_domains.o
 obj-$(CONFIG_CPU_IDLE)		+= cpuidle.o
 obj-$(CONFIG_ARM_EXYNOS5250_CPUFREQ)   += asv-5250.o
 
+obj-$(CONFIG_BUSFREQ_OPP)	+= dev.o
+ifeq ($(CONFIG_BUSFREQ_OPP),y)
+obj-$(CONFIG_ARCH_EXYNOS5)	+= busfreq_opp_exynos5.o busfreq_opp_5250.o
+endif
+
 obj-$(CONFIG_ARCH_EXYNOS)	+= pmu.o
 
 obj-$(CONFIG_SMP)		+= platsmp.o headsmp.o
