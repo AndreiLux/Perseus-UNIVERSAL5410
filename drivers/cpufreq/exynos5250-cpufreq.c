@@ -124,26 +124,6 @@ static unsigned int exynos5_apll_pms_table[CPUFREQ_LEVEL_END] = {
 	((100 << 16) | (3 << 8) | 2),	/* 200 MHz */
 };
 
-/* ASV group voltage table */
-static const unsigned int asv_voltage_5250[CPUFREQ_LEVEL_END] = {
-	1300000,    /* L0 */
-	1250000,    /* L1 */
-	1225000,    /* L2 */
-	1200000,    /* L3 */
-	1150000,    /* L4 */
-	1125000,    /* L5 */
-	1100000,    /* L6 */
-	1075000,    /* L7 */
-	1050000,    /* L8 */
-	1025000,    /* L9 */
-	1012500,    /* L10 */
-	1000000,    /* L11 */
-	975000,     /* L12 */
-	950000,     /* L13 */
-	937500,     /* L14 */
-	925000,     /* L15 */
-};
-
 static void set_clkdiv(unsigned int div_index)
 {
 	unsigned int tmp;
@@ -262,8 +242,10 @@ static void __init set_volt_table(void)
 	unsigned int i;
 	max_support_idx = L0;
 
-	for (i = 0 ; i < CPUFREQ_LEVEL_END ; i++)
-		exynos5250_volt_table[i] = asv_voltage_5250[i];
+	for (i = 0 ; i < CPUFREQ_LEVEL_END ; i++) {
+		exynos5250_volt_table[i] = exynos5250_cpufreq_get_asv(i);
+		pr_info("VDD_ARM : L%d, %d uV\n", i, exynos5250_volt_table[i]);
+	}
 }
 
 int exynos5250_cpufreq_init(struct exynos_dvfs_info *info)
