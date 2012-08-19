@@ -104,6 +104,7 @@ struct dw_mci_slot {
 #define DW_MMC_CARD_NEED_INIT	1
 	int			id;
 	int			last_detect_state;
+	bool			cd_gpio_active_low;
 };
 
 #if defined(CONFIG_DEBUG_FS)
@@ -857,15 +858,17 @@ static int dw_mci_get_cd(struct mmc_host *mmc)
 	struct dw_mci_board *brd = slot->host->pdata;
 
 	/* Use platform get_cd function, else try onboard card detect */
-	if (brd->quirks & DW_MCI_QUIRK_BROKEN_CARD_DETECTION)
+	if (brd->quirks & DW_MCI_QUIRK_BROKEN_CARD_DETECTION) {
 		present = 1;
-	else if (brd->get_cd)
+	} else if (brd->get_cd) {
 		present = !brd->get_cd(slot->id);
-	else if (gpio_is_valid(slot->cd_gpio))
-		present = gpio_get_value(slot->cd_gpio);
-	else
+	} else if (gpio_is_valid(slot->cd_gpio)) {
+		present = !!gpio_get_value(slot->cd_gpio);
+		present ^= slot->cd_gpio_active_low;
+	} else {
 		present = (mci_readl(slot->host, CDETECT) & (1 << slot->id))
 			== 0 ? 1 : 0;
+	}
 
 	if (present)
 		dev_dbg(&mmc->class_dev, "card is present\n");
@@ -1840,6 +1843,7 @@ static u32 dw_mci_of_get_bus_wd(struct device *dev, u8 slot)
 static int dw_mci_of_setup_bus(struct dw_mci *host, u8 slot, u32 bus_wd)
 {
 	struct device_node *np = dw_mci_of_find_slot_node(&host->dev, slot);
+	enum of_gpio_flags flags;
 	int idx, gpio, ret;
 
 	for (idx = 0; idx < NUM_PINS(bus_wd); idx++) {
@@ -1870,15 +1874,18 @@ static int dw_mci_of_setup_bus(struct dw_mci *host, u8 slot, u32 bus_wd)
 	}
 
 	host->slot[slot]->cd_gpio = -1;
-	gpio = of_get_named_gpio(np, "cd-gpios", 0);
+	gpio = of_get_named_gpio_flags(np, "cd-gpios", 0, &flags);
 	if (!gpio_is_valid(gpio)) {
 		dev_info(&host->dev, "cd gpio not available");
 	} else {
 		ret = devm_gpio_request(&host->dev, gpio, "dw-mci-cd");
-		if (ret)
+		if (ret) {
 			dev_err(&host->dev, "gpio [%d] request failed\n", gpio);
-		else
+		} else {
 			host->slot[slot]->cd_gpio = gpio;
+			host->slot[slot]->cd_gpio_active_low =
+				!!(flags & OF_GPIO_ACTIVE_LOW);
+		}
 	}
 
 	return 0;
