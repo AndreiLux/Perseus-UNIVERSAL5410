@@ -3156,6 +3156,14 @@ static struct clk auxclkreq5_ck = {
 	.recalc		= &omap2_clksel_recalc,
 };
 
+static struct clk smp_twd_446x = {
+	.name		= "smp_twd",
+	.parent		= &virt_dpll_mpu_ck,
+	.ops		= &clkops_null,
+	.fixed_div	= 2,
+	.recalc		= &omap_fixed_divisor_recalc,
+};
+
 /*
  * clkdev
  */
@@ -3246,7 +3254,8 @@ static struct omap_clk omap44xx_clks[] = {
 	CLK(NULL,	"l4_div_ck",			&l4_div_ck,	CK_44XX),
 	CLK(NULL,	"lp_clk_div_ck",		&lp_clk_div_ck,	CK_44XX),
 	CLK(NULL,	"l4_wkup_clk_mux_ck",		&l4_wkup_clk_mux_ck,	CK_44XX),
-	CLK("smp_twd",	NULL,				&mpu_periphclk,	CK_44XX),
+	CLK("smp_twd",	NULL,				&mpu_periphclk,	CK_443X),
+	CLK("smp_twd",	NULL,				&smp_twd_446x,	CK_446X),
 	CLK(NULL,	"ocp_abe_iclk",			&ocp_abe_iclk,	CK_44XX),
 	CLK(NULL,	"per_abe_24m_fclk",		&per_abe_24m_fclk,	CK_44XX),
 	CLK(NULL,	"per_abe_nc_fclk",		&per_abe_nc_fclk,	CK_44XX),
