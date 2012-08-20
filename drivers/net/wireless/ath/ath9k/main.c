@@ -694,7 +694,7 @@ static void ath_node_detach(struct ath_softc *sc, struct ieee80211_sta *sta)
 
 void ath_start_rx_poll(struct ath_softc *sc, u32 nmsec)
 {
-	if (!AR_SREV_9300(sc->sc_ah))
+	if (!AR_SREV_9300_20_OR_LATER(sc->sc_ah))
 		return;
 
 	if (!(sc->sc_flags & SC_OP_PRIM_STA_VIF))
