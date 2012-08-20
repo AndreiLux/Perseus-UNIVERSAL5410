@@ -309,6 +309,9 @@ void jpeg_set_enc_tbl(void __iomem *base)
 {
 	int i;
 
+	/* temp for change q-table */
+	memcpy((void *)ITU_Q_tbl, (void *)ITU_Q_tal_u8, (4*16*4));
+
 	for (i = 0; i < 16; i++) {
 		writel((unsigned int)ITU_Q_tbl[0][i],
 			base + S5P_JPEG_QUAN_TBL_ENTRY_REG + (i*0x04));
