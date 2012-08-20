@@ -126,7 +126,7 @@ static int __init rdaemon_init(void)
 static void __exit rdaemon_fini(void)
 {
 	if (rdaemon_dbg)
-		debugfs_remove(rdaemon_dbg);
+		debugfs_remove_recursive(rdaemon_dbg);
 
 	unregister_rpmsg_driver(&rpmsg_driver);
 }
