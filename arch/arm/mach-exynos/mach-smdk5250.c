@@ -1696,7 +1696,7 @@ static void __init smdk5250_dwmci_init(void)
 
 #if defined(CONFIG_VIDEO_EXYNOS_MFC)
 static struct s5p_mfc_platdata smdk5250_mfc_pd = {
-	.clock_rate = 300 * MHZ,
+	.clock_rate = 333 * MHZ,
 };
 #endif
 
