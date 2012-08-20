@@ -622,22 +622,9 @@ static void __init async_populate_rootfs(void)
 	return;
 }
 
-static int __initdata rootfs_populated;
-
-static int __init populate_rootfs_early(void)
-{
-	if (num_online_cpus() > 1) {
-		rootfs_populated = 1;
-		async_schedule_domain(async_populate_rootfs, NULL,
-						&populate_rootfs_domain);
-	}
-}
 static int __init populate_rootfs(void)
 {
-	if (!rootfs_populated)
-		async_schedule_domain(async_populate_rootfs, NULL,
-						&populate_rootfs_domain);
+	async_schedule_domain(async_populate_rootfs, NULL, &populate_rootfs_domain);
 }
 
-earlyrootfs_initcall(populate_rootfs_early);
 rootfs_initcall(populate_rootfs);
