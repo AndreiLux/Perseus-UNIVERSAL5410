@@ -224,8 +224,6 @@ extern bool initcall_debug;
 	static initcall_t __initcall_##fn \
 	__used __section(.security_initcall.init) = fn
 
-extern struct list_head  populate_rootfs_domain;
-
 struct obs_kernel_param {
 	const char *str;
 	int (*setup_func)(char *);
