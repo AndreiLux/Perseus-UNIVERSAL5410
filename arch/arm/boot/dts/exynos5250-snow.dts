@@ -48,6 +48,10 @@
 		};
 	};
 
+	dwmmc2@12220000 {
+		disable-mmc;
+	};
+
 	/*
 	 * On Snow we've got SIP WiFi and so can keep drive strengths low to
 	 * reduce EMI.
