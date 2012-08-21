@@ -2291,7 +2291,7 @@ static void exynos5_mif_set_clkdiv(unsigned int div_index)
 
 	__raw_writel(tmp, EXYNOS5_CLKDIV_CDREX);
 
-	while (__raw_readl(EXYNOS5_CLKDIV_STAT_CDREX) & 0x111011)
+	while (__raw_readl(EXYNOS5_CLKDIV_STAT_CDREX) & 0x11110011)
 		cpu_relax();
 
 	/* Change Divier - SYSLFT */
