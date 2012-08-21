@@ -313,7 +313,8 @@ void exynos_bts_initialize(char *pd_name)
 
 	list_for_each_entry(bts_data, &bts_list, node) {
 		if ((!pd_name && !bts_data->pd_name) ||
-			(pd_name && !strcmp(bts_data->pd_name, pd_name)))
+			(pd_name && bts_data->pd_name &&
+			 !strcmp(bts_data->pd_name, pd_name)))
 			bts_devs_init(bts_data);
 	}
 }
