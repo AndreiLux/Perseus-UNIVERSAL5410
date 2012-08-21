@@ -19,7 +19,6 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <mach/videonode.h>
-/* #include <plat/bts.h> */
 #include <media/exynos_mc.h>
 #include <linux/cma.h>
 #include <asm/cacheflush.h>
@@ -482,4 +481,3 @@ int buffer_done(struct fimc_is_video_common *video, u32 index)
 
 	return ret;
 }
-

@@ -291,7 +291,7 @@ static int fimc_is_scalerp_video_streamoff(struct file *file, void *priv,
 }
 
 static int fimc_is_scalerp_video_enum_input(struct file *file, void *priv,
-						struct v4l2_input *input)
+	struct v4l2_input *input)
 {
 	struct fimc_is_core *isp = video_drvdata(file);
 	struct exynos5_fimc_is_sensor_info *sensor_info

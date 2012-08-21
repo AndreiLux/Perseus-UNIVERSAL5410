@@ -151,4 +151,3 @@ int fimc_is_hw_s_camctrl_nblk(struct fimc_is_interface *this,
 	u32 instance, u32 address, u32 fcount);
 
 #endif
-

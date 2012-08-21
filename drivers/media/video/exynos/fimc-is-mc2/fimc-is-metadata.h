@@ -582,6 +582,7 @@ enum aa_isomode {
 struct camera2_aa_ctl {
 	enum aa_capture_intent		captureIntent;
 	enum aa_mode			mode;
+	/*enum aa_effect_mode		effectMode;*/
 	enum aa_scene_mode		sceneMode;
 	uint8_t				videoStabilizationMode;
 	enum aa_aemode			aeMode;
@@ -882,4 +883,3 @@ struct camera2_shot_ext {
 
 
 #endif
-

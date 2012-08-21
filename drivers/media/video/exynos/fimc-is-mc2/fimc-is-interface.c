@@ -1,5 +1,4 @@
 #include <linux/workqueue.h>
-#include <linux/pm_qos.h>
 
 #include "fimc-is-time.h"
 #include "fimc-is-core.h"
@@ -8,8 +7,6 @@
 #include "fimc-is-err.h"
 
 #include "fimc-is-interface.h"
-
-static struct pm_qos_request pm_qos_req;
 
 static int init_request_barrier(struct fimc_is_interface *interface)
 {
@@ -354,7 +351,7 @@ static int wait_state(struct fimc_is_interface *this,
 	if (this->state != state) {
 		ret = wait_event_timeout(this->wait_queue,
 				(this->state == state),
-				FIMC_IS_SHUTDOWN_TIMEOUT);
+				FIMC_IS_COMMAND_TIMEOUT);
 		if (!ret) {
 			err("wait_state timeout(state : %d, %d)\n",
 				this->state, state);
@@ -367,21 +364,24 @@ static int wait_state(struct fimc_is_interface *this,
 
 static int waiting_is_ready(struct fimc_is_interface *interface)
 {
+	int ret = 0;
 	u32 try_count = TRY_RECV_AWARE_COUNT;
 	u32 cfg = readl(interface->regs + INTMSR0);
 	u32 status = INTMSR0_GET_INTMSD0(cfg);
+
 	while (status) {
 		cfg = readl(interface->regs + INTMSR0);
 		status = INTMSR0_GET_INTMSD0(cfg);
 
-		try_count--;
-		if (try_count <= 0) {
+		if (try_count-- == 0) {
 			try_count = TRY_RECV_AWARE_COUNT;
 			err("INTMSR0's 0 bit is not cleared.\n");
+			ret = -EINVAL;
+			break;
 		}
 	}
 
-	return 0;
+	return ret;
 }
 
 static void send_interrupt(struct fimc_is_interface *interface)
@@ -443,7 +443,14 @@ static int fimc_is_set_cmd(struct fimc_is_interface *interface,
 	if (send_cmd) {
 		enter_process_barrier(interface);
 
-		waiting_is_ready(interface);
+		ret = waiting_is_ready(interface);
+		if (ret) {
+			err("waiting for ready is fail");
+			exit_process_barrier(interface);
+			exit_request_barrier(interface);
+			goto exit;
+		}
+
 		set_state(interface, IS_IF_STATE_BLOCK_IO);
 		interface->com_regs->hicmd = msg->command;
 		interface->com_regs->hic_sensorid = msg->instance;
@@ -460,7 +467,7 @@ static int fimc_is_set_cmd(struct fimc_is_interface *interface,
 			if (interface->reply.command == ISR_DONE)
 				ret = 0;
 			else
-				ret = 1;
+				ret = -EINVAL;
 		}
 
 		switch (msg->command) {
@@ -478,6 +485,7 @@ static int fimc_is_set_cmd(struct fimc_is_interface *interface,
 
 	exit_request_barrier(interface);
 
+exit:
 	return ret;
 }
 
@@ -1263,9 +1271,6 @@ int fimc_is_hw_open(struct fimc_is_interface *this,
 
 	dbg_interface("open(%d)\n", sensor);
 
-	pm_qos_add_request(&pm_qos_req, PM_QOS_CPU_DMA_LATENCY, 100);
-	wait_state(this, IS_IF_STATE_IDLE);
-
 	msg.id = 0;
 	msg.command = HIC_OPEN_SENSOR;
 	msg.instance = instance;
@@ -1477,9 +1482,6 @@ int fimc_is_hw_power_down(struct fimc_is_interface *this,
 	int ret = 0;
 	struct fimc_is_msg msg;
 
-	pm_qos_remove_request(&pm_qos_req);
-
-
 	dbg_interface("pwr_down(%d)\n", instance);
 
 	msg.id = 0;
@@ -1561,4 +1563,3 @@ int fimc_is_hw_s_camctrl_nblk(struct fimc_is_interface *this,
 
 	return ret;
 }
-

@@ -53,8 +53,8 @@
 #define NUM_SCC_DMA_BUF			(8)
 #define NUM_SCP_DMA_BUF			(8)
 
-#define SENSOR_MAX_CTL		0x10
-#define SENSOR_MAX_CTL_MASK	(SENSOR_MAX_CTL-1)
+#define SENSOR_MAX_CTL			0x10
+#define SENSOR_MAX_CTL_MASK		(SENSOR_MAX_CTL-1)
 
 /*global state*/
 enum fimc_is_ischain_state {
@@ -119,7 +119,7 @@ struct fimc_is_device_ischain {
 
 	struct is_region			*is_region;
 
-	bool					lpower;
+	bool					force_down;
 	unsigned long				state;
 	struct mutex				mutex_state;
 	spinlock_t				slock_state;

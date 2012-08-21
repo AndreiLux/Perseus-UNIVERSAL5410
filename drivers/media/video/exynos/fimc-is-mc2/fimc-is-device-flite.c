@@ -555,6 +555,9 @@ static void tasklet_func_flite_str(unsigned long data)
 		int digit;
 		int count = 0, i;
 
+		if (fcount % 30)
+			return;
+
 		vb2_ion_sync_for_device(ischain->minfo.fw_cookie,
 			DEBUG_OFFSET, DEBUG_CNT, DMA_FROM_DEVICE);
 
@@ -572,7 +575,7 @@ static void tasklet_func_flite_str(unsigned long data)
 			for (i = ischain->debug_cnt; count > 0; count--) {
 				digit = letter = debug[i];
 				if (digit)
-					printk(KERN_INFO "%c", letter);
+					printk(KERN_CONT "%c", letter);
 				i++;
 				if (i > DEBUG_CNT)
 					i = 0;
@@ -705,14 +708,12 @@ static irqreturn_t fimc_is_flite_irq_handler(int irq, void *data)
 
 	if (status1 & (1<<6)) {
 		/*Last Frame Capture Interrupt*/
-		err("[CamIF_0]Last Frame Capture\n");
+		printk(KERN_INFO "[CamIF_0]Last Frame Capture\n");
 		/*Clear LastCaptureEnd bit*/
 		status2 &= ~(0x1 << 1);
 		flite_hw_set_status2(flite->regs, status2);
 
-		spin_lock(&flite->slock_state);
 		set_bit(FIMC_IS_FLITE_LAST_CAPTURE, &flite->state);
-		spin_unlock(&flite->slock_state);
 		wake_up(&flite->wait_queue);
 	}
 
@@ -873,7 +874,7 @@ int fimc_is_flite_stop(struct fimc_is_device_flite *this)
 	dbg_front("waiting last capture\n");
 	ret = wait_event_timeout(this->wait_queue,
 		test_bit(FIMC_IS_FLITE_LAST_CAPTURE, &this->state),
-		FIMC_IS_SHUTDOWN_TIMEOUT_SENSOR);
+		FIMC_IS_FLITE_STOP_TIMEOUT);
 	if (!ret) {
 		err("last capture timeout:%s\n", __func__);
 		stop_fimc_lite(this->regs);
@@ -884,4 +885,3 @@ int fimc_is_flite_stop(struct fimc_is_device_flite *this)
 
 	return ret;
 }
-

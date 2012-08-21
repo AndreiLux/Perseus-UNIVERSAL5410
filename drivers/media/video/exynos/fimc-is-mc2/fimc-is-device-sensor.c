@@ -313,8 +313,8 @@ int fimc_is_sensor_probe(struct fimc_is_device_sensor *this,
 
 		ext->flash_con.product_name = FLADRV_NAME_KTD267;
 		ext->flash_con.peri_type = SE_GPIO;
-		ext->flash_con.peri_setting.gpio.first_gpio_port_no = 3;
-		ext->flash_con.peri_setting.gpio.second_gpio_port_no = 4;
+		ext->flash_con.peri_setting.gpio.first_gpio_port_no = 1;
+		ext->flash_con.peri_setting.gpio.second_gpio_port_no = 2;
 
 		ext->from_con.product_name = FROMDRV_NAME_NOTHING;
 		ext->mclk = 0;
@@ -600,4 +600,3 @@ int fimc_is_sensor_front_stop(struct fimc_is_device_sensor *this)
 
 	return ret;
 }
-

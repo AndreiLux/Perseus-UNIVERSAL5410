@@ -33,6 +33,7 @@
 #include <linux/v4l2-mediabus.h>
 #include <linux/vmalloc.h>
 #include <linux/kthread.h>
+#include <linux/pm_qos.h>
 
 #include <mach/map.h>
 #include <mach/regs-clock.h>
@@ -48,8 +49,10 @@
 #include "fimc-is-device-ischain.h"
 
 #define SDCARD_FW
-#define FIMC_IS_SETFILE_SDCARD_PATH "/data/"
-#define FIMC_IS_FW_SDCARD "/data/fimc_is_fw2.bin"
+#define FIMC_IS_SETFILE_SDCARD_PATH	"/data/"
+#define FIMC_IS_FW_SDCARD		"/data/fimc_is_fw2.bin"
+#define FIMC_IS_VERSION_SIZE		39
+
 /* Default setting values */
 #define DEFAULT_PREVIEW_STILL_WIDTH		(1280) /* sensor margin : 16 */
 #define DEFAULT_PREVIEW_STILL_HEIGHT		(720) /* sensor margin : 12 */
@@ -61,6 +64,8 @@
 #define DEFAULT_CAPTURE_STILL_CROP_HEIGHT	(1440)
 #define DEFAULT_PREVIEW_VIDEO_WIDTH		(640)
 #define DEFAULT_PREVIEW_VIDEO_HEIGHT		(480)
+
+static struct pm_qos_request pm_qos_req;
 
 static const struct sensor_param init_sensor_param = {
 	.frame_rate = {
@@ -541,7 +546,6 @@ static const struct fd_param init_fd_param = {
 	},
 };
 
-
 /* Allocate firmware */
 static int fimc_is_ischain_allocmem(struct fimc_is_device_ischain *this)
 {
@@ -673,6 +677,16 @@ static void fimc_is_ischain_region_flush(struct fimc_is_device_ischain *this)
 		DMA_TO_DEVICE);
 }
 
+static void fimc_is_ischain_version(char *name, char *load_bin, u32 size)
+{
+	char version_str[FIMC_IS_VERSION_SIZE + 1];
+
+	memcpy(version_str, &load_bin[size - FIMC_IS_VERSION_SIZE],
+		FIMC_IS_VERSION_SIZE);
+	version_str[FIMC_IS_VERSION_SIZE] = 0;
+	printk(KERN_INFO "%s version : %s\n", name, version_str);
+}
+
 static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *this)
 {
 	int ret;
@@ -719,6 +733,7 @@ static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *this)
 		fimc_is_ischain_cache_flush(this, 0, fsize + 1);
 		printk(KERN_INFO "FIMC_IS F/W loaded from %s - size:%d\n",
 				FIMC_IS_FW_SDCARD, nread);
+		fimc_is_ischain_version(FIMC_IS_FW, buf, fsize);
 	}
 
 request_fw:
@@ -738,10 +753,12 @@ request_fw:
 				"failed to load FIMC-IS F/W\n");
 			return -EINVAL;
 		} else {
-		    memcpy((void *)this->minfo.kvaddr, fw_blob->data,
-			fw_blob->size);
-		    fimc_is_ischain_cache_flush(this, 0, fw_blob->size + 1);
-		    dbg_ischain("FIMC_IS F/W is loaded - size:%d\n",
+			memcpy((void *)this->minfo.kvaddr, fw_blob->data,
+				fw_blob->size);
+			fimc_is_ischain_cache_flush(this, 0, fw_blob->size + 1);
+			dbg_ischain("FIMC_IS F/W is loaded - size:%d\n",
+				fw_blob->size);
+			fimc_is_ischain_version(FIMC_IS_FW, fw_blob->data,
 				fw_blob->size);
 		}
 
@@ -792,7 +809,7 @@ static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
 	fw_requested = 0;
 	fsize = fp->f_path.dentry->d_inode->i_size;
 	dbg_ischain("start, file path %s, size %ld Bytes\n",
-		FIMC_IS_FW_SDCARD, fsize);
+		setfile_path, fsize);
 	buf = vmalloc(fsize);
 	if (!buf) {
 		dev_err(&this->pdev->dev,
@@ -815,6 +832,7 @@ static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
 		fimc_is_ischain_cache_flush(this, load_addr, fsize + 1);
 		printk(KERN_INFO "FIMC_IS setfile is loaded from %s - size:%d\n",
 				setfile_path, nread);
+		fimc_is_ischain_version(setfile_name, buf, fsize);
 	}
 
 request_fw:
@@ -839,11 +857,12 @@ request_fw:
 				fw_blob->size + 1);
 		}
 
-		dbg_ischain("FIMC_IS setfile loaded successfully - size:%d\n",
-								fw_blob->size);
-		release_firmware(fw_blob);
+		printk(KERN_INFO "setfile is loaded successfully(size:%d)\n",
+			fw_blob->size);
+		fimc_is_ischain_version(setfile_name, fw_blob->data,
+			fw_blob->size);
 
-		dbg_ischain("Setfile base  = 0x%08x\n", load_addr);
+		release_firmware(fw_blob);
 #ifdef SDCARD_FW
 	}
 #endif
@@ -860,19 +879,19 @@ out:
 	return ret;
 }
 
-static void fimc_is_ischain_lowpower(struct fimc_is_device_ischain *this,
+static void fimc_is_ischain_forcedown(struct fimc_is_device_ischain *this,
 	bool on)
 {
 	if (on) {
 		printk(KERN_INFO "Set low poweroff mode\n");
 		__raw_writel(0x0, PMUREG_ISP_ARM_OPTION);
 		__raw_writel(0x1CF82000, PMUREG_ISP_LOW_POWER_OFF);
-		this->lpower = true;
+		this->force_down = true;
 	} else {
 		printk(KERN_INFO "Clear low poweroff mode\n");
 		__raw_writel(0xFFFFFFFF, PMUREG_ISP_ARM_OPTION);
 		__raw_writel(0x8, PMUREG_ISP_LOW_POWER_OFF);
-		this->lpower = false;
+		this->force_down = false;
 	}
 }
 
@@ -889,14 +908,11 @@ void fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 	char *cal_ptr;
 	int ret;
 
-
 	printk(KERN_INFO "%s(%d)\n", __func__, on);
 	if (on) {
 		/* 1. force poweroff setting */
-		/*
-		if (this->lpower)
-			fimc_is_ischain_lowpower(this, false);
-		*/
+		if (this->force_down)
+			fimc_is_ischain_forcedown(this, false);
 
 		/* 2. FIMC-IS local power enable */
 #if defined(CONFIG_PM_RUNTIME)
@@ -906,8 +922,6 @@ void fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 #else
 		fimc_is_runtime_resume(dev);
 #endif
-		writel((__raw_readl(EXYNOS5_CLKSRC_TOP3) | (1 << 16) |
-			(1 << 20)), EXYNOS5_CLKSRC_TOP3);
 
 		memset(buf, 0xff, FIMC_IS_MAX_CAL_SIZE);
 		ret = fimc_is_spi_read(buf, FIMC_IS_MAX_CAL_SIZE);
@@ -916,19 +930,18 @@ void fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 			return -EINVAL;
 		}
 
-		cal_ptr = this->minfo.kvaddr;
-		cal_ptr += FIMC_IS_CAL_START_ADDR;
+		cal_ptr = this->minfo.kvaddr + FIMC_IS_CAL_START_ADDR;
 
 		if (sensor_info->sensor == SENSOR_NAME_S5K6A3) {
 			buf[0x1a] = 0;
 			buf[0x1b] = 0;
 		}
 
-		dbg_ischain("sensor name : %s\n",
+		printk(KERN_INFO "sensor name : %s\n",
 			(sensor_info->sensor == SENSOR_NAME_S5K6A3)
 			? "6A3" : "4E5");
-		dbg_ischain("FROM DATA(0x1A): 0x%08x\n", buf[0x1a]);
-		dbg_ischain("FROM DATA(0x1B): 0x%08x\n", buf[0x1b]);
+		printk(KERN_INFO "FROM DATA(0x1A): 0x%08x\n", buf[0x1a]);
+		printk(KERN_INFO "FROM DATA(0x1B): 0x%08x\n", buf[0x1b]);
 		memcpy(cal_ptr, buf, FIMC_IS_MAX_CAL_SIZE);
 		fimc_is_ischain_cache_flush(this, FIMC_IS_CAL_START_ADDR,
 					FIMC_IS_MAX_CAL_SIZE + 1);
@@ -965,7 +978,7 @@ void fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 		while (__raw_readl(PMUREG_ISP_ARM_STATUS) & 0x1) {
 			if (timeout == 0) {
 				printk(KERN_ERR "A5 power off failed\n");
-				fimc_is_ischain_lowpower(this, true);
+				fimc_is_ischain_forcedown(this, true);
 			}
 			timeout--;
 			udelay(1);
@@ -1454,6 +1467,7 @@ static int fimc_is_itf_shot(struct fimc_is_device_ischain *this,
 #ifdef MEASURE_TIME
 	do_gettimeofday(&frame->tzone[TM_SHOT]);
 #endif
+
 	ret = fimc_is_hw_shot_nblk(this->interface, this->instance,
 		frame->dvaddr_buffer[0],
 		frame->dvaddr_shot,
@@ -1473,6 +1487,8 @@ int fimc_is_ischain_probe(struct fimc_is_device_ischain *this,
 {
 	struct fimc_is_ischain_dev *scc, *scp;
 
+	/*this initialization should be just one time*/
+
 	scc = &this->scc;
 	scp = &this->scp;
 
@@ -1480,8 +1496,7 @@ int fimc_is_ischain_probe(struct fimc_is_device_ischain *this,
 	this->bus_dev		= dev_get("exynos-busfreq");
 #endif
 
-	/*this->private_data = (u32)private_data;*/
-	this->lpower		= false;
+	this->force_down	= false;
 	this->interface		= interface;
 	this->framemgr		= framemgr;
 	this->mem		= mem;
@@ -1537,13 +1552,14 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
 
 		set_bit(FIMC_IS_ISCHAIN_LOADED, &this->state);
 
+		/*bus lock*/
+		pm_qos_add_request(&pm_qos_req, PM_QOS_CPU_DMA_LATENCY, 100);
+
 		/* 3. A5 power on */
 		fimc_is_ischain_power(this, 1);
 
 		set_bit(FIMC_IS_ISCHAIN_POWER_ON, &this->state);
 		dbg_ischain("fimc_is_load_fw end\n");
-
-		/* bts_set_priority(&this->pdev->dev, 1); */
 
 		memset(&this->cur_peri_ctl, 0,
 			sizeof(struct camera2_uctl));
@@ -1593,10 +1609,13 @@ int fimc_is_ischain_close(struct fimc_is_device_ischain *this)
 	ret = fimc_is_itf_power_down(this);
 	if (ret) {
 		err("power down is failed, retry forcelly\n");
-		fimc_is_ischain_lowpower(this, true);
+		fimc_is_ischain_forcedown(this, true);
 	}
 
 	fimc_is_ischain_power(this, 0);
+
+	/*bus release*/
+	pm_qos_remove_request(&pm_qos_req);
 
 	fimc_is_interface_close(this->interface);
 
@@ -1649,6 +1668,13 @@ exit:
 static int fimc_is_ischain_s_setfile(struct fimc_is_device_ischain *this)
 {
 	int ret = 0;
+
+	printk(KERN_INFO "setfile is %d\n", this->setfile);
+
+	if (this->setfile >= ISS_SUB_END) {
+		err("setfile id(%d) is invalid\n", this->setfile);
+		goto exit;
+	}
 
 	ret = fimc_is_itf_process_off(this);
 	if (ret) {
@@ -2456,7 +2482,7 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 				for (i = this->debug_cnt; count > 0; count--) {
 					digit = letter = debug[i];
 					if (digit)
-						printk(KERN_INFO "%c", letter);
+						printk(KERN_CONT "%c", letter);
 					i++;
 					if (i > DEBUG_CNT)
 						i = 0;
@@ -2487,33 +2513,33 @@ int fimc_is_ischain_isp_stop(struct fimc_is_device_ischain *this)
 	framemgr = this->framemgr;
 
 	if (test_bit(FIMC_IS_ISDEV_DSTART, &isp->state)) {
-		retry = 100;
+		retry = 10;
 		while (framemgr->frame_request_cnt && retry) {
 			printk(KERN_INFO "%d frame reqs waiting...\n",
 				framemgr->frame_request_cnt);
-			mdelay(1);
+			msleep(20);
 			retry--;
 		}
 
 		if (!retry)
 			err("waiting complete is fail1");
 
-		retry = 100;
+		retry = 10;
 		while (framemgr->frame_process_cnt && retry) {
 			printk(KERN_INFO "%d frame pros waiting...\n",
 				framemgr->frame_process_cnt);
-			mdelay(1);
+			msleep(20);
 			retry--;
 		}
 
 		if (!retry)
 			err("waiting complete is fail2");
 
-		retry = 100;
+		retry = 10;
 		while (itf->nblk_shot.work_request_cnt && retry) {
 			printk(KERN_INFO "%d shot reqs waiting...\n",
 				itf->nblk_shot.work_request_cnt);
-			mdelay(1);
+			msleep(20);
 			retry--;
 		}
 

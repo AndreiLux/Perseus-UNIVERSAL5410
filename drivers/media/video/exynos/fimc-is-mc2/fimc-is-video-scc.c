@@ -450,6 +450,7 @@ static int fimc_is_scalerc_buffer_finish(struct vb2_buffer *vb)
 
 	return ret;
 }
+
 const struct vb2_ops fimc_is_scalerc_qops = {
 	.queue_setup		= fimc_is_scalerc_queue_setup,
 	.buf_prepare		= fimc_is_scalerc_buffer_prepare,
