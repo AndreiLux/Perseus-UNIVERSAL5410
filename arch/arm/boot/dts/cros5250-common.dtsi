@@ -200,6 +200,8 @@
 		power-regulator {
 			compatible = "ti,tps65090";
 			reg = <0x48>;
+			interrupts = <22 0>;
+			interrupt-parent = <&wakeup_eint>;
 
 			voltage-regulators {
 				VFET1 {
@@ -253,6 +255,10 @@
 					regulator-name = "ts";
 					regulator-min-microvolt = <5000000>;
 					regulator-max-microvolt = <5000000>;
+				};
+				VBAT: charger {
+					tps65090-control-reg-offset = <4>;
+					regulator-name = "vinchg";
 				};
 			};
 		};
@@ -469,11 +475,5 @@
 
 	sound {
 		compatible = "google,daisy-audio-max98095";
-	};
-
-	charger-detect {
-		compatible = "gpio-charger";
-		charger-type = <3>;
-		gpio = <&gpf0 2 0 0 0>;
 	};
 };
