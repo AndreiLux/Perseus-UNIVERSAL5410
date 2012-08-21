@@ -117,7 +117,7 @@ static unsigned int exynos5250_get_asv_group(unsigned int ids,
 			if ((ids <= refer_ids) || (hpm <= refer_hpm))
 				return i;
 		} else {
-			refer_hpm = refer_table[target_type][1][i];
+			refer_hpm = refer_table[target_type][0][i];
 
 			if (hpm <= refer_hpm)
 				return i;
