@@ -1,4 +1,4 @@
-/* linux/arch/arm/mach-exynos/bts.c
+/* linux/arch/arm/mach-exynos/dev-bts.c
  *
  * Copyright (c) 2012 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com
