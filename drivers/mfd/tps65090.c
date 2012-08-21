@@ -22,6 +22,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
+#include <linux/power_supply.h>
 #include <linux/i2c.h>
 #include <linux/mfd/core.h>
 #include <linux/mfd/tps65090.h>
@@ -77,6 +78,9 @@ static struct mfd_cell tps65090s[] = {
 	{
 		.name = "tps65090-regulator",
 	},
+	{
+		.name = "tps65090-charger",
+	},
 };
 
 struct tps65090 {
@@ -88,6 +92,7 @@ struct tps65090 {
 	struct mutex		irq_lock;
 	int			irq_base;
 	unsigned int		id;
+	struct power_supply	*charger;
 };
 
 int tps65090_write(struct device *dev, int reg, uint8_t val)
@@ -173,6 +178,12 @@ static irqreturn_t tps65090_irq(int irq, void *data)
 	unsigned long int acks = 0;
 	int i;
 
+	if (!tps65090->charger)
+		tps65090->charger =
+			power_supply_get_by_name("tps65090-charger");
+	if (tps65090->charger)
+		power_supply_changed((struct power_supply *)tps65090->charger);
+
 	for (i = 0; i < NUM_INT_REG; i++) {
 		ret = tps65090_read(tps65090->dev, TPS65090_INT_MSK + i, &mask);
 		if (ret < 0) {
@@ -238,6 +249,8 @@ static int __devinit tps65090_irq_init(struct tps65090 *tps65090, int irq)
 	tps65090->irq_chip.irq_bus_lock = tps65090_irq_lock;
 	tps65090->irq_chip.irq_bus_sync_unlock = tps65090_irq_sync_unlock;
 
+	tps65090->charger = power_supply_get_by_name("tps65090-charger");
+
 	for (i = 0; i < ARRAY_SIZE(tps65090_irqs); i++) {
 		int __irq = i + tps65090->irq_base;
 		irq_set_chip_data(__irq, tps65090);
@@ -297,6 +310,15 @@ static int __devinit tps65090_i2c_probe(struct i2c_client *client,
 
 	mutex_init(&tps65090->lock);
 
+	tps65090->rmap = regmap_init_i2c(tps65090->client,
+		&tps65090_regmap_config);
+	if (IS_ERR(tps65090->rmap)) {
+		dev_err(&client->dev, "regmap_init failed with err: %ld\n",
+			PTR_ERR(tps65090->rmap));
+		ret = -EINVAL;
+		goto err_irq_exit;
+	};
+
 	if (client->irq) {
 		ret = tps65090_irq_init(tps65090, client->irq);
 		if (ret) {
@@ -305,15 +327,6 @@ static int __devinit tps65090_i2c_probe(struct i2c_client *client,
 			goto err_exit;
 		}
 	}
-
-	tps65090->rmap = regmap_init_i2c(tps65090->client,
-		&tps65090_regmap_config);
-	if (IS_ERR(tps65090->rmap)) {
-		dev_err(&client->dev, "regmap_init failed with err: %ld\n",
-			PTR_ERR(tps65090->rmap));
-		goto err_irq_exit;
-	};
-
 	ret = mfd_add_devices(tps65090->dev, -1, tps65090s,
 		ARRAY_SIZE(tps65090s), NULL, 0);
 	if (ret) {
