@@ -27,12 +27,14 @@
 #include <mach/map.h>
 #include <mach/regs-clock.h>
 #include <mach/asv-exynos.h>
+#include <mach/abb-exynos.h>
 
 #include "exynos_ppmu.h"
 #include "exynos5_ppmu.h"
 
 #define MAX_SAFEVOLT	1100000 /* 1.1V */
 
+#define MIF_ABB_CONTROL_FREQUENCY 667000000
 
 /* Assume that the bus is saturated if the utilization is 20% */
 #define MIF_BUS_SATURATION_RATIO	20
@@ -96,6 +98,14 @@ static int exynos5_mif_setclk(struct busfreq_data_mif *data,
 	unsigned long new_p_rate;
 	int div;
 
+	/*
+	 * Dynamic ABB control according to MIF frequency
+	 * MIF frquency > 667 MHz : ABB_MODE_130V
+	 * MIF frquency <= 667 MHz : ABB_MODE_BYPASS
+	 */
+	if (new_freq > MIF_ABB_CONTROL_FREQUENCY)
+		set_abb_member(ABB_MIF, ABB_MODE_130V);
+
 	old_p = clk_get_parent(data->mclk_cdrex);
 	if (IS_ERR(old_p))
 		return PTR_ERR(old_p);
@@ -148,6 +158,9 @@ static int exynos5_mif_setclk(struct busfreq_data_mif *data,
 		/* No need to change pll */
 		err = clk_set_rate(data->mif_clk, new_freq);
 	}
+
+	if (new_freq <= MIF_ABB_CONTROL_FREQUENCY)
+		set_abb_member(ABB_MIF, ABB_MODE_BYPASS);
 out:
 	return err;
 }
@@ -375,15 +388,9 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 
 	data->curr_opp = opp;
 
-	err = clk_set_rate(data->mif_clk, initial_freq * 1000);
+	err = exynos5_mif_setclk(data, initial_freq * 1000);
 	if (err) {
 		dev_err(dev, "Failed to set initial frequency\n");
-		goto err_opp_add;
-	}
-
-	err = clk_set_parent(data->mclk_cdrex, data->mout_mpll);
-	if (err) {
-		dev_err(dev, "Failed to set initial parent\n");
 		goto err_opp_add;
 	}
 
