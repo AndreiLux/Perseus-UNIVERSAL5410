@@ -215,6 +215,8 @@ struct dw_mci_dma_ops {
 #define DW_MCI_QUIRK_BROKEN_CARD_DETECTION	BIT(3)
 /* Write Protect detection not available */
 #define DW_MCI_QUIRK_NO_WRITE_PROTECT		BIT(4)
+/* Only support SD cards, not MMC */
+#define DW_MCI_QUIRK_DISABLE_MMC		BIT(5)
 
 struct dma_pdata;
 

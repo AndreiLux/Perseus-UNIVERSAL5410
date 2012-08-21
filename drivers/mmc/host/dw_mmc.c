@@ -1965,6 +1965,9 @@ static int __init dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 	if (host->pdata->quirks & DW_MCI_QUIRK_HIGHSPEED)
 		mmc->caps |= MMC_CAP_SD_HIGHSPEED | MMC_CAP_MMC_HIGHSPEED;
 
+	if (host->pdata->quirks & DW_MCI_QUIRK_DISABLE_MMC)
+		mmc->caps2 |= MMC_CAP2_NO_MMC;
+
 	if (mmc->caps2 & MMC_CAP2_POWEROFF_NOTIFY)
 		mmc->power_notify_type = MMC_HOST_PW_NOTIFY_SHORT;
 	else
@@ -2111,7 +2114,10 @@ static struct dw_mci_of_quirks {
 	}, {
 		.quirk 	= "no-write-protect",
 		.id	= DW_MCI_QUIRK_NO_WRITE_PROTECT,
-	}
+	}, {
+		.quirk	= "disable-mmc",
+		.id	= DW_MCI_QUIRK_DISABLE_MMC,
+	},
 };
 
 static struct dw_mci_board *dw_mci_parse_dt(struct dw_mci *host)
