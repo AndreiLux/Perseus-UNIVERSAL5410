@@ -1392,27 +1392,30 @@ static unsigned int s3c_fb_map_ion_handle(struct s3c_fb *sfb,
 {
 	dma->dma_buf = dma_buf_get(fd);
 	if (IS_ERR_OR_NULL(dma->dma_buf)) {
-		dev_err(sfb->dev, "dma_buf_get() failed\n");
+		dev_err(sfb->dev, "dma_buf_get() failed: %ld\n",
+				PTR_ERR(dma->dma_buf));
 		goto err_share_dma_buf;
 	}
 
 	dma->attachment = dma_buf_attach(dma->dma_buf, sfb->dev);
 	if (IS_ERR_OR_NULL(dma->attachment)) {
-		dev_err(sfb->dev, "dma_buf_map_attach() failed\n");
+		dev_err(sfb->dev, "dma_buf_attach() failed: %ld\n",
+				PTR_ERR(dma->attachment));
 		goto err_buf_map_attach;
 	}
 
 	dma->sg_table = dma_buf_map_attachment(dma->attachment,
 			DMA_BIDIRECTIONAL);
 	if (IS_ERR_OR_NULL(dma->sg_table)) {
-		dev_err(sfb->dev, "dma_buf_map_attachment() failed\n");
+		dev_err(sfb->dev, "dma_buf_map_attachment() failed: %ld\n",
+				PTR_ERR(dma->sg_table));
 		goto err_buf_map_attachment;
 	}
 
 	dma->dma_addr = iovmm_map(&s5p_device_fimd1.dev, dma->sg_table->sgl, 0,
 			dma->dma_buf->size);
-	if (!dma->dma_addr) {
-		dev_err(sfb->dev, "iovmm_map() failed\n");
+	if (!dma->dma_addr || IS_ERR_VALUE(dma->dma_addr)) {
+		dev_err(sfb->dev, "iovmm_map() failed: %d\n", dma->dma_addr);
 		goto err_iovmm_map;
 	}
 
