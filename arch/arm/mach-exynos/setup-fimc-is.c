@@ -39,10 +39,10 @@ static int cfg_gpio(struct gpio_set *gpio, int value)
 {
 	int ret;
 
-	printk(KERN_DEBUG "gpio.pin:%d gpio.name:%s\n", gpio->pin, gpio->name);
+	pr_debug("gpio.pin:%d gpio.name:%s\n", gpio->pin, gpio->name);
 	ret = gpio_request(gpio->pin, gpio->name);
 	if (ret) {
-		printk(KERN_ERR "Request GPIO error(%s)\n", gpio->name);
+		pr_err("Request GPIO error(%s)\n", gpio->name);
 		return -1;
 	}
 
@@ -61,7 +61,7 @@ static int cfg_gpio(struct gpio_set *gpio, int value)
 		gpio_direction_output(gpio->pin, value);
 		break;
 	default:
-		printk(KERN_ERR "unknown act for gpio\n");
+		pr_err("unknown act for gpio\n");
 		return -1;
 	}
 	gpio_free(gpio->pin);
@@ -74,10 +74,10 @@ static int power_control_sensor(char *regulator_name, int on)
 {
 	struct regulator *regulator = NULL;
 
-	printk(KERN_DEBUG "regulator:%s on:%d\n", regulator_name, on);
+	pr_debug("regulator:%s on:%d\n", regulator_name, on);
 	regulator = regulator_get(NULL, regulator_name);
 	if (IS_ERR(regulator)) {
-		printk(KERN_ERR "%s : regulator_get fail\n", __func__);
+		pr_err("%s : regulator_get fail\n", __func__);
 		return PTR_ERR(regulator);
 	}
 
@@ -104,7 +104,8 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 	struct clk *sclk_uart_isp = NULL;
 	struct clk *sclk_uart_isp_div = NULL;
 	struct clk *mout_mpll = NULL;
-	struct clk *sclk_mipi = NULL;
+	struct clk *sclk_mipi0 = NULL;
+	struct clk *sclk_mipi1 = NULL;
 	struct clk *cam_src = NULL;
 	struct clk *cam_A_clk = NULL;
 	unsigned long mcu_isp_400;
@@ -119,24 +120,29 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 		return PTR_ERR(aclk_mcuisp);
 
 	aclk_mcuisp_div0 = clk_get(&pdev->dev, "aclk_400_isp_div0");
-	if (IS_ERR(aclk_mcuisp_div0))
+	if (IS_ERR(aclk_mcuisp_div0)) {
+		clk_put(aclk_mcuisp);
 		return PTR_ERR(aclk_mcuisp_div0);
+	}
 
 	aclk_mcuisp_div1 = clk_get(&pdev->dev, "aclk_400_isp_div1");
-	if (IS_ERR(aclk_mcuisp_div1))
+	if (IS_ERR(aclk_mcuisp_div1)) {
+		clk_put(aclk_mcuisp);
+		clk_put(aclk_mcuisp_div0);
 		return PTR_ERR(aclk_mcuisp_div1);
+	}
 
 	clk_set_rate(aclk_mcuisp_div0, 200 * 1000000);
 	clk_set_rate(aclk_mcuisp_div1, 100 * 1000000);
 
 	mcu_isp_400 = clk_get_rate(aclk_mcuisp);
-	printk(KERN_DEBUG "mcu_isp_400 : %ld\n", mcu_isp_400);
+	pr_debug("mcu_isp_400 : %ld\n", mcu_isp_400);
 
 	mcu_isp_400 = clk_get_rate(aclk_mcuisp_div0);
-	printk(KERN_DEBUG "mcu_isp_400_div0 : %ld\n", mcu_isp_400);
+	pr_debug("mcu_isp_400_div0 : %ld\n", mcu_isp_400);
 
 	mcu_isp_400 = clk_get_rate(aclk_mcuisp_div1);
-	printk(KERN_DEBUG "aclk_mcuisp_div1 : %ld\n", mcu_isp_400);
+	pr_debug("aclk_mcuisp_div1 : %ld\n", mcu_isp_400);
 
 	clk_put(aclk_mcuisp);
 	clk_put(aclk_mcuisp_div0);
@@ -146,15 +152,27 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 	aclk_266 = clk_get(&pdev->dev, "aclk_266_isp");
 	if (IS_ERR(aclk_266))
 		return PTR_ERR(aclk_266);
+
 	aclk_266_div0 = clk_get(&pdev->dev, "aclk_266_isp_div0");
-	if (IS_ERR(aclk_266_div0))
+	if (IS_ERR(aclk_266_div0)) {
+		clk_put(aclk_266);
 		return PTR_ERR(aclk_266_div0);
+	}
+
 	aclk_266_div1 = clk_get(&pdev->dev, "aclk_266_isp_div1");
-	if (IS_ERR(aclk_266_div1))
+	if (IS_ERR(aclk_266_div1)) {
+		clk_put(aclk_266);
+		clk_put(aclk_266_div0);
 		return PTR_ERR(aclk_266_div1);
+	}
+
 	aclk_266_mpwm = clk_get(&pdev->dev, "aclk_266_isp_divmpwm");
-	if (IS_ERR(aclk_266_mpwm))
+	if (IS_ERR(aclk_266_mpwm)) {
+		clk_put(aclk_266);
+		clk_put(aclk_266_div0);
+		clk_put(aclk_266_div1);
 		return PTR_ERR(aclk_266_mpwm);
+	}
 
 	clk_set_rate(aclk_266_div0, 134 * 1000000);
 	clk_set_rate(aclk_266_div1, 68 * 1000000);
@@ -162,16 +180,16 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 	__raw_writel(0x00000001, EXYNOS5_CLKDIV_ISP2);
 
 	isp_266 = clk_get_rate(aclk_266);
-	printk(KERN_DEBUG "isp_266 : %ld\n", isp_266);
+	pr_debug("isp_266 : %ld\n", isp_266);
 
 	isp_266 = clk_get_rate(aclk_266_div0);
-	printk(KERN_DEBUG "isp_266_div0 : %ld\n", isp_266);
+	pr_debug("isp_266_div0 : %ld\n", isp_266);
 
 	isp_266 = clk_get_rate(aclk_266_div1);
-	printk(KERN_DEBUG "isp_266_div1 : %ld\n", isp_266);
+	pr_debug("isp_266_div1 : %ld\n", isp_266);
 
 	isp_266 = clk_get_rate(aclk_266_mpwm);
-	printk(KERN_DEBUG "isp_266_mpwm : %ld\n", isp_266);
+	pr_debug("isp_266_mpwm : %ld\n", isp_266);
 
 	clk_put(aclk_266);
 	clk_put(aclk_266_div0);
@@ -184,17 +202,19 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 		return PTR_ERR(sclk_uart_isp);
 
 	sclk_uart_isp_div = clk_get(&pdev->dev, "sclk_uart_isp");
-	if (IS_ERR(sclk_uart_isp_div))
+	if (IS_ERR(sclk_uart_isp_div)) {
+		clk_put(sclk_uart_isp);
 		return PTR_ERR(sclk_uart_isp_div);
+	}
 
 	clk_set_parent(sclk_uart_isp, clk_get(&pdev->dev, "mout_mpll_user"));
 	clk_set_parent(sclk_uart_isp_div, sclk_uart_isp);
 	clk_set_rate(sclk_uart_isp_div, 50 * 1000000);
 
 	isp_uart = clk_get_rate(sclk_uart_isp);
-	printk(KERN_DEBUG "isp_uart : %ld\n", isp_uart);
+	pr_debug("isp_uart : %ld\n", isp_uart);
 	isp_uart = clk_get_rate(sclk_uart_isp_div);
-	printk(KERN_DEBUG "isp_uart_div : %ld\n", isp_uart);
+	pr_debug("isp_uart_div : %ld\n", isp_uart);
 
 	clk_put(sclk_uart_isp);
 	clk_put(sclk_uart_isp_div);
@@ -203,41 +223,53 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 	mout_mpll = clk_get(&pdev->dev, "mout_mpll_user");
 	if (IS_ERR(mout_mpll))
 		return PTR_ERR(mout_mpll);
-	sclk_mipi = clk_get(&pdev->dev, "sclk_gscl_wrap0");
-	if (IS_ERR(sclk_mipi))
-		return PTR_ERR(sclk_mipi);
 
-	clk_set_parent(sclk_mipi, mout_mpll);
-	clk_set_rate(sclk_mipi, 267 * 1000000);
+	sclk_mipi0 = clk_get(&pdev->dev, "sclk_gscl_wrap0");
+	if (IS_ERR(sclk_mipi0)) {
+		clk_put(mout_mpll);
+		return PTR_ERR(sclk_mipi0);
+	}
 
+	clk_set_parent(sclk_mipi0, mout_mpll);
+	clk_set_rate(sclk_mipi0, 267 * 1000000);
+
+	clk_put(mout_mpll);
+	clk_put(sclk_mipi0);
 
 	mout_mpll = clk_get(&pdev->dev, "mout_mpll_user");
 	if (IS_ERR(mout_mpll))
 		return PTR_ERR(mout_mpll);
-	sclk_mipi = clk_get(&pdev->dev, "sclk_gscl_wrap1");
-	if (IS_ERR(sclk_mipi))
-		return PTR_ERR(sclk_mipi);
 
-	clk_set_parent(sclk_mipi, mout_mpll);
-	clk_set_rate(sclk_mipi, 267 * 1000000);
+	sclk_mipi1 = clk_get(&pdev->dev, "sclk_gscl_wrap1");
+	if (IS_ERR(sclk_mipi1)) {
+		clk_put(mout_mpll);
+		return PTR_ERR(sclk_mipi1);
+	}
+
+	clk_set_parent(sclk_mipi1, mout_mpll);
+	clk_set_rate(sclk_mipi1, 267 * 1000000);
+
 	mipi = clk_get_rate(mout_mpll);
-	printk(KERN_DEBUG "mipi_src : %ld\n", mipi);
-	mipi = clk_get_rate(sclk_mipi);
-	printk(KERN_DEBUG "mipi_div : %ld\n", mipi);
+	pr_debug("mipi_src : %ld\n", mipi);
+	mipi = clk_get_rate(sclk_mipi1);
+	pr_debug("mipi_div : %ld\n", mipi);
 
 	clk_put(mout_mpll);
-	clk_put(sclk_mipi);
+	clk_put(sclk_mipi1);
 
 	/* 5. Camera A */
 	cam_src = clk_get(&pdev->dev, "xxti");
 	if (IS_ERR(cam_src))
 		return PTR_ERR(cam_src);
+
 	cam_A_clk = clk_get(&pdev->dev, "sclk_cam0");
-	if (IS_ERR(cam_A_clk))
+	if (IS_ERR(cam_A_clk)) {
+		clk_put(cam_src);
 		return PTR_ERR(cam_A_clk);
+	}
 
 	epll = clk_get_rate(cam_src);
-	printk(KERN_DEBUG "epll : %ld\n", epll);
+	pr_debug("epll : %ld\n", epll);
 
 	clk_set_parent(cam_A_clk, cam_src);
 	clk_set_rate(cam_A_clk, 24 * 1000000);
@@ -249,12 +281,15 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 	cam_src = clk_get(&pdev->dev, "xxti");
 	if (IS_ERR(cam_src))
 		return PTR_ERR(cam_src);
+
 	cam_A_clk = clk_get(&pdev->dev, "sclk_cam1");
-	if (IS_ERR(cam_A_clk))
+	if (IS_ERR(cam_A_clk)) {
+		clk_put(cam_src);
 		return PTR_ERR(cam_A_clk);
+	}
 
 	epll = clk_get_rate(cam_src);
-	printk(KERN_DEBUG "epll : %ld\n", epll);
+	pr_debug("epll : %ld\n", epll);
 
 	clk_set_parent(cam_A_clk, cam_src);
 	clk_set_rate(cam_A_clk, 24 * 1000000);
@@ -272,6 +307,10 @@ int exynos5_fimc_is_clk_on(struct platform_device *pdev, int sensor_id)
 	struct clk *mipi_ctrl = NULL;
 	struct clk *cam_if_top = NULL;
 	struct clk *cam_clk = NULL;
+	struct clk *isp_400_src = NULL;
+	struct clk *isp_266_src = NULL;
+	struct clk *isp_400_clk = NULL;
+	struct clk *isp_266_clk = NULL;
 	struct exynos5_platform_fimc_is *dev = pdev->dev.platform_data;
 	struct exynos5_fimc_is_sensor_info *sensor =
 						dev->sensor_info[sensor_id];
@@ -336,6 +375,40 @@ int exynos5_fimc_is_clk_on(struct platform_device *pdev, int sensor_id)
 		clk_put(cam_clk);
 	}
 
+	/*isp sub src selection*/
+	isp_400_src = clk_get(&pdev->dev, "aclk_400_isp");
+	if (IS_ERR(isp_400_src))
+		return PTR_ERR(isp_400_src);
+
+	isp_266_src = clk_get(&pdev->dev, "aclk_266_isp");
+	if (IS_ERR(isp_266_src)) {
+		clk_put(isp_400_src);
+		return PTR_ERR(isp_266_src);
+	}
+
+	isp_400_clk = clk_get(&pdev->dev, "dout_aclk_400_isp");
+	if (IS_ERR(isp_400_clk)) {
+		clk_put(isp_400_src);
+		clk_put(isp_266_src);
+		return PTR_ERR(isp_400_clk);
+	}
+
+	isp_266_clk = clk_get(&pdev->dev, "aclk_266");
+	if (IS_ERR(isp_266_clk)) {
+		clk_put(isp_400_src);
+		clk_put(isp_266_src);
+		clk_put(isp_400_clk);
+		return PTR_ERR(isp_266_clk);
+	}
+
+	clk_set_parent(isp_400_src, isp_400_clk);
+	clk_set_parent(isp_266_src, isp_266_clk);
+
+	clk_put(isp_400_src);
+	clk_put(isp_266_src);
+	clk_put(isp_400_clk);
+	clk_put(isp_266_clk);
+
 	return 0;
 }
 
@@ -346,6 +419,9 @@ int exynos5_fimc_is_clk_off(struct platform_device *pdev, int sensor_id)
 	struct clk *mipi_ctrl = NULL;
 	struct clk *cam_if_top = NULL;
 	struct clk *cam_clk = NULL;
+	struct clk *isp_400_src = NULL;
+	struct clk *isp_266_src = NULL;
+	struct clk *xtal_clk = NULL;
 	struct exynos5_platform_fimc_is *dev = pdev->dev.platform_data;
 	struct exynos5_fimc_is_sensor_info *sensor =
 						dev->sensor_info[sensor_id];
@@ -410,6 +486,31 @@ int exynos5_fimc_is_clk_off(struct platform_device *pdev, int sensor_id)
 	clk_disable(gsc_ctrl);
 	clk_put(gsc_ctrl);
 
+	/*isp sub src selection*/
+	isp_400_src = clk_get(&pdev->dev, "aclk_400_isp");
+	if (IS_ERR(isp_400_src))
+		return PTR_ERR(isp_400_src);
+
+	isp_266_src = clk_get(&pdev->dev, "aclk_266_isp");
+	if (IS_ERR(isp_266_src)) {
+		clk_put(isp_400_src);
+		return PTR_ERR(isp_266_src);
+	}
+
+	xtal_clk = clk_get(&pdev->dev, "ext_xtal");
+	if (IS_ERR(xtal_clk)) {
+		clk_put(isp_400_src);
+		clk_put(isp_266_src);
+		return PTR_ERR(xtal_clk);
+	}
+
+	clk_set_parent(isp_400_src, xtal_clk);
+	clk_set_parent(isp_266_src, xtal_clk);
+
+	clk_put(isp_400_src);
+	clk_put(isp_266_src);
+	clk_put(xtal_clk);
+
 	return 0;
 }
 
@@ -423,7 +524,7 @@ int exynos5_fimc_is_sensor_power_on(struct platform_device *pdev,
 						dev->sensor_info[sensor_id];
 	int i;
 
-	printk(KERN_INFO "exynos5_fimc_is_sensor_power_on(%d)\n",
+	pr_debug("exynos5_fimc_is_sensor_power_on(%d)\n",
 					sensor_id);
 	switch (sensor->sensor_id) {
 	case SENSOR_NAME_S5K4E5:
@@ -479,7 +580,7 @@ int exynos5_fimc_is_sensor_power_on(struct platform_device *pdev,
 			if (IS_ERR_VALUE(cfg_gpio(
 					&sensor->sensor_gpio.reset_myself, 1)))
 				goto error_sensor_power_on;
-		usleep_range(500, 1000);
+		msleep(10);
 
 		break;
 
@@ -542,11 +643,11 @@ int exynos5_fimc_is_sensor_power_on(struct platform_device *pdev,
 			if (IS_ERR_VALUE(cfg_gpio(
 					&sensor->sensor_gpio.reset_peer, 0)))
 				goto error_sensor_power_on;
-		usleep_range(500, 1000);
+		msleep(10);
 
 		break;
 	default:
-		printk(KERN_ERR "Bad camera senosr ID(%d)",
+		pr_err("Bad camera senosr ID(%d)",
 				sensor->sensor_id);
 		goto error_sensor_power_on;
 	}
@@ -565,7 +666,8 @@ int exynos5_fimc_is_sensor_power_off(struct platform_device *pdev,
 	struct exynos5_fimc_is_sensor_info *sensor
 					= dev->sensor_info[sensor_id];
 
-	printk(KERN_INFO "exynos5_fimc_is_sensor_power_off(%d)\n", sensor_id);
+	pr_debug("exynos5_fimc_is_sensor_power_off(%d)\n", sensor_id);
+
 	switch (sensor->sensor_id) {
 	case SENSOR_NAME_S5K4E5:
 		if (sensor->sensor_gpio.reset_peer.pin)
@@ -646,7 +748,7 @@ int exynos5_fimc_is_sensor_power_off(struct platform_device *pdev,
 		usleep_range(500, 1000);
 		break;
 	default:
-		printk(KERN_ERR "Bad camera senosr ID(%d)",
+		pr_err("Bad camera senosr ID(%d)",
 				sensor->sensor_id);
 		goto error_sensor_power_off;
 	}
