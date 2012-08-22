@@ -78,7 +78,6 @@
 #define SCP_GET    1
 
 #define SPEQ_FILE  "ctspeq.bin"
-#define SPEQ_SIZE  0x2040
 #define EFX_FILE   "ctefx.bin"
 
 MODULE_FIRMWARE(SPEQ_FILE);
@@ -2604,39 +2603,55 @@ static int dspload_get_speakereq_addx(struct hda_codec *codec,
 	return status;
 }
 
+static const struct firmware *fw_speq;
+static const struct firmware *fw_efx;
+
+static int request_firmware_cached(const struct firmware **firmware_p,
+	const char *name, struct device *device)
+{
+	if (*firmware_p)
+		return 0;  /* already loaded */
+	return request_firmware(firmware_p, name, device);
+}
+
+static void release_cached_firmware(void)
+{
+	if (fw_speq) {
+		release_firmware(fw_speq);
+		fw_speq = NULL;
+	}
+	if (fw_efx) {
+		release_firmware(fw_efx);
+		fw_efx = NULL;
+	}
+}
+
 static int dspload_speakereq(struct hda_codec *codec)
 {
 	int status = 0;
 	const struct dsp_image_seg *image_x, *image_y;
-	const struct firmware *fw_entry;
 	unsigned int x, y;
 
 	CA0132_DSP_LOG("dspload_speakereq() -- begin");
 
-	if (request_firmware(&fw_entry, SPEQ_FILE, codec->bus->card->dev) != 0)
+	if (request_firmware_cached(&fw_speq, SPEQ_FILE,
+				    codec->bus->card->dev) != 0)
 		return -1;
 
-	if (fw_entry->size != SPEQ_SIZE) {
-		status = -1;
-		goto done_release_firmware;
-	}
-
-	image_x = (struct dsp_image_seg *)(fw_entry->data + 0x10);
-	image_y = (struct dsp_image_seg *)(fw_entry->data + 0x1028);
+	image_x = (struct dsp_image_seg *)(fw_speq->data + 0x10);
+	image_y = (struct dsp_image_seg *)(fw_speq->data + 0x1028);
 
 	status = dspload_get_speakereq_addx(codec, &x, &y);
 	if (FAILED(status))
-		goto done_release_firmware;
+		goto done;
 
 	status = dspload_image(codec, image_x, 1, x, 0, 8);
 	if (FAILED(status))
-		goto done_release_firmware;
+		goto done;
 
 	status = dspload_image(codec, image_y, 1, y, 0, 8);
 
-done_release_firmware:
-	release_firmware(fw_entry);
-
+done:
 	CA0132_DSP_LOG("dspload_speakereq() -- complete");
 
 	return status;
@@ -4169,16 +4184,14 @@ static bool ca0132_download_dsp_images(struct hda_codec *codec)
 {
 	bool dsp_loaded = false;
 	const struct dsp_image_seg *dsp_os_image;
-	const struct firmware *fw_entry;
 
-	if (request_firmware(&fw_entry, EFX_FILE, codec->bus->card->dev) != 0)
+	if (request_firmware_cached(&fw_efx, EFX_FILE,
+				    codec->bus->card->dev) != 0)
 		return false;
 
-	dsp_os_image = (struct dsp_image_seg *)(fw_entry->data);
+	dsp_os_image = (struct dsp_image_seg *)(fw_efx->data);
 	dspload_image(codec, dsp_os_image, 0, 0, true, 0);
 	dsp_loaded = dspload_wait_loaded(codec);
-
-	release_firmware(fw_entry);
 
 	if (dsp_loaded)
 		dspload_speakereq(codec);
@@ -4511,6 +4524,7 @@ static int __init patch_ca0132_init(void)
 
 static void __exit patch_ca0132_exit(void)
 {
+	release_cached_firmware();
 	snd_hda_delete_codec_preset(&ca0132_list);
 }
 
