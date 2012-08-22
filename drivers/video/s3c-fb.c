@@ -829,6 +829,18 @@ static void s3c_fb_configure_lcd(struct s3c_fb *sfb,
 	writel(data, sfb->regs + sfb->variant.vidtcon + 8);
 }
 
+static int s3c_fb_calc_bandwidth(u32 w, u32 h, u32 bits_per_pixel, int fps)
+{
+	unsigned int bw = w * h;
+	bw /= 1000;
+	bw *= DIV_ROUND_UP(bits_per_pixel, 8);
+	bw *= fps;
+	bw /= 1000;
+	bw *= 15;
+	bw /= 10;
+	return bw;
+}
+
 /**
  * s3c_fb_set_par() - framebuffer request to set new framebuffer state.
  * @info: The framebuffer to change.
@@ -845,6 +857,7 @@ static int s3c_fb_set_par(struct fb_info *info)
 	int win_no = win->index;
 	u32 data;
 	int old_wincon;
+	int bw;
 
 	dev_dbg(sfb->dev, "setting framebuffer parameters\n");
 
@@ -927,6 +940,15 @@ static int s3c_fb_set_par(struct fb_info *info)
 
 	writel(data, regs + sfb->variant.wincon + (win_no * 4));
 	writel(0x0, regs + sfb->variant.winmap + (win_no * 4));
+
+	if (data & WINCONx_ENWIN) {
+		bw = s3c_fb_calc_bandwidth(info->var.xres, info->var.yres,
+				info->var.bits_per_pixel,
+				win->fps);
+	} else {
+		bw = -1;
+	}
+	pm_qos_update_request(&win->mem_bw_req, bw);
 
 	shadow_protect_win(win, 0);
 
@@ -1049,11 +1071,20 @@ static void s3c_fb_activate_window(struct s3c_fb *sfb, unsigned int index)
 
 static void s3c_fb_activate_window_dma(struct s3c_fb *sfb, unsigned int index)
 {
+	int bw;
+	struct s3c_fb_win *win = sfb->windows[index];
+	struct fb_var_screeninfo *var = &win->fbinfo->var;
+
 	u32 shadowcon = readl(sfb->regs + SHADOWCON);
 	shadowcon |= SHADOWCON_CHx_ENABLE(index);
 	writel(shadowcon, sfb->regs + SHADOWCON);
 
 	writel(0, sfb->regs + WINxMAP(index));
+
+	bw = s3c_fb_calc_bandwidth(var->xres, var->yres,
+			var->bits_per_pixel,
+			win->fps);
+	pm_qos_update_request(&win->mem_bw_req, bw);
 }
 
 static int s3c_fb_enable(struct s3c_fb *sfb);
@@ -1879,13 +1910,10 @@ static int s3c_fb_set_win_config(struct s3c_fb *sfb,
 			regs->wincon[i] &= ~WINCONx_ENWIN;
 		regs->winmap[i] = color_map;
 
-		if (enabled) {
-			bw = config->w * config->h;
-			bw *= DIV_ROUND_UP(win->fbinfo->var.bits_per_pixel, 8);
-			bw *= win->fps;
-			bw /= 1000000;
-			bw *= 15;
-			bw /= 10;
+		if (enabled && config->state == S3C_FB_WIN_STATE_BUFFER) {
+			bw = s3c_fb_calc_bandwidth(config->w, config->h,
+					win->fbinfo->var.bits_per_pixel,
+					win->fps);
 		} else {
 			bw = -1;
 		}
