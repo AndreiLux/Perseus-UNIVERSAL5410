@@ -2374,7 +2374,6 @@ static void s3c_fb_release_win(struct s3c_fb *sfb, struct s3c_fb_win *win)
 			data &= ~SHADOWCON_CHx_LOCAL_ENABLE(win->index);
 			writel(data, sfb->regs + SHADOWCON);
 		}
-		unregister_framebuffer(win->fbinfo);
 		pm_qos_remove_request(&win->mem_bw_req);
 		if (win->fbinfo->cmap.len)
 			fb_dealloc_cmap(&win->fbinfo->cmap);
@@ -2492,20 +2491,6 @@ static int __devinit s3c_fb_probe_win(struct s3c_fb *sfb, unsigned int win_no,
 		fb_set_cmap(&fbinfo->cmap, fbinfo);
 	else
 		dev_err(sfb->dev, "failed to allocate fb cmap\n");
-
-	s3c_fb_set_par(fbinfo);
-
-	dev_dbg(sfb->dev, "about to register framebuffer\n");
-
-	/* run the check_var and set_par on our configuration. */
-
-	ret = register_framebuffer(fbinfo);
-	if (ret < 0) {
-		dev_err(sfb->dev, "failed to register framebuffer\n");
-		return ret;
-	}
-
-	dev_info(sfb->dev, "window %d: fb %s\n", win_no, fbinfo->fix.id);
 
 	return 0;
 }
@@ -3279,6 +3264,7 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	struct s3c_fb_platdata *pd;
 	struct s3c_fb *sfb;
 	struct resource *res;
+	struct fb_info *fbinfo;
 	int win;
 	int default_win;
 	int i;
@@ -3534,6 +3520,8 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 		sfb->vsync_info.thread = NULL;
 	}
 
+	s3c_fb_set_par(sfb->windows[default_win]->fbinfo);
+
 #ifdef CONFIG_ION_EXYNOS
 	s3c_fb_wait_for_vsync(sfb, 0);
 	ret = iovmm_activate(&s5p_device_fimd1.dev);
@@ -3543,11 +3531,27 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	}
 #endif
 
-	s3c_fb_activate_window_dma(sfb, pd->default_win);
-	s3c_fb_activate_window(sfb, pd->default_win);
+	s3c_fb_activate_window_dma(sfb, default_win);
+	s3c_fb_activate_window(sfb, default_win);
 	sfb->output_on = true;
 
+	dev_dbg(sfb->dev, "about to register framebuffer\n");
+
+	/* run the check_var and set_par on our configuration. */
+
+	fbinfo = sfb->windows[default_win]->fbinfo;
+	ret = register_framebuffer(fbinfo);
+	if (ret < 0) {
+		dev_err(sfb->dev, "failed to register framebuffer\n");
+		goto err_fb;
+	}
+
+	dev_info(sfb->dev, "window %d: fb %s\n", default_win, fbinfo->fix.id);
+
 	return 0;
+
+err_fb:
+	iovmm_deactivate(&s5p_device_fimd1.dev);
 
 err_iovmm:
 	device_remove_file(sfb->dev, &dev_attr_vsync);
@@ -3600,6 +3604,8 @@ static int __devexit s3c_fb_remove(struct platform_device *pdev)
 	int win;
 
 	pm_runtime_get_sync(sfb->dev);
+
+	unregister_framebuffer(sfb->windows[sfb->pdata->default_win]->fbinfo);
 
 	if (sfb->update_regs_thread)
 		kthread_stop(sfb->update_regs_thread);
