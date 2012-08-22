@@ -45,7 +45,6 @@ struct exynos_usb_phy {
 static atomic_t host_usage;
 static struct exynos_usb_phy usb_phy_control;
 static DEFINE_SPINLOCK(phy_lock);
-static struct clk *phy_clk;
 
 static int exynos4_usb_host_phy_is_on(void)
 {
@@ -57,24 +56,36 @@ static int exynos5_usb_host_phy20_is_on(void)
 	return (readl(EXYNOS5_PHY_HOST_CTRL0) & HOST_CTRL0_PHYSWRSTALL) ? 0 : 1;
 }
 
-/* TODO: Shouldn't there be a disable? */
-static int exynos_usb_phy_clock_enable(struct platform_device *pdev)
+/* Returning 'clk' here so as to disable clk in phy_init/exit functions */
+static struct clk *exynos_usb_phy_clock_enable(struct platform_device *pdev)
 {
 	int err;
+	struct clk *phy_clk = NULL;
 
-	if (!phy_clk) {
-		if (soc_is_exynos5250())
-			phy_clk = clk_get(&pdev->dev, "usbhost");
+	if (!soc_is_exynos5250())
+		return NULL;
 
-		if (IS_ERR(phy_clk)) {
-			dev_err(&pdev->dev, "Failed to get phy clock\n");
-			return PTR_ERR(phy_clk);
-		}
+	phy_clk = clk_get(&pdev->dev, "usbhost");
+
+	if (IS_ERR(phy_clk)) {
+		dev_err(&pdev->dev, "Failed to get phy clock\n");
+		return NULL;
 	}
 
 	err = clk_enable(phy_clk);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to enable phy clock\n");
+		clk_put(phy_clk);
+		return NULL;
+	}
 
-	return err;
+	return phy_clk;
+}
+
+static void exynos_usb_phy_clock_disable(struct clk *phy_clk)
+{
+	clk_disable(phy_clk);
+	clk_put(phy_clk);
 }
 
 static void exynos_usb_mux_change(struct platform_device *pdev, int val)
@@ -276,18 +287,35 @@ int exynos5_dwc_phyclk_switch(struct platform_device *pdev, bool use_ext_clk)
 static int exynos5_usb_phy30_init(struct platform_device *pdev)
 {
 	int ret;
+	struct clk *host_clk = NULL;
 
-	ret = exynos_usb_phy_clock_enable(pdev);
-	if (ret)
-		return ret;
+	host_clk = exynos_usb_phy_clock_enable(pdev);
+	if (!host_clk) {
+		dev_err(&pdev->dev, "Failed to enable USB3.0 host clock\n");
+		return -ENODEV;
+	}
 
-	/* We'll start out with the phy clock turned on. */
-	return _exynos5_usb_phy30_init(pdev, true);
+	/*
+	 * We'll start out with the XusbXTI turned on
+	 * for phy reference clock refclksel [3:2]
+	 */
+	ret = _exynos5_usb_phy30_init(pdev, true);
+
+	exynos_usb_phy_clock_disable(host_clk);
+
+	return ret;
 }
 
 static int exynos5_usb_phy30_exit(struct platform_device *pdev)
 {
 	u32 reg;
+	struct clk *host_clk = NULL;
+
+	host_clk = exynos_usb_phy_clock_enable(pdev);
+	if (!host_clk) {
+		dev_err(&pdev->dev, "Failed to enable USB3.0 host clock\n");
+		return -ENODEV;
+	}
 
 	reg = EXYNOS_USB3_PHYUTMI_OTGDISABLE |
 		EXYNOS_USB3_PHYUTMI_FORCESUSPEND |
@@ -309,19 +337,24 @@ static int exynos5_usb_phy30_exit(struct platform_device *pdev)
 
 	exynos_usb_phy_control(USB_PHY0, PHY_DISABLE);
 
+	exynos_usb_phy_clock_disable(host_clk);
+
 	return 0;
 }
 
 static int exynos5_usb_phy20_init(struct platform_device *pdev)
 {
-	int ret;
 	u32 refclk_freq;
 	u32 hostphy_ctrl0, otgphy_sys, hsic_ctrl, ehcictrl;
+	struct clk *host_clk = NULL;
 
 	atomic_inc(&host_usage);
-	ret = exynos_usb_phy_clock_enable(pdev);
-	if (ret)
-		return ret;
+
+	host_clk = exynos_usb_phy_clock_enable(pdev);
+	if (!host_clk) {
+		dev_err(&pdev->dev, "Failed to get host_clk\n");
+		return -ENODEV;
+	}
 
 	if (exynos5_usb_host_phy20_is_on()) {
 		dev_err(&pdev->dev, "Already power on PHY\n");
@@ -386,15 +419,25 @@ static int exynos5_usb_phy20_init(struct platform_device *pdev)
 				| EHCICTRL_ENAINCR8 | EHCICTRL_ENAINCR16);
 	writel(ehcictrl, EXYNOS5_PHY_HOST_EHCICTRL);
 
+	exynos_usb_phy_clock_disable(host_clk);
+
 	return 0;
 }
+
 static int exynos5_usb_phy20_exit(struct platform_device *pdev)
 {
 	u32 hostphy_ctrl0, otgphy_sys, hsic_ctrl;
+	struct clk *host_clk = NULL;
 
 	if (atomic_dec_return(&host_usage) > 0) {
 		dev_info(&pdev->dev, "still being used\n");
 		return -EBUSY;
+	}
+
+	host_clk = exynos_usb_phy_clock_enable(pdev);
+	if (!host_clk) {
+		dev_err(&pdev->dev, "Failed to get host_clk\n");
+		return -ENODEV;
 	}
 
 	hsic_ctrl = (HSIC_CTRL_REFCLKDIV(0x24) | HSIC_CTRL_REFCLKSEL(0x2)
@@ -415,6 +458,8 @@ static int exynos5_usb_phy20_exit(struct platform_device *pdev)
 	writel(otgphy_sys, EXYNOS5_PHY_OTG_SYS);
 
 	exynos_usb_phy_control(USB_PHY1, PHY_DISABLE);
+
+	exynos_usb_phy_clock_disable(host_clk);
 
 	return 0;
 }
