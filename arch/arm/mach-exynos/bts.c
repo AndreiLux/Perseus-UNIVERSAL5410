@@ -201,7 +201,7 @@ EXYNOS_BTS_PDATA(isp1, BTS_PRIOR_BE, NULL, "isp1", 0, BTS_CHANGE_OTHER_DEBLOCK);
 EXYNOS_BTS_PDATA(disp, BTS_PRIOR_HARDTIME, NULL, "fimd", 0, BTS_NO_ACTION);
 
 /* bts platform device lists */
-#define EXYNOS_BTS_DEVICE(_name, _parent)				\
+#define EXYNOS_BTS_DEVICE(_name, _parent, _bts_name)			\
 static struct platform_device exynos_device_bts_##_name = {		\
 		.name		= "exynos-bts",				\
 		.num_resources	= ARRAY_SIZE(exynos_bts_##_name##_resource),\
@@ -209,22 +209,23 @@ static struct platform_device exynos_device_bts_##_name = {		\
 		.dev		= {					\
 			.platform_data = &bts_##_name##_res,		\
 			.parent = _parent,				\
+			.init_name = _bts_name,				\
 		}							\
 }
 
-EXYNOS_BTS_DEVICE(disp, &s5p_device_fimd1.dev);
-EXYNOS_BTS_DEVICE(g3dacp, NULL);
-EXYNOS_BTS_DEVICE(jpeg, NULL);
-EXYNOS_BTS_DEVICE(gscl0, &exynos5_device_gsc0.dev);
-EXYNOS_BTS_DEVICE(gscl1, &exynos5_device_gsc1.dev);
-EXYNOS_BTS_DEVICE(gscl2, &exynos5_device_gsc2.dev);
-EXYNOS_BTS_DEVICE(gscl3, &exynos5_device_gsc3.dev);
-EXYNOS_BTS_DEVICE(mfc, &s5p_device_mfc.dev);
+EXYNOS_BTS_DEVICE(disp, &s5p_device_fimd1.dev, "disp-bts");
+EXYNOS_BTS_DEVICE(g3dacp, NULL, "g3dacp-bts");
+EXYNOS_BTS_DEVICE(jpeg, NULL, "jpeg-bts");
+EXYNOS_BTS_DEVICE(gscl0, &exynos5_device_gsc0.dev, "gscl0-bts");
+EXYNOS_BTS_DEVICE(gscl1, &exynos5_device_gsc1.dev, "gscl1-bts");
+EXYNOS_BTS_DEVICE(gscl2, &exynos5_device_gsc2.dev, "gscl2-bts");
+EXYNOS_BTS_DEVICE(gscl3, &exynos5_device_gsc3.dev, "gscl3-bts");
+EXYNOS_BTS_DEVICE(mfc, &s5p_device_mfc.dev, "mfc-bts");
 #if defined(CONFIG_EXYNOS4_DEV_FIMC_IS)
-EXYNOS_BTS_DEVICE(isp0, &exynos5_device_fimc_is.dev);
-EXYNOS_BTS_DEVICE(isp1, &exynos5_device_fimc_is.dev);
+EXYNOS_BTS_DEVICE(isp0, &exynos5_device_fimc_is.dev, "isp0-bts");
+EXYNOS_BTS_DEVICE(isp1, &exynos5_device_fimc_is.dev, "isp1-bts");
 #endif
-EXYNOS_BTS_DEVICE(cpu, NULL);
+EXYNOS_BTS_DEVICE(cpu, NULL, "cpu-bts");
 
 static struct platform_device *exynos_bts[] __initdata = {
 	&exynos_device_bts_disp,

@@ -209,6 +209,10 @@ static void bts_change_deblock_src(enum bts_bw_change bw_change)
 				if (bts_data->clk)
 					clk_enable(bts_data->clk);
 				bts_onoff(bts_local_data->base, BTS_DISABLE);
+				pr_debug("%s: Change BTS deblocking source for %s BW\n",
+					dev_name(bts_data->dev),
+					(bw_change == BTS_INCREASE_BW) ?
+					"increasing" : "decreasing");
 				bts_set_deblocking(bts_local_data->base,
 					find_fbm_port(
 						(bw_change == BTS_INCREASE_BW)
@@ -241,6 +245,9 @@ static void bts_devs_onoff(struct exynos_bts_data *bts_data, bool on)
 
 	bts_local_data = bts_data->bts_local_data;
 	for (i = 0; i < bts_data->listnum; i++) {
+		pr_debug("%s: BTS %sable for %s requests to memory\n",
+				dev_name(bts_data->dev), on ? "En" : "Dis", on ?
+				"blocking" : "de-blocking");
 		bts_onoff(bts_local_data->base, on);
 		bts_local_data++;
 	}
@@ -258,11 +265,18 @@ static void bts_devs_init(struct exynos_bts_data *bts_data)
 	struct exynos_bts_local_data *bts_local_data;
 	int i;
 
+	pr_debug("%s requested %s from [%s] power domain\n",
+		dev_name(bts_data->dev), __func__, (bts_data->pd_name == NULL) ?
+						"NULL" : bts_data->pd_name);
+
 	if (bts_data->clk)
 		clk_enable(bts_data->clk);
 
 	bts_local_data = bts_data->bts_local_data;
 	for (i = 0; i < bts_data->listnum; i++) {
+		pr_debug("%s: Set default bus BW with priority %d for res[%d]\n",
+					dev_name(bts_data->dev),
+					bts_local_data->def_priority, i);
 		bts_set_default_bus_traffic(bts_local_data->base,
 					    bts_local_data->def_priority);
 		bts_local_data++;
@@ -277,6 +291,8 @@ void exynos_bts_change_bus_traffic(struct device *dev,
 {
 	struct exynos_bts_data *bts_data;
 
+	pr_debug("%s: change bus traffic to %s BW\n", dev_name(dev),
+		(bw_change == BTS_INCREASE_BW) ? "increase" : "decrease");
 	list_for_each_entry(bts_data, &bts_list, node) {
 		if (bts_data->dev->parent == dev) {
 			switch (bts_data->traffic_control_act) {
@@ -300,7 +316,8 @@ void exynos_bts_change_bus_traffic(struct device *dev,
 				break;
 			default:
 				dev_err(bts_data->dev,
-					"Unknown bus traffic control action\n");
+					"[%d] Unknown bus traffic control action\n",
+					bts_data->traffic_control_act);
 				break;
 			}
 		}
@@ -379,7 +396,7 @@ static int bts_probe(struct platform_device *pdev)
 	bts_data->traffic_control_act = bts_pdata->traffic_control_act;
 	bts_local_data_h = bts_local_data =
 		kzalloc(sizeof(struct exynos_bts_local_data)*bts_data->listnum,
-				GFP_KERNEL);
+								GFP_KERNEL);
 	if (!bts_local_data_h) {
 		ret = -ENOMEM;
 		goto probe_err3;
@@ -394,6 +411,9 @@ static int bts_probe(struct platform_device *pdev)
 		bts_local_data->def_priority = bts_pdata->def_priority;
 		bts_local_data->deblock_changable =
 						bts_pdata->deblock_changable;
+		pr_debug("%s: Set default bus BW with priority %d for res[%d]\n",
+					dev_name(&pdev->dev),
+					bts_local_data->def_priority, i);
 		bts_set_default_bus_traffic(bts_local_data->base,
 						bts_local_data->def_priority);
 		bts_local_data++;
