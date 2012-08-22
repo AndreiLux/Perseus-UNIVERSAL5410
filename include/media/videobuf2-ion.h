@@ -16,6 +16,7 @@
 #include <linux/scatterlist.h>
 #include <linux/dma-mapping.h>
 #include <linux/ion.h>
+#include <linux/exynos_ion.h>
 #include <linux/err.h>
 
 /* flags to vb2_ion_create_context
