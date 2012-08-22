@@ -45,6 +45,8 @@
 #include <linux/dma-buf.h>
 #include <linux/exynos_ion.h>
 #include <linux/ion.h>
+#include <linux/highmem.h>
+#include <linux/memblock.h>
 #include <linux/sw_sync.h>
 #include <plat/devs.h>
 #include <plat/iovmm.h>
@@ -3170,6 +3172,69 @@ int s3c_fb_sysmmu_fault_handler(struct device *dev,
 
 	return 0;
 }
+
+static int __devinit s3c_fb_copy_bootloader_fb(struct platform_device *pdev,
+		struct dma_buf *dest_buf)
+{
+	struct resource *res;
+	void __iomem *to_io;
+	int ret = 0;
+	size_t i;
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!res || !res->start || !resource_size(res)) {
+		dev_warn(&pdev->dev, "failed to find bootloader framebuffer\n");
+		return -ENOENT;
+	}
+
+	ret = dma_buf_begin_cpu_access(dest_buf, 0, resource_size(res),
+			DMA_TO_DEVICE);
+	if (ret < 0) {
+		dev_warn(&pdev->dev, "dma_buf_begin_cpu_access() failed on bootloader framebuffer: %u\n",
+				ret);
+		goto err;
+	}
+	for (i = 0; i < resource_size(res); i += PAGE_SIZE) {
+		void *page = phys_to_page(res->start + i);
+		void *from_virt = kmap(page);
+		to_io = dma_buf_kmap(dest_buf, i / PAGE_SIZE);
+		memcpy_toio(to_io, from_virt, PAGE_SIZE);
+		kunmap(page);
+		dma_buf_kunmap(dest_buf, i / PAGE_SIZE, to_io);
+	}
+
+	dma_buf_end_cpu_access(dest_buf, 0, resource_size(res), DMA_TO_DEVICE);
+
+err:
+	if (memblock_free(res->start, resource_size(res)))
+		dev_warn(&pdev->dev, "failed to free bootloader framebuffer memblock\n");
+
+	return ret;
+}
+
+static int __devinit s3c_fb_clear_fb(struct s3c_fb *sfb,
+		struct dma_buf *dest_buf, size_t size)
+{
+	void __iomem *to_io;
+	size_t i;
+
+	int ret = dma_buf_begin_cpu_access(dest_buf, 0, dest_buf->size,
+			DMA_TO_DEVICE);
+	if (ret < 0) {
+		dev_warn(sfb->dev, "dma_buf_begin_cpu_access() failed while clearing framebuffer: %u\n",
+				ret);
+		return ret;
+	}
+
+	for (i = 0; i < dest_buf->size / PAGE_SIZE; i++) {
+		to_io = dma_buf_kmap(dest_buf, i);
+		memset_io(to_io, 0, PAGE_SIZE);
+		dma_buf_kunmap(dest_buf, i, to_io);
+	}
+
+	dma_buf_end_cpu_access(dest_buf, 0, size, DMA_TO_DEVICE);
+	return 0;
+}
 #endif
 
 #ifdef CONFIG_DEBUG_FS
@@ -3395,7 +3460,8 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 
 	/* zero all windows before we do anything */
 	for (win = 0; win < fbdrv->variant.nr_windows; win++)
-		s3c_fb_clear_win(sfb, win);
+		if (win != pd->default_win)
+			s3c_fb_clear_win(sfb, win);
 
 	/* initialise colour key controls */
 	for (win = 0; win < (fbdrv->variant.nr_windows - 1); win++) {
@@ -3519,6 +3585,17 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 		dev_err(sfb->dev, "failed to run vsync thread\n");
 		sfb->vsync_info.thread = NULL;
 	}
+
+#ifdef CONFIG_ION_EXYNOS
+	ret = s3c_fb_copy_bootloader_fb(pdev,
+			sfb->windows[default_win]->dma_buf_data.dma_buf);
+	if (ret < 0) {
+		struct s3c_fb_win *win = sfb->windows[default_win];
+		dev_warn(sfb->dev, "couldn't copy bootloader framebuffer into default window; clearing instead\n");
+		s3c_fb_clear_fb(sfb, win->dma_buf_data.dma_buf,
+				PAGE_ALIGN(win->fbinfo->fix.smem_len));
+	}
+#endif
 
 	s3c_fb_set_par(sfb->windows[default_win]->fbinfo);
 
