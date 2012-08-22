@@ -26,6 +26,8 @@
 #if defined(CONFIG_PM_RUNTIME)
 #include <linux/pm_runtime.h>
 #endif
+#include <linux/debugfs.h>
+
 #include <plat/devs.h>
 #include <plat/cpu.h>
 #include <plat/bts.h>
@@ -70,10 +72,20 @@
 static LIST_HEAD(fbm_list);
 static LIST_HEAD(bts_list);
 
+/* Structure for status of a physical BTS device */
+struct exynos_bts_status {
+	enum bts_priority 	cur_priority;
+	enum bts_fbm_input_port fbm_src;
+	bool is_enabled;
+	bool is_blocked;
+	bool is_deblocked;
+};
+
 /* Structure for a physical BTS device */
 struct exynos_bts_local_data {
-	void __iomem	*base;
-	enum bts_priority def_priority;
+	struct exynos_bts_status cur_status;
+	void __iomem		*base;
+	enum bts_priority	 def_priority;
 	/*
 	 * Indicate that it could be changable for selecting deblock sources
 	 * in case of controlling bus traffic
@@ -91,6 +103,7 @@ struct exynos_bts_data {
 	struct device *dev;
 	struct clk *clk;
 	struct exynos_bts_local_data *bts_local_data;
+	struct dentry *dentry;
 	char *pd_name;
 	enum bts_traffic_control traffic_control_act;
 	u32 listnum;
@@ -117,45 +130,56 @@ static enum bts_fbm_input_port find_fbm_port(enum bts_deblock_src_order fbm)
 }
 
 /* Basic control of a BTS device */
-static void bts_set_control(void __iomem *base, enum bts_priority prior)
+static void bts_set_control(struct exynos_bts_local_data *data,
+			    enum bts_priority prior)
 {
 	u32 val = BTS_CTL_ENABLE;
 
-	if (prior == BTS_PRIOR_BE)
+	data->cur_status.is_enabled = true;
+	if (prior == BTS_PRIOR_BE) {
 		val |= BTS_CTL_BLOCKING | BTS_CTL_DEBLOCKING;
-	writel(val, base + BTS_CONTROL);
+		data->cur_status.is_blocked = true;
+		data->cur_status.is_deblocked = true;
+	}
+	writel(val, data->base + BTS_CONTROL);
 }
 
 /* on/off a BTS device */
-static void bts_onoff(void __iomem *base, bool on)
+static void bts_onoff(struct exynos_bts_local_data *data, bool on)
 {
-	u32 val = readl(base + BTS_CONTROL);
-	if (on)
+	u32 val = readl(data->base + BTS_CONTROL);
+	if (on) {
 		val |= BTS_CTL_ENABLE;
-	else
+		data->cur_status.is_enabled = true;
+	}
+	else {
 		val &= ~BTS_CTL_ENABLE;
+		data->cur_status.is_enabled = false;
+	}
 
-	writel(val, base + BTS_CONTROL);
+	writel(val, data->base + BTS_CONTROL);
 }
 
 /* set priority of BTS device */
-static void bts_set_priority(void __iomem *base, enum bts_priority prior)
+static void bts_set_priority(struct exynos_bts_local_data *data,
+			     enum bts_priority prior)
 {
 	u32 val;
 
 	val = MASTER_PRIOR_NUMBER | (prior<<8) | (prior<<4) | (prior);
-	writel(val, base + BTS_MASTER_PRIORITY);
+	writel(val, data->base + BTS_MASTER_PRIORITY);
+	data->cur_status.cur_priority = prior;
 }
 
 /* set the blocking value for best effort IPs to BTS device */
-static void bts_set_blocking(void __iomem *base)
+static void bts_set_blocking(struct exynos_bts_local_data *data)
 {
-	writel(LOW_SHAPING_VAL0, base + BTS_SHAPING_ON_OFF_REG0);
-	writel(LOW_SHAPING_VAL1, base + BTS_SHAPING_ON_OFF_REG1);
+	writel(LOW_SHAPING_VAL0, data->base + BTS_SHAPING_ON_OFF_REG0);
+	writel(LOW_SHAPING_VAL1, data->base + BTS_SHAPING_ON_OFF_REG1);
 }
 
 /* set the deblocking source according to FBM input port name */
-static void bts_set_deblocking(void __iomem *base,
+static void bts_set_deblocking(struct exynos_bts_local_data *data,
 			       enum bts_fbm_input_port port_name)
 {
 	u32 val = 0;
@@ -172,20 +196,21 @@ static void bts_set_deblocking(void __iomem *base,
 		val |= SEL_GRP2 | SEL_LEFT2;
 	if (port_name & BTS_FBM_G2_R)
 		val |= SEL_GRP2 | SEL_RIGHT2;
-	writel(val, base + BTS_DEBLOCKING_SOURCE_SELECTION);
+	writel(val, data->base + BTS_DEBLOCKING_SOURCE_SELECTION);
+	data->cur_status.fbm_src = port_name;
 }
 
 /* initialize a BTS device with default bus traffic values */
-static void bts_set_default_bus_traffic(void __iomem *base,
+static void bts_set_default_bus_traffic(struct exynos_bts_local_data *data,
 					enum bts_priority prior)
 {
 	switch (prior) {
 	case BTS_PRIOR_BE:
-		bts_set_blocking(base);
-		bts_set_deblocking(base, find_fbm_port(BTS_1ST_FBM_SRC));
+		bts_set_blocking(data);
+		bts_set_deblocking(data, find_fbm_port(BTS_1ST_FBM_SRC));
 	case BTS_PRIOR_HARDTIME:
-		bts_set_priority(base, prior);
-		bts_set_control(base, prior);
+		bts_set_priority(data, prior);
+		bts_set_control(data, prior);
 		break;
 	default:
 		break;
@@ -208,18 +233,18 @@ static void bts_change_deblock_src(enum bts_bw_change bw_change)
 #endif
 				if (bts_data->clk)
 					clk_enable(bts_data->clk);
-				bts_onoff(bts_local_data->base, BTS_DISABLE);
+				bts_onoff(bts_local_data, BTS_DISABLE);
 				pr_debug("%s: Change BTS deblocking source for %s BW\n",
 					dev_name(bts_data->dev),
 					(bw_change == BTS_INCREASE_BW) ?
 					"increasing" : "decreasing");
-				bts_set_deblocking(bts_local_data->base,
+				bts_set_deblocking(bts_local_data,
 					find_fbm_port(
 						(bw_change == BTS_INCREASE_BW)
 						? BTS_1ST_FBM_SRC
 						: (BTS_1ST_FBM_SRC |
 						BTS_2ND_FBM_SRC)));
-				bts_onoff(bts_local_data->base, BTS_ENABLE);
+				bts_onoff(bts_local_data, BTS_ENABLE);
 				if (bts_data->clk)
 					clk_disable(bts_data->clk);
 #if defined(CONFIG_PM_RUNTIME)
@@ -248,7 +273,7 @@ static void bts_devs_onoff(struct exynos_bts_data *bts_data, bool on)
 		pr_debug("%s: BTS %sable for %s requests to memory\n",
 				dev_name(bts_data->dev), on ? "En" : "Dis", on ?
 				"blocking" : "de-blocking");
-		bts_onoff(bts_local_data->base, on);
+		bts_onoff(bts_local_data, on);
 		bts_local_data++;
 	}
 
@@ -277,8 +302,8 @@ static void bts_devs_init(struct exynos_bts_data *bts_data)
 		pr_debug("%s: Set default bus BW with priority %d for res[%d]\n",
 					dev_name(bts_data->dev),
 					bts_local_data->def_priority, i);
-		bts_set_default_bus_traffic(bts_local_data->base,
-					    bts_local_data->def_priority);
+		bts_set_default_bus_traffic(bts_local_data,
+						bts_local_data->def_priority);
 		bts_local_data++;
 	}
 
@@ -335,6 +360,49 @@ void exynos_bts_initialize(char *pd_name)
 			bts_devs_init(bts_data);
 	}
 }
+
+static int bts_debug_show(struct seq_file *s, void *unused)
+{
+	struct exynos_bts_data *bts_data = s->private;
+	struct exynos_bts_status *cur_status;
+
+	list_for_each_entry(bts_data, &bts_list, node) {
+		cur_status = &bts_data->bts_local_data->cur_status;
+		seq_printf(s, "%12s: BTS %3s, priority %2d, ",
+			dev_name(bts_data->dev), cur_status->is_enabled
+			? "ON" : "OFF", cur_status->cur_priority);
+		seq_printf(s, "Block %3s, Deblock %3s, Deblock src : ",
+			cur_status->is_blocked ? "ON" : "OFF",
+			cur_status->is_deblocked ? "ON" : "OFF");
+		if (cur_status->fbm_src & BTS_FBM_G0_L)
+			seq_printf(s, "%s ", "BTS_FBM_G0_L");
+		if (cur_status->fbm_src & BTS_FBM_G0_R)
+			seq_printf(s, "%s ", "BTS_FBM_G0_R");
+		if (cur_status->fbm_src & BTS_FBM_G1_L)
+			seq_printf(s, "%s ", "BTS_FBM_G1_L");
+		if (cur_status->fbm_src & BTS_FBM_G1_R)
+			seq_printf(s, "%s ", "BTS_FBM_G1_R");
+		if (cur_status->fbm_src & BTS_FBM_G2_L)
+			seq_printf(s, "%s ", "BTS_FBM_G2_L");
+		if (cur_status->fbm_src & BTS_FBM_G2_R)
+			seq_printf(s, "%s ", "BTS_FBM_G2_R");
+		seq_printf(s, " \n");
+	}
+
+	return 0;
+}
+
+static int bts_debug_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, bts_debug_show, inode->i_private);
+}
+
+const static struct file_operations bts_dev_status_fops = {
+	.open		= bts_debug_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 
 static int bts_probe(struct platform_device *pdev)
 {
@@ -414,7 +482,7 @@ static int bts_probe(struct platform_device *pdev)
 		pr_debug("%s: Set default bus BW with priority %d for res[%d]\n",
 					dev_name(&pdev->dev),
 					bts_local_data->def_priority, i);
-		bts_set_default_bus_traffic(bts_local_data->base,
+		bts_set_default_bus_traffic(bts_local_data,
 						bts_local_data->def_priority);
 		bts_local_data++;
 		res++;
@@ -431,6 +499,14 @@ static int bts_probe(struct platform_device *pdev)
 	if (bts_pdata->clk_name)
 		clk_disable(clk);
 
+	if (!bts_data->dentry) {
+		bts_data->dentry = debugfs_create_file("bts_dev_status",
+				S_IRUGO, NULL, bts_data, &bts_dev_status_fops);
+		if (IS_ERR_OR_NULL(bts_data->dentry)) {
+			bts_data->dentry = NULL;
+			dev_err(&pdev->dev, "debugfs_create_file() failed\n");
+		}
+	}
 	return 0;
 
 probe_err4:
@@ -479,7 +555,8 @@ static int bts_remove(struct platform_device *pdev)
 
 	if (bts_data->clk)
 		clk_put(bts_data->clk);
-
+	if (bts_data->dentry)
+		debugfs_remove(bts_data->dentry);
 	kfree(bts_data);
 
 	if (!list_empty(&bts_list))
