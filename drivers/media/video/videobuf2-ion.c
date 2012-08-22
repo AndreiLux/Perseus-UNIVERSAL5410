@@ -33,6 +33,8 @@ struct vb2_ion_context {
 	struct ion_client	*client;
 	unsigned long		alignment;
 	long			flags;
+	bool			iommu_active;
+	bool			protected;
 };
 
 struct vb2_ion_buf {
@@ -62,6 +64,32 @@ void vb2_ion_set_cached(void *ctx, bool cached)
 		vb2ctx->flags |= VB2ION_CTX_UNCACHED;
 }
 EXPORT_SYMBOL(vb2_ion_set_cached);
+
+/*
+ * when a context is protected, we cannot use the IOMMU since
+ * secure world is in charge.
+ */
+void vb2_ion_set_protected(void *ctx, bool ctx_protected)
+{
+	struct vb2_ion_context *vb2ctx = ctx;
+
+	if (vb2ctx->protected == ctx_protected)
+		return;
+	vb2ctx->protected = ctx_protected;
+
+	if (ctx_protected) {
+		if (vb2ctx->iommu_active) {
+			dev_dbg(vb2ctx->dev, "detaching active MMU\n");
+			iovmm_deactivate(vb2ctx->dev);
+		}
+	} else {
+		if (vb2ctx->iommu_active) {
+			dev_dbg(vb2ctx->dev, "re-attaching active MMU\n");
+			iovmm_activate(vb2ctx->dev);
+		}
+	}
+}
+EXPORT_SYMBOL(vb2_ion_set_protected);
 
 int vb2_ion_set_alignment(void *ctx, size_t alignment)
 {
@@ -96,7 +124,7 @@ void *vb2_ion_create_context(struct device *dev, size_t alignment, long flags)
 	if ((flags & VB2ION_CTX_VMCONTIG) && !(flags & VB2ION_CTX_IOMMU))
 		return ERR_PTR(-EINVAL);
 
-	ctx = kmalloc(sizeof(*ctx), GFP_KERNEL);
+	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
 		return ERR_PTR(-ENOMEM);
 
@@ -157,7 +185,7 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 		goto err_map_kernel;
 	}
 
-	if (ctx_iommu(ctx)) {
+	if (ctx_iommu(ctx) && !ctx->protected) {
 		buf->cookie.ioaddr = iovmm_map(ctx->dev,
 					       buf->cookie.sgt->sgl, 0,
 					       buf->size);
@@ -190,7 +218,7 @@ void vb2_ion_private_free(void *cookie)
 		return;
 
 	ctx = buf->ctx;
-	if (ctx_iommu(ctx))
+	if (ctx_iommu(ctx) && !ctx->protected)
 		iovmm_unmap(ctx->dev, buf->cookie.ioaddr);
 
 	ion_unmap_kernel(ctx->client, buf->handle);
@@ -348,7 +376,7 @@ static int vb2_ion_map_dmabuf(void *mem_priv)
 	buf->cookie.offset = 0;
 	/* buf->kva = NULL; */
 
-	if (ctx_iommu(ctx) && buf->cookie.ioaddr == 0) {
+	if (ctx_iommu(ctx) && !ctx->protected && buf->cookie.ioaddr == 0) {
 		buf->cookie.ioaddr = iovmm_map(ctx->dev,
 				       buf->cookie.sgt->sgl, 0, buf->size);
 		if (IS_ERR_VALUE(buf->cookie.ioaddr)) {
@@ -385,7 +413,7 @@ static void vb2_ion_detach_dmabuf(void *mem_priv)
 	struct vb2_ion_buf *buf = mem_priv;
 	struct vb2_ion_context *ctx = buf->ctx;
 
-	if (buf->cookie.ioaddr && ctx_iommu(ctx)) {
+	if (buf->cookie.ioaddr && ctx_iommu(ctx) && !ctx->protected ) {
 		iovmm_unmap(ctx->dev, buf->cookie.ioaddr);
 		buf->cookie.ioaddr = 0;
 	}
@@ -638,18 +666,29 @@ void vb2_ion_detach_iommu(void *alloc_ctx)
 	if (!ctx_iommu(ctx))
 		return;
 
-	iovmm_deactivate(ctx->dev);
+	BUG_ON(!ctx->iommu_active);
+
+	if (!ctx->protected)
+		iovmm_deactivate(ctx->dev);
+	ctx->iommu_active = false;
 }
 EXPORT_SYMBOL_GPL(vb2_ion_detach_iommu);
 
 int vb2_ion_attach_iommu(void *alloc_ctx)
 {
 	struct vb2_ion_context *ctx = alloc_ctx;
+	int ret = 0;
 
 	if (!ctx_iommu(ctx))
 		return -ENOENT;
 
-	return iovmm_activate(ctx->dev);
+	BUG_ON(ctx->iommu_active);
+
+	if (!ctx->protected)
+		ret = iovmm_activate(ctx->dev);
+	if (!ret)
+		ctx->iommu_active = true;
+	return ret;
 }
 EXPORT_SYMBOL_GPL(vb2_ion_attach_iommu);
 

@@ -93,6 +93,7 @@ void *vb2_ion_create_context(struct device *dev, size_t alignment, long flags);
 void vb2_ion_destroy_context(void *ctx);
 
 void vb2_ion_set_cached(void *ctx, bool cached);
+void vb2_ion_set_protected(void *ctx, bool ctx_protected);
 int vb2_ion_set_alignment(void *ctx, size_t alignment);
 
 /* Data type of the cookie returned by vb2_plane_cookie() function call.
