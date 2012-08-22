@@ -31,10 +31,12 @@
 /* TPS65090 has 3 DCDC-regulators and 7 FETs. */
 
 #define MAX_REGULATORS		10
+#define MAX_CTRL_READ_TRIES	5
 
 #define CTRL_EN_BIT		0 /* Regulator enable bit, active high */
 #define CTRL_WT_BIT		2 /* Regulator wait time 0 bit */
 #define CTRL_PG_BIT		4 /* Regulator power good bit, 1=good */
+#define CTRL_TO_BIT		7 /* Regulator timeout bit, 1=wait */
 
 #define MAX_OVERCURRENT_WAIT	3 /* Overcurrent wait must be less than this */
 
@@ -106,7 +108,7 @@ static int tps65090_reg_enable(struct regulator_dev *rdev)
 {
 	struct tps65090_regulator *ri = rdev_get_drvdata(rdev);
 	struct device *parent = to_tps65090_dev(rdev);
-	int ret;
+	int ret, i;
 	uint8_t control;
 
 	ret = tps65090_reg_set_overcurrent_wait(rdev);
@@ -120,10 +122,16 @@ static int tps65090_reg_enable(struct regulator_dev *rdev)
 		return ret;
 	}
 
-	ret = tps65090_reg_read_ctrl(rdev, &control);
-	if (ret < 0)
-		return ret;
+	for (i = 0; i < MAX_CTRL_READ_TRIES; i++) {
+		ret = tps65090_reg_read_ctrl(rdev, &control);
+		if (ret < 0)
+			return ret;
 
+		if (!(control & (1 << CTRL_TO_BIT)))
+			break;
+
+		usleep_range(1000, 1500);
+	}
 	if (!(control & (1 << CTRL_PG_BIT))) {
 		dev_err(&rdev->dev, "reg 0x%x enable failed\n", ri->reg_en_reg);
 		return -EIO;
