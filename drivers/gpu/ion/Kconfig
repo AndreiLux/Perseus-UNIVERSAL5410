@@ -26,18 +26,22 @@ config ION_EXYNOS_CONTIGHEAP_SIZE
 config ION_EXYNOS_DRM_MFC_SH
 	bool "ION Heap for drm mfc sh"
 	depends on EXYNOS_CONTENT_PATH_PROTECTION
+	default y
 
 config ION_EXYNOS_DRM_VIDEO
 	bool "ION Heap for drm video"
 	depends on EXYNOS_CONTENT_PATH_PROTECTION
+	default y
 
 config ION_EXYNOS_DRM_MFC_FW
 	bool "ION Heap for drm fw"
 	depends on EXYNOS_CONTENT_PATH_PROTECTION
+	default y
 
 config ION_EXYNOS_DRM_SECTBL
 	bool "ION Heap for drm sectbl"
 	depends on EXYNOS_CONTENT_PATH_PROTECTION
+	default y
 
 config ION_EXYNOS_DRM_MEMSIZE_FIMD_VIDEO
 	int "Reserved memsize in kilobytes for FIMD video"
