@@ -753,6 +753,8 @@ static const struct dmi_system_id intel_no_lvds[] = {
 		.matches = {
 			DMI_MATCH(DMI_BOARD_VENDOR, "Hewlett-Packard"),
 			DMI_MATCH(DMI_BOARD_NAME, "hp st5747"),
+		},
+	},
 	{
 		.callback = intel_no_lvds_dmi_callback,
 		.ident = "MSI Wind Box DC500",
