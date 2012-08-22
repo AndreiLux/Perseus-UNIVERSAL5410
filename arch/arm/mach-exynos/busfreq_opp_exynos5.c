@@ -255,15 +255,15 @@ static ssize_t show_level_lock(struct device *device,
 			(struct busfreq_data *)platform_get_drvdata(pdev);
 	int len = 0;
 	unsigned long mif_freq, int_freq;
-	unsigned long get_mif_freq = opp_get_freq(bus_ctrl.lock[PPMU_MIF]);
-	unsigned long get_int_freq = opp_get_freq(bus_ctrl.lock[PPMU_INT]);
 
-	mif_freq = bus_ctrl.lock[PPMU_MIF] == NULL ? 0 : get_mif_freq;
-	int_freq = bus_ctrl.lock[PPMU_INT] == NULL ? 0 : get_int_freq;
+	mif_freq = bus_ctrl.lock[PPMU_MIF] == NULL ? 0 :
+	    opp_get_freq(bus_ctrl.lock[PPMU_MIF]);
+	int_freq = bus_ctrl.lock[PPMU_INT] == NULL ? 0 :
+	    opp_get_freq(bus_ctrl.lock[PPMU_INT]);
 
-	len = sprintf(buf, "Current Freq(MIF/INT) : (%lu - %lu)\n",
+	len = sprintf(buf, "Current Freq(MIF/INT) : (%lu / %lu)\n",
 			data->curr_freq[PPMU_MIF], data->curr_freq[PPMU_INT]);
-	len += sprintf(buf + len, "Current Lock Freq(MIF/INT) : (%lu - %lu\n)",
+	len += sprintf(buf + len, "Current Lock Freq(MIF/INT) : (%lu / %lu\n)",
 			mif_freq, int_freq);
 
 	return len;
