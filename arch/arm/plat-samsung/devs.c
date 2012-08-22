@@ -365,6 +365,7 @@ static struct resource s5p_fimd1_resource[] = {
 	[1] = DEFINE_RES_IRQ(IRQ_FIMD1_VSYNC),
 	[2] = DEFINE_RES_IRQ(IRQ_FIMD1_FIFO),
 	[3] = DEFINE_RES_IRQ(IRQ_FIMD1_SYSTEM),
+	[4] = DEFINE_RES_MEM(0, SZ_1), /* to be populated later */
 };
 
 struct platform_device s5p_device_fimd1 = {
