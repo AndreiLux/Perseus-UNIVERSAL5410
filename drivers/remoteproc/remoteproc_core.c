@@ -2041,7 +2041,7 @@ static int rproc_loader_thread(struct rproc *rproc)
 	int ret;
 
 	/* wait until 120 secs waiting for the firmware */
-	to = jiffies + msecs_to_jiffies(120000);
+	to = jiffies + msecs_to_jiffies(4000);
 
 	/* wait until uevent can be sent */
 	do {
