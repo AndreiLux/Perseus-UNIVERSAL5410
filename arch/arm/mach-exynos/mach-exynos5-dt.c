@@ -679,7 +679,8 @@ static bool enable_mwi87xx(void)
 
 static void exynos_wifi_bt_set_power(u32 slot_id, u32 volt)
 {
-	if (volt == 0 || !of_machine_is_compatible("google,snow"))
+	if (volt == 0 || (!of_machine_is_compatible("google,snow") &&
+			  !of_machine_is_compatible("google,daisy")))
 		return;
 	if (!enable_mwi87xx())
 		pr_err("%s: problem enabling WiFi+BT\n", __func__);
