@@ -103,7 +103,6 @@ struct exynos_bts_data {
 	struct device *dev;
 	struct clk *clk;
 	struct exynos_bts_local_data *bts_local_data;
-	struct dentry *dentry;
 	char *pd_name;
 	enum bts_traffic_control traffic_control_act;
 	u32 listnum;
@@ -361,9 +360,11 @@ void exynos_bts_initialize(char *pd_name)
 	}
 }
 
+static struct dentry *bts_debugfs;
+
 static int bts_debug_show(struct seq_file *s, void *unused)
 {
-	struct exynos_bts_data *bts_data = s->private;
+	struct exynos_bts_data *bts_data;
 	struct exynos_bts_status *cur_status;
 
 	list_for_each_entry(bts_data, &bts_list, node) {
@@ -498,15 +499,6 @@ static int bts_probe(struct platform_device *pdev)
 
 	if (bts_pdata->clk_name)
 		clk_disable(clk);
-
-	if (!bts_data->dentry) {
-		bts_data->dentry = debugfs_create_file("bts_dev_status",
-				S_IRUGO, NULL, bts_data, &bts_dev_status_fops);
-		if (IS_ERR_OR_NULL(bts_data->dentry)) {
-			bts_data->dentry = NULL;
-			dev_err(&pdev->dev, "debugfs_create_file() failed\n");
-		}
-	}
 	return 0;
 
 probe_err4:
@@ -555,8 +547,6 @@ static int bts_remove(struct platform_device *pdev)
 
 	if (bts_data->clk)
 		clk_put(bts_data->clk);
-	if (bts_data->dentry)
-		debugfs_remove(bts_data->dentry);
 	kfree(bts_data);
 
 	if (!list_empty(&bts_list))
@@ -578,6 +568,14 @@ static struct platform_driver bts_driver = {
 
 static int __init bts_init(void)
 {
+	bts_debugfs =
+		debugfs_create_file("bts_dev_status",
+				    S_IRUGO, NULL, NULL, &bts_dev_status_fops);
+	if (IS_ERR_OR_NULL(bts_debugfs)) {
+		bts_debugfs = NULL;
+		pr_err("%s: debugfs_create_file() failed\n", __func__);
+	}
+
 	return platform_driver_register(&bts_driver);
 }
 arch_initcall(bts_init);
