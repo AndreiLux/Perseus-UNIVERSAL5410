@@ -53,7 +53,7 @@ MODULE_DEVICE_TABLE(of, dw_mci_pltfm_match);
 static const struct of_device_id dw_mci_pltfm_match[];
 #endif
 
-static int dw_mci_pltfm_probe(struct platform_device *pdev)
+static int __devinit dw_mci_pltfm_probe(struct platform_device *pdev)
 {
 	struct dw_mci *host;
 	struct resource	*regs;
@@ -101,7 +101,7 @@ err_free:
 	return ret;
 }
 
-static int __exit dw_mci_pltfm_remove(struct platform_device *pdev)
+static int __devexit dw_mci_pltfm_remove(struct platform_device *pdev)
 {
 	struct dw_mci *host = platform_get_drvdata(pdev);
 

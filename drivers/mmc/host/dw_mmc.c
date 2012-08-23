@@ -1903,7 +1903,7 @@ static int dw_mci_of_setup_bus(struct dw_mci *host, u8 slot, u32 bus_wd)
 }
 #endif /* CONFIG_OF */
 
-static int __init dw_mci_init_slot(struct dw_mci *host, unsigned int id)
+static int dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 {
 	struct mmc_host *mmc;
 	struct dw_mci_slot *slot;
