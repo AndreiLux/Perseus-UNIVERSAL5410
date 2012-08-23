@@ -270,9 +270,6 @@ static int __devinit tps65090_irq_init(struct tps65090 *tps65090, int irq)
 		return ret;
 	}
 
-	device_init_wakeup(tps65090->dev, 1);
-	enable_irq_wake(irq);
-
 	return 0;
 }
 
@@ -353,6 +350,8 @@ static int __devexit tps65090_i2c_remove(struct i2c_client *client)
 {
 	struct tps65090 *tps65090 = i2c_get_clientdata(client);
 
+	if (device_can_wakeup(tps65090->dev))
+		device_init_wakeup(tps65090->dev, 0);
 	mfd_remove_devices(tps65090->dev);
 	regmap_exit(tps65090->rmap);
 	if (client->irq) {
@@ -366,15 +365,21 @@ static int __devexit tps65090_i2c_remove(struct i2c_client *client)
 #ifdef CONFIG_PM
 static int tps65090_i2c_suspend(struct i2c_client *client, pm_message_t state)
 {
-	if (client->irq)
+	if (client->irq) {
+		if (device_may_wakeup(&client->dev))
+			enable_irq_wake(client->irq);
 		disable_irq(client->irq);
+	}
 	return 0;
 }
 
 static int tps65090_i2c_resume(struct i2c_client *client)
 {
-	if (client->irq)
+	if (client->irq) {
 		enable_irq(client->irq);
+		if (device_may_wakeup(&client->dev))
+			disable_irq_wake(client->irq);
+	}
 	return 0;
 }
 #endif
