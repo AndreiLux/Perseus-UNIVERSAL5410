@@ -245,6 +245,12 @@ static void restore_cpu_arch_register(void)
 {
 }
 
+static int cpu1_idle_finisher(unsigned long flags)
+{
+	cpu_do_idle();
+	return 1;
+}
+
 static int idle_finisher(unsigned long flags)
 {
 #if defined(CONFIG_ARM_TRUSTZONE)
@@ -460,7 +466,7 @@ abort:
 
 		/* Turn off cpu 1 */
 		__raw_writel(0, EXYNOS_ARM_CORE1_CONFIGURATION);
-		cpu_suspend(0, idle_finisher);
+		cpu_suspend(0, cpu1_idle_finisher);
 
 		cpu_leave_lowpower();
 
