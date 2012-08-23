@@ -232,6 +232,8 @@ static int exynos_ohci_suspend(struct device *dev)
 fail:
 	spin_unlock_irqrestore(&ohci->lock, flags);
 
+	clk_disable(exynos_ohci->clk);
+
 	return rc;
 }
 
@@ -241,6 +243,8 @@ static int exynos_ohci_resume(struct device *dev)
 	struct usb_hcd *hcd = exynos_ohci->hcd;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct exynos4_ohci_platdata *pdata = pdev->dev.platform_data;
+
+	clk_enable(exynos_ohci->clk);
 
 	if (pdata && pdata->phy_init)
 		pdata->phy_init(pdev, S5P_USB_PHY_HOST);
