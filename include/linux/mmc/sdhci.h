@@ -91,6 +91,10 @@ struct sdhci_host {
 	unsigned int quirks2;	/* More deviations from spec. */
 
 #define SDHCI_QUIRK2_HOST_OFF_CARD_ON			(1<<0)
+/* UHS modes do not work */
+#define SDHCI_QUIRK2_BROKEN_UHS					(1<<1)
+/* Has additional Broadcom-specific registers */
+#define SDHCI_QUIRK2_BROADCOM_REGISTERS			(1<<2)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */
