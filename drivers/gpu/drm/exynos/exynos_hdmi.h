@@ -28,6 +28,30 @@
 #ifndef _EXYNOS_HDMI_H_
 #define _EXYNOS_HDMI_H_
 
+/* AVI header and aspect ratio */
+#define HDMI_AVI_VERSION 		0x02
+#define HDMI_AVI_LENGTH  		0x0d
+#define AVI_PIC_ASPECT_RATIO_4_3 	(1 << 4)
+#define AVI_PIC_ASPECT_RATIO_16_9 	(2 << 4)
+#define AVI_SAME_AS_PIC_ASPECT_RATIO 	8
+
+/* AUI header info */
+#define HDMI_AUI_VERSION 		0x01
+#define HDMI_AUI_LENGTH  		0x0a
+
+/* HDMI infoframe to configure HDMI out packet header, AUI and AVI */
+enum HDMI_PACKET_TYPE {
+	/** refer to Table 5-8 Packet Type in HDMI specification v1.4a */
+	/** InfoFrame packet type */
+	HDMI_PACKET_TYPE_INFOFRAME = 0X80,
+	/** Vendor-Specific InfoFrame */
+	HDMI_PACKET_TYPE_VSI = HDMI_PACKET_TYPE_INFOFRAME + 1,
+	/** Auxiliary Video information InfoFrame */
+	HDMI_PACKET_TYPE_AVI = HDMI_PACKET_TYPE_INFOFRAME + 2,
+	/** Audio information InfoFrame */
+	HDMI_PACKET_TYPE_AUI = HDMI_PACKET_TYPE_INFOFRAME + 4
+};
+
 void hdmi_attach_ddc_client(struct i2c_client *ddc);
 void hdmi_attach_hdmiphy_client(struct i2c_client *hdmiphy);
 

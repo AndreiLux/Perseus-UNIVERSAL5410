@@ -17,6 +17,7 @@
 #include "drmP.h"
 #include "drm_edid.h"
 #include "drm_crtc_helper.h"
+#include "drm_crtc.h"
 
 #include "regs-hdmi.h"
 
@@ -118,6 +119,7 @@ struct hdmi_mode_conf {
 	int pixel_clock;
 	struct hdmi_core_regs core;
 	struct hdmi_tg_regs tg;
+	u8 vic;
 };
 
 struct hdmi_context {
@@ -473,6 +475,12 @@ static const struct hdmiphy_config phy_configs[] = {
 			0x54, 0x4b, 0x25, 0x03, 0x00, 0x00, 0x01, 0x00,
 		},
 	},
+};
+
+struct hdmi_infoframe {
+	enum HDMI_PACKET_TYPE type;
+	u8 ver;
+	u8 len;
 };
 
 static inline u32 hdmi_reg_read(struct hdmi_context *hdata, u32 reg_id)
@@ -863,6 +871,79 @@ static int hdmi_v14_check_timing(struct fb_videomode *mode)
 	return ret < 0 ? ret : 0;
 }
 
+static u8 hdmi_chksum(struct hdmi_context *hdata,
+			u32 start, u8 len, u32 hdr_sum)
+{
+	int i;
+	/* hdr_sum : header0 + header1 + header2
+	* start : start address of packet byte1
+	* len : packet bytes - 1 */
+	for (i = 0; i < len; ++i)
+		hdr_sum += hdmi_reg_read(hdata, start + i * 4);
+
+	return (u8)(0x100 - (hdr_sum & 0xff));
+}
+
+void hdmi_reg_infoframe(struct hdmi_context *hdata,
+			struct hdmi_infoframe *infoframe)
+{
+	u32 hdr_sum;
+	u8 chksum;
+	u32 aspect_ratio;
+	u32 mod;
+
+	DRM_DEBUG_KMS("[%d] %s\n", __LINE__, __func__);
+	mod = hdmi_reg_read(hdata, HDMI_MODE_SEL);
+	if (!hdata->has_hdmi_sink) {
+		hdmi_reg_writeb(hdata, HDMI_VSI_CON,
+				HDMI_VSI_CON_DO_NOT_TRANSMIT);
+		hdmi_reg_writeb(hdata, HDMI_AVI_CON,
+				HDMI_AVI_CON_DO_NOT_TRANSMIT);
+		hdmi_reg_writeb(hdata, HDMI_AUI_CON, HDMI_AUI_CON_NO_TRAN);
+		return;
+	}
+
+	switch (infoframe->type) {
+
+	case HDMI_PACKET_TYPE_AVI:
+		hdmi_reg_writeb(hdata, HDMI_AVI_CON, HDMI_AVI_CON_EVERY_VSYNC);
+		hdmi_reg_writeb(hdata, HDMI_AVI_HEADER0, infoframe->type);
+		hdmi_reg_writeb(hdata, HDMI_AVI_HEADER1, infoframe->ver);
+		hdmi_reg_writeb(hdata, HDMI_AVI_HEADER2, infoframe->len);
+		hdr_sum = infoframe->type + infoframe->ver + infoframe->len;
+		/* Output format zero hardcoded ,RGB YBCR selection */
+		hdmi_reg_writeb(hdata, HDMI_AVI_BYTE(1), 0 << 5 |
+			AVI_ACTIVE_FORMAT_VALID | AVI_UNDERSCANNED_DISPLAY_VALID);
+
+		aspect_ratio = AVI_PIC_ASPECT_RATIO_16_9;
+
+		hdmi_reg_writeb(hdata, HDMI_AVI_BYTE(2), aspect_ratio |
+				AVI_SAME_AS_PIC_ASPECT_RATIO);
+		hdmi_reg_writeb(hdata, HDMI_AVI_BYTE(4), hdata->mode_conf.vic);
+
+		chksum = hdmi_chksum(hdata, HDMI_AVI_BYTE(1),
+					infoframe->len, hdr_sum);
+		DRM_DEBUG_KMS("AVI checksum = 0x%x\n", chksum);
+		hdmi_reg_writeb(hdata, HDMI_AVI_CHECK_SUM, chksum);
+		break;
+
+	case HDMI_PACKET_TYPE_AUI:
+		hdmi_reg_writeb(hdata, HDMI_AUI_CON, 0x02);
+		hdmi_reg_writeb(hdata, HDMI_AUI_HEADER0, infoframe->type);
+		hdmi_reg_writeb(hdata, HDMI_AUI_HEADER1, infoframe->ver);
+		hdmi_reg_writeb(hdata, HDMI_AUI_HEADER2, infoframe->len);
+		hdr_sum = infoframe->type + infoframe->ver + infoframe->len;
+		chksum = hdmi_chksum(hdata, HDMI_AUI_BYTE(1),
+					infoframe->len, hdr_sum);
+		DRM_DEBUG_KMS("AUI checksum = 0x%x\n", chksum);
+		hdmi_reg_writeb(hdata, HDMI_AUI_CHECK_SUM, chksum);
+		break;
+
+	default:
+		break;
+	}
+}
+
 static int hdmi_check_timing(void *ctx, void *timing)
 {
 	struct hdmi_context *hdata = ctx;
@@ -1086,6 +1167,7 @@ static void hdmi_conf_reset(struct hdmi_context *hdata)
 
 static void hdmi_conf_init(struct hdmi_context *hdata)
 {
+	struct hdmi_infoframe infoframe;
 	/* disable hpd handle for drm */
 	hdata->hpd_handle = false;
 
@@ -1127,9 +1209,18 @@ static void hdmi_conf_init(struct hdmi_context *hdata)
 		hdmi_reg_writeb(hdata, HDMI_V13_ACR_CON, 0x04);
 	} else {
 		/* enable AVI packet every vsync, fixes purple line problem */
-		hdmi_reg_writeb(hdata, HDMI_AVI_CON, 0x02);
-		hdmi_reg_writeb(hdata, HDMI_AVI_BYTE(1), 2 << 5);
 		hdmi_reg_writemask(hdata, HDMI_CON_1, 2, 3 << 5);
+
+		infoframe.type = HDMI_PACKET_TYPE_AVI;
+		infoframe.ver = HDMI_AVI_VERSION;
+		infoframe.len = HDMI_AVI_LENGTH;
+		hdmi_reg_infoframe(hdata, &infoframe);
+
+		infoframe.type = HDMI_PACKET_TYPE_AUI;
+		infoframe.ver = HDMI_AUI_VERSION;
+		infoframe.len = HDMI_AUI_LENGTH;
+		hdmi_reg_infoframe(hdata, &infoframe);
+
 	}
 
 	/* enable hpd handle for drm */
@@ -1567,6 +1658,8 @@ static void hdmi_v14_mode_set(struct hdmi_context *hdata,
 {
 	struct hdmi_core_regs *core = &hdata->mode_conf.core;
 	struct hdmi_tg_regs *tg = &hdata->mode_conf.tg;
+
+	hdata->mode_conf.vic = drm_match_cea_mode(m);
 
 	hdata->mode_conf.pixel_clock = m->clock * 1000;
 	hdmi_set_reg(core->h_blank, 2, m->htotal - m->hdisplay);
