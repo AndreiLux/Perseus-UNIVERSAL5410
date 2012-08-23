@@ -92,6 +92,7 @@ static int exynos_cpufreq_scale(unsigned int target_freq, unsigned int curr_freq
 	struct cpufreq_policy *policy = cpufreq_cpu_get(0);
 	unsigned int new_index, old_index;
 	unsigned int arm_volt, safe_arm_volt = 0;
+	unsigned int max_volt;
 	int ret = 0;
 
 	freqs.new = target_freq;
@@ -119,19 +120,30 @@ static int exynos_cpufreq_scale(unsigned int target_freq, unsigned int curr_freq
 	safe_arm_volt = exynos_get_safe_armvolt(old_index, new_index);
 
 	arm_volt = volt_table[new_index];
-
-	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+	max_volt = volt_table[0];
 
 	/* When the new frequency is higher than current frequency */
 	if ((freqs.new > freqs.old) && !safe_arm_volt) {
 		/* Firstly, voltage up to increase frequency */
-		regulator_set_voltage(arm_regulator, arm_volt,
-				arm_volt);
+		ret = regulator_set_voltage(arm_regulator, arm_volt, max_volt);
+		if (ret) {
+			pr_err("%s: failed to set cpu voltage to %d\n",
+				__func__, arm_volt);
+			return ret;
+		}
 	}
 
-	if (safe_arm_volt)
-		regulator_set_voltage(arm_regulator, safe_arm_volt,
-				      safe_arm_volt);
+	if (safe_arm_volt) {
+		ret = regulator_set_voltage(arm_regulator, safe_arm_volt,
+				max_volt);
+		if (ret) {
+			pr_err("%s: failed to set cpu voltage to %d\n",
+				__func__, safe_arm_volt);
+			return ret;
+		}
+	}
+
+	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
 
 	exynos_info->set_freq(old_index, new_index);
 
@@ -150,8 +162,10 @@ static int exynos_cpufreq_scale(unsigned int target_freq, unsigned int curr_freq
 	if ((freqs.new < freqs.old) ||
 	   ((freqs.new > freqs.old) && safe_arm_volt)) {
 		/* down the voltage after frequency change */
-		regulator_set_voltage(arm_regulator, arm_volt,
-				arm_volt);
+		ret = regulator_set_voltage(arm_regulator, arm_volt, max_volt);
+		if (ret)
+			pr_err("%s: failed to set cpu voltage to %d\n",
+				__func__, arm_volt);
 	}
 
 out:
