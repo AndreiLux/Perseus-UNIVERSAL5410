@@ -134,6 +134,7 @@ struct hdmi_context {
 	bool				enabled;
 	bool				has_hdmi_sink;
 	bool				has_hdmi_audio;
+	bool				is_soc_exynos5;
 
 	struct resource			*regs_res;
 	void __iomem			*regs;
@@ -1578,11 +1579,13 @@ static void hdmi_conf_apply(struct hdmi_context *hdata)
 
 	hdmi_conf_reset(hdata);
 	hdmi_conf_init(hdata);
-	hdmi_audio_init(hdata);
+	if (!hdata->is_soc_exynos5)
+		hdmi_audio_init(hdata);
 
 	/* setting core registers */
 	hdmi_timing_apply(hdata);
-	hdmi_audio_control(hdata, true);
+	if (!hdata->is_soc_exynos5)
+		hdmi_audio_control(hdata, true);
 
 	hdmi_regs_dump(hdata, "start");
 }
@@ -1763,7 +1766,8 @@ static void hdmi_disable(void *ctx)
 	DRM_DEBUG_KMS("[%d] %s\n", __LINE__, __func__);
 
 	if (hdata->enabled) {
-		hdmi_audio_control(hdata, false);
+		if (!hdata->is_soc_exynos5)
+			hdmi_audio_control(hdata, false);
 		hdmiphy_conf_reset(hdata);
 		hdmi_conf_reset(hdata);
 	}
@@ -1932,7 +1936,8 @@ static void hdmi_resource_poweron(struct hdmi_context *hdata)
 	hdmiphy_conf_reset(hdata);
 	hdmi_conf_reset(hdata);
 	hdmi_conf_init(hdata);
-	hdmi_audio_init(hdata);
+	if (!hdata->is_soc_exynos5)
+		hdmi_audio_init(hdata);
 }
 
 static void hdmi_resource_poweroff(struct hdmi_context *hdata)
@@ -2031,6 +2036,8 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 	hdata->default_timing = &pdata->timing;
 	hdata->default_bpp = pdata->bpp;
 	hdata->dev = dev;
+	hdata->is_soc_exynos5 = of_device_is_compatible(dev->of_node,
+		"samsung,exynos5-hdmi");
 
 	ret = hdmi_resources_init(hdata);
 	if (ret) {
