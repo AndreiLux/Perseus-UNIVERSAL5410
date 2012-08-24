@@ -71,6 +71,15 @@ config SND_SOC_SAMSUNG_SMDK_WM8994
 	help
 		Say Y if you want to add support for SoC audio on the SMDKs.
 
+config SND_SOC_SAMSUNG_HDMI_AUDIO
+	tristate "SoC I2S Audio support for HDMI Audio"
+	depends on SND_SOC_SAMSUNG && SOC_EXYNOS5250
+	help
+		Say Y if you have a Samsung Exynos5250 (ARM) chipset with
+		a HDMI port and want to connect HDMI devices (e.g. TVs
+		which have audio output). This option enables the support
+		for routing audio through the HDMI port.
+
 config SND_SOC_SAMSUNG_SMDK2443_WM9710
 	tristate "SoC AC97 Audio support for SMDK2443 - WM9710"
 	depends on SND_SOC_SAMSUNG && MACH_SMDK2443
