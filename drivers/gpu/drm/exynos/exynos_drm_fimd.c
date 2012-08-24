@@ -23,8 +23,8 @@
 #include <plat/regs-fb-v4.h>
 
 #include "exynos_drm_drv.h"
-#include "exynos_drm_fbdev.h"
 #include "exynos_drm_crtc.h"
+#include "exynos_drm_fbdev.h"
 
 /*
  * FIMD is stand for Fully Interactive Mobile Display and
@@ -678,40 +678,6 @@ static struct exynos_drm_manager fimd_manager = {
 	.display_ops	= &fimd_display_ops,
 };
 
-static void fimd_finish_pageflip(struct drm_device *drm_dev, int crtc_idx)
-{
-	struct exynos_drm_private *dev_priv = drm_dev->dev_private;
-	struct drm_crtc *crtc = dev_priv->crtc[crtc_idx];
-	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-	struct drm_pending_vblank_event *e;
-	struct timeval now;
-	unsigned long flags;
-
-	/* set wait vsync event to zero and wake up queue. */
-	atomic_set(&dev_priv->wait_vsync_event, 0);
-	DRM_WAKEUP(&dev_priv->wait_vsync_queue);
-
-	if (!atomic_cmpxchg(&exynos_crtc->flip_pending, 1, 0))
-		return;
-
-	spin_lock_irqsave(&drm_dev->event_lock, flags);
-	if (exynos_crtc->event) {
-		e = exynos_crtc->event;
-		exynos_crtc->event = NULL;
-		do_gettimeofday(&now);
-		e->event.sequence = 0;
-		e->event.tv_sec = now.tv_sec;
-		e->event.tv_usec = now.tv_usec;
-
-		list_add_tail(&e->base.link,
-			      &e->base.file_priv->event_list);
-		wake_up_interruptible(&e->base.file_priv->event_wait);
-	}
-	spin_unlock_irqrestore(&drm_dev->event_lock, flags);
-
-	drm_vblank_put(drm_dev, crtc_idx);
-}
-
 static irqreturn_t fimd_irq_handler(int irq, void *dev_id)
 {
 	struct fimd_context *ctx = (struct fimd_context *)dev_id;
@@ -731,7 +697,7 @@ static irqreturn_t fimd_irq_handler(int irq, void *dev_id)
 		goto out;
 
 	drm_handle_vblank(drm_dev, manager->pipe);
-	fimd_finish_pageflip(drm_dev, manager->pipe);
+	exynos_drm_crtc_finish_pageflip(drm_dev, manager->pipe);
 
 out:
 	return IRQ_HANDLED;

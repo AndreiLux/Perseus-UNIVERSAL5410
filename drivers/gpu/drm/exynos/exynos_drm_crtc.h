@@ -35,6 +35,8 @@ int exynos_drm_crtc_create(struct drm_device *dev, unsigned int nr);
 int exynos_drm_crtc_enable_vblank(struct drm_device *dev, int crtc);
 void exynos_drm_crtc_disable_vblank(struct drm_device *dev, int crtc);
 
+void exynos_drm_crtc_finish_pageflip(struct drm_device *drm_dev, int crtc_idx);
+
 /*
  * Exynos specific crtc postion structure.
  *
