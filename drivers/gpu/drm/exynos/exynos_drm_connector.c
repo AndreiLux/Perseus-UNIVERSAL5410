@@ -158,7 +158,7 @@ static int exynos_drm_connector_get_modes(struct drm_connector *connector)
 
 		for (count = 0;count < MAX_NR_PANELS;count++) {
 			if(panel[count].timing.xres == -1 && panel[count].timing.yres == -1) {
-				DRM_DEBUG_KMS("panel %d count%d\n",panel,count);
+				DRM_DEBUG_KMS("panel %p count %d\n",panel,count);
 				break;
 			}
 			mode = drm_mode_create(connector->dev);
