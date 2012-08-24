@@ -28,7 +28,6 @@
 #include "exynos_dp_core.h"
 
 #define PLL_MAX_TRIES 100
-#define DP_ERROR_REPORTER_DELAY_MS 60000
 
 static int exynos_dp_init_dp(struct exynos_dp_device *dp)
 {
@@ -915,8 +914,6 @@ static irqreturn_t exynos_dp_irq_handler(int irq, void *arg)
 		break;
 	case DP_IRQ_TYPE_HP_CABLE_OUT:
 		dev_dbg(dp->dev, "Received irq - cable out\n");
-		if (delayed_work_pending(&dp->error_reporter_work))
-			cancel_delayed_work(&dp->error_reporter_work);
 		exynos_dp_clear_hotplug_interrupts(dp);
 		break;
 	case DP_IRQ_TYPE_HP_CHANGE:
@@ -933,35 +930,6 @@ static irqreturn_t exynos_dp_irq_handler(int irq, void *arg)
 		break;
 	}
 	return IRQ_HANDLED;
-}
-
-static void exynos_dp_error_reporter(struct work *work)
-{
-	struct delayed_work *delayed_work;
-	struct exynos_dp_device *dp;
-	int ret, i;
-	u8 buf[8];
-
-	delayed_work = to_delayed_work(work);
-	dp = container_of(work, struct exynos_dp_device, error_reporter_work);
-
-	ret = exynos_dp_read_bytes_from_dpcd(dp,
-			DPCD_ADDR_SYMBOL_ERROR_COUNT_LANE0, sizeof(buf), buf);
-	if (ret)
-		return;
-
-	for (i = 0; i < 4; i++) {
-		u8 *lane_err = buf + i * 2;
-		u16 err_value = (lane_err[1] & 0x7f) << 8 | lane_err[0];
-
-		if (!(lane_err[1] & 0x80) || !err_value)
-			continue;
-
-		dev_err(dp->dev, "DP error detected, lane %d, count %d\n",
-			i + 1, err_value);
-	}
-	schedule_delayed_work(delayed_work,
-		msecs_to_jiffies(DP_ERROR_REPORTER_DELAY_MS));
 }
 
 static void exynos_dp_hotplug(struct work_struct *work)
@@ -1003,7 +971,6 @@ static void exynos_dp_hotplug(struct work_struct *work)
 
 	exynos_dp_init_video(dp);
 	exynos_dp_config_video(dp);
-	schedule_delayed_work(&dp->error_reporter_work, 0);
 }
 
 static int __devinit exynos_dp_probe(struct platform_device *pdev)
@@ -1076,7 +1043,6 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 	exynos_dp_init_dp(dp);
 
 	INIT_WORK(&dp->hotplug_work, exynos_dp_hotplug);
-	INIT_DELAYED_WORK(&dp->error_reporter_work, exynos_dp_error_reporter);
 
 	ret = request_irq(dp->irq, exynos_dp_irq_handler, 0,
 			"exynos-dp", dp);
@@ -1108,8 +1074,6 @@ static int __devexit exynos_dp_remove(struct platform_device *pdev)
 
 	if (work_pending(&dp->hotplug_work))
 		flush_work_sync(&dp->hotplug_work);
-	if (delayed_work_pending(&dp->error_reporter_work))
-		cancel_delayed_work_sync(&dp->error_reporter_work);
 
 	if (pdata && pdata->phy_exit)
 		pdata->phy_exit();
@@ -1138,8 +1102,6 @@ static int exynos_dp_suspend(struct device *dev)
 
 	if (work_pending(&dp->hotplug_work))
 		flush_work_sync(&dp->hotplug_work);
-	if (delayed_work_pending(&dp->error_reporter_work))
-		cancel_delayed_work_sync(&dp->error_reporter_work);
 
 	if (pdata && pdata->phy_exit)
 		pdata->phy_exit();

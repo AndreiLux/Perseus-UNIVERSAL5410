@@ -42,7 +42,6 @@ struct exynos_dp_device {
 	enum link_training_type	training_type;
 	struct link_train	link_train;
 	struct work_struct	hotplug_work;
-	struct delayed_work	error_reporter_work;
 };
 
 /* exynos_dp_reg.c */
@@ -158,10 +157,6 @@ int exynos_dp_enable_hw_link_training(struct exynos_dp_device *dp);
 #define DPCD_ADDR_LANE_ALIGN__STATUS_UPDATED	0x0204
 #define DPCD_ADDR_ADJUST_REQUEST_LANE0_1	0x0206
 #define DPCD_ADDR_ADJUST_REQUEST_LANE2_3	0x0207
-#define DPCD_ADDR_SYMBOL_ERROR_COUNT_LANE0	0x0210
-#define DPCD_ADDR_SYMBOL_ERROR_COUNT_LANE1	0x0212
-#define DPCD_ADDR_SYMBOL_ERROR_COUNT_LANE2	0x0214
-#define DPCD_ADDR_SYMBOL_ERROR_COUNT_LANE3	0x0216
 #define DPCD_ADDR_TEST_REQUEST			0x0218
 #define DPCD_ADDR_TEST_RESPONSE			0x0260
 #define DPCD_ADDR_TEST_EDID_CHECKSUM		0x0261
