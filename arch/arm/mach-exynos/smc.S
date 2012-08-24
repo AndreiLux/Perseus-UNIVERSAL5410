@@ -14,3 +14,11 @@ ENTRY(exynos_smc)
 	smc	0
 	ldmfd	sp!, {pc}
 ENDPROC(exynos_smc)
+
+ENTRY(exynos_smc_read_sfr)
+	stmfd	sp!, {r4, lr}
+	mov	r4, r2
+	smc	0
+	str	r2, [r4]
+	ldmfd	sp!, {r4, pc}
+ENDPROC(exynos_smc_read_sfr)

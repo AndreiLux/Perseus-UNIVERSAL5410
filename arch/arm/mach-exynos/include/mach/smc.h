@@ -32,14 +32,17 @@
 
 /* MACRO for SMC_CMD_REG */
 #define SMC_REG_CLASS_CP15	(0x0 << 30)
-#define SMC_REG_CLASS_SFR	(0x1 << 30)
+#define SMC_REG_CLASS_SFR_W	(0x1 << 30)
+#define SMC_REG_CLASS_SFR_R	(0x3 << 30)
 #define SMC_REG_CLASS_MASK	(0x3 << 30)
 #define SMC_REG_ID_CP15(CRn, Op1, CRm, Op2) \
 	   (SMC_REG_CLASS_CP15 | (CRn << 10) | (Op1 << 7) | (CRm << 3) | (Op2))
-#define SMC_REG_ID_SFR(ADDR)	(SMC_REG_CLASS_SFR | (ADDR >> 2))
+#define SMC_REG_ID_SFR_W(ADDR)	(SMC_REG_CLASS_SFR_W | ((ADDR) >> 2))
+#define SMC_REG_ID_SFR_R(ADDR)	(SMC_REG_CLASS_SFR_R | ((ADDR) >> 2))
 
 #ifndef __ASSEMBLY__
 u32 exynos_smc(u32 cmd, u32 arg1, u32 arg2, u32 arg3);
+u32 exynos_smc_read_sfr(u32 cmd, u32 addr, u32 *val, u32 reserve);
 #endif
 
 #endif /* __ASM_ARCH_SMC_H */
