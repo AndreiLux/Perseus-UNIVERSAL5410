@@ -373,6 +373,7 @@
 		tx-dma-channel-secondary = <&pdma0 8>;
 		tx-dma-channel = <&pdma0 10>;
 		rx-dma-channel = <&pdma0 9>;
+		codec-plugin = "hdmi-audio";
 	};
 
 	spi_0: spi@12d20000 {
