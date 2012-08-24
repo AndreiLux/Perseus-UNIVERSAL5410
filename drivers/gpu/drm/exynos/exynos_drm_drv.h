@@ -322,7 +322,7 @@ struct exynos_drm_fb {
  * @drm_crtc: crtc object.
  * @overlay: contain information common to display controller and hdmi and
  *	contents of this overlay object would be copied to sub driver size.
- * event: vblank event that is currently queued for flip
+ * @event: vblank event that is currently queued for flip
  * @pipe: a crtc index created at load() with a new crtc object creation
  *	and the crtc object would be set to private->crtc array
  *	to get a crtc object corresponding to this pipe from private->crtc
