@@ -16,6 +16,7 @@
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/pm_runtime.h>
 
 #include <sound/soc.h>
@@ -28,6 +29,7 @@
 #include "idma.h"
 #include "i2s.h"
 #include "i2s-regs.h"
+#include "codec_plugin.h"
 
 #define msecs_to_loops(t) (loops_per_jiffy / 1000 * HZ * t)
 
@@ -66,6 +68,7 @@ struct i2s_dai {
 	struct s3c_dma_params dma_playback;
 	struct s3c_dma_params dma_capture;
 	struct s3c_dma_params idma_playback;
+	struct audio_codec_plugin *plugin;
 	u32	quirks;
 	u32	suspend_i2smod;
 	u32	suspend_i2scon;
@@ -276,6 +279,69 @@ static inline int get_blc(struct i2s_dai *i2s)
 	case 1:	return 8;
 	default: return 16;
 	}
+}
+
+static int plugin_init(struct i2s_dai *i2s)
+{
+	const char *plugin_name;
+	struct device_node *plugin_node = NULL;
+	struct platform_device *pdev;
+	struct audio_codec_plugin *plugin;
+
+	if (!of_property_read_string_index(i2s->pdev->dev.of_node,
+				"codec-plugin", 0, &plugin_name)) {
+
+		plugin_node = of_find_node_by_name(NULL, plugin_name);
+		if (!plugin_node)
+			return -EFAULT;
+
+		pdev = of_find_device_by_node(plugin_node);
+		if (!plugin_node)
+			return -EFAULT;
+
+		plugin = dev_get_drvdata(&pdev->dev);
+		if (!plugin)
+			return -EFAULT;
+		else
+			if (i2s->plugin)
+				dev_err(&i2s->pdev->dev, "plugin already intialised.\n");
+			i2s->plugin = plugin;
+		return 0;
+	}
+
+	return -EFAULT;
+}
+
+static void plugin_hw_params(struct snd_pcm_substream *substream,
+	struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
+{
+	struct i2s_dai *i2s = to_info(dai);
+
+	if (!i2s->plugin)
+		return;
+
+	if (!i2s->plugin->ops.hw_params)
+		return;
+
+	i2s->plugin->ops.hw_params(
+		i2s->plugin->dev, substream, params, dai);
+	return;
+}
+
+static void plugin_trigger(struct snd_pcm_substream *substream,
+	int cmd, struct snd_soc_dai *dai)
+{
+	struct i2s_dai *i2s = to_info(dai);
+
+	if (!i2s->plugin)
+		return;
+
+	if (!i2s->plugin->ops.trigger)
+		return;
+
+	i2s->plugin->ops.trigger(i2s->plugin->dev,
+			substream, cmd, dai);
+	return;
 }
 
 /* TX Channel Control */
@@ -551,6 +617,8 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 	struct i2s_dai *i2s = to_info(dai);
 	u32 mod = readl(i2s->addr + I2SMOD);
 
+	plugin_hw_params(substream, params, dai);
+
 	if (!is_secondary(i2s))
 		mod &= ~(MOD_DC2_EN | MOD_DC1_EN);
 
@@ -766,6 +834,8 @@ static int i2s_trigger(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct i2s_dai *i2s = to_info(rtd->cpu_dai);
 	unsigned long flags;
+
+	plugin_trigger(substream, cmd, dai);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -1128,6 +1198,8 @@ static __devinit int samsung_i2s_probe(struct platform_device *pdev)
 					"rx-dma-channel", NULL);
 		dma_cp_chan = DMACH_DT_PROP;
 		pri_dai->dma_capture.dma_prop = prop;
+
+		plugin_init(pri_dai);
 	}
 
 	pri_dai->dma_playback.dma_addr = regs_base + I2STXD;
@@ -1249,4 +1321,5 @@ module_platform_driver(samsung_i2s_driver);
 MODULE_AUTHOR("Jaswinder Singh, <jassisinghbrar@gmail.com>");
 MODULE_DESCRIPTION("Samsung I2S Interface");
 MODULE_ALIAS("platform:samsung-i2s");
+MODULE_VERSION("1:1.0");
 MODULE_LICENSE("GPL");
