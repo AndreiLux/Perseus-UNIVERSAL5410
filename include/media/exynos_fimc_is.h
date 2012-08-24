@@ -101,7 +101,7 @@ struct gpio_type {
 	u32 second_gpio_port_no;
 };
 
-struct sensor_peri_format {
+union sensor_peri_format {
 	struct i2c_type i2c;
 	struct spi_type spi;
 	struct gpio_type gpio;
@@ -110,7 +110,7 @@ struct sensor_peri_format {
 struct sensor_protocol {
 	u32 product_name;
 	enum sensor_peri_type peri_type;
-	struct sensor_peri_format peri_setting;
+	union sensor_peri_format peri_setting;
 };
 
 enum exynos5_sensor_channel {
