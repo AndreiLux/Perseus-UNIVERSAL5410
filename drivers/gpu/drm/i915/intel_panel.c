@@ -251,7 +251,8 @@ static void intel_panel_actually_set_backlight(struct drm_device *dev, u32 level
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 tmp;
 
-	level = level * dev_priv->backlight_correction_level >> 8;
+	if (dev_priv->adaptive_backlight_enabled)
+		level = level * dev_priv->backlight_correction_level >> 8;
 
 	DRM_DEBUG_DRIVER("set backlight PWM = %d\n", level);
 
