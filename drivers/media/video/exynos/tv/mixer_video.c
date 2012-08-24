@@ -991,7 +991,10 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 	layer->ops.format_set(layer);
 
 	spin_lock_irqsave(&layer->enq_slock, flags);
-	pipe->state = MXR_PIPELINE_STREAMING_START;
+	if (list_empty(&layer->enq_list))
+		pipe->state = MXR_PIPELINE_STREAMING_START;
+	else
+		pipe->state = MXR_PIPELINE_STREAMING;
 	spin_unlock_irqrestore(&layer->enq_slock, flags);
 
 	/* enabling layer in hardware */
