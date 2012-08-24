@@ -189,15 +189,6 @@ static int exynos_drm_gem_get_pages(struct drm_gem_object *obj)
 		sgl = sg_next(sgl);
 	}
 
-	/* Map the SGT to create a IOMMU mapping for this buffer */
-	ret = dma_map_sg(obj->dev->dev, buf->sgt->sgl, buf->sgt->orig_nents, DMA_BIDIRECTIONAL);
-	if (!ret) {
-		DRM_ERROR("failed to map sg\n");
-		ret = -ENOMEM;
-		goto err1;
-	}
-	buf->dma_addr = buf->sgt->sgl->dma_address;
-
 	/* add some codes for UNCACHED type here. TODO */
 
 	buf->pages = pages;
@@ -215,9 +206,6 @@ static void exynos_drm_gem_put_pages(struct drm_gem_object *obj)
 {
 	struct exynos_drm_gem_obj *exynos_gem_obj = to_exynos_gem_obj(obj);
 	struct exynos_drm_gem_buf *buf = exynos_gem_obj->buffer;
-
-	/* Unmap the SGT to remove the IOMMU mapping created for this buffer */
-	dma_unmap_sg(obj->dev->dev, buf->sgt->sgl, buf->sgt->orig_nents, DMA_BIDIRECTIONAL);
 
 	/*
 	 * if buffer typs is EXYNOS_BO_NONCONTIG then release all pages

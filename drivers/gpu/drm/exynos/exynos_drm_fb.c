@@ -36,6 +36,66 @@
 #include "exynos_drm_gem.h"
 #include "exynos_drm_crtc.h"
 
+/* Helper functions to push things in/out of the iommu. */
+static int exynos_drm_fb_map(struct drm_framebuffer *fb)
+{
+	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
+	struct exynos_drm_gem_obj *gem_ob = exynos_fb->exynos_gem_obj[0];
+	struct drm_gem_object *obj = &gem_ob->base;
+	struct exynos_drm_gem_buf *buf;
+	int ret;
+
+	buf = exynos_drm_fb_buffer(fb, 0);
+	if (!buf) {
+		DRM_ERROR("buffer is null\n");
+		return -ENOMEM;
+	}
+
+	ret = dma_map_sg(obj->dev->dev,
+			 buf->sgt->sgl,
+			 buf->sgt->orig_nents,
+			 DMA_BIDIRECTIONAL);
+	if (!ret) {
+		DRM_ERROR("failed to map sg\n");
+		return -ENOMEM;
+	}
+
+	buf->dma_addr = buf->sgt->sgl->dma_address;
+
+	return 0;
+}
+
+static int exynos_drm_fb_unmap(struct drm_framebuffer *fb)
+{
+	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
+	struct exynos_drm_gem_obj *gem_ob = exynos_fb->exynos_gem_obj[0];
+	struct drm_gem_object *obj = &gem_ob->base;
+	struct exynos_drm_gem_buf *buf;
+
+	buf = exynos_drm_fb_buffer(fb, 0);
+	if (!buf) {
+		DRM_ERROR("buffer is null\n");
+		return -ENOMEM;
+	}
+
+	/*
+	 * Not critical, this is used for cleanup in the fb_create error path
+	 * path so keep it silent.
+	 */
+	if (!buf->dma_addr)
+		return -ENOMEM;
+
+	/* Unmap the SGT to remove the IOMMU mapping created for this buffer */
+	dma_unmap_sg(obj->dev->dev,
+		     buf->sgt->sgl,
+		     buf->sgt->orig_nents,
+		     DMA_BIDIRECTIONAL);
+
+	buf->dma_addr = NULL;
+
+	return 0;
+}
+
 void exynos_drm_wait_for_vsync(struct drm_device *drm_dev)
 {
 	struct exynos_drm_private *dev_priv = drm_dev->dev_private;
@@ -70,6 +130,9 @@ static void exynos_drm_fb_destroy(struct drm_framebuffer *fb)
 
 	/* wait for vsync from CRTC to safely remove a FB*/
 	exynos_drm_wait_for_vsync(fb->dev);
+
+	if (exynos_drm_fb_unmap(fb))
+		DRM_ERROR("Couldn't unmap buffer\n");
 
 	kfree(exynos_fb);
 }
@@ -177,6 +240,12 @@ exynos_user_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 		return ERR_PTR(-ENOMEM);
 	}
 #endif
+
+	if (exynos_drm_fb_map(fb)) {
+		DRM_ERROR("Failed to map gem object\n");
+		exynos_drm_fb_destroy(fb);
+		return ERR_PTR(-ENOMEM);
+	}
 
 	return fb;
 }
