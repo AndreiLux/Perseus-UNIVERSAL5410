@@ -666,9 +666,10 @@ static void dw_mci_submit_data(struct dw_mci *host, struct mmc_data *data)
 
 		mci_writel(host, FIFOTH, host->fifoth_val);
 
-		if (mmc_card_uhs(card) & card->host->caps & MMC_CAP_UHS_SDR104)
-				mci_writel(host, CDTHRCTL,
-						data->blksz << 16 | 1);
+		if (mmc_card_uhs(card)
+				&& card->host->caps & MMC_CAP_UHS_SDR104
+				&& data->flags & MMC_DATA_READ)
+			mci_writel(host, CDTHRCTL, data->blksz << 16 | 1);
 	}
 
 	if (data->flags & MMC_DATA_READ)
