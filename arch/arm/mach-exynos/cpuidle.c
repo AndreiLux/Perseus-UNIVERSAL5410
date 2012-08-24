@@ -214,7 +214,7 @@ static struct cpuidle_state exynos_cpuidle_set[] __initdata = {
 	},
 	[1] = {
 		.enter			= exynos_enter_lowpower,
-		.exit_latency		= 300,
+		.exit_latency		= 500,
 		.target_residency	= 1000,
 		.flags			= CPUIDLE_FLAG_TIME_VALID |
 					  CPUIDLE_FLAG_COUPLED,
@@ -436,8 +436,12 @@ abort:
 #endif
 
 			/* Wait for cpu1 to get stuck in the boot rom */
-			while ((__raw_readl(BOOT_VECTOR) != 0) && !cpu1_abort)
+			while ((__raw_readl(BOOT_VECTOR) != 0) && !cpu1_abort) {
+#ifdef CONFIG_ARM_TRUSTZONE
+				exynos_smc(SMC_CMD_CPU1BOOT, 0, 0, 0);
+#endif
 				cpu_relax();
+			}
 
 			if (!cpu1_abort) {
 				/* Poke cpu1 out of the boot rom */
