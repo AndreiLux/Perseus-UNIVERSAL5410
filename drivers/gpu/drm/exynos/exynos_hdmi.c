@@ -1996,6 +1996,8 @@ void hdmi_attach_hdmiphy_client(struct i2c_client *hdmiphy)
 		hdmi_hdmiphy = hdmiphy;
 }
 
+struct platform_device *hdmi_audio_device;
+
 static int __devinit hdmi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -2065,6 +2067,31 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 		DRM_ERROR("failed to map registers\n");
 		ret = -ENXIO;
 		goto err_req_region;
+	}
+
+	if (of_device_is_compatible(dev->of_node,
+		"samsung,exynos5-hdmi")) {
+
+		hdmi_audio_device =
+			platform_device_alloc("exynos-hdmi-audio", -1);
+
+		if (!hdmi_audio_device) {
+			ret = -ENOMEM;
+			goto err_iomap;
+		}
+
+		ret = platform_device_add_resources(hdmi_audio_device, res, 1);
+		if (ret) {
+			ret = -ENOMEM;
+			goto err_iomap;
+		}
+
+		hdmi_audio_device->dev.of_node =
+			of_get_next_child(dev->of_node, NULL);
+
+		ret = platform_device_add(hdmi_audio_device);
+		if (ret)
+			platform_device_put(hdmi_audio_device);
 	}
 
 	/* DDC i2c driver */
