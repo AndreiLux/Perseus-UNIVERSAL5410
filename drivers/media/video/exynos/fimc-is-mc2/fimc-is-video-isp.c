@@ -204,7 +204,7 @@ static int fimc_is_isp_video_reqbufs(struct file *file, void *priv,
 	struct fimc_is_video_isp *video = file->private_data;
 	struct fimc_is_device_ischain *ischain = video->common.device;
 
-	dbg_isp("%s\n", __func__);
+	dbg_isp("%s(buffers : %d)\n", __func__, buf->count);
 
 	ret = fimc_is_video_reqbufs(&video->common, buf);
 	if (ret)
@@ -454,29 +454,15 @@ static inline void fimc_is_isp_unlock(struct vb2_queue *vq)
 static int fimc_is_isp_start_streaming(struct vb2_queue *q,
 						unsigned int count)
 {
-	int ret = 0, i;
+	int ret = 0;
 	struct fimc_is_video_isp *video = q->drv_priv;
 	struct fimc_is_device_ischain *ischain = video->common.device;
 
 	dbg_isp("%s\n", __func__);
 
-	if (test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state)
-		&& !test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)) {
-		/*hack*/
-		/*3.4 kernel, this isuue will be clear*/
-		struct fimc_is_framemgr *framemgr = ischain->framemgr;
-		struct fimc_is_frame_shot *frame;
-
-		for (i = 0; i < video->common.buffers; ++i) {
-			framemgr_e_barrier_irq(framemgr, 0);
-			fimc_is_frame_free_head(framemgr, &frame);
-			fimc_is_frame_trans_fre_to_com(framemgr, frame);
-			framemgr_x_barrier_irq(framemgr, 0);
-			vb2_buffer_done(q->bufs[i], VB2_BUF_STATE_DONE);
-		}
-
-		fimc_is_ischain_isp_start(ischain, &video->common);
+	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)) {
 		set_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
+		fimc_is_ischain_isp_start(ischain, &video->common);
 	}
 
 	return ret;
@@ -499,20 +485,28 @@ static int fimc_is_isp_stop_streaming(struct vb2_queue *q)
 
 static void fimc_is_isp_buffer_queue(struct vb2_buffer *vb)
 {
+	u32 index;
 	struct fimc_is_video_isp *video = vb->vb2_queue->drv_priv;
-	struct fimc_is_device_ischain *ischain = video->common.device;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
+	struct fimc_is_core *core;
+
+	index = vb->v4l2_buf.index;
 
 #ifdef DBG_STREAMING
-	dbg_isp("%s(%d)\n", __func__, vb->v4l2_buf.index);
+	dbg_isp("%s(%d)\n", __func__, index);
 #endif
 
-	fimc_is_video_buffer_queue(&video->common, vb, ischain->framemgr);
+	if (!test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &common->state)) {
+		core = common->core;
 
-	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)) {
-		fimc_is_ischain_isp_buffer_queue(ischain, vb->v4l2_buf.index);
-	} else
-		fimc_is_isp_start_streaming(vb->vb2_queue,
-					video->common.buffers);
+		fimc_is_itf_cfg_mem(ischain,
+			core->mem.vb2->plane_addr(vb, 1),
+			common->frame.size[1]);
+	}
+
+	fimc_is_video_buffer_queue(common, vb, ischain->framemgr);
+	fimc_is_ischain_isp_buffer_queue(ischain, vb->v4l2_buf.index);
 }
 
 static int fimc_is_isp_buffer_finish(struct vb2_buffer *vb)

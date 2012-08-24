@@ -17,9 +17,6 @@
 #define FIMC_IS_A5_MEM_SIZE		(0x00A00000)
 #define FIMC_IS_REGION_SIZE		(0x5000)
 #define FIMC_IS_SETFILE_SIZE		(0xc0d8)
-#define DRC_SETFILE_SIZE		(0x140)
-#define FD_SETFILE_SIZE			(0x88*2)
-#define FIMC_IS_FW_BASE_MASK		((1 << 26) - 1)
 #define FIMC_IS_TDNR_MEM_SIZE		(1920*1080*4)
 #define FIMC_IS_DEBUG_REGION_ADDR	(0x00840000)
 #define FIMC_IS_SHARED_REGION_ADDR	(0x008C0000)
@@ -179,6 +176,8 @@ int fimc_is_ischain_close(struct fimc_is_device_ischain *this);
 int fimc_is_ischain_init(struct fimc_is_device_ischain *this,
 	u32 input, u32 channel, struct sensor_open_extended *ext,
 	char *setfile_name);
+int fimc_is_itf_cfg_mem(struct fimc_is_device_ischain *this,
+	u32 shot_addr, u32 shot_size);
 int fimc_is_ischain_g_capability(struct fimc_is_device_ischain *this,
 	u32 user_ptr);
 int fimc_is_ischain_print_status(struct fimc_is_device_ischain *this);
@@ -206,7 +205,7 @@ int fimc_is_ischain_scp_s_format(struct fimc_is_device_ischain *this,
 
 /*common subdev*/
 int fimc_is_ischain_dev_open(struct fimc_is_ischain_dev *this,
-	struct fimc_is_video_common *video, u32 buffers);
+	struct fimc_is_video_common *video);
 int fimc_is_ischain_dev_buffer_queue(struct fimc_is_ischain_dev *this,
 	u32 index);
 int fimc_is_ischain_dev_buffer_finish(struct fimc_is_ischain_dev *this,

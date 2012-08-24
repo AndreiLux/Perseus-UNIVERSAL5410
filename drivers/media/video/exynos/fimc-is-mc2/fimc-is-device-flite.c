@@ -585,10 +585,7 @@ static void tasklet_func_flite_str(unsigned long data)
 		fimc_is_ischain_camctl(ischain, NULL, fcount);
 
 		err("process shot is empty");
-		fimc_is_frame_print_free_list(framemgr);
-		fimc_is_frame_print_request_list(framemgr);
-		fimc_is_frame_print_process_list(framemgr);
-		fimc_is_frame_print_complete_list(framemgr);
+		fimc_is_frame_print_all(framemgr);
 	}
 
 	framemgr_x_barrier(framemgr, FMGR_IDX_0 + bstart);

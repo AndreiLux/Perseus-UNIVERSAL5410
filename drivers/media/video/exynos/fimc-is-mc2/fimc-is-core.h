@@ -12,15 +12,6 @@
 #ifndef FIMC_IS_CORE_H
 #define FIMC_IS_CORE_H
 
-/*#define DEBUG*/
-#define FRAME_RATE_ENABLE
-/*#define ODC_ENABLE*/
-#define TDNR_ENABLE
-#define DIS_ENABLE
-#define FD_ENABLE
-#define FW_SUPPORT_FACE_AF
-#define FIMCLITE
-
 #include <linux/sched.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
@@ -63,34 +54,13 @@
 #define FIMC_IS_VIDEO_3DNR_NAME			"exynos5-fimc-is2-3dnr"
 #define FIMC_IS_VIDEO_SCALERP_NAME		"exynos5-fimc-is2-scalerp"
 
-#define FIMC_IS_DEBUG_LEVEL			(3)
-/*#define FIMC_IS_A5_DEBUG_ON			(1)*/
-/*#define FPS_ENABLE				(1)*/
-
-#define MAX_I2H_ARG				(4)
-
-#define FIMC_IS_FW				"fimc_is_fw2.bin"
-
 #define FIMC_IS_COMMAND_TIMEOUT			(4*HZ)
 #define FIMC_IS_SHUTDOWN_TIMEOUT		(10*HZ)
 #define FIMC_IS_FLITE_STOP_TIMEOUT		(4*HZ)
 
-#define FIMC_IS_A5_MEM_SIZE			(0x00A00000)
-#define FIMC_IS_REGION_SIZE			(0x5000)
-#define FIMC_IS_SETFILE_SIZE			(0xc0d8)
-#define DRC_SETFILE_SIZE			(0x140)
-#define FD_SETFILE_SIZE				(0x88*2)
-#define FIMC_IS_FW_BASE_MASK			((1 << 26) - 1)
-#define FIMC_IS_TDNR_MEM_SIZE			(1920*1080*4)
-#define FIMC_IS_DEBUG_REGION_ADDR		(0x00840000)
-#define FIMC_IS_SHARED_REGION_ADDR		(0x008C0000)
-
-#define FIMC_IS_MAX_CAL_SIZE			(1196)
-#define FIMC_IS_CAL_START_ADDR			(0x8D0000)
-
 #define FIMC_IS_SENSOR_MAX_ENTITIES		(1)
-#define FIMC_IS_SENSOR_PAD_SOURCE_FRONT	(0)
-#define FIMC_IS_SENSOR_PADS_NUM		(1)
+#define FIMC_IS_SENSOR_PAD_SOURCE_FRONT		(0)
+#define FIMC_IS_SENSOR_PADS_NUM			(1)
 
 #define FIMC_IS_FRONT_MAX_ENTITIES		(1)
 #define FIMC_IS_FRONT_PAD_SINK			(0)
@@ -102,10 +72,10 @@
 #define FIMC_IS_BACK_MAX_ENTITIES		(1)
 #define FIMC_IS_BACK_PAD_SINK			(0)
 #define FIMC_IS_BACK_PAD_SOURCE_3DNR		(1)
-#define FIMC_IS_BACK_PAD_SOURCE_SCALERP	(2)
+#define FIMC_IS_BACK_PAD_SOURCE_SCALERP		(2)
 #define FIMC_IS_BACK_PADS_NUM			(3)
 
-#define FIMC_IS_MAX_SENSOR_NAME_LEN  (16)
+#define FIMC_IS_MAX_SENSOR_NAME_LEN		(16)
 
 #define FW_SHARED_OFFSET			(0x8C0000)
 #define DEBUG_CNT				(500*1024)
@@ -116,6 +86,7 @@
 #define err(fmt, args...) \
 	printk(KERN_ERR "%s:%d: " fmt "\n", __func__, __LINE__, ##args)
 
+/*#define DEBUG*/
 /*#define AUTO_MODE*/
 /*#define DBG_STREAMING*/
 /*#define FW_DEBUG*/

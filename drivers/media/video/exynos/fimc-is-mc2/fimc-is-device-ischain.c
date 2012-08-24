@@ -49,9 +49,14 @@
 #include "fimc-is-device-ischain.h"
 
 #define SDCARD_FW
-#define FIMC_IS_SETFILE_SDCARD_PATH	"/data/"
-#define FIMC_IS_FW_SDCARD		"/data/fimc_is_fw2.bin"
-#define FIMC_IS_VERSION_SIZE		39
+#define FIMC_IS_SETFILE_SDCARD_PATH		"/data/"
+#define FIMC_IS_FW				"fimc_is_fw2.bin"
+#define FIMC_IS_FW_SDCARD			"/data/fimc_is_fw2.bin"
+#define FIMC_IS_FW_BASE_MASK			((1 << 26) - 1)
+#define FIMC_IS_VERSION_SIZE			39
+
+#define FIMC_IS_MAX_CAL_SIZE			(1196)
+#define FIMC_IS_CAL_START_ADDR			(0x8D0000)
 
 /* Default setting values */
 #define DEFAULT_PREVIEW_STILL_WIDTH		(1280) /* sensor margin : 16 */
@@ -677,7 +682,7 @@ static void fimc_is_ischain_region_flush(struct fimc_is_device_ischain *this)
 		DMA_TO_DEVICE);
 }
 
-static void fimc_is_ischain_version(char *name, char *load_bin, u32 size)
+static void fimc_is_ischain_version(char *name, const char *load_bin, u32 size)
 {
 	char version_str[FIMC_IS_VERSION_SIZE + 1];
 
@@ -731,7 +736,7 @@ static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *this)
 	} else {
 		memcpy((void *)this->minfo.kvaddr, (void *)buf, fsize);
 		fimc_is_ischain_cache_flush(this, 0, fsize + 1);
-		printk(KERN_INFO "FIMC_IS F/W loaded from %s - size:%d\n",
+		printk(KERN_INFO "FIMC_IS F/W loaded from %s - size:%ld\n",
 				FIMC_IS_FW_SDCARD, nread);
 		fimc_is_ischain_version(FIMC_IS_FW, buf, fsize);
 	}
@@ -830,7 +835,7 @@ static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
 		address = (void *)(this->minfo.kvaddr + load_addr);
 		memcpy((void *)address, (void *)buf, fsize);
 		fimc_is_ischain_cache_flush(this, load_addr, fsize + 1);
-		printk(KERN_INFO "FIMC_IS setfile is loaded from %s - size:%d\n",
+		printk(KERN_INFO "setfile is loaded from %s - size:%ld\n",
 				setfile_path, nread);
 		fimc_is_ischain_version(setfile_name, buf, fsize);
 	}
@@ -860,7 +865,7 @@ request_fw:
 		printk(KERN_INFO "setfile is loaded successfully(size:%d)\n",
 			fw_blob->size);
 		fimc_is_ischain_version(setfile_name, fw_blob->data,
-			fw_blob->size);
+			(u32)fw_blob->size);
 
 		release_firmware(fw_blob);
 #ifdef SDCARD_FW
@@ -876,6 +881,49 @@ out:
 	}
 #endif
 
+	return ret;
+}
+
+static int fimc_is_ischain_loadcalb(struct fimc_is_device_ischain *this,
+	struct fimc_is_enum_sensor *active_sensor)
+{
+	int ret = 0;
+	char buf[FIMC_IS_MAX_CAL_SIZE];
+	char *cal_ptr;
+
+	memset(buf, 0xff, FIMC_IS_MAX_CAL_SIZE);
+	ret = fimc_is_spi_read(buf, FIMC_IS_MAX_CAL_SIZE);
+	if (ret < 0) {
+		err("failed to fimc_is_spi_read (%d)\n", ret);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	cal_ptr = (char *)(this->minfo.kvaddr + FIMC_IS_CAL_START_ADDR);
+
+	if (active_sensor->sensor == SENSOR_NAME_S5K6A3) {
+		buf[0x1a] = 0;
+		buf[0x1b] = 0;
+	}
+
+	if (active_sensor->sensor == SENSOR_NAME_S5K6A3)
+		printk(KERN_INFO "sensor name : 6A3\n");
+	else if (active_sensor->sensor == SENSOR_NAME_S5K4E5)
+		printk(KERN_INFO "sensor name : 4E5\n");
+	else {
+		printk(KERN_INFO "sensor name : Unknown\n");
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	printk(KERN_INFO "FROM DATA(0x1A): 0x%08x\n", buf[0x1a]);
+	printk(KERN_INFO "FROM DATA(0x1B): 0x%08x\n", buf[0x1b]);
+
+	memcpy(cal_ptr, buf, FIMC_IS_MAX_CAL_SIZE);
+	fimc_is_ischain_cache_flush(this, FIMC_IS_CAL_START_ADDR,
+				FIMC_IS_MAX_CAL_SIZE + 1);
+
+exit:
 	return ret;
 }
 
@@ -895,8 +943,9 @@ static void fimc_is_ischain_forcedown(struct fimc_is_device_ischain *this,
 	}
 }
 
-void fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
+int fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 {
+	int ret = 0;
 	u32 timeout;
 	struct device *dev = &this->pdev->dev;
 	struct fimc_is_core *core
@@ -904,9 +953,6 @@ void fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 	struct fimc_is_device_sensor *sensor = &core->sensor;
 	struct fimc_is_enum_sensor *sensor_info
 		= &sensor->enum_sensor[sensor->id_position];
-	char buf[FIMC_IS_MAX_CAL_SIZE];
-	char *cal_ptr;
-	int ret;
 
 	printk(KERN_INFO "%s(%d)\n", __func__, on);
 
@@ -924,40 +970,20 @@ void fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 		fimc_is_runtime_resume(dev);
 #endif
 
-		memset(buf, 0xff, FIMC_IS_MAX_CAL_SIZE);
-		ret = fimc_is_spi_read(buf, FIMC_IS_MAX_CAL_SIZE);
-		if (ret < 0) {
-			err("failed to fimc_is_spi_read (%d)\n", ret);
-			return -EINVAL;
-		}
+		/* 3. Load calibration data from sensor */
+		fimc_is_ischain_loadcalb(this, sensor_info);
 
-		cal_ptr = this->minfo.kvaddr + FIMC_IS_CAL_START_ADDR;
-
-		if (sensor_info->sensor == SENSOR_NAME_S5K6A3) {
-			buf[0x1a] = 0;
-			buf[0x1b] = 0;
-		}
-
-		printk(KERN_INFO "sensor name : %s\n",
-			(sensor_info->sensor == SENSOR_NAME_S5K6A3)
-			? "6A3" : "4E5");
-		printk(KERN_INFO "FROM DATA(0x1A): 0x%08x\n", buf[0x1a]);
-		printk(KERN_INFO "FROM DATA(0x1B): 0x%08x\n", buf[0x1b]);
-		memcpy(cal_ptr, buf, FIMC_IS_MAX_CAL_SIZE);
-		fimc_is_ischain_cache_flush(this, FIMC_IS_CAL_START_ADDR,
-					FIMC_IS_MAX_CAL_SIZE + 1);
-
-		/* 3. A5 start address setting */
+		/* 4. A5 start address setting */
 		dbg_ischain("minfo.base(dvaddr) : 0x%08x\n",
 			this->minfo.dvaddr);
 		dbg_ischain("minfo.base(kvaddr) : 0x%08X\n",
 			this->minfo.kvaddr);
 		writel(this->minfo.dvaddr, this->regs + BBOAR);
 
-		/* 4. A5 power on*/
+		/* 5. A5 power on*/
 		writel(0x1, PMUREG_ISP_ARM_CONFIGURATION);
 
-		/* 5. enable A5 */
+		/* 6. enable A5 */
 		writel(0x00018000, PMUREG_ISP_ARM_OPTION);
 		timeout = 1000;
 		while ((__raw_readl(PMUREG_ISP_ARM_STATUS) & 0x1) != 0x1) {
@@ -997,6 +1023,8 @@ void fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 #endif
 
 	}
+
+	return ret;
 }
 
 static int fimc_is_itf_s_param(struct fimc_is_device_ischain *this,
@@ -1031,8 +1059,6 @@ static int fimc_is_itf_f_param(struct fimc_is_device_ischain *this)
 {
 	int ret = 0;
 	u32 navailable = 0;
-
-	struct is_region *region = this->is_region;
 
 	dbg_ischain(" NAME    ON  BYPASS       SIZE  FORMAT\n");
 	dbg_ischain("ISP OO : %2d    %4d  %04dx%04d      %d\n",
@@ -1257,6 +1283,19 @@ static int fimc_is_itf_setfile(struct fimc_is_device_ischain *this,
 	ret = fimc_is_hw_saddr(this->interface, this->instance, &setfile_addr);
 	fimc_is_ischain_loadsetf(this, setfile_addr, setfile_name);
 	fimc_is_hw_setfile(this->interface, this->instance);
+
+	return ret;
+}
+
+int fimc_is_itf_cfg_mem(struct fimc_is_device_ischain *this,
+	u32 shot_addr, u32 shot_size)
+{
+	int ret = 0;
+
+	dbg_ischain("%s()\n", __func__);
+
+	ret = fimc_is_hw_cfg_mem(this->interface, this->instance,
+		shot_addr, shot_size);
 
 	return ret;
 }
@@ -1587,10 +1626,10 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
 		fimc_is_interface_open(itf);
 		fimc_is_frame_open(this->framemgr, NUM_ISP_DMA_BUF);
 
-		fimc_is_ischain_dev_open(&this->isp, video, NUM_ISP_DMA_BUF);
-		fimc_is_ischain_dev_open(&this->dis, NULL, 0);
-		fimc_is_ischain_dev_open(&this->dnr, NULL, 0);
-		fimc_is_ischain_dev_open(&this->fd, NULL, 0);
+		fimc_is_ischain_dev_open(&this->isp, video);
+		fimc_is_ischain_dev_open(&this->dis, NULL);
+		fimc_is_ischain_dev_open(&this->dnr, NULL);
+		fimc_is_ischain_dev_open(&this->fd, NULL);
 
 		clear_bit(FIMC_IS_ISCHAIN_RUN, &this->state);
 		/*fimc_is_fw_clear_irq1_all(core);*/
@@ -2362,7 +2401,6 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_ischain_dev *isp;
 	u32 lindex, hindex, indexes;
-	u32 i;
 
 	dbg_front("%s\n", __func__);
 
@@ -2373,10 +2411,10 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 	isp_param = &this->is_region->parameter.isp;
 
 	if (!test_bit(FIMC_IS_ISDEV_DSTART, &isp->state)) {
-		for (i = 0; i < video->buffers; i++) {
+		/*for (i = 0; i < video->buffers; i++) {
 			fimc_is_hw_cfg_mem(this->interface, 0,
 				video->buf_dva[i][1], video->frame.size[1]);
-		}
+		}*/
 
 		fimc_is_ischain_s_chain0_size(this,
 			this->chain0_width, this->chain0_height);
@@ -2644,10 +2682,7 @@ int fimc_is_ischain_isp_buffer_finish(struct fimc_is_device_ischain *this,
 		else {
 			dbg_warning("buffer index is NOT matched(%d != %d)\n",
 				index, item->index);
-			fimc_is_frame_print_free_list(framemgr);
-			fimc_is_frame_print_request_list(framemgr);
-			fimc_is_frame_print_process_list(framemgr);
-			fimc_is_frame_print_complete_list(framemgr);
+			fimc_is_frame_print_all(framemgr);
 		}
 	} else {
 		fimc_is_frame_process_head(framemgr, &item);
@@ -2657,17 +2692,11 @@ int fimc_is_ischain_isp_buffer_finish(struct fimc_is_device_ischain *this,
 					(u32)item->req_flag);
 			else {
 				err("item is empty from complete0");
-				fimc_is_frame_print_free_list(framemgr);
-				fimc_is_frame_print_request_list(framemgr);
-				fimc_is_frame_print_process_list(framemgr);
-				fimc_is_frame_print_complete_list(framemgr);
+				fimc_is_frame_print_all(framemgr);
 			}
 		} else {
 			err("item is empty from complete1");
-			fimc_is_frame_print_free_list(framemgr);
-			fimc_is_frame_print_request_list(framemgr);
-			fimc_is_frame_print_process_list(framemgr);
-			fimc_is_frame_print_complete_list(framemgr);
+			fimc_is_frame_print_all(framemgr);
 		}
 	}
 
@@ -2879,13 +2908,11 @@ int fimc_is_ischain_scp_s_format(struct fimc_is_device_ischain *this,
 }
 
 int fimc_is_ischain_dev_open(struct fimc_is_ischain_dev *this,
-	struct fimc_is_video_common *video, u32 buffers)
+	struct fimc_is_video_common *video)
 {
 	int ret = 0;
 
 	spin_lock_init(&this->slock_state);
-
-	fimc_is_frame_open(&this->framemgr, buffers);
 
 	clear_bit(FIMC_IS_ISDEV_DSTART, &this->state);
 

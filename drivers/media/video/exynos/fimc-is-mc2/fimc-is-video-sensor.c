@@ -201,7 +201,7 @@ static int fimc_is_bayer_video_reqbufs(struct file *file, void *priv,
 	struct fimc_is_video_sensor *video = file->private_data;
 	struct fimc_is_device_sensor *sensor = video->common.device;
 
-	dbg_sensor("%s\n", __func__);
+	dbg_sensor("%s(buffers : %d)\n", __func__, buf->count);
 
 	ret = fimc_is_video_reqbufs(&video->common, buf);
 	if (ret)
@@ -421,13 +421,14 @@ static int fimc_is_bayer_start_streaming(struct vb2_queue *q,
 						unsigned int count)
 {
 	struct fimc_is_video_sensor *video = q->drv_priv;
-	struct fimc_is_device_sensor *sensor = video->common.device;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_sensor *sensor = common->device;
 
 	dbg_sensor("%s\n", __func__);
 
-	if (test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state)) {
-		set_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
-		fimc_is_sensor_back_start(sensor, &video->common);
+	if (test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &common->state)) {
+		set_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
+		fimc_is_sensor_back_start(sensor, common);
 	}
 
 	return 0;
@@ -462,9 +463,6 @@ static void fimc_is_bayer_buffer_queue(struct vb2_buffer *vb)
 
 	fimc_is_video_buffer_queue(&video->common, vb, sensor->framemgr);
 	fimc_is_sensor_buffer_queue(sensor, vb->v4l2_buf.index);
-
-	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state))
-		fimc_is_bayer_start_streaming(vb->vb2_queue, 0);
 }
 
 static int fimc_is_bayer_buffer_finish(struct vb2_buffer *vb)

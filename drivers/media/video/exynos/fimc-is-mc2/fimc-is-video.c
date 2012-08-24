@@ -186,23 +186,23 @@ int fimc_is_video_probe(struct fimc_is_video_common *video,
 
 	mutex_init(&video->lock);
 
-	video->core				= core;
-	video->vb2				= core->mem.vb2;
-	video->vd.fops				= fops;
-	video->vd.ioctl_ops			= ioctl_ops;
-	video->vd.v4l2_dev			= &core->mdev->v4l2_dev;
-	video->vd.minor				= -1;
-	video->vd.release			= video_device_release;
-	video->vd.lock				= &video->lock;
+	video->core			= core;
+	video->vb2			= core->mem.vb2;
+	video->vd.fops			= fops;
+	video->vd.ioctl_ops		= ioctl_ops;
+	video->vd.v4l2_dev		= &core->mdev->v4l2_dev;
+	video->vd.minor			= -1;
+	video->vd.release		= video_device_release;
+	video->vd.lock			= &video->lock;
 	video_set_drvdata(&video->vd, core);
 
-	vbq					= &video->vbq;
+	vbq				= &video->vbq;
 	memset(vbq, 0, sizeof(struct vb2_queue));
-	vbq->type				= vbq_type;
+	vbq->type			= vbq_type;
 	vbq->io_modes			= VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
-	vbq->drv_priv				= video_data;
-	vbq->ops				= vb2_ops;
-	vbq->mem_ops				= core->mem.vb2->ops;
+	vbq->drv_priv			= video_data;
+	vbq->ops			= vb2_ops;
+	vbq->mem_ops			= core->mem.vb2->ops;
 
 	vb2_queue_init(vbq);
 
@@ -369,10 +369,12 @@ int fimc_is_video_buffer_queue(struct fimc_is_video_common *video,
 	struct vb2_buffer *vb, struct fimc_is_framemgr *framemgr)
 {
 	u32 ret = 0, i;
-	u32 index = vb->v4l2_buf.index;
+	u32 index;
 	u32 ext_size;
 	struct fimc_is_core *core = video->core;
 	struct fimc_is_frame_shot *frame;
+
+	index = vb->v4l2_buf.index;
 
 	if (!test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->state)) {
 		if (video->frame.format.pixelformat == V4L2_PIX_FMT_YVU420M) {
@@ -449,10 +451,8 @@ int fimc_is_video_buffer_queue(struct fimc_is_video_common *video,
 
 		video->buf_ref_cnt++;
 
-		if (video->buffers == video->buf_ref_cnt) {
-			dbg("buffer prepared!!!\n");
+		if (video->buffers == video->buf_ref_cnt)
 			set_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->state);
-		}
 	}
 
 	return ret;

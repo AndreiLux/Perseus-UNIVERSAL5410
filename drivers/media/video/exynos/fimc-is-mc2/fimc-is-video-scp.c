@@ -71,7 +71,7 @@ static int fimc_is_scalerp_video_open(struct file *file)
 
 	file->private_data = video;
 	fimc_is_video_open(&video->common, ischain);
-	fimc_is_ischain_dev_open(scp, &video->common, NUM_SCP_DMA_BUF);
+	fimc_is_ischain_dev_open(scp, &video->common);
 
 	return 0;
 }
@@ -207,12 +207,19 @@ static int fimc_is_scalerp_video_set_crop(struct file *file, void *fh,
 static int fimc_is_scalerp_video_reqbufs(struct file *file, void *priv,
 					struct v4l2_requestbuffers *buf)
 {
-	int ret;
+	int ret = 0;
 	struct fimc_is_video_scp *video = file->private_data;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
+	struct fimc_is_ischain_dev *scp = &ischain->scp;
 
-	ret = fimc_is_video_reqbufs(&video->common, buf);
+	dbg_scp("%s(buffers : %d)\n", __func__, buf->count);
+
+	ret = fimc_is_video_reqbufs(common, buf);
 	if (ret)
 		err("fimc_is_video_reqbufs is fail(error %d)", ret);
+	else
+		fimc_is_frame_open(&scp->framemgr, buf->count);
 
 	return ret;
 }
@@ -654,9 +661,6 @@ static void fimc_is_scalerp_buffer_queue(struct vb2_buffer *vb)
 
 	fimc_is_video_buffer_queue(&video->common, vb, &scp->framemgr);
 	fimc_is_ischain_dev_buffer_queue(scp, vb->v4l2_buf.index);
-
-	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state))
-		fimc_is_scalerp_start_streaming(vb->vb2_queue, 0);
 }
 
 static int fimc_is_scalerp_buffer_finish(struct vb2_buffer *vb)

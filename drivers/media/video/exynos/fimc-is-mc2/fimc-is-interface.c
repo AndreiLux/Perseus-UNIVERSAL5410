@@ -1464,7 +1464,7 @@ int fimc_is_hw_cfg_mem(struct fimc_is_interface *this,
 	int ret;
 	struct fimc_is_msg msg;
 
-	dbg_interface("cfg_mem(%d)\n", instance);
+	dbg_interface("cfg_mem(%d, 0x%08X)\n", instance, address);
 
 	msg.id = 0;
 	msg.command = HIC_SET_A5_MEM_ACCESS;

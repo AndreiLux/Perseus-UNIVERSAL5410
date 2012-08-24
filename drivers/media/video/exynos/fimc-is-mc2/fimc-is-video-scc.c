@@ -76,7 +76,7 @@ static int fimc_is_scalerc_video_open(struct file *file)
 
 	file->private_data = video;
 	fimc_is_video_open(&video->common, ischain);
-	fimc_is_ischain_dev_open(scc, &video->common, NUM_SCC_DMA_BUF);
+	fimc_is_ischain_dev_open(scc, &video->common);
 
 	return 0;
 }
@@ -206,14 +206,19 @@ static int fimc_is_scalerc_video_set_crop(struct file *file, void *fh,
 static int fimc_is_scalerc_video_reqbufs(struct file *file, void *priv,
 					struct v4l2_requestbuffers *buf)
 {
-	int ret;
+	int ret = 0;
 	struct fimc_is_video_scc *video = file->private_data;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
+	struct fimc_is_ischain_dev *scc = &ischain->scc;
 
-	dbg_scc("%s\n", __func__);
+	dbg_scc("%s(buffers : %d)\n", __func__, buf->count);
 
-	ret = fimc_is_video_reqbufs(&video->common, buf);
+	ret = fimc_is_video_reqbufs(common, buf);
 	if (ret)
 		err("fimc_is_video_reqbufs is fail(error %d)", ret);
+	else
+		fimc_is_frame_open(&scc->framemgr, buf->count);
 
 	return ret;
 }
@@ -359,14 +364,14 @@ static int fimc_is_scalerc_queue_setup(struct vb2_queue *vq,
 	int ret = 0;
 	struct fimc_is_video_scc *video = vq->drv_priv;
 
-	dbg_sensor("%s\n", __func__);
+	dbg_scc("%s\n", __func__);
 
 	ret = fimc_is_video_queue_setup(&video->common,
 		num_planes,
 		sizes,
 		allocators);
 
-	dbg_sensor("(num_planes : %d)(size : %d)\n",
+	dbg_scc("(num_planes : %d)(size : %d)\n",
 		(int)*num_planes, (int)sizes[0]);
 
 	return ret;
@@ -386,7 +391,7 @@ static inline void fimc_is_scalerc_unlock(struct vb2_queue *vq)
 }
 
 static int fimc_is_scalerc_start_streaming(struct vb2_queue *q,
-						unsigned int count)
+	unsigned int count)
 {
 	int ret = 0;
 	struct fimc_is_video_scc *video = q->drv_priv;
@@ -430,9 +435,6 @@ static void fimc_is_scalerc_buffer_queue(struct vb2_buffer *vb)
 
 	fimc_is_video_buffer_queue(&video->common, vb, &scc->framemgr);
 	fimc_is_ischain_dev_buffer_queue(scc, vb->v4l2_buf.index);
-
-	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state))
-		fimc_is_scalerc_start_streaming(vb->vb2_queue, 0);
 }
 
 static int fimc_is_scalerc_buffer_finish(struct vb2_buffer *vb)
