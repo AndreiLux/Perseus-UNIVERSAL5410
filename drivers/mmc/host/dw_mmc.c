@@ -333,10 +333,32 @@ static void dw_mci_stop_dma(struct dw_mci *host)
 	if (host->using_dma) {
 		host->dma_ops->stop(host);
 		host->dma_ops->cleanup(host);
+		host->dma_ops->reset(host);
 	} else {
 		/* Data transfer was stopped by the interrupt handler */
 		set_bit(EVENT_XFER_COMPLETE, &host->pending_events);
 	}
+}
+
+static bool dw_mci_wait_reset(struct device *dev, struct dw_mci *host,
+		unsigned int reset_val)
+{
+	unsigned long timeout = jiffies + msecs_to_jiffies(500);
+	unsigned int ctrl;
+
+	ctrl = mci_readl(host, CTRL);
+	ctrl |= reset_val;
+	mci_writel(host, CTRL, ctrl);
+
+	/* wait till resets clear */
+	do {
+		if (!(mci_readl(host, CTRL) & reset_val))
+			return true;
+	} while (time_before(jiffies, timeout));
+
+	dev_err(dev, "Timeout resetting block (ctrl %#x)\n", ctrl);
+
+	return false;
 }
 
 #ifdef CONFIG_MMC_DW_IDMAC
@@ -367,12 +389,24 @@ static void dw_mci_idmac_stop_dma(struct dw_mci *host)
 	/* Disable and reset the IDMAC interface */
 	temp = mci_readl(host, CTRL);
 	temp &= ~SDMMC_CTRL_USE_IDMAC;
-	temp |= SDMMC_CTRL_DMA_RESET;
 	mci_writel(host, CTRL, temp);
+
+	/* reset the IDMAC interface */
+	dw_mci_wait_reset(&host->dev, host, SDMMC_CTRL_DMA_RESET);
 
 	/* Stop the IDMAC running */
 	temp = mci_readl(host, BMOD);
 	temp &= ~(SDMMC_IDMAC_ENABLE | SDMMC_IDMAC_FB);
+	mci_writel(host, BMOD, temp);
+}
+
+static void dw_mci_idma_reset_dma(struct dw_mci *host)
+{
+	u32 temp;
+
+	temp = mci_readl(host, BMOD);
+	/* Software reset of DMA */
+	temp |= SDMMC_IDMAC_SWRESET;
 	mci_writel(host, BMOD, temp);
 }
 
@@ -555,6 +589,7 @@ static struct dw_mci_dma_ops dw_mci_idmac_ops = {
 	.init = dw_mci_idmac_init,
 	.start = dw_mci_idmac_start_dma,
 	.stop = dw_mci_idmac_stop_dma,
+	.reset = dw_mci_idma_reset_dma,
 	.complete = dw_mci_idmac_complete_dma,
 	.cleanup = dw_mci_dma_cleanup,
 };
@@ -1405,9 +1440,9 @@ static void dw_mci_tasklet_func(unsigned long priv)
 				 */
 				sg_miter_stop(&host->sg_miter);
 				host->sg = NULL;
-				ctrl = mci_readl(host, CTRL);
-				ctrl |= SDMMC_CTRL_FIFO_RESET;
-				mci_writel(host, CTRL, ctrl);
+				dw_mci_wait_reset(&host->dev, host,
+						SDMMC_CTRL_FIFO_RESET);
+
 				host->prv_err = true;
 			} else {
 				data->bytes_xfered = data->blocks * data->blksz;
@@ -1440,9 +1475,8 @@ static void dw_mci_tasklet_func(unsigned long priv)
 				dw_mci_stop_dma(host);
 				sg_miter_stop(&host->sg_miter);
 				host->sg = NULL;
-				ctrl = mci_readl(host, CTRL);
-				ctrl |= SDMMC_CTRL_FIFO_RESET;
-				mci_writel(host, CTRL, ctrl);
+				dw_mci_wait_reset(&host->dev, host,
+						SDMMC_CTRL_FIFO_RESET);
 			}
 
 			host->cmd = NULL;
@@ -2076,15 +2110,10 @@ static void dw_mci_work_routine_card(struct work_struct *work)
 				sg_miter_stop(&host->sg_miter);
 				host->sg = NULL;
 
-				ctrl = mci_readl(host, CTRL);
-				ctrl |= SDMMC_CTRL_FIFO_RESET;
-				mci_writel(host, CTRL, ctrl);
-
+				dw_mci_wait_reset(&host->dev, host,
+						SDMMC_CTRL_FIFO_RESET);
 #ifdef CONFIG_MMC_DW_IDMAC
-				ctrl = mci_readl(host, BMOD);
-				/* Software reset of DMA */
-				ctrl |= SDMMC_IDMAC_SWRESET;
-				mci_writel(host, BMOD, ctrl);
+				dw_mci_idma_reset_dma(host);
 #endif
 
 			}

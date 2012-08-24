@@ -193,6 +193,7 @@ struct dw_mci_dma_ops {
 	void (*start)(struct dw_mci *host, unsigned int sg_len);
 	void (*complete)(struct dw_mci *host);
 	void (*stop)(struct dw_mci *host);
+	void (*reset)(struct dw_mci *host);
 	void (*cleanup)(struct dw_mci *host);
 	void (*exit)(struct dw_mci *host);
 };
