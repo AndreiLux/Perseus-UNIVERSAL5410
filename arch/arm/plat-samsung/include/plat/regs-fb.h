@@ -452,3 +452,47 @@
 #define VIDW0ALPHA1				(0x204)
 #define DPCLKCON				(0x27c)
 #define DPCLKCON_ENABLE				(1 << 1)
+#define MIE_CLK_ENABLE				(3 << 0)
+
+/* MIE registers */
+#define MIE_BASE_ADDRESS		0x14430000
+#define MIE_CTRL1			0x0
+#define MIE_HRESOL_SHIFT		18
+#define MIE_HRESOL(x)			((x & 0xfff) << MIE_HRESOL_SHIFT)
+#define MIE_VRESOL_SHIFT		7
+#define MIE_VRESOL(x)			((x & 0x7ff) << MIE_VRESOL_SHIFT)
+#define MIE_MODE_UI			(1 << 5)
+
+#define MIE_WINHADDR			0x10
+#define MIE_WINHADDR0_SHIFT		0
+#define MIE_WINHADDR1_SHIFT		20
+#define MIE_WINHADDR0(x)		((x & 0xfff) << MIE_WINHADDR0_SHIFT)
+#define MIE_WINHADDR1(x)		(((x-1) & 0xfff)\
+						<< MIE_WINHADDR1_SHIFT)
+
+#define MIE_WINVADDR			0x14
+#define MIE_WINVADDR0_SHIFT		0
+#define MIE_WINVADDR1_SHIFT		21
+#define MIE_WINVADDR0(x)		((x & 0x7ff) << MIE_WINVADDR0_SHIFT)
+#define MIE_WINVADDR1(x)		(((x - 1) & 0x7ff)\
+						<< MIE_WINVADDR1_SHIFT)
+
+#define MIE_PWMCLKCNT			0x20
+#define MIE_PWMCLKVAL			1
+#define PWMCLKCNT(x)			((x & 0x3fffff) << 4)
+
+#define MIE_PWMVIDTCON1			0x38
+#define MIE_VBPD(x)			((x - 1) << 16)
+#define MIE_VFPD(x)			((x - 1) << 8)
+#define MIE_VSPW(x)			(x - 1)
+
+#define MIE_PWMVIDTCON2			0x3c
+#define MIE_HBPD(x)			((x - 1) << 16)
+#define MIE_HFPD(x)			((x - 1) << 8)
+#define MIE_HSPW(x)			(x - 1)
+
+#define MIE_AUXCON			0x300
+#define MIE_DITHCON_EN			0x1
+#define MIE_RGBMODE_SHIFT		1
+#define MIE_RGB6MODE			(0 << MIE_RGBMODE_SHIFT)
+#define MIE_RGB8MODE			(1 << MIE_RGBMODE_SHIFT)

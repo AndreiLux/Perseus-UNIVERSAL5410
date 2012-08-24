@@ -169,7 +169,6 @@ static void exynos_fimd_gpio_setup_24bpp(void)
 	 */
 	reg = __raw_readl(S3C_VA_SYS + 0x0214);
 	reg &= ~(1 << 15);	/* To save other reset values */
-	reg |= (1 << 15);
 	__raw_writel(reg, S3C_VA_SYS + 0x0214);
 }
 
