@@ -2062,6 +2062,7 @@ static int rproc_loader_thread(struct rproc *rproc)
 	if (ret || !fw) {
 		dev_info(dev, "error %d requesting firmware %s\n",
 							ret, rproc->firmware);
+		complete_all(&rproc->firmware_loading_complete);
 		return ret;
 	}
 
