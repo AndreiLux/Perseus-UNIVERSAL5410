@@ -152,8 +152,6 @@ static int exynos_drm_open(struct drm_device *dev, struct drm_file *file)
 {
 	DRM_DEBUG_DRIVER("%s\n", __FILE__);
 
-	drm_prime_init_file_private(&file->prime);
-
 	return exynos_drm_subdrv_open(dev, file);
 }
 
@@ -161,8 +159,6 @@ static void exynos_drm_preclose(struct drm_device *dev,
 					struct drm_file *file)
 {
 	DRM_DEBUG_DRIVER("%s\n", __FILE__);
-
-	drm_prime_destroy_file_private(&file->prime);
 
 	exynos_drm_subdrv_close(dev, file);
 }
