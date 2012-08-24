@@ -166,7 +166,8 @@ struct is_common_reg {
 	u32 meta_sensor_id;
 	u32 meta_parameter1;
 
-	u32 reserved8[2];
+	u32 reserved8[1];
+	u32 fcount;
 };
 
 struct is_mcuctl_reg {

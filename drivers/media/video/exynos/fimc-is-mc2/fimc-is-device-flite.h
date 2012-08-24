@@ -52,6 +52,7 @@ struct fimc_is_device_flite {
 	u32				work;
 	u32				sw_trigger;
 	struct work_struct		work_queue;
+	struct work_struct		work_queue_debug;
 
 	u32				private_data;
 };
@@ -66,4 +67,7 @@ int fimc_is_flite_start(struct fimc_is_device_flite *this,
 	struct fimc_is_frame_info *frame,
 	struct fimc_is_video_common *video);
 int fimc_is_flite_stop(struct fimc_is_device_flite *this);
+
+extern u32 __iomem *notify_fcount;
+
 #endif

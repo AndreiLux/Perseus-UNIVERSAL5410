@@ -207,7 +207,7 @@ static const struct isp_param init_isp_param = {
 static const struct drc_param init_drc_param = {
 	.control = {
 		.cmd = CONTROL_COMMAND_START,
-		.bypass = CONTROL_BYPASS_DISABLE,
+		.bypass = CONTROL_BYPASS_ENABLE,
 		.err = CONTROL_ERROR_NO,
 	},
 	.otf_input = {
@@ -909,6 +909,7 @@ void fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 	int ret;
 
 	printk(KERN_INFO "%s(%d)\n", __func__, on);
+
 	if (on) {
 		/* 1. force poweroff setting */
 		if (this->force_down)

@@ -636,7 +636,7 @@ int fimc_is_runtime_resume(struct device *dev)
 	/* 1. Enable MIPI */
 	enable_mipi();
 
-	/* 2. Clock setting */
+	/* 2. Low clock setting */
 	if (core->pdata->clk_cfg) {
 		core->pdata->clk_cfg(core->pdev);
 	} else {
@@ -644,6 +644,7 @@ int fimc_is_runtime_resume(struct device *dev)
 		return -EINVAL;
 	}
 
+	/* 3. Sensor power on */
 	printk(KERN_INFO "sensor channel : %d id : %d\n",
 		sensor_info->flite_ch, sensor->id_position);
 	if (core->pdata->sensor_power_on) {
@@ -653,10 +654,20 @@ int fimc_is_runtime_resume(struct device *dev)
 		err("failed to sensor_power_on\n");
 		return -EINVAL;
 	}
+
+	/* 4. Clock on */
 	if (core->pdata->clk_on) {
 		core->pdata->clk_on(core->pdev, sensor_info->flite_ch);
 	} else {
 		err("failed to clock on\n");
+		return -EINVAL;
+	}
+
+	/* 5. High clock setting */
+	if (core->pdata->clk_cfg) {
+		core->pdata->clk_cfg(core->pdev);
+	} else {
+		err("failed to config clock\n");
 		return -EINVAL;
 	}
 

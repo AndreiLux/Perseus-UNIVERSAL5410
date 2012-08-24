@@ -502,6 +502,53 @@ static void wq_func_automode(struct work_struct *data)
 	fimc_is_ischain_isp_buffer_queue(ischain, flite->work);
 }
 
+static void wq_func_debug(struct work_struct *data)
+{
+	u32 fcount;
+	int debug_cnt;
+	char *debug;
+	char letter;
+	int count = 0, i;
+	struct fimc_is_device_flite *flite;
+	struct fimc_is_device_sensor *sensor;
+	struct fimc_is_device_ischain *ischain;
+
+	flite = container_of(data, struct fimc_is_device_flite,
+		work_queue_debug);
+	sensor = (struct fimc_is_device_sensor *)flite->private_data;
+	ischain = sensor->ischain;
+	fcount = atomic_read(&flite->fcount);
+
+	if (fcount % 30)
+		return;
+
+	vb2_ion_sync_for_device(ischain->minfo.fw_cookie,
+		DEBUG_OFFSET, DEBUG_CNT, DMA_FROM_DEVICE);
+
+	debug = (char *)(ischain->minfo.kvaddr + DEBUG_OFFSET);
+	debug_cnt = *((int *)(ischain->minfo.kvaddr + DEBUGCTL_OFFSET))
+			- DEBUG_OFFSET;
+
+	if (ischain->debug_cnt > debug_cnt)
+		count = (DEBUG_CNT - ischain->debug_cnt) + debug_cnt;
+	else
+		count = debug_cnt - ischain->debug_cnt;
+
+	if (count) {
+		printk(KERN_INFO "start(%d %d)\n", debug_cnt, count);
+		for (i = ischain->debug_cnt; count > 0; count--) {
+			letter = debug[i];
+			if (letter)
+				printk(KERN_CONT "%c", letter);
+			i++;
+			if (i > DEBUG_CNT)
+				i = 0;
+		}
+		ischain->debug_cnt = debug_cnt;
+		printk(KERN_INFO "end\n");
+	}
+}
+
 static void tasklet_func_flite_str(unsigned long data)
 {
 	struct fimc_is_device_flite *flite;
@@ -518,8 +565,7 @@ static void tasklet_func_flite_str(unsigned long data)
 	framemgr = flite->framemgr;
 
 	bstart = flite->tasklet_param_str;
-	fcount = atomic_read(&flite->fcount) + 1;
-	*((u32 *)(ischain->minfo.kvaddr + DEBUG_FCOUNT)) = fcount;
+	fcount = atomic_read(&flite->fcount);
 
 #ifdef DBG_STREAMING
 	printk(KERN_INFO "S%d %d\n", bstart, fcount);
@@ -546,45 +592,6 @@ static void tasklet_func_flite_str(unsigned long data)
 	}
 
 	framemgr_x_barrier(framemgr, FMGR_IDX_0 + bstart);
-
-#ifdef FW_DEBUG
-	{
-		int debug_cnt;
-		char *debug;
-		char letter;
-		int digit;
-		int count = 0, i;
-
-		if (fcount % 30)
-			return;
-
-		vb2_ion_sync_for_device(ischain->minfo.fw_cookie,
-			DEBUG_OFFSET, DEBUG_CNT, DMA_FROM_DEVICE);
-
-		debug = (char *)(ischain->minfo.kvaddr + DEBUG_OFFSET);
-		debug_cnt = *((int *)(ischain->minfo.kvaddr + DEBUGCTL_OFFSET))
-				- DEBUG_OFFSET;
-
-		if (ischain->debug_cnt > debug_cnt)
-			count = (DEBUG_CNT - ischain->debug_cnt) + debug_cnt;
-		else
-			count = debug_cnt - ischain->debug_cnt;
-
-		if (count) {
-			printk(KERN_INFO "start(%d %d)\n", debug_cnt, count);
-			for (i = ischain->debug_cnt; count > 0; count--) {
-				digit = letter = debug[i];
-				if (digit)
-					printk(KERN_CONT "%c", letter);
-				i++;
-				if (i > DEBUG_CNT)
-					i = 0;
-			}
-			ischain->debug_cnt = debug_cnt;
-			printk(KERN_INFO "end\n");
-		}
-	}
-#endif
 }
 
 static void tasklet_func_flite_end(unsigned long data)
@@ -601,7 +608,6 @@ static void tasklet_func_flite_end(unsigned long data)
 	framemgr = flite->framemgr;
 	bdone = flite->tasklet_param_end;
 
-	atomic_inc(&flite->fcount);
 	fcount = atomic_read(&flite->fcount);
 
 #ifdef DBG_STREAMING
@@ -680,6 +686,11 @@ static void tasklet_func_flite_end(unsigned long data)
 
 	spin_unlock(&flite->slock_state);
 	framemgr_x_barrier(framemgr, FMGR_IDX_1 + bdone);
+
+#ifdef FW_DEBUG
+	if (!work_pending(&flite->work_queue_debug))
+		schedule_work(&flite->work_queue_debug);
+#endif
 }
 
 static irqreturn_t fimc_is_flite_irq_handler(int irq, void *data)
@@ -696,23 +707,31 @@ static irqreturn_t fimc_is_flite_irq_handler(int irq, void *data)
 	flite_hw_set_status1(flite->regs, 0);
 
 	if (status1 & (1<<5)) {
-		flite->sw_trigger = flite->sw_trigger ? 0 : 1;
-		flite->tasklet_param_str = flite->sw_trigger;
-		tasklet_schedule(&flite->tasklet_flite_str);
+		if (!test_bit(FIMC_IS_FLITE_LAST_CAPTURE, &flite->state)) {
+			flite->sw_trigger = flite->sw_trigger ? 0 : 1;
+			flite->tasklet_param_str = flite->sw_trigger;
+			atomic_inc(&flite->fcount);
+			tasklet_schedule(&flite->tasklet_flite_str);
+		}
 	}
 
 	if (status1 & (1<<4)) {
-		flite->tasklet_param_end = flite->sw_trigger;
-		tasklet_schedule(&flite->tasklet_flite_end);
+		if (!test_bit(FIMC_IS_FLITE_LAST_CAPTURE, &flite->state)) {
+			*notify_fcount = atomic_read(&flite->fcount);
+			flite->tasklet_param_end = flite->sw_trigger;
+			tasklet_schedule(&flite->tasklet_flite_end);
+		}
 	}
 
 	if (status1 & (1<<6)) {
-		/*Last Frame Capture Interrupt*/
+		/* Last Frame Capture Interrupt */
 		printk(KERN_INFO "[CamIF_0]Last Frame Capture\n");
-		/*Clear LastCaptureEnd bit*/
+
+		/* Clear LastCaptureEnd bit */
 		status2 &= ~(0x1 << 1);
 		flite_hw_set_status2(flite->regs, status2);
 
+		/* Notify last capture */
 		set_bit(FIMC_IS_FLITE_LAST_CAPTURE, &flite->state);
 		wake_up(&flite->wait_queue);
 	}
@@ -786,7 +805,9 @@ int fimc_is_flite_probe(struct fimc_is_device_flite *this,
 		err("unresolved channel input");
 
 	INIT_WORK(&this->work_queue, wq_func_automode);
-
+#ifdef FW_DEBUG
+	INIT_WORK(&this->work_queue_debug, wq_func_debug);
+#endif
 	this->opened = 0;
 
 	return ret;

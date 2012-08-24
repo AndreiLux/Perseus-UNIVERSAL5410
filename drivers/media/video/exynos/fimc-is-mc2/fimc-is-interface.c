@@ -8,6 +8,8 @@
 
 #include "fimc-is-interface.h"
 
+u32 __iomem *notify_fcount;
+
 static int init_request_barrier(struct fimc_is_interface *interface)
 {
 	mutex_init(&interface->request_barrier);
@@ -1141,6 +1143,7 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 	if (ret)
 		err("request_irq failed\n");
 
+	notify_fcount			= &this->com_regs->fcount;
 	this->framemgr			= framemgr;
 	this->core			= (void *)core;
 	this->video_isp			= &core->video_isp.common;
