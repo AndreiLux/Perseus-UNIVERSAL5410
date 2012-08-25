@@ -5303,18 +5303,24 @@ static int ata_port_suspend(struct device *dev)
 {
 	struct ata_port *ap = to_ata_port(dev);
 
-	if (pm_runtime_suspended(dev))
-		return 0;
-
 	/* prevent the race between suspend and resume */
 	if (work_pending(&ap->resume_work))
 		flush_work_sync(&ap->resume_work);
+
+	if (pm_runtime_suspended(dev))
+		return 0;
 
 	return ata_port_suspend_common(dev, PMSG_SUSPEND);
 }
 
 static int ata_port_do_freeze(struct device *dev)
 {
+	struct ata_port *ap = to_ata_port(dev);
+
+	/* prevent the race between suspend and resume */
+	if (work_pending(&ap->resume_work))
+		flush_work_sync(&ap->resume_work);
+
 	if (pm_runtime_suspended(dev))
 		pm_runtime_resume(dev);
 
@@ -5323,6 +5329,12 @@ static int ata_port_do_freeze(struct device *dev)
 
 static int ata_port_poweroff(struct device *dev)
 {
+	struct ata_port *ap = to_ata_port(dev);
+
+	/* prevent the race between suspend and resume */
+	if (work_pending(&ap->resume_work))
+		flush_work_sync(&ap->resume_work);
+
 	if (pm_runtime_suspended(dev))
 		return 0;
 
