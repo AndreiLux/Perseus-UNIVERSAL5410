@@ -464,7 +464,7 @@ static void jpeg_device_enc_run(void *priv)
 	jpeg_sw_reset(dev->reg_base);
 	jpeg_set_interrupt(dev->reg_base);
 	jpeg_set_huf_table_enable(dev->reg_base, 1);
-	jpeg_set_enc_tbl(dev->reg_base);
+	jpeg_set_enc_tbl(dev->reg_base, enc_param.quality);
 	jpeg_set_encode_tbl_select(dev->reg_base, enc_param.quality);
 	jpeg_set_stream_size(dev->reg_base,
 		enc_param.in_width, enc_param.in_height);
