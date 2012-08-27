@@ -401,6 +401,7 @@ static void cyapa_detect(struct cyapa *cyapa);
 #define BYTE_PER_LINE  8
 void cyapa_dump_data(struct cyapa *cyapa, size_t length, const u8 *data)
 {
+#ifdef DEBUG
 	struct device *dev = &cyapa->client->dev;
 	int i;
 	char buf[BYTE_PER_LINE * 3 + 1];
@@ -413,6 +414,7 @@ void cyapa_dump_data(struct cyapa *cyapa, size_t length, const u8 *data)
 			s = buf;
 		}
 	}
+#endif
 }
 #undef BYTE_PER_LINE
 
