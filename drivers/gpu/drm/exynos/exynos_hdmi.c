@@ -1561,13 +1561,17 @@ static void hdmi_v14_mode_set(struct hdmi_context *hdata,
 	hdmi_set_reg(core->v_line, 2, m->vtotal);
 	hdmi_set_reg(core->h_line, 2, m->htotal);
 	hdmi_set_reg(core->hsync_pol, 1,
-			(m->flags >> DRM_MODE_FLAG_PHSYNC) & 0x01);
+			(m->flags & DRM_MODE_FLAG_NHSYNC)  ? 1 : 0);
 	hdmi_set_reg(core->vsync_pol, 1,
-			(m->flags >> DRM_MODE_FLAG_PVSYNC) & 0x01);
+			(m->flags & DRM_MODE_FLAG_NVSYNC) ? 1 : 0);
 	hdmi_set_reg(core->int_pro_mode, 1,
 			(m->flags >> DRM_MODE_FLAG_INTERLACE) & 0x01);
-	hdmi_set_reg(core->h_sync_start, 2, m->hsync_start - m->hdisplay);
-	hdmi_set_reg(core->h_sync_end, 2, m->hsync_end - m->hdisplay);
+	/* Quirk requirement for exynos 5 HDMI IP design,
+	 * 2 pixels less than the actual calculation for hsync_start
+	 * and end.
+	 */
+	hdmi_set_reg(core->h_sync_start, 2, m->hsync_start - m->hdisplay - 2);
+	hdmi_set_reg(core->h_sync_end, 2, m->hsync_end - m->hdisplay - 2);
 	hdmi_set_reg(core->v_sync_line_bef_2, 2, m->vsync_end - m->vdisplay);
 	hdmi_set_reg(core->v_sync_line_bef_1, 2, m->vsync_start - m->vdisplay);
 	hdmi_set_reg(core->vact_space_1, 2, 0xffff);
