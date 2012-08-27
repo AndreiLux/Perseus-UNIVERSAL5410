@@ -215,6 +215,7 @@ struct s3c_dma_buf_data {
 	struct dma_buf_attachment *attachment;
 	struct sg_table *sg_table;
 	dma_addr_t dma_addr;
+	struct sync_fence *fence;
 };
 
 struct s3c_reg_data {
@@ -1488,6 +1489,8 @@ static unsigned int s3c_fb_map_ion_handle(struct s3c_fb *sfb,
 		struct s3c_dma_buf_data *dma, struct ion_handle *ion_handle,
 		int fd)
 {
+	dma->fence = NULL;
+
 	dma->dma_buf = dma_buf_get(fd);
 	if (IS_ERR_OR_NULL(dma->dma_buf)) {
 		dev_err(sfb->dev, "dma_buf_get() failed: %ld\n",
@@ -1537,6 +1540,8 @@ static void s3c_fb_free_dma_buf(struct s3c_fb *sfb,
 	if (!dma->dma_addr)
 		return;
 
+	if (dma->fence)
+		sync_fence_put(dma->fence);
 	iovmm_unmap(sfb->dev, dma->dma_addr);
 	dma_buf_unmap_attachment(dma->attachment, dma->sg_table,
 			DMA_BIDIRECTIONAL);
@@ -1750,6 +1755,16 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 		ion_free(sfb->fb_ion_client, handle);
 		goto err_invalid;
 	}
+
+	if (win_config->fence_fd >= 0) {
+		dma_buf_data.fence = sync_fence_fdget(win_config->fence_fd);
+		if (!dma_buf_data.fence) {
+			dev_err(sfb->dev, "failed to import fence fd\n");
+			ret = -EINVAL;
+			goto err_offset;
+		}
+	}
+
 	window_size = win_config->stride * (win_config->h + 1);
 	if (win_config->offset + window_size > buf_size) {
 		dev_err(sfb->dev, "window goes past end of buffer (width = %u, height = %u, stride = %u, offset = %u, buf_size = %u)\n",
@@ -2002,8 +2017,15 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 
 	pm_runtime_get_sync(sfb->dev);
 
-	for (i = 0; i < sfb->variant.nr_windows; i++)
+	for (i = 0; i < sfb->variant.nr_windows; i++) {
 		old_dma_bufs[i] = sfb->windows[i]->dma_buf_data;
+		if (regs->dma_buf_data[i].fence) {
+			int err = sync_fence_wait(regs->dma_buf_data[i].fence,
+					100);
+			if (err < 0)
+				dev_warn(sfb->dev, "synce_fence_wait() timeout\n");
+		}
+	}
 
 	do {
 		__s3c_fb_update_regs(sfb, regs);
