@@ -68,24 +68,24 @@ struct fimc_is_ishcain_mem {
 	void		*bitproc_buf;
 	void		*fw_cookie;
 
-	u32	dvaddr;
-	u32	kvaddr;
-	u32	dvaddr_debug;
-	u32	kvaddr_debug;
-	u32	dvaddr_fshared;
-	u32	kvaddr_fshared;
-	u32	dvaddr_region;
-	u32	kvaddr_region;
-	u32	dvaddr_shared; /*shared region of is region*/
-	u32	kvaddr_shared;
-	u32	dvaddr_odc;
-	u32	kvaddr_odc;
-	u32	dvaddr_dis;
-	u32	kvaddr_dis;
-	u32	dvaddr_3dnr;
-	u32	kvaddr_3dnr;
-	u32	dvaddr_isp;
-	u32	kvaddr_isp;
+	u32		dvaddr;
+	u32		kvaddr;
+	u32		dvaddr_debug;
+	u32		kvaddr_debug;
+	u32		dvaddr_fshared;
+	u32		kvaddr_fshared;
+	u32		dvaddr_region;
+	u32		kvaddr_region;
+	u32		dvaddr_shared; /*shared region of is region*/
+	u32		kvaddr_shared;
+	u32		dvaddr_odc;
+	u32		kvaddr_odc;
+	u32		dvaddr_dis;
+	u32		kvaddr_dis;
+	u32		dvaddr_3dnr;
+	u32		kvaddr_3dnr;
+	u32		dvaddr_isp;
+	u32		kvaddr_isp;
 };
 
 /*device state*/
@@ -131,10 +131,17 @@ struct fimc_is_device_ischain {
 	struct camera2_uctl			peri_ctls[SENSOR_MAX_CTL];
 
 	/*isp margin*/
+	u32					sensor_width;
+	u32					sensor_height;
+	u32					margin_left;
+	u32					margin_right;
 	u32					margin_width;
+	u32					margin_top;
+	u32					margin_bottom;
 	u32					margin_height;
 
 	/*isp ~ scc*/
+	u32					shot_offset;
 	u32					chain0_width;
 	u32					chain0_height;
 	struct fimc_is_ischain_dev		isp;

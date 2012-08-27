@@ -328,13 +328,24 @@ static int fimc_is_isp_video_s_input(struct file *file, void *priv,
 
 	dbg_isp("%s(input : %d)\n", __func__, input);
 	core->sensor.id_position = input;
-	fimc_is_ischain_open(ischain, &video->common, &core->interface);
-	fimc_is_ischain_init(ischain,
+
+	ret = fimc_is_ischain_open(ischain, &video->common, &core->interface);
+	if (ret) {
+		err("fimc_is_ischain_open is fail\n");
+		goto exit;
+	}
+
+	ret = fimc_is_ischain_init(ischain,
 		input,
 		sensor->enum_sensor[input].i2c_ch,
 		&sensor->enum_sensor[input].ext,
 		sensor->enum_sensor[input].setfile_name);
+	if (ret) {
+		err("fimc_is_ischain_init is fail\n");
+		goto exit;
+	}
 
+exit:
 	return ret;
 }
 

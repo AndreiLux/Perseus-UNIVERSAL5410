@@ -40,6 +40,23 @@ enum interrupt_map {
 	INTR_MAX_MAP
 };
 
+enum streaming_state {
+	IS_IF_STREAMING_INIT,
+	IS_IF_STREAMING_OFF,
+	IS_IF_STREAMING_ON
+};
+
+enum processing_state {
+	IS_IF_PROCESSING_INIT,
+	IS_IF_PROCESSING_OFF,
+	IS_IF_PROCESSING_ON
+};
+
+enum pdown_ready_state {
+	IS_IF_POWER_DOWN_READY,
+	IS_IF_POWER_DOWN_NREADY
+};
+
 struct fimc_is_msg {
 	u32	id;
 	u32	command;
@@ -81,12 +98,17 @@ struct fimc_is_interface {
 	wait_queue_head_t		wait_queue;
 	struct fimc_is_msg		reply;
 
-
 	struct work_struct		work_queue[INTR_MAX_MAP];
 	struct fimc_is_work_list	work_list[INTR_MAX_MAP];
 
+	/* this fcount is for internal debugging */
 	u32				fcount;
-	bool				streaming;
+	/* sensor streaming flag */
+	enum streaming_state		streaming;
+	/* firmware processing flag */
+	enum processing_state		processing;
+	/* frrmware power down ready flag */
+	enum pdown_ready_state		pdown_ready;
 
 	struct fimc_is_framemgr		*framemgr;
 

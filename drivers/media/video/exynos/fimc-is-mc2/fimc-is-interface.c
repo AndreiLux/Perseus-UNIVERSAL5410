@@ -348,7 +348,7 @@ static int set_state(struct fimc_is_interface *interface,
 static int wait_state(struct fimc_is_interface *this,
 	enum fimc_is_interface_state state)
 {
-	s32 ret = 0;
+	int ret = 0;
 
 	if (this->state != state) {
 		ret = wait_event_timeout(this->wait_queue,
@@ -403,7 +403,7 @@ static int fimc_is_set_cmd(struct fimc_is_interface *interface,
 
 	switch (msg->command) {
 	case HIC_STREAM_ON:
-		if (interface->streaming) {
+		if (interface->streaming == IS_IF_STREAMING_ON) {
 			send_cmd = false;
 		} else {
 			send_cmd = true;
@@ -411,7 +411,31 @@ static int fimc_is_set_cmd(struct fimc_is_interface *interface,
 		}
 		break;
 	case HIC_STREAM_OFF:
-		if (!interface->streaming) {
+		if (interface->streaming == IS_IF_STREAMING_OFF) {
+			send_cmd = false;
+		} else {
+			send_cmd = true;
+			block_io = true;
+		}
+		break;
+	case HIC_PROCESS_START:
+		if (interface->processing == IS_IF_PROCESSING_ON) {
+			send_cmd = false;
+		} else {
+			send_cmd = true;
+			block_io = true;
+		}
+		break;
+	case HIC_PROCESS_STOP:
+		if (interface->processing == IS_IF_PROCESSING_OFF) {
+			send_cmd = false;
+		} else {
+			send_cmd = true;
+			block_io = true;
+		}
+		break;
+	case HIC_POWER_DOWN:
+		if (interface->pdown_ready == IS_IF_POWER_DOWN_READY) {
 			send_cmd = false;
 		} else {
 			send_cmd = true;
@@ -422,11 +446,8 @@ static int fimc_is_set_cmd(struct fimc_is_interface *interface,
 	case HIC_GET_SET_FILE_ADDR:
 	case HIC_SET_PARAMETER:
 	case HIC_PREVIEW_STILL:
-	case HIC_PROCESS_START:
-	case HIC_PROCESS_STOP:
 	case HIC_GET_STATIC_METADATA:
 	case HIC_SET_A5_MEM_ACCESS:
-	case HIC_POWER_DOWN:
 	case HIC_SET_CAM_CONTROL:
 		send_cmd = true;
 		block_io = true;
@@ -449,7 +470,6 @@ static int fimc_is_set_cmd(struct fimc_is_interface *interface,
 		if (ret) {
 			err("waiting for ready is fail");
 			exit_process_barrier(interface);
-			exit_request_barrier(interface);
 			goto exit;
 		}
 
@@ -465,29 +485,59 @@ static int fimc_is_set_cmd(struct fimc_is_interface *interface,
 		exit_process_barrier(interface);
 
 		if (block_io) {
-			wait_state(interface, IS_IF_STATE_IDLE);
-			if (interface->reply.command == ISR_DONE)
-				ret = 0;
-			else
-				ret = -EINVAL;
-		}
+			ret = wait_state(interface, IS_IF_STATE_IDLE);
+			if (!ret) {
+				err("%d command is timeout\n", msg->command);
+				goto exit;
+			}
 
-		switch (msg->command) {
-		case HIC_STREAM_ON:
-			interface->streaming = true;
-			break;
-		case HIC_STREAM_OFF:
-			interface->streaming = false;
-			break;
-		default:
-			break;
+			if (interface->reply.command == ISR_DONE) {
+				ret = 0;
+				switch (msg->command) {
+				case HIC_STREAM_ON:
+					interface->streaming =
+						IS_IF_STREAMING_ON;
+					break;
+				case HIC_STREAM_OFF:
+					interface->streaming =
+						IS_IF_STREAMING_OFF;
+					break;
+				case HIC_PROCESS_START:
+					interface->processing =
+						IS_IF_PROCESSING_ON;
+					break;
+				case HIC_PROCESS_STOP:
+					interface->processing =
+						IS_IF_PROCESSING_OFF;
+					break;
+				case HIC_POWER_DOWN:
+					interface->pdown_ready =
+						IS_IF_POWER_DOWN_READY;
+					break;
+				case HIC_OPEN_SENSOR:
+					if (interface->reply.parameter1 ==
+						HIC_POWER_DOWN) {
+						err("firmware power down");
+						interface->pdown_ready =
+							IS_IF_POWER_DOWN_READY;
+						ret = -ECANCELED;
+						goto exit;
+					} else
+						interface->pdown_ready =
+							IS_IF_POWER_DOWN_NREADY;
+					break;
+				default:
+					break;
+				}
+			} else
+				ret = -EINVAL;
 		}
 	} else
 		dbg_interface("skipped\n");
 
+exit:
 	exit_request_barrier(interface);
 
-exit:
 	return ret;
 }
 
@@ -775,10 +825,13 @@ static void wq_func_general(struct work_struct *data)
 				msg->parameter3);
 			break;
 		case IHC_FLASH_READY:
-			/*err("IHC_FLASH_READY is not acceptable");*/
+			err("IHC_FLASH_READY is not acceptable");
+			break;
+		case IHC_NOT_READY:
+			err("IHC_NOT_READY is occured, need reset");
 			break;
 		default:
-			err("func_general unknown(%d) end\n", msg->command);
+			err("func_general unknown(0x%08X) end\n", msg->command);
 			break;
 		}
 
@@ -1121,7 +1174,6 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 
 	dbg_interface("%s\n", __func__);
 
-	this->streaming = false;
 	init_request_barrier(this);
 	init_process_barrier(this);
 	init_state_barrier(this);
@@ -1131,10 +1183,6 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 	INIT_WORK(&this->work_queue[INTR_SCC_FDONE], wq_func_scc);
 	INIT_WORK(&this->work_queue[INTR_SCP_FDONE], wq_func_scp);
 	INIT_WORK(&this->work_queue[INTR_META_DONE], wq_func_meta);
-
-	enter_request_barrier(this);
-
-	set_state(this, IS_IF_STATE_IDLE);
 
 	this->regs = (void *)regs;
 	this->com_regs = (struct is_common_reg *)(regs + ISSR0);
@@ -1173,12 +1221,13 @@ int fimc_is_interface_open(struct fimc_is_interface *this)
 
 	dbg_interface("%s\n", __func__);
 
-	this->streaming = false;
+	this->streaming = IS_IF_STREAMING_INIT;
+	this->processing = IS_IF_PROCESSING_INIT;
+	this->pdown_ready = IS_IF_POWER_DOWN_READY;
 	init_request_barrier(this);
 	init_process_barrier(this);
 	init_state_barrier(this);
 	init_wait_queue(this);
-
 	enter_request_barrier(this);
 
 	this->fcount = 0;
