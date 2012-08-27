@@ -17,6 +17,7 @@
 
 #include <plat/cpu.h>
 #include <linux/delay.h>
+#include <linux/ratelimit.h>
 
 /* Register access subroutines */
 
@@ -560,22 +561,22 @@ done:
 u32 mxr_irq_underrun_handle(struct mxr_device *mdev, u32 val)
 {
 	if (val & MXR_INT_STATUS_MX0_VIDEO) {
-		mxr_warn(mdev, "mixer0 video layer underrun occur\n");
+		printk_ratelimited("mixer0 video layer underrun occur\n");
 		val |= MXR_INT_STATUS_MX0_VIDEO;
 	} else if (val & MXR_INT_STATUS_MX0_GRP0) {
-		mxr_warn(mdev, "mixer0 graphic0 layer underrun occur\n");
+		printk_ratelimited("mixer0 graphic0 layer underrun occur\n");
 		val |= MXR_INT_STATUS_MX0_GRP0;
 	} else if (val & MXR_INT_STATUS_MX0_GRP1) {
-		mxr_warn(mdev, "mixer0 graphic1 layer underrun occur\n");
+		printk_ratelimited("mixer0 graphic1 layer underrun occur\n");
 		val |= MXR_INT_STATUS_MX0_GRP1;
 	} else if (val & MXR_INT_STATUS_MX1_VIDEO) {
-		mxr_warn(mdev, "mixer1 video layer underrun occur\n");
+		printk_ratelimited("mixer1 video layer underrun occur\n");
 		val |= MXR_INT_STATUS_MX1_VIDEO;
 	} else if (val & MXR_INT_STATUS_MX1_GRP0) {
-		mxr_warn(mdev, "mixer1 graphic0 layer underrun occur\n");
+		printk_ratelimited("mixer1 graphic0 layer underrun occur\n");
 		val |= MXR_INT_STATUS_MX1_GRP0;
 	} else if (val & MXR_INT_STATUS_MX1_GRP1) {
-		mxr_warn(mdev, "mixer1 graphic1 layer underrun occur\n");
+		printk_ratelimited("mixer1 graphic1 layer underrun occur\n");
 		val |= MXR_INT_STATUS_MX1_GRP1;
 	}
 
