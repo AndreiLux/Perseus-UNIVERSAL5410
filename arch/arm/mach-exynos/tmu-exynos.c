@@ -29,10 +29,50 @@
 #include <mach/regs-tmu.h>
 #include <mach/cpufreq.h>
 #include <mach/tmu.h>
+#include <mach/map.h>
+#include <mach/regs-mem.h>
+#include <mach/smc.h>
 
 static DEFINE_MUTEX(tmu_lock);
 
 static struct workqueue_struct *tmu_monitor_wq;
+
+static unsigned int get_refresh_period(unsigned int freq_ref)
+{
+	unsigned int rclk, tmp, refresh_nsec;
+
+	rclk = freq_ref / 1000000;
+
+#if defined(CONFIG_ARM_TRUSTZONE)
+	exynos_smc_read_sfr(SMC_CMD_REG,
+		SMC_REG_ID_SFR_R(EXYNOS5_PA_DREXII + EXYNOS_DMC_TIMINGAREF_OFFSET),
+		&tmp, 0);
+#else
+	tmp = __raw_readl(S5P_VA_DREXII + EXYNOS_DMC_TIMINGAREF_OFFSET);
+#endif
+	refresh_nsec = ((tmp & 0xff) * 1000) / rclk;
+
+	return refresh_nsec;
+}
+
+static void set_refresh_period(unsigned int freq_ref,
+				unsigned int refresh_nsec)
+{
+	unsigned int rclk, auto_refresh;
+
+	rclk = freq_ref / 1000000;
+	auto_refresh = ((unsigned int)(rclk * refresh_nsec / 1000));
+
+	/* change auto refresh period in TIMING_AREF register of DMC */
+#if defined(CONFIG_ARM_TRUSTZONE)
+	exynos_smc(SMC_CMD_REG,
+		SMC_REG_ID_SFR_W(EXYNOS5_PA_DREXII + EXYNOS_DMC_TIMINGAREF_OFFSET),
+		auto_refresh, 0);
+#else
+	__raw_writel(auto_refresh, S5P_VA_DREXII +
+			EXYNOS_DMC_TIMING_AREF_OFFSET);
+#endif
+}
 
 static int get_cur_temp(struct tmu_info *info)
 {
@@ -86,6 +126,21 @@ static void tmu_monitor(struct work_struct *work)
 		break;
 	}
 
+	/* Memory throttling */
+	if (cur_temp >= data->ts.start_mem_throttle &&
+		!info->mem_throttled) {
+		set_refresh_period(FREQ_IN_PLL, info->auto_refresh_mem_throttle);
+		info->mem_throttled = true;
+		dev_dbg(info->dev, "set auto refresh period %dns\n",
+				info->auto_refresh_mem_throttle);
+	} else if (cur_temp <= data->ts.stop_mem_throttle &&
+		info->mem_throttled) {
+		set_refresh_period(FREQ_IN_PLL, info->auto_refresh_normal);
+		info->mem_throttled = false;
+		dev_dbg(info->dev, "set auto refresh period %dns\n",
+				info->auto_refresh_normal);
+	}
+
 	queue_delayed_work_on(0, tmu_monitor_wq,
 			      &info->polling, info->sampling_rate);
 out:
@@ -131,6 +186,16 @@ static int exynos_tmu_init(struct tmu_info *info)
 	    || (info->te1 > EFUSE_MAX_VALUE)
 	    || (info->te2 != 0))
 		info->te1 = data->efuse_value;
+
+	/* Map auto refresh period of normal & memory throttle mode */
+	info->auto_refresh_normal = get_refresh_period(FREQ_IN_PLL);
+	info->auto_refresh_mem_throttle = info->auto_refresh_normal / 2;
+
+	dev_info(info->dev, "Current auto refresh interval(%d nsec),"
+			" Normal auto refresh interval(%d nsec),"
+			" memory throttle auto refresh internal(%d nsec)\n",
+			get_refresh_period(FREQ_IN_PLL),
+			info->auto_refresh_normal, info->auto_refresh_mem_throttle);
 
 	/*Get rising Threshold and Set interrupt level*/
 	temp_throttle = data->ts.start_throttle

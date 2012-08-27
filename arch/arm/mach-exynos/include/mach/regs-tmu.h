@@ -73,4 +73,6 @@
 #define CLEAR_FALL_INT		(INTCLEAR_FALL0 | INTCLEAR_FALL1 | \
 				 INTCLEAR_FALL2)
 #define EMUL_EN		(1)
+
+#define FREQ_IN_PLL		24000000	/* 24MHz in Hz */
 #endif

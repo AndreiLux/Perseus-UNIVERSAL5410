@@ -31,6 +31,8 @@ struct temperature_params {
 	unsigned int start_throttle;
 	unsigned int start_tripping; /* temp to do tripping */
 	unsigned int start_emergency;
+	unsigned int stop_mem_throttle;
+	unsigned int start_mem_throttle;
 };
 
 struct tmu_data {
@@ -50,6 +52,10 @@ struct tmu_info {
 	unsigned int te1; /* triminfo_25 */
 	unsigned int te2; /* triminfo_85 */
 	int tmu_state;
+
+	bool mem_throttled;
+	unsigned int auto_refresh_mem_throttle;
+	unsigned int auto_refresh_normal;
 
 	/* monitoring rate */
 	unsigned int sampling_rate;
