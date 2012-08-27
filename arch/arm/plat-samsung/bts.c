@@ -430,6 +430,8 @@ static int bts_probe(struct platform_device *pdev)
 						GFP_KERNEL);
 			if (!fbm_data) {
 				ret = -ENOMEM;
+				dev_err(&pdev->dev,
+					"failed to kzalloc() for fbm\n");
 				goto probe_err1;
 			}
 			list_add_tail(&fbm_data->node, &fbm_list);
@@ -451,6 +453,7 @@ static int bts_probe(struct platform_device *pdev)
 		clk = clk_get(pdev->dev.parent, bts_pdata->clk_name);
 		if (IS_ERR(clk)) {
 			ret = -EINVAL;
+			dev_err(&pdev->dev, "failed to clk_get()\n");
 			goto probe_err1;
 		}
 		clk_enable(clk);
@@ -459,6 +462,8 @@ static int bts_probe(struct platform_device *pdev)
 	bts_data = kzalloc(sizeof(struct exynos_bts_data), GFP_KERNEL);
 	if (!bts_data) {
 		ret = -ENOMEM;
+		dev_err(&pdev->dev,
+				"failed to kzalloc() for exynos_bts_data\n");
 		goto probe_err2;
 	}
 	bts_data->listnum = bts_pdata->res_num;
@@ -468,6 +473,8 @@ static int bts_probe(struct platform_device *pdev)
 								GFP_KERNEL);
 	if (!bts_local_data_h) {
 		ret = -ENOMEM;
+		dev_err(&pdev->dev,
+			"failed to kzalloc() for exynos_bts_local_data\n");
 		goto probe_err3;
 	}
 
@@ -475,6 +482,7 @@ static int bts_probe(struct platform_device *pdev)
 		bts_local_data->base = ioremap(res->start, resource_size(res));
 		if (!bts_local_data->base) {
 			ret = -ENXIO;
+			dev_err(&pdev->dev, "failed to ioremap()\n");
 			goto probe_err4;
 		}
 		bts_local_data->def_priority = bts_pdata->def_priority;

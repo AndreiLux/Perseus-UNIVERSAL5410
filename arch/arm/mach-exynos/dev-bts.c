@@ -160,6 +160,19 @@ static struct resource exynos_bts_disp_resource[] = {
 	},
 };
 
+static struct resource exynos_bts_mixer_resource[] = {
+	[0] = {
+		.start  = EXYNOS5_PA_BTS_MIXER0,
+		.end    = EXYNOS5_PA_BTS_MIXER0 + SZ_1K,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start  = EXYNOS5_PA_BTS_MIXER1,
+		.end    = EXYNOS5_PA_BTS_MIXER1 + SZ_1K,
+		.flags = IORESOURCE_MEM,
+	},
+};
+
 struct exynos_fbm_resource fbm_res[] = {
 	{
 		.port_name = BTS_FBM_G1_R,
@@ -199,6 +212,7 @@ EXYNOS_BTS_PDATA(isp0, BTS_PRIOR_BE, "pd-isp", "isp0", 0, BTS_CHANGE_OTHER_DEBLO
 EXYNOS_BTS_PDATA(isp1, BTS_PRIOR_BE, "pd-isp", "isp1", 0, BTS_CHANGE_OTHER_DEBLOCK);
 #endif
 EXYNOS_BTS_PDATA(disp, BTS_PRIOR_HARDTIME, "pd-disp1", "fimd", 0, BTS_NO_ACTION);
+EXYNOS_BTS_PDATA(mixer, BTS_PRIOR_HARDTIME, "pd-disp1", "mixer", 0, BTS_NO_ACTION);
 
 /* bts platform device lists */
 #define EXYNOS_BTS_DEVICE(_name, _parent, _bts_name)			\
@@ -214,6 +228,7 @@ static struct platform_device exynos_device_bts_##_name = {		\
 }
 
 EXYNOS_BTS_DEVICE(disp, &s5p_device_fimd1.dev, "disp-bts");
+EXYNOS_BTS_DEVICE(mixer, &s5p_device_mixer.dev, "mixer-bts");
 EXYNOS_BTS_DEVICE(g3dacp, NULL, "g3dacp-bts");
 EXYNOS_BTS_DEVICE(jpeg, NULL, "jpeg-bts");
 EXYNOS_BTS_DEVICE(gscl0, &exynos5_device_gsc0.dev, "gscl0-bts");
@@ -229,6 +244,7 @@ EXYNOS_BTS_DEVICE(cpu, NULL, "cpu-bts");
 
 static struct platform_device *exynos_bts[] __initdata = {
 	&exynos_device_bts_disp,
+	&exynos_device_bts_mixer,
 	&exynos_device_bts_cpu,
 	&exynos_device_bts_g3dacp,
 	&exynos_device_bts_jpeg,
