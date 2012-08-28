@@ -135,7 +135,8 @@
 					regulator-max-microvolt = <3000000>;
 					regulator-always-on;
 					regulator-boot-on;
-					reg_op_mode = <3>; /* Normal Mode */
+					/* Turn BUCK8 off when ENB8 is low */
+					reg_op_mode = <1>;
 				};
 
 				en32khz_ap: EN32KHZ_AP {
