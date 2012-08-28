@@ -524,7 +524,8 @@ recheck:
 	}
 
 	if (val != state) {
-		dev_err(&client->dev, "Invalid bootloader mode state\n");
+		dev_err(&client->dev, "Invalid bootloader mode state %d, %d\n",
+			val, state);
 		return -EINVAL;
 	}
 
@@ -860,6 +861,11 @@ static int mxt_enter_bl(struct mxt_data *data)
 		return 0;
 
 	disable_irq(data->irq);
+
+	if (data->input_dev) {
+		input_unregister_device(data->input_dev);
+		data->input_dev = NULL;
+	}
 
 	/* Change to the bootloader mode */
 	ret = mxt_write_object(data, MXT_GEN_COMMAND_T6, 0,
@@ -1436,7 +1442,7 @@ static int mxt_load_config(struct mxt_data *data, const char *fn)
 	struct i2c_client *client = data->client;
 	struct device *dev = &client->dev;
 	const struct firmware *fw = NULL;
-	int ret;
+	int ret, ret2;
 	char *cfg_copy = NULL;
 	char *running;
 
@@ -1460,22 +1466,56 @@ static int mxt_load_config(struct mxt_data *data, const char *fn)
 	/* Verify config file header (after which running points to data) */
 	running = cfg_copy;
 	ret = mxt_cfg_verify_hdr(data, &running);
-	if (ret)
+	if (ret) {
+		dev_err(dev, "Error verifying config header (%d)\n", ret);
 		goto free_cfg_copy;
+	}
+
+	disable_irq(data->irq);
+	if (data->input_dev) {
+		input_unregister_device(data->input_dev);
+		data->input_dev = NULL;
+	}
+
 	/* Write configuration */
 	ret = mxt_cfg_proc_data(data, &running);
 	if (ret) {
-		dev_err(dev, "Error parsing config file (%d)\n", ret);
-		goto free_cfg_copy;
+		dev_err(dev, "Error writing config file (%d)\n", ret);
+		goto register_input_dev;
 	}
 	/* Backup nvram */
 	ret = mxt_write_object(data, MXT_GEN_COMMAND_T6, 0,
 			       MXT_COMMAND_BACKUPNV,
 			       MXT_BACKUP_VALUE);
-	if (ret)
-		goto free_cfg_copy;
+	if (ret) {
+		dev_err(dev, "Error backup to nvram (%d)\n", ret);
+		goto register_input_dev;
+	}
 	msleep(MXT_BACKUP_TIME);
 
+	/* Reset device */
+	ret = mxt_write_object(data, MXT_GEN_COMMAND_T6, 0,
+			       MXT_COMMAND_RESET, 1);
+	if (ret) {
+		dev_err(dev, "Error resetting device (%d)\n", ret);
+		goto register_input_dev;
+	}
+	msleep(MXT_RESET_TIME);
+
+register_input_dev:
+	ret2 = mxt_input_dev_create(data);
+	if (ret2) {
+		dev_err(dev, "Error creating input_dev (%d)\n", ret2);
+		ret = ret2;
+	}
+	enable_irq(data->irq);
+
+	/* Clear message buffer */
+	ret2 = mxt_handle_messages(data, true);
+	if (ret2) {
+		dev_err(dev, "Error clearing msg buffer (%d)\n", ret2);
+		ret = ret2;
+	}
 free_cfg_copy:
 	kfree(cfg_copy);
 err_alloc_copy:
@@ -1861,34 +1901,14 @@ static ssize_t mxt_update_config_store(struct device *dev,
 				       const char *buf, size_t count)
 {
 	struct mxt_data *data = dev_get_drvdata(dev);
-	ssize_t error;
-
-	disable_irq(data->irq);
+	int error;
 
 	error = mxt_load_config(data, data->config_file);
 	if (error)
-		dev_err(dev, "The config update failed (%zd)\n", error);
+		dev_err(dev, "The config update failed (%d)\n", error);
 	else
 		dev_dbg(dev, "The config update succeeded\n");
 
-	/* Reset device */
-	error = mxt_write_object(data, MXT_GEN_COMMAND_T6, 0,
-				 MXT_COMMAND_RESET, 1);
-	if (error)
-		goto err;
-	msleep(MXT_RESET_TIME);
-
-	error = mxt_input_dev_create(data);
-	if (error)
-		goto err;
-
-	/* Clear message buffer */
-	error = mxt_handle_messages(data, true);
-	if (error)
-		goto err;
-
-err:
-	enable_irq(data->irq);
 	return error ?: count;
 }
 
