@@ -2482,14 +2482,19 @@ static unsigned int pl330_tx_residue(struct dma_chan *chan)
 	struct pl330_thread *thrd = pch->pl330_chid;
 	struct dma_pl330_desc *desc;
 	unsigned int sar;
+	unsigned long flags;
 
 	sar = readl(regs + SA(thrd->id));
+
+	spin_lock_irqsave(&pch->lock, flags);
 
 	/* Find the desc related to the current buffer. */
 	list_for_each_entry(desc, &pch->work_list, node)
 		if (desc->px.src_addr <= sar &&
 		    sar < (desc->px.src_addr + desc->px.bytes))
 			break;
+
+	spin_unlock_irqrestore(&pch->lock, flags);
 
 	if (!desc)
 		return 0;
