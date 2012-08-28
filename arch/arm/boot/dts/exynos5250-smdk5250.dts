@@ -58,11 +58,20 @@
 			max77686,buck_ramp_delay = <1>;		/* default */
 
 			voltage-regulators {
+				ldo8_reg: LDO8 {
+					regulator-name = "vdd_ldo8";
+					regulator-min-microvolt = <1000000>;
+					regulator-max-microvolt = <1000000>;
+					regulator-always-on;
+					reg_op_mode = <1>; /* Standby Mode */
+				};
+
 				ldo11_reg: LDO11 {
 					regulator-name = "vdd_ldo11";
 					regulator-min-microvolt = <1900000>;
 					regulator-max-microvolt = <1900000>;
 					regulator-always-on;
+					reg_op_mode = <3>; /* Normal Mode */
 				};
 
 				ldo14_reg: LDO14 {
@@ -70,6 +79,7 @@
 					regulator-min-microvolt = <1900000>;
 					regulator-max-microvolt = <1900000>;
 					regulator-always-on;
+					reg_op_mode = <3>; /* Normal Mode */
 				};
 
 				buck1_reg: BUCK1 {
@@ -78,6 +88,7 @@
 					regulator-max-microvolt = <1300000>;
 					regulator-always-on;
 					regulator-boot-on;
+					reg_op_mode = <3>; /* Normal Mode */
 				};
 
 				buck2_reg: BUCK2 {
@@ -86,6 +97,7 @@
 					regulator-max-microvolt = <1350000>;
 					regulator-always-on;
 					regulator-boot-on;
+					reg_op_mode = <3>; /* Normal Mode */
 				};
 
 				buck3_reg: BUCK3 {
@@ -94,6 +106,7 @@
 					regulator-max-microvolt = <1200000>;
 					regulator-always-on;
 					regulator-boot-on;
+					reg_op_mode = <3>; /* Normal Mode */
 				};
 
 				buck4_reg: BUCK4 {
@@ -101,6 +114,7 @@
 					regulator-min-microvolt = <850000>;
 					regulator-max-microvolt = <1300000>;
 					regulator-boot-on;
+					reg_op_mode = <3>; /* Normal Mode */
 				};
 
 				buck8_reg: BUCK8 {
@@ -109,6 +123,7 @@
 					regulator-max-microvolt = <3000000>;
 					regulator-always-on;
 					regulator-boot-on;
+					reg_op_mode = <3>;
 				};
 			};
 		};
