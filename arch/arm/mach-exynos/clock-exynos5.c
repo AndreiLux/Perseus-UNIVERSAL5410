@@ -869,21 +869,25 @@ static struct clk exynos5_init_clocks_off[] = {
 		.devname        = "exynos-gsc.0",
 		.enable         = exynos5_clk_ip_gscl_ctrl,
 		.ctrlbit        = (1 << 0),
+		.parent		= &exynos5_clk_aclk_266.clk,
 	}, {
 		.name           = "gscl",
 		.devname        = "exynos-gsc.1",
 		.enable         = exynos5_clk_ip_gscl_ctrl,
 		.ctrlbit        = (1 << 1),
+		.parent		= &exynos5_clk_aclk_266.clk,
 	}, {
 		.name           = "gscl",
 		.devname        = "exynos-gsc.2",
 		.enable         = exynos5_clk_ip_gscl_ctrl,
 		.ctrlbit        = (1 << 2),
+		.parent		= &exynos5_clk_aclk_266.clk,
 	}, {
 		.name           = "gscl",
 		.devname        = "exynos-gsc.3",
 		.enable         = exynos5_clk_ip_gscl_ctrl,
 		.ctrlbit        = (1 << 3),
+		.parent		= &exynos5_clk_aclk_266.clk,
 	}, {
 		.name		= "fimg2d",
 		.enable		= exynos5_clk_ip_acp_ctrl,
