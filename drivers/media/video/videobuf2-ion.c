@@ -18,6 +18,7 @@
 #include <linux/highmem.h>
 #include <linux/dma-buf.h>
 #include <linux/fs.h>
+#include <linux/mutex.h>
 
 #include <media/videobuf2-core.h>
 #include <media/videobuf2-memops.h>
@@ -33,6 +34,9 @@ struct vb2_ion_context {
 	struct ion_client	*client;
 	unsigned long		alignment;
 	long			flags;
+
+	/* protects iommu_active_cnt and protected */
+	struct mutex		lock;
 	int			iommu_active_cnt;
 	bool			protected;
 };
@@ -73,8 +77,10 @@ void vb2_ion_set_protected(void *ctx, bool ctx_protected)
 {
 	struct vb2_ion_context *vb2ctx = ctx;
 
+	mutex_lock(&vb2ctx->lock);
+
 	if (vb2ctx->protected == ctx_protected)
-		return;
+		goto out;
 	vb2ctx->protected = ctx_protected;
 
 	if (ctx_protected) {
@@ -88,6 +94,9 @@ void vb2_ion_set_protected(void *ctx, bool ctx_protected)
 			iovmm_activate(vb2ctx->dev);
 		}
 	}
+
+out:
+	mutex_unlock(&vb2ctx->lock);
 }
 EXPORT_SYMBOL(vb2_ion_set_protected);
 
@@ -138,6 +147,7 @@ void *vb2_ion_create_context(struct device *dev, size_t alignment, long flags)
 
 	vb2_ion_set_alignment(ctx, alignment);
 	ctx->flags = flags;
+	mutex_init(&ctx->lock);
 
 	return ctx;
 }
@@ -147,6 +157,7 @@ void vb2_ion_destroy_context(void *ctx)
 {
 	struct vb2_ion_context *vb2ctx = ctx;
 
+	mutex_destroy(&vb2ctx->lock);
 	ion_client_destroy(vb2ctx->client);
 	kfree(vb2ctx);
 }
@@ -185,15 +196,18 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 		goto err_map_kernel;
 	}
 
+	mutex_lock(&ctx->lock);
 	if (ctx_iommu(ctx) && !ctx->protected) {
 		buf->cookie.ioaddr = iovmm_map(ctx->dev,
 					       buf->cookie.sgt->sgl, 0,
 					       buf->size);
 		if (IS_ERR_VALUE(buf->cookie.ioaddr)) {
 			ret = (int)buf->cookie.ioaddr;
+			mutex_unlock(&ctx->lock);
 			goto err_ion_map_io;
 		}
 	}
+	mutex_unlock(&ctx->lock);
 
 	return &buf->cookie;
 
@@ -218,8 +232,10 @@ void vb2_ion_private_free(void *cookie)
 		return;
 
 	ctx = buf->ctx;
+	mutex_lock(&ctx->lock);
 	if (ctx_iommu(ctx) && !ctx->protected)
 		iovmm_unmap(ctx->dev, buf->cookie.ioaddr);
+	mutex_unlock(&ctx->lock);
 
 	ion_unmap_kernel(ctx->client, buf->handle);
 
@@ -376,15 +392,18 @@ static int vb2_ion_map_dmabuf(void *mem_priv)
 	buf->cookie.offset = 0;
 	/* buf->kva = NULL; */
 
+	mutex_lock(&ctx->lock);
 	if (ctx_iommu(ctx) && !ctx->protected && buf->cookie.ioaddr == 0) {
 		buf->cookie.ioaddr = iovmm_map(ctx->dev,
 				       buf->cookie.sgt->sgl, 0, buf->size);
 		if (IS_ERR_VALUE(buf->cookie.ioaddr)) {
+			mutex_unlock(&ctx->lock);
 			dma_buf_unmap_attachment(buf->attachment,
 					buf->cookie.sgt, buf->direction);
 			return (int)buf->cookie.ioaddr;
 		}
 	}
+	mutex_unlock(&ctx->lock);
 
 	return 0;
 }
@@ -413,10 +432,12 @@ static void vb2_ion_detach_dmabuf(void *mem_priv)
 	struct vb2_ion_buf *buf = mem_priv;
 	struct vb2_ion_context *ctx = buf->ctx;
 
+	mutex_lock(&ctx->lock);
 	if (buf->cookie.ioaddr && ctx_iommu(ctx) && !ctx->protected ) {
 		iovmm_unmap(ctx->dev, buf->cookie.ioaddr);
 		buf->cookie.ioaddr = 0;
 	}
+	mutex_unlock(&ctx->lock);
 
 	if (buf->kva != NULL) {
 		dma_buf_kunmap(buf->dma_buf, 0, buf->kva);
@@ -666,10 +687,12 @@ void vb2_ion_detach_iommu(void *alloc_ctx)
 	if (!ctx_iommu(ctx))
 		return;
 
+	mutex_lock(&ctx->lock);
 	BUG_ON(ctx->iommu_active_cnt == 0);
 
 	if (--ctx->iommu_active_cnt == 0 && !ctx->protected)
 		iovmm_deactivate(ctx->dev);
+	mutex_unlock(&ctx->lock);
 }
 EXPORT_SYMBOL_GPL(vb2_ion_detach_iommu);
 
@@ -681,10 +704,13 @@ int vb2_ion_attach_iommu(void *alloc_ctx)
 	if (!ctx_iommu(ctx))
 		return -ENOENT;
 
+	mutex_lock(&ctx->lock);
 	if (ctx->iommu_active_cnt == 0 && !ctx->protected)
 		ret = iovmm_activate(ctx->dev);
 	if (!ret)
 		ctx->iommu_active_cnt++;
+	mutex_unlock(&ctx->lock);
+
 	return ret;
 }
 EXPORT_SYMBOL_GPL(vb2_ion_attach_iommu);
