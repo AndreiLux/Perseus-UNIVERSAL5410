@@ -1281,28 +1281,25 @@ static int mali_gpu_vol = 1050000; /* 1.05V @ 266 MHz */
 #endif /*  CONFIG_T6XX_HWVER_R0P0 */
 #endif /* CONFIG_REGULATOR */
 
-typedef struct _mali_dvfs_info{
-	unsigned int voltage;
-	unsigned int clock;
-	int min_threshold;
-	int max_threshold;
-}mali_dvfs_info;
-
-static mali_dvfs_info mali_dvfs_infotbl[MALI_DVFS_STEP] = {
-#if (MALI_DVFS_STEP == 7)
-	{912500, 100, 0, 60},
-	{925000, 160, 40, 65},
-	{1025000, 266, 50, 70},
-	{1075000, 350, 55, 75},
-	{1125000, 400, 65, 80},
-	{1150000, 450, 70, 89},
-	{1250000, 533, 85, 100}
-#else
-#error no table
-#endif
-};
-
 #ifdef CONFIG_T6XX_DVFS
+/*
+ * Weighted moving average support for signed integer data
+ * with 7-bits of precision (not currently used; all data
+ * are integers).
+ */
+#define DVFS_AVG_DUMMY_MARKER	(~0)
+#define DVFS_AVG_LPF_LEN	4	/* NB: best to be pow2 */
+#define DVFS_AVG_EP_MULTIPLIER	(1<<7)	/* 7 fractional bits */
+
+#define DVFS_AVG_RESET(x)	((x) = DVFS_AVG_DUMMY_MARKER)
+#define _DVFS_AVG_IN(x)		((x) * DVFS_AVG_EP_MULTIPLIER)
+#define _DVFS_LPF_UTIL(x, y, len) \
+	((x != DVFS_AVG_DUMMY_MARKER) ? \
+	 (((x) * ((len) - 1) + (y)) / (len)) : (y))
+#define DVFS_AVG_LPF(x, y) do { \
+	x = _DVFS_LPF_UTIL((x), _DVFS_AVG_IN((y)), DVFS_AVG_LPF_LEN); \
+} while (0)
+#define DVFS_TO_AVG(x)		DIV_ROUND_CLOSEST(x, DVFS_AVG_EP_MULTIPLIER)
 
 #ifdef MALI_DVFS_ASV_ENABLE
 enum asv_update_val {
@@ -1312,26 +1309,66 @@ enum asv_update_val {
 };
 #endif /* MALI_DVFS_ASV_ENABLE */
 
-typedef struct _mali_dvfs_status_type{
+struct mali_dvfs_status {
 	kbase_device *kbdev;
 	int step;
 	int utilisation;
-	int above_threshold;
-	int below_threshold;
-	uint noutilcnt;
+	uint nsamples;
+	u32 avg_utilisation;
 #ifdef MALI_DVFS_ASV_ENABLE
 	enum asv_update_val asv_need_update;
 	int asv_group;
 #endif
-}mali_dvfs_status;
+};
 
 static struct workqueue_struct *mali_dvfs_wq = 0;
 int mali_dvfs_control=0;
 osk_spinlock mali_dvfs_spinlock;
 
 
-/*dvfs status*/
-static mali_dvfs_status mali_dvfs_status_current;
+static struct mali_dvfs_status mali_dvfs_status_current;
+/*
+ * Governor parameters.  The governor gets periodic samples of the
+ * GPU utilisation (%busy) and maintains a weighted average over the
+ * last DVFS_AVG_LPF_LEN values.  When the average is in the range
+ * [min_threshold..max_threshold] we maintain the current clock+voltage.
+ * If the utilisation drops below min for down_cnt_threshold samples
+ * we step down.  If the utilisation exceeds max_threshold for
+ * up_cnt_threshold samples we step up.
+ *
+ * The up/down thresholds are chosen to enable fast step up under
+ * load with a longer step down; this optimizes for performance over
+ * power consumption.  266MHz is the "sweet spot"; it has the best
+ * performance/power ratio.  For this reason it has slightly extended
+ * up/down thresholds to make it "sticky".
+ */
+struct mali_dvfs_info {
+	unsigned int voltage;
+	unsigned int clock;
+	int min_threshold;
+	int max_threshold;
+	int up_cnt_threshold;
+	int down_cnt_threshold;
+};
+
+/* TODO(sleffler) round or verify time is a multiple of frequency */
+/* convert a time in milliseconds to a dvfs sample count */
+#define	DVFS_TIME_TO_CNT(t)	((t) / KBASE_PM_DVFS_FREQUENCY)
+
+/* TODO(sleffler) should be const but for voltage */
+static struct mali_dvfs_info mali_dvfs_infotbl[MALI_DVFS_STEP] = {
+#if (MALI_DVFS_STEP == 7)
+	{ 912500, 100,  0,  60, DVFS_TIME_TO_CNT(750), DVFS_TIME_TO_CNT(2000)},
+	{ 925000, 160, 40,  65, DVFS_TIME_TO_CNT(750), DVFS_TIME_TO_CNT(2000)},
+	{1025000, 266, 50,  65, DVFS_TIME_TO_CNT(1000), DVFS_TIME_TO_CNT(3000)},
+	{1075000, 350, 50,  65, DVFS_TIME_TO_CNT(750), DVFS_TIME_TO_CNT(1500)},
+	{1125000, 400, 50,  65, DVFS_TIME_TO_CNT(750), DVFS_TIME_TO_CNT(1500)},
+	{1150000, 450, 50,  65, DVFS_TIME_TO_CNT(1000), DVFS_TIME_TO_CNT(1500)},
+	{1250000, 533, 50, 100, DVFS_TIME_TO_CNT(750), DVFS_TIME_TO_CNT(1500)}
+#else
+#error no table
+#endif
+};
 
 #ifdef MALI_DVFS_ASV_ENABLE
 static const unsigned int mali_dvfs_asv_vol_tbl_special
@@ -1455,15 +1492,12 @@ static int mali_dvfs_update_asv(int group)
 
 static void mali_dvfs_event_proc(struct work_struct *w)
 {
-	mali_dvfs_status dvfs_status;
-
-	/* TODO(Shariq) set to proper default values */
-	int allow_up_cnt = 1000 / KBASE_PM_DVFS_FREQUENCY;
-	int allow_down_cnt = 4000 / KBASE_PM_DVFS_FREQUENCY;
+	struct mali_dvfs_status dvfs_status;
+	const struct mali_dvfs_info *info;
+	int avg_utilisation;
 
 	osk_spinlock_lock(&mali_dvfs_spinlock);
 	dvfs_status = mali_dvfs_status_current;
-
 #ifdef MALI_DVFS_ASV_ENABLE
 	if (dvfs_status.asv_need_update == DVFS_UPDATE_ASV_DEFAULT_TBL) {
 		mali_dvfs_update_asv(-1);
@@ -1474,85 +1508,92 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 		dvfs_status.asv_need_update = DVFS_NOT_UPDATE_ASV_TBL;
 	}
 #endif
-	  osk_spinlock_unlock(&mali_dvfs_spinlock);
+	osk_spinlock_unlock(&mali_dvfs_spinlock);
 
-	 /*If no input is keeping for longtime, first step will be @266MHZ. */
-	 if (dvfs_status.noutilcnt > 3 && dvfs_status.utilisation > 0)
-		dvfs_status.step = MALI_DVFS_STEP - 5;
-	else if (dvfs_status.utilisation == 100) {
-		allow_up_cnt = 500 / KBASE_PM_DVFS_FREQUENCY;
-	} else if (mali_dvfs_infotbl[dvfs_status.step].clock < 266) {
-		allow_up_cnt = 1000 / KBASE_PM_DVFS_FREQUENCY;
-		allow_down_cnt = 2500 / KBASE_PM_DVFS_FREQUENCY;
-	} else if (mali_dvfs_infotbl[dvfs_status.step].clock == 266) {
-		allow_up_cnt = 2500 / KBASE_PM_DVFS_FREQUENCY;
-	} else {
-		allow_up_cnt = 1500 / KBASE_PM_DVFS_FREQUENCY;
-		allow_down_cnt =  1000 / KBASE_PM_DVFS_FREQUENCY;
-	}
+	info = &mali_dvfs_infotbl[dvfs_status.step];
 
 	OSK_ASSERT(dvfs_status.utilisation <= 100);
-	if (dvfs_status.utilisation > mali_dvfs_infotbl[dvfs_status.step].max_threshold)
-	{
-		dvfs_status.above_threshold++;
-		dvfs_status.below_threshold = 0;
-		if (dvfs_status.above_threshold > allow_up_cnt) {
-			dvfs_status.step++;
-			dvfs_status.above_threshold = 0;
-			OSK_ASSERT(dvfs_status.step < MALI_DVFS_STEP);
-		}
-	} else if ((dvfs_status.step > 0) && (dvfs_status.utilisation <
-			mali_dvfs_infotbl[dvfs_status.step].min_threshold)) {
-		dvfs_status.below_threshold++;
-		dvfs_status.above_threshold = 0;
-		if (dvfs_status.below_threshold > allow_down_cnt)
-		{
-			OSK_ASSERT(dvfs_status.step > 0);
-			dvfs_status.step--;
-			dvfs_status.below_threshold = 0;
-		}
-	}else{
-		dvfs_status.above_threshold = 0;
-		dvfs_status.below_threshold = 0;
+	dvfs_status.nsamples++;
+	DVFS_AVG_LPF(dvfs_status.avg_utilisation, dvfs_status.utilisation);
+	OSK_ASSERT(dvfs_status.nsamples > 0);
+	avg_utilisation = DVFS_TO_AVG(dvfs_status.avg_utilisation);
+#if MALI_DVFS_DEBUG
+	pr_debug("%s: step %d utilisation %d avg %d max %d min %d "
+	    "nsamples %u up_cnt %d down_cnt %d\n", __func__,
+	    dvfs_status.step, dvfs_status.utilisation,
+	    avg_utilisation, info->max_threshold, info->min_threshold,
+	    dvfs_status.nsamples, allow_up_cnt, allow_down_cnt);
+#endif
+	trace_mali_dvfs_event(dvfs_status.utilisation, avg_utilisation);
+
+	if (avg_utilisation > info->max_threshold &&
+	    dvfs_status.nsamples >= info->up_cnt_threshold) {
+		dvfs_status.step++;
+		/*
+		 * NB: max clock should have max_threshold of 100
+		 * so this should never trip.
+		 */
+		OSK_ASSERT(dvfs_status.step < MALI_DVFS_STEP);
+		DVFS_AVG_RESET(dvfs_status.avg_utilisation);
+		dvfs_status.nsamples = 0;
+	} else if (dvfs_status.step > 0 &&
+	    avg_utilisation < info->min_threshold &&
+	    dvfs_status.nsamples >= info->down_cnt_threshold) {
+		OSK_ASSERT(dvfs_status.step > 0);
+		dvfs_status.step--;
+		DVFS_AVG_RESET(dvfs_status.avg_utilisation);
+		dvfs_status.nsamples = 0;
 	}
 
 	if (kbasep_pm_metrics_isactive(dvfs_status.kbdev))
 		kbase_platform_dvfs_set_level(dvfs_status.kbdev,
 		dvfs_status.step);
 
-	if (dvfs_status.utilisation == 0) {
-		dvfs_status.noutilcnt++;
-	} else {
-		dvfs_status.noutilcnt=0;
-	}
-
-#if MALI_DVFS_DEBUG
-	 printk(KERN_DEBUG "[mali_dvfs] utilisation: %d step: %d[%d,%d] cnt: %d/%d vsync %d\n",
-	       dvfs_status.utilisation, dvfs_status.step,
-	       mali_dvfs_infotbl[dvfs_status.step].min_threshold,
-	       mali_dvfs_infotbl[dvfs_status.step].max_threshold,
-	       dvfs_status.above_threshold, dvfs_status.below_threshold,
-	       dvfs_status.kbdev->pm.metrics.vsync_hit);
-
-#endif /* MALI_DVFS_DEBUG */
-
 	osk_spinlock_lock(&mali_dvfs_spinlock);
-	mali_dvfs_status_current=dvfs_status;
+	mali_dvfs_status_current = dvfs_status;
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
 
 }
 
 static DECLARE_WORK(mali_dvfs_work, mali_dvfs_event_proc);
 
-int kbase_platform_dvfs_get_utilisation(void)
-{
-	int utilisation = 0;
+/**
+ * Exynos5 alternative dvfs_callback imlpementation.
+ * instead of:
+ *    action = kbase_pm_get_dvfs_action(kbdev);
+ * use this:
+ *    kbase_platform_dvfs_event(kbdev);
+ */
 
-	osk_spinlock_lock(&mali_dvfs_spinlock);
-	utilisation = mali_dvfs_status_current.utilisation;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
-	return utilisation;
+#ifdef CONFIG_T6XX_DVFS
+static int kbase_pm_get_dvfs_utilisation(kbase_device *kbdev)
+{
+	osk_ticks now = osk_time_now();
+	u32 time_idle, time_busy;
+
+	OSK_ASSERT(kbdev != NULL);
+
+	osk_spinlock_irq_lock(&kbdev->pm.metrics.lock);
+
+	time_busy = kbdev->pm.metrics.time_busy;
+	time_idle = kbdev->pm.metrics.time_idle;
+	if (kbdev->pm.metrics.gpu_active) {
+		time_busy += osk_time_elapsed(
+		    kbdev->pm.metrics.time_period_start, now);
+	} else {
+		time_idle += osk_time_elapsed(
+		    kbdev->pm.metrics.time_period_start, now);
+	}
+	kbdev->pm.metrics.time_idle = 0;
+	kbdev->pm.metrics.time_busy = 0;
+	kbdev->pm.metrics.time_period_start = now;
+
+	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
+
+	return (time_idle + time_busy) == 0 ? 0 :
+	    (100*time_busy) / (time_idle + time_busy);
 }
+#endif
 
 int kbase_platform_dvfs_get_control_status(void)
 {
@@ -1572,8 +1613,9 @@ int kbase_platform_dvfs_init(kbase_device *kbdev)
 	/*add a error handling here*/
 	osk_spinlock_lock(&mali_dvfs_spinlock);
 	mali_dvfs_status_current.kbdev = kbdev;
-	mali_dvfs_status_current.utilisation = 100;
 	mali_dvfs_status_current.step = MALI_DVFS_STEP-1;
+	mali_dvfs_status_current.utilisation = 100;
+	DVFS_AVG_RESET(mali_dvfs_status_current.avg_utilisation);
 #ifdef MALI_DVFS_ASV_ENABLE
 	mali_dvfs_status_current.asv_need_update = DVFS_UPDATE_ASV_TBL;
 	mali_dvfs_status_current.asv_group = -1;
@@ -1598,8 +1640,6 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev)
 {
 #ifdef CONFIG_T6XX_DVFS
         int utilisation = kbase_pm_get_dvfs_utilisation(kbdev);
-
-	trace_mali_dvfs_event(utilisation);
 
 	osk_spinlock_lock(&mali_dvfs_spinlock);
 	mali_dvfs_status_current.utilisation = utilisation;
@@ -1901,51 +1941,3 @@ static int kbase_platform_asv_set(int enable)
 	return 0;
 }
 #endif /* MALI_DVFS_ASV_ENABLE */
-
-/**
- * Exynos5 alternative dvfs_callback imlpementation.
- * instead of:
- *    action = kbase_pm_get_dvfs_action(kbdev);
- * use this:
- *    kbase_platform_dvfs_event(kbdev);
- */
-
-#ifdef CONFIG_T6XX_DVFS
-int kbase_pm_get_dvfs_utilisation(kbase_device *kbdev)
-{
-	int utilisation=0;
-	osk_ticks now = osk_time_now();
-
-	OSK_ASSERT(kbdev != NULL);
-
-	osk_spinlock_irq_lock(&kbdev->pm.metrics.lock);
-
-	if (kbdev->pm.metrics.gpu_active)
-	{
-		kbdev->pm.metrics.time_busy += osk_time_elapsed(kbdev->pm.metrics.time_period_start, now);
-		kbdev->pm.metrics.time_period_start = now;
-	}
-	else
-	{
-		kbdev->pm.metrics.time_idle += osk_time_elapsed(kbdev->pm.metrics.time_period_start, now);
-		kbdev->pm.metrics.time_period_start = now;
-	}
-
-	if (kbdev->pm.metrics.time_idle + kbdev->pm.metrics.time_busy == 0)
-	{
-		/* No data - so we return NOP */
-		goto out;
-	}
-
-	utilisation = (100*kbdev->pm.metrics.time_busy) / (kbdev->pm.metrics.time_idle + kbdev->pm.metrics.time_busy);
-
-out:
-
-	kbdev->pm.metrics.time_idle = 0;
-	kbdev->pm.metrics.time_busy = 0;
-
-	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
-
-	return utilisation;
-}
-#endif

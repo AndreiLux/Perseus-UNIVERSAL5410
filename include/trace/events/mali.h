@@ -7,15 +7,18 @@
 #include <linux/tracepoint.h>
 
 TRACE_EVENT(mali_dvfs_event,
-	    TP_PROTO(unsigned int util),
-	    TP_ARGS(util),
+	    TP_PROTO(unsigned int util, int avg),
+	    TP_ARGS(util, avg),
 	    TP_STRUCT__entry(
 		    __field(unsigned int, utilization)
+		    __field(int, avg_utilization)
 	    ),
 	    TP_fast_assign(
 		    __entry->utilization = util;
+		    __entry->avg_utilization = avg;
 	    ),
-	    TP_printk("utilization=%u", __entry->utilization)
+	    TP_printk("utilization=%u avg=%d",
+			__entry->utilization, __entry->avg_utilization)
 );
 
 TRACE_EVENT(mali_dvfs_set_voltage,

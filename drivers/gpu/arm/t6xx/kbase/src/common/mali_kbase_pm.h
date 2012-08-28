@@ -22,7 +22,7 @@
 #include "mali_kbase_pm_demand.h"
 
 /* Frequency that DVFS clock frequency decisions should be made */
-#define KBASE_PM_DVFS_FREQUENCY                 500
+#define KBASE_PM_DVFS_FREQUENCY                 250
 
 /* Forward definition - see mali_kbase.h */
 struct kbase_device;
@@ -862,13 +862,5 @@ void kbase_pm_release_l2_caches(struct kbase_device *kbdev);
  * @return MALI_TRUE on success (currently no error handling present)
  */
 int kbase_platform_dvfs_event(struct kbase_device *kbdev);
-
-/**  Get the GPU utilisation. Used to determine if the frequency/voltage needs to be scaled.
- *
- * @param kbdev    The kbase device structure for the device (must be a valid pointer)
- *
- * @return The current GPU utilisation
- */
-int kbase_pm_get_dvfs_utilisation(struct kbase_device *kbdev);
 
 #endif /* _KBASE_PM_H_ */
