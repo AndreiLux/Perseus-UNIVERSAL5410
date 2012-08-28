@@ -78,6 +78,9 @@
 #define CTRL_BLOCK	0x7
 #define CTRL_DISABLE	0x0
 
+#define CFG_LRU		0x1
+#define CFG_QOS(n)	((n & 0xF) << 7)
+
 #define REG_MMU_CTRL		0x000
 #define REG_MMU_CFG		0x004
 #define REG_MMU_STATUS		0x008
@@ -190,7 +193,6 @@ static void __sysmmu_tlb_invalidate(void __iomem *sfrbase)
 static void __sysmmu_set_ptbase(void __iomem *sfrbase,
 				       unsigned long pgd)
 {
-	__raw_writel(0x1, sfrbase + REG_MMU_CFG); /* 16KB LV1, LRU */
 	__raw_writel(pgd, sfrbase + REG_PT_BASE_ADDR);
 
 	__sysmmu_tlb_invalidate(sfrbase);
@@ -428,14 +430,21 @@ static int __exynos_sysmmu_enable(struct sysmmu_drvdata *data,
 	data->pgtable = pgtable;
 
 	for (i = 0; i < data->nsfrs; i++) {
+		unsigned long cfg;
+
+		cfg = __raw_readl(data->sfrbases[i] + REG_MMU_CFG);
+		cfg |= CFG_LRU | CFG_QOS(data->qos);
+
 		__sysmmu_set_ptbase(data->sfrbases[i], pgtable);
 
 		if ((readl(data->sfrbases[i] + REG_MMU_VERSION) >> 28) == 3) {
 			/* System MMU version is 3.x */
-			__raw_writel((1 << 12) | (2 << 28),
+			__raw_writel(cfg | (1 << 12) | (2 << 28),
 					data->sfrbases[i] + REG_MMU_CFG);
 			__sysmmu_set_prefbuf(data->sfrbases[i], 0, -1, 0);
 			__sysmmu_set_prefbuf(data->sfrbases[i], 0, -1, 1);
+		} else {
+			__raw_writel(cfg, data->sfrbases[i] + REG_MMU_CFG);
 		}
 
 		__raw_writel(CTRL_ENABLE, data->sfrbases[i] + REG_MMU_CTRL);
@@ -619,6 +628,7 @@ static int exynos_sysmmu_probe(struct platform_device *pdev)
 		}
 
 		data->dbgname = platdata->dbgname;
+		data->qos = platdata->qos;
 	}
 
 	ret = exynos_init_iovmm(dev, &data->vmm);

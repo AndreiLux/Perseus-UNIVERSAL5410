@@ -54,6 +54,7 @@ struct sysmmu_drvdata {
 #ifdef CONFIG_EXYNOS_IOVMM
 	struct exynos_iovmm vmm;
 #endif
+	unsigned int qos;
 };
 
 #ifdef CONFIG_EXYNOS_IOVMM

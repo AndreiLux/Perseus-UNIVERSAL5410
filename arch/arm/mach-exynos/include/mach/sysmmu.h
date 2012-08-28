@@ -16,6 +16,7 @@ struct sysmmu_platform_data {
 	char *dbgname;
 	/* comma(,) separated list of clock names for clock gating */
 	char *clockname;
+	unsigned int qos;
 };
 
 #define SYSMMU_DEVNAME_BASE "exynos-sysmmu"
