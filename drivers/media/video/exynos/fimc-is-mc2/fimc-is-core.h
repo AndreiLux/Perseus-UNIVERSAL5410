@@ -90,6 +90,8 @@
 /*#define AUTO_MODE*/
 /*#define DBG_STREAMING*/
 /*#define FW_DEBUG*/
+#define RESERVED_MEM
+#define ENABLE_DZOOM
 
 #ifdef DEBUG
 #define dbg(fmt, args...) \

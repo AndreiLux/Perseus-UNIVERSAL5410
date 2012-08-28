@@ -116,6 +116,7 @@ struct fimc_is_device_ischain {
 
 	struct is_region			*is_region;
 
+	bool					lock_bus;
 	bool					force_down;
 	unsigned long				state;
 	struct mutex				mutex_state;
@@ -145,11 +146,15 @@ struct fimc_is_device_ischain {
 	u32					chain0_width;
 	u32					chain0_height;
 	struct fimc_is_ischain_dev		isp;
-	struct fimc_is_ischain_dev		scc;
 
 	/*scc ~ dis*/
 	u32					chain1_width;
 	u32					chain1_height;
+	u32					crop_x;
+	u32					crop_y;
+	u32					crop_width;
+	u32					crop_height;
+	struct fimc_is_ischain_dev		scc;
 	struct fimc_is_ischain_dev		dis;
 
 	/*dis ~ scp*/

@@ -373,12 +373,14 @@ int fimc_is_sensor_open(struct fimc_is_device_sensor *this)
 {
 	int ret = 0;
 
-	dbg_front("%s\n", __func__);
+	printk(KERN_INFO "+++%s()\n", __func__);
 
 	this->state = 0;
 	this->active_sensor = &this->enum_sensor[SENSOR_NAME_S5K4E5];
 
 	fimc_is_frame_open(this->framemgr, 8);
+
+	printk(KERN_INFO "---%s()\n", __func__);
 
 	return ret;
 }
