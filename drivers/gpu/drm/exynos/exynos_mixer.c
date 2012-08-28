@@ -631,6 +631,8 @@ static int mixer_enable_vblank(void *ctx, int pipe)
 
 	DRM_DEBUG_KMS("[%d] %s\n", __LINE__, __func__);
 
+	mixer_ctx->pipe = pipe;
+
 	/* enable vsync interrupt */
 	mixer_reg_writemask(res, MXR_INT_EN, MXR_INT_EN_VSYNC,
 			MXR_INT_EN_VSYNC);
@@ -759,7 +761,7 @@ static void mixer_win_disable(void *ctx, int zpos)
 
 	if (win == MIXER_DEFAULT_WIN) {
 		mixer_win_reset(ctx);
-		mixer_enable_vblank(ctx, 0);
+		mixer_enable_vblank(ctx, mixer_ctx->pipe);
 	}
 }
 
@@ -801,7 +803,6 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 
 			ctx->event_flags &= ~MXR_EVENT_VSYNC;
 			wake_up(&ctx->mixer_res.event_queue);
-
 			goto out;
 		}
 
