@@ -33,7 +33,7 @@ struct vb2_ion_context {
 	struct ion_client	*client;
 	unsigned long		alignment;
 	long			flags;
-	bool			iommu_active;
+	int			iommu_active_cnt;
 	bool			protected;
 };
 
@@ -78,12 +78,12 @@ void vb2_ion_set_protected(void *ctx, bool ctx_protected)
 	vb2ctx->protected = ctx_protected;
 
 	if (ctx_protected) {
-		if (vb2ctx->iommu_active) {
+		if (vb2ctx->iommu_active_cnt) {
 			dev_dbg(vb2ctx->dev, "detaching active MMU\n");
 			iovmm_deactivate(vb2ctx->dev);
 		}
 	} else {
-		if (vb2ctx->iommu_active) {
+		if (vb2ctx->iommu_active_cnt) {
 			dev_dbg(vb2ctx->dev, "re-attaching active MMU\n");
 			iovmm_activate(vb2ctx->dev);
 		}
@@ -666,11 +666,10 @@ void vb2_ion_detach_iommu(void *alloc_ctx)
 	if (!ctx_iommu(ctx))
 		return;
 
-	BUG_ON(!ctx->iommu_active);
+	BUG_ON(ctx->iommu_active_cnt == 0);
 
-	if (!ctx->protected)
+	if (--ctx->iommu_active_cnt == 0 && !ctx->protected)
 		iovmm_deactivate(ctx->dev);
-	ctx->iommu_active = false;
 }
 EXPORT_SYMBOL_GPL(vb2_ion_detach_iommu);
 
@@ -682,12 +681,10 @@ int vb2_ion_attach_iommu(void *alloc_ctx)
 	if (!ctx_iommu(ctx))
 		return -ENOENT;
 
-	BUG_ON(ctx->iommu_active);
-
-	if (!ctx->protected)
+	if (ctx->iommu_active_cnt == 0 && !ctx->protected)
 		ret = iovmm_activate(ctx->dev);
 	if (!ret)
-		ctx->iommu_active = true;
+		ctx->iommu_active_cnt++;
 	return ret;
 }
 EXPORT_SYMBOL_GPL(vb2_ion_attach_iommu);
