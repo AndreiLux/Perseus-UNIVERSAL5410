@@ -359,11 +359,10 @@ static struct platform_device *kb_backlight_device;
 static int __init setup_keyboard_backlight(const struct dmi_system_id *id)
 {
 	kb_backlight_device =
-		platform_device_register_simple("chromeos-keyboard-backlight",
+		platform_device_register_simple("chromeos-keyboard-leds",
 						-1, NULL, 0);
 	if (IS_ERR(kb_backlight_device)) {
-		pr_warn("Error registering Chrome OS keyboard backlight device"
-			".\n");
+		pr_warn("Error registering Chrome OS keyboard LEDs.\n");
 		kb_backlight_device = NULL;
 	}
 	return 0;
