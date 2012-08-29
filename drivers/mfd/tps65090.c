@@ -262,8 +262,9 @@ static int __devinit tps65090_irq_init(struct tps65090 *tps65090, int irq)
 #endif
 	}
 
-	ret = request_threaded_irq(irq, NULL, tps65090_irq, IRQF_ONESHOT,
-				"tps65090", tps65090);
+	ret = request_threaded_irq(irq, NULL, tps65090_irq,
+				   IRQF_ONESHOT | IRQF_TRIGGER_RISING,
+				   "tps65090", tps65090);
 	if (ret) {
 		dev_err(tps65090->dev, "failed to request threaded irq\n");
 		irq_free_descs(tps65090->irq_base, nr_irqs);
