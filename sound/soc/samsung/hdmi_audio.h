@@ -346,6 +346,7 @@ struct hdmi_audio_context {
 	void __iomem			*regs;
 	struct audio_params		params;
 	struct audio_codec_plugin	plugin;
+	bool					enabled;
 };
 
 #endif	/* __SND_SOC_SAMSUNG_SPDIF_H */

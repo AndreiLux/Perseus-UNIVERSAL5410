@@ -14,6 +14,10 @@
 #define __SND_SOC_SAMSUNG_PLUGIN_H
 
 struct audio_plugin_ops {
+	int (*set_state)(struct device *dev, int enable);
+
+	int (*get_state)(struct device *dev, int *is_enabled);
+
 	int (*hw_params)(struct device *dev, struct snd_pcm_substream *,
 		struct snd_pcm_hw_params *, struct snd_soc_dai *);
 

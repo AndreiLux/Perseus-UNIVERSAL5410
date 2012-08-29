@@ -205,6 +205,7 @@ static void hdmi_audio_control(struct hdmi_audio_context *ctx,
 	if (mod & HDMI_DVI_MODE_EN)
 		onoff = false;
 
+	ctx->enabled = onoff;
 	hdmi_reg_writeb(ctx, HDMI_AUI_CON, onoff ? 2 : 0);
 	hdmi_reg_writemask(ctx, HDMI_CON_0, onoff ?
 			HDMI_ASP_EN : HDMI_ASP_DIS, HDMI_ASP_MASK);
@@ -350,6 +351,50 @@ static int hdmi_audio_trigger(struct device *dev,
 	return ret;
 }
 
+static int hdmi_set_state(struct device *dev, int enable)
+{
+	struct hdmi_audio_context *ctx = NULL;
+	struct audio_codec_plugin *plugin;
+	int ret = 0;
+
+	if (!dev) {
+		dev_err(dev, "invalid device.\n");
+		ret = -EINVAL;
+		return ret;
+	}
+
+	plugin = dev_get_drvdata(dev);
+	ctx = container_of(plugin, struct hdmi_audio_context, plugin);
+
+	if (enable)
+		hdmi_audio_control(ctx, true);
+	else
+		hdmi_audio_control(ctx, false);
+	return ret;
+}
+
+static int hdmi_get_state(struct device *dev, int *is_enabled)
+{
+	struct hdmi_audio_context *ctx = NULL;
+	struct audio_codec_plugin *plugin;
+	int ret = 0;
+
+	if (!dev) {
+		dev_err(dev, "invalid device.\n");
+		ret = -EINVAL;
+		return ret;
+	}
+
+	plugin = dev_get_drvdata(dev);
+	ctx = container_of(plugin, struct hdmi_audio_context, plugin);
+
+	if (is_enabled && ctx)
+		*is_enabled = ctx->enabled;
+	else
+		return -EINVAL;
+	return 0;
+}
+
 
 static __devinit int hdmi_audio_probe(struct platform_device *pdev)
 {
@@ -379,9 +424,12 @@ static __devinit int hdmi_audio_probe(struct platform_device *pdev)
 	}
 
 	ctx->pdev = pdev;
+	ctx->enabled = true;
 	ctx->plugin.dev = &pdev->dev;
 	ctx->plugin.ops.hw_params = hdmi_audio_hw_params;
 	ctx->plugin.ops.trigger = hdmi_audio_trigger;
+	ctx->plugin.ops.get_state = hdmi_get_state;
+	ctx->plugin.ops.set_state = hdmi_set_state;
 	ctx->params.sample_rate = DEFAULT_RATE;
 	ctx->params.bits_per_sample = DEFAULT_BPS;
 
