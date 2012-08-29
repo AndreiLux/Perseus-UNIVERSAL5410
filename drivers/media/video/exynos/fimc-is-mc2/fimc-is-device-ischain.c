@@ -37,6 +37,7 @@
 
 #include <mach/map.h>
 #include <mach/regs-clock.h>
+#include <plat/bts.h>
 
 #include "fimc-is-time.h"
 #include "fimc-is-core.h"
@@ -1689,6 +1690,9 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
 		/* 5. A5 power on */
 		fimc_is_ischain_power(this, 1);
 		dbg_ischain("power up and loaded firmware\n");
+
+		/* bts api for bandwidth guarantee */
+		bts_change_bus_traffic(&this->pdev->dev, BTS_INCREASE_BW);
 	} while (0);
 
 	printk(KERN_INFO "---%s(%d)\n", __func__, ret);
@@ -1711,6 +1715,8 @@ int fimc_is_ischain_close(struct fimc_is_device_ischain *this)
 	ret = fimc_is_itf_power_down(this);
 	if (ret)
 		err("power down is failed, retry forcelly\n");
+
+	bts_change_bus_traffic(&this->pdev->dev, BTS_DECREASE_BW);
 
 	/* 3. Power down */
 	ret = fimc_is_ischain_power(this, 0);
