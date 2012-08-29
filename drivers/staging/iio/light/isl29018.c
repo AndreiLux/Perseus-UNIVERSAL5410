@@ -64,6 +64,7 @@ struct isl29018_chip {
 	struct i2c_client	*client;
 	struct mutex		lock;
 	unsigned int		lux_scale;
+	unsigned int		lux_uscale;
 	unsigned int		range;
 	unsigned int		adc_bit;
 	int			prox_scheme;
@@ -182,6 +183,7 @@ static int isl29018_read_lux(struct i2c_client *client, int *lux)
 {
 	int lux_data;
 	struct isl29018_chip *chip = iio_priv(i2c_get_clientdata(client));
+	unsigned int data_x_range, lux_unshifted;
 
 	lux_data = isl29018_read_sensor_input(client,
 				COMMMAND1_OPMODE_ALS_ONCE);
@@ -189,7 +191,15 @@ static int isl29018_read_lux(struct i2c_client *client, int *lux)
 	if (lux_data < 0)
 		return lux_data;
 
-	*lux = (lux_data * chip->range * chip->lux_scale) >> chip->adc_bit;
+	/* To support fractional scaling, separate the unshifted lux
+	 * into two calculations: int scaling and micro-scaling.
+	 * lux_uscale ranges from 0-999999, so about 20 bits.  Split
+	 * the /1,000,000 in two to reduce the risk of over/underflow.
+	 */
+	data_x_range = lux_data * chip->range;
+	lux_unshifted = data_x_range * chip->lux_scale;
+	lux_unshifted += data_x_range / 1000 * chip->lux_uscale / 1000;
+	*lux = lux_unshifted >> chip->adc_bit;
 
 	return 0;
 }
@@ -468,6 +478,8 @@ static int isl29018_write_raw(struct iio_dev *indio_dev,
 	mutex_lock(&chip->lock);
 	if (mask == IIO_CHAN_INFO_CALIBSCALE && chan->type == IIO_LIGHT) {
 		chip->lux_scale = val;
+		/* With no write_raw_get_fmt(), val2 is a MICRO fraction. */
+		chip->lux_uscale = val2;
 		ret = 0;
 	}
 	mutex_unlock(&chip->lock);
@@ -508,7 +520,8 @@ static int isl29018_read_raw(struct iio_dev *indio_dev,
 	case IIO_CHAN_INFO_CALIBSCALE:
 		if (chan->type == IIO_LIGHT) {
 			*val = chip->lux_scale;
-			ret = IIO_VAL_INT;
+			*val2 = chip->lux_uscale;
+			ret = IIO_VAL_INT_PLUS_MICRO;
 		}
 		break;
 	default:
