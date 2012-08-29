@@ -29,6 +29,7 @@
 #include <linux/vmalloc.h>
 #include <linux/elf.h>
 #include <linux/proc_fs.h>
+#include <linux/security.h>
 #include <linux/seq_file.h>
 #include <linux/syscalls.h>
 #include <linux/fcntl.h>
@@ -2430,6 +2431,10 @@ int copy_module_from_user(const void __user *umod, unsigned long len,
 	if (info->len < sizeof(*(info->hdr)))
 		return -ENOEXEC;
 
+	err = security_kernel_module_from_file(NULL);
+	if (err)
+		return err;
+
 	/* Suck in entire file: we'll want most of it. */
 	info->hdr = vmalloc(info->len);
 	if (!info->hdr)
@@ -2465,6 +2470,10 @@ int copy_module_from_fd(int fd, struct load_info *info)
 		return -ENOEXEC;
 
 	err = vfs_getattr(file->f_vfsmnt, file->f_dentry, &stat);
+	if (err)
+		goto out;
+
+	err = security_kernel_module_from_file(file);
 	if (err)
 		goto out;
 
