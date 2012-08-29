@@ -1749,7 +1749,7 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 		ion_free(sfb->fb_ion_client, handle);
 		goto err_invalid;
 	}
-	window_size = win_config->stride * (win_config->h - 1) +
+	window_size = win_config->stride * win_config->h +
 			win_config->w * win->fbinfo->var.bits_per_pixel / 8;
 	if (win_config->offset + window_size > buf_size) {
 		dev_err(sfb->dev, "window goes past end of buffer (width = %u, height = %u, stride = %u, offset = %u, buf_size = %u)\n",
