@@ -48,32 +48,30 @@ void gsc_pixelasync_sw_reset(struct gsc_dev *dev)
 
 int gsc_wait_reset(struct gsc_dev *dev)
 {
-	unsigned long timeo = jiffies + 10; /* timeout of 50ms */
 	u32 cfg;
+	u32 cnt = 10 * USEC_PER_MSEC;
 
-	while (time_before(jiffies, timeo)) {
+	do {
 		cfg = readl(dev->regs + GSC_SW_RESET);
 		if (!cfg)
 			return 0;
-		usleep_range(10, 20);
-	}
-	gsc_dbg("wait time : %d ms", jiffies_to_msecs(jiffies - timeo + 20));
+		udelay(1);
+	} while (--cnt);
 
-	return -EBUSY;
+	return -EINVAL;
 }
 
 int gsc_wait_operating(struct gsc_dev *dev)
 {
-	unsigned long timeo = jiffies + 10; /* timeout of 50ms */
 	u32 cfg;
+	u32 cnt = 10 * USEC_PER_MSEC;
 
-	while (time_before(jiffies, timeo)) {
+	do {
 		cfg = readl(dev->regs + GSC_ENABLE);
-		if ((cfg & GSC_ENABLE_OP_STATUS) == GSC_ENABLE_OP_STATUS)
+		if (cfg & GSC_ENABLE_OP_STATUS)
 			return 0;
-		usleep_range(10, 20);
-	}
-	gsc_dbg("wait time : %d ms", jiffies_to_msecs(jiffies - timeo + 20));
+		udelay(1);
+	} while (--cnt);
 
 	return -EBUSY;
 }
