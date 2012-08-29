@@ -206,7 +206,7 @@ EXYNOS_BTS_PDATA(gscl1, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, BTS_ON_OFF);
 EXYNOS_BTS_PDATA(gscl2, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, BTS_ON_OFF);
 EXYNOS_BTS_PDATA(gscl3, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, BTS_ON_OFF);
 EXYNOS_BTS_PDATA(mfc, BTS_PRIOR_BE, "pd-mfc", "mfc", 0, BTS_NO_ACTION);
-EXYNOS_BTS_PDATA(g3dacp, BTS_PRIOR_BE, NULL, NULL, 1, BTS_NO_ACTION);
+EXYNOS_BTS_PDATA(g3dacp, BTS_PRIOR_BE, "pd-g3d", "g3d", 1, BTS_NO_ACTION);
 #if defined(CONFIG_EXYNOS4_DEV_FIMC_IS)
 EXYNOS_BTS_PDATA(isp0, BTS_PRIOR_BE, "pd-isp", "isp0", 0, BTS_CHANGE_OTHER_DEBLOCK);
 EXYNOS_BTS_PDATA(isp1, BTS_PRIOR_BE, "pd-isp", "isp1", 0, BTS_CHANGE_OTHER_DEBLOCK);
@@ -229,7 +229,7 @@ static struct platform_device exynos_device_bts_##_name = {		\
 
 EXYNOS_BTS_DEVICE(disp, &s5p_device_fimd1.dev, "disp-bts");
 EXYNOS_BTS_DEVICE(mixer, &s5p_device_mixer.dev, "mixer-bts");
-EXYNOS_BTS_DEVICE(g3dacp, NULL, "g3dacp-bts");
+EXYNOS_BTS_DEVICE(g3dacp, &exynos5_device_g3d.dev, "g3dacp-bts");
 EXYNOS_BTS_DEVICE(jpeg, NULL, "jpeg-bts");
 EXYNOS_BTS_DEVICE(gscl0, &exynos5_device_gsc0.dev, "gscl0-bts");
 EXYNOS_BTS_DEVICE(gscl1, &exynos5_device_gsc1.dev, "gscl1-bts");
