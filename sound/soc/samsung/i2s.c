@@ -662,7 +662,7 @@ static int i2s_startup(struct snd_pcm_substream *substream,
 	/* Enforce set_sysclk in Master mode */
 	i2s->rclk_srcrate = 0;
 
-	if (i2s->quirks & QUIRK_NEED_RSTCLR)
+	if (!any_active(i2s) && (i2s->quirks & QUIRK_NEED_RSTCLR))
 		writel(CON_RSTCLR, i2s->addr + I2SCON);
 
 	spin_unlock_irqrestore(&lock, flags);
