@@ -318,7 +318,7 @@ static int __devinit tps65090_i2c_probe(struct i2c_client *client,
 		dev_err(&client->dev, "regmap_init failed with err: %ld\n",
 			PTR_ERR(tps65090->rmap));
 		ret = -EINVAL;
-		goto err_irq_exit;
+		goto err_exit;
 	};
 
 #ifdef CONFIG_OF
