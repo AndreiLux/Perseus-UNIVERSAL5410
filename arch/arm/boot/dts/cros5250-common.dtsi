@@ -99,18 +99,16 @@
 					regulator-name = "vdd_arm";
 					regulator-min-microvolt = <850000>;
 					regulator-max-microvolt = <1350000>;
-					regulator-always-on;
 					regulator-boot-on;
-					reg_op_mode = <3>; /* Normal Mode */
+					reg_op_mode = <1>; /* Standby Mode */
 				};
 
 				buck3_reg: BUCK3 {
 					regulator-name = "vdd_int";
 					regulator-min-microvolt = <900000>;
 					regulator-max-microvolt = <1200000>;
-					regulator-always-on;
 					regulator-boot-on;
-					reg_op_mode = <3>; /* Normal Mode */
+					reg_op_mode = <1>; /* Standby Mode */
 				};
 
 				buck4_reg: BUCK4 {
@@ -118,7 +116,7 @@
 					regulator-min-microvolt = <850000>;
 					regulator-max-microvolt = <1300000>;
 					regulator-boot-on;
-					reg_op_mode = <3>; /* Normal Mode */
+					reg_op_mode = <1>; /* Standby Mode */
 				};
 
 				buck5_reg: BUCK5 {
