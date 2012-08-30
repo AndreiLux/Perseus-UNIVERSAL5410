@@ -35,7 +35,7 @@
 #define INT_IDLE_THRESHOLD	2
 
 #ifdef CONFIG_EXYNOS_DP
-#define MIF_LOCK_LCD		300160
+#define MIF_LOCK_LCD		300200
 #else
 #define MIF_LOCK_LCD		300133
 #endif
