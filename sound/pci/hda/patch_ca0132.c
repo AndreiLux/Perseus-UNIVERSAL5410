@@ -60,8 +60,8 @@
 #define DMA_OVERLAY_FRAME_SIZE_NWORDS		2
 
 #define MASTERCONTROL				0x80
-#define MASTERCONTROL_ALLOC_DMA_CHAN		9
-#define MASTERCONTROL_QUERY_SPEAKER_EQ_ADDRESS	22
+#define MASTERCONTROL_ALLOC_DMA_CHAN		10
+#define MASTERCONTROL_QUERY_SPEAKER_EQ_ADDRESS	60
 
 #define WIDGET_CHIP_CTRL      0x15
 #define WIDGET_DSP_CTRL       0x16
@@ -602,8 +602,16 @@ enum control_flag_id {
 };
 
 enum control_param_id {
+	/* 0: None, 1: Mic1In*/
+	CONTROL_PARAM_VIP_SOURCE               = 1,
 	/* 0: force HDA, 1: allow DSP if HDA Spdif1Out stream is idle */
 	CONTROL_PARAM_SPDIF1_SOURCE            = 2,
+	/* Port A output stage gain setting to use when 16 Ohm output
+	 * impedance is selected*/
+	CONTROL_PARAM_PORTA_160OHM_GAIN        = 8,
+	/* Port D output stage gain setting to use when 16 Ohm output
+	 * impedance is selected*/
+	CONTROL_PARAM_PORTD_160OHM_GAIN        = 10,
 
 	/* Stream Control */
 
@@ -2581,7 +2589,7 @@ static int dspload_get_speakereq_addx(struct hda_codec *codec,
 				unsigned int *y)
 {
 	int status = 0;
-	struct { unsigned short x, y; } speakereq_info;
+	struct { unsigned short y, x; } speakereq_info;
 	unsigned int size = sizeof(speakereq_info);
 
 	CA0132_DSP_LOG("dspload_get_speakereq_addx() -- begin");
@@ -2629,7 +2637,7 @@ static void release_cached_firmware(void)
 static int dspload_speakereq(struct hda_codec *codec)
 {
 	int status = 0;
-	const struct dsp_image_seg *image_x, *image_y;
+	const struct dsp_image_seg *image;
 	unsigned int x, y;
 
 	CA0132_DSP_LOG("dspload_speakereq() -- begin");
@@ -2638,18 +2646,13 @@ static int dspload_speakereq(struct hda_codec *codec)
 				    codec->bus->card->dev) != 0)
 		return -1;
 
-	image_x = (struct dsp_image_seg *)(fw_speq->data + 0x10);
-	image_y = (struct dsp_image_seg *)(fw_speq->data + 0x1028);
+	image = (struct dsp_image_seg *)(fw_speq->data);
 
 	status = dspload_get_speakereq_addx(codec, &x, &y);
 	if (FAILED(status))
 		goto done;
 
-	status = dspload_image(codec, image_x, 1, x, 0, 8);
-	if (FAILED(status))
-		goto done;
-
-	status = dspload_image(codec, image_y, 1, y, 0, 8);
+	status = dspload_image(codec, image, 1, y, 0, 8);
 
 done:
 	CA0132_DSP_LOG("dspload_speakereq() -- complete");
@@ -2741,6 +2744,24 @@ static void ca0132_cleanup_stream(struct hda_codec *codec, hda_nid_t nid)
 /*
  * PCM playbacks
  */
+static unsigned int ca0132_get_playback_latency(struct hda_codec *codec)
+{
+	struct ca0132_spec *spec = codec->spec;
+	unsigned int latency = 11;
+
+	if (!dspload_is_loaded(codec))
+		return 0;
+
+	if (spec->effects_switch[PLAY_ENHANCEMENT - EFFECT_START_NID]) {
+		if ((spec->effects_switch[SURROUND - EFFECT_START_NID]) ||
+		    (spec->effects_switch[DIALOG_PLUS - EFFECT_START_NID]))
+			latency += 32;
+
+		if (spec->cur_out_type == SPEAKER_OUT)
+			latency += 10;
+	}
+	return latency;
+}
 
 static int ca0132_playback_pcm_prepare(struct hda_pcm_stream *hinfo,
 				       struct hda_codec *codec,
@@ -2749,11 +2770,16 @@ static int ca0132_playback_pcm_prepare(struct hda_pcm_stream *hinfo,
 				       struct snd_pcm_substream *substream)
 {
 	struct ca0132_spec *spec = codec->spec;
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	unsigned int latency = ca0132_get_playback_latency(codec);
 
 	if (spec->dsp_state == DSP_DOWNLOADING) {
 		spec->dsp_stream_id = stream_tag;
 		return 0;
 	}
+
+	runtime->delay = bytes_to_frames(runtime, (latency * runtime->rate *
+					runtime->byte_align) / 1000);
 
 	ca0132_setup_stream(codec, spec->dacs[0], stream_tag, 0, format);
 	return 0;
@@ -2779,6 +2805,19 @@ static int ca0132_playback_pcm_cleanup(struct hda_pcm_stream *hinfo,
  * PCM capture
  */
 
+static unsigned int ca0132_get_capture_latency(struct hda_codec *codec)
+{
+	struct ca0132_spec *spec = codec->spec;
+	unsigned int latency = 0;
+
+	if (!dspload_is_loaded(codec))
+		return 0;
+
+	if (spec->effects_switch[CRYSTAL_VOICE - EFFECT_START_NID])
+		latency += 124;
+	return latency;
+}
+
 static int ca0132_capture_pcm_prepare(struct hda_pcm_stream *hinfo,
 				      struct hda_codec *codec,
 				      unsigned int stream_tag,
@@ -2786,9 +2825,14 @@ static int ca0132_capture_pcm_prepare(struct hda_pcm_stream *hinfo,
 				      struct snd_pcm_substream *substream)
 {
 	struct ca0132_spec *spec = codec->spec;
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	unsigned int latency = ca0132_get_capture_latency(codec);
 
 	if (spec->dsp_state == DSP_DOWNLOADING)
 		return 0;
+
+	runtime->delay = bytes_to_frames(runtime, (latency * runtime->rate *
+					runtime->byte_align) / 1000);
 
 	ca0132_setup_stream(codec, hinfo->nid, stream_tag, 0, format);
 	return 0;
@@ -3162,12 +3206,6 @@ static int ca0132_select_out(struct hda_codec *codec)
 					&tmp, sizeof(unsigned int));
 		if (err < 0)
 			goto exit;
-		/*speaker EQ bypass attenuation is 0*/
-		tmp = FLOAT_ZERO;
-		err = dspio_set_param(codec, 0x8f, 0x01,
-					&tmp, sizeof(unsigned int));
-		if (err < 0)
-			goto exit;
 
 		/* disable headphone node */
 		pin_ctl = snd_hda_codec_read(codec, spec->out_pins[1], 0,
@@ -3203,12 +3241,6 @@ static int ca0132_select_out(struct hda_codec *codec)
 					&tmp, sizeof(unsigned int));
 		if (err < 0)
 			goto exit;
-		/*speaker EQ bypass attenuation is -5.0*/
-		tmp = FLOAT_MINUS_5;
-		err = dspio_set_param(codec, 0x8f, 0x01,
-					&tmp, sizeof(unsigned int));
-		if (err < 0)
-			goto exit;
 
 		/* disable speaker*/
 		pin_ctl = snd_hda_codec_read(codec, spec->out_pins[0], 0,
@@ -3241,6 +3273,44 @@ exit:
 static void ca0132_set_dmic(struct hda_codec *codec, int enable);
 static int ca0132_mic_boost_set(struct hda_codec *codec, long val);
 static int ca0132_effects_set(struct hda_codec *codec, hda_nid_t nid, long val);
+
+static int ca0132_set_vipsource(struct hda_codec *codec, int val)
+{
+	struct ca0132_spec *spec = codec->spec;
+	unsigned int tmp;
+
+	if (!dspload_is_loaded(codec))
+		return 0;
+
+	/* if CrystalVoice if off, vipsource should be 0 */
+	if (!spec->effects_switch[CRYSTAL_VOICE - EFFECT_START_NID]
+			|| (val == 0)) {
+		chipio_set_control_param(codec, CONTROL_PARAM_VIP_SOURCE, 0);
+		chipio_set_conn_rate(codec, MEM_CONNID_MICIN1, SR_96_000);
+		chipio_set_conn_rate(codec, MEM_CONNID_MICOUT1, SR_96_000);
+		if (spec->cur_mic_type == DIGITAL_MIC)
+			tmp = FLOAT_TWO;
+		else
+			tmp = FLOAT_ONE;
+		dspio_set_param(codec, 0x80, 0x00, &tmp, sizeof(unsigned int));
+		tmp = FLOAT_ZERO;
+		dspio_set_param(codec, 0x80, 0x05, &tmp, sizeof(unsigned int));
+	} else {
+		chipio_set_conn_rate(codec, MEM_CONNID_MICIN1, SR_16_000);
+		chipio_set_conn_rate(codec, MEM_CONNID_MICOUT1, SR_16_000);
+		if (spec->cur_mic_type == DIGITAL_MIC)
+			tmp = FLOAT_TWO;
+		else
+			tmp = FLOAT_ONE;
+		dspio_set_param(codec, 0x80, 0x00, &tmp, sizeof(unsigned int));
+		tmp = FLOAT_ONE;
+		dspio_set_param(codec, 0x80, 0x05, &tmp, sizeof(unsigned int));
+		msleep(20);
+		chipio_set_control_param(codec, CONTROL_PARAM_VIP_SOURCE, val);
+	}
+
+	return 1;
+}
 
 static int ca0132_select_mic(struct hda_codec *codec)
 {
@@ -3417,6 +3487,9 @@ static int ca0132_cvoice_switch_set(struct hda_codec *codec)
 
 	/* including VoiceFX */
 	ret |= ca0132_voicefx_set(codec, (spec->voicefx_val ? 1 : 0));
+
+	/* set correct vipsource */
+	ret |= ca0132_set_vipsource(codec, 1);
 	return ret;
 }
 
@@ -4012,6 +4085,7 @@ static void ca0132_set_dmic(struct hda_codec *codec, int enable)
 
 	CA0132_LOG("ca0132_set_dmic: enable=%d\n", enable);
 
+	ca0132_set_vipsource(codec, 0);
 	if (enable) {
 		/* set DMic input as 2-ch */
 		tmp = FLOAT_TWO;
@@ -4038,6 +4112,7 @@ static void ca0132_set_dmic(struct hda_codec *codec, int enable)
 		if (!(spec->dmic_ctl & 0x20))
 			chipio_set_control_flag(codec, CONTROL_FLAG_DMIC, 0);
 	}
+	ca0132_set_vipsource(codec, 1);
 }
 
 static void ca0132_init_dmic(struct hda_codec *codec)
@@ -4146,6 +4221,13 @@ static void ca0132_setup_defaults(struct hda_codec *codec)
 		}
 	}
 
+	/*remove DSP headroom*/
+	tmp = FLOAT_ZERO;
+	dspio_set_param(codec, 0x96, 0x3C, &tmp, sizeof(unsigned int));
+
+	/*set speaker EQ bypass attenuation*/
+	dspio_set_param(codec, 0x8f, 0x01, &tmp, sizeof(unsigned int));
+
 	/* set AMic1 and AMic2 as mono mic */
 	tmp = FLOAT_ONE;
 	dspio_set_param(codec, 0x80, 0x00, &tmp, sizeof(unsigned int));
@@ -4166,6 +4248,12 @@ static void ca0132_init_flags(struct hda_codec *codec)
 	chipio_set_control_flag(codec, CONTROL_FLAG_ADC_C_HIGH_PASS, 1);
 }
 
+static void ca0132_init_params(struct hda_codec *codec)
+{
+	chipio_set_control_param(codec, CONTROL_PARAM_PORTA_160OHM_GAIN, 6);
+	chipio_set_control_param(codec, CONTROL_PARAM_PORTD_160OHM_GAIN, 6);
+}
+
 static void ca0132_set_dsp_msr(struct hda_codec *codec, bool is96k)
 {
 	chipio_set_control_flag(codec, CONTROL_FLAG_DSP_96KHZ, is96k);
@@ -4175,8 +4263,8 @@ static void ca0132_set_dsp_msr(struct hda_codec *codec, bool is96k)
 	chipio_set_control_flag(codec, CONTROL_FLAG_ADC_B_96KHZ, is96k);
 	chipio_set_control_flag(codec, CONTROL_FLAG_ADC_C_96KHZ, is96k);
 
-	chipio_set_conn_rate(codec, MEM_CONNID_MICIN1, SR_16_000);
-	chipio_set_conn_rate(codec, MEM_CONNID_MICOUT1, SR_16_000);
+	chipio_set_conn_rate(codec, MEM_CONNID_MICIN1, SR_96_000);
+	chipio_set_conn_rate(codec, MEM_CONNID_MICOUT1, SR_96_000);
 	chipio_set_conn_rate(codec, MEM_CONNID_WUH, SR_48_000);
 }
 
@@ -4387,6 +4475,7 @@ static int ca0132_init(struct hda_codec *codec)
 
 	snd_hda_power_up(codec);
 
+	ca0132_init_params(codec);
 	ca0132_init_flags(codec);
 	snd_hda_sequence_write(codec, spec->base_init_verbs);
 	ca0132_download_dsp(codec);
@@ -4489,7 +4578,7 @@ static int patch_ca0132(struct hda_codec *codec)
 
 	ca0132_config(codec);
 
-	err = snd_hda_parse_pin_defcfg(codec, &spec->autocfg, NULL, 0);
+	err = snd_hda_parse_pin_def_config(codec, &spec->autocfg, NULL);
 	if (err < 0)
 		return err;
 
