@@ -93,6 +93,7 @@ struct tps65090 {
 	int			irq_base;
 	unsigned int		id;
 	struct power_supply	*charger;
+	bool			no_ack_irq;
 };
 
 int tps65090_write(struct device *dev, int reg, uint8_t val)
@@ -183,6 +184,9 @@ static irqreturn_t tps65090_irq(int irq, void *data)
 			power_supply_get_by_name("tps65090-charger");
 	if (tps65090->charger)
 		power_supply_changed((struct power_supply *)tps65090->charger);
+
+	if (tps65090->no_ack_irq)
+		return IRQ_HANDLED;
 
 	for (i = 0; i < NUM_INT_REG; i++) {
 		ret = tps65090_read(tps65090->dev, TPS65090_INT_MSK + i, &mask);
@@ -316,6 +320,13 @@ static int __devinit tps65090_i2c_probe(struct i2c_client *client,
 		ret = -EINVAL;
 		goto err_irq_exit;
 	};
+
+#ifdef CONFIG_OF
+	if (of_find_property(tps65090->dev->of_node, "no-ack-irq", NULL)) {
+		dev_info(tps65090->dev, "Disabling irq acks to chip.\n");
+		tps65090->no_ack_irq = true;
+	}
+#endif
 
 	if (client->irq) {
 		ret = tps65090_irq_init(tps65090, client->irq);
