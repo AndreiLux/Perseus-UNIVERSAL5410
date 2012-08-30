@@ -140,7 +140,7 @@ int s3c24xx_i2c_claim(struct s3c24xx_i2c *i2c)
 		return 0;
 
 	/* Start a round of trying to claim the bus */
-	stop_time = jiffies + msecs_to_jiffies(i2c->wait_free_us) + 1;
+	stop_time = jiffies + usecs_to_jiffies(i2c->wait_free_us) + 1;
 	do {
 		/* Indicate that we want to claim the bus */
 		gpio_set_value(i2c->arb_gpios[I2C_ARB_GPIO_AP], 0);
