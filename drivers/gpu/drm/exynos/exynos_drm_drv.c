@@ -254,6 +254,12 @@ static int iommu_init(struct platform_device *pdev)
 		return -1;
 	}
 
+	/*
+	 * The ordering in Makefile warrants that this is initialized after
+	 * FIMD, so only just ensure that it works as expected and we are
+	 * reusing the mapping originally created in exynos_drm_fimd.c.
+	 */
+	WARN_ON(!exynos_drm_common_mapping);
 	if (!s5p_create_iommu_mapping(&pdev->dev, 0,
 				0, 0, exynos_drm_common_mapping)) {
 		printk(KERN_ERR "failed to create IOMMU mapping\n");

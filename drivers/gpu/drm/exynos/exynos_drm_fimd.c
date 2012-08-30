@@ -841,6 +841,13 @@ static int iommu_init(struct platform_device *pdev)
 	}
 
 	platform_set_sysmmu(&pds->dev, &pdev->dev);
+	/*
+	 * Due to the ordering in Makefile, this should be called first
+	 * (before exynos_drm_drv.c and exynos_mixer.c and actually create
+	 * the common mapping instead of reusing it. Ensure this assumption
+	 * holds.
+	 */
+	WARN_ON(exynos_drm_common_mapping);
 	exynos_drm_common_mapping = s5p_create_iommu_mapping(&pdev->dev,
 					0x20000000, SZ_256M, 4,
 					exynos_drm_common_mapping);

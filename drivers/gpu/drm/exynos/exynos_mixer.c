@@ -1011,8 +1011,14 @@ static int iommu_init(struct platform_device *pdev)
 	}
 
 	platform_set_sysmmu(&pds->dev, &pdev->dev);
+	/*
+	 * The ordering in Makefile warrants that this is initialized after
+	 * FIMD, so only just ensure that it works as expected and we are
+	 * reusing the mapping originally created in exynos_drm_fimd.c.
+	 */
+	WARN_ON(!exynos_drm_common_mapping);
 	exynos_drm_common_mapping = s5p_create_iommu_mapping(&pdev->dev,
-			0x20000000, SZ_128M, 4, exynos_drm_common_mapping);
+					0, 0, 0, exynos_drm_common_mapping);
 	if(exynos_drm_common_mapping == NULL) {
 		printk(KERN_ERR"Failed to create iommu mapping for Mixer\n");
 		return -EINVAL;
