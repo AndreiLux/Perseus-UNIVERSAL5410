@@ -661,6 +661,8 @@ static void ath_node_attach(struct ath_softc *sc, struct ieee80211_sta *sta,
 	struct ath_node *an;
 	an = (struct ath_node *)sta->drv_priv;
 
+	ATH_DBG_WARN(an->sta, "call to %s() with existing sta.\n", __func__);
+
 #ifdef CONFIG_ATH9K_DEBUGFS
 	spin_lock(&sc->nodes_lock);
 	list_add(&an->list, &sc->nodes);
@@ -681,12 +683,15 @@ static void ath_node_detach(struct ath_softc *sc, struct ieee80211_sta *sta)
 {
 	struct ath_node *an = (struct ath_node *)sta->drv_priv;
 
+	if (!an->sta)
+		return;
+
 #ifdef CONFIG_ATH9K_DEBUGFS
 	spin_lock(&sc->nodes_lock);
 	list_del(&an->list);
 	spin_unlock(&sc->nodes_lock);
-	an->sta = NULL;
 #endif
+	an->sta = NULL;
 
 	if (sc->sc_ah->caps.hw_caps & ATH9K_HW_CAP_HT)
 		ath_tx_node_cleanup(sc, an);
