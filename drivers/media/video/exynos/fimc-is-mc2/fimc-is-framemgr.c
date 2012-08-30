@@ -536,12 +536,14 @@ int fimc_is_frame_open(struct fimc_is_framemgr *this, u32 buffers)
 		INIT_LIST_HEAD(&this->frame_process_head);
 		INIT_LIST_HEAD(&this->frame_complete_head);
 
+		this->frame_cnt = buffers;
 		this->frame_free_cnt = 0;
 		this->frame_request_cnt = 0;
 		this->frame_process_cnt = 0;
 		this->frame_complete_cnt = 0;
 
 		for (i = 0; i < buffers; ++i) {
+			this->frame[i].init = false;
 			this->frame[i].index = i;
 			this->frame[i].fcount = 0;
 			this->frame[i].req_flag = 0;
@@ -550,6 +552,9 @@ int fimc_is_frame_open(struct fimc_is_framemgr *this, u32 buffers)
 			this->frame[i].shot = NULL;
 			this->frame[i].shot_ext = NULL;
 			this->frame[i].shot_size = 0;
+
+			this->frame[i].stream = NULL;
+			this->frame[i].stream_size = 0;
 
 			this->frame[i].planes = 0;
 			for (j = 0; j < FIMC_IS_MAX_PLANES; ++j) {
@@ -573,6 +578,34 @@ int fimc_is_frame_open(struct fimc_is_framemgr *this, u32 buffers)
 int fimc_is_frame_close(struct fimc_is_framemgr *this)
 {
 	int ret = 0;
+	u32 buffers;
+	u32 i, j;
+
+	buffers = this->frame_cnt;
+
+	for (i = 0; i < buffers; ++i) {
+		this->frame[i].init = false;
+		this->frame[i].index = i;
+		this->frame[i].fcount = 0;
+		this->frame[i].req_flag = 0;
+
+		this->frame[i].vb = NULL;
+		this->frame[i].shot = NULL;
+		this->frame[i].shot_ext = NULL;
+		this->frame[i].shot_size = 0;
+
+		this->frame[i].stream = NULL;
+		this->frame[i].stream_size = 0;
+
+		this->frame[i].planes = 0;
+		for (j = 0; j < FIMC_IS_MAX_PLANES; ++j) {
+			this->frame[i].kvaddr_buffer[j] = 0;
+			this->frame[i].dvaddr_buffer[j] = 0;
+		}
+
+		this->frame[i].kvaddr_shot = 0;
+		this->frame[i].dvaddr_shot = 0;
+	}
 
 	this->opened = 0;
 

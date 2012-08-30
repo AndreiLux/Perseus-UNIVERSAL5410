@@ -46,6 +46,7 @@
 #define NUM_DIS_INTERNAL_BUF		(5)
 #define NUM_3DNR_INTERNAL_BUF		(2)
 
+#define NUM_SENSOR_DMA_BUF		(8)
 #define NUM_ISP_DMA_BUF			(8)
 #define NUM_SCC_DMA_BUF			(8)
 #define NUM_SCP_DMA_BUF			(8)
@@ -55,6 +56,7 @@
 
 /*global state*/
 enum fimc_is_ischain_state {
+	FIMC_IS_ISCHAIN_OPEN,
 	FIMC_IS_ISCHAIN_LOADED,
 	FIMC_IS_ISCHAIN_POWER_ON,
 	FIMC_IS_ISCHAIN_RUN
@@ -116,7 +118,6 @@ struct fimc_is_device_ischain {
 
 	struct is_region			*is_region;
 
-	bool					lock_bus;
 	bool					force_down;
 	unsigned long				state;
 	struct mutex				mutex_state;

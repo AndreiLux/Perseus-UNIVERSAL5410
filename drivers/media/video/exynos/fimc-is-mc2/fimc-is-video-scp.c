@@ -70,7 +70,8 @@ static int fimc_is_scalerp_video_open(struct file *file)
 	dbg_scp("%s\n", __func__);
 
 	file->private_data = video;
-	fimc_is_video_open(&video->common, ischain);
+	fimc_is_video_open(&video->common, ischain,
+		VIDEO_SCP_READY_BUFFERS);
 	fimc_is_ischain_dev_open(scp, &video->common);
 
 	return 0;
@@ -84,7 +85,7 @@ static int fimc_is_scalerp_video_close(struct file *file)
 	struct fimc_is_device_ischain *ischain = common->device;
 	struct fimc_is_ischain_dev *scp = &ischain->scp;
 
-	dbg("%s\n", __func__);
+	printk(KERN_INFO "%s\n", __func__);
 
 	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state)) {
 		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
@@ -353,193 +354,7 @@ static int fimc_is_scalerp_video_s_ctrl(struct file *file, void *priv,
 	int ret = 0;
 
 	dbg("fimc_is_scalerp_video_s_ctrl(%d)(%d)\n", ctrl->id, ctrl->value);
-#if 0
-	switch (ctrl->id) {
-	case V4L2_CID_IS_CAMERA_SHOT_MODE_NORMAL:
-		ret = fimc_is_v4l2_shot_mode(isp, ctrl->value);
-		break;
-	case V4L2_CID_CAMERA_FRAME_RATE:
-#ifdef FRAME_RATE_ENABLE
-		/* FW partially supported it */
-		ret = fimc_is_v4l2_frame_rate(isp, ctrl->value);
-#else
-		err("WARN(%s) FRAME_RATE is not available now.\n", __func__);
-#endif
-		break;
-	/* Focus */
-	case V4L2_CID_IS_CAMERA_OBJECT_POSITION_X:
-	case V4L2_CID_CAMERA_OBJECT_POSITION_X:
-		isp->af.pos_x = ctrl->value;
-		break;
-	case V4L2_CID_IS_CAMERA_OBJECT_POSITION_Y:
-	case V4L2_CID_CAMERA_OBJECT_POSITION_Y:
-		isp->af.pos_y = ctrl->value;
-		break;
-	case V4L2_CID_CAMERA_FOCUS_MODE:
-		ret = fimc_is_v4l2_af_mode(isp, ctrl->value);
-		break;
-	case V4L2_CID_CAMERA_SET_AUTO_FOCUS:
-		ret = fimc_is_v4l2_af_start_stop(isp, ctrl->value);
-		break;
-	case V4L2_CID_CAMERA_TOUCH_AF_START_STOP:
-		ret = fimc_is_v4l2_touch_af_start_stop(isp, ctrl->value);
-		break;
-	case V4L2_CID_CAMERA_CAF_START_STOP:
-		ret = fimc_is_v4l2_caf_start_stop(isp, ctrl->value);
-		break;
-	/* AWB, AE Lock/Unlock */
-	case V4L2_CID_CAMERA_AEAWB_LOCK_UNLOCK:
-		ret = fimc_is_v4l2_ae_awb_lockunlock(isp, ctrl->value);
-		break;
-	/* FLASH */
-	case V4L2_CID_CAMERA_FLASH_MODE:
-		ret = fimc_is_v4l2_isp_flash_mode(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CAMERA_AWB_MODE:
-		ret = fimc_is_v4l2_awb_mode(isp, ctrl->value);
-		break;
-	case V4L2_CID_CAMERA_WHITE_BALANCE:
-		ret = fimc_is_v4l2_awb_mode_legacy(isp, ctrl->value);
-		break;
-	case V4L2_CID_CAMERA_EFFECT:
-		ret = fimc_is_v4l2_isp_effect_legacy(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CAMERA_IMAGE_EFFECT:
-		ret = fimc_is_v4l2_isp_effect(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CAMERA_ISO:
-	case V4L2_CID_CAMERA_ISO:
-		ret = fimc_is_v4l2_isp_iso(isp, ctrl->value);
-		break;
-	case V4L2_CID_CAMERA_CONTRAST:
-		ret = fimc_is_v4l2_isp_contrast_legacy(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CAMERA_CONTRAST:
-		ret = fimc_is_v4l2_isp_contrast(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CAMERA_SATURATION:
-	case V4L2_CID_CAMERA_SATURATION:
-		ret = fimc_is_v4l2_isp_saturation(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CAMERA_SHARPNESS:
-	case V4L2_CID_CAMERA_SHARPNESS:
-		ret = fimc_is_v4l2_isp_sharpness(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CAMERA_EXPOSURE:
-		ret = fimc_is_v4l2_isp_exposure(isp, ctrl->value);
-		break;
-	case V4L2_CID_CAMERA_BRIGHTNESS:
-		ret = fimc_is_v4l2_isp_exposure_legacy(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CAMERA_BRIGHTNESS:
-		ret = fimc_is_v4l2_isp_brightness(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CAMERA_HUE:
-		ret = fimc_is_v4l2_isp_hue(isp, ctrl->value);
-		break;
-	case V4L2_CID_CAMERA_METERING:
-		ret = fimc_is_v4l2_isp_metering_legacy(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CAMERA_METERING:
-		ret = fimc_is_v4l2_isp_metering(isp, ctrl->value);
-		break;
-	/* Only valid at SPOT Mode */
-	case V4L2_CID_IS_CAMERA_METERING_POSITION_X:
-		IS_ISP_SET_PARAM_METERING_WIN_POS_X(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CAMERA_METERING_POSITION_Y:
-		IS_ISP_SET_PARAM_METERING_WIN_POS_Y(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CAMERA_METERING_WINDOW_X:
-		IS_ISP_SET_PARAM_METERING_WIN_WIDTH(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CAMERA_METERING_WINDOW_Y:
-		IS_ISP_SET_PARAM_METERING_WIN_HEIGHT(isp, ctrl->value);
-		break;
-	case V4L2_CID_CAMERA_ANTI_BANDING:
-		ret = fimc_is_v4l2_isp_afc_legacy(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CAMERA_AFC_MODE:
-		ret = fimc_is_v4l2_isp_afc(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_FD_SET_MAX_FACE_NUMBER:
-		/* TODO */
-		/*
-		if (ctrl->value >= 0) {
-			IS_FD_SET_PARAM_FD_CONFIG_CMD(isp,
-				FD_CONFIG_COMMAND_MAXIMUM_NUMBER);
-			IS_FD_SET_PARAM_FD_CONFIG_MAX_NUMBER(isp, ctrl->value);
-			IS_SET_PARAM_BIT(isp, PARAM_FD_CONFIG);
-			IS_INC_PARAM_NUM(isp);
-			fimc_is_mem_cache_clean((void *)isp->is_p_region,
-				IS_PARAM_SIZE);
-			fimc_is_hw_set_param(isp);
-		}
-		*/
-		break;
-	case V4L2_CID_IS_FD_SET_ROLL_ANGLE:
-		ret = fimc_is_v4l2_fd_angle_mode(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_FD_SET_DATA_ADDRESS:
-		isp->fd_header.target_addr = ctrl->value;
-		break;
-	case V4L2_CID_IS_SET_ISP:
-		ret = fimc_is_v4l2_set_isp(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_SET_DRC:
-		ret = fimc_is_v4l2_set_drc(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CMD_ISP:
-		ret = fimc_is_v4l2_cmd_isp(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CMD_DRC:
-		ret = fimc_is_v4l2_cmd_drc(isp, ctrl->value);
-		break;
-	case V4L2_CID_IS_CMD_FD:
-#ifdef FD_ENABLE
-		ret = fimc_is_v4l2_cmd_fd(isp, ctrl->value);
-#endif
-		break;
-	case V4L2_CID_CAMERA_SCENE_MODE:
-		ret = fimc_is_v4l2_isp_scene_mode(isp, ctrl->value);
-		break;
-	case V4L2_CID_CAMERA_VT_MODE:
-		isp->setfile.sub_index = ctrl->value;
-		if (ctrl->value == 1)
-			printk(KERN_INFO "VT mode is selected\n");
-		break;
-	case V4L2_CID_CAMERA_SET_ODC:
-#ifdef ODC_ENABLE
-		ret = fimc_is_ctrl_odc(isp, ctrl->value);
-#else
-		err("WARN(%s) ODC is not available now.\n", __func__);
-#endif
-		break;
-	case V4L2_CID_CAMERA_SET_3DNR:
-#ifdef TDNR_ENABLE
-		ret = fimc_is_ctrl_3dnr(isp, ctrl->value);
-#else
-		err("WARN(%s) 3DNR is not available now.\n", __func__);
-#endif
-		break;
-	case V4L2_CID_CAMERA_ZOOM:
-		ret = fimc_is_digital_zoom(isp, ctrl->value);
-		break;
-	case V4L2_CID_CAMERA_SET_DIS:
-#ifdef DIS_ENABLE
-		/* FW partially supported it */
-		ret = fimc_is_ctrl_dis(isp, ctrl->value);
-#else
-		err("WARN(%s) DIS is not available now.\n", __func__);
-#endif
-		break;
-	case V4L2_CID_CAMERA_VGA_BLUR:
-		break;
-	default:
-		err("Invalid control\n");
-		return -EINVAL;
-	}
-#endif
+
 	return ret;
 }
 
@@ -621,11 +436,18 @@ static int fimc_is_scalerp_start_streaming(struct vb2_queue *q,
 {
 	int ret = 0;
 	struct fimc_is_video_scp *video = q->drv_priv;
+	struct fimc_is_video_common *common = &video->common;
 
 	dbg_scp("%s\n", __func__);
 
-	if (test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state))
+	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state) &&
+		test_bit(FIMC_IS_VIDEO_BUFFER_READY, &common->state))
 		set_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
+	else {
+		err("already stream on or buffer is not ready(%ld)",
+			common->state);
+		ret = -EINVAL;
+	}
 
 	return ret;
 }
@@ -634,16 +456,21 @@ static int fimc_is_scalerp_stop_streaming(struct vb2_queue *q)
 {
 	int ret = 0;
 	struct fimc_is_video_scp *video = q->drv_priv;
-	struct fimc_is_device_ischain *ischain = video->common.device;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
 	struct fimc_is_ischain_dev *scp = &ischain->scp;
 
 	dbg_scp("%s\n", __func__);
 
-	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)) {
-		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
-		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state);
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state)) {
+		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
+		clear_bit(FIMC_IS_VIDEO_BUFFER_READY, &common->state);
+		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &common->state);
 		fimc_is_frame_close(&scp->framemgr);
 		fimc_is_frame_open(&scp->framemgr, NUM_SCP_DMA_BUF);
+	} else {
+		err("already stream off");
+		ret = -EINVAL;
 	}
 
 	return ret;
@@ -652,14 +479,15 @@ static int fimc_is_scalerp_stop_streaming(struct vb2_queue *q)
 static void fimc_is_scalerp_buffer_queue(struct vb2_buffer *vb)
 {
 	struct fimc_is_video_scp *video = vb->vb2_queue->drv_priv;
-	struct fimc_is_device_ischain *ischain = video->common.device;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
 	struct fimc_is_ischain_dev *scp = &ischain->scp;
 
 #ifdef DBG_STREAMING
 	dbg_scp("%s\n", __func__);
 #endif
 
-	fimc_is_video_buffer_queue(&video->common, vb, &scp->framemgr);
+	fimc_is_video_buffer_queue(common, vb, &scp->framemgr);
 	fimc_is_ischain_dev_buffer_queue(scp, vb->v4l2_buf.index);
 }
 

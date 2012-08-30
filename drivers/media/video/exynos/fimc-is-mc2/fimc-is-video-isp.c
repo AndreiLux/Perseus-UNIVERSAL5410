@@ -72,7 +72,8 @@ static int fimc_is_isp_video_open(struct file *file)
 	dbg_isp("%s\n", __func__);
 
 	file->private_data = video;
-	fimc_is_video_open(&video->common, ischain);
+	fimc_is_video_open(&video->common, ischain,
+		VIDEO_ISP_READY_BUFFERS);
 
 	return 0;
 }
@@ -83,7 +84,7 @@ static int fimc_is_isp_video_close(struct file *file)
 	struct fimc_is_video_common *common = &video->common;
 	struct fimc_is_device_ischain *ischain = common->device;
 
-	dbg_isp("%s\n", __func__);
+	printk(KERN_INFO "%s\n", __func__);
 
 	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state))
 		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
@@ -467,13 +468,18 @@ static int fimc_is_isp_start_streaming(struct vb2_queue *q,
 {
 	int ret = 0;
 	struct fimc_is_video_isp *video = q->drv_priv;
-	struct fimc_is_device_ischain *ischain = video->common.device;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
 
 	dbg_isp("%s\n", __func__);
 
-	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)) {
-		set_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
-		fimc_is_ischain_isp_start(ischain, &video->common);
+	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state)) {
+		set_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
+		fimc_is_ischain_isp_start(ischain, common);
+	} else {
+		err("already stream on or buffer is not ready(%ld)",
+			common->state);
+		ret = -EINVAL;
 	}
 
 	return ret;
@@ -483,12 +489,16 @@ static int fimc_is_isp_stop_streaming(struct vb2_queue *q)
 {
 	int ret = 0;
 	struct fimc_is_video_isp *video = q->drv_priv;
-	struct fimc_is_device_ischain *ischain = video->common.device;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
 
-	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)) {
-		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
-		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state);
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state)) {
+		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
+		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &common->state);
 		fimc_is_ischain_isp_stop(ischain);
+	} else {
+		err("already stream off");
+		ret = -EINVAL;
 	}
 
 	return ret;

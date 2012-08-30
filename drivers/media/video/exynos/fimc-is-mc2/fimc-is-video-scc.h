@@ -3,6 +3,8 @@
 
 #include "fimc-is-video.h"
 
+#define VIDEO_SCC_READY_BUFFERS 8
+
 struct fimc_is_video_scc {
 	struct fimc_is_video_common common;
 };

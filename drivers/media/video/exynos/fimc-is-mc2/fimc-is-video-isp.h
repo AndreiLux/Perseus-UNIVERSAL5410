@@ -3,6 +3,8 @@
 
 #include "fimc-is-video.h"
 
+#define VIDEO_ISP_READY_BUFFERS 0
+
 struct fimc_is_video_isp {
 	struct fimc_is_video_common common;
 };

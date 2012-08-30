@@ -72,7 +72,8 @@ static int fimc_is_bayer_video_open(struct file *file)
 	dbg_sensor("%s\n", __func__);
 
 	file->private_data = video;
-	fimc_is_video_open(&video->common, sensor);
+	fimc_is_video_open(&video->common, sensor,
+		VIDEO_SENSOR_READY_BUFFERS);
 	fimc_is_sensor_open(sensor);
 
 	return 0;
@@ -84,7 +85,7 @@ static int fimc_is_bayer_video_close(struct file *file)
 	struct fimc_is_video_common *common = &video->common;
 	struct fimc_is_device_sensor *sensor = common->device;
 
-	dbg_sensor("%s\n", __func__);
+	printk(KERN_INFO "%s\n", __func__);
 
 	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state))
 		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
@@ -420,15 +421,21 @@ static inline void fimc_is_bayer_unlock(struct vb2_queue *vq)
 static int fimc_is_bayer_start_streaming(struct vb2_queue *q,
 						unsigned int count)
 {
+	int ret = 0;
 	struct fimc_is_video_sensor *video = q->drv_priv;
 	struct fimc_is_video_common *common = &video->common;
 	struct fimc_is_device_sensor *sensor = common->device;
 
 	dbg_sensor("%s\n", __func__);
 
-	if (test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &common->state)) {
+	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state) &&
+		test_bit(FIMC_IS_VIDEO_BUFFER_READY, &common->state)) {
 		set_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
 		fimc_is_sensor_back_start(sensor, common);
+	} else {
+		err("already stream on or buffer is not ready(%ld)",
+			common->state);
+		ret = -EINVAL;
 	}
 
 	return 0;
@@ -436,17 +443,21 @@ static int fimc_is_bayer_start_streaming(struct vb2_queue *q,
 
 static int fimc_is_bayer_stop_streaming(struct vb2_queue *q)
 {
+	int ret = 0;
 	struct fimc_is_video_sensor *video = q->drv_priv;
+	struct fimc_is_video_common *common = &video->common;
 	struct fimc_is_device_sensor *sensor = video->common.device;
 
 	dbg_sensor("%s\n", __func__);
 
 	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)) {
 		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
+		clear_bit(FIMC_IS_VIDEO_BUFFER_READY, &common->state);
 		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state);
 		fimc_is_sensor_back_stop(sensor);
-		fimc_is_frame_close(sensor->framemgr);
-		fimc_is_frame_open(sensor->framemgr, 8);
+	} else {
+		err("already stream off");
+		ret = -EINVAL;
 	}
 
 	return 0;

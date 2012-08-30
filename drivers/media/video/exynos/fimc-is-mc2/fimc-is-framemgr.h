@@ -21,7 +21,7 @@
 /*#define TRACE_ID		(0xF00)*/
 #define TRACE_ID		(0x0)
 
-#define FRAMEMGR_MAX_REQUEST 20
+#define FRAMEMGR_MAX_REQUEST	20
 
 /*flite frame start tasklet*/
 #define FMGR_IDX_0		(0x10)
@@ -78,21 +78,25 @@ enum fimc_is_frame_reqeust {
 struct fimc_is_frame_shot {
 	struct list_head list;
 
+	/*sensor and isp use*/
+	bool init;
 	struct camera2_shot *shot;
 	struct camera2_shot_ext *shot_ext;
+	u32 kvaddr_shot;
+	u32 dvaddr_shot;
 	u32 shot_size;
+
+	/*stream use*/
+	struct camera2_stream *stream;
+	u32 stream_size;
 
 	u32 planes;
 	u32 kvaddr_buffer[4];
 	u32 dvaddr_buffer[4];
 
-	/*for special*/
-	u32 kvaddr_shot;
-	u32 dvaddr_shot;
-	u32 state;
-
 	struct timeval *tzone;
 
+	u32 state;
 	u32 fcount;
 	u32 index;
 	unsigned long req_flag;
@@ -109,6 +113,7 @@ struct fimc_is_framemgr {
 
 	spinlock_t			slock;
 
+	u32				frame_cnt;
 	u32				frame_free_cnt;
 	u32				frame_request_cnt;
 	u32				frame_process_cnt;

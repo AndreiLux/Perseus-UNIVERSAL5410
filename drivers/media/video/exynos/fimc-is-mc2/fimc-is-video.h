@@ -2,11 +2,12 @@
 #define FIMC_IS_VIDEO_H
 
 #define FIMC_IS_MAX_BUF_NUM			(16)
-#define FIMC_IS_MAX_PLANES		(3)
+#define FIMC_IS_MAX_PLANES			(4)
 #define FIMC_IS_INVALID_BUF_INDEX		(0xFF)
 
 enum fimc_is_video_state {
 	FIMC_IS_VIDEO_BUFFER_PREPARED,
+	FIMC_IS_VIDEO_BUFFER_READY,
 	FIMC_IS_VIDEO_STREAM_ON
 };
 
@@ -32,6 +33,7 @@ struct fimc_is_video_common {
 	struct mutex			lock;
 	struct fimc_is_frame		frame;
 	u32				buffers;
+	u32				buffers_ready;
 	u32				buf_ref_cnt;
 	u32				buf_mask;
 
@@ -58,7 +60,8 @@ int fimc_is_video_probe(struct fimc_is_video_common *video,
 	const struct v4l2_file_operations *fops,
 	const struct v4l2_ioctl_ops *ioctl_ops,
 	const struct vb2_ops *vb2_ops);
-int fimc_is_video_open(struct fimc_is_video_common *video, void *device);
+int fimc_is_video_open(struct fimc_is_video_common *video,
+	void *device, u32 buffers_ready);
 int fimc_is_video_close(struct fimc_is_video_common *video);
 int fimc_is_video_reqbufs(struct fimc_is_video_common *video,
 	struct v4l2_requestbuffers *request);

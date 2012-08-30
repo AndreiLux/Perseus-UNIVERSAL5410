@@ -92,6 +92,7 @@
 /*#define FW_DEBUG*/
 #define RESERVED_MEM
 #define ENABLE_DZOOM
+/*#define USE_FRAME_SYNC*/
 
 #ifdef DEBUG
 #define dbg(fmt, args...) \

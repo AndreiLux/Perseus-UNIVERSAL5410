@@ -658,14 +658,9 @@ static void tasklet_func_flite_end(unsigned long data)
 				*/
 			}
 		} else {
-			err("process shot is empty(state is invalid");
-			err("unrecoverable error is occured");
+			err("process shot is empty(state is invalid(%d, %ld))",
+				bdone, flite->state);
 			fimc_is_frame_print_all(framemgr);
-
-			/*this is debugging ponit for deadlock*/
-			/*
-			fimc_is_ischain_print_status(sensor->ischain);
-			*/
 		}
 	} else {
 		fimc_is_frame_request_head(framemgr, &frame);
@@ -847,17 +842,9 @@ int fimc_is_flite_start(struct fimc_is_device_flite *this,
 
 	framemgr = this->framemgr;
 
+	clear_bit(FIMC_IS_FLITE_LAST_CAPTURE, &this->state);
 	init_fimc_lite(this->regs);
 
-	/*
-	for (i = 0; i < video->buffers; i++) {
-		buf_index = i*video->frame.format.num_planes;
-		dbg_front("(%d)set buf(%d) = 0x%08x\n",
-			buf_index, i, video->buf_dva[i][0]);
-
-		flite_hw_set_use_buffer(this->regs, i);
-		flite_hw_set_start_addr(this->regs, i, video->buf_dva[i][0]);
-	}*/
 	spin_lock_irqsave(&framemgr->slock, flags);
 
 	flite_hw_set_use_buffer(this->regs, 0);
@@ -889,7 +876,7 @@ int fimc_is_flite_stop(struct fimc_is_device_flite *this)
 
 	stop_fimc_lite(this->regs);
 
-	dbg_front("waiting last capture\n");
+	dbg_back("waiting last capture\n");
 	ret = wait_event_timeout(this->wait_queue,
 		test_bit(FIMC_IS_FLITE_LAST_CAPTURE, &this->state),
 		FIMC_IS_FLITE_STOP_TIMEOUT);
@@ -898,8 +885,6 @@ int fimc_is_flite_stop(struct fimc_is_device_flite *this)
 		stop_fimc_lite(this->regs);
 		msleep(60);
 	}
-
-	clear_bit(FIMC_IS_FLITE_LAST_CAPTURE, &this->state);
 
 	return ret;
 }

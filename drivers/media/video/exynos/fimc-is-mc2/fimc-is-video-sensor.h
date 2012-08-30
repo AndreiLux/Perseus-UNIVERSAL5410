@@ -3,6 +3,8 @@
 
 #include "fimc-is-video.h"
 
+#define VIDEO_SENSOR_READY_BUFFERS 3
+
 struct fimc_is_video_sensor {
 	struct fimc_is_video_common common;
 };

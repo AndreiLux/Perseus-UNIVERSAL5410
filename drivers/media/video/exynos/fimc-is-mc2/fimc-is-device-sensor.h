@@ -41,6 +41,7 @@ struct fimc_is_enum_sensor {
 };
 
 enum fimc_is_sensor_state {
+	FIMC_IS_SENSOR_OPEN,
 	FIMC_IS_SENSOR_FRONT_START,
 	FIMC_IS_SENSOR_BACK_START
 };
@@ -67,10 +68,7 @@ struct fimc_is_device_sensor {
 	struct fimc_is_enum_sensor	*active_sensor;
 
 	unsigned long			state;
-	struct mutex			state_barrier;
-	/*iky to do here*/
-
-	u32 flite_ch;
+	spinlock_t			slock_state;
 
 	void *dev_data;
 

@@ -877,6 +877,14 @@ struct camera2_shot_ext {
 	struct camera2_shot	shot;
 };
 
+/** \brief
+	stream structure for scaler.
+*/
+struct camera2_stream {
+	uint32_t		fcount;
+	uint32_t		address;
+};
+
 #define CAM_LENS_CMD		(0x1 << 0x0)
 #define CAM_SENSOR_CMD		(0x1 << 0x1)
 #define CAM_FLASH_CMD		(0x1 << 0x2)

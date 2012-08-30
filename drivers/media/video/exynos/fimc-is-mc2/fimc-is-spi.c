@@ -57,7 +57,7 @@ int fimc_is_spi_read(void *buf, size_t size)
 		err("spi sync error - can't get device information");
 		return -EIO;
 	}
-	printk(KERN_INFO "Read Cal Data from sensor\n");
+
 	printk(KERN_INFO "Manufacturer ID : 0x%08x\n", res[0]);
 	printk(KERN_INFO "Device ID : 0x%08x\n", res[1]);
 
