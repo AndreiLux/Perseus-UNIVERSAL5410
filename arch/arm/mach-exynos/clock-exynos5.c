@@ -248,6 +248,11 @@ static int exynos5_clk_ip_fsys_ctrl(struct clk *clk, int enable)
 	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_FSYS, clk, enable);
 }
 
+static int exynos5_clk_ip_sysrgt_ctrl(struct clk *clk, int enable)
+{
+	return s5p_gatectrl(EXYNOS5_CLKGATE_IP_SYSRGT, clk, enable);
+}
+
 static int exynos5_clk_block_ctrl(struct clk *clk, int enable)
 {
 	return s5p_gatectrl(EXYNOS5_CLKGATE_BLOCK, clk, enable);
@@ -898,6 +903,11 @@ static struct clk exynos5_init_clocks_off[] = {
 		.enable		= exynos5_clk_ip_peric_ctrl,
 		.ctrlbit	= (1 << 24),
 	}, {
+		.name		= "hdmicec",
+		.parent		= &exynos5_clk_aclk_66.clk,
+		.enable		= exynos5_clk_ip_peris_ctrl,
+		.ctrlbit	= (1 << 16),
+	}, {
 		.name		= "watchdog",
 		.parent		= &exynos5_clk_aclk_66.clk,
 		.enable		= exynos5_clk_ip_peris_ctrl,
@@ -907,6 +917,31 @@ static struct clk exynos5_init_clocks_off[] = {
 		.parent		= &exynos5_clk_aclk_66.clk,
 		.enable		= exynos5_clk_ip_peris_ctrl,
 		.ctrlbit	= (1 << 20),
+	}, {
+		.name		= "pkey0",
+		.parent		= &exynos5_clk_aclk_66.clk,
+		.enable		= exynos5_clk_ip_peris_ctrl,
+		.ctrlbit	= (1 << 22),
+	}, {
+		.name		= "pkey1",
+		.parent		= &exynos5_clk_aclk_66.clk,
+		.enable		= exynos5_clk_ip_peris_ctrl,
+		.ctrlbit	= (1 << 23),
+	}, {
+		.name		= "monocnt",
+		.parent		= &exynos5_clk_aclk_66.clk,
+		.enable		= exynos5_clk_ip_peris_ctrl,
+		.ctrlbit	= (1 << 24),
+	}, {
+		.name		= "mipihsi",
+		.parent		= &exynos5_clk_aclk_200.clk,
+		.enable		= exynos5_clk_ip_fsys_ctrl,
+		.ctrlbit	= (1 << 8),
+	}, {
+		.name		= "rtic",
+		.parent		= &exynos5_clk_aclk_200.clk,
+		.enable		= exynos5_clk_ip_fsys_ctrl,
+		.ctrlbit	= ((1 << 11) | (1 << 9)),
 	}, {
 		.name		= "hsmmc",
 		.devname	= "exynos4-sdhci.0",
@@ -936,6 +971,11 @@ static struct clk exynos5_init_clocks_off[] = {
 		.parent		= &exynos5_clk_aclk_200.clk,
 		.enable		= exynos5_clk_ip_fsys_ctrl,
 		.ctrlbit	= (1 << 16),
+	}, {
+		.name		= "sromc",
+		.parent		= &exynos5_clk_aclk_200.clk,
+		.enable		= exynos5_clk_ip_fsys_ctrl,
+		.ctrlbit	= (1 << 17),
 	}, {
 		.name		= "sata",
 		.devname	= "ahci",
@@ -1036,6 +1076,10 @@ static struct clk exynos5_init_clocks_off[] = {
 		.enable		= exynos5_clk_ip_gen_ctrl,
 		.ctrlbit	= ((1 << 12) | (1 << 2)),
 	}, {
+		.name		= "smmu_mdma1",
+		.enable		= exynos5_clk_ip_gen_ctrl,
+		.ctrlbit	= (1 << 9),
+	}, {
 		.name		= "dsim0",
 		.enable		= exynos5_clk_ip_disp1_ctrl,
 		.ctrlbit	= (1 << 3),
@@ -1091,7 +1135,7 @@ static struct clk exynos5_init_clocks_off[] = {
 		.ctrlbit	= (1 << 31),
 	}, {
 		.name		= "usbhost",
-		.enable		= exynos5_clk_ip_fsys_ctrl ,
+		.enable		= exynos5_clk_ip_fsys_ctrl,
 		.ctrlbit	= (1 << 18),
 	}, {
 		.name		= "usbotg",
@@ -1261,6 +1305,10 @@ static struct clk exynos5_init_clocks_off[] = {
 		.name		= "efclk",
 		.enable		= exynos5_clk_bus_syslft_ctrl,
 		.ctrlbit	= (1 << 16),
+	}, {
+		.name		= "mdma",
+		.enable		= exynos5_clk_ip_acp_ctrl,
+		.ctrlbit	= ((1 << 1) | (1 << 8)),
 	}
 };
 
@@ -1322,6 +1370,13 @@ static struct clk exynos5_clk_mdma1 = {
 	.devname	= "dma-pl330.2",
 	.enable		= exynos5_clk_ip_gen_ctrl,
 	.ctrlbit	= ((1 << 4) | (1 << 14)),
+};
+
+static struct clk exynos5_c2c_clock = {
+	.name		= "c2c",
+	.devname	= "samsung-c2c",
+	.enable		= exynos5_clk_ip_sysrgt_ctrl,
+	.ctrlbit	= ((1 << 2) | (1 << 1)),
 };
 
 static struct clk *clkset_sclk_audio0_list[] = {
@@ -2732,6 +2787,9 @@ void __init exynos5_register_clocks(void)
 	s3c_register_clocks(exynos5_init_clocks_off, ARRAY_SIZE(exynos5_init_clocks_off));
 	s3c_disable_clocks(exynos5_init_clocks_off, ARRAY_SIZE(exynos5_init_clocks_off));
 	clkdev_add_table(exynos5_clk_lookup, ARRAY_SIZE(exynos5_clk_lookup));
+
+	s3c24xx_register_clock(&exynos5_c2c_clock);
+	s3c_disable_clocks(&exynos5_c2c_clock, 1);
 
 	s3c_disable_clocks(&exynos5_clk_clkout.clk, 1);
 	register_syscore_ops(&exynos5_clock_syscore_ops);
