@@ -220,6 +220,7 @@
 			reg = <0x48>;
 			interrupts = <22 0>;
 			interrupt-parent = <&wakeup_eint>;
+		        no-ack-irq;
 
 			voltage-regulators {
 				VFET1 {
