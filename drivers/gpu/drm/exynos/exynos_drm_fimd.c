@@ -172,44 +172,6 @@ static struct exynos_drm_display_ops fimd_display_ops = {
 	.power_on = fimd_display_power_on,
 };
 
-static void fimd_dpms(struct device *subdrv_dev, int mode)
-{
-	struct fimd_context *ctx = get_fimd_context(subdrv_dev);
-
-	DRM_DEBUG_KMS("%s, %d\n", __FILE__, mode);
-	/* TODO:
-	* For Mode Switching, the FIMD need not be turned off, need
-	* to find another way to DPMS off FIMD
-	*/
-	return;
-
-	mutex_lock(&ctx->lock);
-
-	switch (mode) {
-	case DRM_MODE_DPMS_ON:
-		/*
-		 * enable fimd hardware only if suspended status.
-		 *
-		 * P.S. fimd_dpms function would be called at booting time so
-		 * clk_enable could be called double time.
-		 */
-		if (ctx->suspended)
-			pm_runtime_get_sync(subdrv_dev);
-		break;
-	case DRM_MODE_DPMS_STANDBY:
-	case DRM_MODE_DPMS_SUSPEND:
-	case DRM_MODE_DPMS_OFF:
-		if (!ctx->suspended)
-			pm_runtime_put_sync(subdrv_dev);
-		break;
-	default:
-		DRM_DEBUG_KMS("unspecified mode %d\n", mode);
-		break;
-	}
-
-	mutex_unlock(&ctx->lock);
-}
-
 static void fimd_apply(struct device *subdrv_dev)
 {
 	struct fimd_context *ctx = get_fimd_context(subdrv_dev);
@@ -328,7 +290,6 @@ static void fimd_disable_vblank(struct device *dev)
 }
 
 static struct exynos_drm_manager_ops fimd_manager_ops = {
-	.dpms = fimd_dpms,
 	.apply = fimd_apply,
 	.commit = fimd_commit,
 	.enable_vblank = fimd_enable_vblank,
