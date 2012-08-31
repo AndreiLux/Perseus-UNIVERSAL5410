@@ -1056,26 +1056,23 @@ static int __init s3c64xx_spi_probe(struct platform_device *pdev)
 		goto err3;
 	}
 
-	if (clk_enable(sdd->clk)) {
-		dev_err(&pdev->dev, "Couldn't enable clock 'spi'\n");
-		ret = -EBUSY;
-		goto err4;
-	}
-
 	sprintf(clk_name, "spi_busclk%d", sci->src_clk_nr);
 	sdd->src_clk = clk_get(&pdev->dev, clk_name);
 	if (IS_ERR(sdd->src_clk)) {
 		dev_err(&pdev->dev,
 			"Unable to acquire clock '%s'\n", clk_name);
 		ret = PTR_ERR(sdd->src_clk);
-		goto err5;
+		goto err4;
 	}
 
-	if (clk_enable(sdd->src_clk)) {
-		dev_err(&pdev->dev, "Couldn't enable clock '%s'\n", clk_name);
-		ret = -EBUSY;
-		goto err6;
-	}
+	pm_runtime_enable(&pdev->dev);
+
+#if defined(CONFIG_PM_RUNTIME)
+	pm_runtime_get_sync(&pdev->dev);
+#else
+	clk_enable(sdd->clk);
+	clk_enable(sdd->src_clk);
+#endif
 
 	/* Setup Deufult Mode */
 	s3c64xx_spi_hwinit(sdd, pdev->id);
@@ -1088,7 +1085,7 @@ static int __init s3c64xx_spi_probe(struct platform_device *pdev)
 	if (ret != 0) {
 		dev_err(&pdev->dev, "Failed to request IRQ %d: %d\n",
 			irq, ret);
-		goto err7;
+		goto err5;
 	}
 
 	writel(S3C64XX_SPI_INT_RX_OVERRUN_EN | S3C64XX_SPI_INT_RX_UNDERRUN_EN |
@@ -1098,7 +1095,7 @@ static int __init s3c64xx_spi_probe(struct platform_device *pdev)
 	if (spi_register_master(master)) {
 		dev_err(&pdev->dev, "cannot register SPI master\n");
 		ret = -EBUSY;
-		goto err8;
+		goto err6;
 	}
 
 	dev_dbg(&pdev->dev, "Samsung SoC SPI Driver loaded for Bus SPI-%d "
@@ -1108,18 +1105,21 @@ static int __init s3c64xx_spi_probe(struct platform_device *pdev)
 					mem_res->end, mem_res->start,
 					sdd->rx_dma.dmach, sdd->tx_dma.dmach);
 
-	pm_runtime_enable(&pdev->dev);
+	pm_runtime_put(&pdev->dev);
 
 	return 0;
 
-err8:
-	free_irq(irq, sdd);
-err7:
-	clk_disable(sdd->src_clk);
 err6:
-	clk_put(sdd->src_clk);
+	free_irq(irq, sdd);
 err5:
+#if defined(CONFIG_PM_RUNTIME)
+	pm_runtime_put(&pdev->dev);
+#else
+	clk_disable(sdd->src_clk);
 	clk_disable(sdd->clk);
+#endif
+	pm_runtime_disable(&pdev->dev);
+	clk_put(sdd->src_clk);
 err4:
 	clk_put(sdd->clk);
 err3:
@@ -1140,18 +1140,20 @@ static int s3c64xx_spi_remove(struct platform_device *pdev)
 	struct s3c64xx_spi_driver_data *sdd = spi_master_get_devdata(master);
 	struct resource	*mem_res;
 
-	pm_runtime_disable(&pdev->dev);
-
 	spi_unregister_master(master);
 
 	writel(0, sdd->regs + S3C64XX_SPI_INT_EN);
 
 	free_irq(platform_get_irq(pdev, 0), sdd);
 
+#ifndef CONFIG_PM_RUNTIME
 	clk_disable(sdd->src_clk);
-	clk_put(sdd->src_clk);
-
 	clk_disable(sdd->clk);
+#endif
+
+	pm_runtime_disable(&pdev->dev);
+
+	clk_put(sdd->src_clk);
 	clk_put(sdd->clk);
 
 	iounmap((void *) sdd->regs);
@@ -1174,9 +1176,11 @@ static int s3c64xx_spi_suspend(struct device *dev)
 
 	spi_master_suspend(master);
 
+#ifndef CONFIG_PM_RUNTIME
 	/* Disable the clock */
 	clk_disable(sdd->src_clk);
 	clk_disable(sdd->clk);
+#endif
 
 	sdd->cur_speed = 0; /* Output Clock is stopped */
 
@@ -1192,13 +1196,19 @@ static int s3c64xx_spi_resume(struct device *dev)
 
 	sci->cfg_gpio(pdev);
 
+#if defined(CONFIG_PM_RUNTIME)
+	pm_runtime_get_sync(&sdd->pdev->dev);
+#else
 	/* Enable the clock */
 	clk_enable(sdd->src_clk);
 	clk_enable(sdd->clk);
+#endif
 
 	s3c64xx_spi_hwinit(sdd, pdev->id);
 
 	spi_master_resume(master);
+
+	pm_runtime_put(&sdd->pdev->dev);
 
 	return 0;
 }
