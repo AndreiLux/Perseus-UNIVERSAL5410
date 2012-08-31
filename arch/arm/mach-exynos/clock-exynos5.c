@@ -1325,32 +1325,32 @@ static struct clk exynos5_init_clocks_off[] = {
 static struct clk exynos5_init_clocks_on[] = {
 	{
 		.name		= "uart",
-		.devname	= "s5pv210-uart.0",
+		.devname	= "exynos4210-uart.0",
 		.enable		= exynos5_clk_ip_peric_ctrl,
 		.ctrlbit	= (1 << 0),
 	}, {
 		.name		= "uart",
-		.devname	= "s5pv210-uart.1",
+		.devname	= "exynos4210-uart.1",
 		.enable		= exynos5_clk_ip_peric_ctrl,
 		.ctrlbit	= (1 << 1),
 	}, {
 		.name		= "uart",
-		.devname	= "s5pv210-uart.2",
+		.devname	= "exynos4210-uart.2",
 		.enable		= exynos5_clk_ip_peric_ctrl,
 		.ctrlbit	= (1 << 2),
 	}, {
 		.name		= "uart",
-		.devname	= "s5pv210-uart.3",
+		.devname	= "exynos4210-uart.3",
 		.enable		= exynos5_clk_ip_peric_ctrl,
 		.ctrlbit	= (1 << 3),
 	}, {
 		.name		= "uart",
-		.devname	= "s5pv210-uart.4",
+		.devname	= "exynos4210-uart.4",
 		.enable		= exynos5_clk_ip_peric_ctrl,
 		.ctrlbit	= (1 << 4),
 	}, {
 		.name		= "uart",
-		.devname	= "s5pv210-uart.5",
+		.devname	= "exynos4210-uart.5",
 		.enable		= exynos5_clk_ip_peric_ctrl,
 		.ctrlbit	= (1 << 5),
 	}, {
