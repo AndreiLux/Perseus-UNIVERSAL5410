@@ -1028,18 +1028,17 @@ static int dspio_send(struct hda_codec *codec, unsigned int reg,
 
 static void dspio_write_wait(struct hda_codec *codec)
 {
-	int cur_val, prv_val;
-	int retry = 50;
+	int status;
+	unsigned long timeout = jiffies + msecs_to_jiffies(1000);
 
-	cur_val = 0;
 	do {
-		prv_val = cur_val;
-		msleep(20);
-		dspio_send(codec, VENDOR_DSPIO_SCP_POST_COUNT_QUERY, 1);
-		dspio_send(codec, VENDOR_DSPIO_STATUS, 0);
-		cur_val = snd_hda_codec_read(codec, WIDGET_DSP_CTRL, 0,
-					   VENDOR_DSPIO_SCP_READ_COUNT, 0);
-	} while (cur_val && (cur_val == prv_val) && --retry);
+		status = snd_hda_codec_read(codec, WIDGET_DSP_CTRL, 0,
+						VENDOR_DSPIO_STATUS, 0);
+		if ((status == VENDOR_STATUS_DSPIO_OK) ||
+		    (status == VENDOR_STATUS_DSPIO_SCP_RESPONSE_QUEUE_EMPTY))
+			break;
+		msleep(1);
+	} while (time_before(jiffies, timeout));
 }
 
 static int dspio_write(struct hda_codec *codec, unsigned int scp_data)
@@ -1285,13 +1284,13 @@ static int dspio_send_scp_message(struct hda_codec *codec,
 	}
 
 	if (waiting_for_resp) {
+		unsigned long timeout = jiffies + msecs_to_jiffies(1000);
 		memset(return_buf, 0, return_buf_size);
-		retry = 50;
 		do {
-			msleep(20);
-		} while (spec->wait_scp && (--retry != 0));
+			msleep(1);
+		} while (spec->wait_scp && time_before(jiffies, timeout));
 		waiting_for_resp = false;
-		if (retry != 0) {
+		if (!spec->wait_scp) {
 			ret_msg = (struct scp_msg *)return_buf;
 			memcpy(&ret_msg->hdr, &spec->scp_resp_header, 4);
 			memcpy(&ret_msg->data, spec->scp_resp_data,
@@ -2674,15 +2673,15 @@ static bool dspload_is_loaded(struct hda_codec *codec)
 
 static bool dspload_wait_loaded(struct hda_codec *codec)
 {
-	int retry = 100;
+	unsigned long timeout = jiffies + msecs_to_jiffies(2000);
 
 	do {
-		msleep(20);
 		if (dspload_is_loaded(codec)) {
 			pr_info("DOWNLOAD OK :-) DSP IS RUNNING.\n");
 			return true;
 		}
-	} while (--retry);
+		msleep(1);
+	} while (time_before(jiffies, timeout));
 
 	pr_err("DOWNLOAD FAILED!!! DSP IS NOT RUNNING.\n");
 	return false;
