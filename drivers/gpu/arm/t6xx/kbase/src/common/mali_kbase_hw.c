@@ -10,6 +10,8 @@
  *
  */
 
+
+
 /**
  * @file
  * Run-time work-arounds helpers
@@ -23,36 +25,39 @@
 mali_error kbase_hw_set_issues_mask(kbase_device *kbdev)
 {
 	const base_hw_issue *issues;
+	u32 gpu_id;
 
-#if MALI_BACKEND_KERNEL || MALI_NO_MALI
-	u32 gpu_id = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(GPU_ID));
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_CORE))
+	{
+		return MALI_ERROR_FUNCTION_FAILED;
+	}
+
+	gpu_id = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(GPU_ID));
 
 	switch (gpu_id)
 	{
 		case GPU_ID_MAKE(GPU_ID_PI_T60X, 0, 0, GPU_ID_S_15DEV0):
-		case GPU_ID_MAKE(GPU_ID_PI_T65X, 0, 0, GPU_ID_S_15DEV0):
-			issues = base_hw_issues_t60x_t65x_r0p0_15dev0;
+			issues = base_hw_issues_t60x_r0p0_15dev0;
 			break;
 		case GPU_ID_MAKE(GPU_ID_PI_T60X, 0, 0, GPU_ID_S_EAC):
-		case GPU_ID_MAKE(GPU_ID_PI_T65X, 0, 0, GPU_ID_S_EAC):
-			issues = base_hw_issues_t60x_t65x_r0p0_eac;
+			issues = base_hw_issues_t60x_r0p0_eac;
 			break;
 		case GPU_ID_MAKE(GPU_ID_PI_T60X, 0, 1, 0):
-		case GPU_ID_MAKE(GPU_ID_PI_T65X, 0, 1, 0):
-			issues = base_hw_issues_t60x_t65x_r0p1;
+			issues = base_hw_issues_t60x_r0p1;
 			break;
-		case GPU_ID_MAKE(GPU_ID_PI_T60X, 1, 0, 0):
-		case GPU_ID_MAKE(GPU_ID_PI_T65X, 1, 0, 0):
-			issues = base_hw_issues_t60x_t65x_r1p0;
+		case GPU_ID_MAKE(GPU_ID_PI_T65X, 0, 1, 0):
+			issues = base_hw_issues_t65x_r0p1;
 			break;
 		case GPU_ID_MAKE(GPU_ID_PI_T62X, 0, 0, 0):
+		case GPU_ID_MAKE(GPU_ID_PI_T62X, 0, 0, 1):
 			issues = base_hw_issues_t62x_r0p0;
 			break;
 		case GPU_ID_MAKE(GPU_ID_PI_T67X, 0, 0, 0):
+		case GPU_ID_MAKE(GPU_ID_PI_T67X, 0, 0, 1):
 			issues = base_hw_issues_t67x_r0p0;
 			break;
 		default:
-			OSK_PRINT_WARN(OSK_BASE_CORE, "Unknown GPU ID %x", gpu_id);
+			OSK_PRINT_ERROR(OSK_BASE_CORE, "Unknown GPU ID %x", gpu_id);
 			return MALI_ERROR_FUNCTION_FAILED;
 	}
 
@@ -61,10 +66,6 @@ mali_error kbase_hw_set_issues_mask(kbase_device *kbdev)
 				(gpu_id & GPU_ID_VERSION_MAJOR) >> GPU_ID_VERSION_MAJOR_SHIFT,
 				(gpu_id & GPU_ID_VERSION_MINOR) >> GPU_ID_VERSION_MINOR_SHIFT,
 				(gpu_id & GPU_ID_VERSION_STATUS) >> GPU_ID_VERSION_STATUS_SHIFT);
-#else
-	/* We can only know that the model is used at compile-time */
-	issues = base_hw_issues_model;
-#endif
 
 	for (; *issues != BASE_HW_ISSUE_END; issues++)
 	{

@@ -22,6 +22,7 @@
 
 #include <kbase/src/common/mali_kbase_8401_workaround.h>
 #include <kbase/src/common/mali_kbase_hw.h>
+#include <asm/atomic.h>
 
 
 /**
@@ -60,7 +61,7 @@ static INLINE mali_bool kbasep_jm_is_submit_slots_free(kbase_device *kbdev, int 
 	OSK_ASSERT( kbdev != NULL );
 	OSK_ASSERT( 0 <= js && js < kbdev->gpu_props.num_job_slots  );
 	
-	if (osk_atomic_get(&kbdev->reset_gpu) != KBASE_RESET_GPU_NOT_PENDING)
+	if (atomic_read(&kbdev->reset_gpu) != KBASE_RESET_GPU_NOT_PENDING)
 	{
 		/* The GPU is being reset - so prevent submission */
 		return MALI_FALSE;
@@ -191,17 +192,13 @@ static INLINE mali_bool kbasep_jm_is_dummy_workaround_job( kbase_device *kbdev, 
  *
  * The following locking conditions are made on the caller:
  * - it must hold the kbasep_js_device_data::runpoool_irq::lock
- *  - This is to access the kbase_context::as_nr
- *  - In any case, the kbase_js code that calls this function will always have
- * this lock held.
- * - it must hold kbdev->jm_slots[ \a s ].lock
  */
 void kbase_job_submit_nolock(kbase_device *kbdev, kbase_jd_atom *katom, int js);
 
 /**
  * @brief Complete the head job on a particular job-slot
  */
-void kbase_job_done_slot(kbase_device *kbdev, int s, u32 completion_code, u64 job_tail, kbasep_js_tick *end_timestamp);
+void kbase_job_done_slot(kbase_device *kbdev, int s, u32 completion_code, u64 job_tail, ktime_t *end_timestamp);
 
 /** @} */ /* end group kbase_jm */
 /** @} */ /* end group base_kbase_api */

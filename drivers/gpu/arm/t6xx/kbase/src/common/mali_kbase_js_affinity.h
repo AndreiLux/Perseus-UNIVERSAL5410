@@ -10,6 +10,8 @@
  *
  */
 
+
+
 /**
  * @file mali_kbase_js_affinity.h
  * Affinity Manager internal APIs.
@@ -130,26 +132,25 @@ void kbase_js_affinity_slot_blocked_an_atom( kbase_device *kbdev, int js );
  * violations. Otherwise it stays registered, and the next atom to complete
  * must attempt to submit to the blocked slots again.
  *
+ * This must only be called whilst the GPU is powered - for example, when
+ * kbdev->jsdata.nr_user_contexts_running > 0.
+ *
  * The following locking conditions are made on the caller:
- * - it must \em not hold kbasep_js_device_data::runpool_mutex (as this will be
- * obtained internally)
- * - it must \em not hold kbdev->jm_slots[ \a js ].lock (as this will be
- * obtained internally)
- * - it must \em not hold kbasep_js_device_data::runpool_irq::lock, (as this will be
- * obtained internally)
+ * - it must hold kbasep_js_device_data::runpool_mutex
+ * - it must hold kbasep_js_device_data::runpool_irq::lock
  */
 void kbase_js_affinity_submit_to_blocked_slots( kbase_device *kbdev );
 
 /**
  * @brief Output to the Trace log the current tracked affinities on all slots
  */
-#if KBASE_TRACE_ENABLE != 0
+#if defined(CONFIG_MALI_DEBUG) || (KBASE_TRACE_ENABLE != 0)
 void kbase_js_debug_log_current_affinities( kbase_device *kbdev );
-#else /*  KBASE_TRACE_ENABLE != 0 */
+#else /* defined(CONFIG_MALI_DEBUG) || (KBASE_TRACE_ENABLE != 0) */
 OSK_STATIC_INLINE void kbase_js_debug_log_current_affinities( kbase_device *kbdev )
 {
 }
-#endif /*  KBASE_TRACE_ENABLE != 0 */
+#endif /* defined(CONFIG_MALI_DEBUG) || (KBASE_TRACE_ENABLE != 0) */
 
 /** @} */ /* end group kbase_js_affinity */
 /** @} */ /* end group base_kbase_api */

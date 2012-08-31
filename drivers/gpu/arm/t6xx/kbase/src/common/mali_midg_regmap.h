@@ -320,7 +320,11 @@
 #define ASn_COMMAND_UPDATE      0x01    /* Broadcasts the values in ASn_TRANSTAB and ASn_MEMATTR to all MMUs */
 #define ASn_COMMAND_LOCK        0x02    /* Issue a lock region command to all MMUs */
 #define ASn_COMMAND_UNLOCK      0x03    /* Issue a flush region command to all MMUs */
-#define ASn_COMMAND_FLUSH       0x04    /* Flush all L2 caches then issue a flush region command to all MMUs */
+#define ASn_COMMAND_FLUSH       0x04    /* Flush all L2 caches then issue a flush region command to all MMUs
+                                           (deprecated - only for use with T60x/T65x) */
+#define ASn_COMMAND_FLUSH_PT    0x04    /* Flush all L2 caches then issue a flush region command to all MMUs */
+#define ASn_COMMAND_FLUSH_MEM   0x05    /* Wait for memory accesses to complete, flush all the L1s cache then
+                                           flush all L2 caches then issue a flush region command to all MMUs */
 
 /* Possible values of JSn_CONFIG and JSn_CONFIG_NEXT registers */
 #define JSn_CONFIG_START_FLUSH_NO_ACTION        (0u << 0)

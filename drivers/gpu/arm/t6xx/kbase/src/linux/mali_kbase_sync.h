@@ -10,6 +10,8 @@
  *
  */
 
+
+
 /**
  * @file mali_kbase_sync.h
  *
@@ -24,12 +26,17 @@
 /*
  * Create a stream object.
  * Built on top of timeline object.
- * Exposed as a file descriptor on which fence create can be ioctl'ed.
+ * Exposed as a file descriptor.
  * Life-time controlled via the file descriptor:
  * - dup to add a ref
  * - close to remove a ref
  */
 mali_error kbase_stream_create(const char * name, int * out_fd);
+
+/*
+ * Create a fence in a stream object
+ */
+int kbase_stream_create_fence(int tl_fd);
 
 /*
  * Validate a fd to be a valid fence

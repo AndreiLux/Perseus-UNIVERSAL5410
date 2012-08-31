@@ -25,11 +25,16 @@
 
 #if MALI_UNIT_TEST
 /* Kernel testing helpers */
+
+/** Callback to run during kassertp_test_exit() */
+typedef void (*kassert_test_cb)(void *);
+
 void      kassert_test_init(void);
 void      kassert_test_term(void);
 void      kassert_test_wait(void);
 void      kassert_test_signal(void);
 mali_bool kassert_test_has_asserted(void);
+void      kassert_test_register_cb(kassert_test_cb cb, void *param);
 void      kassertp_test_exit(void);
 #endif
 
@@ -66,9 +71,13 @@ void oskp_debug_print(const char *fmt, ...);
 #define OSKP_CHANNEL_ALL       ((u32)0xFFFFFFFF)      /**< @brief All the channels at the same time*/
 
 /** @brief Disable the asserts tests if set to 1. Default is to disable the asserts in release. */
-#ifndef OSK_DISABLE_ASSERT
-#define OSK_DISABLE_ASSERTS (MALI_DEBUG == 0)
+#ifndef OSK_DISABLE_ASSERTS
+#ifdef CONFIG_MALI_DEBUG
+#define OSK_DISABLE_ASSERTS 0
+#else
+#define OSK_DISABLE_ASSERTS 1
 #endif
+#endif /* OSK_DISABLE_ASSERTS */
 
 /* Lock order assertion check requires macro to define the order variable on the stack */
 #if OSK_DISABLE_ASSERTS == 0
@@ -93,7 +102,13 @@ void oskp_debug_print(const char *fmt, ...);
 /** @brief Enables support for runtime configuration if set to 1.
  */
 #define OSK_USE_RUNTIME_CONFIG 0
-#define OSK_SIMULATE_FAILURES  MALI_BASE_TRACK_MEMLEAK  /**< @brief Enables simulation of failures (for testing) if non-zero */
+
+/**< @brief Enables simulation of failures (for testing) if non-zero */
+#ifdef CONFIG_MALI_QA_RESFAIL
+#define OSK_SIMULATE_FAILURES 1
+#else
+#define OSK_SIMULATE_FAILURES 0
+#endif
 
 #define OSK_ACTION_IGNORE             0 /**< @brief The given message is ignored then the execution continues*/
 #define OSK_ACTION_PRINT_AND_CONTINUE 1 /**< @brief The given message is printed then the execution continues*/
@@ -129,7 +144,7 @@ void oskp_debug_print(const char *fmt, ...);
  *
  *
  */
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 	#define OSK_ON_INFO                OSK_ACTION_IGNORE
 	#define OSK_ON_WARN                OSK_ACTION_PRINT_AND_CONTINUE
 	#define OSK_ON_ASSERT              OSK_ACTION_PRINT_AND_QUIT
@@ -141,7 +156,7 @@ void oskp_debug_print(const char *fmt, ...);
 	#define OSK_ON_ASSERT              OSK_ACTION_IGNORE
 	#define OSK_ON_ERROR               OSK_ACTION_PRINT_AND_CONTINUE
 	#define OSK_ON_RAW                 OSK_ACTION_PRINT_AND_CONTINUE
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 
 #if MALI_UNIT_TEST
 #define OSKP_KERNEL_TEST_ASSERT()		kassertp_test_exit()
@@ -228,17 +243,17 @@ void oskp_debug_print(const char *fmt, ...);
  * This will call oskp_debug_assert_call_hook to perform any registered action required
  * on assert.
  *
- * @note This macro does nothing if the flag @see MALI_DEBUG is not set.
+ * @note This macro does nothing if the flag @see CONFIG_MALI_DEBUG is not set.
  *
  */
 
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 #define OSK_CALL_ASSERT_HOOK()\
 		oskp_debug_assert_call_hook()
 #else
 #define OSK_CALL_ASSERT_HOOK()\
 		CSTD_NOP()
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 
 /**
  * @def   OSKP_PRINT_ASSERT(...)
@@ -273,11 +288,11 @@ void oskp_debug_print(const char *fmt, ...);
  *
  * @param X Code to compile only in debug mode.
  */
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 	#define OSKP_DEBUG_CODE( X ) X
 #else
 	#define OSKP_DEBUG_CODE( X ) CSTD_NOP()
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 
 /**
  * @def OSKP_ASSERT_ACTION

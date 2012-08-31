@@ -21,6 +21,7 @@
 #define _KBASE_PM_H_
 
 #include <kbase/src/common/mali_midg_regmap.h>
+#include <asm/atomic.h>
 
 #include "mali_kbase_pm_always_on.h"
 #include "mali_kbase_pm_demand.h"
@@ -212,17 +213,18 @@ typedef struct kbasep_pm_metrics_data
 	int                 vsync_hit;
 	int                 utilisation;
 
-	osk_ticks           time_period_start;
+	ktime_t             time_period_start;
 	u32                 time_busy;
 	u32                 time_idle;
 	mali_bool           gpu_active;
 
-	osk_spinlock_irq    lock;
+	spinlock_t    lock;
 
-	osk_timer           timer;
+	struct hrtimer      timer;
 	mali_bool           timer_active;
 
 	void *              platform_data;
+	struct kbase_device * kbdev;
 } kbasep_pm_metrics_data;
 
 /** Actions for DVFS.
@@ -265,31 +267,38 @@ typedef struct kbase_pm_device_data
 	/** The data needed for the current policy. This is considered private to the policy. */
 	kbase_pm_policy_data    policy_data;
 	/** The workqueue that the policy callbacks are executed on. */
-	osk_workq               workqueue;
+	struct workqueue_struct *workqueue;
 	/** A bit mask of events that are waiting to be delivered to the active policy. */
-	osk_atomic              pending_events;
+	atomic_t              pending_events;
 	/** The work unit that is enqueued onto the workqueue. */
-	osk_workq_work          work;
+	struct work_struct      work;
 	/** An atomic which tracks whether the work unit has been enqueued.
 	 * For list of possible values please refer to @ref kbase_pm_work_active_state.
 	 */
-	osk_atomic              work_active;
-	/** The wait queue for power up events. */
-	osk_waitq               power_up_waitqueue;
-	/** The wait queue for power down events. */
-	osk_waitq               power_down_waitqueue;
-	/** Wait queue for whether there is an outstanding event for the policy */
-	osk_waitq               policy_outstanding_event;
+	atomic_t                work_active;
+
+	/** Power state and a queue to wait for changes */
+	#define PM_POWER_STATE_OFF   1
+	#define PM_POWER_STATE_TRANS 2
+	#define PM_POWER_STATE_ON    3
+	int                     power_state;
+	wait_queue_head_t       power_state_wait;
+
 	/** Wait queue for whether the l2 cache has been powered as requested */
-	osk_waitq               l2_powered_waitqueue;
+	wait_queue_head_t       l2_powered_wait;
+	int                     l2_powered;
+
+	int                     no_outstanding_event;
+	wait_queue_head_t       no_outstanding_event_wait;
+
 	/** The reference count of active contexts on this device. */
 	int                     active_count;
 	/** Lock to protect active_count */
-	osk_spinlock_irq        active_count_lock;
+	spinlock_t        active_count_lock;
 	/** The reference count of active gpu cycle counter users */
 	int                     gpu_cycle_counter_requests;
 	/** Lock to protect gpu_cycle_counter_requests */
-	osk_spinlock_irq        gpu_cycle_counter_requests_lock;
+	spinlock_t        gpu_cycle_counter_requests_lock;
 	/** A bit mask identifying the shader cores that the power policy would like to be on.
 	 * The current state of the cores may be different, but there should be transitions in progress that will
 	 * eventually achieve this state (assuming that the policy doesn't change its mind in the mean time.
@@ -315,15 +324,15 @@ typedef struct kbase_pm_device_data
 	 * written to, to ensure that two threads do not conflict over the power transitions that the hardware should
 	 * make.
 	 */
-	osk_spinlock_irq        power_change_lock;
+	spinlock_t        power_change_lock;
 
 	/** This flag is set iff the GPU is powered as requested by the desired_xxx_state variables */
-	osk_atomic              gpu_in_desired_state;
+	atomic_t              gpu_in_desired_state;
 
 	/** Set to true when the GPU is powered and register accesses are possible, false otherwise */
 	mali_bool               gpu_powered;
 	/** Spinlock that must be held when writing gpu_powered */
-	osk_spinlock_irq        gpu_powered_lock;
+	spinlock_t        gpu_powered_lock;
 
 	/** Structure to hold metrics for the GPU */
 	kbasep_pm_metrics_data  metrics;

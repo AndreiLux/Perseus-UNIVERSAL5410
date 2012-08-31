@@ -10,6 +10,8 @@
  *
  */
 
+
+
 #ifndef _KBASE_CONFIG_LINUX_H_
 #define _KBASE_CONFIG_LINUX_H_
 
@@ -19,7 +21,7 @@
 #define PLATFORM_CONFIG_RESOURCE_COUNT 4
 #define PLATFORM_CONFIG_IRQ_RES_COUNT  3
 
-#if !MALI_LICENSE_IS_GPL || MALI_FAKE_PLATFORM_DEVICE
+#ifdef CONFIG_MALI_PLATFORM_FAKE
 /**
  * @brief Convert data in kbase_io_resources struct to Linux-specific resources
  *
@@ -31,7 +33,7 @@
  * @param[out] linux_resources  Pointer to output array of Linux resource structures
  */
 void kbasep_config_parse_io_resources(const kbase_io_resources *io_resource, struct resource *linux_resources);
-#endif /* !MALI_LICENSE_IS_GPL || MALI_FAKE_PLATFORM_DEVICE */
+#endif /* CONFIG_MALI_PLATFORM_FAKE */
 
 
 #endif /* _KBASE_CONFIG_LINUX_H_ */

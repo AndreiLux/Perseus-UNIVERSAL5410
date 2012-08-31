@@ -58,7 +58,7 @@ const char* oskp_module_to_str(const osk_module module)
 
 void oskp_validate_format_string(const char *format, ...)
 {
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 	char c;
 	static const char *supported[] =
 	{
@@ -124,6 +124,6 @@ void oskp_validate_format_string(const char *format, ...)
 	}
 #else
 	CSTD_UNUSED(format);
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 }
 

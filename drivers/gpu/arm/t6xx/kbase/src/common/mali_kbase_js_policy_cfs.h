@@ -10,6 +10,8 @@
  *
  */
 
+
+
 /**
  * @file mali_kbase_js_policy_cfs.h
  * Completely Fair Job Scheduler Policy structure definitions
@@ -70,7 +72,7 @@ typedef struct kbasep_js_policy_cfs
 	u32 slot_to_variant_lookup_nss_state[KBASEP_JS_VARIANT_LOOKUP_WORDS_NEEDED];
 
 	/* The timer tick used for rescheduling jobs */
-	osk_timer timer;
+	struct hrtimer scheduling_timer;
 
 	/* Is the timer running?
 	 *
@@ -84,6 +86,9 @@ typedef struct kbasep_js_policy_cfs
 	 * Reads are possible without this mutex, but an older value might be read
 	 * if no memory barriers are issued beforehand. */
 	u64 head_runtime_us;
+	/* Pointer to the kbase_device structure, for convenience to avoid deeply nested container_of
+	 * statements. */
+	kbase_device * kbdev;
 } kbasep_js_policy_cfs;
 
 /**
@@ -146,8 +151,7 @@ typedef struct kbasep_js_policy_cfs_job
 
 	/** Number of ticks that this job has been executing for
 	 *
-	 * To access this, the kbdev->jm_slots[ js ].lock must be held for the slot 'js'
-	 * that that atom is running/queued/about to be queued upon */
+	 * To access this, the kbasep_js_device_data::runpool_irq::lock must be held */
 	u32 ticks;
 } kbasep_js_policy_cfs_job;
 

@@ -246,15 +246,13 @@ typedef struct kbasep_js_device_data
 		 *
 		 * This lock must also be held for accessing:
 		 * - kbase_context::as_nr
+		 * - kbase_device::jm_slots
 		 * - Parts of the kbasep_js_policy, dependent on the policy (refer to
 		 * the policy in question for more information)
 		 * - Parts of kbasep_js_policy_ctx_info, dependent on the policy (refer to
 		 * the policy in question for more information)
-		 *
-		 * If accessing a job slot at the same time, the slot's IRQ lock must
-		 * be obtained first to respect lock ordering.
 		 */
-		osk_spinlock_irq lock;
+		spinlock_t lock;
 
 		/** Bitvector indicating whether a currently scheduled context is allowed to submit jobs.
 		 * When bit 'N' is set in this, it indicates whether the context bound to address space
@@ -310,7 +308,7 @@ typedef struct kbasep_js_device_data
 	 * In addition, this is used to access:
 	 * - the kbasep_js_kctx_info::runpool substructure
 	 */
-	osk_mutex runpool_mutex;
+	struct mutex runpool_mutex;
 
 	/**
 	 * Queue Lock, used to access the Policy's queue of contexts independently
@@ -318,7 +316,7 @@ typedef struct kbasep_js_device_data
 	 *
 	 * Of course, you don't need the Run Pool lock to access this.
 	 */
-	osk_mutex queue_mutex;
+	struct mutex queue_mutex;
 
 	u16 as_free;                            /**< Bitpattern of free Address Spaces */
 
@@ -348,10 +346,10 @@ typedef struct kbasep_js_device_data
 	u32 ctx_timeslice_ns;            /**< Value for KBASE_CONFIG_ATTR_JS_CTX_TIMESLICE_NS */
 	u32 cfs_ctx_runtime_init_slices; /**< Value for KBASE_CONFIG_ATTR_JS_CFS_CTX_RUNTIME_INIT_SLICES */
 	u32 cfs_ctx_runtime_min_slices;  /**< Value for  KBASE_CONFIG_ATTR_JS_CFS_CTX_RUNTIME_MIN_SLICES */
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 	/* Support soft-stop on a single context */
 	mali_bool softstop_always;
-#endif /* MALI_DEBUG */
+#endif /* CONFIG_MALI_DEBUG */
 	/** The initalized-flag is placed at the end, to avoid cache-pollution (we should
 	 * only be using this during init/term paths).
 	 * @note This is a write-once member, and so no locking is required to read */
@@ -396,7 +394,7 @@ typedef struct kbasep_js_kctx_info
 	 */
 	struct
 	{
-		osk_mutex jsctx_mutex;                   /**< Job Scheduler Context lock */
+		struct mutex jsctx_mutex;                   /**< Job Scheduler Context lock */
 
 		/** Number of jobs <b>ready to run</b> - does \em not include the jobs waiting in
 		 * the dispatcher, and dependency-only jobs. See kbase_jd_context::job_nr
@@ -408,30 +406,6 @@ typedef struct kbasep_js_kctx_info
 		 * the context. **/
 		u32 ctx_attr_ref_count[KBASEP_JS_CTX_ATTR_COUNT];
 
-		/**
-		 * Waitq that reflects whether the context is not scheduled on the run-pool.
-		 * This is clear when is_scheduled is true, and set when is_scheduled
-		 * is false.
-		 *
-		 * This waitq can be waited upon to find out when a context is no
-		 * longer in the run-pool, and is used in combination with
-		 * kbasep_js_policy_try_evict_ctx() to determine when it can be
-		 * terminated. However, it should only be terminated once all its jobs
-		 * are also terminated (see kbase_jd_context::zero_jobs_waitq).
-		 *
-		 * Since the waitq is only set under jsctx_mutex, the waiter should
-		 * also briefly obtain and drop jsctx_mutex to guarentee that the
-		 * setter has completed its work on the kbase_context.
-		 */
-		osk_waitq not_scheduled_waitq;
-
-		/**
-		 * Waitq that reflects whether the context is scheduled on the run-pool.
-		 * This is set when is_scheduled is true, and clear when is_scheduled
-		 * is false.
-		 */
-		osk_waitq scheduled_waitq;
-
 		kbase_context_flags     flags;
 		/* NOTE: Unify the following flags into kbase_context_flags */
 		/**
@@ -440,6 +414,11 @@ typedef struct kbasep_js_kctx_info
 		 * This is only ever updated whilst the jsctx_mutex is held.
 		 */
 		mali_bool is_scheduled;
+		/**
+		 * Wait queue to wait for is_scheduled state changes.
+		 * */
+		wait_queue_head_t is_scheduled_wait;
+
 		mali_bool is_dying;                     /**< Is the context in the process of being evicted? */
 	} ctx;
 
@@ -454,19 +433,7 @@ typedef struct kbasep_js_kctx_info
  *
  * Any non-zero difference in time will be at least this size.
  */
-#define KBASEP_JS_TICK_RESOLUTION_US (1000000u/osk_time_mstoticks(1000))
-
-/**
- * @note MIDBASE-769: OSK to add high resolution timer
- *
- * The underlying tick is an unsigned integral type
- */
-typedef osk_ticks kbasep_js_tick;
-
-/**
- * GPU clock ticks.
- */
-typedef osk_ticks kbasep_js_gpu_tick;
+#define KBASEP_JS_TICK_RESOLUTION_US 1
 
 
 #endif /* _KBASE_JS_DEFS_H_ */

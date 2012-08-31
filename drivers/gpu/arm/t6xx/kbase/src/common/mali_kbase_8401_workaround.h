@@ -10,6 +10,8 @@
  *
  */
 
+
+
 /**
  * @file mali_kbase_8401_workaround.h
  * Functions related to working around BASE_HW_ISSUE_8401

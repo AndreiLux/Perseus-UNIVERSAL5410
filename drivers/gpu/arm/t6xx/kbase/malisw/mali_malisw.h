@@ -195,22 +195,22 @@
  * This can be used to have a function normally local to the shared library except in debug builds where it will be
  * exported.
  */
-#if 1 == MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 #define MALI_TESTABLE_LOCAL_IMPL MALI_IMPL
 #else
 #define MALI_TESTABLE_LOCAL_IMPL MALI_LOCAL
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 
 /** @brief Decorate testable local function prototypes.
  *
  * This can be used to have a function normally local to the shared library except in debug builds where it will be
  * exported.
  */
-#if 1 == MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 #define MALI_TESTABLE_LOCAL_API MALI_API
 #else
 #define MALI_TESTABLE_LOCAL_API MALI_LOCAL
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 /** @} */
 
 /**

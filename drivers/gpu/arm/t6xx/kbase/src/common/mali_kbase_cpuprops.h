@@ -10,6 +10,8 @@
  *
  */
 
+
+
 /**
  * @file mali_kbase_cpuprops.h
  * Base kernel property query APIs

@@ -10,22 +10,21 @@
  *
  */
 
+
+
 /**
  * @file mali_kbase_mem_linux.c
  * Base kernel memory APIs, Linux implementation.
  */
-
-/* #define DEBUG	1 */
 
 #include <linux/kernel.h>
 #include <linux/bug.h>
 #include <linux/mm.h>
 #include <linux/fs.h>
 #include <linux/dma-mapping.h>
-#if defined(CONFIG_DMA_SHARED_BUFFER) && MALI_LICENSE_IS_GPL
-#define MALI_USE_DMA_SHARED_BUFFER
+#ifdef CONFIG_DMA_SHARED_BUFFER
 #include <linux/dma-buf.h>
-#endif /* defined(CONFIG_DMA_SHARED_BUFFER) && MALI_LICENSE_IS_GPL */
+#endif /* defined(CONFIG_DMA_SHARED_BUFFER) */
 
 #include <kbase/src/common/mali_kbase.h>
 #include <kbase/src/linux/mali_kbase_mem_linux.h>
@@ -84,7 +83,7 @@ out3:
 	kbase_gpu_vm_unlock(kctx);
 	kbase_free_phy_pages(reg);
 out2:
-	osk_free(reg);
+	kfree(reg);
 out1:
 	return NULL;
 	
@@ -128,7 +127,15 @@ static int kbase_cpu_mmap(struct kbase_va_region *reg, struct vm_area_struct *vm
 	int err = 0;
 	int i;
 
-	map = osk_calloc(sizeof(*map));
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		map = NULL;
+	}
+	else
+	{
+		map = kzalloc(sizeof(*map), GFP_KERNEL);
+	}
+
 	if (!map)
 	{
 		WARN_ON(1);
@@ -169,7 +176,7 @@ static int kbase_cpu_mmap(struct kbase_va_region *reg, struct vm_area_struct *vm
 	{
 		for (i = 0; i < nr_pages; i++)
 		{
-			err = vm_insert_mixed(vma, vma->vm_start + (i << OSK_PAGE_SHIFT), page_array[i + start_off] >> OSK_PAGE_SHIFT);
+			err = vm_insert_mixed(vma, vma->vm_start + (i << PAGE_SHIFT), page_array[i + start_off] >> PAGE_SHIFT);
 			WARN_ON(err);
 			if (err)
 				break;
@@ -184,7 +191,7 @@ static int kbase_cpu_mmap(struct kbase_va_region *reg, struct vm_area_struct *vm
 
 	if (err)
 	{
-		osk_free(map);
+		kfree(map);
 		goto out;
 	}
 
@@ -193,63 +200,13 @@ static int kbase_cpu_mmap(struct kbase_va_region *reg, struct vm_area_struct *vm
 	map->page_off = start_off;
 	map->private = vma;
 
+	if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM)
+	{
+		kbase_process_page_usage_dec(reg->kctx, nr_pages);
+	}
+
 	OSK_DLIST_PUSH_FRONT(&reg->map_list, map,
 				struct kbase_cpu_mapping, link);
-
-out:
-	return err;
-}
-
-static int kbase_rb_mmap(kbase_context *kctx,
-			 struct vm_area_struct *vma,
-			 struct kbase_va_region **reg,
-			 void **kmap_addr)
-{
-	struct kbase_va_region *new_reg;
-	void *kaddr;
-	u32 nr_pages;
-	size_t size;
-	int err = 0;
-	mali_error m_err =  MALI_ERROR_NONE;
-
-	pr_debug("in kbase_rb_mmap\n");
-	size = (vma->vm_end - vma->vm_start);
-	nr_pages = size  >> OSK_PAGE_SHIFT;
-
-	if (kctx->jctx.pool_size < size)
-	{
-		err = -EINVAL;
-		goto out;
-	}
-
-	kaddr = kctx->jctx.pool;
-
-	new_reg = kbase_alloc_free_region(kctx, 0, nr_pages, KBASE_REG_ZONE_PMEM);
-	if (!new_reg)
-	{
-		err = -ENOMEM;
-		WARN_ON(1);
-		goto out;
-	}
-
-	new_reg->flags	&= ~KBASE_REG_FREE;
-	new_reg->flags	|= KBASE_REG_IS_RB | KBASE_REG_CPU_CACHED;
-
-	m_err = kbase_add_va_region(kctx, new_reg, vma->vm_start, nr_pages, 1);
-	if (MALI_ERROR_NONE != m_err)
-	{
-		pr_debug("kbase_rb_mmap: kbase_add_va_region failed\n");
-		/* Free allocated new_reg */
-		kbase_free_alloced_region(new_reg);
-		err = -ENOMEM;
-		goto out;
-	}
-
-	*kmap_addr	= kaddr;
-	*reg		= new_reg;
-
-	pr_debug("kbase_rb_mmap done\n");
-	return 0;
 
 out:
 	return err;
@@ -265,11 +222,20 @@ static int  kbase_trace_buffer_mmap(kbase_context * kctx, struct vm_area_struct 
 
 	pr_debug("in %s\n", __func__);
 	size = (vma->vm_end - vma->vm_start);
-	nr_pages = size  >> OSK_PAGE_SHIFT;
+	nr_pages = size  >> PAGE_SHIFT;
 
 	if (!kctx->jctx.tb)
 	{
-		tb = osk_vmalloc(size);
+		if(OSK_SIMULATE_FAILURE(OSK_OSK))
+		{
+			tb = NULL;
+		}
+		else
+		{
+			OSK_ASSERT(0 != size);
+			tb = vmalloc_user(size);
+		}
+
 		if (NULL == tb)
 		{
 			err = -ENOMEM;
@@ -317,7 +283,7 @@ out_va_region:
 	kbase_free_alloced_region(new_reg);
 out_disconnect:
 	kbase_device_trace_buffer_uninstall(kctx);
-	osk_vfree(tb);
+	vfree(tb);
 out:
 	return err;
 
@@ -336,7 +302,7 @@ static int kbase_mmu_dump_mmap( kbase_context *kctx,
 
 	pr_debug("in kbase_mmu_dump_mmap\n");
 	size = (vma->vm_end - vma->vm_start);
-	nr_pages = size  >> OSK_PAGE_SHIFT;
+	nr_pages = size  >> PAGE_SHIFT;
 
 	kaddr = kbase_mmu_dump(kctx, nr_pages);
 	
@@ -384,6 +350,7 @@ struct kbase_va_region * kbase_lookup_cookie(kbase_context * kctx, mali_addr64 c
 	mali_addr64 test_cookie;
 
 	OSK_ASSERT(kctx != NULL);
+	BUG_ON(!mutex_is_locked(&kctx->reg_lock));
 
 	test_cookie = KBASE_REG_COOKIE(cookie);
 
@@ -436,7 +403,7 @@ int kbase_mmap(struct file *file, struct vm_area_struct *vma)
 	int err = 0;
 
 	pr_debug("kbase_mmap\n");
-	nr_pages = (vma->vm_end - vma->vm_start) >> OSK_PAGE_SHIFT;
+	nr_pages = (vma->vm_end - vma->vm_start) >> PAGE_SHIFT;
 	
 	if ( 0 == nr_pages )
 	{
@@ -448,12 +415,9 @@ int kbase_mmap(struct file *file, struct vm_area_struct *vma)
 
 	if (vma->vm_pgoff == KBASE_REG_COOKIE_RB)
 	{
-		/* Reserve offset 0 for the shared ring-buffer */
-		if ((err = kbase_rb_mmap(kctx, vma, &reg, &kaddr)))
-			goto out_unlock;
-
-		pr_debug("kbase_rb_mmap ok\n");
-		goto map;
+		/* Ring buffer doesn't exist any more */
+		err = -EINVAL;
+		goto out_unlock;
 	}
 	else if (vma->vm_pgoff == KBASE_REG_COOKIE_TB)
 	{
@@ -472,7 +436,7 @@ int kbase_mmap(struct file *file, struct vm_area_struct *vma)
 		goto map;
 	}
 
-	if (vma->vm_pgoff < OSK_PAGE_SIZE) /* first page is reserved for cookie resolution */
+	if (vma->vm_pgoff < PAGE_SIZE) /* first page is reserved for cookie resolution */
 	{
 		/* PMEM stuff, fetch the right region */
 		reg = kbase_lookup_cookie(kctx, vma->vm_pgoff);
@@ -535,12 +499,12 @@ int kbase_mmap(struct file *file, struct vm_area_struct *vma)
 		if( reg &&
 		   (reg->flags & (KBASE_REG_ZONE_MASK | KBASE_REG_FREE )) == zone )
 		{
-#ifdef MALI_USE_DMA_SHARED_BUFFER
+#ifdef CONFIG_DMA_SHARED_BUFFER
 			if (reg->imported_type == BASE_TMEM_IMPORT_TYPE_UMM)
 			{
 				goto dma_map;
 			}
-#endif
+#endif /* CONFIG_DMA_SHARED_BUFFER */
 			goto map;
 		}
 
@@ -553,14 +517,14 @@ map:
 	if (vma->vm_pgoff == KBASE_REG_COOKIE_MMU_DUMP) {
 		/* MMU dump - userspace should now have a reference on
 		 * the pages, so we can now free the kernel mapping */
-		osk_vfree(kaddr);
+		vfree(kaddr);
 	}
 	goto out_unlock;
 
-#ifdef MALI_USE_DMA_SHARED_BUFFER
+#ifdef CONFIG_DMA_SHARED_BUFFER
 dma_map:
 	err = dma_buf_mmap(reg->imported_metadata.umm.dma_buf, vma, vma->vm_pgoff - reg->start_pfn);
-#endif
+#endif /* CONFIG_DMA_SHARED_BUFFER */
 out_unlock:
 	kbase_gpu_vm_unlock(kctx);
 out:
@@ -589,7 +553,7 @@ static void kbase_reg_pending_dtor(struct kbase_va_region *reg)
 {
 	kbase_free_phy_pages(reg);
 	pr_info("Freeing pending unmapped region\n");
-	osk_free(reg);
+	kfree(reg);
 }
 
 void kbase_destroy_os_context(kbase_os_context *osctx)
@@ -604,7 +568,7 @@ KBASE_EXPORT_TEST_API(kbase_destroy_os_context)
 void *kbase_va_alloc(kbase_context *kctx, u32 size)
 {
 	void *va;
-	u32 pages = ((size-1) >> OSK_PAGE_SHIFT) + 1;
+	u32 pages = ((size-1) >> PAGE_SHIFT) + 1;
 	struct kbase_va_region *reg;
 	osk_phy_addr *page_array;
 	u32 flags = BASE_MEM_PROT_CPU_RD | BASE_MEM_PROT_CPU_WR |
@@ -617,8 +581,17 @@ void *kbase_va_alloc(kbase_context *kctx, u32 size)
 	{
 		goto err;
 	}
-	
-	va = osk_vmalloc(size);
+
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		va = NULL;
+	}
+	else
+	{
+		OSK_ASSERT(0 != size);
+		va = vmalloc_user(size);
+	}
+
 	if (!va)
 	{
 		goto err;
@@ -638,7 +611,16 @@ void *kbase_va_alloc(kbase_context *kctx, u32 size)
 	reg->nr_alloc_pages = pages;
 	reg->extent = 0;
 
-	page_array = osk_vmalloc(pages * sizeof(*page_array));
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		page_array = NULL;
+	}
+	else
+	{
+		OSK_ASSERT(0 != pages);
+		page_array = vmalloc_user(pages * sizeof(*page_array));
+	}
+
 	if (!page_array)
 	{
 		goto free_reg;
@@ -648,7 +630,7 @@ void *kbase_va_alloc(kbase_context *kctx, u32 size)
 	{
 		uintptr_t addr;
 		struct page *page;
-		addr = (uintptr_t)va + (i << OSK_PAGE_SHIFT);
+		addr = (uintptr_t)va + (i << PAGE_SHIFT);
 		page = vmalloc_to_page((void *)addr);
 		page_array[i] = PFN_PHYS(page_to_pfn(page));
 	}
@@ -665,16 +647,38 @@ void *kbase_va_alloc(kbase_context *kctx, u32 size)
 	return va;
 
 free_array:
-	osk_vfree(page_array);
+	vfree(page_array);
 free_reg:
-	osk_free(reg);
+	kfree(reg);
 vm_unlock:
 	kbase_gpu_vm_unlock(kctx);
-	osk_vfree(va);
+	vfree(va);
 err:
 	return NULL;
 }
 KBASE_EXPORT_SYMBOL(kbase_va_alloc)
+
+void kbasep_os_process_page_usage_update( kbase_context *kctx, long pages )
+{
+	struct mm_struct *mm = ( struct mm_struct *)kctx->process_mm;
+	if ( NULL != mm )
+	{
+#ifdef SPLIT_RSS_COUNTING
+		add_mm_counter(mm, MM_FILEPAGES, pages);
+#else
+		spin_lock(&mm->page_table_lock);
+		add_mm_counter(mm, MM_FILEPAGES, pages);
+		spin_unlock(&mm->page_table_lock);
+#endif
+	}
+}
+
+void kbase_os_store_process_mm(kbase_context *kctx)
+{
+	struct mm_struct *mm = current->mm;
+
+	kctx->process_mm = mm;
+}
 
 void kbase_va_free(kbase_context *kctx, void *va)
 {
@@ -694,13 +698,13 @@ void kbase_va_free(kbase_context *kctx, void *va)
 	OSK_ASSERT(err == MALI_ERROR_NONE);
 
 	page_array = kbase_get_phy_pages(reg);
-	osk_vfree(page_array);
+	vfree(page_array);
 
-	osk_free(reg);
+	kfree(reg);
 
 	kbase_gpu_vm_unlock(kctx);
 
-	osk_vfree(va);
+	vfree(va);
 }
 KBASE_EXPORT_SYMBOL(kbase_va_free)
 

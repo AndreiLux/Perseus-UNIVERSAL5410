@@ -10,6 +10,8 @@
  *
  */
 
+
+
 /**
  * @file mali_kbase_js_ctx_attr.h
  * Job Scheduler Context Attribute APIs
@@ -70,8 +72,8 @@ void kbasep_js_ctx_attr_runpool_retain_ctx( kbase_device *kbdev,
  *
  * @return MALI_TRUE indicates a change in ctx attributes state of the runpool.
  * In this state, the scheduler might be able to submit more jobs than
- * previously, and so the caller should ensure kbasep_js_try_run_next_job() is
- * called sometime later.
+ * previously, and so the caller should ensure kbasep_js_try_run_next_job_nolock()
+ * or similar is called sometime later.
  * @return MALI_FALSE indicates no change in ctx attributes state of the runpool.
  */
 mali_bool kbasep_js_ctx_attr_runpool_release_ctx( kbase_device *kbdev,
@@ -101,8 +103,8 @@ void kbasep_js_ctx_attr_ctx_retain_atom( kbase_device *kbdev,
  *
  * @return MALI_TRUE indicates a change in ctx attributes state of the runpool.
  * In this state, the scheduler might be able to submit more jobs than
- * previously, and so the caller should ensure kbasep_js_try_run_next_job() is
- * called sometime later.
+ * previously, and so the caller should ensure kbasep_js_try_run_next_job_nolock()
+ * or similar is called sometime later.
  * @return MALI_FALSE indicates no change in ctx attributes state of the runpool.
  */
 mali_bool kbasep_js_ctx_attr_ctx_release_atom( kbase_device *kbdev,

@@ -29,9 +29,6 @@
 
 typedef enum base_hw_issue {
 
-	/* Tiler triggers a fault if the scissor rectangle is empty. */
-	BASE_HW_ISSUE_5699,
-
 	/* The current version of the model doesn't support Soft-Stop */
 	BASE_HW_ISSUE_5736,
 
@@ -46,6 +43,9 @@ typedef enum base_hw_issue {
 
 	/* The clamp integer coordinate flag bit of the sampler descriptor is reserved */
 	BASE_HW_ISSUE_7144,
+
+	/* CRC computation can only happen when the bits per pixel is less than or equal to 32 */
+	BASE_HW_ISSUE_7393,
 
 	/* Write of PRFCNT_CONFIG_MODE_MANUAL to PRFCNT_CONFIG causes a instrumentation dump if
 	   PRFCNT_TILER_EN is enabled */
@@ -85,6 +85,7 @@ typedef enum base_hw_issue {
 	BASE_HW_ISSUE_8456,
 
 	/* Tiler heap issue using FBOs or multiple processes using the tiler simultaneously */
+	/* (Note that PRLAM-9049 also uses this work-around) */
 	BASE_HW_ISSUE_8564,
 
 	/* Livelock issue using atomic instructions (particularly when using atomic_cmpxchg as a spinlock) */
@@ -131,6 +132,9 @@ typedef enum base_hw_issue {
 	/* Occasionally the GPU will issue multiple page faults for the same address before the MMU page table has been read by the GPU */
 	BASE_HW_ISSUE_9630,
 
+	/* RA DCD load request to SDC returns invalid load ignore causing colour buffer mismatch */
+	BASE_HW_ISSUE_10327,
+
 	/* The BASE_HW_ISSUE_END value must be the last issue listed in this enumeration
 	 * and must be the last value in each array that contains the list of workarounds
 	 * for a particular HW version.
@@ -142,15 +146,14 @@ typedef enum base_hw_issue {
 /**
  * Workarounds configuration for each HW revision
  */
-#if MALI_BACKEND_KERNEL || MALI_NO_MALI
-/* Mali T60x/T65x r0p0-15dev0 - 2011-W39-stable-9 */
-static const base_hw_issue base_hw_issues_t60x_t65x_r0p0_15dev0[] =
+/* Mali T60x r0p0-15dev0 - 2011-W39-stable-9 */
+static const base_hw_issue base_hw_issues_t60x_r0p0_15dev0[] =
 {
-	BASE_HW_ISSUE_5699,
 	BASE_HW_ISSUE_6367,
 	BASE_HW_ISSUE_6402,
 	BASE_HW_ISSUE_6787,
 	BASE_HW_ISSUE_7144,
+	BASE_HW_ISSUE_7393,
 	BASE_HW_ISSUE_8186,
 	BASE_HW_ISSUE_8245,
 	BASE_HW_ISSUE_8250,
@@ -180,13 +183,13 @@ static const base_hw_issue base_hw_issues_t60x_t65x_r0p0_15dev0[] =
 	BASE_HW_ISSUE_END
 };
 
-/* Mali T60x/T65x r0p0-00rel0 - 2011-W46-stable-13c */
-static const base_hw_issue base_hw_issues_t60x_t65x_r0p0_eac[] =
+/* Mali T60x r0p0-00rel0 - 2011-W46-stable-13c */
+static const base_hw_issue base_hw_issues_t60x_r0p0_eac[] =
 {
-	BASE_HW_ISSUE_5699,
 	BASE_HW_ISSUE_6367,
 	BASE_HW_ISSUE_6402,
 	BASE_HW_ISSUE_6787,
+	BASE_HW_ISSUE_7393,
 	BASE_HW_ISSUE_8564,
 	BASE_HW_ISSUE_8803,
 	BASE_HW_ISSUE_8975,
@@ -199,13 +202,13 @@ static const base_hw_issue base_hw_issues_t60x_t65x_r0p0_eac[] =
 	BASE_HW_ISSUE_END
 };
 
-/* Mali T60x/T65x r0p1 */
-static const base_hw_issue base_hw_issues_t60x_t65x_r0p1[] =
+/* Mali T60x r0p1 */
+static const base_hw_issue base_hw_issues_t60x_r0p1[] =
 {
-	BASE_HW_ISSUE_5699,
 	BASE_HW_ISSUE_6367,
 	BASE_HW_ISSUE_6402,
 	BASE_HW_ISSUE_6787,
+	BASE_HW_ISSUE_7393,
 	BASE_HW_ISSUE_8564,
 	BASE_HW_ISSUE_8803,
 	BASE_HW_ISSUE_8975,
@@ -217,11 +220,20 @@ static const base_hw_issue base_hw_issues_t60x_t65x_r0p1[] =
 	BASE_HW_ISSUE_END
 };
 
-/* Mali T60x/T65x r1p0-00rel0 */
-static const base_hw_issue base_hw_issues_t60x_t65x_r1p0[] =
+/* Mali T65x r0p1 */
+static const base_hw_issue base_hw_issues_t65x_r0p1[] =
 {
+	BASE_HW_ISSUE_6367,
 	BASE_HW_ISSUE_6402,
+	BASE_HW_ISSUE_6787,
+	BASE_HW_ISSUE_7393,
+	BASE_HW_ISSUE_8564,
+	BASE_HW_ISSUE_8803,
+	BASE_HW_ISSUE_8975,
+	BASE_HW_ISSUE_9010,
+	BASE_HW_ISSUE_9275,
 	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_9510,
 	/* List of hardware issues must end with BASE_HW_ISSUE_END */
 	BASE_HW_ISSUE_END
 };
@@ -230,7 +242,10 @@ static const base_hw_issue base_hw_issues_t60x_t65x_r1p0[] =
 static const base_hw_issue base_hw_issues_t62x_r0p0[] =
 {
 	BASE_HW_ISSUE_6402,
+	BASE_HW_ISSUE_8803,
+	BASE_HW_ISSUE_8975,
 	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_10327,
 	/* List of hardware issues must end with BASE_HW_ISSUE_END */
 	BASE_HW_ISSUE_END
 };
@@ -239,31 +254,12 @@ static const base_hw_issue base_hw_issues_t62x_r0p0[] =
 static const base_hw_issue base_hw_issues_t67x_r0p0[] =
 {
 	BASE_HW_ISSUE_6402,
-	BASE_HW_ISSUE_9435,
-	/* List of hardware issues must end with BASE_HW_ISSUE_END */
-	BASE_HW_ISSUE_END
-};
-
-#else /* MALI_BACKEND_KERNEL || MALI_NO_MALI */
-
-/* Model configuration
- *
- * note: We can only know that the model is used at compile-time
- */
-
-static const base_hw_issue base_hw_issues_model[] =
-{
-	BASE_HW_ISSUE_5736,
-	BASE_HW_ISSUE_6402, /* NOTE: Fix is present in model r125162 but is not enabled until RTL is fixed */
 	BASE_HW_ISSUE_8803,
-	BASE_HW_ISSUE_8975, /* NOTE: Model is fixed for BASE_HW_ISSUE_8975, but not EGL, see MIDEGL-868 */
-	BASE_HW_ISSUE_9010,
-	BASE_HW_ISSUE_9275,
+	BASE_HW_ISSUE_8975,
 	BASE_HW_ISSUE_9435,
+	BASE_HW_ISSUE_10327,
 	/* List of hardware issues must end with BASE_HW_ISSUE_END */
 	BASE_HW_ISSUE_END
 };
-
-#endif  /* MALI_BACKEND_KERNEL || MALI_NO_MALI */
 
 #endif /* _BASE_HWCONFIG_H_ */

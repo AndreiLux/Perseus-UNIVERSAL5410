@@ -10,11 +10,9 @@
  *
  */
 
-#ifndef MALI_GATOR_SUPPORT
-#define MALI_GATOR_SUPPORT 0
-#endif
 
-#if MALI_GATOR_SUPPORT
+
+#ifdef CONFIG_MALI_GATOR_SUPPORT
 #define GATOR_MAKE_EVENT(type,number) (((type) << 24) | ((number) << 16))
 #define GATOR_JOB_SLOT_START 1
 #define GATOR_JOB_SLOT_STOP  2

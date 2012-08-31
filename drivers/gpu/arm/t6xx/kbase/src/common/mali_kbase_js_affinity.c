@@ -10,6 +10,8 @@
  *
  */
 
+
+
 /**
  * @file mali_kbase_js_affinity.c
  * Base kernel affinity manager APIs
@@ -18,7 +20,7 @@
 #include <kbase/src/common/mali_kbase.h>
 #include "mali_kbase_js_affinity.h"
 
-#if MALI_DEBUG && 0 /* disabled to avoid compilation warnings */
+#if defined(CONFIG_MALI_DEBUG) && 0 /* disabled to avoid compilation warnings */
 
 STATIC void debug_get_binary_string(const u64 n, char *buff, const int size)
 {
@@ -54,7 +56,7 @@ STATIC void debug_print_affinity_info(const kbase_device *kbdev, const kbase_jd_
 				   js, nr_nss_ctxs_running, buff, buff2);
 }
 
-#endif /* MALI_DEBUG */
+#endif /* CONFIG_MALI_DEBUG */
 
 OSK_STATIC_INLINE mali_bool affinity_job_uses_high_cores( kbase_device *kbdev, kbase_jd_atom *katom )
 {
@@ -93,6 +95,7 @@ OSK_STATIC_INLINE mali_bool affinity_job_uses_high_cores( kbase_device *kbdev, k
 OSK_STATIC_INLINE mali_bool kbase_affinity_requires_split(kbase_device *kbdev)
 {
 	OSK_ASSERT( kbdev != NULL );
+	lockdep_assert_held(&kbdev->js_data.runpool_irq.lock);
 
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8987))
 	{
@@ -333,7 +336,7 @@ mali_bool kbase_js_affinity_would_violate( kbase_device *kbdev, int js, u64 affi
 	OSK_ASSERT( js <  BASE_JM_MAX_NR_SLOTS );
 	js_devdata = &kbdev->js_data;
 
-	OSK_MEMCPY( new_affinities, js_devdata->runpool_irq.slot_affinities, sizeof(js_devdata->runpool_irq.slot_affinities) );
+	memcpy( new_affinities, js_devdata->runpool_irq.slot_affinities, sizeof(js_devdata->runpool_irq.slot_affinities) );
 
 	new_affinities[ js ] |= affinity;
 
@@ -421,45 +424,29 @@ void kbase_js_affinity_submit_to_blocked_slots( kbase_device *kbdev )
 	OSK_ASSERT( kbdev != NULL );
 	js_devdata = &kbdev->js_data;
 
-	osk_mutex_lock( &js_devdata->runpool_mutex );
+	OSK_ASSERT( js_devdata->nr_user_contexts_running != 0 );
 
-	/* Must take a copy because submitting jobs will update this member
-	 * We don't take a lock here - a data barrier was issued beforehand */
+	/* Must take a copy because submitting jobs will update this member. */
 	slots = js_devdata->runpool_irq.slots_blocked_on_affinity;
 
-	if ( slots != 0u && js_devdata->nr_user_contexts_running != 0)
+	while (slots)
 	{
-		/* Only try running jobs:
-		 * - there's some blocked slots
-		 * - when we have contexts present, otherwise the GPU might be powered off.
-		 */
+		int bitnum = 31 - osk_clz(slots);
+		u16 bit = 1u << bitnum;
+		slots &= ~bit;
 
-		osk_spinlock_irq_lock(&kbdev->jm_slots_lock);
-		osk_spinlock_irq_lock(&js_devdata->runpool_irq.lock);
-		while (slots)
-		{
-			int bitnum = 31 - osk_clz(slots);
-			u16 bit = 1u << bitnum;
-			slots &= ~bit;
+		KBASE_TRACE_ADD_SLOT( kbdev, JS_AFFINITY_SUBMIT_TO_BLOCKED, NULL, NULL, 0u, bitnum);
 
-			KBASE_TRACE_ADD_SLOT( kbdev, JS_AFFINITY_SUBMIT_TO_BLOCKED, NULL, NULL, 0u, bitnum);
+		/* must update this before we submit, incase it's set again */
+		js_devdata->runpool_irq.slots_blocked_on_affinity &= ~bit;
 
-			/* must update this before we submit, incase it's set again */
-			js_devdata->runpool_irq.slots_blocked_on_affinity &= ~bit;
+		kbasep_js_try_run_next_job_on_slot_nolock( kbdev, bitnum );
 
-			kbasep_js_try_run_next_job_on_slot_nolock( kbdev, bitnum );
-
-			/* Don't re-read slots_blocked_on_affinity after this - it could loop for a long time */
-		}
-		osk_spinlock_irq_unlock(&js_devdata->runpool_irq.lock);
-		osk_spinlock_irq_unlock(&kbdev->jm_slots_lock);
+		/* Don't re-read slots_blocked_on_affinity after this - it could loop for a long time */
 	}
-
-	osk_mutex_unlock( &js_devdata->runpool_mutex );
-
 }
 
-#if KBASE_TRACE_ENABLE != 0
+#if defined(CONFIG_MALI_DEBUG) || (KBASE_TRACE_ENABLE != 0)
 void kbase_js_debug_log_current_affinities( kbase_device *kbdev )
 {
 	kbasep_js_device_data *js_devdata;
@@ -473,4 +460,4 @@ void kbase_js_debug_log_current_affinities( kbase_device *kbdev )
 		KBASE_TRACE_ADD_SLOT_INFO( kbdev, JS_AFFINITY_CURRENT, NULL, NULL, 0u, slot_nr, (u32)js_devdata->runpool_irq.slot_affinities[slot_nr] );
 	}
 }
-#endif /* KBASE_TRACE_ENABLE != 0 */
+#endif /* defined(CONFIG_MALI_DEBUG) || (KBASE_TRACE_ENABLE != 0) */

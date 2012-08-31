@@ -10,6 +10,8 @@
  *
  */
 
+
+
 /**
  * @file mali_kbase_sync.c
  *
@@ -23,8 +25,8 @@
 struct mali_sync_timeline
 {
 	struct sync_timeline timeline;
-	osk_atomic counter;
-	osk_atomic signalled;
+	atomic_t counter;
+	atomic_t signalled;
 };
 
 struct mali_sync_pt
@@ -66,7 +68,7 @@ static int timeline_has_signaled(struct sync_pt *pt)
 	struct mali_sync_pt *mpt = to_mali_sync_pt(pt);
 	struct mali_sync_timeline *mtl = to_mali_sync_timeline(pt->parent);
 
-	long diff = osk_atomic_get(&mtl->signalled) - mpt->order;
+	long diff = atomic_read(&mtl->signalled) - mpt->order;
 
 	return diff >= 0;
 }
@@ -122,8 +124,8 @@ struct sync_timeline *kbase_sync_timeline_alloc(const char * name)
 
 	/* Set the counter in our private struct */
 	mtl = to_mali_sync_timeline(tl);
-	osk_atomic_set(&mtl->counter, 0);
-	osk_atomic_set(&mtl->signalled, 0);
+	atomic_set(&mtl->counter, 0);
+	atomic_set(&mtl->signalled, 0);
 
 	return tl;
 }
@@ -140,7 +142,7 @@ struct sync_pt *kbase_sync_pt_alloc(struct sync_timeline *parent)
 	}
 
 	mpt = to_mali_sync_pt(pt);
-	mpt->order = osk_atomic_inc(&mtl->counter);
+	mpt->order = atomic_inc_return(&mtl->counter);
 
 	return pt;
 }
@@ -149,12 +151,12 @@ void kbase_sync_signal_pt(struct sync_pt *pt)
 {
 	struct mali_sync_pt *mpt = to_mali_sync_pt(pt);
 	struct mali_sync_timeline *mtl = to_mali_sync_timeline(pt->parent);
-	u32 signalled;
+	int signalled;
 	long diff;
 
 	do {
 
-		signalled = osk_atomic_get(&mtl->signalled);
+		signalled = atomic_read(&mtl->signalled);
 
 		diff = signalled - mpt->order;
 
@@ -164,12 +166,12 @@ void kbase_sync_signal_pt(struct sync_pt *pt)
 			 * has been signalling fences out of order, so warn but don't violate the sync_pt API.
 			 * The warning is only in release builds to prevent a malicious user being able to spam dmesg.
 			 */
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 			OSK_PRINT_ERROR(OSK_BASE_JD, "Fence's were triggered in a different order to allocation!");
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 			return;
 		}
-	} while (osk_atomic_compare_and_swap(&mtl->signalled, signalled, mpt->order) != signalled);
+	} while (atomic_cmpxchg(&mtl->signalled, signalled, mpt->order) != signalled);
 }
 
 #endif /* CONFIG_SYNC */

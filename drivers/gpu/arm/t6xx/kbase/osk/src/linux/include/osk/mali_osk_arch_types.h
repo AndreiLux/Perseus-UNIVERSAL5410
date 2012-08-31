@@ -25,9 +25,7 @@
 #include <linux/mutex.h>
 #include <linux/rwsem.h>
 #include <linux/wait.h>
-#if MALI_LICENSE_IS_GPL
 #include <linux/hrtimer.h>
-#endif
 #include <linux/workqueue.h>
 #include <linux/mm_types.h>
 #include <asm/atomic.h>
@@ -107,16 +105,12 @@ typedef struct osk_waitq
 } osk_waitq;
 
 typedef struct osk_timer {
-#if MALI_LICENSE_IS_GPL
 	struct hrtimer timer;
 	osk_timer_callback callback;
 	void *data;
-#else /* MALI_LICENSE_IS_GPL */
-	struct timer_list timer;
-#endif /* MALI_LICENSE_IS_GPL */
-#ifdef MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 	mali_bool active;
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 } osk_timer;
 
 typedef struct page osk_page;
@@ -125,7 +119,6 @@ typedef struct vm_area_struct osk_vma;
 typedef unsigned long osk_ticks; /* 32-bit resolution deemed to be sufficient */
 
 /* Separate definitions for the following, to avoid wrapper functions for GPL drivers */
-#if MALI_LICENSE_IS_GPL
 typedef work_func_t		osk_workq_fn;
 
 typedef struct work_struct osk_workq_work;
@@ -134,32 +127,6 @@ typedef struct osk_workq
 {
 	struct workqueue_struct *wqs;
 } osk_workq;
-
-#else /* MALI_LICENSE_IS_GPL */
-
-/* Forward decls */
-typedef struct osk_workq_work osk_workq_work;
-typedef struct osk_workq osk_workq;
-
-typedef void (*osk_workq_fn)(osk_workq_work *);
-
-struct osk_workq_work
-{
-	struct work_struct os_work;
-	/* Non-GPL driver must manually track work */
-	osk_workq_fn actual_fn;
-	osk_workq *parent_wq;
-};
-
-struct osk_workq
-{
-	/* Non-GPL driver shouldn't flush the global workqueue, so we do a manual form of flushing */
-	spinlock_t active_items_lock;
-	u32 nr_active_items;
-	wait_queue_head_t waitq_zero_active_items;
-};
-
-#endif /* MALI_LICENSE_IS_GPL */
 
 typedef struct device osk_power_info;
 

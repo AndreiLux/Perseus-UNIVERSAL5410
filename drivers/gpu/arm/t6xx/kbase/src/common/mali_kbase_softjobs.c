@@ -10,10 +10,13 @@
  *
  */
 
+
+
 #include <kbase/src/common/mali_kbase.h>
 
 #ifdef CONFIG_SYNC
 #include <linux/sync.h>
+#include <linux/syscalls.h>
 #include "../linux/mali_kbase_sync.h"
 #endif
 
@@ -31,7 +34,7 @@ static base_jd_event_code kbase_dump_cpu_gpu_time(kbase_jd_atom *katom)
 	u64 pfn;
 	u32 offset;
 	char *page;
-	osk_timeval tv;
+	struct timespec ts;
 	base_dump_cpu_gpu_counters data;
 	u64 system_time;
 	u64 cycle_counter;
@@ -40,14 +43,9 @@ static base_jd_event_code kbase_dump_cpu_gpu_time(kbase_jd_atom *katom)
 
 	u32 hi1, hi2;
 
-	OSK_MEMSET(&data, 0, sizeof(data));
+	memset(&data, 0, sizeof(data));
 
-	/* GPU needs to be powered to read the cycle counters, the jctx->lock protects this check */
-	if (!katom->bag->has_pm_ctx_reference)
-	{
-		kbase_pm_context_active(kctx->kbdev);
-		katom->bag->has_pm_ctx_reference = MALI_TRUE;
-	}
+	kbase_pm_context_active(kctx->kbdev);
 
 	/* Read hi, lo, hi to ensure that overflow from lo to hi is handled correctly */
 	do {
@@ -66,10 +64,12 @@ static base_jd_event_code kbase_dump_cpu_gpu_time(kbase_jd_atom *katom)
 	} while (hi1 != hi2);
 
 	/* Record the CPU's idea of current time */
-	osk_gettimeofday(&tv);
+	getnstimeofday(&ts);
 
-	data.sec = tv.tv_sec;
-	data.usec = tv.tv_usec;
+	kbase_pm_context_idle(kctx->kbdev);
+
+	data.sec = ts.tv_sec;
+	data.usec = ts.tv_nsec / 1000;
 	data.system_time = system_time;
 	data.cycle_counter = cycle_counter;
 
@@ -117,25 +117,26 @@ static base_jd_event_code kbase_dump_cpu_gpu_time(kbase_jd_atom *katom)
 	return BASE_JD_EVENT_DONE;
 }
 
+#ifdef CONFIG_SYNC
+
 /* Complete an atom that has returned '1' from kbase_process_soft_job (i.e. has waited)
  *
  * @param katom     The atom to complete
- * @param zapping   1 if the atom has failed, 0 otherwise
  */
-static void complete_soft_job(kbase_jd_atom *katom, int zapping)
+static void complete_soft_job(kbase_jd_atom *katom)
 {
 	kbase_context *kctx = katom->kctx;
 
-	osk_mutex_lock(&kctx->jctx.lock);
-	OSK_DLIST_REMOVE(&kctx->waiting_soft_jobs, katom, event.entry);
-	if (jd_done_nolock(katom, zapping))
+	mutex_lock(&kctx->jctx.lock);
+	OSK_DLIST_REMOVE(&kctx->waiting_soft_jobs, katom, dep_item[0]);
+	kbase_finish_soft_job(katom);
+	if (jd_done_nolock(katom))
 	{
 		kbasep_js_try_schedule_head_ctx( kctx->kbdev );
 	}
-	osk_mutex_unlock(&kctx->jctx.lock);
+	mutex_unlock(&kctx->jctx.lock);
 }
 
-#ifdef CONFIG_SYNC
 
 static base_jd_event_code kbase_fence_trigger(kbase_jd_atom *katom)
 {
@@ -164,25 +165,27 @@ static base_jd_event_code kbase_fence_trigger(kbase_jd_atom *katom)
 	return BASE_JD_EVENT_DONE;
 }
 
-static void kbase_fence_wait_worker(osk_workq_work *data)
+static void kbase_fence_wait_worker(struct work_struct *data)
 {
 	kbase_jd_atom *katom;
 	kbase_context *kctx;
-	int zapping;
 
-	katom = CONTAINER_OF(data, kbase_jd_atom, work);
+	katom = container_of(data, kbase_jd_atom, work);
 	kctx = katom->kctx;
-	zapping = (katom->event.event_code != BASE_JD_EVENT_DONE);
 
-	complete_soft_job(katom, zapping);
+	complete_soft_job(katom);
 }
 
 static void kbase_fence_wait_callback(struct sync_fence *fence, struct sync_fence_waiter *waiter)
 {
-	kbase_jd_atom *katom = CONTAINER_OF(waiter, kbase_jd_atom, sync_waiter);
+	kbase_jd_atom *katom = container_of(waiter, kbase_jd_atom, sync_waiter);
 	kbase_context *kctx;
 
+	OSK_ASSERT(NULL != katom);
+
 	kctx = katom->kctx;
+
+	OSK_ASSERT(NULL != kctx);
 
 	/* To prevent a potential deadlock we schedule the work onto the job_done_wq workqueue
 	 *
@@ -190,13 +193,17 @@ static void kbase_fence_wait_callback(struct sync_fence *fence, struct sync_fenc
 	 * the callbacks are run synchronously from sync_timeline_signal. So we simply defer the work.
 	 */
 
-	osk_workq_work_init(&katom->work, kbase_fence_wait_worker);
-	osk_workq_submit(&kctx->jctx.job_done_wq, &katom->work);
+	OSK_ASSERT(0 == object_is_on_stack(&katom->work));
+	INIT_WORK(&katom->work, kbase_fence_wait_worker);
+	queue_work(kctx->jctx.job_done_wq, &katom->work);
 }
 
 static int kbase_fence_wait(kbase_jd_atom *katom)
 {
 	int ret;
+
+	OSK_ASSERT(NULL != katom);
+	OSK_ASSERT(NULL != katom->kctx);
 
 	sync_fence_waiter_init(&katom->sync_waiter, kbase_fence_wait_callback);
 
@@ -214,11 +221,12 @@ static int kbase_fence_wait(kbase_jd_atom *katom)
 	return 1;
 
 cancel_atom:
-	katom->event.event_code = BASE_JD_EVENT_JOB_CANCELLED;
+	katom->event_code = BASE_JD_EVENT_JOB_CANCELLED;
 	/* We should cause the dependant jobs in the bag to be failed,
 	 * to do this we schedule the work queue to complete this job */
-	osk_workq_work_init(&katom->work, kbase_fence_wait_worker);
-	osk_workq_submit(&katom->kctx->jctx.job_done_wq, &katom->work);
+	OSK_ASSERT(0 == object_is_on_stack(&katom->work));
+	INIT_WORK(&katom->work, kbase_fence_wait_worker);
+	queue_work(katom->kctx->jctx.job_done_wq, &katom->work);
 	return 1;
 }
 
@@ -227,9 +235,11 @@ static void kbase_fence_cancel_wait(kbase_jd_atom *katom)
 	sync_fence_cancel_async(katom->fence, &katom->sync_waiter);
 
 	/* Wait was cancelled - zap the atoms */
-	katom->event.event_code = BASE_JD_EVENT_JOB_CANCELLED;
+	katom->event_code = BASE_JD_EVENT_JOB_CANCELLED;
 
-	if (jd_done_nolock(katom, 1))
+	kbase_finish_soft_job(katom);
+
+	if (jd_done_nolock(katom))
 	{
 		kbasep_js_try_schedule_head_ctx( katom->kctx->kbdev );
 	}
@@ -242,20 +252,19 @@ int kbase_process_soft_job(kbase_jd_atom *katom )
 	switch(katom->core_req)
 	{
 		case BASE_JD_REQ_SOFT_DUMP_CPU_GPU_TIME:
-			katom->event.event_code = kbase_dump_cpu_gpu_time(katom);
+			katom->event_code = kbase_dump_cpu_gpu_time(katom);
 			break;
 #ifdef CONFIG_SYNC
 		case BASE_JD_REQ_SOFT_FENCE_TRIGGER:
-			katom->event.event_code = kbase_fence_trigger(katom);
+			OSK_ASSERT(katom->fence != NULL);
+			katom->event_code = kbase_fence_trigger(katom);
+			/* Release the reference as we don't need it any more */
+			sync_fence_put(katom->fence);
+			katom->fence = NULL;
 			break;
 		case BASE_JD_REQ_SOFT_FENCE_WAIT:
 			return kbase_fence_wait(katom);
-#elif defined(MALI_KBASE_USERSPACE)
-		case BASE_JD_REQ_SOFT_FENCE_TRIGGER:
-		case BASE_JD_REQ_SOFT_FENCE_WAIT:
-			/* In userspace ignore fences */
-			break;
-#endif
+#endif /* CONFIG_SYNC */
 	}
 
 	/* Atom is complete */
@@ -285,20 +294,52 @@ mali_error kbase_prepare_soft_job(kbase_jd_atom *katom )
 			break;
 #ifdef CONFIG_SYNC
 		case BASE_JD_REQ_SOFT_FENCE_TRIGGER:
-		case BASE_JD_REQ_SOFT_FENCE_WAIT:
-			/* Get a reference to the fence object */
-			katom->fence = sync_fence_fdget((int)katom->jc);
-			if (katom->fence == NULL)
 			{
-				return MALI_ERROR_FUNCTION_FAILED;
+				base_fence fence;
+				int fd;
+				if (MALI_ERROR_NONE != ukk_copy_from_user(sizeof(fence), &fence, (__user void*)(uintptr_t)katom->jc))
+				{
+					return MALI_ERROR_FUNCTION_FAILED;
+				}
+				fd = kbase_stream_create_fence(fence.basep.stream_fd);
+				if (fd < 0)
+				{
+					return MALI_ERROR_FUNCTION_FAILED;
+				}
+				katom->fence = sync_fence_fdget(fd);
+
+				if (katom->fence == NULL)
+				{
+					/* The only way the fence can be NULL is if userspace closed it for us.
+					 * So we don't need to clear it up */
+					return MALI_ERROR_FUNCTION_FAILED;
+				}
+				fence.basep.fd = fd;
+				if (MALI_ERROR_NONE != ukk_copy_to_user(sizeof(fence), (__user void*)(uintptr_t)katom->jc, &fence))
+				{
+					katom->fence = NULL;
+					sys_close(fd);
+					return MALI_ERROR_FUNCTION_FAILED;
+				}
 			}
 			break;
-#elif defined(MALI_KBASE_USERSPACE)
-		case BASE_JD_REQ_SOFT_FENCE_TRIGGER:
 		case BASE_JD_REQ_SOFT_FENCE_WAIT:
-			/* In userspace ignore fences */
-			return MALI_ERROR_NONE;
-#endif
+			{
+				base_fence fence;
+				if (MALI_ERROR_NONE != ukk_copy_from_user(sizeof(fence), &fence, (__user void*)(uintptr_t)katom->jc))
+				{
+					return MALI_ERROR_FUNCTION_FAILED;
+				}
+
+				/* Get a reference to the fence object */
+				katom->fence = sync_fence_fdget(fence.basep.fd);
+				if (katom->fence == NULL)
+				{
+					return MALI_ERROR_FUNCTION_FAILED;
+				}
+			}
+			break;
+#endif /* CONFIG_SYNC */
 		default:
 			/* Unsupported soft-job */
 			return MALI_ERROR_FUNCTION_FAILED;
@@ -314,16 +355,17 @@ void kbase_finish_soft_job(kbase_jd_atom *katom )
 			break;
 #ifdef CONFIG_SYNC
 		case BASE_JD_REQ_SOFT_FENCE_TRIGGER:
+			if (katom->fence) {
+				/* The fence has not yet been signalled, so we do it now */
+				sync_fence_put(katom->fence);
+				katom->fence = NULL;
+			}
+			break;
 		case BASE_JD_REQ_SOFT_FENCE_WAIT:
 			/* Release the reference to the fence object */
 			sync_fence_put(katom->fence);
 			katom->fence = NULL;
 			break;
-#elif defined(MALI_KBASE_USERSPACE)
-		case BASE_JD_REQ_SOFT_FENCE_TRIGGER:
-		case BASE_JD_REQ_SOFT_FENCE_WAIT:
-			/* nothing to for userspace fences */
-			break;
-#endif
+#endif /* CONFIG_SYNC */
 	}
 }

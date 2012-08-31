@@ -10,6 +10,8 @@
  *
  */
 
+
+
 /**
  * @file mali_kbase_core_linux.c
  * Base kernel driver init.
@@ -22,25 +24,23 @@
 #include <kbase/src/linux/mali_kbase_mem_linux.h>
 #include <kbase/src/linux/mali_kbase_config_linux.h>
 #include <kbase/mali_ukk.h>
-#if MALI_NO_MALI
+#ifdef CONFIG_MALI_NO_MALI
 #include "mali_kbase_model_linux.h"
-#endif
+#endif /* CONFIG_MALI_NO_MALI */
 
-#ifdef MALI_USE_KDS
+#ifdef CONFIG_KDS
 #include <linux/kds.h>
 #include <linux/anon_inodes.h>
 #include <linux/syscalls.h>
-#endif
+#endif /* CONFIG_KDS */
 
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/poll.h>
 #include <linux/kernel.h>
 #include <linux/errno.h>
-#if MALI_LICENSE_IS_GPL
 #include <linux/platform_device.h>
 #include <linux/miscdevice.h>
-#endif
 #include <linux/list.h>
 #include <linux/semaphore.h>
 #include <linux/fs.h>
@@ -53,11 +53,6 @@
 #ifdef CONFIG_SYNC
 #include <kbase/src/linux/mali_kbase_sync.h>
 #endif /* CONFIG_SYNC */
-
-#if MALI_LICENSE_IS_GPL && MALI_CUSTOMER_RELEASE == 0 && MALI_COVERAGE == 0
-#include <linux/pci.h>
-#define MALI_PCI_DEVICE
-#endif
 
 #define	JOB_IRQ_TAG	0
 #define MMU_IRQ_TAG	1
@@ -73,66 +68,26 @@ kbase_exported_test_data shared_kernel_test_data;
 EXPORT_SYMBOL(shared_kernel_test_data);
 #endif /* MALI_UNIT_TEST */
 
+#define KBASE_DRV_NAME "mali"
+
 static const char kbase_drv_name[] = KBASE_DRV_NAME;
 
 static int kbase_dev_nr;
 
-#if MALI_LICENSE_IS_GPL
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,36)
 static DEFINE_SEMAPHORE(kbase_dev_list_lock);
-#else
-static DECLARE_MUTEX(kbase_dev_list_lock);
-#endif
 static LIST_HEAD(kbase_dev_list);
 
 KBASE_EXPORT_TEST_API(kbase_dev_list_lock)
 KBASE_EXPORT_TEST_API(kbase_dev_list)
-#endif
 
-#if MALI_LICENSE_IS_GPL == 0
-#include <linux/cdev.h>              /* character device definitions */
-
-/* By default the module uses any available major, but it's possible to set it at load time to a specific number */
-int mali_major = 0;
-module_param(mali_major, int, S_IRUGO); /* r--r--r-- */
-MODULE_PARM_DESC(mali_major, "Device major number");
-
-struct mali_linux_device
-{
-    struct cdev cdev;
-};
-
-/* The global variable containing the global device data */
-static struct mali_linux_device mali_linux_device;
-
-static char mali_dev_name[] = KBASE_DRV_NAME; /* should be const, but the functions we call requires non-cost */
-
-#undef dev_err
-#undef dev_info
-#undef dev_dbg
-#define dev_err(dev,msg,...)  do { printk(KERN_ERR   KBASE_DRV_NAME " error: "); printk(msg, ## __VA_ARGS__); } while(0)
-#define dev_info(dev,msg,...) do { printk(KERN_INFO  KBASE_DRV_NAME " info: ");  printk(msg, ## __VA_ARGS__); } while(0)
-#define dev_dbg(dev,msg,...)  do { printk(KERN_DEBUG KBASE_DRV_NAME " debug: "); printk(msg, ## __VA_ARGS__); } while(0)
-#define dev_name(dev) "MALI"
-
-/* STATIC */ struct kbase_device     *g_kbdev;
-KBASE_EXPORT_TEST_API(g_kbdev);
-
-#endif
-
-
-#if MALI_LICENSE_IS_GPL
 #define KERNEL_SIDE_DDK_VERSION_STRING "K:" MALI_RELEASE_NAME "(GPL)"
-#else
-#define KERNEL_SIDE_DDK_VERSION_STRING "K:" MALI_RELEASE_NAME
-#endif /* MALI_LICENSE_IS_GPL */
 
 static INLINE void __compile_time_asserts( void )
 {
 	CSTD_COMPILE_TIME_ASSERT( sizeof(KERNEL_SIDE_DDK_VERSION_STRING) <= KBASE_GET_VERSION_BUFFER_SIZE);
 }
 
-#ifdef MALI_USE_KDS
+#ifdef CONFIG_KDS
 
 typedef struct kbasep_kds_resource_set_file_data
 {
@@ -165,7 +120,7 @@ static int kds_resource_release(struct inode *inode, struct file *file)
 		{
 			kds_resource_set_release( &data->lock );
 		}
-		osk_free( data );
+		kfree( data );
 	}
 	return 0;
 }
@@ -179,16 +134,35 @@ mali_error kbasep_kds_allocate_resource_list_data( kbase_context * kctx,
 	int res_id;
 
 	/* assume we have to wait for all */
-	resources_list->kds_resources = osk_malloc(sizeof(struct kds_resource *) * num_elems);
+
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		resources_list->kds_resources = NULL;
+	}
+	else
+	{
+		OSK_ASSERT(0 != num_elems);
+		resources_list->kds_resources = kmalloc(sizeof(struct kds_resource *) * num_elems, GFP_KERNEL);
+	}
+
 	if ( NULL == resources_list->kds_resources )
 	{
 		return MALI_ERROR_OUT_OF_MEMORY;
 	}
 
-	resources_list->kds_access_bitmap = osk_calloc(sizeof(unsigned long) * ((num_elems + OSK_BITS_PER_LONG - 1) / OSK_BITS_PER_LONG));
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		resources_list->kds_access_bitmap = NULL;
+	}
+	else
+	{
+		OSK_ASSERT(0 != num_elems);
+		resources_list->kds_access_bitmap = kzalloc(sizeof(unsigned long) * ((num_elems + OSK_BITS_PER_LONG - 1) / OSK_BITS_PER_LONG), GFP_KERNEL);
+	}
+
 	if (NULL == resources_list->kds_access_bitmap)
 	{
-		osk_free(resources_list->kds_access_bitmap);
+		kfree(resources_list->kds_access_bitmap);
 		return MALI_ERROR_OUT_OF_MEMORY;
 	}
 
@@ -209,11 +183,11 @@ mali_error kbasep_kds_allocate_resource_list_data( kbase_context * kctx,
 
 		switch (reg->imported_type)
 		{
-#if MALI_USE_UMP == 1
+#if defined(CONFIG_UMP) && defined(CONFIG_KDS)
 			case BASE_TMEM_IMPORT_TYPE_UMP:
 				kds_res = ump_dd_kds_resource_get(reg->imported_metadata.ump_handle);
 				break;
-#endif /*MALI_USE_UMP == 1*/
+#endif /* defined(CONFIG_UMP) && defined(CONFIG_KDS) */
 			default:
 				break;
 		}
@@ -239,8 +213,8 @@ mali_error kbasep_kds_allocate_resource_list_data( kbase_context * kctx,
 	}
 
 	/* Clean up as the resource list is not valid. */
-	osk_free( resources_list->kds_resources );
-	osk_free( resources_list->kds_access_bitmap );
+	kfree( resources_list->kds_resources );
+	kfree( resources_list->kds_access_bitmap );
 
 	return MALI_ERROR_FUNCTION_FAILED;
 }
@@ -282,14 +256,23 @@ mali_error kbase_external_buffer_lock(kbase_context * kctx, ukk_call_context *uk
 
 	/* Check user space has provided valid data */
 	if ( !kbasep_validate_kbase_pointer(&args->external_resource) ||
-         !kbasep_validate_kbase_pointer(&args->file_descriptor) ||
-         (0 == args->num_res))
+	     !kbasep_validate_kbase_pointer(&args->file_descriptor) ||
+	     (0 == args->num_res) || (args->num_res > KBASE_MAXIMUM_EXT_RESOURCES) )
 	{
 		return MALI_ERROR_FUNCTION_FAILED;
 	}
 
 	ext_resource_size = sizeof( base_external_resource ) * args->num_res;
-	ext_res_copy = (base_external_resource *)osk_malloc( ext_resource_size );
+
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		ext_res_copy = NULL;
+	}
+	else
+	{
+		OSK_ASSERT(0 != ext_resource_size);
+		ext_res_copy = (base_external_resource *)kmalloc( ext_resource_size, GFP_KERNEL );
+	}
 
 	if ( NULL != ext_res_copy )
 	{
@@ -313,8 +296,17 @@ mali_error kbase_external_buffer_lock(kbase_context * kctx, ukk_call_context *uk
 		/* Copy the external resources to lock from user space */
 		if ( MALI_ERROR_NONE == ukk_copy_from_user( ext_resource_size, ext_res_copy, ext_res_user ) )
 		{
+			kbasep_kds_resource_set_file_data * fdata;
+
 			/* Allocate data to be stored in the file */
-			kbasep_kds_resource_set_file_data * fdata = osk_malloc( sizeof( kbasep_kds_resource_set_file_data));
+			if(OSK_SIMULATE_FAILURE(OSK_OSK))
+			{
+				fdata = NULL;
+			}
+			else
+			{
+				fdata = kmalloc( sizeof( kbasep_kds_resource_set_file_data), GFP_KERNEL);
+			}
 
 			if ( NULL != fdata )
 			{
@@ -355,8 +347,8 @@ mali_error kbase_external_buffer_lock(kbase_context * kctx, ukk_call_context *uk
 						return_error = MALI_ERROR_FUNCTION_FAILED;
 					}
 
-					osk_free( resource_list_data.kds_resources );
-					osk_free( resource_list_data.kds_access_bitmap );
+					kfree( resource_list_data.kds_resources );
+					kfree( resource_list_data.kds_access_bitmap );
 				}
 
 				if ( MALI_ERROR_NONE != return_error )
@@ -369,7 +361,7 @@ mali_error kbase_external_buffer_lock(kbase_context * kctx, ukk_call_context *uk
 					}
 					else
 					{
-						osk_free( fdata );
+						kfree( fdata );
 					}
 				}
 			}
@@ -378,11 +370,11 @@ mali_error kbase_external_buffer_lock(kbase_context * kctx, ukk_call_context *uk
 				return_error = MALI_ERROR_OUT_OF_MEMORY;
 			}
 		}
-		osk_free( ext_res_copy );
+		kfree( ext_res_copy );
 	}
 	return return_error;
 }
-#endif
+#endif /* CONFIG_KDS */
 
 static mali_error kbase_dispatch(ukk_call_context * const ukk_ctx, void * const args, u32 args_size)
 {
@@ -393,15 +385,15 @@ static mali_error kbase_dispatch(ukk_call_context * const ukk_ctx, void * const 
 
 	OSKP_ASSERT( ukh != NULL );
 
-	kctx = CONTAINER_OF(ukk_session_get(ukk_ctx), kbase_context, ukk_session);
+	kctx = container_of(ukk_session_get(ukk_ctx), kbase_context, ukk_session);
 	kbdev = kctx->kbdev;
 	id = ukh->id;
 	ukh->ret = MALI_ERROR_NONE; /* Be optimistic */
 
-	if (!osk_atomic_get(&kctx->setup_complete))
+	if (!atomic_read(&kctx->setup_complete))
 	{
 		/* setup pending, try to signal that we'll do the setup */
-		if (osk_atomic_compare_and_swap(&kctx->setup_in_progress, 0, 1))
+		if (atomic_cmpxchg(&kctx->setup_in_progress, 0, 1))
 		{
 			/* setup was already in progress, err this call */
 			return MALI_ERROR_FUNCTION_FAILED;
@@ -429,7 +421,7 @@ static mali_error kbase_dispatch(ukk_call_context * const ukk_ctx, void * const 
 			else
 			{
 				/* we've done the setup, all OK */
-				osk_atomic_set(&kctx->setup_complete, 1);
+				atomic_set(&kctx->setup_complete, 1);
 				return MALI_ERROR_NONE;
 			}
 		}
@@ -457,7 +449,7 @@ static mali_error kbase_dispatch(ukk_call_context * const ukk_ctx, void * const 
 					       tmem->extent, tmem->flags, tmem->is_growable);
 			if (reg)
 			{
-				tmem->gpu_addr	= reg->start_pfn << OSK_PAGE_SHIFT;
+				tmem->gpu_addr	= reg->start_pfn << PAGE_SHIFT;
 			}
 			else
 			{
@@ -493,11 +485,11 @@ static mali_error kbase_dispatch(ukk_call_context * const ukk_ctx, void * const 
 			/* code should be in kbase_tmem_import and its helpers, but uk dropped its get_user abstraction */
 			switch (tmem_import->type)
 			{
-#if MALI_USE_UMP == 1
+#ifdef CONFIG_UMP
 				case BASE_TMEM_IMPORT_TYPE_UMP:
 					get_user(handle, phandle);
 					break;
-#endif /* MALI_USE_UMP == 1 */
+#endif /* CONFIG_UMP */
 				case BASE_TMEM_IMPORT_TYPE_UMM:
 					get_user(handle, phandle);
 					break;
@@ -510,7 +502,7 @@ static mali_error kbase_dispatch(ukk_call_context * const ukk_ctx, void * const 
 
 			if (reg)
 			{
-				tmem_import->gpu_addr = reg->start_pfn << OSK_PAGE_SHIFT;
+				tmem_import->gpu_addr = reg->start_pfn << PAGE_SHIFT;
 			}
 			else
 			{
@@ -547,7 +539,7 @@ bad_type:
 				goto bad_size;
 			}
 
-			if ((mem->gpu_addr & BASE_MEM_TAGS_MASK)&&(mem->gpu_addr >= OSK_PAGE_SIZE))
+			if ((mem->gpu_addr & BASE_MEM_TAGS_MASK)&&(mem->gpu_addr >= PAGE_SIZE))
 			{
 				OSK_PRINT_WARN(OSK_BASE_MEM, "kbase_dispatch case KBASE_FUNC_MEM_FREE: mem->gpu_addr: passed parameter is invalid");
 				ukh->ret = MALI_ERROR_FUNCTION_FAILED;
@@ -748,7 +740,7 @@ bad_type:
 			}
 
 			OSKP_ASSERT( find != NULL );
-			if ( find->size > SIZE_MAX || find->cpu_addr > UINTPTR_MAX )
+			if ( find->size > SIZE_MAX || find->cpu_addr > ULONG_MAX )
 			{
 				map = NULL;
 			}
@@ -782,7 +774,7 @@ bad_type:
 			}
 
 			/* version buffer size check is made in compile time assert */
-			OSK_MEMCPY(get_version->version_buffer, KERNEL_SIDE_DDK_VERSION_STRING,
+			memcpy(get_version->version_buffer, KERNEL_SIDE_DDK_VERSION_STRING,
 				sizeof(KERNEL_SIDE_DDK_VERSION_STRING));
 			get_version->version_string_size = sizeof(KERNEL_SIDE_DDK_VERSION_STRING);
 			break;
@@ -818,13 +810,13 @@ bad_type:
 			break;
 		}
 #endif /* CONFIG_SYNC */
-#ifdef MALI_USE_KDS
+#ifdef CONFIG_KDS
 		case KBASE_FUNC_EXT_BUFFER_LOCK:
 		{
 			ukh->ret = kbase_external_buffer_lock( kctx, ukk_ctx,(kbase_uk_ext_buff_kds_data *)args, args_size );
 			break;
 		}
-#endif
+#endif /* CONFIG_KDS */
 #if MALI_UNIT_TEST
 		case KBASE_FUNC_SET_TEST_DATA:
 		{
@@ -837,33 +829,52 @@ bad_type:
 			break;
 		}
 #endif /* MALI_UNIT_TEST */
-#if MALI_ERROR_INJECT_ON
+#ifdef CONFIG_MALI_ERROR_INJECT
 		case KBASE_FUNC_INJECT_ERROR:
 		{
+			unsigned long flags;
 			kbase_error_params params = ((kbase_uk_error_params*)args)->params;
 			/*mutex lock*/
-			osk_spinlock_irq_lock(&kbdev->osdev.reg_op_lock);
+			spin_lock_irqsave(&kbdev->osdev.reg_op_lock, flags);
 			ukh->ret = job_atom_inject_error(&params);
-			osk_spinlock_irq_unlock(&kbdev->osdev.reg_op_lock);
+			spin_unlock_irqrestore(&kbdev->osdev.reg_op_lock, flags);
 			/*mutex unlock*/
 
 			break;
 		}
-#endif /*MALI_ERROR_INJECT_ON*/
-#if MALI_NO_MALI
+#endif /* CONFIG_MALI_ERROR_INJECT */
+#ifdef CONFIG_MALI_NO_MALI
 		case KBASE_FUNC_MODEL_CONTROL:
 		{
+			unsigned long flags;
 			kbase_model_control_params params = ((kbase_uk_model_control_params*)args)->params;
 			/*mutex lock*/
-			osk_spinlock_irq_lock(&kbdev->osdev.reg_op_lock);
+			spin_lock_irqsave(&kbdev->osdev.reg_op_lock, flags);
 			ukh->ret = midg_model_control(kbdev->osdev.model, &params);
-			osk_spinlock_irq_unlock(&kbdev->osdev.reg_op_lock);
+			spin_unlock_irqrestore(&kbdev->osdev.reg_op_lock, flags);
 			/*mutex unlock*/
 			break;
 		}
-#endif /* MALI_NO_MALI */
+#endif /* CONFIG_MALI_NO_MALI */
+		case KBASE_FUNC_KEEP_GPU_POWERED:
+		{
+			kbase_uk_keep_gpu_powered *kgp = (kbase_uk_keep_gpu_powered*)args;
+
+			if (kgp->enabled && !kctx->keep_gpu_powered)
+			{
+				kbase_pm_context_active(kbdev);
+				kctx->keep_gpu_powered = MALI_TRUE;
+			}
+			else if (!kgp->enabled && kctx->keep_gpu_powered)
+			{
+				kbase_pm_context_idle(kbdev);
+				kctx->keep_gpu_powered = MALI_FALSE;
+			}
+
+			break;
+		}
 		default:
-			dev_err(kbdev->osdev.dev, "unknown syscall %u", id);
+			dev_err(kbdev->osdev.dev, "unknown ioctl %u", id);
 			goto out_bad;
 	}
 
@@ -875,18 +886,15 @@ out_bad:
 	return MALI_ERROR_FUNCTION_FAILED;
 }
 
-#if MALI_LICENSE_IS_GPL
 static struct kbase_device *to_kbase_device(struct device *dev)
 {
 	return dev_get_drvdata(dev);
 }
-#endif /* MALI_LICENSE_IS_GPL */
 
 /* Find a particular kbase device (as specified by minor number), or find the "first" device if -1 is specified */
 struct kbase_device *kbase_find_device(int minor)
 {
 	struct kbase_device *kbdev = NULL;
-#if MALI_LICENSE_IS_GPL
 	struct list_head *entry;
 
 	down(&kbase_dev_list_lock);
@@ -903,9 +911,6 @@ struct kbase_device *kbase_find_device(int minor)
 		}
 	}
 	up(&kbase_dev_list_lock);
-#else
-	kbdev = g_kbdev;
-#endif
 
 	return kbdev;
 }
@@ -918,9 +923,7 @@ EXPORT_SYMBOL(kbase_find_device);
 
 void kbase_release_device(struct kbase_device *kbdev)
 {
-#if MALI_LICENSE_IS_GPL
 	put_device(kbdev->osdev.dev);
-#endif
 }
 
 EXPORT_SYMBOL(kbase_release_device);
@@ -1018,33 +1021,53 @@ static ssize_t kbase_read(struct file *filp, char __user *buf,
 			  size_t count, loff_t *f_pos)
 {
 	kbase_context *kctx = filp->private_data;
-	base_jd_event uevent;
+	base_jd_event_v2 uevent;
+	int out_count = 0;
 
 	if (count < sizeof(uevent))
 	{
 		return -ENOBUFS;
 	}
 
-	while (kbase_event_dequeue(kctx, &uevent))
+	do
 	{
-		if (filp->f_flags & O_NONBLOCK)
+		while (kbase_event_dequeue(kctx, &uevent))
 		{
-			return -EAGAIN;
+			if (out_count > 0)
+			{
+				goto out;
+			}
+			if (filp->f_flags & O_NONBLOCK)
+			{
+				return -EAGAIN;
+			}
+
+			if (wait_event_interruptible(kctx->osctx.event_queue,
+						     kbase_event_pending(kctx)))
+			{
+				return -ERESTARTSYS;
+			}
+		}
+		if (uevent.event_code == BASE_JD_EVENT_DRV_TERMINATED)
+		{
+			if (out_count == 0)
+			{
+				return -EPIPE;
+			}
+			goto out;
 		}
 
-		if (wait_event_interruptible(kctx->osctx.event_queue,
-					     kbase_event_pending(kctx)))
+		if (copy_to_user(buf, &uevent, sizeof(uevent)))
 		{
-			return -ERESTARTSYS;
+			return -EFAULT;
 		}
-	}
+		buf += sizeof(uevent);
+		out_count++;
+		count -= sizeof(uevent);
+	} while (count >= sizeof(uevent));
 
-	if (copy_to_user(buf, &uevent, sizeof(uevent)))
-	{
-		return -EFAULT;
-	}
-
-	return sizeof(uevent);
+out:
+	return out_count*sizeof(uevent);
 }
 
 static unsigned int kbase_poll(struct file *filp, poll_table *wait)
@@ -1093,7 +1116,7 @@ static const struct file_operations kbase_fops =
 	.check_flags    = kbase_check_flags,
 };
 
-#if !MALI_NO_MALI
+#ifndef CONFIG_MALI_NO_MALI
 void kbase_os_reg_write(kbase_device *kbdev, u16 offset, u32 value)
 {
 	writel(value, kbdev->osdev.reg + offset);
@@ -1116,21 +1139,22 @@ static void *kbase_untag(void *ptr)
 
 static irqreturn_t kbase_job_irq_handler(int irq, void *data)
 {
+	unsigned long flags;
 	struct kbase_device *kbdev = kbase_untag(data);
 	u32 val;
 
-	osk_spinlock_irq_lock(&kbdev->pm.gpu_powered_lock);
+	spin_lock_irqsave(&kbdev->pm.gpu_powered_lock, flags);
 
 	if (!kbdev->pm.gpu_powered)
 	{
 		/* GPU is turned off - IRQ is not for us */
-		osk_spinlock_irq_unlock(&kbdev->pm.gpu_powered_lock);
+		spin_unlock_irqrestore(&kbdev->pm.gpu_powered_lock, flags);
 		return IRQ_NONE;
 	}
 
 	val = kbase_reg_read(kbdev, JOB_CONTROL_REG(JOB_IRQ_STATUS), NULL);
 
-	osk_spinlock_irq_unlock(&kbdev->pm.gpu_powered_lock);
+	spin_unlock_irqrestore(&kbdev->pm.gpu_powered_lock, flags);
 
 	if (!val)
 	{
@@ -1143,24 +1167,26 @@ static irqreturn_t kbase_job_irq_handler(int irq, void *data)
 
 	return IRQ_HANDLED;
 }
+KBASE_EXPORT_TEST_API(kbase_job_irq_handler);
 
 static irqreturn_t kbase_mmu_irq_handler(int irq, void *data)
 {
+	unsigned long flags;
 	struct kbase_device *kbdev = kbase_untag(data);
 	u32 val;
 
-	osk_spinlock_irq_lock(&kbdev->pm.gpu_powered_lock);
+	spin_lock_irqsave(&kbdev->pm.gpu_powered_lock, flags);
 
 	if (!kbdev->pm.gpu_powered)
 	{
 		/* GPU is turned off - IRQ is not for us */
-		osk_spinlock_irq_unlock(&kbdev->pm.gpu_powered_lock);
+		spin_unlock_irqrestore(&kbdev->pm.gpu_powered_lock, flags);
 		return IRQ_NONE;
 	}
 
 	val = kbase_reg_read(kbdev, MMU_REG(MMU_IRQ_STATUS), NULL);
 
-	osk_spinlock_irq_unlock(&kbdev->pm.gpu_powered_lock);
+	spin_unlock_irqrestore(&kbdev->pm.gpu_powered_lock, flags);
 
 	if (!val)
 	{
@@ -1176,21 +1202,22 @@ static irqreturn_t kbase_mmu_irq_handler(int irq, void *data)
 
 static irqreturn_t kbase_gpu_irq_handler(int irq, void *data)
 {
+	unsigned long flags;
 	struct kbase_device *kbdev = kbase_untag(data);
 	u32 val;
 
-	osk_spinlock_irq_lock(&kbdev->pm.gpu_powered_lock);
+	spin_lock_irqsave(&kbdev->pm.gpu_powered_lock, flags);
 
 	if (!kbdev->pm.gpu_powered)
 	{
 		/* GPU is turned off - IRQ is not for us */
-		osk_spinlock_irq_unlock(&kbdev->pm.gpu_powered_lock);
+		spin_unlock_irqrestore(&kbdev->pm.gpu_powered_lock, flags);
 		return IRQ_NONE;
 	}
 
 	val = kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_IRQ_STATUS), NULL);
 
-	osk_spinlock_irq_unlock(&kbdev->pm.gpu_powered_lock);
+	spin_unlock_irqrestore(&kbdev->pm.gpu_powered_lock, flags);
 
 	if (!val)
 	{
@@ -1210,11 +1237,55 @@ static irq_handler_t kbase_handler_table[] = {
 	[GPU_IRQ_TAG] = kbase_gpu_irq_handler,
 };
 
-#if MALI_DEBUG
-/* test correct interrupt assigment and receive by cpu */
+#ifdef CONFIG_MALI_DEBUG
+#define  JOB_IRQ_HANDLER JOB_IRQ_TAG
+#define  MMU_IRQ_HANDLER MMU_IRQ_TAG
+#define  GPU_IRQ_HANDLER GPU_IRQ_TAG
+
+/**
+ * @brief Registers given interrupt handler for requested interrupt type
+ *        Case irq handler is not specified default handler shall be registered
+ *
+ * @param[in] kbdev           - Device for which the handler is to be registered
+ * @param[in] custom_handler  - Handler to be registered
+ * @param[in] irq_type        - Interrupt type
+ * @return	MALI_ERROR_NONE case success, MALI_ERROR_FUNCTION_FAILED otherwise
+ */
+static mali_error kbase_set_custom_irq_handler(kbase_device *kbdev, irq_handler_t custom_handler, int irq_type)
+{
+	struct kbase_os_device * osdev                 = &kbdev->osdev;
+	mali_error               result                = MALI_ERROR_NONE;
+	irq_handler_t            requested_irq_handler = NULL;
+	OSK_ASSERT((JOB_IRQ_HANDLER <= irq_type) && (GPU_IRQ_HANDLER >= irq_type));
+
+	/* Release previous handler */
+	if(osdev->irqs[irq_type].irq)
+	{
+		free_irq(osdev->irqs[irq_type].irq, kbase_tag(kbdev, irq_type));
+	}
+
+	requested_irq_handler = (NULL != custom_handler) ? custom_handler : kbase_handler_table[irq_type];
+
+	if ( 0 != request_irq(osdev->irqs[irq_type].irq,
+			              requested_irq_handler,
+				          osdev->irqs[irq_type].flags | IRQF_SHARED,
+				          dev_name(osdev->dev),
+				          kbase_tag(kbdev, irq_type)))
+	{
+		result = MALI_ERROR_FUNCTION_FAILED;
+		dev_err(osdev->dev, "Can't request interrupt %d (index %d)\n", osdev->irqs[irq_type].irq, irq_type);
+	}
+
+	return result;
+}
+KBASE_EXPORT_TEST_API(kbase_set_custom_irq_handler)
+
+/* test correct interrupt assigment and reception by cpu */
 typedef struct kbasep_irq_test
 {
-	osk_waitq waitq;
+	struct hrtimer timer;
+	wait_queue_head_t wait;
+	int               triggered;
 	u32 timeout;
 }kbasep_irq_test;
 
@@ -1224,21 +1295,22 @@ static kbasep_irq_test kbasep_irq_test_data;
 
 static irqreturn_t kbase_job_irq_test_handler(int irq, void *data)
 {
+	unsigned long flags;
 	struct kbase_device *kbdev = kbase_untag(data);
 	u32 val;
 
-	osk_spinlock_irq_lock(&kbdev->pm.gpu_powered_lock);
+	spin_lock_irqsave(&kbdev->pm.gpu_powered_lock, flags);
 
 	if (!kbdev->pm.gpu_powered)
 	{
 		/* GPU is turned off - IRQ is not for us */
-		osk_spinlock_irq_unlock(&kbdev->pm.gpu_powered_lock);
+		spin_unlock_irqrestore(&kbdev->pm.gpu_powered_lock, flags);
 		return IRQ_NONE;
 	}
 
 	val = kbase_reg_read(kbdev, JOB_CONTROL_REG(JOB_IRQ_STATUS), NULL);
 
-	osk_spinlock_irq_unlock(&kbdev->pm.gpu_powered_lock);
+	spin_unlock_irqrestore(&kbdev->pm.gpu_powered_lock, flags);
 
 	if (!val)
 	{
@@ -1247,7 +1319,8 @@ static irqreturn_t kbase_job_irq_test_handler(int irq, void *data)
 
 	dev_dbg(kbdev->osdev.dev, "%s: irq %d irqstatus 0x%x\n", __func__, irq, val);
 
-	osk_waitq_set(&kbasep_irq_test_data.waitq);
+	kbasep_irq_test_data.triggered = 1;
+	wake_up(&kbasep_irq_test_data.wait);
 
 	kbase_reg_write(kbdev, JOB_CONTROL_REG(JOB_IRQ_CLEAR), val, NULL);
 
@@ -1256,21 +1329,22 @@ static irqreturn_t kbase_job_irq_test_handler(int irq, void *data)
 
 static irqreturn_t kbase_mmu_irq_test_handler(int irq, void *data)
 {
+	unsigned long flags;
 	struct kbase_device *kbdev = kbase_untag(data);
 	u32 val;
 
-	osk_spinlock_irq_lock(&kbdev->pm.gpu_powered_lock);
+	spin_lock_irqsave(&kbdev->pm.gpu_powered_lock, flags);
 
 	if (!kbdev->pm.gpu_powered)
 	{
 		/* GPU is turned off - IRQ is not for us */
-		osk_spinlock_irq_unlock(&kbdev->pm.gpu_powered_lock);
+		spin_unlock_irqrestore(&kbdev->pm.gpu_powered_lock, flags);
 		return IRQ_NONE;
 	}
 
 	val = kbase_reg_read(kbdev, MMU_REG(MMU_IRQ_STATUS), NULL);
 
-	osk_spinlock_irq_unlock(&kbdev->pm.gpu_powered_lock);
+	spin_unlock_irqrestore(&kbdev->pm.gpu_powered_lock, flags);
 
 	if (!val)
 	{
@@ -1279,19 +1353,22 @@ static irqreturn_t kbase_mmu_irq_test_handler(int irq, void *data)
 
 	dev_dbg(kbdev->osdev.dev, "%s: irq %d irqstatus 0x%x\n", __func__, irq, val);
 
-	osk_waitq_set(&kbasep_irq_test_data.waitq);
+	kbasep_irq_test_data.triggered = 1;
+	wake_up(&kbasep_irq_test_data.wait);
 
 	kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_CLEAR), val, NULL);
 
 	return IRQ_HANDLED;
 }
 
-static void kbasep_test_interrupt_timeout(void *data)
+static enum hrtimer_restart kbasep_test_interrupt_timeout(struct hrtimer * timer)
 {
-	kbasep_irq_test *test_data = (kbasep_irq_test*)data;
+	kbasep_irq_test *test_data = container_of( timer, kbasep_irq_test, timer );
 
 	test_data->timeout = 1;
-	osk_waitq_set(&test_data->waitq);
+	test_data->triggered = 1;
+	wake_up(&test_data->wait);
+	return HRTIMER_NORESTART;
 }
 
 static mali_error kbasep_common_test_interrupt(kbase_device * const kbdev, u32 tag )
@@ -1299,7 +1376,7 @@ static mali_error kbasep_common_test_interrupt(kbase_device * const kbdev, u32 t
 	struct kbase_os_device *osdev = &kbdev->osdev;
 	osk_error err = MALI_ERROR_NONE;
 	irq_handler_t test_handler;
-	osk_timer timer;
+
 	u32 old_mask_val;
 	u16 mask_offset;
 	u16 rawstat_offset;
@@ -1322,11 +1399,6 @@ static mali_error kbasep_common_test_interrupt(kbase_device * const kbdev, u32 t
 			return MALI_ERROR_NONE;
 	}
 
-	if (OSK_ERR_NONE != osk_timer_on_stack_init(&timer))
-	{
-		return MALI_ERROR_FUNCTION_FAILED;
-	}
-
 	/* store old mask */
 	old_mask_val = kbase_reg_read(kbdev, mask_offset, NULL);
 	/* mask interrupts */
@@ -1334,65 +1406,53 @@ static mali_error kbasep_common_test_interrupt(kbase_device * const kbdev, u32 t
 
 	if (osdev->irqs[tag].irq)
 	{
-		/* release original handler */
-		free_irq(osdev->irqs[tag].irq, kbase_tag(kbdev, tag));
-
-		/* install test handler */
-		if ( 0 != request_irq(osdev->irqs[tag].irq,
-				  test_handler,
-				  osdev->irqs[tag].flags | IRQF_SHARED,
-				  dev_name(osdev->dev),
-				  kbase_tag(kbdev, tag)) )
+		/* release original handler and install test handler */
+		if(MALI_ERROR_NONE != kbase_set_custom_irq_handler(kbdev, test_handler,tag ))
 		{
-			dev_err(osdev->dev, "Can't request test interrupt %d (index %d)\n", osdev->irqs[tag].irq, tag);
 			err = MALI_ERROR_FUNCTION_FAILED;
 		}
 		else
 		{
 			kbasep_irq_test_data.timeout = 0;
-
-			osk_timer_callback_set(&timer, kbasep_test_interrupt_timeout, &kbasep_irq_test_data);
+			hrtimer_init(&kbasep_irq_test_data.timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL );
+			kbasep_irq_test_data.timer.function = kbasep_test_interrupt_timeout;
 
 			/* trigger interrupt */
 			kbase_reg_write(kbdev, mask_offset, 0x1, NULL);
 			kbase_reg_write(kbdev, rawstat_offset, 0x1, NULL);
 
-			if (OSK_ERR_NONE == osk_timer_start(&timer, IRQ_TEST_TIMEOUT))
+			hrtimer_start( &kbasep_irq_test_data.timer,
+                           HR_TIMER_DELAY_MSEC(IRQ_TEST_TIMEOUT),
+                           HRTIMER_MODE_REL );
+
+			wait_event(kbasep_irq_test_data.wait, kbasep_irq_test_data.triggered != 0);
+
+			if(kbasep_irq_test_data.timeout != 0)
 			{
-				osk_waitq_wait(&kbasep_irq_test_data.waitq);
-
-				if(kbasep_irq_test_data.timeout != 0)
-				{
-					dev_err(osdev->dev, "Interrupt %d (index %d) didn't reach CPU.\n", osdev->irqs[tag].irq, tag);
-					err = MALI_ERROR_FUNCTION_FAILED;
-				}
-				else
-				{
-					dev_dbg(osdev->dev, "Interrupt %d (index %d) reached CPU.\n", osdev->irqs[tag].irq, tag);
-				}
-				osk_timer_stop(&timer);
-				osk_waitq_clear(&kbasep_irq_test_data.waitq);
-
-				/* mask interrupts */
-				kbase_reg_write(kbdev, mask_offset, 0x0, NULL);
-
+				dev_err(osdev->dev, "Interrupt %d (index %d) didn't reach CPU.\n", osdev->irqs[tag].irq, tag);
+				err = MALI_ERROR_FUNCTION_FAILED;
 			}
 			else
 			{
-				dev_err(osdev->dev, "osk_timer_start failed.\n");
-				err = MALI_ERROR_FUNCTION_FAILED;
+				dev_dbg(osdev->dev, "Interrupt %d (index %d) reached CPU.\n", osdev->irqs[tag].irq, tag);
 			}
+
+			hrtimer_cancel(&kbasep_irq_test_data.timer);
+			kbasep_irq_test_data.triggered = 0;
+
+			/* mask interrupts */
+			kbase_reg_write(kbdev, mask_offset, 0x0, NULL);
 
 			/* release test handler */
 			free_irq(osdev->irqs[tag].irq, kbase_tag(kbdev, tag));
 		}
 
 		/* restore original interrupt */
-		if( 0 != request_irq(osdev->irqs[tag].irq,
-				  kbase_handler_table[tag],
-				  osdev->irqs[tag].flags | IRQF_SHARED,
-				  dev_name(osdev->dev),
-				  kbase_tag(kbdev, tag)) )
+		if (request_irq(osdev->irqs[tag].irq,
+							  kbase_handler_table[tag],
+					          osdev->irqs[tag].flags | IRQF_SHARED,
+					          dev_name(osdev->dev),
+					          kbase_tag(kbdev, tag)))
 		{
 			dev_err(osdev->dev, "Can't restore original interrupt %d (index %d)\n", osdev->irqs[tag].irq, tag);
 			err = MALI_ERROR_FUNCTION_FAILED;
@@ -1400,8 +1460,6 @@ static mali_error kbasep_common_test_interrupt(kbase_device * const kbdev, u32 t
 	}
 	/* restore old mask */
 	kbase_reg_write(kbdev, mask_offset, old_mask_val, NULL);
-
-	osk_timer_on_stack_term(&timer);
 
 	return err;
 }
@@ -1411,10 +1469,8 @@ static mali_error kbasep_common_test_interrupt_handlers(kbase_device * const kbd
 	struct kbase_os_device *osdev = &kbdev->osdev;
 	mali_error err;
 
-	if (OSK_ERR_NONE != osk_waitq_init(&kbasep_irq_test_data.waitq))
-	{
-		return MALI_ERROR_FUNCTION_FAILED;
-	}
+	init_waitqueue_head(&kbasep_irq_test_data.wait);
+	kbasep_irq_test_data.triggered = 0;
 
 	kbase_pm_context_active(kbdev);
 
@@ -1436,12 +1492,11 @@ static mali_error kbasep_common_test_interrupt_handlers(kbase_device * const kbd
 
 out:
 	kbase_pm_context_idle(kbdev);
-	osk_waitq_term(&kbasep_irq_test_data.waitq);
 
 	return err;
 
 }
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 
 static int kbase_install_interrupts(kbase_device *kbdev)
 {
@@ -1506,9 +1561,8 @@ void kbase_synchronize_irqs(kbase_device *kbdev)
 		}
 	}
 }
-#endif
 
-#if MALI_LICENSE_IS_GPL
+#endif /* CONFIG_MALI_NO_MALI */
 
 /** Show callback for the @c power_policy sysfs file.
  *
@@ -1626,7 +1680,7 @@ static ssize_t set_policy(struct device *dev, struct device_attribute *attr, con
  */
 DEVICE_ATTR(power_policy, S_IRUGO|S_IWUSR, show_policy, set_policy);
 
-#if  MALI_LICENSE_IS_GPL && (MALI_CUSTOMER_RELEASE == 0)
+#if MALI_CUSTOMER_RELEASE == 0
 /** Store callback for the @c js_timeouts sysfs file.
  *
  * This function is called to get the contents of the @c js_timeouts sysfs
@@ -1775,9 +1829,9 @@ static ssize_t show_js_timeouts(struct device *dev, struct device_attribute *att
  * KBASE_CONFIG_ATTR_JS_RESET_TICKS_NSS.
  */
 DEVICE_ATTR(js_timeouts, S_IRUGO|S_IWUSR, show_js_timeouts, set_js_timeouts);
-#endif  /* MALI_LICENSE_IS_GPL && (MALI_CUSTOMER_RELEASE == 0) */
+#endif  /* MALI_CUSTOMER_RELEASE == 0 */
 
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 static ssize_t set_js_softstop_always(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct kbase_device *kbdev;
@@ -1834,9 +1888,9 @@ static ssize_t show_js_softstop_always(struct device *dev, struct device_attribu
  * (see CL t6xx_stress_1 unit-test as an example whereby this feature is used.)
  */
 DEVICE_ATTR(js_softstop_always, S_IRUGO|S_IWUSR, show_js_softstop_always, set_js_softstop_always);
-#endif /* MALI_DEBUG */
+#endif /* CONFIG_MALI_DEBUG */
 
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 typedef void (kbasep_debug_command_func)( kbase_device * );
 
 typedef enum
@@ -1948,8 +2002,7 @@ static ssize_t issue_debug(struct device *dev, struct device_attribute *attr, co
  * Writing to it with one of those commands will issue said command.
  */
 DEVICE_ATTR(debug_command, S_IRUGO|S_IWUSR, show_debug, issue_debug);
-#endif /*MALI_DEBUG*/
-#endif /*MALI_LICENSE_IS_GPL*/
+#endif /* CONFIG_MALI_DEBUG*/
 
 static int kbase_common_reg_map(kbase_device *kbdev)
 {
@@ -1958,11 +2011,7 @@ static int kbase_common_reg_map(kbase_device *kbdev)
 	
 	osdev->reg_res = request_mem_region(osdev->reg_start,
 					    osdev->reg_size,
-#if MALI_LICENSE_IS_GPL
 					    dev_name(osdev->dev)
-#else
-					    mali_dev_name
-#endif
 					);
 	if (!osdev->reg_res)
 	{
@@ -2009,10 +2058,8 @@ static int kbase_common_device_init(kbase_device *kbdev)
 		 inited_pm          = (1u << 2),
 		 inited_js          = (1u << 3),
 		 inited_irqs        = (1u << 4)
-#if MALI_LICENSE_IS_GPL
 		,inited_debug       = (1u << 5)
 		,inited_js_softstop = (1u << 6)
-#endif
 #if MALI_CUSTOMER_RELEASE == 0
 		,inited_js_timeouts = (1u << 7)
 #endif
@@ -2023,18 +2070,15 @@ static int kbase_common_device_init(kbase_device *kbdev)
 
 	int inited = 0;
 	
-#if MALI_LICENSE_IS_GPL
 	dev_set_drvdata(osdev->dev, kbdev);
 
 	osdev->mdev.minor	= MISC_DYNAMIC_MINOR;
 	osdev->mdev.name	= osdev->devname;
 	osdev->mdev.fops	= &kbase_fops;
 	osdev->mdev.parent	= get_device(osdev->dev);
-#endif
 
 	scnprintf(osdev->devname, DEVNAME_SIZE, "%s%d", kbase_drv_name, kbase_dev_nr++);
 
-#if MALI_LICENSE_IS_GPL
 	if (misc_register(&osdev->mdev))
 	{
 		dev_err(osdev->dev, "Couldn't register misc dev %s\n", osdev->devname);
@@ -2052,7 +2096,6 @@ static int kbase_common_device_init(kbase_device *kbdev)
 	list_add(&osdev->entry, &kbase_dev_list);
 	up(&kbase_dev_list_lock);
 	dev_info(osdev->dev, "Probed as %s\n", dev_name(osdev->mdev.this_device));
-#endif
 
 	mali_err = kbase_pm_init(kbdev);
 	if (MALI_ERROR_NONE != mali_err)
@@ -2099,8 +2142,7 @@ static int kbase_common_device_init(kbase_device *kbdev)
 	}
 	inited |= inited_irqs;
 
-#if MALI_LICENSE_IS_GPL
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 	if (device_create_file(osdev->dev, &dev_attr_debug_command))
 	{
 		dev_err(osdev->dev, "Couldn't create debug_command sysfs file\n");
@@ -2114,7 +2156,7 @@ static int kbase_common_device_init(kbase_device *kbdev)
 		goto out_partial;
 	}
 	inited |= inited_js_softstop;
-#endif /* MALI_DEBUG */
+#endif /* CONFIG_MALI_DEBUG */
 #if MALI_CUSTOMER_RELEASE == 0
 	if (device_create_file(osdev->dev, &dev_attr_js_timeouts))
 	{
@@ -2123,7 +2165,6 @@ static int kbase_common_device_init(kbase_device *kbdev)
 	}
 	inited |= inited_js_timeouts;
 #endif /* MALI_CUSTOMER_RELEASE */
-#endif /*MALI_LICENSE_IS_GPL*/
 
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8401))
 	{
@@ -2137,16 +2178,16 @@ static int kbase_common_device_init(kbase_device *kbdev)
 	mali_err = kbase_pm_powerup(kbdev);
 	if (MALI_ERROR_NONE == mali_err)
 	{
-#if MALI_DEBUG
-#if !MALI_NO_MALI
+#ifdef CONFIG_MALI_DEBUG
+#ifndef CONFIG_MALI_NO_MALI
 		if(MALI_ERROR_NONE != kbasep_common_test_interrupt_handlers(kbdev))
 		{
 			dev_err(osdev->dev, "Interrupt assigment check failed.\n");
 			err = -EINVAL;
 			goto out_partial;
 		}
-#endif /* !MALI_NO_MALI */
-#endif /* MALI_DEBUG */
+#endif /* CONFIG_MALI_NO_MALI */
+#endif /* CONFIG_MALI_DEBUG */
 		return 0;
 	}
 
@@ -2159,14 +2200,13 @@ out_partial:
 		}
 	}
 
-#if MALI_LICENSE_IS_GPL
 #if MALI_CUSTOMER_RELEASE == 0
 	if (inited & inited_js_timeouts)
 	{
 		device_remove_file(kbdev->osdev.dev, &dev_attr_js_timeouts);
 	}
 #endif
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 	if (inited & inited_js_softstop)
 	{
 		device_remove_file(kbdev->osdev.dev, &dev_attr_js_softstop_always);
@@ -2176,8 +2216,7 @@ out_partial:
 	{
 		device_remove_file(kbdev->osdev.dev, &dev_attr_debug_command);
 	}
-#endif
-#endif /*MALI_LICENSE_IS_GPL*/
+#endif /* CONFIG_MALI_DEBUG */
 
 	if (inited & inited_js)
 	{
@@ -2227,7 +2266,6 @@ out_partial:
 		kbase_pm_term(kbdev);
 	}
 
-#if MALI_LICENSE_IS_GPL
 	down(&kbase_dev_list_lock);
 	list_del(&osdev->entry);
 	up(&kbase_dev_list_lock);
@@ -2237,26 +2275,22 @@ out_file:
 	misc_deregister(&kbdev->osdev.mdev);
 out_misc:
 	put_device(osdev->dev);
-#endif
 	return err;
 }
 
-#if MALI_LICENSE_IS_GPL
 static int kbase_platform_device_probe(struct platform_device *pdev)
 {
 	struct kbase_device	*kbdev;
-	kbase_device_info	*dev_info;
 	struct kbase_os_device	*osdev;
 	struct resource		*reg_res;
 	kbase_attribute     *platform_data;
 	int			err;
 	int			i;
 	struct mali_base_gpu_core_props *core_props;
-#if MALI_NO_MALI
+#ifdef CONFIG_MALI_NO_MALI
 	mali_error mali_err;
-#endif
+#endif /* CONFIG_MALI_NO_MALI */
 
-	dev_info = (kbase_device_info *)pdev->id_entry->driver_data;
 	kbdev = kbase_device_alloc();
 	if (!kbdev)
 	{
@@ -2265,7 +2299,7 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 		goto out;
 	}
 
-#if MALI_NO_MALI
+#ifdef CONFIG_MALI_NO_MALI
 	mali_err = midg_device_create(kbdev);
 	if (MALI_ERROR_NONE != mali_err)
 	{
@@ -2273,7 +2307,7 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 		err = -ENOMEM;
 		goto out_midg;
 	}
-#endif
+#endif /* CONFIG_MALI_NO_MALI */
 
 	osdev = &kbdev->osdev;
 	osdev->dev = &pdev->dev;
@@ -2329,17 +2363,17 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 		goto out_free_dev;
 	}
 
-	if (MALI_ERROR_NONE != kbase_device_init(kbdev, dev_info))
+	if (MALI_ERROR_NONE != kbase_device_init(kbdev))
 	{
 		dev_err(&pdev->dev, "Can't initialize device\n");
 		err = -ENOMEM;
 		goto out_reg_unmap;
 	}
 
-#if MALI_USE_UMP == 1
+#ifdef CONFIG_UMP
 	kbdev->memdev.ump_device_id = kbasep_get_config_value(kbdev, platform_data,
 			KBASE_CONFIG_ATTR_UMP_DEVICE);
-#endif /* MALI_USE_UMP == 1 */
+#endif /* CONFIG_UMP */
 
 	kbdev->memdev.per_process_memory_limit = kbasep_get_config_value(kbdev, platform_data,
 			KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT);
@@ -2373,15 +2407,14 @@ out_term_dev:
 out_reg_unmap:
 	kbase_common_reg_unmap(kbdev);
 out_free_dev:
-#if MALI_NO_MALI
+#ifdef CONFIG_MALI_NO_MALI
 	midg_device_destroy(kbdev);
 out_midg:
-#endif /* MALI_NO_MALI */
+#endif /* CONFIG_MALI_NO_MALI */
 	kbase_device_free(kbdev);
 out:
 	return err;
 }
-#endif /* MALI_LICENSE_IS_GPL */
 
 static int kbase_common_device_remove(struct kbase_device *kbdev)
 {
@@ -2395,14 +2428,12 @@ static int kbase_common_device_remove(struct kbase_device *kbdev)
 		kbdev->pm.callback_power_runtime_term(kbdev);
 	}
 
-#if MALI_LICENSE_IS_GPL
 	/* Remove the sys power policy file */
 	device_remove_file(kbdev->osdev.dev, &dev_attr_power_policy);
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 	device_remove_file(kbdev->osdev.dev, &dev_attr_js_softstop_always);
 	device_remove_file(kbdev->osdev.dev, &dev_attr_debug_command);
-#endif
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 
 	kbasep_js_devdata_halt(kbdev);
 	kbase_job_slot_halt(kbdev);
@@ -2416,25 +2447,22 @@ static int kbase_common_device_remove(struct kbase_device *kbdev)
 	kbase_mem_term(kbdev);
 	kbase_pm_term(kbdev);
 
-#if MALI_LICENSE_IS_GPL
 	down(&kbase_dev_list_lock);
 	list_del(&kbdev->osdev.entry);
 	up(&kbase_dev_list_lock);
 	misc_deregister(&kbdev->osdev.mdev);
 	put_device(kbdev->osdev.dev);
-#endif
 	kbase_common_reg_unmap(kbdev);
 	kbase_device_term(kbdev);
-#if MALI_NO_MALI
+#ifdef CONFIG_MALI_NO_MALI
 	midg_device_destroy(kbdev);
-#endif /* MALI_NO_MALI */
+#endif /* CONFIG_MALI_NO_MALI */
 	kbase_device_free(kbdev);
 
 	return 0;
 }
 
 
-#if MALI_LICENSE_IS_GPL
 static int kbase_platform_device_remove(struct platform_device *pdev)
 {
 	struct kbase_device *kbdev = to_kbase_device(&pdev->dev);
@@ -2574,35 +2602,6 @@ static int kbase_device_runtime_idle(struct device *dev)
 }
 #endif /* CONFIG_PM_RUNTIME */
 
-#define kbdev_info(x) ((kernel_ulong_t)&kbase_dev_info[(x)])
-
-static struct platform_device_id kbase_platform_id_table[] =
-{
-	{
-		.name		= "mali-t6xm",
-		.driver_data	= kbdev_info(KBASE_MALI_T6XM),
-	},
-	{
-		.name		= "mali-t6f1",
-		.driver_data	= kbdev_info(KBASE_MALI_T6F1),
-	},
-	{
-		.name		= "mali-t601",
-		.driver_data	= kbdev_info(KBASE_MALI_T601),
-	},
-	{
-		.name		= "mali-t604",
-		.driver_data	= kbdev_info(KBASE_MALI_T604),
-	},
-	{
-		.name		= "mali-t608",
-		.driver_data	= kbdev_info(KBASE_MALI_T608),
-	},
-	{},
-};
-
-MODULE_DEVICE_TABLE(platform, kbase_platform_id_table);
-
 /** The power management operations for the platform driver.
  */
 static struct dev_pm_ops kbase_pm_ops =
@@ -2626,204 +2625,23 @@ static struct platform_driver kbase_platform_driver =
 		.owner		= THIS_MODULE,
 		.pm 		= &kbase_pm_ops,
 	},
-	.id_table	= kbase_platform_id_table,
 };
 
-#endif /* MALI_LICENSE_IS_GPL */
+#ifdef CONFIG_MALI_PLATFORM_FAKE
+static struct platform_device *mali_device;
+#endif /* CONFIG_MALI_PLATFORM_FAKE */
 
-#if MALI_LICENSE_IS_GPL && MALI_FAKE_PLATFORM_DEVICE
-struct platform_device *mali_device;
-#endif /* MALI_LICENSE_IS_GPL && MALI_FAKE_PLATFORM_DEVICE */
-
-#ifdef MALI_PCI_DEVICE
-static kbase_attribute pci_attributes[] =
-{
-	{
-		KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT,
-		512 * 1024 * 1024UL /* 512MB */
-	},
-#if MALI_USE_UMP == 1
-	{
-		KBASE_CONFIG_ATTR_UMP_DEVICE,
-		UMP_DEVICE_Z_SHIFT
-	},
-#endif /* MALI_USE_UMP == 1 */
-	{
-		KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_MAX,
-		768 * 1024 * 1024UL /* 768MB */
-	},
-	{
-		KBASE_CONFIG_ATTR_END,
-		0
-	}
-};
-
-static int kbase_pci_device_probe(struct pci_dev *pdev,
-				  const struct pci_device_id *pci_id)
-{
-	const kbase_device_info	*dev_info;
-	kbase_device		*kbdev;
-	kbase_os_device		*osdev;
-	kbase_attribute     *platform_data;
-	struct mali_base_gpu_core_props *core_props;
-	int err;
-#if MALI_NO_MALI
-	mali_error mali_err;
-#endif
-
-	dev_info = &kbase_dev_info[pci_id->driver_data];
-	kbdev = kbase_device_alloc();
-	if (!kbdev)
-	{
-		dev_err(&pdev->dev, "Can't allocate device\n");
-		err = -ENOMEM;
-		goto out;
-	}
-
-#if MALI_NO_MALI
-	mali_err = midg_device_create(kbdev);
-	if (MALI_ERROR_NONE != mali_err)
-	{
-		dev_err(&pdev->dev, "Can't initialize dummy model\n");
-		err = -ENOMEM;
-		goto out_midg;
-	}
-#endif
-
-	osdev = &kbdev->osdev;
-	osdev->dev = &pdev->dev;
-	platform_data = (kbase_attribute *)osdev->dev->platform_data;
-
-	err = pci_enable_device(pdev);
-	if (err)
-	{
-		goto out_free_dev;
-	}
-
-	osdev->reg_start = pci_resource_start(pdev, 0);
-	osdev->reg_size = pci_resource_len(pdev, 0);
-	if (!(pci_resource_flags(pdev, 0) & IORESOURCE_MEM))
-	{
-		err = -EINVAL;
-		goto out_disable;
-	}
-
-	err = kbase_common_reg_map(kbdev);
-	if (err)
-	{
-		goto out_disable;
-	}
-
-	if (MALI_ERROR_NONE != kbase_device_init(kbdev, dev_info))
-	{
-		dev_err(&pdev->dev, "Can't initialize device\n");
-		err = -ENOMEM;
-		goto out_reg_unmap;
-	}
-
-	osdev->irqs[0].irq = pdev->irq;
-	osdev->irqs[1].irq = pdev->irq;
-	osdev->irqs[2].irq = pdev->irq;
-
-	pci_set_master(pdev);
-
-	if (MALI_TRUE != kbasep_validate_configuration_attributes(kbdev, pci_attributes))
-	{
-		err = -EINVAL;
-		goto out_term_dev;
-	}
-	/* Use the master passed in instead of the pci attributes */
-	kbdev->config_attributes = platform_data;
-
-#if MALI_USE_UMP == 1
-	kbdev->memdev.ump_device_id = kbasep_get_config_value(kbdev, pci_attributes,
-			KBASE_CONFIG_ATTR_UMP_DEVICE);
-#endif /* MALI_USE_UMP == 1 */
-
-	kbdev->memdev.per_process_memory_limit = kbasep_get_config_value(kbdev, pci_attributes,
-			KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT);
-
-	err = kbase_register_memory_regions(kbdev, pci_attributes);
-	if (err)
-	{
-		goto out_term_dev;
-	}
-
-	/* obtain min/max configured gpu frequencies */
-	core_props = &(kbdev->gpu_props.props.core_props);
-	core_props->gpu_freq_khz_min = kbasep_get_config_value(kbdev, platform_data,
-		                                                       KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MIN);
-	core_props->gpu_freq_khz_max = kbasep_get_config_value(kbdev, platform_data,
-		                                                       KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX);
-	kbdev->gpu_props.irq_throttle_time_us = kbasep_get_config_value(kbdev, platform_data,
-		                                                       KBASE_CONFIG_ATTR_GPU_IRQ_THROTTLE_TIME_US);
-
-	err = kbase_common_device_init(kbdev);
-	if (err)
-	{
-		goto out_term_dev;
-	}
-
-	return 0;
-
-out_term_dev:
-	kbase_device_term(kbdev);
-out_reg_unmap:
-	kbase_common_reg_unmap(kbdev);
-out_disable:
-	pci_disable_device(pdev);
-out_free_dev:
-#if MALI_NO_MALI
-	midg_device_destroy(kbdev);
-out_midg:
-#endif /* MALI_NO_MALI */
-	kbase_device_free(kbdev);
-out:
-	return err;
-}
-
-static void kbase_pci_device_remove(struct pci_dev *pdev)
-{
-	struct kbase_device *kbdev = to_kbase_device(&pdev->dev);
-
-	if (!kbdev)
-	{
-		return;
-	}
-
-	kbase_common_device_remove(kbdev);
-	pci_disable_device(pdev);
-}
-
-static DEFINE_PCI_DEVICE_TABLE(kbase_pci_id_table) =
-{
-	{ PCI_DEVICE(0x13b5, 0x6956), 0, 0, KBASE_MALI_T6XM },
-	{},
-};
-
-MODULE_DEVICE_TABLE(pci, kbase_pci_id_table);
-
-static struct pci_driver kbase_pci_driver =
-{
-	.name		= KBASE_DRV_NAME,
-	.probe		= kbase_pci_device_probe,
-	.remove		= kbase_pci_device_remove,
-	.id_table	= kbase_pci_id_table,
-};
-#endif /* MALI_PCI_DEVICE */
-
-#if MALI_LICENSE_IS_GPL
 static int __init kbase_driver_init(void)
 {
 	int err;
-#if MALI_FAKE_PLATFORM_DEVICE
+#ifdef CONFIG_MALI_PLATFORM_FAKE
 	kbase_platform_config *config;
 	int attribute_count;
 	struct resource resources[PLATFORM_CONFIG_RESOURCE_COUNT];
 
 	config = kbasep_get_platform_config();
 	attribute_count = kbasep_get_config_attribute_count(config->attributes);
-	mali_device = platform_device_alloc( kbasep_midgard_type_to_string(config->midgard_type), 0);
+	mali_device = platform_device_alloc( kbase_drv_name, 0);
 	if (mali_device == NULL)
 	{
 		return -ENOMEM;
@@ -2854,214 +2672,33 @@ static int __init kbase_driver_init(void)
 		return err;
 	}
 
-#endif /* MALI_FAKE_PLATFORM_DEVICE */
+#endif /* CONFIG_MALI_PLATFORM_FAKE */
 	err = platform_driver_register(&kbase_platform_driver);
 	if (err)
 	{
 		return err;
 	}
 
-#ifdef MALI_PCI_DEVICE
-	err = pci_register_driver(&kbase_pci_driver);
-	if (err)
-	{
-		platform_driver_unregister(&kbase_platform_driver);
-		return err;
-	}
-#endif
-
 	return 0;
 }
-#else
-static int __init kbase_driver_init(void)
-{
-	kbase_platform_config   *config;
-	struct kbase_device     *kbdev;
-	const kbase_device_info *dev_info;
-	kbase_os_device         *osdev;
-	int                     err;
-	dev_t                   dev = 0;
-	struct mali_base_gpu_core_props *core_props;
-
-	if (0 == mali_major)
-	{
-		/* auto select a major */
-		err = alloc_chrdev_region(&dev, 0, 1, mali_dev_name);
-		mali_major = MAJOR(dev);
-	}
-	else
-	{
-		/* use load time defined major number */
-		dev = MKDEV(mali_major, 0);
-		err = register_chrdev_region(dev, 1, mali_dev_name);
-	}
-
-	if (0 != err)
-	{
-		goto out_region;
-	}
-
-	memset(&mali_linux_device, 0, sizeof(mali_linux_device));
-
-	/* initialize our char dev data */
-	cdev_init(&mali_linux_device.cdev, &kbase_fops);
-	mali_linux_device.cdev.owner = THIS_MODULE;
-	mali_linux_device.cdev.ops = &kbase_fops;
-
-	/* register char dev with the kernel */
-	err = cdev_add(&mali_linux_device.cdev, dev, 1/*count*/);
-	if (0 != err)
-	{
-		goto out_cdev_add;
-	}
-
-	config = kbasep_get_platform_config();
-
-	dev_info = &kbase_dev_info[config->midgard_type];
-	kbdev = kbase_device_alloc();
-	if (!kbdev)
-	{
-		dev_err(&pdev->dev, "Can't allocate device\n");
-		err = -ENOMEM;
-		goto out_kbdev_alloc;
-	}
-
-	if (MALI_TRUE != kbasep_validate_configuration_attributes(kbdev, config->attributes))
-	{
-		err = -EINVAL;
-		goto out_midg;
-	}
-
-	kbdev->config_attributes = config->attributes;
-
-
-#if MALI_NO_MALI
-	mali_err = midg_device_create(kbdev);
-	if (MALI_ERROR_NONE != mali_err)
-	{
-		dev_err(&pdev->dev, "Can't initialize dummy model\n");
-		err = -ENOMEM;
-		goto out_midg;
-	}
-#endif
-
-	osdev = &kbdev->osdev;
-	osdev->dev = &mali_linux_device.cdev;
-	osdev->reg_start   = config->io_resources->io_memory_region.start;
-	osdev->reg_size    = config->io_resources->io_memory_region.end - config->io_resources->io_memory_region.start + 1;
-
-	err = kbase_common_reg_map(kbdev);
-	if (err)
-	{
-		goto out_free_dev;
-	}
-
-	if (MALI_ERROR_NONE != kbase_device_init(kbdev, dev_info))
-	{
-		dev_err(&pdev->dev, "Can't initialize device\n");
-		err = -ENOMEM;
-		goto out_reg_unmap;
-	}
-
-	osdev->irqs[0].irq = config->io_resources->job_irq_number;
-	osdev->irqs[1].irq = config->io_resources->mmu_irq_number;
-	osdev->irqs[2].irq = config->io_resources->gpu_irq_number;
-
-	kbdev->memdev.per_process_memory_limit = kbasep_get_config_value(kbdev, config->attributes,
-			KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT);
-
-#if MALI_USE_UMP == 1
-	kbdev->memdev.ump_device_id = kbasep_get_config_value(kbdev, config->attributes, KBASE_CONFIG_ATTR_UMP_DEVICE);
-#endif /* MALI_USE_UMP == 1 */
-
-	/* obtain min/max configured gpu frequencies */
-	core_props = &(kbdev->gpu_props.props.core_props);
-	core_props->gpu_freq_khz_min = kbasep_get_config_value(kbdev, config->attributes,
-		                                                       KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MIN);
-	core_props->gpu_freq_khz_max = kbasep_get_config_value(kbdev, config->attributes,
-		                                                       KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX);
-	kbdev->gpu_props.irq_throttle_time_us = kbasep_get_config_value(kbdev, config->attributes,
-		                                                       KBASE_CONFIG_ATTR_GPU_IRQ_THROTTLE_TIME_US);
-
-	err = kbase_register_memory_regions(kbdev, config->attributes);
-	if (err)
-	{
-		goto out_device_init;
-	}
-
-	err = kbase_common_device_init(kbdev);
-	if (0 != err)
-	{
-		goto out_device_init;
-	}
-
-	g_kbdev = kbdev;
-
-	return 0;
-
-out_device_init:
-	kbase_device_term(kbdev);
-	g_kbdev = NULL;
-out_reg_unmap:
-	kbase_common_reg_unmap(kbdev);
-out_free_dev:
-#if MALI_NO_MALI
-	midg_device_destroy(kbdev);
-#endif /* MALI_NO_MALI */
-out_midg:
-	kbase_device_free(kbdev);
-out_kbdev_alloc:
-	cdev_del(&mali_linux_device.cdev);
-out_cdev_add:
-	unregister_chrdev_region(dev, 1);
-out_region:
-	return err;
-}
-
-#endif /* MALI_LICENSE_IS_GPL */
 
 static void __exit kbase_driver_exit(void)
 {
-#if MALI_LICENSE_IS_GPL
-#ifdef MALI_PCI_DEVICE
-	pci_unregister_driver(&kbase_pci_driver);
-#endif
 	platform_driver_unregister(&kbase_platform_driver);
-#if MALI_FAKE_PLATFORM_DEVICE
+#ifdef CONFIG_MALI_PLATFORM_FAKE
 	if (mali_device)
 	{
 		platform_device_unregister(mali_device);
 	}
-#endif
-#else
-	dev_t dev = MKDEV(mali_major, 0);
-	struct kbase_device *kbdev = g_kbdev;
-
-	if (!kbdev)
-	{
-		return;
-	}
-
-	kbase_common_device_remove(kbdev);
-
-	/* unregister char device */
-	cdev_del(&mali_linux_device.cdev);
-
-	/* free major */
-	unregister_chrdev_region(dev, 1);
-#endif
+#endif /* CONFIG_MALI_PLATFORM_FAKE */
 }
 
 module_init(kbase_driver_init);
 module_exit(kbase_driver_exit);
 
-#if MALI_LICENSE_IS_GPL
 MODULE_LICENSE("GPL");
-#else
-MODULE_LICENSE("Proprietary");
-#endif
 
-#if MALI_GATOR_SUPPORT
+#ifdef CONFIG_MALI_GATOR_SUPPORT
 /* Create the trace points (otherwise we just get code to call a tracepoint) */
 #define CREATE_TRACE_POINTS
 #include "mali_linux_trace.h"
@@ -3103,6 +2740,6 @@ void kbase_trace_mali_total_alloc_pages_change(long long int event)
 {
 	trace_mali_total_alloc_pages_change(event);
 }
-#endif
+#endif /* CONFIG_MALI_GATOR_SUPPORT */
 
 

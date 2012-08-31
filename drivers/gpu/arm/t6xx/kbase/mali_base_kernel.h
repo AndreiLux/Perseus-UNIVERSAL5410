@@ -20,6 +20,9 @@
 #ifndef _BASE_KERNEL_H_
 #define _BASE_KERNEL_H_
 
+/* For now we support the legacy API as well as the new API */
+#define BASE_LEGACY_JD_API 1
+
 #include <kbase/src/mali_base_mem_priv.h>
 
 /*
@@ -27,14 +30,18 @@
  * we decide to make the number of semaphores a configurable
  * option.
  */
+#define BASE_JD_ATOM_COUNT              256
+
 #define BASEP_JD_SEM_PER_WORD_LOG2      5
 #define BASEP_JD_SEM_PER_WORD           (1 << BASEP_JD_SEM_PER_WORD_LOG2)
 #define BASEP_JD_SEM_WORD_NR(x)         ((x) >> BASEP_JD_SEM_PER_WORD_LOG2)
 #define BASEP_JD_SEM_MASK_IN_WORD(x)    (1 << ((x) & (BASEP_JD_SEM_PER_WORD - 1)))
-#define BASEP_JD_SEM_ARRAY_SIZE         BASEP_JD_SEM_WORD_NR(256)
+#define BASEP_JD_SEM_ARRAY_SIZE         BASEP_JD_SEM_WORD_NR(BASE_JD_ATOM_COUNT)
 
+#if BASE_LEGACY_JD_API
 /* Size of the ring buffer */
-#define BASEP_JCTX_RB_NRPAGES           16
+#define BASEP_JCTX_RB_NRPAGES           4
+#endif /* BASE_LEGACY_JD_API */
 
 #define BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS 3
 
@@ -60,6 +67,13 @@
 	#endif
 #endif
 
+/** 32/64-bit neutral way to represent pointers */
+typedef union kbase_pointer
+{
+	void * value;     /**< client should store their pointers here */
+	u32 compat_value; /**< 64-bit kernels should fetch value here when handling 32-bit clients */
+	u64 sizer;        /**< Force 64-bit storage for all clients regardless */
+} kbase_pointer;
 
 /**
  * @addtogroup base_user_api User-side Base APIs
@@ -203,6 +217,7 @@ typedef struct base_import_handle
  */
 
 typedef int platform_fence_type;
+#define INVALID_PLATFORM_FENCE ((platform_fence_type)-1)
 
 /**
  * Base stream handle.
@@ -228,10 +243,12 @@ typedef struct base_fence
 	struct
 	{
 		int fd;
+		int stream_fd;
 	}
 	basep;
 } base_fence;
 
+#if BASE_LEGACY_JD_API
 /**
  * @brief A pre- or post- dual dependency.
  *
@@ -248,6 +265,7 @@ typedef struct base_fence
 typedef struct base_jd_dep {
 	u8      dep[2]; /**< pre/post dependencies */
 } base_jd_dep;
+#endif /* BASE_LEGACY_JD_API */
 
 /**
  * @brief Per-job data
@@ -366,10 +384,15 @@ typedef u16 base_jd_core_req;
 #define BASE_JD_REQ_SPECIFIC_COHERENT_GROUP ( 1U << 11 )
 
 /**
+ * SW Flag: If this bit is set then the successful completion of this atom
+ * will not cause an event to be sent to userspace
+ */
+#define BASE_JD_REQ_EVENT_ONLY_ON_FAILURE   ( 1U << 12 )
+
+/**
 * These requirement bits are currently unused in base_jd_core_req (currently a u16)
 */
 
-#define BASEP_JD_REQ_RESERVED_BIT12 ( 1U << 12 )
 #define BASEP_JD_REQ_RESERVED_BIT13 ( 1U << 13 )
 #define BASEP_JD_REQ_RESERVED_BIT14 ( 1U << 14 )
 #define BASEP_JD_REQ_RESERVED_BIT15 ( 1U << 15 )
@@ -378,10 +401,18 @@ typedef u16 base_jd_core_req;
 * Mask of all the currently unused requirement bits in base_jd_core_req.
 */
 
-#define BASEP_JD_REQ_RESERVED ( BASEP_JD_REQ_RESERVED_BIT12 | BASEP_JD_REQ_RESERVED_BIT13 |\
+#define BASEP_JD_REQ_RESERVED ( BASEP_JD_REQ_RESERVED_BIT13 |\
                                 BASEP_JD_REQ_RESERVED_BIT14 | BASEP_JD_REQ_RESERVED_BIT15 )
 
+/**
+ * Mask of all bits in base_jd_core_req that control the type of the atom.
+ *
+ * This allows dependency only atoms to have flags set
+ */
+#define BASEP_JD_REQ_ATOM_TYPE ( ~(BASEP_JD_REQ_RESERVED | BASE_JD_REQ_EVENT_ONLY_ON_FAILURE |\
+                                   BASE_JD_REQ_EXTERNAL_RESOURCES ) )
 
+#if BASE_LEGACY_JD_API
 /**
  * @brief A single job chain, with pre/post dependendencies and mem ops
  *
@@ -444,13 +475,31 @@ typedef struct base_jd_atom
 	 */
 	u8                  device_nr;
 } base_jd_atom;
+#endif /* BASE_LEGACY_JD_API */
 
+typedef u8 base_atom_id; /**< Type big enough to store an atom number in */
+
+typedef struct base_jd_atom_v2
+{
+	mali_addr64         jc;             /**< job-chain GPU address */
+	base_jd_core_req    core_req;       /**< core requirements */
+	base_jd_udata       udata;          /**< user data */
+	kbase_pointer       extres_list;    /**< list of external resources */
+	u16                 nr_extres;      /**< nr of external resources */
+	base_atom_id        pre_dep[2];     /**< pre-dependencies */
+	base_atom_id        atom_number;    /**< unique number to identify the atom */
+	s8                  prio;           /**< priority - smaller is higher priority */
+	u8                  device_nr;      /**< coregroup when BASE_JD_REQ_SPECIFIC_COHERENT_GROUP specified */
+} base_jd_atom_v2;
+
+#if BASE_LEGACY_JD_API
 /* Structure definition works around the fact that C89 doesn't allow arrays of size 0 */
 typedef struct basep_jd_atom_ss
 {
 	base_jd_atom    atom;
 	base_syncset    syncsets[1];
 } basep_jd_atom_ss;
+#endif /* BASE_LEGACY_JD_API */
 
 typedef enum base_external_resource_access
 {
@@ -463,6 +512,7 @@ typedef struct base_external_resource
 	u64  ext_resource;
 } base_external_resource;
 
+#if BASE_LEGACY_JD_API
 /* Structure definition works around the fact that C89 doesn't allow arrays of size 0 */
 typedef struct basep_jd_atom_ext_res
 {
@@ -472,11 +522,17 @@ typedef struct basep_jd_atom_ext_res
 
 static INLINE size_t base_jd_atom_size_ex(u32 syncset_count, u32 external_res_count)
 {
+	int size;
+
 	LOCAL_ASSERT( 0 == syncset_count || 0 == external_res_count );
 
-	return syncset_count      ? offsetof(basep_jd_atom_ss, syncsets[0]) + (sizeof(base_syncset) * syncset_count) :
-		   external_res_count ? offsetof(basep_jd_atom_ext_res, resources[0]) + (sizeof(base_external_resource) * external_res_count) :
+	size = syncset_count      ? offsetof(basep_jd_atom_ss, syncsets[0]) + (sizeof(base_syncset) * syncset_count) :
+	       external_res_count ? offsetof(basep_jd_atom_ext_res, resources[0]) + (sizeof(base_external_resource) * external_res_count) :
 	                            sizeof(base_jd_atom);
+
+	/* Atom minimum size set to 64 bytes to ensure that the maximum
+	 * number of atoms in the ring buffer is limited to 256 */
+	return MAX(64, size);
 }
 
 /**
@@ -504,13 +560,14 @@ static INLINE size_t base_jd_atom_size(u32 nr)
  * @param     n    The number of the syncset to be returned
  * @return a pointer to the nth syncset.
  */
-static INLINE base_syncset *base_jd_get_atom_syncset(base_jd_atom *atom, int n)
+static INLINE base_syncset *base_jd_get_atom_syncset(base_jd_atom *atom, u16 n)
 {
 	LOCAL_ASSERT(atom != NULL);
 	LOCAL_ASSERT(0 == (atom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES));
-	LOCAL_ASSERT( (n >= 0) && (n <= atom->nr_syncsets) );
+	LOCAL_ASSERT(n <= atom->nr_syncsets);
 	return &((basep_jd_atom_ss *)atom)->syncsets[n];
 }
+#endif /* BASE_LEGACY_JD_API */
 
 /**
  * @brief Soft-atom fence trigger setup.
@@ -524,7 +581,7 @@ static INLINE base_syncset *base_jd_get_atom_syncset(base_jd_atom *atom, int n)
  * The base fence object must not be terminated until the atom
  * has been submitted to @a base_jd_submit_bag and @a base_jd_submit_bag has returned.
  *
- * @a fence must be a valid fence set up with @a base_fence_init or @a base_fence_import.
+ * @a fence must be a valid fence set up with @a base_fence_init.
  * Calling this function with a uninitialized fence results in undefined behavior.
  *
  * @param[out] atom A pre-allocated atom to configure as a fence trigger SW atom
@@ -534,8 +591,19 @@ static INLINE void base_jd_fence_trigger_setup(base_jd_atom * atom, base_fence *
 {
 	LOCAL_ASSERT(atom);
 	LOCAL_ASSERT(fence);
-	LOCAL_ASSERT(fence->basep.fd >= 0);
-	atom->jc = fence->basep.fd;
+	LOCAL_ASSERT(fence->basep.fd == INVALID_PLATFORM_FENCE);
+	LOCAL_ASSERT(fence->basep.stream_fd >= 0);
+	atom->jc = (uintptr_t)fence;
+	atom->core_req = BASE_JD_REQ_SOFT_FENCE_TRIGGER;
+}
+
+static INLINE void base_jd_fence_trigger_setup_v2(base_jd_atom_v2 * atom, base_fence * fence)
+{
+	LOCAL_ASSERT(atom);
+	LOCAL_ASSERT(fence);
+	LOCAL_ASSERT(fence->basep.fd == INVALID_PLATFORM_FENCE);
+	LOCAL_ASSERT(fence->basep.stream_fd >= 0);
+	atom->jc = (uintptr_t)fence;
 	atom->core_req = BASE_JD_REQ_SOFT_FENCE_TRIGGER;
 }
 
@@ -563,10 +631,20 @@ static INLINE void base_jd_fence_wait_setup(base_jd_atom * atom, base_fence * fe
 	LOCAL_ASSERT(atom);
 	LOCAL_ASSERT(fence);
 	LOCAL_ASSERT(fence->basep.fd >= 0);
-	atom->jc = fence->basep.fd;
+	atom->jc = (uintptr_t)fence;
 	atom->core_req = BASE_JD_REQ_SOFT_FENCE_WAIT;
 }
 
+static INLINE void base_jd_fence_wait_setup_v2(base_jd_atom_v2 * atom, base_fence * fence)
+{
+	LOCAL_ASSERT(atom);
+	LOCAL_ASSERT(fence);
+	LOCAL_ASSERT(fence->basep.fd >= 0);
+	atom->jc = (uintptr_t)fence;
+	atom->core_req = BASE_JD_REQ_SOFT_FENCE_WAIT;
+}
+
+#if BASE_LEGACY_JD_API
 /**
  * @brief Atom external resource accessor
  *
@@ -576,13 +654,14 @@ static INLINE void base_jd_fence_wait_setup(base_jd_atom * atom, base_fence * fe
  * @param     n    The number of the external resource to return a pointer to
  * @return a pointer to the nth external resource
  */
-static INLINE base_external_resource *base_jd_get_external_resource(base_jd_atom *atom, int n)
+static INLINE base_external_resource *base_jd_get_external_resource(base_jd_atom *atom, u16 n)
 {
 	LOCAL_ASSERT(atom != NULL);
 	LOCAL_ASSERT(BASE_JD_REQ_EXTERNAL_RESOURCES == (atom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES));
-	LOCAL_ASSERT( (n >= 0) && (n <= atom->nr_extres) );
+	LOCAL_ASSERT(n <= atom->nr_extres);
 	return &((basep_jd_atom_ext_res*)atom)->resources[n];
 }
+#endif /* BASE_LEGACY_JD_API */
 
 /**
  * @brief External resource info initialization.
@@ -606,6 +685,7 @@ static INLINE void base_external_resource_init(base_external_resource * res, bas
 	res->ext_resource = address | (access & LOCAL_PAGE_LSB);
 }
 
+#if BASE_LEGACY_JD_API
 /**
  * @brief Next atom accessor
  *
@@ -622,6 +702,7 @@ static INLINE base_jd_atom *base_jd_get_next_atom(base_jd_atom *atom)
 	return (atom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES) ? (base_jd_atom *)base_jd_get_external_resource(atom, atom->nr_extres) :
 	                                                           (base_jd_atom *)base_jd_get_atom_syncset(atom, atom->nr_syncsets);
 }
+#endif /* BASE_LEGACY_JD_API */
 
 /**
  * @brief Job chain event code bits
@@ -738,6 +819,8 @@ typedef enum base_jd_event_code
 	BASE_JD_EVENT_MEM_GROWTH_FAILED = BASE_JD_SW_EVENT | BASE_JD_SW_EVENT_JOB | 0x000,
 	BASE_JD_EVENT_TIMED_OUT         = BASE_JD_SW_EVENT | BASE_JD_SW_EVENT_JOB | 0x001,
 	BASE_JD_EVENT_JOB_CANCELLED     = BASE_JD_SW_EVENT | BASE_JD_SW_EVENT_JOB | 0x002,
+	BASE_JD_EVENT_JOB_INVALID       = BASE_JD_SW_EVENT | BASE_JD_SW_EVENT_JOB | 0x003,
+
 	BASE_JD_EVENT_BAG_INVALID       = BASE_JD_SW_EVENT | BASE_JD_SW_EVENT_BAG | 0x003,
 
 	/** End of HW fault and SW Error status codes */
@@ -778,11 +861,19 @@ typedef enum base_jd_event_code
  * been completed (ie all contained job-chains have been completed).
  * @li ::BASE_JD_SW_EVENT_INFO : base_jd_event::data not used
  */
+#if BASE_LEGACY_JD_API
 typedef struct base_jd_event
 {
 	base_jd_event_code      event_code; /**< event code */
 	void                  * data;       /**< event specific data */
 } base_jd_event;
+#endif
+
+typedef struct base_jd_event_v2
+{
+	base_jd_event_code      event_code; /**< event code */
+	base_jd_udata           udata;      /**< user data */
+} base_jd_event_v2;
 
 /**
  * @brief Structure for BASE_JD_REQ_SOFT_DUMP_CPU_GPU_COUNTERS jobs.
@@ -1359,7 +1450,11 @@ enum basep_context_private_flags
 /** @} end group base_plat_config_gpuprops */
 
 /**
-   @addtogroup basecpuprops
+ * @addtogroup base_api Base APIs
+ * @{
+ */
+/**
+ * @addtogroup basecpuprops Base CPU Properties
  * @{
  */
 

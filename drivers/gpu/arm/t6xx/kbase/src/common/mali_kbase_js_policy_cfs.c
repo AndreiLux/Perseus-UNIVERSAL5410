@@ -10,6 +10,8 @@
  *
  */
 
+
+
 /*
  * Job Scheduler: Completely Fair Policy Implementation
  */
@@ -335,7 +337,7 @@ static const int weight_of_priority[] =
  * function should only be seen as a heuristic guide as to the priority weight
  * of the context.
  */
-STATIC u64 priority_weight(kbasep_js_policy_cfs_ctx *ctx_info, u32 time_us)
+STATIC u64 priority_weight(kbasep_js_policy_cfs_ctx *ctx_info, u64 time_us)
 {
 	u64 time_delta_us;
 	int priority;
@@ -361,7 +363,7 @@ STATIC u64 priority_weight(kbasep_js_policy_cfs_ctx *ctx_info, u32 time_us)
 		}
 
 		/* Fixed point multiplication */
-		time_delta_us = ((u64)time_us * weight_of_priority[WEIGHT_0_NICE + clamped_priority]);
+		time_delta_us = (time_us * weight_of_priority[WEIGHT_0_NICE + clamped_priority]);
 		/* Remove fraction */
 		time_delta_us = time_delta_us >> WEIGHT_FIXEDPOINT_SHIFT;
 		/* Make sure the time always increases */
@@ -401,14 +403,15 @@ STATIC int kbasep_js_policy_trace_get_refcnt_nolock( kbase_device *kbdev, kbase_
 
 STATIC INLINE int kbasep_js_policy_trace_get_refcnt( kbase_device *kbdev, kbase_context *kctx )
 {
+	unsigned long flags;
 	kbasep_js_device_data *js_devdata;
 	int refcnt = 0;
 
 	js_devdata = &kbdev->js_data;
 
-	osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
+	spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
 	refcnt = kbasep_js_policy_trace_get_refcnt_nolock( kbdev, kctx );
-	osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
+	spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
 
 	return refcnt;
 }
@@ -429,7 +432,7 @@ STATIC INLINE int kbasep_js_policy_trace_get_refcnt( kbase_device *kbdev, kbase_
 #endif /* KBASE_TRACE_ENABLE != 0 */
 
 
-#if MALI_DEBUG != 0
+#ifdef CONFIG_MALI_DEBUG
 STATIC void kbasep_js_debug_check( kbasep_js_policy_cfs *policy_info, kbase_context *kctx, kbasep_js_check check_flag )
 {
 	/* This function uses the ternary operator and non-explicit comparisons,
@@ -478,7 +481,7 @@ STATIC void kbasep_js_debug_check( kbasep_js_policy_cfs *policy_info, kbase_cont
 	}
 
 }
-#else /* MALI_DEBUG != 0 */
+#else /* CONFIG_MALI_DEBUG */
 STATIC void kbasep_js_debug_check( kbasep_js_policy_cfs *policy_info, kbase_context *kctx, kbasep_js_check check_flag )
 {
 	CSTD_UNUSED( policy_info );
@@ -486,7 +489,7 @@ STATIC void kbasep_js_debug_check( kbasep_js_policy_cfs *policy_info, kbase_cont
 	CSTD_UNUSED( check_flag );
 	return;
 }
-#endif /* MALI_DEBUG != 0 */
+#endif /* CONFIG_MALI_DEBUG */
 
 STATIC INLINE void set_slot_to_variant_lookup( u32 *bit_array, u32 slot_idx, u32 variants_supported )
 {
@@ -524,7 +527,7 @@ STATIC INLINE u32 get_slot_to_variant_lookup( u32 *bit_array, u32 slot_idx )
  * @note The checks are limited to the job slots - this does not check that
  * every context requirement is covered (because some are intentionally not
  * supported, such as KBASE_CTX_FLAG_SUBMIT_DISABLED) */
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 STATIC void debug_check_core_req_variants( kbase_device *kbdev, kbasep_js_policy_cfs *policy_info )
 {
 	kbasep_js_device_data *js_devdata;
@@ -572,7 +575,7 @@ STATIC void build_core_req_variants( kbase_device *kbdev, kbasep_js_policy_cfs *
 			OSK_ASSERT( NUM_CORE_REQ_VARIANTS_8987 <= KBASEP_JS_MAX_NR_CORE_REQ_VARIANTS );
 
 			/* Assume a static set of variants */
-			OSK_MEMCPY( policy_info->core_req_variants, core_req_variants_8987, sizeof(core_req_variants_8987) );
+			memcpy( policy_info->core_req_variants, core_req_variants_8987, sizeof(core_req_variants_8987) );
 
 			policy_info->num_core_req_variants = NUM_CORE_REQ_VARIANTS_8987;
 	}
@@ -581,7 +584,7 @@ STATIC void build_core_req_variants( kbase_device *kbdev, kbasep_js_policy_cfs *
 			OSK_ASSERT( NUM_CORE_REQ_VARIANTS <= KBASEP_JS_MAX_NR_CORE_REQ_VARIANTS );
 
 			/* Assume a static set of variants */
-			OSK_MEMCPY( policy_info->core_req_variants, core_req_variants, sizeof(core_req_variants) );
+			memcpy( policy_info->core_req_variants, core_req_variants, sizeof(core_req_variants) );
 
 			policy_info->num_core_req_variants = NUM_CORE_REQ_VARIANTS;
 	}
@@ -640,7 +643,7 @@ STATIC mali_error cached_variant_idx_init( const kbasep_js_policy_cfs *policy_in
 	OSK_ASSERT( kctx != NULL );
 	OSK_ASSERT( atom != NULL );
 
-	kbdev = CONTAINER_OF(policy_info, const kbase_device, js_data.policy.cfs);
+	kbdev = container_of(policy_info, const kbase_device, js_data.policy.cfs);
 	job_info = &atom->sched_info.cfs;
 	job_core_req = atom->core_req;
 	job_device_nr = atom->device_nr;
@@ -715,7 +718,7 @@ STATIC mali_bool dequeue_job( kbase_device *kbdev,
 				/* Found a context with a matching job */
 				{
 					kbase_jd_atom *front_atom = OSK_DLIST_FRONT( job_list, kbase_jd_atom, sched_info.cfs.list );
-					KBASE_TRACE_ADD_SLOT( kbdev, JS_POLICY_DEQUEUE_JOB, front_atom->kctx, front_atom->user_atom,
+					KBASE_TRACE_ADD_SLOT( kbdev, JS_POLICY_DEQUEUE_JOB, front_atom->kctx, front_atom,
 					                      front_atom->jc, job_slot_idx );
 				}
 				*katom_ptr = OSK_DLIST_POP_FRONT( job_list, kbase_jd_atom, sched_info.cfs.list );
@@ -760,13 +763,13 @@ OSK_STATIC_INLINE mali_bool timer_callback_should_run( kbase_device *kbdev )
 	 * up-to-date for reading */
 	nr_running_ctxs = js_devdata->nr_user_contexts_running;
 
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 	if(js_devdata->softstop_always)
 	{
 		/* Debug support for allowing soft-stop on a single context */
 		return MALI_TRUE;
 	}
-#endif /* MALI_DEBUG */
+#endif /* CONFIG_MALI_DEBUG */
 
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_9435))
 	{
@@ -793,22 +796,24 @@ OSK_STATIC_INLINE mali_bool timer_callback_should_run( kbase_device *kbdev )
 	}
 }
 
-static void timer_callback(void *data)
+static enum hrtimer_restart timer_callback( struct hrtimer * timer )
 {
-	kbase_device *kbdev = (kbase_device*)data;
+	unsigned long flags;
+	kbase_device *kbdev;
 	kbasep_js_device_data *js_devdata;
 	kbasep_js_policy_cfs *policy_info;
 	int s;
-	osk_error osk_err;
 	mali_bool reset_needed = MALI_FALSE;
 
-	OSK_ASSERT(kbdev != NULL);
+	OSK_ASSERT(timer != NULL);
 
-	js_devdata = &kbdev->js_data;
-	policy_info = &js_devdata->policy.cfs;
+	policy_info = container_of( timer, kbasep_js_policy_cfs, scheduling_timer );
+
+	kbdev       = policy_info->kbdev;
+	js_devdata  = &kbdev->js_data;
 
 	/* Loop through the slots */
-	osk_spinlock_irq_lock(&kbdev->jm_slots_lock);
+	spin_lock_irqsave(&js_devdata->runpool_irq.lock, flags);
 	for(s=0; s<kbdev->gpu_props.num_job_slots; s++)
 	{
 		kbase_jm_slot *slot = &kbdev->jm_slots[s];
@@ -907,27 +912,23 @@ static void timer_callback(void *data)
 			}
 		}
 	}
-	osk_spinlock_irq_unlock(&kbdev->jm_slots_lock);
 
 	if (reset_needed)
 	{
 		OSK_PRINT_WARN(OSK_BASE_JM, "JS: Job has been on the GPU for too long");
-		if (kbase_prepare_to_reset_gpu(kbdev))
+		if (kbase_prepare_to_reset_gpu_locked(kbdev))
 		{
-			kbase_reset_gpu(kbdev);
+			kbase_reset_gpu_locked(kbdev);
 		}
 	}
 
 	/* the timer is re-issued if there is contexts in the run-pool */
-	osk_spinlock_irq_lock(&js_devdata->runpool_irq.lock);
 
 	if (timer_callback_should_run(kbdev) != MALI_FALSE)
 	{
-		osk_err = osk_timer_start_ns(&policy_info->timer, js_devdata->scheduling_tick_ns);
-		if (OSK_ERR_NONE != osk_err)
-		{
-			policy_info->timer_running = MALI_FALSE;
-		}
+		hrtimer_start( &policy_info->scheduling_timer,
+                                        HR_TIMER_DELAY_NSEC( js_devdata->scheduling_tick_ns ),
+                                        HRTIMER_MODE_REL );
 	}
 	else
 	{
@@ -935,7 +936,9 @@ static void timer_callback(void *data)
 		policy_info->timer_running = MALI_FALSE;
 	}
 
-	osk_spinlock_irq_unlock(&js_devdata->runpool_irq.lock);
+	spin_unlock_irqrestore(&js_devdata->runpool_irq.lock, flags);
+
+	return HRTIMER_NORESTART;
 }
 
 /*
@@ -955,15 +958,11 @@ mali_error kbasep_js_policy_init( kbase_device *kbdev )
 	OSK_DLIST_INIT( &policy_info->scheduled_ctxs_head );
 	OSK_DLIST_INIT( &policy_info->ctx_rt_queue_head );
 
-	if (osk_timer_init(&policy_info->timer) != OSK_ERR_NONE)
-	{
-		return MALI_ERROR_FUNCTION_FAILED;
-	}
-
-	osk_timer_callback_set( &policy_info->timer, timer_callback, kbdev );
+	hrtimer_init(&policy_info->scheduling_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL );
+	policy_info->scheduling_timer.function = timer_callback;
 
 	policy_info->timer_running = MALI_FALSE;
-
+	policy_info->kbdev = kbdev;
 	policy_info->head_runtime_us = 0;
 
 	/* Build up the core_req variants */
@@ -977,7 +976,6 @@ mali_error kbasep_js_policy_init( kbase_device *kbdev )
 void kbasep_js_policy_term( kbasep_js_policy *js_policy )
 {
 	kbasep_js_policy_cfs     *policy_info;
-
 	OSK_ASSERT( js_policy != NULL );
 	policy_info = &js_policy->cfs;
 
@@ -989,8 +987,7 @@ void kbasep_js_policy_term( kbasep_js_policy *js_policy )
 	/* ASSERT that there are no contexts queued */
 	OSK_ASSERT( OSK_DLIST_IS_EMPTY( &policy_info->ctx_rt_queue_head ) != MALI_FALSE );
 
-	osk_timer_stop(&policy_info->timer);
-	osk_timer_term(&policy_info->timer);
+	hrtimer_cancel(&policy_info->scheduling_timer);
 }
 
 mali_error kbasep_js_policy_init_ctx( kbase_device *kbdev, kbase_context *kctx )
@@ -1027,7 +1024,7 @@ mali_error kbasep_js_policy_init_ctx( kbase_device *kbdev, kbase_context *kctx )
 	 * This uses the Policy Queue's most up-to-date head_runtime_us by using the
 	 * queue mutex to issue memory barriers - also ensure future updates to
 	 * head_runtime_us occur strictly after this context is initialized */
-	osk_mutex_lock( &js_devdata->queue_mutex );
+	mutex_lock( &js_devdata->queue_mutex );
 
 	/* No need to hold the the runpool_irq.lock here, because we're initializing
 	 * the value, and the context is definitely not being updated in the
@@ -1036,7 +1033,7 @@ mali_error kbasep_js_policy_init_ctx( kbase_device *kbdev, kbase_context *kctx )
 		priority_weight(ctx_info,
 						(u64)js_devdata->cfs_ctx_runtime_init_slices * (u64)(js_devdata->ctx_timeslice_ns/1000u));
 
-	osk_mutex_unlock( &js_devdata->queue_mutex );
+	mutex_unlock( &js_devdata->queue_mutex );
 
 	return MALI_ERROR_NONE;
 }
@@ -1054,7 +1051,7 @@ void kbasep_js_policy_term_ctx( kbasep_js_policy *js_policy, kbase_context *kctx
 	ctx_info = &kctx->jctx.sched_info.runpool.policy_ctx.cfs;
 
 	{
-		kbase_device *kbdev = CONTAINER_OF( js_policy, kbase_device, js_data.policy );
+		kbase_device *kbdev = container_of( js_policy, kbase_device, js_data.policy );
 		KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_POLICY_TERM_CTX, kctx, NULL, 0u,
 								  kbasep_js_policy_trace_get_refcnt( kbdev, kctx ));
 	}
@@ -1086,10 +1083,10 @@ void kbasep_js_policy_enqueue_ctx( kbasep_js_policy *js_policy, kbase_context *k
 
 	policy_info = &js_policy->cfs;
 	ctx_info = &kctx->jctx.sched_info.runpool.policy_ctx.cfs;
-	js_devdata = CONTAINER_OF( js_policy, kbasep_js_device_data, policy );
+	js_devdata = container_of( js_policy, kbasep_js_device_data, policy );
 
 	{
-		kbase_device *kbdev = CONTAINER_OF( js_policy, kbase_device, js_data.policy );
+		kbase_device *kbdev = container_of( js_policy, kbase_device, js_data.policy );
 		KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_POLICY_ENQUEUE_CTX, kctx, NULL, 0u,
 								  kbasep_js_policy_trace_get_refcnt( kbdev, kctx ));
 	}
@@ -1192,7 +1189,7 @@ mali_bool kbasep_js_policy_dequeue_head_ctx( kbasep_js_policy *js_policy, kbase_
 	                                 jctx.sched_info.runpool.policy_ctx.cfs.list );
 
 	{
-		kbase_device *kbdev = CONTAINER_OF( js_policy, kbase_device, js_data.policy );
+		kbase_device *kbdev = container_of( js_policy, kbase_device, js_data.policy );
 		kbase_context *kctx = *kctx_ptr;
 		KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_POLICY_DEQUEUE_HEAD_CTX, kctx, NULL, 0u,
 								  kbasep_js_policy_trace_get_refcnt( kbdev, kctx ));
@@ -1248,7 +1245,7 @@ mali_bool kbasep_js_policy_try_evict_ctx( kbasep_js_policy *js_policy, kbase_con
 	                                  jctx.sched_info.runpool.policy_ctx.cfs.list );
 
 	{
-		kbase_device *kbdev = CONTAINER_OF( js_policy, kbase_device, js_data.policy );
+		kbase_device *kbdev = container_of( js_policy, kbase_device, js_data.policy );
 		KBASE_TRACE_ADD_REFCOUNT_INFO( kbdev, JS_POLICY_TRY_EVICT_CTX, kctx, NULL, 0u,
 									   kbasep_js_policy_trace_get_refcnt( kbdev, kctx ), is_present);
 	}
@@ -1297,7 +1294,7 @@ void kbasep_js_policy_kill_all_ctx_jobs( kbasep_js_policy *js_policy, kbase_cont
 	ctx_info = &kctx->jctx.sched_info.runpool.policy_ctx.cfs;
 
 	{
-		kbase_device *kbdev = CONTAINER_OF( js_policy, kbase_device, js_data.policy );
+		kbase_device *kbdev = container_of( js_policy, kbase_device, js_data.policy );
 		KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_POLICY_KILL_ALL_CTX_JOBS, kctx, NULL, 0u,
 								  kbasep_js_policy_trace_get_refcnt( kbdev, kctx ));
 	}
@@ -1319,14 +1316,14 @@ void kbasep_js_policy_runpool_add_ctx( kbasep_js_policy *js_policy, kbase_contex
 	kbasep_js_policy_cfs     *policy_info;
 	kbasep_js_device_data    *js_devdata;
 	kbase_device *kbdev;
-	osk_error osk_err;
 
 	OSK_ASSERT( js_policy != NULL );
 	OSK_ASSERT( kctx != NULL );
 
 	policy_info = &js_policy->cfs;
-	js_devdata = CONTAINER_OF( js_policy, kbasep_js_device_data, policy );
-	kbdev = CONTAINER_OF( js_policy, kbase_device, js_data.policy );
+	js_devdata = container_of( js_policy, kbasep_js_device_data, policy );
+
+	kbdev = kctx->kbdev;
 
 	{
 		KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_POLICY_RUNPOOL_ADD_CTX, kctx, NULL, 0u,
@@ -1345,13 +1342,12 @@ void kbasep_js_policy_runpool_add_ctx( kbasep_js_policy *js_policy, kbase_contex
 	if ( timer_callback_should_run(kbdev) != MALI_FALSE
 		 && policy_info->timer_running == MALI_FALSE )
 	{
-		osk_err = osk_timer_start_ns(&policy_info->timer, js_devdata->scheduling_tick_ns);
-		if (OSK_ERR_NONE == osk_err)
-		{
-			kbase_device *kbdev = CONTAINER_OF( js_policy, kbase_device, js_data.policy );
-			KBASE_TRACE_ADD( kbdev, JS_POLICY_TIMER_START, NULL, NULL, 0u, 0u );
-			policy_info->timer_running = MALI_TRUE;
-		}
+		hrtimer_start( &policy_info->scheduling_timer,
+                       HR_TIMER_DELAY_NSEC( js_devdata->scheduling_tick_ns ),
+                       HRTIMER_MODE_REL );
+
+		KBASE_TRACE_ADD( kbdev, JS_POLICY_TIMER_START, NULL, NULL, 0u, 0u );
+		policy_info->timer_running = MALI_TRUE;
 	}
 }
 
@@ -1365,7 +1361,7 @@ void kbasep_js_policy_runpool_remove_ctx( kbasep_js_policy *js_policy, kbase_con
 	policy_info = &js_policy->cfs;
 
 	{
-		kbase_device *kbdev = CONTAINER_OF( js_policy, kbase_device, js_data.policy );
+		kbase_device *kbdev = container_of( js_policy, kbase_device, js_data.policy );
 		KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_POLICY_RUNPOOL_REMOVE_CTX, kctx, NULL, 0u,
 								  kbasep_js_policy_trace_get_refcnt_nolock( kbdev, kctx ));
 	}
@@ -1392,7 +1388,7 @@ mali_bool kbasep_js_policy_should_remove_ctx( kbasep_js_policy *js_policy, kbase
 
 	policy_info = &js_policy->cfs;
 	ctx_info = &kctx->jctx.sched_info.runpool.policy_ctx.cfs;
-	js_devdata = CONTAINER_OF( js_policy, kbasep_js_device_data, policy );
+	js_devdata = container_of( js_policy, kbasep_js_device_data, policy );
 
 	if(ctx_info->process_rt_policy)
 	{
@@ -1605,9 +1601,9 @@ void kbasep_js_policy_enqueue_job( kbasep_js_policy *js_policy, kbase_jd_atom *k
 	ctx_info = &parent_ctx->jctx.sched_info.runpool.policy_ctx.cfs;
 
 	{
-		kbase_device *kbdev = CONTAINER_OF( js_policy, kbase_device, js_data.policy );
-		KBASE_TRACE_ADD( kbdev, JS_POLICY_ENQUEUE_JOB, katom->kctx, katom->user_atom, katom->jc,
-						 0 );
+		kbase_device *kbdev = container_of( js_policy, kbase_device, js_data.policy );
+		KBASE_TRACE_ADD( kbdev, JS_POLICY_ENQUEUE_JOB, katom->kctx, katom, katom->jc,
+		                 0 );
 	}
 
 	OSK_DLIST_PUSH_BACK( &ctx_info->job_list_head[job_info->cached_variant_idx],
@@ -1616,7 +1612,7 @@ void kbasep_js_policy_enqueue_job( kbasep_js_policy *js_policy, kbase_jd_atom *k
 	                     sched_info.cfs.list );
 }
 
-void kbasep_js_policy_log_job_result( kbasep_js_policy *js_policy, kbase_jd_atom *katom, u32 time_spent_us )
+void kbasep_js_policy_log_job_result( kbasep_js_policy *js_policy, kbase_jd_atom *katom, u64 time_spent_us )
 {
 	kbasep_js_policy_cfs_ctx *ctx_info;
 	kbase_context *parent_ctx;

@@ -26,12 +26,9 @@
 
 #include <malisw/mali_malisw.h>
 #include <osk/mali_osk.h>
-#if MALI_USE_UMP
-#ifndef __KERNEL__
-#include <ump/src/library/common/ump_user.h>
-#endif
+#ifdef CONFIG_UMP
 #include <linux/ump.h>
-#endif /* MALI_USE_UMP */
+#endif /* CONFIG_UMP */
 #include <kbase/mali_base_kernel.h>
 #include <kbase/src/common/mali_kbase_hw.h>
 #include "mali_kbase_pm.h"
@@ -83,9 +80,7 @@ typedef struct kbase_mem_commit
  */
 typedef struct kbase_va_region
 {
-#if MALI_KBASEP_REGION_RBTREE
 	struct rb_node          rblink;
-#endif
 	osk_dlist_item          link;
 
 	kbase_context    *kctx; /* Backlink to base context */
@@ -179,10 +174,10 @@ typedef struct kbase_va_region
 	/* member in union valid based on imported_type */
 	union
 	{
-#if MALI_USE_UMP == 1
+#ifdef CONFIG_UMP
 		ump_dd_handle ump_handle;
-#endif /*MALI_USE_UMP == 1*/
-#if defined(CONFIG_DMA_SHARED_BUFFER) && MALI_LICENSE_IS_GPL
+#endif /* CONFIG_UMP */
+#if defined(CONFIG_DMA_SHARED_BUFFER)
 		struct
 		{
 			struct dma_buf *            dma_buf;
@@ -190,7 +185,7 @@ typedef struct kbase_va_region
 			unsigned int                current_mapping_usage_count;
 			struct sg_table *           st;
 		} umm;
-#endif /* defined(CONFIG_DMA_SHARED_BUFFER) && MALI_LICENSE_IS_GPL */
+#endif /* defined(CONFIG_DMA_SHARED_BUFFER) */
 	} imported_metadata;
 
 } kbase_va_region;
@@ -421,7 +416,7 @@ mali_error kbase_alloc_phy_pages_helper(kbase_va_region *reg, u32 nr_pages);
  *
  * The GPU vm lock must be held when calling this function.
  *
- * The buffer returned should be freed with @ref osk_vfree when it is no longer required.
+ * The buffer returned should be freed with @ref vfree when it is no longer required.
  *
  * @param[in]   kctx        The kbase context to dump
  * @param[in]   nr_pages    The number of pages to allocate for the buffer.
@@ -517,6 +512,57 @@ void kbase_os_mem_map_lock(kbase_context * kctx);
 void kbase_os_mem_map_unlock(kbase_context * kctx);
 
 /**
+ * @brief Update the memory allocation counters for the current process
+ *
+ * OS specific call to updates the current memory allocation counters for the current process with
+ * the supplied delta.
+ *
+ * @param[in] pages The desired delta to apply to the memory usage counters.
+ */
+
+void kbasep_os_process_page_usage_update( struct kbase_context * kctx, long pages );
+
+/**
+ * @brief Add to the memory allocation counters for the current process
+ *
+ * OS specific call to add to the current memory allocation counters for the current process by
+ * the supplied amount.
+ *
+ * @param[in] kctx  The kernel base context used for the allocation.
+ * @param[in] pages The desired delta to apply to the memory usage counters.
+ */
+
+static INLINE void kbase_process_page_usage_inc( struct kbase_context *kctx, unsigned long pages )
+{
+	kbasep_os_process_page_usage_update( kctx, pages );
+}
+
+/**
+ * @brief Subtract from the memory allocation counters for the current process
+ *
+ * OS specific call to subtract from the current memory allocation counters for the current process by
+ * the supplied amount.
+ *
+ * @param[in] kctx  The kernel base context used for the allocation.
+ * @param[in] pages The desired delta to apply to the memory usage counters.
+ */
+
+static INLINE void kbase_process_page_usage_dec( struct kbase_context *kctx, unsigned long pages )
+{
+	kbasep_os_process_page_usage_update( kctx, 0 - pages );
+}
+
+/**
+ * @brief Store the memory manager for the process associated with this context
+ *
+ * OS specific call to store a pointer to the memory manager for this process.
+ *
+ * @param[in,out] kctx      The kernel base context used for the allocation.
+ */
+
+void kbase_os_store_process_mm(kbase_context *kctx);
+
+/**
  * @brief Find a CPU mapping of a memory allocation containing a given address range
  *
  * Searches for a CPU mapping of any part of the region starting at @p gpu_addr that
@@ -566,7 +612,7 @@ static INLINE u32 kbasep_tmem_growable_round_size( kbase_device *kbdev, u32 nr_p
 	}
 }
 
-void kbasep_as_poke_timer_callback(void* arg);
+enum hrtimer_restart kbasep_as_poke_timer_callback(struct hrtimer * timer);
 void kbase_as_poking_timer_retain(kbase_as * as);
 void kbase_as_poking_timer_release(kbase_as * as);
 

@@ -319,6 +319,46 @@ s32 osk_snprintf(char *str,  size_t size, const char *format, ...);
  */
 OSK_STATIC_INLINE void osk_debug_get_thread_info( u32 *thread_id, u32 *cpu_nr );
 
+/**
+ * @def OSK_ASSERT_MUTEX_IS_LOCKED(lock)
+ * @brief Asserts that mutex @e lock is locked.
+ *
+ * User backend checks if the mutex is locked by current thread.
+ * Kernel backend checks if the mutex is locked by any thread of execution - this might lead to
+ * false negatives (the test will pass, though it should fail).
+ *
+ * @param lock osk mutex
+ */
+#define OSK_ASSERT_MUTEX_IS_LOCKED(lock) OSKP_ASSERT_MUTEX_IS_LOCKED(lock)
+
+/**
+ * @def OSK_ASSERT_SPINLOCK_IS_LOCKED(lock)
+ * @brief Asserts that spinlock @e lock is locked.
+ *
+ * User backend checks if the spinlock is locked by current thread.
+ * Kernel backend checks if the spinlock is locked by any thread of execution - this might lead to
+ * false negatives (the test will pass, though it should fail).
+ *
+ * @note Kernel backend requires LOCKDEP to be enabled in kernel config.
+ *
+ * @param lock osk spinlock
+ */
+#define OSK_ASSERT_SPINLOCK_IS_LOCKED(lock) OSKP_ASSERT_SPINLOCK_IS_LOCKED(lock)
+
+/**
+ * @def OSK_ASSERT_SPINLOCK_IRQ_IS_LOCKED(lock)
+ * @brief Asserts that spinlock @e lock is locked.
+ *
+ * User backend checks if the spinlock is locked by current thread.
+ * Kernel backend checks if the spinlock is locked by any thread of execution - this might lead to
+ * false negatives (the test will pass, though it should fail).
+ *
+ * @note Kernel backend requires LOCKDEP to be enabled in kernel config.
+ *
+ * @param lock osk spinlock irq
+ */
+#define OSK_ASSERT_SPINLOCK_IRQ_IS_LOCKED(lock) OSKP_ASSERT_SPINLOCK_IRQ_IS_LOCKED(lock)
+
 /* @} */ /* end group oskdebug */
 
 /** @} */ /* end group base_osk_api */

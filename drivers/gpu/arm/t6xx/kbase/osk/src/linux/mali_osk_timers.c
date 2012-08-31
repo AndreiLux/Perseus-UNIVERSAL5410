@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -14,7 +14,7 @@
 
 #include <osk/mali_osk.h>
 
-#if MALI_DEBUG != 0
+#ifdef CONFIG_MALI_DEBUG
 #include <linux/delay.h>
 
 #define TIMER_PERIOD_NS 100
@@ -27,7 +27,7 @@ typedef struct oskp_time_test
 } oskp_time_test;
 
 static mali_bool oskp_timer_has_been_checked = MALI_FALSE;
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 
 enum hrtimer_restart oskp_timer_callback_wrapper( struct hrtimer * hr_timer )
 {
@@ -39,7 +39,7 @@ enum hrtimer_restart oskp_timer_callback_wrapper( struct hrtimer * hr_timer )
 	return HRTIMER_NORESTART;
 }
 
-#if MALI_DEBUG != 0
+#ifdef CONFIG_MALI_DEBUG
 static void oskp_check_timer_callback( void *data )
 {
 	oskp_time_test *time_tester = (oskp_time_test*)data;
@@ -108,4 +108,4 @@ void oskp_debug_test_timer_stats( void )
 	OSK_PRINT_WARN( OSK_BASE_CORE, "OSK Timer couldn't init/start for testing stats" );
 	return;
 }
-#endif
+#endif /* CONFIG_MALI_DEBUG */

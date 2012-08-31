@@ -22,41 +22,37 @@
 #ifndef _KBASE_DEFS_H_
 #define _KBASE_DEFS_H_
 
-#define KBASE_DRV_NAME  "mali"
 
 #include <kbase/mali_kbase_config.h>
 #include <kbase/mali_base_hwconfig.h>
 #include <osk/mali_osk.h>
 
-#if defined(CONFIG_KDS) && MALI_LICENSE_IS_GPL
-#define MALI_USE_KDS
-#endif
+#include <asm/atomic.h>
 
-#ifdef MALI_USE_KDS
+#include <linux/hrtimer.h>
+#include <linux/ktime.h>
+
+#ifdef CONFIG_KDS
 #include <linux/kds.h>
-#endif
+#endif /* CONFIG_KDS */
 
 #ifdef CONFIG_SYNC
 #include <linux/sync.h>
-#endif
+#endif /* CONFIG_SYNC */
 
 /** Enable SW tracing when set */
 #ifdef CONFIG_MALI_T6XX_ENABLE_TRACE
 #define KBASE_TRACE_ENABLE 1
-#endif
+#endif /* CONFIG_MALI_T6XX_ENABLE_TRACE */
 
 #ifndef KBASE_TRACE_ENABLE
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 #define KBASE_TRACE_ENABLE 1
 #else
 #define KBASE_TRACE_ENABLE 0
-#endif /*MALI_DEBUG*/
-#endif /*KBASE_TRACE_ENABLE*/
+#endif /* CONFIG_MALI_DEBUG */
+#endif /* KBASE_TRACE_ENABLE */
 
-/* Maximum number of outstanding atoms per kbase context
- * this is set for security reasons to prevent a malicious app
- * from hanging the driver */
-#define MAX_KCTX_OUTSTANDING_ATOMS (1ul << 6)
 
 /** Dump Job slot trace on error (only active if KBASE_TRACE_ENABLE != 0) */
 #define KBASE_TRACE_DUMP_ON_JOB_SLOT_ERROR 1
@@ -114,18 +110,6 @@ typedef struct kbase_device kbase_device;
  */
 #define BASE_MAX_NR_AS              16
 
-#ifndef UINTPTR_MAX
-
-/**
- * @brief Maximum value representable by type uintptr_t
- */
-#if CSTD_CPU_32BIT
-#define UINTPTR_MAX U32_MAX
-#elif CSTD_CPU_64BIT
-#define UINTPTR_MAX U64_MAX
-#endif /* CSTD_CPU_64BIT */
-
-#endif /* !defined(UINTPTR_MAX) */
 
 /* mmu */
 #define ENTRY_IS_ATE        1ULL
@@ -164,24 +148,6 @@ typedef struct kbase_device kbase_device;
 
 #include "mali_kbase_js_defs.h"
 
-typedef struct kbase_event {
-	osk_dlist_item      entry;
-	const void          *data;
-	base_jd_event_code  event_code;
-} kbase_event;
-
-
-/* Hijack the event entry field to link the struct with the different
- * queues... */
-typedef struct kbase_jd_bag {
-	kbase_event event;
-	u64         core_restriction;
-	size_t      offset;
-	u32         nr_atoms;
-	/** Set when the bag has a power management reference. This is used to ensure that the GPU is
-	 * not turned off after a soft-job has read the GPU counters until the bag has completed */
-	mali_bool8  has_pm_ctx_reference;
-} kbase_jd_bag;
 
 /**
  * @brief States to model state machine processed by kbasep_js_job_check_ref_cores(), which
@@ -224,29 +190,45 @@ typedef enum
 
 } kbase_atom_coreref_state;
 
-typedef struct kbase_jd_atom {
-	kbase_event     event;
-	osk_workq_work  work;
-	kbasep_js_tick  start_timestamp;
-	base_jd_atom    *user_atom;
-	kbase_jd_bag    *bag;
-	kbase_context   *kctx;
-	base_jd_dep     pre_dep;
-	base_jd_dep     post_dep;
-	u32             nr_syncsets;
-	u32             nr_extres;
-	u32             device_nr;
-	u64             affinity;
-	u64             jc;
+typedef enum
+{
+	/** Atom is not used */
+	KBASE_JD_ATOM_STATE_UNUSED,
+	/** Atom is queued in JD */
+	KBASE_JD_ATOM_STATE_QUEUED,
+	/** Atom has been given to JS (is runnable/running) */
+	KBASE_JD_ATOM_STATE_IN_JS,
+	/** Atom has been completed, but not yet handed back to userspace */
+	KBASE_JD_ATOM_STATE_COMPLETED
+} kbase_jd_atom_state;
+
+typedef struct kbase_jd_atom kbase_jd_atom;
+
+struct kbase_jd_atom {
+	base_jd_event_code  event_code;
+	struct work_struct  work;
+	ktime_t             start_timestamp;
+
+	base_jd_udata       udata;
+	kbase_context       *kctx;
+	osk_dlist           dep_head[2];
+	osk_dlist_item      dep_item[2];
+	kbase_jd_atom       *dep_atom[2];
+
+	u16                 nr_extres;
+	base_external_resource *extres;
+	u32                 device_nr;
+	u64                 affinity;
+	u64                 jc;
 	kbase_atom_coreref_state   coreref_state;
-#ifdef MALI_USE_KDS
+#ifdef CONFIG_KDS
 	struct kds_resource_set *  kds_rset;
 	mali_bool                  kds_dep_satisfied;
-#endif
+#endif /* CONFIG_KDS */
 #ifdef CONFIG_SYNC
 	struct sync_fence           *fence;
 	struct sync_fence_waiter    sync_waiter;
-#endif
+#endif /* CONFIG_SYNC */
 
 	base_jd_core_req    core_req;       /**< core requirements */
 
@@ -254,47 +236,31 @@ typedef struct kbase_jd_atom {
 	/** Job Slot to retry submitting to if submission from IRQ handler failed
 	 *
 	 * NOTE: see if this can be unified into the another member e.g. the event */
-	int             retry_submit_on_slot;
+	int                 retry_submit_on_slot;
 	/* atom priority scaled to nice range with +20 offset 0..39 */
-	int             nice_prio;
+	int                 nice_prio;
 
-	int             poking; /* BASE_HW_ISSUE_8316 */
-	/*this pointer needed to keep external resources not corruptible by userspace*/
-	base_external_resource *resources;
-} kbase_jd_atom;
+	int                 poking; /* BASE_HW_ISSUE_8316 */
+
+	wait_queue_head_t   completed;
+	kbase_jd_atom_state status;
+};
 
 /*
  * Theory of operations:
  *
- * - sem is an array of 256 bits, each bit being a semaphore
- * for a 1-1 job dependency:
- * Initially set to 0 (passing)
- * Incremented when a post_dep is queued
- * Decremented when a post_dep is completed
- * pre_dep is satisfied when value is 0
- * sem #0 is hardwired to 0 (always passing).
+ * Atom objects are statically allocated within the context structure.
  *
- * - queue is an array of atoms, one per semaphore.
- * When a pre_dep is not satisfied, the atom is added to both
- * queues it depends on (except for queue 0 which is never used).
- * Each time a post_dep is signal, the corresponding bit is cleared,
- * the atoms removed from the queue, and the corresponding pre_dep
- * is cleared. The atom can be run when pre_dep[0] == pre_dep[1] == 0.
+ * Each atom is the head of two lists, one for the "left" set of dependencies, one for the "right" set.
  */
 
 #define KBASE_JD_DEP_QUEUE_SIZE 256
 
-typedef struct kbase_jd_dep_queue {
-	kbase_jd_atom *queue[KBASE_JD_DEP_QUEUE_SIZE];
-	u32            sem[BASEP_JD_SEM_ARRAY_SIZE];
-} kbase_jd_dep_queue;
 
 typedef struct kbase_jd_context {
-	osk_mutex           lock;
+	struct mutex           lock;
 	kbasep_js_kctx_info sched_info;
-	kbase_jd_dep_queue  dep_queue;
-	base_jd_atom        *pool;
-	size_t              pool_size;
+	kbase_jd_atom       atoms[BASE_JD_ATOM_COUNT];
 
 	/** Tracks all job-dispatch jobs.  This includes those not tracked by
 	 * the scheduler: 'not ready to run' and 'dependency-only' jobs. */
@@ -313,20 +279,26 @@ typedef struct kbase_jd_context {
 	 * dependencies) - and so, whether it can be terminated. However, it should
 	 * only be terminated once it is neither present in the policy-queue (see
 	 * kbasep_js_policy_try_evict_ctx() ) nor the run-pool (see
-	 * kbasep_js_kctx_info::ctx::is_scheduled_waitq).
+	 * kbasep_js_kctx_info::ctx::is_scheduled).
 	 *
 	 * Since the waitq is only set under kbase_jd_context::lock,
 	 * the waiter should also briefly obtain and drop kbase_jd_context::lock to
-	 * guarentee that the setter has completed its work on the kbase_context */
-	osk_waitq           zero_jobs_waitq;
-	osk_workq           job_done_wq;
-	osk_spinlock_irq    tb_lock;
+	 * guarentee that the setter has completed its work on the kbase_context
+	 *
+	 * This must be updated atomically with:
+	 * - kbase_jd_context::job_nr */
+	wait_queue_head_t   zero_jobs_wait;
+
+	/** Job Done workqueue. */
+	struct workqueue_struct *job_done_wq;
+
+	spinlock_t    tb_lock;
 	u32                 *tb;
 	size_t              tb_wrap_offset;
 
-#ifdef MALI_USE_KDS
+#ifdef CONFIG_KDS
 	struct kds_callback kds_cb;
-#endif
+#endif /* CONFIG_KDS */
 } kbase_jd_context;
 
 typedef struct kbase_jm_slot
@@ -344,8 +316,6 @@ typedef struct kbase_jm_slot
 
 typedef enum kbase_midgard_type
 {
-	KBASE_MALI_T6XM,
-	KBASE_MALI_T6F1,
 	KBASE_MALI_T601,
 	KBASE_MALI_T604,
 	KBASE_MALI_T608,
@@ -353,11 +323,6 @@ typedef enum kbase_midgard_type
 	KBASE_MALI_COUNT
 } kbase_midgard_type;
 
-#define KBASE_FEATURE_HAS_MODEL_PMU             (1U << 0)
-#define KBASE_FEATURE_NEEDS_REG_DELAY           (1U << 1)
-#define KBASE_FEATURE_HAS_16BIT_PC              (1U << 2)
-#define KBASE_FEATURE_LACKS_RESET_INT           (1U << 3)
-#define KBASE_FEATURE_DELAYED_PERF_WRITE_STATUS (1U << 4)
 
 typedef struct kbase_device_info
 {
@@ -376,24 +341,24 @@ typedef struct kbase_as
 {
 	int               number;
 
-	osk_workq         pf_wq;
-	osk_workq_work    work_pagefault;
-	osk_workq_work    work_busfault;
+	struct workqueue_struct *pf_wq;
+	struct work_struct work_pagefault;
+	struct work_struct work_busfault;
 	mali_addr64       fault_addr;
-	osk_mutex         transaction_mutex;
+	struct mutex         transaction_mutex;
 
 	/* BASE_HW_ISSUE_8316  */
-	osk_workq         poke_wq;
-	osk_workq_work    poke_work;
-	osk_atomic        poke_refcount;
-	osk_timer         poke_timer;
+	struct workqueue_struct *poke_wq;
+	struct work_struct poke_work;
+	atomic_t        poke_refcount;
+	struct hrtimer poke_timer;
 } kbase_as;
 
 /* tracking of memory usage */
 typedef struct kbasep_mem_usage
 {
 	u32        max_pages;
-	osk_atomic cur_pages;
+	atomic_t cur_pages;
 } kbasep_mem_usage;
 
 /**
@@ -425,9 +390,9 @@ typedef struct kbase_phys_allocator_array
 	/* number of allocators */
 	unsigned int count;
 
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 	mali_bool it_bound;
-#endif /* MALI_DEBUG */
+#endif /* CONFIG_MALI_DEBUG */
 } kbase_phys_allocator_array;
 
 /**
@@ -457,10 +422,10 @@ typedef enum
 
 typedef struct kbasep_mem_device
 {
-#if MALI_USE_UMP == 1
+#ifdef CONFIG_UMP
 	u32                        ump_device_id;            /* Which UMP device this GPU should be mapped to.
 	                                                        Read-only, copied from platform configuration on startup.*/
-#endif /* MALI_USE_UMP == 1 */
+#endif /* CONFIG_UMP */
 
 	u32                        per_process_memory_limit; /* How much memory (in bytes) a single process can access.
 	                                                        Read-only, copied from platform configuration on startup. */
@@ -490,23 +455,21 @@ typedef enum
 
 typedef struct kbase_trace
 {
-	osk_timeval timestamp;
-	u32   thread_id;
-	u32   cpu;
-	void *ctx;
-	void *uatom;
-	u64   gpu_addr;
-	u32   info_val;
-	u8    code;
-	u8    jobslot;
-	u8    refcount;
-	u8    flags;
+	struct timespec timestamp;
+	u32             thread_id;
+	u32             cpu;
+	void            *ctx;
+	kbase_jd_atom   *katom;
+	u64             gpu_addr;
+	u32             info_val;
+	u8              code;
+	u8              jobslot;
+	u8              refcount;
+	u8              flags;
 } kbase_trace;
 
 struct kbase_device {
-	const kbase_device_info *dev_info;
-	/** Spinlock protecting access to all elements of jm_slots */
-	osk_spinlock_irq        jm_slots_lock;
+	/** jm_slots is protected by kbasep_js_device_data::runpool_irq::lock */
 	kbase_jm_slot           jm_slots[BASE_JM_MAX_NR_SLOTS];
 	s8                      slot_submit_count_irq[BASE_JM_MAX_NR_SLOTS];
 	kbase_os_device         osdev;
@@ -518,7 +481,7 @@ struct kbase_device {
 
 	osk_phy_allocator       mmu_fault_allocator;
 	osk_phy_addr            mmu_fault_pages[4];
-	osk_spinlock_irq        mmu_mask_change;
+	spinlock_t        mmu_mask_change;
 
 	kbase_gpu_props         gpu_props;
 
@@ -571,16 +534,17 @@ struct kbase_device {
 	/* Structure used for instrumentation and HW counters dumping */
 	struct {
 		/* The lock should be used when accessing any of the following members */
-		osk_spinlock_irq    lock;
+		spinlock_t    lock;
 
 		kbase_context      *kctx;
 		u64                 addr;
-		osk_waitq           waitqueue;
+		wait_queue_head_t   wait;
+		int                 triggered;
 		kbase_instr_state   state;
 	} hwcnt;
 
 	/* Set when we're about to reset the GPU */
-	osk_atomic              reset_gpu;
+	atomic_t              reset_gpu;
 #define KBASE_RESET_GPU_NOT_PENDING     0 /* The GPU reset isn't pending */
 #define KBASE_RESET_GPU_PREPARED        1 /* kbase_prepare_to_reset_gpu has been called */
 #define KBASE_RESET_GPU_COMMITTED       2 /* kbase_reset_gpu has been called - the reset will now definitely happen
@@ -589,14 +553,13 @@ struct kbase_device {
                                            * kbasep_try_reset_gpu_early was called) */
 
 	/* Work queue and work item for performing the reset in */
-	osk_workq               reset_workq;
-	osk_workq_work          reset_work;
-	/* Signalled when reset_gpu==KBASE_RESET_GPU_NOT_PENDING */
-	osk_waitq               reset_waitq;
-	osk_timer               reset_timer;
+	struct workqueue_struct *reset_workq;
+	struct work_struct reset_work;
+	wait_queue_head_t reset_wait;
+	struct hrtimer          reset_timer;
 
 	/*value to be written to the irq_throttle register each time an irq is served */
-	osk_atomic irq_throttle_cycles;
+	atomic_t irq_throttle_cycles;
 
 	const kbase_attribute   *config_attributes;
 
@@ -608,7 +571,7 @@ struct kbase_device {
 	/* << BASE_HW_ISSUE_8401 << */
 
 #if KBASE_TRACE_ENABLE != 0
-	osk_spinlock_irq        trace_lock;
+	spinlock_t        trace_lock;
 	u16                     trace_first_out;
 	u16                     trace_next_in;
 	kbase_trace            *trace_rbuf;
@@ -643,30 +606,24 @@ struct kbase_context
 	osk_phy_allocator       pgd_allocator;
 	osk_phy_addr            pgd;
 	osk_dlist               event_list;
-	osk_mutex               event_mutex;
+	struct mutex            event_mutex;
 	mali_bool               event_closed;
+	osk_workq               event_workq;
 
-	osk_atomic              setup_complete;
-	osk_atomic              setup_in_progress;
+	atomic_t              setup_complete;
+	atomic_t              setup_in_progress;
+
+	mali_bool               keep_gpu_powered;
 
 	u64                     *mmu_teardown_pages;
 
-	osk_mutex               reg_lock; /* To be converted to a rwlock? */
-#if MALI_KBASEP_REGION_RBTREE
-	struct rb_root			reg_rbtree; /* Red-Black tree of GPU regions (live regions) */
-#else
-	osk_dlist               reg_list;   /* Ordered list of GPU regions (all regions) */
-#endif
+	struct mutex               reg_lock; /* To be converted to a rwlock? */
+	struct rb_root          reg_rbtree; /* Red-Black tree of GPU regions (live regions) */
 
 	kbase_os_context        osctx;
 	kbase_jd_context        jctx;
 	kbasep_mem_usage        usage;
 	ukk_session             ukk_session;
-	u32                     nr_outstanding_atoms;
-	osk_waitq               complete_outstanding_waitq; /*if there are too many outstanding atoms
-	                                                     *per context we wait on this waitqueue
-	                                                     *to be signaled before submitting more jobs
-	                                                     */
 
 	osk_dlist               waiting_soft_jobs;
 
@@ -689,6 +646,10 @@ struct kbase_context
 	 * Mutable flags *must* be accessed under jctx.sched_info.ctx.jsctx_mutex
 	 *
 	 * All other flags must be added there */
+	/* Pointer to hold a reference to process memory manager of the context owner,
+	 * must be set using kbase_os_store_process_mm().
+	 */
+	void * process_mm;
 };
 
 typedef enum kbase_reg_access_type
@@ -705,6 +666,10 @@ typedef enum kbase_share_attr_bits
 	SHARE_INNER_BITS = (3ULL << 8)  /* inner shareable coherency */
 } kbase_share_attr_bits;
 
+
+/* Conversion helpers for setting up high resolution timers */
+#define HR_TIMER_DELAY_MSEC(x) (ns_to_ktime((x)*1000000U ))
+#define HR_TIMER_DELAY_NSEC(x) (ns_to_ktime(x))
 
 #endif /* _KBASE_DEFS_H_ */
 

@@ -10,6 +10,8 @@
  *
  */
 
+
+
 /**
  * @file mali_kbase_cache_policy.h
  * Cache Policy API.
@@ -37,12 +39,12 @@ u32 kbase_cache_enabled(u32 flags, u32 nr_pages)
 	/* The CPU cache should be enabled for regions heavily read and written
 	 * from the CPU side
 	 */
-#if !MALI_UNCACHED
+#ifndef CONFIG_MALI_UNCACHED
 	if ((flags & BASE_MEM_HINT_CPU_RD) && (flags & BASE_MEM_HINT_CPU_WR))
 	{
 		cache_flags |= KBASE_REG_CPU_CACHED;
 	}
-#endif
+#endif /* CONFIG_MALI_UNCACHED */
 	
 	/* The GPU cache should be enabled for regions heavily read and written
 	 * from the GPU side

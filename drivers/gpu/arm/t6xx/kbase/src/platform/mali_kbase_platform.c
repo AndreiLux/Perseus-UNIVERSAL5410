@@ -227,7 +227,7 @@ int kbase_platform_cmu_pmu_control(struct kbase_device *kbdev, int control)
 
 	spin_lock_irqsave(&platform->cmu_pmu_lock, flags);
 
-#if MALI_GATOR_SUPPORT
+#ifdef CONFIG_MALI_GATOR_SUPPORT
 	kbase_trace_mali_timeline_event(GATOR_MAKE_EVENT(ACTIVITY_RTPM_CHANGED, ACTIVITY_RTPM) | control);
 #endif
 	/* off */

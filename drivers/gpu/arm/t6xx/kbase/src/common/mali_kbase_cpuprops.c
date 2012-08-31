@@ -10,6 +10,8 @@
  *
  */
 
+
+
 /**
  * @file mali_kbase_cpuprops.c
  * Base kernel property query APIs
@@ -34,13 +36,18 @@ mali_error kbase_cpuprops_uk_get_props(kbase_context *kctx, kbase_uk_cpuprops * 
 	int result;
 	kbase_cpuprops_clock_speed_function kbase_cpuprops_uk_get_clock_speed;
 
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_CORE))
+	{
+		return MALI_ERROR_FUNCTION_FAILED;
+	}
+
 	kbase_props->props.cpu_l1_dcache_line_size_log2 = OSK_L1_DCACHE_LINE_SIZE_LOG2;
 	kbase_props->props.cpu_l1_dcache_size           = OSK_L1_DCACHE_SIZE;
 	kbase_props->props.cpu_flags                    = BASE_CPU_PROPERTY_FLAG_LITTLE_ENDIAN;
 
-	kbase_props->props.nr_cores = OSK_NUM_CPUS;
-	kbase_props->props.cpu_page_size_log2 = OSK_PAGE_SHIFT;
-	kbase_props->props.available_memory_size = OSK_MEM_PAGES << OSK_PAGE_SHIFT;
+	kbase_props->props.nr_cores = NR_CPUS;
+	kbase_props->props.cpu_page_size_log2 = PAGE_SHIFT;
+	kbase_props->props.available_memory_size = totalram_pages << PAGE_SHIFT;
 
 	kbase_cpuprops_uk_get_clock_speed = (kbase_cpuprops_clock_speed_function)kbasep_get_config_value( kctx->kbdev, kctx->kbdev->config_attributes, KBASE_CONFIG_ATTR_CPU_SPEED_FUNC );
 	result = kbase_cpuprops_uk_get_clock_speed(&kbase_props->props.max_cpu_clock_speed_mhz);

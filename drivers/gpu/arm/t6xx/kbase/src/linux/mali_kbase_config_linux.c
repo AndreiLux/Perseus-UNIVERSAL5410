@@ -1,6 +1,6 @@
 /*
  *
- * (C) COPYRIGHT 2011 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -9,17 +9,19 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  */
+
+
 #include <kbase/src/linux/mali_kbase_config_linux.h>
 #include <osk/mali_osk.h>
 
-#if !MALI_LICENSE_IS_GPL || MALI_FAKE_PLATFORM_DEVICE
+#ifdef CONFIG_MALI_PLATFORM_FAKE
 
 void kbasep_config_parse_io_resources(const kbase_io_resources *io_resources, struct resource *linux_resources)
 {
 	OSK_ASSERT(io_resources != NULL);
 	OSK_ASSERT(linux_resources != NULL);
 
-	OSK_MEMSET(linux_resources, 0, PLATFORM_CONFIG_RESOURCE_COUNT * sizeof(struct resource));
+	memset(linux_resources, 0, PLATFORM_CONFIG_RESOURCE_COUNT * sizeof(struct resource));
 
 	linux_resources[0].start = io_resources->io_memory_region.start;
 	linux_resources[0].end   = io_resources->io_memory_region.end;
@@ -35,4 +37,4 @@ void kbasep_config_parse_io_resources(const kbase_io_resources *io_resources, st
 	linux_resources[3].flags = IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL;
 }
 
-#endif /* !MALI_LICENSE_IS_GPL || MALI_FAKE_PLATFORM_DEVICE */
+#endif /* CONFIG_MALI_PLATFORM_FAKE */

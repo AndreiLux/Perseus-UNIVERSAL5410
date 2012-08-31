@@ -10,6 +10,8 @@
  *
  */
 
+
+
 /**
  * @file mali_kbase_gpuprops_types.h
  * Base kernel property query APIs
@@ -87,7 +89,7 @@ typedef struct mali_kbase_gpu_props
 	/**
 	 * Implementation specific irq throttle value (us), should be adjusted during integration.
 	 */
-	u32 irq_throttle_time_us;
+	int irq_throttle_time_us;
 
 	/* Properties shared with userspace */
 	base_gpu_props props;
