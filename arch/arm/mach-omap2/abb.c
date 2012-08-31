@@ -142,6 +142,13 @@ int omap_abb_pre_scale(struct voltagedomain *voltdm,
 
 	opp_sel = target_volt->opp_sel;
 
+	if (opp_sel != OMAP_ABB_NOMINAL_OPP) {
+		/* Override deactivation of ABB in a transition */
+		pr_debug("%s: %s: force disabling of ABB instead of %d\n",
+					__func__, voltdm->name, opp_sel);
+		opp_sel = OMAP_ABB_NOMINAL_OPP;
+	}
+
 	/* bail early if no transition is necessary */
 	if (opp_sel == abb->_opp_sel)
 		return 0;
@@ -177,6 +184,14 @@ int omap_abb_post_scale(struct voltagedomain *voltdm,
 	/* bail early if no transition is necessary */
 	if (opp_sel == abb->_opp_sel)
 		return 0;
+
+	if (opp_sel == OMAP_ABB_SLOW_OPP  &&
+	    !target_volt->volt_calibrated) {
+		/* skipping RBB setup at this point of transition */
+		pr_warn("%s: %s: no RBB! (SR not converged yet)\n",
+					__func__, voltdm->name);
+		return 0;
+	}
 
 	return omap_abb_set_opp(voltdm, opp_sel);
 }
