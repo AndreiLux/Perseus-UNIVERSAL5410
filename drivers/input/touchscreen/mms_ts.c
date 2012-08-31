@@ -925,9 +925,10 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 		input_report_abs(info->input_dev, ABS_MT_ANGLE, angle);
 		input_report_abs(info->input_dev, ABS_MT_PALM, palm);
 
-#if defined(SEC_TSP_DEBUG)
+#if defined(SEC_TSP_DEBUG) || defined(SEC_TSP_VERBOSE_DEBUG)
 		if (info->finger_state[id] == 0) {
 			info->finger_state[id] = 1;
+#if defined(SEC_TSP_DEBUG)
 			dev_dbg(&client->dev,
 				"finger id[%d]: x=%d y=%d w=%d major=%d minor=%d angle=%d palm=%d\n",
 				id, x, y, tmp[4], tmp[6], tmp[7]
@@ -936,8 +937,9 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 			if (finger_event_sz == 10)
 				dev_dbg(&client->dev, \
 					"pressure = %d\n", tmp[8]);
+#endif
 		}
-
+#if defined(SEC_TSP_DEBUG)
 		if (info->finger_state[id] == 0) {
 			info->finger_state[id] = 1;
 #if defined(SEC_TSP_EVENT_DEBUG) && defined(CONFIG_TARGET_LOCALE_KOR)
@@ -948,6 +950,7 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 				"finger [%d] down, palm %d\n", id, palm);
 #endif
 		}
+#endif
 #endif
 
 	}
