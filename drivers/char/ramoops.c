@@ -55,7 +55,7 @@ struct ramoops_context {
 #ifdef CONFIG_PSTORE_CONSOLE
 	char *old_con_buf;
 	char *con_buf;
-	size_t *con_tailp;
+	size_t *con_headp;
 	size_t con_size;
 #endif
 	phys_addr_t phys_addr;
@@ -118,15 +118,11 @@ static ssize_t ramoops_pstore_read(u64 *id, enum pstore_type_id *type,
 	time->tv_nsec = 0;
 
 	rambuf = cxt->virt_addr + (*id * cxt->record_size);
-	size = strnlen(rambuf, cxt->record_size);
-
 #ifdef CONFIG_PSTORE_CONSOLE
-	if (*type == PSTORE_TYPE_CONSOLE) {
+	if (*type == PSTORE_TYPE_CONSOLE)
 		rambuf = cxt->old_con_buf;
-		/* Grab entire buffer to deal with RAM bit rot. */
-		size = cxt->record_size;
-	}
 #endif
+	size = strnlen(rambuf, cxt->record_size);
 	*buf = kmalloc(size, GFP_KERNEL);
 	if (*buf == NULL)
 		return -ENOMEM;
@@ -149,25 +145,25 @@ static int ramoops_pstore_write(enum pstore_type_id type,
 
 #ifdef CONFIG_PSTORE_CONSOLE
 	if (type == PSTORE_TYPE_CONSOLE) {
-		size_t tail = *cxt->con_tailp;
+		size_t head = *cxt->con_headp;
 		size_t bytes;
 
 		if (size >= cxt->con_size) {
 			buf = cxt->pstore.buf + size - cxt->con_size;
 			memcpy(cxt->con_buf, buf, cxt->con_size);
-			*cxt->con_tailp = 0;
+			*cxt->con_headp = 0;
 			return 0;
 		}
-		bytes = min(size, cxt->con_size - tail);
-		memcpy(cxt->con_buf + tail, cxt->pstore.buf, bytes);
+		bytes = min(size, cxt->con_size - head);
+		memcpy(cxt->con_buf + head, cxt->pstore.buf, bytes);
 		size -= bytes;
 		if (size)
 			memcpy(cxt->con_buf, cxt->pstore.buf + bytes, size);
 		else
-			size = tail + bytes;
+			size = head + bytes;
 		if (size == cxt->con_size)
 			size = 0;
-		*cxt->con_tailp = size;
+		*cxt->con_headp = size;
 		return 0;
 	}
 #endif
@@ -339,20 +335,19 @@ static int __init ramoops_probe(struct platform_device *pdev)
 	}
 	cxt->con_buf = cxt->virt_addr + (cxt->max_count - 1) * cxt->record_size;
 	cxt->con_size = cxt->record_size - sizeof(size_t);
-	cxt->con_tailp = (size_t *)(cxt->con_buf + cxt->con_size);
+	cxt->con_headp = (size_t *)(cxt->con_buf + cxt->con_size);
 	cxt->old_con_buf[0] = '\0';
-	if (*cxt->con_tailp < cxt->con_size) {
-		size_t tail = *cxt->con_tailp;
-		size_t size = cxt->con_size - tail;
+	if (*cxt->con_headp < cxt->con_size) {
+		size_t head = *cxt->con_headp;
+		size_t size = cxt->con_size - head;
 
-		if (cxt->con_buf[tail] != '\0')
-			memcpy(cxt->old_con_buf, cxt->con_buf + tail, size);
+		if (cxt->con_buf[head] != '\0')
+			memcpy(cxt->old_con_buf, cxt->con_buf + head, size);
 		else
 			size = 0;
-
-		if (tail)
-			memcpy(cxt->old_con_buf + size, cxt->con_buf, tail);
-		cxt->old_con_buf[size + tail] = '\0';
+		if (head)
+			memcpy(cxt->old_con_buf + size, cxt->con_buf, head);
+		cxt->old_con_buf[size + head] = '\0';
 	}
 	memset(cxt->con_buf, '\0', cxt->record_size);
 #endif
