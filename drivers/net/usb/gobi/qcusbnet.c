@@ -716,7 +716,6 @@ static void qcnet_disconnect(struct usb_interface *intf)
 
 	intf->needs_remote_wakeup = 0;
 	netif_carrier_off(usbnet->net);
-	usbnet_disconnect(intf);
 
 	qc_deregister(dev);
 
@@ -727,6 +726,7 @@ static void qcnet_disconnect(struct usb_interface *intf)
 		free_urb_with_skb(urb);
 	}
 	qcusbnet_put(dev);
+	usbnet_disconnect(intf);
 }
 
 static struct usb_driver qcusbnet = {
