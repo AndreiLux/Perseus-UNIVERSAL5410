@@ -899,6 +899,7 @@ static void wq_func_scc(struct work_struct *data)
 	struct fimc_is_work *work;
 	unsigned long flags;
 	u32 fcount;
+	u32 rcount;
 	u32 index;
 
 	index = FIMC_IS_INVALID_BUF_INDEX;
@@ -913,6 +914,7 @@ static void wq_func_scc(struct work_struct *data)
 	while (work) {
 		msg = &work->msg;
 		fcount = msg->parameter1;
+		rcount = msg->parameter3;
 
 		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_4, flags);
 
@@ -922,10 +924,11 @@ static void wq_func_scc(struct work_struct *data)
 
 			index = frame->index;
 #ifdef DBG_STREAMING
-			printk(KERN_INFO "C%d %d\n", index, fcount);
+			printk(KERN_INFO "C%d(%d,%d)\n", index, fcount, rcount);
 #endif
 #ifdef USE_FRAME_SYNC
 			frame->stream->fcount = fcount;
+			frame->stream->rcount = rcount;
 #endif
 
 			fimc_is_frame_trans_pro_to_com(framemgr, frame);
@@ -952,6 +955,7 @@ static void wq_func_scp(struct work_struct *data)
 	struct fimc_is_work *work;
 	unsigned long flags;
 	u32 fcount;
+	u32 rcount;
 	u32 index;
 
 	index = FIMC_IS_INVALID_BUF_INDEX;
@@ -967,6 +971,7 @@ static void wq_func_scp(struct work_struct *data)
 	while (work) {
 		msg = &work->msg;
 		fcount = msg->parameter1;
+		rcount = msg->parameter3;
 
 		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_4, flags);
 
@@ -976,10 +981,11 @@ static void wq_func_scp(struct work_struct *data)
 
 			index = frame->index;
 #ifdef DBG_STREAMING
-			printk(KERN_INFO "P%d %d\n", index, fcount);
+			printk(KERN_INFO "P%d(%d,%d)\n", index, fcount, rcount);
 #endif
 #ifdef USE_FRAME_SYNC
 			frame->stream->fcount = fcount;
+			frame->stream->rcount = rcount;
 #endif
 
 			fimc_is_frame_trans_pro_to_com(framemgr, frame);
@@ -1605,7 +1611,7 @@ int fimc_is_hw_power_down(struct fimc_is_interface *this,
 }
 
 int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
-	u32 instance, u32 bayer, u32 shot, u32 fcount,
+	u32 instance, u32 bayer, u32 shot, u32 fcount, u32 rcount,
 	struct fimc_is_frame_shot *frame)
 {
 	int ret = 0;
@@ -1625,7 +1631,7 @@ int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
 		msg->parameter1 = bayer;
 		msg->parameter2 = shot;
 		msg->parameter3 = fcount;
-		msg->parameter4 = 0;
+		msg->parameter4 = rcount;
 
 		ret = fimc_is_set_cmd_nblk(this, work);
 	} else {

@@ -881,8 +881,28 @@ struct camera2_shot_ext {
 	stream structure for scaler.
 */
 struct camera2_stream {
-	uint32_t		fcount;
+	/**	\brief
+		this address for verifying conincidence of index and address
+		\remarks
+		[X] kernel virtual address for this buffer
+	*/
 	uint32_t		address;
+
+	/**	\brief
+		this frame count is from FLITE through dm.request.fcount,
+		this count increases every frame end. initial value is 1.
+		\remarks
+		[X] frame count
+	*/
+	uint32_t		fcount;
+
+	/**	\brief
+		this request count is from HAL through ctl.request.fcount,
+		this count is the unique.
+		\remarks
+		[X] request count
+	*/
+	uint32_t		rcount;
 };
 
 #define CAM_LENS_CMD		(0x1 << 0x0)

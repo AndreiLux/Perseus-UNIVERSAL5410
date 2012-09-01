@@ -16,10 +16,10 @@
 #define TRACE_WORK_ID_META	0x20
 #define TRACE_WORK_ID_MASK	0xFF
 
-#define MAX_NBLOCKING_COUNT 3
-#define MAX_WORK_COUNT 10
+#define MAX_NBLOCKING_COUNT	3
+#define MAX_WORK_COUNT		10
 
-#define TRY_RECV_AWARE_COUNT 100
+#define TRY_RECV_AWARE_COUNT	100
 
 #define LOWBIT_OF(num)	(num >= 32 ? 0 : (u32)1<<num)
 #define HIGHBIT_OF(num)	(num >= 32 ? (u32)1<<(num-32) : 0)
@@ -167,7 +167,7 @@ int fimc_is_hw_power_down(struct fimc_is_interface *interface,
 	u32 instance);
 
 int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
-	u32 instance, u32 byaer, u32 shot, u32 fcount,
+	u32 instance, u32 bayer, u32 shot, u32 fcount, u32 rcount,
 	struct fimc_is_frame_shot *frame);
 int fimc_is_hw_s_camctrl_nblk(struct fimc_is_interface *this,
 	u32 instance, u32 address, u32 fcount);

@@ -1575,6 +1575,7 @@ static int fimc_is_itf_shot(struct fimc_is_device_ischain *this,
 		start_addr,
 		frame->dvaddr_shot,
 		frame->shot->dm.request.frameCount,
+		frame->shot->ctl.request.frameCount,
 		frame);
 
 exit:
@@ -1757,6 +1758,7 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
 
 	/* 4. Disable AFTR cpu low power idle enter */
 	pm_qos_add_request(&pm_qos_req_cpu, PM_QOS_CPU_DMA_LATENCY, 100);
+	/* 3200 is 667Mhz bus , 6400 is 800Mhz */
 	pm_qos_add_request(&pm_qos_req_mem, PM_QOS_MEMORY_THROUGHPUT, 3200);
 
 	/* 5. A5 power on */
