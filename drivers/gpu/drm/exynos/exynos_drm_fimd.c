@@ -119,6 +119,9 @@ static int fimd_check_timing(struct device *dev, void *timing)
 	struct fb_videomode *check_timing = timing;
 	int i;
 
+	if (ctx->suspended)
+		return 0;
+
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
 	for (i = 0;i< MAX_NR_PANELS;i++) {
@@ -141,25 +144,22 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable);
 static int fimd_display_power_on(struct device *dev, int mode)
 {
 	struct fimd_context *ctx = get_fimd_context(dev);
-	bool enable;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
 	switch (mode) {
 	case DRM_MODE_DPMS_ON:
 	case DRM_MODE_DPMS_STANDBY:
-		enable = true;
+		pm_runtime_get_sync(dev);
 		break;
 	case DRM_MODE_DPMS_SUSPEND:
 	case DRM_MODE_DPMS_OFF:
-		enable = false;
+		pm_runtime_put_sync(dev);
 		break;
 	default:
 		DRM_DEBUG_KMS("unspecified mode %d\n", mode);
 		return -EINVAL;
 	}
-
-	fimd_power_on(ctx, enable);
 
 	return 0;
 }
@@ -785,6 +785,9 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable)
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
+	if (ctx->suspended != enable)
+		return 0;
+
 	if (enable) {
 		int ret;
 
@@ -817,13 +820,13 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable)
 		for (i = 0; i < WINDOWS_NR; i++)
 			fimd_win_disable(dev, i);
 
+		if (pdata->panel_type == DP_LCD)
+			writel(0, ctx->regs + DPCLKCON);
+
 		clk_disable(ctx->lcd_clk);
 		clk_disable(ctx->bus_clk);
 
 		ctx->suspended = true;
-
-		if (pdata->panel_type == DP_LCD)
-			writel(0, ctx->regs + DPCLKCON);
 	}
 
 	return 0;
@@ -898,6 +901,7 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
 		return -ENOMEM;
+	ctx->suspended = true;
 
 	ctx->bus_clk = clk_get(dev, "fimd");
 	if (IS_ERR(ctx->bus_clk)) {
@@ -1006,8 +1010,7 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 	for (win = 0; win < WINDOWS_NR; win++)
 		fimd_clear_win(ctx, win);
 
-	if (pdata->panel_type == DP_LCD)
-		writel(MIE_CLK_ENABLE, ctx->regs + DPCLKCON);
+	pm_runtime_put_sync(dev);
 
 	exynos_drm_subdrv_register(subdrv);
 
