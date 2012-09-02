@@ -10,68 +10,12 @@
 
 u32 __iomem *notify_fcount;
 
-static int init_request_barrier(struct fimc_is_interface *interface)
-{
-	mutex_init(&interface->request_barrier);
-
-	return 0;
-}
-
-static int enter_request_barrier(struct fimc_is_interface *interface)
-{
-	mutex_lock(&interface->request_barrier);
-
-	return 0;
-}
-
-static int exit_request_barrier(struct fimc_is_interface *interface)
-{
-	mutex_unlock(&interface->request_barrier);
-
-	return 0;
-}
-
-static int init_process_barrier(struct fimc_is_interface *interface)
-{
-	spin_lock_init(&interface->process_barrier);
-
-	return 0;
-}
-
-static int enter_process_barrier(struct fimc_is_interface *interface)
-{
-	spin_lock_irq(&interface->process_barrier);
-
-	return 0;
-}
-
-static int exit_process_barrier(struct fimc_is_interface *interface)
-{
-	spin_unlock_irq(&interface->process_barrier);
-
-	return 0;
-}
-
-static int init_state_barrier(struct fimc_is_interface *interface)
-{
-	mutex_init(&interface->state_barrier);
-
-	return 0;
-}
-
-static int enter_state_barrier(struct fimc_is_interface *interface)
-{
-	mutex_lock(&interface->state_barrier);
-
-	return 0;
-}
-
-static int exit_state_barrier(struct fimc_is_interface *interface)
-{
-	mutex_unlock(&interface->state_barrier);
-
-	return 0;
-}
+#define init_request_barrier(itf) mutex_init(&itf->request_barrier)
+#define enter_request_barrier(itf) mutex_lock(&itf->request_barrier);
+#define exit_request_barrier(itf) mutex_unlock(&itf->request_barrier);
+#define init_process_barrier(itf) spin_lock_init(&itf->process_barrier);
+#define enter_process_barrier(itf) spin_lock_irq(&itf->process_barrier);
+#define exit_process_barrier(itf) spin_unlock_irq(&itf->process_barrier);
 
 int print_fre_work_list(struct fimc_is_work_list *this)
 {
@@ -110,29 +54,6 @@ static int set_free_work(struct fimc_is_work_list *this,
 #endif
 
 		spin_unlock_irqrestore(&this->slock_free, flags);
-	} else {
-		ret = -EFAULT;
-		err("item is null ptr\n");
-	}
-
-	return ret;
-}
-
-static int set_free_work_irq(struct fimc_is_work_list *this,
-	struct fimc_is_work *work)
-{
-	int ret = 0;
-
-	if (work) {
-		spin_lock(&this->slock_free);
-
-		list_add_tail(&work->list, &this->work_free_head);
-		this->work_free_cnt++;
-#ifdef TRACE_WORK
-		print_fre_work_list(this);
-#endif
-
-		spin_unlock(&this->slock_free);
 	} else {
 		ret = -EFAULT;
 		err("item is null ptr\n");
@@ -286,31 +207,6 @@ static int get_req_work(struct fimc_is_work_list *this,
 	return ret;
 }
 
-static int get_request_work_irq(struct fimc_is_work_list *this,
-	struct fimc_is_work **work)
-{
-	int ret = 0;
-
-	if (work) {
-		spin_lock(&this->slock_request);
-
-		if (this->work_request_cnt) {
-			*work = container_of(this->work_request_head.next,
-					struct fimc_is_work, list);
-			list_del(&(*work)->list);
-			this->work_request_cnt--;
-		} else
-			*work = NULL;
-
-		spin_unlock(&this->slock_request);
-	} else {
-		ret = EFAULT;
-		err("item is null ptr\n");
-	}
-
-	return ret;
-}
-
 static void init_work_list(struct fimc_is_work_list *this, u32 id, u32 count)
 {
 	u32 i;
@@ -328,21 +224,24 @@ static void init_work_list(struct fimc_is_work_list *this, u32 id, u32 count)
 	init_waitqueue_head(&this->wait_queue);
 }
 
-static void init_wait_queue(struct fimc_is_interface *this)
-{
-	init_waitqueue_head(&this->wait_queue);
-}
-
-static int set_state(struct fimc_is_interface *interface,
+static void set_state(struct fimc_is_interface *this,
 	enum fimc_is_interface_state state)
 {
-	enter_state_barrier(interface);
+	spin_lock(&this->slock_state);
+	this->state = state;
+	spin_unlock(&this->slock_state);
+}
 
-	interface->state = state;
+static int test_state(struct fimc_is_interface *this,
+	enum fimc_is_interface_state state)
+{
+	int ret = 0;
 
-	exit_state_barrier(interface);
+	spin_lock(&this->slock_state);
+	ret = (this->state == state);
+	spin_unlock(&this->slock_state);
 
-	return 0;
+	return ret;
 }
 
 static int wait_state(struct fimc_is_interface *this,
@@ -350,16 +249,9 @@ static int wait_state(struct fimc_is_interface *this,
 {
 	int ret = 0;
 
-	if (this->state != state) {
-		ret = wait_event_timeout(this->wait_queue,
-				(this->state == state),
-				FIMC_IS_COMMAND_TIMEOUT);
-		if (!ret) {
-			err("wait_state timeout(state : %d, %d)\n",
-				this->state, state);
-			ret = -EBUSY;
-		}
-	}
+	ret = wait_event_timeout(this->wait_queue,
+			test_state(this, state),
+			FIMC_IS_COMMAND_TIMEOUT);
 
 	return ret;
 }
@@ -474,7 +366,7 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 			goto exit;
 		}
 
-		set_state(itf, IS_IF_STATE_BLOCK_IO);
+		set_state(itf, IS_IF_STATE_BUSY);
 		itf->com_regs->hicmd = msg->command;
 		itf->com_regs->hic_sensorid = msg->instance;
 		itf->com_regs->hic_param1 = msg->parameter1;
@@ -488,7 +380,7 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 		if (block_io) {
 			ret = wait_state(itf, IS_IF_STATE_IDLE);
 			if (!ret) {
-				err("%d command is timeout\n", msg->command);
+				err("%d command is timeout", msg->command);
 				ret = -ETIME;
 				goto exit;
 			}
@@ -1237,8 +1129,8 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 
 	init_request_barrier(this);
 	init_process_barrier(this);
-	init_state_barrier(this);
-	init_wait_queue(this);
+	spin_lock_init(&this->slock_state);
+	init_waitqueue_head(&this->wait_queue);
 
 	INIT_WORK(&this->work_queue[INTR_GENERAL], wq_func_general);
 	INIT_WORK(&this->work_queue[INTR_SCC_FDONE], wq_func_scc);
@@ -1287,8 +1179,7 @@ int fimc_is_interface_open(struct fimc_is_interface *this)
 	this->pdown_ready = IS_IF_POWER_DOWN_READY;
 	init_request_barrier(this);
 	init_process_barrier(this);
-	init_state_barrier(this);
-	init_wait_queue(this);
+	init_waitqueue_head(&this->wait_queue);
 	enter_request_barrier(this);
 
 	this->fcount = 0;
@@ -1322,7 +1213,7 @@ int fimc_is_hw_enum(struct fimc_is_interface *this,
 	msg.parameter4 = 0;
 
 	waiting_is_ready(this);
-	set_state(this, IS_IF_STATE_BLOCK_IO);
+	set_state(this, IS_IF_STATE_BUSY);
 	this->com_regs->hicmd = msg.command;
 	this->com_regs->hic_sensorid = msg.instance;
 	this->com_regs->hic_param1 = msg.parameter1;

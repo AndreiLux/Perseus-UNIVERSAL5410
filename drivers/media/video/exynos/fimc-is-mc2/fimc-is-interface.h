@@ -26,8 +26,7 @@
 
 enum fimc_is_interface_state {
 	IS_IF_STATE_IDLE,
-	IS_IF_STATE_BLOCK_IO,
-	IS_IF_STATE_NBLOCK_IO
+	IS_IF_STATE_BUSY
 };
 
 enum interrupt_map {
@@ -90,10 +89,12 @@ struct fimc_is_work_list {
 struct fimc_is_interface {
 	void __iomem			*regs;
 	struct is_common_reg __iomem	*com_regs;
-	enum fimc_is_interface_state	state;
+	u32				state;
+	/* this spinlock is needed for data coincidence.
+	it need to update SCU tag between different thread */
+	spinlock_t			slock_state;
 	spinlock_t			process_barrier;
 	struct mutex			request_barrier;
-	struct mutex			state_barrier;
 
 	wait_queue_head_t		wait_queue;
 	struct fimc_is_msg		reply;

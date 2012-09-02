@@ -97,7 +97,7 @@ enum fimc_is_isdev_state {
 
 struct fimc_is_ischain_dev {
 	unsigned long				state;
-	spinlock_t				slock_state;
+	struct mutex				mutex_state;
 	u32					skip_frames;
 
 	struct fimc_is_framemgr			framemgr;
