@@ -584,7 +584,9 @@ static void tasklet_func_flite_str(unsigned long data)
 	} else {
 		fimc_is_ischain_camctl(ischain, NULL, fcount);
 
+#ifdef TASKLET_MSG
 		err("process shot is empty");
+#endif
 		fimc_is_frame_print_all(framemgr);
 	}
 
@@ -649,7 +651,9 @@ static void tasklet_func_flite_end(unsigned long data)
 			} else {
 				flite_hw_set_unuse_buffer(flite->regs, bdone);
 				clear_bit(bdone, &flite->state);
+#ifdef TASKLET_MSG
 				err("request shot is empty0(%d slot)", bdone);
+#endif
 				fimc_is_frame_print_all(framemgr);
 
 				/*this is debugging ponit for deadlock*/
@@ -658,8 +662,10 @@ static void tasklet_func_flite_end(unsigned long data)
 				*/
 			}
 		} else {
+#ifdef TASKLET_MSG
 			err("process shot is empty(state is invalid(%d, %ld))",
 				bdone, flite->state);
+#endif
 			fimc_is_frame_print_all(framemgr);
 		}
 	} else {
@@ -671,7 +677,9 @@ static void tasklet_func_flite_end(unsigned long data)
 			set_bit(bdone, &flite->state);
 			fimc_is_frame_trans_req_to_pro(framemgr, frame);
 		} else {
+#ifdef TASKLET_MSG
 			err("request shot is empty1(%d slot)", bdone);
+#endif
 			fimc_is_frame_print_all(framemgr);
 		}
 	}

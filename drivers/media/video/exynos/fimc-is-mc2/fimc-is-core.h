@@ -93,6 +93,7 @@
 #define RESERVED_MEM
 #define ENABLE_DZOOM
 /*#define USE_FRAME_SYNC*/
+#define TASKLET_MSG
 
 #ifdef DEBUG
 #define dbg(fmt, args...) \

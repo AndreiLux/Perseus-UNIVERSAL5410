@@ -1863,6 +1863,7 @@ exit:
 static int fimc_is_ischain_s_setfile(struct fimc_is_device_ischain *this)
 {
 	int ret = 0;
+	bool process = true;
 
 	printk(KERN_INFO "setfile is %d\n", this->setfile);
 
@@ -1870,6 +1871,7 @@ static int fimc_is_ischain_s_setfile(struct fimc_is_device_ischain *this)
 		err("setfile id(%d) is invalid\n", this->setfile);
 		goto exit;
 	}
+	process = false;
 
 	ret = fimc_is_itf_process_off(this);
 	if (ret) {
@@ -1885,11 +1887,16 @@ static int fimc_is_ischain_s_setfile(struct fimc_is_device_ischain *this)
 
 	ret = fimc_is_itf_process_on(this);
 	if (ret) {
-		err("fimc_is_itf_process_on fail\n");
+		err("fimc_is_itf_process_on fail1\n");
 		goto exit;
 	}
+	process = true;
 
 exit:
+	if (!process)
+		if (fimc_is_itf_process_on(this))
+			err("fimc_is_itf_process_on fail2\n");
+
 	return ret;
 }
 
@@ -2346,6 +2353,7 @@ static int fimc_is_ischain_dis_bypass(struct fimc_is_device_ischain *this,
 	bool bypass)
 {
 	int ret = 0;
+	bool process = true;
 	u32 chain1_width, chain1_height;
 	struct dis_param *dis_param;
 
@@ -2359,6 +2367,7 @@ static int fimc_is_ischain_dis_bypass(struct fimc_is_device_ischain *this,
 		ret = -EINVAL;
 		goto exit;
 	}
+	process = false;
 
 	if (bypass) {
 		chain1_width = this->chain1_width;
@@ -2403,10 +2412,11 @@ static int fimc_is_ischain_dis_bypass(struct fimc_is_device_ischain *this,
 
 	ret = fimc_is_itf_process_on(this);
 	if (ret) {
-		err("fimc_is_itf_process_on is fail\n");
+		err("fimc_is_itf_process_on is fail1\n");
 		ret = -EINVAL;
 		goto exit;
 	}
+	process = true;
 
 	if (bypass) {
 		clear_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state);
@@ -2418,6 +2428,10 @@ static int fimc_is_ischain_dis_bypass(struct fimc_is_device_ischain *this,
 	}
 
 exit:
+	if (!process)
+		if (fimc_is_itf_process_on(this))
+			err("fimc_is_itf_process_on fail2\n");
+
 	return ret;
 }
 
@@ -2471,6 +2485,7 @@ static int fimc_is_ischain_fd_bypass(struct fimc_is_device_ischain *this,
 	bool bypass)
 {
 	int ret = 0;
+	bool process = true;
 	struct fd_param *fd_param;
 	u32 indexes, lindex, hindex;
 
@@ -2485,6 +2500,7 @@ static int fimc_is_ischain_fd_bypass(struct fimc_is_device_ischain *this,
 		ret = -EINVAL;
 		goto exit;
 	}
+	process = false;
 
 	if (bypass) {
 		fd_param->control.cmd = CONTROL_COMMAND_STOP;
@@ -2505,19 +2521,13 @@ static int fimc_is_ischain_fd_bypass(struct fimc_is_device_ischain *this,
 		goto exit;
 	}
 
-	ret = fimc_is_itf_a_param(this);
-	if (ret) {
-		err("fimc_is_itf_a_param is fail\n");
-		ret = -EINVAL;
-		goto exit;
-	}
-
 	ret = fimc_is_itf_process_on(this);
 	if (ret) {
-		err("fimc_is_itf_process_on is fail\n");
+		err("fimc_is_itf_process_on is fail1\n");
 		ret = -EINVAL;
 		goto exit;
 	}
+	process = true;
 
 	if (bypass) {
 		clear_bit(FIMC_IS_ISDEV_DSTART, &this->fd.state);
@@ -2528,6 +2538,10 @@ static int fimc_is_ischain_fd_bypass(struct fimc_is_device_ischain *this,
 	}
 
 exit:
+	if (!process)
+		if (fimc_is_itf_process_on(this))
+			err("fimc_is_itf_process_on fail2\n");
+
 	return ret;
 }
 
@@ -3281,6 +3295,7 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 	scc_framemgr = &scc->framemgr;
 	scp_framemgr = &scp->framemgr;
 	scc_req = scp_req = false;
+
 	/* be careful of this code */
 	/*
 	1. buffer queue, all compoenent stop, so it's good
@@ -3295,57 +3310,111 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 #ifdef DBG_STREAMING
 		dbg_warning("ischain is stopped\n");
 #endif
-		goto exit;
+		return ret;
 	}
 
 	if (isp_frame->shot_ext->setfile != this->setfile) {
+		ret = fimc_is_ischain_s_setfile(this);
+		if (ret) {
+			err("fimc_is_ischain_s_setfile is fail");
+			goto exit;
+		}
+
 		this->setfile = isp_frame->shot_ext->setfile;
-		fimc_is_ischain_s_setfile(this);
-		dbg_ischain("setfile is changed to %d\n", this->setfile);
 	}
 
 	if (isp_frame->shot_ext->request_scc) {
-		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->scc.state))
-			fimc_is_ischain_scc_start(this);
+		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->scc.state)) {
+			ret = fimc_is_ischain_scc_start(this);
+			if (ret) {
+				err("fimc_is_ischain_scc_start is fail");
+				goto exit;
+			}
+		}
 
 		scc_req = true;
 	} else {
-		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->scc.state))
-			fimc_is_ischain_scc_stop(this);
+		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->scc.state)) {
+			ret = fimc_is_ischain_scc_stop(this);
+			if (ret) {
+				err("fimc_is_ischain_scc_stop is fail");
+				goto exit;
+			}
+		}
 	}
 
 	if (isp_frame->shot_ext->request_scp) {
-		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->scp.state))
-			fimc_is_ischain_scp_start(this);
+		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->scp.state)) {
+			ret = fimc_is_ischain_scp_start(this);
+			if (ret) {
+				err("fimc_is_ischain_scp_start is fail");
+				goto exit;
+			}
+		}
 
 		scp_req = true;
 	} else {
-		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->scp.state))
-			fimc_is_ischain_scp_stop(this);
+		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->scp.state)) {
+			ret = fimc_is_ischain_scp_stop(this);
+			if (ret) {
+				err("fimc_is_ischain_scp_stop is fail");
+				goto exit;
+			}
+		}
 	}
 
 	if (isp_frame->shot_ext->dis_bypass) {
-		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state))
-			fimc_is_ischain_dis_bypass(this, true);
+		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state)) {
+			ret = fimc_is_ischain_dis_bypass(this, true);
+			if (ret) {
+				err("fimc_is_ischain_dis_bypass(1) is fail");
+				goto exit;
+			}
+		}
 	} else {
-		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state))
-			fimc_is_ischain_dis_bypass(this, false);
+		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state)) {
+			ret = fimc_is_ischain_dis_bypass(this, false);
+			if (ret) {
+				err("fimc_is_ischain_dis_bypass(0) is fail");
+				goto exit;
+			}
+		}
 	}
 
 	if (isp_frame->shot_ext->dnr_bypass) {
-		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dnr.state))
-			fimc_is_ischain_dnr_bypass(this, true);
+		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dnr.state)) {
+			ret = fimc_is_ischain_dnr_bypass(this, true);
+			if (ret) {
+				err("fimc_is_ischain_dnr_bypass(1) is fail");
+				goto exit;
+			}
+		}
 	} else {
-		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->dnr.state))
-			fimc_is_ischain_dnr_bypass(this, false);
+		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->dnr.state)) {
+			ret = fimc_is_ischain_dnr_bypass(this, false);
+			if (ret) {
+				err("fimc_is_ischain_dnr_bypass(0) is fail");
+				goto exit;
+			}
+		}
 	}
 
 	if (isp_frame->shot_ext->fd_bypass) {
-		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->fd.state))
-			fimc_is_ischain_fd_bypass(this, true);
+		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->fd.state)) {
+			ret = fimc_is_ischain_fd_bypass(this, true);
+			if (ret) {
+				err("fimc_is_ischain_fd_bypass(1) is fail");
+				goto exit;
+			}
+		}
 	} else {
-		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->fd.state))
-			fimc_is_ischain_fd_bypass(this, false);
+		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->fd.state)) {
+			ret = fimc_is_ischain_fd_bypass(this, false);
+			if (ret) {
+				err("fimc_is_ischain_fd_bypass(0) is fail");
+				goto exit;
+			}
+		}
 	}
 
 	crop_width = isp_frame->shot->ctl.scaler.cropRegion[2];
@@ -3354,8 +3423,13 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 		this->crop_y = isp_frame->shot->ctl.scaler.cropRegion[1];
 		this->crop_width = crop_width;
 #ifdef ENABLE_DZOOM
-		fimc_is_ischain_s_dzoom(this, this->crop_x, this->crop_y,
+		ret = fimc_is_ischain_s_dzoom(this, this->crop_x, this->crop_y,
 			this->crop_width);
+		if (ret) {
+			err("fimc_is_ischain_s_dzoom(%d, %d, %d) is fail",
+				this->crop_x, this->crop_y, this->crop_width);
+			goto exit;
+		}
 #endif
 	}
 
@@ -3427,13 +3501,26 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 		isp_frame->shot_ext->request_scp = 0;
 	}
 
-	set_bit(FIMC_IS_ISCHAIN_RUN, &this->state);
-	set_bit(FIMC_IS_REQ, &isp_frame->req_flag);
-	fimc_is_frame_trans_req_to_pro(isp_framemgr, isp_frame);
-
-	fimc_is_itf_shot(this, isp_frame);
-
 exit:
+	if (ret) {
+		clear_bit(FIMC_IS_ISCHAIN_RUN, &this->state);
+		clear_bit(FIMC_IS_REQ, &isp_frame->req_flag);
+		isp_frame->shot_ext->request_isp = 0;
+		isp_frame->shot_ext->request_scc = 0;
+		isp_frame->shot_ext->request_scp = 0;
+		fimc_is_frame_trans_req_to_com(isp_framemgr, isp_frame);
+
+		buffer_done(this->isp.video, isp_frame->index);
+		err("shot(index : %d) is skipped(error : %d)",
+			isp_frame->index, ret);
+	} else {
+		set_bit(FIMC_IS_ISCHAIN_RUN, &this->state);
+		set_bit(FIMC_IS_REQ, &isp_frame->req_flag);
+		fimc_is_frame_trans_req_to_pro(isp_framemgr, isp_frame);
+
+		fimc_is_itf_shot(this, isp_frame);
+	}
+
 	return ret;
 }
 
