@@ -143,7 +143,6 @@ struct fimc_is_device_ischain {
 	u32					margin_height;
 
 	/*isp ~ scc*/
-	u32					shot_offset;
 	u32					chain0_width;
 	u32					chain0_height;
 	struct fimc_is_ischain_dev		isp;

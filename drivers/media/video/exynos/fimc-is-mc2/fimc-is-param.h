@@ -1612,16 +1612,20 @@ struct param_dma_input {
 	u32	order;
 	u32	buffer_number;
 	u32	buffer_address;
-	u32	uiCropOffsetX;
-	u32	uiCropOffsetY;
-	u32	uiCropWidth;
-	u32	uiCropHeight;
+	u32	uiBayerCropOffsetX;
+	u32	uiBayerCropOffsetY;
+	u32	uiBayerCropWidth;
+	u32	uiBayerCropHeight;
+	u32	uiDmaCropOffsetX;
+	u32	uiDmaCropOffsetY;
+	u32	uiDmaCropWidth;
+	u32	uiDmaCropHeight;
 	u32	uiUserMinFrameTime;
 	u32	uiUserMaxFrameTime;
 	u32	uiWideFrameGap;
 	u32	uiFrameGap;
 	u32	uiLineGap;
-	u32	uiReserved[PARAMETER_MAX_MEMBER-19];
+	u32	uiReserved[PARAMETER_MAX_MEMBER-23];
 	u32	err;
 };
 

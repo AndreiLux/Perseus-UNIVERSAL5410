@@ -834,7 +834,7 @@ struct camera2_shot_ext {
 		[0] disable stream out
 		[1] enable stream out
 	*/
-	uint32_t		request_sensor;
+	uint32_t		request_isp;
 	uint32_t		request_scc;
 	uint32_t		request_scp;
 

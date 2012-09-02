@@ -1544,7 +1544,6 @@ static int fimc_is_itf_shot(struct fimc_is_device_ischain *this,
 	struct fimc_is_frame_shot *frame)
 {
 	int ret = 0;
-	u32 start_addr;
 	void *cookie;
 
 	this->fcount++;
@@ -1570,9 +1569,8 @@ static int fimc_is_itf_shot(struct fimc_is_device_ischain *this,
 	do_gettimeofday(&frame->tzone[TM_SHOT]);
 #endif
 
-	start_addr = frame->dvaddr_buffer[0] + this->shot_offset;
 	ret = fimc_is_hw_shot_nblk(this->interface, this->instance,
-		start_addr,
+		frame->dvaddr_buffer[0],
 		frame->dvaddr_shot,
 		frame->shot->dm.request.frameCount,
 		frame->shot->ctl.request.frameCount,
@@ -1653,10 +1651,10 @@ int fimc_is_ischain_probe(struct fimc_is_device_ischain *this,
 	this->chain2_height	= 0;
 	this->chain3_width	= 0;
 	this->chain3_height	= 0;
-	this->shot_offset	= 0;
 	this->crop_x		= 0;
 	this->crop_y		= 0;
 	this->crop_width	= 0;
+	this->crop_height	= 0;
 	this->force_down	= false;
 
 	/*scc probe*/
@@ -1728,7 +1726,6 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
 	this->chain2_height	= 0;
 	this->chain3_width	= 0;
 	this->chain3_height	= 0;*/
-	this->shot_offset	= 0;
 
 	this->fcount = 0;
 	this->setfile = 0;
@@ -1916,19 +1913,6 @@ static int fimc_is_ischain_s_chain0_size(struct fimc_is_device_ischain *this,
 
 	dbg_ischain("request chain0 size : %dx%d\n",
 		chain0_width, chain0_height);
-
-	/* ISP */
-	isp_param->otf_input.width = chain0_width;
-	isp_param->otf_input.height = chain0_height;
-	lindex |= LOWBIT_OF(PARAM_ISP_OTF_INPUT);
-	hindex |= HIGHBIT_OF(PARAM_ISP_OTF_INPUT);
-	indexes++;
-
-	isp_param->dma1_input.width = chain0_width;
-	isp_param->dma1_input.height = chain0_height;
-	lindex |= LOWBIT_OF(PARAM_ISP_DMA1_INPUT);
-	hindex |= HIGHBIT_OF(PARAM_ISP_DMA1_INPUT);
-	indexes++;
 
 	isp_param->otf_output.cmd = OTF_OUTPUT_COMMAND_ENABLE;
 	isp_param->otf_output.width = chain0_width;
@@ -2332,6 +2316,7 @@ static int fimc_is_ischain_s_dzoom(struct fimc_is_device_ischain *this,
 	crop_y = crop_y & 0xFFFFFFFE;
 	crop_width = chain0_width - (crop_x<<1);
 	crop_height = chain0_height - (crop_y<<1);
+	this->crop_height = crop_height;
 
 	dbg_ischain("%s(%d, %d, %d %d)\n", __func__, crop_x, crop_y, crop_width,
 		crop_height);
@@ -2553,10 +2538,9 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 	struct isp_param *isp_param;
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_ischain_dev *isp;
-	u32 crop_y, crop_height;
+	u32 crop_x, crop_y, crop_width, crop_height;
 	u32 sensor_width, sensor_height, sensor_ratio;
 	u32 chain3_width, chain3_height, chain3_ratio;
-	u32 margin_width, margin_top;
 	u32 lindex, hindex, indexes;
 
 	dbg_isp("%s()\n", __func__);
@@ -2572,19 +2556,18 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 		sensor_height = this->sensor_height;
 		chain3_width = this->chain3_width;
 		chain3_height = this->chain3_height;
-		margin_width = this->margin_width;
-		margin_top = this->margin_top;
-		crop_height = 0;
-		crop_y = 0;
+		crop_width = sensor_width;
+		crop_height = sensor_height;
+		crop_x = crop_y = 0;
 
 		sensor_ratio = sensor_width * 1000 / sensor_height;
 		chain3_ratio = chain3_width * 1000 / chain3_height;
 
-		if (sensor_ratio == chain3_ratio)
+		if (sensor_ratio == chain3_ratio) {
+			crop_width = sensor_width;
 			crop_height = sensor_height;
-		else if (sensor_ratio < chain3_ratio) {
+		} else if (sensor_ratio < chain3_ratio) {
 			/* isp dma input limitation
-				width : 4 times
 				height : 2 times */
 			crop_height =
 				(sensor_width * chain3_height) / chain3_width;
@@ -2592,27 +2575,25 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 			crop_y = ((sensor_height - crop_height) >> 1) &
 				0xFFFFFFFE;
 		} else {
-			err("invalid aspect ratio(sensor : %d, chain3 : %d)\n",
-				sensor_ratio, chain3_ratio);
-			ret = -EINVAL;
-			goto exit;
+			/* isp dma input limitation
+				width : 4 times */
+			crop_width =
+				(sensor_height * chain3_width) / chain3_height;
+			crop_width = ALIGN(crop_width, 4);
+			crop_x =  ((sensor_width - crop_width) >> 1) &
+				0xFFFFFFFE;
 		}
 
-		this->chain0_width = sensor_width;
+		this->chain0_width = crop_width;
 		this->chain0_height = crop_height;
-		this->crop_x = 0;
-		this->crop_y = 0;
-		this->crop_width = this->chain0_width;
+		this->crop_width = crop_width;
+		this->crop_height = crop_height;
+		this->crop_x = crop_x;
+		this->crop_y = crop_y;
 
-		if (this->chain0_height == sensor_height)
-			this->shot_offset = 0;
-		else
-			this->shot_offset = (crop_y - margin_top) *
-				(sensor_width + margin_width) * 2;
-
-		dbg_isp("crop height : %d\n", this->chain0_height);
-		dbg_isp("crop y : %d\n", crop_y);
-		dbg_isp("shot offset : %d\n", this->shot_offset);
+		dbg_isp("crop_x : %d, crop y : %d\n", crop_x, crop_y);
+		dbg_isp("crop width : %d, crop height : %d\n",
+			crop_width, crop_height);
 
 		fimc_is_ischain_s_chain0_size(this,
 			this->chain0_width, this->chain0_height);
@@ -2643,10 +2624,16 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 		indexes++;
 
 		isp_param->dma1_input.cmd = DMA_INPUT_COMMAND_BUF_MNGR;
-		isp_param->dma1_input.uiCropOffsetX = 0;
-		isp_param->dma1_input.uiCropOffsetY = 0;
-		isp_param->dma1_input.uiCropWidth = 0;
-		isp_param->dma1_input.uiCropHeight = 0;
+		isp_param->dma1_input.width = sensor_width;
+		isp_param->dma1_input.height = sensor_height;
+		isp_param->dma1_input.uiDmaCropOffsetX = crop_x;
+		isp_param->dma1_input.uiDmaCropOffsetY = crop_y;
+		isp_param->dma1_input.uiDmaCropWidth = crop_width;
+		isp_param->dma1_input.uiDmaCropHeight = crop_height;
+		isp_param->dma1_input.uiBayerCropOffsetX = 0;
+		isp_param->dma1_input.uiBayerCropOffsetY = 0;
+		isp_param->dma1_input.uiBayerCropWidth = 0;
+		isp_param->dma1_input.uiBayerCropHeight = 0;
 		isp_param->dma1_input.uiUserMinFrameTime = 0;
 		isp_param->dma1_input.uiUserMaxFrameTime = 66666;
 		isp_param->dma1_input.uiWideFrameGap = 1;
@@ -2658,12 +2645,10 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 		isp_param->dma1_input.buffer_number = 1;
 		isp_param->dma1_input.buffer_address = 0;
 		/* hidden spec
-			[0] : sensor size is dma input size
-			[X] : sneosr size is reserved field */
-		isp_param->dma1_input.uiReserved[1] =
-			this->sensor_width + this->margin_width;
-		isp_param->dma1_input.uiReserved[2] =
-			this->sensor_height + this->margin_height;
+		       [0] : sensor size is dma input size
+		       [X] : sneosr size is reserved field */
+		isp_param->dma1_input.uiReserved[1] = 0;
+		isp_param->dma1_input.uiReserved[2] = 0;
 		lindex |= LOWBIT_OF(PARAM_ISP_DMA1_INPUT);
 		hindex |= HIGHBIT_OF(PARAM_ISP_DMA1_INPUT);
 		indexes++;
