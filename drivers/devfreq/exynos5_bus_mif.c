@@ -34,7 +34,7 @@
 #include "exynos_ppmu.h"
 #include "exynos5_ppmu.h"
 
-#define MAX_SAFEVOLT	1100000 /* 1.1V */
+#define MAX_SAFEVOLT	1200000 /* 1.2V */
 
 #define MIF_ABB_CONTROL_FREQUENCY 667000000
 
