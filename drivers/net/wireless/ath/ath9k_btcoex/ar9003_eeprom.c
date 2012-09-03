@@ -142,7 +142,8 @@ static const struct ar9300_eeprom ar9300_default = {
 	 },
 	.base_ext1 = {
 		.ant_div_control = 0,
-		.future = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+		.future = {0, 0, 0},
+		.tempslopextension = {0, 0, 0, 0, 0, 0, 0, 0}
 	},
 	.calFreqPier2G = {
 		FREQ2FBIN(2412, 1),
@@ -715,7 +716,8 @@ static const struct ar9300_eeprom ar9300_x113 = {
 	 },
 	 .base_ext1 = {
 		.ant_div_control = 0,
-		.future = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+		.future = {0, 0, 0},
+		.tempslopextension = {0, 0, 0, 0, 0, 0, 0, 0}
 	 },
 	.calFreqPier2G = {
 		FREQ2FBIN(2412, 1),
@@ -1289,7 +1291,8 @@ static const struct ar9300_eeprom ar9300_h112 = {
 	},
 	.base_ext1 = {
 		.ant_div_control = 0,
-		.future = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+		.future = {0, 0, 0},
+		.tempslopextension = {0, 0, 0, 0, 0, 0, 0, 0}
 	},
 	.calFreqPier2G = {
 		FREQ2FBIN(2412, 1),
@@ -1863,7 +1866,8 @@ static const struct ar9300_eeprom ar9300_x112 = {
 	},
 	.base_ext1 = {
 		.ant_div_control = 0,
-		.future = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+		.future = {0, 0, 0},
+		.tempslopextension = {0, 0, 0, 0, 0, 0, 0, 0}
 	},
 	.calFreqPier2G = {
 		FREQ2FBIN(2412, 1),
@@ -2436,7 +2440,8 @@ static const struct ar9300_eeprom ar9300_h116 = {
 	 },
 	 .base_ext1 = {
 		.ant_div_control = 0,
-		.future = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+		.future = {0, 0, 0},
+		.tempslopextension = {0, 0, 0, 0, 0, 0, 0, 0}
 	 },
 	.calFreqPier2G = {
 		FREQ2FBIN(2412, 1),
@@ -4480,7 +4485,7 @@ static int ar9003_hw_power_control_override(struct ath_hw *ah,
 {
 	int tempSlope = 0;
 	struct ar9300_eeprom *eep = &ah->eeprom.ar9300_eep;
-	int f[3], t[3];
+	int f[8], t[8], i;
 
 	REG_RMW(ah, AR_PHY_TPC_11_B0,
 		(correction[0] << AR_PHY_TPC_OLPC_GAIN_DELTA_S),
@@ -4513,7 +4518,14 @@ static int ar9003_hw_power_control_override(struct ath_hw *ah,
 	 */
 	if (frequency < 4000)
 		tempSlope = eep->modalHeader2G.tempSlope;
-	else if (eep->base_ext2.tempSlopeLow != 0) {
+	else if ((eep->baseEepHeader.miscConfiguration & 0x20) != 0) {
+		for (i = 0; i < 8; i++) {
+			t[i] = eep->base_ext1.tempslopextension[i];
+			f[i] = FBIN2FREQ(eep->calFreqPier5G[i], 0);
+		}
+		tempSlope = ar9003_hw_power_interpolate((s32) frequency,
+							f, t, 8);
+	} else if (eep->base_ext2.tempSlopeLow != 0) {
 		t[0] = eep->base_ext2.tempSlopeLow;
 		f[0] = 5180;
 		t[1] = eep->modalHeader5G.tempSlope;
