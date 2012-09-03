@@ -1955,23 +1955,14 @@ static int dsp_allocate_ports_format(struct hda_codec *codec,
 struct dma_engine {
 	struct hda_codec *codec;
 	unsigned short m_converter_format;
-	void         *m_buffer_addr;
-	unsigned int m_buffer_size;
-	unsigned int m_req_size;
-	struct snd_pcm_substream *substream;
+	struct snd_dma_buffer *dmab;
+	unsigned int buf_size;
 };
 
 enum dma_state {
-	DMA_STATE_RESET = 0,
-	DMA_STATE_STOP  = 1,
-	DMA_STATE_RUN   = 2
+	DMA_STATE_STOP  = 0,
+	DMA_STATE_RUN   = 1
 };
-
-#define azx_pcm_open(a)       (a->ops->open(a))
-#define azx_pcm_close(a)      (a->ops->close(a))
-#define azx_pcm_prepare(a)    (a->ops->prepare(a))
-#define azx_pcm_trigger(a, b) (a->ops->trigger(a, b))
-#define azx_pcm_hw_free(a)    (a->ops->hw_free(a))
 
 static int dma_convert_to_hda_format(
 		struct hda_stream_format *stream_format,
@@ -1991,162 +1982,61 @@ static int dma_convert_to_hda_format(
 	return 0;
 }
 
-static int dma_init(
-		struct hda_codec *codec,
-		struct dma_engine **pp_dma,
-		struct hda_stream_format *stream_format,
-		unsigned short *format,
-		unsigned int req_size)
-{
-	struct dma_engine *dma;
-	struct snd_pcm_substream *substream;
-	struct snd_pcm *pcm;
-	struct snd_pcm_runtime *runtime;
-	unsigned int bits;
-	snd_pcm_uframes_t frames;
-
-	*pp_dma = NULL;
-	dma = kzalloc(sizeof(*dma), GFP_KERNEL);
-	memset((void *)dma, 0, sizeof(*dma));
-
-	dma_convert_to_hda_format(stream_format, format);
-	dma->m_converter_format = *format;
-
-	dma->substream = NULL;
-	pcm = codec->pcm_info->pcm;
-	for (substream = pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
-				substream; substream = substream->next) {
-		if (codec->pcm_info->pcm_type == HDA_PCM_TYPE_SPDIF)
-			continue;
-
-		if (!SUBSTREAM_BUSY(substream)) {
-			dma->substream = substream;
-			break;
-		}
-	}
-
-	if (NULL == dma->substream) {
-		kfree(dma);
-		return -1;
-	}
-
-	runtime = kzalloc(sizeof(*runtime), GFP_KERNEL);
-	memset((void *)runtime, 0, sizeof(*runtime));
-	dma->substream->runtime = runtime;
-	dma->substream->private_data = pcm->private_data;
-
-	azx_pcm_open(dma->substream);
-	req_size = req_size * 2;
-	snd_pcm_lib_malloc_pages(dma->substream, req_size);
-
-	runtime->rate = stream_format->sample_rate;
-	runtime->channels = stream_format->number_channels;
-	runtime->format = SNDRV_PCM_FORMAT_S32_LE;
-	runtime->no_period_wakeup = 1;
-
-	bits = snd_pcm_format_physical_width(runtime->format);
-	runtime->sample_bits = bits;
-	bits *= runtime->channels;
-	runtime->frame_bits = bits;
-	frames = 1;
-	while (bits % 8 != 0) {
-		bits *= 2;
-		frames *= 2;
-	}
-	runtime->byte_align = bits / 8;
-	runtime->min_align = frames;
-	runtime->buffer_size = bytes_to_frames(runtime, req_size);
-	runtime->period_size = runtime->buffer_size;
-	dma->m_req_size = req_size;
-	dma->codec = codec;
-
-	*pp_dma = dma;
-	CA0132_LOG("dma_init: succeeded.\n");
-	return 0;
-}
-
-static int dma_prepare(struct dma_engine *dma)
-{
-	struct snd_pcm_runtime *runtime;
-	int err;
-
-	CA0132_LOG("dma_prepare: begin\n");
-	runtime = dma->substream->runtime;
-
-	err = azx_pcm_prepare(dma->substream);
-	if (err < 0)
-		return -1;
-
-	dma->m_buffer_size = snd_pcm_lib_buffer_bytes(dma->substream);
-	dma->m_buffer_addr = runtime->dma_area;
-
-	return 0;
-}
-
 static int dma_reset(struct dma_engine *dma)
 {
-	struct snd_pcm_runtime *runtime = dma->substream->runtime;
+	struct hda_codec *codec = dma->codec;
+	struct ca0132_spec *spec = codec->spec;
+	int status;
 
-	CA0132_LOG("dma_reset: begin\n");
-	azx_pcm_hw_free(dma->substream);
-	snd_pcm_lib_malloc_pages(dma->substream, dma->m_req_size);
+	snd_hda_codec_load_dsp_cleanup(codec, dma->dmab);
 
-	azx_pcm_prepare(dma->substream);
-	dma->m_buffer_size = snd_pcm_lib_buffer_bytes(dma->substream);
-	dma->m_buffer_addr = runtime->dma_area;
+	status = snd_hda_codec_load_dsp_prepare(codec,
+			dma->m_converter_format,
+			dma->buf_size,
+			dma->dmab);
+	if (FAILED(status))
+		return status;
+	spec->dsp_stream_id = status;
 
 	return 0;
 }
 
 static int dma_set_state(struct dma_engine *dma, enum dma_state state)
 {
-	int cmd;
+	bool cmd;
 
 	CA0132_LOG("dma_set_state state=%d\n", state);
 
 	switch (state) {
-	case DMA_STATE_RESET:
-		dma_reset(dma);
-		return 0;
 	case DMA_STATE_STOP:
-		cmd = SNDRV_PCM_TRIGGER_STOP;
+		cmd = false;
 		break;
 	case DMA_STATE_RUN:
-		cmd = SNDRV_PCM_TRIGGER_START;
+		cmd = true;
 		break;
 	default:
 		return 0;
 	}
 
-	azx_pcm_trigger(dma->substream, cmd);
-
+	snd_hda_codec_load_dsp_trigger(dma->codec, cmd);
 	return 0;
 }
 
 static unsigned int dma_get_buffer_size(struct dma_engine *dma)
 {
-	return dma->m_buffer_size;
+	return dma->dmab->bytes;
 }
 
-static unsigned int *dma_get_buffer_addr(struct dma_engine *dma)
+static unsigned char *dma_get_buffer_addr(struct dma_engine *dma)
 {
-	return dma->m_buffer_addr;
-}
-
-static int dma_free_buffer(struct dma_engine *dma)
-{
-	azx_pcm_hw_free(dma->substream);
-	azx_pcm_close(dma->substream);
-	kfree(dma->substream->runtime);
-	dma->substream->runtime = NULL;
-	return 0;
+	return dma->dmab->area;
 }
 
 static int dma_xfer(struct dma_engine *dma,
 		const unsigned int *data,
 		unsigned int count)
 {
-	memcpy(dma->m_buffer_addr, data, count);
+	memcpy(dma->dmab->area, data, count);
 	return 0;
 }
 
@@ -2165,12 +2055,6 @@ static unsigned int dma_get_stream_id(struct dma_engine *dma)
 	return spec->dsp_stream_id;
 }
 
-static int dma_exit(struct dma_engine *dma)
-{
-	CA0132_LOG("dma_exit\n");
-	kfree(dma);
-	return 0;
-}
 
 /*
  * CA0132 chip DSP image segment stuffs
@@ -2253,7 +2137,7 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 	unsigned int chip_addx;
 	unsigned int words_to_write;
 	unsigned int buffer_size_words;
-	unsigned int *buffer_addx;
+	unsigned char *buffer_addx;
 	unsigned short hda_format;
 	unsigned int sample_rate_div;
 	unsigned int sample_rate_mul;
@@ -2351,7 +2235,6 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 		run_size_words = min(buffer_size_words, words_to_write);
 		CA0132_LOG("dspxfr (seg loop)cnt=%u rs=%u remainder=%u\n",
 			   words_to_write, run_size_words, remainder_words);
-		dma_set_state(dma_engine, DMA_STATE_STOP);
 		dma_xfer(dma_engine, data, run_size_words*sizeof(u32));
 		if (!comm_dma_setup_done && SUCCEEDED(status)) {
 			status = dsp_dma_stop(codec, dma_chan, ovly);
@@ -2389,7 +2272,9 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 			}
 			CA0132_DSP_LOG("+++++ DMA complete");
 			dma_set_state(dma_engine, DMA_STATE_STOP);
-			dma_set_state(dma_engine, DMA_STATE_RESET);
+			status = dma_reset(dma_engine);
+			if (FAILED(status))
+				break;
 		}
 
 		CTASSERT(run_size_words <= words_to_write);
@@ -2411,6 +2296,7 @@ static int dspxfr_image(struct hda_codec *codec,
 			unsigned int reloc, struct hda_stream_format *format,
 			bool ovly)
 {
+	struct ca0132_spec *spec = codec->spec;
 	int status = 0;
 	unsigned short hda_format = 0;
 	unsigned int response;
@@ -2418,30 +2304,46 @@ static int dspxfr_image(struct hda_codec *codec,
 	struct dma_engine *dma_engine;
 	unsigned int dma_chan;
 	unsigned int port_map_mask;
-	unsigned int buf_size;
 
 	CTASSERT(fls_data != NULL);
 	if (fls_data == NULL)
 		return -1;
 
-	buf_size = ovly ? DSP_DMA_WRITE_BUFLEN_OVLY : DSP_DMA_WRITE_BUFLEN_INIT;
-	status = dma_init(codec, &dma_engine, format, &hda_format, buf_size);
+	dma_engine = kzalloc(sizeof(*dma_engine), GFP_KERNEL);
+	if (!dma_engine) {
+		status = -ENOMEM;
+		goto exit;
+	}
 
-	if (FAILED(status))
-		return -1;
+	dma_engine->dmab = kzalloc(sizeof(*dma_engine->dmab), GFP_KERNEL);
+	if (!dma_engine->dmab) {
+		status = -ENOMEM;
+		goto free_dma_engine;
+	}
+
+	dma_engine->codec = codec;
+	dma_convert_to_hda_format(format, &hda_format);
+	dma_engine->m_converter_format = hda_format;
+	dma_engine->buf_size = (ovly ? DSP_DMA_WRITE_BUFLEN_OVLY :
+			DSP_DMA_WRITE_BUFLEN_INIT) * 2;
 
 	dma_chan = 0;
 	do {
 		status = codec_set_converter_format(codec, WIDGET_CHIP_CTRL,
 						hda_format, &response);
+
 		if (FAILED(status)) {
 			status = FAIL_MSG(status, "set converter format fail");
-			break;
+			goto free_dma_engine_and_dmab;
 		}
 
-		status = dma_prepare(dma_engine);
+		status = snd_hda_codec_load_dsp_prepare(codec,
+					dma_engine->m_converter_format,
+					dma_engine->buf_size,
+					dma_engine->dmab);
 		if (FAILED(status))
 			break;
+		spec->dsp_stream_id = status;
 
 		if (ovly) {
 			status = dspio_alloc_dma_chan(codec, &dma_chan);
@@ -2500,16 +2402,12 @@ static int dspxfr_image(struct hda_codec *codec,
 	if (ovly && (dma_chan != INVALID_DMA_CHANNEL))
 		status = dspio_free_dma_chan(codec, dma_chan);
 
-	status = dma_set_state(dma_engine, DMA_STATE_RESET);
-	if (FAILED(status))
-		status = FAIL_MSG(status, "dma set state Reset fail");
-
-	status = dma_free_buffer(dma_engine);
-	if (FAILED(status))
-		status = FAIL_MSG(status, "dma free buffer fail");
-
-	dma_exit(dma_engine);
-
+	snd_hda_codec_load_dsp_cleanup(codec, dma_engine->dmab);
+free_dma_engine_and_dmab:
+	kfree(dma_engine->dmab);
+free_dma_engine:
+	kfree(dma_engine);
+exit:
 	return status;
 }
 
@@ -4291,11 +4189,6 @@ static void ca0132_download_dsp(struct hda_codec *codec)
 	struct ca0132_spec *spec = codec->spec;
 
 	spec->dsp_state = DSP_DOWNLOAD_INIT;
-	/* check if there is power cut-off to DSP */
-	if (dspload_is_loaded(codec)) {
-		/* dsp is already loaded. */
-		/*spec->dsp_state = DSP_DOWNLOADED;*/
-	}
 
 	if (spec->dsp_state == DSP_DOWNLOAD_INIT) {
 		chipio_enable_clocks(codec);
