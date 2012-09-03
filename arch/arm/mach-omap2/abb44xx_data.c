@@ -24,6 +24,7 @@ static const struct omap_abb_common omap4_abb_common = {
 	.opp_change_mask	= OMAP4430_OPP_CHANGE_MASK,
 	.sr2en_mask		= OMAP4430_SR2EN_MASK,
 	.active_fbb_sel_mask	= OMAP4430_ACTIVE_FBB_SEL_MASK,
+	.active_rbb_sel_mask	= OMAP4430_ACTIVE_RBB_SEL_MASK,
 	.sr2_wtcnt_value_mask	= OMAP4430_SR2_WTCNT_VALUE_MASK,
 	.settling_time		= 50,
 	.clock_cycles		= 16,

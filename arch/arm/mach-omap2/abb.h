@@ -19,6 +19,7 @@
 /* NOMINAL_OPP bypasses the ABB ldo, FAST_OPP sets it to Forward Body-Bias */
 #define OMAP_ABB_NOMINAL_OPP	0
 #define OMAP_ABB_FAST_OPP	1
+#define OMAP_ABB_SLOW_OPP	3
 #define OMAP_ABB_NO_LDO		(~0)
 
 /* Time for the ABB ldo to settle after transition (in micro-seconds) */
@@ -53,6 +54,7 @@ struct omap_abb_common {
 	u32 sr2_wtcnt_value_mask;
 	u32 sr2en_mask;
 	u32 active_fbb_sel_mask;
+	u32 active_rbb_sel_mask;
 	unsigned long settling_time;
 	unsigned long clock_cycles;
 	const struct omap_abb_ops *ops;

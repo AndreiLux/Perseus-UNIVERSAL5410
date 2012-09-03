@@ -52,6 +52,32 @@ int omap_abb_set_opp(struct voltagedomain *voltdm, u8 opp_sel)
 		return -ETIMEDOUT;
 	}
 
+	/* re-program RBB / FBB SEL (only one active at a single time) */
+	switch (opp_sel) {
+	case OMAP_ABB_NOMINAL_OPP:
+		voltdm->rmw(abb->common->active_fbb_sel_mask |
+			abb->common->active_rbb_sel_mask,
+			0,
+			abb->setup_offs);
+		break;
+	case OMAP_ABB_FAST_OPP:
+		voltdm->rmw(abb->common->active_fbb_sel_mask |
+			abb->common->active_rbb_sel_mask,
+			abb->common->active_fbb_sel_mask,
+			abb->setup_offs);
+		break;
+	case OMAP_ABB_SLOW_OPP:
+		voltdm->rmw(abb->common->active_fbb_sel_mask |
+			abb->common->active_rbb_sel_mask,
+			abb->common->active_rbb_sel_mask,
+			abb->setup_offs);
+		break;
+	default:
+		WARN_ONCE(1, "%s: voltage domain: %s: opp_sel: %d!!!\n",
+						__func__, voltdm->name, opp_sel);
+		return -EINVAL;
+	}
+
 	/* program next state of ABB ldo */
 	voltdm->rmw(abb->common->opp_sel_mask,
 			opp_sel << __ffs(abb->common->opp_sel_mask),
@@ -259,6 +285,11 @@ void __init omap_abb_init(struct voltagedomain *voltdm)
 	voltdm->rmw(abb->common->active_fbb_sel_mask,
 			abb->common->active_fbb_sel_mask,
 			abb->setup_offs);
+
+	/*
+	 * Note: cannot enable Reverse Body-Bias here because authorizing
+	 * both FBB and RBB at the same time results in bypass mode.
+	 */
 
 	/* did bootloader set OPP_SEL? */
 	val = voltdm->read(abb->ctrl_offs);
