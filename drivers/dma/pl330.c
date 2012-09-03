@@ -29,6 +29,7 @@
 #include <linux/of.h>
 
 #include "dmaengine.h"
+
 #define PL330_MAX_CHAN		8
 #define PL330_MAX_IRQS		32
 #define PL330_MAX_PERI		32
@@ -2491,6 +2492,8 @@ static int pl330_alloc_chan_resources(struct dma_chan *chan)
 	struct dma_pl330_dmac *pdmac = pch->dmac;
 	unsigned long flags;
 
+	pm_runtime_get_sync(pdmac->pif.dev);
+
 	spin_lock_irqsave(&pch->lock, flags);
 
 	dma_cookie_init(chan);
@@ -2577,6 +2580,8 @@ static void pl330_free_chan_resources(struct dma_chan *chan)
 		list_splice_tail_init(&pch->work_list, &pch->dmac->desc_pool);
 
 	spin_unlock_irqrestore(&pch->lock, flags);
+
+	pm_runtime_put_sync(pch->dmac->pif.dev);
 }
 
 static enum dma_status
@@ -3018,29 +3023,19 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 		goto probe_err1;
 	}
 
-	pdmac->clk = clk_get(&adev->dev, "dma");
-	if (IS_ERR(pdmac->clk)) {
-		dev_err(&adev->dev, "Cannot get operation clock.\n");
-		ret = -EINVAL;
-		goto probe_err2;
-	}
+	pdmac->clk = adev->pclk;
 
 	amba_set_drvdata(adev, pdmac);
-
-#ifndef CONFIG_PM_RUNTIME
-	/* enable dma clk */
-	clk_enable(pdmac->clk);
-#endif
 
 	irq = adev->irq[0];
 	ret = request_irq(irq, pl330_irq_handler, 0,
 			dev_name(&adev->dev), pi);
 	if (ret)
-		goto probe_err3;
+		goto probe_err2;
 
 	ret = pl330_add(pi);
 	if (ret)
-		goto probe_err4;
+		goto probe_err3;
 
 	INIT_LIST_HEAD(&pdmac->desc_pool);
 	spin_lock_init(&pdmac->pool_lock);
@@ -3100,7 +3095,7 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 	ret = dma_async_device_register(pd);
 	if (ret) {
 		dev_err(&adev->dev, "unable to register DMAC\n");
-		goto probe_err5;
+		goto probe_err4;
 	}
 
 	dev_info(&adev->dev,
@@ -3111,17 +3106,14 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 		pi->pcfg.data_bus_width / 8, pi->pcfg.num_chan,
 		pi->pcfg.num_peri, pi->pcfg.num_events);
 
+	pm_runtime_put_sync(&adev->dev);
+
 	return 0;
 
-probe_err5:
-	pl330_del(pi);
 probe_err4:
-	free_irq(irq, pi);
+	pl330_del(pi);
 probe_err3:
-#ifndef CONFIG_PM_RUNTIME
-	clk_disable(pdmac->clk);
-#endif
-	clk_put(pdmac->clk);
+	free_irq(irq, pi);
 probe_err2:
 	iounmap(pi->base);
 probe_err1:
@@ -3168,10 +3160,6 @@ static int __devexit pl330_remove(struct amba_device *adev)
 	res = &adev->res;
 	release_mem_region(res->start, resource_size(res));
 
-#ifndef CONFIG_PM_RUNTIME
-	clk_disable(pdmac->clk);
-#endif
-
 	kfree(pdmac);
 
 	return 0;
@@ -3187,49 +3175,10 @@ static struct amba_id pl330_ids[] = {
 
 MODULE_DEVICE_TABLE(amba, pl330_ids);
 
-#ifdef CONFIG_PM_RUNTIME
-static int pl330_runtime_suspend(struct device *dev)
-{
-	struct dma_pl330_dmac *pdmac = dev_get_drvdata(dev);
-
-	if (!pdmac) {
-		dev_err(dev, "failed to get dmac\n");
-		return -ENODEV;
-	}
-
-	clk_disable(pdmac->clk);
-
-	return 0;
-}
-
-static int pl330_runtime_resume(struct device *dev)
-{
-	struct dma_pl330_dmac *pdmac = dev_get_drvdata(dev);
-
-	if (!pdmac) {
-		dev_err(dev, "failed to get dmac\n");
-		return -ENODEV;
-	}
-
-	clk_enable(pdmac->clk);
-
-	return 0;
-}
-#else
-#define pl330_runtime_suspend	NULL
-#define pl330_runtime_resume	NULL
-#endif /* CONFIG_PM_RUNTIME */
-
-static const struct dev_pm_ops pl330_pm_ops = {
-	.runtime_suspend = pl330_runtime_suspend,
-	.runtime_resume = pl330_runtime_resume,
-};
-
 static struct amba_driver pl330_driver = {
 	.drv = {
 		.owner = THIS_MODULE,
 		.name = "dma-pl330",
-		.pm = &pl330_pm_ops,
 	},
 	.id_table = pl330_ids,
 	.probe = pl330_probe,
