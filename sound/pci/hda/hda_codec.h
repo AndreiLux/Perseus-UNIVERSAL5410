@@ -334,15 +334,15 @@ enum {
 #define AC_KNBCAP_DELTA			(1<<7)
 
 /* HDMI LPCM capabilities */
-#define AC_LPCMCAP_48K_CP_CHNS		(0x0f<<0) /* max channels w/ CP-on */	
+#define AC_LPCMCAP_48K_CP_CHNS		(0x0f<<0) /* max channels w/ CP-on */
 #define AC_LPCMCAP_48K_NO_CHNS		(0x0f<<4) /* max channels w/o CP-on */
 #define AC_LPCMCAP_48K_20BIT		(1<<8)	/* 20b bitrate supported */
 #define AC_LPCMCAP_48K_24BIT		(1<<9)	/* 24b bitrate supported */
-#define AC_LPCMCAP_96K_CP_CHNS		(0x0f<<10) /* max channels w/ CP-on */	
+#define AC_LPCMCAP_96K_CP_CHNS		(0x0f<<10) /* max channels w/ CP-on */
 #define AC_LPCMCAP_96K_NO_CHNS		(0x0f<<14) /* max channels w/o CP-on */
 #define AC_LPCMCAP_96K_20BIT		(1<<18)	/* 20b bitrate supported */
 #define AC_LPCMCAP_96K_24BIT		(1<<19)	/* 24b bitrate supported */
-#define AC_LPCMCAP_192K_CP_CHNS		(0x0f<<20) /* max channels w/ CP-on */	
+#define AC_LPCMCAP_192K_CP_CHNS		(0x0f<<20) /* max channels w/ CP-on */
 #define AC_LPCMCAP_192K_NO_CHNS		(0x0f<<24) /* max channels w/o CP-on */
 #define AC_LPCMCAP_192K_20BIT		(1<<28)	/* 20b bitrate supported */
 #define AC_LPCMCAP_192K_24BIT		(1<<29)	/* 24b bitrate supported */
@@ -611,6 +611,17 @@ struct hda_bus_ops {
 	/* notify power-up/down from codec to controller */
 	void (*pm_notify)(struct hda_bus *bus);
 #endif
+#ifdef CONFIG_SND_HDA_DSP_LOADER
+	/* prepare DSP transfer */
+	int (*load_dsp_prepare)(struct hda_bus *bus, unsigned int format,
+				unsigned int byte_size,
+				struct snd_dma_buffer *bufp);
+	/* start/stop DSP transfer */
+	void (*load_dsp_trigger)(struct hda_bus *bus, bool start);
+	/* clean up DSP transfer */
+	void (*load_dsp_cleanup)(struct hda_bus *bus,
+				 struct snd_dma_buffer *dmab);
+#endif
 };
 
 /* template to pass to the bus constructor */
@@ -682,7 +693,7 @@ struct hda_codec_preset {
 	const char *name;
 	int (*patch)(struct hda_codec *codec);
 };
-	
+
 struct hda_codec_preset_list {
 	const struct hda_codec_preset *preset;
 	struct module *owner;
@@ -1065,6 +1076,40 @@ static inline void snd_hda_power_down(struct hda_codec *codec) {}
  * patch firmware
  */
 int snd_hda_load_patch(struct hda_bus *bus, const char *patch);
+#endif
+
+#ifdef CONFIG_SND_HDA_DSP_LOADER
+static inline int
+snd_hda_codec_load_dsp_prepare(struct hda_codec *codec, unsigned int format,
+				unsigned int size,
+				struct snd_dma_buffer *bufp)
+{
+	return codec->bus->ops.load_dsp_prepare(codec->bus, format, size, bufp);
+}
+static inline void
+snd_hda_codec_load_dsp_trigger(struct hda_codec *codec, bool start)
+{
+	return codec->bus->ops.load_dsp_trigger(codec->bus, start);
+}
+static inline void
+snd_hda_codec_load_dsp_cleanup(struct hda_codec *codec,
+				struct snd_dma_buffer *dmab)
+{
+	return codec->bus->ops.load_dsp_cleanup(codec->bus, dmab);
+}
+#else
+static inline int
+snd_hda_codec_load_dsp_prepare(struct hda_codec *codec, unsigned int format,
+				unsigned int size,
+				struct snd_dma_buffer *bufp)
+{
+	return 0;
+}
+static inline void
+snd_hda_codec_load_dsp_trigger(struct hda_codec *codec, bool start) {}
+static inline void
+snd_hda_codec_load_dsp_cleanup(struct hda_codec *codec,
+				struct snd_dma_buffer *dmab) {}
 #endif
 
 /*
