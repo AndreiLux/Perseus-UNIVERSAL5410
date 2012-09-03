@@ -1590,6 +1590,10 @@ static int fimc_is_itf_shot(struct fimc_is_device_ischain *this,
 	if (frame->shot->dm.request.frameCount != this->fcount) {
 		err("shot frame count mismatch(%d, %d)",
 			frame->shot->dm.request.frameCount, this->fcount);
+
+		if (!frame->shot->dm.request.frameCount)
+			frame->shot->dm.request.frameCount = this->fcount;
+
 		this->fcount = frame->shot->dm.request.frameCount;
 		this->interface->fcount = this->fcount - 1;
 	}
@@ -2354,7 +2358,9 @@ static int fimc_is_ischain_s_dzoom(struct fimc_is_device_ischain *this,
 	if (temp_width != chain0_width) {
 		err("input width is not valid(%d != %d)",
 			temp_width, chain0_width);
-		ret = -EINVAL;
+		/* if invalid input come, dzoom is not apply and
+		shot command is sent to firmware */
+		ret = 0;
 		goto exit;
 	}
 
@@ -2363,7 +2369,6 @@ static int fimc_is_ischain_s_dzoom(struct fimc_is_device_ischain *this,
 	crop_y = crop_y & 0xFFFFFFFE;
 	crop_width = chain0_width - (crop_x<<1);
 	crop_height = chain0_height - (crop_y<<1);
-	this->crop_height = crop_height;
 
 	dbg_ischain("%s(%d, %d, %d %d)\n", __func__, crop_x, crop_y, crop_width,
 		crop_height);
@@ -2384,6 +2389,11 @@ static int fimc_is_ischain_s_dzoom(struct fimc_is_device_ischain *this,
 		ret = -EINVAL;
 		goto exit;
 	}
+
+	this->crop_x = crop_x;
+	this->crop_y = crop_y;
+	this->crop_width = crop_width;
+	this->crop_height = crop_height;
 
 exit:
 	return ret;
@@ -3465,15 +3475,16 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 
 	crop_width = isp_frame->shot->ctl.scaler.cropRegion[2];
 	if (crop_width && (crop_width != this->crop_width)) {
-		this->crop_x = isp_frame->shot->ctl.scaler.cropRegion[0];
-		this->crop_y = isp_frame->shot->ctl.scaler.cropRegion[1];
-		this->crop_width = crop_width;
 #ifdef ENABLE_DZOOM
-		ret = fimc_is_ischain_s_dzoom(this, this->crop_x, this->crop_y,
-			this->crop_width);
+		ret = fimc_is_ischain_s_dzoom(this,
+			isp_frame->shot->ctl.scaler.cropRegion[0],
+			isp_frame->shot->ctl.scaler.cropRegion[1],
+			isp_frame->shot->ctl.scaler.cropRegion[2]);
 		if (ret) {
 			err("fimc_is_ischain_s_dzoom(%d, %d, %d) is fail",
-				this->crop_x, this->crop_y, this->crop_width);
+				isp_frame->shot->ctl.scaler.cropRegion[0],
+				isp_frame->shot->ctl.scaler.cropRegion[1],
+				isp_frame->shot->ctl.scaler.cropRegion[2]);
 			goto exit;
 		}
 #endif

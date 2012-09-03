@@ -323,6 +323,54 @@ static int fimc_is_scalerc_video_s_input(struct file *file, void *priv,
 	return 0;
 }
 
+static int fimc_is_scalerc_video_s_ctrl(struct file *file, void *priv,
+	struct v4l2_control *ctrl)
+{
+	int ret = 0;
+	unsigned long flags;
+	struct fimc_is_video_scp *video = file->private_data;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
+	struct fimc_is_ischain_dev *scc = &ischain->scc;
+	struct fimc_is_framemgr *framemgr = &scc->framemgr;
+	struct fimc_is_frame_shot *frame;
+
+	dbg_scc("%s\n", __func__);
+
+	switch (ctrl->id) {
+	case V4L2_CID_IS_FORCE_DONE:
+		if (framemgr->frame_process_cnt) {
+			err("force done can be performed(process count %d)",
+				framemgr->frame_process_cnt);
+			ret = -EINVAL;
+		} else if (!framemgr->frame_request_cnt) {
+			err("force done can be performed(request count %d)",
+				framemgr->frame_request_cnt);
+			ret = -EINVAL;
+		} else {
+			framemgr_e_barrier_irqs(framemgr, 0, flags);
+
+			fimc_is_frame_request_head(framemgr, &frame);
+			if (frame) {
+				fimc_is_frame_trans_req_to_com(framemgr, frame);
+				buffer_done(common, frame->index);
+			} else {
+				err("frame is NULL");
+				ret = -EINVAL;
+			}
+
+			framemgr_x_barrier_irqr(framemgr, 0, flags);
+		}
+		break;
+	default:
+		err("unsupported ioctl(%d)\n", ctrl->id);
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+
 const struct v4l2_file_operations fimc_is_scalerc_video_fops = {
 	.owner		= THIS_MODULE,
 	.open		= fimc_is_scalerc_video_open,
@@ -354,6 +402,7 @@ const struct v4l2_ioctl_ops fimc_is_scalerc_video_ioctl_ops = {
 	.vidioc_enum_input		= fimc_is_scalerc_video_enum_input,
 	.vidioc_g_input			= fimc_is_scalerc_video_g_input,
 	.vidioc_s_input			= fimc_is_scalerc_video_s_input,
+	.vidioc_s_ctrl			= fimc_is_scalerc_video_s_ctrl,
 };
 
 static int fimc_is_scalerc_queue_setup(struct vb2_queue *vq,

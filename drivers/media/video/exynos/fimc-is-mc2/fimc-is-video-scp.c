@@ -339,7 +339,28 @@ static int fimc_is_scalerp_video_s_input(struct file *file, void *priv,
 static int fimc_is_scalerp_video_g_ctrl(struct file *file, void *priv,
 					struct v4l2_control *ctrl)
 {
-	return 0;
+	int ret = 0;
+	unsigned long flags;
+	struct fimc_is_video_scp *video = file->private_data;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
+	struct fimc_is_ischain_dev *scp = &ischain->scp;
+	struct fimc_is_framemgr *framemgr = &scp->framemgr;
+	struct fimc_is_frame_shot *frame;
+
+	dbg_scp("%s\n", __func__);
+
+	switch (ctrl->id) {
+	case V4L2_CID_IS_G_COMPLETES:
+		ctrl->value = framemgr->frame_complete_cnt;
+		break;
+	default:
+		err("unsupported ioctl(%d)\n", ctrl->id);
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
 }
 
 static int fimc_is_scalerp_video_g_ext_ctrl(struct file *file, void *priv,
@@ -349,11 +370,49 @@ static int fimc_is_scalerp_video_g_ext_ctrl(struct file *file, void *priv,
 }
 
 static int fimc_is_scalerp_video_s_ctrl(struct file *file, void *priv,
-					struct v4l2_control *ctrl)
+	struct v4l2_control *ctrl)
 {
 	int ret = 0;
+	unsigned long flags;
+	struct fimc_is_video_scp *video = file->private_data;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
+	struct fimc_is_ischain_dev *scp = &ischain->scp;
+	struct fimc_is_framemgr *framemgr = &scp->framemgr;
+	struct fimc_is_frame_shot *frame;
 
-	dbg("fimc_is_scalerp_video_s_ctrl(%d)(%d)\n", ctrl->id, ctrl->value);
+	dbg_scp("%s\n", __func__);
+
+	switch (ctrl->id) {
+	case V4L2_CID_IS_FORCE_DONE:
+		if (framemgr->frame_process_cnt) {
+			err("force done can be performed(process count %d)",
+				framemgr->frame_process_cnt);
+			ret = -EINVAL;
+		} else if (!framemgr->frame_request_cnt) {
+			err("force done can be performed(request count %d)",
+				framemgr->frame_request_cnt);
+			ret = -EINVAL;
+		} else {
+			framemgr_e_barrier_irqs(framemgr, 0, flags);
+
+			fimc_is_frame_request_head(framemgr, &frame);
+			if (frame) {
+				fimc_is_frame_trans_req_to_com(framemgr, frame);
+				buffer_done(common, frame->index);
+			} else {
+				err("frame is NULL");
+				ret = -EINVAL;
+			}
+
+			framemgr_x_barrier_irqr(framemgr, 0, flags);
+		}
+		break;
+	default:
+		err("unsupported ioctl(%d)\n", ctrl->id);
+		ret = -EINVAL;
+		break;
+	}
 
 	return ret;
 }

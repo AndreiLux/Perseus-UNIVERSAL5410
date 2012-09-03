@@ -370,6 +370,10 @@ static int fimc_is_isp_video_s_ctrl(struct file *file, void *priv,
 		ret = fimc_is_ischain_g_capability(ischain, ctrl->value);
 		dbg_isp("V4L2_CID_IS_G_CAPABILITY : %X\n", ctrl->value);
 		break;
+	default:
+		err("unsupported ioctl(%d)\n", ctrl->id);
+		ret = -EINVAL;
+		break;
 	}
 
 	return ret;

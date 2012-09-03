@@ -883,7 +883,7 @@ static void wq_func_scp(struct work_struct *data)
 			fimc_is_frame_trans_pro_to_com(framemgr, frame);
 			buffer_done(video, frame->index);
 		} else
-			err("done is occured without request(%p)\n", frame);
+			err("done is occured without request(%p)", frame);
 
 		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_4, flags);
 
