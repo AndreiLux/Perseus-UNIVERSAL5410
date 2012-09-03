@@ -34,8 +34,8 @@
 
 #define MAX_SAFEVOLT	1050000 /* 1.05V */
 
-/* Assume that the bus for mif is saturated if the utilization is 8% */
-#define INT_BUS_SATURATION_RATIO	8
+/* Assume that the bus for mif is saturated if the utilization is 23% */
+#define INT_BUS_SATURATION_RATIO	23
 #define EXYNOS5_BUS_INT_POLL_TIME	msecs_to_jiffies(100)
 
 enum int_level_idx {
@@ -124,8 +124,9 @@ static int exynos5_busfreq_int_target(struct device *dev, unsigned long *_freq,
 	if (data->disabled)
 		goto out;
 
-	if (freq > exynos5_int_opp_table[0].clk)
-		pm_qos_update_request(&data->mif_req, freq * 16 / 1000);
+	if (freq > exynos5_int_opp_table[_LV_END - 1].clk)
+		pm_qos_update_request(&data->mif_req,
+				data->busy * old_freq * 16 / 100000);
 	else
 		pm_qos_update_request(&data->mif_req, -1);
 
@@ -239,7 +240,7 @@ static int exynos5250_init_int_tables(struct busfreq_data_int *data)
 	return 0;
 }
 static struct devfreq_simple_ondemand_data exynos5_int_ondemand_data = {
-	.downdifferential = 5,
+	.downdifferential = 2,
 	.upthreshold = INT_BUS_SATURATION_RATIO,
 };
 
