@@ -310,13 +310,6 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 {
 	struct drm_crtc *crtc = (struct drm_crtc *)callback_parameter;
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-	struct drm_framebuffer *fb = callback_extra_parameter;
-	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
-
-	if (exynos_fb->kds_res_set) {
-		kds_resource_set_release(&exynos_fb->kds_res_set);
-		exynos_fb->kds_res_set = NULL;
-	}
 
 	exynos_drm_crtc_page_flip_apply(crtc);
 
@@ -382,8 +375,8 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 	if (gem_ob->base.export_dma_buf) {
 		struct dma_buf *buf = gem_ob->base.export_dma_buf;
-		unsigned long shared[1] = {0};
-		struct kds_resource *resource_list[1] = {get_dma_buf_kds_resource(buf)};
+		unsigned long shared = 0UL;
+		struct kds_resource *res_list = get_dma_buf_kds_resource(buf);
 
 		/*
 		 * If we don't already have a reference to the dma_buf,
@@ -396,12 +389,13 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 		BUG_ON(exynos_fb->dma_buf !=  buf);
 
 		/* Waiting for the KDS resource*/
-		kds_async_waitall(&exynos_fb->kds_res_set, KDS_FLAG_LOCKED_WAIT,
-				  &dev_priv->kds_cb, crtc, fb, 1, shared,
-				  resource_list);
+		kds_async_waitall(&exynos_crtc->pending_kds,
+				  KDS_FLAG_LOCKED_WAIT,
+				  &dev_priv->kds_cb, crtc, NULL, 1, &shared,
+				  &res_list);
 	} else {
 		DRM_ERROR("flipping a non-kds buffer\n");
-		exynos_drm_kds_callback(crtc, fb);
+		exynos_drm_kds_callback(crtc, NULL);
 	}
 #endif
 	trace_exynos_flip_complete(exynos_crtc->pipe);
@@ -422,6 +416,7 @@ void exynos_drm_crtc_finish_pageflip(struct drm_device *drm_dev, int crtc_idx)
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 	struct drm_pending_vblank_event *e;
 	struct timeval now;
+	struct kds_resource_set *kds;
 	unsigned long flags;
 
 	/* set wait vsync event to zero and wake up queue. */
@@ -444,10 +439,15 @@ void exynos_drm_crtc_finish_pageflip(struct drm_device *drm_dev, int crtc_idx)
 			      &e->base.file_priv->event_list);
 		wake_up_interruptible(&e->base.file_priv->event_wait);
 	}
+	kds = exynos_crtc->current_kds;
+	exynos_crtc->current_kds = exynos_crtc->pending_kds;
+	exynos_crtc->pending_kds = NULL;
 	spin_unlock_irqrestore(&drm_dev->event_lock, flags);
 
-	drm_vblank_put(drm_dev, crtc_idx);
+	if (kds)
+		kds_resource_set_release(&kds);
 
+	drm_vblank_put(drm_dev, crtc_idx);
 }
 
 static void exynos_drm_crtc_destroy(struct drm_crtc *crtc)
