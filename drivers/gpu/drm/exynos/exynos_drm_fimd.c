@@ -503,6 +503,29 @@ static void mie_set_6bit_dithering(struct fimd_context *ctx)
 	}
 }
 
+static void fimd_win_page_flip(struct device *dev,
+			       struct exynos_drm_overlay *overlay)
+{
+	struct fimd_context *ctx = get_fimd_context(dev);
+	int win = overlay->zpos;
+	struct fimd_win_data *win_data;
+	unsigned long offset;
+
+	if (win == DEFAULT_ZPOS)
+		win = ctx->default_win;
+
+	if (win < 0 || win > WINDOWS_NR)
+		return;
+
+	win_data = &ctx->win_data[win];
+
+	offset = overlay->fb_x * (overlay->bpp >> 3);
+	offset += overlay->fb_y * overlay->fb_pitch;
+
+	win_data->dma_addr = overlay->dma_addr[0] + offset;
+	win_data->vaddr = overlay->vaddr[0] + offset;
+}
+
 static void fimd_win_commit(struct device *dev, int zpos)
 {
 	struct fimd_context *ctx = get_fimd_context(dev);
@@ -656,6 +679,7 @@ static void fimd_win_disable(struct device *dev, int zpos)
 
 static struct exynos_drm_overlay_ops fimd_overlay_ops = {
 	.mode_set = fimd_win_mode_set,
+	.page_flip = fimd_win_page_flip,
 	.commit = fimd_win_commit,
 	.disable = fimd_win_disable,
 };
