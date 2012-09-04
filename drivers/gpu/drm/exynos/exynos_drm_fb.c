@@ -121,21 +121,56 @@ void exynos_drm_wait_for_vsync(struct drm_device *drm_dev)
 	/* TODO: Add wait for vsync for HDMI*/
 }
 
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+void exynos_drm_kds_callback_rm_fb(void *callback_parameter,
+				   void *callback_extra_parameter)
+{
+	struct drm_framebuffer *fb = callback_parameter;
+	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
+
+	kds_resource_set_release(&exynos_fb->kds_res_set_rm_fb);
+
+	dma_buf_put(exynos_fb->dma_buf);
+
+	if (exynos_drm_fb_unmap(fb))
+		DRM_ERROR("Couldn't unmap buffer\n");
+
+	kfree(exynos_fb);
+}
+#endif
+
 static void exynos_drm_fb_destroy(struct drm_framebuffer *fb)
 {
 	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
+	struct exynos_drm_private *dev_priv = fb->dev->dev_private;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
 	drm_framebuffer_cleanup(fb);
 
-	/* wait for vsync from CRTC to safely remove a FB*/
-	exynos_drm_wait_for_vsync(fb->dev);
-
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-	if (exynos_fb->dma_buf)
-		dma_buf_put(exynos_fb->dma_buf);
+	if (exynos_fb->dma_buf) {
+		struct dma_buf *buf = exynos_fb->dma_buf;
+		unsigned long shared = ~0UL;
+		struct kds_resource *res_list = get_dma_buf_kds_resource(buf);
+
+		/* Waiting for the KDS resource*/
+		kds_async_waitall(&exynos_fb->kds_res_set_rm_fb,
+				  KDS_FLAG_LOCKED_WAIT, &dev_priv->kds_cb_rm_fb,
+				  fb, NULL, 1, &shared, &res_list);
+
+		return;
+	}
 #endif
+
+	/*
+	 * We need to wait for non-kds buffers (i.e. some mode-set cases).
+	 * Otherwise, we risk umapping a buffer that is being scanned-out.
+	 * The wait below is actually incorrect in that it only waits for
+	 * a fimd vblank (so is wrong for hdmi).
+	 * TODO(msb) fix this.
+	 */
+	exynos_drm_wait_for_vsync(fb->dev);
 
 	if (exynos_drm_fb_unmap(fb))
 		DRM_ERROR("Couldn't unmap buffer\n");
