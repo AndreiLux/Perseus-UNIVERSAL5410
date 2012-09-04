@@ -69,6 +69,7 @@ struct exynos_mixer_ops {
 
 	/* overlay */
 	void (*win_mode_set)(void *ctx, struct exynos_drm_overlay *overlay);
+	void (*win_page_flip)(void *ctx, struct exynos_drm_overlay *overlay);
 	void (*win_commit)(void *ctx, int zpos);
 	void (*win_disable)(void *ctx, int zpos);
 };

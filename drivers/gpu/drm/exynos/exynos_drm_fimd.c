@@ -494,6 +494,54 @@ static void mie_set_6bit_dithering(struct fimd_context *ctx)
 	}
 }
 
+static void fimd_win_page_flip(struct device *dev,
+			       struct exynos_drm_overlay *overlay)
+{
+	struct fimd_context *ctx = get_fimd_context(dev);
+	int win = overlay->zpos;
+	struct fimd_win_data *win_data;
+	unsigned long orig_shadow, val, size, offset;
+
+	if (ctx->suspended)
+		return;
+
+	if (win == DEFAULT_ZPOS)
+		win = ctx->default_win;
+
+	if (win < 0 || win > WINDOWS_NR)
+		return;
+
+	win_data = &ctx->win_data[win];
+
+	offset = overlay->fb_x * (overlay->bpp >> 3);
+	offset += overlay->fb_y * overlay->fb_pitch;
+
+	win_data->dma_addr = overlay->dma_addr[0] + offset;
+	win_data->vaddr = overlay->vaddr[0] + offset;
+
+	/* protect windows */
+	val = orig_shadow = readl(ctx->regs + SHADOWCON);
+	val |= SHADOWCON_WINx_PROTECT(win);
+	writel(val, ctx->regs + SHADOWCON);
+
+	/* buffer start address */
+	val = (unsigned long)win_data->dma_addr;
+	writel(val, ctx->regs + VIDWx_BUF_START(win, 0));
+
+	/* buffer end address */
+	size = win_data->fb_height * win_data->fb_pitch;
+	val = (unsigned long)(win_data->dma_addr + size);
+	writel(val, ctx->regs + VIDWx_BUF_END(win, 0));
+
+	DRM_DEBUG_KMS("start addr = 0x%lx, end addr = 0x%lx, size = 0x%lx\n",
+			(unsigned long)win_data->dma_addr, val, size);
+	DRM_DEBUG_KMS("ovl_width = %d, ovl_height = %d\n",
+			win_data->ovl_width, win_data->ovl_height);
+
+	/* Unprotect windows */
+	writel(orig_shadow, ctx->regs + SHADOWCON);
+}
+
 static void fimd_win_commit(struct device *dev, int zpos)
 {
 	struct fimd_context *ctx = get_fimd_context(dev);
@@ -647,6 +695,7 @@ static void fimd_win_disable(struct device *dev, int zpos)
 
 static struct exynos_drm_overlay_ops fimd_overlay_ops = {
 	.mode_set = fimd_win_mode_set,
+	.page_flip = fimd_win_page_flip,
 	.commit = fimd_win_commit,
 	.disable = fimd_win_disable,
 };

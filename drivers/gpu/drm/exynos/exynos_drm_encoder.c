@@ -443,3 +443,14 @@ void exynos_drm_encoder_crtc_disable(struct drm_encoder *encoder, void *data)
 	if (overlay_ops && overlay_ops->disable)
 		overlay_ops->disable(manager->dev, zpos);
 }
+
+void exynos_drm_encoder_crtc_page_flip(struct drm_encoder *encoder, void *data)
+{
+	struct exynos_drm_manager *manager =
+		to_exynos_encoder(encoder)->manager;
+	struct exynos_drm_overlay_ops *overlay_ops = manager->overlay_ops;
+	struct exynos_drm_overlay *overlay = data;
+
+	if (overlay_ops && overlay_ops->page_flip)
+		overlay_ops->page_flip(manager->dev, overlay);
+}

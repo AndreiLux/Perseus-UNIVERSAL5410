@@ -104,6 +104,30 @@ int exynos_drm_overlay_update(struct exynos_drm_overlay *overlay,
 	return 0;
 }
 
+static void exynos_drm_crtc_page_flip_apply(struct drm_crtc *crtc)
+{
+	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
+	struct exynos_drm_overlay *overlay = &exynos_crtc->overlay;
+	struct drm_framebuffer *fb = crtc->fb;
+	int nr = exynos_drm_format_num_buffers(fb->pixel_format);
+	int i;
+
+	for (i = 0; i < nr; i++) {
+		struct exynos_drm_gem_buf *buffer;
+
+		buffer = exynos_drm_fb_buffer(fb, i);
+		overlay->dma_addr[i] = buffer->dma_addr;
+		overlay->vaddr[i] = buffer->kvaddr;
+
+		DRM_DEBUG_KMS("buffer: %d, vaddr = 0x%lx, dma_addr = 0x%lx\n",
+				i, (unsigned long)overlay->vaddr[i],
+				(unsigned long)overlay->dma_addr[i]);
+	}
+
+	exynos_drm_fn_encoder(crtc, overlay,
+			exynos_drm_encoder_crtc_page_flip);
+}
+
 static int exynos_drm_crtc_update(struct drm_crtc *crtc)
 {
 	struct exynos_drm_crtc *exynos_crtc;
@@ -284,7 +308,6 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 {
 	struct drm_crtc *crtc = (struct drm_crtc *)callback_parameter;
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-	struct drm_device *dev = crtc->dev;
 	struct drm_framebuffer *fb = callback_extra_parameter;
 	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
 
@@ -297,17 +320,7 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 		exynos_fb->dma_buf = NULL;
 	}
 
-	mutex_lock(&dev->struct_mutex);
-
-	/*
-	 * the values related to a buffer of the drm framebuffer
-	 * to be applied should be set at here. because these values
-	 * first, are set to shadow registers and then to
-	 * real registers at vsync front porch period.
-	 */
-	exynos_drm_crtc_apply(crtc);
-
-	mutex_unlock(&dev->struct_mutex);
+	exynos_drm_crtc_page_flip_apply(crtc);
 
 	BUG_ON(atomic_read(&exynos_crtc->flip_pending));
 	atomic_set(&exynos_crtc->flip_pending, 1);
@@ -326,7 +339,6 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
 	struct exynos_drm_gem_obj *gem_ob = (struct exynos_drm_gem_obj *)exynos_fb->exynos_gem_obj[0];
-	struct drm_framebuffer *old_fb;
 #endif
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
@@ -365,14 +377,7 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 
 	mutex_lock(&dev->struct_mutex);
 
-	old_fb = crtc->fb;
 	crtc->fb = fb;
-	ret = exynos_drm_crtc_update(crtc);
-	if (ret) {
-		crtc->fb = old_fb;
-		mutex_unlock(&dev->struct_mutex);
-		goto fail_update;
-	}
 
 	mutex_unlock(&dev->struct_mutex);
 
@@ -396,8 +401,6 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	trace_exynos_flip_complete(exynos_crtc->pipe);
 	return ret;
 
-fail_update:
-	drm_vblank_put(dev, exynos_crtc->pipe);
 fail_vblank:
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 	exynos_crtc->event = NULL;

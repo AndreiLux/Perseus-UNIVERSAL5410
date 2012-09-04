@@ -736,6 +736,54 @@ static void mixer_win_mode_set(void *ctx,
 	win_data->scan_flags = overlay->scan_flag;
 }
 
+static void mixer_win_page_flip(void *ctx,
+			      struct exynos_drm_overlay *overlay)
+{
+	struct mixer_context *mixer_ctx = ctx;
+	struct mixer_resources *res = &mixer_ctx->mixer_res;
+	unsigned long flags;
+	struct hdmi_win_data *win_data;
+	dma_addr_t dma_addr;
+	int win = overlay->zpos;
+
+	if (win == DEFAULT_ZPOS)
+		win = MIXER_DEFAULT_WIN;
+
+	if (win < 0 || win > MIXER_WIN_NR) {
+		DRM_ERROR("overlay plane[%d] is wrong\n", win);
+		return;
+	}
+
+	win_data = &mixer_ctx->win_data[win];
+
+	win_data->dma_addr = overlay->dma_addr[0];
+	win_data->vaddr = overlay->vaddr[0];
+	win_data->chroma_dma_addr = overlay->dma_addr[1];
+	win_data->chroma_vaddr = overlay->vaddr[1];
+
+	/* converting dma address base and source offset */
+	dma_addr = win_data->dma_addr
+		+ (win_data->fb_x * win_data->bpp >> 3)
+		+ (win_data->fb_y * win_data->fb_width * win_data->bpp >> 3);
+
+	spin_lock_irqsave(&res->reg_slock, flags);
+	mixer_vsync_set_update(mixer_ctx, false);
+
+	/* set buffer address to mixer */
+	mixer_reg_write(res, MXR_GRAPHIC_BASE(win), dma_addr);
+
+	/* Only allow one update per vsync */
+	if (!win_data->updated)
+		mixer_layer_update(mixer_ctx);
+
+	win_data->updated = true;
+
+	mixer_run(mixer_ctx);
+
+	mixer_vsync_set_update(mixer_ctx, true);
+	spin_unlock_irqrestore(&res->reg_slock, flags);
+}
+
 static void mixer_win_commit(void *ctx, int zpos)
 {
 	struct mixer_context *mctx = ctx;
@@ -1068,6 +1116,7 @@ static struct exynos_mixer_ops mixer_ops = {
 
 	/* overlay */
 	.win_mode_set		= mixer_win_mode_set,
+	.win_page_flip		= mixer_win_page_flip,
 	.win_commit		= mixer_win_commit,
 	.win_disable		= mixer_win_disable,
 };
