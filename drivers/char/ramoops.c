@@ -119,10 +119,16 @@ static ssize_t ramoops_pstore_read(u64 *id, enum pstore_type_id *type,
 
 	rambuf = cxt->virt_addr + (*id * cxt->record_size);
 #ifdef CONFIG_PSTORE_CONSOLE
-	if (*type == PSTORE_TYPE_CONSOLE)
+	if (*type == PSTORE_TYPE_CONSOLE) {
 		rambuf = cxt->old_con_buf;
-#endif
+		/* Grab entire record to deal with RAM bit rot. */
+		size = cxt->record_size;
+	} else {
+		size = strnlen(rambuf, cxt->record_size);
+	}
+#else
 	size = strnlen(rambuf, cxt->record_size);
+#endif
 	*buf = kmalloc(size, GFP_KERNEL);
 	if (*buf == NULL)
 		return -ENOMEM;
