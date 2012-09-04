@@ -319,7 +319,6 @@ struct exynos_drm_fb {
 	struct drm_framebuffer		fb;
 	struct exynos_drm_gem_obj	*exynos_gem_obj[MAX_FB_BUFFER];
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-	struct kds_resource_set		*kds_res_set;
 	struct dma_buf			*dma_buf;
 #endif
 };
@@ -346,6 +345,8 @@ struct exynos_drm_crtc {
 	struct exynos_drm_overlay	overlay;
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 	struct drm_pending_vblank_event *event;
+	struct kds_resource_set		*current_kds;
+	struct kds_resource_set		*pending_kds;
 #endif
 	unsigned int			pipe;
 	unsigned int			dpms;
