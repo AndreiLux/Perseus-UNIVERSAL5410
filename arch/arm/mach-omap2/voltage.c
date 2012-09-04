@@ -76,6 +76,7 @@ int voltdm_scale(struct voltagedomain *voltdm,
 {
 	int ret;
 	struct omap_voltage_notifier notify;
+	unsigned long target_volt = omap_get_operation_voltage(target_v);
 
 	if (IS_ERR_OR_NULL(voltdm)) {
 		pr_warning("%s: VDD specified does not exist!\n", __func__);
@@ -89,7 +90,8 @@ int voltdm_scale(struct voltagedomain *voltdm,
 	}
 
 	notify.voltdm = voltdm;
-	notify.target_volt = target_v->volt_nominal;
+	notify.target_volt = target_volt;
+
 	srcu_notifier_call_chain(&voltdm->change_notify_list,
 			OMAP_VOLTAGE_PRECHANGE,
 			(void *)&notify);
