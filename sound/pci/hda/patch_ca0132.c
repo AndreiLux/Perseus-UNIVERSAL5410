@@ -791,7 +791,7 @@ static int chipio_send(struct hda_codec *codec,
 		       u32 data)
 {
 	unsigned int res;
-	int retry = 50;
+	unsigned long timeout = jiffies + msecs_to_jiffies(1000);
 
 	/* send bits of data specified by reg */
 	do {
@@ -799,7 +799,8 @@ static int chipio_send(struct hda_codec *codec,
 					 reg, data);
 		if (res == VENDOR_STATUS_CHIPIO_OK)
 			return 0;
-	} while (--retry);
+		msleep(1);
+	} while (time_before(jiffies, timeout));
 
 	CTASSERT(0);
 	return -1;
@@ -1013,16 +1014,17 @@ static int dspio_send(struct hda_codec *codec, unsigned int reg,
 		      unsigned int data)
 {
 	unsigned int res;
-	int retry = 50;
+	unsigned long timeout = jiffies + msecs_to_jiffies(1000);
 
 	/* send bits of data specified by reg to dsp */
 	do {
 		res = snd_hda_codec_read(codec, WIDGET_DSP_CTRL, 0, reg, data);
 		if ((res >= 0) && (res != VENDOR_STATUS_DSPIO_BUSY))
 			return res;
-	} while (--retry);
+		msleep(1);
+	} while (time_before(jiffies, timeout));
 
-	CTASSERT(retry);
+	CTASSERT(0);
 	return -1;
 }
 
@@ -2148,7 +2150,8 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 	u32 chip_addx_remainder;
 	unsigned int run_size_words;
 	const struct dsp_image_seg *hci_write = NULL;
-	int retry;
+	unsigned long timeout;
+	bool dma_active;
 
 	CTASSERT(fls != NULL);
 	if (fls == NULL)
@@ -2265,11 +2268,16 @@ static int dspxfr_one_seg(struct hda_codec *codec,
 				status = dspxfr_hci_write(codec, hci_write);
 				hci_write = NULL;
 			}
-			retry = 5000;
-			while (dsp_is_dma_active(codec, dma_chan)) {
-				if (--retry <= 0)
+
+			timeout = jiffies + msecs_to_jiffies(2000);
+			do {
+				dma_active = dsp_is_dma_active(codec, dma_chan);
+				if (!dma_active)
 					break;
-			}
+				msleep(1);
+			} while (time_before(jiffies, timeout));
+			if (dma_active)
+				break;
 			CA0132_DSP_LOG("+++++ DMA complete");
 			dma_set_state(dma_engine, DMA_STATE_STOP);
 			status = dma_reset(dma_engine);
