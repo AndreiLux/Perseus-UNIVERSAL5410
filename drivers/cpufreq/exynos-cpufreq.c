@@ -256,8 +256,10 @@ void exynos_thermal_throttle(void)
 
 	if (!exynos_cpufreq_disable) {
 		cur = exynos_getspeed(0);
-		if (cur > max_thermal_freq)
-			exynos_cpufreq_scale(max_thermal_freq, cur);
+		if (cur > max_thermal_freq) {
+			freqs.old = cur;
+			exynos_cpufreq_scale(max_thermal_freq, freqs.old);
+		}
 	}
 
 	mutex_unlock(&cpufreq_lock);
@@ -265,7 +267,6 @@ void exynos_thermal_throttle(void)
 
 void exynos_thermal_unthrottle(void)
 {
-	unsigned int cur;
 
 	if (!exynos_cpufreq_init_done)
 		return;
@@ -282,8 +283,8 @@ void exynos_thermal_unthrottle(void)
 	pr_debug("%s: temperature reduced, ending cpu throttling\n", __func__);
 
 	if (!exynos_cpufreq_disable) {
-		cur = exynos_getspeed(0);
-		exynos_cpufreq_scale(curr_target_freq, cur);
+		freqs.old = exynos_getspeed(0);
+		exynos_cpufreq_scale(curr_target_freq, freqs.old);
 	}
 
 out:
@@ -328,7 +329,8 @@ static int exynos_cpufreq_pm_notifier(struct notifier_block *notifier,
 		exynos_cpufreq_disable = true;
 		mutex_unlock(&cpufreq_lock);
 
-		ret = exynos_cpufreq_scale(boot_freq, exynos_getspeed(0));
+		freqs.old = exynos_getspeed(0);
+		ret = exynos_cpufreq_scale(boot_freq, freqs.old);
 
 		if (ret < 0)
 			return NOTIFY_BAD;
@@ -399,7 +401,8 @@ static int exynos_cpufreq_reboot_notifier_call(struct notifier_block *this,
 	exynos_cpufreq_disable = true;
 	mutex_unlock(&cpufreq_lock);
 
-	ret = exynos_cpufreq_scale(boot_freq, exynos_getspeed(0));
+	freqs.old = exynos_getspeed(0);
+	ret = exynos_cpufreq_scale(boot_freq, freqs.old);
 
 	if (ret < 0)
 		return NOTIFY_BAD;
