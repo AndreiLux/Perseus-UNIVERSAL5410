@@ -317,10 +317,6 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 		kds_resource_set_release(&exynos_fb->kds_res_set);
 		exynos_fb->kds_res_set = NULL;
 	}
-	if (exynos_fb->dma_buf) {
-		dma_buf_put(exynos_fb->dma_buf);
-		exynos_fb->dma_buf = NULL;
-	}
 
 	exynos_drm_crtc_page_flip_apply(crtc);
 
@@ -389,8 +385,15 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 		unsigned long shared[1] = {0};
 		struct kds_resource *resource_list[1] = {get_dma_buf_kds_resource(buf)};
 
-		get_dma_buf(buf);
-		exynos_fb->dma_buf = buf;
+		/*
+		 * If we don't already have a reference to the dma_buf,
+		 * grab one now. We'll release it in exynos_drm_fb_destory().
+		 */
+		if (!exynos_fb->dma_buf) {
+			get_dma_buf(buf);
+			exynos_fb->dma_buf = buf;
+		}
+		BUG_ON(exynos_fb->dma_buf !=  buf);
 
 		/* Waiting for the KDS resource*/
 		kds_async_waitall(&exynos_fb->kds_res_set, KDS_FLAG_LOCKED_WAIT,

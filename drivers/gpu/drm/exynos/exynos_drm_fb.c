@@ -128,6 +128,11 @@ static void exynos_drm_fb_destroy(struct drm_framebuffer *fb)
 	/* wait for vsync from CRTC to safely remove a FB*/
 	exynos_drm_wait_for_vsync(fb->dev);
 
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	if (exynos_fb->dma_buf)
+		dma_buf_put(exynos_fb->dma_buf);
+#endif
+
 	if (exynos_drm_fb_unmap(fb))
 		DRM_ERROR("Couldn't unmap buffer\n");
 
