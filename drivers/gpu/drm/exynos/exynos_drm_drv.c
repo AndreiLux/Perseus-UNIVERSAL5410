@@ -70,6 +70,12 @@ static int exynos_drm_load(struct drm_device *dev, unsigned long flags)
 		ret = -ENOMEM;
 		goto err_kds;
 	}
+	if (kds_callback_init(&private->kds_cb_rm_fb, 0,
+			      exynos_drm_kds_callback_rm_fb) < 0) {
+		DRM_ERROR("kds alloc queue failed.\n");
+		ret = -ENOMEM;
+		goto err_kds_rm_fb;
+	}
 #endif
 
 	DRM_INIT_WAITQUEUE(&private->wait_vsync_queue);
@@ -137,6 +143,8 @@ err_vblank:
 err_crtc:
 	drm_mode_config_cleanup(dev);
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	kds_callback_term(&private->kds_cb_rm_fb);
+err_kds_rm_fb:
 	kds_callback_term(&private->kds_cb);
 err_kds:
 #endif
