@@ -141,6 +141,31 @@ unsigned int exynos5250_get_volt(enum asv_type_id target_type, unsigned int targ
 	return exynos5250_default_asv_max_volt[target_type];
 }
 
+unsigned int exynos5250_set_volt(enum asv_type_id target_type,
+				unsigned int target_freq, unsigned int group,
+				unsigned int volt)
+{
+	int i;
+
+	if (target_type >= ID_END)
+		return -EINVAL;
+
+	if (group == ~0)
+		group = asv_group[target_type];
+
+	if (group >= asv_group_nr[target_type])
+		return -EINVAL;
+
+	for (i = 0; i < dvfs_level_nr[target_type]; i++) {
+		if (volt_table[target_type][i][0] == target_freq) {
+			volt_table[target_type][i][group + 1] = volt;
+			return 0;
+		}
+	}
+
+	return -EINVAL;
+}
+
 int exynos5250_init_asv(struct asv_common *asv_info)
 {
 	int i;
