@@ -74,9 +74,20 @@ struct exynos_mixer_ops {
 	void (*win_disable)(void *ctx, int zpos);
 };
 
+enum exynos_mixer_mode_type {
+	EXYNOS_MIXER_MODE_INVALID,
+	EXYNOS_MIXER_MODE_SD_NTSC,
+	EXYNOS_MIXER_MODE_SD_PAL,
+	EXYNOS_MIXER_MODE_HD_720,
+	EXYNOS_MIXER_MODE_HD_1080,
+};
+
 void exynos_hdmi_drv_attach(struct exynos_drm_hdmi_context *ctx);
 void exynos_mixer_drv_attach(struct exynos_drm_hdmi_context *ctx);
 
 void exynos_hdmi_ops_register(struct exynos_hdmi_ops *ops);
 void exynos_mixer_ops_register(struct exynos_mixer_ops *ops);
+
+enum exynos_mixer_mode_type exynos_mixer_get_mode_type(int width, int height);
+
 #endif

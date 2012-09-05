@@ -73,6 +73,20 @@ void exynos_mixer_ops_register(struct exynos_mixer_ops *ops)
 		mixer_ops = ops;
 }
 
+enum exynos_mixer_mode_type exynos_mixer_get_mode_type(int width, int height)
+{
+	if (width >= 464 && width <= 720 && height <= 480)
+		return EXYNOS_MIXER_MODE_SD_NTSC;
+	else if (width >= 464 && width <= 720 && height <= 576)
+		return EXYNOS_MIXER_MODE_SD_PAL;
+	else if (width >= 1024 && width <= 1280 && height <= 720)
+		return EXYNOS_MIXER_MODE_HD_720;
+	else if (width >= 1664 && width <= 1920 && height <= 1080)
+		return EXYNOS_MIXER_MODE_HD_1080;
+	else
+		return EXYNOS_MIXER_MODE_INVALID;
+}
+
 static bool drm_hdmi_is_connected(struct device *dev)
 {
 	struct drm_hdmi_context *ctx = to_context(dev);

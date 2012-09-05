@@ -885,12 +885,18 @@ static int find_hdmiphy_conf(int pixel_clock)
 static int hdmi_v14_check_timing(struct fb_videomode *mode)
 {
 	int ret;
+	enum exynos_mixer_mode_type mode_type;
 
 	/*
 	 * No support for interlaced since there's no clear way to convert the
 	 * timing values in drm_display_mode to exynos register values.
 	 */
 	if (mode->vmode == FB_VMODE_INTERLACED)
+		return -EINVAL;
+
+	/* Make sure the mixer can generate this mode */
+	mode_type = exynos_mixer_get_mode_type(mode->xres, mode->yres);
+	if (mode_type == EXYNOS_MIXER_MODE_INVALID)
 		return -EINVAL;
 
 	ret = find_hdmiphy_conf(mode->pixclock);

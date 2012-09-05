@@ -273,26 +273,35 @@ static void mixer_vsync_set_update(struct mixer_context *mctx, bool enable)
 				VP_SHADOW_UPDATE_ENABLE : 0);
 }
 
-static void mixer_cfg_scan(struct mixer_context *mctx, unsigned int height)
+static void mixer_cfg_scan(struct mixer_context *mctx, u32 width, u32 height)
 {
 	struct mixer_resources *res = &mctx->mixer_res;
+	enum exynos_mixer_mode_type mode_type;
 	u32 val;
 
 	/* choosing between interlace and progressive mode */
 	val = (mctx->interlace ? MXR_CFG_SCAN_INTERLACE :
 				MXR_CFG_SCAN_PROGRASSIVE);
 
-	/* choosing between porper HD and SD mode */
-	if (height == 480)
+	/* choosing between proper HD and SD mode */
+	mode_type = exynos_mixer_get_mode_type(width, height);
+	switch (mode_type) {
+	case EXYNOS_MIXER_MODE_SD_NTSC:
 		val |= MXR_CFG_SCAN_NTSC | MXR_CFG_SCAN_SD;
-	else if (height == 576)
+		break;
+	case EXYNOS_MIXER_MODE_SD_PAL:
 		val |= MXR_CFG_SCAN_PAL | MXR_CFG_SCAN_SD;
-	else if (height == 720)
+		break;
+	case EXYNOS_MIXER_MODE_HD_720:
 		val |= MXR_CFG_SCAN_HD_720 | MXR_CFG_SCAN_HD;
-	else if (height == 1080)
+		break;
+	case EXYNOS_MIXER_MODE_HD_1080:
 		val |= MXR_CFG_SCAN_HD_1080 | MXR_CFG_SCAN_HD;
-	else
-		val |= MXR_CFG_SCAN_HD_720 | MXR_CFG_SCAN_HD;
+		break;
+	default:
+		DRM_ERROR("Invalid mixer config %dx%d\n", width, height);
+		return;
+	}
 
 	mixer_reg_writemask(res, MXR_CFG, val, MXR_CFG_SCAN_MASK);
 }
@@ -525,7 +534,7 @@ static void vp_video_buffer(struct mixer_context *mctx, int win)
 	vp_reg_write(res, VP_TOP_C_PTR, chroma_addr[0]);
 	vp_reg_write(res, VP_BOT_C_PTR, chroma_addr[1]);
 
-	mixer_cfg_scan(mctx, mode_height);
+	mixer_cfg_scan(mctx, mode_width, mode_height);
 	mixer_cfg_rgb_fmt(mctx, mode_height);
 	mixer_cfg_layer(mctx, win, true);
 	mixer_run(mctx);
@@ -624,7 +633,7 @@ static void mixer_graph_buffer(struct mixer_context *mctx, int win)
 	/* set buffer address to mixer */
 	mixer_reg_write(res, MXR_GRAPHIC_BASE(win), dma_addr);
 
-	mixer_cfg_scan(mctx, mode_height);
+	mixer_cfg_scan(mctx, mode_width, mode_height);
 	mixer_cfg_rgb_fmt(mctx, mode_height);
 	mixer_cfg_layer(mctx, win, true);
 	mixer_cfg_layer(mctx, MIXER_DEFAULT_WIN, true);
