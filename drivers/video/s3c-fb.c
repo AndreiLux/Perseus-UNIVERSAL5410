@@ -3787,6 +3787,8 @@ static int s3c_fb_enable(struct s3c_fb *sfb)
 	/* setup gpio and output polarity controls */
 	pd->setup_gpio();
 	writel(pd->vidcon1, sfb->regs + VIDCON1);
+	writel(REG_CLKGATE_MODE_NON_CLOCK_GATE,
+			sfb->regs + REG_CLKGATE_MODE);
 
 	/* set video clock running at under-run */
 	if (sfb->variant.has_fixvclk) {

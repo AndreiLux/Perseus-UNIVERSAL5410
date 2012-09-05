@@ -421,6 +421,11 @@
 #define WPALCON_W0PAL_16BPP_A555		(0x5 << 0)
 #define WPALCON_W0PAL_16BPP_565			(0x6 << 0)
 
+/* Clock gate mode control */
+#define REG_CLKGATE_MODE                        (0x1b0)
+#define REG_CLKGATE_MODE_AUTO_CLOCK_GATE        (0 << 0)
+#define REG_CLKGATE_MODE_NON_CLOCK_GATE         (1 << 0)
+
 /* Blending equation */
 #define BLENDEQ(_x)				(0x240 + (_x) * 4)
 #define BLENDEQ_COEF_ZERO			0x0
