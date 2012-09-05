@@ -684,27 +684,22 @@ static void __init omap_sfh7741prox_init(void)
 			__func__, OMAP4_SFH7741_ENABLE_GPIO, error);
 }
 
-static struct gpio sdp4430_hdmi_gpios[] = {
+static struct gpio hdmi_gpios[] = {
 	{ HDMI_GPIO_CT_CP_HPD, GPIOF_OUT_INIT_HIGH, "hdmi_gpio_ct_cp_hpd" },
-	{ HDMI_GPIO_LS_OE,	GPIOF_OUT_INIT_HIGH,	"hdmi_gpio_ls_oe" },
+	/* OE is disabled by default */
+	{ HDMI_GPIO_LS_OE, GPIOF_OUT_INIT_LOW, "hdmi_gpio_ls_oe" },
 	{ HDMI_GPIO_HPD, GPIOF_DIR_IN, "hdmi_gpio_hpd" },
 };
 
 static int sdp4430_panel_enable_hdmi(struct omap_dss_device *dssdev)
 {
-	int status;
-
-	status = gpio_request_array(sdp4430_hdmi_gpios,
-				    ARRAY_SIZE(sdp4430_hdmi_gpios));
-	if (status)
-		pr_err("%s: Cannot request HDMI GPIOs\n", __func__);
-
-	return status;
+	gpio_set_value(HDMI_GPIO_LS_OE, 1);
+	return 0;
 }
 
 static void sdp4430_panel_disable_hdmi(struct omap_dss_device *dssdev)
 {
-	gpio_free_array(sdp4430_hdmi_gpios, ARRAY_SIZE(sdp4430_hdmi_gpios));
+	gpio_set_value(HDMI_GPIO_LS_OE, 0);
 }
 
 static struct nokia_dsi_panel_data dsi1_panel = {
@@ -878,6 +873,10 @@ static struct omap_dss_board_info sdp4430_dss_data = {
 static void __init omap_4430sdp_display_init(void)
 {
 	int r;
+
+	r = gpio_request_array(hdmi_gpios, ARRAY_SIZE(hdmi_gpios));
+	if (r)
+		pr_err("%s: Could not request HDMI GPIOs : %d\n", __func__, r);
 
 	/* Enable LCD2 by default (instead of Pico DLP) */
 	r = gpio_request_one(DISPLAY_SEL_GPIO, GPIOF_OUT_INIT_HIGH,
