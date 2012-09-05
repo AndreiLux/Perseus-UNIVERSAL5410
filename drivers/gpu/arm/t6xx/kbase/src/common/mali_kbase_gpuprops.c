@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_gpuprops.c
@@ -34,10 +38,50 @@
 
 mali_error kbase_gpuprops_uk_get_props(kbase_context *kctx, kbase_uk_gpuprops * kbase_props)
 {
+	kbase_gpuprops_clock_speed_function get_gpu_speed_mhz;
+	u32 gpu_speed_mhz;
+	int rc = 1;
+
 	OSK_ASSERT(NULL != kctx);
 	OSK_ASSERT(NULL != kbase_props);
 
-	OSK_MEMCPY(&kbase_props->props, &kctx->kbdev->gpu_props.props, sizeof(kbase_props->props));
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_CORE))
+	{
+		return MALI_ERROR_FUNCTION_FAILED;
+	}
+
+	/* Current GPU speed is requested from the system integrator via the KBASE_CONFIG_ATTR_GPU_SPEED_FUNC function.
+	 * If that function fails, or the function is not provided by the system integrator, we report the maximum
+	 * GPU speed as specified by KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX.
+	 */
+	get_gpu_speed_mhz = (kbase_gpuprops_clock_speed_function)kbasep_get_config_value(kctx->kbdev, kctx->kbdev->config_attributes, KBASE_CONFIG_ATTR_GPU_SPEED_FUNC);
+	if (get_gpu_speed_mhz != NULL)
+	{
+		rc = get_gpu_speed_mhz(&gpu_speed_mhz);
+#ifdef CONFIG_MALI_DEBUG
+		/* Issue a warning message when the reported GPU speed falls outside the min/max range */
+		if (rc == 0)
+		{
+			u32 gpu_speed_khz = gpu_speed_mhz * 1000;
+			if (gpu_speed_khz < kctx->kbdev->gpu_props.props.core_props.gpu_freq_khz_min ||
+			    gpu_speed_khz > kctx->kbdev->gpu_props.props.core_props.gpu_freq_khz_max)
+			{
+				OSK_PRINT_WARN(OSK_BASE_CORE, "GPU Speed is outside of min/max range (got %lu Khz, min %lu Khz, max %lu Khz)\n",
+				                   gpu_speed_khz,
+				                   kctx->kbdev->gpu_props.props.core_props.gpu_freq_khz_min,
+				                   kctx->kbdev->gpu_props.props.core_props.gpu_freq_khz_max);
+			}	
+		}
+#endif /* CONFIG_MALI_DEBUG */
+	}
+	if (rc != 0)
+	{
+		gpu_speed_mhz = kctx->kbdev->gpu_props.props.core_props.gpu_freq_khz_max / 1000;
+	}
+
+	kctx->kbdev->gpu_props.props.core_props.gpu_speed_mhz = gpu_speed_mhz;
+
+	memcpy(&kbase_props->props, &kctx->kbdev->gpu_props.props, sizeof(kbase_props->props));
 
 	return MALI_ERROR_NONE;
 }
@@ -154,7 +198,7 @@ STATIC void kbase_gpuprops_construct_coherent_groups(base_gpu_props * const prop
 
 	if (group_present != 0)
 	{
-		OSK_PRINT_WARN(OSK_BASE_CORE, "Too many coherent groups (keeping only %d groups).\n", BASE_MAX_COHERENT_GROUPS);
+		OSK_PRINT_WARN(OSK_BASE_CORE, "Too many coherent groups (keeping only %d groups).\n", BASE_MAX_COHERENT_GROUPS);	
 	}
 
 	props->coherency_info.num_groups = num_groups;
@@ -185,8 +229,7 @@ static void kbase_gpuprops_get_props(base_gpu_props * gpu_props, kbase_device * 
 	gpu_props->core_props.major_revision = KBASE_UBFX32(regdump.gpu_id, 12U, 4);
 	gpu_props->core_props.product_id = KBASE_UBFX32(regdump.gpu_id, 16U, 16);
 	gpu_props->core_props.log2_program_counter_size = KBASE_GPU_PC_SIZE_LOG2;
-	gpu_props->core_props.gpu_speed_mhz = KBASE_GPU_SPEED_MHZ;
-	gpu_props->core_props.gpu_available_memory_size = OSK_MEM_PAGES << OSK_PAGE_SHIFT;
+	gpu_props->core_props.gpu_available_memory_size = totalram_pages << PAGE_SHIFT;
 
 	for(i = 0; i < BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS; i++)
 	{
@@ -256,3 +299,4 @@ void kbase_gpuprops_set(kbase_device *kbdev)
 	gpu_props->num_address_spaces = osk_count_set_bits(raw->as_present);
 	gpu_props->num_job_slots = osk_count_set_bits(raw->js_present);
 }
+

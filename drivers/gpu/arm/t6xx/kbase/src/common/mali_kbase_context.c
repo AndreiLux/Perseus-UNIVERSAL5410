@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2010-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_context.c
@@ -22,23 +26,37 @@
  * Allocate and init a kernel base context. Calls
  * kbase_create_os_context() to setup OS specific structures.
  */
-struct kbase_context *kbase_create_context(kbase_device *kbdev)
+kbase_context *kbase_create_context(kbase_device *kbdev)
 {
-	struct kbase_context *kctx;
+	kbase_context *kctx;
 	osk_error osk_err;
 	mali_error mali_err;
 
 	OSK_ASSERT(kbdev != NULL);
 
 	/* zero-inited as lot of code assume it's zero'ed out on create */
-	kctx = osk_calloc(sizeof(*kctx));
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		kctx = NULL;
+	}
+	else
+	{
+		kctx = kzalloc(sizeof(*kctx), GFP_KERNEL);
+	}
+
 	if (!kctx)
 		goto out;
 
 	kctx->kbdev = kbdev;
 	kctx->as_nr = KBASEP_AS_NR_INVALID;
+	atomic_set(&kctx->setup_complete, 0);
+	atomic_set(&kctx->setup_in_progress, 0);
+	kctx->keep_gpu_powered = MALI_FALSE;
 
-	if (kbase_mem_usage_init(&kctx->usage, kctx->kbdev->memdev.per_process_memory_limit >> OSK_PAGE_SHIFT))
+	/* keep a reference to the process' user side memory manager */
+	kbase_os_store_process_mm(kctx);
+
+	if (kbase_mem_usage_init(&kctx->usage, kctx->kbdev->memdev.per_process_memory_limit >> PAGE_SHIFT))
 	{
 		goto free_kctx;
 	}
@@ -56,15 +74,15 @@ struct kbase_context *kbase_create_context(kbase_device *kbdev)
 	if (MALI_ERROR_NONE != mali_err)
 		goto free_jd;
 
-	osk_err = osk_mutex_init(&kctx->reg_lock, OSK_LOCK_ORDER_MEM_REG);
-	if (OSK_ERR_NONE != osk_err)
-		goto free_event;
+	mutex_init(&kctx->reg_lock);
+
+	OSK_DLIST_INIT(&kctx->waiting_soft_jobs);
 
 	/* Use a new *Shared Memory* allocator for GPU page tables.
 	 * See MIDBASE-1534 for details. */
 	osk_err = osk_phy_allocator_init(&kctx->pgd_allocator, 0, 0, NULL);
 	if (OSK_ERR_NONE != osk_err)
-		goto free_region_lock;
+		goto free_event;
 
 	mali_err = kbase_mmu_init(kctx);
 	if(MALI_ERROR_NONE != mali_err)
@@ -73,25 +91,16 @@ struct kbase_context *kbase_create_context(kbase_device *kbdev)
 	kctx->pgd = kbase_mmu_alloc_pgd(kctx);
 	if (!kctx->pgd)
 		goto free_mmu;
-
+	
 	if (kbase_create_os_context(&kctx->osctx))
 		goto free_pgd;
 
-	kctx->nr_outstanding_atoms = 0;
-	if ( OSK_ERR_NONE != osk_waitq_init(&kctx->complete_outstanding_waitq))
-	{
-		goto free_osctx;
-	}
-	osk_waitq_set(&kctx->complete_outstanding_waitq);
-
 	/* Make sure page 0 is not used... */
 	if(kbase_region_tracker_init(kctx))
-		goto free_waitq;
+		goto free_osctx;
 
 	return kctx;
 
-free_waitq:
-	osk_waitq_term(&kctx->complete_outstanding_waitq);
 free_osctx:
 	kbase_destroy_os_context(&kctx->osctx);
 free_pgd:
@@ -100,8 +109,6 @@ free_mmu:
 	kbase_mmu_term(kctx);
 free_phy:
 	osk_phy_allocator_term(&kctx->pgd_allocator);
-free_region_lock:
-	osk_mutex_term(&kctx->reg_lock);
 free_event:
 	kbase_event_cleanup(kctx);
 free_jd:
@@ -111,10 +118,10 @@ free_jd:
 free_memctx:
 	kbase_mem_usage_term(&kctx->usage);
 free_kctx:
-	osk_free(kctx);
+	kfree(kctx);
 out:
 	return NULL;
-
+	
 }
 KBASE_EXPORT_SYMBOL(kbase_create_context)
 
@@ -124,7 +131,7 @@ KBASE_EXPORT_SYMBOL(kbase_create_context)
  * Destroy a kernel base context. Calls kbase_destroy_os_context() to
  * free OS specific structures. Will release all outstanding regions.
  */
-void kbase_destroy_context(struct kbase_context *kctx)
+void kbase_destroy_context(kbase_context *kctx)
 {
 	kbase_device *kbdev;
 
@@ -143,8 +150,8 @@ void kbase_destroy_context(struct kbase_context *kctx)
 		/* disable the use of the hw counters if the app didn't use the API correctly or crashed */
 		KBASE_TRACE_ADD( kbdev, CORE_CTX_HWINSTR_TERM, kctx, NULL, 0u, 0u );
 		OSK_PRINT_WARN(OSK_BASE_CTX,
-					   "The privileged process asking for instrumentation forgot to disable it "
-					   "before exiting. Will end instrumentation for them" );
+		               "The privileged process asking for instrumentation forgot to disable it "
+		               "before exiting. Will end instrumentation for them" );
 		kbase_instr_hwcnt_disable(kctx);
 	}
 
@@ -164,7 +171,6 @@ void kbase_destroy_context(struct kbase_context *kctx)
 	kbasep_js_kctx_term(kctx);
 
 	kbase_jd_exit(kctx);
-	osk_mutex_term(&kctx->reg_lock);
 
 	kbase_pm_context_idle(kbdev);
 
@@ -172,8 +178,11 @@ void kbase_destroy_context(struct kbase_context *kctx)
 
 	kbase_mem_usage_term(&kctx->usage);
 
-	osk_waitq_term(&kctx->complete_outstanding_waitq);
-	osk_free(kctx);
+	if (kctx->keep_gpu_powered)
+	{
+		kbase_pm_context_idle(kbdev);
+	}
+	kfree(kctx);
 }
 KBASE_EXPORT_SYMBOL(kbase_destroy_context)
 
@@ -186,6 +195,11 @@ mali_error kbase_context_set_create_flags(kbase_context *kctx, u32 flags)
 	kbasep_js_kctx_info *js_kctx_info;
 	OSK_ASSERT(NULL != kctx);
 
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_CTX))
+	{
+		return MALI_ERROR_FUNCTION_FAILED;
+	}
+
 	js_kctx_info = &kctx->jctx.sched_info;
 
 	/* Validate flags */
@@ -195,22 +209,11 @@ mali_error kbase_context_set_create_flags(kbase_context *kctx, u32 flags)
 		goto out;
 	}
 
-	osk_mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
-
-	/* Ensure this is the first call */
-	if ( (js_kctx_info->ctx.flags & KBASE_CTX_FLAG_CREATE_FLAGS_SET) != 0 )
-	{
-		OSK_PRINT_ERROR(OSK_BASE_CTX, "User attempted to set context creation flags more than once - not allowed");
-		err = MALI_ERROR_FUNCTION_FAILED;
-		goto out_unlock;
-	}
-
-	js_kctx_info->ctx.flags |= KBASE_CTX_FLAG_CREATE_FLAGS_SET;
+	mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
 
 	/* Translate the flags */
 	if ( (flags & BASE_CONTEXT_SYSTEM_MONITOR_SUBMIT_DISABLED) == 0 )
 	{
-		/* This flag remains set until it is explicitly cleared */
 		js_kctx_info->ctx.flags &= ~((u32)KBASE_CTX_FLAG_SUBMIT_DISABLED);
 	}
 
@@ -221,10 +224,8 @@ mali_error kbase_context_set_create_flags(kbase_context *kctx, u32 flags)
 
 	/* Latch the initial attributes into the Job Scheduler */
 	kbasep_js_ctx_attr_set_initial_attrs( kctx->kbdev, kctx );
-
-
-out_unlock:
-	osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
+	
+	mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 out:
 	return err;
 }

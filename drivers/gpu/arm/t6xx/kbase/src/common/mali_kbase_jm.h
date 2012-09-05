@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_jm.h
@@ -18,6 +22,7 @@
 
 #include <kbase/src/common/mali_kbase_8401_workaround.h>
 #include <kbase/src/common/mali_kbase_hw.h>
+#include <asm/atomic.h>
 
 
 /**
@@ -55,8 +60,8 @@ static INLINE mali_bool kbasep_jm_is_submit_slots_free(kbase_device *kbdev, int 
 {
 	OSK_ASSERT( kbdev != NULL );
 	OSK_ASSERT( 0 <= js && js < kbdev->gpu_props.num_job_slots  );
-
-	if (osk_atomic_get(&kbdev->reset_gpu) != KBASE_RESET_GPU_NOT_PENDING)
+	
+	if (atomic_read(&kbdev->reset_gpu) != KBASE_RESET_GPU_NOT_PENDING)
 	{
 		/* The GPU is being reset - so prevent submission */
 		return MALI_FALSE;
@@ -142,7 +147,7 @@ static INLINE void kbasep_jm_enqueue_submit_slot( kbase_jm_slot *slot, kbase_jd_
 	u8 pos;
 	nr = slot->submitted_nr++;
 	OSK_ASSERT(nr < BASE_JM_SUBMIT_SLOTS);
-
+	
 	pos = (slot->submitted_head + nr) & BASE_JM_SUBMIT_SLOTS_MASK;
 	slot->submitted[pos] = katom;
 }
@@ -187,44 +192,13 @@ static INLINE mali_bool kbasep_jm_is_dummy_workaround_job( kbase_device *kbdev, 
  *
  * The following locking conditions are made on the caller:
  * - it must hold the kbasep_js_device_data::runpoool_irq::lock
- *  - This is to access the kbase_context::as_nr
- *  - In any case, the kbase_js code that calls this function will always have
- * this lock held.
- * - it must hold kbdev->jm_slots[ \a s ].lock
  */
 void kbase_job_submit_nolock(kbase_device *kbdev, kbase_jd_atom *katom, int js);
 
 /**
  * @brief Complete the head job on a particular job-slot
  */
-void kbase_job_done_slot(kbase_device *kbdev, int s, u32 completion_code, u64 job_tail, kbasep_js_tick *end_timestamp);
-
-/**
- * @brief Obtain the lock for a job slot.
- *
- * This function also returns the structure for the specified job slot to simplify the code
- *
- * @param[in] kbdev     Kbase device pointer
- * @param[in] js        The job slot number to lock
- *
- * @return  The job slot structure
- */
-static INLINE kbase_jm_slot *kbase_job_slot_lock(kbase_device *kbdev, int js)
-{
-	osk_spinlock_irq_lock(&kbdev->jm_slots[js].lock);
-	return &kbdev->jm_slots[js];
-}
-
-/**
- * @brief Release the lock for a job slot
- *
- * @param[in] kbdev     Kbase device pointer
- * @param[in] js        The job slot number to unlock
- */
-static INLINE void kbase_job_slot_unlock(kbase_device *kbdev, int js)
-{
-	osk_spinlock_irq_unlock(&kbdev->jm_slots[js].lock);
-}
+void kbase_job_done_slot(kbase_device *kbdev, int s, u32 completion_code, u64 job_tail, ktime_t *end_timestamp);
 
 /** @} */ /* end group kbase_jm */
 /** @} */ /* end group base_kbase_api */

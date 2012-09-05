@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2010-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_js_affinity.c
@@ -16,7 +20,7 @@
 #include <kbase/src/common/mali_kbase.h>
 #include "mali_kbase_js_affinity.h"
 
-#if MALI_DEBUG && 0 /* disabled to avoid compilation warnings */
+#if defined(CONFIG_MALI_DEBUG) && 0 /* disabled to avoid compilation warnings */
 
 STATIC void debug_get_binary_string(const u64 n, char *buff, const int size)
 {
@@ -52,7 +56,7 @@ STATIC void debug_print_affinity_info(const kbase_device *kbdev, const kbase_jd_
 				   js, nr_nss_ctxs_running, buff, buff2);
 }
 
-#endif /* MALI_DEBUG */
+#endif /* CONFIG_MALI_DEBUG */
 
 OSK_STATIC_INLINE mali_bool affinity_job_uses_high_cores( kbase_device *kbdev, kbase_jd_atom *katom )
 {
@@ -91,6 +95,7 @@ OSK_STATIC_INLINE mali_bool affinity_job_uses_high_cores( kbase_device *kbdev, k
 OSK_STATIC_INLINE mali_bool kbase_affinity_requires_split(kbase_device *kbdev)
 {
 	OSK_ASSERT( kbdev != NULL );
+	lockdep_assert_held(&kbdev->js_data.runpool_irq.lock);
 
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8987))
 	{
@@ -263,7 +268,7 @@ void kbase_js_choose_affinity(u64 *affinity, kbase_device *kbdev, kbase_jd_atom 
 		else
 		{
 			low_bitmap = shader_present_bitmap ^ high_bitmap;
-
+		
 			if ( core_req & (BASE_JD_REQ_COHERENT_GROUP | BASE_JD_REQ_SPECIFIC_COHERENT_GROUP))
 			{
 				/* low set of cores and req coherent group */
@@ -331,7 +336,7 @@ mali_bool kbase_js_affinity_would_violate( kbase_device *kbdev, int js, u64 affi
 	OSK_ASSERT( js <  BASE_JM_MAX_NR_SLOTS );
 	js_devdata = &kbdev->js_data;
 
-	OSK_MEMCPY( new_affinities, js_devdata->runpool_irq.slot_affinities, sizeof(js_devdata->runpool_irq.slot_affinities) );
+	memcpy( new_affinities, js_devdata->runpool_irq.slot_affinities, sizeof(js_devdata->runpool_irq.slot_affinities) );
 
 	new_affinities[ js ] |= affinity;
 
@@ -419,11 +424,11 @@ void kbase_js_affinity_submit_to_blocked_slots( kbase_device *kbdev )
 	OSK_ASSERT( kbdev != NULL );
 	js_devdata = &kbdev->js_data;
 
-	osk_mutex_lock( &js_devdata->runpool_mutex );
+	OSK_ASSERT( js_devdata->nr_user_contexts_running != 0 );
 
-	/* Must take a copy because submitting jobs will update this member
-	 * We don't take a lock here - a data barrier was issued beforehand */
+	/* Must take a copy because submitting jobs will update this member. */
 	slots = js_devdata->runpool_irq.slots_blocked_on_affinity;
+
 	while (slots)
 	{
 		int bitnum = 31 - osk_clz(slots);
@@ -432,20 +437,16 @@ void kbase_js_affinity_submit_to_blocked_slots( kbase_device *kbdev )
 
 		KBASE_TRACE_ADD_SLOT( kbdev, JS_AFFINITY_SUBMIT_TO_BLOCKED, NULL, NULL, 0u, bitnum);
 
-		osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
 		/* must update this before we submit, incase it's set again */
 		js_devdata->runpool_irq.slots_blocked_on_affinity &= ~bit;
-		osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
 
-		kbasep_js_try_run_next_job_on_slot( kbdev, bitnum );
+		kbasep_js_try_run_next_job_on_slot_nolock( kbdev, bitnum );
 
 		/* Don't re-read slots_blocked_on_affinity after this - it could loop for a long time */
 	}
-	osk_mutex_unlock( &js_devdata->runpool_mutex );
-
 }
 
-#if MALI_DEBUG != 0
+#ifdef CONFIG_MALI_DEBUG
 void kbase_js_debug_log_current_affinities( kbase_device *kbdev )
 {
 	kbasep_js_device_data *js_devdata;
@@ -459,4 +460,4 @@ void kbase_js_debug_log_current_affinities( kbase_device *kbdev )
 		KBASE_TRACE_ADD_SLOT_INFO( kbdev, JS_AFFINITY_CURRENT, NULL, NULL, 0u, slot_nr, (u32)js_devdata->runpool_irq.slot_affinities[slot_nr] );
 	}
 }
-#endif /* MALI_DEBUG != 0 */
+#endif /* CONFIG_MALI_DEBUG */

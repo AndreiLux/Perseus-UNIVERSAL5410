@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2010-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_pm.h
@@ -17,9 +21,11 @@
 #define _KBASE_PM_H_
 
 #include <kbase/src/common/mali_midg_regmap.h>
+#include <asm/atomic.h>
 
 #include "mali_kbase_pm_always_on.h"
 #include "mali_kbase_pm_demand.h"
+#include "mali_kbase_pm_coarse_demand.h"
 
 /* Frequency that DVFS clock frequency decisions should be made */
 #define KBASE_PM_DVFS_FREQUENCY                 250
@@ -41,6 +47,11 @@ typedef enum kbase_pm_core_type
 	KBASE_PM_CORE_SHADER = SHADER_PRESENT_LO,   /**< Shader cores */
 	KBASE_PM_CORE_TILER  = TILER_PRESENT_LO     /**< Tiler cores */
 } kbase_pm_core_type;
+
+/* Shift used for kbasep_pm_metrics_data.time_busy/idle - units of (1 << 8) ns 
+   This gives a maximum period between samples of 2^(32+8)/100 ns = slightly under 11s. 
+   Exceeding this will cause overflow */
+#define KBASE_PM_TIME_SHIFT			8
 
 /** Initialize the power management framework.
  *
@@ -163,6 +174,7 @@ typedef union kbase_pm_policy_data
 {
 	kbasep_pm_policy_always_on  always_on;
 	kbasep_pm_policy_demand     demand;
+	kbasep_pm_policy_coarse_demand coarse_demand;
 } kbase_pm_policy_data;
 
 /** Power policy structure.
@@ -209,17 +221,18 @@ typedef struct kbasep_pm_metrics_data
 	int                 vsync_hit;
 	int                 utilisation;
 
-	osk_ticks           time_period_start;
+	ktime_t             time_period_start;
 	u32                 time_busy;
 	u32                 time_idle;
 	mali_bool           gpu_active;
 
-	osk_spinlock_irq    lock;
+	spinlock_t    lock;
 
-	osk_timer           timer;
+	struct hrtimer      timer;
 	mali_bool           timer_active;
 
 	void *              platform_data;
+	struct kbase_device * kbdev;
 } kbasep_pm_metrics_data;
 
 /** A value for an atomic @ref kbase_pm_device_data::work_active,
@@ -250,39 +263,55 @@ typedef struct kbase_pm_device_data
 	/** The data needed for the current policy. This is considered private to the policy. */
 	kbase_pm_policy_data    policy_data;
 	/** The workqueue that the policy callbacks are executed on. */
-	osk_workq               workqueue;
+	struct workqueue_struct *workqueue;
 	/** A bit mask of events that are waiting to be delivered to the active policy. */
-	osk_atomic              pending_events;
+	atomic_t              pending_events;
 	/** The work unit that is enqueued onto the workqueue. */
-	osk_workq_work          work;
+	struct work_struct      work;
 	/** An atomic which tracks whether the work unit has been enqueued.
 	 * For list of possible values please refer to @ref kbase_pm_work_active_state.
 	 */
-	osk_atomic              work_active;
-	/** The wait queue for power up events. */
-	osk_waitq               power_up_waitqueue;
-	/** The wait queue for power down events. */
-	osk_waitq               power_down_waitqueue;
-	/** Wait queue for whether there is an outstanding event for the policy */
-	osk_waitq               policy_outstanding_event;
+	atomic_t                work_active;
+
+	/** Power state and a queue to wait for changes */
+	#define PM_POWER_STATE_OFF   1
+	#define PM_POWER_STATE_TRANS 2
+	#define PM_POWER_STATE_ON    3
+	int                     power_state;
+	wait_queue_head_t       power_state_wait;
+
 	/** Wait queue for whether the l2 cache has been powered as requested */
-	osk_waitq               l2_powered_waitqueue;
+	wait_queue_head_t       l2_powered_wait;
+	int                     l2_powered;
+
+	int                     no_outstanding_event;
+	wait_queue_head_t       no_outstanding_event_wait;
+
 	/** The reference count of active contexts on this device. */
 	int                     active_count;
 	/** Lock to protect active_count */
-	osk_spinlock_irq        active_count_lock;
+	spinlock_t        active_count_lock;
 	/** The reference count of active gpu cycle counter users */
 	int                     gpu_cycle_counter_requests;
 	/** Lock to protect gpu_cycle_counter_requests */
-	osk_spinlock_irq        gpu_cycle_counter_requests_lock;
+	spinlock_t        gpu_cycle_counter_requests_lock;
 	/** A bit mask identifying the shader cores that the power policy would like to be on.
 	 * The current state of the cores may be different, but there should be transitions in progress that will
 	 * eventually achieve this state (assuming that the policy doesn't change its mind in the mean time.
 	 */
 	u64                     desired_shader_state;
+	/** bit mask indicating which shader cores are currently in a power-on transition */
+	u64                     powering_on_shader_state;
 	/** A bit mask identifying the tiler cores that the power policy would like to be on.
 	 * @see kbase_pm_device_data:desired_shader_state */
 	u64                     desired_tiler_state;
+	/** bit mask indicating which tiler core are currently in a power-on transition */
+	u64                     powering_on_tiler_state;
+
+	/** bit mask indicating which l2-caches are currently in a power-on transition */
+	u64                     powering_on_l2_state;
+	/** bit mask indicating which l3-caches are currently in a power-on transition */
+	u64                     powering_on_l3_state;
 
 	/** Lock protecting the power state of the device.
 	 *
@@ -291,12 +320,15 @@ typedef struct kbase_pm_device_data
 	 * written to, to ensure that two threads do not conflict over the power transitions that the hardware should
 	 * make.
 	 */
-	osk_spinlock_irq        power_change_lock;
+	spinlock_t        power_change_lock;
+
+	/** This flag is set iff the GPU is powered as requested by the desired_xxx_state variables */
+	atomic_t              gpu_in_desired_state;
 
 	/** Set to true when the GPU is powered and register accesses are possible, false otherwise */
 	mali_bool               gpu_powered;
 	/** Spinlock that must be held when writing gpu_powered */
-	osk_spinlock_irq        gpu_powered_lock;
+	spinlock_t        gpu_powered_lock;
 
 	/** Structure to hold metrics for the GPU */
 	kbasep_pm_metrics_data  metrics;
@@ -841,6 +873,22 @@ void kbase_pm_register_access_disable(struct kbase_device *kbdev);
 
 void kbase_pm_request_l2_caches(struct kbase_device *kbdev);
 
+/** Queue mali_dvfs_work which performs GPU voltage/frequency scaling in mali_dvfs_event_proc
+ *
+ * @param kbdev    The kbase device structure for the device (must be a valid pointer)
+ *
+ * @return MALI_TRUE on success (currently no error handling present)
+ */
+int kbase_platform_dvfs_event(struct kbase_device *kbdev);
+
+/**  Get the GPU utilisation. Used to determine if the frequency/voltage needs to be scaled.
+ *
+ * @param kbdev    The kbase device structure for the device (must be a valid pointer)
+ *
+ * @return The current GPU utilisation
+ */
+int kbase_pm_get_dvfs_utilisation(struct kbase_device *kbdev);
+
 /** Release the use of l2 caches for all core groups and allow the power manager to
  *  power them down when necessary.
  *
@@ -854,13 +902,5 @@ void kbase_pm_request_l2_caches(struct kbase_device *kbdev);
  * @param kbdev    The kbase device structure for the device (must be a valid pointer)
  */
 void kbase_pm_release_l2_caches(struct kbase_device *kbdev);
-
-/** Queue mali_dvfs_work which performs GPU voltage/frequency scaling in mali_dvfs_event_proc
- *
- * @param kbdev    The kbase device structure for the device (must be a valid pointer)
- *
- * @return MALI_TRUE on success (currently no error handling present)
- */
-int kbase_platform_dvfs_event(struct kbase_device *kbdev);
 
 #endif /* _KBASE_PM_H_ */

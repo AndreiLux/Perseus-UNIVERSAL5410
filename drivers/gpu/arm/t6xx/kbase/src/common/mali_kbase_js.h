@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_js.h
@@ -181,8 +185,6 @@ mali_bool kbasep_js_add_job( kbase_context *kctx, kbase_jd_atom *atom );
  * obtained internally)
  * - it must \em not hold kbasep_js_device_data::runpool_mutex (as this could be
  obtained internally)
- * - it must \em not hold kbdev->jm_slots[ \a js ].lock (as this could be
- * obtained internally)
  *
  */
 void kbasep_js_remove_job( kbase_context *kctx, kbase_jd_atom *atom );
@@ -272,9 +274,17 @@ void kbasep_js_runpool_requeue_or_kill_ctx( kbase_device *kbdev, kbase_context *
  * context then it is re-enqueued to the Policy's Queue.
  *  - Otherwise, the context is still known to the scheduler, but remains absent
  * from the Policy Queue until a job is next added to it.
- * - Once the context is descheduled, this also handles scheduling in a new
- * context (if one is available), and if necessary, running a job from that new
- * context.
+ *
+ * Whilst the context is being descheduled, this also handles actions that
+ * cause more atoms to be run:
+ * - Attempt submitting atoms when the Context Attributes on the Runpool have
+ * changed. This is because the context being scheduled out could mean that
+ * there are more opportunities to run atoms.
+ * - Attempt submitting to a slot that was previously blocked due to affinity
+ * restrictions. This is usually only necessary when releasing a context
+ * happens as part of completing a previous job, but is harmless nonetheless.
+ * - Attempt scheduling in a new context (if one is available), and if necessary,
+ * running a job from that new context.
  *
  * Unlike retaining a context in the runpool, this function \b cannot be called
  * from IRQ context.
@@ -296,8 +306,28 @@ void kbasep_js_runpool_requeue_or_kill_ctx( kbase_device *kbdev, kbase_context *
 void kbasep_js_runpool_release_ctx( kbase_device *kbdev, kbase_context *kctx );
 
 /**
+ * @brief Variant of kbasep_js_runpool_release_ctx() that handles additional
+ * actions from completing an atom.
+ *
+ * This is usually called as part of completing an atom and releasing the
+ * refcount on the context held by the atom.
+ *
+ * Therefore, the extra actions carried out are part of handling actions queued
+ * on a completed atom, namely:
+ * - Retrying the submission on a particular slot, because we couldn't submit
+ * on that slot from an IRQ handler.
+ *
+ * The locking conditions of this function are the same as those for
+ * kbasep_js_runpool_release_ctx()
+ */
+void kbasep_js_runpool_release_ctx_and_handle_actions( kbase_device *kbdev,
+                                                       kbase_context *kctx,
+                                                       mali_bool retry_submit,
+                                                       int retry_jobslot );
+
+/**
  * @brief Try to submit the next job on a \b particular slot whilst in IRQ
- * context, and whilst the caller already holds the job-slot IRQ spinlock.
+ * context, and whilst the caller already holds the runpool IRQ spinlock.
  *
  * \a *submit_count will be checked against
  * KBASE_JS_MAX_JOB_SUBMIT_PER_SLOT_PER_IRQ to see whether too many jobs have
@@ -308,13 +338,12 @@ void kbasep_js_runpool_release_ctx( kbase_device *kbdev, kbase_context *kctx );
  *
  * The following locks must be held by the caller:
  * - kbasep_js_device_data::runpool_irq::lock
- * - kbdev->jm_slots[ \a js ].lock
  *
  * @return truthful (i.e. != MALI_FALSE) if there was space to submit in the
  * GPU, but we couldn't get a job from the Run Pool. This may be because the
  * Run Pool needs maintenence outside of IRQ context. Therefore, this indicates
  * that submission should be retried from a work-queue, by using
- * kbasep_js_try_run_next_job_on_slot().
+ * kbasep_js_try_run_next_job_on_slot_nolock()/kbase_js_try_run_jobs_on_slot().
  * @return MALI_FALSE if submission had no problems: the GPU is either already
  * full of jobs in the HEAD and NEXT registers, or we were able to get enough
  * jobs from the Run Pool to fill the GPU's HEAD and NEXT registers.
@@ -338,35 +367,32 @@ mali_bool kbasep_js_try_run_next_job_on_slot_irq_nolock( kbase_device *kbdev, in
  *
  * The following locking conditions are made on the caller:
  * - it must hold kbasep_js_device_data::runpool_mutex
- * - it must \em not hold kbasep_js_device_data::runpool_irq::lock (as this will be
- * obtained internally)
- * - it must \em not hold kbdev->jm_slots[ \a js ].lock (as this will be
- * obtained internally)
+ * - it must hold kbasep_js_device_data::runpool_irq::lock
+ *
+ * This must only be called whilst the GPU is powered - for example, when
+ * kbdev->jsdata.nr_user_contexts_running > 0.
  *
  * @note The caller \em might be holding one of the
  * kbasep_js_kctx_info::ctx::jsctx_mutex locks.
  *
  */
-void kbasep_js_try_run_next_job_on_slot( kbase_device *kbdev, int js );
+void kbasep_js_try_run_next_job_on_slot_nolock( kbase_device *kbdev, int js );
 
 /**
  * @brief Try to submit the next job for each slot in the system, outside of IRQ context
  *
- * This will internally call kbasep_js_try_run_next_job_on_slot(), so the same
+ * This will internally call kbasep_js_try_run_next_job_on_slot_nolock(), so similar
  * locking conditions on the caller are required.
  *
  * The following locking conditions are made on the caller:
  * - it must hold kbasep_js_device_data::runpool_mutex
- * - it must \em not hold kbasep_js_device_data::runpool_irq::lock (as this will be
- * obtained internally)
- * - it must \em not hold kbdev->jm_slots[ \a js ].lock (as this will be
- * obtained internally)
+ * - it must hold kbasep_js_device_data::runpool_irq::lock
  *
  * @note The caller \em might be holding one of the
  * kbasep_js_kctx_info::ctx::jsctx_mutex locks.
  *
  */
-void kbasep_js_try_run_next_job( kbase_device *kbdev );
+void kbasep_js_try_run_next_job_nolock( kbase_device *kbdev );
 
 /**
  * @brief Try to schedule the next context onto the Run Pool
@@ -376,7 +402,7 @@ void kbasep_js_try_run_next_job( kbase_device *kbdev );
  * submit this to the Run Pool.
  *
  * If the scheduling succeeds, then it also makes a call to
- * kbasep_js_try_run_next_job(), in case the new context has jobs matching the
+ * kbasep_js_try_run_next_job_nolock(), in case the new context has jobs matching the
  * job slot requirements, but no other currently scheduled context has such
  * jobs.
  *
@@ -392,8 +418,6 @@ void kbasep_js_try_run_next_job( kbase_device *kbdev );
  * - it must \em not hold kbasep_jd_device_data::queue_mutex (again, it's used internally).
  * - it must \em not hold kbasep_js_kctx_info::ctx::jsctx_mutex, because it will
  * be used internally.
- * - it must \em not hold kbdev->jm_slots[ \a js ].lock (as this will be
- * obtained internally)
  *
  */
 void kbasep_js_try_schedule_head_ctx( kbase_device *kbdev );
@@ -416,8 +440,6 @@ void kbasep_js_try_schedule_head_ctx( kbase_device *kbdev );
  * - it must \em not hold kbasep_jd_device_data::queue_mutex (again, it's used internally).
  * - it must \em not hold kbasep_js_kctx_info::ctx::jsctx_mutex, because it will
  * be used internally.
- * - it must \em not hold kbdev->jm_slots[ \a js ].lock (as this will be
- * obtained internally)
  *
  */
 void kbasep_js_schedule_privileged_ctx( kbase_device *kbdev, kbase_context *kctx );
@@ -464,11 +486,9 @@ void kbasep_js_release_privileged_ctx( kbase_device *kbdev, kbase_context *kctx 
  * 'fairness', but can still increase latency between contexts.
  *
  * The following locking conditions are made on the caller:
- * - it must \em not hold the kbasep_js_device_data::runpoool_irq::lock, because
- * it will be used internally.
- * - it must hold kbdev->jm_slots[ \a slot_nr ].lock
+ * - it must hold kbasep_js_device_data::runpoool_irq::lock
  */
-void kbasep_js_job_done_slot_irq( kbase_jd_atom *katom, int slot_nr, kbasep_js_tick *end_timestamp, mali_bool start_new_jobs );
+void kbasep_js_job_done_slot_irq( kbase_jd_atom *katom, int slot_nr, ktime_t *end_timestamp, mali_bool start_new_jobs );
 
 /**
  * @brief Try to submit the next job on each slot
@@ -476,9 +496,21 @@ void kbasep_js_job_done_slot_irq( kbase_jd_atom *katom, int slot_nr, kbasep_js_t
  * The following locks may be used:
  * - kbasep_js_device_data::runpool_mutex
  * - kbasep_js_device_data::runpool_irq::lock
- * - bdev->jm_slots[ \a js ].lock
  */
 void kbase_js_try_run_jobs( kbase_device *kbdev );
+
+/**
+ * @brief Try to submit the next job on a specfic slot
+ *
+ * The following locking conditions are made on the caller:
+ *
+ * - it must \em not hold kbasep_js_device_data::runpool_mutex (as this will be
+ * obtained internally)
+ * - it must \em not hold kbasep_js_device_data::runpool_irq::lock (as this
+ * will be obtained internally)
+ *
+ */
+void kbase_js_try_run_jobs_on_slot( kbase_device *kbdev, int js );
 
 /**
  * @brief Handle releasing cores for power management and affinity management,
@@ -614,6 +646,7 @@ static INLINE void kbasep_js_set_job_retry_submit_slot( kbase_jd_atom *atom, int
  */
 static INLINE int kbasep_js_debug_check_ctx_refcount( kbase_device *kbdev, kbase_context *kctx )
 {
+	unsigned long flags;
 	kbasep_js_device_data *js_devdata;
 	int result = -1;
 	int as_nr;
@@ -622,13 +655,13 @@ static INLINE int kbasep_js_debug_check_ctx_refcount( kbase_device *kbdev, kbase
 	OSK_ASSERT( kctx != NULL );
 	js_devdata = &kbdev->js_data;
 
-	osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
+	spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
 	as_nr = kctx->as_nr;
 	if ( as_nr != KBASEP_AS_NR_INVALID )
 	{
 		result = js_devdata->runpool_irq.per_as_data[as_nr].as_busy_refcount;
 	}
-	osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
+	spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
 
 	return result;
 }
@@ -652,6 +685,7 @@ static INLINE int kbasep_js_debug_check_ctx_refcount( kbase_device *kbdev, kbase
  */
 static INLINE kbase_context* kbasep_js_runpool_lookup_ctx_noretain( kbase_device *kbdev, int as_nr )
 {
+	unsigned long flags;
 	kbasep_js_device_data *js_devdata;
 	kbase_context *found_kctx;
 	kbasep_js_per_as_data *js_per_as_data;
@@ -661,57 +695,14 @@ static INLINE kbase_context* kbasep_js_runpool_lookup_ctx_noretain( kbase_device
 	js_devdata = &kbdev->js_data;
 	js_per_as_data = &js_devdata->runpool_irq.per_as_data[as_nr];
 
-	osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
+	spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
 
 	found_kctx = js_per_as_data->kctx;
 	OSK_ASSERT( found_kctx == NULL || js_per_as_data->as_busy_refcount > 0 );
 
-	osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
+	spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
 
 	return found_kctx;
-}
-
-
-/**
- * @note MIDBASE-769: OSK to add high resolution timer
- */
-static INLINE kbasep_js_tick kbasep_js_get_js_ticks( void )
-{
-	return osk_time_now();
-}
-
-/**
- * Supports about an hour worth of time difference, allows the underlying
- * clock to be more/less accurate than microseconds
- *
- * @note MIDBASE-769: OSK to add high resolution timer
- */
-static INLINE u32 kbasep_js_convert_js_ticks_to_us( kbasep_js_tick js_tick )
-{
-	return (js_tick * 10000u) / osk_time_mstoticks(10u);
-}
-
-/**
- * Supports about an hour worth of time difference, allows the underlying
- * clock to be more/less accurate than microseconds
- *
- * @note MIDBASE-769: OSK to add high resolution timer
- */
-static INLINE kbasep_js_tick kbasep_js_convert_js_us_to_ticks( u32 us )
-{
-	return (us * (kbasep_js_tick)osk_time_mstoticks(1000u)) / 1000000u;
-}
-/**
- * Determine if ticka comes after tickb
- *
- * @note MIDBASE-769: OSK to add high resolution timer
- */
-static INLINE mali_bool kbasep_js_ticks_after( kbasep_js_tick ticka, kbasep_js_tick tickb )
-{
-	kbasep_js_tick tick_diff = ticka - tickb;
-	const kbasep_js_tick wrapvalue = ((kbasep_js_tick)1u) << ((sizeof(kbasep_js_tick)*8)-1);
-
-	return (mali_bool)(tick_diff < wrapvalue);
 }
 
 /**
@@ -722,7 +713,7 @@ static INLINE mali_bool kbasep_js_ticks_after( kbasep_js_tick ticka, kbasep_js_t
  * e.g.: when you need the number of cycles to guarantee you won't wait for
  * longer than 'us' time (you might have a shorter wait).
  */
-static INLINE kbasep_js_gpu_tick kbasep_js_convert_us_to_gpu_ticks_min_freq( kbase_device *kbdev, u32 us )
+static INLINE u32 kbasep_js_convert_us_to_gpu_ticks_min_freq( kbase_device *kbdev, u32 us )
 {
 	u32 gpu_freq = kbdev->gpu_props.props.core_props.gpu_freq_khz_min;
 	OSK_ASSERT( 0!= gpu_freq );
@@ -737,11 +728,11 @@ static INLINE kbasep_js_gpu_tick kbasep_js_convert_us_to_gpu_ticks_min_freq( kba
  * e.g.: When you need the number of cycles to guarantee you'll wait at least
  * 'us' amount of time (but you might wait longer).
  */
-static INLINE kbasep_js_gpu_tick kbasep_js_convert_us_to_gpu_ticks_max_freq( kbase_device *kbdev, u32 us )
+static INLINE u32 kbasep_js_convert_us_to_gpu_ticks_max_freq( kbase_device *kbdev, u32 us )
 {
 	u32 gpu_freq = kbdev->gpu_props.props.core_props.gpu_freq_khz_max;
 	OSK_ASSERT( 0!= gpu_freq );
-	return (us * (kbasep_js_gpu_tick)(gpu_freq / 1000));
+	return (us * (u32)(gpu_freq / 1000));
 }
 
 /**
@@ -753,7 +744,7 @@ static INLINE kbasep_js_gpu_tick kbasep_js_convert_us_to_gpu_ticks_max_freq( kba
  * take (you guarantee that you won't wait any longer than this, but it may
  * be shorter).
  */
-static INLINE u32 kbasep_js_convert_gpu_ticks_to_us_min_freq( kbase_device *kbdev, kbasep_js_gpu_tick ticks )
+static INLINE u32 kbasep_js_convert_gpu_ticks_to_us_min_freq( kbase_device *kbdev, u32 ticks )
 {
 	u32 gpu_freq = kbdev->gpu_props.props.core_props.gpu_freq_khz_min;
 	OSK_ASSERT( 0!= gpu_freq );
@@ -768,7 +759,7 @@ static INLINE u32 kbasep_js_convert_gpu_ticks_to_us_min_freq( kbase_device *kbde
  * e.g.: When you need to know the best-case wait for 'tick' cycles (you
  * guarantee to be waiting for at least this long, but it may be longer).
  */
-static INLINE u32 kbasep_js_convert_gpu_ticks_to_us_max_freq( kbase_device *kbdev, kbasep_js_gpu_tick ticks )
+static INLINE u32 kbasep_js_convert_gpu_ticks_to_us_max_freq( kbase_device *kbdev, u32 ticks )
 {
 	u32 gpu_freq = kbdev->gpu_props.props.core_props.gpu_freq_khz_max;
 	OSK_ASSERT( 0!= gpu_freq );

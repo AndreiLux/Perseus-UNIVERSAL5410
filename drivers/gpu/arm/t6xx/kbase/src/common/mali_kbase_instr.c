@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_instr.c
@@ -39,6 +43,7 @@ static void kbasep_instr_hwcnt_cacheclean(kbase_device *kbdev)
  */
 mali_error kbase_instr_hwcnt_enable(kbase_context * kctx, kbase_uk_hwcnt_setup * setup)
 {
+	unsigned long flags;
 	mali_error err = MALI_ERROR_FUNCTION_FAILED;
 	kbasep_js_device_data *js_devdata;
 	mali_bool access_allowed;
@@ -67,25 +72,33 @@ mali_error kbase_instr_hwcnt_enable(kbase_context * kctx, kbase_uk_hwcnt_setup *
 		goto out;
 	}
 
-
 	/* Mark the context as active so the GPU is kept turned on */
 	kbase_pm_context_active(kbdev);
 
-	osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 
 	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING)
 	{
 		/* GPU is being reset*/
-		osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
-		osk_waitq_wait(&kbdev->hwcnt.waitqueue);
-		osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+		spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
+		wait_event(kbdev->hwcnt.wait, kbdev->hwcnt.triggered != 0);
+		spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 	}
 
 
 	if (kbdev->hwcnt.state != KBASE_INSTR_STATE_DISABLED)
 	{
 		/* Instrumentation is already enabled */
-		osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+		spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
+		kbase_pm_context_idle(kbdev);
+		goto out;
+	}
+
+	if ( MALI_ERROR_NONE != kbase_pm_request_cores(kbdev,
+						   kbase_pm_get_present_cores(kbdev, KBASE_PM_CORE_SHADER ),
+						   kbase_pm_get_present_cores(kbdev, KBASE_PM_CORE_TILER ) ) )
+	{
+		spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 		kbase_pm_context_idle(kbdev);
 		goto out;
 	}
@@ -101,14 +114,14 @@ mali_error kbase_instr_hwcnt_enable(kbase_context * kctx, kbase_uk_hwcnt_setup *
 
 	/* Precleaning so that state does not transition to IDLE */
 	kbdev->hwcnt.state = KBASE_INSTR_STATE_PRECLEANING;
-	osk_waitq_clear(&kbdev->hwcnt.waitqueue);
+	kbdev->hwcnt.triggered = 0;
 
-	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 
 	/* Clean&invalidate the caches so we're sure the mmu tables for the dump buffer is valid */
 	kbasep_instr_hwcnt_cacheclean(kbdev);
 	/* Wait for cacheclean to complete */
-	osk_waitq_wait(&kbdev->hwcnt.waitqueue);
+	wait_event(kbdev->hwcnt.wait, kbdev->hwcnt.triggered != 0);
 	OSK_ASSERT(kbdev->hwcnt.state == KBASE_INSTR_STATE_CLEANED);
 
 	/* Schedule the context in */
@@ -129,20 +142,21 @@ mali_error kbase_instr_hwcnt_enable(kbase_context * kctx, kbase_uk_hwcnt_setup *
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_CONFIG), (kctx->as_nr << PRFCNT_CONFIG_AS_SHIFT) | PRFCNT_CONFIG_MODE_MANUAL, kctx);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_TILER_EN),    setup->tiler_bm,                 kctx);
 
-	osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 
 	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING)
 	{
 		/* GPU is being reset*/
-		osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
-		osk_waitq_wait(&kbdev->hwcnt.waitqueue);
-		osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+		spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
+		wait_event(kbdev->hwcnt.wait, kbdev->hwcnt.triggered != 0);
+		spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 	}
 
 	kbdev->hwcnt.state = KBASE_INSTR_STATE_IDLE;
-	osk_waitq_set(&kbdev->hwcnt.waitqueue);
+	kbdev->hwcnt.triggered = 1;
+	wake_up(&kbdev->hwcnt.wait);
 
-	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 
 	err = MALI_ERROR_NONE;
 
@@ -160,6 +174,7 @@ KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_enable)
  */
 mali_error kbase_instr_hwcnt_disable(kbase_context * kctx)
 {
+	unsigned long flags;
 	mali_error err = MALI_ERROR_FUNCTION_FAILED;
 	u32 irq_mask;
 	kbase_device *kbdev;
@@ -170,19 +185,19 @@ mali_error kbase_instr_hwcnt_disable(kbase_context * kctx)
 
 	while (1)
 	{
-		osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+		spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 
 		if (kbdev->hwcnt.state == KBASE_INSTR_STATE_DISABLED)
 		{
 			/* Instrumentation is not enabled */
-			osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+			spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 			goto out;
 		}
 
 		if (kbdev->hwcnt.kctx != kctx)
 		{
 			/* Instrumentation has been setup for another context */
-			osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+			spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 			goto out;
 		}
 
@@ -191,14 +206,16 @@ mali_error kbase_instr_hwcnt_disable(kbase_context * kctx)
 			break;
 		}
 
-		osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+		spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 
 		/* Ongoing dump/setup - wait for its completion */
-		osk_waitq_wait(&kbdev->hwcnt.waitqueue);
+		wait_event(kbdev->hwcnt.wait, kbdev->hwcnt.triggered != 0);
+		
+
 	}
 
 	kbdev->hwcnt.state = KBASE_INSTR_STATE_DISABLED;
-	osk_waitq_clear(&kbdev->hwcnt.waitqueue);
+	kbdev->hwcnt.triggered = 0;
 
 	/* Disable interrupt */
 	irq_mask = kbase_reg_read(kbdev,GPU_CONTROL_REG(GPU_IRQ_MASK),NULL);
@@ -210,7 +227,11 @@ mali_error kbase_instr_hwcnt_disable(kbase_context * kctx)
 	kbdev->hwcnt.kctx = NULL;
 	kbdev->hwcnt.addr = 0ULL;
 
-	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+	kbase_pm_unrequest_cores(kbdev,
+						   kbase_pm_get_present_cores(kbdev, KBASE_PM_CORE_SHADER ),
+						   kbase_pm_get_present_cores(kbdev, KBASE_PM_CORE_TILER ) );
+
+	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 
 	/* Release the context, this implicitly (and indirectly) calls kbase_pm_context_idle */
 	kbasep_js_release_privileged_ctx(kbdev, kctx);
@@ -263,6 +284,7 @@ out:
  */
 mali_error kbase_instr_hwcnt_dump_irq(kbase_context * kctx)
 {
+	unsigned long flags;
 	mali_error err = MALI_ERROR_FUNCTION_FAILED;
 	kbase_device *kbdev;
 
@@ -270,7 +292,7 @@ mali_error kbase_instr_hwcnt_dump_irq(kbase_context * kctx)
 	kbdev = kctx->kbdev;
 	OSK_ASSERT(NULL != kbdev);
 
-	osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 
 	OSK_ASSERT(kbdev->hwcnt.state != KBASE_INSTR_STATE_RESETTING);
 
@@ -286,7 +308,7 @@ mali_error kbase_instr_hwcnt_dump_irq(kbase_context * kctx)
 		goto unlock;
 	}
 
-	osk_waitq_clear(&kbdev->hwcnt.waitqueue);
+	kbdev->hwcnt.triggered = 0;
 
 	/* Mark that we're dumping - the PF handler can signal that we faulted */
 	kbdev->hwcnt.state = KBASE_INSTR_STATE_DUMPING;
@@ -303,7 +325,7 @@ mali_error kbase_instr_hwcnt_dump_irq(kbase_context * kctx)
 	err = MALI_ERROR_NONE;
 
 unlock:
-	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 	return err;
 }
 KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_dump_irq)
@@ -318,6 +340,7 @@ KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_dump_irq)
  */
 mali_bool kbase_instr_hwcnt_dump_complete(kbase_context * kctx, mali_bool *success)
 {
+	unsigned long flags;
 	mali_bool complete = MALI_FALSE;
 	kbase_device *kbdev;
 
@@ -326,7 +349,7 @@ mali_bool kbase_instr_hwcnt_dump_complete(kbase_context * kctx, mali_bool *succe
 	OSK_ASSERT(NULL != kbdev);
 	OSK_ASSERT(NULL != success);
 
-	osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 
 	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_IDLE)
 	{
@@ -340,7 +363,7 @@ mali_bool kbase_instr_hwcnt_dump_complete(kbase_context * kctx, mali_bool *succe
 		kbdev->hwcnt.state = KBASE_INSTR_STATE_IDLE;
 	}
 
-	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 
 	return complete;
 }
@@ -351,6 +374,7 @@ KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_dump_complete)
  */
 mali_error kbase_instr_hwcnt_dump(kbase_context * kctx)
 {
+	unsigned long flags;
 	mali_error err = MALI_ERROR_FUNCTION_FAILED;
 	kbase_device *kbdev;
 
@@ -366,16 +390,16 @@ mali_error kbase_instr_hwcnt_dump(kbase_context * kctx)
 	}
 
 	/* Wait for dump & cacheclean to complete */
-	osk_waitq_wait(&kbdev->hwcnt.waitqueue);
+	wait_event(kbdev->hwcnt.wait, kbdev->hwcnt.triggered != 0);
 
-	osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 
 	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING)
 	{
 		/* GPU is being reset*/
-		osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
-		osk_waitq_wait(&kbdev->hwcnt.waitqueue);
-		osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+		spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
+		wait_event(kbdev->hwcnt.wait, kbdev->hwcnt.triggered != 0);
+		spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 	}
 
 	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_FAULT)
@@ -390,7 +414,7 @@ mali_error kbase_instr_hwcnt_dump(kbase_context * kctx)
 		err = MALI_ERROR_NONE;
 	}
 
-	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 out:
 	return err;
 }
@@ -401,6 +425,7 @@ KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_dump)
  */
 mali_error kbase_instr_hwcnt_clear(kbase_context * kctx)
 {
+	unsigned long flags;
 	mali_error err = MALI_ERROR_FUNCTION_FAILED;
 	kbase_device *kbdev;
 
@@ -408,14 +433,14 @@ mali_error kbase_instr_hwcnt_clear(kbase_context * kctx)
 	kbdev = kctx->kbdev;
 	OSK_ASSERT(NULL != kbdev);
 
-	osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 
 	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING)
 	{
 		/* GPU is being reset*/
-		osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
-		osk_waitq_wait(&kbdev->hwcnt.waitqueue);
-		osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+		spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
+		wait_event(kbdev->hwcnt.wait, kbdev->hwcnt.triggered != 0);
+		spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 	}
 
 	/* Check it's the context previously set up and we're not already dumping */
@@ -431,7 +456,7 @@ mali_error kbase_instr_hwcnt_clear(kbase_context * kctx)
 	err = MALI_ERROR_NONE;
 
 out:
-	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 	return err;
 }
 KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_clear)
@@ -443,7 +468,8 @@ void kbase_instr_hwcnt_sample_done(kbase_device *kbdev)
 {
 	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_FAULT)
 	{
-		osk_waitq_set(&kbdev->hwcnt.waitqueue);
+		kbdev->hwcnt.triggered = 1;
+		wake_up(&kbdev->hwcnt.wait);
 	}
 	else
 	{
@@ -478,6 +504,8 @@ void kbase_clean_caches_done(kbase_device *kbdev)
 			kbdev->hwcnt.state = KBASE_INSTR_STATE_IDLE;
 		}
 
-		osk_waitq_set(&kbdev->hwcnt.waitqueue);
+		kbdev->hwcnt.triggered = 1;
+		wake_up(&kbdev->hwcnt.wait);
+
 	}
 }

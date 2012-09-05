@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2010-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_pm_demand.c
@@ -33,7 +37,7 @@ static void demand_power_up(kbase_device *kbdev)
 	/* Turn clocks and interrupts on */
 	kbase_pm_clock_on(kbdev);
 	kbase_pm_enable_interrupts(kbdev);
-
+	
 	kbase_pm_check_transitions(kbdev);
 
 	kbdev->pm.policy_data.demand.state = KBASEP_PM_DEMAND_STATE_POWERING_UP;
@@ -92,18 +96,9 @@ static void demand_state_changed(kbase_device *kbdev)
 {
 	kbasep_pm_policy_demand *data = &kbdev->pm.policy_data.demand;
 
-	switch(data->state) {
-		case KBASEP_PM_DEMAND_STATE_CHANGING_POLICY:
-		case KBASEP_PM_DEMAND_STATE_POWERING_UP:
-		case KBASEP_PM_DEMAND_STATE_POWERING_DOWN:
-			if (kbase_pm_get_pwr_active(kbdev)) {
-				/* Cores are still transitioning - ignore the event */
-				return;
-			}
-			break;
-		default:
-			/* Must not call kbase_pm_get_pwr_active here as the clock may be turned off */
-			break;
+	if (kbase_pm_get_pwr_active(kbdev)) {
+		/* Cores are still transitioning - ignore the event */
+		return;
 	}
 
 	switch(data->state)
@@ -149,7 +144,7 @@ static void demand_state_changed(kbase_device *kbdev)
 static void demand_event(kbase_device *kbdev, kbase_pm_event event)
 {
 	kbasep_pm_policy_demand *data = &kbdev->pm.policy_data.demand;
-
+	
 	switch(event)
 	{
 		case KBASE_PM_EVENT_POLICY_INIT:
@@ -175,7 +170,7 @@ static void demand_event(kbase_device *kbdev, kbase_pm_event event)
 				case KBASEP_PM_DEMAND_STATE_POWERED_UP:
 					kbase_pm_power_up_done(kbdev);
 					break;
-				default:
+				default:	
 					demand_power_up(kbdev);
 			}
 			break;
@@ -188,7 +183,7 @@ static void demand_event(kbase_device *kbdev, kbase_pm_event event)
 				case KBASEP_PM_DEMAND_STATE_POWERED_DOWN:
 					kbase_pm_power_down_done(kbdev);
 					break;
-				default:
+				default:	
 					demand_power_down(kbdev);
 			}
 			break;

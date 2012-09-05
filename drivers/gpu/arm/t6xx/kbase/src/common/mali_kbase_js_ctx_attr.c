@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 #include <kbase/src/common/mali_kbase.h>
 
 /*
@@ -24,8 +28,8 @@
  *
  * @return MALI_TRUE indicates a change in ctx attributes state of the runpool.
  * In this state, the scheduler might be able to submit more jobs than
- * previously, and so the caller should ensure kbasep_js_try_run_next_job() is
- * called sometime later.
+ * previously, and so the caller should ensure kbasep_js_try_run_next_job_nolock()
+ * or similar is called sometime later.
  * @return MALI_FALSE indicates no change in ctx attributes state of the runpool.
  */
 STATIC mali_bool kbasep_js_ctx_attr_runpool_retain_attr( kbase_device *kbdev,
@@ -41,6 +45,9 @@ STATIC mali_bool kbasep_js_ctx_attr_runpool_retain_attr( kbase_device *kbdev,
 	OSK_ASSERT( attribute < KBASEP_JS_CTX_ATTR_COUNT );
 	js_devdata = &kbdev->js_data;
 	js_kctx_info = &kctx->jctx.sched_info;
+
+	BUG_ON(!mutex_is_locked( &js_kctx_info->ctx.jsctx_mutex ));
+	lockdep_assert_held( &kbdev->js_data.runpool_irq.lock );
 
 	OSK_ASSERT( js_kctx_info->ctx.is_scheduled != MALI_FALSE );
 
@@ -71,8 +78,8 @@ STATIC mali_bool kbasep_js_ctx_attr_runpool_retain_attr( kbase_device *kbdev,
  *
  * @return MALI_TRUE indicates a change in ctx attributes state of the runpool.
  * In this state, the scheduler might be able to submit more jobs than
- * previously, and so the caller should ensure kbasep_js_try_run_next_job() is
- * called sometime later.
+ * previously, and so the caller should ensure kbasep_js_try_run_next_job_nolock()
+ * or similar is called sometime later.
  * @return MALI_FALSE indicates no change in ctx attributes state of the runpool.
  */
 STATIC mali_bool kbasep_js_ctx_attr_runpool_release_attr( kbase_device *kbdev,
@@ -89,6 +96,8 @@ STATIC mali_bool kbasep_js_ctx_attr_runpool_release_attr( kbase_device *kbdev,
 	js_devdata = &kbdev->js_data;
 	js_kctx_info = &kctx->jctx.sched_info;
 
+	BUG_ON(!mutex_is_locked( &js_kctx_info->ctx.jsctx_mutex ));
+	lockdep_assert_held( &kbdev->js_data.runpool_irq.lock );
 	OSK_ASSERT( js_kctx_info->ctx.is_scheduled != MALI_FALSE );
 
 	if ( kbasep_js_ctx_attr_is_attr_on_ctx( kctx, attribute ) != MALI_FALSE )
@@ -131,6 +140,7 @@ STATIC mali_bool kbasep_js_ctx_attr_ctx_retain_attr( kbase_device *kbdev,
 	OSK_ASSERT( attribute < KBASEP_JS_CTX_ATTR_COUNT );
 	js_kctx_info = &kctx->jctx.sched_info;
 
+	BUG_ON(!mutex_is_locked( &js_kctx_info->ctx.jsctx_mutex ));
 	OSK_ASSERT( js_kctx_info->ctx.ctx_attr_ref_count[ attribute ] < U32_MAX );
 
 	++(js_kctx_info->ctx.ctx_attr_ref_count[ attribute ]);
@@ -138,6 +148,7 @@ STATIC mali_bool kbasep_js_ctx_attr_ctx_retain_attr( kbase_device *kbdev,
 	if ( js_kctx_info->ctx.is_scheduled != MALI_FALSE
 		 && js_kctx_info->ctx.ctx_attr_ref_count[ attribute ] == 1 )
 	{
+		lockdep_assert_held( &kbdev->js_data.runpool_irq.lock );
 		/* Only ref-count the attribute on the runpool for the first time this contexts sees this attribute */
 		KBASE_TRACE_ADD( kbdev, JS_CTX_ATTR_NOW_ON_CTX, kctx, NULL, 0u, attribute );
 		runpool_state_changed = kbasep_js_ctx_attr_runpool_retain_attr( kbdev, kctx, attribute );
@@ -170,11 +181,13 @@ STATIC mali_bool kbasep_js_ctx_attr_ctx_release_attr( kbase_device *kbdev,
 	OSK_ASSERT( attribute < KBASEP_JS_CTX_ATTR_COUNT );
 	js_kctx_info = &kctx->jctx.sched_info;
 
+	BUG_ON(!mutex_is_locked( &js_kctx_info->ctx.jsctx_mutex ));
 	OSK_ASSERT( js_kctx_info->ctx.ctx_attr_ref_count[ attribute ] > 0 );
 
 	if ( js_kctx_info->ctx.is_scheduled != MALI_FALSE
 		 && js_kctx_info->ctx.ctx_attr_ref_count[ attribute ] == 1 )
 	{
+		lockdep_assert_held( &kbdev->js_data.runpool_irq.lock );
 		/* Only de-ref-count the attribute on the runpool when this is the last ctx-reference to it */
 		runpool_state_changed = kbasep_js_ctx_attr_runpool_release_attr( kbdev, kctx, attribute );
 		KBASE_TRACE_ADD( kbdev, JS_CTX_ATTR_NOW_OFF_CTX, kctx, NULL, 0u, attribute );

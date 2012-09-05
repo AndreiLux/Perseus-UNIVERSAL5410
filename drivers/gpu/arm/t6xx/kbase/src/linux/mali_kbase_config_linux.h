@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 #ifndef _KBASE_CONFIG_LINUX_H_
 #define _KBASE_CONFIG_LINUX_H_
@@ -17,7 +21,7 @@
 #define PLATFORM_CONFIG_RESOURCE_COUNT 4
 #define PLATFORM_CONFIG_IRQ_RES_COUNT  3
 
-#if !MALI_LICENSE_IS_GPL || MALI_FAKE_PLATFORM_DEVICE
+#ifdef CONFIG_MALI_PLATFORM_FAKE
 /**
  * @brief Convert data in kbase_io_resources struct to Linux-specific resources
  *
@@ -29,7 +33,7 @@
  * @param[out] linux_resources  Pointer to output array of Linux resource structures
  */
 void kbasep_config_parse_io_resources(const kbase_io_resources *io_resource, struct resource *linux_resources);
-#endif /* !MALI_LICENSE_IS_GPL || MALI_FAKE_PLATFORM_DEVICE */
+#endif /* CONFIG_MALI_PLATFORM_FAKE */
 
 
 #endif /* _KBASE_CONFIG_LINUX_H_ */

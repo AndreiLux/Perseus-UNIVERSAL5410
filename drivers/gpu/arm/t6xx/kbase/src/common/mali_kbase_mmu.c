@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2010-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_mmu.c
@@ -58,15 +62,16 @@ static u32 make_multiple(u32 minimum, u32 multiple)
 
 static void mmu_mask_reenable(kbase_device * kbdev, kbase_context *kctx, kbase_as * as)
 {
+	unsigned long flags;
 	u32 mask;
-	osk_spinlock_irq_lock(&kbdev->mmu_mask_change);
+	spin_lock_irqsave(&kbdev->mmu_mask_change, flags);
 	mask = kbase_reg_read(kbdev, MMU_REG(MMU_IRQ_MASK), kctx);
 	mask |= ((1UL << as->number) | (1UL << (MMU_REGS_BUS_ERROR_FLAG(as->number))));
 	kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_MASK), mask, kctx);
-	osk_spinlock_irq_unlock(&kbdev->mmu_mask_change);
+	spin_unlock_irqrestore(&kbdev->mmu_mask_change, flags);
 }
 
-static void page_fault_worker(osk_workq_work *data)
+static void page_fault_worker(struct work_struct *data)
 {
 	u64 fault_pfn;
 	u32 new_pages;
@@ -80,11 +85,11 @@ static void page_fault_worker(osk_workq_work *data)
 
 	u32 fault_status;
 
-	faulting_as = CONTAINER_OF(data, kbase_as, work_pagefault);
-	fault_pfn = faulting_as->fault_addr >> OSK_PAGE_SHIFT;
+	faulting_as = container_of(data, kbase_as, work_pagefault);
+	fault_pfn = faulting_as->fault_addr >> PAGE_SHIFT;
 	as_no = faulting_as->number;
 
-	kbdev = CONTAINER_OF( faulting_as, kbase_device, as[as_no] );
+	kbdev = container_of( faulting_as, kbase_device, as[as_no] );
 
 	/* Grab the context that was already refcounted in kbase_mmu_interrupt().
 	 * Therefore, it cannot be scheduled out of this AS until we explicitly release it
@@ -97,13 +102,13 @@ static void page_fault_worker(osk_workq_work *data)
 		/* Address space has no context, terminate the work */
 		u32 reg;
 		/* AS transaction begin */
-		osk_mutex_lock(&faulting_as->transaction_mutex);
+		mutex_lock(&faulting_as->transaction_mutex);
 		reg = kbase_reg_read(kbdev, MMU_AS_REG(as_no, ASn_TRANSTAB_LO), NULL);
 		reg = (reg & (~(u32)MMU_TRANSTAB_ADRMODE_MASK)) | ASn_TRANSTAB_ADRMODE_UNMAPPED;
 		kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_TRANSTAB_LO), reg, NULL);
 		kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_COMMAND), ASn_COMMAND_UPDATE, NULL);
 		kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_CLEAR), (1UL << as_no), NULL);
-		osk_mutex_unlock(&faulting_as->transaction_mutex);
+		mutex_unlock(&faulting_as->transaction_mutex);
 		/* AS transaction end */
 
 		mmu_mask_reenable(kbdev, NULL, faulting_as);
@@ -143,7 +148,7 @@ static void page_fault_worker(osk_workq_work *data)
 	/* we know the result fit in a u32 due to kbase_region_tracker_find_region_enclosing_address
 	 * validating the fault_adress to be within a u32 from the start_pfn */
 	fault_rel_pfn = fault_pfn - region->start_pfn;
-
+	
 	if (fault_rel_pfn < region->nr_alloc_pages)
 	{
 		OSK_PRINT_WARN(OSK_BASE_MMU, "Fault in allocated region of growable TMEM: Ignoring");
@@ -176,10 +181,10 @@ static void page_fault_worker(osk_workq_work *data)
 		OSK_ASSERT(region->nr_alloc_pages <= region->nr_pages);
 
 		/* AS transaction begin */
-		osk_mutex_lock(&faulting_as->transaction_mutex);
+		mutex_lock(&faulting_as->transaction_mutex);
 
 		/* Lock the VA region we're about to update */
-		lock_addr = lock_region(kbdev, faulting_as->fault_addr >> OSK_PAGE_SHIFT, new_pages);
+		lock_addr = lock_region(kbdev, faulting_as->fault_addr >> PAGE_SHIFT, new_pages);
 		kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_LOCKADDR_LO), lock_addr & 0xFFFFFFFFUL, kctx);
 		kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_LOCKADDR_HI), lock_addr >> 32, kctx);
 		kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_COMMAND), ASn_COMMAND_LOCK, kctx);
@@ -191,22 +196,29 @@ static void page_fault_worker(osk_workq_work *data)
 		if(MALI_ERROR_NONE != err)
 		{
 			/* failed to insert pages, handle as a normal PF */
-			osk_mutex_unlock(&faulting_as->transaction_mutex);
+			mutex_unlock(&faulting_as->transaction_mutex);
 			kbase_gpu_vm_unlock(kctx);
 			/* The locked VA region will be unlocked and the cache invalidated in here */
 			kbase_mmu_report_fault_and_kill(kctx, faulting_as, faulting_as->fault_addr);
 			goto fault_done;
 		}
 
-#if MALI_GATOR_SUPPORT
+#ifdef CONFIG_MALI_GATOR_SUPPORT
 		kbase_trace_mali_page_fault_insert_pages(as_no, new_pages);
-#endif
+#endif /* CONFIG_MALI_GATOR_SUPPORT */
 		/* clear the irq */
 		/* MUST BE BEFORE THE FLUSH/UNLOCK */
 		kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_CLEAR), (1UL << as_no), NULL);
 
 		/* flush L2 and unlock the VA (resumes the MMU) */
-		kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_COMMAND), ASn_COMMAND_FLUSH, kctx);
+		if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_6367))
+		{
+			kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_COMMAND), ASn_COMMAND_FLUSH, kctx);
+		}
+		else
+		{
+			kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_COMMAND), ASn_COMMAND_FLUSH_PT, kctx);
+		}
 
 		/* wait for the flush to complete */
 		while (kbase_reg_read(kbdev, MMU_AS_REG(as_no, ASn_STATUS), kctx) & 1);
@@ -225,7 +237,7 @@ static void page_fault_worker(osk_workq_work *data)
 			kbase_reg_write(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_COMMAND), ASn_COMMAND_UNLOCK, kctx);
 		}
 
-		osk_mutex_unlock(&faulting_as->transaction_mutex);
+		mutex_unlock(&faulting_as->transaction_mutex);
 		/* AS transaction end */
 
 		/* reenable this in the mask */
@@ -271,7 +283,7 @@ osk_phy_addr kbase_mmu_alloc_pgd(kbase_context *kctx)
 		kbase_mem_usage_release_pages(&kctx->usage, 1);
 		return 0;
 	}
-
+	kbase_process_page_usage_inc(kctx, 1);
 	for (i = 0; i < KBASE_MMU_PAGE_ENTRIES; i++)
 		page[i] = ENTRY_IS_INVAL;
 
@@ -301,7 +313,7 @@ static u64 mmu_phyaddr_to_ate(osk_phy_addr phy, u64 flags)
 }
 
 /* Given PGD PFN for level N, return PGD PFN for level N+1 */
-static osk_phy_addr mmu_get_next_pgd(struct kbase_context *kctx,
+static osk_phy_addr mmu_get_next_pgd(kbase_context *kctx,
                                      osk_phy_addr pgd, u64 vpfn, int level)
 {
 	u64 *page;
@@ -333,7 +345,7 @@ static osk_phy_addr mmu_get_next_pgd(struct kbase_context *kctx,
 			osk_kunmap(pgd, page);
 			return 0;
 		}
-
+		
 		page[vpfn] = mmu_phyaddr_to_pte(target_pgd);
 		ksync_kern_vrange_gpu(pgd + (vpfn * sizeof(u64)), page + vpfn, sizeof(u64));
 		/* Rely on the caller to update the address space flags. */
@@ -343,7 +355,7 @@ static osk_phy_addr mmu_get_next_pgd(struct kbase_context *kctx,
 	return target_pgd;
 }
 
-static osk_phy_addr mmu_get_bottom_pgd(struct kbase_context *kctx, u64 vpfn)
+static osk_phy_addr mmu_get_bottom_pgd(kbase_context *kctx, u64 vpfn)
 {
 	osk_phy_addr pgd;
 	int l;
@@ -363,7 +375,7 @@ static osk_phy_addr mmu_get_bottom_pgd(struct kbase_context *kctx, u64 vpfn)
 	return pgd;
 }
 
-static osk_phy_addr mmu_insert_pages_recover_get_next_pgd(struct kbase_context *kctx,
+static osk_phy_addr mmu_insert_pages_recover_get_next_pgd(kbase_context *kctx,
                                                           osk_phy_addr pgd, u64 vpfn, int level)
 {
 	u64 *page;
@@ -391,7 +403,7 @@ static osk_phy_addr mmu_insert_pages_recover_get_next_pgd(struct kbase_context *
 	return target_pgd;
 }
 
-static osk_phy_addr mmu_insert_pages_recover_get_bottom_pgd(struct kbase_context *kctx, u64 vpfn)
+static osk_phy_addr mmu_insert_pages_recover_get_bottom_pgd(kbase_context *kctx, u64 vpfn)
 {
 	osk_phy_addr pgd;
 	int l;
@@ -407,7 +419,7 @@ static osk_phy_addr mmu_insert_pages_recover_get_bottom_pgd(struct kbase_context
 	return pgd;
 }
 
-static void mmu_insert_pages_failure_recovery(struct kbase_context *kctx, u64 vpfn,
+static void mmu_insert_pages_failure_recovery(kbase_context *kctx, u64 vpfn,
                                               osk_phy_addr *phys, u32 nr)
 {
 	osk_phy_addr pgd;
@@ -415,13 +427,13 @@ static void mmu_insert_pages_failure_recovery(struct kbase_context *kctx, u64 vp
 
 	OSK_ASSERT( NULL != kctx );
 	OSK_ASSERT( 0 != vpfn );
-	OSK_ASSERT( vpfn <= (UINT64_MAX / OSK_PAGE_SIZE) ); /* 64-bit address range is the max */
+	OSK_ASSERT( vpfn <= (UINT64_MAX / PAGE_SIZE) ); /* 64-bit address range is the max */
 
 	while (nr) {
 		u32 i;
 		u32 index = vpfn & 0x1FF;
 		u32 count = KBASE_MMU_PAGE_ENTRIES - index;
-
+		
 		if (count > nr)
 		{
 			count = nr;
@@ -451,7 +463,7 @@ static void mmu_insert_pages_failure_recovery(struct kbase_context *kctx, u64 vp
 /*
  * Map 'nr' pages pointed to by 'phys' at GPU PFN 'vpfn'
  */
-mali_error kbase_mmu_insert_pages(struct kbase_context *kctx, u64 vpfn,
+mali_error kbase_mmu_insert_pages(kbase_context *kctx, u64 vpfn,
                                   osk_phy_addr *phys, u32 nr, u32 flags)
 {
 	osk_phy_addr pgd;
@@ -466,12 +478,12 @@ mali_error kbase_mmu_insert_pages(struct kbase_context *kctx, u64 vpfn,
 	OSK_ASSERT( NULL != kctx );
 	OSK_ASSERT( 0 != vpfn );
 	OSK_ASSERT( (flags & ~((1 << KBASE_REG_FLAGS_NR_BITS) - 1)) == 0 );
-	OSK_ASSERT( vpfn <= (UINT64_MAX / OSK_PAGE_SIZE) ); /* 64-bit address range is the max */
+	OSK_ASSERT( vpfn <= (UINT64_MAX / PAGE_SIZE) ); /* 64-bit address range is the max */
 
 	mmu_flags |= (flags & KBASE_REG_GPU_WR) ? ENTRY_WR_BIT : 0; /* write perm if requested */
 	mmu_flags |= (flags & KBASE_REG_GPU_RD) ? ENTRY_RD_BIT : 0; /* read perm if requested */
 	mmu_flags |= (flags & KBASE_REG_GPU_NX) ? ENTRY_NX_BIT : 0; /* nx if requested */
-
+	
 	if (flags & KBASE_REG_SHARE_BOTH)
 	{
 		/* inner and outer shareable */
@@ -487,7 +499,7 @@ mali_error kbase_mmu_insert_pages(struct kbase_context *kctx, u64 vpfn,
 		u32 i;
 		u32 index = vpfn & 0x1FF;
 		u32 count = KBASE_MMU_PAGE_ENTRIES - index;
-
+		
 		if (count > nr)
 			count = nr;
 
@@ -555,7 +567,7 @@ KBASE_EXPORT_TEST_API(kbase_mmu_insert_pages)
  * already held by the caller. Refer to kbasep_js_runpool_release_ctx() for more
  * information.
  */
- mali_error kbase_mmu_teardown_pages(struct kbase_context *kctx, u64 vpfn, u32 nr)
+ mali_error kbase_mmu_teardown_pages(kbase_context *kctx, u64 vpfn, u32 nr)
 {
 	osk_phy_addr pgd;
 	u64 *pgd_page;
@@ -629,13 +641,20 @@ KBASE_EXPORT_TEST_API(kbase_mmu_insert_pages)
 			u64 lock_addr = lock_region(kbdev, vpfn, requested_nr);
 
 			/* AS transaction begin */
-			osk_mutex_lock(&kbdev->as[kctx->as_nr].transaction_mutex);
+			mutex_lock(&kbdev->as[kctx->as_nr].transaction_mutex);
 			kbase_reg_write(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_LOCKADDR_LO), lock_addr & 0xFFFFFFFFUL, kctx);
 			kbase_reg_write(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_LOCKADDR_HI), lock_addr >> 32, kctx);
 			kbase_reg_write(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_COMMAND), ASn_COMMAND_LOCK, kctx);
 
 			/* flush L2 and unlock the VA */
-			kbase_reg_write(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_COMMAND), ASn_COMMAND_FLUSH, kctx);
+			if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_6367))
+			{
+				kbase_reg_write(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_COMMAND), ASn_COMMAND_FLUSH, kctx);
+			}
+			else
+			{
+				kbase_reg_write(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_COMMAND), ASn_COMMAND_FLUSH_MEM, kctx);
+			}
 
 			/* wait for the flush to complete */
 			while (kbase_reg_read(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_STATUS), kctx) & ASn_STATUS_FLUSH_ACTIVE);
@@ -654,7 +673,7 @@ KBASE_EXPORT_TEST_API(kbase_mmu_insert_pages)
 				kbase_reg_write(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_COMMAND), ASn_COMMAND_UNLOCK, kctx);
 			}
 
-			osk_mutex_unlock(&kbdev->as[kctx->as_nr].transaction_mutex);
+			mutex_unlock(&kbdev->as[kctx->as_nr].transaction_mutex);
 			/* AS transaction end */
 		}
 		kbasep_js_runpool_release_ctx( kbdev, kctx );
@@ -699,7 +718,7 @@ static void mmu_teardown_level(kbase_context *kctx, osk_phy_addr pgd, int level,
 	/* kmap_atomic should NEVER fail. */
 	OSK_ASSERT(NULL != pgd_page);
 	/* Copy the page to our preallocated buffer so that we can minimize kmap_atomic usage */
-	memcpy(pgd_page_buffer, pgd_page, OSK_PAGE_SIZE);
+	memcpy(pgd_page_buffer, pgd_page, PAGE_SIZE);
 	osk_kunmap_atomic(pgd, pgd_page);
 	pgd_page = pgd_page_buffer;
 
@@ -709,7 +728,7 @@ static void mmu_teardown_level(kbase_context *kctx, osk_phy_addr pgd, int level,
 		if (target_pgd) {
 			if (level < 2)
 			{
-				mmu_teardown_level(kctx, target_pgd, level + 1, zap, pgd_page_buffer+(OSK_PAGE_SIZE/sizeof(u64)));
+				mmu_teardown_level(kctx, target_pgd, level + 1, zap, pgd_page_buffer+(PAGE_SIZE/sizeof(u64)));
 			}
 			else {
 				/*
@@ -724,19 +743,28 @@ static void mmu_teardown_level(kbase_context *kctx, osk_phy_addr pgd, int level,
 			if (zap)
 			{
 				kbase_phy_pages_free(kctx->kbdev, &kctx->pgd_allocator, 1, &target_pgd);
+				kbase_process_page_usage_dec(kctx, 1 );
 				kbase_mem_usage_release_pages(&kctx->usage, 1);
 			}
 		}
 	}
 }
 
-mali_error kbase_mmu_init(struct kbase_context *kctx)
+mali_error kbase_mmu_init(kbase_context *kctx)
 {
 	OSK_ASSERT(NULL != kctx);
 	OSK_ASSERT(NULL == kctx->mmu_teardown_pages);
 
 	/* Preallocate MMU depth of four pages for mmu_teardown_level to use */
-	kctx->mmu_teardown_pages = osk_malloc(OSK_PAGE_SIZE*4);
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		kctx->mmu_teardown_pages = NULL;
+	}
+	else
+	{
+		kctx->mmu_teardown_pages = kmalloc(PAGE_SIZE*4, GFP_KERNEL);
+	}
+
 	if(NULL == kctx->mmu_teardown_pages)
 	{
 		return MALI_ERROR_OUT_OF_MEMORY;
@@ -744,16 +772,16 @@ mali_error kbase_mmu_init(struct kbase_context *kctx)
 	return MALI_ERROR_NONE;
 }
 
-void kbase_mmu_term(struct kbase_context *kctx)
+void kbase_mmu_term(kbase_context *kctx)
 {
 	OSK_ASSERT(NULL != kctx);
 	OSK_ASSERT(NULL != kctx->mmu_teardown_pages);
 
-	osk_free(kctx->mmu_teardown_pages);
+	kfree(kctx->mmu_teardown_pages);
 	kctx->mmu_teardown_pages = NULL;
 }
 
-void kbase_mmu_free_pgd(struct kbase_context *kctx)
+void kbase_mmu_free_pgd(kbase_context *kctx)
 {
 	OSK_ASSERT(NULL != kctx);
 	OSK_ASSERT(NULL != kctx->mmu_teardown_pages);
@@ -762,6 +790,7 @@ void kbase_mmu_free_pgd(struct kbase_context *kctx)
 
 	beenthere("pgd %lx", (unsigned long)kctx->pgd);
 	kbase_phy_pages_free(kctx->kbdev, &kctx->pgd_allocator, 1, &kctx->pgd);
+	kbase_process_page_usage_dec(kctx, 1 );
 	kbase_mem_usage_release_pages(&kctx->usage, 1);
 }
 KBASE_EXPORT_TEST_API(kbase_mmu_free_pgd)
@@ -796,7 +825,7 @@ static size_t kbasep_mmu_dump_level(kbase_context *kctx, osk_phy_addr pgd, int l
 
 		*size_left -= size;
 	}
-
+	
 	for (i = 0; i < KBASE_MMU_PAGE_ENTRIES; i++) {
 		if ((pgd_page[i] & ENTRY_IS_PTE) == ENTRY_IS_PTE) {
 			target_pgd = mmu_pte_to_phy_addr(pgd_page[i]);
@@ -805,7 +834,7 @@ static size_t kbasep_mmu_dump_level(kbase_context *kctx, osk_phy_addr pgd, int l
 			 if(!dump_size)
 			 {
 				osk_kunmap(pgd, pgd_page);
-				return 0;
+			 	return 0;
 			 }
 			size += dump_size;
 		}
@@ -816,7 +845,7 @@ static size_t kbasep_mmu_dump_level(kbase_context *kctx, osk_phy_addr pgd, int l
 	return size;
 }
 
-void *kbase_mmu_dump(struct kbase_context *kctx,int nr_pages)
+void *kbase_mmu_dump(kbase_context *kctx,int nr_pages)
 {
 	void *kaddr;
 	size_t size_left;
@@ -829,9 +858,17 @@ void *kbase_mmu_dump(struct kbase_context *kctx,int nr_pages)
 		return NULL;
 	}
 
-	size_left = nr_pages * OSK_PAGE_SIZE;
+	size_left = nr_pages * PAGE_SIZE;
 
-	kaddr = osk_vmalloc(size_left);
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		kaddr = NULL;
+	}
+	else
+	{
+		OSK_ASSERT(0 != size_left);
+		kaddr = vmalloc_user(size_left);
+	}
 
 	if (kaddr)
 	{
@@ -841,16 +878,16 @@ void *kbase_mmu_dump(struct kbase_context *kctx,int nr_pages)
 		size_t size = kbasep_mmu_dump_level(kctx, kctx->pgd, MIDGARD_MMU_TOPLEVEL, &buffer, &size_left);
 		if(!size)
 		{
-			osk_vfree(kaddr);
+			vfree(kaddr);
 			return NULL;
 		}
 
 		/* Add on the size for the end marker */
 		size += sizeof(u64);
 
-		if (size > nr_pages * OSK_PAGE_SIZE || size_left < sizeof(u64)) {
+		if (size > nr_pages * PAGE_SIZE || size_left < sizeof(u64)) {
 			/* The buffer isn't big enough - free the memory and return failure */
-			osk_vfree(kaddr);
+			vfree(kaddr);
 			return NULL;
 		}
 
@@ -869,7 +906,7 @@ static u64 lock_region(kbase_device *kbdev, u64 pfn, u32 num_pages)
 	/* can't lock a zero sized range */
 	OSK_ASSERT(num_pages);
 
-	region = pfn << OSK_PAGE_SHIFT;
+	region = pfn << PAGE_SHIFT;
 	/*
 	 * osk_clz returns (given the ASSERT above):
 	 * 32-bit: 0 .. 31
@@ -903,7 +940,7 @@ static u64 lock_region(kbase_device *kbdev, u64 pfn, u32 num_pages)
 	return region;
 }
 
-static void bus_fault_worker(osk_workq_work *data)
+static void bus_fault_worker(struct work_struct *data)
 {
 	const int num_as = 16;
 	kbase_as * faulting_as;
@@ -913,10 +950,10 @@ static void bus_fault_worker(osk_workq_work *data)
 	u32 reg;
 	mali_bool reset_status= MALI_FALSE;
 
-	faulting_as = CONTAINER_OF(data, kbase_as, work_busfault);
+	faulting_as = container_of(data, kbase_as, work_busfault);
 	as_no = faulting_as->number;
 
-	kbdev = CONTAINER_OF( faulting_as, kbase_device, as[as_no] );
+	kbdev = container_of( faulting_as, kbase_device, as[as_no] );
 
 	/* Grab the context that was already refcounted in kbase_mmu_interrupt().
 	 * Therefore, it cannot be scheduled out of this AS until we explicitly release it
@@ -926,7 +963,7 @@ static void bus_fault_worker(osk_workq_work *data)
 
 	/* switch to UNMAPPED mode, will abort all jobs and stop any hw counter dumping */
 	/* AS transaction begin */
-	osk_mutex_lock(&kbdev->as[as_no].transaction_mutex);
+	mutex_lock(&kbdev->as[as_no].transaction_mutex);
 
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245))
 	{
@@ -934,6 +971,7 @@ static void bus_fault_worker(osk_workq_work *data)
 		 * We start the reset before switching to UNMAPPED to ensure that unrelated jobs
 		 * are evicted from the GPU before the switch.
 		 */
+		OSK_PRINT_WARN(OSK_BASE_MMU, "NOTE: GPU will now be reset as a workaround for a hardware issue*");
 		reset_status = kbase_prepare_to_reset_gpu(kbdev);
 	}
 
@@ -943,11 +981,11 @@ static void bus_fault_worker(osk_workq_work *data)
 	kbase_reg_write(kbdev, MMU_AS_REG(as_no, ASn_COMMAND), ASn_COMMAND_UPDATE, kctx);
 
 	kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_CLEAR), (1UL << as_no) | (1UL << (as_no + num_as))  , NULL);
-	osk_mutex_unlock(&kbdev->as[as_no].transaction_mutex);
+	mutex_unlock(&kbdev->as[as_no].transaction_mutex);
 	/* AS transaction end */
 
 	mmu_mask_reenable( kbdev, kctx, faulting_as );
-
+	
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245) && reset_status)
 	{
 		kbase_reset_gpu(kbdev);
@@ -962,12 +1000,13 @@ static void bus_fault_worker(osk_workq_work *data)
 
 void kbase_mmu_interrupt(kbase_device * kbdev, u32 irq_stat)
 {
+	unsigned long flags;
 	const int num_as = 16;
 	kbasep_js_device_data *js_devdata;
 	const int busfault_shift = 16;
 	const int pf_shift = 0;
 	const unsigned long mask = (1UL << num_as) - 1;
-
+	
 	u64 fault_addr;
 	u32 new_mask;
 	u32 tmp;
@@ -981,11 +1020,11 @@ void kbase_mmu_interrupt(kbase_device * kbdev, u32 irq_stat)
 	js_devdata = &kbdev->js_data;
 
 	/* remember current mask */
-	osk_spinlock_irq_lock(&kbdev->mmu_mask_change);
+	spin_lock_irqsave(&kbdev->mmu_mask_change, flags);
 	new_mask = kbase_reg_read(kbdev, MMU_REG(MMU_IRQ_MASK), NULL);
 	/* mask interrupts for now */
 	kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_MASK), 0, NULL);
-	osk_spinlock_irq_unlock(&kbdev->mmu_mask_change);
+	spin_unlock_irqrestore(&kbdev->mmu_mask_change, flags);
 
 	while (bf_bits)
 	{
@@ -1019,9 +1058,9 @@ void kbase_mmu_interrupt(kbase_device * kbdev, u32 irq_stat)
 
 			/* Stop the kctx from submitting more jobs and cause it to be scheduled
 			 * out/rescheduled when all references to it are released */
-			osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
+			spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
 			kbasep_js_clear_submit_allowed( js_devdata, kctx );
-			osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
+			spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
 
 			OSK_PRINT_WARN(OSK_BASE_MMU, "Bus error in AS%d at 0x%016llx\n", as_no, fault_addr);
 		}
@@ -1039,8 +1078,9 @@ void kbase_mmu_interrupt(kbase_device * kbdev, u32 irq_stat)
 		new_mask &= ~(1UL << (as_no + num_as));
 
 		/* We need to switch to UNMAPPED mode - but we do this in a worker so that we can sleep */
-		osk_workq_work_init(&as->work_busfault, bus_fault_worker);
-		osk_workq_submit(&as->pf_wq, &as->work_busfault);
+		OSK_ASSERT(0 == object_is_on_stack(&as->work_busfault));
+		INIT_WORK(&as->work_busfault, bus_fault_worker);
+		queue_work(as->pf_wq, &as->work_busfault);
 	}
 
 	/*
@@ -1083,16 +1123,17 @@ void kbase_mmu_interrupt(kbase_device * kbdev, u32 irq_stat)
 		/* queue work pending for this AS */
 		as->fault_addr = fault_addr;
 
-		osk_workq_work_init(&as->work_pagefault, page_fault_worker);
-		osk_workq_submit(&as->pf_wq, &as->work_pagefault);
+		OSK_ASSERT(0 == object_is_on_stack(&as->work_pagefault));
+		INIT_WORK(&as->work_pagefault, page_fault_worker);
+		queue_work(as->pf_wq, &as->work_pagefault);
 	}
 
 	/* reenable interrupts */
-	osk_spinlock_irq_lock(&kbdev->mmu_mask_change);
+	spin_lock_irqsave(&kbdev->mmu_mask_change, flags);
 	tmp = kbase_reg_read(kbdev, MMU_REG(MMU_IRQ_MASK), NULL);
 	new_mask |= tmp;
 	kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_MASK), new_mask, NULL);
-	osk_spinlock_irq_unlock(&kbdev->mmu_mask_change);
+	spin_unlock_irqrestore(&kbdev->mmu_mask_change, flags);
 }
 KBASE_EXPORT_TEST_API(kbase_mmu_interrupt)
 
@@ -1151,6 +1192,7 @@ const char *kbase_exception_name(u32 exception_code)
  */
 static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, mali_addr64 fault_addr)
 {
+	unsigned long flags;
 	u32 fault_status;
 	u32 reg;
 	int exception_type;
@@ -1160,7 +1202,9 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 	kbase_device * kbdev;
 	kbasep_js_device_data *js_devdata;
 	mali_bool reset_status = MALI_FALSE;
+#ifdef CONFIG_MALI_DEBUG
 	static const char *access_type_names[] = { "RESERVED", "EXECUTE", "READ", "WRITE" };
+#endif
 
 	OSK_ASSERT(as);
 	OSK_ASSERT(kctx);
@@ -1181,12 +1225,12 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 	source_id =     (fault_status >> 16);
 
 	/* terminal fault, print info about the fault */
-	OSK_PRINT_ERROR(OSK_BASE_MMU, "Fault in AS%d at VA 0x%016llX", as_no, fault_addr);
-	OSK_PRINT_ERROR(OSK_BASE_MMU, "raw fault status 0x%X", fault_status);
-	OSK_PRINT_ERROR(OSK_BASE_MMU, "decoded fault status (%s):", (fault_status & (1 << 10) ? "DECODER FAULT" : "SLAVE FAULT"));
-	OSK_PRINT_ERROR(OSK_BASE_MMU, "exception type 0x%X: %s", exception_type, kbase_exception_name(exception_type));
-	OSK_PRINT_ERROR(OSK_BASE_MMU, "access type 0x%X: %s", access_type,  access_type_names[access_type]);
-	OSK_PRINT_ERROR(OSK_BASE_MMU, "source id 0x%X", source_id);
+	OSK_PRINT_WARN(OSK_BASE_MMU, "Fault in AS%d at VA 0x%016llX", as_no, fault_addr);
+	OSK_PRINT_WARN(OSK_BASE_MMU, "raw fault status 0x%X", fault_status);
+	OSK_PRINT_WARN(OSK_BASE_MMU, "decoded fault status (%s):", (fault_status & (1 << 10) ? "DECODER FAULT" : "SLAVE FAULT"));
+	OSK_PRINT_WARN(OSK_BASE_MMU, "exception type 0x%X: %s", exception_type, kbase_exception_name(exception_type));
+	OSK_PRINT_WARN(OSK_BASE_MMU, "access type 0x%X: %s", access_type,  access_type_names[access_type]);
+	OSK_PRINT_WARN(OSK_BASE_MMU, "source id 0x%X", source_id);
 
 	/* hardware counters dump fault handling */
 	if ((kbdev->hwcnt.kctx) &&
@@ -1202,15 +1246,15 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 
 	/* Stop the kctx from submitting more jobs and cause it to be scheduled
 	 * out/rescheduled - this will occur on releasing the context's refcount */
-	osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
+	spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
 	kbasep_js_clear_submit_allowed( js_devdata, kctx );
-	osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
+	spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
 
 	/* Kill any running jobs from the context. Submit is disallowed, so no more jobs from this
 	 * context can appear in the job slots from this point on */
 	kbase_job_kill_jobs_from_context(kctx);
 	/* AS transaction begin */
-	osk_mutex_lock(&as->transaction_mutex);
+	mutex_lock(&as->transaction_mutex);
 
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8245))
 	{
@@ -1218,6 +1262,7 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 		 * We start the reset before switching to UNMAPPED to ensure that unrelated jobs
 		 * are evicted from the GPU before the switch.
 		 */
+		OSK_PRINT_WARN(OSK_BASE_MMU, "NOTE: GPU will now be reset as a workaround for a hardware issue**");
 		reset_status = kbase_prepare_to_reset_gpu(kbdev);
 	}
 
@@ -1229,7 +1274,7 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 
 	kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_CLEAR), (1UL << as_no), NULL);
 
-	osk_mutex_unlock(&as->transaction_mutex);
+	mutex_unlock(&as->transaction_mutex);
 	/* AS transaction end */
 	mmu_mask_reenable(kbdev, kctx, as);
 
@@ -1239,59 +1284,58 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 	}
 }
 
-void kbasep_as_do_poke(osk_workq_work * work)
+void kbasep_as_do_poke(struct work_struct *work)
 {
 	kbase_as * as;
 	kbase_device * kbdev;
 
 	OSK_ASSERT(work);
-	as = CONTAINER_OF(work, kbase_as, poke_work);
-	kbdev = CONTAINER_OF(as, kbase_device, as[as->number]);
+	as = container_of(work, kbase_as, poke_work);
+	kbdev = container_of(as, kbase_device, as[as->number]);
 
 	kbase_pm_context_active(kbdev);
 
 	/* AS transaction begin */
-	osk_mutex_lock(&as->transaction_mutex);
+	mutex_lock(&as->transaction_mutex);
 	/* Force a uTLB invalidate */
 	kbase_reg_write(kbdev, MMU_AS_REG(as->number, ASn_COMMAND), ASn_COMMAND_UNLOCK, NULL);
-	osk_mutex_unlock(&as->transaction_mutex);
+	mutex_unlock(&as->transaction_mutex);
 	/* AS transaction end */
 
 	kbase_pm_context_idle(kbdev);
 
-	if (osk_atomic_get(&as->poke_refcount))
+	if (atomic_read(&as->poke_refcount))
 	{
-		osk_error err;
 		/* still someone depending on the UNLOCK, schedule a run */
-		err = osk_timer_modify(&as->poke_timer, 5/*ms*/);
-		if (err != OSK_ERR_NONE)
-		{
-			OSK_PRINT_WARN(OSK_BASE_MMU, "Failed to enable the BASE_HW_ISSUE_8316 workaround");
-		}
+		hrtimer_start(&as->poke_timer, HR_TIMER_DELAY_MSEC(5), HRTIMER_MODE_REL );
 	}
 }
 
-void kbasep_as_poke_timer_callback(void* arg)
+enum hrtimer_restart kbasep_as_poke_timer_callback(struct hrtimer * timer)
 {
-	kbase_as * as;
-	as = (kbase_as*)arg;
-	osk_workq_submit(&as->poke_wq, &as->poke_work);
+	kbase_as * as = container_of(timer, kbase_as, poke_timer);
+
+	OSK_ASSERT(NULL != as);
+
+	queue_work(as->poke_wq, &as->poke_work);
+
+	return HRTIMER_NORESTART;
 }
 
 void kbase_as_poking_timer_retain(kbase_as * as)
 {
 	OSK_ASSERT(as);
 
-	if (1 == osk_atomic_inc(&as->poke_refcount))
+	if (1 == atomic_inc_return(&as->poke_refcount))
 	{
 		/* need to start poking */
-		osk_workq_submit(&as->poke_wq, &as->poke_work);
-
+		queue_work(as->poke_wq, &as->poke_work);
 	}
 }
 
 void kbase_as_poking_timer_release(kbase_as * as)
 {
 	OSK_ASSERT(as);
-	osk_atomic_dec(&as->poke_refcount);
+	atomic_dec(&as->poke_refcount);
 }
+

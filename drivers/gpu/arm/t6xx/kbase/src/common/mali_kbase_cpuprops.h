@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_cpuprops.h
@@ -19,7 +23,6 @@
 #include <malisw/mali_malisw.h>
 
 /* Forward declarations */
-struct kbase_context;
 struct kbase_uk_cpuprops;
 
 /**
@@ -28,7 +31,7 @@ struct kbase_uk_cpuprops;
  * This function sets clock_speed to 100, so will be an underestimate for
  * any real system.
  *
- * See @refkbase_cpuprops_clock_speed_function for details on the parameters
+ * See @ref kbase_cpuprops_clock_speed_function for details on the parameters
  * and return value.
  */
 int kbase_cpuprops_get_default_clock_speed(u32 *clock_speed);
@@ -43,6 +46,6 @@ int kbase_cpuprops_get_default_clock_speed(u32 *clock_speed);
  *
  * @return MALI_ERROR_NONE on success. Any other value indicates failure.
  */
-mali_error kbase_cpuprops_uk_get_props(struct kbase_context *kctx, struct kbase_uk_cpuprops* kbase_props);
+mali_error kbase_cpuprops_uk_get_props(kbase_context *kctx, struct kbase_uk_cpuprops* kbase_props);
 
 #endif /*_KBASE_CPUPROPS_H_*/

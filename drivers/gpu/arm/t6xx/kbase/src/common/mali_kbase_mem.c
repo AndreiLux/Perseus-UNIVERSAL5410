@@ -1,21 +1,24 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2010-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_mem.c
  * Base kernel memory APIs
  */
-#if defined(CONFIG_DMA_SHARED_BUFFER) && MALI_LICENSE_IS_GPL
-#define MALI_USE_DMA_SHARED_BUFFER
+#ifdef CONFIG_DMA_SHARED_BUFFER
 #include <linux/dma-buf.h>
-#endif /* defined(CONFIG_DMA_SHARED_BUFFER) && MALI_LICENSE_IS_GPL */
+#endif /* CONFIG_DMA_SHARED_BUFFER */
 
 #include <osk/mali_osk.h>
 
@@ -26,378 +29,25 @@
 #include <kbase/src/common/mali_kbase_hw.h>
 #include <kbase/src/common/mali_kbase_gator.h>
 
+#include <asm/atomic.h>
+
 /**
  * @brief Check the zone compatibility of two regions.
  */
 STATIC int kbase_region_tracker_match_zone(struct kbase_va_region *reg1, struct kbase_va_region *reg2)
 {
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
+	{
+		return MALI_FALSE;
+	}
+
 	return ((reg1->flags & KBASE_REG_ZONE_MASK) == (reg2->flags & KBASE_REG_ZONE_MASK));
 }
 KBASE_EXPORT_TEST_API(kbase_region_tracker_match_zone)
 
-/* ==== DLIST implementation of region tracker ==== */
-#if !MALI_KBASEP_REGION_RBTREE
-
-/**
- * @brief Initialize the internal region tracker data structure.
- */
-static void kbase_region_tracker_ds_init(
-	struct kbase_context *kctx,
-	struct kbase_va_region *pmem_reg,
-	struct kbase_va_region *exec_reg,
-	struct kbase_va_region *tmem_reg )
-{
-	OSK_DLIST_INIT(&kctx->reg_list);
-	OSK_DLIST_PUSH_FRONT(&kctx->reg_list, pmem_reg, struct kbase_va_region, link);
-	OSK_DLIST_PUSH_BACK(&kctx->reg_list, exec_reg, struct kbase_va_region, link);
-	OSK_DLIST_PUSH_BACK(&kctx->reg_list, tmem_reg, struct kbase_va_region, link);
-}
-
-/**
- * @brief Terminate the internal region tracker data structure.
- */
-void kbase_region_tracker_term(struct kbase_context *kctx)
-{
-	OSK_DLIST_EMPTY_LIST(
-		&kctx->reg_list, struct kbase_va_region, link, kbase_free_alloced_region);
-}
-
-/**
- * @brief Find an allocated region enclosing given page range.
- */
-struct kbase_va_region * kbase_region_tracker_find_region_enclosing_range(
-	struct kbase_context *kctx,
-	u64 start_pgoff,
-	u32 nr_pages )
-{
-	struct kbase_va_region *reg;
-
-	OSK_DLIST_FOREACH(&kctx->reg_list, struct kbase_va_region, link, reg)
-	{			
-		if ( (reg->start_pfn <= start_pgoff) &&
-		     ((reg->start_pfn + reg->nr_alloc_pages) >= (start_pgoff + nr_pages)) )
-		{
-			return reg;
-		}
-	}
-	return NULL;
-}
-
-/**
- * @brief Find an allocated or free region enclosing given address.
- */
-kbase_va_region *kbase_region_tracker_find_region_enclosing_address(
-	struct kbase_context *kctx,
-	mali_addr64 gpu_addr)
-{
-	kbase_va_region *tmp;
-	u64 gpu_pfn = gpu_addr >> OSK_PAGE_SHIFT;
-	
-	OSK_ASSERT(NULL != kctx);
-
-	OSK_DLIST_FOREACH(&kctx->reg_list, kbase_va_region, link, tmp)
-	{
-		if ( (gpu_pfn >= tmp->start_pfn) &&
-		     (gpu_pfn < (tmp->start_pfn + tmp->nr_pages)) )
-		{
-			return tmp;
-		}
-	}
-
-	return NULL;
-}
-KBASE_EXPORT_TEST_API(kbase_region_tracker_find_region_enclosing_address)
-
-/**
- * @brief Find an allocated or free region with given base address.
- */
-kbase_va_region *kbase_region_tracker_find_region_base_address(
-	struct kbase_context *kctx,
-	mali_addr64 gpu_addr)
-{
-	struct kbase_va_region *tmp;
-	u64 gpu_pfn = gpu_addr >> OSK_PAGE_SHIFT;
-
-	OSK_ASSERT(NULL != kctx);
-
-	OSK_DLIST_FOREACH(&kctx->reg_list, struct kbase_va_region, link, tmp)
-	{
-		if (tmp->start_pfn == gpu_pfn)
-		{
-			return tmp;
-		}
-	}
-
-	return NULL;
-}
-KBASE_EXPORT_TEST_API(kbase_region_tracker_find_region_base_address)
-
-/**
- * @brief Insert a region object in the global list.
- *
- * The region new_reg is inserted at start_pfn by replacing at_reg
- * partially or completely. at_reg must be a KBASE_REG_FREE region
- * that contains start_pfn and at least nr_pages from start_pfn.  It
- * must be called with the context region lock held. Internal use
- * only.
- */
-static mali_error kbase_insert_va_region_nolock(struct kbase_context *kctx,
-					 struct kbase_va_region *new_reg,
-					 struct kbase_va_region *at_reg,
-					 u64 start_pfn, u32 nr_pages)
-{
-	struct kbase_va_region *new_front_reg;
-	mali_error err = MALI_ERROR_NONE;
-
-	/* Must be a free region */
-	OSK_ASSERT((at_reg->flags & KBASE_REG_FREE) != 0);
-	/* start_pfn should be contained within at_reg */
-	OSK_ASSERT((start_pfn >= at_reg->start_pfn) && (start_pfn < at_reg->start_pfn + at_reg->nr_pages));
-	/* at least nr_pages from start_pfn should be contained within at_reg */
-	OSK_ASSERT(start_pfn + nr_pages <= at_reg->start_pfn + at_reg->nr_pages );
-
-	new_reg->start_pfn = start_pfn;
-	new_reg->nr_pages = nr_pages;
-
-	/* Trivial replacement case */
-	if (at_reg->start_pfn == start_pfn && at_reg->nr_pages == nr_pages)
-	{
-		OSK_DLIST_INSERT_BEFORE(&kctx->reg_list, new_reg, at_reg, struct kbase_va_region, link);
-		OSK_DLIST_REMOVE(&kctx->reg_list, at_reg, link);
-		kbase_free_alloced_region(at_reg);
-	}
-	/* Begin case */
-	else if (at_reg->start_pfn == start_pfn)
-	{
-		at_reg->start_pfn += nr_pages;
-		OSK_ASSERT(at_reg->nr_pages >= nr_pages);
-		at_reg->nr_pages -= nr_pages;
-
-		OSK_DLIST_INSERT_BEFORE(&kctx->reg_list, new_reg, at_reg, struct kbase_va_region, link);
-	}
-	/* End case */
-	else if ((at_reg->start_pfn + at_reg->nr_pages) == (start_pfn + nr_pages))
-	{
-		at_reg->nr_pages -= nr_pages;
-
-		OSK_DLIST_INSERT_AFTER(&kctx->reg_list, new_reg, at_reg, struct kbase_va_region, link);
-	}
-	/* Middle of the road... */
-	else
-	{
-		new_front_reg = kbase_alloc_free_region(kctx, at_reg->start_pfn,
-		                    start_pfn - at_reg->start_pfn,
-		                    at_reg->flags & KBASE_REG_ZONE_MASK);
-		if (new_front_reg)
-		{
-			at_reg->nr_pages -= nr_pages + new_front_reg->nr_pages;
-			at_reg->start_pfn = start_pfn + nr_pages;
-
-			OSK_DLIST_INSERT_BEFORE(&kctx->reg_list, new_front_reg, at_reg, struct kbase_va_region, link);
-			OSK_DLIST_INSERT_BEFORE(&kctx->reg_list, new_reg, at_reg, struct kbase_va_region, link);
-		}
-		else
-		{
-			err = MALI_ERROR_OUT_OF_MEMORY;
-		}
-	}
-
-	return err;
-}
-
-/**
- * @brief Remove a region object from the global list.
- *
- * The region reg is removed, possibly by merging with other free and
- * compatible adjacent regions.  It must be called with the context
- * region lock held. The associated memory is not released (see
- * kbase_free_alloced_region). Internal use only.
- */
-STATIC mali_error kbase_remove_va_region(struct kbase_context *kctx, struct kbase_va_region *reg)
-{
-	struct kbase_va_region *prev;
-	struct kbase_va_region *next;
-	int merged_front = 0;
-	int merged_back = 0;
-	mali_error err = MALI_ERROR_NONE;
-
-	prev = OSK_DLIST_PREV(reg, struct kbase_va_region, link);
-	if (!OSK_DLIST_IS_VALID(prev, link))
-	{
-		prev = NULL;
-	}
-	
-	next = OSK_DLIST_NEXT(reg, struct kbase_va_region, link);
-	OSK_ASSERT(NULL != next);
-	if (!OSK_DLIST_IS_VALID(next, link))
-	{
-		next = NULL;
-	}
-
-	/* Try to merge with front first */
-	if (prev && (prev->flags & KBASE_REG_FREE) && kbase_region_tracker_match_zone(prev, reg))
-	{
-		/* We're compatible with the previous VMA, merge with it */
-		OSK_DLIST_REMOVE(&kctx->reg_list, reg, link);
-		prev->nr_pages += reg->nr_pages;
-		reg = prev;
-		merged_front = 1;
-	}
-
-	/* Try to merge with back next */
-	if (next && (next->flags & KBASE_REG_FREE) && kbase_region_tracker_match_zone(next, reg))
-	{
-		/* We're compatible with the next VMA, merge with it */
-		next->start_pfn = reg->start_pfn;
-		next->nr_pages += reg->nr_pages;
-		OSK_DLIST_REMOVE(&kctx->reg_list, reg, link);
-
-		if (merged_front)
-		{
-			/* we already merged with prev, free it */
-			kbase_free_alloced_region(prev);
-		}
-
-		merged_back = 1;
-	}
-
-	if (!(merged_front || merged_back))
-	{
-		/*
-		 * We didn't merge anything. Add a new free
-		 * placeholder and remove the original one.
-		 */
-		struct kbase_va_region *free_reg;
-
-		free_reg = kbase_alloc_free_region(kctx, reg->start_pfn, reg->nr_pages, reg->flags & KBASE_REG_ZONE_MASK);
-		if (!free_reg)
-		{
-			err = MALI_ERROR_OUT_OF_MEMORY;
-			goto out;
-		}
-
-		OSK_DLIST_INSERT_BEFORE(&kctx->reg_list, free_reg, reg, struct kbase_va_region, link);
-		OSK_DLIST_REMOVE(&kctx->reg_list, reg, link);
-	}
-
-out:
-	return err;
-}
-KBASE_EXPORT_TEST_API(kbase_remove_va_region)
-
-/**
- * @brief Add a region to the global list.
- *
- * Add reg to the global list, according to its zone. If addr is non-null, this
- * address is used directly (as in the PMEM case). Alignment can be enforced by
- * specifying a number of pages (which *must* be a power of 2).
- *
- * Context region list lock must be held.
- *
- * Mostly used by kbase_gpu_mmap(), but also useful to register the
- * ring-buffer region.
- */
-mali_error kbase_add_va_region(struct kbase_context *kctx,
-       struct kbase_va_region *reg,
-       mali_addr64 addr, u32 nr_pages,
-       u32 align)
-{
-	struct kbase_va_region *tmp;
-	u64 gpu_pfn = addr >> OSK_PAGE_SHIFT;
-	mali_error err = MALI_ERROR_NONE;
-
-	OSK_ASSERT(NULL != kctx);
-	OSK_ASSERT(NULL != reg);
-
-	if (!align)
-	{
-		align = 1;
-	}
-
-	/* must be a power of 2 */
-	OSK_ASSERT((align & (align - 1)) == 0);
-	OSK_ASSERT( nr_pages > 0 );
-
-	if (gpu_pfn)
-	{
-		OSK_ASSERT(!(gpu_pfn & (align - 1)));
-
-		/*
-		 * So we want a specific address. Parse the list until
-		 * we find the enclosing region, which *must* be free.
-		 */
-		OSK_DLIST_FOREACH(&kctx->reg_list, struct kbase_va_region, link, tmp)
-		{
-			if (tmp->start_pfn <= gpu_pfn &&
-			    (tmp->start_pfn + tmp->nr_pages) >= (gpu_pfn + nr_pages))
-			{
-				/* We have the candidate */
-				if (!kbase_region_tracker_match_zone(tmp, reg))
-				{
-					/* Wrong zone, fail */
-					err = MALI_ERROR_OUT_OF_GPU_MEMORY;
-					OSK_PRINT_WARN(OSK_BASE_MEM, "Zone mismatch: %d != %d", tmp->flags & KBASE_REG_ZONE_MASK, reg->flags & KBASE_REG_ZONE_MASK);
-					goto out;
-				}
-
-				if (!(tmp->flags & KBASE_REG_FREE))
-				{
-					OSK_PRINT_WARN(OSK_BASE_MEM, "!(tmp->flags & KBASE_REG_FREE): tmp->start_pfn=0x%llx tmp->flags=0x%x tmp->nr_pages=0x%x gpu_pfn=0x%llx nr_pages=0x%x\n",
-							tmp->start_pfn, tmp->flags, tmp->nr_pages, gpu_pfn, nr_pages);
-					OSK_PRINT_WARN(OSK_BASE_MEM, "in function %s (%p, %p, 0x%llx, 0x%x, 0x%x)\n", __func__,
-							kctx,reg,addr, nr_pages, align);
-					/* Busy, fail */
-					err = MALI_ERROR_OUT_OF_GPU_MEMORY;
-					goto out;
-				}
-
-				err = kbase_insert_va_region_nolock(kctx, reg, tmp, gpu_pfn, nr_pages);
-				if (err) OSK_PRINT_WARN(OSK_BASE_MEM, "Failed to insert va region");
-				goto out;
-			}
-		}
-
-		err = MALI_ERROR_OUT_OF_GPU_MEMORY;
-		OSK_PRINT_WARN(OSK_BASE_MEM, "Out of mem");
-		goto out;
-	}
-
-	/* Find the first free region that accomodates our requirements */
-	OSK_DLIST_FOREACH(&kctx->reg_list, struct kbase_va_region, link, tmp)
-	{
-		if (tmp->nr_pages >= nr_pages &&
-		    (tmp->flags & KBASE_REG_FREE) &&
-		    kbase_region_tracker_match_zone(tmp, reg))
-		{
-			/* Check alignment */
-			u64 start_pfn;
-			start_pfn = (tmp->start_pfn + align - 1) & ~(align - 1);
-
-			if (
-			    (start_pfn >= tmp->start_pfn) &&
-			    (start_pfn <= (tmp->start_pfn + (tmp->nr_pages - 1))) &&
-			    ((start_pfn + nr_pages - 1) <= (tmp->start_pfn + tmp->nr_pages -1))
-			   )
-			{
-				/* It fits, let's use it */
-				err = kbase_insert_va_region_nolock(kctx, reg, tmp, start_pfn, nr_pages);
-				goto out;
-			}
-		}
-	}
-
-	err = MALI_ERROR_OUT_OF_GPU_MEMORY;
-out:
-	return err;
-}
-KBASE_EXPORT_TEST_API(kbase_add_va_region)
-
-/* ==== RBTREE region tracker implemention ==== */
-#else
-
 /* This function inserts a region into the tree. */
 static void kbase_region_tracker_insert(
-	struct kbase_context *kctx,
+	kbase_context *kctx,
 	struct kbase_va_region *new_reg )
 {
 	u64 start_pfn = new_reg->start_pfn;
@@ -432,13 +82,18 @@ static void kbase_region_tracker_insert(
 
 /* Find allocated region enclosing range. */
 struct kbase_va_region * kbase_region_tracker_find_region_enclosing_range(
-	struct kbase_context *kctx,
+	kbase_context *kctx,
 	u64 start_pfn,
 	u32 nr_pages )
 {
 	struct rb_node * rbnode;
 	struct kbase_va_region *reg;
 	u64 end_pfn = start_pfn + nr_pages;
+
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
+	{
+		return NULL;
+	}
 
 	rbnode = kctx->reg_rbtree.rb_node;
 	while( rbnode )
@@ -470,13 +125,18 @@ struct kbase_va_region * kbase_region_tracker_find_region_enclosing_range(
 
 /* Find allocated region enclosing free range. */
 struct kbase_va_region * kbase_region_tracker_find_region_enclosing_range_free(
-	struct kbase_context *kctx,
+	kbase_context *kctx,
 	u64 start_pfn,
 	u32 nr_pages )
 {
 	struct rb_node * rbnode;
 	struct kbase_va_region *reg;
 	u64 end_pfn = start_pfn + nr_pages;
+
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
+	{
+		return NULL;
+	}
 
 	rbnode = kctx->reg_rbtree.rb_node;
 	while( rbnode )
@@ -507,14 +167,19 @@ struct kbase_va_region * kbase_region_tracker_find_region_enclosing_range_free(
 
 /* Find region enclosing given address. */
 kbase_va_region *kbase_region_tracker_find_region_enclosing_address(
-	struct kbase_context *kctx,
+	kbase_context *kctx,
 	mali_addr64 gpu_addr)
 {
 	struct rb_node * rbnode;
 	struct kbase_va_region *reg;
-	u64 gpu_pfn = gpu_addr >> OSK_PAGE_SHIFT;
+	u64 gpu_pfn = gpu_addr >> PAGE_SHIFT;
 
 	OSK_ASSERT(NULL != kctx);
+
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
+	{
+		return NULL;
+	}
 
 	rbnode = kctx->reg_rbtree.rb_node;
 	while( rbnode )
@@ -547,14 +212,19 @@ KBASE_EXPORT_TEST_API(kbase_region_tracker_find_region_enclosing_address)
 
 /* Find region with given base address */
 kbase_va_region *kbase_region_tracker_find_region_base_address(
-	struct kbase_context *kctx,
+	kbase_context *kctx,
 	mali_addr64 gpu_addr)
 {
-	u64 gpu_pfn = gpu_addr >> OSK_PAGE_SHIFT;
+	u64 gpu_pfn = gpu_addr >> PAGE_SHIFT;
 	struct rb_node * rbnode;
 	struct kbase_va_region *reg;
 
 	OSK_ASSERT(NULL != kctx);
+
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
+	{
+		return NULL;
+	}
 
 	rbnode = kctx->reg_rbtree.rb_node;
 	while(rbnode)
@@ -584,14 +254,19 @@ KBASE_EXPORT_TEST_API(kbase_region_tracker_find_region_base_address)
 
 /* Find region meeting given requirements */
 static struct kbase_va_region * kbase_region_tracker_find_region_meeting_reqs(
-	struct kbase_context *kctx,
+	kbase_context *kctx,
 	struct kbase_va_region *reg_reqs,
 	u32 nr_pages,
 	u32 align )
 {
 	struct rb_node * rbnode;
 	struct kbase_va_region *reg;
-	
+
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
+	{
+		return NULL;
+	}	
+
 	/* Note that this search is a linear search, as we do not have a target
        address in mind, so does not benefit from the rbtree search */
 	rbnode = rb_first( &(kctx->reg_rbtree) );
@@ -627,7 +302,7 @@ static struct kbase_va_region * kbase_region_tracker_find_region_meeting_reqs(
  * kbase_free_alloced_region). Internal use only.
  */
 STATIC mali_error kbase_remove_va_region(
-	struct kbase_context *kctx,
+	kbase_context *kctx,
 	struct kbase_va_region *reg )
 {
 	struct rb_node *rbprev;
@@ -703,7 +378,7 @@ KBASE_EXPORT_TEST_API(kbase_remove_va_region)
  * @brief Insert a VA region to the list, replacing the current at_reg.
  */
 static mali_error kbase_insert_va_region_nolock(
-	struct kbase_context *kctx,
+	kbase_context *kctx,
 	struct kbase_va_region *new_reg,
 	struct kbase_va_region *at_reg,
 	u64 start_pfn,
@@ -769,14 +444,14 @@ static mali_error kbase_insert_va_region_nolock(
  * @brief Add a VA region to the list.
  */
 mali_error kbase_add_va_region(
-	struct kbase_context *kctx,
+	kbase_context *kctx,
 	struct kbase_va_region *reg,
 	mali_addr64 addr,
 	u32 nr_pages,
 	u32 align)
 {
 	struct kbase_va_region *tmp;
-	u64 gpu_pfn = addr >> OSK_PAGE_SHIFT;
+	u64 gpu_pfn = addr >> PAGE_SHIFT;
 	mali_error err = MALI_ERROR_NONE;
 
 	OSK_ASSERT(NULL != kctx);
@@ -828,7 +503,7 @@ mali_error kbase_add_va_region(
 		goto exit;
 	}
 
-	/* Path 2: Map any free address which meeds the requirements.  */
+	/* Path 2: Map any free address which meets the requirements.  */
 	{
 		u64 start_pfn;
 		tmp =  kbase_region_tracker_find_region_meeting_reqs( kctx, reg, nr_pages, align );
@@ -850,7 +525,7 @@ KBASE_EXPORT_TEST_API(kbase_add_va_region)
  * @brief Initialize the internal region tracker data structure.
  */
 static void kbase_region_tracker_ds_init(
-	struct kbase_context *kctx,
+	kbase_context *kctx,
 	struct kbase_va_region *pmem_reg,
 	struct kbase_va_region *exec_reg,
 	struct kbase_va_region *tmem_reg )
@@ -861,7 +536,7 @@ static void kbase_region_tracker_ds_init(
 	kbase_region_tracker_insert( kctx, tmem_reg );
 }
 
-void kbase_region_tracker_term(struct kbase_context *kctx)
+void kbase_region_tracker_term(kbase_context *kctx)
 {
 	struct rb_node * rbnode;
 	struct kbase_va_region * reg;
@@ -877,12 +552,10 @@ void kbase_region_tracker_term(struct kbase_context *kctx)
 	} while( rbnode );
 }
 
-#endif
-
 /**
  * Initialize the region tracker data structure.
  */
-mali_error kbase_region_tracker_init(struct kbase_context *kctx)
+mali_error kbase_region_tracker_init(kbase_context *kctx)
 {
 	struct kbase_va_region *pmem_reg;
 	struct kbase_va_region *exec_reg;
@@ -942,6 +615,12 @@ typedef struct kbase_phys_allocator_iterator
 mali_error kbase_mem_init(kbase_device * kbdev)
 {
 	CSTD_UNUSED(kbdev);
+
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
+	{
+		return MALI_ERROR_OUT_OF_MEMORY;
+	}
+
 	/* nothing to do, zero-inited when kbase_device was created */
 	return MALI_ERROR_NONE;
 }
@@ -963,8 +642,8 @@ void kbase_mem_term(kbase_device * kbdev)
 	{
 		osk_phy_allocator_term(&memdev->allocators.allocs[i]);
 	}
-	osk_free(memdev->allocators.allocs);
-	osk_free(memdev->allocators.sorted_allocs[0]);
+	kfree(memdev->allocators.allocs);
+	kfree(memdev->allocators.sorted_allocs[0]);
 
 	kbase_mem_usage_term(&memdev->usage);
 }
@@ -975,6 +654,11 @@ static mali_error kbase_phys_it_init(kbase_device * kbdev, kbase_phys_allocator_
 	OSK_ASSERT(kbdev);
 	OSK_ASSERT(it);
 
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
+	{
+		return MALI_ERROR_OUT_OF_MEMORY;
+	}
+
 	if (!kbdev->memdev.allocators.count)
 	{
 		return MALI_ERROR_OUT_OF_MEMORY;
@@ -984,9 +668,9 @@ static mali_error kbase_phys_it_init(kbase_device * kbdev, kbase_phys_allocator_
 	it->array = &kbdev->memdev.allocators;
 	it->order = order;
 
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 	it->array->it_bound = MALI_TRUE;
-#endif /* MALI_DEBUG */
+#endif /* CONFIG_MALI_DEBUG */
 
 	return MALI_ERROR_NONE;
 }
@@ -995,9 +679,9 @@ static void kbase_phys_it_term(kbase_phys_allocator_iterator * it)
 {
 	OSK_ASSERT(it);
 	it->cur_idx = 0;
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 	it->array->it_bound = MALI_FALSE;
-#endif /* MALI_DEBUG */
+#endif /* CONFIG_MALI_DEBUG */
 	it->array = NULL;
 	return;
 }
@@ -1041,7 +725,13 @@ static void kbase_free_phy_pages_helper(kbase_va_region * reg, u32 nr_pages);
 mali_error kbase_mem_usage_init(kbasep_mem_usage * usage, u32 max_pages)
 {
 	OSK_ASSERT(usage);
-	osk_atomic_set(&usage->cur_pages, 0);
+
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
+	{
+		return MALI_ERROR_OUT_OF_MEMORY;
+	}
+
+	atomic_set(&usage->cur_pages, 0);
 	/* query the max page count */
 	usage->max_pages = max_pages;
 
@@ -1052,27 +742,32 @@ void kbase_mem_usage_term(kbasep_mem_usage * usage)
 {
 	OSK_ASSERT(usage);
 	/* No memory should be in use now */
-	OSK_ASSERT(0 == osk_atomic_get(&usage->cur_pages));
+	OSK_ASSERT(0 == atomic_read(&usage->cur_pages));
 	/* So any new alloc requests will fail */
 	usage->max_pages = 0;
 	/* So we assert on double term */
-	osk_atomic_set(&usage->cur_pages, U32_MAX);
+	atomic_set(&usage->cur_pages, INT_MAX);
 }
 
 mali_error kbase_mem_usage_request_pages(kbasep_mem_usage *usage, u32 nr_pages)
 {
-	u32 cur_pages;
-	u32 old_cur_pages;
+	int cur_pages;
+	int old_cur_pages;
 
 	OSK_ASSERT(usage);
 	OSK_ASSERT(nr_pages); /* 0 pages would be an error in the calling code */
 
-	/*
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
+	{
+		return MALI_ERROR_OUT_OF_MEMORY;
+	}
+
+	/* 
 	 * Fetch the initial cur_pages value
 	 * each loop iteration below fetches
 	 * it as part of the store attempt
 	 */
-	cur_pages = osk_atomic_get(&usage->cur_pages);
+	cur_pages = atomic_read(&usage->cur_pages);
 
 	/* this check allows the simple if test in the loop below */
 	if (usage->max_pages < nr_pages)
@@ -1105,13 +800,13 @@ usage_cap_exceeded:
 		/* try to atomically commit the new count */
 		old_cur_pages = cur_pages;
 		new_cur_pages = cur_pages + nr_pages;
-		cur_pages = osk_atomic_compare_and_swap(&usage->cur_pages, old_cur_pages, new_cur_pages);
+		cur_pages = atomic_cmpxchg(&usage->cur_pages, old_cur_pages, new_cur_pages);
 		/* cur_pages will be like old_cur_pages if there was no race */
 	} while (cur_pages != old_cur_pages);
 
-#if MALI_GATOR_SUPPORT
+#ifdef CONFIG_MALI_GATOR_SUPPORT
 	kbase_trace_mali_total_alloc_pages_change((long long int)cur_pages);
-#endif
+#endif /* CONFIG_MALI_GATOR_SUPPORT */
 
 	return MALI_ERROR_NONE;
 }
@@ -1120,12 +815,12 @@ KBASE_EXPORT_TEST_API(kbase_mem_usage_request_pages)
 void kbase_mem_usage_release_pages(kbasep_mem_usage * usage, u32 nr_pages)
 {
 	OSK_ASSERT(usage);
-	OSK_ASSERT(nr_pages <= osk_atomic_get(&usage->cur_pages));
+	OSK_ASSERT(nr_pages <= atomic_read(&usage->cur_pages));
 
-	osk_atomic_sub(&usage->cur_pages, nr_pages);
-#if MALI_GATOR_SUPPORT
-	kbase_trace_mali_total_alloc_pages_change((long long int)osk_atomic_get(&usage->cur_pages));
-#endif
+	atomic_sub(nr_pages, &usage->cur_pages);
+#ifdef CONFIG_MALI_GATOR_SUPPORT
+	kbase_trace_mali_total_alloc_pages_change((long long int)atomic_read(&usage->cur_pages));
+#endif /* CONFIG_MALI_GATOR_SUPPORT */
 }
 KBASE_EXPORT_TEST_API(kbase_mem_usage_release_pages)
 
@@ -1135,10 +830,10 @@ KBASE_EXPORT_TEST_API(kbase_mem_usage_release_pages)
  * Wait 1000 GPU clock cycles. This delay is known to give the GPU time to flush its write buffer.
  * @note If GPU resets occur then the counters are reset to zero, the delay may not be as expected.
  */
-#if MALI_NO_MALI
-static void kbase_wait_write_flush(struct kbase_context *kctx) { }
-#else
-static void kbase_wait_write_flush(struct kbase_context *kctx)
+#ifdef CONFIG_MALI_NO_MALI
+static void kbase_wait_write_flush(kbase_context *kctx) { }
+#else /* CONFIG_MALI_NO_MALI */
+static void kbase_wait_write_flush(kbase_context *kctx)
 {
 	u32 base_count = 0;
 	kbase_pm_context_active(kctx->kbdev);
@@ -1163,7 +858,7 @@ static void kbase_wait_write_flush(struct kbase_context *kctx)
 	kbase_pm_release_gpu_cycle_counter(kctx->kbdev);
 	kbase_pm_context_idle(kctx->kbdev);
 }
-#endif
+#endif /* CONFIG_MALI_NO_MALI */
 
 /**
  * @brief Allocate a free region object.
@@ -1174,7 +869,7 @@ static void kbase_wait_write_flush(struct kbase_context *kctx)
  * zone is KBASE_REG_ZONE_TMEM, KBASE_REG_ZONE_PMEM, or KBASE_REG_ZONE_EXEC
  *
  */
-struct kbase_va_region *kbase_alloc_free_region(struct kbase_context *kctx, u64 start_pfn, u32 nr_pages, u32 zone)
+struct kbase_va_region *kbase_alloc_free_region(kbase_context *kctx, u64 start_pfn, u32 nr_pages, u32 zone)
 {
 	struct kbase_va_region *new_reg;
 
@@ -1183,12 +878,20 @@ struct kbase_va_region *kbase_alloc_free_region(struct kbase_context *kctx, u64 
 	/* zone argument should only contain zone related region flags */
 	OSK_ASSERT((zone & ~KBASE_REG_ZONE_MASK) == 0);
 	OSK_ASSERT(nr_pages > 0);
-	OSK_ASSERT( start_pfn + nr_pages <= (UINT64_MAX / OSK_PAGE_SIZE) ); /* 64-bit address range is the max */
+	OSK_ASSERT( start_pfn + nr_pages <= (UINT64_MAX / PAGE_SIZE) ); /* 64-bit address range is the max */
 
-	new_reg = osk_calloc(sizeof(*new_reg));
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		new_reg = NULL;
+	}
+	else
+	{
+		new_reg = kzalloc(sizeof(*new_reg), GFP_KERNEL);
+	}
+
 	if (!new_reg)
 	{
-		OSK_PRINT_WARN(OSK_BASE_MEM, "calloc failed");
+		OSK_PRINT_WARN(OSK_BASE_MEM, "kzalloc failed");
 		return NULL;
 	}
 
@@ -1233,11 +936,11 @@ void kbase_free_alloced_region(struct kbase_va_region *reg)
 			reg->flags |= KBASE_REG_FREE
 		);
 	}
-	osk_free(reg);
+	kfree(reg);
 }
 KBASE_EXPORT_TEST_API(kbase_free_alloced_region)
 
-void kbase_mmu_update(struct kbase_context *kctx)
+void kbase_mmu_update(kbase_context *kctx)
 {
 	/* Use GPU implementation-defined caching policy. */
 	u32 memattr = ASn_MEMATTR_IMPL_DEF_CACHE_POLICY;
@@ -1301,7 +1004,7 @@ void kbase_mmu_disable (kbase_context *kctx)
 }
 KBASE_EXPORT_TEST_API(kbase_mmu_disable)
 
-mali_error kbase_gpu_mmap(struct kbase_context *kctx,
+mali_error kbase_gpu_mmap(kbase_context *kctx,
                           struct kbase_va_region *reg,
                           mali_addr64 addr, u32 nr_pages,
                           u32 align)
@@ -1328,7 +1031,7 @@ mali_error kbase_gpu_mmap(struct kbase_context *kctx,
 }
 KBASE_EXPORT_TEST_API(kbase_gpu_mmap)
 
-mali_error kbase_gpu_munmap(struct kbase_context *kctx, struct kbase_va_region *reg)
+mali_error kbase_gpu_munmap(kbase_context *kctx, struct kbase_va_region *reg)
 {
 	mali_error err;
 
@@ -1354,6 +1057,12 @@ STATIC struct kbase_cpu_mapping *kbase_find_cpu_mapping(struct kbase_va_region *
 {
 	struct kbase_cpu_mapping *map;
 	OSK_ASSERT(NULL != reg);
+
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
+	{
+		return NULL;
+	}
+
 	OSK_DLIST_FOREACH(&reg->map_list, struct kbase_cpu_mapping, link, map)
 	{
 		if (map->private == ptr)
@@ -1375,6 +1084,11 @@ STATIC struct kbase_cpu_mapping *kbasep_find_enclosing_cpu_mapping_of_region(
 
 	OSK_ASSERT(NULL != reg);
 
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
+	{
+		return NULL;
+	}
+
 	if ((uintptr_t)uaddr + size < (uintptr_t)uaddr) /* overflow check */
 	{
 		return NULL;
@@ -1382,8 +1096,7 @@ STATIC struct kbase_cpu_mapping *kbasep_find_enclosing_cpu_mapping_of_region(
 
 	OSK_DLIST_FOREACH(&reg->map_list, struct kbase_cpu_mapping, link, map)
 	{
-		if (map->uaddr <= uaddr &&
-		    ((uintptr_t)map->uaddr + (map->nr_pages << OSK_PAGE_SHIFT)) >= ((uintptr_t)uaddr + size))
+		if (map->uaddr <= uaddr && ((uintptr_t)map->uaddr + (map->nr_pages << PAGE_SHIFT)) >= ((uintptr_t)uaddr + size))
 		{
 			return map;
 		}
@@ -1424,12 +1137,18 @@ mali_error kbase_cpu_free_mapping(struct kbase_va_region *reg, const void *ptr)
 		goto out;
 	}
 
+	/* As the tmem is being unmapped we need to update the pages used by the process */
+	if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM )
+	{
+		kbase_process_page_usage_inc(reg->kctx, map->nr_pages);
+	}
+
 	OSK_DLIST_REMOVE(&reg->map_list, map, link);
-	osk_free(map);
+	kfree(map);
 
 	if ((reg->flags & KBASE_REG_DELAYED_FREE) && OSK_DLIST_IS_EMPTY(&reg->map_list))
 	{
-		kbase_mem_free_region(reg->kctx, reg);
+		err = kbase_mem_free_region(reg->kctx, reg);
 	}
 
 out:
@@ -1438,7 +1157,7 @@ out:
 KBASE_EXPORT_TEST_API(kbase_cpu_free_mapping)
 
 struct kbase_cpu_mapping *kbasep_find_enclosing_cpu_mapping(
-                               struct kbase_context *kctx,
+                               kbase_context *kctx,
                                mali_addr64           gpu_addr,
                                osk_virt_addr         uaddr,
                                size_t                size )
@@ -1461,7 +1180,7 @@ struct kbase_cpu_mapping *kbasep_find_enclosing_cpu_mapping(
 }
 KBASE_EXPORT_TEST_API(kbasep_find_enclosing_cpu_mapping)
 
-static mali_error kbase_do_syncset(struct kbase_context *kctx, base_syncset *set,
+static mali_error kbase_do_syncset(kbase_context *kctx, base_syncset *set,
 			     osk_sync_kmem_fn sync_fn)
 {
 	mali_error err = MALI_ERROR_NONE;
@@ -1469,7 +1188,7 @@ static mali_error kbase_do_syncset(struct kbase_context *kctx, base_syncset *set
 	struct kbase_va_region *reg;
 	struct kbase_cpu_mapping *map;
 	osk_phy_addr *pa;
-	u64 page_off, page_count, size_in_pages;
+	u64 page_off, page_count;
 	osk_virt_addr start;
 	size_t size;
 	u64 i;
@@ -1505,17 +1224,16 @@ static mali_error kbase_do_syncset(struct kbase_context *kctx, base_syncset *set
 		goto out_unlock;
 	}
 
-	offset_within_page = (uintptr_t)start & (OSK_PAGE_SIZE - 1);
-	size_in_pages = (size + offset_within_page + (OSK_PAGE_SIZE - 1)) & OSK_PAGE_MASK;
-	page_off = map->page_off + (((uintptr_t)start - (uintptr_t)map->uaddr) >> OSK_PAGE_SHIFT);
-	page_count = (size_in_pages >> OSK_PAGE_SHIFT);
+	offset_within_page = (uintptr_t)start & (PAGE_SIZE - 1);
+	page_off = map->page_off + (((uintptr_t)start - (uintptr_t)map->uaddr) >> PAGE_SHIFT);
+	page_count = ((size + offset_within_page + (PAGE_SIZE - 1)) & PAGE_MASK) >> PAGE_SHIFT;
 	pa = kbase_get_phy_pages(reg);
 
 	for (i = 0; i < page_count; i++)
 	{
-		u32 offset = (uintptr_t)start & (OSK_PAGE_SIZE - 1);
+		u32 offset = (uintptr_t)start & (PAGE_SIZE - 1);
 		osk_phy_addr paddr = pa[page_off + i] + offset;
-		size_t sz = OSK_MIN(((size_t)OSK_PAGE_SIZE - offset), size);
+		size_t sz = OSK_MIN(((size_t)PAGE_SIZE - offset), size);
 
 		if (paddr == base_phy_addr + area_size &&
 		    start == (osk_virt_addr)((uintptr_t)base_virt_addr + area_size))
@@ -1538,7 +1256,7 @@ static mali_error kbase_do_syncset(struct kbase_context *kctx, base_syncset *set
 		start = (osk_virt_addr)((uintptr_t)start + sz);
 		size -= sz;
 	}
-
+	
 	if (area_size > 0)
 	{
 		sync_fn(base_phy_addr, base_virt_addr, area_size);
@@ -1577,7 +1295,7 @@ mali_error kbase_sync_now(kbase_context *kctx, base_syncset *syncset)
 	case BASE_SYNCSET_OP_MSYNC:
 		err = kbase_sync_to_memory(kctx, syncset);
 		break;
-
+		
 	case BASE_SYNCSET_OP_CSYNC:
 		err = kbase_sync_to_cpu(kctx, syncset);
 		break;
@@ -1591,62 +1309,7 @@ mali_error kbase_sync_now(kbase_context *kctx, base_syncset *syncset)
 }
 KBASE_EXPORT_TEST_API(kbase_sync_now)
 
-void kbase_pre_job_sync(kbase_context *kctx, base_syncset *syncsets, u32 nr)
-{
-	u32 i;
-
-	OSK_ASSERT(NULL != kctx);
-	OSK_ASSERT(NULL != syncsets);
-
-	for (i = 0; i < nr; i++)
-	{
-		u8 type = syncsets[i].basep_sset.type;
-
-		switch(type)
-		{
-		case BASE_SYNCSET_OP_MSYNC:
-			kbase_sync_to_memory(kctx, &syncsets[i]);
-			break;
-
-		case BASE_SYNCSET_OP_CSYNC:
-			continue;
-
-		default:
-			OSK_PRINT_WARN(OSK_BASE_MEM, "Unknown msync op %d\n", type);
-			break;
-		}
-	}
-}
-KBASE_EXPORT_TEST_API(kbase_pre_job_sync)
-
-void kbase_post_job_sync(kbase_context *kctx, base_syncset *syncsets, u32 nr)
-{
-	u32 i;
-
-	OSK_ASSERT(NULL != kctx);
-	OSK_ASSERT(NULL != syncsets);
-
-	for (i = 0; i < nr; i++)
-	{
-		struct basep_syncset *sset = &syncsets[i].basep_sset;
-		switch(sset->type)
-		{
-		case BASE_SYNCSET_OP_CSYNC:
-			kbase_sync_to_cpu(kctx, &syncsets[i]);
-			break;
-
-		case BASE_SYNCSET_OP_MSYNC:
-			continue;
-
-		default:
-			OSK_PRINT_WARN(OSK_BASE_MEM, "Unknown msync op %d\n", sset->type);
-			break;
-		}
-	}
-}
-KBASE_EXPORT_TEST_API(kbase_post_job_sync)
-
-#ifdef MALI_USE_DMA_SHARED_BUFFER
+#ifdef CONFIG_DMA_SHARED_BUFFER
 static mali_bool is_actively_imported_umm(kbase_va_region *reg)
 {
 	if (reg->imported_type == BASE_TMEM_IMPORT_TYPE_UMM)
@@ -1663,15 +1326,16 @@ static mali_bool is_actively_imported_umm(kbase_va_region *reg)
 {
 	return MALI_FALSE;
 }
-#endif
+#endif /* CONFIG_DMA_SHARED_BUFFER */
 
 /* vm lock must be held */
-mali_error kbase_mem_free_region(struct kbase_context *kctx,
-				 kbase_va_region *reg)
+mali_error kbase_mem_free_region(kbase_context *kctx,
+                                 kbase_va_region *reg)
 {
 	mali_error err;
 	OSK_ASSERT(NULL != kctx);
 	OSK_ASSERT(NULL != reg);
+	BUG_ON(!mutex_is_locked(&kctx->reg_lock));
 
 	if (!OSK_DLIST_IS_EMPTY(&reg->map_list) || is_actively_imported_umm(reg))
 	{
@@ -1711,11 +1375,11 @@ KBASE_EXPORT_TEST_API(kbase_mem_free_region)
  * This function implements the free operation on a memory segment.
  * It will loudly fail if called with outstanding mappings.
  */
-mali_error kbase_mem_free(struct kbase_context *kctx, mali_addr64 gpu_addr)
+mali_error kbase_mem_free(kbase_context *kctx, mali_addr64 gpu_addr)
 {
 	mali_error err = MALI_ERROR_NONE;
 	struct kbase_va_region *reg;
-
+	
 	OSK_ASSERT(kctx != NULL);
 
 	if (0 == gpu_addr)
@@ -1725,7 +1389,7 @@ mali_error kbase_mem_free(struct kbase_context *kctx, mali_addr64 gpu_addr)
 	}
 	kbase_gpu_vm_lock(kctx);
 
-	if (gpu_addr < OSK_PAGE_SIZE)
+	if (gpu_addr < PAGE_SIZE)
 	{
 		/* an OS specific cookie, ask the OS specific code to validate it */
 		reg = kbase_lookup_cookie(kctx, gpu_addr);
@@ -1845,7 +1509,7 @@ static void kbase_free_phy_pages_helper(kbase_va_region * reg, u32 nr_pages_to_f
 	}
 
 	nr_pages = nr_pages_to_free;
-
+	
 	page_array = kbase_get_phy_pages(reg);
 
 	OSK_ASSERT(nr_pages_to_free == 0 || page_array != NULL);
@@ -1860,16 +1524,21 @@ static void kbase_free_phy_pages_helper(kbase_va_region * reg, u32 nr_pages_to_f
 			/* free the whole commit */
 			kbase_phy_pages_free(reg->kctx->kbdev, commit->allocator, commit->nr_pages,
 					page_array + reg->nr_alloc_pages - commit->nr_pages);
-
+			
 			/* update page counts */
 			nr_pages -= commit->nr_pages;
 			reg->nr_alloc_pages -= commit->nr_pages;
+			
+			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM )
+			{
+				kbase_process_page_usage_dec(reg->kctx, commit->nr_pages);
+			}
 
 			/* free the node (unless it's the root node) */
 			if (commit != &reg->root_commit)
 			{
 				reg->last_commit = commit->prev;
-				osk_free(commit);
+				kfree(commit);
 			}
 			else
 			{
@@ -1887,6 +1556,10 @@ static void kbase_free_phy_pages_helper(kbase_va_region * reg, u32 nr_pages_to_f
 					page_array + reg->nr_alloc_pages - nr_pages);
 			commit->nr_pages -= nr_pages;
 			reg->nr_alloc_pages -= nr_pages;
+			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM )
+			{
+				kbase_process_page_usage_dec(reg->kctx, nr_pages);
+			}
 			break; /* end the loop */
 		}
 	}
@@ -1998,6 +1671,10 @@ mali_error kbase_alloc_phy_pages_helper(struct kbase_va_region *reg, u32 nr_page
 
 		if (!nr_pages_left)
 		{
+			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM)
+			{
+				kbase_process_page_usage_inc(reg->kctx, nr_pages_requested);
+			}
 			return MALI_ERROR_NONE;
 		}
 	}
@@ -2040,7 +1717,15 @@ mali_error kbase_alloc_phy_pages_helper(struct kbase_va_region *reg, u32 nr_page
 
 				if (reg->last_commit->allocator)
 				{
-					commit = (kbase_mem_commit*)osk_calloc(sizeof(*commit));
+					if(OSK_SIMULATE_FAILURE(OSK_OSK))
+					{
+						commit = NULL;
+					}
+					else
+					{
+						commit = (kbase_mem_commit*)kzalloc(sizeof(*commit), GFP_KERNEL);
+					}
+
 					if (commit == NULL)
 					{
 						kbase_phy_pages_free(reg->kctx->kbdev, kbase_phys_it_deref(&it), pages_committed,
@@ -2069,6 +1754,10 @@ mali_error kbase_alloc_phy_pages_helper(struct kbase_va_region *reg, u32 nr_page
 
 		if (nr_pages_left == 0)
 		{
+			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM)
+			{
+				kbase_process_page_usage_inc(reg->kctx, nr_pages_requested);
+			}
 			return MALI_ERROR_NONE;
 		}
 	}
@@ -2104,7 +1793,7 @@ void kbase_free_phy_pages(struct kbase_va_region *reg)
 	{
 		switch (reg->imported_type)
 		{
-#if MALI_USE_UMP
+#ifdef CONFIG_UMP
 		case BASE_TMEM_IMPORT_TYPE_UMP:
 		{
 			ump_dd_handle umph;
@@ -2112,15 +1801,15 @@ void kbase_free_phy_pages(struct kbase_va_region *reg)
 			ump_dd_release(umph);
 			break;
 		}
-#endif /* MALI_USE_UMP */
-#ifdef MALI_USE_DMA_SHARED_BUFFER
+#endif /* CONFIG_UMP */
+#ifdef CONFIG_DMA_SHARED_BUFFER
 		case BASE_TMEM_IMPORT_TYPE_UMM:
 		{
 			dma_buf_detach(reg->imported_metadata.umm.dma_buf, reg->imported_metadata.umm.dma_attachment);
 			dma_buf_put(reg->imported_metadata.umm.dma_buf);
 			break;
 		}
-#endif /* MALI_USE_DMA_SHARED_BUFFER */
+#endif /* CONFIG_DMA_SHARED_BUFFER */
 		default:
 			/* unsupported types should never reach this point */
 			OSK_ASSERT(0);
@@ -2132,12 +1821,12 @@ void kbase_free_phy_pages(struct kbase_va_region *reg)
 	{
 		if (reg->flags & KBASE_REG_IS_TB)
 		{
-			/* trace buffer being freed. Disconnect, then use osk_vfree */
+			/* trace buffer being freed. Disconnect, then use vfree */
 			/* save tb so we can free it after the disconnect call */
 			void * tb;
 			tb = reg->kctx->jctx.tb;
 			kbase_device_trace_buffer_uninstall(reg->kctx);
-			osk_vfree(tb);
+			vfree(tb);
 		}
 		else if (reg->flags & KBASE_REG_IS_RB)
 		{
@@ -2150,7 +1839,7 @@ void kbase_free_phy_pages(struct kbase_va_region *reg)
 	}
 
 	kbase_set_phy_pages(reg, NULL);
-	osk_vfree(page_array);
+	vfree(page_array);
 }
 KBASE_EXPORT_TEST_API(kbase_free_phy_pages)
 
@@ -2175,7 +1864,16 @@ int kbase_alloc_phy_pages(struct kbase_va_region *reg, u32 vsize, u32 size)
 		goto out_term;
 	}
 
-	page_array = osk_vmalloc(vsize * sizeof(*page_array));
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		page_array = NULL;
+	}
+	else
+	{
+		OSK_ASSERT(0 != vsize);
+		page_array = vmalloc_user(vsize * sizeof(*page_array));
+	}
+
 	if (!page_array)
 	{
 		goto out_term;
@@ -2191,7 +1889,7 @@ int kbase_alloc_phy_pages(struct kbase_va_region *reg, u32 vsize, u32 size)
 	return 0;
 
 out_free:
-	osk_vfree(page_array);
+	vfree(page_array);
 out_term:
 	return -1;
 }
@@ -2203,6 +1901,11 @@ STATIC mali_bool kbasep_tmem_growable_round_delta( kbase_device *kbdev, s32 *del
 	s32 delta;
 
 	OSK_ASSERT( delta_ptr != NULL );
+
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
+	{
+		return MALI_FALSE;
+	}
 
 	delta = *delta_ptr;
 
@@ -2242,6 +1945,11 @@ STATIC mali_bool kbasep_tmem_growable_round_delta( kbase_device *kbdev, s32 *del
 
 mali_bool kbase_check_alloc_flags(u32 flags)
 {
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
+	{
+		return MALI_FALSE;
+	}
+
 	/* Only known flags should be set. */
 	if (flags & ~((1 << BASE_MEM_FLAGS_NR_BITS) - 1))
 	{
@@ -2277,7 +1985,7 @@ mali_bool kbase_check_alloc_flags(u32 flags)
 	return MALI_TRUE;
 }
 
-struct kbase_va_region *kbase_tmem_alloc(struct kbase_context *kctx,
+struct kbase_va_region *kbase_tmem_alloc(kbase_context *kctx,
 					 u32 vsize, u32 psize,
 					 u32 extent, u32 flags, mali_bool is_growable)
 {
@@ -2341,8 +2049,8 @@ struct kbase_va_region *kbase_tmem_alloc(struct kbase_context *kctx,
 		goto out2;
 	}
 
-	reg->nr_alloc_pages	= psize_rounded;
-	reg->extent		= extent_rounded;
+	reg->nr_alloc_pages = psize_rounded;
+	reg->extent         = extent_rounded;
 
 	kbase_gpu_vm_lock(kctx);
 	err = kbase_gpu_mmap(kctx, reg, 0, vsize_rounded, align);
@@ -2359,20 +2067,18 @@ struct kbase_va_region *kbase_tmem_alloc(struct kbase_context *kctx,
 out3:
 	kbase_free_phy_pages(reg);
 out2:
-	osk_free(reg);
+	kfree(reg);
 out1:
 	return NULL;
 }
 KBASE_EXPORT_TEST_API(kbase_tmem_alloc)
 
-mali_error kbase_tmem_resize(struct kbase_context *kctx, mali_addr64 gpu_addr, s32 delta, u32 *size, base_backing_threshold_status * failure_reason)
+mali_error kbase_tmem_resize(kbase_context *kctx, mali_addr64 gpu_addr, s32 delta, u32 *size, base_backing_threshold_status * failure_reason)
 {
 	kbase_va_region *reg;
 	mali_error ret = MALI_ERROR_FUNCTION_FAILED;
-#if !( (MALI_INFINITE_CACHE != 0) && !MALI_BACKEND_KERNEL )
-	/* tmem is already mapped to max_pages, so no resizing needed */
 	osk_phy_addr *phy_pages;
-#endif /* !( (MALI_INFINITE_CACHE != 0) && !MALI_BACKEND_KERNEL ) */
+
 	OSK_ASSERT(NULL != kctx);
 	OSK_ASSERT(size);
 	OSK_ASSERT(failure_reason);
@@ -2389,11 +2095,8 @@ mali_error kbase_tmem_resize(struct kbase_context *kctx, mali_addr64 gpu_addr, s
 		goto out_unlock;
 	}
 
-#if !( (MALI_INFINITE_CACHE != 0) && !MALI_BACKEND_KERNEL )
-	/* tmem is already mapped to max_pages, don't try to resize */
-
 	if (!( (KBASE_REG_ZONE_MASK & reg->flags) == KBASE_REG_ZONE_TMEM ||
-               (KBASE_REG_ZONE_MASK & reg->flags) == KBASE_REG_ZONE_EXEC ) )
+	           (KBASE_REG_ZONE_MASK & reg->flags) == KBASE_REG_ZONE_EXEC ) )
 	{
 		/* not a valid region - not tmem or exec region */
 		*failure_reason = BASE_BACKING_THRESHOLD_ERROR_INVALID_ARGUMENTS;
@@ -2463,7 +2166,7 @@ mali_error kbase_tmem_resize(struct kbase_context *kctx, mali_addr64 gpu_addr, s
 	{
 		mali_error err;
 		/* Free some pages */
-
+		
 		/* Get the absolute value of delta. Note that we have to add one before and after the negation to avoid
 		 * overflowing when delta is INT_MIN */
 		u32 num_pages = (u32)(-(delta+1))+1;
@@ -2485,8 +2188,6 @@ mali_error kbase_tmem_resize(struct kbase_context *kctx, mali_addr64 gpu_addr, s
 	}
 	/* else just a size query */
 
-#endif /* !( (MALI_INFINITE_CACHE != 0) && !MALI_BACKEND_KERNEL ) */
-
 	*size = reg->nr_alloc_pages;
 
 	ret = MALI_ERROR_NONE;
@@ -2497,9 +2198,154 @@ out_unlock:
 }
 KBASE_EXPORT_TEST_API(kbase_tmem_resize)
 
-#if MALI_USE_UMP
 
-static struct kbase_va_region *kbase_tmem_from_ump(struct kbase_context *kctx, ump_secure_id id, u64 * const pages)
+mali_error kbase_tmem_set_size(kbase_context *kctx, mali_addr64 gpu_addr, u32 size, u32 *actual_size, base_backing_threshold_status * failure_reason)
+{
+	u32 delta = 0;
+	kbase_va_region *reg;
+	mali_error ret = MALI_ERROR_FUNCTION_FAILED;
+	osk_phy_addr *phy_pages;
+
+	OSK_ASSERT(NULL != kctx);
+	OSK_ASSERT(NULL != actual_size);
+	OSK_ASSERT(failure_reason);
+	OSK_ASSERT(gpu_addr != 0);
+
+	kbase_gpu_vm_lock(kctx);
+
+	/* Validate the region */
+	reg = kbase_region_tracker_find_region_base_address(kctx, gpu_addr);
+	if (!reg || (reg->flags & KBASE_REG_FREE) )
+	{
+		*failure_reason = BASE_BACKING_THRESHOLD_ERROR_INVALID_ARGUMENTS;
+		goto out_unlock;
+	}
+
+	if (!( (KBASE_REG_ZONE_MASK & reg->flags) == KBASE_REG_ZONE_TMEM ||
+	           (KBASE_REG_ZONE_MASK & reg->flags) == KBASE_REG_ZONE_EXEC ) )
+	{
+		/* not a valid region - not tmem or exec region */
+		*failure_reason = BASE_BACKING_THRESHOLD_ERROR_INVALID_ARGUMENTS;
+		goto out_unlock;
+	}
+	if (0 == (reg->flags & KBASE_REG_GROWABLE))
+	{
+		*actual_size = reg->nr_alloc_pages;
+		*failure_reason = BASE_BACKING_THRESHOLD_ERROR_NOT_GROWABLE;
+		goto out_unlock;
+	}
+
+	if ( !OSK_DLIST_IS_EMPTY(&reg->map_list) )
+	{
+		/* We still have mappings */
+		*failure_reason = BASE_BACKING_THRESHOLD_ERROR_MAPPED;
+		goto out_unlock;
+	}
+
+	if ( size && reg->flags & KBASE_REG_PF_GROW )
+	{
+		size = kbasep_tmem_growable_round_size( kctx->kbdev, size );
+		/* check for rounding overflow */
+		if ( !size )
+		{
+			*failure_reason = BASE_BACKING_THRESHOLD_ERROR_INVALID_ARGUMENTS;
+			goto out_unlock;
+		}
+	}
+
+	if ( size > reg->nr_pages )
+	{
+		/* Would overflow the VA region */
+		*failure_reason = BASE_BACKING_THRESHOLD_ERROR_INVALID_ARGUMENTS;
+		goto out_unlock;
+	}
+
+	phy_pages = kbase_get_phy_pages(reg);
+
+	if ( size > reg->nr_alloc_pages )
+	{
+		mali_error err;
+		delta = size-reg->nr_alloc_pages;
+		/* Allocate some more pages */
+		if (MALI_ERROR_NONE != kbase_alloc_phy_pages_helper(reg, delta))
+		{
+			*failure_reason = BASE_BACKING_THRESHOLD_ERROR_OOM;
+			goto out_unlock;
+		}
+		err = kbase_mmu_insert_pages(kctx, reg->start_pfn + reg->nr_alloc_pages - delta,
+		                             phy_pages + reg->nr_alloc_pages - delta,
+		                             delta, reg->flags);
+		if(MALI_ERROR_NONE != err)
+		{
+			kbase_free_phy_pages_helper(reg, delta);
+			*failure_reason = BASE_BACKING_THRESHOLD_ERROR_OOM;
+			goto out_unlock;
+		}
+	}
+	else if (size  < reg->nr_alloc_pages )
+	{
+		mali_error err;
+		delta = reg->nr_alloc_pages-size;
+
+		/* Free some pages */
+		err = kbase_mmu_teardown_pages(kctx, reg->start_pfn + reg->nr_alloc_pages - delta, delta);
+		if(MALI_ERROR_NONE != err)
+		{
+			*failure_reason = BASE_BACKING_THRESHOLD_ERROR_OOM;
+			goto out_unlock;
+		}
+
+		if (kbase_hw_has_issue(kctx->kbdev, BASE_HW_ISSUE_6367))
+		{
+			/* Wait for GPU to flush write buffer before freeing physical pages */
+			kbase_wait_write_flush(kctx);
+		}
+
+		kbase_free_phy_pages_helper(reg, delta);
+	}
+
+	*actual_size = reg->nr_alloc_pages;
+
+	ret = MALI_ERROR_NONE;
+
+out_unlock:
+	kbase_gpu_vm_unlock(kctx);
+
+	return ret;
+}
+KBASE_EXPORT_TEST_API(kbase_tmem_set_size)
+
+mali_error kbase_tmem_get_size(kbase_context *kctx, mali_addr64 gpu_addr, u32 *actual_size )
+{
+	kbase_va_region *reg;
+	mali_error ret = MALI_ERROR_FUNCTION_FAILED;
+
+	OSK_ASSERT(NULL != kctx);
+	OSK_ASSERT(NULL != actual_size);
+	OSK_ASSERT(gpu_addr != 0);
+
+	kbase_gpu_vm_lock(kctx);
+
+	/* Validate the region */
+	reg = kbase_region_tracker_find_region_base_address(kctx, gpu_addr);
+	if (!reg || (reg->flags & KBASE_REG_FREE) )
+	{
+		goto out_unlock;
+	}
+
+	*actual_size = reg->nr_alloc_pages;
+
+	ret = MALI_ERROR_NONE;
+
+out_unlock:
+	kbase_gpu_vm_unlock(kctx);
+	return ret;
+}
+KBASE_EXPORT_TEST_API(kbase_tmem_get_size)
+
+#ifdef CONFIG_UMP
+
+static struct kbase_va_region *kbase_tmem_from_ump(kbase_context *kctx, ump_secure_id id, u64 * const pages)
 {
 	struct kbase_va_region *reg;
 	mali_error err;
@@ -2527,7 +2373,7 @@ static struct kbase_va_region *kbase_tmem_from_ump(struct kbase_context *kctx, u
 	gpu_flags = (ump_flags >> kctx->kbdev->memdev.ump_device_id) & UMP_DEVICE_MASK;
 
 	vsize = ump_dd_size_get_64(umph);
-	vsize >>= OSK_PAGE_SHIFT;
+	vsize >>= PAGE_SHIFT;
 
 	reg = kbase_alloc_free_region(kctx, 0, vsize, KBASE_REG_ZONE_TMEM);
 	if (!reg)
@@ -2577,7 +2423,16 @@ static struct kbase_va_region *kbase_tmem_from_ump(struct kbase_context *kctx, u
 	/* ump phys block query */
 	ump_dd_phys_blocks_get_64(umph, &block_count, &block_array);
 
-	page_array = osk_vmalloc(vsize * sizeof(*page_array));
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		page_array = NULL;
+	}
+	else
+	{
+		OSK_ASSERT(0 != vsize);
+		page_array = vmalloc_user(vsize * sizeof(*page_array));
+	}
+
 	if (!page_array)
 	{
 		goto out2;
@@ -2585,17 +2440,17 @@ static struct kbase_va_region *kbase_tmem_from_ump(struct kbase_context *kctx, u
 
 	for (i = 0; i < block_count; i++)
 	{
-		for (j = 0; j < (block_array[i].size >> OSK_PAGE_SHIFT); j++)
+		for (j = 0; j < (block_array[i].size >> PAGE_SHIFT); j++)
 		{
-			page_array[page] = block_array[i].addr + (j << OSK_PAGE_SHIFT);
+			page_array[page] = block_array[i].addr + (j << PAGE_SHIFT);
 			page++;
 		}
 	}
 
 	kbase_set_phy_pages(reg, page_array);
 
-	reg->nr_alloc_pages	= vsize;
-	reg->extent		= vsize;
+	reg->nr_alloc_pages = vsize;
+	reg->extent         = vsize;
 
 	kbase_gpu_vm_lock(kctx);
 	err = kbase_gpu_mmap(kctx, reg, 0, vsize, 1/* no alignment */);
@@ -2612,9 +2467,9 @@ static struct kbase_va_region *kbase_tmem_from_ump(struct kbase_context *kctx, u
 	return reg;
 
 out3:
-	osk_vfree(page_array);
+	vfree(page_array);
 out2:
-	osk_free(reg);
+	kfree(reg);
 out1:
 	ump_dd_release(umph);
 	return NULL;
@@ -2622,10 +2477,10 @@ out1:
 
 }
 
-#endif /* MALI_USE_UMP */
+#endif /* CONFIG_UMP */
 
-#ifdef MALI_USE_DMA_SHARED_BUFFER
-static struct kbase_va_region *kbase_tmem_from_umm(struct kbase_context *kctx, int fd, u64 * const pages)
+#ifdef CONFIG_DMA_SHARED_BUFFER
+static struct kbase_va_region *kbase_tmem_from_umm(kbase_context *kctx, int fd, u64 * const pages)
 {
 	struct kbase_va_region *reg;
 	struct dma_buf * dma_buf;
@@ -2662,16 +2517,25 @@ static struct kbase_va_region *kbase_tmem_from_umm(struct kbase_context *kctx, i
 	reg->imported_metadata.umm.dma_attachment = dma_attachment;
 	reg->imported_metadata.umm.current_mapping_usage_count = 0;
 
-	page_array = osk_vmalloc(nr_pages * sizeof(*page_array));
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		page_array = NULL;
+	}
+	else
+	{
+		OSK_ASSERT(0 != nr_pages);
+		page_array = vmalloc_user(nr_pages * sizeof(*page_array));
+	}
+
 	if (!page_array)
 		goto no_page_array;
 
-	OSK_MEMSET(page_array, 0, nr_pages * sizeof(*page_array));
+	memset(page_array, 0, nr_pages * sizeof(*page_array));
 
 	kbase_set_phy_pages(reg, page_array);
 
-	reg->nr_alloc_pages	= nr_pages;
-	reg->extent		= nr_pages;
+	reg->nr_alloc_pages = nr_pages;
+	reg->extent         = nr_pages;
 
 	kbase_gpu_vm_lock(kctx);
 	err = kbase_add_va_region(kctx, reg, 0, nr_pages, 1);
@@ -2684,9 +2548,9 @@ static struct kbase_va_region *kbase_tmem_from_umm(struct kbase_context *kctx, i
 	return reg;
 
 no_addr_reserve:
-	osk_vfree(page_array);
+	vfree(page_array);
 no_page_array:
-	osk_free(reg);
+	kfree(reg);
 no_region:
 	dma_buf_detach(dma_buf, dma_attachment);
 no_attachment:
@@ -2694,24 +2558,24 @@ no_attachment:
 no_buf:
 	return NULL;
 }
-#endif /* MALI_USE_DMA_SHARED_BUFFER */
+#endif /* CONFIG_DMA_SHARED_BUFFER */
 
-struct kbase_va_region *kbase_tmem_import(struct kbase_context *kctx, base_tmem_import_type type, int handle, u64 * const pages)
+struct kbase_va_region *kbase_tmem_import(kbase_context *kctx, base_tmem_import_type type, int handle, u64 * const pages)
 {
 	switch (type)
 	{
-#if MALI_USE_UMP
+#ifdef CONFIG_UMP
 	case BASE_TMEM_IMPORT_TYPE_UMP:
 		{
 			ump_secure_id id;
 			id = (ump_secure_id)handle;
 			return kbase_tmem_from_ump(kctx, id, pages);
 		}
-#endif /* MALI_USE_UMP */
-#ifdef MALI_USE_DMA_SHARED_BUFFER
+#endif /* CONFIG_UMP */
+#ifdef CONFIG_DMA_SHARED_BUFFER
 		case BASE_TMEM_IMPORT_TYPE_UMM:
 			return kbase_tmem_from_umm(kctx, handle, pages);
-#endif /* MALI_USE_DMA_SHARED_BUFFER */
+#endif /* CONFIG_DMA_SHARED_BUFFER */
 		default:
 			return NULL;
 	}
@@ -2720,20 +2584,20 @@ struct kbase_va_region *kbase_tmem_import(struct kbase_context *kctx, base_tmem_
 /**
  * @brief Acquire the per-context region list lock
  */
-void kbase_gpu_vm_lock(struct kbase_context *kctx)
+void kbase_gpu_vm_lock(kbase_context *kctx)
 {
 	OSK_ASSERT(kctx != NULL);
-	osk_mutex_lock(&kctx->reg_lock);
+	mutex_lock(&kctx->reg_lock);
 }
 KBASE_EXPORT_TEST_API(kbase_gpu_vm_lock)
 
 /**
  * @brief Release the per-context region list lock
  */
-void kbase_gpu_vm_unlock(struct kbase_context *kctx)
+void kbase_gpu_vm_unlock(kbase_context *kctx)
 {
 	OSK_ASSERT(kctx != NULL);
-	osk_mutex_unlock(&kctx->reg_lock);
+	mutex_unlock(&kctx->reg_lock);
 }
 KBASE_EXPORT_TEST_API(kbase_gpu_vm_unlock)
 
@@ -2757,9 +2621,9 @@ mali_error kbase_register_memory_regions(kbase_device * kbdev, const kbase_attri
 	memdev = &kbdev->memdev;
 
 	/* Programming error to register memory after we've started using the iterator interface */
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 	OSK_ASSERT(memdev->allocators.it_bound == MALI_FALSE);
-#endif /* MALI_DEBUG */
+#endif /* CONFIG_MALI_DEBUG */
 
 	max_shared_memory = (u32) kbasep_get_config_value(kbdev, attributes, KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_MAX);
 	shared_memory_performance =
@@ -2779,14 +2643,31 @@ mali_error kbase_register_memory_regions(kbase_device * kbdev, const kbase_attri
 		return MALI_ERROR_FUNCTION_FAILED;
 	}
 
-	region_performance = osk_malloc(sizeof(kbasep_memory_region_performance) * total_regions);
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		region_performance = NULL;
+	}
+	else
+	{
+		OSK_ASSERT(0 != total_regions);
+		region_performance = kmalloc(sizeof(kbasep_memory_region_performance) * total_regions, GFP_KERNEL);
+	}
 
 	if (region_performance == NULL)
 	{
 		goto out;
 	}
 
-	allocs = osk_malloc(sizeof(osk_phy_allocator) * total_regions);
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		allocs = NULL;
+	}
+	else
+	{
+		OSK_ASSERT(0 != total_regions);
+		allocs = kmalloc(sizeof(osk_phy_allocator) * total_regions, GFP_KERNEL);
+	}
+
 	if (allocs == NULL)
 	{
 		goto out_perf;
@@ -2802,13 +2683,13 @@ mali_error kbase_register_memory_regions(kbase_device * kbdev, const kbase_attri
 		{
 			resource = (kbase_memory_resource *)current_attribute->data;
 			if (OSK_ERR_NONE != osk_phy_allocator_init(&allocs[allocators_initialized], resource->base,
-						(u32)(resource->size >> OSK_PAGE_SHIFT), resource->name))
+			        (u32)(resource->size >> PAGE_SHIFT), resource->name))
 			{
 				goto out_allocator_term;
 			}
 
 			kbasep_get_memory_performance(resource, &region_performance[allocators_initialized].cpu_performance,
-					&region_performance[allocators_initialized].gpu_performance);
+			        &region_performance[allocators_initialized].gpu_performance);
 			current_attribute++;
 			allocators_initialized++;
 		}
@@ -2818,7 +2699,7 @@ mali_error kbase_register_memory_regions(kbase_device * kbdev, const kbase_attri
 	if (max_shared_memory > 0)
 	{
 		if (OSK_ERR_NONE != osk_phy_allocator_init(&allocs[allocators_initialized], 0,
-				max_shared_memory >> OSK_PAGE_SHIFT, NULL))
+				max_shared_memory >> PAGE_SHIFT, NULL))
 		{
 			goto out_allocator_term;
 		}
@@ -2828,7 +2709,7 @@ mali_error kbase_register_memory_regions(kbase_device * kbdev, const kbase_attri
 		allocators_initialized++;
 	}
 
-	if (MALI_ERROR_NONE != kbase_mem_usage_init(&memdev->usage, max_shared_memory >> OSK_PAGE_SHIFT))
+	if (MALI_ERROR_NONE != kbase_mem_usage_init(&memdev->usage, max_shared_memory >> PAGE_SHIFT))
 	{
 		goto out_allocator_term;
 	}
@@ -2842,7 +2723,7 @@ mali_error kbase_register_memory_regions(kbase_device * kbdev, const kbase_attri
 	memdev->allocators.allocs = allocs;
 	memdev->allocators.count = total_regions;
 
-	osk_free(region_performance);
+	kfree(region_performance);
 
 	return MALI_ERROR_NONE;
 
@@ -2853,9 +2734,9 @@ out_allocator_term:
 	{
 		osk_phy_allocator_term(&allocs[allocators_initialized]);
 	}
-	osk_free(allocs);
+	kfree(allocs);
 out_perf:
-	osk_free(region_performance);
+	kfree(region_performance);
 out:
 	return MALI_ERROR_OUT_OF_MEMORY;
 }
@@ -2870,7 +2751,17 @@ static mali_error kbasep_allocator_order_list_create( osk_phy_allocator * alloca
 	int i;
 	void *sorted_alloc_mem_block;
 
-	sorted_alloc_mem_block = osk_malloc(sizeof(osk_phy_allocator **) * memory_region_count * allocator_order_count);
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		sorted_alloc_mem_block = NULL;
+	}
+	else
+	{
+		OSK_ASSERT(0 != memory_region_count);
+		OSK_ASSERT(0 != allocator_order_count);
+		sorted_alloc_mem_block = kmalloc(sizeof(osk_phy_allocator **) * memory_region_count * allocator_order_count, GFP_KERNEL);
+	}
+
 	if (sorted_alloc_mem_block == NULL)
 	{
 		goto out;
@@ -2939,3 +2830,4 @@ static mali_error kbasep_allocator_order_list_create( osk_phy_allocator * alloca
 out:
 	return MALI_ERROR_OUT_OF_MEMORY;
 }
+

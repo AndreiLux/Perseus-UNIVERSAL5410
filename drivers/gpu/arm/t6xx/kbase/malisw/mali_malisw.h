@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2010-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ *
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *
  */
+
+
 
 #ifndef _MALISW_H_
 #define _MALISW_H_
@@ -191,22 +195,22 @@
  * This can be used to have a function normally local to the shared library except in debug builds where it will be
  * exported.
  */
-#if 1 == MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 #define MALI_TESTABLE_LOCAL_IMPL MALI_IMPL
 #else
 #define MALI_TESTABLE_LOCAL_IMPL MALI_LOCAL
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 
 /** @brief Decorate testable local function prototypes.
  *
  * This can be used to have a function normally local to the shared library except in debug builds where it will be
  * exported.
  */
-#if 1 == MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 #define MALI_TESTABLE_LOCAL_API MALI_API
 #else
 #define MALI_TESTABLE_LOCAL_API MALI_LOCAL
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 /** @} */
 
 /**

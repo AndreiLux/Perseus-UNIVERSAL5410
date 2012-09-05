@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_js_ctx_attr.h
@@ -68,8 +72,8 @@ void kbasep_js_ctx_attr_runpool_retain_ctx( kbase_device *kbdev,
  *
  * @return MALI_TRUE indicates a change in ctx attributes state of the runpool.
  * In this state, the scheduler might be able to submit more jobs than
- * previously, and so the caller should ensure kbasep_js_try_run_next_job() is
- * called sometime later.
+ * previously, and so the caller should ensure kbasep_js_try_run_next_job_nolock()
+ * or similar is called sometime later.
  * @return MALI_FALSE indicates no change in ctx attributes state of the runpool.
  */
 mali_bool kbasep_js_ctx_attr_runpool_release_ctx( kbase_device *kbdev,
@@ -99,8 +103,8 @@ void kbasep_js_ctx_attr_ctx_retain_atom( kbase_device *kbdev,
  *
  * @return MALI_TRUE indicates a change in ctx attributes state of the runpool.
  * In this state, the scheduler might be able to submit more jobs than
- * previously, and so the caller should ensure kbasep_js_try_run_next_job() is
- * called sometime later.
+ * previously, and so the caller should ensure kbasep_js_try_run_next_job_nolock()
+ * or similar is called sometime later.
  * @return MALI_FALSE indicates no change in ctx attributes state of the runpool.
  */
 mali_bool kbasep_js_ctx_attr_ctx_release_atom( kbase_device *kbdev,

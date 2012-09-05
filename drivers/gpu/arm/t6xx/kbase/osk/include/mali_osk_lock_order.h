@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2010-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 #ifndef _OSK_LOCK_ORDER_H_
 #define _OSK_LOCK_ORDER_H_
@@ -93,7 +97,7 @@ typedef enum
 	 *
 	 */
 	OSK_LOCK_ORDER_OSK_FAILURE,
-
+	
 	/**
 	 * For the power management metrics system
 	 */
@@ -124,12 +128,12 @@ typedef enum
 	 * For access and modification to the power state of a device
 	 */
 	OSK_LOCK_ORDER_POWER_MGMT = OSK_LOCK_ORDER_MMU_MASK,
-
+	
 	/**
 	 * For access to active_count in kbase_pm_device_data
 	 */
 	OSK_LOCK_ORDER_POWER_MGMT_ACTIVE = OSK_LOCK_ORDER_POWER_MGMT,
-
+	
 	/**
 	 * For access to gpu_cycle_counter_requests in kbase_pm_device_data
 	 */
@@ -180,7 +184,7 @@ typedef enum
 	 */
 	OSK_LOCK_ORDER_JS_RUNPOOL,
 
-
+	
 	/**
 	 * Job Scheduling Policy Queue lock
 	 *
@@ -210,7 +214,7 @@ typedef enum
 	 * For memory mapping management
 	 */
 	OSK_LOCK_ORDER_MEM_REG,
-
+	
 	/**
 	 * For job dispatch management
 	 */

@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_pm_metrics.c
@@ -25,105 +29,83 @@
 #define KBASE_PM_NO_VSYNC_MIN_UTILISATION       10
 #define KBASE_PM_NO_VSYNC_MAX_UTILISATION       40
 
-static void dvfs_callback(void *data)
+static enum hrtimer_restart dvfs_callback(struct hrtimer *timer)
 {
-	kbase_device *kbdev;
-	osk_error ret;
+	unsigned long flags;
+	kbasep_pm_metrics_data * metrics;
 
-	OSK_ASSERT(data != NULL);
+	OSK_ASSERT(timer != NULL);
 
-	kbdev = (kbase_device*)data;
-	kbase_platform_dvfs_event(kbdev);
+	metrics = container_of(timer, kbasep_pm_metrics_data, timer );
 
-	osk_spinlock_irq_lock(&kbdev->pm.metrics.lock);
-	if (kbdev->pm.metrics.timer_active)
+	kbase_platform_dvfs_event(metrics->kbdev);
+
+	spin_lock_irqsave(&metrics->lock, flags);
+	if (metrics->timer_active)
 	{
-		ret = osk_timer_start(&kbdev->pm.metrics.timer, KBASE_PM_DVFS_FREQUENCY);
-		if (ret != OSK_ERR_NONE)
-		{
-			/* Handle the situation where the timer cannot be restarted */
-		}
+		hrtimer_start(timer,
+                      HR_TIMER_DELAY_MSEC(KBASE_PM_DVFS_FREQUENCY),
+                      HRTIMER_MODE_REL);
 	}
-	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
+	spin_unlock_irqrestore(&metrics->lock, flags);
+
+	return HRTIMER_NORESTART;
 }
 
 mali_error kbasep_pm_metrics_init(kbase_device *kbdev)
 {
-	osk_error osk_err;
-	mali_error ret;
-
 	OSK_ASSERT(kbdev != NULL);
 
+	kbdev->pm.metrics.kbdev = kbdev;
 	kbdev->pm.metrics.vsync_hit = 0;
 	kbdev->pm.metrics.utilisation = 0;
 
-	kbdev->pm.metrics.time_period_start = osk_time_now();
+	kbdev->pm.metrics.time_period_start = ktime_get();
 	kbdev->pm.metrics.time_busy = 0;
 	kbdev->pm.metrics.time_idle = 0;
 	kbdev->pm.metrics.gpu_active = MALI_TRUE;
 	kbdev->pm.metrics.timer_active = MALI_TRUE;
 
-	osk_err = osk_spinlock_irq_init(&kbdev->pm.metrics.lock, OSK_LOCK_ORDER_PM_METRICS);
-	if (OSK_ERR_NONE != osk_err)
-	{
-		ret = MALI_ERROR_FUNCTION_FAILED;
-		goto out;
-	}
+	spin_lock_init(&kbdev->pm.metrics.lock);
 
-	osk_err = osk_timer_init(&kbdev->pm.metrics.timer);
-	if (OSK_ERR_NONE != osk_err)
-	{
-		ret = MALI_ERROR_FUNCTION_FAILED;
-		goto spinlock_free;
-	}
-	osk_timer_callback_set(&kbdev->pm.metrics.timer, dvfs_callback, kbdev);
-	osk_err = osk_timer_start(&kbdev->pm.metrics.timer, KBASE_PM_DVFS_FREQUENCY);
-	if (OSK_ERR_NONE != osk_err)
-	{
-		ret = MALI_ERROR_FUNCTION_FAILED;
-		goto timer_free;
-	}
+	hrtimer_init(&kbdev->pm.metrics.timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	kbdev->pm.metrics.timer.function = dvfs_callback;
+
+	hrtimer_start(&kbdev->pm.metrics.timer,
+                  HR_TIMER_DELAY_MSEC(KBASE_PM_DVFS_FREQUENCY),
+                  HRTIMER_MODE_REL);
 
 	kbase_pm_register_vsync_callback(kbdev);
-	ret = MALI_ERROR_NONE;
-	goto out;
 
-timer_free:
-	osk_timer_stop(&kbdev->pm.metrics.timer);
-	osk_timer_term(&kbdev->pm.metrics.timer);
-spinlock_free:
-	osk_spinlock_irq_term(&kbdev->pm.metrics.lock);
-out:
-	return ret;
+	return MALI_ERROR_NONE;
 }
 KBASE_EXPORT_TEST_API(kbasep_pm_metrics_init)
 
 void kbasep_pm_metrics_term(kbase_device *kbdev)
 {
+	unsigned long flags;
 	OSK_ASSERT(kbdev != NULL);
 
-	osk_spinlock_irq_lock(&kbdev->pm.metrics.lock);
+	spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
 	kbdev->pm.metrics.timer_active = MALI_FALSE;
-	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
+	spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
 
-	osk_timer_stop(&kbdev->pm.metrics.timer);
-	osk_timer_term(&kbdev->pm.metrics.timer);
+	hrtimer_cancel(&kbdev->pm.metrics.timer);
 
 	kbase_pm_unregister_vsync_callback(kbdev);
-
-	osk_spinlock_irq_term(&kbdev->pm.metrics.lock);
 }
 KBASE_EXPORT_TEST_API(kbasep_pm_metrics_term)
 
 mali_bool kbasep_pm_metrics_isactive(kbase_device *kbdev)
 {
 	mali_bool isactive;
+	unsigned long flags;
 
 	OSK_ASSERT(kbdev != NULL);
 
-	osk_spinlock_irq_lock(&kbdev->pm.metrics.lock);
+	spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
 	isactive = (kbdev->pm.metrics.timer_active == MALI_TRUE);
-	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
+	spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
 
 	return isactive;
 }
@@ -131,48 +113,57 @@ KBASE_EXPORT_TEST_API(kbasep_pm_metrics_isactive)
 
 void kbasep_pm_record_gpu_idle(kbase_device *kbdev)
 {
-	osk_ticks now = osk_time_now();
+	unsigned long flags;
+	ktime_t now = ktime_get();
+	ktime_t diff;
 
 	OSK_ASSERT(kbdev != NULL);
 
-	osk_spinlock_irq_lock(&kbdev->pm.metrics.lock);
+	spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
 
 	OSK_ASSERT(kbdev->pm.metrics.gpu_active == MALI_TRUE);
 
 	kbdev->pm.metrics.gpu_active = MALI_FALSE;
 
-	kbdev->pm.metrics.time_busy += osk_time_elapsed(kbdev->pm.metrics.time_period_start, now);
+	diff = ktime_sub( now, kbdev->pm.metrics.time_period_start );
+
+	kbdev->pm.metrics.time_busy += (u32)(ktime_to_ns( diff ) >> KBASE_PM_TIME_SHIFT);
 	kbdev->pm.metrics.time_period_start = now;
 
-	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
+	spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
 }
 KBASE_EXPORT_TEST_API(kbasep_pm_record_gpu_idle)
 
 void kbasep_pm_record_gpu_active(kbase_device *kbdev)
 {
-	osk_ticks now = osk_time_now();
+	unsigned long flags;
+	ktime_t now = ktime_get();
+	ktime_t diff;
 
 	OSK_ASSERT(kbdev != NULL);
 
-	osk_spinlock_irq_lock(&kbdev->pm.metrics.lock);
+	spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
 
 	OSK_ASSERT(kbdev->pm.metrics.gpu_active == MALI_FALSE);
 
 	kbdev->pm.metrics.gpu_active = MALI_TRUE;
 
-	kbdev->pm.metrics.time_idle += osk_time_elapsed(kbdev->pm.metrics.time_period_start, now);
+	diff = ktime_sub( now, kbdev->pm.metrics.time_period_start );
+
+	kbdev->pm.metrics.time_idle += (u32)(ktime_to_ns( diff ) >> KBASE_PM_TIME_SHIFT);
 	kbdev->pm.metrics.time_period_start = now;
 
-	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
+	spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
 }
 KBASE_EXPORT_TEST_API(kbasep_pm_record_gpu_active)
 
 void kbase_pm_report_vsync(kbase_device *kbdev, int buffer_updated)
 {
+	unsigned long flags;
 	OSK_ASSERT(kbdev != NULL);
 
-	osk_spinlock_irq_lock(&kbdev->pm.metrics.lock);
+	spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
 	kbdev->pm.metrics.vsync_hit = buffer_updated;
-	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
+	spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
 }
 KBASE_EXPORT_TEST_API(kbase_pm_report_vsync)

@@ -1,20 +1,24 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 #include <linux/ioport.h>
 #include <kbase/src/common/mali_kbase.h>
 #include <kbase/src/common/mali_kbase_defs.h>
 #include <kbase/src/linux/mali_kbase_config_linux.h>
-#if MALI_USE_UMP == 1
-#include <ump/ump_common.h>
-#endif /* MALI_USE_UMP == 1 */
+#ifdef CONFIG_UMP
+#include <linux/ump-common.h>
+#endif /* CONFIG_UMP */
 
 #include "mali_kbase_cpu_vexpress.h"
 
@@ -27,9 +31,9 @@
 #define KBASE_VE_MEMORY_OS_SHARED_PERF_GPU      KBASE_MEM_PERF_SLOW
 #define KBASE_VE_GPU_FREQ_KHZ_MAX               5000
 #define KBASE_VE_GPU_FREQ_KHZ_MIN               5000
-#if MALI_USE_UMP == 1
+#ifdef CONFIG_UMP
 #define KBASE_VE_UMP_DEVICE                     UMP_DEVICE_Z_SHIFT
-#endif /* MALI_USE_UMP == 1 */
+#endif /* CONFIG_UMP */
 
 #define KBASE_VE_JS_SCHEDULING_TICK_NS_DEBUG    15000000u   /* 15ms, an agressive tick for testing purposes. This will reduce performance significantly */
 #define KBASE_VE_JS_SOFT_STOP_TICKS_DEBUG       1           /* between 15ms and 30ms before soft-stop a job */
@@ -151,12 +155,12 @@ static kbase_attribute config_attributes[] =
 		KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT,
 		KBASE_VE_MEMORY_PER_PROCESS_LIMIT
 	},
-#if MALI_USE_UMP == 1
+#ifdef CONFIG_UMP
 	{
 		KBASE_CONFIG_ATTR_UMP_DEVICE,
 		KBASE_VE_UMP_DEVICE
 	},
-#endif /* MALI_USE_UMP == 1 */
+#endif /* CONFIG_UMP */
 	{
 		KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_MAX,
 		KBASE_VE_MEMORY_OS_SHARED_MAX
@@ -189,7 +193,7 @@ static kbase_attribute config_attributes[] =
 		KBASE_VE_GPU_FREQ_KHZ_MIN
 	},
 
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 /* Use more aggressive scheduling timeouts in debug builds for testing purposes */
 	{
 		KBASE_CONFIG_ATTR_JS_SCHEDULING_TICK_NS,
@@ -220,7 +224,7 @@ static kbase_attribute config_attributes[] =
 		KBASE_CONFIG_ATTR_JS_RESET_TICKS_NSS,
 		KBASE_VE_JS_RESET_TICKS_NSS_DEBUG
 	},
-#else /* MALI_DEBUG */
+#else /* CONFIG_MALI_DEBUG */
 /* In release builds same as the defaults but scaled for 5MHz FPGA */
 	{
 		KBASE_CONFIG_ATTR_JS_SCHEDULING_TICK_NS,
@@ -251,7 +255,7 @@ static kbase_attribute config_attributes[] =
 		KBASE_CONFIG_ATTR_JS_RESET_TICKS_NSS,
 		KBASE_VE_JS_RESET_TICKS_NSS
 	},
-#endif /* MALI_DEBUG */
+#endif /* CONFIG_MALI_DEBUG */
 	{
 		KBASE_CONFIG_ATTR_JS_RESET_TIMEOUT_MS,
 		KBASE_VE_JS_RESET_TIMEOUT_MS
@@ -298,12 +302,12 @@ kbase_attribute config_attributes_hw_issue_8408[] =
 		KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT,
 		KBASE_VE_MEMORY_PER_PROCESS_LIMIT
 	},
-#if MALI_USE_UMP == 1
+#ifdef CONFIG_UMP
 	{
 		KBASE_CONFIG_ATTR_UMP_DEVICE,
 		KBASE_VE_UMP_DEVICE
 	},
-#endif /* MALI_USE_UMP == 1 */
+#endif /* CONFIG_UMP */
 	{
 		KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_MAX,
 		KBASE_VE_MEMORY_OS_SHARED_MAX
@@ -336,7 +340,7 @@ kbase_attribute config_attributes_hw_issue_8408[] =
 		KBASE_VE_GPU_FREQ_KHZ_MIN
 	},
 
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 /* Use more aggressive scheduling timeouts in debug builds for testing purposes */
 	{
 		KBASE_CONFIG_ATTR_JS_SCHEDULING_TICK_NS,
@@ -367,7 +371,7 @@ kbase_attribute config_attributes_hw_issue_8408[] =
 		KBASE_CONFIG_ATTR_JS_RESET_TICKS_NSS,
 		KBASE_VE_JS_RESET_TICKS_NSS_DEBUG
 	},
-#else /* MALI_DEBUG */
+#else /* CONFIG_MALI_DEBUG */
 /* In release builds same as the defaults but scaled for 5MHz FPGA */
 	{
 		KBASE_CONFIG_ATTR_JS_SCHEDULING_TICK_NS,
@@ -398,7 +402,7 @@ kbase_attribute config_attributes_hw_issue_8408[] =
 		KBASE_CONFIG_ATTR_JS_RESET_TICKS_NSS,
 		KBASE_VE_JS_RESET_TICKS_NSS
 	},
-#endif /* MALI_DEBUG */
+#endif /* CONFIG_MALI_DEBUG */
 	{
 		KBASE_CONFIG_ATTR_JS_RESET_TIMEOUT_MS,
 		KBASE_VE_JS_RESET_TIMEOUT_MS
@@ -433,6 +437,6 @@ kbase_attribute config_attributes_hw_issue_8408[] =
 kbase_platform_config platform_config =
 {
 		.attributes                = config_attributes,
-		.io_resources              = &io_resources,
-		.midgard_type              = KBASE_MALI_T6F1
+		.io_resources              = &io_resources
 };
+

@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2010-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 #ifndef _OSK_DEBUG_H_
 #define _OSK_DEBUG_H_
@@ -315,6 +319,46 @@ s32 osk_snprintf(char *str,  size_t size, const char *format, ...);
  */
 OSK_STATIC_INLINE void osk_debug_get_thread_info( u32 *thread_id, u32 *cpu_nr );
 
+/**
+ * @def OSK_ASSERT_MUTEX_IS_LOCKED(lock)
+ * @brief Asserts that mutex @e lock is locked.
+ *
+ * User backend checks if the mutex is locked by current thread.
+ * Kernel backend checks if the mutex is locked by any thread of execution - this might lead to
+ * false negatives (the test will pass, though it should fail).
+ *
+ * @param lock osk mutex
+ */
+#define OSK_ASSERT_MUTEX_IS_LOCKED(lock) OSKP_ASSERT_MUTEX_IS_LOCKED(lock)
+
+/**
+ * @def OSK_ASSERT_SPINLOCK_IS_LOCKED(lock)
+ * @brief Asserts that spinlock @e lock is locked.
+ *
+ * User backend checks if the spinlock is locked by current thread.
+ * Kernel backend checks if the spinlock is locked by any thread of execution - this might lead to
+ * false negatives (the test will pass, though it should fail).
+ *
+ * @note Kernel backend requires LOCKDEP to be enabled in kernel config.
+ *
+ * @param lock osk spinlock
+ */
+#define OSK_ASSERT_SPINLOCK_IS_LOCKED(lock) OSKP_ASSERT_SPINLOCK_IS_LOCKED(lock)
+
+/**
+ * @def OSK_ASSERT_SPINLOCK_IRQ_IS_LOCKED(lock)
+ * @brief Asserts that spinlock @e lock is locked.
+ *
+ * User backend checks if the spinlock is locked by current thread.
+ * Kernel backend checks if the spinlock is locked by any thread of execution - this might lead to
+ * false negatives (the test will pass, though it should fail).
+ *
+ * @note Kernel backend requires LOCKDEP to be enabled in kernel config.
+ *
+ * @param lock osk spinlock irq
+ */
+#define OSK_ASSERT_SPINLOCK_IRQ_IS_LOCKED(lock) OSKP_ASSERT_SPINLOCK_IRQ_IS_LOCKED(lock)
+
 /* @} */ /* end group oskdebug */
 
 /** @} */ /* end group base_osk_api */
@@ -328,3 +372,4 @@ OSK_STATIC_INLINE void osk_debug_get_thread_info( u32 *thread_id, u32 *cpu_nr );
 #endif
 
 #endif /* _OSK_DEBUG_H_ */
+

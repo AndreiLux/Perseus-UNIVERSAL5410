@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_js_policy.h
@@ -723,7 +727,6 @@ void kbasep_js_policy_deregister_job( kbasep_js_policy *js_policy, kbase_context
  *
  * The caller has the following conditions on locking:
  * - kbasep_js_device_data::runpool_lock::irq will be held.
- * - kbdev->jm_slots[ job_slot_idx ].lock will be held
  * - kbasep_js_device_data::runpool_mutex will be held.
  * - kbasep_js_kctx_info::ctx::jsctx_mutex. will be held
  */
@@ -755,7 +758,6 @@ mali_bool kbasep_js_policy_dequeue_job( kbase_device *kbdev,
  *
  * The caller has the following conditions on locking:
  * - kbasep_js_device_data::runpool_irq::lock will be held.
- * - kbdev->jm_slots[ job_slot_idx ].lock will be held
  *
  * @note The caller \em might be holding one of the
  * kbasep_js_kctx_info::ctx::jsctx_mutex locks, if this code is called from
@@ -816,7 +818,7 @@ void kbasep_js_policy_enqueue_job( kbasep_js_policy *js_policy, kbase_jd_atom *k
  * @param katom         job dispatch atom
  * @param time_spent_us the time spent by the job, in microseconds (10^-6 seconds).
  */
-void kbasep_js_policy_log_job_result( kbasep_js_policy *js_policy, kbase_jd_atom *katom, u32 time_spent_us );
+void kbasep_js_policy_log_job_result( kbasep_js_policy *js_policy, kbase_jd_atom *katom, u64 time_spent_us );
 
 /** @} */ /* end group kbase_js_policy_job */
 

@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file
@@ -21,36 +25,39 @@
 mali_error kbase_hw_set_issues_mask(kbase_device *kbdev)
 {
 	const base_hw_issue *issues;
+	u32 gpu_id;
 
-#if MALI_BACKEND_KERNEL || MALI_NO_MALI
-	u32 gpu_id = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(GPU_ID));
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_CORE))
+	{
+		return MALI_ERROR_FUNCTION_FAILED;
+	}
+
+	gpu_id = kbase_os_reg_read(kbdev, GPU_CONTROL_REG(GPU_ID));
 
 	switch (gpu_id)
 	{
 		case GPU_ID_MAKE(GPU_ID_PI_T60X, 0, 0, GPU_ID_S_15DEV0):
-		case GPU_ID_MAKE(GPU_ID_PI_T65X, 0, 0, GPU_ID_S_15DEV0):
-			issues = base_hw_issues_t60x_t65x_r0p0_15dev0;
+			issues = base_hw_issues_t60x_r0p0_15dev0;
 			break;
 		case GPU_ID_MAKE(GPU_ID_PI_T60X, 0, 0, GPU_ID_S_EAC):
-		case GPU_ID_MAKE(GPU_ID_PI_T65X, 0, 0, GPU_ID_S_EAC):
-			issues = base_hw_issues_t60x_t65x_r0p0_eac;
+			issues = base_hw_issues_t60x_r0p0_eac;
 			break;
 		case GPU_ID_MAKE(GPU_ID_PI_T60X, 0, 1, 0):
-		case GPU_ID_MAKE(GPU_ID_PI_T65X, 0, 1, 0):
-			issues = base_hw_issues_t60x_t65x_r0p1;
+			issues = base_hw_issues_t60x_r0p1;
 			break;
-		case GPU_ID_MAKE(GPU_ID_PI_T60X, 1, 0, 0):
-		case GPU_ID_MAKE(GPU_ID_PI_T65X, 1, 0, 0):
-			issues = base_hw_issues_t60x_t65x_r1p0;
+		case GPU_ID_MAKE(GPU_ID_PI_T65X, 0, 1, 0):
+			issues = base_hw_issues_t65x_r0p1;
 			break;
 		case GPU_ID_MAKE(GPU_ID_PI_T62X, 0, 0, 0):
+		case GPU_ID_MAKE(GPU_ID_PI_T62X, 0, 0, 1):
 			issues = base_hw_issues_t62x_r0p0;
 			break;
 		case GPU_ID_MAKE(GPU_ID_PI_T67X, 0, 0, 0):
+		case GPU_ID_MAKE(GPU_ID_PI_T67X, 0, 0, 1):
 			issues = base_hw_issues_t67x_r0p0;
 			break;
 		default:
-			OSK_PRINT_WARN(OSK_BASE_CORE, "Unknown GPU ID %x", gpu_id);
+			OSK_PRINT_ERROR(OSK_BASE_CORE, "Unknown GPU ID %x", gpu_id);
 			return MALI_ERROR_FUNCTION_FAILED;
 	}
 
@@ -59,10 +66,6 @@ mali_error kbase_hw_set_issues_mask(kbase_device *kbdev)
 				(gpu_id & GPU_ID_VERSION_MAJOR) >> GPU_ID_VERSION_MAJOR_SHIFT,
 				(gpu_id & GPU_ID_VERSION_MINOR) >> GPU_ID_VERSION_MINOR_SHIFT,
 				(gpu_id & GPU_ID_VERSION_STATUS) >> GPU_ID_VERSION_STATUS_SHIFT);
-#else
-	/* We can only know that the model is used at compile-time */
-	issues = base_hw_issues_model;
-#endif
 
 	for (; *issues != BASE_HW_ISSUE_END; issues++)
 	{

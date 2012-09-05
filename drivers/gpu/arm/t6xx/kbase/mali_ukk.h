@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2010, 2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2010, 2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ *
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *
  */
+
+
 
 /**
  * @file mali_ukk.h
@@ -105,7 +109,7 @@ typedef struct ukk_call_context ukk_call_context;
  *          int more_kbase_context_data;
  *          ukk_session ukk_session_member;
  *      } *kctx;
- *	kctx = CONTAINER_OF(ukk_session_get(ukk_call_ctx), kbase_context, ukk_session_member);
+ *	kctx = container_of(ukk_session_get(ukk_call_ctx), kbase_context, ukk_session_member);
  *
  * A UK call may not use an argument structure with embedded pointers.
  *
@@ -137,7 +141,7 @@ typedef struct testdrv_session
 testdrv_open(os_driver_context *osctx)
 {
 	testdrv_session *ts;
-	ts = osk_malloc(sizeof(*ts));
+	ts = kmalloc(sizeof(*ts), GFP_KERNEL);
 	ukk_session_init(&ts->ukk_session_obj, testdrv_ukk_dispatch, TESTDRV_VERSION_MAJOR, TESTDRV_VERSION_MINOR);
 	osctx->some_field = ts;
 }
@@ -145,7 +149,7 @@ testdrv_close(os_driver_context *osctx)
 {
 	testdrv_session *ts = osctx->some_field;
 	ukk_session_term(&ts->ukk_session_obj)
-	osk_free(ts);
+	kfree(ts);
 	osctx->some_field = NULL;
 }
 testdrv_ioctl(os_driver_context *osctx, void *user_arg, u32 args_size)
@@ -186,7 +190,7 @@ mali_error testdrv_ukk_dispatch(ukk_call_context *call_ctx, void *arg, u32 args_
 }
 mali_error foo(ukk_call_context *call_ctx, testdrv_uk_foo_args *args) {
 	// foo updates the counters in the testdrv_session object and returns the old counters
-	testdrv_session *session = CONTAINER_OF(ukk_session_get(call_ctx), testdrv_session, ukk_session_obj);
+	testdrv_session *session = container_of(ukk_session_get(call_ctx), testdrv_session, ukk_session_obj);
 	memcpy(&args->prev_counters,  session->counters, 10 * sizeof(int));
 	memcpy(&session->counters, &args->counters, 10 * sizeof(int));
 	return MALI_ERROR_NONE;

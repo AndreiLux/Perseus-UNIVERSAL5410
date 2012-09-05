@@ -52,15 +52,12 @@
 #include <kbase/src/linux/mali_kbase_mem_linux.h>
 #include <kbase/src/common/mali_kbase_defs.h>
 #include <kbase/src/linux/mali_kbase_config_linux.h>
-#if MALI_USE_UMP == 1
-#include <ump/ump_common.h>
-#endif /*MALI_USE_UMP == 1*/
 
 #define	CREATE_TRACE_POINTS
 #include <trace/events/mali.h>
 
-#if MALI_UNCACHED == 0
-#error MALI_UNCACHED should equal 1 for Exynos5 support, your scons commandline should contain 'no_syncsets=1'
+#if CONFIG_MALI_UNCACHED == 0
+#error CONFIG_MALI_UNCACHED should equal 1 for Exynos5 support, your scons commandline should contain 'no_syncsets=1'
 #endif
 
 #define MALI_DVFS_DEBUG 0
@@ -106,6 +103,7 @@ static int kbase_platform_asv_set(int enable);
 static int kbase_platform_dvfs_sprint_avs_table(char *buf);
 #endif /* MALI_DVFS_ASV_ENABLE */
 #endif /* CONFIG_T6XX_DVFS */
+
 int kbase_platform_cmu_pmu_control(struct kbase_device *kbdev, int control);
 void kbase_platform_remove_sysfs_file(struct device *dev);
 mali_error kbase_platform_init(struct kbase_device *kbdev);
@@ -242,12 +240,6 @@ kbase_platform_funcs_conf platform_funcs =
 };
 
 static kbase_attribute config_attributes[] = {
-#if MALI_USE_UMP == 1
-	{
-		KBASE_CONFIG_ATTR_UMP_DEVICE,
-		UMP_DEVICE_Z_SHIFT
-	},
-#endif /* MALI_USE_UMP == 1 */
 	{
 		KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_MAX,
 		2048 * 1024 * 1024UL /* 2048MB */
@@ -1565,36 +1557,6 @@ static DECLARE_WORK(mali_dvfs_work, mali_dvfs_event_proc);
  *    kbase_platform_dvfs_event(kbdev);
  */
 
-#ifdef CONFIG_T6XX_DVFS
-static int kbase_pm_get_dvfs_utilisation(kbase_device *kbdev)
-{
-	osk_ticks now = osk_time_now();
-	u32 time_idle, time_busy;
-
-	OSK_ASSERT(kbdev != NULL);
-
-	osk_spinlock_irq_lock(&kbdev->pm.metrics.lock);
-
-	time_busy = kbdev->pm.metrics.time_busy;
-	time_idle = kbdev->pm.metrics.time_idle;
-	if (kbdev->pm.metrics.gpu_active) {
-		time_busy += osk_time_elapsed(
-		    kbdev->pm.metrics.time_period_start, now);
-	} else {
-		time_idle += osk_time_elapsed(
-		    kbdev->pm.metrics.time_period_start, now);
-	}
-	kbdev->pm.metrics.time_idle = 0;
-	kbdev->pm.metrics.time_busy = 0;
-	kbdev->pm.metrics.time_period_start = now;
-
-	osk_spinlock_irq_unlock(&kbdev->pm.metrics.lock);
-
-	return (time_idle + time_busy) == 0 ? 0 :
-	    (100*time_busy) / (time_idle + time_busy);
-}
-#endif
-
 int kbase_platform_dvfs_get_control_status(void)
 {
 	return mali_dvfs_control;
@@ -1941,3 +1903,55 @@ static int kbase_platform_asv_set(int enable)
 	return 0;
 }
 #endif /* MALI_DVFS_ASV_ENABLE */
+
+/**
+ * Exynos5 alternative dvfs_callback imlpementation.
+ * instead of:
+ *    action = kbase_pm_get_dvfs_action(kbdev);
+ * use this:
+ *    kbase_platform_dvfs_event(kbdev);
+ */
+
+#ifdef CONFIG_T6XX_DVFS
+int kbase_pm_get_dvfs_utilisation(kbase_device *kbdev)
+{
+	unsigned long flags;
+	int utilisation=0;
+	ktime_t now = ktime_get();
+	ktime_t diff;
+
+	OSK_ASSERT(kbdev != NULL);
+
+	spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
+
+	if (kbdev->pm.metrics.gpu_active)
+	{
+		diff = ktime_sub(now, kbdev->pm.metrics.time_period_start);
+		kbdev->pm.metrics.time_busy += (u32)(ktime_to_ns( diff ) >> KBASE_PM_TIME_SHIFT);
+		kbdev->pm.metrics.time_period_start = now;
+	}
+	else
+	{
+		diff = ktime_sub(now, kbdev->pm.metrics.time_period_start);
+		kbdev->pm.metrics.time_idle += (u32)(ktime_to_ns( diff ) >> KBASE_PM_TIME_SHIFT);
+		kbdev->pm.metrics.time_period_start = now;
+	}
+
+	if (kbdev->pm.metrics.time_idle + kbdev->pm.metrics.time_busy == 0)
+	{
+		/* No data - so we return NOP */
+		goto out;
+	}
+
+	utilisation = (100*kbdev->pm.metrics.time_busy) / (kbdev->pm.metrics.time_idle + kbdev->pm.metrics.time_busy);
+
+out:
+
+	kbdev->pm.metrics.time_idle = 0;
+	kbdev->pm.metrics.time_busy = 0;
+
+	spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
+
+	return utilisation;
+}
+#endif

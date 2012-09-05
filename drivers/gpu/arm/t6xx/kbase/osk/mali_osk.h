@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2010-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 #ifndef _OSK_H_
 #define _OSK_H_
@@ -24,9 +28,9 @@
 
 #include "include/mali_osk_types.h"
 #include "include/mali_osk_debug.h"
-#if (1== MALI_BASE_TRACK_MEMLEAK)
+#ifdef CONFIG_MALI_QA_RESFAIL
 #include "include/mali_osk_failure.h"
-#endif
+#endif /* CONFIG_MALI_QA_RESFAIL */
 #include "include/mali_osk_math.h"
 #include "include/mali_osk_lists.h"
 #include "include/mali_osk_lock_order.h"
@@ -38,9 +42,9 @@
 #include "include/mali_osk_workq.h"
 #include "include/mali_osk_mem.h"
 #include "include/mali_osk_low_level_mem.h"
-#if (1 == MALI_BASE_TRACK_MEMLEAK)
+#ifdef CONFIG_MALI_QA_LEAK
 #include "include/mali_osk_mem_wrappers.h"
-#endif
+#endif /* CONFIG_MALI_QA_LEAK */
 #include "include/mali_osk_waitq.h"
 #include "include/mali_osk_power.h"
 #include "include/mali_osk_credentials.h"

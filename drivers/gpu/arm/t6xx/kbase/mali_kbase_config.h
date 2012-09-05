@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2010-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ *
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *
  */
+
+
 
 /**
  * @file mali_kbase_config.h
@@ -40,12 +44,7 @@
 #define KBASE_HWCNT_DUMP_BYPASS_ROOT 0
 #endif
 
-#if CSTD_OS_LINUX_KERNEL || CSTD_OS_ANDROID_KERNEL
-#define MALI_KBASEP_REGION_RBTREE 1
 #include <linux/rbtree.h>
-#else
-#define MALI_KBASEP_REGION_RBTREE 0
-#endif
 
 /**
  * Relative memory performance indicators. Enum elements should always be defined in slowest to fastest order.
@@ -429,6 +428,18 @@ enum
 	KBASE_CONFIG_ATTR_CPU_SPEED_FUNC,
 
 	/**
+	 * A pointer to a function that calculates the GPU clock
+	 * speed of the platform in MHz - see
+	 * @ref kbase_gpuprops_clock_speed_function for the function
+	 * prototype.
+	 *
+	 * Attached value: A @ref kbase_gpuprops_clock_speed_function.
+	 * Default Value:  NULL (in which case the driver assumes a current
+	 *                 GPU frequency specified by KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX)
+	 */
+	KBASE_CONFIG_ATTR_GPU_SPEED_FUNC,
+
+	/**
 	 * Platform specific configuration functions
 	 *
 	 * Attached value: pointer to @ref kbase_platform_funcs_conf
@@ -615,7 +626,19 @@ typedef struct kbase_pm_callback_conf
  */
 typedef int (*kbase_cpuprops_clock_speed_function)(u32 *clock_speed);
 
-#if !MALI_LICENSE_IS_GPL || (defined(MALI_FAKE_PLATFORM_DEVICE) && MALI_FAKE_PLATFORM_DEVICE)
+/**
+ * Type of the function pointer for KBASE_CONFIG_ATTR_GPU_SPEED_FUNC.
+ *
+ * @param clock_speed [out] Once called this will contain the current GPU clock speed in MHz.
+ *                          If the system timer is not available then this function is required
+ *                          for the OpenCL queue profiling to return correct timing information.
+ *
+ * @return 0 on success, 1 on error. When an error is returned the caller assumes a current
+ * GPU speed as specified by KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX.
+ */
+typedef int (*kbase_gpuprops_clock_speed_function)(u32 *clock_speed);
+
+#ifdef CONFIG_MALI_PLATFORM_FAKE
 /*
  * @brief Specifies start and end of I/O memory region.
  */
@@ -643,7 +666,7 @@ typedef struct kbase_platform_config
 	u32 midgard_type;
 } kbase_platform_config;
 
-#endif /* !MALI_LICENSE_IS_GPL || (defined(MALI_FAKE_PLATFORM_DEVICE) && MALI_FAKE_PLATFORM_DEVICE) */
+#endif /* CONFIG_MALI_PLATFORM_FAKE */
 /**
  * @brief Return character string associated with the given midgard type.
  *
@@ -730,14 +753,14 @@ void kbasep_get_memory_performance(const kbase_memory_resource *resource,
  */
 mali_bool kbasep_validate_configuration_attributes(struct kbase_device *kbdev, const kbase_attribute *attributes);
 
-#if !MALI_LICENSE_IS_GPL || (defined(MALI_FAKE_PLATFORM_DEVICE) && MALI_FAKE_PLATFORM_DEVICE)
+#ifdef CONFIG_MALI_PLATFORM_FAKE
 /**
  * @brief Gets the pointer to platform config.
  *
  * @return Pointer to the platform config
  */
 kbase_platform_config *kbasep_get_platform_config(void);
-#endif /* !MALI_LICENSE_IS_GPL || (defined(MALI_FAKE_PLATFORM_DEVICE) && MALI_FAKE_PLATFORM_DEVICE) */
+#endif /* CONFIG_MALI_PLATFORM_FAKE */
 
 /**
  * @brief Platform specific call to initialize hardware

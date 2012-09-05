@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /*
  * Job Scheduler Implementation
@@ -33,7 +37,7 @@ enum
 
 	/** The Runpool's context attributes changed. The scheduler might be able to
 	 * submit more jobs than previously, and so the caller should call
-	 * kbasep_js_try_run_next_job(). */
+	 * kbasep_js_try_run_next_job_nolock() or similar. */
 	KBASEP_JS_RELEASE_RESULT_CTX_ATTR_CHANGE = (1u << 1)
 
 };
@@ -55,13 +59,14 @@ STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_de
 #if KBASE_TRACE_ENABLE != 0
 STATIC int kbasep_js_trace_get_refcnt( kbase_device *kbdev, kbase_context *kctx )
 {
+	unsigned long flags;
 	kbasep_js_device_data *js_devdata;
 	int as_nr;
 	int refcnt = 0;
 
 	js_devdata = &kbdev->js_data;
 
-	osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
+	spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
 	as_nr = kctx->as_nr;
 	if ( as_nr != KBASEP_AS_NR_INVALID )
 	{
@@ -70,7 +75,7 @@ STATIC int kbasep_js_trace_get_refcnt( kbase_device *kbdev, kbase_context *kctx 
 
 		refcnt = js_per_as_data->as_busy_refcount;
 	}
-	osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
+	spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
 
 	return refcnt;
 }
@@ -92,22 +97,16 @@ enum
 {
 	JS_DEVDATA_INIT_NONE            =0,
 	JS_DEVDATA_INIT_CONSTANTS       =(1 << 0),
-	JS_DEVDATA_INIT_RUNPOOL_MUTEX   =(1 << 1),
-	JS_DEVDATA_INIT_QUEUE_MUTEX     =(1 << 2),
-	JS_DEVDATA_INIT_RUNPOOL_IRQ_LOCK=(1 << 3),
-	JS_DEVDATA_INIT_POLICY          =(1 << 4),
-	JS_DEVDATA_INIT_ALL             =((1 << 5)-1)
+	JS_DEVDATA_INIT_POLICY          =(1 << 1),
+	JS_DEVDATA_INIT_ALL             =((1 << 2)-1)
 };
 
 enum
 {
 	JS_KCTX_INIT_NONE               =0,
 	JS_KCTX_INIT_CONSTANTS          =(1 << 0),
-	JS_KCTX_INIT_JSCTX_MUTEX        =(1 << 1),
-	JS_KCTX_INIT_POLICY             =(1 << 2),
-	JS_KCTX_INIT_JSCTX_WAITQ_SCHED  =(1 << 3),
-	JS_KCTX_INIT_JSCTX_WAITQ_NSCHED =(1 << 4),
-	JS_KCTX_INIT_ALL                =((1 << 5)-1)
+	JS_KCTX_INIT_POLICY             =(1 << 1),
+	JS_KCTX_INIT_ALL                =((1 << 2)-1)
 };
 
 /*
@@ -169,6 +168,9 @@ STATIC INLINE void runpool_inc_context_count( kbase_device *kbdev, kbase_context
 	js_devdata = &kbdev->js_data;
 	js_kctx_info = &kctx->jctx.sched_info;
 
+	BUG_ON(!mutex_is_locked( &js_kctx_info->ctx.jsctx_mutex ));
+	BUG_ON(!mutex_is_locked( &js_devdata->runpool_mutex ));
+
 	/* Track total contexts */
 	++(js_devdata->nr_all_contexts_running);
 
@@ -193,6 +195,9 @@ STATIC INLINE void runpool_dec_context_count( kbase_device *kbdev, kbase_context
 
 	js_devdata = &kbdev->js_data;
 	js_kctx_info = &kctx->jctx.sched_info;
+
+	BUG_ON(!mutex_is_locked( &js_kctx_info->ctx.jsctx_mutex ));
+	BUG_ON(!mutex_is_locked( &js_devdata->runpool_mutex ));
 
 	/* Track total contexts */
 	--(js_devdata->nr_all_contexts_running);
@@ -226,11 +231,13 @@ STATIC mali_bool check_is_runpool_full( kbase_device *kbdev, kbase_context *kctx
 	OSK_ASSERT( kbdev != NULL );
 
 	js_devdata = &kbdev->js_data;
+	BUG_ON(!mutex_is_locked( &js_devdata->runpool_mutex ));
 
 	is_runpool_full = (mali_bool)(js_devdata->nr_all_contexts_running >= kbdev->nr_hw_address_spaces);
 
 	if ( kctx != NULL && (kctx->jctx.sched_info.ctx.flags & KBASE_CTX_FLAG_SUBMIT_DISABLED) == 0 )
 	{
+		BUG_ON(!mutex_is_locked( &kctx->jctx.sched_info.ctx.jsctx_mutex ));
 		/* Contexts that don't submit might use less of the address spaces available, due to HW workarounds */
 		is_runpool_full = (mali_bool)(js_devdata->nr_user_contexts_running >= kbdev->nr_user_address_spaces);
 	}
@@ -267,52 +274,101 @@ STATIC base_jd_core_req core_reqs_from_jsn_features( u16 features /* JS<n>_FEATU
 }
 
 /**
- * Picks a free address space and add the context to the Policy. Then perform a
- * transaction on this AS and RunPool IRQ to:
- * - setup the runpool_irq structure and the context on that AS
- * - Activate the MMU on that AS
- * - Allow jobs to be submitted on that AS
+ * Picks and reserves an address space.
  *
- * Locking conditions:
- * - Caller must hold the kbasep_js_kctx_info::jsctx_mutex
- * - Caller must hold the kbase_js_device_data::runpool_mutex
- * - AS transaction mutex will be obtained
- * - Runpool IRQ lock will be obtained
+ * When this function returns, the address space returned is reserved and
+ * cannot be picked for another context until it is released.
+ *
+ * The caller must ensure there \b is a free address space before calling this.
+ *
+ * The following locking conditions are made on the caller:
+ * - it must hold kbasep_js_device_data::runpool_mutex
+ *
+ * @return a non-NULL pointer to a kbase_as that is not in use by any other context
  */
-STATIC void assign_and_activate_kctx_addr_space( kbase_device *kbdev, kbase_context *kctx )
+STATIC kbase_as *pick_free_addr_space( kbase_device *kbdev )
 {
 	kbasep_js_device_data *js_devdata;
 	kbase_as *current_as;
-	kbasep_js_per_as_data *js_per_as_data;
 	long ffs_result;
-
-	OSK_ASSERT( kbdev != NULL );
-	OSK_ASSERT( kctx != NULL );
-
 	js_devdata = &kbdev->js_data;
+
+	lockdep_assert_held(&js_devdata->runpool_mutex);
 
 	/* Find the free address space */
 	ffs_result = osk_find_first_set_bit( js_devdata->as_free );
 	/* ASSERT that we should've found a free one */
 	OSK_ASSERT( 0 <= ffs_result && ffs_result < kbdev->nr_hw_address_spaces );
+	/* Ensure no-one else picks this one */
 	js_devdata->as_free &= ~((u16)(1u << ffs_result));
 
-	/*
-	 * Transaction on the AS and runpool_irq
-	 */
 	current_as = &kbdev->as[ffs_result];
-	js_per_as_data = &js_devdata->runpool_irq.per_as_data[ffs_result];
-	osk_mutex_lock( &current_as->transaction_mutex );
-	osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
+
+	return current_as;
+}
+
+/**
+ * Release an address space, making it available for being picked again.
+ *
+ * The following locking conditions are made on the caller:
+ * - it must hold kbasep_js_device_data::runpool_mutex
+ */
+STATIC INLINE void release_addr_space( kbase_device *kbdev, int kctx_as_nr )
+{
+	kbasep_js_device_data *js_devdata;
+	u16 as_bit = (1u << kctx_as_nr);
+
+	js_devdata = &kbdev->js_data;
+	lockdep_assert_held(&js_devdata->runpool_mutex);
+
+	/* The address space must not already be free */
+	OSK_ASSERT( !(js_devdata->as_free & as_bit) );
+
+	js_devdata->as_free |= as_bit;
+}
+
+/**
+ * Assign an Address Space (AS) to a context, and add the context to the Policy.
+ *
+ * This includes:
+ * - setting up the global runpool_irq structure and the context on the AS
+ * - Activating the MMU on the AS
+ * - Allowing jobs to be submitted on the AS
+ *
+ * Locking conditions:
+ * - Caller must hold the kbasep_js_kctx_info::jsctx_mutex
+ * - Caller must hold the kbase_js_device_data::runpool_mutex
+ * - Caller must hold AS transaction mutex
+ * - Caller must hold Runpool IRQ lock
+ */
+STATIC void assign_and_activate_kctx_addr_space( kbase_device *kbdev, kbase_context *kctx, kbase_as *current_as )
+{
+	kbasep_js_device_data *js_devdata;
+	kbasep_js_per_as_data *js_per_as_data;
+	int as_nr;
+
+	OSK_ASSERT( kbdev != NULL );
+	OSK_ASSERT( kctx != NULL );
+	OSK_ASSERT( current_as != NULL );
+
+	js_devdata = &kbdev->js_data;
+	as_nr = current_as->number;
+
+	lockdep_assert_held(&kctx->jctx.sched_info.ctx.jsctx_mutex);
+	lockdep_assert_held(&js_devdata->runpool_mutex);
+	lockdep_assert_held(&current_as->transaction_mutex);
+	lockdep_assert_held(&js_devdata->runpool_irq.lock);
+
+	js_per_as_data = &js_devdata->runpool_irq.per_as_data[as_nr];
 
 	/* Attribute handling */
 	kbasep_js_ctx_attr_runpool_retain_ctx( kbdev, kctx );
 
 	/* Assign addr space */
-	kctx->as_nr = (int)ffs_result;
-#if MALI_GATOR_SUPPORT
+	kctx->as_nr = as_nr;
+#ifdef CONFIG_MALI_GATOR_SUPPORT
 	kbase_trace_mali_mmu_as_in_use(kctx->as_nr);
-#endif
+#endif /* CONFIG_MALI_GATOR_SUPPORT */
 	/* Activate this address space on the MMU */
 	kbase_mmu_update( kctx );
 
@@ -325,23 +381,31 @@ STATIC void assign_and_activate_kctx_addr_space( kbase_device *kbdev, kbase_cont
 
 	/* Lastly, add the context to the policy's runpool - this really allows it to run jobs */
 	kbasep_js_policy_runpool_add_ctx( &js_devdata->policy, kctx );
-	/*
-	 * Transaction complete
-	 */
-	osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
-	osk_mutex_unlock( &current_as->transaction_mutex );
 
 }
 
-void kbasep_js_try_run_next_job( kbase_device *kbdev )
+void kbasep_js_try_run_next_job_nolock( kbase_device *kbdev )
 {
+	kbasep_js_device_data *js_devdata;
 	int js;
 
 	OSK_ASSERT( kbdev != NULL );
+	js_devdata = &kbdev->js_data;
+	lockdep_assert_held(&js_devdata->runpool_mutex);
+	lockdep_assert_held(&js_devdata->runpool_irq.lock);
+
+	/* It's cheap and simple to retest this here - otherwise we burden the
+	 * caller with it. In some cases, we do this higher up to optimize out the
+	 * spinlock. */
+	if ( js_devdata->nr_user_contexts_running == 0 )
+	{
+		/* No contexts present - the GPU might be powered off, so just return */
+		return;
+	}
 
 	for ( js = 0; js < kbdev->gpu_props.num_job_slots ; ++js )
 	{
-		kbasep_js_try_run_next_job_on_slot( kbdev, js );
+		kbasep_js_try_run_next_job_on_slot_nolock( kbdev, js );
 	}
 }
 
@@ -381,16 +445,46 @@ mali_bool kbasep_js_runpool_retain_ctx_nolock( kbase_device *kbdev, kbase_contex
 void kbase_js_try_run_jobs( kbase_device *kbdev )
 {
 	kbasep_js_device_data *js_devdata;
+	unsigned long flags;
 
 	OSK_ASSERT( kbdev != NULL );
 	js_devdata = &kbdev->js_data;
 
-	osk_mutex_lock( &js_devdata->runpool_mutex );
+	mutex_lock( &js_devdata->runpool_mutex );
+	if (js_devdata->nr_user_contexts_running != 0)
+	{
+		/* Only try running jobs when we have contexts present, otherwise the GPU might be powered off.  */
+		spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
 
-	kbasep_js_try_run_next_job( kbdev );
+		kbasep_js_try_run_next_job_nolock( kbdev );
 
-	osk_mutex_unlock( &js_devdata->runpool_mutex );
+		spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
+	}
+	mutex_unlock( &js_devdata->runpool_mutex );
 }
+
+
+void kbase_js_try_run_jobs_on_slot( kbase_device *kbdev, int js )
+{
+	unsigned long flags;
+	kbasep_js_device_data *js_devdata;
+
+	OSK_ASSERT( kbdev != NULL );
+	js_devdata = &kbdev->js_data;
+
+	mutex_lock( &js_devdata->runpool_mutex );
+	if (js_devdata->nr_user_contexts_running != 0)
+	{
+		/* Only try running jobs when we have contexts present, otherwise the GPU might be powered off.  */
+		spin_lock_irqsave(&js_devdata->runpool_irq.lock, flags);
+
+		kbasep_js_try_run_next_job_on_slot_nolock( kbdev, js );
+
+		spin_unlock_irqrestore(&js_devdata->runpool_irq.lock, flags);
+	}
+	mutex_unlock( &js_devdata->runpool_mutex );
+}
+
 
 mali_error kbasep_js_devdata_init( kbase_device *kbdev )
 {
@@ -398,7 +492,6 @@ mali_error kbasep_js_devdata_init( kbase_device *kbdev )
 	mali_error err;
 	int i;
 	u16 as_present;
-	osk_error osk_err;
 
 	OSK_ASSERT( kbdev != NULL );
 
@@ -419,18 +512,18 @@ mali_error kbasep_js_devdata_init( kbase_device *kbdev )
 			kbdev->nr_user_address_spaces = 1;
 		}
 	}
-#if MALI_DEBUG
+#ifdef CONFIG_MALI_DEBUG
 	/* Soft-stop will be disabled on a single context by default unless softstop_always is set */
 	js_devdata->softstop_always = MALI_FALSE;
-#endif /* MALI_DEBUG */
+#endif /* CONFIG_MALI_DEBUG */
 	js_devdata->nr_all_contexts_running = 0;
 	js_devdata->nr_user_contexts_running = 0;
 	js_devdata->as_free = as_present; /* All ASs initially free */
 	js_devdata->runpool_irq.submit_allowed = 0u; /* No ctx allowed to submit */
-	OSK_MEMSET( js_devdata->runpool_irq.ctx_attr_ref_count, 0, sizeof(js_devdata->runpool_irq.ctx_attr_ref_count) );
-	OSK_MEMSET( js_devdata->runpool_irq.slot_affinities, 0, sizeof( js_devdata->runpool_irq.slot_affinities ) );
+	memset( js_devdata->runpool_irq.ctx_attr_ref_count, 0, sizeof(js_devdata->runpool_irq.ctx_attr_ref_count) );
+	memset( js_devdata->runpool_irq.slot_affinities, 0, sizeof( js_devdata->runpool_irq.slot_affinities ) );
 	js_devdata->runpool_irq.slots_blocked_on_affinity = 0u;
-	OSK_MEMSET( js_devdata->runpool_irq.slot_affinity_refcount, 0, sizeof( js_devdata->runpool_irq.slot_affinity_refcount ) );
+	memset( js_devdata->runpool_irq.slot_affinity_refcount, 0, sizeof( js_devdata->runpool_irq.slot_affinity_refcount ) );
 
 	/* Config attributes */
 	js_devdata->scheduling_tick_ns = (u32)kbasep_get_config_value( kbdev, kbdev->config_attributes, KBASE_CONFIG_ATTR_JS_SCHEDULING_TICK_NS );
@@ -454,7 +547,6 @@ mali_error kbasep_js_devdata_init( kbase_device *kbdev )
 	OSK_PRINT_INFO( OSK_BASE_JM, "\tjs_devdata->cfs_ctx_runtime_init_slices:%u", js_devdata->cfs_ctx_runtime_init_slices );
 	OSK_PRINT_INFO( OSK_BASE_JM, "\tjs_devdata->cfs_ctx_runtime_min_slices:%u", js_devdata->cfs_ctx_runtime_min_slices );
 
-#if MALI_BACKEND_KERNEL /* Only output on real kernel modules, otherwise it fills up multictx testing output */
 #if KBASE_DISABLE_SCHEDULING_SOFT_STOPS != 0
 	OSK_PRINT( OSK_BASE_JM,
 			   "Job Scheduling Policy Soft-stops disabled, ignoring value for soft_stop_ticks==%u at %uns per tick. Other soft-stops may still occur.",
@@ -471,17 +563,16 @@ mali_error kbasep_js_devdata_init( kbase_device *kbdev )
 #if KBASE_DISABLE_SCHEDULING_SOFT_STOPS != 0 && KBASE_DISABLE_SCHEDULING_HARD_STOPS != 0
 	OSK_PRINT( OSK_BASE_JM, "Note: The JS policy's tick timer (if coded) will still be run, but do nothing." );
 #endif
-#endif /* MALI_BACKEND_KERNEL */
 
 	/* setup the number of irq throttle cycles base on given time */
 	{
-		u32 irq_throttle_time_us = kbdev->gpu_props.irq_throttle_time_us;
-		u32 irq_throttle_cycles = kbasep_js_convert_us_to_gpu_ticks_max_freq(kbdev, irq_throttle_time_us);
-		osk_atomic_set( &kbdev->irq_throttle_cycles, irq_throttle_cycles);
+		int irq_throttle_time_us = kbdev->gpu_props.irq_throttle_time_us;
+		int irq_throttle_cycles = kbasep_js_convert_us_to_gpu_ticks_max_freq(kbdev, irq_throttle_time_us);
+		atomic_set( &kbdev->irq_throttle_cycles, irq_throttle_cycles);
 	}
 
 	/* Clear the AS data, including setting NULL pointers */
-	OSK_MEMSET( &js_devdata->runpool_irq.per_as_data[0], 0, sizeof(js_devdata->runpool_irq.per_as_data) );
+	memset( &js_devdata->runpool_irq.per_as_data[0], 0, sizeof(js_devdata->runpool_irq.per_as_data) );
 
 	for ( i = 0; i < kbdev->gpu_props.num_job_slots; ++i )
 	{
@@ -492,23 +583,9 @@ mali_error kbasep_js_devdata_init( kbase_device *kbdev )
 	/* On error, we could continue on: providing none of the below resources
 	 * rely on the ones above */
 
-	osk_err = osk_mutex_init( &js_devdata->runpool_mutex, OSK_LOCK_ORDER_JS_RUNPOOL );
-	if ( osk_err == OSK_ERR_NONE )
-	{
-		js_devdata->init_status |= JS_DEVDATA_INIT_RUNPOOL_MUTEX;
-	}
-
-	osk_err = osk_mutex_init( &js_devdata->queue_mutex, OSK_LOCK_ORDER_JS_QUEUE );
-	if ( osk_err == OSK_ERR_NONE )
-	{
-		js_devdata->init_status |= JS_DEVDATA_INIT_QUEUE_MUTEX;
-	}
-
-	osk_err = osk_spinlock_irq_init( &js_devdata->runpool_irq.lock, OSK_LOCK_ORDER_JS_RUNPOOL_IRQ );
-	if ( osk_err == OSK_ERR_NONE )
-	{
-		js_devdata->init_status |= JS_DEVDATA_INIT_RUNPOOL_IRQ_LOCK;
-	}
+	mutex_init( &js_devdata->runpool_mutex);
+	mutex_init( &js_devdata->queue_mutex);
+	spin_lock_init( &js_devdata->runpool_irq.lock);
 
 	err = kbasep_js_policy_init( kbdev );
 	if ( err == MALI_ERROR_NONE)
@@ -544,26 +621,13 @@ void kbasep_js_devdata_term( kbase_device *kbdev )
 		s8 zero_ctx_attr_ref_count[KBASEP_JS_CTX_ATTR_COUNT] = { 0, };
 		/* The caller must de-register all contexts before calling this */
 		OSK_ASSERT( js_devdata->nr_all_contexts_running == 0 );
-		OSK_ASSERT( OSK_MEMCMP( js_devdata->runpool_irq.ctx_attr_ref_count, zero_ctx_attr_ref_count, sizeof(js_devdata->runpool_irq.ctx_attr_ref_count)) == 0 );
+		OSK_ASSERT( memcmp( js_devdata->runpool_irq.ctx_attr_ref_count, zero_ctx_attr_ref_count, sizeof(js_devdata->runpool_irq.ctx_attr_ref_count)) == 0 );
 		CSTD_UNUSED( zero_ctx_attr_ref_count );
 	}
 	if ( (js_devdata->init_status & JS_DEVDATA_INIT_POLICY) )
 	{
 		kbasep_js_policy_term( &js_devdata->policy );
 	}
-	if ( (js_devdata->init_status & JS_DEVDATA_INIT_RUNPOOL_IRQ_LOCK) )
-	{
-		osk_spinlock_irq_term( &js_devdata->runpool_irq.lock );
-	}
-	if ( (js_devdata->init_status & JS_DEVDATA_INIT_QUEUE_MUTEX) )
-	{
-		osk_mutex_term( &js_devdata->queue_mutex );
-	}
-	if ( (js_devdata->init_status & JS_DEVDATA_INIT_RUNPOOL_MUTEX) )
-	{
-		osk_mutex_term( &js_devdata->runpool_mutex );
-	}
-
 	js_devdata->init_status = JS_DEVDATA_INIT_NONE;
 }
 
@@ -573,7 +637,6 @@ mali_error kbasep_js_kctx_init( kbase_context *kctx )
 	kbase_device *kbdev;
 	kbasep_js_kctx_info *js_kctx_info;
 	mali_error err;
-	osk_error osk_err;
 
 	OSK_ASSERT( kctx != NULL );
 
@@ -586,7 +649,7 @@ mali_error kbasep_js_kctx_init( kbase_context *kctx )
 	js_kctx_info->ctx.nr_jobs = 0;
 	js_kctx_info->ctx.is_scheduled = MALI_FALSE;
 	js_kctx_info->ctx.is_dying = MALI_FALSE;
-	OSK_MEMSET( js_kctx_info->ctx.ctx_attr_ref_count, 0, sizeof(js_kctx_info->ctx.ctx_attr_ref_count) );
+	memset( js_kctx_info->ctx.ctx_attr_ref_count, 0, sizeof(js_kctx_info->ctx.ctx_attr_ref_count) );
 
 	/* Initially, the context is disabled from submission until the create flags are set */
 	js_kctx_info->ctx.flags = KBASE_CTX_FLAG_SUBMIT_DISABLED;
@@ -595,23 +658,9 @@ mali_error kbasep_js_kctx_init( kbase_context *kctx )
 
 	/* On error, we could continue on: providing none of the below resources
 	 * rely on the ones above */
-	osk_err = osk_mutex_init( &js_kctx_info->ctx.jsctx_mutex, OSK_LOCK_ORDER_JS_CTX );
-	if ( osk_err == OSK_ERR_NONE )
-	{
-		js_kctx_info->init_status |= JS_KCTX_INIT_JSCTX_MUTEX;
-	}
+	mutex_init( &js_kctx_info->ctx.jsctx_mutex);
 
-	osk_err = osk_waitq_init( &js_kctx_info->ctx.scheduled_waitq );
-	if ( osk_err == OSK_ERR_NONE )
-	{
-		js_kctx_info->init_status |= JS_KCTX_INIT_JSCTX_WAITQ_SCHED;
-	}
-
-	osk_err = osk_waitq_init( &js_kctx_info->ctx.not_scheduled_waitq );
-	if ( osk_err == OSK_ERR_NONE )
-	{
-		js_kctx_info->init_status |= JS_KCTX_INIT_JSCTX_WAITQ_NSCHED;
-	}
+	init_waitqueue_head(&js_kctx_info->ctx.is_scheduled_wait);
 
 	err = kbasep_js_policy_init_ctx( kbdev, kctx );
 	if ( err == MALI_ERROR_NONE )
@@ -625,10 +674,6 @@ mali_error kbasep_js_kctx_init( kbase_context *kctx )
 	{
 		return MALI_ERROR_FUNCTION_FAILED;
 	}
-
-	/* Initially, the context is not scheduled */
-	osk_waitq_clear( &js_kctx_info->ctx.scheduled_waitq );
-	osk_waitq_set( &js_kctx_info->ctx.not_scheduled_waitq );
 
 	return MALI_ERROR_NONE;
 }
@@ -656,21 +701,6 @@ void kbasep_js_kctx_term( kbase_context *kctx )
 		OSK_ASSERT( kbasep_js_ctx_attr_count_on_runpool( kbdev, KBASEP_JS_CTX_ATTR_NSS ) == 0 );
 	}
 
-	if ( (js_kctx_info->init_status & JS_KCTX_INIT_JSCTX_WAITQ_SCHED) )
-	{
-		osk_waitq_term( &js_kctx_info->ctx.scheduled_waitq );
-	}
-
-	if ( (js_kctx_info->init_status & JS_KCTX_INIT_JSCTX_WAITQ_NSCHED) )
-	{
-		osk_waitq_term( &js_kctx_info->ctx.not_scheduled_waitq );
-	}
-
-	if ( (js_kctx_info->init_status & JS_KCTX_INIT_JSCTX_MUTEX) )
-	{
-		osk_mutex_term( &js_kctx_info->ctx.jsctx_mutex );
-	}
-
 	if ( (js_kctx_info->init_status & JS_KCTX_INIT_POLICY) )
 	{
 		kbasep_js_policy_term_ctx( js_policy, kctx );
@@ -685,21 +715,23 @@ void kbasep_js_kctx_term( kbase_context *kctx )
  * - kbasep_js_kctx_info::ctx::jsctx_mutex
  * - kbasep_js_device_data::runpool_mutex
  */
-STATIC void kbasep_js_runpool_evict_next_jobs( kbase_device *kbdev )
+STATIC void kbasep_js_runpool_evict_next_jobs( kbase_device *kbdev, kbase_context *kctx )
 {
+	unsigned long flags;
 	int js;
 	kbasep_js_device_data *js_devdata;
-	u16 saved_submit_mask;
 
 	js_devdata = &kbdev->js_data;
 
+	BUG_ON(!mutex_is_locked( &kctx->jctx.sched_info.ctx.jsctx_mutex  ));
+	BUG_ON(!mutex_is_locked( &js_devdata->runpool_mutex ));
+
 	/* Prevent contexts in the runpool from submitting jobs */
-	osk_spinlock_irq_lock(&js_devdata->runpool_irq.lock);
-	{
-		saved_submit_mask = js_devdata->runpool_irq.submit_allowed;
-		js_devdata->runpool_irq.submit_allowed = 0;
-	}
-	osk_spinlock_irq_unlock(&js_devdata->runpool_irq.lock);
+	spin_lock_irqsave(&js_devdata->runpool_irq.lock, flags);
+
+	/* There's no need to prevent contexts in the runpool from submitting jobs,
+	 * because we complete this operation by the time we release the
+	 * runpool_irq.lock */
 
 	/* Evict jobs from the NEXT registers */
 	for (js = 0; js < kbdev->gpu_props.num_job_slots; js++)
@@ -707,12 +739,9 @@ STATIC void kbasep_js_runpool_evict_next_jobs( kbase_device *kbdev )
 		kbase_jm_slot *slot;
 		kbase_jd_atom *tail;
 
-		kbase_job_slot_lock(kbdev, js);
-
 		if (!kbase_reg_read(kbdev, JOB_SLOT_REG(js, JSn_COMMAND_NEXT), NULL))
 		{
 			/* No job in the NEXT register */
-			kbase_job_slot_unlock(kbdev, js);
 			continue;
 		}
 
@@ -733,21 +762,14 @@ STATIC void kbasep_js_runpool_evict_next_jobs( kbase_device *kbdev )
 			kbase_reg_write(kbdev, JOB_SLOT_REG(js, JSn_HEAD_NEXT_LO), 0, NULL);
 			kbase_reg_write(kbdev, JOB_SLOT_REG(js, JSn_HEAD_NEXT_HI), 0, NULL);
 
-			tail->event.event_code = BASE_JD_EVENT_REMOVED_FROM_NEXT;
+			tail->event_code = BASE_JD_EVENT_REMOVED_FROM_NEXT;
 
 			/* Complete the job, indicate that it took no time, and start_new_jobs==MALI_FALSE */
 			kbase_jd_done(tail, js, NULL, MALI_FALSE);
 		}
 
-		kbase_job_slot_unlock(kbdev, js);
 	}
-
-	/* Allow contexts in the runpool to submit jobs again */
-	osk_spinlock_irq_lock(&js_devdata->runpool_irq.lock);
-	{
-		js_devdata->runpool_irq.submit_allowed = saved_submit_mask;
-	}
-	osk_spinlock_irq_unlock(&js_devdata->runpool_irq.lock);
+	spin_unlock_irqrestore(&js_devdata->runpool_irq.lock, flags);
 }
 
 /**
@@ -771,6 +793,7 @@ STATIC void kbasep_js_runpool_evict_next_jobs( kbase_device *kbdev )
  */
 STATIC void kbasep_js_runpool_attempt_fast_start_ctx( kbase_device *kbdev, kbase_context *kctx_new )
 {
+	unsigned long flags;
 	kbasep_js_device_data *js_devdata;
 	kbasep_js_kctx_info   *js_kctx_new;
 	kbasep_js_policy      *js_policy;
@@ -781,11 +804,11 @@ STATIC void kbasep_js_runpool_attempt_fast_start_ctx( kbase_device *kbdev, kbase
 
 	js_devdata = &kbdev->js_data;
 	js_policy = &kbdev->js_data.policy;
-
+	
 	if (kctx_new != NULL)
 	{
 			js_kctx_new = &kctx_new->jctx.sched_info;
-			osk_mutex_lock( &js_kctx_new->ctx.jsctx_mutex );
+			mutex_lock( &js_kctx_new->ctx.jsctx_mutex );
 	}
 	else
 	{
@@ -793,13 +816,13 @@ STATIC void kbasep_js_runpool_attempt_fast_start_ctx( kbase_device *kbdev, kbase
 		CSTD_UNUSED(js_kctx_new);
 	}
 
-	osk_mutex_lock( &js_devdata->runpool_mutex );
+	mutex_lock( &js_devdata->runpool_mutex );
 
 	/* If the runpool is full, attempt to fast start our context */
 	if (check_is_runpool_full(kbdev, kctx_new) != MALI_FALSE)
 	{
 		/* No free address spaces - attempt to evict non-running lower priority context */
-		osk_spinlock_irq_lock(&js_devdata->runpool_irq.lock);
+		spin_lock_irqsave(&js_devdata->runpool_irq.lock, flags);
 		for(evict_as_nr = 0; evict_as_nr < kbdev->nr_hw_address_spaces; evict_as_nr++)
 		{
 			kbase_context *kctx_evict;
@@ -828,19 +851,19 @@ STATIC void kbasep_js_runpool_attempt_fast_start_ctx( kbase_device *kbdev, kbase
 					 * and also stop its refcount increasing */
 					kbasep_js_clear_submit_allowed(js_devdata, kctx_evict);
 
-					osk_spinlock_irq_unlock(&js_devdata->runpool_irq.lock);
-					osk_mutex_unlock(&js_devdata->runpool_mutex);
+					spin_unlock_irqrestore(&js_devdata->runpool_irq.lock, flags);
+					mutex_unlock(&js_devdata->runpool_mutex);
 					if (kctx_new != NULL)
 					{
-							osk_mutex_unlock( &js_kctx_new->ctx.jsctx_mutex );
+							mutex_unlock( &js_kctx_new->ctx.jsctx_mutex );
 					}
 
 					/* Stop working on the target context, start working on the kctx_evict context */
 
-					osk_mutex_lock( &kctx_evict->jctx.sched_info.ctx.jsctx_mutex );
-					osk_mutex_lock( &js_devdata->runpool_mutex );
+					mutex_lock( &kctx_evict->jctx.sched_info.ctx.jsctx_mutex );
+					mutex_lock( &js_devdata->runpool_mutex );
 					release_result = kbasep_js_runpool_release_ctx_internal( kbdev, kctx_evict );
-					osk_mutex_unlock( &js_devdata->runpool_mutex );
+					mutex_unlock( &js_devdata->runpool_mutex );
 					/* Only requeue if actually descheduled, which is more robust in case
 					 * something else retains it (e.g. two high priority contexts racing
 					 * to evict the same lower priority context) */
@@ -848,7 +871,7 @@ STATIC void kbasep_js_runpool_attempt_fast_start_ctx( kbase_device *kbdev, kbase
 					{
 						kbasep_js_runpool_requeue_or_kill_ctx( kbdev, kctx_evict );
 					}
-					osk_mutex_unlock( &kctx_evict->jctx.sched_info.ctx.jsctx_mutex );
+					mutex_unlock( &kctx_evict->jctx.sched_info.ctx.jsctx_mutex );
 
 					/* release_result isn't propogated further:
 					 * - the caller will be scheduling in a context anyway
@@ -859,19 +882,20 @@ STATIC void kbasep_js_runpool_attempt_fast_start_ctx( kbase_device *kbdev, kbase
 				}
 			}
 		}
-		osk_spinlock_irq_unlock(&js_devdata->runpool_irq.lock);
+		spin_unlock_irqrestore(&js_devdata->runpool_irq.lock, flags);
 	}
 
 	/* ctx fast start has not taken place */
-	osk_mutex_unlock( &js_devdata->runpool_mutex );
+	mutex_unlock( &js_devdata->runpool_mutex );
 	if (kctx_new != NULL)
 	{
-			osk_mutex_unlock( &js_kctx_new->ctx.jsctx_mutex );
+			mutex_unlock( &js_kctx_new->ctx.jsctx_mutex );
 	}
 }
 
 mali_bool kbasep_js_add_job( kbase_context *kctx, kbase_jd_atom *atom )
 {
+	unsigned long flags;
 	kbasep_js_kctx_info *js_kctx_info;
 	kbase_device *kbdev;
 	kbasep_js_device_data *js_devdata;
@@ -887,15 +911,18 @@ mali_bool kbasep_js_add_job( kbase_context *kctx, kbase_jd_atom *atom )
 	js_policy = &kbdev->js_data.policy;
 	js_kctx_info = &kctx->jctx.sched_info;
 
-	osk_mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
+	mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
 	/* Policy-specific initialization of atoms (which cannot fail). Anything that
 	 * could've failed must've been done at kbasep_jd_policy_init_job() time. */
 	kbasep_js_policy_register_job( js_policy, kctx, atom );
 
-	osk_mutex_lock( &js_devdata->runpool_mutex );
+	/*
+	 * Begin Runpool transaction
+	 */
+	mutex_lock( &js_devdata->runpool_mutex );
 	{
-		KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_ADD_JOB, kctx, atom->user_atom, atom->jc,
-								  kbasep_js_trace_get_refcnt(kbdev, kctx));
+		KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_ADD_JOB, kctx, atom, atom->jc,
+		                          kbasep_js_trace_get_refcnt(kbdev, kctx));
 	}
 
 	/* Refcount ctx.nr_jobs */
@@ -905,29 +932,26 @@ mali_bool kbasep_js_add_job( kbase_context *kctx, kbase_jd_atom *atom )
 	/* Setup any scheduling information */
 	kbasep_js_clear_job_retry_submit( atom );
 
-	/*
-	 * Begin Runpool_irq transaction
-	 */
-	osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
-	{
-		/* Context Attribute Refcounting */
-		kbasep_js_ctx_attr_ctx_retain_atom( kbdev, kctx, atom );
+	/* Lock for state available during IRQ */
+	spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
 
-		/* Enqueue the job in the policy, causing it to be scheduled if the
-		 * parent context gets scheduled */
-		kbasep_js_policy_enqueue_job( js_policy, atom );
-	}
-	osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
-	/* End runpool_irq transaction */
+	/* Context Attribute Refcounting */
+	kbasep_js_ctx_attr_ctx_retain_atom( kbdev, kctx, atom );
+
+	/* Enqueue the job in the policy, causing it to be scheduled if the
+	 * parent context gets scheduled */
+	kbasep_js_policy_enqueue_job( js_policy, atom );
 
 	if ( js_kctx_info->ctx.is_scheduled != MALI_FALSE )
 	{
 		/* Handle an already running context - try to run the new job, in case it
 		 * matches requirements that aren't matched by any other job in the Run
 		 * Pool */
-		kbasep_js_try_run_next_job( kbdev );
+		kbasep_js_try_run_next_job_nolock( kbdev );
 	}
-	osk_mutex_unlock( &js_devdata->runpool_mutex );
+	spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
+	mutex_unlock( &js_devdata->runpool_mutex );
+	/* End runpool transaction */
 
 	if ( js_kctx_info->ctx.is_scheduled == MALI_FALSE && js_kctx_info->ctx.nr_jobs == 1 )
 	{
@@ -939,12 +963,12 @@ mali_bool kbasep_js_add_job( kbase_context *kctx, kbase_jd_atom *atom )
 		/* This context is becoming active */
 		kbase_pm_context_active(kctx->kbdev);
 
-		osk_mutex_lock( &js_devdata->queue_mutex );
+		mutex_lock( &js_devdata->queue_mutex );
 		kbasep_js_policy_enqueue_ctx( js_policy, kctx );
-		osk_mutex_unlock( &js_devdata->queue_mutex );
+		mutex_unlock( &js_devdata->queue_mutex );
 		/* If the runpool is full and this job has a higher priority than the non-running
 		 * job in the runpool - evict it so this higher priority job starts faster */
-		osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
+		mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 
 		/* Fast-starting requires the jsctx_mutex to be dropped, because it works on multiple ctxs */
 		kbasep_js_runpool_attempt_fast_start_ctx( kbdev, kctx );
@@ -959,7 +983,7 @@ mali_bool kbasep_js_add_job( kbase_context *kctx, kbase_jd_atom *atom )
 	}
 	else
 	{
-		osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
+		mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 	}
 
 	return policy_queue_updated;
@@ -967,6 +991,7 @@ mali_bool kbasep_js_add_job( kbase_context *kctx, kbase_jd_atom *atom )
 
 void kbasep_js_remove_job( kbase_context *kctx, kbase_jd_atom *atom )
 {
+	unsigned long flags;
 	kbasep_js_kctx_info *js_kctx_info;
 	kbase_device *kbdev;
 	kbasep_js_device_data *js_devdata;
@@ -982,17 +1007,17 @@ void kbasep_js_remove_job( kbase_context *kctx, kbase_jd_atom *atom )
 	js_kctx_info = &kctx->jctx.sched_info;
 
 	{
-		KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_REMOVE_JOB, kctx, atom->user_atom, atom->jc,
-								  kbasep_js_trace_get_refcnt(kbdev, kctx));
+		KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_REMOVE_JOB, kctx, atom, atom->jc,
+		                          kbasep_js_trace_get_refcnt(kbdev, kctx));
 	}
 
 	/* De-refcount ctx.nr_jobs */
 	OSK_ASSERT( js_kctx_info->ctx.nr_jobs > 0 );
 	--(js_kctx_info->ctx.nr_jobs);
 
-	osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
+	spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
 	attr_state_changed = kbasep_js_ctx_attr_ctx_release_atom( kbdev, kctx, atom );
-	osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
+	spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
 
 	/* De-register the job from the system */
 	kbasep_js_policy_deregister_job( js_policy, kctx, atom );
@@ -1001,9 +1026,7 @@ void kbasep_js_remove_job( kbase_context *kctx, kbase_jd_atom *atom )
 	{
 		/* A change in runpool ctx attributes might mean we can run more jobs
 		 * than before. */
-		osk_mutex_lock( &js_devdata->runpool_mutex );
-		kbasep_js_try_run_next_job( kbdev );
-		osk_mutex_unlock( &js_devdata->runpool_mutex );
+		kbase_js_try_run_jobs( kbdev );
 	}
 
 }
@@ -1011,6 +1034,7 @@ void kbasep_js_remove_job( kbase_context *kctx, kbase_jd_atom *atom )
 
 mali_bool kbasep_js_runpool_retain_ctx( kbase_device *kbdev, kbase_context *kctx )
 {
+	unsigned long flags;
 	kbasep_js_device_data *js_devdata;
 	mali_bool result;
 	OSK_ASSERT( kbdev != NULL );
@@ -1018,9 +1042,9 @@ mali_bool kbasep_js_runpool_retain_ctx( kbase_device *kbdev, kbase_context *kctx
 
 	/* KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_RETAIN_CTX, kctx, NULL, 0,
 	                             kbasep_js_trace_get_refcnt(kbdev, kctx)); */
-	osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
+	spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
 	result = kbasep_js_runpool_retain_ctx_nolock( kbdev, kctx );
-	osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
+	spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
 
 	return result;
 }
@@ -1028,6 +1052,7 @@ mali_bool kbasep_js_runpool_retain_ctx( kbase_device *kbdev, kbase_context *kctx
 
 kbase_context* kbasep_js_runpool_lookup_ctx( kbase_device *kbdev, int as_nr )
 {
+	unsigned long flags;
 	kbasep_js_device_data *js_devdata;
 	kbase_context *found_kctx = NULL;
 	kbasep_js_per_as_data *js_per_as_data;
@@ -1037,7 +1062,7 @@ kbase_context* kbasep_js_runpool_lookup_ctx( kbase_device *kbdev, int as_nr )
 	js_devdata = &kbdev->js_data;
 	js_per_as_data = &js_devdata->runpool_irq.per_as_data[as_nr];
 
-	osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
+	spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
 
 	found_kctx = js_per_as_data->kctx;
 
@@ -1046,7 +1071,7 @@ kbase_context* kbasep_js_runpool_lookup_ctx( kbase_device *kbdev, int as_nr )
 		++(js_per_as_data->as_busy_refcount);
 	}
 
-	osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
+	spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
 
 	return found_kctx;
 }
@@ -1069,6 +1094,7 @@ kbase_context* kbasep_js_runpool_lookup_ctx( kbase_device *kbdev, int as_nr )
  */
 STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_device *kbdev, kbase_context *kctx )
 {
+	unsigned long flags;
 	kbasep_js_device_data *js_devdata;
 	kbasep_js_kctx_info   *js_kctx_info;
 	kbasep_js_policy      *js_policy;
@@ -1105,8 +1131,8 @@ STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_de
 	 * Assert about out calling contract
 	 */
 	current_as = &kbdev->as[kctx_as_nr];
-	osk_mutex_lock( &current_as->transaction_mutex );
-	osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
+	mutex_lock( &current_as->transaction_mutex );
+	spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
 	OSK_ASSERT( kctx_as_nr == kctx->as_nr );
 	OSK_ASSERT( js_per_as_data->as_busy_refcount > 0 );
 
@@ -1115,14 +1141,14 @@ STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_de
 
 	KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_RELEASE_CTX, kctx, NULL, 0u,
 	                          new_ref_count);
-
+	
 	if ( new_ref_count == 1 && kctx->jctx.sched_info.ctx.flags & KBASE_CTX_FLAG_PRIVILEGED )
 	{
 		/* Context is kept scheduled into an address space even when there are no jobs, in this case we have
-		 * to handle the situation where all jobs have been evicted from the GPU and submission is disabled.
-		 *
-		 * At this point we re-enable submission to allow further jobs to be executed
-		 */
+ 		 * to handle the situation where all jobs have been evicted from the GPU and submission is disabled.
+ 		 *
+ 		 * At this point we re-enable submission to allow further jobs to be executed
+ 		 */
 		kbasep_js_set_submit_allowed( js_devdata, kctx );
 	}
 
@@ -1150,9 +1176,9 @@ STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_de
 		/* Disable the MMU on the affected address space, and indicate it's invalid */
 		kbase_mmu_disable( kctx );
 
-#if MALI_GATOR_SUPPORT
+#ifdef CONFIG_MALI_GATOR_SUPPORT
 		kbase_trace_mali_mmu_as_released(kctx->as_nr);
-#endif
+#endif /* CONFIG_MALI_GATOR_SUPPORT */
 
 		kctx->as_nr = KBASEP_AS_NR_INVALID;
 
@@ -1171,11 +1197,11 @@ STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_de
 		 * retains are allowed on this context, no other thread will be operating in this
 		 * code whilst we are
 		 */
-		osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
-		osk_mutex_unlock( &current_as->transaction_mutex );
+		spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
+		mutex_unlock( &current_as->transaction_mutex );
 
 		/* Free up the address space */
-		js_devdata->as_free |= ((u16)(1u << kctx_as_nr));
+		release_addr_space( kbdev, kctx_as_nr );
 		/* Note: Don't reuse kctx_as_nr now */
 
 		/* update book-keeping info */
@@ -1184,8 +1210,7 @@ STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_de
 		/* Signal any waiter that the context is not scheduled, so is safe for
 		 * termination - once the jsctx_mutex is also dropped, and jobs have
 		 * finished. */
-		osk_waitq_set( &js_kctx_info->ctx.not_scheduled_waitq );
-		osk_waitq_clear( &js_kctx_info->ctx.scheduled_waitq );
+		wake_up(&js_kctx_info->ctx.is_scheduled_wait);
 
 		/* Queue an action to occur after we've dropped the lock */
 		release_result |= KBASEP_JS_RELEASE_RESULT_WAS_DESCHEDULED;
@@ -1193,8 +1218,8 @@ STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_de
 	}
 	else
 	{
-		osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
-		osk_mutex_unlock( &current_as->transaction_mutex );
+		spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
+		mutex_unlock( &current_as->transaction_mutex );
 	}
 
 	return release_result;
@@ -1232,9 +1257,9 @@ void kbasep_js_runpool_requeue_or_kill_ctx( kbase_device *kbdev, kbase_context *
 	{
 		/* Not dying, has jobs: add back to the queue */
 		OSK_PRINT_INFO(OSK_BASE_JM, "JS: Requeue Context %p", kctx );
-		osk_mutex_lock( &js_devdata->queue_mutex );
+		mutex_lock( &js_devdata->queue_mutex );
 		kbasep_js_policy_enqueue_ctx( js_policy, kctx );
-		osk_mutex_unlock( &js_devdata->queue_mutex );
+		mutex_unlock( &js_devdata->queue_mutex );
 	}
 	else
 	{
@@ -1244,32 +1269,73 @@ void kbasep_js_runpool_requeue_or_kill_ctx( kbase_device *kbdev, kbase_context *
 	}
 }
 
-void kbasep_js_runpool_release_ctx( kbase_device *kbdev, kbase_context *kctx )
+void kbasep_js_runpool_release_ctx_and_handle_actions( kbase_device *kbdev,
+                                                       kbase_context *kctx,
+                                                       mali_bool retry_submit,
+                                                       int retry_jobslot )
 {
 	kbasep_js_device_data *js_devdata;
-	kbasep_js_kctx_info   *js_kctx_info;
-
+	kbasep_js_kctx_info *js_kctx_info;
 	kbasep_js_release_result release_result;
+	unsigned long flags;
 
 	OSK_ASSERT( kbdev != NULL );
 	OSK_ASSERT( kctx != NULL );
 	js_kctx_info = &kctx->jctx.sched_info;
 	js_devdata = &kbdev->js_data;
 
-	osk_mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
-
-	osk_mutex_lock( &js_devdata->runpool_mutex );
+	mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
+	mutex_lock( &js_devdata->runpool_mutex );
 	release_result = kbasep_js_runpool_release_ctx_internal( kbdev, kctx );
-	osk_mutex_unlock( &js_devdata->runpool_mutex );
 
-	/* Do we have an action queued whilst the lock was held? */
+	if (js_devdata->nr_user_contexts_running != 0)
+	{
+		/* All further checks repeated here. This is so we only take the
+		 * spinlock when we need it, and only take it once */
+		if ( (release_result & KBASEP_JS_RELEASE_RESULT_CTX_ATTR_CHANGE) != 0u
+			 || js_devdata->runpool_irq.slots_blocked_on_affinity != 0u
+			 || retry_submit != MALI_FALSE)
+		{
+			spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
+
+			if ( (release_result & KBASEP_JS_RELEASE_RESULT_CTX_ATTR_CHANGE) != 0u )
+			{
+				/* A change in runpool ctx attributes might mean we can run more jobs
+				 * than before - and this needs to be done when the above
+				 * try_schedule_head_ctx() had no contexts to run */
+				kbasep_js_try_run_next_job_nolock( kbdev );
+
+				/* A retry submit on all slots has now happened, so don't need to do it again */
+				retry_submit = MALI_FALSE;
+			}
+			/* Submit on any slots that might've had atoms blocked by the affinity of
+			 * a completed atom.
+			 *
+			 * If no atom has recently completed, then this is harmelss */
+			kbase_js_affinity_submit_to_blocked_slots( kbdev );
+
+			/* If the IRQ handler failed to get a job from the policy, try again from
+			 * outside the IRQ handler
+			 * NOTE: We may've already cleared retry_submit from submitting above */
+			if ( retry_submit != MALI_FALSE )
+			{
+				KBASE_TRACE_ADD_SLOT( kbdev, JD_DONE_TRY_RUN_NEXT_JOB, kctx, NULL, 0u, retry_jobslot );
+				kbasep_js_try_run_next_job_on_slot_nolock( kbdev, retry_jobslot );
+			}
+
+			spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
+		}
+	}
+
+	/* Drop the runpool mutex to allow requeing kctx */
+	mutex_unlock( &js_devdata->runpool_mutex );
 	if ( (release_result & KBASEP_JS_RELEASE_RESULT_WAS_DESCHEDULED) != 0u )
 	{
-		kbasep_js_runpool_requeue_or_kill_ctx( kbdev, kctx) ;
+		kbasep_js_runpool_requeue_or_kill_ctx( kbdev, kctx ) ;
 	}
-	/* We've finished with this context for now, so drop the lock for it. */
-	osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 
+	/* Drop the jsctx_mutex to allow scheduling in a new context */
+	mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 	if ( (release_result & KBASEP_JS_RELEASE_RESULT_WAS_DESCHEDULED) != 0u )
 	{
 		/* We've freed up an address space, so let's try to schedule in another
@@ -1280,17 +1346,11 @@ void kbasep_js_runpool_release_ctx( kbase_device *kbdev, kbase_context *kctx )
 		 * that no other context/job in the runpool does */
 		kbasep_js_try_schedule_head_ctx( kbdev );
 	}
+}
 
-	if ( (release_result & KBASEP_JS_RELEASE_RESULT_CTX_ATTR_CHANGE) != 0u )
-	{
-		/* A change in runpool ctx attributes might mean we can run more jobs
-		 * than before - and this needs to be done when the above
-		 * try_schedule_head_ctx() had no contexts to run */
-		osk_mutex_lock( &js_devdata->runpool_mutex );
-		kbasep_js_try_run_next_job( kbdev );
-		osk_mutex_unlock( &js_devdata->runpool_mutex );
-	}
-
+void kbasep_js_runpool_release_ctx( kbase_device *kbdev, kbase_context *kctx  )
+{
+	kbasep_js_runpool_release_ctx_and_handle_actions( kbdev, kctx, MALI_FALSE, 0 );
 }
 
 /**
@@ -1344,7 +1404,8 @@ STATIC mali_bool kbasep_js_job_check_ref_cores(kbase_device *kbdev, int js, kbas
 			if (MALI_ERROR_NONE != kbase_pm_request_cores( kbdev, recently_chosen_affinity, tiler_affinity ))
 			{
 				/* Failed to request cores, don't set the affinity so we try again and return */
-				KBASE_TRACE_ADD_SLOT_INFO( kbdev, JS_CORE_REF_REQUEST_CORES_FAILED, katom->kctx, katom->user_atom, katom->jc, js, (u32)recently_chosen_affinity );
+				KBASE_TRACE_ADD_SLOT_INFO( kbdev, JS_CORE_REF_REQUEST_CORES_FAILED, katom->kctx, katom,
+				                           katom->jc, js, (u32)recently_chosen_affinity );
 				/* *** BREAK OUT: No state transition *** */
 				break;
 			}
@@ -1364,7 +1425,8 @@ STATIC mali_bool kbasep_js_job_check_ref_cores(kbase_device *kbdev, int js, kbas
 				if ( !cores_ready )
 				{
 					/* Stay in this state and return, to retry at this state later */
-					KBASE_TRACE_ADD_SLOT_INFO( kbdev, JS_CORE_REF_REGISTER_INUSE_FAILED, katom->kctx, katom->user_atom, katom->jc, js, (u32)katom->affinity );
+					KBASE_TRACE_ADD_SLOT_INFO( kbdev, JS_CORE_REF_REGISTER_INUSE_FAILED, katom->kctx, katom,
+					                           katom->jc, js, (u32)katom->affinity );
 					/* *** BREAK OUT: No state transition *** */
 					break;
 				}
@@ -1392,7 +1454,8 @@ STATIC mali_bool kbasep_js_job_check_ref_cores(kbase_device *kbdev, int js, kbas
 					/* Failed to request cores, rollback the previous gained set
 					 * That also resets the state to NO_CORES_REQUESTED */
 					kbasep_js_job_check_deref_cores( kbdev, katom );
-					KBASE_TRACE_ADD_SLOT_INFO( kbdev, JS_CORE_REF_REQUEST_ON_RECHECK_FAILED, katom->kctx, katom->user_atom, katom->jc, js, (u32)recently_chosen_affinity );
+					KBASE_TRACE_ADD_SLOT_INFO( kbdev, JS_CORE_REF_REQUEST_ON_RECHECK_FAILED, katom->kctx, katom,
+					                           katom->jc, js, (u32)recently_chosen_affinity );
 					/* *** BREAK OUT: Transition to lower state *** */
 					break;
 				}
@@ -1411,7 +1474,8 @@ STATIC mali_bool kbasep_js_job_check_ref_cores(kbase_device *kbdev, int js, kbas
 					{
 						/* Return to previous state */
 						katom->coreref_state = KBASE_ATOM_COREREF_STATE_WAITING_FOR_REQUESTED_CORES;
-						KBASE_TRACE_ADD_SLOT_INFO( kbdev, JS_CORE_REF_REGISTER_ON_RECHECK_FAILED, katom->kctx, katom->user_atom, katom->jc, js, (u32)katom->affinity );
+						KBASE_TRACE_ADD_SLOT_INFO( kbdev, JS_CORE_REF_REGISTER_ON_RECHECK_FAILED, katom->kctx, katom,
+						                           katom->jc, js, (u32)katom->affinity );
 						/* *** BREAK OUT: Transition to lower state *** */
 						break;
 					}
@@ -1436,7 +1500,8 @@ STATIC mali_bool kbasep_js_job_check_ref_cores(kbase_device *kbdev, int js, kbas
 				/* Return to previous state */
 				katom->coreref_state = KBASE_ATOM_COREREF_STATE_RECHECK_AFFINITY;
 				/* *** BREAK OUT: Transition to lower state *** */
-				KBASE_TRACE_ADD_SLOT_INFO( kbdev, JS_CORE_REF_AFFINITY_WOULD_VIOLATE, katom->kctx, katom->user_atom, katom->jc, js, (u32)katom->affinity );
+				KBASE_TRACE_ADD_SLOT_INFO( kbdev, JS_CORE_REF_AFFINITY_WOULD_VIOLATE, katom->kctx, katom,
+				                           katom->jc, js, (u32)katom->affinity );
 				break;
 			}
 
@@ -1533,10 +1598,10 @@ mali_bool kbasep_js_try_run_next_job_on_slot_irq_nolock( kbase_device *kbdev, in
 		{
 			kbase_jd_atom *dequeued_atom;
 			mali_bool has_job = MALI_FALSE;
-
+			
 			/* Dequeue a job that matches the requirements */
 			has_job = kbasep_js_policy_dequeue_job_irq( kbdev, js, &dequeued_atom );
-
+			
 			if ( has_job != MALI_FALSE )
 			{
 				/* NOTE: since the runpool_irq lock is currently held and acts across
@@ -1611,7 +1676,7 @@ mali_bool kbasep_js_try_run_next_job_on_slot_irq_nolock( kbase_device *kbdev, in
 	return (mali_bool)(tried_to_dequeue_jobs_but_failed || *submit_count >= KBASE_JS_MAX_JOB_SUBMIT_PER_SLOT_PER_IRQ);
 }
 
-void kbasep_js_try_run_next_job_on_slot( kbase_device *kbdev, int js )
+void kbasep_js_try_run_next_job_on_slot_nolock( kbase_device *kbdev, int js )
 {
 	kbasep_js_device_data *js_devdata;
 	mali_bool has_job;
@@ -1621,22 +1686,13 @@ void kbasep_js_try_run_next_job_on_slot( kbase_device *kbdev, int js )
 
 	js_devdata = &kbdev->js_data;
 
-	if (js_devdata->nr_user_contexts_running == 0)
-	{
-		/* There are no contexts with jobs so return early */
-		return;
-	}
-
-	kbase_job_slot_lock(kbdev, js);
+	OSK_ASSERT( js_devdata->nr_user_contexts_running > 0 );
 
 	/* Keep submitting while there's space to run a job on this job-slot,
 	 * and there are jobs to get that match its requirements (see 'break'
 	 * statement below) */
 	if (  kbasep_jm_is_submit_slots_free( kbdev, js, NULL ) != MALI_FALSE )
 	{
-		/* Only lock the Run Pool whilst there's work worth doing */
-		osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
-
 		/* The caller of this function may not be aware of Ctx Attribute state changes so we
 		 * must recheck if the given slot is still valid. Otherwise do not try to run.
 		 */
@@ -1688,10 +1744,7 @@ void kbasep_js_try_run_next_job_on_slot( kbase_device *kbdev, int js )
 			} while ( kbasep_jm_is_submit_slots_free( kbdev, js, NULL ) != MALI_FALSE
 				      && has_job != MALI_FALSE );
 		}
-
-		osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
 	}
-	kbase_job_slot_unlock(kbdev, js);
 }
 
 void kbasep_js_try_schedule_head_ctx( kbase_device *kbdev )
@@ -1701,28 +1754,23 @@ void kbasep_js_try_schedule_head_ctx( kbase_device *kbdev )
 	kbase_context *head_kctx;
 	kbasep_js_kctx_info *js_kctx_info;
 	mali_bool is_runpool_full;
+	kbase_as *new_address_space;
+	unsigned long flags;
 
 	OSK_ASSERT( kbdev != NULL );
 
 	js_devdata = &kbdev->js_data;
 
-	/* Make a speculative check on the Run Pool - this MUST be repeated once
-	 * we've obtained a context from the queue and reobtained the Run Pool
-	 * lock */
-	osk_mutex_lock( &js_devdata->runpool_mutex );
-	is_runpool_full = check_is_runpool_full(kbdev, NULL);
-	osk_mutex_unlock( &js_devdata->runpool_mutex );
-
-	if ( is_runpool_full != MALI_FALSE )
-	{
-		/* No free address spaces - nothing to do */
-		return;
-	}
+	/* We *don't* make a speculative check on whether we can fit a context in the
+	 * runpool, because most of our use-cases assume 2 or fewer contexts, and
+	 * so we will usually have enough address spaces free.
+	 *
+	 * In any case, the check will be done later on once we have a context */
 
 	/* Grab the context off head of queue - if there is one */
-	osk_mutex_lock( &js_devdata->queue_mutex );
+	mutex_lock( &js_devdata->queue_mutex );
 	has_kctx = kbasep_js_policy_dequeue_head_ctx( &js_devdata->policy, &head_kctx );
-	osk_mutex_unlock( &js_devdata->queue_mutex );
+	mutex_unlock( &js_devdata->queue_mutex );
 
 	if ( has_kctx == MALI_FALSE )
 	{
@@ -1736,21 +1784,20 @@ void kbasep_js_try_schedule_head_ctx( kbase_device *kbdev )
 	/*
 	 * Atomic transaction on the Context and Run Pool begins
 	 */
-	osk_mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
-	osk_mutex_lock( &js_devdata->runpool_mutex );
+	mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
+	mutex_lock( &js_devdata->runpool_mutex );
 
-	/* Re-check to see if the Run Pool is full
-	 * Not just to preserve atomicity, but to check against a specific context
+	/* Check to see if the Run Pool is full against a specific context
 	 * (some contexts are allowed in whereas others may not, due to HW workarounds) */
 	is_runpool_full = check_is_runpool_full(kbdev, head_kctx);
 	if ( is_runpool_full != MALI_FALSE )
 	{
 		/* No free address spaces - roll back the transaction so far and return */
-		osk_mutex_unlock( &js_devdata->runpool_mutex );
+		mutex_unlock( &js_devdata->runpool_mutex );
 
 		kbasep_js_runpool_requeue_or_kill_ctx( kbdev, head_kctx );
 
-		osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
+		mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 		return;
 	}
 
@@ -1758,9 +1805,7 @@ void kbasep_js_try_schedule_head_ctx( kbase_device *kbdev )
 							  kbasep_js_trace_get_refcnt(kbdev, head_kctx));
 
 
-	/* update book-keeping info */
-	js_kctx_info->ctx.is_scheduled = MALI_TRUE;
-
+	
 #if MALI_CUSTOMER_RELEASE == 0
 	if ( js_devdata->nr_user_contexts_running == 0 )
 	{
@@ -1792,27 +1837,38 @@ void kbasep_js_try_schedule_head_ctx( kbase_device *kbdev )
 	runpool_inc_context_count( kbdev, head_kctx );
 	/* Cause any future waiter-on-termination to wait until the context is
 	 * descheduled */
-	osk_waitq_clear( &js_kctx_info->ctx.not_scheduled_waitq );
-	osk_waitq_set( &js_kctx_info->ctx.scheduled_waitq );
+	js_kctx_info->ctx.is_scheduled = MALI_TRUE;
+	wake_up(&js_kctx_info->ctx.is_scheduled_wait);
 
-	/* Do all the necessaries to pick the address space (inc. update book-keeping info)
+	/* Pick the free address space (guaranteed free by check_is_runpool_full() ) */
+	new_address_space = pick_free_addr_space( kbdev );
+
+	/* Lock the address space whilst working on it */
+	mutex_lock( &new_address_space->transaction_mutex );
+	spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
+
+	/* Do all the necessaries to assign the address space (inc. update book-keeping info)
 	 * Add the context to the Run Pool, and allow it to run jobs */
-	assign_and_activate_kctx_addr_space( kbdev, head_kctx );
+	assign_and_activate_kctx_addr_space( kbdev, head_kctx, new_address_space );
+
+	/* NOTE: If Linux allows, then we can drop the new_address_space->transaction mutex here */
 
 	if ( (js_kctx_info->ctx.flags & KBASE_CTX_FLAG_PRIVILEGED) != 0 )
 	{
 		/* We need to retain it to keep the corresponding address space */
-		kbasep_js_runpool_retain_ctx(kbdev, head_kctx);
+		kbasep_js_runpool_retain_ctx_nolock(kbdev, head_kctx);
 	}
 
 	/* Try to run the next job, in case this context has jobs that match the
 	 * job slot requirements, but none of the other currently running contexts
 	 * do */
-	kbasep_js_try_run_next_job( kbdev );
+	kbasep_js_try_run_next_job_nolock( kbdev );
 
 	/* Transaction complete */
-	osk_mutex_unlock( &js_devdata->runpool_mutex );
-	osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
+	spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
+	mutex_unlock( &new_address_space->transaction_mutex );
+	mutex_unlock( &js_devdata->runpool_mutex );
+	mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 	/* Note: after this point, the context could potentially get scheduled out immediately */
 }
 
@@ -1830,7 +1886,7 @@ void kbasep_js_schedule_privileged_ctx( kbase_device *kbdev, kbase_context *kctx
 
 	kbase_pm_request_l2_caches(kbdev);
 
-	osk_mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
+	mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
 	/* Mark the context as privileged */
 	js_kctx_info->ctx.flags |= KBASE_CTX_FLAG_PRIVILEGED;
 
@@ -1840,21 +1896,21 @@ void kbasep_js_schedule_privileged_ctx( kbase_device *kbdev, kbase_context *kctx
 		mali_bool is_runpool_full;
 
 		/* Add the context to the runpool */
-		osk_mutex_lock( &js_devdata->queue_mutex );
+		mutex_lock( &js_devdata->queue_mutex );
 		kbasep_js_policy_enqueue_ctx( &js_devdata->policy, kctx );
-		osk_mutex_unlock( &js_devdata->queue_mutex );
+		mutex_unlock( &js_devdata->queue_mutex );
 
-		osk_mutex_lock( &js_devdata->runpool_mutex );
+		mutex_lock( &js_devdata->runpool_mutex );
 		{
 			is_runpool_full = check_is_runpool_full( kbdev, kctx);
 			if ( is_runpool_full != MALI_FALSE )
 			{
 				/* Evict jobs from the NEXT registers to free an AS asap */
-				kbasep_js_runpool_evict_next_jobs( kbdev );
+				kbasep_js_runpool_evict_next_jobs( kbdev, kctx );
 			}
 		}
-		osk_mutex_unlock( &js_devdata->runpool_mutex );
-		osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
+		mutex_unlock( &js_devdata->runpool_mutex );
+		mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 		/* Fast-starting requires the jsctx_mutex to be dropped, because it works on multiple ctxs */
 
 		if ( is_runpool_full != MALI_FALSE )
@@ -1866,14 +1922,14 @@ void kbasep_js_schedule_privileged_ctx( kbase_device *kbdev, kbase_context *kctx
 		kbasep_js_try_schedule_head_ctx( kbdev );
 
 		/* Wait for the context to be scheduled in */
-		osk_waitq_wait(&kctx->jctx.sched_info.ctx.scheduled_waitq);
+		wait_event(kctx->jctx.sched_info.ctx.is_scheduled_wait, kctx->jctx.sched_info.ctx.is_scheduled == MALI_TRUE);
 	}
 	else
 	{
 		/* Already scheduled in - We need to retain it to keep the corresponding address space */
 		kbasep_js_runpool_retain_ctx(kbdev, kctx);
-		osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
-
+		mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
+		
 	}
 }
 
@@ -1884,25 +1940,25 @@ void kbasep_js_release_privileged_ctx( kbase_device *kbdev, kbase_context *kctx 
 	js_kctx_info = &kctx->jctx.sched_info;
 
 	/* We don't need to use the address space anymore */
-	osk_mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
+	mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
 	js_kctx_info->ctx.flags &= (~KBASE_CTX_FLAG_PRIVILEGED);
-	osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
+	mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 
 	kbase_pm_release_l2_caches( kbdev );
 
-	/* Release the context - it wil lbe scheduled out if there is no pending job */
+	/* Release the context - it will be scheduled out if there is no pending job */
 	kbasep_js_runpool_release_ctx(kbdev, kctx);
 }
 
 
-void kbasep_js_job_done_slot_irq( kbase_jd_atom *katom, int slot_nr, kbasep_js_tick *end_timestamp, mali_bool start_new_jobs )
+void kbasep_js_job_done_slot_irq( kbase_jd_atom *katom, int slot_nr, ktime_t *end_timestamp, mali_bool start_new_jobs )
 {
 	kbase_device *kbdev;
 	kbasep_js_policy *js_policy;
 	kbasep_js_device_data *js_devdata;
 	mali_bool submit_retry_needed = MALI_TRUE; /* If we don't start jobs here, start them from the workqueue */
-	kbasep_js_tick tick_diff;
-	u32 microseconds_spent = 0u;
+	ktime_t tick_diff;
+	u64 microseconds_spent = 0u;
 	kbase_context *parent_ctx;
 
 	OSK_ASSERT(katom);
@@ -1914,13 +1970,15 @@ void kbasep_js_job_done_slot_irq( kbase_jd_atom *katom, int slot_nr, kbasep_js_t
 	js_devdata = &kbdev->js_data;
 	js_policy = &kbdev->js_data.policy;
 
+	lockdep_assert_held(&js_devdata->runpool_irq.lock);
+
 	/*
 	 * Release resources before submitting new jobs (bounds the refcount of
 	 * the resource to BASE_JM_SUBMIT_SLOTS)
 	 */
-#if MALI_GATOR_SUPPORT
+#ifdef CONFIG_MALI_GATOR_SUPPORT
 	kbase_trace_mali_job_slots_event(GATOR_MAKE_EVENT(GATOR_JOB_SLOT_STOP, slot_nr), NULL);
-#endif
+#endif /* CONFIG_MALI_GATOR_SUPPORT */
 
 	if (katom->poking && kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8316))
 	{
@@ -1940,17 +1998,17 @@ void kbasep_js_job_done_slot_irq( kbase_jd_atom *katom, int slot_nr, kbasep_js_t
 	{
 		/* Only calculating it for jobs that really run on the HW (e.g. removed
 		 * from next jobs never actually ran, so really did take zero time) */
-		tick_diff = *end_timestamp - katom->start_timestamp;
-		microseconds_spent = kbasep_js_convert_js_ticks_to_us( tick_diff );
+		tick_diff = ktime_sub( *end_timestamp, katom->start_timestamp );
+
+		microseconds_spent = ktime_to_ns( tick_diff );
+		osk_divmod6432( &microseconds_spent, 1000 );
+
 		/* Round up time spent to the minimum timer resolution */
 		if (microseconds_spent < KBASEP_JS_TICK_RESOLUTION_US)
 		{
 			microseconds_spent = KBASEP_JS_TICK_RESOLUTION_US;
 		}
 	}
-
-	/* Lock the runpool_irq for modifying the runpool_irq data */
-	osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
 
 	/* Log the result of the job (completion status, and time spent). */
 	kbasep_js_policy_log_job_result( js_policy, katom, microseconds_spent );
@@ -1963,31 +2021,27 @@ void kbasep_js_job_done_slot_irq( kbase_jd_atom *katom, int slot_nr, kbasep_js_t
 	if ( start_new_jobs != MALI_FALSE )
 	{
 		/* Submit a new job (if there is one) to help keep the GPU's HEAD and NEXT registers full */
-		KBASE_TRACE_ADD_SLOT( kbdev, JS_JOB_DONE_TRY_RUN_NEXT_JOB, parent_ctx, katom->user_atom, katom->jc, slot_nr);
+		KBASE_TRACE_ADD_SLOT( kbdev, JS_JOB_DONE_TRY_RUN_NEXT_JOB, parent_ctx, katom, katom->jc, slot_nr);
 
-		submit_retry_needed = kbasep_js_try_run_next_job_on_slot_irq_nolock(
-			kbdev,
-			slot_nr,
-			&kbdev->slot_submit_count_irq[slot_nr] );
+		submit_retry_needed = kbasep_js_try_run_next_job_on_slot_irq_nolock(kbdev,
+		                                                                    slot_nr,
+		                                                                    &kbdev->slot_submit_count_irq[slot_nr] );
 	}
 
-	osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
-	/* We've finished modifying runpool_irq data, so the lock is dropped */
-
-	if ( submit_retry_needed != MALI_FALSE || katom->event.event_code == BASE_JD_EVENT_STOPPED )
+	if ( submit_retry_needed != MALI_FALSE || katom->event_code == BASE_JD_EVENT_STOPPED )
 	{
 		/* The extra condition on STOPPED jobs is needed because they may be
 		 * the only job present, but they won't get re-run until the JD work
 		 * queue activates. Crucially, work queues can run items out of order
 		 * e.g. on different CPUs, so being able to submit from the IRQ handler
-		 * is not a good indication that we don't need to run jobss; the
+		 * is not a good indication that we don't need to run jobs; the
 		 * submitted job could be processed on the work-queue *before* the
 		 * stopped job, even though it was submitted after.
 		 *
 		 * Therefore, we must try to run it, otherwise it might not get run at
 		 * all after this. */
 
-		KBASE_TRACE_ADD_SLOT( kbdev, JS_JOB_DONE_RETRY_NEEDED, parent_ctx, katom->user_atom, katom->jc, slot_nr);
+		KBASE_TRACE_ADD_SLOT( kbdev, JS_JOB_DONE_RETRY_NEEDED, parent_ctx, katom, katom->jc, slot_nr);
 		kbasep_js_set_job_retry_submit_slot( katom, slot_nr );
 	}
 }

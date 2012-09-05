@@ -1,14 +1,16 @@
 /*
- *  * Copyright:
- * ----------------------------------------------------------------------------
- * This confidential and proprietary software may be used only as authorized
- * by a licensing agreement from ARM Limited.
- *      (C) COPYRIGHT 2011-2012 ARM Limited, ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorized copies and
- * copies may only be made to the extent permitted by a licensing agreement
- * from ARM Limited.
- * ----------------------------------------------------------------------------
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 #ifndef _OSK_FAILURE_H_
 #define _OSK_FAILURE_H_
@@ -24,7 +26,12 @@
 #include "osk/include/mali_osk_debug.h"
 
 /**
- * @addtogroup osk
+ * @addtogroup base_api Base APIs
+ * @{
+ */
+
+/**
+ * @addtogroup base_osk_api Kernel-side OSK APIs
  * @{
  */
 
@@ -149,9 +156,13 @@ void oskp_failure_term( void );
 /* end osk_failure group*/
 
 /** @} */
-/* end osk group*/
+/* end group base_osk_api*/
+
+/** @} */
+/* end group base_api*/
 
 
 
 
 #endif /* _OSK_FAILURE_H_ */
+

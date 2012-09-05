@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_8401_workaround.c
@@ -184,7 +188,7 @@ static kbase_jd_atom dummy_job_atom[KBASE_8401_WORKAROUND_COMPUTEJOB_COUNT];
 
 static void kbasep_8401_workaround_update_job_pointers(u32 *dummy_compute_job, int page_nr)
 {
-	u32 base_address = (page_nr+WORKAROUND_PAGE_OFFSET)*OSK_PAGE_SIZE;
+	u32 base_address = (page_nr+WORKAROUND_PAGE_OFFSET)*PAGE_SIZE;
 	u8 *dummy_job = (u8*) dummy_compute_job;
 	u8 *dummy_job_urt;
 	u8 *dummy_job_rmu;
@@ -200,7 +204,7 @@ static void kbasep_8401_workaround_update_job_pointers(u32 *dummy_compute_job, i
 	dummy_job_tsd = (u8*) ((((uintptr_t)dummy_job_rsd + sizeof(compute_job_32bit_rsd))+63) & ~63);
 
 	/* Make sure the job fits within a single page */
-	OSK_ASSERT(OSK_PAGE_SIZE > ((dummy_job_tsd+sizeof(compute_job_32bit_tsd)) - dummy_job));
+	OSK_ASSERT(PAGE_SIZE > ((dummy_job_tsd+sizeof(compute_job_32bit_tsd)) - dummy_job));
 
 	/* Copy the job sections to the allocated memory */
 	memcpy(dummy_job, compute_job_32bit_header, sizeof(compute_job_32bit_header));
@@ -361,7 +365,7 @@ void kbasep_8401_submit_dummy_job(kbase_device *kbdev, int js)
 {
 	u32 cfg;
 	mali_addr64 jc;
-	u32 pgd_high;
+	u32 pgd_high;	
 
 	/* While this workaround is active we reserve the last address space just for submitting the dummy jobs */
 	int as = kbdev->nr_hw_address_spaces;
@@ -371,7 +375,7 @@ void kbasep_8401_submit_dummy_job(kbase_device *kbdev, int js)
 	OSK_ASSERT(js < KBASE_8401_WORKAROUND_COMPUTEJOB_COUNT);
 
 	/* Job chain GPU address */
-	jc = (js+WORKAROUND_PAGE_OFFSET)*OSK_PAGE_SIZE; /* GPU phys address (see kbase_mmu_insert_pages call in kbasep_8401_workaround_init*/
+	jc = (js+WORKAROUND_PAGE_OFFSET)*PAGE_SIZE; /* GPU phys address (see kbase_mmu_insert_pages call in kbasep_8401_workaround_init*/
 
 	/* Clear the job status words which may contain values from a previous job completion */
 	memset(kbdev->workaround_compute_job_va[js], 0,  4*sizeof(u32));
@@ -441,3 +445,4 @@ mali_bool kbasep_8401_is_workaround_job(kbase_jd_atom *katom)
 	/* This is a real job */
 	return MALI_FALSE;
 }
+

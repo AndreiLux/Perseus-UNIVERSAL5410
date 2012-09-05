@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2008-2011 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2008-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file
@@ -16,15 +20,13 @@
 #ifndef _OSK_LOW_LEVEL_DEDICATED_MEM_H_
 #define _OSK_LOW_LEVEL_DEDICATED_MEM_H_
 
-#ifdef __KERNEL__
 #include <linux/io.h>
-#endif /* __KERNEL__ */
 
 struct oskp_phy_dedicated_allocator
 {
 	/* lock to protect the free map management */
 	osk_mutex        lock;
-
+	
 	osk_phy_addr     base;
 	u32              num_pages;
 	u32              free_pages;
@@ -120,7 +122,6 @@ OSK_STATIC_INLINE u32 oskp_phy_dedicated_pages_alloc(oskp_phy_dedicated_allocato
 		/* find phys addr of the page */
 		pages[pages_allocated] = allocator->base + (pfn << OSK_PAGE_SHIFT);
 
-#ifdef __KERNEL__
 		/* zero the page */
 		if(OSK_SIMULATE_FAILURE(OSK_OSK))
 		{
@@ -130,9 +131,6 @@ OSK_STATIC_INLINE u32 oskp_phy_dedicated_pages_alloc(oskp_phy_dedicated_allocato
 		{
 			mapping = ioremap_wc(pages[pages_allocated], SZ_4K);
 		}
-#else
-		mapping = osk_kmap(pages[pages_allocated]);
-#endif /* __KERNEL__ */
 
 		if (NULL == mapping)
 		{
@@ -148,11 +146,7 @@ OSK_STATIC_INLINE u32 oskp_phy_dedicated_pages_alloc(oskp_phy_dedicated_allocato
 		OSK_MEMSET(mapping, 0x00, OSK_PAGE_SIZE);
 
 		osk_sync_to_memory(pages[pages_allocated], mapping, OSK_PAGE_SIZE);
-#ifdef __KERNEL__
 		iounmap(mapping);
-#else
-		osk_kunmap(pages[pages_allocated], mapping);
-#endif /* __KERNEL__ */
 	}
 
 	allocator->free_pages -= pages_allocated;
@@ -180,7 +174,7 @@ OSK_STATIC_INLINE void oskp_phy_dedicated_pages_free(oskp_phy_dedicated_allocato
 
 			OSK_ASSERT(pages[i] >= allocator->base);
 			OSK_ASSERT(pages[i] < allocator->base + (allocator->num_pages << OSK_PAGE_SHIFT));
-
+		
 			pfn = (pages[i] - allocator->base) >> OSK_PAGE_SHIFT;
 			osk_bitarray_clear_bit(pfn, allocator->free_map);
 

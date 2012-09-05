@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 
 /* ***** IMPORTANT: THIS IS NOT A NORMAL HEADER FILE         *****
@@ -58,6 +62,7 @@
  */
 KBASE_TRACE_CODE_MAKE_CODE( CORE_CTX_DESTROY ),      /* no info_val, no gpu_addr, no atom */
 KBASE_TRACE_CODE_MAKE_CODE( CORE_CTX_HWINSTR_TERM ), /* no info_val, no gpu_addr, no atom */
+KBASE_TRACE_CODE_MAKE_CODE( CORE_GPU_IRQ ), /* info_val == GPU_IRQ_STATUS register */
 
 /*
  * Job Slot management events
@@ -176,6 +181,9 @@ KBASE_TRACE_CODE_MAKE_CODE( PM_CONTEXT_ACTIVE ),
 KBASE_TRACE_CODE_MAKE_CODE( PM_CONTEXT_IDLE ),
 KBASE_TRACE_CODE_MAKE_CODE( PM_GPU_ON ),
 KBASE_TRACE_CODE_MAKE_CODE( PM_GPU_OFF ),
+KBASE_TRACE_CODE_MAKE_CODE( PM_SEND_EVENT ), /* info_val == event code */
+KBASE_TRACE_CODE_MAKE_CODE( PM_HANDLE_EVENT ), /* info_val == event code */
+KBASE_TRACE_CODE_MAKE_CODE( PM_ACTIVATE_WORKER ),
 
 
 

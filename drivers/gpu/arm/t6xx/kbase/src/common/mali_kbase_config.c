@@ -1,20 +1,24 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 #include <kbase/src/common/mali_kbase.h>
 #include <kbase/src/common/mali_kbase_defs.h>
 #include <kbase/src/common/mali_kbase_cpuprops.h>
 #include <osk/mali_osk.h>
-#if MALI_USE_UMP == 1
-#include <ump/ump_common.h>
-#endif /* MALI_USE_UMP == 1 */
+#ifdef CONFIG_UMP
+#include <linux/ump-common.h>
+#endif /* CONFIG_UMP */
 
 /* Specifies how many attributes are permitted in the config (excluding terminating attribute).
  * This is used in validation function so we can detect if configuration is properly terminated. This value can be
@@ -120,16 +124,14 @@
  */
 #define DEFAULT_CPU_SPEED_FUNC ((uintptr_t)kbase_cpuprops_get_default_clock_speed)
 
-#if (!defined(MALI_KBASE_USERSPACE) || !MALI_KBASE_USERSPACE) && (!MALI_LICENSE_IS_GPL || MALI_FAKE_PLATFORM_DEVICE)
+#ifdef CONFIG_MALI_PLATFORM_FAKE
 
 extern kbase_platform_config platform_config;
 kbase_platform_config *kbasep_get_platform_config(void)
 {
 	return &platform_config;
 }
-#endif /* (!defined(MALI_KBASE_USERSPACE) || !MALI_KBASE_USERSPACE) && (!MALI_LICENSE_IS_GPL || MALI_FAKE_PLATFORM_DEVICE) */
-
-#
+#endif /* CONFIG_MALI_PLATFORM_FAKE */
 
 int kbasep_get_config_attribute_count(const kbase_attribute *attributes)
 {
@@ -161,22 +163,6 @@ int kbasep_get_config_attribute_count_by_id(const kbase_attribute *attributes, i
 	}
 
 	return count;
-}
-
-static const char* midgard_type_strings[] =
-	{
-		"mali-t6xm",
-		"mali-t6f1",
-		"mali-t601",
-		"mali-t604",
-		"mali-t608"
-	};
-
-const char *kbasep_midgard_type_to_string(kbase_midgard_type midgard_type)
-{
-	OSK_ASSERT(midgard_type < KBASE_MALI_COUNT);
-
-	return midgard_type_strings[midgard_type];
 }
 
 const kbase_attribute *kbasep_get_next_attribute(const kbase_attribute *attributes, int attribute_id)
@@ -212,10 +198,10 @@ uintptr_t kbasep_get_config_value(struct kbase_device *kbdev, const kbase_attrib
 	{
 		case KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT:
 			return (uintptr_t)-1;
-#if MALI_USE_UMP == 1
+#ifdef CONFIG_UMP
 		case KBASE_CONFIG_ATTR_UMP_DEVICE:
 			return UMP_DEVICE_W_SHIFT;
-#endif /* MALI_USE_UMP == 1 */
+#endif /* CONFIG_UMP */
 		case KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_MAX:
 			return (uintptr_t)-1;
 		case KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_PERF_GPU:
@@ -265,7 +251,9 @@ uintptr_t kbasep_get_config_value(struct kbase_device *kbdev, const kbase_attrib
 		case  KBASE_CONFIG_ATTR_SECURE_BUT_LOSS_OF_PERFORMANCE:
 			return DEFAULT_SECURE_BUT_LOSS_OF_PERFORMANCE;
 		case KBASE_CONFIG_ATTR_CPU_SPEED_FUNC:
-			return     DEFAULT_CPU_SPEED_FUNC;
+			return DEFAULT_CPU_SPEED_FUNC;
+		case KBASE_CONFIG_ATTR_GPU_SPEED_FUNC:
+			return 0;
 		default:
 			OSK_PRINT_ERROR(OSK_BASE_CORE,
 			    "kbasep_get_config_value. Cannot get value of attribute with id=%d and no default value defined",
@@ -278,6 +266,11 @@ KBASE_EXPORT_TEST_API(kbasep_get_config_value)
 mali_bool kbasep_platform_device_init(kbase_device *kbdev)
 {
 	kbase_platform_funcs_conf *platform_funcs;
+
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_CORE))
+	{
+		return MALI_FALSE;
+	}
 
 	platform_funcs = (kbase_platform_funcs_conf *) kbasep_get_config_value(kbdev, kbdev->config_attributes, KBASE_CONFIG_ATTR_PLATFORM_FUNCS);
 	if(platform_funcs)
@@ -335,10 +328,15 @@ void kbasep_get_memory_performance(const kbase_memory_resource *resource, kbase_
 	}
 }
 
-#if MALI_USE_UMP == 1
+#ifdef CONFIG_UMP
 static mali_bool kbasep_validate_ump_device(int ump_device)
 {
 	mali_bool valid;
+
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_CORE))
+	{
+		return MALI_FALSE;
+	}
 
 	switch (ump_device)
 	{
@@ -354,10 +352,14 @@ static mali_bool kbasep_validate_ump_device(int ump_device)
 	}
 	return valid;
 }
-#endif /* MALI_USE_UMP == 1 */
+#endif /* CONFIG_UMP */
 
 static mali_bool kbasep_validate_memory_performance(kbase_memory_performance performance)
 {
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_CORE))
+	{
+		return MALI_FALSE;
+	}
 	return performance <= KBASE_MEM_PERF_MAX_VALUE;
 }
 
@@ -365,19 +367,24 @@ static mali_bool kbasep_validate_memory_resource(const kbase_memory_resource *me
 {
 	OSK_ASSERT(memory_resource != NULL);
 
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_CORE))
+	{
+		return MALI_FALSE;
+	}
+
 	if (memory_resource->name == NULL)
 	{
 		OSK_PRINT_WARN(OSK_BASE_CORE, "Unnamed memory region found");
 		return MALI_FALSE;
 	}
 
-	if (memory_resource->base & ((1 << OSK_PAGE_SHIFT) - 1))
+	if (memory_resource->base & ((1 << PAGE_SHIFT) - 1))
 	{
 		OSK_PRINT_WARN(OSK_BASE_CORE, "Base address of \"%s\" memory region is not page aligned", memory_resource->name);
 		return MALI_FALSE;
 	}
 
-	if (memory_resource->size & ((1 << OSK_PAGE_SHIFT) - 1))
+	if (memory_resource->size & ((1 << PAGE_SHIFT) - 1))
 	{
 		OSK_PRINT_WARN(OSK_BASE_CORE, "Size of \"%s\" memory region is not a multiple of page size", memory_resource->name);
 		return MALI_FALSE;
@@ -433,6 +440,11 @@ static mali_bool kbasep_validate_gpu_clock_freq(kbase_device *kbdev, const kbase
 	uintptr_t freq_min = kbasep_get_config_value(kbdev, attributes, KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MIN);
 	uintptr_t freq_max = kbasep_get_config_value(kbdev, attributes, KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MAX);
 
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_CORE))
+	{
+		return MALI_FALSE;
+	}
+
 	if ((freq_min > MAX_GPU_ALLOWED_FREQ_KHZ) ||
 		(freq_min < MIN_GPU_ALLOWED_FREQ_KHZ) ||
 		(freq_max > MAX_GPU_ALLOWED_FREQ_KHZ) ||
@@ -442,17 +454,23 @@ static mali_bool kbasep_validate_gpu_clock_freq(kbase_device *kbdev, const kbase
 		OSK_PRINT_WARN(OSK_BASE_CORE, "Invalid GPU frequencies found in configuration: min=%ldkHz, max=%ldkHz.", freq_min, freq_max);
 		return MALI_FALSE;
 	}
-
+	
 	return MALI_TRUE;
 }
 
 static mali_bool kbasep_validate_pm_callback(const kbase_pm_callback_conf *callbacks)
 {
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_PM))
+	{
+		return MALI_FALSE;
+	}
+
 	if (callbacks == NULL)
 	{
 		/* Having no callbacks is valid */
 		return MALI_TRUE;
 	}
+
 	if ((callbacks->power_off_callback != NULL && callbacks->power_on_callback == NULL) ||
 	    (callbacks->power_off_callback == NULL && callbacks->power_on_callback != NULL))
 	{
@@ -464,6 +482,10 @@ static mali_bool kbasep_validate_pm_callback(const kbase_pm_callback_conf *callb
 
 static mali_bool kbasep_validate_cpu_speed_func(kbase_cpuprops_clock_speed_function fcn)
 {
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_CORE))
+	{
+		return MALI_FALSE;
+	}
 	return fcn != NULL;
 }
 
@@ -473,6 +495,11 @@ mali_bool kbasep_validate_configuration_attributes(kbase_device *kbdev, const kb
 	mali_bool had_gpu_freq_min = MALI_FALSE, had_gpu_freq_max = MALI_FALSE;
 
 	OSK_ASSERT(attributes);
+
+	if (OSK_SIMULATE_FAILURE(OSK_BASE_CORE))
+	{
+		return MALI_FALSE;
+	}
 
 	for (i = 0; attributes[i].id != KBASE_CONFIG_ATTR_END; i++)
 	{
@@ -514,7 +541,7 @@ mali_bool kbasep_validate_configuration_attributes(kbase_device *kbdev, const kb
 			case KBASE_CONFIG_ATTR_MEMORY_PER_PROCESS_LIMIT:
 				/* any value is allowed */
 				break;
-#if MALI_USE_UMP == 1
+#ifdef CONFIG_UMP
 			case KBASE_CONFIG_ATTR_UMP_DEVICE:
 				if (MALI_FALSE == kbasep_validate_ump_device(attributes[i].data))
 				{
@@ -523,7 +550,7 @@ mali_bool kbasep_validate_configuration_attributes(kbase_device *kbdev, const kb
 					return MALI_FALSE;
 				}
 				break;
-#endif /* MALI_USE_UMP == 1 */
+#endif /* CONFIG_UMP */
 
 			case KBASE_CONFIG_ATTR_GPU_FREQ_KHZ_MIN:
 				had_gpu_freq_min = MALI_TRUE;
@@ -618,6 +645,14 @@ mali_bool kbasep_validate_configuration_attributes(kbase_device *kbdev, const kb
 				}
 				break;
 
+			case KBASE_CONFIG_ATTR_GPU_SPEED_FUNC:
+				if (0 == attributes[i].data)
+				{
+					OSK_PRINT_WARN(OSK_BASE_CORE, "Invalid function pointer in KBASE_CONFIG_ATTR_GPU_SPEED_FUNC");
+					return MALI_FALSE;
+				}
+				break;
+
 			case KBASE_CONFIG_ATTR_PLATFORM_FUNCS:
 				/* any value is allowed */
 				break;
@@ -642,3 +677,4 @@ mali_bool kbasep_validate_configuration_attributes(kbase_device *kbdev, const kb
 
 	return MALI_TRUE;
 }
+

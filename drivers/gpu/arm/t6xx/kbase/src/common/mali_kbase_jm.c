@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2010-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2010-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_jm.c
@@ -59,17 +63,17 @@ static void kbase_job_hw_submit(kbase_device *kbdev, kbase_jd_atom *katom, int j
 	 * It's approximate because there might be a job in the HEAD register. In
 	 * such cases, we'll try to make a better approximation in the IRQ handler
 	 * (up to the KBASE_JS_IRQ_THROTTLE_TIME_US). */
-	katom->start_timestamp = kbasep_js_get_js_ticks();
+	katom->start_timestamp = ktime_get();
 
 	/* GO ! */
 	OSK_PRINT_INFO(OSK_BASE_JM, "JS: Submitting atom %p from ctx %p to js[%d] with head=0x%llx, affinity=0x%llx",
 	               katom, kctx, js, jc_head, katom->affinity );
 
-	KBASE_TRACE_ADD_SLOT_INFO( kbdev, JM_SUBMIT, kctx, katom->user_atom, jc_head, js, (u32)katom->affinity );
-
-#if MALI_GATOR_SUPPORT
+	KBASE_TRACE_ADD_SLOT_INFO( kbdev, JM_SUBMIT, kctx, katom, jc_head, js, (u32)katom->affinity );
+	
+#ifdef CONFIG_MALI_GATOR_SUPPORT
 	kbase_trace_mali_job_slots_event(GATOR_MAKE_EVENT(GATOR_JOB_SLOT_START, js), kctx);
-#endif
+#endif /* CONFIG_MALI_GATOR_SUPPORT */
 	kbase_reg_write(kbdev, JOB_SLOT_REG(js, JSn_COMMAND_NEXT), JSn_COMMAND_START, katom->kctx);
 }
 
@@ -93,7 +97,7 @@ void kbase_job_submit_nolock(kbase_device *kbdev, kbase_jd_atom *katom, int js)
 	kbase_job_hw_submit(kbdev, katom, js);
 }
 
-void kbase_job_done_slot(kbase_device *kbdev, int s, u32 completion_code, u64 job_tail, kbasep_js_tick *end_timestamp)
+void kbase_job_done_slot(kbase_device *kbdev, int s, u32 completion_code, u64 job_tail, ktime_t *end_timestamp)
 {
 	kbase_jm_slot *slot;
 	kbase_jd_atom *katom;
@@ -120,7 +124,7 @@ void kbase_job_done_slot(kbase_device *kbdev, int s, u32 completion_code, u64 jo
 	jc_head = katom->jc;
 	kctx = katom->kctx;
 
-	KBASE_TRACE_ADD_SLOT_INFO( kbdev, JM_JOB_DONE, kctx, katom->user_atom, jc_head, s, completion_code );
+	KBASE_TRACE_ADD_SLOT_INFO( kbdev, JM_JOB_DONE, kctx, katom, jc_head, s, completion_code );
 
 	if ( completion_code != BASE_JD_EVENT_DONE && completion_code != BASE_JD_EVENT_STOPPED )
 	{
@@ -136,14 +140,14 @@ void kbase_job_done_slot(kbase_device *kbdev, int s, u32 completion_code, u64 jo
 		katom->jc = job_tail;
 		if ( was_updated )
 		{
-			KBASE_TRACE_ADD_SLOT( kbdev, JM_UPDATE_HEAD, kctx, katom->user_atom, job_tail, s );
+			KBASE_TRACE_ADD_SLOT( kbdev, JM_UPDATE_HEAD, kctx, katom, job_tail, s );
 		}
 	}
 
 	/* Only update the event code for jobs that weren't cancelled */
-	if ( katom->event.event_code != BASE_JD_EVENT_JOB_CANCELLED )
+	if ( katom->event_code != BASE_JD_EVENT_JOB_CANCELLED )
 	{
-		katom->event.event_code = completion_code;
+		katom->event_code = completion_code;
 	}
 	kbase_device_trace_register_access(kctx, REG_WRITE , JOB_CONTROL_REG(JOB_IRQ_CLEAR), 1 << s);
 
@@ -165,14 +169,15 @@ void kbase_job_done_slot(kbase_device *kbdev, int s, u32 completion_code, u64 jo
  * the time the job was submitted, to work out the best estimate (which might
  * still result in an over-estimate to the calculated time spent)
  */
-STATIC void kbasep_job_slot_update_head_start_timestamp( kbase_device *kbdev, kbase_jm_slot *slot, kbasep_js_tick end_timestamp )
+STATIC void kbasep_job_slot_update_head_start_timestamp( kbase_device *kbdev, kbase_jm_slot *slot, ktime_t end_timestamp )
 {
 	OSK_ASSERT(slot);
 
 	if ( kbasep_jm_nr_jobs_submitted( slot ) > 0 )
 	{
 		kbase_jd_atom *katom;
-		kbasep_js_tick new_timestamp;
+		ktime_t new_timestamp;
+		ktime_t timestamp_diff;
 		katom = kbasep_jm_peek_idx_submit_slot( slot, 0 ); /* The atom in the HEAD */
 
 		OSK_ASSERT( katom != NULL );
@@ -184,8 +189,9 @@ STATIC void kbasep_job_slot_update_head_start_timestamp( kbase_device *kbdev, kb
 		}
 
 		/* Account for any IRQ Throttle time - makes an overestimate of the time spent by the job */
-		new_timestamp = end_timestamp - kbasep_js_convert_js_us_to_ticks(KBASE_JS_IRQ_THROTTLE_TIME_US);
-		if ( kbasep_js_ticks_after( new_timestamp, katom->start_timestamp ) )
+		new_timestamp = ktime_sub_ns( end_timestamp, KBASE_JS_IRQ_THROTTLE_TIME_US * 1000 );
+		timestamp_diff = ktime_sub( new_timestamp, katom->start_timestamp );
+		if ( ktime_to_ns( timestamp_diff ) >= 0 )
 		{
 			/* Only update the timestamp if it's a better estimate than what's currently stored.
 			 * This is because our estimate that accounts for the throttle time may be too much
@@ -197,22 +203,27 @@ STATIC void kbasep_job_slot_update_head_start_timestamp( kbase_device *kbdev, kb
 
 void kbase_job_done(kbase_device *kbdev, u32 done)
 {
+	unsigned long flags;
 	int i;
 	u32 count = 0;
-	kbasep_js_tick end_timestamp = kbasep_js_get_js_ticks();
+	ktime_t end_timestamp = ktime_get();
+	kbasep_js_device_data *js_devdata;
 
 	OSK_ASSERT(kbdev);
+	js_devdata = &kbdev->js_data;
 
 	KBASE_TRACE_ADD( kbdev, JM_IRQ, NULL, NULL, 0, done );
 
-	OSK_MEMSET( &kbdev->slot_submit_count_irq[0], 0, sizeof(kbdev->slot_submit_count_irq) );
+	memset( &kbdev->slot_submit_count_irq[0], 0, sizeof(kbdev->slot_submit_count_irq) );
 
 	/* write irq throttle register, this will prevent irqs from occurring until
 	 * the given number of gpu clock cycles have passed */
 	{
-		u32 irq_throttle_cycles = osk_atomic_get( &kbdev->irq_throttle_cycles );
+		int irq_throttle_cycles = atomic_read( &kbdev->irq_throttle_cycles );
 		kbase_reg_write( kbdev, JOB_CONTROL_REG( JOB_IRQ_THROTTLE ), irq_throttle_cycles, NULL );
 	}
+
+	spin_lock_irqsave(&js_devdata->runpool_irq.lock, flags);
 
 	while (done) {
 		kbase_jm_slot *slot;
@@ -227,7 +238,7 @@ void kbase_job_done(kbase_device *kbdev, u32 done)
 		i = osk_find_first_set_bit(finished);
 		OSK_ASSERT(i >= 0);
 
-		slot = kbase_job_slot_lock(kbdev, i);
+		slot = &kbdev->jm_slots[i];
 
 		do {
 			int nr_done;
@@ -243,9 +254,9 @@ void kbase_job_done(kbase_device *kbdev, u32 done)
 				switch(completion_code)
 				{
 					case BASE_JD_EVENT_STOPPED:
-#if MALI_GATOR_SUPPORT
+#ifdef CONFIG_MALI_GATOR_SUPPORT
 						kbase_trace_mali_job_slots_event(GATOR_MAKE_EVENT(GATOR_JOB_SLOT_SOFT_STOPPED, i), NULL);
-#endif
+#endif /* CONFIG_MALI_GATOR_SUPPORT */
 						/* Soft-stopped job - read the value of JS<n>_TAIL so that the job chain can be resumed */
 						job_tail = (u64)kbase_reg_read(kbdev, JOB_SLOT_REG(i, JSn_TAIL_LO), NULL) |
 						           ((u64)kbase_reg_read(kbdev, JOB_SLOT_REG(i, JSn_TAIL_HI), NULL) << 32);
@@ -340,17 +351,16 @@ void kbase_job_done(kbase_device *kbdev, u32 done)
 
 spurious:
 			done = kbase_reg_read(kbdev, JOB_CONTROL_REG(JOB_IRQ_RAWSTAT), NULL);
-
+			
 			failed = done >> 16;
 			finished = (done & 0xFFFF) | failed;
 		} while (finished & (1 << i));
 
 		kbasep_job_slot_update_head_start_timestamp( kbdev, slot, end_timestamp );
-
-		kbase_job_slot_unlock(kbdev, i);
 	}
+	spin_unlock_irqrestore(&js_devdata->runpool_irq.lock, flags);
 
-	if (osk_atomic_get(&kbdev->reset_gpu) == KBASE_RESET_GPU_COMMITTED)
+	if (atomic_read(&kbdev->reset_gpu) == KBASE_RESET_GPU_COMMITTED)
 	{
 		/* If we're trying to reset the GPU then we might be able to do it early
 		 * (without waiting for a timeout) because some jobs have completed
@@ -410,9 +420,9 @@ static void kbasep_job_slot_soft_or_hard_stop_do_action(kbase_device *kbdev, int
 		mali_bool soft_stop_allowed = kbasep_soft_stop_allowed( kbdev, core_reqs );
 		if (!soft_stop_allowed)
 		{
-#if MALI_DEBUG != 0
+#ifdef CONFIG_MALI_DEBUG
 			OSK_PRINT(OSK_BASE_JM, "Attempt made to soft-stop a job that cannot be soft-stopped. core_reqs = 0x%X", (unsigned int) core_reqs);
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 			return;
 		}
 	}
@@ -450,9 +460,9 @@ static void kbasep_job_slot_soft_or_hard_stop_do_action(kbase_device *kbdev, int
 		{
 			kbase_jd_atom *katom;
 			kbase_as * as;
-
+	
 			katom = kbasep_jm_peek_idx_submit_slot(slot, i);
-
+	
 			OSK_ASSERT(katom);
 
 			if ( kbasep_jm_is_dummy_workaround_job( kbdev, katom ) != MALI_FALSE )
@@ -496,7 +506,7 @@ static void kbasep_job_slot_soft_or_hard_stop_do_action(kbase_device *kbdev, int
 		 */
 		if ( status_reg_before == BASE_JD_EVENT_ACTIVE )
 		{
-			KBASE_TRACE_ADD_SLOT( kbdev, JM_CHECK_HEAD, head_kctx, head->user_atom, job_in_head_before, js );
+			KBASE_TRACE_ADD_SLOT( kbdev, JM_CHECK_HEAD, head_kctx, head, job_in_head_before, js );
 		}
 		else
 		{
@@ -504,11 +514,11 @@ static void kbasep_job_slot_soft_or_hard_stop_do_action(kbase_device *kbdev, int
 		}
 		if (action == JSn_COMMAND_SOFT_STOP)
 		{
-			KBASE_TRACE_ADD_SLOT( kbdev, JM_SOFTSTOP, head_kctx, head->user_atom, head->jc, js );
+			KBASE_TRACE_ADD_SLOT( kbdev, JM_SOFTSTOP, head_kctx, head, head->jc, js );
 		}
 		else
 		{
-			KBASE_TRACE_ADD_SLOT( kbdev, JM_HARDSTOP, head_kctx, head->user_atom, head->jc, js );
+			KBASE_TRACE_ADD_SLOT( kbdev, JM_HARDSTOP, head_kctx, head, head->jc, js );
 		}
 	}
 	else
@@ -560,13 +570,16 @@ static void kbasep_job_slot_soft_or_hard_stop(kbase_device *kbdev, kbase_context
 	u8 jobs_submitted;
 	kbase_jm_slot *slot;
 	u16 core_reqs;
+	kbasep_js_device_data *js_devdata;
 
 
 	OSK_ASSERT(action == JSn_COMMAND_HARD_STOP || action == JSn_COMMAND_SOFT_STOP);
 	OSK_ASSERT(kbdev);
+	js_devdata = &kbdev->js_data;
 
 	slot = &kbdev->jm_slots[js];
 	OSK_ASSERT(slot);
+	lockdep_assert_held(&js_devdata->runpool_irq.lock);
 
 	jobs_submitted = kbasep_jm_nr_jobs_submitted( slot );
 	KBASE_TRACE_ADD_SLOT_INFO( kbdev, JM_SLOT_SOFT_OR_HARD_STOP, kctx, NULL, 0u, js, jobs_submitted );
@@ -626,9 +639,9 @@ static void kbasep_job_slot_soft_or_hard_stop(kbase_device *kbdev, kbase_context
 					kbase_reg_write(kbdev, JOB_SLOT_REG(js, JSn_HEAD_NEXT_LO), 0, NULL);
 					kbase_reg_write(kbdev, JOB_SLOT_REG(js, JSn_HEAD_NEXT_HI), 0, NULL);
 
-					KBASE_TRACE_ADD_SLOT( kbdev, JM_SLOT_EVICT, dequeued_katom->kctx, dequeued_katom->user_atom, dequeued_katom->jc, js );
+					KBASE_TRACE_ADD_SLOT( kbdev, JM_SLOT_EVICT, dequeued_katom->kctx, dequeued_katom, dequeued_katom->jc, js );
 
-					dequeued_katom->event.event_code = BASE_JD_EVENT_REMOVED_FROM_NEXT;
+					dequeued_katom->event_code = BASE_JD_EVENT_REMOVED_FROM_NEXT;
 					/* Complete the job, indicate it took no time, but require start_new_jobs == MALI_FALSE
 					 * to prevent this slot being resubmitted to until we've dropped the lock */
 					kbase_jd_done(dequeued_katom, js, NULL, MALI_FALSE);
@@ -689,9 +702,9 @@ static void kbasep_job_slot_soft_or_hard_stop(kbase_device *kbdev, kbase_context
 					kbase_reg_write(kbdev, JOB_SLOT_REG(js, JSn_HEAD_NEXT_LO), 0, NULL);
 					kbase_reg_write(kbdev, JOB_SLOT_REG(js, JSn_HEAD_NEXT_HI), 0, NULL);
 
-					KBASE_TRACE_ADD_SLOT( kbdev, JM_SLOT_EVICT, dequeued_katom->kctx, dequeued_katom->user_atom, dequeued_katom->jc, js );
+					KBASE_TRACE_ADD_SLOT( kbdev, JM_SLOT_EVICT, dequeued_katom->kctx, dequeued_katom, dequeued_katom->jc, js );
 
-					dequeued_katom->event.event_code = BASE_JD_EVENT_REMOVED_FROM_NEXT;
+					dequeued_katom->event_code = BASE_JD_EVENT_REMOVED_FROM_NEXT;
 					/* Complete the job, indicate it took no time, but require start_new_jobs == MALI_FALSE
 					 * to prevent this slot being resubmitted to until we've dropped the lock */
 					kbase_jd_done(dequeued_katom, js, NULL, MALI_FALSE);
@@ -716,20 +729,23 @@ static void kbasep_job_slot_soft_or_hard_stop(kbase_device *kbdev, kbase_context
 
 void kbase_job_kill_jobs_from_context(kbase_context *kctx)
 {
+	unsigned long flags;
 	kbase_device *kbdev;
+	kbasep_js_device_data *js_devdata;
 	int i;
 
 	OSK_ASSERT( kctx != NULL );
 	kbdev = kctx->kbdev;
 	OSK_ASSERT( kbdev != NULL );
+	js_devdata = &kbdev->js_data;
 
 	/* Cancel any remaining running jobs for this kctx  */
+	spin_lock_irqsave(&js_devdata->runpool_irq.lock, flags);
 	for (i = 0; i < kbdev->gpu_props.num_job_slots; i++)
 	{
-		kbase_job_slot_lock(kbdev, i);
 		kbase_job_slot_hardstop(kctx, i, NULL);
-		kbase_job_slot_unlock(kbdev, i);
 	}
+	spin_unlock_irqrestore(&js_devdata->runpool_irq.lock, flags);
 }
 
 void kbase_job_zap_context(kbase_context *kctx)
@@ -758,15 +774,15 @@ void kbase_job_zap_context(kbase_context *kctx)
 	 * - mark the context as dying
 	 * - try to evict it from the policy queue */
 
-	osk_mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
+	mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
 	js_kctx_info->ctx.is_dying = MALI_TRUE;
 
 	OSK_PRINT_INFO(OSK_BASE_JM, "Zap: Try Evict Ctx %p", kctx );
-	osk_mutex_lock( &js_devdata->queue_mutex );
+	mutex_lock( &js_devdata->queue_mutex );
 	evict_success = kbasep_js_policy_try_evict_ctx( &js_devdata->policy, kctx );
-	osk_mutex_unlock( &js_devdata->queue_mutex );
+	mutex_unlock( &js_devdata->queue_mutex );
 
-	osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
+	mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 
 	/* locks must be dropped by this point, to prevent deadlock on flush */
 	OSK_PRINT_INFO(OSK_BASE_JM, "Zap: Flush Workqueue Ctx %p", kctx );
@@ -794,15 +810,9 @@ void kbase_job_zap_context(kbase_context *kctx)
 	 * the workqueues. By the time we obtain the jsctx_mutex again, it may've
 	 * been scheduled out
 	 *
-	 *
-	 * Also Note: No-one can now clear the not_scheduled_waitq, because the
-	 * context is guarenteed to not be in the policy queue, and can never
-	 * return to it either (because is_dying is set). The waitq may already by
-	 * clear (due to it being scheduled), but the code below ensures that it
-	 * will eventually get set (be descheduled).
 	 */
 
-	osk_mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
+	mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
 	if ( evict_success != MALI_FALSE || js_kctx_info->ctx.is_scheduled == MALI_FALSE )
 	{
 		/* The following events require us to kill off remaining jobs and
@@ -835,10 +845,11 @@ void kbase_job_zap_context(kbase_context *kctx)
 			 * runpool, by virtue of it being evicted from the policy queue  */
 			kbasep_js_runpool_requeue_or_kill_ctx( kbdev, kctx );
 		}
-		osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
+		mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 	}
 	else
 	{
+		unsigned long flags;
 		mali_bool was_retained;
 		/* Didn't evict, but it is scheduled - it's in the Run Pool:
 		 * Cases d and b(i) */
@@ -846,35 +857,32 @@ void kbase_job_zap_context(kbase_context *kctx)
 		OSK_PRINT_INFO(OSK_BASE_JM, "Zap: Ctx %p is in RunPool", kctx );
 
 		/* Disable the ctx from submitting any more jobs */
-		osk_spinlock_irq_lock( &js_devdata->runpool_irq.lock );
+		spin_lock_irqsave(&js_devdata->runpool_irq.lock, flags);
 		kbasep_js_clear_submit_allowed( js_devdata, kctx );
-		osk_spinlock_irq_unlock( &js_devdata->runpool_irq.lock );
 
-		/* Retain and release the context whilst it is is now disallowed from submitting
+		/* Retain and (later) release the context whilst it is is now disallowed from submitting
 		 * jobs - ensures that someone somewhere will be removing the context later on */
-		was_retained = kbasep_js_runpool_retain_ctx( kbdev, kctx );
+		was_retained = kbasep_js_runpool_retain_ctx_nolock( kbdev, kctx );
 
 		/* Since it's scheduled and we have the jsctx_mutex, it must be retained successfully */
 		OSK_ASSERT( was_retained != MALI_FALSE );
 
 		OSK_PRINT_INFO(OSK_BASE_JM, "Zap: Ctx %p Kill Any Running jobs", kctx );
 		/* Cancel any remaining running jobs for this kctx - if any. Submit is disallowed
-		 * which takes effect from the dropping of the runpool_irq lock above, so no more new
-		 * jobs will appear after we do this.  */
+		 * which takes effect immediately, so no more new jobs will appear after we do this.  */
 		for (i = 0; i < kbdev->gpu_props.num_job_slots; i++)
 		{
-			kbase_job_slot_lock(kbdev, i);
 			kbase_job_slot_hardstop(kctx, i, NULL);
-			kbase_job_slot_unlock(kbdev, i);
 		}
-		osk_mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
+		spin_unlock_irqrestore(&js_devdata->runpool_irq.lock, flags);
+		mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 
 		OSK_PRINT_INFO(OSK_BASE_JM, "Zap: Ctx %p Release (may or may not schedule out immediately)", kctx );
 		kbasep_js_runpool_release_ctx( kbdev, kctx );
 	}
 	KBASE_TRACE_ADD( kbdev, JM_ZAP_DONE, kctx, NULL, 0u, 0u );
 
-	/* After this, you must wait on both the kbase_jd_context::zero_jobs_waitq
+	/* After this, you must wait on both the kbase_jd_context::zero_jobs_wait
 	 * and the kbasep_js_kctx_info::ctx::is_scheduled_waitq - to wait for the
 	 * jobs to be destroyed, and the context to be de-scheduled (if it was on
 	 * the runpool).
@@ -886,22 +894,10 @@ KBASE_EXPORT_TEST_API(kbase_job_zap_context)
 mali_error kbase_job_slot_init(kbase_device *kbdev)
 {
 	int i;
-	osk_error osk_err;
-
 	OSK_ASSERT(kbdev);
 
 	for (i = 0; i < kbdev->gpu_props.num_job_slots; i++)
 	{
-		osk_err = osk_spinlock_irq_init(&kbdev->jm_slots[i].lock, OSK_LOCK_ORDER_JSLOT);
-		if (OSK_ERR_NONE != osk_err)
-		{
-			int j;
-			for (j = 0; j < i; j++)
-			{
-				osk_spinlock_irq_term(&kbdev->jm_slots[j].lock);
-			}
-			return MALI_ERROR_FUNCTION_FAILED;
-		}
 		kbasep_jm_init_submit_slot( &kbdev->jm_slots[i] );
 	}
 	return MALI_ERROR_NONE;
@@ -915,14 +911,7 @@ void kbase_job_slot_halt(kbase_device *kbdev)
 
 void kbase_job_slot_term(kbase_device *kbdev)
 {
-	int i;
-
 	OSK_ASSERT(kbdev);
-
-	for (i = 0; i < kbdev->gpu_props.num_job_slots; i++)
-	{
-		osk_spinlock_irq_term(&kbdev->jm_slots[i].lock);
-	}
 }
 KBASE_EXPORT_TEST_API(kbase_job_slot_term)
 
@@ -963,31 +952,28 @@ void kbase_job_slot_hardstop(kbase_context *kctx, int js, kbase_jd_atom *target_
 	{
 		/* The workaround for HW issue 8401 has an issue, so instead of hard-stopping
 		 * just reset the GPU. This will ensure that the jobs leave the GPU.
-		 *
-		 * All callers of this function immediately drop the slot lock after calling this function.
-		 * So this is safe because the parent functions don't require atomicity regarding the job slot.
 		 */
-		kbase_job_slot_unlock(kbdev, js);
-		if (kbase_prepare_to_reset_gpu(kbdev))
+		if (kbase_prepare_to_reset_gpu_locked(kbdev))
 		{
-			kbase_reset_gpu(kbdev);
+			OSK_PRINT_WARN(OSK_BASE_JD, "NOTE: GPU will now be reset as a workaround for a hardware issue");
+			kbase_reset_gpu_locked(kbdev);
 		}
-		kbase_job_slot_lock(kbdev, js);
 	}
 }
 
-void kbasep_reset_timeout_worker(osk_workq_work *data)
+void kbasep_reset_timeout_worker(struct work_struct *data)
 {
+	unsigned long flags;
 	kbase_device *kbdev;
 	int i;
-	kbasep_js_tick end_timestamp = kbasep_js_get_js_ticks();
+	ktime_t end_timestamp = ktime_get();
 	kbasep_js_device_data *js_devdata;
 	kbase_uk_hwcnt_setup hwcnt_setup = {{0}};
 	kbase_instr_state bckp_state;
 
 	OSK_ASSERT(data);
 
-	kbdev = CONTAINER_OF(data, kbase_device, reset_work);
+	kbdev = container_of(data, kbase_device, reset_work);
 
 	OSK_ASSERT(kbdev);
 
@@ -1002,16 +988,16 @@ void kbasep_reset_timeout_worker(osk_workq_work *data)
 
 	/* Make sure the timer has completed - this cannot be done from interrupt context,
 	 * so this cannot be done within kbasep_try_reset_gpu_early. */
-	osk_timer_stop(&kbdev->reset_timer);
+	hrtimer_cancel(&kbdev->reset_timer);
 
-	osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 
 	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING)
 	{	/*the same interrupt handler preempted itself*/
 		/* GPU is being reset*/
-		osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
-		osk_waitq_wait(&kbdev->hwcnt.waitqueue);
-		osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+		spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
+		wait_event(kbdev->hwcnt.wait, kbdev->hwcnt.triggered != 0);
+		spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 	}
 	/* Save the HW counters setup */
 	if (kbdev->hwcnt.kctx != NULL)
@@ -1027,13 +1013,13 @@ void kbasep_reset_timeout_worker(osk_workq_work *data)
 	}
 	bckp_state = kbdev->hwcnt.state;
 	kbdev->hwcnt.state = KBASE_INSTR_STATE_RESETTING;
-	osk_waitq_clear(&kbdev->hwcnt.waitqueue);
+	kbdev->hwcnt.triggered = 0;
 	/* Disable IRQ to avoid IRQ handlers to kick in after releaseing the spinlock;
 	 * this also clears any outstanding interrupts */
 	kbase_pm_disable_interrupts(kbdev);
 	/* Ensure that any IRQ handlers have finished */
 	kbase_synchronize_irqs(kbdev);
-	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 
 	/* Reset the GPU */
 	kbase_pm_power_transitioning(kbdev);
@@ -1041,7 +1027,7 @@ void kbasep_reset_timeout_worker(osk_workq_work *data)
 
 	kbase_pm_power_transitioning(kbdev);
 
-	osk_spinlock_irq_lock(&kbdev->hwcnt.lock);
+	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 	/* Restore the HW counters setup */
 	if (kbdev->hwcnt.kctx != NULL)
 	{
@@ -1062,9 +1048,10 @@ void kbasep_reset_timeout_worker(osk_workq_work *data)
 		kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_CONFIG), (kctx->as_nr << PRFCNT_CONFIG_AS_SHIFT) | PRFCNT_CONFIG_MODE_MANUAL, kctx);
 		kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_TILER_EN),    hwcnt_setup.tiler_bm,                 kctx);
 	}
-	osk_waitq_set(&kbdev->hwcnt.waitqueue);
+	kbdev->hwcnt.triggered = 1;
+	wake_up(&kbdev->hwcnt.wait);
 	kbdev->hwcnt.state = bckp_state;
-	osk_spinlock_irq_unlock(&kbdev->hwcnt.lock);
+	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 
 	/* Re-init the power policy */
 	kbase_pm_send_event(kbdev, KBASE_PM_EVENT_POLICY_INIT);
@@ -1073,10 +1060,11 @@ void kbasep_reset_timeout_worker(osk_workq_work *data)
 	kbase_pm_wait_for_power_up(kbdev);
 
 	/* Complete any jobs that were still on the GPU */
+	spin_lock_irqsave(&js_devdata->runpool_irq.lock, flags);
 	for (i = 0; i < kbdev->gpu_props.num_job_slots; i++)
 	{
 		int nr_done;
-		kbase_jm_slot *slot = kbase_job_slot_lock(kbdev, i);
+		kbase_jm_slot *slot = &kbdev->jm_slots[i];
 
 		nr_done = kbasep_jm_nr_jobs_submitted( slot );
 		while (nr_done) {
@@ -1084,55 +1072,62 @@ void kbasep_reset_timeout_worker(osk_workq_work *data)
 			kbase_job_done_slot(kbdev, i, BASE_JD_EVENT_JOB_CANCELLED, 0, &end_timestamp);
 			nr_done--;
 		}
-
-		kbase_job_slot_unlock(kbdev, i);
 	}
+	spin_unlock_irqrestore(&js_devdata->runpool_irq.lock, flags);
 
-	osk_mutex_lock( &js_devdata->runpool_mutex );
+	mutex_lock( &js_devdata->runpool_mutex );
 
 	/* Reprogram the GPU's MMU */
 	for(i = 0; i < BASE_MAX_NR_AS; i++)
 	{
 		if (js_devdata->runpool_irq.per_as_data[i].kctx) {
 			kbase_as *as = &kbdev->as[i];
-			osk_mutex_lock(&as->transaction_mutex);
+			mutex_lock(&as->transaction_mutex);
 			kbase_mmu_update(js_devdata->runpool_irq.per_as_data[i].kctx);
-			osk_mutex_unlock(&as->transaction_mutex);
+			mutex_unlock(&as->transaction_mutex);
 		}
 	}
 
-	osk_atomic_set(&kbdev->reset_gpu, KBASE_RESET_GPU_NOT_PENDING);
-	osk_waitq_set(&kbdev->reset_waitq);
+	atomic_set(&kbdev->reset_gpu, KBASE_RESET_GPU_NOT_PENDING);
+	wake_up(&kbdev->reset_wait);
 	OSK_PRINT_ERROR(OSK_BASE_JD, "Reset complete");
 
 	/* Try submitting some jobs to restart processing */
-	KBASE_TRACE_ADD( kbdev, JM_SUBMIT_AFTER_RESET, NULL, NULL, 0u, 0 );
-	kbasep_js_try_run_next_job(kbdev);
-	osk_mutex_unlock( &js_devdata->runpool_mutex );
+	if (js_devdata->nr_user_contexts_running > 0)
+	{
+		KBASE_TRACE_ADD( kbdev, JM_SUBMIT_AFTER_RESET, NULL, NULL, 0u, 0 );
+
+		spin_lock_irqsave(&js_devdata->runpool_irq.lock, flags);
+		kbasep_js_try_run_next_job_nolock(kbdev);
+		spin_unlock_irqrestore(&js_devdata->runpool_irq.lock, flags);
+	}
+	mutex_unlock( &js_devdata->runpool_mutex );
 
 	kbase_pm_context_idle(kbdev);
 }
 
-void kbasep_reset_timer_callback(void *data)
+enum hrtimer_restart kbasep_reset_timer_callback(struct hrtimer * timer)
 {
-	kbase_device *kbdev = (kbase_device*)data;
+	kbase_device *kbdev = container_of(timer, kbase_device, reset_timer);
 
 	OSK_ASSERT(kbdev);
 
-	if (osk_atomic_compare_and_swap(&kbdev->reset_gpu, KBASE_RESET_GPU_COMMITTED, KBASE_RESET_GPU_HAPPENING) !=
-	        KBASE_RESET_GPU_COMMITTED)
+	/* Reset still pending? */
+	if (atomic_cmpxchg(&kbdev->reset_gpu, KBASE_RESET_GPU_COMMITTED, KBASE_RESET_GPU_HAPPENING) ==
+                       KBASE_RESET_GPU_COMMITTED)
 	{
-		/* Reset has been cancelled or has already occurred */
-		return;
+		queue_work(kbdev->reset_workq, &kbdev->reset_work);
 	}
-	osk_workq_submit(&kbdev->reset_workq, &kbdev->reset_work);
+
+	return HRTIMER_NORESTART;
 }
 
 /*
  * If all jobs are evicted from the GPU then we can reset the GPU
  * immediately instead of waiting for the timeout to elapse
  */
-static void kbasep_try_reset_gpu_early(kbase_device *kbdev)
+
+static void kbasep_try_reset_gpu_early_locked(kbase_device *kbdev)
 {
 	int i;
 	int pending_jobs = 0;
@@ -1142,9 +1137,8 @@ static void kbasep_try_reset_gpu_early(kbase_device *kbdev)
 	/* Count the number of jobs */
 	for (i = 0; i < kbdev->gpu_props.num_job_slots; i++)
 	{
-		kbase_jm_slot *slot = kbase_job_slot_lock(kbdev, i);
+		kbase_jm_slot *slot = &kbdev->jm_slots[i];
 		pending_jobs += kbasep_jm_nr_jobs_submitted(slot);
-		kbase_job_slot_unlock(kbdev, i);
 	}
 
 	if (pending_jobs > 0)
@@ -1155,13 +1149,24 @@ static void kbasep_try_reset_gpu_early(kbase_device *kbdev)
 
 	/* Check that the reset has been committed to (i.e. kbase_reset_gpu has been called), and that no other
 	 * thread beat this thread to starting the reset */
-	if (osk_atomic_compare_and_swap(&kbdev->reset_gpu, KBASE_RESET_GPU_COMMITTED, KBASE_RESET_GPU_HAPPENING) !=
+	if (atomic_cmpxchg(&kbdev->reset_gpu, KBASE_RESET_GPU_COMMITTED, KBASE_RESET_GPU_HAPPENING) !=
 	        KBASE_RESET_GPU_COMMITTED)
 	{
 		/* Reset has already occurred */
 		return;
 	}
-	osk_workq_submit(&kbdev->reset_workq, &kbdev->reset_work);
+	queue_work(kbdev->reset_workq, &kbdev->reset_work);
+}
+
+static void kbasep_try_reset_gpu_early(kbase_device *kbdev)
+{
+	unsigned long flags;
+	kbasep_js_device_data *js_devdata;
+
+	js_devdata = &kbdev->js_data;
+	spin_lock_irqsave(&js_devdata->runpool_irq.lock, flags);
+	kbasep_try_reset_gpu_early_locked(kbdev);
+	spin_unlock_irqrestore(&js_devdata->runpool_irq.lock, flags);
 }
 
 /*
@@ -1174,33 +1179,47 @@ static void kbasep_try_reset_gpu_early(kbase_device *kbdev)
  *
  * @return See description
  */
-mali_bool kbase_prepare_to_reset_gpu(kbase_device *kbdev)
+mali_bool kbase_prepare_to_reset_gpu_locked(kbase_device *kbdev)
 {
 	int i;
 
 	OSK_ASSERT(kbdev);
 
-	if (osk_atomic_compare_and_swap(&kbdev->reset_gpu, KBASE_RESET_GPU_NOT_PENDING, KBASE_RESET_GPU_PREPARED) !=
+	if (atomic_cmpxchg(&kbdev->reset_gpu, KBASE_RESET_GPU_NOT_PENDING, KBASE_RESET_GPU_PREPARED) !=
 	        KBASE_RESET_GPU_NOT_PENDING)
 	{
 		/* Some other thread is already resetting the GPU */
 		return MALI_FALSE;
 	}
 
-	osk_waitq_clear(&kbdev->reset_waitq);
-
 	OSK_PRINT_ERROR(OSK_BASE_JD, "Preparing to soft-reset GPU: Soft-stopping all jobs");
 
 	for (i = 0; i < kbdev->gpu_props.num_job_slots; i++)
 	{
-		kbase_job_slot_lock(kbdev, i);
 		kbase_job_slot_softstop(kbdev, i, NULL);
-		kbase_job_slot_unlock(kbdev, i);
 	}
 
 	return MALI_TRUE;
+
+}
+
+mali_bool kbase_prepare_to_reset_gpu(kbase_device *kbdev)
+{
+	unsigned long flags;
+	mali_bool ret;
+	kbasep_js_device_data *js_devdata;
+
+	js_devdata = &kbdev->js_data;
+	spin_lock_irqsave(&js_devdata->runpool_irq.lock, flags);
+	ret = kbase_prepare_to_reset_gpu_locked(kbdev);
+	spin_unlock_irqrestore(&js_devdata->runpool_irq.lock, flags);
+
+	return ret;
 }
 KBASE_EXPORT_TEST_API(kbase_prepare_to_reset_gpu)
+
+
+
 /*
  * This function should be called after kbase_prepare_to_reset_gpu iff it returns MALI_TRUE.
  * It should never be called without a corresponding call to kbase_prepare_to_reset_gpu.
@@ -1210,25 +1229,35 @@ KBASE_EXPORT_TEST_API(kbase_prepare_to_reset_gpu)
  */
 void kbase_reset_gpu(kbase_device *kbdev)
 {
-	osk_error ret;
 	u32 timeout_ms;
 
 	OSK_ASSERT(kbdev);
 
 	/* Note this is an assert/atomic_set because it is a software issue for a race to be occuring here */
-	OSK_ASSERT(osk_atomic_get(&kbdev->reset_gpu) == KBASE_RESET_GPU_PREPARED);
-	osk_atomic_set(&kbdev->reset_gpu, KBASE_RESET_GPU_COMMITTED);
+	OSK_ASSERT(atomic_read(&kbdev->reset_gpu) == KBASE_RESET_GPU_PREPARED);
+	atomic_set(&kbdev->reset_gpu, KBASE_RESET_GPU_COMMITTED);
 
 	timeout_ms = kbasep_get_config_value(kbdev, kbdev->config_attributes, KBASE_CONFIG_ATTR_JS_RESET_TIMEOUT_MS);
-	ret = osk_timer_start(&kbdev->reset_timer, timeout_ms);
-	if (ret != OSK_ERR_NONE)
-	{
-		OSK_PRINT_ERROR(OSK_BASE_JD, "Failed to start timer for soft-resetting GPU");
-		/* We can't rescue jobs from the GPU so immediately reset */
-		osk_workq_submit(&kbdev->reset_workq, &kbdev->reset_work);
-	}
+	hrtimer_start(&kbdev->reset_timer, HR_TIMER_DELAY_MSEC(timeout_ms), HRTIMER_MODE_REL);
 
 	/* Try resetting early */
 	kbasep_try_reset_gpu_early(kbdev);
 }
 KBASE_EXPORT_TEST_API(kbase_reset_gpu)
+
+void kbase_reset_gpu_locked(kbase_device *kbdev)
+{
+	u32 timeout_ms;
+
+	OSK_ASSERT(kbdev);
+
+	/* Note this is an assert/atomic_set because it is a software issue for a race to be occuring here */
+	OSK_ASSERT(atomic_read(&kbdev->reset_gpu) == KBASE_RESET_GPU_PREPARED);
+	atomic_set(&kbdev->reset_gpu, KBASE_RESET_GPU_COMMITTED);
+
+	timeout_ms = kbasep_get_config_value(kbdev, kbdev->config_attributes, KBASE_CONFIG_ATTR_JS_RESET_TIMEOUT_MS);
+	hrtimer_start(&kbdev->reset_timer, HR_TIMER_DELAY_MSEC(timeout_ms), HRTIMER_MODE_REL);
+
+	/* Try resetting early */
+	kbasep_try_reset_gpu_early_locked(kbdev);
+}

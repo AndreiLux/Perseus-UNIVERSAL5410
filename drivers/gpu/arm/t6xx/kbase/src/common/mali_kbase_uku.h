@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2008-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2008-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 #ifndef _KBASE_UKU_H_
 #define _KBASE_UKU_H_
@@ -14,22 +18,14 @@
 #include <kbase/mali_uk.h>
 #include <malisw/mali_malisw.h>
 #include <kbase/mali_base_kernel.h>
-#if (MALI_ERROR_INJECT_ON || MALI_NO_MALI)
+#if defined(CONFIG_MALI_ERROR_INJECT) || defined(CONFIG_MALI_NO_MALI)
 #include <kbase/src/common/mali_kbase_model_dummy.h>
 #endif
 
 #include "mali_kbase_gpuprops_types.h"
 
 #define BASE_UK_VERSION_MAJOR 1
-#define BASE_UK_VERSION_MINOR 0
-
-/** 32/64-bit neutral way to represent pointers */
-typedef union kbase_pointer
-{
-	void * value;     /**< client should store their pointers here */
-	u32 compat_value; /**< 64-bit kernels should fetch value here when handling 32-bit clients */
-	u64 sizer;        /**< Force 64-bit storage for all clients regardless */
-} kbase_pointer;
+#define BASE_UK_VERSION_MINOR 1
 
 typedef struct kbase_uk_tmem_alloc
 {
@@ -76,13 +72,11 @@ typedef struct kbase_uk_mem_free
 
 typedef struct kbase_uk_job_submit
 {
-	uk_header   header;
+	uk_header       header;
 	/* IN */
-	u64         bag_uaddr;
-	u64         core_restriction;
-	u32         offset;
-	u32         size;
-	u32         nr_atoms;
+	kbase_pointer   addr;
+	u32             nr_atoms;
+	u32		stride; /* bytes between atoms, i.e. sizeof(base_jd_atom_v2) */
 	/* OUT */
 } kbase_uk_job_submit;
 
@@ -125,6 +119,23 @@ typedef struct kbase_uk_hwcnt_clear
 	uk_header   header;
 } kbase_uk_hwcnt_clear;
 
+typedef struct kbase_uk_fence_validate
+{
+	uk_header  header;
+	/* IN */
+	int        fd;
+	/* OUT */
+} kbase_uk_fence_validate;
+
+typedef struct kbase_uk_stream_create
+{
+	uk_header     header;
+	/* IN */
+	char          name[32];
+	/* OUT */
+	int           fd;
+} kbase_uk_stream_create;
+
 typedef struct kbase_uk_cpuprops
 {
 	uk_header header;
@@ -143,6 +154,26 @@ typedef struct kbase_uk_gpuprops
 	/* OUT */
 }kbase_uk_gpuprops;
 
+typedef struct kbase_uk_tmem_get_size
+{
+	uk_header   header;
+	/* IN */
+	mali_addr64 gpu_addr;
+	/* OUT */
+	u32         actual_size;
+} kbase_uk_tmem_get_size;
+
+typedef struct kbase_uk_tmem_set_size
+{
+	uk_header   header;
+	/* IN */
+	mali_addr64 gpu_addr;
+	u32         size;
+	/* OUT */
+	u32         actual_size;
+	base_backing_threshold_status result_subcode;
+} kbase_uk_tmem_set_size;
+
 typedef struct kbase_uk_tmem_resize
 {
 	uk_header   header;
@@ -150,7 +181,7 @@ typedef struct kbase_uk_tmem_resize
 	mali_addr64 gpu_addr;
 	s32         delta;
 	/* OUT */
-	u32         size;
+	u32         actual_size;
 	base_backing_threshold_status result_subcode;
 } kbase_uk_tmem_resize;
 
@@ -188,10 +219,10 @@ typedef struct kbase_uk_set_flags
 #define KBASE_TEST_BUFFER_SIZE 128
 typedef struct kbase_exported_test_data
 {
-	mali_addr64           test_addr[TEST_ADDR_COUNT];		/**< memory address */
+	mali_addr64           test_addr[TEST_ADDR_COUNT];       /**< memory address */
 	u32                   test_addr_pages[TEST_ADDR_COUNT]; /**<  memory size in pages */
-	struct kbase_context *kctx;								/**<  base context created by process */
-	void *mm;												/**< pointer to process address space */
+	struct kbase_context *kctx;                             /**<  base context created by process */
+	void *mm;                                               /**< pointer to process address space */
 	u8 buffer1[KBASE_TEST_BUFFER_SIZE];   /**<  unit test defined parameter */
 	u8 buffer2[KBASE_TEST_BUFFER_SIZE];   /**<  unit test defined parameter */
 } kbase_exported_test_data;
@@ -204,33 +235,39 @@ typedef struct kbase_uk_set_test_data
 } kbase_uk_set_test_data;
 
 #endif /* MALI_UNIT_TEST */
-#if MALI_ERROR_INJECT_ON
+#ifdef CONFIG_MALI_ERROR_INJECT
 typedef struct kbase_uk_error_params
 {
 	uk_header header;
 	/* IN */
 	kbase_error_params params;
 } kbase_uk_error_params;
-#endif
+#endif /* CONFIG_MALI_ERROR_INJECT */
 
-#if MALI_NO_MALI
+#ifdef CONFIG_MALI_NO_MALI
 typedef struct kbase_uk_model_control_params
 {
 	uk_header header;
 	/* IN */
 	kbase_model_control_params params;
 } kbase_uk_model_control_params;
-#endif /* MALI_NO_MALI */
+#endif /* CONFIG_MALI_NO_MALI */
 
+#define KBASE_MAXIMUM_EXT_RESOURCES       255
 
 typedef struct kbase_uk_ext_buff_kds_data
 {
 	uk_header header;
 	kbase_pointer external_resource;
-	int num_res;
+	int num_res;    /* limited to KBASE_MAXIMUM_EXT_RESOURCES */
 	kbase_pointer file_descriptor;
 } kbase_uk_ext_buff_kds_data;
 
+typedef struct kbase_uk_keep_gpu_powered
+{
+	uk_header header;
+	mali_bool enabled;
+} kbase_uk_keep_gpu_powered;
 
 typedef enum kbase_uk_function_id
 {
@@ -258,18 +295,18 @@ typedef enum kbase_uk_function_id
 
 	KBASE_FUNC_GET_VERSION,
 	KBASE_FUNC_EXT_BUFFER_LOCK,
-	KBASE_FUNC_SET_FLAGS
+	KBASE_FUNC_SET_FLAGS,
 
-#if MALI_DEBUG
-	, KBASE_FUNC_SET_TEST_DATA
-#endif /* MALI_DEBUG */
-#if MALI_ERROR_INJECT_ON
-	, KBASE_FUNC_INJECT_ERROR
-#endif
-#if MALI_NO_MALI
-	, KBASE_FUNC_MODEL_CONTROL
-#endif /* MALI_NO_MALI */
+	KBASE_FUNC_SET_TEST_DATA,
+	KBASE_FUNC_INJECT_ERROR,
+	KBASE_FUNC_MODEL_CONTROL,
 
+	KBASE_FUNC_KEEP_GPU_POWERED,
+
+	KBASE_FUNC_FENCE_VALIDATE,
+	KBASE_FUNC_STREAM_CREATE,
+	KBASE_FUNC_TMEM_SETSIZE,
+	KBASE_FUNC_TMEM_GETSIZE
 } kbase_uk_function_id;
 
 #endif /* _KBASE_UKU_H_ */

@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2008-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2008-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file
@@ -19,6 +23,8 @@
 #ifndef _OSK_H_
 #error "Include mali_osk.h directly"
 #endif
+
+#include <linux/lockdep.h>
 
 /**
  * Private macro to safely allow asserting on a mutex/rwlock/spinlock/irq
@@ -162,6 +168,9 @@ OSK_STATIC_INLINE void osk_mutex_unlock(osk_mutex * lock)
 	mutex_unlock(lock);
 }
 
+#define OSKP_ASSERT_MUTEX_IS_LOCKED(lock) \
+	OSK_ASSERT(0 != mutex_is_locked(lock))
+
 /* Note: This uses a GNU C Extension to allow Linux's CONFIG_PROVE_LOCKING to work correctly
  *
  * This is not required outside of Linux
@@ -193,6 +202,9 @@ OSK_STATIC_INLINE void osk_spinlock_unlock(osk_spinlock * lock)
 	spin_unlock(lock);
 }
 
+#define OSKP_ASSERT_SPINLOCK_IS_LOCKED(lock)     lockdep_assert_held(lock)
+#define OSKP_ASSERT_SPINLOCK_IRQ_IS_LOCKED(lock_irq) lockdep_assert_held(&(lock_irq)->lock)
+
 /* Note: This uses a GNU C Extension to allow Linux's CONFIG_PROVE_LOCKING to work correctly
  *
  * This is not required outside of Linux
@@ -213,8 +225,10 @@ OSK_STATIC_INLINE void osk_spinlock_irq_term(osk_spinlock_irq * lock)
 
 OSK_STATIC_INLINE void osk_spinlock_irq_lock(osk_spinlock_irq * lock)
 {
+	unsigned long flags;
 	OSK_ASSERT(NULL != lock);
-	spin_lock_irqsave(&lock->lock, lock->flags);
+	spin_lock_irqsave(&lock->lock, flags);
+	lock->flags = flags;
 }
 
 OSK_STATIC_INLINE void osk_spinlock_irq_unlock(osk_spinlock_irq * lock)

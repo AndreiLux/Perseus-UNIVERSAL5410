@@ -1,16 +1,14 @@
-# Copyright:
-# ----------------------------------------------------------------------------
-# This confidential and proprietary software may be used only as authorized
-# by a licensing agreement from ARM Limited.
-#      (C) COPYRIGHT 2012 ARM Limited, ALL RIGHTS RESERVED
-# The entire notice above must be reproduced on all authorized copies and
-# copies may only be made to the extent permitted by a licensing agreement
-# from ARM Limited.
-# ----------------------------------------------------------------------------
+#
+# (C) COPYRIGHT 2012 ARM Limited. All rights reserved.
+#
+# This program is free software and is provided to you under the terms of the GNU General Public License version 2
+# as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+#
+# A copy of the licence is included with the program, and can also be obtained from Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+#
 #
 
-# *WARNING* - Enabling this option and modifying the default settings may produce
-# a driver with performance or other limitations.
 
 menuconfig MALI_T6XX
 	tristate "Mali-T6XX support"
@@ -21,9 +19,38 @@ menuconfig MALI_T6XX
 	  To compile this driver as a module, choose M here:
 	  this will generate a single module, called mali_kbase.
 
-choice
-	prompt "Mali platform configuration"
+config MALI_GATOR_SUPPORT
+	bool "Streamline Debug support"
+	depends on MALI_T6XX=m
+	default n
+	help
+	  Adds diagnostic support for use with the ARM Streamline Performance Analyzer.
+	  You will need the Gator device driver already loaded before loading this driver when enabling
+	  Streamline debug support.
+
+# MALI_EXPERT configuration options
+
+menuconfig MALI_EXPERT
 	depends on MALI_T6XX
+	bool "Enable Expert Settings"
+	default n
+	help
+	  Enabling this option and modifying the default settings may produce a driver with performance or
+	  other limitations.
+
+config MALI_PLATFORM_FAKE
+	bool "Enable fake platform device support"
+	depends on MALI_T6XX && MALI_EXPERT
+	default n
+	help
+	  When you start to work with the Mali-T600 Series device driver the platform-specific code of
+	  the Linux kernel for your platform may not be complete. In this situation the kernel device driver
+	  supports creating the platform device outside of the Linux platform-specific code.
+	  Enable this option if would like to use a platform device configuration from within the device driver.
+
+choice
+	prompt "Platform configuration"
+	depends on MALI_T6XX && (MALI_PLATFORM_FAKE && MALI_EXPERT)
 	default MALI_PLATFORM_VEXPRESS
 	help
 	  Select the SOC platform that contains a Mali-T6XX
@@ -42,47 +69,15 @@ config MALI_PLATFORM_THIRDPARTY
 endchoice
 
 config MALI_PLATFORM_THIRDPARTY_NAME
-	depends on MALI_T6XX && MALI_PLATFORM_THIRDPARTY
+	depends on MALI_T6XX && MALI_PLATFORM_THIRDPARTY && (MALI_PLATFORM_FAKE && MALI_EXPERT)
 	string "Third party platform name"
 	help
 	  Enter the name of a third party platform that is supported. The third part configuration
 	  file must be in kbase/src/linux/config/tpip/mali_kbase_config_xxx.c where xxx is the name
 	  specifed here.
 
-config MALI_GATOR_SUPPORT
-	bool "Streamline Debug support"
-	depends on MALI_T6XX
-	default n
-	help
-	  Adds diagnostic support for use with the ARM Streamline Performance Analyzer.
-
-config T6XX_DVFS
-        bool "Enable Dynamic frequency and voltage scaling"
-        depends on MALI_T6XX
-	default n
-	help
-          Choose this option to enable dynamic frequency and voltage scaling
-
-config T6XX_DVFS_FREQ_LOCK
-        bool "Enable dvfs frequency lock support"
-        depends on T6XX_DVFS
-	default n
-	help
-          Choose this option to enable locking the DVFS frequency.  If sysfs
-	  support is enabled files will be created for inspecting and
-	  (potentially) setting a fixed DVFS frequency.  This is used
-	  for debugging; enable only if you know what you are doing.
-
-
-# MALI_EXPERT configuration options
-
-menuconfig MALI_EXPERT
-	depends on MALI_T6XX
-	bool "Enable Expert Settings"
-	default n
-
 config MALI_DEBUG
-	bool "Mali debug build"
+	bool "Debug build"
 	depends on MALI_T6XX && MALI_EXPERT
 	default n
 	help
@@ -94,6 +89,39 @@ config MALI_UNCACHED
 	default n
 	help
 	  Select this option to disable CPU caching for all GPU memory regions.
+
+config MALI_QA_LEAK
+	bool "Enable the tracking of memory leaks"
+	depends on MALI_T6XX && MALI_EXPERT
+	default n
+	help
+	  Enables additional memory leak tracking diagnostics.
+
+config MALI_QA_RESFAIL
+	bool "Enable simulated failures"
+	depends on MALI_T6XX && MALI_EXPERT
+	default n
+	help
+	  Enables forced failures in APIs for additional test coverage
+
+config MALI_NO_MALI
+	bool "No Mali"
+	depends on MALI_T6XX && MALI_EXPERT
+	default n
+	help
+	  This can be used to test the driver in a simulated environment
+	  whereby the hardware is not physically present. If the hardware is physically
+	  present it will not be used. This can be used to test the majority of the
+	  driver without needing actual hardware or for software benchmarking.
+	  All calls to the simulated hardware will complete immediatly as if the hardware
+	  completed the task.
+
+config MALI_ERROR_INJECT
+	bool "Error injection"
+	depends on MALI_T6XX && MALI_EXPERT && MALI_NO_MALI
+	default n
+	help
+	  Enables insertion of errors to test module failure and recovery mechanisms.
 
 config MALI_BASE_ALLOC_FAIL
 	bool "Change allocation GFP flags so that allocations can fail"
@@ -117,37 +145,28 @@ config MALI_BASE_ALLOC_FAIL
 	  Turn this on if you're confident your code can handle GL allocations
 	  failures.
 
-config MALI_BASE_TRACK_MEMLEAK
-	bool "Enable the tracking of memory leaks and support for simulated failures"
-	depends on MALI_T6XX && MALI_EXPERT
+config T6XX_DVFS
+	bool "Enable Dynamic frequency and voltage scaling"
+	depends on MALI_T6XX
 	default n
 	help
-	  Enables additional memory leak tracking diagnostics.
+	   Choose this option to enable dynamic frequency and voltage scaling
 
-config MALI_NO_MALI
-	bool "No Mali"
-	depends on MALI_T6XX && MALI_EXPERT
+config T6XX_DVFS_FREQ_LOCK
+	bool "Enable dvfs frequency lock support"
+	depends on T6XX_DVFS
 	default n
 	help
-	  This can be used to test the driver in a simulated environment
-	  whereby the hardware is not physically present. If the hardware is physically
-	  present it will not be used. This can be used to test the majority of the
-	  driver without needing actual hardware or for software benchmarking.
-	  All calls to the simulated hardware will complete immediatly as if the hardware
-	  completed the task.
-
-config MALI_ERROR_INJECTION
-	bool "Error injection"
-	depends on MALI_T6XX && MALI_EXPERT && MALI_NO_MALI
-	default n
-	help
-	  Enables insertion of errors to test module failure and recovery mechanisms.
+	  Choose this option to enable locking the DVFS frequency.  If sysfs
+	  support is enabled files will be created for inspecting and
+	  (potentially) setting a fixed DVFS frequency.  This is used
+	  for debugging; enable only if you know what you are doing.
 
 config T6XX_DEBUG_SYS
-        bool "Enable sysfs support"
+	bool "Enable sysfs support"
 	depends on MALI_T6XX && MALI_EXPERT
 	default n
 	help
-          Choose this option to enable creating sysfs files for inspecting
+	  Choose this option to enable creating sysfs files for inspecting
 	  and (potentially) tweaking driver parameters.  This is typically
 	  used for debugging; enable only if you know what you are doing.

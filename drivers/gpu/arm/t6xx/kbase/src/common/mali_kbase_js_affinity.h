@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_js_affinity.h
@@ -128,26 +132,25 @@ void kbase_js_affinity_slot_blocked_an_atom( kbase_device *kbdev, int js );
  * violations. Otherwise it stays registered, and the next atom to complete
  * must attempt to submit to the blocked slots again.
  *
+ * This must only be called whilst the GPU is powered - for example, when
+ * kbdev->jsdata.nr_user_contexts_running > 0.
+ *
  * The following locking conditions are made on the caller:
- * - it must \em not hold kbasep_js_device_data::runpool_mutex (as this will be
- * obtained internally)
- * - it must \em not hold kbdev->jm_slots[ \a js ].lock (as this will be
- * obtained internally)
- * - it must \em not hold kbasep_js_device_data::runpool_irq::lock, (as this will be
- * obtained internally)
+ * - it must hold kbasep_js_device_data::runpool_mutex
+ * - it must hold kbasep_js_device_data::runpool_irq::lock
  */
 void kbase_js_affinity_submit_to_blocked_slots( kbase_device *kbdev );
 
 /**
  * @brief Output to the Trace log the current tracked affinities on all slots
  */
-#if MALI_DEBUG != 0
+#ifdef CONFIG_MALI_DEBUG
 void kbase_js_debug_log_current_affinities( kbase_device *kbdev );
-#else /*  MALI_DEBUG != 0 */
+#else /* CONFIG_MALI_DEBUG */
 OSK_STATIC_INLINE void kbase_js_debug_log_current_affinities( kbase_device *kbdev )
 {
 }
-#endif /*  MALI_DEBUG != 0 */
+#endif /* CONFIG_MALI_DEBUG */
 
 /** @} */ /* end group kbase_js_affinity */
 /** @} */ /* end group base_kbase_api */

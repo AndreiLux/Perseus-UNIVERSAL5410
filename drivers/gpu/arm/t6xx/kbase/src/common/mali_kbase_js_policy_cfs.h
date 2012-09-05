@@ -1,12 +1,16 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2011-2012 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ *
+ * (C) COPYRIGHT 2011-2012 ARM Limited. All rights reserved.
+ *
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * 
  */
+
+
 
 /**
  * @file mali_kbase_js_policy_cfs.h
@@ -68,7 +72,7 @@ typedef struct kbasep_js_policy_cfs
 	u32 slot_to_variant_lookup_nss_state[KBASEP_JS_VARIANT_LOOKUP_WORDS_NEEDED];
 
 	/* The timer tick used for rescheduling jobs */
-	osk_timer timer;
+	struct hrtimer scheduling_timer;
 
 	/* Is the timer running?
 	 *
@@ -82,6 +86,9 @@ typedef struct kbasep_js_policy_cfs
 	 * Reads are possible without this mutex, but an older value might be read
 	 * if no memory barriers are issued beforehand. */
 	u64 head_runtime_us;
+	/* Pointer to the kbase_device structure, for convenience to avoid deeply nested container_of
+	 * statements. */
+	kbase_device * kbdev;
 } kbasep_js_policy_cfs;
 
 /**
@@ -116,7 +123,7 @@ typedef struct kbasep_js_policy_cfs_ctx
 	 * Reads are possible without this spinlock, but an older value might be read
 	 * if no memory barriers are issued beforehand */
 	u64 runtime_us;
-
+	
 	/* Calling process policy scheme is a realtime scheduler and will use the priority queue
 	 * Non-mutable after ctx init */
 	mali_bool process_rt_policy;
@@ -144,8 +151,7 @@ typedef struct kbasep_js_policy_cfs_job
 
 	/** Number of ticks that this job has been executing for
 	 *
-	 * To access this, the kbdev->jm_slots[ js ].lock must be held for the slot 'js'
-	 * that that atom is running/queued/about to be queued upon */
+	 * To access this, the kbasep_js_device_data::runpool_irq::lock must be held */
 	u32 ticks;
 } kbasep_js_policy_cfs_job;
 
