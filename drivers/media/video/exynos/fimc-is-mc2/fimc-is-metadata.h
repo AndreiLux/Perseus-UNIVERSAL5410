@@ -201,6 +201,8 @@ struct camera2_flash_dm {
 	uint64_t		firingTime;
 	/*1 : stable, 0 : unstable*/
 	uint32_t		firingStable;
+	/*1 : success, 0 : fail*/
+	uint8_t			decision;
 };
 
 struct camera2_flash_sm {
@@ -502,7 +504,8 @@ enum aa_scene_mode {
 	AA_SCENE_MODE_SPORTS,
 	AA_SCENE_MODE_PARTY,
 	AA_SCENE_MODE_CANDLELIGHT,
-	AA_SCENE_MODE_BARCODE
+	AA_SCENE_MODE_BARCODE,
+	AA_SCENE_MODE_NIGHT_CAPTURE
 };
 
 enum aa_effect_mode {
@@ -534,7 +537,10 @@ enum aa_ae_flashmode {
 	/*internal 3A can do auto flash algorithm*/
 	AA_FLASHMODE_AUTO,
 	/*internal 3A can fire flash by auto result*/
-	AA_FLASHMODE_CAPTURE
+	AA_FLASHMODE_CAPTURE,
+	/*internal 3A can control flash forced*/
+	AA_FLASHMODE_ON_ALWAYS
+
 };
 
 enum aa_ae_antibanding_mode {
