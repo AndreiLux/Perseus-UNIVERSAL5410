@@ -149,6 +149,7 @@ enum {
 	ECHO_CANCELLATION = IN_EFFECT_START_NID,
 	VOICE_FOCUS,
 	MIC_SVM,
+	NOISE_REDUCTION,
 	IN_EFFECT_END_NID,
 #define IN_EFFECTS_COUNT  (IN_EFFECT_END_NID - IN_EFFECT_START_NID)
 
@@ -161,6 +162,12 @@ enum {
 
 /* Effects values size*/
 #define EFFECT_VALS_MAX_COUNT 12
+
+#define DSP_CAPTURE_INIT_LATENCY        0
+#define DSP_CRYSTAL_VOICE_LATENCY       124
+#define DSP_PLAYBACK_INIT_LATENCY       13
+#define DSP_PLAY_ENHANCEMENT_LATENCY    30
+#define DSP_SPEAKER_OUT_LATENCY         7
 
 struct ct_effect {
 	char name[44];
@@ -248,6 +255,14 @@ static struct ct_effect ca0132_effects[EFFECTS_COUNT] = {
 		1,
 		1,
 		{0x00000000, 0x3F3D70A4}
+	},
+	{ "Noise Reduction",
+		NOISE_REDUCTION,
+		0x95,
+		{4, 5},
+		1,
+		1,
+		{0x3F800000, 0x3F000000}
 	},
 	{ "VoiceFX",
 		VOICEFX,
@@ -2652,7 +2667,7 @@ static void ca0132_cleanup_stream(struct hda_codec *codec, hda_nid_t nid)
 static unsigned int ca0132_get_playback_latency(struct hda_codec *codec)
 {
 	struct ca0132_spec *spec = codec->spec;
-	unsigned int latency = 11;
+	unsigned int latency = DSP_PLAYBACK_INIT_LATENCY;
 
 	if (!dspload_is_loaded(codec))
 		return 0;
@@ -2660,10 +2675,10 @@ static unsigned int ca0132_get_playback_latency(struct hda_codec *codec)
 	if (spec->effects_switch[PLAY_ENHANCEMENT - EFFECT_START_NID]) {
 		if ((spec->effects_switch[SURROUND - EFFECT_START_NID]) ||
 		    (spec->effects_switch[DIALOG_PLUS - EFFECT_START_NID]))
-			latency += 32;
+			latency += DSP_PLAY_ENHANCEMENT_LATENCY;
 
 		if (spec->cur_out_type == SPEAKER_OUT)
-			latency += 10;
+			latency += DSP_SPEAKER_OUT_LATENCY;
 	}
 	return latency;
 }
@@ -2713,13 +2728,13 @@ static int ca0132_playback_pcm_cleanup(struct hda_pcm_stream *hinfo,
 static unsigned int ca0132_get_capture_latency(struct hda_codec *codec)
 {
 	struct ca0132_spec *spec = codec->spec;
-	unsigned int latency = 0;
+	unsigned int latency = DSP_CAPTURE_INIT_LATENCY;
 
 	if (!dspload_is_loaded(codec))
 		return 0;
 
 	if (spec->effects_switch[CRYSTAL_VOICE - EFFECT_START_NID])
-		latency += 124;
+		latency += DSP_CRYSTAL_VOICE_LATENCY;
 	return latency;
 }
 
