@@ -339,12 +339,14 @@ static int __init omap2_set_init_voltage(char *vdd_name, char *clk_name,
 		}
 	}
 
-	ret = clk_set_rate(clk, freq_valid);
-	if (ret) {
-		pr_err("%s: Fail set clk-%s(f=%ld v=%ld)on vdd%s\n",
-			__func__, clk_name, freq_valid,
-			bootup_volt, vdd_name);
-		goto exit_ck;
+	if (freq_valid != freq_cur || cpu_is_omap44xx()) {
+		ret = clk_set_rate(clk, freq_valid);
+		if (ret) {
+			pr_err("%s: Fail set clk-%s(f=%ld v=%ld)on vdd%s\n",
+				__func__, clk_name, freq_valid,
+				bootup_volt, vdd_name);
+			goto exit_ck;
+		}
 	}
 
 	if (freq_cur >= freq_valid) {
