@@ -91,6 +91,7 @@ int kbase_event_dequeue(kbase_context *ctx, base_jd_event_v2 *uevent)
 
 	beenthere("event dequeuing %p\n", (void*)atom);
 	uevent->event_code = atom->event_code;
+	uevent->atom_number = (atom - ctx->jctx.atoms);
 	uevent->udata = kbase_event_process(ctx, atom);
 
 	return 0;

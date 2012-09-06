@@ -872,6 +872,7 @@ typedef struct base_jd_event
 typedef struct base_jd_event_v2
 {
 	base_jd_event_code      event_code; /**< event code */
+	base_atom_id            atom_number;/**< the atom number that has completed */
 	base_jd_udata           udata;      /**< user data */
 } base_jd_event_v2;
 
