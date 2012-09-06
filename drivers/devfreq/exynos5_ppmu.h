@@ -20,10 +20,10 @@ enum exynos_ppmu_sets {
 
 struct exynos5_ppmu_handle;
 
-struct exynos5_ppmu_handle *exynos5_ppmu_poll(void (*callback)(int, void *),
-		void *data, enum exynos_ppmu_sets filter);
-void exynos5_ppmu_poll_off(struct exynos5_ppmu_handle *handle);
-void exynos5_ppmu_poll_on(struct exynos5_ppmu_handle *handle);
+struct exynos5_ppmu_handle *exynos5_ppmu_get(void);
+void exynos5_ppmu_put(struct exynos5_ppmu_handle *handle);
+int exynos5_ppmu_get_busy(struct exynos5_ppmu_handle *handle,
+	enum exynos_ppmu_sets filter);
 
 #endif /* __DEVFREQ_EXYNOS5_PPMU_H */
 

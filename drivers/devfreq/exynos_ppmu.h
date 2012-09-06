@@ -16,6 +16,8 @@
 
 #define PPMU_CNTENS		0x10
 
+#define PPMU_FLAG		0x50
+#define  PPMU_CCNT_OVERFLOW	BIT(31)
 #define PPMU_CCNT		0x100
 #define PPMU_PMCNT0		0x110
 #define PPMU_PMCNT_OFFSET	0x10

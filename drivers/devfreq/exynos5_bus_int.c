@@ -36,6 +36,7 @@
 
 /* Assume that the bus for mif is saturated if the utilization is 8% */
 #define INT_BUS_SATURATION_RATIO	8
+#define EXYNOS5_BUS_INT_POLL_TIME	msecs_to_jiffies(100)
 
 enum int_level_idx {
 	LV_0,
@@ -58,6 +59,7 @@ struct busfreq_data_int {
 	struct clk *int_clk;
 
 	struct exynos5_ppmu_handle *ppmu;
+	struct delayed_work work;
 	int busy;
 };
 
@@ -165,15 +167,35 @@ static int exynos5_int_get_dev_status(struct device *dev,
 	return 0;
 }
 
-static void exynos5_int_poll(int busy, void *_data)
+static void exynos5_int_poll_start(struct busfreq_data_int *data)
 {
-	struct busfreq_data_int *data = _data;
+	schedule_delayed_work(&data->work, EXYNOS5_BUS_INT_POLL_TIME);
+}
 
-	data->busy = busy;
+static void exynos5_int_poll_stop(struct busfreq_data_int *data)
+{
+	cancel_delayed_work_sync(&data->work);
+}
 
-	mutex_lock(&data->devfreq->lock);
-	update_devfreq(data->devfreq);
-	mutex_unlock(&data->devfreq->lock);
+static void exynos5_int_poll(struct work_struct *work)
+{
+	struct delayed_work *dwork;
+	struct busfreq_data_int *data;
+	int ret;
+
+	dwork = to_delayed_work(work);
+	data = container_of(dwork, struct busfreq_data_int, work);
+
+	ret = exynos5_ppmu_get_busy(data->ppmu, PPMU_SET_RIGHT);
+
+	if (ret >= 0) {
+		data->busy = ret;
+		mutex_lock(&data->devfreq->lock);
+		update_devfreq(data->devfreq);
+		mutex_unlock(&data->devfreq->lock);
+	}
+
+	schedule_delayed_work(&data->work, EXYNOS5_BUS_INT_POLL_TIME);
 }
 
 static void exynos5_int_exit(struct device *dev)
@@ -336,9 +358,12 @@ static __devinit int exynos5_busfreq_int_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, data);
 
-	data->ppmu = exynos5_ppmu_poll(exynos5_int_poll, data, PPMU_SET_RIGHT);
+	data->ppmu = exynos5_ppmu_get();
 	if (!data->ppmu)
-		goto err_ppmu_poll;
+		goto err_ppmu_get;
+
+	INIT_DELAYED_WORK_DEFERRABLE(&data->work, exynos5_int_poll);
+	exynos5_int_poll_start(data);
 
 	data->devfreq = devfreq_add_device(dev, &exynos5_devfreq_int_profile,
 					   &devfreq_simple_ondemand,
@@ -363,8 +388,8 @@ static __devinit int exynos5_busfreq_int_probe(struct platform_device *pdev)
 
 err_devfreq_add:
 	devfreq_remove_device(data->devfreq);
-	exynos5_ppmu_poll_off(data->ppmu);
-err_ppmu_poll:
+	exynos5_int_poll_stop(data);
+err_ppmu_get:
 	platform_set_drvdata(pdev, NULL);
 err_opp_add:
 	clk_put(data->int_clk);
@@ -395,8 +420,7 @@ static int exynos5_busfreq_int_suspend(struct device *dev)
 						    dev);
 	struct busfreq_data_int *data = platform_get_drvdata(pdev);
 
-	exynos5_ppmu_poll_off(data->ppmu);
-
+	exynos5_int_poll_stop(data);
 	return 0;
 }
 
@@ -406,8 +430,7 @@ static int exynos5_busfreq_int_resume(struct device *dev)
 						    dev);
 	struct busfreq_data_int *data = platform_get_drvdata(pdev);
 
-	exynos5_ppmu_poll_on(data->ppmu);
-
+	exynos5_int_poll_start(data);
 	return 0;
 }
 #endif
