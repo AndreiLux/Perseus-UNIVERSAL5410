@@ -956,9 +956,9 @@ int hdcp_start(struct hdmi_device *hdev)
 
 	hdmi_write(hdev, HDMI_HDCP_CTRL1, HDMI_HDCP_CP_DESIRED_EN);
 
-	hdmi_set_int_mask(hdev, HDMI_INTC_EN_HDCP, 1);
-
 	hdev->hdcp_info.hdcp_start = 1;
+
+	hdmi_set_int_mask(hdev, HDMI_INTC_EN_HDCP, 1);
 
 	return 0;
 }
