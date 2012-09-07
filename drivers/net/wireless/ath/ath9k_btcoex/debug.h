@@ -32,6 +32,18 @@ struct ath_buf;
 #define RESET_STAT_INC(sc, type) do { } while (0)
 #endif
 
+enum ath_reset_type {
+	RESET_TYPE_BB_HANG,
+	RESET_TYPE_BB_WATCHDOG,
+	RESET_TYPE_FATAL_INT,
+	RESET_TYPE_TX_ERROR,
+	RESET_TYPE_TX_HANG,
+	RESET_TYPE_PLL_HANG,
+	RESET_TYPE_MAC_HANG,
+	RESET_TYPE_BEACON_STUCK,
+	__RESET_TYPE_MAX
+};
+
 #ifdef CONFIG_ATH9K_DEBUGFS
 
 /**
@@ -166,16 +178,6 @@ struct ath_rx_stats {
 	u32 post_delim_crc_err;
 	u32 decrypt_busy_err;
 	u32 phy_err_stats[ATH9K_PHYERR_MAX];
-};
-
-enum ath_reset_type {
-	RESET_TYPE_BB_HANG,
-	RESET_TYPE_BB_WATCHDOG,
-	RESET_TYPE_FATAL_INT,
-	RESET_TYPE_TX_ERROR,
-	RESET_TYPE_TX_HANG,
-	RESET_TYPE_PLL_HANG,
-	__RESET_TYPE_MAX
 };
 
 struct ath_stats {

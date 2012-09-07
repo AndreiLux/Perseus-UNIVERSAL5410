@@ -300,6 +300,7 @@ static bool ath_complete_reset(struct ath_softc *sc, bool start)
 
 	ath9k_btcoex_ath9k_cmn_update_txpow(ah, sc->curtxpow,
 			       sc->config.txpowlimit, &sc->curtxpow);
+	clear_bit(SC_OP_HW_RESET, &sc->sc_flags);
 	ath9k_btcoex_ath9k_hw_set_interrupts(ah);
 	ath9k_btcoex_ath9k_hw_enable_interrupts(ah);
 
@@ -328,10 +329,6 @@ static bool ath_complete_reset(struct ath_softc *sc, bool start)
 		ath_ant_comb_update(sc);
 
 	ieee80211_wake_queues(sc->hw);
-
-	spin_lock_irqsave(&sc->sc_bb_lock, flags);
-	clear_bit(SC_OP_BB_WATCHDOG, &sc->sc_flags);
-	spin_unlock_irqrestore(&sc->sc_bb_lock, flags);
 
 	return true;
 }
@@ -717,6 +714,7 @@ void ath_rx_poll_work(unsigned long data)
 	int i, j, len;
 	u8 chainmask = (ah->rxchainmask << 3) | ah->rxchainmask;
 	u8 nread, nmsec = 10, buf[200];
+	enum ath_reset_type type;
 
 	if (jiffies_to_msecs(jiffies - last_run) > 30)
 		iter = match_count = 0;
@@ -951,11 +949,14 @@ void ath_rx_poll_work(unsigned long data)
 		ath_dbg(common, RESET,
 			"rx clear %d match count %d iteration %d\n",
 			rx_clear, match_count, iter);
-		if (match_count++ > 9)
+		if (match_count++ > 9) {
+			type = RESET_TYPE_BB_HANG;
 			goto queue_reset_work;
-	} else if (ath9k_btcoex_ath9k_hw_detect_mac_hang(ah))
+		}
+	} else if (ath9k_btcoex_ath9k_hw_detect_mac_hang(ah)) {
+		type = RESET_TYPE_MAC_HANG;
 		goto queue_reset_work;
-	else if (iter >= 15) {
+	} else if (iter >= 15) {
 		iter = match_count = 0;
 		nmsec = 200;
 	}
@@ -965,7 +966,7 @@ void ath_rx_poll_work(unsigned long data)
 
 queue_reset_work:
 	ath9k_ps_restore(sc);
-	ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
+	ath9k_queue_reset(sc, type);
 	iter = match_count = 0;
 }
 
@@ -983,7 +984,6 @@ void ath9k_tasklet(unsigned long data)
 
 	if ((status & ATH9K_INT_FATAL) ||
 	    (status & ATH9K_INT_BB_WATCHDOG)) {
-#ifdef CONFIG_ATH9K_DEBUGFS
 		enum ath_reset_type type;
 
 		if (status & ATH9K_INT_FATAL)
@@ -991,12 +991,7 @@ void ath9k_tasklet(unsigned long data)
 		else
 			type = RESET_TYPE_BB_WATCHDOG;
 
-		RESET_STAT_INC(sc, type);
-#endif
-		spin_lock(&sc->sc_bb_lock);
-		set_bit(SC_OP_BB_WATCHDOG, &sc->sc_flags);
-		spin_unlock(&sc->sc_bb_lock);
-		ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
+		ath9k_queue_reset(sc, type);
 		goto out;
 	}
 
@@ -1090,12 +1085,8 @@ irqreturn_t ath_isr(int irq, void *dev)
 	if (!ath9k_btcoex_ath9k_hw_intrpend(ah))
 		return IRQ_NONE;
 
-	spin_lock(&sc->sc_bb_lock);
-	if (test_bit(SC_OP_BB_WATCHDOG, &sc->sc_flags)) {
-		spin_unlock(&sc->sc_bb_lock);
+	if (test_bit(SC_OP_HW_RESET, &sc->sc_flags))
 		return IRQ_HANDLED;
-	}
-	spin_unlock(&sc->sc_bb_lock);
 
 	/*
 	 * Figure out the reason(s) for the interrupt.  Note
@@ -1224,6 +1215,15 @@ static int ath_reset(struct ath_softc *sc, bool retry_tx)
 	return r;
 }
 
+void ath9k_queue_reset(struct ath_softc *sc, enum ath_reset_type type)
+{
+#ifdef CONFIG_ATH9K_DEBUGFS
+	RESET_STAT_INC(sc, type);
+#endif
+	set_bit(SC_OP_HW_RESET, &sc->sc_flags);
+	ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
+}
+
 void ath_reset_work(struct work_struct *work)
 {
 	struct ath_softc *sc = container_of(work, struct ath_softc, hw_reset_work);
@@ -1249,11 +1249,8 @@ void ath_hw_check(struct work_struct *work)
 	ath_dbg(common, RESET, "Possible baseband hang, busy=%d (try %d)\n",
 		busy, sc->hw_busy_count + 1);
 	if (busy >= 99) {
-		if (++sc->hw_busy_count >= 3) {
-			RESET_STAT_INC(sc, RESET_TYPE_BB_HANG);
-			ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
-		}
-
+		if (++sc->hw_busy_count >= 3)
+			ath9k_queue_reset(sc, RESET_TYPE_BB_HANG);
 	} else if (busy >= 0)
 		sc->hw_busy_count = 0;
 
@@ -1271,8 +1268,7 @@ static bool ath_hw_pll_rx_hang_check(struct ath_softc *sc, u32 pll_sqsum)
 		if (count == 3) {
 			/* Rx is hung for more than 500ms. Reset it */
 			ath_dbg(common, RESET, "Possible RX hang, resetting\n");
-			RESET_STAT_INC(sc, RESET_TYPE_PLL_HANG);
-			ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
+			ath9k_queue_reset(sc, RESET_TYPE_PLL_HANG);
 			count = 0;
 			return true;
 		}

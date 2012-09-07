@@ -439,6 +439,7 @@ void ath_start_rx_poll(struct ath_softc *sc, u32 nmsec);
 void ath_paprd_calibrate(struct work_struct *work);
 void ath_ani_calibrate(unsigned long data);
 void ath_start_ani(struct ath_common *common);
+void ath9k_queue_reset(struct ath_softc *sc, enum ath_reset_type type);
 
 /**********/
 /* BTCOEX */
@@ -609,7 +610,7 @@ enum sc_op_flags {
 	SC_OP_RXFLUSH,
 	SC_OP_ANI_RUN,
 	SC_OP_PRIM_STA_VIF,
-	SC_OP_BB_WATCHDOG,
+	SC_OP_HW_RESET,
 };
 
 /* Powersave flags */
@@ -649,7 +650,6 @@ struct ath_softc {
 	spinlock_t sc_serial_rw;
 	spinlock_t sc_pm_lock;
 	spinlock_t sc_pcu_lock;
-	spinlock_t sc_bb_lock;
 	struct mutex mutex;
 	struct work_struct paprd_work;
 	struct work_struct hw_check_work;
