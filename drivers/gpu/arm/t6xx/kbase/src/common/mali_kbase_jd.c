@@ -201,10 +201,6 @@ void kbase_jd_free_external_resources(kbase_jd_atom *katom)
 
 static void kbase_jd_post_external_resources(kbase_jd_atom * katom)
 {
-#ifdef CONFIG_DMA_SHARED_BUFFER
-	u32 res_no;
-#endif /* CONFIG_DMA_SHARED_BUFFER */
-
 	OSK_ASSERT(katom);
 	OSK_ASSERT(katom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES);
 
@@ -221,21 +217,26 @@ static void kbase_jd_post_external_resources(kbase_jd_atom * katom)
 	kbase_gpu_vm_lock(katom->kctx);
 #endif /* defined(CONFIG_DMA_SHARED_BUFFER) || defined(CONFIG_MALI_DEBUG) */
 #ifdef CONFIG_DMA_SHARED_BUFFER
-	res_no = katom->nr_extres;
-	while (res_no-- > 0)
+	/* only roll back if extres is non-NULL */
+	if (katom->extres)
 	{
-		base_external_resource * res;
-		kbase_va_region * reg;
-
-		res = &katom->extres[res_no];
-		reg = kbase_region_tracker_find_region_enclosing_address(katom->kctx, res->ext_resource & ~BASE_EXT_RES_ACCESS_EXCLUSIVE);
-		/* if reg wasn't found then it has been freed while the job ran */
-		if (reg)
+		u32 res_no;
+		res_no = katom->nr_extres;
+		while (res_no-- > 0)
 		{
-			if (1 == reg->imported_metadata.umm.current_mapping_usage_count--)
+			base_external_resource * res;
+			kbase_va_region * reg;
+
+			res = &katom->extres[res_no];
+			reg = kbase_region_tracker_find_region_enclosing_address(katom->kctx, res->ext_resource & ~BASE_EXT_RES_ACCESS_EXCLUSIVE);
+			/* if reg wasn't found then it has been freed while the job ran */
+			if (reg)
 			{
-				/* last job using */
-				kbase_jd_umm_unmap(katom->kctx, reg);
+				if (1 == reg->imported_metadata.umm.current_mapping_usage_count--)
+				{
+					/* last job using */
+					kbase_jd_umm_unmap(katom->kctx, reg);
+				}
 			}
 		}
 	}
@@ -480,6 +481,7 @@ early_err_out:
 	if (katom->extres)
 	{
 		osk_free(katom->extres);
+		katom->extres = NULL;
 	}
 #ifdef CONFIG_KDS
 	if (kds_resources)
