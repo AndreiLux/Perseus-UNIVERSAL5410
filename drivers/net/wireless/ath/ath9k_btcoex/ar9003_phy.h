@@ -630,6 +630,9 @@
 #define AR_PHY_65NM_CH0_BIAS2       0x160c4
 #define AR_PHY_65NM_CH0_BIAS4       0x160cc
 #define AR_PHY_65NM_CH0_RXTX4       0x1610c
+#define AR_PHY_65NM_CH1_RXTX4       0x1650c
+#define AR_PHY_65NM_CH2_RXTX4       0x1690c
+
 
 #define AR_CH0_TOP	(AR_SREV_9300(ah) ? 0x16288 : \
 				((AR_SREV_9462(ah) ? 0x1628c : 0x16280)))
@@ -862,6 +865,8 @@
 
 #define AR_PHY_65NM_CH0_RXTX4_THERM_ON          0x10000000
 #define AR_PHY_65NM_CH0_RXTX4_THERM_ON_S        28
+#define AR_PHY_65NM_CH0_RXTX4_THERM_ON_OVR      0x20000000
+#define AR_PHY_65NM_CH0_RXTX4_THERM_ON_OVR_S    29
 
 /*
  * Channel 1 Register Map
