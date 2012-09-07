@@ -2271,6 +2271,7 @@ static void ath_tx_complete_poll_work(struct work_struct *work)
 			"tx hung, resetting the chip\n");
 		RESET_STAT_INC(sc, RESET_TYPE_TX_HANG);
 		ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
+		return;
 	}
 
 	ieee80211_queue_delayed_work(sc->hw, &sc->tx_complete_work,

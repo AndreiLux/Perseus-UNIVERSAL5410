@@ -1257,7 +1257,7 @@ out:
 	ath9k_ps_restore(sc);
 }
 
-static void ath_hw_pll_rx_hang_check(struct ath_softc *sc, u32 pll_sqsum)
+static bool ath_hw_pll_rx_hang_check(struct ath_softc *sc, u32 pll_sqsum)
 {
 	static int count;
 	struct ath_common *common = ath9k_hw_common(sc->sc_ah);
@@ -1270,9 +1270,12 @@ static void ath_hw_pll_rx_hang_check(struct ath_softc *sc, u32 pll_sqsum)
 			RESET_STAT_INC(sc, RESET_TYPE_PLL_HANG);
 			ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
 			count = 0;
+			return true;
 		}
 	} else
 		count = 0;
+
+	return false;
 }
 
 void ath_hw_pll_work(struct work_struct *work)
@@ -1287,7 +1290,8 @@ void ath_hw_pll_work(struct work_struct *work)
 		pll_sqsum = ath9k_btcoex_ar9003_get_pll_sqsum_dvc(sc->sc_ah);
 		ath9k_ps_restore(sc);
 
-		ath_hw_pll_rx_hang_check(sc, pll_sqsum);
+		if (ath_hw_pll_rx_hang_check(sc, pll_sqsum))
+			return;
 
 		ieee80211_queue_delayed_work(sc->hw, &sc->hw_pll_work, HZ/5);
 	}
