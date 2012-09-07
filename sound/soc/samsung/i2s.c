@@ -718,6 +718,10 @@ static int i2s_startup(struct snd_pcm_substream *substream,
 
 	pm_runtime_ctl(i2s, true);
 
+	/* Check not already running. */
+	if (dai->playback_active || dai->capture_active)
+		return 0;
+
 	spin_lock_irqsave(&lock, flags);
 
 	i2s->mode |= DAI_OPENED;
@@ -744,6 +748,10 @@ static void i2s_shutdown(struct snd_pcm_substream *substream,
 	struct i2s_dai *i2s = to_info(dai);
 	struct i2s_dai *other = i2s->pri_dai ? : i2s->sec_dai;
 	unsigned long flags;
+
+	/* Check not still running. */
+	if (dai->playback_active || dai->capture_active)
+		return;
 
 	spin_lock_irqsave(&lock, flags);
 
