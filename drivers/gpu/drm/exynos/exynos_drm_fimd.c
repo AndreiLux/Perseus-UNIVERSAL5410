@@ -156,7 +156,7 @@ static int fimd_display_power_on(struct device *dev, int mode)
 		break;
 	default:
 		DRM_DEBUG_KMS("unspecified mode %d\n", mode);
-		break;
+		return -EINVAL;
 	}
 
 	fimd_power_on(ctx, enable);
@@ -783,9 +783,6 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable)
 	struct exynos_drm_fimd_pdata *pdata = dev->platform_data;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
-
-	if (enable != false && enable != true)
-		return -EINVAL;
 
 	if (enable) {
 		int ret;
