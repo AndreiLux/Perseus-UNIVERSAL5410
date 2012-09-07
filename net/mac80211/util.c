@@ -534,6 +534,9 @@ EXPORT_SYMBOL_GPL(ieee80211_iterate_active_interfaces_atomic);
  */
 static bool ieee80211_can_queue_work(struct ieee80211_local *local)
 {
+	if (local->quiescing)
+		return false;
+
 	if (WARN(local->suspended && !local->resuming,
 		 "queueing ieee80211 work while going to suspend\n"))
 		return false;
