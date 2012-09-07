@@ -307,13 +307,13 @@ static bool ath_complete_reset(struct ath_softc *sc, bool start)
 		if (test_bit(SC_OP_BEACONS, &sc->sc_flags)) {
 			if (ah->opmode == NL80211_IFTYPE_AP) {
 				ath9k_set_beacon(sc);
-			} else if (ah->opmode == NL80211_IFTYPE_ADHOC) {
-				sc->ps_flags |= PS_BEACON_SYNC |
-						PS_WAIT_FOR_BEACON;
-				ath9k_set_beacon(sc);
 			} else {
+				spin_lock_irqsave(&sc->sc_pm_lock, flags);
 				sc->ps_flags |= PS_BEACON_SYNC |
 						PS_WAIT_FOR_BEACON;
+				spin_unlock_irqrestore(&sc->sc_pm_lock, flags);
+				if (ah->opmode == NL80211_IFTYPE_ADHOC)
+					ath9k_set_beacon(sc);
 			}
 		}
 
@@ -974,7 +974,7 @@ void ath9k_tasklet(unsigned long data)
 	struct ath_softc *sc = (struct ath_softc *)data;
 	struct ath_hw *ah = sc->sc_ah;
 	struct ath_common *common = ath9k_hw_common(ah);
-
+	unsigned long flags;
 	u32 status = sc->intrstatus;
 	u32 rxmask;
 
@@ -1011,6 +1011,7 @@ void ath9k_tasklet(unsigned long data)
 	    !ath9k_btcoex_ath9k_hw_check_alive(ah))
 		ieee80211_queue_work(sc->hw, &sc->hw_check_work);
 
+	spin_lock_irqsave(&sc->sc_pm_lock, flags);
 	if ((status & ATH9K_INT_TSFOOR) && sc->ps_enabled) {
 		/*
 		 * TSF sync does not look correct; remain awake to sync with
@@ -1019,6 +1020,7 @@ void ath9k_tasklet(unsigned long data)
 		ath_dbg(common, PS, "TSFOOR - Sync with next Beacon\n");
 		sc->ps_flags |= PS_WAIT_FOR_BEACON | PS_BEACON_SYNC;
 	}
+	spin_unlock_irqrestore(&sc->sc_pm_lock, flags);
 
 	if (ah->caps.hw_caps & ATH9K_HW_CAP_EDMA)
 		rxmask = (ATH9K_INT_RXHP | ATH9K_INT_RXLP | ATH9K_INT_RXEOL |
@@ -1154,8 +1156,10 @@ irqreturn_t ath_isr(int irq, void *dev)
 			/* Clear RxAbort bit so that we can
 			 * receive frames */
 			ath9k_setpower(sc, ATH9K_PM_AWAKE);
+			spin_lock(&sc->sc_pm_lock);
 			ath9k_btcoex_ath9k_hw_setrxabort(sc->sc_ah, 0);
 			sc->ps_flags |= PS_WAIT_FOR_BEACON;
+			spin_unlock(&sc->sc_pm_lock);
 		}
 
 chip_reset:
@@ -1401,6 +1405,7 @@ static void ath9k_tx(struct ieee80211_hw *hw, struct sk_buff *skb)
 	struct ath_common *common = ath9k_hw_common(sc->sc_ah);
 	struct ath_tx_control txctl;
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
+	unsigned long flags;
 
 	if (sc->ps_enabled) {
 		/*
@@ -1423,6 +1428,7 @@ static void ath9k_tx(struct ieee80211_hw *hw, struct sk_buff *skb)
 		 * completed and if needed, also for RX of buffered frames.
 		 */
 		ath9k_ps_wakeup(sc);
+		spin_lock_irqsave(&sc->sc_pm_lock, flags);
 		if (!(sc->sc_ah->caps.hw_caps & ATH9K_HW_CAP_AUTOSLEEP))
 			ath9k_btcoex_ath9k_hw_setrxabort(sc->sc_ah, 0);
 		if (ieee80211_is_pspoll(hdr->frame_control)) {
@@ -1438,6 +1444,7 @@ static void ath9k_tx(struct ieee80211_hw *hw, struct sk_buff *skb)
 		 * the ps_flags bit is cleared. We are just dropping
 		 * the ps_usecount here.
 		 */
+		spin_unlock_irqrestore(&sc->sc_pm_lock, flags);
 		ath9k_ps_restore(sc);
 	}
 
