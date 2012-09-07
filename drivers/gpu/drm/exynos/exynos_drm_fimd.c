@@ -781,6 +781,7 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable)
 	struct exynos_drm_subdrv *subdrv = &ctx->subdrv;
 	struct device *dev = subdrv->dev;
 	struct exynos_drm_fimd_pdata *pdata = dev->platform_data;
+	int i;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
@@ -808,6 +809,14 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable)
 		if (pdata->panel_type == DP_LCD)
 			writel(MIE_CLK_ENABLE, ctx->regs + DPCLKCON);
 	} else {
+		/*
+		 * We need to make sure that all windows are disabled before we
+		 * suspend that connector. Otherwise we might try to scan from
+		 * a destroyed buffer later.
+		 */
+		for (i = 0; i < WINDOWS_NR; i++)
+			fimd_win_disable(dev, i);
+
 		clk_disable(ctx->lcd_clk);
 		clk_disable(ctx->bus_clk);
 
