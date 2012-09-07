@@ -19,10 +19,14 @@
 #include <linux/slab.h>
 #include <linux/delay.h>
 
+#include <mach/exynos5_bus.h>
 #include <mach/map.h>
 
 #include "exynos_ppmu.h"
 #include "exynos5_ppmu.h"
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/memory_bus.h>
 
 #define FIXED_POINT_OFFSET 8
 #define FIXED_POINT_MASK ((1 << FIXED_POINT_OFFSET) - 1)
@@ -69,6 +73,8 @@ static struct exynos_ppmu ppmu[PPMU_END] = {
 		.hw_base = S5P_VA_PPMU_CPU,
 	},
 };
+
+static struct exynos5_ppmu_handle *exynos5_ppmu_trace_handle;
 
 static void exynos5_ppmu_reset(struct exynos_ppmu *ppmu)
 {
@@ -260,6 +266,37 @@ struct exynos5_ppmu_handle *exynos5_ppmu_get(void)
 	return handle;
 }
 
+void exynos5_ppmu_trace(void)
+{
+	unsigned long flags;
+	int i;
+
+	spin_lock_irqsave(&exynos5_ppmu_lock, flags);
+
+	exynos5_ppmu_update();
+
+	for (i = 0; i < PPMU_END; i++) {
+		struct exynos_ppmu *ppmu = &exynos5_ppmu_trace_handle->ppmu[i];
+		if (!ppmu->ccnt_overflow)
+			trace_memory_bus_usage(exynos5_ppmu_name[i],
+				ppmu->count[PPMU_PMNCNT3] * 16ULL,
+				ppmu->count[PPMU_PMNCNT0] * 16ULL,
+				ppmu->count[PPMU_PMCCNT1] * 16ULL,
+				ppmu->ccnt,
+				ppmu->ns);
+	}
+
+	exynos5_ppmu_handle_clear(exynos5_ppmu_trace_handle);
+
+	spin_unlock_irqrestore(&exynos5_ppmu_lock, flags);
+}
+
+static int exynos5_ppmu_trace_init(void)
+{
+	exynos5_ppmu_trace_handle = exynos5_ppmu_get();
+	return 0;
+}
+late_initcall(exynos5_ppmu_trace_init);
 
 static void exynos5_ppmu_debug_compute(struct exynos_ppmu *ppmu,
 	enum ppmu_counter i, u32 *sat, u32 *freq, u32 *bw)
