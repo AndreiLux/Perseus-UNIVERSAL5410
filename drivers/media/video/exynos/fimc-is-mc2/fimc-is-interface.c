@@ -245,13 +245,37 @@ static int test_state(struct fimc_is_interface *this,
 }
 
 static int wait_state(struct fimc_is_interface *this,
-	enum fimc_is_interface_state state)
+	enum fimc_is_interface_state state, u32 timeout)
 {
 	int ret = 0;
 
 	ret = wait_event_timeout(this->wait_queue,
-			test_state(this, state),
-			FIMC_IS_COMMAND_TIMEOUT);
+		test_state(this, state), timeout);
+
+	if (ret)
+		ret = 0;
+	else {
+		err("timeout");
+		ret = -ETIME;
+	}
+
+	return ret;
+}
+
+static int wait_initstate(struct fimc_is_interface *this,
+	enum fimc_is_interface_state state, u32 timeout)
+{
+	int ret = 0;
+
+	ret = wait_event_timeout(this->init_wait_queue,
+		test_state(this, state), timeout);
+
+	if (ret)
+		ret = 0;
+	else {
+		err("timeout");
+		ret = -ETIME;
+	}
 
 	return ret;
 }
@@ -355,79 +379,75 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 		break;
 	}
 
-	if (send_cmd) {
-		enter_process_barrier(itf);
-
-		ret = waiting_is_ready(itf);
-		if (ret) {
-			err("waiting for ready is fail");
-			ret = -EBUSY;
-			exit_process_barrier(itf);
-			goto exit;
-		}
-
-		set_state(itf, IS_IF_STATE_BUSY);
-		itf->com_regs->hicmd = msg->command;
-		itf->com_regs->hic_sensorid = msg->instance;
-		itf->com_regs->hic_param1 = msg->parameter1;
-		itf->com_regs->hic_param2 = msg->parameter2;
-		itf->com_regs->hic_param3 = msg->parameter3;
-		itf->com_regs->hic_param4 = msg->parameter4;
-		send_interrupt(itf);
-
-		exit_process_barrier(itf);
-
-		if (block_io) {
-			ret = wait_state(itf, IS_IF_STATE_IDLE);
-			if (!ret) {
-				err("%d command is timeout", msg->command);
-				ret = -ETIME;
-				goto exit;
-			}
-
-			if (itf->reply.command == ISR_DONE) {
-				ret = 0;
-				switch (msg->command) {
-				case HIC_STREAM_ON:
-					itf->streaming =
-						IS_IF_STREAMING_ON;
-					break;
-				case HIC_STREAM_OFF:
-					itf->streaming =
-						IS_IF_STREAMING_OFF;
-					break;
-				case HIC_PROCESS_START:
-					itf->processing =
-						IS_IF_PROCESSING_ON;
-					break;
-				case HIC_PROCESS_STOP:
-					itf->processing =
-						IS_IF_PROCESSING_OFF;
-					break;
-				case HIC_POWER_DOWN:
-					itf->pdown_ready =
-						IS_IF_POWER_DOWN_READY;
-					break;
-				case HIC_OPEN_SENSOR:
-					if (itf->reply.parameter1 ==
-						HIC_POWER_DOWN) {
-						err("firmware power down");
-						itf->pdown_ready =
-							IS_IF_POWER_DOWN_READY;
-						ret = -ECANCELED;
-						goto exit;
-					} else
-						itf->pdown_ready =
-							IS_IF_POWER_DOWN_NREADY;
-					break;
-				default:
-					break;
-				}
-			} else
-				ret = -EINVAL;
-		}
-	} else
+	if (!send_cmd) {
 		dbg_interface("skipped\n");
+		goto exit;
+	}
+
+	enter_process_barrier(itf);
+
+	ret = waiting_is_ready(itf);
+	if (ret) {
+		err("waiting for ready is fail");
+		ret = -EBUSY;
+		exit_process_barrier(itf);
+		goto exit;
+	}
+
+	set_state(itf, IS_IF_STATE_BUSY);
+	itf->com_regs->hicmd = msg->command;
+	itf->com_regs->hic_sensorid = msg->instance;
+	itf->com_regs->hic_param1 = msg->parameter1;
+	itf->com_regs->hic_param2 = msg->parameter2;
+	itf->com_regs->hic_param3 = msg->parameter3;
+	itf->com_regs->hic_param4 = msg->parameter4;
+	send_interrupt(itf);
+
+	exit_process_barrier(itf);
+
+	if (!block_io)
+		goto exit;
+
+	ret = wait_state(itf, IS_IF_STATE_IDLE, FIMC_IS_COMMAND_TIMEOUT);
+	if (ret) {
+		err("%d command is timeout", msg->command);
+		ret = -ETIME;
+		goto exit;
+	}
+
+	if (itf->reply.command == ISR_DONE) {
+		switch (msg->command) {
+		case HIC_STREAM_ON:
+			itf->streaming = IS_IF_STREAMING_ON;
+			break;
+		case HIC_STREAM_OFF:
+			itf->streaming = IS_IF_STREAMING_OFF;
+			break;
+		case HIC_PROCESS_START:
+			itf->processing = IS_IF_PROCESSING_ON;
+			break;
+		case HIC_PROCESS_STOP:
+			itf->processing = IS_IF_PROCESSING_OFF;
+			break;
+		case HIC_POWER_DOWN:
+			itf->pdown_ready = IS_IF_POWER_DOWN_READY;
+			break;
+		case HIC_OPEN_SENSOR:
+			if (itf->reply.parameter1 == HIC_POWER_DOWN) {
+				err("firmware power down");
+				itf->pdown_ready = IS_IF_POWER_DOWN_READY;
+				ret = -ECANCELED;
+				goto exit;
+			} else
+				itf->pdown_ready = IS_IF_POWER_DOWN_NREADY;
+			break;
+		default:
+			break;
+		}
+	} else {
+		err("ISR_NDONE is occured");
+		ret = -EINVAL;
+	}
 
 exit:
 	exit_request_barrier(itf);
@@ -577,11 +597,9 @@ static void wq_func_general(struct work_struct *data)
 		msg = &work->msg;
 		switch (msg->command) {
 		case IHC_GET_SENSOR_NUMBER:
-			dbg_interface("version : %d\n", msg->parameter1);
-			fimc_is_hw_enum(itf, 1);
-			exit_request_barrier(itf);
-
+			printk(KERN_INFO "IS version : %d\n", msg->parameter1);
 			set_state(itf, IS_IF_STATE_IDLE);
+			wake_up(&itf->init_wait_queue);
 			break;
 		case ISR_DONE:
 			switch (msg->parameter1) {
@@ -1130,6 +1148,7 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 	init_request_barrier(this);
 	init_process_barrier(this);
 	spin_lock_init(&this->slock_state);
+	init_waitqueue_head(&this->init_wait_queue);
 	init_waitqueue_head(&this->wait_queue);
 
 	INIT_WORK(&this->work_queue[INTR_GENERAL], wq_func_general);
@@ -1177,13 +1196,8 @@ int fimc_is_interface_open(struct fimc_is_interface *this)
 	this->streaming = IS_IF_STREAMING_INIT;
 	this->processing = IS_IF_PROCESSING_INIT;
 	this->pdown_ready = IS_IF_POWER_DOWN_READY;
-	init_request_barrier(this);
-	init_process_barrier(this);
-	init_waitqueue_head(&this->wait_queue);
-	enter_request_barrier(this);
-
 	this->fcount = 0;
-	set_state(this, IS_IF_STATE_IDLE);
+	set_state(this, IS_IF_STATE_BUSY);
 
 	return ret;
 }
@@ -1197,23 +1211,30 @@ int fimc_is_interface_close(struct fimc_is_interface *this)
 	return ret;
 }
 
-int fimc_is_hw_enum(struct fimc_is_interface *this,
-	u32 instances)
+int fimc_is_hw_enum(struct fimc_is_interface *this)
 {
+	int ret = 0;
 	struct fimc_is_msg msg;
 
 	dbg_interface("enum(%d)\n", instances);
+
+	ret = wait_initstate(this, IS_IF_STATE_IDLE, FIMC_IS_STARTUP_TIMEOUT);
+	if (ret) {
+		err("enum time out");
+		ret = -ETIME;
+		goto exit;
+	}
 
 	msg.id = 0;
 	msg.command = ISR_DONE;
 	msg.instance = 0;
 	msg.parameter1 = IHC_GET_SENSOR_NUMBER;
-	msg.parameter2 = instances;
+	/* this mean sensor numbers */
+	msg.parameter2 = 1;
 	msg.parameter3 = 0;
 	msg.parameter4 = 0;
 
 	waiting_is_ready(this);
-	set_state(this, IS_IF_STATE_BUSY);
 	this->com_regs->hicmd = msg.command;
 	this->com_regs->hic_sensorid = msg.instance;
 	this->com_regs->hic_param1 = msg.parameter1;
@@ -1222,7 +1243,8 @@ int fimc_is_hw_enum(struct fimc_is_interface *this,
 	this->com_regs->hic_param4 = msg.parameter4;
 	send_interrupt(this);
 
-	return 0;
+exit:
+	return ret;
 }
 
 int fimc_is_hw_saddr(struct fimc_is_interface *this,

@@ -82,7 +82,6 @@ struct fimc_is_work_list {
 	u32				work_free_cnt;
 	struct list_head		work_request_head;
 	u32				work_request_cnt;
-
 	wait_queue_head_t		wait_queue;
 };
 
@@ -96,6 +95,7 @@ struct fimc_is_interface {
 	spinlock_t			process_barrier;
 	struct mutex			request_barrier;
 
+	wait_queue_head_t		init_wait_queue;
 	wait_queue_head_t		wait_queue;
 	struct fimc_is_msg		reply;
 
@@ -137,8 +137,7 @@ int fimc_is_interface_close(struct fimc_is_interface *this);
 int print_fre_work_list(struct fimc_is_work_list *this);
 int print_req_work_list(struct fimc_is_work_list *this);
 
-int fimc_is_hw_enum(struct fimc_is_interface *interface,
-	u32 instances);
+int fimc_is_hw_enum(struct fimc_is_interface *this);
 int fimc_is_hw_open(struct fimc_is_interface *this,
 	u32 instance, u32 sensor, u32 channel, u32 ext,
 	u32 *mwidth, u32 *mheight);

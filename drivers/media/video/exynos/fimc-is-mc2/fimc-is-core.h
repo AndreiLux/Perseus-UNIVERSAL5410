@@ -55,6 +55,7 @@
 #define FIMC_IS_VIDEO_SCALERP_NAME		"exynos5-fimc-is2-scalerp"
 
 #define FIMC_IS_COMMAND_TIMEOUT			(3*HZ)
+#define FIMC_IS_STARTUP_TIMEOUT			(3*HZ)
 #define FIMC_IS_SHUTDOWN_TIMEOUT		(10*HZ)
 #define FIMC_IS_FLITE_STOP_TIMEOUT		(3*HZ)
 

@@ -562,14 +562,12 @@ static int testnset_state(struct fimc_is_device_ischain *this,
 
 	if (test_bit(state, &this->state)) {
 		ret = -EINVAL;
-		mutex_unlock(&this->mutex_state);
 		goto exit;
 	}
 	set_bit(state, &this->state);
 
-	mutex_unlock(&this->mutex_state);
-
 exit:
+	mutex_unlock(&this->mutex_state);
 	return ret;
 }
 
@@ -582,14 +580,12 @@ static int testnclr_state(struct fimc_is_device_ischain *this,
 
 	if (!test_bit(state, &this->state)) {
 		ret = -EINVAL;
-		mutex_unlock(&this->mutex_state);
 		goto exit;
 	}
 	clear_bit(state, &this->state);
 
-	mutex_unlock(&this->mutex_state);
-
 exit:
+	mutex_unlock(&this->mutex_state);
 	return ret;
 }
 
@@ -602,14 +598,12 @@ static int testnset_devstate(struct fimc_is_ischain_dev *this,
 
 	if (test_bit(state, &this->state)) {
 		ret = -EINVAL;
-		mutex_unlock(&this->mutex_state);
 		goto exit;
 	}
 	set_bit(state, &this->state);
 
-	mutex_unlock(&this->mutex_state);
-
 exit:
+	mutex_unlock(&this->mutex_state);
 	return ret;
 }
 
@@ -622,14 +616,12 @@ static int testnclr_devstate(struct fimc_is_ischain_dev *this,
 
 	if (!test_bit(state, &this->state)) {
 		ret = -EINVAL;
-		mutex_unlock(&this->mutex_state);
 		goto exit;
 	}
 	clear_bit(state, &this->state);
 
-	mutex_unlock(&this->mutex_state);
-
 exit:
+	mutex_unlock(&this->mutex_state);
 	return ret;
 }
 
@@ -801,7 +793,8 @@ static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *this)
 	set_fs(KERNEL_DS);
 	fp = filp_open(FIMC_IS_FW_SDCARD, O_RDONLY, 0);
 	if (IS_ERR(fp)) {
-		err("failed to open %s\n", FIMC_IS_FW_SDCARD);
+		printk(KERN_INFO "firmware is not located at %s\n",
+			FIMC_IS_FW_SDCARD);
 		goto request_fw;
 	}
 	fw_requested = 0;
@@ -899,7 +892,8 @@ static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
 		FIMC_IS_SETFILE_SDCARD_PATH, setfile_name);
 	fp = filp_open(setfile_path, O_RDONLY, 0);
 	if (IS_ERR(fp)) {
-		err("failed to open %s\n", setfile_path);
+		printk(KERN_INFO "setfile is not located at %s\n",
+			setfile_path);
 		goto request_fw;
 	}
 	fw_requested = 0;
@@ -1313,6 +1307,19 @@ static int fimc_is_itf_f_param(struct fimc_is_device_ischain *this)
 		);
 
 	ret = fimc_is_hw_f_param(this->interface, this->instance);
+
+	return ret;
+}
+
+static int fimc_is_itf_enum(struct fimc_is_device_ischain *this)
+{
+	int ret = 0;
+
+	dbg_ischain("%s()\n", __func__);
+
+	ret = fimc_is_hw_enum(this->interface);
+	if (ret)
+		err("fimc_is_itf_enum is fail(%d)", ret);
 
 	return ret;
 }
@@ -1872,6 +1879,12 @@ int fimc_is_ischain_init(struct fimc_is_device_ischain *this,
 
 	dbg_ischain("%s(input : %d, channel : %d, Af : %d)\n",
 		__func__, input, channel, ext->actuator_con.product_name);
+
+	ret = fimc_is_itf_enum(this);
+	if (ret) {
+		err("enum fail\n");
+		goto exit;
+	}
 
 	memcpy(&this->is_region->shared[0], ext,
 		sizeof(struct sensor_open_extended));

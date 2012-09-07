@@ -648,8 +648,8 @@ int fimc_is_runtime_resume(struct device *dev)
 	}
 
 	/* 3. Sensor power on */
-	printk(KERN_INFO "sensor channel : %d id : %d\n",
-		sensor_info->flite_ch, sensor->id_position);
+	/* printk(KERN_INFO "sensor channel : %d id : %d\n",
+		sensor_info->flite_ch, sensor->id_position); */
 	if (core->pdata->sensor_power_on) {
 		core->pdata->sensor_power_on(core->pdev,
 					sensor_info->flite_ch);

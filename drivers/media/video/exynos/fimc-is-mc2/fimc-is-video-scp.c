@@ -340,13 +340,11 @@ static int fimc_is_scalerp_video_g_ctrl(struct file *file, void *priv,
 					struct v4l2_control *ctrl)
 {
 	int ret = 0;
-	unsigned long flags;
 	struct fimc_is_video_scp *video = file->private_data;
 	struct fimc_is_video_common *common = &video->common;
 	struct fimc_is_device_ischain *ischain = common->device;
 	struct fimc_is_ischain_dev *scp = &ischain->scp;
 	struct fimc_is_framemgr *framemgr = &scp->framemgr;
-	struct fimc_is_frame_shot *frame;
 
 	dbg_scp("%s\n", __func__);
 
