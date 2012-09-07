@@ -427,6 +427,10 @@
 		};
 	};
 
+	hdmi {
+		hpd-gpio = <&gpx3 7 3 0 3>;
+	};
+
 	ehci {
 		samsung,vbus-gpio = <&gpx1 1 1 3 3>;
 	};
