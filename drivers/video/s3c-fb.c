@@ -37,6 +37,7 @@
 #include <plat/map-base.h>
 #endif
 
+#include <mach/exynos5_bus.h>
 #include <mach/map.h>
 #include <plat/regs-fb-v4.h>
 #include <plat/fb.h>
@@ -3133,8 +3134,10 @@ static int s3c_fb_wait_for_vsync_thread(void *data)
 			sfb->vsync_info.active,
 			msecs_to_jiffies(VSYNC_TIMEOUT_MSEC));
 
-		if (ret > 0)
+		if (ret > 0) {
+			exynos5_ppmu_trace();
 			sysfs_notify(&sfb->dev->kobj, NULL, "vsync");
+		}
 	}
 
 	return 0;
