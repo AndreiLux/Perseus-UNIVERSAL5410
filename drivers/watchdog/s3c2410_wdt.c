@@ -78,6 +78,7 @@ static struct device    *wdt_dev;	/* platform device attached to */
 static struct resource	*wdt_mem;
 static struct resource	*wdt_irq;
 static struct clk	*wdt_clock;
+static unsigned long	 wdt_clockrate;
 static void __iomem	*wdt_base;
 static unsigned int	 wdt_count;
 static DEFINE_SPINLOCK(wdt_lock);
@@ -156,15 +157,17 @@ static inline int s3c2410wdt_is_running(void)
 
 static int s3c2410wdt_set_heartbeat(struct watchdog_device *wdd, unsigned timeout)
 {
-	unsigned long freq = clk_get_rate(wdt_clock);
+	unsigned long freq;
 	unsigned int count;
 	unsigned int divisor = 1;
 	unsigned long wtcon;
 
+	wdt_clockrate = clk_get_rate(wdt_clock);
+
 	if (timeout < 1)
 		return -EINVAL;
 
-	freq /= 128;
+	freq = wdt_clockrate / 128;
 	count = timeout * freq;
 
 	DBG("%s: count=%d, timeout=%d, freq=%lu\n",
@@ -246,6 +249,14 @@ static int s3c2410wdt_cpufreq_transition(struct notifier_block *nb,
 	int ret;
 
 	if (!s3c2410wdt_is_running())
+		goto done;
+
+	/*
+	 * Avoid excessive petting and disabling/enabling if the clock rate
+	 * isn't actually changing.  In modern SoCs the watchdog is parented
+	 * on a clock that never adjusts
+	 */
+	if (clk_get_rate(wdt_clock) == wdt_clockrate)
 		goto done;
 
 	if (val == CPUFREQ_PRECHANGE) {
