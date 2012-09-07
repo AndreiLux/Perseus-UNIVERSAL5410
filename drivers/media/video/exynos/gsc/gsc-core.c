@@ -1505,18 +1505,18 @@ struct gsc_pix_min gsc_v_min = {
 		.org_h			= 32,
 		.real_w			= 64,
 		.real_h			= 32,
-		.target_rot_dis_w	= 64,
-		.target_rot_dis_h	= 32,
-		.target_rot_en_w	= 32,
-		.target_rot_en_h	= 16,
+		.target_rot_dis_w	= 32,
+		.target_rot_dis_h	= 16,
+		.target_rot_en_w	= 16,
+		.target_rot_en_h	= 8,
 };
 
 struct gsc_pix_align gsc_v_align = {
 		.org_h			= 16,
 		.org_w			= 16,
 		.offset_h		= 2,
-		.real_w			= 2,
-		.real_h			= 2,
+		.real_w			= 1,
+		.real_h			= 1,
 		.target_w		= 2,
 		.target_h		= 2,
 };
