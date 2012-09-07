@@ -607,7 +607,8 @@ int fimc_is_runtime_suspend(struct device *dev)
 		core->pdata->clk_off(core->pdev, sensor_info->flite_ch);
 	} else {
 		err("failed to clock on\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto end;
 	}
 
 	if (core->pdata->sensor_power_off) {
@@ -615,9 +616,11 @@ int fimc_is_runtime_suspend(struct device *dev)
 					sensor_info->flite_ch);
 	} else {
 		err("failed to sensor_power_off\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto end;
 	}
-
+end:
+	pm_relax(dev);
 	return ret;
 }
 
@@ -629,8 +632,8 @@ int fimc_is_runtime_resume(struct device *dev)
 	struct fimc_is_device_sensor *sensor = &core->sensor;
 	struct fimc_is_enum_sensor *sensor_info
 		= &sensor->enum_sensor[sensor->id_position];
-	int ret = 0;
 
+	pm_stay_awake(dev);
 	printk(KERN_INFO "FIMC_IS runtime resume\n");
 
 	/* 1. Enable MIPI */
@@ -641,7 +644,7 @@ int fimc_is_runtime_resume(struct device *dev)
 		core->pdata->clk_cfg(core->pdev);
 	} else {
 		err("failed to config clock\n");
-		return -EINVAL;
+		goto err;
 	}
 
 	/* 3. Sensor power on */
@@ -652,7 +655,7 @@ int fimc_is_runtime_resume(struct device *dev)
 					sensor_info->flite_ch);
 	} else {
 		err("failed to sensor_power_on\n");
-		return -EINVAL;
+		goto err;
 	}
 
 	/* 4. Clock on */
@@ -660,7 +663,7 @@ int fimc_is_runtime_resume(struct device *dev)
 		core->pdata->clk_on(core->pdev, sensor_info->flite_ch);
 	} else {
 		err("failed to clock on\n");
-		return -EINVAL;
+		goto err;
 	}
 
 	/* 5. High clock setting */
@@ -668,14 +671,18 @@ int fimc_is_runtime_resume(struct device *dev)
 		core->pdata->clk_cfg(core->pdev);
 	} else {
 		err("failed to config clock\n");
-		return -EINVAL;
+		goto err;
 	}
 
 #if defined(CONFIG_VIDEOBUF2_ION)
 	if (core->mem.alloc_ctx)
 		vb2_ion_attach_iommu(core->mem.alloc_ctx);
 #endif
-	return ret;
+	return 0;
+
+err:
+	pm_relax(dev);
+	return -EINVAL;
 }
 
 static int fimc_is_get_md_callback(struct device *dev, void *p)
@@ -725,6 +732,7 @@ static int fimc_is_probe(struct platform_device *pdev)
 	core->pdev = pdev;
 	core->pdata = pdev->dev.platform_data;
 	core->id = pdev->id;
+	device_init_wakeup(&pdev->dev, true);
 
 	mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!mem_res) {
