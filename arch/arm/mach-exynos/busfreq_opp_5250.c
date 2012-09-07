@@ -29,6 +29,9 @@
 
 #include <plat/clock.h>
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/exynos_busfreq.h>
+
 #define MIF_MAX_THRESHOLD	13
 #define INT_MAX_THRESHOLD	8
 #define MIF_IDLE_THRESHOLD	3
@@ -529,6 +532,9 @@ static void exynos5250_mif_div_change(struct busfreq_data *data, int div_index)
 	(clkdiv_acp[div_index][1] << EXYNOS5_CLKDIV_SYSLFT_PCLK_SYSLFT_SHIFT));
 
 	__raw_writel(tmp, EXYNOS5_CLKDIV_SYSLFT);
+
+	trace_exynos_busfreq_target_mif(
+		exynos5_busfreq_table_mif[div_index].mem_clk);
 }
 
 static void exynos5250_target_for_mif(struct busfreq_data *data, int div_index)
@@ -623,8 +629,9 @@ static void exynos5250_target_for_int(struct busfreq_data *data, int div_index)
 	do {
 		tmp = __raw_readl(EXYNOS5_CLKDIV_STAT_R1X);
 	} while (tmp & 0x10);
-	printk(KERN_INFO "INT changed to %dKHz\n",
-			exynos5_busfreq_table_int[div_index].mem_clk);
+
+	trace_exynos_busfreq_target_int(
+		exynos5_busfreq_table_int[div_index].mem_clk);
 }
 
 static void exynos5250_target(struct busfreq_data *data, enum ppmu_type type,
