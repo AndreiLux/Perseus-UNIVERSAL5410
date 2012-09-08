@@ -728,6 +728,7 @@ static int fimc_is_ishcain_initmem(struct fimc_is_device_ischain *this)
 	return 0;
 }
 
+#ifndef RESERVED_MEM
 static int fimc_is_ishcain_deinitmem(struct fimc_is_device_ischain *this)
 {
 	int ret = 0;
@@ -737,6 +738,7 @@ static int fimc_is_ishcain_deinitmem(struct fimc_is_device_ischain *this)
 
 	return ret;
 }
+#endif
 
 static void fimc_is_ischain_cache_flush(struct fimc_is_device_ischain *this,
 	u32 offset, u32 size)
@@ -973,10 +975,18 @@ static int fimc_is_ischain_loadcalb(struct fimc_is_device_ischain *this,
 	struct fimc_is_enum_sensor *active_sensor)
 {
 	int ret = 0;
-	char buf[FIMC_IS_MAX_CAL_SIZE];
+	char *buf;
 	char *cal_ptr;
 
+	buf = kmalloc(FIMC_IS_MAX_CAL_SIZE, GFP_KERNEL);
+	if (!buf) {
+		err("kmalloc fail");
+		ret = -ENOMEM;
+		goto exit;
+	}
+
 	memset(buf, 0xff, FIMC_IS_MAX_CAL_SIZE);
+
 	ret = fimc_is_spi_read(buf, FIMC_IS_MAX_CAL_SIZE);
 	if (ret < 0) {
 		err("failed to fimc_is_spi_read (%d)\n", ret);
@@ -1009,6 +1019,7 @@ static int fimc_is_ischain_loadcalb(struct fimc_is_device_ischain *this,
 				FIMC_IS_MAX_CAL_SIZE + 1);
 
 exit:
+	kfree(buf);
 	return ret;
 }
 
@@ -1111,6 +1122,16 @@ int fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 
 	return ret;
 }
+
+#ifdef FW_DEUBG
+static int fimc_is_itf_print(struct fimc_is_device_ischain *this,
+	u32 indexes, u32 lindex, u32 hindex)
+{
+	fimc_is_hw_print(this->interface);
+	return 0;
+}
+#endif
+
 
 static int fimc_is_itf_s_param(struct fimc_is_device_ischain *this,
 	u32 indexes, u32 lindex, u32 hindex)
@@ -1727,10 +1748,9 @@ exit:
 }
 
 int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
-	struct fimc_is_video_common *video, struct fimc_is_interface *itf)
+	struct fimc_is_video_common *video)
 {
 	int ret = 0;
-	struct fimc_is_ischain_dev *scc, *scp;
 
 	if (testnset_state(this, FIMC_IS_ISCHAIN_OPEN)) {
 		err("already open");
@@ -1743,9 +1763,6 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
 	clear_bit(FIMC_IS_ISCHAIN_LOADED, &this->state);
 	clear_bit(FIMC_IS_ISCHAIN_POWER_ON, &this->state);
 	clear_bit(FIMC_IS_ISCHAIN_RUN, &this->state);
-
-	scc = &this->scc;
-	scp = &this->scp;
 
 #ifndef RESERVED_MEM
 	/* 1. init memory */
@@ -1782,9 +1799,8 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
 	this->setfile = 0;
 	this->debug_cnt = 0;
 
-	/* isp open */
-	fimc_is_interface_open(itf);
-	fimc_is_frame_open(this->framemgr, NUM_ISP_DMA_BUF);
+	/* frame manager open */
+	fimc_is_interface_open(this->interface);
 
 	/* other device open */
 	fimc_is_ischain_dev_open(&this->isp, video);
@@ -1844,24 +1860,25 @@ int fimc_is_ischain_close(struct fimc_is_device_ischain *this)
 	if (ret)
 		err("power down is failed, retry forcelly\n");
 
-	bts_change_bus_traffic(&this->pdev->dev, BTS_DECREASE_BW);
-
-	/* 3. Power down */
-	ret = fimc_is_ischain_power(this, 0);
-	if (ret)
-		err("fimc_is_ischain_power is failed\n");
-
-	/* 5. Enable AFTR cpu low power idle enter */
-	pm_qos_remove_request(&pm_qos_req_cpu);
-	pm_qos_remove_request(&pm_qos_req_mem);
-
-	/* 5. Deinit variables */
+	/* 3. Deinit variables */
 	ret = fimc_is_interface_close(this->interface);
 	if (ret)
 		err("fimc_is_interface_close is failed\n");
 
+	/* 4. bus traffic low */
+	bts_change_bus_traffic(&this->pdev->dev, BTS_DECREASE_BW);
+
+	/* 5. Power down */
+	ret = fimc_is_ischain_power(this, 0);
+	if (ret)
+		err("fimc_is_ischain_power is failed\n");
+
+	/* 6. Enable AFTR cpu low power idle enter */
+	pm_qos_remove_request(&pm_qos_req_cpu);
+	pm_qos_remove_request(&pm_qos_req_mem);
+
 #ifndef RESERVED_MEM
-	/* 6. Dealloc memroy */
+	/* 7. Dealloc memroy */
 	fimc_is_ishcain_deinitmem(this);
 #endif
 
@@ -1882,7 +1899,7 @@ int fimc_is_ischain_init(struct fimc_is_device_ischain *this,
 
 	ret = fimc_is_itf_enum(this);
 	if (ret) {
-		err("enum fail\n");
+		err("enum fail");
 		goto exit;
 	}
 
@@ -1891,25 +1908,25 @@ int fimc_is_ischain_init(struct fimc_is_device_ischain *this,
 
 	ret = fimc_is_itf_open(this, input, channel, this->minfo.dvaddr_shared);
 	if (ret) {
-		err("open fail\n");
+		err("open fail");
 		goto exit;
 	}
 
 	ret = fimc_is_itf_setfile(this, setfile_name);
 	if (ret) {
-		err("setfile fail\n");
+		err("setfile fail");
 		goto exit;
 	}
 
 	ret = fimc_is_itf_stream_off(this);
 	if (ret) {
-		err("streamoff fail\n");
+		err("streamoff fail");
 		goto exit;
 	}
 
 	ret = fimc_is_itf_process_off(this);
 	if (ret) {
-		err("processoff fail\n");
+		err("processoff fail");
 		goto exit;
 	}
 
@@ -2767,41 +2784,7 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 	}
 
 #ifdef FW_DEBUG
-	{
-		int debug_cnt;
-		char *debug;
-		char letter;
-		int digit;
-		int count = 0, i;
-
-		vb2_ion_sync_for_device(this->minfo.fw_cookie,
-			DEBUG_OFFSET, DEBUG_CNT, DMA_FROM_DEVICE);
-
-		debug = (char *)(this->minfo.kvaddr + DEBUG_OFFSET);
-		debug_cnt = *((int *)(this->minfo.kvaddr +
-			DEBUGCTL_OFFSET)) - DEBUG_OFFSET;
-
-		if (this->debug_cnt > debug_cnt)
-			count = (DEBUG_CNT - this->debug_cnt) +
-				debug_cnt;
-		else
-			count = debug_cnt - this->debug_cnt;
-
-		if (count) {
-			printk(KERN_INFO "start(%d %d)\n",
-				debug_cnt, count);
-			for (i = this->debug_cnt; count > 0; count--) {
-				digit = letter = debug[i];
-				if (digit)
-					printk(KERN_CONT "%c", letter);
-				i++;
-				if (i > DEBUG_CNT)
-					i = 0;
-			}
-			this->debug_cnt = debug_cnt;
-			printk(KERN_INFO "end\n");
-		}
-	}
+	fimc_is_itf_print(this);
 #endif
 
 exit:
@@ -2868,9 +2851,6 @@ int fimc_is_ischain_isp_stop(struct fimc_is_device_ischain *this)
 		ret = -EINVAL;
 		goto exit;
 	}
-
-	fimc_is_frame_close(this->framemgr);
-	fimc_is_frame_open(this->framemgr, NUM_ISP_DMA_BUF);
 
 exit:
 	return ret;

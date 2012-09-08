@@ -62,8 +62,10 @@ int fimc_is_video_probe(struct fimc_is_video_common *video,
 	const struct vb2_ops *vb2_ops);
 int fimc_is_video_open(struct fimc_is_video_common *video,
 	void *device, u32 buffers_ready);
-int fimc_is_video_close(struct fimc_is_video_common *video);
+int fimc_is_video_close(struct fimc_is_video_common *video,
+	struct fimc_is_framemgr *framemgr);
 int fimc_is_video_reqbufs(struct fimc_is_video_common *video,
+	struct fimc_is_framemgr *framemgr,
 	struct v4l2_requestbuffers *request);
 int fimc_is_video_set_format_mplane(struct fimc_is_video_common *video,
 	struct v4l2_format *format);

@@ -225,32 +225,39 @@ static void init_work_list(struct fimc_is_work_list *this, u32 id, u32 count)
 }
 
 static void set_state(struct fimc_is_interface *this,
-	enum fimc_is_interface_state state)
+	unsigned long state)
 {
 	spin_lock(&this->slock_state);
-	this->state = state;
+	set_bit(state, &this->state);
+	spin_unlock(&this->slock_state);
+}
+
+static void clr_state(struct fimc_is_interface *this,
+	unsigned long state)
+{
+	spin_lock(&this->slock_state);
+	clear_bit(state, &this->state);
 	spin_unlock(&this->slock_state);
 }
 
 static int test_state(struct fimc_is_interface *this,
-	enum fimc_is_interface_state state)
+	unsigned long state)
 {
 	int ret = 0;
 
 	spin_lock(&this->slock_state);
-	ret = (this->state == state);
+	ret = test_bit(state, &this->state);
 	spin_unlock(&this->slock_state);
 
 	return ret;
 }
 
-static int wait_state(struct fimc_is_interface *this,
-	enum fimc_is_interface_state state, u32 timeout)
+static int wait_idlestate(struct fimc_is_interface *this)
 {
 	int ret = 0;
 
 	ret = wait_event_timeout(this->wait_queue,
-		test_state(this, state), timeout);
+		!test_state(this, IS_IF_STATE_BUSY), FIMC_IS_COMMAND_TIMEOUT);
 
 	if (ret)
 		ret = 0;
@@ -262,13 +269,12 @@ static int wait_state(struct fimc_is_interface *this,
 	return ret;
 }
 
-static int wait_initstate(struct fimc_is_interface *this,
-	enum fimc_is_interface_state state, u32 timeout)
+static int wait_initstate(struct fimc_is_interface *this)
 {
 	int ret = 0;
 
 	ret = wait_event_timeout(this->init_wait_queue,
-		test_state(this, state), timeout);
+		test_state(this, IS_IF_STATE_START), FIMC_IS_STARTUP_TIMEOUT);
 
 	if (ret)
 		ret = 0;
@@ -278,6 +284,53 @@ static int wait_initstate(struct fimc_is_interface *this,
 	}
 
 	return ret;
+}
+
+static int testnset_state(struct fimc_is_interface *this,
+	unsigned long state)
+{
+	int ret = 0;
+
+	spin_lock(&this->slock_state);
+
+	if (test_bit(state, &this->state)) {
+		ret = -EINVAL;
+		goto exit;
+	}
+	set_bit(state, &this->state);
+
+exit:
+	spin_unlock(&this->slock_state);
+	return ret;
+}
+
+static int testnclr_state(struct fimc_is_interface *this,
+	unsigned long state)
+{
+	int ret = 0;
+
+	spin_lock(&this->slock_state);
+
+	if (!test_bit(state, &this->state)) {
+		ret = -EINVAL;
+		goto exit;
+	}
+	clear_bit(state, &this->state);
+
+exit:
+	spin_unlock(&this->slock_state);
+	return ret;
+}
+
+static void testnclr_wakeup(struct fimc_is_interface *this)
+{
+	int ret = 0;
+
+	ret = testnclr_state(this, IS_IF_STATE_BUSY);
+	if (ret)
+		err("current state is not invalid(%ld)", this->state);
+	else
+		wake_up(&this->wait_queue);
 }
 
 static int waiting_is_ready(struct fimc_is_interface *interface)
@@ -293,7 +346,7 @@ static int waiting_is_ready(struct fimc_is_interface *interface)
 
 		if (try_count-- == 0) {
 			try_count = TRY_RECV_AWARE_COUNT;
-			err("INTMSR0's 0 bit is not cleared.\n");
+			err("INTMSR0's 0 bit is not cleared.");
 			ret = -EINVAL;
 			break;
 		}
@@ -408,9 +461,10 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 	if (!block_io)
 		goto exit;
 
-	ret = wait_state(itf, IS_IF_STATE_IDLE, FIMC_IS_COMMAND_TIMEOUT);
+	ret = wait_idlestate(itf);
 	if (ret) {
 		err("%d command is timeout", msg->command);
+		clr_state(itf, IS_IF_STATE_BUSY);
 		ret = -ETIME;
 		goto exit;
 	}
@@ -452,41 +506,8 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 exit:
 	exit_request_barrier(itf);
 
-	if (ret) {
-		int debug_cnt;
-		char *debug;
-		char letter;
-		int count = 0, i;
-
-		struct fimc_is_device_ischain *ischain =
-			(struct fimc_is_device_ischain *)itf->video_isp->device;
-
-		vb2_ion_sync_for_device(ischain->minfo.fw_cookie,
-			DEBUG_OFFSET, DEBUG_CNT, DMA_FROM_DEVICE);
-
-		debug = (char *)(ischain->minfo.kvaddr + DEBUG_OFFSET);
-		debug_cnt = *((int *)(ischain->minfo.kvaddr + DEBUGCTL_OFFSET))
-				- DEBUG_OFFSET;
-
-		if (ischain->debug_cnt > debug_cnt)
-			count = (DEBUG_CNT - ischain->debug_cnt) + debug_cnt;
-		else
-			count = debug_cnt - ischain->debug_cnt;
-
-		if (count) {
-			printk(KERN_INFO "start(%d %d)\n", debug_cnt, count);
-			for (i = ischain->debug_cnt; count > 0; count--) {
-				letter = debug[i];
-				if (letter)
-					printk(KERN_CONT "%c", letter);
-				i++;
-				if (i > DEBUG_CNT)
-					i = 0;
-			}
-			ischain->debug_cnt = debug_cnt;
-			printk(KERN_INFO "end\n");
-		}
-	}
+	if (ret)
+		fimc_is_hw_print(itf);
 
 	return ret;
 }
@@ -498,7 +519,6 @@ static int fimc_is_set_cmd_nblk(struct fimc_is_interface *this,
 	struct fimc_is_msg *msg;
 
 	msg = &work->msg;
-
 	switch (msg->command) {
 	case HIC_SET_CAM_CONTROL:
 		set_req_work(&this->nblk_cam_ctrl, work);
@@ -513,7 +533,13 @@ static int fimc_is_set_cmd_nblk(struct fimc_is_interface *this,
 
 	enter_process_barrier(this);
 
-	waiting_is_ready(this);
+	ret = waiting_is_ready(this);
+	if (ret) {
+		err("waiting for ready is fail");
+		ret = -EBUSY;
+		goto exit;
+	}
+
 	this->com_regs->hicmd = msg->command;
 	this->com_regs->hic_sensorid = msg->instance;
 	this->com_regs->hic_param1 = msg->parameter1;
@@ -522,8 +548,8 @@ static int fimc_is_set_cmd_nblk(struct fimc_is_interface *this,
 	this->com_regs->hic_param4 = msg->parameter4;
 	send_interrupt(this);
 
+exit:
 	exit_process_barrier(this);
-
 	return ret;
 }
 
@@ -597,8 +623,9 @@ static void wq_func_general(struct work_struct *data)
 		msg = &work->msg;
 		switch (msg->command) {
 		case IHC_GET_SENSOR_NUMBER:
-			printk(KERN_INFO "IS version : %d\n", msg->parameter1);
-			set_state(itf, IS_IF_STATE_IDLE);
+			printk(KERN_INFO "IS version : %d.%d\n",
+				ISDRV_VERSION, msg->parameter1);
+			set_state(itf, IS_IF_STATE_START);
 			wake_up(&itf->init_wait_queue);
 			break;
 		case ISR_DONE:
@@ -607,72 +634,62 @@ static void wq_func_general(struct work_struct *data)
 				dbg_interface("open done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				set_state(itf, IS_IF_STATE_IDLE);
-				wake_up(&itf->wait_queue);
+				testnclr_wakeup(itf);
 				break;
 			case HIC_GET_SET_FILE_ADDR:
 				dbg_interface("saddr(%p) done\n",
 					(void *)msg->parameter2);
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				set_state(itf, IS_IF_STATE_IDLE);
-				wake_up(&itf->wait_queue);
+				testnclr_wakeup(itf);
 				break;
 			case HIC_LOAD_SET_FILE:
 				dbg_interface("setfile done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				set_state(itf, IS_IF_STATE_IDLE);
-				wake_up(&itf->wait_queue);
+				testnclr_wakeup(itf);
 				break;
 			case HIC_SET_A5_MEM_ACCESS:
 				dbg_interface("cfgmem done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				set_state(itf, IS_IF_STATE_IDLE);
-				wake_up(&itf->wait_queue);
+				testnclr_wakeup(itf);
 				break;
 			case HIC_PROCESS_START:
 				dbg_interface("process_on done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				set_state(itf, IS_IF_STATE_IDLE);
-				wake_up(&itf->wait_queue);
+				testnclr_wakeup(itf);
 				break;
 			case HIC_PROCESS_STOP:
 				dbg_interface("process_off done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				set_state(itf, IS_IF_STATE_IDLE);
-				wake_up(&itf->wait_queue);
+				testnclr_wakeup(itf);
 				break;
 			case HIC_STREAM_ON:
 				dbg_interface("stream_on done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				set_state(itf, IS_IF_STATE_IDLE);
-				wake_up(&itf->wait_queue);
+				testnclr_wakeup(itf);
 				break;
 			case HIC_STREAM_OFF:
 				dbg_interface("stream_off done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				set_state(itf, IS_IF_STATE_IDLE);
-				wake_up(&itf->wait_queue);
+				testnclr_wakeup(itf);
 				break;
 			case HIC_SET_PARAMETER:
 				dbg_interface("s_param done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				set_state(itf, IS_IF_STATE_IDLE);
-				wake_up(&itf->wait_queue);
+				testnclr_wakeup(itf);
 				break;
 			case HIC_GET_STATIC_METADATA:
 				dbg_interface("g_capability done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				set_state(itf, IS_IF_STATE_IDLE);
-				wake_up(&itf->wait_queue);
+				testnclr_wakeup(itf);
 				break;
 			case HIC_PREVIEW_STILL:
 				dbg_interface("a_param(%dx%d) done\n",
@@ -680,15 +697,13 @@ static void wq_func_general(struct work_struct *data)
 					msg->parameter3);
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				set_state(itf, IS_IF_STATE_IDLE);
-				wake_up(&itf->wait_queue);
+				testnclr_wakeup(itf);
 				break;
 			case HIC_POWER_DOWN:
 				dbg_interface("powerdown done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				set_state(itf, IS_IF_STATE_IDLE);
-				wake_up(&itf->wait_queue);
+				testnclr_wakeup(itf);
 				break;
 			/*non-blocking command*/
 			case HIC_SHOT:
@@ -757,15 +772,13 @@ static void wq_func_general(struct work_struct *data)
 				err("param4 : 0x%08X", msg->parameter4);
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				set_state(itf, IS_IF_STATE_IDLE);
-				wake_up(&itf->wait_queue);
+				testnclr_wakeup(itf);
 				break;
 			default:
 				err("a command(%d) not done", msg->parameter1);
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				set_state(itf, IS_IF_STATE_IDLE);
-				wake_up(&itf->wait_queue);
+				testnclr_wakeup(itf);
 				break;
 			}
 			break;
@@ -1170,6 +1183,9 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 	this->video_sensor		= &core->video_sensor.common;
 	this->video_scp			= &core->video_scp.common;
 	this->video_scc			= &core->video_scc.common;
+	clear_bit(IS_IF_STATE_OPEN, &this->state);
+	clear_bit(IS_IF_STATE_START, &this->state);
+	clear_bit(IS_IF_STATE_BUSY, &this->state);
 
 	init_work_list(&this->nblk_cam_ctrl, TRACE_WORK_ID_CAMCTRL,
 		MAX_NBLOCKING_COUNT);
@@ -1191,24 +1207,94 @@ int fimc_is_interface_open(struct fimc_is_interface *this)
 {
 	int ret = 0;
 
+	if (testnset_state(this, IS_IF_STATE_OPEN)) {
+		err("already open");
+		ret = -EMFILE;
+		goto exit;
+	}
+
 	dbg_interface("%s\n", __func__);
 
 	this->streaming = IS_IF_STREAMING_INIT;
 	this->processing = IS_IF_PROCESSING_INIT;
 	this->pdown_ready = IS_IF_POWER_DOWN_READY;
 	this->fcount = 0;
+	clr_state(this, IS_IF_STATE_START);
 	set_state(this, IS_IF_STATE_BUSY);
 
+exit:
 	return ret;
 }
 
 int fimc_is_interface_close(struct fimc_is_interface *this)
 {
 	int ret = 0;
+	int retry;
+
+	if (testnclr_state(this, IS_IF_STATE_OPEN)) {
+		err("already close");
+		ret = -EMFILE;
+		goto exit;
+	}
+
+	retry = 10;
+	while (test_state(this, IS_IF_STATE_BUSY) && retry) {
+		err("interface is busy");
+		msleep(20);
+		retry--;
+	}
+
+	if (!retry)
+		err("waiting idle is fail");
 
 	dbg_interface("%s\n", __func__);
 
+exit:
 	return ret;
+}
+
+int fimc_is_hw_print(struct fimc_is_interface *this)
+{
+	int debug_cnt;
+	char *debug;
+	char letter;
+	int count = 0, i;
+
+	if (!test_state(this, IS_IF_STATE_OPEN)) {
+		err("interface is closed");
+		return 0;
+	}
+
+	struct fimc_is_device_ischain *ischain =
+		(struct fimc_is_device_ischain *)this->video_isp->device;
+
+	vb2_ion_sync_for_device(ischain->minfo.fw_cookie,
+		DEBUG_OFFSET, DEBUG_CNT, DMA_FROM_DEVICE);
+
+	debug = (char *)(ischain->minfo.kvaddr + DEBUG_OFFSET);
+	debug_cnt = *((int *)(ischain->minfo.kvaddr + DEBUGCTL_OFFSET))
+			- DEBUG_OFFSET;
+
+	if (ischain->debug_cnt > debug_cnt)
+		count = (DEBUG_CNT - ischain->debug_cnt) + debug_cnt;
+	else
+		count = debug_cnt - ischain->debug_cnt;
+
+	if (count) {
+		printk(KERN_INFO "start(%d %d)\n", debug_cnt, count);
+		for (i = ischain->debug_cnt; count > 0; count--) {
+			letter = debug[i];
+			if (letter)
+				printk(KERN_CONT "%c", letter);
+			i++;
+			if (i > DEBUG_CNT)
+				i = 0;
+		}
+		ischain->debug_cnt = debug_cnt;
+		printk(KERN_INFO "end\n");
+	}
+
+	return count;
 }
 
 int fimc_is_hw_enum(struct fimc_is_interface *this)
@@ -1218,7 +1304,7 @@ int fimc_is_hw_enum(struct fimc_is_interface *this)
 
 	dbg_interface("enum(%d)\n", instances);
 
-	ret = wait_initstate(this, IS_IF_STATE_IDLE, FIMC_IS_STARTUP_TIMEOUT);
+	ret = wait_initstate(this);
 	if (ret) {
 		err("enum time out");
 		ret = -ETIME;

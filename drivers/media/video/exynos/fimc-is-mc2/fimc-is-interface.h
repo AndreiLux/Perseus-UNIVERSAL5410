@@ -25,7 +25,8 @@
 #define HIGHBIT_OF(num)	(num >= 32 ? (u32)1<<(num-32) : 0)
 
 enum fimc_is_interface_state {
-	IS_IF_STATE_IDLE,
+	IS_IF_STATE_OPEN,
+	IS_IF_STATE_START,
 	IS_IF_STATE_BUSY
 };
 
@@ -88,7 +89,7 @@ struct fimc_is_work_list {
 struct fimc_is_interface {
 	void __iomem			*regs;
 	struct is_common_reg __iomem	*com_regs;
-	u32				state;
+	unsigned long			state;
 	/* this spinlock is needed for data coincidence.
 	it need to update SCU tag between different thread */
 	spinlock_t			slock_state;
@@ -137,6 +138,7 @@ int fimc_is_interface_close(struct fimc_is_interface *this);
 int print_fre_work_list(struct fimc_is_work_list *this);
 int print_req_work_list(struct fimc_is_work_list *this);
 
+int fimc_is_hw_print(struct fimc_is_interface *this);
 int fimc_is_hw_enum(struct fimc_is_interface *this);
 int fimc_is_hw_open(struct fimc_is_interface *this,
 	u32 instance, u32 sensor, u32 channel, u32 ext,

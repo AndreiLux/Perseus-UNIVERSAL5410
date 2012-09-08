@@ -95,6 +95,7 @@
 #define ENABLE_DZOOM
 #define USE_FRAME_SYNC
 #define TASKLET_MSG
+#define ISDRV_VERSION 100
 
 #ifdef DEBUG
 #define dbg(fmt, args...) \

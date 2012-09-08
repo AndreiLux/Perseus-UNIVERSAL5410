@@ -122,7 +122,6 @@ struct fimc_is_framemgr {
 	unsigned long			output_image_flag;
 	u32				output_image_cnt;
 
-	u32				opened;
 	u32				id;
 };
 

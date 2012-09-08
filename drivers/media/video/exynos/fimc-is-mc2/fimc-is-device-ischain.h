@@ -46,11 +46,6 @@
 #define NUM_DIS_INTERNAL_BUF		(5)
 #define NUM_3DNR_INTERNAL_BUF		(2)
 
-#define NUM_SENSOR_DMA_BUF		(8)
-#define NUM_ISP_DMA_BUF			(8)
-#define NUM_SCC_DMA_BUF			(8)
-#define NUM_SCP_DMA_BUF			(8)
-
 #define SENSOR_MAX_CTL			0x10
 #define SENSOR_MAX_CTL_MASK		(SENSOR_MAX_CTL-1)
 
@@ -183,7 +178,7 @@ int fimc_is_ischain_probe(struct fimc_is_device_ischain *this,
 	struct platform_device *pdev,
 	u32 regs);
 int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
-	struct fimc_is_video_common *video, struct fimc_is_interface *itf);
+	struct fimc_is_video_common *video);
 int fimc_is_ischain_close(struct fimc_is_device_ischain *this);
 int fimc_is_ischain_init(struct fimc_is_device_ischain *this,
 	u32 input, u32 channel, struct sensor_open_extended *ext,

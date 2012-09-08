@@ -92,7 +92,7 @@ static int fimc_is_bayer_video_close(struct file *file)
 
 	file->private_data = 0;
 	fimc_is_sensor_close(sensor);
-	fimc_is_video_close(&video->common);
+	fimc_is_video_close(&video->common, sensor->framemgr);
 
 	return 0;
 }
@@ -196,19 +196,18 @@ static int fimc_is_bayer_video_set_crop(struct file *file, void *fh,
 }
 
 static int fimc_is_bayer_video_reqbufs(struct file *file, void *priv,
-						struct v4l2_requestbuffers *buf)
+	struct v4l2_requestbuffers *buf)
 {
 	int ret = 0;
 	struct fimc_is_video_sensor *video = file->private_data;
-	struct fimc_is_device_sensor *sensor = video->common.device;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_sensor *sensor = common->device;
 
 	dbg_sensor("%s(buffers : %d)\n", __func__, buf->count);
 
-	ret = fimc_is_video_reqbufs(&video->common, buf);
+	ret = fimc_is_video_reqbufs(common, sensor->framemgr, buf);
 	if (ret)
 		err("fimc_is_video_reqbufs is fail(error %d)", ret);
-	else
-		fimc_is_frame_open(sensor->framemgr, buf->count);
 
 	return ret;
 }

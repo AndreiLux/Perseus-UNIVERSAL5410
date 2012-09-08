@@ -250,14 +250,12 @@ static int testnset_state(struct fimc_is_device_sensor *this,
 
 	if (test_bit(state, &this->state)) {
 		ret = -EINVAL;
-		spin_unlock(&this->slock_state);
 		goto exit;
 	}
 	set_bit(state, &this->state);
 
-	spin_unlock(&this->slock_state);
-
 exit:
+	spin_unlock(&this->slock_state);
 	return ret;
 }
 
@@ -270,14 +268,12 @@ static int testnclr_state(struct fimc_is_device_sensor *this,
 
 	if (!test_bit(state, &this->state)) {
 		ret = -EINVAL;
-		spin_unlock(&this->slock_state);
 		goto exit;
 	}
 	clear_bit(state, &this->state);
 
-	spin_unlock(&this->slock_state);
-
 exit:
+	spin_unlock(&this->slock_state);
 	return ret;
 }
 
@@ -452,8 +448,6 @@ int fimc_is_sensor_open(struct fimc_is_device_sensor *this)
 
 	this->active_sensor = &this->enum_sensor[SENSOR_NAME_S5K4E5];
 
-	fimc_is_frame_open(this->framemgr, NUM_SENSOR_DMA_BUF);
-
 	printk(KERN_INFO "---%s(%d)\n", __func__, ret);
 
 exit:
@@ -474,7 +468,6 @@ int fimc_is_sensor_close(struct fimc_is_device_sensor *this)
 
 	fimc_is_sensor_back_stop(this);
 	fimc_is_sensor_front_stop(this);
-	fimc_is_frame_close(this->framemgr);
 
 	printk(KERN_INFO "---%s(%d)\n", __func__, ret);
 
@@ -637,9 +630,6 @@ int fimc_is_sensor_back_stop(struct fimc_is_device_sensor *this)
 	active_flite = this->active_flite;
 
 	ret = fimc_is_flite_stop(active_flite);
-
-	fimc_is_frame_close(this->framemgr);
-	fimc_is_frame_open(this->framemgr, NUM_SENSOR_DMA_BUF);
 
 exit:
 	return ret;

@@ -74,7 +74,7 @@
 
 /* User defined formats. x = 0...0xF. */
 #define FLITE_REG_CIGCTRL_USER(x)			(0x30 + x - 1)
-#define FLITE_REG_CIGCTRL_OLOCAL_DISABLE	(1 << 22)
+#define FLITE_REG_CIGCTRL_OLOCAL_DISABLE		(1 << 22)
 #define FLITE_REG_CIGCTRL_SHADOWMASK_DISABLE		(1 << 21)
 #define FLITE_REG_CIGCTRL_ODMA_DISABLE			(1 << 20)
 #define FLITE_REG_CIGCTRL_SWRST_REQ			(1 << 19)
@@ -172,7 +172,7 @@
 
 /* Camera Status3 */
 #define FLITE_REG_CISTATUS3				0x48
-#define FLITE_REG_CISTATUS3_PRESENT_MASK (0x3F)
+#define FLITE_REG_CISTATUS3_PRESENT_MASK		(0x3F)
 
 /* Qos Threshold */
 #define FLITE_REG_CITHOLD				(0xF0)
@@ -502,6 +502,7 @@ static void wq_func_automode(struct work_struct *data)
 	fimc_is_ischain_isp_buffer_queue(ischain, flite->work);
 }
 
+#ifdef FW_DEBUG
 static void wq_func_debug(struct work_struct *data)
 {
 	u32 fcount;
@@ -548,6 +549,7 @@ static void wq_func_debug(struct work_struct *data)
 		printk(KERN_INFO "end\n");
 	}
 }
+#endif
 
 static void tasklet_func_flite_str(unsigned long data)
 {

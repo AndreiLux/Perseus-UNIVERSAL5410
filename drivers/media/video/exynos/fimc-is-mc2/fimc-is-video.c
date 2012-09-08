@@ -263,7 +263,8 @@ int fimc_is_video_open(struct fimc_is_video_common *video,
 	return ret;
 }
 
-int fimc_is_video_close(struct fimc_is_video_common *video)
+int fimc_is_video_close(struct fimc_is_video_common *video,
+	struct fimc_is_framemgr *framemgr)
 {
 	int ret = 0;
 
@@ -276,11 +277,13 @@ int fimc_is_video_close(struct fimc_is_video_common *video)
 	clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->state);
 	clear_bit(FIMC_IS_VIDEO_BUFFER_READY, &video->state);
 	clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->state);
+	fimc_is_frame_close(framemgr);
 
 	return ret;
 }
 
 int fimc_is_video_reqbufs(struct fimc_is_video_common *video,
+	struct fimc_is_framemgr *framemgr,
 	struct v4l2_requestbuffers *request)
 {
 	int ret = 0;
@@ -295,15 +298,17 @@ int fimc_is_video_reqbufs(struct fimc_is_video_common *video,
 
 	video->buffers = request->count;
 
-	if (video->buffers == 0)
+	if (video->buffers == 0) {
 		video->buf_ref_cnt = 0;
-	else {
+		fimc_is_frame_close(framemgr);
+	} else {
 		if (video->buffers < video->buffers_ready) {
 			err("buffer count is not invalid(%d < %d)",
 				video->buffers, video->buffers_ready);
 			ret = -EINVAL;
 			goto exit;
 		}
+		fimc_is_frame_open(framemgr, video->buffers);
 	}
 
 exit:

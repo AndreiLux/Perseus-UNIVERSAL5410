@@ -91,7 +91,7 @@ static int fimc_is_isp_video_close(struct file *file)
 
 	file->private_data = 0;
 	fimc_is_ischain_close(ischain);
-	fimc_is_video_close(&video->common);
+	fimc_is_video_close(&video->common, ischain->framemgr);
 
 	return 0;
 }
@@ -203,15 +203,14 @@ static int fimc_is_isp_video_reqbufs(struct file *file, void *priv,
 {
 	int ret;
 	struct fimc_is_video_isp *video = file->private_data;
-	struct fimc_is_device_ischain *ischain = video->common.device;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
 
 	dbg_isp("%s(buffers : %d)\n", __func__, buf->count);
 
-	ret = fimc_is_video_reqbufs(&video->common, buf);
+	ret = fimc_is_video_reqbufs(common, ischain->framemgr, buf);
 	if (ret)
 		err("fimc_is_video_reqbufs is fail(error %d)", ret);
-	else
-		fimc_is_frame_open(ischain->framemgr, buf->count);
 
 	return ret;
 }
@@ -330,7 +329,7 @@ static int fimc_is_isp_video_s_input(struct file *file, void *priv,
 	dbg_isp("%s(input : %d)\n", __func__, input);
 	core->sensor.id_position = input;
 
-	ret = fimc_is_ischain_open(ischain, &video->common, &core->interface);
+	ret = fimc_is_ischain_open(ischain, &video->common);
 	if (ret) {
 		err("fimc_is_ischain_open is fail\n");
 		goto exit;
