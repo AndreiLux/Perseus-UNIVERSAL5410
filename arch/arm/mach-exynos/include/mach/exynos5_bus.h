@@ -14,6 +14,7 @@ struct exynos5_bus_mif_platform_data {
 };
 
 struct exynos5_bus_mif_handle;
+struct exynos5_bus_int_handle;
 
 #ifdef CONFIG_ARM_EXYNOS5_BUS_DEVFREQ
 struct exynos5_bus_mif_handle *exynos5_bus_mif_get(unsigned long min_freq);
@@ -23,6 +24,21 @@ static inline
 struct exynos5_bus_mif_handle *exynos5_bus_mif_min(unsigned long min_freq)
 {
 	return exynos5_bus_mif_get(min_freq);
+}
+
+struct exynos5_bus_int_handle *exynos5_bus_int_get(unsigned long min_freq,
+		bool poll);
+int exynos5_bus_int_put(struct exynos5_bus_int_handle *handle);
+
+static inline struct exynos5_bus_int_handle *exynos5_bus_int_poll(void)
+{
+	return exynos5_bus_int_get(0, true);
+}
+
+static inline
+struct exynos5_bus_int_handle *exynos5_bus_int_min(unsigned long min_freq)
+{
+	return exynos5_bus_int_get(min_freq, false);
 }
 
 void exynos5_ppmu_trace(void);
@@ -43,6 +59,29 @@ static inline
 struct exynos5_bus_mif_handle *exynos5_bus_mif_min(unsigned long min_freq)
 {
 	return NULL;
+}
+
+static inline
+struct exynos5_bus_int_handle *exynos5_bus_int_get(unsigned long min_freq,
+		bool poll)
+{
+	return NULL;
+}
+
+static inline int exynos5_bus_int_put(struct exynos5_bus_int_handle *handle)
+{
+	return 0;
+}
+
+static inline struct exynos5_bus_int_handle *exynos5_bus_int_poll(void)
+{
+	return NULL;
+}
+
+static inline
+struct exynos5_bus_int_handle *exynos5_bus_int_min(unsigned long min_freq)
+{
+	return exynos5_bus_int_get(min_freq, false);
 }
 
 static inline void exynos5_ppmu_trace(void)

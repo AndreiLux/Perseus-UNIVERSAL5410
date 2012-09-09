@@ -27,6 +27,7 @@
 #include <mach/map.h>
 #include <mach/regs-clock.h>
 #include <mach/asv-exynos.h>
+#include <mach/exynos5_bus.h>
 
 #include "exynos_ppmu.h"
 #include "exynos5_ppmu.h"
@@ -51,8 +52,9 @@ struct busfreq_data_int {
 	bool disabled;
 	struct regulator *vdd_int;
 	unsigned long curr_freq;
+	unsigned long curr_volt;
+	unsigned long suspend_freq;
 
-	struct notifier_block pm_notifier;
 	struct mutex lock;
 	struct pm_qos_request mif_req;
 
@@ -76,6 +78,19 @@ static struct int_bus_opp_table exynos5_int_opp_table[] = {
 	{0, 0, 0},
 };
 
+struct exynos5_bus_int_handle {
+	struct list_head node;
+	struct delayed_work work;
+	bool boost;
+	bool poll;
+	unsigned long min;
+};
+
+static struct busfreq_data_int *exynos5_bus_int_data;
+static DEFINE_MUTEX(exynos5_bus_int_data_lock);
+static LIST_HEAD(exynos5_bus_int_requests);
+static DEFINE_MUTEX(exynos5_bus_int_requests_lock);
+
 static int exynos5_int_setvolt(struct busfreq_data_int *data,
 		unsigned long volt)
 {
@@ -92,6 +107,21 @@ static int exynos5_busfreq_int_target(struct device *dev, unsigned long *_freq,
 	struct opp *opp;
 	unsigned long old_freq, freq;
 	unsigned long volt;
+	struct exynos5_bus_int_handle *handle;
+
+	mutex_lock(&exynos5_bus_int_requests_lock);
+	list_for_each_entry(handle, &exynos5_bus_int_requests, node) {
+		if (handle->boost) {
+			*_freq = ULONG_MAX;
+			flags |= DEVFREQ_FLAG_LEAST_UPPER_BOUND;
+			break;
+		}
+		if (handle->min > *_freq) {
+			*_freq = handle->min;
+			flags &= ~DEVFREQ_FLAG_LEAST_UPPER_BOUND;
+		}
+	}
+	mutex_unlock(&exynos5_bus_int_requests_lock);
 
 	rcu_read_lock();
 	opp = devfreq_recommended_opp(dev, _freq, flags);
@@ -105,14 +135,14 @@ static int exynos5_busfreq_int_target(struct device *dev, unsigned long *_freq,
 	volt = opp_get_voltage(opp);
 	rcu_read_unlock();
 
+	mutex_lock(&data->lock);
+
 	old_freq = data->curr_freq;
 
 	if (old_freq == freq)
-		return 0;
+		goto out;
 
 	dev_dbg(dev, "targetting %lukHz %luuV\n", freq, volt);
-
-	mutex_lock(&data->lock);
 
 	if (data->disabled)
 		goto out;
@@ -161,7 +191,17 @@ static int exynos5_int_get_dev_status(struct device *dev,
 
 static void exynos5_int_poll_start(struct busfreq_data_int *data)
 {
-	schedule_delayed_work(&data->work, EXYNOS5_BUS_INT_POLL_TIME);
+	struct exynos5_bus_int_handle *handle;
+
+	mutex_lock(&exynos5_bus_int_requests_lock);
+	list_for_each_entry(handle, &exynos5_bus_int_requests, node) {
+		if (handle->poll) {
+			schedule_delayed_work(&data->work,
+					EXYNOS5_BUS_INT_POLL_TIME);
+			break;
+		}
+	}
+	mutex_unlock(&exynos5_bus_int_requests_lock);
 }
 
 static void exynos5_int_poll_stop(struct busfreq_data_int *data)
@@ -169,25 +209,112 @@ static void exynos5_int_poll_stop(struct busfreq_data_int *data)
 	cancel_delayed_work_sync(&data->work);
 }
 
-static void exynos5_int_poll(struct work_struct *work)
+static void exynos5_int_trigger_poll(struct busfreq_data_int *data)
 {
-	struct delayed_work *dwork;
-	struct busfreq_data_int *data;
-	int ret;
+	cancel_delayed_work_sync(&data->work);
+	schedule_delayed_work(&data->work, 0);
+}
 
-	dwork = to_delayed_work(work);
-	data = container_of(dwork, struct busfreq_data_int, work);
+static void exynos5_int_update(struct busfreq_data_int *data)
+{
+	struct exynos5_bus_int_handle *handle;
+	int ret = 0;
+	bool poll = false;
+
+	mutex_lock(&exynos5_bus_int_requests_lock);
+	list_for_each_entry(handle, &exynos5_bus_int_requests, node) {
+		if (handle->poll) {
+			poll = true;
+			break;
+		}
+	}
+	mutex_unlock(&exynos5_bus_int_requests_lock);
 
 	ret = exynos5_ppmu_get_busy(data->ppmu, PPMU_SET_RIGHT);
-
-	if (ret >= 0) {
+	if (ret >= 0 && poll)
 		data->busy = ret;
+	else
+		data->busy = 0;
+
+	if (ret >= 0 || !poll) {
 		mutex_lock(&data->devfreq->lock);
 		update_devfreq(data->devfreq);
 		mutex_unlock(&data->devfreq->lock);
 	}
+}
 
-	schedule_delayed_work(&data->work, EXYNOS5_BUS_INT_POLL_TIME);
+static void exynos5_int_poll_work(struct work_struct *work)
+{
+	struct delayed_work *dwork;
+	struct busfreq_data_int *data;
+
+	dwork = to_delayed_work(work);
+	data = container_of(dwork, struct busfreq_data_int, work);
+
+	exynos5_int_update(data);
+
+	exynos5_int_poll_start(data);
+}
+
+static void exynos5_int_cancel_boost(struct work_struct *work)
+{
+	struct delayed_work *dwork = to_delayed_work(work);
+	struct exynos5_bus_int_handle *handle;
+
+	handle = container_of(dwork, struct exynos5_bus_int_handle, work);
+
+	handle->boost = false;
+}
+
+struct exynos5_bus_int_handle *exynos5_bus_int_get(unsigned long min_freq,
+		bool poll)
+{
+	struct exynos5_bus_int_handle *handle;
+
+	handle = kzalloc(sizeof(*handle), GFP_KERNEL);
+	if (!handle)
+		return NULL;
+
+	handle->min = min_freq;
+	/* If polling, boost the frequency for the first poll cycle */
+	handle->boost = poll;
+	handle->poll = poll;
+	INIT_DELAYED_WORK_DEFERRABLE(&handle->work, exynos5_int_cancel_boost);
+
+	mutex_lock(&exynos5_bus_int_requests_lock);
+	list_add_tail(&handle->node, &exynos5_bus_int_requests);
+	mutex_unlock(&exynos5_bus_int_requests_lock);
+
+	mutex_lock(&exynos5_bus_int_data_lock);
+
+	if (exynos5_bus_int_data) {
+		cancel_delayed_work_sync(&exynos5_bus_int_data->work);
+		exynos5_int_update(exynos5_bus_int_data);
+		exynos5_int_poll_start(exynos5_bus_int_data);
+	}
+
+	mutex_unlock(&exynos5_bus_int_data_lock);
+
+	if (handle->boost)
+		schedule_delayed_work(&handle->work, EXYNOS5_BUS_INT_POLL_TIME);
+
+	return handle;
+}
+
+int exynos5_bus_int_put(struct exynos5_bus_int_handle *handle)
+{
+	mutex_lock(&exynos5_bus_int_requests_lock);
+	list_del(&handle->node);
+	mutex_unlock(&exynos5_bus_int_requests_lock);
+
+	mutex_lock(&exynos5_bus_int_data_lock);
+	if (exynos5_bus_int_data)
+		exynos5_int_trigger_poll(exynos5_bus_int_data);
+	mutex_unlock(&exynos5_bus_int_data_lock);
+
+	cancel_delayed_work_sync(&handle->work);
+	kfree(handle);
+	return 0;
 }
 
 static void exynos5_int_exit(struct device *dev)
@@ -235,62 +362,6 @@ static struct devfreq_simple_ondemand_data exynos5_int_ondemand_data = {
 	.upthreshold = INT_BUS_SATURATION_RATIO,
 };
 
-static int exynos5_busfreq_int_pm_notifier_event(struct notifier_block *this,
-		unsigned long event, void *ptr)
-{
-	struct busfreq_data_int *data = container_of(this, struct busfreq_data_int,
-						 pm_notifier);
-	struct opp *opp;
-	unsigned long maxfreq = ULONG_MAX;
-	unsigned long freq;
-	unsigned long volt;
-	int err = 0;
-
-	switch (event) {
-	case PM_SUSPEND_PREPARE:
-		/* Set Fastest and Deactivate DVFS */
-		mutex_lock(&data->lock);
-
-		data->disabled = true;
-
-		rcu_read_lock();
-		opp = opp_find_freq_floor(data->dev, &maxfreq);
-		if (IS_ERR(opp)) {
-			rcu_read_unlock();
-			err = PTR_ERR(opp);
-			goto unlock;
-		}
-		freq = opp_get_freq(opp);
-		volt = opp_get_volt(opp);
-		rcu_read_unlock();
-
-		err = exynos5_int_setvolt(data, volt);
-		if (err)
-			goto unlock;
-
-		err = clk_set_rate(data->int_clk, freq * 1000);
-
-		if (err)
-			goto unlock;
-
-		data->curr_freq = freq;
-unlock:
-		mutex_unlock(&data->lock);
-		if (err)
-			return NOTIFY_BAD;
-		return NOTIFY_OK;
-	case PM_POST_RESTORE:
-	case PM_POST_SUSPEND:
-		/* Reactivate */
-		mutex_lock(&data->lock);
-		data->disabled = false;
-		mutex_unlock(&data->lock);
-		return NOTIFY_OK;
-	}
-
-	return NOTIFY_DONE;
-}
-
 static __devinit int exynos5_busfreq_int_probe(struct platform_device *pdev)
 {
 	struct busfreq_data_int *data;
@@ -306,7 +377,6 @@ static __devinit int exynos5_busfreq_int_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	data->pm_notifier.notifier_call = exynos5_busfreq_int_pm_notifier_event;
 	data->dev = dev;
 	mutex_init(&data->lock);
 
@@ -341,6 +411,7 @@ static __devinit int exynos5_busfreq_int_probe(struct platform_device *pdev)
 	initial_volt = opp_get_voltage(opp);
 	rcu_read_unlock();
 	data->curr_freq = initial_freq;
+	data->curr_volt = initial_volt;
 
 	err = clk_set_rate(data->int_clk, initial_freq * 1000);
 	if (err) {
@@ -358,8 +429,7 @@ static __devinit int exynos5_busfreq_int_probe(struct platform_device *pdev)
 	if (!data->ppmu)
 		goto err_ppmu_get;
 
-	INIT_DELAYED_WORK_DEFERRABLE(&data->work, exynos5_int_poll);
-	exynos5_int_poll_start(data);
+	INIT_DELAYED_WORK_DEFERRABLE(&data->work, exynos5_int_poll_work);
 
 	data->devfreq = devfreq_add_device(dev, &exynos5_devfreq_int_profile,
 					   &devfreq_simple_ondemand,
@@ -372,19 +442,19 @@ static __devinit int exynos5_busfreq_int_probe(struct platform_device *pdev)
 
 	devfreq_register_opp_notifier(dev, data->devfreq);
 
-	err = register_pm_notifier(&data->pm_notifier);
-	if (err) {
-		dev_err(dev, "Failed to setup pm notifier\n");
-		goto err_devfreq_add;
-	}
-
 	pm_qos_add_request(&data->mif_req, PM_QOS_MEMORY_THROUGHPUT, -1);
+
+	mutex_lock(&exynos5_bus_int_data_lock);
+	exynos5_bus_int_data = data;
+	mutex_unlock(&exynos5_bus_int_data_lock);
+
+	exynos5_int_update(data);
+	exynos5_int_poll_start(data);
 
 	return 0;
 
 err_devfreq_add:
 	devfreq_remove_device(data->devfreq);
-	exynos5_int_poll_stop(data);
 err_ppmu_get:
 	platform_set_drvdata(pdev, NULL);
 err_opp_add:
@@ -399,9 +469,13 @@ static __devexit int exynos5_busfreq_int_remove(struct platform_device *pdev)
 {
 	struct busfreq_data_int *data = platform_get_drvdata(pdev);
 
+	mutex_lock(&exynos5_bus_int_data_lock);
+	exynos5_bus_int_data = NULL;
+	mutex_unlock(&exynos5_bus_int_data_lock);
+
 	pm_qos_remove_request(&data->mif_req);
-	unregister_pm_notifier(&data->pm_notifier);
 	devfreq_remove_device(data->devfreq);
+	exynos5_int_poll_stop(data);
 	regulator_put(data->vdd_int);
 	clk_put(data->int_clk);
 	platform_set_drvdata(pdev, NULL);
@@ -412,27 +486,121 @@ static __devexit int exynos5_busfreq_int_remove(struct platform_device *pdev)
 #ifdef CONFIG_PM_SLEEP
 static int exynos5_busfreq_int_suspend(struct device *dev)
 {
-	struct platform_device *pdev = container_of(dev, struct platform_device,
-						    dev);
+	struct platform_device *pdev = to_platform_device(dev);
+	struct opp *max_opp;
+	struct opp *opp;
+	unsigned long maxfreq = ULONG_MAX;
+	unsigned long volt;
+	unsigned long freq;
+	int err = 0;
 	struct busfreq_data_int *data = platform_get_drvdata(pdev);
 
 	exynos5_int_poll_stop(data);
-	return 0;
+	/*
+	 * Set the frequency to the maximum enabled frequency, but set the
+	 * voltage to the maximum possible voltage in case the bootloader
+	 * sets the frequency to maximum during resume.
+	 */
+	mutex_lock(&data->lock);
+
+	data->disabled = true;
+
+	rcu_read_lock();
+	max_opp = opp_find_freq_floor(data->dev, &maxfreq);
+	if (IS_ERR(max_opp)) {
+		rcu_read_unlock();
+		err = PTR_ERR(max_opp);
+		goto unlock;
+	}
+
+	maxfreq = ULONG_MAX;
+	if (data->devfreq->max_freq)
+		maxfreq = data->devfreq->max_freq;
+
+	opp = opp_find_freq_floor(data->dev, &maxfreq);
+	if (IS_ERR(opp)) {
+		rcu_read_unlock();
+		err = PTR_ERR(opp);
+		goto unlock;
+	}
+
+	freq = opp_get_freq(opp);
+	volt = opp_get_voltage(max_opp);
+	rcu_read_unlock();
+
+	err = exynos5_int_setvolt(data, volt);
+	if (err)
+		goto unlock;
+
+	err = clk_set_rate(data->int_clk, freq * 1000);
+	if (err)
+		goto unlock;
+
+	data->suspend_freq = freq;
+
+unlock:
+	mutex_unlock(&data->lock);
+	return err;
+}
+
+static int exynos5_busfreq_int_resume_noirq(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	int err = 0;
+	struct busfreq_data_int *data = platform_get_drvdata(pdev);
+
+	/*
+	 * Set the frequency to the maximum enabled frequency in case the
+	 * bootloader raised it during resume.
+	 */
+	mutex_lock(&data->lock);
+
+	err = clk_set_rate(data->int_clk, data->suspend_freq * 1000);
+	if (err)
+		goto unlock;
+
+unlock:
+	mutex_unlock(&data->lock);
+	return err;
 }
 
 static int exynos5_busfreq_int_resume(struct device *dev)
 {
-	struct platform_device *pdev = container_of(dev, struct platform_device,
-						    dev);
+	struct platform_device *pdev = to_platform_device(dev);
 	struct busfreq_data_int *data = platform_get_drvdata(pdev);
+	int err = 0;
 
-	exynos5_int_poll_start(data);
-	return 0;
+	/*
+	 * Restore the frequency and voltage to the values when suspend was
+	 * started.
+	 */
+	mutex_lock(&data->lock);
+
+	data->disabled = false;
+
+	err = clk_set_rate(data->int_clk, data->curr_freq * 1000);
+	if (err)
+		goto unlock;
+
+	err = exynos5_int_setvolt(data, data->curr_volt);
+	if (err)
+		goto unlock;
+
+unlock:
+	mutex_unlock(&data->lock);
+
+	if (!err)
+		exynos5_int_poll_start(data);
+
+	return err;
 }
 #endif
 
-static SIMPLE_DEV_PM_OPS(exynos5_busfreq_int_pm, exynos5_busfreq_int_suspend,
-		exynos5_busfreq_int_resume);
+static const struct dev_pm_ops exynos5_busfreq_int_pm = {
+	.suspend = exynos5_busfreq_int_suspend,
+	.resume_noirq = exynos5_busfreq_int_resume_noirq,
+	.resume = exynos5_busfreq_int_resume,
+};
 
 static struct platform_driver exynos5_busfreq_int_driver = {
 	.probe		= exynos5_busfreq_int_probe,
