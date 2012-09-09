@@ -1612,23 +1612,23 @@ static int fimc_is_itf_shot(struct fimc_is_device_ischain *this,
 	struct fimc_is_frame_shot *frame)
 {
 	int ret = 0;
-	void *cookie;
 
 	this->fcount++;
 	if (frame->shot->dm.request.frameCount != this->fcount) {
 		err("shot frame count mismatch(%d, %d)",
 			frame->shot->dm.request.frameCount, this->fcount);
 
-		if (!frame->shot->dm.request.frameCount)
+		if (!frame->shot->dm.request.frameCount) {
+			frame->fcount = this->fcount;
 			frame->shot->dm.request.frameCount = this->fcount;
+		}
 
 		this->fcount = frame->shot->dm.request.frameCount;
-		this->interface->fcount = this->fcount - 1;
 	}
 
-	/*flush cache*/
-	cookie = vb2_plane_cookie(frame->vb, 1);
-	vb2_ion_sync_for_device(cookie, 0, frame->shot_size, DMA_TO_DEVICE);
+	/* Cache Flush */
+	vb2_ion_sync_for_device((void *)frame->cookie_shot, 0, frame->shot_size,
+		DMA_TO_DEVICE);
 
 	if (frame->shot->magicNumber != 0x23456789) {
 		err("shot magic number error(0x%08X)\n",
@@ -1639,6 +1639,10 @@ static int fimc_is_itf_shot(struct fimc_is_device_ischain *this,
 
 #ifdef MEASURE_TIME
 	do_gettimeofday(&frame->tzone[TM_SHOT]);
+#endif
+
+#ifdef DBG_STREAMING
+	printk(KERN_INFO "shot(%d)\n", frame->shot->dm.request.frameCount);
 #endif
 
 	ret = fimc_is_hw_shot_nblk(this->interface, this->instance,
@@ -2876,7 +2880,7 @@ int fimc_is_ischain_isp_buffer_queue(struct fimc_is_device_ischain *this,
 	struct fimc_is_framemgr *framemgr;
 
 #ifdef DBG_STREAMING
-	dbg_ischain("%s\n", __func__);
+	/*printk(KERN_INFO "%s\n", __func__);*/
 #endif
 
 	if (index >= FRAMEMGR_MAX_REQUEST) {
@@ -2913,6 +2917,12 @@ int fimc_is_ischain_isp_buffer_queue(struct fimc_is_device_ischain *this,
 				frame->index, (u32)frame->req_flag);
 			frame->req_flag = 0;
 		}
+
+#ifdef ENABLE_VDIS
+		/* VDIS test */
+		if (frame->shot->dm.request.frameCount > 300)
+			frame->shot_ext->dis_bypass = false;
+#endif
 
 		frame->fcount = frame->shot->dm.request.frameCount;
 		fimc_is_frame_trans_fre_to_req(framemgr, frame);
@@ -3271,17 +3281,11 @@ int fimc_is_ischain_dev_buffer_finish(struct fimc_is_ischain_dev *this,
 		else {
 			dbg_warning("buffer index is NOT matched(%d != %d)\n",
 				index, frame->index);
-			fimc_is_frame_print_free_list(framemgr);
-			fimc_is_frame_print_request_list(framemgr);
-			fimc_is_frame_print_process_list(framemgr);
-			fimc_is_frame_print_complete_list(framemgr);
+			fimc_is_frame_print_all(framemgr);
 		}
 	} else {
 		err("frame is empty from complete");
-		fimc_is_frame_print_free_list(framemgr);
-		fimc_is_frame_print_request_list(framemgr);
-		fimc_is_frame_print_process_list(framemgr);
-		fimc_is_frame_print_complete_list(framemgr);
+		fimc_is_frame_print_all(framemgr);
 	}
 
 	framemgr_x_barrier_irq(framemgr, index);
@@ -3343,12 +3347,11 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 	scp_framemgr = &scp->framemgr;
 	scc_req = scp_req = false;
 
-	/* be careful of this code */
 	/*
+	   BE CAREFUL WITH THIS
 	1. buffer queue, all compoenent stop, so it's good
-	2. interface callback, all component will be stop until new one
-	is came
-	therefore, i expect lock object is not necessary in here
+	2. interface callback, all component will be stop until new one is came
+	   therefore, i expect lock object is not necessary in here
 	*/
 
 	fimc_is_frame_request_head(isp_framemgr, &isp_frame);
@@ -3495,7 +3498,7 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 			isp_frame->shot->uctl.scalerUd.sccTargetAddress[2] =
 				scc_frame->dvaddr_buffer[2];
 
-			set_bit(FIMC_IS_REQ, &scc_frame->req_flag);
+			set_bit(FIMC_IS_REQ_FRAME, &scc_frame->req_flag);
 			fimc_is_frame_trans_req_to_pro(scc_framemgr, scc_frame);
 		} else {
 			isp_frame->shot->uctl.scalerUd.sccTargetAddress[0] = 0;
@@ -3525,7 +3528,7 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 			isp_frame->shot->uctl.scalerUd.scpTargetAddress[2] =
 				scp_frame->dvaddr_buffer[2];
 
-			set_bit(FIMC_IS_REQ, &scp_frame->req_flag);
+			set_bit(FIMC_IS_REQ_FRAME, &scp_frame->req_flag);
 			fimc_is_frame_trans_req_to_pro(scp_framemgr, scp_frame);
 		} else {
 			isp_frame->shot->uctl.scalerUd.scpTargetAddress[0] = 0;
@@ -3544,17 +3547,10 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 		err("scp %d frame is drop2", isp_frame->fcount);
 	}
 
-	/*skip frame check*/
-	if (this->dis.skip_frames) {
-		this->dis.skip_frames--;
-		isp_frame->shot_ext->request_scc = 0;
-		isp_frame->shot_ext->request_scp = 0;
-	}
-
 exit:
 	if (ret) {
 		clear_bit(FIMC_IS_ISCHAIN_RUN, &this->state);
-		clear_bit(FIMC_IS_REQ, &isp_frame->req_flag);
+		clear_bit(FIMC_IS_REQ_FRAME, &isp_frame->req_flag);
 		isp_frame->shot_ext->request_isp = 0;
 		isp_frame->shot_ext->request_scc = 0;
 		isp_frame->shot_ext->request_scp = 0;
@@ -3564,8 +3560,16 @@ exit:
 		err("shot(index : %d) is skipped(error : %d)",
 			isp_frame->index, ret);
 	} else {
+		/* 1 frame delay is occured after DIS bypass off */
+		/*
+		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state))
+			set_bit(FIMC_IS_REQ_SHOT, &isp_frame->req_flag);
+		else
+			set_bit(FIMC_IS_REQ_FRAME, &isp_frame->req_flag);
+		*/
+
+		set_bit(FIMC_IS_REQ_SHOT, &isp_frame->req_flag);
 		set_bit(FIMC_IS_ISCHAIN_RUN, &this->state);
-		set_bit(FIMC_IS_REQ, &isp_frame->req_flag);
 		fimc_is_frame_trans_req_to_pro(isp_framemgr, isp_frame);
 
 		fimc_is_itf_shot(this, isp_frame);
@@ -3812,11 +3816,14 @@ int fimc_is_ischain_tag(struct fimc_is_device_ischain *ischain,
 
 	do_gettimeofday(&curtime);
 
-	/*lens*/
+	/* Request */
+	frame->shot->dm.request.frameCount = fcount;
+
+	/* Lens */
 	frame->shot->dm.lens.focusDistance =
 		applied_ctl->lensUd.ctl.focusDistance;
 
-	/*sensor*/
+	/* Sensor */
 	frame->shot->dm.sensor.exposureTime =
 		applied_ctl->sensorUd.ctl.exposureTime;
 	frame->shot->dm.sensor.sensitivity =
@@ -3825,9 +3832,8 @@ int fimc_is_ischain_tag(struct fimc_is_device_ischain *ischain,
 		applied_ctl->sensorUd.ctl.frameDuration;
 	frame->shot->dm.sensor.timeStamp =
 		curtime.tv_sec*1000000 + curtime.tv_usec;
-	frame->shot->dm.request.frameCount = fcount;
 
-	/*flash*/
+	/* Flash */
 	frame->shot->dm.flash.flashMode =
 		applied_ctl->flashUd.ctl.flashMode;
 	frame->shot->dm.flash.firingPower =

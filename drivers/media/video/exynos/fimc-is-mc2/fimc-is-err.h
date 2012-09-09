@@ -251,4 +251,8 @@ enum error {
 
 };
 
+#define ENOBASE_IS		0x10000
+#define	ENOSHOT			(ENOBASE_IS + 1) /* shot error */
+#define ENOMDONE		(ENOBASE_IS + 2) /* meta done error */
+
 #endif

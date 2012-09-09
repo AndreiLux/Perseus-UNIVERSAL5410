@@ -472,6 +472,9 @@ int fimc_is_video_buffer_queue(struct fimc_is_video_common *video,
 					video->buf_kva[index][spare] +
 					ext_size;
 
+				frame->cookie_shot =
+					vb2_plane_cookie(vb, spare);
+
 				frame->shot =
 					(struct camera2_shot *)
 					(video->buf_kva[index][spare] +

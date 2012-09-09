@@ -88,15 +88,16 @@
 	printk(KERN_ERR "%s:%d: " fmt "\n", __func__, __LINE__, ##args)
 
 /*#define DEBUG*/
-/*#define AUTO_MODE*/
 /*#define DBG_STREAMING*/
 /*#define DBG_FLITEISR*/
+/*#define AUTO_MODE*/
 /*#define FW_DEBUG*/
 #define RESERVED_MEM
 #define ENABLE_DZOOM
 #define USE_FRAME_SYNC
+/*#define ENABLE_VDIS*/
 #define TASKLET_MSG
-#define ISDRV_VERSION 101
+#define ISDRV_VERSION 102
 
 #ifdef DEBUG
 #define dbg(fmt, args...) \

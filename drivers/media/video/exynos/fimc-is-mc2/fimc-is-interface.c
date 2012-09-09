@@ -553,49 +553,60 @@ exit:
 	return ret;
 }
 
-static int fimc_is_get_cmd(struct fimc_is_interface *interface,
+static int fimc_is_get_cmd(struct fimc_is_interface *itf,
 	struct fimc_is_msg *msg, u32 index)
 {
+	struct is_common_reg __iomem *com_regs = itf->com_regs;
+
 	switch (index) {
 	case INTR_GENERAL:
 		msg->id = 0;
-		msg->command = interface->com_regs->ihcmd;
-		msg->instance = interface->com_regs->ihc_sensorid;
-		msg->parameter1 = interface->com_regs->ihc_param1;
-		msg->parameter2 = interface->com_regs->ihc_param2;
-		msg->parameter3 = interface->com_regs->ihc_param3;
-		msg->parameter4 = interface->com_regs->ihc_param4;
+		msg->command = com_regs->ihcmd;
+		msg->instance = com_regs->ihc_sensorid;
+		msg->parameter1 = com_regs->ihc_param1;
+		msg->parameter2 = com_regs->ihc_param2;
+		msg->parameter3 = com_regs->ihc_param3;
+		msg->parameter4 = com_regs->ihc_param4;
 		break;
 	case INTR_SCC_FDONE:
 		msg->id = 0;
 		msg->command = IHC_FRAME_DONE;
-		msg->instance = interface->com_regs->scc_sensor_id;
-		msg->parameter1 = interface->com_regs->scc_param1;
-		msg->parameter2 = interface->com_regs->scc_param2;
-		msg->parameter3 = interface->com_regs->scc_param3;
-		msg->parameter4 = interface->com_regs->scc_param4;
+		msg->instance = com_regs->scc_sensor_id;
+		msg->parameter1 = com_regs->scc_param1;
+		msg->parameter2 = com_regs->scc_param2;
+		msg->parameter3 = com_regs->scc_param3;
+		msg->parameter4 = 0;
 		break;
 	case INTR_SCP_FDONE:
 		msg->id = 0;
 		msg->command = IHC_FRAME_DONE;
-		msg->instance = interface->com_regs->scp_sensor_id;
-		msg->parameter1 = interface->com_regs->scp_param1;
-		msg->parameter2 = interface->com_regs->scp_param2;
-		msg->parameter3 = interface->com_regs->scp_param3;
-		msg->parameter4 = interface->com_regs->scp_param4;
+		msg->instance = com_regs->scp_sensor_id;
+		msg->parameter1 = com_regs->scp_param1;
+		msg->parameter2 = com_regs->scp_param2;
+		msg->parameter3 = com_regs->scp_param3;
+		msg->parameter4 = 0;
 		break;
 	case INTR_META_DONE:
 		msg->id = 0;
 		msg->command = IHC_FRAME_DONE;
-		msg->instance = interface->com_regs->meta_sensor_id;
-		msg->parameter1 = interface->com_regs->meta_parameter1;
+		msg->instance = com_regs->meta_sensor_id;
+		msg->parameter1 = com_regs->meta_param1;
 		msg->parameter2 = 0;
+		msg->parameter3 = 0;
+		msg->parameter4 = 0;
+		break;
+	case INTR_SHOT_DONE:
+		msg->id = 0;
+		msg->command = IHC_FRAME_DONE;
+		msg->instance = com_regs->shot_sensor_id;
+		msg->parameter1 = com_regs->shot_param1;
+		msg->parameter2 = com_regs->shot_param2;
 		msg->parameter3 = 0;
 		msg->parameter4 = 0;
 		break;
 	default:
 		msg->id = 0;
-		msg->command = IHC_FRAME_DONE;
+		msg->command = 0;
 		msg->instance = 0;
 		msg->parameter1 = 0;
 		msg->parameter2 = 0;
@@ -707,31 +718,11 @@ static void wq_func_general(struct work_struct *data)
 				break;
 			/*non-blocking command*/
 			case HIC_SHOT:
-				dbg_interface("shot done\n");
-				get_req_work(&itf->nblk_shot , &nblk_work);
-				if (nblk_work) {
-					nblk_work->msg.command = ISR_DONE;
-					nblk_work->fcount =
-						nblk_work->msg.parameter3;
-					set_free_work(&itf->nblk_shot,
-						nblk_work);
-#ifdef MEASURE_TIME
-			{
-				struct fimc_is_frame_shot *frame;
-				frame = nblk_work->frame;
-				do_gettimeofday(&frame->tzone[TM_SHOT_D]);
-			}
-#endif
-
-				} else {
-					err("nblk shot request is empty");
-					print_fre_work_list(
-						&itf->nblk_shot);
-					print_req_work_list(
-						&itf->nblk_shot);
-				}
+				err("shot is not acceptable\n");
 				break;
 			case HIC_SET_CAM_CONTROL:
+				/* this code will be used latter */
+#if 0
 				dbg_interface("camctrl done\n");
 				get_req_work(&itf->nblk_cam_ctrl , &nblk_work);
 				if (nblk_work) {
@@ -745,6 +736,9 @@ static void wq_func_general(struct work_struct *data)
 					print_req_work_list(
 						&itf->nblk_cam_ctrl);
 				}
+#else
+				err("camctrl is not acceptable\n");
+#endif
 				break;
 			default:
 				err("unknown done is invokded\n");
@@ -842,8 +836,8 @@ static void wq_func_scc(struct work_struct *data)
 		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_4, flags);
 
 		fimc_is_frame_process_head(framemgr, &frame);
-		if (frame && test_bit(FIMC_IS_REQ, &frame->req_flag)) {
-			clear_bit(FIMC_IS_REQ, &frame->req_flag);
+		if (frame && test_bit(FIMC_IS_REQ_FRAME, &frame->req_flag)) {
+			clear_bit(FIMC_IS_REQ_FRAME, &frame->req_flag);
 
 			index = frame->index;
 #ifdef DBG_STREAMING
@@ -899,8 +893,8 @@ static void wq_func_scp(struct work_struct *data)
 		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_4, flags);
 
 		fimc_is_frame_process_head(framemgr, &frame);
-		if (frame && test_bit(FIMC_IS_REQ, &frame->req_flag)) {
-			clear_bit(FIMC_IS_REQ, &frame->req_flag);
+		if (frame && test_bit(FIMC_IS_REQ_FRAME, &frame->req_flag)) {
+			clear_bit(FIMC_IS_REQ_FRAME, &frame->req_flag);
 
 			index = frame->index;
 #ifdef DBG_STREAMING
@@ -923,6 +917,83 @@ static void wq_func_scp(struct work_struct *data)
 	}
 }
 
+static void wq_func_isp(struct fimc_is_interface *itf,
+	struct fimc_is_framemgr *framemgr,
+	struct fimc_is_frame_shot *frame)
+{
+	u32 index;
+	struct camera2_lens_uctl *isp_lens_uctl;
+	struct camera2_lens_uctl *lens_uctl;
+	struct camera2_sensor_uctl *isp_sensor_uctl;
+	struct camera2_sensor_uctl *sensor_uctl;
+	struct camera2_flash_uctl *isp_flash_uctl;
+	struct camera2_flash_uctl *flash_uctl;
+
+	index = frame->index;
+	isp_lens_uctl = &itf->isp_peri_ctl.lensUd;
+	isp_sensor_uctl = &itf->isp_peri_ctl.sensorUd;
+	isp_flash_uctl = &itf->isp_peri_ctl.flashUd;
+
+#ifdef DBG_STREAMING
+	printk(KERN_CONT "M%d %d\n", index, frame->fcount);
+#endif
+
+	/* Cache Invalidation */
+	vb2_ion_sync_for_device((void *)frame->cookie_shot, 0, frame->shot_size,
+		DMA_FROM_DEVICE);
+
+	if (frame->shot->uctl.uUpdateBitMap & CAM_SENSOR_CMD) {
+		sensor_uctl = &frame->shot->uctl.sensorUd;
+		isp_sensor_uctl->ctl.exposureTime =
+			sensor_uctl->ctl.exposureTime;
+		isp_sensor_uctl->ctl.frameDuration =
+			sensor_uctl->ctl.frameDuration;
+		isp_sensor_uctl->ctl.sensitivity =
+			sensor_uctl->ctl.sensitivity;
+
+		frame->shot->uctl.uUpdateBitMap &=
+			~CAM_SENSOR_CMD;
+	}
+
+	if (frame->shot->uctl.uUpdateBitMap & CAM_LENS_CMD) {
+		lens_uctl = &frame->shot->uctl.lensUd;
+		isp_lens_uctl->ctl.focusDistance =
+			lens_uctl->ctl.focusDistance;
+		isp_lens_uctl->maxPos =
+			lens_uctl->maxPos;
+		isp_lens_uctl->slewRate =
+			lens_uctl->slewRate;
+
+		frame->shot->uctl.uUpdateBitMap &=
+			~CAM_LENS_CMD;
+	}
+
+	if (frame->shot->uctl.uUpdateBitMap & CAM_FLASH_CMD) {
+		flash_uctl = &frame->shot->uctl.flashUd;
+		isp_flash_uctl->ctl.flashMode =
+			flash_uctl->ctl.flashMode;
+		isp_flash_uctl->ctl.firingPower =
+			flash_uctl->ctl.firingPower;
+		isp_flash_uctl->ctl.firingTime =
+			flash_uctl->ctl.firingTime;
+
+		frame->shot->uctl.uUpdateBitMap &=
+			~CAM_FLASH_CMD;
+	}
+
+#ifdef MEASURE_TIME
+	do_gettimeofday(&frame->tzone[TM_META_D]);
+#endif
+
+#ifdef AUTO_MODE
+	fimc_is_frame_trans_pro_to_fre(framemgr, frame);
+	buffer_done(itf->video_sensor, index);
+#else
+	fimc_is_frame_trans_pro_to_com(framemgr, frame);
+	buffer_done(itf->video_isp, index);
+#endif
+}
+
 static void wq_func_meta(struct work_struct *data)
 {
 	struct fimc_is_interface *itf;
@@ -930,134 +1001,133 @@ static void wq_func_meta(struct work_struct *data)
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_device_ischain *ischain;
 	struct fimc_is_frame_shot *frame;
-	struct fimc_is_video_common *video;
 	struct fimc_is_work_list *work_list;
 	struct fimc_is_work *work;
-	struct camera2_lens_uctl *isp_lens_uctl;
-	struct camera2_lens_uctl *lens_uctl;
-	struct camera2_sensor_uctl *isp_sensor_uctl;
-	struct camera2_sensor_uctl *sensor_uctl;
-	struct camera2_flash_uctl *isp_flash_uctl;
-	struct camera2_flash_uctl *flash_uctl;
 	unsigned long flags;
 	u32 fcount;
 	u32 index;
-	void *cookie;
-	bool req_done = false;
+	bool req_done;
 
+	req_done = false;
 	index = FIMC_IS_INVALID_BUF_INDEX;
 	itf = container_of(data, struct fimc_is_interface,
 		work_queue[INTR_META_DONE]);
 	work_list = &itf->work_list[INTR_META_DONE];
 	framemgr = itf->framemgr;
-	video = itf->video_isp;
-	ischain = video->device;
-	isp_lens_uctl = &itf->isp_peri_ctl.lensUd;
-	isp_sensor_uctl = &itf->isp_peri_ctl.sensorUd;
-	isp_flash_uctl = &itf->isp_peri_ctl.flashUd;
+	ischain = itf->video_isp->device;
 
 	get_req_work(work_list, &work);
 	while (work) {
 		msg = &work->msg;
 		fcount = msg->parameter1;
 
-		itf->fcount++;
-		if (itf->fcount != fcount) {
-			err("fcount is not correct(%d, %d)",
-				fcount, itf->fcount);
+		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_7, flags);
 
-			itf->fcount = fcount;
-			goto next;
+		fimc_is_frame_process_head(framemgr, &frame);
+		if (frame) {
+			/* comparing input fcount and output fcount
+			just error printing although this error is occured */
+			if (fcount != frame->fcount)
+				err("frame mismatch(%d != %d)",
+					fcount, frame->fcount);
+
+			index = frame->index;
+
+			if (test_bit(FIMC_IS_REQ_FRAME, &frame->req_flag)) {
+				clear_bit(FIMC_IS_REQ_FRAME, &frame->req_flag);
+				if (!frame->req_flag) {
+					wq_func_isp(itf, framemgr, frame);
+					req_done = true;
+				}
+			}
+		}
+
+		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_7, flags);
+
+		if (req_done) {
+			mutex_lock(&ischain->mutex_state);
+			fimc_is_ischain_callback(ischain);
+			mutex_unlock(&ischain->mutex_state);
+		}
+
+		set_free_work(work_list, work);
+		get_req_work(work_list, &work);
+	}
+}
+
+static void wq_func_shot(struct work_struct *data)
+{
+	struct fimc_is_interface *itf;
+	struct fimc_is_msg *msg;
+	struct fimc_is_framemgr *framemgr;
+	struct fimc_is_device_ischain *ischain;
+	struct fimc_is_frame_shot *frame;
+	struct fimc_is_work_list *work_list;
+	struct fimc_is_work *work;
+	struct fimc_is_work *nblk_work;
+	unsigned long flags;
+	u32 fcount;
+	u32 index;
+	bool req_done;
+
+	req_done = false;
+	index = FIMC_IS_INVALID_BUF_INDEX;
+	itf = container_of(data, struct fimc_is_interface,
+		work_queue[INTR_SHOT_DONE]);
+	work_list = &itf->work_list[INTR_SHOT_DONE];
+	framemgr = itf->framemgr;
+	ischain = itf->video_isp->device;
+
+	get_req_work(work_list, &work);
+	while (work) {
+		msg = &work->msg;
+		fcount = msg->parameter1;
+
+		get_req_work(&itf->nblk_shot , &nblk_work);
+		if (nblk_work) {
+			if (msg->parameter2 == ISR_NDONE)
+				err("ISR NDONE\n");
+			nblk_work->msg.command = msg->parameter2;
+			nblk_work->fcount = fcount;
+			set_free_work(&itf->nblk_shot, nblk_work);
+		} else {
+			err("nblk shot request is empty");
+			print_fre_work_list(&itf->nblk_shot);
+			print_req_work_list(&itf->nblk_shot);
 		}
 
 		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_7, flags);
 
 		fimc_is_frame_process_head(framemgr, &frame);
 		if (frame) {
+			/* comparing input fcount and output fcount
+			just error printing although this error is occured */
 			if (fcount != frame->fcount)
-				dbg_warning("frame mismatch(%d != %d)",
+				err("frame mismatch(%d != %d)",
 					fcount, frame->fcount);
 
 			index = frame->index;
-#ifdef DBG_STREAMING
-			printk(KERN_INFO "M%d %d\n", index, fcount);
-#endif
 
-			/*flush cache*/
-			cookie = vb2_plane_cookie(frame->vb, 1);
-			vb2_ion_sync_for_device(cookie, 0, frame->shot_size,
-				DMA_FROM_DEVICE);
-
-			if (frame->shot->uctl.uUpdateBitMap & CAM_SENSOR_CMD) {
-				sensor_uctl = &frame->shot->uctl.sensorUd;
-				isp_sensor_uctl->ctl.exposureTime =
-					sensor_uctl->ctl.exposureTime;
-				isp_sensor_uctl->ctl.frameDuration =
-					sensor_uctl->ctl.frameDuration;
-				isp_sensor_uctl->ctl.sensitivity =
-					sensor_uctl->ctl.sensitivity;
-
-				frame->shot->uctl.uUpdateBitMap &=
-					~CAM_SENSOR_CMD;
-			}
-
-			if (frame->shot->uctl.uUpdateBitMap & CAM_LENS_CMD) {
-				lens_uctl = &frame->shot->uctl.lensUd;
-				isp_lens_uctl->ctl.focusDistance =
-					lens_uctl->ctl.focusDistance;
-				isp_lens_uctl->maxPos =
-					lens_uctl->maxPos;
-				isp_lens_uctl->slewRate =
-					lens_uctl->slewRate;
-
-				frame->shot->uctl.uUpdateBitMap &=
-					~CAM_LENS_CMD;
-			}
-
-			if (frame->shot->uctl.uUpdateBitMap & CAM_FLASH_CMD) {
-				flash_uctl = &frame->shot->uctl.flashUd;
-				isp_flash_uctl->ctl.flashMode =
-					flash_uctl->ctl.flashMode;
-				isp_flash_uctl->ctl.firingPower =
-					flash_uctl->ctl.firingPower;
-				isp_flash_uctl->ctl.firingTime =
-					flash_uctl->ctl.firingTime;
-
-				frame->shot->uctl.uUpdateBitMap &=
-					~CAM_FLASH_CMD;
-			}
-
-#ifdef MEASURE_TIME
-			do_gettimeofday(&frame->tzone[TM_META_D]);
-#endif
-
-			if (test_bit(FIMC_IS_REQ, &frame->req_flag)) {
-				clear_bit(FIMC_IS_REQ, &frame->req_flag);
-#ifdef AUTO_MODE
-				fimc_is_frame_trans_pro_to_fre(framemgr, frame);
-				buffer_done(itf->video_sensor, index);
-#else
-				fimc_is_frame_trans_pro_to_com(framemgr, frame);
-				buffer_done(itf->video_isp, index);
-#endif
-				req_done = true;
+			if (test_bit(FIMC_IS_REQ_SHOT, &frame->req_flag)) {
+				clear_bit(FIMC_IS_REQ_SHOT, &frame->req_flag);
+				if (!frame->req_flag) {
+					wq_func_isp(itf, framemgr, frame);
+					req_done = true;
+				}
 			}
 		} else {
-			err("Meta done is occured without request");
+			err("Shot done is occured without request2");
 			fimc_is_frame_print_all(framemgr);
 		}
 
 		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_7, flags);
 
-#if 1
 		if (req_done) {
 			mutex_lock(&ischain->mutex_state);
 			fimc_is_ischain_callback(ischain);
 			mutex_unlock(&ischain->mutex_state);
 		}
-#endif
 
-next:
 		set_free_work(work_list, work);
 		get_req_work(work_list, &work);
 	}
@@ -1129,6 +1199,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 		work_queue = &itf->work_queue[INTR_META_DONE];
 		work_list = &itf->work_list[INTR_META_DONE];
 
+		/* meta done is not needed */
 		get_free_work_irq(work_list, &work);
 		if (work) {
 			fimc_is_get_cmd(itf, &work->msg, INTR_META_DONE);
@@ -1139,8 +1210,25 @@ static irqreturn_t interface_isr(int irq, void *data)
 				schedule_work(work_queue);
 		} else
 			err("free work item is empty4");
-
 		writel((1<<INTR_META_DONE), itf->regs + INTCR1);
+	}
+
+	if (status & (1<<INTR_SHOT_DONE)) {
+		work_queue = &itf->work_queue[INTR_SHOT_DONE];
+		work_list = &itf->work_list[INTR_SHOT_DONE];
+
+		get_free_work_irq(work_list, &work);
+		if (work) {
+			fimc_is_get_cmd(itf, &work->msg, INTR_SHOT_DONE);
+			work->fcount = work->msg.parameter1;
+			set_req_work_irq(work_list, work);
+
+			if (!work_pending(work_queue))
+				schedule_work(work_queue);
+		} else
+			err("free work item is empty5");
+
+		writel((1<<INTR_SHOT_DONE), itf->regs + INTCR1);
 	}
 
 	return IRQ_HANDLED;
@@ -1168,6 +1256,7 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 	INIT_WORK(&this->work_queue[INTR_SCC_FDONE], wq_func_scc);
 	INIT_WORK(&this->work_queue[INTR_SCP_FDONE], wq_func_scp);
 	INIT_WORK(&this->work_queue[INTR_META_DONE], wq_func_meta);
+	INIT_WORK(&this->work_queue[INTR_SHOT_DONE], wq_func_shot);
 
 	this->regs = (void *)regs;
 	this->com_regs = (struct is_common_reg *)(regs + ISSR0);
@@ -1199,6 +1288,8 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 		TRACE_WORK_ID_SCP, MAX_WORK_COUNT);
 	init_work_list(&this->work_list[INTR_META_DONE],
 		TRACE_WORK_ID_META, MAX_WORK_COUNT);
+	init_work_list(&this->work_list[INTR_SHOT_DONE],
+		TRACE_WORK_ID_SHOT, MAX_WORK_COUNT);
 
 	return ret;
 }
@@ -1218,7 +1309,6 @@ int fimc_is_interface_open(struct fimc_is_interface *this)
 	this->streaming = IS_IF_STREAMING_INIT;
 	this->processing = IS_IF_PROCESSING_INIT;
 	this->pdown_ready = IS_IF_POWER_DOWN_READY;
-	this->fcount = 0;
 	clr_state(this, IS_IF_STATE_START);
 	set_state(this, IS_IF_STATE_BUSY);
 
@@ -1617,7 +1707,7 @@ int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
 	struct fimc_is_work *work;
 	struct fimc_is_msg *msg;
 
-	dbg_interface("shot_nblk(%d, %d)\n", instance, fcount);
+	/*dbg_interface("shot_nblk(%d, %d)\n", instance, fcount);*/
 
 	get_free_work(&this->nblk_shot, &work);
 	if (work) {
@@ -1637,7 +1727,7 @@ int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
 		err("g_free_nblk return NULL");
 		print_fre_work_list(&this->nblk_shot);
 		print_req_work_list(&this->nblk_shot);
-		ret = 1;
+		ret = -ENOSHOT;
 	}
 
 	return ret;

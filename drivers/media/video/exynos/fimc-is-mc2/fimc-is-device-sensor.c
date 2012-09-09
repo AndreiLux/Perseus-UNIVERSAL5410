@@ -559,14 +559,13 @@ int fimc_is_sensor_buffer_finish(struct fimc_is_device_sensor *this,
 
 	framemgr_e_barrier_irqs(framemgr, FMGR_IDX_3 + index, flags);
 
-	if (frame->state == FIMC_IS_FRAME_STATE_COMPLETE)
+	if (frame->state == FIMC_IS_FRAME_STATE_COMPLETE) {
+		if (!frame->shot->dm.request.frameCount)
+			err("request.frameCount is 0\n");
 		fimc_is_frame_trans_com_to_fre(framemgr, frame);
-	else {
+	} else {
 		err("frame(%d) is not com state(%d)", index, frame->state);
-		fimc_is_frame_print_free_list(framemgr);
-		fimc_is_frame_print_request_list(framemgr);
-		fimc_is_frame_print_process_list(framemgr);
-		fimc_is_frame_print_complete_list(framemgr);
+		fimc_is_frame_print_all(framemgr);
 	}
 
 	framemgr_x_barrier_irqr(framemgr, FMGR_IDX_3 + index, flags);

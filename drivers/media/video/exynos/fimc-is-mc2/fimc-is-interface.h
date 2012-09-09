@@ -14,6 +14,7 @@
 #define TRACE_WORK_ID_SCC	0x8
 #define TRACE_WORK_ID_SCP	0x10
 #define TRACE_WORK_ID_META	0x20
+#define TRACE_WORK_ID_SHOT	0x40
 #define TRACE_WORK_ID_MASK	0xFF
 
 #define MAX_NBLOCKING_COUNT	3
@@ -36,7 +37,9 @@ enum interrupt_map {
 	INTR_SCC_FDONE		= 2,
 	INTR_DNR_FDONE		= 3,
 	INTR_SCP_FDONE		= 4,
+	/* 5 is ISP YUV DONE */
 	INTR_META_DONE		= 6,
+	INTR_SHOT_DONE		= 7,
 	INTR_MAX_MAP
 };
 
@@ -103,8 +106,6 @@ struct fimc_is_interface {
 	struct work_struct		work_queue[INTR_MAX_MAP];
 	struct fimc_is_work_list	work_list[INTR_MAX_MAP];
 
-	/* this fcount is for internal debugging */
-	u32				fcount;
 	/* sensor streaming flag */
 	enum streaming_state		streaming;
 	/* firmware processing flag */

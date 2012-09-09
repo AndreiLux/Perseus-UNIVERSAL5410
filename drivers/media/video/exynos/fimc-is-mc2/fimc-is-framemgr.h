@@ -72,7 +72,11 @@ enum fimc_is_frame_shot_state {
 };
 
 enum fimc_is_frame_reqeust {
-	FIMC_IS_REQ
+	/* SCC, SCP frame done,
+	   ISP meta done */
+	FIMC_IS_REQ_FRAME,
+	/* ISP shot done */
+	FIMC_IS_REQ_SHOT
 };
 
 struct fimc_is_frame_shot {
@@ -84,6 +88,7 @@ struct fimc_is_frame_shot {
 	struct camera2_shot_ext *shot_ext;
 	u32 kvaddr_shot;
 	u32 dvaddr_shot;
+	u32 cookie_shot;
 	u32 shot_size;
 
 	/*stream use*/
