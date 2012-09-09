@@ -633,11 +633,6 @@ static void omap4_panda_init_rev(void)
 	}
 }
 
-static struct __initdata emif_custom_configs custom_configs = {
-	.mask   = EMIF_CUSTOM_CONFIG_LPMODE,
-	.lpmode = EMIF_LP_MODE_DISABLE
-};
-
 static void __init enable_board_wakeups(void)
 {
 	/* user button on GPIO_121 */
@@ -660,14 +655,12 @@ static void __init omap4_panda_init(void)
 	omap_emif_set_device_details(1, &lpddr2_elpida_2G_S4_x2_info,
 			lpddr2_elpida_2G_S4_timings,
 			ARRAY_SIZE(lpddr2_elpida_2G_S4_timings),
-			&lpddr2_elpida_S4_min_tck,
-			&custom_configs);
+			&lpddr2_elpida_S4_min_tck, NULL);
 
 	omap_emif_set_device_details(2, &lpddr2_elpida_2G_S4_x2_info,
 			lpddr2_elpida_2G_S4_timings,
 			ARRAY_SIZE(lpddr2_elpida_2G_S4_timings),
-			&lpddr2_elpida_S4_min_tck,
-			&custom_configs);
+			&lpddr2_elpida_S4_min_tck, NULL);
 
 	if (cpu_is_omap446x())
 		gpio_leds[0].gpio = 110;
