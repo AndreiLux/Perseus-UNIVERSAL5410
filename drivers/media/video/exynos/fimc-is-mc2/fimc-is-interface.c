@@ -1172,7 +1172,7 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 	this->regs = (void *)regs;
 	this->com_regs = (struct is_common_reg *)(regs + ISSR0);
 
-	ret = request_irq(irq, interface_isr, 0, "MCUCTL", this);
+	ret = request_irq(irq, interface_isr, 0, "mcuctl", this);
 	if (ret)
 		err("request_irq failed\n");
 
@@ -1259,14 +1259,14 @@ int fimc_is_hw_print(struct fimc_is_interface *this)
 	char *debug;
 	char letter;
 	int count = 0, i;
+	struct fimc_is_device_ischain *ischain;
 
 	if (!test_state(this, IS_IF_STATE_OPEN)) {
 		err("interface is closed");
 		return 0;
 	}
 
-	struct fimc_is_device_ischain *ischain =
-		(struct fimc_is_device_ischain *)this->video_isp->device;
+	ischain = this->video_isp->device;
 
 	vb2_ion_sync_for_device(ischain->minfo.fw_cookie,
 		DEBUG_OFFSET, DEBUG_CNT, DMA_FROM_DEVICE);

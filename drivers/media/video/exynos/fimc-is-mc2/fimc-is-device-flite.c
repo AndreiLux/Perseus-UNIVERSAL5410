@@ -404,6 +404,16 @@ int flite_hw_get_status1(unsigned long flite_reg_base)
 	return status;
 }
 
+int flite_hw_getnclr_status1(unsigned long flite_reg_base)
+{
+	u32 status = 0;
+
+	status = readl(flite_reg_base + FLITE_REG_CISTATUS);
+	writel(0, flite_reg_base + FLITE_REG_CISTATUS);
+
+	return status;
+}
+
 void flite_hw_set_status2(unsigned long flite_reg_base, u32 val)
 {
 	writel(val, flite_reg_base + FLITE_REG_CISTATUS2);
@@ -697,28 +707,86 @@ static void tasklet_func_flite_end(unsigned long data)
 
 static irqreturn_t fimc_is_flite_irq_handler(int irq, void *data)
 {
-	u32 status1, status2, status3;
+	u32 status, status1, status2;
 	struct fimc_is_device_flite *flite;
 
 	flite = data;
+	status1 = flite_hw_getnclr_status1(flite->regs);
+	status = status1 & (3<<4);
+	/* status3 = flite_hw_get_present_frame_buffer(flite->regs); */
 
-	status1 = flite_hw_get_status1(flite->regs);
-	status2 = flite_hw_get_status2(flite->regs);
-	status3 = flite_hw_get_present_frame_buffer(flite->regs);
+	if (test_bit(FIMC_IS_FLITE_LAST_CAPTURE, &flite->state))
+		goto exit;
 
-	flite_hw_set_status1(flite->regs, 0);
+	if (status) {
+		if (status == (3<<4)) {
+#ifdef DBG_FLITEISR
+			printk(KERN_CONT "*");
+#endif
+			/* frame both interrupt since latency */
+			if (flite->sw_checker) {
+#ifdef DBG_FLITEISR
+				printk(KERN_CONT ">");
+#endif
+				/* frame end interrupt */
+				flite->sw_checker = EXPECT_FRAME_START;
+				*notify_fcount = atomic_read(&flite->fcount);
+				flite->tasklet_param_end = flite->sw_trigger;
+				tasklet_schedule(&flite->tasklet_flite_end);
 
-	if (status1 & (1<<5)) {
-		if (!test_bit(FIMC_IS_FLITE_LAST_CAPTURE, &flite->state)) {
-			flite->sw_trigger = flite->sw_trigger ? 0 : 1;
+#ifdef DBG_FLITEISR
+				printk(KERN_CONT "<");
+#endif
+				/* frame start interrupt */
+				flite->sw_checker = EXPECT_FRAME_END;
+				if (flite->sw_trigger)
+					flite->sw_trigger = FLITE_A_SLOT_VALID;
+				else
+					flite->sw_trigger = FLITE_B_SLOT_VALID;
+				flite->tasklet_param_str = flite->sw_trigger;
+				atomic_inc(&flite->fcount);
+				tasklet_schedule(&flite->tasklet_flite_str);
+			} else {
+#ifdef DBG_FLITEISR
+				printk(KERN_CONT "<");
+#endif
+				/* frame start interrupt */
+				flite->sw_checker = EXPECT_FRAME_END;
+				if (flite->sw_trigger)
+					flite->sw_trigger = FLITE_A_SLOT_VALID;
+				else
+					flite->sw_trigger = FLITE_B_SLOT_VALID;
+				flite->tasklet_param_str = flite->sw_trigger;
+				atomic_inc(&flite->fcount);
+				tasklet_schedule(&flite->tasklet_flite_str);
+#ifdef DBG_FLITEISR
+				printk(KERN_CONT ">");
+#endif
+				/* frame end interrupt */
+				flite->sw_checker = EXPECT_FRAME_START;
+				*notify_fcount = atomic_read(&flite->fcount);
+				flite->tasklet_param_end = flite->sw_trigger;
+				tasklet_schedule(&flite->tasklet_flite_end);
+			}
+		} else if (status == (2<<4)) {
+#ifdef DBG_FLITEISR
+			printk(KERN_CONT "<");
+#endif
+			/* frame start interrupt */
+			flite->sw_checker = EXPECT_FRAME_END;
+			if (flite->sw_trigger)
+				flite->sw_trigger = FLITE_A_SLOT_VALID;
+			else
+				flite->sw_trigger = FLITE_B_SLOT_VALID;
 			flite->tasklet_param_str = flite->sw_trigger;
 			atomic_inc(&flite->fcount);
 			tasklet_schedule(&flite->tasklet_flite_str);
-		}
-	}
-
-	if (status1 & (1<<4)) {
-		if (!test_bit(FIMC_IS_FLITE_LAST_CAPTURE, &flite->state)) {
+		} else {
+#ifdef DBG_FLITEISR
+			printk(KERN_CONT ">");
+#endif
+			/* frame end interrupt */
+			flite->sw_checker = EXPECT_FRAME_START;
 			*notify_fcount = atomic_read(&flite->fcount);
 			flite->tasklet_param_end = flite->sw_trigger;
 			tasklet_schedule(&flite->tasklet_flite_end);
@@ -730,6 +798,7 @@ static irqreturn_t fimc_is_flite_irq_handler(int irq, void *data)
 		printk(KERN_INFO "[CamIF_0]Last Frame Capture\n");
 
 		/* Clear LastCaptureEnd bit */
+		status2 = flite_hw_get_status2(flite->regs);
 		status2 &= ~(0x1 << 1);
 		flite_hw_set_status2(flite->regs, status2);
 
@@ -758,6 +827,7 @@ static irqreturn_t fimc_is_flite_irq_handler(int irq, void *data)
 		/*uCIWDOFST |= (0x1 << 30);*/
 	}
 
+exit:
 	return IRQ_HANDLED;
 }
 
@@ -774,6 +844,8 @@ int fimc_is_flite_probe(struct fimc_is_device_flite *this,
 	this->framemgr = framemgr;
 	this->video = video;
 	this->private_data = data;
+	spin_lock_init(&this->slock_state);
+	init_waitqueue_head(&this->wait_queue);
 
 	tasklet_init(&this->tasklet_flite_str,
 		tasklet_func_flite_str,
@@ -789,7 +861,7 @@ int fimc_is_flite_probe(struct fimc_is_device_flite *this,
 		ret = request_irq(IRQ_FIMC_LITE0,
 			fimc_is_flite_irq_handler,
 			0,
-			"FIMC-LITE0",
+			"fimc-lite0",
 			this);
 		if (ret)
 			err("request_irq(L0) failed\n");
@@ -799,7 +871,7 @@ int fimc_is_flite_probe(struct fimc_is_device_flite *this,
 		ret = request_irq(IRQ_FIMC_LITE1,
 			fimc_is_flite_irq_handler,
 			0,
-			"FIMC-LITE1",
+			"fimc-lite1",
 			this);
 		if (ret)
 			err("request_irq(L1) failed\n");
@@ -810,7 +882,6 @@ int fimc_is_flite_probe(struct fimc_is_device_flite *this,
 #ifdef FW_DEBUG
 	INIT_WORK(&this->work_queue_debug, wq_func_debug);
 #endif
-	this->opened = 0;
 
 	return ret;
 }
@@ -820,23 +891,15 @@ int fimc_is_flite_open(struct fimc_is_device_flite *this)
 	int ret = 0;
 	unsigned long flags;
 
-	this->sw_trigger = 1;
-	this->tasklet_param_str = 0;
-	this->tasklet_param_end = 0;
-
 	atomic_set(&this->fcount, 0);
-	spin_lock_init(&this->slock_state);
-	init_waitqueue_head(&this->wait_queue);
 
 	spin_lock_irqsave(&this->slock_state, flags);
 
 	clear_bit(FIMC_IS_FLITE_LAST_CAPTURE, &this->state);
-	clear_bit(FIMC_IS_FLITE_A_SLOT_VALID, &this->state);
-	clear_bit(FIMC_IS_FLITE_B_SLOT_VALID, &this->state);
+	clear_bit(FLITE_A_SLOT_VALID, &this->state);
+	clear_bit(FLITE_B_SLOT_VALID, &this->state);
 
 	spin_unlock_irqrestore(&this->slock_state, flags);
-
-	this->opened = 1;
 
 	return ret;
 }
@@ -852,6 +915,11 @@ int fimc_is_flite_start(struct fimc_is_device_flite *this,
 
 	framemgr = this->framemgr;
 
+	this->sw_trigger = FLITE_B_SLOT_VALID;
+	this->sw_checker = EXPECT_FRAME_START;
+	this->tasklet_param_str = 0;
+	this->tasklet_param_end = 0;
+
 	clear_bit(FIMC_IS_FLITE_LAST_CAPTURE, &this->state);
 	init_fimc_lite(this->regs);
 
@@ -859,13 +927,13 @@ int fimc_is_flite_start(struct fimc_is_device_flite *this,
 
 	flite_hw_set_use_buffer(this->regs, 0);
 	flite_hw_set_start_addr(this->regs, 0, video->buf_dva[0][0]);
-	set_bit(FIMC_IS_FLITE_A_SLOT_VALID, &this->state);
+	set_bit(FLITE_A_SLOT_VALID, &this->state);
 	fimc_is_frame_request_head(framemgr, &item);
 	fimc_is_frame_trans_req_to_pro(framemgr, item);
 
 	flite_hw_set_use_buffer(this->regs, 1);
 	flite_hw_set_start_addr(this->regs, 1, video->buf_dva[1][0]);
-	set_bit(FIMC_IS_FLITE_B_SLOT_VALID, &this->state);
+	set_bit(FLITE_B_SLOT_VALID, &this->state);
 	fimc_is_frame_request_head(framemgr, &item);
 	fimc_is_frame_trans_req_to_pro(framemgr, item);
 

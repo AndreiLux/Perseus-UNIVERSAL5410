@@ -12,6 +12,9 @@
 #ifndef FIMC_IS_DEVICE_FLITE_H
 #define FIMC_IS_DEVICE_FLITE_H
 
+#define EXPECT_FRAME_START	0
+#define EXPECT_FRAME_END	1
+
 struct fimc_is_frame_info {
 	u32 o_width;
 	u32 o_height;
@@ -23,15 +26,13 @@ struct fimc_is_frame_info {
 
 enum fimc_is_flite_state {
 	/* buffer state*/
-	FIMC_IS_FLITE_A_SLOT_VALID = 0,
-	FIMC_IS_FLITE_B_SLOT_VALID,
+	FLITE_A_SLOT_VALID = 0,
+	FLITE_B_SLOT_VALID,
 	/* global state */
 	FIMC_IS_FLITE_LAST_CAPTURE
 };
 
 struct fimc_is_device_flite {
-	u32				opened;
-
 	atomic_t			fcount;
 	wait_queue_head_t		wait_queue;
 
@@ -50,6 +51,7 @@ struct fimc_is_device_flite {
 	struct fimc_is_framemgr		*framemgr;
 
 	u32				work;
+	u32				sw_checker;
 	u32				sw_trigger;
 	struct work_struct		work_queue;
 	struct work_struct		work_queue_debug;
