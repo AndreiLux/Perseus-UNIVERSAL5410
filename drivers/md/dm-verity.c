@@ -78,11 +78,11 @@
 		DMINFO(fmt, ## args); \
 }
 static int request_trace;
-module_param(request_trace, bool, 0644);
+module_param(request_trace, int, 0644);
 MODULE_PARM_DESC(request_trace, "Enable request tracing to DMINFO");
 
 static int alloc_trace;
-module_param(alloc_trace, bool, 0644);
+module_param(alloc_trace, int, 0644);
 MODULE_PARM_DESC(alloc_trace, "Enable allocation tracing to DMINFO");
 #else
 #define VERITY_TRACE(...)
@@ -106,7 +106,7 @@ MODULE_PARM_DESC(error_behavior, "Behavior on error "
 
 /* Controls whether verity_get_device will wait forever for a device. */
 static int dev_wait;
-module_param(dev_wait, bool, 0444);
+module_param(dev_wait, int, 0444);
 MODULE_PARM_DESC(dev_wait, "Wait forever for a backing device");
 
 /* Used for tracking pending bios as well as for exporting information via
