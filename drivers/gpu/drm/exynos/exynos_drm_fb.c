@@ -51,6 +51,8 @@ static int exynos_drm_fb_map(struct drm_framebuffer *fb)
 		return -ENOMEM;
 	}
 
+	drm_gem_object_reference(obj);
+
 	ret = dma_map_sg(obj->dev->dev,
 			 buf->sgt->sgl,
 			 buf->sgt->orig_nents,
@@ -90,6 +92,8 @@ static int exynos_drm_fb_unmap(struct drm_framebuffer *fb)
 		     buf->sgt->sgl,
 		     buf->sgt->orig_nents,
 		     DMA_BIDIRECTIONAL);
+
+	drm_gem_object_unreference_unlocked(obj);
 
 	buf->dma_addr = 0;
 
