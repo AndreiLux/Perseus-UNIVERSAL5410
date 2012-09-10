@@ -85,6 +85,7 @@ static void __init smsc911x_init(int ncs)
 		S5P_SROM_BC0 + (ncs * 4));
 }
 
+#ifndef CONFIG_DRM_EXYNOS_FIMD
 static struct s3c_fb_pd_win smdk5250_fb_win0 = {
 	.win_mode = {
 		.left_margin	= 4,
@@ -141,6 +142,7 @@ static struct s3c_fb_pd_win smdk5250_fb_win2 = {
 	.max_bpp		= 32,
 	.default_bpp		= 24,
 };
+#endif
 
 static struct fb_videomode snow_fb_window[] = {
 	{
