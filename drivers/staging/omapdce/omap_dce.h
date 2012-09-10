@@ -88,6 +88,15 @@ struct drm_omap_dce_codec_control {
 	uint32_t token;
 };
 
+struct drm_omap_dce_codec_get_version {
+	uint32_t codec_handle;	/* codec handle (in) */
+	uint32_t dparams_bo;	/* dynamic params (in) */
+	uint32_t status_bo;	/* status (in) */
+	uint32_t version_bo;	/* version string (out) */
+	int32_t result;			/* return value (out) */
+	uint32_t token;
+};
+
 struct drm_omap_dce_codec_process {
 	uint32_t codec_handle;	/* codec handle (in) */
 	uint32_t out_args_bo;	/* output args (in) */
@@ -109,6 +118,7 @@ struct drm_omap_dce_codec_delete {
 #define DRM_OMAP_DCE_CODEC_CONTROL	0x03
 #define DRM_OMAP_DCE_CODEC_PROCESS	0x04
 #define DRM_OMAP_DCE_CODEC_DELETE	0x05
+#define DRM_OMAP_DCE_CODEC_GET_VERSION	0x06
 
 #define XDM_MEMTYPE_BO 10
 #define XDM_MEMTYPE_BO_OFFSET 11

@@ -658,6 +658,54 @@ rpsend_out:
 	return 0;
 }
 
+static int ioctl_codec_get_version(struct drm_device *dev, void *data,
+		struct drm_file *file)
+{
+	struct dce_file_priv *priv = omap_drm_file_priv(file, dce_mapper_id);
+	struct drm_omap_dce_codec_get_version *arg = data;
+	struct dce_rpc_codec_get_version_rsp *rsp;
+	int ret;
+
+	/* if we are not re-starting a syscall, send req */
+	if (!arg->token) {
+		struct dce_rpc_codec_get_version_req req = {
+				.hdr = MKHDR(CODEC_GET_VERSION)
+		};
+
+		ret = codec_get(priv, arg->codec_handle, &req.codec, &req.codec_id);
+		if (ret)
+			return ret;
+
+		ret = PTR_RET(get_paddr(priv, hdr(&req), &req.dparams, arg->dparams_bo));
+		if (ret)
+			goto rpsend_out;
+
+		ret = PTR_RET(get_paddr(priv, hdr(&req), &req.status, arg->status_bo));
+		if (ret)
+			goto rpsend_out;
+
+		ret = PTR_RET(get_paddr(priv, hdr(&req), &req.version, arg->version_bo));
+		if (ret)
+			goto rpsend_out;
+
+		ret = rpsend(priv, &arg->token, hdr(&req), sizeof(req));
+rpsend_out:
+		if (ret)
+			return rpabort(hdr(&req), ret);
+	}
+
+	/* then wait for reply, which is interruptible */
+	ret = rpwait(priv, arg->token, hdr(&rsp), sizeof(*rsp));
+	if (ret)
+		return ret;
+
+	arg->result = rsp->result;
+
+	kfree(rsp);
+
+	return 0;
+}
+
 struct viddec3_in_args {
 	int32_t size;		/* struct size */
 	int32_t num_bytes;
@@ -1093,6 +1141,7 @@ static int ioctl_codec_delete(struct drm_device *dev, void *data,
 #define DRM_IOCTL_OMAP_DCE_CODEC_CONTROL	DRM_IOWR(DRM_OMAP_DCE_CODEC_CONTROL, struct drm_omap_dce_codec_control)
 #define DRM_IOCTL_OMAP_DCE_CODEC_PROCESS	DRM_IOWR(DRM_OMAP_DCE_CODEC_PROCESS, struct drm_omap_dce_codec_process)
 #define DRM_IOCTL_OMAP_DCE_CODEC_DELETE		DRM_IOW (DRM_OMAP_DCE_CODEC_DELETE, struct drm_omap_dce_codec_delete)
+#define DRM_IOCTL_OMAP_DCE_CODEC_GET_VERSION	DRM_IOW (DRM_OMAP_DCE_CODEC_GET_VERSION, struct drm_omap_dce_codec_get_version)
 
 static struct drm_ioctl_desc dce_ioctls[] = {
 		DRM_IOCTL_DEF_DRV(OMAP_DCE_ENGINE_OPEN, ioctl_engine_open, DRM_UNLOCKED|DRM_AUTH),
@@ -1101,6 +1150,7 @@ static struct drm_ioctl_desc dce_ioctls[] = {
 		DRM_IOCTL_DEF_DRV(OMAP_DCE_CODEC_CONTROL, ioctl_codec_control, DRM_UNLOCKED|DRM_AUTH),
 		DRM_IOCTL_DEF_DRV(OMAP_DCE_CODEC_PROCESS, ioctl_codec_process, DRM_UNLOCKED|DRM_AUTH),
 		DRM_IOCTL_DEF_DRV(OMAP_DCE_CODEC_DELETE, ioctl_codec_delete, DRM_UNLOCKED|DRM_AUTH),
+		DRM_IOCTL_DEF_DRV(OMAP_DCE_CODEC_GET_VERSION, ioctl_codec_get_version, DRM_UNLOCKED|DRM_AUTH),
 };
 
 /*

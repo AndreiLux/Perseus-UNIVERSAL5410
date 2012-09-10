@@ -23,10 +23,6 @@
 /* RPC layer types.. these define the payload of messages between firmware
  * and linux side.  This should be kept in sync between firmware build and
  * driver.
- *
- * TODO: xxx_control(XDM_GETVERSION) is a bit awkward to deal with, because
- * this seems to be the one special case where status->data is used..
- * possibly we should define a special ioctl and msg to handle this case.
  */
 
 /* Message-Ids:
@@ -39,6 +35,7 @@
 #define DCE_RPC_CODEC_CONTROL	0x13
 #define DCE_RPC_CODEC_PROCESS	0x14
 #define DCE_RPC_CODEC_DELETE	0x15
+#define DCE_RPC_CODEC_GET_VERSION	0x16
 
 struct dce_rpc_hdr {
 	/* A Message-Id as defined above:
@@ -97,6 +94,20 @@ struct dce_rpc_codec_control_req {
 } __packed;
 
 struct dce_rpc_codec_control_rsp {
+	struct dce_rpc_hdr hdr;
+	int32_t result;
+} __packed;
+
+struct dce_rpc_codec_get_version_req {
+	struct dce_rpc_hdr hdr;
+	uint32_t codec_id;
+	uint32_t codec;
+	uint32_t dparams;
+	uint32_t status;
+	uint32_t version;
+} __packed;
+
+struct dce_rpc_codec_get_version_rsp {
 	struct dce_rpc_hdr hdr;
 	int32_t result;
 } __packed;
