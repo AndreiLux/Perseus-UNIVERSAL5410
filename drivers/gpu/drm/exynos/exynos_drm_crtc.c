@@ -363,6 +363,7 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
 	struct exynos_drm_gem_obj *gem_ob = (struct exynos_drm_gem_obj *)exynos_fb->exynos_gem_obj[0];
 	struct kds_resource_set **pkds;
+	struct drm_pending_vblank_event *event_to_send;
 #endif
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
@@ -388,18 +389,18 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	spin_lock_irqsave(&dev->event_lock, flags);
 	if (exynos_crtc->flip_in_flight > 1) {
 		spin_unlock_irqrestore(&dev->event_lock, flags);
-		drm_vblank_put(dev, exynos_crtc->pipe);
 		DRM_DEBUG_DRIVER("flip queue: crtc already busy\n");
-		return -EBUSY;
+		ret = -EBUSY;
+		goto fail_max_in_flight;
 	}
-	/* Signal event for previous flip or current if no other in flight */
-	if (exynos_crtc->flip_in_flight == 0) {
+	/* Signal previous flip event. Or if none in flight signal current. */
+	if (exynos_crtc->flip_in_flight) {
+		event_to_send = exynos_crtc->event;
 		exynos_crtc->event = event;
-		event = NULL;
+	} else {
+		event_to_send = event;
+		exynos_crtc->event = NULL;
 	}
-	if (exynos_crtc->event)
-		exynos_drm_crtc_flip_complete(exynos_crtc->event);
-	exynos_crtc->event = event;
 	pkds = &exynos_crtc->future_kds;
 	if (*pkds)
 		pkds = &exynos_crtc->future_kds_extra;
@@ -432,16 +433,37 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 		BUG_ON(exynos_fb->dma_buf !=  buf);
 
 		/* Waiting for the KDS resource*/
-		kds_async_waitall(pkds, KDS_FLAG_LOCKED_WAIT,
-				  &dev_priv->kds_cb, fb, pkds, 1,
-				  &shared, &res_list);
+		ret = kds_async_waitall(pkds, KDS_FLAG_LOCKED_WAIT,
+					&dev_priv->kds_cb, fb, pkds, 1,
+					&shared, &res_list);
+		if (ret) {
+			DRM_ERROR("kds_async_waitall failed: %d\n", ret);
+			goto fail_kds;
+		}
 	} else {
 		*pkds = NULL;
 		DRM_ERROR("flipping a non-kds buffer\n");
 		exynos_drm_kds_callback(fb, pkds);
 	}
+
+	if (event_to_send) {
+		spin_lock_irqsave(&dev->event_lock, flags);
+		exynos_drm_crtc_flip_complete(event_to_send);
+		spin_unlock_irqrestore(&dev->event_lock, flags);
+	}
 #endif
+
 	trace_exynos_flip_request(exynos_crtc->pipe);
+
+	return 0;
+
+fail_kds:
+	*pkds = NULL;
+	spin_lock_irqsave(&dev->event_lock, flags);
+	exynos_crtc->flip_in_flight--;
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+fail_max_in_flight:
+	drm_vblank_put(dev, exynos_crtc->pipe);
 	return ret;
 }
 
