@@ -91,7 +91,7 @@ static int exynos_drm_fb_unmap(struct drm_framebuffer *fb)
 		     buf->sgt->orig_nents,
 		     DMA_BIDIRECTIONAL);
 
-	buf->dma_addr = NULL;
+	buf->dma_addr = 0;
 
 	return 0;
 }
