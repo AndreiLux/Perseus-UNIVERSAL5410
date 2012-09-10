@@ -865,7 +865,7 @@ extern void drm_mode_config_init(struct drm_device *dev);
 extern void drm_mode_config_reset(struct drm_device *dev);
 extern void drm_mode_config_cleanup(struct drm_device *dev);
 extern void drm_mode_set_name(struct drm_display_mode *mode);
-extern bool drm_mode_equal(struct drm_display_mode *mode1, struct drm_display_mode *mode2);
+extern bool drm_mode_equal(const struct drm_display_mode *mode1, const struct drm_display_mode *mode2);
 extern int drm_mode_width(struct drm_display_mode *mode);
 extern int drm_mode_height(struct drm_display_mode *mode);
 

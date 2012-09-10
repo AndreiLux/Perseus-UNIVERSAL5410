@@ -772,7 +772,8 @@ EXPORT_SYMBOL(drm_mode_duplicate);
  * RETURNS:
  * True if the modes are equal, false otherwise.
  */
-bool drm_mode_equal(struct drm_display_mode *mode1, struct drm_display_mode *mode2)
+bool drm_mode_equal(const struct drm_display_mode *mode1,
+		    const struct drm_display_mode *mode2)
 {
 	/* do clock check convert to PICOS so fb modes get matched
 	 * the same */
