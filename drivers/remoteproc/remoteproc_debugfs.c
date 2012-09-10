@@ -234,5 +234,5 @@ void __init rproc_init_debugfs(void)
 void __exit rproc_exit_debugfs(void)
 {
 	if (rproc_dbg)
-		debugfs_remove(rproc_dbg);
+		debugfs_remove_recursive(rproc_dbg);
 }
