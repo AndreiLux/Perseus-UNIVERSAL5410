@@ -31,7 +31,7 @@ TRACE_EVENT(do_sys_open,
 
 TRACE_EVENT(open_exec,
 
-	TP_PROTO(char *filename),
+	TP_PROTO(const char *filename),
 
 	TP_ARGS(filename),
 
