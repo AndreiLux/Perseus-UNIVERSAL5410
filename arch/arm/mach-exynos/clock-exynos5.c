@@ -1777,6 +1777,46 @@ static struct clksrc_clk exynos5_clk_sclk_spi2 = {
 	.reg_div = { .reg = EXYNOS5_CLKDIV_PERIC2, .shift = 8, .size = 8 },
 };
 
+static struct clksrc_clk exynos5_clk_aclk_266_isp_div0 = {
+	.clk	= {
+		.name		= "aclk_266_isp_div0",
+		.parent		= &exynos5_clk_aclk_266_isp.clk,
+	},
+	.reg_div = { .reg = EXYNOS5_CLKDIV_ISP0, .shift = 0, .size = 3 },
+};
+
+static struct clksrc_clk exynos5_clk_aclk_266_isp_div1 = {
+	.clk	= {
+		.name		= "aclk_266_isp_div1",
+		.parent		= &exynos5_clk_aclk_266_isp.clk,
+	},
+	.reg_div = { .reg = EXYNOS5_CLKDIV_ISP0, .shift = 4, .size = 3 },
+};
+
+static struct clksrc_clk exynos5_clk_aclk_266_isp_divmpwm = {
+	.clk	= {
+		.name		= "aclk_266_isp_divmpwm",
+		.parent		= &exynos5_clk_aclk_266_isp_div1.clk,
+	},
+	.reg_div = { .reg = EXYNOS5_CLKDIV_ISP2, .shift = 0, .size = 3 },
+};
+
+static struct clksrc_clk exynos5_clk_aclk_400_isp_div0 = {
+	.clk		= {
+		.name		= "aclk_400_isp_div0",
+		.parent		= &exynos5_clk_aclk_400_isp.clk,
+	},
+	.reg_div = { .reg = EXYNOS5_CLKDIV_ISP1, .shift = 0, .size = 3 },
+};
+
+static struct clksrc_clk exynos5_clk_aclk_400_isp_div1 = {
+	.clk		= {
+		.name		= "aclk_400_isp_div1",
+		.parent		= &exynos5_clk_aclk_400_isp.clk,
+	},
+	.reg_div = { .reg = EXYNOS5_CLKDIV_ISP1, .shift = 4, .size = 3 },
+};
+
 static struct clksrc_clk exynos5_clksrcs[] = {
 	{
 		.clk	= {
@@ -1870,37 +1910,6 @@ static struct clksrc_clk exynos5_clksrcs[] = {
 		.reg_div = { .reg = EXYNOS5_CLKDIV_FSYS0, .shift = 24, .size = 4 },
 	}, {
 		.clk		= {
-			.name		= "aclk_266_isp_div0",
-			.parent     = &exynos5_clk_aclk_266_isp.clk,
-
-		},
-		.reg_div = { .reg = EXYNOS5_CLKDIV_ISP0, .shift = 0, .size = 3 },
-	}, {
-		.clk		= {
-			.name		= "aclk_266_isp_div1",
-			.parent     = &exynos5_clk_aclk_266_isp.clk,
-		},
-		.reg_div = { .reg = EXYNOS5_CLKDIV_ISP0, .shift = 4, .size = 3 },
-	}, {
-		.clk		= {
-			.name		= "aclk_266_isp_divmpwm",
-			.parent     = &exynos5_clk_aclk_266_isp.clk,
-		},
-		.reg_div = { .reg = EXYNOS5_CLKDIV_ISP2, .shift = 0, .size = 3 },
-	}, {
-		.clk		= {
-			.name		= "aclk_400_isp_div0",
-			.parent     = &exynos5_clk_aclk_400_isp.clk,
-		},
-		.reg_div = { .reg = EXYNOS5_CLKDIV_ISP1, .shift = 0, .size = 3 },
-	}, {
-		.clk		= {
-			.name		= "aclk_400_isp_div1",
-			.parent     = &exynos5_clk_aclk_400_isp.clk,
-		},
-		.reg_div = { .reg = EXYNOS5_CLKDIV_ISP1, .shift = 4, .size = 3 },
-	}, {
-		.clk		= {
 			.name		= "sclk_uart_isp",
 			.parent     = &exynos5_clk_sclk_uart_isp.clk,
 		},
@@ -1985,6 +1994,14 @@ static struct clksrc_clk *exynos5_clksrc_cdev[] = {
 	&exynos5_clk_sclk_spi0,
 	&exynos5_clk_sclk_spi1,
 	&exynos5_clk_sclk_spi2,
+};
+
+static struct clksrc_clk *exynos5_clksrc_aclk_isp[] = {
+	&exynos5_clk_aclk_266_isp_div0,
+	&exynos5_clk_aclk_266_isp_div1,
+	&exynos5_clk_aclk_266_isp_divmpwm,
+	&exynos5_clk_aclk_400_isp_div0,
+	&exynos5_clk_aclk_400_isp_div1,
 };
 
 static struct clk_lookup exynos5_clk_lookup[] = {
@@ -2846,6 +2863,9 @@ void __init exynos5_register_clocks(void)
 
 	for (ptr = 0; ptr < ARRAY_SIZE(exynos5_clksrc_cdev); ptr++)
 		s3c_register_clksrc(exynos5_clksrc_cdev[ptr], 1);
+
+	for (ptr = 0; ptr < ARRAY_SIZE(exynos5_clksrc_aclk_isp); ptr++)
+		s3c_register_clksrc(exynos5_clksrc_aclk_isp[ptr], 1);
 
 	s3c_register_clksrc(exynos5_clksrcs, ARRAY_SIZE(exynos5_clksrcs));
 	s3c_register_clocks(exynos5_init_clocks_on, ARRAY_SIZE(exynos5_init_clocks_on));
