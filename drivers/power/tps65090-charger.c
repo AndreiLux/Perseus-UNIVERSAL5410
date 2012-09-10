@@ -95,7 +95,6 @@ MODULE_DEVICE_TABLE(of, charger_data_match);
 static __devinit int tps65090_charger_probe(struct platform_device *pdev)
 {
 	struct charger_data *charger_data;
-	int irq = 0;
 	int ret = 0;
 
 	charger_data = kzalloc(sizeof(struct charger_data), GFP_KERNEL);
