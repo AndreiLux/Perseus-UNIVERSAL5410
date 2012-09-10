@@ -45,7 +45,7 @@
 
 #include <plat/board.h>
 #include <plat/dma-44xx.h>
-
+#include <plat/rpmsg_resmgr.h>
 #include "common.h"
 #include <plat/usb.h>
 #include <plat/mmc.h>
@@ -296,6 +296,12 @@ static struct platform_device omap_vwlan_device = {
 struct wl12xx_platform_data omap_panda_wlan_data  __initdata = {
 	/* PANDA ref clock is 38.4 MHz */
 	.board_ref_clock = 2,
+};
+
+static struct omap_rprm_regulator sdp4430_rprm_regulators[] = {
+	{
+		.name = "cam2pwr",
+	},
 };
 
 static struct regulator_consumer_supply sdp4430_cam2_supply[] = {
@@ -717,6 +723,8 @@ static void __init omap4_panda_init(void)
 			pr_err("TPS62361 initialization failed: %d\n", ret);
 	}
 	omap_enable_smartreflex_on_init();
+	omap_rprm_regulator_init(sdp4430_rprm_regulators,
+				 ARRAY_SIZE(sdp4430_rprm_regulators));
 	enable_board_wakeups();
 }
 
