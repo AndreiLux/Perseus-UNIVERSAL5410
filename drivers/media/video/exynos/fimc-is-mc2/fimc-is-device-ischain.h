@@ -15,16 +15,12 @@
 #include "fimc-is-mem.h"
 
 #define FIMC_IS_A5_MEM_SIZE		(0x00A00000)
+#define FIMC_IS_A5_SEN_SIZE		(0x00100000)
 #define FIMC_IS_REGION_SIZE		(0x5000)
 #define FIMC_IS_SETFILE_SIZE		(0xc0d8)
 #define FIMC_IS_TDNR_MEM_SIZE		(1920*1080*4)
 #define FIMC_IS_DEBUG_REGION_ADDR	(0x00840000)
 #define FIMC_IS_SHARED_REGION_ADDR	(0x008C0000)
-
-#define MAX_ISP_INTERNAL_BUF_WIDTH	(2560)  /* 4808 in HW */
-#define MAX_ISP_INTERNAL_BUF_HEIGHT	(1920)  /* 3356 in HW */
-#define SIZE_ISP_INTERNAL_BUF \
-	(MAX_ISP_INTERNAL_BUF_WIDTH * MAX_ISP_INTERNAL_BUF_HEIGHT * 3)
 
 #define MAX_ODC_INTERNAL_BUF_WIDTH	(2560)  /* 4808 in HW */
 #define MAX_ODC_INTERNAL_BUF_HEIGHT	(1920)  /* 3356 in HW */
@@ -38,13 +34,12 @@
 
 #define MAX_3DNR_INTERNAL_BUF_WIDTH	(1920)
 #define MAX_3DNR_INTERNAL_BUF_HEIGHT	(1088)
-#define SIZE_3DNR_INTERNAL_BUF \
+#define SIZE_DNR_INTERNAL_BUF \
 	(MAX_3DNR_INTERNAL_BUF_WIDTH * MAX_3DNR_INTERNAL_BUF_HEIGHT * 2)
 
-#define NUM_ISP_INTERNAL_BUF		(3)
 #define NUM_ODC_INTERNAL_BUF		(2)
 #define NUM_DIS_INTERNAL_BUF		(5)
-#define NUM_3DNR_INTERNAL_BUF		(2)
+#define NUM_DNR_INTERNAL_BUF		(2)
 
 #define SENSOR_MAX_CTL			0x10
 #define SENSOR_MAX_CTL_MASK		(SENSOR_MAX_CTL-1)
@@ -62,7 +57,6 @@ struct fimc_is_ishcain_mem {
 	size_t		size;		/* total length */
 	dma_addr_t	vaddr_base;	/* buffer base */
 	dma_addr_t	vaddr_curr;	/* current addr */
-	void		*bitproc_buf;
 	void		*fw_cookie;
 
 	u32		dvaddr;
@@ -81,8 +75,6 @@ struct fimc_is_ishcain_mem {
 	u32		kvaddr_dis;
 	u32		dvaddr_3dnr;
 	u32		kvaddr_3dnr;
-	u32		dvaddr_isp;
-	u32		kvaddr_isp;
 };
 
 /*device state*/

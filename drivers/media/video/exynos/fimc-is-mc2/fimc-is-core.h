@@ -87,12 +87,17 @@
 #define err(fmt, args...) \
 	printk(KERN_ERR "%s:%d: " fmt "\n", __func__, __LINE__, ##args)
 
+/* configuration - default post processing */
+/*#define ENABLE_ODC*/
+/*#define ENABLE_VDIS*/
+/*#define ENABLE_TDNR*/
+
 /*#define DEBUG*/
 /*#define DBG_STREAMING*/
 /*#define DBG_FLITEISR*/
 /*#define AUTO_MODE*/
 /*#define FW_DEBUG*/
-#define RESERVED_MEM
+/*#define RESERVED_MEM*/
 #define ENABLE_DZOOM
 #define USE_FRAME_SYNC
 /*#define ENABLE_VDIS*/

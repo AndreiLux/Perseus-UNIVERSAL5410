@@ -627,53 +627,64 @@ exit:
 
 static int fimc_is_ischain_allocmem(struct fimc_is_device_ischain *this)
 {
-	void *fimc_is_bitproc_buf;
-	int ret;
+	int ret = 0;
+	void *fw_cookie;
 
 	dbg_ischain("Allocating memory for FIMC-IS firmware.\n");
 
-	fimc_is_bitproc_buf = vb2_ion_private_alloc(this->mem->alloc_ctx,
-				FIMC_IS_A5_MEM_SIZE +
+	fw_cookie = vb2_ion_private_alloc(this->mem->alloc_ctx,
+				FIMC_IS_A5_MEM_SIZE + FIMC_IS_A5_SEN_SIZE +
+#ifdef ENABLE_ODC
 				SIZE_ODC_INTERNAL_BUF * NUM_ODC_INTERNAL_BUF +
+#endif
+#ifdef ENABLE_VDIS
 				SIZE_DIS_INTERNAL_BUF * NUM_DIS_INTERNAL_BUF +
-				SIZE_3DNR_INTERNAL_BUF * NUM_3DNR_INTERNAL_BUF +
-				SIZE_ISP_INTERNAL_BUF * NUM_ISP_INTERNAL_BUF);
-	if (IS_ERR(fimc_is_bitproc_buf)) {
-		fimc_is_bitproc_buf = 0;
-		err("Allocating bitprocessor buffer failed\n");
-		return -ENOMEM;
+#endif
+#ifdef ENABLE_TDNR
+				SIZE_DNR_INTERNAL_BUF * NUM_DNR_INTERNAL_BUF +
+#endif
+				0);
+
+	if (IS_ERR(fw_cookie)) {
+		err("Allocating bitprocessor buffer failed");
+		fw_cookie = NULL;
+		ret = -ENOMEM;
+		goto exit;
 	}
 
-	ret = vb2_ion_dma_address(fimc_is_bitproc_buf, &this->minfo.dvaddr);
+	ret = vb2_ion_dma_address(fw_cookie, &this->minfo.dvaddr);
 	if ((ret < 0) || (this->minfo.dvaddr  & FIMC_IS_FW_BASE_MASK)) {
-		err("The base memory is not aligned to 64MB.\n");
-		vb2_ion_private_free(fimc_is_bitproc_buf);
+		err("The base memory is not aligned to 64MB.");
+		vb2_ion_private_free(fw_cookie);
 		this->minfo.dvaddr = 0;
-		fimc_is_bitproc_buf = 0;
-		return -EIO;
+		fw_cookie = NULL;
+		ret = -EIO;
+		goto exit;
 	}
 	dbg_ischain("Device vaddr = %08x , size = %08x\n",
-				this->minfo.dvaddr, FIMC_IS_A5_MEM_SIZE);
+		this->minfo.dvaddr, FIMC_IS_A5_MEM_SIZE);
 
-	this->minfo.kvaddr = (u32)vb2_ion_private_vaddr(fimc_is_bitproc_buf);
+	this->minfo.kvaddr = (u32)vb2_ion_private_vaddr(fw_cookie);
 	if (IS_ERR((void *)this->minfo.kvaddr)) {
-		err("Bitprocessor memory remap failed\n");
-		vb2_ion_private_free(fimc_is_bitproc_buf);
-		this->minfo.dvaddr = 0;
-		fimc_is_bitproc_buf = 0;
-		return -EIO;
+		err("Bitprocessor memory remap failed");
+		vb2_ion_private_free(fw_cookie);
+		this->minfo.kvaddr = 0;
+		fw_cookie = NULL;
+		ret = -EIO;
+		goto exit;
 	}
-	dbg_ischain("Virtual address for FW: %08lx\n",
-			(long unsigned int)this->minfo.kvaddr);
-	this->minfo.bitproc_buf = fimc_is_bitproc_buf;
-	this->minfo.fw_cookie = fimc_is_bitproc_buf;
 
-	return 0;
+exit:
+	dbg_ischain("Virtual address for FW: %08lx\n",
+		(long unsigned int)this->minfo.kvaddr);
+	this->minfo.fw_cookie = fw_cookie;
+
+	return ret;
 }
 
 static int fimc_is_ishcain_initmem(struct fimc_is_device_ischain *this)
 {
-	int ret;
+	int ret = 0;
 	u32 offset;
 
 	dbg_ischain("fimc_is_init_mem - ION\n");
@@ -681,15 +692,11 @@ static int fimc_is_ishcain_initmem(struct fimc_is_device_ischain *this)
 	ret = fimc_is_ischain_allocmem(this);
 	if (ret) {
 		err("Couldn't alloc for FIMC-IS firmware\n");
-		return -EINVAL;
+		ret = -ENOMEM;
+		goto exit;
 	}
 
-	memset((void *)this->minfo.kvaddr, 0,
-		FIMC_IS_A5_MEM_SIZE +
-		SIZE_ODC_INTERNAL_BUF * NUM_ODC_INTERNAL_BUF +
-		SIZE_DIS_INTERNAL_BUF * NUM_DIS_INTERNAL_BUF +
-		SIZE_3DNR_INTERNAL_BUF * NUM_3DNR_INTERNAL_BUF +
-		SIZE_ISP_INTERNAL_BUF * NUM_ISP_INTERNAL_BUF);
+	memset((void *)this->minfo.kvaddr, 0, FIMC_IS_A5_MEM_SIZE);
 
 	offset = FW_SHARED_OFFSET;
 	this->minfo.dvaddr_fshared = this->minfo.dvaddr + offset;
@@ -699,22 +706,6 @@ static int fimc_is_ishcain_initmem(struct fimc_is_device_ischain *this)
 	this->minfo.dvaddr_region = this->minfo.dvaddr + offset;
 	this->minfo.kvaddr_region = this->minfo.kvaddr + offset;
 
-	offset = FIMC_IS_A5_MEM_SIZE;
-	this->minfo.dvaddr_odc = this->minfo.dvaddr + offset;
-	this->minfo.kvaddr_odc = this->minfo.kvaddr + offset;
-
-	offset += (SIZE_ODC_INTERNAL_BUF * NUM_ODC_INTERNAL_BUF);
-	this->minfo.dvaddr_dis = this->minfo.dvaddr + offset;
-	this->minfo.kvaddr_dis = this->minfo.kvaddr + offset;
-
-	offset += (SIZE_DIS_INTERNAL_BUF * NUM_DIS_INTERNAL_BUF);
-	this->minfo.dvaddr_3dnr = this->minfo.dvaddr + offset;
-	this->minfo.kvaddr_3dnr = this->minfo.kvaddr + offset;
-
-	offset += (SIZE_3DNR_INTERNAL_BUF * NUM_3DNR_INTERNAL_BUF);
-	this->minfo.dvaddr_isp = this->minfo.dvaddr + offset;
-	this->minfo.kvaddr_isp = this->minfo.kvaddr + offset;
-
 	this->is_region =
 		(struct is_region *)this->minfo.kvaddr_region;
 
@@ -723,9 +714,37 @@ static int fimc_is_ishcain_initmem(struct fimc_is_device_ischain *this)
 	this->minfo.kvaddr_shared = this->minfo.kvaddr +
 		((u32)&this->is_region->shared[0] - this->minfo.kvaddr);
 
+	offset = FIMC_IS_A5_MEM_SIZE;
+#ifdef ENABLE_ODC
+	this->minfo.dvaddr_odc = this->minfo.dvaddr + offset;
+	this->minfo.kvaddr_odc = this->minfo.kvaddr + offset;
+	offset += (SIZE_ODC_INTERNAL_BUF * NUM_ODC_INTERNAL_BUF);
+#else
+	this->minfo.dvaddr_odc = 0;
+	this->minfo.kvaddr_odc = 0;
+#endif
+
+#ifdef ENABLE_VDIS
+	this->minfo.dvaddr_dis = this->minfo.dvaddr + offset;
+	this->minfo.kvaddr_dis = this->minfo.kvaddr + offset;
+	offset += (SIZE_DIS_INTERNAL_BUF * NUM_DIS_INTERNAL_BUF);
+#else
+	this->minfo.dvaddr_dis = 0;
+	this->minfo.kvaddr_dis = 0;
+#endif
+
+#ifdef ENABLE_TDNR
+	this->minfo.dvaddr_3dnr = this->minfo.dvaddr + offset;
+	this->minfo.kvaddr_3dnr = this->minfo.kvaddr + offset;
+#else
+	this->minfo.dvaddr_3dnr = 0;
+	this->minfo.kvaddr_3dnr = 0;
+#endif
+
 	dbg_ischain("fimc_is_init_mem done\n");
 
-	return 0;
+exit:
+	return ret;
 }
 
 #ifndef RESERVED_MEM
@@ -734,7 +753,6 @@ static int fimc_is_ishcain_deinitmem(struct fimc_is_device_ischain *this)
 	int ret = 0;
 
 	vb2_ion_private_free(this->minfo.fw_cookie);
-	printk(KERN_INFO "%s\n", __func__);
 
 	return ret;
 }
@@ -817,15 +835,12 @@ static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *this)
 		ret = -EIO;
 		goto out;
 	}
-	if (this->minfo.bitproc_buf == 0) {
-		err("failed to load FIMC-IS F/W, FIMC-IS will not working\n");
-	} else {
-		memcpy((void *)this->minfo.kvaddr, (void *)buf, fsize);
-		fimc_is_ischain_cache_flush(this, 0, fsize + 1);
-		printk(KERN_INFO "FIMC_IS F/W loaded from %s - size:%ld\n",
-				FIMC_IS_FW_SDCARD, nread);
-		fimc_is_ischain_version(FIMC_IS_FW, buf, fsize);
-	}
+
+	memcpy((void *)this->minfo.kvaddr, (void *)buf, fsize);
+	fimc_is_ischain_cache_flush(this, 0, fsize + 1);
+	printk(KERN_INFO "FIMC_IS F/W loaded from %s - size:%ld\n",
+			FIMC_IS_FW_SDCARD, nread);
+	fimc_is_ischain_version(FIMC_IS_FW, buf, fsize);
 
 request_fw:
 	if (fw_requested) {
@@ -839,19 +854,13 @@ request_fw:
 			return -EINVAL;
 		}
 
-		if (this->minfo.bitproc_buf == 0) {
-			dev_err(&this->pdev->dev,
-				"failed to load FIMC-IS F/W\n");
-			return -EINVAL;
-		} else {
-			memcpy((void *)this->minfo.kvaddr, fw_blob->data,
-				fw_blob->size);
-			fimc_is_ischain_cache_flush(this, 0, fw_blob->size + 1);
-			dbg_ischain("FIMC_IS F/W is loaded - size:%d\n",
-				fw_blob->size);
-			fimc_is_ischain_version(FIMC_IS_FW, fw_blob->data,
-				fw_blob->size);
-		}
+		memcpy((void *)this->minfo.kvaddr, fw_blob->data,
+			fw_blob->size);
+		fimc_is_ischain_cache_flush(this, 0, fw_blob->size + 1);
+		dbg_ischain("FIMC_IS F/W is loaded - size:%d\n",
+			fw_blob->size);
+		fimc_is_ischain_version(FIMC_IS_FW, fw_blob->data,
+			fw_blob->size);
 
 		release_firmware(fw_blob);
 #ifdef SDCARD_FW
@@ -916,16 +925,13 @@ static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
 		ret = -EIO;
 		goto out;
 	}
-	if (this->minfo.bitproc_buf == 0) {
-		err("failed to load FIMC-IS F/W, FIMC-IS will not working\n");
-	} else {
-		address = (void *)(this->minfo.kvaddr + load_addr);
-		memcpy((void *)address, (void *)buf, fsize);
-		fimc_is_ischain_cache_flush(this, load_addr, fsize + 1);
-		printk(KERN_INFO "setfile is loaded from %s - size:%ld\n",
-				setfile_path, nread);
-		fimc_is_ischain_version(setfile_name, buf, fsize);
-	}
+
+	address = (void *)(this->minfo.kvaddr + load_addr);
+	memcpy((void *)address, (void *)buf, fsize);
+	fimc_is_ischain_cache_flush(this, load_addr, fsize + 1);
+	printk(KERN_INFO "setfile is loaded from %s - size:%ld\n",
+			setfile_path, nread);
+	fimc_is_ischain_version(setfile_name, buf, fsize);
 
 request_fw:
 	if (fw_requested) {
@@ -940,14 +946,9 @@ request_fw:
 			return -EINVAL;
 		}
 
-		if (this->minfo.bitproc_buf == 0) {
-			err("failed to load setfile\n");
-		} else {
-			address = (void *)(this->minfo.kvaddr + load_addr);
-			memcpy(address, fw_blob->data, fw_blob->size);
-			fimc_is_ischain_cache_flush(this, load_addr,
-				fw_blob->size + 1);
-		}
+		address = (void *)(this->minfo.kvaddr + load_addr);
+		memcpy(address, fw_blob->data, fw_blob->size);
+		fimc_is_ischain_cache_flush(this, load_addr, fw_blob->size + 1);
 
 		printk(KERN_INFO "setfile is loaded successfully(size:%d)\n",
 			fw_blob->size);
@@ -1770,7 +1771,11 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
 
 #ifndef RESERVED_MEM
 	/* 1. init memory */
-	fimc_is_ishcain_initmem(this);
+	ret = fimc_is_ishcain_initmem(this);
+	if (ret) {
+		err("fimc_is_ishcain_initmem is fail(%d)\n", ret);
+		goto exit;
+	}
 #endif
 
 	/* 2. Init variables */
@@ -2536,7 +2541,7 @@ static int fimc_is_ischain_dnr_bypass(struct fimc_is_device_ischain *this,
 	else {
 		dnr_param->control.bypass = CONTROL_BYPASS_DISABLE;
 		dnr_param->control.buffer_number =
-			SIZE_3DNR_INTERNAL_BUF * NUM_3DNR_INTERNAL_BUF;
+			SIZE_DNR_INTERNAL_BUF * NUM_DNR_INTERNAL_BUF;
 		dnr_param->control.buffer_address =
 			this->minfo.dvaddr_shared + 350 * sizeof(u32);
 		this->is_region->shared[350] = this->minfo.dvaddr_3dnr;
