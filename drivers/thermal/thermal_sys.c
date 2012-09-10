@@ -62,8 +62,6 @@ static LIST_HEAD(thermal_tz_list);
 static LIST_HEAD(thermal_cdev_list);
 static DEFINE_MUTEX(thermal_list_lock);
 
-static unsigned int thermal_event_seqnum;
-
 static struct dentry *debugfs_root;
 
 static int get_idr(struct idr *idr, struct mutex *lock, int *id)
