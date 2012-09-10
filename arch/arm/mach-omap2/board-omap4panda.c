@@ -298,6 +298,27 @@ struct wl12xx_platform_data omap_panda_wlan_data  __initdata = {
 	.board_ref_clock = 2,
 };
 
+static struct regulator_consumer_supply sdp4430_cam2_supply[] = {
+	{
+		.supply = "cam2pwr",
+	},
+};
+
+static struct regulator_init_data sdp4430_vaux3 = {
+	.constraints = {
+		.min_uV                 = 1000000,
+		.max_uV                 = 3000000,
+		.apply_uV               = true,
+		.valid_modes_mask       = REGULATOR_MODE_NORMAL
+					| REGULATOR_MODE_STANDBY,
+		.valid_ops_mask  = REGULATOR_CHANGE_VOLTAGE
+					| REGULATOR_CHANGE_MODE
+					| REGULATOR_CHANGE_STATUS,
+	},
+	.num_consumer_supplies = 1,
+	.consumer_supplies = sdp4430_cam2_supply,
+};
+
 static int omap4_twl6030_hsmmc_late_init(struct device *dev)
 {
 	int irq = 0;
@@ -362,7 +383,10 @@ static struct twl6040_platform_data twl6040_data = {
 };
 
 /* Panda board uses the common PMIC configuration */
-static struct twl4030_platform_data omap4_panda_twldata;
+static struct twl4030_platform_data omap4_panda_twldata = {
+	/* Regulators */
+	.vaux3		= &sdp4430_vaux3,
+};
 
 static struct omap_i2c_bus_board_data __initdata panda_i2c_1_bus_pdata;
 static struct omap_i2c_bus_board_data __initdata panda_i2c_2_bus_pdata;
@@ -411,7 +435,6 @@ static int __init omap4_panda_i2c_init(void)
 	omap4_pmic_get_config(&omap4_panda_twldata, TWL_COMMON_PDATA_USB,
 			TWL_COMMON_REGULATOR_VDAC |
 			TWL_COMMON_REGULATOR_VAUX2 |
-			TWL_COMMON_REGULATOR_VAUX3 |
 			TWL_COMMON_REGULATOR_VMMC |
 			TWL_COMMON_REGULATOR_VPP |
 			TWL_COMMON_REGULATOR_VANA |
@@ -686,9 +709,6 @@ static void __init omap4_panda_init(void)
 	omap4_ehci_init();
 	usb_musb_init(&musb_board_data);
 	omap4_panda_display_init();
-#ifdef CONFIG_MACH_OMAP4_PANDA_CAMERA_SUPPORT
-	panda_camera_init(&panda_camera_board_info);
-#endif
 	if (cpu_is_omap446x()) {
 		/* Vsel0 = gpio, vsel1 = gnd */
 		ret = omap_tps6236x_board_setup(true, TPS62361_GPIO, -1,
