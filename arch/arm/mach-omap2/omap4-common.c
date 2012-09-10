@@ -36,6 +36,8 @@
 #include <linux/export.h>
 
 #ifdef CONFIG_CACHE_L2X0
+#define L2X0_POR_OFFSET_VALUE	0x5
+#define L2X0_POR_OFFSET_MASK	0x1f
 static void __iomem *l2cache_base;
 #endif
 
@@ -181,6 +183,7 @@ static void omap4_l2x0_set_debug(unsigned long val)
 static int __init omap_l2_cache_init(void)
 {
 	u32 aux_ctrl = 0;
+	u32 por_ctrl = 0;
 	u32 lockdown = 0;
 
 	/*
@@ -200,22 +203,42 @@ static int __init omap_l2_cache_init(void)
 	 * Way size - 32KB (es1.0)
 	 * Way size - 64KB (es2.0 +)
 	 */
+	aux_ctrl = readl_relaxed(l2cache_base + L2X0_AUX_CTRL);
 	aux_ctrl = ((1 << L2X0_AUX_CTRL_ASSOCIATIVITY_SHIFT) |
-			(0x1 << 25) |
+			(0x1 << L2X0_AUX_CTRL_REPLACE_POLICY_SHIFT) |
 			(0x1 << L2X0_AUX_CTRL_NS_LOCKDOWN_SHIFT) |
 			(0x1 << L2X0_AUX_CTRL_NS_INT_CTRL_SHIFT));
 
 	if (omap_rev() == OMAP4430_REV_ES1_0) {
 		aux_ctrl |= 0x2 << L2X0_AUX_CTRL_WAY_SIZE_SHIFT;
 	} else {
+		/*
+		 * Drop instruction prefetch as it degrades performances
+		 */
 		aux_ctrl |= ((0x3 << L2X0_AUX_CTRL_WAY_SIZE_SHIFT) |
 			(1 << L2X0_AUX_CTRL_SHARE_OVERRIDE_SHIFT) |
 			(1 << L2X0_AUX_CTRL_DATA_PREFETCH_SHIFT) |
-			(1 << L2X0_AUX_CTRL_INSTR_PREFETCH_SHIFT) |
 			(1 << L2X0_AUX_CTRL_EARLY_BRESP_SHIFT));
 	}
 	if (omap_rev() != OMAP4430_REV_ES1_0)
 		omap_smc1(0x109, aux_ctrl);
+
+	/* Setup POR Control register */
+	por_ctrl = readl_relaxed(l2cache_base + L2X0_PREFETCH_CTRL);
+
+	/*
+	 * Double linefill is available only on OMAP4460 L2X0.
+	 * It may cause single cache line memory corruption, leave it disabled
+	 * on all devices
+	 */
+	por_ctrl &= ~(1 << L2X0_PREFETCH_DOUBLE_LINEFILL_SHIFT);
+	por_ctrl &= ~L2X0_POR_OFFSET_MASK;
+	por_ctrl |= L2X0_POR_OFFSET_VALUE;
+
+	/* Set POR through Monitor API only in GP devices */
+	if (omap_type() == OMAP2_DEVICE_TYPE_GP &&
+		omap_rev() >= OMAP4430_REV_ES2_2)
+		omap_smc1(0x113, por_ctrl);
 
 	/*
 	 * WA for OMAP4460 stability issue on ES1.0
