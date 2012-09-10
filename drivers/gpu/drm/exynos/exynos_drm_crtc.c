@@ -310,13 +310,42 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 {
 	struct drm_crtc *crtc = (struct drm_crtc *)callback_parameter;
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
+	struct drm_device *dev = crtc->dev;
+	struct kds_resource_set **pkds = callback_extra_parameter;
+	struct kds_resource_set *prev_kds;
+	unsigned long flags;
 
 	exynos_drm_crtc_page_flip_apply(crtc);
 
-	BUG_ON(atomic_read(&exynos_crtc->flip_pending));
-	atomic_set(&exynos_crtc->flip_pending, 1);
+	spin_lock_irqsave(&dev->event_lock, flags);
+	prev_kds = exynos_crtc->pending_kds;
+	exynos_crtc->pending_kds = *pkds;
+	*pkds = NULL;
+	if (prev_kds)
+		exynos_crtc->flip_in_flight--;
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+
+	if (prev_kds) {
+		DRM_ERROR("previous work detected\n");
+		kds_resource_set_release(&prev_kds);
+	} else {
+		BUG_ON(atomic_read(&exynos_crtc->flip_pending));
+		atomic_set(&exynos_crtc->flip_pending, 1);
+	}
 }
 #endif
+
+static void exynos_drm_crtc_flip_complete(struct drm_pending_vblank_event *e)
+{
+	struct timeval now;
+
+	do_gettimeofday(&now);
+	e->event.sequence = 0;
+	e->event.tv_sec = now.tv_sec;
+	e->event.tv_usec = now.tv_usec;
+	list_add_tail(&e->base.link, &e->base.file_priv->event_list);
+	wake_up_interruptible(&e->base.file_priv->event_wait);
+}
 
 static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 				     struct drm_framebuffer *fb,
@@ -325,11 +354,12 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	struct drm_device *dev = crtc->dev;
 	struct exynos_drm_private *dev_priv = dev->dev_private;
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-	int ret = -EINVAL;
 	unsigned long flags;
+	int ret;
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
 	struct exynos_drm_gem_obj *gem_ob = (struct exynos_drm_gem_obj *)exynos_fb->exynos_gem_obj[0];
+	struct kds_resource_set **pkds;
 #endif
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
@@ -344,18 +374,6 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 		return -EINVAL;
 	}
 
-#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-	spin_lock_irqsave(&dev->event_lock, flags);
-	if (exynos_crtc->event) {
-		spin_unlock_irqrestore(&dev->event_lock, flags);
-
-		DRM_DEBUG_DRIVER("flip queue: crtc already busy\n");
-		return -EBUSY;
-	}
-	exynos_crtc->event = event;
-	spin_unlock_irqrestore(&dev->event_lock, flags);
-#endif
-
 	/*
 	 * the pipe from user always is 0 so we can set pipe number
 	 * of current owner to event.
@@ -363,8 +381,36 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	event->pipe = exynos_crtc->pipe;
 
 	ret = drm_vblank_get(dev, exynos_crtc->pipe);
-	if (ret)
-		goto fail_vblank;
+	if (ret) {
+		DRM_ERROR("Unable to get vblank\n");
+		return -EINVAL;
+	}
+
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	spin_lock_irqsave(&dev->event_lock, flags);
+	if (exynos_crtc->flip_in_flight > 1) {
+		spin_unlock_irqrestore(&dev->event_lock, flags);
+		drm_vblank_put(dev, exynos_crtc->pipe);
+		DRM_DEBUG_DRIVER("flip queue: crtc already busy\n");
+		return -EBUSY;
+	}
+	/* Signal event for previous flip or current if no other in flight */
+	if (exynos_crtc->flip_in_flight == 0) {
+		exynos_crtc->event = event;
+		event = NULL;
+	}
+	if (exynos_crtc->event)
+		exynos_drm_crtc_flip_complete(exynos_crtc->event);
+	exynos_crtc->event = event;
+	pkds = &exynos_crtc->future_kds;
+	if (*pkds) {
+		DRM_ERROR("Had to use extra kds slot\n");
+		pkds = &exynos_crtc->future_kds_extra;
+	}
+	*pkds = ERR_PTR(-EINVAL); /* Make it non-NULL */
+	exynos_crtc->flip_in_flight++;
+	spin_unlock_irqrestore(&dev->event_lock, flags);
+#endif
 
 	mutex_lock(&dev->struct_mutex);
 
@@ -389,21 +435,14 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 		BUG_ON(exynos_fb->dma_buf !=  buf);
 
 		/* Waiting for the KDS resource*/
-		kds_async_waitall(&exynos_crtc->pending_kds,
-				  KDS_FLAG_LOCKED_WAIT,
-				  &dev_priv->kds_cb, crtc, NULL, 1, &shared,
+		kds_async_waitall(pkds, KDS_FLAG_LOCKED_WAIT,
+				  &dev_priv->kds_cb, crtc, pkds, 1, &shared,
 				  &res_list);
 	} else {
+		*pkds = NULL;
 		DRM_ERROR("flipping a non-kds buffer\n");
-		exynos_drm_kds_callback(crtc, NULL);
+		exynos_drm_kds_callback(crtc, pkds);
 	}
-#endif
-	trace_exynos_flip_complete(exynos_crtc->pipe);
-	return ret;
-
-fail_vblank:
-#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-	exynos_crtc->event = NULL;
 #endif
 	trace_exynos_flip_complete(exynos_crtc->pipe);
 	return ret;
@@ -414,8 +453,6 @@ void exynos_drm_crtc_finish_pageflip(struct drm_device *drm_dev, int crtc_idx)
 	struct exynos_drm_private *dev_priv = drm_dev->dev_private;
 	struct drm_crtc *crtc = dev_priv->crtc[crtc_idx];
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-	struct drm_pending_vblank_event *e;
-	struct timeval now;
 	struct kds_resource_set *kds;
 	unsigned long flags;
 
@@ -428,20 +465,13 @@ void exynos_drm_crtc_finish_pageflip(struct drm_device *drm_dev, int crtc_idx)
 
 	spin_lock_irqsave(&drm_dev->event_lock, flags);
 	if (exynos_crtc->event) {
-		e = exynos_crtc->event;
+		exynos_drm_crtc_flip_complete(exynos_crtc->event);
 		exynos_crtc->event = NULL;
-		do_gettimeofday(&now);
-		e->event.sequence = 0;
-		e->event.tv_sec = now.tv_sec;
-		e->event.tv_usec = now.tv_usec;
-
-		list_add_tail(&e->base.link,
-			      &e->base.file_priv->event_list);
-		wake_up_interruptible(&e->base.file_priv->event_wait);
 	}
 	kds = exynos_crtc->current_kds;
 	exynos_crtc->current_kds = exynos_crtc->pending_kds;
 	exynos_crtc->pending_kds = NULL;
+	exynos_crtc->flip_in_flight--;
 	spin_unlock_irqrestore(&drm_dev->event_lock, flags);
 
 	if (kds)

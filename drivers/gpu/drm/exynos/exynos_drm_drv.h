@@ -350,9 +350,12 @@ struct exynos_drm_crtc {
 	struct drm_pending_vblank_event *event;
 	struct kds_resource_set		*current_kds;
 	struct kds_resource_set		*pending_kds;
+	struct kds_resource_set		*future_kds;
+	struct kds_resource_set		*future_kds_extra;
 #endif
 	unsigned int			pipe;
 	unsigned int			dpms;
+	unsigned int			flip_in_flight;
 	atomic_t			flip_pending;
 };
 
