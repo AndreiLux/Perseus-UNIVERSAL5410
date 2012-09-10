@@ -1457,7 +1457,7 @@ u8 drm_match_cea_mode(struct drm_display_mode *to_match)
 	u8 mode;
 
 	for (mode = 0; mode < drm_num_cea_modes; mode++) {
-		struct drm_display_mode *cea_mode = &edid_cea_modes[mode];
+		const struct drm_display_mode *cea_mode = &edid_cea_modes[mode];
 
 		if (drm_mode_equal(to_match, cea_mode))
 			return mode + 1;
