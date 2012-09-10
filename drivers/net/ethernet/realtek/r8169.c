@@ -758,7 +758,7 @@ struct rtl8169_private {
 };
 
 static int aspm_disable = 0;
-module_param(aspm_disable, bool, 0444);
+module_param(aspm_disable, int, 0444);
 MODULE_PARM_DESC(aspm_disable, "Disable ASPM completely.");
 
 MODULE_AUTHOR("Realtek and the Linux r8169 crew <netdev@vger.kernel.org>");
