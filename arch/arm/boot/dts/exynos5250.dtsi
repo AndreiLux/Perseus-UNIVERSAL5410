@@ -148,15 +148,6 @@
 		interrupts = <0 42 0>;
 	};
 
-	mfc {
-		compatible = "samsung,s5p-mfc-v6";
-		reg = <0x11000000 0x10000>;
-		interrupts = <0 96 0>;
-		sysmmu_l = <&sysmmu_3>;
-		sysmmu_r = <&sysmmu_4>;
-		samsung,pd = <&mfc_pd>;
-	};
-
 	ohci {
 		compatible = "samsung,exynos-ohci";
 		reg = <0x12120000 0x100>;
@@ -862,6 +853,19 @@
 		interrupts = <0 88 0>;
 		sysmmu = <&sysmmu_26>;
 		samsung,pd = <&gsc_pd>;
+	};
+
+	/*
+	 * mfc declaration must remain below sysmmu and gsc declarations to
+	 * ensure devices resume in the correct order.
+	*/
+	mfc {
+		compatible = "samsung,s5p-mfc-v6";
+		reg = <0x11000000 0x10000>;
+		interrupts = <0 96 0>;
+		sysmmu_l = <&sysmmu_3>;
+		sysmmu_r = <&sysmmu_4>;
+		samsung,pd = <&mfc_pd>;
 	};
 
 	g2d {
