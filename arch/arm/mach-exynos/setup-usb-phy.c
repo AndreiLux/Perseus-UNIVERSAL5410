@@ -25,6 +25,7 @@
 #define PHY_ENABLE	1
 #define PHY_DISABLE	0
 #define EXYNOS4_USB_CFG		(S3C_VA_SYS + 0x21C)
+#define EXYNOS5_USB_CFG		S5P_SYSREG(0x0230)
 
 enum usb_phy_type {
 	USB_PHY		= (0x1 << 0),
