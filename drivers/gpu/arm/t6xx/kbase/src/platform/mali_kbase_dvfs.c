@@ -37,6 +37,7 @@
 #include <linux/uaccess.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
+#include <linux/pm_qos.h>
 
 #include <mach/map.h>
 #include <linux/fb.h>
@@ -62,6 +63,8 @@
 static struct regulator *g3d_regulator=NULL;
 static int mali_gpu_vol = 1250000; /* 1.25V @ 533 MHz */
 #endif
+
+static struct pm_qos_request	mem_bw_req;
 
 /***********************************************************/
 /*  This table and variable are using the check time share of GPU Clock  */
@@ -455,6 +458,8 @@ int kbase_platform_dvfs_init(struct kbase_device *kbdev)
 
 	osk_spinlock_init(&mali_dvfs_spinlock,OSK_LOCK_ORDER_PM_METRICS);
 
+	pm_qos_add_request(&mem_bw_req, PM_QOS_MEMORY_THROUGHPUT, -1);
+
 	/*add a error handling here*/
 	osk_spinlock_lock(&mali_dvfs_spinlock);
 	mali_dvfs_status_current.kbdev = kbdev;
@@ -814,6 +819,7 @@ int kbase_platform_dvfs_get_level(int freq)
 void kbase_platform_dvfs_set_level(kbase_device *kbdev, int level)
 {
 	unsigned long long current_time;
+	int bw;
 
 	if (level == prev_level)
 		return;
@@ -821,10 +827,19 @@ void kbase_platform_dvfs_set_level(kbase_device *kbdev, int level)
 	if (WARN_ON((level >= MALI_DVFS_STEP)||(level < 0)))
 		panic("invalid level");
 
+	if (level > 0) {
+		bw = mali_dvfs_infotbl[level].clock * 16;
+		bw = clamp(bw, 0, 6400);
+	} else {
+		bw = -1;
+	}
+
 	if (level > prev_level) {
 		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
 		kbase_platform_dvfs_set_clock(kbdev, mali_dvfs_infotbl[level].clock);
+		pm_qos_update_request(&mem_bw_req, bw);
 	}else{
+		pm_qos_update_request(&mem_bw_req, bw);
 		kbase_platform_dvfs_set_clock(kbdev, mali_dvfs_infotbl[level].clock);
 		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
 	}
