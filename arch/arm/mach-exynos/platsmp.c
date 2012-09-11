@@ -32,6 +32,7 @@
 #include <mach/smc.h>
 
 #include <plat/cpu.h>
+#include <plat/regs-watchdog.h>
 
 extern void exynos4_secondary_startup(void);
 
@@ -134,6 +135,8 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 */
 	spin_lock(&boot_lock);
 
+	watchdog_save();
+
 	ret = exynos_power_up_cpu(cpu);
 	if (ret) {
 		spin_unlock(&boot_lock);
@@ -168,6 +171,7 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 		__raw_writel(virt_to_phys(exynos4_secondary_startup),
 			cpu_boot_info[cpu].boot_base);
 #endif
+		watchdog_restore();
 		gic_raise_softirq(cpumask_of(cpu), 1);
 
 		if (pen_release == -1)

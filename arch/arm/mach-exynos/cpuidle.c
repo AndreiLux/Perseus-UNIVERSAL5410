@@ -36,6 +36,7 @@
 #include <plat/pm.h>
 #include <plat/cpu.h>
 #include <plat/regs-serial.h>
+#include <plat/regs-watchdog.h>
 
 #include <trace/events/power.h>
 
@@ -413,6 +414,7 @@ static int exynos_enter_lowpower(struct cpuidle_device *dev,
 			}
 		}
 
+		watchdog_save();
 		/* Enter the final low power state */
 		if (exynos_check_enter_mode() == EXYNOS_CHECK_DIDLE)
 			ret = exynos_enter_core0_aftr(dev, drv, index);
@@ -454,6 +456,7 @@ abort:
 			while (!cpu1_abort)
 				cpu_relax();
 		}
+		watchdog_restore();
 	} else {
 		/* Idle sequence for cpu 1 */
 
