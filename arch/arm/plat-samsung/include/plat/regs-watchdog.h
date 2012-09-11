@@ -36,6 +36,16 @@
 #define S3C2410_WTCON_PRESCALE(x) ((x) << 8)
 #define S3C2410_WTCON_PRESCALE_MASK (0xff00)
 
+void s3c2410wdt_save(void);
+void s3c2410wdt_restore(void);
+
+#if defined(CONFIG_S3C_DEV_WDT)
+#define watchdog_save()		s3c2410wdt_save();
+#define watchdog_restore()	s3c2410wdt_restore();
+#else
+#define watchdog_save()		do {} while (0)
+#define watchdog_restore()	do {} while (0)
+#endif
 #endif /* __ASM_ARCH_REGS_WATCHDOG_H */
 
 
