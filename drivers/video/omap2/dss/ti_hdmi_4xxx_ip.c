@@ -278,15 +278,6 @@ err:
 }
 
 
-static irqreturn_t hpd_irq_handler(int irq, void *data)
-{
-	struct hdmi_ip_data *ip_data = data;
-
-	hdmi_check_hpd_state(ip_data);
-
-	return IRQ_HANDLED;
-}
-
 int ti_hdmi_4xxx_phy_enable(struct hdmi_ip_data *ip_data)
 {
 	u16 r = 0;
@@ -338,19 +329,8 @@ int ti_hdmi_4xxx_phy_enable(struct hdmi_ip_data *ip_data)
 	/* Write to phy address 3 to change the polarity control */
 	REG_FLD_MOD(phy_base, HDMI_TXPHY_PAD_CFG_CTRL, 0x1, 27, 27);
 
-	r = request_threaded_irq(gpio_to_irq(ip_data->hpd_gpio),
-				 NULL, hpd_irq_handler,
-				 IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING |
-				 IRQF_ONESHOT, "hpd", ip_data);
-	if (r) {
-		DSSERR("HPD IRQ request failed\n");
-//		hdmi_set_phy_pwr(ip_data, HDMI_PHYPWRCMD_OFF);
-//		return r;
-	}
-
 	r = hdmi_check_hpd_state(ip_data);
 	if (r) {
-		free_irq(gpio_to_irq(ip_data->hpd_gpio), ip_data);
 		hdmi_set_phy_pwr(ip_data, HDMI_PHYPWRCMD_OFF);
 		return r;
 	}
@@ -364,8 +344,6 @@ int ti_hdmi_4xxx_phy_enable(struct hdmi_ip_data *ip_data)
 
 void ti_hdmi_4xxx_phy_disable(struct hdmi_ip_data *ip_data)
 {
-	free_irq(gpio_to_irq(ip_data->hpd_gpio), ip_data);
-
 	hdmi_set_phy_pwr(ip_data, HDMI_PHYPWRCMD_OFF);
 }
 
@@ -531,6 +509,14 @@ int ti_hdmi_4xxx_read_edid(struct hdmi_ip_data *ip_data,
 
 bool ti_hdmi_4xxx_detect(struct hdmi_ip_data *ip_data)
 {
+	/*
+	 * To prevent possible HW damage, HPD interrupt handler must
+	 * call detect() as soon as there is a change in HPD level.
+	 * The call to hdmi_check_hpd_state() ensures that the power
+	 * level to HDMI IP is safe.
+	 */
+	hdmi_check_hpd_state(ip_data);
+
 	if (gpio_get_value(ip_data->hpd_gpio))
 		return true;
 

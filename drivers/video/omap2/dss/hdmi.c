@@ -165,6 +165,30 @@ static void hdmi_runtime_put(void)
 	WARN_ON(r < 0);
 }
 
+static irqreturn_t hpd_irq_handler(int irq, void *data)
+{
+	struct omap_dss_device *dssdev = data;
+	enum omap_dss_event evt;
+	int state;
+
+	if (hdmi_runtime_get())
+		return IRQ_HANDLED;
+
+	state = hdmi.ip_data.ops->detect(&hdmi.ip_data);
+
+	hdmi_runtime_put();
+
+	DSSDBG("%s hpd: %d\n", __func__, state);
+	if (state)
+		evt = OMAP_DSS_EVENT_HOTPLUG_CONNECT;
+	else
+		evt = OMAP_DSS_EVENT_HOTPLUG_DISCONNECT;
+
+	dss_notify(dssdev, evt);
+
+	return IRQ_HANDLED;
+}
+
 static int __init hdmi_init_display(struct omap_dss_device *dssdev)
 {
 	int r;
@@ -184,12 +208,28 @@ static int __init hdmi_init_display(struct omap_dss_device *dssdev)
 	if (r)
 		return r;
 
+	if (gpio_is_valid(hdmi.hpd_gpio)) {
+		r = request_threaded_irq(gpio_to_irq(hdmi.hpd_gpio),
+				NULL, hpd_irq_handler,
+				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING |
+				IRQF_ONESHOT, "hpd", dssdev);
+		if (r)
+			DSSERR("%s: request hpd irq failed. "
+			  "HDMI detection will be polled only.\n", __func__);
+	} else {
+		DSSERR("%s: no valid HPD gpio. "
+			"HDMI detection will be polled only.\n", __func__);
+	}
+
 	return 0;
 }
 
 static void __exit hdmi_uninit_display(struct omap_dss_device *dssdev)
 {
 	DSSDBG("uninit_display\n");
+
+	if (gpio_is_valid(hdmi.hpd_gpio))
+		free_irq(gpio_to_irq(hdmi.hpd_gpio), dssdev);
 
 	gpio_free(hdmi.ct_cp_hpd_gpio);
 	gpio_free(hdmi.ls_oe_gpio);
