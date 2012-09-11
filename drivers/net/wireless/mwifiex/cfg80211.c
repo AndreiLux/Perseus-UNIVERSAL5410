@@ -1502,9 +1502,9 @@ int mwifiex_register_cfg80211(struct mwifiex_private *priv)
 	}
 
 	country_code = mwifiex_11d_code_2_region(priv->adapter->region_code);
-	if (country_code && regulatory_hint(wdev->wiphy, country_code))
-		dev_err(priv->adapter->dev,
-			"%s: regulatory_hint failed\n", __func__);
+	if (country_code)
+		dev_info(priv->adapter->dev,
+			 "ignoring F/W country code %2.2s\n", country_code);
 
 	priv->wdev = wdev;
 
