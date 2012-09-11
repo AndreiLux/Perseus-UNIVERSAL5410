@@ -345,8 +345,6 @@ mwifiex_set_rf_channel(struct mwifiex_private *priv,
 			mwifiex_cfg80211_channel_type_to_sec_chan_offset
 			(channel_type);
 		adapter->channel_type = channel_type;
-
-		mwifiex_send_domain_info_cmd_fw(wiphy);
 	}
 
 	wiphy_dbg(wiphy, "info: setting band %d, chan offset %d, mode %d\n",
