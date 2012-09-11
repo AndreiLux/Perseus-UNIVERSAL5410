@@ -169,6 +169,7 @@ int omap_dss_register_device(struct omap_dss_device *dssdev,
 		struct device *parent, int disp_num);
 void omap_dss_unregister_device(struct omap_dss_device *dssdev);
 void omap_dss_unregister_child_devices(struct device *parent);
+int dss_notify(struct omap_dss_device *dssdev, enum omap_dss_event evt);
 
 /* apply */
 void dss_apply_init(void);

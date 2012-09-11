@@ -32,6 +32,7 @@
 #include <linux/io.h>
 #include <linux/device.h>
 #include <linux/regulator/consumer.h>
+#include <linux/slab.h>
 
 #include <video/omapdss.h>
 
@@ -601,6 +602,26 @@ static void __exit omap_dss_unregister_drivers(void)
 
 	platform_driver_unregister(&omap_dss_driver);
 }
+
+static ATOMIC_NOTIFIER_HEAD(dss_event_notifiers);
+
+int dss_notify(struct omap_dss_device *dssdev, enum omap_dss_event evt)
+{
+	return atomic_notifier_call_chain(&dss_event_notifiers, evt, dssdev);
+}
+
+int omap_dss_add_event_notify(struct notifier_block *nb)
+{
+	return atomic_notifier_chain_register(&dss_event_notifiers, nb);
+}
+EXPORT_SYMBOL(omap_dss_add_event_notify);
+
+int omap_dss_remove_event_notify(struct notifier_block *nb)
+{
+	return atomic_notifier_chain_unregister(&dss_event_notifiers, nb);
+}
+EXPORT_SYMBOL(omap_dss_remove_event_notify);
+
 
 #ifdef CONFIG_OMAP2_DSS_MODULE
 static void omap_dss_bus_unregister(void)

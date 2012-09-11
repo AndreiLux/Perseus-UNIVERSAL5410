@@ -21,6 +21,7 @@
 #include <linux/list.h>
 #include <linux/kobject.h>
 #include <linux/device.h>
+#include <linux/notifier.h>
 
 #define DISPC_IRQ_FRAMEDONE		(1 << 0)
 #define DISPC_IRQ_VSYNC			(1 << 1)
@@ -172,6 +173,11 @@ enum omap_dss_overlay_managers {
 	OMAP_DSS_OVL_MGR_LCD,
 	OMAP_DSS_OVL_MGR_TV,
 	OMAP_DSS_OVL_MGR_LCD2,
+};
+
+enum omap_dss_event {
+	OMAP_DSS_EVENT_HOTPLUG_DISCONNECT,
+	OMAP_DSS_EVENT_HOTPLUG_CONNECT,
 };
 
 enum omap_dss_rotation_type {
@@ -734,6 +740,9 @@ struct omap_dss_driver {
 
 int omap_dss_register_driver(struct omap_dss_driver *);
 void omap_dss_unregister_driver(struct omap_dss_driver *);
+
+int omap_dss_add_event_notify(struct notifier_block *nb);
+int omap_dss_remove_event_notify(struct notifier_block *nb);
 
 void omap_dss_get_device(struct omap_dss_device *dssdev);
 void omap_dss_put_device(struct omap_dss_device *dssdev);
