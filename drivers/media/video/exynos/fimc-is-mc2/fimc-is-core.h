@@ -89,7 +89,7 @@
 
 /* configuration - default post processing */
 /*#define ENABLE_ODC*/
-/*#define ENABLE_VDIS*/
+#define ENABLE_VDIS
 /*#define ENABLE_TDNR*/
 
 /*#define DEBUG*/
@@ -100,9 +100,8 @@
 /*#define RESERVED_MEM*/
 #define ENABLE_DZOOM
 #define USE_FRAME_SYNC
-/*#define ENABLE_VDIS*/
-#define TASKLET_MSG
-#define ISDRV_VERSION 102
+/*#define TASKLET_MSG*/
+#define ISDRV_VERSION 103
 
 #ifdef DEBUG
 #define dbg(fmt, args...) \

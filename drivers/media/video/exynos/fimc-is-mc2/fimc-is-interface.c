@@ -512,6 +512,33 @@ exit:
 	return ret;
 }
 
+static int fimc_is_set_cmd_shot(struct fimc_is_interface *this,
+	struct fimc_is_msg *msg)
+{
+	int ret = 0;
+
+	enter_process_barrier(this);
+
+	ret = waiting_is_ready(this);
+	if (ret) {
+		err("waiting for ready is fail");
+		ret = -EBUSY;
+		goto exit;
+	}
+
+	this->com_regs->hicmd = msg->command;
+	this->com_regs->hic_sensorid = msg->instance;
+	this->com_regs->hic_param1 = msg->parameter1;
+	this->com_regs->hic_param2 = msg->parameter2;
+	this->com_regs->hic_param3 = msg->parameter3;
+	this->com_regs->hic_param4 = msg->parameter4;
+	send_interrupt(this);
+
+exit:
+	exit_process_barrier(this);
+	return ret;
+}
+
 static int fimc_is_set_cmd_nblk(struct fimc_is_interface *this,
 	struct fimc_is_work *work)
 {
@@ -522,9 +549,6 @@ static int fimc_is_set_cmd_nblk(struct fimc_is_interface *this,
 	switch (msg->command) {
 	case HIC_SET_CAM_CONTROL:
 		set_req_work(&this->nblk_cam_ctrl, work);
-		break;
-	case HIC_SHOT:
-		set_req_work(&this->nblk_shot, work);
 		break;
 	default:
 		err("unresolved command\n");
@@ -718,7 +742,7 @@ static void wq_func_general(struct work_struct *data)
 				break;
 			/*non-blocking command*/
 			case HIC_SHOT:
-				err("shot is not acceptable\n");
+				err("shot done is not acceptable\n");
 				break;
 			case HIC_SET_CAM_CONTROL:
 				/* this code will be used latter */
@@ -748,10 +772,7 @@ static void wq_func_general(struct work_struct *data)
 		case ISR_NDONE:
 			switch (msg->parameter1) {
 			case HIC_SHOT:
-				dbg_interface("shot NOT done\n");
-				get_req_work(&itf->nblk_shot , &nblk_work);
-				nblk_work->msg.command = ISR_NDONE;
-				set_free_work(&itf->nblk_shot, nblk_work);
+				err("shot NOT done is not acceptable\n");
 				break;
 			case HIC_SET_CAM_CONTROL:
 				dbg_interface("camctrl NOT done\n");
@@ -1064,9 +1085,9 @@ static void wq_func_shot(struct work_struct *data)
 	struct fimc_is_frame_shot *frame;
 	struct fimc_is_work_list *work_list;
 	struct fimc_is_work *work;
-	struct fimc_is_work *nblk_work;
 	unsigned long flags;
 	u32 fcount;
+	u32 status;
 	u32 index;
 	bool req_done;
 
@@ -1082,19 +1103,7 @@ static void wq_func_shot(struct work_struct *data)
 	while (work) {
 		msg = &work->msg;
 		fcount = msg->parameter1;
-
-		get_req_work(&itf->nblk_shot , &nblk_work);
-		if (nblk_work) {
-			if (msg->parameter2 == ISR_NDONE)
-				err("ISR NDONE\n");
-			nblk_work->msg.command = msg->parameter2;
-			nblk_work->fcount = fcount;
-			set_free_work(&itf->nblk_shot, nblk_work);
-		} else {
-			err("nblk shot request is empty");
-			print_fre_work_list(&itf->nblk_shot);
-			print_req_work_list(&itf->nblk_shot);
-		}
+		status = msg->parameter2;
 
 		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_7, flags);
 
@@ -1105,6 +1114,10 @@ static void wq_func_shot(struct work_struct *data)
 			if (fcount != frame->fcount)
 				err("frame mismatch(%d != %d)",
 					fcount, frame->fcount);
+
+			/* need error handling */
+			if (status != ISR_DONE)
+				err("shot done is invalid(0x%08X)", status);
 
 			index = frame->index;
 
@@ -1277,8 +1290,6 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 	clear_bit(IS_IF_STATE_BUSY, &this->state);
 
 	init_work_list(&this->nblk_cam_ctrl, TRACE_WORK_ID_CAMCTRL,
-		MAX_NBLOCKING_COUNT);
-	init_work_list(&this->nblk_shot, TRACE_WORK_ID_SHOT,
 		MAX_NBLOCKING_COUNT);
 	init_work_list(&this->work_list[INTR_GENERAL],
 		TRACE_WORK_ID_GENERAL, MAX_WORK_COUNT);
@@ -1700,35 +1711,22 @@ int fimc_is_hw_power_down(struct fimc_is_interface *this,
 }
 
 int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
-	u32 instance, u32 bayer, u32 shot, u32 fcount, u32 rcount,
-	struct fimc_is_frame_shot *frame)
+	u32 instance, u32 bayer, u32 shot, u32 fcount, u32 rcount)
 {
 	int ret = 0;
-	struct fimc_is_work *work;
-	struct fimc_is_msg *msg;
+	struct fimc_is_msg msg;
 
 	/*dbg_interface("shot_nblk(%d, %d)\n", instance, fcount);*/
 
-	get_free_work(&this->nblk_shot, &work);
-	if (work) {
-		work->fcount = fcount;
-		work->frame = frame;
-		msg = &work->msg;
-		msg->id = 0;
-		msg->command = HIC_SHOT;
-		msg->instance = instance;
-		msg->parameter1 = bayer;
-		msg->parameter2 = shot;
-		msg->parameter3 = fcount;
-		msg->parameter4 = rcount;
+	msg.id = 0;
+	msg.command = HIC_SHOT;
+	msg.instance = instance;
+	msg.parameter1 = bayer;
+	msg.parameter2 = shot;
+	msg.parameter3 = fcount;
+	msg.parameter4 = rcount;
 
-		ret = fimc_is_set_cmd_nblk(this, work);
-	} else {
-		err("g_free_nblk return NULL");
-		print_fre_work_list(&this->nblk_shot);
-		print_req_work_list(&this->nblk_shot);
-		ret = -ENOSHOT;
-	}
+	ret = fimc_is_set_cmd_shot(this, &msg);
 
 	return ret;
 }

@@ -1737,8 +1737,7 @@ static int fimc_is_itf_shot(struct fimc_is_device_ischain *this,
 		frame->dvaddr_buffer[0],
 		frame->dvaddr_shot,
 		frame->shot->dm.request.frameCount,
-		frame->shot->ctl.request.frameCount,
-		frame);
+		frame->shot->ctl.request.frameCount);
 
 exit:
 	return ret;
@@ -2936,18 +2935,6 @@ int fimc_is_ischain_isp_stop(struct fimc_is_device_ischain *this)
 	if (!retry)
 		err("waiting complete is fail2");
 
-	retry = 10;
-	while (itf->nblk_shot.work_request_cnt && retry) {
-		printk(KERN_INFO "%d shot reqs waiting...\n",
-			itf->nblk_shot.work_request_cnt);
-		msleep(20);
-		retry--;
-	}
-
-	if (!retry)
-		err("waiting complete is fail3");
-
-
 	ret = fimc_is_itf_process_off(this);
 	if (ret) {
 		err("fimc_is_itf_process_off is fail\n");
@@ -3016,12 +3003,6 @@ int fimc_is_ischain_isp_buffer_queue(struct fimc_is_device_ischain *this,
 				frame->index, (u32)frame->req_flag);
 			frame->req_flag = 0;
 		}
-
-#ifdef ENABLE_VDIS
-		/* VDIS test */
-		if (frame->shot->dm.request.frameCount > 300)
-			frame->shot_ext->dis_bypass = false;
-#endif
 
 		frame->fcount = frame->shot->dm.request.frameCount;
 		fimc_is_frame_trans_fre_to_req(framemgr, frame);
@@ -3416,8 +3397,6 @@ int fimc_is_ischain_print_status(struct fimc_is_device_ischain *this)
 	fimc_is_frame_print_request_list(framemgr);
 	fimc_is_frame_print_process_list(framemgr);
 	fimc_is_frame_print_complete_list(framemgr);
-	print_fre_work_list(&itf->nblk_shot);
-	print_req_work_list(&itf->nblk_shot);
 	print_fre_work_list(&itf->work_list[INTR_META_DONE]);
 	print_req_work_list(&itf->work_list[INTR_META_DONE]);
 

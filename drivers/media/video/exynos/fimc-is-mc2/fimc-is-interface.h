@@ -121,7 +121,6 @@ struct fimc_is_interface {
 	struct fimc_is_video_common	*video_scp;
 
 	struct fimc_is_work_list	nblk_cam_ctrl;
-	struct fimc_is_work_list	nblk_shot;
 
 	struct camera2_uctl		isp_peri_ctl;
 };
@@ -169,8 +168,7 @@ int fimc_is_hw_power_down(struct fimc_is_interface *interface,
 	u32 instance);
 
 int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
-	u32 instance, u32 bayer, u32 shot, u32 fcount, u32 rcount,
-	struct fimc_is_frame_shot *frame);
+	u32 instance, u32 bayer, u32 shot, u32 fcount, u32 rcount);
 int fimc_is_hw_s_camctrl_nblk(struct fimc_is_interface *this,
 	u32 instance, u32 address, u32 fcount);
 
