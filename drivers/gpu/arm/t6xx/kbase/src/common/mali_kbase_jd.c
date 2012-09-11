@@ -197,6 +197,9 @@ void kbase_jd_free_external_resources(kbase_jd_atom *katom)
 		kds_resource_set_release(&katom->kds_rset);
 	}
 #endif /* CONFIG_KDS */
+	if (katom->nr_extres){
+		osk_free(katom->extres);
+	}
 }
 
 static void kbase_jd_post_external_resources(kbase_jd_atom * katom)
