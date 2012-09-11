@@ -237,6 +237,10 @@ __dma_alloc_remap(struct page *page, size_t size, gfp_t gfp, pgprot_t prot,
 	struct vm_struct *area;
 	unsigned long addr;
 
+	/*
+	 * DMA allocation can be mapped to user space, so lets
+	 * set VM_USERMAP flags too.
+	 */
 	area = get_vm_area_caller(size, VM_DMA | VM_USERMAP, caller);
 	if (!area)
 		return NULL;
@@ -252,11 +256,10 @@ __dma_alloc_remap(struct page *page, size_t size, gfp_t gfp, pgprot_t prot,
 
 static void __dma_free_remap(void *cpu_addr, size_t size)
 {
+	unsigned int flags = VM_DMA | VM_USERMAP;
 	struct vm_struct *area = find_vm_area(cpu_addr);
-	if (!area || !(area->flags & VM_DMA)) {
-		pr_err("%s: trying to free invalid coherent area: %p\n",
-		       __func__, cpu_addr);
-		dump_stack();
+	if (!area || (area->flags & flags) != flags) {
+		WARN(1, "trying to free invalid coherent area: %p\n", cpu_addr);
 		return;
 	}
 	unmap_kernel_range((unsigned long)cpu_addr, size);
@@ -415,15 +418,14 @@ static void *__alloc_remap_buffer(struct device *dev, size_t size, gfp_t gfp,
 static void *__alloc_from_pool(size_t size, struct page **ret_page)
 {
 	struct dma_pool *pool = &atomic_pool;
-	unsigned int count = size >> PAGE_SHIFT;
+	unsigned int count = PAGE_ALIGN(size) >> PAGE_SHIFT;
 	unsigned int pageno;
 	unsigned long flags;
 	void *ptr = NULL;
 	unsigned long align_mask;
 
 	if (!pool->vaddr) {
-		pr_err("%s: coherent pool not initialised!\n", __func__);
-		dump_stack();
+		WARN(1, "coherent pool not initialised!\n");
 		return NULL;
 	}
 
@@ -457,8 +459,7 @@ static int __free_from_pool(void *start, size_t size)
 		return 0;
 
 	if (start + size > pool->vaddr + pool->size) {
-		pr_err("%s: freeing wrong coherent size from pool\n", __func__);
-		dump_stack();
+		WARN(1, "freeing wrong coherent size from pool\n");
 		return 0;
 	}
 
@@ -513,7 +514,7 @@ static inline pgprot_t __get_dma_pgprot(struct dma_attrs *attrs, pgprot_t prot)
 
 #define __get_dma_pgprot(attrs, prot)	__pgprot(0)
 #define __alloc_remap_buffer(dev, size, gfp, prot, ret, c)	NULL
-#define __alloc_from_pool(dev, size, ret_page, c)		NULL
+#define __alloc_from_pool(size, ret_page)			NULL
 #define __alloc_from_contiguous(dev, size, prot, ret)		NULL
 #define __free_from_pool(cpu_addr, size)			0
 #define __free_from_contiguous(dev, page, size)			do { } while (0)
@@ -610,22 +611,16 @@ int arm_dma_mmap(struct device *dev, struct vm_area_struct *vma,
 {
 	int ret = -ENXIO;
 #ifdef CONFIG_MMU
-	unsigned long user_count = (vma->vm_end - vma->vm_start) >> PAGE_SHIFT;
-	unsigned long count = PAGE_ALIGN(size) >> PAGE_SHIFT;
 	unsigned long pfn = dma_to_pfn(dev, dma_addr);
-	unsigned long off = vma->vm_pgoff;
-
 	vma->vm_page_prot = __get_dma_pgprot(attrs, vma->vm_page_prot);
 
 	if (dma_mmap_from_coherent(dev, vma, cpu_addr, size, &ret))
 		return ret;
 
-	if (off < count && user_count <= (count - off)) {
-		ret = remap_pfn_range(vma, vma->vm_start,
-				      pfn + off,
-				      user_count << PAGE_SHIFT,
-				      vma->vm_page_prot);
-	}
+	ret = remap_pfn_range(vma, vma->vm_start,
+			      pfn + vma->vm_pgoff,
+			      vma->vm_end - vma->vm_start,
+			      vma->vm_page_prot);
 #endif	/* CONFIG_MMU */
 
 	return ret;
@@ -1172,9 +1167,7 @@ void arm_iommu_free_attrs(struct device *dev, size_t size, void *cpu_addr,
 	size = PAGE_ALIGN(size);
 
 	if (!pages) {
-		pr_err("%s: trying to free invalid coherent area: %p\n",
-		       __func__, cpu_addr);
-		dump_stack();
+		WARN(1, "trying to free invalid coherent area: %p\n", cpu_addr);
 		return;
 	}
 
