@@ -351,10 +351,11 @@ static void *vb2_dc_dmabuf_ops_vmap(struct dma_buf *dbuf)
 }
 
 /* a dummy function to support the mmap functionality for now */
-static void *vb2_dc_dmabuf_ops_mmap(struct dma_buf *dbuf)
+static int vb2_dc_dmabuf_ops_mmap(struct dma_buf *dbuf,
+				  struct vm_area_struct *vma)
 {
 	/* do nothing */
-	return NULL;
+	return -EINVAL;
 }
 
 static struct dma_buf_ops vb2_dc_dmabuf_ops = {
