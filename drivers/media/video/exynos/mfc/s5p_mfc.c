@@ -154,9 +154,10 @@ static void s5p_mfc_watchdog_worker(struct work_struct *work)
 	if (!mutex_locked)
 		mfc_err("This is not good. Some instance may be "
 							"closing/opening.\n");
-	spin_lock_irqsave(&dev->irqlock, flags);
 
 	s5p_mfc_clock_off();
+
+	spin_lock_irqsave(&dev->irqlock, flags);
 
 	for (i = 0; i < MFC_NUM_CONTEXTS; i++) {
 		ctx = dev->ctx[i];
