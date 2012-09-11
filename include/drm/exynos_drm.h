@@ -29,6 +29,8 @@
 #ifndef _EXYNOS_DRM_H_
 #define _EXYNOS_DRM_H_
 
+#include <linux/types.h>
+
 /**
  * User-desired buffer creation information structure.
  *
