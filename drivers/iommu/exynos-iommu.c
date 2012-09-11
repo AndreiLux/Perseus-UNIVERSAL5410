@@ -636,7 +636,7 @@ static int exynos_sysmmu_probe(struct platform_device *pdev)
 	__set_fault_handler(data, &default_fault_handler);
 
 	if (pm_genpd_of_add_device_by_name(dev->of_node, dev, "samsung,pd"))
-		dev_err(dev, "failed to add to genpd\n");
+		dev_dbg(dev, "failed to add to genpd\n");
 	pm_runtime_enable(dev);
 
 	dev_dbg(dev, "(%s) Initialized\n", data->dbgname);
