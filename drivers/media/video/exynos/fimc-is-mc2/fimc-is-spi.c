@@ -51,7 +51,6 @@ int fimc_is_spi_read(void *buf, size_t size)
 	spi_message_add_tail(&t_c, &m);
 	spi_message_add_tail(&t_r, &m);
 
-	/* printk(KERN_INFO "spi_sync start\n"); */
 	ret = spi_sync(g_spi, &m);
 	if (ret) {
 		err("spi sync error - can't get device information");

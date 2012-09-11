@@ -472,7 +472,7 @@ int fimc_is_video_buffer_queue(struct fimc_is_video_common *video,
 					video->buf_kva[index][spare] +
 					ext_size;
 
-				frame->cookie_shot =
+				frame->cookie_shot = (u32)
 					vb2_plane_cookie(vb, spare);
 
 				frame->shot =

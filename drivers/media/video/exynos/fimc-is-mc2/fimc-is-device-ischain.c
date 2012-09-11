@@ -34,6 +34,7 @@
 #include <linux/vmalloc.h>
 #include <linux/kthread.h>
 #include <linux/pm_qos.h>
+#include <linux/debugfs.h>
 
 #include <mach/map.h>
 #include <mach/regs-clock.h>
@@ -73,6 +74,103 @@
 
 static struct pm_qos_request pm_qos_req_cpu;
 static struct pm_qos_request pm_qos_req_mem;
+
+#ifdef FW_DEBUG
+#define DEBUG_FS_ROOT_NAME	"fimc-is"
+#define DEBUG_FS_FILE_NAME	"isfw-msg"
+static struct dentry		*debugfs_root;
+static struct dentry		*debugfs_file;
+
+static int isfw_debug_open(struct inode *inode, struct file *file)
+{
+	if (inode->i_private)
+		file->private_data = inode->i_private;
+
+	return 0;
+}
+
+static int isfw_debug_read(struct file *file, char __user *user_buf,
+	size_t buf_len, loff_t *ppos)
+{
+	int debug_cnt;
+	char *debug;
+	int count1, count2;
+	struct fimc_is_device_ischain *ischain;
+
+	count1 = 0;
+	count2 = 0;
+	debug_cnt = 0;
+	ischain = (struct fimc_is_device_ischain *)file->private_data;
+
+	if (!ischain) {
+		err("file->private_data is null");
+		return 0;
+	}
+
+	if (!test_bit(FIMC_IS_ISCHAIN_OPEN, &ischain->state)) {
+		err("isp video node is not open");
+		goto exit;
+	}
+
+	if (!test_bit(FIMC_IS_ISCHAIN_POWER_ON, &ischain->state)) {
+		err("firmware is not loaded");
+		goto exit;
+	}
+
+	vb2_ion_sync_for_device(ischain->minfo.fw_cookie, DEBUG_OFFSET,
+		DEBUG_CNT, DMA_FROM_DEVICE);
+
+	debug_cnt = *((int *)(ischain->minfo.kvaddr + DEBUGCTL_OFFSET))
+			- DEBUG_OFFSET;
+
+	if (ischain->debug_cnt > debug_cnt) {
+		count1 = DEBUG_CNT - ischain->debug_cnt;
+		count2 = debug_cnt;
+	} else {
+		count1 = debug_cnt - ischain->debug_cnt;
+		count2 = 0;
+	}
+
+	if (count1) {
+		debug = (char *)(ischain->minfo.kvaddr + DEBUG_OFFSET +
+			ischain->debug_cnt);
+
+		if (count1 > buf_len)
+			count1 = buf_len;
+
+		memcpy(user_buf, debug, count1);
+		ischain->debug_cnt += count1;
+	}
+
+	if (count1 == buf_len) {
+		count2 = 0;
+		goto exit;
+	}
+
+	if (count2) {
+		ischain->debug_cnt = 0;
+		debug = (char *)(ischain->minfo.kvaddr + DEBUG_OFFSET);
+
+		if ((count1 + count2) > buf_len)
+			count2 = buf_len -  count1;
+
+		memcpy(user_buf, debug, count2);
+		ischain->debug_cnt += count2;
+	}
+
+exit:
+	printk(KERN_INFO "buffer point(%d:%d), copy size : %d\n",
+		debug_cnt, ischain->debug_cnt, (count1 + count2));
+	return count1 + count2;
+}
+
+static const struct file_operations debug_fops = {
+	.open	= isfw_debug_open,
+	.read	= isfw_debug_read,
+	.llseek	= default_llseek
+};
+
+#endif
 
 static const struct sensor_param init_sensor_param = {
 	.frame_rate = {
@@ -797,7 +895,8 @@ static void fimc_is_ischain_version(char *name, const char *load_bin, u32 size)
 
 static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *this)
 {
-	int ret;
+	int ret = 0;
+	int location = 0;
 	struct firmware *fw_blob;
 	u8 *buf = NULL;
 #ifdef SDCARD_FW
@@ -808,15 +907,13 @@ static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *this)
 
 	dbg_ischain("%s\n", __func__);
 
-	ret = 0;
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 	fp = filp_open(FIMC_IS_FW_SDCARD, O_RDONLY, 0);
-	if (IS_ERR(fp)) {
-		printk(KERN_INFO "firmware is not located at %s\n",
-			FIMC_IS_FW_SDCARD);
+	if (IS_ERR(fp))
 		goto request_fw;
-	}
+
+	location = 1;
 	fw_requested = 0;
 	fsize = fp->f_path.dentry->d_inode->i_size;
 	dbg_ischain("start, file path %s, size %ld Bytes\n",
@@ -838,8 +935,6 @@ static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *this)
 
 	memcpy((void *)this->minfo.kvaddr, (void *)buf, fsize);
 	fimc_is_ischain_cache_flush(this, 0, fsize + 1);
-	printk(KERN_INFO "FIMC_IS F/W loaded from %s - size:%ld\n",
-			FIMC_IS_FW_SDCARD, nread);
 	fimc_is_ischain_version(FIMC_IS_FW, buf, fsize);
 
 request_fw:
@@ -849,16 +944,13 @@ request_fw:
 		ret = request_firmware((const struct firmware **)&fw_blob,
 			FIMC_IS_FW, &this->pdev->dev);
 		if (ret) {
-			dev_err(&this->pdev->dev,
-				"could not load firmware (err=%d)\n", ret);
-			return -EINVAL;
+			ret = -EINVAL;
+			goto out;
 		}
 
 		memcpy((void *)this->minfo.kvaddr, fw_blob->data,
 			fw_blob->size);
 		fimc_is_ischain_cache_flush(this, 0, fw_blob->size + 1);
-		dbg_ischain("FIMC_IS F/W is loaded - size:%d\n",
-			fw_blob->size);
 		fimc_is_ischain_version(FIMC_IS_FW, fw_blob->data,
 			fw_blob->size);
 
@@ -876,13 +968,20 @@ out:
 	}
 #endif
 
+	if (ret)
+		err("firmware loading is fail");
+	else
+		printk(KERN_INFO "firmware is loaded successfully from %s\n",
+			location ? FIMC_IS_FW_SDCARD : "fimc_is_fw2.bin");
+
 	return ret;
 }
 
 static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
 	u32 load_addr, char *setfile_name)
 {
-	int ret;
+	int ret = 0;
+	int location = 0;
 	void *address;
 	struct firmware *fw_blob;
 	u8 *buf = NULL;
@@ -895,18 +994,16 @@ static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
 
 	dbg_ischain("%s\n", __func__);
 
-	ret = 0;
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 	memset(setfile_path, 0x00, sizeof(setfile_path));
 	sprintf(setfile_path, "%s%s",
 		FIMC_IS_SETFILE_SDCARD_PATH, setfile_name);
 	fp = filp_open(setfile_path, O_RDONLY, 0);
-	if (IS_ERR(fp)) {
-		printk(KERN_INFO "setfile is not located at %s\n",
-			setfile_path);
+	if (IS_ERR(fp))
 		goto request_fw;
-	}
+
+	location = 1;
 	fw_requested = 0;
 	fsize = fp->f_path.dentry->d_inode->i_size;
 	dbg_ischain("start, file path %s, size %ld Bytes\n",
@@ -929,8 +1026,6 @@ static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
 	address = (void *)(this->minfo.kvaddr + load_addr);
 	memcpy((void *)address, (void *)buf, fsize);
 	fimc_is_ischain_cache_flush(this, load_addr, fsize + 1);
-	printk(KERN_INFO "setfile is loaded from %s - size:%ld\n",
-			setfile_path, nread);
 	fimc_is_ischain_version(setfile_name, buf, fsize);
 
 request_fw:
@@ -941,17 +1036,13 @@ request_fw:
 		ret = request_firmware((const struct firmware **)&fw_blob,
 					setfile_name, &this->pdev->dev);
 		if (ret) {
-			dev_err(&this->pdev->dev,
-				"could not load setfile (err=%d)\n", ret);
-			return -EINVAL;
+			ret = -EINVAL;
+			goto out;
 		}
 
 		address = (void *)(this->minfo.kvaddr + load_addr);
 		memcpy(address, fw_blob->data, fw_blob->size);
 		fimc_is_ischain_cache_flush(this, load_addr, fw_blob->size + 1);
-
-		printk(KERN_INFO "setfile is loaded successfully(size:%d)\n",
-			fw_blob->size);
 		fimc_is_ischain_version(setfile_name, fw_blob->data,
 			(u32)fw_blob->size);
 
@@ -968,6 +1059,12 @@ out:
 		set_fs(old_fs);
 	}
 #endif
+
+	if (ret)
+		err("setfile loading is fail");
+	else
+		printk(KERN_INFO "setfile is loaded successfully from %s\n",
+			location ? setfile_path : setfile_name);
 
 	return ret;
 }
@@ -1123,16 +1220,6 @@ int fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 
 	return ret;
 }
-
-#ifdef FW_DEUBG
-static int fimc_is_itf_print(struct fimc_is_device_ischain *this,
-	u32 indexes, u32 lindex, u32 hindex)
-{
-	fimc_is_hw_print(this->interface);
-	return 0;
-}
-#endif
-
 
 static int fimc_is_itf_s_param(struct fimc_is_device_ischain *this,
 	u32 indexes, u32 lindex, u32 hindex)
@@ -1747,6 +1834,17 @@ int fimc_is_ischain_probe(struct fimc_is_device_ischain *this,
 
 	mutex_init(&this->mutex_state);
 	spin_lock_init(&this->slock_state);
+
+#ifdef FW_DEBUG
+	debugfs_root = debugfs_create_dir(DEBUG_FS_ROOT_NAME, NULL);
+	if (debugfs_root)
+		err("debugfs_create_dir is fail");
+
+	debugfs_file = debugfs_create_file(DEBUG_FS_FILE_NAME, S_IRUSR,
+		debugfs_root, this, &debug_fops);
+	if (debugfs_file)
+		err("debugfs_create_file is fail");
+#endif
 
 exit:
 	return 0;
@@ -2791,10 +2889,6 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 		ret = -EINVAL;
 		goto exit;
 	}
-
-#ifdef FW_DEBUG
-	fimc_is_itf_print(this);
-#endif
 
 exit:
 	return ret;

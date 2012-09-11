@@ -54,7 +54,6 @@ struct fimc_is_device_flite {
 	u32				sw_checker;
 	u32				sw_trigger;
 	struct work_struct		work_queue;
-	struct work_struct		work_queue_debug;
 
 	u32				private_data;
 };

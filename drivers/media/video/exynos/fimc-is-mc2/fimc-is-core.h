@@ -96,7 +96,7 @@
 /*#define DBG_STREAMING*/
 /*#define DBG_FLITEISR*/
 /*#define AUTO_MODE*/
-/*#define FW_DEBUG*/
+#define FW_DEBUG
 /*#define RESERVED_MEM*/
 #define ENABLE_DZOOM
 #define USE_FRAME_SYNC

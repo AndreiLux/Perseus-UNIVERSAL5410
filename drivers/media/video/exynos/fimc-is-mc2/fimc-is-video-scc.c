@@ -319,6 +319,31 @@ static int fimc_is_scalerc_video_s_input(struct file *file, void *priv,
 	return 0;
 }
 
+static int fimc_is_scalerc_video_g_ctrl(struct file *file, void *priv,
+					struct v4l2_control *ctrl)
+{
+	int ret = 0;
+	struct fimc_is_video_scc *video = file->private_data;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
+	struct fimc_is_ischain_dev *scc = &ischain->scc;
+	struct fimc_is_framemgr *framemgr = &scc->framemgr;
+
+	dbg_scc("%s\n", __func__);
+
+	switch (ctrl->id) {
+	case V4L2_CID_IS_G_COMPLETES:
+		ctrl->value = framemgr->frame_complete_cnt;
+		break;
+	default:
+		err("unsupported ioctl(%d)\n", ctrl->id);
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+
 static int fimc_is_scalerc_video_s_ctrl(struct file *file, void *priv,
 	struct v4l2_control *ctrl)
 {
@@ -398,6 +423,7 @@ const struct v4l2_ioctl_ops fimc_is_scalerc_video_ioctl_ops = {
 	.vidioc_enum_input		= fimc_is_scalerc_video_enum_input,
 	.vidioc_g_input			= fimc_is_scalerc_video_g_input,
 	.vidioc_s_input			= fimc_is_scalerc_video_s_input,
+	.vidioc_g_ctrl			= fimc_is_scalerc_video_g_ctrl,
 	.vidioc_s_ctrl			= fimc_is_scalerc_video_s_ctrl,
 };
 
