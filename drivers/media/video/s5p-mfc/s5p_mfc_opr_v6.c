@@ -121,7 +121,8 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 		ctx->bank1_size = ctx->scratch_buf_size;
 		break;
 	case S5P_FIMV_CODEC_VP8_DEC:
-		ctx->scratch_buf_size = mb_width * 32 + mb_height * 128 + 34816;
+		ctx->scratch_buf_size = mb_width * 32 + mb_height * 128 +
+					((mb_width + 1) / 2) * 64 + 2112;
 		ctx->scratch_buf_size = ALIGN(ctx->scratch_buf_size, 256);
 		ctx->bank1_size = ctx->scratch_buf_size;
 		break;
