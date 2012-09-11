@@ -1373,9 +1373,10 @@ static int gsc_resume(struct device *dev)
 
 	pm_runtime_get_sync(dev);
 	if (gsc_m2m_opened(gsc)) {
+		/* Clear for full H/W setup in first run after resume */
+		gsc->m2m.ctx = NULL;
 		ctx = v4l2_m2m_get_curr_priv(gsc->m2m.m2m_dev);
 		if (ctx != NULL) {
-			gsc->m2m.ctx = NULL;
 			v4l2_m2m_job_finish(gsc->m2m.m2m_dev, ctx->m2m_ctx);
 		}
 	}
