@@ -294,12 +294,10 @@ static int exynos5250_init_mif_tables(struct busfreq_data_mif *data)
 	for (i = LV_0; i < _LV_END; i++) {
 		exynos5_mif_opp_table[i].volt = asv_get_volt(ID_MIF, exynos5_mif_opp_table[i].clk);
 		if (exynos5_mif_opp_table[i].volt == 0) {
-			dev_err(data->dev, "Invalid value\n");
-			return -EINVAL;
+			dev_err(data->dev, "Invalid value for frequency %lu\n",
+				exynos5_mif_opp_table[i].clk);
+			continue;
 		}
-	}
-
-	for (i = LV_0; i < _LV_END; i++) {
 		err = opp_add(data->dev, exynos5_mif_opp_table[i].clk,
 				exynos5_mif_opp_table[i].volt);
 		if (err) {
