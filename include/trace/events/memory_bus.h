@@ -35,7 +35,7 @@ TRACE_EVENT(memory_bus_usage,
 		__entry->ns = ns;
 	),
 
-	TP_printk("bus=%s rw_bytes=%llu r_bytes=%llu w_bytes=%llu cycles=%llu ns=%llu\n",
+	TP_printk("bus=%s rw_bytes=%llu r_bytes=%llu w_bytes=%llu cycles=%llu ns=%llu",
 		__get_str(name),
 		__entry->rw_bytes,
 		__entry->r_bytes,
