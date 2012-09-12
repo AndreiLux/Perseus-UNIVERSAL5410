@@ -1593,6 +1593,12 @@ static void __init exynos_reserve_mem(void)
 			.size = SZ_1M,
 		},
 #endif
+#ifdef CONFIG_ION_EXYNOS_DRM_MSGBOX_SH
+		{
+			.name = "drm_msgbox_sh",
+			.size = SZ_1M,
+		},
+#endif
 #endif
 		{
 			.size = 0
@@ -1600,21 +1606,26 @@ static void __init exynos_reserve_mem(void)
 	};
 #ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
 	static struct cma_region regions_secure[] = {
-#ifdef CONFIG_ION_EXYNOS_DRM_VIDEO
-		{
-			.name = "drm_video",
-			.size = (
 #ifdef CONFIG_ION_EXYNOS_DRM_MEMSIZE_FIMD_VIDEO
-				CONFIG_ION_EXYNOS_DRM_MEMSIZE_FIMD_VIDEO +
+	       {
+		       .name = "drm_fimd_video",
+		       .size = CONFIG_ION_EXYNOS_DRM_MEMSIZE_FIMD_VIDEO *
+			       SZ_1K,
+	       },
 #endif
-#ifdef CONFIG_ION_EXYNOS_DRM_MEMSIZE_GSC
-				CONFIG_ION_EXYNOS_DRM_MEMSIZE_GSC +
+#ifdef CONFIG_ION_EXYNOS_DRM_MEMSIZE_MFC_OUTPUT
+	       {
+		       .name = "drm_mfc_output",
+		       .size = CONFIG_ION_EXYNOS_DRM_MEMSIZE_MFC_OUTPUT *
+			       SZ_1K,
+	       },
 #endif
-#ifdef CONFIG_ION_EXYNOS_DRM_MEMSIZE_MFC_SECURE
-				CONFIG_ION_EXYNOS_DRM_MEMSIZE_MFC_SECURE +
-#endif
-				0) * SZ_1K,
-		},
+#ifdef CONFIG_ION_EXYNOS_DRM_MEMSIZE_MFC_INPUT
+	       {
+		       .name = "drm_mfc_input",
+		       .size = CONFIG_ION_EXYNOS_DRM_MEMSIZE_MFC_INPUT *
+			       SZ_1K,
+	       },
 #endif
 #ifdef CONFIG_ION_EXYNOS_DRM_MFC_FW
 		{
@@ -1645,9 +1656,19 @@ static void __init exynos_reserve_mem(void)
 		"exynos-fimc-lite.0=flite0;exynos-fimc-lite.1=flite1;"
 #ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
 		"ion-exynos/mfc_sh=drm_mfc_sh;"
-		"ion-exynos/video=drm_video;"
+		"ion-exynos/msgbox_sh=drm_msgbox_sh;"
+		"ion-exynos/fimd_video=drm_fimd_video;"
+		"ion-exynos/mfc_output=drm_mfc_output;"
+		"ion-exynos/mfc_input=drm_mfc_input;"
 		"ion-exynos/mfc_fw=drm_mfc_fw;"
 		"ion-exynos/sectbl=drm_sectbl;"
+		"s5p-smem/mfc_sh=drm_mfc_sh;"
+		"s5p-smem/msgbox_sh=drm_msgbox_sh;"
+		"s5p-smem/fimd_video=drm_fimd_video;"
+		"s5p-smem/mfc_output=drm_mfc_output;"
+		"s5p-smem/mfc_input=drm_mfc_input;"
+		"s5p-smem/mfc_fw=drm_mfc_fw;"
+		"s5p-smem/sectbl=drm_sectbl;"
 #endif
 		"ion-exynos=ion;"
 		"exynos-rot=rot;"
