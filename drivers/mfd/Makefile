@@ -6,7 +6,7 @@
 obj-$(CONFIG_MFD_88PM860X)	+= 88pm860x.o
 obj-$(CONFIG_MFD_SM501)		+= sm501.o
 obj-$(CONFIG_MFD_ASIC3)		+= asic3.o tmio_core.o
-obj-$(CONFIG_MFD_CHROMEOS_EC)	+= chromeos_ec.o
+obj-$(CONFIG_MFD_CHROMEOS_EC)	+= chromeos_ec_i2c.o
 
 obj-$(CONFIG_HTC_EGPIO)		+= htc-egpio.o
 obj-$(CONFIG_HTC_PASIC3)	+= htc-pasic3.o
