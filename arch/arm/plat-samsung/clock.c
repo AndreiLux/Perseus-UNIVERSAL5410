@@ -432,7 +432,7 @@ static void clock_tree_show_one(struct seq_file *s, struct clk *c, int level)
 	seq_printf(s, "%*s%-*s %-6s %-3d %-10lu\n",
 		level * 3 + 1, "",
 		50 - level * 3, buf,
-		state, c->usage, clk_get_rate(c));
+		state, c->usage, c->usage ? clk_get_rate(c) : 0);
 
 	list_for_each_entry(child, &clocks, list) {
 		if (child->parent != c)
