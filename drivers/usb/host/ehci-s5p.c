@@ -32,6 +32,7 @@ struct s5p_ehci_hcd {
 	struct device *dev;
 	struct usb_hcd *hcd;
 	struct clk *clk;
+	int vbus_gpio;
 };
 
 static const struct hc_driver s5p_ehci_hc_driver = {
@@ -71,21 +72,21 @@ static int s5p_ehci_setup_gpio(struct platform_device *pdev)
 	int gpio;
 
 	if (!pdev->dev.of_node)
-		return 0;
+		return -ENODEV;
 
 	gpio = of_get_named_gpio(pdev->dev.of_node,
 			"samsung,vbus-gpio", 0);
 	if (!gpio_is_valid(gpio))
-		return 0;
+		return -ENODEV;
+	dev_dbg(&pdev->dev, "vbus_gpio = %d\n", gpio);
 
-	err = gpio_request(gpio, "ehci_vbus_gpio");
+	err = gpio_request_one(gpio, GPIOF_INIT_HIGH, "ehci_vbus_gpio");
 	if (err) {
 		dev_err(&pdev->dev, "can't request ehci vbus gpio %d", gpio);
 		return err;
 	}
-	gpio_set_value(gpio, 1);
 
-	return err;
+	return gpio;
 }
 
 static u64 ehci_s5p_dma_mask = DMA_BIT_MASK(32);
@@ -108,11 +109,13 @@ static int __devinit s5p_ehci_probe(struct platform_device *pdev)
 	pdev->dev.dma_mask = &ehci_s5p_dma_mask;
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 
-	s5p_ehci_setup_gpio(pdev);
-
 	s5p_ehci = kzalloc(sizeof(struct s5p_ehci_hcd), GFP_KERNEL);
 	if (!s5p_ehci)
 		return -ENOMEM;
+
+	s5p_ehci->vbus_gpio = s5p_ehci_setup_gpio(pdev);
+	if (!gpio_is_valid(s5p_ehci->vbus_gpio))
+		dev_warn(&pdev->dev, "Failed to setup vbus gpio\n");
 
 	s5p_ehci->dev = &pdev->dev;
 
@@ -263,6 +266,9 @@ static int s5p_ehci_suspend(struct device *dev)
 	if (pdata && pdata->phy_exit)
 		pdata->phy_exit(pdev, S5P_USB_PHY_HOST);
 
+	if (gpio_is_valid(s5p_ehci->vbus_gpio))
+		gpio_set_value(s5p_ehci->vbus_gpio, 0);
+
 	clk_disable(s5p_ehci->clk);
 
 	return rc;
@@ -277,6 +283,9 @@ static int s5p_ehci_resume(struct device *dev)
 	struct s5p_ehci_platdata *pdata = pdev->dev.platform_data;
 
 	clk_enable(s5p_ehci->clk);
+
+	if (gpio_is_valid(s5p_ehci->vbus_gpio))
+		gpio_set_value(s5p_ehci->vbus_gpio, 1);
 
 	if (pdata && pdata->phy_init)
 		pdata->phy_init(pdev, S5P_USB_PHY_HOST);
