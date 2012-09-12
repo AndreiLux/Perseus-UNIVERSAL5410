@@ -28,8 +28,8 @@ config ION_EXYNOS_DRM_MFC_SH
 	depends on EXYNOS_CONTENT_PATH_PROTECTION
 	default y
 
-config ION_EXYNOS_DRM_VIDEO
-	bool "ION Heap for drm video"
+config ION_EXYNOS_DRM_MSGBOX_SH
+	bool "ION Heap for drm msgbox sh"
 	depends on EXYNOS_CONTENT_PATH_PROTECTION
 	default y
 
@@ -44,16 +44,16 @@ config ION_EXYNOS_DRM_SECTBL
 	default y
 
 config ION_EXYNOS_DRM_MEMSIZE_FIMD_VIDEO
-	int "Reserved memsize in kilobytes for FIMD video"
-	depends on ION_EXYNOS_DRM_VIDEO
-	default 32768
+	int "Reserved memsize in kilobytes for FIMD VIDEO"
+	depends on EXYNOS_CONTENT_PATH_PROTECTION
+	default 65536
 
-config ION_EXYNOS_DRM_MEMSIZE_GSC
-	int "Reserved memsize in kilobytes for GSC"
-	depends on ION_EXYNOS_DRM_VIDEO
-	default 33792
+config ION_EXYNOS_DRM_MEMSIZE_MFC_OUTPUT
+	int "Reserved memsize in kilobytes for MFC OUTPUT"
+	depends on EXYNOS_CONTENT_PATH_PROTECTION
+	default 40960
 
-config ION_EXYNOS_DRM_MEMSIZE_MFC_SECURE
-	int "Reserved memsize in kilobytes for MFC secure"
-	depends on ION_EXYNOS_DRM_VIDEO
-	default 30720
+config ION_EXYNOS_DRM_MEMSIZE_MFC_INPUT
+	int "Reserved memsize in kilobytes for MFC INPUT"
+	depends on EXYNOS_CONTENT_PATH_PROTECTION
+	default 16384
