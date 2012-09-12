@@ -2741,6 +2741,7 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 	u32 crop_x, crop_y, crop_width, crop_height;
 	u32 sensor_width, sensor_height, sensor_ratio;
 	u32 chain3_width, chain3_height, chain3_ratio;
+	u32 chain1_wmin, chain1_hmin;
 	u32 lindex, hindex, indexes;
 
 	dbg_isp("%s()\n", __func__);
@@ -2757,6 +2758,7 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 		goto exit;
 	}
 
+	/* 1. crop calculation */
 	sensor_width = this->sensor_width;
 	sensor_height = this->sensor_height;
 	chain3_width = this->chain3_width;
@@ -2777,16 +2779,14 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 		crop_height =
 			(sensor_width * chain3_height) / chain3_width;
 		crop_height = ALIGN(crop_height, 2);
-		crop_y = ((sensor_height - crop_height) >> 1) &
-			0xFFFFFFFE;
+		crop_y = ((sensor_height - crop_height) >> 1) & 0xFFFFFFFE;
 	} else {
 		/* isp dma input limitation
 			width : 4 times */
 		crop_width =
 			(sensor_height * chain3_width) / chain3_height;
 		crop_width = ALIGN(crop_width, 4);
-		crop_x =  ((sensor_width - crop_width) >> 1) &
-			0xFFFFFFFE;
+		crop_x =  ((sensor_width - crop_width) >> 1) & 0xFFFFFFFE;
 	}
 
 	this->chain0_width = crop_width;
@@ -2799,6 +2799,20 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 	dbg_isp("crop_x : %d, crop y : %d\n", crop_x, crop_y);
 	dbg_isp("crop width : %d, crop height : %d\n",
 		crop_width, crop_height);
+
+	/* 2. scaling calculation */
+	chain1_wmin = (crop_width >> 4) & 0xFFFFFFFE;
+	chain1_hmin = (crop_height >> 4) & 0xFFFFFFFE;
+
+	if (chain1_wmin > this->chain1_width) {
+		printk(KERN_INFO "scc down scale limited : (%d,%d)->(%d,%d)\n",
+			this->chain1_width, this->chain1_height,
+			chain1_wmin, chain1_hmin);
+		this->chain1_width = chain1_wmin;
+		this->chain1_height = chain1_hmin;
+		this->chain2_width = chain1_wmin;
+		this->chain2_height = chain1_hmin;
+	}
 
 	fimc_is_ischain_s_chain0_size(this,
 		this->chain0_width, this->chain0_height);
