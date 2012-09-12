@@ -1274,12 +1274,14 @@ static int s3c_udc_suspend(struct platform_device *pdev, pm_message_t state)
 		/* Terminate any outstanding requests  */
 		for (i = 0; i < S3C_MAX_ENDPOINTS; i++) {
 			struct s3c_ep *ep = &dev->ep[i];
+			unsigned long flags;
+
 			if (ep->dev != NULL)
-				spin_lock(&ep->dev->lock);
+				spin_lock_irqsave(&ep->dev->lock, flags);
 			ep->stopped = 1;
 			nuke(ep, -ESHUTDOWN);
 			if (ep->dev != NULL)
-				spin_unlock(&ep->dev->lock);
+				spin_unlock_irqrestore(&ep->dev->lock, flags);
 		}
 
 		if (dev->driver->disconnect)
