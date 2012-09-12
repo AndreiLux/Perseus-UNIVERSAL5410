@@ -292,7 +292,7 @@ static int qmi_wwan_suspend(struct usb_interface *intf, pm_message_t message)
 	if (ret < 0)
 		goto err;
 
-	if (info->subdriver && info->subdriver->suspend)
+	if (intf == info->control && info->subdriver && info->subdriver->suspend)
 		ret = info->subdriver->suspend(intf, message);
 	if (ret < 0)
 		usbnet_resume(intf);
@@ -305,13 +305,14 @@ static int qmi_wwan_resume(struct usb_interface *intf)
 	struct usbnet *dev = usb_get_intfdata(intf);
 	struct qmi_wwan_state *info = (void *)&dev->data;
 	int ret = 0;
+	bool callsub = (intf == info->control && info->subdriver && info->subdriver->resume);
 
-	if (info->subdriver && info->subdriver->resume)
+	if (callsub)
 		ret = info->subdriver->resume(intf);
 	if (ret < 0)
 		goto err;
 	ret = usbnet_resume(intf);
-	if (ret < 0 && info->subdriver && info->subdriver->resume && info->subdriver->suspend)
+	if (ret < 0 && callsub && info->subdriver->suspend)
 		info->subdriver->suspend(intf, PMSG_SUSPEND);
 err:
 	return ret;
