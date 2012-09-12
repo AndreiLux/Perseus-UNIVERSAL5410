@@ -268,6 +268,7 @@ const kbase_pm_policy kbase_pm_coarse_demand_policy_ops =
 	coarse_demand_init,             /* init */
 	coarse_demand_term,             /* term */
 	coarse_demand_event,            /* event */
+	KBASE_PM_POLICY_FLAG_NO_CORE_TRANSITIONS, /* flags */
 };
 
 KBASE_EXPORT_TEST_API(kbase_pm_coarse_demand_policy_ops)

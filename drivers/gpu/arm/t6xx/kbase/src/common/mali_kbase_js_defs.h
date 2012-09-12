@@ -427,6 +427,33 @@ typedef struct kbasep_js_kctx_info
 	int init_status;
 } kbasep_js_kctx_info;
 
+/** Subset of atom state that can be available after jd_done_nolock() is called
+ * on that atom. A copy must be taken via kbasep_js_atom_retained_state_copy(),
+ * because the original atom could disappear. */
+typedef struct kbasep_js_atom_retained_state
+{
+	/** Event code - to determine whether the atom has finished */
+	base_jd_event_code  event_code;
+	/** core requirements */
+	base_jd_core_req    core_req;
+	/** Job Slot to retry submitting to if submission from IRQ handler failed */
+	int                 retry_submit_on_slot;
+
+} kbasep_js_atom_retained_state;
+
+/**
+ * Value signifying 'no retry on a slot required' for:
+ * - kbase_js_atom_retained_state::retry_submit_on_slot
+ * - kbase_jd_atom::retry_submit_on_slot
+ */
+#define KBASEP_JS_RETRY_SUBMIT_SLOT_INVALID (-1)
+
+/**
+ * base_jd_core_req value signifying 'invalid' for a kbase_jd_atom_retained_state.
+ *
+ * @see kbase_atom_retained_state_is_valid()
+ */
+#define KBASEP_JS_ATOM_RETAINED_STATE_CORE_REQ_INVALID BASE_JD_REQ_DEP
 
 /**
  * @brief The JS timer resolution, in microseconds

@@ -226,6 +226,7 @@ const kbase_pm_policy kbase_pm_always_on_policy_ops =
 	always_on_init,             /* init */
 	always_on_term,             /* term */
 	always_on_event,            /* event */
+	KBASE_PM_POLICY_FLAG_NO_CORE_TRANSITIONS, /* flags */
 };
 
 KBASE_EXPORT_TEST_API(kbase_pm_always_on_policy_ops)

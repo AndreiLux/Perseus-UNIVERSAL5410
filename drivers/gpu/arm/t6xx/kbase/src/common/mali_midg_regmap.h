@@ -323,7 +323,7 @@
 #define ASn_COMMAND_FLUSH       0x04    /* Flush all L2 caches then issue a flush region command to all MMUs
                                            (deprecated - only for use with T60x/T65x) */
 #define ASn_COMMAND_FLUSH_PT    0x04    /* Flush all L2 caches then issue a flush region command to all MMUs */
-#define ASn_COMMAND_FLUSH_MEM   0x05    /* Wait for memory accesses to complete, flush all the L1s cache then
+#define ASn_COMMAND_FLUSH_MEM   0x05    /* Wait for memory accesses to complete, flush all the L1s cache then 
                                            flush all L2 caches then issue a flush region command to all MMUs */
 
 /* Possible values of JSn_CONFIG and JSn_CONFIG_NEXT registers */

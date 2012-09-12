@@ -328,15 +328,27 @@ STATIC mali_bool kbase_pm_transition_core_type(kbase_device *kbdev, kbase_pm_cor
 	 */
 	desired_state |= in_use;
 
+	/* Update state of whether l2 caches are powered */
+	if ( type == KBASE_PM_CORE_L2 )
+	{
+		if ( (ready == present) && (desired_state == ready) && (trans == 0) )
+		{
+			/* All are ready, none will be turned off, and none are transitioning */
+			kbdev->pm.l2_powered = 1;
+			if ( kbdev->l2_users_count > 0 )
+			{
+				/* Notify any registered l2 cache users (optimized out when no users waiting) */
+				wake_up(&kbdev->pm.l2_powered_wait);
+			}
+		}
+		else
+		{
+			kbdev->pm.l2_powered = 0;
+		}
+	}
+
 	if (desired_state == ready && (trans == 0))
 	{
-		/* If l2 cache user registered and l2 cache powered, notify the users waiting */
-		if ( ( type == KBASE_PM_CORE_L2 ) && ( kbdev->l2_users_count > 0 ) && (ready == present) )
-		{
-			kbdev->pm.l2_powered = 1;
-			wake_up(&kbdev->pm.l2_powered_wait);
-		}
-
 		return MALI_TRUE;
 	}
 
@@ -675,8 +687,6 @@ void kbase_pm_release_l2_caches(kbase_device *kbdev )
 
 	if ( !kbdev->l2_users_count )
 	{
-		/* Any new requesters must now wait for the l2 to be powered up. */
-		kbdev->pm.l2_powered = 0;
 		kbase_pm_send_event(kbdev, KBASE_PM_EVENT_CHANGE_GPU_STATE);
 	}
 	spin_unlock_irqrestore(&kbdev->pm.power_change_lock, flags);

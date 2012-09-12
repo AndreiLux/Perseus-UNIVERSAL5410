@@ -384,9 +384,17 @@ void kbase_pm_change_policy(kbase_device *kbdev)
 	kbdev->pm.current_policy->init(kbdev);
 	kbase_pm_send_event(kbdev, KBASE_PM_EVENT_POLICY_INIT);
 
+	/* Changing policy might have occurred during an update to the core desired
+	 * states, but the KBASE_PM_EVENT_CHANGE_GPU_STATE event could've been
+	 * optimized out if the previous policy had
+	 * KBASE_PM_POLICY_FLAG_NO_CORE_TRANSITIONS set.
+	 *
+	 * In any case, we issue a KBASE_PM_EVENT_CHANGE_GPU_STATE just in case. */
+	kbase_pm_send_event(kbdev, KBASE_PM_EVENT_CHANGE_GPU_STATE);
+
 	/* Now the policy change is finished, we release our fake context active reference */
 	kbase_pm_context_idle(kbdev);
-	
+
 	kbdev->pm.new_policy = NULL;
 }
 KBASE_EXPORT_TEST_API(kbase_pm_change_policy)
@@ -503,6 +511,13 @@ void kbase_pm_send_event(kbase_device *kbdev, kbase_pm_event event)
 	int old_value, new_value;
 
 	OSK_ASSERT(kbdev != NULL);
+
+	if ( (kbdev->pm.current_policy->flags & KBASE_PM_POLICY_FLAG_NO_CORE_TRANSITIONS)
+		 && event == KBASE_PM_EVENT_CHANGE_GPU_STATE )
+	{
+		/* Optimize out event sending when the policy doesn't transition individual cores */
+		return;
+	}
 
 	KBASE_TRACE_ADD( kbdev, PM_SEND_EVENT, NULL, NULL, 0u, event );
 

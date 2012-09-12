@@ -162,6 +162,22 @@ typedef enum kbase_pm_event
 	KBASEP_PM_EVENT_INVALID
 } kbase_pm_event;
 
+/** Flags that give information about Power Policies */
+enum
+{
+	/** This policy does not power up/down cores and L2/L3 caches individually,
+	 * outside of KBASE_PM_EVENT_GPU_IDLE and KBASE_PM_EVENT_GPU_ACTIVE events.
+	 * That is, the policy guarantees all cores/L2/L3 caches will be powered
+	 * after a KBASE_PM_EVENT_GPU_ACTIVE event.
+	 *
+	 * Hence, it does not need to be sent KBASE_PM_EVENT_CHANGE_GPU_STATE
+	 * events.  */
+	KBASE_PM_POLICY_FLAG_NO_CORE_TRANSITIONS = (1u << 0)
+};
+
+typedef u32 kbase_pm_policy_flags;
+
+
 typedef union kbase_pm_policy_data
 {
 	kbasep_pm_policy_always_on  always_on;
@@ -203,6 +219,8 @@ typedef struct kbase_pm_policy
 	 * @param event     The event to process
 	 */
 	void (*event)(struct kbase_device *kbdev, kbase_pm_event event);
+	/** Field indicating flags for this policy */
+	kbase_pm_policy_flags flags;
 } kbase_pm_policy;
 
 /** Metrics data collected for use by the power management framework.
@@ -286,6 +304,9 @@ typedef struct kbase_pm_device_data
 
 	/** Wait queue for whether the l2 cache has been powered as requested */
 	wait_queue_head_t       l2_powered_wait;
+	/** State indicating whether all the l2 caches are powered.
+	 * Non-zero indicates they're *all* powered
+	 * Zero indicates that some (or all) are not powered */
 	int                     l2_powered;
 
 	int                     no_outstanding_event;

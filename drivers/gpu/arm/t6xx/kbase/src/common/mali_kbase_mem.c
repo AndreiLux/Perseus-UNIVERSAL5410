@@ -265,7 +265,7 @@ static struct kbase_va_region * kbase_region_tracker_find_region_meeting_reqs(
 	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
 	{
 		return NULL;
-	}
+	}	
 
 	/* Note that this search is a linear search, as we do not have a target
        address in mind, so does not benefit from the rbtree search */
@@ -762,7 +762,7 @@ mali_error kbase_mem_usage_request_pages(kbasep_mem_usage *usage, u32 nr_pages)
 		return MALI_ERROR_OUT_OF_MEMORY;
 	}
 
-	/*
+	/* 
 	 * Fetch the initial cur_pages value
 	 * each loop iteration below fetches
 	 * it as part of the store attempt

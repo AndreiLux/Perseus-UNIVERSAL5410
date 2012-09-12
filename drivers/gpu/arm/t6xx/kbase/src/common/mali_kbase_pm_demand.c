@@ -236,6 +236,7 @@ const kbase_pm_policy kbase_pm_demand_policy_ops =
 	demand_init,                /* init */
 	demand_term,                /* term */
 	demand_event,               /* event */
+	0u,                         /* flags */
 };
 
 

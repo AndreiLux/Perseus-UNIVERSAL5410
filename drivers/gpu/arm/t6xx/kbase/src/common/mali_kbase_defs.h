@@ -22,7 +22,6 @@
 #ifndef _KBASE_DEFS_H_
 #define _KBASE_DEFS_H_
 
-
 #include <kbase/mali_kbase_config.h>
 #include <kbase/mali_base_hwconfig.h>
 #include <osk/mali_osk.h>
@@ -52,7 +51,6 @@
 #define KBASE_TRACE_ENABLE 0
 #endif /* CONFIG_MALI_DEBUG */
 #endif /* KBASE_TRACE_ENABLE */
-
 
 /** Dump Job slot trace on error (only active if KBASE_TRACE_ENABLE != 0) */
 #define KBASE_TRACE_DUMP_ON_JOB_SLOT_ERROR 1
@@ -110,7 +108,6 @@ typedef struct kbase_device kbase_device;
  */
 #define BASE_MAX_NR_AS              16
 
-
 /* mmu */
 #define ENTRY_IS_ATE        1ULL
 #define ENTRY_IS_INVAL      2ULL
@@ -147,7 +144,6 @@ typedef struct kbase_device kbase_device;
 #define KBASE_TRACE_MASK ((1 << KBASE_TRACE_SIZE_LOG2)-1)
 
 #include "mali_kbase_js_defs.h"
-
 
 /**
  * @brief States to model state machine processed by kbasep_js_job_check_ref_cores(), which
@@ -204,19 +200,21 @@ typedef enum
 
 typedef struct kbase_jd_atom kbase_jd_atom;
 
+
 struct kbase_jd_atom {
-	base_jd_event_code  event_code;
 	struct work_struct  work;
 	ktime_t             start_timestamp;
 
 	base_jd_udata       udata;
 	kbase_context       *kctx;
+
 	osk_dlist           dep_head[2];
 	osk_dlist_item      dep_item[2];
 	kbase_jd_atom       *dep_atom[2];
 
 	u16                 nr_extres;
 	base_external_resource *extres;
+
 	u32                 device_nr;
 	u64                 affinity;
 	u64                 jc;
@@ -230,18 +228,20 @@ struct kbase_jd_atom {
 	struct sync_fence_waiter    sync_waiter;
 #endif /* CONFIG_SYNC */
 
+	/* Note: refer to kbasep_js_atom_retained_state, which will take a copy of some of the following members */
+	base_jd_event_code  event_code;
 	base_jd_core_req    core_req;       /**< core requirements */
-
-	kbasep_js_policy_job_info sched_info;
 	/** Job Slot to retry submitting to if submission from IRQ handler failed
 	 *
 	 * NOTE: see if this can be unified into the another member e.g. the event */
 	int                 retry_submit_on_slot;
+
+	kbasep_js_policy_job_info sched_info;
 	/* atom priority scaled to nice range with +20 offset 0..39 */
 	int                 nice_prio;
 
 	int                 poking; /* BASE_HW_ISSUE_8316 */
-
+	
 	wait_queue_head_t   completed;
 	kbase_jd_atom_state status;
 };
@@ -255,7 +255,6 @@ struct kbase_jd_atom {
  */
 
 #define KBASE_JD_DEP_QUEUE_SIZE 256
-
 
 typedef struct kbase_jd_context {
 	struct mutex           lock;
@@ -319,10 +318,8 @@ typedef enum kbase_midgard_type
 	KBASE_MALI_T601,
 	KBASE_MALI_T604,
 	KBASE_MALI_T608,
-
 	KBASE_MALI_COUNT
 } kbase_midgard_type;
-
 
 typedef struct kbase_device_info
 {
@@ -646,6 +643,7 @@ struct kbase_context
 	 * Mutable flags *must* be accessed under jctx.sched_info.ctx.jsctx_mutex
 	 *
 	 * All other flags must be added there */
+
 	/* Pointer to hold a reference to process memory manager of the context owner,
 	 * must be set using kbase_os_store_process_mm().
 	 */
@@ -665,7 +663,6 @@ typedef enum kbase_share_attr_bits
 	SHARE_BOTH_BITS  = (2ULL << 8), /* inner and outer shareable coherency */
 	SHARE_INNER_BITS = (3ULL << 8)  /* inner shareable coherency */
 } kbase_share_attr_bits;
-
 
 /* Conversion helpers for setting up high resolution timers */
 #define HR_TIMER_DELAY_MSEC(x) (ns_to_ktime((x)*1000000U ))

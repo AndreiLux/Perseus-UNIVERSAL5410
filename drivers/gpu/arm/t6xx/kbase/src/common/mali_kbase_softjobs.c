@@ -357,6 +357,7 @@ void kbase_finish_soft_job(kbase_jd_atom *katom )
 		case BASE_JD_REQ_SOFT_FENCE_TRIGGER:
 			if (katom->fence) {
 				/* The fence has not yet been signalled, so we do it now */
+				kbase_fence_trigger(katom);
 				sync_fence_put(katom->fence);
 				katom->fence = NULL;
 			}

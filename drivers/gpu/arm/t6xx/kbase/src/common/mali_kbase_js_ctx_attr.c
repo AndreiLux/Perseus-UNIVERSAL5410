@@ -319,13 +319,19 @@ void kbasep_js_ctx_attr_ctx_retain_atom( kbase_device *kbdev,
 
 mali_bool kbasep_js_ctx_attr_ctx_release_atom( kbase_device *kbdev,
 										  kbase_context *kctx,
-										  kbase_jd_atom *katom )
+										  kbasep_js_atom_retained_state *katom_retained_state )
 {
 	mali_bool runpool_state_changed = MALI_FALSE;
 	base_jd_core_req core_req;
 
-	OSK_ASSERT( katom );
-	core_req = katom->core_req;
+	OSK_ASSERT( katom_retained_state );
+	core_req = katom_retained_state->core_req;
+
+	/* No-op for invalid atoms */
+	if ( kbasep_js_atom_retained_state_is_valid( katom_retained_state ) == MALI_FALSE )
+	{
+		return MALI_FALSE;
+	}
 
 	if ( core_req & BASE_JD_REQ_NSS )
 	{
