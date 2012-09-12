@@ -190,7 +190,7 @@
 #define AUX_TERMINAL_CTRL_50_OHM		(0x2 << 4)
 #define AUX_TERMINAL_CTRL_65_OHM		(0x3 << 4)
 #define TX_CUR1_2X				(0x1 << 2)
-#define TX_CUR_8_MA				(0x2 << 0)
+#define TX_CUR_16_MA				(0x3 << 0)
 
 /* S5P_DP_TX_AMP_TUNING_CTL */
 #define CH3_AMP_SHIFT				(24)

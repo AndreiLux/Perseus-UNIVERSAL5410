@@ -89,7 +89,7 @@ void s5p_dp_init_analog_param(struct s5p_dp_device *dp)
 
 	if (!analog_param) {
 		reg = PD_RING_OSC | AUX_TERMINAL_CTRL_50_OHM |
-			TX_CUR1_2X | TX_CUR_8_MA;
+			TX_CUR1_2X | TX_CUR_16_MA;
 		writel(reg, dp->reg_base + S5P_DP_PLL_FILTER_CTL_1);
 
 		reg = CH3_AMP_400_MV | CH2_AMP_400_MV |
@@ -98,7 +98,7 @@ void s5p_dp_init_analog_param(struct s5p_dp_device *dp)
 	} else {
 		int tx_amp;
 
-		reg = PD_RING_OSC | TX_CUR1_2X | TX_CUR_8_MA;
+		reg = PD_RING_OSC | TX_CUR1_2X | TX_CUR_16_MA;
 		switch (analog_param->aux_tx_terminal_resistor) {
 		case AUX_TX_37_5_OHM:
 			reg |= AUX_TERMINAL_CTRL_37_5_OHM;
