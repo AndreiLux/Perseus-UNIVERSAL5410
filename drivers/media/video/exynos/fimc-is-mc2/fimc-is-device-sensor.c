@@ -457,12 +457,26 @@ exit:
 int fimc_is_sensor_close(struct fimc_is_device_sensor *this)
 {
 	int ret = 0;
+	struct fimc_is_device_ischain *ischain;
 
 	if (testnclr_state(this, FIMC_IS_SENSOR_OPEN)) {
 		err("already close");
 		ret = -EMFILE;
 		goto exit;
 	}
+
+	/* it can not be accessed to register firmawre
+	after clock gating and power down. ischain close do clock gating and
+	power down */
+	ischain = this->ischain;
+	mutex_lock(&ischain->mutex_state);
+	if (!test_bit(FIMC_IS_ISCHAIN_OPEN, &ischain->state)) {
+		mutex_unlock(&ischain->mutex_state);
+		err("ischain device is already close, skip");
+		ret = -EINVAL;
+		goto exit;
+	}
+	mutex_unlock(&ischain->mutex_state);
 
 	printk(KERN_INFO "+++%s\n", __func__);
 

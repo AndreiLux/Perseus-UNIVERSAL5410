@@ -794,8 +794,6 @@ static int fimc_is_ishcain_initmem(struct fimc_is_device_ischain *this)
 		goto exit;
 	}
 
-	memset((void *)this->minfo.kvaddr, 0, FIMC_IS_A5_MEM_SIZE);
-
 	offset = FW_SHARED_OFFSET;
 	this->minfo.dvaddr_fshared = this->minfo.dvaddr + offset;
 	this->minfo.kvaddr_fshared = this->minfo.kvaddr + offset;
@@ -1172,6 +1170,13 @@ int fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 			this->minfo.dvaddr);
 		dbg_ischain("minfo.base(kvaddr) : 0x%08X\n",
 			this->minfo.kvaddr);
+
+		if (!this->minfo.dvaddr) {
+			err("firmware device virtual is null");
+			ret = -ENOMEM;
+			goto exit;
+		}
+
 		writel(this->minfo.dvaddr, this->regs + BBOAR);
 
 		/* 5. A5 power on*/
@@ -1218,6 +1223,7 @@ int fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 		clear_bit(FIMC_IS_ISCHAIN_POWER_ON, &this->state);
 	}
 
+exit:
 	return ret;
 }
 
@@ -1932,7 +1938,12 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
 	pm_qos_add_request(&pm_qos_req_mem, PM_QOS_MEMORY_THROUGHPUT, 3200);
 
 	/* 5. A5 power on */
-	fimc_is_ischain_power(this, 1);
+	ret = fimc_is_ischain_power(this, 1);
+	if (ret) {
+		err("failed to fimc_is_ischain_power (%d)\n", ret);
+		ret = -EINVAL;
+		goto exit;
+	}
 	dbg_ischain("power up and loaded firmware\n");
 
 	/* bts api for bandwidth guarantee */
