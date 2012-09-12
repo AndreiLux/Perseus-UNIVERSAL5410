@@ -959,55 +959,7 @@ static ssize_t set_asv(struct device *dev, struct device_attribute *attr, const 
 	return count;
 }
 
-extern int prev_level;
-extern long long prev_time;
-extern mali_time_in_state time_in_state[MALI_DVFS_STEP];
-static ssize_t show_time_in_state(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	struct kbase_device *kbdev;
-	ssize_t ret = 0;
-	int i;
-	unsigned long long current_time;
 
-	kbdev = dev_get_drvdata(dev);
-
-
-	if (!kbdev)
-		return -ENODEV;
-
-	current_time = get_jiffies_64();
-#ifdef cputime64_add
-	time_in_state[prev_level].time = cputime64_add(time_in_state[prev_level].time, cputime_sub(current_time, prev_time));
-#endif
-	prev_time = current_time;
-
-	for(i = 0 ; i < MALI_DVFS_STEP ; i++) {
-		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d %llu\n", time_in_state[i].freq, time_in_state[i].time);
-	}
-
-	if (ret < PAGE_SIZE - 1)
-		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	else
-	{
-		buf[PAGE_SIZE-2] = '\n';
-		buf[PAGE_SIZE-1] = '\0';
-		ret = PAGE_SIZE-1;
-	}
-
-	return ret;
-}
-
-static ssize_t set_time_in_state(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
-{
-	int i;
-
-	for(i = 0 ; i < MALI_DVFS_STEP ; i++) {
-		time_in_state[i].time = 0;
-	}
-
-	printk("time_in_state value is reset complete.\n");
-	return count;
-}
 /** The sysfs file @c clock, fbdev.
  *
  * This is used for obtaining information about the mali t6xx operating clock & framebuffer address,

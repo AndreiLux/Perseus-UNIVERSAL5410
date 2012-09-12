@@ -24,8 +24,6 @@
 #define MALI_DVFS_DEBUG 0
 #define MALI_DVFS_START_MAX_STEP 1
 
-#define	MALI_DVFS_STEP 7
-
 #define MALI_DVFS_KEEP_STAY_CNT 10
 #define MALI_DVFS_TIME_INTERVAL 10
 
@@ -35,12 +33,6 @@
 //#define MALI_DVFS_ASV_ENABLE
 #endif
 #endif
-
-// time share for GPU clock level
-typedef struct _time_in_state {
-	unsigned int freq;
-	unsigned long long time;
-} mali_time_in_state;
 
 struct regulator *kbase_platform_get_regulator(void);
 int kbase_platform_regulator_init(void);
@@ -72,5 +64,9 @@ int mali_dvfs_freq_lock(int level);
 void mali_dvfs_freq_unlock(void);
 int mali_dvfs_freq_under_lock(int level);
 void mali_dvfs_freq_under_unlock(void);
+
+ssize_t show_time_in_state(struct device *dev, struct device_attribute *attr, char *buf);
+ssize_t set_time_in_state(struct device *dev, struct device_attribute *attr, const char *buf, size_t count);
+
 
 #endif /* _KBASE_DVFS_H_ */

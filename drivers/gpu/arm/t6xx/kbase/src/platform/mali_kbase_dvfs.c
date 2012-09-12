@@ -70,49 +70,35 @@ static struct pm_qos_request	mem_bw_req;
 /*  This table and variable are using the check time share of GPU Clock  */
 /***********************************************************/
 
-#if MALI_DVFS_START_MAX_STEP
-int prev_level = MALI_DVFS_STEP-1;
-#else
-int prev_level = 0;
-#endif
-unsigned long long prev_time = 0;
-
-mali_time_in_state time_in_state[MALI_DVFS_STEP]=
-{
-#if (MALI_DVFS_STEP == 7)
-	{100, 0},
-	{160, 0},
-	{266, 0},
-	{350, 0},
-	{400, 0},
-	{450, 0},
-	{533, 0}
-#else
-#error no table
-#endif
-};
 
 typedef struct _mali_dvfs_info{
 	unsigned int voltage;
 	unsigned int clock;
 	int min_threshold;
 	int	max_threshold;
+	unsigned long long time;
 }mali_dvfs_info;
 
-static mali_dvfs_info mali_dvfs_infotbl[MALI_DVFS_STEP]=
-{
-#if (MALI_DVFS_STEP == 7)
-	{912500, 100, 0, 70},
-	{925000, 160, 50, 65},
-	{1025000, 266, 60, 78},
-	{1075000, 350, 70, 80},
-	{1125000, 400, 70, 80},
-	{1150000, 450, 76, 99},
-	{1250000, 533, 99, 100}
-#else
-#error no table
-#endif
+static mali_dvfs_info mali_dvfs_infotbl[] = {
+	{912500, 100, 0, 70, 0},
+	{925000, 160, 50, 65, 0},
+	{1025000, 266, 60, 78, 0},
+	{1075000, 350, 70, 80, 0},
+	{1125000, 400, 70, 80, 0},
+	{1150000, 450, 76, 99, 0},
+	{1250000, 533, 99, 100, 0},
 };
+
+#define MALI_DVFS_STEP	ARRAY_SIZE(mali_dvfs_infotbl)
+
+#if MALI_DVFS_START_MAX_STEP
+int prev_level = MALI_DVFS_STEP - 1;
+#else
+int prev_level = 0;
+#endif
+unsigned long long prev_time = 0;
+
+
 
 #ifdef CONFIG_MALI_T6XX_DVFS
 
@@ -259,46 +245,7 @@ static int mali_dvfs_update_asv(int group)
 	return 0;
 }
 #endif
-#ifdef CONFIG_EXYNOS5_CPUFREQ
-void mali_dvfs_set_cpulock(int freq)
-{
-	static int _freq = -1;
-	unsigned int level;
 
-	if (_freq == freq)
-		return;
-
-	if (_freq!=-1)
-		exynos_cpufreq_lock_free(DVFS_LOCK_ID_USER);
-
-	switch(freq)
-	{
-		case 1000: case 900: case 800: case 700:
-		case 600: case 500: case 400: case 300: case 200:
-			if (exynos_cpufreq_get_level(freq * 1000, &level)) {
-				printk("failed to get cpufreq level for %dMHz\n", freq);
-				return;
-			}
-
-			if (exynos_cpufreq_lock(DVFS_LOCK_ID_USER, level)) {
-				printk("failed to cpufreq lock for L%d\n", level);
-				return;
-			}
-
-			printk("cpufreq locked on <%d>%dMHz\n", level, freq);
-			break;
-		case 0:
-			//just free
-			break;
-		default:
-			return;
-	}
-
-	_freq = freq;
-
-	return;
-}
-#endif
 static void mali_dvfs_event_proc(struct work_struct *w)
 {
 	mali_dvfs_status dvfs_status;
@@ -883,4 +830,56 @@ int kbase_platform_dvfs_set(int enable)
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
 #endif
 	return 0;
+}
+
+
+ssize_t show_time_in_state(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct kbase_device *kbdev;
+	ssize_t ret = 0;
+	int i;
+	unsigned long long current_time;
+
+	kbdev = dev_get_drvdata(dev);
+
+
+	if (!kbdev)
+		return -ENODEV;
+
+	current_time = get_jiffies_64();
+#ifdef cputime64_add
+	mali_dvfs_infotbl[prev_level].time =
+		cputime64_add(time_in_state[prev_level].time,
+			      cputime_sub(current_time, prev_time));
+#endif
+	prev_time = current_time;
+
+	for(i = 0 ; i < MALI_DVFS_STEP ; i++) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d %llu\n",
+				mali_dvfs_infotbl[i].clock,
+				mali_dvfs_infotbl[i].time);
+	}
+
+	if (ret < PAGE_SIZE - 1)
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	else
+	{
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+ssize_t set_time_in_state(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int i;
+
+	for(i = 0 ; i < MALI_DVFS_STEP ; i++) {
+		mali_dvfs_infotbl[i].time = 0;
+	}
+
+	printk("time_in_state value is reset complete.\n");
+	return count;
 }
