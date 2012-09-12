@@ -104,6 +104,8 @@
 #define REG_PB1_SADDR		0x054
 #define REG_PB1_EADDR		0x058
 
+static struct kmem_cache *lv2cache;
+
 static unsigned long *section_entry(unsigned long *pgtable, unsigned long iova)
 {
 	return pgtable + lv1ent_offset(iova);
@@ -781,7 +783,9 @@ static void exynos_iommu_domain_destroy(struct iommu_domain *domain)
 
 	for (i = 0; i < NUM_LV1ENTRIES; i++)
 		if (lv1ent_page(priv->pgtable + i))
-			kfree(__va(lv2table_base(priv->pgtable + i)));
+			kmem_cache_free(lv2cache,
+					(__va(lv2table_base(
+						      priv->pgtable + i))));
 
 	free_pages((unsigned long)priv->pgtable, 2);
 	free_pages((unsigned long)priv->lv2entcnt, 1);
@@ -877,8 +881,7 @@ static unsigned long *alloc_lv2entry(unsigned long *sent, unsigned long iova,
 	if (lv1ent_fault(sent)) {
 		unsigned long *pent;
 
-		pent = kzalloc(LV2TABLE_SIZE, GFP_ATOMIC);
-		BUG_ON((unsigned long)pent & (LV2TABLE_SIZE - 1));
+		pent = kmem_cache_zalloc(lv2cache, GFP_ATOMIC);
 		if (!pent)
 			return NULL;
 
@@ -1085,6 +1088,11 @@ static struct iommu_ops exynos_iommu_ops = {
 static int __init exynos_iommu_init(void)
 {
 	int ret;
+
+	lv2cache = kmem_cache_create("iommu-lv2", LV2TABLE_SIZE,
+				     LV2TABLE_SIZE, 0, NULL);
+	if (!lv2cache)
+		return -ENOMEM;
 
 	ret = platform_driver_register(&exynos_sysmmu_driver);
 
