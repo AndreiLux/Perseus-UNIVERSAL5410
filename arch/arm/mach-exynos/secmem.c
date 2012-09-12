@@ -35,10 +35,13 @@ extern struct ion_device *ion_exynos;
 
 static char *secmem_info[] = {
 #if defined(CONFIG_SOC_EXYNOS5250)
-	"mfc_sh",   /* 0 */
-	"video",    /* 1 */
-	"mfc_fw",   /* 2 */
-	"sectbl",   /* 3 */
+	"mfc_sh",   	/* 0 */
+	"msgbox_sh",	/* 1 */
+	"fimd_video",  	/* 2 */
+	"mfc_output",	/* 3 */
+	"mfc_input",	/* 4 */
+	"mfc_fw",	/* 5 */
+	"sectbl",	/* 6 */
 #endif
 	NULL
 };
