@@ -29,7 +29,7 @@ static ssize_t ec_fw_version_show(struct device *dev,
 {
 	struct chromeos_ec_device *ec = dev_get_drvdata(dev);
 	struct ec_response_get_version info;
-	const char * const copy_name[] = {"?", "RO", "A", "B"};
+	const char * const copy_name[] = {"?", "RO", "RW"};
 	int ret;
 
 	ret = ec->command_recv(ec, EC_CMD_GET_VERSION, &info,
@@ -37,27 +37,26 @@ static ssize_t ec_fw_version_show(struct device *dev,
 	if (ret < 0)
 		return ret;
 
-	if (info.current_image > EC_IMAGE_RW_B)
+	if (info.current_image > EC_IMAGE_RW)
 		info.current_image = EC_IMAGE_UNKNOWN;
 
-	return scnprintf(buf, PAGE_SIZE, "Current: %s\nRO: %s\nA: %s\nB: %s\n",
+	return scnprintf(buf, PAGE_SIZE, "Current: %s\nRO: %s\nRW: %s\n",
 			 copy_name[info.current_image], info.version_string_ro,
-			 info.version_string_rw_a, info.version_string_rw_b);
+			 info.version_string_rw);
 }
 
 static ssize_t ec_build_info_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
 	struct chromeos_ec_device *ec = dev_get_drvdata(dev);
-	struct ec_response_get_build_info info;
+	char info[EC_HOST_PARAM_SIZE];
 	int ret;
 
-	ret = ec->command_recv(ec, EC_CMD_GET_BUILD_INFO, &info,
-			       sizeof(struct ec_response_get_build_info));
+	ret = ec->command_recv(ec, EC_CMD_GET_BUILD_INFO, info, sizeof(info));
 	if (ret < 0)
 		return ret;
 
-	return scnprintf(buf, PAGE_SIZE, "%s\n", info.build_string);
+	return scnprintf(buf, PAGE_SIZE, "%s\n", info);
 }
 
 static ssize_t ec_chip_info_show(struct device *dev,
@@ -98,9 +97,14 @@ static int __devinit ec_fw_probe(struct platform_device *pdev)
 	int err;
 
 	err = sysfs_create_group(&dev->kobj, &ec_fw_attr_group);
-	if (err)
+	if (err) {
 		dev_warn(dev, "error creating sysfs entries.\n");
-	return err;
+		return err;
+	}
+
+	dev_dbg(dev, "Chrome EC Firmware Information\n");
+
+	return 0;
 }
 
 static int __devexit ec_fw_remove(struct platform_device *pdev)
