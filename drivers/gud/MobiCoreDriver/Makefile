@@ -3,23 +3,24 @@
 # add things to "obj-m" here.
 
 ifeq ($(MODE),release)
-    EXTRA_CFLAGS = -O2 -DNDEBUG
+    ccflags-y = -O2 -DNDEBUG
 else
-    EXTRA_CFLAGS = -DDEBUG
+    ccflags-y = -DDEBUG
 endif # DEBUG/RELEASE
 
 # CFLAGS from the build script
 ifdef MOBICORE_CFLAGS
-    EXTRA_CFLAGS+=$(MOBICORE_CFLAGS)
+	ccflags-y += $(MOBICORE_CFLAGS)
 endif
 #EXTRA_CFLAGS+=-DDEBUG_VERBOSE
 
-EXTRA_CFLAGS += -include $(M)/build_tag.h
+ccflags-y += -include $(M)/build_tag.h -Wall
 # add our module to kernel.
 obj-m += mcDrvModule.o
 
-mcDrvModule-objs :=logging.o main.o
+mcDrvModule-objs :=logging.o ops.o mem.o api.o pm.o main.o
 
 clean:
-	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions Module.markers Module.symvers modules.order
+	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions \
+		Module.markers Module.symvers modules.order
 

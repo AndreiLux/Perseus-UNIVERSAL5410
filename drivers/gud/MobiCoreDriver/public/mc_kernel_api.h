@@ -23,18 +23,14 @@ struct mc_instance;
  *
  * @return Instance or NULL if no allocation was possible.
  */
-struct mc_instance *mobicore_open(
-	void
-);
+struct mc_instance *mobicore_open(void);
 
 /**
  * Release a mobicore instance object and all objects related to it
  * @param instance instance
  * @return 0 if Ok or -E ERROR
  */
-int mobicore_release(
-	struct mc_instance	*instance
-);
+int mobicore_release(struct mc_instance *instance);
 
 /**
  * Free a WSM buffer allocated with mobicore_allocate_wsm
@@ -49,8 +45,7 @@ int mobicore_allocate_wsm(
 	unsigned long		requested_size,
 	uint32_t		*handle,
 	void			**kernel_virt_addr,
-	void			**phys_addr
-);
+	void			**phys_addr);
 
 /**
  * Free a WSM buffer allocated with mobicore_allocate_wsm
@@ -60,10 +55,7 @@ int mobicore_allocate_wsm(
  * @return 0 if no error
  *
  */
-int mobicore_free(
-	struct mc_instance	*instance,
-	uint32_t		handle
-);
+int mobicore_free(struct mc_instance *instance, uint32_t handle);
 
 /**
  * Map a virtual memory buffer structure to Mobicore
@@ -81,8 +73,7 @@ int mobicore_map_vmem(
 	void			*addr,
 	uint32_t		len,
 	uint32_t		*handle,
-	void			**phys_wsm_l2_table
-);
+	void			**phys_wsm_l2_table);
 
 /**
  * Unmap a virtual memory buffer from mobicore
@@ -92,9 +83,6 @@ int mobicore_map_vmem(
  * @return 0 if no error
  *
  */
-int mobicore_unmap_vmem(
-	struct mc_instance	*instance,
-	uint32_t		handle
-);
+int mobicore_unmap_vmem(struct mc_instance *instance, uint32_t handle);
 #endif /* _MOBICORE_KERNELMODULE_API_H_ */
 /** @} */

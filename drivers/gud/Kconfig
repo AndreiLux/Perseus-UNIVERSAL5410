@@ -5,7 +5,7 @@
 menu "MobiCore secure driver"
 
 config MOBICORE_DRIVER
-	tristate "MobiCore Driver"
+	tristate "MobiCore support"
 	depends on ARM_TRUSTZONE
 	---help---
 	  Enable Linux Kernel MobiCore Support

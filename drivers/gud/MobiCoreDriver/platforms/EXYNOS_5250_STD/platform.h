@@ -16,14 +16,18 @@
 #ifndef _MC_DRV_PLATFORM_H_
 #define _MC_DRV_PLATFORM_H_
 
+#include <mach/irqs.h>
+
 /** MobiCore Interrupt. */
-#define MC_INTR_SSIQ                        (154)
+#define MC_INTR_SSIQ			IRQ_SPI(122)
 
 /** Enable mobicore mem traces */
 #define MC_MEM_TRACES
 
-/** don't verify uid */
-#define MC_SKIP_UID_CHECK
+/** Enable Runtime Power Management */
+#ifdef CONFIG_PM_RUNTIME
+ #define MC_PM_RUNTIME
+#endif
 
 #endif /* _MC_DRV_PLATFORM_H_ */
 /** @} */

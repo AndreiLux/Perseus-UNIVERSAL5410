@@ -19,8 +19,10 @@
 #include <linux/slab.h>
 #include <linux/mm.h>
 
-#include "mc_drv_module.h"
-#include "mc_drv_module_fastcalls.h"
+#include "main.h"
+#include "debug.h"
+#include "fastcall.h"
+#include "logging.h"
 
 /* Default len of the log ring buffer 256KB*/
 #define LOG_BUF_SIZE	(64 * PAGE_SIZE)
@@ -253,6 +255,7 @@ long mobicore_log_setup(void *data)
 {
 	unsigned long phys_log_buf;
 	union fc_generic fc_log;
+	struct sched_param param = { .sched_priority = 1 };
 
 	long ret;
 	log_pos = 0;
@@ -279,6 +282,8 @@ long mobicore_log_setup(void *data)
 		ret = -EFAULT;
 		goto mobicore_log_setup_log_line;
 	}
+
+	sched_setscheduler(log_thread, SCHED_IDLE, &param);
 
 	/* We are going to map this buffer into virtual address space in SWd.
 	 * To reduce complexity there, we use a contiguous buffer. */
