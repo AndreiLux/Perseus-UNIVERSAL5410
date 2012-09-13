@@ -993,6 +993,8 @@ static int samsung_i2s_dai_probe(struct snd_soc_dai *dai)
 		goto err4;
 	}
 #endif
+
+probe_exit:
 	mout_audss = clk_get(&i2s->pdev->dev, "mout_audss");
 	if (IS_ERR(mout_audss)) {
 		dev_err(&i2s->pdev->dev, "failed to get mout_audss clock\n");
@@ -1026,7 +1028,6 @@ static int samsung_i2s_dai_probe(struct snd_soc_dai *dai)
 	clk_put(fout_epll);
 	clk_put(mout_audss);
 
-probe_exit:
 	if ((i2s->quirks & QUIRK_SEC_DAI) && !is_secondary(i2s))
 		idma_reg_addr_init(i2s->addr,
 				   i2s->sec_dai->idma_playback.dma_addr);
