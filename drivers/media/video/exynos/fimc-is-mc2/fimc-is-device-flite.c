@@ -835,7 +835,6 @@ int fimc_is_flite_probe(struct fimc_is_device_flite *this,
 int fimc_is_flite_open(struct fimc_is_device_flite *this)
 {
 	int ret = 0;
-	unsigned long flags;
 
 	atomic_set(&this->fcount, 0);
 

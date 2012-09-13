@@ -189,24 +189,24 @@ enum flash_mode {
 
 struct camera2_flash_ctl {
 	enum flash_mode		flashMode;
-	uint8_t			firingPower;
+	uint32_t		firingPower;
 	uint64_t		firingTime;
 };
 
 struct camera2_flash_dm {
 	enum flash_mode		flashMode;
 	/*10 is max power*/
-	uint8_t			firingPower;
+	uint32_t		firingPower;
 	/*unit : microseconds*/
 	uint64_t		firingTime;
 	/*1 : stable, 0 : unstable*/
 	uint32_t		firingStable;
 	/*1 : success, 0 : fail*/
-	uint8_t			decision;
+	uint32_t		decision;
 };
 
 struct camera2_flash_sm {
-	uint8_t		available;
+	uint32_t	available;
 	uint64_t	chargeDuration;
 };
 
@@ -246,12 +246,12 @@ struct camera2_demosaic_dm {
 
 struct camera2_noisereduction_ctl {
 	enum processing_mode	mode;
-	uint8_t			strength;
+	uint32_t		strength;
 };
 
 struct camera2_noisereduction_dm {
 	enum processing_mode	mode;
-	uint8_t			strength;
+	uint32_t		strength;
 };
 
 
@@ -354,12 +354,12 @@ struct camera2_tonemap_sm {
 
 struct camera2_edge_ctl {
 	enum processing_mode	mode;
-	uint8_t			strength;
+	uint32_t		strength;
 };
 
 struct camera2_edge_dm {
 	enum processing_mode	mode;
-	uint8_t			strength;
+	uint32_t		strength;
 };
 
 
@@ -397,21 +397,21 @@ struct camera2_scaler_sm {
 
 /* android.jpeg */
 struct camera2_jpeg_ctl {
-	uint8_t		quality;
+	uint32_t	quality;
 	uint32_t	thumbnailSize[2];
-	uint8_t		thumbnailQuality;
+	uint32_t	thumbnailQuality;
 	double		gpsCoordinates[3];
-	uint8_t		gpsProcessingMethod;
+	uint32_t	gpsProcessingMethod;
 	uint64_t	gpsTimestamp;
 	uint32_t	orientation;
 };
 
 struct camera2_jpeg_dm {
-	uint8_t		quality;
+	uint32_t	quality;
 	uint32_t	thumbnailSize[2];
-	uint8_t		thumbnailQuality;
+	uint32_t	thumbnailQuality;
 	double		gpsCoordinates[3];
-	uint8_t		gpsProcessingMethod;
+	uint32_t	gpsProcessingMethod;
 	uint64_t	gpsTimestamp;
 	uint32_t	orientation;
 };
@@ -580,6 +580,22 @@ enum aa_afstate {
 	AA_AFSTATE_AF_FAILED_FOCUS
 };
 
+enum ae_state {
+	AE_STATE_INACTIVE = 1,
+	AE_STATE_SEARCHING,
+	AE_STATE_CONVERGED,
+	AE_STATE_LOCKED,
+	AE_STATE_FLASH_REQUIRED,
+	AE_STATE_PRECAPTURE
+};
+
+enum awb_state {
+	AWB_STATE_INACTIVE = 1,
+	AWB_STATE_SEARCHING,
+	AWB_STATE_CONVERGED,
+	AWB_STATE_LOCKED
+};
+
 enum aa_isomode {
 	AA_ISOMODE_AUTO = 1,
 	AA_ISOMODE_MANUAL,
@@ -590,7 +606,7 @@ struct camera2_aa_ctl {
 	enum aa_mode			mode;
 	/*enum aa_effect_mode		effectMode;*/
 	enum aa_scene_mode		sceneMode;
-	uint8_t				videoStabilizationMode;
+	uint32_t			videoStabilizationMode;
 	enum aa_aemode			aeMode;
 	uint32_t			aeRegions[5];
 	/*5 per region(x1,y1,x2,y2,weight). currently assuming 1 region.*/
@@ -604,7 +620,7 @@ struct camera2_aa_ctl {
 	enum aa_afmode			afMode;
 	uint32_t			afRegions[5];
 	/*5 per region(x1,y1,x2,y2,weight). currently assuming 1 region.*/
-	uint8_t				afTrigger;
+	uint32_t			afTrigger;
 	enum aa_isomode			isoMode;
 	uint32_t			isoValue;
 
@@ -614,17 +630,17 @@ struct camera2_aa_dm {
 	enum aa_mode				mode;
 	enum aa_effect_mode			effectMode;
 	enum aa_scene_mode			sceneMode;
-	uint8_t					videoStabilizationMode;
+	uint32_t				videoStabilizationMode;
 	enum aa_aemode				aeMode;
 	/*needs check*/
 	uint32_t				aeRegions[5];
 	/*5 per region(x1,y1,x2,y2,weight). currently assuming 1 region.*/
-	uint8_t					aeState;
+	enum ae_state				aeState;
 	enum aa_ae_flashmode			aeflashMode;
 	/*needs check*/
 	enum aa_awbmode				awbMode;
 	uint32_t				awbRegions[5];
-	uint8_t					awbState;
+	enum awb_state				awbState;
 	/*5 per region(x1,y1,x2,y2,weight). currently assuming 1 region.*/
 	enum aa_afmode				afMode;
 	uint32_t				afRegions[5];
