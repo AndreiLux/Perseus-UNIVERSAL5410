@@ -215,8 +215,8 @@ static struct cpuidle_state exynos_cpuidle_set[] __initdata = {
 	},
 	[1] = {
 		.enter			= exynos_enter_lowpower,
-		.exit_latency		= 500,
-		.target_residency	= 1000,
+		.exit_latency		= 5000,
+		.target_residency	= 10000,
 		.flags			= CPUIDLE_FLAG_TIME_VALID |
 					  CPUIDLE_FLAG_COUPLED,
 		.name			= "C1",
