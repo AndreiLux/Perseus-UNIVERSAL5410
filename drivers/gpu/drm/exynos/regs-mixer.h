@@ -139,6 +139,8 @@
 
 /* Adding reset and Layer update registers Exynos5 */
 #define MXR_CFG_LAYER_UPDATE            (1 << 31)
+#define MXR_CFG_LAYER_UPDATE_COUNT0	29
+#define MXR_CFG_LAYER_UPDATE_COUNT_MASK	((1 << 29) | (1 << 30))
 #define MXR_STATUS_SOFT_RESET           (1 << 8)
 
 #endif /* SAMSUNG_REGS_MIXER_H */

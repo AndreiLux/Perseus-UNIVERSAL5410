@@ -67,6 +67,7 @@ struct hdmi_win_data {
 	unsigned int		mode_width;
 	unsigned int		mode_height;
 	unsigned int		scan_flags;
+	bool			updated;
 };
 
 struct mixer_resources {
@@ -379,6 +380,30 @@ static int mixer_wait_for_vsync(struct mixer_context *ctx)
 	return -ETIME;
 }
 
+static int mixer_get_layer_update_count(struct mixer_context *ctx)
+{
+	struct mixer_resources *res = &ctx->mixer_res;
+	u32 val;
+
+	if (!res->is_soc_exynos5)
+		return 0;
+
+	val = mixer_reg_read(res, MXR_CFG);
+
+	return (val & MXR_CFG_LAYER_UPDATE_COUNT_MASK) >>
+			MXR_CFG_LAYER_UPDATE_COUNT0;
+}
+
+static void mixer_layer_update(struct mixer_context *ctx)
+{
+	struct mixer_resources *res = &ctx->mixer_res;
+
+	if (!res->is_soc_exynos5)
+		return;
+
+	mixer_reg_writemask(res, MXR_CFG, ~0, MXR_CFG_LAYER_UPDATE);
+}
+
 static void vp_video_buffer(struct mixer_context *ctx, int win)
 {
 	struct mixer_resources *res = &ctx->mixer_res;
@@ -603,6 +628,13 @@ static void mixer_graph_buffer(struct mixer_context *ctx, int win)
 	mixer_cfg_rgb_fmt(ctx, mode_height);
 	mixer_cfg_layer(ctx, win, true);
 	mixer_cfg_layer(ctx, MIXER_DEFAULT_WIN, true);
+
+	/* Only allow one update per vsync */
+	if (!win_data->updated)
+		mixer_layer_update(ctx);
+
+	win_data->updated = true;
+
 	mixer_run(ctx);
 
 	mixer_vsync_set_update(ctx, true);
@@ -783,6 +815,7 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 	struct mixer_context *ctx = drm_hdmi_ctx->ctx;
 	struct mixer_resources *res = &ctx->mixer_res;
 	u32 val, base, shadow;
+	int i;
 
 	spin_lock(&res->reg_slock);
 
@@ -805,10 +838,6 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 			wake_up(&ctx->mixer_res.event_queue);
 			goto out;
 		}
-		/* layer update mandatory for exynos5 soc,and not present
-		* in exynos4 */
-		if (res->is_soc_exynos5)
-			mixer_reg_writemask(res, MXR_CFG, ~0, MXR_CFG_LAYER_UPDATE);
 
 		/* interlace scan need to check shadow register */
 		if (ctx->interlace) {
@@ -824,9 +853,16 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 		}
 
 		drm_handle_vblank(drm_hdmi_ctx->drm_dev, ctx->pipe);
+
+		/* Bail out if a layer update is pending */
+		if (mixer_get_layer_update_count(ctx))
+			goto out;
+
+		for (i = 0; i < MIXER_WIN_NR; i++)
+			ctx->win_data[i].updated = false;
+
 		exynos_drm_crtc_finish_pageflip(drm_hdmi_ctx->drm_dev,
 						ctx->pipe);
-
 	}
 
 out:
