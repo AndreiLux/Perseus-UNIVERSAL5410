@@ -111,6 +111,7 @@ struct fimc_is_device_ischain {
 	spinlock_t				slock_state;
 
 	u32					instance;
+	u32					dzoom_width;
 	u32					setfile;
 	u32					fcount;
 	u32					debug_cnt;

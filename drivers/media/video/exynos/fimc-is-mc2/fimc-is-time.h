@@ -13,6 +13,7 @@
 #define FIMC_IS_TIME_H
 
 /*#define MEASURE_TIME*/
+#define INTERNAL_TIME
 
 #define TM_FLITE_STR	0
 #define TM_FLITE_END	1
@@ -22,12 +23,13 @@
 #define TM_MAX_INDEX	5
 
 #ifdef MEASURE_TIME
-
-extern struct timeval curr_time;
-
-int g_shot_period(struct timeval *str);
-int g_shot_time(struct timeval *str, struct timeval *end);
-int g_meta_time(struct timeval *str, struct timeval *end);
+#ifdef INTERNAL_TIME
+void measure_init(void);
+void measure_internal_time(struct timeval *time_queued,
+	struct timeval *time_shot,
+	struct timeval *time_shotdone,
+	struct timeval *time_dequeued);
+#endif
 #endif
 
 #endif

@@ -25,7 +25,6 @@
 #include <asm/pgtable.h>
 #include <linux/firmware.h>
 #include <linux/dma-mapping.h>
-#include <linux/delay.h>
 #include <linux/scatterlist.h>
 #include <linux/videodev2_exynos_camera.h>
 #include <linux/vmalloc.h>

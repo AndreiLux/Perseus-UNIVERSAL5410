@@ -1002,10 +1002,6 @@ static void wq_func_isp(struct fimc_is_interface *itf,
 			~CAM_FLASH_CMD;
 	}
 
-#ifdef MEASURE_TIME
-	do_gettimeofday(&frame->tzone[TM_META_D]);
-#endif
-
 #ifdef AUTO_MODE
 	fimc_is_frame_trans_pro_to_fre(framemgr, frame);
 	buffer_done(itf->video_sensor, index);
@@ -1026,11 +1022,9 @@ static void wq_func_meta(struct work_struct *data)
 	struct fimc_is_work *work;
 	unsigned long flags;
 	u32 fcount;
-	u32 index;
 	bool req_done;
 
 	req_done = false;
-	index = FIMC_IS_INVALID_BUF_INDEX;
 	itf = container_of(data, struct fimc_is_interface,
 		work_queue[INTR_META_DONE]);
 	work_list = &itf->work_list[INTR_META_DONE];
@@ -1051,8 +1045,6 @@ static void wq_func_meta(struct work_struct *data)
 			if (fcount != frame->fcount)
 				err("frame mismatch(%d != %d)",
 					fcount, frame->fcount);
-
-			index = frame->index;
 
 			if (test_bit(FIMC_IS_REQ_FRAME, &frame->req_flag)) {
 				clear_bit(FIMC_IS_REQ_FRAME, &frame->req_flag);
@@ -1088,11 +1080,9 @@ static void wq_func_shot(struct work_struct *data)
 	unsigned long flags;
 	u32 fcount;
 	u32 status;
-	u32 index;
 	bool req_done;
 
 	req_done = false;
-	index = FIMC_IS_INVALID_BUF_INDEX;
 	itf = container_of(data, struct fimc_is_interface,
 		work_queue[INTR_SHOT_DONE]);
 	work_list = &itf->work_list[INTR_SHOT_DONE];
@@ -1109,6 +1099,13 @@ static void wq_func_shot(struct work_struct *data)
 
 		fimc_is_frame_process_head(framemgr, &frame);
 		if (frame) {
+#ifdef MEASURE_TIME
+#ifdef INTERNAL_TIME
+			do_gettimeofday(&frame->time_shotdone);
+#else
+			do_gettimeofday(&frame->tzone[TM_SHOT_D]);
+#endif
+#endif
 			/* comparing input fcount and output fcount
 			just error printing although this error is occured */
 			if (fcount != frame->fcount)
@@ -1118,8 +1115,6 @@ static void wq_func_shot(struct work_struct *data)
 			/* need error handling */
 			if (status != ISR_DONE)
 				err("shot done is invalid(0x%08X)", status);
-
-			index = frame->index;
 
 			if (test_bit(FIMC_IS_REQ_SHOT, &frame->req_flag)) {
 				clear_bit(FIMC_IS_REQ_SHOT, &frame->req_flag);
@@ -1156,6 +1151,24 @@ static irqreturn_t interface_isr(int irq, void *data)
 
 	itf = (struct fimc_is_interface *)data;
 	status = readl(itf->regs + INTMSR1);
+
+	if (status & (1<<INTR_SHOT_DONE)) {
+		work_queue = &itf->work_queue[INTR_SHOT_DONE];
+		work_list = &itf->work_list[INTR_SHOT_DONE];
+
+		get_free_work_irq(work_list, &work);
+		if (work) {
+			fimc_is_get_cmd(itf, &work->msg, INTR_SHOT_DONE);
+			work->fcount = work->msg.parameter1;
+			set_req_work_irq(work_list, work);
+
+			if (!work_pending(work_queue))
+				schedule_work(work_queue);
+		} else
+			err("free work item is empty5");
+
+		writel((1<<INTR_SHOT_DONE), itf->regs + INTCR1);
+	}
 
 	if (status & (1<<INTR_GENERAL)) {
 		work_queue = &itf->work_queue[INTR_GENERAL];
@@ -1212,7 +1225,9 @@ static irqreturn_t interface_isr(int irq, void *data)
 		work_queue = &itf->work_queue[INTR_META_DONE];
 		work_list = &itf->work_list[INTR_META_DONE];
 
-		/* meta done is not needed */
+		/* meta done is not needed now
+		this can be used in the future */
+#if 0
 		get_free_work_irq(work_list, &work);
 		if (work) {
 			fimc_is_get_cmd(itf, &work->msg, INTR_META_DONE);
@@ -1223,25 +1238,8 @@ static irqreturn_t interface_isr(int irq, void *data)
 				schedule_work(work_queue);
 		} else
 			err("free work item is empty4");
+#endif
 		writel((1<<INTR_META_DONE), itf->regs + INTCR1);
-	}
-
-	if (status & (1<<INTR_SHOT_DONE)) {
-		work_queue = &itf->work_queue[INTR_SHOT_DONE];
-		work_list = &itf->work_list[INTR_SHOT_DONE];
-
-		get_free_work_irq(work_list, &work);
-		if (work) {
-			fimc_is_get_cmd(itf, &work->msg, INTR_SHOT_DONE);
-			work->fcount = work->msg.parameter1;
-			set_req_work_irq(work_list, work);
-
-			if (!work_pending(work_queue))
-				schedule_work(work_queue);
-		} else
-			err("free work item is empty5");
-
-		writel((1<<INTR_SHOT_DONE), itf->regs + INTCR1);
 	}
 
 	return IRQ_HANDLED;

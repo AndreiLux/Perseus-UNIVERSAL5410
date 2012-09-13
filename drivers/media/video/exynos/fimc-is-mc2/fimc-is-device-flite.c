@@ -30,7 +30,6 @@
 #include <asm/pgtable.h>
 #include <linux/firmware.h>
 #include <linux/dma-mapping.h>
-#include <linux/delay.h>
 #include <linux/scatterlist.h>
 #include <linux/videodev2.h>
 #include <linux/videodev2_exynos_camera.h>
@@ -539,7 +538,9 @@ static void tasklet_func_flite_str(unsigned long data)
 	fimc_is_frame_process_head(framemgr, &frame);
 	if (frame) {
 #ifdef MEASURE_TIME
+#ifndef INTERNAL_TIME
 		do_gettimeofday(&frame->tzone[TM_FLITE_STR]);
+#endif
 #endif
 		frame->fcount = fcount;
 		fimc_is_ischain_camctl(ischain, frame, fcount);
@@ -583,7 +584,9 @@ static void tasklet_func_flite_end(unsigned long data)
 		fimc_is_frame_process_head(framemgr, &frame);
 		if (frame) {
 #ifdef MEASURE_TIME
+#ifndef INTERNAL_TIME
 			do_gettimeofday(&frame->tzone[TM_FLITE_END]);
+#endif
 #endif
 			index = frame->index;
 			fimc_is_frame_trans_pro_to_com(framemgr, frame);
@@ -836,13 +839,9 @@ int fimc_is_flite_open(struct fimc_is_device_flite *this)
 
 	atomic_set(&this->fcount, 0);
 
-	spin_lock_irqsave(&this->slock_state, flags);
-
 	clear_bit(FIMC_IS_FLITE_LAST_CAPTURE, &this->state);
 	clear_bit(FLITE_A_SLOT_VALID, &this->state);
 	clear_bit(FLITE_B_SLOT_VALID, &this->state);
-
-	spin_unlock_irqrestore(&this->slock_state, flags);
 
 	return ret;
 }
@@ -866,7 +865,7 @@ int fimc_is_flite_start(struct fimc_is_device_flite *this,
 	clear_bit(FIMC_IS_FLITE_LAST_CAPTURE, &this->state);
 	init_fimc_lite(this->regs);
 
-	spin_lock_irqsave(&framemgr->slock, flags);
+	framemgr_e_barrier_irqs(framemgr, 0, flags);
 
 	flite_hw_set_use_buffer(this->regs, 0);
 	flite_hw_set_start_addr(this->regs, 0, video->buf_dva[0][0]);
@@ -880,7 +879,7 @@ int fimc_is_flite_start(struct fimc_is_device_flite *this,
 	fimc_is_frame_request_head(framemgr, &item);
 	fimc_is_frame_trans_req_to_pro(framemgr, item);
 
-	spin_unlock_irqrestore(&framemgr->slock, flags);
+	framemgr_x_barrier_irqr(framemgr, 0, flags);
 
 	/*flite_hw_set_use_buffer(this->regs, 0);*/
 	flite_hw_set_output_dma(this->regs, true);

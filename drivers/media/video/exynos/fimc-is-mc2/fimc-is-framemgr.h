@@ -106,6 +106,12 @@ struct fimc_is_frame_shot {
 	u32 index;
 	unsigned long req_flag;
 	struct vb2_buffer *vb;
+
+	/* time measure internally */
+	struct timeval			time_queued;
+	struct timeval			time_shot;
+	struct timeval			time_shotdone;
+	struct timeval			time_dequeued;
 };
 
 struct fimc_is_framemgr {

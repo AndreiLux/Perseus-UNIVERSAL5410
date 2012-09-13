@@ -98,10 +98,9 @@
 /*#define AUTO_MODE*/
 #define FW_DEBUG
 /*#define RESERVED_MEM*/
-#define ENABLE_DZOOM
 #define USE_FRAME_SYNC
 /*#define TASKLET_MSG*/
-#define ISDRV_VERSION 105
+#define ISDRV_VERSION 106
 
 #ifdef DEBUG
 #define dbg(fmt, args...) \

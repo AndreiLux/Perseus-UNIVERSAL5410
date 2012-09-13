@@ -1,41 +1,93 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/errno.h>
+#include <linux/time.h>
 
 #include "fimc-is-time.h"
 
 #ifdef MEASURE_TIME
-struct timeval old_time;
+#ifdef INTERNAL_TIME
 
-int g_shot_period(struct timeval *str)
+static u32 time_count;
+static u32 time1_min;
+static u32 time1_max;
+static u32 time1_avg;
+static u32 time2_min;
+static u32 time2_max;
+static u32 time2_avg;
+static u32 time3_min;
+static u32 time3_max;
+static u32 time3_avg;
+
+void measure_init(void)
 {
-	u32 shot_period;
-
-	shot_period = (str->tv_sec - old_time.tv_sec)*1000000 +
-				(str->tv_usec - old_time.tv_usec);
-
-	old_time = *str;
-
-	return shot_period;
+	time_count = 0;
+	time1_min = 0;
+	time1_max = 0;
+	time1_avg = 0;
+	time2_min = 0;
+	time2_max = 0;
+	time2_avg = 0;
+	time3_min = 0;
+	time3_max = 0;
+	time3_avg = 0;
 }
 
-int g_shot_time(struct timeval *str, struct timeval *end)
+void measure_internal_time(struct timeval *time_queued,
+	struct timeval *time_shot,
+	struct timeval *time_shotdone,
+	struct timeval *time_dequeued)
 {
-	u32 shot_time;
+	u32 temp1, temp2, temp3;
 
-	shot_time = (end->tv_sec - str->tv_sec)*1000000 +
-				(end->tv_usec - str->tv_usec);
+	temp1 = (time_shot->tv_sec - time_queued->tv_sec)*1000000 +
+		(time_shot->tv_usec - time_queued->tv_usec);
+	temp2 = (time_shotdone->tv_sec - time_shot->tv_sec)*1000000 +
+		(time_shotdone->tv_usec - time_shot->tv_usec);
+	temp3 = (time_dequeued->tv_sec - time_shotdone->tv_sec)*1000000 +
+		(time_dequeued->tv_usec - time_shotdone->tv_usec);
 
-	return shot_time;
+	if (!time_count) {
+		time1_min = temp1;
+		time1_max = temp1;
+		time2_min = temp2;
+		time2_max = temp2;
+		time3_min = temp3;
+		time3_max = temp3;
+	} else {
+		if (time1_min > temp1)
+			time1_min = temp1;
+
+		if (time1_max < temp1)
+			time1_max = temp1;
+
+		if (time2_min > temp2)
+			time2_min = temp2;
+
+		if (time2_max < temp2)
+			time2_max = temp2;
+
+		if (time3_min > temp3)
+			time3_min = temp3;
+
+		if (time3_max < temp3)
+			time3_max = temp3;
+	}
+
+	time1_avg += temp1;
+	time2_avg += temp2;
+	time3_avg += temp3;
+
+	time_count++;
+
+	if (time_count % 33)
+		return;
+
+	printk(KERN_INFO "t1(%d,%d,%d,%d), t2(%d,%d,%d,%d), t3(%d,%d,%d,%d)",
+		temp1, time1_min, time1_max, time1_avg/time_count,
+		temp2, time2_min, time2_max, time2_avg/time_count,
+		temp3, time3_min, time3_max, time3_avg/time_count);
 }
 
-int g_meta_time(struct timeval *str, struct timeval *end)
-{
-	u32 meta_time;
-
-	meta_time = (end->tv_sec - str->tv_sec)*1000000 +
-				(end->tv_usec - str->tv_usec);
-
-	return meta_time;
-}
+#endif
 #endif
