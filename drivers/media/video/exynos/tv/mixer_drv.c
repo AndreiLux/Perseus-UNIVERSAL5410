@@ -91,7 +91,8 @@ static void mxr_set_alpha_blend(struct mxr_device *mdev)
 
 static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 {
-	int i, ret;
+	int i;
+	int ret = 0;
 	int local = 1;
 	struct sub_mxr_device *sub_mxr;
 	struct mxr_layer *layer;
@@ -114,7 +115,8 @@ static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 		ret = mxr_power_get(mdev);
 		if (ret) {
 			mxr_err(mdev, "power on failed\n");
-			return -ENODEV;
+			ret = -ENODEV;
+			goto out;
 		}
 		/* turn on connected output device through link
 		 * with mixer */
@@ -156,8 +158,10 @@ static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 						== MEDIA_ENT_T_V4L2_SUBDEV)
 					break;
 
-			if (i == MXR_PAD_SOURCE_GRP1)
-				return -ENODEV;
+			if (i == MXR_PAD_SOURCE_GRP1) {
+				ret = -ENODEV;
+				goto out;
+			}
 		}
 
 		sd = media_entity_to_v4l2_subdev(pad->entity);
@@ -177,14 +181,14 @@ static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 		if (ret) {
 			mxr_err(mdev, "failed to get mbus_fmt for output %s\n",
 					sd->name);
-			return ret;
+			goto out;
 		}
 		ctrl.id = V4L2_CID_TV_GET_DVI_MODE;
 		ret = v4l2_subdev_call(sd, core, g_ctrl, &ctrl);
 		if (ret) {
 			mxr_err(mdev, "failed to get DVI or HDMI mode %s\n",
 					sd->name);
-			return ret;
+			goto out;
 		}
 
 		mxr_reg_set_mbus_fmt(mdev, &mbus_fmt, ctrl.value);
@@ -192,7 +196,7 @@ static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 		if (ret) {
 			mxr_err(mdev, "failed to set mbus_fmt for output %s\n",
 					sd->name);
-			return ret;
+			goto out;
 		}
 		mxr_reg_streamon(mdev);
 
@@ -200,26 +204,28 @@ static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 		if (ret) {
 			mxr_err(mdev, "starting stream failed for output %s\n",
 					sd->name);
-			return ret;
+			goto out;
 		}
 
 		ret = mxr_reg_wait4vsync(mdev);
 		if (ret) {
 			mxr_err(mdev, "failed to get vsync (%d) from output\n",
 					ret);
-			return ret;
+			goto out;
 		}
 	}
 
+out:
 	mutex_unlock(&mdev->s_mutex);
 	mxr_reg_dump(mdev);
 
-	return 0;
+	return ret;
 }
 
 static int mxr_streamer_put(struct mxr_device *mdev, struct v4l2_subdev *sd)
 {
-	int ret, i;
+	int i;
+	int ret = 0;
 	int local = 1;
 	struct media_pad *pad;
 	struct sub_mxr_device *sub_mxr;
@@ -256,8 +262,10 @@ static int mxr_streamer_put(struct mxr_device *mdev, struct v4l2_subdev *sd)
 						== MEDIA_ENT_T_V4L2_SUBDEV)
 					break;
 
-			if (i == MXR_PAD_SOURCE_GRP1)
-				return -ENODEV;
+			if (i == MXR_PAD_SOURCE_GRP1) {
+				ret = -ENODEV;
+				goto out;
+			}
 		}
 
 		hdmi_sd = media_entity_to_v4l2_subdev(pad->entity);
@@ -268,7 +276,7 @@ static int mxr_streamer_put(struct mxr_device *mdev, struct v4l2_subdev *sd)
 		if (ret) {
 			mxr_err(mdev, "failed to get vsync (%d) from output\n",
 					ret);
-			return ret;
+			goto out;
 		}
 	}
 	/* When using local path between gscaler and mixer, below stop sequence
@@ -292,7 +300,7 @@ static int mxr_streamer_put(struct mxr_device *mdev, struct v4l2_subdev *sd)
 		if (ret) {
 			mxr_err(mdev, "stopping stream failed for output %s\n",
 					hdmi_sd->name);
-			return ret;
+			goto out;
 		}
 	}
 	/* turn off connected output device through link
@@ -314,10 +322,12 @@ static int mxr_streamer_put(struct mxr_device *mdev, struct v4l2_subdev *sd)
 	}
 	WARN(mdev->n_streamer < 0, "negative number of streamers (%d)\n",
 		mdev->n_streamer);
+
+out:
 	mutex_unlock(&mdev->s_mutex);
 	mxr_reg_dump(mdev);
 
-	return 0;
+	return ret;
 }
 
 void mxr_output_get(struct mxr_device *mdev)
