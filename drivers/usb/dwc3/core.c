@@ -70,7 +70,7 @@ MODULE_PARM_DESC(maximum_speed, "Maximum supported speed.");
 
 static DECLARE_BITMAP(dwc3_devs, DWC3_DEVS_POSSIBLE);
 
-static void __devinit dwc3_cache_hwparams(struct dwc3 *dwc)
+static void dwc3_cache_hwparams(struct dwc3 *dwc)
 {
 	struct dwc3_hwparams	*parms = &dwc->hwparams;
 
