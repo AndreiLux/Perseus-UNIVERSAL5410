@@ -92,13 +92,14 @@ static void exynos_usb_phy_clock_disable(struct clk *phy_clk)
 static void exynos_usb_mux_change(struct platform_device *pdev, int val)
 {
 	u32 is_host;
-	if (soc_is_exynos5250()) {
-		is_host = readl(EXYNOS5_USB_CFG);
-		writel(val, EXYNOS5_USB_CFG);
-	}
+	if (!soc_is_exynos5250())
+		return;
+
+	is_host = readl(EXYNOS5_USB_CFG);
+	writel(val, EXYNOS5_USB_CFG);
 	if (is_host != val)
 		dev_dbg(&pdev->dev, "Change USB MUX from %s to %s",
-		is_host ? "Host" : "Device", val ? "Host" : "Device");
+			is_host ? "Host" : "Device", val ? "Host" : "Device");
 }
 
 static void exynos_usb_phy_control(enum usb_phy_type phy_type , int on)
