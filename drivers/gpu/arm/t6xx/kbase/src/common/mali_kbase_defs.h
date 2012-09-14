@@ -634,11 +634,6 @@ struct kbase_context
 	 * Mutable flags *must* be accessed under jctx.sched_info.ctx.jsctx_mutex
 	 *
 	 * All other flags must be added there */
-
-	/* Pointer to hold a reference to process memory manager of the context owner,
-	 * must be set using kbase_os_store_process_mm().
-	 */
-	void * process_mm;
 };
 
 typedef enum kbase_reg_access_type

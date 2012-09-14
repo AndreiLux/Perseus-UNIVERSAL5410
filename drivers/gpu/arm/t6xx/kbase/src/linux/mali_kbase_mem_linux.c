@@ -200,11 +200,6 @@ static int kbase_cpu_mmap(struct kbase_va_region *reg, struct vm_area_struct *vm
 	map->page_off = start_off;
 	map->private = vma;
 
-	if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM)
-	{
-		kbase_process_page_usage_dec(reg->kctx, nr_pages);
-	}
-
 	OSK_DLIST_PUSH_FRONT(&reg->map_list, map,
 				struct kbase_cpu_mapping, link);
 
@@ -657,28 +652,6 @@ err:
 	return NULL;
 }
 KBASE_EXPORT_SYMBOL(kbase_va_alloc)
-
-void kbasep_os_process_page_usage_update( kbase_context *kctx, long pages )
-{
-	struct mm_struct *mm = ( struct mm_struct *)kctx->process_mm;
-	if ( NULL != mm )
-	{
-#ifdef SPLIT_RSS_COUNTING
-		add_mm_counter(mm, MM_FILEPAGES, pages);
-#else
-		spin_lock(&mm->page_table_lock);
-		add_mm_counter(mm, MM_FILEPAGES, pages);
-		spin_unlock(&mm->page_table_lock);
-#endif
-	}
-}
-
-void kbase_os_store_process_mm(kbase_context *kctx)
-{
-	struct mm_struct *mm = current->mm;
-
-	kctx->process_mm = mm;
-}
 
 void kbase_va_free(kbase_context *kctx, void *va)
 {

@@ -512,57 +512,6 @@ void kbase_os_mem_map_lock(kbase_context * kctx);
 void kbase_os_mem_map_unlock(kbase_context * kctx);
 
 /**
- * @brief Update the memory allocation counters for the current process
- *
- * OS specific call to updates the current memory allocation counters for the current process with
- * the supplied delta.
- *
- * @param[in] pages The desired delta to apply to the memory usage counters.
- */
-
-void kbasep_os_process_page_usage_update( struct kbase_context * kctx, long pages );
-
-/**
- * @brief Add to the memory allocation counters for the current process
- *
- * OS specific call to add to the current memory allocation counters for the current process by
- * the supplied amount.
- *
- * @param[in] kctx  The kernel base context used for the allocation.
- * @param[in] pages The desired delta to apply to the memory usage counters.
- */
-
-static INLINE void kbase_process_page_usage_inc( struct kbase_context *kctx, unsigned long pages )
-{
-	kbasep_os_process_page_usage_update( kctx, pages );
-}
-
-/**
- * @brief Subtract from the memory allocation counters for the current process
- *
- * OS specific call to subtract from the current memory allocation counters for the current process by
- * the supplied amount.
- *
- * @param[in] kctx  The kernel base context used for the allocation.
- * @param[in] pages The desired delta to apply to the memory usage counters.
- */
-
-static INLINE void kbase_process_page_usage_dec( struct kbase_context *kctx, unsigned long pages )
-{
-	kbasep_os_process_page_usage_update( kctx, 0 - pages );
-}
-
-/**
- * @brief Store the memory manager for the process associated with this context
- *
- * OS specific call to store a pointer to the memory manager for this process.
- *
- * @param[in,out] kctx      The kernel base context used for the allocation.
- */
-
-void kbase_os_store_process_mm(kbase_context *kctx);
-
-/**
  * @brief Find a CPU mapping of a memory allocation containing a given address range
  *
  * Searches for a CPU mapping of any part of the region starting at @p gpu_addr that
