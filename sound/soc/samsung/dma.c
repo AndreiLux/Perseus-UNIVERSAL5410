@@ -119,9 +119,11 @@ static void audio_buffdone(void *data)
 	pr_debug("Entered %s\n", __func__);
 
 	if (prtd->state & ST_RUNNING) {
+		spin_lock(&prtd->lock);
 		prtd->dma_pos += prtd->dma_period;
 		if (prtd->dma_pos >= prtd->dma_end)
 			prtd->dma_pos = prtd->dma_start;
+		spin_unlock(&prtd->lock);
 
 		if (substream)
 			snd_pcm_period_elapsed(substream);
@@ -271,6 +273,7 @@ dma_pointer(struct snd_pcm_substream *substream)
 	struct runtime_data *prtd = runtime->private_data;
 	unsigned long offset;
 	unsigned long xfd; /* Number of bytes transfered by current dma. */
+	unsigned int ret = 0;
 
 	pr_debug("Entered %s\n", __func__);
 
@@ -278,11 +281,14 @@ dma_pointer(struct snd_pcm_substream *substream)
 	 * more accurate number.  Otherwise, assume no bytes have been
 	 * transfered.
 	 */
-	xfd = prtd->dma_period;
 	if (prtd->params->ops->residue)
-		xfd -= prtd->params->ops->residue(prtd->params->ch);
+		ret = prtd->params->ops->residue(prtd->params->ch);
+
+	spin_lock(&prtd->lock);
+	xfd = prtd->dma_period - ret;
 
 	offset = prtd->dma_pos + xfd - prtd->dma_start;
+	spin_unlock(&prtd->lock);
 
 	/* we seem to be getting the odd error from the pcm library due
 	 * to out-of-bounds pointers. this is maybe due to the dma engine
