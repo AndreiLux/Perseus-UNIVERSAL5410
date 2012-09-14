@@ -24,6 +24,7 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/pm_runtime.h>
+#include <linux/delay.h>
 
 #include <plat/usb-phy.h>
 
@@ -250,8 +251,16 @@ static int dwc3_exynos_runtime_resume(struct device *dev)
 
 	dev_dbg(dev, "entering runtime resume\n");
 
-	if (gpio_is_valid(exynos->phyclk_gpio))
+	if (gpio_is_valid(exynos->phyclk_gpio)) {
 		gpio_set_value(exynos->phyclk_gpio, 1);
+
+		/*
+		 * PI6C557-03 clock generator needs 3ms typically to stabilise,
+		 * but the datasheet doesn't list max.  We'll sleep for 10ms
+		 * and cross our fingers that it's enough.
+		 */
+		msleep(10);
+	}
 
 	if (!pdata) {
 		dev_dbg(&pdev->dev, "missing platform data\n");
@@ -304,8 +313,11 @@ static int dwc3_exynos_resume(struct device *dev)
 	 * later if the system decides we want to be runtime
 	 * suspended again.
 	 */
-	if (gpio_is_valid(exynos->phyclk_gpio))
+	if (gpio_is_valid(exynos->phyclk_gpio)) {
 		gpio_set_value(exynos->phyclk_gpio, 1);
+		/* PI6C557 clock generator needs 3ms to stabilise */
+		mdelay(3);
+	}
 
 	clk_enable(exynos->clk);
 
