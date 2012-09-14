@@ -302,7 +302,7 @@ void gsc_check_src_scale_info(struct gsc_variant *var, struct gsc_frame *s_frame
 	if (remainder) {
 		s_frame->crop.width -= remainder;
 		gsc_cal_prescaler_ratio(var, s_frame->crop.width, tx, wratio);
-		gsc_info("cropped src width size is recalculated from %d to %d",
+		gsc_dbg("cropped src width size is recalculated from %d to %d",
 			s_frame->crop.width + remainder, s_frame->crop.width);
 	}
 
@@ -310,7 +310,7 @@ void gsc_check_src_scale_info(struct gsc_variant *var, struct gsc_frame *s_frame
 	if (remainder) {
 		s_frame->crop.height -= remainder;
 		gsc_cal_prescaler_ratio(var, s_frame->crop.height, ty, hratio);
-		gsc_info("cropped src height size is recalculated from %d to %d",
+		gsc_dbg("cropped src height size is recalculated from %d to %d",
 			s_frame->crop.height + remainder, s_frame->crop.height);
 	}
 }
@@ -457,7 +457,7 @@ int gsc_try_fmt_mplane(struct gsc_ctx *ctx, struct v4l2_format *f)
 	v4l_bound_align_image(&pix_mp->width, min_w, max_w, mod_x,
 		&pix_mp->height, min_h, max_h, mod_y, 0);
 	if (tmp_w != pix_mp->width || tmp_h != pix_mp->height)
-		gsc_info("Image size has been modified from %dx%d to %dx%d",
+		gsc_dbg("Image size has been modified from %dx%d to %dx%d",
 			 tmp_w, tmp_h, pix_mp->width, pix_mp->height);
 
 	pix_mp->num_planes = fmt->num_planes;
@@ -515,7 +515,7 @@ int gsc_g_fmt_mplane(struct gsc_ctx *ctx, struct v4l2_format *f)
 void gsc_check_crop_change(u32 tmp_w, u32 tmp_h, u32 *w, u32 *h)
 {
 	if (tmp_w != *w || tmp_h != *h) {
-		gsc_info("Image cropped size has been modified from %dx%d to %dx%d",
+		gsc_dbg("Image cropped size has been modified from %dx%d to %dx%d",
 				*w, *h, tmp_w, tmp_h);
 		*w = tmp_w;
 		*h = tmp_h;
