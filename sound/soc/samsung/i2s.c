@@ -699,15 +699,6 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static void pm_runtime_ctl(struct i2s_dai *i2s, bool enabled)
-{
-	struct platform_device *pdev = NULL;
-
-	pdev = is_secondary(i2s) ? i2s->pri_dai->pdev : i2s->pdev;
-	enabled ? pm_runtime_get_sync(&pdev->dev)
-		: pm_runtime_put_sync(&pdev->dev);
-}
-
 /* We set constraints on the substream acc to the version of I2S */
 static int i2s_startup(struct snd_pcm_substream *substream,
 	  struct snd_soc_dai *dai)
@@ -715,8 +706,6 @@ static int i2s_startup(struct snd_pcm_substream *substream,
 	struct i2s_dai *i2s = to_info(dai);
 	struct i2s_dai *other = i2s->pri_dai ? : i2s->sec_dai;
 	unsigned long flags;
-
-	pm_runtime_ctl(i2s, true);
 
 	/* Check not already running. */
 	if (dai->playback_active || dai->capture_active)
@@ -771,8 +760,6 @@ static void i2s_shutdown(struct snd_pcm_substream *substream,
 	if (!is_opened(other))
 		i2s_set_sysclk(dai, SAMSUNG_I2S_CDCLK,
 				0, SND_SOC_CLOCK_IN);
-
-	 pm_runtime_ctl(i2s, false);
 }
 
 static int config_setup(struct i2s_dai *i2s)
