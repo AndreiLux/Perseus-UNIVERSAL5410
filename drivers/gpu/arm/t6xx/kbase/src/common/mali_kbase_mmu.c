@@ -283,7 +283,7 @@ osk_phy_addr kbase_mmu_alloc_pgd(kbase_context *kctx)
 		kbase_mem_usage_release_pages(&kctx->usage, 1);
 		return 0;
 	}
-	kbase_process_page_usage_inc(kctx, 1);
+
 	for (i = 0; i < KBASE_MMU_PAGE_ENTRIES; i++)
 		page[i] = ENTRY_IS_INVAL;
 
@@ -743,7 +743,6 @@ static void mmu_teardown_level(kbase_context *kctx, osk_phy_addr pgd, int level,
 			if (zap)
 			{
 				kbase_phy_pages_free(kctx->kbdev, &kctx->pgd_allocator, 1, &target_pgd);
-				kbase_process_page_usage_dec(kctx, 1 );
 				kbase_mem_usage_release_pages(&kctx->usage, 1);
 			}
 		}
@@ -790,7 +789,6 @@ void kbase_mmu_free_pgd(kbase_context *kctx)
 
 	beenthere("pgd %lx", (unsigned long)kctx->pgd);
 	kbase_phy_pages_free(kctx->kbdev, &kctx->pgd_allocator, 1, &kctx->pgd);
-	kbase_process_page_usage_dec(kctx, 1 );
 	kbase_mem_usage_release_pages(&kctx->usage, 1);
 }
 KBASE_EXPORT_TEST_API(kbase_mmu_free_pgd)

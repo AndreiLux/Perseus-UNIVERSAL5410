@@ -53,9 +53,6 @@ kbase_context *kbase_create_context(kbase_device *kbdev)
 	atomic_set(&kctx->setup_in_progress, 0);
 	kctx->keep_gpu_powered = MALI_FALSE;
 
-	/* keep a reference to the process' user side memory manager */
-	kbase_os_store_process_mm(kctx);
-
 	if (kbase_mem_usage_init(&kctx->usage, kctx->kbdev->memdev.per_process_memory_limit >> PAGE_SHIFT))
 	{
 		goto free_kctx;

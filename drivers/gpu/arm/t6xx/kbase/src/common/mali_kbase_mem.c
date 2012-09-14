@@ -1137,12 +1137,6 @@ mali_error kbase_cpu_free_mapping(struct kbase_va_region *reg, const void *ptr)
 		goto out;
 	}
 
-	/* As the tmem is being unmapped we need to update the pages used by the process */
-	if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM )
-	{
-		kbase_process_page_usage_inc(reg->kctx, map->nr_pages);
-	}
-
 	OSK_DLIST_REMOVE(&reg->map_list, map, link);
 	kfree(map);
 
@@ -1529,11 +1523,6 @@ static void kbase_free_phy_pages_helper(kbase_va_region * reg, u32 nr_pages_to_f
 			nr_pages -= commit->nr_pages;
 			reg->nr_alloc_pages -= commit->nr_pages;
 			
-			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM )
-			{
-				kbase_process_page_usage_dec(reg->kctx, commit->nr_pages);
-			}
-
 			/* free the node (unless it's the root node) */
 			if (commit != &reg->root_commit)
 			{
@@ -1556,10 +1545,6 @@ static void kbase_free_phy_pages_helper(kbase_va_region * reg, u32 nr_pages_to_f
 					page_array + reg->nr_alloc_pages - nr_pages);
 			commit->nr_pages -= nr_pages;
 			reg->nr_alloc_pages -= nr_pages;
-			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM )
-			{
-				kbase_process_page_usage_dec(reg->kctx, nr_pages);
-			}
 			break; /* end the loop */
 		}
 	}
@@ -1671,10 +1656,6 @@ mali_error kbase_alloc_phy_pages_helper(struct kbase_va_region *reg, u32 nr_page
 
 		if (!nr_pages_left)
 		{
-			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM)
-			{
-				kbase_process_page_usage_inc(reg->kctx, nr_pages_requested);
-			}
 			return MALI_ERROR_NONE;
 		}
 	}
@@ -1754,10 +1735,6 @@ mali_error kbase_alloc_phy_pages_helper(struct kbase_va_region *reg, u32 nr_page
 
 		if (nr_pages_left == 0)
 		{
-			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM)
-			{
-				kbase_process_page_usage_inc(reg->kctx, nr_pages_requested);
-			}
 			return MALI_ERROR_NONE;
 		}
 	}
