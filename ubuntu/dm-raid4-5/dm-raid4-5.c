@@ -4073,7 +4073,7 @@ static int raid_ctr(struct dm_target *ti, unsigned argc, char **argv)
 	 * Make sure that dm core only hands maximum io size
 	 * length down and pays attention to io boundaries.
 	 */
-	ti->split_io = rs->set.io_size;
+	ti->max_io_len = rs->set.io_size;
 	ti->private = rs;
 
 	/* Initialize work queue to handle this RAID set's io. */
