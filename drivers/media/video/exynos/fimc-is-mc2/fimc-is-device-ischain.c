@@ -2498,11 +2498,29 @@ static int fimc_is_ischain_s_dzoom(struct fimc_is_device_ischain *this,
 	u32 chain0_width, chain0_height;
 	u32 temp_width, input_width;
 	struct scalerc_param *scc_param;
+#ifdef USE_ADVANCED_DZOOM
+	u32 crop_hx, crop_hy, crop_hwidth, crop_hheight;
+	u32 crop_px, crop_py, crop_pwidth, crop_pheight;
+	u32 chain2_width, chain2_height;
+	struct scalerp_param *scp_param;
 
+	scc_param = &this->is_region->parameter.scalerc;
+	scp_param = &this->is_region->parameter.scalerp;
+	indexes = lindex = hindex = 0;
+	chain0_width = this->chain0_width;
+	chain0_height = this->chain0_height;
+	chain2_width = this->chain2_width;
+	chain2_height = this->chain2_height;
+	crop_hx = (chain0_width>>2) & 0xFFFFFFFE;
+	crop_hy = (chain0_height>>2) & 0xFFFFFFFE;
+	crop_hwidth = (chain0_width>>1) & 0xFFFFFFFE;
+	crop_hheight = (chain0_height>>1) & 0xFFFFFFFE;
+#else
 	scc_param = &this->is_region->parameter.scalerc;
 	indexes = lindex = hindex = 0;
 	chain0_width = this->chain0_width;
 	chain0_height = this->chain0_height;
+#endif
 
 	/* CHECK */
 	input_width = crop_width;
@@ -2522,8 +2540,35 @@ static int fimc_is_ischain_s_dzoom(struct fimc_is_device_ischain *this,
 	crop_width = chain0_width - (crop_x<<1);
 	crop_height = chain0_height - (crop_y<<1);
 
-	dbg_ischain("%s(%d, %d, %d %d)\n", __func__, crop_x, crop_y, crop_width,
-		crop_height);
+#ifdef USE_ADVANCED_DZOOM
+	if (crop_width < crop_hwidth) {
+		crop_px = crop_x - crop_hx;
+		crop_py = crop_y - crop_hy;
+		crop_pwidth = chain2_width - (crop_hwidth - crop_width);
+		crop_pheight = chain2_height - (crop_hheight - crop_height);
+
+		scp_param->input_crop.cmd = SCALER_CROP_COMMAND_ENABLE;
+		scp_param->input_crop.pos_x = crop_px;
+		scp_param->input_crop.pos_y = crop_py;
+		scp_param->input_crop.crop_width = crop_pwidth;
+		scp_param->input_crop.crop_height = crop_pheight;
+		lindex |= LOWBIT_OF(PARAM_SCALERP_INPUT_CROP);
+		hindex |= HIGHBIT_OF(PARAM_SCALERP_INPUT_CROP);
+		indexes++;
+
+		dbg_ischain("%s2(%d, %d, %d %d)\n", __func__, crop_hx, crop_hy,
+			crop_hwidth, crop_hheight);
+		dbg_ischain("%s3(%d, %d, %d %d)\n", __func__, crop_px, crop_py,
+			crop_pwidth, crop_pheight);
+
+		crop_x = crop_hx;
+		crop_y = crop_hy;
+		crop_width = crop_hwidth;
+		crop_height = crop_hheight;
+	}
+#endif
+	dbg_ischain("%s1(%d, %d, %d %d)\n", __func__, crop_x, crop_y,
+		crop_width, crop_height);
 
 	/* SCC OUTPUT */
 	scc_param->input_crop.cmd = SCALER_CROP_COMMAND_ENABLE;

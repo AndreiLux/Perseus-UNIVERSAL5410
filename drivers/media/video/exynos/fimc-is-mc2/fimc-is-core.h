@@ -99,6 +99,7 @@
 #define FW_DEBUG
 /*#define RESERVED_MEM*/
 #define USE_FRAME_SYNC
+#define USE_ADVANCED_DZOOM
 /*#define TASKLET_MSG*/
 #define ISDRV_VERSION 106
 
