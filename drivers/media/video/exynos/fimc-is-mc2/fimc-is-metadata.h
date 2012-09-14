@@ -925,6 +925,14 @@ struct camera2_stream {
 		[X] request count
 	*/
 	uint32_t		rcount;
+
+	/**	\brief
+		frame index of isp framemgr.
+		this value is for driver internal debugging
+		\remarks
+		[X] frame index
+	*/
+	uint32_t		findex;
 };
 
 #define CAM_LENS_CMD		(0x1 << 0x0)

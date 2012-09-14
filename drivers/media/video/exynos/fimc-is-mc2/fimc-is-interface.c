@@ -829,24 +829,26 @@ static void wq_func_scc(struct work_struct *data)
 {
 	struct fimc_is_interface *itf;
 	struct fimc_is_msg *msg;
-	struct fimc_is_framemgr *framemgr;
+	struct fimc_is_framemgr *isp_framemgr;
+	struct fimc_is_framemgr *scc_framemgr;
+	struct fimc_is_frame_shot *isp_frame;
+	struct fimc_is_frame_shot *scc_frame;
 	struct fimc_is_device_ischain *ischain;
 	struct fimc_is_ischain_dev *dev;
-	struct fimc_is_frame_shot *frame;
 	struct fimc_is_video_common *video;
 	struct fimc_is_work *work;
 	unsigned long flags;
 	u32 fcount;
 	u32 rcount;
-	u32 index;
+	u32 findex;
 
-	index = FIMC_IS_INVALID_BUF_INDEX;
 	itf = container_of(data, struct fimc_is_interface,
 		work_queue[INTR_SCC_FDONE]);
 	video = itf->video_scc;
 	ischain = video->device;
 	dev = &ischain->scc;
-	framemgr = &dev->framemgr;
+	isp_framemgr = ischain->framemgr;
+	scc_framemgr = &dev->framemgr;
 
 	get_req_work(&itf->work_list[INTR_SCC_FDONE], &work);
 	while (work) {
@@ -854,27 +856,34 @@ static void wq_func_scc(struct work_struct *data)
 		fcount = msg->parameter1;
 		rcount = msg->parameter3;
 
-		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_4, flags);
+		framemgr_e_barrier_irqs(scc_framemgr, FMGR_IDX_4, flags);
 
-		fimc_is_frame_process_head(framemgr, &frame);
-		if (frame && test_bit(FIMC_IS_REQ_FRAME, &frame->req_flag)) {
-			clear_bit(FIMC_IS_REQ_FRAME, &frame->req_flag);
+		fimc_is_frame_process_head(scc_framemgr, &scc_frame);
+		if (scc_frame && test_bit(REQ_FRAME, &scc_frame->req_flag)) {
+			clear_bit(REQ_FRAME, &scc_frame->req_flag);
 
-			index = frame->index;
 #ifdef DBG_STREAMING
-			printk(KERN_INFO "C%d(%d,%d)\n", index, fcount, rcount);
+			printk(KERN_INFO "C%d(%d,%d)\n", scc_frame->index,
+				fcount, rcount);
 #endif
 #ifdef USE_FRAME_SYNC
-			frame->stream->fcount = fcount;
-			frame->stream->rcount = rcount;
+			findex = scc_frame->stream->findex;
+			isp_frame = &isp_framemgr->frame[findex];
+			if (isp_frame->fcount != fcount)
+				err("scc mismatched(%d, %d)",
+					isp_frame->fcount, fcount);
+
+			scc_frame->stream->fcount = fcount;
+			scc_frame->stream->rcount = rcount;
+			isp_frame->scc_out = FIMC_IS_FOUT_DONE;
 #endif
 
-			fimc_is_frame_trans_pro_to_com(framemgr, frame);
-			buffer_done(video, frame->index);
+			fimc_is_frame_trans_pro_to_com(scc_framemgr, scc_frame);
+			buffer_done(video, scc_frame->index);
 		} else
-			err("done(%p) is occured without request\n", frame);
+			err("done(%p) is occured without request\n", scc_frame);
 
-		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_4, flags);
+		framemgr_x_barrier_irqr(scc_framemgr, FMGR_IDX_4, flags);
 
 		set_free_work(&itf->work_list[INTR_SCC_FDONE], work);
 		get_req_work(&itf->work_list[INTR_SCC_FDONE], &work);
@@ -885,25 +894,26 @@ static void wq_func_scp(struct work_struct *data)
 {
 	struct fimc_is_interface *itf;
 	struct fimc_is_msg *msg;
-	struct fimc_is_framemgr *framemgr;
+	struct fimc_is_framemgr *isp_framemgr;
+	struct fimc_is_framemgr *scp_framemgr;
+	struct fimc_is_frame_shot *isp_frame;
+	struct fimc_is_frame_shot *scp_frame;
 	struct fimc_is_device_ischain *ischain;
 	struct fimc_is_ischain_dev *dev;
-	struct fimc_is_frame_shot *frame;
 	struct fimc_is_video_common *video;
 	struct fimc_is_work *work;
 	unsigned long flags;
 	u32 fcount;
 	u32 rcount;
-	u32 index;
+	u32 findex;
 
-	index = FIMC_IS_INVALID_BUF_INDEX;
 	itf = container_of(data, struct fimc_is_interface,
 		work_queue[INTR_SCP_FDONE]);
-	framemgr = itf->framemgr;
 	video = itf->video_scp;
 	ischain = video->device;
 	dev = &ischain->scp;
-	framemgr = &dev->framemgr;
+	isp_framemgr = ischain->framemgr;
+	scp_framemgr = &dev->framemgr;
 
 	get_req_work(&itf->work_list[INTR_SCP_FDONE], &work);
 	while (work) {
@@ -911,27 +921,34 @@ static void wq_func_scp(struct work_struct *data)
 		fcount = msg->parameter1;
 		rcount = msg->parameter3;
 
-		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_4, flags);
+		framemgr_e_barrier_irqs(scp_framemgr, FMGR_IDX_4, flags);
 
-		fimc_is_frame_process_head(framemgr, &frame);
-		if (frame && test_bit(FIMC_IS_REQ_FRAME, &frame->req_flag)) {
-			clear_bit(FIMC_IS_REQ_FRAME, &frame->req_flag);
+		fimc_is_frame_process_head(scp_framemgr, &scp_frame);
+		if (scp_frame && test_bit(REQ_FRAME, &scp_frame->req_flag)) {
+			clear_bit(REQ_FRAME, &scp_frame->req_flag);
 
-			index = frame->index;
 #ifdef DBG_STREAMING
-			printk(KERN_INFO "P%d(%d,%d)\n", index, fcount, rcount);
+			printk(KERN_INFO "P%d(%d,%d)\n", scp_frame->index,
+				fcount, rcount);
 #endif
 #ifdef USE_FRAME_SYNC
-			frame->stream->fcount = fcount;
-			frame->stream->rcount = rcount;
+			findex = scp_frame->stream->findex;
+			isp_frame = &isp_framemgr->frame[findex];
+			if (isp_frame->fcount != fcount)
+				err("scp mismatched(%d, %d)",
+					isp_frame->fcount, fcount);
+
+			scp_frame->stream->fcount = fcount;
+			scp_frame->stream->rcount = rcount;
+			isp_frame->scp_out = FIMC_IS_FOUT_DONE;
 #endif
 
-			fimc_is_frame_trans_pro_to_com(framemgr, frame);
-			buffer_done(video, frame->index);
+			fimc_is_frame_trans_pro_to_com(scp_framemgr, scp_frame);
+			buffer_done(video, scp_frame->index);
 		} else
-			err("done is occured without request(%p)", frame);
+			err("done is occured without request(%p)", scp_frame);
 
-		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_4, flags);
+		framemgr_x_barrier_irqr(scp_framemgr, FMGR_IDX_4, flags);
 
 		set_free_work(&itf->work_list[INTR_SCP_FDONE], work);
 		get_req_work(&itf->work_list[INTR_SCP_FDONE], &work);
@@ -1046,8 +1063,8 @@ static void wq_func_meta(struct work_struct *data)
 				err("frame mismatch(%d != %d)",
 					fcount, frame->fcount);
 
-			if (test_bit(FIMC_IS_REQ_FRAME, &frame->req_flag)) {
-				clear_bit(FIMC_IS_REQ_FRAME, &frame->req_flag);
+			if (test_bit(REQ_FRAME, &frame->req_flag)) {
+				clear_bit(REQ_FRAME, &frame->req_flag);
 				if (!frame->req_flag) {
 					wq_func_isp(itf, framemgr, frame);
 					req_done = true;
@@ -1116,8 +1133,8 @@ static void wq_func_shot(struct work_struct *data)
 			if (status != ISR_DONE)
 				err("shot done is invalid(0x%08X)", status);
 
-			if (test_bit(FIMC_IS_REQ_SHOT, &frame->req_flag)) {
-				clear_bit(FIMC_IS_REQ_SHOT, &frame->req_flag);
+			if (test_bit(REQ_SHOT, &frame->req_flag)) {
+				clear_bit(REQ_SHOT, &frame->req_flag);
 				if (!frame->req_flag) {
 					wq_func_isp(itf, framemgr, frame);
 					req_done = true;
@@ -1167,6 +1184,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 		} else
 			err("free work item is empty5");
 
+		status &= ~(1<<INTR_SHOT_DONE);
 		writel((1<<INTR_SHOT_DONE), itf->regs + INTCR1);
 	}
 
@@ -1184,6 +1202,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 		} else
 			err("free work item is empty1");
 
+		status &= ~(1<<INTR_GENERAL);
 		writel((1<<INTR_GENERAL), itf->regs + INTCR1);
 	}
 
@@ -1201,6 +1220,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 		} else
 			err("free work item is empty2");
 
+		status &= ~(1<<INTR_SCC_FDONE);
 		writel((1<<INTR_SCC_FDONE), itf->regs + INTCR1);
 	}
 
@@ -1218,6 +1238,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 		} else
 			err("free work item is empty3");
 
+		status &= ~(1<<INTR_SCP_FDONE);
 		writel((1<<INTR_SCP_FDONE), itf->regs + INTCR1);
 	}
 
@@ -1239,8 +1260,12 @@ static irqreturn_t interface_isr(int irq, void *data)
 		} else
 			err("free work item is empty4");
 #endif
+		status &= ~(1<<INTR_META_DONE);
 		writel((1<<INTR_META_DONE), itf->regs + INTCR1);
 	}
+
+	if (status != 0)
+		err("status is NOT all clear(0x%08X)", status);
 
 	return IRQ_HANDLED;
 }
@@ -1739,7 +1764,7 @@ int fimc_is_hw_s_camctrl_nblk(struct fimc_is_interface *this,
 	dbg_interface("cam_ctrl_nblk(%d)\n", instance);
 
 	get_free_work(&this->nblk_cam_ctrl, &work);
-	/*printk("%d %d\n", fnumber, this->nblk_cam_ctrl.work_free_cnt);*/
+
 	if (work) {
 		work->fcount = fcount;
 		msg = &work->msg;

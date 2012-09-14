@@ -541,6 +541,8 @@ int fimc_is_frame_open(struct fimc_is_framemgr *this, u32 buffers)
 
 	for (i = 0; i < buffers; ++i) {
 		this->frame[i].init = false;
+		this->frame[i].scp_out = FIMC_IS_FOUT_NONE;
+		this->frame[i].scc_out = FIMC_IS_FOUT_NONE;
 		this->frame[i].index = i;
 		this->frame[i].fcount = 0;
 		this->frame[i].req_flag = 0;

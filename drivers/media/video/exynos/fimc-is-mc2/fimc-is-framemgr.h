@@ -58,9 +58,9 @@
 	spin_unlock(&this->slock)
 
 enum fimc_is_frame_output {
-	FIMC_IS_FOUT_META,
-	FIMC_IS_FOUT_SCC,
-	FIMC_IS_FOUT_SCP,
+	FIMC_IS_FOUT_NONE,
+	FIMC_IS_FOUT_REQ,
+	FIMC_IS_FOUT_DONE,
 };
 
 enum fimc_is_frame_shot_state {
@@ -74,9 +74,9 @@ enum fimc_is_frame_shot_state {
 enum fimc_is_frame_reqeust {
 	/* SCC, SCP frame done,
 	   ISP meta done */
-	FIMC_IS_REQ_FRAME,
+	REQ_FRAME,
 	/* ISP shot done */
-	FIMC_IS_REQ_SHOT
+	REQ_SHOT
 };
 
 struct fimc_is_frame_shot {
@@ -106,6 +106,9 @@ struct fimc_is_frame_shot {
 	u32 index;
 	unsigned long req_flag;
 	struct vb2_buffer *vb;
+
+	enum fimc_is_frame_output scc_out;
+	enum fimc_is_frame_output scp_out;
 
 	/* time measure internally */
 	struct timeval			time_queued;

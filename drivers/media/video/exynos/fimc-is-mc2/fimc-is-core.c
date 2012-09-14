@@ -745,7 +745,7 @@ static int fimc_is_probe(struct platform_device *pdev)
 	}
 
 	core->regs_res = regs_res;
-	core->regs = ioremap(mem_res->start, resource_size(mem_res));
+	core->regs =  ioremap_nocache(mem_res->start, resource_size(mem_res));
 	if (!core->regs) {
 		dev_err(&pdev->dev, "Failed to remap io region\n");
 		goto p_err2;

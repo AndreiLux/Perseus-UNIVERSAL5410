@@ -3093,6 +3093,12 @@ int fimc_is_ischain_isp_buffer_queue(struct fimc_is_device_ischain *this,
 			frame->req_flag = 0;
 		}
 
+		if (frame->scc_out == FIMC_IS_FOUT_REQ)
+			err("scc output is not generated");
+
+		if (frame->scp_out == FIMC_IS_FOUT_REQ)
+			err("scp output is not generated");
+
 		frame->fcount = frame->shot->dm.request.frameCount;
 		fimc_is_frame_trans_fre_to_req(framemgr, frame);
 	} else {
@@ -3659,8 +3665,10 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 				scc_frame->dvaddr_buffer[1];
 			isp_frame->shot->uctl.scalerUd.sccTargetAddress[2] =
 				scc_frame->dvaddr_buffer[2];
+			scc_frame->stream->findex = isp_frame->index;
+			isp_frame->scc_out = FIMC_IS_FOUT_REQ;
 
-			set_bit(FIMC_IS_REQ_FRAME, &scc_frame->req_flag);
+			set_bit(REQ_FRAME, &scc_frame->req_flag);
 			fimc_is_frame_trans_req_to_pro(scc_framemgr, scc_frame);
 		} else {
 			isp_frame->shot->uctl.scalerUd.sccTargetAddress[0] = 0;
@@ -3689,8 +3697,10 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 				scp_frame->dvaddr_buffer[1];
 			isp_frame->shot->uctl.scalerUd.scpTargetAddress[2] =
 				scp_frame->dvaddr_buffer[2];
+			scp_frame->stream->findex = isp_frame->index;
+			isp_frame->scp_out = FIMC_IS_FOUT_REQ;
 
-			set_bit(FIMC_IS_REQ_FRAME, &scp_frame->req_flag);
+			set_bit(REQ_FRAME, &scp_frame->req_flag);
 			fimc_is_frame_trans_req_to_pro(scp_framemgr, scp_frame);
 		} else {
 			isp_frame->shot->uctl.scalerUd.scpTargetAddress[0] = 0;
@@ -3712,7 +3722,7 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 exit:
 	if (ret) {
 		clear_bit(FIMC_IS_ISCHAIN_RUN, &this->state);
-		clear_bit(FIMC_IS_REQ_FRAME, &isp_frame->req_flag);
+		clear_bit(REQ_FRAME, &isp_frame->req_flag);
 		isp_frame->shot_ext->request_isp = 0;
 		isp_frame->shot_ext->request_scc = 0;
 		isp_frame->shot_ext->request_scp = 0;
@@ -3722,7 +3732,7 @@ exit:
 		err("shot(index : %d) is skipped(error : %d)",
 			isp_frame->index, ret);
 	} else {
-		set_bit(FIMC_IS_REQ_SHOT, &isp_frame->req_flag);
+		set_bit(REQ_SHOT, &isp_frame->req_flag);
 		set_bit(FIMC_IS_ISCHAIN_RUN, &this->state);
 		fimc_is_frame_trans_req_to_pro(isp_framemgr, isp_frame);
 
