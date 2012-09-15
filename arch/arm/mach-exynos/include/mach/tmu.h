@@ -24,12 +24,9 @@ enum tmu_status_t {
 	TMU_STATUS_NORMAL,
 	TMU_STATUS_THROTTLED,
 	TMU_STATUS_TRIPPED,
-	TMU_STATUS_MIF_VC,
 };
 
 struct temperature_params {
-	unsigned int stop_mif_vc;
-	unsigned int start_mif_vc;
 	unsigned int stop_throttle;
 	unsigned int start_throttle;
 	unsigned int start_tripping; /* temp to do tripping */
@@ -55,7 +52,6 @@ struct tmu_info {
 	unsigned int te1; /* triminfo_25 */
 	unsigned int te2; /* triminfo_85 */
 	int tmu_state;
-	bool mif_vol_offset_state;
 
 	bool mem_throttled;
 	unsigned int auto_refresh_mem_throttle;

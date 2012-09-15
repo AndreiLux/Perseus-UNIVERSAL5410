@@ -32,7 +32,6 @@
 #include <mach/map.h>
 #include <mach/regs-mem.h>
 #include <mach/smc.h>
-#include <mach/exynos5_bus.h>
 
 static DEFINE_MUTEX(tmu_lock);
 
@@ -102,26 +101,8 @@ static void tmu_monitor(struct work_struct *work)
 
 	mutex_lock(&tmu_lock);
 	switch (info->tmu_state) {
-	case TMU_STATUS_MIF_VC:
-		if ((cur_temp <= data->ts.start_mif_vc) &&
-			!(info->mif_vol_offset_state)) {
-			busfreq_mif_request_voltage_offset(37500);
-
-			info->mif_vol_offset_state = true;
-			pr_debug("tmu: mif voltage compensation (+37.5 mV)\n");
-		} else if (cur_temp >= data->ts.stop_mif_vc) {
-			info->tmu_state = TMU_STATUS_NORMAL;
-		}
-		break;
 	case TMU_STATUS_NORMAL:
-		if (info->mif_vol_offset_state) {
-			busfreq_mif_request_voltage_offset(0);
-
-			info->mif_vol_offset_state = false;
-			pr_debug("tmu: restore mif voltage compensation\n");
-		} else {
-			exynos_thermal_unthrottle();
-		}
+		exynos_thermal_unthrottle();
 		enable_irq(info->irq);
 		goto out;
 	case TMU_STATUS_THROTTLED:
@@ -174,12 +155,10 @@ static void pm_tmu_save(struct tmu_info *info)
 	info->reg_save[3] = __raw_readl(info->tmu_base + CNT_VALUE1);
 	info->reg_save[4] = __raw_readl(info->tmu_base + INTEN);
 	info->reg_save[5] = __raw_readl(info->tmu_base + THD_TEMP_RISE);
-	info->reg_save[6] = __raw_readl(info->tmu_base + THD_TEMP_FALL);
 }
 
 static void pm_tmu_restore(struct tmu_info *info)
 {
-	__raw_writel(info->reg_save[6], info->tmu_base + THD_TEMP_FALL);
 	__raw_writel(info->reg_save[5], info->tmu_base + THD_TEMP_RISE);
 	__raw_writel(info->reg_save[4], info->tmu_base + INTEN);
 	__raw_writel(info->reg_save[3], info->tmu_base + CNT_VALUE1);
@@ -194,8 +173,6 @@ static int exynos_tmu_init(struct tmu_info *info)
 	unsigned int te_temp, con;
 	unsigned int temp_throttle, temp_trip;
 	unsigned int rising_thr;
-	unsigned int temp_mif_vc;
-	unsigned int falling_thr;
 
 	/* must reload for using efuse value at EXYNOS4212 */
 	__raw_writel(TRIMINFO_RELOAD, info->tmu_base + TRIMINFO_CON);
@@ -231,23 +208,11 @@ static int exynos_tmu_init(struct tmu_info *info)
 
 	__raw_writel(rising_thr, info->tmu_base + THD_TEMP_RISE);
 
-	/* Get falling Threshold and Set interrupt level */
-	temp_mif_vc = data->ts.start_mif_vc
-			+ info->te1 - TMU_DC_VALUE;
-
-	falling_thr = (temp_mif_vc | (UNUSED_THRESHOLD << 8) |
-			(UNUSED_THRESHOLD << 16));
-
-	__raw_writel(falling_thr, info->tmu_base + THD_TEMP_FALL);
-
 	/* Set TMU status */
 	info->tmu_state = TMU_STATUS_INIT;
 
 	/* To poll current temp, set sampling rate */
 	info->sampling_rate = msecs_to_jiffies(1000);
-
-	/* Set init MIF voltage compensation state */
-	info->mif_vol_offset_state = false;
 
 	/* Need to initail regsiter setting after getting parameter info */
 	/* [28:23] vref [11:8] slope - Tunning parameter */
@@ -267,7 +232,7 @@ static int exynos_tmu_init(struct tmu_info *info)
 	mdelay(1);
 
 	/*LEV0 LEV1 interrupt enable */
-	__raw_writel(INTEN_RISE0 | INTEN_RISE1 | INTEN_FALL0, info->tmu_base + INTEN);
+	__raw_writel(INTEN_RISE0 | INTEN_RISE1, info->tmu_base + INTEN);
 
 	return 0;
 }
@@ -283,11 +248,7 @@ static irqreturn_t tmu_irq(int irq, void *id)
 	/* To handle multiple interrupt pending,
 	* interrupt by high temperature are serviced with priority.
 	*/
-	if (status & INTSTAT_FALL0) {
-		dev_info(info->dev, "MIF voltage compensation interrupt\n");
-		info->tmu_state = TMU_STATUS_MIF_VC;
-		__raw_writel(INTCLEAR_FALL0, info->tmu_base + INTCLEAR);
-	} else if (status & INTSTAT_RISE1) {
+	if (status & INTSTAT_RISE1) {
 		dev_info(info->dev, "Tripping interrupt\n");
 		info->tmu_state = TMU_STATUS_TRIPPED;
 		__raw_writel(INTCLEAR_RISE1, info->tmu_base + INTCLEAR);
