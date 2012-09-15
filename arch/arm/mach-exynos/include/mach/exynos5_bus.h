@@ -11,13 +11,5 @@
 #define _MACH_EXYNOS_EXYNOS5_BUS_H_
 
 void exynos5_ppmu_trace(void);
-void exynos5_busfreq_mif_request_voltage_offset(unsigned long offset);
-
-#if defined(CONFIG_ARM_EXYNOS5_BUS_DEVFREQ)
-#define busfreq_mif_request_voltage_offset(a)  \
-		exynos5_busfreq_mif_request_voltage_offset(a);
-#else
-#define busfreq_mif_request_voltage_offset(a)  do {} while (0)
-#endif
 
 #endif /* _MACH_EXYNOS_EXYNOS5_BUS_H_ */

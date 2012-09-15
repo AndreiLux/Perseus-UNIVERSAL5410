@@ -28,7 +28,6 @@
 #include <mach/regs-clock.h>
 #include <mach/asv-exynos.h>
 #include <mach/abb-exynos.h>
-#include <mach/exynos5_bus.h>
 #include <mach/smc.h>
 #include <mach/regs-mem.h>
 
@@ -41,8 +40,6 @@
 
 /* Assume that the bus is saturated if the utilization is 20% */
 #define MIF_BUS_SATURATION_RATIO	20
-
-BLOCKING_NOTIFIER_HEAD(exynos5_devfreq_mif_notifier_list);
 
 enum mif_level_idx {
 	LV_0,
@@ -60,15 +57,12 @@ struct busfreq_data_mif {
 	struct opp *curr_opp;
 
 	struct notifier_block pm_notifier;
-	struct notifier_block set_volt_offset_notifier;
 	struct mutex lock;
 
 	struct clk *mif_clk;
 	struct clk *mclk_cdrex;
 	struct clk *mout_mpll;
 	struct clk *mout_bpll;
-
-	unsigned long v_offset;
 };
 
 struct mif_bus_opp_table {
@@ -92,35 +86,9 @@ static int exynos5_mif_setvolt(struct busfreq_data_mif *data, struct opp *opp)
 
 	rcu_read_lock();
 	volt = opp_get_voltage(opp);
-
-	if (data->v_offset)
-		volt += data->v_offset;
 	rcu_read_unlock();
 
 	return regulator_set_voltage(data->vdd_mif, volt, MAX_SAFEVOLT);
-}
-
-void exynos5_busfreq_mif_request_voltage_offset(unsigned long offset)
-{
-	blocking_notifier_call_chain(&exynos5_devfreq_mif_notifier_list,
-					offset, NULL);
-}
-
-static int exynos5_busfreq_mif_voltage_offset_event(struct notifier_block *this,
-				unsigned long volt_offset, void *device)
-{
-	struct busfreq_data_mif *data = container_of(this,
-				struct busfreq_data_mif, set_volt_offset_notifier);
-
-	dev_dbg(data->dev, "request voltage offset is %u uV\n", volt_offset);
-
-	data->v_offset = volt_offset;
-
-	if (exynos5_mif_setvolt(data, data->curr_opp))
-		dev_err(data->dev, "%s: Failed to set voltage of mif\n",
-				__func__);
-
-	return NOTIFY_DONE;
 }
 
 static int exynos5_mif_set_dmc_timing(unsigned int freq)
@@ -510,21 +478,8 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 		goto err_devfreq_add;
 	}
 
-	data->v_offset = 0;
-	data->set_volt_offset_notifier.notifier_call =
-			exynos5_busfreq_mif_voltage_offset_event;
-
-	err = blocking_notifier_chain_register(&exynos5_devfreq_mif_notifier_list,
-						&data->set_volt_offset_notifier);
-	if (err) {
-		dev_err(dev, "Failed to setup volt offset notifier\n");
-		goto err_notifier_add;
-	}
-
 	return 0;
 
-err_notifier_add:
-	unregister_pm_notifier(&data->pm_notifier);
 err_devfreq_add:
 	devfreq_remove_device(data->devfreq);
 	platform_set_drvdata(pdev, NULL);
@@ -546,8 +501,6 @@ static __devexit int exynos5_busfreq_mif_remove(struct platform_device *pdev)
 {
 	struct busfreq_data_mif *data = platform_get_drvdata(pdev);
 
-	blocking_notifier_chain_unregister(&exynos5_devfreq_mif_notifier_list,
-					&data->set_volt_offset_notifier);
 	unregister_pm_notifier(&data->pm_notifier);
 	devfreq_remove_device(data->devfreq);
 	regulator_put(data->vdd_mif);
