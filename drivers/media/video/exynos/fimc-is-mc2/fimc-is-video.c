@@ -412,7 +412,24 @@ int fimc_is_video_buffer_queue(struct fimc_is_video_common *video,
 
 	index = vb->v4l2_buf.index;
 
+	if (!framemgr) {
+		err("framemgr is null");
+		ret = -EINVAL;
+		goto exit;
+	}
+
 	if (!test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->state)) {
+		frame = &framemgr->frame[index];
+		frame->vb = vb;
+		frame->planes = vb->num_planes;
+		spare = frame->planes - 1;
+
+		if (frame->init != FRAME_UNI_MEM) {
+			dbg_warning("frame is already initialzied\n");
+			ret = 0;
+			goto exit;
+		}
+
 		if (video->frame.format.pixelformat == V4L2_PIX_FMT_YVU420M) {
 			video->buf_dva[index][0]
 				= core->mem.vb2->plane_addr(vb, 0);
@@ -444,69 +461,49 @@ int fimc_is_video_buffer_queue(struct fimc_is_video_common *video,
 			}
 		}
 
-		if (framemgr) {
-			frame = &framemgr->frame[index];
-			frame->vb = vb;
-			frame->planes = vb->num_planes;
-			spare = frame->planes - 1;
+		for (i = 0; i < frame->planes; i++) {
+			frame->dvaddr_buffer[i] = video->buf_dva[index][i];
+			frame->kvaddr_buffer[i] = video->buf_kva[index][i];
+		}
 
-			for (i = 0; i < frame->planes; i++) {
-				frame->dvaddr_buffer[i]
-					= video->buf_dva[index][i];
+		if ((framemgr->id == FRAMEMGR_ID_SENSOR) ||
+			(framemgr->id == FRAMEMGR_ID_ISP)) {
+			ext_size = sizeof(struct camera2_shot_ext) -
+				sizeof(struct camera2_shot);
 
-				frame->kvaddr_buffer[i]
-					= video->buf_kva[index][i];
-			}
+			frame->dvaddr_shot = video->buf_dva[index][spare] +
+				ext_size;
 
-			if ((framemgr->id == FRAMEMGR_ID_SENSOR) ||
-				(framemgr->id == FRAMEMGR_ID_ISP)) {
-				ext_size = sizeof(struct camera2_shot_ext) -
-					sizeof(struct camera2_shot);
+			frame->kvaddr_shot = video->buf_kva[index][spare] +
+				ext_size;
 
-				frame->dvaddr_shot =
-					video->buf_dva[index][spare] +
-					ext_size;
+			frame->cookie_shot = (u32)vb2_plane_cookie(vb, spare);
 
-				frame->kvaddr_shot =
-					video->buf_kva[index][spare] +
-					ext_size;
+			frame->shot = (struct camera2_shot *)
+				(video->buf_kva[index][spare] + ext_size);
 
-				frame->cookie_shot = (u32)
-					vb2_plane_cookie(vb, spare);
+			frame->shot_ext = (struct camera2_shot_ext *)
+				(video->buf_kva[index][spare]);
 
-				frame->shot =
-					(struct camera2_shot *)
-					(video->buf_kva[index][spare] +
-					ext_size);
-
-				frame->shot_ext =
-					(struct camera2_shot_ext *)
-					(video->buf_kva[index][spare]);
-
-				frame->shot_size =
-					video->frame.size[spare];
+			frame->shot_size = video->frame.size[spare];
 
 #ifdef MEASURE_TIME
-				frame->tzone = (struct timeval *)
-					frame->shot_ext->timeZone;
+			frame->tzone = (struct timeval *)
+				frame->shot_ext->timeZone;
 #endif
-			} else {
+		} else {
 #ifdef USE_FRAME_SYNC
-				frame->stream =
-					(struct camera2_stream *)
-					video->buf_kva[index][spare];
-				frame->stream->address =
-					video->buf_kva[index][spare];
-				frame->stream_size =
-					video->frame.size[spare];
+			frame->stream = (struct camera2_stream *)
+				video->buf_kva[index][spare];
+			frame->stream->address = video->buf_kva[index][spare];
+			frame->stream_size = video->frame.size[spare];
 #else
-				frame->stream = NULL;
-				frame->stream_size = 0;
+			frame->stream = NULL;
+			frame->stream_size = 0;
 #endif
-			}
-
-			frame->init = true;
 		}
+
+		frame->init = FRAME_INI_MEM;
 
 		video->buf_ref_cnt++;
 
@@ -517,6 +514,7 @@ int fimc_is_video_buffer_queue(struct fimc_is_video_common *video,
 			set_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->state);
 	}
 
+exit:
 	return ret;
 }
 

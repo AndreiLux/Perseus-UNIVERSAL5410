@@ -176,8 +176,6 @@ int fimc_is_ischain_close(struct fimc_is_device_ischain *this);
 int fimc_is_ischain_init(struct fimc_is_device_ischain *this,
 	u32 input, u32 channel, struct sensor_open_extended *ext,
 	char *setfile_name);
-int fimc_is_itf_cfg_mem(struct fimc_is_device_ischain *this,
-	u32 shot_addr, u32 shot_size);
 int fimc_is_ischain_g_capability(struct fimc_is_device_ischain *this,
 	u32 user_ptr);
 int fimc_is_ischain_print_status(struct fimc_is_device_ischain *this);

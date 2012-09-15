@@ -1509,7 +1509,7 @@ static int fimc_is_itf_setfile(struct fimc_is_device_ischain *this,
 	return ret;
 }
 
-int fimc_is_itf_cfg_mem(struct fimc_is_device_ischain *this,
+static int fimc_is_itf_cfg_mem(struct fimc_is_device_ischain *this,
 	u32 shot_addr, u32 shot_size)
 {
 	int ret = 0;
@@ -1708,7 +1708,7 @@ static int fimc_is_itf_shot(struct fimc_is_device_ischain *this,
 
 	this->fcount++;
 	if (frame->shot->dm.request.frameCount != this->fcount) {
-		err("shot frame count mismatch(%d, %d)",
+		printk(KERN_INFO "shot mismatch(%d, %d)",
 			frame->shot->dm.request.frameCount, this->fcount);
 
 		if (!frame->shot->dm.request.frameCount) {
@@ -3078,7 +3078,7 @@ int fimc_is_ischain_isp_buffer_queue(struct fimc_is_device_ischain *this,
 #endif
 #endif
 
-	if (!frame->init) {
+	if (frame->init == FRAME_UNI_MEM) {
 		err("frame %d is NOT init", index);
 		ret = EINVAL;
 		goto exit;
@@ -3404,7 +3404,7 @@ int fimc_is_ischain_dev_buffer_queue(struct fimc_is_ischain_dev *this,
 		goto exit;
 	}
 
-	if (!frame->init) {
+	if (frame->init == FRAME_UNI_MEM) {
 		err("frame %d is NOT init", index);
 		ret = EINVAL;
 		goto exit;
@@ -3531,6 +3531,12 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 		dbg_warning("ischain is stopped\n");
 #endif
 		return ret;
+	}
+
+	if (isp_frame->init == FRAME_INI_MEM) {
+		fimc_is_itf_cfg_mem(this, isp_frame->dvaddr_shot,
+			isp_frame->shot_size);
+		isp_frame->init = FRAME_CFG_MEM;
 	}
 
 	if (isp_frame->shot_ext->setfile != this->setfile) {

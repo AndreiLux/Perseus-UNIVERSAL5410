@@ -532,7 +532,7 @@ int fimc_is_sensor_buffer_queue(struct fimc_is_device_sensor *this,
 		goto exit;
 	}
 
-	if (!frame->init) {
+	if (frame->init == FRAME_UNI_MEM) {
 		err("frame %d is NOT init", index);
 		ret = EINVAL;
 		goto exit;

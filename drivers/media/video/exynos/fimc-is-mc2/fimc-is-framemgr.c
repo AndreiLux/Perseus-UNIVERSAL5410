@@ -515,8 +515,10 @@ int fimc_is_frame_probe(struct fimc_is_framemgr *this, u32 id)
 
 	this->id = id;
 
-	for (i = 0; i < FRAMEMGR_MAX_REQUEST; ++i)
+	for (i = 0; i < FRAMEMGR_MAX_REQUEST; ++i) {
+		this->frame[i].init = FRAME_UNI_MEM;
 		this->frame[i].state = FIMC_IS_FRAME_STATE_INVALID;
+	}
 
 	return ret;
 }
@@ -540,7 +542,7 @@ int fimc_is_frame_open(struct fimc_is_framemgr *this, u32 buffers)
 	this->frame_complete_cnt = 0;
 
 	for (i = 0; i < buffers; ++i) {
-		this->frame[i].init = false;
+		this->frame[i].init = FRAME_UNI_MEM;
 		this->frame[i].scp_out = FIMC_IS_FOUT_NONE;
 		this->frame[i].scc_out = FIMC_IS_FOUT_NONE;
 		this->frame[i].index = i;
@@ -580,7 +582,7 @@ int fimc_is_frame_close(struct fimc_is_framemgr *this)
 	buffers = this->frame_cnt;
 
 	for (i = 0; i < buffers; ++i) {
-		this->frame[i].init = false;
+		this->frame[i].init = FRAME_UNI_MEM;
 		this->frame[i].index = i;
 		this->frame[i].fcount = 0;
 		this->frame[i].req_flag = 0;

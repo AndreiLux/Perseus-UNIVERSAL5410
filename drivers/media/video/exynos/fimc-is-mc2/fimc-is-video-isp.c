@@ -512,21 +512,10 @@ static void fimc_is_isp_buffer_queue(struct vb2_buffer *vb)
 	struct fimc_is_video_isp *video = vb->vb2_queue->drv_priv;
 	struct fimc_is_video_common *common = &video->common;
 	struct fimc_is_device_ischain *ischain = common->device;
-	struct fimc_is_core *core;
-
-	index = vb->v4l2_buf.index;
 
 #ifdef DBG_STREAMING
 	dbg_isp("%s(%d)\n", __func__, index);
 #endif
-
-	if (!test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &common->state)) {
-		core = common->core;
-
-		fimc_is_itf_cfg_mem(ischain,
-			core->mem.vb2->plane_addr(vb, 1),
-			common->frame.size[1]);
-	}
 
 	fimc_is_video_buffer_queue(common, vb, ischain->framemgr);
 	fimc_is_ischain_isp_buffer_queue(ischain, vb->v4l2_buf.index);

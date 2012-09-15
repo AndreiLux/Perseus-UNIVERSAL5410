@@ -79,11 +79,20 @@ enum fimc_is_frame_reqeust {
 	REQ_SHOT
 };
 
+enum fimc_is_frame_init {
+	/* uninitialized memory */
+	FRAME_UNI_MEM,
+	/* initialized memory */
+	FRAME_INI_MEM,
+	/* configured memory */
+	FRAME_CFG_MEM
+};
+
 struct fimc_is_frame_shot {
 	struct list_head list;
 
-	/*sensor and isp use*/
-	bool init;
+	/* sensor and isp use */
+	enum fimc_is_frame_init init;
 	struct camera2_shot *shot;
 	struct camera2_shot_ext *shot_ext;
 	u32 kvaddr_shot;
@@ -91,16 +100,19 @@ struct fimc_is_frame_shot {
 	u32 cookie_shot;
 	u32 shot_size;
 
-	/*stream use*/
+	/* stream use */
 	struct camera2_stream *stream;
 	u32 stream_size;
 
+	/* common use */
 	u32 planes;
 	u32 kvaddr_buffer[4];
 	u32 dvaddr_buffer[4];
 
+	/* time measure */
 	struct timeval *tzone;
 
+	/* internal use */
 	u32 state;
 	u32 fcount;
 	u32 index;
