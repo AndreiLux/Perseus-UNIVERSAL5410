@@ -253,6 +253,10 @@
 #define WINCON1_BPPMODE_13BPP_A1444		(0xe << 2)
 #define WINCON1_BPPMODE_16BPP_A4444		(0xe << 2)
 
+/* WIN_RGB_ORDERx */
+
+#define WIN_RGB_ORDER_BGR			(1 << 11)
+#define WIN_RGB_ORDER_RGB			(0 << 11)
 /* S5PV210 */
 #define SHADOWCON				(0x34)
 #define SHADOWCON_WINx_PROTECT(_win)		(1 << (10 + (_win)))

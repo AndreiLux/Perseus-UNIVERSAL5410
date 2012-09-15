@@ -222,6 +222,7 @@ struct s3c_reg_data {
 	struct list_head	list;
 	u32			shadowcon;
 	u32			wincon[S3C_FB_MAX_WIN];
+	u32			win_rgborder[S3C_FB_MAX_WIN];
 	u32			winmap[S3C_FB_MAX_WIN];
 	u32			vidosd_a[S3C_FB_MAX_WIN];
 	u32			vidosd_b[S3C_FB_MAX_WIN];
@@ -1561,6 +1562,9 @@ static u32 s3c_fb_red_length(int format)
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 		return 5;
 
+	case S3C_FB_PIXEL_FORMAT_RGB_565:
+		return 5;
+
 	default:
 		pr_warn("s3c-fb: unrecognized pixel format %u\n", format);
 		return 0;
@@ -1574,6 +1578,8 @@ static u32 s3c_fb_red_offset(int format)
 	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 		return 0;
+	case S3C_FB_PIXEL_FORMAT_RGB_565:
+		return 11;
 
 	default:
 		pr_warn("s3c-fb: unrecognized pixel format %u\n", format);
@@ -1583,7 +1589,21 @@ static u32 s3c_fb_red_offset(int format)
 
 static u32 s3c_fb_green_length(int format)
 {
-	return s3c_fb_red_length(format);
+	switch (format) {
+	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
+	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
+		return 8;
+
+	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
+		return 5;
+
+	case S3C_FB_PIXEL_FORMAT_RGB_565:
+		return 6;
+
+	default:
+		pr_warn("s3c-fb: unrecognized pixel format %u\n", format);
+		return 0;
+		}
 }
 
 static u32 s3c_fb_green_offset(int format)
@@ -1595,7 +1615,8 @@ static u32 s3c_fb_green_offset(int format)
 
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 		return 5;
-
+	case S3C_FB_PIXEL_FORMAT_RGB_565:
+		return 5;
 	default:
 		pr_warn("s3c-fb: unrecognized pixel format %u\n", format);
 		return 0;
@@ -1616,7 +1637,8 @@ static u32 s3c_fb_blue_offset(int format)
 
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
 		return 10;
-
+	case S3C_FB_PIXEL_FORMAT_RGB_565:
+		return 0;
 	default:
 		pr_warn("s3c-fb: unrecognized pixel format %u\n", format);
 		return 0;
@@ -1633,6 +1655,7 @@ static u32 s3c_fb_transp_length(int format)
 		return 1;
 
 	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
+	case S3C_FB_PIXEL_FORMAT_RGB_565:
 		return 0;
 
 	default:
@@ -1653,6 +1676,8 @@ static u32 s3c_fb_transp_offset(int format)
 	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
 		return s3c_fb_blue_offset(format);
 
+	case S3C_FB_PIXEL_FORMAT_RGB_565:
+		return 0;
 	default:
 		pr_warn("s3c-fb: unrecognized pixel format %u\n", format);
 		return 0;
@@ -1667,6 +1692,7 @@ static u32 s3c_fb_padding(int format)
 
 	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
 	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
+	case S3C_FB_PIXEL_FORMAT_RGB_565:
 		return 0;
 
 	default:
@@ -1676,6 +1702,22 @@ static u32 s3c_fb_padding(int format)
 
 }
 
+static u32 s3c_fb_rgborder(int format)
+{
+	switch (format) {
+	case S3C_FB_PIXEL_FORMAT_RGBX_8888:
+	case S3C_FB_PIXEL_FORMAT_RGBA_8888:
+	case S3C_FB_PIXEL_FORMAT_RGBA_5551:
+		return WIN_RGB_ORDER_RGB;
+	case S3C_FB_PIXEL_FORMAT_RGB_565:
+		return WIN_RGB_ORDER_BGR;
+
+	default:
+		pr_warn("s3c-fb: unrecognized pixel format %u\n", format);
+		return 0;
+	}
+
+}
 static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 		struct s3c_fb_win_config *win_config, struct s3c_reg_data *regs)
 {
@@ -1725,6 +1767,9 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 			win->fbinfo->var.blue.length +
 			win->fbinfo->var.transp.length +
 			s3c_fb_padding(win_config->format);
+
+
+	regs->win_rgborder[win_no] = s3c_fb_rgborder(win_config->format);
 
 	if (win_config->stride <
 			win_config->w * win->fbinfo->var.bits_per_pixel / 8) {
@@ -1975,6 +2020,7 @@ static void __s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 
 	for (i = 0; i < sfb->variant.nr_windows; i++) {
 		writel(regs->wincon[i], sfb->regs + WINCON(i));
+		writel(regs->win_rgborder[i], sfb->regs + WIN_RGB_ORDER(i));
 		writel(regs->winmap[i], sfb->regs + WINxMAP(i));
 		writel(regs->vidosd_a[i],
 				sfb->regs + VIDOSD_A(i, sfb->variant));
