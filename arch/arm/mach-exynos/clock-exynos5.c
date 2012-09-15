@@ -1874,6 +1874,15 @@ static struct clksrc_clk exynos5_clksrcs[] = {
 		.reg_div = { .reg = EXYNOS5_CLKDIV_GSCL, .shift = 28, .size = 4 },
 	}, {
 		.clk	= {
+			.name		= "sclk_bayer",
+			.enable		= exynos5_clksrc_mask_gscl_ctrl,
+			.ctrlbit	= (1 << 12),
+		},
+		.sources = &exynos5_clkset_group,
+		.reg_src = { .reg = EXYNOS5_CLKSRC_GSCL, .shift = 12, .size = 4 },
+		.reg_div = { .reg = EXYNOS5_CLKDIV_GSCL, .shift = 12, .size = 4 },
+	}, {
+		.clk	= {
 			.name		= "sclk_cam0",
 			.enable		= exynos5_clksrc_mask_gscl_ctrl,
 			.ctrlbit	= (1 << 16),
