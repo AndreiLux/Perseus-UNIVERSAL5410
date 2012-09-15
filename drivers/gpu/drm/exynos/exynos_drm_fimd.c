@@ -817,13 +817,13 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable)
 		for (i = 0; i < WINDOWS_NR; i++)
 			fimd_win_disable(dev, i);
 
+		if (pdata->panel_type == DP_LCD)
+			writel(0, ctx->regs + DPCLKCON);
+
 		clk_disable(ctx->lcd_clk);
 		clk_disable(ctx->bus_clk);
 
 		ctx->suspended = true;
-
-		if (pdata->panel_type == DP_LCD)
-			writel(0, ctx->regs + DPCLKCON);
 	}
 
 	return 0;
