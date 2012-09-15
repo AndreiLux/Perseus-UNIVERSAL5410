@@ -346,6 +346,12 @@ static int __init exynos_drm_init(void)
 		goto out_fimd;
 #endif
 
+#ifdef CONFIG_DRM_EXYNOS_DP
+	ret = platform_driver_register(&dp_driver);
+	if (ret < 0)
+		goto out_dp_driver;
+#endif
+
 #ifdef CONFIG_DRM_EXYNOS_HDMI
 	ret = platform_driver_register(&hdmi_driver);
 	if (ret < 0)
@@ -385,6 +391,8 @@ out_mixer:
 out_hdmi:
 #endif
 
+	platform_driver_unregister(&dp_driver);
+out_dp_driver:
 #ifdef CONFIG_DRM_EXYNOS_FIMD
 	platform_driver_unregister(&fimd_driver);
 out_fimd:
@@ -408,6 +416,7 @@ static void __exit exynos_drm_exit(void)
 	platform_driver_unregister(&vidi_driver);
 #endif
 
+	platform_driver_unregister(&dp_driver);
 #ifdef CONFIG_DRM_EXYNOS_FIMD
 	platform_driver_unregister(&fimd_driver);
 #endif

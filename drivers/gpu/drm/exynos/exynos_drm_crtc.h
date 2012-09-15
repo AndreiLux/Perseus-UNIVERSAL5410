@@ -29,6 +29,10 @@
 #ifndef _EXYNOS_DRM_CRTC_H_
 #define _EXYNOS_DRM_CRTC_H_
 
+#include "drmP.h"
+#include "drm.h"
+#include "drm_crtc.h"
+
 struct exynos_drm_overlay *get_exynos_drm_overlay(struct drm_device *dev,
 		struct drm_crtc *crtc);
 int exynos_drm_crtc_create(struct drm_device *dev, unsigned int nr);

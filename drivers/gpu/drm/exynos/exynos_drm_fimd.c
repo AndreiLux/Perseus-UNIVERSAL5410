@@ -22,6 +22,7 @@
 #include <drm/exynos_drm.h>
 #include <plat/regs-fb-v4.h>
 
+#include "exynos_dp_core.h"
 #include "exynos_drm_drv.h"
 #include "exynos_drm_crtc.h"
 #include "exynos_drm_fbdev.h"
@@ -94,6 +95,14 @@ struct fimd_context {
 
 	struct exynos_drm_panel_info *panel;
 };
+
+static struct device *dp_dev;
+
+void exynos_fimd_dp_attach(struct device *dev)
+{
+	DRM_DEBUG_KMS("%s. %s.\n", __FILE__, __func__);
+	dp_dev = dev;
+}
 
 static bool fimd_display_is_connected(struct device *dev)
 {
@@ -808,7 +817,13 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable)
 
 		if (pdata->panel_type == DP_LCD)
 			writel(MIE_CLK_ENABLE, ctx->regs + DPCLKCON);
+
+		if (dp_dev)
+			exynos_dp_resume(dp_dev);
 	} else {
+		if (dp_dev)
+			exynos_dp_suspend(dp_dev);
+
 		/*
 		 * We need to make sure that all windows are disabled before we
 		 * suspend that connector. Otherwise we might try to scan from

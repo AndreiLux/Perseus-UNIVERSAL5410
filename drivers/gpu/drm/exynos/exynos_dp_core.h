@@ -13,6 +13,8 @@
 #ifndef _EXYNOS_DP_CORE_H
 #define _EXYNOS_DP_CORE_H
 
+#include <video/exynos_dp.h>
+
 enum dp_irq_type {
 	DP_IRQ_TYPE_HP_CABLE_IN,
 	DP_IRQ_TYPE_HP_CABLE_OUT,
@@ -43,6 +45,10 @@ struct exynos_dp_device {
 	struct link_train	link_train;
 	struct work_struct	hotplug_work;
 };
+
+/* exynos_dp_core.c */
+int exynos_dp_suspend(struct device *dev);
+int exynos_dp_resume(struct device *dev);
 
 /* exynos_dp_reg.c */
 void exynos_dp_enable_video_mute(struct exynos_dp_device *dp, bool enable);

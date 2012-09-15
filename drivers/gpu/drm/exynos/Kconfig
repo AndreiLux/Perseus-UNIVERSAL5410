@@ -28,6 +28,12 @@ config DRM_EXYNOS_HDMI
 	help
 	  Choose this option if you want to use Exynos HDMI for DRM.
 
+config DRM_EXYNOS_DP
+	bool "EXYNOS DRM DP driver support"
+	depends on DRM_EXYNOS
+	help
+	  This enables support for DP device.
+
 config DRM_EXYNOS_VIDI
 	bool "Exynos DRM Virtual Display"
 	depends on DRM_EXYNOS
