@@ -176,8 +176,7 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 
 	clk_set_rate(aclk_266_div0, 134 * 1000000);
 	clk_set_rate(aclk_266_div1, 68 * 1000000);
-	/* FIXME */
-	__raw_writel(0x00000001, EXYNOS5_CLKDIV_ISP2);
+	clk_set_rate(aclk_266_mpwm, 34 * 1000000);
 
 	isp_266 = clk_get_rate(aclk_266);
 	pr_debug("isp_266 : %ld\n", isp_266);
@@ -367,7 +366,7 @@ int exynos5_fimc_is_clk_on(struct platform_device *pdev, int sensor_id)
 		clk_enable(mipi_ctrl);
 		clk_put(mipi_ctrl);
 
-		cam_clk = clk_get(&pdev->dev, "sclk_cam1");
+		cam_clk = clk_get(&pdev->dev, "sclk_bayer");
 		if (IS_ERR(cam_clk))
 			return PTR_ERR(cam_clk);
 
@@ -443,7 +442,7 @@ int exynos5_fimc_is_clk_off(struct platform_device *pdev, int sensor_id)
 	}
 
 	if (sensor->csi_id == CSI_ID_B) {
-		cam_clk = clk_get(&pdev->dev, "sclk_cam1");
+		cam_clk = clk_get(&pdev->dev, "sclk_bayer");
 		if (IS_ERR(cam_clk))
 			return PTR_ERR(cam_clk);
 
@@ -580,7 +579,7 @@ int exynos5_fimc_is_sensor_power_on(struct platform_device *pdev,
 			if (IS_ERR_VALUE(cfg_gpio(
 					&sensor->sensor_gpio.reset_myself, 1)))
 				goto error_sensor_power_on;
-		msleep(10);
+		usleep_range(10, 100);
 
 		break;
 
@@ -613,12 +612,6 @@ int exynos5_fimc_is_sensor_power_on(struct platform_device *pdev,
 			if (IS_ERR_VALUE(cfg_gpio(
 					&sensor->sensor_gpio.power, 1)))
 				goto error_sensor_power_on;
-
-		usleep_range(500, 1000);
-		if (sensor->sensor_gpio.reset_myself.pin)
-			if (IS_ERR_VALUE(cfg_gpio(
-					&sensor->sensor_gpio.reset_myself, 1)))
-				goto error_sensor_power_on;
 		usleep_range(500, 1000);
 
 		if (sensor->sensor_power.cam_io_myself)
@@ -643,7 +636,25 @@ int exynos5_fimc_is_sensor_power_on(struct platform_device *pdev,
 			if (IS_ERR_VALUE(cfg_gpio(
 					&sensor->sensor_gpio.reset_peer, 0)))
 				goto error_sensor_power_on;
-		msleep(10);
+		usleep_range(1000, 1500);
+
+		if (sensor->sensor_gpio.reset_myself.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_myself, 1)))
+				goto error_sensor_power_on;
+		usleep_range(500, 1000);
+
+		if (sensor->sensor_gpio.reset_myself.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_myself, 0)))
+				goto error_sensor_power_on;
+		usleep_range(500, 1000);
+
+		if (sensor->sensor_gpio.reset_myself.pin)
+			if (IS_ERR_VALUE(cfg_gpio(
+					&sensor->sensor_gpio.reset_myself, 1)))
+				goto error_sensor_power_on;
+		usleep_range(10, 100);
 
 		break;
 	default:
