@@ -368,7 +368,7 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 	int recv_bytes;
 	uint32_t status;
 	uint32_t aux_clock_divider;
-	int try, precharge = 5;
+	int try, aux_ch_try, precharge = 5;
 
 	intel_dp_check_edp(intel_dp);
 	/* The clock divider is based off the hrawclk,
@@ -419,7 +419,10 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 			   DP_AUX_CH_CTL_DONE |
 			   DP_AUX_CH_CTL_TIME_OUT_ERROR |
 			   DP_AUX_CH_CTL_RECEIVE_ERROR);
-		for (;;) {
+		/* Wait 1 ms then timeout, it should be sufficient since the
+		 * timeout above is 400us
+		 */
+		for(aux_ch_try = 0; aux_ch_try < 10; aux_ch_try++) {
 			status = I915_READ(ch_ctl);
 			if ((status & DP_AUX_CH_CTL_SEND_BUSY) == 0)
 				break;
@@ -439,6 +442,10 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 		if (status & DP_AUX_CH_CTL_DONE)
 			break;
 	}
+
+	/* If after 5 tries we're still busy, give up. */
+	if ((status & DP_AUX_CH_CTL_SEND_BUSY) != 0)
+		return -EIO;
 
 	if ((status & DP_AUX_CH_CTL_DONE) == 0) {
 		DRM_ERROR("dp_aux_ch not done status 0x%08x\n", status);
