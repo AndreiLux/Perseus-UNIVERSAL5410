@@ -1544,6 +1544,9 @@ static void emif_shutdown(struct platform_device *pdev)
 	struct emif_data	*emif = platform_get_drvdata(pdev);
 	void __iomem		*base = emif->base;
 
+	/* Reset LP_Mode to 'Disabled' */
+	writel(0, base + EMIF_POWER_MANAGEMENT_CONTROL);
+
 	/* Disable all interrupts */
 	writel(readl(base + EMIF_SYSTEM_OCP_INTERRUPT_ENABLE_SET),
 		base + EMIF_SYSTEM_OCP_INTERRUPT_ENABLE_CLEAR);
