@@ -23,7 +23,8 @@
  * to the AP over some bus (such as i2c, lpc, spi).  The EC does debouncing,
  * but everything else (including deghosting) is done here.  The main
  * motivation for this is to keep the EC firmware as simple as possible, since
- * it cannot be easily upgraded.
+ * it cannot be easily upgraded and EC flash/IRAM space is relatively
+ * expensive.
  */
 
 #include <linux/module.h>
@@ -271,8 +272,8 @@ static int __devinit mkbp_probe(struct platform_device *pdev)
 	mkbp_dev->notifier.notifier_call = mkbp_work;
 	mkbp_dev->dev = dev;
 
-	idev->name = ec->client->name;
-	idev->phys = ec->client->adapter->name;
+	idev->name = ec->get_name(ec);
+	idev->phys = ec->get_phys_name(ec);
 	idev->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_REP);
 	idev->keycode = identity_keycodes;
 	idev->keycodesize = sizeof(identity_keycodes[0]);
@@ -282,10 +283,12 @@ static int __devinit mkbp_probe(struct platform_device *pdev)
 		identity_keycodes[i] = i;
 		input_set_capability(idev, EV_KEY, i);
 	}
+
+	/* TODO(sjg@chromium.org): This could be SPI or LPC */
 	idev->id.bustype = BUS_I2C;
 	idev->id.version = 1;
 	idev->id.product = 0;
-	idev->dev.parent = &ec->client->dev;
+	idev->dev.parent = ec->get_parent(ec);
 	idev->open = mkbp_open;
 	idev->close = mkbp_close;
 
@@ -308,6 +311,8 @@ static int __devinit mkbp_probe(struct platform_device *pdev)
 	 */
 	mkbp_dev->idev->rep[REP_DELAY] = 600;
 	input_device_registered = true;
+
+	dev_info(dev, "MKBP Keyboard ready\n");
 
 	return err;
 fail:

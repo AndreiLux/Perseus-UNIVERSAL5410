@@ -25,7 +25,6 @@
 #include <linux/module.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
-#include <linux/mfd/core.h>
 #include <linux/mfd/chromeos_ec.h>
 #include <linux/mfd/chromeos_ec_commands.h>
 #include <linux/platform_device.h>
@@ -40,9 +39,14 @@ static inline struct chromeos_ec_device *to_ec_dev(struct device *dev)
 	return i2c_get_clientdata(client);
 }
 
+/*
+ * TODO(sjg@chromium.org): Rewrite this function to use cros_ec_prepare_tx()
+ * and some sort of generic rx function also
+ */
 static int cros_ec_command_xfer_noretry(struct chromeos_ec_device *ec_dev,
 					struct chromeos_ec_msg *msg)
 {
+	struct i2c_client *client = ec_dev->priv;
 	int ret = -ENOMEM;
 	int i;
 	int packet_len;
@@ -52,9 +56,9 @@ static int cros_ec_command_xfer_noretry(struct chromeos_ec_device *ec_dev,
 	u8 sum;
 	struct i2c_msg i2c_msg[2];
 
-	i2c_msg[0].addr = ec_dev->client->addr;
+	i2c_msg[0].addr = client->addr;
 	i2c_msg[0].flags = 0;
-	i2c_msg[1].addr = ec_dev->client->addr;
+	i2c_msg[1].addr = client->addr;
 	i2c_msg[1].flags = I2C_M_RD;
 
 	if (msg->in_len) {
@@ -96,7 +100,7 @@ static int cros_ec_command_xfer_noretry(struct chromeos_ec_device *ec_dev,
 	}
 
 	/* send command to EC and read answer */
-	ret = i2c_transfer(ec_dev->client->adapter, i2c_msg, 2);
+	ret = i2c_transfer(client->adapter, i2c_msg, 2);
 	if (ret < 0) {
 		dev_err(ec_dev->dev, "i2c transfer failed: %d\n", ret);
 		goto done;
@@ -159,181 +163,109 @@ static int cros_ec_command_xfer(struct chromeos_ec_device *ec_dev,
 	return ret;
 }
 
-static int cros_ec_command_raw(struct chromeos_ec_device *ec_dev,
+static int cros_ec_command_i2c(struct chromeos_ec_device *ec_dev,
 			       struct i2c_msg *msgs, int num)
 {
-	return i2c_transfer(ec_dev->client->adapter, msgs, num);
+	struct i2c_client *client = ec_dev->priv;
+
+	return i2c_transfer(client->adapter, msgs, num);
 }
 
-static int cros_ec_command_recv(struct chromeos_ec_device *ec_dev,
-				char cmd, void *buf, int buf_len)
+static const char *cros_ec_get_name(struct chromeos_ec_device *ec_dev)
 {
-	struct chromeos_ec_msg msg;
+	struct i2c_client *client = ec_dev->priv;
 
-	msg.cmd = cmd;
-	msg.in_buf = buf;
-	msg.in_len = buf_len;
-	msg.out_buf = NULL;
-	msg.out_len = 0;
-
-	return cros_ec_command_xfer(ec_dev, &msg);
+	return client->name;
 }
 
-static int cros_ec_command_send(struct chromeos_ec_device *ec_dev,
-				char cmd, void *buf, int buf_len)
+static const char *cros_ec_get_phys_name(struct chromeos_ec_device *ec_dev)
 {
-	struct chromeos_ec_msg msg;
+	struct i2c_client *client = ec_dev->priv;
 
-	msg.cmd = cmd;
-	msg.out_buf = buf;
-	msg.out_len = buf_len;
-	msg.in_buf = NULL;
-	msg.in_len = 0;
-
-	return cros_ec_command_xfer(ec_dev, &msg);
+	return client->adapter->name;
 }
 
-static irqreturn_t ec_irq_thread(int irq, void *data)
+static struct device *cros_ec_get_parent(struct chromeos_ec_device *ec_dev)
 {
-	struct chromeos_ec_device *ec = data;
+	struct i2c_client *client = ec_dev->priv;
 
-	if (device_may_wakeup(ec->dev))
-		pm_wakeup_event(ec->dev, 0);
-
-	blocking_notifier_call_chain(&ec->event_notifier, 1, ec);
-
-	return IRQ_HANDLED;
+	return &client->dev;
 }
 
-static int __devinit check_protocol_version(struct chromeos_ec_device *ec)
-{
-	int ret;
-	struct ec_response_proto_version data;
-
-	ret = cros_ec_command_recv(ec, EC_CMD_PROTO_VERSION,
-				   &data, sizeof(data));
-	if (ret < 0)
-		return ret;
-	dev_info(ec->dev, "protocol version: %d\n", data.version);
-	if (data.version != EC_PROTO_VERSION)
-		return -EPROTONOSUPPORT;
-
-	return 0;
-}
-
-static struct mfd_cell cros_devs[] = {
-	{
-		.name = "mkbp",
-		.id = 1,
-	},
-	{
-		.name = "cros_ec-fw",
-		.id = 2,
-	},
-	{
-		.name = "cros_ec-i2c",
-		.id = 3,
-	},
-};
-
-static int __devinit cros_ec_probe(struct i2c_client *client,
+static int __devinit cros_ec_probe_i2c(struct i2c_client *client,
 				   const struct i2c_device_id *dev_id)
 {
 	struct device *dev = &client->dev;
 	struct chromeos_ec_device *ec_dev = NULL;
 	int err;
 
-	dev_dbg(dev, "probing\n");
+	if (dev->of_node && !of_device_is_available(dev->of_node)) {
+		dev_dbg(dev, "Device disabled by device tree\n");
+		return -ENODEV;
+	}
 
-	ec_dev = kzalloc(sizeof(*ec_dev), GFP_KERNEL);
-	if (ec_dev == NULL) {
+	ec_dev = cros_ec_alloc("I2C");
+	if (!ec_dev) {
 		err = -ENOMEM;
-		dev_err(dev, "cannot allocate\n");
+		dev_err(dev, "cannot create cros_ec\n");
 		goto fail;
 	}
 
-	ec_dev->client = client;
-	ec_dev->dev = dev;
 	i2c_set_clientdata(client, ec_dev);
+	ec_dev->dev = dev;
+	ec_dev->priv = client;
 	ec_dev->irq = client->irq;
-	ec_dev->command_send = cros_ec_command_send;
-	ec_dev->command_recv = cros_ec_command_recv;
 	ec_dev->command_xfer = cros_ec_command_xfer;
-	ec_dev->command_raw  = cros_ec_command_raw;
+	ec_dev->command_i2c  = cros_ec_command_i2c;
+	ec_dev->get_name = cros_ec_get_name;
+	ec_dev->get_phys_name = cros_ec_get_phys_name;
+	ec_dev->get_parent = cros_ec_get_parent;
 
-	BLOCKING_INIT_NOTIFIER_HEAD(&ec_dev->event_notifier);
-
-	err = request_threaded_irq(ec_dev->irq, NULL, ec_irq_thread,
-				   IRQF_TRIGGER_LOW | IRQF_ONESHOT,
-				   "chromeos-ec", ec_dev);
+	err = cros_ec_register(ec_dev);
 	if (err) {
-		dev_err(dev, "request irq %d: error %d\n", ec_dev->irq, err);
-		goto fail;
+		dev_err(dev, "cannot register EC\n");
+		goto fail_register;
 	}
-
-	err = check_protocol_version(ec_dev);
-	if (err < 0) {
-		dev_err(dev, "protocol version check failed: %d\n", err);
-		goto fail_irq;
-	}
-
-	err = mfd_add_devices(dev, 0, cros_devs,
-			      ARRAY_SIZE(cros_devs),
-			      NULL, ec_dev->irq);
-	if (err)
-		goto fail_irq;
 
 	return 0;
-fail_irq:
-	free_irq(ec_dev->irq, ec_dev);
+fail_register:
+	cros_ec_free(ec_dev);
 fail:
-	kfree(ec_dev);
 	return err;
 }
 
 #ifdef CONFIG_PM_SLEEP
-static int cros_ec_suspend(struct device *dev)
+static int cros_ec_i2c_suspend(struct device *dev)
 {
-	struct chromeos_ec_device *ec = to_ec_dev(dev);
+	struct chromeos_ec_device *ec_dev = to_ec_dev(dev);
 
-	if (device_may_wakeup(dev))
-		ec->wake_enabled = !enable_irq_wake(ec->irq);
-
-	disable_irq(ec->irq);
-
-	return 0;
+	return cros_ec_suspend(ec_dev);
 }
 
-static int cros_ec_resume(struct device *dev)
+static int cros_ec_i2c_resume(struct device *dev)
 {
-	struct chromeos_ec_device *ec = to_ec_dev(dev);
+	struct chromeos_ec_device *ec_dev = to_ec_dev(dev);
 
-	enable_irq(ec->irq);
-
-	if (ec->wake_enabled) {
-		disable_irq_wake(ec->irq);
-		ec->wake_enabled = 0;
-	}
-
-	return 0;
+	return cros_ec_resume(ec_dev);
 }
 #endif
 
-static SIMPLE_DEV_PM_OPS(cros_ec_pm_ops, cros_ec_suspend, cros_ec_resume);
+static SIMPLE_DEV_PM_OPS(cros_ec_i2c_pm_ops, cros_ec_i2c_suspend,
+			  cros_ec_i2c_resume);
 
 static const struct i2c_device_id cros_ec_i2c_id[] = {
-	{ "chromeos-ec", 0 },
+	{ "chromeos-ec-i2c", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, mkbp_i2c_id);
 
 static struct i2c_driver cros_ec_driver = {
 	.driver	= {
-		.name	= "chromeos-ec",
+		.name	= "chromeos-ec-i2c",
 		.owner	= THIS_MODULE,
-		.pm	= &cros_ec_pm_ops,
+		.pm	= &cros_ec_i2c_pm_ops,
 	},
-	.probe		= cros_ec_probe,
+	.probe		= cros_ec_probe_i2c,
 	.id_table	= cros_ec_i2c_id,
 };
 

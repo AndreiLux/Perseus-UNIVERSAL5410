@@ -331,7 +331,7 @@
 		};
 
                 ec {
-			compatible = "google,chromeos-ec";
+			compatible = "google,chromeos-ec-i2c";
                         reg = <0x1e>;
                         interrupts = <14 0>;
 			interrupt-parent = <&wakeup_eint>;

@@ -37,7 +37,7 @@ static int ec_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg i2c_msgs[],
 {
 	struct ec_i2c_device *bus = adap->algo_data;
 
-	return bus->ec->command_raw(bus->ec, i2c_msgs, num);
+	return bus->ec->command_i2c(bus->ec, i2c_msgs, num);
 }
 
 static u32 ec_i2c_functionality(struct i2c_adapter *adap)
@@ -75,17 +75,20 @@ static int __devinit ec_i2c_probe(struct platform_device *pdev)
 	strlcpy(bus->adap.name, "cros_ec_i2c", sizeof(bus->adap.name));
 	bus->adap.algo = &ec_i2c_algorithm;
 	bus->adap.algo_data = bus;
-	bus->adap.dev.parent = &ec->client->dev;
+	bus->adap.dev.parent = &pdev->dev;
 	err = i2c_add_adapter(&bus->adap);
 	if (err) {
 		dev_err(dev, "cannot register i2c adapter\n");
-		goto fail;
+		goto fail_reg;
 	}
 	platform_set_drvdata(pdev, bus);
 
+	dev_info(&pdev->dev, "%s: Chrome EC I2C pass-through adapter\n",
+		 dev_name(bus->dev));
 	return 0;
-fail:
+fail_reg:
 	kfree(bus);
+fail:
 	return err;
 }
 
