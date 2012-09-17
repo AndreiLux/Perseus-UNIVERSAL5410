@@ -2505,8 +2505,6 @@ static int pl330_alloc_chan_resources(struct dma_chan *chan)
 		return 0;
 	}
 
-	tasklet_init(&pch->task, pl330_tasklet, (unsigned long) pch);
-
 	spin_unlock_irqrestore(&pch->lock, flags);
 
 	return 1;
@@ -2570,8 +2568,6 @@ static void pl330_free_chan_resources(struct dma_chan *chan)
 	unsigned long flags;
 
 	spin_lock_irqsave(&pch->lock, flags);
-
-	tasklet_kill(&pch->task);
 
 	pl330_release_channel(pch->pl330_chid);
 	pch->pl330_chid = NULL;
@@ -3068,6 +3064,8 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 		pch->chan.device = pd;
 		pch->dmac = pdmac;
 
+		tasklet_init(&pch->task, pl330_tasklet, (unsigned long)pch);
+
 		/* Add the channel to the DMAC list */
 		list_add_tail(&pch->chan.device_node, &pd->channels);
 	}
@@ -3111,6 +3109,10 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 	return 0;
 
 probe_err4:
+	for (i = 0; i < num_chan; i++) {
+		pch = &pdmac->peripherals[i];
+		tasklet_kill(&pch->task);
+	}
 	pl330_del(pi);
 probe_err3:
 	free_irq(irq, pi);
@@ -3145,6 +3147,7 @@ static int __devexit pl330_remove(struct amba_device *adev)
 
 		/* Flush the channel */
 		pl330_control(&pch->chan, DMA_TERMINATE_ALL, 0);
+		tasklet_kill(&pch->task);
 		pl330_free_chan_resources(&pch->chan);
 	}
 
