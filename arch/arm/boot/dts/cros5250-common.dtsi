@@ -62,6 +62,20 @@
 			max77686,buck_ramp_delay = <1>;		/* default */
 
 			voltage-regulators {
+				ldo6_reg: LDO6 {
+					regulator-name = "vdd_ldo6";
+					regulator-min-microvolt = <1000000>;
+					regulator-max-microvolt = <1000000>;
+					regulator-always-on;
+					reg_op_mode = <0>; /* Off Mode */
+				};
+				ldo7_reg: LDO7 {
+					regulator-name = "vdd_ldo7";
+					regulator-min-microvolt = <1000000>;
+					regulator-max-microvolt = <1000000>;
+					regulator-always-on;
+					reg_op_mode = <1>; /* Standby Mode */
+				};
 				ldo8_reg: LDO8 {
 					regulator-name = "vdd_ldo8";
 					regulator-min-microvolt = <1000000>;
@@ -69,21 +83,54 @@
 					regulator-always-on;
 					reg_op_mode = <1>; /* Standby Mode */
 				};
-
+				ldo10_reg: LDO10 {
+					regulator-name = "vdd_ldo10";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					regulator-always-on;
+					reg_op_mode = <1>; /* Standby Mode */
+				};
 				ldo11_reg: LDO11 {
 					regulator-name = "vdd_ldo11";
-					regulator-min-microvolt = <1900000>;
-					regulator-max-microvolt = <1900000>;
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
 					regulator-always-on;
-					reg_op_mode = <3>; /* Normal Mode */
+					reg_op_mode = <0>; /* Off Mode */
 				};
-
+				ldo12_reg: LDO12 {
+					regulator-name = "vdd_ldo12";
+					regulator-min-microvolt = <3000000>;
+					regulator-max-microvolt = <3000000>;
+					regulator-always-on;
+					reg_op_mode = <1>; /* Standby Mode */
+				};
+				ldo13_reg: LDO13 {
+					regulator-name = "vdd_ldo13";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					regulator-always-on;
+					reg_op_mode = <0>; /* Off Mode */
+				};
 				ldo14_reg: LDO14 {
 					regulator-name = "vdd_ldo14";
-					regulator-min-microvolt = <1900000>;
-					regulator-max-microvolt = <1900000>;
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
 					regulator-always-on;
-					reg_op_mode = <3>; /* Normal Mode */
+					reg_op_mode = <1>; /* Standby Mode */
+				};
+				ldo15_reg: LDO15 {
+					regulator-name = "vdd_ldo15";
+					regulator-min-microvolt = <1000000>;
+					regulator-max-microvolt = <1000000>;
+					regulator-always-on;
+					reg_op_mode = <1>; /* Standby Mode */
+				};
+				ldo16_reg: LDO16 {
+					regulator-name = "vdd_ldo16";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					regulator-always-on;
+					reg_op_mode = <1>; /* Standby Mode */
 				};
 
 				buck1_reg: BUCK1 {
