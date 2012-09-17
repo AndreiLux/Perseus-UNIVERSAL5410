@@ -319,6 +319,7 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 				     struct drm_pending_vblank_event *event)
 {
 	struct drm_device *dev = crtc->dev;
+	struct exynos_drm_private *dev_priv = dev->dev_private;
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 	int ret = -EINVAL;
 	unsigned long flags;
@@ -386,7 +387,7 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 
 		/* Waiting for the KDS resource*/
 		kds_async_waitall(&exynos_fb->kds_res_set, KDS_FLAG_LOCKED_WAIT,
-				  &exynos_fb->kds_cb, crtc, fb, 1, shared,
+				  &dev_priv->kds_cb, crtc, fb, 1, shared,
 				  resource_list);
 	} else {
 		exynos_drm_kds_callback(crtc, fb);

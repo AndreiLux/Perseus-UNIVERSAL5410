@@ -123,9 +123,6 @@ static void exynos_drm_fb_destroy(struct drm_framebuffer *fb)
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
-#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-	kds_callback_term(&exynos_fb->kds_cb);
-#endif
 	drm_framebuffer_cleanup(fb);
 
 	/* wait for vsync from CRTC to safely remove a FB*/
@@ -233,13 +230,6 @@ exynos_user_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 
 		exynos_fb->exynos_gem_obj[i] = to_exynos_gem_obj(obj);
 	}
-#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-	if (kds_callback_init(&exynos_fb->kds_cb, 1,
-			      exynos_drm_kds_callback) < 0) {
-		DRM_ERROR("kds alloc queue failed.\n");
-		return ERR_PTR(-ENOMEM);
-	}
-#endif
 
 	if (exynos_drm_fb_map(fb)) {
 		DRM_ERROR("Failed to map gem object\n");

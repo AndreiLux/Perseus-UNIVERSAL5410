@@ -235,6 +235,10 @@ struct exynos_drm_private {
 	 * this array is used to be aware of which crtc did it request vblank.
 	 */
 	struct drm_crtc *crtc[MAX_CRTC];
+
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	struct kds_callback kds_cb;
+#endif
 };
 
 /*
@@ -306,9 +310,6 @@ void exynos_drm_subdrv_close(struct drm_device *dev, struct drm_file *file);
  */
 struct exynos_drm_fb {
 	struct drm_framebuffer		fb;
-#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
-	struct kds_callback		kds_cb;
-#endif
 	struct exynos_drm_gem_obj	*exynos_gem_obj[MAX_FB_BUFFER];
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 	struct kds_resource_set		*kds_res_set;
