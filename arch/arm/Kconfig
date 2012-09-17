@@ -1420,6 +1420,16 @@ config PL310_ERRATA_769419
 	  on systems with an outer cache, the store buffer is drained
 	  explicitly.
 
+config ARM_ERRATA_774769
+	bool "ARM errata: data corruption may occur with store streaming in a system"
+	depends on CPU_V7
+	help
+	  This option enables the workaround for the erratum 774769.
+	  External memory may be corrupted on erratum 774769.
+	  The workaround is to configure write streaming on versions of A15 (rev r0p4)
+	  affected by this erratum such that no streaming-write ever allocates
+	  into the L2 cache.
+
 endmenu
 
 source "arch/arm/common/Kconfig"
