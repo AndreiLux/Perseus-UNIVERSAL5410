@@ -1273,10 +1273,9 @@ static int s3c24xx_serial_resume(struct device *dev)
 	struct uart_port *port = s3c24xx_dev_to_port(dev);
 	struct s3c24xx_uart_port *ourport = to_ourport(port);
 
-	wr_regl(port, S3C64XX_UINTM, s3c24xx_serial_mask_save[port->line]);
-
 	if (port) {
 		clk_enable(ourport->clk);
+		wr_regl(port, S3C64XX_UINTM, s3c24xx_serial_mask_save[port->line]);
 		s3c24xx_serial_resetport(port, s3c24xx_port_to_cfg(port));
 		clk_disable(ourport->clk);
 
