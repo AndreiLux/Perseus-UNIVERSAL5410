@@ -2162,7 +2162,7 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 			goto err_iomap;
 		}
 
-		ret = platform_device_add_resources(hdmi_audio_device, res, 1);
+		ret = platform_device_add_resources(hdmi_audio_device, res, 2);
 		if (ret) {
 			ret = -ENOMEM;
 			goto err_iomap;
@@ -2225,7 +2225,7 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 	INIT_WORK(&hdata->hotplug_work, hdmi_hotplug_func);
 
 	ret = request_irq(hdata->internal_irq, hdmi_irq_handler,
-			0, "int_hdmi", hdata->parent_ctx);
+			IRQF_SHARED, "int_hdmi", hdata->parent_ctx);
 	if (ret) {
 		DRM_ERROR("request interrupt failed.\n");
 		goto err_workqueue;
@@ -2233,7 +2233,8 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 	disable_irq(hdata->internal_irq);
 
 	ret = request_irq(hdata->external_irq, hdmi_irq_handler,
-		IRQ_TYPE_EDGE_BOTH, "ext_hdmi", hdata->parent_ctx);
+		IRQ_TYPE_EDGE_BOTH | IRQF_SHARED, "ext_hdmi",
+		hdata->parent_ctx);
 	if (ret) {
 		DRM_ERROR("request interrupt failed.\n");
 		goto err_workqueue;
