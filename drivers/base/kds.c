@@ -14,7 +14,7 @@
 
 #include <linux/slab.h>
 #include <linux/list.h>
-#include <linux/mutex.h>
+#include <linux/spinlock.h>
 #include <linux/wait.h>
 #include <linux/sched.h>
 #include <linux/err.h>
@@ -43,7 +43,7 @@ struct kds_resource_set
 	struct kds_link       resources[0];
 };
 
-static DEFINE_MUTEX(kds_lock);
+static DEFINE_SPINLOCK(kds_lock);
 
 int kds_callback_init(struct kds_callback *cb, int direct, kds_callback_fn user_cb)
 {
@@ -140,6 +140,7 @@ int kds_async_waitall(
 		struct kds_resource     **resource_list)
 {
 	struct kds_resource_set *rset = NULL;
+	unsigned long lflags;
 	int i;
 	int triggered;
 	int err = -EFAULT;
@@ -147,26 +148,12 @@ int kds_async_waitall(
 	BUG_ON(!pprset);
 	BUG_ON(!resource_list);
 	BUG_ON(!cb);
-
-	mutex_lock(&kds_lock);
-
-	if ((flags & KDS_FLAG_LOCKED_ACTION) == KDS_FLAG_LOCKED_FAIL)
-	{
-		for (i = 0; i < number_resources; i++)
-		{
-			if (resource_list[i]->lock_count)
-			{
-				err = -EBUSY;
-				goto errout;
-			}
-		}
-	}
+	WARN_ON(number_resources > 10);
 
 	rset = kmalloc(sizeof(*rset) + number_resources * sizeof(struct kds_link), GFP_KERNEL);
 	if (!rset)
 	{
-		err = -ENOMEM;
-		goto errout;
+		return -ENOMEM;
 	}
 
 	rset->num_resources = number_resources;
@@ -180,10 +167,28 @@ int kds_async_waitall(
 
 	for (i = 0; i < number_resources; i++)
 	{
-		unsigned long link_state = 0;
-
 		INIT_LIST_HEAD(&rset->resources[i].link);
 		rset->resources[i].parent = rset;
+
+	}
+
+	spin_lock_irqsave(&kds_lock, lflags);
+
+	if ((flags & KDS_FLAG_LOCKED_ACTION) == KDS_FLAG_LOCKED_FAIL)
+	{
+		for (i = 0; i < number_resources; i++)
+		{
+			if (resource_list[i]->lock_count)
+			{
+				err = -EBUSY;
+				goto errout;
+			}
+		}
+	}
+
+	for (i = 0; i < number_resources; i++)
+	{
+		unsigned long link_state = 0;
 
 		if (test_bit(i, exclusive_access_bitmap))
 		{
@@ -226,7 +231,7 @@ int kds_async_waitall(
 
 	triggered = (rset->pending == 0);
 
-	mutex_unlock(&kds_lock);
+	spin_unlock_irqrestore(&kds_lock, lflags);
 
 	/* set the pointer before the callback is called so it sees it */
 	*pprset = rset;
@@ -245,10 +250,10 @@ roll_back:
 	{
 		list_del(&rset->resources[i].link);
 	}
-	kfree(rset);
 	err = -EINVAL;
 errout:
-	mutex_unlock(&kds_lock);
+	spin_unlock_irqrestore(&kds_lock, lflags);
+	kfree(rset);
 	return err;
 }
 EXPORT_SYMBOL(kds_async_waitall);
@@ -273,6 +278,7 @@ struct kds_resource_set *kds_waitall(
 		unsigned long         jiffies_timeout)
 {
 	struct kds_resource_set *rset;
+	unsigned long flags;
 	int i;
 	int triggered = 0;
 	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wake);
@@ -287,7 +293,7 @@ struct kds_resource_set *kds_waitall(
 	INIT_LIST_HEAD(&rset->callback_link);
 	INIT_WORK(&rset->callback_work, kds_queued_callback);
 
-	mutex_lock(&kds_lock);
+	spin_lock_irqsave(&kds_lock, flags);
 
 	for (i = 0; i < number_resources; i++)
 	{
@@ -342,7 +348,7 @@ struct kds_resource_set *kds_waitall(
 		rset->callback_extra_parameter = NULL;
 	}
 
-	mutex_unlock(&kds_lock);
+	spin_unlock_irqrestore(&kds_lock, flags);
 
 	if (!triggered)
 	{
@@ -373,7 +379,7 @@ roll_back:
 		resource_list[i]->lock_count--;
 	}
 
-	mutex_unlock(&kds_lock);
+	spin_unlock_irqrestore(&kds_lock, flags);
 	kfree(rset);
 	return ERR_PTR(-EINVAL);
 }
@@ -384,18 +390,19 @@ void kds_resource_set_release(struct kds_resource_set **pprset)
 	struct list_head triggered = LIST_HEAD_INIT(triggered);
 	struct kds_resource_set *rset;
 	struct kds_resource_set *it;
+	unsigned long flags;
 	int i;
 
 	BUG_ON(!pprset);
 
-	mutex_lock(&kds_lock);
+	spin_lock_irqsave(&kds_lock, flags);
 
 	rset = *pprset;
 	if (!rset)
 	{
 		/* caught a race between a cancelation
 		 * and a completion, nothing to do */
-		mutex_unlock(&kds_lock);
+		spin_unlock_irqrestore(&kds_lock, flags);
 		return;
 	}
 
@@ -474,7 +481,7 @@ void kds_resource_set_release(struct kds_resource_set **pprset)
 
 	}
 
-	mutex_unlock(&kds_lock);
+	spin_unlock_irqrestore(&kds_lock, flags);
 
 	while (!list_empty(&triggered))
 	{
@@ -483,7 +490,15 @@ void kds_resource_set_release(struct kds_resource_set **pprset)
 		kds_callback_perform(it);
 	}
 
-	cancel_work_sync(&rset->callback_work);
+	/*
+	 * Caller is responsible for guaranteeing that callback work is not
+	 * pending (i.e. its running or completed) prior to calling release.
+	 * This should happen by default since its via the callback that we know
+	 * that the lock has been acquired. The one wierd exception is if
+	 * we use a non-direct callback and the KDS_FLAG_LOCKED_IGNORE flag.
+	 * TODO: we should probably disallow this combinations of options.
+	 */
+	BUG_ON(work_pending(&rset->callback_work));
 
 	/* free the resource set */
 	kfree(rset);
