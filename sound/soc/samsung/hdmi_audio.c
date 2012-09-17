@@ -18,7 +18,10 @@
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include <linux/slab.h>
+#include <linux/irq.h>
 #include <linux/io.h>
+#include <linux/of_gpio.h>
+#include <plat/gpio-cfg.h>
 
 #include "codec_plugin.h"
 #include "hdmi_audio.h"
@@ -196,19 +199,24 @@ static void hdmi_audio_init(struct hdmi_audio_context *ctx)
 	hdmi_audio_i2s_init(ctx);
 }
 
-static void hdmi_audio_control(struct hdmi_audio_context *ctx,
+static int hdmi_audio_control(struct hdmi_audio_context *ctx,
 	bool onoff)
 {
 	u32 mod;
 
-	mod = hdmi_reg_read(ctx, HDMI_MODE_SEL);
-	if (mod & HDMI_DVI_MODE_EN)
-		onoff = false;
+	snd_printdd("[%d] %s on %d\n", __LINE__,
+				__func__, onoff);
 
-	ctx->enabled = onoff;
+	mod = hdmi_reg_read(ctx, HDMI_MODE_SEL);
+	if (mod & HDMI_DVI_MODE_EN && onoff) {
+		snd_printdd("dvi mode on\n");
+		return -EINVAL;
+	}
+
 	hdmi_reg_writeb(ctx, HDMI_AUI_CON, onoff ? 2 : 0);
 	hdmi_reg_writemask(ctx, HDMI_CON_0, onoff ?
 			HDMI_ASP_EN : HDMI_ASP_DIS, HDMI_ASP_MASK);
+	return 0;
 }
 
 static u8 hdmi_chksum(struct hdmi_audio_context *ctx,
@@ -243,6 +251,8 @@ static void hdmi_conf_init(struct hdmi_audio_context *ctx)
 {
 	struct hdmi_infoframe infoframe;
 
+	snd_printdd("[%d] %s\n", __LINE__, __func__);
+
 	/* enable AVI packet every vsync, fixes purple line problem */
 	hdmi_reg_writemask(ctx, HDMI_CON_1, 2, 3 << 5);
 
@@ -266,6 +276,8 @@ static int hdmi_audio_hw_params(struct device *dev,
 		ret = -EINVAL;
 		goto err;
 	}
+
+	snd_printdd("[%d] %s\n", __LINE__, __func__);
 
 	plugin = dev_get_drvdata(dev);
 	ctx = container_of(plugin, struct hdmi_audio_context, plugin);
@@ -314,6 +326,16 @@ static int hdmi_audio_hw_params(struct device *dev,
 		goto err;
 	}
 
+	snd_printdd("chan cnt [%d]\n", ctx->params.chan_count);
+	snd_printdd("bps [%d]\n", ctx->params.bits_per_sample);
+	snd_printdd("sample_rate [%d]\n", ctx->params.sample_rate);
+
+	/* checking here to cache audioparms for hpd plug handling */
+	if (!atomic_read(&ctx->plugged)) {
+		dev_err(dev, "hdmi not plugged\n");
+		return -EINVAL;
+	}
+
 	hdmi_audio_control(ctx, false);
 	hdmi_conf_init(ctx);
 	hdmi_audio_init(ctx);
@@ -337,12 +359,25 @@ static int hdmi_audio_trigger(struct device *dev,
 		return -EINVAL;
 	}
 
+	snd_printdd("[%d] %s\n", __LINE__, __func__);
+
 	plugin = dev_get_drvdata(dev);
 	ctx = container_of(plugin, struct hdmi_audio_context, plugin);
 
+	if (!atomic_read(&ctx->plugged)) {
+		dev_err(dev, "hdmi not plugged\n");
+		return -EINVAL;
+	}
+
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
-		hdmi_audio_control(ctx, true);
+		if (!ctx->enabled)
+			return -EINVAL;
+		ret = hdmi_audio_control(ctx, true);
+		if (ret) {
+			dev_err(dev, "audio enable failed.\n");
+			return -EINVAL;
+		}
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 		hdmi_audio_control(ctx, false);
@@ -359,17 +394,20 @@ static int hdmi_set_state(struct device *dev, int enable)
 
 	if (!dev) {
 		dev_err(dev, "invalid device.\n");
-		ret = -EINVAL;
-		return ret;
+		return -EINVAL;
 	}
+
+	snd_printdd("[%d] %s en %d\n", __LINE__, __func__, enable);
 
 	plugin = dev_get_drvdata(dev);
 	ctx = container_of(plugin, struct hdmi_audio_context, plugin);
 
-	if (enable)
-		hdmi_audio_control(ctx, true);
-	else
-		hdmi_audio_control(ctx, false);
+	if (!atomic_read(&ctx->plugged))
+		return -EINVAL;
+
+	ret = hdmi_audio_control(ctx, !!enable);
+	if (!ret)
+		ctx->enabled = !!enable;
 	return ret;
 }
 
@@ -377,13 +415,13 @@ static int hdmi_get_state(struct device *dev, int *is_enabled)
 {
 	struct hdmi_audio_context *ctx = NULL;
 	struct audio_codec_plugin *plugin;
-	int ret = 0;
 
 	if (!dev) {
 		dev_err(dev, "invalid device.\n");
-		ret = -EINVAL;
-		return ret;
+		return -EINVAL;
 	}
+
+	snd_printdd("[%d] %s\n", __LINE__, __func__);
 
 	plugin = dev_get_drvdata(dev);
 	ctx = container_of(plugin, struct hdmi_audio_context, plugin);
@@ -395,12 +433,48 @@ static int hdmi_get_state(struct device *dev, int *is_enabled)
 	return 0;
 }
 
+static void hdmi_audio_hotplug_func(struct work_struct *work)
+{
+	struct hdmi_audio_context *ctx = container_of(work,
+		struct hdmi_audio_context, hotplug_work.work);
+
+	snd_printdd("[%d] %s plugged %d\n",
+			__LINE__, __func__, atomic_read(&ctx->plugged));
+
+	if (atomic_read(&ctx->plugged)) {
+		hdmi_audio_control(ctx, false);
+		hdmi_conf_init(ctx);
+		hdmi_audio_init(ctx);
+		if (ctx->enabled)
+			hdmi_audio_control(ctx, true);
+	}
+}
+
+static irqreturn_t hdmi_audio_irq_handler(int irq, void *arg)
+{
+	struct hdmi_audio_context *ctx = arg;
+	u32 val = gpio_get_value(ctx->hpd_gpio);
+
+	atomic_set(&ctx->plugged, !!val);
+	snd_printdd("%s %s\n", __func__,
+			atomic_read(&ctx->plugged) ? "plugged" : "unplugged");
+
+	/* should set audio regs after ip, phy got stable. 5ms suff */
+	queue_delayed_work(ctx->hpd_wq, &ctx->hotplug_work,
+			msecs_to_jiffies(5));
+	return IRQ_HANDLED;
+}
+
 
 static __devinit int hdmi_audio_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct hdmi_audio_context *ctx;
 	struct resource *res;
+	enum of_gpio_flags flags;
+	struct device_node *parent_node;
+
+	snd_printdd(&pdev->dev, "[%d] %s\n", __LINE__, __func__);
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx) {
@@ -408,6 +482,19 @@ static __devinit int hdmi_audio_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err;
 	}
+
+	ctx->pdev = pdev;
+	ctx->enabled = true;
+	atomic_set(&ctx->plugged, 0);
+	ctx->plugin.dev = &pdev->dev;
+	ctx->plugin.ops.hw_params = hdmi_audio_hw_params;
+	ctx->plugin.ops.trigger = hdmi_audio_trigger;
+	ctx->plugin.ops.get_state = hdmi_get_state;
+	ctx->plugin.ops.set_state = hdmi_set_state;
+	ctx->params.sample_rate = DEFAULT_RATE;
+	ctx->params.bits_per_sample = DEFAULT_BPS;
+
+	dev_set_drvdata(&pdev->dev, &ctx->plugin);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
@@ -423,22 +510,67 @@ static __devinit int hdmi_audio_probe(struct platform_device *pdev)
 		goto err_mem;
 	}
 
-	ctx->pdev = pdev;
-	ctx->enabled = true;
-	ctx->plugin.dev = &pdev->dev;
-	ctx->plugin.ops.hw_params = hdmi_audio_hw_params;
-	ctx->plugin.ops.trigger = hdmi_audio_trigger;
-	ctx->plugin.ops.get_state = hdmi_get_state;
-	ctx->plugin.ops.set_state = hdmi_set_state;
-	ctx->params.sample_rate = DEFAULT_RATE;
-	ctx->params.bits_per_sample = DEFAULT_BPS;
+	/* create workqueue and hotplug work */
+	ctx->hpd_wq = alloc_workqueue("exynos-hdmi-audio",
+			WQ_UNBOUND | WQ_NON_REENTRANT, 1);
+	if (ctx->hpd_wq == NULL) {
+		dev_err(&pdev->dev, "failed to create workqueue\n");
+		ret = -ENOMEM;
+		goto err_unmap;
+	}
+	INIT_DELAYED_WORK(&ctx->hotplug_work, hdmi_audio_hotplug_func);
 
-	dev_set_drvdata(&pdev->dev, &ctx->plugin);
+	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	if (res == NULL) {
+		dev_err(&pdev->dev, "get interrupt res failed.\n");
+		ret = -ENXIO;
+		goto err_workq;
+	}
+
+	parent_node = of_get_parent(pdev->dev.of_node);
+	if (!parent_node) {
+		dev_err(&pdev->dev, "no parent node found.\n");
+		ret = -EINVAL;
+		goto err_workq;
+	}
+
+	ctx->hpd_gpio = of_get_named_gpio_flags(parent_node,
+				"hpd-gpio", 0, &flags);
+
+	if (!gpio_is_valid(ctx->hpd_gpio)) {
+		dev_err(&pdev->dev, "failed to get hpd gpio.");
+		ret = -EINVAL;
+		goto err_workq;
+	}
+
+	ctx->ext_irq = gpio_to_irq(ctx->hpd_gpio);
+
+	ret = request_irq(res->start, hdmi_audio_irq_handler,
+			IRQF_SHARED, "int_hdmi_audio", ctx);
+	if (ret) {
+		dev_err(&pdev->dev, "request interrupt failed.\n");
+		goto err_workq;
+	}
+	ctx->int_irq = res->start;
+
+	ret = request_irq(ctx->ext_irq, hdmi_audio_irq_handler,
+		IRQ_TYPE_EDGE_BOTH | IRQF_SHARED, "ext_hdmi_audio", ctx);
+	if (ret) {
+		dev_err(&pdev->dev, "request interrupt failed.\n");
+		goto err_irq;
+	}
+
 	return ret;
 
+err_irq:
+	disable_irq(ctx->int_irq);
+	free_irq(ctx->int_irq, ctx);
+err_workq:
+	destroy_workqueue(ctx->hpd_wq);
+err_unmap:
+	iounmap(ctx->regs);
 err_mem:
 	kfree(ctx);
-
 err:
 	return ret;
 }
@@ -450,6 +582,11 @@ static int __devexit hdmi_audio_remove(struct platform_device *pdev)
 
 	ctx = dev_get_drvdata(&pdev->dev);
 
+	disable_irq(ctx->int_irq);
+	free_irq(ctx->int_irq, ctx);
+	disable_irq(ctx->ext_irq);
+	free_irq(ctx->ext_irq, ctx);
+	destroy_workqueue(ctx->hpd_wq);
 	iounmap(ctx->regs);
 	kfree(ctx);
 

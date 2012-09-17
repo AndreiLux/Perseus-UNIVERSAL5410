@@ -20,6 +20,7 @@
 */
 
 /* HDMI Version 1.3 & Common */
+#define HDMI_CTRL_BASE(x)		((x) + 0x00000000)
 #define HDMI_CORE_BASE(x)		((x) + 0x00010000)
 #define HDMI_I2S_BASE(x)		((x) + 0x00040000)
 
@@ -27,6 +28,9 @@
 #define HDMI_MODE_SEL			HDMI_CORE_BASE(0x0040)
 #define HDMI_CON_0			HDMI_CORE_BASE(0x0000)
 #define HDMI_CON_1			HDMI_CORE_BASE(0x0004)
+
+/* Control registers */
+#define HDMI_HPD_STATUS		HDMI_CTRL_BASE(0x000C)
 
 /* Audio related registers */
 #define HDMI_ASP_CON			HDMI_CORE_BASE(0x0300)
@@ -102,6 +106,9 @@
 #define HDMI_AN_SEED_2			HDMI_CORE_BASE(0x0E60)
 #define HDMI_AN_SEED_3			HDMI_CORE_BASE(0x0E64)
 
+/* HDMI_INTC_FLAG */
+#define HDMI_INTC_FLAG_HPD_PLUG		(1 << 3)
+#define HDMI_INTC_FLAG_HPD_UNPLUG	(1 << 2)
 
 /* HDMI_MODE_SEL */
 #define HDMI_MODE_HDMI_EN		(1 << 1)
@@ -344,9 +351,15 @@ struct audio_params {
 struct hdmi_audio_context {
 	struct platform_device *pdev;
 	void __iomem			*regs;
+	struct workqueue_struct	*hpd_wq;
+	struct delayed_work		hotplug_work;
 	struct audio_params		params;
+	int						int_irq;
+	int						ext_irq;
+	int						hpd_gpio;
 	struct audio_codec_plugin	plugin;
 	bool					enabled;
+	atomic_t				plugged;
 };
 
 #endif	/* __SND_SOC_SAMSUNG_SPDIF_H */
