@@ -1163,8 +1163,7 @@ static struct s3c_fb_pd_win smdk5250_fb_win2 = {
 	.default_bpp		= 24,
 };
 #elif defined(CONFIG_S5P_DP)
-static void dp_lcd_set_power(struct plat_lcd_data *pd,
-				unsigned int power)
+static void s5p_lcd_on(void)
 {
 #ifndef CONFIG_BACKLIGHT_PWM
 	/* LCD_PWM_IN_2.8V: LCD_B_PWM, GPB2_0 */
@@ -1177,20 +1176,58 @@ static void dp_lcd_set_power(struct plat_lcd_data *pd,
 	gpio_request(EXYNOS5_GPD0(5), "GPD0");
 
 	/* LCD_EN: GPD0_5 */
-	gpio_direction_output(EXYNOS5_GPD0(5), power);
+	gpio_direction_output(EXYNOS5_GPD0(5), 1);
 	mdelay(20);
 
 	/* LCD_APS_EN_2.8V: GPD0_6 */
-	gpio_direction_output(EXYNOS5_GPD0(6), power);
+	gpio_direction_output(EXYNOS5_GPD0(6), 1);
 	mdelay(20);
 #ifndef CONFIG_BACKLIGHT_PWM
 	/* LCD_PWM_IN_2.8V: LCD_B_PWM, GPB2_0 */
-	gpio_direction_output(EXYNOS5_GPB2(0), power);
+	gpio_direction_output(EXYNOS5_GPB2(0), 1);
 
 	gpio_free(EXYNOS5_GPB2(0));
 #endif
 	gpio_free(EXYNOS5_GPD0(6));
 	gpio_free(EXYNOS5_GPD0(5));
+}
+
+static void s5p_lcd_off(void)
+{
+#ifndef CONFIG_BACKLIGHT_PWM
+	/* LCD_PWM_IN_2.8V: LCD_B_PWM, GPB2_0 */
+	gpio_request(EXYNOS5_GPB2(0), "GPB2");
+#endif
+	/* LCD_APS_EN_2.8V: GPD0_6 */
+	gpio_request(EXYNOS5_GPD0(6), "GPD0");
+
+	/* LCD_EN: GPD0_5 */
+	gpio_request(EXYNOS5_GPD0(5), "GPD0");
+
+	/* LCD_EN: GPD0_5 */
+	gpio_direction_output(EXYNOS5_GPD0(5), 0);
+	mdelay(20);
+
+	/* LCD_APS_EN_2.8V: GPD0_6 */
+	gpio_direction_output(EXYNOS5_GPD0(6), 0);
+	mdelay(20);
+#ifndef CONFIG_BACKLIGHT_PWM
+	/* LCD_PWM_IN_2.8V: LCD_B_PWM, GPB2_0 */
+	gpio_direction_output(EXYNOS5_GPB2(0), 0);
+
+	gpio_free(EXYNOS5_GPB2(0));
+#endif
+	gpio_free(EXYNOS5_GPD0(6));
+	gpio_free(EXYNOS5_GPD0(5));
+}
+
+static void dp_lcd_set_power(struct plat_lcd_data *pd,
+				unsigned int power)
+{
+	if (power)
+		s5p_lcd_on();
+	else
+		s5p_lcd_off();
 }
 
 static struct plat_lcd_data smdk5250_dp_lcd_data = {
@@ -1412,6 +1449,8 @@ static struct s5p_dp_platdata smdk5250_dp_data __initdata = {
 	.phy_exit	= s5p_dp_phy_exit,
 	.backlight_on	= s5p_dp_backlight_on,
 	.backlight_off	= s5p_dp_backlight_off,
+	.lcd_on		= s5p_lcd_on,
+	.lcd_off	= s5p_lcd_off,
 };
 #endif
 
