@@ -1033,6 +1033,7 @@ static irqreturn_t s5p_dp_irq_handler(int irq, void *arg)
 static int s5p_dp_enable(struct s5p_dp_device *dp)
 {
 	int ret = 0;
+	int retry = 0;
 	struct s5p_dp_platdata *pdata = dp->dev->platform_data;
 
 	mutex_lock(&dp->lock);
@@ -1044,6 +1045,11 @@ static int s5p_dp_enable(struct s5p_dp_device *dp)
 
 	clk_enable(dp->clock);
 	pm_runtime_get_sync(dp->dev);
+
+dp_phy_init:
+
+	if (pdata->lcd_on)
+		pdata->lcd_on();
 
 	if (pdata->phy_init)
 		pdata->phy_init();
@@ -1112,7 +1118,22 @@ static int s5p_dp_enable(struct s5p_dp_device *dp)
 	if (pdata->backlight_on)
 		pdata->backlight_on();
 
+	mutex_unlock(&dp->lock);
+	return 0;
+
 out:
+	if (pdata->phy_exit)
+		pdata->phy_exit();
+
+	if (retry < 3) {
+		if (pdata->lcd_off)
+			pdata->lcd_off();
+
+		retry++;
+		goto dp_phy_init;
+	}
+	dev_err(dp->dev, "DP LT exceeds max retry count");
+
 	mutex_unlock(&dp->lock);
 	return ret;
 }
@@ -1137,6 +1158,9 @@ static void s5p_dp_disable(struct s5p_dp_device *dp)
 
 	if (pdata && pdata->phy_exit)
 		pdata->phy_exit();
+
+	if (pdata->lcd_off)
+		pdata->lcd_off();
 
 	clk_disable(dp->clock);
 	pm_runtime_put_sync(dp->dev);
