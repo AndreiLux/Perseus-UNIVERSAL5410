@@ -119,7 +119,7 @@ static void gsc_m2m_device_run(void *priv)
 	struct gsc_ctx *ctx = priv;
 	struct gsc_dev *gsc;
 	unsigned long flags;
-	u32 ret;
+	int ret = 0;
 	bool is_set = false;
 
 	if (WARN(!ctx, "null hardware context\n"))
