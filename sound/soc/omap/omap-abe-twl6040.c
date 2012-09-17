@@ -592,6 +592,7 @@ static struct snd_soc_dai_link twl6040_dmic_dai[] = {
 		.init = omap_abe_twl6040_init,
 		.ops = &omap_abe_mcpdm_ops,
 	},
+#if 0
 	{
 		.name = "DMIC",
 		.stream_name = "DMIC Capture",
@@ -602,6 +603,7 @@ static struct snd_soc_dai_link twl6040_dmic_dai[] = {
 		.init = omap_abe_dmic_init,
 		.ops = &omap_abe_dmic_ops,
 	},
+#endif
 };
 
 static struct snd_soc_dai_link twl6040_only_dai[] = {
@@ -639,6 +641,7 @@ static struct snd_soc_dai_link omap_abe_dai[] = {
 		.init = omap_abe_twl6040_fe_init,
 		.trigger = {SND_SOC_DPCM_TRIGGER_BESPOKE, SND_SOC_DPCM_TRIGGER_BESPOKE},
 	},
+#if 0
 	{
 		.name = "OMAP ABE Media Capture",
 		.stream_name = "Multimedia Capture",
@@ -738,6 +741,7 @@ static struct snd_soc_dai_link omap_abe_dai[] = {
 		.ops = &omap_abe_mcbsp_ops,
 		.ignore_suspend = 1,
 	},
+#endif
 	{
 		.name = "Legacy McPDM",
 		.stream_name = "Headset Playback",
@@ -763,7 +767,6 @@ static struct snd_soc_dai_link omap_abe_dai[] = {
 		.platform_name = "omap-pcm-audio",
 		.ignore_suspend = 1,
 	},
-#endif
 	{
 		.name = "Legacy DMIC",
 		.stream_name = "DMIC Capture",
@@ -779,6 +782,7 @@ static struct snd_soc_dai_link omap_abe_dai[] = {
 		.init = omap_abe_dmic_init,
 		.ops = &omap_abe_dmic_ops,
 	},
+#endif
 
 /*
  * Backend DAIs - i.e. dynamically matched interfaces, invisible to userspace.
@@ -804,6 +808,7 @@ static struct snd_soc_dai_link omap_abe_dai[] = {
 		.be_id = OMAP_ABE_DAI_PDM_DL1,
 		.ignore_suspend = 1,
 	},
+#if 0
 	{
 		.name = OMAP_ABE_BE_PDM_UL1,
 		.stream_name = "Analog Capture",
@@ -909,7 +914,6 @@ static struct snd_soc_dai_link omap_abe_dai[] = {
 		.ops = &omap_abe_mcbsp_ops,
 		.be_id = OMAP_ABE_DAI_MM_FM,
 	},
-#if 0
 	{
 		.name = OMAP_ABE_BE_MM_EXT0_UL,
 		.stream_name = "FM Capture",
@@ -945,7 +949,6 @@ static struct snd_soc_dai_link omap_abe_dai[] = {
 		.be_id = OMAP_ABE_DAI_MODEM,
 		.ignore_suspend = 1,
 	},
-#endif
 	{
 		.name = OMAP_ABE_BE_DMIC0,
 		.stream_name = "DMIC0 Capture",
@@ -997,6 +1000,7 @@ static struct snd_soc_dai_link omap_abe_dai[] = {
 		.be_hw_params_fixup = dmic_be_hw_params_fixup,
 		.be_id = OMAP_ABE_DAI_DMIC2,
 	},
+#endif
 };
 
 static struct snd_soc_dai_link omap_abe_no_dmic_dai[] = {
@@ -1020,6 +1024,7 @@ static struct snd_soc_dai_link omap_abe_no_dmic_dai[] = {
 		.init = omap_abe_twl6040_fe_init,
 		.trigger = {SND_SOC_DPCM_TRIGGER_BESPOKE, SND_SOC_DPCM_TRIGGER_BESPOKE},
 	},
+#if 0
 	{
 		.name = "OMAP ABE Media Capture",
 		.stream_name = "Multimedia Capture",
@@ -1119,6 +1124,7 @@ static struct snd_soc_dai_link omap_abe_no_dmic_dai[] = {
 		.ops = &omap_abe_mcbsp_ops,
 		.ignore_suspend = 1,
 	},
+#endif
 	{
 		.name = "Legacy McPDM",
 		.stream_name = "Headset Playback",
@@ -1158,6 +1164,7 @@ static struct snd_soc_dai_link omap_abe_no_dmic_dai[] = {
 		.be_id = OMAP_ABE_DAI_PDM_DL1,
 		.ignore_suspend = 1,
 	},
+#if 0
 	{
 		.name = OMAP_ABE_BE_PDM_UL1,
 		.stream_name = "Analog Capture",
@@ -1280,6 +1287,7 @@ static struct snd_soc_dai_link omap_abe_no_dmic_dai[] = {
 		.ops = &omap_abe_mcbsp_ops,
 		.be_id = OMAP_ABE_DAI_MM_FM,
 	},
+#endif
 };
 
 /* Audio machine driver */
