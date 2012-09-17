@@ -1,0 +1,10 @@
+* Samsung's HDMI Controller
+
+The Samsung's HDMI controller can drive HDMI and DVI monitors.
+
+Required properties:
+- compatible : should be "samsung,exynos5-hdmi"
+- reg : base physical address of the controller and length of memory mapped
+	region.
+- interrupts : interrupt number to the cpu.
+- hpd-gpio   : gpio pin number for hpd signals.
