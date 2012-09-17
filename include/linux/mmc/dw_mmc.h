@@ -161,7 +161,7 @@ struct dw_mci {
 	u32			fifoth_val;
 	u16			verid;
 	u16			data_offset;
-	struct device		dev;
+	struct device		*dev;
 	struct dw_mci_board	*pdata;
 	struct dw_mci_drv_data	*drv_data;
 	struct clk		*biu_clk;
