@@ -136,7 +136,6 @@ int exynos_drm_device_register(struct drm_device *dev)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(exynos_drm_device_register);
 
 int exynos_drm_device_unregister(struct drm_device *dev)
 {
@@ -156,7 +155,6 @@ int exynos_drm_device_unregister(struct drm_device *dev)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(exynos_drm_device_unregister);
 
 int exynos_drm_subdrv_register(struct exynos_drm_subdrv *subdrv)
 {
@@ -169,7 +167,6 @@ int exynos_drm_subdrv_register(struct exynos_drm_subdrv *subdrv)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(exynos_drm_subdrv_register);
 
 int exynos_drm_subdrv_unregister(struct exynos_drm_subdrv *subdrv)
 {
@@ -182,7 +179,6 @@ int exynos_drm_subdrv_unregister(struct exynos_drm_subdrv *subdrv)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(exynos_drm_subdrv_unregister);
 
 int exynos_drm_subdrv_open(struct drm_device *dev, struct drm_file *file)
 {
@@ -206,7 +202,6 @@ err:
 	}
 	return ret;
 }
-EXPORT_SYMBOL_GPL(exynos_drm_subdrv_open);
 
 void exynos_drm_subdrv_close(struct drm_device *dev, struct drm_file *file)
 {
@@ -217,4 +212,3 @@ void exynos_drm_subdrv_close(struct drm_device *dev, struct drm_file *file)
 			subdrv->close(dev, subdrv->dev, file);
 	}
 }
-EXPORT_SYMBOL_GPL(exynos_drm_subdrv_close);
