@@ -188,8 +188,11 @@ int omap_abb_post_scale(struct voltagedomain *voltdm,
 	if (opp_sel == OMAP_ABB_SLOW_OPP  &&
 	    !target_volt->volt_calibrated) {
 		/* skipping RBB setup at this point of transition */
-		pr_warn("%s: %s: no RBB! (SR not converged yet)\n",
+		pr_info("%s: %s: no RBB! (SR not converged yet)\n",
 					__func__, voltdm->name);
+		/* setup for later RBB enablement (when SR converged) */
+		abb->need_delayed_en = true;
+
 		return 0;
 	}
 
@@ -310,6 +313,7 @@ void __init omap_abb_init(struct voltagedomain *voltdm)
 	val = voltdm->read(abb->ctrl_offs);
 	val &= abb->common->opp_sel_mask;
 	abb->_opp_sel = val >> __ffs(abb->common->opp_sel_mask);
+	abb->need_delayed_en = false;
 
 	/* enable the ldo if not done by bootloader */
 	val = voltdm->read(abb->setup_offs);

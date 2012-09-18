@@ -77,6 +77,7 @@ struct omap_abb_instance {
 	bool enabled;
 	const struct omap_abb_common *common;
 	u8 _opp_sel;
+	bool need_delayed_en;
 };
 
 extern struct omap_abb_instance omap36xx_abb_mpu;
