@@ -67,6 +67,10 @@
 #define HDMI_GPIO_LS_OE 41 /* Level shifter for HDMI */
 #define HDMI_GPIO_HPD  63 /* Hotplug detect */
 #define TPS62361_GPIO   7
+#define DVI_GPIO_MSEN 122
+
+/* Display DVI */
+#define PANDA_DVI_TFP410_POWER_DOWN_GPIO        0
 
 static int
 panda_kim_suspend(struct platform_device *pdev, pm_message_t msg)
@@ -506,7 +510,9 @@ static struct omap_board_mux board_mux[] __initdata = {
 	OMAP4_MUX(SDMMC5_DAT2, OMAP_MUX_MODE0 | OMAP_PIN_INPUT_PULLUP),
 	OMAP4_MUX(SDMMC5_DAT3, OMAP_MUX_MODE0 | OMAP_PIN_INPUT_PULLUP),
 	/* gpio 0 - TFP410 PD */
-	OMAP4_MUX(KPD_COL1, OMAP_PIN_OUTPUT | OMAP_MUX_MODE3),
+	OMAP4_MUX(KPD_COL1, OMAP_PIN_OUTPUT | OMAP_MUX_MODE3 | OMAP_PIN_OFF_OUTPUT_LOW),
+	/* GPIO 122 - TFP410 MSEN input */
+	OMAP4_MUX(ABE_DMIC_DIN3, OMAP_PIN_INPUT | OMAP_MUX_MODE3 | OMAP_PIN_OFF_INPUT_PULLDOWN),
 	/* dispc2_data23 */
 	OMAP4_MUX(USBB2_ULPITLL_STP, OMAP_PIN_OUTPUT | OMAP_MUX_MODE5),
 	/* dispc2_data22 */
@@ -576,8 +582,6 @@ static struct omap_board_mux board_mux[] __initdata = {
 #define board_mux	NULL
 #endif
 
-/* Display DVI */
-#define PANDA_DVI_TFP410_POWER_DOWN_GPIO	0
 
 /* Using generic display panel */
 static struct tfp410_platform_data omap4_dvi_panel = {
@@ -598,6 +602,9 @@ struct omap_dss_device omap4_panda_dvi_device = {
 	.clocks.dispc.dispc_fclk_src = OMAP_DSS_CLK_SRC_DSI2_PLL_HSDIV_DISPC,
 };
 
+static struct gpio panda_dvi_gpios_phy[] = {
+	{ DVI_GPIO_MSEN,      GPIOF_DIR_IN, "dvi_msen" },
+};
 
 static struct gpio panda_hdmi_gpios_phy[] = {
 	{ HDMI_GPIO_LS_OE,	GPIOF_OUT_INIT_HIGH, "hdmi_gpio_ls_oe" },
@@ -663,6 +670,11 @@ static const char * const panda_fixup_mac_device_paths[] = {
 
 void __init omap4_panda_display_init(void)
 {
+	int status;
+
+	status = gpio_request_array(panda_dvi_gpios_phy,
+                                    ARRAY_SIZE(panda_dvi_gpios_phy));
+
 	gpio_request_array(panda_hdmi_gpios_hpd, ARRAY_SIZE(panda_hdmi_gpios_hpd));
 	omap_display_init(&omap4_panda_dss_data);
 
