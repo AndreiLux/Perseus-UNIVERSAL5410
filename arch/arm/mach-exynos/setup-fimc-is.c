@@ -112,7 +112,7 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 	unsigned long isp_266;
 	unsigned long isp_uart;
 	unsigned long mipi;
-	unsigned long epll;
+	unsigned long xxti;
 
 	/* 1. MCUISP */
 	aclk_mcuisp = clk_get(&pdev->dev, "aclk_400_isp");
@@ -267,8 +267,8 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 		return PTR_ERR(cam_A_clk);
 	}
 
-	epll = clk_get_rate(cam_src);
-	pr_debug("epll : %ld\n", epll);
+	xxti = clk_get_rate(cam_src);
+	pr_debug("xxti : %ld\n", xxti);
 
 	clk_set_parent(cam_A_clk, cam_src);
 	clk_set_rate(cam_A_clk, 24 * 1000000);
@@ -281,14 +281,14 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 	if (IS_ERR(cam_src))
 		return PTR_ERR(cam_src);
 
-	cam_A_clk = clk_get(&pdev->dev, "sclk_cam1");
+	cam_A_clk = clk_get(&pdev->dev, "sclk_bayer");
 	if (IS_ERR(cam_A_clk)) {
 		clk_put(cam_src);
 		return PTR_ERR(cam_A_clk);
 	}
 
-	epll = clk_get_rate(cam_src);
-	pr_debug("epll : %ld\n", epll);
+	xxti = clk_get_rate(cam_src);
+	pr_debug("xxti : %ld\n", xxti);
 
 	clk_set_parent(cam_A_clk, cam_src);
 	clk_set_rate(cam_A_clk, 24 * 1000000);
