@@ -31,6 +31,7 @@
 #include "smartreflex.h"
 #include "voltage.h"
 #include "dvfs.h"
+#include "abb.h"
 
 #define MAX_VDDS 3
 #define SR1P5_SAMPLING_DELAY_MS	1
@@ -146,6 +147,36 @@ static int sr_class1p5_notify(struct voltagedomain *voltdm, u32 status)
 	work_data->num_osc_samples++;
 
 	return 0;
+}
+
+/**
+ * abb_check() - check and try configuring ABB if late config needed
+ * @voltdm: voltage domain to check
+ * @volt_data: target volt data
+ *
+ * Checks if the ABB delay enable flag is set for this domain,
+ * and try enabling ABB.
+ * This is used in the case where RBB needs enabling, but SR has not
+ * converged yet => ABB post_scale sets this flag. Then later
+ * (hopefully when SR has converged), this function checks that flag
+ * and proceeds to ABB late enablement.
+ */
+static void abb_check(struct voltagedomain *voltdm,
+		struct omap_volt_data *volt_data)
+{
+	struct omap_abb_instance *abb = voltdm->abb;
+	int ret;
+
+	if (abb && abb->need_delayed_en && volt_data) {
+		ret = omap_abb_set_opp(voltdm, volt_data->opp_sel);
+		if (ret)
+			pr_err("%s: %s: unable to enable RBB: %d!\n",
+				__func__, voltdm->name, ret);
+		else
+			pr_info("%s: %s: late enable of RBB ok!\n",
+				__func__, voltdm->name);
+		abb->need_delayed_en = false;
+	}
 }
 
 /**
@@ -333,6 +364,10 @@ done_calib:
 		"Calib=%d margin=%d\n",
 		 __func__, voltdm->name, volt_data->volt_nominal,
 		 volt_data->volt_calibrated, volt_data->volt_margin);
+
+	/* Check if ABB/RBB needs to be enabled */
+	abb_check(voltdm, volt_data);
+
 	/*
 	 * TODO: Setup my wakeup voltage to allow immediate going to OFF and
 	 * on - Pending twl and voltage layer cleanups.
