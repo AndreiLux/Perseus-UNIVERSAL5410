@@ -50,11 +50,6 @@ static enum hrtimer_restart dvfs_callback(struct hrtimer *timer)
 
 	metrics = container_of(timer, kbasep_pm_metrics_data, timer );
 	action = kbase_pm_get_dvfs_action(metrics->kbdev);
-#ifdef CONFIG_MALI_T6XX_DVFS
-	CSTD_UNUSED(action);
-	kbase_platform_dvfs_event(metrics->kbdev, metrics->utilisation);
-#endif /*CONFIG_MALI_T6XX_DVFS*/
-
 	spin_lock_irqsave(&metrics->lock, flags);
 	if (metrics->timer_active)
 	{
@@ -180,8 +175,6 @@ kbase_pm_dvfs_action kbase_pm_get_dvfs_action(kbase_device *kbdev)
 
 	spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
 
-	kbdev->pm.metrics.time_idle = 0;
-	kbdev->pm.metrics.time_busy = 0;
 
 	diff = ktime_sub( now, kbdev->pm.metrics.time_period_start );
 
@@ -240,7 +233,11 @@ kbase_pm_dvfs_action kbase_pm_get_dvfs_action(kbase_device *kbdev)
 
 	kbdev->pm.metrics.utilisation = utilisation;
 out:
-
+#ifdef CONFIG_MALI_T6XX_DVFS
+	kbase_platform_dvfs_event(kbdev, utilisation);
+#endif /*CONFIG_MALI_T6XX_DVFS*/
+	kbdev->pm.metrics.time_idle = 0;
+	kbdev->pm.metrics.time_busy = 0;
 	spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
 
 	return action;

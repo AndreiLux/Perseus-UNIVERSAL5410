@@ -341,7 +341,6 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 	OSK_ASSERT(kbdev != NULL);
 	platform = (struct exynos_context *) kbdev->platform_context;
 
-	spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
 	if (platform->time_tick < MALI_DVFS_TIME_INTERVAL) {
 		platform->time_tick++;
 		platform->time_busy += kbdev->pm.metrics.time_busy;
@@ -354,9 +353,6 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 	if ((platform->time_tick == MALI_DVFS_TIME_INTERVAL) &&
 		(platform->time_idle + platform->time_busy > 0))
 			platform->utilisation = (100*platform->time_busy) / (platform->time_idle + platform->time_busy);
-	kbdev->pm.metrics.time_idle = 0;
-	kbdev->pm.metrics.time_busy = 0;
-	spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
 
 	osk_spinlock_lock(&mali_dvfs_spinlock);
 	mali_dvfs_status_current.utilisation = utilisation;
