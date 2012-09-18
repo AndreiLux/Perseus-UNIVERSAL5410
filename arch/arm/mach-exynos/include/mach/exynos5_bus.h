@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2012 Google, Inc.
- *		http://www.samsung.com/
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the Gnu General Public License version 2 as
@@ -13,6 +12,17 @@
 struct exynos5_bus_mif_platform_data {
 	unsigned long max_freq;
 };
+
+struct exynos5_bus_mif_handle;
+
+struct exynos5_bus_mif_handle *exynos5_bus_mif_get(unsigned long min_freq);
+int exynos5_bus_mif_put(struct exynos5_bus_mif_handle *handle);
+
+static inline
+struct exynos5_bus_mif_handle *exynos5_bus_mif_min(unsigned long min_freq)
+{
+	return exynos5_bus_mif_get(min_freq);
+}
 
 void exynos5_ppmu_trace(void);
 

@@ -32,8 +32,7 @@
 #include <mach/regs-mem.h>
 #include <mach/exynos5_bus.h>
 
-#include "exynos_ppmu.h"
-#include "exynos5_ppmu.h"
+#include "governor.h"
 
 #define MAX_SAFEVOLT	1200000 /* 1.2V */
 
@@ -65,6 +64,8 @@ struct busfreq_data_mif {
 	struct clk *mclk_cdrex;
 	struct clk *mout_mpll;
 	struct clk *mout_bpll;
+
+	struct list_head requests;
 };
 
 struct mif_bus_opp_table {
@@ -81,6 +82,14 @@ static struct mif_bus_opp_table exynos5_mif_opp_table[] = {
 	{LV_3, 160000, 1000000, 0x12233247},
 	{0, 0, 0, 0},
 };
+
+struct exynos5_bus_mif_handle {
+	struct list_head node;
+	unsigned long min;
+};
+
+static struct busfreq_data_mif *exynos5_bus_mif_data;
+static DEFINE_MUTEX(exynos5_bus_mif_data_lock);
 
 static int exynos5_mif_setvolt(struct busfreq_data_mif *data, unsigned long volt)
 {
@@ -215,13 +224,24 @@ static int exynos5_busfreq_mif_target(struct device *dev, unsigned long *_freq,
 	struct opp *opp;
 	unsigned long old_freq, freq;
 	unsigned long volt;
+	struct exynos5_bus_mif_handle *handle;
+
+	mutex_lock(&data->lock);
+
+	if (!(list_empty(&data->requests))) {
+		list_for_each_entry(handle, &data->requests, node) {
+			if (handle->min > *_freq)
+				*_freq = handle->min;
+		}
+	}
 
 	rcu_read_lock();
 	opp = devfreq_recommended_opp(dev, _freq, flags);
 	if (IS_ERR(opp)) {
 		rcu_read_unlock();
 		dev_err(dev, "%s: Invalid OPP.\n", __func__);
-		return PTR_ERR(opp);
+		err = PTR_ERR(opp);
+		goto out;
 	}
 
 	freq = opp_get_freq(opp);
@@ -231,11 +251,9 @@ static int exynos5_busfreq_mif_target(struct device *dev, unsigned long *_freq,
 	old_freq = data->curr_freq;
 
 	if (old_freq == freq)
-		return 0;
+		goto out;
 
 	dev_dbg(dev, "targetting %lukHz %luuV\n", freq, volt);
-
-	mutex_lock(&data->lock);
 
 	if (data->disabled)
 		goto out;
@@ -268,6 +286,65 @@ out:
 	mutex_unlock(&data->lock);
 	return err;
 }
+
+struct exynos5_bus_mif_handle *exynos5_bus_mif_get(unsigned long min_freq)
+{
+	struct exynos5_bus_mif_handle *handle;
+
+	handle = kzalloc(sizeof(*handle), GFP_KERNEL);
+	if (!handle)
+		return NULL;
+
+	handle->min = min_freq;
+
+	mutex_lock(&exynos5_bus_mif_data_lock);
+	if (!exynos5_bus_mif_data) {
+		goto err;
+	}
+
+	mutex_lock(&exynos5_bus_mif_data->lock);
+	list_add_tail(&handle->node, &exynos5_bus_mif_data->requests);
+	mutex_unlock(&exynos5_bus_mif_data->lock);
+
+	mutex_unlock(&exynos5_bus_mif_data_lock);
+
+	mutex_lock(&exynos5_bus_mif_data->devfreq->lock);
+	update_devfreq(exynos5_bus_mif_data->devfreq);
+	mutex_unlock(&exynos5_bus_mif_data->devfreq->lock);
+
+	return handle;
+
+err:
+	mutex_unlock(&exynos5_bus_mif_data_lock);
+	kfree(handle);
+
+	return NULL;
+}
+
+int exynos5_bus_mif_put(struct exynos5_bus_mif_handle *handle)
+{
+	int ret = 0;
+
+	mutex_lock(&exynos5_bus_mif_data_lock);
+	if (!exynos5_bus_mif_data) {
+		ret = -EINVAL;
+		goto err;
+	}
+
+	mutex_lock(&exynos5_bus_mif_data->lock);
+	list_del(&handle->node);
+	mutex_unlock(&exynos5_bus_mif_data->lock);
+
+	mutex_lock(&exynos5_bus_mif_data->devfreq->lock);
+	update_devfreq(exynos5_bus_mif_data->devfreq);
+	mutex_unlock(&exynos5_bus_mif_data->devfreq->lock);
+
+	kfree(handle);
+err:
+	mutex_unlock(&exynos5_bus_mif_data_lock);
+	return ret;
+}
+
 
 static void exynos5_mif_exit(struct device *dev)
 {
@@ -448,6 +525,7 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 
 	data->dev = dev;
 	mutex_init(&data->lock);
+	INIT_LIST_HEAD(&data->requests);
 
 	err = exynos5250_init_mif_tables(data);
 	if (err)
@@ -539,6 +617,9 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 
 	devfreq_register_opp_notifier(dev, data->devfreq);
 
+	mutex_lock(&exynos5_bus_mif_data_lock);
+	exynos5_bus_mif_data = data;
+	mutex_unlock(&exynos5_bus_mif_data_lock);
 	return 0;
 
 err_devfreq_add:
@@ -561,6 +642,10 @@ err_regulator:
 static __devexit int exynos5_busfreq_mif_remove(struct platform_device *pdev)
 {
 	struct busfreq_data_mif *data = platform_get_drvdata(pdev);
+
+	mutex_lock(&exynos5_bus_mif_data_lock);
+	exynos5_bus_mif_data = NULL;
+	mutex_unlock(&exynos5_bus_mif_data_lock);
 
 	devfreq_remove_device(data->devfreq);
 	regulator_put(data->vdd_mif);
