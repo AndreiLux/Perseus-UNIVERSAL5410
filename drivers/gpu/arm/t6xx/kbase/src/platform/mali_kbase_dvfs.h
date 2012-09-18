@@ -30,7 +30,7 @@
 #ifdef CONFIG_MALI_T6XX_DVFS
 #define CONFIG_MALI_T6XX_FREQ_LOCK
 #ifdef CONFIG_CPU_FREQ
-//#define MALI_DVFS_ASV_ENABLE
+#define MALI_DVFS_ASV_ENABLE
 #endif
 #endif
 
