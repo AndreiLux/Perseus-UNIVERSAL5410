@@ -54,6 +54,10 @@
 #include <kbase/src/linux/mali_kbase_sync.h>
 #endif /* CONFIG_SYNC */
 
+#ifdef CONFIG_MALI_PLATFORM_THIRDPARTY
+#include <plat/devs.h>
+#endif
+
 #define	JOB_IRQ_TAG	0
 #define MMU_IRQ_TAG	1
 #define GPU_IRQ_TAG	2
@@ -2641,6 +2645,14 @@ static int __init kbase_driver_init(void)
 
 	config = kbasep_get_platform_config();
 	attribute_count = kbasep_get_config_attribute_count(config->attributes);
+#ifdef CONFIG_MALI_PLATFORM_THIRDPARTY
+	err = platform_device_add_data(&exynos5_device_g3d, config->attributes, attribute_count * sizeof(config->attributes[0]));
+	if (err)
+	{
+		return err;
+	}
+#else
+
 	mali_device = platform_device_alloc( kbase_drv_name, 0);
 	if (mali_device == NULL)
 	{
@@ -2672,6 +2684,7 @@ static int __init kbase_driver_init(void)
 		return err;
 	}
 
+#endif /* CONFIG_MALI_PLATFORM_THIRDPARTY */
 #endif /* CONFIG_MALI_PLATFORM_FAKE */
 	err = platform_driver_register(&kbase_platform_driver);
 	if (err)

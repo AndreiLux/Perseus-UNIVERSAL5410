@@ -42,6 +42,14 @@ config MALI_T6XX_DEMAND_POLICY
 	help
 	  Sets the default power policy to "demand"
 
+config MALI_T6XX_RT_PM
+	bool "Enable Runtime power management"
+	depends on MALI_T6XX
+	depends on PM_RUNTIME
+	default n
+	help
+	  Choose this option to enable runtime power management on vithar DDK.
+
 config MALI_T6XX_ENABLE_DS5
 	bool "Enable DS5"
 	depends on MALI_T6XX

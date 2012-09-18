@@ -164,7 +164,6 @@ endif
 # Tell the Linux build system from which .o file to create the kernel module
 obj-$(CONFIG_MALI_T6XX) += mali_kbase.o
 obj-$(CONFIG_MALI_T6XX) += platform/mali_kbase_platform.o
-obj-$(CONFIG_MALI_T6XX_RT_PM) += platform/mali_kbase_runtime_pm.o
 obj-$(CONFIG_MALI_T6XX) += platform/mali_kbase_dvfs.o
 
 # Tell the Linux build system to enable building of our .c files
