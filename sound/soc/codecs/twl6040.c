@@ -934,6 +934,10 @@ static int twl6040_set_bias_level(struct snd_soc_codec *codec,
 
 	codec->dapm.bias_level = level;
 
+	// Hack!
+	twl6040_write(codec, 0x07, 0x60);
+	twl6040_write(codec, 0x08, 0x09);
+
 	return 0;
 }
 
