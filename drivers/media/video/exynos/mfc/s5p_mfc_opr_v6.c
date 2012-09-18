@@ -304,13 +304,7 @@ int s5p_mfc_alloc_instance_buffer(struct s5p_mfc_ctx *ctx)
 		return -ENOMEM;
 	}
 
-	memset(ctx->ctx.virt, 0, ctx->ctx_buf_size);
-	s5p_mfc_cache_clean_priv(ctx->ctx.alloc);
-	/*
-	ctx->ctx.dma = dma_map_single(ctx->dev->v4l2_dev.dev,
-					  ctx->ctx.virt, ctx->ctx_buf_size,
-					  DMA_TO_DEVICE);
-	*/
+	s5p_mfc_cache_inv_priv(ctx->ctx.alloc);
 
 	mfc_debug_leave();
 
@@ -369,8 +363,7 @@ int s5p_mfc_alloc_dev_context_buffer(struct s5p_mfc_dev *dev)
 		return -ENOMEM;
 	}
 
-	memset(dev->ctx_buf.virt, 0, buf_size->dev_ctx);
-	s5p_mfc_cache_clean_priv(dev->ctx_buf.alloc);
+	s5p_mfc_cache_inv_priv(dev->ctx_buf.alloc);
 
 	mfc_debug_leave();
 
