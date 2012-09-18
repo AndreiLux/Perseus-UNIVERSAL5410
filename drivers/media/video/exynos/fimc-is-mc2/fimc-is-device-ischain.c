@@ -637,7 +637,7 @@ static const struct fd_param init_fd_param = {
 			FD_CONFIG_COMMAND_MOUTH_DETECT |
 			FD_CONFIG_COMMAND_ORIENTATION |
 			FD_CONFIG_COMMAND_ORIENTATION_VALUE,
-		.max_number = 5,
+		.max_number = CAMERA2_MAX_FACES,
 		.roll_angle = FD_CONFIG_ROLL_ANGLE_FULL,
 		.yaw_angle = FD_CONFIG_YAW_ANGLE_45_90,
 		.smile_mode = FD_CONFIG_SMILE_MODE_DISABLE,
