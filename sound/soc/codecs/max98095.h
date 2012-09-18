@@ -278,6 +278,7 @@
 
 /* M98095_097_PWR_SYS */
 	#define M98095_SHDNRUN                  (1<<7)
+	#define M98095_CODECSHDN                (1<<6)
 	#define M98095_PERFMODE                 (1<<3)
 	#define M98095_HPPLYBACK                (1<<2)
 	#define M98095_PWRSV8K                  (1<<1)
