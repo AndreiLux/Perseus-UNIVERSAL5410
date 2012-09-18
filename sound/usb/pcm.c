@@ -353,7 +353,7 @@ static int snd_usb_hw_params(struct snd_pcm_substream *substream,
 	struct snd_usb_substream *subs = substream->runtime->private_data;
 	struct audioformat *fmt;
 	unsigned int channels, rate, format;
-	int ret, changed;
+	int ret;
 
 	ret = snd_pcm_lib_alloc_vmalloc_buffer(substream,
 					       params_buffer_bytes(hw_params));
@@ -370,34 +370,13 @@ static int snd_usb_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	changed = subs->cur_audiofmt != fmt ||
-		subs->period_bytes != params_period_bytes(hw_params) ||
-		subs->cur_rate != rate;
 	if ((ret = set_format(subs, fmt)) < 0)
 		return ret;
 
-	if (subs->cur_rate != rate) {
-		struct usb_host_interface *alts;
-		struct usb_interface *iface;
-		iface = usb_ifnum_to_if(subs->dev, fmt->iface);
-		alts = &iface->altsetting[fmt->altset_idx];
-		ret = snd_usb_init_sample_rate(subs->stream->chip, subs->interface, alts, fmt, rate);
-		if (ret < 0)
-			return ret;
-		subs->cur_rate = rate;
-	}
-
-	if (changed) {
-		mutex_lock(&subs->stream->chip->shutdown_mutex);
-		/* format changed */
-		snd_usb_release_substream_urbs(subs, 0);
-		/* influenced: period_bytes, channels, rate, format, */
-		ret = snd_usb_init_substream_urbs(subs, params_period_bytes(hw_params),
-						  params_rate(hw_params),
-						  snd_pcm_format_physical_width(params_format(hw_params)) *
-							params_channels(hw_params));
-		mutex_unlock(&subs->stream->chip->shutdown_mutex);
-	}
+	subs->cur_rate = rate;
+	subs->pcm_format = format;
+	subs->channels = channels;
+	subs->period_bytes = params_period_bytes(hw_params);
 
 	return ret;
 }
@@ -429,11 +408,37 @@ static int snd_usb_pcm_prepare(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_usb_substream *subs = runtime->private_data;
+	struct usb_host_interface *alts;
+	struct usb_interface *iface;
+	int ret;
 
 	if (! subs->cur_audiofmt) {
 		snd_printk(KERN_ERR "usbaudio: no format is specified!\n");
 		return -ENXIO;
 	}
+
+	ret = set_format(subs, subs->cur_audiofmt);
+	if (ret < 0)
+		return ret;
+
+	iface = usb_ifnum_to_if(subs->dev, subs->cur_audiofmt->iface);
+	alts = &iface->altsetting[subs->cur_audiofmt->altset_idx];
+	ret = snd_usb_init_sample_rate(subs->stream->chip, subs->interface,
+				       alts, subs->cur_audiofmt,
+				       subs->cur_rate);
+	if (ret < 0)
+		return ret;
+
+	mutex_lock(&subs->stream->chip->shutdown_mutex);
+	/* format changed */
+	snd_usb_release_substream_urbs(subs, 0);
+	/* influenced: period_bytes, channels, rate, format, */
+	ret = snd_usb_init_substream_urbs(subs, subs->period_bytes,
+			subs->cur_rate,
+			snd_pcm_format_physical_width(subs->pcm_format) *
+			subs->channels);
+	mutex_unlock(&subs->stream->chip->shutdown_mutex);
+
 
 	/* some unit conversions in runtime */
 	subs->maxframesize = bytes_to_frames(runtime, subs->maxpacksize);
