@@ -126,7 +126,7 @@ mali_error kbase_pm_init(kbase_device *kbdev)
 		goto workq_fail;
 	}
 
-	kbdev->pm.workqueue = alloc_workqueue("kbase_pm", WQ_NON_REENTRANT | OSK_WORKQ_HIGH_PRIORITY, 1);
+	kbdev->pm.workqueue = alloc_workqueue("kbase_pm", WQ_NON_REENTRANT | WQ_HIGHPRI, 1);
 	if (NULL == kbdev->pm.workqueue)
 	{
 		goto workq_fail;
