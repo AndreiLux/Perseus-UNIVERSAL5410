@@ -693,6 +693,12 @@ static void exynos_wifi_bt_set_power(u32 slot_id, u32 volt)
 
 /* NTC Thermistor. Attached to S3C-ADC in some Samsung SoC Devices */
 struct s3c_adc_client *ntc_adc_clients[4];
+struct mutex ntc_adc_locks[] = {
+	__MUTEX_INITIALIZER(ntc_adc_locks[0]),
+	__MUTEX_INITIALIZER(ntc_adc_locks[1]),
+	__MUTEX_INITIALIZER(ntc_adc_locks[2]),
+	__MUTEX_INITIALIZER(ntc_adc_locks[3]),
+};
 
 static int __init s3c_adc_ntc_init(struct platform_device *pdev)
 {
@@ -718,8 +724,20 @@ static int read_thermistor_uV(struct platform_device *pdev)
 	unsigned int port = ntc_adc_ports[pdev->id];
 	struct s3c_adc_client *client = ntc_adc_clients[pdev->id];
 	struct ntc_thermistor_platform_data *pdata = pdev->dev.platform_data;
+	struct mutex *lock = ntc_adc_locks + pdev->id;
 
+	/* Arrays are sized; make sure we haven't blown over */
+	BUG_ON(pdev->id >= ARRAY_SIZE(ntc_adc_locks));
+
+	/*
+	 * s3c_adc_read() assumes two processes aren't using the same client
+	 * at the same time (yes, it's a bad design), so grab a per-client
+	 * mutex to ensure this is OK.
+	 */
+	mutex_lock(lock);
 	converted = pdata->pullup_uV * (s64) s3c_adc_read(client, port);
+	mutex_unlock(lock);
+
 	converted >>= 12;
 
 	return (int) converted;
