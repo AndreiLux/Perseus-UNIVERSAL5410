@@ -256,6 +256,19 @@ __v7_setup:
 	stmia	r12, {r0-r3}
 	mov	r3, #0
 #endif
+#ifdef CONFIG_ARM_ERRATA_773022
+	teq	r6, #0x4			@ present in r0p4
+	mrceq	p15, 0, r10, c1, c0, 1		@ read aux control register
+	orreq	r10, r10, #1 << 1		@ set bit #1
+#ifdef CONFIG_ARM_TRUSTZONE
+	ldreq	r0, =SMC_CMD_REG
+	ldreq	r1, =SMC_REG_ID_CP15(1, 0, 0, 1)
+	moveq	r2, r10
+	smceq	0
+#else
+	mcreq	p15, 0, r10, c1, c0, 1		@ write aux control register
+#endif
+#endif
 #ifdef CONFIG_ARM_ERRATA_774769
 	teq	r6, #0x4			@ present in r0p4
 	mrceq	p15, 0, r10, c1, c0, 1		@ read aux control register
