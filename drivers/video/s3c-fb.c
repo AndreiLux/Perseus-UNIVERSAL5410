@@ -366,6 +366,7 @@ struct s3c_fb {
 	struct dentry		*debug_dentry;
 	struct s3c_fb_debug	debug_data;
 #endif
+	struct exynos5_bus_mif_handle *fb_mif_handle;
 };
 
 static void s3c_fb_dump_registers(struct s3c_fb *sfb)
@@ -3678,6 +3679,12 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	}
 #endif
 
+	if (!sfb->fb_mif_handle) {
+		sfb->fb_mif_handle = exynos5_bus_mif_min(300000);
+		if (!sfb->fb_mif_handle)
+			dev_err(sfb->dev, "failed to request min_freq for mif \n");
+	}
+
 	s3c_fb_activate_window_dma(sfb, default_win);
 	s3c_fb_activate_window(sfb, default_win);
 	sfb->output_on = true;
@@ -3698,6 +3705,8 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	return 0;
 
 err_fb:
+	if (sfb->fb_mif_handle)
+		exynos5_bus_mif_put(sfb->fb_mif_handle);
 	iovmm_deactivate(&s5p_device_fimd1.dev);
 
 err_iovmm:
@@ -3779,6 +3788,9 @@ static int __devexit s3c_fb_remove(struct platform_device *pdev)
 	pm_runtime_put_sync(sfb->dev);
 	pm_runtime_disable(sfb->dev);
 
+	if (sfb->fb_mif_handle)
+		exynos5_bus_mif_put(sfb->fb_mif_handle);
+
 	return 0;
 }
 
@@ -3824,6 +3836,12 @@ static int s3c_fb_disable(struct s3c_fb *sfb)
 	pm_runtime_put_sync(sfb->dev);
 	sfb->output_on = false;
 
+	if (sfb->fb_mif_handle) {
+		if(exynos5_bus_mif_put(sfb->fb_mif_handle))
+			dev_err(sfb->dev, "failed to free min_freq for mif \n");
+		sfb->fb_mif_handle = NULL;
+	}
+
 err:
 	mutex_unlock(&sfb->output_lock);
 	return ret;
@@ -3845,6 +3863,12 @@ static int s3c_fb_enable(struct s3c_fb *sfb)
 	if (sfb->output_on) {
 		ret = -EBUSY;
 		goto err;
+	}
+
+	if (!sfb->fb_mif_handle) {
+		sfb->fb_mif_handle = exynos5_bus_mif_min(300000);
+		if (!sfb->fb_mif_handle)
+			dev_err(sfb->dev, "failed to request min_freq for mif \n");
 	}
 
 	pm_runtime_get_sync(sfb->dev);
