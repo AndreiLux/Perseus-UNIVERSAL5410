@@ -889,30 +889,58 @@ int hdmi_compute_acr(u32 sample_freq, u32 *n, u32 *cts)
 
 int hdmi_audio_enable(void)
 {
+	int r;
+
 	DSSDBG("audio_enable\n");
 
-	return hdmi.ip_data.ops->audio_enable(&hdmi.ip_data);
+	r = hdmi_runtime_get();
+	BUG_ON(r);
+
+	r = hdmi.ip_data.ops->audio_enable(&hdmi.ip_data);
+	hdmi_runtime_put();
+
+	return r;
 }
 
 void hdmi_audio_disable(void)
 {
+	int r;
+
 	DSSDBG("audio_disable\n");
 
+	r = hdmi_runtime_get();
+	BUG_ON(r);
+
 	hdmi.ip_data.ops->audio_disable(&hdmi.ip_data);
+	hdmi_runtime_put();
 }
 
 int hdmi_audio_start(void)
 {
+	int r;
+
 	DSSDBG("audio_start\n");
 
-	return hdmi.ip_data.ops->audio_start(&hdmi.ip_data);
+	r = hdmi_runtime_get();
+	BUG_ON(r);
+
+	r = hdmi.ip_data.ops->audio_start(&hdmi.ip_data);
+	hdmi_runtime_put();
+
+	return r;
 }
 
 void hdmi_audio_stop(void)
 {
+	int r;
+
 	DSSDBG("audio_stop\n");
 
+	r = hdmi_runtime_get();
+	BUG_ON(r);
+
 	hdmi.ip_data.ops->audio_stop(&hdmi.ip_data);
+	hdmi_runtime_put();
 }
 
 bool hdmi_mode_has_audio(void)
@@ -925,7 +953,15 @@ bool hdmi_mode_has_audio(void)
 
 int hdmi_audio_config(struct omap_dss_audio *audio)
 {
-	return hdmi.ip_data.ops->audio_config(&hdmi.ip_data, audio);
+	int r;
+
+	r = hdmi_runtime_get();
+	BUG_ON(r);
+
+	r = hdmi.ip_data.ops->audio_config(&hdmi.ip_data, audio);
+	hdmi_runtime_put();
+
+	return r;
 }
 
 #endif
