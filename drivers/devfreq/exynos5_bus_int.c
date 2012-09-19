@@ -43,6 +43,8 @@ enum int_level_idx {
 	LV_0,
 	LV_1,
 	LV_2,
+	LV_3,
+	LV_4,
 	_LV_END
 };
 
@@ -75,6 +77,8 @@ static struct int_bus_opp_table exynos5_int_opp_table[] = {
 	{LV_0, 266000, 1050000},
 	{LV_1, 200000, 1050000},
 	{LV_2, 160000, 1050000},
+	{LV_3, 133000, 1050000},
+	{LV_4, 100000, 1050000},
 	{0, 0, 0},
 };
 
