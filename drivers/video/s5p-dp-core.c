@@ -360,10 +360,10 @@ static int s5p_dp_link_start(struct s5p_dp_device *dp)
 		return retval;
 	}
 
-	/* Set TX pre-emphasis to minimum */
+	/* Set TX pre-emphasis to level1 */
 	for (lane = 0; lane < lane_count; lane++)
 		s5p_dp_set_lane_lane_pre_emphasis(dp,
-			PRE_EMPHASIS_LEVEL_0, lane);
+			PRE_EMPHASIS_LEVEL_1, lane);
 
 	/* Set training pattern 1 */
 	s5p_dp_set_training_pattern(dp, TRAINING_PTN1);
