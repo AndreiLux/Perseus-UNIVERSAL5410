@@ -654,7 +654,7 @@ static struct omap_dss_board_info omap4_panda_dss_data = {
  */
 static const char * const panda_fixup_mac_device_paths[] = {
        "usb1/1-1/1-1.1/1-1.1:1.0",
-       "mmc1:0001:2",
+       "wl12xx",
 };
 
 void __init omap4_panda_display_init(void)
