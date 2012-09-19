@@ -273,7 +273,7 @@ static inline void *dma_buf_vmap(struct dma_buf *dmabuf)
 {
 }
 
-static inline void dma_buf_vunmap(struct dma_buf *dmabuf, void *vaddr)
+static inline void dma_buf_vunmap(struct dma_buf *dmabuf, void *vaddr);
 {
 }
 #endif /* CONFIG_DMA_SHARED_BUFFER */
