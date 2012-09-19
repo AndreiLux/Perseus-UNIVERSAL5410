@@ -739,9 +739,6 @@ static int _disable_clocks(struct omap_hwmod *oh)
 
 	pr_debug("omap_hwmod: %s: disabling clocks\n", oh->name);
 
-	if (oh->_clk)
-		clk_disable(oh->_clk);
-
 	if (oh->slaves_cnt > 0) {
 		for (i = 0; i < oh->slaves_cnt; i++) {
 			struct omap_hwmod_ocp_if *os = oh->slaves[i];
@@ -751,6 +748,9 @@ static int _disable_clocks(struct omap_hwmod *oh)
 				clk_disable(c);
 		}
 	}
+
+	if (oh->_clk)
+		clk_disable(oh->_clk);
 
 	/* The opt clocks are controlled by the device driver. */
 
