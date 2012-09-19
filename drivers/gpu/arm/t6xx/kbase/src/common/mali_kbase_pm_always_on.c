@@ -53,7 +53,6 @@ static void always_on_state_changed(kbase_device *kbdev)
 			return;
 		}
 		/* All cores have transitioned, turn the clock and interrupts off */
-		kbase_pm_disable_interrupts(kbdev);
 		kbase_pm_clock_off(kbdev);
 
 		/* Inform the OS */
@@ -120,10 +119,8 @@ static void always_on_resume(kbase_device *kbdev)
 	/* Inform the system that the transition has started */
 	kbase_pm_power_transitioning(kbdev);
 
-	/* Turn the clock on */
+	/* Turn the clock on and enable interrupts */
 	kbase_pm_clock_on(kbdev);
-	/* Enable interrupts */
-	kbase_pm_enable_interrupts(kbdev);
 
 	/* Turn the cores on */
 	cores = kbase_pm_get_present_cores(kbdev, KBASE_PM_CORE_SHADER);
@@ -227,6 +224,7 @@ const kbase_pm_policy kbase_pm_always_on_policy_ops =
 	always_on_term,             /* term */
 	always_on_event,            /* event */
 	KBASE_PM_POLICY_FLAG_NO_CORE_TRANSITIONS, /* flags */
+	KBASE_PM_POLICY_ID_ALWAYS_ON, /* id */
 };
 
 KBASE_EXPORT_TEST_API(kbase_pm_always_on_policy_ops)

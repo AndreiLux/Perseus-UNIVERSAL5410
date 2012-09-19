@@ -36,8 +36,7 @@ static void demand_power_up(kbase_device *kbdev)
 
 	/* Turn clocks and interrupts on */
 	kbase_pm_clock_on(kbdev);
-	kbase_pm_enable_interrupts(kbdev);
-	
+
 	kbase_pm_check_transitions(kbdev);
 
 	kbdev->pm.policy_data.demand.state = KBASEP_PM_DEMAND_STATE_POWERING_UP;
@@ -119,7 +118,6 @@ static void demand_state_changed(kbase_device *kbdev)
 		case KBASEP_PM_DEMAND_STATE_POWERING_DOWN:
 			data->state = KBASEP_PM_DEMAND_STATE_POWERED_DOWN;
 			/* Disable interrupts and turn the clock off */
-			kbase_pm_disable_interrupts(kbdev);
 			kbase_pm_clock_off(kbdev);
 			kbase_pm_power_down_done(kbdev);
 			break;
@@ -237,6 +235,7 @@ const kbase_pm_policy kbase_pm_demand_policy_ops =
 	demand_term,                /* term */
 	demand_event,               /* event */
 	0u,                         /* flags */
+	KBASE_PM_POLICY_ID_DEMAND,  /* id */
 };
 
 

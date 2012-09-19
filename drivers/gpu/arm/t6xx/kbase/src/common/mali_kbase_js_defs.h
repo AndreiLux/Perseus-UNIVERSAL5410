@@ -233,7 +233,7 @@ typedef struct kbasep_js_per_as_data
 typedef struct kbasep_js_device_data
 {
 	/** Sub-structure to collect together Job Scheduling data used in IRQ context */
-	struct
+	struct runpool_irq
 	{
 		/**
 		 * Lock for accessing Job Scheduling data used in IRQ context

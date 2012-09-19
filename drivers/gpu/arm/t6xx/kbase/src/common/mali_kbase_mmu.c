@@ -639,6 +639,7 @@ KBASE_EXPORT_TEST_API(kbase_mmu_insert_pages)
 		{
 			/* Lock the VA region we're about to update */
 			u64 lock_addr = lock_region(kbdev, vpfn, requested_nr);
+			u32 max_loops = KBASE_AS_FLUSH_MAX_LOOPS;
 
 			/* AS transaction begin */
 			mutex_lock(&kbdev->as[kctx->as_nr].transaction_mutex);
@@ -657,7 +658,20 @@ KBASE_EXPORT_TEST_API(kbase_mmu_insert_pages)
 			}
 
 			/* wait for the flush to complete */
-			while (kbase_reg_read(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_STATUS), kctx) & ASn_STATUS_FLUSH_ACTIVE);
+			while (--max_loops &&
+			       kbase_reg_read(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_STATUS), kctx) & ASn_STATUS_FLUSH_ACTIVE)
+			{
+			}
+
+			if (!max_loops)
+			{
+				/* Flush failed to complete, assume the GPU has hung and perform a reset to recover */
+				OSK_PRINT_ERROR(OSK_BASE_MMU, "ASn_STATUS_FLUSH_ACTIVE stuck set. Resetting to recover\n");
+				if (kbase_prepare_to_reset_gpu(kbdev))
+				{
+					kbase_reset_gpu(kbdev);
+				}
+			}
 
 			if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_9630))
 			{

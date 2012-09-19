@@ -30,6 +30,14 @@
 /* Forward definition - see mali_kbase.h */
 struct kbase_device;
 
+/** List of policy IDs */
+typedef enum kbase_pm_policy_id
+{
+	KBASE_PM_POLICY_ID_DEMAND = 1,
+	KBASE_PM_POLICY_ID_ALWAYS_ON,
+	KBASE_PM_POLICY_ID_COARSE_DEMAND
+} kbase_pm_policy_id;
+
 /** The types of core in a GPU.
  *
  * These enumerated values are used in calls to @ref kbase_pm_invoke_power_up, @ref kbase_pm_invoke_power_down, @ref
@@ -221,6 +229,10 @@ typedef struct kbase_pm_policy
 	void (*event)(struct kbase_device *kbdev, kbase_pm_event event);
 	/** Field indicating flags for this policy */
 	kbase_pm_policy_flags flags;
+	/** Field indicating an ID for this policy. This is not necessarily the
+	 * same as its index in the list returned by kbase_pm_list_policies().
+	 * It is used purely for debugging. */
+	kbase_pm_policy_id id;
 } kbase_pm_policy;
 
 /** Metrics data collected for use by the power management framework.
@@ -545,7 +557,7 @@ u64 kbase_pm_get_ready_cores(struct kbase_device *kbdev, kbase_pm_core_type type
  */
 mali_bool kbase_pm_get_pwr_active(struct kbase_device *kbdev);
 
-/** Turn the clock for the device on.
+/** Turn the clock for the device on, and enable device interrupts.
  *
  * This function can be used by a power policy to turn the clock for the GPU on. It should be modified during
  * integration to perform the necessary actions to ensure that the GPU is fully powered and clocked.
@@ -554,7 +566,7 @@ mali_bool kbase_pm_get_pwr_active(struct kbase_device *kbdev);
  */
 void kbase_pm_clock_on(struct kbase_device *kbdev);
 
-/** Turn the clock for the device off.
+/** Disable device interrupts, and turn the clock for the device off.
  *
  * This function can be used by a power policy to turn the clock for the GPU off. It should be modified during
  * integration to perform the necessary actions to turn the clock off (if this is possible in the integration).
@@ -565,8 +577,7 @@ void kbase_pm_clock_off(struct kbase_device *kbdev);
 
 /** Enable interrupts on the device.
  *
- * This function should be called by the active power policy immediately after calling @ref kbase_pm_clock_on to
- * ensure that interrupts are enabled on the device.
+ * Interrupts are also enabled after a call to kbase_pm_clock_on().
  *
  * @param kbdev     The kbase device structure for the device (must be a valid pointer)
  */
@@ -574,10 +585,10 @@ void kbase_pm_enable_interrupts(struct kbase_device *kbdev);
 
 /** Disable interrupts on the device.
  *
- * This function should be called by the active power policy after shutting down the device (i.e. in the @ref
- * KBASE_PM_EVENT_GPU_STATE_CHANGED handler after confirming that all cores have powered off). It prevents interrupt
- * delivery to the CPU so no further @ref KBASE_PM_EVENT_GPU_STATE_CHANGED messages will be received until @ref
- * kbase_pm_enable_interrupts is called.
+ * This prevents interrupt delivery to the CPU so no further @ref KBASE_PM_EVENT_GPU_STATE_CHANGED messages will be
+ * received until @ref kbase_pm_enable_interrupts or kbase_pm_clock_on() is called.
+ *
+ * Interrupts are also disabled after a call to kbase_pm_clock_off().
  *
  * @param kbdev     The kbase device structure for the device (must be a valid pointer)
  */

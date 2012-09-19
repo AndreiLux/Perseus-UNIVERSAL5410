@@ -63,6 +63,8 @@
 KBASE_TRACE_CODE_MAKE_CODE( CORE_CTX_DESTROY ),      /* no info_val, no gpu_addr, no atom */
 KBASE_TRACE_CODE_MAKE_CODE( CORE_CTX_HWINSTR_TERM ), /* no info_val, no gpu_addr, no atom */
 KBASE_TRACE_CODE_MAKE_CODE( CORE_GPU_IRQ ), /* info_val == GPU_IRQ_STATUS register */
+KBASE_TRACE_CODE_MAKE_CODE( CORE_GPU_SOFT_RESET ),
+KBASE_TRACE_CODE_MAKE_CODE( CORE_GPU_HARD_RESET ),
 
 /*
  * Job Slot management events
@@ -100,6 +102,8 @@ KBASE_TRACE_CODE_MAKE_CODE( JM_ZAP_DONE ),
 KBASE_TRACE_CODE_MAKE_CODE( JM_SLOT_SOFT_OR_HARD_STOP ),  /* info_val == nr jobs submitted */
 KBASE_TRACE_CODE_MAKE_CODE( JM_SLOT_EVICT ), /* gpu_addr==JSn_HEAD_NEXT last written */
 KBASE_TRACE_CODE_MAKE_CODE( JM_SUBMIT_AFTER_RESET ),
+KBASE_TRACE_CODE_MAKE_CODE( JM_BEGIN_RESET_WORKER ),
+KBASE_TRACE_CODE_MAKE_CODE( JM_END_RESET_WORKER ),
 
 
 /*
@@ -184,7 +188,10 @@ KBASE_TRACE_CODE_MAKE_CODE( PM_GPU_OFF ),
 KBASE_TRACE_CODE_MAKE_CODE( PM_SEND_EVENT ), /* info_val == event code */
 KBASE_TRACE_CODE_MAKE_CODE( PM_HANDLE_EVENT ), /* info_val == event code */
 KBASE_TRACE_CODE_MAKE_CODE( PM_ACTIVATE_WORKER ),
-
+KBASE_TRACE_CODE_MAKE_CODE( PM_SET_POLICY ), /* info_val == policy number, or -1 for "Already changing" */
+KBASE_TRACE_CODE_MAKE_CODE( PM_CHANGE_POLICY ), /* info_val bit0:15 == old policy, bit16:31 == new policy */
+KBASE_TRACE_CODE_MAKE_CODE( PM_CURRENT_POLICY_INIT ), /* info_val == policy number */
+KBASE_TRACE_CODE_MAKE_CODE( PM_CURRENT_POLICY_TERM ), /* info_val == policy number */
 
 
 /* Unused code just to make it easier to not have a comma at the end.

@@ -663,5 +663,10 @@ typedef enum kbase_share_attr_bits
 #define HR_TIMER_DELAY_MSEC(x) (ns_to_ktime((x)*1000000U ))
 #define HR_TIMER_DELAY_NSEC(x) (ns_to_ktime(x))
 
+/* Maximum number of loops polling the GPU for a cache flush before we assume it must have completed */
+#define KBASE_CLEAN_CACHE_MAX_LOOPS     100000
+/* Maximum number of loops polling the GPU for an AS flush to complete before we assume the GPU has hung */
+#define KBASE_AS_FLUSH_MAX_LOOPS        100000
+
 #endif /* _KBASE_DEFS_H_ */
 

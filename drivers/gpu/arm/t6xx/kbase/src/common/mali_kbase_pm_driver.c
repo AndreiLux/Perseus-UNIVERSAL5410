@@ -890,10 +890,13 @@ void kbase_pm_clock_on(kbase_device *kbdev)
 		/* GPU state was lost, reset GPU to ensure it is in a consistent state */
 		kbase_pm_init_hw(kbdev);
 	}
-	
+
 	spin_lock_irqsave(&kbdev->pm.gpu_powered_lock, flags);
 	kbdev->pm.gpu_powered = MALI_TRUE;
 	spin_unlock_irqrestore(&kbdev->pm.gpu_powered_lock, flags);
+
+	/* Lastly, enable the interrupts */
+	kbase_pm_enable_interrupts(kbdev);
 }
 KBASE_EXPORT_TEST_API(kbase_pm_clock_on)
 
@@ -910,6 +913,8 @@ void kbase_pm_clock_off(kbase_device *kbdev)
 
 	KBASE_TRACE_ADD( kbdev, PM_GPU_OFF, NULL, NULL, 0u, 0u );
 
+	/* Disable interrupts. This also clears any outstanding interrupts */
+	kbase_pm_disable_interrupts(kbdev);
 	/* Ensure that any IRQ handlers have finished */
 	kbase_synchronize_irqs(kbdev);
 
@@ -993,10 +998,11 @@ mali_error kbase_pm_init_hw(kbase_device *kbdev)
 	kbase_pm_disable_interrupts(kbdev);
 
 	/* Soft reset the GPU */
-	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), 1, NULL);
+	KBASE_TRACE_ADD( kbdev, CORE_GPU_SOFT_RESET, NULL, NULL, 0u, 0 );
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), GPU_COMMAND_SOFT_RESET, NULL);
 
 	/* Unmask the reset complete interrupt only */
-	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), (1<<8), NULL);
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), RESET_COMPLETED, NULL);
 
 	/* Initialize a structure for tracking the status of the reset */
 	rtdata.kbdev = kbdev;
@@ -1021,7 +1027,7 @@ mali_error kbase_pm_init_hw(kbase_device *kbdev)
 	}
 
 	/* No interrupt has been received - check if the RAWSTAT register says the reset has completed */
-	if (kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_IRQ_RAWSTAT), NULL) & (1<<8))
+	if (kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_IRQ_RAWSTAT), NULL) & RESET_COMPLETED)
 	{
 		/* The interrupt is set in the RAWSTAT; this suggests that the interrupts are not getting to the CPU */
 		OSK_PRINT_WARN(OSK_BASE_PM, "Reset interrupt didn't reach CPU. Check interrupt assignments.\n");
@@ -1032,7 +1038,8 @@ mali_error kbase_pm_init_hw(kbase_device *kbdev)
 
 	/* The GPU doesn't seem to be responding to the reset so try a hard reset */
 	OSK_PRINT_WARN(OSK_BASE_PM, "Failed to soft reset GPU, attempting a hard reset\n");
-	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), 2, NULL);
+	KBASE_TRACE_ADD( kbdev, CORE_GPU_HARD_RESET, NULL, NULL, 0u, 0 );
+	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), GPU_COMMAND_HARD_RESET, NULL);
 
 	/* Restart the timer to wait for the hard reset to complete */
 	rtdata.timed_out = 0;
@@ -1061,6 +1068,9 @@ mali_error kbase_pm_init_hw(kbase_device *kbdev)
 	return MALI_ERROR_FUNCTION_FAILED;
 
 out:
+	/* Re-enable interrupts */
+	kbase_pm_enable_interrupts(kbdev);
+
 	/* If cycle counter was in use-re enable it */
 	spin_lock_irqsave( &kbdev->pm.gpu_cycle_counter_requests_lock, flags);
 

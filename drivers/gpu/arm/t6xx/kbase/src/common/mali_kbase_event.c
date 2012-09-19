@@ -18,24 +18,13 @@
 
 STATIC base_jd_udata kbase_event_process(kbase_context *kctx, kbase_jd_atom *katom)
 {
-	kbase_jd_context *jctx;
 	base_jd_udata data;
-	kbasep_js_policy *js_policy;
 
 	OSK_ASSERT(kctx != NULL);
 	OSK_ASSERT(katom != NULL);
 	OSK_ASSERT(katom->status == KBASE_JD_ATOM_STATE_COMPLETED);
 
-	jctx = &kctx->jctx;
-
-	js_policy = &(kctx->kbdev->js_data.policy);
-
 	data = katom->udata;
-
-	if ((katom->core_req & BASE_JD_REQ_SOFT_JOB) == 0)
-	{
-		kbasep_js_policy_term_job( js_policy, kctx, katom );
-	}
 
 	katom->status = KBASE_JD_ATOM_STATE_UNUSED;
 
