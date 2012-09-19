@@ -1630,6 +1630,7 @@ static struct omap_hwmod_ocp_if omap44xx_l3_main_2__dss = {
 	.clk		= "dss_fck",
 	.addr		= omap44xx_dss_dma_addrs,
 	.user		= OCP_USER_SDMA,
+	.flags		= OCPIF_SWSUP_IDLE,
 };
 
 static struct omap_hwmod_addr_space omap44xx_dss_addrs[] = {
@@ -1733,6 +1734,7 @@ static struct omap_hwmod_ocp_if omap44xx_l3_main_2__dss_dispc = {
 	.clk		= "dss_fck",
 	.addr		= omap44xx_dss_dispc_dma_addrs,
 	.user		= OCP_USER_SDMA,
+	.flags		= OCPIF_SWSUP_IDLE,
 };
 
 static struct omap_hwmod_addr_space omap44xx_dss_dispc_addrs[] = {
@@ -1831,6 +1833,7 @@ static struct omap_hwmod_ocp_if omap44xx_l3_main_2__dss_dsi1 = {
 	.clk		= "dss_fck",
 	.addr		= omap44xx_dss_dsi1_dma_addrs,
 	.user		= OCP_USER_SDMA,
+	.flags		= OCPIF_SWSUP_IDLE,
 };
 
 static struct omap_hwmod_addr_space omap44xx_dss_dsi1_addrs[] = {
@@ -1908,6 +1911,7 @@ static struct omap_hwmod_ocp_if omap44xx_l3_main_2__dss_dsi2 = {
 	.clk		= "dss_fck",
 	.addr		= omap44xx_dss_dsi2_dma_addrs,
 	.user		= OCP_USER_SDMA,
+	.flags		= OCPIF_SWSUP_IDLE,
 };
 
 static struct omap_hwmod_addr_space omap44xx_dss_dsi2_addrs[] = {
@@ -2005,6 +2009,7 @@ static struct omap_hwmod_ocp_if omap44xx_l3_main_2__dss_hdmi = {
 	.clk		= "dss_fck",
 	.addr		= omap44xx_dss_hdmi_dma_addrs,
 	.user		= OCP_USER_SDMA,
+	.flags		= OCPIF_SWSUP_IDLE,
 };
 
 static struct omap_hwmod_addr_space omap44xx_dss_hdmi_addrs[] = {
@@ -2097,6 +2102,7 @@ static struct omap_hwmod_ocp_if omap44xx_l3_main_2__dss_rfbi = {
 	.clk		= "dss_fck",
 	.addr		= omap44xx_dss_rfbi_dma_addrs,
 	.user		= OCP_USER_SDMA,
+	.flags		= OCPIF_SWSUP_IDLE,
 };
 
 static struct omap_hwmod_addr_space omap44xx_dss_rfbi_addrs[] = {
@@ -2172,6 +2178,7 @@ static struct omap_hwmod_ocp_if omap44xx_l3_main_2__dss_venc = {
 	.clk		= "dss_fck",
 	.addr		= omap44xx_dss_venc_dma_addrs,
 	.user		= OCP_USER_SDMA,
+	.flags		= OCPIF_SWSUP_IDLE,
 };
 
 static struct omap_hwmod_addr_space omap44xx_dss_venc_addrs[] = {
