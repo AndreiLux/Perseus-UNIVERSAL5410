@@ -186,6 +186,19 @@ static int ehci_hcd_omap_probe(struct platform_device *pdev)
 	hcd->rsrc_len = resource_size(res);
 	hcd->regs = regs;
 
+	if (pdata->clock_name) {
+		pdata->phy_ref_clk = clk_get(NULL, pdata->clock_name);
+		if (IS_ERR(pdata->phy_ref_clk)) {
+			dev_err(dev, "Cannot request clock %s\n",
+						pdata->clock_name);
+			ret = -EINVAL;
+			goto err_io;
+		}
+		clk_set_rate(pdata->phy_ref_clk, pdata->clock_rate);
+		clk_enable(pdata->phy_ref_clk);
+	}
+
+
 	/* get ehci regulator and enable */
 	for (i = 0 ; i < OMAP3_HS_USB_PORTS ; i++) {
 		if (pdata->port_mode[i] != OMAP_EHCI_PORT_MODE_PHY) {
@@ -319,6 +332,10 @@ static int ehci_hcd_omap_remove(struct platform_device *pdev)
 
 	usb_remove_hcd(hcd);
 	disable_put_regulator(dev->platform_data);
+	if (pdata->clock_name) {
+		clk_disable(pdata->phy_ref_clk);
+		clk_put(pdata->phy_ref_clk);
+	}
 	iounmap(hcd->regs);
 	usb_put_hcd(hcd);
 	pm_runtime_put_sync(dev);

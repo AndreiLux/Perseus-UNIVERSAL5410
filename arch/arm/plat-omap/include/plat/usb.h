@@ -41,6 +41,10 @@ struct usbhs_omap_board_data {
 
 	unsigned			phy_reset:1;
 
+	/* optional clock that usbhs will take care of get/put/set */
+	char				*clock_name;
+	unsigned int			clock_rate;
+
 	/*
 	 * Regulators for USB PHYs.
 	 * Each PHY can have a separate regulator.
@@ -53,6 +57,10 @@ struct ehci_hcd_omap_platform_data {
 	int				reset_gpio_port[OMAP3_HS_USB_PORTS];
 	struct regulator		*regulator[OMAP3_HS_USB_PORTS];
 	unsigned			phy_reset:1;
+	/* optional clock that usbhs will take care of get/put/set */
+	char				*clock_name;
+	unsigned int			clock_rate;
+	struct clk			*phy_ref_clk;
 };
 
 struct ohci_hcd_omap_platform_data {

@@ -199,6 +199,8 @@ static const struct usbhs_omap_board_data usbhs_bdata __initconst = {
 	.reset_gpio_port[0]  = -EINVAL,
 	.reset_gpio_port[1]  = -EINVAL,
 	.reset_gpio_port[2]  = -EINVAL,
+	.clock_name = "auxclk3_ck",
+	.clock_rate = 19200000,
 };
 
 /*
@@ -263,22 +265,6 @@ static struct platform_device omap_vulpireset_device = {
 		.platform_data = &panda_vulpireset,
 	},
 };
-
-static void omap4_ehci_init(void)
-{
-	struct clk *phy_ref_clk;
-
-	/* FREF_CLK3 provides the 19.2 MHz reference clock to the PHY */
-	phy_ref_clk = clk_get(NULL, "auxclk3_ck");
-	if (IS_ERR(phy_ref_clk)) {
-		pr_err("Cannot request auxclk3\n");
-		return;
-	}
-	clk_set_rate(phy_ref_clk, 19200000);
-	clk_enable(phy_ref_clk);
-
-	usbhs_init(&usbhs_bdata);
-}
 
 static struct omap_musb_board_data musb_board_data = {
 	.interface_type		= MUSB_INTERFACE_UTMI,
@@ -756,7 +742,7 @@ static void __init omap4_panda_init(void)
 	omap_serial_init();
 	omap_sdrc_init(NULL, NULL);
 	omap4_twl6030_hsmmc_init(mmc);
-	omap4_ehci_init();
+	usbhs_init(&usbhs_bdata);
 	usb_musb_init(&musb_board_data);
 	omap4_panda_display_init();
 	if (cpu_is_omap446x()) {
