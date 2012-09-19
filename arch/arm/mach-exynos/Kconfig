@@ -23,6 +23,7 @@ config ARCH_EXYNOS5
 	bool "SAMSUNG EXYNOS5"
 	select HAVE_SMP
 	select ARM_ERRATA_774769
+	select ARM_ERRATA_773022
 	help
 	  Samsung EXYNOS5 (Cortex-A15) SoC based systems
 
