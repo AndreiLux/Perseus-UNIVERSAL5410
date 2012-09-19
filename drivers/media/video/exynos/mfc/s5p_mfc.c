@@ -101,7 +101,7 @@ static inline void wake_up_ctx(struct s5p_mfc_ctx *ctx, unsigned int reason,
 	ctx->int_cond = 1;
 	ctx->int_type = reason;
 	ctx->int_err = err;
-	if (ctx->state != MFCINST_ABORT)
+	if (ctx->state != MFCINST_ABORT && ctx->state != MFCINST_FREE)
 		wake_up_interruptible(&ctx->queue);
 	else
 		wake_up(&ctx->queue);
@@ -717,13 +717,13 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 		ctx->inst_no = s5p_mfc_get_inst_no();
 		ctx->state = MFCINST_GOT_INST;
 		clear_work_bit(ctx);
-		wake_up_interruptible(&ctx->queue);
+		wake_up_ctx(ctx, reason, err);
 		goto irq_cleanup_hw;
 		break;
 	case S5P_FIMV_R2H_CMD_CLOSE_INSTANCE_RET:
 		clear_work_bit(ctx);
 		ctx->state = MFCINST_FREE;
-		wake_up(&ctx->queue);
+		wake_up_ctx(ctx, reason, err);
 		goto irq_cleanup_hw;
 		break;
 	case S5P_FIMV_R2H_CMD_SYS_INIT_RET:
@@ -797,9 +797,6 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 	return IRQ_HANDLED;
 irq_cleanup_hw:
 	s5p_mfc_clear_int_flags();
-	ctx->int_type = reason;
-	ctx->int_err = err;
-	ctx->int_cond = 1;
 	if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
 		mfc_err("Failed to unlock hw.\n");
 
