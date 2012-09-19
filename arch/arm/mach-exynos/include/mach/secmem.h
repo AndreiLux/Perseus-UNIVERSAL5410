@@ -13,7 +13,6 @@
 #ifndef __ASM_ARCH_SECMEM_H
 #define __ASM_ARCH_SECMEM_H __FILE__
 
-#include <linux/miscdevice.h>
 #if defined(CONFIG_ION)
 #include <linux/ion.h>
 #endif
@@ -24,7 +23,6 @@ struct secchunk_info {
 	size_t		size;
 };
 
-extern struct miscdevice secmem;
 #if defined(CONFIG_ION)
 struct secfd_info {
 	int	fd;
