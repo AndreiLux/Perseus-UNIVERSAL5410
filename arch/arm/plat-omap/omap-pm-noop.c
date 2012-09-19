@@ -60,6 +60,7 @@ int omap_pm_set_min_bus_tput(struct device *dev, u8 agent_id, unsigned long r)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(omap_pm_set_min_bus_tput);
 
 int omap_pm_set_min_clk_rate(struct device *dev, struct clk *c, long r)
 {
