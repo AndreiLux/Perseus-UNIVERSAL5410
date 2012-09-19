@@ -293,6 +293,9 @@ static int exynos_enter_core0(enum sys_powerdown powerdown)
 	cpu_pm_exit();
 abort_cpu:
 
+	if (soc_is_exynos5250())
+		__raw_writel(0x1, EXYNOS5_CMU_SYSCLK_DISP1_SYS_PWR_REG);
+
 	restore_cpu_arch_register();
 
 	/*
