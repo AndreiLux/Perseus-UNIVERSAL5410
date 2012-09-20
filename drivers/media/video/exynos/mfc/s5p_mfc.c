@@ -1043,7 +1043,8 @@ static int s5p_mfc_release(struct file *file)
 		}
 		/* Free resources */
 		s5p_mfc_release_codec_buffers(ctx);
-		s5p_mfc_release_instance_buffer(ctx);
+		if (!ctx->is_drm)
+			s5p_mfc_release_instance_buffer(ctx);
 		if (ctx->type == MFCINST_DECODER)
 			s5p_mfc_release_dec_desc_buffer(ctx);
 
@@ -1053,8 +1054,11 @@ static int s5p_mfc_release(struct file *file)
 	if (dev->curr_ctx == ctx->num)
 		clear_bit(ctx->num, &dev->hw_lock);
 
-	if (ctx->is_drm)
+	if (ctx->is_drm) {
 		dev->num_drm_inst--;
+		if (dev->num_drm_inst == 0)
+			s5p_mfc_release_instance_buffer(ctx);
+	}
 	dev->num_inst--;
 
 	if (dev->num_inst == 0) {
