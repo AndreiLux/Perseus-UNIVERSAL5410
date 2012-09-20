@@ -513,7 +513,7 @@ int s5p_dp_write_byte_to_dpcd(struct s5p_dp_device *dp,
 		if (retval == 0)
 			break;
 		else
-			dev_err(dp->dev, "Aux Transaction fail!\n");
+			dev_dbg(dp->dev, "Aux Transaction fail!\n");
 	}
 
 	return retval;
@@ -553,7 +553,7 @@ int s5p_dp_read_byte_from_dpcd(struct s5p_dp_device *dp,
 		if (retval == 0)
 			break;
 		else
-			dev_err(dp->dev, "Aux Transaction fail!\n");
+			dev_dbg(dp->dev, "Aux Transaction fail!\n");
 	}
 
 	/* Read data buffer */
@@ -617,7 +617,7 @@ int s5p_dp_write_bytes_to_dpcd(struct s5p_dp_device *dp,
 			if (retval == 0)
 				break;
 			else
-				dev_err(dp->dev, "Aux Transaction fail!\n");
+				dev_dbg(dp->dev, "Aux Transaction fail!\n");
 		}
 
 		start_offset += cur_data_count;
@@ -674,7 +674,7 @@ int s5p_dp_read_bytes_from_dpcd(struct s5p_dp_device *dp,
 			if (retval == 0)
 				break;
 			else
-				dev_err(dp->dev, "Aux Transaction fail!\n");
+				dev_dbg(dp->dev, "Aux Transaction fail!\n");
 		}
 
 		for (cur_data_idx = 0; cur_data_idx < cur_data_count;
@@ -719,7 +719,7 @@ int s5p_dp_select_i2c_device(struct s5p_dp_device *dp,
 	/* Start AUX transaction */
 	retval = s5p_dp_start_aux_transaction(dp);
 	if (retval != 0)
-		dev_err(dp->dev, "Aux Transaction fail!\n");
+		dev_dbg(dp->dev, "Aux Transaction fail!\n");
 
 	return retval;
 }
@@ -759,7 +759,7 @@ int s5p_dp_read_byte_from_i2c(struct s5p_dp_device *dp,
 		if (retval == 0)
 			break;
 		else
-			dev_err(dp->dev, "Aux Transaction fail!\n");
+			dev_dbg(dp->dev, "Aux Transaction fail!\n");
 	}
 
 	/* Read data */
@@ -802,25 +802,24 @@ int s5p_dp_read_bytes_from_i2c(struct s5p_dp_device *dp,
 			else
 				defer = 0;
 
-			if (retval == 0) {
-				/*
-				 * Set I2C transaction and write data
-				 * If bit 3 is 1, DisplayPort transaction.
-				 * If Bit 3 is 0, I2C transaction.
-				 */
-				reg = AUX_LENGTH(16) |
-					AUX_TX_COMM_I2C_TRANSACTION |
-					AUX_TX_COMM_READ;
-				writel(reg, dp->reg_base +
-					S5P_DP_AUX_CH_CTL_1);
+			/*
+			 * Set I2C transaction and write data
+			 * If bit 3 is 1, DisplayPort transaction.
+			 * If Bit 3 is 0, I2C transaction.
+			 */
+			reg = AUX_LENGTH(16) |
+				AUX_TX_COMM_I2C_TRANSACTION |
+				AUX_TX_COMM_READ;
+			writel(reg, dp->reg_base +
+				S5P_DP_AUX_CH_CTL_1);
 
-				/* Start AUX transaction */
-				retval = s5p_dp_start_aux_transaction(dp);
-				if (retval == 0)
-					break;
-				else
-					dev_err(dp->dev, "Aux Transaction fail!\n");
-			}
+			/* Start AUX transaction */
+			retval = s5p_dp_start_aux_transaction(dp);
+			if (retval == 0)
+				break;
+			else
+				dev_dbg(dp->dev, "Aux Transaction fail!\n");
+
 			/* Check if Rx sends defer */
 			reg = readl(dp->reg_base + S5P_DP_AUX_RX_COMM);
 			if (reg == AUX_RX_COMM_AUX_DEFER ||
