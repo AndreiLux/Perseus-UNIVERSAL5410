@@ -54,7 +54,7 @@ struct busfreq_data_mif {
 	struct devfreq *devfreq;
 	bool disabled;
 	struct regulator *vdd_mif;
-	struct opp *curr_opp;
+	unsigned long curr_freq;
 
 	struct notifier_block pm_notifier;
 	struct mutex lock;
@@ -80,14 +80,8 @@ static struct mif_bus_opp_table exynos5_mif_opp_table[] = {
 	{0, 0, 0, 0},
 };
 
-static int exynos5_mif_setvolt(struct busfreq_data_mif *data, struct opp *opp)
+static int exynos5_mif_setvolt(struct busfreq_data_mif *data, unsigned long volt)
 {
-	unsigned long volt;
-
-	rcu_read_lock();
-	volt = opp_get_voltage(opp);
-	rcu_read_unlock();
-
 	return regulator_set_voltage(data->vdd_mif, volt, MAX_SAFEVOLT);
 }
 
@@ -231,7 +225,7 @@ static int exynos5_busfreq_mif_target(struct device *dev, unsigned long *_freq,
 	freq = opp_get_freq(opp);
 	volt = opp_get_voltage(opp);
 
-	old_freq = opp_get_freq(data->curr_opp);
+	old_freq = data->curr_freq;
 	rcu_read_unlock();
 
 	if (old_freq == freq)
@@ -245,7 +239,7 @@ static int exynos5_busfreq_mif_target(struct device *dev, unsigned long *_freq,
 		goto out;
 
 	if (old_freq < freq) {
-		err = exynos5_mif_setvolt(data, opp);
+		err = exynos5_mif_setvolt(data, volt);
 		if (err)
 			goto out;
 		err = exynos5_mif_set_dmc_timing(freq);
@@ -261,12 +255,12 @@ static int exynos5_busfreq_mif_target(struct device *dev, unsigned long *_freq,
 		err = exynos5_mif_set_dmc_timing(freq);
 		if (err)
 			goto out;
-		err = exynos5_mif_setvolt(data, opp);
+		err = exynos5_mif_setvolt(data, volt);
 		if (err)
 			goto out;
 	}
 
-	data->curr_opp = opp;
+	data->curr_freq = freq;
 out:
 	mutex_unlock(&data->lock);
 	return err;
@@ -316,6 +310,7 @@ static int exynos5_busfreq_mif_pm_notifier_event(struct notifier_block *this,
 						 pm_notifier);
 	struct opp *opp;
 	unsigned long maxfreq = ULONG_MAX;
+	unsigned long volt;
 	unsigned long freq;
 	int err = 0;
 
@@ -334,9 +329,10 @@ static int exynos5_busfreq_mif_pm_notifier_event(struct notifier_block *this,
 			goto unlock;
 		}
 		freq = opp_get_freq(opp);
+		volt = opp_get_voltage(opp);
 		rcu_read_unlock();
 
-		err = exynos5_mif_setvolt(data, opp);
+		err = exynos5_mif_setvolt(data, volt);
 		if (err)
 			goto unlock;
 
@@ -349,7 +345,7 @@ static int exynos5_busfreq_mif_pm_notifier_event(struct notifier_block *this,
 		if (err)
 			goto unlock;
 
-		data->curr_opp = opp;
+		data->curr_freq = freq;
 unlock:
 		mutex_unlock(&data->lock);
 		if (err)
@@ -378,6 +374,7 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 	struct opp *opp;
 	struct device *dev = &pdev->dev;
 	unsigned long initial_freq;
+	unsigned long initial_volt;
 	int err = 0;
 
 	data = devm_kzalloc(&pdev->dev, sizeof(struct busfreq_data_mif), GFP_KERNEL);
@@ -439,9 +436,10 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 		goto err_opp_add;
 	}
 	initial_freq = opp_get_freq(opp);
+	initial_volt = opp_get_voltage(opp);
 	rcu_read_unlock();
 
-	data->curr_opp = opp;
+	data->curr_freq = initial_freq;
 
 	err = exynos5_mif_setclk(data, initial_freq * 1000);
 	if (err) {
@@ -455,7 +453,7 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 		goto err_opp_add;
 	}
 
-	err = exynos5_mif_setvolt(data, opp);
+	err = exynos5_mif_setvolt(data, initial_volt);
 	if (err)
 		goto err_opp_add;
 
