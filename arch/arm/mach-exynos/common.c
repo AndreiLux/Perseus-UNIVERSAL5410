@@ -487,6 +487,7 @@ static void __init exynos5_init_clocks(int xtal)
 #define COMBINER_ENABLE_SET	0x0
 #define COMBINER_ENABLE_CLEAR	0x4
 #define COMBINER_INT_STATUS	0xC
+#define COMBINER_IRQS		8
 
 static DEFINE_SPINLOCK(irq_controller_lock);
 
@@ -494,9 +495,24 @@ struct combiner_chip_data {
 	unsigned int irq_offset;
 	unsigned int irq_mask;
 	void __iomem *base;
+	unsigned int parent_irq;
+	struct cpumask affinity[COMBINER_IRQS];
+	spinlock_t lock;
 };
 
 static struct combiner_chip_data combiner_data[MAX_COMBINER_NR];
+
+static inline bool is_max_combiner_nr_bad(unsigned int combiner_nr)
+{
+	unsigned int max_nr;
+
+	if (soc_is_exynos5250())
+		max_nr = EXYNOS5_MAX_COMBINER_NR;
+	else
+		max_nr = EXYNOS4_MAX_COMBINER_NR;
+
+	return (combiner_nr >= max_nr);
+}
 
 static void combiner_handle_cascade_irq(unsigned int irq, struct irq_desc *desc)
 {
@@ -529,14 +545,7 @@ static void combiner_handle_cascade_irq(unsigned int irq, struct irq_desc *desc)
 
 static void __init combiner_cascade_irq(unsigned int combiner_nr, unsigned int irq)
 {
-	unsigned int max_nr;
-
-	if (soc_is_exynos5250())
-		max_nr = EXYNOS5_MAX_COMBINER_NR;
-	else
-		max_nr = EXYNOS4_MAX_COMBINER_NR;
-
-	if (combiner_nr >= max_nr)
+	if (is_max_combiner_nr_bad(combiner_nr))
 		BUG();
 	if (irq_set_handler_data(irq, &combiner_data[combiner_nr]) != 0)
 		BUG();
@@ -551,24 +560,68 @@ static void combiner_resume(struct irq_data *data)
 	__raw_writel(gc->mask_cache, gc->reg_base + COMBINER_ENABLE_SET);
 }
 
-static void __init combiner_init(unsigned int combiner_nr, void __iomem *base,
-			  unsigned int irq_start)
+static int combiner_set_affinity(struct irq_data *d,
+					const struct cpumask *dest, bool force)
 {
+	struct irq_chip_generic *gc = irq_data_get_irq_chip_data(d);
+	struct cpumask target_affinity;
+	unsigned int i;
+	unsigned int ret;
+	unsigned long flags;
+	unsigned int sub_irq = (d->irq - gc->irq_base) % COMBINER_IRQS;
+	unsigned int combiner_nr = (unsigned int)gc->private +
+				   (d->irq - gc->irq_base) / COMBINER_IRQS;
+
+	if (is_max_combiner_nr_bad(combiner_nr)) {
+		pr_err("unable to set irq affinity: bad combiner number\n");
+		return -EINVAL;
+	}
+
+	spin_lock_irqsave(&combiner_data[combiner_nr].lock, flags);
+
+	cpumask_setall(&target_affinity);
+	for (i = 0; i < COMBINER_IRQS; ++i) {
+		if (unlikely(i == sub_irq))
+			cpumask_and(&target_affinity,
+				    &target_affinity,
+				    dest);
+		else
+			cpumask_and(&target_affinity,
+				    &target_affinity,
+				    &combiner_data[combiner_nr].affinity[i]);
+	}
+	if (cpumask_empty(&target_affinity)) {
+		pr_err("warning: denying unsafe change of irq cpu affinity\n");
+		ret = -EINVAL;
+		goto out;
+	}
+
+	ret = irq_set_affinity(combiner_data[combiner_nr].parent_irq,
+			       &target_affinity);
+	if (ret >= 0)
+		cpumask_copy(&combiner_data[combiner_nr].affinity[sub_irq],
+			     &target_affinity);
+out:
+	spin_unlock_irqrestore(&combiner_data[combiner_nr].lock, flags);
+	return ret;
+}
+
+static void __init combiner_init(unsigned int combiner_nr, void __iomem *base,
+				 unsigned int irq_start)
+{
+	unsigned int i;
 	struct irq_chip_generic *gc;
 	struct irq_chip_type *ct;
-	unsigned int max_nr;
 
-	if (soc_is_exynos5250())
-		max_nr = EXYNOS5_MAX_COMBINER_NR;
-	else
-		max_nr = EXYNOS4_MAX_COMBINER_NR;
-
-	if (combiner_nr >= max_nr)
+	if (is_max_combiner_nr_bad(combiner_nr))
 		BUG();
-
 	combiner_data[combiner_nr].base = base;
 	combiner_data[combiner_nr].irq_offset = irq_start;
 	combiner_data[combiner_nr].irq_mask = 0xff << ((combiner_nr % 4) << 3);
+	combiner_data[combiner_nr].parent_irq = IRQ_SPI(combiner_nr);
+	spin_lock_init(&combiner_data[combiner_nr].lock);
+	for (i = 0; i < COMBINER_IRQS; ++i)
+		cpumask_setall(&combiner_data[combiner_nr].affinity[i]);
 
 	if ((combiner_nr % 4) == 0) {
 		/* Disable all interrupts */
@@ -585,9 +638,11 @@ static void __init combiner_init(unsigned int combiner_nr, void __iomem *base,
 		ct = gc->chip_types;
 		ct->chip.irq_mask = irq_gc_mask_disable_reg;
 		ct->chip.irq_unmask = irq_gc_unmask_enable_reg;
+		ct->chip.irq_set_affinity = combiner_set_affinity;
 		ct->chip.irq_resume = combiner_resume;
 		ct->regs.enable = COMBINER_ENABLE_SET;
 		ct->regs.disable = COMBINER_ENABLE_CLEAR;
+		gc->private = (void *)combiner_nr;
 		irq_setup_generic_chip(gc, IRQ_MSK(32), 0,
 			IRQ_NOREQUEST | IRQ_NOPROBE, 0);
 	}
