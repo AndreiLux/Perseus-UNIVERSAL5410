@@ -55,8 +55,9 @@ struct busfreq_data_mif {
 	bool disabled;
 	struct regulator *vdd_mif;
 	unsigned long curr_freq;
+	unsigned long curr_volt;
+	unsigned long suspend_freq;
 
-	struct notifier_block pm_notifier;
 	struct mutex lock;
 
 	struct clk *mif_clk;
@@ -224,9 +225,9 @@ static int exynos5_busfreq_mif_target(struct device *dev, unsigned long *_freq,
 
 	freq = opp_get_freq(opp);
 	volt = opp_get_voltage(opp);
+	rcu_read_unlock();
 
 	old_freq = data->curr_freq;
-	rcu_read_unlock();
 
 	if (old_freq == freq)
 		return 0;
@@ -261,6 +262,7 @@ static int exynos5_busfreq_mif_target(struct device *dev, unsigned long *_freq,
 	}
 
 	data->curr_freq = freq;
+	data->curr_volt = volt;
 out:
 	mutex_unlock(&data->lock);
 	return err;
@@ -303,64 +305,123 @@ static int exynos5250_init_mif_tables(struct busfreq_data_mif *data)
 	return 0;
 }
 
-static int exynos5_busfreq_mif_pm_notifier_event(struct notifier_block *this,
-		unsigned long event, void *ptr)
+static int exynos5_bus_mif_suspend(struct device *dev)
 {
-	struct busfreq_data_mif *data = container_of(this, struct busfreq_data_mif,
-						 pm_notifier);
+	struct platform_device *pdev = to_platform_device(dev);
+	struct opp *max_opp;
 	struct opp *opp;
 	unsigned long maxfreq = ULONG_MAX;
 	unsigned long volt;
 	unsigned long freq;
 	int err = 0;
+	struct busfreq_data_mif *data = platform_get_drvdata(pdev);
 
-	switch (event) {
-	case PM_SUSPEND_PREPARE:
-		/* Set Fastest and Deactivate DVFS */
-		mutex_lock(&data->lock);
+	/*
+	 * Set the frequency to the maximum enabled frequency, but set the
+	 * voltage to the maximum possible voltage in case the bootloader
+	 * sets the frequency to maximum during resume.
+	 */
+	mutex_lock(&data->lock);
 
-		data->disabled = true;
+	data->disabled = true;
 
-		rcu_read_lock();
-		opp = opp_find_freq_floor(data->dev, &maxfreq);
-		if (IS_ERR(opp)) {
-			rcu_read_unlock();
-			err = PTR_ERR(opp);
-			goto unlock;
-		}
-		freq = opp_get_freq(opp);
-		volt = opp_get_voltage(opp);
+	rcu_read_lock();
+	max_opp = opp_find_freq_floor(data->dev, &maxfreq);
+	if (IS_ERR(max_opp)) {
 		rcu_read_unlock();
-
-		err = exynos5_mif_setvolt(data, volt);
-		if (err)
-			goto unlock;
-
-		err = exynos5_mif_set_dmc_timing(freq);
-
-		if (err)
-			goto unlock;
-
-		err = exynos5_mif_setclk(data, freq * 1000);
-		if (err)
-			goto unlock;
-
-		data->curr_freq = freq;
-unlock:
-		mutex_unlock(&data->lock);
-		if (err)
-			return NOTIFY_BAD;
-		return NOTIFY_OK;
-	case PM_POST_RESTORE:
-	case PM_POST_SUSPEND:
-		/* Reactivate */
-		mutex_lock(&data->lock);
-		data->disabled = false;
-		mutex_unlock(&data->lock);
-		return NOTIFY_OK;
+		err = PTR_ERR(max_opp);
+		goto unlock;
 	}
 
-	return NOTIFY_DONE;
+	maxfreq = ULONG_MAX;
+	if (data->devfreq->max_freq)
+		maxfreq = data->devfreq->max_freq;
+
+	opp = opp_find_freq_floor(data->dev, &maxfreq);
+	if (IS_ERR(opp)) {
+		rcu_read_unlock();
+		err = PTR_ERR(opp);
+		goto unlock;
+	}
+
+	freq = opp_get_freq(opp);
+	volt = opp_get_voltage(max_opp);
+	rcu_read_unlock();
+
+	err = exynos5_mif_setvolt(data, volt);
+	if (err)
+		goto unlock;
+
+	err = exynos5_mif_set_dmc_timing(freq);
+
+	if (err)
+		goto unlock;
+
+	err = exynos5_mif_setclk(data, freq * 1000);
+	if (err)
+		goto unlock;
+
+	data->suspend_freq = freq;
+
+unlock:
+	mutex_unlock(&data->lock);
+	return err;
+}
+
+static int exynos5_bus_mif_resume_noirq(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	int err = 0;
+	struct busfreq_data_mif *data = platform_get_drvdata(pdev);
+
+	/*
+	 * Set the frequency to the maximum enabled frequency in case the
+	 * bootloader raised it during resume.
+	 */
+	mutex_lock(&data->lock);
+
+	err = exynos5_mif_set_dmc_timing(data->suspend_freq);
+	if (err)
+		goto unlock;
+
+	err = exynos5_mif_setclk(data, data->suspend_freq * 1000);
+	if (err)
+		goto unlock;
+
+unlock:
+	mutex_unlock(&data->lock);
+	return err;
+}
+
+static int exynos5_bus_mif_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct busfreq_data_mif *data = platform_get_drvdata(pdev);
+	int err = 0;
+
+	/*
+	 * Restore the frequency and voltage to the values when suspend was
+	 * started.
+	 */
+	mutex_lock(&data->lock);
+
+	data->disabled = false;
+
+	err = exynos5_mif_set_dmc_timing(data->curr_freq);
+	if (err)
+		goto unlock;
+
+	err = exynos5_mif_setclk(data, data->curr_freq * 1000);
+	if (err)
+		goto unlock;
+
+	err = exynos5_mif_setvolt(data, data->curr_volt);
+	if (err)
+		goto unlock;
+
+unlock:
+	mutex_unlock(&data->lock);
+	return err;
 }
 
 static struct devfreq_pm_qos_data exynos5_devfreq_mif_pm_qos_data = {
@@ -383,7 +444,6 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	data->pm_notifier.notifier_call = exynos5_busfreq_mif_pm_notifier_event;
 	data->dev = dev;
 	mutex_init(&data->lock);
 
@@ -440,6 +500,7 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 	rcu_read_unlock();
 
 	data->curr_freq = initial_freq;
+	data->curr_volt = initial_volt;
 
 	err = exynos5_mif_setclk(data, initial_freq * 1000);
 	if (err) {
@@ -470,11 +531,6 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 
 	devfreq_register_opp_notifier(dev, data->devfreq);
 
-	err = register_pm_notifier(&data->pm_notifier);
-	if (err) {
-		dev_err(dev, "Failed to setup pm notifier\n");
-		goto err_devfreq_add;
-	}
 
 	return 0;
 
@@ -499,7 +555,6 @@ static __devexit int exynos5_busfreq_mif_remove(struct platform_device *pdev)
 {
 	struct busfreq_data_mif *data = platform_get_drvdata(pdev);
 
-	unregister_pm_notifier(&data->pm_notifier);
 	devfreq_remove_device(data->devfreq);
 	regulator_put(data->vdd_mif);
 	clk_put(data->mif_clk);
@@ -511,12 +566,19 @@ static __devexit int exynos5_busfreq_mif_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static const struct dev_pm_ops exynos5_bus_mif_pm_ops = {
+	.suspend = exynos5_bus_mif_suspend,
+	.resume_noirq = exynos5_bus_mif_resume_noirq,
+	.resume = exynos5_bus_mif_resume,
+};
+
 static struct platform_driver exynos5_busfreq_mif_driver = {
 	.probe		= exynos5_busfreq_mif_probe,
 	.remove		= __devexit_p(exynos5_busfreq_mif_remove),
 	.driver		= {
 		.name		= "exynos5-bus-mif",
 		.owner		= THIS_MODULE,
+		.pm		= &exynos5_bus_mif_pm_ops,
 	},
 };
 
