@@ -10,6 +10,10 @@
 #ifndef _MACH_EXYNOS_EXYNOS5_BUS_H_
 #define _MACH_EXYNOS_EXYNOS5_BUS_H_
 
+struct exynos5_bus_mif_platform_data {
+	unsigned long max_freq;
+};
+
 void exynos5_ppmu_trace(void);
 
 #endif /* _MACH_EXYNOS_EXYNOS5_BUS_H_ */

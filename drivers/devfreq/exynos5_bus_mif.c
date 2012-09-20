@@ -30,6 +30,7 @@
 #include <mach/abb-exynos.h>
 #include <mach/smc.h>
 #include <mach/regs-mem.h>
+#include <mach/exynos5_bus.h>
 
 #include "exynos_ppmu.h"
 #include "exynos5_ppmu.h"
@@ -437,6 +438,7 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 	unsigned long initial_freq;
 	unsigned long initial_volt;
 	int err = 0;
+	struct exynos5_bus_mif_platform_data *pdata = pdev->dev.platform_data;
 
 	data = devm_kzalloc(&pdev->dev, sizeof(struct busfreq_data_mif), GFP_KERNEL);
 	if (data == NULL) {
@@ -486,6 +488,9 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 		goto err_mout_bpll;
 	}
 
+	if (pdata && pdata->max_freq)
+		exynos5_devfreq_mif_profile.initial_freq = pdata->max_freq;
+
 	rcu_read_lock();
 	opp = opp_find_freq_floor(dev, &exynos5_devfreq_mif_profile.initial_freq);
 	if (IS_ERR(opp)) {
@@ -529,8 +534,10 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 		goto err_devfreq_add;
 	}
 
-	devfreq_register_opp_notifier(dev, data->devfreq);
+	if (pdata && pdata->max_freq)
+		data->devfreq->max_freq = pdata->max_freq;
 
+	devfreq_register_opp_notifier(dev, data->devfreq);
 
 	return 0;
 
