@@ -691,9 +691,12 @@ __SC_COMP(__NR_process_vm_readv, sys_process_vm_readv, \
 #define __NR_process_vm_writev 271
 __SC_COMP(__NR_process_vm_writev, sys_process_vm_writev, \
           compat_sys_process_vm_writev)
+/* 272 reserved for kcmp */
+#define __NR_finit_module 273
+__SYSCALL(__NR_finit_module, sys_finit_module)
 
 #undef __NR_syscalls
-#define __NR_syscalls 272
+#define __NR_syscalls 274
 
 /*
  * All syscalls below here should go away really,
