@@ -83,9 +83,9 @@ enum fimc_is_isdev_state {
 };
 
 struct fimc_is_ischain_dev {
+	enum is_entry				entry;
 	unsigned long				state;
 	struct mutex				mutex_state;
-	u32					skip_frames;
 
 	struct fimc_is_framemgr			framemgr;
 	struct fimc_is_video_common		*video;
@@ -134,6 +134,7 @@ struct fimc_is_device_ischain {
 	u32					chain0_width;
 	u32					chain0_height;
 	struct fimc_is_ischain_dev		isp;
+	struct fimc_is_ischain_dev		drc;
 
 	/*scc ~ dis*/
 	u32					chain1_width;
@@ -203,7 +204,9 @@ int fimc_is_ischain_scp_s_format(struct fimc_is_device_ischain *this,
 
 /*common subdev*/
 int fimc_is_ischain_dev_open(struct fimc_is_ischain_dev *this,
-	struct fimc_is_video_common *video);
+	enum is_entry entry,
+	struct fimc_is_video_common *video,
+	const struct param_control *init_ctl);
 int fimc_is_ischain_dev_buffer_queue(struct fimc_is_ischain_dev *this,
 	u32 index);
 int fimc_is_ischain_dev_buffer_finish(struct fimc_is_ischain_dev *this,

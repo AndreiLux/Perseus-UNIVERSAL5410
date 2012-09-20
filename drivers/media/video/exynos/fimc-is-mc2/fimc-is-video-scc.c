@@ -74,9 +74,8 @@ static int fimc_is_scalerc_video_open(struct file *file)
 	dbg_scc("%s\n", __func__);
 
 	file->private_data = video;
-	fimc_is_video_open(&video->common, ischain,
-		VIDEO_SCC_READY_BUFFERS);
-	fimc_is_ischain_dev_open(scc, &video->common);
+	fimc_is_video_open(&video->common, ischain, VIDEO_SCC_READY_BUFFERS);
+	fimc_is_ischain_dev_open(scc, ENTRY_SCALERC, &video->common, NULL);
 
 	return 0;
 }

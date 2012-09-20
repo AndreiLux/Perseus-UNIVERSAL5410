@@ -69,9 +69,8 @@ static int fimc_is_scalerp_video_open(struct file *file)
 	dbg_scp("%s\n", __func__);
 
 	file->private_data = video;
-	fimc_is_video_open(&video->common, ischain,
-		VIDEO_SCP_READY_BUFFERS);
-	fimc_is_ischain_dev_open(scp, &video->common);
+	fimc_is_video_open(&video->common, ischain, VIDEO_SCP_READY_BUFFERS);
+	fimc_is_ischain_dev_open(scp, ENTRY_SCALERP, &video->common, NULL);
 
 	return 0;
 }

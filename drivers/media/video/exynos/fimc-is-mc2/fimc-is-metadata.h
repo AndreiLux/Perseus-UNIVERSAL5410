@@ -861,6 +861,14 @@ struct camera2_shot_ext {
 	uint32_t		request_scp;
 
 	/**	\brief
+		post processing control(DRC)
+		\remarks
+		[0] bypass off
+		[1] bypass on
+	*/
+	uint32_t		drc_bypass;
+
+	/**	\brief
 		post processing control(DIS)
 		\remarks
 		[0] bypass off
@@ -883,6 +891,9 @@ struct camera2_shot_ext {
 		[1] bypass on
 	*/
 	uint32_t		fd_bypass;
+
+	/* reserved for future */
+	uint32_t		reserved[20];
 
 	/**	\brief
 		processing time debugging

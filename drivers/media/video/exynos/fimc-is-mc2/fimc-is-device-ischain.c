@@ -1899,7 +1899,12 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
 	this->margin_top	= 0;
 	this->margin_bottom	= 0;
 	this->margin_height	= 0;
-	/*this->sensor_width	= 0;
+	/* open function is called later than set input
+	so this code is commented.
+	this code will be used after sensor and
+	ischain power is seperated */
+	/*
+	this->sensor_width	= 0;
 	this->sensor_height	= 0;
 	this->chain0_width	= 0;
 	this->chain0_height	= 0;
@@ -1908,7 +1913,8 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
 	this->chain2_width	= 0;
 	this->chain2_height	= 0;
 	this->chain3_width	= 0;
-	this->chain3_height	= 0;*/
+	this->chain3_height	= 0;
+	*/
 
 	this->fcount = 0;
 	this->setfile = 0;
@@ -1919,10 +1925,16 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
 	fimc_is_interface_open(this->interface);
 
 	/* other device open */
-	fimc_is_ischain_dev_open(&this->isp, video);
-	fimc_is_ischain_dev_open(&this->dis, NULL);
-	fimc_is_ischain_dev_open(&this->dnr, NULL);
-	fimc_is_ischain_dev_open(&this->fd, NULL);
+	fimc_is_ischain_dev_open(&this->isp, ENTRY_ISP, video,
+		NULL);
+	fimc_is_ischain_dev_open(&this->drc, ENTRY_DRC, NULL,
+		&init_drc_param.control);
+	fimc_is_ischain_dev_open(&this->dis, ENTRY_DIS, NULL,
+		&init_dis_param.control);
+	fimc_is_ischain_dev_open(&this->dnr, ENTRY_TDNR, NULL,
+		&init_tdnr_param.control);
+	fimc_is_ischain_dev_open(&this->fd, ENTRY_LHFD, NULL,
+		&init_fd_param.control);
 
 	/*fimc_is_fw_clear_irq1_all(core);*/
 
@@ -2597,6 +2609,46 @@ exit:
 	return ret;
 }
 
+static int fimc_is_ischain_drc_bypass(struct fimc_is_device_ischain *this,
+	bool bypass)
+{
+	int ret = 0;
+	struct drc_param *drc_param;
+	u32 indexes, lindex, hindex;
+
+	dbg_ischain("%s\n", __func__);
+
+	drc_param = &this->is_region->parameter.drc;
+	indexes = lindex = hindex = 0;
+
+	if (bypass)
+		drc_param->control.bypass = CONTROL_BYPASS_ENABLE;
+	else
+		drc_param->control.bypass = CONTROL_BYPASS_DISABLE;
+
+	lindex |= LOWBIT_OF(PARAM_DRC_CONTROL);
+	hindex |= HIGHBIT_OF(PARAM_DRC_CONTROL);
+	indexes++;
+
+	ret = fimc_is_itf_s_param(this, indexes, lindex, hindex);
+	if (ret) {
+		err("fimc_is_itf_s_param is fail\n");
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	if (bypass) {
+		clear_bit(FIMC_IS_ISDEV_DSTART, &this->drc.state);
+		dbg_ischain("DRC off\n");
+	} else {
+		set_bit(FIMC_IS_ISDEV_DSTART, &this->drc.state);
+		dbg_ischain("DRC on\n");
+	}
+
+exit:
+	return ret;
+}
+
 static int fimc_is_ischain_dis_bypass(struct fimc_is_device_ischain *this,
 	bool bypass)
 {
@@ -2671,7 +2723,6 @@ static int fimc_is_ischain_dis_bypass(struct fimc_is_device_ischain *this,
 		dbg_ischain("DIS off\n");
 	} else {
 		set_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state);
-		this->dis.skip_frames = 1;
 		dbg_ischain("DIS on\n");
 	}
 
@@ -3360,16 +3411,37 @@ int fimc_is_ischain_scp_s_format(struct fimc_is_device_ischain *this,
 }
 
 int fimc_is_ischain_dev_open(struct fimc_is_ischain_dev *this,
-	struct fimc_is_video_common *video)
+	enum is_entry entry,
+	struct fimc_is_video_common *video,
+	const struct param_control *init_ctl)
 {
 	int ret = 0;
 
 	mutex_init(&this->mutex_state);
-	clear_bit(FIMC_IS_ISDEV_DSTART, &this->state);
-
-	this->skip_frames = 0;
+	this->entry = entry;
 	this->video = video;
 
+	if (init_ctl) {
+		if (init_ctl->cmd != CONTROL_COMMAND_START) {
+			err("%d entry is not start", entry);
+			ret = -EINVAL;
+			goto exit;
+		}
+
+		if (init_ctl->bypass == CONTROL_BYPASS_ENABLE)
+			clear_bit(FIMC_IS_ISDEV_DSTART, &this->state);
+		else if (init_ctl->bypass == CONTROL_BYPASS_DISABLE)
+			set_bit(FIMC_IS_ISDEV_DSTART, &this->state);
+		else {
+			err("%d entry has invalid bypass value(%d)",
+				entry, init_ctl->bypass);
+			ret = -EINVAL;
+			goto exit;
+		}
+	} else /* isp, scc, scp do not use bypass(memory interface)*/
+		clear_bit(FIMC_IS_ISDEV_DSTART, &this->state);
+
+exit:
 	return ret;
 }
 
@@ -3586,6 +3658,24 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 			ret = fimc_is_ischain_scp_stop(this);
 			if (ret) {
 				err("fimc_is_ischain_scp_stop is fail");
+				goto exit;
+			}
+		}
+	}
+
+	if (isp_frame->shot_ext->drc_bypass) {
+		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->drc.state)) {
+			ret = fimc_is_ischain_drc_bypass(this, true);
+			if (ret) {
+				err("fimc_is_ischain_drc_bypass(1) is fail");
+				goto exit;
+			}
+		}
+	} else {
+		if (!test_bit(FIMC_IS_ISDEV_DSTART, &this->drc.state)) {
+			ret = fimc_is_ischain_drc_bypass(this, false);
+			if (ret) {
+				err("fimc_is_ischain_drc_bypass(0) is fail");
 				goto exit;
 			}
 		}

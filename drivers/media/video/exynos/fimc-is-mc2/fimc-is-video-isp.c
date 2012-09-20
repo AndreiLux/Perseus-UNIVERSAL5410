@@ -71,8 +71,7 @@ static int fimc_is_isp_video_open(struct file *file)
 	dbg_isp("%s\n", __func__);
 
 	file->private_data = video;
-	fimc_is_video_open(&video->common, ischain,
-		VIDEO_ISP_READY_BUFFERS);
+	fimc_is_video_open(&video->common, ischain, VIDEO_ISP_READY_BUFFERS);
 
 	return 0;
 }
@@ -508,7 +507,6 @@ static int fimc_is_isp_stop_streaming(struct vb2_queue *q)
 
 static void fimc_is_isp_buffer_queue(struct vb2_buffer *vb)
 {
-	u32 index;
 	struct fimc_is_video_isp *video = vb->vb2_queue->drv_priv;
 	struct fimc_is_video_common *common = &video->common;
 	struct fimc_is_device_ischain *ischain = common->device;
