@@ -46,6 +46,7 @@ enum mif_level_idx {
 	LV_1,
 	LV_2,
 	LV_3,
+	LV_4,
 	_LV_END
 };
 
@@ -78,6 +79,7 @@ static struct mif_bus_opp_table exynos5_mif_opp_table[] = {
 	{LV_1, 667000, 1000000, 0x2c48758f},
 	{LV_2, 400000, 1000000, 0x1A255349},
 	{LV_3, 160000, 1000000, 0x1A255349},
+	{LV_4, 100000, 1000000, 0x1A255349},
 	{0, 0, 0, 0},
 };
 

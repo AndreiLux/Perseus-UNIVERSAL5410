@@ -2411,6 +2411,7 @@ static struct {
 	MIF_FREQ(667, 1, 1, 1, 2, 0, 1, 0, 1, 1),
 	MIF_FREQ(400, 3, 1, 3, 2, 0, 1, 1, 3, 1),
 	MIF_FREQ(160, 7, 1, 5, 2, 0, 1, 4, 7, 1),
+	MIF_FREQ(100, 7, 1, 6, 2, 0, 1, 7, 7, 1),
 };
 
 static unsigned long exynos5_mif_get_rate(struct clk *clk)
