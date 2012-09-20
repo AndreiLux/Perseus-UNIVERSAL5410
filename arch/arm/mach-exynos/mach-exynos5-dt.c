@@ -725,6 +725,7 @@ static int read_thermistor_uV(struct platform_device *pdev)
 	struct s3c_adc_client *client = ntc_adc_clients[pdev->id];
 	struct ntc_thermistor_platform_data *pdata = pdev->dev.platform_data;
 	struct mutex *lock = ntc_adc_locks + pdev->id;
+	int ret;
 
 	/* Arrays are sized; make sure we haven't blown over */
 	BUG_ON(pdev->id >= ARRAY_SIZE(ntc_adc_locks));
@@ -735,9 +736,15 @@ static int read_thermistor_uV(struct platform_device *pdev)
 	 * mutex to ensure this is OK.
 	 */
 	mutex_lock(lock);
-	converted = pdata->pullup_uV * (s64) s3c_adc_read(client, port);
+	ret = s3c_adc_read(client, port);
 	mutex_unlock(lock);
 
+	if (ret < 0) {
+		dev_warn(&pdev->dev, "Thermistor read err: 0x%08x\n", ret);
+		return ret;
+	}
+
+	converted = pdata->pullup_uV * (s64) ret;
 	converted >>= 12;
 
 	return (int) converted;
