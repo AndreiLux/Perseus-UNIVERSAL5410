@@ -19,7 +19,6 @@
 #include <linux/regulator/consumer.h>
 #include <linux/cpufreq.h>
 #include <linux/suspend.h>
-
 #include <linux/reboot.h>
 #include <linux/pm_qos_params.h>
 
@@ -32,17 +31,6 @@
 #include <plat/clock.h>
 #include <plat/pm.h>
 #include <plat/cpu.h>
-
-#include <asm/cpu.h>
-#include <linux/delay.h>
-
-struct lpj_info {
-	unsigned long	ref;
-	unsigned int	freq;
-};
-
-static DEFINE_PER_CPU(struct lpj_info, lpj_ref);
-static struct lpj_info global_lpj_ref;
 
 struct exynos_dvfs_info *exynos_info;
 
@@ -170,27 +158,6 @@ static int exynos_target(struct cpufreq_policy *policy,
 				     safe_arm_volt + 25000);
 	if (freqs.new != freqs.old)
 		exynos_info->set_freq(old_index, index);
-
-	/* Update the per-CPU loops_per_jiffy value on frequency transition */
-	for_each_cpu(i, policy->cpus) {
-		struct lpj_info *lpj = &per_cpu(lpj_ref, i);
-		if (!lpj->freq) {
-			lpj->ref = per_cpu(cpu_data, i).loops_per_jiffy;
-			lpj->freq = freqs.old;
-		}
-		
-		per_cpu(cpu_data, i).loops_per_jiffy =
-			cpufreq_scale(lpj->ref, lpj->freq, freqs.new);
-	}
-
-	/* Update the global loops_per_jiffy */
-	if (!global_lpj_ref.freq) {
-		global_lpj_ref.ref = loops_per_jiffy;
-		global_lpj_ref.freq = freqs.old;
-	}
-
-	loops_per_jiffy = cpufreq_scale(global_lpj_ref.ref, global_lpj_ref.freq,
-		freqs.new);
 
 	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
 
