@@ -64,8 +64,6 @@ struct busfreq_data_mif {
 	struct clk *mclk_cdrex;
 	struct clk *mout_mpll;
 	struct clk *mout_bpll;
-
-	struct list_head requests;
 };
 
 struct mif_bus_opp_table {
@@ -90,6 +88,8 @@ struct exynos5_bus_mif_handle {
 
 static struct busfreq_data_mif *exynos5_bus_mif_data;
 static DEFINE_MUTEX(exynos5_bus_mif_data_lock);
+static LIST_HEAD(exynos5_bus_mif_requests);
+static DEFINE_MUTEX(exynos5_bus_mif_requests_lock);
 
 static int exynos5_mif_setvolt(struct busfreq_data_mif *data, unsigned long volt)
 {
@@ -226,14 +226,16 @@ static int exynos5_busfreq_mif_target(struct device *dev, unsigned long *_freq,
 	unsigned long volt;
 	struct exynos5_bus_mif_handle *handle;
 
-	mutex_lock(&data->lock);
-
-	if (!(list_empty(&data->requests))) {
-		list_for_each_entry(handle, &data->requests, node) {
-			if (handle->min > *_freq)
-				*_freq = handle->min;
+	mutex_lock(&exynos5_bus_mif_requests_lock);
+	list_for_each_entry(handle, &exynos5_bus_mif_requests, node) {
+		if (handle->min > *_freq) {
+			*_freq = handle->min;
+			flags &= ~DEVFREQ_FLAG_LEAST_UPPER_BOUND;
 		}
 	}
+	mutex_unlock(&exynos5_bus_mif_requests_lock);
+
+	mutex_lock(&data->lock);
 
 	rcu_read_lock();
 	opp = devfreq_recommended_opp(dev, _freq, flags);
@@ -297,51 +299,40 @@ struct exynos5_bus_mif_handle *exynos5_bus_mif_get(unsigned long min_freq)
 
 	handle->min = min_freq;
 
+	mutex_lock(&exynos5_bus_mif_requests_lock);
+	list_add_tail(&handle->node, &exynos5_bus_mif_requests);
+	mutex_unlock(&exynos5_bus_mif_requests_lock);
+
 	mutex_lock(&exynos5_bus_mif_data_lock);
-	if (!exynos5_bus_mif_data) {
-		goto err;
+	if (exynos5_bus_mif_data) {
+		mutex_lock(&exynos5_bus_mif_data->devfreq->lock);
+		update_devfreq(exynos5_bus_mif_data->devfreq);
+		mutex_unlock(&exynos5_bus_mif_data->devfreq->lock);
 	}
-
-	mutex_lock(&exynos5_bus_mif_data->lock);
-	list_add_tail(&handle->node, &exynos5_bus_mif_data->requests);
-	mutex_unlock(&exynos5_bus_mif_data->lock);
-
 	mutex_unlock(&exynos5_bus_mif_data_lock);
 
-	mutex_lock(&exynos5_bus_mif_data->devfreq->lock);
-	update_devfreq(exynos5_bus_mif_data->devfreq);
-	mutex_unlock(&exynos5_bus_mif_data->devfreq->lock);
 
 	return handle;
-
-err:
-	mutex_unlock(&exynos5_bus_mif_data_lock);
-	kfree(handle);
-
-	return NULL;
 }
 
 int exynos5_bus_mif_put(struct exynos5_bus_mif_handle *handle)
 {
 	int ret = 0;
 
-	mutex_lock(&exynos5_bus_mif_data_lock);
-	if (!exynos5_bus_mif_data) {
-		ret = -EINVAL;
-		goto err;
-	}
-
-	mutex_lock(&exynos5_bus_mif_data->lock);
+	mutex_lock(&exynos5_bus_mif_requests_lock);
 	list_del(&handle->node);
-	mutex_unlock(&exynos5_bus_mif_data->lock);
+	mutex_unlock(&exynos5_bus_mif_requests_lock);
 
-	mutex_lock(&exynos5_bus_mif_data->devfreq->lock);
-	update_devfreq(exynos5_bus_mif_data->devfreq);
-	mutex_unlock(&exynos5_bus_mif_data->devfreq->lock);
+	mutex_lock(&exynos5_bus_mif_data_lock);
+	if (exynos5_bus_mif_data) {
+		mutex_lock(&exynos5_bus_mif_data->devfreq->lock);
+		update_devfreq(exynos5_bus_mif_data->devfreq);
+		mutex_unlock(&exynos5_bus_mif_data->devfreq->lock);
+	}
+	mutex_unlock(&exynos5_bus_mif_data_lock);
 
 	kfree(handle);
-err:
-	mutex_unlock(&exynos5_bus_mif_data_lock);
+
 	return ret;
 }
 
@@ -525,7 +516,6 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 
 	data->dev = dev;
 	mutex_init(&data->lock);
-	INIT_LIST_HEAD(&data->requests);
 
 	err = exynos5250_init_mif_tables(data);
 	if (err)
