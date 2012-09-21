@@ -2371,7 +2371,13 @@ static struct {
 
 static unsigned long exynos5_mif_get_rate(struct clk *clk)
 {
-	return clk->rate;
+	unsigned int tmp;
+
+	tmp = __raw_readl(EXYNOS5_CLKDIV_CDREX);
+	tmp &= EXYNOS5_CLKDIV_CDREX_MCLK_CDREX2_MASK;
+	tmp >>= EXYNOS5_CLKDIV_CDREX_MCLK_CDREX2_SHIFT;
+
+	return clk_get_rate(clk->parent) / (tmp + 1);
 }
 
 static void exynos5_mif_set_clkdiv(unsigned int div_index)
@@ -2432,8 +2438,6 @@ static int exynos5_mif_set_rate(struct clk *clk, unsigned long rate)
 
 	/* Change the system clock divider values */
 	exynos5_mif_set_clkdiv(index);
-
-	clk->rate = rate;
 
 	return 0;
 }
@@ -2764,7 +2768,7 @@ void __init_or_cpufreq exynos5_setup_clocks(void)
 	clk_fout_gpll.ops = &exynos5_gpll_ops;
 
 	exynos5_mif_clk.ops = &exynos5_mif_ops;
-	exynos5_mif_clk.rate = mout_cdrex;
+	exynos5_mif_clk.parent = &exynos5_clk_mclk_cdrex.clk;
 	exynos5_int_clk.ops = &exynos5_clk_int_ops;
 	exynos5_int_clk.rate = aclk_266;
 
