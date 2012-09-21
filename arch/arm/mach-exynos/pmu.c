@@ -18,6 +18,8 @@
 #include <mach/regs-clock.h>
 #include <mach/pmu.h>
 
+#include <plat/pm.h>
+
 static struct exynos_pmu_conf *exynos_pmu_config;
 
 static struct exynos_pmu_conf exynos4210_pmu_config[] = {
@@ -308,6 +310,12 @@ static struct exynos_pmu_conf exynos5250_pmu_config[] = {
 	{ PMU_TABLE_END,},
 };
 
+static struct sleep_save exynos5250_pmu_save[] = {
+	SAVE_ITEM(EXYNOS5_CMU_SYSCLK_DISP1_SYS_PWR_REG),
+	SAVE_ITEM(EXYNOS5_CMU_SYSCLK_GSCL_SYS_PWR_REG),
+	SAVE_ITEM(EXYNOS5_CMU_SYSCLK_MFC_SYS_PWR_REG),
+};
+
 void __iomem *exynos5_list_feed[] = {
 	EXYNOS5_ARM_CORE0_OPTION,
 	EXYNOS5_ARM_CORE1_OPTION,
@@ -362,6 +370,18 @@ static void exynos5_init_pmu(void)
 			 EXYNOS5_OPTION_USE_STANDBYWFI);
 		__raw_writel(tmp, exynos5_list_diable_wfi_wfe[i]);
 	}
+}
+
+void exynos5_pmu_sysclk_save(void)
+{
+	s3c_pm_do_save(exynos5250_pmu_save,
+			ARRAY_SIZE(exynos5250_pmu_save));
+}
+
+void exynos5_pmu_sysclk_restore(void)
+{
+	s3c_pm_do_restore_core(exynos5250_pmu_save,
+			ARRAY_SIZE(exynos5250_pmu_save));
 }
 
 void exynos_sys_powerdown_conf(enum sys_powerdown mode)

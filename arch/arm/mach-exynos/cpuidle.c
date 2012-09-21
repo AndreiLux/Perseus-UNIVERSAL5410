@@ -266,6 +266,9 @@ static int exynos_enter_core0(enum sys_powerdown powerdown)
 {
 	unsigned long tmp;
 
+	if (soc_is_exynos5250())
+		exynos5_pmu_sysclk_save();
+
 	exynos_sys_powerdown_conf(powerdown);
 
 	__raw_writel(virt_to_phys(s3c_cpu_resume), REG_DIRECTGO_ADDR);
@@ -294,7 +297,7 @@ static int exynos_enter_core0(enum sys_powerdown powerdown)
 abort_cpu:
 
 	if (soc_is_exynos5250())
-		__raw_writel(0x1, EXYNOS5_CMU_SYSCLK_DISP1_SYS_PWR_REG);
+		exynos5_pmu_sysclk_restore();
 
 	restore_cpu_arch_register();
 
