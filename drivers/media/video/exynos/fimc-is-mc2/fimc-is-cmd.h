@@ -114,8 +114,9 @@ struct is_common_reg {
 	u32 hic_param3;
 	u32 hic_param4;
 
-	u32 reserved1[4];
+	u32 reserved1[3];
 
+	u32 ihcmd_iflag;
 	u32 ihcmd;
 	u32 ihc_sensorid;
 	u32 ihc_param1;
@@ -123,46 +124,53 @@ struct is_common_reg {
 	u32 ihc_param3;
 	u32 ihc_param4;
 
-	u32 reserved2[4];
+	u32 reserved2[3];
 
+	u32 isp_bayer_iflag;
 	u32 isp_bayer_sensor_id;
 	u32 isp_bayer_param1;
 	u32 isp_bayer_param2;
 
-	u32 reserved3[5];
+	u32 reserved3[4];
 
+	u32 scc_iflag;
 	u32 scc_sensor_id;
 	u32 scc_param1;
 	u32 scc_param2;
 	u32 scc_param3;
 
-	u32 reserved4[4];
+	u32 reserved4[3];
 
+	u32 dnr_iflag;
 	u32 dnr_sensor_id;
 	u32 dnr_param1;
 	u32 dnr_param2;
 
-	u32 reserved5[5];
+	u32 reserved5[4];
 
+	u32 scp_iflag;
 	u32 scp_sensor_id;
 	u32 scp_param1;
 	u32 scp_param2;
 	u32 scp_param3;
 
-	u32 reserved6[2];
+	u32 reserved6[1];
 
+	u32 isp_yuv_iflag;
 	u32 isp_yuv_sensor_id;
 	u32 isp_yuv_param1;
 	u32 isp_yuv_param2;
 
-	u32 reserved7[2];
+	u32 reserved7[1];
 
+	u32 shot_iflag;
 	u32 shot_sensor_id;
 	u32 shot_param1;
 	u32 shot_param2;
 
-	u32 reserved8[2];
+	u32 reserved8[1];
 
+	u32 meta_iflag;
 	u32 meta_sensor_id;
 	u32 meta_param1;
 

@@ -577,7 +577,7 @@ exit:
 	return ret;
 }
 
-static int fimc_is_get_cmd(struct fimc_is_interface *itf,
+static inline void fimc_is_get_cmd(struct fimc_is_interface *itf,
 	struct fimc_is_msg *msg, u32 index)
 {
 	struct is_common_reg __iomem *com_regs = itf->com_regs;
@@ -639,8 +639,52 @@ static int fimc_is_get_cmd(struct fimc_is_interface *itf,
 		err("unknown command getting\n");
 		break;
 	}
+}
 
-	return 0;
+static inline u32 fimc_is_get_intr(struct fimc_is_interface *itf)
+{
+	u32 status;
+	struct is_common_reg __iomem *com_regs = itf->com_regs;
+
+	status = readl(itf->regs + INTMSR1) | com_regs->ihcmd_iflag |
+		com_regs->scc_iflag |
+		com_regs->scp_iflag |
+		com_regs->meta_iflag |
+		com_regs->shot_iflag;
+
+	return status;
+}
+
+static inline void fimc_is_clr_intr(struct fimc_is_interface *itf,
+	u32 index)
+{
+	struct is_common_reg __iomem *com_regs = itf->com_regs;
+
+	switch (index) {
+	case INTR_GENERAL:
+		writel((1<<INTR_GENERAL), itf->regs + INTCR1);
+		com_regs->ihcmd_iflag = 0;
+		break;
+	case INTR_SCC_FDONE:
+		writel((1<<INTR_SCC_FDONE), itf->regs + INTCR1);
+		com_regs->scc_iflag = 0;
+		break;
+	case INTR_SCP_FDONE:
+		writel((1<<INTR_SCP_FDONE), itf->regs + INTCR1);
+		com_regs->scp_iflag = 0;
+		break;
+	case INTR_META_DONE:
+		writel((1<<INTR_META_DONE), itf->regs + INTCR1);
+		com_regs->meta_iflag = 0;
+		break;
+	case INTR_SHOT_DONE:
+		writel((1<<INTR_SHOT_DONE), itf->regs + INTCR1);
+		com_regs->shot_iflag = 0;
+		break;
+	default:
+		err("unknown command clear\n");
+		break;
+	}
 }
 
 static void wq_func_general(struct work_struct *data)
@@ -1167,7 +1211,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 	u32 status;
 
 	itf = (struct fimc_is_interface *)data;
-	status = readl(itf->regs + INTMSR1);
+	status = fimc_is_get_intr(itf);
 
 	if (status & (1<<INTR_SHOT_DONE)) {
 		work_queue = &itf->work_queue[INTR_SHOT_DONE];
@@ -1185,7 +1229,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 			err("free work item is empty5");
 
 		status &= ~(1<<INTR_SHOT_DONE);
-		writel((1<<INTR_SHOT_DONE), itf->regs + INTCR1);
+		fimc_is_clr_intr(itf, INTR_SHOT_DONE);
 	}
 
 	if (status & (1<<INTR_GENERAL)) {
@@ -1203,7 +1247,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 			err("free work item is empty1");
 
 		status &= ~(1<<INTR_GENERAL);
-		writel((1<<INTR_GENERAL), itf->regs + INTCR1);
+		fimc_is_clr_intr(itf, INTR_GENERAL);
 	}
 
 	if (status & (1<<INTR_SCC_FDONE)) {
@@ -1221,7 +1265,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 			err("free work item is empty2");
 
 		status &= ~(1<<INTR_SCC_FDONE);
-		writel((1<<INTR_SCC_FDONE), itf->regs + INTCR1);
+		fimc_is_clr_intr(itf, INTR_SCC_FDONE);
 	}
 
 	if (status & (1<<INTR_SCP_FDONE)) {
@@ -1239,7 +1283,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 			err("free work item is empty3");
 
 		status &= ~(1<<INTR_SCP_FDONE);
-		writel((1<<INTR_SCP_FDONE), itf->regs + INTCR1);
+		fimc_is_clr_intr(itf, INTR_SCP_FDONE);
 	}
 
 	if (status & (1<<INTR_META_DONE)) {
@@ -1261,7 +1305,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 			err("free work item is empty4");
 #endif
 		status &= ~(1<<INTR_META_DONE);
-		writel((1<<INTR_META_DONE), itf->regs + INTCR1);
+		fimc_is_clr_intr(itf, INTR_META_DONE);
 	}
 
 	if (status != 0)
@@ -1339,6 +1383,13 @@ int fimc_is_interface_open(struct fimc_is_interface *this)
 	}
 
 	dbg_interface("%s\n", __func__);
+
+	/* common register init */
+	this->com_regs->ihcmd_iflag = 0;
+	this->com_regs->scc_iflag = 0;
+	this->com_regs->scp_iflag = 0;
+	this->com_regs->meta_iflag = 0;
+	this->com_regs->shot_iflag = 0;
 
 	this->streaming = IS_IF_STREAMING_INIT;
 	this->processing = IS_IF_PROCESSING_INIT;
