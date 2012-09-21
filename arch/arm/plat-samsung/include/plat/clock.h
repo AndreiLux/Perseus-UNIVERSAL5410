@@ -37,6 +37,7 @@ struct clk_ops {
 	unsigned long	    (*get_rate)(struct clk *c);
 	unsigned long	    (*round_rate)(struct clk *c, unsigned long rate);
 	int		    (*set_parent)(struct clk *c, struct clk *parent);
+	struct clk *	    (*get_parent)(struct clk *c);
 };
 
 struct clk {
