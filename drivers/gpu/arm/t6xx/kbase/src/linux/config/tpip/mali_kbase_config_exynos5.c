@@ -19,11 +19,18 @@
 #include <plat/devs.h>
 #include <linux/pm_runtime.h>
 #include <kbase/src/platform/mali_kbase_platform.h>
+#include <linux/suspend.h>
+#include <kbase/src/platform/mali_kbase_dvfs.h>
 
 #define HZ_IN_MHZ                           (1000000)
 #ifdef CONFIG_MALI_T6XX_RT_PM
 #define RUNTIME_PM_DELAY_TIME 100
 #endif
+
+static int mali_pm_notifier(struct notifier_block *nb,unsigned long event,void* cmd);
+static struct notifier_block mali_pm_nb = {
+	.notifier_call = mali_pm_notifier
+};
 
 static kbase_io_resources io_resources =
 {
@@ -49,6 +56,28 @@ int get_cpu_clock_speed(u32* cpu_clock)
 	return 0;
 }
 
+static int mali_pm_notifier(struct notifier_block *nb,unsigned long event,void* cmd)
+{
+	int err = NOTIFY_OK;
+	switch (event) {
+		case PM_SUSPEND_PREPARE:
+#ifdef CONFIG_MALI_T6XX_DVFS
+			if (kbase_platform_dvfs_enable(false)!= MALI_TRUE)
+				err = NOTIFY_BAD;
+#endif
+			break;
+		case PM_POST_SUSPEND:
+#ifdef CONFIG_MALI_T6XX_DVFS
+			if (kbase_platform_dvfs_enable(true)!= MALI_TRUE)
+				err = NOTIFY_BAD;
+#endif
+			break;
+		default:
+			break;
+	}
+	return err;
+}
+
 /**
  *  * Exynos5 hardware specific initialization
  *   */
@@ -56,6 +85,9 @@ mali_bool kbase_platform_exynos5_init(kbase_device *kbdev)
 {
 	if(MALI_ERROR_NONE == kbase_platform_init(kbdev))
 	{
+		if (register_pm_notifier(&mali_pm_nb)) {
+			return MALI_FALSE;
+		}
 		return MALI_TRUE;
 	}
 
@@ -67,6 +99,7 @@ mali_bool kbase_platform_exynos5_init(kbase_device *kbdev)
  *   */
 void kbase_platform_exynos5_term(kbase_device *kbdev)
 {
+	unregister_pm_notifier(&mali_pm_nb);
 #ifdef CONFIG_MALI_T6XX_DEBUG_SYS
 	kbase_platform_remove_sysfs_file(kbdev->osdev.dev);
 #endif /* CONFIG_MALI_T6XX_DEBUG_SYS */
@@ -113,9 +146,8 @@ mali_error kbase_device_runtime_init(struct kbase_device *kbdev)
 	pm_suspend_ignore_children(kbdev->osdev.dev, true);
 	pm_runtime_enable(kbdev->osdev.dev);
 #ifdef CONFIG_MALI_T6XX_DEBUG_SYS
-	if(kbase_platform_create_sysfs_file(kbdev->osdev.dev))
-	{
-		return MALI_TRUE;
+	if(kbase_platform_create_sysfs_file(kbdev->osdev.dev)) {
+		return MALI_ERROR_FUNCTION_FAILED;
 	}
 #endif /* CONFIG_MALI_T6XX_DEBUG_SYS */
 	return MALI_ERROR_NONE;
@@ -155,13 +187,11 @@ static kbase_pm_callback_conf pm_callbacks =
 };
 #endif
 
-
 static kbase_attribute config_attributes[] = {
 	{
 		KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_MAX,
 		2048 * 1024 * 1024UL /* 2048MB */
 	},
-
 	{
 		KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_PERF_GPU,
 		KBASE_MEM_PERF_FAST
@@ -205,5 +235,3 @@ kbase_platform_config platform_config =
 		.io_resources              = &io_resources,
 		.midgard_type              = KBASE_MALI_T604
 };
-
-

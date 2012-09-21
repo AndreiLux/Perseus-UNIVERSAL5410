@@ -51,8 +51,8 @@ int kbase_platform_dvfs_get_level(int freq);
 int kbase_platform_dvfs_init(struct kbase_device *dev);
 void kbase_platform_dvfs_term(void);
 int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation);
-int kbase_platform_dvfs_get_control_status(void);
-int kbase_platform_dvfs_set_control_status(int onoff);
+int kbase_platform_dvfs_get_enable_status(void);
+int kbase_platform_dvfs_enable(bool enable);
 int kbase_pm_get_dvfs_utilisation(kbase_device *kbdev);
 int kbase_platform_dvfs_get_utilisation(void);
 #endif

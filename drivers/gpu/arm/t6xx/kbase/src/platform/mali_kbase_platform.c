@@ -739,10 +739,10 @@ static ssize_t show_dvfs(struct device *dev, struct device_attribute *attr, char
 		return -ENODEV;
 
 #ifdef CONFIG_MALI_T6XX_DVFS
-	if(kbase_platform_dvfs_get_control_status()==0)
-		ret += snprintf(buf+ret, PAGE_SIZE-ret, "G3D DVFS is off");
-	else
+	if(kbase_platform_dvfs_get_enable_status())
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "G3D DVFS is on\nutilisation:%d",kbase_platform_dvfs_get_utilisation());
+	else
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "G3D DVFS is off");
 #else
 	ret += snprintf(buf+ret, PAGE_SIZE-ret, "G3D DVFS is disabled");
 #endif
@@ -769,11 +769,9 @@ static ssize_t set_dvfs(struct device *dev, struct device_attribute *attr, const
 
 #ifdef CONFIG_MALI_T6XX_DVFS
 	if (sysfs_streq("off", buf)) {
-
-		kbase_platform_dvfs_set_control_status(0);
-		kbase_platform_dvfs_set_level(kbdev, kbase_platform_dvfs_get_level(MALI_T6XX_DEFAULT_CLOCK / 1000000));
+		kbase_platform_dvfs_enable(false);
 	} else if (sysfs_streq("on", buf)) {
-		kbase_platform_dvfs_set_control_status(1);
+		kbase_platform_dvfs_enable(true);
 	} else {
 		printk("invalid val -only [on, off] is accepted\n");
 	}

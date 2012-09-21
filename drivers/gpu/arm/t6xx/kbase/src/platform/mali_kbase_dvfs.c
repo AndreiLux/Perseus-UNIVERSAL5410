@@ -105,7 +105,6 @@ unsigned long long prev_time = 0;
 
 
 #ifdef CONFIG_MALI_T6XX_DVFS
-
 typedef struct _mali_dvfs_status_type{
 	kbase_device *kbdev;
 	int step;
@@ -121,7 +120,6 @@ typedef struct _mali_dvfs_status_type{
 }mali_dvfs_status;
 
 static struct workqueue_struct *mali_dvfs_wq = 0;
-int mali_dvfs_control=0;
 osk_spinlock mali_dvfs_spinlock;
 
 /*dvfs status*/
@@ -205,9 +203,7 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 			dvfs_status.step = dvfs_status.under_lock;
 	}
 #endif
-
-	if (mali_dvfs_control==1)
-		kbase_platform_dvfs_set_level(dvfs_status.kbdev, dvfs_status.step);
+	kbase_platform_dvfs_set_level(dvfs_status.kbdev, dvfs_status.step);
 
 #if MALI_GATOR_SUPPORT
 	kbase_trace_mali_timeline_event(GATOR_MAKE_EVENT(ACTIVITY_DVFS_CHANGED, ACTIVITY_DVFS) |((unsigned int)clk_get_rate((struct exynos_context *)(dvfs_status.kbdev->platform_context)->sclk_g3d)/1000000));
@@ -240,7 +236,6 @@ static DECLARE_WORK(mali_dvfs_work, mali_dvfs_event_proc);
 
 int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 {
-	unsigned long flags;
 	struct exynos_context *platform;
 
 	OSK_ASSERT(kbdev != NULL);
@@ -279,21 +274,41 @@ int kbase_platform_dvfs_get_utilisation(void)
 	return utilisation;
 }
 
-int kbase_platform_dvfs_get_control_status(void)
+int kbase_platform_dvfs_get_enable_status(void)
 {
-	return mali_dvfs_control;
+	struct kbase_device *kbdev;
+	unsigned long flags;
+	int enable;
+
+	kbdev = mali_dvfs_status_current.kbdev;
+	spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
+	enable = kbdev->pm.metrics.timer_active;
+	spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
+
+	return enable;
 }
 
-int kbase_platform_dvfs_set_control_status(int onoff)
+int kbase_platform_dvfs_enable(bool enable)
 {
-	switch(onoff)
-	{
-	case 0:case 1:
-		mali_dvfs_control = onoff;
-		printk("mali_dvfs_control is changed to %d\n", mali_dvfs_control);
-		return MALI_TRUE;
+	struct kbase_device *kbdev;
+	unsigned long flags;
+
+	kbdev = mali_dvfs_status_current.kbdev;
+	if (enable) {
+		spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
+		kbdev->pm.metrics.timer_active = MALI_TRUE;
+		spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
+		hrtimer_start(&kbdev->pm.metrics.timer,
+				HR_TIMER_DELAY_MSEC(KBASE_PM_DVFS_FREQUENCY),
+				HRTIMER_MODE_REL);
+	} else {
+		spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
+		kbdev->pm.metrics.timer_active = MALI_FALSE;
+		spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
+		hrtimer_cancel(&kbdev->pm.metrics.timer);
+		kbase_platform_dvfs_set_level(kbdev, kbase_platform_dvfs_get_level(533));
 	}
-	return MALI_FALSE;
+	return MALI_TRUE;
 }
 
 int kbase_platform_dvfs_init(struct kbase_device *kbdev)
@@ -320,7 +335,6 @@ int kbase_platform_dvfs_init(struct kbase_device *kbdev)
 #ifdef MALI_DVFS_ASV_ENABLE
 	mali_dvfs_status_current.asv_status=ASV_STATUS_NOT_INIT;
 #endif
-	mali_dvfs_control=1;
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
 
 	// this operation is set the external variable for time_in_state sysfile.
