@@ -15,6 +15,7 @@ struct exynos5_bus_mif_platform_data {
 
 struct exynos5_bus_mif_handle;
 
+#ifdef CONFIG_ARM_EXYNOS5_BUS_DEVFREQ
 struct exynos5_bus_mif_handle *exynos5_bus_mif_get(unsigned long min_freq);
 int exynos5_bus_mif_put(struct exynos5_bus_mif_handle *handle);
 
@@ -25,5 +26,27 @@ struct exynos5_bus_mif_handle *exynos5_bus_mif_min(unsigned long min_freq)
 }
 
 void exynos5_ppmu_trace(void);
+#else
+static inline
+struct exynos5_bus_mif_handle *exynos5_bus_mif_get(unsigned long min_freq)
+{
+	return NULL;
+}
 
+static inline
+int exynos5_bus_mif_put(struct exynos5_bus_mif_handle *handle)
+{
+	return 0;
+}
+
+static inline
+struct exynos5_bus_mif_handle *exynos5_bus_mif_min(unsigned long min_freq)
+{
+	return NULL;
+}
+
+static inline void exynos5_ppmu_trace(void)
+{
+}
+#endif
 #endif /* _MACH_EXYNOS_EXYNOS5_BUS_H_ */
