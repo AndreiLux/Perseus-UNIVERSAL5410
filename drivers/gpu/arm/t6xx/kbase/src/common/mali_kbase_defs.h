@@ -620,6 +620,7 @@ struct kbase_context
 	kbase_os_context        osctx;
 	kbase_jd_context        jctx;
 	kbasep_mem_usage        usage;
+	atomic_t                nonmapped_pages;
 	ukk_session             ukk_session;
 
 	osk_dlist               waiting_soft_jobs;
@@ -643,6 +644,9 @@ struct kbase_context
 	 * Mutable flags *must* be accessed under jctx.sched_info.ctx.jsctx_mutex
 	 *
 	 * All other flags must be added there */
+
+	spinlock_t         mm_update_lock;
+	struct mm_struct * process_mm;
 };
 
 typedef enum kbase_reg_access_type
