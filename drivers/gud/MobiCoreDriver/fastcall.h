@@ -98,8 +98,9 @@ union mc_fc_info {
  *
  * @param fc_generic pointer to fast call data
  */
-static inline void mc_fastcall(union fc_generic *fc_generic)
+static inline long _smc(void *data)
 {
+	union fc_generic *fc_generic = data;
 	MCDRV_ASSERT(fc_generic != NULL);
 	/* We only expect to make smc calls on CPU0 otherwise something wrong
 	 * will happen */
@@ -142,6 +143,7 @@ static inline void mc_fastcall(union fc_generic *fc_generic)
 		fc_generic->as_out.param[1] = reg3;
 	}
 #endif
+	return 0;
 }
 
 /**

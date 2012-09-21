@@ -121,8 +121,8 @@ struct bulk_buffer_descriptor *session_add_bulk_buf(
 	do {
 		/* Prepare the interface structure for memory registration in
 		   Kernel Module */
-		void	*l2_table_phys;
-		uint32_t  handle;
+		uint32_t l2_table_phys;
+		uint32_t handle;
 
 		int ret = mobicore_map_vmem(session->instance,
 					buf,
@@ -146,7 +146,7 @@ struct bulk_buffer_descriptor *session_add_bulk_buf(
 							buf,
 							len,
 							handle,
-							l2_table_phys);
+							(void*)l2_table_phys);
 
 		/* Add to vector of descriptors */
 		list_add_tail(&(bulk_buf_descr->list),
@@ -197,6 +197,28 @@ bool session_remove_bulk_buf(
 	}
 
 	return ret;
+}
+
+/*****************************************************************************/
+uint32_t session_find_bulk_buf(
+	struct session *session,
+	void	*virt_addr
+) {
+	struct bulk_buffer_descriptor  *tmp;
+	struct list_head *pos, *q;
+
+	MCDRV_DBG_VERBOSE("Virtual Address = 0x%X", (unsigned int) virt_addr);
+
+	/* Search and return buffer descriptor handle */
+	list_for_each_safe(pos, q, &session->bulk_buffer_descriptors) {
+		tmp = list_entry(pos, struct bulk_buffer_descriptor, list);
+		if (tmp->virt_addr == virt_addr) {
+			return tmp->handle;
+		}
+	}
+
+
+	return 0;
 }
 
 /** @} */

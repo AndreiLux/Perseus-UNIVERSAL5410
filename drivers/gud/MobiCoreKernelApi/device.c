@@ -228,7 +228,7 @@ bool mcore_device_free_contiguous_wsm(
 				wsm->virt_addr, wsm->handle);
 
 		/* ignore return code */
-		mobicore_free(dev->instance, wsm->handle);
+		mobicore_free_wsm(dev->instance, wsm->handle);
 
 		list_del(pos);
 		kfree(wsm);

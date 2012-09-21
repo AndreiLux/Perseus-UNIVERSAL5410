@@ -44,72 +44,8 @@
 /** MobiCore interrupt context data */
 struct mc_context ctx;
 
-/*
-#############################################################################
-##
-## Convenience functions for Linux API functions
-##
-#############################################################################*/
-#ifdef CONFIG_SMP
-/**
- * Force migration of current task to CPU0(where the monitor resides)
- *
- * @return Error code or 0 for success
- */
-static int goto_cpu0(void)
-{
-	int ret = 0;
-	struct cpumask mask = CPU_MASK_CPU0;
-
-	MCDRV_DBG_VERBOSE("System has %d CPU's, we are on CPU #%d\n"
-		"\tBinding this process to CPU #0.\n"
-		"\tactive mask is %lx, setting it to mask=%lx\n",
-		nr_cpu_ids,
-		raw_smp_processor_id(),
-		cpu_active_mask->bits[0],
-		mask.bits[0]);
-	ret = set_cpus_allowed_ptr(current, &mask);
-	if (ret != 0)
-		MCDRV_DBG_ERROR("set_cpus_allowed_ptr=%d.\n", ret);
-	MCDRV_DBG_VERBOSE("And now we are on CPU #%d\n",
-				raw_smp_processor_id());
-
-	return ret;
-}
-
-/**
- * Restore CPU mask for current to ALL Cpus(reverse of goto_cpu0)
- *
- * @return Error code or 0 for success
- */
-static int __attribute__ ((unused)) goto_all_cpu(void)
-{
-	int ret = 0;
-
-	struct cpumask mask =  CPU_MASK_ALL;
-
-	MCDRV_DBG_VERBOSE("System has %d CPU's, we are on CPU #%d\n"
-		  "\tBinding this process to CPU #0.\n"
-		  "\tactive mask is %lx, setting it to mask=%lx\n",
-		  nr_cpu_ids,
-		  raw_smp_processor_id(),
-		  cpu_active_mask->bits[0],
-		  mask.bits[0]);
-	ret = set_cpus_allowed_ptr(current, &mask);
-	if (ret != 0)
-		MCDRV_DBG_ERROR("set_cpus_allowed_ptr=%d.\n", ret);
-	MCDRV_DBG_VERBOSE("And now we are on CPU #%d\n",
-				raw_smp_processor_id());
-
-	return ret;
-}
-#else
-#define goto_cpu0()	()
-#define goto_all_cpu()	()
-#endif
-
 /* Get process context from file pointer */
-struct mc_instance *get_instance(struct file *file)
+static struct mc_instance *get_instance(struct file *file)
 {
 	if (!file)
 		return NULL;
@@ -126,8 +62,8 @@ unsigned int get_unique_id(void)
 /* Clears the reserved bit of each page and frees the pages */
 static inline void free_continguous_pages(void *addr, unsigned int order)
 {
-	struct page *page = virt_to_page(addr);
 	int i;
+	struct page *page = virt_to_page(addr);
 	for (i = 0; i < (1<<order); i++) {
 		MCDRV_DBG_VERBOSE("free page at 0x%p\n", page);
 		ClearPageReserved(page);
@@ -144,27 +80,240 @@ static int free_buffer(struct mc_buffer *buffer)
 	if (buffer->handle == 0)
 		return -EINVAL;
 
-	if (buffer->virt_kernel_addr == 0)
+	if (buffer->addr == 0)
 		return -EINVAL;
 
-	MCDRV_DBG_VERBOSE("phys_addr=0x%p, virt_addr=0x%p\n",
-			buffer->phys_addr,
-			buffer->virt_kernel_addr);
+	if (!atomic_dec_and_test(&buffer->usage)) {
 
-	free_continguous_pages(buffer->virt_kernel_addr, buffer->order);
-	memset(buffer, 0, sizeof(struct mc_buffer));
+		MCDRV_DBG_VERBOSE("Could not free buffer h=%u", buffer->handle);
+		return 0;
+	}
+
+	MCDRV_DBG("phys_addr=0x%p, virt_addr=0x%p\n",
+			buffer->phys,
+			buffer->addr);
+
+	list_del(&buffer->list);
+
+	free_continguous_pages(buffer->addr, buffer->order);
+	kfree(buffer);
 	return 0;
 }
 
+static uint32_t mc_find_cont_wsm(struct mc_instance *instance, uint32_t handle,
+	uint32_t *phys, uint32_t *len)
+{
+	int ret = 0;
+	struct mc_buffer *buffer;
+
+	if (WARN(!instance, "No instance data available"))
+		return -EFAULT;
+
+	if (WARN_ON(!is_daemon(instance))) {
+		MCDRV_DBG_ERROR("caller not MobiCore Daemon\n");
+		return -EPERM;
+	}
+
+	mutex_lock(&instance->lock);
+
+	mutex_lock(&ctx.bufs_lock);
+
+	/* search for the given handle in the buffers list */
+	list_for_each_entry(buffer, &ctx.cont_bufs, list) {
+		if (buffer->handle == handle) {
+			*phys = (uint32_t)buffer->phys;
+			*len = buffer->len;
+			goto found;
+		}
+	}
+
+	/* Coundn't find the buffer */
+	ret = -EINVAL;
+
+found:
+	mutex_unlock(&ctx.bufs_lock);
+	mutex_unlock(&instance->lock);
+
+	return ret;
+}
+
 /**
- *
+ * Free a WSM buffer allocated with mobicore_allocate_wsm
  * @param instance
- * @param arg
+ * @param handle		handle of the buffer
  *
  * @return 0 if no error
  *
  */
-static int mc_register_wsm_l2(struct mc_instance *instance,
+static int __free_buffer(struct mc_instance *instance, uint32_t handle)
+{
+	int ret = 0;
+	struct mc_buffer *buffer;
+
+	if (WARN(!instance, "No instance data available"))
+		return -EFAULT;
+
+	mutex_lock(&ctx.bufs_lock);
+	/* search for the given handle in the buffers list */
+	list_for_each_entry(buffer, &ctx.cont_bufs, list) {
+		if (buffer->handle == handle)
+			goto del_buffer;
+	}
+	ret = -EINVAL;
+	goto err;
+
+del_buffer:
+	ret = free_buffer(buffer);
+err:
+	mutex_unlock(&ctx.bufs_lock);
+	return ret;
+}
+
+int mc_free_buffer(struct mc_instance *instance, uint32_t handle)
+{
+	int ret = 0;
+
+	if (WARN(!instance, "No instance data available"))
+		return -EFAULT;
+
+	mutex_lock(&instance->lock);
+
+	ret = __free_buffer(instance, handle);
+	mutex_unlock(&instance->lock);
+	return ret;
+}
+
+
+int mc_get_buffer(struct mc_instance *instance,
+	struct mc_buffer **buffer, unsigned long len)
+{
+	struct mc_buffer *cbuffer = NULL;
+	void *addr = 0;
+	void *phys = 0;
+	unsigned int order;
+	unsigned long allocated_size;
+	int ret = 0;
+
+	if (WARN(!instance, "No instance data available"))
+		return -EFAULT;
+
+	if (len == 0) {
+		MCDRV_DBG_WARN("cannot allocate size 0\n");
+		return -ENOMEM;
+	}
+
+	order = get_order(len);
+	if (order > MAX_ORDER) {
+		MCDRV_DBG_WARN("Buffer size too large\n");
+		return -ENOMEM;
+	}
+	allocated_size = (1 << order) * PAGE_SIZE;
+
+	if (mutex_lock_interruptible(&instance->lock))
+		return -ERESTARTSYS;
+
+	/* allocate a new buffer. */
+	cbuffer = kzalloc(sizeof(struct mc_buffer), GFP_KERNEL);
+
+	if (cbuffer == NULL) {
+		MCDRV_DBG_WARN("MMAP_WSM request: could not allocate buffer\n");
+		return -ENOMEM;
+	}
+	mutex_lock(&ctx.bufs_lock);
+
+	MCDRV_DBG_VERBOSE("size %ld -> order %d --> %ld (2^n pages)\n",
+		len, order, allocated_size);
+
+	addr = (void *)__get_free_pages(GFP_USER | __GFP_ZERO, order);
+
+	if (addr == NULL) {
+		MCDRV_DBG_WARN("get_free_pages failed, "
+				"no contiguous region available.\n");
+		ret = -ENOMEM;
+		goto err;
+	}
+	phys = (void *)virt_to_phys(addr);
+	cbuffer->handle = get_unique_id();
+	cbuffer->phys = phys;
+	cbuffer->addr = addr;
+	cbuffer->order = order;
+	cbuffer->len = len;
+	cbuffer->instance = instance;
+	/* Refcount +1 because the TLC is requesting it */
+	atomic_set(&cbuffer->usage, 1);
+
+	INIT_LIST_HEAD(&cbuffer->list);
+	list_add(&cbuffer->list, &ctx.cont_bufs);
+
+	MCDRV_DBG("allocated phys=0x%p - 0x%p, "
+		"size=%ld, kernel_virt=0x%p, handle=%d\n",
+		phys, (void *)((unsigned int)phys+allocated_size),
+		allocated_size, addr, cbuffer->handle);
+	*buffer = cbuffer;
+	goto unlock;
+
+err:
+	kfree(cbuffer);
+unlock:
+	mutex_unlock(&ctx.bufs_lock);
+	mutex_unlock(&instance->lock);
+	return ret;
+}
+
+/* Locks a contiguous buffer - +1 refcount. Assumes the instance lock is
+ * already taken! */
+static int __lock_buffer(struct mc_instance *instance, uint32_t handle)
+{
+	int ret = 0;
+	struct mc_buffer *buffer;
+
+	if (WARN(!instance, "No instance data available"))
+		return -EFAULT;
+
+	if (WARN_ON(!is_daemon(instance))) {
+		MCDRV_DBG_ERROR("caller not MobiCore Daemon\n");
+		return -EPERM;
+	}
+
+	mutex_lock(&ctx.bufs_lock);
+	/* search for the given handle in the buffers list */
+	list_for_each_entry(buffer, &ctx.cont_bufs, list) {
+		if (buffer->handle == handle) {
+			atomic_inc(&buffer->usage);
+			goto unlock;
+		}
+	}
+	ret = -EINVAL;
+
+unlock:
+	mutex_unlock(&ctx.bufs_lock);
+	return ret;
+}
+
+void *get_mci_base_phys(unsigned int len)
+{
+	if (ctx.mci_base.phys)
+		return ctx.mci_base.phys;
+	else {
+		unsigned int order = get_order(len);
+		ctx.mcp = NULL;
+		ctx.mci_base.order = order;
+		ctx.mci_base.addr =
+			(void *)__get_free_pages(GFP_USER | __GFP_ZERO, order);
+		if (ctx.mci_base.addr == NULL) {
+			MCDRV_DBG_WARN("get_free_pages failed, "
+				"no contiguous region available.\n");
+			memset(&ctx.mci_base, 0, sizeof(ctx.mci_base));
+			return NULL;
+		}
+		ctx.mci_base.phys = (void *)virt_to_phys(ctx.mci_base.addr);
+		return ctx.mci_base.phys;
+	}
+}
+
+/* Create a l2 table from a virtual memory buffer which can be vmalloc
+ * or user space virtual memory */
+int mc_register_wsm_l2(struct mc_instance *instance,
 	uint32_t buffer, uint32_t len,
 	uint32_t *handle, uint32_t *phys)
 {
@@ -189,7 +338,11 @@ static int mc_register_wsm_l2(struct mc_instance *instance,
 
 	/* set response */
 	*handle = table->handle;
-	*phys = (uint32_t)table->phys;
+	/* WARNING: daemon shouldn't know this either, but live with it */
+	if (is_daemon(instance))
+		*phys = (uint32_t)table->phys;
+	else
+		*phys = 0;
 
 	MCDRV_DBG_VERBOSE("handle: %d, phys=%p\n", *handle, (void *)*phys);
 
@@ -206,7 +359,7 @@ static int mc_register_wsm_l2(struct mc_instance *instance,
  * @return 0 if no error
  *
  */
-static int mc_unregister_wsm_l2(struct mc_instance *instance, uint32_t handle)
+int mc_unregister_wsm_l2(struct mc_instance *instance, uint32_t handle)
 {
 	int ret = 0;
 
@@ -218,9 +371,8 @@ static int mc_unregister_wsm_l2(struct mc_instance *instance, uint32_t handle)
 
 	return ret;
 }
-
-static int mc_lock_wsm_l2(struct mc_instance *instance, uint32_t handle,
-	unsigned long *phys)
+/* Lock the object from handle, it could be a WSM l2 table or a cont buffer! */
+static int mc_lock_handle(struct mc_instance *instance, uint32_t handle)
 {
 	int ret = 0;
 
@@ -233,13 +385,20 @@ static int mc_lock_wsm_l2(struct mc_instance *instance, uint32_t handle,
 	}
 
 	mutex_lock(&instance->lock);
-	ret = mc_lock_l2_table(instance, handle, phys);
+	ret = mc_lock_l2_table(instance, handle);
+
+	/* Handle was not a l2 table but a cont buffer */
+	if (ret == -EINVAL) {
+		/* Call the non locking variant! */
+		ret = __lock_buffer(instance, handle);
+	}
+
 	mutex_unlock(&instance->lock);
 
 	return ret;
 }
 
-static int mc_unlock_wsm_l2(struct mc_instance *instance, uint32_t handle)
+static int mc_unlock_handle(struct mc_instance *instance, uint32_t handle)
 {
 	int ret = 0;
 
@@ -253,137 +412,49 @@ static int mc_unlock_wsm_l2(struct mc_instance *instance, uint32_t handle)
 
 	mutex_lock(&instance->lock);
 	ret = mc_free_l2_table(instance, handle);
+
+	/* Not a l2 table, then it must be a buffer */
+	if (ret == -EINVAL) {
+		/* Call the non locking variant! */
+		ret = __free_buffer(instance, handle);
+	}
 	mutex_unlock(&instance->lock);
 
 	return ret;
 }
 
-/**
- * Free a WSM buffer allocated with mobicore_allocate_wsm
- * @param instance
- * @param handle		handle of the buffer
- *
- * @return 0 if no error
- *
- */
-int mc_free_instance(struct mc_instance *instance, uint32_t handle)
+static uint32_t mc_find_wsm_l2(struct mc_instance *instance, uint32_t handle)
 {
-	unsigned int i, ret;
-	struct mc_buffer *buffer;
+	uint32_t ret = 0;
 
 	if (WARN(!instance, "No instance data available"))
-		return -EFAULT;
+		return 0;
 
-	if (mutex_lock_interruptible(&instance->lock))
-		return -ERESTARTSYS;
-
-	/* search for the given address in the buffers list */
-	for (i = 0; i < MC_DRV_KMOD_MAX_CONTG_BUFFERS; i++) {
-		buffer = &(instance->buffers[i]);
-		if (buffer->handle == handle)
-			break;
-	}
-	if (i == MC_DRV_KMOD_MAX_CONTG_BUFFERS) {
-		MCDRV_DBG_ERROR("contigous buffer not found\n");
-		ret = -EINVAL;
-		goto err;
+	if (WARN_ON(!is_daemon(instance))) {
+		MCDRV_DBG_ERROR("caller not MobiCore Daemon\n");
+		return 0;
 	}
 
-	ret = free_buffer(buffer);
-err:
+	mutex_lock(&instance->lock);
+	ret = mc_find_l2_table(instance, handle);
 	mutex_unlock(&instance->lock);
+
 	return ret;
 }
 
-
-static int mc_get_buffer(struct mc_instance *instance,
-	struct mc_buffer **buffer, unsigned long len)
+static int mc_clean_wsm_l2(struct mc_instance *instance)
 {
-	struct mc_buffer *cbuffer = 0;
-	void *addr = 0;
-	void *phys = 0;
-	unsigned int order;
-	unsigned long allocated_size;
-	int i;
-
 	if (WARN(!instance, "No instance data available"))
 		return -EFAULT;
 
-	if (len == 0) {
-		MCDRV_DBG_ERROR("cannot allocate size 0\n");
-		return -ENOMEM;
+	if (WARN_ON(!is_daemon(instance))) {
+		MCDRV_DBG_ERROR("caller not MobiCore Daemon\n");
+		return -EPERM;
 	}
 
-	order = get_order(len);
-	if (order > MAX_ORDER) {
-		MCDRV_DBG_ERROR("Buffer size too large\n");
-		return -ENOMEM;
-	}
-	allocated_size = (1 << order) * PAGE_SIZE;
+	mc_clean_l2_tables();
 
-	if (mutex_lock_interruptible(&instance->lock))
-		return -ERESTARTSYS;
-
-	/* search for a free slot in the buffer list. */
-	for (i = 0; i < MC_DRV_KMOD_MAX_CONTG_BUFFERS; i++) {
-		if (instance->buffers[i].handle == 0) {
-			cbuffer = &instance->buffers[i];
-			break;
-		}
-	}
-
-	if (i == MC_DRV_KMOD_MAX_CONTG_BUFFERS) {
-		MCDRV_DBG_WARN("MMAP_WSM request: "
-			"no free slot for wsm buffer available\n");
-		mutex_unlock(&instance->lock);
-		return -ENOBUFS;
-	}
-
-	MCDRV_DBG_VERBOSE("size %ld -> order %d --> %ld (2^n pages)\n",
-		len, order, allocated_size);
-
-	addr = (void *)__get_free_pages(GFP_USER | __GFP_ZERO, order);
-
-	if (addr == NULL) {
-		MCDRV_DBG_WARN("get_free_pages failed, "
-				"no contiguous region available.\n");
-		cbuffer->handle = 0;
-		return -ENOMEM;
-	}
-	phys = (void *)virt_to_phys(addr);
-	cbuffer->handle = get_unique_id();
-	cbuffer->phys_addr = phys;
-	cbuffer->virt_kernel_addr = addr;
-	mutex_unlock(&instance->lock);
-
-	MCDRV_DBG("allocated phys=0x%p - 0x%p, "
-		"size=%ld, kernel_virt=0x%p, handle=%d\n",
-		phys, (void *)((unsigned int)phys+allocated_size),
-		allocated_size, addr, cbuffer->handle);
-	*buffer = cbuffer;
 	return 0;
-}
-
-void *get_mci_base_phys(unsigned int len)
-{
-	if (ctx.mci_base.phys_addr)
-		return ctx.mci_base.phys_addr;
-	else {
-		unsigned int order = get_order(len);
-		ctx.mcp = NULL;
-		ctx.mci_base.order = order;
-		ctx.mci_base.virt_kernel_addr =
-			(void *)__get_free_pages(GFP_USER | __GFP_ZERO, order);
-		if (ctx.mci_base.virt_kernel_addr == NULL) {
-			MCDRV_DBG_WARN("get_free_pages failed, "
-				"no contiguous region available.\n");
-			memset(&ctx.mci_base, 0, sizeof(ctx.mci_base));
-			return NULL;
-		}
-		ctx.mci_base.phys_addr =
-			(void *)virt_to_phys(ctx.mci_base.virt_kernel_addr);
-		return ctx.mci_base.phys_addr;
-	}
 }
 
 static int mc_fd_mmap(struct file *file, struct vm_area_struct *vmarea)
@@ -392,11 +463,11 @@ static int mc_fd_mmap(struct file *file, struct vm_area_struct *vmarea)
 	unsigned long len = vmarea->vm_end - vmarea->vm_start;
 	void *paddr = (void *)(vmarea->vm_pgoff << PAGE_SHIFT);
 	unsigned int pfn;
-	struct mc_buffer *contg_buffer = 0;
-	int ret = 0, i;
+	struct mc_buffer *buffer = 0;
+	int ret = 0;
 
-	MCDRV_DBG_VERBOSE("enter (vma start=0x%p, size=%ld, mci=%p)\n",
-		(void *)vmarea->vm_start, len, ctx.mci_base.phys_addr);
+	MCDRV_DBG("enter (vma start=0x%p, size=%ld, mci=%p)\n",
+		(void *)vmarea->vm_start, len, ctx.mci_base.phys);
 
 	if (WARN(!instance, "No instance data available"))
 		return -EFAULT;
@@ -406,21 +477,30 @@ static int mc_fd_mmap(struct file *file, struct vm_area_struct *vmarea)
 		return -ENOMEM;
 	}
 	if (paddr) {
-		if (mutex_lock_interruptible(&instance->lock))
-			return -ERESTARTSYS;
+		mutex_lock(&ctx.bufs_lock);
 
-		/* search for a free slot in the buffer list. */
-		for (i = 0; i < MC_DRV_KMOD_MAX_CONTG_BUFFERS; i++) {
-			contg_buffer = &(instance->buffers[i]);
-			if (contg_buffer->phys_addr == paddr)
-				break;
+		/* search for the buffer list. */
+		list_for_each_entry(buffer, &ctx.cont_bufs, list) {
+			if (buffer->phys == paddr)
+				goto found;
+			else
+					break;
 		}
-		mutex_unlock(&instance->lock);
+		/* Nothing found return */
+		mutex_unlock(&ctx.bufs_lock);
+		return -EINVAL;
 
-		if (i == MC_DRV_KMOD_MAX_CONTG_BUFFERS) {
-			MCDRV_DBG_WARN("MMAP_WSM : WSM buffer not found\n");
-			return -ENOBUFS;
-		}
+found:
+		vmarea->vm_flags |= VM_RESERVED;
+		/* Convert kernel address to user address. Kernel address begins
+		* at PAGE_OFFSET, user address range is below PAGE_OFFSET.
+		* Remapping the area is always done, so multiple mappings
+		* of one region are possible. Now remap kernel address
+		* space into user space */
+		pfn = (unsigned int)paddr >> PAGE_SHIFT;
+		ret = (int)remap_pfn_range(vmarea, vmarea->vm_start, pfn,
+			buffer->len, vmarea->vm_page_prot);
+		mutex_unlock(&ctx.bufs_lock);
 	} else {
 		if (!is_daemon(instance))
 			return -EPERM;
@@ -428,19 +508,17 @@ static int mc_fd_mmap(struct file *file, struct vm_area_struct *vmarea)
 		paddr = get_mci_base_phys(len);
 		if (!paddr)
 			return -EFAULT;
-	}
 
-	vmarea->vm_flags |= VM_RESERVED;
-	/* Convert kernel address to user address. Kernel address begins
-	 * at PAGE_OFFSET, user address range is below PAGE_OFFSET.
-	 * Remapping the area is always done, so multiple mappings
-	 * of one region are possible. Now remap kernel address
-	 * space into user space */
-	pfn = (unsigned int)paddr >> PAGE_SHIFT;
-	ret = (int)remap_pfn_range(vmarea, vmarea->vm_start, pfn, len,
+		vmarea->vm_flags |= VM_RESERVED;
+		/* Convert kernel address to user address. Kernel address begins
+		* at PAGE_OFFSET, user address range is below PAGE_OFFSET.
+		* Remapping the area is always done, so multiple mappings
+		* of one region are possible. Now remap kernel address
+		* space into user space */
+		pfn = (unsigned int)paddr >> PAGE_SHIFT;
+		ret = (int)remap_pfn_range(vmarea, vmarea->vm_start, pfn, len,
 			vmarea->vm_page_prot);
-	if (ret != 0)
-		MCDRV_DBG_WARN("remap_pfn_range failed\n");
+	}
 
 	MCDRV_DBG_VERBOSE("exit with %d/0x%08X\n", ret, ret);
 
@@ -489,7 +567,7 @@ static long mc_fd_user_ioctl(struct file *file, unsigned int cmd,
 
 	switch (cmd) {
 	case MC_IO_FREE:
-		ret = mc_free_instance(instance, (uint32_t)arg);
+		ret = mc_free_buffer(instance, (uint32_t)arg);
 		break;
 
 	case MC_IO_REG_WSM:{
@@ -528,7 +606,7 @@ static long mc_fd_user_ioctl(struct file *file, unsigned int cmd,
 			return -EFAULT;
 
 		map.handle = buffer->handle;
-		map.phys_addr = (unsigned long)buffer->phys_addr;
+		map.phys_addr = (unsigned long)buffer->phys;
 		map.reused = 0;
 		if (copy_to_user(uarg, &map, sizeof(map)))
 			ret = -EFAULT;
@@ -572,15 +650,15 @@ static long mc_fd_admin_ioctl(struct file *file, unsigned int cmd,
 	case MC_IO_INIT: {
 		struct mc_ioctl_init init;
 		ctx.mcp = NULL;
-		if (!ctx.mci_base.phys_addr) {
+		if (!ctx.mci_base.phys) {
 			MCDRV_DBG_ERROR("Cannot init MobiCore without MCI!");
 			return -EINVAL;
 		}
 		if (copy_from_user(&init, uarg, sizeof(init)))
 			return -EFAULT;
 
-		ctx.mcp = ctx.mci_base.virt_kernel_addr + init.mcp_offset;
-		ret = mc_init((uint32_t)ctx.mci_base.phys_addr, init.nq_offset,
+		ctx.mcp = ctx.mci_base.addr + init.mcp_offset;
+		ret = mc_init((uint32_t)ctx.mci_base.phys, init.nq_offset,
 			init.nq_length, init.mcp_offset, init.mcp_length);
 		break;
 	}
@@ -607,28 +685,45 @@ static long mc_fd_admin_ioctl(struct file *file, unsigned int cmd,
 		break;
 
 	case MC_IO_LOCK_WSM: {
-		uint32_t handle;
-		unsigned long phys = 0;
-		if (get_user(handle, uarg))
-			return -EFAULT;
-
-		ret = mc_lock_wsm_l2(instance, handle, &phys);
-		if (put_user(phys, uarg)) {
-			mc_unlock_wsm_l2(instance, handle);
-			return -EFAULT;
-		}
+		ret = mc_lock_handle(instance, (uint32_t)arg);
 		break;
 	}
 	case MC_IO_UNLOCK_WSM:
-		ret = mc_unlock_wsm_l2(instance, (uint32_t)arg);
+		ret = mc_unlock_handle(instance, (uint32_t)arg);
 		break;
-
+	case MC_IO_CLEAN_WSM:
+		ret = mc_clean_wsm_l2(instance);
+		break;
+	case MC_IO_RESOLVE_WSM: {
+		uint32_t handle, phys;
+		if (get_user(handle, uarg))
+			return -EFAULT;
+		phys = mc_find_wsm_l2(instance, handle);
+		if (!phys)
+			return -EFAULT;
+		ret = put_user(phys, uarg);
+		break;
+	}
+	case MC_IO_RESOLVE_CONT_WSM: {
+		struct mc_ioctl_resolv_cont_wsm cont_wsm;
+		uint32_t phys = 0, len = 0;
+		if (copy_from_user(&cont_wsm, uarg, sizeof(cont_wsm)))
+			return -EFAULT;
+		ret = mc_find_cont_wsm(instance, cont_wsm.handle, &phys, &len);
+		if (!ret) {
+			cont_wsm.phys = phys;
+			cont_wsm.length = len;
+			if (copy_to_user(uarg, &cont_wsm, sizeof(cont_wsm)))
+				ret = -EFAULT;
+		}
+		break;
+	}
 	case MC_IO_MAP_MCI:{
 		struct mc_ioctl_map map;
 		if (copy_from_user(&map, uarg, sizeof(map)))
 			return -EFAULT;
 
-		map.reused = (ctx.mci_base.phys_addr != 0);
+		map.reused = (ctx.mci_base.phys != 0);
 		map.phys_addr = (unsigned long)get_mci_base_phys(map.len);
 		if (!map.phys_addr) {
 			MCDRV_DBG_ERROR("Failed to setup MCI buffer!");
@@ -698,7 +793,7 @@ static ssize_t mc_fd_read(struct file *file, char *buffer, size_t buffer_len,
 
 		ssiq_counter = atomic_read(&ctx.isr_counter);
 		MCDRV_DBG_VERBOSE("ssiq_counter=%i, ctx.counter=%i\n",
-			ssiq_counter, ctx.daemon_ctx.ssiq_counter);
+			ssiq_counter, ctx.evt_counter);
 
 		if (ssiq_counter != ctx.evt_counter) {
 			/* read data and exit loop without error */
@@ -740,7 +835,6 @@ static ssize_t mc_fd_read(struct file *file, char *buffer, size_t buffer_len,
 struct mc_instance *mc_alloc_instance(void)
 {
 	struct mc_instance *instance;
-	pid_t pid_vnr;
 
 	instance = kzalloc(sizeof(*instance), GFP_KERNEL);
 	if (instance == NULL)
@@ -748,12 +842,6 @@ struct mc_instance *mc_alloc_instance(void)
 
 	/* get a unique ID for this instance (PIDs are not unique) */
 	instance->handle = get_unique_id();
-
-	/* get the PID of the calling process. We avoid using
-	 *	current->pid directly, as 2.6.24 introduced PID
-	 *	namespaces. See also http://lwn.net/Articles/259217 */
-	pid_vnr = task_pid_vnr(current);
-	instance->pid_vnr = pid_vnr;
 
 	mutex_init(&instance->lock);
 
@@ -767,19 +855,25 @@ struct mc_instance *mc_alloc_instance(void)
  */
 int mc_release_instance(struct mc_instance *instance)
 {
-	int i;
+	struct mc_buffer *buffer, *tmp;
 
 	if (WARN(!instance, "No instance data available"))
 		return -EFAULT;
 
-	if (mutex_lock_interruptible(&instance->lock)) {
-		return -ERESTARTSYS;
-	}
+	mutex_lock(&instance->lock);
 	mc_clear_l2_tables(instance);
 
+	mutex_lock(&ctx.bufs_lock);
 	/* release all mapped data */
-	for (i = 0; i < MC_DRV_KMOD_MAX_CONTG_BUFFERS; i++)
-		free_buffer(&instance->buffers[i]);
+
+	/* Check if some buffers are orphaned. */
+	list_for_each_entry_safe(buffer, tmp, &ctx.cont_bufs, list) {
+		if (buffer->instance == instance) {
+			buffer->instance = NULL;
+			free_buffer(buffer);
+		}
+	}
+	mutex_unlock(&ctx.bufs_lock);
 
 	mutex_unlock(&instance->lock);
 
@@ -799,7 +893,7 @@ int mc_release_instance(struct mc_instance *instance)
  */
 static int mc_fd_user_open(struct inode *inode, struct file *file)
 {
-	struct mc_instance	*instance;
+	struct mc_instance *instance;
 
 	MCDRV_DBG_VERBOSE("enter\n");
 
@@ -830,12 +924,12 @@ static int mc_fd_admin_open(struct inode *inode, struct file *file)
 	MCDRV_DBG("accept this as MobiCore Daemon\n");
 
 	/* Set the caller's CPU mask to CPU0*/
-	if (goto_cpu0() != 0) {
+	/*if (goto_cpu0() != 0) {
 		mc_release_instance(instance);
 		file->private_data = NULL;
 		MCDRV_DBG("changing core failed!\n");
 		return -EFAULT;
-	}
+	}*/
 
 	ctx.daemon_inst = instance;
 	instance->admin = true;
@@ -843,14 +937,6 @@ static int mc_fd_admin_open(struct inode *inode, struct file *file)
 	/* init ssiq event counter */
 	ctx.evt_counter = atomic_read(&(ctx.isr_counter));
 
-#ifdef MC_MEM_TRACES
-	/* The traces have to be setup on CPU-0 since we must
-	 * do a fastcall to MobiCore. */
-	if (!ctx.mci_base.phys_addr)
-		/* Do the work only if MCI base is not
-		 * initialized properly */
-		work_on_cpu(0, mobicore_log_setup, NULL);
-#endif
 	return 0;
 }
 
@@ -994,8 +1080,12 @@ static int __init mobicore_init(void)
 		goto free_admin;
 	}
 
+#ifdef MC_MEM_TRACES
+	mobicore_log_setup();
+#endif
+
 	/* initialize event counter for signaling of an IRQ to zero */
-	atomic_set(&(ctx.isr_counter), 0);
+	atomic_set(&ctx.isr_counter, 0);
 
 	ret = mc_init_l2_tables();
 
@@ -1004,6 +1094,12 @@ static int __init mobicore_init(void)
 	 * enough to be roll-over safe for us. We start with 1
 	 * instead of 0. */
 	atomic_set(&ctx.unique_counter, 1);
+
+	/* init list for contiguous buffers  */
+	INIT_LIST_HEAD(&ctx.cont_bufs);
+
+	/* init lock for the buffers list */
+	mutex_init(&ctx.bufs_lock);
 
 	memset(&ctx.mci_base, 0, sizeof(ctx.mci_base));
 	MCDRV_DBG("initialized\n");

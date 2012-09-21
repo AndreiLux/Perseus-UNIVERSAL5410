@@ -828,6 +828,7 @@ enum mc_result mc_map(
 			},
 			/* .payload = */ {
 				/* .session_id = */ session->session_id,
+				/* .handle = */ bulk_buf->handle,
 				/* .phys_addr_l2; = */
 					(uint32_t)bulk_buf->phys_addr_wsm_l2,
 				/* .offset_payload = */
@@ -941,6 +942,14 @@ enum mc_result mc_unmap(
 			break;
 		}
 
+		uint32_t handle = session_find_bulk_buf(session, buf);
+		if (handle == 0) {
+			MCDRV_DBG_ERROR("Buffer not found");
+			mc_result = MC_DRV_ERR_BULK_UNMAPPING;
+			break;
+		}
+
+
 		/* Prepare unmap command */
 		struct mc_drv_cmd_unmap_bulk_mem_t cmd_unmap_bulk_mem = {
 				/* .header = */ {
@@ -949,6 +958,7 @@ enum mc_result mc_unmap(
 				},
 				/* .payload = */ {
 					/* .session_id = */ session->session_id,
+					/* .handle = */ handle,
 					/* .secure_virtual_adr = */
 					(uint32_t)(map_info->secure_virt_addr),
 					/* .len_bulk_mem =

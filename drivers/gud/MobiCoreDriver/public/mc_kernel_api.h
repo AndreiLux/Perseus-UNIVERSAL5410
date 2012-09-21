@@ -40,12 +40,9 @@ int mobicore_release(struct mc_instance *instance);
  * @return 0 if no error
  *
  */
-int mobicore_allocate_wsm(
-	struct mc_instance	*instance,
-	unsigned long		requested_size,
-	uint32_t		*handle,
-	void			**kernel_virt_addr,
-	void			**phys_addr);
+int mobicore_allocate_wsm(struct mc_instance *instance,
+	unsigned long requested_size, uint32_t *handle, void **virt_kernel_addr,
+	void **phys_addr);
 
 /**
  * Free a WSM buffer allocated with mobicore_allocate_wsm
@@ -55,7 +52,7 @@ int mobicore_allocate_wsm(
  * @return 0 if no error
  *
  */
-int mobicore_free(struct mc_instance *instance, uint32_t handle);
+int mobicore_free_wsm(struct mc_instance *instance, uint32_t handle);
 
 /**
  * Map a virtual memory buffer structure to Mobicore
@@ -63,17 +60,13 @@ int mobicore_free(struct mc_instance *instance, uint32_t handle);
  * @param addr		address of the buffer(NB it must be kernel virtual!)
  * @param len		buffer length
  * @param handle	pointer to handle
- * @param phys_wsm_l2_table	pointer to physical L2 table(?)
+ * @param phys	pointer to physical L2 table(?)
  *
  * @return 0 if no error
  *
  */
-int mobicore_map_vmem(
-	struct mc_instance	*instance,
-	void			*addr,
-	uint32_t		len,
-	uint32_t		*handle,
-	void			**phys_wsm_l2_table);
+int mobicore_map_vmem(struct mc_instance *instance, void *addr,
+	uint32_t len, uint32_t *handle, uint32_t *phys);
 
 /**
  * Unmap a virtual memory buffer from mobicore

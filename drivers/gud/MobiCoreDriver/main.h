@@ -22,6 +22,7 @@
 #include <asm/pgtable.h>
 #include <linux/semaphore.h>
 #include <linux/completion.h>
+#include <linux/mutex.h>
 
 #include "public/mc_linux.h"
 /** Platform specific settings */
@@ -29,20 +30,6 @@
 
 #define MC_VERSION(major, minor) \
 		(((major & 0x0000ffff) << 16) | (minor & 0x0000ffff))
-
-/**
- * Contiguous buffer allocated to TLCs.
- * These buffers are uses as world shared memory (wsm) and shared with
- * secure world.
- * The virtual kernel address is added for a simpler search algorithm.
- */
-struct mc_buffer {
-	unsigned int	handle; /* unique handle */
-	void		*virt_user_addr; /**< virtual User start address */
-	void		*virt_kernel_addr; /**< virtual Kernel start address */
-	void		*phys_addr; /**< physical start address */
-	unsigned int	order; /**< order of number of pages */
-};
 
 /** Maximum number of contiguous buffer allocations that one process can get via
  * mmap. */
@@ -54,11 +41,28 @@ struct mc_instance {
 	/** unique handle */
 	unsigned int handle;
 	bool admin;
-	/** process that opened this instance */
-	pid_t pid_vnr;
-	/** buffer list for mmap generated address space and
-	 * its virtual client address */
-	struct mc_buffer buffers[MC_DRV_KMOD_MAX_CONTG_BUFFERS];
+};
+
+/**
+ * Contiguous buffer allocated to TLCs.
+ * These buffers are uses as world shared memory (wsm) and shared with
+ * secure world.
+ * The virtual kernel address is added for a simpler search algorithm.
+ */
+struct mc_buffer {
+	struct list_head	list;
+	/**< unique handle */
+	unsigned int		handle;
+	/** Number of references kept to this buffer */
+	atomic_t		usage;
+	/**< virtual Kernel start address */
+	void			*addr;
+	/**< physical start address */
+	void			*phys;
+	/**< order of number of pages */
+	unsigned int		order;
+	uint32_t		len;
+	struct mc_instance	*instance;
 };
 
 /** MobiCore Driver Kernel Module context data. */
@@ -76,6 +80,10 @@ struct mc_context {
 	atomic_t		unique_counter;
 	/** pointer to instance of daemon */
 	struct mc_instance	*daemon_inst;
+	/** General list of contigous buffers allocated by the kernel */
+	struct list_head	cont_bufs;
+	/** Lock for the list of contiguous buffers */
+	struct mutex		bufs_lock;
 };
 
 struct mc_sleep_mode {
@@ -107,13 +115,34 @@ struct mc_mcp_buffer {
 } ;
 
 unsigned int get_unique_id(void);
-/* check if caller is MobiCore Daemon */
+
+/** check if caller is MobiCore Daemon */
 static inline bool is_daemon(struct mc_instance *instance)
 {
 	if (!instance)
 		return false;
 	return instance->admin;
 }
+
+
+/* Initialize a new mobicore API instance object */
+struct mc_instance *mc_alloc_instance(void);
+/* Release a mobicore instance object and all objects related to it */
+int mc_release_instance(struct mc_instance *instance);
+
+/* Create a l2 table from a virtual memory buffer which can be vmalloc
+ * or user space virtual memory */
+int mc_register_wsm_l2(struct mc_instance *instance,
+	uint32_t buffer, uint32_t len,
+	uint32_t *handle, uint32_t *phys);
+/* Unregister the buffer mapped above */
+int mc_unregister_wsm_l2(struct mc_instance *instance, uint32_t handle);
+
+/* Allocate one mc_buffer of contigous space */
+int mc_get_buffer(struct mc_instance *instance,
+	struct mc_buffer **buffer, unsigned long len);
+/* Free the buffer allocated above */
+int mc_free_buffer(struct mc_instance *instance, uint32_t handle);
 
 #endif /* _MC_DRV_KMOD_H_ */
 /** @} */

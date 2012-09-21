@@ -134,6 +134,18 @@ struct mc_ioctl_execute {
 	uint32_t  length;
 };
 
+/**
+ * Data exchange structure of the MC_IO_RESOLVE_CONT_WSM ioctl command.
+ */
+struct mc_ioctl_resolv_cont_wsm {
+	/**< driver handle for buffer */
+	uint32_t  handle;
+	/**< base address of memory */
+	uint32_t  phys;
+	/**< length memory */
+	uint32_t  length;
+};
+
 
 /* @defgroup Mobicore_Driver_Kernel_Module_Interface IOCTL */
 
@@ -176,7 +188,7 @@ struct mc_ioctl_execute {
  */
 #define MC_IO_REG_WSM		_IOWR(MC_IOC_MAGIC, 6, struct mc_ioctl_reg_wsm)
 #define MC_IO_UNREG_WSM		_IO(MC_IOC_MAGIC, 7)
-#define MC_IO_LOCK_WSM		_IOWR(MC_IOC_MAGIC, 8, uint32_t)
+#define MC_IO_LOCK_WSM		_IO(MC_IOC_MAGIC, 8)
 #define MC_IO_UNLOCK_WSM	_IO(MC_IOC_MAGIC, 9)
 #define MC_IO_EXECUTE		_IOWR(MC_IOC_MAGIC, 10, struct mc_ioctl_execute)
 
@@ -192,6 +204,24 @@ struct mc_ioctl_execute {
 #define MC_IO_MAP_WSM		_IOWR(MC_IOC_MAGIC, 11, struct mc_ioctl_map)
 #define MC_IO_MAP_MCI		_IOWR(MC_IOC_MAGIC, 12, struct mc_ioctl_map)
 #define MC_IO_MAP_PWSM		_IOWR(MC_IOC_MAGIC, 13, struct mc_ioctl_map)
+
+/**
+ * Clean orphaned WSM buffers. Only available to the daemon and should
+ * only be carried out if the TLC crashes or otherwise calls exit() in
+ * an unexpected manner.
+ * The clean is needed toghether with the lock/unlock mechanism so the daemon
+ * has clear control of the mapped buffers so it can close a truslet before
+ * release all the WSM buffers, otherwise the trustlet would be able to write
+ * to possibly kernel memory areas */
+#define MC_IO_CLEAN_WSM		_IO(MC_IOC_MAGIC, 14)
+
+/** Get L2 phys address of a buffer handle allocated to the user. Only
+ * available to the daemon */
+#define MC_IO_RESOLVE_WSM	_IOWR(MC_IOC_MAGIC, 15, uint32_t)
+
+/** Get the phys address & len of a allocated contiguous buffer. Only available
+ * to the daemon */
+#define MC_IO_RESOLVE_CONT_WSM	_IOWR(MC_IOC_MAGIC, 16, struct mc_ioctl_execute)
 
 #endif /* _MC_LINUX_H_ */
 /** @} */

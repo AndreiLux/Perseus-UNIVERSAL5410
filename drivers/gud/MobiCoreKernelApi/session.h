@@ -111,6 +111,19 @@ bool session_remove_bulk_buf(
 );
 
 /**
+  * Find the handle of the bulk buffer for this session
+  *
+  * @param buf The virtual address of bulk buffer.
+  *
+  * @return On success the actual Bulk buffer handle is retured, 0
+  * if an error occurs.
+  */
+uint32_t session_find_bulk_buf(
+	struct session *session,
+	void	*virt_addr
+);
+
+/**
   * Set additional error information of the last error that occured.
   *
   * @param errorCode The actual error.

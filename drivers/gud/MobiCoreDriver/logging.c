@@ -21,7 +21,7 @@
 
 #include "main.h"
 #include "debug.h"
-#include "fastcall.h"
+#include "ops.h"
 #include "logging.h"
 
 /* Default len of the log ring buffer 256KB*/
@@ -251,7 +251,7 @@ void mobicore_log_read(void)
  * Setup mobicore kernel log. It assumes it's running on CORE 0!
  * The fastcall will complain is that is not the case!
  */
-long mobicore_log_setup(void *data)
+long mobicore_log_setup(void)
 {
 	unsigned long phys_log_buf;
 	union fc_generic fc_log;

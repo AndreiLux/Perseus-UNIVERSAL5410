@@ -19,7 +19,7 @@ struct mc_trace_buf {
 
 /*** MobiCore internal trace log setup. */
 void mobicore_log_read(void);
-long mobicore_log_setup(void *);
+long mobicore_log_setup(void);
 void mobicore_log_free(void);
 
 #endif /* __MC_LOGGING_H */

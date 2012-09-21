@@ -27,10 +27,10 @@ config MOBICORE_VERBOSE
 	  it prints too much logs
 
 config MOBICORE_API
-	tristate "Linux MobiCore API"
+	tristate "MobiCore Kernel API"
 	depends on MOBICORE_DRIVER
 	---help---
-	  Linux Kernel MobiCore API
+	  Enable Linux Kernel MobiCore API
 
 if MOBICORE_DRIVER
 

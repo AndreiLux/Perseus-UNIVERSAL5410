@@ -24,7 +24,7 @@
 
 #include "main.h"
 #include "fastcall.h"
-
+#include "ops.h"
 #include "mem.h"
 #include "debug.h"
 
@@ -117,7 +117,7 @@ int mc_init(uint32_t base, uint32_t nq_offset, uint32_t nq_length,
 		fc_init.as_in.cmd, fc_init.as_in.base, fc_init.as_in.nq_info,
 		fc_init.as_in.mcp_info);
 
-	mc_fastcall(&(fc_init.as_generic));
+	mc_fastcall(&fc_init.as_generic);
 
 	MCDRV_DBG("out cmd=0x%08x, ret=0x%08x\n",
 		  fc_init.as_out.resp,

@@ -40,8 +40,6 @@ struct mc_l2_table_store {
 /** Usage and maintenance information about mc_l2_table_store */
 struct mc_l2_tables_set {
 	struct list_head		list;
-	/**< usage bitmap */
-	unsigned int			usage_bitmap;
 	/**< kernel virtual address */
 	struct mc_l2_table_store	*kernel_virt;
 	/**< physical address */
@@ -100,13 +98,19 @@ struct mc_l2_table *mc_alloc_l2_table(struct mc_instance *instance,
 /* Delete all the l2 tables associated with an instance */
 void mc_clear_l2_tables(struct mc_instance *instance);
 
+/* Release all orphaned L2 tables */
+void mc_clean_l2_tables(void);
+
 /* Delete a used l2 table. */
 int mc_free_l2_table(struct mc_instance *instance, uint32_t handle);
 
-int mc_lock_l2_table(struct mc_instance *instance, uint32_t handle,
-	unsigned long *phys);
+/* Lock a l2 table - the daemon adds +1 to refcount of the L2 table
+ * marking it in use by SWD so it doesn't get released when the TLC dies. */
+int mc_lock_l2_table(struct mc_instance *instance, uint32_t handle);
+/* Unlock l2 table. */
 int mc_unlock_l2_table(struct mc_instance *instance, uint32_t handle);
-
+/* Return the phys address of l2 table. */
+uint32_t mc_find_l2_table(struct mc_instance *instance, uint32_t handle);
 /* Release all used l2 tables to Linux memory space */
 void mc_release_l2_tables(void);
 

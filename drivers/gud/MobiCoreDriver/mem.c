@@ -18,15 +18,15 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+#include "main.h"
+#include "debug.h"
+#include "mem.h"
+
 #include <linux/highmem.h>
 #include <linux/slab.h>
 #include <linux/kthread.h>
 #include <linux/pagemap.h>
 
-#include "main.h"
-#include "debug.h"
-
-#include "mem.h"
 
 /** MobiCore memory context data */
 struct mc_mem_context mem_ctx;
@@ -365,7 +365,7 @@ static int map_buffer(struct task_struct *task, void *wsm_buffer,
 	l2table_as_array_of_pointers_to_page = (struct page **)l2table;
 
 	/* Request comes from user space */
-	if (task != NULL) {
+	if (task != NULL && !is_vmalloc_addr(wsm_buffer)) {
 		/* lock user page in memory, so they do not get swapped
 		* out.
 		* REV axh: Kernel 2.6.27 added a new get_user_pages_fast()
@@ -393,8 +393,6 @@ static int map_buffer(struct task_struct *task, void *wsm_buffer,
 				return -EINVAL;
 			}
 			get_page(page);
-			/* Lock the page in memory, it can't be swapped out */
-			SetPageReserved(page);
 			l2table_as_array_of_pointers_to_page[i] = page;
 			uaddr += PAGE_SIZE;
 		}
@@ -455,13 +453,12 @@ static void unmap_buffers(struct mc_l2_table *table)
 	struct l2table *l2table;
 	int i;
 
-	if (WARN_ON(!table)) {
+	if (WARN_ON(!table))
 		return;
-	}
 
 	/* found the table, now release the resources. */
 	MCDRV_DBG_VERBOSE("clear L2 table, phys_base=%lx, nr_of_pages=%d\n",
-			table->phys, table->nr_of_pages);
+			table->phys, table->pages);
 
 	l2table = table->virt;
 
@@ -481,12 +478,8 @@ static void unmap_buffers(struct mc_l2_table *table)
 static void unmap_l2_table(struct mc_l2_table *table)
 {
 	/* Check if it's not locked by other processes too! */
-	if(!atomic_dec_and_test(&table->usage)) {
-		WARN(1, "WSM L2 table still in use: physBase=%lx, pages=%d",
-			table->phys,
-			table->pages);
+	if (!atomic_dec_and_test(&table->usage))
 		return;
-	}
 
 	/* release if Nwd and Swd/MC do no longer use it. */
 	unmap_buffers(table);
@@ -505,7 +498,7 @@ int mc_free_l2_table(struct mc_instance *instance, uint32_t handle)
 	table = find_l2_table(handle);
 
 	if (table == NULL) {
-		MCDRV_DBG_ERROR("entry not found");
+		MCDRV_DBG_VERBOSE("entry not found");
 		ret = -EINVAL;
 		goto err_unlock;
 	}
@@ -523,8 +516,7 @@ err_unlock:
 	return ret;
 }
 
-int mc_lock_l2_table(struct mc_instance *instance, uint32_t handle,
-	unsigned long *phys)
+int mc_lock_l2_table(struct mc_instance *instance, uint32_t handle)
 {
 	int ret = 0;
 	struct mc_l2_table *table = NULL;
@@ -534,24 +526,23 @@ int mc_lock_l2_table(struct mc_instance *instance, uint32_t handle,
 
 	mutex_lock(&mem_ctx.table_lock);
 	table = find_l2_table(handle);
-	mutex_unlock(&mem_ctx.table_lock);
 
 	if (table == NULL) {
-		MCDRV_DBG_ERROR("entry not found\n");
-		return -EINVAL;
+		MCDRV_DBG_VERBOSE("entry not found %u\n", handle);
+		ret = -EINVAL;
+		goto table_err;
 	}
 	/* TODO: Lock the table! */
 	if (instance != table->owner && !is_daemon(instance)) {
 		MCDRV_DBG_ERROR("instance does no own it\n");
-		return -EPERM;
+		ret = -EPERM;
+		goto table_err;
 	}
 
 	/* lock entry */
 	atomic_inc(&table->usage);
-
-	/* prepare response */
-	*phys = (uint32_t)table->phys;
-
+table_err:
+	mutex_unlock(&mem_ctx.table_lock);
 	return ret;
 }
 /** Allocate L2 table and map buffer into it.
@@ -592,6 +583,46 @@ err_no_mem:
 	return ERR_PTR(ret);
 }
 
+uint32_t mc_find_l2_table(struct mc_instance *instance, uint32_t handle)
+{
+	uint32_t ret = 0;
+	struct mc_l2_table *table = NULL;
+
+	if (WARN(!instance, "No instance data available"))
+		return 0;
+
+	mutex_lock(&mem_ctx.table_lock);
+	table = find_l2_table(handle);
+
+	if (table == NULL) {
+		MCDRV_DBG_ERROR("entry not found %u\n", handle);
+		ret = 0;
+		goto table_err;
+	}
+
+	ret = table->phys;
+table_err:
+	mutex_unlock(&mem_ctx.table_lock);
+	return ret;
+}
+
+void mc_clean_l2_tables(void)
+{
+	struct mc_l2_table *table, *tmp;
+
+	mutex_lock(&mem_ctx.table_lock);
+	/* Check if some WSM is orphaned. */
+	list_for_each_entry_safe(table, tmp, &mem_ctx.l2_tables, list) {
+		if (table->owner == NULL) {
+			MCDRV_DBG("clearing orphaned WSM L2: "
+				"physBase=%lx ,nr_of_pages=%d\n",
+				table->phys, table->pages);
+			unmap_l2_table(table);
+		}
+	}
+	mutex_unlock(&mem_ctx.table_lock);
+}
+
 void mc_clear_l2_tables(struct mc_instance *instance)
 {
 	struct mc_l2_table *table, *tmp;
@@ -599,13 +630,12 @@ void mc_clear_l2_tables(struct mc_instance *instance)
 	mutex_lock(&mem_ctx.table_lock);
 	/* Check if some WSM is still in use. */
 	list_for_each_entry_safe(table, tmp, &mem_ctx.l2_tables, list) {
-		/* TODO: Lock the table and move them to the daemon */
 		if (table->owner == instance) {
-			MCDRV_DBG_VERBOSE( "trying to release WSM L2: "
+			MCDRV_DBG("trying to release WSM L2: "
 				"physBase=%lx ,nr_of_pages=%d\n",
 				table->phys, table->pages);
-			/* unlock app usage and free if MobiCore
-			 * does not use it */
+			/* unlock app usage and free or mark it as orphan */
+			table->owner = NULL;
 			unmap_l2_table(table);
 		}
 	}

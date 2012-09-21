@@ -19,7 +19,7 @@
 #include <mach/irqs.h>
 
 /** MobiCore Interrupt. */
-#define MC_INTR_SSIQ			IRQ_SPI(122)
+#define MC_INTR_SSIQ IRQ_SPI(122)
 
 /** Enable mobicore mem traces */
 #define MC_MEM_TRACES
