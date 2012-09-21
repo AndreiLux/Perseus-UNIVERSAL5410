@@ -139,7 +139,7 @@
 					regulator-max-microvolt = <1300000>;
 					regulator-always-on;
 					regulator-boot-on;
-					reg_op_mode = <3>; /* Normal Mode */
+					reg_op_mode = <1>; /* Standby Mode */
 				};
 
 				buck2_reg: BUCK2 {
