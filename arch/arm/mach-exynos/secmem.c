@@ -48,27 +48,6 @@ static char *secmem_info[] = {
 
 static bool drm_onoff;
 
-#define SECMEM_IS_PAGE_ALIGNED(addr) (!((addr) & (~PAGE_MASK)))
-
-static int secmem_mmap(struct file *file, struct vm_area_struct *vma)
-{
-	unsigned long size = vma->vm_end - vma->vm_start;
-
-	BUG_ON(!SECMEM_IS_PAGE_ALIGNED(vma->vm_start));
-	BUG_ON(!SECMEM_IS_PAGE_ALIGNED(vma->vm_end));
-
-	vma->vm_flags |= VM_RESERVED;
-	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-
-	if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff,
-				size, vma->vm_page_prot)) {
-		printk(KERN_ERR "%s : remap_pfn_range() failed!\n", __func__);
-		return -EAGAIN;
-	}
-
-	return 0;
-}
-
 static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	switch (cmd) {
@@ -196,56 +175,6 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			return crypto_driver->release();
 		break;
 	}
-	case SECMEM_IOC_GET_ADDR:
-	{
-		struct secmem_region region;
-
-		if (copy_from_user(&region, (void __user *)arg,
-					sizeof(struct secmem_region)))
-			return -EFAULT;
-
-		if (!region.len) {
-			printk(KERN_ERR "%s: Get secmem address size error. [size : %ld]\n", __func__, region.len);
-			return -EFAULT;
-		}
-
-		region.virt_addr = kmalloc(region.len, GFP_KERNEL | GFP_DMA);
-		if (!region.virt_addr) {
-			printk(KERN_ERR "%s: Get memory address failed. [address : %x]\n", __func__, (uint32_t)region.virt_addr);
-			return -EFAULT;
-		}
-		region.phys_addr = virt_to_phys(region.virt_addr);
-
-		dma_map_single(secmem.this_device, region.virt_addr,
-				region.len, DMA_TO_DEVICE);
-
-		if (copy_to_user((void __user *)arg, &region,
-					sizeof(struct secmem_region)))
-			return -EFAULT;
-		break;
-	}
-	case SECMEM_IOC_RELEASE_ADDR:
-	{
-		struct secmem_region region;
-		dma_addr_t dma_addr;
-
-		if (copy_from_user(&region, (void __user *)arg,
-					sizeof(struct secmem_region)))
-			return -EFAULT;
-
-		if (!region.virt_addr) {
-			printk(KERN_ERR "%s: Get secmem address failed. [address : %x]\n", __func__, (uint32_t)region.virt_addr);
-			return -EFAULT;
-		}
-
-		dma_addr = virt_to_dma(secmem.this_device, region.virt_addr);
-
-		dma_unmap_single(secmem.this_device, dma_addr,
-				region.len, DMA_TO_DEVICE);
-
-		kfree(region.virt_addr);
-		break;
-	}
 	default:
 		return -ENOTTY;
 	}
@@ -266,8 +195,7 @@ void secmem_crypto_deregister(void)
 EXPORT_SYMBOL(secmem_crypto_deregister);
 
 static const struct file_operations secmem_fops = {
-	.unlocked_ioctl = &secmem_ioctl,
-	.mmap		= secmem_mmap,
+	.unlocked_ioctl = secmem_ioctl,
 };
 
 extern struct platform_device exynos5_device_gsc0;
