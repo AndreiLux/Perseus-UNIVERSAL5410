@@ -74,7 +74,6 @@ static struct pm_qos_request	mem_bw_req;
 /*  This table and variable are using the check time share of GPU Clock  */
 /***********************************************************/
 
-
 typedef struct _mali_dvfs_info{
 	unsigned int voltage;
 	unsigned int clock;
@@ -95,15 +94,6 @@ static mali_dvfs_info mali_dvfs_infotbl[] = {
 
 #define MALI_DVFS_STEP	ARRAY_SIZE(mali_dvfs_infotbl)
 
-#if MALI_DVFS_START_MAX_STEP
-int prev_level = MALI_DVFS_STEP - 1;
-#else
-int prev_level = 0;
-#endif
-unsigned long long prev_time = 0;
-
-
-
 #ifdef CONFIG_MALI_T6XX_DVFS
 typedef struct _mali_dvfs_status_type{
 	kbase_device *kbdev;
@@ -121,6 +111,9 @@ typedef struct _mali_dvfs_status_type{
 
 static struct workqueue_struct *mali_dvfs_wq = 0;
 osk_spinlock mali_dvfs_spinlock;
+#ifdef CONFIG_MALI_T6XX_DEBUG_SYS
+static void update_time_in_state(void);
+#endif
 
 /*dvfs status*/
 static mali_dvfs_status mali_dvfs_status_current;
@@ -336,11 +329,6 @@ int kbase_platform_dvfs_init(struct kbase_device *kbdev)
 	mali_dvfs_status_current.asv_status=ASV_STATUS_NOT_INIT;
 #endif
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
-
-	// this operation is set the external variable for time_in_state sysfile.
-	// this variable "prev_time" is Using the time share of GPU clock( mali_kbase_platform.c ).
-	if( prev_time == 0 )
-		prev_time = get_jiffies_64();
 
 	return MALI_TRUE;
 }
@@ -679,7 +667,7 @@ int kbase_platform_dvfs_get_level(int freq)
 
 void kbase_platform_dvfs_set_level(kbase_device *kbdev, int level)
 {
-	unsigned long long current_time;
+	static int prev_level = -1;
 	int bw;
 
 	if (level == prev_level)
@@ -704,13 +692,10 @@ void kbase_platform_dvfs_set_level(kbase_device *kbdev, int level)
 		kbase_platform_dvfs_set_clock(kbdev, mali_dvfs_infotbl[level].clock);
 		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
 	}
-	// Calculate the time share of input DVFS level.
-	current_time = get_jiffies_64();
-#ifdef cputime64_add
-	time_in_state[prev_level].time = cputime64_add(time_in_state[prev_level].time, cputime_sub(current_time, prev_time));
-#endif
-	prev_time = current_time;
 	prev_level = level;
+#if defined(CONFIG_MALI_T6XX_DEBUG_SYS) && defined(CONFIG_MALI_T6XX_DVFS)
+	update_time_in_state();
+#endif
 }
 
 int kbase_platform_dvfs_sprint_avs_table(char *buf)
@@ -744,27 +729,34 @@ int kbase_platform_dvfs_set(int enable)
 	return 0;
 }
 
+#ifdef CONFIG_MALI_T6XX_DEBUG_SYS
+static void update_time_in_state(void)
+{
+	u64 current_time;
+	static u64 prev_time=0;
+
+	if (prev_time ==0)
+		prev_time=get_jiffies_64();
+
+	current_time = get_jiffies_64();
+#ifdef CONFIG_MALI_T6XX_DVFS
+	mali_dvfs_infotbl[mali_dvfs_status_current.step].time += current_time-prev_time;
+#endif
+	prev_time = current_time;
+}
 
 ssize_t show_time_in_state(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct kbase_device *kbdev;
 	ssize_t ret = 0;
 	int i;
-	unsigned long long current_time;
 
 	kbdev = dev_get_drvdata(dev);
 
+	update_time_in_state();
 
 	if (!kbdev)
 		return -ENODEV;
-
-	current_time = get_jiffies_64();
-#ifdef cputime64_add
-	mali_dvfs_infotbl[prev_level].time =
-		cputime64_add(time_in_state[prev_level].time,
-			      cputime_sub(current_time, prev_time));
-#endif
-	prev_time = current_time;
 
 	for(i = 0 ; i < MALI_DVFS_STEP ; i++) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d %llu\n",
@@ -795,3 +787,4 @@ ssize_t set_time_in_state(struct device *dev, struct device_attribute *attr, con
 	printk("time_in_state value is reset complete.\n");
 	return count;
 }
+#endif
