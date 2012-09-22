@@ -1178,7 +1178,8 @@ mwifiex_cfg80211_scan(struct wiphy *wiphy, struct net_device *dev,
 
 	wiphy_dbg(wiphy, "info: received scan request on %s\n", dev->name);
 
-	if (atomic_read(&priv->wmm.tx_pkts_queued) >=
+	if ((request->flags & CFG80211_SCAN_FLAG_TX_ABORT) &&
+	    atomic_read(&priv->wmm.tx_pkts_queued) >=
 	    MWIFIEX_MIN_TX_PENDING_TO_CANCEL_SCAN) {
 		dev_dbg(priv->adapter->dev, "scan rejected due to traffic\n");
 		return -EBUSY;
