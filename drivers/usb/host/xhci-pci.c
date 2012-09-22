@@ -148,6 +148,7 @@ static int xhci_pci_setup(struct usb_hcd *hcd)
 	}
 	if (pdev->vendor == PCI_VENDOR_ID_VIA)
 		xhci->quirks |= XHCI_RESET_ON_RESUME;
+}
 
 	/* Make sure the HC is halted. */
 	retval = xhci_halt(xhci);
