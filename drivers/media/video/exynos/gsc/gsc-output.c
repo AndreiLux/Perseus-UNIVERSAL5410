@@ -1000,6 +1000,7 @@ int gsc_register_output_device(struct gsc_dev *gsc)
 
 	q = &gsc->out.vbq;
 	memset(q, 0, sizeof(*q));
+	q->name = vfd->name;
 	q->type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
 	q->io_modes = VB2_MMAP | VB2_DMABUF;
 	q->drv_priv = gsc->out.ctx;
