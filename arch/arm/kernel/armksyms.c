@@ -53,6 +53,8 @@ extern void fpundefinstr(void);
 EXPORT_SYMBOL(__backtrace);
 
 	/* platform dependent support */
+EXPORT_SYMBOL(__udelay);
+EXPORT_SYMBOL(__const_udelay);
 EXPORT_SYMBOL(__ndelay);
 EXPORT_SYMBOL(__const_ndelay);
 
