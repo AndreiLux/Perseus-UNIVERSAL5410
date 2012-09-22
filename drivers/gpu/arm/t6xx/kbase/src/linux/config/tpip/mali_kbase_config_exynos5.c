@@ -161,6 +161,9 @@ void kbase_device_runtime_disable(struct kbase_device *kbdev)
 static int pm_callback_runtime_on(kbase_device *kbdev)
 {
 	kbase_platform_clock_on(kbdev);
+#ifdef CONFIG_MALI_T6XX_DVFS
+	mali_dvfs_force_set_clock(450);
+#endif
 	return 0;
 }
 

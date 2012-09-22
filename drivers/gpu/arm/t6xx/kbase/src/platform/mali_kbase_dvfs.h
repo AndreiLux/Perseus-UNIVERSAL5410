@@ -55,6 +55,7 @@ int kbase_platform_dvfs_get_enable_status(void);
 int kbase_platform_dvfs_enable(bool enable);
 int kbase_pm_get_dvfs_utilisation(kbase_device *kbdev);
 int kbase_platform_dvfs_get_utilisation(void);
+void mali_dvfs_force_set_clock(int freq);
 #endif
 
 int mali_get_dvfs_current_level(void);
