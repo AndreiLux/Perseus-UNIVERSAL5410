@@ -21,9 +21,6 @@
 /* Frequency that DVFS clock frequency decisions should be made */
 #define KBASE_PM_DVFS_FREQUENCY                 100
 
-#define MALI_DVFS_DEBUG 0
-#define MALI_DVFS_START_MAX_STEP 1
-
 #define MALI_DVFS_KEEP_STAY_CNT 10
 #define MALI_DVFS_TIME_INTERVAL 5
 
@@ -53,7 +50,6 @@ void kbase_platform_dvfs_term(void);
 int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation);
 int kbase_platform_dvfs_get_enable_status(void);
 int kbase_platform_dvfs_enable(bool enable);
-int kbase_pm_get_dvfs_utilisation(kbase_device *kbdev);
 int kbase_platform_dvfs_get_utilisation(void);
 void mali_dvfs_force_set_clock(int freq);
 #endif
@@ -68,6 +64,5 @@ void mali_dvfs_freq_under_unlock(void);
 
 ssize_t show_time_in_state(struct device *dev, struct device_attribute *attr, char *buf);
 ssize_t set_time_in_state(struct device *dev, struct device_attribute *attr, const char *buf, size_t count);
-
 
 #endif /* _KBASE_DVFS_H_ */

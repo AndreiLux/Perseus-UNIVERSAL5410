@@ -170,7 +170,6 @@ void mali_dvfs_force_set_clock(int freq)
 
 	kbase_platform_dvfs_set_level(dvfs_status->kbdev, dvfs_status->step);
 	mutex_unlock(&mali_set_clock_lock);
-	printk("mali_dvfs_force_set_clock to %dMhz\n", freq);
 }
 
 static void mali_dvfs_event_proc(struct work_struct *w)
@@ -190,8 +189,7 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 	}
 #endif
 	osk_spinlock_lock(&mali_dvfs_spinlock);
-	if (dvfs_status->utilisation > mali_dvfs_infotbl[dvfs_status->step].max_threshold)
-	{
+	if (dvfs_status->utilisation > mali_dvfs_infotbl[dvfs_status->step].max_threshold) {
 		if (dvfs_status->step==kbase_platform_dvfs_get_level(450)) {
 			if (platform->utilisation > mali_dvfs_infotbl[dvfs_status->step].max_threshold)
 				dvfs_status->step++;
@@ -219,17 +217,6 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 
 	kbase_platform_dvfs_set_level(dvfs_status->kbdev, dvfs_status->step);
 
-#if MALI_GATOR_SUPPORT
-	kbase_trace_mali_timeline_event(GATOR_MAKE_EVENT(ACTIVITY_DVFS_CHANGED, ACTIVITY_DVFS) |((unsigned int)clk_get_rate((struct exynos_context *)(dvfs_status.kbdev->platform_context)->sclk_g3d)/1000000));
-	kbase_trace_mali_timeline_event(GATOR_MAKE_EVENT(ACTIVITY_DVFS_UTILISATION_CHANGED, ACTIVITY_DVFS_UTILISATION) | dvfs_status.utilisation);
-#endif
-
-#if MALI_DVFS_DEBUG
-	printk("[mali_dvfs] utilisation: %d[%d] step: %d[%d,%d] vsync %d\n",
-			dvfs_status.utilisation, platform->utilisation, dvfs_status.step,
-			mali_dvfs_infotbl[dvfs_status.step].min_threshold,
-			mali_dvfs_infotbl[dvfs_status.step].max_threshold);
-#endif
 	mutex_unlock(&mali_set_clock_lock);
 }
 
@@ -309,6 +296,7 @@ int kbase_platform_dvfs_enable(bool enable)
 		hrtimer_cancel(&kbdev->pm.metrics.timer);
 		kbase_platform_dvfs_set_level(kbdev, kbase_platform_dvfs_get_level(533));
 	}
+
 	return MALI_TRUE;
 }
 
@@ -439,7 +427,6 @@ void mali_dvfs_freq_under_unlock(void)
 	mali_dvfs_status_current.under_lock = -1;
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
 #endif
-
 	printk("[G3D] Under Lock Unset\n");
 }
 
@@ -448,39 +435,33 @@ int kbase_platform_regulator_init(void)
 
 #ifdef CONFIG_REGULATOR
 	g3d_regulator = regulator_get(NULL, "vdd_g3d");
-	if(IS_ERR(g3d_regulator))
-	{
+	if (IS_ERR(g3d_regulator)) {
 		printk("[kbase_platform_regulator_init] failed to get mali t6xx regulator\n");
 		return -1;
 	}
 
-	if(regulator_enable(g3d_regulator) != 0)
-	{
+	if (regulator_enable(g3d_regulator) != 0) {
 		printk("[kbase_platform_regulator_init] failed to enable mali t6xx regulator\n");
 		return -1;
 	}
 
-	if(regulator_set_voltage(g3d_regulator, mali_gpu_vol, mali_gpu_vol) != 0)
-	{
+	if (regulator_set_voltage(g3d_regulator, mali_gpu_vol, mali_gpu_vol) != 0) {
 		printk("[kbase_platform_regulator_init] failed to set mali t6xx operating voltage [%d]\n", mali_gpu_vol);
 		return -1;
 	}
 #endif
-
 	return 0;
 }
 
 int kbase_platform_regulator_disable(void)
 {
 #ifdef CONFIG_REGULATOR
-	if(!g3d_regulator)
-	{
+	if (!g3d_regulator) {
 		printk("[kbase_platform_regulator_disable] g3d_regulator is not initialized\n");
 		return -1;
 	}
 
-	if(regulator_disable(g3d_regulator) != 0)
-	{
+	if (regulator_disable(g3d_regulator) != 0) {
 		printk("[kbase_platform_regulator_disable] failed to disable g3d regulator\n");
 		return -1;
 	}
@@ -491,14 +472,12 @@ int kbase_platform_regulator_disable(void)
 int kbase_platform_regulator_enable(void)
 {
 #ifdef CONFIG_REGULATOR
-	if(!g3d_regulator)
-	{
+	if (!g3d_regulator) {
 		printk("[kbase_platform_regulator_enable] g3d_regulator is not initialized\n");
 		return -1;
 	}
 
-	if(regulator_enable(g3d_regulator) != 0)
-	{
+	if (regulator_enable(g3d_regulator) != 0) {
 		printk("[kbase_platform_regulator_enable] failed to enable g3d regulator\n");
 		return -1;
 	}
@@ -519,8 +498,7 @@ int kbase_platform_get_default_voltage(struct device *dev, int *vol)
 int kbase_platform_get_voltage(struct device *dev, int *vol)
 {
 #ifdef CONFIG_REGULATOR
-	if(!g3d_regulator)
-	{
+	if (!g3d_regulator) {
 		printk("[kbase_platform_get_voltage] g3d_regulator is not initialized\n");
 		return -1;
 	}
@@ -535,13 +513,12 @@ int kbase_platform_get_voltage(struct device *dev, int *vol)
 int kbase_platform_set_voltage(struct device *dev, int vol)
 {
 #ifdef CONFIG_REGULATOR
-	if(!g3d_regulator)
-	{
+	if (!g3d_regulator) {
 		printk("[kbase_platform_set_voltage] g3d_regulator is not initialized\n");
 		return -1;
 	}
 
-	if(regulator_set_voltage(g3d_regulator, vol, vol) != 0)
+	if (regulator_set_voltage(g3d_regulator, vol, vol) != 0)
 	{
 		printk("[kbase_platform_set_voltage] failed to set voltage\n");
 		return -1;
@@ -565,7 +542,7 @@ void kbase_platform_dvfs_set_clock(kbase_device *kbdev, int freq)
 		panic("oops");
 
 	platform = (struct exynos_context *) kbdev->platform_context;
-	if(NULL == platform)
+	if (NULL == platform)
 	{
 		panic("oops");
 	}
@@ -574,18 +551,17 @@ void kbase_platform_dvfs_set_clock(kbase_device *kbdev, int freq)
 		mout_gpll = clk_get(kbdev->osdev.dev, "mout_gpll");
 		fin_gpll = clk_get(kbdev->osdev.dev, "ext_xtal");
 		fout_gpll = clk_get(kbdev->osdev.dev, "fout_gpll");
-		if(IS_ERR(mout_gpll) || IS_ERR(fin_gpll) || IS_ERR(fout_gpll))
+		if (IS_ERR(mout_gpll) || IS_ERR(fin_gpll) || IS_ERR(fout_gpll))
 			panic("clk_get ERROR");
 	}
 
-	if(platform->sclk_g3d == 0)
+	if (platform->sclk_g3d == 0)
 		return;
 
 	if (freq == _freq)
 		return;
 
-	switch(freq)
-	{
+	switch(freq) {
 		case 533:
 			gpll_rate = 533000000;
 			aclk_400_rate = 533000000;
@@ -619,7 +595,7 @@ void kbase_platform_dvfs_set_clock(kbase_device *kbdev, int freq)
 	}
 
 	/* if changed the GPLL rate, set rate for GPLL and wait for lock time */
-	if( gpll_rate != gpll_rate_prev) {
+	if (gpll_rate != gpll_rate_prev) {
 		/*for stable clock input.*/
 		clk_set_rate(platform->sclk_g3d, 100000000);
 		clk_set_parent(mout_gpll, fin_gpll);
@@ -639,12 +615,7 @@ void kbase_platform_dvfs_set_clock(kbase_device *kbdev, int freq)
 	do {
 		tmp = __raw_readl(EXYNOS5_CLKDIV_STAT_TOP0);
 	} while (tmp & 0x1000000);
-#ifdef CONFIG_MALI_T6XX_DVFS
-#if MALI_DVFS_DEBUG
-	printk("aclk400 %u[%d]\n", (unsigned int)clk_get_rate(platform->sclk_g3d),mali_dvfs_status_current.utilisation);
-	printk("dvfs_set_clock GPLL : %lu, ACLK_400 : %luMhz\n", gpll_rate, aclk_400_rate );
-#endif
-#endif
+
 	return;
 }
 
@@ -657,20 +628,18 @@ static void kbase_platform_dvfs_set_vol(unsigned int vol)
 
 	kbase_platform_set_voltage(NULL, vol);
 	_vol = vol;
-#if MALI_DVFS_DEBUG
-	printk("dvfs_set_vol %dmV\n", vol);
-#endif
+
 	return;
 }
 
 int kbase_platform_dvfs_get_level(int freq)
 {
 	int i;
-	for (i=0; i < MALI_DVFS_STEP;i++)
-	{
+	for (i=0; i < MALI_DVFS_STEP; i++) {
 		if (mali_dvfs_infotbl[i].clock == freq)
 			return i;
 	}
+
 	return -1;
 }
 
@@ -696,7 +665,7 @@ void kbase_platform_dvfs_set_level(kbase_device *kbdev, int level)
 		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
 		kbase_platform_dvfs_set_clock(kbdev, mali_dvfs_infotbl[level].clock);
 		pm_qos_update_request(&mem_bw_req, bw);
-	}else{
+	} else {
 		pm_qos_update_request(&mem_bw_req, bw);
 		kbase_platform_dvfs_set_clock(kbdev, mali_dvfs_infotbl[level].clock);
 		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
@@ -730,7 +699,7 @@ int kbase_platform_dvfs_set(int enable)
 	osk_spinlock_lock(&mali_dvfs_spinlock);
 	if (enable) {
 		mali_dvfs_status_current.asv_status=ASV_STATUS_NOT_INIT;
-	}else{
+	} else {
 		mali_dvfs_status_current.asv_status=ASV_STATUS_DISABLE_REQ;
 	}
 	osk_spinlock_unlock(&mali_dvfs_spinlock);
@@ -767,16 +736,15 @@ ssize_t show_time_in_state(struct device *dev, struct device_attribute *attr, ch
 	if (!kbdev)
 		return -ENODEV;
 
-	for(i = 0 ; i < MALI_DVFS_STEP ; i++) {
+	for (i = 0; i < MALI_DVFS_STEP; i++) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d %llu\n",
 				mali_dvfs_infotbl[i].clock,
 				mali_dvfs_infotbl[i].time);
 	}
 
-	if (ret < PAGE_SIZE - 1)
+	if (ret < PAGE_SIZE - 1) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	else
-	{
+	} else {
 		buf[PAGE_SIZE-2] = '\n';
 		buf[PAGE_SIZE-1] = '\0';
 		ret = PAGE_SIZE-1;
@@ -789,11 +757,10 @@ ssize_t set_time_in_state(struct device *dev, struct device_attribute *attr, con
 {
 	int i;
 
-	for(i = 0 ; i < MALI_DVFS_STEP ; i++) {
+	for (i = 0; i < MALI_DVFS_STEP; i++) {
 		mali_dvfs_infotbl[i].time = 0;
 	}
 
-	printk("time_in_state value is reset complete.\n");
 	return count;
 }
 #endif

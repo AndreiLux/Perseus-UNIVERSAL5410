@@ -50,13 +50,6 @@ config MALI_T6XX_RT_PM
 	help
 	  Choose this option to enable runtime power management on vithar DDK.
 
-config MALI_T6XX_ENABLE_DS5
-	bool "Enable DS5"
-	depends on MALI_T6XX
-	default n
-	help
-	  Choose this option to enable DS5 on mali T6xx DDK.
-
 config MALI_T6XX_ENABLE_TRACE
        bool "Enable kbase tracing"
        depends on MALI_T6XX

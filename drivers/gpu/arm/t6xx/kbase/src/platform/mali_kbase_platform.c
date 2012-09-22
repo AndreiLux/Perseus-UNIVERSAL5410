@@ -62,8 +62,7 @@ static int kbase_platform_power_clock_init(kbase_device *kbdev)
 	struct exynos_context *platform;
 
 	platform = (struct exynos_context *) kbdev->platform_context;
-	if(NULL == platform)
-	{
+	if (NULL == platform) {
 		panic("oops");
 	}
 
@@ -83,22 +82,22 @@ static int kbase_platform_power_clock_init(kbase_device *kbdev)
 	}
 	/* Turn on G3D clock */
 	clk_g3d = clk_get(dev, "g3d");
-	if(IS_ERR(clk_g3d)) {
+	if (IS_ERR(clk_g3d)) {
 		clk_g3d = NULL;
 		OSK_PRINT_ERROR(OSK_BASE_PM, "failed to clk_get [clk_g3d]\n");
-	}else{
+	} else {
 		clk_enable(clk_g3d);
 		clk_g3d_status = 1;
 	}
 
 	platform->sclk_g3d = clk_get(dev, "aclk_400_g3d");
-	if(IS_ERR(platform->sclk_g3d)) {
+	if (IS_ERR(platform->sclk_g3d)) {
 		OSK_PRINT_ERROR(OSK_BASE_PM, "failed to clk_get [sclk_g3d]\n");
 		goto out;
 	}
 
 	clk_set_rate(platform->sclk_g3d, MALI_T6XX_DEFAULT_CLOCK);
-	if(IS_ERR(platform->sclk_g3d)) {
+	if (IS_ERR(platform->sclk_g3d)) {
 		OSK_PRINT_ERROR(OSK_BASE_PM, "failed to clk_set_rate [sclk_g3d] = %d\n", MALI_T6XX_DEFAULT_CLOCK);
 		goto out;
 	}
@@ -122,12 +121,9 @@ int kbase_platform_clock_on(struct kbase_device *kbdev)
 	if (clk_g3d_status == 1)
 		return 0;
 
-	if(clk_g3d)
-	{
+	if(clk_g3d) {
 		(void) clk_enable(clk_g3d);
-	}
-	else
-	{
+	} else {
 		(void) clk_enable(platform->sclk_g3d);
 	}
 	clk_g3d_status = 1;
@@ -148,12 +144,9 @@ int kbase_platform_clock_off(struct kbase_device *kbdev)
 	if (clk_g3d_status == 0)
 		return 0;
 
-	if(clk_g3d)
-	{
+	if(clk_g3d) {
 		(void)clk_disable(clk_g3d);
-	}
-	else
-	{
+	} else {
 		(void)clk_disable(platform->sclk_g3d);
 	}
 	clk_g3d_status = 0;
@@ -216,64 +209,40 @@ int kbase_platform_cmu_pmu_control(struct kbase_device *kbdev, int control)
 {
 	unsigned long flags;
 	struct exynos_context *platform;
-	if (!kbdev)
-	{
+	if (!kbdev) {
 		return -ENODEV;
 	}
 
 	platform = (struct exynos_context *) kbdev->platform_context;
-	if (!platform)
-	{
+	if (!platform) {
 		return -ENODEV;
 	}
 
 	spin_lock_irqsave(&platform->cmu_pmu_lock, flags);
 
-#ifdef CONFIG_MALI_GATOR_SUPPORT
-	kbase_trace_mali_timeline_event(GATOR_MAKE_EVENT(ACTIVITY_RTPM_CHANGED, ACTIVITY_RTPM) | control);
-#endif
 	/* off */
-	if(control == 0)
-	{
-		if(platform->cmu_pmu_status == 0)
-		{
+	if(control == 0) {
+		if(platform->cmu_pmu_status == 0) {
 			spin_unlock_irqrestore(&platform->cmu_pmu_lock, flags);
 			return 0;
 		}
-
 		if(kbase_platform_power_off())
 			panic("failed to turn off g3d power\n");
 		if(kbase_platform_clock_off(kbdev))
-
 			panic("failed to turn off sclk_g3d\n");
-
 		platform->cmu_pmu_status = 0;
-#ifdef MALI_RTPM_DEBUG
-		printk( KERN_ERR "3D cmu_pmu_control - off\n" );
-#endif /* MALI_RTPM_DEBUG */
-	}
-	else
-	{
+	} else {
 		/* on */
-		if(platform->cmu_pmu_status == 1)
-		{
+		if(platform->cmu_pmu_status == 1) {
 			spin_unlock_irqrestore(&platform->cmu_pmu_lock, flags);
 			return 0;
 		}
-
 		if(kbase_platform_clock_on(kbdev))
 			panic("failed to turn on sclk_g3d\n");
 		if(kbase_platform_power_on())
 			panic("failed to turn on g3d power\n");
-
 		platform->cmu_pmu_status = 1;
-#ifdef MALI_RTPM_DEBUG
-		printk( KERN_ERR "3D cmu_pmu_control - on\n");
-#endif /* MALI_RTPM_DEBUG */
 	}
-
-
-
 	spin_unlock_irqrestore(&platform->cmu_pmu_lock, flags);
 
 	return 0;
@@ -293,10 +262,10 @@ static ssize_t show_clock(struct device *dev, struct device_attribute *attr, cha
 		return -ENODEV;
 
 	platform = (struct exynos_context *) kbdev->platform_context;
-	if(!platform)
+	if (!platform)
 		return -ENODEV;
 
-	if(!platform->sclk_g3d)
+	if (!platform->sclk_g3d)
 		return -ENODEV;
 
 	clkrate = clk_get_rate(platform->sclk_g3d);
@@ -305,10 +274,9 @@ static ssize_t show_clock(struct device *dev, struct device_attribute *attr, cha
 	/* To be revised  */
 	ret += snprintf(buf+ret, PAGE_SIZE-ret, "\nPossible settings : 533, 450, 400, 350, 266, 160, 100Mhz");
 
-	if (ret < PAGE_SIZE - 1)
+	if (ret < PAGE_SIZE - 1) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	else
-	{
+	} else {
 		buf[PAGE_SIZE-2] = '\n';
 		buf[PAGE_SIZE-1] = '\0';
 		ret = PAGE_SIZE-1;
@@ -377,10 +345,9 @@ static ssize_t show_fbdev(struct device *dev, struct device_attribute *attr, cha
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "fb[%d] xres=%d, yres=%d, addr=0x%lx\n", i, registered_fb[i]->var.xres, registered_fb[i]->var.yres, registered_fb[i]->fix.smem_start);
 	}
 
-	if (ret < PAGE_SIZE - 1)
+	if (ret < PAGE_SIZE - 1) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	else
-	{
+	} else {
 		buf[PAGE_SIZE-2] = '\n';
 		buf[PAGE_SIZE-1] = '\0';
 		ret = PAGE_SIZE-1;
@@ -412,23 +379,19 @@ static inline void asm_ramindex_mrc(u32 *DL1Data0, u32 *DL1Data1, u32 *DL1Data2,
 {
 	u32 val;
 
-	if(DL1Data0)
-	{
+	if(DL1Data0) {
 		asm volatile("mrc p15, 0, %0, c15, c1, 0" : "=r" (val));
 		*DL1Data0 = val;
 	}
-	if(DL1Data1)
-	{
+	if(DL1Data1) {
 		asm volatile("mrc p15, 0, %0, c15, c1, 1" : "=r" (val));
 		*DL1Data1 = val;
 	}
-	if(DL1Data2)
-	{
+	if(DL1Data2) {
 		asm volatile("mrc p15, 0, %0, c15, c1, 2" : "=r" (val));
 		*DL1Data2 = val;
 	}
-	if(DL1Data3)
-	{
+	if(DL1Data3) {
 		asm volatile("mrc p15, 0, %0, c15, c1, 3" : "=r" (val));
 		*DL1Data3 = val;
 	}
@@ -461,53 +424,38 @@ static ssize_t show_dtlb(struct device *dev, struct device_attribute *attr, char
 		return -ENODEV;
 
 	/* L1-I tag RAM */
-	if(ramindex == L1_I_tag_RAM)
-	{
+	if(ramindex == L1_I_tag_RAM) {
 		printk("Not implemented yet\n");
-	}
-	/* L1-I data RAM */
-	else if(ramindex == L1_I_data_RAM)
-	{
+	} /* L1-I data RAM */
+	else if(ramindex == L1_I_data_RAM) {
 		printk("Not implemented yet\n");
-	}
-	/* L1-I BTB RAM */
-	else if(ramindex == L1_I_BTB_RAM)
-	{
+	} /* L1-I BTB RAM */
+	else if(ramindex == L1_I_BTB_RAM) {
 		printk("Not implemented yet\n");
-	}
-	/* L1-I GHB RAM */
-	else if(ramindex == L1_I_GHB_RAM)
-	{
+	} /* L1-I GHB RAM */
+	else if(ramindex == L1_I_GHB_RAM) {
 		printk("Not implemented yet\n");
-	}
-	/* L1-I TLB RAM */
-	else if(ramindex == L1_I_TLB_RAM)
-	{
+	} /* L1-I TLB RAM */
+	else if(ramindex == L1_I_TLB_RAM) {
 		printk("L1-I TLB RAM\n");
-		for(entries = 0 ; entries < 32 ; entries++)
-		{
+		for(entries = 0 ; entries < 32 ; entries++) {
 			get_tlb_array((((u8)ramindex) << 24) + entries, &DL1Data0, &DL1Data1, &DL1Data2, NULL);
 			printk("entries[%d], DL1Data0=%08x, DL1Data1=%08x DL1Data2=%08x\n", entries, DL1Data0, DL1Data1 & 0xffff, 0x0);
 		}
-	}
-	/* L1-I indirect predictor RAM */
-	else if(ramindex == L1_I_indirect_predictor_RAM)
-	{
+	} /* L1-I indirect predictor RAM */
+	else if(ramindex == L1_I_indirect_predictor_RAM) {
 		printk("Not implemented yet\n");
 	}
 	/* L1-D tag RAM */
-	else if(ramindex == L1_D_tag_RAM)
-	{
+	else if(ramindex == L1_D_tag_RAM) {
 		printk("Not implemented yet\n");
 	}
 	/* L1-D data RAM */
-	else if(ramindex == L1_D_data_RAM)
-	{
+	else if(ramindex == L1_D_data_RAM) {
 		printk("Not implemented yet\n");
 	}
 	/* L1-D load TLB array */
-	else if(ramindex == L1_D_load_TLB_array)
-	{
+	else if(ramindex == L1_D_load_TLB_array) {
 		printk("L1-D load TLB array\n");
 		for(entries = 0 ; entries < 32 ; entries++)
 		{
@@ -516,48 +464,38 @@ static ssize_t show_dtlb(struct device *dev, struct device_attribute *attr, char
 		}
 	}
 	/* L1-D store TLB array */
-	else if(ramindex == L1_D_store_TLB_array)
-	{
+	else if(ramindex == L1_D_store_TLB_array) {
 		printk("\nL1-D store TLB array\n");
-		for(entries = 0 ; entries < 32 ; entries++)
-		{
+		for(entries = 0; entries < 32; entries++) {
 			get_tlb_array((((u8)ramindex) << 24) + entries, &DL1Data0, &DL1Data1, &DL1Data2, &DL1Data3);
 			printk("entries[%d], DL1Data0=%08x, DL1Data1=%08x, DL1Data2=%08x, DL1Data3=%08x\n", entries, DL1Data0, DL1Data1, DL1Data2, DL1Data3 & 0x3f);
 		}
 	}
 	/* L2 tag RAM */
-	else if(ramindex == L2_tag_RAM)
-	{
+	else if(ramindex == L2_tag_RAM) {
 		printk("Not implemented yet\n");
 	}
 	/* L2 data RAM */
-	else if(ramindex == L2_data_RAM)
-	{
+	else if(ramindex == L2_data_RAM) {
 		printk("Not implemented yet\n");
 	}
 	/* L2 snoop tag RAM */
-	else if(ramindex == L2_snoop_tag_RAM)
-	{
+	else if(ramindex == L2_snoop_tag_RAM) {
 		printk("Not implemented yet\n");
 	}
 	/* L2 data ECC RAM */
-	else if(ramindex == L2_data_ECC_RAM)
-	{
+	else if(ramindex == L2_data_ECC_RAM) {
 		printk("Not implemented yet\n");
 	}
 	/* L2 dirty RAM */
-	else if(ramindex == L2_dirty_RAM)
-	{
+	else if(ramindex == L2_dirty_RAM) {
 		printk("Not implemented yet\n");
 	}
 	/* L2 TLB array */
-	else if(ramindex == L2_TLB_RAM)
-	{
+	else if(ramindex == L2_TLB_RAM) {
 		printk("\nL2 TLB array\n");
-		for(ways = 0 ; ways < 4 ; ways++)
-		{
-			for(entries = 0 ; entries < 512 ; entries++)
-			{
+		for(ways = 0 ; ways < 4 ; ways++) {
+			for(entries = 0 ; entries < 512 ; entries++) {
 				get_tlb_array((ramindex << 24) + (ways << 18) + entries, &DL1Data0, &DL1Data1, &DL1Data2, &DL1Data3);
 				printk("ways[%d]:entries[%d], DL1Data0=%08x, DL1Data1=%08x, DL1Data2=%08x, DL1Data3=%08x\n", ways, entries, DL1Data0, DL1Data1, DL1Data2, DL1Data3);
 			}
@@ -568,10 +506,9 @@ static ssize_t show_dtlb(struct device *dev, struct device_attribute *attr, char
 
 	ret += snprintf(buf+ret, PAGE_SIZE-ret, "Succeeded...\n");
 
-	if (ret < PAGE_SIZE - 1)
+	if (ret < PAGE_SIZE - 1) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	else
-	{
+	} else {
 		buf[PAGE_SIZE-2] = '\n';
 		buf[PAGE_SIZE-1] = '\0';
 		ret = PAGE_SIZE-1;
@@ -646,10 +583,9 @@ static ssize_t show_vol(struct device *dev, struct device_attribute *attr, char 
 	kbase_platform_get_voltage(dev, &vol);
 	ret += snprintf(buf+ret, PAGE_SIZE-ret, "Current operating voltage for mali t6xx = %d, 0x%x", vol, __raw_readl(EXYNOS5_G3D_STATUS));
 
-	if (ret < PAGE_SIZE - 1)
+	if (ret < PAGE_SIZE - 1) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	else
-	{
+	} else {
 		buf[PAGE_SIZE-2] = '\n';
 		buf[PAGE_SIZE-1] = '\0';
 		ret = PAGE_SIZE-1;
@@ -699,10 +635,9 @@ static ssize_t show_clkout(struct device *dev, struct device_attribute *attr, ch
 	else
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "Current CLKOUT is not g3d, CLKOUT_CMU_TOP=0x%x", val);
 
-	if (ret < PAGE_SIZE - 1)
+	if (ret < PAGE_SIZE - 1) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	else
-	{
+	} else {
 		buf[PAGE_SIZE-2] = '\n';
 		buf[PAGE_SIZE-1] = '\0';
 		ret = PAGE_SIZE-1;
@@ -747,10 +682,9 @@ static ssize_t show_dvfs(struct device *dev, struct device_attribute *attr, char
 	ret += snprintf(buf+ret, PAGE_SIZE-ret, "G3D DVFS is disabled");
 #endif
 
-	if (ret < PAGE_SIZE - 1)
+	if (ret < PAGE_SIZE - 1) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	else
-	{
+	} else {
 		buf[PAGE_SIZE-2] = '\n';
 		buf[PAGE_SIZE-1] = '\0';
 		ret = PAGE_SIZE-1;
@@ -807,10 +741,9 @@ static ssize_t show_upper_lock_dvfs(struct device *dev, struct device_attribute 
 	ret += snprintf(buf+ret, PAGE_SIZE-ret, "G3D DVFS is disabled. You can not set");
 #endif
 
-	if (ret < PAGE_SIZE - 1)
+	if (ret < PAGE_SIZE - 1) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	else
-	{
+	} else {
 		buf[PAGE_SIZE-2] = '\n';
 		buf[PAGE_SIZE-1] = '\0';
 		ret = PAGE_SIZE-1;
@@ -881,10 +814,9 @@ static ssize_t show_under_lock_dvfs(struct device *dev, struct device_attribute 
 	ret += snprintf(buf+ret, PAGE_SIZE-ret, "G3D DVFS is disabled. You can not set");
 #endif
 
-	if (ret < PAGE_SIZE - 1)
+	if (ret < PAGE_SIZE - 1) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	else
-	{
+	} else {
 		buf[PAGE_SIZE-2] = '\n';
 		buf[PAGE_SIZE-1] = '\0';
 		ret = PAGE_SIZE-1;
@@ -975,65 +907,56 @@ DEVICE_ATTR(time_in_state, S_IRUGO|S_IWUSR, show_time_in_state, set_time_in_stat
 
 int kbase_platform_create_sysfs_file(struct device *dev)
 {
-	if (device_create_file(dev, &dev_attr_clock))
-	{
+	if (device_create_file(dev, &dev_attr_clock)) {
 		dev_err(dev, "Couldn't create sysfs file [clock]\n");
 		goto out;
 	}
 
-	if (device_create_file(dev, &dev_attr_fbdev))
-	{
+	if (device_create_file(dev, &dev_attr_fbdev)) {
 		dev_err(dev, "Couldn't create sysfs file [fbdev]\n");
 		goto out;
 	}
 
-	if (device_create_file(dev, &dev_attr_dtlb))
-	{
+	if (device_create_file(dev, &dev_attr_dtlb)) {
 		dev_err(dev, "Couldn't create sysfs file [dtlb]\n");
 		goto out;
 	}
 
-	if (device_create_file(dev, &dev_attr_vol))
-	{
+	if (device_create_file(dev, &dev_attr_vol)) {
 		dev_err(dev, "Couldn't create sysfs file [vol]\n");
 		goto out;
 	}
 
-	if (device_create_file(dev, &dev_attr_clkout))
-	{
+	if (device_create_file(dev, &dev_attr_clkout)) {
 		dev_err(dev, "Couldn't create sysfs file [clkout]\n");
 		goto out;
 	}
 
-	if (device_create_file(dev, &dev_attr_dvfs))
-	{
+	if (device_create_file(dev, &dev_attr_dvfs)) {
 		dev_err(dev, "Couldn't create sysfs file [dvfs]\n");
 		goto out;
 	}
 
-	if (device_create_file(dev, &dev_attr_dvfs_upper_lock))
-	{
+	if (device_create_file(dev, &dev_attr_dvfs_upper_lock)) {
 		dev_err(dev, "Couldn't create sysfs file [dvfs_upper_lock]\n");
 		goto out;
 	}
 
-	if (device_create_file(dev, &dev_attr_dvfs_under_lock))
-	{
+	if (device_create_file(dev, &dev_attr_dvfs_under_lock)) {
 		dev_err(dev, "Couldn't create sysfs file [dvfs_under_lock]\n");
 		goto out;
 	}
 
-	if (device_create_file(dev, &dev_attr_asv))
-	{
+	if (device_create_file(dev, &dev_attr_asv)) {
 		dev_err(dev, "Couldn't create sysfs file [asv]\n");
 		goto out;
 	}
 
-	if (device_create_file(dev, &dev_attr_time_in_state))
-	{
+	if (device_create_file(dev, &dev_attr_time_in_state)) {
 		dev_err(dev, "Couldn't create sysfs file [time_in_state]\n");
 		goto out;
 	}
+
 	return 0;
 out:
 	return -ENOENT;
@@ -1060,8 +983,7 @@ mali_error kbase_platform_init(struct kbase_device *kbdev)
 
 	platform = osk_malloc(sizeof(struct exynos_context));
 
-	if(NULL == platform)
-	{
+	if (NULL == platform) {
 		return MALI_ERROR_OUT_OF_MEMORY;
 	}
 
@@ -1077,14 +999,12 @@ mali_error kbase_platform_init(struct kbase_device *kbdev)
 
 	spin_lock_init(&platform->cmu_pmu_lock);
 
-	if(kbase_platform_power_clock_init(kbdev))
-	{
+	if (kbase_platform_power_clock_init(kbdev)) {
 		goto clock_init_fail;
 	}
 
 #ifdef CONFIG_REGULATOR
-	if(kbase_platform_regulator_init())
-	{
+	if (kbase_platform_regulator_init()) {
 		goto regulator_init_fail;
 	}
 #endif /* CONFIG_REGULATOR */
@@ -1096,13 +1016,14 @@ mali_error kbase_platform_init(struct kbase_device *kbdev)
 
 	/* Enable power */
 	kbase_platform_cmu_pmu_control(kbdev, 1);
+
 	return MALI_ERROR_NONE;
 
+regulator_init_fail:
+clock_init_fail:
 #ifdef CONFIG_REGULATOR
 	kbase_platform_regulator_disable();
 #endif /* CONFIG_REGULATOR */
-regulator_init_fail:
-clock_init_fail:
 	osk_free(platform);
 
 	return MALI_ERROR_FUNCTION_FAILED;
@@ -1117,7 +1038,6 @@ void kbase_platform_term(kbase_device *kbdev)
 #ifdef CONFIG_MALI_T6XX_DVFS
 	kbase_platform_dvfs_term();
 #endif /* CONFIG_MALI_T6XX_DVFS */
-
 	/* Disable power */
 	kbase_platform_cmu_pmu_control(kbdev, 0);
 #ifdef CONFIG_REGULATOR
@@ -1125,6 +1045,7 @@ void kbase_platform_term(kbase_device *kbdev)
 #endif /* CONFIG_REGULATOR */
 	osk_free(kbdev->platform_context);
 	kbdev->platform_context = 0;
+
 	return;
 }
 
