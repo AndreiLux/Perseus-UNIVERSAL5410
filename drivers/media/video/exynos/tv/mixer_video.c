@@ -1136,6 +1136,7 @@ void mxr_layer_release(struct mxr_layer *layer)
 
 void mxr_base_layer_release(struct mxr_layer *layer)
 {
+	kfree(layer->vb_queue.name);
 	kfree(layer);
 }
 
@@ -1190,6 +1191,7 @@ struct mxr_layer *mxr_base_layer_create(struct mxr_device *mdev,
 	layer->vfd.lock = &layer->mutex;
 
 	layer->vb_queue = (struct vb2_queue) {
+		.name = kstrdup(name, GFP_KERNEL),
 		.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE,
 		.io_modes = VB2_MMAP | VB2_DMABUF,
 		.drv_priv = layer,
