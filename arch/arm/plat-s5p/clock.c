@@ -214,7 +214,7 @@ int s5p_spdif_set_rate(struct clk *clk, unsigned long rate)
 	struct clk *pclk;
 	int ret;
 
-	pclk = clk_get_parent(clk);
+	pclk = __clk_get_parent(clk);
 	if (IS_ERR(pclk))
 		return -EINVAL;
 
@@ -229,7 +229,7 @@ unsigned long s5p_spdif_get_rate(struct clk *clk)
 	struct clk *pclk;
 	int rate;
 
-	pclk = clk_get_parent(clk);
+	pclk = __clk_get_parent(clk);
 	if (IS_ERR(pclk))
 		return -EINVAL;
 
