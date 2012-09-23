@@ -686,42 +686,6 @@ exit:
 	return ret;
 }
 
-static int testnset_devstate(struct fimc_is_ischain_dev *this,
-	unsigned long state)
-{
-	int ret = 0;
-
-	mutex_lock(&this->mutex_state);
-
-	if (test_bit(state, &this->state)) {
-		ret = -EINVAL;
-		goto exit;
-	}
-	set_bit(state, &this->state);
-
-exit:
-	mutex_unlock(&this->mutex_state);
-	return ret;
-}
-
-static int testnclr_devstate(struct fimc_is_ischain_dev *this,
-	unsigned long state)
-{
-	int ret = 0;
-
-	mutex_lock(&this->mutex_state);
-
-	if (!test_bit(state, &this->state)) {
-		ret = -EINVAL;
-		goto exit;
-	}
-	clear_bit(state, &this->state);
-
-exit:
-	mutex_unlock(&this->mutex_state);
-	return ret;
-}
-
 static int fimc_is_ischain_allocmem(struct fimc_is_device_ischain *this)
 {
 	int ret = 0;
@@ -1933,8 +1897,9 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
 		&init_dis_param.control);
 	fimc_is_ischain_dev_open(&this->dnr, ENTRY_TDNR, NULL,
 		&init_tdnr_param.control);
+	/* FD see only control.command not bypass */
 	fimc_is_ischain_dev_open(&this->fd, ENTRY_LHFD, NULL,
-		&init_fd_param.control);
+		NULL);
 
 	/*fimc_is_fw_clear_irq1_all(core);*/
 
@@ -1986,17 +1951,17 @@ int fimc_is_ischain_close(struct fimc_is_device_ischain *this)
 	/* 1. Stop all request */
 	ret = fimc_is_ischain_isp_stop(this);
 	if (ret)
-		err("fimc_is_ischain_isp_stop is fail\n");
+		err("fimc_is_ischain_isp_stop is fail");
 
 	/* 2. Stop a5 and other devices operation */
 	ret = fimc_is_itf_power_down(this);
 	if (ret)
-		err("power down is failed, retry forcelly\n");
+		err("power down is failed, retry forcelly");
 
 	/* 3. Deinit variables */
 	ret = fimc_is_interface_close(this->interface);
 	if (ret)
-		err("fimc_is_interface_close is failed\n");
+		err("fimc_is_interface_close is failed");
 
 	/* 4. bus traffic low */
 	bts_change_bus_traffic(&this->pdev->dev, BTS_DECREASE_BW);
@@ -2004,7 +1969,7 @@ int fimc_is_ischain_close(struct fimc_is_device_ischain *this)
 	/* 5. Power down */
 	ret = fimc_is_ischain_power(this, 0);
 	if (ret)
-		err("fimc_is_ischain_power is failed\n");
+		err("fimc_is_ischain_power is failed");
 
 	/* 6. Enable AFTR cpu low power idle enter */
 	pm_qos_remove_request(&pm_qos_req_cpu);
@@ -2865,7 +2830,7 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 	framemgr = this->framemgr;
 	isp_param = &this->is_region->parameter.isp;
 
-	if (testnset_devstate(isp, FIMC_IS_ISDEV_DSTART)) {
+	if (test_bit(FIMC_IS_ISDEV_DSTART, &isp->state)) {
 		err("already start");
 		ret = -EINVAL;
 		goto exit;
@@ -3017,6 +2982,8 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *this,
 		goto exit;
 	}
 
+	set_bit(FIMC_IS_ISDEV_DSTART, &isp->state);
+
 exit:
 	return ret;
 }
@@ -3035,11 +3002,31 @@ int fimc_is_ischain_isp_stop(struct fimc_is_device_ischain *this)
 	itf = this->interface;
 	framemgr = this->framemgr;
 
-	if (testnclr_devstate(isp, FIMC_IS_ISDEV_DSTART)) {
+	if (!test_bit(FIMC_IS_ISDEV_DSTART, &isp->state)) {
 		err("already stop");
 		ret = -EINVAL;
 		goto exit;
 	}
+
+	/*
+	video node is stream off state if this function is called.
+	that is, a request can NOT enter buffer queue.
+	mutex can be locked for entering ischain_callback function,
+	in this case the below code should be blocked until mutex is released.
+	*/
+	retry = 10;
+	while (retry) {
+		mutex_lock(&this->mutex_state);
+		if (!test_bit(FIMC_IS_ISCHAIN_RUN, &this->state)) {
+			mutex_unlock(&this->mutex_state);
+			break;
+		}
+		mutex_unlock(&this->mutex_state);
+		retry--;
+	}
+
+	if (!retry)
+		err("waiting complete is fail0");
 
 	retry = 10;
 	while (framemgr->frame_request_cnt && retry) {
@@ -3065,10 +3052,12 @@ int fimc_is_ischain_isp_stop(struct fimc_is_device_ischain *this)
 
 	ret = fimc_is_itf_process_off(this);
 	if (ret) {
-		err("fimc_is_itf_process_off is fail\n");
+		err("fimc_is_itf_process_off is fail");
 		ret = -EINVAL;
 		goto exit;
 	}
+
+	clear_bit(FIMC_IS_ISDEV_DSTART, &isp->state);
 
 #ifdef MEASURE_TIME
 #ifdef INTERNAL_TIME
@@ -3098,6 +3087,7 @@ int fimc_is_ischain_isp_buffer_queue(struct fimc_is_device_ischain *this,
 	unsigned long flags;
 	struct fimc_is_frame_shot *frame;
 	struct fimc_is_framemgr *framemgr;
+	struct fimc_is_video_common *scc_video, *scp_video;
 
 #ifdef DBG_STREAMING
 	/*printk(KERN_INFO "%s\n", __func__);*/
@@ -3135,6 +3125,9 @@ int fimc_is_ischain_isp_buffer_queue(struct fimc_is_device_ischain *this,
 		goto exit;
 	}
 
+	scc_video = this->scc.video;
+	scp_video = this->scp.video;
+
 	framemgr_e_barrier_irqs(framemgr, index, flags);
 
 	if (frame->state == FIMC_IS_FRAME_STATE_FREE) {
@@ -3151,6 +3144,19 @@ int fimc_is_ischain_isp_buffer_queue(struct fimc_is_device_ischain *this,
 			err("scp output is not generated");
 
 		frame->fcount = frame->shot->dm.request.frameCount;
+
+		if (frame->shot_ext->request_scp &&
+			!test_bit(FIMC_IS_VIDEO_STREAM_ON, &scp_video->state)) {
+			frame->shot_ext->request_scp = 0;
+			err("scp %d frame is drop2", frame->fcount);
+		}
+
+		if (frame->shot_ext->request_scc &&
+			!test_bit(FIMC_IS_VIDEO_STREAM_ON, &scc_video->state)) {
+			frame->shot_ext->request_scc = 0;
+			err("scc %d frame is drop2", frame->fcount);
+		}
+
 		fimc_is_frame_trans_fre_to_req(framemgr, frame);
 	} else {
 		err("frame(%d) is not free state(%d)\n", index, frame->state);
@@ -3445,6 +3451,59 @@ exit:
 	return ret;
 }
 
+int fimc_is_ischain_dev_start(struct fimc_is_ischain_dev *this)
+{
+	int ret = 0;
+	struct fimc_is_framemgr *framemgr;
+
+	framemgr = &this->framemgr;
+
+	ret = framemgr->frame_request_cnt;
+	if (!ret) {
+		err("buffer queued is empty, can't start(%d)", ret);
+		ret = -EINVAL;
+		goto exit;
+	} else
+		ret = 0;
+
+exit:
+	return ret;
+}
+
+int fimc_is_ischain_dev_stop(struct fimc_is_ischain_dev *this)
+{
+	int ret = 0;
+	unsigned long flags;
+	struct fimc_is_frame_shot *frame;
+	struct fimc_is_framemgr *framemgr;
+
+	framemgr = &this->framemgr;
+
+	framemgr_e_barrier_irqs(framemgr, FMGR_IDX_4, flags);
+
+	fimc_is_frame_complete_head(framemgr, &frame);
+	while (frame) {
+		fimc_is_frame_trans_com_to_fre(framemgr, frame);
+		fimc_is_frame_complete_head(framemgr, &frame);
+	}
+
+	fimc_is_frame_process_head(framemgr, &frame);
+	while (frame) {
+		fimc_is_frame_trans_pro_to_fre(framemgr, frame);
+		fimc_is_frame_process_head(framemgr, &frame);
+	}
+
+	fimc_is_frame_request_head(framemgr, &frame);
+	while (frame) {
+		fimc_is_frame_trans_req_to_fre(framemgr, frame);
+		fimc_is_frame_request_head(framemgr, &frame);
+	}
+
+	framemgr_x_barrier_irqr(framemgr, FMGR_IDX_4, flags);
+
+	return ret;
+}
+
 int fimc_is_ischain_dev_buffer_queue(struct fimc_is_ischain_dev *this,
 	u32 index)
 {
@@ -3596,13 +3655,38 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 	   therefore, i expect lock object is not necessary in here
 	*/
 
+	if (!isp_framemgr) {
+		err("isp_framemgr is NULL");
+		return -EINVAL;
+	}
+
+	if (!scc_framemgr) {
+		err("scc_framemgr is NULL");
+		return -EINVAL;
+	}
+
+	if (!scp_framemgr) {
+		err("scp_framemgr is NULL");
+		return -EINVAL;
+	}
+
 	fimc_is_frame_request_head(isp_framemgr, &isp_frame);
 	if (!isp_frame) {
 		clear_bit(FIMC_IS_ISCHAIN_RUN, &this->state);
 #ifdef DBG_STREAMING
 		dbg_warning("ischain is stopped\n");
 #endif
-		return ret;
+		return 0;
+	}
+
+	if (!isp_frame->shot_ext) {
+		err("shot_ext is NULL");
+		return -EINVAL;
+	}
+
+	if (!isp_frame->shot) {
+		err("shot is NULL");
+		return -EINVAL;
 	}
 
 	if (isp_frame->init == FRAME_INI_MEM) {
@@ -3803,7 +3887,7 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 			isp_frame->shot->uctl.scalerUd.scpTargetAddress[1] = 0;
 			isp_frame->shot->uctl.scalerUd.scpTargetAddress[2] = 0;
 			isp_frame->shot_ext->request_scp = 0;
-			err("scp %d frame is drop1", isp_frame->fcount);
+			err("scp %d frame is drop", isp_frame->fcount);
 		}
 
 		framemgr_x_barrier_irqr(scp_framemgr, FMGR_IDX_9, flags);
@@ -3812,7 +3896,6 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 		isp_frame->shot->uctl.scalerUd.scpTargetAddress[1] = 0;
 		isp_frame->shot->uctl.scalerUd.scpTargetAddress[2] = 0;
 		isp_frame->shot_ext->request_scp = 0;
-		err("scp %d frame is drop2", isp_frame->fcount);
 	}
 
 exit:

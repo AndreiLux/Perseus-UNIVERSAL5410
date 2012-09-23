@@ -271,12 +271,12 @@ int fimc_is_video_close(struct fimc_is_video_common *video,
 	video->buf_ref_cnt = 0;
 	video->device = 0;
 
-	vb2_queue_release(&video->vbq);
-
 	clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->state);
 	clear_bit(FIMC_IS_VIDEO_BUFFER_READY, &video->state);
 	clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->state);
 	fimc_is_frame_close(framemgr);
+
+	vb2_queue_release(&video->vbq);
 
 	return ret;
 }
@@ -286,6 +286,12 @@ int fimc_is_video_reqbufs(struct fimc_is_video_common *video,
 	struct v4l2_requestbuffers *request)
 {
 	int ret = 0;
+
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->state)) {
+		err("video is stream on, not applied");
+		ret = -EINVAL;
+		goto exit;
+	}
 
 	ret = vb2_reqbufs(&video->vbq, request);
 	if (ret) {
@@ -344,7 +350,11 @@ int fimc_is_video_qbuf(struct fimc_is_video_common *video,
 {
 	int ret = 0;
 
+	buf->flags &= ~V4L2_BUF_FLAG_USE_SYNC;
+
 	ret = vb2_qbuf(&video->vbq, buf);
+	if (ret)
+		err("vb2_qbuf is failed(%d)", ret);
 
 	return ret;
 }
@@ -355,6 +365,8 @@ int fimc_is_video_dqbuf(struct fimc_is_video_common *video,
 	int ret = 0;
 
 	ret = vb2_dqbuf(&video->vbq, buf, blocking);
+	if (ret)
+		err("vb2_dqbuf is failed(%d)", ret);
 
 	video->buf_mask &= ~(1<<buf->index);
 
@@ -367,6 +379,8 @@ int fimc_is_video_streamon(struct fimc_is_video_common *video,
 	int ret = 0;
 
 	ret = vb2_streamon(&video->vbq, type);
+	if (ret)
+		err("vb2_streamon is failed(%d)", ret);
 
 	return ret;
 }
@@ -377,6 +391,8 @@ int fimc_is_video_streamoff(struct fimc_is_video_common *video,
 	int ret = 0;
 
 	ret = vb2_streamoff(&video->vbq, type);
+	if (ret)
+		err("vb2_streamoff is failed(%d)", ret);
 
 	return ret;
 }
@@ -418,101 +434,114 @@ int fimc_is_video_buffer_queue(struct fimc_is_video_common *video,
 		goto exit;
 	}
 
-	if (!test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->state)) {
-		frame = &framemgr->frame[index];
-		frame->vb = vb;
-		frame->planes = vb->num_planes;
-		spare = frame->planes - 1;
+	/* plane address is updated for checking everytime */
+	if (video->frame.format.pixelformat == V4L2_PIX_FMT_YVU420M) {
+		video->buf_dva[index][0] = core->mem.vb2->plane_addr(vb, 0);
+		video->buf_kva[index][0] = core->mem.vb2->plane_kvaddr(vb, 0);
 
-		if (frame->init != FRAME_UNI_MEM) {
-			dbg_warning("frame is already initialzied\n");
-			ret = 0;
+		video->buf_dva[index][1] = core->mem.vb2->plane_addr(vb, 2);
+		video->buf_kva[index][1] = core->mem.vb2->plane_kvaddr(vb, 2);
+
+		video->buf_dva[index][2] = core->mem.vb2->plane_addr(vb, 1);
+		video->buf_kva[index][2] = core->mem.vb2->plane_kvaddr(vb, 1);
+
+#ifdef USE_FRAME_SYNC
+		video->buf_dva[index][3] = core->mem.vb2->plane_addr(vb, 3);
+		video->buf_kva[index][3] = core->mem.vb2->plane_kvaddr(vb, 3);
+#endif
+	} else {
+		for (i = 0; i < vb->num_planes; i++) {
+			video->buf_dva[index][i]
+				= core->mem.vb2->plane_addr(vb, i);
+			video->buf_kva[index][i]
+				= core->mem.vb2->plane_kvaddr(vb, i);
+		}
+	}
+
+	frame = &framemgr->frame[index];
+
+	/* uninitialized frame need to get info */
+	if (frame->init == FRAME_UNI_MEM)
+		goto set_info;
+
+	/* plane count check */
+	if (frame->planes != vb->num_planes) {
+		err("plane count is changed(%08X != %08X)",
+			frame->planes, vb->num_planes);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	/* plane address check */
+	for (i = 0; i < frame->planes; i++) {
+		if (frame->kvaddr_buffer[i] !=
+			video->buf_kva[index][i]) {
+			err("buffer %d plane %d is changed(%08X != %08X)",
+				index, i,
+				frame->kvaddr_buffer[i],
+				video->buf_kva[index][i]);
+			ret = -EINVAL;
 			goto exit;
 		}
-
-		if (video->frame.format.pixelformat == V4L2_PIX_FMT_YVU420M) {
-			video->buf_dva[index][0]
-				= core->mem.vb2->plane_addr(vb, 0);
-			video->buf_kva[index][0]
-				= core->mem.vb2->plane_kvaddr(vb, 0);
-
-			video->buf_dva[index][1]
-				= core->mem.vb2->plane_addr(vb, 2);
-			video->buf_kva[index][1]
-				= core->mem.vb2->plane_kvaddr(vb, 2);
-
-			video->buf_dva[index][2]
-				= core->mem.vb2->plane_addr(vb, 1);
-			video->buf_kva[index][2]
-				= core->mem.vb2->plane_kvaddr(vb, 1);
-
-#ifdef USE_FRAME_SYNC
-			video->buf_dva[index][3]
-				= core->mem.vb2->plane_addr(vb, 3);
-			video->buf_kva[index][3]
-				= core->mem.vb2->plane_kvaddr(vb, 3);
-#endif
-		} else {
-			for (i = 0; i < vb->num_planes; i++) {
-				video->buf_dva[index][i]
-					= core->mem.vb2->plane_addr(vb, i);
-				video->buf_kva[index][i]
-					= core->mem.vb2->plane_kvaddr(vb, i);
-			}
-		}
-
-		for (i = 0; i < frame->planes; i++) {
-			frame->dvaddr_buffer[i] = video->buf_dva[index][i];
-			frame->kvaddr_buffer[i] = video->buf_kva[index][i];
-		}
-
-		if ((framemgr->id == FRAMEMGR_ID_SENSOR) ||
-			(framemgr->id == FRAMEMGR_ID_ISP)) {
-			ext_size = sizeof(struct camera2_shot_ext) -
-				sizeof(struct camera2_shot);
-
-			frame->dvaddr_shot = video->buf_dva[index][spare] +
-				ext_size;
-
-			frame->kvaddr_shot = video->buf_kva[index][spare] +
-				ext_size;
-
-			frame->cookie_shot = (u32)vb2_plane_cookie(vb, spare);
-
-			frame->shot = (struct camera2_shot *)
-				(video->buf_kva[index][spare] + ext_size);
-
-			frame->shot_ext = (struct camera2_shot_ext *)
-				(video->buf_kva[index][spare]);
-
-			frame->shot_size = video->frame.size[spare];
-
-#ifdef MEASURE_TIME
-			frame->tzone = (struct timeval *)
-				frame->shot_ext->timeZone;
-#endif
-		} else {
-#ifdef USE_FRAME_SYNC
-			frame->stream = (struct camera2_stream *)
-				video->buf_kva[index][spare];
-			frame->stream->address = video->buf_kva[index][spare];
-			frame->stream_size = video->frame.size[spare];
-#else
-			frame->stream = NULL;
-			frame->stream_size = 0;
-#endif
-		}
-
-		frame->init = FRAME_INI_MEM;
-
-		video->buf_ref_cnt++;
-
-		if (video->buffers_ready == video->buf_ref_cnt)
-			set_bit(FIMC_IS_VIDEO_BUFFER_READY, &video->state);
-
-		if (video->buffers == video->buf_ref_cnt)
-			set_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->state);
 	}
+
+	goto exit;
+
+set_info:
+	if (test_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->state)) {
+		err("already prepared but new index(%d) is came", index);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	frame->vb = vb;
+	frame->planes = vb->num_planes;
+	spare = frame->planes - 1;
+
+	for (i = 0; i < frame->planes; i++) {
+		frame->dvaddr_buffer[i] = video->buf_dva[index][i];
+		frame->kvaddr_buffer[i] = video->buf_kva[index][i];
+#ifdef PRINT_BUFADDR
+		printk(KERN_INFO "0x%04X buf[%d][%d] : 0x%08X\n", framemgr->id,
+			index, i, frame->dvaddr_buffer[i]);
+#endif
+	}
+
+	if (framemgr->id & (FRAMEMGR_ID_SENSOR | FRAMEMGR_ID_ISP)) {
+		ext_size = sizeof(struct camera2_shot_ext) -
+			sizeof(struct camera2_shot);
+
+		frame->dvaddr_shot = video->buf_dva[index][spare] + ext_size;
+		frame->kvaddr_shot = video->buf_kva[index][spare] + ext_size;
+		frame->cookie_shot = (u32)vb2_plane_cookie(vb, spare);
+		frame->shot = (struct camera2_shot *)frame->kvaddr_shot;
+		frame->shot_ext = (struct camera2_shot_ext *)
+			(video->buf_kva[index][spare]);
+		frame->shot_size = video->frame.size[spare];
+#ifdef MEASURE_TIME
+		frame->tzone = (struct timeval *)frame->shot_ext->timeZone;
+#endif
+	} else {
+#ifdef USE_FRAME_SYNC
+		frame->stream = (struct camera2_stream *)
+			video->buf_kva[index][spare];
+		frame->stream->address = video->buf_kva[index][spare];
+		frame->stream_size = video->frame.size[spare];
+#else
+		frame->stream = NULL;
+		frame->stream_size = 0;
+#endif
+	}
+
+	frame->init = FRAME_INI_MEM;
+
+	video->buf_ref_cnt++;
+
+	if (video->buffers_ready == video->buf_ref_cnt)
+		set_bit(FIMC_IS_VIDEO_BUFFER_READY, &video->state);
+
+	if (video->buffers == video->buf_ref_cnt)
+		set_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->state);
 
 exit:
 	return ret;

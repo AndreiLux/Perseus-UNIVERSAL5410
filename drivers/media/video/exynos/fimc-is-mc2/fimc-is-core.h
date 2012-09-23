@@ -84,8 +84,11 @@
 #define DEBUGCTL_OFFSET				(0x8BD000)
 #define DEBUG_FCOUNT				(0x8C64C0)
 
+#ifdef err
+#undef err
 #define err(fmt, args...) \
-	printk(KERN_ERR "%s:%d: " fmt "\n", __func__, __LINE__, ##args)
+	printk(KERN_ERR "ERR:%s:%d: " fmt "\n", __func__, __LINE__, ##args)
+#endif
 
 /* configuration - default post processing */
 /*#define ENABLE_ODC*/
@@ -101,7 +104,8 @@
 #define USE_FRAME_SYNC
 #define USE_ADVANCED_DZOOM
 /*#define TASKLET_MSG*/
-#define ISDRV_VERSION 109
+/*#define PRINT_BUFADDR*/
+#define ISDRV_VERSION 110
 
 #ifdef DEBUG
 #define dbg(fmt, args...) \

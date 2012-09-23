@@ -757,12 +757,26 @@ static irqreturn_t fimc_is_flite_irq_handler(int irq, void *data)
 	}
 
 	if (status1 & (1<<8)) {
+		u32 ciwdofst;
+
 		err("[CamIF_0]Overflow Cr\n");
+		ciwdofst = readl(flite->regs + 0x10);
+		ciwdofst  |= (0x1 << 14);
+		writel(ciwdofst, flite->regs + 0x10);
+		ciwdofst  &= ~(0x1 << 14);
+		writel(ciwdofst, flite->regs + 0x10);
 		/*uCIWDOFST |= (0x1 << 14);*/
 	}
 
 	if (status1 & (1<<9)) {
+		u32 ciwdofst;
+
 		err("[CamIF_0]Overflow Cb\n");
+		ciwdofst = readl(flite->regs + 0x10);
+		ciwdofst  |= (0x1 << 15);
+		writel(ciwdofst, flite->regs + 0x10);
+		ciwdofst  &= ~(0x1 << 15);
+		writel(ciwdofst, flite->regs + 0x10);
 		/*uCIWDOFST |= (0x1 << 15);*/
 	}
 
@@ -772,6 +786,8 @@ static irqreturn_t fimc_is_flite_irq_handler(int irq, void *data)
 		err("[CamIF_0]Overflow Y\n");
 		ciwdofst = readl(flite->regs + 0x10);
 		ciwdofst  |= (0x1 << 30);
+		writel(ciwdofst, flite->regs + 0x10);
+		ciwdofst  &= ~(0x1 << 30);
 		writel(ciwdofst, flite->regs + 0x10);
 		/*uCIWDOFST |= (0x1 << 30);*/
 	}
@@ -900,10 +916,14 @@ int fimc_is_flite_stop(struct fimc_is_device_flite *this)
 		test_bit(FIMC_IS_FLITE_LAST_CAPTURE, &this->state),
 		FIMC_IS_FLITE_STOP_TIMEOUT);
 	if (!ret) {
+		/* forcely stop */
 		err("last capture timeout:%s\n", __func__);
 		stop_fimc_lite(this->regs);
 		msleep(60);
-	}
+		set_bit(FIMC_IS_FLITE_LAST_CAPTURE, &this->state);
+		ret = -ETIME;
+	} else
+		ret = 0;
 
 	return ret;
 }

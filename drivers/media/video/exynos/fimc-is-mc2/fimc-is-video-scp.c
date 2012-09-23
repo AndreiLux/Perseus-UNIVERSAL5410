@@ -92,7 +92,6 @@ static int fimc_is_scalerp_video_close(struct file *file)
 	fimc_is_video_close(common, &scp->framemgr);
 
 	return ret;
-
 }
 
 static unsigned int fimc_is_scalerp_video_poll(struct file *file,
@@ -208,14 +207,22 @@ static int fimc_is_scalerp_video_reqbufs(struct file *file, void *priv,
 	struct fimc_is_video_scp *video = file->private_data;
 	struct fimc_is_video_common *common = &video->common;
 	struct fimc_is_device_ischain *ischain = common->device;
+	struct fimc_is_ischain_dev *isp = &ischain->isp;
 	struct fimc_is_ischain_dev *scp = &ischain->scp;
 
 	dbg_scp("%s(buffers : %d)\n", __func__, buf->count);
+
+	if (test_bit(FIMC_IS_ISDEV_DSTART, &isp->state)) {
+		err("isp still running, not applied");
+		ret = -EINVAL;
+		goto exit;
+	}
 
 	ret = fimc_is_video_reqbufs(common, &scp->framemgr, buf);
 	if (ret)
 		err("fimc_is_video_reqbufs is fail(error %d)", ret);
 
+exit:
 	return ret;
 }
 
@@ -270,9 +277,7 @@ static int fimc_is_scalerp_video_streamon(struct file *file, void *priv,
 
 	dbg_scp("%s\n", __func__);
 
-	ret = vb2_streamon(&video->common.vbq, type);
-	if (ret)
-		err("vb2_streamon is failed(%d)\n", ret);
+	ret = fimc_is_video_streamon(&video->common, type);
 
 	return ret;
 }
@@ -285,9 +290,7 @@ static int fimc_is_scalerp_video_streamoff(struct file *file, void *priv,
 
 	dbg_scp("%s\n", __func__);
 
-	ret = vb2_streamoff(&video->common.vbq, type);
-	if (ret)
-		err("vb2_streamoff is failed(%d)\n", ret);
+	ret = fimc_is_video_streamoff(&video->common, type);
 
 	return ret;
 }
@@ -473,12 +476,11 @@ static int fimc_is_scalerp_buffer_prepare(struct vb2_buffer *vb)
 	return 0;
 }
 
-
-static inline void fimc_is_scalerp_lock(struct vb2_queue *vq)
+static inline void fimc_is_scalerp_wait_prepare(struct vb2_queue *q)
 {
 }
 
-static inline void fimc_is_scalerp_unlock(struct vb2_queue *vq)
+static inline void fimc_is_scalerp_wait_finish(struct vb2_queue *q)
 {
 }
 
@@ -488,15 +490,21 @@ static int fimc_is_scalerp_start_streaming(struct vb2_queue *q,
 	int ret = 0;
 	struct fimc_is_video_scp *video = q->drv_priv;
 	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
+	struct fimc_is_ischain_dev *scp = &ischain->scp;
 
 	dbg_scp("%s\n", __func__);
 
 	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state) &&
-		test_bit(FIMC_IS_VIDEO_BUFFER_READY, &common->state))
-		set_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
-	else {
+		test_bit(FIMC_IS_VIDEO_BUFFER_READY, &common->state)) {
+		set_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
+		fimc_is_ischain_dev_start(scp);
+	} else {
 		err("already stream on or buffer is not ready(%ld)",
 			common->state);
+		clear_bit(FIMC_IS_VIDEO_BUFFER_READY, &common->state);
+		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &common->state);
+		fimc_is_ischain_dev_stop(scp);
 		ret = -EINVAL;
 	}
 
@@ -506,20 +514,35 @@ static int fimc_is_scalerp_start_streaming(struct vb2_queue *q,
 static int fimc_is_scalerp_stop_streaming(struct vb2_queue *q)
 {
 	int ret = 0;
+	unsigned long flags;
 	struct fimc_is_video_scp *video = q->drv_priv;
 	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_ischain *ischain = common->device;
+	struct fimc_is_ischain_dev *scp = &ischain->scp;
+	struct fimc_is_framemgr *framemgr = &scp->framemgr;
 
 	dbg_scp("%s\n", __func__);
 
 	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state)) {
+		framemgr_e_barrier_irqs(framemgr, 0, flags);
+		ret = framemgr->frame_process_cnt;
+		framemgr_x_barrier_irqr(framemgr, 0, flags);
+		if (ret) {
+			err("being processed, can't stop");
+			ret = -EINVAL;
+			goto exit;
+		}
+
 		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
 		clear_bit(FIMC_IS_VIDEO_BUFFER_READY, &common->state);
 		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &common->state);
+		fimc_is_ischain_dev_stop(scp);
 	} else {
 		err("already stream off");
 		ret = -EINVAL;
 	}
 
+exit:
 	return ret;
 }
 
@@ -559,8 +582,8 @@ const struct vb2_ops fimc_is_scalerp_qops = {
 	.buf_prepare		= fimc_is_scalerp_buffer_prepare,
 	.buf_queue		= fimc_is_scalerp_buffer_queue,
 	.buf_finish		= fimc_is_scalerp_buffer_finish,
-	.wait_prepare		= fimc_is_scalerp_unlock,
-	.wait_finish		= fimc_is_scalerp_lock,
+	.wait_prepare		= fimc_is_scalerp_wait_prepare,
+	.wait_finish		= fimc_is_scalerp_wait_finish,
 	.start_streaming	= fimc_is_scalerp_start_streaming,
 	.stop_streaming		= fimc_is_scalerp_stop_streaming,
 };

@@ -406,18 +406,16 @@ static int fimc_is_bayer_buffer_prepare(struct vb2_buffer *vb)
 	return 0;
 }
 
-static inline void fimc_is_bayer_lock(struct vb2_queue *vq)
+static inline void fimc_is_bayer_wait_prepare(struct vb2_queue *q)
 {
-	/*dbg_sensor("%s\n", __func__);*/
 }
 
-static inline void fimc_is_bayer_unlock(struct vb2_queue *vq)
+static inline void fimc_is_bayer_wait_finish(struct vb2_queue *q)
 {
-	/*dbg_sensor("%s\n", __func__);*/
 }
 
 static int fimc_is_bayer_start_streaming(struct vb2_queue *q,
-						unsigned int count)
+	unsigned int count)
 {
 	int ret = 0;
 	struct fimc_is_video_sensor *video = q->drv_priv;
@@ -433,6 +431,9 @@ static int fimc_is_bayer_start_streaming(struct vb2_queue *q,
 	} else {
 		err("already stream on or buffer is not ready(%ld)",
 			common->state);
+		clear_bit(FIMC_IS_VIDEO_BUFFER_READY, &common->state);
+		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &common->state);
+		fimc_is_sensor_back_stop(sensor);
 		ret = -EINVAL;
 	}
 
@@ -448,29 +449,30 @@ static int fimc_is_bayer_stop_streaming(struct vb2_queue *q)
 
 	dbg_sensor("%s\n", __func__);
 
-	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state)) {
-		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->common.state);
+	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state)) {
+		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
 		clear_bit(FIMC_IS_VIDEO_BUFFER_READY, &common->state);
-		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &video->common.state);
-		fimc_is_sensor_back_stop(sensor);
+		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &common->state);
+		ret = fimc_is_sensor_back_stop(sensor);
 	} else {
 		err("already stream off");
 		ret = -EINVAL;
 	}
 
-	return 0;
+	return ret;
 }
 
 static void fimc_is_bayer_buffer_queue(struct vb2_buffer *vb)
 {
 	struct fimc_is_video_sensor *video = vb->vb2_queue->drv_priv;
-	struct fimc_is_device_sensor *sensor = video->common.device;
+	struct fimc_is_video_common *common = &video->common;
+	struct fimc_is_device_sensor *sensor = common->device;
 
 #ifdef DBG_STREAMING
 	dbg_sensor("%s(%d)\n", __func__, vb->v4l2_buf.index);
 #endif
 
-	fimc_is_video_buffer_queue(&video->common, vb, sensor->framemgr);
+	fimc_is_video_buffer_queue(common, vb, sensor->framemgr);
 	fimc_is_sensor_buffer_queue(sensor, vb->v4l2_buf.index);
 }
 
@@ -496,8 +498,8 @@ const struct vb2_ops fimc_is_bayer_qops = {
 	.buf_prepare		= fimc_is_bayer_buffer_prepare,
 	.buf_queue		= fimc_is_bayer_buffer_queue,
 	.buf_finish		= fimc_is_bayer_buffer_finish,
-	.wait_prepare		= fimc_is_bayer_unlock,
-	.wait_finish		= fimc_is_bayer_lock,
+	.wait_prepare		= fimc_is_bayer_wait_prepare,
+	.wait_finish		= fimc_is_bayer_wait_finish,
 	.start_streaming	= fimc_is_bayer_start_streaming,
 	.stop_streaming		= fimc_is_bayer_stop_streaming,
 };

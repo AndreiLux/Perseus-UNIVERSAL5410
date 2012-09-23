@@ -629,6 +629,9 @@ exit:
 int fimc_is_sensor_back_stop(struct fimc_is_device_sensor *this)
 {
 	int ret = 0;
+	unsigned long flags;
+	struct fimc_is_frame_shot *frame;
+	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_device_flite *active_flite;
 
 	dbg_back("%s\n", __func__);
@@ -639,9 +642,34 @@ int fimc_is_sensor_back_stop(struct fimc_is_device_sensor *this)
 		goto exit;
 	}
 
+	framemgr = this->framemgr;
 	active_flite = this->active_flite;
 
 	ret = fimc_is_flite_stop(active_flite);
+	if (ret)
+		err("fimc_is_flite_stop is fail");
+
+	framemgr_e_barrier_irqs(framemgr, FMGR_IDX_3, flags);
+
+	fimc_is_frame_complete_head(framemgr, &frame);
+	while (frame) {
+		fimc_is_frame_trans_com_to_fre(framemgr, frame);
+		fimc_is_frame_complete_head(framemgr, &frame);
+	}
+
+	fimc_is_frame_process_head(framemgr, &frame);
+	while (frame) {
+		fimc_is_frame_trans_pro_to_fre(framemgr, frame);
+		fimc_is_frame_process_head(framemgr, &frame);
+	}
+
+	fimc_is_frame_request_head(framemgr, &frame);
+	while (frame) {
+		fimc_is_frame_trans_req_to_fre(framemgr, frame);
+		fimc_is_frame_request_head(framemgr, &frame);
+	}
+
+	framemgr_x_barrier_irqr(framemgr, FMGR_IDX_3, flags);
 
 exit:
 	return ret;

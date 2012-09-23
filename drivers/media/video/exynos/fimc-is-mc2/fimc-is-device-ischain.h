@@ -203,6 +203,8 @@ int fimc_is_ischain_scp_s_format(struct fimc_is_device_ischain *this,
 	u32 width, u32 height);
 
 /*common subdev*/
+int fimc_is_ischain_dev_start(struct fimc_is_ischain_dev *this);
+int fimc_is_ischain_dev_stop(struct fimc_is_ischain_dev *this);
 int fimc_is_ischain_dev_open(struct fimc_is_ischain_dev *this,
 	enum is_entry entry,
 	struct fimc_is_video_common *video,

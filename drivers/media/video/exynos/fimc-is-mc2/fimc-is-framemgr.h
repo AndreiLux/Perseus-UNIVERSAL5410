@@ -154,39 +154,39 @@ struct fimc_is_framemgr {
 int fimc_is_frame_probe(struct fimc_is_framemgr *this, u32 id);
 int fimc_is_frame_open(struct fimc_is_framemgr *this, u32 buffers);
 int fimc_is_frame_close(struct fimc_is_framemgr *this);
-int fimc_is_frame_print_all(struct fimc_is_framemgr *this);
+void fimc_is_frame_print_all(struct fimc_is_framemgr *this);
 
 int fimc_is_frame_s_free_shot(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot *frame);
 int fimc_is_frame_g_free_shot(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot **frame);
-int fimc_is_frame_free_head(struct fimc_is_framemgr *this,
+void fimc_is_frame_free_head(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot **frame);
-int fimc_is_frame_print_free_list(struct fimc_is_framemgr *this);
+void fimc_is_frame_print_free_list(struct fimc_is_framemgr *this);
 
 int fimc_is_frame_s_request_shot(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot *frame);
 int fimc_is_frame_g_request_shot(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot **frame);
-int fimc_is_frame_request_head(struct fimc_is_framemgr *this,
+void fimc_is_frame_request_head(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot **frame);
-int fimc_is_frame_print_request_list(struct fimc_is_framemgr *this);
+void fimc_is_frame_print_request_list(struct fimc_is_framemgr *this);
 
 int fimc_is_frame_s_process_shot(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot *frame);
 int fimc_is_frame_g_process_shot(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot **frame);
-int fimc_is_frame_process_head(struct fimc_is_framemgr *this,
+void fimc_is_frame_process_head(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot **frame);
-int fimc_is_frame_print_process_list(struct fimc_is_framemgr *this);
+void fimc_is_frame_print_process_list(struct fimc_is_framemgr *this);
 
 int fimc_is_frame_s_complete_shot(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot *frame);
 int fimc_is_frame_g_complete_shot(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot **frame);
-int fimc_is_frame_complete_head(struct fimc_is_framemgr *this,
+void fimc_is_frame_complete_head(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot **frame);
-int fimc_is_frame_print_complete_list(struct fimc_is_framemgr *this);
+void fimc_is_frame_print_complete_list(struct fimc_is_framemgr *this);
 
 int fimc_is_frame_trans_fre_to_req(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot *frame);
@@ -196,6 +196,8 @@ int fimc_is_frame_trans_req_to_pro(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot *frame);
 int fimc_is_frame_trans_req_to_com(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot *frame);
+int fimc_is_frame_trans_req_to_fre(struct fimc_is_framemgr *this,
+	struct fimc_is_frame_shot *item);
 int fimc_is_frame_trans_pro_to_com(struct fimc_is_framemgr *this,
 	struct fimc_is_frame_shot *frame);
 int fimc_is_frame_trans_pro_to_fre(struct fimc_is_framemgr *this,
