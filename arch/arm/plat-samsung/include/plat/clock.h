@@ -59,6 +59,8 @@ struct clk {
 #endif
 };
 
+struct clk *__clk_get_parent(struct clk*);
+
 /* other clocks which may be registered by board support */
 
 extern struct clk s3c24xx_dclk0;

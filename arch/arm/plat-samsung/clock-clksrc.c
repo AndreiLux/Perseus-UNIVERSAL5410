@@ -142,10 +142,7 @@ static unsigned long s3c_getrate_clksrc(struct clk *clk)
 	u32 clkdiv = __raw_readl(sclk->reg_div.reg);
 	u32 mask = bit_mask(sclk->reg_div.shift, sclk->reg_div.size);
 
-	if (clk->ops->get_parent)
-		parent = clk->ops->get_parent(clk);
-	else
-		parent = clk->parent;
+	parent = __clk_get_parent(clk);
 
 	rate = clk_get_rate(parent);
 
@@ -166,10 +163,7 @@ static int s3c_setrate_clksrc(struct clk *clk, unsigned long rate)
 	u32 mask = bit_mask(sclk->reg_div.shift, sclk->reg_div.size);
 	u32 val;
 
-	if (clk->ops->get_parent)
-		parent = clk->ops->get_parent(clk);
-	else
-		parent = clk->parent;
+	parent = __clk_get_parent(clk);
 
 	rate = clk_round_rate(clk, rate);
 	div = clk_get_rate(parent) / rate;

@@ -181,6 +181,14 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 	return ret;
 }
 
+struct clk *__clk_get_parent(struct clk *clk)
+{
+	if (clk->ops && clk->ops->get_parent)
+		return clk->ops->get_parent(clk);
+	else
+		return clk->parent;
+}
+
 struct clk *clk_get_parent(struct clk *clk)
 {
 	struct clk *ret;
@@ -191,10 +199,7 @@ struct clk *clk_get_parent(struct clk *clk)
 
 	spin_lock_irqsave(&clocks_lock, flags);
 
-	if (clk->ops && clk->ops->get_parent)
-		ret = (clk->ops->get_parent)(clk);
-	else
-		ret = clk->parent;
+	ret = __clk_get_parent(clk);
 
 	spin_unlock_irqrestore(&clocks_lock, flags);
 
