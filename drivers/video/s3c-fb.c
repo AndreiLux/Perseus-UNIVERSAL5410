@@ -1477,6 +1477,7 @@ int s3c_fb_set_vsync_int(struct fb_info *info,
 	bool prev_active = sfb->vsync_info.active;
 
 	sfb->vsync_info.active = active;
+	smp_wmb();
 
 	if (active && !prev_active)
 		s3c_fb_activate_vsync(sfb);
@@ -3198,12 +3199,11 @@ static int s3c_fb_wait_for_vsync_thread(void *data)
 
 	while (!kthread_should_stop()) {
 		ktime_t timestamp = sfb->vsync_info.timestamp;
-		int ret = wait_event_interruptible_timeout(sfb->vsync_info.wait,
+		int ret = wait_event_interruptible(sfb->vsync_info.wait,
 			!ktime_equal(timestamp, sfb->vsync_info.timestamp) &&
-			sfb->vsync_info.active,
-			msecs_to_jiffies(VSYNC_TIMEOUT_MSEC));
+			sfb->vsync_info.active);
 
-		if (ret > 0) {
+		if (!ret) {
 			exynos5_ppmu_trace();
 			sysfs_notify(&sfb->dev->kobj, NULL, "vsync");
 		}
