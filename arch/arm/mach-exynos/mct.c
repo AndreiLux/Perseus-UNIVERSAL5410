@@ -344,10 +344,13 @@ static inline void exynos4_tick_set_mode(enum clock_event_mode mode,
 		exynos4_mct_tick_start(cycles_per_jiffy, mevt);
 		break;
 
+	case CLOCK_EVT_MODE_RESUME:
+		exynos4_mct_write(TICK_BASE_CNT, mevt->base + MCT_L_TCNTB_OFFSET);
+		break;
+
 	case CLOCK_EVT_MODE_ONESHOT:
 	case CLOCK_EVT_MODE_UNUSED:
 	case CLOCK_EVT_MODE_SHUTDOWN:
-	case CLOCK_EVT_MODE_RESUME:
 		break;
 	}
 }
@@ -427,9 +430,9 @@ static int __cpuinit exynos4_local_timer_setup(struct clock_event_device *evt)
 	evt->min_delta_ns =
 		clockevent_delta2ns(0xf, evt);
 
-	clockevents_register_device(evt);
-
 	exynos4_mct_write(TICK_BASE_CNT, mevt->base + MCT_L_TCNTB_OFFSET);
+
+	clockevents_register_device(evt);
 
 	if (mct_int_type == MCT_INT_SPI) {
 		if (cpu == 0) {
