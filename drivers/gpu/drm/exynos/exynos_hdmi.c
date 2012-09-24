@@ -44,8 +44,6 @@
 
 #include "exynos_hdmi.h"
 
-#define MAX_WIDTH		1920
-#define MAX_HEIGHT		1080
 #define get_hdmi_context(dev)	platform_get_drvdata(to_platform_device(dev))
 
 struct hdmi_resources {
