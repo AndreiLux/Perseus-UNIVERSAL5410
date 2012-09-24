@@ -436,11 +436,24 @@ int s5p_dp_start_aux_transaction(struct s5p_dp_device *dp)
 	int reg;
 	int retval = 0;
 	int timeout_loop = 0;
+	int aux_timeout = 0;
 
 	/* Enable AUX CH operation */
 	reg = readl(dp->reg_base + S5P_DP_AUX_CH_CTL_2);
 	reg |= AUX_EN;
 	writel(reg, dp->reg_base + S5P_DP_AUX_CH_CTL_2);
+
+	/* Is AUX CH operation enabled? */
+	reg = readl(dp->reg_base + S5P_DP_AUX_CH_CTL_2);
+	while (reg & AUX_EN) {
+		aux_timeout++;
+		if ((DP_TIMEOUT_LOOP_COUNT * 10) < aux_timeout) {
+			dev_err(dp->dev, "AUX CH enable timeout!\n");
+			return -ETIMEDOUT;
+		}
+		reg = readl(dp->reg_base + S5P_DP_AUX_CH_CTL_2);
+		udelay(100);
+	}
 
 	/* Is AUX CH command reply received? */
 	reg = readl(dp->reg_base + S5P_DP_INT_STA);
