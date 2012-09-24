@@ -24,6 +24,10 @@
 #define MALI_DVFS_KEEP_STAY_CNT 10
 #define MALI_DVFS_TIME_INTERVAL 5
 
+#define MALI_DVFS_CURRENT_FREQ 0
+#define MALI_DVFS_BL_CONFIG_FREQ 533
+#define MALI_DVFS_START_FREQ 450
+
 #ifdef CONFIG_MALI_T6XX_DVFS
 #define CONFIG_MALI_T6XX_FREQ_LOCK
 #ifdef CONFIG_CPU_FREQ
@@ -49,9 +53,8 @@ int kbase_platform_dvfs_init(struct kbase_device *dev);
 void kbase_platform_dvfs_term(void);
 int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation);
 int kbase_platform_dvfs_get_enable_status(void);
-int kbase_platform_dvfs_enable(bool enable);
+int kbase_platform_dvfs_enable(bool enable, int freq);
 int kbase_platform_dvfs_get_utilisation(void);
-void mali_dvfs_force_set_clock(int freq);
 #endif
 
 int mali_get_dvfs_current_level(void);

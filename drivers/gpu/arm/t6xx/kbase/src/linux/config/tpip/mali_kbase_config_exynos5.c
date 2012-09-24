@@ -62,13 +62,13 @@ static int mali_pm_notifier(struct notifier_block *nb,unsigned long event,void* 
 	switch (event) {
 		case PM_SUSPEND_PREPARE:
 #ifdef CONFIG_MALI_T6XX_DVFS
-			if (kbase_platform_dvfs_enable(false)!= MALI_TRUE)
+			if (kbase_platform_dvfs_enable(false, MALI_DVFS_BL_CONFIG_FREQ)!= MALI_TRUE)
 				err = NOTIFY_BAD;
 #endif
 			break;
 		case PM_POST_SUSPEND:
 #ifdef CONFIG_MALI_T6XX_DVFS
-			if (kbase_platform_dvfs_enable(true)!= MALI_TRUE)
+			if (kbase_platform_dvfs_enable(true, MALI_DVFS_START_FREQ)!= MALI_TRUE)
 				err = NOTIFY_BAD;
 #endif
 			break;
@@ -162,7 +162,8 @@ static int pm_callback_runtime_on(kbase_device *kbdev)
 {
 	kbase_platform_clock_on(kbdev);
 #ifdef CONFIG_MALI_T6XX_DVFS
-	mali_dvfs_force_set_clock(450);
+	if (kbase_platform_dvfs_enable(true, MALI_DVFS_START_FREQ)!= MALI_TRUE)
+		return -EPERM;
 #endif
 	return 0;
 }
@@ -170,6 +171,10 @@ static int pm_callback_runtime_on(kbase_device *kbdev)
 static void pm_callback_runtime_off(kbase_device *kbdev)
 {
 	kbase_platform_clock_off(kbdev);
+#ifdef CONFIG_MALI_T6XX_DVFS
+	if (kbase_platform_dvfs_enable(false, MALI_DVFS_CURRENT_FREQ)!= MALI_TRUE)
+		printk("[err] disabling dvfs is faled\n");
+#endif
 }
 
 static kbase_pm_callback_conf pm_callbacks =
