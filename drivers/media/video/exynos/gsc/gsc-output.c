@@ -718,6 +718,16 @@ static void gsc_out_buffer_queue(struct vb2_buffer *vb)
 	unsigned long flags;
 	int ret;
 
+	if (vb->acquire_fence) {
+		ret = sync_fence_wait(vb->acquire_fence, 100);
+		sync_fence_put(vb->acquire_fence);
+		vb->acquire_fence = NULL;
+		if (ret < 0) {
+			gsc_err("synce_fence_wait() timeout");
+			return;
+		}
+	}
+
 	if (!test_and_set_bit(ST_OUTPUT_STREAMON, &gsc->state)) {
 		ret = pm_runtime_get_sync(&gsc->pdev->dev);
 		if (ret < 0) {
