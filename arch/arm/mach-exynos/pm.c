@@ -137,6 +137,9 @@ static void exynos_pm_prepare(void)
 		s3c_pm_do_save(exynos4_vpll_save, ARRAY_SIZE(exynos4_vpll_save));
 	}
 
+	if (soc_is_exynos5250())
+		exynos5_pmu_sysclk_save();
+
 	/* Set value of power down register for sleep mode */
 	exynos_sys_powerdown_conf(SYS_SLEEP);
 	__raw_writel(EXYNOS_CHECK_SLEEP, REG_INFORM1);
@@ -322,9 +325,6 @@ static void exynos_show_wakeup_reason(void)
 static int exynos_pm_suspend(void)
 {
 	unsigned long tmp;
-
-	if (soc_is_exynos5250())
-		exynos5_pmu_sysclk_save();
 
 	s3c_pm_do_save(exynos_core_save, ARRAY_SIZE(exynos_core_save));
 
