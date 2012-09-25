@@ -47,7 +47,6 @@ void exynos_drm_encoder_dpms_from_crtc(struct drm_encoder *encoder,
 					void *data);
 void exynos_drm_encoder_crtc_dpms(struct drm_encoder *encoder, void *data);
 void exynos_drm_encoder_crtc_mode_set(struct drm_encoder *encoder, void *data);
-void exynos_drm_encoder_crtc_page_flip(struct drm_encoder *encoder, void *data);
 void exynos_drm_encoder_crtc_disable(struct drm_encoder *encoder, void *data);
 
 #endif

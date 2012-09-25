@@ -259,17 +259,6 @@ static void drm_mixer_mode_set(struct device *subdrv_dev,
 		mixer_ops->win_mode_set(ctx->mixer_ctx->ctx, overlay);
 }
 
-static void drm_mixer_page_flip(struct device *subdrv_dev,
-		struct exynos_drm_overlay *overlay)
-{
-	struct drm_hdmi_context *ctx = to_context(subdrv_dev);
-
-	DRM_DEBUG_KMS("%s\n", __FILE__);
-
-	if (mixer_ops && mixer_ops->win_page_flip)
-		mixer_ops->win_page_flip(ctx->mixer_ctx->ctx, overlay);
-}
-
 static void drm_mixer_commit(struct device *subdrv_dev, int zpos)
 {
 	struct drm_hdmi_context *ctx = to_context(subdrv_dev);
@@ -308,7 +297,6 @@ static void drm_mixer_disable(struct device *subdrv_dev, int zpos)
 
 static struct exynos_drm_overlay_ops drm_hdmi_overlay_ops = {
 	.mode_set = drm_mixer_mode_set,
-	.page_flip = drm_mixer_page_flip,
 	.commit = drm_mixer_commit,
 	.disable = drm_mixer_disable,
 };
