@@ -57,6 +57,9 @@ module_param(allow_coupled_idle, bool, 0644);
 
 static atomic_t exynos_idle_barrier;
 static volatile bool cpu1_abort;
+#ifdef CONFIG_ARM_TRUSTZONE
+static unsigned int misc_save;
+#endif
 
 static int exynos_enter_idle(struct cpuidle_device *dev,
 			     struct cpuidle_driver *drv,
@@ -101,6 +104,10 @@ static inline void cpu_enter_lowpower_a15(void)
 
 	flush_cache_all();
 
+#ifdef CONFIG_ARM_TRUSTZONE
+	asm volatile("mrc p15, 0, %0, c1, c0, 1" : "=r" (misc_save));
+#endif
+
 	asm volatile(
 	/*
 	* Turn off coherency
@@ -131,6 +138,11 @@ static inline void cpu_leave_lowpower(void)
 	  : "=&r" (v)
 	  : "Ir" (CR_C), "Ir" (0x40)
 	  : "cc");
+
+#ifdef CONFIG_ARM_TRUSTZONE
+	if (v != misc_save)
+		exynos_smc(SMC_CMD_REG, SMC_REG_ID_CP15(1, 0, 0, 1), misc_save, 0);
+#endif
 }
 
 struct check_reg_lpa {
