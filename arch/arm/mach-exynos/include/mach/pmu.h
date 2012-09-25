@@ -28,8 +28,6 @@ struct exynos_pmu_conf {
 	unsigned int val[NUM_SYS_POWERDOWN];
 };
 
-extern void exynos5_pmu_sysclk_save(void);
-extern void exynos5_pmu_sysclk_restore(void);
 extern void exynos_sys_powerdown_conf(enum sys_powerdown mode);
 extern void exynos_xxti_sys_powerdown(bool enable);
 extern void s3c_cpu_resume(void);

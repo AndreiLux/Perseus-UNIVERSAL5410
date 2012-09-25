@@ -137,9 +137,6 @@ static void exynos_pm_prepare(void)
 		s3c_pm_do_save(exynos4_vpll_save, ARRAY_SIZE(exynos4_vpll_save));
 	}
 
-	if (soc_is_exynos5250())
-		exynos5_pmu_sysclk_save();
-
 	/* Set value of power down register for sleep mode */
 	exynos_sys_powerdown_conf(SYS_SLEEP);
 	__raw_writel(EXYNOS_CHECK_SLEEP, REG_INFORM1);
@@ -398,10 +395,10 @@ static void exynos_pm_resume(void)
 	__raw_writel((1 << 28), EXYNOS5_PAD_RETENTION_SPI_OPTION);
 	__raw_writel((1 << 28), EXYNOS5_PAD_RETENTION_GPIO_SYSMEM_OPTION);
 
-	s3c_pm_do_restore_core(exynos_core_save, ARRAY_SIZE(exynos_core_save));
-
 	if (soc_is_exynos5250())
-		exynos5_pmu_sysclk_restore();
+		__raw_writel(0x1, EXYNOS5_CMU_SYSCLK_DISP1_SYS_PWR_REG);
+
+	s3c_pm_do_restore_core(exynos_core_save, ARRAY_SIZE(exynos_core_save));
 
 	bts_initialize(NULL);
 	if (!soc_is_exynos5250()) {
