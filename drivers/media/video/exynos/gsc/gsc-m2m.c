@@ -94,22 +94,26 @@ static void gsc_m2m_job_abort(void *priv)
 		dev_err(&gsc->pdev->dev, "wait timeout : %s\n", __func__);
 }
 
-int gsc_fill_addr(struct gsc_ctx *ctx)
+static int gsc_get_bufs(struct gsc_ctx *ctx)
 {
 	struct gsc_frame *s_frame, *d_frame;
-	struct vb2_buffer *vb = NULL;
+	struct vb2_buffer *src_vb = NULL;
+	struct vb2_buffer *dst_vb = NULL;
 	int ret = 0;
 
 	s_frame = &ctx->s_frame;
 	d_frame = &ctx->d_frame;
 
-	vb = v4l2_m2m_next_src_buf(ctx->m2m_ctx);
-	ret = gsc_prepare_addr(ctx, vb, s_frame, &s_frame->addr);
+	src_vb = v4l2_m2m_next_src_buf(ctx->m2m_ctx);
+	ret = gsc_prepare_addr(ctx, src_vb, s_frame, &s_frame->addr);
 	if (ret)
 		return ret;
 
-	vb = v4l2_m2m_next_dst_buf(ctx->m2m_ctx);
-	ret = gsc_prepare_addr(ctx, vb, d_frame, &d_frame->addr);
+	dst_vb = v4l2_m2m_next_dst_buf(ctx->m2m_ctx);
+	ret = gsc_prepare_addr(ctx, dst_vb, d_frame, &d_frame->addr);
+
+	memcpy(&dst_vb->v4l2_buf.timestamp, &src_vb->v4l2_buf.timestamp,
+	    sizeof(dst_vb->v4l2_buf.timestamp));
 
 	return ret;
 }
@@ -143,7 +147,7 @@ static void gsc_m2m_device_run(void *priv)
 		goto put_device;
 	}
 
-	ret = gsc_fill_addr(ctx);
+	ret = gsc_get_bufs(ctx);
 	if (ret) {
 		gsc_err("Wrong address");
 		goto put_device;
