@@ -419,6 +419,15 @@ static int daisy_init(struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
+static int daisy_resume_post(struct snd_soc_card *card)
+{
+	if (gpio_is_valid(daisy_mic_jack_gpio.gpio))
+		snd_soc_jack_gpio_detect(&daisy_mic_jack_gpio);
+
+	if (gpio_is_valid(daisy_hp_jack_gpio.gpio))
+		snd_soc_jack_gpio_detect(&daisy_hp_jack_gpio);
+}
+
 static struct snd_soc_dai_link daisy_dai[] = {
 	{ /* Primary DAI i/f */
 		.name = "MAX98095 RX",
@@ -448,6 +457,7 @@ static struct snd_soc_card daisy_snd = {
 	.num_dapm_widgets = ARRAY_SIZE(daisy_dapm_widgets),
 	.dapm_routes = daisy_audio_map,
 	.num_dapm_routes = ARRAY_SIZE(daisy_audio_map),
+	.resume_post = daisy_resume_post,
 };
 
 static int plugin_init(struct audio_codec_plugin **pplugin)
