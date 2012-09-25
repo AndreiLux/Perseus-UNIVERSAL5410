@@ -236,8 +236,14 @@ void snd_soc_jack_notifier_unregister(struct snd_soc_jack *jack,
 EXPORT_SYMBOL_GPL(snd_soc_jack_notifier_unregister);
 
 #ifdef CONFIG_GPIOLIB
-/* gpio detect */
-static void snd_soc_jack_gpio_detect(struct snd_soc_jack_gpio *gpio)
+/**
+ * snd_soc_jack_gpio_detect - Check the vlaue of the gpio and report jack state.
+ *
+ * @gpio: gpio pin to check.
+ *
+ *  This function will poll the state of the gpio and report on the jack.
+ */
+void snd_soc_jack_gpio_detect(struct snd_soc_jack_gpio *gpio)
 {
 	struct snd_soc_jack *jack = gpio->jack;
 	int enable;
@@ -257,6 +263,7 @@ static void snd_soc_jack_gpio_detect(struct snd_soc_jack_gpio *gpio)
 
 	snd_soc_jack_report(jack, report, gpio->report);
 }
+EXPORT_SYMBOL_GPL(snd_soc_jack_gpio_detect);
 
 /* irq handler for gpio pin */
 static irqreturn_t gpio_handler(int irq, void *data)
