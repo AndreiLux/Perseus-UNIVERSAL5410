@@ -341,7 +341,7 @@ void kbase_platform_dvfs_term(void)
 
 	mali_dvfs_wq = NULL;
 }
-#endif
+#endif /*CONFIG_MALI_T6XX_DVFS*/
 
 int mali_get_dvfs_upper_locked_freq(void)
 {
@@ -656,7 +656,9 @@ void kbase_platform_dvfs_set_level(kbase_device *kbdev, int level)
 	if (WARN_ON((level >= MALI_DVFS_STEP)||(level < 0)))
 		panic("invalid level");
 
+#ifdef CONFIG_MALI_T6XX_DVFS
 	mutex_lock(&mali_set_clock_lock);
+#endif
 	if (level > 0) {
 		bw = mali_dvfs_infotbl[level].clock * 16;
 		bw = clamp(bw, 0, 6400);
@@ -677,7 +679,9 @@ void kbase_platform_dvfs_set_level(kbase_device *kbdev, int level)
 	update_time_in_state(prev_level);
 #endif
 	prev_level = level;
+#ifdef CONFIG_MALI_T6XX_DVFS
 	mutex_unlock(&mali_set_clock_lock);
+#endif
 }
 
 int kbase_platform_dvfs_sprint_avs_table(char *buf)
