@@ -101,7 +101,7 @@ else
 ifeq ($(CONFIG_MACH_GRANDE),y)
 obj-$(CONFIG_MACH_MIDAS)		+= board-grande.o grande-jack.o
 else
-obj-$(CONFIG_MACH_MIDAS)		+= mach-midas.o
+obj-$(CONFIG_MACH_MIDAS)		+= mach-midas-i9300.o
 endif
 endif
 endif
