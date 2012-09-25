@@ -29,6 +29,8 @@
 #include <plat/devs.h>
 #include <plat/bts.h>
 
+#define MAX_PD_CLKS 2
+
 /*
  * Exynos specific wrapper around the generic power domain
  */
@@ -37,6 +39,9 @@ struct exynos_pm_domain {
 	void __iomem *base;
 	bool is_off;
 	struct generic_pm_domain pd;
+	const char *clk_name[MAX_PD_CLKS];
+	struct clk *clk[MAX_PD_CLKS];
+	struct clk *saved_parent_clk[MAX_PD_CLKS];
 };
 
 struct exynos_pm_clk {
@@ -55,6 +60,38 @@ static struct exynos_pm_dev exynos5_pm_dev_##NAME = {	\
 	.pd = &exynos5_pd_##PD,				\
 	.pdev = DEV,					\
 	.con_id = CON,					\
+}
+
+static void exynos_pd_clk_parent_save(struct exynos_pm_domain *pd)
+{
+	int i;
+
+	for (i = 0; i < MAX_PD_CLKS; i++) {
+		if (pd->clk[i]) {
+			pd->saved_parent_clk[i] = clk_get_parent(pd->clk[i]);
+			if (IS_ERR(pd->saved_parent_clk)) {
+				pr_err("Failed to save parent clk of %s for pd %s\n",
+					pd->clk_name[i], pd->pd.name);
+				pd->saved_parent_clk[i] = NULL;
+			}
+		}
+	}
+}
+
+static void exynos_pd_clk_parent_restore(struct exynos_pm_domain *pd)
+{
+	int i;
+	int r;
+
+	for (i = 0; i < MAX_PD_CLKS; i++) {
+		if (pd->clk[i] && pd->saved_parent_clk[i]) {
+			r = clk_set_parent(pd->clk[i], pd->saved_parent_clk[i]);
+			if (r)
+				pr_err("Failed to restore parent clk of %s for pd %s\n",
+					pd->clk_name[i], pd->pd.name);
+			pd->saved_parent_clk[i] = NULL;
+		}
+	}
 }
 
 static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
@@ -105,6 +142,9 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 		__raw_writel(0x0, EXYNOS5_PAD_RETENTION_MAU_SYS_PWR_REG);
 	}
 
+	if (!power_on)
+		exynos_pd_clk_parent_save(pd);
+
 	pwr = power_on ? EXYNOS_INT_LOCAL_PWR_EN : 0;
 
 	__raw_writel(pwr, base);
@@ -123,6 +163,9 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 		cpu_relax();
 		usleep_range(80, 100);
 	}
+
+	if (power_on)
+		exynos_pd_clk_parent_restore(pd);
 
 	if (soc_is_exynos5250() &&
 		power_on && base == EXYNOS5_MAU_CONFIGURATION) {
@@ -179,15 +222,16 @@ static int exynos_sub_power_off(struct generic_pm_domain *domain)
 	return 0;
 }
 
-#define EXYNOS_GPD(PD, BASE, NAME)			\
+#define EXYNOS_GPD(PD, BASE, NAME, CLKS...)		\
 static struct exynos_pm_domain PD = {			\
 	.list = LIST_HEAD_INIT((PD).list),		\
 	.base = (void __iomem *)BASE,			\
 	.pd = {						\
-		.name = NAME,					\
+		.name = NAME,				\
 		.power_off = exynos_pd_power_off,	\
-		.power_on = exynos_pd_power_on,	\
+		.power_on = exynos_pd_power_on,		\
 	},						\
+	.clk_name = { CLKS }				\
 }
 
 #define EXYNOS_SUB_GPD(PD, NAME)			\
@@ -332,13 +376,16 @@ static __init int exynos4_pm_init_power_domain(void)
 }
 
 /* For EXYNOS5 */
-EXYNOS_GPD(exynos5_pd_mfc, EXYNOS5_MFC_CONFIGURATION, "pd-mfc");
+EXYNOS_GPD(exynos5_pd_mfc, EXYNOS5_MFC_CONFIGURATION, "pd-mfc",
+			"aclk_333");
 EXYNOS_GPD(exynos5_pd_maudio, EXYNOS5_MAU_CONFIGURATION, "pd-maudio");
-EXYNOS_GPD(exynos5_pd_disp1, EXYNOS5_DISP1_CONFIGURATION, "pd-disp1");
+EXYNOS_GPD(exynos5_pd_disp1, EXYNOS5_DISP1_CONFIGURATION, "pd-disp1",
+			"aclk_200_disp1", "aclk_300_disp1");
 EXYNOS_SUB_GPD(exynos5_pd_fimd1, "pd-fimd1");
 EXYNOS_SUB_GPD(exynos5_pd_hdmi, "pd-hdmi");
 EXYNOS_SUB_GPD(exynos5_pd_mixer, "pd-mixer");
-EXYNOS_GPD(exynos5_pd_gscl, EXYNOS5_GSCL_CONFIGURATION, "pd-gscl");
+EXYNOS_GPD(exynos5_pd_gscl, EXYNOS5_GSCL_CONFIGURATION, "pd-gscl",
+			"aclk_266_gscl", "aclk_300_gscl");
 EXYNOS_SUB_GPD(exynos5_pd_gscl0, "pd-gscl0");
 EXYNOS_SUB_GPD(exynos5_pd_gscl1, "pd-gscl1");
 EXYNOS_SUB_GPD(exynos5_pd_gscl2, "pd-gscl2");
@@ -449,6 +496,17 @@ static void __init exynos5_add_device_to_pd(struct exynos_pm_dev **pm_dev, int s
 	}
 }
 
+static void __init exynos5_pm_init_one_pd(struct exynos_pm_domain *pd)
+{
+	int i;
+
+	pm_genpd_init(&pd->pd, NULL, pd->is_off);
+
+	for (i = 0; i < MAX_PD_CLKS; i++)
+		if (pd->clk_name[i])
+			pd->clk[i] = clk_get(NULL, pd->clk_name[i]);
+}
+
 static int __init exynos5_pm_init_power_domain(void)
 {
 	int idx;
@@ -457,8 +515,7 @@ static int __init exynos5_pm_init_power_domain(void)
 		return exynos_pm_dt_parse_domains();
 
 	for (idx = 0; idx < ARRAY_SIZE(exynos5_pm_domains); idx++)
-		pm_genpd_init(&exynos5_pm_domains[idx]->pd, NULL,
-				exynos5_pm_domains[idx]->is_off);
+		exynos5_pm_init_one_pd(exynos5_pm_domains[idx]);
 
 #ifdef CONFIG_S5P_DEV_MFC
 	exynos_pm_add_dev_to_genpd(&s5p_device_mfc, &exynos5_pd_mfc);
