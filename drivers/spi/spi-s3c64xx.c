@@ -1219,6 +1219,10 @@ static int s3c64xx_spi_runtime_suspend(struct device *dev)
 {
 	struct spi_master *master = spi_master_get(dev_get_drvdata(dev));
 	struct s3c64xx_spi_driver_data *sdd = spi_master_get_devdata(master);
+	struct s3c64xx_spi_info *sci = sdd->cntrlr_info;
+
+	if (sci->gpio_pull_up)
+		sci->gpio_pull_up(false);
 
 	clk_disable(sdd->clk);
 	clk_disable(sdd->src_clk);
@@ -1230,9 +1234,13 @@ static int s3c64xx_spi_runtime_resume(struct device *dev)
 {
 	struct spi_master *master = spi_master_get(dev_get_drvdata(dev));
 	struct s3c64xx_spi_driver_data *sdd = spi_master_get_devdata(master);
+	struct s3c64xx_spi_info *sci = sdd->cntrlr_info;
 
 	clk_enable(sdd->src_clk);
 	clk_enable(sdd->clk);
+
+	if (sci->gpio_pull_up)
+		sci->gpio_pull_up(true);
 
 	return 0;
 }

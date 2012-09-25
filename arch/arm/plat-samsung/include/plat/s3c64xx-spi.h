@@ -49,6 +49,7 @@ struct s3c64xx_spi_info {
 	int num_cs;
 
 	int (*cfg_gpio)(struct platform_device *pdev);
+	void (*gpio_pull_up)(bool pull_up);
 
 	/* Following two fields are for future compatibility */
 	int fifo_lvl_mask;
