@@ -17,12 +17,15 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define DSS_SUBSYS_NAME "PANEL"
+
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <video/omapdss.h>
 #include <linux/i2c.h>
 #include <linux/gpio.h>
 #include <drm/drm_edid.h>
+#include "../dss/dss.h"
 
 #include <video/omap-panel-tfp410.h>
 
@@ -56,6 +59,7 @@ static int tfp410_power_on(struct omap_dss_device *dssdev)
 	struct panel_drv_data *ddata = dev_get_drvdata(&dssdev->dev);
 	int r;
 
+	DSSDBG("%s\n", __func__);
 	if (dssdev->state == OMAP_DSS_DISPLAY_ACTIVE)
 		return 0;
 
@@ -75,6 +79,7 @@ static void tfp410_power_off(struct omap_dss_device *dssdev)
 {
 	struct panel_drv_data *ddata = dev_get_drvdata(&dssdev->dev);
 
+	DSSDBG("%s\n", __func__);
 	if (dssdev->state != OMAP_DSS_DISPLAY_ACTIVE)
 		return;
 
@@ -90,6 +95,7 @@ static int tfp410_probe(struct omap_dss_device *dssdev)
 	int r;
 	int i2c_bus_num;
 
+	DSSDBG("%s\n", __func__);
 	ddata = devm_kzalloc(&dssdev->dev, sizeof(*ddata), GFP_KERNEL);
 	if (!ddata)
 		return -ENOMEM;
@@ -147,6 +153,7 @@ static void __exit tfp410_remove(struct omap_dss_device *dssdev)
 {
 	struct panel_drv_data *ddata = dev_get_drvdata(&dssdev->dev);
 
+	DSSDBG("%s\n", __func__);
 	mutex_lock(&ddata->lock);
 
 	if (ddata->i2c_adapter)
@@ -165,6 +172,7 @@ static int tfp410_enable(struct omap_dss_device *dssdev)
 	struct panel_drv_data *ddata = dev_get_drvdata(&dssdev->dev);
 	int r;
 
+	DSSDBG("%s\n", __func__);
 	mutex_lock(&ddata->lock);
 
 	r = tfp410_power_on(dssdev);
@@ -180,6 +188,7 @@ static void tfp410_disable(struct omap_dss_device *dssdev)
 {
 	struct panel_drv_data *ddata = dev_get_drvdata(&dssdev->dev);
 
+	DSSDBG("%s\n", __func__);
 	mutex_lock(&ddata->lock);
 
 	tfp410_power_off(dssdev);
@@ -193,6 +202,7 @@ static int tfp410_suspend(struct omap_dss_device *dssdev)
 {
 	struct panel_drv_data *ddata = dev_get_drvdata(&dssdev->dev);
 
+	DSSDBG("%s\n", __func__);
 	mutex_lock(&ddata->lock);
 
 	tfp410_power_off(dssdev);
@@ -209,6 +219,7 @@ static int tfp410_resume(struct omap_dss_device *dssdev)
 	struct panel_drv_data *ddata = dev_get_drvdata(&dssdev->dev);
 	int r;
 
+	DSSDBG("%s\n", __func__);
 	mutex_lock(&ddata->lock);
 
 	r = tfp410_power_on(dssdev);
@@ -225,6 +236,7 @@ static void tfp410_set_timings(struct omap_dss_device *dssdev,
 {
 	struct panel_drv_data *ddata = dev_get_drvdata(&dssdev->dev);
 
+	DSSDBG("%s\n", __func__);
 	mutex_lock(&ddata->lock);
 	dpi_set_timings(dssdev, timings);
 	mutex_unlock(&ddata->lock);
@@ -235,6 +247,7 @@ static void tfp410_get_timings(struct omap_dss_device *dssdev,
 {
 	struct panel_drv_data *ddata = dev_get_drvdata(&dssdev->dev);
 
+	DSSDBG("%s\n", __func__);
 	mutex_lock(&ddata->lock);
 	*timings = dssdev->panel.timings;
 	mutex_unlock(&ddata->lock);
@@ -246,6 +259,7 @@ static int tfp410_check_timings(struct omap_dss_device *dssdev,
 	struct panel_drv_data *ddata = dev_get_drvdata(&dssdev->dev);
 	int r;
 
+	DSSDBG("%s\n", __func__);
 	mutex_lock(&ddata->lock);
 	r = dpi_check_timings(dssdev, timings);
 	mutex_unlock(&ddata->lock);
@@ -259,6 +273,7 @@ static int tfp410_ddc_read(struct i2c_adapter *adapter,
 {
 	int r, retries;
 
+	DSSDBG("%s\n", __func__);
 	for (retries = 3; retries > 0; retries--) {
 		struct i2c_msg msgs[] = {
 			{
@@ -291,6 +306,7 @@ static int tfp410_read_edid(struct omap_dss_device *dssdev,
 	struct panel_drv_data *ddata = dev_get_drvdata(&dssdev->dev);
 	int r, l, bytes_read;
 
+	DSSDBG("%s\n", __func__);
 	mutex_lock(&ddata->lock);
 
 	if (!ddata->i2c_adapter) {
@@ -332,6 +348,7 @@ static bool tfp410_detect(struct omap_dss_device *dssdev)
 	unsigned char out;
 	int r;
 
+	DSSDBG("%s\n", __func__);
 	mutex_lock(&ddata->lock);
 
 	if (!ddata->i2c_adapter)
