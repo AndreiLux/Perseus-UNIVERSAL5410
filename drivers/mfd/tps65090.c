@@ -41,6 +41,10 @@
 #define TPS65090_INT_MSK	0x2
 #define TPS65090_INT_MSK2	0x3
 
+/* FET control registers */
+#define TPS65090_FET1_CTRL	0xf
+#define TPS65090_FET7_CTRL	0x15
+
 struct tps65090_irq_data {
 	u8		mask_reg;
 	u8		mask_pos;
@@ -280,7 +284,8 @@ static int __devinit tps65090_irq_init(struct tps65090 *tps65090, int irq)
 
 static bool is_volatile_reg(struct device *dev, unsigned int reg)
 {
-	if ((reg == TPS65090_INT_STS) || (reg == TPS65090_INT_STS))
+	if ((reg == TPS65090_INT_STS) || (reg == TPS65090_INT_STS2) ||
+		(reg >= TPS65090_FET1_CTRL && reg <= TPS65090_FET7_CTRL))
 		return true;
 	else
 		return false;
