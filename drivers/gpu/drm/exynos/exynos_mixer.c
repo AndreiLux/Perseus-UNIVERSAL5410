@@ -1347,6 +1347,9 @@ static int mixer_remove(struct platform_device *pdev)
 	mixer_resource_poweroff(mctx);
 	mixer_resources_cleanup(mctx);
 
+	kfree(mctx);
+	kfree(drm_hdmi_ctx);
+
 	return 0;
 }
 
