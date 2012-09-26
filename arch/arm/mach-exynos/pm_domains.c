@@ -59,8 +59,9 @@ static struct exynos_pm_dev exynos5_pm_dev_##NAME = {	\
 
 static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 {
-	struct exynos_pm_domain *pd;
-	struct exynos_pm_clk *pclk;
+	struct gpd_link *link;
+	struct exynos_pm_domain *pd, *spd;
+	struct exynos_pm_clk *pclk, *spclk;
 	void __iomem *base;
 	u32 timeout, pwr;
 	char *op;
@@ -76,13 +77,22 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 	}
 
 	/* Enable all the clocks of IPs in power domain */
-	if (power_on)
-		list_for_each_entry(pclk, &pd->list, node) {
-			if (clk_enable(pclk->clk)) {
+	list_for_each_entry(pclk, &pd->list, node) {
+		if (clk_enable(pclk->clk)) {
+			ret = -EINVAL;
+			goto unwind;
+		}
+	}
+
+	list_for_each_entry(link, &domain->master_links, master_node) {
+		spd = container_of(link->slave, struct exynos_pm_domain, pd);
+		list_for_each_entry(spclk, &spd->list, node) {
+			if (clk_enable(spclk->clk)) {
 				ret = -EINVAL;
-				goto unwind;
+				goto s_unwind;
 			}
 		}
+	}
 
 	if (soc_is_exynos5250() &&
 		!power_on && base == EXYNOS5_ISP_CONFIGURATION)
@@ -120,14 +130,28 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 	}
 
 	/* Disable all the clocks of IPs in power domain */
-	if (power_on) {
-		bts_initialize(pd->pd.name);
-		list_for_each_entry(pclk, &pd->list, node)
-			clk_disable(pclk->clk);
+	list_for_each_entry(link, &domain->master_links, master_node) {
+		spd = container_of(link->slave, struct exynos_pm_domain, pd);
+		list_for_each_entry(spclk, &spd->list, node) {
+			clk_disable(spclk->clk);
+		}
 	}
+
+	list_for_each_entry(pclk, &pd->list, node)
+		clk_disable(pclk->clk);
+
+	if (power_on)
+		bts_initialize(pd->pd.name);
 
 	return ret;
 
+s_unwind:
+	list_for_each_entry_continue_reverse(link, &domain->master_links, master_node) {
+		spd = container_of(link->slave, struct exynos_pm_domain, pd);
+		list_for_each_entry_continue_reverse(spclk, &spd->list, node) {
+			clk_disable(spclk->clk);
+		}
+	}
 unwind:
 	list_for_each_entry_continue_reverse(pclk, &pd->list, node)
 		clk_disable(pclk->clk);
