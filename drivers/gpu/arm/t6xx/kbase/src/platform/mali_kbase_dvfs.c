@@ -296,6 +296,7 @@ int kbase_platform_dvfs_enable(bool enable, int freq)
 			kbdev->pm.metrics.timer_active = MALI_FALSE;
 			spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
 			hrtimer_cancel(&kbdev->pm.metrics.timer);
+			pm_qos_update_request(&mem_bw_req, -1);
 		}
 	}
 	mutex_unlock(&mali_enable_clock_lock);
