@@ -72,6 +72,12 @@
 /* Display DVI */
 #define PANDA_DVI_TFP410_POWER_DOWN_GPIO        0
 
+/* LEDS */
+#define GPIO_PANDA_LED1		7
+#define GPIO_PANDA_LED2		8
+#define GPIO_PANDAES_LED1	110
+#define GPIO_PANDAES_LED2	8
+
 static int
 panda_kim_suspend(struct platform_device *pdev, pm_message_t msg)
 {
@@ -717,6 +723,49 @@ static void __init enable_board_wakeups(void)
 		OMAP_WAKEUP_EN | OMAP_PIN_INPUT_PULLUP);
 }
 
+static struct gpio panda_gpio_non_configured_init[] = {
+#ifndef CONFIG_PANEL_TFP410
+	{ PANDA_DVI_TFP410_POWER_DOWN_GPIO,
+				GPIOF_OUT_INIT_LOW, "TFP410 NPD" },
+#endif
+#ifndef CONFIG_LEDS_GPIO
+	{ GPIO_PANDA_LED1,	GPIOF_OUT_INIT_LOW, "PANDA LED 1" },
+	{ GPIO_PANDA_LED2,	GPIOF_OUT_INIT_LOW, "PANDA LED 2" },
+#endif
+};
+
+static struct gpio pandaes_gpio_non_configured_init[] = {
+#ifndef CONFIG_PANEL_TFP410
+	{ PANDA_DVI_TFP410_POWER_DOWN_GPIO,
+				GPIOF_OUT_INIT_LOW, "TFP410 NPD" },
+#endif
+#ifndef CONFIG_LEDS_GPIO
+	{ GPIO_PANDAES_LED1,	GPIOF_OUT_INIT_LOW, "PANDA-ES LED 1" },
+	{ GPIO_PANDAES_LED2,	GPIOF_OUT_INIT_LOW, "PANDA-ES LED 2" },
+#endif
+};
+
+void panda_init_non_configured_gpio(void)
+{
+	/* Setup non configured GPIOs if any, but release them to allow
+	 * another user to use them later. It is expected that GPIOs
+	 * some attributes will be preserved once freed (direction and 
+	 * value).
+	 */
+	if (cpu_is_omap443x()) {
+		gpio_request_array(panda_gpio_non_configured_init,
+			    ARRAY_SIZE(panda_gpio_non_configured_init));
+		gpio_free_array(panda_gpio_non_configured_init,
+			    ARRAY_SIZE(panda_gpio_non_configured_init));
+	}
+	if (cpu_is_omap446x()) {
+		gpio_request_array(pandaes_gpio_non_configured_init,
+			    ARRAY_SIZE(pandaes_gpio_non_configured_init));
+		gpio_free_array(pandaes_gpio_non_configured_init,
+			    ARRAY_SIZE(pandaes_gpio_non_configured_init));
+	}
+}
+
 static void __init omap4_panda_init(void)
 {
 	int package = OMAP_PACKAGE_CBS;
@@ -736,7 +785,7 @@ static void __init omap4_panda_init(void)
 			&lpddr2_elpida_S4_min_tck, NULL);
 
 	if (cpu_is_omap446x())
-		gpio_leds[0].gpio = 110;
+		gpio_leds[0].gpio = GPIO_PANDAES_LED1;
 
 	omap4_mux_init(board_mux, NULL, package);
 
@@ -751,6 +800,7 @@ static void __init omap4_panda_init(void)
 
 	omap4_panda_init_rev();
 	omap4_panda_i2c_init();
+	panda_init_non_configured_gpio();
 	platform_add_devices(panda_devices, ARRAY_SIZE(panda_devices));
 	platform_device_register(&omap_vwlan_device);
 	platform_device_register(&omap_vhub_device);
