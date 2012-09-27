@@ -367,6 +367,7 @@ int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
 
 	/* 2. Initialize registers of channel I/F */
 	s5p_mfc_clear_cmds(dev);
+	s5p_mfc_clean_dev_int_flags(dev);
 
 	/* 3. Release reset signal to the RISC */
 	if (IS_MFCV6(dev))
