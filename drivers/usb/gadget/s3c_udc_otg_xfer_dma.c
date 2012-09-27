@@ -511,6 +511,7 @@ static irqreturn_t s3c_udc_irq(int irq, void *_dev)
 		__raw_writel(INT_RESET, dev->regs + S3C_UDC_OTG_GINTSTS);
 
 		set_conf_done = 0;
+		udc_set_address(dev, 0);
 
 		if ((usb_status & 0xc0000) == (0x3 << 18)) {
 			if (reset_available) {
@@ -680,9 +681,8 @@ static int write_fifo_ep0(struct s3c_ep *ep, struct s3c_request *req)
 static void udc_set_address(struct s3c_udc *dev, unsigned char address)
 {
 	u32 ctrl = __raw_readl(dev->regs + S3C_UDC_OTG_DCFG);
+	ctrl &= ~(0x7F << 4);
 	__raw_writel(address << 4 | ctrl, dev->regs + S3C_UDC_OTG_DCFG);
-
-	s3c_udc_ep0_zlp(dev);
 
 	DEBUG_EP0("%s: USB OTG 2.0 Device address=%d, DCFG=0x%x\n",
 		__func__, address, __raw_readl(dev->regs + S3C_UDC_OTG_DCFG));
@@ -1299,6 +1299,8 @@ static void s3c_ep0_setup(struct s3c_udc *dev)
 			break;
 
 		udc_set_address(dev, usb_ctrl->wValue);
+		s3c_udc_ep0_zlp(dev);
+
 		return;
 
 	case USB_REQ_SET_CONFIGURATION:
