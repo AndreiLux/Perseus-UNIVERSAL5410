@@ -244,16 +244,16 @@ void drm_helper_disable_unused_functions(struct drm_device *dev)
 	struct drm_crtc *crtc;
 
 	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
-		if (!connector->encoder)
-			continue;
 		if (connector->status == connector_status_disconnected)
 			connector->encoder = NULL;
+		if (!connector->encoder)
+			connector->funcs->dpms(connector, DRM_MODE_DPMS_OFF);
 	}
 
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
 		if (!drm_helper_encoder_in_use(encoder)) {
 			drm_encoder_disable(encoder);
-			/* disconnector encoder from any connector */
+			/* disconnect encoder from any connector */
 			encoder->crtc = NULL;
 		}
 	}
