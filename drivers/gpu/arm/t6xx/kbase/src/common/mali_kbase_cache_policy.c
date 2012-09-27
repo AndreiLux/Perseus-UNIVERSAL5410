@@ -23,12 +23,6 @@
  * The output flags should be a combination of the following values:
  * KBASE_REG_CPU_CACHED: CPU cache should be enabled
  * KBASE_REG_GPU_CACHED: GPU cache should be enabled
- *
- * The input flags may contain a combination of hints:
- * BASE_MEM_HINT_CPU_RD: region heavily read CPU side
- * BASE_MEM_HINT_CPU_WR: region heavily written CPU side
- * BASE_MEM_HINT_GPU_RD: region heavily read GPU side
- * BASE_MEM_HINT_GPU_WR: region heavily written GPU side
  */
 u32 kbase_cache_enabled(u32 flags, u32 nr_pages)
 {
@@ -36,24 +30,10 @@ u32 kbase_cache_enabled(u32 flags, u32 nr_pages)
 
 	CSTD_UNUSED(nr_pages);
 
-	/* The CPU cache should be enabled for regions heavily read and written
-	 * from the CPU side
-	 */
-#ifndef CONFIG_MALI_UNCACHED
-	if ((flags & BASE_MEM_HINT_CPU_RD) && (flags & BASE_MEM_HINT_CPU_WR))
+	if (flags & BASE_MEM_CACHED)
 	{
-		cache_flags |= KBASE_REG_CPU_CACHED;
-	}
-#endif /* CONFIG_MALI_UNCACHED */
-	
-	/* The GPU cache should be enabled for regions heavily read and written
-	 * from the GPU side
-	 */
-	if ((flags & BASE_MEM_HINT_GPU_RD) && (flags & BASE_MEM_HINT_GPU_WR))
-	{
-		cache_flags |= KBASE_REG_GPU_CACHED;
+		cache_flags |= KBASE_REG_CPU_CACHED | KBASE_REG_GPU_CACHED;
 	}
 
 	return cache_flags;
 }
-
