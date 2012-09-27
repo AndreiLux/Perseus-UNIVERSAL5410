@@ -109,7 +109,7 @@ typedef struct _mali_dvfs_status_type{
 }mali_dvfs_status;
 
 static struct workqueue_struct *mali_dvfs_wq = 0;
-osk_spinlock mali_dvfs_spinlock;
+spinlock_t mali_dvfs_spinlock;
 struct mutex mali_set_clock_lock;
 struct mutex mali_enable_clock_lock;
 static int kbase_platform_dvfs_get_bw(int level);
@@ -151,6 +151,7 @@ static int mali_dvfs_update_asv(int cmd)
 
 static void mali_dvfs_event_proc(struct work_struct *w)
 {
+	unsigned long flags;
 	mali_dvfs_status *dvfs_status;
 	struct exynos_context *platform;
 
@@ -170,7 +171,7 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 		dvfs_status->asv_status=mali_dvfs_update_asv(ASV_CMD_ENABLE);
 	}
 #endif
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	spin_lock_irqsave(&mali_dvfs_spinlock, flags);
 	if (dvfs_status->utilisation > mali_dvfs_infotbl[dvfs_status->step].max_threshold) {
 		if (dvfs_status->step==kbase_platform_dvfs_get_level(450)) {
 			if (platform->utilisation > mali_dvfs_infotbl[dvfs_status->step].max_threshold)
@@ -195,7 +196,7 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 			dvfs_status->step = dvfs_status->under_lock;
 	}
 #endif
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 
 	kbase_platform_dvfs_set_level(dvfs_status->kbdev, dvfs_status->step);
 
@@ -206,12 +207,13 @@ static DECLARE_WORK(mali_dvfs_work, mali_dvfs_event_proc);
 
 int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 {
+	unsigned long flags;
 	struct exynos_context *platform;
 
 	OSK_ASSERT(kbdev != NULL);
 	platform = (struct exynos_context *) kbdev->platform_context;
 
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	spin_lock_irqsave(&mali_dvfs_spinlock, flags);
 	if (platform->time_tick < MALI_DVFS_TIME_INTERVAL) {
 		platform->time_tick++;
 		platform->time_busy += kbdev->pm.metrics.time_busy;
@@ -221,12 +223,13 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 		platform->time_idle = kbdev->pm.metrics.time_idle;
 		platform->time_tick = 0;
 	}
+
 	if ((platform->time_tick == MALI_DVFS_TIME_INTERVAL) &&
 		(platform->time_idle + platform->time_busy > 0))
 			platform->utilisation = (100*platform->time_busy) / (platform->time_idle + platform->time_busy);
 
 	mali_dvfs_status_current.utilisation = utilisation;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 
 	queue_work_on(0, mali_dvfs_wq, &mali_dvfs_work);
 	/*add error handle here*/
@@ -235,11 +238,12 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 
 int kbase_platform_dvfs_get_utilisation(void)
 {
+	unsigned long flags;
 	int utilisation = 0;
 
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	spin_lock_irqsave(&mali_dvfs_spinlock, flags);
 	utilisation = mali_dvfs_status_current.utilisation;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 
 	return utilisation;
 }
@@ -275,13 +279,13 @@ int kbase_platform_dvfs_enable(bool enable, int freq)
 	mutex_lock(&mali_enable_clock_lock);
 
 	if (freq != MALI_DVFS_CURRENT_FREQ) {
-		osk_spinlock_lock(&mali_dvfs_spinlock);
+		spin_lock_irqsave(&mali_dvfs_spinlock, flags);
 		platform->time_tick = 0;
 		platform->time_busy = 0;
 		platform->time_idle = 0;
 		platform->utilisation = 0;
 		dvfs_status->step = kbase_platform_dvfs_get_level(freq);
-		osk_spinlock_unlock(&mali_dvfs_spinlock);
+		spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 
 		kbase_platform_dvfs_set_level(dvfs_status->kbdev, dvfs_status->step);
 	}
@@ -311,20 +315,21 @@ int kbase_platform_dvfs_enable(bool enable, int freq)
 
 int kbase_platform_dvfs_init(struct kbase_device *kbdev)
 {
+	unsigned long flags;
 	/*default status
 	  add here with the right function to get initilization value.
 	 */
 	if (!mali_dvfs_wq)
 		mali_dvfs_wq = create_singlethread_workqueue("mali_dvfs");
 
-	osk_spinlock_init(&mali_dvfs_spinlock,OSK_LOCK_ORDER_PM_METRICS);
+	spin_lock_init(&mali_dvfs_spinlock);
 	mutex_init(&mali_set_clock_lock);
 	mutex_init(&mali_enable_clock_lock);
 
 	pm_qos_add_request(&mem_bw_req, PM_QOS_MEMORY_THROUGHPUT, -1);
 
 	/*add a error handling here*/
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	spin_lock_irqsave(&mali_dvfs_spinlock, flags);
 	mali_dvfs_status_current.kbdev = kbdev;
 	mali_dvfs_status_current.utilisation = 100;
 	mali_dvfs_status_current.step = MALI_DVFS_STEP-1;
@@ -335,7 +340,7 @@ int kbase_platform_dvfs_init(struct kbase_device *kbdev)
 #ifdef MALI_DVFS_ASV_ENABLE
 	mali_dvfs_status_current.asv_status=ASV_STATUS_NOT_INIT;
 #endif
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 
 	return MALI_TRUE;
 }
@@ -362,51 +367,55 @@ static int kbase_platform_dvfs_get_bw(int level)
 
 int mali_get_dvfs_upper_locked_freq(void)
 {
+	unsigned long flags;
 	unsigned int locked_level = -1;
 
 #ifdef CONFIG_MALI_T6XX_FREQ_LOCK
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	spin_lock_irqsave(&mali_dvfs_spinlock, flags);
 	locked_level = mali_dvfs_infotbl[mali_dvfs_status_current.upper_lock].clock;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 #endif
 	return locked_level;
 }
 
 int mali_get_dvfs_under_locked_freq(void)
 {
+	unsigned long flags;
 	unsigned int locked_level = -1;
 
 #ifdef CONFIG_MALI_T6XX_FREQ_LOCK
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	spin_lock_irqsave(&mali_dvfs_spinlock, flags);
 	locked_level = mali_dvfs_infotbl[mali_dvfs_status_current.under_lock].clock;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 #endif
 	return locked_level;
 }
 
 int mali_get_dvfs_current_level(void)
 {
+	unsigned long flags;
 	unsigned int current_level = -1;
 
 #ifdef CONFIG_MALI_T6XX_FREQ_LOCK
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	spin_lock_irqsave(&mali_dvfs_spinlock, flags);
 	current_level = mali_dvfs_status_current.step;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 #endif
 	return current_level;
 }
 
 int mali_dvfs_freq_lock(int level)
 {
+	unsigned long flags;
 #ifdef CONFIG_MALI_T6XX_FREQ_LOCK
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	spin_lock_irqsave(&mali_dvfs_spinlock, flags);
 	if (mali_dvfs_status_current.under_lock >= 0) {
 		printk( KERN_ERR "[G3D] Upper lock Error : Under lock is already set\n");
-		osk_spinlock_unlock(&mali_dvfs_spinlock);
+		spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 		return -1;
 	}
 	mali_dvfs_status_current.upper_lock = level;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 
 	printk( "[G3D] Upper Lock Set : %d\n", level );
 #endif
@@ -414,10 +423,11 @@ int mali_dvfs_freq_lock(int level)
 }
 void mali_dvfs_freq_unlock(void)
 {
+	unsigned long flags;
 #ifdef CONFIG_MALI_T6XX_FREQ_LOCK
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	spin_lock_irqsave(&mali_dvfs_spinlock, flags);
 	mali_dvfs_status_current.upper_lock = -1;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 #endif
 
 	printk("[G3D] Upper Lock Unset\n");
@@ -425,15 +435,16 @@ void mali_dvfs_freq_unlock(void)
 
 int mali_dvfs_freq_under_lock(int level)
 {
+	unsigned long flags;
 #ifdef CONFIG_MALI_T6XX_FREQ_LOCK
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	spin_lock_irqsave(&mali_dvfs_spinlock, flags);
 	if (mali_dvfs_status_current.upper_lock >= 0) {
 		printk( KERN_ERR "[G3D] Under lock Error : Upper lock is already set\n");
-		osk_spinlock_unlock(&mali_dvfs_spinlock);
+		spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 		return -1;
 	}
 	mali_dvfs_status_current.under_lock = level;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 
 	printk( "[G3D] Under Lock Set : %d\n", level );
 #endif
@@ -441,10 +452,11 @@ int mali_dvfs_freq_under_lock(int level)
 }
 void mali_dvfs_freq_under_unlock(void)
 {
+	unsigned long flags;
 #ifdef CONFIG_MALI_T6XX_FREQ_LOCK
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	spin_lock_irqsave(&mali_dvfs_spinlock, flags);
 	mali_dvfs_status_current.under_lock = -1;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 #endif
 	printk("[G3D] Under Lock Unset\n");
 }
@@ -716,14 +728,15 @@ int kbase_platform_dvfs_sprint_avs_table(char *buf)
 
 int kbase_platform_dvfs_set(int enable)
 {
+	unsigned long flags;
 #ifdef MALI_DVFS_ASV_ENABLE
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	spin_lock_irqsave(&mali_dvfs_spinlock, flags);
 	if (enable) {
 		mali_dvfs_status_current.asv_status=ASV_STATUS_NOT_INIT;
 	} else {
 		mali_dvfs_status_current.asv_status=ASV_STATUS_DISABLE_REQ;
 	}
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	spin_unlock_irqrestore(&mali_dvfs_spinlock, flags);
 #endif
 	return 0;
 }
