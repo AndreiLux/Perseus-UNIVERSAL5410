@@ -197,9 +197,6 @@ void kbase_jd_free_external_resources(kbase_jd_atom *katom)
 		kds_resource_set_release(&katom->kds_rset);
 	}
 #endif /* CONFIG_KDS */
-	if (katom->nr_extres){
-		osk_free(katom->extres);
-	}
 }
 
 static void kbase_jd_post_external_resources(kbase_jd_atom * katom)
@@ -219,10 +216,10 @@ static void kbase_jd_post_external_resources(kbase_jd_atom * katom)
 	/* Lock also used in debug mode just for lock order checking */
 	kbase_gpu_vm_lock(katom->kctx);
 #endif /* defined(CONFIG_DMA_SHARED_BUFFER) || defined(CONFIG_MALI_DEBUG) */
-#ifdef CONFIG_DMA_SHARED_BUFFER
 	/* only roll back if extres is non-NULL */
 	if (katom->extres)
 	{
+#ifdef CONFIG_DMA_SHARED_BUFFER
 		u32 res_no;
 		res_no = katom->nr_extres;
 		while (res_no-- > 0)
@@ -242,8 +239,10 @@ static void kbase_jd_post_external_resources(kbase_jd_atom * katom)
 				}
 			}
 		}
-	}
 #endif /* CONFIG_DMA_SHARED_BUFFER */
+		kfree(katom->extres);
+		katom->extres = NULL;
+	}
 #if defined(CONFIG_DMA_SHARED_BUFFER) || defined(CONFIG_MALI_DEBUG)
 	/* Lock also used in debug mode just for lock order checking */
 	kbase_gpu_vm_unlock(katom->kctx);
@@ -289,7 +288,7 @@ static mali_error kbase_jd_pre_external_resources(kbase_jd_atom * katom, const b
 		return MALI_ERROR_FUNCTION_FAILED;
 	}
 
-	katom->extres = osk_malloc(sizeof(base_external_resource)*katom->nr_extres);
+	katom->extres = kmalloc(sizeof(base_external_resource)*katom->nr_extres, GFP_KERNEL);
 	if (NULL == katom->extres)
 	{
 		err_ret_val = MALI_ERROR_OUT_OF_MEMORY;
@@ -481,7 +480,7 @@ failed_loop:
 early_err_out:
 	if (katom->extres)
 	{
-		osk_free(katom->extres);
+		kfree(katom->extres);
 		katom->extres = NULL;
 	}
 #ifdef CONFIG_KDS
