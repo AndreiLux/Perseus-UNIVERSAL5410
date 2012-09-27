@@ -331,7 +331,8 @@ static void omap4plus_scm_save_ctxt(struct scm *scm_ptr)
 
 	for (i = 0; i < scm_ptr->cnt; i++) {
 
-		pr_err("omap4plus_scm_save_ctxt: %d / %d\n", i + 1, scm_ptr->cnt);
+		pr_debug("omap4plus_scm_save_ctxt: %d / %d\n",
+				i + 1, scm_ptr->cnt);
 
 		if (!scm_ptr->registers[i])
 			continue;
@@ -355,7 +356,7 @@ static void omap4plus_scm_save_ctxt(struct scm *scm_ptr)
 			omap4plus_scm_readl(scm_ptr,
 				scm_ptr->registers[i]->tshut_threshold);
 
-		pr_err("omap4plus_scm_save_ctxt: %d done\n", i);
+		pr_debug("omap4plus_scm_save_ctxt: %d done\n", i);
 	}
 }
 
