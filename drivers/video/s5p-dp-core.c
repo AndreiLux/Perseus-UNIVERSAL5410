@@ -1131,6 +1131,10 @@ static void s5p_dp_disable(struct s5p_dp_device *dp)
 	if (pdata->backlight_off)
 		pdata->backlight_off();
 
+	s5p_dp_reset(dp);
+	s5p_dp_set_pll_power_down(dp, 1);
+	s5p_dp_set_analog_power_down(dp, POWER_ALL, 1);
+
 	if (pdata && pdata->phy_exit)
 		pdata->phy_exit();
 
