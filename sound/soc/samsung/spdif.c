@@ -13,6 +13,7 @@
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/module.h>
+#include <linux/pm_runtime.h>
 
 #include <sound/soc.h>
 #include <sound/pcm_params.h>
@@ -198,6 +199,7 @@ static int spdif_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
+	pm_runtime_get_sync(spdif->dev);
 	snd_soc_dai_set_dma_data(rtd->cpu_dai, substream, dma_data);
 
 	spin_lock_irqsave(&spdif->lock, flags);
@@ -297,6 +299,8 @@ static void spdif_shutdown(struct snd_pcm_substream *substream,
 	cpu_relax();
 
 	writel(clkcon & ~CLKCTL_PWR_ON, regs + CLKCON);
+
+	pm_runtime_put_sync(spdif->dev);
 }
 
 #ifdef CONFIG_PM
@@ -423,6 +427,7 @@ static __devinit int spdif_probe(struct platform_device *pdev)
 	}
 
 	dev_set_drvdata(&pdev->dev, spdif);
+	pm_runtime_enable(spdif->dev);
 
 	ret = snd_soc_register_dai(&pdev->dev, &samsung_spdif_dai);
 	if (ret != 0) {
@@ -437,9 +442,13 @@ static __devinit int spdif_probe(struct platform_device *pdev)
 
 	spdif->dma_playback = &spdif_stereo_out;
 
+	clk_disable(spdif->sclk);
+	clk_disable(spdif->pclk);
+
 	return 0;
 
 err4:
+	pm_runtime_disable(spdif->dev);
 	iounmap(spdif->regs);
 err3:
 	release_mem_region(mem_res->start, resource_size(mem_res));
@@ -466,13 +475,46 @@ static __devexit int spdif_remove(struct platform_device *pdev)
 	if (mem_res)
 		release_mem_region(mem_res->start, resource_size(mem_res));
 
-	clk_disable(spdif->sclk);
+	pm_runtime_put_sync(spdif->dev);
+	pm_runtime_disable(spdif->dev);
+
 	clk_put(spdif->sclk);
-	clk_disable(spdif->pclk);
 	clk_put(spdif->pclk);
 
 	return 0;
 }
+
+static int spdif_runtime_suspend(struct device *dev)
+{
+	struct samsung_spdif_info *spdif = dev_get_drvdata(dev);
+
+	dev_dbg(spdif->dev, "Entered %s\n", __func__);
+
+	clk_disable(spdif->sclk);
+	clk_disable(spdif->pclk);
+
+	return 0;
+}
+
+static int spdif_runtime_resume(struct device *dev)
+{
+	struct samsung_spdif_info *spdif = dev_get_drvdata(dev);
+
+	dev_dbg(spdif->dev, "Entered %s\n", __func__);
+
+	clk_enable(spdif->pclk);
+	clk_enable(spdif->sclk);
+
+	return 0;
+}
+
+static const struct dev_pm_ops spdif_pmops = {
+	SET_RUNTIME_PM_OPS(
+		spdif_runtime_suspend,
+		spdif_runtime_resume,
+		NULL
+	)
+};
 
 static struct platform_driver samsung_spdif_driver = {
 	.probe	= spdif_probe,
@@ -480,6 +522,7 @@ static struct platform_driver samsung_spdif_driver = {
 	.driver	= {
 		.name	= "samsung-spdif",
 		.owner	= THIS_MODULE,
+		.pm	= &spdif_pmops,
 	},
 };
 
