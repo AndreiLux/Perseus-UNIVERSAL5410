@@ -476,7 +476,7 @@ void dispc_mgr_go(enum omap_channel channel)
 	else
 		go_bit = REG_GET(DISPC_CONTROL, bit, bit) == 1;
 
-	if (go_bit) {
+	if (WARN_ON(go_bit)) {
 		DSSERR("GO bit not down for channel %d\n", channel);
 		return;
 	}
@@ -3151,6 +3151,7 @@ void dispc_find_clk_divs(bool is_tft, unsigned long req_pck, unsigned long fck,
 	unsigned long best_pck;
 	u16 best_ld, cur_ld;
 	u16 best_pd, cur_pd;
+	u16 lcd_min, lcd_max;
 
 	pcd_min = dss_feat_get_param_min(FEAT_PARAM_DSS_PCD);
 	pcd_max = dss_feat_get_param_max(FEAT_PARAM_DSS_PCD);
@@ -3162,7 +3163,20 @@ void dispc_find_clk_divs(bool is_tft, unsigned long req_pck, unsigned long fck,
 	best_ld = 0;
 	best_pd = 0;
 
-	for (cur_ld = 1; cur_ld <= 255; ++cur_ld) {
+	lcd_min = 1;
+	lcd_max = 255;
+
+	if (cinfo->lck_div) {
+		lcd_min = lcd_max = cinfo->lck_div;
+		//printk("locking lcd to %d\n", lcd_min);
+	}
+
+	if (cinfo->pck_div) {
+		pcd_min = pcd_max = cinfo->pck_div;
+		//printk("locking pcd to %d\n", pcd_min);
+	}
+
+	for (cur_ld = lcd_min; cur_ld <= lcd_max; ++cur_ld) {
 		unsigned long lck = fck / cur_ld;
 
 		for (cur_pd = pcd_min; cur_pd <= pcd_max; ++cur_pd) {

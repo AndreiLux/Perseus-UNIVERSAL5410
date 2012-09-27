@@ -294,6 +294,8 @@ void dsi_irq_handler(void);
 u8 dsi_get_pixel_size(enum omap_dss_dsi_pixel_format fmt);
 
 unsigned long dsi_get_pll_hsdiv_dispc_rate(struct platform_device *dsidev);
+int dsi_calc_clock_rates(struct platform_device *dsidev,
+		struct dsi_clock_info *cinfo);
 int dsi_pll_set_clock_div(struct platform_device *dsidev,
 		struct dsi_clock_info *cinfo);
 int dsi_pll_calc_clock_div_pck(struct platform_device *dsidev, bool is_tft,

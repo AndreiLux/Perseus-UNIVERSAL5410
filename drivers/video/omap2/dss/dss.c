@@ -515,7 +515,7 @@ int dss_calc_clock_div(bool is_tft, unsigned long req_pck,
 
 	unsigned long fck, max_dss_fck;
 
-	u16 fck_div, fck_div_max = 16;
+	u16 fck_div;
 
 	int match = 0;
 	int min_fck_per_pck;
@@ -525,6 +525,7 @@ int dss_calc_clock_div(bool is_tft, unsigned long req_pck,
 	max_dss_fck = dss_feat_get_param_max(FEAT_PARAM_DSS_FCK);
 
 	fck = clk_get_rate(dss.dss_clk);
+	/*
 	if (req_pck == dss.cache_req_pck &&
 			((cpu_is_omap34xx() && prate == dss.cache_prate) ||
 			 dss.cache_dss_cinfo.fck == fck)) {
@@ -533,7 +534,7 @@ int dss_calc_clock_div(bool is_tft, unsigned long req_pck,
 		*dispc_cinfo = dss.cache_dispc_cinfo;
 		return 0;
 	}
-
+*/
 	min_fck_per_pck = CONFIG_OMAP2_DSS_MIN_FCK_PER_PCK;
 
 	if (min_fck_per_pck &&
@@ -564,16 +565,32 @@ retry:
 
 		goto found;
 	} else {
-		if (cpu_is_omap3630() || cpu_is_omap44xx())
-			fck_div_max = 32;
+		u16 fck_div_max;
+		u16 fck_div_min;
+		bool no_x2;
 
-		if (cpu_is_omap54xx())
-			fck_div_max = 64;
+		if (cpu_is_omap3630() || cpu_is_omap44xx()) {
+ 			fck_div_max = 32;
+			no_x2 = true;
+		} else if (cpu_is_omap54xx()) {
+ 			fck_div_max = 64;
+			no_x2 = true;
+		} else {
+			fck_div_max = 16;
+			no_x2 = false;
+		}
 
-		for (fck_div = fck_div_max; fck_div > 0; --fck_div) {
+		fck_div_min = 1;
+
+		if (dss_cinfo->fck_div) {
+			fck_div_min = fck_div_max = dss_cinfo->fck_div;
+			printk("lock fck to %d\n", fck_div_min);
+		}
+
+		for (fck_div = fck_div_max; fck_div >= fck_div_min; --fck_div) {
 			struct dispc_clock_info cur_dispc;
 
-			if (fck_div_max == 32 || fck_div_max == 64)
+			if (no_x2) // XXX
 				fck = prate / fck_div;
 			else
 				fck = prate / fck_div * 2;
@@ -586,6 +603,8 @@ retry:
 				continue;
 
 			match = 1;
+
+			cur_dispc = *dispc_cinfo;
 
 			dispc_find_clk_divs(is_tft, req_pck, fck, &cur_dispc);
 

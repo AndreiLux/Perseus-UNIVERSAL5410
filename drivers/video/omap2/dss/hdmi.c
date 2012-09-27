@@ -408,6 +408,26 @@ static int hdmi_power_on(struct omap_dss_device *dssdev)
 	 */
 	dss_select_dispc_clk_source(dssdev->clocks.dispc.dispc_fclk_src);
 
+	if (dssdev->clocks.fck_div) {
+		struct dss_clock_info dss_cinfo;
+
+		memset(&dss_cinfo, 0, sizeof(dss_cinfo));
+
+		dss_cinfo.fck_div = dssdev->clocks.fck_div;
+
+		r = dss_calc_clock_rates(&dss_cinfo);
+		if (r) {
+			printk("calc failed\n");
+			return r;
+		}
+
+		r = dss_set_clock_div(&dss_cinfo);
+		if (r) {
+			printk("set failed\n");
+			return r;
+		}
+	}
+
 	/* bypass TV gamma table */
 	dispc_enable_gamma_table(0);
 

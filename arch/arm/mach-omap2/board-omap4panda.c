@@ -593,6 +593,9 @@ struct omap_dss_device omap4_panda_dvi_device = {
 	.phy.dpi.data_lines	= 24,
 	.reset_gpio		= PANDA_DVI_TFP410_POWER_DOWN_GPIO,
 	.channel		= OMAP_DSS_CHANNEL_LCD2,
+	.clocks.fck_div		= 9,
+	.clocks.dispc.channel.lcd_clk_src = OMAP_DSS_CLK_SRC_DSI2_PLL_HSDIV_DISPC,
+	.clocks.dispc.dispc_fclk_src = OMAP_DSS_CLK_SRC_DSI2_PLL_HSDIV_DISPC,
 };
 
 
@@ -634,6 +637,7 @@ static struct omap_dss_device  omap4_panda_hdmi_device = {
 	.platform_disable = omap4_panda_panel_disable_hdmi,
 	.channel = OMAP_DSS_CHANNEL_DIGIT,
 	.data = &omap4_panda_hdmi_data,
+	.clocks.fck_div = 9,
 };
 
 static struct omap_dss_device *omap4_panda_dss_devices[] = {
