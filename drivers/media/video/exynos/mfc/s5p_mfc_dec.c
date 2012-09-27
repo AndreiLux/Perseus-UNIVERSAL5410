@@ -1528,10 +1528,17 @@ static int vidioc_streamon(struct file *file, void *priv,
 	int ret = -EINVAL;
 
 	mfc_debug_enter();
-	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		ret = vb2_streamon(&ctx->vq_src, type);
-	else
+	} else if (type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		ret = vb2_streamon(&ctx->vq_dst, type);
+
+		if (!ret) {
+			ctx->mfc_int_handle_poll = exynos5_bus_int_poll();
+			if (!ctx->mfc_int_handle_poll)
+				mfc_err("Failed to request INT poll()\n");
+		}
+	}
 	mfc_debug(2, "ctx->src_queue_cnt = %d ctx->state = %d "
 		  "ctx->dst_queue_cnt = %d ctx->dpb_count = %d\n",
 		  ctx->src_queue_cnt, ctx->state, ctx->dst_queue_cnt,
@@ -1549,10 +1556,17 @@ static int vidioc_streamoff(struct file *file, void *priv,
 
 	mfc_debug_enter();
 	ret = -EINVAL;
-	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		ret = vb2_streamoff(&ctx->vq_src, type);
-	else
+	} else if (type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		ret = vb2_streamoff(&ctx->vq_dst, type);
+		if (!ret) {
+			if (ctx->mfc_int_handle_poll) {
+				exynos5_bus_int_put(ctx->mfc_int_handle_poll);
+				ctx->mfc_int_handle_poll = NULL;
+			}
+		}
+	}
 	mfc_debug_leave();
 	return ret;
 }

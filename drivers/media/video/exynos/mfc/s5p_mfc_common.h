@@ -27,6 +27,8 @@
 
 #include <media/videobuf2-core.h>
 
+#include <mach/exynos5_bus.h>
+
 #define MFC_MAX_EXTRA_DPB       5
 #define MFC_MAX_BUFFERS		32
 #define MFC_MAX_REF_BUFS	2
@@ -619,6 +621,9 @@ struct s5p_mfc_ctx {
 
 	/* for DRM */
 	int is_drm;
+
+	/* for PPMU monitoring */
+	struct exynos5_bus_int_handle *mfc_int_handle_poll;
 };
 
 #define fh_to_mfc_ctx(x)	\
