@@ -490,18 +490,9 @@ static bool hdmi_detect(struct omap_dss_device *dssdev)
 
 	mutex_lock(&hdmi.lock);
 
-	if (dssdev->state != OMAP_DSS_DISPLAY_ACTIVE) {
-		r = omapdss_hdmi_display_enable(dssdev);
-		if (r)
-			goto err;
-	}
-
 	r = omapdss_hdmi_detect();
+	DSSDBG("%s : %d\n", __func__, r);
 
-	if (dssdev->state == OMAP_DSS_DISPLAY_DISABLED ||
-			dssdev->state == OMAP_DSS_DISPLAY_SUSPENDED)
-		omapdss_hdmi_display_disable(dssdev);
-err:
 	mutex_unlock(&hdmi.lock);
 
 	return r;
