@@ -225,8 +225,9 @@ static void complete_rx(struct s3c_udc *dev, u8 ep_num)
 
 	if (is_short || req->req.actual == xfer_length) {
 		if (ep_num == EP0_CON && dev->ep0state == DATA_STATE_RECV) {
+			done(ep, req, 0);
 			DEBUG_OUT_EP("	=> Send ZLP\n");
-			dev->ep0state = WAIT_FOR_SETUP;
+			dev->ep0state = WAIT_FOR_OUT_STATUS;
 			s3c_udc_ep0_zlp(dev);
 		} else {
 			done(ep, req, 0);
@@ -247,7 +248,14 @@ static void complete_tx(struct s3c_udc *dev, u8 ep_num)
 	struct s3c_ep *ep = &dev->ep[ep_num];
 	struct s3c_request *req;
 	u32 ep_tsr = 0, xfer_size = 0, xfer_length, is_short = 0;
-	u32 last;
+
+	if (ep_num == EP0_CON && dev->ep0state == WAIT_FOR_OUT_STATUS) {
+		DEBUG_IN_EP("%s: EP-%d WAIT_FOR_OUT_STATUS -> WAIT_FOR_SETUP\n",
+					__func__, ep_num);
+		/* zlp transmitted */
+		dev->ep0state = WAIT_FOR_SETUP;
+		return;
+	}
 
 	if (list_empty(&ep->queue)) {
 		DEBUG_IN_EP("%s: TX DMA done : NULL REQ on IN EP-%d\n",
@@ -257,14 +265,11 @@ static void complete_tx(struct s3c_udc *dev, u8 ep_num)
 
 	req = list_entry(ep->queue.next, struct s3c_request, queue);
 
-	if (dev->ep0state == DATA_STATE_XMIT) {
+	if (ep_num == EP0_CON && dev->ep0state == DATA_STATE_XMIT) {
 		DEBUG_IN_EP("%s: ep_num = %d, ep0stat == DATA_STATE_XMIT\n",
 					__func__, ep_num);
 
-		last = write_fifo_ep0(ep, req);
-
-		if (last)
-			dev->ep0state = WAIT_FOR_SETUP;
+		write_fifo_ep0(ep, req);
 
 		return;
 	}
@@ -353,9 +358,6 @@ static void process_ep_in_intr(struct s3c_udc *dev)
 				complete_tx(dev, ep_num);
 
 				if (ep_num == 0) {
-					if (dev->ep0state == WAIT_FOR_SETUP)
-						s3c_udc_pre_setup(dev);
-
 					/* continue transfer after
 						set_clear_halt for DMA mode */
 					if (clear_feature_flag == 1) {
@@ -375,7 +377,6 @@ static void process_ep_out_intr(struct s3c_udc *dev)
 {
 	u32 ep_intr, ep_intr_status;
 	u8 ep_num = 0;
-	u32 ep_ctrl = 0;
 	ep_intr = __raw_readl(dev->regs + S3C_UDC_OTG_DAINT);
 	DEBUG_OUT_EP("*** %s: EP OUT interrupt : DAINT = 0x%x\n",
 				__func__, ep_intr);
@@ -401,30 +402,10 @@ static void process_ep_out_intr(struct s3c_udc *dev)
 						"arrived\n");
 					s3c_handle_ep0(dev);
 				}
-
-				if (ep_intr_status & TRANSFER_DONE) {
-					complete_rx(dev, ep_num);
-					__raw_writel((3<<29) | (1 << 19) |
-						sizeof(struct usb_ctrlrequest),
-						dev->regs +
-						S3C_UDC_OTG_DOEPTSIZ(EP0_CON));
-					__raw_writel(dev->usb_ctrl_dma,
-						dev->regs +
-						S3C_UDC_OTG_DOEPDMA(EP0_CON));
-
-					ep_ctrl = readl(dev->regs +
-						S3C_UDC_OTG_DOEPCTL(EP0_CON));
-					__raw_writel(ep_ctrl |
-						DEPCTL_EPENA |
-						DEPCTL_SNAK,
-						dev->regs +
-						S3C_UDC_OTG_DOEPCTL(EP0_CON));
-				}
-
-			} else {
-				if (ep_intr_status & TRANSFER_DONE)
-					complete_rx(dev, ep_num);
 			}
+
+			if (ep_intr_status & TRANSFER_DONE)
+				complete_rx(dev, ep_num);
 		}
 		ep_num++;
 		ep_intr >>= 1;
@@ -520,7 +501,6 @@ static irqreturn_t s3c_udc_irq(int irq, void *_dev)
 				reset_usbd();
 				dev->ep0state = WAIT_FOR_SETUP;
 				reset_available = 0;
-				s3c_udc_pre_setup(dev);
 			} else
 				reset_available = 1;
 		} else {
@@ -540,6 +520,9 @@ static irqreturn_t s3c_udc_irq(int irq, void *_dev)
 
 	if (intr_status & INT_OUT_EP)
 		process_ep_out_intr(dev);
+
+	if (dev->ep0state == WAIT_FOR_SETUP)
+		s3c_udc_pre_setup(dev);
 
 	spin_unlock_irqrestore(&dev->lock, flags);
 
@@ -664,6 +647,7 @@ static int write_fifo_ep0(struct s3c_ep *ep, struct s3c_request *req)
 
 	/* requests complete when all IN data is in the FIFO */
 	if (is_last) {
+		DEBUG_EP0("%s: last packet\n", __func__);
 		ep->dev->ep0state = WAIT_FOR_SETUP;
 		return 1;
 	}
@@ -714,8 +698,6 @@ static inline void s3c_udc_ep0_set_stall(struct s3c_ep *ep)
 	 * when a SETUP token is received for this endpoint
 	 */
 	dev->ep0state = WAIT_FOR_SETUP;
-
-	s3c_udc_pre_setup(dev);
 }
 
 static void s3c_ep0_read(struct s3c_udc *dev)
@@ -773,16 +755,7 @@ static int s3c_ep0_write(struct s3c_udc *dev)
 	DEBUG_EP0("%s: req = %p, req.length = 0x%x, req.actual = 0x%x\n",
 		__func__, req, req->req.length, req->req.actual);
 
-	ret = write_fifo_ep0(ep, req);
-
-	if (ret == 1) {
-		/* Last packet */
-		dev->ep0state = WAIT_FOR_SETUP;
-		DEBUG_EP0("%s: finished, waiting for status\n", __func__);
-	} else {
-		dev->ep0state = DATA_STATE_XMIT;
-		DEBUG_EP0("%s: not finished\n", __func__);
-	}
+	write_fifo_ep0(ep, req);
 
 	return 1;
 }
