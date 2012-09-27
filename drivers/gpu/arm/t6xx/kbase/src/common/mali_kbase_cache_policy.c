@@ -30,9 +30,14 @@ u32 kbase_cache_enabled(u32 flags, u32 nr_pages)
 
 	CSTD_UNUSED(nr_pages);
 
-	if (flags & BASE_MEM_CACHED)
+	if (flags & BASE_MEM_CACHED_CPU)
 	{
-		cache_flags |= KBASE_REG_CPU_CACHED | KBASE_REG_GPU_CACHED;
+		cache_flags |= KBASE_REG_CPU_CACHED;
+	}
+
+	if (flags & BASE_MEM_CACHED_GPU)
+	{
+		cache_flags |= KBASE_REG_GPU_CACHED;
 	}
 
 	return cache_flags;

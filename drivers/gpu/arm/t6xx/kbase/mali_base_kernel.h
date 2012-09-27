@@ -113,13 +113,14 @@ enum
 	BASE_MEM_PROT_GPU_RD =      (1U << 2), /**< Read access GPU side */
 	BASE_MEM_PROT_GPU_WR =      (1U << 3), /**< Write access GPU side */
 	BASE_MEM_PROT_GPU_EX =      (1U << 4), /**< Execute allowed on the GPU side */
-	BASE_MEM_CACHED      =      (1U << 5), /**< Should be cached */
+	BASE_MEM_CACHED_GPU  =      (1U << 5), /**< Should be cached */
+	BASE_MEM_CACHED_CPU  =      (1U << 6), /**< Should be cached */
 
-	BASEP_MEM_GROWABLE   =      (1U << 6), /**< Growable memory. This is a private flag that is set automatically. Not valid for PMEM. */
-	BASE_MEM_GROW_ON_GPF =      (1U << 7), /**< Grow backing store on GPU Page Fault */
+	BASEP_MEM_GROWABLE   =      (1U << 7), /**< Growable memory. This is a private flag that is set automatically. Not valid for PMEM. */
+	BASE_MEM_GROW_ON_GPF =      (1U << 8), /**< Grow backing store on GPU Page Fault */
 
-	BASE_MEM_COHERENT_SYSTEM =  (1U << 8),/**< Page coherence Outer shareable */
-	BASE_MEM_COHERENT_LOCAL =   (1U << 9) /**< Page coherence Inner shareable */
+	BASE_MEM_COHERENT_SYSTEM =  (1U << 9), /**< Page coherence Outer shareable */
+	BASE_MEM_COHERENT_LOCAL =   (1U << 10) /**< Page coherence Inner shareable */
 };
 
 /**
@@ -159,7 +160,7 @@ enum
  *
  * Must be kept in sync with the ::base_mem_alloc_flags flags
  */
-#define BASE_MEM_FLAGS_NR_BITS  10
+#define BASE_MEM_FLAGS_NR_BITS  11
 
 /**
  * @brief Result codes of changing the size of the backing store allocated to a tmem region
