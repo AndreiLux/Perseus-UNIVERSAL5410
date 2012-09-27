@@ -254,10 +254,20 @@ static int omap_dss_suspend(struct platform_device *pdev, pm_message_t state)
 	return dss_suspend_all_devices();
 }
 
+#if defined(CONFIG_PM) && defined(CONFIG_DRM_OMAP)
+extern int omap_dmm_resume(void);
+#else
+static inline int omap_dmm_resume(void)
+{
+	return 0;
+}
+#endif
+
 static int omap_dss_resume(struct platform_device *pdev)
 {
 	DSSDBG("resume\n");
 
+	omap_dmm_resume();
 	return dss_resume_all_devices();
 }
 

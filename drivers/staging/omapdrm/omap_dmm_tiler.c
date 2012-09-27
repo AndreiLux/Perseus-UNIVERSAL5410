@@ -943,7 +943,12 @@ error:
 #endif
 
 #ifdef CONFIG_PM
-static int omap_dmm_resume(struct device *dev)
+/*
+ * omap_dmm_resume() is called directly by DSS core just before it resumes
+ * the controller so that the PAT entries would be valid before any memory
+ * access
+ */
+int omap_dmm_resume(void)
 {
 	struct page **pages;
 	struct tcm_area area = {0};
@@ -951,7 +956,7 @@ static int omap_dmm_resume(struct device *dev)
 	int i, j;
 
 	if (!dmm_is_initialized()) {
-		dev_err(dev, "%s: DMM not initialized\n", __func__);
+		pr_err("%s: DMM not initialized\n", __func__);
 		return -ENODEV;
 	}
 
@@ -959,7 +964,7 @@ static int omap_dmm_resume(struct device *dev)
 	pages = kmalloc(number_slots * sizeof(*pages), GFP_KERNEL);
 
 	if (!pages) {
-		dev_err(dev, "%s: Failed to allocate page structures\n",
+		pr_err("%s: Failed to allocate page structures\n",
 				__func__);
 		return -ENOMEM;
 	}
@@ -983,16 +988,13 @@ static int omap_dmm_resume(struct device *dev)
 			dev_err(omap_dmm->dev, "refill failed");
 	}
 
-	dev_info(omap_dmm->dev, "%s: omap_dmm_resume:PAT entries restored\n",
+	pr_debug("%s: omap_dmm_resume:PAT entries restored\n",
 			__func__);
 
 	kfree(pages);
 	return 0;
 }
 
-static const struct dev_pm_ops omap_dmm_pm_ops = {
-	.resume = omap_dmm_resume,
-};
 #endif
 
 struct platform_driver omap_dmm_driver = {
@@ -1001,9 +1003,6 @@ struct platform_driver omap_dmm_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = DMM_DRIVER_NAME,
-#ifdef CONFIG_PM
-		.pm = &omap_dmm_pm_ops,
-#endif
 	},
 };
 
