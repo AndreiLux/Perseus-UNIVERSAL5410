@@ -227,32 +227,60 @@ static void s3c_convert_done(struct s3c_adc_client *client,
 	wake_up(client->wait);
 }
 
+/* Get the result out of the client with locking.
+ *
+ * It's expected that the irq is filling in the result of the client, so we
+ * should be locking access to it.
+ */
+static int s3c_get_result(struct s3c_adc_client *client)
+{
+	unsigned long flags;
+	int result;
+
+	spin_lock_irqsave(&adc_dev->lock, flags);
+	result = client->result;
+	spin_unlock_irqrestore(&adc_dev->lock, flags);
+
+	return result;
+}
+
 int s3c_adc_read(struct s3c_adc_client *client, unsigned int ch)
 {
+	unsigned long flags;
 	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wake);
 	int ret;
 
+	/* Lock around access of client members.  Technically all that's really
+	 * required is a memory barrier after we've set all of these things
+	 * (since nobody else can access this structure until it's placed
+	 * into adc_pending), but it seems cleaner to just lock.
+	 */
+	spin_lock_irqsave(&adc_dev->lock, flags);
 	client->convert_cb = s3c_convert_done;
 	client->wait = &wake;
 	client->result = -1;
+	spin_unlock_irqrestore(&adc_dev->lock, flags);
 
 	ret = s3c_adc_start(client, ch, 1);
 	if (ret < 0)
-		goto err;
+		goto exit;
 
-	ret = wait_event_timeout(wake, client->result >= 0, HZ / 2);
-	if (client->result < 0) {
+	wait_event_timeout(wake, s3c_get_result(client) >= 0, HZ / 2);
+	ret = s3c_get_result(client);
+
+	if (ret < 0) {
 		s3c_adc_stop(client);
 		dev_warn(&adc_dev->pdev->dev, "%s: %p is timed out\n",
 						__func__, client);
 		ret = -ETIMEDOUT;
-		goto err;
 	}
 
+exit:
+	/* Don't bother locking around this; nobody else should be carrying
+	 * a pointer to the client anymore.
+	 */
 	client->convert_cb = NULL;
-	return client->result;
 
-err:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(s3c_adc_read);
@@ -305,13 +333,20 @@ EXPORT_SYMBOL_GPL(s3c_adc_release);
 static irqreturn_t s3c_adc_irq(int irq, void *pw)
 {
 	struct adc_device *adc = pw;
-	struct s3c_adc_client *client = adc->cur;
+	struct s3c_adc_client *client;
 	enum s3c_cpu_type cpu = platform_get_device_id(adc->pdev)->driver_data;
 	unsigned data0;
 	unsigned data1 = 0;
 
+	/* Need lock before accessing adc->cur; also keep for ->client
+	 * access since that's accessed elsewhere in adc_read() / adc_start()
+	 */
+	spin_lock(&adc->lock);
+
+	client = adc->cur;
 	if (!client) {
 		dev_warn(&adc->pdev->dev, "%s: no adc pending\n", __func__);
+		spin_unlock(&adc->lock);
 		goto exit;
 	}
 
@@ -344,13 +379,11 @@ static irqreturn_t s3c_adc_irq(int irq, void *pw)
 		client->select_cb(client, 1);
 		s3c_adc_convert(adc);
 	} else {
-		spin_lock(&adc->lock);
-		(client->select_cb)(client, 0);
+		client->select_cb(client, 0);
 		adc->cur = NULL;
-
 		s3c_adc_try(adc);
-		spin_unlock(&adc->lock);
 	}
+	spin_unlock(&adc->lock);
 
 exit:
 	if (cpu == TYPE_ADCV2 || cpu == TYPE_ADCV3 || cpu == TYPE_ADCV4) {
