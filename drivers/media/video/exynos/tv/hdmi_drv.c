@@ -23,6 +23,7 @@
 #include <linux/irq.h>
 #include <linux/delay.h>
 #include <linux/bug.h>
+#include <linux/pm_domain.h>
 #include <linux/pm_runtime.h>
 #include <linux/clk.h>
 #include <linux/regulator/consumer.h>
@@ -488,9 +489,41 @@ fail:
 	return ret;
 }
 
+static int hdmi_suspend(struct device *dev)
+{
+	dev_dbg(dev, "%s start\n", __func__);
+
+	return 0;
+}
+
+static int hdmi_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct s5p_hdmi_platdata *pdata = pdev->dev.platform_data;
+	struct v4l2_subdev *sd = dev_get_drvdata(dev);
+	struct hdmi_device *hdev = sd_to_hdmi_dev(sd);
+
+	dev_dbg(dev, "%s start\n", __func__);
+
+	/* HDMI PHY power off
+	 * HDMI PHY is on as default configuration
+	 * So, HDMI PHY must be turned off if it's not used */
+	if (pdata->hdmiphy_enable)
+		pdata->hdmiphy_enable(pdev, 1);
+	v4l2_subdev_call(hdev->phy_sd, core, s_power, 0);
+	if (pdata->hdmiphy_enable)
+		pdata->hdmiphy_enable(pdev, 0);
+
+	return 0;
+}
+
 static const struct dev_pm_ops hdmi_pm_ops = {
-	.runtime_suspend = hdmi_runtime_suspend,
-	.runtime_resume	 = hdmi_runtime_resume,
+#ifndef CONFIG_PM_GENERIC_DOMAINS
+	.suspend		= hdmi_suspend,
+	.resume			= hdmi_resume,
+#endif
+	.runtime_suspend	= hdmi_runtime_suspend,
+	.runtime_resume		= hdmi_runtime_resume,
 };
 
 static void hdmi_resources_cleanup(struct hdmi_device *hdev)
@@ -660,6 +693,7 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 	struct i2c_adapter *phy_adapter;
 	struct hdmi_device *hdmi_dev = NULL;
 	struct hdmi_driver_data *drv_data;
+	struct generic_pm_domain *genpd;
 	int ret;
 
 	dev_dbg(dev, "probe start\n");
@@ -754,6 +788,16 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 	v4l2_subdev_call(hdmi_dev->phy_sd, core, s_power, 0);
 	if (pdata->hdmiphy_enable)
 		pdata->hdmiphy_enable(pdev, 0);
+
+#ifdef CONFIG_PM_GENERIC_DOMAINS
+	genpd = dev_to_genpd(hdmi_dev->dev);
+	if (IS_ERR(genpd)) {
+		dev_err(dev, "failed get genpd\n");
+		goto fail_vdev;
+	}
+	genpd->domain.ops.suspend = hdmi_suspend;
+	genpd->domain.ops.resume = hdmi_resume;
+#endif
 
 	pm_runtime_enable(dev);
 
