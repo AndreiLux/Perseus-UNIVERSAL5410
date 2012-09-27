@@ -37,6 +37,7 @@
 
 #include <mach/map.h>
 #include <mach/regs-clock.h>
+#include <mach/exynos5_bus.h>
 #include <plat/bts.h>
 
 #include "fimc-is-time.h"
@@ -73,6 +74,7 @@
 
 static struct pm_qos_request pm_qos_req_cpu;
 static struct pm_qos_request pm_qos_req_mem;
+static struct exynos5_bus_int_handle *isp_int_handle_min;
 
 #ifdef FW_DEBUG
 #define DEBUG_FS_ROOT_NAME	"fimc-is"
@@ -1917,6 +1919,13 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *this,
 	pm_qos_add_request(&pm_qos_req_cpu, PM_QOS_CPU_DMA_LATENCY, 100);
 	/* 3200 is 667Mhz bus , 6400 is 800Mhz */
 	pm_qos_add_request(&pm_qos_req_mem, PM_QOS_MEMORY_THROUGHPUT, 3200);
+	/* internal buf lock to 266Mhz */
+	if (!isp_int_handle_min) {
+		isp_int_handle_min = exynos5_bus_int_min(266000);
+		if (!isp_int_handle_min)
+			err("exynos5_bus_int_min is fail");
+	} else
+		err("exynos5_bus_int_min is already applied");
 
 	/* 5. A5 power on */
 	ret = fimc_is_ischain_power(this, 1);
@@ -1974,6 +1983,12 @@ int fimc_is_ischain_close(struct fimc_is_device_ischain *this)
 	/* 6. Enable AFTR cpu low power idle enter */
 	pm_qos_remove_request(&pm_qos_req_cpu);
 	pm_qos_remove_request(&pm_qos_req_mem);
+	/* internal bus unlock */
+	if (isp_int_handle_min) {
+		exynos5_bus_int_put(isp_int_handle_min);
+		isp_int_handle_min = NULL;
+	} else
+		err("exynos5_bus_int_put is already applied");
 
 #ifndef RESERVED_MEM
 	/* 7. Dealloc memroy */
