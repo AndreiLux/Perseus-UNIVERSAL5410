@@ -264,6 +264,7 @@ static int  kbase_trace_buffer_mmap(kbase_context * kctx, struct vm_area_struct 
 
 	new_reg->flags	&= ~KBASE_REG_FREE;
 	new_reg->flags	|= KBASE_REG_IS_TB | KBASE_REG_CPU_CACHED;
+	new_reg->nr_alloc_pages = nr_pages;
 
 	if (MALI_ERROR_NONE != kbase_add_va_region(kctx, new_reg, vma->vm_start, nr_pages, 1))
 	{
@@ -324,6 +325,7 @@ static int kbase_mmu_dump_mmap( kbase_context *kctx,
 
 	new_reg->flags &= ~KBASE_REG_FREE;
 	new_reg->flags |= KBASE_REG_IS_MMU_DUMP | KBASE_REG_CPU_CACHED;
+	new_reg->nr_alloc_pages = nr_pages;
 
 	if (MALI_ERROR_NONE != kbase_add_va_region(kctx, new_reg, vma->vm_start, nr_pages, 1))
 	{

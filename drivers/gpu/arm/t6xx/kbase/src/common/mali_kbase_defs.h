@@ -30,6 +30,8 @@
 
 #include <linux/hrtimer.h>
 #include <linux/ktime.h>
+#include <linux/mempool.h>
+#include <linux/slab.h>
 
 #ifdef CONFIG_KDS
 #include <linux/kds.h>
@@ -358,41 +360,7 @@ typedef struct kbasep_mem_usage
 	atomic_t cur_pages;
 } kbasep_mem_usage;
 
-/**
- * @brief Specifies order in which physical allocators are selected.
- *
- * Enumeration lists different orders in which physical allocators are selected on memory allocation.
- *
- */
-typedef enum kbase_phys_allocator_order
-{
-	ALLOCATOR_ORDER_CONFIG,                 /* Select allocators in order they appeared in the configuration file */
-	ALLOCATOR_ORDER_GPU_PERFORMANCE,        /* Select allocators in order from fastest to slowest on the GPU */
-	ALLOCATOR_ORDER_CPU_PERFORMANCE,        /* Select allocators in order from fastest to slowest on the CPU */
-	ALLOCATOR_ORDER_CPU_GPU_PERFORMANCE,    /* Select allocators in order from fastest to slowest on the CPU and GPU */
-
-	ALLOCATOR_ORDER_COUNT
-} kbase_phys_allocator_order;
-
-
-/* A simple structure to keep a sorted list of
- * osk_phy_allocator pointers.
- * Used by the iterator object
- */
-typedef struct kbase_phys_allocator_array
-{
-	/* the allocators */
-	osk_phy_allocator * allocs;
-	osk_phy_allocator ** sorted_allocs[ALLOCATOR_ORDER_COUNT];
-	/* number of allocators */
-	unsigned int count;
-
-#ifdef CONFIG_MALI_DEBUG
-	mali_bool it_bound;
-#endif /* CONFIG_MALI_DEBUG */
-} kbase_phys_allocator_array;
-
-/**
+ /**
  * Instrumentation State Machine States:
  * DISABLED    - requires instrumentation to be enabled
  * IDLE        - state machine is active and ready for a command.
@@ -428,9 +396,18 @@ typedef struct kbasep_mem_device
 	                                                        Read-only, copied from platform configuration on startup. */
 	kbasep_mem_usage           usage;                    /* Tracks usage of OS shared memory. Initialized with platform
 	                                                        configuration data, updated when OS memory is allocated/freed.*/
-	kbase_phys_allocator_array allocators;               /* List of available physical memory allocators */
 } kbasep_mem_device;
 
+/* raw page handling */
+typedef struct kbase_mem_allocator
+{
+	atomic_t            free_list_size;
+	spinlock_t          free_list_lock;
+	struct list_head    free_list_head;
+	struct shrinker     free_list_reclaimer;
+	struct kmem_cache * free_list_highmem_slab;
+	mempool_t         * free_list_highmem_pool;
+} kbase_mem_allocator;
 
 #define KBASE_TRACE_CODE( X ) KBASE_TRACE_CODE_ ## X
 
@@ -476,8 +453,6 @@ struct kbase_device {
 
 	kbase_as                as[BASE_MAX_NR_AS];
 
-	osk_phy_allocator       mmu_fault_allocator;
-	osk_phy_addr            mmu_fault_pages[4];
 	spinlock_t        mmu_mask_change;
 
 	kbase_gpu_props         gpu_props;
@@ -600,7 +575,6 @@ struct kbase_device {
 struct kbase_context
 {
 	kbase_device            *kbdev;
-	osk_phy_allocator       pgd_allocator;
 	osk_phy_addr            pgd;
 	osk_dlist               event_list;
 	struct mutex            event_mutex;
@@ -622,6 +596,8 @@ struct kbase_context
 	kbasep_mem_usage        usage;
 	atomic_t                nonmapped_pages;
 	ukk_session             ukk_session;
+	kbase_mem_allocator     osalloc;
+	kbase_mem_allocator *   pgd_allocator;
 
 	osk_dlist               waiting_soft_jobs;
 

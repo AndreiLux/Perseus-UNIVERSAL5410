@@ -231,7 +231,6 @@ mali_error kbasep_8401_workaround_init(kbase_device *kbdev)
 {
 	kbasep_js_device_data *js_devdata;
 	kbase_context *workaround_kctx;
-	u32 count;
 	int i;
 	u16 as_present_mask;
 
@@ -263,13 +262,9 @@ mali_error kbasep_8401_workaround_init(kbase_device *kbdev)
 	}
 
 	/* Allocate the pages required to contain the job */
-	count = kbase_phy_pages_alloc(workaround_kctx->kbdev,
-	                              &workaround_kctx->pgd_allocator,
-	                              KBASE_8401_WORKAROUND_COMPUTEJOB_COUNT,
-	                              kbdev->workaround_compute_job_pa);
-	if(count < KBASE_8401_WORKAROUND_COMPUTEJOB_COUNT)
+	if (MALI_ERROR_NONE != kbase_mem_allocator_alloc(&workaround_kctx->osalloc, KBASE_8401_WORKAROUND_COMPUTEJOB_COUNT, kbdev->workaround_compute_job_pa, KBASE_REG_MUST_ZERO))
 	{
-		goto page_release;
+		goto no_pages;
 	}
 
 	/* Get virtual address of mapped memory and write a compute job for each page */
@@ -303,8 +298,8 @@ page_free:
 	{
 		osk_kunmap(kbdev->workaround_compute_job_pa[i], kbdev->workaround_compute_job_va[i]);
 	}
-page_release:
-	kbase_phy_pages_free(kbdev, &workaround_kctx->pgd_allocator, count, kbdev->workaround_compute_job_pa);
+	kbase_mem_allocator_free(&workaround_kctx->osalloc, KBASE_8401_WORKAROUND_COMPUTEJOB_COUNT, kbdev->workaround_compute_job_pa);
+no_pages:
 	kbase_destroy_context(workaround_kctx);
 
 	return MALI_ERROR_FUNCTION_FAILED;
@@ -330,7 +325,7 @@ void kbasep_8401_workaround_term(kbase_device *kbdev)
 		osk_kunmap(kbdev->workaround_compute_job_pa[i], kbdev->workaround_compute_job_va[i]);
 	}
 
-	kbase_phy_pages_free(kbdev, &kbdev->workaround_kctx->pgd_allocator, KBASE_8401_WORKAROUND_COMPUTEJOB_COUNT, kbdev->workaround_compute_job_pa);
+	kbase_mem_allocator_free(&kbdev->workaround_kctx->osalloc, KBASE_8401_WORKAROUND_COMPUTEJOB_COUNT, kbdev->workaround_compute_job_pa);
 
 	kbase_destroy_context(kbdev->workaround_kctx);
 	kbdev->workaround_kctx = NULL;

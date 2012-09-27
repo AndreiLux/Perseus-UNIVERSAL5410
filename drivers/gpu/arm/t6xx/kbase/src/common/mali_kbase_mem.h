@@ -49,6 +49,7 @@ updates and generates duplicate page faults as the page table information used b
 #define KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES (1u << KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_LOG2)
 #define KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_HW_ISSUE_8316 (1u << KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_LOG2_HW_ISSUE_8316)
 #define KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_HW_ISSUE_9630 (1u << KBASEP_TMEM_GROWABLE_BLOCKSIZE_PAGES_LOG2_HW_ISSUE_9630)
+
 /**
  * A CPU mapping
  */
@@ -60,20 +61,6 @@ typedef struct kbase_cpu_mapping
 	mali_size64         page_off;
 	void                *private; /* Use for VMA */
 } kbase_cpu_mapping;
-
-/**
- * A physical memory (sub-)commit
- */
-typedef struct kbase_mem_commit
-{
-	osk_phy_allocator *           allocator;
-	u32                           nr_pages;
-	struct kbase_mem_commit *     prev;
-	/*
-	 * The offset of the commit is implict by
-	 * the prev_commit link position of this node
-	 */
-} kbase_mem_commit;
 
 /**
  * A GPU memory region, and attributes for CPU mappings.
@@ -113,7 +100,9 @@ typedef struct kbase_va_region
 #define KBASE_REG_GPU_RD     (1ul<<16) /* GPU write access */
 #define KBASE_REG_CPU_RD     (1ul<<17) /* CPU read access */
 
-#define KBASE_REG_FLAGS_NR_BITS    18  /* Number of bits used by kbase_va_region flags */
+#define KBASE_REG_MUST_ZERO  (1ul<<18) /* No zeroing needed */
+
+#define KBASE_REG_FLAGS_NR_BITS    19  /* Number of bits used by kbase_va_region flags */
 
 #define KBASE_REG_ZONE_PMEM  KBASE_REG_ZONE(0)
 
@@ -152,18 +141,6 @@ typedef struct kbase_va_region
 
 	u32                 nr_alloc_pages; /* nr of pages allocated */
 	u32                 extent;         /* nr of pages alloc'd on PF */
-
-	/* two variables to track our physical commits: */
-
-	/* We always have a root commit.
-	 * Most allocation will only have this one.
-	 * */
-	kbase_mem_commit    root_commit;
-
-	/* This one is initialized to point to the root_commit,
-	 * but if a new and separate commit is needed it will point
-	 * to the last (still valid) commit we've done */
-	kbase_mem_commit *  last_commit;
 
 	osk_phy_addr        *phy_pages;
 
@@ -208,68 +185,53 @@ static INLINE void kbase_set_phy_pages(struct kbase_va_region *reg, osk_phy_addr
 	reg->phy_pages = phy_pages;
 }
 
-/**
- * @brief Allocate physical memory and track shared OS memory usage.
- *
- * This function is kbase wrapper of osk_phy_pages_alloc. Apart from allocating memory it also tracks shared OS memory
- * usage and fails whenever shared memory limits would be exceeded.
- *
- * @param[in] kbdev     pointer to kbase_device structure for which memory is allocated
- * @param[in] allocator initialized physical allocator
- * @param[in] nr_pages  number of physical pages to allocate
- * @param[out] pages    array of \a nr_pages elements storing the physical
- *                      address of an allocated page
- * @return The number of pages successfully allocated,
- * which might be lower than requested, including zero pages.
- *
- * @see ::osk_phy_pages_alloc
- */
-u32 kbase_phy_pages_alloc(struct kbase_device *kbdev, osk_phy_allocator *allocator, u32 nr_pages, osk_phy_addr *pages);
-
-/**
- * @brief Free physical memory and track shared memory usage
- *
- * This function, like osk_phy_pages_free, frees physical memory but also tracks shared OS memory usage.
- *
- * @param[in] kbdev     pointer to kbase_device for which memory is allocated
- * @param[in] allocator initialized physical allocator
- * @param[in] nr_pages  number of physical pages to allocate
- * @param[out] pages    array of \a nr_pages elements storing the physical
- *                      address of an allocated page
- *
- * @see ::osk_phy_pages_free
- */
-void kbase_phy_pages_free(struct kbase_device *kbdev, osk_phy_allocator *allocator, u32 nr_pages, osk_phy_addr *pages);
-
-/**
- * @brief Register shared and dedicated memory regions
- *
- * Function registers shared and dedicated memory regions (registers physical allocator for each region)
- * using given configuration attributes. Additionally, several ordered lists of physical allocators are created with
- * different sort order (based on CPU, GPU, CPU+GPU performance and order in config). If there are many memory regions
- * with the same performance, then order in which they appeared in config is important. Shared OS memory is treated as if
- * it's defined after dedicated memory regions, so unless it matches region's performance flags better, it's chosen last.
- *
- * @param[in] kbdev       pointer to kbase_device for which regions are registered
- * @param[in] attributes  array of configuration attributes. It must be terminated with KBASE_CONFIG_ATTR_END attribute
- *
- * @return MALI_ERROR_NONE if no error occurred. Error code otherwise
- *
- * @see ::kbase_alloc_phy_pages_helper
- */
-mali_error kbase_register_memory_regions(kbase_device * kbdev, const kbase_attribute *attributes);
-
-/**
- * @brief Frees memory regions registered for the given device.
- *
- * @param[in] kbdev       pointer to kbase device for which memory regions are to be freed
- */
-void kbase_free_memory_regions(kbase_device * kbdev);
-
 mali_error kbase_mem_init(kbase_device * kbdev);
 void       kbase_mem_halt(kbase_device * kbdev);
 void       kbase_mem_term(kbase_device * kbdev);
 
+/**
+ * @brief Initialize an OS based memory allocator.
+ *
+ * Initializes a allocator.
+ * Must be called before any allocation is attempted.
+ * \a kbase_mem_allocator_alloc and \a kbase_mem_allocator_free is used
+ * to allocate and free memory.
+ * \a kbase_mem_allocator_term must be called to clean up the allocator.
+ * All memory obtained via \a kbase_mem_allocator_alloc must have been
+ * \a kbase_mem_allocator_free before \a kbase_mem_allocator_term is called.
+ *
+ * @param allocator Allocator object to initialize
+ * @return MALI_ERROR_NONE on success, an error code indicating what failed on error.
+ */
+mali_error kbase_mem_allocator_init(kbase_mem_allocator * allocator);
+/**
+ * @brief Allocate memory via an OS based memory allocator.
+ *
+ * @param[in]  allocator Allocator to obtain the memory from
+ * @param      nr_pages  Number of pages to allocate
+ * @param[out] pages     Pointer to an array where the physical address of the allocated pages will be stored
+ * @param      flags     Allocation flag, 0 or KBASE_REG_MUST_ZERO supported.
+ * @return MALI_ERROR_NONE if the pages were allocated, an error code indicating what failed on error
+ */
+mali_error kbase_mem_allocator_alloc(kbase_mem_allocator * allocator, u32 nr_pages, osk_phy_addr *pages, int flags);
+/**
+ * @brief Free memory obtained for an OS based memory allocator.
+ *
+ * @param[in] allocator Allocator to free the memory back to
+ * @param     nr_pages  Number of pages to free
+ * @param[in] pages     Pointer to an array holding the physical address of the paghes to free.
+ */
+void kbase_mem_allocator_free(kbase_mem_allocator * allocator, u32 nr_pages, osk_phy_addr *pages);
+/**
+ * @brief Terminate an OS based memory allocator.
+ *
+ * Frees all cached allocations and clean up internal state.
+ * All allocate pages must have been \a kbase_mem_allocator_free before
+ * this function is called.
+ *
+ * @param[in] allocator Allocator to terminate
+ */
+void kbase_mem_allocator_term(kbase_mem_allocator * allocator);
 
 /**
  * @brief Initializes memory context which tracks memory usage.
@@ -395,22 +357,6 @@ void kbase_mmu_update(kbase_context *kctx);
 void kbase_mmu_disable (kbase_context *kctx);
 
 void kbase_mmu_interrupt(kbase_device * kbdev, u32 irq_stat);
-
-/**
- * @brief Allocates physical pages using registered physical allocators.
- *
- * Function allocates physical pages using registered physical allocators. Allocator list is iterated until all pages
- * are successfully allocated. Function tries to match the most appropriate order of iteration basing on
- * KBASE_REG_CPU_CACHED and KBASE_REG_GPU_CACHED flags of the region.
- *
- * @param[in]   reg       memory region in which physical pages are supposed to be allocated
- * @param[in]   nr_pages  number of physical pages to allocate
- *
- * @return MALI_ERROR_NONE if all pages have been successfully allocated. Error code otherwise
- *
- * @see kbase_register_memory_regions
- */
-mali_error kbase_alloc_phy_pages_helper(kbase_va_region *reg, u32 nr_pages);
 
 /** Dump the MMU tables to a buffer
  *
@@ -608,6 +554,28 @@ static INLINE u32 kbasep_tmem_growable_round_size( kbase_device *kbdev, u32 nr_p
 enum hrtimer_restart kbasep_as_poke_timer_callback(struct hrtimer * timer);
 void kbase_as_poking_timer_retain(kbase_as * as);
 void kbase_as_poking_timer_release(kbase_as * as);
+
+/**
+ * @brief Allocates physical pages.
+ *
+ * Allocates \a nr_pages_requested and updates the region object.
+ *
+ * @param[in]   reg       memory region in which physical pages are supposed to be allocated
+ * @param[in]   nr_pages  number of physical pages to allocate
+ *
+ * @return MALI_ERROR_NONE if all pages have been successfully allocated. Error code otherwise
+ */
+mali_error kbase_alloc_phy_pages_helper(struct kbase_va_region *reg, u32 nr_pages_requested);
+
+/**
+ * @brief Free physical pages.
+ *
+ * Frees \a nr_pages and updates the region object.
+ *
+ * @param[in]   reg       memory region in which physical pages are supposed to be allocated
+ * @param[in]   nr_pages  number of physical pages to free
+ */
+void kbase_free_phy_pages_helper(struct kbase_va_region * reg, u32 nr_pages);
 
 
 #endif /* _KBASE_MEM_H_ */

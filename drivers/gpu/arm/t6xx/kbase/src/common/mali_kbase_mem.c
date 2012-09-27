@@ -30,6 +30,234 @@
 #include <kbase/src/common/mali_kbase_gator.h>
 
 #include <asm/atomic.h>
+#include <linux/highmem.h>
+#include <linux/mempool.h>
+#include <linux/mm.h>
+
+struct kbase_page_metadata
+{
+	struct list_head list;
+	struct page * page;
+};
+
+STATIC int kbase_mem_allocator_shrink(struct shrinker *s, struct shrink_control *sc)
+{
+	kbase_mem_allocator * allocator;
+	int i;
+
+	allocator = container_of(s, kbase_mem_allocator, free_list_reclaimer);
+
+	if (sc->nr_to_scan == 0)
+		return atomic_read(&allocator->free_list_size);
+
+	spin_lock(&allocator->free_list_lock);
+
+	i = MIN(atomic_read(&allocator->free_list_size), sc->nr_to_scan);
+
+	atomic_sub(i, &allocator->free_list_size);
+
+	while (i--)
+	{
+		struct kbase_page_metadata * md;
+		struct page * p;
+		BUG_ON(list_empty(&allocator->free_list_head));
+		md = list_first_entry(&allocator->free_list_head, struct kbase_page_metadata, list);
+		list_del(&md->list);
+		p = md->page;
+		if (likely(PageHighMem(p)))
+		{
+			mempool_free(md, allocator->free_list_highmem_pool);
+		}
+		__free_page(p);
+	}
+
+	spin_unlock(&allocator->free_list_lock);
+
+	return atomic_read(&allocator->free_list_size);
+}
+
+mali_error kbase_mem_allocator_init(kbase_mem_allocator * const allocator)
+{
+	OSK_ASSERT(NULL != allocator);
+
+	allocator->free_list_highmem_slab = KMEM_CACHE(kbase_page_metadata, SLAB_HWCACHE_ALIGN);
+	if (!allocator->free_list_highmem_slab)
+	{
+		return MALI_ERROR_OUT_OF_MEMORY;
+	}
+	allocator->free_list_highmem_pool = mempool_create_slab_pool(0, allocator->free_list_highmem_slab);
+	if (!allocator->free_list_highmem_pool)
+	{
+		kmem_cache_destroy(allocator->free_list_highmem_slab);
+		return MALI_ERROR_OUT_OF_MEMORY;
+	}
+
+	INIT_LIST_HEAD(&allocator->free_list_head);
+	spin_lock_init(&allocator->free_list_lock);
+	atomic_set(&allocator->free_list_size, 0);
+
+	allocator->free_list_reclaimer.shrink = kbase_mem_allocator_shrink;
+	allocator->free_list_reclaimer.seeks = DEFAULT_SEEKS;
+	allocator->free_list_reclaimer.batch = 0;
+
+	register_shrinker(&allocator->free_list_reclaimer);
+
+	return MALI_ERROR_NONE;
+}
+
+void kbase_mem_allocator_term(kbase_mem_allocator *allocator)
+{
+	OSK_ASSERT(NULL != allocator);
+
+	unregister_shrinker(&allocator->free_list_reclaimer);
+
+	while (!list_empty(&allocator->free_list_head))
+	{
+		struct kbase_page_metadata * md;
+		struct page * p;
+		md = list_first_entry(&allocator->free_list_head, struct kbase_page_metadata, list);
+		list_del(&md->list);
+		p = md->page;
+		if (likely(PageHighMem(p)))
+		{
+			mempool_free(md, allocator->free_list_highmem_pool);
+		}
+		__free_page(p);
+	}
+
+	mempool_destroy(allocator->free_list_highmem_pool);
+	kmem_cache_destroy(allocator->free_list_highmem_slab);
+}
+
+mali_error kbase_mem_allocator_alloc(kbase_mem_allocator *allocator, u32 nr_pages, osk_phy_addr *pages, int flags)
+{
+	int i;
+	int from_free_list;
+	OSK_ASSERT(NULL != allocator);
+
+	/* take from the free list first */
+	spin_lock(&allocator->free_list_lock);
+
+	from_free_list = MIN(nr_pages, atomic_read(&allocator->free_list_size));
+	atomic_sub(from_free_list, &allocator->free_list_size);
+
+	for (i = 0; i < from_free_list; i++)
+	{
+		struct kbase_page_metadata * md;
+		struct page * p;
+		BUG_ON(list_empty(&allocator->free_list_head));
+		md = list_first_entry(&allocator->free_list_head, struct kbase_page_metadata, list);
+		list_del(&md->list);
+		p = md->page;
+		if (likely(PageHighMem(p)))
+		{
+			mempool_free(md, allocator->free_list_highmem_pool);
+		}
+		pages[i] = PFN_PHYS(page_to_pfn(p));
+
+		if (flags & KBASE_REG_MUST_ZERO)
+		{
+			void * mp;
+			mp = kmap_atomic(p);
+			if (NULL == mp)
+			{
+				__free_page(p);
+				/* abort free list pass, try the linux pass */
+				break;
+			}
+			memset(mp, 0x00, PAGE_SIZE);
+			osk_sync_to_memory(PFN_PHYS(page_to_pfn(p)), mp, PAGE_SIZE);
+			kunmap_atomic(mp);
+		}
+	}
+
+	spin_unlock(&allocator->free_list_lock);
+
+	if (i == nr_pages)
+		return MALI_ERROR_NONE;
+
+	for (; i < nr_pages; i++)
+	{
+		struct page *p;
+		void * mp;
+
+		p = alloc_page(GFP_HIGHUSER);
+		if (NULL == p)
+		{
+			goto err_out_roll_back;
+		}
+
+		mp = kmap(p);
+		if (NULL == mp)
+		{
+			__free_page(p);
+			goto err_out_roll_back;
+		}
+		memset(mp, 0x00, PAGE_SIZE); /* instead of __GFP_ZERO, so we can do cache maintenance */
+		osk_sync_to_memory(PFN_PHYS(page_to_pfn(p)), mp, PAGE_SIZE);
+		kunmap(p);
+		pages[i] = PFN_PHYS(page_to_pfn(p));
+	}
+
+	return MALI_ERROR_NONE;
+
+err_out_roll_back:
+	while (i--)
+	{
+		struct page * p;
+		p = pfn_to_page(PFN_DOWN(pages[i]));
+		pages[i] = (osk_phy_addr)0;
+		__free_page(p);
+	}
+	return MALI_ERROR_OUT_OF_MEMORY;
+}
+
+void kbase_mem_allocator_free(kbase_mem_allocator *allocator, u32 nr_pages, osk_phy_addr *pages)
+{
+	int i;
+	int page_count = 0;
+	LIST_HEAD(new_free_list_items);
+
+	OSK_ASSERT(NULL != allocator);
+
+	for (i = 0; i < nr_pages; i++)
+	{
+		if (likely(0 != pages[i]))
+		{
+			struct kbase_page_metadata * md;
+			struct page * p;
+
+			p = pfn_to_page(PFN_DOWN(pages[i]));
+			pages[i] = (osk_phy_addr)0;
+
+			if (likely(PageHighMem(p)))
+			{
+				md = mempool_alloc(allocator->free_list_highmem_pool, GFP_KERNEL);
+				if (!md)
+				{
+					/* can't put it on the free list, direct release */
+					__free_page(p);
+					continue;
+				}
+			}
+			else
+			{
+				md = lowmem_page_address(p);
+				BUG_ON(!md);
+			}
+
+			INIT_LIST_HEAD(&md->list);
+			md->page = p;
+			list_add(&md->list, &new_free_list_items);
+			page_count++;
+		}
+	}
+
+	spin_lock(&allocator->free_list_lock);
+	list_splice(&new_free_list_items, &allocator->free_list_head);
+	atomic_add(page_count, &allocator->free_list_size);
+	spin_unlock(&allocator->free_list_lock);
+}
 
 /**
  * @brief Check the zone compatibility of two regions.
@@ -591,27 +819,6 @@ mali_error kbase_region_tracker_init(kbase_context *kctx)
 	return MALI_ERROR_NONE;
 }
 
-typedef struct kbasep_memory_region_performance
-{
-	kbase_memory_performance cpu_performance;
-	kbase_memory_performance gpu_performance;
-} kbasep_memory_region_performance;
-
-static mali_bool kbasep_allocator_order_list_create( osk_phy_allocator * allocators,
-		kbasep_memory_region_performance *region_performance,
-		int memory_region_count, osk_phy_allocator ***sorted_allocs, int allocator_order_count);
-
-/*
- * An iterator which uses one of the orders listed in kbase_phys_allocator_order enum to iterate over allocators array.
- */
-typedef struct kbase_phys_allocator_iterator
-{
-	unsigned int cur_idx;
-	kbase_phys_allocator_array * array;
-	kbase_phys_allocator_order order;
-} kbase_phys_allocator_iterator;
-
-
 mali_error kbase_mem_init(kbase_device * kbdev)
 {
 	CSTD_UNUSED(kbdev);
@@ -632,95 +839,14 @@ void kbase_mem_halt(kbase_device * kbdev)
 
 void kbase_mem_term(kbase_device * kbdev)
 {
-	u32 i;
 	kbasep_mem_device * memdev;
 	OSK_ASSERT(kbdev);
 
 	memdev = &kbdev->memdev;
 
-	for (i = 0; i < memdev->allocators.count; i++)
-	{
-		osk_phy_allocator_term(&memdev->allocators.allocs[i]);
-	}
-	kfree(memdev->allocators.allocs);
-	kfree(memdev->allocators.sorted_allocs[0]);
-
 	kbase_mem_usage_term(&memdev->usage);
 }
 KBASE_EXPORT_TEST_API(kbase_mem_term)
-
-static mali_error kbase_phys_it_init(kbase_device * kbdev, kbase_phys_allocator_iterator * it, kbase_phys_allocator_order order)
-{
-	OSK_ASSERT(kbdev);
-	OSK_ASSERT(it);
-
-	if (OSK_SIMULATE_FAILURE(OSK_BASE_MEM))
-	{
-		return MALI_ERROR_OUT_OF_MEMORY;
-	}
-
-	if (!kbdev->memdev.allocators.count)
-	{
-		return MALI_ERROR_OUT_OF_MEMORY;
-	}
-	
-	it->cur_idx = 0;
-	it->array = &kbdev->memdev.allocators;
-	it->order = order;
-
-#ifdef CONFIG_MALI_DEBUG
-	it->array->it_bound = MALI_TRUE;
-#endif /* CONFIG_MALI_DEBUG */
-
-	return MALI_ERROR_NONE;
-}
-
-static void kbase_phys_it_term(kbase_phys_allocator_iterator * it)
-{
-	OSK_ASSERT(it);
-	it->cur_idx = 0;
-#ifdef CONFIG_MALI_DEBUG
-	it->array->it_bound = MALI_FALSE;
-#endif /* CONFIG_MALI_DEBUG */
-	it->array = NULL;
-	return;
-}
-
-static osk_phy_allocator * kbase_phys_it_deref(kbase_phys_allocator_iterator * it)
-{
-	OSK_ASSERT(it);
-	OSK_ASSERT(it->array);
-
-	if (it->cur_idx < it->array->count)
-	{
-		return it->array->sorted_allocs[it->order][it->cur_idx];
-	}
-	else
-	{
-		return NULL;
-	}
-}
-
-static osk_phy_allocator * kbase_phys_it_deref_and_advance(kbase_phys_allocator_iterator * it)
-{
-	osk_phy_allocator * alloc;
-
-	OSK_ASSERT(it);
-	OSK_ASSERT(it->array);
-
-	alloc = kbase_phys_it_deref(it);
-	if (alloc)
-	{
-		it->cur_idx++;
-	}
-	return alloc;
-}
-
-/*
- * Page free helper.
- * Handles that commit objects tracks the pages we free
- */
-static void kbase_free_phy_pages_helper(kbase_va_region * reg, u32 nr_pages);
 
 mali_error kbase_mem_usage_init(kbasep_mem_usage * usage, u32 max_pages)
 {
@@ -908,9 +1034,8 @@ struct kbase_va_region *kbase_alloc_free_region(kbase_context *kctx, u64 start_p
 
 	new_reg->start_pfn = start_pfn;
 	new_reg->nr_pages = nr_pages;
+	new_reg->nr_alloc_pages = 0;
 	OSK_DLIST_INIT(&new_reg->map_list);
-	new_reg->root_commit.allocator = NULL;
-	new_reg->last_commit = &new_reg->root_commit;
 
 	return new_reg;
 }
@@ -1482,17 +1607,64 @@ void kbase_update_region_flags(struct kbase_va_region *reg, u32 flags, mali_bool
 	{
 		reg->flags |= KBASE_REG_SHARE_BOTH;
 	}
+
+	if (!(flags & BASE_MEM_DONT_ZERO_INIT))
+	{
+		reg->flags |= KBASE_REG_MUST_ZERO;
+	}
 }
 
-static void kbase_free_phy_pages_helper(kbase_va_region * reg, u32 nr_pages_to_free)
+mali_error kbase_alloc_phy_pages_helper(struct kbase_va_region *reg, u32 nr_pages_requested)
 {
-	osk_phy_addr *page_array;
-
-	u32 nr_pages;
+	kbase_context * kctx;
+	osk_phy_addr * page_array;
 
 	OSK_ASSERT(reg);
-	OSK_ASSERT(reg->kctx);
+	/* Can't call this on TB buffers */
+	OSK_ASSERT(0 == (reg->flags & KBASE_REG_IS_TB));
+	/* can't be called on imported types */
+	OSK_ASSERT(BASE_TMEM_IMPORT_TYPE_INVALID == reg->imported_type);
+	/* Growth of too many pages attempted! (written this way to catch overflow)) */
+	OSK_ASSERT(reg->nr_pages - reg->nr_alloc_pages >= nr_pages_requested);
+	/* A complete commit is required if not marked as growable */
+	OSK_ASSERT((reg->flags & KBASE_REG_GROWABLE) || (reg->nr_pages == nr_pages_requested));
 
+	/* early out if nothing to do */
+	if (0 == nr_pages_requested)
+		return MALI_ERROR_NONE;
+
+	kctx = reg->kctx;
+	OSK_ASSERT(kctx);
+
+	if (MALI_ERROR_NONE != kbase_mem_usage_request_pages(&kctx->usage, nr_pages_requested))
+	{
+		return MALI_ERROR_OUT_OF_MEMORY;
+	}
+
+	page_array = kbase_get_phy_pages(reg);
+
+	if (MALI_ERROR_NONE != kbase_mem_allocator_alloc(&kctx->osalloc, nr_pages_requested, page_array + reg->nr_alloc_pages, reg->flags))
+	{
+		kbase_mem_usage_release_pages(&kctx->usage, nr_pages_requested);
+		return MALI_ERROR_OUT_OF_MEMORY;
+	}
+
+	reg->nr_alloc_pages += nr_pages_requested;
+
+	if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM)
+	{
+		kbase_process_page_usage_inc(kctx, nr_pages_requested);
+	}
+
+	return MALI_ERROR_NONE;
+}
+
+void kbase_free_phy_pages_helper(struct kbase_va_region * reg, u32 nr_pages_to_free)
+{
+	kbase_context * kctx;
+	osk_phy_addr * page_array;
+
+	OSK_ASSERT(reg);
 	/* Can't call this on TB buffers */
 	OSK_ASSERT(0 == (reg->flags & KBASE_REG_IS_TB));
 	/* can't be called on imported types */
@@ -1502,286 +1674,27 @@ static void kbase_free_phy_pages_helper(kbase_va_region * reg, u32 nr_pages_to_f
 	/* A complete free is required if not marked as growable */
 	OSK_ASSERT((reg->flags & KBASE_REG_GROWABLE) || (reg->nr_alloc_pages == nr_pages_to_free));
 
+	/* early out if nothing to do */
 	if (0 == nr_pages_to_free)
-	{
-		/* early out if nothing to free */
 		return;
-	}
 
-	nr_pages = nr_pages_to_free;
-	
+	kctx = reg->kctx;
+	OSK_ASSERT(kctx);
+
 	page_array = kbase_get_phy_pages(reg);
 
-	OSK_ASSERT(nr_pages_to_free == 0 || page_array != NULL);
+	kbase_mem_allocator_free(&kctx->osalloc, nr_pages_to_free, page_array + reg->nr_alloc_pages - nr_pages_to_free);
 
-	while (nr_pages)
+	reg->nr_alloc_pages -= nr_pages_to_free;
+
+	if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM )
 	{
-		kbase_mem_commit * commit;
-		commit = reg->last_commit;
-
-		if (nr_pages >= commit->nr_pages)
-		{
-			/* free the whole commit */
-			kbase_phy_pages_free(reg->kctx->kbdev, commit->allocator, commit->nr_pages,
-					page_array + reg->nr_alloc_pages - commit->nr_pages);
-			
-			/* update page counts */
-			nr_pages -= commit->nr_pages;
-			reg->nr_alloc_pages -= commit->nr_pages;
-			
-			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM )
-			{
-				kbase_process_page_usage_dec(reg->kctx, commit->nr_pages);
-			}
-
-			/* free the node (unless it's the root node) */
-			if (commit != &reg->root_commit)
-			{
-				reg->last_commit = commit->prev;
-				kfree(commit);
-			}
-			else
-			{
-				/* mark the root node as having no commit */
-				commit->nr_pages = 0;
-				OSK_ASSERT(nr_pages == 0);
-				OSK_ASSERT(reg->nr_alloc_pages == 0);
-				break;
-			}
-		}
-		else
-		{
-			/* partial free of this commit */
-			kbase_phy_pages_free(reg->kctx->kbdev, commit->allocator, nr_pages,
-					page_array + reg->nr_alloc_pages - nr_pages);
-			commit->nr_pages -= nr_pages;
-			reg->nr_alloc_pages -= nr_pages;
-			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM )
-			{
-				kbase_process_page_usage_dec(reg->kctx, nr_pages);
-			}
-			break; /* end the loop */
-		}
+		kbase_process_page_usage_dec(reg->kctx, nr_pages_to_free);
 	}
-
 	kbase_mem_usage_release_pages(&reg->kctx->usage, nr_pages_to_free);
 }
+
 KBASE_EXPORT_TEST_API(kbase_update_region_flags)
-
-u32 kbase_phy_pages_alloc(struct kbase_device *kbdev, osk_phy_allocator *allocator, u32 nr_pages,
-		osk_phy_addr *pages)
-{
-	OSK_ASSERT(kbdev != NULL);
-	OSK_ASSERT(allocator != NULL);
-	OSK_ASSERT(pages != NULL);
-
-	if (allocator->type == OSKP_PHY_ALLOCATOR_OS)
-	{
-		u32 pages_allocated;
-
-		/* Claim pages from OS shared quota. Note that shared OS memory may be used by different allocators. That's why
-		 * page request is made here and not on per-allocator basis */
-		if (MALI_ERROR_NONE != kbase_mem_usage_request_pages(&kbdev->memdev.usage, nr_pages))
-		{
-			return 0;
-		}
-
-		pages_allocated = osk_phy_pages_alloc(allocator, nr_pages, pages);
-
-		if (pages_allocated < nr_pages)
-		{
-			kbase_mem_usage_release_pages(&kbdev->memdev.usage, nr_pages - pages_allocated);
-		}
-		return pages_allocated;
-	}
-	else
-	{
-		/* Dedicated memory is tracked per allocator. Memory limits are checked in osk_phy_pages_alloc function */
-		return osk_phy_pages_alloc(allocator, nr_pages, pages);
-	}
-}
-KBASE_EXPORT_TEST_API(kbase_phy_pages_alloc)
-
-void kbase_phy_pages_free(struct kbase_device *kbdev, osk_phy_allocator *allocator, u32 nr_pages, osk_phy_addr *pages)
-{
-	OSK_ASSERT(kbdev != NULL);
-	OSK_ASSERT(allocator != NULL);
-	OSK_ASSERT(pages != NULL);
-
-	osk_phy_pages_free(allocator, nr_pages, pages);
-
-	if (allocator->type == OSKP_PHY_ALLOCATOR_OS)
-	{
-		/* release pages from OS shared quota */
-		kbase_mem_usage_release_pages(&kbdev->memdev.usage, nr_pages);
-	}
-}
-KBASE_EXPORT_TEST_API(kbase_phy_pages_free)
-
-
-mali_error kbase_alloc_phy_pages_helper(struct kbase_va_region *reg, u32 nr_pages_requested)
-{
-	kbase_phys_allocator_iterator it;
-	osk_phy_addr *page_array;
-	u32 nr_pages_left;
-	u32 num_pages_on_start;
-	u32 pages_committed;
-	kbase_phys_allocator_order order;
-	u32 performance_flags;
-
-	OSK_ASSERT(reg);
-	OSK_ASSERT(reg->kctx);
-
-	/* Can't call this on TB or UMP buffers */
-	OSK_ASSERT(0 == (reg->flags & KBASE_REG_IS_TB));
-	/* can't be called on imported types */
-	OSK_ASSERT(BASE_TMEM_IMPORT_TYPE_INVALID == reg->imported_type);
-	/* Growth of too many pages attempted! (written this way to catch overflow)) */
-	OSK_ASSERT(reg->nr_pages - reg->nr_alloc_pages >= nr_pages_requested);
-	/* A complete commit is required if not marked as growable */
-	OSK_ASSERT((reg->flags & KBASE_REG_GROWABLE) || (reg->nr_pages == nr_pages_requested));
-
-	if (0 == nr_pages_requested)
-	{
-		/* early out if nothing to do */
-		return MALI_ERROR_NONE;
-	}
-
-	/* track the number pages so we can roll back on alloc fail */
-	num_pages_on_start = reg->nr_alloc_pages;
-	nr_pages_left = nr_pages_requested;
-
-	page_array = kbase_get_phy_pages(reg);
-	OSK_ASSERT(page_array);
-
-	/* claim the pages from our per-context quota */
-	if (MALI_ERROR_NONE != kbase_mem_usage_request_pages(&reg->kctx->usage, nr_pages_requested))
-	{
-		return MALI_ERROR_OUT_OF_MEMORY;
-	}
-
-	/* First try to extend the last commit */
-	if (reg->last_commit->allocator)
-	{
-		pages_committed = kbase_phy_pages_alloc(reg->kctx->kbdev, reg->last_commit->allocator, nr_pages_left,
-				page_array + reg->nr_alloc_pages);
-		reg->last_commit->nr_pages += pages_committed;
-		reg->nr_alloc_pages += pages_committed;
-		nr_pages_left -= pages_committed;
-
-		if (!nr_pages_left)
-		{
-			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM)
-			{
-				kbase_process_page_usage_inc(reg->kctx, nr_pages_requested);
-			}
-			return MALI_ERROR_NONE;
-		}
-	}
-
-	performance_flags = reg->flags & (KBASE_REG_CPU_CACHED | KBASE_REG_GPU_CACHED);
-
-	if (performance_flags == 0)
-	{
-		order = ALLOCATOR_ORDER_CONFIG;
-	}
-	else if (performance_flags == KBASE_REG_CPU_CACHED)
-	{
-		order = ALLOCATOR_ORDER_CPU_PERFORMANCE;
-	}
-	else if (performance_flags == KBASE_REG_GPU_CACHED)
-	{
-		order = ALLOCATOR_ORDER_GPU_PERFORMANCE;
-	}
-	else
-	{
-		order = ALLOCATOR_ORDER_CPU_GPU_PERFORMANCE;
-	}
-
-	/* If not fully commited (or no prev allocator) we need to ask all the allocators */
-
-	/* initialize the iterator we use to loop over the memory providers */
-	if (MALI_ERROR_NONE == kbase_phys_it_init(reg->kctx->kbdev, &it, order))
-	{
-		for (;nr_pages_left && kbase_phys_it_deref(&it); kbase_phys_it_deref_and_advance(&it))
-		{
-			pages_committed = kbase_phy_pages_alloc(reg->kctx->kbdev, kbase_phys_it_deref(&it), nr_pages_left,
-					page_array + reg->nr_alloc_pages);
-
-			OSK_ASSERT(pages_committed <= nr_pages_left);
-
-			if (pages_committed)
-			{
-				/* got some pages, track them */
-				kbase_mem_commit * commit;
-
-				if (reg->last_commit->allocator)
-				{
-					if(OSK_SIMULATE_FAILURE(OSK_OSK))
-					{
-						commit = NULL;
-					}
-					else
-					{
-						commit = (kbase_mem_commit*)kzalloc(sizeof(*commit), GFP_KERNEL);
-					}
-
-					if (commit == NULL)
-					{
-						kbase_phy_pages_free(reg->kctx->kbdev, kbase_phys_it_deref(&it), pages_committed,
-								page_array + reg->nr_alloc_pages);
-						break;
-					}
-					commit->prev = reg->last_commit;
-				}
-				else
-				{
-					commit = reg->last_commit;
-				}
-
-				commit->allocator = kbase_phys_it_deref(&it);
-				commit->nr_pages = pages_committed;
-
-				reg->last_commit = commit;
-				reg->nr_alloc_pages += pages_committed;
-
-				nr_pages_left -= pages_committed;
-			}
-		}
-
-		/* no need for the iterator any more */
-		kbase_phys_it_term(&it);
-
-		if (nr_pages_left == 0)
-		{
-			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM)
-			{
-				kbase_process_page_usage_inc(reg->kctx, nr_pages_requested);
-			}
-			return MALI_ERROR_NONE;
-		}
-	}
-
-	/* failed to allocate enough memory, roll back */
-	if (reg->nr_alloc_pages != num_pages_on_start)
-	{
-		/*we need the auxiliary var below since kbase_free_phy_pages_helper updates reg->nr_alloc_pages*/
-		u32 track_nr_alloc_pages = reg->nr_alloc_pages;
-		/* we must temporarily inflate the usage tracking as kbase_free_phy_pages_helper decrements it */
-		kbase_process_page_usage_inc(reg->kctx, reg->nr_alloc_pages - num_pages_on_start);
-		/* kbase_free_phy_pages_helper implicitly calls kbase_mem_usage_release_pages */
-		kbase_free_phy_pages_helper(reg, reg->nr_alloc_pages - num_pages_on_start);
-		/* Release the remaining pages */
-		kbase_mem_usage_release_pages(&reg->kctx->usage,
-		                              nr_pages_requested - (track_nr_alloc_pages - num_pages_on_start));
-	}
-	else
-	{
-		kbase_mem_usage_release_pages(&reg->kctx->usage, nr_pages_requested);
-	}
-	return MALI_ERROR_OUT_OF_MEMORY;
-}
-
 
 /* Frees all allocated pages of a region */
 void kbase_free_phy_pages(struct kbase_va_region *reg)
@@ -1882,6 +1795,7 @@ int kbase_alloc_phy_pages(struct kbase_va_region *reg, u32 vsize, u32 size)
 	}
 
 	kbase_set_phy_pages(reg, page_array);
+	reg->nr_alloc_pages = 0;
 
 	if (MALI_ERROR_NONE != kbase_alloc_phy_pages_helper(reg, size))
 	{
@@ -2269,6 +2183,7 @@ mali_error kbase_tmem_set_size(kbase_context *kctx, mali_addr64 gpu_addr, u32 si
 		mali_error err;
 		delta = size-reg->nr_alloc_pages;
 		/* Allocate some more pages */
+
 		if (MALI_ERROR_NONE != kbase_alloc_phy_pages_helper(reg, delta))
 		{
 			*failure_reason = BASE_BACKING_THRESHOLD_ERROR_OOM;
@@ -2602,234 +2517,4 @@ void kbase_gpu_vm_unlock(kbase_context *kctx)
 	mutex_unlock(&kctx->reg_lock);
 }
 KBASE_EXPORT_TEST_API(kbase_gpu_vm_unlock)
-
-/* will be called during init time only */
-mali_error kbase_register_memory_regions(kbase_device * kbdev, const kbase_attribute *attributes)
-{
-	int total_regions;
-	int dedicated_regions;
-	int allocators_initialized;
-	osk_phy_allocator * allocs;
-	kbase_memory_performance shared_memory_performance;
-	kbasep_memory_region_performance *region_performance;
-	kbase_memory_resource *resource;
-	const kbase_attribute *current_attribute;
-	u32 max_shared_memory;
-	kbasep_mem_device * memdev;
-
-	OSK_ASSERT(kbdev);
-	OSK_ASSERT(attributes);
-
-	memdev = &kbdev->memdev;
-
-	/* Programming error to register memory after we've started using the iterator interface */
-#ifdef CONFIG_MALI_DEBUG
-	OSK_ASSERT(memdev->allocators.it_bound == MALI_FALSE);
-#endif /* CONFIG_MALI_DEBUG */
-
-	max_shared_memory = (u32) kbasep_get_config_value(kbdev, attributes, KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_MAX);
-	shared_memory_performance =
-			(kbase_memory_performance)kbasep_get_config_value(kbdev, attributes, KBASE_CONFIG_ATTR_MEMORY_OS_SHARED_PERF_GPU);
-	/* count dedicated_memory_regions */
-	dedicated_regions = kbasep_get_config_attribute_count_by_id(attributes, KBASE_CONFIG_ATTR_MEMORY_RESOURCE);
-
-	total_regions = dedicated_regions;
-	if (max_shared_memory > 0)
-	{
-		total_regions++;
-	}
-
-	if (total_regions == 0)
-	{
-		OSK_PRINT_ERROR(OSK_BASE_MEM,  "No memory regions specified");
-		return MALI_ERROR_FUNCTION_FAILED;
-	}
-
-	if(OSK_SIMULATE_FAILURE(OSK_OSK))
-	{
-		region_performance = NULL;
-	}
-	else
-	{
-		OSK_ASSERT(0 != total_regions);
-		region_performance = kmalloc(sizeof(kbasep_memory_region_performance) * total_regions, GFP_KERNEL);
-	}
-
-	if (region_performance == NULL)
-	{
-		goto out;
-	}
-
-	if(OSK_SIMULATE_FAILURE(OSK_OSK))
-	{
-		allocs = NULL;
-	}
-	else
-	{
-		OSK_ASSERT(0 != total_regions);
-		allocs = kmalloc(sizeof(osk_phy_allocator) * total_regions, GFP_KERNEL);
-	}
-
-	if (allocs == NULL)
-	{
-		goto out_perf;
-	}
-
-	current_attribute = attributes;
-	allocators_initialized = 0;
-	while (current_attribute != NULL)
-	{
-		current_attribute = kbasep_get_next_attribute(current_attribute, KBASE_CONFIG_ATTR_MEMORY_RESOURCE);
-
-		if (current_attribute != NULL)
-		{
-			resource = (kbase_memory_resource *)current_attribute->data;
-			if (OSK_ERR_NONE != osk_phy_allocator_init(&allocs[allocators_initialized], resource->base,
-			        (u32)(resource->size >> PAGE_SHIFT), resource->name))
-			{
-				goto out_allocator_term;
-			}
-
-			kbasep_get_memory_performance(resource, &region_performance[allocators_initialized].cpu_performance,
-			        &region_performance[allocators_initialized].gpu_performance);
-			current_attribute++;
-			allocators_initialized++;
-		}
-	}
-
-	/* register shared memory region */
-	if (max_shared_memory > 0)
-	{
-		if (OSK_ERR_NONE != osk_phy_allocator_init(&allocs[allocators_initialized], 0,
-				max_shared_memory >> PAGE_SHIFT, NULL))
-		{
-			goto out_allocator_term;
-		}
-
-		region_performance[allocators_initialized].cpu_performance = KBASE_MEM_PERF_NORMAL;
-		region_performance[allocators_initialized].gpu_performance = shared_memory_performance;
-		allocators_initialized++;
-	}
-
-	if (MALI_ERROR_NONE != kbase_mem_usage_init(&memdev->usage, max_shared_memory >> PAGE_SHIFT))
-	{
-		goto out_allocator_term;
-	}
-
-	if (MALI_ERROR_NONE != kbasep_allocator_order_list_create(allocs, region_performance, total_regions, memdev->allocators.sorted_allocs,
-			ALLOCATOR_ORDER_COUNT))
-	{
-		goto out_memctx_term;
-	}
-
-	memdev->allocators.allocs = allocs;
-	memdev->allocators.count = total_regions;
-
-	kfree(region_performance);
-
-	return MALI_ERROR_NONE;
-
-out_memctx_term:
-	kbase_mem_usage_term(&memdev->usage);
-out_allocator_term:
-	while (allocators_initialized-- > 0)
-	{
-		osk_phy_allocator_term(&allocs[allocators_initialized]);
-	}
-	kfree(allocs);
-out_perf:
-	kfree(region_performance);
-out:
-	return MALI_ERROR_OUT_OF_MEMORY;
-}
-KBASE_EXPORT_TEST_API(kbase_register_memory_regions)
-
-static mali_error kbasep_allocator_order_list_create( osk_phy_allocator * allocators,
-		kbasep_memory_region_performance *region_performance, int memory_region_count,
-		osk_phy_allocator ***sorted_allocs, int allocator_order_count)
-{
-	int performance;
-	int regions_sorted;
-	int i;
-	void *sorted_alloc_mem_block;
-
-	if(OSK_SIMULATE_FAILURE(OSK_OSK))
-	{
-		sorted_alloc_mem_block = NULL;
-	}
-	else
-	{
-		OSK_ASSERT(0 != memory_region_count);
-		OSK_ASSERT(0 != allocator_order_count);
-		sorted_alloc_mem_block = kmalloc(sizeof(osk_phy_allocator **) * memory_region_count * allocator_order_count, GFP_KERNEL);
-	}
-
-	if (sorted_alloc_mem_block == NULL)
-	{
-		goto out;
-	}
-
-	/* each allocator list points to memory in recently allocated block */
-	for (i = 0; i < ALLOCATOR_ORDER_COUNT; i++)
-	{
-		sorted_allocs[i] = (osk_phy_allocator **)sorted_alloc_mem_block + memory_region_count*i;
-	}
-
-	/* use the same order as in config file */
-	for (i = 0; i < memory_region_count; i++)
-	{
-		sorted_allocs[ALLOCATOR_ORDER_CONFIG][i] = &allocators[i];
-	}
-
-	/* Sort allocators by GPU performance */
-	performance = KBASE_MEM_PERF_FAST;
-	regions_sorted = 0;
-	while (performance >= KBASE_MEM_PERF_SLOW)
-	{
-		for (i = 0; i < memory_region_count; i++)
-		{
-			if (region_performance[i].gpu_performance == (kbase_memory_performance)performance)
-			{
-				sorted_allocs[ALLOCATOR_ORDER_GPU_PERFORMANCE][regions_sorted] = &allocators[i];
-				regions_sorted++;
-			}
-		}
-		performance--;
-	}
-
-	/* Sort allocators by CPU performance */
-	performance = KBASE_MEM_PERF_FAST;
-	regions_sorted = 0;
-	while (performance >= KBASE_MEM_PERF_SLOW)
-	{
-		for (i = 0; i < memory_region_count; i++)
-		{
-			if ((int)region_performance[i].cpu_performance == performance)
-			{
-				sorted_allocs[ALLOCATOR_ORDER_CPU_PERFORMANCE][regions_sorted] = &allocators[i];
-				regions_sorted++;
-			}
-		}
-		performance--;
-	}
-
-	/* Sort allocators by CPU and GPU performance (equally important) */
-	performance = 2 * KBASE_MEM_PERF_FAST;
-	regions_sorted = 0;
-	while (performance >= 2*KBASE_MEM_PERF_SLOW)
-	{
-		for (i = 0; i < memory_region_count; i++)
-		{
-			if ((int)(region_performance[i].cpu_performance + region_performance[i].gpu_performance) == performance)
-			{
-				sorted_allocs[ALLOCATOR_ORDER_CPU_GPU_PERFORMANCE][regions_sorted] = &allocators[i];
-				regions_sorted++;
-			}
-		}
-		performance--;
-	}
-	return MALI_ERROR_NONE;
-out:
-	return MALI_ERROR_OUT_OF_MEMORY;
-}
 

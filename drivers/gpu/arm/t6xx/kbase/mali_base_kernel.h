@@ -120,7 +120,8 @@ enum
 	BASE_MEM_GROW_ON_GPF =      (1U << 8), /**< Grow backing store on GPU Page Fault */
 
 	BASE_MEM_COHERENT_SYSTEM =  (1U << 9), /**< Page coherence Outer shareable */
-	BASE_MEM_COHERENT_LOCAL =   (1U << 10) /**< Page coherence Inner shareable */
+	BASE_MEM_COHERENT_LOCAL =   (1U << 10), /**< Page coherence Inner shareable */
+	BASE_MEM_DONT_ZERO_INIT =   (1U << 11) /**< Optimization: No need to zero initialize */
 };
 
 /**

@@ -2391,13 +2391,6 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	kbdev->gpu_props.irq_throttle_time_us = kbasep_get_config_value(kbdev, platform_data,
 		                                                       KBASE_CONFIG_ATTR_GPU_IRQ_THROTTLE_TIME_US);
 
-	err = kbase_register_memory_regions(kbdev, (kbase_attribute *)osdev->dev->platform_data);
-	if (err)
-	{
-		dev_err(osdev->dev, "Failed to register memory regions\n");
-		goto out_term_dev;
-	}
-
 	err = kbase_common_device_init(kbdev);
 	if (err)
 	{
