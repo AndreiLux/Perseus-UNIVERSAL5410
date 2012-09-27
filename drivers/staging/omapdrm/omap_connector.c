@@ -105,9 +105,11 @@ static void omap_connector_dpms(struct drm_connector *connector, int mode)
 		default:
 			break;
 		}
-	} else {
+	} else if (mode == DRM_MODE_DPMS_OFF) {
 		if (dssdev->state != OMAP_DSS_DISPLAY_DISABLED)
 			dssdev->driver->disable(dssdev);
+	} else {
+		/* TODO */
 	}
 
 	/* from on to off, do from connector to crtc */
