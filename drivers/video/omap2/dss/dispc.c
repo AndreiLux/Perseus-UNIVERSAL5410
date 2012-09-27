@@ -3406,12 +3406,14 @@ static irqreturn_t omap_dispc_irq_handler(int irq, void *arg)
 
 	spin_lock(&dispc.irq_lock);
 
+	dispc_runtime_get();
 	irqstatus = dispc_read_reg(DISPC_IRQSTATUS);
 	irqenable = dispc_read_reg(DISPC_IRQENABLE);
 
 	/* IRQ is not for us */
 	if (!(irqstatus & irqenable)) {
 		spin_unlock(&dispc.irq_lock);
+		dispc_runtime_put();
 		return IRQ_NONE;
 	}
 
@@ -3431,6 +3433,8 @@ static irqreturn_t omap_dispc_irq_handler(int irq, void *arg)
 	dispc_write_reg(DISPC_IRQSTATUS, irqstatus);
 	/* flush posted write */
 	dispc_read_reg(DISPC_IRQSTATUS);
+
+	dispc_runtime_put();
 
 	/* make a copy and unlock, so that isrs can unregister
 	 * themselves */
