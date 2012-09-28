@@ -1176,6 +1176,7 @@ static enum hrtimer_restart  zap_timeout_callback( struct hrtimer * timer )
 
 	if (kbase_prepare_to_reset_gpu(kbdev))
 	{
+		OSK_PRINT_WARN(OSK_BASE_JD, "NOTE: GPU will now be reset as a workaround for a hardware issue");
 		kbase_reset_gpu(kbdev);
 	}
 
