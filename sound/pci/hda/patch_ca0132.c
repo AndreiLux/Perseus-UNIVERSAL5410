@@ -762,6 +762,9 @@ struct ca0132_spec {
 	long voicefx_val;
 	long cur_mic_boost;
 
+	struct hda_codec *codec;
+	struct delayed_work unsol_hp_work;
+
 	#ifdef ENABLE_TUNING_CONTROLS
 	long cur_ctl_vals[TUNING_CTLS_COUNT];
 	#endif
@@ -3190,6 +3193,14 @@ exit:
 	return err < 0 ? err : 0;
 }
 
+static void ca0132_unsol_hp_delayed(struct work_struct *work)
+{
+	struct ca0132_spec *spec = container_of(
+		to_delayed_work(work), struct ca0132_spec, unsol_hp_work);
+	ca0132_select_out(spec->codec);
+	snd_hda_jack_report_sync(spec->codec);
+}
+
 static void ca0132_set_dmic(struct hda_codec *codec, int enable);
 static int ca0132_mic_boost_set(struct hda_codec *codec, long val);
 static int ca0132_effects_set(struct hda_codec *codec, hda_nid_t nid, long val);
@@ -4241,6 +4252,7 @@ static void ca0132_process_dsp_response(struct hda_codec *codec)
 
 static void ca0132_unsol_event(struct hda_codec *codec, unsigned int res)
 {
+	struct ca0132_spec *spec = codec->spec;
 	CA0132_LOG("ca0132_unsol_event: 0x%x\n", res);
 
 
@@ -4254,15 +4266,18 @@ static void ca0132_unsol_event(struct hda_codec *codec, unsigned int res)
 
 		switch (res) {
 		case UNSOL_TAG_HP:
-			ca0132_select_out(codec);
+			cancel_delayed_work_sync(&spec->unsol_hp_work);
+			queue_delayed_work(codec->bus->workq,
+					   &spec->unsol_hp_work,
+					   msecs_to_jiffies(250));
 			break;
 		case UNSOL_TAG_AMIC1:
 			ca0132_select_mic(codec);
+			snd_hda_jack_report_sync(codec);
 			break;
 		default:
 			break;
 		}
-		snd_hda_jack_report_sync(codec);
 	}
 }
 
@@ -4431,6 +4446,7 @@ static void ca0132_free(struct hda_codec *codec)
 {
 	struct ca0132_spec *spec = codec->spec;
 
+	cancel_delayed_work_sync(&spec->unsol_hp_work);
 	snd_hda_power_up(codec);
 	snd_hda_sequence_write(codec, spec->base_exit_verbs);
 	ca0132_exit_chip(codec);
@@ -4486,6 +4502,7 @@ static int patch_ca0132(struct hda_codec *codec)
 	if (!spec)
 		return -ENOMEM;
 	codec->spec = spec;
+	spec->codec = codec;
 
 	spec->num_mixers = 1;
 	spec->mixers[0] = ca0132_mixer;
@@ -4495,6 +4512,8 @@ static int patch_ca0132(struct hda_codec *codec)
 	spec->init_verbs[0] = ca0132_init_verbs0;
 	spec->init_verbs[1] = ca0132_init_verbs1;
 	spec->num_init_verbs = 2;
+
+	INIT_DELAYED_WORK(&spec->unsol_hp_work, ca0132_unsol_hp_delayed);
 
 	ca0132_init_chip(codec);
 
