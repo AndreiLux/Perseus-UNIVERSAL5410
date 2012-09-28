@@ -122,6 +122,17 @@ static mali_dvfs_status mali_dvfs_status_current;
 static const unsigned int mali_dvfs_vol_default[]=
 	{ 925000, 925000, 1025000, 1075000, 1125000, 1150000, 1200000};
 
+static int kbase_platform_dvfs_get_bw(int level)
+{
+	int bw;
+
+	if (level == 0)
+		return -1;
+
+	bw = mali_dvfs_infotbl[level].clock * 16;
+	return clamp(bw, 0, 6400);
+}
+
 static int mali_dvfs_update_asv(int cmd)
 {
 	int i;
@@ -262,6 +273,7 @@ int kbase_platform_dvfs_enable(bool enable, int freq)
 	struct kbase_device *kbdev;
 	unsigned long flags;
 	struct exynos_context *platform;
+	int bw;
 
 	dvfs_status = &mali_dvfs_status_current;
 	kbdev = mali_dvfs_status_current.kbdev;
@@ -291,6 +303,8 @@ int kbase_platform_dvfs_enable(bool enable, int freq)
 			hrtimer_start(&kbdev->pm.metrics.timer,
 					HR_TIMER_DELAY_MSEC(KBASE_PM_DVFS_FREQUENCY),
 					HRTIMER_MODE_REL);
+			bw = kbase_platform_dvfs_get_bw(dvfs_status->step);
+			pm_qos_update_request(&mem_bw_req, bw);
 		} else {
 			spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
 			kbdev->pm.metrics.timer_active = MALI_FALSE;
@@ -660,12 +674,8 @@ void kbase_platform_dvfs_set_level(kbase_device *kbdev, int level)
 #ifdef CONFIG_MALI_T6XX_DVFS
 	mutex_lock(&mali_set_clock_lock);
 #endif
-	if (level > 0) {
-		bw = mali_dvfs_infotbl[level].clock * 16;
-		bw = clamp(bw, 0, 6400);
-	} else {
-		bw = -1;
-	}
+
+	bw = kbase_platform_dvfs_get_bw(level);
 
 	if (level > prev_level) {
 		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
