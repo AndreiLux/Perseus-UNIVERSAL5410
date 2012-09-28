@@ -1485,7 +1485,7 @@ static struct omap_mmu_dev_attr omap44xx_dsp_mmu_dev_attr = {
 	 * TODO: Modify value to 600 allow a lower CSWR state whenever
 	 * firmware supports it
 	 */
-	.pm_constraint = 300,
+	.pm_constraint = 1000,
 };
 
 static struct omap_hwmod_class omap44xx_dsp_hwmod_class = {
