@@ -491,17 +491,11 @@ fail:
 
 static int hdmi_suspend(struct device *dev)
 {
-	dev_dbg(dev, "%s start\n", __func__);
-
-	return 0;
-}
-
-static int hdmi_resume(struct device *dev)
-{
 	struct platform_device *pdev = to_platform_device(dev);
 	struct s5p_hdmi_platdata *pdata = pdev->dev.platform_data;
 	struct v4l2_subdev *sd = dev_get_drvdata(dev);
 	struct hdmi_device *hdev = sd_to_hdmi_dev(sd);
+	int ret = 0;
 
 	dev_dbg(dev, "%s start\n", __func__);
 
@@ -510,11 +504,41 @@ static int hdmi_resume(struct device *dev)
 	 * So, HDMI PHY must be turned off if it's not used */
 	if (pdata->hdmiphy_enable)
 		pdata->hdmiphy_enable(pdev, 1);
-	v4l2_subdev_call(hdev->phy_sd, core, s_power, 0);
+
+	ret = v4l2_subdev_call(hdev->phy_sd, core, s_power, 0);
+	if (ret)
+		dev_err(dev, "failed to turn off hdmiphy\n");
+
 	if (pdata->hdmiphy_enable)
 		pdata->hdmiphy_enable(pdev, 0);
 
-	return 0;
+	return ret;
+}
+
+static int hdmi_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct s5p_hdmi_platdata *pdata = pdev->dev.platform_data;
+	struct v4l2_subdev *sd = dev_get_drvdata(dev);
+	struct hdmi_device *hdev = sd_to_hdmi_dev(sd);
+	int ret = 0;
+
+	dev_dbg(dev, "%s start\n", __func__);
+
+	/* HDMI PHY power off
+	 * HDMI PHY is on as default configuration
+	 * So, HDMI PHY must be turned off if it's not used */
+	if (pdata->hdmiphy_enable)
+		pdata->hdmiphy_enable(pdev, 1);
+
+	ret = v4l2_subdev_call(hdev->phy_sd, core, s_power, 0);
+	if (ret)
+		dev_err(dev, "failed to turn off hdmiphy\n");
+
+	if (pdata->hdmiphy_enable)
+		pdata->hdmiphy_enable(pdev, 0);
+
+	return ret;
 }
 
 static const struct dev_pm_ops hdmi_pm_ops = {
