@@ -848,11 +848,11 @@ static void fimc_is_ischain_region_flush(struct fimc_is_device_ischain *this)
 
 static void fimc_is_ischain_version(char *name, const char *load_bin, u32 size)
 {
-	char version_str[FIMC_IS_VERSION_SIZE + 1];
+	char version_str[FIMC_IS_VERSION_SIZE];
 
 	memcpy(version_str, &load_bin[size - FIMC_IS_VERSION_SIZE],
 		FIMC_IS_VERSION_SIZE);
-	version_str[FIMC_IS_VERSION_SIZE] = 0;
+	version_str[FIMC_IS_VERSION_SIZE-1] = '\0';
 	printk(KERN_INFO "%s version : %s\n", name, version_str);
 }
 
