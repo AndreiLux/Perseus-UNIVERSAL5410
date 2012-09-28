@@ -215,6 +215,8 @@
 #define DEPCTL_BULK_TYPE		(0x2<<18)
 #define DEPCTL_INTR_TYPE		(0x3<<18)
 #define DEPCTL_NAKSTS                   (0x1<<17)
+#define DEPCTL_DPID			(0x1<<16)
+#define DEPCTL_EO_FRNUM			(0x1<<16)
 #define DEPCTL_USBACTEP			(0x1<<15)
 #define DEPCTL_NEXT_EP_BIT		(11)
 #define DEPCTL_MPS_BIT			(0)
