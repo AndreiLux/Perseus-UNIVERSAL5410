@@ -1898,6 +1898,14 @@ static int __devexit cyapa_remove(struct i2c_client *client)
 	pm_runtime_disable(&client->dev);
 	sysfs_remove_group(&client->dev.kobj, &cyapa_sysfs_group);
 
+#ifdef CONFIG_PM_SLEEP
+	sysfs_unmerge_group(&client->dev.kobj, &cyapa_power_wakeup_group);
+#endif
+
+#ifdef CONFIG_PM_RUNTIME
+	sysfs_unmerge_group(&client->dev.kobj, &cyapa_power_runtime_group);
+#endif
+
 	free_irq(cyapa->irq, cyapa);
 
 	if (cyapa->input)
