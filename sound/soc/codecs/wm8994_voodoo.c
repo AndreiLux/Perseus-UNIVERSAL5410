@@ -87,7 +87,7 @@ bool adc_osr128 = true;
 #ifndef GALAXY_TAB_TEGRA
 bool fll_tuning = true;
 #endif
-bool dac_direct = true;
+bool dac_direct = false;
 bool mono_downmix = false;
 
 // equalizer
@@ -217,7 +217,6 @@ static int wm8994_write(struct snd_soc_codec *codec, unsigned int reg,
 		printk("Voodoo sound: direct: wm8994_write 0x%03X 0x%04X "
 				"\n", reg, value);
 	ret = wm8994_reg_write(codec->control_data, reg, value);
-	udelay(1000);
 	return ret;
 }
 
@@ -1191,6 +1190,21 @@ void load_current_eq_values()
 		}
 }
 
+void apply_soundboost(void)
+{
+	pr_info("%s++\n", __func__);
+	if(!enable) return;
+	update_digital_gain(false);
+	update_hpvol(false);
+	update_fll_tuning(false);
+	update_dac_direct(false);
+	update_headphone_eq(true);
+	update_stereo_expansion(false);
+	update_speaker_offset();
+	update_speaker_tuning(false);
+	apply_saturation_prevention_drc();
+}
+
 void apply_saturation_prevention_drc()
 {
 	unsigned short val;
@@ -2078,16 +2092,21 @@ unsigned int voodoo_hook_wm8994_write(struct snd_soc_codec *codec_,
 		if( value & (WM8994_SPKOUTR_ENA|WM8994_SPKOUTL_ENA))
 			bypass_write_hook_clamp = true;
 		else
+		{
 			bypass_write_hook_clamp = false;
+			apply_soundboost();
+		}
 	}
 #endif
 	if (1) { //!bypass_write_hook) {
 
 #ifdef CONFIG_SND_VOODOO_HP_LEVEL_CONTROL
-		if (is_path(HEADPHONES)
+		if (true
 		    && !(codec_state & CALL_ACTIVE)
 #ifdef GALAXY_S3
 			&& !bypass_write_hook_clamp
+#else
+			&& is_path(HEADPHONES)
 #endif
 			) {
 
