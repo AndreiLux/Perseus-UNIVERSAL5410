@@ -903,7 +903,7 @@ static void __dw_mci_start_request(struct dw_mci *host,
 {
 	struct mmc_request *mrq;
 	struct mmc_data	*data;
-	u32 cmdflags;
+	u32 cmdflags, timeout = 0;
 
 	host->prv_err = false;
 	mrq = slot->mrq;
@@ -927,7 +927,13 @@ static void __dw_mci_start_request(struct dw_mci *host,
 		dw_mci_set_timeout(host);
 		mci_writel(host, BYTCNT, data->blksz*data->blocks);
 		mci_writel(host, BLKSIZ, data->blksz);
-	}
+		timeout = data->timeout_ns / 1000000;
+	} else
+		timeout= cmd->cmd_timeout_ms;
+
+	/* s/w reset value adds 2 second to give opportunity to host controller */
+	mod_timer(&host->timer, jiffies +
+			msecs_to_jiffies(timeout + 2000));
 
 	cmdflags = dw_mci_prepare_command(slot->mmc, cmd);
 
@@ -1328,6 +1334,8 @@ static void dw_mci_request_end(struct dw_mci *host, struct mmc_request *mrq)
 	struct mmc_host	*prev_mmc = host->cur_slot->mmc;
 
 	WARN_ON(host->cmd || host->data);
+
+	del_timer(&host->timer);
 
 	host->cur_slot->mrq = NULL;
 	host->mrq = NULL;
@@ -2173,6 +2181,7 @@ static void dw_mci_work_routine_card(struct work_struct *work)
 					if (mrq->stop)
 						mrq->stop->error = -ENOMEDIUM;
 
+					del_timer(&host->timer);
 					spin_unlock(&host->lock);
 					mmc_request_done(slot->mmc, mrq);
 					spin_lock(&host->lock);
@@ -2437,6 +2446,54 @@ static bool mci_wait_reset(struct device *dev, struct dw_mci *host)
 	return false;
 }
 
+static void dw_mci_timeout_timer(unsigned long data)
+{
+	struct dw_mci *host = (struct dw_mci *)data;
+	struct mmc_request *mrq;
+
+	if (host && host->mrq) {
+		mrq = host->mrq;
+
+		dev_err(&host->dev,
+			"Timeout waiting for hardware interrupt.\n");
+
+		spin_lock(&host->lock);
+		host->data = NULL;
+		host->cmd = NULL;
+
+		switch (host->state) {
+		case STATE_IDLE:
+			break;
+		case STATE_SENDING_CMD:
+			mrq->cmd->error = -ENOMEDIUM;
+			if (!mrq->data)
+				break;
+			/* fall through */
+		case STATE_SENDING_DATA:
+			mrq->data->error = -ENOMEDIUM;
+			dw_mci_stop_dma(host);
+			break;
+		case STATE_DATA_BUSY:
+		case STATE_DATA_ERROR:
+			if (mrq->data->error == -EINPROGRESS)
+				mrq->data->error = -ENOMEDIUM;
+			/* fall through */
+		case STATE_SENDING_STOP:
+			if (!mrq->stop)
+				break;
+			mrq->stop->error = -ENOMEDIUM;
+			break;
+		}
+
+		spin_unlock(&host->lock);
+		dw_mci_wait_reset(&host->dev, host, SDMMC_CTRL_FIFO_RESET);
+		spin_lock(&host->lock);
+
+		dw_mci_request_end(host, mrq);
+		spin_unlock(&host->lock);
+	}
+}
+
 int __devinit dw_mci_probe(struct dw_mci *host)
 {
 	int width, i, ret = 0;
@@ -2558,6 +2615,9 @@ int __devinit dw_mci_probe(struct dw_mci *host)
 	if (!dw_mci_card_workqueue)
 		goto err_dmaunmap;
 	INIT_WORK(&host->card_work, dw_mci_work_routine_card);
+
+	setup_timer(&host->timer, dw_mci_timeout_timer, (unsigned long)host);
+
 	ret = request_irq(host->irq, dw_mci_interrupt, host->irq_flags, "dw-mci", host);
 	if (ret)
 		goto err_workqueue;
@@ -2670,6 +2730,9 @@ void dw_mci_remove(struct dw_mci *host)
 	mci_writel(host, CLKSRC, 0);
 
 	free_irq(host->irq, host);
+
+	del_timer_sync(&host->timer);
+
 	destroy_workqueue(dw_mci_card_workqueue);
 	dma_free_coherent(&host->dev, host->desc_sz * PAGE_SIZE,
 			host->sg_cpu, host->sg_dma);

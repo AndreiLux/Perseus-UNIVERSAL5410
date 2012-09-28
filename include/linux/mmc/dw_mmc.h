@@ -184,6 +184,9 @@ struct dw_mci {
 	/* Workaround flags */
 	u32			quirks;
 
+	/* S/W reset timer */
+	struct timer_list       timer;
+
 	struct regulator	*vmmc;	/* Power regulator */
 	unsigned long		irq_flags; /* IRQ flags */
 	unsigned int		irq;
