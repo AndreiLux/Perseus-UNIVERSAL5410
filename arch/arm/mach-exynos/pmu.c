@@ -346,6 +346,7 @@ void __iomem *exynos5_list_disable_pmu_reg[] = {
 	EXYNOS5_CMU_RESET_G3D_SYS_PWR_REG,
 	EXYNOS5_CMU_RESET_DISP1_SYS_PWR_REG,
 	EXYNOS5_CMU_RESET_MAU_SYS_PWR_REG,
+	EXYNOS5_ISP_ARM_CONFIGURATION,
 };
 
 static void exynos5_init_pmu(void)
