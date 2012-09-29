@@ -3778,6 +3778,12 @@ static int s3c_fb_disable(struct s3c_fb *sfb)
 		goto err;
 	}
 
+	if (sfb->pdata->backlight_off)
+		sfb->pdata->backlight_off();
+
+	if (sfb->pdata->lcd_off)
+		sfb->pdata->lcd_off();
+
 	flush_kthread_worker(&sfb->update_regs_worker);
 
 	vidcon0 = readl(sfb->regs + VIDCON0);

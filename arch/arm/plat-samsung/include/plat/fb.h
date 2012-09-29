@@ -55,6 +55,8 @@ struct s3c_fb_pd_win {
  */
 struct s3c_fb_platdata {
 	void	(*setup_gpio)(void);
+	void	(*backlight_off)(void);
+	void	(*lcd_off)(void);
 
 	struct s3c_fb_pd_win	*win[S3C_FB_MAX_WIN];
 
