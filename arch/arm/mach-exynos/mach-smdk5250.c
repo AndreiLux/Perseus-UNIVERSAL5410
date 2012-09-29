@@ -1163,6 +1163,9 @@ static struct s3c_fb_pd_win smdk5250_fb_win2 = {
 	.default_bpp		= 24,
 };
 #elif defined(CONFIG_S5P_DP)
+static void s5p_dp_backlight_on(void);
+static void s5p_dp_backlight_off(void);
+
 static void s5p_lcd_on(void)
 {
 #ifndef CONFIG_BACKLIGHT_PWM
@@ -1286,6 +1289,8 @@ static struct s3c_fb_platdata smdk5250_lcd1_pdata __initdata = {
 	.vidcon1	= 0,
 #endif
 	.setup_gpio	= exynos5_fimd1_gpio_setup_24bpp,
+	.backlight_off	= s5p_dp_backlight_off,
+	.lcd_off	= s5p_lcd_off,
 };
 
 #endif
@@ -1448,7 +1453,6 @@ static struct s5p_dp_platdata smdk5250_dp_data __initdata = {
 	.phy_init	= s5p_dp_phy_init,
 	.phy_exit	= s5p_dp_phy_exit,
 	.backlight_on	= s5p_dp_backlight_on,
-	.backlight_off	= s5p_dp_backlight_off,
 	.lcd_on		= s5p_lcd_on,
 	.lcd_off	= s5p_lcd_off,
 };
