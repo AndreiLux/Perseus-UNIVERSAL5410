@@ -1908,13 +1908,13 @@ static int __devexit cyapa_remove(struct i2c_client *client)
 
 	free_irq(cyapa->irq, cyapa);
 
-	if (cyapa->input)
-		input_unregister_device(cyapa->input);
-
 	if (cyapa->dentry_dev) {
 		debugfs_remove_recursive(cyapa->dentry_dev);
 		mutex_destroy(&cyapa->debugfs_mutex);
 	}
+
+	if (cyapa->input)
+		input_unregister_device(cyapa->input);
 
 	kfree(cyapa->read_fw_image);
 	kfree(cyapa->phys);
