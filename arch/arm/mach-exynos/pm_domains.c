@@ -421,7 +421,7 @@ EXYNOS_PM_DEV(maudio, maudio, &exynos5_device_i2s0, NULL);
 EXYNOS_PM_DEV(fimd1, fimd1, &s5p_device_fimd1, "fimd");
 #endif
 #ifdef CONFIG_S5P_DEV_TV
-EXYNOS_PM_DEV(hdmi, hdmi, &s5p_device_hdmi, "hdmi");
+EXYNOS_PM_DEV(hdmi, hdmi, &s5p_device_hdmi, NULL);
 EXYNOS_PM_DEV(mixer, mixer, &s5p_device_mixer, "mixer");
 #endif
 #ifdef CONFIG_S5P_DEV_DP
