@@ -1323,6 +1323,18 @@ static int dw_mci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	return 0;
 }
 
+static void dw_mci_hw_reset(struct mmc_host *host)
+{
+	struct dw_mci_slot *slot = mmc_priv(host);
+	struct dw_mci_board *brd = slot->host->pdata;
+
+	dev_dbg(&host->class_dev, "card is going to h/w reset\n");
+
+	/* Use platform hw_reset function */
+	if (brd->hw_reset)
+		brd->hw_reset(slot->id);
+}
+
 static const struct mmc_host_ops dw_mci_ops = {
 	.request		= dw_mci_request,
 	.pre_req		= dw_mci_pre_req,
@@ -1332,6 +1344,7 @@ static const struct mmc_host_ops dw_mci_ops = {
 	.get_cd			= dw_mci_get_cd,
 	.enable_sdio_irq	= dw_mci_enable_sdio_irq,
 	.execute_tuning		= dw_mci_execute_tuning,
+	.hw_reset		= dw_mci_hw_reset,
 };
 
 static void dw_mci_request_end(struct dw_mci *host, struct mmc_request *mrq)

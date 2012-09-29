@@ -265,6 +265,7 @@ struct dw_mci_board {
 	int (*get_ocr)(u32 slot_id);
 	int (*get_bus_wd)(u32 slot_id);
 	void (*cfg_gpio)(int width);
+	void (*hw_reset)(u32 slot_id);
 	void (*set_io_timing)(void *data, unsigned char timing);
 
 	/* Phase Shift Value */
