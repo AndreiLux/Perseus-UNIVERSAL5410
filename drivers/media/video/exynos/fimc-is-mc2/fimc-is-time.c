@@ -18,6 +18,9 @@ static u32 time2_avg;
 static u32 time3_min;
 static u32 time3_max;
 static u32 time3_avg;
+static u32 time4_cur;
+static u32 time4_old;
+static u32 time4_avg;
 
 void measure_init(void)
 {
@@ -31,6 +34,9 @@ void measure_init(void)
 	time3_min = 0;
 	time3_max = 0;
 	time3_avg = 0;
+	time4_cur = 0;
+	time4_old = 0;
+	time4_avg = 0;
 }
 
 void measure_internal_time(struct timeval *time_queued,
@@ -78,15 +84,22 @@ void measure_internal_time(struct timeval *time_queued,
 	time2_avg += temp2;
 	time3_avg += temp3;
 
+	time4_cur = time_queued->tv_sec*1000000 + time_queued->tv_usec;
+	time4_avg += (time4_cur - time4_old);
+	time4_old = time4_cur;
+
 	time_count++;
 
 	if (time_count % 33)
 		return;
 
-	printk(KERN_INFO "t1(%d,%d,%d,%d), t2(%d,%d,%d,%d), t3(%d,%d,%d,%d)",
-		temp1, time1_min, time1_max, time1_avg/time_count,
-		temp2, time2_min, time2_max, time2_avg/time_count,
-		temp3, time3_min, time3_max, time3_avg/time_count);
+	printk(KERN_INFO "t1(%d,%d,%d), t2(%d,%d,%d), t3(%d,%d,%d) : %d(%dfps)",
+		temp1, time1_max, time1_avg/time_count,
+		temp2, time2_max, time2_avg/time_count,
+		temp3, time3_max, time3_avg/time_count,
+		time4_avg/33, 33000000/time4_avg);
+
+	time4_avg = 0;
 }
 
 #endif

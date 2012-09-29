@@ -91,9 +91,11 @@
 #endif
 
 /* configuration - default post processing */
+/*#define ENABLE_DRC*/
 /*#define ENABLE_ODC*/
 #define ENABLE_VDIS
 /*#define ENABLE_TDNR*/
+#define ENABLE_FD
 
 /*#define DEBUG*/
 /*#define DBG_STREAMING*/
@@ -102,10 +104,12 @@
 #define FW_DEBUG
 /*#define RESERVED_MEM*/
 #define USE_FRAME_SYNC
-#define USE_ADVANCED_DZOOM
+/*#define USE_ADVANCED_DZOOM*/
 /*#define TASKLET_MSG*/
 /*#define PRINT_BUFADDR*/
-#define ISDRV_VERSION 110
+/*#define PRINT_DZOOM*/
+#define CHECK_FDROP
+#define ISDRV_VERSION 111
 
 #ifdef DEBUG
 #define dbg(fmt, args...) \

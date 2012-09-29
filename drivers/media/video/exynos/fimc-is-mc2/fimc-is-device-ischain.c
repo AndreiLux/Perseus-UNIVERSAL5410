@@ -160,8 +160,9 @@ static int isfw_debug_read(struct file *file, char __user *user_buf,
 	}
 
 exit:
-	printk(KERN_INFO "buffer point(%d:%d), copy size : %d\n",
-		debug_cnt, ischain->debug_cnt, (count1 + count2));
+	/* this printk need to be remained for debugging */
+	/*printk(KERN_INFO "buffer point(%d:%d), copy size : %d\n",
+		debug_cnt, ischain->debug_cnt, (count1 + count2));*/
 	return count1 + count2;
 }
 
@@ -386,7 +387,7 @@ static const struct scalerc_param init_scalerc_param = {
 		.err = 0,
 	},
 	.output_crop = {
-		.cmd = OTF_INPUT_COMMAND_DISABLE,
+		.cmd = SCALER_CROP_COMMAND_DISABLE,
 		.pos_x = 0,
 		.pos_y = 0,
 		.crop_width = DEFAULT_CAPTURE_STILL_WIDTH,
@@ -565,7 +566,7 @@ static const struct scalerp_param init_scalerp_param = {
 		.err = 0,
 	},
 	.output_crop = {
-		.cmd = OTF_INPUT_COMMAND_DISABLE,
+		.cmd = SCALER_CROP_COMMAND_DISABLE,
 		.pos_x = 0,
 		.pos_y = 0,
 		.crop_width = DEFAULT_PREVIEW_STILL_WIDTH,
@@ -1674,8 +1675,10 @@ static int fimc_is_itf_shot(struct fimc_is_device_ischain *this,
 
 	this->fcount++;
 	if (frame->shot->dm.request.frameCount != this->fcount) {
+#ifdef CHECK_FDROP
 		printk(KERN_INFO "shot mismatch(%d, %d)",
 			frame->shot->dm.request.frameCount, this->fcount);
+#endif
 
 		if (!frame->shot->dm.request.frameCount) {
 			frame->fcount = this->fcount;
@@ -2485,14 +2488,16 @@ static int fimc_is_ischain_s_dzoom(struct fimc_is_device_ischain *this,
 	u32 crop_x, u32 crop_y, u32 crop_width)
 {
 	int ret = 0;
-	u32 crop_height;
 	u32 indexes, lindex, hindex;
 	u32 chain0_width, chain0_height;
-	u32 temp_width, input_width;
+	u32 temp_width, temp_height, input_width;
+	u32 zoom_input, zoom_target;
+	u32 crop_cx, crop_cy, crop_cwidth, crop_cheight;
 	struct scalerc_param *scc_param;
 #ifdef USE_ADVANCED_DZOOM
-	u32 crop_hx, crop_hy, crop_hwidth, crop_hheight;
+	u32 zoom_pre, zoom_post, zoom_pre_max;
 	u32 crop_px, crop_py, crop_pwidth, crop_pheight;
+	u32 chain1_width, chain1_height;
 	u32 chain2_width, chain2_height;
 	struct scalerp_param *scp_param;
 
@@ -2501,17 +2506,24 @@ static int fimc_is_ischain_s_dzoom(struct fimc_is_device_ischain *this,
 	indexes = lindex = hindex = 0;
 	chain0_width = this->chain0_width;
 	chain0_height = this->chain0_height;
+	chain1_width = this->chain1_width;
+	chain1_height = this->chain1_height;
 	chain2_width = this->chain2_width;
 	chain2_height = this->chain2_height;
-	crop_hx = (chain0_width>>2) & 0xFFFFFFFE;
-	crop_hy = (chain0_height>>2) & 0xFFFFFFFE;
-	crop_hwidth = (chain0_width>>1) & 0xFFFFFFFE;
-	crop_hheight = (chain0_height>>1) & 0xFFFFFFFE;
+#ifdef PRINT_DZOOM
+	printk(KERN_INFO "chain0(%d, %d), chain1(%d, %d), chain2(%d, %d)\n",
+		chain0_width, chain0_height,
+		chain1_width, chain1_height,
+		chain2_width, chain2_height);
+#endif
 #else
 	scc_param = &this->is_region->parameter.scalerc;
 	indexes = lindex = hindex = 0;
 	chain0_width = this->chain0_width;
 	chain0_height = this->chain0_height;
+#ifdef PRINT_DZOOM
+	printk(KERN_INFO "chain0(%d, %d)\n", chain0_width, chain0_height);
+#endif
 #endif
 
 	/* CHECK */
@@ -2526,51 +2538,105 @@ static int fimc_is_ischain_s_dzoom(struct fimc_is_device_ischain *this,
 		goto exit;
 	}
 
-	/* CALCULATION */
-	crop_x = crop_x & 0xFFFFFFFE;
-	crop_y = crop_y & 0xFFFFFFFE;
-	crop_width = chain0_width - (crop_x<<1);
-	crop_height = chain0_height - (crop_y<<1);
-
 #ifdef USE_ADVANCED_DZOOM
-	if (crop_width < crop_hwidth) {
-		crop_px = crop_x - crop_hx;
-		crop_py = crop_y - crop_hy;
-		crop_pwidth = chain2_width - (crop_hwidth - crop_width);
-		crop_pheight = chain2_height - (crop_hheight - crop_height);
+	zoom_input = (chain0_width * 10000) / crop_width;
+	zoom_pre_max = (chain0_width * 10000) / chain1_width;
 
-		scp_param->input_crop.cmd = SCALER_CROP_COMMAND_ENABLE;
-		scp_param->input_crop.pos_x = crop_px;
-		scp_param->input_crop.pos_y = crop_py;
-		scp_param->input_crop.crop_width = crop_pwidth;
-		scp_param->input_crop.crop_height = crop_pheight;
-		lindex |= LOWBIT_OF(PARAM_SCALERP_INPUT_CROP);
-		hindex |= HIGHBIT_OF(PARAM_SCALERP_INPUT_CROP);
-		indexes++;
+	if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state)) {
+		if (zoom_input == 10000)
+			zoom_target =  10000;
+		else {
+			zoom_input = (zoom_input * 375) / 400;
+			zoom_target = ((zoom_input + 2500) * 100) / 125;
+		}
+	} else
+		zoom_target = zoom_input;
 
-		dbg_ischain("%s2(%d, %d, %d %d)\n", __func__, crop_hx, crop_hy,
-			crop_hwidth, crop_hheight);
-		dbg_ischain("%s3(%d, %d, %d %d)\n", __func__, crop_px, crop_py,
-			crop_pwidth, crop_pheight);
-
-		crop_x = crop_hx;
-		crop_y = crop_hy;
-		crop_width = crop_hwidth;
-		crop_height = crop_hheight;
+	if (zoom_target > zoom_pre_max) {
+		zoom_pre = zoom_pre_max;
+		zoom_post = (zoom_target * 10000) / zoom_pre;
+		zoom_post = (zoom_post / 100) * 100;
+	} else {
+		zoom_pre = zoom_target;
+		zoom_post = 10000;
 	}
-#endif
-	dbg_ischain("%s1(%d, %d, %d %d)\n", __func__, crop_x, crop_y,
-		crop_width, crop_height);
 
-	/* SCC OUTPUT */
+	/* CALCULATION */
+	temp_width = (chain0_width * 10000) / zoom_pre;
+	temp_height = (chain0_height * 10000) / zoom_pre;
+	crop_cx = (chain0_width - temp_width)>>1;
+	crop_cy = (chain0_height - temp_height)>>1;
+	crop_cwidth = chain0_width - (crop_cx<<1);
+	crop_cheight = chain0_height - (crop_cy<<1);
+
 	scc_param->input_crop.cmd = SCALER_CROP_COMMAND_ENABLE;
-	scc_param->input_crop.pos_x = crop_x;
-	scc_param->input_crop.pos_y = crop_y;
-	scc_param->input_crop.crop_width = crop_width;
-	scc_param->input_crop.crop_height = crop_height;
+	scc_param->input_crop.pos_x = crop_cx;
+	scc_param->input_crop.pos_y = crop_cy;
+	scc_param->input_crop.crop_width = crop_cwidth;
+	scc_param->input_crop.crop_height = crop_cheight;
 	lindex |= LOWBIT_OF(PARAM_SCALERC_INPUT_CROP);
 	hindex |= HIGHBIT_OF(PARAM_SCALERC_INPUT_CROP);
 	indexes++;
+
+#ifdef PRINT_DZOOM
+	printk(KERN_INFO "pre-zoom target : %d(%d, %d, %d %d)\n",
+		zoom_pre, crop_cx, crop_cy, crop_cwidth, crop_cheight);
+#endif
+
+	temp_width = (chain2_width * 10000) / zoom_post;
+	temp_height = (chain2_height * 10000) / zoom_post;
+	crop_px = (chain2_width - temp_width)>>1;
+	crop_py = (chain2_height - temp_height)>>1;
+	crop_pwidth = chain2_width - (crop_px<<1);
+	crop_pheight = chain2_height - (crop_py<<1);
+
+	scp_param->input_crop.cmd = SCALER_CROP_COMMAND_ENABLE;
+	scp_param->input_crop.pos_x = crop_px;
+	scp_param->input_crop.pos_y = crop_py;
+	scp_param->input_crop.crop_width = crop_pwidth;
+	scp_param->input_crop.crop_height = crop_pheight;
+	lindex |= LOWBIT_OF(PARAM_SCALERP_INPUT_CROP);
+	hindex |= HIGHBIT_OF(PARAM_SCALERP_INPUT_CROP);
+	indexes++;
+
+#ifdef PRINT_DZOOM
+	printk(KERN_INFO "post-zoom target : %d(%d, %d, %d %d)\n",
+		zoom_post, crop_px, crop_py, crop_pwidth, crop_pheight);
+#endif
+#else
+	zoom_input = (chain0_width * 10000) / crop_width;
+
+	if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state)) {
+		if (zoom_input == 10000)
+			zoom_target =  10000;
+		else {
+			zoom_input = (zoom_input * 375) / 400;
+			zoom_target = ((zoom_input + 2500) * 100) / 125;
+		}
+	} else
+		zoom_target = zoom_input;
+
+	temp_width = (chain0_width * 10000) / zoom_target;
+	temp_height = (chain0_height * 10000) / zoom_target;
+	crop_cx = (chain0_width - temp_width)>>1;
+	crop_cy = (chain0_height - temp_height)>>1;
+	crop_cwidth = chain0_width - (crop_cx<<1);
+	crop_cheight = chain0_height - (crop_cy<<1);
+
+	scc_param->input_crop.cmd = SCALER_CROP_COMMAND_ENABLE;
+	scc_param->input_crop.pos_x = crop_cx;
+	scc_param->input_crop.pos_y = crop_cy;
+	scc_param->input_crop.crop_width = crop_cwidth;
+	scc_param->input_crop.crop_height = crop_cheight;
+	lindex |= LOWBIT_OF(PARAM_SCALERC_INPUT_CROP);
+	hindex |= HIGHBIT_OF(PARAM_SCALERC_INPUT_CROP);
+	indexes++;
+
+#ifdef PRINT_DZOOM
+	printk(KERN_INFO "zoom target : %d(%d, %d, %d %d)\n",
+		zoom_target, crop_cx, crop_cy, crop_cwidth, crop_cheight);
+#endif
+#endif
 
 	ret = fimc_is_itf_s_param(this, indexes, lindex, hindex);
 	if (ret) {
@@ -2579,10 +2645,10 @@ static int fimc_is_ischain_s_dzoom(struct fimc_is_device_ischain *this,
 		goto exit;
 	}
 
-	this->crop_x = crop_x;
-	this->crop_y = crop_y;
-	this->crop_width = crop_width;
-	this->crop_height = crop_height;
+	this->crop_x = crop_cx;
+	this->crop_y = crop_cy;
+	this->crop_width = crop_cwidth;
+	this->crop_height = crop_cheight;
 	this->dzoom_width = input_width;
 
 exit:
@@ -2650,8 +2716,8 @@ static int fimc_is_ischain_dis_bypass(struct fimc_is_device_ischain *this,
 	process = false;
 
 	if (bypass) {
-		chain1_width = this->chain1_width;
-		chain1_height = this->chain1_height;
+		chain1_width = this->chain2_width;
+		chain1_height = this->chain2_height;
 	} else {
 		chain1_width = ALIGN(this->chain1_width*125/100, 4);
 		chain1_height = ALIGN(this->chain1_height*125/100, 2);
@@ -2705,6 +2771,9 @@ static int fimc_is_ischain_dis_bypass(struct fimc_is_device_ischain *this,
 		set_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state);
 		dbg_ischain("DIS on\n");
 	}
+
+	this->chain1_width = chain1_width;
+	this->chain1_height = chain1_height;
 
 exit:
 	if (!process)
@@ -3762,6 +3831,7 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 		}
 	}
 
+#ifdef ENABLE_DRC
 	if (isp_frame->shot_ext->drc_bypass) {
 		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->drc.state)) {
 			ret = fimc_is_ischain_drc_bypass(this, true);
@@ -3779,7 +3849,9 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 			}
 		}
 	}
+#endif
 
+#ifdef ENABLE_VDIS
 	if (isp_frame->shot_ext->dis_bypass) {
 		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state)) {
 			ret = fimc_is_ischain_dis_bypass(this, true);
@@ -3797,7 +3869,9 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 			}
 		}
 	}
+#endif
 
+#ifdef ENABLE_TDNR
 	if (isp_frame->shot_ext->dnr_bypass) {
 		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dnr.state)) {
 			ret = fimc_is_ischain_dnr_bypass(this, true);
@@ -3815,7 +3889,9 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 			}
 		}
 	}
+#endif
 
+#ifdef ENABLE_FD
 	if (isp_frame->shot_ext->fd_bypass) {
 		if (test_bit(FIMC_IS_ISDEV_DSTART, &this->fd.state)) {
 			ret = fimc_is_ischain_fd_bypass(this, true);
@@ -3833,6 +3909,7 @@ int fimc_is_ischain_callback(struct fimc_is_device_ischain *this)
 			}
 		}
 	}
+#endif
 
 	crop_width = isp_frame->shot->ctl.scaler.cropRegion[2];
 	if (crop_width && (crop_width != this->dzoom_width)) {
