@@ -22,6 +22,7 @@ struct fimc_is_frame {
 	struct fimc_is_fmt	format;
 	u16			width;
 	u16			height;
+	u16			width_stride[FIMC_IS_MAX_PLANES];
 	u32			size[FIMC_IS_MAX_PLANES];
 };
 

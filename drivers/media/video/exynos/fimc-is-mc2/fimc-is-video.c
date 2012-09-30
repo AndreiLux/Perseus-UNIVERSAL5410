@@ -131,12 +131,17 @@ struct fimc_is_fmt *fimc_is_find_format(u32 *pixelformat,
 
 void fimc_is_set_plane_size(struct fimc_is_frame *frame, unsigned int sizes[])
 {
-	dbg(" ");
+	u32 plane;
+	u32 width[FIMC_IS_MAX_PLANES];
+
+	for (plane = 0; plane < FIMC_IS_MAX_PLANES; ++plane)
+		width[plane] = frame->width + frame->width_stride[plane];
+
 	switch (frame->format.pixelformat) {
 	case V4L2_PIX_FMT_YUYV:
 		dbg("V4L2_PIX_FMT_YUYV(w:%d)(h:%d)\n",
 				frame->width, frame->height);
-		sizes[0] = frame->width*frame->height*2;
+		sizes[0] = width[0]*frame->height*2;
 #ifdef USE_FRAME_SYNC
 		sizes[1] = SPARE_SIZE;
 #endif
@@ -144,8 +149,8 @@ void fimc_is_set_plane_size(struct fimc_is_frame *frame, unsigned int sizes[])
 	case V4L2_PIX_FMT_NV12M:
 		dbg("V4L2_PIX_FMT_NV12M(w:%d)(h:%d)\n",
 				frame->width, frame->height);
-		sizes[0] = frame->width*frame->height;
-		sizes[1] = frame->width*frame->height/2;
+		sizes[0] = width[0]*frame->height;
+		sizes[1] = width[1]*frame->height/2;
 #ifdef USE_FRAME_SYNC
 		sizes[2] = SPARE_SIZE;
 #endif
@@ -154,9 +159,9 @@ void fimc_is_set_plane_size(struct fimc_is_frame *frame, unsigned int sizes[])
 	case V4L2_PIX_FMT_YVU420M:
 		dbg("V4L2_PIX_FMT_YVU420M(w:%d)(h:%d)\n",
 				frame->width, frame->height);
-		sizes[0] = frame->width*frame->height;
-		sizes[1] = frame->width*frame->height/4;
-		sizes[2] = frame->width*frame->height/4;
+		sizes[0] = width[0]*frame->height;
+		sizes[1] = width[1]*frame->height/4;
+		sizes[2] = width[2]*frame->height/4;
 #ifdef USE_FRAME_SYNC
 		sizes[3] = SPARE_SIZE;
 #endif
@@ -259,6 +264,8 @@ int fimc_is_video_open(struct fimc_is_video_common *video,
 	clear_bit(FIMC_IS_VIDEO_BUFFER_READY, &video->state);
 	clear_bit(FIMC_IS_VIDEO_STREAM_ON, &video->state);
 
+	memset(&video->frame, 0, sizeof(struct fimc_is_frame));
+
 	return ret;
 }
 
@@ -324,6 +331,7 @@ int fimc_is_video_set_format_mplane(struct fimc_is_video_common *video,
 	struct v4l2_format *format)
 {
 	int ret = 0;
+	u32 plane;
 	struct v4l2_pix_format_mplane *pix;
 	struct fimc_is_fmt *frame;
 
@@ -340,6 +348,14 @@ int fimc_is_video_set_format_mplane(struct fimc_is_video_common *video,
 	video->frame.format.num_planes	= frame->num_planes;
 	video->frame.width		= pix->width;
 	video->frame.height		= pix->height;
+
+	for (plane = 0; plane < frame->num_planes; ++plane) {
+		if (pix->plane_fmt[plane].bytesperline)
+			video->frame.width_stride[plane] =
+				pix->plane_fmt[plane].bytesperline - pix->width;
+		else
+			video->frame.width_stride[plane] = 0;
+	}
 
 p_err:
 	return ret;

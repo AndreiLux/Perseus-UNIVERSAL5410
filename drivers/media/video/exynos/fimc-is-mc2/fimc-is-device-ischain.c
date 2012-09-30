@@ -2336,6 +2336,7 @@ static int fimc_is_ischain_s_chain3_size(struct fimc_is_device_ischain *this,
 	int ret = 0;
 	struct scalerp_param *scp_param;
 	struct fd_param *fd_param;
+	struct fimc_is_video_common *video;
 	u32 chain2_width, chain2_height;
 	u32 chain3_width, chain3_height;
 	u32 scp_crop_width, scp_crop_height;
@@ -2344,6 +2345,7 @@ static int fimc_is_ischain_s_chain3_size(struct fimc_is_device_ischain *this,
 
 	scp_param = &this->is_region->parameter.scalerp;
 	fd_param = &this->is_region->parameter.fd;
+	video = this->scp.video;
 	indexes = lindex = hindex = 0;
 
 	chain2_width = this->chain2_width;
@@ -2375,11 +2377,24 @@ static int fimc_is_ischain_s_chain3_size(struct fimc_is_device_ischain *this,
 	hindex |= HIGHBIT_OF(PARAM_SCALERP_INPUT_CROP);
 	indexes++;
 
-	scp_param->output_crop.crop_width = chain3_width;
-	scp_param->output_crop.crop_height = chain3_height;
-	lindex |= LOWBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
-	hindex |= HIGHBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
-	indexes++;
+	/* sclaer can't apply stride to each plane, only y plane.
+	cb, cr plane should be half of y plane, it's automatically set */
+	if (video->frame.width_stride[0]) {
+		scp_param->output_crop.cmd = SCALER_CROP_COMMAND_ENABLE;
+		scp_param->output_crop.pos_x = 0;
+		scp_param->output_crop.pos_y = 0;
+		scp_param->output_crop.crop_width = chain3_width +
+			video->frame.width_stride[0];
+		scp_param->output_crop.crop_height = chain3_height;
+		lindex |= LOWBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
+		hindex |= HIGHBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
+		indexes++;
+	} else {
+		scp_param->output_crop.cmd = SCALER_CROP_COMMAND_DISABLE;
+		lindex |= LOWBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
+		hindex |= HIGHBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
+		indexes++;
+	}
 
 	scp_param->otf_output.width = chain3_width;
 	scp_param->otf_output.height = chain3_height;

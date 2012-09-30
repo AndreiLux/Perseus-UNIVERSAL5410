@@ -159,6 +159,14 @@ static int fimc_is_scalerp_video_set_format_mplane(struct file *file, void *fh,
 
 	dbg_scp("%s\n", __func__);
 
+	format->fmt.pix_mp.plane_fmt[0].bytesperline =
+		ALIGN(format->fmt.pix_mp.width, 32);
+	format->fmt.pix_mp.plane_fmt[1].bytesperline =
+		ALIGN(format->fmt.pix_mp.width, 16);
+	format->fmt.pix_mp.plane_fmt[2].bytesperline =
+		ALIGN(format->fmt.pix_mp.width, 16);
+	format->fmt.pix_mp.plane_fmt[3].bytesperline = 0;
+
 	ret = fimc_is_video_set_format_mplane(&video->common, format);
 
 	dbg_scp("req w : %d req h : %d\n",
