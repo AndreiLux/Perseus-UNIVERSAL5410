@@ -112,6 +112,7 @@ static struct workqueue_struct *mali_dvfs_wq = 0;
 osk_spinlock mali_dvfs_spinlock;
 struct mutex mali_set_clock_lock;
 struct mutex mali_enable_clock_lock;
+static int kbase_platform_dvfs_get_bw(int level);
 #ifdef CONFIG_MALI_T6XX_DEBUG_SYS
 static void update_time_in_state(int level);
 #endif
@@ -122,16 +123,6 @@ static mali_dvfs_status mali_dvfs_status_current;
 static const unsigned int mali_dvfs_vol_default[]=
 	{ 925000, 925000, 1025000, 1075000, 1125000, 1150000, 1200000};
 
-static int kbase_platform_dvfs_get_bw(int level)
-{
-	int bw;
-
-	if (level == 0)
-		return -1;
-
-	bw = mali_dvfs_infotbl[level].clock * 16;
-	return clamp(bw, 0, 6400);
-}
 
 static int mali_dvfs_update_asv(int cmd)
 {
@@ -357,6 +348,17 @@ void kbase_platform_dvfs_term(void)
 	mali_dvfs_wq = NULL;
 }
 #endif /*CONFIG_MALI_T6XX_DVFS*/
+
+static int kbase_platform_dvfs_get_bw(int level)
+{
+	int bw;
+
+	if (level == 0)
+		return -1;
+
+	bw = mali_dvfs_infotbl[level].clock * 16;
+	return clamp(bw, 0, 6400);
+}
 
 int mali_get_dvfs_upper_locked_freq(void)
 {
@@ -727,6 +729,7 @@ int kbase_platform_dvfs_set(int enable)
 }
 
 #ifdef CONFIG_MALI_T6XX_DEBUG_SYS
+#ifdef CONFIG_MALI_T6XX_DVFS
 static void update_time_in_state(int level)
 {
 	u64 current_time;
@@ -739,11 +742,10 @@ static void update_time_in_state(int level)
 		prev_time=get_jiffies_64();
 
 	current_time = get_jiffies_64();
-#ifdef CONFIG_MALI_T6XX_DVFS
 	mali_dvfs_infotbl[level].time += current_time-prev_time;
-#endif
 	prev_time = current_time;
 }
+#endif
 
 ssize_t show_time_in_state(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -753,8 +755,9 @@ ssize_t show_time_in_state(struct device *dev, struct device_attribute *attr, ch
 
 	kbdev = dev_get_drvdata(dev);
 
+#ifdef CONFIG_MALI_T6XX_DVFS
 	update_time_in_state(mali_dvfs_status_current.step);
-
+#endif
 	if (!kbdev)
 		return -ENODEV;
 
