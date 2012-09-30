@@ -1202,15 +1202,41 @@ static int gsc_get_media_info(struct device *dev, void *p)
 	return 0;
 }
 
+int gsc_bus_request_get(struct gsc_dev *gsc)
+{
+	if (!gsc->mif_min_hd) {
+		gsc->mif_min_hd = exynos5_bus_mif_min(667000);
+		if (!gsc->mif_min_hd)
+			gsc_err("failed to request min_freq");
+	}
+
+	if (!gsc->int_min_hd) {
+		gsc->int_min_hd = exynos5_bus_int_min(200000);
+		if (!gsc->int_min_hd)
+			gsc_err("failed to request min_freq");
+	}
+
+	return 0;
+}
+
+void gsc_bus_request_put(struct gsc_dev *gsc)
+{
+	if (gsc->mif_min_hd) {
+		exynos5_bus_mif_put(gsc->mif_min_hd);
+		gsc->mif_min_hd = NULL;
+	}
+	if (gsc->int_min_hd) {
+		exynos5_bus_int_put(gsc->int_min_hd);
+		gsc->int_min_hd = NULL;
+	}
+}
+
 static int gsc_runtime_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct gsc_dev *gsc = (struct gsc_dev *)platform_get_drvdata(pdev);
 
-	if (gsc->mif_min_hd) {
-		exynos5_bus_mif_put(gsc->mif_min_hd);
-		gsc->mif_min_hd = NULL;
-	}
+	gsc_bus_request_put(gsc);
 
 	if (gsc_m2m_opened(gsc))
 		gsc->m2m.ctx = NULL;
@@ -1227,11 +1253,7 @@ static int gsc_runtime_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct gsc_dev *gsc = (struct gsc_dev *)platform_get_drvdata(pdev);
 
-	if (!gsc->mif_min_hd) {
-		gsc->mif_min_hd = exynos5_bus_mif_min(667000);
-		if (!gsc->mif_min_hd)
-			gsc_err("failed to request min_freq");
-	}
+	gsc_bus_request_get(gsc);
 
 	clk_enable(gsc->clock);
 	gsc->vb2->resume(gsc->alloc_ctx);

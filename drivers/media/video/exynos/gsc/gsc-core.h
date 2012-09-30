@@ -545,6 +545,7 @@ struct gsc_dev {
 	struct exynos_entity_data	md_data;
 	bool				protected_content;
 	struct exynos5_bus_int_handle	*int_poll_hd;
+	struct exynos5_bus_int_handle	*int_min_hd;
 	struct exynos5_bus_mif_handle	*mif_min_hd;
 
 };
