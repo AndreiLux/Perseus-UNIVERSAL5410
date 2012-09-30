@@ -23,6 +23,7 @@
 #include <linux/clk.h>
 #include <linux/kernel.h>
 
+#include <mach/exynos5_bus.h>
 #include <mach/videonode-exynos5.h>
 #include <media/exynos_mc.h>
 
@@ -629,6 +630,11 @@ static int mxr_runtime_resume(struct device *dev)
 #if defined(CONFIG_CPU_EXYNOS4210)
 	clk_enable(res->sclk_mixer);
 #endif
+
+	mdev->mif_handle = exynos5_bus_mif_min(600000);
+	if (!mdev->mif_handle)
+		dev_err(dev, "failed to request min_freq for mif\n");
+
 	/* enable system mmu for tv. It must be enabled after enabling
 	 * mixer's clock. Because of system mmu limitation. */
 	mdev->vb2->resume(mdev->alloc_ctx);
@@ -649,6 +655,12 @@ static int mxr_runtime_suspend(struct device *dev)
 	/* disable system mmu for tv. It must be disabled before disabling
 	 * mixer's clock. Because of system mmu limitation. */
 	mdev->vb2->suspend(mdev->alloc_ctx);
+
+	if (mdev->mif_handle) {
+		exynos5_bus_mif_put(mdev->mif_handle);
+		mdev->mif_handle = NULL;
+	}
+
 	/* turn clocks off */
 #if defined(CONFIG_CPU_EXYNOS4210)
 	clk_disable(res->sclk_mixer);
@@ -1443,6 +1455,9 @@ static int __devexit mxr_remove(struct platform_device *pdev)
 	mxr_release_layers(mdev);
 	mxr_release_video(mdev);
 	mxr_release_resources(mdev);
+
+	if (mdev->mif_handle)
+		exynos5_bus_mif_put(mdev->mif_handle);
 
 	kfree(mdev);
 

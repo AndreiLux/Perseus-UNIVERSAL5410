@@ -386,6 +386,8 @@ struct mxr_device {
 	struct mxr_layer_en layer_en;
 	/** frame packing flag **/
 	int frame_packing;
+
+	struct exynos5_bus_mif_handle *mif_handle;
 };
 
 #if defined(CONFIG_VIDEOBUF2_CMA_PHYS)
