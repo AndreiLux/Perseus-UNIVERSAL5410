@@ -809,7 +809,6 @@ static int s5p_dsim_late_resume_init_dsim(struct dsim_global *dsim)
 	return 0;
 }
 
-#if 0
 static int s5p_dsim_init_dsim(struct dsim_global *dsim)
 {
 	unsigned int dsim_base = dsim->reg_base;
@@ -848,9 +847,7 @@ static int s5p_dsim_init_dsim(struct dsim_global *dsim)
 
 	return 0;
 }
-#endif
 
-#if 0
 void s5p_dsim_set_lcd_freq_change(struct s3cfb_lcd_timing *timing)
 {
 	struct dsim_global *dsim = g_dsim;
@@ -866,7 +863,6 @@ void s5p_dsim_set_lcd_freq_change(struct s3cfb_lcd_timing *timing)
 	main_timing->h_fp = timing->h_fp;
 }
 EXPORT_SYMBOL(s5p_dsim_set_lcd_freq_change);
-#endif
 
 static void s5p_dsim_set_display_mode(struct dsim_global *dsim,
 	struct dsim_lcd_config *main_lcd, struct dsim_lcd_config *sub_lcd)

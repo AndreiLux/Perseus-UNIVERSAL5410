@@ -286,6 +286,16 @@ config LCD_FREQ_SWITCH
        depends on MACH_MIDAS
        default n
 
+config LCD_FREQ_SWITCH_ACCOUNTING
+       bool "support for LCD Frequency switch state accounting"
+       depends on LCD_FREQ_SWITCH
+       default n
+
+config CPU_FREQ_LCD_FREQ_DFS
+	bool "support for CPU frequency based LCD freq scaling"
+	depends on LCD_FREQ_SWITCH && CPU_FREQ
+	default n
+
 config FB_S5P_V2
 	tristate "S5P Framebuffer version 2 support"
 	select FB_CFB_FILLRECT
