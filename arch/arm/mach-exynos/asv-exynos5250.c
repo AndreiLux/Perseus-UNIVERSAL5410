@@ -40,9 +40,33 @@
 #define MIF_ORG_ASV_MASK		0x3
 #define MIF_DIFF_ASV_GROUP_OFFSET	28
 #define MIF_DIFF_ASV_MASK		0x3
+#define FUSED_MIF_VOL_LOCK_OFFSET	7
+#define FUSED_INT_VOL_LOCK_OFFSET	8
+#define FUSED_G3D_VOL_LOCK_OFFSET	9
+#define FUSED_ARM_VOL_LOCK_OFFSET	10
+#define MIF_VOL_OFFSET			50000
+#define INT_VOL_OFFSET			25000
+#define G3D_VOL_OFFSET			25000
+#define ARM_FREQ_800MHZ			800000
+#define ARM_FREQ_1000MHZ		1000000
+#define ARM_FREQ_1100MHZ		1100000
 
 #define CHIP_ID_REG		(S5P_VA_CHIPID + 0x4)
 
+enum exynos5250_fused_vol_lock_t {
+	FUSED_MIF_VOL_LOCK = 0,
+	FUSED_INT_VOL_LOCK,
+	FUSED_G3D_VOL_LOCK,
+	FUSED_ARM_800MHZ_VOL_LOCK,
+	FUSED_ARM_1000MHZ_VOL_LOCK,
+	FUSED_ARM_1100MHZ_VOL_LOCK,
+	FUSED_VOL_LOCK_END,
+};
+
+static bool fused_vol_locked[FUSED_VOL_LOCK_END] =
+		{false, false, false, false, false, false};
+static unsigned int arm_vol_lock_freq;
+static int arm_vol_lock_level;
 static unsigned int asv_group[ID_END];
 
 static unsigned int exynos5250_default_asv_max_volt[] = {
@@ -132,10 +156,29 @@ unsigned int exynos5250_get_volt(enum asv_type_id target_type, unsigned int targ
 {
 	int i;
 	unsigned int group = asv_group[target_type];
+	unsigned int offset = 0;
 
 	for (i = 0; i < dvfs_level_nr[target_type]; i++) {
-		if (volt_table[target_type][i][0] == target_freq)
-			return volt_table[target_type][i][group + 1];
+		if (volt_table[target_type][i][0] == target_freq) {
+			if (target_type == ID_MIF &&
+					fused_vol_locked[FUSED_MIF_VOL_LOCK]) {
+				offset = MIF_VOL_OFFSET;
+			} else if (target_type == ID_INT &&
+					fused_vol_locked[FUSED_INT_VOL_LOCK]) {
+				offset = INT_VOL_OFFSET;
+			} else if (target_type == ID_G3D &&
+					fused_vol_locked[FUSED_G3D_VOL_LOCK]) {
+				offset = G3D_VOL_OFFSET;
+			} else if (target_type == ID_ARM) {
+				if ((fused_vol_locked[FUSED_ARM_800MHZ_VOL_LOCK] ||
+					fused_vol_locked[FUSED_ARM_1000MHZ_VOL_LOCK] ||
+					fused_vol_locked[FUSED_ARM_1100MHZ_VOL_LOCK]) &&
+					(target_freq < arm_vol_lock_freq))
+					i = arm_vol_lock_level;
+			}
+
+			return volt_table[target_type][i][group + 1] + offset;
+		}
 	}
 
 	return exynos5250_default_asv_max_volt[target_type];
@@ -197,6 +240,37 @@ int exynos5250_init_asv(struct asv_common *asv_info)
 
 		pr_info("EXYNOS5250 ASV(ARM : %d MIF : %d) using IDS : %d HPM : %d\n",
 			asv_group[ID_ARM], asv_group[ID_MIF], ids_value, hpm_value);
+	}
+
+	if ((tmp1 >> FUSED_MIF_VOL_LOCK_OFFSET) & 0x1)
+		fused_vol_locked[FUSED_MIF_VOL_LOCK] = true;
+
+	if ((tmp1 >> FUSED_INT_VOL_LOCK_OFFSET) & 0x1)
+		fused_vol_locked[FUSED_INT_VOL_LOCK] = true;
+
+	if ((tmp1 >> FUSED_G3D_VOL_LOCK_OFFSET) & 0x1)
+		fused_vol_locked[FUSED_G3D_VOL_LOCK] = true;
+
+	if (((tmp1 >> FUSED_ARM_VOL_LOCK_OFFSET) & 0x3) == 0x1) {
+		fused_vol_locked[FUSED_ARM_800MHZ_VOL_LOCK] = true;
+		arm_vol_lock_freq = ARM_FREQ_800MHZ;
+	} else if (((tmp1 >> FUSED_ARM_VOL_LOCK_OFFSET) & 0x3) == 0x2) {
+		fused_vol_locked[FUSED_ARM_1000MHZ_VOL_LOCK] = true;
+		arm_vol_lock_freq = ARM_FREQ_1000MHZ;
+	} else if (((tmp1 >> FUSED_ARM_VOL_LOCK_OFFSET) & 0x3) == 0x3) {
+		fused_vol_locked[FUSED_ARM_1100MHZ_VOL_LOCK] = true;
+		arm_vol_lock_freq = ARM_FREQ_1100MHZ;
+	}
+
+	if (fused_vol_locked[FUSED_ARM_800MHZ_VOL_LOCK] ||
+		fused_vol_locked[FUSED_ARM_1000MHZ_VOL_LOCK] ||
+		fused_vol_locked[FUSED_ARM_1100MHZ_VOL_LOCK]) {
+		for (i = 0; i < dvfs_level_nr[ID_ARM]; i++) {
+			if (volt_table[ID_ARM][i][0] == arm_vol_lock_freq) {
+				arm_vol_lock_level = i;
+				break;
+			}
+		}
 	}
 
 	exynos5250_pre_set_abb(asv_group[ID_ARM]);
