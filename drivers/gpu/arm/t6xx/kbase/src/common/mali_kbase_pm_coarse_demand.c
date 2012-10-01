@@ -82,10 +82,19 @@ static void coarse_demand_state_changed(kbase_device *kbdev)
  */
 static void coarse_demand_power_down(kbase_device *kbdev)
 {
+	u64 cores;
+
 	/* Inform the system that the transition has started */
 	kbase_pm_power_transitioning(kbdev);
 
-	/* No need to turn off the cores */
+	cores = kbase_pm_get_present_cores(kbdev, KBASE_PM_CORE_SHADER);
+	kbase_pm_invoke_power_down(kbdev, KBASE_PM_CORE_SHADER, cores);
+
+	cores = kbase_pm_get_present_cores(kbdev, KBASE_PM_CORE_TILER);
+	kbase_pm_invoke_power_down(kbdev, KBASE_PM_CORE_TILER, cores);
+
+	/* Note we don't call kbase_pm_check_transitions because we don't want to wait
+	 * for the above transitions to take place before turning the GPU power domain off */
 
 	kbdev->pm.policy_data.coarse_demand.state = KBASEP_PM_COARSE_DEMAND_STATE_POWERING_DOWN;
 
