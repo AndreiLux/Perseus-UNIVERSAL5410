@@ -1056,15 +1056,16 @@ static int s5p_mfc_stop_streaming(struct vb2_queue *q)
 		ctx->dst_queue_cnt = 0;
 		ctx->dpb_flush = 1;
 		ctx->dec_dst_flag = 0;
+		spin_unlock_irqrestore(&dev->irqlock, flags);
 	} else if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		spin_lock_irqsave(&dev->irqlock, flags);
 		s5p_mfc_cleanup_queue(&ctx->src_queue, &ctx->vq_src);
 		INIT_LIST_HEAD(&ctx->src_queue);
 		ctx->src_queue_cnt = 0;
+		spin_unlock_irqrestore(&dev->irqlock, flags);
 	}
 	if (aborted)
 		ctx->state = MFCINST_RUNNING;
-	spin_unlock_irqrestore(&dev->irqlock, flags);
 	return 0;
 }
 
