@@ -156,27 +156,8 @@ static int omap4_pm_suspend(void)
 
 	/* Set targeted power domain states by suspend */
 	list_for_each_entry(pwrst, &pwrst_list, node) {
-		int pstate, lstate;
-
-		pstate = pwrst->next_state;
-		lstate = pwrst->next_logic_state;
-
-		/*
-		 * HACK!!
-		 * DSP firmware doesn't support context losses so we need
-		 * to prevent it from going lower than the PM QoS requested
-		 * state during system suspend
-		 */
-		if ((pwrst->next_state < pwrst->saved_state) &&
-			!strcmp(pwrst->pwrdm->name, "tesla_pwrdm")) {
-			pr_info("%s: HACK! limiting tesla_pwrdm state to %d\n",
-					__func__, pwrst->saved_state);
-			pstate = pwrst->saved_state;
-			lstate = pwrst->saved_logic_state;
-		}
-
-		omap_set_pwrdm_state(pwrst->pwrdm, pstate);
-		pwrdm_set_logic_retst(pwrst->pwrdm, lstate);
+		omap_set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
+		pwrdm_set_logic_retst(pwrst->pwrdm, pwrst->next_logic_state);
 	}
 
 	/*
