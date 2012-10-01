@@ -892,6 +892,16 @@ static void buf_queue(struct vb2_buffer *vb)
 	struct mxr_pipeline *pipe = &layer->pipe;
 	unsigned long flags;
 
+	if (vb->acquire_fence) {
+		int ret = sync_fence_wait(vb->acquire_fence, 100);
+		sync_fence_put(vb->acquire_fence);
+		vb->acquire_fence = NULL;
+		if (ret < 0) {
+			mxr_err(layer->mdev, "sync_fence_wait() timeout");
+			return;
+		}
+	}
+
 	spin_lock_irqsave(&layer->enq_slock, flags);
 	list_add_tail(&buffer->list, &layer->enq_list);
 	spin_unlock_irqrestore(&layer->enq_slock, flags);
