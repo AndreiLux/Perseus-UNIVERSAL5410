@@ -51,7 +51,9 @@
 #endif
 
 static bool allow_coupled_idle = true;
+static bool allow_lpa = false;
 module_param(allow_coupled_idle, bool, 0644);
+module_param(allow_lpa, bool, 0644);
 
 #define EXYNOS_CHECK_DIRECTGO	0xFCBA0D10
 
@@ -428,7 +430,7 @@ static int exynos_enter_lowpower(struct cpuidle_device *dev,
 
 		watchdog_save();
 		/* Enter the final low power state */
-		if (exynos_check_enter_mode() == EXYNOS_CHECK_DIDLE)
+		if (exynos_check_enter_mode() == EXYNOS_CHECK_DIDLE || !allow_lpa)
 			ret = exynos_enter_core0_aftr(dev, drv, index);
 		else
 			ret = exynos_enter_core0_lpa(dev, drv, index);
