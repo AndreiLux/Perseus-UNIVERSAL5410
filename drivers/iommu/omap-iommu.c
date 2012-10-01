@@ -131,17 +131,6 @@ int omap_iommu_update_latency(struct omap_iommu *oiommu, int val)
 	if (!strcmp(oiommu->name, "ipu"))
 		pm_qos_update_request(&oiommu->qos_request.pm_qos, val);
 	else {
-		/*
-		 * HACK: prevent DSP from going below Closed switch Retention
-		 * state as firmware doesn't support it
-		 */
-		if (val < 300) {
-			pr_info("%s Requested latency %d but limiting "
-				" DSP latency to %d due to buggy firmware\n",
-				__func__, val, 300);
-			val = 300;
-		}
-		/* end HACK */
 		ret = dev_pm_qos_update_request(
 					&oiommu->qos_request.dev_pm_qos, val);
 		ret = ret > 0 ? 0 : ret;
