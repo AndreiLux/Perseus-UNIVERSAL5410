@@ -37,7 +37,6 @@
 #include <linux/uaccess.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
-#include <linux/pm_qos.h>
 
 #include <mach/map.h>
 #include <linux/fb.h>
@@ -52,6 +51,7 @@
 #ifdef CONFIG_EXYNOS5_CPUFREQ
 #include <mach/cpufreq.h>
 #endif
+#include <mach/exynos5_bus.h>
 
 #ifdef MALI_DVFS_ASV_ENABLE
 #include <mach/asv-exynos.h>
@@ -68,7 +68,7 @@ static struct regulator *g3d_regulator=NULL;
 static int mali_gpu_vol = 1250000; /* 1.25V @ 533 MHz */
 #endif
 
-static struct pm_qos_request	mem_bw_req;
+static struct exynos5_bus_mif_handle *mem_freq_req;
 
 /***********************************************************/
 /*  This table and variable are using the check time share of GPU Clock  */
@@ -80,16 +80,17 @@ typedef struct _mali_dvfs_info{
 	int min_threshold;
 	int	max_threshold;
 	unsigned long long time;
+	int mem_freq;
 }mali_dvfs_info;
 
 static mali_dvfs_info mali_dvfs_infotbl[] = {
-	{912500, 100, 0, 70, 0},
-	{925000, 160, 50, 65, 0},
-	{1025000, 266, 60, 78, 0},
-	{1075000, 350, 70, 80, 0},
-	{1125000, 400, 70, 80, 0},
-	{1150000, 450, 76, 99, 0},
-	{1250000, 533, 99, 100, 0},
+	{912500, 100, 0, 70, 0, 100000},
+	{925000, 160, 50, 65, 0, 160000},
+	{1025000, 266, 60, 78, 0, 400000},
+	{1075000, 350, 70, 80, 0, 400000},
+	{1125000, 400, 70, 80, 0, 667000},
+	{1150000, 450, 76, 99, 0, 800000},
+	{1250000, 533, 99, 100, 0, 800000},
 };
 
 #define MALI_DVFS_STEP	ARRAY_SIZE(mali_dvfs_infotbl)
@@ -268,7 +269,7 @@ int kbase_platform_dvfs_enable(bool enable, int freq)
 	struct kbase_device *kbdev;
 	unsigned long flags;
 	struct exynos_context *platform;
-	int bw;
+	int f;
 
 	dvfs_status = &mali_dvfs_status_current;
 	kbdev = mali_dvfs_status_current.kbdev;
@@ -298,14 +299,14 @@ int kbase_platform_dvfs_enable(bool enable, int freq)
 			hrtimer_start(&kbdev->pm.metrics.timer,
 					HR_TIMER_DELAY_MSEC(KBASE_PM_DVFS_FREQUENCY),
 					HRTIMER_MODE_REL);
-			bw = kbase_platform_dvfs_get_bw(dvfs_status->step);
-			pm_qos_update_request(&mem_bw_req, bw);
+			f = mali_dvfs_infotbl[dvfs_status->step].mem_freq;
+			exynos5_bus_mif_update(mem_freq_req, f);
 		} else {
 			spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
 			kbdev->pm.metrics.timer_active = MALI_FALSE;
 			spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
 			hrtimer_cancel(&kbdev->pm.metrics.timer);
-			pm_qos_update_request(&mem_bw_req, -1);
+			exynos5_bus_mif_update(mem_freq_req, 0);
 		}
 	}
 	mutex_unlock(&mali_enable_clock_lock);
@@ -326,7 +327,7 @@ int kbase_platform_dvfs_init(struct kbase_device *kbdev)
 	mutex_init(&mali_set_clock_lock);
 	mutex_init(&mali_enable_clock_lock);
 
-	pm_qos_add_request(&mem_bw_req, PM_QOS_MEMORY_THROUGHPUT, -1);
+	mem_freq_req = exynos5_bus_mif_min(0);
 
 	/*add a error handling here*/
 	spin_lock_irqsave(&mali_dvfs_spinlock, flags);
@@ -677,7 +678,7 @@ int kbase_platform_dvfs_get_level(int freq)
 void kbase_platform_dvfs_set_level(kbase_device *kbdev, int level)
 {
 	static int prev_level = -1;
-	int bw;
+	int f;
 
 	if (level == prev_level)
 		return;
@@ -689,14 +690,14 @@ void kbase_platform_dvfs_set_level(kbase_device *kbdev, int level)
 	mutex_lock(&mali_set_clock_lock);
 #endif
 
-	bw = kbase_platform_dvfs_get_bw(level);
+	f = mali_dvfs_infotbl[level].mem_freq;
 
 	if (level > prev_level) {
 		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
 		kbase_platform_dvfs_set_clock(kbdev, mali_dvfs_infotbl[level].clock);
-		pm_qos_update_request(&mem_bw_req, bw);
+		exynos5_bus_mif_update(mem_freq_req, f);
 	} else {
-		pm_qos_update_request(&mem_bw_req, bw);
+		exynos5_bus_mif_update(mem_freq_req, f);
 		kbase_platform_dvfs_set_clock(kbdev, mali_dvfs_infotbl[level].clock);
 		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
 	}
