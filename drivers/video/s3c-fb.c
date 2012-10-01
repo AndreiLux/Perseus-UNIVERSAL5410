@@ -1739,6 +1739,14 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 
 	regs->win_rgborder[win_no] = s3c_fb_rgborder(win_config->format);
 
+	if (win_config->w * win->fbinfo->var.bits_per_pixel / 8 < 128) {
+		dev_err(sfb->dev, "window must be at least 128 bytes wide (width = %u, bpp = %u)\n",
+				win_config->w,
+				win->fbinfo->var.bits_per_pixel);
+		ret = -EINVAL;
+		goto err_invalid;
+	}
+
 	if (win_config->stride <
 			win_config->w * win->fbinfo->var.bits_per_pixel / 8) {
 		dev_err(sfb->dev, "stride shorter than buffer width (stride = %u, width = %u, bpp = %u)\n",
