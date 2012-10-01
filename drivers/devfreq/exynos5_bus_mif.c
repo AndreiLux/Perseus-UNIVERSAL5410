@@ -291,6 +291,24 @@ out:
 	return err;
 }
 
+int exynos5_bus_mif_update(struct exynos5_bus_mif_handle *handle,
+		unsigned long min_freq)
+{
+	mutex_lock(&exynos5_bus_mif_requests_lock);
+	handle->min = min_freq;
+	mutex_unlock(&exynos5_bus_mif_requests_lock);
+
+	mutex_lock(&exynos5_bus_mif_data_lock);
+	if (exynos5_bus_mif_data) {
+		mutex_lock(&exynos5_bus_mif_data->devfreq->lock);
+		update_devfreq(exynos5_bus_mif_data->devfreq);
+		mutex_unlock(&exynos5_bus_mif_data->devfreq->lock);
+	}
+	mutex_unlock(&exynos5_bus_mif_data_lock);
+
+	return 0;
+}
+
 struct exynos5_bus_mif_handle *exynos5_bus_mif_get(unsigned long min_freq)
 {
 	struct exynos5_bus_mif_handle *handle;
