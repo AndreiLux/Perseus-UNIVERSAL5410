@@ -146,8 +146,10 @@ static int hdmi_runtime_get(void)
 
 	r = pm_runtime_get_sync(&hdmi.pdev->dev);
 	WARN_ON(r < 0);
-	if (r < 0)
+	if (r < 0) {
+		DSSERR("%s error: %d\n", __func__, r);
 		return r;
+	}
 
 	return 0;
 }
@@ -163,6 +165,8 @@ static void hdmi_runtime_put(void)
 
 	r = pm_runtime_put_sync(&hdmi.pdev->dev);
 	WARN_ON(r < 0);
+	if (r < 0)
+		DSSERR("%s error: %d\n", __func__, r);
 }
 
 static irqreturn_t hpd_irq_handler(int irq, void *data)
@@ -1203,9 +1207,29 @@ static int hdmi_runtime_resume(struct device *dev)
 	return 0;
 }
 
+static int hdmi_suspend(struct device *dev)
+{
+	DSSDBG("%s\n", __func__);
+	if (gpio_is_valid(hdmi.hpd_gpio))
+		disable_irq(gpio_to_irq(hdmi.hpd_gpio));
+
+	return 0;
+}
+
+static int hdmi_resume(struct device *dev)
+{
+	DSSDBG("%s\n", __func__);
+	if (gpio_is_valid(hdmi.hpd_gpio))
+		enable_irq(gpio_to_irq(hdmi.hpd_gpio));
+
+	return 0;
+}
+
 static const struct dev_pm_ops hdmi_pm_ops = {
 	.runtime_suspend = hdmi_runtime_suspend,
 	.runtime_resume = hdmi_runtime_resume,
+	.suspend = hdmi_suspend,
+	.resume = hdmi_resume,
 };
 
 static struct platform_driver omapdss_hdmihw_driver = {
