@@ -46,7 +46,7 @@ config ION_EXYNOS_DRM_SECTBL
 config ION_EXYNOS_DRM_MEMSIZE_FIMD_VIDEO
 	int "Reserved memsize in kilobytes for FIMD VIDEO"
 	depends on EXYNOS_CONTENT_PATH_PROTECTION
-	default 65536
+	default 98304
 
 config ION_EXYNOS_DRM_MEMSIZE_MFC_OUTPUT
 	int "Reserved memsize in kilobytes for MFC OUTPUT"
