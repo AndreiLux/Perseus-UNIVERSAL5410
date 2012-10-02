@@ -14,6 +14,7 @@
 #include <linux/uaccess.h>
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
+#include <linux/mutex.h>
 #include <linux/pm_runtime.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
@@ -47,10 +48,12 @@ static char *secmem_regions[] = {
 	NULL
 };
 
-static bool drm_onoff;
+static bool		drm_onoff;
+static DEFINE_MUTEX(drm_lock);
 
 struct secmem_info {
-	struct device		*dev;
+	struct device	*dev;
+	bool		drm_enabled;
 };
 
 static int secmem_open(struct inode *inode, struct file *file)
@@ -68,9 +71,34 @@ static int secmem_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
+static void drm_enable_locked(struct secmem_info *info, bool enable)
+{
+	if (drm_onoff != enable) {
+		if (enable)
+			pm_runtime_forbid(info->dev->parent);
+		else
+			pm_runtime_allow(info->dev->parent);
+		drm_onoff = enable;
+		/*
+		 * this will only allow this instance to turn drm_off either by
+		 * calling the ioctl or by closing the fd
+		 */
+		info->drm_enabled = enable;
+	} else {
+		pr_err("%s: DRM is already %s\n", __func__,
+		       drm_onoff ? "on" : "off");
+	}
+}
+
 static int secmem_release(struct inode *inode, struct file *file)
 {
 	struct secmem_info *info = file->private_data;
+
+	/* disable drm if we were the one to turn it on */
+	mutex_lock(&drm_lock);
+	if (info->drm_enabled)
+		drm_enable_locked(info, false);
+	mutex_unlock(&drm_lock);
 
 	kfree(info);
 	return 0;
@@ -157,6 +185,7 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	}
 #endif
 	case SECMEM_IOC_GET_DRM_ONOFF:
+		smp_rmb();
 		if (copy_to_user((void __user *)arg, &drm_onoff, sizeof(int)))
 			return -EFAULT;
 		break;
@@ -167,19 +196,17 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		if (copy_from_user(&val, (int __user *)arg, sizeof(int)))
 			return -EFAULT;
 
-		if (val) {
-			if (drm_onoff == false) {
-				drm_onoff = true;
-				pm_runtime_forbid(info->dev->parent);
-			} else
-				printk(KERN_ERR "%s: DRM is already on\n", __func__);
-		} else {
-			if (drm_onoff == true) {
-				drm_onoff = false;
-				pm_runtime_allow(info->dev->parent);
-			} else
-				printk(KERN_ERR "%s: DRM is already off\n", __func__);
+		mutex_lock(&drm_lock);
+		if ((info->drm_enabled && !val) ||
+		    (!info->drm_enabled && val)) {
+			/*
+			 * 1. if we enabled drm, then disable it
+			 * 2. if we don't already hdrm enabled,
+			 *    try to enable it.
+			 */
+			drm_enable_locked(info, val);
 		}
+		mutex_unlock(&drm_lock);
 		break;
 	}
 	case SECMEM_IOC_GET_CRYPTO_LOCK:
