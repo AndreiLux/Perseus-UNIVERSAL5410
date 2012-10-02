@@ -33,7 +33,7 @@
 #include "exynos5_ppmu.h"
 #include "governor.h"
 
-#define MAX_SAFEVOLT	1050000 /* 1.05V */
+#define MAX_SAFEVOLT	1100000 /* 1.10V */
 
 /* Assume that the bus for mif is saturated if the utilization is 23% */
 #define INT_BUS_SATURATION_RATIO	23
