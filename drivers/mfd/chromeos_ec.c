@@ -90,7 +90,7 @@ struct chromeos_ec_device *__devinit cros_ec_alloc(const char *name)
 	return ec_dev;
 }
 
-void __devexit cros_ec_free(struct chromeos_ec_device *ec)
+void cros_ec_free(struct chromeos_ec_device *ec)
 {
 	kfree(ec);
 }

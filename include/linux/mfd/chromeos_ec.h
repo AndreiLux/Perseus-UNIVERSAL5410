@@ -161,6 +161,6 @@ struct chromeos_ec_device *__devinit cros_ec_alloc(const char *name);
  *
  * @param ec_dev		Device to free (call cros_ec_remove() first)
  */
-void __devexit cros_ec_free(struct chromeos_ec_device *ec_dev);
+void cros_ec_free(struct chromeos_ec_device *ec_dev);
 
 #endif /* __LINUX_MFD_CHROMEOS_EC_H */
