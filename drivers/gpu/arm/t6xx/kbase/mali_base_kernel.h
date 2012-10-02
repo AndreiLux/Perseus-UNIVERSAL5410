@@ -161,7 +161,7 @@ enum
  *
  * Must be kept in sync with the ::base_mem_alloc_flags flags
  */
-#define BASE_MEM_FLAGS_NR_BITS  11
+#define BASE_MEM_FLAGS_NR_BITS  12
 
 /**
  * @brief Result codes of changing the size of the backing store allocated to a tmem region
