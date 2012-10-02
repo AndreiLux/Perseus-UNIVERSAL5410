@@ -37,11 +37,7 @@
 #define MIF_IDLE_THRESHOLD	3
 #define INT_IDLE_THRESHOLD	2
 
-#ifdef CONFIG_EXYNOS_DP
 #define MIF_LOCK_LCD		300200
-#else
-#define MIF_LOCK_LCD		300133
-#endif
 
 #define INT_RBB		6	/* +300mV */
 #define CDREX_BITMASK	9
