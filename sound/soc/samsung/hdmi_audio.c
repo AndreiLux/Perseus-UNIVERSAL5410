@@ -437,17 +437,22 @@ static void hdmi_audio_hotplug_func(struct work_struct *work)
 {
 	struct hdmi_audio_context *ctx = container_of(work,
 		struct hdmi_audio_context, hotplug_work.work);
+	int plugged;
 
 	snd_printdd("[%d] %s plugged %d\n",
 			__LINE__, __func__, atomic_read(&ctx->plugged));
 
-	if (atomic_read(&ctx->plugged)) {
+	plugged = atomic_read(&ctx->plugged);
+	if (plugged) {
 		hdmi_audio_control(ctx, false);
 		hdmi_conf_init(ctx);
 		hdmi_audio_init(ctx);
 		if (ctx->enabled)
 			hdmi_audio_control(ctx, true);
 	}
+
+	if (ctx->plugin.jack_cb)
+		ctx->plugin.jack_cb(plugged);
 }
 
 static irqreturn_t hdmi_audio_irq_handler(int irq, void *arg)

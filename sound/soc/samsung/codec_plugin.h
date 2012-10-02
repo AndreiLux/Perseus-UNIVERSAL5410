@@ -28,6 +28,7 @@ struct audio_plugin_ops {
 struct audio_codec_plugin {
 	struct device *dev;
 	struct audio_plugin_ops ops;
+	int (*jack_cb)(int plugged);
 };
 
 #endif /* __SND_SOC_SAMSUNG_PLUGIN_H */

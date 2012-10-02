@@ -313,6 +313,8 @@ static const struct snd_soc_dapm_widget daisy_dapm_widgets[] = {
 	SND_SOC_DAPM_HP("Headphone Jack", NULL),
 };
 
+static struct snd_soc_jack daisy_hdmi_jack;
+
 static int get_hdmi(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
@@ -368,6 +370,7 @@ static int daisy_init(struct snd_soc_pcm_runtime *rtd)
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
 	struct snd_soc_card *card = codec->card;
 	struct device_node *dn = card->dev->of_node;
+	struct audio_codec_plugin *plugin;
 
 	if (dn) {
 		enum of_gpio_flags flags;
@@ -401,6 +404,11 @@ static int daisy_init(struct snd_soc_pcm_runtime *rtd)
 				       &daisy_hp_jack_gpio);
 	}
 
+	plugin = daisy_dapm_controls[0].private_value;
+	if (plugin)
+		snd_soc_jack_new(codec, "HDMI Jack",
+				 SND_JACK_AVOUT, &daisy_hdmi_jack);
+
 	/* Microphone BIAS is needed to power the analog mic.
 	 * MICBIAS2 is connected to analog mic (MIC3, which is in turn
 	 * connected to MIC2 via 'External MIC') on Daisy.
@@ -426,6 +434,14 @@ static int daisy_resume_post(struct snd_soc_card *card)
 
 	if (gpio_is_valid(daisy_hp_jack_gpio.gpio))
 		snd_soc_jack_gpio_detect(&daisy_hp_jack_gpio);
+}
+
+static int daisy_hdmi_jack_report(int plugged)
+{
+	snd_soc_jack_report(&daisy_hdmi_jack,
+			    plugged ? SND_JACK_AVOUT : 0,
+			    SND_JACK_AVOUT);
+	return 0;
 }
 
 static struct snd_soc_dai_link daisy_dai[] = {
@@ -479,6 +495,9 @@ static int plugin_init(struct audio_codec_plugin **pplugin)
 		return -EFAULT;
 	else
 		*pplugin = plugin;
+
+	plugin->jack_cb = daisy_hdmi_jack_report;
+
 	return 0;
 }
 
