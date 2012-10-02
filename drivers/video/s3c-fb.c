@@ -3919,12 +3919,16 @@ static int s3c_fb_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct s3c_fb *sfb = platform_get_drvdata(pdev);
+	int ret = 0;
 
 	mutex_lock(&sfb->output_lock);
-	WARN(sfb->output_on, "LCD output on while entering suspend");
+	if (sfb->output_on) {
+		dev_warn(dev, "LCD output on while entering suspend\n");
+		ret = -EBUSY;
+	}
 	mutex_unlock(&sfb->output_lock);
 
-	return 0;
+	return ret;
 }
 
 static int s3c_fb_resume(struct device *dev)
