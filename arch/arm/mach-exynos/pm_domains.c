@@ -31,6 +31,7 @@
 #include <plat/bts.h>
 
 #define MAX_PD_CLKS 2
+#define EXYNOS5_INT_MIN_FREQ	266000
 
 /*
  * Exynos specific wrapper around the generic power domain
@@ -40,9 +41,13 @@ struct exynos_pm_domain {
 	void __iomem *base;
 	bool is_off;
 	struct generic_pm_domain pd;
+	const char *pclk_name;
+	struct clk *pclk;
+	unsigned long saved_pclk_rate;
 	const char *clk_name[MAX_PD_CLKS];
 	struct clk *clk[MAX_PD_CLKS];
 	struct clk *saved_parent_clk[MAX_PD_CLKS];
+	struct exynos5_bus_int_handle *int_min_hd;
 };
 
 struct exynos_pm_clk {
@@ -66,6 +71,7 @@ static struct exynos_pm_dev exynos5_pm_dev_##NAME = {	\
 static void exynos_pd_clk_parent_save(struct exynos_pm_domain *pd)
 {
 	int i;
+	int r;
 
 	for (i = 0; i < MAX_PD_CLKS; i++) {
 		if (pd->clk[i]) {
@@ -75,6 +81,31 @@ static void exynos_pd_clk_parent_save(struct exynos_pm_domain *pd)
 					pd->clk_name[i], pd->pd.name);
 				pd->saved_parent_clk[i] = NULL;
 			}
+		}
+	}
+
+	if (pd->pclk) {
+		if (!pd->int_min_hd) {
+			pd->int_min_hd = exynos5_bus_int_min(EXYNOS5_INT_MIN_FREQ);
+			if (!pd->int_min_hd)
+				pr_err("Failed to request int min_freq\n");
+		}
+
+		pd->saved_pclk_rate = clk_get_rate(pd->pclk);
+		if (!pd->saved_pclk_rate) {
+			pr_err("Failed to save rate of %s for pd %s\n",
+					pd->pclk_name, pd->pd.name);
+			pd->saved_pclk_rate = 0;
+		}
+
+		r = clk_set_rate(pd->pclk, clk_get_rate(pd->pclk->parent));
+		if (r)
+			pr_err("Failed to set rate of parent clk of %s for pd %s\n",
+				pd->pclk_name, pd->pd.name);
+
+		if (pd->int_min_hd) {
+			exynos5_bus_int_put(pd->int_min_hd);
+			pd->int_min_hd = NULL;
 		}
 	}
 }
@@ -91,6 +122,27 @@ static void exynos_pd_clk_parent_restore(struct exynos_pm_domain *pd)
 				pr_err("Failed to restore parent clk of %s for pd %s\n",
 					pd->clk_name[i], pd->pd.name);
 			pd->saved_parent_clk[i] = NULL;
+		}
+	}
+
+	if (pd->pclk) {
+		if (!pd->int_min_hd) {
+			pd->int_min_hd = exynos5_bus_int_min(EXYNOS5_INT_MIN_FREQ);
+			if (!pd->int_min_hd)
+				pr_err("Failed to request int min_freq\n");
+		}
+
+		if (pd->saved_pclk_rate) {
+			r = clk_set_rate(pd->pclk, pd->saved_pclk_rate);
+			if (r)
+				pr_err("Failed to restore rate of %s for pd %s\n",
+					pd->pclk_name, pd->pd.name);
+			pd->saved_pclk_rate = 0;
+		}
+
+		if (pd->int_min_hd) {
+			exynos5_bus_int_put(pd->int_min_hd);
+			pd->int_min_hd = NULL;
 		}
 	}
 }
@@ -228,7 +280,7 @@ static int exynos_sub_power_off(struct generic_pm_domain *domain)
 	return 0;
 }
 
-#define EXYNOS_GPD(PD, BASE, NAME, CLKS...)		\
+#define EXYNOS_GPD(PD, BASE, NAME, PCLK, CLKS...)	\
 static struct exynos_pm_domain PD = {			\
 	.list = LIST_HEAD_INIT((PD).list),		\
 	.base = (void __iomem *)BASE,			\
@@ -237,6 +289,7 @@ static struct exynos_pm_domain PD = {			\
 		.power_off = exynos_pd_power_off,	\
 		.power_on = exynos_pd_power_on,		\
 	},						\
+	.pclk_name = PCLK,				\
 	.clk_name = { CLKS }				\
 }
 
@@ -305,15 +358,15 @@ static __init void exynos_pm_add_dev_to_genpd(struct platform_device *pdev,
 }
 
 /* For EXYNOS4 */
-EXYNOS_GPD(exynos4_pd_mfc, EXYNOS4_MFC_CONFIGURATION, "pd-mfc");
-EXYNOS_GPD(exynos4_pd_g3d, EXYNOS4_G3D_CONFIGURATION, "pd-g3d");
-EXYNOS_GPD(exynos4_pd_lcd0, EXYNOS4_LCD0_CONFIGURATION, "pd-lcd0");
-EXYNOS_GPD(exynos4_pd_tv, EXYNOS4_TV_CONFIGURATION, "pd-tv");
-EXYNOS_GPD(exynos4_pd_cam, EXYNOS4_CAM_CONFIGURATION, "pd-cam");
-EXYNOS_GPD(exynos4_pd_gps, EXYNOS4_GPS_CONFIGURATION, "pd-gps");
+EXYNOS_GPD(exynos4_pd_mfc, EXYNOS4_MFC_CONFIGURATION, "pd-mfc", NULL);
+EXYNOS_GPD(exynos4_pd_g3d, EXYNOS4_G3D_CONFIGURATION, "pd-g3d", NULL);
+EXYNOS_GPD(exynos4_pd_lcd0, EXYNOS4_LCD0_CONFIGURATION, "pd-lcd0", NULL);
+EXYNOS_GPD(exynos4_pd_tv, EXYNOS4_TV_CONFIGURATION, "pd-tv", NULL);
+EXYNOS_GPD(exynos4_pd_cam, EXYNOS4_CAM_CONFIGURATION, "pd-cam", NULL);
+EXYNOS_GPD(exynos4_pd_gps, EXYNOS4_GPS_CONFIGURATION, "pd-gps", NULL);
 
 /* For EXYNOS4210 */
-EXYNOS_GPD(exynos4210_pd_lcd1, EXYNOS4210_LCD1_CONFIGURATION, "pd-lcd1");
+EXYNOS_GPD(exynos4210_pd_lcd1, EXYNOS4210_LCD1_CONFIGURATION, "pd-lcd1", NULL);
 
 static struct exynos_pm_domain *exynos4_pm_domains[] = {
 	&exynos4_pd_mfc,
@@ -383,22 +436,22 @@ static __init int exynos4_pm_init_power_domain(void)
 
 /* For EXYNOS5 */
 EXYNOS_GPD(exynos5_pd_mfc, EXYNOS5_MFC_CONFIGURATION, "pd-mfc",
-			"aclk_333");
-EXYNOS_GPD(exynos5_pd_maudio, EXYNOS5_MAU_CONFIGURATION, "pd-maudio");
+			"pclk_83_mfc", "aclk_333");
+EXYNOS_GPD(exynos5_pd_maudio, EXYNOS5_MAU_CONFIGURATION, "pd-maudio", NULL);
 EXYNOS_GPD(exynos5_pd_disp1, EXYNOS5_DISP1_CONFIGURATION, "pd-disp1",
-			"aclk_200_disp1", "aclk_300_disp1");
+			"pclk_100_disp1", "aclk_200_disp1", "aclk_300_disp1");
 EXYNOS_SUB_GPD(exynos5_pd_fimd1, "pd-fimd1");
 EXYNOS_SUB_GPD(exynos5_pd_hdmi, "pd-hdmi");
 EXYNOS_SUB_GPD(exynos5_pd_mixer, "pd-mixer");
 EXYNOS_SUB_GPD(exynos5_pd_dp, "pd-dp");
 EXYNOS_GPD(exynos5_pd_gscl, EXYNOS5_GSCL_CONFIGURATION, "pd-gscl",
-			"aclk_266_gscl", "aclk_300_gscl");
+			"pclk_133_gscl", "aclk_266_gscl", "aclk_300_gscl");
 EXYNOS_SUB_GPD(exynos5_pd_gscl0, "pd-gscl0");
 EXYNOS_SUB_GPD(exynos5_pd_gscl1, "pd-gscl1");
 EXYNOS_SUB_GPD(exynos5_pd_gscl2, "pd-gscl2");
 EXYNOS_SUB_GPD(exynos5_pd_gscl3, "pd-gscl3");
-EXYNOS_GPD(exynos5_pd_isp, EXYNOS5_ISP_CONFIGURATION, "pd-isp");
-EXYNOS_GPD(exynos5_pd_g3d, EXYNOS5_G3D_CONFIGURATION, "pd-g3d");
+EXYNOS_GPD(exynos5_pd_isp, EXYNOS5_ISP_CONFIGURATION, "pd-isp", NULL);
+EXYNOS_GPD(exynos5_pd_g3d, EXYNOS5_G3D_CONFIGURATION, "pd-g3d", NULL);
 
 static struct exynos_pm_domain *exynos5_pm_domains[] = {
 	&exynos5_pd_mfc,
@@ -519,6 +572,9 @@ static void __init exynos5_pm_init_one_pd(struct exynos_pm_domain *pd)
 	for (i = 0; i < MAX_PD_CLKS; i++)
 		if (pd->clk_name[i])
 			pd->clk[i] = clk_get(NULL, pd->clk_name[i]);
+
+	if (pd->pclk_name)
+		pd->pclk = clk_get(NULL, pd->pclk_name);
 }
 
 static int __init exynos5_pm_init_power_domain(void)
