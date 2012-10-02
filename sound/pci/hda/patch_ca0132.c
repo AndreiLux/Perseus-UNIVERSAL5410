@@ -455,7 +455,7 @@ struct ct_voicefx_preset ca0132_voicefx_presets[] = {
 		  0x44E10000, 0x3FB33333, 0x3FB9999A,
 		  0x3F800000, 0x3E3A2E43, 0x00000000 }
 	},
-	{ "Org",
+	{ "Orc",
 		{ 0x3F800000, 0x43EA0000, 0x44A52000,
 		  0x45098000, 0x3F266666, 0x3FC00000,
 		  0x3F800000, 0x00000000, 0x00000000 }
@@ -497,7 +497,7 @@ struct ct_voicefx_preset ca0132_voicefx_presets[] = {
 	},
 	{ "Munchkin",
 		{ 0x3F800000, 0x43C80000, 0x44AF0000,
-		  0x44FA0000, 0x3F1A043C, 0x3F800000,
+		  0x44FA0000, 0x3F800000, 0x3F1A043C,
 		  0x3F800000, 0x00000000, 0x00000000 }
 	}
 };
@@ -2679,10 +2679,10 @@ static unsigned int ca0132_get_playback_latency(struct hda_codec *codec)
 		if ((spec->effects_switch[SURROUND - EFFECT_START_NID]) ||
 		    (spec->effects_switch[DIALOG_PLUS - EFFECT_START_NID]))
 			latency += DSP_PLAY_ENHANCEMENT_LATENCY;
-
-		if (spec->cur_out_type == SPEAKER_OUT)
-			latency += DSP_SPEAKER_OUT_LATENCY;
 	}
+
+	if (spec->cur_out_type == SPEAKER_OUT)
+		latency += DSP_SPEAKER_OUT_LATENCY;
 	return latency;
 }
 
@@ -4167,6 +4167,10 @@ static void ca0132_setup_defaults(struct hda_codec *codec)
 	/* set AMic1 as CrystalVoice input */
 	tmp = FLOAT_ONE;
 	dspio_set_param(codec, 0x80, 0x05, &tmp, sizeof(unsigned int));
+
+	/* set WUH source */
+	tmp = FLOAT_TWO;
+	dspio_set_param(codec, 0x31, 0x00, &tmp, sizeof(unsigned int));
 }
 
 static void ca0132_init_flags(struct hda_codec *codec)
