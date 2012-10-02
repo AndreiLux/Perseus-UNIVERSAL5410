@@ -354,7 +354,6 @@ static int __devinit tps65090_i2c_probe(struct i2c_client *client,
 err_regmap_exit:
 	regmap_exit(tps65090->rmap);
 
-err_irq_exit:
 	if (client->irq) {
 		free_irq(client->irq, tps65090);
 		irq_free_descs(tps65090->irq_base, ARRAY_SIZE(tps65090_irqs));
