@@ -833,7 +833,7 @@ static int exynos_dp_config_video(struct exynos_dp_device *dp)
 			return -ETIMEDOUT;
 		}
 
-		mdelay(100);
+		msleep(100);
 	}
 
 	/* Set to use the register calculated M/N video */
@@ -867,7 +867,7 @@ static int exynos_dp_config_video(struct exynos_dp_device *dp)
 			return -ETIMEDOUT;
 		}
 
-		mdelay(100);
+		msleep(100);
 	}
 
 	if (retval != 0)
@@ -1151,5 +1151,3 @@ struct platform_driver dp_driver = {
 		.owner	= THIS_MODULE,
 	},
 };
-
-
