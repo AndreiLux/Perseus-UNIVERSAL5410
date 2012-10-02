@@ -24,6 +24,7 @@
  * but works fine on Beagleboard (ARM OMAP).
  *
  */
+#include <linux/debugfs.h>
 #include <linux/init.h>
 #include <linux/i2c.h>
 #include <linux/module.h>
@@ -61,6 +62,8 @@ struct tpm_inf_dev {
 	struct tpm_chip *chip;
 	bool powered_while_suspended;
 	struct work_struct init_work;
+	u32 ignore_suspend_errors; /* debugfs_create_bool expects u32 */
+	struct dentry *debugfs_entry;
 };
 
 static struct tpm_inf_dev tpm_dev;
@@ -625,6 +628,9 @@ static int tpm_tis_i2c_init(struct device *dev)
 		tpm_dev.powered_while_suspended = true;
 	}
 
+	tpm_dev.debugfs_entry = debugfs_create_bool("tpm_ignore_suspend_errors",
+						    0644, NULL,
+						    &tpm_dev.ignore_suspend_errors);
 	return 0;
 
 out_release:
@@ -657,10 +663,22 @@ MODULE_DEVICE_TABLE(i2c, tpm_i2c_id);
  */
 static int tpm_tis_i2c_suspend(struct device *dev)
 {
+	int ret;
+
 	if (tpm_dev.powered_while_suspended)
 		return 0;
 
-	return tpm_pm_suspend(dev, dev->power.power_state);
+	ret = tpm_pm_suspend(dev, dev->power.power_state);
+	if (tpm_dev.ignore_suspend_errors) {
+		if (ret) {
+			struct tpm_chip *chip = dev_get_drvdata(dev);
+			dev_warn(chip->dev, "Ignoring TPM suspend error: %d\n",
+				 ret);
+		}
+		return 0;
+	} else {
+		return ret;
+	}
 }
 
 #define TPM_TAG_RQU_COMMAND cpu_to_be16(193)
@@ -736,6 +754,11 @@ static int __devinit tpm_tis_i2c_probe(struct i2c_client *client,
 static void __exit cleanup_tis_i2c(void)
 {
 	struct tpm_chip *chip = tpm_dev.chip;
+
+	if (tpm_dev.debugfs_entry) {
+		debugfs_remove(tpm_dev.debugfs_entry);
+		tpm_dev.debugfs_entry = NULL;
+	}
 	release_locality(chip, chip->vendor.locality, 1);
 
 	cancel_work_sync(&tpm_dev.init_work);
