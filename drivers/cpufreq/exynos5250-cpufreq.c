@@ -16,12 +16,12 @@
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/cpufreq.h>
-#include <linux/pm_qos.h>
 
 #include <mach/map.h>
 #include <mach/regs-clock.h>
 #include <mach/cpufreq.h>
 #include <mach/asv-exynos.h>
+#include <mach/exynos5_bus.h>
 
 #define CPUFREQ_LEVEL_END	(L15 + 1)
 
@@ -32,7 +32,7 @@ static struct clk *moutcore;
 static struct clk *mout_mpll;
 static struct clk *mout_apll;
 static struct clk *fout_apll;
-static struct pm_qos_request pm_qos_req;
+static struct exynos5_bus_mif_handle *mif_bus_freq;
 
 struct cpufreq_clkdiv {
 	unsigned int	index;
@@ -64,22 +64,22 @@ static struct cpufreq_frequency_table exynos5250_freq_table[] = {
 
 /* Minimum memory throughput in megabytes per second */
 static int exynos5250_bus_table[CPUFREQ_LEVEL_END] = {
-	6400, /* 1.7 GHz */
-	6400, /* 1.6 GHz */
-	6400, /* 1.5 GHz */
-	6000, /* 1.4 GHz */
-	5000, /* 1.3 GHz */
-	4500, /* 1.2 GHz */
-	4000, /* 1.1 GHz */
-	3200, /* 1.0 GHz */
-	3000, /* 900 MHz */
-	2800,  /* 800 MHz */
-	2500,  /* 700 MHz */
-	2100,  /* 600 MHz */
-	1700,  /* 500 MHz */
-	-1,  /* 400 MHz */
-	-1,  /* 300 MHz */
-	-1,    /* 200 MHz */
+	800000, /* 1.7 GHz */
+	800000, /* 1.6 GHz */
+	800000, /* 1.5 GHz */
+	800000, /* 1.4 GHz */
+	667000, /* 1.3 GHz */
+	667000, /* 1.2 GHz */
+	667000, /* 1.1 GHz */
+	400000, /* 1.0 GHz */
+	400000, /* 900 MHz */
+	400000,  /* 800 MHz */
+	160000,  /* 700 MHz */
+	160000,  /* 600 MHz */
+	160000,  /* 500 MHz */
+	0,  /* 400 MHz */
+	0,  /* 300 MHz */
+	0,    /* 200 MHz */
 };
 
 static int __init set_volt_table(void)
@@ -108,7 +108,7 @@ static void exynos5250_set_frequency(unsigned int old_index,
 	clk_set_rate(fout_apll,
 		exynos5250_freq_table[new_index].frequency * 1000);
 
-	pm_qos_update_request(&pm_qos_req, exynos5250_bus_table[new_index]);
+	exynos5_bus_mif_update(mif_bus_freq, exynos5250_bus_table[new_index]);
 
 	/* MUX_CORE_SEL = APLL */
 	clk_set_parent(moutcore, mout_apll);
@@ -150,8 +150,7 @@ int __init exynos5250_cpufreq_init(struct exynos_dvfs_info *info)
 	if (IS_ERR(fout_apll))
 		goto err_fout_apll;
 
-	pm_qos_add_request(&pm_qos_req, PM_QOS_MEMORY_THROUGHPUT,
-			exynos5250_bus_table[min_support_idx]);
+	mif_bus_freq = exynos5_bus_mif_min(0);
 
 	info->mpll_freq_khz = rate;
 	/* 1000Mhz */
