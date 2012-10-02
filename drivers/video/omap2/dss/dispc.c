@@ -3794,9 +3794,23 @@ static int dispc_runtime_resume(struct device *dev)
 	return 0;
 }
 
+static int dispc_suspend(struct device *dev)
+{
+	disable_irq(dispc.irq);
+	return 0;
+}
+
+static int dispc_resume(struct device *dev)
+{
+	enable_irq(dispc.irq);
+	return 0;
+}
+
 static const struct dev_pm_ops dispc_pm_ops = {
 	.runtime_suspend = dispc_runtime_suspend,
 	.runtime_resume = dispc_runtime_resume,
+	.suspend = dispc_suspend,
+	.resume = dispc_resume,
 };
 
 static struct platform_driver omap_dispchw_driver = {

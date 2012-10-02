@@ -1213,6 +1213,7 @@ static int hdmi_suspend(struct device *dev)
 	if (gpio_is_valid(hdmi.hpd_gpio))
 		disable_irq(gpio_to_irq(hdmi.hpd_gpio));
 
+	disable_irq(hdmi.hdmi_irq);
 	return 0;
 }
 
@@ -1222,6 +1223,7 @@ static int hdmi_resume(struct device *dev)
 	if (gpio_is_valid(hdmi.hpd_gpio))
 		enable_irq(gpio_to_irq(hdmi.hpd_gpio));
 
+	enable_irq(hdmi.hdmi_irq);
 	return 0;
 }
 
