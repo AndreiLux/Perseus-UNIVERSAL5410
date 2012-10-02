@@ -40,6 +40,10 @@ struct kds_resource_set
 	void                 *callback_extra_parameter;
 	struct list_head      callback_link;
 	struct work_struct    callback_work;
+
+	/* This is only initted when kds_waitall() is called. */
+	wait_queue_head_t     wake;
+
 	struct kds_link       resources[0];
 };
 
@@ -281,7 +285,6 @@ struct kds_resource_set *kds_waitall(
 	unsigned long flags;
 	int i;
 	int triggered = 0;
-	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wake);
 
 	rset = kmalloc(sizeof(*rset) + number_resources * sizeof(struct kds_link), GFP_KERNEL);
 	if (!rset)
@@ -290,6 +293,7 @@ struct kds_resource_set *kds_waitall(
 	rset->num_resources = number_resources;
 	rset->pending = number_resources;
 	rset->locked_resources = 1;
+	init_waitqueue_head(&rset->wake);
 	INIT_LIST_HEAD(&rset->callback_link);
 	INIT_WORK(&rset->callback_work, kds_queued_callback);
 
@@ -344,7 +348,7 @@ struct kds_resource_set *kds_waitall(
 	else
 	{
 		rset->cb = &sync_cb;
-		rset->callback_parameter = &wake;
+		rset->callback_parameter = &rset->wake;
 		rset->callback_extra_parameter = NULL;
 	}
 
@@ -358,7 +362,7 @@ struct kds_resource_set *kds_waitall(
 
 		if (timeout)
 		{
-			wait_res = wait_event_interruptible_timeout(wake,
+			wait_res = wait_event_interruptible_timeout(rset->wake,
 					rset->pending == 0, timeout);
 		}
 
