@@ -88,27 +88,6 @@ static int get_connector_type(struct omap_dss_device *dssdev)
 	}
 }
 
-#if 0 /* enable when dss2 supports hotplug */
-static int omap_drm_notifier(struct notifier_block *nb,
-		unsigned long evt, void *arg)
-{
-	switch (evt) {
-	case OMAP_DSS_SIZE_CHANGE:
-	case OMAP_DSS_HOTPLUG_CONNECT:
-	case OMAP_DSS_HOTPLUG_DISCONNECT: {
-		struct drm_device *dev = drm_device;
-		DBG("hotplug event: evt=%d, dev=%p", evt, dev);
-		if (dev) {
-			drm_sysfs_hotplug_event(dev);
-		}
-		return NOTIFY_OK;
-	}
-	default:  /* don't care about other events for now */
-		return NOTIFY_DONE;
-	}
-}
-#endif
-
 static void dump_video_chains(void)
 {
 	int i;
@@ -154,7 +133,6 @@ static int create_connector(struct drm_device *dev,
 		struct omap_dss_device *dssdev)
 {
 	struct omap_drm_private *priv = dev->dev_private;
-	static struct notifier_block *notifier;
 	struct drm_connector *connector;
 	int j;
 
@@ -184,14 +162,6 @@ static int create_connector(struct drm_device *dev,
 	BUG_ON(priv->num_connectors >= ARRAY_SIZE(priv->connectors));
 
 	priv->connectors[priv->num_connectors++] = connector;
-
-#if 0 /* enable when dss2 supports hotplug */
-	notifier = kzalloc(sizeof(struct notifier_block), GFP_KERNEL);
-	notifier->notifier_call = omap_drm_notifier;
-	omap_dss_add_notify(dssdev, notifier);
-#else
-	notifier = NULL;
-#endif
 
 	for (j = 0; j < priv->num_encoders; j++) {
 		struct omap_overlay_manager *mgr =

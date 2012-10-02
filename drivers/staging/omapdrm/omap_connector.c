@@ -31,6 +31,30 @@
 struct omap_connector {
 	struct drm_connector base;
 	struct omap_dss_device *dssdev;
+	struct work_struct work;
+	enum omap_dss_event event;
+};
+
+
+static int omap_drm_notifier(struct notifier_block *nb,
+		unsigned long evt, void *arg)
+{
+	/*
+	 * since DSS notifier uses atomic context we need to
+	 * schedule a workqueue for processing
+	 */
+	struct omap_dss_device *dssdev = arg;
+	struct omap_connector *connector = dssdev->user_data;
+
+	connector->event = evt;
+
+	schedule_work(&connector->work);
+
+	return NOTIFY_STOP;
+}
+
+static struct notifier_block omap_connector_nb = {
+	.notifier_call = omap_drm_notifier,
 };
 
 static inline void copy_timings_omap_to_drm(struct drm_display_mode *mode,
@@ -150,6 +174,7 @@ static void omap_connector_destroy(struct drm_connector *connector)
 	DBG("%s", omap_connector->dssdev->name);
 	drm_sysfs_connector_remove(connector);
 	drm_connector_cleanup(connector);
+	omap_dss_remove_event_notify(&omap_connector_nb);
 	kfree(omap_connector);
 
 	omap_dss_put_device(dssdev);
@@ -326,6 +351,26 @@ void omap_connector_flush(struct drm_connector *connector,
 	VERB("%s: %d,%d, %dx%d", omap_connector->dssdev->name, x, y, w, h);
 }
 
+static void connector_worker(struct work_struct *work)
+{
+	struct omap_connector *connector = container_of(work,
+				struct omap_connector, work);
+	struct drm_device *dev = connector->base.dev;
+
+	switch (connector->event) {
+	case OMAP_DSS_EVENT_HOTPLUG_CONNECT:
+	case OMAP_DSS_EVENT_HOTPLUG_DISCONNECT: {
+		DBG("hotplug event: evt=%d, dev=%p",
+				connector->event, dev);
+		if (dev)
+			drm_helper_hpd_irq_event(dev);
+		return;
+	}
+	default:  /* don't care about other events for now */
+		return;
+	}
+}
+
 /* initialize connector */
 struct drm_connector *omap_connector_init(struct drm_device *dev,
 		int connector_type, struct omap_dss_device *dssdev)
@@ -346,6 +391,8 @@ struct drm_connector *omap_connector_init(struct drm_device *dev,
 	omap_connector->dssdev = dssdev;
 	connector = &omap_connector->base;
 
+	INIT_WORK(&omap_connector->work, connector_worker);
+
 	drm_connector_init(dev, connector, &omap_connector_funcs,
 				connector_type);
 	drm_connector_helper_add(connector, &omap_connector_helper_funcs);
@@ -360,6 +407,9 @@ struct drm_connector *omap_connector_init(struct drm_device *dev,
 
 	connector->interlace_allowed = 1;
 	connector->doublescan_allowed = 0;
+
+	dssdev->user_data = omap_connector;
+	omap_dss_add_event_notify(&omap_connector_nb);
 
 	drm_sysfs_connector_add(connector);
 
