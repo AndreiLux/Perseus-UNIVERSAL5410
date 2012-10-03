@@ -183,8 +183,7 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 	list_for_each_entry(pclk, &pd->list, node)
 		clk_disable(pclk->clk);
 
-	if (power_on)
-		bts_initialize(pd->pd.name);
+	bts_initialize(pd->pd.name, power_on);
 
 	return ret;
 

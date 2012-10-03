@@ -348,15 +348,22 @@ void exynos_bts_change_bus_traffic(struct device *dev,
 	}
 }
 
-void exynos_bts_initialize(char *pd_name)
+void exynos_bts_initialize(char *pd_name, bool power_on)
 {
 	struct exynos_bts_data *bts_data;
+	struct exynos_bts_status *cur_status;
 
 	list_for_each_entry(bts_data, &bts_list, node) {
 		if ((!pd_name && !bts_data->pd_name) ||
 			(pd_name && bts_data->pd_name &&
-			 !strcmp(bts_data->pd_name, pd_name)))
-			bts_devs_init(bts_data);
+			 !strcmp(bts_data->pd_name, pd_name))) {
+			if (power_on) {
+				bts_devs_init(bts_data);
+			} else {
+				cur_status = &bts_data->bts_local_data->cur_status;
+				cur_status->is_enabled = false;
+			}
+		}
 	}
 }
 
@@ -369,9 +376,11 @@ static int bts_debug_show(struct seq_file *s, void *unused)
 
 	list_for_each_entry(bts_data, &bts_list, node) {
 		cur_status = &bts_data->bts_local_data->cur_status;
-		seq_printf(s, "%12s: BTS %3s, priority %2d, ",
-			dev_name(bts_data->dev), cur_status->is_enabled
-			? "ON" : "OFF", cur_status->cur_priority);
+		seq_printf(s, "%12s: BTS %3s", dev_name(bts_data->dev),
+			cur_status->is_enabled ? "ON" : "OFF\n");
+		if (!cur_status->is_enabled)
+			continue;
+		seq_printf(s, ", priority %2d, ", cur_status->cur_priority);
 		seq_printf(s, "Block %3s, Deblock %3s, Deblock src : ",
 			cur_status->is_blocked ? "ON" : "OFF",
 			cur_status->is_deblocked ? "ON" : "OFF");

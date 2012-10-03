@@ -94,17 +94,17 @@ struct exynos_bts_pdata {
 
 /* BTS API */
 /* Initialize BTS drivers only included in the same pd_block */
-void exynos_bts_initialize(char *pd_name);
+void exynos_bts_initialize(char *pd_name, bool power_on);
 
 /* Change bus traffic on BTS drivers to contol bus bandwidth */
 void exynos_bts_change_bus_traffic(struct device *dev,
 				   enum bts_bw_change bw_change);
 
 #ifdef CONFIG_S5P_DEV_BTS
-#define bts_initialize(a) exynos_bts_initialize(a);
+#define bts_initialize(a, b) exynos_bts_initialize(a, b);
 #define bts_change_bus_traffic(a, b) exynos_bts_change_bus_traffic(a, b);
 #else
-#define bts_initialize(a) do {} while (0)
+#define bts_initialize(a, b) do {} while (0)
 #define bts_change_bus_traffic(a, b) do {} while (0)
 #endif
 #endif	/* __EXYNOS_BTS_H_ */
