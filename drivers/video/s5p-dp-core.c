@@ -896,19 +896,13 @@ static int s5p_dp_set_link_train(struct s5p_dp_device *dp,
 	int i;
 	int retval;
 
-	for (i = 0; i < DP_TIMEOUT_LOOP_COUNT; i++) {
-		retval = s5p_dp_init_training(dp, count, bwtype);
-		if (retval < 0)
-			dev_err(dp->dev, "DP LT init failed!\n");
+	retval = s5p_dp_init_training(dp, count, bwtype);
+	if (retval < 0)
+		dev_err(dp->dev, "DP LT init failed!\n");
 
-		retval = s5p_dp_sw_link_training(dp);
-		if (retval < 0)
-			dev_err(dp->dev, "DP LT failed!\n");
-		else if (retval == 0)
-			break;
-
-		udelay(100);
-	}
+	retval = s5p_dp_sw_link_training(dp);
+	if (retval < 0)
+		dev_err(dp->dev, "DP LT failed!\n");
 
 	return retval;
 }
