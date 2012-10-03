@@ -390,7 +390,6 @@ static int hdmi_set_state(struct device *dev, int enable)
 {
 	struct hdmi_audio_context *ctx = NULL;
 	struct audio_codec_plugin *plugin;
-	int ret = 0;
 
 	if (!dev) {
 		dev_err(dev, "invalid device.\n");
@@ -401,14 +400,14 @@ static int hdmi_set_state(struct device *dev, int enable)
 
 	plugin = dev_get_drvdata(dev);
 	ctx = container_of(plugin, struct hdmi_audio_context, plugin);
+	ctx->enabled = !!enable;
 
 	if (!atomic_read(&ctx->plugged))
 		return -EINVAL;
 
-	ret = hdmi_audio_control(ctx, !!enable);
-	if (!ret)
-		ctx->enabled = !!enable;
-	return ret;
+	hdmi_audio_control(ctx, !!enable);
+
+	return 0;
 }
 
 static int hdmi_get_state(struct device *dev, int *is_enabled)
