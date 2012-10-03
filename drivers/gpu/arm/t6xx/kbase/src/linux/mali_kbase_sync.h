@@ -71,7 +71,9 @@ struct sync_pt *kbase_sync_pt_alloc(struct sync_timeline *parent);
  *
  * If they are signalled in the wrong order then a message will be printed in debug
  * builds and otherwise attempts to signal order sync_pts will be ignored.
+ *
+ * result can be negative to indicate error, any other value is interpreted as success.
  */
-void kbase_sync_signal_pt(struct sync_pt *pt);
+void kbase_sync_signal_pt(struct sync_pt *pt, int result);
 
 #endif

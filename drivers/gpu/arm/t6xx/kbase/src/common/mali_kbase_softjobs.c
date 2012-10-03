@@ -138,7 +138,7 @@ static void complete_soft_job(kbase_jd_atom *katom)
 }
 
 
-static base_jd_event_code kbase_fence_trigger(kbase_jd_atom *katom)
+static base_jd_event_code kbase_fence_trigger(kbase_jd_atom *katom, int result)
 {
 	struct sync_pt *pt;
 	struct sync_timeline *timeline;
@@ -158,11 +158,11 @@ static base_jd_event_code kbase_fence_trigger(kbase_jd_atom *katom)
 		return BASE_JD_EVENT_JOB_CANCELLED;
 	}
 
-	kbase_sync_signal_pt(pt);
+	kbase_sync_signal_pt(pt, result);
 
 	sync_timeline_signal(timeline);
 
-	return BASE_JD_EVENT_DONE;
+	return (result < 0) ? BASE_JD_EVENT_JOB_CANCELLED : BASE_JD_EVENT_DONE;
 }
 
 static void kbase_fence_wait_worker(struct work_struct *data)
@@ -186,6 +186,14 @@ static void kbase_fence_wait_callback(struct sync_fence *fence, struct sync_fenc
 	kctx = katom->kctx;
 
 	OSK_ASSERT(NULL != kctx);
+
+	/* Propagate the fence status to the atom.
+	 * If negative then cancel this atom and its dependencies.
+	 */
+	if (fence->status < 0)
+	{
+		katom->event_code = BASE_JD_EVENT_JOB_CANCELLED;
+	}
 
 	/* To prevent a potential deadlock we schedule the work onto the job_done_wq workqueue
 	 *
@@ -257,7 +265,7 @@ int kbase_process_soft_job(kbase_jd_atom *katom )
 #ifdef CONFIG_SYNC
 		case BASE_JD_REQ_SOFT_FENCE_TRIGGER:
 			OSK_ASSERT(katom->fence != NULL);
-			katom->event_code = kbase_fence_trigger(katom);
+			katom->event_code = kbase_fence_trigger(katom, katom->event_code == BASE_JD_EVENT_DONE ? 0 : -EFAULT);
 			/* Release the reference as we don't need it any more */
 			sync_fence_put(katom->fence);
 			katom->fence = NULL;
@@ -357,7 +365,7 @@ void kbase_finish_soft_job(kbase_jd_atom *katom )
 		case BASE_JD_REQ_SOFT_FENCE_TRIGGER:
 			if (katom->fence) {
 				/* The fence has not yet been signalled, so we do it now */
-				kbase_fence_trigger(katom);
+				kbase_fence_trigger(katom, katom->event_code == BASE_JD_EVENT_DONE ? 0 : -EFAULT);
 				sync_fence_put(katom->fence);
 				katom->fence = NULL;
 			}

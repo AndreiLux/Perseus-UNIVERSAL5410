@@ -602,6 +602,11 @@ mali_bool jd_done_nolock(kbase_jd_atom *katom)
 			{
 				node->event_code = katom->event_code;
 				node->status = KBASE_JD_ATOM_STATE_COMPLETED;
+
+				if (node->core_req & BASE_JD_REQ_SOFT_JOB)
+				{
+					kbase_finish_soft_job(node);
+				}
 			}
 
 			if (node->status == KBASE_JD_ATOM_STATE_COMPLETED)

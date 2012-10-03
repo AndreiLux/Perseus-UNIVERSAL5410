@@ -33,6 +33,7 @@ struct mali_sync_pt
 {
 	struct sync_pt pt;
 	u32 order;
+	int result;
 };
 
 static struct mali_sync_timeline *to_mali_sync_timeline(struct sync_timeline *timeline)
@@ -58,6 +59,7 @@ static struct sync_pt *timeline_dup(struct sync_pt *pt)
 
 	new_mpt = to_mali_sync_pt(new_pt);
 	new_mpt->order = mpt->order;
+	new_mpt->result = mpt->result;
 
 	return new_pt;
 
@@ -67,10 +69,16 @@ static int timeline_has_signaled(struct sync_pt *pt)
 {
 	struct mali_sync_pt *mpt = to_mali_sync_pt(pt);
 	struct mali_sync_timeline *mtl = to_mali_sync_timeline(pt->parent);
+	int result = mpt->result;
 
 	long diff = atomic_read(&mtl->signalled) - mpt->order;
 
-	return diff >= 0;
+	if (diff >= 0)
+	{
+		return result < 0 ?  result : 1;
+	}
+	else
+		return 0;
 }
 
 static int timeline_compare(struct sync_pt *a, struct sync_pt *b)
@@ -143,16 +151,19 @@ struct sync_pt *kbase_sync_pt_alloc(struct sync_timeline *parent)
 
 	mpt = to_mali_sync_pt(pt);
 	mpt->order = atomic_inc_return(&mtl->counter);
+	mpt->result = 0;
 
 	return pt;
 }
 
-void kbase_sync_signal_pt(struct sync_pt *pt)
+void kbase_sync_signal_pt(struct sync_pt *pt, int result)
 {
 	struct mali_sync_pt *mpt = to_mali_sync_pt(pt);
 	struct mali_sync_timeline *mtl = to_mali_sync_timeline(pt->parent);
 	int signalled;
 	long diff;
+
+	mpt->result = result;
 
 	do {
 
