@@ -30,7 +30,7 @@ config MALI_GATOR_SUPPORT
 
 config MALI_T6XX_DVFS
 	bool "Enable DVFS"
-	depends on MALI_T6XX && MACH_MANTA
+	depends on MALI_T6XX
 	default n
 	help
 	  Choose this option to enable DVFS on MALI T6XX DDK.
