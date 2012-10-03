@@ -52,7 +52,7 @@ enum s3c_cpu_type {
 struct s3c_adc_client {
 	struct platform_device	*pdev;
 	struct list_head	 pend;
-	wait_queue_head_t	*wait;
+	wait_queue_head_t	 wait;
 
 	unsigned int		 nr_samples;
 	int			 result;
@@ -254,7 +254,7 @@ static void s3c_convert_done(struct s3c_adc_client *client,
 			     unsigned v, unsigned u, unsigned *left)
 {
 	client->result = v;
-	wake_up(client->wait);
+	wake_up(&client->wait);
 }
 
 /* Get the result out of the client with locking.
@@ -277,7 +277,6 @@ static int s3c_get_result(struct s3c_adc_client *client)
 int s3c_adc_read(struct s3c_adc_client *client, unsigned int ch)
 {
 	unsigned long flags;
-	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wake);
 	int ret;
 
 	/* Lock around access of client members.  Technically all that's really
@@ -287,7 +286,6 @@ int s3c_adc_read(struct s3c_adc_client *client, unsigned int ch)
 	 */
 	spin_lock_irqsave(&adc_dev->lock, flags);
 	client->convert_cb = s3c_convert_done;
-	client->wait = &wake;
 	client->result = -1;
 	spin_unlock_irqrestore(&adc_dev->lock, flags);
 
@@ -295,7 +293,7 @@ int s3c_adc_read(struct s3c_adc_client *client, unsigned int ch)
 	if (ret < 0)
 		goto exit;
 
-	wait_event_timeout(wake, s3c_get_result(client) >= 0, HZ / 2);
+	wait_event_timeout(client->wait, s3c_get_result(client) >= 0, HZ / 2);
 	ret = s3c_get_result(client);
 
 	if (ret < 0) {
@@ -308,7 +306,6 @@ exit:
 	 * a pointer to the client anymore.
 	 */
 	client->convert_cb = NULL;
-	client->wait = NULL;
 
 	return ret;
 }
@@ -347,6 +344,7 @@ struct s3c_adc_client *s3c_adc_register(struct platform_device *pdev,
 	client->is_ts = is_ts;
 	client->select_cb = select;
 	client->convert_cb = conv;
+	init_waitqueue_head(&client->wait);
 
 	return client;
 }
