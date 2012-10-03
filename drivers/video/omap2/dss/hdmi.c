@@ -170,7 +170,8 @@ static int __init hdmi_init_display(struct omap_dss_device *dssdev)
 	int r;
 
 	struct gpio gpios[] = {
-		{ hdmi.ct_cp_hpd_gpio, GPIOF_OUT_INIT_LOW, "hdmi_ct_cp_hpd" },
+		/* CT_CP_HPD_GPIO must be always ON for HPD detection to work */
+		{ hdmi.ct_cp_hpd_gpio, GPIOF_OUT_INIT_HIGH, "hdmi_ct_cp_hpd" },
 		{ hdmi.ls_oe_gpio, GPIOF_OUT_INIT_LOW, "hdmi_ls_oe" },
 		{ hdmi.hpd_gpio, GPIOF_DIR_IN, "hdmi_hpd" },
 	};
@@ -357,7 +358,6 @@ static int hdmi_power_on(struct omap_dss_device *dssdev)
 	struct omap_video_timings *p;
 	unsigned long phy;
 
-	gpio_set_value(hdmi.ct_cp_hpd_gpio, 1);
 	gpio_set_value(hdmi.ls_oe_gpio, 1);
 
 	r = hdmi_runtime_get();
@@ -485,7 +485,6 @@ err_pll_enable:
 err_regulator:
 	hdmi_runtime_put();
 err_runtime_get:
-	gpio_set_value(hdmi.ct_cp_hpd_gpio, 0);
 	gpio_set_value(hdmi.ls_oe_gpio, 0);
 	return -EIO;
 }
@@ -503,7 +502,6 @@ static void hdmi_power_off(struct omap_dss_device *dssdev)
 
 	hdmi_runtime_put();
 
-	gpio_set_value(hdmi.ct_cp_hpd_gpio, 0);
 	gpio_set_value(hdmi.ls_oe_gpio, 0);
 
 	hdmi.ip_data.cfg.deep_color = HDMI_DEEP_COLOR_24BIT;
