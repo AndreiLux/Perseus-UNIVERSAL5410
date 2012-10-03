@@ -177,7 +177,7 @@ mali_error kbase_pm_powerup(kbase_device *kbdev)
 	atomic_set(&kbdev->pm.work_active, KBASE_PM_WORK_ACTIVE_STATE_INACTIVE);
 
 	kbdev->pm.new_policy = NULL;
-	kbdev->pm.current_policy = policy_list[0];
+	kbdev->pm.current_policy = policy_list[2];
 	kbdev->pm.current_policy->init(kbdev);
 
 	kbase_pm_send_event(kbdev, KBASE_PM_EVENT_POLICY_INIT);
