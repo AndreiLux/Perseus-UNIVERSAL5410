@@ -87,6 +87,8 @@ static int exynos_drm_fb_unmap(struct drm_framebuffer *fb)
 	if (!buf->dma_addr)
 		return -ENOMEM;
 
+	buf->dma_addr = 0;
+
 	/* Unmap the SGT to remove the IOMMU mapping created for this buffer */
 	dma_unmap_sg(obj->dev->dev,
 		     buf->sgt->sgl,
@@ -94,8 +96,6 @@ static int exynos_drm_fb_unmap(struct drm_framebuffer *fb)
 		     DMA_BIDIRECTIONAL);
 
 	drm_gem_object_unreference_unlocked(obj);
-
-	buf->dma_addr = 0;
 
 	return 0;
 }
