@@ -17,12 +17,14 @@
 #ifndef _ION_PRIV_H
 #define _ION_PRIV_H
 
+#include <linux/ion.h>
 #include <linux/kref.h>
 #include <linux/mm_types.h>
 #include <linux/mutex.h>
 #include <linux/rbtree.h>
 #include <linux/sched.h>
-#include <linux/ion.h>
+#include <linux/shrinker.h>
+#include <linux/types.h>
 
 struct ion_buffer *ion_handle_buffer(struct ion_handle *handle);
 
@@ -115,6 +117,8 @@ struct ion_heap_ops {
  *			allocating.  These are specified by platform data and
  *			MUST be unique
  * @name:		used for debugging
+ * @debug_show:		called when heap debug file is read to add any
+ *			heap specific debug info to output
  *
  * Represents a pool of memory from which buffers can be made.  In some
  * systems the only heap is regular system memory allocated via vmalloc.
@@ -128,7 +132,16 @@ struct ion_heap {
 	struct ion_heap_ops *ops;
 	int id;
 	const char *name;
+	int (*debug_show)(struct ion_heap *heap, struct seq_file *, void *);
 };
+
+/**
+ * ion_buffer_cached - this ion buffer is cached
+ * @buffer:		buffer
+ *
+ * indicates whether this ion buffer is cached
+ */
+bool ion_buffer_cached(struct ion_buffer *buffer);
 
 /**
  * ion_buffer_fault_user_mappings - fault in user mappings of this buffer
@@ -193,5 +206,47 @@ void ion_carveout_free(struct ion_heap *heap, ion_phys_addr_t addr,
  * physical address, this is used to indicate allocation failed
  */
 #define ION_CARVEOUT_ALLOCATE_FAIL -1
+
+/**
+ * functions for creating and destroying a heap pool -- allows you
+ * to keep a pool of pre allocated memory to use from your heap.  Keeping
+ * a pool of memory that is ready for dma, ie any cached mapping have been
+ * invalidated from the cache, provides a significant peformance benefit on
+ * many systems */
+
+/**
+ * struct ion_page_pool - pagepool struct
+ * @count:		number of items in the pool
+ * @items:		list of items
+ * @shrinker:		a shrinker for the items
+ * @mutex:		lock protecting this struct and especially the count
+ *			item list
+ * @alloc:		function to be used to allocate pageory when the pool
+ *			is empty
+ * @free:		function to be used to free pageory back to the system
+ *			when the shrinker fires
+ * @gfp_mask:		gfp_mask to use from alloc
+ * @order:		order of pages in the pool
+ *
+ * Allows you to keep a pool of pre allocated pages to use from your heap.
+ * Keeping a pool of pages that is ready for dma, ie any cached mapping have
+ * been invalidated from the cache, provides a significant peformance benefit
+ * on many systems
+ */
+struct ion_page_pool {
+	int count;
+	struct list_head items;
+	struct shrinker shrinker;
+	struct mutex mutex;
+	void *(*alloc)(struct ion_page_pool *pool);
+	void (*free)(struct ion_page_pool *pool, struct page *page);
+	gfp_t gfp_mask;
+	unsigned int order;
+};
+
+struct ion_page_pool *ion_page_pool_create(gfp_t gfp_mask, unsigned int order);
+void ion_page_pool_destroy(struct ion_page_pool *);
+void *ion_page_pool_alloc(struct ion_page_pool *);
+void ion_page_pool_free(struct ion_page_pool *, struct page *);
 
 #endif /* _ION_PRIV_H */
