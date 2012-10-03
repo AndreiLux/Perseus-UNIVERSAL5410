@@ -758,7 +758,6 @@ static int s3c24xx_i2c_cpufreq_transition(struct notifier_block *nb,
 {
 	struct s3c24xx_i2c *i2c = freq_to_i2c(nb);
 	unsigned long flags;
-	unsigned int got;
 	int delta_f;
 	int ret;
 
