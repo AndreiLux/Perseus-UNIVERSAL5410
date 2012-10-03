@@ -603,6 +603,8 @@ static int gsc_m2m_open(struct file *file)
 	if (gsc->m2m.refcnt++ == 0)
 		set_bit(ST_M2M_OPEN, &gsc->state);
 
+	gsc_bus_request_get(gsc);
+
 	gsc_dbg("gsc m2m driver is opened, ctx(0x%p)", ctx);
 	return 0;
 
@@ -620,6 +622,8 @@ static int gsc_m2m_release(struct file *file)
 
 	gsc_dbg("pid: %d, state: 0x%lx, refcnt= %d",
 		task_pid_nr(current), gsc->state, gsc->m2m.refcnt);
+
+	gsc_bus_request_put(gsc);
 
 	v4l2_m2m_ctx_release(ctx->m2m_ctx);
 	gsc_ctrls_delete(ctx);

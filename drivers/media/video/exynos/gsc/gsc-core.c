@@ -1236,8 +1236,6 @@ static int gsc_runtime_suspend(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct gsc_dev *gsc = (struct gsc_dev *)platform_get_drvdata(pdev);
 
-	gsc_bus_request_put(gsc);
-
 	if (gsc_m2m_opened(gsc))
 		gsc->m2m.ctx = NULL;
 
@@ -1252,8 +1250,6 @@ static int gsc_runtime_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct gsc_dev *gsc = (struct gsc_dev *)platform_get_drvdata(pdev);
-
-	gsc_bus_request_get(gsc);
 
 	clk_enable(gsc->clock);
 	gsc->vb2->resume(gsc->alloc_ctx);
