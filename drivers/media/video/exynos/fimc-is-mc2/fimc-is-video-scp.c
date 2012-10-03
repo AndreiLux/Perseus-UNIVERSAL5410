@@ -162,9 +162,9 @@ static int fimc_is_scalerp_video_set_format_mplane(struct file *file, void *fh,
 	format->fmt.pix_mp.plane_fmt[0].bytesperline =
 		ALIGN(format->fmt.pix_mp.width, 32);
 	format->fmt.pix_mp.plane_fmt[1].bytesperline =
-		ALIGN(format->fmt.pix_mp.width, 16);
+		ALIGN(format->fmt.pix_mp.width, 32);
 	format->fmt.pix_mp.plane_fmt[2].bytesperline =
-		ALIGN(format->fmt.pix_mp.width, 16);
+		ALIGN(format->fmt.pix_mp.width, 32);
 	format->fmt.pix_mp.plane_fmt[3].bytesperline = 0;
 
 	ret = fimc_is_video_set_format_mplane(&video->common, format);

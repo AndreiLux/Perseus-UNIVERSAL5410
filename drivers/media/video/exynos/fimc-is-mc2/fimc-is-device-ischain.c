@@ -2378,7 +2378,10 @@ static int fimc_is_ischain_s_chain3_size(struct fimc_is_device_ischain *this,
 	indexes++;
 
 	/* sclaer can't apply stride to each plane, only y plane.
-	cb, cr plane should be half of y plane, it's automatically set */
+	cb, cr plane should be half of y plane, it's automatically set
+	3 plane : all plane can be 32 stride or 16, 8
+	2 plane : y plane only can be 32, 16 stride, other should be half of y
+	1 plane : all plane can be 8 plane */
 	if (video->frame.width_stride[0]) {
 		scp_param->output_crop.cmd = SCALER_CROP_COMMAND_ENABLE;
 		scp_param->output_crop.pos_x = 0;
@@ -3356,6 +3359,11 @@ int fimc_is_ischain_scc_start(struct fimc_is_device_ischain *this)
 	scc_param->dma_output.cmd = DMA_OUTPUT_COMMAND_ENABLE;
 	scc_param->dma_output.dma_out_mask = video->buf_mask;
 	scc_param->dma_output.buffer_number = video->buffers;
+#ifdef USE_FRAME_SYNC
+	scc_param->dma_output.plane = video->frame.format.num_planes - 1;
+#else
+	scc_param->dma_output.plane = video->frame.format.num_planes;
+#endif
 	scc_param->dma_output.buffer_address =
 		this->minfo.dvaddr_shared + 447*sizeof(u32);
 	lindex |= LOWBIT_OF(PARAM_SCALERC_DMA_OUTPUT);
@@ -3449,6 +3457,11 @@ int fimc_is_ischain_scp_start(struct fimc_is_device_ischain *this)
 	scp_param->dma_output.cmd = DMA_OUTPUT_COMMAND_ENABLE;
 	scp_param->dma_output.dma_out_mask = video->buf_mask;
 	scp_param->dma_output.buffer_number = video->buffers;
+#ifdef USE_FRAME_SYNC
+	scp_param->dma_output.plane = video->frame.format.num_planes - 1;
+#else
+	scp_param->dma_output.plane = video->frame.format.num_planes;
+#endif
 	scp_param->dma_output.buffer_address =
 		this->minfo.dvaddr_shared + 400*sizeof(u32);
 
