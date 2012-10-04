@@ -28,7 +28,7 @@
 #include <plat/cpu.h>
 #include <media/exynos_fimc_is.h>
 
-
+/*#define USE_UART_DEBUG*/
 
 struct platform_device; /* don't need the contents */
 
@@ -101,8 +101,10 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 	struct clk *aclk_266_div0 = NULL;
 	struct clk *aclk_266_div1 = NULL;
 	struct clk *aclk_266_mpwm = NULL;
+#ifdef USE_UART_DEBUG
 	struct clk *sclk_uart_isp = NULL;
 	struct clk *sclk_uart_isp_div = NULL;
+#endif
 	struct clk *mout_mpll = NULL;
 	struct clk *sclk_mipi0 = NULL;
 	struct clk *sclk_mipi1 = NULL;
@@ -195,6 +197,7 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 	clk_put(aclk_266_div1);
 	clk_put(aclk_266_mpwm);
 
+#ifdef USE_UART_DEBUG
 	/* 3. UART-ISP */
 	sclk_uart_isp = clk_get(&pdev->dev, "sclk_uart_src_isp");
 	if (IS_ERR(sclk_uart_isp))
@@ -217,6 +220,7 @@ int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
 
 	clk_put(sclk_uart_isp);
 	clk_put(sclk_uart_isp_div);
+#endif
 
 	/* 4. MIPI-CSI */
 	mout_mpll = clk_get(&pdev->dev, "mout_mpll_user");
