@@ -240,17 +240,34 @@ static int s5p_dp_enable_rx_to_enhanced_mode(struct s5p_dp_device *dp,
 	if (retval < 0)
 		return retval;
 
-	if (enable)
+	if (enable) {
 		retval = s5p_dp_write_byte_to_dpcd(dp,
 				DPCD_ADDR_LANE_COUNT_SET,
 				DPCD_ENHANCED_FRAME_EN |
 				DPCD_LANE_COUNT_SET(data));
-	else
+	} else {
+		retval = s5p_dp_write_byte_to_dpcd(dp,
+				DPCD_ADDR_CONFIGURATION_SET, 0);
+
 		retval = s5p_dp_write_byte_to_dpcd(dp,
 				DPCD_ADDR_LANE_COUNT_SET,
 				DPCD_LANE_COUNT_SET(data));
+	}
 
 	return retval;
+}
+
+void s5p_dp_rx_control(struct s5p_dp_device *dp, bool enable)
+{
+	s5p_dp_write_byte_to_dpcd(dp, DPCD_ADDR_USER_DEFINED1,0);
+	s5p_dp_write_byte_to_dpcd(dp, DPCD_ADDR_USER_DEFINED2,0x90);
+
+	if (enable) {
+		s5p_dp_write_byte_to_dpcd(dp, DPCD_ADDR_USER_DEFINED3,0x84);
+		s5p_dp_write_byte_to_dpcd(dp, DPCD_ADDR_USER_DEFINED3,0x00);
+	} else {
+		s5p_dp_write_byte_to_dpcd(dp, DPCD_ADDR_USER_DEFINED3,0x80);
+	}
 }
 
 static int s5p_dp_is_enhanced_mode_available(struct s5p_dp_device *dp)
@@ -263,9 +280,7 @@ static int s5p_dp_is_enhanced_mode_available(struct s5p_dp_device *dp)
 	if (retval < 0)
 		return retval;
 
-	retval = DPCD_ENHANCED_FRAME_CAP(data);
-
-	return retval;
+	return DPCD_ENHANCED_FRAME_CAP(data);
 }
 
 static int s5p_dp_set_enhanced_mode(struct s5p_dp_device *dp)
@@ -500,7 +515,6 @@ static unsigned int s5p_dp_get_lane_link_training(
 static void s5p_dp_reduce_link_rate(struct s5p_dp_device *dp)
 {
 	s5p_dp_training_pattern_dis(dp);
-	s5p_dp_set_enhanced_mode(dp);
 
 	dp->link_train.lt_state = FAILED;
 }
@@ -728,12 +742,6 @@ static int s5p_dp_process_equalizer_training(struct s5p_dp_device *dp)
 			dev_dbg(dp->dev, "final lane count = %.2x\n",
 				dp->link_train.lane_count);
 
-			/* set enhanced mode if available */
-			retval = s5p_dp_set_enhanced_mode(dp);
-			if (retval < 0) {
-				dev_err(dp->dev, "failed to enable enhanced mode!\n");
-				return retval;
-			}
 			dp->link_train.lt_state = FINISHED;
 		} else {
 			/* not all locked */
@@ -893,7 +901,6 @@ static int s5p_dp_set_link_train(struct s5p_dp_device *dp,
 				u32 count,
 				u32 bwtype)
 {
-	int i;
 	int retval;
 
 	retval = s5p_dp_init_training(dp, count, bwtype);
@@ -1064,6 +1071,24 @@ dp_phy_init:
 		goto out;
 	}
 
+	/* Non-enhance mode setting */
+	ret = s5p_dp_enable_scramble(dp, 0);
+	if (ret) {
+		dev_err(dp->dev, "unable to set scramble\n");
+		goto out;
+	}
+
+	ret = s5p_dp_enable_rx_to_enhanced_mode(dp, 0);
+	if (ret) {
+		dev_err(dp->dev, "unable to set enhanced mode\n");
+		goto out;
+	}
+	s5p_dp_enable_enhanced_mode(dp, 0);
+
+	/* Rx data disable */
+	s5p_dp_rx_control(dp,0);
+
+       /* Link Training */
 	ret = s5p_dp_set_link_train(dp, dp->video_info->lane_count,
 				dp->video_info->link_rate);
 	if (ret) {
@@ -1071,33 +1096,8 @@ dp_phy_init:
 		goto out;
 	}
 
-	if (soc_is_exynos5250()) {
-		ret = s5p_dp_enable_scramble(dp, 1);
-		if (ret) {
-			dev_err(dp->dev, "unable to set scramble\n");
-			goto out;
-		}
-
-		ret = s5p_dp_enable_rx_to_enhanced_mode(dp, 1);
-		if (ret) {
-			dev_err(dp->dev, "unable to set enhanced mode\n");
-			goto out;
-		}
-		s5p_dp_enable_enhanced_mode(dp, 1);
-	} else {
-		ret = s5p_dp_enable_scramble(dp, 0);
-		if (ret) {
-			dev_err(dp->dev, "unable to set scramble\n");
-			goto out;
-		}
-
-		ret = s5p_dp_enable_rx_to_enhanced_mode(dp, 0);
-		if (ret) {
-			dev_err(dp->dev, "unable to set enhanced mode\n");
-			goto out;
-		}
-		s5p_dp_enable_enhanced_mode(dp, 0);
-	}
+	/* Rx data enable */
+	s5p_dp_rx_control(dp,1);
 
 	s5p_dp_set_lane_count(dp, dp->video_info->lane_count);
 	s5p_dp_set_link_bandwidth(dp, dp->video_info->link_rate);

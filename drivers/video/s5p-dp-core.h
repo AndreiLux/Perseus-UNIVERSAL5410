@@ -132,6 +132,7 @@ void s5p_dp_config_video_slave_mode(struct s5p_dp_device *dp,
 			struct video_info *video_info);
 void s5p_dp_enable_scrambling(struct s5p_dp_device *dp);
 void s5p_dp_disable_scrambling(struct s5p_dp_device *dp);
+void s5p_dp_rx_control(struct s5p_dp_device *dp, bool enable);
 
 /* I2C EDID Chip ID, Slave Address */
 #define I2C_EDID_DEVICE_ADDR			0x50
@@ -150,6 +151,7 @@ void s5p_dp_disable_scrambling(struct s5p_dp_device *dp);
 #define DPCD_ADDR_LANE_COUNT_SET		0x0101
 #define DPCD_ADDR_TRAINING_PATTERN_SET		0x0102
 #define DPCD_ADDR_TRAINING_LANE0_SET		0x0103
+#define DPCD_ADDR_CONFIGURATION_SET		0x010a
 #define DPCD_ADDR_LANE0_1_STATUS		0x0202
 #define DPCD_ADDR_LANE_ALIGN_STATUS_UPDATED	0x0204
 #define DPCD_ADDR_ADJUST_REQUEST_LANE0_1	0x0206
@@ -157,6 +159,9 @@ void s5p_dp_disable_scrambling(struct s5p_dp_device *dp);
 #define DPCD_ADDR_TEST_REQUEST			0x0218
 #define DPCD_ADDR_TEST_RESPONSE			0x0260
 #define DPCD_ADDR_TEST_EDID_CHECKSUM		0x0261
+#define DPCD_ADDR_USER_DEFINED1			0x0491
+#define DPCD_ADDR_USER_DEFINED2			0x0492
+#define DPCD_ADDR_USER_DEFINED3			0x0493
 #define DPCD_ADDR_SINK_POWER_STATE		0x0600
 
 /* DPCD_ADDR_MAX_LANE_COUNT */
