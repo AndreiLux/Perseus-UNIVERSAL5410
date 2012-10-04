@@ -132,7 +132,13 @@ static inline long _smc(void *data)
 
 
 		__asm__ volatile (
+#ifdef CONFIG_ARM_ERRATA_766421
+			"dmb\n"
+#endif
 			".word " __STR(ASM_ARM_SMC) "\n"
+#ifdef CONFIG_ARM_ERRATA_766421
+			"dmb\n"
+#endif
 			: "+r"(reg0), "+r"(reg1), "+r"(reg2), "+r"(reg3)
 		);
 
