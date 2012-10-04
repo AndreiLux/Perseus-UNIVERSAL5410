@@ -100,7 +100,7 @@
 /*#define ENABLE_DRC*/
 /*#define ENABLE_ODC*/
 #define ENABLE_VDIS
-/*#define ENABLE_TDNR*/
+#define ENABLE_TDNR
 #define ENABLE_FD
 
 /*#define DEBUG*/
