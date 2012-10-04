@@ -251,6 +251,14 @@ static void gsc_m2m_buf_queue(struct vb2_buffer *vb)
 
 	gsc_dbg("ctx: %p, ctx->state: 0x%x", ctx, ctx->state);
 
+	if (vb->acquire_fence) {
+		int ret = sync_fence_wait(vb->acquire_fence, 100);
+		sync_fence_put(vb->acquire_fence);
+		vb->acquire_fence = NULL;
+		if (ret < 0)
+			gsc_err("sync_fence_wait() timeout");
+	}
+
 	if (ctx->m2m_ctx)
 		v4l2_m2m_buf_queue(ctx->m2m_ctx, vb);
 }
@@ -535,6 +543,7 @@ static int queue_init(void *priv, struct vb2_queue *src_vq,
 	int ret;
 
 	memset(src_vq, 0, sizeof(*src_vq));
+	src_vq->name = kasprintf(GFP_KERNEL, "%s-src", dev_name(&ctx->gsc_dev->pdev->dev));
 	src_vq->type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
 	src_vq->io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	src_vq->drv_priv = ctx;
@@ -547,6 +556,7 @@ static int queue_init(void *priv, struct vb2_queue *src_vq,
 		return ret;
 
 	memset(dst_vq, 0, sizeof(*dst_vq));
+	dst_vq->name = kasprintf(GFP_KERNEL, "%s-dst", dev_name(&ctx->gsc_dev->pdev->dev));
 	dst_vq->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	dst_vq->io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	dst_vq->drv_priv = ctx;
@@ -625,6 +635,8 @@ static int gsc_m2m_release(struct file *file)
 
 	gsc_bus_request_put(gsc);
 
+	kfree(ctx->m2m_ctx->cap_q_ctx.q.name);
+	kfree(ctx->m2m_ctx->out_q_ctx.q.name);
 	v4l2_m2m_ctx_release(ctx->m2m_ctx);
 	gsc_ctrls_delete(ctx);
 	v4l2_fh_del(&ctx->fh);
