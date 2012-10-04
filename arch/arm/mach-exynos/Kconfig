@@ -66,6 +66,7 @@ config SOC_EXYNOS5250
 	select SAMSUNG_DMADEV
 	select ARM_CPU_SUSPEND if (PM || CPU_IDLE)
 	select S5P_PM if PM
+	select ARM_ERRATA_766421
 	select S5P_SLEEP if (PM || CPU_IDLE)
 
 	help
