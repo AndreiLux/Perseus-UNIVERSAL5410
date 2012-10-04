@@ -1713,14 +1713,6 @@ int drm_mode_setplane(struct drm_device *dev, void *data,
 	}
 	plane = obj_to_plane(obj);
 
-	/* No fb means shut it down */
-	if (!plane_req->fb_id) {
-		plane->funcs->disable_plane(plane);
-		plane->crtc = NULL;
-		plane->fb = NULL;
-		goto out;
-	}
-
 	obj = drm_mode_object_find(dev, plane_req->crtc_id,
 				   DRM_MODE_OBJECT_CRTC);
 	if (!obj) {
@@ -1730,6 +1722,15 @@ int drm_mode_setplane(struct drm_device *dev, void *data,
 		goto out;
 	}
 	crtc = obj_to_crtc(obj);
+
+	/* No fb means shut it down */
+	if (!plane_req->fb_id) {
+		plane->crtc = crtc;
+		plane->funcs->disable_plane(plane);
+		plane->crtc = NULL;
+		plane->fb = NULL;
+		goto out;
+	}
 
 	obj = drm_mode_object_find(dev, plane_req->fb_id,
 				   DRM_MODE_OBJECT_FB);
