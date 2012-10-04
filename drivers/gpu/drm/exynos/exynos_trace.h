@@ -44,6 +44,21 @@ TRACE_EVENT(exynos_flip_complete,
 	TP_printk("pipe=%u", __entry->pipe)
 );
 
+TRACE_EVENT(exynos_fake_flip_complete,
+	TP_PROTO(unsigned int pipe),
+	TP_ARGS(pipe),
+
+	TP_STRUCT__entry(
+		__field(unsigned int, pipe)
+	),
+
+	TP_fast_assign(
+		__entry->pipe = pipe;
+	),
+
+	TP_printk("pipe=%u", __entry->pipe)
+);
+
 #endif /* _EXYNOS_TRACE_H_ */
 
 /* This part must be outside protection */

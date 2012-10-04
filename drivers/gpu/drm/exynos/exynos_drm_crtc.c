@@ -345,6 +345,7 @@ static void exynos_drm_crtc_flip_complete(struct drm_pending_vblank_event *e)
 	e->event.tv_usec = now.tv_usec;
 	list_add_tail(&e->base.link, &e->base.file_priv->event_list);
 	wake_up_interruptible(&e->base.file_priv->event_wait);
+	trace_exynos_fake_flip_complete(e->pipe);
 }
 
 static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
@@ -362,11 +363,6 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	struct kds_resource_set **pkds;
 #endif
 	DRM_DEBUG_KMS("%s\n", __FILE__);
-
-	/* Record both request and complete of page flip within the function
-	 * since this implementation is blocking in exynos_drm_crtc_update.
-	 */
-	trace_exynos_flip_request(exynos_crtc->pipe);
 
 	/* msb: The event flag is optional but exynos does not support it. */
 	if (!event) {
@@ -444,7 +440,7 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 		exynos_drm_kds_callback(crtc, pkds);
 	}
 #endif
-	trace_exynos_flip_complete(exynos_crtc->pipe);
+	trace_exynos_flip_request(exynos_crtc->pipe);
 	return ret;
 }
 
@@ -462,6 +458,8 @@ void exynos_drm_crtc_finish_pageflip(struct drm_device *drm_dev, int crtc_idx)
 
 	if (!atomic_cmpxchg(&exynos_crtc->flip_pending, 1, 0))
 		return;
+
+	trace_exynos_flip_complete(crtc_idx);
 
 	spin_lock_irqsave(&drm_dev->event_lock, flags);
 	if (exynos_crtc->event) {
