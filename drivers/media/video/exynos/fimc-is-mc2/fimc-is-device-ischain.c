@@ -2571,31 +2571,33 @@ static int fimc_is_ischain_s_dzoom(struct fimc_is_device_ischain *this,
 	}
 
 #ifdef USE_ADVANCED_DZOOM
-	zoom_input = (chain0_width * 10000) / crop_width;
-	zoom_pre_max = (chain0_width * 10000) / chain1_width;
+	zoom_input = (chain0_width * 1000) / crop_width;
+	zoom_pre_max = (chain0_width * 1000) / chain1_width;
 
-	if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state)) {
-		if (zoom_input == 10000)
-			zoom_target =  10000;
-		else {
-			zoom_input = (zoom_input * 375) / 400;
-			zoom_target = ((zoom_input + 2500) * 100) / 125;
-		}
-	} else
+	if (zoom_pre_max < 1000)
+		zoom_pre_max = 1000;
+
+#ifdef PRINT_DZOOM
+	printk(KERN_INFO "zoom input : %d, premax-zoom : %d\n",
+		zoom_input, zoom_pre_max);
+#endif
+
+	if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state))
+		zoom_target = (zoom_input * 91 + 34000) / 125;
+	else
 		zoom_target = zoom_input;
 
 	if (zoom_target > zoom_pre_max) {
 		zoom_pre = zoom_pre_max;
-		zoom_post = (zoom_target * 10000) / zoom_pre;
-		zoom_post = (zoom_post / 100) * 100;
+		zoom_post = (zoom_target * 1000) / zoom_pre;
 	} else {
 		zoom_pre = zoom_target;
-		zoom_post = 10000;
+		zoom_post = 1000;
 	}
 
 	/* CALCULATION */
-	temp_width = (chain0_width * 10000) / zoom_pre;
-	temp_height = (chain0_height * 10000) / zoom_pre;
+	temp_width = (chain0_width * 1000) / zoom_pre;
+	temp_height = (chain0_height * 1000) / zoom_pre;
 	crop_cx = (chain0_width - temp_width)>>1;
 	crop_cy = (chain0_height - temp_height)>>1;
 	crop_cwidth = chain0_width - (crop_cx<<1);
@@ -2615,8 +2617,8 @@ static int fimc_is_ischain_s_dzoom(struct fimc_is_device_ischain *this,
 		zoom_pre, crop_cx, crop_cy, crop_cwidth, crop_cheight);
 #endif
 
-	temp_width = (chain2_width * 10000) / zoom_post;
-	temp_height = (chain2_height * 10000) / zoom_post;
+	temp_width = (chain2_width * 1000) / zoom_post;
+	temp_height = (chain2_height * 1000) / zoom_post;
 	crop_px = (chain2_width - temp_width)>>1;
 	crop_py = (chain2_height - temp_height)>>1;
 	crop_pwidth = chain2_width - (crop_px<<1);
@@ -2636,20 +2638,15 @@ static int fimc_is_ischain_s_dzoom(struct fimc_is_device_ischain *this,
 		zoom_post, crop_px, crop_py, crop_pwidth, crop_pheight);
 #endif
 #else
-	zoom_input = (chain0_width * 10000) / crop_width;
+	zoom_input = (chain0_width * 1000) / crop_width;
 
-	if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state)) {
-		if (zoom_input == 10000)
-			zoom_target =  10000;
-		else {
-			zoom_input = (zoom_input * 375) / 400;
-			zoom_target = ((zoom_input + 2500) * 100) / 125;
-		}
-	} else
+	if (test_bit(FIMC_IS_ISDEV_DSTART, &this->dis.state))
+		zoom_target = (zoom_input * 91 + 34000) / 125;
+	else
 		zoom_target = zoom_input;
 
-	temp_width = (chain0_width * 10000) / zoom_target;
-	temp_height = (chain0_height * 10000) / zoom_target;
+	temp_width = (chain0_width * 1000) / zoom_target;
+	temp_height = (chain0_height * 1000) / zoom_target;
 	crop_cx = (chain0_width - temp_width)>>1;
 	crop_cy = (chain0_height - temp_height)>>1;
 	crop_cwidth = chain0_width - (crop_cx<<1);
@@ -2665,8 +2662,9 @@ static int fimc_is_ischain_s_dzoom(struct fimc_is_device_ischain *this,
 	indexes++;
 
 #ifdef PRINT_DZOOM
-	printk(KERN_INFO "zoom target : %d(%d, %d, %d %d)\n",
-		zoom_target, crop_cx, crop_cy, crop_cwidth, crop_cheight);
+	printk(KERN_INFO "zoom input : %d, zoom target : %d(%d, %d, %d %d)\n",
+		zoom_input, zoom_target,
+		crop_cx, crop_cy, crop_cwidth, crop_cheight);
 #endif
 #endif
 
@@ -3119,8 +3117,7 @@ int fimc_is_ischain_isp_stop(struct fimc_is_device_ischain *this)
 	framemgr = this->framemgr;
 
 	if (!test_bit(FIMC_IS_ISDEV_DSTART, &isp->state)) {
-		err("already stop");
-		ret = -EINVAL;
+		warn("already stop");
 		goto exit;
 	}
 

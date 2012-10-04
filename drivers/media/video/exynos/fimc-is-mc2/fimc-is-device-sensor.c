@@ -637,8 +637,7 @@ int fimc_is_sensor_back_stop(struct fimc_is_device_sensor *this)
 	dbg_back("%s\n", __func__);
 
 	if (testnclr_state(this, FIMC_IS_SENSOR_BACK_START)) {
-		err("already back stop");
-		ret = -EINVAL;
+		warn("already back stop");
 		goto exit;
 	}
 
@@ -724,8 +723,7 @@ int fimc_is_sensor_front_stop(struct fimc_is_device_sensor *this)
 	dbg_front("%s\n", __func__);
 
 	if (testnclr_state(this, FIMC_IS_SENSOR_FRONT_START)) {
-		err("already front stop");
-		ret = -EINVAL;
+		warn("already front stop");
 		goto exit;
 	}
 

@@ -580,7 +580,7 @@ int buffer_done(struct fimc_is_video_common *video, u32 index)
 	}
 
 	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &video->state)) {
-		err("video state is not stream on");
+		warn("video state is not stream on");
 		ret = -EINVAL;
 		goto exit;
 	}

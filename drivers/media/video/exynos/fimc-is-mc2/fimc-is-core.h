@@ -86,9 +86,15 @@
 
 #ifdef err
 #undef err
+#endif
 #define err(fmt, args...) \
 	printk(KERN_ERR "ERR:%s:%d: " fmt "\n", __func__, __LINE__, ##args)
+
+#ifdef warn
+#undef warn
 #endif
+#define warn(fmt, args...) \
+	printk(KERN_WARNING "%s:%d: " fmt "\n", __func__, __LINE__, ##args)
 
 /* configuration - default post processing */
 /*#define ENABLE_DRC*/
@@ -104,7 +110,7 @@
 #define FW_DEBUG
 /*#define RESERVED_MEM*/
 #define USE_FRAME_SYNC
-/*#define USE_ADVANCED_DZOOM*/
+#define USE_ADVANCED_DZOOM
 /*#define TASKLET_MSG*/
 /*#define PRINT_BUFADDR*/
 /*#define PRINT_DZOOM*/
