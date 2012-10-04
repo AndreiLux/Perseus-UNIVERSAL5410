@@ -18,6 +18,8 @@
 #include <plat/cpu.h>
 #include <linux/delay.h>
 #include <linux/ratelimit.h>
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
 
 /* Register access subroutines */
 
@@ -868,6 +870,68 @@ static void mxr_reg_vp_default_filter(struct mxr_device *mdev)
 	mxr_reg_vp_filter_set(mdev, VP_POLY4_C0_LL,
 		filter_cr_horiz_tap4, sizeof filter_cr_horiz_tap4);
 #endif
+}
+
+static int mxr_debugfs_show(struct seq_file *s, void *unused)
+{
+	struct mxr_device *mdev = s->private;
+
+	mutex_lock(&mdev->s_mutex);
+
+	if (!mdev->n_streamer) {
+		seq_printf(s, "Not streaming\n");
+		mutex_unlock(&mdev->s_mutex);
+		return 0;
+	}
+
+#define DUMPREG(reg_id) \
+do { \
+	seq_printf(s, "%-17s %08x\n", #reg_id, \
+		(u32)readl(mdev->res.mxr_regs + reg_id)); \
+} while (0)
+
+	DUMPREG(MXR_STATUS);
+	DUMPREG(MXR_CFG);
+	DUMPREG(MXR_INT_EN);
+	DUMPREG(MXR_INT_STATUS);
+	DUMPREG(MXR_LAYER_CFG);
+	DUMPREG(MXR_VIDEO_CFG);
+	DUMPREG(MXR_GRAPHIC0_CFG);
+	DUMPREG(MXR_GRAPHIC0_BASE);
+	DUMPREG(MXR_GRAPHIC0_SPAN);
+	DUMPREG(MXR_GRAPHIC0_WH);
+	DUMPREG(MXR_GRAPHIC0_SXY);
+	DUMPREG(MXR_GRAPHIC0_DXY);
+	DUMPREG(MXR_GRAPHIC1_CFG);
+	DUMPREG(MXR_GRAPHIC1_BASE);
+	DUMPREG(MXR_GRAPHIC1_SPAN);
+	DUMPREG(MXR_GRAPHIC1_WH);
+	DUMPREG(MXR_GRAPHIC1_SXY);
+	DUMPREG(MXR_GRAPHIC1_DXY);
+	DUMPREG(MXR_TVOUT_CFG);
+
+#undef DUMPREG
+
+	mutex_unlock(&mdev->s_mutex);
+	return 0;
+}
+
+static int mxr_debugfs_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, mxr_debugfs_show, inode->i_private);
+}
+
+static const struct file_operations mxr_debugfs_fops = {
+	.open           = mxr_debugfs_open,
+	.read           = seq_read,
+	.llseek         = seq_lseek,
+	.release        = single_release,
+};
+
+void mxr_debugfs_init(struct mxr_device *mdev)
+{
+	debugfs_create_file(dev_name(mdev->dev), S_IRUGO, NULL,
+			    mdev, &mxr_debugfs_fops);
 }
 
 static void mxr_reg_mxr_dump(struct mxr_device *mdev)

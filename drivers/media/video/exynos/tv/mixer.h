@@ -549,5 +549,6 @@ void mxr_reg_vp_format(struct mxr_device *mdev,
 	const struct mxr_format *fmt, const struct mxr_geometry *geo);
 #endif
 void mxr_reg_dump(struct mxr_device *mdev);
+void mxr_debugfs_init(struct mxr_device *mdev);
 
 #endif /* SAMSUNG_MIXER_H */

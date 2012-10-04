@@ -1425,6 +1425,8 @@ static int __devinit mxr_probe(struct platform_device *pdev)
 
 	mxr_entities_info_print(mdev);
 
+	mxr_debugfs_init(mdev);
+
 	mxr_info(mdev, "probe successful\n");
 	return 0;
 
