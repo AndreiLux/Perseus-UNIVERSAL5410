@@ -1173,7 +1173,7 @@ mwifiex_cfg80211_scan(struct wiphy *wiphy, struct net_device *dev,
 		      struct cfg80211_scan_request *request)
 {
 	struct mwifiex_private *priv = mwifiex_netdev_get_priv(dev);
-	int i;
+	int i, ret;
 	struct ieee80211_channel *chan;
 
 	wiphy_dbg(wiphy, "info: received scan request on %s\n", dev->name);
@@ -1222,8 +1222,12 @@ mwifiex_cfg80211_scan(struct wiphy *wiphy, struct net_device *dev,
 
 		priv->user_scan_cfg->chan_list[i].scan_time = 0;
 	}
-	if (mwifiex_scan_networks(priv, priv->user_scan_cfg))
-		return -EFAULT;
+
+	ret = mwifiex_scan_networks(priv, priv->user_scan_cfg);
+	if (ret) {
+		dev_err(priv->adapter->dev, "scan failed: %d\n", ret);
+		return ret;
+	}
 
 	if (request->ie && request->ie_len) {
 		for (i = 0; i < MWIFIEX_MAX_VSIE_NUM; i++) {
