@@ -471,6 +471,7 @@ struct mwifiex_private {
 	u8 subsc_evt_rssi_state;
 	struct timer_list scan_delay_timer;
 	struct mwifiex_ds_misc_subsc_evt async_subsc_evt_storage;
+	u32 mgmt_frame_mask;
 };
 
 enum mwifiex_ba_status {
