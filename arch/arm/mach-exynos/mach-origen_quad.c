@@ -22,6 +22,7 @@
 #include <linux/pwm.h>
 #include <linux/pwm_backlight.h>
 #include <linux/regulator/machine.h>
+#include <linux/regulator/fixed.h>
 
 #include <video/platform_lcd.h>
 #include <video/samsung_fimd.h>
@@ -37,6 +38,7 @@
 #include <plat/devs.h>
 #include <plat/fb.h>
 #include <plat/gpio-cfg.h>
+#include <plat/hdmi.h>
 #include <plat/keypad.h>
 #include <plat/mfc.h>
 #include <linux/platform_data/i2c-s3c2410.h>
@@ -107,6 +109,10 @@ static int s5m_cfg_irq(void)
 	return 0;
 }
 
+static struct regulator_consumer_supply dummy_supplies[] = {
+	REGULATOR_SUPPLY("hdmi-en", "exynos4-hdmi"),
+};
+
 static struct regulator_consumer_supply s5m8767_ldo1_supply[] = {
 	REGULATOR_SUPPLY("vdd_alive", NULL),
 };
@@ -125,6 +131,7 @@ static struct regulator_consumer_supply s5m8767_ldo4_supply[] = {
 
 static struct regulator_consumer_supply s5m8767_ldo5_supply[] = {
 	REGULATOR_SUPPLY("vdd18_2m", NULL),
+	//REGULATOR_SUPPLY("hdmi-en", "exynos4-hdmi"),
 };
 
 static struct regulator_consumer_supply s5m8767_ldo6_supply[] = {
@@ -137,6 +144,8 @@ static struct regulator_consumer_supply s5m8767_ldo7_supply[] = {
 
 static struct regulator_consumer_supply s5m8767_ldo8_supply[] = {
 	REGULATOR_SUPPLY("vdd10_mipi", NULL),
+	REGULATOR_SUPPLY("vdd", "exynos4-hdmi"), /* HDMI */
+	REGULATOR_SUPPLY("vdd_pll", "exynos4-hdmi"), /* HDMI */
 };
 
 static struct regulator_consumer_supply s5m8767_ldo9_supply[] = {
@@ -145,6 +154,7 @@ static struct regulator_consumer_supply s5m8767_ldo9_supply[] = {
 
 static struct regulator_consumer_supply s5m8767_ldo10_supply[] = {
 	REGULATOR_SUPPLY("vdd18_mipi", NULL),
+	REGULATOR_SUPPLY("vdd_osc", "exynos4-hdmi"), /* HDMI */
 };
 
 static struct regulator_consumer_supply s5m8767_ldo11_supply[] = {
@@ -276,7 +286,7 @@ REGULATOR_INIT(ldo6, "VDD10_MPLL", 1000000, 1000000, 1,
 REGULATOR_INIT(ldo7, "VDD10_XPLL", 1000000, 1000000, 1,
 		REGULATOR_CHANGE_STATUS, 1);//sleep controlled by pwren
 REGULATOR_INIT(ldo8, "VDD10_MIPI", 1000000, 1000000, 1,
-		REGULATOR_CHANGE_STATUS, 1);
+		REGULATOR_CHANGE_STATUS | REGULATOR_CHANGE_VOLTAGE, 1);
 REGULATOR_INIT(ldo9, "VDD33_LCD", 3300000, 3300000, 1, //LCD
 		REGULATOR_CHANGE_STATUS, 1);
 
@@ -719,9 +729,12 @@ static struct platform_device *origen_quad_devices[] __initdata = {
 	&s5p_device_fimc3,
 	&s5p_device_fimc_md,
 	&s5p_device_fimd0,
+	&s5p_device_hdmi,
+	&s5p_device_i2c_hdmiphy,
 	&s5p_device_mfc,
 	&s5p_device_mfc_l,
 	&s5p_device_mfc_r,
+	&s5p_device_mixer,
 	&exynos4_device_i2s0,
 #ifdef CONFIG_DRM_EXYNOS
 	&exynos_device_drm,
@@ -741,6 +754,19 @@ static struct platform_pwm_backlight_data origen_quad_bl_data = {
 	.pwm_id		= 0,
 	.pwm_period_ns	= 1000,
 };
+
+/* I2C module and id for HDMIPHY */
+static struct i2c_board_info hdmiphy_info = {
+	I2C_BOARD_INFO("hdmiphy-exynos4210", 0x38),
+};
+
+static void s5p_tv_setup(void)
+{
+	/* Direct HPD to HDMI chip */
+	gpio_request_one(EXYNOS4_GPX3(7), GPIOF_IN, "hpd-plug");
+	s3c_gpio_cfgpin(EXYNOS4_GPX3(7), S3C_GPIO_SFN(0x3));
+	s3c_gpio_setpull(EXYNOS4_GPX3(7), S3C_GPIO_PULL_NONE);
+}
 
 static void __init origen_quad_map_io(void)
 {
@@ -805,6 +831,8 @@ static void __init usb_hub_reset_connect(void)
 
 static void __init origen_quad_machine_init(void)
 {
+	regulator_register_fixed(0, dummy_supplies, ARRAY_SIZE(dummy_supplies));
+
 	origen_quad_power_init();
 
 	s3c_i2c0_set_platdata(NULL);
@@ -820,6 +848,10 @@ static void __init origen_quad_machine_init(void)
 
 	origen_ehci_init();
 	usb_hub_reset_connect();
+
+	s5p_tv_setup();
+	s5p_i2c_hdmiphy_set_platdata(NULL);
+	s5p_hdmi_set_platdata(&hdmiphy_info, NULL, 0);
 
 #ifdef CONFIG_DRM_EXYNOS
 	s5p_device_fimd0.dev.platform_data = &drm_fimd_pdata;

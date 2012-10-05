@@ -401,6 +401,7 @@ config MACH_SMDK4412
 	bool "SMDK4412"
 	select MACH_SMDK4212
 	select SOC_EXYNOS4412
+	select S5P_DEV_I2C_HDMIPHY
 	help
 	  Machine support for Samsung SMDK4412
 
