@@ -40,7 +40,7 @@ kbase_context *kbase_create_context(kbase_device *kbdev)
 	}
 	else
 	{
-		kctx = kzalloc(sizeof(*kctx), GFP_KERNEL);
+		kctx = vzalloc(sizeof(*kctx));
 	}
 
 	if (!kctx)
@@ -119,7 +119,7 @@ free_memctx:
 free_allocator:
 	kbase_mem_allocator_term(&kctx->osalloc);
 free_kctx:
-	kfree(kctx);
+	vfree(kctx);
 out:
 	return NULL;
 	
@@ -185,7 +185,7 @@ void kbase_destroy_context(kbase_context *kctx)
 	WARN_ON(atomic_read(&kctx->nonmapped_pages) != 0);
 
 	kbase_mem_allocator_term(&kctx->osalloc);
-	kfree(kctx);
+	vfree(kctx);
 }
 KBASE_EXPORT_SYMBOL(kbase_destroy_context)
 
