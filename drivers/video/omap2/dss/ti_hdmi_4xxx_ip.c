@@ -242,7 +242,7 @@ void ti_hdmi_4xxx_pll_disable(struct hdmi_ip_data *ip_data)
 static u8 edid_cached[512];
 static int edid_len;
 
-static int hdmi_check_hpd_state(struct hdmi_ip_data *ip_data)
+int ti_hdmi_4xxx_check_hpd_state(struct hdmi_ip_data *ip_data)
 {
 	unsigned long flags;
 	bool hpd;
@@ -329,7 +329,7 @@ int ti_hdmi_4xxx_phy_enable(struct hdmi_ip_data *ip_data)
 	/* Write to phy address 3 to change the polarity control */
 	REG_FLD_MOD(phy_base, HDMI_TXPHY_PAD_CFG_CTRL, 0x1, 27, 27);
 
-	r = hdmi_check_hpd_state(ip_data);
+	r = ti_hdmi_4xxx_check_hpd_state(ip_data);
 	if (r) {
 		hdmi_set_phy_pwr(ip_data, HDMI_PHYPWRCMD_OFF);
 		return r;
@@ -509,14 +509,6 @@ int ti_hdmi_4xxx_read_edid(struct hdmi_ip_data *ip_data,
 
 bool ti_hdmi_4xxx_detect(struct hdmi_ip_data *ip_data)
 {
-	/*
-	 * To prevent possible HW damage, HPD interrupt handler must
-	 * call detect() as soon as there is a change in HPD level.
-	 * The call to hdmi_check_hpd_state() ensures that the power
-	 * level to HDMI IP is safe.
-	 */
-	hdmi_check_hpd_state(ip_data);
-
 	if (gpio_get_value(ip_data->hpd_gpio))
 		return true;
 

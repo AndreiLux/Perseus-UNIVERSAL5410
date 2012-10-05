@@ -175,10 +175,19 @@ static irqreturn_t hpd_irq_handler(int irq, void *data)
 	enum omap_dss_event evt;
 	int state;
 
+	DSSDBG("%s\n", __func__);
 	if (hdmi_runtime_get())
 		return IRQ_HANDLED;
 
 	state = hdmi.ip_data.ops->detect(&hdmi.ip_data);
+
+	/*
+	 * To prevent possible HW damage, HPD interrupt handler must
+	 * call detect() as soon as there is a change in HPD level.
+	 * The call to hdmi_check_hpd_state() ensures that the power
+	 * level to HDMI IP is safe.
+	 */
+	hdmi.ip_data.ops->check_hpd_state(&hdmi.ip_data);
 
 	hdmi_runtime_put();
 
