@@ -138,6 +138,7 @@ struct mxr_buffer {
 	struct vb2_buffer	vb;
 	/** node for layer's lists */
 	struct list_head	list;
+	struct list_head	wait;
 };
 
 /** TV graphic layer pipeline state */
@@ -213,6 +214,12 @@ struct mxr_layer {
 	spinlock_t enq_slock;
 	/** list for enqueued buffers */
 	struct list_head enq_list;
+
+	/** list for buffers waiting on a fence */
+	struct list_head fence_wait_list;
+	struct workqueue_struct *fence_wq;
+	struct work_struct fence_work;
+
 	/** buffer currently owned by hardware in temporary registers */
 	struct mxr_buffer *update_buf;
 	/** buffer currently owned by hardware in shadow registers */

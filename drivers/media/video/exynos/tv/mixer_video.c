@@ -885,32 +885,55 @@ static int queue_setup(struct vb2_queue *vq, const struct v4l2_format *pfmt,
 	return 0;
 }
 
-static void buf_queue(struct vb2_buffer *vb)
+static void fence_work(struct work_struct *work)
 {
-	struct mxr_buffer *buffer = container_of(vb, struct mxr_buffer, vb);
-	struct mxr_layer *layer = vb2_get_drv_priv(vb->vb2_queue);
+	struct mxr_layer *layer = container_of(work, struct mxr_layer, fence_work);
 	struct mxr_pipeline *pipe = &layer->pipe;
+	struct mxr_buffer *buffer;
+	struct sync_fence *fence;
 	unsigned long flags;
+	int ret;
 
-	if (vb->acquire_fence) {
-		int ret = sync_fence_wait(vb->acquire_fence, 100);
-		sync_fence_put(vb->acquire_fence);
-		vb->acquire_fence = NULL;
-		if (ret < 0) {
-			mxr_err(layer->mdev, "sync_fence_wait() timeout");
-			return;
+	spin_lock_irqsave(&layer->enq_slock, flags);
+
+	while (!list_empty(&layer->fence_wait_list)) {
+		buffer = list_first_entry(&layer->fence_wait_list,
+					  struct mxr_buffer, wait);
+		list_del(&buffer->wait);
+
+		fence = buffer->vb.acquire_fence;
+		if (fence) {
+			buffer->vb.acquire_fence = NULL;
+			spin_unlock_irqrestore(&layer->enq_slock, flags);
+
+			ret = sync_fence_wait(fence, 100);
+			if (ret)
+				mxr_err(layer->mdev, "sync_fence_wait() timeout");
+			sync_fence_put(fence);
+
+			spin_lock_irqsave(&layer->enq_slock, flags);
 		}
+
+		list_add_tail(&buffer->list, &layer->enq_list);
 	}
 
-	spin_lock_irqsave(&layer->enq_slock, flags);
-	list_add_tail(&buffer->list, &layer->enq_list);
-	spin_unlock_irqrestore(&layer->enq_slock, flags);
-
-	spin_lock_irqsave(&layer->enq_slock, flags);
 	if (pipe->state == MXR_PIPELINE_STREAMING_START)
 		pipe->state = MXR_PIPELINE_STREAMING;
 
 	spin_unlock_irqrestore(&layer->enq_slock, flags);
+}
+
+static void buf_queue(struct vb2_buffer *vb)
+{
+	struct mxr_buffer *buffer = container_of(vb, struct mxr_buffer, vb);
+	struct mxr_layer *layer = vb2_get_drv_priv(vb->vb2_queue);
+	unsigned long flags;
+
+	spin_lock_irqsave(&layer->enq_slock, flags);
+	list_add_tail(&buffer->wait, &layer->fence_wait_list);
+	spin_unlock_irqrestore(&layer->enq_slock, flags);
+
+	queue_work(layer->fence_wq, &layer->fence_work);
 }
 
 static void wait_lock(struct vb2_queue *vq)
@@ -1051,7 +1074,24 @@ static int stop_streaming(struct vb2_queue *vq)
 
 	mxr_dbg(mdev, "%s\n", __func__);
 
+	cancel_work_sync(&layer->fence_work);
+
 	spin_lock_irqsave(&layer->enq_slock, flags);
+
+	list_for_each_entry_safe(buf, buf_tmp, &layer->fence_wait_list, wait) {
+		list_del(&buf->wait);
+
+		if (buf->vb.acquire_fence) {
+			spin_unlock_irqrestore(&layer->enq_slock, flags);
+
+			sync_fence_put(buf->vb.acquire_fence);
+			buf->vb.acquire_fence = NULL;
+
+			spin_lock_irqsave(&layer->enq_slock, flags);
+		}
+
+		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
+	}
 
 	/* reset list */
 	pipe->state = MXR_PIPELINE_STREAMING_FINISH;
@@ -1174,7 +1214,15 @@ struct mxr_layer *mxr_base_layer_create(struct mxr_device *mdev,
 
 	spin_lock_init(&layer->enq_slock);
 	INIT_LIST_HEAD(&layer->enq_list);
+	INIT_LIST_HEAD(&layer->fence_wait_list);
 	mutex_init(&layer->mutex);
+	INIT_WORK(&layer->fence_work, fence_work);
+
+	layer->fence_wq = create_singlethread_workqueue(name);
+	if (layer->fence_wq == NULL) {
+		mxr_err(mdev, "failed to create work queue\n");
+		goto fail_alloc;
+	}
 
 	layer->vfd = (struct video_device) {
 		.minor = -1,
@@ -1213,6 +1261,8 @@ struct mxr_layer *mxr_base_layer_create(struct mxr_device *mdev,
 	return layer;
 
 fail_alloc:
+	if (layer->fence_wq)
+		destroy_workqueue(layer->fence_wq);
 	kfree(layer);
 
 fail:
