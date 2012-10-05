@@ -24,6 +24,7 @@
 
 #include <mach/regs-pmu.h>
 #include <mach/regs-clock.h>
+#include <mach/exynos5_bus.h>
 #include <plat/cpu.h>
 #include <plat/clock.h>
 #include <plat/devs.h>
@@ -182,6 +183,12 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 
 	list_for_each_entry(pclk, &pd->list, node)
 		clk_disable(pclk->clk);
+
+	if (soc_is_exynos5250() &&
+		(base == EXYNOS5_MFC_CONFIGURATION ||
+		base == EXYNOS5_G3D_CONFIGURATION ||
+		base == EXYNOS5_GSCL_CONFIGURATION))
+		exynos5_mif_used_dev(power_on);
 
 	bts_initialize(pd->pd.name, power_on);
 
