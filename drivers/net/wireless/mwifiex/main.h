@@ -472,6 +472,7 @@ struct mwifiex_private {
 	struct timer_list scan_delay_timer;
 	struct mwifiex_ds_misc_subsc_evt async_subsc_evt_storage;
 	u32 mgmt_frame_mask;
+	u32 mgmt_rx_freq;
 };
 
 enum mwifiex_ba_status {
@@ -696,6 +697,9 @@ int mwifiex_shutdown_fw_complete(struct mwifiex_adapter *adapter);
 int mwifiex_dnld_fw(struct mwifiex_adapter *, struct mwifiex_fw_image *);
 
 int mwifiex_recv_packet(struct mwifiex_adapter *, struct sk_buff *skb);
+
+int mwifiex_process_mgmt_packet(struct mwifiex_adapter *adapter,
+				struct sk_buff *skb);
 
 int mwifiex_process_event(struct mwifiex_adapter *adapter);
 

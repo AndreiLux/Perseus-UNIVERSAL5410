@@ -87,6 +87,7 @@ enum MWIFIEX_802_11_PRIVACY_FILTER {
 };
 
 #define CAL_SNR(RSSI, NF)		((s16)((s16)(RSSI)-(s16)(NF)))
+#define CAL_RSSI(SNR, NF)		((s16)((s16)(SNR)+(s16)(NF)))
 
 #define PROPRIETARY_TLV_BASE_ID                 0x0100
 #define TLV_TYPE_KEY_MATERIAL       (PROPRIETARY_TLV_BASE_ID + 0)

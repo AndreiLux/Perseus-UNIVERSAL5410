@@ -209,6 +209,7 @@ static int mwifiex_init_priv(struct mwifiex_private *priv)
 	priv->curr_bcn_size = 0;
 	priv->wps_ie = NULL;
 	priv->wps_ie_len = 0;
+	priv->mgmt_rx_freq = 2437;
 
 	priv->scan_block = false;
 
