@@ -56,7 +56,7 @@ kbase_context *kbase_create_context(kbase_device *kbdev)
 	kctx->process_mm = NULL;
 	atomic_set(&kctx->nonmapped_pages, 0);
 
-	if (MALI_ERROR_NONE != kbase_mem_allocator_init(&kctx->osalloc))
+	if (MALI_ERROR_NONE != kbase_mem_allocator_init(&kctx->osalloc, 16384))
 	{
 		goto free_kctx;
 	}

@@ -201,9 +201,10 @@ void       kbase_mem_term(kbase_device * kbdev);
  * \a kbase_mem_allocator_free before \a kbase_mem_allocator_term is called.
  *
  * @param allocator Allocator object to initialize
+ * @param max_size  Maximum number of pages to keep on the freelist.
  * @return MALI_ERROR_NONE on success, an error code indicating what failed on error.
  */
-mali_error kbase_mem_allocator_init(kbase_mem_allocator * allocator);
+mali_error kbase_mem_allocator_init(kbase_mem_allocator * allocator, unsigned int max_size);
 /**
  * @brief Allocate memory via an OS based memory allocator.
  *

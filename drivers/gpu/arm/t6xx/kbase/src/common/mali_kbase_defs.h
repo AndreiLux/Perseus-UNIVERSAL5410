@@ -402,6 +402,7 @@ typedef struct kbasep_mem_device
 typedef struct kbase_mem_allocator
 {
 	atomic_t            free_list_size;
+	unsigned int        free_list_max_size;
 	spinlock_t          free_list_lock;
 	struct list_head    free_list_head;
 	struct shrinker     free_list_reclaimer;

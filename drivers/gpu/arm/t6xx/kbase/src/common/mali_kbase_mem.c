@@ -44,6 +44,7 @@ STATIC int kbase_mem_allocator_shrink(struct shrinker *s, struct shrink_control 
 {
 	kbase_mem_allocator * allocator;
 	int i;
+	int freed;
 
 	allocator = container_of(s, kbase_mem_allocator, free_list_reclaimer);
 
@@ -53,6 +54,7 @@ STATIC int kbase_mem_allocator_shrink(struct shrinker *s, struct shrink_control 
 	spin_lock(&allocator->free_list_lock);
 
 	i = MIN(atomic_read(&allocator->free_list_size), sc->nr_to_scan);
+	freed = i;
 
 	atomic_sub(i, &allocator->free_list_size);
 
@@ -73,10 +75,12 @@ STATIC int kbase_mem_allocator_shrink(struct shrinker *s, struct shrink_control 
 
 	spin_unlock(&allocator->free_list_lock);
 
+	pr_info("%s: shrunk context freelist by %d pages\n", __func__, freed);
+
 	return atomic_read(&allocator->free_list_size);
 }
 
-mali_error kbase_mem_allocator_init(kbase_mem_allocator * const allocator)
+mali_error kbase_mem_allocator_init(kbase_mem_allocator * const allocator, unsigned int max_size)
 {
 	OSK_ASSERT(NULL != allocator);
 
@@ -95,6 +99,8 @@ mali_error kbase_mem_allocator_init(kbase_mem_allocator * const allocator)
 	INIT_LIST_HEAD(&allocator->free_list_head);
 	spin_lock_init(&allocator->free_list_lock);
 	atomic_set(&allocator->free_list_size, 0);
+
+	allocator->free_list_max_size = max_size;
 
 	allocator->free_list_reclaimer.shrink = kbase_mem_allocator_shrink;
 	allocator->free_list_reclaimer.seeks = DEFAULT_SEEKS;
@@ -214,13 +220,31 @@ err_out_roll_back:
 
 void kbase_mem_allocator_free(kbase_mem_allocator *allocator, u32 nr_pages, osk_phy_addr *pages)
 {
-	int i;
+	int i = 0;
 	int page_count = 0;
+	int tofree;
 	LIST_HEAD(new_free_list_items);
 
 	OSK_ASSERT(NULL != allocator);
 
-	for (i = 0; i < nr_pages; i++)
+	/* Starting by just freeing the overspill.
+	 * As we do this outside of the lock we might spill too many pages
+	 * or get too many on the free list, but the max_size is just a ballpark so it is ok
+	 */
+	tofree = atomic_read(&allocator->free_list_size) + nr_pages - allocator->free_list_max_size;
+	/* if tofree became negative this first for loop will be ignored */
+	for (; i < tofree; i++)
+	{
+		if (likely(0 != pages[i]))
+		{
+			struct page * p;
+			p = pfn_to_page(PFN_DOWN(pages[i]));
+			pages[i] = (osk_phy_addr)0;
+			__free_page(p);
+		}
+	}
+
+	for (; i < nr_pages; i++)
 	{
 		if (likely(0 != pages[i]))
 		{
