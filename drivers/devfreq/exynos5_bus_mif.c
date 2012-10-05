@@ -37,6 +37,7 @@
 #define MAX_SAFEVOLT	1200000 /* 1.2V */
 
 #define MIF_ABB_CONTROL_FREQUENCY 667000000
+#define MIF_UPPER_FREQUENCY 667000
 
 /* Assume that the bus is saturated if the utilization is 20% */
 #define MIF_BUS_SATURATION_RATIO	20
@@ -88,10 +89,56 @@ struct exynos5_bus_mif_handle {
 	unsigned long min;
 };
 
+struct exynos5_bus_mif_handle *mif_min_hd;
 static struct busfreq_data_mif *exynos5_bus_mif_data;
 static DEFINE_MUTEX(exynos5_bus_mif_data_lock);
 static LIST_HEAD(exynos5_bus_mif_requests);
 static DEFINE_MUTEX(exynos5_bus_mif_requests_lock);
+static DEFINE_MUTEX(exynos5_bus_mif_upper_freq_lock);
+static bool multiple_windows = false;
+static unsigned int used_dev_cnt = 0;
+
+static void exynos5_mif_check_upper_freq(void)
+{
+	if (multiple_windows && used_dev_cnt) {
+		if (!mif_min_hd) {
+			mif_min_hd = exynos5_bus_mif_min(MIF_UPPER_FREQUENCY);
+			if (!mif_min_hd)
+				pr_err("%s: Failed to request min_freq\n", __func__);
+		}
+	}
+
+	if (!multiple_windows || !used_dev_cnt) {
+		if (mif_min_hd) {
+			exynos5_bus_mif_put(mif_min_hd);
+			mif_min_hd = NULL;
+		}
+	}
+}
+
+void exynos5_mif_multiple_windows(bool state)
+{
+	mutex_lock(&exynos5_bus_mif_upper_freq_lock);
+
+	multiple_windows = state;
+	exynos5_mif_check_upper_freq();
+
+	mutex_unlock(&exynos5_bus_mif_upper_freq_lock);
+}
+
+void exynos5_mif_used_dev(bool power_on)
+{
+	mutex_lock(&exynos5_bus_mif_upper_freq_lock);
+
+	if (power_on)
+		used_dev_cnt++;
+	else if (used_dev_cnt > 0)
+		used_dev_cnt--;
+
+	exynos5_mif_check_upper_freq();
+
+	mutex_unlock(&exynos5_bus_mif_upper_freq_lock);
+}
 
 static int exynos5_mif_setvolt(struct busfreq_data_mif *data, unsigned long volt)
 {
