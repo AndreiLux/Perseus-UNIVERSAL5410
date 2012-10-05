@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -93,13 +93,15 @@ void kbasep_js_ctx_attr_ctx_retain_atom( kbase_device *kbdev,
 											  kbase_jd_atom *katom );
 
 /**
- * Release all attributes of an atom
+ * Release all attributes of an atom, given its retained state.
  *
- * This occurs on (permanently) removing an atom from a context
+ * This occurs after (permanently) removing an atom from a context
  *
  * Requires:
  * - jsctx mutex
  * - If the context is scheduled, then runpool_irq spinlock must also be held
+ *
+ * This is a no-op when \a katom_retained_state is invalid.
  *
  * @return MALI_TRUE indicates a change in ctx attributes state of the runpool.
  * In this state, the scheduler might be able to submit more jobs than
@@ -109,7 +111,7 @@ void kbasep_js_ctx_attr_ctx_retain_atom( kbase_device *kbdev,
  */
 mali_bool kbasep_js_ctx_attr_ctx_release_atom( kbase_device *kbdev,
 										  kbase_context *kctx,
-										  kbase_jd_atom *katom );
+										  kbasep_js_atom_retained_state *katom_retained_state );
 
 /**
  * Requires:

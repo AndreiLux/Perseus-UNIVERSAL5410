@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -52,6 +52,10 @@ kbase_context *kbase_create_context(kbase_device *kbdev)
 	atomic_set(&kctx->setup_complete, 0);
 	atomic_set(&kctx->setup_in_progress, 0);
 	kctx->keep_gpu_powered = MALI_FALSE;
+
+	spin_lock_init(&kctx->mm_update_lock);
+	kctx->process_mm = NULL;
+	atomic_set(&kctx->nonmapped_pages, 0);
 
 	if (kbase_mem_usage_init(&kctx->usage, kctx->kbdev->memdev.per_process_memory_limit >> PAGE_SHIFT))
 	{
@@ -179,6 +183,7 @@ void kbase_destroy_context(kbase_context *kctx)
 	{
 		kbase_pm_context_idle(kbdev);
 	}
+	WARN_ON(atomic_read(&kctx->nonmapped_pages) != 0);
 	kfree(kctx);
 }
 KBASE_EXPORT_SYMBOL(kbase_destroy_context)

@@ -387,7 +387,7 @@
 	#elif defined(__KERNEL__) || defined(__linux)
 		#undef CSTD_OS_LINUX
 		#define CSTD_OS_LINUX           1
-
+		
 		#if defined(__KERNEL__)
 			#undef CSTD_OS_LINUX_KERNEL
 			#define CSTD_OS_LINUX_KERNEL    1

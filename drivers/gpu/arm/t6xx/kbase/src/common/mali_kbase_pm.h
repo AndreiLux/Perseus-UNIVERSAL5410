@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -29,9 +29,22 @@
 
 /* Frequency that DVFS clock frequency decisions should be made */
 #define KBASE_PM_DVFS_FREQUENCY                 250
+/* Shift used for kbasep_pm_metrics_data.time_busy/idle - units of (1 << 8) ns
+   This gives a maximum period between samples of 2^(32+8)/100 ns = slightly under 11s.
+   Exceeding this will cause overflow */
+#define KBASE_PM_TIME_SHIFT                    8
+
 
 /* Forward definition - see mali_kbase.h */
 struct kbase_device;
+
+/** List of policy IDs */
+typedef enum kbase_pm_policy_id
+{
+	KBASE_PM_POLICY_ID_DEMAND = 1,
+	KBASE_PM_POLICY_ID_ALWAYS_ON,
+	KBASE_PM_POLICY_ID_COARSE_DEMAND
+} kbase_pm_policy_id;
 
 /** The types of core in a GPU.
  *
@@ -47,11 +60,6 @@ typedef enum kbase_pm_core_type
 	KBASE_PM_CORE_SHADER = SHADER_PRESENT_LO,   /**< Shader cores */
 	KBASE_PM_CORE_TILER  = TILER_PRESENT_LO     /**< Tiler cores */
 } kbase_pm_core_type;
-
-/* Shift used for kbasep_pm_metrics_data.time_busy/idle - units of (1 << 8) ns 
-   This gives a maximum period between samples of 2^(32+8)/100 ns = slightly under 11s. 
-   Exceeding this will cause overflow */
-#define KBASE_PM_TIME_SHIFT			8
 
 /** Initialize the power management framework.
  *
@@ -90,6 +98,13 @@ void kbase_pm_halt(struct kbase_device *kbdev);
  * @param kbdev     The kbase device structure for the device (must be a valid pointer)
  */
 void kbase_pm_term(struct kbase_device *kbdev);
+
+/** Check if the metrics gathering framework is active.
+ *
+ * @param kbdev     The kbase device structure for the device (must be a valid pointer)
+ */
+mali_bool kbasep_pm_metrics_isactive(struct kbase_device *kbdev);
+
 
 /** Events that can be sent to a power policy.
  *
@@ -170,6 +185,22 @@ typedef enum kbase_pm_event
 	KBASEP_PM_EVENT_INVALID
 } kbase_pm_event;
 
+/** Flags that give information about Power Policies */
+enum
+{
+	/** This policy does not power up/down cores and L2/L3 caches individually,
+	 * outside of KBASE_PM_EVENT_GPU_IDLE and KBASE_PM_EVENT_GPU_ACTIVE events.
+	 * That is, the policy guarantees all cores/L2/L3 caches will be powered
+	 * after a KBASE_PM_EVENT_GPU_ACTIVE event.
+	 *
+	 * Hence, it does not need to be sent KBASE_PM_EVENT_CHANGE_GPU_STATE
+	 * events.  */
+	KBASE_PM_POLICY_FLAG_NO_CORE_TRANSITIONS = (1u << 0)
+};
+
+typedef u32 kbase_pm_policy_flags;
+
+
 typedef union kbase_pm_policy_data
 {
 	kbasep_pm_policy_always_on  always_on;
@@ -211,6 +242,12 @@ typedef struct kbase_pm_policy
 	 * @param event     The event to process
 	 */
 	void (*event)(struct kbase_device *kbdev, kbase_pm_event event);
+	/** Field indicating flags for this policy */
+	kbase_pm_policy_flags flags;
+	/** Field indicating an ID for this policy. This is not necessarily the
+	 * same as its index in the list returned by kbase_pm_list_policies().
+	 * It is used purely for debugging. */
+	kbase_pm_policy_id id;
 } kbase_pm_policy;
 
 /** Metrics data collected for use by the power management framework.
@@ -234,6 +271,18 @@ typedef struct kbasep_pm_metrics_data
 	void *              platform_data;
 	struct kbase_device * kbdev;
 } kbasep_pm_metrics_data;
+
+/** Actions for DVFS.
+ *
+ * kbase_pm_get_dvfs_action will return one of these enumerated values to
+ * describe the action that the DVFS system should take.
+ */
+typedef enum kbase_pm_dvfs_action
+{
+	KBASE_PM_DVFS_NOP,          /**< No change in clock frequency is requested */
+	KBASE_PM_DVFS_CLOCK_UP,     /**< The clock frequency should be increased if possible */
+	KBASE_PM_DVFS_CLOCK_DOWN    /**< The clock frequency should be decreased if possible */
+} kbase_pm_dvfs_action;
 
 /** A value for an atomic @ref kbase_pm_device_data::work_active,
  * which tracks whether the work unit has been enqueued.
@@ -282,6 +331,9 @@ typedef struct kbase_pm_device_data
 
 	/** Wait queue for whether the l2 cache has been powered as requested */
 	wait_queue_head_t       l2_powered_wait;
+	/** State indicating whether all the l2 caches are powered.
+	 * Non-zero indicates they're *all* powered
+	 * Zero indicates that some (or all) are not powered */
 	int                     l2_powered;
 
 	int                     no_outstanding_event;
@@ -520,7 +572,7 @@ u64 kbase_pm_get_ready_cores(struct kbase_device *kbdev, kbase_pm_core_type type
  */
 mali_bool kbase_pm_get_pwr_active(struct kbase_device *kbdev);
 
-/** Turn the clock for the device on.
+/** Turn the clock for the device on, and enable device interrupts.
  *
  * This function can be used by a power policy to turn the clock for the GPU on. It should be modified during
  * integration to perform the necessary actions to ensure that the GPU is fully powered and clocked.
@@ -529,7 +581,7 @@ mali_bool kbase_pm_get_pwr_active(struct kbase_device *kbdev);
  */
 void kbase_pm_clock_on(struct kbase_device *kbdev);
 
-/** Turn the clock for the device off.
+/** Disable device interrupts, and turn the clock for the device off.
  *
  * This function can be used by a power policy to turn the clock for the GPU off. It should be modified during
  * integration to perform the necessary actions to turn the clock off (if this is possible in the integration).
@@ -540,8 +592,7 @@ void kbase_pm_clock_off(struct kbase_device *kbdev);
 
 /** Enable interrupts on the device.
  *
- * This function should be called by the active power policy immediately after calling @ref kbase_pm_clock_on to
- * ensure that interrupts are enabled on the device.
+ * Interrupts are also enabled after a call to kbase_pm_clock_on().
  *
  * @param kbdev     The kbase device structure for the device (must be a valid pointer)
  */
@@ -549,10 +600,10 @@ void kbase_pm_enable_interrupts(struct kbase_device *kbdev);
 
 /** Disable interrupts on the device.
  *
- * This function should be called by the active power policy after shutting down the device (i.e. in the @ref
- * KBASE_PM_EVENT_GPU_STATE_CHANGED handler after confirming that all cores have powered off). It prevents interrupt
- * delivery to the CPU so no further @ref KBASE_PM_EVENT_GPU_STATE_CHANGED messages will be received until @ref
- * kbase_pm_enable_interrupts is called.
+ * This prevents interrupt delivery to the CPU so no further @ref KBASE_PM_EVENT_GPU_STATE_CHANGED messages will be
+ * received until @ref kbase_pm_enable_interrupts or kbase_pm_clock_on() is called.
+ *
+ * Interrupts are also disabled after a call to kbase_pm_clock_off().
  *
  * @param kbdev     The kbase device structure for the device (must be a valid pointer)
  */
@@ -750,12 +801,6 @@ mali_error kbasep_pm_metrics_init(struct kbase_device *kbdev);
  */
 void kbasep_pm_metrics_term(struct kbase_device *kbdev);
 
-/** Check if the metrics gathering framework is active.
- *
- * @param kbdev     The kbase device structure for the device (must be a valid pointer)
- */
-mali_bool kbasep_pm_metrics_isactive(struct kbase_device *kbdev);
-
 /** Record that the GPU is active.
  *
  * This records that the GPU is now active. The previous GPU state must have been idle, the function will assert if
@@ -807,6 +852,18 @@ void kbase_pm_register_vsync_callback(struct kbase_device *kbdev);
  * @param kbdev     The kbase device structure for the device (must be a valid pointer)
  */
 void kbase_pm_unregister_vsync_callback(struct kbase_device *kbdev);
+
+/** Determine whether the DVFS system should change the clock speed of the GPU.
+ *
+ * This function should be called regularly by the DVFS system to check whether the clock speed of the GPU needs
+ * updating. It will return one of three enumerated values of kbase_pm_dvfs_action:
+ *
+ * @param kbdev                     The kbase device structure for the device (must be a valid pointer)
+ * @retval KBASE_PM_DVFS_NOP        The clock does not need changing
+ * @retval KBASE_PM_DVFS_CLOCK_UP,  The clock frequency should be increased if possible.
+ * @retval KBASE_PM_DVFS_CLOCK_DOWN The clock frequency should be decreased if possible.
+ */
+kbase_pm_dvfs_action kbase_pm_get_dvfs_action(struct kbase_device *kbdev);
 
 /** Mark that the GPU cycle counter is needed, if the caller is the first caller
  *  then the GPU cycle counters will be enabled.
@@ -873,6 +930,20 @@ void kbase_pm_register_access_disable(struct kbase_device *kbdev);
 
 void kbase_pm_request_l2_caches(struct kbase_device *kbdev);
 
+/** Release the use of l2 caches for all core groups and allow the power manager to
+ *  power them down when necessary.
+ *
+ *  This tells the power management that the caches can be powered down if necessary, with respect
+ *  to the usage of tiler and shader cores.
+ *
+ *  The caller must have called @ref kbase_pm_request_l2_caches prior to a call to this.
+ *
+ *  This should only be used when power management is active.
+ *
+ * @param kbdev    The kbase device structure for the device (must be a valid pointer)
+ */
+void kbase_pm_release_l2_caches(struct kbase_device *kbdev);
+
 /** Queue mali_dvfs_work which performs GPU voltage/frequency scaling in mali_dvfs_event_proc
  *
  * @param kbdev    The kbase device structure for the device (must be a valid pointer)
@@ -889,18 +960,5 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev);
  */
 int kbase_pm_get_dvfs_utilisation(struct kbase_device *kbdev);
 
-/** Release the use of l2 caches for all core groups and allow the power manager to
- *  power them down when necessary.
- *
- *  This tells the power management that the caches can be powered down if necessary, with respect
- *  to the usage of tiler and shader cores.
- *
- *  The caller must have called @ref kbase_pm_request_l2_caches prior to a call to this.
- *
- *  This should only be used when power management is active.
- *
- * @param kbdev    The kbase device structure for the device (must be a valid pointer)
- */
-void kbase_pm_release_l2_caches(struct kbase_device *kbdev);
 
 #endif /* _KBASE_PM_H_ */

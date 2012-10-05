@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -161,8 +161,8 @@ static inline void osk_kunmap_atomic(osk_phy_addr page, void *mapping)
 static inline void osk_sync_to_memory(osk_phy_addr paddr, osk_virt_addr vaddr, size_t sz)
 {
 #ifdef CONFIG_ARM
-	dmac_flush_range(vaddr, vaddr+sz-1);
-	outer_flush_range(paddr, paddr+sz-1);
+	dmac_flush_range(vaddr, vaddr+sz);
+	outer_flush_range(paddr, paddr+sz);
 #elif defined(CONFIG_X86)
 	struct scatterlist scl = {0, };
 	sg_set_page(&scl, pfn_to_page(PFN_DOWN(paddr)), sz,
@@ -177,8 +177,8 @@ static inline void osk_sync_to_memory(osk_phy_addr paddr, osk_virt_addr vaddr, s
 static inline void osk_sync_to_cpu(osk_phy_addr paddr, osk_virt_addr vaddr, size_t sz)
 {
 #ifdef CONFIG_ARM
-	dmac_flush_range(vaddr, vaddr+sz-1);
-	outer_flush_range(paddr, paddr+sz-1);
+	dmac_flush_range(vaddr, vaddr+sz);
+	outer_flush_range(paddr, paddr+sz);
 #elif defined(CONFIG_X86)
 	struct scatterlist scl = {0, };
 	sg_set_page(&scl, pfn_to_page(PFN_DOWN(paddr)), sz,

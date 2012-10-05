@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -146,7 +146,7 @@ static mali_error kbase_jd_umm_map(kbase_context * kctx, struct kbase_va_region 
 	OSK_ASSERT(NULL == reg->imported_metadata.umm.st);
 	st = dma_buf_map_attachment(reg->imported_metadata.umm.dma_attachment, DMA_BIDIRECTIONAL);
 
-	if (IS_ERR_OR_NULL(st))
+	if (!st)
 	{
 		return MALI_ERROR_FUNCTION_FAILED;
 	}
@@ -915,9 +915,7 @@ static void jd_done_worker(struct work_struct *data)
 	kbase_device *kbdev;
 	kbasep_js_device_data *js_devdata;
 	u64 cache_jc = katom->jc;
-
-	mali_bool retry_submit;
-	int retry_jobslot;
+	kbasep_js_atom_retained_state katom_retained_state;
 
 	/* Soft jobs should never reach this function */
 	OSK_ASSERT( (katom->core_req & BASE_JD_REQ_SOFT_JOB) == 0);
@@ -948,11 +946,10 @@ static void jd_done_worker(struct work_struct *data)
 	 * would use those cores) */
 	kbasep_js_job_check_deref_cores(kbdev, katom);
 
-	/* Grab the retry_submit state before the katom disappears */
-	retry_submit = kbasep_js_get_job_retry_submit_slot( katom, &retry_jobslot );
+	/* Retain state before the katom disappears */
+	kbasep_js_atom_retained_state_copy( &katom_retained_state, katom );
 
-	if (katom->event_code == BASE_JD_EVENT_STOPPED
-	    || katom->event_code == BASE_JD_EVENT_REMOVED_FROM_NEXT )
+	if ( !kbasep_js_has_atom_finished(&katom_retained_state) )
 	{
 		unsigned long flags;
 		/* Requeue the atom on soft-stop / removed from NEXT registers */
@@ -971,7 +968,11 @@ static void jd_done_worker(struct work_struct *data)
 		 * the IRQ handler is not a good indication that we don't need to run
 		 * jobs; the submitted job could be processed on the work-queue
 		 * *before* the stopped job, even though it was submitted after. */
-		OSK_ASSERT( retry_submit != MALI_FALSE );
+		{
+			int tmp;
+			OSK_ASSERT( kbasep_js_get_atom_retry_submit_slot( &katom_retained_state, &tmp ) != MALI_FALSE );
+			CSTD_UNUSED( tmp );
+		}
 
 		mutex_unlock( &js_devdata->runpool_mutex );
 		mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
@@ -981,7 +982,7 @@ static void jd_done_worker(struct work_struct *data)
 		/* Remove the job from the system for all other reasons */
 		mali_bool need_to_try_schedule_context;
 
-		kbasep_js_remove_job( kctx, katom );
+		kbasep_js_remove_job( kbdev, kctx, katom );
 		mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 		/* jd_done_nolock() requires the jsctx_mutex lock to be dropped */
 
@@ -998,8 +999,8 @@ static void jd_done_worker(struct work_struct *data)
 	mutex_unlock( &jctx->lock );
 
 	/* Job is now no longer running, so can now safely release the context
-	 * reference, and handle any actions that were logged against the atom or slots */
-	kbasep_js_runpool_release_ctx_and_handle_actions( kbdev, kctx, retry_submit, retry_jobslot );
+	 * reference, and handle any actions that were logged against the atom's retained state */
+	kbasep_js_runpool_release_ctx_and_katom_retained_state( kbdev, kctx, &katom_retained_state );
 
 	KBASE_TRACE_ADD( kbdev, JD_DONE_WORKER_END, kctx, katom, cache_jc, 0 );
 }
@@ -1025,18 +1026,17 @@ static void jd_cancel_worker(struct work_struct *data)
 	kbase_context *kctx;
 	kbasep_js_kctx_info *js_kctx_info;
 	mali_bool need_to_try_schedule_context;
+	kbase_device *kbdev;
 
 	/* Soft jobs should never reach this function */
 	OSK_ASSERT( (katom->core_req & BASE_JD_REQ_SOFT_JOB) == 0);
 
 	kctx = katom->kctx;
+	kbdev = kctx->kbdev;
 	jctx = &kctx->jctx;
 	js_kctx_info = &kctx->jctx.sched_info;
 
-	{
-		kbase_device *kbdev = kctx->kbdev;
-		KBASE_TRACE_ADD( kbdev, JD_CANCEL_WORKER, kctx, katom, katom->jc, 0 );
-	}
+	KBASE_TRACE_ADD( kbdev, JD_CANCEL_WORKER, kctx, katom, katom->jc, 0 );
 
 	/* This only gets called on contexts that are scheduled out. Hence, we must
 	 * make sure we don't de-ref the number of running jobs (there aren't
@@ -1050,7 +1050,7 @@ static void jd_cancel_worker(struct work_struct *data)
 
 	/* Scheduler: Remove the job from the system */
 	mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
-	kbasep_js_remove_job( kctx, katom );
+	kbasep_js_remove_cancelled_job( kbdev, kctx, katom );
 	mutex_unlock( &js_kctx_info->ctx.jsctx_mutex );
 
 	mutex_lock(&jctx->lock);
@@ -1156,15 +1156,16 @@ typedef struct zap_reset_data
 	int             stage;
 	kbase_device    *kbdev;
 	struct hrtimer  timer;
-	spinlock_t    lock;
+	spinlock_t      lock;
 } zap_reset_data;
 
 static enum hrtimer_restart  zap_timeout_callback( struct hrtimer * timer )
 {
 	zap_reset_data *reset_data = container_of( timer, zap_reset_data, timer );
 	kbase_device *kbdev = reset_data->kbdev;
+	unsigned long flags;
 
-	spin_lock(&reset_data->lock);
+	spin_lock_irqsave(&reset_data->lock, flags);
 
 	if (reset_data->stage == -1)
 	{
@@ -1179,7 +1180,7 @@ static enum hrtimer_restart  zap_timeout_callback( struct hrtimer * timer )
 	reset_data->stage = 2;
 
 out:
-	spin_unlock(&reset_data->lock);
+	spin_unlock_irqrestore(&reset_data->lock, flags);
 
 	return HRTIMER_NORESTART;
 }
@@ -1188,6 +1189,7 @@ void kbase_jd_zap_context(kbase_context *kctx)
 {
 	kbase_device *kbdev;
 	zap_reset_data reset_data;
+	unsigned long flags;
 	OSK_ASSERT(kctx);
 
 	kbdev = kctx->kbdev;
@@ -1220,13 +1222,13 @@ void kbase_jd_zap_context(kbase_context *kctx)
 	wait_event(kctx->jctx.zero_jobs_wait, kctx->jctx.job_nr == 0);
 	wait_event(kctx->jctx.sched_info.ctx.is_scheduled_wait, kctx->jctx.sched_info.ctx.is_scheduled == MALI_FALSE);
 
-	spin_lock(&reset_data.lock);
+	spin_lock_irqsave(&reset_data.lock, flags);
 	if (reset_data.stage == 1)
 	{
 		/* The timer hasn't run yet - so cancel it */
 		reset_data.stage = -1;
 	}
-	spin_unlock(&reset_data.lock);
+	spin_unlock_irqrestore(&reset_data.lock, flags);
 
 	hrtimer_cancel(&reset_data.timer);
 

@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -81,6 +81,21 @@ mali_error kbasep_pm_metrics_init(kbase_device *kbdev)
 }
 KBASE_EXPORT_TEST_API(kbasep_pm_metrics_init)
 
+mali_bool kbasep_pm_metrics_isactive(kbase_device *kbdev)
+{
+	mali_bool isactive;
+	unsigned long flags;
+
+	OSK_ASSERT(kbdev != NULL);
+
+	spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
+	isactive = (kbdev->pm.metrics.timer_active == MALI_TRUE);
+	spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
+
+	return isactive;
+}
+
+
 void kbasep_pm_metrics_term(kbase_device *kbdev)
 {
 	unsigned long flags;
@@ -95,21 +110,6 @@ void kbasep_pm_metrics_term(kbase_device *kbdev)
 	kbase_pm_unregister_vsync_callback(kbdev);
 }
 KBASE_EXPORT_TEST_API(kbasep_pm_metrics_term)
-
-mali_bool kbasep_pm_metrics_isactive(kbase_device *kbdev)
-{
-	mali_bool isactive;
-	unsigned long flags;
-
-	OSK_ASSERT(kbdev != NULL);
-
-	spin_lock_irqsave(&kbdev->pm.metrics.lock, flags);
-	isactive = (kbdev->pm.metrics.timer_active == MALI_TRUE);
-	spin_unlock_irqrestore(&kbdev->pm.metrics.lock, flags);
-
-	return isactive;
-}
-KBASE_EXPORT_TEST_API(kbasep_pm_metrics_isactive)
 
 void kbasep_pm_record_gpu_idle(kbase_device *kbdev)
 {

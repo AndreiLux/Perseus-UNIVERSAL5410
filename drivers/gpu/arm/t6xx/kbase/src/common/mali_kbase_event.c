@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -18,24 +18,13 @@
 
 STATIC base_jd_udata kbase_event_process(kbase_context *kctx, kbase_jd_atom *katom)
 {
-	kbase_jd_context *jctx;
 	base_jd_udata data;
-	kbasep_js_policy *js_policy;
 
 	OSK_ASSERT(kctx != NULL);
 	OSK_ASSERT(katom != NULL);
 	OSK_ASSERT(katom->status == KBASE_JD_ATOM_STATE_COMPLETED);
 
-	jctx = &kctx->jctx;
-
-	js_policy = &(kctx->kbdev->js_data.policy);
-
 	data = katom->udata;
-
-	if ((katom->core_req & BASE_JD_REQ_SOFT_JOB) == 0)
-	{
-		kbasep_js_policy_term_job( js_policy, kctx, katom );
-	}
 
 	katom->status = KBASE_JD_ATOM_STATE_UNUSED;
 
@@ -91,6 +80,7 @@ int kbase_event_dequeue(kbase_context *ctx, base_jd_event_v2 *uevent)
 
 	beenthere("event dequeuing %p\n", (void*)atom);
 	uevent->event_code = atom->event_code;
+	uevent->atom_number = (atom - ctx->jctx.atoms);
 	uevent->udata = kbase_event_process(ctx, atom);
 
 	return 0;

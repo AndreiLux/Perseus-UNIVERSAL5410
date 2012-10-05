@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -1137,6 +1137,12 @@ mali_error kbase_cpu_free_mapping(struct kbase_va_region *reg, const void *ptr)
 		goto out;
 	}
 
+	/* As the tmem is being unmapped we need to update the pages used by the process */
+	if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM )
+	{
+		kbase_process_page_usage_inc(reg->kctx, map->nr_pages);
+	}
+
 	OSK_DLIST_REMOVE(&reg->map_list, map, link);
 	kfree(map);
 
@@ -1523,6 +1529,11 @@ static void kbase_free_phy_pages_helper(kbase_va_region * reg, u32 nr_pages_to_f
 			nr_pages -= commit->nr_pages;
 			reg->nr_alloc_pages -= commit->nr_pages;
 			
+			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM )
+			{
+				kbase_process_page_usage_dec(reg->kctx, commit->nr_pages);
+			}
+
 			/* free the node (unless it's the root node) */
 			if (commit != &reg->root_commit)
 			{
@@ -1545,6 +1556,10 @@ static void kbase_free_phy_pages_helper(kbase_va_region * reg, u32 nr_pages_to_f
 					page_array + reg->nr_alloc_pages - nr_pages);
 			commit->nr_pages -= nr_pages;
 			reg->nr_alloc_pages -= nr_pages;
+			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM )
+			{
+				kbase_process_page_usage_dec(reg->kctx, nr_pages);
+			}
 			break; /* end the loop */
 		}
 	}
@@ -1656,6 +1671,10 @@ mali_error kbase_alloc_phy_pages_helper(struct kbase_va_region *reg, u32 nr_page
 
 		if (!nr_pages_left)
 		{
+			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM)
+			{
+				kbase_process_page_usage_inc(reg->kctx, nr_pages_requested);
+			}
 			return MALI_ERROR_NONE;
 		}
 	}
@@ -1735,6 +1754,10 @@ mali_error kbase_alloc_phy_pages_helper(struct kbase_va_region *reg, u32 nr_page
 
 		if (nr_pages_left == 0)
 		{
+			if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM)
+			{
+				kbase_process_page_usage_inc(reg->kctx, nr_pages_requested);
+			}
 			return MALI_ERROR_NONE;
 		}
 	}
@@ -1744,6 +1767,8 @@ mali_error kbase_alloc_phy_pages_helper(struct kbase_va_region *reg, u32 nr_page
 	{
 		/*we need the auxiliary var below since kbase_free_phy_pages_helper updates reg->nr_alloc_pages*/
 		u32 track_nr_alloc_pages = reg->nr_alloc_pages;
+		/* we must temporarily inflate the usage tracking as kbase_free_phy_pages_helper decrements it */
+		kbase_process_page_usage_inc(reg->kctx, reg->nr_alloc_pages - num_pages_on_start);
 		/* kbase_free_phy_pages_helper implicitly calls kbase_mem_usage_release_pages */
 		kbase_free_phy_pages_helper(reg, reg->nr_alloc_pages - num_pages_on_start);
 		/* Release the remaining pages */

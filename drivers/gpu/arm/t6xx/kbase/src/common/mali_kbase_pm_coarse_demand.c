@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -58,7 +58,6 @@ static void coarse_demand_state_changed(kbase_device *kbdev)
 	case KBASEP_PM_COARSE_DEMAND_STATE_POWERING_DOWN:
 		data->state = KBASEP_PM_COARSE_DEMAND_STATE_POWERED_DOWN;
 		/* All cores have transitioned, turn the clock and interrupts off */
-		kbase_pm_disable_interrupts(kbdev);
 		kbase_pm_clock_off(kbdev);
 
 		/* Inform the OS */
@@ -129,10 +128,8 @@ static void coarse_demand_power_up(kbase_device *kbdev)
 	/* Inform the system that the transition has started */
 	kbase_pm_power_transitioning(kbdev);
 
-	/* Turn the clock on */
+	/* Turn the clock on and enable interrupts */
 	kbase_pm_clock_on(kbdev);
-	/* Enable interrupts */
-	kbase_pm_enable_interrupts(kbdev);
 
 	/* Turn the cores on */
 	cores = kbase_pm_get_present_cores(kbdev, KBASE_PM_CORE_SHADER);
@@ -268,6 +265,8 @@ const kbase_pm_policy kbase_pm_coarse_demand_policy_ops =
 	coarse_demand_init,             /* init */
 	coarse_demand_term,             /* term */
 	coarse_demand_event,            /* event */
+	KBASE_PM_POLICY_FLAG_NO_CORE_TRANSITIONS, /* flags */
+	KBASE_PM_POLICY_ID_COARSE_DEMAND, /* id */
 };
 
 KBASE_EXPORT_TEST_API(kbase_pm_coarse_demand_policy_ops)

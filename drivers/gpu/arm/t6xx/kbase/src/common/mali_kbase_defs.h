@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -40,6 +40,10 @@
 #endif /* CONFIG_SYNC */
 
 /** Enable SW tracing when set */
+#ifdef CONFIG_MALI_T6XX_ENABLE_TRACE
+#define KBASE_TRACE_ENABLE 1
+#endif
+
 #ifndef KBASE_TRACE_ENABLE
 #ifdef CONFIG_MALI_DEBUG
 #define KBASE_TRACE_ENABLE 1
@@ -196,8 +200,8 @@ typedef enum
 
 typedef struct kbase_jd_atom kbase_jd_atom;
 
+
 struct kbase_jd_atom {
-	base_jd_event_code  event_code;
 	struct work_struct  work;
 	ktime_t             start_timestamp;
 
@@ -224,13 +228,15 @@ struct kbase_jd_atom {
 	struct sync_fence_waiter    sync_waiter;
 #endif /* CONFIG_SYNC */
 
+	/* Note: refer to kbasep_js_atom_retained_state, which will take a copy of some of the following members */
+	base_jd_event_code  event_code;
 	base_jd_core_req    core_req;       /**< core requirements */
-
-	kbasep_js_policy_job_info sched_info;
 	/** Job Slot to retry submitting to if submission from IRQ handler failed
 	 *
 	 * NOTE: see if this can be unified into the another member e.g. the event */
 	int                 retry_submit_on_slot;
+
+	kbasep_js_policy_job_info sched_info;
 	/* atom priority scaled to nice range with +20 offset 0..39 */
 	int                 nice_prio;
 
@@ -586,6 +592,9 @@ struct kbase_device {
 #endif
 	/* Platform specific private data to be accessed by mali_kbase_config_xxx.c only */
 	void                    *platform_context;
+#ifdef CONFIG_MALI_T6XX_RT_PM
+	struct delayed_work runtime_pm_workqueue;
+#endif
 };
 
 struct kbase_context
@@ -611,6 +620,7 @@ struct kbase_context
 	kbase_os_context        osctx;
 	kbase_jd_context        jctx;
 	kbasep_mem_usage        usage;
+	atomic_t                nonmapped_pages;
 	ukk_session             ukk_session;
 
 	osk_dlist               waiting_soft_jobs;
@@ -634,6 +644,9 @@ struct kbase_context
 	 * Mutable flags *must* be accessed under jctx.sched_info.ctx.jsctx_mutex
 	 *
 	 * All other flags must be added there */
+
+	spinlock_t         mm_update_lock;
+	struct mm_struct * process_mm;
 };
 
 typedef enum kbase_reg_access_type
@@ -653,6 +666,11 @@ typedef enum kbase_share_attr_bits
 /* Conversion helpers for setting up high resolution timers */
 #define HR_TIMER_DELAY_MSEC(x) (ns_to_ktime((x)*1000000U ))
 #define HR_TIMER_DELAY_NSEC(x) (ns_to_ktime(x))
+
+/* Maximum number of loops polling the GPU for a cache flush before we assume it must have completed */
+#define KBASE_CLEAN_CACHE_MAX_LOOPS     100000
+/* Maximum number of loops polling the GPU for an AS flush to complete before we assume the GPU has hung */
+#define KBASE_AS_FLUSH_MAX_LOOPS        100000
 
 #endif /* _KBASE_DEFS_H_ */
 

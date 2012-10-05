@@ -5,13 +5,13 @@
 # as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
 #
 # A copy of the licence is included with the program, and can also be obtained from Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA. 
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 #
 
 
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= "r1p2-00bet0"
+MALI_RELEASE_NAME ?= "r1p2-04dev0"
 
 # Paths required for build
 KBASE_PATH = $(src)/../..

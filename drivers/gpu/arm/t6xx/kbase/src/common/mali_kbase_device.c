@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -16,6 +16,10 @@
  * @file mali_kbase_device.c
  * Base kernel device APIs
  */
+
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
+
 
 #include <kbase/src/common/mali_kbase.h>
 #include <kbase/src/common/mali_kbase_defs.h>
@@ -47,6 +51,9 @@ STATIC CONST char *kbasep_trace_code_string[] =
 STATIC mali_error kbasep_trace_init( kbase_device *kbdev );
 STATIC void kbasep_trace_term( kbase_device *kbdev );
 STATIC void kbasep_trace_hook_wrapper( void *param );
+#if KBASE_TRACE_ENABLE != 0
+STATIC void kbasep_trace_debugfs_init(kbase_device *kbdev);
+#endif
 
 void kbasep_as_do_poke(struct work_struct *work);
 enum hrtimer_restart kbasep_reset_timer_callback(struct hrtimer *data);
@@ -430,6 +437,7 @@ STATIC mali_error kbasep_trace_init( kbase_device *kbdev )
 
 	kbdev->trace_rbuf = rbuf;
 	spin_lock_init(&kbdev->trace_lock);
+	kbasep_trace_debugfs_init(kbdev);
 	return MALI_ERROR_NONE;
 }
 
@@ -438,13 +446,12 @@ STATIC void kbasep_trace_term( kbase_device *kbdev )
 	kfree( kbdev->trace_rbuf );
 }
 
-void kbasep_trace_dump_msg( kbase_trace *trace_msg )
+void kbasep_trace_format_msg( kbase_trace *trace_msg, char *buffer, int len)
 {
-	char buffer[OSK_DEBUG_MESSAGE_SIZE];
 	s32 written = 0;
 
 	/* Initial part of message */
-	written += MAX( osk_snprintf(buffer+written, MAX((int)OSK_DEBUG_MESSAGE_SIZE-written,0),
+	written += MAX( osk_snprintf(buffer+written, MAX(len-written,0),
 	                             "%d.%.6d,%d,%d,%s,%p,",
 	                             trace_msg->timestamp.tv_sec,
 	                             trace_msg->timestamp.tv_nsec / 1000,
@@ -457,12 +464,12 @@ void kbasep_trace_dump_msg( kbase_trace *trace_msg )
 	{
 		kbase_jd_atom *atom = trace_msg->katom;
 		int atom_number = atom - &atom->kctx->jctx.atoms[0];
-		written += MAX( osk_snprintf(buffer+written, MAX((int)OSK_DEBUG_MESSAGE_SIZE-written,0),
+		written += MAX( osk_snprintf(buffer+written, MAX(len-written,0),
 		                             "atom %d (ud: 0x%llx 0x%llx)",
 		                             atom_number, atom->udata.blob[0], atom->udata.blob[1]), 0);
 	}
 
-	written += MAX( osk_snprintf(buffer+written, MAX((int)OSK_DEBUG_MESSAGE_SIZE-written,0),
+	written += MAX( osk_snprintf(buffer+written, MAX(len-written,0),
 	                             ",%.8llx,",
 	                             trace_msg->gpu_addr ), 0 );
 
@@ -470,25 +477,32 @@ void kbasep_trace_dump_msg( kbase_trace *trace_msg )
 	if ( (trace_msg->flags & KBASE_TRACE_FLAG_JOBSLOT) != MALI_FALSE )
 	{
 		/* Jobslot present */
-		written += MAX( osk_snprintf(buffer+written, MAX((int)OSK_DEBUG_MESSAGE_SIZE-written,0),
+		written += MAX( osk_snprintf(buffer+written, MAX(len-written,0),
 		                             "%d", trace_msg->jobslot), 0 );
 	}
-	written += MAX( osk_snprintf(buffer+written, MAX((int)OSK_DEBUG_MESSAGE_SIZE-written,0),
+	written += MAX( osk_snprintf(buffer+written, MAX(len-written,0),
 	                             ","), 0 );
 
 	if ( (trace_msg->flags & KBASE_TRACE_FLAG_REFCOUNT) != MALI_FALSE )
 	{
 		/* Refcount present */
-		written += MAX( osk_snprintf(buffer+written, MAX((int)OSK_DEBUG_MESSAGE_SIZE-written,0),
+		written += MAX( osk_snprintf(buffer+written, MAX(len-written,0),
 		                             "%d", trace_msg->refcount), 0 );
 	}
-	written += MAX( osk_snprintf(buffer+written, MAX((int)OSK_DEBUG_MESSAGE_SIZE-written,0),
+	written += MAX( osk_snprintf(buffer+written, MAX(len-written,0),
 	                             ",", trace_msg->jobslot), 0 );
 
 	/* Rest of message */
-	written += MAX( osk_snprintf(buffer+written, MAX((int)OSK_DEBUG_MESSAGE_SIZE-written,0),
+	written += MAX( osk_snprintf(buffer+written, MAX(len-written,0),
 	                             "0x%.8x", trace_msg->info_val), 0 );
 
+}
+
+void kbasep_trace_dump_msg( kbase_trace *trace_msg )
+{
+	char buffer[OSK_DEBUG_MESSAGE_SIZE];
+
+	kbasep_trace_format_msg(trace_msg, buffer, OSK_DEBUG_MESSAGE_SIZE);
 	OSK_PRINT( OSK_BASE_CORE, "%s", buffer );
 }
 
@@ -566,6 +580,95 @@ STATIC void kbasep_trace_hook_wrapper( void *param )
 	kbase_device *kbdev = (kbase_device*)param;
 	kbasep_trace_dump( kbdev );
 }
+
+#ifdef CONFIG_DEBUG_FS
+struct trace_seq_state {
+	kbase_trace trace_buf[KBASE_TRACE_SIZE];
+	u32 start;
+	u32 end;
+};
+
+void *kbasep_trace_seq_start(struct seq_file *s, loff_t *pos)
+{
+	struct trace_seq_state *state = s->private;
+
+	if (*pos >= KBASE_TRACE_SIZE)
+		return NULL;
+
+	return state;
+}
+
+void kbasep_trace_seq_stop(struct seq_file *s, void *data)
+{
+}
+
+void *kbasep_trace_seq_next(struct seq_file *s, void *data, loff_t *pos)
+{
+	struct trace_seq_state *state = s->private;
+	int i = (state->start + *pos) & KBASE_TRACE_MASK;
+	if (i == state->end)
+		return NULL;
+
+	(*pos)++;
+
+	return &state->trace_buf[i];
+}
+
+int kbasep_trace_seq_show(struct seq_file *s, void *data)
+{
+	kbase_trace *trace_msg = data;
+	char buffer[OSK_DEBUG_MESSAGE_SIZE];
+
+	kbasep_trace_format_msg(trace_msg, buffer, OSK_DEBUG_MESSAGE_SIZE);
+	seq_printf(s, "%s\n", buffer);
+	return 0;
+}
+
+static const struct seq_operations kbasep_trace_seq_ops = {
+	.start = kbasep_trace_seq_start,
+	.next = kbasep_trace_seq_next,
+	.stop = kbasep_trace_seq_stop,
+	.show = kbasep_trace_seq_show,
+};
+
+static int kbasep_trace_debugfs_open(struct inode *inode, struct file *file)
+{
+	kbase_device *kbdev = inode->i_private;
+	unsigned long flags;	
+
+	struct trace_seq_state *state;
+
+	state = __seq_open_private(file, &kbasep_trace_seq_ops, sizeof(*state));
+	if (!state)
+		return -ENOMEM;
+
+	spin_lock_irqsave(&kbdev->trace_lock, flags);
+	state->start = kbdev->trace_first_out;
+	state->end = kbdev->trace_next_in;
+	memcpy(state->trace_buf, kbdev->trace_rbuf, sizeof(state->trace_buf));
+	spin_unlock_irqrestore(&kbdev->trace_lock, flags);
+
+	return 0;
+}
+
+static const struct file_operations kbasep_trace_debugfs_fops = {
+	.open           = kbasep_trace_debugfs_open,
+	.read           = seq_read,
+	.llseek         = seq_lseek,
+	.release        = seq_release_private,
+};
+
+STATIC void kbasep_trace_debugfs_init(kbase_device *kbdev)
+{
+	debugfs_create_file("mali_trace", S_IRUGO, NULL, kbdev,
+			    &kbasep_trace_debugfs_fops);
+}
+#else
+STATIC void kbasep_trace_debugfs_init(kbase_device *kbdev)
+{
+
+}
+#endif /* CONFIG_DEBUG_FS */
 
 #else /* KBASE_TRACE_ENABLE != 0 */
 STATIC mali_error kbasep_trace_init( kbase_device *kbdev )

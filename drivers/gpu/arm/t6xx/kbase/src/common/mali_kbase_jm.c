@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -268,13 +268,20 @@ void kbase_job_done(kbase_device *kbdev, u32 done)
 
 				if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_6787))
 				{
+					/* Limit the number of loops to avoid a hang if the interrupt is missed */
+					u32 max_loops = KBASE_CLEAN_CACHE_MAX_LOOPS;
+
 					/* cache flush when jobs complete with non-done codes */
 					/* use GPU_COMMAND completion solution */
 					/* clean & invalidate the caches */
 					kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), 8, NULL);
 
 					/* wait for cache flush to complete before continuing */
-					while((kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_IRQ_RAWSTAT), NULL) & CLEAN_CACHES_COMPLETED) == 0);
+					while(--max_loops &&
+					      (kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_IRQ_RAWSTAT), NULL) & CLEAN_CACHES_COMPLETED) == 0)
+					{
+					}
+
 					/* clear the CLEAN_CACHES_COMPLETED irq*/
 					kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_CLEAR), CLEAN_CACHES_COMPLETED, NULL);
 				}
@@ -976,6 +983,7 @@ void kbasep_reset_timeout_worker(struct work_struct *data)
 	kbdev = container_of(data, kbase_device, reset_work);
 
 	OSK_ASSERT(kbdev);
+	KBASE_TRACE_ADD( kbdev, JM_BEGIN_RESET_WORKER, NULL, NULL, 0u, 0 );
 
 	kbase_pm_context_active(kbdev);
 
@@ -1024,6 +1032,7 @@ void kbasep_reset_timeout_worker(struct work_struct *data)
 	/* Reset the GPU */
 	kbase_pm_power_transitioning(kbdev);
 	kbase_pm_init_hw(kbdev);
+	/* IRQs were re-enabled by kbase_pm_init_hw */
 
 	kbase_pm_power_transitioning(kbdev);
 
@@ -1053,7 +1062,9 @@ void kbasep_reset_timeout_worker(struct work_struct *data)
 	kbdev->hwcnt.state = bckp_state;
 	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 
-	/* Re-init the power policy */
+	/* Re-init the power policy. Note that this does not re-enable interrupts,
+	 * because the call to kbase_pm_clock_on() will do nothing (due to
+	 * pm.gpu_powered == MALI_TRUE by this point) */
 	kbase_pm_send_event(kbdev, KBASE_PM_EVENT_POLICY_INIT);
 
 	/* Wait for the policy to power up the GPU */
@@ -1104,6 +1115,7 @@ void kbasep_reset_timeout_worker(struct work_struct *data)
 	mutex_unlock( &js_devdata->runpool_mutex );
 
 	kbase_pm_context_idle(kbdev);
+	KBASE_TRACE_ADD( kbdev, JM_END_RESET_WORKER, NULL, NULL, 0u, 0 );
 }
 
 enum hrtimer_restart kbasep_reset_timer_callback(struct hrtimer * timer)

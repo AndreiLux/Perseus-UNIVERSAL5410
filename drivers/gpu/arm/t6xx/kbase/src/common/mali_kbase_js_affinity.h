@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -144,13 +144,13 @@ void kbase_js_affinity_submit_to_blocked_slots( kbase_device *kbdev );
 /**
  * @brief Output to the Trace log the current tracked affinities on all slots
  */
-#ifdef CONFIG_MALI_DEBUG
+#if KBASE_TRACE_ENABLE != 0
 void kbase_js_debug_log_current_affinities( kbase_device *kbdev );
-#else /* CONFIG_MALI_DEBUG */
+#else /*  KBASE_TRACE_ENABLE != 0 */
 OSK_STATIC_INLINE void kbase_js_debug_log_current_affinities( kbase_device *kbdev )
 {
 }
-#endif /* CONFIG_MALI_DEBUG */
+#endif /*  KBASE_TRACE_ENABLE != 0 */
 
 /** @} */ /* end group kbase_js_affinity */
 /** @} */ /* end group base_kbase_api */

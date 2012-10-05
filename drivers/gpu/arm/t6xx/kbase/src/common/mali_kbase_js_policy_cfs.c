@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -1437,25 +1437,6 @@ mali_error kbasep_js_policy_init_job( const kbasep_js_policy *js_policy, const k
 	/* Determine the job's index into the job list head, will return error if the
 	 * atom is malformed and so is reported. */
 	return cached_variant_idx_init( policy_info, kctx, katom );
-}
-
-void kbasep_js_policy_term_job( const kbasep_js_policy *js_policy, const kbase_context *kctx, kbase_jd_atom *katom )
-{
-	kbasep_js_policy_cfs_job *job_info;
-	const kbasep_js_policy_cfs_ctx *ctx_info;
-
-	OSK_ASSERT( js_policy != NULL );
-	CSTD_UNUSED(js_policy);
-	OSK_ASSERT( katom != NULL );
-	OSK_ASSERT( kctx != NULL );
-
-	job_info = &katom->sched_info.cfs;
-	ctx_info = &kctx->jctx.sched_info.runpool.policy_ctx.cfs;
-
-	/* We need not do anything, so we just ASSERT that this job was correctly removed from the relevant lists */
-	OSK_ASSERT( OSK_DLIST_MEMBER_OF( &ctx_info->job_list_head[job_info->cached_variant_idx],
-	                                 katom,
-	                                 sched_info.cfs.list ) == MALI_FALSE );
 }
 
 void kbasep_js_policy_register_job( kbasep_js_policy *js_policy, kbase_context *kctx, kbase_jd_atom *katom )

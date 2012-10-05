@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -446,7 +446,7 @@ void kbase_js_affinity_submit_to_blocked_slots( kbase_device *kbdev )
 	}
 }
 
-#ifdef CONFIG_MALI_DEBUG
+#if KBASE_TRACE_ENABLE != 0
 void kbase_js_debug_log_current_affinities( kbase_device *kbdev )
 {
 	kbasep_js_device_data *js_devdata;
@@ -460,4 +460,4 @@ void kbase_js_debug_log_current_affinities( kbase_device *kbdev )
 		KBASE_TRACE_ADD_SLOT_INFO( kbdev, JS_AFFINITY_CURRENT, NULL, NULL, 0u, slot_nr, (u32)js_devdata->runpool_irq.slot_affinities[slot_nr] );
 	}
 }
-#endif /* CONFIG_MALI_DEBUG */
+#endif /* KBASE_TRACE_ENABLE != 0 */

@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -53,6 +53,10 @@
 #ifdef CONFIG_SYNC
 #include <kbase/src/linux/mali_kbase_sync.h>
 #endif /* CONFIG_SYNC */
+
+#ifdef CONFIG_MACH_MANTA
+#include <plat/devs.h>
+#endif
 
 #define	JOB_IRQ_TAG	0
 #define MMU_IRQ_TAG	1
@@ -779,9 +783,10 @@ bad_type:
 			get_version->version_string_size = sizeof(KERNEL_SIDE_DDK_VERSION_STRING);
 			break;
 		}
-#ifdef CONFIG_SYNC
+
 		case KBASE_FUNC_STREAM_CREATE:
 		{
+#ifdef CONFIG_SYNC
 			kbase_uk_stream_create * screate = (kbase_uk_stream_create*)args;
 			
 			if (sizeof(*screate) != args_size)
@@ -797,41 +802,49 @@ bad_type:
 			}
 
 			ukh->ret = kbase_stream_create(screate->name, &screate->fd);
+#endif
 			break;
 		}
 		case KBASE_FUNC_FENCE_VALIDATE:
 		{
+#ifdef CONFIG_SYNC
 			kbase_uk_fence_validate * fence_validate = (kbase_uk_fence_validate*)args;
 			if (sizeof(*fence_validate) != args_size)
 			{
 				goto bad_size;
 			}
 			ukh->ret = kbase_fence_validate(fence_validate->fd);
+#endif /* CONFIG_SYNC */
 			break;
 		}
-#endif /* CONFIG_SYNC */
-#ifdef CONFIG_KDS
+
+
 		case KBASE_FUNC_EXT_BUFFER_LOCK:
 		{
+#ifdef CONFIG_KDS
 			ukh->ret = kbase_external_buffer_lock( kctx, ukk_ctx,(kbase_uk_ext_buff_kds_data *)args, args_size );
+#endif /* CONFIG_KDS */
 			break;
 		}
-#endif /* CONFIG_KDS */
-#if MALI_UNIT_TEST
+
+
 		case KBASE_FUNC_SET_TEST_DATA:
 		{
+#if MALI_UNIT_TEST
 			kbase_uk_set_test_data *set_data = args;
 
 			shared_kernel_test_data = set_data->test_data;
 			shared_kernel_test_data.kctx = kctx;
 			shared_kernel_test_data.mm = (void*)current->mm;
 			ukh->ret = MALI_ERROR_NONE;
+#endif /* MALI_UNIT_TEST */
 			break;
 		}
-#endif /* MALI_UNIT_TEST */
-#ifdef CONFIG_MALI_ERROR_INJECT
+
+
 		case KBASE_FUNC_INJECT_ERROR:
 		{
+#ifdef CONFIG_MALI_ERROR_INJECT
 			unsigned long flags;
 			kbase_error_params params = ((kbase_uk_error_params*)args)->params;
 			/*mutex lock*/
@@ -839,13 +852,14 @@ bad_type:
 			ukh->ret = job_atom_inject_error(&params);
 			spin_unlock_irqrestore(&kbdev->osdev.reg_op_lock, flags);
 			/*mutex unlock*/
-
+#endif /* CONFIG_MALI_ERROR_INJECT */
 			break;
 		}
-#endif /* CONFIG_MALI_ERROR_INJECT */
-#ifdef CONFIG_MALI_NO_MALI
+
+
 		case KBASE_FUNC_MODEL_CONTROL:
 		{
+#ifdef CONFIG_MALI_NO_MALI
 			unsigned long flags;
 			kbase_model_control_params params = ((kbase_uk_model_control_params*)args)->params;
 			/*mutex lock*/
@@ -853,9 +867,10 @@ bad_type:
 			ukh->ret = midg_model_control(kbdev->osdev.model, &params);
 			spin_unlock_irqrestore(&kbdev->osdev.reg_op_lock, flags);
 			/*mutex unlock*/
+#endif /* CONFIG_MALI_NO_MALI */
 			break;
 		}
-#endif /* CONFIG_MALI_NO_MALI */
+
 		case KBASE_FUNC_KEEP_GPU_POWERED:
 		{
 			kbase_uk_keep_gpu_powered *kgp = (kbase_uk_keep_gpu_powered*)args;
@@ -2641,6 +2656,14 @@ static int __init kbase_driver_init(void)
 
 	config = kbasep_get_platform_config();
 	attribute_count = kbasep_get_config_attribute_count(config->attributes);
+#ifdef CONFIG_MACH_MANTA
+	err = platform_device_add_data(&exynos5_device_g3d, config->attributes, attribute_count * sizeof(config->attributes[0]));
+	if (err)
+	{
+		return err;
+	}
+#else
+
 	mali_device = platform_device_alloc( kbase_drv_name, 0);
 	if (mali_device == NULL)
 	{
@@ -2672,6 +2695,7 @@ static int __init kbase_driver_init(void)
 		return err;
 	}
 
+#endif /* CONFIG_CONFIG_MACH_MANTA */
 #endif /* CONFIG_MALI_PLATFORM_FAKE */
 	err = platform_driver_register(&kbase_platform_driver);
 	if (err)

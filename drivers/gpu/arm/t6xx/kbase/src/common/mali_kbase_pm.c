@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -126,7 +126,7 @@ mali_error kbase_pm_init(kbase_device *kbdev)
 		goto workq_fail;
 	}
 
-	kbdev->pm.workqueue = alloc_workqueue("kbase_pm", WQ_NON_REENTRANT, 1);
+	kbdev->pm.workqueue = alloc_workqueue("kbase_pm", WQ_NON_REENTRANT | WQ_HIGHPRI, 1);
 	if (NULL == kbdev->pm.workqueue)
 	{
 		goto workq_fail;
@@ -177,7 +177,8 @@ mali_error kbase_pm_powerup(kbase_device *kbdev)
 	atomic_set(&kbdev->pm.work_active, KBASE_PM_WORK_ACTIVE_STATE_INACTIVE);
 
 	kbdev->pm.new_policy = NULL;
-	kbdev->pm.current_policy = policy_list[2];
+	kbdev->pm.current_policy = policy_list[0];
+	KBASE_TRACE_ADD( kbdev, PM_CURRENT_POLICY_INIT, NULL, NULL, 0u, kbdev->pm.current_policy->id );
 	kbdev->pm.current_policy->init(kbdev);
 
 	kbase_pm_send_event(kbdev, KBASE_PM_EVENT_POLICY_INIT);
@@ -312,6 +313,7 @@ void kbase_pm_term(kbase_device *kbdev)
 	if (kbdev->pm.current_policy != NULL)
 	{
 		/* Free any resources the policy allocated */
+		KBASE_TRACE_ADD( kbdev, PM_CURRENT_POLICY_TERM, NULL, NULL, 0u, kbdev->pm.current_policy->id );
 		kbdev->pm.current_policy->term(kbdev);
 	}
 	/* Synchronise with other threads */
@@ -365,8 +367,10 @@ void kbase_pm_set_policy(kbase_device *kbdev, const kbase_pm_policy *new_policy)
 
 	if (kbdev->pm.new_policy) {
 		/* A policy change is already outstanding */
+		KBASE_TRACE_ADD( kbdev, PM_SET_POLICY, NULL, NULL, 0u, -1 );
 		return;
 	}
+	KBASE_TRACE_ADD( kbdev, PM_SET_POLICY, NULL, NULL, 0u, new_policy->id );
 	/* During a policy change we pretend the GPU is active */
 	kbase_pm_context_active(kbdev);
 
@@ -379,14 +383,28 @@ void kbase_pm_change_policy(kbase_device *kbdev)
 {
 	OSK_ASSERT(kbdev != NULL);
 
+	KBASE_TRACE_ADD( kbdev, PM_CHANGE_POLICY, NULL, NULL, 0u,
+	                 kbdev->pm.current_policy->id | (kbdev->pm.new_policy->id<<16) );
+
+	KBASE_TRACE_ADD( kbdev, PM_CURRENT_POLICY_TERM, NULL, NULL, 0u, kbdev->pm.current_policy->id );
 	kbdev->pm.current_policy->term(kbdev);
 	kbdev->pm.current_policy = kbdev->pm.new_policy;
+	KBASE_TRACE_ADD( kbdev, PM_CURRENT_POLICY_INIT, NULL, NULL, 0u, kbdev->pm.current_policy->id );
 	kbdev->pm.current_policy->init(kbdev);
+
 	kbase_pm_send_event(kbdev, KBASE_PM_EVENT_POLICY_INIT);
+
+	/* Changing policy might have occurred during an update to the core desired
+	 * states, but the KBASE_PM_EVENT_CHANGE_GPU_STATE event could've been
+	 * optimized out if the previous policy had
+	 * KBASE_PM_POLICY_FLAG_NO_CORE_TRANSITIONS set.
+	 *
+	 * In any case, we issue a KBASE_PM_EVENT_CHANGE_GPU_STATE just in case. */
+	kbase_pm_send_event(kbdev, KBASE_PM_EVENT_CHANGE_GPU_STATE);
 
 	/* Now the policy change is finished, we release our fake context active reference */
 	kbase_pm_context_idle(kbdev);
-	
+
 	kbdev->pm.new_policy = NULL;
 }
 KBASE_EXPORT_TEST_API(kbase_pm_change_policy)
@@ -503,6 +521,13 @@ void kbase_pm_send_event(kbase_device *kbdev, kbase_pm_event event)
 	int old_value, new_value;
 
 	OSK_ASSERT(kbdev != NULL);
+
+	if ( (kbdev->pm.current_policy->flags & KBASE_PM_POLICY_FLAG_NO_CORE_TRANSITIONS)
+		 && event == KBASE_PM_EVENT_CHANGE_GPU_STATE )
+	{
+		/* Optimize out event sending when the policy doesn't transition individual cores */
+		return;
+	}
 
 	KBASE_TRACE_ADD( kbdev, PM_SEND_EVENT, NULL, NULL, 0u, event );
 

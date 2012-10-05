@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -164,12 +164,18 @@ void kbasep_js_kctx_term( kbase_context *kctx );
 mali_bool kbasep_js_add_job( kbase_context *kctx, kbase_jd_atom *atom );
 
 /**
- * @brief Remove a job chain from the Job Scheduler
+ * @brief Remove a job chain from the Job Scheduler, except for its 'retained state'.
  *
- * Removing a job from the Scheduler can cause an NSS/SS state transition. In
- * this case, slots that previously could not have jobs submitted to might now
- * be submittable to. For this reason, and NSS/SS state transition will cause
- * the Scheduler to try to submit new jobs on the jm_slots.
+ * Completely removing a job requires several calls:
+ * - kbasep_js_copy_atom_retained_state(), to capture the 'retained state' of
+ *   the atom
+ * - kbasep_js_remove_job(), to partially remove the atom from the Job Scheduler
+ * - kbasep_js_runpool_release_ctx_and_katom_retained_state(), to release the
+ *   remaining state held as part of the job having been run.
+ *
+ * In the common case of atoms completing normally, this set of actions is more optimal for spinlock purposes than having kbasep_js_remove_job() handle all of the actions.
+ *
+ * In the case of cancelling atoms, it is easier to call kbasep_js_remove_cancelled_job(), which handles all the necessary actions.
  *
  * It is a programming error to call this when:
  * - \a atom is not a job belonging to kctx.
@@ -181,13 +187,39 @@ mali_bool kbasep_js_add_job( kbase_context *kctx, kbase_jd_atom *atom );
  *
  * The following locking conditions are made on the caller:
  * - it must hold kbasep_js_kctx_info::ctx::jsctx_mutex.
- * - it must \em not hold kbasep_js_device_data::runpool_irq::lock, (as this will be
- * obtained internally)
- * - it must \em not hold kbasep_js_device_data::runpool_mutex (as this could be
- obtained internally)
  *
  */
-void kbasep_js_remove_job( kbase_context *kctx, kbase_jd_atom *atom );
+void kbasep_js_remove_job( kbase_device *kbdev, kbase_context *kctx, kbase_jd_atom *atom );
+
+/**
+ * @brief Completely remove a job chain from the Job Scheduler, in the case
+ * where the job chain was cancelled.
+ *
+ * This is a variant of kbasep_js_remove_job() that takes care of removing all
+ * of the retained state too. This is generally useful for cancelled atoms,
+ * which need not be handled in an optimal way.
+ *
+ * As such, this can cause an NSS/SS state transition. In this case, slots that
+ * previously could not have jobs submitted to might now be submittable to. For
+ * this reason, and NSS/SS state transition will cause the Scheduler to try to
+ * submit new jobs on the jm_slots.
+ *
+ * It is a programming error to call this when:
+ * - \a atom is not a job belonging to kctx.
+ * - \a atom has already been removed from the Job Scheduler.
+ * - \a atom is still in the runpool:
+ *  - it has not been killed with kbasep_js_policy_kill_all_ctx_jobs()
+ *  - or, it has not been removed with kbasep_js_policy_dequeue_job()
+ *  - or, it has not been removed with kbasep_js_policy_dequeue_job_irq()
+ *
+ * The following locking conditions are made on the caller:
+ * - it must hold kbasep_js_kctx_info::ctx::jsctx_mutex.
+ * - it must \em not hold the kbasep_js_device_data::runpool_irq::lock, (as this will be
+ * obtained internally)
+ * - it must \em not hold kbasep_js_device_data::runpool_mutex (as this could be
+ * obtained internally)
+ */
+void kbasep_js_remove_cancelled_job( kbase_device *kbdev, kbase_context *kctx, kbase_jd_atom *katom );
 
 /**
  * @brief Refcount a context as being busy, preventing it from being scheduled
@@ -314,16 +346,16 @@ void kbasep_js_runpool_release_ctx( kbase_device *kbdev, kbase_context *kctx );
  *
  * Therefore, the extra actions carried out are part of handling actions queued
  * on a completed atom, namely:
+ * - Releasing the atom's context attributes
  * - Retrying the submission on a particular slot, because we couldn't submit
  * on that slot from an IRQ handler.
  *
  * The locking conditions of this function are the same as those for
  * kbasep_js_runpool_release_ctx()
  */
-void kbasep_js_runpool_release_ctx_and_handle_actions( kbase_device *kbdev,
-                                                       kbase_context *kctx,
-                                                       mali_bool retry_submit,
-                                                       int retry_jobslot );
+void kbasep_js_runpool_release_ctx_and_katom_retained_state( kbase_device *kbdev,
+                                                             kbase_context *kctx,
+                                                             kbasep_js_atom_retained_state *katom_retained_state );
 
 /**
  * @brief Try to submit the next job on a \b particular slot whilst in IRQ
@@ -617,14 +649,7 @@ static INLINE void kbasep_js_clear_submit_allowed( kbasep_js_device_data *js_dev
  */
 static INLINE void kbasep_js_clear_job_retry_submit( kbase_jd_atom *atom )
 {
-	atom->retry_submit_on_slot = -1;
-}
-
-static INLINE mali_bool kbasep_js_get_job_retry_submit_slot( kbase_jd_atom *atom, int *res )
-{
-	int js = atom->retry_submit_on_slot;
-	*res = js;
-	return (mali_bool)( js >= 0 );
+	atom->retry_submit_on_slot = KBASEP_JS_RETRY_SUBMIT_SLOT_INVALID;
 }
 
 static INLINE void kbasep_js_set_job_retry_submit_slot( kbase_jd_atom *atom, int js )
@@ -632,6 +657,71 @@ static INLINE void kbasep_js_set_job_retry_submit_slot( kbase_jd_atom *atom, int
 	OSK_ASSERT( 0 <= js && js <= BASE_JM_MAX_NR_SLOTS );
 
 	atom->retry_submit_on_slot = js;
+}
+
+/**
+ * Create an initial 'invalid' atom retained state, that requires no
+ * atom-related work to be done on releasing with
+ * kbasep_js_runpool_release_ctx_and_katom_retained_state()
+ */
+static INLINE void kbasep_js_atom_retained_state_init_invalid( kbasep_js_atom_retained_state *retained_state )
+{
+	retained_state->event_code = BASE_JD_EVENT_NOT_STARTED;
+	retained_state->core_req = KBASEP_JS_ATOM_RETAINED_STATE_CORE_REQ_INVALID;
+	retained_state->retry_submit_on_slot = KBASEP_JS_RETRY_SUBMIT_SLOT_INVALID;
+}
+
+
+/**
+ * Copy atom state that can be made available after jd_done_nolock() is called
+ * on that atom.
+ */
+static INLINE void kbasep_js_atom_retained_state_copy( kbasep_js_atom_retained_state *retained_state,
+                                                       const kbase_jd_atom *katom )
+{
+	retained_state->event_code = katom->event_code;
+	retained_state->core_req = katom->core_req;
+	retained_state->retry_submit_on_slot = katom->retry_submit_on_slot;
+}
+
+/**
+ * @brief Determine whether an atom has finished (given its retained state),
+ * and so should be given back to userspace/removed from the system.
+ *
+ * Reasons for an atom not finishing include:
+ * - Being soft-stopped (and so, the atom should be resubmitted sometime later)
+ *
+ * @param[in] katom_retained_state the retained state of the atom to check
+ * @return    MALI_FALSE if the atom has not finished
+ * @return    !=MALI_FALSE if the atom has finished
+ */
+static INLINE mali_bool kbasep_js_has_atom_finished( const kbasep_js_atom_retained_state *katom_retained_state )
+{
+	return (mali_bool)(katom_retained_state->event_code != BASE_JD_EVENT_STOPPED
+	                   && katom_retained_state->event_code != BASE_JD_EVENT_REMOVED_FROM_NEXT );
+}
+
+/**
+ * @brief Determine whether a kbasep_js_atom_retained_state is valid
+ *
+ * An invalid kbasep_js_atom_retained_state is allowed, and indicates that the
+ * code should just ignore it.
+ *
+ * @param[in] katom_retained_state the atom's retained state to check
+ * @return    MALI_FALSE if the retained state is invalid, and can be ignored
+ * @return    !=MALI_FALSE if the retained state is valid
+ */
+static INLINE mali_bool kbasep_js_atom_retained_state_is_valid( const kbasep_js_atom_retained_state *katom_retained_state )
+{
+	return (mali_bool)(katom_retained_state->core_req != KBASEP_JS_ATOM_RETAINED_STATE_CORE_REQ_INVALID);
+}
+
+
+static INLINE mali_bool kbasep_js_get_atom_retry_submit_slot( const kbasep_js_atom_retained_state *katom_retained_state, int *res )
+{
+	int js = katom_retained_state->retry_submit_on_slot;
+	*res = js;
+	return (mali_bool)( js >= 0 );
 }
 
 #if OSK_DISABLE_ASSERTS == 0

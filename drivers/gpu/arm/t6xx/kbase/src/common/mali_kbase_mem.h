@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -138,12 +138,15 @@ typedef struct kbase_va_region
 #define KBASE_REG_COOKIE_MASK       (~((1ul << KBASE_REG_FLAGS_NR_BITS)-1))
 #define KBASE_REG_COOKIE(x)         ((x << KBASE_REG_FLAGS_NR_BITS) & KBASE_REG_COOKIE_MASK)
 
-/* Bit mask of cookies that not used for PMEM but reserved for other uses */
-#define KBASE_REG_RESERVED_COOKIES  7ULL
 /* The reserved cookie values */
 #define KBASE_REG_COOKIE_RB         0
 #define KBASE_REG_COOKIE_MMU_DUMP   1
 #define KBASE_REG_COOKIE_TB         2
+#define KBASE_REG_COOKIE_MTP        3
+#define KBASE_REG_COOKIE_FIRST_FREE 4
+
+/* Bit mask of cookies that not used for PMEM but reserved for other uses */
+#define KBASE_REG_RESERVED_COOKIES  ((1ULL << (KBASE_REG_COOKIE_FIRST_FREE))-1)
 
 	u32                 flags;
 
@@ -510,6 +513,47 @@ mali_error kbase_mem_free_region(kbase_context *kctx,
                                  struct kbase_va_region *reg);
 void kbase_os_mem_map_lock(kbase_context * kctx);
 void kbase_os_mem_map_unlock(kbase_context * kctx);
+
+/**
+ * @brief Update the memory allocation counters for the current process
+ *
+ * OS specific call to updates the current memory allocation counters for the current process with
+ * the supplied delta.
+ *
+ * @param[in] pages The desired delta to apply to the memory usage counters.
+ */
+
+void kbasep_os_process_page_usage_update( struct kbase_context * kctx, int pages );
+
+/**
+ * @brief Add to the memory allocation counters for the current process
+ *
+ * OS specific call to add to the current memory allocation counters for the current process by
+ * the supplied amount.
+ *
+ * @param[in] kctx  The kernel base context used for the allocation.
+ * @param[in] pages The desired delta to apply to the memory usage counters.
+ */
+
+static INLINE void kbase_process_page_usage_inc( struct kbase_context *kctx, int pages )
+{
+	kbasep_os_process_page_usage_update( kctx, pages );
+}
+
+/**
+ * @brief Subtract from the memory allocation counters for the current process
+ *
+ * OS specific call to subtract from the current memory allocation counters for the current process by
+ * the supplied amount.
+ *
+ * @param[in] kctx  The kernel base context used for the allocation.
+ * @param[in] pages The desired delta to apply to the memory usage counters.
+ */
+
+static INLINE void kbase_process_page_usage_dec( struct kbase_context *kctx, int pages )
+{
+	kbasep_os_process_page_usage_update( kctx, 0 - pages );
+}
 
 /**
  * @brief Find a CPU mapping of a memory allocation containing a given address range

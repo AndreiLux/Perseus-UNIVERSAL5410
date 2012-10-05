@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -28,6 +28,8 @@
 
 #include <kbase/src/common/mali_kbase.h>
 #include <kbase/src/linux/mali_kbase_mem_linux.h>
+
+static int kbase_tracking_page_setup(struct kbase_context * kctx, struct vm_area_struct * vma);
 
 struct kbase_va_region *kbase_pmem_alloc(kbase_context *kctx, u32 size,
 					 u32 flags, u16 *pmem_cookie)
@@ -199,6 +201,11 @@ static int kbase_cpu_mmap(struct kbase_va_region *reg, struct vm_area_struct *vm
 	map->nr_pages = nr_pages;
 	map->page_off = start_off;
 	map->private = vma;
+
+	if ( (reg->flags & KBASE_REG_ZONE_MASK) == KBASE_REG_ZONE_TMEM)
+	{
+		kbase_process_page_usage_dec(reg->kctx, nr_pages);
+	}
 
 	OSK_DLIST_PUSH_FRONT(&reg->map_list, map,
 				struct kbase_cpu_mapping, link);
@@ -407,6 +414,25 @@ int kbase_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 
 	kbase_gpu_vm_lock(kctx);
+
+	if (vma->vm_pgoff == KBASE_REG_COOKIE_MTP)
+	{
+		/* The non-mapped tracking helper page */
+		err = kbase_tracking_page_setup(kctx, vma);
+		goto out_unlock;
+	}
+
+	/* if not the MTP, verify that the MTP has been mapped */
+	rcu_read_lock();
+	/* catches both when the special page isn't present or when we've forked */
+	if (rcu_dereference(kctx->process_mm) != current->mm)
+	{
+		err = -EINVAL;
+		rcu_read_unlock();
+		goto out_unlock;
+	}
+	rcu_read_unlock();
+
 
 	if (vma->vm_pgoff == KBASE_REG_COOKIE_RB)
 	{
@@ -652,6 +678,87 @@ err:
 	return NULL;
 }
 KBASE_EXPORT_SYMBOL(kbase_va_alloc)
+
+void kbasep_os_process_page_usage_update( kbase_context *kctx, int pages )
+{
+	struct mm_struct *mm;
+
+	rcu_read_lock();
+	mm = rcu_dereference(kctx->process_mm);
+	if (mm)
+	{
+		atomic_add(pages, &kctx->nonmapped_pages);
+#ifdef SPLIT_RSS_COUNTING
+		add_mm_counter(mm, MM_FILEPAGES, pages);
+#else
+		spin_lock(&mm->page_table_lock);
+		add_mm_counter(mm, MM_FILEPAGES, pages);
+		spin_unlock(&mm->page_table_lock);
+#endif
+	}
+	rcu_read_unlock();
+}
+
+static void kbasep_os_process_page_usage_drain(kbase_context * kctx)
+{
+	int pages;
+	struct mm_struct * mm;
+
+	spin_lock(&kctx->mm_update_lock);
+	mm = rcu_dereference_protected(kctx->process_mm, lockdep_is_held(&kctx->mm_update_lock));
+	if (!mm)
+	{
+		spin_unlock(&kctx->mm_update_lock);
+		return;
+	}
+
+	rcu_assign_pointer(kctx->process_mm, NULL);
+	spin_unlock(&kctx->mm_update_lock);
+	synchronize_rcu();
+
+	pages = atomic_xchg(&kctx->nonmapped_pages, 0);
+#ifdef SPLIT_RSS_COUNTING
+	add_mm_counter(mm, MM_FILEPAGES, -pages);
+#else
+	spin_lock(&mm->page_table_lock);
+	add_mm_counter(mm, MM_FILEPAGES, -pages);
+	spin_unlock(&mm->page_table_lock);
+#endif
+}
+
+static void kbase_special_vm_close(struct vm_area_struct *vma)
+{
+	kbase_context * kctx;
+	kctx = vma->vm_private_data;
+	kbasep_os_process_page_usage_drain(kctx);
+}
+
+static const struct vm_operations_struct kbase_vm_special_ops = {
+	.close = kbase_special_vm_close,
+};
+
+static int kbase_tracking_page_setup(struct kbase_context * kctx, struct vm_area_struct * vma)
+{
+	/* check that this is the only tracking page */
+	spin_lock(&kctx->mm_update_lock);
+	if (rcu_dereference_protected(kctx->process_mm, lockdep_is_held(&kctx->mm_update_lock)))
+	{
+		spin_unlock(&kctx->mm_update_lock);
+		return -EFAULT;
+	}
+
+	rcu_assign_pointer(kctx->process_mm, current->mm);
+
+	spin_unlock(&kctx->mm_update_lock);
+
+	/* no real access */
+	vma->vm_flags &= ~(VM_READ | VM_WRITE | VM_EXEC);
+	vma->vm_flags |= VM_DONTCOPY | VM_DONTEXPAND | VM_RESERVED | VM_IO;
+	vma->vm_ops = &kbase_vm_special_ops;
+	vma->vm_private_data = kctx;
+
+	return 0;
+}
 
 void kbase_va_free(kbase_context *kctx, void *va)
 {

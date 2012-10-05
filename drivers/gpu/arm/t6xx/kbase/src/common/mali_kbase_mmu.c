@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -283,6 +283,8 @@ osk_phy_addr kbase_mmu_alloc_pgd(kbase_context *kctx)
 		kbase_mem_usage_release_pages(&kctx->usage, 1);
 		return 0;
 	}
+
+	kbase_process_page_usage_inc(kctx, 1);
 
 	for (i = 0; i < KBASE_MMU_PAGE_ENTRIES; i++)
 		page[i] = ENTRY_IS_INVAL;
@@ -639,6 +641,7 @@ KBASE_EXPORT_TEST_API(kbase_mmu_insert_pages)
 		{
 			/* Lock the VA region we're about to update */
 			u64 lock_addr = lock_region(kbdev, vpfn, requested_nr);
+			u32 max_loops = KBASE_AS_FLUSH_MAX_LOOPS;
 
 			/* AS transaction begin */
 			mutex_lock(&kbdev->as[kctx->as_nr].transaction_mutex);
@@ -657,7 +660,20 @@ KBASE_EXPORT_TEST_API(kbase_mmu_insert_pages)
 			}
 
 			/* wait for the flush to complete */
-			while (kbase_reg_read(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_STATUS), kctx) & ASn_STATUS_FLUSH_ACTIVE);
+			while (--max_loops &&
+			       kbase_reg_read(kctx->kbdev, MMU_AS_REG(kctx->as_nr, ASn_STATUS), kctx) & ASn_STATUS_FLUSH_ACTIVE)
+			{
+			}
+
+			if (!max_loops)
+			{
+				/* Flush failed to complete, assume the GPU has hung and perform a reset to recover */
+				OSK_PRINT_ERROR(OSK_BASE_MMU, "ASn_STATUS_FLUSH_ACTIVE stuck set. Resetting to recover\n");
+				if (kbase_prepare_to_reset_gpu(kbdev))
+				{
+					kbase_reset_gpu(kbdev);
+				}
+			}
 
 			if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_9630))
 			{
@@ -743,6 +759,7 @@ static void mmu_teardown_level(kbase_context *kctx, osk_phy_addr pgd, int level,
 			if (zap)
 			{
 				kbase_phy_pages_free(kctx->kbdev, &kctx->pgd_allocator, 1, &target_pgd);
+				kbase_process_page_usage_dec(kctx, 1 );
 				kbase_mem_usage_release_pages(&kctx->usage, 1);
 			}
 		}
@@ -789,6 +806,7 @@ void kbase_mmu_free_pgd(kbase_context *kctx)
 
 	beenthere("pgd %lx", (unsigned long)kctx->pgd);
 	kbase_phy_pages_free(kctx->kbdev, &kctx->pgd_allocator, 1, &kctx->pgd);
+	kbase_process_page_usage_dec(kctx, 1 );
 	kbase_mem_usage_release_pages(&kctx->usage, 1);
 }
 KBASE_EXPORT_TEST_API(kbase_mmu_free_pgd)
@@ -1202,7 +1220,7 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 	mali_bool reset_status = MALI_FALSE;
 #ifdef CONFIG_MALI_DEBUG
 	static const char *access_type_names[] = { "RESERVED", "EXECUTE", "READ", "WRITE" };
-#endif
+#endif /* CONFIG_MALI_DEBUG */
 
 	OSK_ASSERT(as);
 	OSK_ASSERT(kctx);

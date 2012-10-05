@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -649,18 +649,6 @@ union kbasep_js_policy_job_info;
 mali_error kbasep_js_policy_init_job( const kbasep_js_policy *js_policy, const kbase_context *kctx, kbase_jd_atom *katom );
 
 /**
- * @brief Terminate resources associated with using a job in the Job Scheduler
- * Policy.
- *
- * kbasep_js_policy_deregister_job() must have been called on \a katom before
- * calling this.
- *
- * The caller will not be holding any locks, and so this function will not
- * modify any information in \a kctx or \a js_policy.
- */
-void kbasep_js_policy_term_job( const kbasep_js_policy *js_policy, const kbase_context *kctx, kbase_jd_atom *katom );
-
-/**
  * @brief Register context/policy-wide information for a job on the Job Scheduler Policy.
  *
  * Registers the job with the policy. This is used to track the job before it
@@ -685,8 +673,7 @@ void kbasep_js_policy_register_job( kbasep_js_policy *js_policy, kbase_context *
  * @brief De-register context/policy-wide information for a on the Job Scheduler Policy.
  *
  * This must be used before terminating the resources associated with using a
- * job in the Job Scheduler Policy. That is, it must be called before
- * kbasep_js_policy_term_job(). This function does not itself terminate any
+ * job in the Job Scheduler Policy. This function does not itself terminate any
  * resources, at most it just updates information in the policy and context.
  *
  * The caller has the following conditions on locking:

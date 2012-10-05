@@ -4,10 +4,10 @@
  *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- * 
+ *
  */
 
 
@@ -34,12 +34,6 @@ enum
 	/** The context was descheduled - caller should try scheduling in a new one
 	 * to keep the runpool full */
 	KBASEP_JS_RELEASE_RESULT_WAS_DESCHEDULED = (1u << 0),
-
-	/** The Runpool's context attributes changed. The scheduler might be able to
-	 * submit more jobs than previously, and so the caller should call
-	 * kbasep_js_try_run_next_job_nolock() or similar. */
-	KBASEP_JS_RELEASE_RESULT_CTX_ATTR_CHANGE = (1u << 1)
-
 };
 
 typedef u32 kbasep_js_release_result;
@@ -53,7 +47,10 @@ STATIC INLINE void kbasep_js_deref_permon_check_and_disable_cycle_counter( kbase
 STATIC INLINE void kbasep_js_ref_permon_check_and_enable_cycle_counter( kbase_device *kbdev,
 											kbase_jd_atom * katom );
 
-STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_device *kbdev, kbase_context *kctx );
+STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
+    kbase_device *kbdev,
+    kbase_context *kctx,
+    kbasep_js_atom_retained_state *katom_retained_state );
 
 /** Helper for trace subcodes */
 #if KBASE_TRACE_ENABLE != 0
@@ -337,7 +334,7 @@ STATIC INLINE void release_addr_space( kbase_device *kbdev, int kctx_as_nr )
  *
  * Locking conditions:
  * - Caller must hold the kbasep_js_kctx_info::jsctx_mutex
- * - Caller must hold the kbase_js_device_data::runpool_mutex
+ * - Caller must hold the kbasep_js_device_data::runpool_mutex
  * - Caller must hold AS transaction mutex
  * - Caller must hold Runpool IRQ lock
  */
@@ -799,6 +796,7 @@ STATIC void kbasep_js_runpool_attempt_fast_start_ctx( kbase_device *kbdev, kbase
 	kbasep_js_policy      *js_policy;
 	kbasep_js_per_as_data *js_per_as_data;
 	int evict_as_nr;
+	kbasep_js_atom_retained_state katom_retained_state;
 
 	OSK_ASSERT(kbdev != NULL);
 
@@ -815,6 +813,9 @@ STATIC void kbasep_js_runpool_attempt_fast_start_ctx( kbase_device *kbdev, kbase
 		js_kctx_new = NULL;
 		CSTD_UNUSED(js_kctx_new);
 	}
+
+	/* Setup a dummy katom_retained_state */
+	kbasep_js_atom_retained_state_init_invalid( &katom_retained_state );
 
 	mutex_lock( &js_devdata->runpool_mutex );
 
@@ -862,7 +863,7 @@ STATIC void kbasep_js_runpool_attempt_fast_start_ctx( kbase_device *kbdev, kbase
 
 					mutex_lock( &kctx_evict->jctx.sched_info.ctx.jsctx_mutex );
 					mutex_lock( &js_devdata->runpool_mutex );
-					release_result = kbasep_js_runpool_release_ctx_internal( kbdev, kctx_evict );
+					release_result = kbasep_js_runpool_release_ctx_internal( kbdev, kctx_evict, &katom_retained_state );
 					mutex_unlock( &js_devdata->runpool_mutex );
 					/* Only requeue if actually descheduled, which is more robust in case
 					 * something else retains it (e.g. two high priority contexts racing
@@ -989,38 +990,58 @@ mali_bool kbasep_js_add_job( kbase_context *kctx, kbase_jd_atom *atom )
 	return policy_queue_updated;
 }
 
-void kbasep_js_remove_job( kbase_context *kctx, kbase_jd_atom *atom )
+void kbasep_js_remove_job( kbase_device *kbdev, kbase_context *kctx, kbase_jd_atom *atom )
 {
-	unsigned long flags;
 	kbasep_js_kctx_info *js_kctx_info;
-	kbase_device *kbdev;
 	kbasep_js_device_data *js_devdata;
 	kbasep_js_policy    *js_policy;
-	mali_bool attr_state_changed;
 
+	OSK_ASSERT( kbdev != NULL );
 	OSK_ASSERT( kctx != NULL );
 	OSK_ASSERT( atom != NULL );
 
-	kbdev = kctx->kbdev;
 	js_devdata = &kbdev->js_data;
 	js_policy = &kbdev->js_data.policy;
 	js_kctx_info = &kctx->jctx.sched_info;
 
-	{
-		KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_REMOVE_JOB, kctx, atom, atom->jc,
-		                          kbasep_js_trace_get_refcnt(kbdev, kctx));
-	}
+	KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_REMOVE_JOB, kctx, atom, atom->jc,
+	                          kbasep_js_trace_get_refcnt(kbdev, kctx));
 
 	/* De-refcount ctx.nr_jobs */
 	OSK_ASSERT( js_kctx_info->ctx.nr_jobs > 0 );
 	--(js_kctx_info->ctx.nr_jobs);
 
-	spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
-	attr_state_changed = kbasep_js_ctx_attr_ctx_release_atom( kbdev, kctx, atom );
-	spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
-
 	/* De-register the job from the system */
 	kbasep_js_policy_deregister_job( js_policy, kctx, atom );
+}
+
+void kbasep_js_remove_cancelled_job( kbase_device *kbdev, kbase_context *kctx, kbase_jd_atom *katom )
+{
+	unsigned long flags;
+	kbasep_js_atom_retained_state katom_retained_state;
+	kbasep_js_device_data *js_devdata;
+	mali_bool attr_state_changed;
+
+	OSK_ASSERT( kbdev != NULL );
+	OSK_ASSERT( kctx != NULL );
+	OSK_ASSERT( katom != NULL );
+
+	js_devdata = &kbdev->js_data;
+
+	kbasep_js_atom_retained_state_copy( &katom_retained_state, katom );
+	kbasep_js_remove_job( kbdev, kctx, katom );
+
+	spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
+
+	/* The atom has 'finished' (will not be re-run), so no need to call
+	 * kbasep_js_has_atom_finished().
+	 *
+	 * This is because it returns MALI_FALSE for soft-stopped atoms, but we
+	 * want to override that, because we're cancelling an atom regardless of
+	 * whether it was soft-stopped or not */
+	attr_state_changed = kbasep_js_ctx_attr_ctx_release_atom( kbdev, kctx, &katom_retained_state );
+
+	spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
 
 	if ( attr_state_changed != MALI_FALSE )
 	{
@@ -1028,9 +1049,7 @@ void kbasep_js_remove_job( kbase_context *kctx, kbase_jd_atom *atom )
 		 * than before. */
 		kbase_js_try_run_jobs( kbdev );
 	}
-
 }
-
 
 mali_bool kbasep_js_runpool_retain_ctx( kbase_device *kbdev, kbase_context *kctx )
 {
@@ -1077,12 +1096,76 @@ kbase_context* kbasep_js_runpool_lookup_ctx( kbase_device *kbdev, int as_nr )
 }
 
 /**
- * Internal function to release the reference on a ctx, only taking the runpool and as transaction mutexes
+ * @brief Try running more jobs after releasing a context and/or atom
+ *
+ * This collates a set of actions that must happen whilst
+ * kbasep_js_device_data::runpool_irq::lock is held.
+ *
+ * This includes running more jobs when:
+ * - The previously released kctx caused a ctx attribute change
+ * - The released atom caused a ctx attribute change
+ * - Slots were previously blocked due to affinity restrictions
+ * - Submission during IRQ handling failed
+ */
+STATIC void kbasep_js_run_jobs_after_ctx_and_atom_release( kbase_device *kbdev,
+                                                           kbase_context *kctx,
+                                                           kbasep_js_atom_retained_state *katom_retained_state,
+                                                           mali_bool runpool_ctx_attr_change )
+{
+	kbasep_js_device_data *js_devdata;
+
+	OSK_ASSERT( kbdev != NULL );
+	OSK_ASSERT( kctx != NULL );
+	OSK_ASSERT( katom_retained_state != NULL );
+	js_devdata = &kbdev->js_data;
+
+	lockdep_assert_held(&kctx->jctx.sched_info.ctx.jsctx_mutex);
+	lockdep_assert_held(&js_devdata->runpool_mutex);
+	lockdep_assert_held(&js_devdata->runpool_irq.lock);
+
+	if (js_devdata->nr_user_contexts_running != 0)
+	{
+		mali_bool retry_submit;
+		int retry_jobslot;
+
+		retry_submit = kbasep_js_get_atom_retry_submit_slot( katom_retained_state, &retry_jobslot );
+
+		if ( runpool_ctx_attr_change != MALI_FALSE )
+		{
+			/* A change in runpool ctx attributes might mean we can run more jobs
+			 * than before  */
+			kbasep_js_try_run_next_job_nolock( kbdev );
+
+			/* A retry submit on all slots has now happened, so don't need to do it again */
+			retry_submit = MALI_FALSE;
+		}
+
+		/* Submit on any slots that might've had atoms blocked by the affinity of
+		 * a completed atom.
+		 *
+		 * If no atom has recently completed, then this is harmelss */
+		kbase_js_affinity_submit_to_blocked_slots( kbdev );
+
+		/* If the IRQ handler failed to get a job from the policy, try again from
+		 * outside the IRQ handler
+		 * NOTE: We may've already cleared retry_submit from submitting above */
+		if ( retry_submit != MALI_FALSE )
+		{
+			KBASE_TRACE_ADD_SLOT( kbdev, JD_DONE_TRY_RUN_NEXT_JOB, kctx, NULL, 0u, retry_jobslot );
+			kbasep_js_try_run_next_job_on_slot_nolock( kbdev, retry_jobslot );
+		}
+	}
+}
+
+/**
+ * Internal function to release the reference on a ctx and an atom's "retained
+ * state", only taking the runpool and as transaction mutexes
+ *
+ * This also starts more jobs running in the case of an ctx-attribute state change
  *
  * This does none of the followup actions for scheduling:
  * - It does not schedule in a new context
- * - It does not start more jobs running in the case of an ctx-attribute state change
- * - It does not requeue or handling dying contexts
+ * - It does not requeue or handle dying contexts
  *
  * For those tasks, just call kbasep_js_runpool_release_ctx() instead
  *
@@ -1092,7 +1175,10 @@ kbase_context* kbasep_js_runpool_lookup_ctx( kbase_device *kbdev, int as_nr )
  * - Caller holds js_kctx_info->ctx.jsctx_mutex
  * - Caller holds js_devdata->runpool_mutex
  */
-STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_device *kbdev, kbase_context *kctx )
+STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
+    kbase_device *kbdev,
+    kbase_context *kctx,
+    kbasep_js_atom_retained_state *katom_retained_state )
 {
 	unsigned long flags;
 	kbasep_js_device_data *js_devdata;
@@ -1101,6 +1187,7 @@ STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_de
 	kbasep_js_per_as_data *js_per_as_data;
 
 	kbasep_js_release_result release_result = 0u;
+	mali_bool runpool_ctx_attr_change = MALI_FALSE;
 	int kctx_as_nr;
 	kbase_as *current_as;
 	int new_ref_count;
@@ -1138,6 +1225,12 @@ STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_de
 
 	/* Update refcount */
 	new_ref_count = --(js_per_as_data->as_busy_refcount);
+
+	/* Release the atom if it finished (i.e. wasn't soft-stopped) */
+	if ( kbasep_js_has_atom_finished( katom_retained_state ) != MALI_FALSE )
+	{
+		runpool_ctx_attr_change |= kbasep_js_ctx_attr_ctx_release_atom( kbdev, kctx, katom_retained_state );
+	}
 
 	KBASE_TRACE_ADD_REFCOUNT( kbdev, JS_RELEASE_CTX, kctx, NULL, 0u,
 	                          new_ref_count);
@@ -1182,11 +1275,18 @@ STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_de
 
 		kctx->as_nr = KBASEP_AS_NR_INVALID;
 
-		/* Ctx Attribute handling */
-		if ( kbasep_js_ctx_attr_runpool_release_ctx( kbdev, kctx ) != MALI_FALSE )
-		{
-			release_result |= KBASEP_JS_RELEASE_RESULT_CTX_ATTR_CHANGE;
-		}
+		/* Ctx Attribute handling
+		 *
+		 * Releasing atoms attributes must either happen before this, or after
+		 * 'is_scheduled' is changed, otherwise we double-decount the attributes*/
+		runpool_ctx_attr_change |= kbasep_js_ctx_attr_runpool_release_ctx( kbdev, kctx );
+
+		/* Early update of context count, to optimize the
+		 * kbasep_js_run_jobs_after_ctx_and_atom_release() call */
+		runpool_dec_context_count( kbdev, kctx );
+
+		/* Releasing the context and katom retained state can allow more jobs to run */
+		kbasep_js_run_jobs_after_ctx_and_atom_release( kbdev, kctx, katom_retained_state, runpool_ctx_attr_change );
 
 		/*
 		 * Transaction ends on AS and runpool_irq:
@@ -1205,7 +1305,6 @@ STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_de
 		/* Note: Don't reuse kctx_as_nr now */
 
 		/* update book-keeping info */
-		runpool_dec_context_count( kbdev, kctx );
 		js_kctx_info->ctx.is_scheduled = MALI_FALSE;
 		/* Signal any waiter that the context is not scheduled, so is safe for
 		 * termination - once the jsctx_mutex is also dropped, and jobs have
@@ -1218,6 +1317,8 @@ STATIC kbasep_js_release_result kbasep_js_runpool_release_ctx_internal( kbase_de
 	}
 	else
 	{
+		kbasep_js_run_jobs_after_ctx_and_atom_release( kbdev, kctx, katom_retained_state, runpool_ctx_attr_change );
+
 		spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
 		mutex_unlock( &current_as->transaction_mutex );
 	}
@@ -1269,15 +1370,13 @@ void kbasep_js_runpool_requeue_or_kill_ctx( kbase_device *kbdev, kbase_context *
 	}
 }
 
-void kbasep_js_runpool_release_ctx_and_handle_actions( kbase_device *kbdev,
-                                                       kbase_context *kctx,
-                                                       mali_bool retry_submit,
-                                                       int retry_jobslot )
+void kbasep_js_runpool_release_ctx_and_katom_retained_state( kbase_device *kbdev,
+                                                             kbase_context *kctx,
+                                                             kbasep_js_atom_retained_state *katom_retained_state )
 {
 	kbasep_js_device_data *js_devdata;
 	kbasep_js_kctx_info *js_kctx_info;
 	kbasep_js_release_result release_result;
-	unsigned long flags;
 
 	OSK_ASSERT( kbdev != NULL );
 	OSK_ASSERT( kctx != NULL );
@@ -1286,46 +1385,7 @@ void kbasep_js_runpool_release_ctx_and_handle_actions( kbase_device *kbdev,
 
 	mutex_lock( &js_kctx_info->ctx.jsctx_mutex );
 	mutex_lock( &js_devdata->runpool_mutex );
-	release_result = kbasep_js_runpool_release_ctx_internal( kbdev, kctx );
-
-	if (js_devdata->nr_user_contexts_running != 0)
-	{
-		/* All further checks repeated here. This is so we only take the
-		 * spinlock when we need it, and only take it once */
-		if ( (release_result & KBASEP_JS_RELEASE_RESULT_CTX_ATTR_CHANGE) != 0u
-			 || js_devdata->runpool_irq.slots_blocked_on_affinity != 0u
-			 || retry_submit != MALI_FALSE)
-		{
-			spin_lock_irqsave( &js_devdata->runpool_irq.lock, flags);
-
-			if ( (release_result & KBASEP_JS_RELEASE_RESULT_CTX_ATTR_CHANGE) != 0u )
-			{
-				/* A change in runpool ctx attributes might mean we can run more jobs
-				 * than before - and this needs to be done when the above
-				 * try_schedule_head_ctx() had no contexts to run */
-				kbasep_js_try_run_next_job_nolock( kbdev );
-
-				/* A retry submit on all slots has now happened, so don't need to do it again */
-				retry_submit = MALI_FALSE;
-			}
-			/* Submit on any slots that might've had atoms blocked by the affinity of
-			 * a completed atom.
-			 *
-			 * If no atom has recently completed, then this is harmelss */
-			kbase_js_affinity_submit_to_blocked_slots( kbdev );
-
-			/* If the IRQ handler failed to get a job from the policy, try again from
-			 * outside the IRQ handler
-			 * NOTE: We may've already cleared retry_submit from submitting above */
-			if ( retry_submit != MALI_FALSE )
-			{
-				KBASE_TRACE_ADD_SLOT( kbdev, JD_DONE_TRY_RUN_NEXT_JOB, kctx, NULL, 0u, retry_jobslot );
-				kbasep_js_try_run_next_job_on_slot_nolock( kbdev, retry_jobslot );
-			}
-
-			spin_unlock_irqrestore( &js_devdata->runpool_irq.lock, flags);
-		}
-	}
+	release_result = kbasep_js_runpool_release_ctx_internal( kbdev, kctx, katom_retained_state );
 
 	/* Drop the runpool mutex to allow requeing kctx */
 	mutex_unlock( &js_devdata->runpool_mutex );
@@ -1350,7 +1410,11 @@ void kbasep_js_runpool_release_ctx_and_handle_actions( kbase_device *kbdev,
 
 void kbasep_js_runpool_release_ctx( kbase_device *kbdev, kbase_context *kctx  )
 {
-	kbasep_js_runpool_release_ctx_and_handle_actions( kbdev, kctx, MALI_FALSE, 0 );
+	kbasep_js_atom_retained_state katom_retained_state;
+
+	kbasep_js_atom_retained_state_init_invalid( &katom_retained_state );
+
+	kbasep_js_runpool_release_ctx_and_katom_retained_state( kbdev, kctx, &katom_retained_state );
 }
 
 /**
@@ -1670,8 +1734,7 @@ mali_bool kbasep_js_try_run_next_job_on_slot_irq_nolock( kbase_device *kbdev, in
 	 *   that cause us to resume job submission.
 	 * - kbase_js_can_run_job_on_slot_no_lock() was MALI_FALSE - this is for
 	 *   Ctx Attribute handling. That _can_ change outside of IRQ context, but
-	 *   is handled explicitly by kbasep_js_remove_job() and
-	 *   kbasep_js_runpool_release_ctx().
+	 *   is handled explicitly by kbasep_js_runpool_release_ctx_and_katom_retained_state().
 	 */
 	return (mali_bool)(tried_to_dequeue_jobs_but_failed || *submit_count >= KBASE_JS_MAX_JOB_SUBMIT_PER_SLOT_PER_IRQ);
 }
