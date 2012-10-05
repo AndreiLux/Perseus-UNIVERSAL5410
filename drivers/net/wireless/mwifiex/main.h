@@ -816,6 +816,8 @@ int is_command_pending(struct mwifiex_adapter *adapter);
 void mwifiex_init_priv_params(struct mwifiex_private *priv,
 						struct net_device *dev);
 
+#define PKT_TYPE_MGMT	0xE5
+
 /*
  * This function checks if the queuing is RA based or not.
  */
@@ -900,6 +902,14 @@ mwifiex_netdev_get_priv(struct net_device *dev)
 	return (struct mwifiex_private *) (*(unsigned long *) netdev_priv(dev));
 }
 
+/*
+ * This function checks if a skb holds a management frame.
+ */
+static inline bool mwifiex_is_skb_mgmt_frame(struct sk_buff *skb)
+{
+	return (*(u32 *)skb->data == PKT_TYPE_MGMT);
+}
+
 int mwifiex_init_shutdown_fw(struct mwifiex_private *priv,
 			     u32 func_init_shutdown);
 int mwifiex_add_card(void *, struct semaphore *, struct mwifiex_if_ops *, u8);
@@ -963,6 +973,8 @@ int mwifiex_set_tx_power(struct mwifiex_private *priv,
 			 struct mwifiex_power_cfg *power_cfg);
 
 int mwifiex_main_process(struct mwifiex_adapter *);
+
+int mwifiex_queue_tx_pkt(struct mwifiex_private *priv, struct sk_buff *skb);
 
 int mwifiex_bss_set_channel(struct mwifiex_private *,
 			    struct mwifiex_chan_freq_power *cfp);
