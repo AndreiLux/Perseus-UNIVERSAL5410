@@ -84,6 +84,8 @@
 
 #define VSYNC_TIMEOUT_MSEC 50
 
+#define MAX_BW_PER_WINDOW	(2560 * 1600 * 4 * 60)
+
 struct s3c_fb;
 
 #ifdef CONFIG_ION_EXYNOS
@@ -264,6 +266,8 @@ struct s3c_fb_win {
 	struct fb_fix_screeninfo prev_fix;
 #endif
 
+	int			fps;
+
 #ifdef CONFIG_FB_EXYNOS_FIMD_MC
 	int use;		/* use of widnow subdev in fimd */
 	int local;		/* use of local path gscaler to window in fimd */
@@ -424,6 +428,8 @@ static int s3c_fb_check_var(struct fb_var_screeninfo *var,
 {
 	struct s3c_fb_win *win = info->par;
 	struct s3c_fb *sfb = win->parent;
+	int x, y;
+	unsigned long long hz;
 
 	dev_dbg(sfb->dev, "checking parameters\n");
 
@@ -513,6 +519,19 @@ static int s3c_fb_check_var(struct fb_var_screeninfo *var,
 	default:
 		dev_err(sfb->dev, "invalid bpp\n");
 	}
+
+	x = var->xres + var->left_margin + var->right_margin + var->hsync_len;
+	y = var->yres + var->upper_margin + var->lower_margin + var->vsync_len;
+
+	hz = 1000000000000ULL;		/* 1e12 picoseconds per second */
+
+	hz += (x * y) / 2;
+	do_div(hz, x * y);		/* divide by x * y with rounding */
+
+	hz += var->pixclock / 2;
+	do_div(hz, var->pixclock);	/* divide by pixclock with rounding */
+
+	win->fps = hz;
 
 	dev_dbg(sfb->dev, "%s: verified parameters\n", __func__);
 	return 0;
@@ -815,6 +834,16 @@ static void s3c_fb_configure_lcd(struct s3c_fb *sfb,
 			| VIDTCON2_HOZVAL_E(win_mode->xres - 1);
 	/* VIDTCON2 */
 	writel(data, sfb->regs + sfb->variant.vidtcon + 8);
+}
+
+static unsigned int s3c_fb_calc_bandwidth(u32 w, u32 h, u32 bits_per_pixel, int fps)
+{
+	unsigned int bw = w * h;
+
+	bw *= DIV_ROUND_UP(bits_per_pixel, 8);
+	bw *= fps;
+
+	return bw;
 }
 
 /**
@@ -1879,6 +1908,7 @@ static int s3c_fb_set_win_config(struct s3c_fb *sfb,
 	struct sync_fence *fence;
 	struct sync_pt *pt;
 	int fd;
+	unsigned int bw = 0;
 
 	fd = get_unused_fd();
 
@@ -1946,7 +1976,21 @@ static int s3c_fb_set_win_config(struct s3c_fb *sfb,
 		else
 			regs->wincon[i] &= ~WINCONx_ENWIN;
 		regs->winmap[i] = color_map;
+
+		if (enabled && config->state == S3C_FB_WIN_STATE_BUFFER) {
+			bw += s3c_fb_calc_bandwidth(config->w, config->h,
+					win->fbinfo->var.bits_per_pixel,
+					win->fps);
+		}
 	}
+
+	dev_dbg(sfb->dev, "Total BW = %d Mbits, Max BW per window = %d Mbits\n",
+			bw / (1024 * 1024), MAX_BW_PER_WINDOW / (1024 * 1024));
+
+	if (bw > MAX_BW_PER_WINDOW)
+		exynos5_mif_multiple_windows(true);
+	else
+		exynos5_mif_multiple_windows(false);
 
 	if (ret) {
 		for (i = 0; i < sfb->variant.nr_windows; i++) {
@@ -3822,6 +3866,7 @@ static int s3c_fb_disable(struct s3c_fb *sfb)
 		sfb->fb_int_handle = NULL;
 }
 
+	exynos5_mif_multiple_windows(false);
 err:
 	mutex_unlock(&sfb->output_lock);
 	return ret;
