@@ -144,14 +144,22 @@ static struct s3c_fb_pd_win smdk5250_fb_win2 = {
 };
 #endif
 
+/*
+ * - 70250000. / ((1366 + 40 + 40 + 32) * (768 + 10 + 10 + 5))
+ * - 59.93751141159025
+ * - 70500000. / ((1366 + 40 + 40 + 32) * (768 + 10 + 10 + 5))
+ * - 60.150812163944664
+ * - 70500000. / ((1366 + 40 + 40 + 32) * (768 + 10 + 12 + 6))
+ *   59.92411312312578
+ */
 static struct fb_videomode snow_fb_window[] = {
 	{
-		.left_margin    = 72,
-		.right_margin   = 72,
-		.upper_margin   = 27,
-		.lower_margin   = 26,
+		.left_margin    = 40,
+		.right_margin   = 40,
+		.upper_margin   = 10,
+		.lower_margin   = 12,
 		.hsync_len      = 32,
-		.vsync_len      = 5,
+		.vsync_len      = 6,
 		.xres           = 1366,
 		.yres           = 768,
 	}, {
@@ -1084,7 +1092,7 @@ static void __init exynos5250_dt_machine_init(void)
 			smdk5250_lcd1_pdata.panel[i].timing = snow_fb_window[i];
 
 		smdk5250_lcd1_pdata.panel_type = DP_LCD;
-		smdk5250_lcd1_pdata.clock_rate = 76400000;
+		smdk5250_lcd1_pdata.clock_rate = 70500000;
 		smdk5250_lcd1_pdata.vidcon1 = 0;
 #endif
 	}
