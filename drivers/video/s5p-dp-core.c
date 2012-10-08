@@ -283,6 +283,16 @@ static int s5p_dp_is_enhanced_mode_available(struct s5p_dp_device *dp)
 	return DPCD_ENHANCED_FRAME_CAP(data);
 }
 
+static void s5p_dp_disable_rx_zmux(struct s5p_dp_device *dp)
+{
+	s5p_dp_write_byte_to_dpcd(dp,
+			DPCD_ADDR_USER_DEFINED1, 0);
+	s5p_dp_write_byte_to_dpcd(dp,
+			DPCD_ADDR_USER_DEFINED2, 0x83);
+	s5p_dp_write_byte_to_dpcd(dp,
+			DPCD_ADDR_USER_DEFINED3, 0x27);
+}
+
 static int s5p_dp_set_enhanced_mode(struct s5p_dp_device *dp)
 {
 	u8 data;
@@ -1067,6 +1077,8 @@ dp_phy_init:
 		dev_err(dp->dev, "unable to handle edid\n");
 		goto out;
 	}
+
+	s5p_dp_disable_rx_zmux(dp);
 
 	/* Non-enhance mode setting */
 	ret = s5p_dp_enable_scramble(dp, 0);
