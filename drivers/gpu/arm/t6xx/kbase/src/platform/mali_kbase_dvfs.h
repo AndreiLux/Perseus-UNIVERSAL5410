@@ -39,7 +39,6 @@ struct regulator *kbase_platform_get_regulator(void);
 int kbase_platform_regulator_init(void);
 int kbase_platform_regulator_disable(void);
 int kbase_platform_regulator_enable(void);
-int kbase_platform_get_default_voltage(struct device *dev, int *vol);
 int kbase_platform_get_voltage(struct device *dev, int *vol);
 int kbase_platform_set_voltage(struct device *dev, int vol);
 void kbase_platform_dvfs_set_clock(kbase_device *kbdev, int freq);

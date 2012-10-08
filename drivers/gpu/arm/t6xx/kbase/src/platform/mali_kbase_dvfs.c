@@ -65,7 +65,6 @@
 
 #ifdef CONFIG_REGULATOR
 static struct regulator *g3d_regulator=NULL;
-static int mali_gpu_vol = 1250000; /* 1.25V @ 533 MHz */
 #endif
 
 static struct exynos5_bus_mif_handle *mem_freq_req;
@@ -84,13 +83,13 @@ typedef struct _mali_dvfs_info{
 }mali_dvfs_info;
 
 static mali_dvfs_info mali_dvfs_infotbl[] = {
-	{912500, 100, 0, 70, 0, 100000},
+	{925000, 100, 0, 70, 0, 100000},
 	{925000, 160, 50, 65, 0, 160000},
 	{1025000, 266, 60, 78, 0, 400000},
 	{1075000, 350, 70, 80, 0, 400000},
 	{1125000, 400, 70, 80, 0, 667000},
 	{1150000, 450, 76, 99, 0, 800000},
-	{1250000, 533, 99, 100, 0, 800000},
+	{1200000, 533, 99, 100, 0, 800000},
 };
 
 #define MALI_DVFS_STEP	ARRAY_SIZE(mali_dvfs_infotbl)
@@ -466,6 +465,7 @@ int kbase_platform_regulator_init(void)
 {
 
 #ifdef CONFIG_REGULATOR
+	int mali_gpu_vol = 0;
 	g3d_regulator = regulator_get(NULL, "vdd_g3d");
 	if (IS_ERR(g3d_regulator)) {
 		printk("[kbase_platform_regulator_init] failed to get mali t6xx regulator\n");
@@ -476,6 +476,11 @@ int kbase_platform_regulator_init(void)
 		printk("[kbase_platform_regulator_init] failed to enable mali t6xx regulator\n");
 		return -1;
 	}
+#ifdef MALI_DVFS_ASV_ENABLE
+	mali_gpu_vol = asv_get_volt(ID_G3D, MALI_DVFS_BL_CONFIG_FREQ*1000);
+#endif
+	if (mali_gpu_vol == 0)
+		mali_gpu_vol = mali_dvfs_infotbl[ARRAY_SIZE(mali_dvfs_infotbl)-1].voltage;
 
 	if (regulator_set_voltage(g3d_regulator, mali_gpu_vol, mali_gpu_vol) != 0) {
 		printk("[kbase_platform_regulator_init] failed to set mali t6xx operating voltage [%d]\n", mali_gpu_vol);
@@ -513,16 +518,6 @@ int kbase_platform_regulator_enable(void)
 		printk("[kbase_platform_regulator_enable] failed to enable g3d regulator\n");
 		return -1;
 	}
-#endif
-	return 0;
-}
-
-int kbase_platform_get_default_voltage(struct device *dev, int *vol)
-{
-#ifdef CONFIG_REGULATOR
-	*vol = mali_gpu_vol;
-#else
-	*vol = 0;
 #endif
 	return 0;
 }
