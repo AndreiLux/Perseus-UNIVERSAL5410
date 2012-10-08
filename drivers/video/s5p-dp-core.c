@@ -1049,9 +1049,6 @@ static int s5p_dp_enable(struct s5p_dp_device *dp)
 
 dp_phy_init:
 
-	if (pdata->lcd_on)
-		pdata->lcd_on();
-
 	if (pdata->phy_init)
 		pdata->phy_init();
 
@@ -1122,6 +1119,9 @@ out:
 	if (retry < 3) {
 		if (pdata->lcd_off)
 			pdata->lcd_off();
+
+		if (pdata->lcd_on)
+			pdata->lcd_on();
 
 		retry++;
 		goto dp_phy_init;
