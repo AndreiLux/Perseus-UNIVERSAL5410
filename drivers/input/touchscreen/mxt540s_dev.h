@@ -112,6 +112,7 @@
 #define TSP_BOOSTER		0
 #define TSP_DEBUG_INFO	1
 #define TSP_SEC_SYSFS	1
+#define CHECK_ANTITOUCH		1
 #if DUAL_CFG
 #define TSP_INFORM_CHARGER	1
 #else
@@ -124,6 +125,13 @@
 */
 #define TSP_ITDEV		1
 #define TSP_USE_SHAPETOUCH	0
+
+#if CHECK_ANTITOUCH
+#define MXT_T61_TIMER_ONESHOT	0
+#define MXT_T61_TIMER_REPEAT	1
+#define MXT_T61_TIMER_CMD_START		1
+#define MXT_T61_TIMER_CMD_STOP		2
+#endif
 
 #if TSP_SEC_SYSFS
 #define TSP_BUF_SIZE	 1024
@@ -263,6 +271,12 @@ struct mxt_data {
 	int driver_paused;
 	int debug_enabled;
 	u16 last_read_addr;
+#endif
+#if CHECK_ANTITOUCH
+	u8 check_antitouch;
+	u8 check_timer;
+	u8 check_autocal;
+	u8 check_calgood;
 #endif
 	u8 tsp_ctrl;
 	u8 max_report_id;

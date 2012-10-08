@@ -45,3 +45,4 @@ void fc8150_isr(HANDLE hDevice)
 		fc8150_data(hDevice, bufIntStatus);
 	}
 }
+

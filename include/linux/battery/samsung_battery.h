@@ -115,6 +115,7 @@ struct battery_info {
 	unsigned int cable_type;
 	unsigned int cable_sub_type;
 	unsigned int cable_pwr_type;
+	int online_prop;
 
 	/* For SAMSUNG charge spec */
 	unsigned int vf_state;
@@ -175,14 +176,16 @@ struct battery_info {
 	bool errortest_stopcharging;
 #endif
 
-#if defined(CONFIG_TARGET_LOCALE_KOR) || defined(CONFIG_MACH_M0_CTC)
-	bool is_unspec_phase;
-	bool is_unspec_recovery;
+	/* previous state */
 	unsigned int prev_cable_type;
 	unsigned int prev_battery_health;
 	unsigned int prev_charge_virt_state;
 	unsigned int prev_battery_soc;
 	struct wake_lock update_wake_lock;
+
+#if defined(CONFIG_TARGET_LOCALE_KOR) || defined(CONFIG_MACH_M0_CTC)
+	bool is_unspec_phase;
+	bool is_unspec_recovery;
 #endif
 };
 
@@ -190,9 +193,7 @@ struct battery_info {
 extern bool is_jig_attached;
 
 /* charger detect source */
-#if defined(CONFIG_MACH_C1_KOR_SKT) || \
-	defined(CONFIG_MACH_C1_KOR_KT) || defined(CONFIG_MACH_C1_KOR_LGT) || \
-	defined(CONFIG_MACH_BAFFIN)
+#if defined(CONFIG_MACH_BAFFIN)
 #undef USE_CHGIN_INTR
 #else
 #define USE_CHGIN_INTR
@@ -204,6 +205,12 @@ extern bool is_jig_attached;
 #else
 #undef EXTENDED_ONLINE_TYPE
 #endif
+
+enum online_property {
+	ONLINE_PROP_UNKNOWN = 0,
+	ONLINE_PROP_AC,
+	ONLINE_PROP_USB,
+};
 
 /* use 2step charge termination */
 #if defined(CONFIG_MACH_T0)

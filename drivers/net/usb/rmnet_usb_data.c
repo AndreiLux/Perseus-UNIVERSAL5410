@@ -121,7 +121,7 @@ static int rmnet_usb_suspend(struct usb_interface *iface, pm_message_t message)
 			iface->dev.power.power_state.event = message.event;
 		}
 		/*  TBD : do we need to set/clear usbnet->udev->reset_resume*/
-		} else
+	} else
 		dev_dbg(&unet->udev->dev,
 			"%s: device is busy can not suspend\n", __func__);
 
@@ -420,7 +420,7 @@ static void rmnet_usb_setup(struct net_device *dev)
 
 	dev->needed_headroom = HEADROOM_FOR_QOS;
 	random_ether_addr(dev->dev_addr);
-	dev->watchdog_timeo = 1000; /* 10 seconds? */
+	dev->watchdog_timeo = 15 * HZ;
 }
 
 static int rmnet_usb_data_status(struct seq_file *s, void *unused)

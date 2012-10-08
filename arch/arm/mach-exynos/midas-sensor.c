@@ -198,8 +198,13 @@ static int stm_get_position(void)
 		position = 1; /* top/upper-right */
 	else
 		position = 0; /* top/upper-left */
-#elif defined(CONFIG_MACH_BAFFIN)
-		position = 6; /* bottom/lower-right */
+#elif defined(CONFIG_MACH_BAFFIN_KOR_SKT) || defined(CONFIG_MACH_BAFFIN_KOR_KT)
+	if (system_rev >= 2)
+		position = 3; /* top/lower-left */
+	else
+		position = 2; /* top/lower-right */
+#elif defined(CONFIG_MACH_BAFFIN_KOR_LGT)
+		position = 3; /* top/lower-left */
 #else /* Common */
 	position = 2; /* top/lower-right */
 #endif

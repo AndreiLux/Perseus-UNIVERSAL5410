@@ -465,7 +465,7 @@ static void gpio_keys_report_event(struct gpio_button_data *bdata)
 				printk(KERN_DEBUG"[Keys] start fake check\n");
 				fake_pressed = true;
 				mod_timer(&fake_timer,
-					jiffies + msecs_to_jiffies(1000));
+					jiffies + msecs_to_jiffies(500));
 			} else {
 				printk(KERN_DEBUG"[Keys] end fake checkPwr 0\n");
 				fake_pressed = false;

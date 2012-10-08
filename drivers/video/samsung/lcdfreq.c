@@ -21,6 +21,10 @@
 
 #include "s3cfb.h"
 
+#ifdef CONFIG_MACH_T0
+#include <linux/platform_data/mms152_ts.h>
+#endif
+
 enum lcdfreq_level_idx {
 	LEVEL_NORMAL,
 	LEVEL_LIMIT,
@@ -352,7 +356,9 @@ static ssize_t level_store(struct device *dev,
 		dev_err(dev, "%s fail\n", __func__);
 		return -EINVAL;
 	}
-
+#ifdef CONFIG_MACH_T0
+	tsp_lcd_infom((bool *) value);
+#endif
 	return count;
 }
 

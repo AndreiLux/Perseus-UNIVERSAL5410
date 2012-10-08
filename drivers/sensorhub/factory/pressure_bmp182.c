@@ -144,6 +144,8 @@ static ssize_t eeprom_check_show(struct device *dev,
 		goto exit;
 	}
 
+	mdelay(5);
+
 	bSuccess = (bool)(!!data->uFactorydata[0]);
 	ssp_dbg("[SSP]: %s - %u\n", __func__, bSuccess);
 

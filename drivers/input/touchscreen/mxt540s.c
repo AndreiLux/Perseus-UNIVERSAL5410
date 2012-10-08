@@ -888,6 +888,92 @@ static void inform_charger_init(struct mxt_data *data)
 }
 #endif
 
+#if CHECK_ANTITOUCH
+void mxt_t61_timer_set(struct mxt_data *data, u8 mode, u8 cmd, u16 ms_period)
+{
+	struct mxt_object *object;
+	int ret = 0;
+	u8 buf[5] = {3, 0, 0, 0, 0};
+
+	object = mxt_get_object(data, SPT_TIMER_T61);
+
+	buf[1] = cmd;
+	buf[2] = mode;
+	buf[3] = ms_period & 0xFF;
+	buf[4] = (ms_period >> 8) & 0xFF;
+
+	ret = mxt_write_mem(data, object->start_address, 5, buf);
+	if (ret)
+		dev_err(&data->client->dev,
+			"%s write error T%d address[0x%x]\n",
+			__func__, SPT_TIMER_T61, object->start_address);
+
+	if (ms_period)
+		dev_info(&data->client->dev,
+			"T61 Timer Enabled %d\n", ms_period);
+}
+
+void mxt_t8_autocal_set(struct mxt_data *data, u8 mstime)
+{
+	struct mxt_object *object;
+	int ret = 0;
+
+	if (mstime) {
+		data->check_autocal = 1;
+#if TSP_DEBUG_INFO
+		dev_info(&data->client->dev,
+			"T8 Autocal Enabled %d\n", mstime);
+#endif
+	} else {
+		data->check_autocal = 0;
+#if TSP_DEBUG_INFO
+		dev_info(&data->client->dev,
+			"T8 Autocal Disabled %d\n", mstime);
+#endif
+	}
+
+	object =	mxt_get_object(data,
+		GEN_ACQUISITIONCONFIG_T8);
+
+	ret = mxt_write_mem(data,
+			object->start_address + 4,
+			1, &mstime);
+	if (ret)
+		dev_err(&data->client->dev,
+			"%s write error T%d address[0x%x]\n",
+			__func__, SPT_TIMER_T61, object->start_address);
+}
+
+static void mxt_check_coordinate(struct mxt_data *data,
+	bool detect, u8 id, u16 *px, u16 *py)
+{
+	static int tcount[] = {0, };
+	static u16 pre_x[][4] = {{0}, };
+	static u16 pre_y[][4] = {{0}, };
+	int distance = 0;
+
+	if (detect)
+		tcount[id] = 0;
+
+	if (tcount[id] > 1) {
+		distance = abs(pre_x[id][0] - *px) + abs(pre_y[id][0] - *py);
+#if TSP_DEBUG_INFO
+		dev_info(&data->client->dev,
+			"Check Distance ID:%d, %d\n",
+			id, distance);
+#endif
+		/* AutoCal Disable */
+		if (distance > 3)
+			mxt_t8_autocal_set(data, 0);
+	}
+
+	pre_x[id][0] = *px;
+	pre_y[id][0] = *py;
+
+	tcount[id]++;
+}
+#endif	/* CHECK_ANTITOUCH */
+
 static void mxt_report_input_data(struct mxt_data *data)
 {
 	int i;
@@ -978,8 +1064,18 @@ static void mxt_treat_T6_object(struct mxt_data *data, u8 *msg)
 	if (msg[1] & 0x08)
 		dev_err(&data->client->dev, "config error\n");
 	/* calibration */
-	if (msg[1] & 0x10)
+	if (msg[1] & 0x10) {
 		dev_info(&data->client->dev, "calibration is on going !!\n");
+#if CHECK_ANTITOUCH
+		/* After Calibration */
+		data->check_antitouch = 1;
+		mxt_t61_timer_set(data,
+			MXT_T61_TIMER_ONESHOT,
+			MXT_T61_TIMER_CMD_STOP, 0);
+		data->check_timer = 0;
+		data->check_calgood = 0;
+#endif
+	}
 	/* signal error */
 	if (msg[1] & 0x20)
 		dev_err(&data->client->dev, "signal error\n");
@@ -1034,8 +1130,20 @@ static void mxt_treat_T9_object(struct mxt_data *data, u8 *msg)
 		if (msg[1] & PRESS_MSG_MASK) {
 			data->fingers[id].state = MXT_STATE_PRESS;
 			data->fingers[id].mcount = 0;
+#if CHECK_ANTITOUCH
+			if (data->check_autocal)
+				mxt_check_coordinate(data, 1, id,
+					&data->fingers[id].x,
+					&data->fingers[id].y);
+#endif
 		} else if (msg[1] & MOVE_MSG_MASK) {
 			data->fingers[id].mcount += 1;
+#if CHECK_ANTITOUCH
+			if (data->check_autocal)
+				mxt_check_coordinate(data, 0, id,
+					&data->fingers[id].x,
+					&data->fingers[id].y);
+#endif
 		}
 
 #if TSP_BOOSTER
@@ -1069,11 +1177,119 @@ static void mxt_treat_T42_object(struct mxt_data *data, u8 *msg)
 
 static void mxt_treat_T57_object(struct mxt_data *data, u8 *msg)
 {
+#if CHECK_ANTITOUCH
+	u16 tch_area = 0, atch_area = 0;
+
+	tch_area = msg[3] | (msg[4] << 8);
+	atch_area = msg[5] | (msg[6] << 8);
+	if (data->check_antitouch) {
+		if (tch_area) {
+#if TSP_DEBUG_INFO
+			dev_info(&data->client->dev,
+				"TCHAREA=%d\n", tch_area);
+#endif
+			/* First Touch After Calibration */
+			if (data->check_timer == 0) {
+				mxt_t61_timer_set(data,
+					MXT_T61_TIMER_ONESHOT,
+					MXT_T61_TIMER_CMD_START,
+					3000);
+				data->check_timer = 1;
+			}
+
+			if (tch_area <= 2)
+				mxt_t8_autocal_set(data, 5);
+
+			if (atch_area > 5) {
+				if (atch_area - tch_area > 0) {
+#if TSP_DEBUG_INFO
+					dev_info(&data->client->dev,
+						"Case:1 TCHAREA=%d ATCHAREA=%d\n",
+						tch_area, atch_area);
+#endif
+					mxt_calibrate_chip(data);
+				}
+			}
+
+		} else {
+			if (atch_area) {
+				/* Only Anti-touch */
+#if TSP_DEBUG_INFO
+				dev_info(&data->client->dev,
+					"Case:2 TCHAREA=%d ATCHAREA=%d\n",
+					tch_area, atch_area);
+#endif
+				mxt_calibrate_chip(data);
+			}
+		}
+	}
+
+	if (data->check_calgood == 1) {
+		if (tch_area) {
+			if ((atch_area - tch_area) > 8) {
+				if (tch_area < 35) {
+#if TSP_DEBUG_INFO
+					dev_info(&data->client->dev,
+						"Cal Not Good 1 - %d %d\n",
+						atch_area, tch_area);
+#endif
+					mxt_calibrate_chip(data);
+				}
+			}
+			if (((tch_area - atch_area) >= 40) &&
+				(atch_area > 4)) {
+#if TSP_DEBUG_INFO
+				dev_info(&data->client->dev,
+					"Cal Not Good 2 - %d %d\n",
+					atch_area, tch_area);
+#endif
+				mxt_calibrate_chip(data);
+			}
+		} else {
+			if (atch_area) {
+				/* Only Anti-touch */
+#if TSP_DEBUG_INFO
+				dev_info(&data->client->dev,
+					"Cal Not Good 3 - %d %d\n",
+					atch_area, tch_area);
+#endif
+				mxt_calibrate_chip(data);
+			}
+		}
+	}
+#endif	/* CHECK_ANTITOUCH */
+
 #if TSP_USE_SHAPETOUCH
 	data->sumsize = msg[1] + (msg[2] << 8);
 #endif	/* TSP_USE_SHAPETOUCH */
 
 }
+
+#if CHECK_ANTITOUCH
+static void mxt_treat_T61_object(struct mxt_data *data, u8 *msg)
+{
+	if ((msg[1] & 0xa0) == 0xa0) {
+
+		if (data->check_calgood == 1)
+			data->check_calgood = 0;
+
+		if (data->check_antitouch) {
+#if TSP_DEBUG_INFO
+			dev_info(&data->client->dev,
+				"SPT_TIMER_T61 Stop\n");
+#endif
+			data->check_antitouch = 0;
+			data->check_timer = 0;
+			mxt_t8_autocal_set(data, 0);
+			data->check_calgood = 1;
+			mxt_t61_timer_set(data,
+				MXT_T61_TIMER_ONESHOT,
+				MXT_T61_TIMER_CMD_START, 10000);
+		}
+	}
+}
+#endif	/* CHECK_ANTITOUCH */
+
 static irqreturn_t mxt_irq_thread(int irq, void *ptr)
 {
 	struct mxt_data *data = ptr;
@@ -1108,6 +1324,13 @@ static irqreturn_t mxt_irq_thread(int irq, void *ptr)
 
 		case PROCI_EXTRATOUCHSCREENDATA_T57:
 			mxt_treat_T57_object(data, msg);
+			break;
+#if CHECK_ANTITOUCH
+		case SPT_TIMER_T61:
+			mxt_treat_T61_object(data, msg);
+			break;
+#endif	/* CHECK_ANTITOUCH */
+		case PROCG_NOISESUPPRESSION_T62:
 			break;
 		default:
 			dev_err(&data->client->dev,

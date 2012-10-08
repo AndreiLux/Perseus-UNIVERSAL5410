@@ -1273,7 +1273,7 @@ void fimc_wait_disable_capture(struct fimc_control *ctrl)
 			break;
 		msleep(5);
 	}
-	fimc_info2("IMGCPTEN: Wait time = %d ms\n"	\
+	fimc_err("IMGCPTEN: Wait time = %d ms\n"	\
 		, jiffies_to_msecs(jiffies - timeo + 20));
 	return;
 }

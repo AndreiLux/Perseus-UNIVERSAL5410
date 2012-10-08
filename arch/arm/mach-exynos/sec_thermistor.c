@@ -169,7 +169,7 @@ static void notify_change_of_temperature(struct sec_therm_info *info)
 {
 	char temp_buf[20];
 	char siop_buf[20];
-	char *envp[2];
+	char *envp[3];
 	int env_offset = 0;
 	int siop_level = -1;
 

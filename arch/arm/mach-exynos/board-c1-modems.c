@@ -308,7 +308,8 @@ static struct modem_data umts_modem_data = {
 	.gpio_cp_on = CP_CMC221_PMIC_PWRON,
 	.gpio_cp_reset = CP_CMC221_CPU_RST,
 	.gpio_phone_active = GPIO_LTE_ACTIVE,
-#if defined(CONFIG_MACH_C1_KOR_SKT) || defined(CONFIG_MACH_C1_KOR_KT)
+#if defined(CONFIG_MACH_C1_KOR_SKT) || defined(CONFIG_MACH_C1_KOR_KT) || \
+defined(CONFIG_MACH_BAFFIN_KOR_SKT) || defined(CONFIG_MACH_BAFFIN_KOR_KT)
 	.gpio_pda_active   = GPIO_PDA_ACTIVE,
 #endif
 

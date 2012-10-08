@@ -344,6 +344,8 @@ static int ts_power_reset(void)
 	Configuration for MXT1664-S
 */
 #define MXT1664S_CONFIG_DATE		"N80XX_ATM_0703"
+#define MXT1664S_CONFIG_DATE_FOR_OVER_HW9	"N80XX_LTE_ATM_0905"
+
 #define MXT1664S_MAX_MT_FINGERS	10
 #define MXT1664S_BLEN_BATT		112
 #define MXT1664S_CHRGTIME_BATT	180
@@ -549,7 +551,9 @@ static void switch_config(u32 rev)
 
 		t8_config_s[1] = 1;
 
+		t9_config_s[7] = 116;
 		t9_config_s[8] = 55;
+		t9_config_s[14] = 50;
 		t9_config_s[27] = 64;
 
 		t40_config_s[4] = 2;
@@ -586,8 +590,9 @@ static void switch_config(u32 rev)
 		t62_config_s[20] = 136;
 		t62_config_s[22] = 35;
 		t62_config_s[35] = 80;
-		t62_config_s[36] = 50;
+		t62_config_s[36] = 40;
 		t62_config_s[38] = 5;
+		t62_config_s[40] = 50;
 		t62_config_s[42] = 30;
 		t62_config_s[43] = 40;
 		t62_config_s[44] = 10;
@@ -595,6 +600,10 @@ static void switch_config(u32 rev)
 		t62_config_s[48] = 30;
 		t62_config_s[49] = 30;
 		t62_config_s[53] = 20;
+
+		/* Change Config Name for LTE */
+		mxt1664s_pdata.config_version =
+			MXT1664S_CONFIG_DATE_FOR_OVER_HW9;
 	}
 }
 

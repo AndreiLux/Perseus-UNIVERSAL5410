@@ -105,7 +105,7 @@
 * because it use other write permission. it will be cause
 * failure of CTS
 */
-#define TSP_ITDEV		1
+#define TSP_ITDEV		0
 
 #define MXT_T7_IDLE_ACQ_INT	0
 #define MXT_T7_ACT_ACQ_INT	1

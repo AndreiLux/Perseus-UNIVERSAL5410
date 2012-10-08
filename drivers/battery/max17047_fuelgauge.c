@@ -65,9 +65,21 @@
 #define MAX17047_POLLING_INTERVAL	10000
 
 /* adjust full soc */
+#if defined(CONFIG_MACH_T0)
+#if defined(CONFIG_TARGET_LOCALE_KOR)
+#define FULL_SOC_DEFAULT	9700
+#define FULL_SOC_LOW		9600
+#define FULL_SOC_HIGH		10050
+#else
 #define FULL_SOC_DEFAULT	9850
 #define FULL_SOC_LOW		9700
 #define FULL_SOC_HIGH		10000
+#endif
+#else	/* M0, C1,,, */
+#define FULL_SOC_DEFAULT	9850
+#define FULL_SOC_LOW		9700
+#define FULL_SOC_HIGH		10000
+#endif
 #define KEEP_SOC_DEFAULT	50 /* 0.5% */
 
 struct max17047_fuelgauge_data {

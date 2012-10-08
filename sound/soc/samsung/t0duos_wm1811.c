@@ -366,6 +366,8 @@ static void t0_micdet(u16 status, void *data)
 	struct wm1811_machine_priv *wm1811 = data;
 	struct wm8994_priv *wm8994 = snd_soc_codec_get_drvdata(wm1811->codec);
 	int report;
+	int reg;
+	bool present;
 
 	/*
 	 * If the jack is inserted abnormally,
@@ -462,6 +464,22 @@ static void t0_micdet(u16 status, void *data)
 
 		if (status & WM1811_JACKDET_BTN2)
 			report |= SND_JACK_BTN_2;
+
+		reg = snd_soc_read(wm1811->codec, WM1811_JACKDET_CTRL);
+		if (reg < 0) {
+			pr_err("%s: Failed to read jack status: %d\n",
+				__func__, reg);
+			return;
+		}
+
+		pr_err("%s: JACKDET %x\n", __func__, reg);
+
+		present = reg & WM1811_JACKDET_LVL;
+
+		if (!present) {
+			pr_err("%s: button is ignored!!!\n", __func__);
+			return;
+		}
 
 		dev_info(wm1811->codec->dev, "Detected Button: %08x (%08X)\n",
 			report, status);
@@ -978,6 +996,7 @@ static int t0_wm1811_init_paiftx(struct snd_soc_pcm_runtime *rtd)
 	struct snd_soc_dai *aif1_dai = rtd->codec_dai;
 	struct wm8994 *control = codec->control_data;
 	struct wm8994_priv *wm8994 = snd_soc_codec_get_drvdata(codec);
+	const struct exynos_sound_platform_data *sound_pdata;
 	int ret;
 
 	midas_snd_set_mclk(true, false);
@@ -1110,6 +1129,13 @@ static int t0_wm1811_init_paiftx(struct snd_soc_pcm_runtime *rtd)
 			dev_attr_reselect_jack.attr.name);
 
 #endif /* CONFIG_SEC_DEV_JACK */
+	sound_pdata = exynos_sound_get_platform_data();
+
+	if (sound_pdata) {
+		wm8994->hubs.dcs_codes_l = sound_pdata->dcs_offset_l;
+		wm8994->hubs.dcs_codes_r = sound_pdata->dcs_offset_r;
+	}
+
 	return snd_soc_dapm_sync(&codec->dapm);
 }
 

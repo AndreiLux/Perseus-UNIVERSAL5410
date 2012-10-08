@@ -506,6 +506,7 @@ struct fimc_control {
 	struct vb2_buffer       *out_bufs[VIDEO_MAX_FRAME];
 	struct vb2_buffer       *cap_bufs[VIDEO_MAX_FRAME];
 #endif
+	int is_frame_end_irq;
 };
 
 /* global */

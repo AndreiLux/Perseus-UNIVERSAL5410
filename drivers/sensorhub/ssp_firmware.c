@@ -14,7 +14,7 @@
  */
 #include "ssp.h"
 
-#define SSP_FIRMWARE_REVISION		90100
+#define SSP_FIRMWARE_REVISION		91100
 
 /* Bootload mode cmd */
 #define BL_FW_NAME			"ssp.fw"
@@ -256,6 +256,8 @@ int update_mcu_bin(struct ssp_data *data)
 
 	if (iRet < 0)
 		data->bBinaryChashed = true;
+	else
+		data->bBinaryChashed = false;
 
 	return iRet;
 }

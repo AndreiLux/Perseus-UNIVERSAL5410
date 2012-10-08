@@ -200,7 +200,7 @@ static bool tcc3170_power_on(void)
 #error
 #endif /* CONFIG_TDMB_SPI */
 			if (tcbd_device_start \
-				(&tcc3170_device, CLOCK_19200KHZ) < 0) {
+				(&tcc3170_device, CLOCK_24576KHZ) < 0) {
 				DPRINTK("could not start device!!\n");
 				tcbd_io_close(&tcc3170_device);
 				tdmb_control_gpio(false);

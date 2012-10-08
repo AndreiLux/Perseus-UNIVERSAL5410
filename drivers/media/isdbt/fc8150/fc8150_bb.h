@@ -20,3 +20,4 @@ extern int fc8150_deinit(HANDLE hDevice);
 extern int fc8150_scan_status(HANDLE hDevice);
 
 #endif
+

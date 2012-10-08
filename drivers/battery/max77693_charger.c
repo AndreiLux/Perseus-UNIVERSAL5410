@@ -677,7 +677,6 @@ static int max77693_get_cable_type(struct max77693_charger_data *chg_data)
 	u8 reg_data, mu_adc, mu_adc1k, otg;
 	u8 dtls_00, chgin_dtls;
 	u8 mu_st2, chgdetrun, vbvolt, chgtyp, dxovp;
-	int muic_cb_typ;
 	bool wc_state;
 	bool retry_det, chg_det_erred;
 	bool otg_detected = false;
@@ -718,10 +717,8 @@ static int max77693_get_cable_type(struct max77693_charger_data *chg_data)
 	}
 #endif
 
-	muic_cb_typ = max77693_muic_get_charging_type();
 	/* if type detection by otg, do not otg check */
-	if ((muic_cb_typ != CABLE_TYPE_AUDIODOCK_MUIC) &&
-		(((otg || (mu_adc == 0x00 && !mu_adc1k))))) {
+	if (otg || (mu_adc == 0x00 && !mu_adc1k)) {
 		pr_info("%s: otg enabled(otg(0x%x), adc(0x%x))\n",
 					__func__, otg, mu_adc);
 		state = POWER_SUPPLY_TYPE_BATTERY;
@@ -970,19 +967,15 @@ static int max77693_get_online_type(struct max77693_charger_data *chg_data)
 {
 	int m_typ;
 	int state = 0;
-	pr_info("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 
 	m_typ = max77693_get_cable_type(chg_data);
-
-	pr_info("%s: main(%d), sub(%d), pwr(%d)\n", __func__, m_typ,
-					chg_data->cable_sub_type,
-					chg_data->cable_pwr_type);
 
 	state = ((m_typ << ONLINE_TYPE_MAIN_SHIFT) |
 		(chg_data->cable_sub_type << ONLINE_TYPE_SUB_SHIFT) |
 		(chg_data->cable_pwr_type << ONLINE_TYPE_PWR_SHIFT));
 
-	pr_info("%s: online(0x%08x)\n", __func__, state);
+	pr_debug("%s: online(0x%08x)\n", __func__, state);
 
 	return state;
 }

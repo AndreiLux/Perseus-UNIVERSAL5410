@@ -431,26 +431,13 @@ static int rmnet_usb_ctrl_write(struct rmnet_ctrl_dev *dev, char *buf,
 	struct urb		*sndurb;
 	struct usb_ctrlrequest	*out_ctlreq;
 	struct usb_device	*udev;
-	int			spin = 50;
 
 	if (!is_dev_connected(dev))
 		return -ENETRESET;
 
-	/* move it to mdm _hsic pm .c, check return code */
-	while (lpa_handling && spin--) {
-		pr_info("%s: lpa wake wait loop\n", __func__);
-		msleep(20);
-	}
-
-	if (lpa_handling) {
-		pr_err("%s: in lpa wakeup, return EAGAIN\n", __func__);
+	/* wait till, LPA wake complete */
+	if (pm_dev_wait_lpa_wake() < 0)
 		return -EAGAIN;
-	}
-
-	DUMP_BUFFER("Write: ", size, buf);
-
-	udev = interface_to_usbdev(dev->intf);
-	usb_mark_last_busy(udev);
 
 	sndurb = usb_alloc_urb(0, GFP_KERNEL);
 	if (!sndurb) {
@@ -466,6 +453,9 @@ static int rmnet_usb_ctrl_write(struct rmnet_ctrl_dev *dev, char *buf,
 		return -ENOMEM;
 	}
 
+	udev = interface_to_usbdev(dev->intf);
+	usb_mark_last_busy(udev);
+
 	/* CDC Send Encapsulated Request packet */
 	out_ctlreq->bRequestType = (USB_DIR_OUT | USB_TYPE_CLASS |
 			     USB_RECIP_INTERFACE);
@@ -478,6 +468,17 @@ static int rmnet_usb_ctrl_write(struct rmnet_ctrl_dev *dev, char *buf,
 			     usb_sndctrlpipe(udev, 0),
 			     (unsigned char *)out_ctlreq, (void *)buf, size,
 			     ctrl_write_callback, dev);
+
+	/* if dev handling suspend wait for suspended or active*/
+	if (pm_dev_runtime_get_enabled(udev) < 0) {
+		kfree(buf);
+		usb_free_urb(sndurb);
+		kfree(out_ctlreq);
+		return -EAGAIN;
+	}
+	usb_mark_last_busy(udev);
+
+	DUMP_BUFFER("Write: ", size, buf);
 
 	result = usb_autopm_get_interface(dev->intf);
 	if (result < 0) {

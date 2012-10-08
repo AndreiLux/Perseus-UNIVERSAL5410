@@ -183,8 +183,6 @@ struct s5c73m3_state {
 	u8 sensor_fw[10];
 	u8 phone_fw[10];
 
-	u8 sensor_type[15];
-
 #ifdef CONFIG_CAM_DEBUG
 	u8 dbg_level;
 #endif

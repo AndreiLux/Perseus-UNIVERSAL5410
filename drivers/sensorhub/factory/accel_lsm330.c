@@ -250,6 +250,8 @@ static ssize_t accel_reactive_alert_store(struct device *dev,
 			goto exit;
 		}
 
+		mdelay(5);
+
 		data->bAccelAlert = data->uFactorydata[0];
 		ssp_dbg("[SSP]: %s factory test success!\n", __func__);
 	} else {

@@ -326,14 +326,13 @@ void max77693_muic_usb_cb(u8 usb_mode)
 	if (usb_mode == USB_OTGHOST_ATTACHED
 		|| usb_mode == USB_POWERED_HOST_ATTACHED) {
 #ifdef CONFIG_USB_HOST_NOTIFY
-		if (usb_mode == USB_OTGHOST_ATTACHED)
+		if (usb_mode == USB_OTGHOST_ATTACHED) {
 			host_noti_pdata->booster(1);
-		else
+			host_noti_pdata->ndev.mode = NOTIFY_HOST_MODE;
+			if (host_noti_pdata->usbhostd_start)
+				host_noti_pdata->usbhostd_start();
+		} else
 			host_noti_pdata->powered_booster(1);
-
-		host_noti_pdata->ndev.mode = NOTIFY_HOST_MODE;
-		if (host_noti_pdata->usbhostd_start)
-			host_noti_pdata->usbhostd_start();
 #endif
 #ifdef CONFIG_USB_EHCI_S5P
 		pm_runtime_get_sync(&s5p_device_ehci.dev);
@@ -350,11 +349,12 @@ void max77693_muic_usb_cb(u8 usb_mode)
 		pm_runtime_put_sync(&s5p_device_ehci.dev);
 #endif
 #ifdef CONFIG_USB_HOST_NOTIFY
-		host_noti_pdata->ndev.mode = NOTIFY_NONE_MODE;
-		if (host_noti_pdata->usbhostd_stop)
-			host_noti_pdata->usbhostd_stop();
-		if (usb_mode == USB_OTGHOST_DETACHED)
+		if (usb_mode == USB_OTGHOST_DETACHED) {
+			host_noti_pdata->ndev.mode = NOTIFY_NONE_MODE;
+			if (host_noti_pdata->usbhostd_stop)
+				host_noti_pdata->usbhostd_stop();
 			host_noti_pdata->booster(0);
+		}
 		else
 			host_noti_pdata->powered_booster(0);
 #endif

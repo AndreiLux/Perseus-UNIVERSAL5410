@@ -390,7 +390,7 @@ static int ea8061_set_acl(struct lcd_info *lcd, u8 force)
 		break;
 	}
 
-	if ((!lcd->acl_enable) || (lcd->auto_brightness >= 5))
+	if (!lcd->acl_enable)
 		level = ACL_STATUS_0P;
 
 	if (force || lcd->current_acl != ACL_CUTOFF_TABLE[level][1]) {

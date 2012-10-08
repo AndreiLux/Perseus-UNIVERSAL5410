@@ -526,7 +526,7 @@ static irqreturn_t s3c_udc_irq(int irq, void *_dev)
 			if (reset_available) {
 				DEBUG_ISR("\t\tOTG core got reset (%d)!!\n",
 					reset_available);
-				reset_usbd();
+				reconfig_usbd();
 				dev->ep0state = WAIT_FOR_SETUP;
 				reset_available = 0;
 				s3c_udc_pre_setup(dev);

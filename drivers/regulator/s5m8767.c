@@ -23,6 +23,8 @@
 #include <linux/mfd/s5m87xx/s5m-pmic.h>
 #include <linux/sched.h>
 
+#include <mach/sec_debug.h>
+
 struct s5m8767_info {
 	struct device *dev;
 	struct s5m87xx_dev *iodev;
@@ -526,8 +528,22 @@ static int s5m8767_set_voltage_buck(struct regulator_dev *rdev,
 
 	switch (reg_id) {
 	case S5M8767_BUCK1:
+		sec_debug_aux_log(SEC_DEBUG_AUXLOG_CPU_BUS_CLOCK_CHANGE,
+			"%s: BUCK1: min_vol=%d, max_vol=%d(%ps)",
+			__func__, min_vol, max_vol,
+			__builtin_return_address(0));
 		return s5m8767_set_voltage(rdev, min_uV, max_uV, selector);
-	case S5M8767_BUCK2 ... S5M8767_BUCK4:
+	case S5M8767_BUCK2:
+		sec_debug_aux_log(SEC_DEBUG_AUXLOG_CPU_BUS_CLOCK_CHANGE,
+			"%s: BUCK2: min_vol=%d, max_vol=%d(%ps)",
+			__func__, min_vol, max_vol,
+			__builtin_return_address(0));
+	case S5M8767_BUCK3:
+		sec_debug_aux_log(SEC_DEBUG_AUXLOG_CPU_BUS_CLOCK_CHANGE,
+			"%s: BUCK3: min_vol=%d, max_vol=%d(%ps)",
+			__func__, min_vol, max_vol,
+			__builtin_return_address(0));
+	case S5M8767_BUCK4:
 		break;
 	case S5M8767_BUCK5 ... S5M8767_BUCK6:
 		return s5m8767_set_voltage(rdev, min_uV, max_uV, selector);

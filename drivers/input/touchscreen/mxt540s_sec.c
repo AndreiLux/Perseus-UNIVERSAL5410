@@ -1445,7 +1445,6 @@ int  __devinit mxt_sysfs_init(struct i2c_client *client)
 	mem_access_attr.read = mem_access_read;
 	mem_access_attr.write = mem_access_write;
 	mem_access_attr.size = 65535;
-	data->debug_enabled = 1;
 
 	if (sysfs_create_bin_file(&client->dev.kobj, &mem_access_attr) < 0) {
 		dev_err(&client->dev, "Failed to create device file(%s)!\n",

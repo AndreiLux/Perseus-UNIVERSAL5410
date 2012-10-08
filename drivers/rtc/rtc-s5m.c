@@ -654,10 +654,15 @@ static irqreturn_t s5m_rtc_alarm_irq(int irq, void *data)
 static irqreturn_t s5m_rtc_alarm2_irq(int irq, void *data)
 {
 	struct s5m_rtc_info *info = data;
+	char temp_buf[30];
+	char *envp[2];
 
-	rtc_update_irq(info->rtc_dev, 1, RTC_IRQF | RTC_AF);
+	snprintf(temp_buf, sizeof(temp_buf), "PMEVENT=AutoPowerOff");
+	envp[0] = temp_buf;
+	envp[1] = NULL;
 
-	pr_info("%s called", __func__);
+	dev_info(info->dev, "%s: uevent: %s\n", __func__, temp_buf);
+	kobject_uevent_env(&info->dev->kobj, KOBJ_CHANGE, envp);
 
 	return IRQ_HANDLED;
 }

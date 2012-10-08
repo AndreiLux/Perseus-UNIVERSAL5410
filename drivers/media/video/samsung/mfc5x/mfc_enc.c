@@ -586,8 +586,7 @@ static int h264_pre_seq_start(struct mfc_inst_ctx *ctx)
 
 	if (h264->sps_pps_gen == 1) {
 		write_shm(ctx,
-			((h264->sps_pps_gen << 8) |
-				read_shm(ctx, EXT_ENC_CONTROL)),
+			((h264->sps_pps_gen << 8) | read_shm(ctx, EXT_ENC_CONTROL)),
 			EXT_ENC_CONTROL);
 	}
 
@@ -1066,10 +1065,8 @@ static int h264_set_codec_cfg(struct mfc_inst_ctx *ctx, int type, void *arg)
 	case MFC_ENC_SETCONF_SPS_PPS_GEN:
 		mfc_dbg("MFC_ENC_SETCONF_SPS_PPS_GEN : %d\n", ctx->state);
 
-		if ((ctx->state < INST_STATE_CREATE) ||
-					(ctx->state > INST_STATE_EXE)) {
-			mfc_err("MFC_ENC_SETCONF_SPS_PPS_GEN : "
-						" state is invalid\n");
+		if ((ctx->state < INST_STATE_CREATE) || (ctx->state > INST_STATE_EXE)) {
+			mfc_err("MFC_ENC_SETCONF_SPS_PPS_GEN : state is invalid\n");
 			return MFC_STATE_INVALID;
 		}
 
@@ -1079,6 +1076,7 @@ static int h264_set_codec_cfg(struct mfc_inst_ctx *ctx, int type, void *arg)
 			h264->sps_pps_gen = 0;
 
 		break;
+
 	default:
 		mfc_dbg("invalid set cfg type: 0x%08x\n", type);
 		ret = -2;

@@ -86,6 +86,13 @@ static struct wacom_g5_platform_data wacom_platform_data = {
 	.min_pressure = 0,
 	.max_pressure = WACOM_PRESSURE_MAX,
 	.gpio_pendct = GPIO_PEN_PDCT,
+#ifdef WACOM_STATE_CHECK
+#if defined(CONFIG_TARGET_LOCALE_KOR)
+#if defined(CONFIG_MACH_T0) && defined(CONFIG_TDMB_ANT_DET)
+	.gpio_esd_check = GPIO_TDMB_ANT_DET_REV08,
+#endif
+#endif
+#endif
 	/*.init_platform_hw = midas_wacom_init,*/
 	/*      .exit_platform_hw =,    */
 	.suspend_platform_hw = wacom_suspend_hw,

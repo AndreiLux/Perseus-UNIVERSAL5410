@@ -174,7 +174,8 @@ void __init s5p_cma_region_reserve(struct cma_region *regions_normal,
 #else
 				if (reg->start) {
 					reg->reserved = 1;
-#if defined(CONFIG_USE_MFC_CMA) && defined(CONFIG_MACH_M0)
+#ifdef CONFIG_USE_MFC_CMA
+#if defined(CONFIG_MACH_M0)
 					if (reg->start == 0x5C100000) {
 						if (memblock_reserve(0x5C100000,
 								0x700000))
@@ -182,6 +183,12 @@ void __init s5p_cma_region_reserve(struct cma_region *regions_normal,
 						if (memblock_reserve(0x5F000000,
 								0x200000))
 							panic("memblock\n");
+#elif defined(CONFIG_MACH_GC1)
+					if (reg->start == 0x50900000) {
+						if (memblock_reserve(0x53800000,
+								0x200000))
+							panic("memblock\n");
+#endif
 					} else {
 						if (memblock_reserve(reg->start,
 								reg->size))

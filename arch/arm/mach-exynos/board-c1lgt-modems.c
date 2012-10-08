@@ -539,6 +539,10 @@ static void setup_umts_modem_env(void)
 	unsigned int end;
 
 	/* Config DPRAM control structure */
+#if defined(CONFIG_MACH_BAFFIN_KOR_LGT)
+	cmc_idpram_bank_cfg.csn = 0;
+	cmc_idpram_bank_cfg.addr = SROM_CS0_BASE;
+#else
 	if (system_rev == 1 || system_rev >= 4) {
 		cmc_idpram_bank_cfg.csn = 0;
 		cmc_idpram_bank_cfg.addr = SROM_CS0_BASE;
@@ -546,12 +550,17 @@ static void setup_umts_modem_env(void)
 		cmc_idpram_bank_cfg.csn = 1;
 		cmc_idpram_bank_cfg.addr = SROM_CS1_BASE;
 	}
-
+#endif
 	addr = cmc_idpram_bank_cfg.addr;
 	end = addr + cmc_idpram_bank_cfg.size - 1;
 	umts_modem_res[RES_DPRAM_MEM_ID].start = addr;
 	umts_modem_res[RES_DPRAM_MEM_ID].end = end;
 
+#if defined(CONFIG_MACH_BAFFIN_KOR_LGT)
+	umts_modem_res[RES_DPRAM_IRQ_ID].start = CMC_IDPRAM_INT_IRQ_01;
+	umts_modem_res[RES_DPRAM_IRQ_ID].end = CMC_IDPRAM_INT_IRQ_01;
+	umts_modem_data.gpio_dpram_int = GPIO_CMC_IDPRAM_INT_01;
+#else
 	if (system_rev == 1 || system_rev >= 4) {
 		umts_modem_res[RES_DPRAM_IRQ_ID].start = CMC_IDPRAM_INT_IRQ_01;
 		umts_modem_res[RES_DPRAM_IRQ_ID].end = CMC_IDPRAM_INT_IRQ_01;
@@ -564,6 +573,7 @@ static void setup_umts_modem_env(void)
 		umts_modem_data.gpio_dpram_int = GPIO_CMC_IDPRAM_INT_01;
 	else
 		umts_modem_data.gpio_dpram_int = GPIO_CMC_IDPRAM_INT_00;
+#endif
 }
 
 static void config_umts_modem_gpio(void)
@@ -964,6 +974,10 @@ static void setup_cdma_modem_env(void)
 	unsigned int addr;
 	unsigned int end;
 
+#if defined(CONFIG_MACH_BAFFIN_KOR_LGT)
+	cbp_edpram_bank_cfg.csn = 1;
+	cbp_edpram_bank_cfg.addr = SROM_CS1_BASE;
+#else
 	/* Config DPRAM control structure */
 	if (system_rev == 1 || system_rev >= 4) {
 		cbp_edpram_bank_cfg.csn = 1;
@@ -972,12 +986,18 @@ static void setup_cdma_modem_env(void)
 		cbp_edpram_bank_cfg.csn = 0;
 		cbp_edpram_bank_cfg.addr = SROM_CS0_BASE;
 	}
+#endif
 
 	addr = cbp_edpram_bank_cfg.addr;
 	end = addr + cbp_edpram_bank_cfg.size - 1;
 	cdma_modem_res[RES_DPRAM_MEM_ID].start = addr;
 	cdma_modem_res[RES_DPRAM_MEM_ID].end = end;
 
+#if defined(CONFIG_MACH_BAFFIN_KOR_LGT)
+	cdma_modem_res[RES_DPRAM_IRQ_ID].start = CBP_DPRAM_INT_IRQ_01;
+	cdma_modem_res[RES_DPRAM_IRQ_ID].end = CBP_DPRAM_INT_IRQ_01;
+	cdma_modem_data.gpio_dpram_int = GPIO_CBP_DPRAM_INT_01;
+#else
 	if (system_rev == 1 || system_rev >= 4) {
 		cdma_modem_res[RES_DPRAM_IRQ_ID].start = CBP_DPRAM_INT_IRQ_01;
 		cdma_modem_res[RES_DPRAM_IRQ_ID].end = CBP_DPRAM_INT_IRQ_01;
@@ -990,6 +1010,7 @@ static void setup_cdma_modem_env(void)
 		cdma_modem_data.gpio_dpram_int = GPIO_CBP_DPRAM_INT_01;
 	else
 		cdma_modem_data.gpio_dpram_int = GPIO_CBP_DPRAM_INT_00;
+#endif
 }
 
 static void config_cdma_modem_gpio(void)
@@ -1260,6 +1281,10 @@ static int __init init_modem(void)
 	struct sromc_timing_cfg *tm_cfg;
 
 	mif_err("System Revision = %d\n", system_rev);
+
+#ifdef CONFIG_MACH_BAFFIN
+	umts_link_pm_data.has_usbhub = false;
+#endif
 
 	/*
 	** Complete modem_data configuration including link_pm_data

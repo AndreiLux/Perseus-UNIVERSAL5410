@@ -1003,7 +1003,9 @@ static struct i2c_board_info i2c_devs21_emul[] __initdata = {
 static void irda_wake_en(bool onoff)
 {
 	gpio_direction_output(GPIO_IRDA_WAKE, onoff);
+#if 0
 	printk(KERN_ERR "%s: irda_wake_en : %d\n", __func__, onoff);
+#endif
 }
 
 static void irda_device_init(void)
@@ -1018,7 +1020,11 @@ static void irda_device_init(void)
 				__func__, GPIO_IRDA_WAKE, ret);
 		return;
 	}
-	gpio_direction_output(GPIO_IRDA_WAKE, 0);
+	gpio_direction_output(GPIO_IRDA_WAKE, 1);
+
+	s3c_gpio_cfgpin(GPIO_IRDA_IRQ, S3C_GPIO_INPUT);
+	s3c_gpio_setpull(GPIO_IRDA_IRQ, S3C_GPIO_PULL_UP);
+	gpio_direction_input(GPIO_IRDA_IRQ);
 
 	return;
 }
@@ -1027,7 +1033,6 @@ static int vled_ic_onoff;
 
 static void irda_vdd_onoff(bool onoff)
 {
-	int ret = 0;
 	static struct regulator *vled_ic;
 
 	if (onoff) {
@@ -1061,7 +1066,6 @@ struct platform_device s3c_device_i2c22 = {
 };
 
 static struct mc96_platform_data mc96_pdata = {
-	.ir_remote_init = irda_device_init,
 	.ir_wake_en = irda_wake_en,
 	.ir_vdd_onoff = irda_vdd_onoff,
 };
@@ -2739,11 +2743,13 @@ static void __init midas_machine_init(void)
 	__raw_writel((__raw_readl(EXYNOS4_CLKDIV_FSYS1) & 0xfff0fff0)
 		     | 0x80008, EXYNOS4_CLKDIV_FSYS1);
 
-#if defined(CONFIG_IR_REMOCON_GPIO)
 /* IR_LED */
+#if defined(CONFIG_IR_REMOCON_MC96)
+	irda_device_init();
+#elif defined(CONFIG_IR_REMOCON_GPIO)
 	ir_rc_init_hw();
-/* IR_LED */
 #endif
+/* IR_LED */
 }
 
 #ifdef CONFIG_EXYNOS_C2C

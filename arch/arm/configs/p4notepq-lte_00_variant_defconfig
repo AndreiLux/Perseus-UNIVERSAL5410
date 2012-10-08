@@ -1,0 +1,14 @@
+# edit here
+# def/undef for local target
+p4notepqlte_att="CONFIG_TARGET_LOCALE_USA=y"
+p4notepqlte_att_undef="TARGET_LOCALE_EUR"
+p4notepqlte_spr="CONFIG_TARGET_LOCALE_USA=y"
+p4notepqlte_spr_undef="TARGET_LOCALE_EUR"
+p4notepqlte_vzw="CONFIG_TARGET_LOCALE_USA=y"
+p4notepqlte_vzw_undef="TARGET_LOCALE_EUR"
+p4notepqlte_skt="CONFIG_TARGET_LOCALE_KOR=y CONFIG_MACH_P4NOTELTE_KOR_SKT=y"
+p4notepqlte_skt_undef="TARGET_LOCALE_EUR"
+p4notepqlte_ktt="CONFIG_TARGET_LOCALE_KOR=y CONFIG_MACH_P4NOTELTE_KOR_KT=y"
+p4notepqlte_ktt_undef="TARGET_LOCALE_EUR"
+p4notepqlte_lgt="CONFIG_TARGET_LOCALE_KOR=y CONFIG_MACH_P4NOTELTE_KOR_LGT=y"
+p4notepqlte_lgt_undef="TARGET_LOCALE_EUR"

@@ -43,7 +43,6 @@ extern void midas_config_sleep_gpio_table(void);
 #define GPIO_CAM_EN1		EXYNOS4212_GPJ0(6)
 #define GPIO_5M_nSTBY		EXYNOS4212_GPJ0(7)
 #else
-#define GPIO_3M_nSTBY		EXYNOS4212_GPM0(6)
 #endif
 #ifdef CONFIG_VIDEO_S5K5CCGX_COMMON
 #define GPIO_2M_nRST		EXYNOS4212_GPM1(6)
@@ -199,7 +198,7 @@ extern void midas_config_sleep_gpio_table(void);
 #define GPIO_IRDA_CONTROL	EXYNOS4_GPL0(3)
 #elif defined(CONFIG_IR_REMOCON_MC96)
 #define GPIO_IRDA_WAKE		EXYNOS4_GPL0(3)
-#define GPIO_IRDA_IRQ		EXYNOS4_GPM0(6)
+#define GPIO_IRDA_IRQ		EXYNOS4212_GPM0(6)
 #define GPIO_IRDA_SDA		EXYNOS4_GPY0(0)
 #define GPIO_IRDA_SCL		EXYNOS4_GPY0(1)
 #endif

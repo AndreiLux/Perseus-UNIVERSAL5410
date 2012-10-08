@@ -21,6 +21,7 @@
 #include <mach/pmu.h>
 #include <mach/cpufreq.h>
 #include <mach/asv.h>
+#include <mach/sec_debug.h>
 
 #include <plat/clock.h>
 #include <plat/cpu.h>
@@ -490,6 +491,11 @@ static void exynos4x12_set_frequency(unsigned int old_index,
 				  unsigned int new_index)
 {
 	unsigned int tmp;
+
+	sec_debug_aux_log(SEC_DEBUG_AUXLOG_CPU_BUS_CLOCK_CHANGE,
+			"%s: old_index=%d, new_index=%d(%ps)",
+			__func__, old_index, new_index,
+			__builtin_return_address(0));
 
 	if (old_index > new_index) {
 		if (exynos4x12_volt_table[new_index] >= 950000 &&

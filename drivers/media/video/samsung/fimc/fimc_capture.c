@@ -2998,8 +2998,9 @@ int fimc_streamoff_capture(void *fh)
 			else
 				s3c_csis_stop(CSI_CH_1);
 		}
+		fimc_err("fimc_hwset_reset in\n");
 		fimc_hwset_reset(ctrl);
-
+		fimc_err("fimc_hwset_reset out\n");
 #ifdef CONFIG_VIDEO_IMPROVE_STREAMOFF
 		if (ctrl->cam->sd && (get_fimc_dev()->active_camera != 0))
 #else

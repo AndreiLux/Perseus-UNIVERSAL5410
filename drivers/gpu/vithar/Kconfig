@@ -1,0 +1,33 @@
+menuconfig VITHAR
+	tristate "Enable Vithar DDK"
+	default n
+	help
+	  Choose this option to enable 3D rendering with vithar DDK.
+
+config VITHAR_HWVER_R0P0
+	bool "Vithar HW Version R0P0(EVT1)"
+	depends on VITHAR
+	default n
+	help
+	  Choose this option to use EVT1.
+
+config VITHAR_RT_PM
+	bool "Enable Runtime power management"
+	depends on VITHAR
+	default y
+	help
+	  Choose this option to enable runtime power management on vithar DDK.
+
+config VITHAR_DVFS
+	bool "Enable DVFS"
+	depends on VITHAR
+	default y
+	help
+	  Choose this option to enable DVFS on vithar DDK.
+
+config VITHAR_ENABLE_DS5
+	bool "Enable DS5"
+	depends on VITHAR
+	default n
+	help
+	  Choose this option to enable DS5 on vithar DDK.
