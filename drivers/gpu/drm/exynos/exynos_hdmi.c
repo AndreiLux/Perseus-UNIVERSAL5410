@@ -2023,6 +2023,85 @@ static int hdmi_resources_cleanup(struct hdmi_context *hdata)
 	return 0;
 }
 
+static int hdmiphy_update_bits(struct i2c_client *client, u8 *reg_cache,
+			       u8 reg, u8 mask, u8 val)
+{
+	int ret;
+	u8 buffer[2];
+
+	buffer[0] = reg;
+	buffer[1] = (reg_cache[reg] & ~mask) | (val & mask);
+	reg_cache[reg] = buffer[1];
+
+	ret = i2c_master_send(client, buffer, 2);
+	if (ret != 2)
+		return -EIO;
+
+	return 0;
+}
+
+static int hdmiphy_s_power(struct i2c_client *client, bool on)
+{
+	u8 reg_cache[32] = { 0 };
+	u8 buffer[2];
+	int ret;
+
+	DRM_INFO("%s: hdmiphy is %s\n", __func__, on ? "on" : "off");
+
+	/* Cache all 32 registers to make the code below faster */
+	buffer[0] = 0x0;
+	ret = i2c_master_send(client, buffer, 1);
+	if (ret != 1) {
+		ret = -EIO;
+		goto exit;
+	}
+	ret = i2c_master_recv(client, reg_cache, 32);
+	if (ret != 32) {
+		ret = -EIO;
+		goto exit;
+	}
+
+	/* Go to/from configuration from/to operation mode */
+	ret = hdmiphy_update_bits(client, reg_cache, 0x1f, 0xff,
+				  on ? 0x80 : 0x00);
+	if (ret)
+		goto exit;
+
+	/*
+	 * Turn off undocumented "oscpad" if !on; it turns on again in
+	 * hdmiphy_conf_apply()
+	 */
+	if (!on)
+		ret = hdmiphy_update_bits(client, reg_cache, 0x0b, 0xc0, 0x00);
+		if (ret)
+			goto exit;
+
+	/* Disable powerdown if on; enable if !on */
+	ret = hdmiphy_update_bits(client, reg_cache, 0x1d, 0x80,
+				  on ? 0 : ~0);
+	if (ret)
+		goto exit;
+	ret = hdmiphy_update_bits(client, reg_cache, 0x1d, 0x77,
+				  on ? 0 : ~0);
+	if (ret)
+		goto exit;
+
+	/*
+	 * Turn off bit 3 of reg 4 if !on; it turns on again in
+	 * hdmiphy_conf_apply().  It's unclear what this bit does.
+	 */
+	if (!on)
+		ret = hdmiphy_update_bits(client, reg_cache, 0x04, BIT(3), 0);
+		if (ret)
+			goto exit;
+
+exit:
+	/* Don't expect any errors so just do a single warn */
+	WARN_ON(ret);
+
+	return ret;
+}
+
 static void hdmi_resource_poweron(struct hdmi_context *hdata)
 {
 	struct hdmi_resources *res = &hdata->res;
@@ -2046,6 +2125,7 @@ static void hdmi_resource_poweron(struct hdmi_context *hdata)
 	/* power-on hdmi clocks */
 	clk_enable(res->hdmiphy);
 
+	hdmiphy_s_power(hdata->hdmiphy_port, 1);
 	hdmiphy_conf_reset(hdata);
 	hdmi_conf_reset(hdata);
 	hdmi_conf_init(hdata);
@@ -2068,6 +2148,7 @@ static void hdmi_resource_poweroff(struct hdmi_context *hdata)
 	enable_irq(hdata->curr_irq);
 	hdata->is_hdmi_powered_on = false;
 
+	hdmiphy_s_power(hdata->hdmiphy_port, 0);
 	hdmiphy_conf_reset(hdata);
 
 	/* power-off hdmi clocks */
