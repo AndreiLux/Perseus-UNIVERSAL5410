@@ -699,11 +699,18 @@ static struct samsung_keypad_platdata origen_quad_keypad_data __initdata = {
 	.cols		= 2,
 };
 
+/* Audio device */
+static struct platform_device origen_device_audio = {
+	.name = "origen_quad-audio",
+	.id = -1,
+};
+
 static struct platform_device *origen_quad_devices[] __initdata = {
 	&s3c_device_wdt,
 	&s3c_device_rtc,
 	&s3c_device_hsmmc2,
 	&s3c_device_i2c0,
+	&s3c_device_i2c1,
 	&s3c_device_i2c3,
 	&s5p_device_ehci,
 	&s5p_device_fimc0,
@@ -715,10 +722,12 @@ static struct platform_device *origen_quad_devices[] __initdata = {
 	&s5p_device_mfc,
 	&s5p_device_mfc_l,
 	&s5p_device_mfc_r,
+	&exynos4_device_i2s0,
 #ifdef CONFIG_DRM_EXYNOS
 	&exynos_device_drm,
 #endif
 	&origen_quad_lcd_hv070wsa,
+	&origen_device_audio,
 	&samsung_device_keypad,
 };
 
@@ -752,6 +761,12 @@ static struct i2c_board_info i2c0_devs[] __initdata = {
 		I2C_BOARD_INFO("sec_pmic", 0xCC >> 1),
 		.platform_data	= &origen_quad_s5m8767_pdata,
 		.irq		= IRQ_EINT(22),
+	},
+};
+
+static struct i2c_board_info i2c1_devs[] __initdata = {
+	{
+		I2C_BOARD_INFO("rt5631", 0x1a),
 	},
 };
 
@@ -794,6 +809,9 @@ static void __init origen_quad_machine_init(void)
 
 	s3c_i2c0_set_platdata(NULL);
 	i2c_register_board_info(0, i2c0_devs, ARRAY_SIZE(i2c0_devs));
+
+	s3c_i2c1_set_platdata(NULL);
+	i2c_register_board_info(1, i2c1_devs, ARRAY_SIZE(i2c1_devs));
 
 	s3c_i2c3_set_platdata(NULL);
 	i2c_register_board_info(3, i2c3_devs, ARRAY_SIZE(i2c3_devs));
