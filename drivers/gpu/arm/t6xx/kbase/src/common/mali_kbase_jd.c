@@ -1198,6 +1198,7 @@ void kbase_jd_zap_context(kbase_context *kctx)
 	kbase_device *kbdev;
 	zap_reset_data reset_data;
 	unsigned long flags;
+	kbase_jd_atom *katom;
 	OSK_ASSERT(kctx);
 
 	kbdev = kctx->kbdev;
@@ -1206,10 +1207,8 @@ void kbase_jd_zap_context(kbase_context *kctx)
 	kbase_job_zap_context(kctx);
 
 	mutex_lock(&kctx->jctx.lock);
-	while(!OSK_DLIST_IS_EMPTY(&kctx->waiting_soft_jobs))
+	OSK_DLIST_FOREACH(&kctx->waiting_soft_jobs, kbase_jd_atom, dep_item[0], katom)
 	{
-		kbase_jd_atom *katom = OSK_DLIST_POP_FRONT(&kctx->waiting_soft_jobs, kbase_jd_atom, dep_item[0]);
-
 		kbase_cancel_soft_job(katom);
 	}
 	mutex_unlock(&kctx->jctx.lock);

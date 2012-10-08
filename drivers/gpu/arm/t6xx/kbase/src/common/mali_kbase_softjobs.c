@@ -240,7 +240,11 @@ cancel_atom:
 
 static void kbase_fence_cancel_wait(kbase_jd_atom *katom)
 {
-	sync_fence_cancel_async(katom->fence, &katom->sync_waiter);
+	if (sync_fence_cancel_async(katom->fence, &katom->sync_waiter) != 0)
+	{
+		/* The wait wasn't cancelled - leave the cleanup for kbase_fence_wait_callback */
+		return;
+	}
 
 	/* Wait was cancelled - zap the atoms */
 	katom->event_code = BASE_JD_EVENT_JOB_CANCELLED;
