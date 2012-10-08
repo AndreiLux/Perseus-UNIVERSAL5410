@@ -436,6 +436,7 @@ config MACH_ORIGEN_QUAD
 	select EXYNOS4_SETUP_SDHCI
 	select S5P_DEV_I2C_HDMIPHY
 	select S3C24XX_PWM
+	select S5P_DEV_G3D
 	help
 	  Machine support for ORIGEN based on Samsung EXYNOS4412
 
