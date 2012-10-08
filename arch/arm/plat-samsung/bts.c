@@ -216,6 +216,24 @@ static void bts_set_default_bus_traffic(struct exynos_bts_local_data *data,
 	}
 }
 
+/* restore a BTS device with previous value */
+static void bts_restore_bus_traffic(struct exynos_bts_local_data *data)
+{
+	enum bts_priority prior = data->cur_status.cur_priority;
+
+	switch (prior) {
+	case BTS_PRIOR_BE:
+		bts_set_blocking(data);
+		bts_set_deblocking(data, data->cur_status.fbm_src);
+	case BTS_PRIOR_HARDTIME:
+		bts_set_priority(data, prior);
+		bts_set_control(data, prior);
+		break;
+	default:
+		break;
+	}
+}
+
 /* change deblocking FBM source */
 static void bts_change_deblock_src(enum bts_bw_change bw_change)
 {
@@ -298,11 +316,9 @@ static void bts_devs_init(struct exynos_bts_data *bts_data)
 
 	bts_local_data = bts_data->bts_local_data;
 	for (i = 0; i < bts_data->listnum; i++) {
-		pr_debug("%s: Set default bus BW with priority %d for res[%d]\n",
-					dev_name(bts_data->dev),
-					bts_local_data->def_priority, i);
-		bts_set_default_bus_traffic(bts_local_data,
-						bts_local_data->def_priority);
+		pr_debug("%s: Restore bus BW for res[%d]\n",
+						dev_name(bts_data->dev), i);
+		bts_restore_bus_traffic(bts_local_data);
 		bts_local_data++;
 	}
 
@@ -360,6 +376,10 @@ void exynos_bts_initialize(char *pd_name, bool power_on)
 			if (power_on) {
 				bts_devs_init(bts_data);
 			} else {
+				/*
+				 * Do NOT touch HW register because BTS's master
+				 * IP is already turned power off
+				 */
 				cur_status = &bts_data->bts_local_data->cur_status;
 				cur_status->is_enabled = false;
 			}
