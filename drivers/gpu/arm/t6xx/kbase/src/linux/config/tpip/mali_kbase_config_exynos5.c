@@ -115,15 +115,21 @@ kbase_platform_funcs_conf platform_funcs =
 static int pm_callback_power_on(kbase_device *kbdev)
 {
 	int result;
+	int ret_val;
 	struct kbase_os_device *osdev = &kbdev->osdev;
 	struct exynos_context *platform;
 
 	platform = (struct exynos_context *) kbdev->platform_context;
 
+	if (pm_runtime_status_suspended(osdev->dev))
+		ret_val = 1;
+	else
+		ret_val = 0;
+
 	if(osdev->dev->power.disable_depth > 0) {
 		if(platform->cmu_pmu_status == 0)
 			kbase_platform_cmu_pmu_control(kbdev, 1);
-		return 0;
+		return ret_val;
 	}
 	result = pm_runtime_resume(osdev->dev);
 
@@ -132,7 +138,7 @@ static int pm_callback_power_on(kbase_device *kbdev)
 	else if(result < 0)
 		OSK_PRINT_ERROR(OSK_BASE_PM, "pm_runtime_get_sync failed (%d)\n", result);
 
-	return 0;
+	return ret_val;
 }
 
 static void pm_callback_power_off(kbase_device *kbdev)
