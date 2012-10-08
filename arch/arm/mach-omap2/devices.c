@@ -29,6 +29,7 @@
 #include <asm/mach-types.h>
 #include <asm/mach/map.h>
 #include <asm/pmu.h>
+#include <asm/cti.h>
 #include <mach/id.h>
 
 #include "iomap.h"
@@ -655,11 +656,80 @@ static struct resource omap3_pmu_resource = {
 	.flags	= IORESOURCE_IRQ,
 };
 
+static struct resource omap4_pmu_resource[] = {
+	{
+		.start	= OMAP44XX_IRQ_CTI0,
+		.end	= OMAP44XX_IRQ_CTI0,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.start	= OMAP44XX_IRQ_CTI1,
+		.end	= OMAP44XX_IRQ_CTI1,
+		.flags	= IORESOURCE_IRQ,
+	}
+};
+
 static struct platform_device omap_pmu_device = {
 	.name		= "arm-pmu",
 	.id		= ARM_PMU_DEVICE_CPU,
 	.num_resources	= 1,
 };
+
+static struct arm_pmu_platdata omap4_pmu_data;
+static struct cti omap4_cti[2];
+
+static void omap4_enable_cti(int irq)
+{
+	if (irq == OMAP44XX_IRQ_CTI0)
+		cti_enable(&omap4_cti[0]);
+	else if (irq == OMAP44XX_IRQ_CTI1)
+		cti_enable(&omap4_cti[1]);
+}
+
+static void omap4_disable_cti(int irq)
+{
+	if (irq == OMAP44XX_IRQ_CTI0)
+		cti_disable(&omap4_cti[0]);
+	else if (irq == OMAP44XX_IRQ_CTI1)
+		cti_disable(&omap4_cti[1]);
+}
+
+static irqreturn_t omap4_pmu_handler(int irq, void *dev, irq_handler_t handler)
+{
+	if (irq == OMAP44XX_IRQ_CTI0)
+		cti_irq_ack(&omap4_cti[0]);
+	else if (irq == OMAP44XX_IRQ_CTI1)
+		cti_irq_ack(&omap4_cti[1]);
+
+	return handler(irq, dev);
+}
+
+static void omap4_configure_pmu_irq(void)
+{
+	void __iomem *base0;
+	void __iomem *base1;
+
+	base0 = ioremap(OMAP44XX_CTI0_BASE, SZ_4K);
+	base1 = ioremap(OMAP44XX_CTI1_BASE, SZ_4K);
+	if (!base0 && !base1) {
+		pr_err("ioremap for OMAP4 CTI failed\n");
+		return;
+	}
+
+	/*configure CTI0 for pmu irq routing*/
+	cti_init(&omap4_cti[0], base0, OMAP44XX_IRQ_CTI0, 6);
+	cti_unlock(&omap4_cti[0]);
+	cti_map_trigger(&omap4_cti[0], 1, 6, 2);
+
+	/*configure CTI1 for pmu irq routing*/
+	cti_init(&omap4_cti[1], base1, OMAP44XX_IRQ_CTI1, 6);
+	cti_unlock(&omap4_cti[1]);
+	cti_map_trigger(&omap4_cti[1], 1, 6, 2);
+
+	omap4_pmu_data.handle_irq = omap4_pmu_handler;
+	omap4_pmu_data.enable_irq = omap4_enable_cti;
+	omap4_pmu_data.disable_irq = omap4_disable_cti;
+}
 
 static void omap_init_pmu(void)
 {
@@ -667,7 +737,12 @@ static void omap_init_pmu(void)
 		omap_pmu_device.resource = &omap2_pmu_resource;
 	else if (cpu_is_omap34xx())
 		omap_pmu_device.resource = &omap3_pmu_resource;
-	else
+	else if (cpu_is_omap44xx()) {
+		omap_pmu_device.resource = omap4_pmu_resource;
+		omap_pmu_device.num_resources = 2;
+		omap_pmu_device.dev.platform_data = &omap4_pmu_data;
+		omap4_configure_pmu_irq();
+	} else
 		return;
 
 	platform_device_register(&omap_pmu_device);
