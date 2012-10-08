@@ -1419,29 +1419,12 @@ static unsigned long exynos4_fout_apll_get_rate(struct clk *clk)
 }
 
 static u32 exynos4_epll_div[][6] = {
-	{  48000000, 0, 48, 3, 3, 0 },
-	{  96000000, 0, 48, 3, 2, 0 },
-	{ 144000000, 1, 72, 3, 2, 0 },
 	{ 192000000, 0, 48, 3, 1, 0 },
-	{ 288000000, 1, 72, 3, 1, 0 },
-	{  84000000, 0, 42, 3, 2, 0 },
-	{  50000000, 0, 50, 3, 3, 0 },
-	{  80000000, 1, 80, 3, 3, 0 },
-	{  32750000, 1, 65, 3, 4, 35127 },
-	{  32768000, 1, 65, 3, 4, 35127 },
-	{  49152000, 0, 49, 3, 3, 9961 },
-	{  67737600, 1, 67, 3, 3, 48366 },
+	{ 180000000, 0, 45, 3, 1, 0 },
 	{  73728000, 1, 73, 3, 3, 47710 },
+	{  67737600, 1, 90, 4, 3, 20762 },
+	{  49152000, 0, 49, 3, 3, 9961 },
 	{  45158400, 0, 45, 3, 3, 10381 },
-	{  45000000, 0, 45, 3, 3, 10355 },
-	{  45158000, 0, 45, 3, 3, 10355 },
-	{  49125000, 0, 49, 3, 3, 9961 },
-	{  67738000, 1, 67, 3, 3, 48366 },
-	{  73800000, 1, 73, 3, 3, 47710 },
-	{  36000000, 1, 32, 3, 4, 0 },
-	{  60000000, 1, 60, 3, 3, 0 },
-	{  72000000, 1, 72, 3, 3, 0 },
-	{ 191923200, 0, 47, 3, 1, 64278 },
 	{ 180633600, 0, 45, 3, 1, 10381 },
 };
 
@@ -1449,10 +1432,24 @@ static int exynos4_epll_set_rate(struct clk *clk, unsigned long rate)
 {
 	unsigned int epll_con, epll_con_k;
 	unsigned int i;
+	unsigned int tmp;
+	unsigned int epll_rate;
+	unsigned int locktime;
+	unsigned int lockcnt;
 
 	/* Return if nothing changed */
 	if (clk->rate == rate)
 		return 0;
+
+	if (clk->parent)
+		epll_rate = clk_get_rate(clk->parent);
+	else
+		epll_rate = clk_ext_xtal_mux.rate;
+
+	if (epll_rate != 24000000) {
+		pr_err("Invalid Clock : recommended clock is 24MHz.\n");
+		return -EINVAL;
+	}
 
 	epll_con = __raw_readl(EXYNOS4_EPLL_CON0);
 	epll_con &= ~(0x1 << 27 | \
@@ -1477,8 +1474,20 @@ static int exynos4_epll_set_rate(struct clk *clk, unsigned long rate)
 		return -EINVAL;
 	}
 
+	epll_rate /= 1000000;
+
+	/* 3000 max_cycls : specification data */
+	locktime = 3000 / epll_rate * exynos4_epll_div[i][3];
+	lockcnt = locktime * 10000 / (10000 / epll_rate);
+
+	__raw_writel(lockcnt, EXYNOS4_EPLL_LOCK);
+
 	__raw_writel(epll_con, EXYNOS4_EPLL_CON0);
 	__raw_writel(epll_con_k, EXYNOS4_EPLL_CON1);
+
+	do {
+		tmp = __raw_readl(EXYNOS4_EPLL_CON0);
+	} while (!(tmp & 0x1 << EXYNOS4_EPLLCON0_LOCKED_SHIFT));
 
 	clk->rate = rate;
 
