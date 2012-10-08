@@ -245,22 +245,59 @@ static int gsc_m2m_buf_prepare(struct vb2_buffer *vb)
 	return 0;
 }
 
+static void gsc_m2m_fence_work(struct work_struct *work)
+{
+	struct gsc_ctx *ctx = container_of(work, struct gsc_ctx, fence_work);
+	struct v4l2_m2m_buffer *buffer;
+	struct sync_fence *fence;
+	unsigned long flags;
+	int ret;
+
+	spin_lock_irqsave(&ctx->slock, flags);
+
+	while (!list_empty(&ctx->fence_wait_list)) {
+		buffer = list_first_entry(&ctx->fence_wait_list,
+					  struct v4l2_m2m_buffer, wait);
+		list_del(&buffer->wait);
+		spin_unlock_irqrestore(&ctx->slock, flags);
+
+		fence = buffer->vb.acquire_fence;
+		if (fence) {
+			buffer->vb.acquire_fence = NULL;
+			ret = sync_fence_wait(fence, 1000);
+			if (ret == -ETIME) {
+				gsc_warn("sync_fence_wait() timeout");
+				ret = sync_fence_wait(fence, -1);
+			}
+			if (ret)
+				gsc_warn("sync_fence_wait() error");
+			sync_fence_put(fence);
+		}
+
+		if (ctx->m2m_ctx) {
+			v4l2_m2m_buf_queue(ctx->m2m_ctx, &buffer->vb);
+			v4l2_m2m_try_schedule(ctx->m2m_ctx);
+		}
+
+		spin_lock_irqsave(&ctx->slock, flags);
+	}
+
+	spin_unlock_irqrestore(&ctx->slock, flags);
+}
+
 static void gsc_m2m_buf_queue(struct vb2_buffer *vb)
 {
 	struct gsc_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
+	struct v4l2_m2m_buffer *b = container_of(vb, struct v4l2_m2m_buffer, vb);
+	unsigned long flags;
 
 	gsc_dbg("ctx: %p, ctx->state: 0x%x", ctx, ctx->state);
 
-	if (vb->acquire_fence) {
-		int ret = sync_fence_wait(vb->acquire_fence, 100);
-		sync_fence_put(vb->acquire_fence);
-		vb->acquire_fence = NULL;
-		if (ret < 0)
-			gsc_err("sync_fence_wait() timeout");
-	}
+	spin_lock_irqsave(&ctx->slock, flags);
+	list_add_tail(&b->wait, &ctx->fence_wait_list);
+	spin_unlock_irqrestore(&ctx->slock, flags);
 
-	if (ctx->m2m_ctx)
-		v4l2_m2m_buf_queue(ctx->m2m_ctx, vb);
+	queue_work(ctx->gsc_dev->irq_workqueue, &ctx->fence_work);
 }
 
 struct vb2_ops gsc_m2m_qops = {
@@ -602,6 +639,8 @@ static int gsc_m2m_open(struct file *file)
 	ctx->in_path = GSC_DMA;
 	ctx->out_path = GSC_DMA;
 	spin_lock_init(&ctx->slock);
+	INIT_LIST_HEAD(&ctx->fence_wait_list);
+	INIT_WORK(&ctx->fence_work, gsc_m2m_fence_work);
 
 	ctx->m2m_ctx = v4l2_m2m_ctx_init(gsc->m2m.m2m_dev, ctx, queue_init);
 	if (IS_ERR(ctx->m2m_ctx)) {

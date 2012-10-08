@@ -583,6 +583,8 @@ struct gsc_ctx {
 	struct v4l2_ctrl_handler ctrl_handler;
 	struct gsc_ctrls	gsc_ctrls;
 	bool			ctrls_rdy;
+	struct work_struct	fence_work;
+	struct list_head	fence_wait_list;
 };
 
 #if defined(CONFIG_VIDEOBUF2_CMA_PHYS)
