@@ -276,7 +276,7 @@ long mobicore_log_setup(void)
 		return -ENOMEM;
 	}
 
-	log_thread = kthread_run(log_worker, NULL, "mobicore_log");
+	log_thread = kthread_create(log_worker, NULL, "mobicore_log");
 	if (IS_ERR(log_thread)) {
 		MCDRV_DBG_ERROR("mobicore log thread creation failed!");
 		ret = -EFAULT;
@@ -312,6 +312,8 @@ long mobicore_log_setup(void)
 		ret = -EIO;
 		goto mobicore_log_setup_kthread;
 	}
+
+	wake_up_process(log_thread);
 
 	MCDRV_DBG("fc_log Logger version %u\n", log_buf->version);
 	return 0;
