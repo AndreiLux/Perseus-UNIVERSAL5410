@@ -75,8 +75,6 @@ STATIC int kbase_mem_allocator_shrink(struct shrinker *s, struct shrink_control 
 
 	spin_unlock(&allocator->free_list_lock);
 
-	pr_info("%s: shrunk context freelist by %d pages\n", __func__, freed);
-
 	return atomic_read(&allocator->free_list_size);
 }
 
