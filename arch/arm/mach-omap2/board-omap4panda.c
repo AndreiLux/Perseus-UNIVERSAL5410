@@ -148,6 +148,20 @@ static struct gpio_keys_platform_data gpio_key_info = {
 	.nbuttons       = ARRAY_SIZE(gpio_buttons),
 };
 
+static struct gpio_keys_button gpio_buttons_4460[] = {
+	{
+		.code                   = BTN_EXTRA,
+		.gpio                   = 113,
+		.desc                   = "user",
+		.wakeup                 = 1,
+	},
+};
+
+static struct gpio_keys_platform_data gpio_key_info_4460 = {
+	.buttons        = gpio_buttons_4460,
+	.nbuttons       = ARRAY_SIZE(gpio_buttons_4460),
+};
+
 static struct platform_device keys_gpio = {
 	.name   = "gpio-keys",
 	.id     = -1,
@@ -687,9 +701,13 @@ static void omap4_panda_init_rev(void)
 
 static void __init enable_board_wakeups(void)
 {
-	/* user button on GPIO_121 */
-	omap_mux_init_signal("gpio_121",
-		OMAP_WAKEUP_EN | OMAP_PIN_INPUT_PULLUP);
+	/* user button on GPIO_121 for 4430, 113 for 4460 */
+	if (cpu_is_omap446x())
+		omap_mux_init_signal("gpio_113",
+			OMAP_WAKEUP_EN | OMAP_PIN_INPUT_PULLUP);
+	else
+		omap_mux_init_signal("gpio_121",
+			OMAP_WAKEUP_EN | OMAP_PIN_INPUT_PULLUP);
 
 	/* sys_nirq1 for TWL6030 (USB, PMIC, etc) */
 	omap_mux_init_signal("sys_nirq1",
@@ -757,8 +775,10 @@ static void __init omap4_panda_init(void)
 			ARRAY_SIZE(lpddr2_elpida_2G_S4_timings),
 			&lpddr2_elpida_S4_min_tck, NULL);
 
-	if (cpu_is_omap446x())
+	if (cpu_is_omap446x()) {
 		gpio_leds[0].gpio = GPIO_PANDAES_LED1;
+		keys_gpio.dev.platform_data = &gpio_key_info_4460;
+	}
 
 	omap4_mux_init(board_mux, NULL, package);
 
