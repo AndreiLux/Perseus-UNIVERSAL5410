@@ -1815,12 +1815,12 @@ int fimc_is_ischain_probe(struct fimc_is_device_ischain *this,
 #ifdef FW_DEBUG
 	debugfs_root = debugfs_create_dir(DEBUG_FS_ROOT_NAME, NULL);
 	if (debugfs_root)
-		err("debugfs_create_dir is fail");
+		dbg_ischain("debugfs %s is created", DEBUG_FS_ROOT_NAME);
 
 	debugfs_file = debugfs_create_file(DEBUG_FS_FILE_NAME, S_IRUSR,
 		debugfs_root, this, &debug_fops);
 	if (debugfs_file)
-		err("debugfs_create_file is fail");
+		dbg_ischain("debugfs %s is created", DEBUG_FS_FILE_NAME);
 #endif
 
 exit:
