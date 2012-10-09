@@ -156,9 +156,9 @@ static int fimd_display_power_on(struct device *dev, int mode)
 
 	switch (mode) {
 	case DRM_MODE_DPMS_ON:
-	case DRM_MODE_DPMS_STANDBY:
 		enable = true;
 		break;
+	case DRM_MODE_DPMS_STANDBY:
 	case DRM_MODE_DPMS_SUSPEND:
 	case DRM_MODE_DPMS_OFF:
 		enable = false;
