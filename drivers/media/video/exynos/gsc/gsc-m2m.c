@@ -421,8 +421,8 @@ static int gsc_m2m_reqbufs(struct file *file, void *fh,
 			gsc_ctx_state_lock_clear(GSC_DST_FMT, ctx);
 	}
 
-	update_protected_content(gsc, ctx->gsc_ctrls.drm_en);
-	gsc->vb2->set_protected(gsc->alloc_ctx, gsc->protected_content);
+	gsc_set_protected_content(gsc, ctx->gsc_ctrls.drm_en->cur.val);
+
 	frame = ctx_get_frame(ctx, reqbufs->type);
 	frame->cacheable = ctx->gsc_ctrls.cacheable->val;
 	gsc->vb2->set_cacheable(gsc->alloc_ctx, frame->cacheable);
@@ -671,6 +671,12 @@ static int gsc_m2m_release(struct file *file)
 
 	gsc_dbg("pid: %d, state: 0x%lx, refcnt= %d",
 		task_pid_nr(current), gsc->state, gsc->m2m.refcnt);
+
+	/* if we didn't properly sequence with the secure side to turn off
+	 * content protection, we may be left in a very bad state and the
+	 * only way to recover this reliably is to reboot.
+	 */
+	BUG_ON(gsc->protected_content);
 
 	gsc_bus_request_put(gsc);
 

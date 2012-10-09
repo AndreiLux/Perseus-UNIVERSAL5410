@@ -1231,6 +1231,24 @@ void gsc_bus_request_put(struct gsc_dev *gsc)
 	}
 }
 
+int gsc_set_protected_content(struct gsc_dev *gsc, bool enable)
+{
+	if (gsc->protected_content == enable)
+		return 0;
+
+	if (enable)
+		pm_runtime_get_sync(&gsc->pdev->dev);
+
+	gsc->vb2->set_protected(gsc->alloc_ctx, enable);
+
+	if (!enable)
+		pm_runtime_put_sync(&gsc->pdev->dev);
+
+	gsc->protected_content = enable;
+
+	return 0;
+}
+
 static int gsc_runtime_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);

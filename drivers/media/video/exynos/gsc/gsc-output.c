@@ -426,8 +426,8 @@ static int gsc_output_reqbufs(struct file *file, void *priv,
 		gsc_ctx_state_lock_clear(GSC_SRC_FMT | GSC_DST_FMT,
 					 out->ctx);
 
-	update_protected_content(gsc, out->ctx->gsc_ctrls.drm_en);
-	gsc->vb2->set_protected(gsc->alloc_ctx, gsc->protected_content);
+	gsc_set_protected_content(gsc, out->ctx->gsc_ctrls.drm_en->cur.val);
+
 	frame = ctx_get_frame(out->ctx, reqbufs->type);
 	frame->cacheable = out->ctx->gsc_ctrls.cacheable->val;
 	gsc->vb2->set_cacheable(gsc->alloc_ctx, frame->cacheable);
@@ -882,6 +882,12 @@ static int gsc_output_close(struct file *file)
 	struct gsc_dev *gsc = video_drvdata(file);
 
 	gsc_dbg("pid: %d, state: 0x%lx", task_pid_nr(current), gsc->state);
+
+	/* if we didn't properly sequence with the secure side to turn off
+	 * content protection, we may be left in a very bad state and the
+	 * only way to recover this reliably is to reboot.
+	 */
+	BUG_ON(gsc->protected_content);
 
 	clear_bit(ST_OUTPUT_OPEN, &gsc->state);
 	vb2_queue_release(&gsc->out.vbq);

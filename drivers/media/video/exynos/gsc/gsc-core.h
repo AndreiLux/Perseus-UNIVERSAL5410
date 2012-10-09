@@ -768,12 +768,6 @@ static inline void update_ctrl_value(struct v4l2_ctrl *ctrl, s32 value)
 	ctrl->cur.val = ctrl->val = value;
 }
 
-static inline void update_protected_content(struct gsc_dev *gsc,
-					    struct v4l2_ctrl *ctrl)
-{
-	gsc->protected_content = ctrl->cur.val;
-}
-
 void gsc_hw_set_sw_reset(struct gsc_dev *dev);
 void gsc_hw_set_one_frm_mode(struct gsc_dev *dev, bool mask);
 void gsc_hw_set_frm_done_irq_mask(struct gsc_dev *dev, bool mask);
@@ -823,5 +817,7 @@ void gsc_pixelasync_sw_reset(struct gsc_dev *dev);
 
 int gsc_bus_request_get(struct gsc_dev *gsc);
 void gsc_bus_request_put(struct gsc_dev *gsc);
+
+int gsc_set_protected_content(struct gsc_dev *gsc, bool enable);
 
 #endif /* GSC_CORE_H_ */
