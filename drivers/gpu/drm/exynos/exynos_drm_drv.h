@@ -320,6 +320,7 @@ struct exynos_drm_fb {
 	struct drm_framebuffer		fb;
 	struct exynos_drm_gem_obj	*exynos_gem_obj[MAX_FB_BUFFER];
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	struct drm_crtc			*crtc;
 	struct kds_resource_set		*kds_res_set;
 	struct kds_resource_set		*kds_res_set_rm_fb;
 	struct dma_buf			*dma_buf;

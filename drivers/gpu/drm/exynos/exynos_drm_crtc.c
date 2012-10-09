@@ -104,11 +104,11 @@ int exynos_drm_overlay_update(struct exynos_drm_overlay *overlay,
 	return 0;
 }
 
-static void exynos_drm_crtc_page_flip_apply(struct drm_crtc *crtc)
+static void exynos_drm_crtc_page_flip_apply(struct drm_crtc *crtc,
+					    struct drm_framebuffer *fb)
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 	struct exynos_drm_overlay *overlay = &exynos_crtc->overlay;
-	struct drm_framebuffer *fb = crtc->fb;
 	int nr = exynos_drm_format_num_buffers(fb->pixel_format);
 	int i;
 
@@ -308,14 +308,16 @@ static struct drm_crtc_helper_funcs exynos_crtc_helper_funcs = {
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_parameter)
 {
-	struct drm_crtc *crtc = (struct drm_crtc *)callback_parameter;
+	struct drm_framebuffer *fb = callback_parameter;
+	struct exynos_drm_fb *exynos_fb = to_exynos_fb(fb);
+	struct drm_crtc *crtc =  exynos_fb->crtc;
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
 	struct drm_device *dev = crtc->dev;
 	struct kds_resource_set **pkds = callback_extra_parameter;
 	struct kds_resource_set *prev_kds;
 	unsigned long flags;
 
-	exynos_drm_crtc_page_flip_apply(crtc);
+	exynos_drm_crtc_page_flip_apply(crtc, fb);
 
 	spin_lock_irqsave(&dev->event_lock, flags);
 	prev_kds = exynos_crtc->pending_kds;
@@ -415,6 +417,7 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	mutex_unlock(&dev->struct_mutex);
 
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	exynos_fb->crtc = crtc;
 	if (gem_ob->base.export_dma_buf) {
 		struct dma_buf *buf = gem_ob->base.export_dma_buf;
 		unsigned long shared = 0UL;
@@ -432,12 +435,12 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 
 		/* Waiting for the KDS resource*/
 		kds_async_waitall(pkds, KDS_FLAG_LOCKED_WAIT,
-				  &dev_priv->kds_cb, crtc, pkds, 1, &shared,
-				  &res_list);
+				  &dev_priv->kds_cb, fb, pkds, 1,
+				  &shared, &res_list);
 	} else {
 		*pkds = NULL;
 		DRM_ERROR("flipping a non-kds buffer\n");
-		exynos_drm_kds_callback(crtc, pkds);
+		exynos_drm_kds_callback(fb, pkds);
 	}
 #endif
 	trace_exynos_flip_request(exynos_crtc->pipe);
