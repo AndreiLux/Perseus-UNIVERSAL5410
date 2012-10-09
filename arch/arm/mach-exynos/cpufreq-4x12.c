@@ -395,6 +395,28 @@ static const unsigned int asv_voltage_step_12_5[CPUFREQ_LEVEL_END][12] = {
 	{  925000,  912500,  900000,  900000,  900000,  900000,	 900000,  900000,  887500,  875000,  875000,  862500 }, /* L16 200MHz */
 };
 
+/* 20120725 DVFS table for pega prime */
+static const unsigned int asv_voltage_step_12_5_rev2[CPUFREQ_LEVEL_END][13] = {
+	/*   ASV0,    ASV1,    ASV2,    ASV3,	 ASV4,	  ASV5,	   ASV6,    ASV7,    ASV8,    ASV9,   ASV10,   ASV11    ASV12 */
+	{ 1400000, 1400000, 1400000, 1400000, 1400000, 1400000,	1400000, 1400000, 1400000, 1400000, 1400000, 1400000, 1400000}, /* L0 1800MHz */
+	{ 1400000, 1400000, 1400000, 1400000, 1400000, 1400000,	1400000, 1400000, 1400000, 1387500, 1375000, 1362500, 1350000}, /* L1 1700MHz */
+	{ 1312500, 1312500, 1312500, 1312500, 1300000, 1287500, 1275000, 1262500, 1250000, 1237500, 1212500, 1200000, 1187500 }, /* L2 1600MHz */
+	{ 1275000, 1262500, 1262500, 1262500, 1250000, 1237500,	1225000, 1212500, 1200000, 1187500, 1162500, 1150000, 1137500 }, /* L3 1500MHz */
+	{ 1237500, 1225000, 1225000, 1225000, 1212500, 1200000, 1187500, 1175000, 1162500, 1150000, 1125000, 1112500, 1100000 }, /* L4 1400MHz */
+	{ 1187500, 1175000, 1175000, 1175000, 1162500, 1150000, 1137500, 1125000, 1112500, 1100000, 1075000, 1062500, 1050000 }, /* L5 1300MHz */
+	{ 1150000, 1137500, 1137500, 1137500, 1125000, 1112500, 1100000, 1087500, 1075000, 1062500, 1037500, 1025000, 1012500 }, /* L6 1200MHz */
+	{ 1112500, 1100000, 1100000, 1100000, 1087500, 1075000, 1062500, 1050000, 1037500, 1025000, 1000000,  987500,  975000 }, /* L7 1100MHz */
+	{ 1087500, 1075000, 1075000, 1075000, 1062500, 1050000, 1037500, 1025000, 1012500, 1000000,  975000,  962500,  950000 }, /* L8 1000MHz */
+	{ 1062500, 1050000, 1050000, 1050000, 1037500, 1025000, 1012500, 1000000,  987500,  975000,  950000,  937500,  925000 }, /* L9  900MHz */
+	{ 1025000, 1012500, 1012500, 1012500, 1000000,  987500,  975000,  962500,  950000,  937500,  912500,  900000,  887500 }, /* L10 800MHz */
+	{ 1000000,  987500,  987500,  987500,  975000,  962500,  950000,  937500,  925000,  912500,  887500,  887500,  887500 }, /* L11 700MHz */
+	{  975000,  962500,  962500,  962500,  950000,  937500,  925000,  912500,  900000,  887500,  875000,  875000,  875000 }, /* L12 600MHz */
+	{  962500,  950000,  950000,  950000,  937500,  925000,  912500,  900000,  887500,  887500,  875000,  875000,  875000 }, /* L13 500MHz */
+	{  950000,  937500,  937500,  937500,  925000,  912500,  900000,  887500,  887500,  887500,  875000,  875000,  875000 }, /* L14 400MHz */
+	{  937500,  925000,  925000,  925000,  912500,  900000,  887500,  887500,  887500,  887500,  875000,  875000,  875000 }, /* L15 300MHz */
+	{  925000,  912500,  912500,  912500,  900000,  887500,  887500,  887500,  887500,  887500,  875000,  875000,  875000 }, /* L16 200MHz */
+};
+
 static void set_clkdiv(unsigned int div_index)
 {
 	unsigned int tmp;
@@ -562,7 +584,7 @@ static void exynos4x12_set_frequency(unsigned int old_index,
 /* Get maximum cpufreq index of chip */
 static void __init set_volt_table(void)
 {
-	unsigned int i;
+	unsigned int i, tmp;
 
 	max_support_idx = L0;
 
@@ -577,11 +599,54 @@ static void __init set_volt_table(void)
 				exynos4x12_volt_table[i] =
 					asv_voltage_4212[i][exynos_result_of_asv];
 		} else if (soc_is_exynos4412()) {
-			for (i = 0 ; i < CPUFREQ_LEVEL_END ; i++)
-				exynos4x12_volt_table[i] =
-					asv_voltage_step_12_5[i][exynos_result_of_asv];
+			if (samsung_rev() >= EXYNOS4412_REV_2_0) {
+				for (i = 0 ; i < CPUFREQ_LEVEL_END ; i++)
+					exynos4x12_volt_table[i] =
+						asv_voltage_step_12_5_rev2[i][exynos_result_of_asv];
+			} else {
+				for (i = 0 ; i < CPUFREQ_LEVEL_END ; i++)
+					exynos4x12_volt_table[i] =
+						asv_voltage_step_12_5[i][exynos_result_of_asv];
+			}
 		} else {
 			pr_err("%s: Can't find SoC type \n", __func__);
+		}
+	}
+
+	if (soc_is_exynos4412() && (samsung_rev() >= EXYNOS4412_REV_2_0)) {
+		tmp = (is_special_flag() >> ARM_LOCK_FLAG) & 0x3;
+
+		if (tmp) {
+			pr_info("%s : special flag[%d]\n", __func__, tmp);
+			switch (tmp) {
+			case 1:
+				/* 500MHz fixed volt */
+				i = L11;
+				break;
+			case 2:
+				/* 700MHz fixed volt */
+				i = L9;
+				break;
+			case 3:
+				/* 800MHz fixed volt */
+				i = L8;
+				break;
+			default:
+				break;
+			}
+
+			pr_info("ARM voltage locking at L%d\n", i);
+
+			for (tmp = (i + 1) ; tmp < CPUFREQ_LEVEL_END ; tmp++) {
+				exynos4x12_volt_table[tmp] =
+					exynos4x12_volt_table[i];
+				pr_info("CPUFREQ: L%d : %d\n", tmp, exynos4x12_volt_table[tmp]);
+			}
+		}
+
+		if (exynos_dynamic_ema) {
+			need_dynamic_ema = true;
+			pr_info("%s: Dynamic EMA is enabled\n", __func__);
 		}
 	}
 }
@@ -712,7 +777,11 @@ int exynos4x12_cpufreq_init(struct exynos_dvfs_info *info)
 	 * higher than MPLL.
 	 * So, pll_safe_idx set to value based on MPLL clock.(800MHz or 880MHz)
 	 */
-	info->pll_safe_idx = L10;
+	if (samsung_rev() >= EXYNOS4412_REV_2_0)
+		info->pll_safe_idx = L9;
+	else
+		info->pll_safe_idx = L10;
+
 	info->max_support_idx = max_support_idx;
 	info->min_support_idx = min_support_idx;
 	info->cpu_clk = cpu_clk;

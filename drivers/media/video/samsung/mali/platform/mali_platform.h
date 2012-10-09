@@ -21,7 +21,7 @@
 #ifdef CONFIG_CPU_EXYNOS4210
 #define MALI_DVFS_STEPS 2
 #else
-#define MALI_DVFS_STEPS 4
+#define MALI_DVFS_STEPS 5
 #endif
 
 #if !USING_MALI_PMM
