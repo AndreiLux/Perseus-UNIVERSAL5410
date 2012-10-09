@@ -23,6 +23,7 @@
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/slab.h>
+#include <linux/debugfs.h>
 
 #include <plat/cpu.h>
 
@@ -267,6 +268,53 @@ static irqreturn_t tmu_irq(int irq, void *id)
 	return IRQ_HANDLED;
 }
 
+static struct dentry *tmu_debugfs;
+
+static int tmu_debug_show(struct seq_file *s, void *unused)
+{
+	struct tmu_info *info = s->private;
+	char *cur_tmu_state;
+
+	seq_printf(s, "Current Temperature : %d\n", get_cur_temp(info));
+	switch (info->tmu_state) {
+	case TMU_STATUS_INIT:
+	case TMU_STATUS_NORMAL:
+		cur_tmu_state = "TMU_STATUS_NORMAL";
+		break;
+	case TMU_STATUS_THROTTLED:
+		cur_tmu_state = "TMU_STATUS_THROTTLED";
+		break;
+	case TMU_STATUS_TRIPPED:
+		cur_tmu_state = "TMU_STATUS_TRIPPED";
+		break;
+	default:
+		cur_tmu_state = "INVALID STATUS";
+		break;
+	}
+	seq_printf(s, "Current TMU State : %s\n", cur_tmu_state);
+	seq_printf(s, "Memory Throttling : %s\n",
+			info->mem_throttled ? "throttled" : "unthrottled");
+	seq_printf(s, "Memory throttle auto refresh time : %d ns\n",
+			info->auto_refresh_mem_throttle);
+	seq_printf(s, "Normal auto refresh time : %d ns\n", info->auto_refresh_normal);
+	seq_printf(s, "TMU monitoring sample rate : %d ms\n",
+			info->sampling_rate);
+
+	return 0;
+}
+
+static int tmu_debug_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, tmu_debug_show, inode->i_private);
+}
+
+const static struct file_operations tmu_dev_status_fops = {
+	.open		= tmu_debug_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 static int __devinit tmu_probe(struct platform_device *pdev)
 {
 	struct tmu_info *info;
@@ -332,9 +380,20 @@ static int __devinit tmu_probe(struct platform_device *pdev)
 		goto err_noinit;
 	}
 
+	tmu_debugfs =
+		debugfs_create_file("tmu_dev_status",
+				S_IRUGO, NULL, info, &tmu_dev_status_fops);
+	if (IS_ERR_OR_NULL(tmu_debugfs)) {
+		tmu_debugfs = NULL;
+		dev_err(&pdev->dev, "%s: debugfs_create_file() failed\n", __func__);
+		goto err_nodbgfs;
+	}
+
 	dev_info(&pdev->dev, "Tmu Initialization is sucessful...!\n");
 	return 0;
 
+err_nodbgfs:
+	free_irq(info->irq, NULL);
 err_noinit:
 	platform_set_drvdata(pdev, NULL);
 err_wq:
@@ -351,6 +410,7 @@ static int __devexit tmu_remove(struct platform_device *pdev)
 	cancel_delayed_work_sync(&info->polling);
 	disable_irq(info->irq);
 	free_irq(info->irq, info);
+	debugfs_remove(tmu_debugfs);
 	destroy_workqueue(tmu_monitor_wq);
 
 	platform_set_drvdata(pdev, NULL);
