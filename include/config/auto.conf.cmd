@@ -83,7 +83,6 @@ deps_config := \
 	fs/ext3/Kconfig \
 	fs/ext2/Kconfig \
 	fs/Kconfig \
-	drivers/j4fs/Kconfig \
 	drivers/interceptor/Kconfig \
 	drivers/felica/Kconfig \
 	drivers/iommu/Kconfig \
@@ -104,6 +103,7 @@ deps_config := \
 	drivers/clk/Kconfig \
 	drivers/platform/x86/Kconfig \
 	drivers/platform/Kconfig \
+	drivers/staging/cpupower/Kconfig \
 	drivers/staging/nvec/Kconfig \
 	drivers/staging/mei/Kconfig \
 	drivers/staging/altera-stapl/Kconfig \
@@ -248,6 +248,7 @@ deps_config := \
 	sound/oss/Kconfig \
 	sound/soc/codecs/mc1n2/Kconfig \
 	sound/soc/codecs/Kconfig \
+	sound/soc/codecs/Kconfig.voodoo \
 	sound/soc/txx9/Kconfig \
 	sound/soc/tegra/Kconfig \
 	sound/soc/sh/Kconfig \
@@ -305,7 +306,6 @@ deps_config := \
 	drivers/video/samsung_duallcd/Kconfig \
 	drivers/video/samsung_extdisp/Kconfig \
 	drivers/video/samsung/Kconfig \
-	drivers/gpu/vithar/Kconfig \
 	drivers/gpu/ion/Kconfig \
 	drivers/gpu/stub/Kconfig \
 	drivers/gpu/drm/udl/Kconfig \
@@ -353,10 +353,8 @@ deps_config := \
 	drivers/media/video/samsung/fimg2d3x-exynos4/Kconfig \
 	drivers/media/video/samsung/fimg2d4x/Kconfig \
 	drivers/media/video/samsung/fimg2d3x/Kconfig \
-	drivers/media/video/samsung/mali_r3p0/Kconfig \
+	drivers/media/video/samsung/ump/Kconfig \
 	drivers/media/video/samsung/mali/Kconfig \
-	drivers/media/video/samsung/mali_r3p0_lsi/Kconfig \
-	drivers/media/video/samsung/ump_r3p0_lsi/Kconfig \
 	drivers/media/video/samsung/mfc5x/Kconfig \
 	drivers/media/video/samsung/tvout/Kconfig \
 	drivers/media/video/samsung/fimc/Kconfig \
@@ -668,7 +666,6 @@ deps_config := \
 	drivers/sh/intc/Kconfig \
 	drivers/sh/Kconfig \
 	arch/arm/mach-shmobile/Kconfig \
-	arch/arm/mach-exynos/Kconfig.slp \
 	arch/arm/mach-exynos/Kconfig.local \
 	arch/arm/mach-exynos/Kconfig \
 	arch/arm/mach-s5pv210/Kconfig \
@@ -746,7 +743,7 @@ deps_config := \
 include/config/auto.conf: \
 	$(deps_config)
 
-ifneq "$(KERNELVERSION)" "3.0.31"
+ifneq "$(KERNELVERSION)" "3.0.36"
 include/config/auto.conf: FORCE
 endif
 ifneq "$(ARCH)" "arm"

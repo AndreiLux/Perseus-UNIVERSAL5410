@@ -1,7 +1,7 @@
-/* This file is auto generated, version 2 */
+/* This file is auto generated, version 15 */
 /* SMP PREEMPT */
 #define UTS_MACHINE "arm"
-#define UTS_VERSION "#2 SMP PREEMPT Wed Sep 12 07:54:10 CST 2012"
-#define LINUX_COMPILE_BY "yangpeng"
-#define LINUX_COMPILE_HOST "android15"
+#define UTS_VERSION "#15 SMP PREEMPT Tue Oct 9 06:16:59 CEST 2012"
+#define LINUX_COMPILE_BY "af"
+#define LINUX_COMPILE_HOST "mintvm"
 #define LINUX_COMPILER "gcc version 4.4.3 (GCC) "
