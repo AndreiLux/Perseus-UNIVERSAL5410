@@ -333,7 +333,8 @@ static u32 dw_mci_prep_stop(struct dw_mci *host, struct mmc_command *cmd)
 	} else
 		return 0;
 
-	cmdr = stop->opcode | SDMMC_CMD_STOP;
+	cmdr = stop->opcode | SDMMC_CMD_STOP |
+		SDMMC_CMD_RESP_CRC | SDMMC_CMD_RESP_EXP;
 
 	/* Use hold bit register */
 	if (host->pdata->set_io_timing)
