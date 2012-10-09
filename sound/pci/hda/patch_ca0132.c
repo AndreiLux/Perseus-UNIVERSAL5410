@@ -4013,8 +4013,17 @@ static void ca0132_set_dmic(struct hda_codec *codec, int enable)
 	struct ca0132_spec *spec = codec->spec;
 	unsigned int tmp;
 	u8 val;
+	unsigned int oldval;
 
 	CA0132_LOG("ca0132_set_dmic: enable=%d\n", enable);
+
+	/* Check if Mic1 is streaming, if so, stop streaming */
+	oldval = snd_hda_codec_read(codec, spec->adcs[0], 0,
+				    AC_VERB_GET_CONV, 0);
+	if (oldval != 0)
+		snd_hda_codec_write(codec, spec->adcs[0], 0,
+				    AC_VERB_SET_CHANNEL_STREAMID,
+				    0);
 
 	ca0132_set_vipsource(codec, 0);
 	if (enable) {
@@ -4044,6 +4053,12 @@ static void ca0132_set_dmic(struct hda_codec *codec, int enable)
 			chipio_set_control_flag(codec, CONTROL_FLAG_DMIC, 0);
 	}
 	ca0132_set_vipsource(codec, 1);
+
+	/* Restore the previous stream and channel */
+	if (oldval != 0)
+		snd_hda_codec_write(codec, spec->adcs[0], 0,
+				    AC_VERB_SET_CHANNEL_STREAMID,
+				    oldval);
 }
 
 static void ca0132_init_dmic(struct hda_codec *codec)
