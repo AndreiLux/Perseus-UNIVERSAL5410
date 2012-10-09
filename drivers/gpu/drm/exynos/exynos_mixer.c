@@ -848,21 +848,6 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 
 	/* handling VSYNC */
 	if (val & MXR_INT_STATUS_VSYNC) {
-
-		if (mctx->event_flags & MXR_EVENT_VSYNC) {
-			DRM_DEBUG_KMS("mctx->event_flags & MXR_EVENT_VSYNC");
-
-
-			mixer_reg_write(res, MXR_GRAPHIC_WH(1), 0);
-			mixer_reg_write(res, MXR_GRAPHIC_SPAN(1), 0);
-			mixer_reg_write(res, MXR_GRAPHIC_SXY(1), 0);
-			mixer_reg_write(res, MXR_GRAPHIC_DXY(1), 0);
-
-			mctx->event_flags &= ~MXR_EVENT_VSYNC;
-			wake_up(&mctx->mixer_res.event_queue);
-			goto out;
-		}
-
 		/* interlace scan need to check shadow register */
 		if (mctx->interlace) {
 			base = mixer_reg_read(res, MXR_GRAPHIC_BASE(0));
@@ -884,8 +869,16 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 
 		for (i = 0; i < MIXER_WIN_NR; i++)
 			mctx->win_data[i].updated = false;
+
 		exynos_drm_crtc_finish_pageflip(drm_hdmi_ctx->drm_dev,
 						mctx->pipe);
+
+		if (mctx->event_flags & MXR_EVENT_VSYNC) {
+			DRM_DEBUG_KMS("mctx->event_flags & MXR_EVENT_VSYNC");
+
+			mctx->event_flags &= ~MXR_EVENT_VSYNC;
+			wake_up(&mctx->mixer_res.event_queue);
+		}
 	}
 
 out:
