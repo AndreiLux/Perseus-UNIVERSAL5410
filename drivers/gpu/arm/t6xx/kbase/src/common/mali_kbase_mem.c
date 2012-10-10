@@ -51,7 +51,9 @@ STATIC int kbase_mem_allocator_shrink(struct shrinker *s, struct shrink_control 
 	if (sc->nr_to_scan == 0)
 		return atomic_read(&allocator->free_list_size);
 
-	spin_lock(&allocator->free_list_lock);
+	might_sleep();
+
+	mutex_lock(&allocator->free_list_lock);
 
 	i = MIN(atomic_read(&allocator->free_list_size), sc->nr_to_scan);
 	freed = i;
@@ -73,7 +75,7 @@ STATIC int kbase_mem_allocator_shrink(struct shrinker *s, struct shrink_control 
 		__free_page(p);
 	}
 
-	spin_unlock(&allocator->free_list_lock);
+	mutex_unlock(&allocator->free_list_lock);
 
 	return atomic_read(&allocator->free_list_size);
 }
@@ -95,7 +97,7 @@ mali_error kbase_mem_allocator_init(kbase_mem_allocator * const allocator, unsig
 	}
 
 	INIT_LIST_HEAD(&allocator->free_list_head);
-	spin_lock_init(&allocator->free_list_lock);
+	mutex_init(&allocator->free_list_lock);
 	atomic_set(&allocator->free_list_size, 0);
 
 	allocator->free_list_max_size = max_size;
@@ -135,50 +137,63 @@ void kbase_mem_allocator_term(kbase_mem_allocator *allocator)
 
 mali_error kbase_mem_allocator_alloc(kbase_mem_allocator *allocator, u32 nr_pages, osk_phy_addr *pages, int flags)
 {
+	struct kbase_page_metadata * md;
+	struct kbase_page_metadata * tmp;
+	struct page * p;
+	void * mp;
 	int i;
-	int from_free_list;
+	int num_from_free_list;
+	struct list_head from_free_list = LIST_HEAD_INIT(from_free_list);
+
+	might_sleep();
+
 	OSK_ASSERT(NULL != allocator);
 
 	/* take from the free list first */
-	spin_lock(&allocator->free_list_lock);
+	mutex_lock(&allocator->free_list_lock);
 
-	from_free_list = MIN(nr_pages, atomic_read(&allocator->free_list_size));
-	atomic_sub(from_free_list, &allocator->free_list_size);
+	num_from_free_list = MIN(nr_pages, atomic_read(&allocator->free_list_size));
+	atomic_sub(num_from_free_list, &allocator->free_list_size);
 
-	for (i = 0; i < from_free_list; i++)
+	for (i = 0; i < num_from_free_list; i++)
 	{
-		struct kbase_page_metadata * md;
-		struct page * p;
 		BUG_ON(list_empty(&allocator->free_list_head));
 		md = list_first_entry(&allocator->free_list_head, struct kbase_page_metadata, list);
+		list_move(&md->list, &from_free_list);
+	}
+	mutex_unlock(&allocator->free_list_lock);
+
+	i = 0;
+	list_for_each_entry_safe(md, tmp, &from_free_list, list)
+	{
 		list_del(&md->list);
 		p = md->page;
 		if (likely(PageHighMem(p)))
 		{
 			mempool_free(md, allocator->free_list_highmem_pool);
 		}
-		pages[i] = PFN_PHYS(page_to_pfn(p));
-	}
-	spin_unlock(&allocator->free_list_lock);
 
-	if (flags & KBASE_REG_MUST_ZERO)
-	{
-		for (i = 0; i < from_free_list; i++)
+		if (flags & KBASE_REG_MUST_ZERO)
 		{
-			struct page * p;
-			void * mp;
-			p = phys_to_page(pages[i]);
-			mp = kmap_atomic(p);
+			mp = vmap(&p, 1, VM_MAP, pgprot_writecombine(PAGE_KERNEL));
 			if (NULL == mp)
 			{
+				/* free the current page */
 				__free_page(p);
-				/* abort free list pass, try the linux pass */
+				/* put the rest back on the free list */
+				mutex_lock(&allocator->free_list_lock);
+				list_splice(&from_free_list, &allocator->free_list_head);
+				atomic_add(num_from_free_list - i - 1, &allocator->free_list_size);
+				mutex_unlock(&allocator->free_list_lock);
+				/* drop down to the normal Linux alloc */
 				break;
 			}
 			memset(mp, 0x00, PAGE_SIZE);
-			osk_sync_to_memory(PFN_PHYS(page_to_pfn(p)), mp, PAGE_SIZE);
-			kunmap_atomic(mp);
+			vunmap(mp);
 		}
+
+		pages[i] = PFN_PHYS(page_to_pfn(p));
+		i++;
 	}
 
 	if (i == nr_pages)
@@ -186,24 +201,20 @@ mali_error kbase_mem_allocator_alloc(kbase_mem_allocator *allocator, u32 nr_page
 
 	for (; i < nr_pages; i++)
 	{
-		struct page *p;
-		void * mp;
-
 		p = alloc_page(GFP_HIGHUSER);
 		if (NULL == p)
 		{
 			goto err_out_roll_back;
 		}
 
-		mp = kmap(p);
+		mp = vmap(&p, 1, VM_MAP, pgprot_writecombine(PAGE_KERNEL));
 		if (NULL == mp)
 		{
 			__free_page(p);
 			goto err_out_roll_back;
 		}
 		memset(mp, 0x00, PAGE_SIZE); /* instead of __GFP_ZERO, so we can do cache maintenance */
-		osk_sync_to_memory(PFN_PHYS(page_to_pfn(p)), mp, PAGE_SIZE);
-		kunmap(p);
+		vunmap(mp);
 		pages[i] = PFN_PHYS(page_to_pfn(p));
 	}
 
@@ -228,6 +239,8 @@ void kbase_mem_allocator_free(kbase_mem_allocator *allocator, u32 nr_pages, osk_
 	LIST_HEAD(new_free_list_items);
 
 	OSK_ASSERT(NULL != allocator);
+
+	might_sleep();
 
 	/* Starting by just freeing the overspill.
 	 * As we do this outside of the lock we might spill too many pages
@@ -279,10 +292,10 @@ void kbase_mem_allocator_free(kbase_mem_allocator *allocator, u32 nr_pages, osk_
 		}
 	}
 
-	spin_lock(&allocator->free_list_lock);
+	mutex_lock(&allocator->free_list_lock);
 	list_splice(&new_free_list_items, &allocator->free_list_head);
 	atomic_add(page_count, &allocator->free_list_size);
-	spin_unlock(&allocator->free_list_lock);
+	mutex_unlock(&allocator->free_list_lock);
 }
 
 /**
