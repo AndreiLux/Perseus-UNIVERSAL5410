@@ -158,10 +158,16 @@ mali_error kbase_mem_allocator_alloc(kbase_mem_allocator *allocator, u32 nr_page
 			mempool_free(md, allocator->free_list_highmem_pool);
 		}
 		pages[i] = PFN_PHYS(page_to_pfn(p));
+	}
+	spin_unlock(&allocator->free_list_lock);
 
-		if (flags & KBASE_REG_MUST_ZERO)
+	if (flags & KBASE_REG_MUST_ZERO)
+	{
+		for (i = 0; i < from_free_list; i++)
 		{
+			struct page * p;
 			void * mp;
+			p = phys_to_page(pages[i]);
 			mp = kmap_atomic(p);
 			if (NULL == mp)
 			{
@@ -174,8 +180,6 @@ mali_error kbase_mem_allocator_alloc(kbase_mem_allocator *allocator, u32 nr_page
 			kunmap_atomic(mp);
 		}
 	}
-
-	spin_unlock(&allocator->free_list_lock);
 
 	if (i == nr_pages)
 		return MALI_ERROR_NONE;
