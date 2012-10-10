@@ -974,12 +974,15 @@ static void mxt_exit_bl(struct mxt_data *data)
 	if (error) {
 		dev_err(dev, "Failed to initialize on exit bl. error = %d\n",
 			error);
+		return;
 	}
 
 	error = mxt_input_dev_create(data);
-	if (error)
+	if (error) {
 		dev_err(dev, "Create input dev failed after init. error = %d\n",
 			error);
+		return;
+	}
 
 	error = mxt_handle_messages(data, false);
 	if (error)
