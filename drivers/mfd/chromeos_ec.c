@@ -143,6 +143,7 @@ int __devinit cros_ec_register(struct chromeos_ec_device *ec_dev)
 	int err = 0;
 
 	BLOCKING_INIT_NOTIFIER_HEAD(&ec_dev->event_notifier);
+	BLOCKING_INIT_NOTIFIER_HEAD(&ec_dev->wake_notifier);
 
 	ec_dev->command_send = cros_ec_command_send;
 	ec_dev->command_recv = cros_ec_command_recv;
@@ -229,6 +230,16 @@ int cros_ec_suspend(struct chromeos_ec_device *ec_dev)
 
 int cros_ec_resume(struct chromeos_ec_device *ec_dev)
 {
+	/*
+	 * When the EC is not a wake source, then it could not have caused the
+	 * resume, so we should do the resume processing. This may clear the
+	 * EC's key scan buffer, for example. If the EC is a wake source (e.g.
+	 * the lid is open and the user might press a key to wake) then we
+	 * don't want to do resume processing (key scan buffer should be
+	 * preserved).
+	 */
+	if (!ec_dev->wake_enabled)
+		blocking_notifier_call_chain(&ec_dev->wake_notifier, 1, ec_dev);
 	enable_irq(ec_dev->irq);
 
 	if (ec_dev->wake_enabled) {

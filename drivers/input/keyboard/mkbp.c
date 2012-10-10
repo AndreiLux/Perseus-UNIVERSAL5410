@@ -42,6 +42,7 @@ struct mkbp_device {
 	struct input_dev *idev;
 	struct chromeos_ec_device *ec;
 	struct notifier_block notifier;
+	struct notifier_block wake_notifier;
 };
 
 
@@ -220,9 +221,21 @@ static void mkbp_process(struct mkbp_device *mkbp_dev,
 static int mkbp_open(struct input_dev *dev)
 {
 	struct mkbp_device *mkbp_dev = input_get_drvdata(dev);
+	int ret;
 
-	return blocking_notifier_chain_register(&mkbp_dev->ec->event_notifier,
+	ret = blocking_notifier_chain_register(&mkbp_dev->ec->event_notifier,
 						&mkbp_dev->notifier);
+	if (ret)
+		return ret;
+	ret = blocking_notifier_chain_register(&mkbp_dev->ec->wake_notifier,
+						&mkbp_dev->wake_notifier);
+	if (ret) {
+		blocking_notifier_chain_unregister(
+			&mkbp_dev->ec->event_notifier, &mkbp_dev->notifier);
+		return ret;
+	}
+
+	return 0;
 }
 
 static void mkbp_close(struct input_dev *dev)
@@ -231,6 +244,14 @@ static void mkbp_close(struct input_dev *dev)
 
 	blocking_notifier_chain_unregister(&mkbp_dev->ec->event_notifier,
 					   &mkbp_dev->notifier);
+	blocking_notifier_chain_unregister(&mkbp_dev->ec->wake_notifier,
+					   &mkbp_dev->wake_notifier);
+}
+
+static int mkbp_get_state(struct mkbp_device *mkbp_dev, uint8_t *kb_state)
+{
+	return mkbp_dev->ec->command_recv(mkbp_dev->ec, EC_CMD_MKBP_STATE,
+					  kb_state, MKBP_NUM_COLS);
 }
 
 static int mkbp_work(struct notifier_block *nb,
@@ -241,12 +262,45 @@ static int mkbp_work(struct notifier_block *nb,
 						    notifier);
 	uint8_t kb_state[MKBP_NUM_COLS];
 
-	ret = mkbp_dev->ec->command_recv(mkbp_dev->ec, EC_CMD_MKBP_STATE,
-					 kb_state, MKBP_NUM_COLS);
+	ret = mkbp_get_state(mkbp_dev, kb_state);
 	if (ret >= 0)
 		mkbp_process(mkbp_dev, kb_state, ret);
 
 	return NOTIFY_DONE;
+}
+
+/* On resume, clear any keys in the buffer, crosbug.com/p/14523 */
+static int mkbp_clear_keyboard(struct notifier_block *nb,
+			       unsigned long state, void *_notify)
+{
+	struct mkbp_device *mkbp_dev = container_of(nb, struct mkbp_device,
+						    wake_notifier);
+	uint8_t old_state[MKBP_NUM_COLS];
+	uint8_t new_state[MKBP_NUM_COLS];
+	unsigned long duration;
+	int i, ret;
+
+	/*
+	 * Keep reading until we see that the scan state does not change.
+	 * That indicates that we are done.
+	 *
+	 * Assume that the EC keyscan buffer is at most 32 deep.
+	 *
+	 * TODO(sjg@chromium.org): Add EC command to clear keyscan FIFO.
+	 */
+	duration = jiffies;
+	ret = mkbp_get_state(mkbp_dev, new_state);
+	for (i = 1; !ret && i < 32; i++) {
+		memcpy(old_state, new_state, sizeof(old_state));
+		ret = mkbp_get_state(mkbp_dev, new_state);
+		if (0 == memcmp(old_state, new_state, sizeof(old_state)))
+			break;
+	}
+	duration = jiffies - duration;
+	dev_info(mkbp_dev->dev, "Discarded %d keyscan(s) in %dus\n", i,
+		jiffies_to_usecs(duration));
+
+	return 0;
 }
 
 static int __devinit mkbp_probe(struct platform_device *pdev)
@@ -270,6 +324,7 @@ static int __devinit mkbp_probe(struct platform_device *pdev)
 
 	mkbp_dev->ec = ec;
 	mkbp_dev->notifier.notifier_call = mkbp_work;
+	mkbp_dev->wake_notifier.notifier_call = mkbp_clear_keyboard;
 	mkbp_dev->dev = dev;
 
 	idev->name = ec->get_name(ec);

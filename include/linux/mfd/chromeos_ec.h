@@ -91,6 +91,11 @@ struct chromeos_ec_device {
 	bool wake_enabled;
 	struct blocking_notifier_head event_notifier;
 
+	/*
+	 * Indicate to sub-drivers that we have woken up from resume but we
+	 * were not a wakeup source.
+	 */
+	struct blocking_notifier_head wake_notifier;
 };
 
 /**
