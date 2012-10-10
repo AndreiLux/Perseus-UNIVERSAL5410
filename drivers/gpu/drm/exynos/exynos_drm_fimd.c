@@ -72,6 +72,7 @@ struct fimd_win_data {
 	unsigned int		buf_offsize;
 	unsigned int		line_size;	/* bytes */
 	bool			enabled;
+	bool			win_suspended;
 };
 
 struct fimd_context {
@@ -809,12 +810,47 @@ static void fimd_clear_win(struct fimd_context *ctx, int win)
 	writel(val, ctx->regs + SHADOWCON);
 }
 
+/*
+ * Disables all windows for suspend, keeps track of which ones were enabled.
+ */
+static void fimd_window_suspend(struct device *dev)
+{
+	struct fimd_context *ctx = get_fimd_context(dev);
+	struct fimd_win_data *win_data;
+	int i;
+
+	for(i = 0; i < WINDOWS_NR; i++)
+	{
+		win_data = &ctx->win_data[i];
+		win_data->win_suspended = win_data->enabled;
+		fimd_win_disable(dev, i);
+	}
+}
+
+/*
+ * Resumes the suspended windows.
+ */
+static void fimd_window_resume(struct device *dev)
+{
+	struct fimd_context *ctx = get_fimd_context(dev);
+	struct fimd_win_data *win_data;
+	int i;
+
+	for(i = 0; i < WINDOWS_NR; i++)
+	{
+		win_data = &ctx->win_data[i];
+		if (win_data->win_suspended) {
+			fimd_win_commit(dev, i);
+			win_data->win_suspended = false;
+		}
+	}
+}
+
 static int fimd_power_on(struct fimd_context *ctx, bool enable)
 {
 	struct exynos_drm_subdrv *subdrv = &ctx->subdrv;
 	struct device *dev = subdrv->dev;
 	struct exynos_drm_fimd_pdata *pdata = dev->platform_data;
-	int i;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
@@ -842,6 +878,8 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable)
 		if (pdata->panel_type == DP_LCD)
 			writel(MIE_CLK_ENABLE, ctx->regs + DPCLKCON);
 
+		fimd_window_resume(dev);
+
 		if (dp_dev)
 			exynos_dp_resume(dp_dev);
 	} else {
@@ -853,8 +891,7 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable)
 		 * suspend that connector. Otherwise we might try to scan from
 		 * a destroyed buffer later.
 		 */
-		for (i = 0; i < WINDOWS_NR; i++)
-			fimd_win_disable(dev, i);
+		fimd_window_suspend(dev);
 
 		if (pdata->panel_type == DP_LCD)
 			writel(0, ctx->regs + DPCLKCON);
