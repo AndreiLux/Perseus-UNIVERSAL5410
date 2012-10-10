@@ -401,10 +401,8 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 		exynos_drm_crtc_flip_complete(exynos_crtc->event);
 	exynos_crtc->event = event;
 	pkds = &exynos_crtc->future_kds;
-	if (*pkds) {
-		DRM_ERROR("Had to use extra kds slot\n");
+	if (*pkds)
 		pkds = &exynos_crtc->future_kds_extra;
-	}
 	*pkds = ERR_PTR(-EINVAL); /* Make it non-NULL */
 	exynos_crtc->flip_in_flight++;
 	spin_unlock_irqrestore(&dev->event_lock, flags);
