@@ -849,7 +849,7 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 	/* handling VSYNC */
 	if (val & MXR_INT_STATUS_VSYNC) {
 		/* interlace scan need to check shadow register */
-		if (mctx->interlace) {
+		if (mctx->interlace && !res->is_soc_exynos5) {
 			base = mixer_reg_read(res, MXR_GRAPHIC_BASE(0));
 			shadow = mixer_reg_read(res, MXR_GRAPHIC_BASE_S(0));
 			if (base != shadow)

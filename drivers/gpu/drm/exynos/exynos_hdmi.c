@@ -959,13 +959,6 @@ static int hdmi_v14_check_timing(struct fb_videomode *mode)
 	int ret;
 	enum exynos_mixer_mode_type mode_type;
 
-	/*
-	 * No support for interlaced since there's no clear way to convert the
-	 * timing values in drm_display_mode to exynos register values.
-	 */
-	if (mode->vmode == FB_VMODE_INTERLACED)
-		return -EINVAL;
-
 	/* Make sure the mixer can generate this mode */
 	mode_type = exynos_mixer_get_mode_type(mode->xres, mode->yres);
 	if (mode_type == EXYNOS_MIXER_MODE_INVALID)
@@ -1747,7 +1740,6 @@ static void hdmi_v14_mode_set(struct hdmi_context *hdata,
 
 	hdata->mode_conf.pixel_clock = m->clock * 1000;
 	hdmi_set_reg(core->h_blank, 2, m->htotal - m->hdisplay);
-	hdmi_set_reg(core->v1_blank, 2, m->vtotal - m->vdisplay);
 	hdmi_set_reg(core->v_line, 2, m->vtotal);
 	hdmi_set_reg(core->h_line, 2, m->htotal);
 	hdmi_set_reg(core->hsync_pol, 1,
@@ -1755,35 +1747,67 @@ static void hdmi_v14_mode_set(struct hdmi_context *hdata,
 	hdmi_set_reg(core->vsync_pol, 1,
 			(m->flags & DRM_MODE_FLAG_NVSYNC) ? 1 : 0);
 	hdmi_set_reg(core->int_pro_mode, 1,
-			(m->flags >> DRM_MODE_FLAG_INTERLACE) & 0x01);
-	/* Quirk requirement for exynos 5 HDMI IP design,
+			(m->flags & DRM_MODE_FLAG_INTERLACE) ? 1 : 0);
+
+	/*
+	 * Quirk requirement for exynos 5 HDMI IP design,
 	 * 2 pixels less than the actual calculation for hsync_start
 	 * and end.
 	 */
+
+	/* Following values & calculations differ for different type of modes */
+	if (m->flags & DRM_MODE_FLAG_INTERLACE) {
+		/* Interlaced Mode */
+		hdmi_set_reg(core->v_sync_line_bef_2, 2,
+			(m->vsync_end - m->vdisplay) / 2);
+		hdmi_set_reg(core->v_sync_line_bef_1, 2,
+			(m->vsync_start - m->vdisplay) / 2);
+		hdmi_set_reg(core->v2_blank, 2, m->vtotal / 2);
+		hdmi_set_reg(core->v1_blank, 2, (m->vtotal - m->vdisplay) / 2);
+		hdmi_set_reg(core->v_blank_f0, 2,
+			(m->vtotal + ((m->vsync_end - m->vsync_start) * 4) + 5) / 2);
+		hdmi_set_reg(core->v_blank_f1, 2, m->vtotal);
+		hdmi_set_reg(core->v_sync_line_aft_2, 2, (m->vtotal / 2) + 7);
+		hdmi_set_reg(core->v_sync_line_aft_1, 2, (m->vtotal / 2) + 2);
+		hdmi_set_reg(core->v_sync_line_aft_pxl_2, 2,
+			(m->htotal / 2) + (m->hsync_start - m->hdisplay));
+		hdmi_set_reg(core->v_sync_line_aft_pxl_1, 2,
+			(m->htotal / 2) + (m->hsync_start - m->hdisplay));
+		hdmi_set_reg(tg->vact_st, 2, (m->vtotal - m->vdisplay) / 2);
+		hdmi_set_reg(tg->vact_sz, 2, m->vdisplay / 2);
+		hdmi_set_reg(tg->vact_st2, 2, 0x249);/* Reset value + 1*/
+		hdmi_set_reg(tg->vact_st3, 2, 0x0);
+		hdmi_set_reg(tg->vact_st4, 2, 0x0);
+	} else {
+		/* Progressive Mode */
+		hdmi_set_reg(core->v_sync_line_bef_2, 2,
+			m->vsync_end - m->vdisplay);
+		hdmi_set_reg(core->v_sync_line_bef_1, 2,
+			m->vsync_start - m->vdisplay);
+		hdmi_set_reg(core->v2_blank, 2, m->vtotal);
+		hdmi_set_reg(core->v1_blank, 2, m->vtotal - m->vdisplay);
+		hdmi_set_reg(core->v_blank_f0, 2, 0xffff);
+		hdmi_set_reg(core->v_blank_f1, 2, 0xffff);
+		hdmi_set_reg(core->v_sync_line_aft_2, 2, 0xffff);
+		hdmi_set_reg(core->v_sync_line_aft_1, 2, 0xffff);
+		hdmi_set_reg(core->v_sync_line_aft_pxl_2, 2, 0xffff);
+		hdmi_set_reg(core->v_sync_line_aft_pxl_1, 2, 0xffff);
+		hdmi_set_reg(tg->vact_st, 2, m->vtotal - m->vdisplay);
+		hdmi_set_reg(tg->vact_sz, 2, m->vdisplay);
+		hdmi_set_reg(tg->vact_st2, 2, 0x248); /* Reset value */
+		hdmi_set_reg(tg->vact_st3, 2, 0x47b); /* Reset value */
+		hdmi_set_reg(tg->vact_st4, 2, 0x6ae); /* Reset value */
+	}
+
+	/* Following values & calculations are same irrespective of mode type */
 	hdmi_set_reg(core->h_sync_start, 2, m->hsync_start - m->hdisplay - 2);
 	hdmi_set_reg(core->h_sync_end, 2, m->hsync_end - m->hdisplay - 2);
-	hdmi_set_reg(core->v_sync_line_bef_2, 2, m->vsync_end - m->vdisplay);
-	hdmi_set_reg(core->v_sync_line_bef_1, 2, m->vsync_start - m->vdisplay);
 	hdmi_set_reg(core->vact_space_1, 2, 0xffff);
 	hdmi_set_reg(core->vact_space_2, 2, 0xffff);
 	hdmi_set_reg(core->vact_space_3, 2, 0xffff);
 	hdmi_set_reg(core->vact_space_4, 2, 0xffff);
 	hdmi_set_reg(core->vact_space_5, 2, 0xffff);
 	hdmi_set_reg(core->vact_space_6, 2, 0xffff);
-
-	/*
-	 * The following values can be different when using interlaced mode.
-	 * Unfortunately the datasheet doesn't describe them. This is why we
-	 * reject interlaced modes. Once this is fixed, we can remove that
-	 * restriction.
-	 */
-	hdmi_set_reg(core->v2_blank, 2, m->vtotal);
-	hdmi_set_reg(core->v_blank_f0, 2, 0xffff);
-	hdmi_set_reg(core->v_blank_f1, 2, 0xffff);
-	hdmi_set_reg(core->v_sync_line_aft_2, 2, 0xffff);
-	hdmi_set_reg(core->v_sync_line_aft_1, 2, 0xffff);
-	hdmi_set_reg(core->v_sync_line_aft_pxl_2, 2, 0xffff);
-	hdmi_set_reg(core->v_sync_line_aft_pxl_1, 2, 0xffff);
 	hdmi_set_reg(core->v_blank_f2, 2, 0xffff);
 	hdmi_set_reg(core->v_blank_f3, 2, 0xffff);
 	hdmi_set_reg(core->v_blank_f4, 2, 0xffff);
@@ -1805,12 +1829,7 @@ static void hdmi_v14_mode_set(struct hdmi_context *hdata,
 	hdmi_set_reg(tg->v_fsz, 2, m->vtotal);
 	hdmi_set_reg(tg->vsync, 2, 0x1);
 	hdmi_set_reg(tg->vsync2, 2, 0x233); /* Reset value */
-	hdmi_set_reg(tg->vact_st, 2, m->vtotal - m->vdisplay);
-	hdmi_set_reg(tg->vact_sz, 2, m->vdisplay);
 	hdmi_set_reg(tg->field_chg, 2, 0x233); /* Reset value */
-	hdmi_set_reg(tg->vact_st2, 2, 0x248); /* Reset value */
-	hdmi_set_reg(tg->vact_st3, 2, 0x47b); /* Reset value */
-	hdmi_set_reg(tg->vact_st4, 2, 0x6ae); /* Reset value */
 	hdmi_set_reg(tg->vsync_top_hdmi, 2, 0x1); /* Reset value */
 	hdmi_set_reg(tg->vsync_bot_hdmi, 2, 0x233); /* Reset value */
 	hdmi_set_reg(tg->field_top_hdmi, 2, 0x1); /* Reset value */
