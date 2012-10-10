@@ -67,7 +67,7 @@ static inline void s3c_udc_ep0_zlp(struct s3c_udc *dev)
 		__raw_readl(dev->regs + S3C_UDC_OTG_DIEPCTL(EP0_CON)));
 }
 
-static inline void s3c_udc_pre_setup(struct s3c_udc *dev)
+static inline void s3c_udc_pre_setup(struct s3c_udc *dev, bool need_nak)
 {
 	u32 ep_ctrl;
 
@@ -79,8 +79,11 @@ static inline void s3c_udc_pre_setup(struct s3c_udc *dev)
 		dev->regs + S3C_UDC_OTG_DOEPDMA(EP0_CON));
 
 	ep_ctrl = __raw_readl(dev->regs + S3C_UDC_OTG_DOEPCTL(EP0_CON));
-	__raw_writel(ep_ctrl|DEPCTL_EPENA|DEPCTL_CNAK,
-		dev->regs + S3C_UDC_OTG_DOEPCTL(EP0_CON));
+	if (need_nak)
+		ep_ctrl |= (DEPCTL_EPENA|DEPCTL_SNAK);
+	else
+		ep_ctrl |= (DEPCTL_EPENA|DEPCTL_CNAK);
+	__raw_writel(ep_ctrl, dev->regs + S3C_UDC_OTG_DOEPCTL(EP0_CON));
 }
 
 static int setdma_rx(struct s3c_ep *ep, struct s3c_request *req)
@@ -257,7 +260,7 @@ static void complete_tx(struct s3c_udc *dev, u8 ep_num)
 		DEBUG_IN_EP("%s: EP-%d WAIT_FOR_OUT_STATUS -> WAIT_FOR_SETUP\n",
 					__func__, ep_num);
 		/* zlp transmitted */
-		dev->ep0state = WAIT_FOR_SETUP;
+		dev->ep0state = WAIT_FOR_SETUP_NAK;
 		return;
 	}
 
@@ -525,8 +528,12 @@ static irqreturn_t s3c_udc_irq(int irq, void *_dev)
 	if (intr_status & INT_OUT_EP)
 		process_ep_out_intr(dev);
 
-	if (dev->ep0state == WAIT_FOR_SETUP)
-		s3c_udc_pre_setup(dev);
+	if (dev->ep0state == WAIT_FOR_SETUP) {
+		s3c_udc_pre_setup(dev, false);
+	} else if (dev->ep0state == WAIT_FOR_SETUP_NAK) {
+		s3c_udc_pre_setup(dev, true);
+		dev->ep0state = WAIT_FOR_SETUP;
+	}
 
 	spin_unlock_irqrestore(&dev->lock, flags);
 

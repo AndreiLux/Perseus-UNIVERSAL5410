@@ -79,6 +79,7 @@
 #define DATA_STATE_RECV         4
 #define RegReadErr		5
 #define FAIL_TO_SETUP		6
+#define WAIT_FOR_SETUP_NAK	7
 
 #define TEST_J_SEL		0x1
 #define TEST_K_SEL		0x2
