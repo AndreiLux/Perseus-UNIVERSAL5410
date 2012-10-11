@@ -164,8 +164,9 @@ static int mxr_querycap(struct file *file, void *priv,
 	strlcpy(cap->driver, MXR_DRIVER_NAME, sizeof cap->driver);
 	strlcpy(cap->card, layer->vfd.name, sizeof cap->card);
 	sprintf(cap->bus_info, "%d", layer->idx);
-	cap->device_caps = V4L2_CAP_STREAMING | V4L2_CAP_VIDEO_OUTPUT_MPLANE;
-	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
+	cap->version = KERNEL_VERSION(0, 1, 0);
+	cap->capabilities = V4L2_CAP_STREAMING |
+		V4L2_CAP_VIDEO_OUTPUT | V4L2_CAP_VIDEO_OUTPUT_MPLANE;
 
 	return 0;
 }

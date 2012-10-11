@@ -84,4 +84,11 @@ config VIDEO_SAMSUNG_S5P_MIXER_DEBUG
 	help
 	  Enables debugging for Mixer driver.
 
+config VIDEO_SAMSUNG_S5P_HDMI_I2S
+	bool "Enable HDMI I2S"
+	depends on VIDEO_SAMSUNG_S5P_TV && SND_SAMSUNG_I2S
+	default y
+	help
+	  Enables HDMI I2S support.
+
 endif # VIDEO_SAMSUNG_S5P_TV

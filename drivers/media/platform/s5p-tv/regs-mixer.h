@@ -46,7 +46,7 @@
 #define MXR_GRAPHIC_SXY(i)		(0x002C + (i) * 0x20)
 #define MXR_GRAPHIC_WH(i)		(0x0030 + (i) * 0x20)
 #define MXR_GRAPHIC_DXY(i)		(0x0034 + (i) * 0x20)
-
+#define MXR_GRAPHIC_BLANK(i)		(0x0038 + (i) * 0x20)
 /*
  * Bit definition part
  */
@@ -87,9 +87,12 @@
 /* bits for MXR_GRAPHICn_CFG */
 #define MXR_GRP_CFG_COLOR_KEY_DISABLE	(1 << 21)
 #define MXR_GRP_CFG_BLEND_PRE_MUL	(1 << 20)
+#define MXR_GRP_CFG_PIXEL_BLEND_EN	(1 << 16)
+#define MXR_GRP_CFG_LAYER_BLEND_EN	(1 << 17)
 #define MXR_GRP_CFG_FORMAT_VAL(x)	MXR_MASK_VAL(x, 11, 8)
 #define MXR_GRP_CFG_FORMAT_MASK		MXR_GRP_CFG_FORMAT_VAL(~0)
 #define MXR_GRP_CFG_ALPHA_VAL(x)	MXR_MASK_VAL(x, 7, 0)
+#define MXR_VIDEO_CFG_BLEND_EN		(1 << 16)
 
 /* bits for MXR_GRAPHICn_WH */
 #define MXR_GRP_WH_H_SCALE(x)		MXR_MASK_VAL(x, 28, 28)

@@ -107,21 +107,16 @@ void mxr_reg_reset(struct mxr_device *mdev)
 	val |= MXR_LAYER_CFG_GRP1_VAL(3);
 	mxr_write(mdev, MXR_LAYER_CFG, val);
 
-	/* use dark gray background color */
-	mxr_write(mdev, MXR_BG_COLOR0, 0x808080);
-	mxr_write(mdev, MXR_BG_COLOR1, 0x808080);
-	mxr_write(mdev, MXR_BG_COLOR2, 0x808080);
+	/* use dark teal background color */
+	mxr_write(mdev, MXR_BG_COLOR0, 0x008080);
+	mxr_write(mdev, MXR_BG_COLOR1, 0x008080);
+	mxr_write(mdev, MXR_BG_COLOR2, 0x008080);
 
 	/* setting graphical layers */
 
 	val  = MXR_GRP_CFG_COLOR_KEY_DISABLE; /* no blank key */
-#if 0
-	/*
-	 * Without this change, the HDMI display in Android had a green tint.
-	 * Yet to find the exact reason for the same.
-	 */
-	val |= MXR_GRP_CFG_BLEND_PRE_MUL; /* premul mode */
-#endif
+	val |= MXR_GRP_CFG_LAYER_BLEND_EN;
+	val &= ~MXR_GRP_CFG_BLEND_PRE_MUL; /* normal mode */
 	val |= MXR_GRP_CFG_ALPHA_VAL(0xff); /* non-transparent alpha */
 
 	/* the same configuration for both layers */
@@ -172,6 +167,114 @@ void mxr_reg_graph_format(struct mxr_device *mdev, int idx,
 
 	mxr_vsync_set_update(mdev, MXR_ENABLE);
 	spin_unlock_irqrestore(&mdev->reg_slock, flags);
+}
+
+void mxr_reg_graph_chromakey_value(struct mxr_device *mdev, int idx,u32 en)
+{
+        unsigned long flags;
+        
+	spin_lock_irqsave(&mdev->reg_slock, flags);
+        mxr_write(mdev,MXR_GRAPHIC_BLANK(idx),en); 
+        spin_unlock_irqrestore(&mdev->reg_slock, flags);
+}
+
+void mxr_reg_graph_chromakey_enable(struct mxr_device *mdev, int idx,u32 en)
+{
+        u32 val;
+        unsigned long flags;
+
+        spin_lock_irqsave(&mdev->reg_slock, flags);
+        val=(u32)mxr_read(mdev,MXR_GRAPHIC_CFG(idx));
+        if (en)
+        	val &= ~MXR_GRP_CFG_COLOR_KEY_DISABLE;
+        else
+        	val |= MXR_GRP_CFG_COLOR_KEY_DISABLE;
+
+        mxr_write(mdev,MXR_GRAPHIC_CFG(idx),val);
+        spin_unlock_irqrestore(&mdev->reg_slock, flags);
+}
+
+void mxr_reg_graph_priority(struct mxr_device *mdev, int idx,u32 en)
+{
+  	u32 val;
+        unsigned long flags;
+        
+	spin_lock_irqsave(&mdev->reg_slock, flags);
+        val = mxr_read(mdev,MXR_LAYER_CFG);
+	if(idx==0)
+		BF_SET(val,en,4,4); /*for grapics later 0*/ 
+        else    
+        	BF_SET(val,en,8,4); /*for grapics later 1*/
+
+	mxr_write(mdev, MXR_LAYER_CFG, val);
+	spin_unlock_irqrestore(&mdev->reg_slock, flags);
+}
+
+void mxr_reg_graph_layer_blend_enable(struct mxr_device *mdev , int idx, u32 en)
+{
+        u32 val = en ? ~0 : 0;
+        unsigned long flags;
+        
+	spin_lock_irqsave(&mdev->reg_slock, flags);
+        mxr_write_mask(mdev, MXR_GRAPHIC_CFG(idx), val , MXR_GRP_CFG_LAYER_BLEND_EN);
+        spin_unlock_irqrestore(&mdev->reg_slock, flags);  
+}
+
+void mxr_reg_graph_layer_blend_alpha(struct mxr_device *mdev , int idx, u32 en)
+{
+ 	unsigned long flags;
+        int val; 
+	
+	spin_lock_irqsave(&mdev->reg_slock, flags);
+        val = mxr_read(mdev,MXR_GRAPHIC_CFG(idx));
+        BF_SET(val,en,0,8); 
+        mxr_write(mdev, MXR_GRAPHIC_CFG(idx),val);
+	spin_unlock_irqrestore(&mdev->reg_slock, flags);
+}
+
+void mxr_reg_graph_pixel_blend_enable(struct mxr_device *mdev , int idx, u32 en)
+{
+        u32 val = en ? ~0 : 0;
+        unsigned long flags;
+        
+	spin_lock_irqsave(&mdev->reg_slock, flags);
+        mxr_write_mask(mdev, MXR_GRAPHIC_CFG(idx), val , MXR_GRP_CFG_PIXEL_BLEND_EN);
+        spin_unlock_irqrestore(&mdev->reg_slock, flags);
+}
+
+void mxr_reg_vp_layer_blend_enable(struct mxr_device *mdev , int idx, u32 en)
+{
+        u32 val = en ? ~0 : 0;
+        unsigned long flags;
+        
+	spin_lock_irqsave(&mdev->reg_slock, flags);
+        mxr_write_mask(mdev,MXR_VIDEO_CFG,val,MXR_VIDEO_CFG_BLEND_EN);
+        spin_unlock_irqrestore(&mdev->reg_slock, flags);
+}
+
+void mxr_reg_vp_layer_blend_alpha(struct mxr_device *mdev , int idx, u32 en)
+{
+        unsigned long flags;
+        int val;  
+	
+	spin_lock_irqsave(&mdev->reg_slock, flags); 
+        val = mxr_read(mdev,MXR_VIDEO_CFG);
+        BF_SET(val,en,0,8);
+	mxr_write(mdev,MXR_VIDEO_CFG,val);
+        spin_unlock_irqrestore(&mdev->reg_slock, flags);
+}
+
+
+void mxr_reg_vp_priority(struct mxr_device *mdev, int idx,u32 en)
+{
+  	u32 val;
+        unsigned long flags;
+	
+	spin_lock_irqsave(&mdev->reg_slock, flags);
+        val=mxr_read(mdev,MXR_LAYER_CFG);
+ 	BF_SET(val,en,0,4);
+  	mxr_write(mdev, MXR_LAYER_CFG, val);
+  	spin_unlock_irqrestore(&mdev->reg_slock, flags);
 }
 
 void mxr_reg_vp_format(struct mxr_device *mdev,
