@@ -175,7 +175,7 @@ mali_error kbase_mem_allocator_alloc(kbase_mem_allocator *allocator, u32 nr_page
 
 		if (flags & KBASE_REG_MUST_ZERO)
 		{
-			mp = vmap(&p, 1, VM_MAP, pgprot_writecombine(PAGE_KERNEL));
+			mp = kmap(p);
 			if (NULL == mp)
 			{
 				/* free the current page */
@@ -189,7 +189,8 @@ mali_error kbase_mem_allocator_alloc(kbase_mem_allocator *allocator, u32 nr_page
 				break;
 			}
 			memset(mp, 0x00, PAGE_SIZE);
-			vunmap(mp);
+			osk_sync_to_memory(PFN_PHYS(page_to_pfn(p)), mp, PAGE_SIZE);
+			kunmap(p);
 		}
 
 		pages[i] = PFN_PHYS(page_to_pfn(p));
@@ -207,14 +208,15 @@ mali_error kbase_mem_allocator_alloc(kbase_mem_allocator *allocator, u32 nr_page
 			goto err_out_roll_back;
 		}
 
-		mp = vmap(&p, 1, VM_MAP, pgprot_writecombine(PAGE_KERNEL));
+		mp = kmap(p);
 		if (NULL == mp)
 		{
 			__free_page(p);
 			goto err_out_roll_back;
 		}
 		memset(mp, 0x00, PAGE_SIZE); /* instead of __GFP_ZERO, so we can do cache maintenance */
-		vunmap(mp);
+		osk_sync_to_memory(PFN_PHYS(page_to_pfn(p)), mp, PAGE_SIZE);
+		kunmap(p);
 		pages[i] = PFN_PHYS(page_to_pfn(p));
 	}
 
