@@ -3864,18 +3864,6 @@ static int s3c_fb_disable(struct s3c_fb *sfb)
 	pm_runtime_put_sync(sfb->dev);
 	sfb->output_on = false;
 
-	if (sfb->fb_mif_handle) {
-		if(exynos5_bus_mif_put(sfb->fb_mif_handle))
-			dev_err(sfb->dev, "failed to free min_freq for mif \n");
-		sfb->fb_mif_handle = NULL;
-	}
-
-	if (sfb->fb_int_handle) {
-		if(exynos5_bus_int_put(sfb->fb_int_handle))
-			dev_err(sfb->dev, "failed to free min_freq for int \n");
-		sfb->fb_int_handle = NULL;
-}
-
 	exynos5_mif_multiple_windows(false);
 err:
 	mutex_unlock(&sfb->output_lock);
@@ -3898,18 +3886,6 @@ static int s3c_fb_enable(struct s3c_fb *sfb)
 	if (sfb->output_on) {
 		ret = -EBUSY;
 		goto err;
-	}
-
-	if (!sfb->fb_mif_handle) {
-		sfb->fb_mif_handle = exynos5_bus_mif_min(300000);
-		if (!sfb->fb_mif_handle)
-			dev_err(sfb->dev, "failed to request min_freq for mif \n");
-	}
-
-	if (!sfb->fb_int_handle) {
-		sfb->fb_int_handle = exynos5_bus_int_min(160000);
-		if (!sfb->fb_int_handle)
-			dev_err(sfb->dev, "failed to request min_freq for int \n");
 	}
 
 	pm_runtime_get_sync(sfb->dev);
@@ -4003,6 +3979,18 @@ static int s3c_fb_runtime_suspend(struct device *dev)
 
 	clk_disable(sfb->bus_clk);
 
+	if (sfb->fb_mif_handle) {
+		if(exynos5_bus_mif_put(sfb->fb_mif_handle))
+			dev_err(sfb->dev, "failed to free min_freq for mif \n");
+		sfb->fb_mif_handle = NULL;
+	}
+
+	if (sfb->fb_int_handle) {
+		if(exynos5_bus_int_put(sfb->fb_int_handle))
+			dev_err(sfb->dev, "failed to free min_freq for int \n");
+		sfb->fb_int_handle = NULL;
+	}
+
 	return 0;
 }
 
@@ -4011,6 +3999,18 @@ static int s3c_fb_runtime_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct s3c_fb *sfb = platform_get_drvdata(pdev);
 	struct s3c_fb_platdata *pd = sfb->pdata;
+
+	if (!sfb->fb_mif_handle) {
+		sfb->fb_mif_handle = exynos5_bus_mif_min(300000);
+		if (!sfb->fb_mif_handle)
+			dev_err(sfb->dev, "failed to request min_freq for mif \n");
+	}
+
+	if (!sfb->fb_int_handle) {
+		sfb->fb_int_handle = exynos5_bus_int_min(160000);
+		if (!sfb->fb_int_handle)
+			dev_err(sfb->dev, "failed to request min_freq for int \n");
+	}
 
 	clk_enable(sfb->bus_clk);
 
