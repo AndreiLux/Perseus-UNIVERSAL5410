@@ -1088,7 +1088,7 @@ static void __init exynos5250_dt_machine_init(void)
 			smdk5250_lcd1_pdata.panel[i].timing = snow_fb_window[i];
 
 		smdk5250_lcd1_pdata.panel_type = DP_LCD;
-		smdk5250_lcd1_pdata.clock_rate = 70500000;
+		smdk5250_lcd1_pdata.clock_rate = 70000000;
 		smdk5250_lcd1_pdata.vidcon1 = 0;
 #endif
 	}
