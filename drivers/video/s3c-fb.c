@@ -2064,6 +2064,19 @@ static void __s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 		shadow_protect_win(sfb->windows[i], 0);
 }
 
+static void s3c_fd_fence_wait(struct s3c_fb *sfb, struct sync_fence *fence)
+{
+	int err = sync_fence_wait(fence, 1000);
+	if (err >= 0)
+		return;
+
+	if (err == -ETIME)
+		err = sync_fence_wait(fence, -1);
+
+	if (err < 0)
+		dev_warn(sfb->dev, "error waiting on fence: %d\n", err);
+}
+
 static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 {
 	struct s3c_dma_buf_data old_dma_bufs[S3C_FB_MAX_WIN];
@@ -2075,12 +2088,9 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 
 	for (i = 0; i < sfb->variant.nr_windows; i++) {
 		old_dma_bufs[i] = sfb->windows[i]->dma_buf_data;
-		if (regs->dma_buf_data[i].fence) {
-			int err = sync_fence_wait(regs->dma_buf_data[i].fence,
-					100);
-			if (err < 0)
-				dev_warn(sfb->dev, "synce_fence_wait() timeout\n");
-		}
+
+		if (regs->dma_buf_data[i].fence)
+			s3c_fd_fence_wait(sfb, regs->dma_buf_data[i].fence);
 	}
 
 	do {
