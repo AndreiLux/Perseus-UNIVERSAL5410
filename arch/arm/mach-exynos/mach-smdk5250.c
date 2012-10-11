@@ -1453,6 +1453,7 @@ static struct s5p_dp_platdata smdk5250_dp_data __initdata = {
 	.phy_init	= s5p_dp_phy_init,
 	.phy_exit	= s5p_dp_phy_exit,
 	.backlight_on	= s5p_dp_backlight_on,
+	.backlight_off  = s5p_dp_backlight_off,
 	.lcd_on		= s5p_lcd_on,
 	.lcd_off	= s5p_lcd_off,
 };
