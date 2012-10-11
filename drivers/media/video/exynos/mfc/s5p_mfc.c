@@ -439,19 +439,24 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 	if (ctx->state == MFCINST_RES_CHANGE_INIT)
 		ctx->state = MFCINST_RES_CHANGE_FLUSH;
 
-	if (res_change && res_change != 3) {
-		mfc_err("Resolution change set to %d\n", res_change);
-		ctx->state = MFCINST_RES_CHANGE_INIT;
+	if (res_change) {
+		if (res_change == 1) {
+			mfc_err("Resolution change set to %d\n", res_change);
+			ctx->state = MFCINST_RES_CHANGE_INIT;
 
-		s5p_mfc_clear_int_flags();
-		wake_up_ctx(ctx, reason, err);
-		if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
-			BUG();
+			s5p_mfc_clear_int_flags();
+			wake_up_ctx(ctx, reason, err);
+			if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
+				BUG();
 
-		s5p_mfc_clock_off();
+			s5p_mfc_clock_off();
 
-		queue_work(dev->irq_workqueue, &dev->work_struct);
-		return;
+			queue_work(dev->irq_workqueue, &dev->work_struct);
+			return;
+		} else if (res_change == 2) {
+			/* Resolution decrease is ignored */
+			goto leave_handle_frame;
+		}
 	}
 	if (dec->dpb_flush)
 		dec->dpb_flush = 0;
@@ -465,6 +470,7 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 			mfc_debug(2, "Last frame received after resolution change.\n");
 			s5p_mfc_handle_frame_all_extracted(ctx);
 			ctx->state = MFCINST_RES_CHANGE_END;
+			spin_unlock_irqrestore(&dev->irqlock, flags);
 			goto leave_handle_frame;
 		} else {
 			s5p_mfc_handle_frame_all_extracted(ctx);
@@ -535,8 +541,8 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 			vb2_buffer_done(&src_buf->vb, VB2_BUF_STATE_DONE);
 		}
 	}
-leave_handle_frame:
 	spin_unlock_irqrestore(&dev->irqlock, flags);
+leave_handle_frame:
 	mfc_debug(2, "Assesing whether this context should be run again.\n");
 	/* if (!s5p_mfc_ctx_ready(ctx)) { */
 	if ((ctx->src_queue_cnt == 0 && ctx->state != MFCINST_FINISHING)
