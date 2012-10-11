@@ -1185,6 +1185,7 @@ static void s3c_fb_enable_irq(struct s3c_fb *sfb)
 	void __iomem *regs = sfb->regs;
 	u32 irq_ctrl_reg;
 
+	pm_runtime_get_sync(sfb->dev);
 	irq_ctrl_reg = readl(regs + VIDINTCON0);
 
 	irq_ctrl_reg |= VIDINTCON0_INT_ENABLE;
@@ -1206,6 +1207,7 @@ static void s3c_fb_enable_irq(struct s3c_fb *sfb)
 	irq_ctrl_reg |= VIDINTCON0_FRAMESEL1_NONE;
 
 	writel(irq_ctrl_reg, regs + VIDINTCON0);
+	pm_runtime_put_sync(sfb->dev);
 }
 
 /**
@@ -1217,6 +1219,7 @@ static void s3c_fb_disable_irq(struct s3c_fb *sfb)
 	void __iomem *regs = sfb->regs;
 	u32 irq_ctrl_reg;
 
+	pm_runtime_get_sync(sfb->dev);
 	irq_ctrl_reg = readl(regs + VIDINTCON0);
 
 #ifdef CONFIG_DEBUG_FS
@@ -1226,6 +1229,7 @@ static void s3c_fb_disable_irq(struct s3c_fb *sfb)
 	irq_ctrl_reg &= ~VIDINTCON0_INT_ENABLE;
 
 	writel(irq_ctrl_reg, regs + VIDINTCON0);
+	pm_runtime_put_sync(sfb->dev);
 }
 
 static void s3c_fb_activate_vsync(struct s3c_fb *sfb)
@@ -1351,6 +1355,7 @@ int s3c_fb_set_window_position(struct fb_info *info,
 	void __iomem *regs = sfb->regs;
 	u32 data;
 
+	pm_runtime_get_sync(sfb->dev);
 	shadow_protect_win(win, 1);
 
 	if (!s3c_fb_validate_x_alignment(sfb, user_window.x, var->xres,
@@ -1365,6 +1370,7 @@ int s3c_fb_set_window_position(struct fb_info *info,
 	writel(data, regs + VIDOSD_B(win_no, sfb->variant));
 
 	shadow_protect_win(win, 0);
+	pm_runtime_put_sync(sfb->dev);
 	return 0;
 }
 
@@ -1388,6 +1394,7 @@ int s3c_fb_set_plane_alpha_blending(struct fb_info *info,
 			(((user_alpha.green & 0xf)) << 8) |
 			(((user_alpha.blue & 0xf)) << 0));
 
+	pm_runtime_get_sync(sfb->dev);
 	shadow_protect_win(win, 1);
 
 	data = readl(regs + sfb->variant.wincon + (win_no * 4));
@@ -1412,6 +1419,7 @@ int s3c_fb_set_plane_alpha_blending(struct fb_info *info,
 	}
 
 	shadow_protect_win(win, 0);
+	pm_runtime_put_sync(sfb->dev);
 
 	return 0;
 }
@@ -1433,6 +1441,7 @@ int s3c_fb_set_chroma_key(struct fb_info *info,
 			((user_chroma.green & 0xff) << 8) |
 			((user_chroma.blue & 0xff) << 0));
 
+	pm_runtime_get_sync(sfb->dev);
 	shadow_protect_win(win, 1);
 
 	if (user_chroma.enabled)
@@ -1445,6 +1454,7 @@ int s3c_fb_set_chroma_key(struct fb_info *info,
 	writel(data, keycon + WKEYCON1);
 
 	shadow_protect_win(win, 0);
+	pm_runtime_put_sync(sfb->dev);
 
 	return 0;
 }
