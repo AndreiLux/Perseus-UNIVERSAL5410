@@ -1315,9 +1315,38 @@ static int __devexit s5p_dp_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int  s5p_dp_shutdown(struct platform_device *pdev)
+{
+	struct s5p_dp_device *dp = platform_get_drvdata(pdev);
+	struct s5p_dp_platdata *pdata = dp->dev->platform_data;
+
+	lcd_device_unregister(dp->lcd);
+
+	if (pdata->backlight_off)
+		pdata->backlight_off();
+
+	if (pdata->lcd_off)
+		pdata->lcd_off();
+
+	s5p_dp_disable(dp);
+
+	free_irq(dp->irq, dp);
+	iounmap(dp->reg_base);
+	clk_put(dp->clock);
+
+	release_mem_region(dp->res->start, resource_size(dp->res));
+
+	pm_runtime_disable(dp->dev);
+
+	kfree(dp);
+
+	return 0;
+}
+
 static struct platform_driver s5p_dp_driver = {
 	.probe		= s5p_dp_probe,
 	.remove		= __devexit_p(s5p_dp_remove),
+	.shutdown       = s5p_dp_shutdown,
 	.driver		= {
 		.name	= "s5p-dp",
 		.owner	= THIS_MODULE,
