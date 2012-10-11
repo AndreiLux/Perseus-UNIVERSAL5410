@@ -3130,26 +3130,28 @@ static int ca0132_select_out(struct hda_codec *codec)
 		if (err < 0)
 			goto exit;
 
+		/* Setup EAPD */
+		snd_hda_codec_write(codec, spec->out_pins[1], 0,
+				    VENDOR_CHIPIO_EAPD_SEL_SET, 0x02);
+		snd_hda_codec_write(codec, spec->out_pins[0], 0,
+				    AC_VERB_SET_EAPD_BTLENABLE, 0x00);
+		snd_hda_codec_write(codec, spec->out_pins[0], 0,
+				    VENDOR_CHIPIO_EAPD_SEL_SET, 0x00);
+		snd_hda_codec_write(codec, spec->out_pins[0], 0,
+				    AC_VERB_SET_EAPD_BTLENABLE, 0x02);
+
 		/* disable headphone node */
 		pin_ctl = snd_hda_codec_read(codec, spec->out_pins[1], 0,
 					AC_VERB_GET_PIN_WIDGET_CONTROL, 0);
 		snd_hda_codec_write(codec, spec->out_pins[1], 0,
 				    AC_VERB_SET_PIN_WIDGET_CONTROL,
 				    pin_ctl & 0xBF);
-		/* disable headphone EAPD */
-		snd_hda_codec_write(codec, spec->out_pins[0], 0,
-				    AC_VERB_SET_EAPD_BTLENABLE, 0x00);
 		/* enable speaker node */
 		pin_ctl = snd_hda_codec_read(codec, spec->out_pins[0], 0,
 					     AC_VERB_GET_PIN_WIDGET_CONTROL, 0);
 		snd_hda_codec_write(codec, spec->out_pins[0], 0,
 				    AC_VERB_SET_PIN_WIDGET_CONTROL,
 				    pin_ctl | 0x40);
-		/* enable speaker EAPD */
-		snd_hda_codec_write(codec, spec->out_pins[0], 0,
-				    VENDOR_CHIPIO_EAPD_SEL_SET, 0x00);
-		snd_hda_codec_write(codec, spec->out_pins[0], 0,
-				    AC_VERB_SET_EAPD_BTLENABLE, 0x02);
 	} else {
 		CA0132_LOG("ca0132_select_out hp\n");
 		/*headphone out config*/
@@ -3165,26 +3167,28 @@ static int ca0132_select_out(struct hda_codec *codec)
 		if (err < 0)
 			goto exit;
 
+		/* Setup EAPD */
+		snd_hda_codec_write(codec, spec->out_pins[0], 0,
+				    VENDOR_CHIPIO_EAPD_SEL_SET, 0x00);
+		snd_hda_codec_write(codec, spec->out_pins[0], 0,
+				    AC_VERB_SET_EAPD_BTLENABLE, 0x00);
+		snd_hda_codec_write(codec, spec->out_pins[1], 0,
+				    VENDOR_CHIPIO_EAPD_SEL_SET, 0x02);
+		snd_hda_codec_write(codec, spec->out_pins[0], 0,
+				    AC_VERB_SET_EAPD_BTLENABLE, 0x02);
+
 		/* disable speaker*/
 		pin_ctl = snd_hda_codec_read(codec, spec->out_pins[0], 0,
 					AC_VERB_GET_PIN_WIDGET_CONTROL, 0);
 		snd_hda_codec_write(codec, spec->out_pins[0], 0,
 				    AC_VERB_SET_PIN_WIDGET_CONTROL,
 				    pin_ctl & 0xBF);
-		/* disable speaker EAPD */
-		snd_hda_codec_write(codec, spec->out_pins[0], 0,
-				    AC_VERB_SET_EAPD_BTLENABLE, 0x00);
 		/* enable headphone*/
 		pin_ctl = snd_hda_codec_read(codec, spec->out_pins[1], 0,
 					AC_VERB_GET_PIN_WIDGET_CONTROL, 0);
 		snd_hda_codec_write(codec, spec->out_pins[1], 0,
 				    AC_VERB_SET_PIN_WIDGET_CONTROL,
 				    pin_ctl | 0x40);
-		/* enable headphone EAPD */
-		snd_hda_codec_write(codec, spec->out_pins[1], 0,
-				    VENDOR_CHIPIO_EAPD_SEL_SET, 0x02);
-		snd_hda_codec_write(codec, spec->out_pins[0], 0,
-				    AC_VERB_SET_EAPD_BTLENABLE, 0x02);
 	}
 
 exit:
