@@ -44,6 +44,15 @@
 #define MC_FC_RET_ERR_ALREADY_INITIALIZED	5
 
 
+/**
+ *  MobiCore status information.
+ */
+#define MC_STATUS_NOT_INITIALIZED  0   /**< MobiCore is not yet initialized. */
+#define MC_STATUS_BAD_INIT         1   /**< Bad parameters have been passed. */
+#define MC_STATUS_INITIALIZED      2   /**< MobiCore did initialize properly. */
+#define MC_STATUS_HALT             3   /**< MobiCore kernel halted due to an unrecoverable exception. */
+
+
 /* structure wrappers for specific fastcalls */
 
 /** generic fast call parameters */
