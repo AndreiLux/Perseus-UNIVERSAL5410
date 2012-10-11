@@ -938,8 +938,12 @@ static void output_poll_execute(struct work_struct *work)
 		if (!connector->polled)
 			continue;
 
-		else if (connector->polled & (DRM_CONNECTOR_POLL_CONNECT | DRM_CONNECTOR_POLL_DISCONNECT))
-			repoll = true;
+		if (connector->polled & (DRM_CONNECTOR_POLL_CONNECT | DRM_CONNECTOR_POLL_DISCONNECT)) {
+			if (connector->polled & DRM_CONNECTOR_POLL_DISCONNECT_ONLY)
+				repoll = (connector->status == connector_status_connected);
+			else
+				repoll = true;
+		}
 
 		old_status = connector->status;
 		/* if we are connected and don't want to poll for disconnect

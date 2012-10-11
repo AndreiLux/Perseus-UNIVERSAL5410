@@ -499,6 +499,8 @@ enum drm_connector_force {
 /* can cleanly poll for disconnections without flickering the screen */
 /* DACs should rarely do this without a lot of testing */
 #define DRM_CONNECTOR_POLL_DISCONNECT (1 << 2)
+/* Only poll for disconnections. */
+#define DRM_CONNECTOR_POLL_DISCONNECT_ONLY (1 << 3)
 
 #define MAX_ELD_BYTES	128
 
