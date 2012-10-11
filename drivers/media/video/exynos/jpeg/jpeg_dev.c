@@ -378,12 +378,8 @@ err_node_type:
 static int jpeg_m2m_release(struct file *file)
 {
 	struct jpeg_ctx *ctx = file->private_data;
-	unsigned long flags;
-
-	spin_lock_irqsave(&ctx->slock, flags);
 
 	v4l2_m2m_ctx_release(ctx->m2m_ctx);
-	spin_unlock_irqrestore(&ctx->slock, flags);
 
 #ifdef CONFIG_PM_RUNTIME
 #if defined (CONFIG_CPU_EXYNOS5250)
