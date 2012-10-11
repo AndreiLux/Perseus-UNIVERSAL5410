@@ -631,7 +631,7 @@ static int mxr_runtime_resume(struct device *dev)
 	clk_enable(res->sclk_mixer);
 #endif
 
-	mdev->mif_handle = exynos5_bus_mif_min(600000);
+	mdev->mif_handle = exynos5_bus_mif_min(800000);
 	if (!mdev->mif_handle)
 		dev_err(dev, "failed to request min_freq for mif\n");
 
