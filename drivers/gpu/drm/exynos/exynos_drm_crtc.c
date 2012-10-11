@@ -47,10 +47,10 @@ static void exynos_drm_crtc_apply(struct drm_crtc *crtc)
 			exynos_drm_encoder_crtc_commit);
 }
 
-int exynos_drm_overlay_update(struct exynos_drm_overlay *overlay,
-			      struct drm_framebuffer *fb,
-			      struct drm_display_mode *mode,
-			      struct exynos_drm_crtc_pos *pos)
+void exynos_drm_overlay_update(struct exynos_drm_overlay *overlay,
+			       struct drm_framebuffer *fb,
+			       struct drm_display_mode *mode,
+			       struct exynos_drm_crtc_pos *pos)
 {
 	struct exynos_drm_gem_buf *buffer;
 	unsigned int actual_w;
@@ -60,10 +60,6 @@ int exynos_drm_overlay_update(struct exynos_drm_overlay *overlay,
 
 	for (i = 0; i < nr; i++) {
 		buffer = exynos_drm_fb_buffer(fb, i);
-		if (!buffer) {
-			DRM_LOG_KMS("buffer is null\n");
-			return -EFAULT;
-		}
 
 		overlay->dma_addr[i] = buffer->dma_addr;
 		overlay->vaddr[i] = buffer->kvaddr;
@@ -100,8 +96,6 @@ int exynos_drm_overlay_update(struct exynos_drm_overlay *overlay,
 	DRM_DEBUG_KMS("overlay : offset_x/y(%d,%d), width/height(%d,%d)",
 			overlay->crtc_x, overlay->crtc_y,
 			overlay->crtc_width, overlay->crtc_height);
-
-	return 0;
 }
 
 static void exynos_drm_crtc_page_flip_apply(struct drm_crtc *crtc,
@@ -158,7 +152,9 @@ static int exynos_drm_crtc_update(struct drm_crtc *crtc)
 	pos.crtc_w = fb->width - crtc->x;
 	pos.crtc_h = fb->height - crtc->y;
 
-	return exynos_drm_overlay_update(overlay, crtc->fb, mode, &pos);
+	exynos_drm_overlay_update(overlay, crtc->fb, mode, &pos);
+
+	return 0;
 }
 
 static void exynos_drm_crtc_dpms(struct drm_crtc *crtc, int mode)

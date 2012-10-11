@@ -68,7 +68,7 @@ struct exynos_drm_crtc_pos {
 	unsigned int crtc_h;
 };
 
-int exynos_drm_overlay_update(struct exynos_drm_overlay *overlay,
+void exynos_drm_overlay_update(struct exynos_drm_overlay *overlay,
 			      struct drm_framebuffer *fb,
 			      struct drm_display_mode *mode,
 			      struct exynos_drm_crtc_pos *pos);
