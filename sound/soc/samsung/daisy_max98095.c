@@ -489,7 +489,7 @@ static int plugin_init(struct audio_codec_plugin **pplugin)
 		return -EFAULT;
 
 	plugin_pdev = of_find_device_by_node(plugin_node);
-	if (!plugin_node)
+	if (!plugin_pdev)
 		return -EFAULT;
 
 	plugin = dev_get_drvdata(&plugin_pdev->dev);
