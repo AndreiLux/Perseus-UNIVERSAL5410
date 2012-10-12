@@ -28,6 +28,7 @@
 #include <linux/perf_event.h>
 #include <linux/hw_breakpoint.h>
 #include <linux/smp.h>
+#include <linux/cpu_pm.h>
 
 #include <asm/cacheflush.h>
 #include <asm/cputype.h>
@@ -41,6 +42,11 @@ static DEFINE_PER_CPU(struct perf_event *, bp_on_reg[ARM_MAX_BRP]);
 
 /* Watchpoint currently in use for each WRP. */
 static DEFINE_PER_CPU(struct perf_event *, wp_on_reg[ARM_MAX_WRP]);
+
+#ifdef CONFIG_CPU_PM
+/* Storage for OS Save and Restore. */
+static DEFINE_PER_CPU(u32, cpu_dscr);
+#endif
 
 /* Number of BRP/WRP registers on this CPU. */
 static int core_num_brps;
@@ -990,6 +996,55 @@ static struct notifier_block __cpuinitdata dbg_reset_nb = {
 	.notifier_call = dbg_reset_notify,
 };
 
+#ifdef CONFIG_CPU_PM
+static void os_save(int cpu)
+{
+	/* Set OS Lock. */
+	asm volatile("mcr p14, 0, %0, c1, c0, 4" : : "r" (0xC5ACCE55));
+	isb();
+
+	/* Save DSCRext. */
+	ARM_DBG_READ(c2, 2, per_cpu(cpu_dscr, cpu));
+}
+
+static void os_restore(int cpu)
+{
+	/* Restore DSCRext. */
+	ARM_DBG_WRITE(c2, 2, per_cpu(cpu_dscr, cpu));
+
+	/* Clear OS Lock. */
+	asm volatile("mcr p14, 0, %0, c1, c0, 4" : : "r" (0));
+	isb();
+}
+
+static int dbg_cpu_pm_notify(struct notifier_block *self, unsigned long action,
+				void *v)
+{
+	int cpu = smp_processor_id();
+
+	if (action == CPU_PM_ENTER)
+		os_save(cpu);
+	else if (action == CPU_PM_EXIT)
+		os_restore(cpu);
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block __cpuinitdata dbg_cpu_pm_nb = {
+	.notifier_call = dbg_cpu_pm_notify,
+};
+
+static void __init pm_init(void)
+{
+	if (get_debug_arch() == ARM_DEBUG_ARCH_V7_1)
+		cpu_pm_register_notifier(&dbg_cpu_pm_nb);
+}
+#else
+static inline void pm_init(void)
+{
+}
+#endif
+
 static int __init arch_hw_breakpoint_init(void)
 {
 	u32 dscr;
@@ -1048,6 +1103,8 @@ static int __init arch_hw_breakpoint_init(void)
 
 	/* Register hotplug notifier. */
 	register_cpu_notifier(&dbg_reset_nb);
+
+	pm_init();
 	return 0;
 }
 arch_initcall(arch_hw_breakpoint_init);
