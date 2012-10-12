@@ -132,10 +132,9 @@ static int tps65090_reg_enable(struct regulator_dev *rdev)
 
 		usleep_range(1000, 1500);
 	}
-	if (!(control & (1 << CTRL_PG_BIT))) {
-		dev_err(&rdev->dev, "reg 0x%x enable failed\n", ri->reg_en_reg);
-		return -EIO;
-	}
+	if (!(control & (1 << CTRL_PG_BIT)))
+		dev_warn(&rdev->dev, "reg 0x%x enable failed\n",
+			 ri->reg_en_reg);
 
 	return 0;
 }
