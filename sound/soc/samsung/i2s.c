@@ -296,7 +296,7 @@ static int plugin_init(struct i2s_dai *i2s)
 			return -EFAULT;
 
 		pdev = of_find_device_by_node(plugin_node);
-		if (!plugin_node)
+		if (!pdev)
 			return -EFAULT;
 
 		plugin = dev_get_drvdata(&pdev->dev);
