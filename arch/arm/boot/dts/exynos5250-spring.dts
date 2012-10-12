@@ -20,6 +20,14 @@
 		status = "disabled";
 	};
 
+	hdmi {
+		status = "disabled";
+	};
+
+	hdmi-audio {
+		status = "disabled";
+	};
+
 	gpio-keys {
 		compatible = "gpio-keys";
 
