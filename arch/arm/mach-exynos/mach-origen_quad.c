@@ -685,6 +685,7 @@ static struct platform_device *origen_quad_devices[] __initdata = {
 	&s3c_device_rtc,
 	&s3c_device_hsmmc2,
 	&s3c_device_i2c0,
+	&s3c_device_i2c3,
 	&s5p_device_fimc0,
 	&s5p_device_fimc1,
 	&s5p_device_fimc2,
@@ -733,6 +734,15 @@ static struct i2c_board_info i2c0_devs[] __initdata = {
 	},
 };
 
+static struct i2c_board_info i2c3_devs[] __initdata = {
+#ifdef CONFIG_TOUCHSCREEN_UNIDISPLAY_TS
+	{
+		I2C_BOARD_INFO("unidisplay_ts", 0x41),
+		.irq = IRQ_EINT(25),
+	},
+#endif
+};
+
 static void __init origen_quad_reserve(void)
 {
 	s5p_mfc_reserve_mem(0x43000000, 8 << 20, 0x51000000, 8 << 20);
@@ -744,6 +754,9 @@ static void __init origen_quad_machine_init(void)
 
 	s3c_i2c0_set_platdata(NULL);
 	i2c_register_board_info(0, i2c0_devs, ARRAY_SIZE(i2c0_devs));
+
+	s3c_i2c3_set_platdata(NULL);
+	i2c_register_board_info(3, i2c3_devs, ARRAY_SIZE(i2c3_devs));
 
 	s3c_sdhci2_set_platdata(&origen_quad_hsmmc2_pdata);
 
