@@ -237,7 +237,7 @@ struct mwifiex_ds_11n_amsdu_aggr_ctrl {
 	u16 curr_buf_size;
 };
 
-#define MWIFIEX_NUM_OF_CMD_BUFFER	20
+#define MWIFIEX_NUM_OF_CMD_BUFFER	50
 #define MWIFIEX_SIZE_OF_CMD_BUFFER	2048
 
 enum {
