@@ -170,3 +170,13 @@ config T6XX_DEBUG_SYS
 	  Choose this option to enable creating sysfs files for inspecting
 	  and (potentially) tweaking driver parameters.  This is typically
 	  used for debugging; enable only if you know what you are doing.
+
+config MALI_HWC_TRACE
+	bool "Enable hardware counter event tracing support"
+	depends on MALI_T6XX && MALI_EXPERT
+	default n
+	help
+	  Choose this option to enable collecting hardware counter data
+	  with system trace events.  This is typically used for debugging
+	  but has minimal overhead when not in use. Enable only if you
+	  know what you are doing.

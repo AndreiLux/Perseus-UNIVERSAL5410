@@ -12,8 +12,8 @@
 
 
 
-#if !defined(_TRACE_MALI_H) || defined(TRACE_HEADER_MULTI_READ)
-#define _TRACE_MALI_H
+#if !defined(_MALI_LINUX_TRACE_H) || defined(TRACE_HEADER_MULTI_READ)
+#define _MALI_LINUX_TRACE_H
 
 #include <linux/stringify.h>
 #include <linux/tracepoint.h>
@@ -230,7 +230,7 @@ TRACE_EVENT(mali_sw_counter,
     TP_printk("event %d = %lld", __entry->event_id, __entry->value)
 );
 
-#endif /*  _TRACE_MALI_H */
+#endif /* _MALI_LINUX_TRACE_H */
 
 #undef TRACE_INCLUDE_PATH
 #undef linux

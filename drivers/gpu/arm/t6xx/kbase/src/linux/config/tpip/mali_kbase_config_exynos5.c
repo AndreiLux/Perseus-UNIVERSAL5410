@@ -53,8 +53,16 @@
 #include <kbase/src/common/mali_kbase_defs.h>
 #include <kbase/src/linux/mali_kbase_config_linux.h>
 
+#ifndef CONFIG_MALI_SYSTEM_TRACE
+/*
+ * NB: if CONFIG_MALI_SYSTEM_TRACE is enabled then trace points
+ *     are declared via mali_kbase.h and constructed in kbase;
+ *     otherwise we create them all (mali_dvfs, mali_hwc) here.
+ */
 #define	CREATE_TRACE_POINTS
-#include <trace/events/mali.h>
+#endif
+
+#include <kbase/src/linux/mali_linux_dvfs_trace.h>
 
 #if CONFIG_MALI_UNCACHED == 0
 #error CONFIG_MALI_UNCACHED should equal 1 for Exynos5 support, your scons commandline should contain 'no_syncsets=1'
@@ -113,6 +121,9 @@ void kbase_platform_term(struct kbase_device *kbdev);
 #ifdef CONFIG_T6XX_DEBUG_SYS
 static int kbase_platform_create_sysfs_file(struct device *dev);
 #endif /* CONFIG_T6XX_DEBUG_SYS */
+
+static int mali_setup_system_tracing(struct device *dev);
+static void mali_cleanup_system_tracing(struct device *dev);
 
 struct exynos_context
 {
@@ -1155,6 +1166,9 @@ static int kbase_platform_create_sysfs_file(struct device *dev)
 	}
 #endif
 #endif /* CONFIG_T6XX_DVFS */
+	if (!mali_setup_system_tracing(dev))
+		goto out;
+
 
 	return 0;
 out:
@@ -1174,6 +1188,7 @@ void kbase_platform_remove_sysfs_file(struct device *dev)
 	device_remove_file(dev, &dev_attr_asv);
 #endif
 #endif /* CONFIG_T6XX_DVFS */
+	mali_cleanup_system_tracing(dev);
 }
 #endif /* CONFIG_T6XX_DEBUG_SYS */
 
@@ -1955,3 +1970,771 @@ out:
 	return utilisation;
 }
 #endif
+
+#ifdef CONFIG_MALI_HWC_TRACE
+/*
+ * Mali hardware performance counter trace support.  Each counter
+ * has a corresponding trace event.  To use, enable events and write
+ * 1 to the hwc_enable sysfs file to start polling for counter data
+ * at vblank.  An event is dispatched each time a counter's value
+ * changes.  Note system event tracing must be enabled to get the
+ * events; otherwise the polling will not generate events.  When done
+ * turn off polling.  Note also that the GPU_ACTIVE counter causes
+ * the GPU to never be idle; this causes the governor to push the
+ * clock to max (since it sees 100% utilization).
+ *
+ * This code is derived from ARM's gator driver.
+ */
+#include <drm/drm_notifier.h>
+#include <kbase/src/linux/mali_linux_hwc_trace.h>
+
+/*
+ * Mali hw counters by block.  Note that each hw counter enable bit
+ * covers 4 counters.  There are 64 counters / block for 256 total
+ * counters.
+ */
+#define	MALI_HWC_TOTAL	(4*64)			/* total # hw counters */
+
+#define	hwc_off(x)	((x) & 0x3f)		/* offset in block */
+#define	hwc_bit(x)	(hwc_off(x) >> 2)	/* block bm enable bit */
+
+#define	BLOCK_OFF(b)	((b) << 6)
+
+/* Job Manager (Block 0) */
+#define	BLOCK_JM_OFF	BLOCK_OFF(0)
+#define MALI_HW_MESSAGES_SENT		(BLOCK_JM_OFF + 4)
+#define MALI_HW_MESSAGES_RECEIVED	(BLOCK_JM_OFF + 5)
+/* NB: if GPU_ACTIVE is enabled the GPU will stay active when idle */
+#define MALI_HW_GPU_ACTIVE		(BLOCK_JM_OFF + 6)
+#define MALI_HW_IRQ_ACTIVE		(BLOCK_JM_OFF + 7)
+
+#define MALI_HW_JS0_JOBS		(BLOCK_JM_OFF + 8*0 + 8)
+#define MALI_HW_JS0_TASKS		(BLOCK_JM_OFF + 8*0 + 9)
+#define MALI_HW_JS0_ACTIVE		(BLOCK_JM_OFF + 8*0 + 10)
+#define MALI_HW_JS0_WAIT_READ		(BLOCK_JM_OFF + 8*0 + 11)
+#define MALI_HW_JS0_WAIT_ISSUE		(BLOCK_JM_OFF + 8*0 + 12)
+#define MALI_HW_JS0_WAIT_DEPEND		(BLOCK_JM_OFF + 8*0 + 13)
+#define MALI_HW_JS0_WAIT_FINISH		(BLOCK_JM_OFF + 8*0 + 14)
+
+#define MALI_HW_JS1_JOBS		(BLOCK_JM_OFF + 8*1 + 8)
+#define MALI_HW_JS1_TASKS		(BLOCK_JM_OFF + 8*1 + 9)
+#define MALI_HW_JS1_ACTIVE		(BLOCK_JM_OFF + 8*1 + 10)
+#define MALI_HW_JS1_WAIT_READ		(BLOCK_JM_OFF + 8*1 + 11)
+#define MALI_HW_JS1_WAIT_ISSUE		(BLOCK_JM_OFF + 8*1 + 12)
+#define MALI_HW_JS1_WAIT_DEPEND		(BLOCK_JM_OFF + 8*1 + 13)
+#define MALI_HW_JS1_WAIT_FINISH		(BLOCK_JM_OFF + 8*1 + 14)
+
+#define MALI_HW_JS2_JOBS		(BLOCK_JM_OFF + 8*2 + 8)
+#define MALI_HW_JS2_TASKS		(BLOCK_JM_OFF + 8*2 + 9)
+#define MALI_HW_JS2_ACTIVE		(BLOCK_JM_OFF + 8*2 + 10)
+#define MALI_HW_JS2_WAIT_READ		(BLOCK_JM_OFF + 8*2 + 11)
+#define MALI_HW_JS2_WAIT_ISSUE		(BLOCK_JM_OFF + 8*2 + 12)
+#define MALI_HW_JS2_WAIT_DEPEND		(BLOCK_JM_OFF + 8*2 + 13)
+#define MALI_HW_JS2_WAIT_FINISH		(BLOCK_JM_OFF + 8*2 + 14)
+
+#define MALI_HW_JS3_JOBS		(BLOCK_JM_OFF + 8*3 + 8)
+#define MALI_HW_JS3_TASKS		(BLOCK_JM_OFF + 8*3 + 9)
+#define MALI_HW_JS3_ACTIVE		(BLOCK_JM_OFF + 8*3 + 10)
+#define MALI_HW_JS3_WAIT_READ		(BLOCK_JM_OFF + 8*3 + 11)
+#define MALI_HW_JS3_WAIT_ISSUE		(BLOCK_JM_OFF + 8*3 + 12)
+#define MALI_HW_JS3_WAIT_DEPEND		(BLOCK_JM_OFF + 8*3 + 13)
+#define MALI_HW_JS3_WAIT_FINISH		(BLOCK_JM_OFF + 8*3 + 14)
+
+#define MALI_HW_JS4_JOBS		(BLOCK_JM_OFF + 8*4 + 8)
+#define MALI_HW_JS4_TASKS		(BLOCK_JM_OFF + 8*4 + 9)
+#define MALI_HW_JS4_ACTIVE		(BLOCK_JM_OFF + 8*4 + 10)
+#define MALI_HW_JS4_WAIT_READ		(BLOCK_JM_OFF + 8*4 + 11)
+#define MALI_HW_JS4_WAIT_ISSUE		(BLOCK_JM_OFF + 8*4 + 12)
+#define MALI_HW_JS4_WAIT_DEPEND		(BLOCK_JM_OFF + 8*4 + 13)
+#define MALI_HW_JS4_WAIT_FINISH		(BLOCK_JM_OFF + 8*4 + 14)
+
+#define MALI_HW_JS5_JOBS		(BLOCK_JM_OFF + 8*5 + 8)
+#define MALI_HW_JS5_TASKS		(BLOCK_JM_OFF + 8*5 + 9)
+#define MALI_HW_JS5_ACTIVE		(BLOCK_JM_OFF + 8*5 + 10)
+#define MALI_HW_JS5_WAIT_READ		(BLOCK_JM_OFF + 8*5 + 11)
+#define MALI_HW_JS5_WAIT_ISSUE		(BLOCK_JM_OFF + 8*5 + 12)
+#define MALI_HW_JS5_WAIT_DEPEND		(BLOCK_JM_OFF + 8*5 + 13)
+#define MALI_HW_JS5_WAIT_FINISH		(BLOCK_JM_OFF + 8*5 + 14)
+
+#define MALI_HW_JS6_JOBS		(BLOCK_JM_OFF + 8*6 + 8)
+#define MALI_HW_JS6_TASKS		(BLOCK_JM_OFF + 8*6 + 9)
+#define MALI_HW_JS6_ACTIVE		(BLOCK_JM_OFF + 8*6 + 10)
+#define MALI_HW_JS6_WAIT_READ		(BLOCK_JM_OFF + 8*6 + 11)
+#define MALI_HW_JS6_WAIT_ISSUE		(BLOCK_JM_OFF + 8*6 + 12)
+#define MALI_HW_JS6_WAIT_DEPEND		(BLOCK_JM_OFF + 8*6 + 13)
+#define MALI_HW_JS6_WAIT_FINISH		(BLOCK_JM_OFF + 8*6 + 14)
+
+#define	MALI_HW_JM_FIRST	MALI_HW_GPU_ACTIVE
+#define	MALI_HW_JM_LAST		MALI_HW_JS6_WAIT_FINISH
+
+/* Tiler (Block 1) */
+#define	BLOCK_TILER_OFF	BLOCK_OFF(1)
+#define MALI_HW_JOBS_PROCESSED		(BLOCK_TILER_OFF + 3)
+#define MALI_HW_TRIANGLES		(BLOCK_TILER_OFF + 4)
+#define MALI_HW_QUADS			(BLOCK_TILER_OFF + 5)
+#define MALI_HW_POLYGONS		(BLOCK_TILER_OFF + 6)
+#define MALI_HW_POINTS			(BLOCK_TILER_OFF + 7)
+#define MALI_HW_LINES			(BLOCK_TILER_OFF + 8)
+#define MALI_HW_VCACHE_HIT		(BLOCK_TILER_OFF + 9)
+#define MALI_HW_VCACHE_MISS		(BLOCK_TILER_OFF + 10)
+#define MALI_HW_FRONT_FACING		(BLOCK_TILER_OFF + 11)
+#define MALI_HW_BACK_FACING		(BLOCK_TILER_OFF + 12)
+#define MALI_HW_PRIM_VISIBLE		(BLOCK_TILER_OFF + 13)
+#define MALI_HW_PRIM_CULLED		(BLOCK_TILER_OFF + 14)
+#define MALI_HW_PRIM_CLIPPED		(BLOCK_TILER_OFF + 15)
+
+#define MALI_HW_COMPRESS_IN		(BLOCK_TILER_OFF + 32)
+#define MALI_HW_COMPRESS_OUT		(BLOCK_TILER_OFF + 33)
+#define MALI_HW_COMPRESS_FLUSH		(BLOCK_TILER_OFF + 34)
+#define MALI_HW_TIMESTAMPS		(BLOCK_TILER_OFF + 35)
+#define MALI_HW_PCACHE_HIT		(BLOCK_TILER_OFF + 36)
+#define MALI_HW_PCACHE_MISS		(BLOCK_TILER_OFF + 37)
+#define MALI_HW_PCACHE_LINE		(BLOCK_TILER_OFF + 38)
+#define MALI_HW_PCACHE_STALL		(BLOCK_TILER_OFF + 39)
+#define MALI_HW_WRBUF_HIT		(BLOCK_TILER_OFF + 40)
+#define MALI_HW_WRBUF_MISS		(BLOCK_TILER_OFF + 41)
+#define MALI_HW_WRBUF_LINE		(BLOCK_TILER_OFF + 42)
+#define MALI_HW_WRBUF_PARTIAL		(BLOCK_TILER_OFF + 43)
+#define MALI_HW_WRBUF_STALL		(BLOCK_TILER_OFF + 44)
+#define MALI_HW_ACTIVE			(BLOCK_TILER_OFF + 45)
+#define MALI_HW_LOADING_DESC		(BLOCK_TILER_OFF + 46)
+#define MALI_HW_INDEX_WAIT		(BLOCK_TILER_OFF + 47)
+#define MALI_HW_INDEX_RANGE_WAIT	(BLOCK_TILER_OFF + 48)
+#define MALI_HW_VERTEX_WAIT		(BLOCK_TILER_OFF + 49)
+#define MALI_HW_PCACHE_WAIT		(BLOCK_TILER_OFF + 50)
+#define MALI_HW_WRBUF_WAIT		(BLOCK_TILER_OFF + 51)
+#define MALI_HW_BUS_READ		(BLOCK_TILER_OFF + 52)
+#define MALI_HW_BUS_WRITE		(BLOCK_TILER_OFF + 53)
+
+#define MALI_HW_TILER_UTLB_STALL	(BLOCK_TILER_OFF + 59)
+#define MALI_HW_TILER_UTLB_REPLAY_MISS	(BLOCK_TILER_OFF + 60)
+#define MALI_HW_TILER_UTLB_REPLAY_FULL	(BLOCK_TILER_OFF + 61)
+#define MALI_HW_TILER_UTLB_NEW_MISS	(BLOCK_TILER_OFF + 62)
+#define MALI_HW_TILER_UTLB_HIT		(BLOCK_TILER_OFF + 63)
+
+#define	MALI_HW_TILER_FIRST	MALI_HW_JOBS_PROCESSED
+#define	MALI_HW_TILER_LAST	MALI_HW_TILER_UTLB_HIT
+
+/* Shader Core (Block 2) */
+#define	BLOCK_SHADER_OFF	BLOCK_OFF(2)
+#define MALI_HW_SHADER_CORE_ACTIVE	(BLOCK_SHADER_OFF + 3)
+#define MALI_HW_FRAG_ACTIVE		(BLOCK_SHADER_OFF + 4)
+#define MALI_HW_FRAG_PRIMATIVES		(BLOCK_SHADER_OFF + 5)
+#define MALI_HW_FRAG_PRIMATIVES_DROPPED	(BLOCK_SHADER_OFF + 6)
+#define MALI_HW_FRAG_CYCLE_DESC		(BLOCK_SHADER_OFF + 7)
+#define MALI_HW_FRAG_CYCLES_PLR		(BLOCK_SHADER_OFF + 8)
+#define MALI_HW_FRAG_CYCLES_VERT	(BLOCK_SHADER_OFF + 9)
+#define MALI_HW_FRAG_CYCLES_TRISETUP	(BLOCK_SHADER_OFF + 10)
+#define MALI_HW_FRAG_CYCLES_RAST	(BLOCK_SHADER_OFF + 11)
+#define MALI_HW_FRAG_THREADS		(BLOCK_SHADER_OFF + 12)
+#define MALI_HW_FRAG_DUMMY_THREADS	(BLOCK_SHADER_OFF + 13)
+#define MALI_HW_FRAG_QUADS_RAST		(BLOCK_SHADER_OFF + 14)
+#define MALI_HW_FRAG_QUADS_EZS_TEST	(BLOCK_SHADER_OFF + 15)
+#define MALI_HW_FRAG_QUADS_EZS_KILLED	(BLOCK_SHADER_OFF + 16)
+#define MALI_HW_FRAG_QUADS_LZS_TEST	(BLOCK_SHADER_OFF + 17)
+#define MALI_HW_FRAG_QUADS_LZS_KILLED	(BLOCK_SHADER_OFF + 18)
+#define MALI_HW_FRAG_CYCLE_NO_TILE	(BLOCK_SHADER_OFF + 19)
+#define MALI_HW_FRAG_NUM_TILES		(BLOCK_SHADER_OFF + 20)
+#define MALI_HW_FRAG_TRANS_ELIM		(BLOCK_SHADER_OFF + 21)
+#define MALI_HW_COMPUTE_ACTIVE		(BLOCK_SHADER_OFF + 22)
+#define MALI_HW_COMPUTE_TASKS		(BLOCK_SHADER_OFF + 23)
+#define MALI_HW_COMPUTE_THREADS		(BLOCK_SHADER_OFF + 24)
+#define MALI_HW_COMPUTE_CYCLES_DESC	(BLOCK_SHADER_OFF + 25)
+#define MALI_HW_TRIPIPE_ACTIVE		(BLOCK_SHADER_OFF + 26)
+#define MALI_HW_ARITH_WORDS		(BLOCK_SHADER_OFF + 27)
+#define MALI_HW_ARITH_CYCLES_REG	(BLOCK_SHADER_OFF + 28)
+#define MALI_HW_ARITH_CYCLES_L0		(BLOCK_SHADER_OFF + 29)
+#define MALI_HW_ARITH_FRAG_DEPEND	(BLOCK_SHADER_OFF + 30)
+#define MALI_HW_LS_WORDS		(BLOCK_SHADER_OFF + 31)
+#define MALI_HW_LS_ISSUES		(BLOCK_SHADER_OFF + 32)
+#define MALI_HW_LS_RESTARTS		(BLOCK_SHADER_OFF + 33)
+#define MALI_HW_LS_REISSUES_MISS	(BLOCK_SHADER_OFF + 34)
+#define MALI_HW_LS_REISSUES_VD		(BLOCK_SHADER_OFF + 35)
+#define MALI_HW_LS_REISSUE_ATTRIB_MISS	(BLOCK_SHADER_OFF + 36)
+#define MALI_HW_LS_NO_WB		(BLOCK_SHADER_OFF + 37)
+#define MALI_HW_TEX_WORDS		(BLOCK_SHADER_OFF + 38)
+#define MALI_HW_TEX_BUBBLES		(BLOCK_SHADER_OFF + 39)
+#define MALI_HW_TEX_WORDS_L0		(BLOCK_SHADER_OFF + 40)
+#define MALI_HW_TEX_WORDS_DESC		(BLOCK_SHADER_OFF + 41)
+#define MALI_HW_TEX_THREADS		(BLOCK_SHADER_OFF + 42)
+#define MALI_HW_TEX_RECIRC_FMISS	(BLOCK_SHADER_OFF + 43)
+#define MALI_HW_TEX_RECIRC_DESC		(BLOCK_SHADER_OFF + 44)
+#define MALI_HW_TEX_RECIRC_MULTI	(BLOCK_SHADER_OFF + 45)
+#define MALI_HW_TEX_RECIRC_PMISS	(BLOCK_SHADER_OFF + 46)
+#define MALI_HW_TEX_RECIRC_CONF		(BLOCK_SHADER_OFF + 47)
+#define MALI_HW_LSC_READ_HITS		(BLOCK_SHADER_OFF + 48)
+#define MALI_HW_LSC_READ_MISSES		(BLOCK_SHADER_OFF + 49)
+#define MALI_HW_LSC_WRITE_HITS		(BLOCK_SHADER_OFF + 50)
+#define MALI_HW_LSC_WRITE_MISSES	(BLOCK_SHADER_OFF + 51)
+#define MALI_HW_LSC_ATOMIC_HITS		(BLOCK_SHADER_OFF + 52)
+#define MALI_HW_LSC_ATOMIC_MISSES	(BLOCK_SHADER_OFF + 53)
+#define MALI_HW_LSC_LINE_FETCHES	(BLOCK_SHADER_OFF + 54)
+#define MALI_HW_LSC_DIRTY_LINE		(BLOCK_SHADER_OFF + 55)
+#define MALI_HW_LSC_SNOOPS		(BLOCK_SHADER_OFF + 56)
+#define MALI_HW_AXI_TLB_STALL		(BLOCK_SHADER_OFF + 57)
+#define MALI_HW_AXI_TLB_MISS		(BLOCK_SHADER_OFF + 58)
+#define MALI_HW_AXI_TLB_TRANSACTION	(BLOCK_SHADER_OFF + 59)
+#define MALI_HW_LS_TLB_MISS		(BLOCK_SHADER_OFF + 60)
+#define MALI_HW_LS_TLB_HIT		(BLOCK_SHADER_OFF + 61)
+#define MALI_HW_AXI_BEATS_READ		(BLOCK_SHADER_OFF + 62)
+#define MALI_HW_AXI_BEATS_WRITE		(BLOCK_SHADER_OFF + 63)
+
+#define	MALI_HW_SHADER_FIRST	MALI_HW_SHADER_CORE_ACTIVE
+#define	MALI_HW_SHADER_LAST	MALI_HW_AXI_BEATS_WRITE
+
+/* L2 and MMU (Block 3) */
+#define	BLOCK_MMU_OFF	BLOCK_OFF(3)
+#define MALI_HW_MMU_TABLE_WALK		(BLOCK_MMU_OFF + 4)
+#define MALI_HW_MMU_REPLAY_MISS		(BLOCK_MMU_OFF + 5)
+#define MALI_HW_MMU_REPLAY_FULL		(BLOCK_MMU_OFF + 6)
+#define MALI_HW_MMU_NEW_MISS		(BLOCK_MMU_OFF + 7)
+#define MALI_HW_MMU_HIT			(BLOCK_MMU_OFF + 8)
+
+#define MALI_HW_UTLB_STALL		(BLOCK_MMU_OFF + 16)
+#define MALI_HW_UTLB_REPLAY_MISS	(BLOCK_MMU_OFF + 17)
+#define MALI_HW_UTLB_REPLAY_FULL	(BLOCK_MMU_OFF + 18)
+#define MALI_HW_UTLB_NEW_MISS		(BLOCK_MMU_OFF + 19)
+#define MALI_HW_UTLB_HIT		(BLOCK_MMU_OFF + 20)
+
+#define MALI_HW_L2_WRITE_BEATS		(BLOCK_MMU_OFF + 30)
+#define MALI_HW_L2_READ_BEATS		(BLOCK_MMU_OFF + 31)
+#define MALI_HW_L2_ANY_LOOKUP		(BLOCK_MMU_OFF + 32)
+#define MALI_HW_L2_READ_LOOKUP		(BLOCK_MMU_OFF + 33)
+#define MALI_HW_L2_SREAD_LOOKUP		(BLOCK_MMU_OFF + 34)
+#define MALI_HW_L2_READ_REPLAY		(BLOCK_MMU_OFF + 35)
+#define MALI_HW_L2_READ_SNOOP		(BLOCK_MMU_OFF + 36)
+#define MALI_HW_L2_READ_HIT		(BLOCK_MMU_OFF + 37)
+#define MALI_HW_L2_CLEAN_MISS		(BLOCK_MMU_OFF + 38)
+#define MALI_HW_L2_WRITE_LOOKUP		(BLOCK_MMU_OFF + 39)
+#define MALI_HW_L2_SWRITE_LOOKUP	(BLOCK_MMU_OFF + 40)
+#define MALI_HW_L2_WRITE_REPLAY		(BLOCK_MMU_OFF + 41)
+#define MALI_HW_L2_WRITE_SNOOP		(BLOCK_MMU_OFF + 42)
+#define MALI_HW_L2_WRITE_HIT		(BLOCK_MMU_OFF + 43)
+#define MALI_HW_L2_EXT_READ_FULL	(BLOCK_MMU_OFF + 44)
+#define MALI_HW_L2_EXT_READ_HALF	(BLOCK_MMU_OFF + 45)
+#define MALI_HW_L2_EXT_WRITE_FULL	(BLOCK_MMU_OFF + 46)
+#define MALI_HW_L2_EXT_WRITE_HALF	(BLOCK_MMU_OFF + 47)
+#define MALI_HW_L2_EXT_READ		(BLOCK_MMU_OFF + 48)
+#define MALI_HW_L2_EXT_READ_LINE	(BLOCK_MMU_OFF + 49)
+#define MALI_HW_L2_EXT_WRITE		(BLOCK_MMU_OFF + 50)
+#define MALI_HW_L2_EXT_WRITE_LINE	(BLOCK_MMU_OFF + 51)
+#define MALI_HW_L2_EXT_WRITE_SMALL	(BLOCK_MMU_OFF + 52)
+#define MALI_HW_L2_EXT_BARRIER		(BLOCK_MMU_OFF + 53)
+#define MALI_HW_L2_EXT_AR_STALL		(BLOCK_MMU_OFF + 54)
+#define MALI_HW_L2_EXT_R_BUF_FULL	(BLOCK_MMU_OFF + 55)
+#define MALI_HW_L2_EXT_RD_BUF_FULL	(BLOCK_MMU_OFF + 56)
+#define MALI_HW_L2_EXT_R_RAW		(BLOCK_MMU_OFF + 57)
+#define MALI_HW_L2_EXT_W_STALL		(BLOCK_MMU_OFF + 58)
+#define MALI_HW_L2_EXT_W_BUF_FULL	(BLOCK_MMU_OFF + 59)
+#define MALI_HW_L2_EXT_R_W_HAZARD	(BLOCK_MMU_OFF + 60)
+#define MALI_HW_L2_TAG_HAZARD		(BLOCK_MMU_OFF + 61)
+#define MALI_HW_L2_SNOOP_FULL		(BLOCK_MMU_OFF + 62)
+#define MALI_HW_L2_REPLAY_FULL		(BLOCK_MMU_OFF + 63)
+
+#define	MALI_HW_MMU_FIRST	MALI_HW_MMU_TABLE_WALK
+#define	MALI_HW_MMU_LAST	MALI_HW_L2_REPLAY_FULL
+
+/*
+ * The amount of memory required to store a hwc dump is:
+ *    # "core groups" (1)
+ *  x # blocks (always 8 for midgard arch)
+ *  x # counters / block (always 64)
+ *  x # bytes / counter (4 for 32-bit counters)
+ */
+#define	MALI_HWC_DUMP_SIZE	(1*8*64*4)
+
+struct mali_hwcounter_state {
+	struct workqueue_struct *wq;		/* collection context */
+	struct kbase_context *ctx;		/* kbase device context */
+	void *buf;				/* counter data buffer */
+	kbase_uk_hwcnt_setup setup;		/* hwcounter setup block */
+	bool active;				/* collecting data */
+	u32 last_read[MALI_HWC_TOTAL];		/* last counter value read */
+};
+static struct mali_hwcounter_state mali_hwcs;
+static osk_spinlock mali_hwcounter_spinlock;
+
+/*
+ * Support for mapping between hw counters and trace events.
+ */
+struct mali_hwcounter_trace_map {
+	void (*do_trace)(unsigned int val);	/* NB: all the same prototype */
+	struct static_key *key;
+};
+#define	HWC_EVENT_MAP(event)						\
+	[MALI_HW_##event] = {						\
+		.do_trace = &trace_mali_hwc_##event,			\
+		.key = &__tracepoint_mali_hwc_##event.key		\
+	}
+
+static struct mali_hwcounter_trace_map mali_hwcounter_map[256] = {
+	/* Job Manager */
+	HWC_EVENT_MAP(MESSAGES_SENT),
+	HWC_EVENT_MAP(MESSAGES_RECEIVED),
+
+	HWC_EVENT_MAP(GPU_ACTIVE),
+	HWC_EVENT_MAP(IRQ_ACTIVE),
+
+	HWC_EVENT_MAP(JS0_JOBS),
+	HWC_EVENT_MAP(JS0_TASKS),
+	HWC_EVENT_MAP(JS0_ACTIVE),
+	HWC_EVENT_MAP(JS0_WAIT_READ),
+	HWC_EVENT_MAP(JS0_WAIT_ISSUE),
+	HWC_EVENT_MAP(JS0_WAIT_DEPEND),
+	HWC_EVENT_MAP(JS0_WAIT_FINISH),
+	HWC_EVENT_MAP(JS1_JOBS),
+	HWC_EVENT_MAP(JS1_TASKS),
+	HWC_EVENT_MAP(JS1_ACTIVE),
+	HWC_EVENT_MAP(JS1_WAIT_READ),
+	HWC_EVENT_MAP(JS1_WAIT_ISSUE),
+	HWC_EVENT_MAP(JS1_WAIT_DEPEND),
+	HWC_EVENT_MAP(JS1_WAIT_FINISH),
+	HWC_EVENT_MAP(JS2_JOBS),
+	HWC_EVENT_MAP(JS2_TASKS),
+	HWC_EVENT_MAP(JS2_ACTIVE),
+	HWC_EVENT_MAP(JS2_WAIT_READ),
+	HWC_EVENT_MAP(JS2_WAIT_ISSUE),
+	HWC_EVENT_MAP(JS2_WAIT_DEPEND),
+	HWC_EVENT_MAP(JS2_WAIT_FINISH),
+	HWC_EVENT_MAP(JS3_JOBS),
+	HWC_EVENT_MAP(JS3_TASKS),
+	HWC_EVENT_MAP(JS3_ACTIVE),
+	HWC_EVENT_MAP(JS3_WAIT_READ),
+	HWC_EVENT_MAP(JS3_WAIT_ISSUE),
+	HWC_EVENT_MAP(JS3_WAIT_DEPEND),
+	HWC_EVENT_MAP(JS3_WAIT_FINISH),
+	HWC_EVENT_MAP(JS4_JOBS),
+	HWC_EVENT_MAP(JS4_TASKS),
+	HWC_EVENT_MAP(JS4_ACTIVE),
+	HWC_EVENT_MAP(JS4_WAIT_READ),
+	HWC_EVENT_MAP(JS4_WAIT_ISSUE),
+	HWC_EVENT_MAP(JS4_WAIT_DEPEND),
+	HWC_EVENT_MAP(JS4_WAIT_FINISH),
+	HWC_EVENT_MAP(JS5_JOBS),
+	HWC_EVENT_MAP(JS5_TASKS),
+	HWC_EVENT_MAP(JS5_ACTIVE),
+	HWC_EVENT_MAP(JS5_WAIT_READ),
+	HWC_EVENT_MAP(JS5_WAIT_ISSUE),
+	HWC_EVENT_MAP(JS5_WAIT_DEPEND),
+	HWC_EVENT_MAP(JS5_WAIT_FINISH),
+	HWC_EVENT_MAP(JS6_JOBS),
+	HWC_EVENT_MAP(JS6_TASKS),
+	HWC_EVENT_MAP(JS6_ACTIVE),
+	HWC_EVENT_MAP(JS6_WAIT_READ),
+	HWC_EVENT_MAP(JS6_WAIT_ISSUE),
+	HWC_EVENT_MAP(JS6_WAIT_DEPEND),
+	HWC_EVENT_MAP(JS6_WAIT_FINISH),
+
+	/* Tiler */
+	HWC_EVENT_MAP(JOBS_PROCESSED),
+	HWC_EVENT_MAP(TRIANGLES),
+	HWC_EVENT_MAP(QUADS),
+	HWC_EVENT_MAP(POLYGONS),
+	HWC_EVENT_MAP(POINTS),
+	HWC_EVENT_MAP(LINES),
+	HWC_EVENT_MAP(VCACHE_HIT),
+	HWC_EVENT_MAP(VCACHE_MISS),
+	HWC_EVENT_MAP(FRONT_FACING),
+	HWC_EVENT_MAP(BACK_FACING),
+	HWC_EVENT_MAP(PRIM_VISIBLE),
+	HWC_EVENT_MAP(PRIM_CULLED),
+	HWC_EVENT_MAP(PRIM_CLIPPED),
+
+	HWC_EVENT_MAP(COMPRESS_IN),
+	HWC_EVENT_MAP(COMPRESS_OUT),
+	HWC_EVENT_MAP(COMPRESS_FLUSH),
+	HWC_EVENT_MAP(TIMESTAMPS),
+	HWC_EVENT_MAP(PCACHE_HIT),
+	HWC_EVENT_MAP(PCACHE_MISS),
+	HWC_EVENT_MAP(PCACHE_LINE),
+	HWC_EVENT_MAP(PCACHE_STALL),
+	HWC_EVENT_MAP(WRBUF_HIT),
+	HWC_EVENT_MAP(WRBUF_MISS),
+	HWC_EVENT_MAP(WRBUF_LINE),
+	HWC_EVENT_MAP(WRBUF_PARTIAL),
+	HWC_EVENT_MAP(WRBUF_STALL),
+	HWC_EVENT_MAP(ACTIVE),
+	HWC_EVENT_MAP(LOADING_DESC),
+	HWC_EVENT_MAP(INDEX_WAIT),
+	HWC_EVENT_MAP(INDEX_RANGE_WAIT),
+	HWC_EVENT_MAP(VERTEX_WAIT),
+	HWC_EVENT_MAP(PCACHE_WAIT),
+	HWC_EVENT_MAP(WRBUF_WAIT),
+	HWC_EVENT_MAP(BUS_READ),
+	HWC_EVENT_MAP(BUS_WRITE),
+
+	HWC_EVENT_MAP(TILER_UTLB_STALL),
+	HWC_EVENT_MAP(TILER_UTLB_REPLAY_MISS),
+	HWC_EVENT_MAP(TILER_UTLB_REPLAY_FULL),
+	HWC_EVENT_MAP(TILER_UTLB_NEW_MISS),
+	HWC_EVENT_MAP(TILER_UTLB_HIT),
+
+	/* Shader */
+	HWC_EVENT_MAP(SHADER_CORE_ACTIVE),
+	HWC_EVENT_MAP(FRAG_ACTIVE),
+	HWC_EVENT_MAP(FRAG_PRIMATIVES),
+	HWC_EVENT_MAP(FRAG_PRIMATIVES_DROPPED),
+	HWC_EVENT_MAP(FRAG_CYCLE_DESC),
+	HWC_EVENT_MAP(FRAG_CYCLES_PLR),
+	HWC_EVENT_MAP(FRAG_CYCLES_VERT),
+	HWC_EVENT_MAP(FRAG_CYCLES_TRISETUP),
+	HWC_EVENT_MAP(FRAG_CYCLES_RAST),
+	HWC_EVENT_MAP(FRAG_THREADS),
+	HWC_EVENT_MAP(FRAG_DUMMY_THREADS),
+	HWC_EVENT_MAP(FRAG_QUADS_RAST),
+	HWC_EVENT_MAP(FRAG_QUADS_EZS_TEST),
+	HWC_EVENT_MAP(FRAG_QUADS_EZS_KILLED),
+	HWC_EVENT_MAP(FRAG_QUADS_LZS_TEST),
+	HWC_EVENT_MAP(FRAG_QUADS_LZS_KILLED),
+	HWC_EVENT_MAP(FRAG_CYCLE_NO_TILE),
+	HWC_EVENT_MAP(FRAG_NUM_TILES),
+	HWC_EVENT_MAP(FRAG_TRANS_ELIM),
+	HWC_EVENT_MAP(COMPUTE_ACTIVE),
+	HWC_EVENT_MAP(COMPUTE_TASKS),
+	HWC_EVENT_MAP(COMPUTE_THREADS),
+	HWC_EVENT_MAP(COMPUTE_CYCLES_DESC),
+	HWC_EVENT_MAP(TRIPIPE_ACTIVE),
+	HWC_EVENT_MAP(ARITH_WORDS),
+	HWC_EVENT_MAP(ARITH_CYCLES_REG),
+	HWC_EVENT_MAP(ARITH_CYCLES_L0),
+	HWC_EVENT_MAP(ARITH_FRAG_DEPEND),
+	HWC_EVENT_MAP(LS_WORDS),
+	HWC_EVENT_MAP(LS_ISSUES),
+	HWC_EVENT_MAP(LS_RESTARTS),
+	HWC_EVENT_MAP(LS_REISSUES_MISS),
+	HWC_EVENT_MAP(LS_REISSUES_VD),
+	HWC_EVENT_MAP(LS_REISSUE_ATTRIB_MISS),
+	HWC_EVENT_MAP(LS_NO_WB),
+	HWC_EVENT_MAP(TEX_WORDS),
+	HWC_EVENT_MAP(TEX_BUBBLES),
+	HWC_EVENT_MAP(TEX_WORDS_L0),
+	HWC_EVENT_MAP(TEX_WORDS_DESC),
+	HWC_EVENT_MAP(TEX_THREADS),
+	HWC_EVENT_MAP(TEX_RECIRC_FMISS),
+	HWC_EVENT_MAP(TEX_RECIRC_DESC),
+	HWC_EVENT_MAP(TEX_RECIRC_MULTI),
+	HWC_EVENT_MAP(TEX_RECIRC_PMISS),
+	HWC_EVENT_MAP(TEX_RECIRC_CONF),
+	HWC_EVENT_MAP(LSC_READ_HITS),
+	HWC_EVENT_MAP(LSC_READ_MISSES),
+	HWC_EVENT_MAP(LSC_WRITE_HITS),
+	HWC_EVENT_MAP(LSC_WRITE_MISSES),
+	HWC_EVENT_MAP(LSC_ATOMIC_HITS),
+	HWC_EVENT_MAP(LSC_ATOMIC_MISSES),
+	HWC_EVENT_MAP(LSC_LINE_FETCHES),
+	HWC_EVENT_MAP(LSC_DIRTY_LINE),
+	HWC_EVENT_MAP(LSC_SNOOPS),
+	HWC_EVENT_MAP(AXI_TLB_STALL),
+	HWC_EVENT_MAP(AXI_TLB_MISS),
+	HWC_EVENT_MAP(AXI_TLB_TRANSACTION),
+	HWC_EVENT_MAP(LS_TLB_MISS),
+	HWC_EVENT_MAP(LS_TLB_HIT),
+	HWC_EVENT_MAP(AXI_BEATS_READ),
+	HWC_EVENT_MAP(AXI_BEATS_WRITE),
+
+	/* MMU */
+	HWC_EVENT_MAP(MMU_TABLE_WALK),
+	HWC_EVENT_MAP(MMU_REPLAY_MISS),
+	HWC_EVENT_MAP(MMU_REPLAY_FULL),
+	HWC_EVENT_MAP(MMU_NEW_MISS),
+	HWC_EVENT_MAP(MMU_HIT),
+
+	HWC_EVENT_MAP(UTLB_STALL),
+	HWC_EVENT_MAP(UTLB_REPLAY_MISS),
+	HWC_EVENT_MAP(UTLB_REPLAY_FULL),
+	HWC_EVENT_MAP(UTLB_NEW_MISS),
+	HWC_EVENT_MAP(UTLB_HIT),
+
+	HWC_EVENT_MAP(L2_WRITE_BEATS),
+	HWC_EVENT_MAP(L2_READ_BEATS),
+	HWC_EVENT_MAP(L2_ANY_LOOKUP),
+	HWC_EVENT_MAP(L2_READ_LOOKUP),
+	HWC_EVENT_MAP(L2_SREAD_LOOKUP),
+	HWC_EVENT_MAP(L2_READ_REPLAY),
+	HWC_EVENT_MAP(L2_READ_SNOOP),
+	HWC_EVENT_MAP(L2_READ_HIT),
+	HWC_EVENT_MAP(L2_CLEAN_MISS),
+	HWC_EVENT_MAP(L2_WRITE_LOOKUP),
+	HWC_EVENT_MAP(L2_SWRITE_LOOKUP),
+	HWC_EVENT_MAP(L2_WRITE_REPLAY),
+	HWC_EVENT_MAP(L2_WRITE_SNOOP),
+	HWC_EVENT_MAP(L2_WRITE_HIT),
+	HWC_EVENT_MAP(L2_EXT_READ_FULL),
+	HWC_EVENT_MAP(L2_EXT_READ_HALF),
+	HWC_EVENT_MAP(L2_EXT_WRITE_FULL),
+	HWC_EVENT_MAP(L2_EXT_WRITE_HALF),
+	HWC_EVENT_MAP(L2_EXT_READ),
+	HWC_EVENT_MAP(L2_EXT_READ_LINE),
+	HWC_EVENT_MAP(L2_EXT_WRITE),
+	HWC_EVENT_MAP(L2_EXT_WRITE_LINE),
+	HWC_EVENT_MAP(L2_EXT_WRITE_SMALL),
+	HWC_EVENT_MAP(L2_EXT_BARRIER),
+	HWC_EVENT_MAP(L2_EXT_AR_STALL),
+	HWC_EVENT_MAP(L2_EXT_R_BUF_FULL),
+	HWC_EVENT_MAP(L2_EXT_RD_BUF_FULL),
+	HWC_EVENT_MAP(L2_EXT_R_RAW),
+	HWC_EVENT_MAP(L2_EXT_W_STALL),
+	HWC_EVENT_MAP(L2_EXT_W_BUF_FULL),
+	HWC_EVENT_MAP(L2_EXT_R_W_HAZARD),
+	HWC_EVENT_MAP(L2_TAG_HAZARD),
+	HWC_EVENT_MAP(L2_SNOOP_FULL),
+	HWC_EVENT_MAP(L2_REPLAY_FULL),
+};
+
+/*
+ * Support for building hw counter enable bitmaps from enabled trace events.
+ */
+#define	__BLOCK_CHECK_ENABLED(block, bm_name) do {			\
+	int ev;								\
+	for (ev = block##_FIRST; ev <= block##_LAST; ev++) {		\
+		const struct mali_hwcounter_trace_map *map =		\
+		    &mali_hwcounter_map[ev];				\
+		if (map->key != NULL && static_key_false(map->key)) {	\
+			mali_hwcs.setup.bm_name |= 1<<hwc_bit(ev);	\
+			ncounters++;					\
+		}							\
+	}								\
+} while (0)
+#define	JM_CHECK_ENABLED() __BLOCK_CHECK_ENABLED(MALI_HW_JM, jm_bm)
+#define	TILER_CHECK_ENABLED() __BLOCK_CHECK_ENABLED(MALI_HW_TILER, tiler_bm)
+#define	SHADER_CHECK_ENABLED() __BLOCK_CHECK_ENABLED(MALI_HW_SHADER, shader_bm)
+#define	MMU_CHECK_ENABLED() __BLOCK_CHECK_ENABLED(MALI_HW_MMU, mmu_l2_bm)
+
+/*
+ * Support for dispatching trace events based on hw counter data.
+ * Note we dispatch an event only when a counter changes value.
+ */
+static int block_update(const int boff, const int event_num)
+{
+	const u32 *block = ((const u32 *)((uintptr_t)mali_hwcs.buf + boff));
+	u32 value = block[hwc_off(event_num)];
+	if (value != mali_hwcs.last_read[event_num]) {
+		mali_hwcs.last_read[event_num] = value;
+		return true;
+	} else
+		return false;
+}
+
+#define	__BLOCK_DISPATCH_EVENTS(block, bm_name, boff) do {		\
+	int ev;								\
+	for (ev = block##_FIRST; ev <= block##_LAST; ev++) {		\
+		const struct mali_hwcounter_trace_map *map =		\
+		    &mali_hwcounter_map[ev];				\
+		/* NB: each enable bit covers 4 counters */		\
+		if ((mali_hwcs.setup.bm_name & (1<<hwc_bit(ev))) &&	\
+		    map->key != NULL && static_key_false(map->key) &&	\
+		    block_update(boff, ev))				\
+			map->do_trace(mali_hwcs.last_read[ev]);		\
+	}								\
+} while (0)
+#define	JM_DISPATCH_EVENTS() \
+	__BLOCK_DISPATCH_EVENTS(MALI_HW_JM, jm_bm, 0x700)
+#define	TILER_DISPATCH_EVENTS() \
+	__BLOCK_DISPATCH_EVENTS(MALI_HW_TILER, tiler_bm, 0x400)
+#define	MMU_DISPATCH_EVENTS() \
+	__BLOCK_DISPATCH_EVENTS(MALI_HW_MMU, mmu_l2_bm, 0x500)
+
+static int shader_block_update(const int event_num)
+{
+	const u32 *block = ((const u32 *)((uintptr_t)mali_hwcs.buf + 0x000));
+	u32 value = block[hwc_off(event_num)]
+		  + block[hwc_off(event_num) + 0x100]
+		  + block[hwc_off(event_num) + 0x200]
+		  + block[hwc_off(event_num) + 0x300]
+		  ;
+	if (value != mali_hwcs.last_read[event_num]) {
+		mali_hwcs.last_read[event_num] = value;
+		return true;
+	} else
+		return false;
+}
+
+#define	SHADER_DISPATCH_EVENTS() do {					\
+	int ev;								\
+	for (ev = MALI_HW_SHADER_FIRST; ev <= MALI_HW_SHADER_LAST; ev++) {\
+		const struct mali_hwcounter_trace_map *map =		\
+		    &mali_hwcounter_map[ev];				\
+		/* NB: each enable bit covers 4 counters */		\
+		if ((mali_hwcs.setup.shader_bm & (1<<hwc_bit(ev))) &&	\
+		    map->key != NULL && static_key_false(map->key) &&	\
+		    shader_block_update(ev))				\
+			map->do_trace(mali_hwcs.last_read[ev]);		\
+	}								\
+} while (0)
+
+/*
+ * Collect hw counter data and dispatch trace events.
+ * This runs from the workqueue so it can block when
+ * fetching hw counter data.
+ */
+static void mali_hwcounter_collect(struct work_struct *w)
+{
+	mali_error error;
+
+	osk_spinlock_lock(&mali_hwcounter_spinlock);
+	if (!mali_hwcs.active) {
+		osk_spinlock_unlock(&mali_hwcounter_spinlock);
+		return;
+	}
+	error = kbase_instr_hwcnt_dump(mali_hwcs.ctx);
+	osk_spinlock_unlock(&mali_hwcounter_spinlock);
+	if (error == MALI_ERROR_NONE) {
+		/* extract data and generate trace events */
+		JM_DISPATCH_EVENTS();
+		TILER_DISPATCH_EVENTS();
+		SHADER_DISPATCH_EVENTS();
+		MMU_DISPATCH_EVENTS();
+	} else
+		pr_err("%s: failed to dump hw counters\n", __func__);
+}
+static DECLARE_WORK(mali_hwcounter_work, mali_hwcounter_collect);
+
+/*
+ * drm vblank notifier; used to trigger hw counter polling.
+ */
+static int mali_hwcounter_vblank(struct notifier_block *nb,
+	unsigned long unused, void *data)
+{
+	/* punt to work queue where we can block */
+	queue_work_on(0, mali_hwcs.wq, &mali_hwcounter_work);
+	return 0;
+}
+static struct notifier_block mali_vblank_notifier = {
+	.notifier_call	= mali_hwcounter_vblank,
+};
+
+/*
+ * Start hw counter polling.  Construct the counter enable bitmaps
+ * based on the enabled trace events, call kbase to turn on counters,
+ * and arrange polling at vblank.
+ */
+static int mali_hwcounter_polling_start(struct kbase_device *kbdev)
+{
+	int ncounters = 0;
+
+	if (mali_hwcs.active)
+		return -EALREADY;
+
+	/* Construct hw counter bitmaps from enabled trace events */
+	memset(&mali_hwcs.setup, 0, sizeof(mali_hwcs.setup));
+
+	JM_CHECK_ENABLED();
+	TILER_CHECK_ENABLED();
+	SHADER_CHECK_ENABLED();
+	MMU_CHECK_ENABLED();
+
+	if (ncounters > 0) {
+		mali_error error;
+
+		mali_hwcs.ctx = kbase_create_context(kbdev);
+		if (mali_hwcs.ctx == NULL) {
+			pr_err("%s: cannot create context\n", __func__);
+			return -EIO;
+		}
+		mali_hwcs.buf = kbase_va_alloc(mali_hwcs.ctx,
+					       MALI_HWC_DUMP_SIZE);
+		mali_hwcs.setup.dump_buffer = (uintptr_t) mali_hwcs.buf;
+
+		error = kbase_instr_hwcnt_enable(mali_hwcs.ctx,
+						 &mali_hwcs.setup);
+		if (error != MALI_ERROR_NONE) {
+			pr_err("%s: cannot enable hw counters\n", __func__);
+
+			kbase_va_free(mali_hwcs.ctx, mali_hwcs.buf);
+			mali_hwcs.buf = NULL;
+
+			kbase_destroy_context(mali_hwcs.ctx);
+			mali_hwcs.ctx = NULL;
+
+			return -EIO;/*TODO make unique*/
+		}
+		kbase_instr_hwcnt_clear(mali_hwcs.ctx);
+		mali_hwcs.active = true;
+		/* NB: use 0 to minimize meaningless events */
+		memset(mali_hwcs.last_read, 0, sizeof(mali_hwcs.last_read));
+
+		drm_vblank_register_notifier(&mali_vblank_notifier);
+	}
+	return 0;
+}
+
+/*
+ * Stop hw counter polling. Disable polling, turn off hw counters,
+ * and release our resources.
+ */
+static void mali_hwcounter_polling_stop(struct kbase_device *kbdev)
+{
+	osk_spinlock_lock(&mali_hwcounter_spinlock);
+	if (mali_hwcs.active) {
+		drm_vblank_unregister_notifier(&mali_vblank_notifier);
+
+		kbase_instr_hwcnt_disable(mali_hwcs.ctx);
+
+		kbase_va_free(mali_hwcs.ctx, mali_hwcs.buf);
+		mali_hwcs.buf = NULL;
+
+		kbase_destroy_context(mali_hwcs.ctx);
+		mali_hwcs.ctx = NULL;
+
+		mali_hwcs.active = false;
+	}
+	osk_spinlock_unlock(&mali_hwcounter_spinlock);
+}
+
+static ssize_t mali_sysfs_show_hwc_enable(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d\n", (mali_hwcs.active == true));
+}
+
+static ssize_t mali_sysfs_set_hwc_enable(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct kbase_device *kbdev = dev_get_drvdata(dev);
+	int error;
+	bool enable;
+
+	if (strtobool(buf, &enable) < 0)
+		return -EINVAL;
+	if (enable) {
+		error = mali_hwcounter_polling_start(kbdev);
+		if (error < 0)
+			return error;
+	} else
+		mali_hwcounter_polling_stop(kbdev);
+	return count;
+}
+DEVICE_ATTR(hwc_enable, S_IRUGO|S_IWUSR, mali_sysfs_show_hwc_enable,
+	mali_sysfs_set_hwc_enable);
+
+static int mali_setup_system_tracing(struct device *dev)
+{
+	osk_spinlock_init(&mali_hwcounter_spinlock, OSK_LOCK_ORDER_PM_METRICS);
+	mali_hwcs.wq = create_singlethread_workqueue("mali_hwc");
+	mali_hwcs.active = false;
+
+	if (device_create_file(dev, &dev_attr_hwc_enable)) {
+		dev_err(dev, "Couldn't create sysfs file [hwc_enable]\n");
+		return -ENOENT;
+	}
+	return 0;
+}
+
+static void mali_cleanup_system_tracing(struct device *dev)
+{
+	struct kbase_device *kbdev = dev_get_drvdata(dev);
+
+	mali_hwcounter_polling_stop(kbdev);
+	destroy_workqueue(mali_hwcs.wq);
+	device_remove_file(dev, &dev_attr_hwc_enable);
+}
+#else /* CONFIG_MALI_HWC_TRACE */
+static int mali_setup_system_tracing(struct device *dev)
+{
+	return 0;
+}
+
+static void mali_cleanup_system_tracing(struct device *dev)
+{
+}
+#endif /* CONFIG_MALI_HWC_TRACE */

@@ -1,8 +1,9 @@
-#undef TRACE_SYSTEM
-#define TRACE_SYSTEM mali
 
-#if !defined(_TRACE_MALI_H) || defined(TRACE_HEADER_MULTI_READ)
-#define _TRACE_MALI_H
+#if !defined(_TRACE_MALI_DVFS_H) || defined(TRACE_HEADER_MULTI_READ)
+#define _TRACE_MALI_DVFS_H
+
+#undef TRACE_SYSTEM
+#define TRACE_SYSTEM mali_dvfs
 
 #include <linux/tracepoint.h>
 
@@ -45,7 +46,13 @@ TRACE_EVENT(mali_dvfs_set_clock,
 	    TP_printk("frequency=%d", __entry->frequency)
 );
 
-#endif /* _TRACE_MALI_H */
+#endif /* _TRACE_MALI_DVFS_H */
+
+#undef TRACE_INCLUDE_PATH
+#undef linux
+#define TRACE_INCLUDE_PATH MALI_KBASE_SRC_LINUX_PATH
+#undef TRACE_INCLUDE_FILE
+#define TRACE_INCLUDE_FILE mali_linux_dvfs_trace
 
 /* This part must be outside protection */
 #include <trace/define_trace.h>
