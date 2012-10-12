@@ -3263,7 +3263,6 @@ static int __devinit s3c_fb_copy_bootloader_fb(struct platform_device *pdev,
 		struct dma_buf *dest_buf)
 {
 	struct resource *res;
-	void __iomem *to_io;
 	int ret = 0;
 	size_t i;
 
@@ -3283,10 +3282,10 @@ static int __devinit s3c_fb_copy_bootloader_fb(struct platform_device *pdev,
 	for (i = 0; i < resource_size(res); i += PAGE_SIZE) {
 		void *page = phys_to_page(res->start + i);
 		void *from_virt = kmap(page);
-		to_io = dma_buf_kmap(dest_buf, i / PAGE_SIZE);
-		memcpy_toio(to_io, from_virt, PAGE_SIZE);
+		void *to_virt = dma_buf_kmap(dest_buf, i / PAGE_SIZE);
+		memcpy(to_virt, from_virt, PAGE_SIZE);
 		kunmap(page);
-		dma_buf_kunmap(dest_buf, i / PAGE_SIZE, to_io);
+		dma_buf_kunmap(dest_buf, i / PAGE_SIZE, to_virt);
 	}
 
 	dma_buf_end_cpu_access(dest_buf, 0, resource_size(res), DMA_TO_DEVICE);
@@ -3301,7 +3300,6 @@ err:
 static int __devinit s3c_fb_clear_fb(struct s3c_fb *sfb,
 		struct dma_buf *dest_buf, size_t size)
 {
-	void __iomem *to_io;
 	size_t i;
 
 	int ret = dma_buf_begin_cpu_access(dest_buf, 0, dest_buf->size,
@@ -3313,9 +3311,9 @@ static int __devinit s3c_fb_clear_fb(struct s3c_fb *sfb,
 	}
 
 	for (i = 0; i < dest_buf->size / PAGE_SIZE; i++) {
-		to_io = dma_buf_kmap(dest_buf, i);
-		memset_io(to_io, 0, PAGE_SIZE);
-		dma_buf_kunmap(dest_buf, i, to_io);
+		void *to_virt = dma_buf_kmap(dest_buf, i);
+		memset(to_virt, 0, PAGE_SIZE);
+		dma_buf_kunmap(dest_buf, i, to_virt);
 	}
 
 	dma_buf_end_cpu_access(dest_buf, 0, size, DMA_TO_DEVICE);
