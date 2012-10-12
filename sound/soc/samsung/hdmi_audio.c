@@ -331,10 +331,8 @@ static int hdmi_audio_hw_params(struct device *dev,
 	snd_printdd("sample_rate [%d]\n", ctx->params.sample_rate);
 
 	/* checking here to cache audioparms for hpd plug handling */
-	if (!atomic_read(&ctx->plugged)) {
-		dev_err(dev, "hdmi not plugged\n");
+	if (!atomic_read(&ctx->plugged))
 		return -EINVAL;
-	}
 
 	hdmi_audio_control(ctx, false);
 	hdmi_conf_init(ctx);
@@ -364,10 +362,8 @@ static int hdmi_audio_trigger(struct device *dev,
 	plugin = dev_get_drvdata(dev);
 	ctx = container_of(plugin, struct hdmi_audio_context, plugin);
 
-	if (!atomic_read(&ctx->plugged)) {
-		dev_err(dev, "hdmi not plugged\n");
+	if (!atomic_read(&ctx->plugged))
 		return -EINVAL;
-	}
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
