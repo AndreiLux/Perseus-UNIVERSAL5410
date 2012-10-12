@@ -2081,7 +2081,7 @@ static void s3c_fd_fence_wait(struct s3c_fb *sfb, struct sync_fence *fence)
 		return;
 
 	if (err == -ETIME)
-		err = sync_fence_wait(fence, -1);
+		err = sync_fence_wait(fence, 10 * MSEC_PER_SEC);
 
 	if (err < 0)
 		dev_warn(sfb->dev, "error waiting on fence: %d\n", err);
