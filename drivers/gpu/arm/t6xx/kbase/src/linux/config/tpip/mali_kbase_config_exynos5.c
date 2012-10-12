@@ -53,15 +53,6 @@
 #include <kbase/src/common/mali_kbase_defs.h>
 #include <kbase/src/linux/mali_kbase_config_linux.h>
 
-#ifndef CONFIG_MALI_SYSTEM_TRACE
-/*
- * NB: if CONFIG_MALI_SYSTEM_TRACE is enabled then trace points
- *     are declared via mali_kbase.h and constructed in kbase;
- *     otherwise we create them all (mali_dvfs, mali_hwc) here.
- */
-#define	CREATE_TRACE_POINTS
-#endif
-
 #include <kbase/src/linux/mali_linux_dvfs_trace.h>
 
 #if CONFIG_MALI_UNCACHED == 0

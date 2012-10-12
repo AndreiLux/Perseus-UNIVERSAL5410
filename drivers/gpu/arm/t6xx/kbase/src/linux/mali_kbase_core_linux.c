@@ -11,11 +11,12 @@
  */
 
 
-
 /**
  * @file mali_kbase_core_linux.c
  * Base kernel driver init.
  */
+
+#define CREATE_TRACE_POINTS		/* all tracepoints are created here */
 
 #include <osk/mali_osk.h>
 #include <kbase/src/common/mali_kbase.h>
@@ -23,6 +24,10 @@
 #include <kbase/src/common/mali_midg_regmap.h>
 #include <kbase/src/linux/mali_kbase_mem_linux.h>
 #include <kbase/src/linux/mali_kbase_config_linux.h>
+#include <kbase/src/linux/mali_linux_dvfs_trace.h>
+#ifdef CONFIG_MALI_HWC_TRACE
+#include <kbase/src/linux/mali_linux_hwc_trace.h>
+#endif /* CONFIG_MALI_HWC_TRACE */
 #include <kbase/mali_ukk.h>
 #ifdef CONFIG_MALI_NO_MALI
 #include "mali_kbase_model_linux.h"
@@ -2726,7 +2731,6 @@ MODULE_LICENSE("GPL");
 
 #ifdef CONFIG_MALI_GATOR_SUPPORT
 /* Create the trace points (otherwise we just get code to call a tracepoint) */
-#define CREATE_TRACE_POINTS
 #include "mali_linux_trace.h"
 
 void kbase_trace_mali_pm_status(u32 event, u64 value)
@@ -2767,5 +2771,3 @@ void kbase_trace_mali_total_alloc_pages_change(long long int event)
 	trace_mali_total_alloc_pages_change(event);
 }
 #endif /* CONFIG_MALI_GATOR_SUPPORT */
-
-

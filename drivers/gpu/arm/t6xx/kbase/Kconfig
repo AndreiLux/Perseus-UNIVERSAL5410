@@ -180,3 +180,13 @@ config MALI_HWC_TRACE
 	  with system trace events.  This is typically used for debugging
 	  but has minimal overhead when not in use. Enable only if you
 	  know what you are doing.
+
+config MALI_SYSTEM_TRACE
+	bool "Enable system event tracing support"
+	depends on MALI_T6XX && MALI_EXPERT
+	default n
+	help
+	  Choose this option to enable system trace events for each
+	  kbase event.	This is typically used for debugging but has
+	  minimal overhead when not in use. Enable only if you know what
+	  you are doing.

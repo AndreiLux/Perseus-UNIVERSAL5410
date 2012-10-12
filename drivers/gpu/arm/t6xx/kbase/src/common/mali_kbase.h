@@ -278,7 +278,37 @@ void kbasep_trace_add(kbase_device *kbdev, kbase_trace_code code, void *ctx, kba
                       u8 flags, int refcount, int jobslot, u32 info_val );
 /** PRIVATE - do not use directly. Use KBASE_TRACE_CLEAR() instead */
 void kbasep_trace_clear(kbase_device *kbdev);
-#else /* KBASE_TRACE_ENABLE != 0 */
+#else
+#ifdef CONFIG_MALI_SYSTEM_TRACE
+/* Dispatch kbase trace events as system trace events */
+#include <kbase/src/linux/mali_linux_kbase_trace.h>
+#define KBASE_TRACE_ADD_SLOT( kbdev, code, ctx, katom, gpu_addr, jobslot )\
+	trace_mali_##code(jobslot, 0)
+
+#define KBASE_TRACE_ADD_SLOT_INFO( kbdev, code, ctx, katom, gpu_addr, jobslot, info_val )\
+	trace_mali_##code(jobslot, info_val)
+
+#define KBASE_TRACE_ADD_REFCOUNT( kbdev, code, ctx, katom, gpu_addr, refcount )\
+	trace_mali_##code(refcount, 0)
+
+#define KBASE_TRACE_ADD_REFCOUNT_INFO( kbdev, code, ctx, katom, gpu_addr, refcount, info_val )\
+	trace_mali_##code(refcount, info_val)
+
+#define KBASE_TRACE_ADD( kbdev, code, ctx, katom, gpu_addr, info_val )\
+	trace_mali_##code(gpu_addr, info_val)
+
+#define KBASE_TRACE_CLEAR( kbdev )\
+	do{\
+		CSTD_UNUSED(kbdev);\
+		CSTD_NOP(0);\
+	}while(0)
+#define KBASE_TRACE_DUMP( kbdev )\
+	do{\
+		CSTD_UNUSED(kbdev);\
+		CSTD_NOP(0);\
+	}while(0)
+
+#else /* CONFIG_MALI_SYSTEM_TRACE */
 #define KBASE_TRACE_ADD_SLOT( kbdev, code, ctx, katom, gpu_addr, jobslot )\
 	do{\
 		CSTD_UNUSED(kbdev);\
@@ -344,8 +374,8 @@ void kbasep_trace_clear(kbase_device *kbdev);
 		CSTD_UNUSED(kbdev);\
 		CSTD_NOP(0);\
 	}while(0)
-
-#endif /* KBASE_TRACE_ENABLE != 0 */
+#endif /* CONFIG_MALI_SYSTEM_TRACE */
+#endif
 /** PRIVATE - do not use directly. Use KBASE_TRACE_DUMP() instead */
 void kbasep_trace_dump(kbase_device *kbdev);
 #endif
