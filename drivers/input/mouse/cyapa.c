@@ -1643,6 +1643,9 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 
 	ret = cyapa_read_block(cyapa, CYAPA_CMD_GROUP_DATA, (u8 *)&data);
 	if (ret != sizeof(data)) {
+		cyapa->debug = true;
+		cyapa_dbg(cyapa, "read_block failed in cyapa_irq. ret = %d\n",
+			  ret);
 		cyapa_detect(cyapa);
 		goto irqhandled;
 	}
@@ -1650,6 +1653,10 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 	if ((data.device_status & OP_STATUS_SRC) != OP_STATUS_SRC ||
 	    (data.device_status & OP_STATUS_DEV) != CYAPA_DEV_NORMAL ||
 	    (data.finger_btn & OP_DATA_VALID) != OP_DATA_VALID) {
+		cyapa->debug = true;
+		cyapa_dbg(cyapa,
+			  "irq error. device_status = 0x%x finger_btn = 0x%x",
+			  data.device_status, data.finger_btn);
 		cyapa_detect(cyapa);
 		goto irqhandled;
 	}
