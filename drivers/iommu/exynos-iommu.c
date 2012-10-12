@@ -430,10 +430,7 @@ static int __exynos_sysmmu_enable(struct sysmmu_drvdata *data,
 	data->pgtable = pgtable;
 
 	for (i = 0; i < data->nsfrs; i++) {
-		unsigned long cfg;
-
-		cfg = __raw_readl(data->sfrbases[i] + REG_MMU_CFG);
-		cfg |= CFG_LRU | CFG_QOS(data->qos);
+		unsigned long cfg = CFG_LRU | CFG_QOS(data->qos);
 
 		__sysmmu_set_ptbase(data->sfrbases[i], pgtable);
 
