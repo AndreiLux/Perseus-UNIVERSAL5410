@@ -1459,19 +1459,19 @@ void disk_block_events(struct gendisk *disk)
 	mutex_unlock(&ev->block_mutex);
 }
 
+/**
+ * CONTEXT: ev->lock should be held when calling this function
+ */
 static void __disk_unblock_events(struct gendisk *disk, bool check_now)
 {
 	struct disk_events *ev = disk->ev;
 	unsigned long intv;
-	unsigned long flags;
-
-	spin_lock_irqsave(&ev->lock, flags);
 
 	if (WARN_ON_ONCE(ev->block <= 0))
-		goto out_unlock;
+		return;
 
 	if (--ev->block)
-		goto out_unlock;
+		return;
 
 	/*
 	 * Not exactly a latency critical operation, set poll timer
@@ -1483,8 +1483,6 @@ static void __disk_unblock_events(struct gendisk *disk, bool check_now)
 		queue_delayed_work(system_nrt_freezable_wq, &ev->dwork, 0);
 	else if (intv)
 		queue_delayed_work(system_nrt_freezable_wq, &ev->dwork, intv);
-out_unlock:
-	spin_unlock_irqrestore(&ev->lock, flags);
 }
 
 /**
@@ -1499,8 +1497,14 @@ out_unlock:
  */
 void disk_unblock_events(struct gendisk *disk)
 {
-	if (disk->ev)
+	struct disk_events *ev = disk->ev;
+	unsigned int flags;
+
+	if (ev) {
+		spin_lock_irqsave(&ev->lock, flags);
 		__disk_unblock_events(disk, false);
+		spin_unlock_irqrestore(&ev->lock, flags);
+	}
 }
 
 /**
@@ -1571,10 +1575,10 @@ unsigned int disk_clear_events(struct gendisk *disk, unsigned int mask)
 	 */
 	queue_delayed_work(system_nrt_wq, &ev->dwork, 0);
 	flush_delayed_work(&ev->dwork);
+	spin_lock_irq(&ev->lock);
 	__disk_unblock_events(disk, false);
 
 	/* then, fetch and clear pending events */
-	spin_lock_irq(&ev->lock);
 	WARN_ON_ONCE(ev->clearing & mask);	/* cleared by workfn */
 	pending = ev->pending & mask;
 	ev->pending &= ~mask;
@@ -1688,7 +1692,9 @@ static ssize_t disk_events_poll_msecs_store(struct device *dev,
 
 	disk_block_events(disk);
 	disk->ev->poll_msecs = intv;
+	spin_lock_irq(&disk->ev->lock);
 	__disk_unblock_events(disk, true);
+	spin_unlock_irq(&disk->ev->lock);
 
 	return count;
 }
@@ -1788,7 +1794,9 @@ static void disk_add_events(struct gendisk *disk)
 	 * Block count is initialized to 1 and the following initial
 	 * unblock kicks it into action.
 	 */
+	spin_lock_irq(&disk->ev->lock);
 	__disk_unblock_events(disk, true);
+	spin_unlock_irq(&disk->ev->lock);
 }
 
 static void disk_del_events(struct gendisk *disk)
