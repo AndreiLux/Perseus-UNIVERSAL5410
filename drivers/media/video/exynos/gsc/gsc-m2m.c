@@ -267,7 +267,7 @@ static void gsc_m2m_fence_work(struct work_struct *work)
 			ret = sync_fence_wait(fence, 1000);
 			if (ret == -ETIME) {
 				gsc_warn("sync_fence_wait() timeout");
-				ret = sync_fence_wait(fence, -1);
+				ret = sync_fence_wait(fence, 10 * MSEC_PER_SEC);
 			}
 			if (ret)
 				gsc_warn("sync_fence_wait() error");
