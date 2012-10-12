@@ -3346,6 +3346,31 @@ static int ca0132_voicefx_set(struct hda_codec *codec, int enable)
 	return 1;
 }
 
+static void ca0132_update_latency(struct hda_codec *codec,
+				  unsigned int direction)
+{
+	struct ca0132_spec *spec = codec->spec;
+	if (spec->dsp_state == DSP_DOWNLOADING)
+		return;
+
+	unsigned int latency;
+	struct snd_pcm_substream *substr;
+	struct snd_pcm_runtime *runtime;
+	latency = (direction == SNDRV_PCM_STREAM_PLAYBACK)
+			? ca0132_get_playback_latency(codec)
+			: ca0132_get_capture_latency(codec);
+
+	substr = codec->pcm_info->pcm->streams[direction].substream;
+	while (substr) {
+		runtime = substr->runtime;
+		if (runtime)
+			runtime->delay = bytes_to_frames(runtime,
+					(latency * runtime->rate *
+					runtime->byte_align) / 1000);
+		substr = substr->next;
+	}
+}
+
 static int ca0132_effects_set(struct hda_codec *codec, hda_nid_t nid, long val)
 {
 	struct ca0132_spec *spec = codec->spec;
@@ -3381,6 +3406,10 @@ static int ca0132_effects_set(struct hda_codec *codec, hda_nid_t nid, long val)
 	err = dspio_set_param(codec, ca0132_effects[idx].mid,
 				ca0132_effects[idx].reqs[0],
 				&on, sizeof(unsigned int));
+
+	ca0132_update_latency(codec, SNDRV_PCM_STREAM_PLAYBACK);
+	ca0132_update_latency(codec, SNDRV_PCM_STREAM_CAPTURE);
+
 	if (err < 0)
 		return 0; /* no changed */
 
