@@ -1761,8 +1761,16 @@ int mwifiex_ret_802_11_scan(struct mwifiex_private *priv,
 			priv->user_scan_cfg = NULL;
 		}
 	} else {
-		if (!mwifiex_wmm_lists_empty(adapter) &&
-		    (priv->scan_request && (priv->scan_request->flags &
+		if (priv->scan_request && priv->scan_request->aborted) {
+			spin_unlock_irqrestore(&adapter->scan_pending_q_lock,
+					       flags);
+			adapter->scan_delay_cnt = MWIFIEX_MAX_SCAN_DELAY_CNT;
+			mod_timer(&priv->scan_delay_timer, jiffies +
+				  msecs_to_jiffies(MWIFIEX_SCAN_DELAY_MSEC));
+			dev_dbg(priv->adapter->dev,
+				"info: %s: triggerring scan abort\n", __func__);
+		} else if (!mwifiex_wmm_lists_empty(adapter) &&
+			   (priv->scan_request && (priv->scan_request->flags &
 					    CFG80211_SCAN_FLAG_TX_ABORT))) {
 			spin_unlock_irqrestore(&adapter->scan_pending_q_lock,
 					       flags);
