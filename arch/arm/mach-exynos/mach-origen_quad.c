@@ -37,6 +37,7 @@
 #include <plat/devs.h>
 #include <plat/fb.h>
 #include <plat/gpio-cfg.h>
+#include <plat/keypad.h>
 #include <plat/mfc.h>
 #include <linux/platform_data/i2c-s3c2410.h>
 #include <plat/regs-serial.h>
@@ -680,6 +681,23 @@ static struct s3c_fb_platdata origen_quad_lcd_pdata __initdata = {
 };
 #endif
 
+static uint32_t origen_quad_keymap[] __initdata = {
+	KEY(0, 0, KEY_HOME), KEY(0, 1, KEY_DOWN),
+	KEY(1, 0, KEY_UP), KEY(1, 1, KEY_MENU),
+	KEY(2, 0, KEY_BACK), KEY(2, 1, KEY_ENTER)
+};
+
+static struct matrix_keymap_data origen_quad_keymap_data __initdata = {
+	.keymap		= origen_quad_keymap,
+	.keymap_size	= ARRAY_SIZE(origen_quad_keymap),
+};
+
+static struct samsung_keypad_platdata origen_quad_keypad_data __initdata = {
+	.keymap_data	= &origen_quad_keymap_data,
+	.rows		= 3,
+	.cols		= 2,
+};
+
 static struct platform_device *origen_quad_devices[] __initdata = {
 	&s3c_device_wdt,
 	&s3c_device_rtc,
@@ -699,6 +717,7 @@ static struct platform_device *origen_quad_devices[] __initdata = {
 	&exynos_device_drm,
 #endif
 	&origen_quad_lcd_hv070wsa,
+	&samsung_device_keypad,
 };
 
 /* LCD Backlight data */
@@ -768,6 +787,8 @@ static void __init origen_quad_machine_init(void)
 #endif
 	pwm_add_table(origen_quad_pwm_lookup, ARRAY_SIZE(origen_quad_pwm_lookup));
 	samsung_bl_set(&origen_quad_bl_gpio_info, &origen_quad_bl_data);
+
+	samsung_keypad_set_platdata(&origen_quad_keypad_data);
 
 	platform_add_devices(origen_quad_devices, ARRAY_SIZE(origen_quad_devices));
 }
