@@ -1798,7 +1798,7 @@ static struct clk_ops exynos5_fout_apll_ops = {
 };
 
 static u32 exynos5_vpll_div[][5] = {
-	{70000000, 3, 140, 4, 0 },
+	{70500000, 2, 94, 4, 0 },
 };
 
 static unsigned long exynos5_vpll_get_rate(struct clk *clk)
@@ -1983,7 +1983,7 @@ void __init_or_cpufreq exynos5_setup_clocks(void)
 	clk_set_rate(&exynos5_clk_aclk_acp.clk, 267000000);
 	clk_set_rate(&exynos5_clk_pclk_acp.clk, 134000000);
 
-	clk_set_rate(&clk_fout_vpll, 70000000);
+	clk_set_rate(&clk_fout_vpll, 70500000);
 
 	for (ptr = 0; ptr < ARRAY_SIZE(exynos5_clksrcs); ptr++)
 		s3c_set_clksrc(&exynos5_clksrcs[ptr], true);
