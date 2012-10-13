@@ -735,7 +735,7 @@ static const struct usb_device_id option_ids[] = {
 	/*
 	{ USB_DEVICE(NOVATELWIRELESS_VENDOR_ID, NOVATELWIRELESS_PRODUCT_G2) },
 	*/
-	{ USB_DEVICE_AND_INTERFACE_INFO(NOVATELWIRELESS_VENDOR_ID, NOVATELWIRELESS_PRODUCT_LTE_E362, 0xff, 0xff, 0xff) },
+	{ USB_DEVICE(NOVATELWIRELESS_VENDOR_ID, NOVATELWIRELESS_PRODUCT_LTE_E362) },
 	{ USB_DEVICE_AND_INTERFACE_INFO(NOVATELWIRELESS_VENDOR_ID, NOVATELWIRELESS_PRODUCT_GW, 0xff, 0xff, 0xff) },
 
 	{ USB_DEVICE(AMOI_VENDOR_ID, AMOI_PRODUCT_H01) },
@@ -1373,6 +1373,16 @@ static int option_probe(struct usb_serial *serial,
 		serial->dev->descriptor.idProduct == SAMSUNG_PRODUCT_GT_B3730 &&
 		serial->interface->cur_altsetting->desc.bInterfaceClass != USB_CLASS_CDC_DATA)
 		return -ENODEV;
+
+	/* For Novatel E362 modem, set to configuration #1 if identity morphing
+	 * is detected.
+	 */
+	if (serial->dev->descriptor.idVendor == NOVATELWIRELESS_VENDOR_ID &&
+		serial->dev->descriptor.idProduct == NOVATELWIRELESS_PRODUCT_LTE_E362 &&
+		serial->dev->actconfig->desc.bConfigurationValue != 1) {
+		if (usb_driver_set_configuration(serial->dev, 1) != 0)
+			return -ENODEV;
+	}
 
 	data = serial->private = kzalloc(sizeof(struct usb_wwan_intf_private), GFP_KERNEL);
 	if (!data)
