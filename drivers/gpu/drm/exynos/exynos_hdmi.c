@@ -2238,6 +2238,51 @@ void hdmi_attach_hdmiphy_client(struct i2c_client *hdmiphy)
 
 struct platform_device *hdmi_audio_device;
 
+int hdmi_register_audio_device(struct platform_device *pdev)
+{
+	struct exynos_drm_hdmi_context *ctx = platform_get_drvdata(pdev);
+	struct hdmi_context *hdata = ctx->ctx;
+	struct platform_device *audio_dev;
+	int ret;
+
+	audio_dev = platform_device_alloc("exynos-hdmi-audio", -1);
+	if (!audio_dev) {
+		DRM_ERROR("hdmi audio device allocation failed.\n");
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	ret = platform_device_add_resources(audio_dev, pdev->resource,
+			pdev->num_resources);
+	if (ret) {
+		ret = -ENOMEM;
+		goto err_device;
+	}
+
+	audio_dev->dev.of_node = of_get_next_child(pdev->dev.of_node, NULL);
+	audio_dev->dev.platform_data = (void *)hdata->hpd_gpio;
+
+	ret = platform_device_add(audio_dev);
+	if (ret) {
+		DRM_ERROR("hdmi audio device add failed.\n");
+		goto err_device;
+	}
+
+	hdmi_audio_device = audio_dev;
+	return 0;
+
+err_device:
+	platform_device_put(audio_dev);
+
+err:
+	return ret;
+}
+
+void hdmi_unregister_audio_device(void)
+{
+	platform_device_unregister(hdmi_audio_device);
+}
+
 static int __devinit hdmi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -2310,31 +2355,6 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 		goto err_req_region;
 	}
 
-	if (of_device_is_compatible(dev->of_node,
-		"samsung,exynos5-hdmi")) {
-
-		hdmi_audio_device =
-			platform_device_alloc("exynos-hdmi-audio", -1);
-
-		if (!hdmi_audio_device) {
-			ret = -ENOMEM;
-			goto err_iomap;
-		}
-
-		ret = platform_device_add_resources(hdmi_audio_device, res, 2);
-		if (ret) {
-			ret = -ENOMEM;
-			goto err_iomap;
-		}
-
-		hdmi_audio_device->dev.of_node =
-			of_get_next_child(dev->of_node, NULL);
-
-		ret = platform_device_add(hdmi_audio_device);
-		if (ret)
-			platform_device_put(hdmi_audio_device);
-	}
-
 	/* DDC i2c driver */
 	if (i2c_add_driver(&ddc_driver)) {
 		DRM_ERROR("failed to register ddc i2c driver\n");
@@ -2386,7 +2406,7 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 	ret = request_irq(hdata->internal_irq, hdmi_irq_handler,
 			IRQF_SHARED, "int_hdmi", hdata->parent_ctx);
 	if (ret) {
-		DRM_ERROR("request interrupt failed.\n");
+		DRM_ERROR("request int interrupt failed.\n");
 		goto err_workqueue;
 	}
 	disable_irq(hdata->internal_irq);
@@ -2395,10 +2415,19 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 		IRQ_TYPE_EDGE_BOTH | IRQF_SHARED, "ext_hdmi",
 		hdata->parent_ctx);
 	if (ret) {
-		DRM_ERROR("request interrupt failed.\n");
-		goto err_workqueue;
+		DRM_ERROR("request ext interrupt failed.\n");
+		goto err_int_irq;
 	}
 	disable_irq(hdata->external_irq);
+
+	if (of_device_is_compatible(dev->of_node,
+		"samsung,exynos5-hdmi")) {
+		ret = hdmi_register_audio_device(pdev);
+		if (ret) {
+			DRM_ERROR("hdmi-audio device registering failed.\n");
+			goto err_ext_irq;
+		}
+	}
 
 	/* Attach HDMI Driver to common hdmi. */
 	exynos_hdmi_drv_attach(drm_hdmi_ctx);
@@ -2416,7 +2445,11 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 	}
 	return 0;
 
-err_workqueue:
+err_ext_irq:
+	free_irq(hdata->external_irq, hdata);
+err_int_irq:
+	free_irq(hdata->internal_irq, hdata);
+ err_workqueue:
 	destroy_workqueue(hdata->wq);
 err_hdmiphy:
 	i2c_del_driver(&hdmiphy_driver);
@@ -2444,6 +2477,8 @@ static int __devexit hdmi_remove(struct platform_device *pdev)
 	DRM_DEBUG_KMS("[%d] %s\n", __LINE__, __func__);
 
 	hdmi_resource_poweroff(hdata);
+
+	hdmi_unregister_audio_device();
 
 	disable_irq(hdata->curr_irq);
 	free_irq(hdata->internal_irq, hdata);
