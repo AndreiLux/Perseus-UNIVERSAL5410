@@ -471,7 +471,6 @@ static __devinit int hdmi_audio_probe(struct platform_device *pdev)
 	int ret = 0;
 	struct hdmi_audio_context *ctx;
 	struct resource *res;
-	enum of_gpio_flags flags;
 	struct device_node *parent_node;
 
 	snd_printdd(&pdev->dev, "[%d] %s\n", __LINE__, __func__);
@@ -534,8 +533,7 @@ static __devinit int hdmi_audio_probe(struct platform_device *pdev)
 		goto err_workq;
 	}
 
-	ctx->hpd_gpio = of_get_named_gpio_flags(parent_node,
-				"hpd-gpio", 0, &flags);
+	ctx->hpd_gpio = (int)pdev->dev.platform_data;
 
 	if (!gpio_is_valid(ctx->hpd_gpio)) {
 		dev_err(&pdev->dev, "failed to get hpd gpio.");
