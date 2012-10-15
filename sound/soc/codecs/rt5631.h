@@ -1,6 +1,8 @@
 #ifndef __RTCODEC5631_H__
 #define __RTCODEC5631_H__
 
+extern int alc5631_spkr_mute(struct snd_soc_codec *codec, int mute);
+
 
 #define RT5631_RESET				0x00
 #define RT5631_SPK_OUT_VOL			0x02
@@ -564,13 +566,13 @@
 
 /* Internal Status and IRQ Control2(0x4A) */
 #define RT5631_ADC_DATA_SEL_MASK			(0x3 << 14)
+#define RT5631_ADC_DATA_SEL_SHIFT			14
 #define RT5631_ADC_DATA_SEL_Disable			(0x0 << 14)
 #define RT5631_ADC_DATA_SEL_MIC1			(0x1 << 14)
 #define RT5631_ADC_DATA_SEL_MIC1_SHIFT		14
 #define RT5631_ADC_DATA_SEL_MIC2			(0x2 << 14)
 #define RT5631_ADC_DATA_SEL_MIC2_SHIFT		15
-#define RT5631_ADC_DATA_SEL_STO			(0x3 << 14)
-#define RT5631_ADC_DATA_SEL_SHIFT			14
+#define RT5631_ADC_DATA_SEL_SWAP			(0x3 << 14)
 
 /* GPIO Pin Configuration(0x4C) */
 #define RT5631_GPIO_PIN_FUN_SEL_MASK			(0x1 << 15)

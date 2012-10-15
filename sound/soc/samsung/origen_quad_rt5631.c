@@ -1,10 +1,12 @@
 /*
- * Copyright (C) 2012 Samsung Electronics Co. Ltd.
+ *  Copyright (c) 2012, Insignal Co., Ltd.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation; either version 2 of the License, or (at your
- * option) any later version.
+ *  Author: Claude <claude@insginal.co.kr>
+ *
+ *  This program is free software; you can redistribute  it and/or modify it
+ *  under  the terms of  the GNU General  Public License as published by the
+ *  Free Software Foundation;  either version 2 of the  License, or (at your
+ *  option) any later version.
  */
 
 #include <linux/platform_device.h>
@@ -38,8 +40,8 @@ out:
 	return 0;
 }
 
-static int origen_hw_params(struct snd_pcm_substream *substream,
-				struct snd_pcm_hw_params *params)
+static int origen_quad_hw_params(struct snd_pcm_substream *substream,
+	struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
@@ -57,6 +59,7 @@ static int origen_hw_params(struct snd_pcm_substream *substream,
 		bfs = 32;
 		break;
 	default:
+		printk("Unsupported PCM Format - %d\n", params_format(params));
 		return -EINVAL;
 	}
 
@@ -69,7 +72,10 @@ static int origen_hw_params(struct snd_pcm_substream *substream,
 	case 48000:
 	case 88200:
 	case 96000:
-		rfs = (bfs == 48) ? 384 : 256;
+		if (bfs == 48)
+			rfs = 384;
+		else
+			rfs = 256;
 		break;
 	case 64000:
 		rfs = 384;
@@ -77,9 +83,13 @@ static int origen_hw_params(struct snd_pcm_substream *substream,
 	case 8000:
 	case 11025:
 	case 12000:
-		rfs = (bfs == 48) ? 768 : 512;
+		if (bfs == 48)
+			rfs = 768;
+		else
+			rfs = 512;
 		break;
 	default:
+		printk("Unsupported Rate - %d\n", params_rate(params));
 		return -EINVAL;
 	}
 
@@ -111,28 +121,33 @@ static int origen_hw_params(struct snd_pcm_substream *substream,
 		psr = 1;
 		break;
 	default:
-		printk(KERN_ERR "Not yet supported!\n");
+		printk("Not yet supported!\n");
 		return -EINVAL;
 	}
 
 	set_epll_rate(rclk * psr);
 
 	/* Set the Codec DAI configuration */
-	ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_I2S |
-						SND_SOC_DAIFMT_NB_NF |
-						SND_SOC_DAIFMT_CBS_CFS);
+	ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_I2S
+					 | SND_SOC_DAIFMT_NB_NF
+					 | SND_SOC_DAIFMT_CBS_CFS);
 	if (ret < 0)
 		return ret;
 
 	/* Set the AP DAI configuration */
-	ret = snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_I2S |
-						SND_SOC_DAIFMT_NB_NF |
-						SND_SOC_DAIFMT_CBS_CFS);
+	ret = snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_I2S
+					 | SND_SOC_DAIFMT_NB_NF
+					 | SND_SOC_DAIFMT_CBS_CFS);
 	if (ret < 0)
 		return ret;
 
-	ret = snd_soc_dai_set_sysclk(cpu_dai, SAMSUNG_I2S_CDCLK, rfs,
-						SND_SOC_CLOCK_OUT);
+	ret = snd_soc_dai_set_sysclk(cpu_dai, SAMSUNG_I2S_CDCLK,
+					0, SND_SOC_CLOCK_OUT);
+	if (ret < 0)
+		return ret;
+
+	ret = snd_soc_dai_set_sysclk(cpu_dai, SAMSUNG_I2S_RCLKSRC_0,
+					0, SND_SOC_CLOCK_OUT);
 	if (ret < 0)
 		return ret;
 
@@ -140,14 +155,18 @@ static int origen_hw_params(struct snd_pcm_substream *substream,
 	if (ret < 0)
 		return ret;
 
+	ret = snd_soc_dai_set_sysclk(codec_dai, 0, rclk, SND_SOC_CLOCK_OUT);
+	if (ret < 0)
+		return ret;
+
 	return 0;
 }
 
-static struct snd_soc_ops origen_ops = {
-	.hw_params = origen_hw_params,
+static struct snd_soc_ops origen_quad_ops = {
+	.hw_params = origen_quad_hw_params,
 };
 
-static int origen_wm8994_init_paiftx(struct snd_soc_pcm_runtime *rtd)
+static int origen_quad_ak4678_init_paiftx(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_codec *codec = rtd->codec;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
@@ -157,77 +176,71 @@ static int origen_wm8994_init_paiftx(struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
-static struct snd_soc_dai_link origen_dai[] = {
-	{ /* Primary DAI i/f */
-		.name = "RT5631 PAIF",
-		.stream_name = "Pri_Dai",
+static struct snd_soc_dai_link origen_quad_dai[] = {
+	{
+		.name = "RT5631 HiFi",
+		.stream_name = "Primary",
 		.cpu_dai_name = "samsung-i2s.0",
 		.codec_dai_name = "rt5631-hifi",
-		.platform_name = "samsung-audio",
+		.platform_name = "samsung-i2s.0",
 		.codec_name = "rt5631.1-001a",
-		.init = origen_wm8994_init_paiftx,
-		.ops = &origen_ops,
+		.init = origen_quad_ak4678_init_paiftx,
+		.ops = &origen_quad_ops,
 	},
 };
 
-static struct snd_soc_card snd_soc_origen_audio = {
-	.name = "ORIGEN-I2S",
-	.dai_link = origen_dai,
-	.num_links = ARRAY_SIZE(origen_dai),
+static struct snd_soc_card origen_quad = {
+	.name = "OrigenQuad",
+	.dai_link = origen_quad_dai,
+	.num_links = ARRAY_SIZE(origen_quad_dai),
 };
 
-static int __devinit origen_audio_probe(struct platform_device *pdev)
+static struct platform_device *origen_quad_snd_device;
+
+#include <linux/io.h>
+#include <mach/regs-clock.h>
+
+#define CLKOUT		S5P_PMUREG(0x0A00)
+#define ETC6PUD		(S5P_VA_GPIO2 + 0x228)
+
+static int __init origen_quad_audio_init(void)
 {
 	int ret;
-	struct snd_soc_card *card = &snd_soc_origen_audio;
 
-	card->dev = &pdev->dev;
+	unsigned int reg;
+	void __iomem *val;
 
-	ret = snd_soc_register_card(card);
+	reg = __raw_readl(CLKOUT);
+	reg = (8 << 8);
+	__raw_writel(reg, CLKOUT);
+
+	val = ioremap(0x11000228, 4);
+
+	reg = __raw_readl(val);
+	reg &= ~(3 << 2);
+	reg |= (3 << 2);
+	__raw_writel(reg, val);
+
+	origen_quad_snd_device = platform_device_alloc("soc-audio", -1);
+	if (!origen_quad_snd_device)
+		return -ENOMEM;
+
+	platform_set_drvdata(origen_quad_snd_device, &origen_quad);
+
+	ret = platform_device_add(origen_quad_snd_device);
 	if (ret)
-		dev_err(&pdev->dev, "snd_soc_register_card() failed: %d\n",
-				ret);
+		platform_device_put(origen_quad_snd_device);
 
 	return ret;
 }
+module_init(origen_quad_audio_init);
 
-static int __devexit origen_audio_remove(struct platform_device *pdev)
+static void __exit origen_quad_audio_exit(void)
 {
-	struct snd_soc_card *card = platform_get_drvdata(pdev);
-
-	snd_soc_unregister_card(card);
-
-	return 0;
+	platform_device_unregister(origen_quad_snd_device);
 }
+module_exit(origen_quad_audio_exit);
 
-static const struct of_device_id origen_audio_of_match[] = {
-	{ .compatible = "samsung,origen_audio", },
-	{ }
-};
-MODULE_DEVICE_TABLE(of, origen_audio_of_match);
-
-static struct platform_driver origen_audio_driver = {
-	.driver		= {
-		.name	= "origen_quad-audio",
-		.owner	= THIS_MODULE,
-		.of_match_table = origen_audio_of_match,
-	},
-	.probe		= origen_audio_probe,
-	.remove		= __devexit_p(origen_audio_remove),
-};
-
-static int __init origen_audio_init(void)
-{
-	return platform_driver_register(&origen_audio_driver);
-}
-late_initcall(origen_audio_init);
-
-static void __exit origen_audio_exit(void)
-{
-	platform_driver_unregister(&origen_audio_driver);
-}
-module_exit(origen_audio_exit);
-
-MODULE_DESCRIPTION("ALSA SoC ORIGEN+RT5631");
+MODULE_AUTHOR("Claude <claude@insignal.co.kr>");
+MODULE_DESCRIPTION("ALSA SoC Driver for Origen Quad Board");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS("platform:origen_quad-audio");
