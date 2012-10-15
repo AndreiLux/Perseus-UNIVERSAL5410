@@ -59,6 +59,7 @@ int mwifiex_wait_queue_complete(struct mwifiex_adapter *adapter)
 	bool cancel_flag = false;
 	int status;
 	struct cmd_ctrl_node *cmd_queued;
+	int ret;
 
 	if (!adapter->cmd_queued)
 		return 0;
@@ -70,8 +71,18 @@ int mwifiex_wait_queue_complete(struct mwifiex_adapter *adapter)
 	atomic_inc(&adapter->cmd_pending);
 
 	/* Wait for completion */
-	wait_event_interruptible(adapter->cmd_wait_q.wait,
-				 *(cmd_queued->condition));
+	ret = wait_event_interruptible_timeout(adapter->cmd_wait_q.wait,
+				*(cmd_queued->condition),
+				msecs_to_jiffies(MWIFIEX_QUEUE_TIMEOUT_MSEC));
+	if (ret == 0) {
+		WARN_ON(1);
+		/* Let's give waiting one more try, and then reboot */
+		ret = wait_event_interruptible_timeout(adapter->cmd_wait_q.wait,
+				*(cmd_queued->condition),
+				msecs_to_jiffies(MWIFIEX_QUEUE_TIMEOUT_MSEC));
+		BUG_ON(ret == 0);
+	}
+
 	if (!*(cmd_queued->condition))
 		cancel_flag = true;
 

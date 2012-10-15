@@ -116,6 +116,8 @@ enum {
 
 #define MWIFIEX_EVENT_HEADER_LEN           4
 
+#define MWIFIEX_QUEUE_TIMEOUT_MSEC		5000
+
 struct mwifiex_dbg {
 	u32 num_cmd_host_to_card_failure;
 	u32 num_cmd_sleep_cfm_host_to_card_failure;
