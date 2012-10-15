@@ -1363,13 +1363,6 @@ int vb2_qbuf(struct vb2_queue *q, struct v4l2_buffer *b)
 	list_add_tail(&vb->queued_entry, &q->queued_list);
 	vb->state = VB2_BUF_STATE_QUEUED;
 
-	/*
-	 * If already streaming, give the buffer to driver for processing.
-	 * If not, the buffer will be given to driver on next streamon.
-	 */
-	if (q->streaming)
-		__enqueue_in_driver(vb);
-
 	q->timeline_max++;
 	if (b->flags & V4L2_BUF_FLAG_USE_SYNC) {
 		struct sync_pt *pt;
@@ -1387,6 +1380,13 @@ int vb2_qbuf(struct vb2_queue *q, struct v4l2_buffer *b)
 			vb->v4l2_buf.reserved = -1;
 		}
 	}
+
+	/*
+	 * If already streaming, give the buffer to driver for processing.
+	 * If not, the buffer will be given to driver on next streamon.
+	 */
+	if (q->streaming)
+		__enqueue_in_driver(vb);
 
 	/* Fill buffer information for the userspace */
 	__fill_v4l2_buffer(vb, b);
