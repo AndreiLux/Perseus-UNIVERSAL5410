@@ -440,20 +440,14 @@ int __cfg80211_mlme_deauth(struct cfg80211_registered_device *rdev,
 		.reason_code = reason,
 		.ie = ie,
 		.ie_len = ie_len,
+		.local_state_change = local_state_change,
 	};
 
 	ASSERT_WDEV_LOCK(wdev);
 
-	if (local_state_change) {
-		if (wdev->current_bss &&
-		    memcmp(wdev->current_bss->pub.bssid, bssid, ETH_ALEN) == 0) {
-			cfg80211_unhold_bss(wdev->current_bss);
-			cfg80211_put_bss(&wdev->current_bss->pub);
-			wdev->current_bss = NULL;
-		}
-
+	if (local_state_change && (!wdev->current_bss ||
+	    memcmp(wdev->current_bss->pub.bssid, bssid, ETH_ALEN) != 0))
 		return 0;
-	}
 
 	return rdev->ops->deauth(&rdev->wiphy, dev, &req);
 }
