@@ -2046,7 +2046,7 @@ static int hdmiphy_s_power(struct i2c_client *client, bool on)
 	u8 buffer[2];
 	int ret;
 
-	DRM_INFO("%s: hdmiphy is %s\n", __func__, on ? "on" : "off");
+	DRM_DEBUG_KMS("%s: hdmiphy is %s\n", __func__, on ? "on" : "off");
 
 	/* Cache all 32 registers to make the code below faster */
 	buffer[0] = 0x0;
