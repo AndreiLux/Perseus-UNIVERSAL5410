@@ -375,6 +375,26 @@ static void dw_mci_stop_dma(struct dw_mci *host)
 	}
 }
 
+static void mci_send_cmd(struct dw_mci_slot *slot, u32 cmd, u32 arg)
+{
+	struct dw_mci *host = slot->host;
+	unsigned long timeout = jiffies + msecs_to_jiffies(500);
+	unsigned int cmd_status = 0;
+
+	mci_writel(host, CMDARG, arg);
+	wmb();
+	mci_writel(host, CMD, SDMMC_CMD_START | cmd);
+
+	while (time_before(jiffies, timeout)) {
+		cmd_status = mci_readl(host, CMD);
+		if (!(cmd_status & SDMMC_CMD_START))
+			return;
+	}
+	dev_err(&slot->mmc->class_dev,
+		"Timeout sending command (cmd %#x arg %#x status %#x)\n",
+		cmd, arg, cmd_status);
+}
+
 static bool dw_mci_wait_reset(struct device *dev, struct dw_mci *host,
 		unsigned int reset_val)
 {
@@ -387,8 +407,13 @@ static bool dw_mci_wait_reset(struct device *dev, struct dw_mci *host,
 
 	/* wait till resets clear */
 	do {
-		if (!(mci_readl(host, CTRL) & reset_val))
+		if (!(mci_readl(host, CTRL) & reset_val)) {
+			if (reset_val & SDMMC_CTRL_RESET)
+				/* After CTRL Reset, Should be needed clk val to CIU */
+				mci_send_cmd(host->cur_slot,
+				SDMMC_CMD_UPD_CLK | SDMMC_CMD_PRV_DAT_WAIT, 0);
 			return true;
+		}
 	} while (time_before(jiffies, timeout));
 
 	dev_err(dev, "%s: Timeout resetting block (ctrl %#x)\n",
@@ -403,7 +428,8 @@ static bool dw_mci_wait_fifo_reset(struct device *dev, struct dw_mci *host)
 	unsigned int ctrl;
 	bool result;
 
-	result = dw_mci_wait_reset(&host->dev, host, SDMMC_CTRL_FIFO_RESET);
+	result = dw_mci_wait_reset(&host->dev, host,
+				SDMMC_CTRL_RESET | SDMMC_CTRL_FIFO_RESET);
 	if (result) {
 		do {
 			ctrl = mci_readl(host, STATUS);
@@ -802,26 +828,6 @@ static void dw_mci_submit_data(struct dw_mci *host, struct mmc_data *data)
 		temp &= ~SDMMC_CTRL_DMA_ENABLE;
 		mci_writel(host, CTRL, temp);
 	}
-}
-
-static void mci_send_cmd(struct dw_mci_slot *slot, u32 cmd, u32 arg)
-{
-	struct dw_mci *host = slot->host;
-	unsigned long timeout = jiffies + msecs_to_jiffies(500);
-	unsigned int cmd_status = 0;
-
-	mci_writel(host, CMDARG, arg);
-	wmb();
-	mci_writel(host, CMD, SDMMC_CMD_START | cmd);
-
-	while (time_before(jiffies, timeout)) {
-		cmd_status = mci_readl(host, CMD);
-		if (!(cmd_status & SDMMC_CMD_START))
-			return;
-	}
-	dev_err(&slot->mmc->class_dev,
-		"Timeout sending command (cmd %#x arg %#x status %#x)\n",
-		cmd, arg, cmd_status);
 }
 
 static void dw_mci_setup_bus(struct dw_mci_slot *slot, int force)
