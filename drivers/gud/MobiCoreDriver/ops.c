@@ -28,6 +28,9 @@
 #include "mem.h"
 #include "debug.h"
 
+#define MC_STATUS_HALT	3
+#define SYS_STATE_HALT	(4 << 8)
+
 int mc_info(uint32_t ext_info_id, uint32_t *state, uint32_t *ext_info)
 {
 	int ret = 0;
@@ -55,6 +58,12 @@ int mc_info(uint32_t ext_info_id, uint32_t *state, uint32_t *ext_info)
 
 	*state  = fc_info.as_out.state;
 	*ext_info = fc_info.as_out.ext_info;
+
+	if (*state == MC_STATUS_HALT ||
+		(ext_info_id == 1 && (*ext_info & SYS_STATE_HALT))) {
+		MCDRV_DBG_ERROR("MobiCore halt is detected.\n");
+		panic("MobiCore Halt\n");
+	}
 
 	MCDRV_DBG_VERBOSE("exit with %d/0x%08X\n", ret, ret);
 

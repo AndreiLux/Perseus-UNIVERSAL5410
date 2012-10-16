@@ -674,10 +674,6 @@ static long mc_fd_admin_ioctl(struct file *file, unsigned int cmd,
 			if (copy_to_user(uarg, &info, sizeof(info)))
 				ret = -EFAULT;
 		}
-		if (info.state == MC_STATUS_HALT) {
-			MCDRV_DBG_ERROR("MobiCore halt is detected.\n");
-			panic("MobiCore Halt\n");
-		}
 		break;
 	}
 	case MC_IO_YIELD:
