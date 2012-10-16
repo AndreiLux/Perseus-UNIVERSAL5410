@@ -58,7 +58,7 @@ static int auto_delink_en;
 module_param(auto_delink_en, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(auto_delink_en, "enable auto delink");
 
-static unsigned char aspm_l0s_l1_en;
+static unsigned char aspm_l0s_l1_en = 3;
 module_param(aspm_l0s_l1_en, byte, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(aspm_l0s_l1_en, "enable device aspm");
 
