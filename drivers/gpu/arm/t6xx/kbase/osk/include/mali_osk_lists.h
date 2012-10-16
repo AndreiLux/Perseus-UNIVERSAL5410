@@ -805,6 +805,34 @@ void oskp_dlist_remove_item(osk_dlist* const front, osk_dlist_item* const item_t
 	else
 	{
 		/* else just the next item point to the previous one*/
+		if (!item_to_remove->oskp.next)
+		{
+			osk_dlist_item * item;
+			int i;
+
+			/* bad node, log the contents of the list */
+
+			printk(KERN_ERR "Removing bad node %p, dumping list, forward walk\n", item_to_remove);
+			item = front->oskp.front;
+			i = 0;
+			while (item)
+			{
+				printk(KERN_ERR "list item %d: %p <- %p -> %p\n", i, item->oskp.prev, item, item->oskp.next);
+				item = item->oskp.next;
+				i++;
+			}
+
+			printk(KERN_ERR "Removing bad node, dumping list, reverse walk\n");
+			item = front->oskp.back;
+			i = 0;
+			while (item)
+			{
+				printk(KERN_ERR "list item %d: %p <- %p -> %p\n", i, item->oskp.prev, item, item->oskp.next);
+				item = item->oskp.prev;
+				i++;
+			}
+
+		}
 		item_to_remove->oskp.next->oskp.prev = item_to_remove->oskp.prev;
 	}
 
