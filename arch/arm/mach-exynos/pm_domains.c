@@ -217,6 +217,11 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 		usleep_range(80, 100);
 	}
 
+	if (soc_is_exynos5250() && !timeout)
+		pr_err("%s power domain state (0x%02x)\n", domain->name,
+			(__raw_readl(base + 0x4) >> EXYNOS5_LOCAL_POWER_STATE_SHIFT) &
+			EXYNOS5_LOCAL_POWER_STATE_MASK);
+
 	if (power_on)
 		exynos_pd_clk_parent_restore(pd);
 
