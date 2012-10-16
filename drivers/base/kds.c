@@ -389,30 +389,14 @@ roll_back:
 }
 EXPORT_SYMBOL(kds_waitall);
 
-void kds_resource_set_release(struct kds_resource_set **pprset)
+static void __kds_resource_set_release_common(struct kds_resource_set *rset)
 {
 	struct list_head triggered = LIST_HEAD_INIT(triggered);
-	struct kds_resource_set *rset;
 	struct kds_resource_set *it;
 	unsigned long flags;
 	int i;
 
-	BUG_ON(!pprset);
-
 	spin_lock_irqsave(&kds_lock, flags);
-
-	rset = *pprset;
-	if (!rset)
-	{
-		/* caught a race between a cancelation
-		 * and a completion, nothing to do */
-		spin_unlock_irqrestore(&kds_lock, flags);
-		return;
-	}
-
-	/* clear user pointer so we'll be the only
-	 * thread handling the release */
-	*pprset = NULL;
 
 	for (i = 0; i < rset->num_resources; i++)
 	{
@@ -493,14 +477,20 @@ void kds_resource_set_release(struct kds_resource_set **pprset)
 		list_del(&it->callback_link);
 		kds_callback_perform(it);
 	}
+}
+
+void kds_resource_set_release(struct kds_resource_set **pprset)
+{
+	struct kds_resource_set *rset;
+
+	rset = *pprset;
+	*pprset = NULL;
+
+	__kds_resource_set_release_common(rset);
 
 	/*
 	 * Caller is responsible for guaranteeing that callback work is not
 	 * pending (i.e. its running or completed) prior to calling release.
-	 * This should happen by default since its via the callback that we know
-	 * that the lock has been acquired. The one wierd exception is if
-	 * we use a non-direct callback and the KDS_FLAG_LOCKED_IGNORE flag.
-	 * TODO: we should probably disallow this combinations of options.
 	 */
 	BUG_ON(work_pending(&rset->callback_work));
 
@@ -508,6 +498,42 @@ void kds_resource_set_release(struct kds_resource_set **pprset)
 	kfree(rset);
 }
 EXPORT_SYMBOL(kds_resource_set_release);
+
+void kds_resource_set_release_sync(struct kds_resource_set **pprset)
+{
+	struct kds_resource_set *rset;
+	unsigned long flags;
+
+	spin_lock_irqsave(&kds_lock, flags);
+
+	rset = *pprset;
+
+	/* clear user pointer so we'll be the only
+	 * thread handling the release */
+	*pprset = NULL;
+
+	spin_unlock_irqrestore(&kds_lock, flags);
+
+	if (!rset)
+	{
+		/* caught a race between a cancelation
+		 * and a completion, nothing to do */
+		return;
+	}
+
+	__kds_resource_set_release_common(rset);
+
+	/*
+	 * In the case of a kds async wait cancellation ensure the deferred
+	 * call back does not get scheduled if a trigger fired at the same time
+	 * to release the wait.
+	 */
+	cancel_work_sync(&rset->callback_work);
+
+	/* free the resource set */
+	kfree(rset);
+}
+EXPORT_SYMBOL(kds_resource_set_release_sync);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("ARM Ltd.");

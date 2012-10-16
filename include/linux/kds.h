@@ -156,4 +156,24 @@ struct kds_resource_set *kds_waitall(
  */
 void kds_resource_set_release(struct kds_resource_set **pprset);
 
+/* Release resources after use and wait callbacks to complete.
+ * Caller must handle that other async callbacks will trigger,
+ * so must avoid holding any locks a callback will take.
+ *
+ * The function takes a pointer to your poiner to handle a race
+ * between a cancelation and a completion.
+ *
+ * If the caller can't guarantee that a race can't occur then
+ * the passed in pointer must be the same in both call paths
+ * to allow kds to manage the potential race.
+ *
+ * This should be used to cancel waits which are pending on a kds
+ * resource.
+ *
+ * It is a bug to call this from atomic contexts and from within
+ * a kds callback that now owns the kds_reource.
+ */
+
+void kds_resource_set_release_sync(struct kds_resource_set **pprset);
+
 #endif /* _KDS_H_ */
