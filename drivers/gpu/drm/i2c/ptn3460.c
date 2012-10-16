@@ -21,16 +21,44 @@
 #include <linux/gpio.h>
 #include <linux/delay.h>
 
+#define PTN3460_EDID_EMULATION_ADDR		0x84
+#define PTN3460_EDID_ENABLE_EMULATION		0
+#define PTN3460_EDID_EMULATION_SELECTION	1
+
 struct ptn3460_platform_data {
+	struct device *dev;
+	struct i2c_client *client;
 	u8 addr;
 	int gpio_pd_n;
 	int gpio_rst_n;
+	u32 edid_emulation;
 	int free_me;
+	struct delayed_work ptn_work;
 };
 
-static int ptn3460_init_platform_data_from_dt(struct device *dev)
+static int ptn3460_write_byte(struct ptn3460_platform_data *pd, char addr,
+		char val)
 {
+	int ret;
+	char buf[2];
+
+	buf[0] = addr;
+	buf[1] = val;
+
+	ret = i2c_master_send(pd->client, buf, ARRAY_SIZE(buf));
+	if (ret <= 0) {
+		dev_err(pd->dev, "Failed to send i2c command, ret=%d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int ptn3460_init_platform_data_from_dt(struct i2c_client *client)
+{
+	int ret;
 	struct ptn3460_platform_data *pd;
+	struct device *dev = &client->dev;
 
 	dev->platform_data = devm_kzalloc(dev,
 				sizeof(struct ptn3460_platform_data),
@@ -40,18 +68,62 @@ static int ptn3460_init_platform_data_from_dt(struct device *dev)
 		return -ENOMEM;
 	}
 	pd = dev->platform_data;
+	pd->dev = dev;
+	pd->client = client;
+	pd->free_me = 1; /* Mark this to be freed later */
 
 	/* Fill platform data with device tree data */
 	pd->gpio_pd_n = of_get_named_gpio(dev->of_node, "powerdown-gpio", 0);
 	pd->gpio_rst_n = of_get_named_gpio(dev->of_node, "reset-gpio", 0);
-	pd->free_me = 1; /* Mark this to be freed later */
+
+	ret = of_property_read_u32(dev->of_node, "edid-emulation",
+			&pd->edid_emulation);
+	if (ret) {
+		dev_err(dev, "Can't read edid emulation value\n");
+		return ret;
+	}
 
 	return 0;
 
 }
 
+static int ptn3460_select_edid(struct ptn3460_platform_data *pd)
+{
+	int ret;
+	char val;
+
+	val = 1 << PTN3460_EDID_ENABLE_EMULATION |
+		pd->edid_emulation << PTN3460_EDID_EMULATION_SELECTION;
+
+	ret = ptn3460_write_byte(pd, PTN3460_EDID_EMULATION_ADDR, val);
+	if (ret) {
+		dev_err(pd->dev, "Failed to write edid value, ret=%d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static void ptn3460_work(struct work_struct *work)
+{
+	struct ptn3460_platform_data *pd =
+		container_of(work, struct ptn3460_platform_data, ptn_work.work);
+	int ret;
+
+	if (!pd) {
+		printk(KERN_ERR "pd is null\n");
+		return;
+	}
+
+	ret = ptn3460_select_edid(pd);
+	if (ret)
+		dev_err(pd->dev, "Select edid failed ret=%d\n", ret);
+}
+
 static int ptn3460_power_up(struct ptn3460_platform_data *pd)
 {
+	int ret;
+
 	if (pd->gpio_pd_n > 0)
 		gpio_set_value(pd->gpio_pd_n, 1);
 
@@ -60,11 +132,19 @@ static int ptn3460_power_up(struct ptn3460_platform_data *pd)
 		udelay(10);
 		gpio_set_value(pd->gpio_rst_n, 1);
 	}
+
+	ret = schedule_delayed_work(&pd->ptn_work, msecs_to_jiffies(90));
+	if (ret < 0)
+		dev_err(pd->dev, "Could not schedule work ret=%d\n", ret);
+
 	return 0;
 }
 
 static int ptn3460_power_down(struct ptn3460_platform_data *pd)
 {
+	if (work_pending(&pd->ptn_work.work))
+		flush_work_sync(&pd->ptn_work.work);
+
 	if (pd->gpio_rst_n > 0)
 		gpio_set_value(pd->gpio_rst_n, 1);
 
@@ -91,7 +171,7 @@ int ptn3460_probe(struct i2c_client *client, const struct i2c_device_id *device)
 	int ret;
 
 	if (!dev->platform_data) {
-		ret = ptn3460_init_platform_data_from_dt(dev);
+		ret = ptn3460_init_platform_data_from_dt(client);
 		if (ret)
 			return ret;
 	}
@@ -114,6 +194,8 @@ int ptn3460_probe(struct i2c_client *client, const struct i2c_device_id *device)
 			goto err_pd;
 	}
 
+	INIT_DELAYED_WORK(&pd->ptn_work, ptn3460_work);
+
 	ret = ptn3460_power_up(pd);
 	if (ret)
 		goto err_pd;
@@ -129,6 +211,10 @@ err_pd:
 int ptn3460_remove(struct i2c_client *client)
 {
 	struct ptn3460_platform_data *pd = client->dev.platform_data;
+
+	if (pd && work_pending(&pd->ptn_work.work))
+		flush_work_sync(&pd->ptn_work.work);
+
 	if (pd && pd->free_me)
 		devm_kfree(&client->dev, pd);
 	return 0;
