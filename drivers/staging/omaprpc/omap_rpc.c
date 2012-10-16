@@ -134,7 +134,7 @@ static void omaprpc_fxn_del(struct omaprpc_instance_t *rpc)
 			kfree(pos->function);
 			kfree(pos);
 		}
-		mutex_lock(&rpc->lock);
+		mutex_unlock(&rpc->lock);
 	}
 }
 
