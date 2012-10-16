@@ -1855,9 +1855,7 @@ struct snd_soc_dai_driver rt5631_dai[] = {
 			.channels_max = 2,
 			.rate_min	= 8000,
 			.rate_max	= 48000,
-			.rates		= SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_11025 |
-			SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_22050| SNDRV_PCM_RATE_32000 |
-			SNDRV_PCM_RATE_48000,
+			.rates		= SNDRV_PCM_RATE_8000_96000,
 			.formats = RT5631_FORMAT,
 		},
 		.capture = {
