@@ -106,6 +106,9 @@ void kbase_job_done_slot(kbase_device *kbdev, int s, u32 completion_code, u64 jo
 
 	OSK_ASSERT(kbdev);
 
+	if (completion_code != BASE_JD_EVENT_DONE)
+		printk(KERN_ERR "t6xx: GPU fault 0x%02lx from job slot %d\n", (unsigned long)completion_code, s);
+
 	/* IMPORTANT: this function must only contain work necessary to complete a
 	 * job from a Real IRQ (and not 'fake' completion, e.g. from
 	 * Soft-stop). For general work that must happen no matter how the job was
