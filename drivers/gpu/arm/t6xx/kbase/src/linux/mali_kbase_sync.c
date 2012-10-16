@@ -102,11 +102,26 @@ static int timeline_compare(struct sync_pt *a, struct sync_pt *b)
 	}
 }
 
+static void timeline_value_str(struct sync_timeline *timeline, char * str,
+			       int size)
+{
+	struct mali_sync_timeline *mtl = to_mali_sync_timeline(timeline);
+	snprintf(str, size, "%d", mtl->signalled);
+}
+
+static void pt_value_str(struct sync_pt *pt, char *str, int size)
+{
+	struct mali_sync_pt *mpt = to_mali_sync_pt(pt);
+	snprintf(str, size, "%d(%d)", mpt->order, mpt->result);
+}
+
 static struct sync_timeline_ops mali_timeline_ops = {
 	.driver_name    = "Mali",
 	.dup            = timeline_dup,
 	.has_signaled   = timeline_has_signaled,
 	.compare        = timeline_compare,
+	.timeline_value_str = timeline_value_str,
+	.pt_value_str       = pt_value_str,
 #if 0
 	.free_pt        = timeline_free_pt,
 	.release_obj    = timeline_release_obj
