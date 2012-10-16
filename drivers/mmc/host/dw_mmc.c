@@ -2462,7 +2462,10 @@ static void dw_mci_timeout_timer(unsigned long data)
 		mrq = host->mrq;
 
 		dev_err(&host->dev,
-			"Timeout waiting for hardware interrupt.\n");
+			"Timeout waiting for hardware interrupt\n"
+			"cmd%d, state: %d, status: %08X, rintsts: %08X\n",
+			mrq->cmd->opcode, host->state,
+			mci_readl(host, STATUS), mci_readl(host, RINTSTS));
 
 		spin_lock(&host->lock);
 		host->data = NULL;
