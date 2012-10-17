@@ -57,6 +57,7 @@ static int gsc_m2m_stop_streaming(struct vb2_queue *q)
 	struct gsc_dev *gsc = ctx->gsc_dev;
 	int ret;
 
+	vb2_wait_for_all_buffers(q);
 	ret = gsc_ctx_stop_req(ctx);
 	/* FIXME: need to add v4l2_m2m_job_finish(fail) if ret is timeout */
 	if (ret < 0)
@@ -73,6 +74,8 @@ static void gsc_m2m_job_abort(void *priv)
 	struct gsc_dev *gsc = ctx->gsc_dev;
 	int ret;
 
+	vb2_wait_for_all_buffers(v4l2_m2m_get_src_vq(ctx->m2m_ctx));
+	vb2_wait_for_all_buffers(v4l2_m2m_get_dst_vq(ctx->m2m_ctx));
 	ret = gsc_ctx_stop_req(ctx);
 	/* FIXME: need to add v4l2_m2m_job_finish(fail) if ret is timeout */
 	if (ret < 0)
