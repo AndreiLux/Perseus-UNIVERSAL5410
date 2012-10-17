@@ -1407,7 +1407,7 @@ static void dw_mci_tasklet_func(unsigned long priv)
 {
 	struct dw_mci *host = (struct dw_mci *)priv;
 	struct mmc_data	*data;
-	struct mmc_command *cmd;
+	struct mmc_command *cmd = NULL;
 	enum dw_mci_state state;
 	enum dw_mci_state prev_state;
 	u32 status, ctrl;
@@ -1500,15 +1500,11 @@ static void dw_mci_tasklet_func(unsigned long priv)
 			status = host->data_status;
 
 			if (status & DW_MCI_DATA_ERROR_FLAGS) {
-				if (status & SDMMC_INT_DTO) {
-					dev_err(&host->dev,
-						"data timeout error\n");
+				if (status & SDMMC_INT_DTO)
 					data->error = -ETIMEDOUT;
-				} else if (status & SDMMC_INT_DCRC) {
-					dev_err(&host->dev,
-						"data CRC error\n");
+				else if (status & SDMMC_INT_DCRC)
 					data->error = -EILSEQ;
-				} else if (status & SDMMC_INT_EBE &&
+				else if (status & SDMMC_INT_EBE &&
 					   host->dir_status ==
 							DW_MCI_SEND_STATUS) {
 					/*
@@ -1518,19 +1514,19 @@ static void dw_mci_tasklet_func(unsigned long priv)
 					 */
 					data->bytes_xfered = 0;
 					data->error = -ETIMEDOUT;
-				} else if (status & SDMMC_INT_SBE) {
-					dev_err(&host->dev,
-						"Start bit error "
-						"(status=%08x)\n",
-						status);
+				} else
 					data->error = -EIO;
-				} else {
-					dev_err(&host->dev,
-						"data FIFO error "
-						"(status=%08x)\n",
-						status);
-					data->error = -EIO;
-				}
+
+				/* For debug, output the minimum required register */
+				dev_err(&host->dev,
+						"cmd%d data error:%d pending:%x "
+						"status:%x tcb:%x tbb:%x\n",
+						cmd ? cmd->opcode :
+						SDMMC_CMD_INDX(mci_readl(host, CMD)),
+						data->error, status,
+						mci_readl(host, STATUS),
+						mci_readl(host, TCBCNT),
+						mci_readl(host, TBBCNT));
 				/*
 				 * After an error, there may be data lingering
 				 * in the FIFO, so reset it - doing so
