@@ -2493,7 +2493,7 @@ static void dw_mci_timeout_timer(unsigned long data)
 		}
 
 		spin_unlock(&host->lock);
-		dw_mci_wait_reset(&host->dev, host, SDMMC_CTRL_FIFO_RESET);
+		dw_mci_wait_fifo_reset(&host->dev, host);
 		spin_lock(&host->lock);
 
 		dw_mci_request_end(host, mrq);
