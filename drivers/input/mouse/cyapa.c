@@ -708,8 +708,20 @@ static int cyapa_bl_enter(struct cyapa *cyapa)
 		cyapa->input = NULL;
 	}
 
-	if (cyapa->state != CYAPA_STATE_OP)
+	ret = cyapa_get_state(cyapa);
+	if (ret < 0)
+		return ret;
+	if (cyapa->state == CYAPA_STATE_BL_IDLE) {
+		cyapa_dbg(cyapa, "Already in BL_IDLE. Skipping exit.\n");
 		return 0;
+	}
+
+	if (cyapa->state != CYAPA_STATE_OP) {
+		cyapa->debug = true;
+		cyapa_dbg(cyapa, "Not in OP state. state = %d\n",
+			  cyapa_state_to_string(cyapa));
+		return -EAGAIN;
+	}
 
 	cyapa->state = CYAPA_STATE_NO_DEVICE;
 	ret = cyapa_write_byte(cyapa, CYAPA_CMD_SOFT_RESET, 0x01);
