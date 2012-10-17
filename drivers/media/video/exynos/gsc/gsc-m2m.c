@@ -94,11 +94,23 @@ int gsc_fill_addr(struct gsc_ctx *ctx)
 	d_frame = &ctx->d_frame;
 
 	vb = v4l2_m2m_next_src_buf(ctx->m2m_ctx);
+	if (vb->num_planes != s_frame->fmt->num_planes) {
+		gsc_err("gsc(%s): vb(%p) planes=%d s_frame(%p) planes=%d\n",
+			v4l2_m2m_get_src_vq(ctx->m2m_ctx)->name,
+			vb, vb->num_planes, s_frame, s_frame->fmt->num_planes);
+		return -EINVAL;
+	}
 	ret = gsc_prepare_addr(ctx, vb, s_frame, &s_frame->addr);
 	if (ret)
 		return ret;
 
 	vb = v4l2_m2m_next_dst_buf(ctx->m2m_ctx);
+	if (vb->num_planes != d_frame->fmt->num_planes) {
+		gsc_err("gsc(%s): vb(%p) planes=%d d_frame(%p) planes=%d\n",
+			v4l2_m2m_get_dst_vq(ctx->m2m_ctx)->name,
+			vb, vb->num_planes, d_frame, d_frame->fmt->num_planes);
+		return -EINVAL;
+	}
 	ret = gsc_prepare_addr(ctx, vb, d_frame, &d_frame->addr);
 
 	return ret;
