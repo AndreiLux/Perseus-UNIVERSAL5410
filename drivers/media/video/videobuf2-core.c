@@ -831,8 +831,12 @@ void *vb2_plane_cookie(struct vb2_buffer *vb, unsigned int plane_no)
 {
 	struct vb2_queue *q = vb->vb2_queue;
 
-	if (plane_no > vb->num_planes || !vb->planes[plane_no].mem_priv)
+	if (plane_no > vb->num_planes || !vb->planes[plane_no].mem_priv) {
+		pr_err("%s: vb=%p (q=%s) plane=%d num_planes=%d mem_priv=%p\n",
+			__func__, vb, q->name, plane_no, vb->num_planes,
+			vb->planes[plane_no].mem_priv);
 		return NULL;
+	}
 
 	return call_memop(q, cookie, vb->planes[plane_no].mem_priv);
 }
