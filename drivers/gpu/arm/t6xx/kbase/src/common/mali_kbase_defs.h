@@ -222,6 +222,7 @@ struct kbase_jd_atom {
 #ifdef CONFIG_KDS
 	struct kds_resource_set *  kds_rset;
 	mali_bool                  kds_dep_satisfied;
+	osk_dlist_item             kds_wait_item;
 #endif /* CONFIG_KDS */
 #ifdef CONFIG_SYNC
 	struct sync_fence           *fence;
@@ -625,6 +626,10 @@ struct kbase_context
 
 	osk_dlist               waiting_soft_jobs;
 
+#ifdef CONFIG_KDS
+	/* Manipulators of this list must hold the kbase_jd_context.lock */
+	osk_dlist               waiting_kds_resource;
+#endif
 	/** This is effectively part of the Run Pool, because it only has a valid
 	 * setting (!=KBASEP_AS_NR_INVALID) whilst the context is scheduled in
 	 *

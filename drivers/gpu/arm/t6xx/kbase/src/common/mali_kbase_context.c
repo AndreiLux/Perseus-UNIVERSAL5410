@@ -79,6 +79,10 @@ kbase_context *kbase_create_context(kbase_device *kbdev)
 
 	OSK_DLIST_INIT(&kctx->waiting_soft_jobs);
 
+#ifdef CONFIG_KDS
+	OSK_DLIST_INIT(&kctx->waiting_kds_resource);
+#endif
+
 	/* Use a new *Shared Memory* allocator for GPU page tables.
 	 * See MIDBASE-1534 for details. */
 	osk_err = osk_phy_allocator_init(&kctx->pgd_allocator, 0, 0, NULL);

@@ -90,6 +90,34 @@ static int jd_run_atom(kbase_jd_atom *katom)
 }
 
 #ifdef CONFIG_KDS
+
+/* Add the katom to the kds waiting list.
+ * Atoms must be added to the waiting list after a successful call to kds_async_waitall.
+ * The caller must hold the kbase_jd_context.lock */
+
+static void kbase_jd_kds_waiters_add(kbase_jd_atom *katom)
+{
+	kbase_context *kctx;
+	OSK_ASSERT(katom);
+
+	kctx = katom->kctx;
+	OSK_DLIST_PUSH_BACK(&kctx->waiting_kds_resource, katom, kbase_jd_atom, kds_wait_item );
+}
+
+/* Remove the katom from the kds waiting list.
+ * Atoms must be removed from the waiting list before a call to kds_resource_set_release_sync.
+ * The supplied katom must firsthave been added to the list with a call to kbase_jd_kds_waiters_add.
+ * The caller must hold the kbase_jd_context.lock */
+
+static void kbase_jd_kds_waiters_remove(kbase_jd_atom *katom)
+{
+	kbase_context *kctx;
+	OSK_ASSERT(katom);
+
+	kctx = katom->kctx;
+	OSK_DLIST_REMOVE(&kctx->waiting_kds_resource, katom, kds_wait_item );
+}
+
 static void kds_dep_clear(void * callback_parameter, void * callback_extra_parameter)
 {
 	kbase_jd_atom * katom;
@@ -131,6 +159,24 @@ static void kds_dep_clear(void * callback_parameter, void * callback_extra_param
 	}
 out:
 	mutex_unlock(&ctx->lock);
+}
+
+void kbase_cancel_kds_wait_job(kbase_jd_atom *katom)
+{
+	OSK_ASSERT(katom);
+
+	/* Prevent job_done_nolock from being called twice on an atom when
+	 *  there is a race between job completion and cancellation */
+
+	if ( katom->status == KBASE_JD_ATOM_STATE_QUEUED )
+	{
+		/* Wait was cancelled - zap the atom */
+		katom->event_code = BASE_JD_EVENT_JOB_CANCELLED;
+		if (jd_done_nolock(katom))
+		{
+			kbasep_js_try_schedule_head_ctx( katom->kctx->kbdev );
+		}
+	}
 }
 #endif /* CONFIG_KDS */
 
@@ -194,7 +240,19 @@ void kbase_jd_free_external_resources(kbase_jd_atom *katom)
 #ifdef CONFIG_KDS
 	if (katom->kds_rset)
 	{
-		kds_resource_set_release(&katom->kds_rset);
+		kbase_jd_context * jctx = &katom->kctx->jctx;
+
+		/*
+		 * As the atom is no longer waiting, remove it from
+		 * the waiting list.
+		 */
+
+		mutex_lock(&jctx->lock);
+		kbase_jd_kds_waiters_remove( katom );
+		mutex_unlock(&jctx->lock);
+
+		/* Release the kds resource or cancel if zapping */
+		kds_resource_set_release_sync(&katom->kds_rset);
 	}
 #endif /* CONFIG_KDS */
 }
@@ -420,10 +478,15 @@ static mali_error kbase_jd_pre_external_resources(kbase_jd_atom * katom, const b
 	{
 		/* We have resources to wait for with kds */
 		katom->kds_dep_satisfied = MALI_FALSE;
+
 		if (kds_async_waitall(&katom->kds_rset, KDS_FLAG_LOCKED_IGNORE, &katom->kctx->jctx.kds_cb,
 		                      katom, NULL, kds_res_count, kds_access_bitmap, kds_resources))
 		{
 			goto failed_kds_setup;
+		}
+		else
+		{
+			kbase_jd_kds_waiters_add( katom );
 		}
 	}
 	else
@@ -1204,6 +1267,18 @@ void kbase_jd_zap_context(kbase_context *kctx)
 
 		kbase_cancel_soft_job(katom);
 	}
+#ifdef CONFIG_KDS
+	{
+		kbase_jd_atom *katom = NULL;
+		OSK_DLIST_FOREACH( &kctx->waiting_kds_resource,
+						   kbase_jd_atom,
+				           kds_wait_item,
+				           katom )
+		{
+			kbase_cancel_kds_wait_job(katom);
+		}
+	}
+#endif
 	mutex_unlock(&kctx->jctx.lock);
 
 	hrtimer_init_on_stack(&reset_data.timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL );
