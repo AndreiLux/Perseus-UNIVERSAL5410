@@ -28,6 +28,9 @@
 
 #include <linux/anon_inodes.h>
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/sync.h>
+
 static void sync_fence_signal_pt(struct sync_pt *pt);
 static int _sync_pt_has_signaled(struct sync_pt *pt);
 static void sync_fence_free(struct kref *kref);
@@ -133,6 +136,8 @@ void sync_timeline_signal(struct sync_timeline *obj)
 	unsigned long flags;
 	LIST_HEAD(signaled_pts);
 	struct list_head *pos, *n;
+
+	trace_sync_timeline(obj);
 
 	spin_lock_irqsave(&obj->active_list_lock, flags);
 
@@ -580,6 +585,11 @@ static bool sync_fence_check(struct sync_fence *fence)
 int sync_fence_wait(struct sync_fence *fence, long timeout)
 {
 	int err = 0;
+	struct sync_pt *pt;
+
+	trace_sync_wait(fence, 1);
+	list_for_each_entry(pt, &fence->pt_list_head, pt_list)
+		trace_sync_pt(pt);
 
 	if (timeout > 0) {
 		timeout = msecs_to_jiffies(timeout);
@@ -590,6 +600,7 @@ int sync_fence_wait(struct sync_fence *fence, long timeout)
 		err = wait_event_interruptible(fence->wq,
 					       sync_fence_check(fence));
 	}
+	trace_sync_wait(fence, 0);
 
 	if (err < 0)
 		return err;
@@ -846,7 +857,17 @@ static void sync_print_pt(struct seq_file *s, struct sync_pt *pt, bool fence)
 		seq_printf(s, "@%ld.%06ld", tv.tv_sec, tv.tv_usec);
 	}
 
-	if (pt->parent->ops->print_pt) {
+	if (pt->parent->ops->timeline_value_str &&
+	    pt->parent->ops->pt_value_str) {
+		char value[64];
+		pt->parent->ops->pt_value_str(pt, value, sizeof(value));
+		seq_printf(s, ": %s", value);
+		if (fence) {
+			pt->parent->ops->timeline_value_str(pt->parent, value,
+						    sizeof(value));
+			seq_printf(s, " / %s", value);
+		}
+	} else if (pt->parent->ops->print_pt) {
 		seq_printf(s, ": ");
 		pt->parent->ops->print_pt(s, pt);
 	}
@@ -861,7 +882,11 @@ static void sync_print_obj(struct seq_file *s, struct sync_timeline *obj)
 
 	seq_printf(s, "%s %s", obj->name, obj->ops->driver_name);
 
-	if (obj->ops->print_obj) {
+	if (obj->ops->timeline_value_str) {
+		char value[64];
+		obj->ops->timeline_value_str(obj, value, sizeof(value));
+		seq_printf(s, ": %s", value);
+	} else if (obj->ops->print_obj) {
 		seq_printf(s, ": ");
 		obj->ops->print_obj(s, obj);
 	}
