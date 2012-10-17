@@ -228,6 +228,7 @@ struct cyapa_reg_data {
 /* The main device structure */
 struct cyapa {
 	enum cyapa_state state;
+	u8 status[BL_STATUS_SIZE];
 
 	struct i2c_client	*client;
 	struct input_dev	*input;
@@ -617,6 +618,9 @@ static int cyapa_get_state(struct cyapa *cyapa)
 	if (ret != BL_STATUS_SIZE)
 		return (ret < 0) ? ret : -EAGAIN;
 
+	cyapa->status[REG_OP_STATUS] = status[REG_OP_STATUS];
+	cyapa->status[REG_BL_STATUS] = status[REG_BL_STATUS];
+	cyapa->status[REG_BL_ERROR] = status[REG_BL_ERROR];
 	if ((status[REG_OP_STATUS] & OP_STATUS_DEV) == CYAPA_DEV_NORMAL) {
 		cyapa_dbg(cyapa, "device state: operational mode\n");
 		cyapa->state = CYAPA_STATE_OP;
@@ -628,6 +632,12 @@ static int cyapa_get_state(struct cyapa *cyapa)
 		cyapa->state = CYAPA_STATE_BL_ACTIVE;
 	} else {
 		cyapa_dbg(cyapa, "device state: bootloader idle\n");
+		cyapa_dbg(cyapa, "status[REG_OP_STATUS] = 0x%02x\n",
+			  status[REG_OP_STATUS]);
+		cyapa_dbg(cyapa, "status[REG_BL_STATUS] = 0x%02x\n",
+			  status[REG_BL_STATUS]);
+		cyapa_dbg(cyapa, "status[REG_BL_ERROR] = 0x%02x\n",
+			  status[REG_BL_ERROR]);
 		cyapa->state = CYAPA_STATE_BL_IDLE;
 	}
 
@@ -839,6 +849,12 @@ static int cyapa_bl_exit(struct cyapa *cyapa)
 		cyapa->debug = true;
 		cyapa_dbg(cyapa, "bl_exit failed. Now in state %s.\n",
 			  cyapa_state_to_string(cyapa));
+		cyapa_dbg(cyapa, "status[REG_OP_STATUS] = 0x%02x\n",
+			  cyapa->status[REG_OP_STATUS]);
+		cyapa_dbg(cyapa, "status[REG_BL_STATUS] = 0x%02x\n",
+			  cyapa->status[REG_BL_STATUS]);
+		cyapa_dbg(cyapa, "status[REG_BL_ERROR] = 0x%02x\n",
+			  cyapa->status[REG_BL_ERROR]);
 		return -EAGAIN;
 	}
 
@@ -1223,7 +1239,7 @@ static int cyapa_firmware(struct cyapa *cyapa)
 
 	ret = cyapa_bl_activate(cyapa);
 	if (ret) {
-		dev_err(dev, "Error in bl_enter\n");
+		dev_err(dev, "Error in bl_activate\n");
 		goto err_detect;
 	}
 
