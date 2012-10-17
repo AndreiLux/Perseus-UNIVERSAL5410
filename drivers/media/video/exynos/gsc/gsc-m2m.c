@@ -34,11 +34,14 @@ static int gsc_ctx_stop_req(struct gsc_ctx *ctx)
 	struct gsc_ctx *curr_ctx;
 	struct gsc_dev *gsc = ctx->gsc_dev;
 	int ret = 0;
+	unsigned long flags;
 
 	curr_ctx = v4l2_m2m_get_curr_priv(gsc->m2m.m2m_dev);
 	if (!gsc_m2m_run(gsc) || (curr_ctx != ctx))
 		return 0;
+	spin_lock_irqsave(&ctx->slock, flags);
 	ctx->state |= GSC_CTX_STOP_REQ;
+	spin_unlock_irqrestore(&ctx->slock, flags);
 	ret = wait_event_timeout(gsc->irq_queue,
 			!gsc_ctx_state_is_set(GSC_CTX_STOP_REQ, ctx),
 			GSC_SHUTDOWN_TIMEOUT);
