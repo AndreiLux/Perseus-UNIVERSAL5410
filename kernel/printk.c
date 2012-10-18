@@ -151,7 +151,13 @@ static int console_may_schedule;
 static char __log_buf[__LOG_BUF_LEN];
 static char *log_buf = __log_buf;
 static int log_buf_len = __LOG_BUF_LEN;
+/* Added pm_check_* versions just in case these names are reused elsewhere */
+char *pm_check_log_buf = __log_buf;
+int *pm_check_log_buf_len = &log_buf_len;
+
 static unsigned logged_chars; /* Number of chars produced since last read+clear operation */
+/* Added pm_check_* versions just in case these names are reused elsewhere */
+unsigned *pm_check_logged_chars = &logged_chars;
 static int saved_console_loglevel = -1;
 
 #ifdef CONFIG_KEXEC
