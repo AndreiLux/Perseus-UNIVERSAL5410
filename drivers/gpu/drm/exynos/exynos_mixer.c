@@ -671,6 +671,15 @@ static int mixer_enable_vblank(void *ctx, int pipe)
 
 	DRM_DEBUG_KMS("[%d] %s\n", __LINE__, __func__);
 
+	/*
+	 * TODO (seanpaul): Right now, this is an expected code path since we
+	 * call enable_vblank in the poweron routine; pipe might not be
+	 * initialized the first time we run it. We should refactor things such
+	 * that this isn't the case and we can either BUG_ON or DRM_ERROR here.
+	 */
+	if (pipe < 0)
+		return -EINVAL;
+
 	mctx->pipe = pipe;
 
 	/* enable vsync interrupt */
@@ -954,8 +963,6 @@ static void mixer_win_reset(struct mixer_context *mctx)
 	mixer_reg_writemask(res, MXR_CFG, 0, MXR_CFG_GRP1_ENABLE);
 	mixer_reg_writemask(res, MXR_CFG, 0, MXR_CFG_VP_ENABLE);
 
-	mixer_reg_writemask(res, MXR_INT_EN, ~0, MXR_INT_EN_ALL);
-
 	mixer_vsync_set_update(mctx, true);
 	spin_unlock_irqrestore(&res->reg_slock, flags);
 }
@@ -974,6 +981,8 @@ static void mixer_resource_poweron(struct mixer_context *mctx)
 	}
 
 	mixer_win_reset(mctx);
+	mixer_enable_vblank(mctx, mctx->pipe);
+
 	mctx->is_mixer_powered_on = true;
 }
 
@@ -1309,6 +1318,7 @@ static int __devinit mixer_probe(struct platform_device *pdev)
 
 
 	mctx->dev = &pdev->dev;
+	mctx->pipe = -1;
 	drm_hdmi_ctx->ctx = (void *)mctx;
 
 	platform_set_drvdata(pdev, drm_hdmi_ctx);
