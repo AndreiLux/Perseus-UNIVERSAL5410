@@ -42,11 +42,21 @@
 	};
 
 	dwmmc2@12220000 {
-		disable-mmc;
+		/* MMC2 pins are used as GPIO for eDP bridge control */
+		status = "disabled";
 	};
 
 	dwmmc3@12230000 {
 		disable-mmc;
+	};
+
+	i2c@12CD0000 {
+		ps8622-bridge@20 {
+			compatible = "parade,ps8622";
+			reg = <0x48>;
+			sleep-gpio = <&gpc3 6 1 0 0>;
+			reset-gpio = <&gpc3 1 1 0 0>;
+		};
 	};
 
 	sound {
