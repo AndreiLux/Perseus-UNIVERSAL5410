@@ -172,6 +172,10 @@ mali_error kbase_mem_allocator_alloc(kbase_mem_allocator *allocator, u32 nr_page
 		{
 			mempool_free(md, allocator->free_list_highmem_pool);
 		}
+		else if (!(flags & KBASE_REG_MUST_ZERO))
+		{
+			flush_dcache_page(p);
+		}
 
 		if (flags & KBASE_REG_MUST_ZERO)
 		{
