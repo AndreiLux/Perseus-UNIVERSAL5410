@@ -688,13 +688,13 @@ void kbase_platform_dvfs_set_level(kbase_device *kbdev, int level)
 	f = mali_dvfs_infotbl[level].mem_freq;
 
 	if (level > prev_level) {
+		exynos5_bus_mif_update(mem_freq_req, f);
 		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
 		kbase_platform_dvfs_set_clock(kbdev, mali_dvfs_infotbl[level].clock);
-		exynos5_bus_mif_update(mem_freq_req, f);
 	} else {
-		exynos5_bus_mif_update(mem_freq_req, f);
 		kbase_platform_dvfs_set_clock(kbdev, mali_dvfs_infotbl[level].clock);
 		kbase_platform_dvfs_set_vol(mali_dvfs_infotbl[level].voltage);
+		exynos5_bus_mif_update(mem_freq_req, f);
 	}
 #if defined(CONFIG_MALI_T6XX_DEBUG_SYS) && defined(CONFIG_MALI_T6XX_DVFS)
 	update_time_in_state(prev_level);
