@@ -105,10 +105,14 @@ static void exynos5250_set_frequency(unsigned int old_index,
 	/* MUX_CORE_SEL = MPLL, ARMCLK uses MPLL for lock time */
 	clk_set_parent(moutcore, mout_mpll);
 
+	if (old_index >= new_index)
+		exynos5_bus_mif_update(mif_bus_freq, exynos5250_bus_table[new_index]);
+
 	clk_set_rate(fout_apll,
 		exynos5250_freq_table[new_index].frequency * 1000);
 
-	exynos5_bus_mif_update(mif_bus_freq, exynos5250_bus_table[new_index]);
+	if (old_index < new_index)
+		exynos5_bus_mif_update(mif_bus_freq, exynos5250_bus_table[new_index]);
 
 	/* MUX_CORE_SEL = APLL */
 	clk_set_parent(moutcore, mout_apll);
