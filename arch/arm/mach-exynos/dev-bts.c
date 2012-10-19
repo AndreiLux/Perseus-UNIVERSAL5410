@@ -30,10 +30,26 @@
 #include <mach/irqs.h>
 #include <mach/map.h>
 
+static struct resource exynos_bts_fbm_ddr_r1_resource[] = {
+	[0] = {
+		.start  = EXYNOS5_PA_BTS_FBM_DDR_R1,
+		.end    = EXYNOS5_PA_BTS_FBM_DDR_R1 + SZ_1K,
+		.flags = IORESOURCE_MEM,
+	},
+};
+
 static struct resource exynos_bts_cpu_resource[] = {
 	[0] = {
 		.start  = EXYNOS5_PA_BTS_CPU,
 		.end    = EXYNOS5_PA_BTS_CPU + SZ_1K,
+		.flags = IORESOURCE_MEM,
+	},
+};
+
+static struct resource exynos_bts_left_resource[] = {
+	[0] = {
+		.start  = EXYNOS5_PA_BTS_LEFT,
+		.end    = EXYNOS5_PA_BTS_LEFT + SZ_1K,
 		.flags = IORESOURCE_MEM,
 	},
 };
@@ -188,7 +204,7 @@ struct exynos_fbm_pdata fbm_pdata = {
 	.res_num = ARRAY_SIZE(fbm_res),
 };
 
-#define EXYNOS_BTS_PDATA(_name, _prio, _block, _clkname, _changable, _act)\
+#define EXYNOS_BTS_PDATA(_name, _prio, _block, _clkname, _changable, _th_changable, _act)\
 static struct exynos_bts_pdata bts_##_name##_res = {			\
 		.def_priority = _prio,					\
 		.pd_name = _block,					\
@@ -196,23 +212,26 @@ static struct exynos_bts_pdata bts_##_name##_res = {			\
 		.fbm = &fbm_pdata,					\
 		.res_num = ARRAY_SIZE(exynos_bts_##_name##_resource),	\
 		.deblock_changable = _changable,	\
+		.threshold_changable = _th_changable,	\
 		.traffic_control_act = _act,	\
 }
 
-EXYNOS_BTS_PDATA(cpu, BTS_PRIOR_BE, NULL, NULL, 1, BTS_NO_ACTION);
-EXYNOS_BTS_PDATA(jpeg, BTS_PRIOR_BE, "pd-gscl", "jpeg", 0, BTS_NO_ACTION);
-EXYNOS_BTS_PDATA(gscl0, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, BTS_ON_OFF);
-EXYNOS_BTS_PDATA(gscl1, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, BTS_ON_OFF);
-EXYNOS_BTS_PDATA(gscl2, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, BTS_ON_OFF);
-EXYNOS_BTS_PDATA(gscl3, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, BTS_ON_OFF);
-EXYNOS_BTS_PDATA(mfc, BTS_PRIOR_BE, "pd-mfc", "mfc", 0, BTS_NO_ACTION);
-EXYNOS_BTS_PDATA(g3dacp, BTS_PRIOR_BE, "pd-g3d", "g3d", 1, BTS_NO_ACTION);
+EXYNOS_BTS_PDATA(fbm_ddr_r1, BTS_FBM_DDR_R1, NULL, NULL, 0, 1, BTS_NO_ACTION);
+EXYNOS_BTS_PDATA(cpu, BTS_PRIOR_BE, NULL, NULL, 1, 0, BTS_NO_ACTION);
+EXYNOS_BTS_PDATA(left, BTS_PRIOR_BE, NULL, NULL, 0, 0, BTS_NO_ACTION);
+EXYNOS_BTS_PDATA(jpeg, BTS_PRIOR_BE, "pd-gscl", "jpeg", 0, 0, BTS_NO_ACTION);
+EXYNOS_BTS_PDATA(gscl0, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, 0, BTS_ON_OFF);
+EXYNOS_BTS_PDATA(gscl1, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, 0, BTS_ON_OFF);
+EXYNOS_BTS_PDATA(gscl2, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, 0, BTS_ON_OFF);
+EXYNOS_BTS_PDATA(gscl3, BTS_PRIOR_BE, "pd-gscl", "gscl", 0, 0, BTS_ON_OFF);
+EXYNOS_BTS_PDATA(mfc, BTS_PRIOR_BE, "pd-mfc", "mfc", 0, 0, BTS_NO_ACTION);
+EXYNOS_BTS_PDATA(g3dacp, BTS_PRIOR_BE, "pd-g3d", "g3d", 1, 0, BTS_NO_ACTION);
 #if defined(CONFIG_EXYNOS4_DEV_FIMC_IS)
-EXYNOS_BTS_PDATA(isp0, BTS_PRIOR_BE, "pd-isp", "isp0", 0, BTS_CHANGE_OTHER_DEBLOCK);
-EXYNOS_BTS_PDATA(isp1, BTS_PRIOR_BE, "pd-isp", "isp1", 0, BTS_CHANGE_OTHER_DEBLOCK);
+EXYNOS_BTS_PDATA(isp0, BTS_PRIOR_BE, "pd-isp", "isp0", 0, 0, BTS_CHANGE_OTHER_DEBLOCK);
+EXYNOS_BTS_PDATA(isp1, BTS_PRIOR_BE, "pd-isp", "isp1", 0, 0, BTS_CHANGE_OTHER_DEBLOCK);
 #endif
-EXYNOS_BTS_PDATA(disp, BTS_PRIOR_HARDTIME, "pd-disp1", "fimd", 0, BTS_NO_ACTION);
-EXYNOS_BTS_PDATA(mixer, BTS_PRIOR_HARDTIME, "pd-disp1", "mixer", 0, BTS_NO_ACTION);
+EXYNOS_BTS_PDATA(disp, BTS_PRIOR_HARDTIME, "pd-disp1", "fimd", 0, 0, BTS_NO_ACTION);
+EXYNOS_BTS_PDATA(mixer, BTS_PRIOR_HARDTIME, "pd-disp1", "mixer", 0, 0, BTS_NO_ACTION);
 
 /* bts platform device lists */
 #define EXYNOS_BTS_DEVICE(_name, _parent, _bts_name)			\
@@ -241,11 +260,15 @@ EXYNOS_BTS_DEVICE(isp0, &exynos5_device_fimc_is.dev, "isp0-bts");
 EXYNOS_BTS_DEVICE(isp1, &exynos5_device_fimc_is.dev, "isp1-bts");
 #endif
 EXYNOS_BTS_DEVICE(cpu, NULL, "cpu-bts");
+EXYNOS_BTS_DEVICE(left, NULL, "left-bts");
+EXYNOS_BTS_DEVICE(fbm_ddr_r1, NULL, "fbm-ddr-r1-bts");
 
 static struct platform_device *exynos_bts[] __initdata = {
 	&exynos_device_bts_disp,
 	&exynos_device_bts_mixer,
 	&exynos_device_bts_cpu,
+	&exynos_device_bts_left,
+	&exynos_device_bts_fbm_ddr_r1,
 	&exynos_device_bts_g3dacp,
 	&exynos_device_bts_jpeg,
 	&exynos_device_bts_gscl0,
