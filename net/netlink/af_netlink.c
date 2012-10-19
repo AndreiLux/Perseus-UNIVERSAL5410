@@ -1014,6 +1014,7 @@ static int do_one_broadcast(struct sock *sk,
 
 	if (p->failure) {
 		netlink_overrun(sk);
+		p->failure += 1;
 		goto out;
 	}
 
@@ -1048,7 +1049,7 @@ static int do_one_broadcast(struct sock *sk,
 			p->delivery_failure = 1;
 	} else {
 		p->congested |= val;
-		p->delivered = 1;
+		p->delivered += 1;
 		p->skb2 = NULL;
 	}
 	sock_put(sk);
@@ -1066,6 +1067,9 @@ int netlink_broadcast_filtered(struct sock *ssk, struct sk_buff *skb, u32 pid,
 	struct netlink_broadcast_data info;
 	struct hlist_node *node;
 	struct sock *sk;
+
+	struct nlmsghdr *nlh;
+	struct ifinfomsg *infomsg;
 
 	skb = netlink_trim(skb, allocation);
 
@@ -1089,6 +1093,18 @@ int netlink_broadcast_filtered(struct sock *ssk, struct sk_buff *skb, u32 pid,
 
 	sk_for_each_bound(sk, node, &nl_table[ssk->sk_protocol].mc_list)
 		do_one_broadcast(sk, &info);
+
+	/*
+	 * temporary debug output
+	 * TODO(jwerner): Revert after gathering data (crosbug 35479)
+	 */
+	nlh = (struct nlmsghdr *)skb->data;
+	infomsg = NLMSG_DATA(nlh);
+	if ((skb_end_pointer(skb) - skb->data) >= NLMSG_LENGTH(sizeof(*infomsg))
+	    && nlh->nlmsg_type == RTM_NEWLINK)
+		pr_info("RTM_NEWLINK: idx=%d, flags=0x%X, deliver=%d, fail=%d,"
+		       " congest=%d\n", infomsg->ifi_index, infomsg->ifi_flags,
+		       info.delivered, info.failure, info.congested);
 
 	consume_skb(skb);
 
