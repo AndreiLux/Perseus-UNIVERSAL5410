@@ -198,6 +198,12 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 	if (!power_on)
 		exynos_pd_clk_parent_save(pd);
 
+	if (soc_is_exynos5250() &&
+		(base == EXYNOS5_MFC_CONFIGURATION ||
+		base == EXYNOS5_G3D_CONFIGURATION ||
+		base == EXYNOS5_GSCL_CONFIGURATION))
+		exynos5_mif_used_dev(power_on);
+
 	pwr = power_on ? EXYNOS_INT_LOCAL_PWR_EN : 0;
 
 	__raw_writel(pwr, base);
@@ -240,12 +246,6 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 
 	list_for_each_entry(pclk, &pd->list, node)
 		clk_disable(pclk->clk);
-
-	if (soc_is_exynos5250() &&
-		(base == EXYNOS5_MFC_CONFIGURATION ||
-		base == EXYNOS5_G3D_CONFIGURATION ||
-		base == EXYNOS5_GSCL_CONFIGURATION))
-		exynos5_mif_used_dev(power_on);
 
 	bts_initialize(pd->pd.name, power_on);
 
