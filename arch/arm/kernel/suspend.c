@@ -36,7 +36,7 @@ void __cpu_suspend_save(u32 *ptr, u32 ptrsz, u32 sp, u32 *save_ptr)
 	 * data must be cleaned from all cache levels
 	 * to main memory using "area" cache primitives.
 	 */
-	__cpuc_flush_dcache_area(ptr, ptrsz);
+	__cpuc_flush_dcache_area(phys_to_virt(*save_ptr), ptrsz);
 	__cpuc_flush_dcache_area(save_ptr, sizeof(*save_ptr));
 	outer_clean_range(*save_ptr, *save_ptr + ptrsz);
 	outer_clean_range(virt_to_phys(save_ptr),
