@@ -1334,6 +1334,11 @@ mwifiex_cfg80211_scan(struct wiphy *wiphy, struct net_device *dev,
 		return -EBUSY;
 	}
 
+	if (priv->user_scan_cfg) {
+		dev_err(priv->adapter->dev, "cmd: Scan already in process..\n");
+		return -EBUSY;
+	}
+
 	priv->user_scan_cfg = kzalloc(sizeof(struct mwifiex_user_scan_cfg),
 				      GFP_KERNEL);
 	if (!priv->user_scan_cfg) {

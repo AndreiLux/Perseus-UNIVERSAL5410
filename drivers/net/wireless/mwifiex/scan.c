@@ -1747,26 +1747,25 @@ int mwifiex_ret_802_11_scan(struct mwifiex_private *priv,
 		}
 
 		if (priv->user_scan_cfg) {
-			if (!priv->scan_request->aborted) {
+			if (priv->scan_request) {
 				dev_dbg(priv->adapter->dev,
 					"info: notifying scan done\n");
 				cfg80211_scan_done(priv->scan_request, 0);
+				priv->scan_request = NULL;
 			} else {
 				dev_dbg(priv->adapter->dev,
 					"info: scan already aborted\n");
 			}
 
-			priv->scan_request = NULL;
 			kfree(priv->user_scan_cfg);
 			priv->user_scan_cfg = NULL;
 		}
 	} else {
-		if (priv->scan_request && priv->scan_request->aborted) {
+		if (priv->user_scan_cfg && !priv->scan_request) {
 			spin_unlock_irqrestore(&adapter->scan_pending_q_lock,
 					       flags);
 			adapter->scan_delay_cnt = MWIFIEX_MAX_SCAN_DELAY_CNT;
-			mod_timer(&priv->scan_delay_timer, jiffies +
-				  msecs_to_jiffies(MWIFIEX_SCAN_DELAY_MSEC));
+			mod_timer(&priv->scan_delay_timer, jiffies);
 			dev_dbg(priv->adapter->dev,
 				"info: %s: triggerring scan abort\n", __func__);
 		} else if (!mwifiex_wmm_lists_empty(adapter) &&
