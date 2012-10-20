@@ -1554,7 +1554,6 @@ struct net_device *mwifiex_add_virtual_intf(struct wiphy *wiphy,
 	}
 
 	sema_init(&priv->async_sem, 1);
-	priv->scan_pending_on_block = false;
 
 	dev_dbg(adapter->dev, "info: %s: Marvell 802.11 Adapter\n", dev->name);
 
