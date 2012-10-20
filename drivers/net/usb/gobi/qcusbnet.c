@@ -725,8 +725,8 @@ static void qcnet_disconnect(struct usb_interface *intf)
 		list_del(&urb->urb_list);
 		free_urb_with_skb(urb);
 	}
-	qcusbnet_put(dev);
 	usbnet_disconnect(intf);
+	qcusbnet_put(dev);
 }
 
 static struct usb_driver qcusbnet = {
