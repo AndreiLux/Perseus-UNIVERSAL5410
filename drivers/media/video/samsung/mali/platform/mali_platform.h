@@ -18,19 +18,12 @@
 
 #include "mali_osk.h"
 
-#ifdef CONFIG_CPU_EXYNOS4210
-#define MALI_DVFS_STEPS 2
-#else
-#define MALI_DVFS_STEPS 5
-#endif
+#define MALI_DVFS_STEPS 10
 
 #if !USING_MALI_PMM
 /* @brief System power up/down cores that can be passed into mali_platform_powerdown/up() */
 #define MALI_PLATFORM_SYSTEM  0
 #endif
-
-/* @Enable or Disable Mali GPU Bottom Lock feature */
-#define MALI_GPU_BOTTOM_LOCK 1
 
 #ifdef __cplusplus
 extern "C" {
@@ -139,17 +132,7 @@ int mali_dvfs_is_running(void);
 void mali_dvfs_late_resume(void);
 int get_mali_dvfs_control_status(void);
 mali_bool set_mali_dvfs_current_step(unsigned int step);
-void mali_default_step_set(int step, mali_bool boostup);
 int change_dvfs_tableset(int change_clk, int change_step);
-#ifdef CONFIG_CPU_EXYNOS4210
-#if MALI_GPU_BOTTOM_LOCK
-int mali_dvfs_bottom_lock_push(void);
-int mali_dvfs_bottom_lock_pop(void);
-#endif
-#else
-int mali_dvfs_bottom_lock_push(int lock_step);
-int mali_dvfs_bottom_lock_pop(void);
-#endif
 #endif
 
 #ifdef __cplusplus

@@ -51,8 +51,6 @@
 #define CLK_DIV_STAT_G3D 	0x1003C62C
 #define CLK_DESC 			"clk-divider-status"
 
-#define MALI_BOTTOMLOCK_VOL	900000
-
 typedef struct mali_runtime_resumeTag{
 	int clk;
 	int vol;
@@ -76,7 +74,7 @@ int mali_gpu_clk = 266;
 int mali_gpu_vol = 900000;
 
 #if MALI_DVFS_ENABLED
-#define MALI_DVFS_DEFAULT_STEP 0
+#define MALI_DVFS_DEFAULT_STEP 6
 #endif
 
 int  gpu_power_state;
@@ -485,7 +483,8 @@ static _mali_osk_errcode_t enable_mali_clocks(void)
 		mali_regulator_set_voltage(mali_runtime_resume.vol, mali_runtime_resume.vol);
 		mali_clk_set_rate(mali_runtime_resume.clk, GPU_MHZ);
 	}
-	if (mali_gpu_clk <= mali_runtime_resume.clk)	
+	if (mali_gpu_clk <= mali_runtime_resume.clk)
+		set_mali_dvfs_current_step(7);
 
 	MALI_SUCCESS;
 }
