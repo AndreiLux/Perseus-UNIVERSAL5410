@@ -421,6 +421,7 @@ struct mwifiex_private {
 	u8 wmm_enabled;
 	u8 wmm_qosinfo;
 	struct mwifiex_wmm_desc wmm;
+	atomic_t wmm_tx_pending[IEEE80211_NUM_ACS];
 	struct list_head tx_ba_stream_tbl_ptr;
 	/* spin lock for tx_ba_stream_tbl_ptr queue */
 	spinlock_t tx_ba_stream_tbl_lock;
@@ -738,7 +739,7 @@ int mwifiex_process_tx(struct mwifiex_private *priv, struct sk_buff *skb,
 		       struct mwifiex_tx_param *tx_param);
 int mwifiex_send_null_packet(struct mwifiex_private *priv, u8 flags);
 int mwifiex_write_data_complete(struct mwifiex_adapter *adapter,
-				struct sk_buff *skb, int status);
+				struct sk_buff *skb, int aggr, int status);
 void mwifiex_clean_txrx(struct mwifiex_private *priv);
 u8 mwifiex_check_last_packet_indication(struct mwifiex_private *priv);
 void mwifiex_check_ps_cond(struct mwifiex_adapter *adapter);
