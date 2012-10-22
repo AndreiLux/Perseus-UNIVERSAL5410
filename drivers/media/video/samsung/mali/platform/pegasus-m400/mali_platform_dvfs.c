@@ -22,6 +22,9 @@
 #include <linux/regulator/consumer.h>
 #include <linux/regulator/driver.h>
 
+#include <linux/sysdev.h>
+#include <linux/platform_device.h>
+
 #include <asm/io.h>
 
 #include "mali_device_pause_resume.h"
@@ -31,6 +34,10 @@
 #include <mach/asv.h>
 #define EXYNOS4_ASV_ENABLED
 #endif
+
+#define MALI_VOLTAGE_STEP	12500
+#define MALI_MAX_VOLTAGE	1200000
+#define MALI_MIN_VOLTAGE	600000
 
 static int bMaliDvfsRun=0;
 
@@ -277,23 +284,6 @@ static void mali_dvfs_work_handler(struct work_struct *w)
 	bMaliDvfsRun=0;
 }
 
-mali_bool init_mali_dvfs_status(int step)
-{
-	/*default status
-	add here with the right function to get initilization value.
-	*/
-	mali_policy.lowStep = findStep(160);
-	mali_policy.highStep = (samsung_rev() >= EXYNOS4412_REV_2_0) ? findStep(533) : findStep(440);
-	
-	if (!mali_dvfs_wq)
-		mali_dvfs_wq = create_singlethread_workqueue("mali_dvfs");
-
-	/*add a error handling here*/
-	set_mali_dvfs_current_step(step);
-
-	return MALI_TRUE;
-}
-
 void deinit_mali_dvfs_status(void)
 {
 	if (mali_dvfs_wq)
@@ -308,5 +298,235 @@ mali_bool mali_dvfs_handler(u32 utilization)
 	queue_work_on(0, mali_dvfs_wq,&mali_dvfs_work);
 
 	/*add error handle here*/
+	return MALI_TRUE;
+}
+
+/* #### Sysfs start #### */
+
+static int read_into(int *container, int size, const char *buf, size_t count)
+{
+	int i, j, t;
+	i=0; j=0; t=0;
+
+	for(j = 0; i < count; i++) {
+		char c = buf[i];
+		if(c >= '0' && c <= '9') {
+			if(t < (j + 1)) 
+				t = j + 1;
+			if(t > size)
+				return -EINVAL;
+			*(container + j) *= 10;
+			*(container + j) += (c - '0');
+		} else if(c == ' ' || c == '\t' || c == '\n' ) {
+			if(*(container + j) != 0) j++;
+		} else
+			break;
+	}
+
+	return t;
+}
+
+static int sanitize_voltage(int voltage)
+{
+	voltage *= 1000;
+	
+	if(voltage % MALI_VOLTAGE_STEP)
+		voltage += voltage % MALI_VOLTAGE_STEP;
+
+	if(voltage > MALI_MAX_VOLTAGE)
+		voltage = MALI_MAX_VOLTAGE;
+
+	if(voltage < MALI_MIN_VOLTAGE)
+		voltage = MALI_MIN_VOLTAGE;
+
+	return voltage;
+}
+
+static ssize_t max_freq_show(struct sysdev_class * cls, 
+			     struct sysdev_class_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", mali_dvfs[mali_policy.highStep].clock);
+}
+
+static ssize_t max_freq_store(struct sysdev_class * cls, struct sysdev_class_attribute *attr,
+			      const char *buf, size_t count) 
+{
+	unsigned int ret = -EINVAL;
+	int freq, i;
+
+	ret = sscanf(buf, "%d", &freq);
+	if (ret != 1) {
+		return -EINVAL;
+	} else {
+		for(i = 0; i < MALI_DVFS_STEPS; i++){
+			if(mali_dvfs[i].clock != freq) continue;
+			mali_policy.highStep = findStep(freq);
+			break;
+		}
+	}
+	return count;	
+}
+
+static ssize_t min_freq_show(struct sysdev_class * cls, 
+			     struct sysdev_class_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", mali_dvfs[mali_policy.lowStep].clock);
+}
+
+static ssize_t min_freq_store(struct sysdev_class * cls, struct sysdev_class_attribute *attr,
+			      const char *buf, size_t count) 
+{
+	unsigned int ret = -EINVAL;
+	int freq, i;
+
+	ret = sscanf(buf, "%d", &freq);
+	if (ret != 1) {
+		return -EINVAL;
+	} else {
+		for(i = 0; i < MALI_DVFS_STEPS; i++){
+			if(mali_dvfs[i].clock != freq) continue;
+			mali_policy.lowStep = findStep(freq);
+			break;
+		}
+	}
+	return count;	
+}
+
+static ssize_t freq_table_show(struct sysdev_class * cls, 
+			     struct sysdev_class_attribute *attr, char *buf)
+{
+	int i, len = 0;
+
+	for (i = MALI_DVFS_STEPS - 1; i >= 0; i--) {
+		len += sprintf(buf + len, "%d\n", mali_dvfs[i].clock);
+	}
+
+	return len;
+}
+
+static ssize_t freq_table_store(struct sysdev_class * cls, struct sysdev_class_attribute *attr,
+			      const char *buf, size_t count) 
+{
+	int i, t;
+	int u[MALI_DVFS_STEPS];
+
+	for(i=0; i < MALI_DVFS_STEPS; i++)
+		u[i] = 0;
+	
+	if((t = read_into((int*)&u, MALI_DVFS_STEPS, buf, count)) < 0)
+		return -EINVAL;
+	if(t == 2 && MALI_DVFS_STEPS != 2){
+		mali_dvfs[findStep(u[0])].clock = u[1];
+	} else if (t == MALI_DVFS_STEPS) {
+		for(i = 0; i < MALI_DVFS_STEPS; i++) {
+			mali_dvfs[i].clock = u[i];
+		}
+	} else
+		return -EINVAL;
+
+	return count;	
+}
+
+static ssize_t volt_table_show(struct sysdev_class * cls, 
+			     struct sysdev_class_attribute *attr, char *buf)
+{
+	int i, len = 0;
+
+	for (i = MALI_DVFS_STEPS - 1; i >= 0; i--) {
+		len += sprintf(buf + len, "%dMHz %dmV\n", mali_dvfs[i].clock,
+		      ((mali_dvfs[i].vol % 1000) + mali_dvfs[i].vol)/1000);
+	}
+
+	return len;
+}
+
+static ssize_t volt_table_store(struct sysdev_class * cls, struct sysdev_class_attribute *attr,
+			      const char *buf, size_t count) 
+{
+	int i, t;
+	int u[MALI_DVFS_STEPS];
+
+	for(i=0; i < MALI_DVFS_STEPS; i++)
+		u[i] = 0;
+	
+	if((t = read_into((int*)&u, MALI_DVFS_STEPS, buf, count)) < 0)
+		return -EINVAL;
+	if(t == 2 && MALI_DVFS_STEPS != 2) {
+		mali_dvfs[findStep(u[0])].vol = sanitize_voltage(u[1]);
+	} else if (t == MALI_DVFS_STEPS) {
+		for(i = 0; i < MALI_DVFS_STEPS; i++) {
+			mali_dvfs[i].vol = sanitize_voltage(u[i]);
+		}
+	} else
+		return -EINVAL;
+
+	return count;	
+}
+
+static ssize_t thresholds_show(struct sysdev_class * cls, 
+			     struct sysdev_class_attribute *attr, char *buf)
+{
+	return sprintf(buf, "Up: %d down-differential: %d\n",
+		       mali_policy.upThreshold, mali_policy.downDifferential);
+}
+
+static ssize_t thresholds_store(struct sysdev_class * cls, struct sysdev_class_attribute *attr,
+			      const char *buf, size_t count) 
+{
+	unsigned int ret = -EINVAL;
+	int up, down;
+
+	ret = sscanf(buf, "%d %d", &up, &down);
+	if (ret != 2) {
+		return -EINVAL;
+	} else {
+		if(up > 0 && up < 100 && down > 0 && down < (99 - up)) {
+			mali_policy.upThreshold = up;
+			mali_policy.downDifferential = down;
+		}
+	}
+	return count;	
+}
+
+struct sysdev_class gpu_m400_sysclass = {
+	.name	= "gpu",
+};
+
+static SYSDEV_CLASS_ATTR(max_freq, S_IRUGO | S_IWUGO, max_freq_show, max_freq_store);
+static SYSDEV_CLASS_ATTR(min_freq, S_IRUGO | S_IWUGO, min_freq_show, min_freq_store);
+static SYSDEV_CLASS_ATTR(freq_table, S_IRUGO | S_IWUGO, freq_table_show, freq_table_store);
+static SYSDEV_CLASS_ATTR(volt_table, S_IRUGO | S_IWUGO, volt_table_show, volt_table_store);
+static SYSDEV_CLASS_ATTR(thresholds, S_IRUGO | S_IWUGO, thresholds_show, thresholds_store);
+
+static struct sysdev_class_attribute *gpu_attributes[] = {
+	&attr_max_freq,
+	&attr_min_freq,
+	&attr_freq_table,
+	&attr_volt_table,
+	&attr_thresholds,
+};
+
+mali_bool init_mali_dvfs_status(int step)
+{
+	int i = 0;
+
+	/*init sysinterfaces*/
+	sysdev_class_register(&gpu_m400_sysclass);
+	for (i = 0;  i < ARRAY_SIZE(gpu_attributes); i++) {
+		sysdev_class_create_file(&gpu_m400_sysclass, gpu_attributes[i]);
+	}
+
+	/*default status
+	add here with the right function to get initilization value.
+	*/
+	mali_policy.lowStep = findStep(160);
+	mali_policy.highStep = (samsung_rev() >= EXYNOS4412_REV_2_0) ? findStep(533) : findStep(440);
+	
+	if (!mali_dvfs_wq)
+		mali_dvfs_wq = create_singlethread_workqueue("mali_dvfs");
+
+	/*add a error handling here*/
+	set_mali_dvfs_current_step(step);
+
 	return MALI_TRUE;
 }
