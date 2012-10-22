@@ -574,7 +574,7 @@ static const char *rclksrc[] = {
 	[1] = "i2sclk",
 };
 
-static struct video_info smdk5250_dp_config = {
+static struct video_info ptn3460_dp_config = {
 	.name                   = "eDP-LVDS NXP PTN3460",
 
 	.h_sync_polarity        = 0,
@@ -590,8 +590,24 @@ static struct video_info smdk5250_dp_config = {
 	.lane_count             = LANE_COUNT2,
 };
 
+static struct video_info ps8622_dp_config = {
+	.name                   = "eDP-LVDS Parade PS8622",
+
+	.h_sync_polarity        = 0,
+	.v_sync_polarity        = 0,
+	.interlaced             = 0,
+
+	.color_space            = COLOR_RGB,
+	.dynamic_range          = VESA,
+	.ycbcr_coeff            = COLOR_YCBCR601,
+	.color_depth            = COLOR_8,
+
+	.link_rate              = LINK_RATE_2_70GBPS,
+	.lane_count             = LANE_COUNT1,
+};
+
 static struct exynos_dp_platdata smdk5250_dp_data = {
-	.video_info     = &smdk5250_dp_config,
+	.video_info     = &ptn3460_dp_config,
 	.training_type  = SW_LINK_TRAINING,
 	.phy_init       = s5p_dp_phy_init,
 	.phy_exit       = s5p_dp_phy_exit,
@@ -1086,7 +1102,8 @@ static void __init exynos5250_dt_machine_init(void)
 #endif
 		dsim_lcd_info.lcd_size.width = 1366;
 		dsim_lcd_info.lcd_size.height = 768;
-	} else if (of_machine_is_compatible("google,snow")) {
+	} else if ((of_machine_is_compatible("google,snow")) ||
+		   (of_machine_is_compatible("google,spring"))) {
 #ifdef CONFIG_DRM_EXYNOS_FIMD
 		for (i = 0;i < ARRAY_SIZE(snow_fb_window);i++)
 			smdk5250_lcd1_pdata.panel[i].timing = snow_fb_window[i];
@@ -1096,6 +1113,12 @@ static void __init exynos5250_dt_machine_init(void)
 		smdk5250_lcd1_pdata.vidcon1 = 0;
 #endif
 	}
+
+	/* put the DP output configuration matching the eDP-LVDS bridge */
+	if (of_find_compatible_node(NULL, NULL, "nxp,ptn3460"))
+		smdk5250_dp_data.video_info = &ptn3460_dp_config;
+	else if (of_find_compatible_node(NULL, NULL, "parade,ps8622"))
+		smdk5250_dp_data.video_info = &ps8622_dp_config;
 
 	if (gpio_request_one(EXYNOS5_GPX2(6), GPIOF_OUT_INIT_HIGH,
 		"HOST_VBUS_CONTROL")) {
@@ -1141,7 +1164,8 @@ static void __init exynos5250_dt_machine_init(void)
 				exynos5250_auxdata_lookup, NULL);
 
 #ifdef CONFIG_DRM_EXYNOS_FIMD
-	if (of_machine_is_compatible("google,snow"))
+	if ((of_machine_is_compatible("google,snow")) ||
+	    (of_machine_is_compatible("google,spring")))
 		exynos_dp_gpio_setup_24bpp();
 	else
 		exynos_fimd_gpio_setup_24bpp();
