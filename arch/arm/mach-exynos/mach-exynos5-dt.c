@@ -1065,6 +1065,10 @@ static void __init exynos5250_dt_machine_init(void)
 	 */
 	gpio_request_one(EXYNOS5_GPX3(0), GPIOF_OUT_INIT_HIGH, "lcd_bl_en");
 
+	if (of_machine_is_compatible("google,snow")) {
+		smdk5250_bl_data.max_brightness = 2800;
+		smdk5250_bl_data.dft_brightness = 2800;
+	}
 	samsung_bl_set(&smdk5250_bl_gpio_info, &smdk5250_bl_data);
 
 	/*
