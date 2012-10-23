@@ -210,7 +210,6 @@ static void uhh_omap_reset_link(struct ehci_hcd *ehci, int port)
 	u8 count;
 	u16 orig_val, val;
 	struct device *dev = ehci_to_hcd(ehci)->self.controller;
-	struct ehci_hcd_omap_platform_data *pdata = dev->platform_data;
 
 	dev_info(dev, "%s port %d\n", __func__, port);
 
