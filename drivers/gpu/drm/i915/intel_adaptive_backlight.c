@@ -226,7 +226,7 @@ adaptive_backlight_correct(struct drm_device *dev, int pipe)
 	if (!adaptive_backlight_current_step(dev_priv, correction_level))
 		return;
 
-	intel_panel_set_backlight(dev, dev_priv->backlight_level);
+	dev_priv->set_backlight(dev, dev_priv->backlight_level);
 
 	/* We need to invert the gamma correction of the LCD values,
 	 * but not of the backlight which is linear.
@@ -312,7 +312,7 @@ void intel_adaptive_backlight_disable(struct drm_i915_private *dev_priv,
 
 	dev_priv->backlight_correction_level = 256;
 
-	intel_panel_set_backlight(dev, dev_priv->backlight_level);
+	dev_priv->set_backlight(dev, dev_priv->backlight_level);
 
 	/* Find the pipe */
 	if (!connector->encoder)

@@ -159,8 +159,8 @@ static u32 asle_set_backlight(struct drm_device *dev, u32 bclp)
 	if (bclp > 255)
 		return ASLE_BACKLIGHT_FAILED;
 
-	max = intel_panel_get_max_backlight(dev);
-	intel_panel_set_backlight(dev, bclp * max / 255);
+	max = dev_priv->get_max_backlight(dev);
+	dev_priv->set_backlight(dev, bclp * max / 255);
 	asle->cblv = (bclp*0x64)/0xff | ASLE_CBLV_VALID;
 
 	return 0;

@@ -402,6 +402,13 @@ typedef struct drm_i915_private {
 	struct drm_display_mode *lfp_lvds_vbt_mode; /* if any */
 	struct drm_display_mode *sdvo_lvds_vbt_mode; /* if any */
 
+	/* Backlight driver */
+	u32 (*get_backlight)(struct drm_device *dev);
+	u32 (*get_max_backlight)(struct drm_device *dev);
+	void (*set_backlight)(struct drm_device *dev, u32 level);
+	void (*disable_backlight)(struct drm_device *dev);
+	void (*enable_backlight)(struct drm_device *dev);
+
 	/* Adaptive backlight */
 	bool adaptive_backlight_enabled;
 	int backlight_correction_level;
