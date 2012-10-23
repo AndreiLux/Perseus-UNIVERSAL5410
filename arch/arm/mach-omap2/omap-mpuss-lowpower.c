@@ -52,6 +52,7 @@
 #include <asm/hardware/cache-l2x0.h>
 
 #include <plat/omap44xx.h>
+#include <plat/gpio.h>
 #include <mach/omap-secure.h>
 
 #include <mach/omap-secure.h>
@@ -410,6 +411,7 @@ int omap_enter_lowpower(unsigned int cpu, unsigned int power_state)
 
 	/* Extend Non-EMIF I/O isolation *AFTER* usecounts and callbacks */
 	if (omap4_device_next_state_off()) {
+		omap2_gpio_prepare_for_idle(1);
 		omap4_prminst_rmw_inst_reg_bits(OMAP4430_ISOOVR_EXTEND_MASK,
 				OMAP4430_ISOOVR_EXTEND_MASK,
 				OMAP4430_PRM_PARTITION,
@@ -519,6 +521,7 @@ int omap_enter_lowpower(unsigned int cpu, unsigned int power_state)
 		 * usecounts and callbacks. This is important to have the
 		 * right sequence.
 		 */
+		omap2_gpio_resume_after_idle();
 		omap4_prminst_rmw_inst_reg_bits(OMAP4430_ISOOVR_EXTEND_MASK,
 				0,
 				OMAP4430_PRM_PARTITION,

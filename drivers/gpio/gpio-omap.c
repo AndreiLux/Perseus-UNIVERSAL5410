@@ -25,12 +25,15 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/irqdomain.h>
+#include <linux/sched.h>
 
 #include <mach/hardware.h>
 #include <asm/irq.h>
 #include <mach/irqs.h>
 #include <asm/gpio.h>
 #include <asm/mach/irq.h>
+
+#include <plat/omap_device.h>
 
 #define OFF_MODE	1
 
@@ -1317,26 +1320,71 @@ static int omap_gpio_runtime_resume(struct device *dev)
 void omap2_gpio_prepare_for_idle(int pwr_mode)
 {
 	struct gpio_bank *bank;
+	int is_idle = is_idle_task(current);
+
+	/*
+	 * we can be called either from cpu_idle() i.e. is_idle_task = 1
+	 * or from suspend path i.e. is_idle_task = 0
+	 */
 
 	list_for_each_entry(bank, &omap_gpio_list, node) {
 		if (!bank->mod_usage || !bank->loses_context)
 			continue;
 
-		bank->power_mode = pwr_mode;
 
-		pm_runtime_put_sync_suspend(bank->dev);
+		if (is_idle) {
+			bank->power_mode = pwr_mode;
+			pm_runtime_put_sync_suspend(bank->dev);
+		}
+
+		/*
+		 * In the suspend path we are already runtime suspended
+		 * so nothing to do here
+		 */
 	}
 }
 
 void omap2_gpio_resume_after_idle(void)
 {
 	struct gpio_bank *bank;
+	int is_idle = is_idle_task(current);
 
 	list_for_each_entry(bank, &omap_gpio_list, node) {
 		if (!bank->mod_usage || !bank->loses_context)
 			continue;
 
-		pm_runtime_get_sync(bank->dev);
+		if (is_idle) {
+			pm_runtime_get_sync(bank->dev);
+		} else {
+			/*
+			 * In the suspend/resume path it is too early to
+			 * use PM runtime framework so we call
+			 * omap_device_enable/idle() instead.
+			 */
+			struct platform_device *pdev;
+			pdev = to_platform_device(bank->dev);
+
+			/*
+			 * we don't need to restore entire GPIO context here,
+			 * just the Output part. The rest of the context will be
+			 * restored anyways by PM framework.
+			 */
+			omap_device_enable(pdev);
+
+			__raw_writel(bank->context.ctrl,
+					bank->base + bank->regs->ctrl);
+			if (bank->regs->set_dataout && bank->regs->clr_dataout)
+				__raw_writel(bank->context.dataout,
+					bank->base + bank->regs->set_dataout);
+			else
+				__raw_writel(bank->context.dataout,
+					bank->base + bank->regs->dataout);
+
+			__raw_writel(bank->context.oe,
+					bank->base + bank->regs->direction);
+
+			omap_device_idle(pdev);
+		}
 	}
 }
 
