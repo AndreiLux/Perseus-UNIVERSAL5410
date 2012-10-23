@@ -106,6 +106,10 @@ static struct workqueue_struct *mali_dvfs_wq = 0;
 extern mali_io_address clk_register_map;
 extern _mali_osk_lock_t *mali_dvfs_lock;
 
+static u64 time_in_state[MALI_DVFS_STEPS];
+static struct timeval last_switch;
+static int time_enable = 0;
+
 static DECLARE_WORK(mali_dvfs_work, mali_dvfs_work_handler);
 
 #if MALI_PMM_RUNTIME_JOB_CONTROL_ON
@@ -114,9 +118,26 @@ int get_mali_dvfs_control_status(void)
 	return mali_dvfs_control;
 }
 
+static void do_time_slice(int level)
+{
+	u64 delta;
+	struct timeval now;	
+	
+	do_gettimeofday(&now);
+	
+	delta = (now.tv_sec - last_switch.tv_sec) * USEC_PER_SEC +
+		    (now.tv_usec - last_switch.tv_usec);
+
+	time_in_state[level] += delta;
+
+	last_switch = now;
+}
+
 mali_bool set_mali_dvfs_current_step(unsigned int step)
 {
 	_mali_osk_lock_wait(mali_dvfs_lock, _MALI_OSK_LOCKMODE_RW);
+	if(!!time_enable)
+		do_time_slice(mali_policy.currentStep);
 	mali_policy.currentStep = step;
 	_mali_osk_lock_signal(mali_dvfs_lock, _MALI_OSK_LOCKMODE_RW);
 	return MALI_TRUE;
@@ -419,7 +440,7 @@ static ssize_t freq_table_store(struct sysdev_class * cls, struct sysdev_class_a
 		mali_dvfs[findStep(u[0])].clock = u[1];
 	} else if (t == MALI_DVFS_STEPS) {
 		for(i = 0; i < MALI_DVFS_STEPS; i++) {
-			mali_dvfs[i].clock = u[i];
+			mali_dvfs[MALI_DVFS_STEPS - i - 1].clock = u[i];
 		}
 	} else
 		return -EINVAL;
@@ -455,7 +476,7 @@ static ssize_t volt_table_store(struct sysdev_class * cls, struct sysdev_class_a
 		mali_dvfs[findStep(u[0])].vol = sanitize_voltage(u[1]);
 	} else if (t == MALI_DVFS_STEPS) {
 		for(i = 0; i < MALI_DVFS_STEPS; i++) {
-			mali_dvfs[i].vol = sanitize_voltage(u[i]);
+			mali_dvfs[MALI_DVFS_STEPS - i - 1].vol = sanitize_voltage(u[i]);
 		}
 	} else
 		return -EINVAL;
@@ -488,6 +509,44 @@ static ssize_t thresholds_store(struct sysdev_class * cls, struct sysdev_class_a
 	return count;	
 }
 
+static ssize_t current_freq_show(struct sysdev_class * cls, 
+			     struct sysdev_class_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", mali_dvfs[mali_policy.currentStep].clock);
+}
+
+static ssize_t time_in_state_show(struct sysdev_class * cls, 
+			     struct sysdev_class_attribute *attr, char *buf)
+{
+	int i, len = 0;
+
+	for (i = MALI_DVFS_STEPS - 1; i >= 0; i--) {
+		len += sprintf(buf + len, "%llu\t%d\n", time_in_state[i], mali_dvfs[i].clock);
+	}
+
+	return len;
+}
+
+static ssize_t time_in_state_store(struct sysdev_class * cls, struct sysdev_class_attribute *attr,
+			      const char *buf, size_t count) 
+{
+	unsigned int ret = -EINVAL;
+	int i, in;
+
+	ret = sscanf(buf, "%d", &in);
+	if (ret != 1) {
+		return -EINVAL;
+	} else {
+		switch(in) {
+			case 1: time_enable = 1; break;
+	  		case 0: time_enable = 0; break;
+	  		default: for (i = 0; i < MALI_DVFS_STEPS; i++)
+					time_in_state[i] = 0;
+		}
+	}
+	return count;
+}
+
 struct sysdev_class gpu_m400_sysclass = {
 	.name	= "gpu",
 };
@@ -497,6 +556,8 @@ static SYSDEV_CLASS_ATTR(min_freq, S_IRUGO | S_IWUGO, min_freq_show, min_freq_st
 static SYSDEV_CLASS_ATTR(freq_table, S_IRUGO | S_IWUGO, freq_table_show, freq_table_store);
 static SYSDEV_CLASS_ATTR(volt_table, S_IRUGO | S_IWUGO, volt_table_show, volt_table_store);
 static SYSDEV_CLASS_ATTR(thresholds, S_IRUGO | S_IWUGO, thresholds_show, thresholds_store);
+static SYSDEV_CLASS_ATTR(current_freq, S_IRUGO, current_freq_show, NULL);
+static SYSDEV_CLASS_ATTR(time_in_state, S_IRUGO | S_IWUGO, time_in_state_show, time_in_state_store);
 
 static struct sysdev_class_attribute *gpu_attributes[] = {
 	&attr_max_freq,
@@ -504,6 +565,8 @@ static struct sysdev_class_attribute *gpu_attributes[] = {
 	&attr_freq_table,
 	&attr_volt_table,
 	&attr_thresholds,
+	&attr_current_freq,
+	&attr_time_in_state,
 };
 
 mali_bool init_mali_dvfs_status(int step)
@@ -515,6 +578,11 @@ mali_bool init_mali_dvfs_status(int step)
 	for (i = 0;  i < ARRAY_SIZE(gpu_attributes); i++) {
 		sysdev_class_create_file(&gpu_m400_sysclass, gpu_attributes[i]);
 	}
+
+	for (i = 0; i < MALI_DVFS_STEPS; i++)
+		time_in_state[i] = 0;
+
+	do_gettimeofday(&last_switch);
 
 	/*default status
 	add here with the right function to get initilization value.
