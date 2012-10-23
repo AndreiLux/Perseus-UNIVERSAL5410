@@ -307,6 +307,7 @@ static struct omap2_hsmmc_info mmc[] = {
 		.name		= "wl1271",
 		.mmc		= 5,
 		.caps		= MMC_CAP_4_BIT_DATA | MMC_CAP_POWER_OFF_CARD,
+		.pm_caps	= MMC_PM_KEEP_POWER,
 		.gpio_wp	= -EINVAL,
 		.gpio_cd	= -EINVAL,
 		.ocr_mask	= MMC_VDD_165_195,
@@ -348,6 +349,7 @@ static struct platform_device omap_vwlan_device = {
 struct wl12xx_platform_data omap_panda_wlan_data  __initdata = {
 	/* PANDA ref clock is 38.4 MHz */
 	.board_ref_clock = 2,
+	.pwr_in_suspend = true,
 };
 
 static struct omap_rprm_regulator sdp4430_rprm_regulators[] = {
@@ -712,6 +714,11 @@ static void __init enable_board_wakeups(void)
 	/* sys_nirq1 for TWL6030 (USB, PMIC, etc) */
 	omap_mux_init_signal("sys_nirq1",
 		OMAP_WAKEUP_EN | OMAP_PIN_INPUT_PULLUP);
+
+	/* wake on WLAN */
+	omap_mux_init_gpio(GPIO_WIFI_IRQ, OMAP_PIN_INPUT |
+			OMAP_PIN_OFF_WAKEUPENABLE);
+
 }
 
 static struct gpio panda_gpio_non_configured_init[] = {
