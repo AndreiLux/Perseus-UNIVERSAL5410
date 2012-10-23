@@ -190,6 +190,109 @@ void omap_ehci_hw_phy_reset(const struct usb_hcd *hcd, int port)
 	return;
 }
 
+#define CM_L3INIT_HSUSBHOST_CLKCTRL     (0x4A009358)
+#define L3INIT_HSUSBHOST_CLKCTRL        (0x4A009358)
+#define OMAP_UHH_SYSCONFIG              (0x4a064010)
+#define OMAP_UHH_SYSSTATUS              (0x4a064014)
+#define OMAP_UHH_HOSTCONFIG             (0x4a064040)
+
+/*
+ * @port : 1 indexed EHCI port who's link needs to be reset
+ */
+static void uhh_omap_reset_link(struct ehci_hcd *ehci, int port)
+{
+	u32 usbcmd_backup;
+	u32 usbintr_backup;
+	u32 asynclistaddr_backup, periodiclistbase_backup;
+	u32 portsc0_backup;
+	u32 uhh_sysconfig_backup, uhh_hostconfig_backup;
+	u32 temp_reg;
+	u8 count;
+	u16 orig_val, val;
+	struct device *dev = ehci_to_hcd(ehci)->self.controller;
+	struct ehci_hcd_omap_platform_data *pdata = dev->platform_data;
+
+	dev_info(dev, "%s port %d\n", __func__, port);
+
+	/* switch to internal 60Mhz clock */
+	temp_reg = omap_readl(L3INIT_HSUSBHOST_CLKCTRL);
+	temp_reg |= 1 << 8;
+	temp_reg &= ~(1 << 24);
+	omap_writel(temp_reg, L3INIT_HSUSBHOST_CLKCTRL);
+
+	/* Backup current registers of EHCI */
+	usbcmd_backup = ehci_readl(ehci, &ehci->regs->command);
+	ehci_writel(ehci,
+		usbcmd_backup & ~(CMD_IAAD | CMD_ASE | CMD_PSE | CMD_RUN),
+		&ehci->regs->command);
+	mdelay(3);
+	/* check controller stopped */
+	handshake(ehci, &ehci->regs->status, STS_HALT, 1, 150);
+	asynclistaddr_backup = ehci_readl(ehci, &ehci->regs->async_next);
+	periodiclistbase_backup = ehci_readl(ehci, &ehci->regs->frame_list);
+	portsc0_backup = ehci_readl(ehci, &ehci->regs->port_status[0]);
+	usbintr_backup = ehci_readl(ehci, &ehci->regs->intr_enable);
+	uhh_sysconfig_backup = omap_readl(OMAP_UHH_SYSCONFIG);
+	uhh_hostconfig_backup = omap_readl(OMAP_UHH_HOSTCONFIG);
+
+	/* Soft reset EHCI controller */
+	omap_writel(omap_readl(OMAP_UHH_SYSCONFIG) | (1<<0),
+			OMAP_UHH_SYSCONFIG);
+	/* wait for reset done */
+	count = 10;
+	while ((omap_readl(OMAP_UHH_SYSCONFIG) & (1<<0)) && count--)
+		mdelay(1);
+	if (!count)
+		pr_err("ehci:link_reset: soft-reset fail\n");
+
+	/* PHY reset via RESETB pin */
+	omap_ehci_hw_phy_reset(ehci_to_hcd(ehci), port);
+
+	/* switch back to external 60Mhz clock */
+	temp_reg &= ~(1 << 8);
+	temp_reg |= 1 << 24;
+	omap_writel(temp_reg, L3INIT_HSUSBHOST_CLKCTRL);
+	mdelay(5);
+
+	/*soft reset ehci registers */
+	ehci_writel(ehci, (1<<1), &ehci->regs->command);
+	count = 10;
+	while ((ehci_readl(ehci, &ehci->regs->command) & (1<<1)) && count--)
+		mdelay(1);
+	if (!count)
+		pr_err("ehci:link_reset: soft-reset fail\n");
+
+	/* Restore registers after reset */
+	omap_writel(uhh_sysconfig_backup, OMAP_UHH_SYSCONFIG);
+	omap_writel(uhh_hostconfig_backup, OMAP_UHH_HOSTCONFIG);
+	ehci_writel(ehci, periodiclistbase_backup, &ehci->regs->frame_list);
+	ehci_writel(ehci, asynclistaddr_backup, &ehci->regs->async_next);
+	ehci_writel(ehci, FLAG_CF, &ehci->regs->configured_flag);
+	ehci_writel(ehci, 0, &ehci->regs->intr_enable);
+	ehci_writel(ehci, usbcmd_backup, &ehci->regs->command);
+	mdelay(2);
+	ehci_writel(ehci, PORT_POWER, &ehci->regs->port_status[0]);
+
+	/* Put PHY in good default state */
+	if (omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x20, 0x5, 20) < 0) {
+		/* Toggle STP line */
+		orig_val = val = omap_readw(0x4A1000C4);
+		val |= 0x1F;
+		omap_writew(val, 0x4A1000C4);
+		mdelay(3);
+		omap_writew(orig_val, 0x4A1000C4);
+		omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x20, 0x5, 20);
+	}
+
+	omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x41, 0x4, 20);
+	omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x18, 0x7, 20);
+	omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x66, 0xA, 20);
+	omap_ehci_ulpi_write(ehci_to_hcd(ehci), 0x45, 0x4, 20);
+
+	handshake(ehci, &ehci->regs->port_status[0], PORT_CONNECT, 1, 2000);
+	ehci_writel(ehci, usbintr_backup, &ehci->regs->intr_enable);
+}
+
 static void disable_put_regulator(
 		struct ehci_hcd_omap_platform_data *pdata)
 {
@@ -304,6 +407,7 @@ static int omap_ehci_hub_control(
 					ehci_err(ehci,
 							"port %d resume error %d\n",
 							wIndex + 1, retval);
+					uhh_omap_reset_link(ehci, wIndex + 1);
 					goto error;
 				}
 				temp &= ~(PORT_SUSPEND|PORT_RESUME|(3<<10));
