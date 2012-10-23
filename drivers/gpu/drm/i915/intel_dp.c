@@ -1313,6 +1313,9 @@ intel_dp_dpms(struct drm_encoder *encoder, int mode)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	uint32_t dp_reg = I915_READ(intel_dp->output_reg);
 
+	if (intel_dp->dpms_mode == mode)
+		return;
+
 	if (mode != DRM_MODE_DPMS_ON) {
 		ironlake_edp_backlight_off(intel_dp);
 		ironlake_edp_panel_off(intel_dp);
