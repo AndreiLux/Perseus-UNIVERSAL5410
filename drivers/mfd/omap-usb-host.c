@@ -959,6 +959,61 @@ static int usbhs_runtime_suspend(struct device *dev)
 		clk_disable(omap->usb_host_hs_hsic480m_p3_clk);
 	}
 
+	/* Errata i693 workaround */
+
+	if (is_ehci_phy_mode(pdata->port_mode[0])) {
+		int ret;
+
+		clk_disable(omap->utmi_p1_fck);
+		/* switch to internal 60MHz clock */
+		ret = clk_set_parent(omap->utmi_p1_fck,
+					omap->init_60m_fclk);
+		if (ret != 0)
+			dev_err(dev, "init_60m_fclk set parent "
+				"failed error:%d\n", ret);
+
+		clk_enable(omap->usbhost_p1_fck);
+
+		/* wait for 1 ms */
+		mdelay(1);
+
+		/* switch back to the external clock */
+		clk_disable(omap->usbhost_p1_fck);
+		ret = clk_set_parent(omap->utmi_p1_fck,
+					omap->xclk60mhsp1_ck);
+		if (ret != 0)
+			dev_err(dev, "xclk60mhsp1_ck set parent "
+				"failed error:%d\n", ret);
+		clk_enable(omap->utmi_p1_fck);
+	}
+
+	if (is_ehci_phy_mode(pdata->port_mode[1])) {
+		int ret;
+
+		clk_disable(omap->utmi_p2_fck);
+		/* switch to internal 60MHz clock */
+		ret = clk_set_parent(omap->utmi_p2_fck,
+					omap->init_60m_fclk);
+		if (ret != 0)
+			dev_err(dev, "init_60m_fclk set parent "
+				"failed error:%d\n", ret);
+
+		clk_enable(omap->usbhost_p2_fck);
+
+		/* wait for 1 ms */
+		mdelay(1);
+
+		/* switch back to the external clock */
+		clk_disable(omap->usbhost_p2_fck);
+		ret = clk_set_parent(omap->utmi_p2_fck,
+					omap->xclk60mhsp1_ck);
+		if (ret != 0)
+			dev_err(dev, "xclk60mhsp1_ck set parent "
+				"failed error:%d\n", ret);
+		clk_enable(omap->utmi_p2_fck);
+	}
+	/* Errata i693 workaround end */
+
 	clk_disable(omap->utmi_p2_fck);
 	clk_disable(omap->utmi_p1_fck);
 	if (omap->ehci_logic_fck && !IS_ERR(omap->ehci_logic_fck))
