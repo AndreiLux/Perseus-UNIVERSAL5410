@@ -192,6 +192,203 @@ static irqreturn_t ehci_omap_irq(struct usb_hcd *hcd)
 	return ehci_irq(hcd);
 }
 
+static int omap_ehci_hub_control(
+		struct usb_hcd  *hcd,
+		u16             typeReq,
+		u16             wValue,
+		u16             wIndex,
+		char            *buf,
+		u16             wLength
+		) {
+	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
+	int             ports = HCS_N_PORTS(ehci->hcs_params);
+	u32 __iomem     *status_reg = &ehci->regs->port_status[
+		(wIndex & 0xff) - 1];
+	u32 __iomem     *hostpc_reg = NULL;
+	u32             temp, temp1, status;
+	unsigned long   flags;
+	int             retval = 0;
+
+	/*
+	 * FIXME:  support SetPortFeatures USB_PORT_FEAT_INDICATOR.
+	 * HCS_INDICATOR may say we can change LEDs to off/amber/green.
+	 * (track current state ourselves) ... blink for diagnostics,
+	 * power, "this is the one", etc.  EHCI spec supports this.
+	 */
+
+	if (ehci->has_hostpc)
+		hostpc_reg = (u32 __iomem *)((u8 *)ehci->regs
+				+ HOSTPC0 + 4 * ((wIndex & 0xff) - 1));
+	spin_lock_irqsave(&ehci->lock, flags);
+	switch (typeReq) {
+	case GetPortStatus:
+		if (!wIndex || wIndex > ports)
+			goto error;
+		wIndex--;
+		status = 0;
+		temp = ehci_readl(ehci, status_reg);
+
+		/* wPortChange bits */
+		if (temp & PORT_CSC)
+			status |= USB_PORT_STAT_C_CONNECTION << 16;
+		if (temp & PORT_PEC)
+			status |= USB_PORT_STAT_C_ENABLE << 16;
+
+		if ((temp & PORT_OCC) && !ignore_oc) {
+			status |= USB_PORT_STAT_C_OVERCURRENT << 16;
+
+			/*
+			 * Hubs should disable port power on over-current.
+			 * However, not all EHCI implementations do this
+			 * automatically, even if they _do_ support per-port
+			 * power switching; they're allowed to just limit the
+			 * current.  khubd will turn the power back on.
+			 */
+			if ((temp & PORT_OC) && HCS_PPC(ehci->hcs_params)) {
+				ehci_writel(ehci,
+					temp & ~(PORT_RWC_BITS | PORT_POWER),
+						status_reg);
+				temp = ehci_readl(ehci, status_reg);
+			}
+		}
+
+		/* whoever resumes must GetPortStatus to complete it!! */
+		if (temp & PORT_RESUME) {
+			/* Remote Wakeup received? */
+			if (!ehci->reset_done[wIndex]) {
+				/* resume signaling for 20 msec */
+				ehci->reset_done[wIndex] = jiffies
+					+ msecs_to_jiffies(20);
+				/* check the port again */
+				mod_timer(&ehci_to_hcd(ehci)->rh_timer,
+						ehci->reset_done[wIndex]);
+			}
+
+			/* resume completed? */
+			else if (time_after_eq(jiffies,
+						ehci->reset_done[wIndex])) {
+				clear_bit(wIndex, &ehci->suspended_ports);
+				set_bit(wIndex, &ehci->port_c_suspend);
+				ehci->reset_done[wIndex] = 0;
+
+				/* stop resume signaling */
+				temp = ehci_readl(ehci, status_reg);
+				ehci_writel(ehci,
+					temp & ~(PORT_RWC_BITS | PORT_RESUME),
+						status_reg);
+				clear_bit(wIndex, &ehci->resuming_ports);
+				retval = handshake(ehci, status_reg,
+					PORT_RESUME, 0, 2000 /* 2msec */);
+				if (retval != 0) {
+					ehci_err(ehci,
+							"port %d resume error %d\n",
+							wIndex + 1, retval);
+					goto error;
+				}
+				temp &= ~(PORT_SUSPEND|PORT_RESUME|(3<<10));
+			}
+		}
+
+		/* whoever resets must GetPortStatus to complete it!! */
+		if ((temp & PORT_RESET)
+				&& time_after_eq(jiffies,
+					ehci->reset_done[wIndex])) {
+			status |= USB_PORT_STAT_C_RESET << 16;
+			ehci->reset_done[wIndex] = 0;
+			clear_bit(wIndex, &ehci->resuming_ports);
+
+			/* force reset to complete */
+			ehci_writel(ehci, temp & ~(PORT_RWC_BITS | PORT_RESET),
+					status_reg);
+			/* REVISIT:  some hardware needs 550+ usec to clear
+			 * this bit; seems too long to spin routinely...
+			 */
+			retval = handshake(ehci, status_reg,
+					PORT_RESET, 0, 1000);
+			if (retval != 0) {
+				ehci_err(ehci, "port %d reset error %d\n",
+						wIndex + 1, retval);
+				goto error;
+			}
+
+			/* see what we found out */
+			temp = check_reset_complete(ehci, wIndex, status_reg,
+					ehci_readl(ehci, status_reg));
+		}
+
+		if (!(temp & (PORT_RESUME|PORT_RESET))) {
+			ehci->reset_done[wIndex] = 0;
+			clear_bit(wIndex, &ehci->resuming_ports);
+		}
+
+		/* transfer dedicated ports to the companion hc */
+		if ((temp & PORT_CONNECT) &&
+				test_bit(wIndex, &ehci->companion_ports)) {
+			temp &= ~PORT_RWC_BITS;
+			temp |= PORT_OWNER;
+			ehci_writel(ehci, temp, status_reg);
+			ehci_dbg(ehci, "port %d --> companion\n", wIndex + 1);
+			temp = ehci_readl(ehci, status_reg);
+		}
+		/*
+		 * Even if OWNER is set, there's no harm letting khubd
+		 * see the wPortStatus values (they should all be 0 except
+		 * for PORT_POWER anyway).
+		 */
+
+		if (temp & PORT_CONNECT) {
+			status |= USB_PORT_STAT_CONNECTION;
+			/* status may be from integrated TT */
+			if (ehci->has_hostpc) {
+				temp1 = ehci_readl(ehci, hostpc_reg);
+				status |= ehci_port_speed(ehci, temp1);
+				} else
+				status |= ehci_port_speed(ehci, temp);
+		}
+		if (temp & PORT_PE)
+			status |= USB_PORT_STAT_ENABLE;
+
+		/* maybe the port was unsuspended without our knowledge */
+		if (temp & (PORT_SUSPEND|PORT_RESUME)) {
+			status |= USB_PORT_STAT_SUSPEND;
+		} else if (test_bit(wIndex, &ehci->suspended_ports)) {
+			clear_bit(wIndex, &ehci->suspended_ports);
+			clear_bit(wIndex, &ehci->resuming_ports);
+			ehci->reset_done[wIndex] = 0;
+				if (temp & PORT_PE)
+					set_bit(wIndex, &ehci->port_c_suspend);
+			}
+
+		if (temp & PORT_OC)
+			status |= USB_PORT_STAT_OVERCURRENT;
+		if (temp & PORT_RESET)
+			status |= USB_PORT_STAT_RESET;
+		if (temp & PORT_POWER)
+			status |= USB_PORT_STAT_POWER;
+		if (test_bit(wIndex, &ehci->port_c_suspend))
+			status |= USB_PORT_STAT_C_SUSPEND << 16;
+
+#ifndef VERBOSE_DEBUG
+		if (status & ~0xffff)   /* only if wPortChange is interesting */
+#endif
+			dbg_port(ehci, "GetStatus", wIndex + 1, temp);
+		put_unaligned_le32(status, buf);
+			break;
+	default:
+		spin_unlock_irqrestore(&ehci->lock, flags);
+		retval = ehci_hub_control(hcd, typeReq, wValue, wIndex,
+				buf, wLength);
+		return retval;
+		break;
+error:
+		/* "stall" on error */
+		retval = -EPIPE;
+	}
+
+	spin_unlock_irqrestore(&ehci->lock, flags);
+	return retval;
+}
+
 /* configure so an HC device and id are always provided */
 /* always called with process context; sleeping is OK */
 
@@ -512,7 +709,7 @@ static const struct hc_driver ehci_omap_hc_driver = {
 	 * root hub support
 	 */
 	.hub_status_data	= ehci_hub_status_data,
-	.hub_control		= ehci_hub_control,
+	.hub_control		= omap_ehci_hub_control,
 	.bus_suspend		= ehci_omap_bus_suspend,
 	.bus_resume		= ehci_omap_bus_resume,
 
