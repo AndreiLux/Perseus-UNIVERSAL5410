@@ -978,6 +978,8 @@ void kbasep_reset_timeout_worker(struct work_struct *data)
 	 * so this cannot be done within kbasep_try_reset_gpu_early. */
 	hrtimer_cancel(&kbdev->reset_timer);
 
+	dump_stack();		/* TODO(sleffler) temporary for diagnostics */
+
 	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 
 	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING)
