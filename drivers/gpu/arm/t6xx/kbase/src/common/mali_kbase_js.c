@@ -230,13 +230,20 @@ STATIC mali_bool check_is_runpool_full( kbase_device *kbdev, kbase_context *kctx
 	js_devdata = &kbdev->js_data;
 	BUG_ON(!mutex_is_locked( &js_devdata->runpool_mutex ));
 
+	/* Regardless of whether a context is submitting or not, can't have more than there
+	 * are HW address spaces */
 	is_runpool_full = (mali_bool)(js_devdata->nr_all_contexts_running >= kbdev->nr_hw_address_spaces);
 
 	if ( kctx != NULL && (kctx->jctx.sched_info.ctx.flags & KBASE_CTX_FLAG_SUBMIT_DISABLED) == 0 )
 	{
 		BUG_ON(!mutex_is_locked( &kctx->jctx.sched_info.ctx.jsctx_mutex ));
-		/* Contexts that don't submit might use less of the address spaces available, due to HW workarounds */
-		is_runpool_full = (mali_bool)(js_devdata->nr_user_contexts_running >= kbdev->nr_user_address_spaces);
+		/* Contexts that submit might use less of the address spaces available, due to HW
+		 * workarounds.  In which case, the runpool is also full when the number of
+		 * submitting contexts exceeds the number of submittable address spaces.
+		 *
+		 * Both checks must be made: can have nr_user_address_spaces == nr_hw_address spaces,
+		 * and at the same time can have nr_user_contexts_running < nr_all_contexts_running. */
+		is_runpool_full |= (mali_bool)(js_devdata->nr_user_contexts_running >= kbdev->nr_user_address_spaces);
 	}
 
 	return is_runpool_full;

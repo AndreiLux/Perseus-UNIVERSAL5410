@@ -71,6 +71,7 @@ mali_error kbase_instr_hwcnt_dump(kbase_context * kctx);
 mali_error kbase_instr_hwcnt_dump_irq(kbase_context * kctx);
 mali_bool kbase_instr_hwcnt_dump_complete(kbase_context * kctx, mali_bool *success);
 
+void kbasep_cache_clean_worker(struct work_struct *data);
 void kbase_clean_caches_done(kbase_device *kbdev);
 
 /**

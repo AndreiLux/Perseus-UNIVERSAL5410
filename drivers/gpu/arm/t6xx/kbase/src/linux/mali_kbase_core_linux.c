@@ -802,6 +802,8 @@ bad_type:
 			}
 
 			ukh->ret = kbase_stream_create(screate->name, &screate->fd);
+#else
+			ukh->ret = MALI_ERROR_FUNCTION_FAILED;
 #endif
 			break;
 		}

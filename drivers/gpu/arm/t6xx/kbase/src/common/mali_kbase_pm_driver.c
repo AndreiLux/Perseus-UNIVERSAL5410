@@ -825,14 +825,17 @@ KBASE_EXPORT_TEST_API(kbase_pm_check_transitions)
 
 void MOCKABLE(kbase_pm_enable_interrupts)(kbase_device *kbdev)
 {
+	unsigned long flags;
 
 	OSK_ASSERT( NULL != kbdev );
 	/*
 	 * Clear all interrupts,
 	 * and unmask them all.
 	 */
+	spin_lock_irqsave(&kbdev->pm.power_change_lock, flags);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_CLEAR), GPU_IRQ_REG_ALL, NULL);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), GPU_IRQ_REG_ALL, NULL);
+	spin_unlock_irqrestore(&kbdev->pm.power_change_lock, flags);
 
 	kbase_reg_write(kbdev, JOB_CONTROL_REG(JOB_IRQ_CLEAR), 0xFFFFFFFF, NULL);
 	kbase_reg_write(kbdev, JOB_CONTROL_REG(JOB_IRQ_MASK), 0xFFFFFFFF, NULL);
@@ -844,14 +847,17 @@ KBASE_EXPORT_TEST_API(kbase_pm_enable_interrupts)
 
 void MOCKABLE(kbase_pm_disable_interrupts)(kbase_device *kbdev)
 {
+	unsigned long flags;
 
 	OSK_ASSERT( NULL != kbdev );
 	/*
 	 * Mask all interrupts,
 	 * and clear them all.
 	 */
+	spin_lock_irqsave(&kbdev->pm.power_change_lock, flags);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), 0, NULL);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_CLEAR), GPU_IRQ_REG_ALL, NULL);
+	spin_unlock_irqrestore(&kbdev->pm.power_change_lock, flags);
 
 	kbase_reg_write(kbdev, JOB_CONTROL_REG(JOB_IRQ_MASK), 0, NULL);
 	kbase_reg_write(kbdev, JOB_CONTROL_REG(JOB_IRQ_CLEAR), 0xFFFFFFFF, NULL);

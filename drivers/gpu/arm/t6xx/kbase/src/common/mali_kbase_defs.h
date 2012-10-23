@@ -394,25 +394,28 @@ typedef struct kbase_phys_allocator_array
 } kbase_phys_allocator_array;
 
 /**
- * Instrumentation State Machine States:
- * DISABLED    - requires instrumentation to be enabled
- * IDLE        - state machine is active and ready for a command.
- * DUMPING     - hardware is currently dumping a frame.
- * POSTCLEANING- hardware is currently cleaning and invalidating caches.
- * PRECLEANING - same as POSTCLEANING, except on completion, state machine will transiton to CLEANED instead of IDLE.
- * CLEANED     - cache clean completed, waiting for Instrumentation setup.
- * ERROR       - an error has occured during DUMPING (page fault).
+ * Instrumentation State Machine States
  */
-
 typedef enum
 {
+	/** State where instrumentation is not active */
 	KBASE_INSTR_STATE_DISABLED = 0,
+	/** State machine is active and ready for a command. */
 	KBASE_INSTR_STATE_IDLE,
+	/** Hardware is currently dumping a frame. */
 	KBASE_INSTR_STATE_DUMPING,
+	/** We've requested a clean to occur on a workqueue */
+	KBASE_INSTR_STATE_REQUEST_CLEAN,
+	/** Hardware is currently cleaning and invalidating caches. */
+	KBASE_INSTR_STATE_CLEANING,
+	/** Cache clean completed, and either a) a dump is complete, or
+	 * b) instrumentation can now be setup. */
 	KBASE_INSTR_STATE_CLEANED,
-	KBASE_INSTR_STATE_PRECLEANING,
-	KBASE_INSTR_STATE_POSTCLEANING,
+	/** kbasep_reset_timeout_worker() has started (but not compelted) a
+	 * reset. This generally indicates the current action should be aborted, and
+	 * kbasep_reset_timeout_worker() will handle the cleanup */
 	KBASE_INSTR_STATE_RESETTING,
+	/** An error has occured during DUMPING (page fault). */
 	KBASE_INSTR_STATE_FAULT
 
 } kbase_instr_state;
@@ -539,6 +542,9 @@ struct kbase_device {
 		wait_queue_head_t   wait;
 		int                 triggered;
 		kbase_instr_state   state;
+		wait_queue_head_t   cache_clean_wait;
+		struct workqueue_struct *cache_clean_wq;
+		struct work_struct  cache_clean_work;
 	} hwcnt;
 
 	/* Set when we're about to reset the GPU */
@@ -591,6 +597,9 @@ struct kbase_device {
 	u32                     js_reset_ticks_ss;
 	u32                     js_reset_ticks_nss;
 #endif
+
+	struct mutex		cacheclean_lock;
+
 	/* Platform specific private data to be accessed by mali_kbase_config_xxx.c only */
 	void                    *platform_context;
 #ifdef CONFIG_MALI_T6XX_RT_PM

@@ -174,19 +174,27 @@ mali_error kbase_device_init(kbase_device *kbdev)
 	kbdev->hwcnt.state = KBASE_INSTR_STATE_DISABLED;
 	init_waitqueue_head(&kbdev->reset_wait);
 	init_waitqueue_head(&kbdev->hwcnt.wait);
+	init_waitqueue_head(&kbdev->hwcnt.cache_clean_wait);
+	INIT_WORK(&kbdev->hwcnt.cache_clean_work, kbasep_cache_clean_worker);
 	kbdev->hwcnt.triggered = 0;
+
+	kbdev->hwcnt.cache_clean_wq = alloc_workqueue("Mali cache cleaning workqueue", 0, 1);
+	if (NULL == kbdev->hwcnt.cache_clean_wq)
+	{
+		goto free_workqs;
+	}
 
 	/* Simulate failure to create the workqueue */
 	if(OSK_SIMULATE_FAILURE(OSK_BASE_CORE))
 	{
 		kbdev->reset_workq = NULL;
-		goto free_workqs;
+		goto free_cache_clean_workq;
 	}
 
 	kbdev->reset_workq = alloc_workqueue("Mali reset workqueue", 0, 1);
 	if (NULL == kbdev->reset_workq)
 	{
-		goto free_workqs;
+		goto free_cache_clean_workq;
 	}
 
 	OSK_ASSERT(0 == object_is_on_stack(&kbdev->reset_work));
@@ -199,6 +207,8 @@ mali_error kbase_device_init(kbase_device *kbdev)
 	{
 		goto free_reset_workq;
 	}
+
+	mutex_init(&kbdev->cacheclean_lock);
 
 	osk_debug_assert_register_hook( &kbasep_trace_hook_wrapper, kbdev );
 
@@ -217,6 +227,8 @@ mali_error kbase_device_init(kbase_device *kbdev)
 
 free_reset_workq:
 	destroy_workqueue(kbdev->reset_workq);
+free_cache_clean_workq:
+	destroy_workqueue(kbdev->hwcnt.cache_clean_wq);
 free_workqs:
 	while (i > 0)
 	{
@@ -247,6 +259,7 @@ void kbase_device_term(kbase_device *kbdev)
 
 
 	destroy_workqueue(kbdev->reset_workq);
+	destroy_workqueue(kbdev->hwcnt.cache_clean_wq);
 
 	for (i = 0; i < kbdev->nr_hw_address_spaces; i++)
 	{
@@ -401,6 +414,7 @@ void kbase_gpu_interrupt(kbase_device * kbdev, u32 val)
 		kbase_clean_caches_done(kbdev);
 	}
 
+	KBASE_TRACE_ADD( kbdev, CORE_GPU_IRQ_CLEAR, NULL, NULL, 0u, val );
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_CLEAR), val, NULL);
 
 	/* kbase_pm_check_transitions must be called after the IRQ has been cleared. This is because it might trigger

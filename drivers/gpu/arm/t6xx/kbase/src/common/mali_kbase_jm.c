@@ -265,26 +265,6 @@ void kbase_job_done(kbase_device *kbdev, u32 done)
 						OSK_PRINT_WARN(OSK_BASE_JD, "error detected from slot %d, job status 0x%08x (%s)",
 						               i, completion_code, kbase_exception_name(completion_code));
 				}
-
-				if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_6787))
-				{
-					/* Limit the number of loops to avoid a hang if the interrupt is missed */
-					u32 max_loops = KBASE_CLEAN_CACHE_MAX_LOOPS;
-
-					/* cache flush when jobs complete with non-done codes */
-					/* use GPU_COMMAND completion solution */
-					/* clean & invalidate the caches */
-					kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), 8, NULL);
-
-					/* wait for cache flush to complete before continuing */
-					while(--max_loops &&
-					      (kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_IRQ_RAWSTAT), NULL) & CLEAN_CACHES_COMPLETED) == 0)
-					{
-					}
-
-					/* clear the CLEAN_CACHES_COMPLETED irq*/
-					kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_CLEAR), CLEAN_CACHES_COMPLETED, NULL);
-				}
 			}
 
 			kbase_reg_write(kbdev, JOB_CONTROL_REG(JOB_IRQ_CLEAR), done & ((1 << i) | (1 << (i + 16))), NULL);
@@ -1057,9 +1037,49 @@ void kbasep_reset_timeout_worker(struct work_struct *data)
 		kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_CONFIG), (kctx->as_nr << PRFCNT_CONFIG_AS_SHIFT) | PRFCNT_CONFIG_MODE_MANUAL, kctx);
 		kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_TILER_EN),    hwcnt_setup.tiler_bm,                 kctx);
 	}
-	kbdev->hwcnt.triggered = 1;
-	wake_up(&kbdev->hwcnt.wait);
 	kbdev->hwcnt.state = bckp_state;
+	switch(kbdev->hwcnt.state)
+	{
+		/* Cases for waking kbasep_cache_clean_worker worker */
+		case KBASE_INSTR_STATE_CLEANED:
+			/* Cache-clean IRQ occurred, but we reset:
+			 * Wakeup incase the waiter saw RESETTING */
+		case KBASE_INSTR_STATE_REQUEST_CLEAN:
+			/* After a clean was requested, but before the regs were written:
+			 * Wakeup incase the waiter saw RESETTING */
+			wake_up(&kbdev->hwcnt.cache_clean_wait);
+			break;
+		case KBASE_INSTR_STATE_CLEANING:
+			/* Either:
+			 * 1) We've not got the Cache-clean IRQ yet: it was lost, or:
+			 * 2) We got it whilst resetting: it was voluntarily lost
+			 *
+			 * So, move to the next state and wakeup: */
+			kbdev->hwcnt.state = KBASE_INSTR_STATE_CLEANED;
+			wake_up(&kbdev->hwcnt.cache_clean_wait);
+			break;
+
+		/* Cases for waking anyone else */
+		case KBASE_INSTR_STATE_DUMPING:
+			/* If dumping, abort the dump, because we may've lost the IRQ */
+			kbdev->hwcnt.state = KBASE_INSTR_STATE_IDLE;
+			kbdev->hwcnt.triggered = 1;
+			wake_up(&kbdev->hwcnt.wait);
+			break;
+		case KBASE_INSTR_STATE_DISABLED:
+		case KBASE_INSTR_STATE_IDLE:
+		case KBASE_INSTR_STATE_FAULT:
+			/* Every other reason: wakeup in that state */
+			kbdev->hwcnt.triggered = 1;
+			wake_up(&kbdev->hwcnt.wait);
+			break;
+
+		/* Unhandled cases */
+		case KBASE_INSTR_STATE_RESETTING:
+		default:
+			BUG();
+			break;
+	}
 	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 
 	/* Re-init the power policy. Note that this does not re-enable interrupts,

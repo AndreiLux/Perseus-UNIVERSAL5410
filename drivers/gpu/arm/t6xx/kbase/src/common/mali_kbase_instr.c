@@ -25,15 +25,35 @@
  */
 static void kbasep_instr_hwcnt_cacheclean(kbase_device *kbdev)
 {
+	unsigned long flags;
+	unsigned long pm_flags;
 	u32 irq_mask;
 
 	OSK_ASSERT(NULL != kbdev);
 
+	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
+	/* Wait for any reset to complete */
+	while (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING)
+	{
+		spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
+		wait_event(kbdev->hwcnt.cache_clean_wait,
+		           kbdev->hwcnt.state != KBASE_INSTR_STATE_RESETTING);
+		spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
+	}
+	OSK_ASSERT(kbdev->hwcnt.state == KBASE_INSTR_STATE_REQUEST_CLEAN);
+
 	/* Enable interrupt */
+	spin_lock_irqsave(&kbdev->pm.power_change_lock, pm_flags);
 	irq_mask = kbase_reg_read(kbdev,GPU_CONTROL_REG(GPU_IRQ_MASK),NULL);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), irq_mask | CLEAN_CACHES_COMPLETED, NULL);
+	spin_unlock_irqrestore(&kbdev->pm.power_change_lock, pm_flags);
+
 	/* clean&invalidate the caches so we're sure the mmu tables for the dump buffer is valid */
+	KBASE_TRACE_ADD( kbdev, CORE_GPU_CLEAN_INV_CACHES, NULL, NULL, 0u, 0 );
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), GPU_COMMAND_CLEAN_INV_CACHES, NULL);
+	kbdev->hwcnt.state = KBASE_INSTR_STATE_CLEANING;
+
+	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 }
 
 /**
@@ -43,12 +63,13 @@ static void kbasep_instr_hwcnt_cacheclean(kbase_device *kbdev)
  */
 mali_error kbase_instr_hwcnt_enable(kbase_context * kctx, kbase_uk_hwcnt_setup * setup)
 {
-	unsigned long flags;
+	unsigned long flags, pm_flags;
 	mali_error err = MALI_ERROR_FUNCTION_FAILED;
 	kbasep_js_device_data *js_devdata;
 	mali_bool access_allowed;
 	u32 irq_mask;
 	kbase_device *kbdev;
+	int ret;
 
 	OSK_ASSERT(NULL != kctx);
 	kbdev = kctx->kbdev;
@@ -104,25 +125,27 @@ mali_error kbase_instr_hwcnt_enable(kbase_context * kctx, kbase_uk_hwcnt_setup *
 	}
 
 	/* Enable interrupt */
+	spin_lock_irqsave(&kbdev->pm.power_change_lock, pm_flags);
 	irq_mask = kbase_reg_read(kbdev,GPU_CONTROL_REG(GPU_IRQ_MASK),NULL);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), irq_mask | PRFCNT_SAMPLE_COMPLETED, NULL);
+	spin_unlock_irqrestore(&kbdev->pm.power_change_lock, pm_flags);
 
 	/* In use, this context is the owner */
 	kbdev->hwcnt.kctx = kctx;
 	/* Remember the dump address so we can reprogram it later */
 	kbdev->hwcnt.addr = setup->dump_buffer;
 
-	/* Precleaning so that state does not transition to IDLE */
-	kbdev->hwcnt.state = KBASE_INSTR_STATE_PRECLEANING;
+	/* Request the clean */
+	kbdev->hwcnt.state = KBASE_INSTR_STATE_REQUEST_CLEAN;
 	kbdev->hwcnt.triggered = 0;
+	/* Clean&invalidate the caches so we're sure the mmu tables for the dump buffer is valid */
+	ret = queue_work(kbdev->hwcnt.cache_clean_wq, &kbdev->hwcnt.cache_clean_work);
+	OSK_ASSERT(ret);
 
 	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 
-	/* Clean&invalidate the caches so we're sure the mmu tables for the dump buffer is valid */
-	kbasep_instr_hwcnt_cacheclean(kbdev);
 	/* Wait for cacheclean to complete */
 	wait_event(kbdev->hwcnt.wait, kbdev->hwcnt.triggered != 0);
-	OSK_ASSERT(kbdev->hwcnt.state == KBASE_INSTR_STATE_CLEANED);
 
 	/* Schedule the context in */
 	kbasep_js_schedule_privileged_ctx(kbdev, kctx);
@@ -174,7 +197,7 @@ KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_enable)
  */
 mali_error kbase_instr_hwcnt_disable(kbase_context * kctx)
 {
-	unsigned long flags;
+	unsigned long flags, pm_flags;
 	mali_error err = MALI_ERROR_FUNCTION_FAILED;
 	u32 irq_mask;
 	kbase_device *kbdev;
@@ -218,8 +241,10 @@ mali_error kbase_instr_hwcnt_disable(kbase_context * kctx)
 	kbdev->hwcnt.triggered = 0;
 
 	/* Disable interrupt */
+	spin_lock_irqsave(&kbdev->pm.power_change_lock, pm_flags);
 	irq_mask = kbase_reg_read(kbdev,GPU_CONTROL_REG(GPU_IRQ_MASK),NULL);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), irq_mask & ~PRFCNT_SAMPLE_COMPLETED, NULL);
+	spin_unlock_irqrestore(&kbdev->pm.power_change_lock, pm_flags);
 
 	/* Disable the counters */
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_CONFIG), 0, kctx);
@@ -281,6 +306,9 @@ out:
 
 /**
  * @brief Issue Dump command to hardware
+ *
+ * Notes:
+ * - does not sleep
  */
 mali_error kbase_instr_hwcnt_dump_irq(kbase_context * kctx)
 {
@@ -294,8 +322,6 @@ mali_error kbase_instr_hwcnt_dump_irq(kbase_context * kctx)
 
 	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 
-	OSK_ASSERT(kbdev->hwcnt.state != KBASE_INSTR_STATE_RESETTING);
-
 	if (kbdev->hwcnt.kctx != kctx)
 	{
 		 /* The instrumentation has been setup for another context */
@@ -304,7 +330,7 @@ mali_error kbase_instr_hwcnt_dump_irq(kbase_context * kctx)
 
 	if (kbdev->hwcnt.state != KBASE_INSTR_STATE_IDLE)
 	{
-		/* HW counters are disabled or another dump is ongoing */
+		/* HW counters are disabled or another dump is ongoing, or we're resetting */
 		goto unlock;
 	}
 
@@ -318,6 +344,7 @@ mali_error kbase_instr_hwcnt_dump_irq(kbase_context * kctx)
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_BASE_HI), kbdev->hwcnt.addr >> 32,        NULL);
 
 	/* Start dumping */
+	KBASE_TRACE_ADD( kbdev, CORE_GPU_PRFCNT_SAMPLE, NULL, NULL, kbdev->hwcnt.addr, 0 );
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), GPU_COMMAND_PRFCNT_SAMPLE, kctx);
 
 	OSK_PRINT_INFO( OSK_BASE_CORE, "HW counters dumping done for context %p", kctx);
@@ -451,6 +478,7 @@ mali_error kbase_instr_hwcnt_clear(kbase_context * kctx)
 	}
 
 	/* Clear the counters */
+	KBASE_TRACE_ADD( kbdev, CORE_GPU_PRFCNT_CLEAR, NULL, NULL, 0u, 0 );
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), GPU_COMMAND_PRFCNT_CLEAR, kctx);
 
 	err = MALI_ERROR_NONE;
@@ -462,21 +490,69 @@ out:
 KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_clear)
 
 /**
+ * Workqueue for handling cache cleaning
+ */
+void kbasep_cache_clean_worker(struct work_struct *data)
+{
+	kbase_device *kbdev;
+	unsigned long flags;
+
+	kbdev = container_of(data, kbase_device, hwcnt.cache_clean_work);
+
+	mutex_lock(&kbdev->cacheclean_lock);
+	kbasep_instr_hwcnt_cacheclean(kbdev);
+
+	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
+	/* Wait for our condition, and any reset to complete */
+	while (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING
+		   || kbdev->hwcnt.state == KBASE_INSTR_STATE_CLEANING)
+	{
+		spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
+		wait_event(kbdev->hwcnt.cache_clean_wait,
+		           (kbdev->hwcnt.state != KBASE_INSTR_STATE_RESETTING
+		            && kbdev->hwcnt.state != KBASE_INSTR_STATE_CLEANING));
+		spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
+	}
+	OSK_ASSERT(kbdev->hwcnt.state == KBASE_INSTR_STATE_CLEANED);
+
+	/* All finished and idle */
+	kbdev->hwcnt.state = KBASE_INSTR_STATE_IDLE;
+	kbdev->hwcnt.triggered = 1;
+	wake_up(&kbdev->hwcnt.wait);
+
+	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
+
+	mutex_unlock(&kbdev->cacheclean_lock);
+}
+
+
+/**
  * @brief Dump complete interrupt received
  */
 void kbase_instr_hwcnt_sample_done(kbase_device *kbdev)
 {
+	unsigned long flags;
+	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
+
 	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_FAULT)
 	{
 		kbdev->hwcnt.triggered = 1;
 		wake_up(&kbdev->hwcnt.wait);
 	}
-	else
+	else if (kbdev->hwcnt.state == KBASE_INSTR_STATE_DUMPING)
 	{
+		int ret;
 		/* Always clean and invalidate the cache after a successful dump */
-		kbdev->hwcnt.state = KBASE_INSTR_STATE_POSTCLEANING;
-		kbasep_instr_hwcnt_cacheclean(kbdev);
+		kbdev->hwcnt.state = KBASE_INSTR_STATE_REQUEST_CLEAN;
+		ret = queue_work(kbdev->hwcnt.cache_clean_wq, &kbdev->hwcnt.cache_clean_work);
+
+		OSK_ASSERT(ret);
 	}
+	/* NOTE: In the state KBASE_INSTR_STATE_RESETTING, We're in a reset,
+	 * and the instrumentation state hasn't been restored yet -
+	 * kbasep_reset_timeout_worker() will do the rest of the work */
+
+	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 }
 
 /**
@@ -488,24 +564,26 @@ void kbase_clean_caches_done(kbase_device *kbdev)
 
 	if (kbdev->hwcnt.state != KBASE_INSTR_STATE_DISABLED)
 	{
+		unsigned long flags;
+		unsigned long pm_flags;
+		spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 		/* Disable interrupt */
+		spin_lock_irqsave(&kbdev->pm.power_change_lock, pm_flags);
 		irq_mask = kbase_reg_read(kbdev,GPU_CONTROL_REG(GPU_IRQ_MASK),NULL);
 		kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_MASK), irq_mask & ~CLEAN_CACHES_COMPLETED, NULL);
+		spin_unlock_irqrestore(&kbdev->pm.power_change_lock, pm_flags);
 
-		if (kbdev->hwcnt.state == KBASE_INSTR_STATE_PRECLEANING)
+		/* Wakeup... */
+		if (kbdev->hwcnt.state == KBASE_INSTR_STATE_CLEANING)
 		{
-			/* Don't return IDLE as we need kbase_instr_hwcnt_setup to continue rather than
-			   allow access to another waiting thread */
+			/* Only wake if we weren't resetting */
 			kbdev->hwcnt.state = KBASE_INSTR_STATE_CLEANED;
+			wake_up(&kbdev->hwcnt.cache_clean_wait);
 		}
-		else
-		{
-			/* All finished and idle */
-			kbdev->hwcnt.state = KBASE_INSTR_STATE_IDLE;
-		}
+		/* NOTE: In the state KBASE_INSTR_STATE_RESETTING, We're in a reset,
+		 * and the instrumentation state hasn't been restored yet -
+		 * kbasep_reset_timeout_worker() will do the rest of the work */
 
-		kbdev->hwcnt.triggered = 1;
-		wake_up(&kbdev->hwcnt.wait);
-
+		spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 	}
 }

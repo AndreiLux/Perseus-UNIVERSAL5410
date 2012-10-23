@@ -1004,6 +1004,36 @@ static void jd_done_worker(struct work_struct *data)
 	 */
 	OSK_ASSERT( js_kctx_info->ctx.is_scheduled != MALI_FALSE );
 
+	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_6787) &&
+	    katom->event_code != BASE_JD_EVENT_DONE && !(katom->event_code & BASE_JD_SW_EVENT))
+	{
+		/* Limit the number of loops to avoid a hang if the interrupt is missed */
+		u32 max_loops = KBASE_CLEAN_CACHE_MAX_LOOPS;
+
+		mutex_lock(&kbdev->cacheclean_lock);
+
+		/* cache flush when jobs complete with non-done codes */
+		/* use GPU_COMMAND completion solution */
+		/* clean & invalidate the caches */
+		KBASE_TRACE_ADD( kbdev, CORE_GPU_CLEAN_INV_CACHES, NULL, NULL, 0u, 0 );
+		kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), GPU_COMMAND_CLEAN_INV_CACHES, NULL);
+
+		/* wait for cache flush to complete before continuing */
+		while(--max_loops &&
+		     (kbase_reg_read(kbdev, GPU_CONTROL_REG(GPU_IRQ_RAWSTAT), NULL) & CLEAN_CACHES_COMPLETED) == 0)
+		{
+		}
+
+		/* clear the CLEAN_CACHES_COMPLETED irq*/
+		KBASE_TRACE_ADD( kbdev, CORE_GPU_IRQ_CLEAR, NULL, NULL, 0u, CLEAN_CACHES_COMPLETED );
+		kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_IRQ_CLEAR), CLEAN_CACHES_COMPLETED, NULL);
+		OSK_ASSERT_MSG(kbdev->hwcnt.state != KBASE_INSTR_STATE_CLEANING,
+		    "Instrumentation code was cleaning caches, but Job Management code "
+		    "cleared their IRQ - Instrumentation code will now hang.");
+
+		mutex_unlock(&kbdev->cacheclean_lock);
+	}
+
 	/* Release cores this job was using (this might power down unused cores, and
 	 * cause extra latency if a job submitted here - such as depenedent jobs -
 	 * would use those cores) */
