@@ -2017,6 +2017,7 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 	u32 status, pending;
 	unsigned int pass_count = 0;
 	int i;
+	int ret = IRQ_NONE;
 
 	do {
 		status = mci_readl(host, RINTSTS);
@@ -2040,6 +2041,7 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 			host->cmd_status = pending;
 			smp_wmb();
 			set_bit(EVENT_CMD_COMPLETE, &host->pending_events);
+			ret = IRQ_HANDLED;
 		}
 
 		if (pending & DW_MCI_DATA_ERROR_FLAGS) {
@@ -2052,6 +2054,7 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 				set_bit(EVENT_DATA_COMPLETE,
 					&host->pending_events);
 			tasklet_schedule(&host->tasklet);
+			ret = IRQ_HANDLED;
 		}
 
 		if (pending & SDMMC_INT_DATA_OVER) {
@@ -2065,28 +2068,33 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 			}
 			set_bit(EVENT_DATA_COMPLETE, &host->pending_events);
 			tasklet_schedule(&host->tasklet);
+			ret = IRQ_HANDLED;
 		}
 
 		if (pending & SDMMC_INT_RXDR) {
 			mci_writel(host, RINTSTS, SDMMC_INT_RXDR);
 			if (host->dir_status == DW_MCI_RECV_STATUS && host->sg)
 				dw_mci_read_data_pio(host);
+			ret = IRQ_HANDLED;
 		}
 
 		if (pending & SDMMC_INT_TXDR) {
 			mci_writel(host, RINTSTS, SDMMC_INT_TXDR);
 			if (host->dir_status == DW_MCI_SEND_STATUS && host->sg)
 				dw_mci_write_data_pio(host);
+			ret = IRQ_HANDLED;
 		}
 
 		if (pending & SDMMC_INT_CMD_DONE) {
 			mci_writel(host, RINTSTS, SDMMC_INT_CMD_DONE);
 			dw_mci_cmd_interrupt(host, pending);
+			ret = IRQ_HANDLED;
 		}
 
 		if (pending & SDMMC_INT_CD) {
 			mci_writel(host, RINTSTS, SDMMC_INT_CD);
 			queue_work(dw_mci_card_workqueue, &host->card_work);
+			ret = IRQ_HANDLED;
 		}
 
 		/* Handle SDIO Interrupts */
@@ -2095,6 +2103,7 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 			if (pending & SDMMC_INT_SDIO(i)) {
 				mci_writel(host, RINTSTS, SDMMC_INT_SDIO(i));
 				mmc_signal_sdio_irq(slot->mmc);
+				ret = IRQ_HANDLED;
 			}
 		}
 
@@ -2107,10 +2116,11 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 		mci_writel(host, IDSTS, SDMMC_IDMAC_INT_TI | SDMMC_IDMAC_INT_RI);
 		mci_writel(host, IDSTS, SDMMC_IDMAC_INT_NI);
 		host->dma_ops->complete(host);
+		ret = IRQ_HANDLED;
 	}
 #endif
 
-	return IRQ_HANDLED;
+	return ret;
 }
 
 static void dw_mci_work_routine_card(struct work_struct *work)
