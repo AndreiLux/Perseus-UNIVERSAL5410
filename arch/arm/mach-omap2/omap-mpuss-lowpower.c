@@ -377,6 +377,7 @@ int omap_enter_lowpower(unsigned int cpu, unsigned int power_state)
 	unsigned int save_state = 0;
 	unsigned int wakeup_cpu;
 	int ret;
+	bool io_isolation = false;
 
 	if (omap_rev() == OMAP4430_REV_ES1_0)
 		return -ENXIO;
@@ -406,6 +407,16 @@ int omap_enter_lowpower(unsigned int cpu, unsigned int power_state)
 	}
 
 	pwrdm_pre_transition();
+
+	/* Extend Non-EMIF I/O isolation *AFTER* usecounts and callbacks */
+	if (omap4_device_next_state_off()) {
+		omap4_prminst_rmw_inst_reg_bits(OMAP4430_ISOOVR_EXTEND_MASK,
+				OMAP4430_ISOOVR_EXTEND_MASK,
+				OMAP4430_PRM_PARTITION,
+				OMAP4430_PRM_DEVICE_INST,
+				OMAP4_PRM_IO_PMCTRL_OFFSET);
+		io_isolation = true;
+	}
 
 	/*
 	 * Check MPUSS next state and save interrupt controller if needed.
@@ -500,6 +511,19 @@ int omap_enter_lowpower(unsigned int cpu, unsigned int power_state)
 		omap4_ldo_trim_configure();
 		omap4_dpll_resume_off();
 		omap4_cm_resume_off();
+	}
+
+	if (io_isolation) {
+		/*
+		 * Disable the extension of Non-EMIF I/O isolation *AFTER*
+		 * usecounts and callbacks. This is important to have the
+		 * right sequence.
+		 */
+		omap4_prminst_rmw_inst_reg_bits(OMAP4430_ISOOVR_EXTEND_MASK,
+				0,
+				OMAP4430_PRM_PARTITION,
+				OMAP4430_PRM_DEVICE_INST,
+				OMAP4_PRM_IO_PMCTRL_OFFSET);
 	}
 
 	pwrdm_post_transition();
