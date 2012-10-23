@@ -169,6 +169,27 @@ static void omap_ehci_soft_phy_reset(struct platform_device *pdev, u8 port)
 	}
 }
 
+/*
+ * @port : 1 indexed EHCI port that needs a PHY reset
+ */
+void omap_ehci_hw_phy_reset(const struct usb_hcd *hcd, int port)
+{
+	struct device *dev = hcd->self.controller;
+	struct ehci_hcd_omap_platform_data  *pdata;
+
+	pdata = dev->platform_data;
+
+	port--;
+	if (gpio_is_valid(pdata->reset_gpio_port[port])) {
+		gpio_set_value(pdata->reset_gpio_port[port], 0);
+		mdelay(2);
+		gpio_set_value(pdata->reset_gpio_port[port], 1);
+		mdelay(2);
+	}
+
+	return;
+}
+
 static void disable_put_regulator(
 		struct ehci_hcd_omap_platform_data *pdata)
 {
