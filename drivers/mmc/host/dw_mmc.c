@@ -22,6 +22,7 @@
 #include <linux/ioport.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/ratelimit.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/stat.h>
@@ -2119,6 +2120,12 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 		ret = IRQ_HANDLED;
 	}
 #endif
+
+	if (ret == IRQ_NONE)
+		pr_warn_ratelimited("%s: no interrupts handled, pending %08x %08x\n",
+				dev_name(&host->dev),
+				mci_readl(host, MINTSTS),
+				mci_readl(host, IDSTS));
 
 	return ret;
 }
