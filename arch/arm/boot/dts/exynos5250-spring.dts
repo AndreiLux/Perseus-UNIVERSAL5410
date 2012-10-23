@@ -41,13 +41,45 @@
 		};
 	};
 
+	dwmmc1@12210000 {
+		/*
+		 * MMC1 port is used for external Wifi card SDIO connection.
+		 *
+		 * We override the default configuration for this port which
+		 * disables it in cros5250-common.dtsi.
+		 */
+		status = "okay";
+		supports-highspeed;
+		card-detection-broken;
+		no-write-protect;
+		keep-power-in-suspend;
+		enable-sdio-wakeup;
+		fifo-depth = <0x80>;
+		card-detect-delay = <200>;
+		samsung,dw-mshc-sdr-timing = <2 3 3>;
+		samsung,dw-mshc-ddr-timing = <1 2 3>;
+
+		slot0 {
+			bus-width = <4>;
+			gpios = <&gpc2 1 2 3 3>, <&gpc2 0 2 0 3>,
+				<&gpc2 3 2 3 3>, <&gpc2 4 2 3 3>,
+				<&gpc2 5 2 3 3>, <&gpc2 6 2 3 3>;
+		};
+	};
+
 	dwmmc2@12220000 {
 		/* MMC2 pins are used as GPIO for eDP bridge control */
 		status = "disabled";
 	};
 
 	dwmmc3@12230000 {
-		disable-mmc;
+		/*
+		 * Nothing is connected on MMC3 port : disable it.
+		 *
+		 * We override the default configuration for this port which
+		 * configures it for SDIO in cros5250-common.dtsi.
+		 */
+		status = "disabled";
 	};
 
 	i2c@12CD0000 {
