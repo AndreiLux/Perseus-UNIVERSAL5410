@@ -28,14 +28,13 @@
 #ifndef _EXYNOS_DRM_ENCODER_H_
 #define _EXYNOS_DRM_ENCODER_H_
 
-struct exynos_drm_manager;
+struct exynos_drm_display;
 
 void exynos_drm_encoder_setup(struct drm_device *dev);
 struct drm_encoder *exynos_drm_encoder_create(struct drm_device *dev,
-					       struct exynos_drm_manager *mgr,
-					       unsigned int possible_crtcs);
-struct exynos_drm_manager *
-exynos_drm_get_manager(struct drm_encoder *encoder);
+			struct exynos_drm_display *display,
+			unsigned int possible_crtcs);
+struct exynos_drm_display *exynos_drm_get_display(struct drm_encoder *encoder);
 void exynos_drm_fn_encoder(struct drm_crtc *crtc, void *data,
 			    void (*fn)(struct drm_encoder *, void *));
 void exynos_drm_enable_vblank(struct drm_encoder *encoder, void *data);

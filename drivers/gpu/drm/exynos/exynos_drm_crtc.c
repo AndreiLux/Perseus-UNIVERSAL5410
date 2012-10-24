@@ -229,6 +229,12 @@ static void exynos_drm_crtc_commit(struct drm_crtc *crtc)
 		int mode = DRM_MODE_DPMS_ON;
 
 		/*
+		 * TODO(seanpaul): This has the nasty habit of calling the
+		 * underlying dpms/power callbacks twice on boot. This code
+		 * needs to be cleaned up so this doesn't happen.
+		 */
+
+		/*
 		 * enable hardware(power on) to all encoders hdmi connected
 		 * to current crtc.
 		 */

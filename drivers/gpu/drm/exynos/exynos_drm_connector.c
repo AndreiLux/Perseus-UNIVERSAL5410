@@ -31,6 +31,7 @@
 #include <drm/exynos_drm.h>
 #include "exynos_drm_drv.h"
 #include "exynos_drm_encoder.h"
+#include "exynos_drm_display.h"
 
 #define MAX_EDID 256
 #define to_exynos_connector(x)	container_of(x, struct exynos_drm_connector,\
@@ -39,7 +40,7 @@
 struct exynos_drm_connector {
 	struct drm_connector	drm_connector;
 	uint32_t		encoder_id;
-	struct exynos_drm_manager *manager;
+	struct exynos_drm_display *display;
 };
 
 /* convert exynos_video_timings to drm_display_mode */
@@ -103,88 +104,114 @@ convert_to_video_timing(struct fb_videomode *timing,
 		timing->vmode |= FB_VMODE_DOUBLE;
 }
 
+static struct exynos_drm_display *display_from_connector(
+		struct drm_connector *connector)
+{
+	return to_exynos_connector(connector)->display;
+}
+
+static int exynos_drm_connector_get_edid(struct drm_connector *connector)
+{
+	struct exynos_drm_display *display = display_from_connector(connector);
+	int ret;
+	void *edid;
+
+	if (!display->panel_ops->get_edid)
+		return -EINVAL;
+
+	edid = kzalloc(MAX_EDID, GFP_KERNEL);
+	if (!edid) {
+		DRM_ERROR("failed to allocate edid\n");
+		return -ENOMEM;
+	}
+
+	ret = display->panel_ops->get_edid(display->panel_ctx,
+			connector, edid, MAX_EDID);
+	if (ret) {
+		DRM_ERROR("Panel operation get_edid failed %d\n", ret);
+		goto err;
+	}
+
+	ret = drm_mode_connector_update_edid_property(connector, edid);
+	if (ret) {
+		DRM_ERROR("update edid property failed(%d)\n", ret);
+		goto err;
+	}
+
+	ret = drm_add_edid_modes(connector, edid);
+	if (ret < 0) {
+		DRM_ERROR("Add edid modes failed %d\n", ret);
+		goto err;
+	}
+
+	kfree(connector->display_info.raw_edid);
+	connector->display_info.raw_edid = edid;
+
+	return ret;
+
+err:
+	kfree(edid);
+	return ret;
+}
+
+static int exynos_drm_connector_get_panel(struct drm_connector *connector)
+{
+	struct exynos_drm_display *display = display_from_connector(connector);
+	struct drm_display_mode *mode;
+	struct exynos_drm_panel_info *panel;
+	int ret;
+
+	if (!display->controller_ops->get_panel)
+		return -EINVAL;
+
+	panel = display->controller_ops->get_panel(
+				display->controller_ctx);
+
+	for (ret = 0; panel && ret < MAX_NR_PANELS; ret++) {
+		if (panel[ret].timing.xres == -1 &&
+		    panel[ret].timing.yres == -1)
+			break;
+
+		mode = drm_mode_create(connector->dev);
+		mode->type = DRM_MODE_TYPE_DRIVER;
+
+		/* Only the first panel is preferred mode */
+		if (ret)
+			mode->type |= DRM_MODE_TYPE_PREFERRED;
+		else
+			mode->type |= DRM_MODE_TYPE_USERDEF;
+
+		convert_to_display_mode(mode, &panel[ret]);
+		connector->display_info.width_mm = mode->width_mm;
+		connector->display_info.height_mm = mode->height_mm;
+		drm_mode_set_name(mode);
+		drm_mode_probed_add(connector, mode);
+	}
+
+	return ret;
+}
+
 static int exynos_drm_connector_get_modes(struct drm_connector *connector)
 {
-	struct exynos_drm_connector *exynos_connector =
-					to_exynos_connector(connector);
-	struct exynos_drm_manager *manager = exynos_connector->manager;
-	struct exynos_drm_display_ops *display_ops = manager->display_ops;
-	unsigned int count;
+	int ret;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
-	if (!display_ops) {
-		DRM_DEBUG_KMS("display_ops is null.\n");
-		return 0;
-	}
-
 	/*
-	 * if get_edid() exists then get_edid() callback of hdmi side
-	 * is called to get edid data through i2c interface else
-	 * get timing from the FIMD driver(display controller).
+	 * First try getting modes from EDID. If that doesn't yield any results,
+	 * fall back to the panel call.
 	 */
-	if (display_ops->get_edid) {
-		int ret;
-		void *edid;
+	ret = exynos_drm_connector_get_edid(connector);
+	if (ret > 0)
+		return ret;
 
-		edid = kzalloc(MAX_EDID, GFP_KERNEL);
-		if (!edid) {
-			DRM_ERROR("failed to allocate edid\n");
-			return 0;
-		}
-
-		ret = display_ops->get_edid(manager->dev, connector,
-						edid, MAX_EDID);
-		if (ret < 0) {
-			DRM_ERROR("failed to get edid data.\n");
-			kfree(edid);
-			edid = NULL;
-			return 0;
-		}
-
-		drm_mode_connector_update_edid_property(connector, edid);
-		count = drm_add_edid_modes(connector, edid);
-
-		kfree(connector->display_info.raw_edid);
-		connector->display_info.raw_edid = edid;
-	} else {
-		struct drm_display_mode *mode;
-		struct exynos_drm_panel_info *panel;
-
-		if (display_ops->get_panel)
-			panel = display_ops->get_panel(manager->dev);
-		else
-			return 0;
-
-		for (count = 0;count < MAX_NR_PANELS;count++) {
-			if(panel[count].timing.xres == -1 && panel[count].timing.yres == -1) {
-				DRM_DEBUG_KMS("panel %p count %d\n",panel,count);
-				break;
-			}
-			mode = drm_mode_create(connector->dev);
-			/* Only the first panel is preferred mode */
-			mode->type = count ? DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_USERDEF:
-				DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-
-			convert_to_display_mode(mode, &panel[count]);
-			connector->display_info.width_mm = mode->width_mm;
-			connector->display_info.height_mm = mode->height_mm;
-			drm_mode_set_name(mode);
-			drm_mode_probed_add(connector, mode);
-		}
-
-	}
-
-	return count;
+	return exynos_drm_connector_get_panel(connector);
 }
 
 static int exynos_drm_connector_mode_valid(struct drm_connector *connector,
 					    struct drm_display_mode *mode)
 {
-	struct exynos_drm_connector *exynos_connector =
-					to_exynos_connector(connector);
-	struct exynos_drm_manager *manager = exynos_connector->manager;
-	struct exynos_drm_display_ops *display_ops = manager->display_ops;
+	struct exynos_drm_display *display = display_from_connector(connector);
 	struct fb_videomode timing;
 	int ret = MODE_BAD;
 
@@ -192,9 +219,11 @@ static int exynos_drm_connector_mode_valid(struct drm_connector *connector,
 
 	convert_to_video_timing(&timing, mode);
 
-	if (display_ops && display_ops->check_timing)
-		if (!display_ops->check_timing(manager->dev, (void *)&timing))
-			ret = MODE_OK;
+	if (!display->panel_ops->check_timing)
+		return ret;
+
+	if (!display->panel_ops->check_timing(display->panel_ctx, &timing))
+		ret = MODE_OK;
 
 	return ret;
 }
@@ -231,21 +260,19 @@ static struct drm_connector_helper_funcs exynos_connector_helper_funcs = {
 static int exynos_drm_connector_fill_modes(struct drm_connector *connector,
 				unsigned int max_width, unsigned int max_height)
 {
-	struct exynos_drm_connector *exynos_connector =
-					to_exynos_connector(connector);
-	struct exynos_drm_manager *manager = exynos_connector->manager;
-	struct exynos_drm_manager_ops *ops = manager->ops;
+	struct exynos_drm_display *display = display_from_connector(connector);
 	unsigned int width, height;
 
 	width = max_width;
 	height = max_height;
 
 	/*
-	 * if specific driver want to find desired_mode using maxmum
+	 * If the specific driver wants to find desired_mode using maximum
 	 * resolution then get max width and height from that driver.
 	 */
-	if (ops && ops->get_max_resol)
-		ops->get_max_resol(manager->dev, &width, &height);
+	if (display->panel_ops->get_max_res)
+		display->panel_ops->get_max_res(display->panel_ctx, &width,
+				&height);
 
 	return drm_helper_probe_single_connector_modes(connector, width,
 							height);
@@ -255,21 +282,16 @@ static int exynos_drm_connector_fill_modes(struct drm_connector *connector,
 static enum drm_connector_status
 exynos_drm_connector_detect(struct drm_connector *connector, bool force)
 {
-	struct exynos_drm_connector *exynos_connector =
-					to_exynos_connector(connector);
-	struct exynos_drm_manager *manager = exynos_connector->manager;
-	struct exynos_drm_display_ops *display_ops =
-					manager->display_ops;
-	enum drm_connector_status status = connector_status_disconnected;
+	struct exynos_drm_display *display = display_from_connector(connector);
+	enum drm_connector_status status;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
-	if (display_ops && display_ops->is_connected) {
-		if (display_ops->is_connected(manager->dev))
-			status = connector_status_connected;
-		else
-			status = connector_status_disconnected;
-	}
+	if (display->panel_ops->is_connected &&
+	    display->panel_ops->is_connected(display->panel_ctx))
+		status = connector_status_connected;
+	else
+		status = connector_status_disconnected;
 
 	return status;
 }
@@ -297,7 +319,7 @@ struct drm_connector *exynos_drm_connector_create(struct drm_device *dev,
 						   struct drm_encoder *encoder)
 {
 	struct exynos_drm_connector *exynos_connector;
-	struct exynos_drm_manager *manager = exynos_drm_get_manager(encoder);
+	struct exynos_drm_display *display = exynos_drm_get_display(encoder);
 	struct drm_connector *connector;
 	int type;
 	int err;
@@ -312,17 +334,17 @@ struct drm_connector *exynos_drm_connector_create(struct drm_device *dev,
 
 	connector = &exynos_connector->drm_connector;
 
-	switch (manager->display_ops->type) {
-	case EXYNOS_DISPLAY_TYPE_HDMI:
+	switch (display->display_type) {
+	case EXYNOS_DRM_DISPLAY_TYPE_MIXER:
 		type = DRM_MODE_CONNECTOR_HDMIA;
 		connector->interlace_allowed = true;
 		connector->polled = DRM_CONNECTOR_POLL_HPD;
 		break;
-	case EXYNOS_DISPLAY_TYPE_VIDI:
+	case EXYNOS_DRM_DISPLAY_TYPE_VIDI:
 		type = DRM_MODE_CONNECTOR_VIRTUAL;
 		connector->polled = DRM_CONNECTOR_POLL_HPD;
 		break;
-	case EXYNOS_DISPLAY_TYPE_LCD:
+	case EXYNOS_DRM_DISPLAY_TYPE_FIMD:
 		type = DRM_MODE_CONNECTOR_eDP;
 		break;
 	default:
@@ -338,7 +360,7 @@ struct drm_connector *exynos_drm_connector_create(struct drm_device *dev,
 		goto err_connector;
 
 	exynos_connector->encoder_id = encoder->base.id;
-	exynos_connector->manager = manager;
+	exynos_connector->display = display;
 	connector->encoder = encoder;
 
 	err = drm_mode_connector_attach_encoder(connector, encoder);

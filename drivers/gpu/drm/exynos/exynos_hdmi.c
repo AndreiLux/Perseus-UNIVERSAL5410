@@ -40,7 +40,7 @@
 #include <drm/exynos_drm.h>
 
 #include "exynos_drm_drv.h"
-#include "exynos_drm_hdmi.h"
+#include "exynos_drm_display.h"
 
 #include "exynos_hdmi.h"
 
@@ -153,7 +153,6 @@ struct hdmi_context {
 	int cur_conf;
 
 	struct hdmi_resources		res;
-	void				*parent_ctx;
 };
 
 /* HDMI Version 1.3 */
@@ -1875,6 +1874,11 @@ static void hdmi_commit(void *ctx)
 	hdata->enabled = true;
 }
 
+static void hdmi_apply(void *ctx)
+{
+	hdmi_commit(ctx);
+}
+
 static int hdmi_power_on(void *ctx, int mode)
 {
 	struct hdmi_context *hdata = ctx;
@@ -1902,17 +1906,28 @@ static int hdmi_power_on(void *ctx, int mode)
 	return 0;
 }
 
-static struct exynos_hdmi_ops hdmi_ops = {
+static int hdmi_subdrv_probe(void *ctx, struct drm_device *drm_dev)
+{
+	struct hdmi_context *hdata = ctx;
+
+	hdata->drm_dev = drm_dev;
+
+	return 0;
+}
+
+static struct exynos_panel_ops hdmi_ops = {
 	/* display */
+	.subdrv_probe	= hdmi_subdrv_probe,
 	.is_connected	= hdmi_is_connected,
 	.get_edid	= hdmi_get_edid,
 	.check_timing	= hdmi_check_timing,
-	.power_on	= hdmi_power_on,
+	.power		= hdmi_power_on,
 
 	/* manager */
 	.mode_fixup	= hdmi_mode_fixup,
 	.mode_set	= hdmi_mode_set,
 	.commit		= hdmi_commit,
+	.apply		= hdmi_apply,
 };
 
 /*
@@ -1922,16 +1937,13 @@ static void hdmi_hotplug_func(struct work_struct *work)
 {
 	struct hdmi_context *hdata =
 		container_of(work, struct hdmi_context, hotplug_work);
-	struct exynos_drm_hdmi_context *ctx =
-		(struct exynos_drm_hdmi_context *)hdata->parent_ctx;
 
-	drm_helper_hpd_irq_event(ctx->drm_dev);
+	drm_helper_hpd_irq_event(hdata->drm_dev);
 }
 
 static irqreturn_t hdmi_irq_handler(int irq, void *arg)
 {
-	struct exynos_drm_hdmi_context *ctx = arg;
-	struct hdmi_context *hdata = ctx->ctx;
+	struct hdmi_context *hdata = arg;
 	u32 intc_flag;
 	if (hdata->is_hdmi_powered_on) {
 		intc_flag = hdmi_reg_read(hdata, HDMI_INTC_FLAG);
@@ -1950,7 +1962,7 @@ static irqreturn_t hdmi_irq_handler(int irq, void *arg)
 		}
 	}
 
-	if (ctx->drm_dev && hdata->hpd_handle)
+	if (hdata->drm_dev && hdata->hpd_handle)
 		queue_work(hdata->wq, &hdata->hotplug_work);
 
 	return IRQ_HANDLED;
@@ -2194,8 +2206,7 @@ static void hdmi_resource_poweroff(struct hdmi_context *hdata)
 #ifdef CONFIG_PM_SLEEP
 static int hdmi_suspend(struct device *dev)
 {
-	struct exynos_drm_hdmi_context *ctx = get_hdmi_context(dev);
-	struct hdmi_context *hdata = ctx->ctx;
+	struct hdmi_context *hdata = get_hdmi_context(dev);
 
 	DRM_DEBUG_KMS("[hdmi] sleep suspend - start\n");
 	if (pm_runtime_suspended(dev)) {
@@ -2210,8 +2221,7 @@ static int hdmi_suspend(struct device *dev)
 }
 static int hdmi_resume(struct device *dev)
 {
-	struct exynos_drm_hdmi_context *ctx = get_hdmi_context(dev);
-	struct hdmi_context *hdata = ctx->ctx;
+	struct hdmi_context *hdata = get_hdmi_context(dev);
 
 	DRM_DEBUG_KMS("[hdmi] sleep resume - start\n");
 
@@ -2227,8 +2237,7 @@ static int hdmi_resume(struct device *dev)
 #ifdef CONFIG_PM_RUNTIME
 static int hdmi_runtime_suspend(struct device *dev)
 {
-	struct exynos_drm_hdmi_context *ctx = get_hdmi_context(dev);
-	struct hdmi_context *hdata = ctx->ctx;
+	struct hdmi_context *hdata = get_hdmi_context(dev);
 
 	DRM_DEBUG_KMS("[hdmi] runtime suspend - start\n");
 	hdmi_resource_poweroff(hdata);
@@ -2239,8 +2248,7 @@ static int hdmi_runtime_suspend(struct device *dev)
 
 static int hdmi_runtime_resume(struct device *dev)
 {
-	struct exynos_drm_hdmi_context *ctx = get_hdmi_context(dev);
-	struct hdmi_context *hdata = ctx->ctx;
+	struct hdmi_context *hdata = get_hdmi_context(dev);
 
 	DRM_DEBUG_KMS("[hdmi] runtime resume - start\n");
 
@@ -2273,8 +2281,7 @@ struct platform_device *hdmi_audio_device;
 
 int hdmi_register_audio_device(struct platform_device *pdev)
 {
-	struct exynos_drm_hdmi_context *ctx = platform_get_drvdata(pdev);
-	struct hdmi_context *hdata = ctx->ctx;
+	struct hdmi_context *hdata = platform_get_drvdata(pdev);
 	struct platform_device *audio_dev;
 	int ret;
 
@@ -2319,7 +2326,6 @@ void hdmi_unregister_audio_device(void)
 static int __devinit hdmi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct exynos_drm_hdmi_context *drm_hdmi_ctx;
 	struct hdmi_context *hdata;
 	struct exynos_drm_hdmi_pdata *pdata;
 	struct resource *res;
@@ -2334,23 +2340,13 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	drm_hdmi_ctx = kzalloc(sizeof(*drm_hdmi_ctx), GFP_KERNEL);
-	if (!drm_hdmi_ctx) {
-		DRM_ERROR("failed to allocate common hdmi context.\n");
-		return -ENOMEM;
-	}
-
 	hdata = kzalloc(sizeof(struct hdmi_context), GFP_KERNEL);
 	if (!hdata) {
 		DRM_ERROR("out of memory\n");
-		kfree(drm_hdmi_ctx);
 		return -ENOMEM;
 	}
 
-	drm_hdmi_ctx->ctx = (void *)hdata;
-	hdata->parent_ctx = (void *)drm_hdmi_ctx;
-
-	platform_set_drvdata(pdev, drm_hdmi_ctx);
+	platform_set_drvdata(pdev, hdata);
 
 	hdata->is_v13 = pdata->is_v13;
 	hdata->default_win = pdata->default_win;
@@ -2437,7 +2433,7 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 	INIT_WORK(&hdata->hotplug_work, hdmi_hotplug_func);
 
 	ret = request_irq(hdata->internal_irq, hdmi_irq_handler,
-			IRQF_SHARED, "int_hdmi", hdata->parent_ctx);
+			IRQF_SHARED, "int_hdmi", hdata);
 	if (ret) {
 		DRM_ERROR("request int interrupt failed.\n");
 		goto err_workqueue;
@@ -2446,7 +2442,7 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 
 	ret = request_irq(hdata->external_irq, hdmi_irq_handler,
 		IRQ_TYPE_EDGE_BOTH | IRQF_SHARED, "ext_hdmi",
-		hdata->parent_ctx);
+		hdata);
 	if (ret) {
 		DRM_ERROR("request ext interrupt failed.\n");
 		goto err_int_irq;
@@ -2462,11 +2458,6 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 		}
 	}
 
-	/* Attach HDMI Driver to common hdmi. */
-	exynos_hdmi_drv_attach(drm_hdmi_ctx);
-
-	/* register specific callbacks to common hdmi. */
-	exynos_hdmi_ops_register(&hdmi_ops);
 	hdmi_resource_poweron(hdata);
 	pm_runtime_enable(dev);
 
@@ -2476,6 +2467,10 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 	} else {
 		pm_runtime_get_sync(dev);
 	}
+
+	exynos_display_attach_panel(EXYNOS_DRM_DISPLAY_TYPE_MIXER, &hdmi_ops,
+			hdata);
+
 	return 0;
 
 err_ext_irq:
@@ -2497,14 +2492,12 @@ err_resource:
 	hdmi_resources_cleanup(hdata);
 err_data:
 	kfree(hdata);
-	kfree(drm_hdmi_ctx);
 	return ret;
 }
 
 static int __devexit hdmi_remove(struct platform_device *pdev)
 {
-	struct exynos_drm_hdmi_context *ctx = platform_get_drvdata(pdev);
-	struct hdmi_context *hdata = ctx->ctx;
+	struct hdmi_context *hdata = platform_get_drvdata(pdev);
 	struct hdmi_resources *res = &hdata->res;
 
 	DRM_DEBUG_KMS("[%d] %s\n", __LINE__, __func__);

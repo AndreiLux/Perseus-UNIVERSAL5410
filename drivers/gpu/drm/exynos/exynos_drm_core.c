@@ -31,6 +31,7 @@
 #include "exynos_drm_encoder.h"
 #include "exynos_drm_connector.h"
 #include "exynos_drm_fbdev.h"
+#include "exynos_drm_display.h"
 
 static LIST_HEAD(exynos_drm_subdrv_list);
 static struct drm_device *drm_dev;
@@ -57,18 +58,16 @@ static int exynos_drm_subdrv_probe(struct drm_device *dev,
 		 *
 		 * P.S. note that this driver is considered for modularization.
 		 */
-		ret = subdrv->probe(dev, subdrv->dev);
+		ret = subdrv->probe(dev, subdrv);
 		if (ret)
 			return ret;
 	}
 
-	if (!subdrv->manager)
+	if (!subdrv->display)
 		return 0;
 
-	subdrv->manager->dev = subdrv->dev;
-
 	/* create and initialize a encoder for this sub driver. */
-	encoder = exynos_drm_encoder_create(dev, subdrv->manager,
+	encoder = exynos_drm_encoder_create(dev, subdrv->display,
 			(1 << MAX_CRTC) - 1);
 	if (!encoder) {
 		DRM_ERROR("failed to create encoder\n");

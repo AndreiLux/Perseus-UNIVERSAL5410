@@ -53,35 +53,9 @@ struct drm_device;
 struct exynos_drm_overlay;
 struct drm_connector;
 struct exynos_drm_gem_object;
+struct exynos_drm_display;
 
 extern unsigned int drm_vblank_offdelay;
-
-/* this enumerates display type. */
-enum exynos_drm_output_type {
-	EXYNOS_DISPLAY_TYPE_NONE,
-	/* RGB or CPU Interface. */
-	EXYNOS_DISPLAY_TYPE_LCD,
-	/* HDMI Interface. */
-	EXYNOS_DISPLAY_TYPE_HDMI,
-	/* Virtual Display Interface. */
-	EXYNOS_DISPLAY_TYPE_VIDI,
-};
-
-/*
- * Exynos drm overlay ops structure.
- *
- * @mode_set: copy drm overlay info to hw specific overlay info.
- * @commit: apply hardware specific overlay data to registers.
- * @disable: disable hardware specific overlay.
- */
-struct exynos_drm_overlay_ops {
-	void (*mode_set)(struct device *subdrv_dev,
-			 struct exynos_drm_overlay *overlay);
-	void (*page_flip)(struct device *subdrv_dev,
-			 struct exynos_drm_overlay *overlay);
-	void (*commit)(struct device *subdrv_dev, int zpos);
-	void (*disable)(struct device *subdrv_dev, int zpos);
-};
 
 /*
  * Exynos drm common overlay structure.
@@ -148,80 +122,6 @@ struct exynos_drm_overlay {
 };
 
 /*
- * Exynos DRM Display Structure.
- *	- this structure is common to analog tv, digital tv and lcd panel.
- *
- * @type: one of EXYNOS_DISPLAY_TYPE_LCD and HDMI.
- * @is_connected: check for that display is connected or not.
- * @get_edid: get edid modes from display driver.
- * @get_panel: get panel object from display driver.
- * @check_timing: check if timing is valid or not.
- * @power_on: display device on or off.
- */
-struct exynos_drm_display_ops {
-	enum exynos_drm_output_type type;
-	bool (*is_connected)(struct device *dev);
-	int (*get_edid)(struct device *dev, struct drm_connector *connector,
-				u8 *edid, int len);
-	void *(*get_panel)(struct device *dev);
-	int (*check_timing)(struct device *dev, void *timing);
-	int (*power_on)(struct device *dev, int mode);
-};
-
-/*
- * Exynos drm manager ops
- *
- * @dpms: control device power.
- * @apply: set timing, vblank and overlay data to registers.
- * @mode_fixup: fix mode data comparing to hw specific display mode.
- * @mode_set: convert drm_display_mode to hw specific display mode and
- *	      would be called by encoder->mode_set().
- * @get_max_resol: get maximum resolution to specific hardware.
- * @commit: set current hw specific display mode to hw.
- * @enable_vblank: specific driver callback for enabling vblank interrupt.
- * @disable_vblank: specific driver callback for disabling vblank interrupt.
- */
-struct exynos_drm_manager_ops {
-	void (*dpms)(struct device *subdrv_dev, int mode);
-	void (*apply)(struct device *subdrv_dev);
-	void (*mode_fixup)(struct device *subdrv_dev,
-				struct drm_connector *connector,
-				struct drm_display_mode *mode,
-				struct drm_display_mode *adjusted_mode);
-	void (*mode_set)(struct device *subdrv_dev, void *mode);
-	void (*get_max_resol)(struct device *subdrv_dev, unsigned int *width,
-				unsigned int *height);
-	void (*commit)(struct device *subdrv_dev);
-	int (*enable_vblank)(struct device *subdrv_dev);
-	void (*disable_vblank)(struct device *subdrv_dev);
-};
-
-/*
- * Exynos drm common manager structure.
- *
- * @dev: pointer to device object for subdrv device driver.
- *	sub drivers such as display controller or hdmi driver,
- *	have their own device object.
- * @ops: pointer to callbacks for exynos drm specific framebuffer.
- *	these callbacks should be set by specific drivers such fimd
- *	or hdmi driver and are used to control hardware global registers.
- * @overlay_ops: pointer to callbacks for exynos drm specific framebuffer.
- *	these callbacks should be set by specific drivers such fimd
- *	or hdmi driver and are used to control hardware overlay reigsters.
- * @display: pointer to callbacks for exynos drm specific framebuffer.
- *	these callbacks should be set by specific drivers such fimd
- *	or hdmi driver and are used to control display devices such as
- *	analog tv, digital tv and lcd panel and also get timing data for them.
- */
-struct exynos_drm_manager {
-	struct device *dev;
-	int pipe;
-	struct exynos_drm_manager_ops *ops;
-	struct exynos_drm_overlay_ops *overlay_ops;
-	struct exynos_drm_display_ops *display_ops;
-};
-
-/*
  * Exynos drm private structure.
  */
 struct exynos_drm_private {
@@ -254,8 +154,7 @@ struct exynos_drm_private {
  * @dev: pointer to device object for subdrv device driver.
  * @drm_dev: pointer to drm_device and this pointer would be set
  *	when sub driver calls exynos_drm_subdrv_register().
- * @manager: subdrv has its own manager to control a hardware appropriately
- *	and we can access a hardware drawing on this manager.
+ * @display: A pointer to the display structure for this sub driver
  * @probe: this callback would be called by exynos drm driver after
  *	subdrv is registered to it.
  * @remove: this callback is used to release resources created
@@ -269,9 +168,10 @@ struct exynos_drm_subdrv {
 	struct list_head list;
 	struct device *dev;
 	struct drm_device *drm_dev;
-	struct exynos_drm_manager *manager;
+	struct exynos_drm_display *display;
 
-	int (*probe)(struct drm_device *drm_dev, struct device *dev);
+	int (*probe)(struct drm_device *drm_dev,
+			struct exynos_drm_subdrv *subdrv);
 	void (*remove)(struct drm_device *dev);
 	int (*open)(struct drm_device *drm_dev, struct device *dev,
 			struct drm_file *file);

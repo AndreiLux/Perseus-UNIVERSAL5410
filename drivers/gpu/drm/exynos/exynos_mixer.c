@@ -36,7 +36,9 @@
 
 #include "exynos_drm_drv.h"
 #include "exynos_drm_crtc.h"
-#include "exynos_drm_hdmi.h"
+#include "exynos_drm_display.h"
+
+#include "exynos_hdmi.h"
 
 #include <plat/map-base.h>
 #ifdef CONFIG_EXYNOS_IOMMU
@@ -46,6 +48,9 @@
 
 
 #define get_mixer_context(dev)	platform_get_drvdata(to_platform_device(dev))
+
+#define MIXER_WIN_NR		3
+#define MIXER_DEFAULT_WIN	0
 
 struct hdmi_win_data {
 	dma_addr_t		dma_addr;
@@ -85,10 +90,12 @@ struct mixer_resources {
 
 struct mixer_context {
 	struct device		*dev;
+	struct drm_device	*drm_dev;
 	unsigned int		irq;
 	int			pipe;
 	bool			interlace;
 	bool			is_mixer_powered_on;
+	bool			enabled[MIXER_WIN_NR];
 
 	struct mixer_resources	mixer_res;
 	struct hdmi_win_data	win_data[MIXER_WIN_NR];
@@ -171,6 +178,22 @@ static inline void mixer_reg_writemask(struct mixer_resources *res,
 
 	val = (val & mask) | (old & ~mask);
 	writel(val, res->mixer_regs + reg_id);
+}
+
+enum exynos_mixer_mode_type exynos_mixer_get_mode_type(int width, int height)
+{
+	if (width >= 464 && width <= 720 && height <= 480)
+		return EXYNOS_MIXER_MODE_SD_NTSC;
+	else if (width >= 464 && width <= 720 && height <= 576)
+		return EXYNOS_MIXER_MODE_SD_PAL;
+	else if (width >= 1024 && width <= 1280 && height <= 720)
+		return EXYNOS_MIXER_MODE_HD_720;
+	else if ((width == 1440 && height == 900) ||
+		(width == 800 && height == 600) ||
+		(width >= 1664 && width <= 1920 && height <= 1080))
+		return EXYNOS_MIXER_MODE_HD_1080;
+	else
+		return EXYNOS_MIXER_MODE_INVALID;
 }
 
 static void mixer_regs_dump(struct mixer_context *mctx)
@@ -517,6 +540,8 @@ static void vp_video_buffer(struct mixer_context *mctx, int win)
 	spin_lock_irqsave(&res->reg_slock, flags);
 	mixer_vsync_set_update(mctx, false);
 
+	mctx->enabled[win] = true;
+
 	/* interlace or progressive scan mode */
 	val = (mctx->interlace ? ~0 : 0);
 	vp_reg_writemask(res, VP_MODE, val, VP_MODE_LINE_SKIP);
@@ -632,6 +657,8 @@ static void mixer_graph_buffer(struct mixer_context *mctx, int win)
 
 	spin_lock_irqsave(&res->reg_slock, flags);
 	mixer_vsync_set_update(mctx, false);
+
+	mctx->enabled[win] = true;
 
 	/* setup format */
 	mixer_reg_writemask(res, MXR_GRAPHIC_CFG(win),
@@ -794,8 +821,7 @@ static void mixer_win_mode_set(void *ctx,
 	win_data->scan_flags = overlay->scan_flag;
 }
 
-static void mixer_win_page_flip(void *ctx,
-			      struct exynos_drm_overlay *overlay)
+static void mixer_win_page_flip(void *ctx, struct exynos_drm_overlay *overlay)
 {
 	struct mixer_context *mixer_ctx = ctx;
 	struct hdmi_win_data *win_data;
@@ -847,6 +873,19 @@ static void mixer_win_commit(void *ctx, int zpos)
 		mixer_graph_buffer(mctx, win);
 }
 
+static void mixer_apply(void *ctx)
+{
+	struct mixer_context *mctx = ctx;
+	int i;
+
+	for (i = 0; i < MIXER_WIN_NR; i++) {
+		if (!mctx->enabled[i])
+			continue;
+
+		mixer_win_commit(ctx, i);
+	}
+}
+
 static void mixer_win_disable(void *ctx, int zpos)
 {
 	struct mixer_context *mctx = ctx;
@@ -869,6 +908,7 @@ static void mixer_win_disable(void *ctx, int zpos)
 	spin_lock_irqsave(&res->reg_slock, flags);
 	mixer_vsync_set_update(mctx, false);
 
+	mctx->enabled[win] = false;
 	mixer_cfg_layer(mctx, win, false);
 
 	mixer_vsync_set_update(mctx, true);
@@ -884,8 +924,7 @@ static void mixer_win_disable(void *ctx, int zpos)
 /* for pageflip event */
 static irqreturn_t mixer_irq_handler(int irq, void *arg)
 {
-	struct exynos_drm_hdmi_context *drm_hdmi_ctx = arg;
-	struct mixer_context *mctx = drm_hdmi_ctx->ctx;
+	struct mixer_context *mctx = arg;
 	struct mixer_resources *res = &mctx->mixer_res;
 	u32 val, base, shadow;
 	int i;
@@ -910,7 +949,7 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 				goto out;
 		}
 
-		drm_handle_vblank(drm_hdmi_ctx->drm_dev, mctx->pipe);
+		drm_handle_vblank(mctx->drm_dev, mctx->pipe);
 
 		/* Bail out if a layer update is pending */
 		if (mixer_get_layer_update_count(mctx))
@@ -919,8 +958,7 @@ static irqreturn_t mixer_irq_handler(int irq, void *arg)
 		for (i = 0; i < MIXER_WIN_NR; i++)
 			mctx->win_data[i].updated = false;
 
-		exynos_drm_crtc_finish_pageflip(drm_hdmi_ctx->drm_dev,
-						mctx->pipe);
+		exynos_drm_crtc_finish_pageflip(mctx->drm_dev, mctx->pipe);
 
 		if (mctx->event_flags & MXR_EVENT_VSYNC) {
 			DRM_DEBUG_KMS("mctx->event_flags & MXR_EVENT_VSYNC");
@@ -1045,8 +1083,7 @@ static void mixer_resource_poweroff(struct mixer_context *mctx)
 #ifdef CONFIG_PM_SLEEP
 static int mixer_resume(struct device *dev)
 {
-	struct exynos_drm_hdmi_context *ctx = get_mixer_context(dev);
-	struct mixer_context *mctx = ctx->ctx;
+	struct mixer_context *mctx = get_mixer_context(dev);
 
 	DRM_DEBUG_KMS("[mixer] sleep resume - start\n");
 
@@ -1061,8 +1098,7 @@ static int mixer_resume(struct device *dev)
 }
 static int mixer_suspend(struct device *dev)
 {
-	struct exynos_drm_hdmi_context *ctx = get_mixer_context(dev);
-	struct mixer_context *mctx = ctx->ctx;
+	struct mixer_context *mctx = get_mixer_context(dev);
 
 	DRM_DEBUG_KMS("[mixer] suspend - start\n");
 	if (pm_runtime_suspended(dev)) {
@@ -1078,8 +1114,7 @@ static int mixer_suspend(struct device *dev)
 #ifdef CONFIG_PM_RUNTIME
 static int mixer_runtime_resume(struct device *dev)
 {
-	struct exynos_drm_hdmi_context *ctx = get_mixer_context(dev);
-	struct mixer_context *mctx = ctx->ctx;
+	struct mixer_context *mctx = get_mixer_context(dev);
 
 	DRM_DEBUG_KMS("[mixer] runtime resume - start\n");
 
@@ -1091,8 +1126,7 @@ static int mixer_runtime_resume(struct device *dev)
 
 static int mixer_runtime_suspend(struct device *dev)
 {
-	struct exynos_drm_hdmi_context *ctx = get_mixer_context(dev);
-	struct mixer_context *mctx = ctx->ctx;
+	struct mixer_context *mctx = get_mixer_context(dev);
 
 	DRM_DEBUG_KMS("[mixer] runtime suspend - start\n");
 
@@ -1103,7 +1137,7 @@ static int mixer_runtime_suspend(struct device *dev)
 
 #endif
 
-static int mixer_power_on(void *ctx, int mode)
+static int mixer_power(void *ctx, int mode)
 {
 	struct mixer_context *mctx = ctx;
 
@@ -1134,15 +1168,26 @@ static int mixer_power_on(void *ctx, int mode)
 	return 0;
 }
 
-static struct exynos_mixer_ops mixer_ops = {
+static int mixer_subdrv_probe(void *ctx, struct drm_device *drm_dev)
+{
+	struct mixer_context *mctx = ctx;
+
+	mctx->drm_dev = drm_dev;
+
+	return 0;
+}
+
+static struct exynos_controller_ops mixer_ops = {
 	/* manager */
+	.subdrv_probe		= mixer_subdrv_probe,
 	.enable_vblank		= mixer_enable_vblank,
 	.disable_vblank		= mixer_disable_vblank,
-	.power_on		= mixer_power_on,
+	.power			= mixer_power,
 
 	/* overlay */
-	.win_mode_set		= mixer_win_mode_set,
-	.win_page_flip		= mixer_win_page_flip,
+	.mode_set		= mixer_win_mode_set,
+	.page_flip		= mixer_win_page_flip,
+	.apply			= mixer_apply,
 	.win_commit		= mixer_win_commit,
 	.win_disable		= mixer_win_disable,
 };
@@ -1182,11 +1227,10 @@ static int iommu_init(struct platform_device *pdev)
 #endif
 
 static int __devinit mixer_resources_init_exynos(
-			struct exynos_drm_hdmi_context *ctx,
+			struct mixer_context *mctx,
 			struct platform_device *pdev,
 			int is_exynos5)
 {
-	struct mixer_context *mctx = ctx->ctx;
 	struct device *dev = &pdev->dev;
 	struct mixer_resources *mixer_res = &mctx->mixer_res;
 	struct resource *res;
@@ -1285,7 +1329,7 @@ static int __devinit mixer_resources_init_exynos(
 		}
 	}
 
-	ret = request_irq(res->start, mixer_irq_handler, 0, "drm_mixer", ctx);
+	ret = request_irq(res->start, mixer_irq_handler, 0, "drm_mixer", mctx);
 	if (ret) {
 		dev_err(dev, "request interrupt failed.\n");
 		goto fail_mixer_regs;
@@ -1322,12 +1366,13 @@ fail:
 	return ret;
 }
 
-static void mixer_resources_cleanup(struct mixer_context *mctx)
+static void mixer_resources_cleanup(struct device *dev,
+		struct mixer_context *mctx)
 {
 	struct mixer_resources *res = &mctx->mixer_res;
 
 	disable_irq(res->irq);
-	free_irq(res->irq, mctx);
+	free_irq(res->irq, dev);
 
 	iounmap(res->vp_regs);
 	iounmap(res->mixer_regs);
@@ -1336,48 +1381,36 @@ static void mixer_resources_cleanup(struct mixer_context *mctx)
 static int __devinit mixer_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct exynos_drm_hdmi_context *drm_hdmi_ctx;
 	struct exynos_drm_hdmi_pdata *pdata;
 	struct mixer_context *mctx;
 	int ret;
 
 	dev_info(dev, "probe start\n");
 
-	drm_hdmi_ctx = kzalloc(sizeof(*drm_hdmi_ctx), GFP_KERNEL);
-	if (!drm_hdmi_ctx) {
-		DRM_ERROR("failed to allocate common hdmi context.\n");
-		return -ENOMEM;
-	}
-
 	mctx = kzalloc(sizeof(*mctx), GFP_KERNEL);
 	if (!mctx) {
 		DRM_ERROR("failed to alloc mixer context.\n");
-		kfree(drm_hdmi_ctx);
 		return -ENOMEM;
 	}
 
-
 	mctx->dev = &pdev->dev;
 	mctx->pipe = -1;
-	drm_hdmi_ctx->ctx = (void *)mctx;
 
-	platform_set_drvdata(pdev, drm_hdmi_ctx);
+	platform_set_drvdata(pdev, mctx);
 
 	/* Get from Platform soc deatils */
 	pdata = pdev->dev.platform_data;
 
 	/* acquire resources: regs, irqs, clocks */
-	ret = mixer_resources_init_exynos(drm_hdmi_ctx, pdev,pdata->is_soc_exynos5);
+	ret = mixer_resources_init_exynos(mctx, pdev, pdata->is_soc_exynos5);
 	if (ret)
 		goto fail;
 
-	/* attach mixer driver to common hdmi. */
-	exynos_mixer_drv_attach(drm_hdmi_ctx);
-
-	/* register specific callback point to common hdmi. */
-	exynos_mixer_ops_register(&mixer_ops);
 	mctx->is_mixer_powered_on = false;
 	pm_runtime_enable(dev);
+
+	exynos_display_attach_controller(EXYNOS_DRM_DISPLAY_TYPE_MIXER,
+			&mixer_ops, mctx);
 
 	return 0;
 
@@ -1390,17 +1423,14 @@ fail:
 static int mixer_remove(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct exynos_drm_hdmi_context *drm_hdmi_ctx =
-					platform_get_drvdata(pdev);
-	struct mixer_context *mctx = drm_hdmi_ctx->ctx;
+	struct mixer_context *mctx = platform_get_drvdata(pdev);
 
 	dev_info(dev, "remove successful\n");
 
 	mixer_resource_poweroff(mctx);
-	mixer_resources_cleanup(mctx);
+	mixer_resources_cleanup(dev, mctx);
 
 	kfree(mctx);
-	kfree(drm_hdmi_ctx);
 
 	return 0;
 }

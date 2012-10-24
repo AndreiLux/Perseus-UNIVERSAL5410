@@ -58,4 +58,14 @@ void hdmi_attach_hdmiphy_client(struct i2c_client *hdmiphy);
 extern struct i2c_driver hdmiphy_driver;
 extern struct i2c_driver ddc_driver;
 
+enum exynos_mixer_mode_type {
+	EXYNOS_MIXER_MODE_INVALID,
+	EXYNOS_MIXER_MODE_SD_NTSC,
+	EXYNOS_MIXER_MODE_SD_PAL,
+	EXYNOS_MIXER_MODE_HD_720,
+	EXYNOS_MIXER_MODE_HD_1080,
+};
+
+enum exynos_mixer_mode_type exynos_mixer_get_mode_type(int width, int height);
+
 #endif
