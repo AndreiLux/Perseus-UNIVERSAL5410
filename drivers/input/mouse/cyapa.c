@@ -715,7 +715,7 @@ static int cyapa_bl_enter(struct cyapa *cyapa)
 
 	if (cyapa->state != CYAPA_STATE_OP) {
 		cyapa->debug = true;
-		cyapa_dbg(cyapa, "Not in OP state. state = %d\n",
+		cyapa_dbg(cyapa, "Not in OP state. state = %s\n",
 			  cyapa_state_to_string(cyapa));
 		return -EAGAIN;
 	}
