@@ -82,6 +82,7 @@ enum exynos_mixer_mode_type exynos_mixer_get_mode_type(int width, int height)
 	else if (width >= 1024 && width <= 1280 && height <= 720)
 		return EXYNOS_MIXER_MODE_HD_720;
 	else if ((width == 1440 && height == 900) ||
+		(width == 800 && height == 600) ||
 		(width >= 1664 && width <= 1920 && height <= 1080))
 		return EXYNOS_MIXER_MODE_HD_1080;
 	else

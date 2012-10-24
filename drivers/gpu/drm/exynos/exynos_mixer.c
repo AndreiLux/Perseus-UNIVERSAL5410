@@ -94,6 +94,7 @@ struct mixer_context {
 	struct hdmi_win_data	win_data[MIXER_WIN_NR];
 	unsigned long		event_flags;
 	int			previous_dxy;
+	bool			is_800x600_initialized;
 };
 
 /* event flags used  */
@@ -319,6 +320,16 @@ static void mixer_set_layer_offset(struct mixer_context *mctx, u32 offset)
 	}
 
 	mixer_reg_write(res, MXR_GRAPHIC0_DXY, MXR_GRP_DXY_DX(offset));
+}
+
+static void mixer_toggle_3d_path(struct mixer_context *mctx)
+{
+	struct mixer_resources *res = &mctx->mixer_res;
+
+	mixer_reg_write(res, MXR_TVOUT_CFG,
+			mctx->is_800x600_initialized ? 0x13 : 0x17);
+
+	mctx->is_800x600_initialized = true;
 }
 
 static void mixer_cfg_rgb_fmt(struct mixer_context *mctx, unsigned int height)
@@ -650,10 +661,17 @@ static void mixer_graph_buffer(struct mixer_context *mctx, int win)
 
 	mixer_cfg_scan(mctx, mode_width, mode_height);
 
-	/* Workaround 4 implementation for 1440x900 resolution support */
 	if (res->is_soc_exynos5) {
+		/* Workaround 4 implementation for 1440x900 resolution support */
 		if (mode_width == 1440 && mode_height == 900)
 			mixer_set_layer_offset(mctx, 224);
+
+		/* Workaround 3 implementation for 800x600 resolution support */
+		if (mode_width == 800 && mode_height == 600) {
+			mixer_set_layer_offset(mctx, 32);
+			mixer_toggle_3d_path(mctx);
+		} else
+			mctx->is_800x600_initialized = false;
 	}
 
 	mixer_cfg_rgb_fmt(mctx, mode_height);
