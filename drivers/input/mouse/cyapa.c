@@ -195,9 +195,9 @@ struct cyapa_touch {
 	 * bit 7 - 4: high 4 bits of x position value
 	 * bit 3 - 0: high 4 bits of y position value
 	 */
-	u8 xy;
-	u8 x;  /* low 8 bits of x position value. */
-	u8 y;  /* low 8 bits of y position value. */
+	u8 xy_hi;
+	u8 x_lo;  /* low 8 bits of x position value. */
+	u8 y_lo;  /* low 8 bits of y position value. */
 	u8 pressure;
 	/* id range is 1 - 15.  It is incremented with every new touch. */
 	u8 id;
@@ -1657,9 +1657,9 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 		input_mt_slot(input, slot);
 		input_mt_report_slot_state(input, MT_TOOL_FINGER, true);
 		input_report_abs(input, ABS_MT_POSITION_X,
-				 ((touch->xy & 0xf0) << 4) | touch->x);
+				 ((touch->xy_hi & 0xf0) << 4) | touch->x_lo);
 		input_report_abs(input, ABS_MT_POSITION_Y,
-				 ((touch->xy & 0x0f) << 8) | touch->y);
+				 ((touch->xy_hi & 0x0f) << 8) | touch->y_lo);
 		input_report_abs(input, ABS_MT_PRESSURE, touch->pressure);
 	}
 
