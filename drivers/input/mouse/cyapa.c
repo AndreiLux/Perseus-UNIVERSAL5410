@@ -990,7 +990,7 @@ static int cyapa_check_is_operational(struct cyapa *cyapa)
 
 		/* only support product ID starting with CYTRA */
 		if (memcmp(cyapa->product_id, unique_str,
-			   sizeof(unique_str) - 1)) {
+			   sizeof(unique_str) - 1) != 0) {
 			dev_err(dev, "unsupported product ID (%s)\n",
 				cyapa->product_id);
 			return -EINVAL;
