@@ -74,6 +74,7 @@
 
 #define BTS_DOWN_THRESHOLD 0x1
 #define BTS_UP_THRESHOLD 0x4
+#define BTS_MIXER_THRESHOLD 0x3
 
 static LIST_HEAD(fbm_list);
 static LIST_HEAD(bts_list);
@@ -268,6 +269,9 @@ void exynos_bts_change_threshold(enum bts_bw_change bw_change)
 				} else if (bw_change == BTS_DECREASE_BW) {
 					threshold = BTS_DOWN_THRESHOLD;
 					reason = "decreasing";
+				} else if (bw_change == BTS_MIXER_BW) {
+					threshold = BTS_MIXER_THRESHOLD;
+					reason = "mixer";
 				}
 
 				writel(threshold, bts_local_data->base + BTS_THRESHOLD_SEL0);

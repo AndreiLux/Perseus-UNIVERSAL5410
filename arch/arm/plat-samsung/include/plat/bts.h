@@ -28,6 +28,7 @@ enum bts_priority {
 enum bts_bw_change {
 	BTS_DECREASE_BW,
 	BTS_INCREASE_BW,
+	BTS_MIXER_BW,
 };
 
 /*
