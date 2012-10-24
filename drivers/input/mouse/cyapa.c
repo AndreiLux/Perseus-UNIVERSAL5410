@@ -253,7 +253,6 @@ struct cyapa {
 
 	/* read from query data region. */
 	char product_id[16];
-	u8 capability[14];
 	u8 fw_maj_ver;  /* firmware major version. */
 	u8 fw_min_ver;  /* firmware minor version. */
 	u8 hw_maj_ver;  /* hardware major version. */
