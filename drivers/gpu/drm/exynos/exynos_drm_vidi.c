@@ -286,9 +286,10 @@ static void vidi_win_mode_set(struct device *dev,
 		return;
 
 	offset = overlay->fb_x * (overlay->bpp >> 3);
-	offset += overlay->fb_y * overlay->pitch;
+	offset += overlay->fb_y * overlay->fb_pitch;
 
-	DRM_DEBUG_KMS("offset = 0x%lx, pitch = %x\n", offset, overlay->pitch);
+	DRM_DEBUG_KMS("offset = 0x%lx, fb_pitch = %x\n", offset,
+			overlay->fb_pitch);
 
 	win_data = &ctx->win_data[win];
 
