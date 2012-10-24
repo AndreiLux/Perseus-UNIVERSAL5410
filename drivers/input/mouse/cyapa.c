@@ -29,11 +29,7 @@
 #include <linux/uaccess.h>
 
 /* APA trackpad firmware generation */
-enum cyapa_gen {
-	CYAPA_GEN1 = 0x01,  /* only one finger supported. */
-	CYAPA_GEN2 = 0x02,  /* max five fingers supported. */
-	CYAPA_GEN3 = 0x03,  /* support MT-protocol B with tracking ID. */
-};
+#define CYAPA_GEN3   0x03   /* support MT-protocol B with tracking ID. */
 
 #define CYAPA_NAME   "Cypress APA Trackpad (cyapa)"
 
@@ -260,7 +256,7 @@ struct cyapa {
 	u8 hw_maj_ver;  /* hardware major version. */
 	u8 hw_min_ver;  /* hardware minor version. */
 	u8 btn_capability;
-	enum cyapa_gen gen;
+	u8 gen;
 	int max_abs_x;
 	int max_abs_y;
 	int physical_size_x;
