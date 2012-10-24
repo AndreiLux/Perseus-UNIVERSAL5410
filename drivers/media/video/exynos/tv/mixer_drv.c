@@ -637,6 +637,10 @@ static int mxr_runtime_resume(struct device *dev)
 	if (!mdev->mif_handle)
 		dev_err(dev, "failed to request min_freq for mif\n");
 
+	mdev->int_handle = exynos5_bus_int_min(266000);
+	if (!mdev->int_handle)
+		dev_err(dev, "failed to request min_freq for int\n");
+
 	bts_change_threshold(BTS_MIXER_BW);
 
 	/* enable system mmu for tv. It must be enabled after enabling
@@ -659,6 +663,11 @@ static int mxr_runtime_suspend(struct device *dev)
 	/* disable system mmu for tv. It must be disabled before disabling
 	 * mixer's clock. Because of system mmu limitation. */
 	mdev->vb2->suspend(mdev->alloc_ctx);
+
+	if (mdev->int_handle) {
+		exynos5_bus_int_put(mdev->int_handle);
+		mdev->int_handle = NULL;
+	}
 
 	if (mdev->mif_handle) {
 		exynos5_bus_mif_put(mdev->mif_handle);
@@ -1461,6 +1470,9 @@ static int __devexit mxr_remove(struct platform_device *pdev)
 	mxr_release_layers(mdev);
 	mxr_release_video(mdev);
 	mxr_release_resources(mdev);
+
+	if (mdev->int_handle)
+		exynos5_bus_int_put(mdev->int_handle);
 
 	if (mdev->mif_handle)
 		exynos5_bus_mif_put(mdev->mif_handle);
