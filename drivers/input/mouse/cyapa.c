@@ -206,9 +206,6 @@ struct cyapa_touch {
 /* The touch.id is used as the MT slot id, thus max MT slot is 15 */
 #define CYAPA_MAX_MT_SLOTS  15
 
-/* CYAPA reports up to 5 touches per packet. */
-#define CYAPA_MAX_TOUCHES  5
-
 struct cyapa_reg_data {
 	/*
 	 * bit 0 - 1: device status
@@ -225,7 +222,8 @@ struct cyapa_reg_data {
 	 * bit 0: left mechanism button state if exists
 	 */
 	u8 finger_btn;
-	struct cyapa_touch touches[CYAPA_MAX_TOUCHES];
+	/* CYAPA reports up to 5 touches per packet. */
+	struct cyapa_touch touches[5];
 } __packed;
 
 /* The main device structure */
