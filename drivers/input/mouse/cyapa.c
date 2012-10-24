@@ -85,6 +85,8 @@ enum cyapa_gen {
 #define OP_DATA_MIDDLE_BTN 0x04
 #define OP_DATA_RIGHT_BTN  0x02
 #define OP_DATA_LEFT_BTN   0x01
+#define OP_DATA_BTN_MASK (OP_DATA_MIDDLE_BTN | OP_DATA_RIGHT_BTN | \
+			  OP_DATA_LEFT_BTN)
 
 /*
  * Bootloader Status Register
@@ -145,6 +147,9 @@ enum cyapa_gen {
 #define CAPABILITY_LEFT_BTN_MASK	(0x01 << 3)
 #define CAPABILITY_RIGHT_BTN_MASK	(0x01 << 4)
 #define CAPABILITY_MIDDLE_BTN_MASK	(0x01 << 5)
+#define CAPABILITY_BTN_MASK  (CAPABILITY_LEFT_BTN_MASK | \
+			      CAPABILITY_RIGHT_BTN_MASK | \
+			      CAPABILITY_MIDDLE_BTN_MASK)
 
 #define CYAPA_OFFSET_SOFT_RESET  REG_OFFSET_COMMAND_BASE
 
@@ -253,7 +258,7 @@ struct cyapa {
 	u8 fw_min_ver;  /* firmware minor version. */
 	u8 hw_maj_ver;  /* hardware major version. */
 	u8 hw_min_ver;  /* hardware minor version. */
-	bool has_left_btn, has_middle_btn, has_right_btn;
+	u8 btn_capability;
 	enum cyapa_gen gen;
 	int max_abs_x;
 	int max_abs_y;
@@ -950,9 +955,7 @@ static int cyapa_get_query_data(struct cyapa *cyapa)
 	cyapa->hw_maj_ver = query_data[17];
 	cyapa->hw_min_ver = query_data[18];
 
-	cyapa->has_left_btn = !!(query_data[19] & CAPABILITY_LEFT_BTN_MASK);
-	cyapa->has_middle_btn = !!(query_data[19] & CAPABILITY_MIDDLE_BTN_MASK);
-	cyapa->has_right_btn = !!(query_data[19] & CAPABILITY_RIGHT_BTN_MASK);
+	cyapa->btn_capability = query_data[19] & CAPABILITY_BTN_MASK;
 
 	cyapa->gen = query_data[20] & 0x0f;
 
@@ -1712,15 +1715,15 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 	}
 
 	input_mt_report_pointer_emulation(input, true);
-	if (cyapa->has_left_btn) {
+	if (cyapa->btn_capability & CAPABILITY_LEFT_BTN_MASK) {
 		input_report_key(input, BTN_LEFT,
 				 !!(data.finger_btn & OP_DATA_LEFT_BTN));
 	}
-	if (cyapa->has_middle_btn) {
+	if (cyapa->btn_capability & CAPABILITY_MIDDLE_BTN_MASK) {
 		input_report_key(input, BTN_MIDDLE,
 				 !!(data.finger_btn & OP_DATA_MIDDLE_BTN));
 	}
-	if (cyapa->has_right_btn) {
+	if (cyapa->btn_capability & CAPABILITY_RIGHT_BTN_MASK) {
 		input_report_key(input, BTN_RIGHT,
 				 !!(data.finger_btn & OP_DATA_RIGHT_BTN));
 	}
@@ -1822,11 +1825,11 @@ static int cyapa_create_input_dev(struct cyapa *cyapa)
 	__set_bit(BTN_TOOL_QUADTAP, input->keybit);
 	__set_bit(BTN_TOOL_QUINTTAP, input->keybit);
 
-	if (cyapa->has_left_btn)
+	if (cyapa->btn_capability & CAPABILITY_LEFT_BTN_MASK)
 		__set_bit(BTN_LEFT, input->keybit);
-	if (cyapa->has_middle_btn)
+	if (cyapa->btn_capability & CAPABILITY_MIDDLE_BTN_MASK)
 		__set_bit(BTN_MIDDLE, input->keybit);
-	if (cyapa->has_right_btn)
+	if (cyapa->btn_capability & CAPABILITY_RIGHT_BTN_MASK)
 		__set_bit(BTN_RIGHT, input->keybit);
 
 	__set_bit(INPUT_PROP_POINTER, input->propbit);
