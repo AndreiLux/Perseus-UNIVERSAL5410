@@ -1835,6 +1835,14 @@ static void hdmi_v14_mode_set(struct hdmi_context *hdata,
 	hdmi_set_reg(tg->field_top_hdmi, 2, 0x1); /* Reset value */
 	hdmi_set_reg(tg->field_bot_hdmi, 2, 0x233); /* Reset value */
 	hdmi_set_reg(tg->tg_3d, 1, 0x0);
+
+	/* Workaround 4 implementation for 1440x900 resolution support */
+	if (hdata->is_soc_exynos5) {
+		if (m->hdisplay == 1440 && m->vdisplay == 900 && m->clock == 106500) {
+			hdmi_set_reg(tg->hact_st, 2, m->htotal - m->hdisplay - 0xe0);
+			hdmi_set_reg(tg->hact_sz, 2, m->hdisplay + 0xe0);
+		}
+	}
 }
 
 static void hdmi_mode_set(void *ctx, void *mode)

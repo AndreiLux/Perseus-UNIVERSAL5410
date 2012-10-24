@@ -93,6 +93,7 @@ struct mixer_context {
 	struct mixer_resources	mixer_res;
 	struct hdmi_win_data	win_data[MIXER_WIN_NR];
 	unsigned long		event_flags;
+	int			previous_dxy;
 };
 
 /* event flags used  */
@@ -304,6 +305,20 @@ static void mixer_cfg_scan(struct mixer_context *mctx, u32 width, u32 height)
 	}
 
 	mixer_reg_writemask(res, MXR_CFG, val, MXR_CFG_SCAN_MASK);
+}
+
+static void mixer_set_layer_offset(struct mixer_context *mctx, u32 offset)
+{
+	struct mixer_resources *res = &mctx->mixer_res;
+	int current_dxy = mixer_reg_read(res, MXR_GRAPHIC1_DXY);
+
+	if (mctx->previous_dxy != current_dxy) {
+		current_dxy += MXR_GRP_DXY_DX(offset);
+		mixer_reg_write(res, MXR_GRAPHIC1_DXY, current_dxy);
+		mctx->previous_dxy = current_dxy;
+	}
+
+	mixer_reg_write(res, MXR_GRAPHIC0_DXY, MXR_GRP_DXY_DX(offset));
 }
 
 static void mixer_cfg_rgb_fmt(struct mixer_context *mctx, unsigned int height)
@@ -634,6 +649,13 @@ static void mixer_graph_buffer(struct mixer_context *mctx, int win)
 	mixer_reg_write(res, MXR_GRAPHIC_BASE(win), dma_addr);
 
 	mixer_cfg_scan(mctx, mode_width, mode_height);
+
+	/* Workaround 4 implementation for 1440x900 resolution support */
+	if (res->is_soc_exynos5) {
+		if (mode_width == 1440 && mode_height == 900)
+			mixer_set_layer_offset(mctx, 224);
+	}
+
 	mixer_cfg_rgb_fmt(mctx, mode_height);
 	mixer_cfg_layer(mctx, win, true);
 	mixer_cfg_layer(mctx, MIXER_DEFAULT_WIN, true);
