@@ -2014,6 +2014,8 @@ static int cyapa_suspend(struct device *dev)
 	u8 power_mode;
 	struct cyapa *cyapa = dev_get_drvdata(dev);
 
+	disable_irq(cyapa->irq);
+
 	/* set trackpad device to idle mode if wakeup is allowed
 	 * otherwise turn off. */
 	power_mode = device_may_wakeup(dev) ? cyapa->suspend_power_mode
@@ -2024,8 +2026,6 @@ static int cyapa_suspend(struct device *dev)
 
 	if (device_may_wakeup(dev))
 		cyapa->irq_wake = (enable_irq_wake(cyapa->irq) == 0);
-	disable_irq(cyapa->irq);
-
 	return 0;
 }
 
@@ -2034,7 +2034,6 @@ static int cyapa_resume(struct device *dev)
 	int ret;
 	struct cyapa *cyapa = dev_get_drvdata(dev);
 
-	enable_irq(cyapa->irq);
 	if (device_may_wakeup(dev) && cyapa->irq_wake)
 		disable_irq_wake(cyapa->irq);
 
@@ -2048,6 +2047,7 @@ static int cyapa_resume(struct device *dev)
 	pm_runtime_disable(dev);
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
+	enable_irq(cyapa->irq);
 	return 0;
 }
 #endif /* CONFIG_PM_SLEEP */
