@@ -2,6 +2,9 @@
  * Cypress APA trackpad with I2C interface
  *
  * Author: Dudley Du <dudl@cypress.com>
+ * Further cleanup and restructuring by:
+ *   Daniel Kurtz <djkurtz@chromium.org>
+ *   Benson Leung <bleung@chromium.org>
  *
  * Copyright (C) 2011-2012 Cypress Semiconductor, Inc.
  * Copyright (C) 2011-2012 Google, Inc.
@@ -10,7 +13,6 @@
  * License.  See the file COPYING in the main directory of this archive for
  * more details.
  */
-
 
 #include <linux/async.h>
 #include <linux/debugfs.h>
@@ -235,8 +237,8 @@ struct cyapa {
 	enum cyapa_state state;
 	u8 status[BL_STATUS_SIZE];
 
-	struct i2c_client	*client;
-	struct input_dev	*input;
+	struct i2c_client *client;
+	struct input_dev *input;
 	char *phys;	/* device physical location */
 	int irq;
 	u8 adapter_func;
@@ -426,17 +428,6 @@ do {									\
 		dev_dbg(&cyapa->client->dev, fmt, ##__VA_ARGS__);	\
 } while (0)
 
-/*
- * cyapa_i2c_reg_read_block - read a block of data from device i2c registers
- * @cyapa  - private data structure of driver
- * @reg    - register at which to start reading
- * @length - length of block to read, in bytes
- * @values - buffer to store values read from registers
- *
- * Returns negative errno, else number of bytes read.
- *
- * Note: The trackpad register block is 256 bytes.
- */
 static ssize_t cyapa_i2c_reg_read_block(struct cyapa *cyapa, u8 reg, size_t len,
 					u8 *values)
 {
@@ -451,17 +442,6 @@ static ssize_t cyapa_i2c_reg_read_block(struct cyapa *cyapa, u8 reg, size_t len,
 	return ret;
 }
 
-/*
- * cyapa_i2c_reg_write_block - write a block of data to device i2c registers
- * @cyapa  - private data structure of driver
- * @reg    - register at which to start writing
- * @length - length of block to write, in bytes
- * @values - buffer to write to i2c registers
- *
- * Returns 0 on success, else negative errno on failure.
- *
- * Note: The trackpad register block is 256 bytes.
- */
 static ssize_t cyapa_i2c_reg_write_block(struct cyapa *cyapa, u8 reg,
 					 size_t len, const u8 *values)
 {
@@ -580,16 +560,6 @@ static ssize_t cyapa_read_block(struct cyapa *cyapa, u8 cmd_idx, u8 *values)
 /*
  * Query device for its current operating state.
  *
- * Possible states are:
- *   OPERATION_MODE
- *   BOOTLOADER_IDLE
- *   BOOTLOADER_ACTIVE
- *   BOOTLOADER_BUSY
- *   NO_DEVICE
- *
- * Returns:
- *   0 on success, and sets cyapa->state
- *   < 0 on error, and sets cyapa->state = CYAPA_STATE_NO_DEVICE
  */
 static int cyapa_get_state(struct cyapa *cyapa)
 {
@@ -647,14 +617,15 @@ static int cyapa_get_state(struct cyapa *cyapa)
 
 	return 0;
 }
+
 /*
  * Poll device for its status in a loop, waiting up to timeout for a response.
  *
  * When the device switches state, it usually takes ~300 ms.
- * Howere, when running a new firmware image, the device must calibrate its
+ * However, when running a new firmware image, the device must calibrate its
  * sensors, which can take as long as 2 seconds.
  *
- * Note: The timeout has granularity of the polling rate, which is 300 ms.
+ * Note: The timeout has granularity of the polling rate, which is 100 ms.
  *
  * Returns:
  *   0 when the device eventually responds with a valid non-busy state.
@@ -815,7 +786,7 @@ static int cyapa_bl_deactivate(struct cyapa *cyapa)
 /*
  * Exit bootloader
  *
- * Send bl_exit command, then wait 300 ms to let device transition to
+ * Send bl_exit command, then wait 50 - 100 ms to let device transition to
  * operational mode.  If this is the first time the device's firmware is
  * running, it can take up to 2 seconds to calibrate its sensors.  So, poll
  * the device's new state for up to 2 seconds.
@@ -1319,10 +1290,7 @@ err_detect:
 
 /*
  *******************************************************************
- * below routines export interfaces to sysfs file system.
- * so user can get firmware/driver/hardware information using cat command.
- * e.g.: use below command to get firmware version
- *      cat /sys/bus/i2c/drivers/cyapa/0-0067/firmware_version
+ *	Sysfs Interface.
  *******************************************************************
  */
 static ssize_t cyapa_show_fm_ver(struct device *dev,
@@ -1635,12 +1603,6 @@ static int cyapa_debugfs_init(struct cyapa *cyapa)
 			    cyapa, &cyapa_read_fw_fops);
 	return 0;
 }
-
-/*
- **************************************************************
- * Cypress i2c trackpad input device driver.
- **************************************************************
-*/
 
 static irqreturn_t cyapa_irq(int irq, void *dev_id)
 {
