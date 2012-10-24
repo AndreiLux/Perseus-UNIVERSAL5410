@@ -2119,6 +2119,12 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
 			ret = IRQ_HANDLED;
 		}
 
+		if (pending & SDMMC_INT_HLE) {
+			mci_writel(host, RINTSTS, SDMMC_INT_HLE);
+			dev_err(&host->dev, "Hardware locked write error\n");
+			ret = IRQ_HANDLED;
+		}
+
 		/* Handle SDIO Interrupts */
 		for (i = 0; i < host->num_slots; i++) {
 			struct dw_mci_slot *slot = host->slot[i];
