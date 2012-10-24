@@ -85,12 +85,21 @@ static unsigned int exynos_get_safe_armvolt(unsigned int old_index, unsigned int
 	return safe_arm_volt;
 }
 
+static int exynos_cpufreq_get_index(unsigned int freq)
+{
+	int i;
+
+	for (i = 0; i <= exynos_info->min_support_idx; i++)
+		if (exynos_info->freq_table[i].frequency <= freq)
+			return i;
+
+	return -EINVAL;
+}
+
 static int exynos_cpufreq_scale(unsigned int target_freq, unsigned int curr_freq)
 {
-	struct cpufreq_frequency_table *freq_table = exynos_info->freq_table;
 	unsigned int *volt_table = exynos_info->volt_table;
-	struct cpufreq_policy *policy = cpufreq_cpu_get(0);
-	unsigned int new_index, old_index;
+	int new_index, old_index;
 	unsigned int arm_volt, safe_arm_volt = 0;
 	unsigned int max_volt;
 	int ret = 0;
@@ -100,15 +109,15 @@ static int exynos_cpufreq_scale(unsigned int target_freq, unsigned int curr_freq
 	if (curr_freq == freqs.new)
 		goto out;
 
-	if (cpufreq_frequency_table_target(policy, freq_table,
-					   curr_freq, CPUFREQ_RELATION_H, &old_index)) {
-		ret = -EINVAL;
+	old_index = exynos_cpufreq_get_index(curr_freq);
+	if (old_index < 0) {
+		ret = old_index;
 		goto out;
 	}
 
-	if (cpufreq_frequency_table_target(policy, freq_table,
-					   freqs.new, CPUFREQ_RELATION_H, &new_index)) {
-		ret = -EINVAL;
+	new_index = exynos_cpufreq_get_index(freqs.new);
+	if (new_index < 0) {
+		ret = new_index;
 		goto out;
 	}
 
