@@ -100,23 +100,6 @@ struct fimd_context {
 	struct exynos_drm_panel_info *panel;
 };
 
-static struct device *dp_dev;
-
-void exynos_fimd_dp_attach(struct device *dev)
-{
-	DRM_DEBUG_KMS("%s. %s.\n", __FILE__, __func__);
-	dp_dev = dev;
-}
-
-static bool fimd_display_is_connected(void *ctx)
-{
-	DRM_DEBUG_KMS("%s\n", __FILE__);
-
-	/* TODO. */
-
-	return true;
-}
-
 static struct exynos_drm_panel_info *fimd_get_panel(void *ctx)
 {
 	struct fimd_context *fimd_ctx = ctx;
@@ -124,28 +107,6 @@ static struct exynos_drm_panel_info *fimd_get_panel(void *ctx)
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
 	return fimd_ctx->panel;
-}
-
-static int fimd_check_timing(void *ctx, void *timing)
-{
-	struct fimd_context *fimd_ctx = ctx;
-	struct fb_videomode *check_timing = timing;
-	int i;
-
-	DRM_DEBUG_KMS("%s\n", __FILE__);
-
-	for (i = 0;i< MAX_NR_PANELS;i++) {
-		if (fimd_ctx->panel[i].timing.xres == -1 &&
-		    fimd_ctx->panel[i].timing.yres == -1)
-			 break;
-
-		if (fimd_ctx->panel[i].timing.xres == check_timing->xres &&
-		    fimd_ctx->panel[i].timing.yres == check_timing->yres &&
-		    fimd_ctx->panel[i].timing.refresh == check_timing->refresh)
-			return 0;
-	}
-
-	return -EINVAL;
 }
 
 static int fimd_power_on(struct fimd_context *ctx, bool enable);
@@ -225,11 +186,6 @@ static void fimd_commit(void *ctx)
 	val |= VIDCON0_ENVID | VIDCON0_ENVID_F;
 	writel(val, fimd_ctx->regs + VIDCON0);
 }
-
-static struct exynos_panel_ops fimd_panel_ops = {
-	.is_connected = fimd_display_is_connected,
-	.check_timing = fimd_check_timing,
-};
 
 static int fimd_enable_vblank(void *ctx, int pipe)
 {
@@ -854,13 +810,7 @@ static int fimd_power_on(struct fimd_context *fimd_ctx, bool enable)
 			writel(MIE_CLK_ENABLE, fimd_ctx->regs + DPCLKCON);
 
 		fimd_window_resume(fimd_ctx);
-
-		if (dp_dev)
-			exynos_dp_resume(dp_dev);
 	} else {
-		if (dp_dev)
-			exynos_dp_suspend(dp_dev);
-
 		/*
 		 * We need to make sure that all windows are disabled before we
 		 * suspend that connector. Otherwise we might try to scan from
@@ -1068,8 +1018,6 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 
 	exynos_display_attach_controller(EXYNOS_DRM_DISPLAY_TYPE_FIMD,
 			&fimd_controller_ops, fimd_ctx);
-	exynos_display_attach_panel(EXYNOS_DRM_DISPLAY_TYPE_FIMD,
-			&fimd_panel_ops, fimd_ctx);
 
 	return 0;
 

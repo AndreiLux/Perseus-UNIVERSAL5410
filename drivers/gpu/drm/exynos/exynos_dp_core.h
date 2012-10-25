@@ -33,23 +33,26 @@ struct link_train {
 	enum link_training_state lt_state;
 };
 
+struct dp_phy_ops {
+	void (*phy_init)(void);
+	void (*phy_exit)(void);
+};
+
 struct exynos_dp_device {
 	struct device		*dev;
+	struct drm_device	*drm_dev;
 	struct resource		*res;
 	struct clk		*clock;
 	unsigned int		irq;
 	void __iomem		*reg_base;
 	int			hpd_gpio;
 
+	struct dp_phy_ops	phy_ops;
 	struct video_info	*video_info;
 	enum link_training_type	training_type;
 	struct link_train	link_train;
 	struct work_struct	hotplug_work;
 };
-
-/* exynos_dp_core.c */
-int exynos_dp_suspend(struct device *dev);
-int exynos_dp_resume(struct device *dev);
 
 /* exynos_dp_reg.c */
 void exynos_dp_enable_video_mute(struct exynos_dp_device *dp, bool enable);

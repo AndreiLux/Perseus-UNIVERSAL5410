@@ -24,6 +24,7 @@
 
 #include <video/exynos_dp.h>
 #include "exynos_drm_drv.h"
+#include "exynos_drm_display.h"
 
 #include <plat/cpu.h>
 
@@ -955,7 +956,7 @@ static void exynos_dp_hotplug(struct work_struct *work)
 
 	if (dp->training_type == SW_LINK_TRAINING)
 		ret = exynos_dp_set_link_train(dp, dp->video_info->lane_count,
-						dp->video_info->link_rate);
+			dp->video_info->link_rate);
 	else
 		ret = exynos_dp_set_hw_link_train(dp,
 			dp->video_info->lane_count, dp->video_info->link_rate);
@@ -974,6 +975,89 @@ static void exynos_dp_hotplug(struct work_struct *work)
 	exynos_dp_init_video(dp);
 	exynos_dp_config_video(dp);
 }
+
+static int exynos_dp_power_off(struct exynos_dp_device *dp)
+{
+	disable_irq(dp->irq);
+
+	if (work_pending(&dp->hotplug_work))
+		flush_work_sync(&dp->hotplug_work);
+
+	if (dp->phy_ops.phy_exit)
+		dp->phy_ops.phy_exit();
+
+	clk_disable(dp->clock);
+	return 0;
+}
+
+static int exynos_dp_power_on(struct exynos_dp_device *dp)
+{
+	if (dp->phy_ops.phy_init)
+		dp->phy_ops.phy_init();
+
+	clk_enable(dp->clock);
+
+	exynos_dp_init_dp(dp);
+
+	enable_irq(dp->irq);
+
+	return 0;
+}
+
+static int exynos_dp_power(void *ctx, int mode)
+{
+	struct exynos_dp_device *dp = ctx;
+
+	switch (mode) {
+	case DRM_MODE_DPMS_ON:
+		return exynos_dp_power_on(dp);
+
+	case DRM_MODE_DPMS_STANDBY:
+	case DRM_MODE_DPMS_SUSPEND:
+	case DRM_MODE_DPMS_OFF:
+		return exynos_dp_power_off(dp);
+
+	default:
+		DRM_ERROR("Unknown dpms mode %d\n", mode);
+	}
+	return -EINVAL;
+}
+
+static int exynos_dp_check_timing(void *ctx, void *timing)
+{
+	/*
+	 * TODO(seanpaul): The datasheet isn't terribly descriptive about the
+	 * limitations we have here. It's not vitally important to implement
+	 * this right now, but should be implemented once we use EDID to mode
+	 * set.
+	 */
+	return 0;
+}
+
+static bool exynos_dp_is_connected(void *ctx)
+{
+	struct exynos_dp_device *dp = ctx;
+	int ret;
+
+	ret = exynos_dp_detect_hpd(dp);
+	return !ret;
+}
+
+static int exynos_dp_subdrv_probe(void *ctx, struct drm_device *drm_dev)
+{
+	struct exynos_dp_device *dp = ctx;
+
+	dp->drm_dev = drm_dev;
+
+	return 0;
+}
+
+static struct exynos_panel_ops dp_panel_ops = {
+	.subdrv_probe = exynos_dp_subdrv_probe,
+	.is_connected = exynos_dp_is_connected,
+	.check_timing = exynos_dp_check_timing,
+	.power = exynos_dp_power,
+};
 
 static int __devinit exynos_dp_probe(struct platform_device *pdev)
 {
@@ -1052,8 +1136,12 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 
 	dp->training_type = pdata->training_type;
 	dp->video_info = pdata->video_info;
-	if (pdata->phy_init)
-		pdata->phy_init();
+	if (pdata->phy_init) {
+		dp->phy_ops.phy_init = pdata->phy_init;
+		dp->phy_ops.phy_init();
+	}
+	if (pdata->phy_exit)
+		dp->phy_ops.phy_exit = pdata->phy_exit;
 
 	INIT_WORK(&dp->hotplug_work, exynos_dp_hotplug);
 
@@ -1068,7 +1156,8 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, dp);
 
-	exynos_fimd_dp_attach(dp->dev);
+	exynos_display_attach_panel(EXYNOS_DRM_DISPLAY_TYPE_FIMD, &dp_panel_ops,
+			dp);
 
 	return 0;
 
@@ -1089,14 +1178,13 @@ err_dp:
 
 static int __devexit exynos_dp_remove(struct platform_device *pdev)
 {
-	struct exynos_dp_platdata *pdata = pdev->dev.platform_data;
 	struct exynos_dp_device *dp = platform_get_drvdata(pdev);
 
 	if (work_pending(&dp->hotplug_work))
 		flush_work_sync(&dp->hotplug_work);
 
-	if (pdata && pdata->phy_exit)
-		pdata->phy_exit();
+	if (dp->phy_ops.phy_exit)
+		dp->phy_ops.phy_exit();
 
 	if (gpio_is_valid(dp->hpd_gpio))
 		gpio_free(dp->hpd_gpio);
@@ -1115,53 +1203,26 @@ static int __devexit exynos_dp_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM_SLEEP
-int exynos_dp_suspend(struct device *dev)
+static int exynos_dp_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
-	struct exynos_dp_platdata *pdata = pdev->dev.platform_data;
 	struct exynos_dp_device *dp = platform_get_drvdata(pdev);
 
-	disable_irq(dp->irq);
-
-	if (work_pending(&dp->hotplug_work))
-		flush_work_sync(&dp->hotplug_work);
-
-	if (pdata && pdata->phy_exit)
-		pdata->phy_exit();
-
-	clk_disable(dp->clock);
-
-	return 0;
+	return exynos_dp_power(dp, DRM_MODE_DPMS_SUSPEND);
 }
 
-int exynos_dp_resume(struct device *dev)
+static int exynos_dp_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
-	struct exynos_dp_platdata *pdata = pdev->dev.platform_data;
 	struct exynos_dp_device *dp = platform_get_drvdata(pdev);
 
-	if (pdata && pdata->phy_init)
-		pdata->phy_init();
-
-	clk_enable(dp->clock);
-
-	exynos_dp_init_dp(dp);
-
-	enable_irq(dp->irq);
-
-	return 0;
-}
-#else
-int exynos_dp_suspend(struct device *dev)
-{
-	return 0;
-}
-
-int exynos_dp_resume(struct device *dev)
-{
-	return 0;
+	return exynos_dp_power(dp, DRM_MODE_DPMS_ON);
 }
 #endif
+
+static const struct dev_pm_ops dp_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(exynos_dp_suspend, exynos_dp_resume)
+};
 
 struct platform_driver dp_driver = {
 	.probe		= exynos_dp_probe,
@@ -1169,5 +1230,6 @@ struct platform_driver dp_driver = {
 	.driver		= {
 		.name	= "s5p-dp",
 		.owner	= THIS_MODULE,
+		.pm	= &dp_pm_ops,
 	},
 };
