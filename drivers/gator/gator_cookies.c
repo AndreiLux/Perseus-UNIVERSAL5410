@@ -232,10 +232,13 @@ static inline uint32_t get_cookie(int cpu, struct task_struct *task, struct vm_a
 	if (mod) {
 		text = mod->name;
 	} else {
-		if (!vma || !vma->vm_file) {
+		if (vma && vma->vm_file) {
+			path = &vma->vm_file->f_path;
+		} else if (task && task->mm && task->mm->exe_file) {
+			path = &task->mm->exe_file->f_path;
+		} else {
 			return INVALID_COOKIE;
 		}
-		path = &vma->vm_file->f_path;
 		if (!path || !path->dentry) {
 			return INVALID_COOKIE;
 		}
@@ -275,20 +278,12 @@ static int get_exec_cookie(int cpu, struct task_struct *task)
 {
 	unsigned long cookie = NO_COOKIE;
 	struct mm_struct *mm = task->mm;
-	struct vm_area_struct *vma;
 
 	// kernel threads have no address space
 	if (!mm)
 		return cookie;
 
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
-		if (!vma->vm_file)
-			continue;
-		if (!(vma->vm_flags & VM_EXECUTABLE))
-			continue;
-		cookie = get_cookie(cpu, task, vma, NULL, true);
-		break;
-	}
+	cookie = get_cookie(cpu, task, NULL, NULL, true);
 
 	return cookie;
 }
