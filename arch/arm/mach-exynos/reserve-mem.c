@@ -25,7 +25,7 @@ void __init exynos_cma_region_reserve(struct cma_region *regions_normal,
 				      size_t align_secure, const char *map)
 {
 	struct cma_region *reg;
-	phys_addr_t paddr_last = 0xFFFFFFFF;
+	phys_addr_t paddr_last = PHYS_OFFSET + SZ_1G;
 
 	for (reg = regions_normal; reg->size != 0; reg++) {
 		phys_addr_t paddr;
@@ -69,7 +69,7 @@ void __init exynos_cma_region_reserve(struct cma_region *regions_normal,
 			continue;
 		}
 
-		paddr = memblock_find_in_range(0, MEMBLOCK_ALLOC_ACCESSIBLE,
+		paddr = memblock_find_in_range(0, paddr_last,
 						reg->size, reg->alignment);
 		if (paddr) {
 			if (memblock_reserve(paddr, reg->size)) {
@@ -102,6 +102,7 @@ void __init exynos_cma_region_reserve(struct cma_region *regions_normal,
 			"Wrong alignment requirement for secure region.\n");
 	} else if (regions_secure && regions_secure->size) {
 		size_t size_secure = 0;
+		size_t align_secure_end = align_secure;
 
 		for (reg = regions_secure; reg->size != 0; reg++)
 			size_secure += reg->size;
@@ -128,30 +129,20 @@ void __init exynos_cma_region_reserve(struct cma_region *regions_normal,
 			aug_size = align_secure + size_region2 - size_secure;
 			if (aug_size > 0) {
 				reg->size += aug_size;
-				size_secure += aug_size;
 				pr_debug("S5P/CMA: "
 					"Augmented size of '%s' by %#x B.\n",
 					reg->name, aug_size);
 			}
+			align_secure_end = 1 << order_region2;
 		}
 
-		size_secure = ALIGN(size_secure, align_secure);
-		pr_debug("S5P/CMA: Reserving 0x%08x for secure region\n",
-								size_secure);
+		size_secure = ALIGN(size_secure, align_secure_end);
+		pr_debug("S5P/CMA: Reserving 0x%08x (0x%08x) for secure region\n",
+								size_secure, align_secure);
 
-		if (paddr_last >= memblock.current_limit) {
-			paddr_last = memblock_find_in_range(0,
-					MEMBLOCK_ALLOC_ACCESSIBLE,
-					size_secure, reg->alignment);
-		} else {
-			paddr_last -= size_secure;
-			paddr_last = round_down(paddr_last, align_secure);
-		}
-
+		paddr_last = memblock_alloc_base(size_secure, align_secure,
+						 paddr_last);
 		if (paddr_last) {
-			while (memblock_reserve(paddr_last, size_secure))
-				paddr_last -= align_secure;
-
 			do {
 				reg->start = paddr_last;
 				reg->reserved = 1;
