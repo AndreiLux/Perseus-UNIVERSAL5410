@@ -451,7 +451,8 @@ static struct sg_table *ion_exynos_contig_heap_map_dma(struct ion_heap *heap,
 	ret = sg_alloc_table(table, 1, GFP_KERNEL);
 	if (ret)
 		return ERR_PTR(ret);
-	sg_init_one(table->sgl, phys_to_virt(buffer->priv_phys), buffer->size);
+	sg_set_page(table->sgl, phys_to_page(buffer->priv_phys), buffer->size,
+		offset_in_page(buffer->priv_phys));
 	return table;
 }
 
@@ -477,12 +478,25 @@ static int ion_exynos_contig_heap_map_user(struct ion_heap *heap,
 static void *ion_exynos_contig_heap_map_kernel(struct ion_heap *heap,
 				 struct ion_buffer *buffer)
 {
-	return phys_to_virt(buffer->priv_phys);
+	int npages = PAGE_ALIGN(buffer->size) / PAGE_SIZE;
+	struct page **pages = vmalloc(sizeof(struct page *) * npages);
+	int i;
+
+	if (!pages)
+		return 0;
+
+	for (i = 0; i < npages; i++)
+		pages[i] = phys_to_page(buffer->priv_phys + i * PAGE_SIZE);
+	buffer->vaddr = vmap(pages, npages, VM_MAP, PAGE_KERNEL);
+	vfree(pages);
+
+	return buffer->vaddr;
 }
 
 static void ion_exynos_contig_heap_unmap_kernel(struct ion_heap *heap,
 				  struct ion_buffer *buffer)
 {
+	vunmap(buffer->vaddr);
 }
 
 static struct ion_heap_ops contig_heap_ops = {
