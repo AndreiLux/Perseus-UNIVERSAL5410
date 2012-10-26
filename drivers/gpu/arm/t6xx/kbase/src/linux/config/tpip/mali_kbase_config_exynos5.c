@@ -1321,7 +1321,7 @@ struct mali_dvfs_status {
 
 static struct workqueue_struct *mali_dvfs_wq = 0;
 int mali_dvfs_control=0;
-osk_spinlock mali_dvfs_spinlock;
+osk_spinlock_irq mali_dvfs_spinlock;
 
 
 static struct mali_dvfs_status mali_dvfs_status_current;
@@ -1494,7 +1494,7 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 	const struct mali_dvfs_info *info;
 	int avg_utilisation;
 
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	osk_spinlock_irq_lock(&mali_dvfs_spinlock);
 	dvfs_status = mali_dvfs_status_current;
 #ifdef MALI_DVFS_ASV_ENABLE
 	if (dvfs_status.asv_need_update == DVFS_UPDATE_ASV_DEFAULT_TBL) {
@@ -1506,7 +1506,7 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 		dvfs_status.asv_need_update = DVFS_NOT_UPDATE_ASV_TBL;
 	}
 #endif
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	osk_spinlock_irq_unlock(&mali_dvfs_spinlock);
 
 	info = &mali_dvfs_infotbl[dvfs_status.step];
 
@@ -1547,9 +1547,9 @@ static void mali_dvfs_event_proc(struct work_struct *w)
 		kbase_platform_dvfs_set_level(dvfs_status.kbdev,
 		dvfs_status.step);
 
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	osk_spinlock_irq_lock(&mali_dvfs_spinlock);
 	mali_dvfs_status_current = dvfs_status;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	osk_spinlock_irq_unlock(&mali_dvfs_spinlock);
 
 }
 
@@ -1576,10 +1576,10 @@ int kbase_platform_dvfs_init(kbase_device *kbdev)
 	if (!mali_dvfs_wq)
 		mali_dvfs_wq = create_singlethread_workqueue("mali_dvfs");
 
-	osk_spinlock_init(&mali_dvfs_spinlock,OSK_LOCK_ORDER_PM_METRICS);
+	osk_spinlock_irq_init(&mali_dvfs_spinlock, OSK_LOCK_ORDER_PM_METRICS);
 
 	/*add a error handling here*/
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	osk_spinlock_irq_lock(&mali_dvfs_spinlock);
 	mali_dvfs_status_current.kbdev = kbdev;
 	mali_dvfs_status_current.step = MALI_DVFS_STEP-1;
 	mali_dvfs_status_current.utilisation = 100;
@@ -1589,7 +1589,7 @@ int kbase_platform_dvfs_init(kbase_device *kbdev)
 	mali_dvfs_status_current.asv_group = -1;
 #endif
 	mali_dvfs_control = 1;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	osk_spinlock_irq_unlock(&mali_dvfs_spinlock);
 
 	return MALI_TRUE;
 }
@@ -1609,9 +1609,9 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev)
 #ifdef CONFIG_T6XX_DVFS
         int utilisation = kbase_pm_get_dvfs_utilisation(kbdev);
 
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	osk_spinlock_irq_lock(&mali_dvfs_spinlock);
 	mali_dvfs_status_current.utilisation = utilisation;
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	osk_spinlock_irq_unlock(&mali_dvfs_spinlock);
 	queue_work_on(0, mali_dvfs_wq, &mali_dvfs_work);
 
 	/*add error handle here*/
@@ -1898,14 +1898,14 @@ static int kbase_platform_dvfs_sprint_avs_table(char *buf)
 
 static int kbase_platform_asv_set(int enable)
 {
-	osk_spinlock_lock(&mali_dvfs_spinlock);
+	osk_spinlock_irq_lock(&mali_dvfs_spinlock);
 	if (enable) {
 		mali_dvfs_status_current.asv_need_update = DVFS_UPDATE_ASV_TBL;
 		mali_dvfs_status_current.asv_group = -1;
 	} else{
 		mali_dvfs_status_current.asv_need_update = DVFS_UPDATE_ASV_DEFAULT_TBL;
 	}
-	osk_spinlock_unlock(&mali_dvfs_spinlock);
+	osk_spinlock_irq_unlock(&mali_dvfs_spinlock);
 	return 0;
 }
 #endif /* MALI_DVFS_ASV_ENABLE */
