@@ -1692,10 +1692,8 @@ static int _enable(struct omap_hwmod *oh)
 		 * Set the clockdomain to HW_AUTO only if the target is ready,
 		 * assuming that the previous state was HW_AUTO
 		 */
-		if (strcmp(oh->name, "dsp_c0")) {
-			if (oh->clkdm && hwsup)
-				clkdm_allow_idle(oh->clkdm);
-		}
+		if (oh->clkdm && hwsup)
+			clkdm_allow_idle(oh->clkdm);
 
 		oh->_state = _HWMOD_STATE_ENABLED;
 
