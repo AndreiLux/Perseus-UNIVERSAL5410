@@ -32,15 +32,12 @@
 #include <mach/regs-mem.h>
 #include <mach/exynos5_bus.h>
 
-#include <plat/bts.h>
-
 #include "governor.h"
 
 #define MAX_SAFEVOLT	1200000 /* 1.2V */
 
 #define MIF_ABB_CONTROL_FREQUENCY 667000000
 #define MIF_UPPER_FREQUENCY 667000
-#define BTS_THRESHOLD_FREQUENCY 400000
 
 /* Assume that the bus is saturated if the utilization is 20% */
 #define MIF_BUS_SATURATION_RATIO	20
@@ -320,11 +317,6 @@ static int exynos5_busfreq_mif_target(struct device *dev, unsigned long *_freq,
 		if (err)
 			goto out;
 	}
-
-	if (freq <= BTS_THRESHOLD_FREQUENCY)
-		bts_change_threshold(BTS_DECREASE_BW);
-	else
-		bts_change_threshold(BTS_INCREASE_BW);
 
 	err = exynos5_mif_setclk(data, freq * 1000);
 	if (err)
