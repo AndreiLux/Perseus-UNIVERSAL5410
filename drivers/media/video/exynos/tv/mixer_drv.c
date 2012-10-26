@@ -27,8 +27,6 @@
 #include <mach/videonode-exynos5.h>
 #include <media/exynos_mc.h>
 
-#include <plat/bts.h>
-
 MODULE_AUTHOR("Tomasz Stanislawski, <t.stanislaws@samsung.com>");
 MODULE_DESCRIPTION("Samsung MIXER");
 MODULE_LICENSE("GPL");
@@ -636,8 +634,6 @@ static int mxr_runtime_resume(struct device *dev)
 	mdev->mif_handle = exynos5_bus_mif_min(800000);
 	if (!mdev->mif_handle)
 		dev_err(dev, "failed to request min_freq for mif\n");
-
-	bts_change_threshold(BTS_MIXER_BW);
 
 	/* enable system mmu for tv. It must be enabled after enabling
 	 * mixer's clock. Because of system mmu limitation. */
