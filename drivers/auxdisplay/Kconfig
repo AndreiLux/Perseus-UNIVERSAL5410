@@ -124,9 +124,4 @@ config PS8622
 	---help---
 	  Adds the driver for the Parade PS8622 eDP/LVDS bridge chip.
 
-config PTN3460
-	tristate "PTN3460 DP/LVDS bridge"
-	---help---
-	  Adds the driver for the NXP PTN3460 DP/LVDS bridge chip.
-
 endif # AUXDISPLAY
