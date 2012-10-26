@@ -286,6 +286,11 @@ static int exynos5_busfreq_mif_target(struct device *dev, unsigned long *_freq,
 
 	mutex_lock(&data->lock);
 
+	if (data->devfreq->max_freq && *_freq > data->devfreq->max_freq) {
+		*_freq = data->devfreq->max_freq;
+		flags |= DEVFREQ_FLAG_LEAST_UPPER_BOUND;
+	}
+
 	rcu_read_lock();
 	opp = devfreq_recommended_opp(dev, _freq, flags);
 	if (IS_ERR(opp)) {
