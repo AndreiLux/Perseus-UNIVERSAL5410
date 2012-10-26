@@ -50,6 +50,7 @@
 			reg = <0x20>;
 			powerdown-gpio = <&gpy2 5 1 0 0>;
 			reset-gpio = <&gpx1 5 1 0 0>;
+			edid-emulation = <5>;
 		};
 	};
 
