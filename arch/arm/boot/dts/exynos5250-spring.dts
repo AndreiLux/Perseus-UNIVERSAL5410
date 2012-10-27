@@ -88,6 +88,7 @@
 			reg = <0x48>;
 			sleep-gpio = <&gpc3 6 1 0 0>;
 			reset-gpio = <&gpc3 1 1 0 0>;
+			hpd-gpio = <&gpc3 0 0 0 0>;
 		};
 	};
 
