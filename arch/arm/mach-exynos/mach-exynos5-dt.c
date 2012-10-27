@@ -609,6 +609,7 @@ static struct video_info ps8622_dp_config = {
 static struct exynos_dp_platdata smdk5250_dp_data = {
 	.video_info     = &ptn3460_dp_config,
 	.training_type  = SW_LINK_TRAINING,
+	.hpd_gpio	= -ENODEV,
 	.phy_init       = s5p_dp_phy_init,
 	.phy_exit       = s5p_dp_phy_exit,
 };
@@ -1120,10 +1121,17 @@ static void __init exynos5250_dt_machine_init(void)
 	}
 
 	/* put the DP output configuration matching the eDP-LVDS bridge */
-	if (of_find_compatible_node(NULL, NULL, "nxp,ptn3460"))
+	if (of_find_compatible_node(NULL, NULL, "nxp,ptn3460")) {
 		smdk5250_dp_data.video_info = &ptn3460_dp_config;
-	else if (of_find_compatible_node(NULL, NULL, "parade,ps8622"))
-		smdk5250_dp_data.video_info = &ps8622_dp_config;
+	} else {
+		struct device_node *node =
+			of_find_compatible_node(NULL, NULL, "parade,ps8622");
+		if (node) {
+			smdk5250_dp_data.video_info = &ps8622_dp_config;
+			smdk5250_dp_data.hpd_gpio =
+				of_get_named_gpio(node, "hpd-gpio", 0);
+		}
+	}
 
 	if (gpio_request_one(EXYNOS5_GPX2(6), GPIOF_OUT_INIT_HIGH,
 		"HOST_VBUS_CONTROL")) {

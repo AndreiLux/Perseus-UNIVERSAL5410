@@ -131,6 +131,8 @@ struct exynos_dp_platdata {
 
 	enum link_training_type	training_type;
 
+	int hpd_gpio;
+
 	void (*phy_init)(void);
 	void (*phy_exit)(void);
 };
