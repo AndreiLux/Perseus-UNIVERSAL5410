@@ -15,6 +15,7 @@
 #include <linux/slab.h>
 #include <linux/err.h>
 #include <linux/clk.h>
+#include <linux/gpio.h>
 #include <linux/io.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
@@ -981,6 +982,7 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 	struct exynos_dp_platdata *pdata;
 
 	int ret = 0;
+	int irqflags;
 
 	pdata = pdev->dev.platform_data;
 	if (!pdata) {
@@ -1029,11 +1031,23 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 		goto err_req_region;
 	}
 
-	dp->irq = platform_get_irq(pdev, 0);
-	if (dp->irq == -ENXIO) {
+	if (gpio_is_valid(pdata->hpd_gpio)) {
+		dp->hpd_gpio = pdata->hpd_gpio;
+		ret = gpio_request_one(dp->hpd_gpio, GPIOF_IN, "dp_hpd");
+		if (ret)
+			goto err_ioremap;
+		dp->irq = gpio_to_irq(dp->hpd_gpio);
+		irqflags = IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING;
+	} else {
+		dp->hpd_gpio = -ENODEV;
+		dp->irq = platform_get_irq(pdev, 0);
+		irqflags = 0;
+	}
+
+	if (dp->irq < 0) {
 		dev_err(&pdev->dev, "failed to get irq\n");
 		ret = -ENODEV;
-		goto err_ioremap;
+		goto err_gpio;
 	}
 
 	dp->training_type = pdata->training_type;
@@ -1043,11 +1057,11 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 
 	INIT_WORK(&dp->hotplug_work, exynos_dp_hotplug);
 
-	ret = request_irq(dp->irq, exynos_dp_irq_handler, 0,
+	ret = request_irq(dp->irq, exynos_dp_irq_handler, irqflags,
 			"exynos-dp", dp);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to request irq\n");
-		goto err_ioremap;
+		goto err_gpio;
 	}
 
 	disable_irq(dp->irq);
@@ -1058,6 +1072,9 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 
 	return 0;
 
+err_gpio:
+	if (gpio_is_valid(dp->hpd_gpio))
+		gpio_free(dp->hpd_gpio);
 err_ioremap:
 	iounmap(dp->reg_base);
 err_req_region:
@@ -1080,6 +1097,9 @@ static int __devexit exynos_dp_remove(struct platform_device *pdev)
 
 	if (pdata && pdata->phy_exit)
 		pdata->phy_exit();
+
+	if (gpio_is_valid(dp->hpd_gpio))
+		gpio_free(dp->hpd_gpio);
 
 	free_irq(dp->irq, dp);
 	iounmap(dp->reg_base);

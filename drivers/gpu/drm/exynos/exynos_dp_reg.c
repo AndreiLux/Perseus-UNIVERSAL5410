@@ -11,6 +11,7 @@
  */
 
 #include <linux/device.h>
+#include <linux/gpio.h>
 #include <linux/io.h>
 #include <linux/delay.h>
 #include <linux/jiffies.h>
@@ -293,6 +294,9 @@ void exynos_dp_clear_hotplug_interrupts(struct exynos_dp_device *dp)
 {
 	u32 reg;
 
+	if (gpio_is_valid(dp->hpd_gpio))
+		return;
+
 	reg = HOTPLUG_CHG | HPD_LOST | PLUG;
 	writel(reg, dp->reg_base + EXYNOS_DP_COMMON_INT_STA_4);
 
@@ -303,6 +307,9 @@ void exynos_dp_clear_hotplug_interrupts(struct exynos_dp_device *dp)
 void exynos_dp_init_hpd(struct exynos_dp_device *dp)
 {
 	u32 reg;
+
+	if (gpio_is_valid(dp->hpd_gpio))
+		return;
 
 	exynos_dp_clear_hotplug_interrupts(dp);
 
@@ -321,6 +328,14 @@ void exynos_dp_init_hpd(struct exynos_dp_device *dp)
 enum dp_irq_type exynos_dp_get_irq_type(struct exynos_dp_device *dp)
 {
 	u32 reg;
+
+	if (gpio_is_valid(dp->hpd_gpio)) {
+		reg = gpio_get_value(dp->hpd_gpio);
+		if (reg)
+			return DP_IRQ_TYPE_HP_CABLE_IN;
+		else
+			return DP_IRQ_TYPE_HP_CABLE_OUT;
+	}
 
 	/* Parse hotplug interrupt status register */
 	reg = readl(dp->reg_base + EXYNOS_DP_COMMON_INT_STA_4);

@@ -39,6 +39,7 @@ struct exynos_dp_device {
 	struct clk		*clock;
 	unsigned int		irq;
 	void __iomem		*reg_base;
+	int			hpd_gpio;
 
 	struct video_info	*video_info;
 	enum link_training_type	training_type;
