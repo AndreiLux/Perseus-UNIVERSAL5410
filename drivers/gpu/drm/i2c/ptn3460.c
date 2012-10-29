@@ -21,6 +21,10 @@
 #include <linux/gpio.h>
 #include <linux/delay.h>
 
+#include "drmP.h"
+
+#include "i2c/ptn3460.h"
+
 #define PTN3460_EDID_EMULATION_ADDR		0x84
 #define PTN3460_EDID_ENABLE_EMULATION		0
 #define PTN3460_EDID_EMULATION_SELECTION	1
@@ -34,6 +38,31 @@ struct ptn3460_platform_data {
 	u32 edid_emulation;
 	struct delayed_work ptn_work;
 };
+
+#define PTN3460_READY_BLOCK	0
+#define PTN3460_READY_UNBLOCK	1
+
+static atomic_t ptn3460_ready;
+static wait_queue_head_t ptn3460_wait_queue;
+
+int ptn3460_wait_until_ready(int timeout_ms)
+{
+	static atomic_t wait_queue_initialized;
+	int ret;
+
+	if (atomic_add_return(1, &wait_queue_initialized) == 1)
+		init_waitqueue_head(&ptn3460_wait_queue);
+
+	ret = wait_event_timeout(ptn3460_wait_queue,
+			atomic_read(&ptn3460_ready) == PTN3460_READY_UNBLOCK,
+			msecs_to_jiffies(timeout_ms));
+	if (!ret) {
+		DRM_ERROR("Wait until ready timed out\n");
+		return -ETIMEDOUT;
+	}
+
+	return 0;
+}
 
 static int ptn3460_write_byte(struct ptn3460_platform_data *pd, char addr,
 		char val)
@@ -116,6 +145,9 @@ static void ptn3460_work(struct work_struct *work)
 	ret = ptn3460_select_edid(pd);
 	if (ret)
 		dev_err(pd->dev, "Select edid failed ret=%d\n", ret);
+
+	atomic_set(&ptn3460_ready, PTN3460_READY_UNBLOCK);
+	wake_up(&ptn3460_wait_queue);
 }
 
 static int ptn3460_power_up(struct ptn3460_platform_data *pd)
@@ -142,6 +174,8 @@ static int ptn3460_power_down(struct ptn3460_platform_data *pd)
 {
 	if (work_pending(&pd->ptn_work.work))
 		flush_work_sync(&pd->ptn_work.work);
+
+	atomic_set(&ptn3460_ready, PTN3460_READY_BLOCK);
 
 	if (pd->gpio_rst_n > 0)
 		gpio_set_value(pd->gpio_rst_n, 1);
