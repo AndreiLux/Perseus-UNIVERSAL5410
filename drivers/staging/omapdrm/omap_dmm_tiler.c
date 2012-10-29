@@ -991,7 +991,7 @@ static int omap_dmm_resume(struct device *dev)
 }
 
 static const struct dev_pm_ops omap_dmm_pm_ops = {
-	.resume = omap_dmm_resume,
+	.resume_early = omap_dmm_resume,
 };
 #endif
 
