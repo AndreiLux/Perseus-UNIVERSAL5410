@@ -13,6 +13,7 @@
 
 /* BTS priority values for master IP from 0 to 15 */
 enum bts_priority {
+	BTS_FBM_DDR_R1 = 0,
 	/* Best Effort */
 	BTS_PRIOR_BE = 8,
 	/* The highest priority */
@@ -27,6 +28,7 @@ enum bts_priority {
 enum bts_bw_change {
 	BTS_DECREASE_BW,
 	BTS_INCREASE_BW,
+	BTS_MIXER_BW,
 };
 
 /*
@@ -89,6 +91,7 @@ struct exynos_bts_pdata {
 	struct exynos_fbm_pdata *fbm;
 	int res_num;
 	bool deblock_changable;
+	bool threshold_changable;
 	enum bts_traffic_control traffic_control_act;
 };
 
@@ -100,11 +103,16 @@ void exynos_bts_initialize(char *pd_name, bool power_on);
 void exynos_bts_change_bus_traffic(struct device *dev,
 				   enum bts_bw_change bw_change);
 
+/* Change threshold FBM */
+void exynos_bts_change_threshold(enum bts_bw_change bw_change);
+
 #ifdef CONFIG_S5P_DEV_BTS
-#define bts_initialize(a, b) exynos_bts_initialize(a, b);
-#define bts_change_bus_traffic(a, b) exynos_bts_change_bus_traffic(a, b);
+#define bts_initialize(a, b) exynos_bts_initialize(a, b)
+#define bts_change_bus_traffic(a, b) exynos_bts_change_bus_traffic(a, b)
+#define bts_change_threshold(a) exynos_bts_change_threshold(a)
 #else
 #define bts_initialize(a, b) do {} while (0)
 #define bts_change_bus_traffic(a, b) do {} while (0)
+#define bts_change_threshold(a) do {} while (0)
 #endif
 #endif	/* __EXYNOS_BTS_H_ */

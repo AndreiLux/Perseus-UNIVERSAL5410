@@ -40,6 +40,9 @@
 #define BTS_SHAPING_ON_OFF_REG1 0x44
 #define BTS_DEBLOCKING_SOURCE_SELECTION 0x50
 
+/* FBM (Flexible Blocking Monitor) registers */
+#define BTS_THRESHOLD_SEL0 0x40
+
 /*
  * Fields of BTS_CONTROL register
  * BTS_CTL_ENABLE indicates BTS_ON_OFF field
@@ -69,6 +72,9 @@
 #define BTS_DISABLE 0
 #define BTS_ENABLE  1
 
+#define BTS_UP_THRESHOLD 0x4
+#define BTS_MIXER_THRESHOLD 0x3
+
 static LIST_HEAD(fbm_list);
 static LIST_HEAD(bts_list);
 
@@ -91,6 +97,7 @@ struct exynos_bts_local_data {
 	 * in case of controlling bus traffic
 	 */
 	bool deblock_changable;
+	bool threshold_changable;
 };
 
 /* Structure for a BTS driver.
@@ -204,6 +211,10 @@ static void bts_set_default_bus_traffic(struct exynos_bts_local_data *data,
 					enum bts_priority prior)
 {
 	switch (prior) {
+	case BTS_FBM_DDR_R1:
+		data->cur_status.is_enabled = true;
+		data->cur_status.cur_priority = prior;
+		break;
 	case BTS_PRIOR_BE:
 		bts_set_blocking(data);
 		bts_set_deblocking(data, find_fbm_port(BTS_1ST_FBM_SRC));
@@ -222,6 +233,10 @@ static void bts_restore_bus_traffic(struct exynos_bts_local_data *data)
 	enum bts_priority prior = data->cur_status.cur_priority;
 
 	switch (prior) {
+	case BTS_FBM_DDR_R1:
+		data->cur_status.is_enabled = true;
+		data->cur_status.cur_priority = prior;
+		break;
 	case BTS_PRIOR_BE:
 		bts_set_blocking(data);
 		bts_set_deblocking(data, data->cur_status.fbm_src);
@@ -231,6 +246,36 @@ static void bts_restore_bus_traffic(struct exynos_bts_local_data *data)
 		break;
 	default:
 		break;
+	}
+}
+
+/* change threshold FBM */
+void exynos_bts_change_threshold(enum bts_bw_change bw_change)
+{
+	struct exynos_bts_data *bts_data;
+	struct exynos_bts_local_data *bts_local_data;
+	char *reason;
+	int threshold;
+	int i;
+
+	list_for_each_entry(bts_data, &bts_list, node) {
+		bts_local_data = bts_data->bts_local_data;
+		for (i = 0; i < bts_data->listnum; i++) {
+			if (bts_local_data->threshold_changable) {
+				if (bw_change == BTS_INCREASE_BW) {
+					threshold = BTS_UP_THRESHOLD;
+					reason = "increasing";
+				} else if (bw_change == BTS_MIXER_BW) {
+					threshold = BTS_MIXER_THRESHOLD;
+					reason = "mixer";
+				}
+
+				writel(threshold, bts_local_data->base + BTS_THRESHOLD_SEL0);
+				pr_debug("%s: Change BTS threshold for %s BW\n",
+					dev_name(bts_data->dev), reason);
+			}
+			bts_local_data++;
+		}
 	}
 }
 
@@ -517,6 +562,8 @@ static int bts_probe(struct platform_device *pdev)
 		bts_local_data->def_priority = bts_pdata->def_priority;
 		bts_local_data->deblock_changable =
 						bts_pdata->deblock_changable;
+		bts_local_data->threshold_changable =
+						bts_pdata->threshold_changable;
 		pr_debug("%s: Set default bus BW with priority %d for res[%d]\n",
 					dev_name(&pdev->dev),
 					bts_local_data->def_priority, i);
