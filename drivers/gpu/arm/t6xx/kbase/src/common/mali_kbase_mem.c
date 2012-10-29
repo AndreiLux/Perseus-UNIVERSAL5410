@@ -1788,7 +1788,7 @@ void kbase_free_phy_pages(struct kbase_va_region *reg)
 			kbase_device_trace_buffer_uninstall(reg->kctx);
 			vfree(tb);
 		}
-		else if (reg->flags & KBASE_REG_IS_RB)
+		else if (reg->flags & (KBASE_REG_IS_RB | KBASE_REG_IS_MMU_DUMP))
 		{
 			/* nothing to do */
 		}
