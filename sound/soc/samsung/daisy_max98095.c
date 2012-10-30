@@ -404,7 +404,7 @@ static int daisy_init(struct snd_soc_pcm_runtime *rtd)
 				       &daisy_hp_jack_gpio);
 	}
 
-	plugin = daisy_dapm_controls[0].private_value;
+	plugin = (void *)daisy_dapm_controls[0].private_value;
 	if (plugin)
 		snd_soc_jack_new(codec, "HDMI Jack",
 				 SND_JACK_AVOUT, &daisy_hdmi_jack);
@@ -434,6 +434,8 @@ static int daisy_resume_post(struct snd_soc_card *card)
 
 	if (gpio_is_valid(daisy_hp_jack_gpio.gpio))
 		snd_soc_jack_gpio_detect(&daisy_hp_jack_gpio);
+
+	return 0;
 }
 
 static int daisy_hdmi_jack_report(int plugged)
