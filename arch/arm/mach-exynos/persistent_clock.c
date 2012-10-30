@@ -99,6 +99,7 @@ static int __devexit exynos_persistent_clock_remove(struct platform_device *dev)
 static int __devinit exynos_persistent_clock_probe(struct platform_device *pdev)
 {
 	struct resource *res;
+	struct rtc_time tm;
 	unsigned int tmp;
 	int ret;
 
@@ -127,6 +128,43 @@ static int __devinit exynos_persistent_clock_probe(struct platform_device *pdev)
 	}
 
 	clk_enable(rtc_clk);
+
+	/*
+	 * initializing rtc with valid time values because of
+	 * undefined reset values
+	 */
+	tm.tm_year	= 100;
+	tm.tm_mon	= 1;
+	tm.tm_mday	= 1;
+	tm.tm_hour	= 0;
+	tm.tm_min	= 0;
+	tm.tm_sec	= 0;
+
+	/* enable rtc before writing bcd values */
+	tmp = readw(exynos_rtc_base + S3C2410_RTCCON);
+	writew(tmp | S3C2410_RTCCON_RTCEN,
+		exynos_rtc_base + S3C2410_RTCCON);
+	tmp = readw(exynos_rtc_base + S3C2410_RTCCON);
+	writew(tmp & ~S3C2410_RTCCON_CNTSEL,
+		exynos_rtc_base + S3C2410_RTCCON);
+	tmp = readw(exynos_rtc_base + S3C2410_RTCCON);
+	writew(tmp & ~S3C2410_RTCCON_CLKRST,
+		exynos_rtc_base + S3C2410_RTCCON);
+
+	writeb(bin2bcd(tm.tm_sec), exynos_rtc_base + S3C2410_RTCSEC);
+	writeb(bin2bcd(tm.tm_min), exynos_rtc_base + S3C2410_RTCMIN);
+	writeb(bin2bcd(tm.tm_hour), exynos_rtc_base + S3C2410_RTCHOUR);
+	writeb(bin2bcd(tm.tm_mday), exynos_rtc_base + S3C2410_RTCDATE);
+	writeb(bin2bcd(tm.tm_mon), exynos_rtc_base + S3C2410_RTCMON);
+	writeb(bin2bcd(1900 + tm.tm_year), exynos_rtc_base + S3C2410_RTCYEAR);
+
+	pr_debug("set time %04d.%02d.%02d %02d:%02d:%02d\n", 1900 + tm.tm_year,
+		 tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+	/* checking rtc time values are valid or not */
+	exynos_persistent_clock_read(&tm);
+	BUG_ON(rtc_valid_tm(&tm)) ;
+
 	tmp = readw(exynos_rtc_base + S3C2410_RTCCON);
 	tmp &= ~S3C2410_RTCCON_RTCEN;
 	writew(tmp, exynos_rtc_base + S3C2410_RTCCON);
