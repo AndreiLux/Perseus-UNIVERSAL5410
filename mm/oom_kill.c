@@ -355,14 +355,6 @@ static struct task_struct *select_bad_process(unsigned int *ppoints,
 			if (p == current) {
 				chosen = p;
 				*ppoints = 1000;
-			} else if (!force_kill) {
-				/*
-				 * If this task is not being ptraced on exit,
-				 * then wait for it to finish before killing
-				 * some other task unnecessarily.
-				 */
-				if (!(p->group_leader->ptrace & PT_TRACE_EXIT))
-					return ERR_PTR(-1UL);
 			}
 		}
 
