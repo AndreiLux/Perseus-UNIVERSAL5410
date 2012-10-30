@@ -1051,13 +1051,17 @@ static int __init mobicore_init(void)
 		return -ENODEV;
 	}
 
+	ret = mc_fastcall_init();
+	if (ret)
+		goto error;
+
 	init_completion(&ctx.isr_comp);
 	/* set up S-SIQ interrupt handler */
 	ret = request_irq(MC_INTR_SSIQ, mc_ssiq_isr, IRQF_TRIGGER_RISING,
 			MC_ADMIN_DEVNODE, &ctx);
 	if (ret != 0) {
 		MCDRV_DBG_ERROR("interrupt request failed\n");
-		goto error;
+		goto err_req_irq;
 	}
 
 #ifdef MC_PM_RUNTIME
@@ -1109,6 +1113,8 @@ free_admin:
 	misc_deregister(&mc_admin_device);
 free_isr:
 	free_irq(MC_INTR_SSIQ, &ctx);
+err_req_irq:
+	mc_fastcall_destroy();
 error:
 	return ret;
 }
@@ -1133,6 +1139,9 @@ static void __exit mobicore_exit(void)
 
 	misc_deregister(&mc_admin_device);
 	misc_deregister(&mc_user_device);
+
+	mc_fastcall_destroy();
+
 	MCDRV_DBG_VERBOSE("exit");
 }
 

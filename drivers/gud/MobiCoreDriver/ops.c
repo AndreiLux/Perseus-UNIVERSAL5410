@@ -31,6 +31,60 @@
 #define MC_STATUS_HALT	3
 #define SYS_STATE_HALT	(4 << 8)
 
+static struct task_struct	*fastcall_thread;
+static DEFINE_KTHREAD_WORKER(fastcall_worker);
+
+struct fastcall_work {
+	struct kthread_work work;
+	void *data;
+};
+
+static void fastcall_work_func(struct kthread_work *work)
+{
+	struct fastcall_work *fc_work =
+		container_of(work, struct fastcall_work, work);
+	_smc(fc_work->data);
+}
+
+void mc_fastcall(void *data)
+{
+	struct fastcall_work fc_work = {
+		KTHREAD_WORK_INIT(fc_work.work, fastcall_work_func),
+		.data = data,
+	};
+
+	queue_kthread_work(&fastcall_worker, &fc_work.work);
+	flush_kthread_work(&fc_work.work);
+}
+
+int mc_fastcall_init(void)
+{
+	int ret = 0;
+
+	fastcall_thread = kthread_create(kthread_worker_fn, &fastcall_worker,
+					 "mc_fastcall");
+	if (IS_ERR(fastcall_thread)) {
+		ret = PTR_ERR(fastcall_thread);
+		fastcall_thread = NULL;
+		MCDRV_DBG_ERROR("cannot create fastcall wq (%d)\n", ret);
+		return ret;
+	}
+
+	/* this thread MUST run on CPU 0 */
+	kthread_bind(fastcall_thread, 0);
+	wake_up_process(fastcall_thread);
+
+	return 0;
+}
+
+void mc_fastcall_destroy(void)
+{
+	if (!IS_ERR_OR_NULL(fastcall_thread)) {
+		kthread_stop(fastcall_thread);
+		fastcall_thread = NULL;
+	}
+}
+
 int mc_info(uint32_t ext_info_id, uint32_t *state, uint32_t *ext_info)
 {
 	int ret = 0;

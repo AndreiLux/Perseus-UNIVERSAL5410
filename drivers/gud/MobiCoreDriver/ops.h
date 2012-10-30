@@ -20,9 +20,8 @@ int mc_info(uint32_t ext_info_id, uint32_t *state, uint32_t *ext_info);
 int mc_init(uint32_t base, uint32_t  nq_offset, uint32_t  nq_length,
 	uint32_t mcp_offset, uint32_t  mcp_length);
 
-inline static void mc_fastcall(void *data)
-{
-	work_on_cpu(0, _smc, data);
-}
+void mc_fastcall(void *data);
+int mc_fastcall_init(void);
+void mc_fastcall_destroy(void);
 
 #endif /* __MC_OPS_H */
