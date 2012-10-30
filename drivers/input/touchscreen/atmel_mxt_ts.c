@@ -11,6 +11,7 @@
  *
  */
 
+#include <linux/async.h>
 #include <linux/debugfs.h>
 #include <linux/completion.h>
 #include <linux/module.h>
@@ -2516,12 +2517,79 @@ static int mxt_initialize(struct mxt_data *data)
 	return 0;
 }
 
+
+static void mxt_initialize_async(void *closure, async_cookie_t cookie)
+{
+	struct mxt_data *data = closure;
+	struct i2c_client *client = data->client;
+	unsigned long irqflags;
+	int error;
+
+	if (!mxt_in_bootloader(data)) {
+		error = mxt_initialize(data);
+		if (error)
+			goto error_free_object;
+	} else {
+		dev_info(&client->dev, "device came up in bootloader mode.\n");
+	}
+
+	error = mxt_input_dev_create(data);
+	if (error)
+		goto error_free_object;
+
+	/* Default to falling edge if no platform data provided */
+	irqflags = data->pdata ? data->pdata->irqflags : IRQF_TRIGGER_FALLING;
+	error = request_threaded_irq(client->irq,
+				     NULL,
+				     mxt_interrupt,
+				     irqflags,
+				     client->name,
+				     data);
+	if (error) {
+		dev_err(&client->dev, "Failed to register interrupt\n");
+		goto error_unregister_device;
+	}
+
+	if (!mxt_in_bootloader(data)) {
+		error = mxt_handle_messages(data, true);
+		if (error)
+			goto error_free_irq;
+	}
+
+	/* Force the device to report back status so we can cache the device
+	 * config checksum
+	 */
+	error = mxt_write_object(data, MXT_GEN_COMMAND_T6, 0,
+				 MXT_COMMAND_REPORTALL, 1);
+	if (error)
+		dev_warn(&client->dev, "error making device report status.\n");
+
+	error = sysfs_create_group(&client->dev.kobj, &mxt_attr_group);
+	if (error)
+		dev_warn(&client->dev, "error creating sysfs entries.\n");
+
+	error = mxt_debugfs_init(data);
+	if (error)
+		dev_warn(&client->dev, "error creating debugfs entries.\n");
+
+	return;
+
+error_free_irq:
+	free_irq(client->irq, data);
+error_unregister_device:
+	input_unregister_device(data->input_dev);
+error_free_object:
+	kfree(data->object_table);
+	kfree(data->fw_file);
+	kfree(data->config_file);
+	kfree(data);
+}
+
 static int __devinit mxt_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
 	const struct mxt_platform_data *pdata = client->dev.platform_data;
 	struct mxt_data *data;
-	unsigned long irqflags;
 	int error;
 
 	data = kzalloc(sizeof(struct mxt_data), GFP_KERNEL);
@@ -2548,53 +2616,13 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	if (error)
 		goto err_free_object;
 
-	if (!mxt_in_bootloader(data)) {
-		error = mxt_initialize(data);
-		if (error)
-			goto err_free_object;
-	} else {
-		dev_info(&client->dev, "device came up in bootloader mode.\n");
-	}
 	init_completion(&data->bl_completion);
 	init_completion(&data->auto_cal_completion);
 
-	error = mxt_input_dev_create(data);
-	if (error)
-		goto err_free_object;
-
-	/* Default to falling edge if no platform data provided */
-	irqflags = pdata ? pdata->irqflags : IRQF_TRIGGER_FALLING;
-	error = request_threaded_irq(client->irq,
-				     NULL,
-				     mxt_interrupt,
-				     irqflags,
-				     client->name,
-				     data);
-	if (error) {
-		dev_err(&client->dev, "Failed to register interrupt\n");
-		goto err_unregister_device;
-	}
-
-	if (!mxt_in_bootloader(data)) {
-		error = mxt_handle_messages(data, true);
-		if (error)
-			goto err_free_irq;
-	}
-
-	error = sysfs_create_group(&client->dev.kobj, &mxt_attr_group);
-	if (error)
-		dev_warn(&client->dev, "error creating sysfs entries.\n");
-
-	error = mxt_debugfs_init(data);
-	if (error)
-		dev_warn(&client->dev, "error creating debugfs entries.\n");
+	async_schedule(mxt_initialize_async, data);
 
 	return 0;
 
-err_free_irq:
-	free_irq(client->irq, data);
-err_unregister_device:
-	input_unregister_device(data->input_dev);
 err_free_object:
 	kfree(data->object_table);
 	kfree(data->fw_file);
