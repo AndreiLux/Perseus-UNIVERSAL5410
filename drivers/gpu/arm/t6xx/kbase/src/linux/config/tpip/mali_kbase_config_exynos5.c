@@ -2243,7 +2243,7 @@ struct mali_hwcounter_state {
 	u32 last_read[MALI_HWC_TOTAL];		/* last counter value read */
 };
 static struct mali_hwcounter_state mali_hwcs;
-static osk_spinlock mali_hwcounter_spinlock;
+static osk_mutex mali_hwcounter_mutex;
 
 /*
  * Support for mapping between hw counters and trace events.
@@ -2562,21 +2562,20 @@ static void mali_hwcounter_collect(struct work_struct *w)
 {
 	mali_error error;
 
-	osk_spinlock_lock(&mali_hwcounter_spinlock);
-	if (!mali_hwcs.active) {
-		osk_spinlock_unlock(&mali_hwcounter_spinlock);
-		return;
+	osk_mutex_lock(&mali_hwcounter_mutex);
+	if (mali_hwcs.active) {
+		/* NB: dumping the counters can block */
+		error = kbase_instr_hwcnt_dump(mali_hwcs.ctx);
+		if (error == MALI_ERROR_NONE) {
+			/* extract data and generate trace events */
+			JM_DISPATCH_EVENTS();
+			TILER_DISPATCH_EVENTS();
+			SHADER_DISPATCH_EVENTS();
+			MMU_DISPATCH_EVENTS();
+		} else
+			pr_err("%s: failed to dump hw counters\n", __func__);
 	}
-	error = kbase_instr_hwcnt_dump(mali_hwcs.ctx);
-	osk_spinlock_unlock(&mali_hwcounter_spinlock);
-	if (error == MALI_ERROR_NONE) {
-		/* extract data and generate trace events */
-		JM_DISPATCH_EVENTS();
-		TILER_DISPATCH_EVENTS();
-		SHADER_DISPATCH_EVENTS();
-		MMU_DISPATCH_EVENTS();
-	} else
-		pr_err("%s: failed to dump hw counters\n", __func__);
+	osk_mutex_unlock(&mali_hwcounter_mutex);
 }
 static DECLARE_WORK(mali_hwcounter_work, mali_hwcounter_collect);
 
@@ -2603,8 +2602,11 @@ static int mali_hwcounter_polling_start(struct kbase_device *kbdev)
 {
 	int ncounters = 0;
 
-	if (mali_hwcs.active)
+	osk_mutex_lock(&mali_hwcounter_mutex);
+	if (mali_hwcs.active) {
+		osk_mutex_unlock(&mali_hwcounter_mutex);
 		return -EALREADY;
+	}
 
 	/* Construct hw counter bitmaps from enabled trace events */
 	memset(&mali_hwcs.setup, 0, sizeof(mali_hwcs.setup));
@@ -2620,7 +2622,8 @@ static int mali_hwcounter_polling_start(struct kbase_device *kbdev)
 		mali_hwcs.ctx = kbase_create_context(kbdev);
 		if (mali_hwcs.ctx == NULL) {
 			pr_err("%s: cannot create context\n", __func__);
-			return -EIO;
+			osk_mutex_unlock(&mali_hwcounter_mutex);
+			return -ENOSPC;
 		}
 		mali_hwcs.buf = kbase_va_alloc(mali_hwcs.ctx,
 					       MALI_HWC_DUMP_SIZE);
@@ -2637,7 +2640,8 @@ static int mali_hwcounter_polling_start(struct kbase_device *kbdev)
 			kbase_destroy_context(mali_hwcs.ctx);
 			mali_hwcs.ctx = NULL;
 
-			return -EIO;/*TODO make unique*/
+			osk_mutex_unlock(&mali_hwcounter_mutex);
+			return -EIO;
 		}
 		kbase_instr_hwcnt_clear(mali_hwcs.ctx);
 		mali_hwcs.active = true;
@@ -2646,6 +2650,8 @@ static int mali_hwcounter_polling_start(struct kbase_device *kbdev)
 
 		drm_vblank_register_notifier(&mali_vblank_notifier);
 	}
+	osk_mutex_unlock(&mali_hwcounter_mutex);
+
 	return 0;
 }
 
@@ -2655,7 +2661,7 @@ static int mali_hwcounter_polling_start(struct kbase_device *kbdev)
  */
 static void mali_hwcounter_polling_stop(struct kbase_device *kbdev)
 {
-	osk_spinlock_lock(&mali_hwcounter_spinlock);
+	osk_mutex_lock(&mali_hwcounter_mutex);
 	if (mali_hwcs.active) {
 		drm_vblank_unregister_notifier(&mali_vblank_notifier);
 
@@ -2669,7 +2675,7 @@ static void mali_hwcounter_polling_stop(struct kbase_device *kbdev)
 
 		mali_hwcs.active = false;
 	}
-	osk_spinlock_unlock(&mali_hwcounter_spinlock);
+	osk_mutex_unlock(&mali_hwcounter_mutex);
 }
 
 static ssize_t mali_sysfs_show_hwc_enable(struct device *dev,
@@ -2700,7 +2706,7 @@ DEVICE_ATTR(hwc_enable, S_IRUGO|S_IWUSR, mali_sysfs_show_hwc_enable,
 
 static int mali_setup_system_tracing(struct device *dev)
 {
-	osk_spinlock_init(&mali_hwcounter_spinlock, OSK_LOCK_ORDER_PM_METRICS);
+	osk_mutex_init(&mali_hwcounter_mutex, OSK_LOCK_ORDER_FIRST);
 	mali_hwcs.wq = create_singlethread_workqueue("mali_hwc");
 	mali_hwcs.active = false;
 
@@ -2718,6 +2724,7 @@ static void mali_cleanup_system_tracing(struct device *dev)
 	mali_hwcounter_polling_stop(kbdev);
 	destroy_workqueue(mali_hwcs.wq);
 	device_remove_file(dev, &dev_attr_hwc_enable);
+	osk_mutex_term(&mali_hwcounter_mutex);
 }
 #else /* CONFIG_MALI_HWC_TRACE */
 static int mali_setup_system_tracing(struct device *dev)
