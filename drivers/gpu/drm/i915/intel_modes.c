@@ -163,7 +163,7 @@ intel_attach_adaptive_backlight_property(struct drm_connector *connector)
 
 		dev_priv->adaptive_backlight_property = prop;
 	}
-	drm_connector_attach_property(connector, prop, 0);
+	drm_connector_attach_property(connector, prop, 1);
 }
 
 void

@@ -623,15 +623,11 @@ static irqreturn_t ironlake_irq_handler(DRM_IRQ_ARGS)
 		intel_finish_page_flip_plane(dev, 1);
 	}
 
-	if (de_iir & DE_PIPEA_VBLANK) {
+	if (de_iir & DE_PIPEA_VBLANK)
 		drm_handle_vblank(dev, 0);
-		intel_adaptive_backlight(dev, 0);
-	}
 
-	if (de_iir & DE_PIPEB_VBLANK) {
+	if (de_iir & DE_PIPEB_VBLANK)
 		drm_handle_vblank(dev, 1);
-		intel_adaptive_backlight(dev, 1);
-	}
 
 	/* check event from PCH */
 	if (de_iir & DE_PCH_EVENT) {

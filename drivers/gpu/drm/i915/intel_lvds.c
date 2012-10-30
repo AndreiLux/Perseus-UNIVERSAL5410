@@ -573,7 +573,6 @@ static int intel_lvds_set_property(struct drm_connector *connector,
 {
 	struct intel_lvds *intel_lvds = intel_attached_lvds(connector);
 	struct drm_device *dev = connector->dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	if (property == dev->mode_config.scaling_mode_property) {
 		struct drm_crtc *crtc = intel_lvds->base.base.crtc;
@@ -597,18 +596,6 @@ static int intel_lvds_set_property(struct drm_connector *connector,
 				crtc->x, crtc->y, crtc->fb);
 		}
 	}
-
-	if (property == dev_priv->adaptive_backlight_property) {
-		dev_priv->adaptive_backlight_enabled = !!value;
-
-		if (dev_priv->adaptive_backlight_enabled)
-			intel_adaptive_backlight_enable(dev_priv);
-		else
-			intel_adaptive_backlight_disable(dev_priv, connector);
-	}
-
-	if (property == dev_priv->panel_gamma_property)
-		dev_priv->adaptive_backlight_panel_gamma = (u32)value * 65536 / 100;
 
 	return 0;
 }
@@ -991,11 +978,6 @@ bool intel_lvds_init(struct drm_device *dev)
 				      dev->mode_config.scaling_mode_property,
 				      DRM_MODE_SCALE_ASPECT);
 	intel_lvds->fitting_mode = DRM_MODE_SCALE_ASPECT;
-
-	if (INTEL_INFO(dev)->gen >= 6) {
-		intel_attach_adaptive_backlight_property(connector);
-		intel_attach_panel_gamma_property(connector);
-	}
 
 	/*
 	 * LVDS discovery:

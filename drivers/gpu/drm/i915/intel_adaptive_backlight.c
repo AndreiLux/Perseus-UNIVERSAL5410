@@ -250,12 +250,7 @@ void intel_adaptive_backlight(struct drm_device *dev, int pipe_vblank_event)
 		return;
 
 	/* Find the connector */
-	if (dev_priv->int_lvds_connector)
-		connector = dev_priv->int_lvds_connector;
-	else if (dev_priv->int_edp_connector)
-		connector = dev_priv->int_edp_connector;
-	else
-		return;
+	connector = dev_priv->int_edp_connector;
 
 	if (!connector)
 		return;

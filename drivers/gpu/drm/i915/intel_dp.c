@@ -2419,12 +2419,6 @@ intel_dp_add_properties(struct drm_device *dev,
 {
 	intel_attach_force_audio_property(connector);
 	intel_attach_broadcast_rgb_property(connector);
-
-	if ((INTEL_INFO(dev)->gen >= 6) &&
-	    (connector->connector_type == DRM_MODE_CONNECTOR_eDP)) {
-		intel_attach_adaptive_backlight_property(connector);
-		intel_attach_panel_gamma_property(connector);
-	}
 }
 
 void
