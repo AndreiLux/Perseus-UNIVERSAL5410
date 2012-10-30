@@ -115,7 +115,10 @@ static DEFINE_RAW_SPINLOCK(logbuf_lock);
  */
 static unsigned log_start;	/* Index into log_buf: next char to be read by syslog() */
 static unsigned con_start;	/* Index into log_buf: next char to be sent to consoles */
-static unsigned log_end;	/* Index into log_buf: most-recently-written-char + 1 */
+
+/* Index into log_buf: most-recently-written-char + 1 */
+static unsigned __suspend_volatile log_end;
+
 
 /*
  * If exclusive_console is non-NULL then only this console is to be printed to.
@@ -148,16 +151,12 @@ static int console_may_schedule;
 
 #ifdef CONFIG_PRINTK
 
-static char __log_buf[__LOG_BUF_LEN];
+static __suspend_volatile char __log_buf[__LOG_BUF_LEN];
 static char *log_buf = __log_buf;
-static int log_buf_len = __LOG_BUF_LEN;
-/* Added pm_check_* versions just in case these names are reused elsewhere */
-char *pm_check_log_buf = __log_buf;
-int *pm_check_log_buf_len = &log_buf_len;
+static __suspend_volatile int log_buf_len = __LOG_BUF_LEN;
 
-static unsigned logged_chars; /* Number of chars produced since last read+clear operation */
-/* Added pm_check_* versions just in case these names are reused elsewhere */
-unsigned *pm_check_logged_chars = &logged_chars;
+/* Number of chars produced since last read+clear operation */
+static __suspend_volatile unsigned logged_chars;
 static int saved_console_loglevel = -1;
 
 #ifdef CONFIG_KEXEC
@@ -827,7 +826,7 @@ static const char recursion_bug_msg [] =
 		KERN_CRIT "BUG: recent printk recursion!\n";
 static int recursion_bug;
 static int new_text_line = 1;
-static char printk_buf[1024];
+static __suspend_volatile char printk_buf[1024];
 
 int printk_delay_msec __read_mostly;
 
