@@ -1498,7 +1498,7 @@ static void __disk_unblock_events(struct gendisk *disk, bool check_now)
 void disk_unblock_events(struct gendisk *disk)
 {
 	struct disk_events *ev = disk->ev;
-	unsigned int flags;
+	unsigned long flags;
 
 	if (ev) {
 		spin_lock_irqsave(&ev->lock, flags);
