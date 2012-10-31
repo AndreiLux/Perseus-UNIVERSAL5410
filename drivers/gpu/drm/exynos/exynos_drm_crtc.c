@@ -124,16 +124,13 @@ static void exynos_drm_crtc_page_flip_apply(struct drm_crtc *crtc,
 			exynos_drm_encoder_crtc_commit);
 }
 
-static int exynos_drm_crtc_update(struct drm_crtc *crtc)
+static void exynos_drm_crtc_update(struct drm_crtc *crtc,
+				   struct drm_framebuffer *fb)
 {
 	struct exynos_drm_crtc *exynos_crtc;
 	struct exynos_drm_overlay *overlay;
 	struct exynos_drm_crtc_pos pos;
 	struct drm_display_mode *mode = &crtc->mode;
-	struct drm_framebuffer *fb = crtc->fb;
-
-	if (!mode || !fb)
-		return -EINVAL;
 
 	exynos_crtc = to_exynos_crtc(crtc);
 	overlay = &exynos_crtc->overlay;
@@ -152,9 +149,7 @@ static int exynos_drm_crtc_update(struct drm_crtc *crtc)
 	pos.crtc_w = fb->width - crtc->x;
 	pos.crtc_h = fb->height - crtc->y;
 
-	exynos_drm_overlay_update(overlay, crtc->fb, mode, &pos);
-
-	return 0;
+	exynos_drm_overlay_update(overlay, fb, mode, &pos);
 }
 
 static void exynos_drm_crtc_dpms(struct drm_crtc *crtc, int mode)
@@ -263,7 +258,12 @@ exynos_drm_crtc_mode_set(struct drm_crtc *crtc, struct drm_display_mode *mode,
 			  struct drm_display_mode *adjusted_mode, int x, int y,
 			  struct drm_framebuffer *old_fb)
 {
+	struct drm_framebuffer *fb = crtc->fb;
+
 	DRM_DEBUG_KMS("%s\n", __FILE__);
+
+	if (!fb)
+		return -EINVAL;
 
 	/*
 	 * copy the mode data adjusted by mode_fixup() into crtc->mode
@@ -271,23 +271,25 @@ exynos_drm_crtc_mode_set(struct drm_crtc *crtc, struct drm_display_mode *mode,
 	 */
 	memcpy(&crtc->mode, adjusted_mode, sizeof(*adjusted_mode));
 
-	return exynos_drm_crtc_update(crtc);
+	exynos_drm_crtc_update(crtc, fb);
+
+	return 0;
 }
 
 static int exynos_drm_crtc_mode_set_base(struct drm_crtc *crtc, int x, int y,
 					  struct drm_framebuffer *old_fb)
 {
-	int ret;
+	struct drm_framebuffer *fb = crtc->fb;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
-	ret = exynos_drm_crtc_update(crtc);
-	if (ret)
-		return ret;
+	if (!fb)
+		return -EINVAL;
 
+	exynos_drm_crtc_update(crtc, fb);
 	exynos_drm_crtc_apply(crtc);
 
-	return ret;
+	return 0;
 }
 
 static void exynos_drm_crtc_load_lut(struct drm_crtc *crtc)
