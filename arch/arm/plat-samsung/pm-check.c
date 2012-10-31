@@ -27,6 +27,8 @@
 
 #include <plat/pm.h>
 
+#include <mach/bitfix-snow.h>
+
 #if CONFIG_SAMSUNG_PM_CHECK_CHUNKSIZE < 1
 #error CONFIG_SAMSUNG_PM_CHECK_CHUNKSIZE must be a positive non-zero value
 #endif
@@ -95,12 +97,14 @@ static u32 s3c_pm_xor_mem(u32 val, const u32 *ptr, size_t len)
  * @val: Starting point for checksum function
  * @addr: Pointer to the physical memory range.  This must be page-aligned.
  * @len: Length (in bytes) of the memory range
+ * @for_save: If true we're processing memory for saving data.
  *
  * Loop through the chunk in PAGE_SIZE blocks, ensuring each
  * page is mapped.  Use either crc32 or xor checksum and return
  * back.
  */
-static inline u32 s3c_pm_process_mem(u32 val, u32 addr, size_t len)
+static inline u32 s3c_pm_process_mem(u32 val, u32 addr, size_t len,
+				     bool for_save)
 {
 	size_t processed = 0;
 
@@ -128,6 +132,10 @@ static inline u32 s3c_pm_process_mem(u32 val, u32 addr, size_t len)
 		else
 			val = crc32_le(val, virt, left);
 		kunmap_atomic(virt);
+
+		if (for_save)
+			bitfix_process_page(addr + processed);
+
 		processed += left;
 	}
 	return val;
@@ -193,6 +201,7 @@ void s3c_pm_check_prepare(void)
 	/* Timing code generates warnings at this point in suspend */
 	if (pm_check_print_timings)
 		start = ktime_get();
+	bitfix_prepare();
 	s3c_pm_run_sysram(s3c_pm_countram, &crc_size);
 	if (pm_check_print_timings) {
 		stop = ktime_get();
@@ -252,6 +261,10 @@ static bool s3c_pm_should_skip(phys_addr_t addr, u32 size)
 		s3c_pm_printskip("volatile suspend data", addr);
 		return true;
 	}
+	if (bitfix_does_overlap_reserved(addr, size)) {
+		s3c_pm_printskip("bitfix", addr);
+		return true;
+	}
 
 	return false;
 }
@@ -267,7 +280,7 @@ static u32 *s3c_pm_makecheck(struct resource *res, u32 *val)
 			left = pm_check_chunksize;
 
 		if (!s3c_pm_should_skip(addr, left))
-			*val = s3c_pm_process_mem(~0, addr, left);
+			*val = s3c_pm_process_mem(~0, addr, left, true);
 	}
 
 	return val;
@@ -327,12 +340,21 @@ static u32 *s3c_pm_runcheck(struct resource *res, u32 *val)
 
 		/* calculate and check the checksum */
 
-		calc = s3c_pm_process_mem(~0, addr, left);
+		calc = s3c_pm_process_mem(~0, addr, left, false);
 		if (calc != *val) {
-			crc_err_cnt++;
 			S3C_PMDBG("s3c_pm_check: Restore CRC error at %08lx "
 				"(%08x vs %08x)\n",
 				addr, calc, *val);
+
+			bitfix_recover_chunk(addr, s3c_pm_should_skip);
+			calc = s3c_pm_process_mem(~0, addr, left, false);
+			if (calc != *val) {
+				crc_err_cnt++;
+				S3C_PMDBG("s3c_pm_check: ERROR: "
+					  "recovery failed!\n");
+			} else {
+				S3C_PMDBG("s3c_pm_check: Recovered\n");
+			}
 		}
 	}
 
@@ -382,6 +404,7 @@ void s3c_pm_check_cleanup(void)
 {
 	kfree(crcs);
 	crcs = NULL;
+	bitfix_finish();
 }
 
 /**
@@ -392,4 +415,13 @@ void s3c_pm_check_cleanup(void)
 void s3c_pm_check_set_enable(bool enabled)
 {
 	pm_check_enabled = enabled;
+}
+
+/**
+ * s3c_pm_check_set_chunksize() - set chunksize
+ * @chunksize: The value to set the chunksize to.
+ */
+void s3c_pm_check_set_chunksize(int chunksize)
+{
+	pm_check_chunksize = chunksize;
 }
