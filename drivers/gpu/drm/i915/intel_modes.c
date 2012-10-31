@@ -185,5 +185,5 @@ intel_attach_panel_gamma_property(struct drm_connector *connector)
 
 		dev_priv->panel_gamma_property = prop;
 	}
-	drm_connector_attach_property(connector, prop, 0);
+	drm_connector_attach_property(connector, prop, 1);
 }

@@ -28,6 +28,7 @@
  *      Chris Wilson <chris@chris-wilson.co.uk>
  */
 
+#include <linux/dmi.h>
 #include "intel_drv.h"
 
 #define PCI_LBPC 0xf4 /* legacy/combination backlight modes */
@@ -306,6 +307,22 @@ static void intel_panel_enable_backlight(struct drm_device *dev)
 	intel_panel_actually_set_backlight(dev, dev_priv->backlight_level);
 }
 
+static int intel_link_backlight(const struct dmi_system_id *id)
+{
+	DRM_DEBUG_KMS("Using Link backlight\n");
+	return 1;
+}
+
+static const struct dmi_system_id link_dmi_table[] = {
+	{
+		.callback = intel_link_backlight,
+		.ident = "Link",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Link"),
+		},
+	},
+};
+
 static void intel_panel_init_backlight(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -319,6 +336,13 @@ static void intel_panel_init_backlight(struct drm_device *dev)
 	dev_priv->backlight_level = dev_priv->get_backlight(dev);
 	dev_priv->backlight_level_has_been_set = false;
 	dev_priv->backlight_enabled = dev_priv->backlight_level != 0;
+
+	if (dmi_check_system(link_dmi_table)) {
+		intel_adaptive_backlight_setup(dev);
+		intel_attach_adaptive_backlight_property(
+					dev_priv->int_edp_connector);
+		intel_attach_panel_gamma_property(dev_priv->int_edp_connector);
+	}
 }
 
 enum drm_connector_status

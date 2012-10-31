@@ -1380,6 +1380,7 @@ extern void intel_adaptive_backlight(struct drm_device *dev, int pipe);
 extern void intel_adaptive_backlight_enable(struct drm_i915_private *dev_priv);
 extern void intel_adaptive_backlight_disable(struct drm_i915_private *dev_priv,
 					     struct drm_connector *connector);
+extern void intel_adaptive_backlight_setup(struct drm_device *dev);
 
 /* intel_i2c.c */
 extern int intel_setup_gmbus(struct drm_device *dev);

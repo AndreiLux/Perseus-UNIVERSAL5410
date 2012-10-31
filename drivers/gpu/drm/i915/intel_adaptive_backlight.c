@@ -323,3 +323,78 @@ void intel_adaptive_backlight_disable(struct drm_i915_private *dev_priv,
 	set_levels(dev, pipe, FIXED_ONE);
 }
 
+
+
+static u32 intel_link_get_backlight(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 val;
+
+	val = I915_READ(BLC_PWM_CPU_CTL) & BACKLIGHT_DUTY_CYCLE_MASK;
+
+	return (val - 2) / 4;
+}
+
+static u32 intel_link_get_max_backlight(struct drm_device *dev)
+{
+	return 255;
+}
+
+static void intel_link_set_backlight(struct drm_device *dev, u32 level)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 hw_level;
+	u32 val;
+
+	dev_priv->backlight_level = level;
+	if (level > 0)
+		dev_priv->backlight_level_has_been_set = true;
+
+	if (dev_priv->adaptive_backlight_enabled)
+		level = level * dev_priv->backlight_correction_level >> 8;
+
+	if (level == 0)
+		hw_level = 0;
+	else
+		hw_level = level * 4 + 2;
+
+	val = I915_READ(BLC_PWM_CPU_CTL) & ~BACKLIGHT_DUTY_CYCLE_MASK;
+	I915_WRITE(BLC_PWM_CPU_CTL, val | hw_level);
+}
+
+static void intel_link_disable_backlight(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	dev_priv->backlight_enabled = false;
+	dev_priv->set_backlight(dev, 0);
+}
+
+static void intel_link_enable_backlight(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	/* Increase the level from 0 unless someone in userspace has requested a
+	 * nonzero level at least once already -- in that case, we assume that
+	 * they know what they're doing and will raise the level themselves. */
+	if (dev_priv->backlight_level == 0 &&
+	    !dev_priv->backlight_level_has_been_set)
+		dev_priv->backlight_level = dev_priv->get_max_backlight(dev);
+
+	dev_priv->backlight_enabled = true;
+	dev_priv->set_backlight(dev, dev_priv->backlight_level);
+}
+
+void intel_adaptive_backlight_setup(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	dev_priv->get_backlight = intel_link_get_backlight;
+	dev_priv->get_max_backlight = intel_link_get_max_backlight;
+	dev_priv->set_backlight = intel_link_set_backlight;
+	dev_priv->disable_backlight = intel_link_disable_backlight;
+	dev_priv->enable_backlight = intel_link_enable_backlight;
+
+	intel_adaptive_backlight_enable(dev_priv);
+}
+
