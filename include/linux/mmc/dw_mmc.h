@@ -215,6 +215,8 @@ struct dw_mci_dma_ops {
 #define DW_MCI_QUIRK_BROKEN_CARD_DETECTION	BIT(3)
 /* No detect end bit during read */
 #define DW_MCI_QUIRK_NO_DETECT_EBIT             BIT(4)
+/* Hardware reset using power off/on of card */
+#define DW_MMC_QUIRK_HW_RESET_PW 		BIT(5)
 
 enum dw_mci_cd_types {
 	DW_MCI_CD_INTERNAL,	/* use mmc internal CD line */

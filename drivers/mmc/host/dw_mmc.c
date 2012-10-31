@@ -1095,6 +1095,14 @@ static void dw_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	case MMC_POWER_UP:
 		set_bit(DW_MMC_CARD_NEED_INIT, &slot->flags);
 		break;
+	case MMC_POWER_ON:
+		/* To cheat supporting hardware reset using power off/on
+		 * as reset function to modify reset function value of ext_csd reg
+		 */
+		if (mmc->caps & MMC_CAP_HW_RESET && mmc->card &&
+			slot->host->quirks & DW_MMC_QUIRK_HW_RESET_PW)
+			mmc->card->ext_csd.rst_n_function |= EXT_CSD_RST_N_ENABLED;
+		break;
 	default:
 		break;
 	}
