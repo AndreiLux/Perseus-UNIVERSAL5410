@@ -40,7 +40,7 @@
 */
 
 static bool pm_check_use_xor = 1;
-static bool pm_check_enabled = 1;
+static bool pm_check_enabled;
 static bool pm_check_should_panic = 1;
 static bool pm_check_print_skips;
 static bool pm_check_print_timings;
@@ -364,6 +364,9 @@ void s3c_pm_check_restore(void)
 {
 	ktime_t start, stop, delta;
 
+	if (crcs == NULL)
+		return;
+
 	crc_err_cnt = 0;
 	if (pm_check_print_timings)
 		start = ktime_get();
@@ -393,4 +396,14 @@ void s3c_pm_check_cleanup(void)
 {
 	kfree(crcs);
 	crcs = NULL;
+}
+
+/**
+ * s3c_pm_check_enable() - enable suspend/resume memory checks
+ * @enabled: True to enable, false to disable
+ *
+ */
+void s3c_pm_check_set_enable(bool enabled)
+{
+	pm_check_enabled = enabled;
 }

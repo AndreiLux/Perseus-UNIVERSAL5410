@@ -56,6 +56,9 @@
 #include <plat/ehci.h>
 #include <plat/dp.h>
 #include <plat/s3c64xx-spi.h>
+#ifdef CONFIG_SAMSUNG_PM_CHECK
+#include <plat/pm.h>
+#endif
 
 #include <video/platform_lcd.h>
 
@@ -1040,7 +1043,7 @@ static void exynos5_i2c_setup(void)
 
 static void __init exynos5250_dt_machine_init(void)
 {
-	struct device_node *srom_np, *np;
+	struct device_node *srom_np, *np, *fw_np;
 	int i;
 
 	regulator_register_fixed(0, dummy_supplies, ARRAY_SIZE(dummy_supplies));
@@ -1202,6 +1205,26 @@ static void __init exynos5250_dt_machine_init(void)
 	ppmu_init(&exynos_ppmu[PPMU_RIGHT0_BUS], &exynos5_busfreq.dev);
 #endif
 	platform_add_devices(smdk5250_devices, ARRAY_SIZE(smdk5250_devices));
+
+#ifdef CONFIG_SAMSUNG_PM_CHECK
+	/*
+	 * Snow RO firmware 2695.90.0 has a bug where memory can be corrupted
+	 * coming out of resume.  Enable memory checking on the suspend/resume
+	 * path for that bios.  This is a slow (1 second) operation so we do
+	 * not want it on for all devices.
+	 */
+	fw_np = of_find_node_by_path("/firmware/chromeos");
+	if (fw_np) {
+		const char *version;
+
+		if (of_property_read_string(fw_np, "readonly-firmware-version",
+					    &version) == 0) {
+			if (strcmp(version, "Google_Snow.2695.90.0") == 0)
+				s3c_pm_check_set_enable(true);
+		}
+	}
+#endif
+
 out:
 	of_node_put(srom_np);
 	return;
