@@ -412,7 +412,7 @@ static bool dw_mci_wait_reset(struct device *dev, struct dw_mci *host,
 			if (reset_val & SDMMC_CTRL_RESET)
 				/* After CTRL Reset, Should be needed clk val to CIU */
 				mci_send_cmd(host->cur_slot,
-				SDMMC_CMD_UPD_CLK | SDMMC_CMD_PRV_DAT_WAIT, 0);
+				SDMMC_CMD_UPD_CLK, 0);
 			return true;
 		}
 	} while (time_before(jiffies, timeout));
