@@ -1853,14 +1853,18 @@ err_free_device:
 static void cyapa_detect(struct cyapa *cyapa)
 {
 	struct device *dev = &cyapa->client->dev;
+	char *envp[] = {"ERROR=1", NULL};
 	int ret;
 
 	ret = cyapa_check_is_operational(cyapa);
 	if (ret == -ETIMEDOUT) {
 		dev_err(dev, "no device detected, %d\n", ret);
-		return;
 	} else if (ret) {
 		dev_err(dev, "device detected, but not operational, %d\n", ret);
+	}
+
+	if (ret) {
+		kobject_uevent_env(&dev->kobj, KOBJ_CHANGE, envp);
 		return;
 	}
 
