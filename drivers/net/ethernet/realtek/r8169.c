@@ -419,6 +419,7 @@ enum rtl8168_registers {
 	MISC			= 0xf0,	/* 8168e only. */
 #define TXPLA_RST			(1 << 29)
 #define PWM_EN				(1 << 22)
+#define FORCE_CLK                      (1 << 15) /* force clock request */
 };
 
 enum rtl_register_content {
@@ -482,6 +483,7 @@ enum rtl_register_content {
 	PMEnable	= (1 << 0),	/* Power Management Enable */
 
 	/* Config2 register p. 25 */
+	ClkReqEn        = (1 << 7),     /* Clock Request Enable */
 	MSIEnable	= (1 << 5),	/* 8169 only. Reserved in the 8168. */
 	PCI_Clock_66MHz = 0x01,
 	PCI_Clock_33MHz = 0x00,
@@ -502,6 +504,7 @@ enum rtl_register_content {
 	Spi_en		= (1 << 3),
 	LanWake		= (1 << 1),	/* LanWake enable/disable */
 	PMEStatus	= (1 << 0),	/* PME status can be reset by PCI RST# */
+	ASPM_en         = (1 << 0),     /* ASPM enable */
 
 	/* TBICSR p.28 */
 	TBIReset	= 0x80000000,
@@ -4512,8 +4515,6 @@ static void rtl_hw_start_8168e_2(void __iomem *ioaddr, struct pci_dev *pdev)
 
 	RTL_W8(MaxTxPacketSize, EarlySize);
 
-	rtl_disable_clock_request(pdev);
-
 	RTL_W32(TxConfig, RTL_R32(TxConfig) | TXCFG_AUTO_FIFO);
 	RTL_W8(MCU, RTL_R8(MCU) & ~NOW_IS_OOB);
 
@@ -4522,7 +4523,8 @@ static void rtl_hw_start_8168e_2(void __iomem *ioaddr, struct pci_dev *pdev)
 
 	RTL_W8(DLLPR, RTL_R8(DLLPR) | PFM_EN);
 	RTL_W32(MISC, RTL_R32(MISC) | PWM_EN);
-	RTL_W8(Config5, RTL_R8(Config5) & ~Spi_en);
+	RTL_W8(Config5, (RTL_R8(Config5) & ~Spi_en) | ASPM_en);
+	RTL_W8(Config2, RTL_R8(Config2) | ClkReqEn);
 }
 
 static void rtl_hw_start_8168f_1(void __iomem *ioaddr, struct pci_dev *pdev)
@@ -4759,6 +4761,9 @@ static void rtl_hw_start_8105e_1(void __iomem *ioaddr, struct pci_dev *pdev)
 
 	RTL_W8(MCU, RTL_R8(MCU) | EN_NDP | EN_OOB_RESET);
 	RTL_W8(DLLPR, RTL_R8(DLLPR) | PFM_EN);
+	RTL_W8(Config5, RTL_R8(Config5) | ASPM_en);
+	RTL_W8(Config2, RTL_R8(Config2) | ClkReqEn);
+	RTL_W32(MISC, RTL_R32(MISC) | FORCE_CLK);
 
 	rtl_ephy_init(ioaddr, e_info_8105e_1, ARRAY_SIZE(e_info_8105e_1));
 }
