@@ -32,7 +32,6 @@ struct ptn3460_platform_data {
 	int gpio_pd_n;
 	int gpio_rst_n;
 	u32 edid_emulation;
-	int free_me;
 	struct delayed_work ptn_work;
 };
 
@@ -70,7 +69,6 @@ static int ptn3460_init_platform_data_from_dt(struct i2c_client *client)
 	pd = dev->platform_data;
 	pd->dev = dev;
 	pd->client = client;
-	pd->free_me = 1; /* Mark this to be freed later */
 
 	/* Fill platform data with device tree data */
 	pd->gpio_pd_n = of_get_named_gpio(dev->of_node, "powerdown-gpio", 0);
@@ -170,11 +168,9 @@ int ptn3460_probe(struct i2c_client *client, const struct i2c_device_id *device)
 	struct ptn3460_platform_data *pd;
 	int ret;
 
-	if (!dev->platform_data) {
-		ret = ptn3460_init_platform_data_from_dt(client);
-		if (ret)
-			return ret;
-	}
+	ret = ptn3460_init_platform_data_from_dt(client);
+	if (ret)
+		return ret;
 	pd = dev->platform_data;
 
 	if (pd->gpio_pd_n > 0) {
@@ -203,8 +199,7 @@ int ptn3460_probe(struct i2c_client *client, const struct i2c_device_id *device)
 	return 0;
 
 err_pd:
-	if (pd->free_me)
-		devm_kfree(dev, pd);
+	devm_kfree(dev, pd);
 	return ret;
 }
 
@@ -212,11 +207,13 @@ int ptn3460_remove(struct i2c_client *client)
 {
 	struct ptn3460_platform_data *pd = client->dev.platform_data;
 
-	if (pd && work_pending(&pd->ptn_work.work))
+	if (!pd)
+		return 0;
+
+	if (work_pending(&pd->ptn_work.work))
 		flush_work_sync(&pd->ptn_work.work);
 
-	if (pd && pd->free_me)
-		devm_kfree(&client->dev, pd);
+	devm_kfree(&client->dev, pd);
 	return 0;
 }
 
