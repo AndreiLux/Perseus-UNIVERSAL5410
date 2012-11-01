@@ -80,7 +80,7 @@ enum {
 
 struct qcusbnet {
 	struct list_head node;
-	struct kref refcount;
+	struct kobject kobj;
 	struct usbnet *usbnet;
 	struct usb_interface *iface;
 	int (*open)(struct net_device *);

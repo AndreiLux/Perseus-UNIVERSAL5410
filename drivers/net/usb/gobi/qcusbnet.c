@@ -34,9 +34,9 @@ static DEFINE_MUTEX(qcusbnet_lock);
 int gobi_debug;
 static struct class *devclass;
 
-static void free_dev(struct kref *ref)
+static void free_dev(struct kobject *ref)
 {
-	struct qcusbnet *dev = container_of(ref, struct qcusbnet, refcount);
+	struct qcusbnet *dev = container_of(ref, struct qcusbnet, kobj);
 	list_del(&dev->node);
 	kfree(dev);
 }
@@ -48,10 +48,14 @@ static void free_urb_with_skb(struct urb *urb)
 	usb_free_urb(urb);
 }
 
+static struct kobj_type ktype_qcusbnet = {
+		.release        = free_dev,
+};
+
 void qcusbnet_put(struct qcusbnet *dev)
 {
 	mutex_lock(&qcusbnet_lock);
-	kref_put(&dev->refcount, free_dev);
+	kobject_put(&dev->kobj);
 	mutex_unlock(&qcusbnet_lock);
 }
 
@@ -67,7 +71,7 @@ struct qcusbnet *qcusbnet_get(struct qcusbnet *key)
 	mutex_lock(&qcusbnet_lock);
 	list_for_each_entry(entry, &qcusbnet_list, node) {
 		if (entry == key) {
-			kref_get(&entry->refcount);
+			kobject_get(&entry->kobj);
 			mutex_unlock(&qcusbnet_lock);
 			return entry;
 		}
@@ -650,7 +654,8 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 
 	dev->qmi.devclass = devclass;
 
-	kref_init(&dev->refcount);
+	memset(&dev->kobj, 0, sizeof(dev->kobj));
+	kobject_init(&dev->kobj, &ktype_qcusbnet);
 	INIT_LIST_HEAD(&dev->node);
 	INIT_LIST_HEAD(&dev->qmi.clients);
 	dev->workqueue = alloc_ordered_workqueue("gobi", 0);

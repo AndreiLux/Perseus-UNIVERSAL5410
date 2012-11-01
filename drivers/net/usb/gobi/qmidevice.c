@@ -1548,6 +1548,7 @@ int qc_register(struct qcusbnet *dev)
 	cdev_init(&dev->qmi.cdev, &devqmi_fops);
 	dev->qmi.cdev.owner = THIS_MODULE;
 	dev->qmi.cdev.ops = &devqmi_fops;
+	dev->qmi.cdev.kobj.parent = &dev->kobj;
 
 	result = cdev_add(&dev->qmi.cdev, devno, 1);
 	if (result) {
