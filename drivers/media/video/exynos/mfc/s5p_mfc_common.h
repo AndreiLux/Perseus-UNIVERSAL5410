@@ -277,6 +277,9 @@ struct s5p_mfc_dev {
 
 	struct work_struct work_struct;
 	struct workqueue_struct *irq_workqueue;
+
+	/* to prevent suspend */
+	struct wakeup_source mfc_ws;
 };
 
 /**

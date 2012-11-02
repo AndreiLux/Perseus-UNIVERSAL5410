@@ -23,6 +23,7 @@
 #include <linux/videodev2.h>
 #include <linux/videodev2_exynos_media.h>
 #include <linux/proc_fs.h>
+#include <linux/pm_wakeup.h>
 #include <mach/videonode.h>
 #include <media/videobuf2-core.h>
 
@@ -824,6 +825,8 @@ static int s5p_mfc_open(struct file *file)
 
 	mfc_debug_enter();
 
+	__pm_stay_awake(&dev->mfc_ws);
+
 	node = s5p_mfc_get_node_type(file);
 	if (node == MFCNODE_INVALID) {
 		mfc_err("cannot specify node type\n");
@@ -1007,6 +1010,7 @@ err_ctx_alloc:
 err_drm_playback:
 #endif
 err_node_type:
+	__pm_relax(&dev->mfc_ws);
 	mfc_debug_leave();
 
 	return ret;
@@ -1086,6 +1090,8 @@ static int s5p_mfc_release(struct file *file)
 		kfree(ctx->enc_priv);
 	dev->ctx[ctx->num] = 0;
 	kfree(ctx);
+
+	__pm_relax(&dev->mfc_ws);
 
 	mfc_debug_leave();
 
@@ -1228,6 +1234,8 @@ static int __devinit s5p_mfc_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to get mfc clock source\n");
 		goto free_clk;
 	}
+
+	wakeup_source_init(&dev->mfc_ws, "mfc");
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (res == NULL) {
@@ -1491,6 +1499,7 @@ probe_out3:
 	kfree(dev->mfc_mem);
 probe_out2:
 probe_out1:
+	wakeup_source_trash(&dev->mfc_ws);
 	s5p_mfc_final_pm(dev);
 free_clk:
 
@@ -1534,6 +1543,7 @@ static int __devexit s5p_mfc_remove(struct platform_device *pdev)
 		kfree(dev->mfc_mem);
 		dev->mfc_mem = NULL;
 	}
+	wakeup_source_trash(&dev->mfc_ws);
 	s5p_mfc_final_pm(dev);
 	kfree(dev);
 	dev_dbg(&pdev->dev, "%s--\n", __func__);
