@@ -159,11 +159,6 @@
 /* .data section */
 #define DATA_DATA							\
 	*(.data)							\
-	. = ALIGN(8192);						\
-	VMLINUX_SYMBOL(__start_suspend_volatile) = .;			\
-	*(.suspend_volatile.data)					\
-	. = ALIGN(8192);						\
-	VMLINUX_SYMBOL(__stop_suspend_volatile) = .;			\
 	*(.ref.data)							\
 	*(.data..shared_aligned) /* percpu related */			\
 	DEV_KEEP(init.data)						\

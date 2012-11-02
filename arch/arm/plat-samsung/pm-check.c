@@ -48,9 +48,7 @@ static int pm_check_chunksize = CONFIG_SAMSUNG_PM_CHECK_CHUNKSIZE * 1024;
 
 static u32 crc_size;	/* size needed for the crc block */
 static u32 *crcs;	/* allocated over suspend/resume */
-
-/* number of errors found this resume */
-static __suspend_volatile u32 crc_err_cnt;
+static u32 crc_err_cnt;	/* number of errors found this resume */
 
 
 typedef u32 *(run_fn_t)(struct resource *ptr, u32 *arg);
@@ -207,90 +205,18 @@ void s3c_pm_check_prepare(void)
 		printk(KERN_ERR "Cannot allocated CRC save area\n");
 }
 
-/**
- * Tell whether the two regions overlap at all.
- *
- * If there's any overlap between the region ptr..ptr+size and
- * what..what+whatsz then we'll return true.
- *
- * @ptr: Start of region 1.
- * @size: Size of region 1.
- * @what: Start of region 2.
- * @whatsz: Size of region 2.
- * @return: True if the regions overlap; false otherwise.
-*/
-
-static inline bool in_region(phys_addr_t ptr, int size,
-			     phys_addr_t what, size_t whatsz)
-{
-	if ((what + whatsz) <= ptr)
-		return false;
-
-	if (what >= (ptr + size))
-		return false;
-
-	return true;
-}
-
-static inline void s3c_pm_printskip(char *desc, unsigned long addr)
-{
-	if (!pm_check_print_skips)
-		return;
-	S3C_PMDBG("s3c_pm_check: skipping %08lx, has %s in\n", addr, desc);
-}
-
-/* externs from printk.c and sleep.S */
-extern u32 *sleep_save_sp;
-
-/**
- * Zero memory that the sleep code may have used but doesn't care about.
- *
- * The sleep code uses some temporary memory that it doesn't need anymore
- * after resume.  We zero it out here so we don't have to skip a whole chunk.
- * This keeps CRCs consistent.
- *
- * Alternatively we could change sleep code to zero this memory, but we run
- * into some issues if we ever get a failed suspend (the normal resume code
- * doesn't run).
- */
-static void zero_temp_memory(void)
-{
-	sleep_save_sp = 0;
-}
-
-static bool s3c_pm_should_skip(phys_addr_t addr, u32 size)
-{
-	void *stkbase = current_thread_info();
-
-	if (in_region(addr, size, virt_to_phys(stkbase), THREAD_SIZE)) {
-		s3c_pm_printskip("stack", addr);
-		return true;
-	}
-	if (in_region(addr, size, virt_to_phys(crcs), crc_size)) {
-		s3c_pm_printskip("crc block", addr);
-		return true;
-	}
-	if (in_region(addr, size, virt_to_phys(__start_suspend_volatile),
-			__stop_suspend_volatile - __start_suspend_volatile)) {
-		s3c_pm_printskip("volatile suspend data", addr);
-		return true;
-	}
-
-	return false;
-}
-
 static u32 *s3c_pm_makecheck(struct resource *res, u32 *val)
 {
 	unsigned long addr, left;
 
 	for (addr = res->start; addr <= res->end;
-	     addr += pm_check_chunksize, val++) {
+	     addr += pm_check_chunksize) {
 		left = res->end - addr + 1;
 		if (left > pm_check_chunksize)
 			left = pm_check_chunksize;
 
-		if (!s3c_pm_should_skip(addr, left))
-			*val = s3c_pm_process_mem(~0, addr, left);
+		*val = s3c_pm_process_mem(~0, addr, left);
+		val++;
 	}
 
 	return val;
@@ -311,8 +237,6 @@ void s3c_pm_check_store(void)
 
 	if (pm_check_print_timings)
 		start = ktime_get();
-
-	zero_temp_memory();
 	s3c_pm_run_sysram(s3c_pm_makecheck, crcs);
 	if (pm_check_print_timings) {
 		stop = ktime_get();
@@ -321,6 +245,36 @@ void s3c_pm_check_store(void)
 			(unsigned long long)ktime_to_ns(delta) >> 10);
 	}
 }
+
+/* in_region
+ *
+ * return TRUE if the area defined by ptr..ptr+size contains the
+ * what..what+whatsz
+*/
+
+static inline int in_region(void *ptr, int size, void *what, size_t whatsz)
+{
+	if ((what+whatsz) < ptr)
+		return 0;
+
+	if (what > (ptr+size))
+		return 0;
+
+	return 1;
+}
+
+static inline void s3c_pm_printskip(char *desc, unsigned long addr)
+{
+	if (!pm_check_print_skips)
+		return;
+	S3C_PMDBG("s3c_pm_check: skipping %08lx, has %s in\n", addr, desc);
+}
+
+/* externs from printk.c and sleep.S */
+extern u32 *sleep_save_sp;
+extern char *pm_check_log_buf;
+extern int *pm_check_log_buf_len;
+extern unsigned *pm_check_logged_chars;
 
 /**
  * s3c_pm_runcheck() - helper to check a resource on restore.
@@ -336,17 +290,52 @@ static u32 *s3c_pm_runcheck(struct resource *res, u32 *val)
 {
 	unsigned long addr;
 	unsigned long left;
+	void *stkbase;
+	void *virt;
 	u32 calc;
 
+	stkbase = current_thread_info();
 	for (addr = res->start; addr <= res->end;
-	     addr += pm_check_chunksize, val++) {
+	     addr += pm_check_chunksize) {
+		virt = phys_to_virt(addr);
 		left = res->end - addr + 1;
 
 		if (left > pm_check_chunksize)
 			left = pm_check_chunksize;
 
-		if (s3c_pm_should_skip(addr, left))
-			continue;
+		if (in_region(virt, left, stkbase, THREAD_SIZE)) {
+			s3c_pm_printskip("stack", addr);
+			goto skip_check;
+		}
+		if (in_region(virt, left, crcs, crc_size)) {
+			s3c_pm_printskip("crc block", addr);
+			goto skip_check;
+		}
+		if (in_region(virt, left, &crc_err_cnt, sizeof(crc_err_cnt))) {
+			s3c_pm_printskip("crc_err_cnt", addr);
+			goto skip_check;
+		}
+		if (in_region(virt, left, pm_check_logged_chars,
+				sizeof(unsigned))) {
+			s3c_pm_printskip("logged_chars", addr);
+			goto skip_check;
+		}
+		if (in_region(virt, left, pm_check_log_buf,
+				*pm_check_log_buf_len)) {
+			s3c_pm_printskip("log_buf", addr);
+			goto skip_check;
+		}
+		if (in_region(virt, left, &sleep_save_sp,
+				sizeof(u32 *))) {
+			s3c_pm_printskip("sleep_save_sp", addr);
+			goto skip_check;
+		}
+		if (in_region(virt, left,
+			      sleep_save_sp - (PAGE_SIZE / sizeof(u32)),
+			      PAGE_SIZE * 2)) {
+			s3c_pm_printskip("*sleep_save_sp", addr);
+			goto skip_check;
+		}
 
 		/* calculate and check the checksum */
 
@@ -357,6 +346,9 @@ static u32 *s3c_pm_runcheck(struct resource *res, u32 *val)
 				"(%08x vs %08x)\n",
 				addr, calc, *val);
 		}
+
+	skip_check:
+		val++;
 	}
 
 	return val;
@@ -378,7 +370,6 @@ void s3c_pm_check_restore(void)
 	crc_err_cnt = 0;
 	if (pm_check_print_timings)
 		start = ktime_get();
-	zero_temp_memory();
 	s3c_pm_run_sysram(s3c_pm_runcheck, crcs);
 	if (pm_check_print_timings) {
 		stop = ktime_get();

@@ -36,16 +36,6 @@ extern void (*pm_power_off)(void);
 extern void (*pm_power_off_prepare)(void);
 
 /*
- * Data that might change at suspend time should be stored in a special
- * section.  This allows us to detect memory corruption by doing a checksum
- * of all other memory.
- */
-#define __suspend_volatile	__section(.suspend_volatile.data)
-
-extern u8 __start_suspend_volatile[];
-extern u8 __stop_suspend_volatile[];
-
-/*
  * Device power management
  */
 
