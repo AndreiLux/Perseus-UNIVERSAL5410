@@ -55,9 +55,13 @@ int sensors_register(struct device *dev, void * drvdata,
 }
 EXPORT_SYMBOL_GPL(sensors_register);
 
-void sensors_unregister(struct device *dev)
+void sensors_unregister(struct device *dev,
+	struct device_attribute *attributes[])
 {
-	/* TODO : Unregister device */
+	int i;
+
+	for (i = 0; attributes[i] != NULL; i++)
+		device_remove_file(dev, attributes[i]);
 }
 EXPORT_SYMBOL_GPL(sensors_unregister);
 

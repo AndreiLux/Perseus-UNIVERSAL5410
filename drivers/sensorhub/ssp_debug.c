@@ -113,9 +113,11 @@ static void debug_work_func(struct work_struct *work)
 	unsigned int uSensorCnt;
 	struct ssp_data *data = container_of(work, struct ssp_data, work_debug);
 
-	ssp_dbg("[SSP]: %s(%u) - Sensor state: 0x%x, TO: %u, BC: %u, RC: %u\n",
+	ssp_dbg("[SSP]: %s(%u) - Sensor state: 0x%x, TO: %u, BC: %u,"
+		" IC: %u, RC: %u\n",
 		__func__, data->uIrqCnt, data->uAliveSensorDebug,
-		data->uTimeOutCnt, data->uBusyCnt, data->uResetCnt);
+		data->uTimeOutCnt, data->uBusyCnt,
+		data->uInstFailCnt, data->uResetCnt);
 
 	data->uIrqCnt = 0;
 

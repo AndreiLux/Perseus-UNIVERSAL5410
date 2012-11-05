@@ -244,7 +244,10 @@ static struct device_attribute *mag_attrs[] = {
 
 void initialize_magnetic_factorytest(struct ssp_data *data)
 {
-	struct device *mag_device = NULL;
+	sensors_register(data->mag_device, data, mag_attrs, "magnetic_sensor");
+}
 
-	sensors_register(mag_device, data, mag_attrs, "magnetic_sensor");
+void remove_magnetic_factorytest(struct ssp_data *data)
+{
+	sensors_unregister(data->mag_device, mag_attrs);
 }

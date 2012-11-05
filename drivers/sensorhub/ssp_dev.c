@@ -61,12 +61,14 @@ static void initialize_variable(struct ssp_data *data)
 
 	data->uResetCnt = 0;
 	data->uI2cFailCnt = 0;
+	data->uInstFailCnt = 0;
 	data->uTimeOutCnt = 0;
 	data->uSsdFailCnt = 0;
 	data->uBusyCnt = 0;
 	data->uIrqCnt = 0;
 
 	data->bCheckSuspend = false;
+	data->bCheckShutdown = false;
 	data->bDebugEnabled = false;
 	data->bProximityRawEnabled = false;
 	data->bMcuIRQTestSuccessed = false;
@@ -85,6 +87,14 @@ static void initialize_variable(struct ssp_data *data)
 	data->uProxCanc = 0;
 	data->uProxThresh = DEFAULT_THRESHOLD;
 	data->uGyroDps = GYROSCOPE_DPS500;
+
+	data->mcu_device = NULL;
+	data->acc_device = NULL;
+	data->gyro_device = NULL;
+	data->mag_device = NULL;
+	data->prs_device = NULL;
+	data->prox_device = NULL;
+	data->light_device = NULL;
 
 	initialize_function_pointer(data);
 }
@@ -184,7 +194,7 @@ static int ssp_probe(struct i2c_client *client,
 
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (data == NULL) {
-		pr_err("[SSP]: %s - failed to allocate memory for module data\n",
+		pr_err("[SSP]: %s - failed to allocate memory for data\n",
 			__func__);
 		iRet = -ENOMEM;
 		goto exit;
@@ -313,6 +323,7 @@ static void ssp_shutdown(struct i2c_client *client)
 	struct ssp_data *data = i2c_get_clientdata(client);
 
 	func_dbg();
+	data->bCheckShutdown = true;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	unregister_early_suspend(&data->early_suspend);
@@ -325,24 +336,24 @@ static void ssp_shutdown(struct i2c_client *client)
 	free_irq(data->iIrq, data);
 	gpio_free(data->client->irq);
 
-	toggle_mcu_reset(data);
+	remove_sysfs(data);
+	remove_event_symlink(data);
+	remove_input_dev(data);
 
 #ifdef CONFIG_SENSORS_SSP_SENSORHUB
 	ssp_remove_sensorhub(data);
 #endif
-	remove_event_symlink(data);
-	remove_sysfs(data);
-	remove_input_dev(data);
 
 	misc_deregister(&data->akmd_device);
 
 	del_timer_sync(&data->debug_timer);
 	cancel_work_sync(&data->work_debug);
 	destroy_workqueue(data->debug_wq);
-
 	wake_lock_destroy(&data->ssp_wake_lock);
+
+	toggle_mcu_reset(data);
+
 	kfree(data);
-	data = NULL;
 }
 
 #ifdef CONFIG_HAS_EARLYSUSPEND

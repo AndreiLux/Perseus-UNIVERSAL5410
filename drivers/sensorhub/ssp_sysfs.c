@@ -413,9 +413,12 @@ static struct device_attribute *mcu_attrs[] = {
 
 static void initialize_mcu_factorytest(struct ssp_data *data)
 {
-	struct device *mcu_device = NULL;
+	sensors_register(data->mcu_device, data, mcu_attrs, "ssp_sensor");
+}
 
-	sensors_register(mcu_device, data, mcu_attrs, "ssp_sensor");
+static void remove_mcu_factorytest(struct ssp_data *data)
+{
+	sensors_unregister(data->mcu_device, mcu_attrs);
 }
 
 int initialize_sysfs(struct ssp_data *data)
@@ -478,4 +481,12 @@ void remove_sysfs(struct ssp_data *data)
 		&dev_attr_light_poll_delay);
 	device_remove_file(&data->prox_input_dev->dev,
 		&dev_attr_prox_poll_delay);
+
+	remove_accel_factorytest(data);
+	remove_gyro_factorytest(data);
+	remove_prox_factorytest(data);
+	remove_light_factorytest(data);
+	remove_pressure_factorytest(data);
+	remove_magnetic_factorytest(data);
+	remove_mcu_factorytest(data);
 }

@@ -264,7 +264,15 @@ struct ssp_data {
 	struct calibraion_data gyrocal;
 	struct sensor_value buf[SENSOR_MAX];
 	struct device *sen_dev;
+	struct device *mcu_device;
+	struct device *acc_device;
+	struct device *gyro_device;
+	struct device *mag_device;
+	struct device *prs_device;
+	struct device *prox_device;
+	struct device *light_device;
 
+	bool bCheckShutdown;
 	bool bCheckSuspend;
 	bool bDebugEnabled;
 	bool bMcuIRQTestSuccessed;
@@ -287,6 +295,7 @@ struct ssp_data {
 	unsigned int uSsdFailCnt;
 	unsigned int uResetCnt;
 	unsigned int uI2cFailCnt;
+	unsigned int uInstFailCnt;
 	unsigned int uTimeOutCnt;
 	unsigned int uIrqCnt;
 	unsigned int uBusyCnt;
@@ -347,6 +356,12 @@ void initialize_pressure_factorytest(struct ssp_data *);
 void initialize_magnetic_factorytest(struct ssp_data *);
 void initialize_function_pointer(struct ssp_data *);
 void initialize_magnetic(struct ssp_data *);
+void remove_accel_factorytest(struct ssp_data *);
+void remove_gyro_factorytest(struct ssp_data *);
+void remove_prox_factorytest(struct ssp_data *);
+void remove_light_factorytest(struct ssp_data *);
+void remove_pressure_factorytest(struct ssp_data *);
+void remove_magnetic_factorytest(struct ssp_data *);
 int initialize_event_symlink(struct ssp_data *);
 int accel_open_calibration(struct ssp_data *);
 int gyro_open_calibration(struct ssp_data *);
@@ -391,6 +406,8 @@ void reset_mcu(struct ssp_data *);
 void convert_acc_data(s16 *);
 int sensors_register(struct device *, void *,
 	struct device_attribute*[], char *);
+void sensors_unregister(struct device *,
+	struct device_attribute*[]);
 ssize_t mcu_reset_show(struct device *, struct device_attribute *, char *);
 ssize_t mcu_revision_show(struct device *, struct device_attribute *, char *);
 ssize_t mcu_update_show(struct device *, struct device_attribute *, char *);

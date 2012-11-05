@@ -18,10 +18,8 @@ int waiting_wakeup_mcu(struct ssp_data *data)
 {
 	int iDelaycnt = 0;
 
-	if (data == NULL)
-		return ERROR;
-
-	while (!data->check_mcu_busy() && (iDelaycnt++ < 200))
+	while (!data->check_mcu_busy() && (iDelaycnt++ < 200)
+		&& (data->bCheckShutdown == false))
 		mdelay(5);
 
 	if (iDelaycnt >= 200) {
@@ -31,10 +29,11 @@ int waiting_wakeup_mcu(struct ssp_data *data)
 
 	iDelaycnt = 0;
 	data->wakeup_mcu();
-	while (data->check_mcu_ready() && (iDelaycnt++ < 50))
+	while (data->check_mcu_ready() && (iDelaycnt++ < 50)
+		&& (data->bCheckShutdown == false))
 		udelay(50);
 
-	if (iDelaycnt >= 50) {
+	if ((iDelaycnt >= 50) || (data->bCheckShutdown == true)) {
 		pr_err("[SSP]: %s - MCU Wakeup Timeout!!\n", __func__);
 		data->uTimeOutCnt++;
 		return FAIL;
@@ -72,9 +71,9 @@ int ssp_i2c_read(struct ssp_data *data, char *pTxData, u16 uTxLength,
 			do_gettimeofday(&cur_time);
 			iDiffTime = (int)cur_time.tv_sec - iTimeTemp;
 			iTimeTemp = (int)cur_time.tv_sec;
-			if (iTimeTemp >= 4) {
+			if (iDiffTime >= 4) {
 				pr_err("[SSP]: %s - i2c time out %d!\n",
-					__func__, iTimeTemp);
+					__func__, iDiffTime);
 				break;
 			}
 			pr_err("[SSP]: %s - i2c transfer error %d! retry...\n",
@@ -223,6 +222,7 @@ int send_instruction(struct ssp_data *data, u8 uInst,
 		}
 
 		if (iRetries < 0) {
+			data->uInstFailCnt++;
 			data->uI2cFailCnt++;
 			return FAIL;
 		}
