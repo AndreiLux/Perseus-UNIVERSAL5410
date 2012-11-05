@@ -18,31 +18,31 @@
  */
 
 short TblX_CCW_LLeft_44[] = {
-#include "table/t03g/wacom_i2c_tblX_CCW_LLeft_T0.h"
+#include "table/t0vzw/wacom_i2c_tblX_CCW_LLeft_T0.h"
 };
 short TblY_CCW_LLeft_44[] = {
-#include "table/t03g/wacom_i2c_tblY_CCW_LLeft_T0.h"
+#include "table/t0vzw/wacom_i2c_tblY_CCW_LLeft_T0.h"
 };
 
 short TblX_CW_LRight_44[] = {
-#include "table/t03g/wacom_i2c_tblX_CW_LRight_T0.h"
+#include "table/t0vzw/wacom_i2c_tblX_CW_LRight_T0.h"
 };
 short TblY_CW_LRight_44[] = {
-#include "table/t03g/wacom_i2c_tblY_CW_LRight_T0.h"
+#include "table/t0vzw/wacom_i2c_tblY_CW_LRight_T0.h"
 };
 
 short TblX_PLeft_44[] = {
-#include "table/t03g/wacom_i2c_tblX_PLeft_T0.h"
+#include "table/t0vzw/wacom_i2c_tblX_PLeft_T0.h"
 };
 short TblY_PLeft_44[] = {
-#include "table/t03g/wacom_i2c_tblY_PLeft_T0.h"
+#include "table/t0vzw/wacom_i2c_tblY_PLeft_T0.h"
 };
 
 short TblX_PRight_44[] = {
-#include "table/t03g/wacom_i2c_tblX_PRight_T0.h"
+#include "table/t0vzw/wacom_i2c_tblX_PRight_T0.h"
 };
 short TblY_PRight_44[] = {
-#include "table/t03g/wacom_i2c_tblY_PRight_T0.h"
+#include "table/t0vzw/wacom_i2c_tblY_PRight_T0.h"
 };
 
 /* Tilt offset */
@@ -53,5 +53,5 @@ short tilt_offsetX[MAX_HAND][MAX_ROTATION] = \
 short tilt_offsetY[MAX_HAND][MAX_ROTATION] = \
 	{{40, 0, -40, 20, }, {20, 40, 0, -40, }};
 
-char* tuning_version = "0912";
-char *tuning_model = "N7100";
+char* tuning_version = "0920";
+char *tuning_model = "I605";

@@ -24,16 +24,16 @@
 #elif defined(CONFIG_MACH_T0)
 
 /*Locale*/
-#if defined(CONFIG_MACH_T0_EUR_OPEN) \
-	|| defined(CONFIG_MACH_T0_USA_ATT) \
-	|| defined(CONFIG_MACH_T0_USA_TMO)
-#include "table-t03g.h"
-#elif defined(CONFIG_TARGET_LOCALE_KOR)
+#if defined(CONFIG_TARGET_LOCALE_KOR)
 #include "table-t0ltekors.h"
 #elif defined(CONFIG_MACH_T0_JPN_LTE_DCM)
 #include "table-t0ltedcm.h"
+#elif defined(CONFIG_MACH_T0_USA_VZW) \
+	|| defined(CONFIG_MACH_T0_USA_SPR)
+#include "table-t0vzw.h"
 #else
-#include "table-t0lte.h"
+/*CONFIG_MACH_T0_EUR_OPEN*/
+#include "table-t03g.h"
 #endif
 
 #endif
@@ -45,6 +45,13 @@ short origin_offset[] = {600, 620};
 short origin_offset_48[] = {720, 760};
 #elif defined(CONFIG_MACH_T0)
 short origin_offset[] = {676, 724};
+
+short tilt_offsetX_B713[MAX_HAND][MAX_ROTATION] = \
+{{85, 100, -50, -85, }, {-85, 85, 100, -50, } };
+short tilt_offsetY_B713[MAX_HAND][MAX_ROTATION] = \
+{{-90, 120, 100, -80, }, {-80, -90, 120, 100, } };
+
+char *tuning_version_B713 = "0730";
 #endif
 
 /* Distance Offset Table */

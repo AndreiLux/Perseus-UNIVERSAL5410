@@ -105,11 +105,9 @@ short TblY_PRight_44[] = {
 #endif
 
 
-char *tuning_version_B713 = "0730";
-
 #if defined(CONFIG_MACH_T0_KOR_SKT) || defined(CONFIG_MACH_T0_KOR_KT)
 char *tuning_model = "E250S";
-char *tuning_version = "0911";
+char *tuning_version = "0912";
 /* Tilt offset */
 /* 0: Left, 1: Right */
 /* 0: Portrait 0, 1: Landscape 90, 2: Portrait 180 3: Landscape 270*/
@@ -118,23 +116,15 @@ short tilt_offsetX[MAX_HAND][MAX_ROTATION] = \
 short tilt_offsetY[MAX_HAND][MAX_ROTATION] = \
 	{{40, -10, -40, 0, }, {0, 40, -10, -40, } };
 
-short tilt_offsetX_B713[MAX_HAND][MAX_ROTATION] = \
-	{{85, 100, -50, -85, }, {-85, 85, 100, -50, } };
-short tilt_offsetY_B713[MAX_HAND][MAX_ROTATION] = \
-	{{-90, 120, 100, -80, }, {-80, -90, 120, 100, } };
 #elif defined(CONFIG_MACH_T0_KOR_LGT)
 char *tuning_model = "E250L";
-char *tuning_version = "0911";
+char *tuning_version = "0918";
 /* Tilt offset */
 /* 0: Left, 1: Right */
 /* 0: Portrait 0, 1: Landscape 90, 2: Portrait 180 3: Landscape 270*/
 short tilt_offsetX[MAX_HAND][MAX_ROTATION] = \
-	{{-10, -40, -10, 30, }, {30, -10, -40, -10, } };
+	{{-25, -30, 20, 30, }, {30, -25, -30, 20, } };
 short tilt_offsetY[MAX_HAND][MAX_ROTATION] = \
-	{{50, 10, -40, 20, }, {20, 50, 10, -40, } };
+	{{45, -5, -40, 10, }, {10, 45, -5, -40, } };
 
-short tilt_offsetX_B713[MAX_HAND][MAX_ROTATION] = \
-	{{85, 100, -50, -85, }, {-85, 85, 100, -50, } };
-short tilt_offsetY_B713[MAX_HAND][MAX_ROTATION] = \
-	{{-90, 120, 100, -80, }, {-80, -90, 120, 100, } };
 #endif
