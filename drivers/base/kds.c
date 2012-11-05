@@ -414,7 +414,35 @@ static void __kds_resource_set_release_common(struct kds_resource_set *rset)
 
 		/* were we the head of the list? (head if prev is a resource) */
 		if (it->parent != KDS_RESOURCE)
+		{
+			if (!(it->state & KDS_LINK_TRIGGERED) ||
+			    (it->state & KDS_LINK_EXCLUSIVE))
+				continue;
+
+			/*
+			 * previous was triggered and not exclusive, so we
+			 * trigger non-exclusive until end-of-list or first
+			 * exclusive
+			 */
+			list_for_each_entry(it, &it->link, link)
+			{
+				/* exclusive found, stop triggering */
+				if (it->state & KDS_LINK_EXCLUSIVE)
+					break;
+
+				it->state |= KDS_LINK_TRIGGERED;
+				/* a parent to update? */
+				if (it->parent != KDS_IGNORED)
+				{
+					if (0 == --it->parent->pending)
+					{
+						/* new owner now triggered, track for callback later */
+						list_add(&it->parent->callback_link, &triggered);
+					}
+				}
+			}
 			continue;
+		}
 
 		/* we were the head, find the kds_resource */
 		resource = container_of(it, struct kds_resource, waiters);
