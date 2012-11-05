@@ -494,6 +494,8 @@ void __init usbhs_init(const struct usbhs_omap_board_data *pdata)
 
 	for (i = 0; i < OMAP3_HS_USB_PORTS; i++) {
 		usbhs_data.port_mode[i] = pdata->port_mode[i];
+		usbhs_data.clk[i] = pdata->clk[i];
+		usbhs_data.clkrate[i] = pdata->clkrate[i];
 		usbtll_data.port_mode[i] = pdata->port_mode[i];
 		ohci_data.port_mode[i] = pdata->port_mode[i];
 		ehci_data.port_mode[i] = pdata->port_mode[i];

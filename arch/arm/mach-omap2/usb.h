@@ -70,6 +70,9 @@ struct usbhs_omap_board_data {
 	 * Each PHY can have a separate regulator.
 	 */
 	struct regulator		*regulator[OMAP3_HS_USB_PORTS];
+
+	const char			*clk[OMAP3_HS_USB_PORTS];
+	unsigned long int		clkrate[OMAP3_HS_USB_PORTS];
 };
 
 extern void usb_musb_init(struct omap_musb_board_data *board_data);

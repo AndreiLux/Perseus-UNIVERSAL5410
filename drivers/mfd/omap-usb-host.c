@@ -91,6 +91,7 @@ struct usbhs_port {
 	struct clk	*utmi_clk;
 	struct clk	*hsic60m_clk;
 	struct clk	*hsic480m_clk;
+	struct clk	*aux_clk;	/* board dependent clock */
 };
 
 struct usbhs_hcd_omap {
@@ -290,6 +291,15 @@ static int usbhs_runtime_resume(struct device *dev)
 		clk_enable(omap->ehci_logic_fck);
 
 	for (i = 0; i < omap->nports; i++) {
+		if (omap->port[i].aux_clk) {
+			r = clk_enable(omap->port[i].aux_clk);
+			if (r) {
+				dev_err(dev,
+				 "%s: Can't enable port %d aux clk %d\n",
+				 __func__, i, r);
+			}
+		}
+
 		if (is_ehci_tll_mode(pdata->port_mode[i]) ||
 				is_ehci_hsic_mode(pdata->port_mode[i])) {
 			if (omap->port[i].utmi_clk) {
@@ -348,6 +358,9 @@ static int usbhs_runtime_suspend(struct device *dev)
 			if (omap->port[i].hsic480m_clk)
 				clk_disable(omap->port[i].hsic480m_clk);
 		}
+
+		if (omap->port[i].aux_clk)
+			clk_disable(omap->port[i].aux_clk);
 	}
 
 	if (omap->ehci_logic_fck && !IS_ERR(omap->ehci_logic_fck))
@@ -624,6 +637,24 @@ static int usbhs_omap_probe(struct platform_device *pdev)
 				hsic_clk, PTR_ERR(pclk));
 		else
 			omap->port[i].hsic60m_clk = pclk;
+
+		/* get the auxiliary clock if required and set its rate */
+		if (pdata->clk[i] && pdata->clkrate[i]) {
+			pclk = clk_get(dev, pdata->clk[i]);
+			if (IS_ERR(pclk)) {
+				dev_err(dev,
+				 "Failed to get clock %s\n", pdata->clk[i]);
+			} else {
+				omap->port[i].aux_clk = pclk;
+
+				ret = clk_set_rate(pclk, pdata->clkrate[i]);
+				if (ret) {
+					dev_err(dev,
+					 "Failed to set clock %s to %luHz\n",
+					 pdata->clk[i], pdata->clkrate[i]);
+				}
+			}
+		}
 	}
 
 	if (is_ehci_phy_mode(pdata->port_mode[0])) {
@@ -675,6 +706,7 @@ err_alloc:
 		clk_put(omap->port[i].utmi_clk);
 		clk_put(omap->port[i].hsic60m_clk);
 		clk_put(omap->port[i].hsic480m_clk);
+		clk_put(omap->port[i].aux_clk);
 	}
 
 	clk_put(omap->init_60m_fclk);
@@ -714,6 +746,7 @@ static int usbhs_omap_remove(struct platform_device *pdev)
 		clk_put(omap->port[i].utmi_clk);
 		clk_put(omap->port[i].hsic60m_clk);
 		clk_put(omap->port[i].hsic480m_clk);
+		clk_put(omap->port[i].aux_clk);
 	}
 
 	clk_put(omap->init_60m_fclk);
