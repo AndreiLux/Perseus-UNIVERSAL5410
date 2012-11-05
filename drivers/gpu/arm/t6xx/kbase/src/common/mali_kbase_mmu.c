@@ -1248,6 +1248,8 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 	OSK_PRINT_WARN(OSK_BASE_MMU, "access type 0x%X: %s", access_type,  access_type_names[access_type]);
 	OSK_PRINT_WARN(OSK_BASE_MMU, "source id 0x%X", source_id);
 
+	dump_stack();
+
 	/* hardware counters dump fault handling */
 	if ((kbdev->hwcnt.kctx) &&
 	    (kbdev->hwcnt.kctx->as_nr == as_no) &&

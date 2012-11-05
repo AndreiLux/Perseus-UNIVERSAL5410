@@ -264,6 +264,7 @@ void kbase_job_done(kbase_device *kbdev, u32 done)
 					default:
 						OSK_PRINT_WARN(OSK_BASE_JD, "error detected from slot %d, job status 0x%08x (%s)",
 						               i, completion_code, kbase_exception_name(completion_code));
+						dump_stack();
 				}
 			}
 

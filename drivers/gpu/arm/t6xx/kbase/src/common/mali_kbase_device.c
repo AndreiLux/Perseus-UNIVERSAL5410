@@ -389,6 +389,7 @@ void kbase_report_gpu_fault(kbase_device *kbdev, int multiple)
 	{
 		OSK_PRINT_WARN(OSK_BASE_CORE, "There were multiple GPU faults - some have not been reported\n");
 	}
+	dump_stack();
 }
 
 void kbase_gpu_interrupt(kbase_device * kbdev, u32 val)
