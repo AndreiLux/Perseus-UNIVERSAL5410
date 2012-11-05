@@ -45,7 +45,7 @@
 
 #define EXTERNAL_MODEM "external_modem"
 #define EHCI_REG_DUMP
-#define DEFAULT_RAW_WAKE_TIME (6*HZ)
+#define DEFAULT_RAW_WAKE_TIME (0*HZ)
 
 BLOCKING_NOTIFIER_HEAD(mdm_reset_notifier_list);
 
@@ -314,6 +314,7 @@ void request_autopm_lock(int status)
 {
 	struct mdm_hsic_pm_data *pm_data =
 					get_pm_data_by_dev_name("mdm_hsic_pm0");
+	int spin = 5;
 
 	if (!pm_data || !pm_data->udev)
 		return;
@@ -324,6 +325,15 @@ void request_autopm_lock(int status)
 		if (!atomic_read(&pm_data->pmlock_cnt)) {
 			atomic_inc(&pm_data->pmlock_cnt);
 			pr_info("get lock\n");
+
+			do {
+				if (!pm_dev_runtime_get_enabled(pm_data->udev))
+					break;
+			} while (spin--);
+
+			if (spin <= 0)
+				mdm_force_fatal();
+
 			pm_runtime_get(&pm_data->udev->dev);
 			pm_runtime_forbid(&pm_data->udev->dev);
 		} else
