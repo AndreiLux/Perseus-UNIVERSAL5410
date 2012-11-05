@@ -196,7 +196,13 @@ static int ramoops_pstore_write(enum pstore_type_id type,
 	buf += res;
 	available -= res;
 
-	do_gettimeofday(&timestamp);
+	if (!timekeeping_suspended) {
+		do_gettimeofday(&timestamp);
+	} else {
+		timestamp.tv_sec = 0;
+		timestamp.tv_usec = 0;
+	}
+
 	res = sprintf(buf, "%lu.%lu\n", (long)timestamp.tv_sec, (long)timestamp.tv_usec);
 	buf += res;
 	available -= res;
