@@ -65,6 +65,7 @@ struct ramoops_context {
 	unsigned int max_count;
 	unsigned int read_count;
 	struct pstore_info pstore;
+	struct pm_suspend_volatile_chunk volatile_chunk;
 };
 
 static struct ramoops_context oops_cxt = {
@@ -326,6 +327,10 @@ static int __init ramoops_probe(struct platform_device *pdev)
 		pr_err("cannot allocate pstore buffer\n");
 		goto fail4;
 	}
+
+	cxt->volatile_chunk.start = virt_to_phys(cxt->pstore.buf);
+	cxt->volatile_chunk.num_bytes = cxt->pstore.bufsize;
+	pm_register_suspend_volatile(&cxt->volatile_chunk);
 
 	if (!request_mem_region(cxt->phys_addr, cxt->size, "ramoops")) {
 		pr_err("request mem region failed\n");
