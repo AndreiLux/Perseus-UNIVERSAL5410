@@ -1297,6 +1297,7 @@ mali_error kbase_cpu_free_mapping(struct kbase_va_region *reg, const void *ptr)
 {
 	struct kbase_cpu_mapping *map;
 	mali_error err = MALI_ERROR_NONE;
+	int err_dummy;
 	OSK_ASSERT(NULL != reg);
 	map = kbase_find_cpu_mapping(reg, ptr);
 	if (!map)
@@ -1313,7 +1314,7 @@ mali_error kbase_cpu_free_mapping(struct kbase_va_region *reg, const void *ptr)
 		kbase_process_page_usage_inc(reg->kctx, map->nr_pages);
 	}
 
-	OSK_DLIST_REMOVE(&reg->map_list, map, link);
+	OSK_DLIST_REMOVE(&reg->map_list, map, link, err_dummy);
 	kfree(map);
 
 	if ((reg->flags & KBASE_REG_DELAYED_FREE) && OSK_DLIST_IS_EMPTY(&reg->map_list))

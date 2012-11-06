@@ -79,6 +79,7 @@ static int jd_run_atom(kbase_jd_atom *katom)
 		else
 		{
 			/* The job has not completed */
+			kbasep_list_trace_add(2, kctx->kbdev, katom, &kctx->waiting_soft_jobs, KBASE_TRACE_LIST_ADD, KBASE_TRACE_LIST_WAITING_SOFT_JOBS);
 			OSK_DLIST_PUSH_BACK(&kctx->waiting_soft_jobs, katom,
 			                    kbase_jd_atom, dep_item[0]);
 		}
@@ -504,7 +505,19 @@ STATIC INLINE void jd_resolve_dep(osk_dlist *out_list, kbase_jd_atom *katom, u8 
 
 	while (!OSK_DLIST_IS_EMPTY(&katom->dep_head[d]))
 	{
-		kbase_jd_atom *dep_atom = OSK_DLIST_POP_FRONT(&katom->dep_head[d], kbase_jd_atom, dep_item[d]);
+		int err_1;
+		kbase_jd_atom *dep_atom;
+		kbase_jd_atom *trace_atom;
+
+		if (d == 0) {
+			trace_atom = OSK_DLIST_FRONT(&katom->dep_head[d], kbase_jd_atom, dep_item[d]);
+			kbasep_list_trace_add(3, trace_atom->kctx->kbdev, trace_atom, &katom->dep_head[d], KBASE_TRACE_LIST_DEL, KBASE_TRACE_LIST_DEP_HEAD_0);
+		}
+		dep_atom = OSK_DLIST_POP_FRONT(&katom->dep_head[d], kbase_jd_atom, dep_item[d], err_1);
+		if (err_1 && (d == 0)) {
+			kbasep_list_trace_dump(trace_atom->kctx->kbdev);
+			BUG();
+		}
 
 		dep_atom->dep_atom[d] = NULL;
 
@@ -513,7 +526,14 @@ STATIC INLINE void jd_resolve_dep(osk_dlist *out_list, kbase_jd_atom *katom, u8 
 			/* Atom failed, so remove the other dependencies and immediately fail the atom */
 			if (dep_atom->dep_atom[other_d])
 			{
-				OSK_DLIST_REMOVE(&dep_atom->dep_atom[other_d]->dep_head[other_d], dep_atom, dep_item[other_d]);
+				int err;
+				if (other_d == 0)
+					kbasep_list_trace_add(4, dep_atom->kctx->kbdev, dep_atom, &dep_atom->dep_atom[other_d]->dep_head[other_d], KBASE_TRACE_LIST_DEL, KBASE_TRACE_LIST_DEP_HEAD_0);
+				OSK_DLIST_REMOVE(&dep_atom->dep_atom[other_d]->dep_head[other_d], dep_atom, dep_item[other_d], err);
+				if (err) {
+					kbasep_list_trace_dump(dep_atom->kctx->kbdev);
+					BUG();
+				}
 				dep_atom->dep_atom[other_d] = NULL;
 			}
 
@@ -531,6 +551,7 @@ STATIC INLINE void jd_resolve_dep(osk_dlist *out_list, kbase_jd_atom *katom, u8 
 			OSK_ASSERT(dep_atom->status != KBASE_JD_ATOM_STATE_UNUSED);
 			dep_atom->status = KBASE_JD_ATOM_STATE_COMPLETED;
 
+			kbasep_list_trace_add(5, dep_atom->kctx->kbdev, dep_atom, out_list, KBASE_TRACE_LIST_ADD, KBASE_TRACE_LIST_RUNNABLE_JOBS);
 			OSK_DLIST_PUSH_FRONT(out_list, dep_atom, kbase_jd_atom, dep_item[0]);
 		}
 		else if (!dep_atom->dep_atom[other_d])
@@ -538,7 +559,10 @@ STATIC INLINE void jd_resolve_dep(osk_dlist *out_list, kbase_jd_atom *katom, u8 
 #ifdef CONFIG_KDS
 			if (dep_atom->kds_dep_satisfied)
 #endif
+			{
+				kbasep_list_trace_add(6, dep_atom->kctx->kbdev, dep_atom, out_list, KBASE_TRACE_LIST_ADD, KBASE_TRACE_LIST_RUNNABLE_JOBS);
 				OSK_DLIST_PUSH_FRONT(out_list, dep_atom, kbase_jd_atom, dep_item[0]);
+			}
 		}
 	}
 }
@@ -571,17 +595,32 @@ mali_bool jd_done_nolock(kbase_jd_atom *katom)
 	for(i = 0; i < 2; i++)
 	{
 		if (katom->dep_atom[i]) {
-			OSK_DLIST_REMOVE(&katom->dep_atom[i]->dep_head[i], katom, dep_item[i]);
+			int err;
+			if (i == 0)
+				kbasep_list_trace_add(7, katom->kctx->kbdev, katom, &katom->dep_atom[i]->dep_head[i], KBASE_TRACE_LIST_DEL, KBASE_TRACE_LIST_DEP_HEAD_0);
+			OSK_DLIST_REMOVE(&katom->dep_atom[i]->dep_head[i], katom, dep_item[i], err);
+			if (err) {
+				kbasep_list_trace_dump(katom->kctx->kbdev);
+				BUG();
+			}
 			katom->dep_atom[i] = NULL;
 		}
 	}
 
 	katom->status = KBASE_JD_ATOM_STATE_COMPLETED;
+	kbasep_list_trace_add(8, katom->kctx->kbdev, katom, &completed_jobs, KBASE_TRACE_LIST_ADD, KBASE_TRACE_LIST_COMPLETED_JOBS);
 	OSK_DLIST_PUSH_BACK(&completed_jobs, katom, kbase_jd_atom, dep_item[0]);
 
 	while(!OSK_DLIST_IS_EMPTY(&completed_jobs))
 	{
-		katom = OSK_DLIST_POP_BACK(&completed_jobs, kbase_jd_atom, dep_item[0]);
+		int err;
+		kbase_jd_atom *katom_aux = OSK_DLIST_BACK(&completed_jobs, kbase_jd_atom, dep_item[0]);
+		kbasep_list_trace_add(9, katom_aux->kctx->kbdev, katom_aux, &completed_jobs, KBASE_TRACE_LIST_DEL, KBASE_TRACE_LIST_COMPLETED_JOBS);
+		katom = OSK_DLIST_POP_BACK(&completed_jobs, kbase_jd_atom, dep_item[0], err);
+		if (err) {
+			kbasep_list_trace_dump(katom->kctx->kbdev);
+			BUG();
+		}
 		OSK_ASSERT(katom->status == KBASE_JD_ATOM_STATE_COMPLETED);
 
 		for(i = 0; i < 2; i++)
@@ -591,7 +630,15 @@ mali_bool jd_done_nolock(kbase_jd_atom *katom)
 
 		while (!OSK_DLIST_IS_EMPTY(&runnable_jobs))
 		{
-			kbase_jd_atom *node = OSK_DLIST_POP_BACK(&runnable_jobs, kbase_jd_atom, dep_item[0]);
+			int err;
+			kbase_jd_atom *node;
+			kbase_jd_atom *katom_aux = OSK_DLIST_BACK(&runnable_jobs, kbase_jd_atom, dep_item[0]);
+			kbasep_list_trace_add(10, katom_aux->kctx->kbdev, katom_aux, &runnable_jobs, KBASE_TRACE_LIST_DEL, KBASE_TRACE_LIST_RUNNABLE_JOBS);
+			node = OSK_DLIST_POP_BACK(&runnable_jobs, kbase_jd_atom, dep_item[0], err);
+			if (err) {
+				kbasep_list_trace_dump(node->kctx->kbdev);
+				BUG();
+			}
 			OSK_ASSERT(node->status != KBASE_JD_ATOM_STATE_UNUSED);
 
 			if (katom->event_code == BASE_JD_EVENT_DONE)
@@ -611,6 +658,7 @@ mali_bool jd_done_nolock(kbase_jd_atom *katom)
 
 			if (node->status == KBASE_JD_ATOM_STATE_COMPLETED)
 			{
+				kbasep_list_trace_add(11, node->kctx->kbdev, node, &completed_jobs, KBASE_TRACE_LIST_ADD, KBASE_TRACE_LIST_COMPLETED_JOBS);
 				OSK_DLIST_PUSH_BACK(&completed_jobs, node, kbase_jd_atom, dep_item[0]);
 			}
 		}
@@ -717,8 +765,14 @@ static mali_bool jd_submit_atom(kbase_context *kctx, const base_jd_atom_v2 *user
 				{
 					if (i == 1 && katom->dep_atom[0])
 					{
+						int err;
 						/* Remove the previous dependency */
-						OSK_DLIST_REMOVE(&katom->dep_atom[0]->dep_head[0], katom, dep_item[0]);
+						kbasep_list_trace_add(12, katom->kctx->kbdev, katom, &katom->dep_atom[0]->dep_head[0], KBASE_TRACE_LIST_DEL, KBASE_TRACE_LIST_DEP_HEAD_0);
+						OSK_DLIST_REMOVE(&katom->dep_atom[0]->dep_head[0], katom, dep_item[0], err);
+						if (err) {
+							kbasep_list_trace_dump(katom->kctx->kbdev);
+							BUG();
+						}
 						katom->dep_atom[0] = NULL;
 					}
 					/* Atom has completed, propagate the error code if any */
@@ -731,6 +785,8 @@ static mali_bool jd_submit_atom(kbase_context *kctx, const base_jd_atom_v2 *user
 			else
 			{
 				/* Atom is in progress, add this atom to the list */
+				if (i == 0)
+					kbasep_list_trace_add(13, katom->kctx->kbdev, katom, &dep_atom->dep_head[i], KBASE_TRACE_LIST_ADD, KBASE_TRACE_LIST_DEP_HEAD_0);
 				OSK_DLIST_PUSH_BACK(&dep_atom->dep_head[i], katom, kbase_jd_atom, dep_item[i]);
 				katom->dep_atom[i] = dep_atom;
 				queued = 1;
@@ -831,6 +887,7 @@ static mali_bool jd_submit_atom(kbase_context *kctx, const base_jd_atom_v2 *user
 			goto out;
 		}
 		/* The job has not yet completed */
+		kbasep_list_trace_add(14, kctx->kbdev, katom, &kctx->waiting_soft_jobs, KBASE_TRACE_LIST_ADD, KBASE_TRACE_LIST_WAITING_SOFT_JOBS);
 		OSK_DLIST_PUSH_BACK(&kctx->waiting_soft_jobs, katom, kbase_jd_atom, dep_item[0]);
 		ret = MALI_FALSE;
 	}

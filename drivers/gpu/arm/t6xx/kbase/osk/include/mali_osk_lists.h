@@ -278,14 +278,13 @@ typedef struct osk_dlist
  * @note An assert is triggered if @c osk_dlist_ptr is NULL or empty.
  * @note If @c type or @c attribute is invalid then the behavior is undefined.
  */
-#define OSK_DLIST_POP_BACK(osk_dlist_ptr, type, attribute)\
+#define OSK_DLIST_POP_BACK(osk_dlist_ptr, type, attribute, err)\
 	CONTAINER_OF(\
-		oskp_dlist_remove(\
+		oskp_dlist_remove_debug(\
 			osk_dlist_ptr, \
-			&OSK_CHECK_PTR( OSK_DLIST_BACK(osk_dlist_ptr, type, attribute) )->attribute), \
+			&OSK_CHECK_PTR( OSK_DLIST_BACK(osk_dlist_ptr, type, attribute) )->attribute, &err), \
 		type, \
 		attribute)
-
  /**
  * @brief Remove the front of @c osk_dlist_ptr and return the element just removed
  *
@@ -302,11 +301,11 @@ typedef struct osk_dlist
  * @note An assert is triggered if @c osk_dlist_ptr is NULL or empty.
  * @note If @c type or @c attribute is invalid then the behavior is undefined.
  */
-#define OSK_DLIST_POP_FRONT(osk_dlist_ptr, type, attribute)\
+#define OSK_DLIST_POP_FRONT(osk_dlist_ptr, type, attribute, err)\
 	CONTAINER_OF(\
-		oskp_dlist_remove(\
+		oskp_dlist_remove_debug(\
 			osk_dlist_ptr, \
-			&OSK_CHECK_PTR( OSK_DLIST_FRONT(osk_dlist_ptr, type, attribute) )->attribute), \
+			&OSK_CHECK_PTR( OSK_DLIST_FRONT(osk_dlist_ptr, type, attribute) )->attribute, &err), \
 		type, \
 		attribute)
 
@@ -410,8 +409,8 @@ typedef struct osk_dlist
  * @pre @p container_to_remove_ptr must be a member of list @p osk_dlist_ptr.
  * @post @p container_to_remove_ptr is no longer a member of list @p osk_dlist_ptr.
  */
-#define OSK_DLIST_REMOVE(osk_dlist_ptr, container_to_remove_ptr, attribute)\
-	oskp_dlist_remove_item(osk_dlist_ptr, &((OSK_CHECK_PTR(container_to_remove_ptr))->attribute) )
+#define OSK_DLIST_REMOVE(osk_dlist_ptr, container_to_remove_ptr, attribute, error)\
+	oskp_dlist_remove_item_debug(osk_dlist_ptr, &((OSK_CHECK_PTR(container_to_remove_ptr))->attribute), &error)
 
 /**
  * @brief Remove an item container from a doubly-linked list and return a pointer to the element which was the
@@ -627,6 +626,9 @@ OSK_STATIC_INLINE osk_dlist_item* oskp_dlist_remove_and_return_prev(osk_dlist * 
 OSK_STATIC_INLINE osk_dlist_item* oskp_dlist_remove(osk_dlist * const list_ptr,
 	osk_dlist_item * const item_to_remove);
 
+OSK_STATIC_INLINE osk_dlist_item* oskp_dlist_remove_debug(osk_dlist * const list_ptr,
+	osk_dlist_item * const item_to_remove, int *err);
+
 /**
  * @brief Check that @c item  is a member of the @c list
  *
@@ -649,6 +651,8 @@ OSK_STATIC_INLINE mali_bool oskp_dlist_member_of(const osk_dlist* const list, co
  * @note An assert is triggered if @c item_to_remove is not a member of @c list_ptr
  */
 OSK_STATIC_INLINE void oskp_dlist_remove_item(osk_dlist* const front, osk_dlist_item* const item_to_remove);
+
+OSK_STATIC_INLINE void oskp_dlist_remove_item_debug(osk_dlist* const front, osk_dlist_item* const item_to_remove, int *error);
 
 /**
  * @}
@@ -778,6 +782,71 @@ void oskp_dlist_insert_after(osk_dlist * const front, osk_dlist_item * const ite
 }
 
 OSK_STATIC_INLINE
+void oskp_dlist_remove_item_debug(osk_dlist* const front, osk_dlist_item* const item_to_remove, int *error)
+{
+	OSK_ASSERT(NULL != front);
+	OSK_ASSERT(NULL != item_to_remove);
+	OSK_ASSERT(MALI_TRUE == oskp_dlist_member_of(front, item_to_remove));
+
+	/* if the item to remove is the current front*/
+	if( front->oskp.front == item_to_remove )
+	{
+		/* then make the front point to the next item*/
+		front->oskp.front = item_to_remove->oskp.next;
+	}
+	else
+	{
+		/* else just the previous item point to the next one*/
+		item_to_remove->oskp.prev->oskp.next = item_to_remove->oskp.next;
+	}
+
+	/* if the item to remove is the current back*/
+	if(front->oskp.back == item_to_remove)
+	{
+		/* then make the back point to the previous item*/
+		front->oskp.back = item_to_remove->oskp.prev;
+	}
+	else
+	{
+		/* else just the next item point to the previous one*/
+		if (!item_to_remove->oskp.next)
+		{
+			osk_dlist_item * item;
+			int i;
+
+			/* bad node, log the contents of the list */
+
+			printk(KERN_ERR "Removing bad node %p, dumping list, forward walk\n", item_to_remove);
+			item = front->oskp.front;
+			i = 0;
+			while (item)
+			{
+				printk(KERN_ERR "list item %d: %p <- %p -> %p\n", i, item->oskp.prev, item, item->oskp.next);
+				item = item->oskp.next;
+				i++;
+			}
+
+			printk(KERN_ERR "Removing bad node, dumping list, reverse walk\n");
+			item = front->oskp.back;
+			i = 0;
+			while (item)
+			{
+				printk(KERN_ERR "list item %d: %p <- %p -> %p\n", i, item->oskp.prev, item, item->oskp.next);
+				item = item->oskp.prev;
+				i++;
+			}
+			*error = 1;
+			return;
+		}
+		item_to_remove->oskp.next->oskp.prev = item_to_remove->oskp.prev;
+	}
+
+	*error = 0;
+	item_to_remove->oskp.next = NULL;
+	item_to_remove->oskp.prev = NULL;
+}
+
+OSK_STATIC_INLINE
 void oskp_dlist_remove_item(osk_dlist* const front, osk_dlist_item* const item_to_remove)
 {
 	OSK_ASSERT(NULL != front);
@@ -838,6 +907,17 @@ void oskp_dlist_remove_item(osk_dlist* const front, osk_dlist_item* const item_t
 
 	item_to_remove->oskp.next = NULL;
 	item_to_remove->oskp.prev = NULL;
+}
+
+OSK_STATIC_INLINE
+osk_dlist_item* oskp_dlist_remove_debug(osk_dlist * const front, osk_dlist_item * const item_to_remove, int *err)
+{
+	oskp_dlist_remove_item_debug(front, item_to_remove, err);
+
+	item_to_remove->oskp.next = NULL;
+	item_to_remove->oskp.prev = NULL;
+
+	return item_to_remove;
 }
 
 OSK_STATIC_INLINE

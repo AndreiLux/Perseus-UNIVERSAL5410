@@ -52,6 +52,9 @@ STATIC void kbasep_trace_term( kbase_device *kbdev );
 STATIC void kbasep_trace_hook_wrapper( void *param );
 static void kbasep_trace_debugfs_init(kbase_device *kbdev);
 
+STATIC mali_error kbasep_list_trace_init( kbase_device *kbdev );
+STATIC void kbasep_list_trace_term( kbase_device *kbdev );
+
 void kbasep_as_do_poke(struct work_struct *work);
 enum hrtimer_restart kbasep_reset_timer_callback(struct hrtimer *data);
 void kbasep_reset_timeout_worker(struct work_struct *data);
@@ -188,7 +191,7 @@ mali_error kbase_device_init(kbase_device *kbdev)
 	hrtimer_init(&kbdev->reset_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	kbdev->reset_timer.function=kbasep_reset_timer_callback;
 
-	if ( kbasep_trace_init( kbdev ) != MALI_ERROR_NONE )
+	if (( kbasep_trace_init( kbdev ) != MALI_ERROR_NONE ) || (kbasep_list_trace_init (kbdev) != MALI_ERROR_NONE))
 	{
 		goto free_reset_workq;
 	}
@@ -236,6 +239,7 @@ void kbase_device_term(kbase_device *kbdev)
 #endif
 
 	kbasep_trace_term( kbdev );
+	kbasep_list_trace_term( kbdev );
 
 	destroy_workqueue(kbdev->reset_workq);
 
@@ -703,3 +707,158 @@ void kbasep_trace_dump(kbase_device *kbdev)
 	CSTD_UNUSED(kbdev);
 }
 #endif /* KBASE_TRACE_ENABLE != 0 */
+
+#if KBASE_LIST_TRACE_ENABLE != 0
+
+STATIC mali_error kbasep_list_trace_init(kbase_device *kbdev)
+{
+	void *rbuf;
+
+	if(OSK_SIMULATE_FAILURE(OSK_OSK))
+	{
+		rbuf = NULL;
+	}
+	else
+	{
+		rbuf = kmalloc(sizeof(kbase_list_trace)*KBASE_LIST_TRACE_SIZE, GFP_KERNEL);
+	}
+
+	if (!rbuf)
+		return MALI_ERROR_FUNCTION_FAILED;
+
+	kbdev->trace_lists_rbuf = rbuf;
+	kbdev->trace_lists_next_in = 0;
+	kbdev->trace_lists_first_out = 0;
+	spin_lock_init(&kbdev->trace_lists_lock);
+	return MALI_ERROR_NONE;
+}
+
+STATIC void kbasep_list_trace_term(kbase_device *kbdev)
+{
+	kfree( kbdev->trace_lists_rbuf );
+}
+
+void kbasep_list_trace_add(u8 tracepoint_id, kbase_device *kbdev, kbase_jd_atom *katom,
+		osk_dlist *list_id, mali_bool action, u8 list_type)
+{
+	kbase_list_trace *trace_entry;
+	unsigned long flags;
+
+	spin_lock_irqsave( &kbdev->trace_lists_lock, flags);
+	trace_entry = &kbdev->trace_lists_rbuf[kbdev->trace_lists_next_in];
+
+	getnstimeofday(&trace_entry->timestamp);
+	trace_entry->tracepoint_id = tracepoint_id;
+	trace_entry->katom = katom;
+	trace_entry->list_id = list_id;
+	trace_entry->action = action;
+	trace_entry->list_type = list_type;
+	kbdev->trace_lists_next_in = (kbdev->trace_lists_next_in + 1) % KBASE_LIST_TRACE_SIZE;
+	if ( kbdev->trace_lists_next_in == kbdev->trace_lists_first_out )
+	{
+		kbdev->trace_lists_first_out = (kbdev->trace_lists_first_out + 1) % KBASE_LIST_TRACE_SIZE;
+	}
+	spin_unlock_irqrestore( &kbdev->trace_lists_lock, flags);
+}
+
+void kbasep_list_trace_dump(kbase_device *kbdev)
+{
+	unsigned long flags;
+	u32 start;
+	u32 end;
+
+	printk(KERN_ERR "**********************************************");
+	printk(KERN_ERR "Dumping list trace:\n Timestamp(ns)\t| tracepoint_id\t| katom\t| list\t| action\t| list type");
+	spin_lock_irqsave( &kbdev->trace_lists_lock, flags);
+	start = kbdev->trace_lists_first_out;
+	end = kbdev->trace_lists_next_in;
+
+	while (start != end)
+	{
+		kbase_list_trace *trace_msg = &kbdev->trace_lists_rbuf[start];
+		char list_type[20];
+		char action[10];
+
+		switch(trace_msg->list_type) {
+			case KBASE_TRACE_LIST_DEP_HEAD_0:
+				strcpy(list_type, "dep_head[0]");
+				break;
+			case KBASE_TRACE_LIST_COMPLETED_JOBS:
+				strcpy(list_type, "completed_jobs");
+				break;
+			case KBASE_TRACE_LIST_RUNNABLE_JOBS:
+				strcpy(list_type, "runnable_jobs");
+				break;
+			case KBASE_TRACE_LIST_WAITING_SOFT_JOBS:
+				strcpy(list_type, "waiting_soft_jobs");
+				break;
+			case KBASE_TRACE_LIST_EVENT_LIST:
+				strcpy(list_type, "event_list");
+				break;
+			default:
+				strcpy(list_type, "undefined_list_type");
+				break;
+		}
+
+		switch(trace_msg->action) {
+			case KBASE_TRACE_LIST_ADD:
+				strcpy(action, "add");
+				break;
+			case KBASE_TRACE_LIST_DEL:
+				strcpy(action, "delete");
+				break;
+			default:
+				strcpy(action, "invalid");
+				break;
+		}
+
+		printk(KERN_ERR "| %d.%.6d\t| %u\t| %p\t| %p\t| %s\t| %s\t|", (int)trace_msg->timestamp.tv_sec,
+                (int)(trace_msg->timestamp.tv_nsec / 1000),
+                trace_msg->tracepoint_id,
+                trace_msg->katom,
+                trace_msg->list_id,
+                action,
+                list_type);
+
+		start = (start + 1) & KBASE_TRACE_MASK;
+	}
+	printk(KERN_ERR "************ list trace end *****************");
+
+	kbdev->trace_lists_first_out = kbdev->trace_lists_next_in;
+	spin_unlock_irqrestore( &kbdev->trace_lists_lock, flags);
+}
+
+
+
+#else /*KBASE_LIST_TRACE_ENABLE != 0*/
+
+STATIC mali_error kbasep_list_trace_init(kbase_device *kbdev)
+{
+	CSTD_UNUSED(kbdev);
+	return MALI_ERROR_NONE;
+}
+
+STATIC void kbasep_list_trace_term(kbase_device *kbdev)
+{
+	CSTD_UNUSED(kbdev);
+}
+
+void kbasep_list_trace_add(u8 tracepoint_id, kbase_device *kbdev, kbase_jd_atom *katom,
+		osk_dlist *list_id, mali_bool action, u8 list_type)
+{
+	CSTD_UNUSED(tracepoint_id);
+	CSTD_UNUSED(kbdev);
+	CSTD_UNUSED(katom);
+	CSTD_UNUSED(list_id);
+	CSTD_UNUSED(action);
+	CSTD_UNUSED(list_type);
+}
+
+void kbasep_list_trace_dump(kbase_device *kbdev)
+{
+	CSTD_UNUSED(kbdev);
+}
+#endif /*KBASE_LIST_TRACE_ENABLE != 0*/
+
+
+

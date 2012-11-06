@@ -22,6 +22,8 @@
 #ifndef _KBASE_DEFS_H_
 #define _KBASE_DEFS_H_
 
+#define KBASE_LIST_TRACE_ENABLE 1
+
 #include <kbase/mali_kbase_config.h>
 #include <kbase/mali_base_hwconfig.h>
 #include <osk/mali_osk.h>
@@ -144,6 +146,8 @@ typedef struct kbase_device kbase_device;
 #define KBASE_TRACE_SIZE_LOG2 8 /* 256 entries */
 #define KBASE_TRACE_SIZE (1 << KBASE_TRACE_SIZE_LOG2)
 #define KBASE_TRACE_MASK ((1 << KBASE_TRACE_SIZE_LOG2)-1)
+
+#define KBASE_LIST_TRACE_SIZE (1 << KBASE_TRACE_SIZE_LOG2)
 
 #include "mali_kbase_js_defs.h"
 
@@ -443,6 +447,26 @@ typedef struct kbase_trace
 	u8              flags;
 } kbase_trace;
 
+#define KBASE_TRACE_LIST_ADD MALI_TRUE
+#define KBASE_TRACE_LIST_DEL MALI_FALSE
+
+#define KBASE_TRACE_LIST_DEP_HEAD_0          0
+#define KBASE_TRACE_LIST_COMPLETED_JOBS      1
+#define KBASE_TRACE_LIST_RUNNABLE_JOBS       2
+#define KBASE_TRACE_LIST_WAITING_SOFT_JOBS   3
+#define KBASE_TRACE_LIST_EVENT_LIST          4
+
+
+typedef struct kbase_list_trace
+{
+	struct timespec timestamp;
+	u8              tracepoint_id;
+	kbase_jd_atom   *katom;
+	osk_dlist		*list_id;
+	mali_bool       action;
+	u8				list_type;
+} kbase_list_trace;
+
 struct kbase_device {
 	/** jm_slots is protected by kbasep_js_device_data::runpool_irq::lock */
 	kbase_jm_slot           jm_slots[BASE_JM_MAX_NR_SLOTS];
@@ -548,6 +572,12 @@ struct kbase_device {
 	u16                     trace_first_out;
 	u16                     trace_next_in;
 	kbase_trace            *trace_rbuf;
+#endif
+#if KBASE_LIST_TRACE_ENABLE != 0
+	spinlock_t              trace_lists_lock;
+	u16                     trace_lists_first_out;
+	u16                     trace_lists_next_in;
+	kbase_list_trace	   *trace_lists_rbuf;
 #endif
 
 #if MALI_CUSTOMER_RELEASE == 0

@@ -715,20 +715,22 @@ STATIC mali_bool dequeue_job( kbase_device *kbdev,
 
 			if ( OSK_DLIST_IS_EMPTY( job_list ) == MALI_FALSE )
 			{
+				int err;
+
 				/* Found a context with a matching job */
 				{
 					kbase_jd_atom *front_atom = OSK_DLIST_FRONT( job_list, kbase_jd_atom, sched_info.cfs.list );
 					KBASE_TRACE_ADD_SLOT( kbdev, JS_POLICY_DEQUEUE_JOB, front_atom->kctx, front_atom,
 					                      front_atom->jc, job_slot_idx );
 				}
-				*katom_ptr = OSK_DLIST_POP_FRONT( job_list, kbase_jd_atom, sched_info.cfs.list );
+				*katom_ptr = OSK_DLIST_POP_FRONT( job_list, kbase_jd_atom, sched_info.cfs.list, err);
 
 				(*katom_ptr)->sched_info.cfs.ticks = 0;
 
 				/* Put this context at the back of the Run Pool */
 				OSK_DLIST_REMOVE( &policy_info->scheduled_ctxs_head,
 				                  kctx,
-				                  jctx.sched_info.runpool.policy_ctx.cfs.list );
+				                  jctx.sched_info.runpool.policy_ctx.cfs.list, err);
 				OSK_DLIST_PUSH_BACK( &policy_info->scheduled_ctxs_head,
 				                     kctx,
 				                     kbase_context,
@@ -1159,6 +1161,7 @@ mali_bool kbasep_js_policy_dequeue_head_ctx( kbasep_js_policy *js_policy, kbase_
 	kbasep_js_policy_cfs *policy_info;
 	kbase_context *head_ctx;
 	osk_dlist *queue_head;
+	int err;
 
 	OSK_ASSERT( js_policy != NULL );
 	OSK_ASSERT( kctx_ptr != NULL );
@@ -1186,7 +1189,7 @@ mali_bool kbasep_js_policy_dequeue_head_ctx( kbasep_js_policy *js_policy, kbase_
 	/* Contexts are dequeued from the front of the queue */
 	*kctx_ptr = OSK_DLIST_POP_FRONT( queue_head,
 	                                 kbase_context,
-	                                 jctx.sched_info.runpool.policy_ctx.cfs.list );
+	                                 jctx.sched_info.runpool.policy_ctx.cfs.list, err );
 
 	{
 		kbase_device *kbdev = container_of( js_policy, kbase_device, js_data.policy );
@@ -1252,12 +1255,13 @@ mali_bool kbasep_js_policy_try_evict_ctx( kbasep_js_policy *js_policy, kbase_con
 
 	if ( is_present != MALI_FALSE )
 	{
+		int err;
 		kbase_context *head_ctx;
 		qhead = queue_head;
 		/* Remove the context */
 		OSK_DLIST_REMOVE( qhead,
 		                  kctx,
-		                  jctx.sched_info.runpool.policy_ctx.cfs.list );
+		                  jctx.sched_info.runpool.policy_ctx.cfs.list, err );
 
 		qhead = queue_head;
 		/* Update the head runtime */
@@ -1355,6 +1359,8 @@ void kbasep_js_policy_runpool_remove_ctx( kbasep_js_policy *js_policy, kbase_con
 {
 	kbasep_js_policy_cfs     *policy_info;
 
+	int err;
+
 	OSK_ASSERT( js_policy != NULL );
 	OSK_ASSERT( kctx != NULL );
 
@@ -1372,7 +1378,7 @@ void kbasep_js_policy_runpool_remove_ctx( kbasep_js_policy *js_policy, kbase_con
 	/* No searching or significant list maintenance required to remove this context */
 	OSK_DLIST_REMOVE( &policy_info->scheduled_ctxs_head,
 	                  kctx,
-	                  jctx.sched_info.runpool.policy_ctx.cfs.list );
+	                  jctx.sched_info.runpool.policy_ctx.cfs.list, err);
 }
 
 mali_bool kbasep_js_policy_should_remove_ctx( kbasep_js_policy *js_policy, kbase_context *kctx )

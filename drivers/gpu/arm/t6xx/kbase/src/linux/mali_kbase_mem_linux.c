@@ -372,13 +372,14 @@ KBASE_EXPORT_TEST_API(kbase_lookup_cookie)
 
 void kbase_unlink_cookie(kbase_context * kctx, mali_addr64 cookie, struct kbase_va_region * reg)
 {
+	int err;
 	OSKP_ASSERT(kctx != NULL);
 	OSKP_ASSERT(reg != NULL);
 	OSKP_ASSERT(MALI_TRUE == OSK_DLIST_MEMBER_OF(&kctx->osctx.reg_pending, reg, link));
 	OSKP_ASSERT(KBASE_REG_COOKIE(cookie) == (reg->flags & KBASE_REG_COOKIE_MASK));
 	OSKP_ASSERT((kctx->osctx.cookies & (1UL << cookie)) == 0);
 
-	OSK_DLIST_REMOVE(&kctx->osctx.reg_pending, reg, link);
+	OSK_DLIST_REMOVE(&kctx->osctx.reg_pending, reg, link, err);
 	kctx->osctx.cookies |= (1UL << cookie); /* mark as resolved */
 }
 

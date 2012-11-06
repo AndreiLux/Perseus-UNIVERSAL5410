@@ -203,6 +203,11 @@ void kbase_reset_gpu_locked(kbase_device *kbdev);
 const char *kbase_exception_name(u32 exception_code);
 
 
+void kbasep_list_trace_add(u8 tracepoint_id, kbase_device *kbdev, kbase_jd_atom *katom,
+		osk_dlist *list_id, mali_bool action, u8 list_type);
+
+void kbasep_list_trace_dump(kbase_device *kbdev);
+
 #if KBASE_TRACE_ENABLE != 0
 /** Add trace values about a job-slot
  *
