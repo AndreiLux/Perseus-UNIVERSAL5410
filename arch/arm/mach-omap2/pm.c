@@ -183,7 +183,8 @@ void omap_trigger_io_chain(void)
 
 int __init omap_pm_clkdms_setup(struct clockdomain *clkdm, void *unused)
 {
-	if (clkdm->flags & CLKDM_CAN_ENABLE_AUTO)
+	if ((clkdm->flags & CLKDM_CAN_ENABLE_AUTO) &&
+	    !(clkdm->flags & CLKDM_MISSING_IDLE_REPORTING))
 		clkdm_allow_idle(clkdm);
 	else if (clkdm->flags & CLKDM_CAN_FORCE_SLEEP &&
 		 atomic_read(&clkdm->usecount) == 0)
