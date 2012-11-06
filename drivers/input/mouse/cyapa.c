@@ -286,8 +286,8 @@ static const u8 bl_exit[] = { 0x00, 0xff, 0xa5, 0x00, 0x01, 0x02, 0x03, 0x04,
 static struct dentry *cyapa_debugfs_root;
 
 struct cyapa_cmd_len {
-	unsigned char cmd;
-	unsigned char len;
+	u8 cmd;
+	u8 len;
 };
 
 #define CYAPA_ADAPTER_FUNC_NONE   0
