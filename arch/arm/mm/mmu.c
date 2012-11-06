@@ -28,6 +28,7 @@
 #include <asm/highmem.h>
 #include <asm/system_info.h>
 #include <asm/traps.h>
+#include <asm/fixmap.h>
 
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
@@ -52,6 +53,7 @@ pmd_t *top_pmd;
 #define CPOLICY_WRITEBACK	3
 #define CPOLICY_WRITEALLOC	4
 
+static struct pm_suspend_volatile_chunk pm_volatile_chunk;
 static unsigned int cachepolicy __initdata = CPOLICY_WRITEBACK;
 static unsigned int ecc_mask __initdata = 0;
 pgprot_t pgprot_user;
@@ -1215,4 +1217,11 @@ void __init paging_init(struct machine_desc *mdesc)
 
 	empty_zero_page = virt_to_page(zero_page);
 	__flush_dcache_page(NULL, empty_zero_page);
+
+#ifdef CONFIG_HIGHMEM
+	pm_volatile_chunk.start =
+		virt_to_phys(pte_offset_kernel(top_pmd, fix_to_virt(0)));
+	pm_volatile_chunk.num_bytes = FIX_KMAP_END * sizeof(pte_t);
+	pm_register_suspend_volatile(&pm_volatile_chunk);
+#endif
 }
