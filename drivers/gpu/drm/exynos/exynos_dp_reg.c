@@ -325,6 +325,23 @@ void exynos_dp_init_hpd(struct exynos_dp_device *dp)
 	writel(reg, dp->reg_base + EXYNOS_DP_INT_STA_MASK);
 }
 
+void exynos_dp_disable_hpd(struct exynos_dp_device *dp)
+{
+	u32 reg;
+
+	if (gpio_is_valid(dp->hpd_gpio))
+		return;
+
+	exynos_dp_clear_hotplug_interrupts(dp);
+
+	/* Mask hotplug interrupts */
+	reg = 0;
+	writel(reg, dp->reg_base + EXYNOS_DP_COMMON_INT_MASK_4);
+
+	reg = 0;
+	writel(reg, dp->reg_base + EXYNOS_DP_INT_STA_MASK);
+}
+
 enum dp_irq_type exynos_dp_get_irq_type(struct exynos_dp_device *dp)
 {
 	u32 reg;

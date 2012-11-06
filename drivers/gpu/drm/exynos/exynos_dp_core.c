@@ -978,7 +978,7 @@ static void exynos_dp_hotplug(struct work_struct *work)
 
 static int exynos_dp_power_off(struct exynos_dp_device *dp)
 {
-	disable_irq(dp->irq);
+	exynos_dp_disable_hpd(dp);
 
 	if (work_pending(&dp->hotplug_work))
 		flush_work_sync(&dp->hotplug_work);
@@ -998,8 +998,6 @@ static int exynos_dp_power_on(struct exynos_dp_device *dp)
 	clk_enable(dp->clock);
 
 	exynos_dp_init_dp(dp);
-
-	enable_irq(dp->irq);
 
 	return 0;
 }
@@ -1151,8 +1149,6 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to request irq\n");
 		goto err_gpio;
 	}
-
-	disable_irq(dp->irq);
 
 	platform_set_drvdata(pdev, dp);
 

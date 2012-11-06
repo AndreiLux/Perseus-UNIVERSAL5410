@@ -67,6 +67,7 @@ void exynos_dp_set_analog_power_down(struct exynos_dp_device *dp,
 				bool enable);
 void exynos_dp_init_analog_func(struct exynos_dp_device *dp);
 void exynos_dp_init_hpd(struct exynos_dp_device *dp);
+void exynos_dp_disable_hpd(struct exynos_dp_device *dp);
 enum dp_irq_type exynos_dp_get_irq_type(struct exynos_dp_device *dp);
 void exynos_dp_clear_hotplug_interrupts(struct exynos_dp_device *dp);
 void exynos_dp_reset_aux(struct exynos_dp_device *dp);
