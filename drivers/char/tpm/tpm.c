@@ -352,7 +352,6 @@ static void timeout_work(struct work_struct *work)
 static void set_needs_resume(struct tpm_chip *chip)
 {
 	mutex_lock(&chip->resume_mutex);
-	chip->resume_time = jiffies;
 	chip->needs_resume = 1;
 	mutex_unlock(&chip->resume_mutex);
 }
@@ -470,14 +469,8 @@ static void resume_if_needed(struct tpm_chip *chip)
 {
 	mutex_lock(&chip->resume_mutex);
 	if (chip->needs_resume) {
-		/* If it's been TPM_SELF_TEST_DURATION_MSEC msec since resume,
-		 * then selftest has completed and we don't need to wait.
-		 */
-		if (jiffies - chip->resume_time <
-		    msecs_to_jiffies(TPM_SELF_TEST_DURATION_MSEC)) {
-			dev_info(chip->dev, "waiting for TPM self test\n");
-			tpm_continue_selftest_nocheck(chip);
-		}
+		dev_info(chip->dev, "waiting for TPM self test\n");
+		tpm_continue_selftest_nocheck(chip);
 		chip->needs_resume = 0;
 		dev_info(chip->dev, "TPM delayed resume completed\n");
 	}
