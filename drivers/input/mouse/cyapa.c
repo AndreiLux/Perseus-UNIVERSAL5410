@@ -38,16 +38,15 @@
 #define CYAPA_CMD_POWER_MODE       0x01
 #define CYAPA_CMD_DEV_STATUS       0x02
 #define CYAPA_CMD_GROUP_DATA       0x03
-#define CYAPA_CMD_GROUP_CTRL       0x04
-#define CYAPA_CMD_GROUP_CMD        0x05
-#define CYAPA_CMD_GROUP_QUERY      0x06
-#define CYAPA_CMD_BL_STATUS        0x07
-#define CYAPA_CMD_BL_HEAD          0x08
-#define CYAPA_CMD_BL_CMD           0x09
-#define CYAPA_CMD_BL_DATA          0x0a
-#define CYAPA_CMD_BL_ALL           0x0b
-#define CYAPA_CMD_BLK_PRODUCT_ID   0x0c
-#define CYAPA_CMD_BLK_HEAD         0x0d
+#define CYAPA_CMD_GROUP_CMD        0x04
+#define CYAPA_CMD_GROUP_QUERY      0x05
+#define CYAPA_CMD_BL_STATUS        0x06
+#define CYAPA_CMD_BL_HEAD          0x07
+#define CYAPA_CMD_BL_CMD           0x08
+#define CYAPA_CMD_BL_DATA          0x09
+#define CYAPA_CMD_BL_ALL           0x0a
+#define CYAPA_CMD_BLK_PRODUCT_ID   0x0b
+#define CYAPA_CMD_BLK_HEAD         0x0c
 
 /* report data start reg offset address. */
 #define DATA_REG_START_OFFSET  0x0000
@@ -138,7 +137,6 @@
 #define REG_PROTOCOL_GEN_QUERY_OFFSET  20
 
 #define REG_OFFSET_DATA_BASE     0x0000
-#define REG_OFFSET_CONTROL_BASE  0x0000
 #define REG_OFFSET_COMMAND_BASE  0x0028
 #define REG_OFFSET_QUERY_BASE    0x002a
 
@@ -313,12 +311,10 @@ struct cyapa_cmd_len {
 
  /* for group registers read/write command */
 #define REG_GROUP_DATA 0
-#define REG_GROUP_CTRL 1
 #define REG_GROUP_CMD 2
 #define REG_GROUP_QUERY 3
 #define SMBUS_GROUP_CMD(grp) (0x80 | (((grp) & 0x07) << 3))
 #define CYAPA_SMBUS_GROUP_DATA SMBUS_GROUP_CMD(REG_GROUP_DATA)
-#define CYAPA_SMBUS_GROUP_CTRL SMBUS_GROUP_CMD(REG_GROUP_CTRL)
 #define CYAPA_SMBUS_GROUP_CMD SMBUS_GROUP_CMD(REG_GROUP_CMD)
 #define CYAPA_SMBUS_GROUP_QUERY SMBUS_GROUP_CMD(REG_GROUP_QUERY)
 
@@ -346,7 +342,6 @@ static const struct cyapa_cmd_len cyapa_i2c_cmds[] = {
 	{REG_OFFSET_COMMAND_BASE + 1, 1},
 	{REG_OFFSET_DATA_BASE, 1},
 	{REG_OFFSET_DATA_BASE, sizeof(struct cyapa_reg_data)},
-	{REG_OFFSET_CONTROL_BASE, 0},
 	{REG_OFFSET_COMMAND_BASE, 0},
 	{REG_OFFSET_QUERY_BASE, QUERY_DATA_SIZE},
 	{BL_HEAD_OFFSET, 3},
@@ -363,7 +358,6 @@ static const struct cyapa_cmd_len cyapa_smbus_cmds[] = {
 	{CYAPA_SMBUS_POWER_MODE, 1},
 	{CYAPA_SMBUS_DEV_STATUS, 1},
 	{CYAPA_SMBUS_GROUP_DATA, sizeof(struct cyapa_reg_data)},
-	{CYAPA_SMBUS_GROUP_CTRL, 0},
 	{CYAPA_SMBUS_GROUP_CMD, 2},
 	{CYAPA_SMBUS_GROUP_QUERY, QUERY_DATA_SIZE},
 	{CYAPA_SMBUS_BL_STATUS, 3},
