@@ -98,32 +98,6 @@ void exynos_drm_overlay_update(struct exynos_drm_overlay *overlay,
 			overlay->crtc_width, overlay->crtc_height);
 }
 
-static void exynos_drm_crtc_page_flip_apply(struct drm_crtc *crtc,
-					    struct drm_framebuffer *fb)
-{
-	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-	struct exynos_drm_overlay *overlay = &exynos_crtc->overlay;
-	int nr = exynos_drm_format_num_buffers(fb->pixel_format);
-	int i;
-
-	for (i = 0; i < nr; i++) {
-		struct exynos_drm_gem_buf *buffer;
-
-		buffer = exynos_drm_fb_buffer(fb, i);
-		overlay->dma_addr[i] = buffer->dma_addr;
-		overlay->vaddr[i] = buffer->kvaddr;
-
-		DRM_DEBUG_KMS("buffer: %d, vaddr = 0x%lx, dma_addr = 0x%lx\n",
-				i, (unsigned long)overlay->vaddr[i],
-				(unsigned long)overlay->dma_addr[i]);
-	}
-
-	exynos_drm_fn_encoder(crtc, overlay,
-			exynos_drm_encoder_crtc_page_flip);
-	exynos_drm_fn_encoder(crtc, &exynos_crtc->pipe,
-			exynos_drm_encoder_crtc_commit);
-}
-
 static void exynos_drm_crtc_update(struct drm_crtc *crtc,
 				   struct drm_framebuffer *fb)
 {
@@ -321,7 +295,8 @@ void exynos_drm_kds_callback(void *callback_parameter, void *callback_extra_para
 	struct kds_resource_set *prev_kds;
 	unsigned long flags;
 
-	exynos_drm_crtc_page_flip_apply(crtc, fb);
+	exynos_drm_crtc_update(crtc, fb);
+	exynos_drm_crtc_apply(crtc);
 
 	spin_lock_irqsave(&dev->event_lock, flags);
 	prev_kds = exynos_crtc->pending_kds;

@@ -821,28 +821,6 @@ static void mixer_win_mode_set(void *ctx,
 	win_data->scan_flags = overlay->scan_flag;
 }
 
-static void mixer_win_page_flip(void *ctx, struct exynos_drm_overlay *overlay)
-{
-	struct mixer_context *mixer_ctx = ctx;
-	struct hdmi_win_data *win_data;
-	int win = overlay->zpos;
-
-	if (win == DEFAULT_ZPOS)
-		win = MIXER_DEFAULT_WIN;
-
-	if (win < 0 || win > MIXER_WIN_NR) {
-		DRM_ERROR("overlay plane[%d] is wrong\n", win);
-		return;
-	}
-
-	win_data = &mixer_ctx->win_data[win];
-
-	win_data->dma_addr = overlay->dma_addr[0];
-	win_data->vaddr = overlay->vaddr[0];
-	win_data->chroma_dma_addr = overlay->dma_addr[1];
-	win_data->chroma_vaddr = overlay->vaddr[1];
-}
-
 static void mixer_win_commit(void *ctx, int zpos)
 {
 	struct mixer_context *mctx = ctx;
@@ -1122,7 +1100,6 @@ static struct exynos_controller_ops mixer_ops = {
 
 	/* overlay */
 	.mode_set		= mixer_win_mode_set,
-	.page_flip		= mixer_win_page_flip,
 	.apply			= mixer_apply,
 	.win_commit		= mixer_win_commit,
 	.win_disable		= mixer_win_disable,

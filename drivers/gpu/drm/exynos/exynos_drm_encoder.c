@@ -509,13 +509,3 @@ void exynos_drm_encoder_crtc_disable(struct drm_encoder *encoder, void *data)
 		display->controller_ops->win_disable(display->controller_ctx,
 				zpos);
 }
-
-void exynos_drm_encoder_crtc_page_flip(struct drm_encoder *encoder, void *data)
-{
-	struct exynos_drm_display *display = exynos_drm_get_display(encoder);
-	struct exynos_drm_overlay *overlay = data;
-
-	if (display->controller_ops->page_flip)
-		display->controller_ops->page_flip(display->controller_ctx,
-				overlay);
-}

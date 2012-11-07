@@ -57,7 +57,6 @@ struct exynos_panel_ops {
  * @power: Sets the controller's power to mode
  * @dpms: Same as power, but called in different places. Best to avoid it
  * @mode_set: Sets the controller to output mode
- * @page_flip: Updates the controller's dma pointer
  * @commit: Applies controller level settings (as opposed to window level)
  * @apply: Commits the changes on all of the controller's windows
  * @win_commit: Commits the changes on only one window
@@ -71,7 +70,6 @@ struct exynos_controller_ops {
 	int (*power)(void *ctx, int mode);
 	int (*dpms)(void *ctx, int mode);
 	void (*mode_set)(void *ctx, struct exynos_drm_overlay *overlay);
-	void (*page_flip)(void *ctx, struct exynos_drm_overlay *overlay);
 	void (*commit)(void *ctx);
 	void (*apply)(void *ctx);
 	void (*win_commit)(void *ctx, int zpos);
