@@ -1963,7 +1963,7 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 	ret = request_threaded_irq(cyapa->irq,
 				   NULL,
 				   cyapa_irq,
-				   IRQF_TRIGGER_FALLING,
+				   IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 				   "cyapa",
 				   cyapa);
 	if (ret) {
