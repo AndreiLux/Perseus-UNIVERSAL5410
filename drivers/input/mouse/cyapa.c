@@ -957,7 +957,7 @@ static int cyapa_get_query_data(struct cyapa *cyapa)
 static int cyapa_check_is_operational(struct cyapa *cyapa)
 {
 	struct device *dev = &cyapa->client->dev;
-	const char unique_str[] = "CYTRA";
+	static const char unique_str[] = "CYTRA";
 	int ret;
 
 	ret = cyapa_poll_state(cyapa, 2000);
