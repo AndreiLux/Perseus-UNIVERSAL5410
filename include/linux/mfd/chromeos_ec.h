@@ -68,9 +68,12 @@ struct chromeos_ec_device {
 	int din_size;		/* Size of din buffer */
 	int dout_size;		/* Size of dout buffer */
 	int (*command_send)(struct chromeos_ec_device *ec,
-			char cmd, void *out_buf, int out_len);
+			uint16_t cmd, void *out_buf, int out_len);
 	int (*command_recv)(struct chromeos_ec_device *ec,
-			char cmd, void *in_buf, int in_len);
+			uint16_t cmd, void *in_buf, int in_len);
+	int (*command_sendrecv)(struct chromeos_ec_device *ec,
+			uint16_t cmd, void *out_buf, int out_len,
+			void *in_buf, int in_len);
 	int (*command_xfer)(struct chromeos_ec_device *ec,
 			struct chromeos_ec_msg *msg);
 	int (*command_i2c)(struct chromeos_ec_device *ec,

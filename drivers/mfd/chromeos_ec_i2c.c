@@ -61,43 +61,39 @@ static int cros_ec_command_xfer_noretry(struct chromeos_ec_device *ec_dev,
 	i2c_msg[1].addr = client->addr;
 	i2c_msg[1].flags = I2C_M_RD;
 
-	if (msg->in_len) {
-		/* allocate larger packet
-		 * (one byte for checksum, one for result code)
-		 */
-		packet_len = msg->in_len + 2;
-		in_buf = kzalloc(packet_len, GFP_KERNEL);
-		if (!in_buf)
-			goto done;
-		i2c_msg[1].len = packet_len;
-		i2c_msg[1].buf = (char *)in_buf;
-	} else {
-		i2c_msg[1].len = 1;
-		i2c_msg[1].buf = (char *)&res_code;
-	}
+	/*
+	 * allocate larger packet (one byte for checksum, one byte for
+	 * length, and one for result code)
+	 */
+	packet_len = msg->in_len + 3;
+	in_buf = kzalloc(packet_len, GFP_KERNEL);
+	if (!in_buf)
+		goto done;
+	i2c_msg[1].len = packet_len;
+	i2c_msg[1].buf = (char *)in_buf;
 
-	if (msg->out_len) {
-		/* allocate larger packet
-		 * (one byte for checksum, one for command code)
-		 */
-		packet_len = msg->out_len + 2;
-		out_buf = kzalloc(packet_len, GFP_KERNEL);
-		if (!out_buf)
-			goto done;
-		i2c_msg[0].len = packet_len;
-		i2c_msg[0].buf = (char *)out_buf;
-		out_buf[0] = msg->cmd;
+	/*
+	 * allocate larger packet (one byte for checksum, one for
+	 * command code, one for length, and one for command version)
+	 */
+	packet_len = msg->out_len + 4;
+	out_buf = kzalloc(packet_len, GFP_KERNEL);
+	if (!out_buf)
+		goto done;
+	i2c_msg[0].len = packet_len;
+	i2c_msg[0].buf = (char *)out_buf;
 
-		/* copy message payload and compute checksum */
-		for (i = 0, sum = 0; i < msg->out_len; i++) {
-			out_buf[i + 1] = msg->out_buf[i];
-			sum += out_buf[i + 1];
-		}
-		out_buf[msg->out_len + 1] = sum;
-	} else {
-		i2c_msg[0].len = 1;
-		i2c_msg[0].buf = (char *)&msg->cmd;
+	out_buf[0] = EC_CMD_VERSION0 + msg->version;
+	out_buf[1] = msg->cmd;
+	out_buf[2] = msg->out_len;
+
+	/* copy message payload and compute checksum */
+	sum = out_buf[0] + out_buf[1] + out_buf[2];
+	for (i = 0; i < msg->out_len; i++) {
+		out_buf[3 + i] = msg->out_buf[i];
+		sum += out_buf[3 + i];
 	}
+	out_buf[3 + msg->out_len] = sum;
 
 	/* send command to EC and read answer */
 	ret = i2c_transfer(client->adapter, i2c_msg, 2);
@@ -117,23 +113,23 @@ static int cros_ec_command_xfer_noretry(struct chromeos_ec_device *ec_dev,
 		ret = -EINVAL;
 		goto done;
 	}
-	if (msg->in_len) {
-		/* copy response packet payload and compute checksum */
-		for (i = 0, sum = 0; i < msg->in_len; i++) {
-			msg->in_buf[i] = in_buf[i + 1];
-			sum += in_buf[i + 1];
-		}
+
+	/* copy response packet payload and compute checksum */
+	sum = in_buf[0] + in_buf[1];
+	for (i = 0; i < msg->in_len; i++) {
+		msg->in_buf[i] = in_buf[2 + i];
+		sum += in_buf[2 + i];
+	}
 #ifdef DEBUG
-		dev_dbg(ec_dev->dev, "packet: ");
-		for (i = 0; i < i2c_msg[1].len; i++)
-			printk(" %02x", in_buf[i]);
-		printk(", sum = %02x\n", sum);
+	dev_dbg(ec_dev->dev, "packet: ");
+	for (i = 0; i < i2c_msg[1].len; i++)
+		printk(KERN_CONT " %02x", in_buf[i]);
+	printk(KERN_CONT ", sum = %02x\n", sum);
 #endif
-		if (sum != in_buf[msg->in_len + 1]) {
-			dev_err(ec_dev->dev, "bad packet checksum\n");
-			ret = -EBADMSG;
-			goto done;
-		}
+	if (sum != in_buf[2 + msg->in_len]) {
+		dev_err(ec_dev->dev, "bad packet checksum\n");
+		ret = -EBADMSG;
+		goto done;
 	}
 
 	ret = 0;

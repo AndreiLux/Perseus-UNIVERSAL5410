@@ -46,34 +46,32 @@ int cros_ec_prepare_tx(struct chromeos_ec_device *ec_dev,
 	return EC_MSG_TX_PROTO_BYTES + msg->out_len;
 }
 
-static int cros_ec_command_recv(struct chromeos_ec_device *ec_dev,
-				 char cmd, void *buf, int buf_len)
+static int cros_ec_command_sendrecv(struct chromeos_ec_device *ec_dev,
+		uint16_t cmd, void *out_buf, int out_len,
+		void *in_buf, int in_len)
 {
 	struct chromeos_ec_msg msg;
 
-	msg.version = 0;
-	msg.cmd = cmd;
-	msg.in_buf = buf;
-	msg.in_len = buf_len;
-	msg.out_buf = NULL;
-	msg.out_len = 0;
+	msg.version = cmd >> 8;
+	msg.cmd = cmd & 0xff;
+	msg.out_buf = out_buf;
+	msg.out_len = out_len;
+	msg.in_buf = in_buf;
+	msg.in_len = in_len;
 
 	return ec_dev->command_xfer(ec_dev, &msg);
 }
 
-static int cros_ec_command_send(struct chromeos_ec_device *ec_dev,
-				 char cmd, void *buf, int buf_len)
+static int cros_ec_command_recv(struct chromeos_ec_device *ec_dev,
+		uint16_t cmd, void *buf, int buf_len)
 {
-	struct chromeos_ec_msg msg;
+	return cros_ec_command_sendrecv(ec_dev, cmd, NULL, 0, buf, buf_len);
+}
 
-	msg.version = 0;
-	msg.cmd = cmd;
-	msg.out_buf = buf;
-	msg.out_len = buf_len;
-	msg.in_buf = NULL;
-	msg.in_len = 0;
-
-	return ec_dev->command_xfer(ec_dev, &msg);
+static int cros_ec_command_send(struct chromeos_ec_device *ec_dev,
+		uint16_t cmd, void *buf, int buf_len)
+{
+	return cros_ec_command_sendrecv(ec_dev, cmd, buf, buf_len, NULL, 0);
 }
 
 struct chromeos_ec_device *__devinit cros_ec_alloc(const char *name)
@@ -147,6 +145,7 @@ int __devinit cros_ec_register(struct chromeos_ec_device *ec_dev)
 
 	ec_dev->command_send = cros_ec_command_send;
 	ec_dev->command_recv = cros_ec_command_recv;
+	ec_dev->command_sendrecv = cros_ec_command_sendrecv;
 
 	if (ec_dev->din_size) {
 		ec_dev->din = kmalloc(ec_dev->din_size, GFP_KERNEL);
