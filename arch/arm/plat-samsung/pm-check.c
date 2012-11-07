@@ -43,7 +43,19 @@
  * and reducing the size will cause the CRC save area to grow
 */
 
-static bool pm_check_use_xor = 1;
+/*
+ * Possible values for pm_check_checksum_type:
+ * - crc: Best (but slowest).  Catches the most problems.
+ * - sum: Simple 32-bit sum.
+ * - xor: Simple 32-bit xor.  Bad at catching problems but gives you more
+ *        information about the problems you caught (you can tell if all
+ *        errors were in the same byte, etc).
+ */
+#define CHECKSUM_TYPE_CRC	"crc"
+#define CHECKSUM_TYPE_SUM	"sum"
+#define CHECKSUM_TYPE_XOR	"xor"
+
+static char *pm_check_checksum_type = CHECKSUM_TYPE_SUM;
 static bool pm_check_enabled;
 static bool pm_check_should_panic = 1;
 static bool pm_check_print_skips;
@@ -53,14 +65,16 @@ static int pm_check_chunksize = CONFIG_SAMSUNG_PM_CHECK_CHUNKSIZE * 1024;
 static u32 crc_size;	/* size needed for the crc block */
 static u32 *crcs;	/* allocated over suspend/resume */
 
+static u32 (*checksum_func)(u32 val, unsigned char const *ptr, size_t len);
+
 /* number of errors found this resume */
 static __suspend_volatile_bss u32 crc_err_cnt;
 
 
 typedef u32 *(run_fn_t)(struct resource *ptr, u32 *arg);
 
-module_param(pm_check_use_xor, bool, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(pm_check_use_xor, "Use XOR checks instead of CRC");
+module_param(pm_check_checksum_type, charp, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(pm_check_checksum_type, "Checksum type (crc, xor, or sum)");
 module_param(pm_check_enabled, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(pm_check_enabled,
 		"Enable memory validation on suspend/resume");
@@ -82,13 +96,33 @@ MODULE_PARM_DESC(pm_check_chunksize,
  * @len: Length (in bytes) of the memory range
  *
  */
-static u32 s3c_pm_xor_mem(u32 val, const u32 *ptr, size_t len)
+
+static u32 s3c_pm_xor_mem(u32 val, unsigned char const *ptr, size_t len)
 {
+	const u32 *word_ptr = (const u32 *)ptr;
 	int i;
 
 	len >>= 2; /* get words, not bytes */
-	for (i = 0; i < len; i++, ptr++)
-		val ^= *ptr;
+	for (i = 0; i < len; i++, word_ptr++)
+		val ^= *word_ptr;
+	return val;
+}
+
+/**
+ * s3c_pm_sum_mem() - Sum all the words in the memory range passed
+ * @val: Initial value to start the sum from
+ * @ptr: Pointer to the start of the memory range
+ * @len: Length (in bytes) of the memory range
+ *
+ */
+static u32 s3c_pm_sum_mem(u32 val, unsigned char const *ptr, size_t len)
+{
+	const u32 *word_ptr = (const u32 *)ptr;
+	int i;
+
+	len >>= 2; /* get words, not bytes */
+	for (i = 0; i < len; i++, word_ptr++)
+		val += *word_ptr;
 	return val;
 }
 
@@ -127,10 +161,7 @@ static inline u32 s3c_pm_process_mem(u32 val, u32 addr, size_t len,
 				pfn, addr + len - processed);
 			return val;
 		}
-		if (pm_check_use_xor)
-			val = s3c_pm_xor_mem(val, virt, left);
-		else
-			val = crc32_le(val, virt, left);
+		val = checksum_func(val, virt, left);
 		kunmap_atomic(virt);
 
 		if (for_save)
@@ -196,6 +227,17 @@ void s3c_pm_check_prepare(void)
 
 	if (!pm_check_enabled)
 		return;
+
+	if (strcasecmp(pm_check_checksum_type, CHECKSUM_TYPE_CRC) == 0) {
+		checksum_func = crc32_le;
+	} else if (strcasecmp(pm_check_checksum_type, CHECKSUM_TYPE_XOR) == 0) {
+		checksum_func = s3c_pm_xor_mem;
+	} else {
+		if (strcasecmp(pm_check_checksum_type, CHECKSUM_TYPE_SUM) != 0)
+			pr_warn("pm_check: Unknown checksum '%s'; using '%s'\n",
+				pm_check_checksum_type, CHECKSUM_TYPE_SUM);
+		checksum_func = s3c_pm_sum_mem;
+	}
 
 	crc_size = 0;
 	/* Timing code generates warnings at this point in suspend */
