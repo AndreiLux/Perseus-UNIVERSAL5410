@@ -346,17 +346,12 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 #endif
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
-	/* msb: The event flag is optional but exynos does not support it. */
-	if (!event) {
-		DRM_ERROR("called page_flip with empty event flag\n");
-		return -EINVAL;
-	}
-
 	/*
 	 * the pipe from user always is 0 so we can set pipe number
 	 * of current owner to event.
 	 */
-	event->pipe = exynos_crtc->pipe;
+	if (event)
+		event->pipe = exynos_crtc->pipe;
 
 	ret = drm_vblank_get(dev, exynos_crtc->pipe);
 	if (ret) {
