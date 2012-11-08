@@ -114,8 +114,8 @@ struct usbtll_omap {
 
 /*-------------------------------------------------------------------------*/
 
-const char usbtll_driver_name[] = USBTLL_DRIVER_NAME;
-struct platform_device	*tll_pdev;
+static const char usbtll_driver_name[] = USBTLL_DRIVER_NAME;
+static struct device *tll_dev;
 
 /*-------------------------------------------------------------------------*/
 
@@ -217,7 +217,6 @@ static int usbtll_omap_probe(struct platform_device *pdev)
 	struct resource				*res;
 	struct usbtll_omap			*tll;
 	unsigned				reg;
-	unsigned long				flags;
 	int					ret = 0;
 	int					i, ver;
 	bool needs_tll;
@@ -228,6 +227,11 @@ static int usbtll_omap_probe(struct platform_device *pdev)
 	if (!tll) {
 		dev_err(dev, "Memory allocation failed\n");
 		return -ENOMEM;
+	}
+
+	if (!pdata) {
+		dev_err(dev, "%s : Platform data mising\n", __func__);
+		return -ENODEV;
 	}
 
 	spin_lock_init(&tll->lock);
@@ -252,8 +256,6 @@ static int usbtll_omap_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, tll);
 	pm_runtime_enable(dev);
 	pm_runtime_get_sync(dev);
-
-	spin_lock_irqsave(&tll->lock, flags);
 
 	ver =  usbtll_read(base, OMAP_USBTLL_REVISION);
 	switch (ver) {
@@ -331,13 +333,13 @@ static int usbtll_omap_probe(struct platform_device *pdev)
 		}
 	}
 
-	tll_pdev = pdev;
+	/* only after this can omap_tll_enable/disable work */
+	tll_dev = dev;
 
 err_clk:
 	for (--i; i >= 0 ; i--)
 		clk_put(tll->ch_clk[i]);
 
-	spin_unlock_irqrestore(&tll->lock, flags);
 	pm_runtime_put_sync(dev);
 	if (ret == 0) {
 		pr_info("OMAP USB TLL : revision 0x%x, channels %d\n",
@@ -364,6 +366,7 @@ static int usbtll_omap_remove(struct platform_device *pdev)
 	struct usbtll_omap *tll = platform_get_drvdata(pdev);
 	int i;
 
+	tll_dev = NULL;
 	iounmap(tll->base);
 	for (i = 0; i < tll->nch; i++)
 		clk_put(tll->ch_clk[i]);
@@ -373,76 +376,10 @@ static int usbtll_omap_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static int usbtll_runtime_resume(struct device *dev)
-{
-	struct usbtll_omap			*tll = dev_get_drvdata(dev);
-	struct usbtll_omap_platform_data	*pdata = tll->pdata;
-	unsigned long				flags;
-	int i;
-
-	dev_dbg(dev, "usbtll_runtime_resume\n");
-
-	if (!pdata) {
-		dev_dbg(dev, "missing platform_data\n");
-		return  -ENODEV;
-	}
-
-	spin_lock_irqsave(&tll->lock, flags);
-
-	for (i = 0; i < tll->nch; i++) {
-		if (mode_needs_tll(pdata->port_mode[i])) {
-			int r;
-			r = clk_enable(tll->ch_clk[i]);
-			if (r) {
-				dev_err(dev,
-				 "%s : Error enabling ch %d clock: %d\n",
-				 __func__, i, r);
-			}
-		}
-	}
-
-	spin_unlock_irqrestore(&tll->lock, flags);
-
-	return 0;
-}
-
-static int usbtll_runtime_suspend(struct device *dev)
-{
-	struct usbtll_omap			*tll = dev_get_drvdata(dev);
-	struct usbtll_omap_platform_data	*pdata = tll->pdata;
-	unsigned long				flags;
-	int i;
-
-	dev_dbg(dev, "usbtll_runtime_suspend\n");
-
-	if (!pdata) {
-		dev_dbg(dev, "missing platform_data\n");
-		return  -ENODEV;
-	}
-
-	spin_lock_irqsave(&tll->lock, flags);
-
-	for (i = 0; i < tll->nch; i++) {
-		if (mode_needs_tll(pdata->port_mode[i]))
-			clk_disable(tll->ch_clk[i]);
-	}
-
-	spin_unlock_irqrestore(&tll->lock, flags);
-
-	return 0;
-}
-
-static const struct dev_pm_ops usbtllomap_dev_pm_ops = {
-	SET_RUNTIME_PM_OPS(usbtll_runtime_suspend,
-			   usbtll_runtime_resume,
-			   NULL)
-};
-
 static struct platform_driver usbtll_omap_driver = {
 	.driver = {
 		.name		= (char *)usbtll_driver_name,
 		.owner		= THIS_MODULE,
-		.pm		= &usbtllomap_dev_pm_ops,
 	},
 	.probe		= usbtll_omap_probe,
 	.remove		= usbtll_omap_remove,
@@ -450,21 +387,60 @@ static struct platform_driver usbtll_omap_driver = {
 
 int omap_tll_enable(void)
 {
-	if (!tll_pdev) {
-		pr_err("missing omap usbhs tll platform_data\n");
+	struct usbtll_omap			*tll;
+	unsigned long				flags;
+	int i;
+
+	if (!tll_dev) {
+		pr_err("%s: OMAP USB TLL not initialized\n", __func__);
 		return  -ENODEV;
 	}
-	return pm_runtime_get_sync(&tll_pdev->dev);
+
+	tll = dev_get_drvdata(tll_dev);
+	spin_lock_irqsave(&tll->lock, flags);
+
+	for (i = 0; i < tll->nch; i++) {
+		if (mode_needs_tll(tll->pdata->port_mode[i])) {
+			int r;
+			r = clk_enable(tll->ch_clk[i]);
+			if (r) {
+				dev_err(tll_dev,
+				  "%s : Error enabling ch %d clock: %d\n",
+				  __func__, i, r);
+			}
+		}
+	}
+
+	i = pm_runtime_get_sync(tll_dev);
+	spin_unlock_irqrestore(&tll->lock, flags);
+
+	return i;
 }
 EXPORT_SYMBOL_GPL(omap_tll_enable);
 
 int omap_tll_disable(void)
 {
-	if (!tll_pdev) {
-		pr_err("missing omap usbhs tll platform_data\n");
+	struct usbtll_omap			*tll;
+	unsigned long				flags;
+	int i;
+
+	if (!tll_dev) {
+		pr_err("%s: OMAP USB TLL not initialized\n", __func__);
 		return  -ENODEV;
 	}
-	return pm_runtime_put_sync(&tll_pdev->dev);
+
+	tll = dev_get_drvdata(tll_dev);
+	spin_lock_irqsave(&tll->lock, flags);
+
+	for (i = 0; i < tll->nch; i++) {
+		if (mode_needs_tll(tll->pdata->port_mode[i]))
+			clk_disable(tll->ch_clk[i]);
+	}
+
+	i = pm_runtime_put_sync(tll_dev);
+	spin_unlock_irqrestore(&tll->lock, flags);
+
+	return i;
 }
 EXPORT_SYMBOL_GPL(omap_tll_disable);
 
