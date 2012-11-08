@@ -20,6 +20,7 @@
 #include <linux/string.h>
 
 #include <mach/map.h>
+#include <mach/regs-pmu.h>
 
 #include <plat/cpu.h>
 
@@ -37,6 +38,8 @@
 
 #define DEFAULT_ASV_GROUP	1
 #define DEFAULT_MIF_ASV_GROUP	0
+
+#define ABB_MODE_BYPASS		255
 
 #define CHIP_ID_REG		(S5P_VA_CHIPID + 0x4)
 #define LOT_ID_REG		(S5P_VA_CHIPID + 0x14)
@@ -57,6 +60,13 @@ struct samsung_asv {
 	int (*get_hpm)(struct samsung_asv *asv_info);
 	/* store asv result for later use */
 	int (*store_result)(struct samsung_asv *asv_info);
+};
+
+enum exynos5250_abb_member {
+	ABB_INT,
+	ABB_MIF,
+	ABB_G3D,
+	ABB_ARM,
 };
 
 unsigned int exynos_result_of_asv;
@@ -215,6 +225,89 @@ static int exynos5250_check_lot_id(struct samsung_asv *asv_info)
 	return -EINVAL;
 }
 
+static inline void exynos5250_set_abb_member(enum exynos5250_abb_member abb_target,
+					     unsigned int abb_mode_value)
+{
+	unsigned int tmp;
+
+	if (abb_mode_value != ABB_MODE_BYPASS) {
+		tmp = EXYNOS5_ABB_INIT;
+		tmp |= abb_mode_value;
+	} else {
+		tmp = EXYNOS5_ABB_INIT_BYPASS;
+	}
+
+	if (abb_target == ABB_INT)
+		__raw_writel(tmp, EXYNOS5_ABB_MEMBER(ABB_INT));
+	else if (abb_target == ABB_MIF)
+		__raw_writel(tmp, EXYNOS5_ABB_MEMBER(ABB_MIF));
+	else if (abb_target == ABB_G3D)
+		__raw_writel(tmp, EXYNOS5_ABB_MEMBER(ABB_G3D));
+	else if (abb_target == ABB_ARM)
+		__raw_writel(tmp, EXYNOS5_ABB_MEMBER(ABB_ARM));
+}
+
+static inline void exynos5250_set_abb(unsigned int abb_mode_value)
+{
+	unsigned int tmp;
+
+	if (abb_mode_value != ABB_MODE_BYPASS) {
+		tmp = EXYNOS5_ABB_INIT;
+		tmp |= abb_mode_value;
+	} else {
+		tmp = EXYNOS5_ABB_INIT_BYPASS;
+	}
+
+	__raw_writel(tmp, EXYNOS5_ABB_MEMBER(ABB_INT));
+	__raw_writel(tmp, EXYNOS5_ABB_MEMBER(ABB_MIF));
+	__raw_writel(tmp, EXYNOS5_ABB_MEMBER(ABB_G3D));
+	__raw_writel(tmp, EXYNOS5_ABB_MEMBER(ABB_ARM));
+}
+
+static void exynos5250_pre_set_abb(void)
+{
+	if (!exynos_lot_id) {
+		switch (exynos_result_of_asv) {
+		case 0:
+		case 1:
+			exynos5250_set_abb_member(ABB_ARM, ABB_MODE_080);
+			exynos5250_set_abb_member(ABB_INT, ABB_MODE_080);
+			exynos5250_set_abb_member(ABB_G3D, ABB_MODE_080);
+			break;
+		default:
+			exynos5250_set_abb_member(ABB_ARM, ABB_MODE_BYPASS);
+			exynos5250_set_abb_member(ABB_INT, ABB_MODE_BYPASS);
+			exynos5250_set_abb_member(ABB_G3D, ABB_MODE_BYPASS);
+			break;
+		}
+
+		/*
+		 * Use bypass for MIF for regular DDR3.
+		 *
+		 * TODO: For LPDDR3 we should be using ABB_MODE_130 if we're
+		 * at 800MHz (only at ASV0/1?).  We should be looking at
+		 * the MEMCONTROL register (mem_type field) to handle both
+		 * cases.
+		 */
+		exynos5250_set_abb_member(ABB_MIF, ABB_MODE_BYPASS);
+	} else {
+		switch (exynos_result_of_asv) {
+		case 0:
+		case 1:
+		case 2:
+			exynos5250_set_abb(ABB_MODE_080);
+			break;
+		case 3:
+		case 4:
+			exynos5250_set_abb(ABB_MODE_BYPASS);
+			break;
+		default:
+			exynos5250_set_abb(ABB_MODE_130);
+			break;
+		}
+	}
+}
+
 static int exynos5250_asv_store_result(struct samsung_asv *asv_info)
 {
 	unsigned int i;
@@ -263,6 +356,8 @@ static int exynos5250_asv_store_result(struct samsung_asv *asv_info)
 	printk(KERN_INFO "EXYNOS5250: IDS:%d HPM:%d RESULT:%d MIF:%d\n",
 		asv_info->ids_result, asv_info->hpm_result,
 		exynos_result_of_asv, exynos_result_mif_asv);
+
+	exynos5250_pre_set_abb();
 
 	return 0;
 }
