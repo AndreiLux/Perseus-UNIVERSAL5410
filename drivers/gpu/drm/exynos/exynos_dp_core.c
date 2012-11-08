@@ -1152,6 +1152,8 @@ static int __devinit exynos_dp_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, dp);
 
+	exynos_dp_power(dp, DRM_MODE_DPMS_ON);
+
 	exynos_display_attach_panel(EXYNOS_DRM_DISPLAY_TYPE_FIMD, &dp_panel_ops,
 			dp);
 
@@ -1176,11 +1178,8 @@ static int __devexit exynos_dp_remove(struct platform_device *pdev)
 {
 	struct exynos_dp_device *dp = platform_get_drvdata(pdev);
 
-	if (work_pending(&dp->hotplug_work))
-		flush_work_sync(&dp->hotplug_work);
-
-	if (dp->phy_ops.phy_exit)
-		dp->phy_ops.phy_exit();
+	/* power_off will take care of flushing the hotplug_work */
+	exynos_dp_power(dp, DRM_MODE_DPMS_OFF);
 
 	if (gpio_is_valid(dp->hpd_gpio))
 		gpio_free(dp->hpd_gpio);
@@ -1198,34 +1197,11 @@ static int __devexit exynos_dp_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int exynos_dp_suspend(struct device *dev)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct exynos_dp_device *dp = platform_get_drvdata(pdev);
-
-	return exynos_dp_power(dp, DRM_MODE_DPMS_SUSPEND);
-}
-
-static int exynos_dp_resume(struct device *dev)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct exynos_dp_device *dp = platform_get_drvdata(pdev);
-
-	return exynos_dp_power(dp, DRM_MODE_DPMS_ON);
-}
-#endif
-
-static const struct dev_pm_ops dp_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(exynos_dp_suspend, exynos_dp_resume)
-};
-
 struct platform_driver dp_driver = {
 	.probe		= exynos_dp_probe,
 	.remove		= __devexit_p(exynos_dp_remove),
 	.driver		= {
 		.name	= "s5p-dp",
 		.owner	= THIS_MODULE,
-		.pm	= &dp_pm_ops,
 	},
 };

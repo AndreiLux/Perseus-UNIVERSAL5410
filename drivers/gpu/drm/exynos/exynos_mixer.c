@@ -1062,6 +1062,7 @@ static void mixer_resource_poweron(struct mixer_context *mctx)
 	mixer_enable_vblank(mctx, mctx->pipe);
 
 	mctx->is_mixer_powered_on = true;
+	mixer_win_commit(mctx, 0);
 }
 
 static void mixer_resource_poweroff(struct mixer_context *mctx)
@@ -1080,63 +1081,6 @@ static void mixer_resource_poweroff(struct mixer_context *mctx)
 	mctx->is_mixer_powered_on = false;
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int mixer_resume(struct device *dev)
-{
-	struct mixer_context *mctx = get_mixer_context(dev);
-
-	DRM_DEBUG_KMS("[mixer] sleep resume - start\n");
-
-	if (!pm_runtime_suspended(dev)) {
-		DRM_DEBUG_KMS("[mixer] sleep resume - end\n");
-		mixer_resource_poweron(mctx);
-		mixer_win_commit(mctx, 0);
-	}
-	DRM_DEBUG_KMS("[mixer] sleep resume - not done\n");
-
-	return 0;
-}
-static int mixer_suspend(struct device *dev)
-{
-	struct mixer_context *mctx = get_mixer_context(dev);
-
-	DRM_DEBUG_KMS("[mixer] suspend - start\n");
-	if (pm_runtime_suspended(dev)) {
-		DRM_DEBUG_KMS("[mixer] suspend - already suspended\n");
-		return 0;
-	}
-
-	mixer_resource_poweroff(mctx);
-	DRM_DEBUG_KMS("[mixer] suspend - end\n");
-	return 0;
-}
-#endif
-#ifdef CONFIG_PM_RUNTIME
-static int mixer_runtime_resume(struct device *dev)
-{
-	struct mixer_context *mctx = get_mixer_context(dev);
-
-	DRM_DEBUG_KMS("[mixer] runtime resume - start\n");
-
-	mixer_resource_poweron(mctx);
-	DRM_DEBUG_KMS("[mixer] runtime resume - end\n");
-
-	return 0;
-}
-
-static int mixer_runtime_suspend(struct device *dev)
-{
-	struct mixer_context *mctx = get_mixer_context(dev);
-
-	DRM_DEBUG_KMS("[mixer] runtime suspend - start\n");
-
-	mixer_resource_poweroff(mctx);
-	DRM_DEBUG_KMS("[mixer] runtime suspend - end\n");
-	return 0;
-}
-
-#endif
-
 static int mixer_power(void *ctx, int mode)
 {
 	struct mixer_context *mctx = ctx;
@@ -1145,20 +1089,12 @@ static int mixer_power(void *ctx, int mode)
 
 	switch (mode) {
 	case DRM_MODE_DPMS_ON:
-		if (mctx->is_mixer_powered_on) {
-			DRM_DEBUG_KMS("[%d] %s returning\n", __LINE__, __func__);
-			break;
-		}
-		pm_runtime_get_sync(mctx->dev);
+		mixer_resource_poweron(mctx);
 		break;
 	case DRM_MODE_DPMS_STANDBY:
 	case DRM_MODE_DPMS_SUSPEND:
 	case DRM_MODE_DPMS_OFF:
-		if (!mctx->is_mixer_powered_on) {
-			DRM_DEBUG_KMS("[%d] %s returning\n", __LINE__, __func__);
-			break;
-		}
-		pm_runtime_put_sync(mctx->dev);
+		mixer_resource_poweroff(mctx);
 		break;
 	default:
 		DRM_DEBUG_KMS("unknown dpms mode: %d\n", mode);
@@ -1190,11 +1126,6 @@ static struct exynos_controller_ops mixer_ops = {
 	.apply			= mixer_apply,
 	.win_commit		= mixer_win_commit,
 	.win_disable		= mixer_win_disable,
-};
-
-static const struct dev_pm_ops mixer_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(mixer_suspend, mixer_resume)
-	SET_RUNTIME_PM_OPS(mixer_runtime_suspend, mixer_runtime_resume, NULL)
 };
 
 #ifdef CONFIG_EXYNOS_IOMMU
@@ -1439,7 +1370,6 @@ struct platform_driver mixer_driver = {
 	.driver = {
 		.name = "s5p-mixer",
 		.owner = THIS_MODULE,
-		.pm = &mixer_pm_ops,
 	},
 	.probe = mixer_probe,
 	.remove = __devexit_p(mixer_remove),

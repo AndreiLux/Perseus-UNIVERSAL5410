@@ -308,6 +308,8 @@ static void iommu_deinit(struct platform_device *pdev)
 
 static int exynos_drm_platform_probe(struct platform_device *pdev)
 {
+	struct device *dev = &pdev->dev;
+
 	DRM_DEBUG_DRIVER("%s\n", __FILE__);
 
 #ifdef CONFIG_EXYNOS_IOMMU
@@ -319,12 +321,19 @@ static int exynos_drm_platform_probe(struct platform_device *pdev)
 
 	exynos_drm_driver.num_ioctls = DRM_ARRAY_SIZE(exynos_ioctls);
 
+	pm_runtime_enable(dev);
+	pm_runtime_get_sync(dev);
+
 	return drm_platform_init(&exynos_drm_driver, pdev);
 }
 
 static int __devexit exynos_drm_platform_remove(struct platform_device *pdev)
 {
+	struct device *dev = &pdev->dev;
+
 	DRM_DEBUG_DRIVER("%s\n", __FILE__);
+
+	pm_runtime_disable(dev);
 
 	drm_platform_exit(&exynos_drm_driver, pdev);
 
@@ -333,15 +342,6 @@ static int __devexit exynos_drm_platform_remove(struct platform_device *pdev)
 #endif
 	return 0;
 }
-
-static struct platform_driver exynos_drm_platform_driver = {
-	.probe		= exynos_drm_platform_probe,
-	.remove		= __devexit_p(exynos_drm_platform_remove),
-	.driver		= {
-		.owner	= THIS_MODULE,
-		.name	= "exynos-drm",
-	},
-};
 
 /* TODO (seanpaul): Once we remove platform drivers, we'll be calling the
  * various panel/controller init functions directly. These init functions will
@@ -434,6 +434,85 @@ void exynos_display_remove(struct exynos_drm_display *display)
 		kfree(display->subdrv);
 	}
 }
+
+static int exynos_drm_resume_displays(void)
+{
+	int i;
+
+	for (i = 0; i < EXYNOS_DRM_DISPLAY_NUM_DISPLAYS; i++) {
+		struct exynos_drm_display *display = displays[i];
+		struct drm_encoder *encoder = display->subdrv->encoder;
+
+		if (!encoder)
+			continue;
+
+		exynos_drm_encoder_dpms(encoder, display->suspend_dpms);
+	}
+	return 0;
+}
+
+static int exynos_drm_suspend_displays(void)
+{
+	int i;
+
+	for (i = 0; i < EXYNOS_DRM_DISPLAY_NUM_DISPLAYS; i++) {
+		struct exynos_drm_display *display = displays[i];
+		struct drm_encoder *encoder = display->subdrv->encoder;
+
+		if (!encoder)
+			continue;
+
+		display->suspend_dpms = exynos_drm_encoder_get_dpms(encoder);
+		exynos_drm_encoder_dpms(encoder, DRM_MODE_DPMS_OFF);
+	}
+	return 0;
+}
+
+#ifdef CONFIG_PM_SLEEP
+static int exynos_drm_suspend(struct device *dev)
+{
+	if (pm_runtime_suspended(dev))
+		return 0;
+
+	return exynos_drm_suspend_displays();
+}
+
+static int exynos_drm_resume(struct device *dev)
+{
+	if (pm_runtime_suspended(dev))
+		return 0;
+
+	return exynos_drm_resume_displays();
+}
+#endif
+
+#ifdef CONFIG_PM_RUNTIME
+static int exynos_drm_runtime_resume(struct device *dev)
+{
+	return exynos_drm_resume_displays();
+}
+
+static int exynos_drm_runtime_suspend(struct device *dev)
+{
+	return exynos_drm_suspend_displays();
+}
+#endif
+
+static const struct dev_pm_ops drm_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(exynos_drm_suspend, exynos_drm_resume)
+	SET_RUNTIME_PM_OPS(exynos_drm_runtime_suspend,
+			exynos_drm_runtime_resume, NULL)
+};
+
+static struct platform_driver exynos_drm_platform_driver = {
+	.probe		= exynos_drm_platform_probe,
+	.remove		= __devexit_p(exynos_drm_platform_remove),
+	.driver		= {
+		.owner	= THIS_MODULE,
+		.name	= "exynos-drm",
+		.pm	= &drm_pm_ops,
+	},
+};
 
 static int __init exynos_drm_init(void)
 {

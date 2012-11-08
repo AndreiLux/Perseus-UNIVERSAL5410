@@ -210,6 +210,9 @@ void exynos_fimd_dp_attach(struct device *dev);
 int exynos_drm_subdrv_open(struct drm_device *dev, struct drm_file *file);
 void exynos_drm_subdrv_close(struct drm_device *dev, struct drm_file *file);
 
+void exynos_drm_encoder_dpms(struct drm_encoder *encoder, int mode);
+int exynos_drm_encoder_get_dpms(struct drm_encoder *encoder);
+
 /*
  * exynos specific framebuffer structure.
  *

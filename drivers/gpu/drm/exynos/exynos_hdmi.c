@@ -30,7 +30,6 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/delay.h>
-#include <linux/pm_runtime.h>
 #include <linux/clk.h>
 #include <linux/regulator/consumer.h>
 #include <linux/io.h>
@@ -1879,16 +1878,150 @@ static void hdmi_apply(void *ctx)
 	hdmi_commit(ctx);
 }
 
-static int hdmi_power_on(void *ctx, int mode)
+static int hdmiphy_update_bits(struct i2c_client *client, u8 *reg_cache,
+			       u8 reg, u8 mask, u8 val)
+{
+	int ret;
+	u8 buffer[2];
+
+	buffer[0] = reg;
+	buffer[1] = (reg_cache[reg] & ~mask) | (val & mask);
+	reg_cache[reg] = buffer[1];
+
+	ret = i2c_master_send(client, buffer, 2);
+	if (ret != 2)
+		return -EIO;
+
+	return 0;
+}
+
+static int hdmiphy_s_power(struct i2c_client *client, bool on)
+{
+	u8 reg_cache[32] = { 0 };
+	u8 buffer[2];
+	int ret;
+
+	DRM_DEBUG_KMS("%s: hdmiphy is %s\n", __func__, on ? "on" : "off");
+
+	/* Cache all 32 registers to make the code below faster */
+	buffer[0] = 0x0;
+	ret = i2c_master_send(client, buffer, 1);
+	if (ret != 1) {
+		ret = -EIO;
+		goto exit;
+	}
+	ret = i2c_master_recv(client, reg_cache, 32);
+	if (ret != 32) {
+		ret = -EIO;
+		goto exit;
+	}
+
+	/* Go to/from configuration from/to operation mode */
+	ret = hdmiphy_update_bits(client, reg_cache, 0x1f, 0xff,
+				  on ? 0x80 : 0x00);
+	if (ret)
+		goto exit;
+
+	/*
+	 * Turn off undocumented "oscpad" if !on; it turns on again in
+	 * hdmiphy_conf_apply()
+	 */
+	if (!on)
+		ret = hdmiphy_update_bits(client, reg_cache, 0x0b, 0xc0, 0x00);
+		if (ret)
+			goto exit;
+
+	/* Disable powerdown if on; enable if !on */
+	ret = hdmiphy_update_bits(client, reg_cache, 0x1d, 0x80,
+				  on ? 0 : ~0);
+	if (ret)
+		goto exit;
+	ret = hdmiphy_update_bits(client, reg_cache, 0x1d, 0x77,
+				  on ? 0 : ~0);
+	if (ret)
+		goto exit;
+
+	/*
+	 * Turn off bit 3 of reg 4 if !on; it turns on again in
+	 * hdmiphy_conf_apply().  It's unclear what this bit does.
+	 */
+	if (!on)
+		ret = hdmiphy_update_bits(client, reg_cache, 0x04, BIT(3), 0);
+		if (ret)
+			goto exit;
+
+exit:
+	/* Don't expect any errors so just do a single warn */
+	WARN_ON(ret);
+
+	return ret;
+}
+
+static void hdmi_resource_poweron(struct hdmi_context *hdata)
+{
+	struct hdmi_resources *res = &hdata->res;
+
+	hdata->is_hdmi_powered_on = true;
+	hdmi_cfg_hpd(hdata, false);
+
+	/* irq change by TV power status */
+	if (hdata->curr_irq == hdata->internal_irq)
+		return;
+
+	disable_irq(hdata->curr_irq);
+
+	hdata->curr_irq = hdata->internal_irq;
+
+	enable_irq(hdata->curr_irq);
+
+	/* turn HDMI power on */
+	regulator_bulk_enable(res->regul_count, res->regul_bulk);
+
+	/* power-on hdmi clocks */
+	clk_enable(res->hdmiphy);
+
+	hdmiphy_s_power(hdata->hdmiphy_port, 1);
+	hdmiphy_conf_reset(hdata);
+	hdmi_conf_reset(hdata);
+	hdmi_conf_init(hdata);
+	if (!hdata->is_soc_exynos5)
+		hdmi_audio_init(hdata);
+	hdmi_commit(hdata);
+}
+
+static void hdmi_resource_poweroff(struct hdmi_context *hdata)
+{
+	struct hdmi_resources *res = &hdata->res;
+
+	hdmi_cfg_hpd(hdata, true);
+
+	if (hdata->curr_irq == hdata->external_irq)
+		return;
+
+	disable_irq(hdata->curr_irq);
+	hdata->curr_irq = hdata->external_irq;
+
+	enable_irq(hdata->curr_irq);
+	hdata->is_hdmi_powered_on = false;
+
+	hdmiphy_s_power(hdata->hdmiphy_port, 0);
+	hdmiphy_conf_reset(hdata);
+
+	/* power-off hdmi clocks */
+	clk_disable(res->hdmiphy);
+
+	/* turn HDMI power off */
+	regulator_bulk_disable(res->regul_count, res->regul_bulk);
+}
+
+static int hdmi_power(void *ctx, int mode)
 {
 	struct hdmi_context *hdata = ctx;
 
 	switch (mode) {
 	case DRM_MODE_DPMS_ON:
-		if (!hdata->is_hdmi_powered_on) {
-			pm_runtime_get_sync(hdata->dev);
-			hdmi_commit(ctx);
-		}
+		if (!hdata->is_hdmi_powered_on)
+			hdmi_resource_poweron(hdata);
 		break;
 	case DRM_MODE_DPMS_STANDBY:
 		break;
@@ -1896,7 +2029,7 @@ static int hdmi_power_on(void *ctx, int mode)
 		break;
 	case DRM_MODE_DPMS_OFF:
 		if (hdata->is_hdmi_powered_on)
-			pm_runtime_put_sync(hdata->dev);
+			hdmi_resource_poweroff(hdata);
 		break;
 	default:
 		DRM_DEBUG_KMS("unknown dpms mode: %d\n", mode);
@@ -1921,7 +2054,7 @@ static struct exynos_panel_ops hdmi_ops = {
 	.is_connected	= hdmi_is_connected,
 	.get_edid	= hdmi_get_edid,
 	.check_timing	= hdmi_check_timing,
-	.power		= hdmi_power_on,
+	.power		= hdmi_power,
 
 	/* manager */
 	.mode_fixup	= hdmi_mode_fixup,
@@ -2067,201 +2200,6 @@ static int hdmi_resources_cleanup(struct hdmi_context *hdata)
 
 	return 0;
 }
-
-static int hdmiphy_update_bits(struct i2c_client *client, u8 *reg_cache,
-			       u8 reg, u8 mask, u8 val)
-{
-	int ret;
-	u8 buffer[2];
-
-	buffer[0] = reg;
-	buffer[1] = (reg_cache[reg] & ~mask) | (val & mask);
-	reg_cache[reg] = buffer[1];
-
-	ret = i2c_master_send(client, buffer, 2);
-	if (ret != 2)
-		return -EIO;
-
-	return 0;
-}
-
-static int hdmiphy_s_power(struct i2c_client *client, bool on)
-{
-	u8 reg_cache[32] = { 0 };
-	u8 buffer[2];
-	int ret;
-
-	DRM_DEBUG_KMS("%s: hdmiphy is %s\n", __func__, on ? "on" : "off");
-
-	/* Cache all 32 registers to make the code below faster */
-	buffer[0] = 0x0;
-	ret = i2c_master_send(client, buffer, 1);
-	if (ret != 1) {
-		ret = -EIO;
-		goto exit;
-	}
-	ret = i2c_master_recv(client, reg_cache, 32);
-	if (ret != 32) {
-		ret = -EIO;
-		goto exit;
-	}
-
-	/* Go to/from configuration from/to operation mode */
-	ret = hdmiphy_update_bits(client, reg_cache, 0x1f, 0xff,
-				  on ? 0x80 : 0x00);
-	if (ret)
-		goto exit;
-
-	/*
-	 * Turn off undocumented "oscpad" if !on; it turns on again in
-	 * hdmiphy_conf_apply()
-	 */
-	if (!on)
-		ret = hdmiphy_update_bits(client, reg_cache, 0x0b, 0xc0, 0x00);
-		if (ret)
-			goto exit;
-
-	/* Disable powerdown if on; enable if !on */
-	ret = hdmiphy_update_bits(client, reg_cache, 0x1d, 0x80,
-				  on ? 0 : ~0);
-	if (ret)
-		goto exit;
-	ret = hdmiphy_update_bits(client, reg_cache, 0x1d, 0x77,
-				  on ? 0 : ~0);
-	if (ret)
-		goto exit;
-
-	/*
-	 * Turn off bit 3 of reg 4 if !on; it turns on again in
-	 * hdmiphy_conf_apply().  It's unclear what this bit does.
-	 */
-	if (!on)
-		ret = hdmiphy_update_bits(client, reg_cache, 0x04, BIT(3), 0);
-		if (ret)
-			goto exit;
-
-exit:
-	/* Don't expect any errors so just do a single warn */
-	WARN_ON(ret);
-
-	return ret;
-}
-
-static void hdmi_resource_poweron(struct hdmi_context *hdata)
-{
-	struct hdmi_resources *res = &hdata->res;
-
-	hdata->is_hdmi_powered_on = true;
-	hdmi_cfg_hpd(hdata, false);
-
-	/* irq change by TV power status */
-	if (hdata->curr_irq == hdata->internal_irq)
-		return;
-
-	disable_irq(hdata->curr_irq);
-
-	hdata->curr_irq = hdata->internal_irq;
-
-	enable_irq(hdata->curr_irq);
-
-	/* turn HDMI power on */
-	regulator_bulk_enable(res->regul_count, res->regul_bulk);
-
-	/* power-on hdmi clocks */
-	clk_enable(res->hdmiphy);
-
-	hdmiphy_s_power(hdata->hdmiphy_port, 1);
-	hdmiphy_conf_reset(hdata);
-	hdmi_conf_reset(hdata);
-	hdmi_conf_init(hdata);
-	if (!hdata->is_soc_exynos5)
-		hdmi_audio_init(hdata);
-}
-
-static void hdmi_resource_poweroff(struct hdmi_context *hdata)
-{
-	struct hdmi_resources *res = &hdata->res;
-
-	hdmi_cfg_hpd(hdata, true);
-
-	if (hdata->curr_irq == hdata->external_irq)
-		return;
-
-	disable_irq(hdata->curr_irq);
-	hdata->curr_irq = hdata->external_irq;
-
-	enable_irq(hdata->curr_irq);
-	hdata->is_hdmi_powered_on = false;
-
-	hdmiphy_s_power(hdata->hdmiphy_port, 0);
-	hdmiphy_conf_reset(hdata);
-
-	/* power-off hdmi clocks */
-	clk_disable(res->hdmiphy);
-
-	/* turn HDMI power off */
-	regulator_bulk_disable(res->regul_count, res->regul_bulk);
-}
-
-#ifdef CONFIG_PM_SLEEP
-static int hdmi_suspend(struct device *dev)
-{
-	struct hdmi_context *hdata = get_hdmi_context(dev);
-
-	DRM_DEBUG_KMS("[hdmi] sleep suspend - start\n");
-	if (pm_runtime_suspended(dev)) {
-		DRM_DEBUG_KMS("[hdmi] sleep suspend - already suspended\n");
-		return 0;
-	}
-
-	hdmi_resource_poweroff(hdata);
-	DRM_DEBUG_KMS("[hdmi] sleep suspend - end\n");
-
-	return 0;
-}
-static int hdmi_resume(struct device *dev)
-{
-	struct hdmi_context *hdata = get_hdmi_context(dev);
-
-	DRM_DEBUG_KMS("[hdmi] sleep resume - start\n");
-
-	if (!pm_runtime_suspended(dev)) {
-		hdmi_resource_poweron(hdata);
-		hdmi_commit(hdata);
-		DRM_DEBUG_KMS("[hdmi] sleep resuming\n");
-	}
-	DRM_DEBUG_KMS("[hdmi] sleep resume - end\n");
-	return 0;
-}
-#endif
-#ifdef CONFIG_PM_RUNTIME
-static int hdmi_runtime_suspend(struct device *dev)
-{
-	struct hdmi_context *hdata = get_hdmi_context(dev);
-
-	DRM_DEBUG_KMS("[hdmi] runtime suspend - start\n");
-	hdmi_resource_poweroff(hdata);
-	DRM_DEBUG_KMS("[hdmi] runtime suspend - end\n");
-
-	return 0;
-}
-
-static int hdmi_runtime_resume(struct device *dev)
-{
-	struct hdmi_context *hdata = get_hdmi_context(dev);
-
-	DRM_DEBUG_KMS("[hdmi] runtime resume - start\n");
-
-	hdmi_resource_poweron(hdata);
-
-	DRM_DEBUG_KMS("[hdmi] runtime resume - end\n");
-	return 0;
-}
-#endif
-static const struct dev_pm_ops hdmi_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(hdmi_suspend, hdmi_resume)
-	SET_RUNTIME_PM_OPS(hdmi_runtime_suspend, hdmi_runtime_resume, NULL)
-};
 
 static struct i2c_client *hdmi_ddc, *hdmi_hdmiphy;
 
@@ -2459,13 +2397,10 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 	}
 
 	hdmi_resource_poweron(hdata);
-	pm_runtime_enable(dev);
 
 	if (!hdmi_is_connected(hdata)) {
 		hdmi_resource_poweroff(hdata);
 		DRM_DEBUG_KMS("gpio state is low. powering off!\n");
-	} else {
-		pm_runtime_get_sync(dev);
 	}
 
 	exynos_display_attach_panel(EXYNOS_DRM_DISPLAY_TYPE_MIXER, &hdmi_ops,
@@ -2542,6 +2477,5 @@ struct platform_driver hdmi_driver = {
 		.name   = "exynos4-hdmi",
 #endif
 		.owner	= THIS_MODULE,
-		.pm = &hdmi_pm_ops,
 	},
 };

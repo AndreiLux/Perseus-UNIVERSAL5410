@@ -96,6 +96,7 @@ enum exynos_drm_display_type {
  * @panel_ctx: The context pointer to pass to panel callbacks
  * @controller_ctx: The context pointer to pass to controller callbacks
  * @pipe: The current pipe number for this display
+ * @suspend_dpms: The dpms mode of the display before suspend
  */
 struct exynos_drm_display {
 	enum exynos_drm_display_type display_type;
@@ -105,6 +106,7 @@ struct exynos_drm_display {
 	void *panel_ctx;
 	void *controller_ctx;
 	int pipe;
+	int suspend_dpms;
 };
 
 /*

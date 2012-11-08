@@ -101,7 +101,20 @@ static void exynos_drm_display_power(struct drm_encoder *encoder, int mode)
 	}
 }
 
-static void exynos_drm_encoder_dpms(struct drm_encoder *encoder, int mode)
+int exynos_drm_encoder_get_dpms(struct drm_encoder *encoder)
+{
+	struct drm_device *dev = encoder->dev;
+	struct exynos_drm_encoder *exynos_encoder = to_exynos_encoder(encoder);
+	int mode;
+
+	mutex_lock(&dev->struct_mutex);
+	mode = exynos_encoder->dpms;
+	mutex_unlock(&dev->struct_mutex);
+
+	return mode;
+}
+
+void exynos_drm_encoder_dpms(struct drm_encoder *encoder, int mode)
 {
 	struct drm_device *dev = encoder->dev;
 	struct exynos_drm_display *display = exynos_drm_get_display(encoder);
