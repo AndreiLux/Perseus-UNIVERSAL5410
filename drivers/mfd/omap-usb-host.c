@@ -502,8 +502,8 @@ static int usbhs_omap_probe(struct platform_device *pdev)
 
 	omap->pdata = pdata;
 	platform_set_drvdata(pdev, omap);
-
 	pm_runtime_enable(dev);
+
 	pm_runtime_get_sync(dev);
 	omap->usbhs_rev = usbhs_read(omap->uhh_base, OMAP_UHH_REVISION);
 
@@ -512,19 +512,37 @@ static int usbhs_omap_probe(struct platform_device *pdev)
 	 */
 	pm_runtime_put_sync(dev);
 
-	switch (omap->usbhs_rev) {
-	case OMAP_USBHS_REV1:
-		omap->nports = 3;
-		break;
-	case OMAP_USBHS_REV2:
-		omap->nports = 2;
-		break;
-	default:
-		omap->nports = MAX_HS_USB_PORTS;
-		dev_info(dev,
-		  "USB HOST Rev : 0x%d not recognized, assuming %d ports\n",
-		   omap->usbhs_rev, omap->nports);
-		break;
+	/*
+	 * If platform data contains nports then use that
+	 * else make out number of ports from USBHS revision
+	 */
+	if (pdata->nports) {
+		if (omap->nports > MAX_HS_USB_PORTS) {
+			dev_err(dev,
+			 "Platform data says %d ports but MAX_HS_USB_PORTS is %d\n",
+			 omap->nports, MAX_HS_USB_PORTS);
+		} else {
+			omap->nports = pdata->nports;
+		}
+	} else {
+		switch (omap->usbhs_rev) {
+		case OMAP_USBHS_REV1:
+			omap->nports = 3;
+			break;
+		case OMAP_USBHS_REV2:
+		/* Both OMAP4 and 5 show the same revision but they have
+		 * different number of ports i.e. 2 and 3 respectively.
+		 * OMAP5 platforms must supply nports via platform data.
+		 */
+			omap->nports = 2;
+			break;
+		default:
+			omap->nports = MAX_HS_USB_PORTS;
+			dev_info(dev,
+			"USB HOST Rev:0x%d not recognized, assuming %d ports\n",
+				omap->usbhs_rev, omap->nports);
+			break;
+		}
 	}
 
 	need_logic_fck = false;

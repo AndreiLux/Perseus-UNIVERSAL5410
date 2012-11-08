@@ -54,6 +54,7 @@
 #define USBPHY_DATA_POLARITY	(1 << 23)
 
 struct usbhs_omap_board_data {
+	int				nports;
 	enum usbhs_omap_port_mode	port_mode[OMAP3_HS_USB_PORTS];
 
 	/* have to be valid if phy_reset is true and portx is in phy mode */
