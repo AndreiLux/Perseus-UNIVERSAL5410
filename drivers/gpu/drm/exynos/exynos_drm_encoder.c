@@ -80,12 +80,13 @@ static void exynos_drm_encoder_dpms(struct drm_encoder *encoder, int mode)
 
 	DRM_DEBUG_KMS("%s, encoder dpms: %d\n", __FILE__, mode);
 
+	mutex_lock(&dev->struct_mutex);
+
 	if (exynos_encoder->dpms == mode) {
 		DRM_DEBUG_KMS("desired dpms mode is same as previous one.\n");
+		mutex_unlock(&dev->struct_mutex);
 		return;
 	}
-
-	mutex_lock(&dev->struct_mutex);
 
 	switch (mode) {
 	case DRM_MODE_DPMS_ON:
@@ -373,14 +374,11 @@ void exynos_drm_encoder_crtc_commit(struct drm_encoder *encoder, void *data)
 
 void exynos_drm_encoder_dpms_from_crtc(struct drm_encoder *encoder, void *data)
 {
-	struct exynos_drm_encoder *exynos_encoder = to_exynos_encoder(encoder);
 	int mode = *(int *)data;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
 	exynos_drm_encoder_dpms(encoder, mode);
-
-	exynos_encoder->dpms = mode;
 }
 
 void exynos_drm_encoder_crtc_dpms(struct drm_encoder *encoder, void *data)
