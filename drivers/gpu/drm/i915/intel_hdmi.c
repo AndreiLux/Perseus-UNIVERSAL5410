@@ -307,6 +307,12 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		I915_WRITE(intel_hdmi->sdvox_reg, temp);
 		POSTING_READ(intel_hdmi->sdvox_reg);
 	}
+
+	/* Workaround for disappearing AVI Infoframe on SNB on resume */
+	if (HAS_PCH_SPLIT(dev)) {
+		I915_WRITE(_VIDEO_DIP_CTL_A, I915_READ(_VIDEO_DIP_CTL_A));
+		I915_WRITE(_VIDEO_DIP_CTL_B, I915_READ(_VIDEO_DIP_CTL_B));
+	}
 }
 
 static int intel_hdmi_mode_valid(struct drm_connector *connector,
