@@ -89,6 +89,38 @@ module_param(pm_check_chunksize, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(pm_check_chunksize,
 		"Size of blocks for CRCs, shold be 1K multiples");
 
+static inline void s3c_pm_printskip(char *desc, unsigned long addr)
+{
+	if (!pm_check_print_skips)
+		return;
+	S3C_PMDBG("s3c_pm_check: skipping %08lx, has %s in\n", addr, desc);
+}
+
+static bool s3c_pm_should_skip(phys_addr_t addr, u32 size)
+{
+	void *stkbase = current_thread_info();
+
+	if (phys_addrs_overlap(addr, size,
+			       virt_to_phys(stkbase), THREAD_SIZE)) {
+		s3c_pm_printskip("stack", addr);
+		return true;
+	}
+	if (phys_addrs_overlap(addr, size, virt_to_phys(crcs), crc_size)) {
+		s3c_pm_printskip("crc block", addr);
+		return true;
+	}
+	if (pm_does_overlap_suspend_volatile(addr, size)) {
+		s3c_pm_printskip("volatile suspend data", addr);
+		return true;
+	}
+	if (bitfix_does_overlap_reserved(addr, size)) {
+		s3c_pm_printskip("bitfix", addr);
+		return true;
+	}
+
+	return false;
+}
+
 /**
  * s3c_pm_xor_mem() - XOR all the words in the memory range passed
  * @val: Initial value to start the XOR from
@@ -147,13 +179,15 @@ static inline u32 s3c_pm_process_mem(u32 val, u32 addr, size_t len,
 			addr);
 		return val;
 	}
-	while (processed < len) {
+	for (processed = 0; processed < len; processed += PAGE_SIZE) {
 		int pfn = __phys_to_pfn(addr + processed);
 		unsigned long left = len - processed;
 		void *virt;
 
 		if (left > PAGE_SIZE)
 			left = PAGE_SIZE;
+		if (s3c_pm_should_skip(addr + processed, left))
+			continue;
 		virt = kmap_atomic(pfn_to_page(pfn));
 		if (!virt) {
 			printk(KERN_ERR "s3c_pm_check: Could not map "
@@ -166,8 +200,6 @@ static inline u32 s3c_pm_process_mem(u32 val, u32 addr, size_t len,
 
 		if (for_save)
 			bitfix_process_page(addr + processed);
-
-		processed += left;
 	}
 	return val;
 }
@@ -260,13 +292,6 @@ void s3c_pm_check_prepare(void)
 		printk(KERN_ERR "Cannot allocated CRC save area\n");
 }
 
-static inline void s3c_pm_printskip(char *desc, unsigned long addr)
-{
-	if (!pm_check_print_skips)
-		return;
-	S3C_PMDBG("s3c_pm_check: skipping %08lx, has %s in\n", addr, desc);
-}
-
 /* externs from sleep.S */
 extern u32 *sleep_save_sp;
 
@@ -286,31 +311,6 @@ static void zero_temp_memory(void)
 	sleep_save_sp = 0;
 }
 
-static bool s3c_pm_should_skip(phys_addr_t addr, u32 size)
-{
-	void *stkbase = current_thread_info();
-
-	if (phys_addrs_overlap(addr, size,
-			       virt_to_phys(stkbase), THREAD_SIZE)) {
-		s3c_pm_printskip("stack", addr);
-		return true;
-	}
-	if (phys_addrs_overlap(addr, size, virt_to_phys(crcs), crc_size)) {
-		s3c_pm_printskip("crc block", addr);
-		return true;
-	}
-	if (pm_does_overlap_suspend_volatile(addr, size)) {
-		s3c_pm_printskip("volatile suspend data", addr);
-		return true;
-	}
-	if (bitfix_does_overlap_reserved(addr, size)) {
-		s3c_pm_printskip("bitfix", addr);
-		return true;
-	}
-
-	return false;
-}
-
 static u32 *s3c_pm_makecheck(struct resource *res, u32 *val)
 {
 	unsigned long addr, left;
@@ -321,10 +321,8 @@ static u32 *s3c_pm_makecheck(struct resource *res, u32 *val)
 		if (left > pm_check_chunksize)
 			left = pm_check_chunksize;
 
-		if (!s3c_pm_should_skip(addr, left))
-			*val = s3c_pm_process_mem(~0, addr, left, true);
+		*val = s3c_pm_process_mem(~0, addr, left, true);
 	}
-
 	return val;
 }
 
@@ -376,10 +374,6 @@ static u32 *s3c_pm_runcheck(struct resource *res, u32 *val)
 
 		if (left > pm_check_chunksize)
 			left = pm_check_chunksize;
-
-		if (s3c_pm_should_skip(addr, left))
-			continue;
-
 		/* calculate and check the checksum */
 
 		calc = s3c_pm_process_mem(~0, addr, left, false);

@@ -337,10 +337,6 @@ static void bitfix_compare(phys_addr_t addr, const u32 *orig,
  *   bitfix_recover_chunk() should indicate that it was never processed.
  * - You should never process a page that overlaps bitfix reserved memory.
  *   See bitfix_does_overlap_reserved().
- * - AT THE MOMENT: Either all pages in a chunk need to be processed or none
- *   of them should be.  We could change this assumption.  If we did, we'd
- *   want to change where we call should_skip_fn()--we'd want to call it page-
- *   by-page instead of chunk-by-chunk.
  */
 
 void bitfix_process_page(phys_addr_t page_addr)
@@ -383,25 +379,27 @@ static void _bitfix_recover_chunk(phys_addr_t failed_chunk,
 		if (cu == failed_cu)
 			continue;
 
-		/*
-		 * Don't include blocks that were skipped (never passed to
-		 * bitfix_process_page()).  Except blocks in the xor corruption
-		 * unit.
-		 *
-		 * should_skip_fn() will return true for the xor corruption
-		 * unit but we do still need to process those pages now.
-		 *
-		 * should_skip_fn() will return true for them because it needs
-		 * to incorporate bitfix_ does_overlap_reserved() and that will
-		 * return true for the xor corruption unit).
-		 */
-		if ((cu != XOR_CU_NUM) &&
-		    should_skip_fn(this_chunk, CHUNK_SIZE))
-			continue;
-
 		for (offset = 0; offset < CHUNK_SIZE; offset += PAGE_SIZE) {
 			phys_addr_t this_page = this_chunk + offset;
 			u32 *virt_page = kmap_atomic(phys_to_page(this_page));
+
+			/*
+			 * Don't include blocks that were skipped (never passed
+			 * to bitfix_process_page()).  Except blocks in the xor
+			 * corruption unit.
+			 *
+			 * should_skip_fn() will return true for the xor
+			 * corruption unit but we do still need to process
+			 * those pages now.
+			 *
+			 * should_skip_fn() will return true for them because it
+			 * needs to incorporate bitfix_ does_overlap_reserved()
+			 * and that will return true for the xor corruption
+			 * unit).
+			 */
+			if ((cu != XOR_CU_NUM) &&
+				should_skip_fn(this_page, PAGE_SIZE))
+				continue;
 
 			bitfix_xor32(&recover_chunk[offset / sizeof(u32)],
 				     virt_page, PAGE_SIZE);
