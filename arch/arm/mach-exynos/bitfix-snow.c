@@ -357,7 +357,7 @@ void bitfix_process_page(phys_addr_t page_addr)
  *
  * @failed_chunk: Address of the start of the chunk that failed (we'll recover
  *	data from this chunk to recover_chunk).
- * @should_skip_fn: This will be called chunk at a time.  If a chunk was never
+ * @should_skip_fn: This will be called one page at a time.  If a page was never
  *	processed with calls to bitfix_process_page() then the should_skip_fn
  *	_must_ return true.  This means that the skip function must call the
  *	bitfix_does_overlap_reserved() function.
@@ -368,7 +368,7 @@ static void _bitfix_recover_chunk(phys_addr_t failed_chunk,
 	const u32 failed_cu = bitfix_get_cu(failed_chunk);
 	u32 cu;
 
-	BUG_ON(should_skip_fn(failed_chunk, CHUNK_SIZE));
+	BUG_ON(should_skip_fn(failed_chunk));
 
 	for (cu = 0; cu < CU_COUNT; cu++) {
 		phys_addr_t this_chunk = (failed_chunk & ~CU_MASK) |
@@ -397,8 +397,7 @@ static void _bitfix_recover_chunk(phys_addr_t failed_chunk,
 			 * and that will return true for the xor corruption
 			 * unit).
 			 */
-			if ((cu != XOR_CU_NUM) &&
-				should_skip_fn(this_page, PAGE_SIZE))
+			if ((cu != XOR_CU_NUM) && should_skip_fn(this_page))
 				continue;
 
 			virt_page = kmap_atomic(phys_to_page(this_page));
@@ -421,7 +420,7 @@ static void _bitfix_recover_chunk(phys_addr_t failed_chunk,
  * one that makes CRC pass.
  *
  * @failed_addr: Any address in the chunk that failed.
- * @should_skip_fn: This will be called chunk at a time.  If a chunk was never
+ * @should_skip_fn: This will be called one page at a time.  If a page was never
  *	processed with calls to bitfix_process_page() then the should_skip_fn
  *	_must_ return true.  This means that the skip function must call the
  *	bitfix_does_overlap_reserved() function.
@@ -512,35 +511,21 @@ void bitfix_finish(void)
 }
 
 /**
- * Tell whether the given address range overlaps bitfix private memory.
+ * Tell whether the given page overlaps bitfix private memory.
  *
- * Bitfix will use its private memory when you call bitfix_process_page()
- * and bitfix_recover_chunk().  In order to avoid confusing things we need
- * to exclude this private memory from any CRCs and from passing to
- * bitfix_process_page().
+ * Bitfix will use its private memory when you call bitfix_process_page().
+ * In order to avoid confusing things we need to exclude this private memory
+ * from any CRCs and from passing to bitfix_process_page().
  *
  * @phys: The physical address to check.
- * @len: The length of the chunk we're checking.
  */
 
-bool bitfix_does_overlap_reserved(phys_addr_t phys, unsigned long len)
+bool bitfix_does_overlap_reserved(phys_addr_t phys)
 {
-	int i;
-
 	if (!bitfix_enabled)
 		return false;
 
-	for (i = 0; i < UPPER_LOOPS; i++) {
-		phys_addr_t base_addr = SDRAM_BASE + (i << UPPER_OFFSET);
-		phys_addr_t xor_superchunk_addr = base_addr +
-			(XOR_CU_NUM << CU_OFFSET);
-
-		if (phys_addrs_overlap(phys, len, xor_superchunk_addr,
-				       SUPERCHUNK_SIZE))
-			return true;
-	}
-
-	return false;
+	return bitfix_get_cu(phys) == XOR_CU_NUM;
 }
 
 /**

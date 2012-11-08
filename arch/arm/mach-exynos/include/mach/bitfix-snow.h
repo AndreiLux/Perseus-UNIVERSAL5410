@@ -16,15 +16,15 @@
 #ifndef _MACH_EXYNOS_BITFIX_SNOW_H
 #define _MACH_EXYNOS_BITFIX_SNOW_H
 
-/* When recovering we need to know which chunks were skipped. */
-typedef bool (bitfix_should_skip_fn_t)(phys_addr_t addr, u32 size);
+/* When recovering we need to know which pages were skipped. */
+typedef bool (bitfix_should_skip_fn_t)(phys_addr_t addr);
 
 /* See bitfix-snow.c for descriptions */
 #ifdef CONFIG_SNOW_BITFIX
 void bitfix_reserve(void);
 void bitfix_prepare(void);
 void bitfix_finish(void);
-bool bitfix_does_overlap_reserved(phys_addr_t addr, unsigned long len);
+bool bitfix_does_overlap_reserved(phys_addr_t addr);
 void bitfix_process_page(phys_addr_t page_addr);
 void bitfix_recover_chunk(phys_addr_t failed_addr,
 			  bitfix_should_skip_fn_t should_skip_fn);
@@ -32,8 +32,7 @@ void bitfix_recover_chunk(phys_addr_t failed_addr,
 static inline void bitfix_reserve(void) { ; }
 static inline void bitfix_prepare(void) { ; }
 static inline void bitfix_finish(void) { ; }
-static inline bool bitfix_does_overlap_reserved(phys_addr_t addr,
-						unsigned long len)
+static inline bool bitfix_does_overlap_reserved(phys_addr_t addr)
 {
 	return false;
 }

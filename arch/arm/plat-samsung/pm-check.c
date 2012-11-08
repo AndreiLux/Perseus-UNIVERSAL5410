@@ -65,6 +65,9 @@ static int pm_check_chunksize = CONFIG_SAMSUNG_PM_CHECK_CHUNKSIZE * 1024;
 static u32 crc_size;	/* size needed for the crc block */
 static u32 *crcs;	/* allocated over suspend/resume */
 
+static phys_addr_t stack_base_phys;
+static phys_addr_t crcs_phys;
+
 static u32 (*checksum_func)(u32 val, unsigned char const *ptr, size_t len);
 
 /* number of errors found this resume */
@@ -96,24 +99,21 @@ static inline void s3c_pm_printskip(char *desc, unsigned long addr)
 	S3C_PMDBG("s3c_pm_check: skipping %08lx, has %s in\n", addr, desc);
 }
 
-static bool s3c_pm_should_skip(phys_addr_t addr, u32 size)
+static bool s3c_pm_should_skip_page(phys_addr_t addr)
 {
-	void *stkbase = current_thread_info();
-
-	if (phys_addrs_overlap(addr, size,
-			       virt_to_phys(stkbase), THREAD_SIZE)) {
+	if (phys_addrs_overlap(addr, PAGE_SIZE, stack_base_phys, THREAD_SIZE)) {
 		s3c_pm_printskip("stack", addr);
 		return true;
 	}
-	if (phys_addrs_overlap(addr, size, virt_to_phys(crcs), crc_size)) {
+	if (phys_addrs_overlap(addr, PAGE_SIZE, crcs_phys, crc_size)) {
 		s3c_pm_printskip("crc block", addr);
 		return true;
 	}
-	if (pm_does_overlap_suspend_volatile(addr, size)) {
+	if (pm_does_overlap_suspend_volatile(addr, PAGE_SIZE)) {
 		s3c_pm_printskip("volatile suspend data", addr);
 		return true;
 	}
-	if (bitfix_does_overlap_reserved(addr, size)) {
+	if (bitfix_does_overlap_reserved(addr)) {
 		s3c_pm_printskip("bitfix", addr);
 		return true;
 	}
@@ -186,7 +186,7 @@ static inline u32 s3c_pm_process_mem(u32 val, u32 addr, size_t len,
 
 		if (left > PAGE_SIZE)
 			left = PAGE_SIZE;
-		if (s3c_pm_should_skip(addr + processed, left))
+		if (s3c_pm_should_skip_page(addr + processed))
 			continue;
 		virt = kmap_atomic(pfn_to_page(pfn));
 		if (!virt) {
@@ -343,6 +343,9 @@ void s3c_pm_check_store(void)
 		start = ktime_get();
 
 	zero_temp_memory();
+	stack_base_phys = virt_to_phys(current_thread_info());
+	crcs_phys = virt_to_phys(crcs);
+
 	s3c_pm_run_sysram(s3c_pm_makecheck, crcs);
 	if (pm_check_print_timings) {
 		stop = ktime_get();
@@ -382,7 +385,7 @@ static u32 *s3c_pm_runcheck(struct resource *res, u32 *val)
 				"(%08x vs %08x)\n",
 				addr, calc, *val);
 
-			bitfix_recover_chunk(addr, s3c_pm_should_skip);
+			bitfix_recover_chunk(addr, s3c_pm_should_skip_page);
 			calc = s3c_pm_process_mem(~0, addr, left, false);
 			if (calc != *val) {
 				crc_err_cnt++;
