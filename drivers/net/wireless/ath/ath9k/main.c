@@ -705,6 +705,9 @@ void ath_start_rx_poll(struct ath_softc *sc, u32 nmsec)
 	if (!(sc->sc_flags & SC_OP_PRIM_STA_VIF))
 		return;
 
+	if (sc->sc_flags & SC_OP_INVALID)
+		return;
+
 	mod_timer(&sc->rx_poll_timer, jiffies + msecs_to_jiffies(nmsec));
 }
 
@@ -1562,6 +1565,7 @@ static void ath9k_stop(struct ieee80211_hw *hw)
 
 	sc->sc_flags |= SC_OP_INVALID;
 	sc->ps_idle = prev_idle;
+	del_timer_sync(&sc->rx_poll_timer);
 
 	mutex_unlock(&sc->mutex);
 
