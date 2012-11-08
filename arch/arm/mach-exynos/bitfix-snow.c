@@ -23,6 +23,7 @@
 #include <linux/moduleparam.h>
 #include <linux/of_fdt.h>
 #include <linux/pm.h>
+#include <linux/raid/xor.h>
 #include <linux/slab.h>
 
 #include <plat/pm.h>
@@ -283,18 +284,12 @@ static u32 bitfix_get_cu(phys_addr_t chunk)
  *
  * @dest: Place to xor into.
  * @src: Place to xor from.
- * @count: Number of _bytes_ to process.  Must be an even number of 32-bit
- *	elements.
+ * @count: Number of _bytes_ to process.
  */
 
-static void bitfix_xor32(u32 *dest, const u32 *src, size_t count)
+static void bitfix_xor32(void *dest, const void *src, size_t count)
 {
-	size_t i;
-
-	BUG_ON(count & 0x03);
-
-	for (i = 0; i < count / sizeof(u32); i++)
-		dest[i] ^= src[i];
+	xor_blocks(1, PAGE_SIZE, dest, (void **)&src);
 }
 
 /**

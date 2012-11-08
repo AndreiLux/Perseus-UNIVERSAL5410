@@ -461,6 +461,7 @@ endmenu
 config SNOW_BITFIX
 	bool "Enable fixing of bit errors across suspend-to-RAM cycle"
 	depends on SOC_EXYNOS5250 && SAMSUNG_PM_CHECK
+	select XOR_BLOCKS
 	help
 	  Some Snow boards have an issue in read-only firmware that can cause
 	  bit errors across a suspend/resume cycle.  Enabling this option will
