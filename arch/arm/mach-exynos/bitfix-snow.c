@@ -219,6 +219,20 @@
  */
 #define XOR_CU_NUM		(CU_COUNT / 2)
 
+/*
+ * Corruption should be limited to a few hundred bytes in general and that's
+ * across all chunks.  If we see a large number of bytes corrupted in a single
+ * chunk then that's a sign that data we depend on has been corrupted and we
+ * can not trust our state.
+ *
+ * We'll be conservative and allow up to 1/16 bytes in a chunk before we panic.
+ *
+ * We have seen a case like this in testing where 3 pages were nearly
+ * completely 'fixed' and the fix matched the out-of-band checksum.  The best
+ * guess is that page tables were corrupted and confusing bitfix.  Reboot is
+ * best in this case.
+ */
+#define MAX_BYTES_TO_FIX	(CHUNK_SIZE / 16)
 
 /* Functionality is automatically enabled/disabled at boot time based on need */
 static bool bitfix_enabled;
@@ -310,22 +324,48 @@ static void bitfix_xor_page(phys_addr_t page_addr, u32 dest_cu)
 }
 
 /**
- * Print out which bits were fixed in a page.
+ * Return how many bytes are different in two words.
+ *
+ * @x: First word
+ * @y: Second word
+ * @return: Number of bytes different (0 - 4).
+ */
+static int compare_words(u32 x, u32 y)
+{
+	int diff = 0;
+	while (x != y) {
+		if ((x & 0xff) != (y & 0xff))
+			diff++;
+		x = x >> 8;
+		y = y >> 8;
+	}
+
+	return diff;
+}
+
+/**
+ * Analyze (and print out) which bits were fixed in a page.
  *
  * @addr: The address of the page that was recovered.
  * @orig: The old (corrupted) data.
  * @recovered: The new data.
+ * @return: Number of bytes fixed
  */
 
-static void bitfix_compare(phys_addr_t addr, const u32 *orig,
+static int bitfix_compare(phys_addr_t addr, const u32 *orig,
 			   const u32 *recovered)
 {
 	int i;
+	int bytes_fixed = 0;
 
 	for (i = 0; i < PAGE_SIZE/4; i++)
-		if (orig[i] != recovered[i])
+		if (orig[i] != recovered[i]) {
+			bytes_fixed += compare_words(orig[i], recovered[i]);
 			pr_info("...fixed 0x%08x from 0x%08x to 0x%08x\n",
 				addr + (i * 4), orig[i], recovered[i]);
+		}
+
+	return bytes_fixed;
 }
 
 /**
@@ -430,6 +470,7 @@ void bitfix_recover_chunk(phys_addr_t failed_addr,
 {
 	const phys_addr_t bad_chunk_addr = failed_addr & ~(CHUNK_MASK);
 	int pgnum;
+	int bytes_fixed = 0;
 
 	if (!bitfix_enabled)
 		return;
@@ -453,10 +494,12 @@ void bitfix_recover_chunk(phys_addr_t failed_addr,
 		u32 *recover_page = recover_chunk + offset / sizeof(u32);
 
 		virt = kmap_atomic(phys_to_page(addr));
-		bitfix_compare(addr, virt, recover_page);
+		bytes_fixed += bitfix_compare(addr, virt, recover_page);
 		memcpy(virt, recover_page, PAGE_SIZE);
 		kunmap_atomic(virt);
 	}
+
+	BUG_ON(bytes_fixed > MAX_BYTES_TO_FIX);
 }
 
 /**
