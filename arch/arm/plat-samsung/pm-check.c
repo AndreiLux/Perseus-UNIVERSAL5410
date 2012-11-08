@@ -61,6 +61,7 @@ static bool pm_check_should_panic = 1;
 static bool pm_check_print_skips;
 static bool pm_check_print_timings;
 static int pm_check_chunksize = CONFIG_SAMSUNG_PM_CHECK_CHUNKSIZE * 1024;
+static int pm_check_interleave_bytes;
 
 static u32 crc_size;	/* size needed for the crc block */
 static u32 *crcs;	/* allocated over suspend/resume */
@@ -74,7 +75,7 @@ static u32 (*checksum_func)(u32 val, unsigned char const *ptr, size_t len);
 static __suspend_volatile_bss u32 crc_err_cnt;
 
 
-typedef u32 *(run_fn_t)(struct resource *ptr, u32 *arg);
+typedef u32 *(run_fn_t)(const struct resource *ptr, u32 *arg);
 
 module_param(pm_check_checksum_type, charp, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(pm_check_checksum_type, "Checksum type (crc, xor, or sum)");
@@ -209,7 +210,7 @@ static inline u32 s3c_pm_process_mem(u32 val, u32 addr, size_t len,
  * go through the given resource list, and look for system ram
 */
 
-static void s3c_pm_run_res(struct resource *ptr, run_fn_t fn, u32 *arg)
+static void s3c_pm_run_res(const struct resource *ptr, run_fn_t fn, u32 *arg)
 {
 	while (ptr != NULL) {
 		if (ptr->child != NULL)
@@ -233,7 +234,7 @@ static void s3c_pm_run_sysram(run_fn_t fn, u32 *arg)
 	s3c_pm_run_res(&iomem_resource, fn, arg);
 }
 
-static u32 *s3c_pm_countram(struct resource *res, u32 *val)
+static u32 *s3c_pm_countram(const struct resource *res, u32 *val)
 {
 	u32 size = (u32)resource_size(res);
 
@@ -311,9 +312,68 @@ static void zero_temp_memory(void)
 	sleep_save_sp = 0;
 }
 
-static u32 *s3c_pm_makecheck(struct resource *res, u32 *val)
+/**
+ * Run checks but interleave which memory is checked.
+ *
+ * Interleaving memory that is checked can make bitfix much faster since we
+ * can process all memory with the same destination at the same time.
+ *
+ * If interleave_bytes is 0x00010000, chunk_size is 0x2000 and memory goes
+ * from 0x80000000 to 0x80034000, we'd see this type of ordering:
+ * - 0x80000000
+ * - 0x80010000
+ * - 0x80020000
+ * - 0x80030000
+ * - 0x80002000
+ * - 0x80012000
+ * - 0x80022000
+ * - 0x80032000
+ * - 0x80004000
+ * - 0x80014000
+ * - 0x80024000
+ * - ....
+ * - 0x8001e000
+ * - 0x8002e000
+ */
+static u32 *s3c_pm_makecheck_interleave(const struct resource *res, u32 *val)
 {
+	const unsigned long total = res->end - res->start + 1;
+	unsigned long lower_offset = 0;
+	unsigned long upper_offset = 0;
+	unsigned long offset = 0;
+
+	while ((offset < total) && (lower_offset < pm_check_interleave_bytes)) {
+		unsigned long addr = res->start + offset;
+
+		val[offset / pm_check_chunksize] =
+			s3c_pm_process_mem(~0, addr, pm_check_chunksize, true);
+
+		upper_offset += pm_check_interleave_bytes;
+		offset = upper_offset + lower_offset;
+		if (offset >= total) {
+			upper_offset = 0;
+			lower_offset += pm_check_chunksize;
+			offset = upper_offset + lower_offset;
+		}
+	}
+	return val + (total / pm_check_chunksize);
+}
+
+static u32 *s3c_pm_makecheck(const struct resource *res, u32 *val)
+{
+	const unsigned long total = res->end - res->start + 1;
 	unsigned long addr, left;
+
+	/* Bitfix code might ask us to interleave memory processing */
+	if (pm_check_interleave_bytes) {
+		/* Can only interleave if sizes are multiples of each other */
+		if ((pm_check_interleave_bytes % pm_check_chunksize) == 0 &&
+		    (total % pm_check_chunksize) == 0)
+			return s3c_pm_makecheck_interleave(res, val);
+
+		/* Interleaving was requested but sizes mismatched */
+		WARN_ON(1);
+	}
 
 	for (addr = res->start; addr <= res->end;
 	     addr += pm_check_chunksize, val++) {
@@ -365,7 +425,7 @@ void s3c_pm_check_store(void)
  * CRC to ensure that memory is restored. The function tries to skip as
  * many of the areas used during the suspend process.
  */
-static u32 *s3c_pm_runcheck(struct resource *res, u32 *val)
+static u32 *s3c_pm_runcheck(const struct resource *res, u32 *val)
 {
 	unsigned long addr;
 	unsigned long left;
@@ -463,4 +523,17 @@ void s3c_pm_check_set_enable(bool enabled)
 void s3c_pm_check_set_chunksize(int chunksize)
 {
 	pm_check_chunksize = chunksize;
+}
+
+/**
+ * s3c_pm_check_set_interleave_bytes() - set interleaving for suspend
+ *
+ * This changes the order that chunks are processed, but only during suspend.
+ * The idea here is to optimize bitfix code.
+ *
+ * @interleave_bytes: The value to set the interleave_bytes to.
+ */
+void s3c_pm_check_set_interleave_bytes(int interleave_bytes)
+{
+	pm_check_interleave_bytes = interleave_bytes;
 }
