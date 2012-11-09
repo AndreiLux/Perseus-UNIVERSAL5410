@@ -1616,8 +1616,11 @@ int ath9k_init_debug(struct ath_hw *ah)
 	debugfs_create_file("samples", S_IRUSR | S_IRGRP | S_IROTH,
 			    sc->debug.debugfs_phy, sc, &fops_samps);
 #endif
-	debugfs_create_file("dump_eep_power", S_IRUSR | S_IRGRP | S_IROTH,
-			    sc->debug.debugfs_phy, sc, &fops_dump_eep_power);
+	if (ah->eep_ops->dump_eep_power)
+		debugfs_create_file("dump_eep_power",
+				    S_IRUSR | S_IRGRP | S_IROTH,
+				    sc->debug.debugfs_phy, sc,
+				    &fops_dump_eep_power);
 
 	debugfs_create_u32("gpio_mask", S_IRUSR | S_IWUSR,
 			   sc->debug.debugfs_phy, &sc->sc_ah->gpio_mask);
