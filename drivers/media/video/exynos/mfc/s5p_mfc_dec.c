@@ -1066,8 +1066,7 @@ static int vidioc_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 	    ctx->state == MFCINST_RES_CHANGE_END) {
 		/* If the MFC is parsing the header,
 		 * so wait until it is finished */
-		s5p_mfc_wait_for_done_ctx(ctx,
-			S5P_FIMV_R2H_CMD_SEQ_DONE_RET, 1);
+		s5p_mfc_wait_for_done_ctx(ctx, S5P_FIMV_R2H_CMD_SEQ_DONE_RET);
 	}
 
 	if (ctx->state >= MFCINST_HEAD_PARSED &&
@@ -1243,7 +1242,7 @@ static int vidioc_s_fmt_vid_out_mplane(struct file *file, void *priv,
 		s5p_mfc_try_run(dev);
 		/* Wait until instance is returned or timeout occured */
 		if (s5p_mfc_wait_for_done_ctx
-		    (ctx, S5P_FIMV_R2H_CMD_CLOSE_INSTANCE_RET, 0)) {
+		    (ctx, S5P_FIMV_R2H_CMD_CLOSE_INSTANCE_RET)) {
 			mfc_err("Err returning instance.\n");
 		}
 		/* Free resources */
@@ -1303,7 +1302,7 @@ static int vidioc_s_fmt_vid_out_mplane(struct file *file, void *priv,
 	spin_unlock_irqrestore(&dev->condlock, flags);
 	s5p_mfc_try_run(dev);
 	if (s5p_mfc_wait_for_done_ctx(ctx,
-				S5P_FIMV_R2H_CMD_OPEN_INSTANCE_RET, 1)) {
+				S5P_FIMV_R2H_CMD_OPEN_INSTANCE_RET)) {
 		/* Error or timeout */
 		mfc_err("Error getting instance from hardware.\n");
 		s5p_mfc_release_instance_buffer(ctx);
@@ -1436,7 +1435,7 @@ static int vidioc_reqbufs(struct file *file, void *priv,
 
 		if (dec->dst_memtype == V4L2_MEMORY_MMAP) {
 			s5p_mfc_wait_for_done_ctx(ctx,
-					S5P_FIMV_R2H_CMD_INIT_BUFFERS_RET, 1);
+					S5P_FIMV_R2H_CMD_INIT_BUFFERS_RET);
 		}
 	}
 
@@ -1616,7 +1615,7 @@ static int get_ctrl_val(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 
 		/* Should wait for the header to be parsed */
 		s5p_mfc_wait_for_done_ctx(ctx,
-				S5P_FIMV_R2H_CMD_SEQ_DONE_RET, 1);
+				S5P_FIMV_R2H_CMD_SEQ_DONE_RET);
 		if (ctx->state >= MFCINST_HEAD_PARSED &&
 		    ctx->state < MFCINST_ABORT) {
 			ctrl->value = ctx->dpb_count;
@@ -2153,8 +2152,7 @@ static int s5p_mfc_stop_streaming(struct vb2_queue *q)
 		ctx->state ==  MFCINST_RUNNING) &&
 		test_bit(ctx->num, &dev->hw_lock)) {
 		ctx->state = MFCINST_ABORT;
-		s5p_mfc_wait_for_done_ctx(ctx, S5P_FIMV_R2H_CMD_FRAME_DONE_RET,
-					  0);
+		s5p_mfc_wait_for_done_ctx(ctx, S5P_FIMV_R2H_CMD_FRAME_DONE_RET);
 		aborted = 1;
 	}
 
@@ -2271,7 +2269,7 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 	s5p_mfc_try_run(dev);
 	if (wait_flag) {
 		s5p_mfc_wait_for_done_ctx(ctx,
-				S5P_FIMV_R2H_CMD_INIT_BUFFERS_RET, 1);
+				S5P_FIMV_R2H_CMD_INIT_BUFFERS_RET);
 	}
 
 	mfc_debug_leave();

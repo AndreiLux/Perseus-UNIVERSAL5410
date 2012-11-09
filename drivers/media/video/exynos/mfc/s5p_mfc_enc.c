@@ -1888,7 +1888,7 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		s5p_mfc_clean_ctx_int_flags(ctx);
 		s5p_mfc_try_run(dev);
 		if (s5p_mfc_wait_for_done_ctx(ctx, \
-				S5P_FIMV_R2H_CMD_OPEN_INSTANCE_RET, 1)) {
+				S5P_FIMV_R2H_CMD_OPEN_INSTANCE_RET)) {
 			/* Error or timeout */
 			mfc_err("Error getting instance from hardware.\n");
 			s5p_mfc_release_instance_buffer(ctx);
@@ -3106,8 +3106,7 @@ static int s5p_mfc_stop_streaming(struct vb2_queue *q)
 		ctx->state ==  MFCINST_RUNNING) &&
 		test_bit(ctx->num, &dev->hw_lock)) {
 		ctx->state = MFCINST_ABORT;
-		s5p_mfc_wait_for_done_ctx(ctx, S5P_FIMV_R2H_CMD_FRAME_DONE_RET,
-					  0);
+		s5p_mfc_wait_for_done_ctx(ctx, S5P_FIMV_R2H_CMD_FRAME_DONE_RET);
 	}
 
 	spin_lock_irqsave(&dev->irqlock, flags);

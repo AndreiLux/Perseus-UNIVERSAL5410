@@ -102,10 +102,7 @@ static inline void wake_up_ctx(struct s5p_mfc_ctx *ctx, unsigned int reason,
 	ctx->int_cond = 1;
 	ctx->int_type = reason;
 	ctx->int_err = err;
-	if (ctx->state != MFCINST_ABORT && ctx->state != MFCINST_FREE)
-		wake_up_interruptible(&ctx->queue);
-	else
-		wake_up(&ctx->queue);
+	wake_up(&ctx->queue);
 }
 
 /* Wake up device wait_queue */
@@ -1051,7 +1048,7 @@ static int s5p_mfc_release(struct file *file)
 		s5p_mfc_try_run(dev);
 		/* Wait until instance is returned or timeout occured */
 		if (s5p_mfc_wait_for_done_ctx
-		    (ctx, S5P_FIMV_R2H_CMD_CLOSE_INSTANCE_RET, 0)) {
+		    (ctx, S5P_FIMV_R2H_CMD_CLOSE_INSTANCE_RET)) {
 			mfc_err("Err returning instance.\n");
 		}
 		/* Free resources */
