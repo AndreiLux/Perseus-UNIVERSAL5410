@@ -62,6 +62,7 @@ static bool pm_check_print_skips;
 static bool pm_check_print_timings;
 static int pm_check_chunksize = CONFIG_SAMSUNG_PM_CHECK_CHUNKSIZE * 1024;
 static int pm_check_interleave_bytes;
+static bool pm_check_skip_unused = 1;
 
 static u32 crc_size;	/* size needed for the crc block */
 static u32 *crcs;	/* allocated over suspend/resume */
@@ -92,6 +93,9 @@ MODULE_PARM_DESC(pm_check_print_timings,
 module_param(pm_check_chunksize, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(pm_check_chunksize,
 		"Size of blocks for CRCs, shold be 1K multiples");
+module_param(pm_check_skip_unused, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(pm_check_skip_unused, "Skip checking unallocated pages");
+
 
 static inline void s3c_pm_printskip(char *desc, unsigned long addr)
 {
@@ -102,6 +106,13 @@ static inline void s3c_pm_printskip(char *desc, unsigned long addr)
 
 static bool s3c_pm_should_skip_page(phys_addr_t addr)
 {
+	if (pm_check_skip_unused) {
+		struct page *page = phys_to_page(addr);
+		if  (page->_count.counter == 0) {
+			s3c_pm_printskip("unused", addr);
+			return true;
+		}
+	}
 	if (phys_addrs_overlap(addr, PAGE_SIZE, stack_base_phys, THREAD_SIZE)) {
 		s3c_pm_printskip("stack", addr);
 		return true;
