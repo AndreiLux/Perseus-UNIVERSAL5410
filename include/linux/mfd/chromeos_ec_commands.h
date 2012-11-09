@@ -96,10 +96,11 @@
  *
  * Valid only if EC_MEMMAP_THERMAL_VERSION returns >= 2.
  */
-#define EC_TEMP_SENSOR_B_ENTRIES   8
-#define EC_TEMP_SENSOR_NOT_PRESENT 0xff
-#define EC_TEMP_SENSOR_ERROR       0xfe
-#define EC_TEMP_SENSOR_NOT_POWERED 0xfd
+#define EC_TEMP_SENSOR_B_ENTRIES      8
+#define EC_TEMP_SENSOR_NOT_PRESENT    0xff
+#define EC_TEMP_SENSOR_ERROR          0xfe
+#define EC_TEMP_SENSOR_NOT_POWERED    0xfd
+#define EC_TEMP_SENSOR_NOT_CALIBRATED 0xfc
 /*
  * The offset of temperature value stored in mapped memory.  This allows
  * reporting a temperature range of 200K to 454K = -73C to 181C.
@@ -189,6 +190,7 @@ enum ec_status {
 	EC_RES_IN_PROGRESS = 8,		/* Accepted, command in progress */
 	EC_RES_UNAVAILABLE = 9,		/* No response available */
 	EC_RES_TIMEOUT = 10,		/* We got a timeout */
+	EC_RES_OVERFLOW = 11,		/* Table / data overflow */
 };
 
 /*
@@ -553,6 +555,24 @@ struct ec_response_flash_region_info {
 	uint32_t size;
 } __packed;
 
+/* Read/write VbNvContext */
+#define EC_CMD_VBNV_CONTEXT 0x17
+#define EC_VER_VBNV_CONTEXT 1
+#define EC_VBNV_BLOCK_SIZE 16
+
+enum ec_vbnvcontext_op {
+	EC_VBNV_CONTEXT_OP_READ,
+	EC_VBNV_CONTEXT_OP_WRITE,
+};
+
+struct ec_params_vbnvcontext {
+	uint32_t op;
+	uint8_t block[EC_VBNV_BLOCK_SIZE];
+} __packed;
+
+struct ec_response_vbnvcontext {
+	uint8_t block[EC_VBNV_BLOCK_SIZE];
+} __packed;
 
 /*****************************************************************************/
 /* PWM commands */
@@ -595,51 +615,116 @@ struct ec_params_pwm_set_fan_duty {
 
 /*****************************************************************************/
 /*
- * Lightbar commands. This looks worse than it is. Since we only use one LPC
+ * Lightbar commands. This looks worse than it is. Since we only use one HOST
  * command to say "talk to the lightbar", we put the "and tell it to do X" part
  * into a subcommand. We'll make separate structs for subcommands with
  * different input args, so that we know how much to expect.
  */
 #define EC_CMD_LIGHTBAR_CMD 0x28
 
-struct ec_params_lightbar_cmd {
-	union {
-		union {
-			uint8_t cmd;
-			struct {
-				uint8_t cmd;
-			} dump, off, on, init, get_seq;
-			struct num {
-				uint8_t cmd;
-				uint8_t num;
-			} brightness, seq, demo;
+struct rgb_s {
+	uint8_t r, g, b;
+};
 
-			struct reg {
-				uint8_t cmd;
-				uint8_t ctrl, reg, value;
-			} reg;
-			struct rgb {
-				uint8_t cmd;
-				uint8_t led, red, green, blue;
-			} rgb;
-		} in;
-		union {
-			struct dump {
-				struct {
-					uint8_t reg;
-					uint8_t ic0;
-					uint8_t ic1;
-				} vals[23];
-			} dump;
-			struct get_seq {
-				uint8_t num;
-			} get_seq;
-			struct {
-				/* no return params */
-			} off, on, init, brightness, seq, reg, rgb, demo;
-		} out;
+#define LB_BATTERY_LEVELS 4
+/* List of tweakable parameters. NOTE: It's __packed so it can be sent in a
+ * host command, but the alignment is the same regardless. Keep it that way.
+ */
+struct lightbar_params {
+	/* Timing */
+	int google_ramp_up;
+	int google_ramp_down;
+	int s3s0_ramp_up;
+	int s0_tick_delay[2];			/* AC=0/1 */
+	int s0a_tick_delay[2];			/* AC=0/1 */
+	int s0s3_ramp_down;
+	int s3_sleep_for;
+	int s3_ramp_up;
+	int s3_ramp_down;
+
+	/* Oscillation */
+	uint8_t new_s0;
+	uint8_t osc_min[2];			/* AC=0/1 */
+	uint8_t osc_max[2];			/* AC=0/1 */
+	uint8_t w_ofs[2];			/* AC=0/1 */
+
+	/* Brightness limits based on the backlight and AC. */
+	uint8_t bright_bl_off_fixed[2];		/* AC=0/1 */
+	uint8_t bright_bl_on_min[2];		/* AC=0/1 */
+	uint8_t bright_bl_on_max[2];		/* AC=0/1 */
+
+	/* Battery level thresholds */
+	uint8_t battery_threshold[LB_BATTERY_LEVELS - 1];
+
+	/* Map [AC][battery_level] to color index */
+	uint8_t s0_idx[2][LB_BATTERY_LEVELS];	/* AP is running */
+	uint8_t s3_idx[2][LB_BATTERY_LEVELS];	/* AP is sleeping */
+
+	/* Color palette */
+	struct rgb_s color[8];			/* 0-3 are Google colors */
+} __packed;
+
+struct ec_params_lightbar {
+	uint8_t cmd;		      /* Command (see enum lightbar_command) */
+	union {
+		struct {
+			/* no args */
+		} dump, off, on, init, get_seq, get_params;
+
+		struct num {
+			uint8_t num;
+		} brightness, seq, demo;
+
+		struct reg {
+			uint8_t ctrl, reg, value;
+		} reg;
+
+		struct rgb {
+			uint8_t led, red, green, blue;
+		} rgb;
+
+		struct lightbar_params set_params;
 	};
 } __packed;
+
+struct ec_response_lightbar {
+	union {
+		struct dump {
+			struct {
+				uint8_t reg;
+				uint8_t ic0;
+				uint8_t ic1;
+			} vals[23];
+		} dump;
+
+		struct get_seq {
+			uint8_t num;
+		} get_seq;
+
+		struct lightbar_params get_params;
+
+		struct {
+			/* no return params */
+		} off, on, init, brightness, seq, reg, rgb, demo, set_params;
+	};
+} __packed;
+
+/* Lightbar commands */
+enum lightbar_command {
+	LIGHTBAR_CMD_DUMP = 0,
+	LIGHTBAR_CMD_OFF = 1,
+	LIGHTBAR_CMD_ON = 2,
+	LIGHTBAR_CMD_INIT = 3,
+	LIGHTBAR_CMD_BRIGHTNESS = 4,
+	LIGHTBAR_CMD_SEQ = 5,
+	LIGHTBAR_CMD_REG = 6,
+	LIGHTBAR_CMD_RGB = 7,
+	LIGHTBAR_CMD_GET_SEQ = 8,
+	LIGHTBAR_CMD_DEMO = 9,
+	LIGHTBAR_CMD_GET_PARAMS = 10,
+	LIGHTBAR_CMD_SET_PARAMS = 11,
+	LIGHTBAR_NUM_CMDS
+};
 
 /*****************************************************************************/
 /* Verified boot commands */
@@ -673,21 +758,29 @@ struct ec_response_vboot_hash {
 } __packed;
 
 enum ec_vboot_hash_cmd {
-	EC_VBOOT_HASH_GET,     /* Get current hash status */
-	EC_VBOOT_HASH_ABORT,   /* Abort calculating current hash */
-	EC_VBOOT_HASH_START,   /* Start computing a new hash */
-	EC_VBOOT_HASH_RECALC,  /* Synchronously compute a new hash */
+	EC_VBOOT_HASH_GET = 0,       /* Get current hash status */
+	EC_VBOOT_HASH_ABORT = 1,     /* Abort calculating current hash */
+	EC_VBOOT_HASH_START = 2,     /* Start computing a new hash */
+	EC_VBOOT_HASH_RECALC = 3,    /* Synchronously compute a new hash */
 };
 
 enum ec_vboot_hash_type {
-	EC_VBOOT_HASH_TYPE_SHA256,  /* SHA-256 */
+	EC_VBOOT_HASH_TYPE_SHA256 = 0, /* SHA-256 */
 };
 
 enum ec_vboot_hash_status {
-	EC_VBOOT_HASH_STATUS_NONE,     /* No hash (not started, or aborted) */
-	EC_VBOOT_HASH_STATUS_DONE,     /* Finished computing a hash */
-	EC_VBOOT_HASH_STATUS_BUSY,     /* Busy computing a hash */
+	EC_VBOOT_HASH_STATUS_NONE = 0, /* No hash (not started, or aborted) */
+	EC_VBOOT_HASH_STATUS_DONE = 1, /* Finished computing a hash */
+	EC_VBOOT_HASH_STATUS_BUSY = 2, /* Busy computing a hash */
 };
+
+/*
+ * Special values for offset for EC_VBOOT_HASH_START and EC_VBOOT_HASH_RECALC.
+ * If one of these is specified, the EC will automatically update offset and
+ * size to the correct values for the specified image (RO or RW).
+ */
+#define EC_VBOOT_HASH_OFFSET_RO 0xfffffffe
+#define EC_VBOOT_HASH_OFFSET_RW 0xfffffffd
 
 /*****************************************************************************/
 /* USB charging control commands */
@@ -794,6 +887,32 @@ struct ec_response_thermal_get_threshold {
 /* Toggle automatic fan control */
 #define EC_CMD_THERMAL_AUTO_FAN_CTRL 0x52
 
+/* Get TMP006 calibration data */
+#define EC_CMD_TMP006_GET_CALIBRATION 0x53
+
+struct ec_params_tmp006_get_calibration {
+	uint8_t index;
+} __packed;
+
+struct ec_response_tmp006_get_calibration {
+	float s0;
+	float b0;
+	float b1;
+	float b2;
+} __packed;
+
+/* Set TMP006 calibration data */
+#define EC_CMD_TMP006_SET_CALIBRATION 0x54
+
+struct ec_params_tmp006_set_calibration {
+	uint8_t index;
+	uint8_t reserved[3];  /* Reserved; set 0 */
+	float s0;
+	float b0;
+	float b1;
+	float b2;
+} __packed;
+
 /*****************************************************************************/
 /* MKBP - Matrix KeyBoard Protocol */
 
@@ -821,6 +940,112 @@ struct ec_params_mkbp_simulate_key {
 	uint8_t col;
 	uint8_t row;
 	uint8_t pressed;
+} __packed;
+
+/* Configure keyboard scanning */
+#define EC_CMD_MKBP_SET_CONFIG 0x64
+#define EC_CMD_MKBP_GET_CONFIG 0x65
+
+/* flags */
+enum mkbp_config_flags {
+	EC_MKBP_FLAGS_ENABLE = 1,	/* Enable keyboard scanning */
+};
+
+enum mkbp_config_valid {
+	EC_MKBP_VALID_SCAN_PERIOD		= 1 << 0,
+	EC_MKBP_VALID_POLL_TIMEOUT		= 1 << 1,
+	EC_MKBP_VALID_MIN_POST_SCAN_DELAY	= 1 << 3,
+	EC_MKBP_VALID_OUTPUT_SETTLE		= 1 << 4,
+	EC_MKBP_VALID_DEBOUNCE_DOWN		= 1 << 5,
+	EC_MKBP_VALID_DEBOUNCE_UP		= 1 << 6,
+	EC_MKBP_VALID_FIFO_MAX_DEPTH		= 1 << 7,
+};
+
+/* Configuration for our key scanning algorithm */
+struct ec_mkbp_config {
+	uint32_t valid_mask;		/* valid fields */
+	uint8_t flags;		/* some flags (enum mkbp_config_flags) */
+	uint8_t valid_flags;		/* which flags are valid */
+	uint16_t scan_period_us;	/* period between start of scans */
+	/* revert to interrupt mode after no activity for this long */
+	uint32_t poll_timeout_us;
+	/*
+	 * minimum post-scan relax time. Once we finish a scan we check
+	 * the time until we are due to start the next one. If this time is
+	 * shorter this field, we use this instead.
+	 */
+	uint16_t min_post_scan_delay_us;
+	/* delay between setting up output and waiting for it to settle */
+	uint16_t output_settle_us;
+	uint16_t debounce_down_us;	/* time for debounce on key down */
+	uint16_t debounce_up_us;	/* time for debounce on key up */
+	/* maximum depth to allow for fifo (0 = no keyscan output) */
+	uint8_t fifo_max_depth;
+} __packed;
+
+struct ec_params_mkbp_set_config {
+	struct ec_mkbp_config config;
+} __packed;
+
+struct ec_response_mkbp_get_config {
+	struct ec_mkbp_config config;
+} __packed;
+
+/* Run the key scan emulation */
+#define EC_CMD_KEYSCAN_SEQ_CTRL 0x66
+
+enum ec_keyscan_seq_cmd {
+	EC_KEYSCAN_SEQ_STATUS = 0,	/* Get status information */
+	EC_KEYSCAN_SEQ_CLEAR = 1,	/* Clear sequence */
+	EC_KEYSCAN_SEQ_ADD = 2,		/* Add item to sequence */
+	EC_KEYSCAN_SEQ_START = 3,	/* Start running sequence */
+	EC_KEYSCAN_SEQ_COLLECT = 4,	/* Collect sequence summary data */
+};
+
+enum ec_collect_flags {
+	/*
+	 * Indicates this scan was processed by the EC. Due to timing, some
+	 * scans may be skipped.
+	 */
+	EC_KEYSCAN_SEQ_FLAG_DONE	= 1 << 0,
+};
+
+struct ec_collect_item {
+	uint8_t flags;		/* some flags (enum ec_collect_flags) */
+};
+
+struct ec_params_keyscan_seq_ctrl {
+	uint8_t cmd;	/* Command to send (enum ec_keyscan_seq_cmd) */
+	union {
+		struct {
+			uint8_t active;		/* still active */
+			uint8_t num_items;	/* number of items */
+			/* Current item being presented */
+			uint8_t cur_item;
+		} status;
+		struct {
+			/*
+			 * Absolute time for this scan, measured from the
+			 * start of the sequence.
+			 */
+			uint32_t time_us;
+			uint8_t scan[0];	/* keyscan data */
+		} add;
+		struct {
+			uint8_t start_item;	/* First item to return */
+			uint8_t num_items;	/* Number of items to return */
+		} collect;
+	};
+} __packed;
+
+struct ec_result_keyscan_seq_ctrl {
+	union {
+		struct {
+			uint8_t num_items;	/* Number of items */
+			/* Data for each item */
+			struct ec_collect_item item[0];
+		} collect;
+	};
 } __packed;
 
 /*****************************************************************************/
@@ -963,6 +1188,8 @@ struct ec_params_force_idle {
  */
 #define EC_CMD_CONSOLE_READ 0x98
 
+/*****************************************************************************/
+
 /*
  * Cut off battery power output if the battery supports.
  *
@@ -971,30 +1198,24 @@ struct ec_params_force_idle {
  */
 #define EC_CMD_BATTERY_CUT_OFF 0x99
 
-/* Control the power LED */
-#define EC_CMD_POWER_LED	0x9a
+/*****************************************************************************/
+/* Temporary debug commands. TODO: remove this crosbug.com/p/13849 */
 
-enum ec_powerled_state {
-	EC_POWERLED_OFF,
-	EC_POWERLED_ON,
-	EC_POWERLED_THROB,
+/*
+ * Dump charge state machine context.
+ *
+ * Response is a binary dump of charge state machine context.
+ */
+#define EC_CMD_CHARGE_DUMP 0xa0
 
-	EC_POWERLED_COUNT,
-};
+/*
+ * Set maximum battery charging current.
+ */
+#define EC_CMD_CHARGE_CURRENT_LIMIT 0xa1
 
-struct ec_params_power_led {
-	uint32_t state;		/* enum ec_powerled_state */
+struct ec_params_current_limit {
+	uint32_t limit;
 } __packed;
-
-
-/* Control battery charging */
-#define EC_CMD_CHARGER		0x9b
-
-struct ec_params_charger {
-	uint8_t enable;		/* 0=disable charging task, 1=enable */
-	uint8_t poll_delay;	/* seconds between charge system polls */
-} __packed;
-
 
 /*****************************************************************************/
 /* System commands */
@@ -1008,22 +1229,30 @@ struct ec_params_charger {
 /* Command */
 enum ec_reboot_cmd {
 	EC_REBOOT_CANCEL = 0,        /* Cancel a pending reboot */
-	EC_REBOOT_JUMP_RO,           /* Jump to RO without rebooting */
-	EC_REBOOT_JUMP_RW,           /* Jump to RW without rebooting */
+	EC_REBOOT_JUMP_RO = 1,       /* Jump to RO without rebooting */
+	EC_REBOOT_JUMP_RW = 2,       /* Jump to RW without rebooting */
 	/* (command 3 was jump to RW-B) */
 	EC_REBOOT_COLD = 4,          /* Cold-reboot */
-	EC_REBOOT_DISABLE_JUMP,      /* Disable jump until next reboot */
+	EC_REBOOT_DISABLE_JUMP = 5,  /* Disable jump until next reboot */
+	EC_REBOOT_HIBERNATE = 6      /* Hibernate EC */
 };
 
 /* Flags for ec_params_reboot_ec.reboot_flags */
 #define EC_REBOOT_FLAG_RESERVED0      (1 << 0)  /* Was recovery request */
-#define EC_REBOOT_FLAG_ON_AP_SHUTDOWN (1 << 1)
-#define EC_REBOOT_FLAG_POWER_ON       (1 << 2)
+#define EC_REBOOT_FLAG_ON_AP_SHUTDOWN (1 << 1)  /* Reboot after AP shutdown */
 
 struct ec_params_reboot_ec {
 	uint8_t cmd;           /* enum ec_reboot_cmd */
 	uint8_t flags;         /* See EC_REBOOT_FLAG_* */
 } __packed;
+
+/*
+ * Get information on last EC panic.
+ *
+ * Returns variable-length platform-dependent panic information.  See panic.h
+ * for details.
+ */
+#define EC_CMD_GET_PANIC_INFO 0xd3
 
 /*****************************************************************************/
 /*
