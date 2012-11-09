@@ -521,6 +521,12 @@ void bitfix_prepare(void)
 	 */
 	s3c_pm_check_set_chunksize(CHUNK_SIZE);
 
+	/*
+	 * We'd like pm-check to give us chunks in an order that such that we
+	 * process all chunks with the same destination one right after another.
+	 */
+	s3c_pm_check_set_interleave_bytes(1 << CU_OFFSET);
+
 	/* Zero out the xor superchunk. */
 	for (i = 0; i < UPPER_LOOPS; i++) {
 		phys_addr_t base_addr = SDRAM_BASE + (i << UPPER_OFFSET);
