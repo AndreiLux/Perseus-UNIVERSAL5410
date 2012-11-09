@@ -135,39 +135,64 @@ static bool s3c_pm_should_skip_page(phys_addr_t addr)
 
 /**
  * s3c_pm_xor_mem() - XOR all the words in the memory range passed
- * @val: Initial value to start the XOR from
+ * @val: Initial value to start the XOR from; must be 32-bit aligned.
  * @ptr: Pointer to the start of the memory range
- * @len: Length (in bytes) of the memory range
- *
+ * @len: Length (in bytes) of the memory range; must be multiple of 64 bytes.
  */
 
 static u32 s3c_pm_xor_mem(u32 val, unsigned char const *ptr, size_t len)
 {
-	const u32 *word_ptr = (const u32 *)ptr;
-	int i;
+	/* using 64-bit quantities helps the compiler to optimize */
+	const u64 *wptr = (const u64 *)ptr;
+	u64 *end_ptr = (u64 *)(ptr + len);
+	u64 result = val;
 
-	len >>= 2; /* get words, not bytes */
-	for (i = 0; i < len; i++, word_ptr++)
-		val ^= *word_ptr;
-	return val;
+	while (wptr < end_ptr) {
+		prefetch(wptr + 128); /* 16 cachelines ahead */
+		result ^= *wptr++;
+		result ^= *wptr++;
+		result ^= *wptr++;
+		result ^= *wptr++;
+		result ^= *wptr++;
+		result ^= *wptr++;
+		result ^= *wptr++;
+		result ^= *wptr++;
+	}
+	BUG_ON(wptr != end_ptr);
+	return (u32)((result >> 32) ^ (result & 0xffffffff));
 }
 
 /**
  * s3c_pm_sum_mem() - Sum all the words in the memory range passed
- * @val: Initial value to start the sum from
- * @ptr: Pointer to the start of the memory range
- * @len: Length (in bytes) of the memory range
  *
+ * Doesn't quite give you a simple sum.  Since we work 64-bits at a time
+ * the carry bit from the lower 32-bits get added to the upper 32-bits, but
+ * this is a close enough approximation.
+ *
+ * @val: Initial value to start the sum from; must be 32-bit aligned.
+ * @ptr: Pointer to the start of the memory range
+ * @len: Length (in bytes) of the memory range; must be multiple of 64 bytes.
  */
 static u32 s3c_pm_sum_mem(u32 val, unsigned char const *ptr, size_t len)
 {
-	const u32 *word_ptr = (const u32 *)ptr;
-	int i;
+	/* using 64-bit quantities helps the compiler to optimize */
+	const u64 *wptr = (const u64 *)ptr;
+	u64 *end_ptr = (u64 *)(ptr + len);
+	u64 result = val;
 
-	len >>= 2; /* get words, not bytes */
-	for (i = 0; i < len; i++, word_ptr++)
-		val += *word_ptr;
-	return val;
+	while (wptr < end_ptr) {
+		prefetch(wptr + 128); /* 16 cachelines ahead */
+		result += *wptr++;
+		result += *wptr++;
+		result += *wptr++;
+		result += *wptr++;
+		result += *wptr++;
+		result += *wptr++;
+		result += *wptr++;
+		result += *wptr++;
+	}
+	BUG_ON(wptr != end_ptr);
+	return (u32)((result >> 32) + (result & 0xffffffff));
 }
 
 /**
