@@ -381,7 +381,7 @@ static void _bitfix_recover_chunk(phys_addr_t failed_chunk,
 
 		for (offset = 0; offset < CHUNK_SIZE; offset += PAGE_SIZE) {
 			phys_addr_t this_page = this_chunk + offset;
-			u32 *virt_page = kmap_atomic(phys_to_page(this_page));
+			u32 *virt_page;
 
 			/*
 			 * Don't include blocks that were skipped (never passed
@@ -401,9 +401,9 @@ static void _bitfix_recover_chunk(phys_addr_t failed_chunk,
 				should_skip_fn(this_page, PAGE_SIZE))
 				continue;
 
+			virt_page = kmap_atomic(phys_to_page(this_page));
 			bitfix_xor32(&recover_chunk[offset / sizeof(u32)],
 				     virt_page, PAGE_SIZE);
-
 			kunmap_atomic(virt_page);
 		}
 	}
