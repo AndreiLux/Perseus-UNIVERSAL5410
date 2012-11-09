@@ -975,7 +975,10 @@ err_pwr_enable:
 	s5p_mfc_release_dev_context_buffer(dev);
 #endif
 err_fw_load:
+#ifndef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
+	/* only release the firmware buffers when DRM is not possible */
 	s5p_mfc_release_firmware(dev);
+#endif
 
 err_fw_alloc:
 	del_timer_sync(&dev->watchdog_timer);
