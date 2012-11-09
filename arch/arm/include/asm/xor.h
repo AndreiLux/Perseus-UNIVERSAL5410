@@ -137,5 +137,7 @@ static struct xor_block_template xor_block_arm4regs = {
 	do {					\
 		xor_speed(&xor_block_arm4regs);	\
 		xor_speed(&xor_block_8regs);	\
+		xor_speed(&xor_block_8regs_p);	\
 		xor_speed(&xor_block_32regs);	\
+		xor_speed(&xor_block_32regs_p);	\
 	} while (0)
