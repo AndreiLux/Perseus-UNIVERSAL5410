@@ -145,6 +145,12 @@ struct exynos_drm_private {
 	struct kds_callback kds_cb;
 	struct kds_callback kds_cb_rm_fb;
 #endif
+#ifdef CONFIG_DRM_EXYNOS_DEBUG
+	struct {
+		atomic_t object_memory;
+		atomic_t object_count;
+	} mm;
+#endif
 };
 
 /*
@@ -276,4 +282,9 @@ extern struct platform_driver vidi_driver;
 #ifdef CONFIG_EXYNOS_IOMMU
 extern struct dma_iommu_mapping *exynos_drm_common_mapping;
 #endif
+
+/* exynos_drm_debugfs.c */
+int exynos_drm_debugfs_init(struct drm_minor *minor);
+void exynos_drm_debugfs_cleanup(struct drm_minor *minor);
+
 #endif
