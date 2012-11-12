@@ -223,6 +223,9 @@
 
 #define MXT_FWRESET_TIME	500	/* msec */
 
+/* Default value for acquisition interval when in suspend mode*/
+#define MXT_SUSPEND_ACQINT_VALUE 32      /* msec */
+
 /* MXT_SPT_GPIOPWM_T19 field */
 #define MXT_GPIO0_MASK		0x04
 #define MXT_GPIO1_MASK		0x08
@@ -341,6 +344,9 @@ struct mxt_data {
 	 */
 	u8 T7_config[3];
 	bool T7_config_valid;
+
+	/* T7 IDLEACQINT & ACTVACQINT setting when in suspend mode*/
+	u8 suspend_acq_interval;
 
 	/* Saved T9 Ctrl field */
 	u8 T9_ctrl;
@@ -1975,6 +1981,39 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 	return count;
 }
 
+static ssize_t mxt_suspend_acq_interval_ms_show(struct device *dev,
+						struct device_attribute *attr,
+						char *buf)
+{
+	struct mxt_data *data = dev_get_drvdata(dev);
+	u8 interval_reg = data->suspend_acq_interval;
+	u8 interval_ms = (interval_reg == 255) ? 0 : interval_reg;
+	return scnprintf(buf, PAGE_SIZE, "%u\n", interval_ms);
+}
+
+static ssize_t mxt_suspend_acq_interval_ms_store(struct device *dev,
+						 struct device_attribute *attr,
+						 const char *buf, size_t count)
+{
+	struct mxt_data *data = dev_get_drvdata(dev);
+	int ret;
+	u32 param;
+
+	ret = kstrtou32(buf, 10, &param);
+	if (ret < 0)
+		return -EINVAL;
+
+	/* 0 ms inteval means "free run" */
+	if (param == 0)
+		param = 255;
+	/* 254 ms is the largest interval */
+	else if (param > 254)
+		param = 254;
+
+	data->suspend_acq_interval = param;
+	return count;
+}
+
 static DEVICE_ATTR(backupnv, S_IWUSR, NULL, mxt_backupnv_store);
 static DEVICE_ATTR(calibrate, S_IWUSR, NULL, mxt_calibrate_store);
 static DEVICE_ATTR(config_csum, S_IRUGO, mxt_config_csum_show, NULL);
@@ -1989,6 +2028,9 @@ static DEVICE_ATTR(matrix_size, S_IRUGO, mxt_matrix_size_show, NULL);
 static DEVICE_ATTR(object, S_IWUSR, NULL, mxt_object_store);
 static DEVICE_ATTR(update_config, S_IWUSR, NULL, mxt_update_config_store);
 static DEVICE_ATTR(update_fw, S_IWUSR, NULL, mxt_update_fw_store);
+static DEVICE_ATTR(suspend_acq_interval_ms, S_IRUGO | S_IWUSR,
+		   mxt_suspend_acq_interval_ms_show,
+		   mxt_suspend_acq_interval_ms_store);
 
 static struct attribute *mxt_attrs[] = {
 	&dev_attr_backupnv.attr,
@@ -2008,6 +2050,16 @@ static struct attribute *mxt_attrs[] = {
 
 static const struct attribute_group mxt_attr_group = {
 	.attrs = mxt_attrs,
+};
+
+static struct attribute *mxt_power_attrs[] = {
+	&dev_attr_suspend_acq_interval_ms,
+	NULL
+};
+
+static const struct attribute_group mxt_power_attr_group = {
+	.name = power_group_name,
+	.attrs = mxt_power_attrs,
 };
 
 /*
@@ -2568,6 +2620,10 @@ static void mxt_initialize_async(void *closure, async_cookie_t cookie)
 	if (error)
 		dev_warn(&client->dev, "error creating sysfs entries.\n");
 
+	error = sysfs_merge_group(&client->dev.kobj, &mxt_power_attr_group);
+	if (error)
+		dev_warn(&client->dev, "error merging power sysfs entries.\n");
+
 	error = mxt_debugfs_init(data);
 	if (error)
 		dev_warn(&client->dev, "error creating debugfs entries.\n");
@@ -2606,6 +2662,8 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	data->pdata = pdata;
 	data->irq = client->irq;
 
+	data->suspend_acq_interval = MXT_SUSPEND_ACQINT_VALUE;
+
 	error = mxt_update_file_name(&client->dev, &data->fw_file, MXT_FW_NAME,
 				     strlen(MXT_FW_NAME));
 	if (error)
@@ -2636,6 +2694,7 @@ static int __devexit mxt_remove(struct i2c_client *client)
 	struct mxt_data *data = i2c_get_clientdata(client);
 
 	mxt_debugfs_remove(data);
+	sysfs_unmerge_group(&client->dev.kobj, &mxt_power_attr_group);
 	sysfs_remove_group(&client->dev.kobj, &mxt_attr_group);
 	free_irq(data->irq, data);
 	input_unregister_device(data->input_dev);
@@ -2695,7 +2754,9 @@ static int mxt_suspend(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct mxt_data *data = i2c_get_clientdata(client);
 	struct input_dev *input_dev = data->input_dev;
-	u8 T7_config_idle[3] = {0xfe, 0xfe, 0};
+	u8 T7_config_idle[3] = {data->suspend_acq_interval,
+				data->suspend_acq_interval,
+				0};
 	u8 T7_config_deepsleep[3] = {0x00, 0x00, 0};
 	u8 *power_config;
 	int ret;
