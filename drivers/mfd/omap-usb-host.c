@@ -69,12 +69,9 @@
 #define OMAP4_UHH_SYSCONFIG_NOSTDBY			(1 << 4)
 #define OMAP4_UHH_SYSCONFIG_SOFTRESET			(1 << 0)
 
-#define OMAP4_P1_MODE_CLEAR				(3 << 16)
+#define OMAP4_P1_MODE_MASK				(3 << 16)
 #define OMAP4_P1_MODE_TLL				(1 << 16)
 #define OMAP4_P1_MODE_HSIC				(3 << 16)
-#define OMAP4_P2_MODE_CLEAR				(3 << 18)
-#define OMAP4_P2_MODE_TLL				(1 << 18)
-#define OMAP4_P2_MODE_HSIC				(3 << 18)
 
 #define	OMAP_UHH_DEBUG_CSR				(0x44)
 
@@ -345,6 +342,7 @@ static void omap_usbhs_init(struct device *dev)
 	struct usbhs_omap_platform_data	*pdata = omap->pdata;
 	unsigned long			flags;
 	unsigned			reg;
+	int i;
 
 	dev_dbg(dev, "starting TI HSUSB Controller\n");
 
@@ -405,21 +403,16 @@ static void omap_usbhs_init(struct device *dev)
 				reg |= OMAP_UHH_HOSTCONFIG_ULPI_P3_BYPASS;
 		}
 	} else if (is_omap_usbhs_rev2(omap)) {
-		/* Clear port mode fields for PHY mode*/
-		reg &= ~OMAP4_P1_MODE_CLEAR;
-		reg &= ~OMAP4_P2_MODE_CLEAR;
+		for (i = 0; i < omap->nports; i++) {
+			/* Clear port mode fields for PHY mode*/
+			reg &= ~(OMAP4_P1_MODE_MASK << 2*i);
 
-		if (is_ehci_tll_mode(pdata->port_mode[0]) ||
-			(is_ohci_port(pdata->port_mode[0])))
-			reg |= OMAP4_P1_MODE_TLL;
-		else if (is_ehci_hsic_mode(pdata->port_mode[0]))
-			reg |= OMAP4_P1_MODE_HSIC;
-
-		if (is_ehci_tll_mode(pdata->port_mode[1]) ||
-			(is_ohci_port(pdata->port_mode[1])))
-			reg |= OMAP4_P2_MODE_TLL;
-		else if (is_ehci_hsic_mode(pdata->port_mode[1]))
-			reg |= OMAP4_P2_MODE_HSIC;
+			if (is_ehci_tll_mode(pdata->port_mode[i]) ||
+				(is_ohci_port(pdata->port_mode[i])))
+				reg |= OMAP4_P1_MODE_TLL << 2*i;
+			else if (is_ehci_hsic_mode(pdata->port_mode[i]))
+				reg |= OMAP4_P1_MODE_HSIC << 2*i;
+		}
 	}
 
 	usbhs_write(omap->uhh_base, OMAP_UHH_HOSTCONFIG, reg);
