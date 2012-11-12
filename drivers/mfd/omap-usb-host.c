@@ -90,6 +90,8 @@
 
 struct usbhs_port {
 	struct clk	*utmi_clk;
+	struct clk	*hsic60m_clk;
+	struct clk	*hsic480m_clk;
 };
 
 struct usbhs_hcd_omap {
@@ -292,12 +294,33 @@ static int usbhs_runtime_resume(struct device *dev)
 		clk_enable(omap->ehci_logic_fck);
 
 	for (i = 0; i < omap->nports; i++) {
-		if (is_ehci_tll_mode(pdata->port_mode[i])) {
+		if (is_ehci_tll_mode(pdata->port_mode[i]) ||
+				is_ehci_hsic_mode(pdata->port_mode[i])) {
 			if (omap->port[i].utmi_clk) {
 				r = clk_enable(omap->port[i].utmi_clk);
 				if (r) {
 					dev_err(dev,
 					 "%s: Can't enable port %d clk : %d\n",
+					 __func__, i, r);
+				}
+			}
+		}
+
+		/* Enable HSIC clocks if required */
+		if (is_ehci_hsic_mode(pdata->port_mode[i])) {
+			if (omap->port[i].hsic60m_clk) {
+				r = clk_enable(omap->port[i].hsic60m_clk);
+				if (r) {
+					dev_err(dev,
+					 "%s: Can't enable port %d hsic60m clk : %d\n",
+					 __func__, i, r);
+				}
+			}
+			if (omap->port[i].hsic480m_clk) {
+				r = clk_enable(omap->port[i].hsic480m_clk);
+				if (r) {
+					dev_err(dev,
+					 "%s: Can't enable port %d hsic480m clk : %d\n",
 					 __func__, i, r);
 				}
 			}
@@ -321,9 +344,18 @@ static int usbhs_runtime_suspend(struct device *dev)
 	spin_lock_irqsave(&omap->lock, flags);
 
 	for (i = 0; i < omap->nports; i++) {
-		if (is_ehci_tll_mode(pdata->port_mode[i])) {
+		if (is_ehci_tll_mode(pdata->port_mode[i]) ||
+				is_ehci_hsic_mode(pdata->port_mode[i])) {
 			if (omap->port[i].utmi_clk)
 				clk_disable(omap->port[i].utmi_clk);
+		}
+
+		if (is_ehci_hsic_mode(pdata->port_mode[i])) {
+			if (omap->port[i].hsic60m_clk)
+				clk_disable(omap->port[i].hsic60m_clk);
+
+			if (omap->port[i].hsic480m_clk)
+				clk_disable(omap->port[i].hsic480m_clk);
 		}
 	}
 
@@ -577,6 +609,7 @@ static int usbhs_omap_probe(struct platform_device *pdev)
 	for (i = 0; i < omap->nports; i++) {
 		struct clk *pclk;
 		char utmi_clk[] = "usb_host_hs_utmi_px_clk";
+		char hsic_clk[] = "usb_host_hs_hsic480m_px_clk";
 
 		/* clock names are indexed from 1*/
 		sprintf(utmi_clk, "usb_host_hs_utmi_p%d_clk", i + 1);
@@ -592,6 +625,21 @@ static int usbhs_omap_probe(struct platform_device *pdev)
 		else
 			omap->port[i].utmi_clk = pclk;
 
+		sprintf(hsic_clk, "usb_host_hs_hsic480m_p%d_clk", i + 1);
+		pclk = clk_get(dev, hsic_clk);
+		if (IS_ERR(pclk))
+			dev_err(dev, "Failed to get clock : %s : %ld\n",
+				hsic_clk, PTR_ERR(pclk));
+		else
+			omap->port[i].hsic480m_clk = pclk;
+
+		sprintf(hsic_clk, "usb_host_hs_hsic60m_p%d_clk", i + 1);
+		pclk = clk_get(dev, hsic_clk);
+		if (IS_ERR(pclk))
+			dev_err(dev, "Failed to get clock : %s : %ld\n",
+				hsic_clk, PTR_ERR(pclk));
+		else
+			omap->port[i].hsic60m_clk = pclk;
 	}
 
 	if (is_ehci_phy_mode(pdata->port_mode[0])) {
@@ -639,8 +687,11 @@ err_alloc:
 	omap_usbhs_deinit(&pdev->dev);
 	iounmap(omap->uhh_base);
 
-	for (i = 0; i < omap->nports; i++)
+	for (i = 0; i < omap->nports; i++) {
 		clk_put(omap->port[i].utmi_clk);
+		clk_put(omap->port[i].hsic60m_clk);
+		clk_put(omap->port[i].hsic480m_clk);
+	}
 
 	clk_put(omap->init_60m_fclk);
 
@@ -675,8 +726,11 @@ static int usbhs_omap_remove(struct platform_device *pdev)
 	pm_runtime_disable(&pdev->dev);
 	iounmap(omap->uhh_base);
 
-	for (i = 0; i < omap->nports; i++)
+	for (i = 0; i < omap->nports; i++) {
 		clk_put(omap->port[i].utmi_clk);
+		clk_put(omap->port[i].hsic60m_clk);
+		clk_put(omap->port[i].hsic480m_clk);
+	}
 
 	clk_put(omap->init_60m_fclk);
 	clk_put(omap->xclk60mhsp2_ck);
