@@ -321,6 +321,7 @@ static const struct dmi_system_id link_dmi_table[] = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Link"),
 		},
 	},
+	{ }
 };
 
 static void intel_panel_init_backlight(struct drm_device *dev)
