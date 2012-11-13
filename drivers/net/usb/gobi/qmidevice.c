@@ -1178,19 +1178,23 @@ static int devqmi_open(struct inode *inode, struct file *file)
 	struct qmihandle *handle;
 	struct qmidev *qmidev = container_of(inode->i_cdev, struct qmidev, cdev);
 	struct qcusbnet *dev = container_of(qmidev, struct qcusbnet, qmi);
+	int ret;
 
 	/* We need an extra ref on the device per fd, since we stash a ref
 	 * inside the handle. If qcusbnet_get() returns NULL, that means the
 	 * device has been removed from the list - no new refs for us. */
 	struct qcusbnet *ref = qcusbnet_get(dev);
 
-	if (!ref)
-		return -ENXIO;
+	if (!ref) {
+		ret = -ENXIO;
+		goto out;
+	}
 
 	file->private_data = kmalloc(sizeof(struct qmihandle), GFP_KERNEL);
 	if (!file->private_data) {
 		GOBI_ERROR("failed to allocate struct qmihandle");
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto out_put;
 	}
 
 	handle = (struct qmihandle *)file->private_data;
@@ -1200,6 +1204,10 @@ static int devqmi_open(struct inode *inode, struct file *file)
 	GOBI_DEBUG("%p %04x", handle, handle->cid);
 
 	return 0;
+out_put:
+	qcusbnet_put(dev);
+out:
+	return ret;
 }
 
 static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
