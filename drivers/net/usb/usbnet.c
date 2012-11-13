@@ -345,14 +345,20 @@ static int rx_submit (struct usbnet *dev, struct urb *urb, gfp_t flags)
 	unsigned long		lockflags;
 	size_t			size = dev->rx_urb_size;
 
-	skb = __netdev_alloc_skb_ip_align(dev->net, size, flags);
-	if (!skb) {
-		netif_dbg(dev, rx_err, dev->net, "no rx skb\n");
+	if (atomic_read(&dev->rx_skb_on_fly) > MAX_RX_SKB_ON_FLY &&
+							 flags == GFP_ATOMIC) {
+		netif_dbg(dev, rx_err, dev->net,
+					"too many rx skbs on the fly\n");
+fail_rx_memory:
 		usbnet_defer_kevent (dev, EVENT_RX_MEMORY);
 		usb_free_urb (urb);
 		return -ENOMEM;
 	}
-
+	skb = __netdev_alloc_skb_ip_align(dev->net, size, flags);
+	if (!skb) {
+		netif_dbg(dev, rx_err, dev->net, "no rx skb\n");
+		goto fail_rx_memory;
+	}
 	entry = (struct skb_data *) skb->cb;
 	entry->urb = urb;
 	entry->dev = dev;
@@ -395,6 +401,7 @@ static int rx_submit (struct usbnet *dev, struct urb *urb, gfp_t flags)
 	}
 	spin_unlock_irqrestore (&dev->rxq.lock, lockflags);
 	if (retval) {
+		atomic_dec(&dev->rx_skb_on_fly);
 		dev_kfree_skb_any (skb);
 		usb_free_urb (urb);
 	}
@@ -1218,8 +1225,9 @@ static void usbnet_bh (unsigned long param)
 			entry->state = rx_cleanup;
 			rx_process (dev, skb);
 			continue;
-		case tx_done:
 		case rx_cleanup:
+			atomic_dec(&dev->rx_skb_on_fly);
+		case tx_done:
 			usb_free_urb (entry->urb);
 			dev_kfree_skb (skb);
 			continue;

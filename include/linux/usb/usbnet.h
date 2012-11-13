@@ -33,7 +33,8 @@ struct usbnet {
 	wait_queue_head_t	*wait;
 	struct mutex		phy_mutex;
 	unsigned char		suspend_count;
-
+	atomic_t		rx_skb_on_fly;
+#define MAX_RX_SKB_ON_FLY	2048
 	/* i/o info: pipes etc */
 	unsigned		in, out;
 	struct usb_host_endpoint *status;
