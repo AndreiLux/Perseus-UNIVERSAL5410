@@ -740,30 +740,18 @@ static inline void acpi_idle_do_entry(struct acpi_processor_cx *cx)
 static int acpi_idle_enter_c1(struct cpuidle_device *dev,
 		struct cpuidle_driver *drv, int index)
 {
-	ktime_t  kt1, kt2;
-	s64 idle_time;
 	struct acpi_processor *pr;
 	struct cpuidle_state_usage *state_usage = &dev->states_usage[index];
 	struct acpi_processor_cx *cx = cpuidle_get_statedata(state_usage);
 
 	pr = __this_cpu_read(processors);
-	dev->last_residency = 0;
 
 	if (unlikely(!pr))
 		return -EINVAL;
 
-	local_irq_disable();
-
 	lapic_timer_state_broadcast(pr, cx, 1);
-	kt1 = ktime_get_real();
 	acpi_idle_do_entry(cx);
-	kt2 = ktime_get_real();
-	idle_time =  ktime_to_us(ktime_sub(kt2, kt1));
 
-	/* Update device last_residency*/
-	dev->last_residency = (int)idle_time;
-
-	local_irq_enable();
 	cx->usage++;
 	lapic_timer_state_broadcast(pr, cx, 0);
 
@@ -811,17 +799,11 @@ static int acpi_idle_enter_simple(struct cpuidle_device *dev,
 	struct acpi_processor *pr;
 	struct cpuidle_state_usage *state_usage = &dev->states_usage[index];
 	struct acpi_processor_cx *cx = cpuidle_get_statedata(state_usage);
-	ktime_t  kt1, kt2;
-	s64 idle_time_ns;
-	s64 idle_time;
 
 	pr = __this_cpu_read(processors);
-	dev->last_residency = 0;
 
 	if (unlikely(!pr))
 		return -EINVAL;
-
-	local_irq_disable();
 
 	if (cx->entry_method != ACPI_CSTATE_FFH) {
 		current_thread_info()->status &= ~TS_POLLING;
@@ -833,7 +815,6 @@ static int acpi_idle_enter_simple(struct cpuidle_device *dev,
 
 		if (unlikely(need_resched())) {
 			current_thread_info()->status |= TS_POLLING;
-			local_irq_enable();
 			return -EINVAL;
 		}
 	}
@@ -847,29 +828,18 @@ static int acpi_idle_enter_simple(struct cpuidle_device *dev,
 	if (cx->type == ACPI_STATE_C3)
 		ACPI_FLUSH_CPU_CACHE();
 
-	kt1 = ktime_get_real();
 	/* Tell the scheduler that we are going deep-idle: */
 	sched_clock_idle_sleep_event();
 	acpi_idle_do_entry(cx);
-	kt2 = ktime_get_real();
-	idle_time_ns = ktime_to_ns(ktime_sub(kt2, kt1));
-	idle_time = idle_time_ns;
-	do_div(idle_time, NSEC_PER_USEC);
 
-	/* Update device last_residency*/
-	dev->last_residency = (int)idle_time;
+	sched_clock_idle_wakeup_event(0);
 
-	/* Tell the scheduler how much we idled: */
-	sched_clock_idle_wakeup_event(idle_time_ns);
-
-	local_irq_enable();
 	if (cx->entry_method != ACPI_CSTATE_FFH)
 		current_thread_info()->status |= TS_POLLING;
 
 	cx->usage++;
 
 	lapic_timer_state_broadcast(pr, cx, 0);
-	cx->time += idle_time;
 	return index;
 }
 
@@ -890,13 +860,8 @@ static int acpi_idle_enter_bm(struct cpuidle_device *dev,
 	struct acpi_processor *pr;
 	struct cpuidle_state_usage *state_usage = &dev->states_usage[index];
 	struct acpi_processor_cx *cx = cpuidle_get_statedata(state_usage);
-	ktime_t  kt1, kt2;
-	s64 idle_time_ns;
-	s64 idle_time;
-
 
 	pr = __this_cpu_read(processors);
-	dev->last_residency = 0;
 
 	if (unlikely(!pr))
 		return -EINVAL;
@@ -906,14 +871,10 @@ static int acpi_idle_enter_bm(struct cpuidle_device *dev,
 			return drv->states[drv->safe_state_index].enter(dev,
 						drv, drv->safe_state_index);
 		} else {
-			local_irq_disable();
 			acpi_safe_halt();
-			local_irq_enable();
 			return -EINVAL;
 		}
 	}
-
-	local_irq_disable();
 
 	if (cx->entry_method != ACPI_CSTATE_FFH) {
 		current_thread_info()->status &= ~TS_POLLING;
@@ -925,7 +886,6 @@ static int acpi_idle_enter_bm(struct cpuidle_device *dev,
 
 		if (unlikely(need_resched())) {
 			current_thread_info()->status |= TS_POLLING;
-			local_irq_enable();
 			return -EINVAL;
 		}
 	}
@@ -940,7 +900,6 @@ static int acpi_idle_enter_bm(struct cpuidle_device *dev,
 	 */
 	lapic_timer_state_broadcast(pr, cx, 1);
 
-	kt1 = ktime_get_real();
 	/*
 	 * disable bus master
 	 * bm_check implies we need ARB_DIS
@@ -971,31 +930,22 @@ static int acpi_idle_enter_bm(struct cpuidle_device *dev,
 		c3_cpu_count--;
 		raw_spin_unlock(&c3_lock);
 	}
-	kt2 = ktime_get_real();
-	idle_time_ns = ktime_to_ns(ktime_sub(kt2, kt1));
-	idle_time = idle_time_ns;
-	do_div(idle_time, NSEC_PER_USEC);
 
-	/* Update device last_residency*/
-	dev->last_residency = (int)idle_time;
+	sched_clock_idle_wakeup_event(0);
 
-	/* Tell the scheduler how much we idled: */
-	sched_clock_idle_wakeup_event(idle_time_ns);
-
-	local_irq_enable();
 	if (cx->entry_method != ACPI_CSTATE_FFH)
 		current_thread_info()->status |= TS_POLLING;
 
 	cx->usage++;
 
 	lapic_timer_state_broadcast(pr, cx, 0);
-	cx->time += idle_time;
 	return index;
 }
 
 struct cpuidle_driver acpi_idle_driver = {
 	.name =		"acpi_idle",
 	.owner =	THIS_MODULE,
+	.en_core_tk_irqen = 1,
 };
 
 /**
