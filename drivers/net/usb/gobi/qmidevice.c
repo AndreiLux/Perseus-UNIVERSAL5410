@@ -100,6 +100,7 @@ static long devqmi_compat_ioctl(struct file *file, unsigned int cmd,
 				unsigned long arg);
 #endif
 static int devqmi_release(struct inode *inode, struct file *file);
+static void devqmi_cleanup(struct file *file);
 static ssize_t devqmi_read(struct file *file, char __user *buf, size_t size,
 			   loff_t *pos);
 static ssize_t devqmi_write(struct file *file, const char __user *buf,
@@ -1263,10 +1264,7 @@ static long devqmi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return -EBADR;
 		}
 
-		file->private_data = NULL;
-		client_free(handle->dev, handle->cid, SYNC_TIMEOUT);
-		kfree(handle);
-
+		devqmi_cleanup(file);
 		return 0;
 
 	case IOCTL_QMI_GET_DEVICE_VIDPID:
@@ -1329,7 +1327,7 @@ static long devqmi_compat_ioctl(struct file *file, unsigned int cmd,
 }
 #endif
 
-static int devqmi_release(struct inode *inode, struct file *file)
+static void devqmi_cleanup(struct file *file)
 {
 	struct qmihandle *handle = (struct qmihandle *)file->private_data;
 
@@ -1341,7 +1339,11 @@ static int devqmi_release(struct inode *inode, struct file *file)
 		qcusbnet_put(handle->dev);
 		kfree(handle);
 	}
+}
 
+static int devqmi_release(struct inode *inode, struct file *file)
+{
+	devqmi_cleanup(file);
 	return 0;
 }
 
