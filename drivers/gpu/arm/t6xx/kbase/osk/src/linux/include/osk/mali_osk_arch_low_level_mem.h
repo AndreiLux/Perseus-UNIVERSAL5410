@@ -28,6 +28,8 @@
 #include <linux/highmem.h>
 #include <linux/dma-mapping.h>
 
+extern atomic_t mali_memory_pages;
+
 struct oskp_phy_os_allocator
 {
 };
@@ -88,6 +90,8 @@ OSK_STATIC_INLINE u32 oskp_phy_os_pages_alloc(oskp_phy_os_allocator *allocator,
 		pages[i] = PFN_PHYS(page_to_pfn(p));
 	}
 
+	atomic_add(i, &mali_memory_pages);
+
 	return i;
 }
 
@@ -97,6 +101,8 @@ static inline void oskp_phy_os_pages_free(oskp_phy_os_allocator *allocator,
 	int i;
 
 	OSK_ASSERT(NULL != allocator);
+
+	atomic_sub(nr_pages, &mali_memory_pages);
 
 	for (i = 0; i < nr_pages; i++)
 	{

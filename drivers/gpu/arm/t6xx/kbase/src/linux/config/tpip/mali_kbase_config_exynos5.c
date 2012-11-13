@@ -137,6 +137,8 @@ static kbase_io_resources io_resources =
 	}
 };
 
+atomic_t mali_memory_pages;
+
 /**
  * Read the CPU clock speed
  */
@@ -681,6 +683,24 @@ static ssize_t mali_sysfs_show_fbdev(struct device *dev,
 }
 DEVICE_ATTR(fbdev, S_IRUGO, mali_sysfs_show_fbdev, NULL);
 
+static ssize_t mali_sysfs_show_memory(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct kbase_device *kbdev;
+	int ret;
+
+	kbdev = dev_get_drvdata(dev);
+
+	if (!kbdev)
+		return -ENODEV;
+
+	ret = sprintf(buf, "%lu bytes\n",
+		      atomic_read(&mali_memory_pages) * PAGE_SIZE);
+
+	return ret;
+}
+DEVICE_ATTR(memory, S_IRUGO, mali_sysfs_show_memory, NULL);
+
 typedef enum {
 	L1_I_tag_RAM = 0x00,
 	L1_I_data_RAM = 0x01,
@@ -1124,6 +1144,12 @@ static int kbase_platform_create_sysfs_file(struct device *dev)
 	if (device_create_file(dev, &dev_attr_fbdev))
 	{
 		dev_err(dev, "Couldn't create sysfs file [fbdev]\n");
+		goto out;
+	}
+
+	if (device_create_file(dev, &dev_attr_memory))
+	{
+		dev_err(dev, "Couldn't create sysfs file [memory]\n");
 		goto out;
 	}
 
