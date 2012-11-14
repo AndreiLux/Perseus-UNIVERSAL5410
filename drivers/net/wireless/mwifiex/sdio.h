@@ -252,6 +252,15 @@
 	a->mpa_rx.start_port = 0;					\
 } while (0)
 
+#define REG_DBG_MAX_NUM 16
+struct sdio_reg_dbg {
+	char name[REG_DBG_MAX_NUM];
+	u8 fn;
+	int delay;
+	int num_regs;
+	u32 reg[REG_DBG_MAX_NUM];
+	u8 val[REG_DBG_MAX_NUM];
+};
 
 /* data structure for SDIO MPA TX */
 struct mwifiex_sdio_mpa_tx {

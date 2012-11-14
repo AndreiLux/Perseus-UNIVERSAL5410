@@ -567,6 +567,9 @@ mwifiex_tx_timeout(struct net_device *dev)
 		jiffies, priv->bss_type, priv->bss_num);
 	mwifiex_set_trans_start(dev);
 	priv->num_tx_timeout++;
+
+	if (priv->adapter->if_ops.reg_dbg)
+		priv->adapter->if_ops.reg_dbg(priv->adapter);
 }
 
 /*

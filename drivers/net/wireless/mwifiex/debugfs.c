@@ -659,6 +659,31 @@ done:
 	return ret;
 }
 
+/*
+ * Proc sdio register dump trigger read handler.
+ *
+ * This function is called when the 'sdio_reg_dbg_trigger' file is opened
+ * for reading
+ *
+ * This function can be used to trigger an SDIO register debug register dump.
+ * Note that this will cause the register dump to appear in printks, rather
+ * than than being read out of the debugfs file itself.
+ */
+static ssize_t
+mwifiex_sdio_reg_dbg_trigger_read(struct file *file, char __user *ubuf,
+				  size_t count, loff_t *ppos)
+{
+	struct mwifiex_private *priv =
+		(struct mwifiex_private *) file->private_data;
+
+	if (!priv->adapter->if_ops.reg_dbg)
+		return -EIO;
+
+	priv->adapter->if_ops.reg_dbg(priv->adapter);
+	return 0;
+}
+
+
 
 #define MWIFIEX_DFS_ADD_FILE(name) do {                                 \
 	if (!debugfs_create_file(#name, 0644, priv->dfs_dev_dir,        \
@@ -691,6 +716,7 @@ MWIFIEX_DFS_FILE_READ_OPS(debug);
 MWIFIEX_DFS_FILE_READ_OPS(getlog);
 MWIFIEX_DFS_FILE_OPS(regrdwr);
 MWIFIEX_DFS_FILE_OPS(rdeeprom);
+MWIFIEX_DFS_FILE_READ_OPS(sdio_reg_dbg_trigger);
 
 /*
  * This function creates the debug FS directory structure and the files.
@@ -712,6 +738,7 @@ mwifiex_dev_debugfs_init(struct mwifiex_private *priv)
 	MWIFIEX_DFS_ADD_FILE(getlog);
 	MWIFIEX_DFS_ADD_FILE(regrdwr);
 	MWIFIEX_DFS_ADD_FILE(rdeeprom);
+	MWIFIEX_DFS_ADD_FILE(sdio_reg_dbg_trigger);
 }
 
 /*
