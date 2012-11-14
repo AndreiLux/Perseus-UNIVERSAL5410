@@ -165,9 +165,8 @@ static u32 s3c_pm_xor_mem(u32 val, unsigned char const *ptr, size_t len)
 /**
  * s3c_pm_sum_mem() - Sum all the words in the memory range passed
  *
- * Doesn't quite give you a simple sum.  Since we work 64-bits at a time
- * the carry bit from the lower 32-bits get added to the upper 32-bits, but
- * this is a close enough approximation.
+ * Doesn't quite give you a simple sum.  It grabs a sum and does a
+ * one byte rotate on it.
  *
  * @val: Initial value to start the sum from; must be 32-bit aligned.
  * @ptr: Pointer to the start of the memory range
@@ -175,24 +174,47 @@ static u32 s3c_pm_xor_mem(u32 val, unsigned char const *ptr, size_t len)
  */
 static u32 s3c_pm_sum_mem(u32 val, unsigned char const *ptr, size_t len)
 {
-	/* using 64-bit quantities helps the compiler to optimize */
-	const u64 *wptr = (const u64 *)ptr;
-	u64 *end_ptr = (u64 *)(ptr + len);
-	u64 result = val;
+	const u32 *wptr = (const u32 *)ptr;
+	u32 *end_ptr = (u32 *)(ptr + len);
+
 
 	while (wptr < end_ptr) {
 		prefetch(wptr + 128); /* 16 cachelines ahead */
-		result += *wptr++;
-		result += *wptr++;
-		result += *wptr++;
-		result += *wptr++;
-		result += *wptr++;
-		result += *wptr++;
-		result += *wptr++;
-		result += *wptr++;
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
+		val += *wptr++;
+		val = ror32(val, 8);
 	}
 	BUG_ON(wptr != end_ptr);
-	return (u32)((result >> 32) + (result & 0xffffffff));
+	return val;
 }
 
 /**
