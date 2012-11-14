@@ -37,7 +37,9 @@ static struct class *devclass;
 static void free_dev(struct kobject *ref)
 {
 	struct qcusbnet *dev = container_of(ref, struct qcusbnet, kobj);
+	mutex_lock(&qcusbnet_lock);
 	list_del(&dev->node);
+	mutex_unlock(&qcusbnet_lock);
 	kfree(dev);
 }
 
@@ -54,9 +56,7 @@ static struct kobj_type ktype_qcusbnet = {
 
 void qcusbnet_put(struct qcusbnet *dev)
 {
-	mutex_lock(&qcusbnet_lock);
 	kobject_put(&dev->kobj);
-	mutex_unlock(&qcusbnet_lock);
 }
 
 struct qcusbnet *qcusbnet_get(struct qcusbnet *key)
