@@ -81,6 +81,8 @@ static unsigned int save_arm_register[2];
 
 static int exynos_cpu_suspend(unsigned long arg)
 {
+	unsigned int i;
+
 #ifdef CONFIG_CACHE_L2X0
 	outer_flush_all();
 #endif
@@ -97,7 +99,8 @@ static int exynos_cpu_suspend(unsigned long arg)
 	__raw_writel(0x0, S5P_VA_GIC_DIST + GIC_DIST_CTRL);
 
 	/* issue the standby signal into the pm unit. */
-	cpu_do_idle();
+	for (i = 0; i < 100; i++)
+		cpu_do_idle();
 
 	printk(KERN_ERR "Failed to suspend the system\n");
 	return -EBUSY;
