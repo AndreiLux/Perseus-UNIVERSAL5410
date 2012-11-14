@@ -1413,8 +1413,6 @@ static ssize_t devqmi_write(struct file *file, const char __user * buf,
 
 	if (!device_valid(handle->dev)) {
 		GOBI_WARN("invalid device");
-		/* TODO(ttuttle): what the heck is this for: */
-		file->f_op = file->f_dentry->d_inode->i_fop;
 		return -ENXIO;
 	}
 
