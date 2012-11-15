@@ -38,8 +38,8 @@
 #define MAX_CCNT		100
 #define RDWR_DATA_COUNT		0x7
 
-#define PMCNT_OFFSET(i)		(PPMU_PMCNT0 + (PPMU_PMCNT_OFFSET * i))
-#define PPMU_BEVTSEL(i)		(PPMU_BEVT0SEL + (PPMU_BEVTSEL_OFFSET * i))
+#define PMCNT_OFFSET(i)		(PPMU_PMCNT0 + (PPMU_PMCNT_OFFSET * (i)))
+#define PPMU_BEVTSEL(i)		(PPMU_BEVT0SEL + (PPMU_BEVTSEL_OFFSET * (i)))
 
 enum ppmu_type {
 	PPMU_MIF,
