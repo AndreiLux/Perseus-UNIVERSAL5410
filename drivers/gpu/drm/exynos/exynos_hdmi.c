@@ -136,6 +136,7 @@ struct hdmi_context {
 	bool				has_hdmi_audio;
 	bool				is_soc_exynos5;
 	bool				is_hdmi_powered_on;
+	bool				video_enabled;
 
 	struct resource			*regs_res;
 	void __iomem			*regs;
@@ -1238,6 +1239,33 @@ static void hdmi_conf_reset(struct hdmi_context *hdata)
 	hdata->hpd_handle = true;
 }
 
+static void hdmi_enable_video(struct hdmi_context *hdata)
+{
+	if (hdata->is_v13)
+		return;
+
+	hdata->video_enabled = true;
+	hdmi_reg_writemask(hdata, HDMI_CON_0, 0, HDMI_BLUE_SCR_EN);
+}
+
+static void hdmi_disable_video(struct hdmi_context *hdata)
+{
+	if (hdata->is_v13)
+		return;
+
+	/* Set the blue screen color to black */
+	hdmi_reg_writeb(hdata, HDMI_BLUE_SCREEN_R_0, 0);
+	hdmi_reg_writeb(hdata, HDMI_BLUE_SCREEN_R_1, 0);
+	hdmi_reg_writeb(hdata, HDMI_BLUE_SCREEN_G_0, 0);
+	hdmi_reg_writeb(hdata, HDMI_BLUE_SCREEN_G_1, 0);
+	hdmi_reg_writeb(hdata, HDMI_BLUE_SCREEN_B_0, 0);
+	hdmi_reg_writeb(hdata, HDMI_BLUE_SCREEN_B_1, 0);
+
+	/* Enable the "blue screen", which effectively disconnects the mixer */
+	hdata->video_enabled = false;
+	hdmi_reg_writemask(hdata, HDMI_CON_0, ~0, HDMI_BLUE_SCR_EN);
+}
+
 static void hdmi_conf_init(struct hdmi_context *hdata)
 {
 	struct hdmi_infoframe infoframe;
@@ -1254,8 +1282,11 @@ static void hdmi_conf_init(struct hdmi_context *hdata)
 	/* choose HDMI mode */
 	hdmi_reg_writemask(hdata, HDMI_MODE_SEL,
 		HDMI_MODE_HDMI_EN, HDMI_MODE_MASK);
-	/* disable bluescreen */
-	hdmi_reg_writemask(hdata, HDMI_CON_0, 0, HDMI_BLUE_SCR_EN);
+
+	if (hdata->video_enabled)
+		hdmi_enable_video(hdata);
+	else
+		hdmi_disable_video(hdata);
 
 	if (!hdata->has_hdmi_sink) {
 		/* choose DVI mode */
@@ -2022,12 +2053,13 @@ static int hdmi_power(void *ctx, int mode)
 	case DRM_MODE_DPMS_ON:
 		if (!hdata->is_hdmi_powered_on)
 			hdmi_resource_poweron(hdata);
+		hdmi_enable_video(hdata);
 		break;
 	case DRM_MODE_DPMS_STANDBY:
-		break;
-	case DRM_MODE_DPMS_SUSPEND:
+		hdmi_disable_video(hdata);
 		break;
 	case DRM_MODE_DPMS_OFF:
+	case DRM_MODE_DPMS_SUSPEND:
 		if (hdata->is_hdmi_powered_on)
 			hdmi_resource_poweroff(hdata);
 		break;
