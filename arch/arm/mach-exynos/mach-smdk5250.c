@@ -25,6 +25,7 @@
 #include <linux/persistent_ram.h>
 #include <linux/clk.h>
 #include <linux/spi/spi.h>
+#include <linux/ion.h>
 
 #include <video/platform_lcd.h>
 #include <video/s5p-dp.h>
@@ -1722,6 +1723,7 @@ static void __init exynos_reserve_mem(void)
 		"exynos5-fimc-is=fimc_is;";
 
 	exynos_cma_region_reserve(regions, regions_secure, 0, map);
+	ion_reserve(&exynos_ion_pdata);
 }
 #else /* !CONFIG_CMA*/
 static inline void exynos_reserve_mem(void)
@@ -1933,7 +1935,6 @@ static void __init smdk5250_machine_init(void)
 	s3c_adc_set_platdata(&smdk5250_adc_data);
 
 	exynos_sysmmu_init();
-	exynos_ion_set_platdata();
 	smdk5250_dwmci_init();
 
 #ifdef CONFIG_VIDEO_EXYNOS_MFC
