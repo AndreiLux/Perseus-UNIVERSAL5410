@@ -28,6 +28,13 @@ Optional node:
   capabilities such as low power mode, standby mode (controlled by PWRREQ
   signal) etc. Check the regulator CTRL register for the bits setting these
   modes.
+- max77686,enable-low-jitter : If present, bit 3 of the 32KHZ register will be
+  set.  This enables low jitter mode which can offset flaky clock
+  signals during updates of the RTC.
+- max77686,disable-low-jitter : If present, bit 3 of the 32KHZ register
+  will be cleared. If both enable and disable are present, then enable
+  will be favored.  If neither are set, the register will not be modified.
+
 
 The regulator-compatible property of regulator should initialized with
 string to get matched with their hardware counterparts as follow:
@@ -45,6 +52,7 @@ Example:
 		interrupts = <26 0>;
 		reg = <0x09>;
 		max77686,buck_ramp_delay = <1>;
+		max77686,enable-low-jitter;
 
 		voltage-regulators {
 			ldo11_reg {
