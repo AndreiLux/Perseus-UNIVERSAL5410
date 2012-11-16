@@ -522,6 +522,7 @@ static __devinit int daisy_max98095_driver_probe(struct platform_device *pdev)
 	 */
 
 	if (!of_machine_is_compatible("google,snow") &&
+	    !of_machine_is_compatible("google,spring") &&
 	    !of_machine_is_compatible("google,daisy"))
 		return -ENODEV;
 
