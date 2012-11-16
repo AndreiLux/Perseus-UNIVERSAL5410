@@ -228,7 +228,7 @@ struct cputopo_arm cpu_topology[NR_CPUS];
 
 int arch_sd_share_power_line(void)
 {
-	return 0*SD_SHARE_POWERLINE;
+	return 1*SD_SHARE_POWERLINE;
 }
 
 const struct cpumask *cpu_coregroup_mask(int cpu)
