@@ -60,6 +60,7 @@
 			reg = <0x9>;
 
 			max77686,buck_ramp_delay = <1>;		/* default */
+			max77686,enable-low-jitter;
 
 			voltage-regulators {
 				ldo6_reg: LDO6 {
