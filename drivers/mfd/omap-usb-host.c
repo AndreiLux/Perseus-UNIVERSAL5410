@@ -389,6 +389,10 @@ static void omap_usbhs_init(struct device *dev)
 			gpio_request_one(pdata->ehci_data->reset_gpio_port[1],
 					 GPIOF_OUT_INIT_LOW, "USB2 PHY reset");
 
+		if (gpio_is_valid(pdata->ehci_data->reset_gpio_port[2]))
+			gpio_request_one(pdata->ehci_data->reset_gpio_port[2],
+					 GPIOF_OUT_INIT_LOW, "USB3 PHY reset");
+
 		/* Hold the PHY in RESET for enough time till DIR is high */
 		udelay(10);
 	}
@@ -465,6 +469,10 @@ static void omap_usbhs_init(struct device *dev)
 		if (gpio_is_valid(pdata->ehci_data->reset_gpio_port[1]))
 			gpio_set_value_cansleep
 				(pdata->ehci_data->reset_gpio_port[1], 1);
+
+		if (gpio_is_valid(pdata->ehci_data->reset_gpio_port[2]))
+			gpio_set_value_cansleep
+				(pdata->ehci_data->reset_gpio_port[2], 1);
 	}
 }
 
@@ -479,6 +487,9 @@ static void omap_usbhs_deinit(struct device *dev)
 
 		if (gpio_is_valid(pdata->ehci_data->reset_gpio_port[1]))
 			gpio_free(pdata->ehci_data->reset_gpio_port[1]);
+
+		if (gpio_is_valid(pdata->ehci_data->reset_gpio_port[2]))
+			gpio_free(pdata->ehci_data->reset_gpio_port[2]);
 	}
 }
 
