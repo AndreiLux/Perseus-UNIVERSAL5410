@@ -137,6 +137,13 @@ static struct max77686_platform_data *max77686_i2c_parse_dt_pdata(struct device
 		return ERR_PTR(-ENOMEM);
 	}
 
+	if (of_get_property(dev->of_node, "max77686,enable-low-jitter", NULL))
+		pd->low_jitter = MAX77686_PROP_LOW_JITTER_ON;
+	else if (of_get_property(dev->of_node, "max77686,disable-low-jitter",
+				 NULL))
+		pd->low_jitter = MAX77686_PROP_LOW_JITTER_OFF;
+	dbg_info(dev, "low-jitter property: %u\n", pd->low_jitter);
+
 	return pd;
 }
 #else
@@ -146,6 +153,21 @@ static struct max77686_platform_data *max77686_i2c_parse_dt_pdata(struct device
 	return 0;
 }
 #endif
+
+static int max77686_set_low_jitter(struct max77686_dev *max77686)
+{
+	int ret;
+	u8 jitter = 0;
+
+	if (max77686->pdata->low_jitter == MAX77686_PROP_LOW_JITTER_DFL)
+		return 0;
+	if (max77686->pdata->low_jitter == MAX77686_PROP_LOW_JITTER_ON)
+		jitter = LOW_JITTER_MASK;
+
+	ret = max77686_update_reg(max77686->i2c, MAX77686_REG_32KHZ_, jitter,
+				  LOW_JITTER_MASK);
+	return ret;
+}
 
 static inline int max77686_i2c_get_driver_data(struct i2c_client *i2c,
 					       const struct i2c_device_id *id)
@@ -220,6 +242,12 @@ static int __devinit max77686_i2c_probe(struct i2c_client *i2c,
 		goto err_mfd;
 	} else
 		dev_info(max77686->dev, "device found\n");
+
+	if (max77686_set_low_jitter(max77686) < 0) {
+		dev_err(max77686->dev, "failed to configure low-jitter\n");
+		ret = -EIO;
+		goto err_mfd;
+	}
 
 	return ret;
 

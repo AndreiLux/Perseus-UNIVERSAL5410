@@ -88,11 +88,21 @@ struct max77686_regulator_data {
 	unsigned int reg_op_mode;
 };
 
+enum max77686_prop_low_jitter {
+	MAX77686_PROP_LOW_JITTER_DFL	= 0x00,  /* use hw default */
+	MAX77686_PROP_LOW_JITTER_OFF	= 0x01,
+	MAX77686_PROP_LOW_JITTER_ON	= 0x02,
+	MAX77686_PROP_LOW_JITTER_END
+};
+
 struct max77686_platform_data {
 	u8 ramp_delay;
 	struct max77686_regulator_data *regulators;
 	int num_regulators;
 	struct max77686_opmode_data *opmode_data;
+
+	/* low jitter property selection from the device tree */
+	u32 low_jitter;
 
 	/*
 	 * GPIO-DVS feature is not enabled with the current version of

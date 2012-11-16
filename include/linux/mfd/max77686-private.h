@@ -26,6 +26,7 @@
 
 #define MAX77686_REG_INVALID		(0xff)
 #define RAMP_MASK			0xC0
+#define LOW_JITTER_MASK			(1 << 3)
 
 enum max77686_pmic_reg {
 	MAX77686_REG_DEVICE_ID		= 0x00,
