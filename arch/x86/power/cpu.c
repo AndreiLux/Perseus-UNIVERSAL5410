@@ -18,6 +18,7 @@
 #include <asm/page.h>
 #include <asm/mce.h>
 #include <asm/xcr.h>
+#include <asm/setup.h>
 #include <asm/suspend.h>
 #include <asm/debugreg.h>
 #include <asm/fpu-internal.h> /* pcntxt_mask */
@@ -227,6 +228,7 @@ static void __restore_processor_state(struct saved_context *ctxt)
 	do_fpu_end();
 	x86_platform.restore_sched_clock_state();
 	mtrr_bp_restore();
+	cpu_control_vmx(0);
 }
 
 /* Needed by apm.c */
