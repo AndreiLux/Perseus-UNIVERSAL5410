@@ -50,6 +50,9 @@ int ptn3460_wait_until_ready(int timeout_ms)
 	static atomic_t wait_queue_initialized;
 	int ret;
 
+	if (!of_find_compatible_node(NULL, NULL, "nxp,ptn3460"))
+		return 0;
+
 	if (atomic_add_return(1, &wait_queue_initialized) == 1)
 		init_waitqueue_head(&ptn3460_wait_queue);
 
