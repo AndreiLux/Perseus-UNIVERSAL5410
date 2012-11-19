@@ -911,6 +911,7 @@ static int hdmi_get_edid(void *ctx, struct drm_connector *connector,
 		DRM_DEBUG_KMS("%s : width[%d] x height[%d]\n",
 			(hdata->has_hdmi_sink ? "hdmi monitor" : "dvi monitor"),
 			raw_edid->width_cm, raw_edid->height_cm);
+		kfree(raw_edid);
 	} else {
 		return -ENODEV;
 	}
