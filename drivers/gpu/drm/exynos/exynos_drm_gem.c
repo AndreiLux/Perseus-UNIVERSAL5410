@@ -634,6 +634,19 @@ int exynos_drm_gem_dumb_create(struct drm_file *file_priv,
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
+	if (!(args->flags & EXYNOS_BO_NONCONTIG)) {
+		DRM_ERROR("contig buffer allocation not supported.\n");
+		/*
+		 * HACK: Currently we do not support CONTIG buffer
+		 * allocation from user space. The drm framework
+		 * supports non-contig buffers only. In the next versions
+		 * the option to choose contig/non-contig buffers itself
+		 * is not supported through this flag. For now, we just
+		 * return error.
+		 */
+		return -EINVAL;
+	}
+
 	/*
 	 * alocate memory to be used for framebuffer.
 	 * - this callback would be called by user application
