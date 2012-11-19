@@ -58,6 +58,9 @@ static int exynos_dp_detect_hpd(struct exynos_dp_device *dp)
 {
 	int timeout_loop = 0;
 
+	if (gpio_is_valid(dp->hpd_gpio))
+		return !gpio_get_value(dp->hpd_gpio);
+
 	while (exynos_dp_get_plug_in_status(dp) != 0) {
 		timeout_loop++;
 		if (DP_TIMEOUT_LOOP_COUNT < timeout_loop) {
