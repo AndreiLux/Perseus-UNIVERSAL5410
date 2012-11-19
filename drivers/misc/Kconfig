@@ -512,6 +512,7 @@ config LATTICE_ECP3_CONFIG
 
 config ARM_CCI
        bool "ARM CCI driver support"
+	depends on ARM
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
