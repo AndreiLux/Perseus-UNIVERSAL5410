@@ -103,6 +103,10 @@ struct exynos_drm_overlay {
 	unsigned int crtc_y;
 	unsigned int crtc_width;
 	unsigned int crtc_height;
+	unsigned int crtc_htotal;
+	unsigned int crtc_hsync_len;
+	unsigned int crtc_vtotal;
+	unsigned int crtc_vsync_len;
 	unsigned int mode_width;
 	unsigned int mode_height;
 	unsigned int refresh;

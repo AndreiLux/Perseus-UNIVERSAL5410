@@ -67,6 +67,19 @@ struct fimd_win_data {
 	unsigned int		fb_height;
 	unsigned int		fb_pitch;
 	unsigned int		bpp;
+
+	/*
+	 * TODO(seanpaul): These fields only really make sense for the 'default
+	 * window', but we go through the same path for updating a plane as we
+	 * do for setting the crtc mode. If/when/once these are decoupled, this
+	 * code should be refactored to seperate plane/overlay/window settings
+	 * with crtc settings.
+	 */
+	unsigned int		hsync_len;
+	unsigned int		hmargin;
+	unsigned int		vsync_len;
+	unsigned int		vmargin;
+
 	dma_addr_t		dma_addr;
 	void __iomem		*vaddr;
 	unsigned int		buf_offsize;
@@ -87,14 +100,13 @@ struct fimd_context {
 	void __iomem			*regs;
 	void __iomem			*regs_mie;
 	struct fimd_win_data		win_data[WINDOWS_NR];
-	unsigned int			clkdiv[MAX_NR_PANELS];
 	unsigned int			default_win;
 	unsigned long			irq_flags;
 	u32				vidcon0;
 	u32				vidcon1;
-	int				idx;
 	bool				suspended;
 	struct mutex			lock;
+	u32				clkdiv;
 
 	struct exynos_drm_panel_info *panel;
 };
@@ -139,11 +151,14 @@ static int fimd_power(void *ctx, int mode)
 static void fimd_commit(void *ctx)
 {
 	struct fimd_context *fimd_ctx = ctx;
-	struct exynos_drm_panel_info *panel = &fimd_ctx->panel[fimd_ctx->idx];
-	struct fb_videomode *timing = &panel->timing;
+	struct fimd_win_data *win_data;
 	u32 val;
 
 	if (fimd_ctx->suspended)
+		return;
+	win_data = &fimd_ctx->win_data[fimd_ctx->default_win];
+
+	if (!win_data->ovl_width || !win_data->ovl_height)
 		return;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
@@ -152,29 +167,28 @@ static void fimd_commit(void *ctx)
 	writel(fimd_ctx->vidcon1, fimd_ctx->regs + VIDCON1);
 
 	/* setup vertical timing values. */
-	val = VIDTCON0_VBPD(timing->upper_margin - 1) |
-	       VIDTCON0_VFPD(timing->lower_margin - 1) |
-	       VIDTCON0_VSPW(timing->vsync_len - 1);
+	val = VIDTCON0_VBPD(win_data->vmargin - 1) |
+		VIDTCON0_VFPD(win_data->vmargin - 1) |
+		VIDTCON0_VSPW(win_data->vsync_len - 1);
 	writel(val, fimd_ctx->regs + VIDTCON0);
 
 	/* setup horizontal timing values.  */
-	val = VIDTCON1_HBPD(timing->left_margin - 1) |
-	       VIDTCON1_HFPD(timing->right_margin - 1) |
-	       VIDTCON1_HSPW(timing->hsync_len - 1);
+	val = VIDTCON1_HBPD(win_data->hmargin - 1) |
+		VIDTCON1_HFPD(win_data->hmargin - 1) |
+		VIDTCON1_HSPW(win_data->hsync_len - 1);
 	writel(val, fimd_ctx->regs + VIDTCON1);
 
 	/* setup horizontal and vertical display size. */
-	val = VIDTCON2_LINEVAL(timing->yres - 1) |
-	       VIDTCON2_HOZVAL(timing->xres - 1);
+	val = VIDTCON2_LINEVAL(win_data->ovl_height - 1) |
+	       VIDTCON2_HOZVAL(win_data->ovl_width - 1);
 	writel(val, fimd_ctx->regs + VIDTCON2);
 
 	/* setup clock source, clock divider, enable dma. */
 	val = fimd_ctx->vidcon0;
 	val &= ~(VIDCON0_CLKVAL_F_MASK | VIDCON0_CLKDIR);
 
-	if (fimd_ctx->clkdiv[fimd_ctx->idx] > 1)
-		val |= VIDCON0_CLKVAL_F(fimd_ctx->clkdiv[fimd_ctx->idx] - 1) |
-			VIDCON0_CLKDIR;
+	if (fimd_ctx->clkdiv)
+		val |= VIDCON0_CLKVAL_F(fimd_ctx->clkdiv - 1) | VIDCON0_CLKDIR;
 	else
 		val &= ~VIDCON0_CLKDIR;	/* 1:1 clock */
 
@@ -235,11 +249,54 @@ static void fimd_disable_vblank(void *ctx)
 	}
 }
 
+static int fimd_calc_clkdiv(struct fimd_context *fimd_ctx,
+			    struct fimd_win_data *win_data,
+			    int refresh)
+{
+	unsigned long clk = clk_get_rate(fimd_ctx->lcd_clk);
+	u32 retrace;
+	u32 clkdiv;
+	u32 best_framerate = 0;
+	u32 framerate;
+
+	DRM_DEBUG_KMS("%s\n", __FILE__);
+
+	retrace = win_data->hmargin * 2 + win_data->hsync_len +
+				win_data->ovl_width;
+	retrace *= win_data->vmargin * 2 + win_data->vsync_len +
+				win_data->ovl_height;
+
+	/* default framerate is 60Hz */
+	if (!refresh)
+		refresh = 60;
+
+	clk /= retrace;
+
+	for (clkdiv = 1; clkdiv < 0x100; clkdiv++) {
+		int tmp;
+
+		/* get best framerate */
+		framerate = clk / clkdiv;
+		tmp = refresh - framerate;
+		if (tmp < 0) {
+			best_framerate = framerate;
+			continue;
+		} else {
+			if (!best_framerate)
+				best_framerate = framerate;
+			else if (tmp < (best_framerate - framerate))
+				best_framerate = framerate;
+			break;
+		}
+	}
+	return clkdiv;
+}
+
 static void fimd_win_mode_set(void *ctx, struct exynos_drm_overlay *overlay)
 {
 	struct fimd_context *fimd_ctx = ctx;
 	struct fimd_win_data *win_data;
-	int i, win;
+	int win;
 	unsigned long offset;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
@@ -256,24 +313,6 @@ static void fimd_win_mode_set(void *ctx, struct exynos_drm_overlay *overlay)
 	if (win < 0 || win > WINDOWS_NR)
 		return;
 
-	if (win == fimd_ctx->default_win) {
-		for (i = 0; i < MAX_NR_PANELS; i++) {
-			struct fb_videomode *timing;
-
-			timing = &fimd_ctx->panel[i].timing;
-
-			if (timing->xres == -1 && timing->yres == -1) {
-				DRM_ERROR("Invalid panel parameters");
-				i = 0; /* Reset to first panel index*/
-				break;
-			}
-			if (timing->xres == overlay->fb_width &&
-			    timing->yres == overlay->fb_height)
-				break;
-		}
-		fimd_ctx->idx = i;
-	}
-
 	offset = overlay->fb_x * (overlay->bpp >> 3);
 	offset += overlay->fb_y * overlay->fb_pitch;
 
@@ -289,12 +328,22 @@ static void fimd_win_mode_set(void *ctx, struct exynos_drm_overlay *overlay)
 	win_data->fb_width = overlay->fb_width;
 	win_data->fb_height = overlay->fb_height;
 	win_data->fb_pitch = overlay->fb_pitch;
+	win_data->hsync_len = overlay->crtc_hsync_len;
+	win_data->hmargin = (overlay->crtc_htotal - overlay->crtc_width -
+				overlay->crtc_hsync_len) / 2;
+	win_data->vsync_len = overlay->crtc_vsync_len;
+	win_data->vmargin = (overlay->crtc_vtotal - overlay->crtc_height -
+				overlay->crtc_vsync_len) / 2;
 	win_data->dma_addr = overlay->dma_addr[0] + offset;
 	win_data->vaddr = overlay->vaddr[0] + offset;
 	win_data->bpp = overlay->bpp;
 	win_data->buf_offsize = overlay->fb_pitch -
 		(overlay->fb_width * (overlay->bpp >> 3));
 	win_data->line_size = overlay->fb_width * (overlay->bpp >> 3);
+
+	if (win == fimd_ctx->default_win)
+		fimd_ctx->clkdiv = fimd_calc_clkdiv(fimd_ctx, win_data,
+					overlay->refresh);
 
 	DRM_DEBUG_KMS("offset_x = %d, offset_y = %d\n",
 			win_data->offset_x, win_data->offset_y);
@@ -395,37 +444,37 @@ static void fimd_win_set_colkey(struct fimd_context *fimd_ctx, unsigned int win)
 	writel(keycon1, fimd_ctx->regs + WKEYCON1_BASE(win));
 }
 
-static void mie_set_6bit_dithering(struct fimd_context *ctx)
+static void mie_set_6bit_dithering(struct fimd_context *ctx, int win)
 {
-	struct fb_videomode *timing = &ctx->panel->timing;
+	struct fimd_win_data *win_data = &ctx->win_data[win];
 	unsigned long val;
+	unsigned int width, height;
 	int i;
 
-	writel(MIE_HRESOL(timing->xres) | MIE_VRESOL(timing->yres) |
-				MIE_MODE_UI, ctx->regs_mie + MIE_CTRL1);
+	width = win_data->ovl_width;
+	height = win_data->ovl_height;
 
-	writel(MIE_WINHADDR0(0) | MIE_WINHADDR1(timing->xres),
-						ctx->regs_mie + MIE_WINHADDR);
-	writel(MIE_WINVADDR0(0) | MIE_WINVADDR1(timing->yres),
-						ctx->regs_mie + MIE_WINVADDR);
+	writel(MIE_HRESOL(width) | MIE_VRESOL(height) | MIE_MODE_UI,
+			ctx->regs_mie + MIE_CTRL1);
 
-	val = (timing->xres + timing->left_margin +
-			timing->right_margin + timing->hsync_len) *
-	      (timing->yres + timing->upper_margin +
-			timing->lower_margin + timing->vsync_len) /
-							(MIE_PWMCLKVAL + 1);
+	writel(MIE_WINHADDR0(0) | MIE_WINHADDR1(width),
+			ctx->regs_mie + MIE_WINHADDR);
+	writel(MIE_WINVADDR0(0) | MIE_WINVADDR1(height),
+			ctx->regs_mie + MIE_WINVADDR);
+
+	val = (width + win_data->hmargin * 2 + win_data->hsync_len) *
+			(height + win_data->vmargin * 2 + win_data->vsync_len) /
+			(MIE_PWMCLKVAL + 1);
+
 	writel(PWMCLKCNT(val), ctx->regs_mie + MIE_PWMCLKCNT);
 
-	writel((MIE_VBPD(timing->upper_margin)) |
-		MIE_VFPD(timing->lower_margin) |
-		MIE_VSPW(timing->vsync_len), ctx->regs_mie + MIE_PWMVIDTCON1);
+	writel((MIE_VBPD(win_data->vmargin)) | MIE_VFPD(win_data->vmargin) |
+		MIE_VSPW(win_data->vsync_len), ctx->regs_mie + MIE_PWMVIDTCON1);
 
-	writel(MIE_HBPD(timing->left_margin) |
-		MIE_HFPD(timing->right_margin) |
-		MIE_HSPW(timing->hsync_len), ctx->regs_mie + MIE_PWMVIDTCON2);
+	writel(MIE_HBPD(win_data->hmargin) | MIE_HFPD(win_data->hmargin) |
+		MIE_HSPW(win_data->hsync_len), ctx->regs_mie + MIE_PWMVIDTCON2);
 
-	writel(MIE_DITHCON_EN | MIE_RGB6MODE,
-					ctx->regs_mie + MIE_AUXCON);
+	writel(MIE_DITHCON_EN | MIE_RGB6MODE, ctx->regs_mie + MIE_AUXCON);
 
 	/* Bypass MIE image brightness enhancement */
 	for (i = 0; i <= 0x30; i += 4) {
@@ -536,7 +585,7 @@ static void fimd_win_commit(void *ctx, int zpos)
 	val |= WINCONx_ENWIN;
 	writel(val, fimd_ctx->regs + WINCON(win));
 
-	mie_set_6bit_dithering(fimd_ctx);
+	mie_set_6bit_dithering(fimd_ctx, win);
 
 	/* Enable DMA channel and unprotect windows */
 	val = readl(fimd_ctx->regs + SHADOWCON);
@@ -659,49 +708,6 @@ static struct exynos_controller_ops fimd_controller_ops = {
 	.win_commit = fimd_win_commit,
 	.win_disable = fimd_win_disable,
 };
-
-static int fimd_calc_clkdiv(struct fimd_context *ctx,
-			    struct fb_videomode *timing)
-{
-	unsigned long clk = clk_get_rate(ctx->lcd_clk);
-	u32 retrace;
-	u32 clkdiv;
-	u32 best_framerate = 0;
-	u32 framerate;
-
-	DRM_DEBUG_KMS("%s\n", __FILE__);
-
-	retrace = timing->left_margin + timing->hsync_len +
-				timing->right_margin + timing->xres;
-	retrace *= timing->upper_margin + timing->vsync_len +
-				timing->lower_margin + timing->yres;
-
-	/* default framerate is 60Hz */
-	if (!timing->refresh)
-		timing->refresh = 60;
-
-	clk /= retrace;
-
-	for (clkdiv = 1; clkdiv < 0x100; clkdiv++) {
-		int tmp;
-
-		/* get best framerate */
-		framerate = clk / clkdiv;
-		tmp = timing->refresh - framerate;
-		if (tmp < 0) {
-			best_framerate = framerate;
-			continue;
-		} else {
-			if (!best_framerate)
-				best_framerate = framerate;
-			else if (tmp < (best_framerate - framerate))
-				best_framerate = framerate;
-			break;
-		}
-	}
-
-	return clkdiv;
-}
 
 static void fimd_clear_win(struct fimd_context *ctx, int win)
 {
@@ -851,10 +857,9 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct fimd_context *fimd_ctx;
 	struct exynos_drm_fimd_pdata *pdata;
-	struct exynos_drm_panel_info *panel;
 	struct resource *res;
 	struct clk *clk_parent;
-	int win,i;
+	int win;
 	int ret = -EINVAL;
 
 #ifdef CONFIG_EXYNOS_IOMMU
@@ -869,12 +874,6 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 	pdata = pdev->dev.platform_data;
 	if (!pdata) {
 		dev_err(dev, "no platform data specified\n");
-		return -EINVAL;
-	}
-
-	panel = pdata->panel;
-	if (!panel) {
-		dev_err(dev, "panel is null.\n");
 		return -EINVAL;
 	}
 
@@ -964,26 +963,13 @@ static int __devinit fimd_probe(struct platform_device *pdev)
 	fimd_ctx->vidcon0 = pdata->vidcon0;
 	fimd_ctx->vidcon1 = pdata->vidcon1;
 	fimd_ctx->default_win = pdata->default_win;
-	fimd_ctx->panel = panel;
+	fimd_ctx->panel = &pdata->panel;
 
 	mutex_init(&fimd_ctx->lock);
 
 	platform_set_drvdata(pdev, fimd_ctx);
 
 	fimd_power(fimd_ctx, DRM_MODE_DPMS_ON);
-
-	for (i = 0;i < MAX_NR_PANELS;i++) {
-		if(panel[i].timing.xres == -1 && panel[i].timing.yres == -1)
-			break;
-
-		fimd_ctx->clkdiv[i] = fimd_calc_clkdiv(fimd_ctx,
-					&panel[i].timing);
-		panel[i].timing.pixclock = clk_get_rate(fimd_ctx->lcd_clk) /
-						fimd_ctx->clkdiv[i];
-		DRM_DEBUG_KMS("pixel clock = %d, clkdiv = %d\n for panel[%d]",
-				panel[i].timing.pixclock,
-				fimd_ctx->clkdiv[i], i);
-	}
 
 	for (win = 0; win < WINDOWS_NR; win++)
 		fimd_clear_win(fimd_ctx, win);

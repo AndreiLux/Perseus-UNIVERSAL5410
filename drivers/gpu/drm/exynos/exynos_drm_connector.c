@@ -150,36 +150,22 @@ static int exynos_drm_connector_get_panel(struct drm_connector *connector)
 	struct exynos_drm_display *display = display_from_connector(connector);
 	struct drm_display_mode *mode;
 	struct exynos_drm_panel_info *panel;
-	int ret;
 
 	if (!display->controller_ops->get_panel)
 		return -EINVAL;
 
-	panel = display->controller_ops->get_panel(
-				display->controller_ctx);
+	panel = display->controller_ops->get_panel(display->controller_ctx);
 
-	for (ret = 0; panel && ret < MAX_NR_PANELS; ret++) {
-		if (panel[ret].timing.xres == -1 &&
-		    panel[ret].timing.yres == -1)
-			break;
+	mode = drm_mode_create(connector->dev);
+	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
 
-		mode = drm_mode_create(connector->dev);
-		mode->type = DRM_MODE_TYPE_DRIVER;
+	convert_to_display_mode(mode, panel);
+	connector->display_info.width_mm = mode->width_mm;
+	connector->display_info.height_mm = mode->height_mm;
+	drm_mode_set_name(mode);
+	drm_mode_probed_add(connector, mode);
 
-		/* Only the first panel is preferred mode */
-		if (ret)
-			mode->type |= DRM_MODE_TYPE_PREFERRED;
-		else
-			mode->type |= DRM_MODE_TYPE_USERDEF;
-
-		convert_to_display_mode(mode, &panel[ret]);
-		connector->display_info.width_mm = mode->width_mm;
-		connector->display_info.height_mm = mode->height_mm;
-		drm_mode_set_name(mode);
-		drm_mode_probed_add(connector, mode);
-	}
-
-	return ret;
+	return 1;
 }
 
 static int exynos_drm_connector_get_modes(struct drm_connector *connector)

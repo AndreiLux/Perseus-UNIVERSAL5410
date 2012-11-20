@@ -86,6 +86,10 @@ void exynos_drm_overlay_update(struct exynos_drm_overlay *overlay,
 	overlay->crtc_y = pos->crtc_y;
 	overlay->crtc_width = actual_w;
 	overlay->crtc_height = actual_h;
+	overlay->crtc_htotal = mode->crtc_htotal;
+	overlay->crtc_hsync_len = mode->hsync_end - mode->hsync_start;
+	overlay->crtc_vtotal = mode->crtc_vtotal;
+	overlay->crtc_vsync_len = mode->vsync_end - mode->vsync_start;
 
 	/* set drm mode data. */
 	overlay->mode_width = mode->hdisplay;
