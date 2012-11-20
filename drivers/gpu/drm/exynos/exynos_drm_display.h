@@ -19,7 +19,7 @@
  *
  * @subdrv_probe: Used to associate drm_dev with panel context
  * @is_connected: Returns true if the panel is connected
- * @get_edid: Fills in edid with mode data from the panel
+ * @get_edid: Returns an edid with mode data from the panel
  * @check_timing: Returns 0 if the given timing is valid for the panel
  * @power: Sets the panel's power to mode
  * @dpms: Same as power, but called in different places. Best to avoid it
@@ -32,8 +32,7 @@
 struct exynos_panel_ops {
 	int (*subdrv_probe)(void *ctx, struct drm_device *drm_dev);
 	bool (*is_connected)(void *ctx);
-	int (*get_edid)(void *ctx, struct drm_connector *connector,
-			u8 *edid, int len);
+	struct edid *(*get_edid)(void *ctx, struct drm_connector *connector);
 	int (*check_timing)(void *ctx, void *timing);
 	int (*power)(void *ctx, int mode);
 	int (*dpms)(void *ctx, int mode);

@@ -114,42 +114,33 @@ static int exynos_drm_connector_get_edid(struct drm_connector *connector)
 {
 	struct exynos_drm_display *display = display_from_connector(connector);
 	int ret;
-	void *edid;
+	struct edid *edid;
 
 	if (!display->panel_ops->get_edid)
 		return -EINVAL;
 
-	edid = kzalloc(MAX_EDID, GFP_KERNEL);
-	if (!edid) {
-		DRM_ERROR("failed to allocate edid\n");
-		return -ENOMEM;
-	}
-
-	ret = display->panel_ops->get_edid(display->panel_ctx,
-			connector, edid, MAX_EDID);
-	if (ret) {
+	edid = display->panel_ops->get_edid(display->panel_ctx, connector);
+	if (IS_ERR_OR_NULL(edid)) {
+		ret = PTR_ERR(edid);
+		edid = NULL;
 		DRM_ERROR("Panel operation get_edid failed %d\n", ret);
-		goto err;
+		goto out;
 	}
 
 	ret = drm_mode_connector_update_edid_property(connector, edid);
 	if (ret) {
 		DRM_ERROR("update edid property failed(%d)\n", ret);
-		goto err;
+		goto out;
 	}
 
 	ret = drm_add_edid_modes(connector, edid);
 	if (ret < 0) {
 		DRM_ERROR("Add edid modes failed %d\n", ret);
-		goto err;
+		goto out;
 	}
 
-	kfree(connector->display_info.raw_edid);
-	connector->display_info.raw_edid = edid;
-
-	return ret;
-
-err:
+out:
+	connector->display_info.raw_edid = NULL;
 	kfree(edid);
 	return ret;
 }
