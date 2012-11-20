@@ -10,6 +10,9 @@
  * option) any later version.
  */
 
+#include "drmP.h"
+#include "drm_crtc_helper.h"
+
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
@@ -915,12 +918,9 @@ static irqreturn_t exynos_dp_irq_handler(int irq, void *arg)
 	irq_type = exynos_dp_get_irq_type(dp);
 	switch (irq_type) {
 	case DP_IRQ_TYPE_HP_CABLE_IN:
-		dev_dbg(dp->dev, "Received irq - cable in\n");
-		schedule_work(&dp->hotplug_work);
-		exynos_dp_clear_hotplug_interrupts(dp);
-		break;
 	case DP_IRQ_TYPE_HP_CABLE_OUT:
-		dev_dbg(dp->dev, "Received irq - cable out\n");
+		dev_dbg(dp->dev, "Received irq - type=%d\n", irq_type);
+		schedule_work(&dp->hotplug_work);
 		exynos_dp_clear_hotplug_interrupts(dp);
 		break;
 	case DP_IRQ_TYPE_HP_CHANGE:
@@ -946,6 +946,10 @@ static void exynos_dp_hotplug(struct work_struct *work)
 
 	dp = container_of(work, struct exynos_dp_device, hotplug_work);
 
+	/* Cable is disconnected, skip dp initialization */
+	if (exynos_dp_detect_hpd(dp))
+		goto out;
+
 #ifdef CONFIG_DRM_PTN3460
 	ret = ptn3460_wait_until_ready(30 * 1000);
 	if (ret) {
@@ -953,12 +957,6 @@ static void exynos_dp_hotplug(struct work_struct *work)
 		return;
 	}
 #endif
-
-	ret = exynos_dp_detect_hpd(dp);
-	if (ret) {
-		/* Cable has been disconnected, we're done */
-		return;
-	}
 
 	ret = exynos_dp_handle_edid(dp);
 	if (ret) {
@@ -986,6 +984,9 @@ static void exynos_dp_hotplug(struct work_struct *work)
 
 	exynos_dp_init_video(dp);
 	exynos_dp_config_video(dp);
+
+out:
+	drm_helper_hpd_irq_event(dp->drm_dev);
 }
 
 static int exynos_dp_power_off(struct exynos_dp_device *dp)

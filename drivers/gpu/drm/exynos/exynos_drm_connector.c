@@ -346,6 +346,7 @@ struct drm_connector *exynos_drm_connector_create(struct drm_device *dev,
 		break;
 	case EXYNOS_DRM_DISPLAY_TYPE_FIMD:
 		type = DRM_MODE_CONNECTOR_eDP;
+		connector->polled = DRM_CONNECTOR_POLL_HPD;
 		break;
 	default:
 		type = DRM_MODE_CONNECTOR_Unknown;
