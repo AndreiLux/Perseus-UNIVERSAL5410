@@ -31,14 +31,7 @@
 
 #include <asm/atomic.h>
 #include <linux/highmem.h>
-#include <linux/mempool.h>
 #include <linux/mm.h>
-
-struct kbase_page_metadata
-{
-	struct list_head list;
-	struct page * page;
-};
 
 STATIC int kbase_mem_allocator_shrink(struct shrinker *s, struct shrink_control *sc)
 {
@@ -62,16 +55,10 @@ STATIC int kbase_mem_allocator_shrink(struct shrinker *s, struct shrink_control 
 
 	while (i--)
 	{
-		struct kbase_page_metadata * md;
 		struct page * p;
 		BUG_ON(list_empty(&allocator->free_list_head));
-		md = list_first_entry(&allocator->free_list_head, struct kbase_page_metadata, list);
-		list_del(&md->list);
-		p = md->page;
-		if (likely(PageHighMem(p)))
-		{
-			mempool_free(md, allocator->free_list_highmem_pool);
-		}
+		p = list_first_entry(&allocator->free_list_head, struct page, lru);
+		list_del(&p->lru);
 		__free_page(p);
 	}
 
@@ -83,18 +70,6 @@ STATIC int kbase_mem_allocator_shrink(struct shrinker *s, struct shrink_control 
 mali_error kbase_mem_allocator_init(kbase_mem_allocator * const allocator, unsigned int max_size)
 {
 	OSK_ASSERT(NULL != allocator);
-
-	allocator->free_list_highmem_slab = KMEM_CACHE(kbase_page_metadata, SLAB_HWCACHE_ALIGN);
-	if (!allocator->free_list_highmem_slab)
-	{
-		return MALI_ERROR_OUT_OF_MEMORY;
-	}
-	allocator->free_list_highmem_pool = mempool_create_slab_pool(0, allocator->free_list_highmem_slab);
-	if (!allocator->free_list_highmem_pool)
-	{
-		kmem_cache_destroy(allocator->free_list_highmem_slab);
-		return MALI_ERROR_OUT_OF_MEMORY;
-	}
 
 	INIT_LIST_HEAD(&allocator->free_list_head);
 	mutex_init(&allocator->free_list_lock);
@@ -119,27 +94,18 @@ void kbase_mem_allocator_term(kbase_mem_allocator *allocator)
 
 	while (!list_empty(&allocator->free_list_head))
 	{
-		struct kbase_page_metadata * md;
 		struct page * p;
-		md = list_first_entry(&allocator->free_list_head, struct kbase_page_metadata, list);
-		list_del(&md->list);
-		p = md->page;
-		if (likely(PageHighMem(p)))
-		{
-			mempool_free(md, allocator->free_list_highmem_pool);
-		}
+		p = list_first_entry(&allocator->free_list_head, struct page, lru);
+		list_del(&p->lru);
 		__free_page(p);
 	}
 
-	mempool_destroy(allocator->free_list_highmem_pool);
-	kmem_cache_destroy(allocator->free_list_highmem_slab);
 }
 
 mali_error kbase_mem_allocator_alloc(kbase_mem_allocator *allocator, u32 nr_pages, osk_phy_addr *pages, int flags)
 {
-	struct kbase_page_metadata * md;
-	struct kbase_page_metadata * tmp;
 	struct page * p;
+	struct page * tmp;
 	void * mp;
 	int i;
 	int num_from_free_list;
@@ -158,25 +124,14 @@ mali_error kbase_mem_allocator_alloc(kbase_mem_allocator *allocator, u32 nr_page
 	for (i = 0; i < num_from_free_list; i++)
 	{
 		BUG_ON(list_empty(&allocator->free_list_head));
-		md = list_first_entry(&allocator->free_list_head, struct kbase_page_metadata, list);
-		list_move(&md->list, &from_free_list);
+		p = list_first_entry(&allocator->free_list_head, struct page, lru);
+		list_move(&p->lru, &from_free_list);
 	}
 	mutex_unlock(&allocator->free_list_lock);
 
 	i = 0;
-	list_for_each_entry_safe(md, tmp, &from_free_list, list)
+	list_for_each_entry_safe(p, tmp, &from_free_list, lru)
 	{
-		list_del(&md->list);
-		p = md->page;
-		if (likely(PageHighMem(p)))
-		{
-			mempool_free(md, allocator->free_list_highmem_pool);
-		}
-		else if (!(flags & KBASE_REG_MUST_ZERO))
-		{
-			flush_dcache_page(p);
-		}
-
 		if (flags & KBASE_REG_MUST_ZERO)
 		{
 			mp = kmap(p);
@@ -269,31 +224,11 @@ void kbase_mem_allocator_free(kbase_mem_allocator *allocator, u32 nr_pages, osk_
 	{
 		if (likely(0 != pages[i]))
 		{
-			struct kbase_page_metadata * md;
 			struct page * p;
 
 			p = pfn_to_page(PFN_DOWN(pages[i]));
 			pages[i] = (osk_phy_addr)0;
-
-			if (likely(PageHighMem(p)))
-			{
-				md = mempool_alloc(allocator->free_list_highmem_pool, GFP_KERNEL);
-				if (!md)
-				{
-					/* can't put it on the free list, direct release */
-					__free_page(p);
-					continue;
-				}
-			}
-			else
-			{
-				md = lowmem_page_address(p);
-				BUG_ON(!md);
-			}
-
-			INIT_LIST_HEAD(&md->list);
-			md->page = p;
-			list_add(&md->list, &new_free_list_items);
+			list_add(&p->lru, &new_free_list_items);
 			page_count++;
 		}
 	}

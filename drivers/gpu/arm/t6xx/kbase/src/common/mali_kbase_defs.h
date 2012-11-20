@@ -410,8 +410,6 @@ typedef struct kbase_mem_allocator
 	struct mutex        free_list_lock;
 	struct list_head    free_list_head;
 	struct shrinker     free_list_reclaimer;
-	struct kmem_cache * free_list_highmem_slab;
-	mempool_t         * free_list_highmem_pool;
 } kbase_mem_allocator;
 
 #define KBASE_TRACE_CODE( X ) KBASE_TRACE_CODE_ ## X
