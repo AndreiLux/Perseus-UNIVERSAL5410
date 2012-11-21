@@ -16,7 +16,6 @@
 #include <linux/interrupt.h>
 
 #include <mach/gpio.h>
-#include <plat/gpio-cfg.h>
 
 #include "Si47xx_dev.h"
 #include <linux/i2c/si47xx_common.h>
