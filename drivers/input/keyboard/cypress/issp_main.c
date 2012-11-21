@@ -24,7 +24,7 @@ out of the application or use of any product or circuit described herein.
 Cypress does not authorize its products for use as critical components in
 life-support systems where a malfunction or failure may reasonably be
 expected to result in significant injury to the user. The inclusion of
-Cypressï¿?product in a life-support systems application implies that the
+Cypressï¿½?product in a life-support systems application implies that the
 manufacturer assumes all risk of such use and in doing so indemnifies
 Cypress against all charges.
 
@@ -394,6 +394,8 @@ unsigned int iChecksumTarget;
 #include "touchkey_fw_M0.h"
 #elif defined(CONFIG_MACH_T0)
 #include "touchkey_fw_T0.h"
+#elif defined(CONFIG_MACH_SUPERIOR_KOR_SKT)
+#include "touchkey_fw_SUPERIOR.h"
 #else
 #include "touchkey_fw_U1.h"
 #endif
