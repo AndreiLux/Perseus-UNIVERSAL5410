@@ -56,6 +56,15 @@ static struct resource mdm_resources[] = {
 		.name	= "AP2MDM_WAKEUP",
 		.flags	= IORESOURCE_IO,
 	},
+#ifdef CONFIG_SIM_DETECT
+	{
+		.start	= GPIO_SIM_DETECT,
+		.end	= GPIO_SIM_DETECT,
+		.name	= "SIM_DETECT",
+		.flags	= IORESOURCE_IO,
+	},
+#endif
+
 };
 
 #ifdef CONFIG_MDM_HSIC_PM

@@ -36,6 +36,7 @@
 #include <linux/usb/serial.h>
 #include <linux/serial.h>
 #include "usb-wwan.h"
+#include <linux/mdm_hsic_pm.h>
 
 static int debug;
 
@@ -284,6 +285,9 @@ int usb_wwan_write(struct tty_struct *tty, struct usb_serial_port *port,
 }
 EXPORT_SYMBOL(usb_wwan_write);
 
+#ifdef CONFIG_MDM_HSIC_PM
+#define HELLO_PACKET_SIZE 48
+#endif
 static void usb_wwan_indat_callback(struct urb *urb)
 {
 	int err;
