@@ -20,7 +20,6 @@ CONFIG_MACH_MACKEREL=y
 CONFIG_MEMORY_SIZE=0x10000000
 CONFIG_AEABI=y
 # CONFIG_OABI_COMPAT is not set
-CONFIG_FORCE_MAX_ZONEORDER=15
 CONFIG_ZBOOT_ROM_TEXT=0x0
 CONFIG_ZBOOT_ROM_BSS=0x0
 CONFIG_CMDLINE="console=tty0, console=ttySC0,115200 earlyprintk=sh-sci.0,115200 root=/dev/nfs nfsroot=,tcp,v3 ip=dhcp memchunk.vpu=64m memchunk.veu0=8m memchunk.spu0=2m mem=240m"
