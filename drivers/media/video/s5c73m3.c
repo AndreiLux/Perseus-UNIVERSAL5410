@@ -70,6 +70,42 @@ struct device *bus_dev;
 			}
 struct s5c73m3_fw_version camfw_info[S5C73M3_PATH_MAX];
 
+#if defined(CONFIG_MACH_BAFFIN) && !defined(CONFIG_MACH_SUPERIOR_KOR_SKT)
+/* for 5:3 WIDE RATIO */
+static const struct s5c73m3_frmsizeenum preview_frmsizes[] = {
+	{ S5C73M3_PREVIEW_QVGA,	320,	240,	0x01 },
+	{ S5C73M3_PREVIEW_VGA,	640,	480,	0x02 },
+	{ S5C73M3_PREVIEW_528X432,	528,	432,	0x03 },
+	{ S5C73M3_PREVIEW_960X720,	960,	720,	0x04 },
+	{ S5C73M3_PREVIEW_WVGA,	800,	480,	0x05 },
+	{ S5C73M3_PREVIEW_720P,	1280,	720,	0x06 },
+	{ S5C73M3_VDIS_720P,	1536,	864,	0x07 },
+	{ S5C73M3_PREVIEW_800X600,	800,	600,	0x09 },
+	{ S5C73M3_PREVIEW_1080P,	1920,	1080,	0x0A},
+	{ S5C73M3_PREVIEW_D1,	720,	480,	0x0B },
+	{ S5C73M3_VDIS_1080P,	2304,	1296,	0x0C},
+	{ S5C73M3_PREVIEW_CIF,	352,	288,	0x0E },
+	{ S5C73M3_PREVIEW_1008X672,	1008,	672,	0x0F },
+};
+
+static const struct s5c73m3_frmsizeenum capture_frmsizes[] = {
+	{ S5C73M3_CAPTURE_VGA,	640,	480,	0x10 },
+	{ S5C73M3_CAPTURE_WVGA,	800,	480,	0x20 },
+	{ S5C73M3_CAPTURE_XGA,	1024,	768,	0x30 },
+	{ S5C73M3_CAPTURE_WXGA,	1280,	768,	0x40 },
+	{ S5C73M3_CAPTURE_1280X960,	1280,	960,	0x50 },
+	{ S5C73M3_CAPTURE_W1MP,	1600,	960,	0x60 },
+	{ S5C73M3_CAPTURE_2MP,	1600,	1200,	0x70 },
+	{ S5C73M3_CAPTURE_2000X1200,	2000,	1200,	0x80 },
+	{ S5C73M3_CAPTURE_2000X1500,	2000,	1500,	0x90 },
+	{ S5C73M3_CAPTURE_W4MP,	2560,	1536,	0xA0 },
+	{ S5C73M3_CAPTURE_5MP,	2560,	1920,	0xB0 },
+	{ S5C73M3_CAPTURE_3264X2176,	3264,	2176,	0xC0 },
+	{ S5C73M3_CAPTURE_3264X1960,	3264,	1960,	0xD0 },
+	{ S5C73M3_CAPTURE_W6MP,	3264,	1836,	0xE0 },
+	{ S5C73M3_CAPTURE_8MP,	3264,	2448,	0xF0 },
+};
+#else
 static const struct s5c73m3_frmsizeenum preview_frmsizes[] = {
 	{ S5C73M3_PREVIEW_QVGA,	320,	240,	0x01 },
 	{ S5C73M3_PREVIEW_CIF,	352,	288,	0x0E },
@@ -79,7 +115,7 @@ static const struct s5c73m3_frmsizeenum preview_frmsizes[] = {
 	{ S5C73M3_PREVIEW_1008X672,	1008,	672,	0x0F },
 	{ S5C73M3_PREVIEW_1184X666,	1184,	666,	0x05 },
 	{ S5C73M3_PREVIEW_720P,	1280,	720,	0x06 },
-#if defined(CONFIG_MACH_T0) || defined(CONFIG_MACH_BAFFIN)
+#if defined(CONFIG_MACH_T0)
 	{ S5C73M3_PREVIEW_1280X960,	1280,	960,	0x09 },
 #else
 	{ S5C73M3_PREVIEW_800X600,	800,	600,	0x09 },
@@ -104,6 +140,7 @@ static const struct s5c73m3_frmsizeenum capture_frmsizes[] = {
 	{ S5C73M3_CAPTURE_3264X2176,	3264,	2176,	0xC0 },
 	{ S5C73M3_CAPTURE_8MP,	3264,	2448,	0xF0 },
 };
+#endif
 
 static const struct s5c73m3_effectenum s5c73m3_effects[] = {
 	{IMAGE_EFFECT_NONE, S5C73M3_IMAGE_EFFECT_NONE},
@@ -589,9 +626,21 @@ static int s5c73m3_get_sensor_fw_binary(struct v4l2_subdev *sd)
 	u32 crc_index = 0;
 	int retryCnt = 2;
 
-#if defined(CONFIG_MACH_T0) || defined(CONFIG_MACH_BAFFIN)
+#if defined(CONFIG_MACH_T0)
 	if (state->sensor_fw[1] == 'D') {
 		sprintf(fw_path, "/data/cfw/SlimISP_%cK.bin",
+			state->sensor_fw[0]);
+	} else {
+		sprintf(fw_path, "/data/cfw/SlimISP_%c%c.bin",
+			state->sensor_fw[0],
+			state->sensor_fw[1]);
+	}
+#elif defined(CONFIG_MACH_BAFFIN)
+	if (state->sensor_fw[1] == 'D') {
+		sprintf(fw_path, "/data/cfw/SlimISP_%cK.bin",
+			state->sensor_fw[0]);
+	} else if (state->sensor_fw[1] == 'H') {
+		sprintf(fw_path, "/data/cfw/SlimISP_%cM.bin",
 			state->sensor_fw[0]);
 	} else {
 		sprintf(fw_path, "/data/cfw/SlimISP_%c%c.bin",
@@ -955,9 +1004,21 @@ static int s5c73m3_get_phone_fw_version(struct v4l2_subdev *sd)
 	int retVal = 0;
 	int fw_requested = 1;
 
-#if defined(CONFIG_MACH_T0) || defined(CONFIG_MACH_BAFFIN)
+#if defined(CONFIG_MACH_T0)
 	if (state->sensor_fw[1] == 'D') {
 		sprintf(fw_path, "SlimISP_%cK.bin",
+			state->sensor_fw[0]);
+	} else {
+		sprintf(fw_path, "SlimISP_%c%c.bin",
+			state->sensor_fw[0],
+			state->sensor_fw[1]);
+	}
+#elif defined(CONFIG_MACH_BAFFIN)
+	if (state->sensor_fw[1] == 'D') {
+		sprintf(fw_path, "SlimISP_%cK.bin",
+			state->sensor_fw[0]);
+	} else if (state->sensor_fw[1] == 'H') {
+		sprintf(fw_path, "SlimISP_%cM.bin",
 			state->sensor_fw[0]);
 	} else {
 		sprintf(fw_path, "SlimISP_%c%c.bin",
@@ -1201,8 +1262,13 @@ static int s5c73m3_check_fw_date(struct v4l2_subdev *sd)
 		phone_date,
 		strcmp((char *)&sensor_date, (char *)&phone_date));
 
-#if defined(CONFIG_MACH_T0) || defined(CONFIG_MACH_BAFFIN)
+#if defined(CONFIG_MACH_T0)
 	if (state->sensor_fw[1] == 'D')
+		return -1;
+	else
+		return strcmp((char *)&sensor_date, (char *)&phone_date);
+#elif defined(CONFIG_MACH_BAFFIN)
+	if (state->sensor_fw[1] == 'D' || state->sensor_fw[1] == 'H')
 		return -1;
 	else
 		return strcmp((char *)&sensor_date, (char *)&phone_date);
@@ -2670,9 +2736,21 @@ static int s5c73m3_load_fw(struct v4l2_subdev *sd)
 	mm_segment_t old_fs;
 	long fsize = 0, nread;
 
-#if defined(CONFIG_MACH_T0) || defined(CONFIG_MACH_BAFFIN)
+#if defined(CONFIG_MACH_T0)
 	if (state->sensor_fw[1] == 'D') {
 		sprintf(fw_path, "SlimISP_%cK.bin",
+			state->sensor_fw[0]);
+	} else {
+		sprintf(fw_path, "SlimISP_%c%c.bin",
+			state->sensor_fw[0],
+			state->sensor_fw[1]);
+	}
+#elif defined(CONFIG_MACH_BAFFIN)
+	if (state->sensor_fw[1] == 'D') {
+		sprintf(fw_path, "SlimISP_%cK.bin",
+			state->sensor_fw[0]);
+	} else if (state->sensor_fw[1] == 'H') {
+		sprintf(fw_path, "SlimISP_%cM.bin",
 			state->sensor_fw[0]);
 	} else {
 		sprintf(fw_path, "SlimISP_%c%c.bin",
@@ -3377,7 +3455,7 @@ static int s5c73m3_read_vdd_core(struct v4l2_subdev *sd)
 		vdd_core_val = 1150000;
 	} else if (read_val & 0x800) {
 		strcpy(sysfs_isp_core, "1.10V");
-#ifdef CONFIG_MACH_M3
+#if defined(CONFIG_MACH_M3) || defined(CONFIG_MACH_M0_DUOSCTC)
 		state->pdata->set_vdd_core(1150000);
 		vdd_core_val = 1150000;
 #else
@@ -3513,6 +3591,13 @@ static int s5c73m3_init(struct v4l2_subdev *sd, u32 val)
 			CHECK_ERR(err);
 		}
 	}
+
+#if defined(CONFIG_MACH_BAFFIN) && !defined(CONFIG_MACH_SUPERIOR_KOR_SKT)
+	/* send command to change resolution table */
+	/* 0:1280x720 TABLE(16:9), 1:800x480 TABLE(5:3) */
+	err = s5c73m3_writeb(sd, 0x0B1A, 0x0001);
+	CHECK_ERR(err);
+#endif
 
 	state->isp.bad_fw = 0;
 	s5c73m3_init_param(sd);
