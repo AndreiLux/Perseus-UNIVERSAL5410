@@ -65,6 +65,15 @@ void sensors_unregister(struct device *dev,
 }
 EXPORT_SYMBOL_GPL(sensors_unregister);
 
+void destroy_sensor_class(void)
+{
+	if (sensors_class) {
+		class_destroy(sensors_class);
+		sensors_class = NULL;
+	}
+}
+EXPORT_SYMBOL_GPL(destroy_sensor_class);
+
 static int __init sensors_class_init(void)
 {
 	printk(KERN_INFO "[SENSORS CORE] sensors_class_init\n");
@@ -81,7 +90,10 @@ static int __init sensors_class_init(void)
 
 static void __exit sensors_class_exit(void)
 {
-	class_destroy(sensors_class);
+	if (sensors_class) {
+		class_destroy(sensors_class);
+		sensors_class = NULL;
+	}
 }
 
 /* exported for the APM Power driver, APM emulation */
