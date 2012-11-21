@@ -48,8 +48,13 @@
 /***********************************************/
 
 #define SENSOR_NAME "light_sensor"
+#define SENSOR_DEFAULT_DELAY (200) /* 200 ms */
 #define SENSOR_MAX_DELAY	(2000)	/* 2000 ms */
+
 #define LIGHT_BUFFER_NUM	5
+#if defined(CONFIG_MACH_M3_USA_TMO)
+#define LIMIT_RESET_COUNT	5
+#endif
 
 struct sensor_data {
 	struct mutex mutex;
@@ -61,6 +66,10 @@ struct sensor_data {
 	int delay;
 	int light_buffer;
 	int light_count;
+#if defined(CONFIG_MACH_M3_USA_TMO)
+	int reset_cnt;
+	int zero_cnt;
+#endif
 };
 
 /* global var */
@@ -83,17 +92,19 @@ static bool first_value = true;
 u8 lightsensor_mode;		/* 0 = low, 1 = high */
 
 /* prototype */
-static int lightsensor_get_adc(void);
+static int lightsensor_get_adc(struct sensor_data *data);
 static int lightsensor_onoff(u8 onoff);
+static int lightsensor_get_adcvalue(struct sensor_data *data);
 
 /* Light Sysfs interface */
 static ssize_t lightsensor_file_state_show(struct device *dev,
 					   struct device_attribute *attr,
 					   char *buf)
 {
+	struct sensor_data *data = dev_get_drvdata(dev);
 	int adc = 0;
 
-	adc = lightsensor_get_adcvalue();
+	adc = lightsensor_get_adcvalue(data);
 
 	return sprintf(buf, "%d\n", adc);
 }
@@ -121,7 +132,6 @@ light_delay_store(struct device *dev, struct device_attribute *attr,
 
 	if (delay < 0)
 		return count;
-
 	delay = delay / 1000000;	/* ns to msec */
 
 	gprintk("new_delay = %d, old_delay = %d", delay, data->delay);
@@ -162,6 +172,11 @@ light_enable_store(struct device *dev, struct device_attribute *attr,
 	struct sensor_data *data = dev_get_drvdata(dev);
 	int value;
 	int err = 0;
+
+#if defined(CONFIG_MACH_M3_USA_TMO)
+	data->reset_cnt = 0;
+	data->zero_cnt = 0;
+#endif
 
 	err = kstrtoint(buf, 10, &value);
 
@@ -213,9 +228,10 @@ static ssize_t lightsensor_raw_data_show(struct device *dev,
 					   struct device_attribute *attr,
 					   char *buf)
 {
+	struct sensor_data *data = dev_get_drvdata(dev);
 	int adc = 0;
 
-	adc = lightsensor_get_adcvalue();
+	adc = lightsensor_get_adcvalue(data);
 
 	return sprintf(buf, "%d\n", adc);
 }
@@ -276,7 +292,7 @@ static int lightsensor_resume(struct platform_device *pdev)
 	return rt;
 }
 
-int lightsensor_get_adc(void)
+int lightsensor_get_adc(struct sensor_data *data)
 {
 	unsigned char get_data[4] = { 0, };
 	int D0_raw_data;
@@ -292,6 +308,7 @@ int lightsensor_get_adc(void)
 	int d0_boundary = 93;
 
 	ret = opt_i2c_read(DATA0_LSB, get_data, sizeof(get_data));
+
 	if (ret < 0)
 		return lx_prev;
 	D0_raw_data = (get_data[1] << 8) | get_data[0];	/* clear */
@@ -490,14 +507,14 @@ gprintk
 	return lx;
 }
 
-int lightsensor_get_adcvalue(void)
+int lightsensor_get_adcvalue(struct sensor_data *data)
 {
 	int i, j, value, adc_avr_value;
 	unsigned int adc_total = 0, adc_max, adc_min, adc_index;
 	static unsigned int adc_index_count;
 	static int adc_value_buf[ADC_BUFFER_NUM] = { 0, };
 
-	value = lightsensor_get_adc();
+	value = lightsensor_get_adc(data);
 
 	adc_index = (adc_index_count++) % ADC_BUFFER_NUM;
 
@@ -572,8 +589,18 @@ static void gp2a_work_func_light(struct work_struct *work)
 						struct sensor_data, work);
 	int i;
 	int adc = 0;
+#ifdef CONFIG_MACH_BAFFIN
+	int count = 0;
+#endif
 
-	adc = lightsensor_get_adcvalue();
+#ifdef CONFIG_MACH_BAFFIN
+	while (adc == 0 && count < 5) {
+		adc = lightsensor_get_adcvalue(data);
+		count++;
+	}
+#else
+	adc = lightsensor_get_adcvalue(data);
+#endif
 
 	if (is_gp2a030a()) {
 		for (i = 0; ARRAY_SIZE(adc_table_030a); i++)
@@ -587,7 +614,8 @@ static void gp2a_work_func_light(struct work_struct *work)
 
 	if (data->light_buffer == i) {
 		if (data->light_count++ == LIGHT_BUFFER_NUM) {
-			input_report_rel(data->input_dev, REL_MISC, adc);
+			input_report_rel(data->input_dev, REL_MISC,
+			(adc ? adc : 1));
 			input_sync(data->input_dev);
 			data->light_count = 0;
 		}
@@ -595,6 +623,25 @@ static void gp2a_work_func_light(struct work_struct *work)
 		data->light_buffer = i;
 		data->light_count = 0;
 	}
+
+#if defined(CONFIG_MACH_M3_USA_TMO)
+	if (adc == 0) {
+		if (data->zero_cnt++ > 25) {
+			data->zero_cnt = 0;
+			if (data->reset_cnt++ <= LIMIT_RESET_COUNT) {
+				lightsensor_onoff(0);
+				lightsensor_onoff(1);
+				pr_info("%s : lightsensor reset done.\n",
+					__func__);
+			} else {
+				data->reset_cnt = LIMIT_RESET_COUNT + 1;
+			}
+		}
+	} else {
+		data->reset_cnt = 0;
+		data->zero_cnt = 0;
+	}
+#endif
 
 	if (data->enabled)
 		queue_delayed_work(data->wq, &data->work,
@@ -625,6 +672,7 @@ static int lightsensor_probe(struct platform_device *pdev)
 	}
 
 	data->enabled = 0;
+	data->delay = SENSOR_DEFAULT_DELAY;
 
 	data->input_dev = input_allocate_device();
 	if (!data->input_dev) {
