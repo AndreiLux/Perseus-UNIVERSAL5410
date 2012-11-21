@@ -49,20 +49,25 @@ unsigned int Firmware_version_of_file = 0x310;
 unsigned char *firmware_name = "epen/W9001_B746S.bin";
 char Firmware_checksum[] = { 0x1F, 0x81, 0x72, 0xDC, 0x5E, };
 #elif defined(CONFIG_MACH_T0_KOR_LGT)
-unsigned int Firmware_version_of_file = 0x407;
+unsigned int Firmware_version_of_file = 0x408;
 unsigned char *firmware_name = "epen/W9001_B746L.bin";
-char Firmware_checksum[] = { 0x1F, 0xD5, 0x3E, 0x78, 0x35, };
+char Firmware_checksum[] = { 0x1F, 0xB1, 0x37, 0x10, 0x81, };
 #endif
 #elif defined(CONFIG_MACH_T0_JPN_LTE_DCM)
-unsigned int Firmware_version_of_file = 0x304;
+unsigned int Firmware_version_of_file = 0x310;
 unsigned char *firmware_name = "epen/W9001_B746JD.bin";
-char Firmware_checksum[] = { 0x1F, 0xA6, 0xFB, 0xBF, 0x11, };
+char Firmware_checksum[] = { 0x1F, 0x81, 0x72, 0xDC, 0x5E, };
 #elif defined(CONFIG_MACH_T0_USA_VZW) \
-	|| defined(CONFIG_MACH_T0_USA_SPR)
+	|| defined(CONFIG_MACH_T0_USA_SPR) \
+	|| defined(CONFIG_MACH_T0_USA_USCC)
 unsigned int Firmware_version_of_file = 0x600;
 unsigned char *firmware_name = "epen/W9001_B746VZW.bin";
 
 char Firmware_checksum[] = { 0x1F, 0x29, 0x01, 0xE3, 0xE4, };
+#elif defined(CONFIG_MACH_T0_CHN_CTC)
+unsigned int Firmware_version_of_file = 0x700;
+unsigned char *firmware_name = "epen/W9001_0700.bin";
+char Firmware_checksum[] = { 0x1F, 0xD4, 0xD1, 0x5A, 0x91, };
 #else
 unsigned int Firmware_version_of_file = 0x25F;
 unsigned char *firmware_name = "epen/W9001_B746.bin";

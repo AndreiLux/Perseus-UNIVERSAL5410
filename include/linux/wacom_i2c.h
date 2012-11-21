@@ -346,7 +346,7 @@ struct wacom_g5_platform_data {
 	int gpio_pen_insert;
 #endif
 #ifdef WACOM_HAVE_FWE_PIN
-	int gpio_fwe;
+	void (*compulsory_flash_mode)(bool);
 #endif
 	int (*init_platform_hw)(void);
 	int (*exit_platform_hw)(void);

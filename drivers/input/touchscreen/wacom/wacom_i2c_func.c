@@ -833,8 +833,8 @@ int wacom_i2c_coord(struct wacom_i2c *wac_i2c)
 #if defined(CONFIG_SAMSUNG_KERNEL_DEBUG_USER)
 #if defined(CONFIG_MACH_T0)
 	/*printk(KERN_DEBUG"[E-PEN] %x, %x, %x, %x, %x, %x, %x %x\n",
-		data[0], data[1], data[2], data[3],
-		data[4], data[5], data[6], data[7]);*/
+	data[0], data[1], data[2], data[3],
+	data[4], data[5], data[6], data[7]);*/
 #else
 	pr_debug("[E-PEN] %x, %x, %x, %x, %x, %x, %x\n",
 		data[0], data[1], data[2], data[3], data[4], data[5], data[6]);
@@ -866,6 +866,7 @@ int wacom_i2c_coord(struct wacom_i2c *wac_i2c)
 #if defined(WACOM_USE_HEIGHT)
 		gain = data[7];
 #endif
+
 #ifdef WACOM_IMPORT_FW_ALGO
 #if defined(CONFIG_MACH_T0)
 		x = x - origin_offset[0];
@@ -890,10 +891,10 @@ int wacom_i2c_coord(struct wacom_i2c *wac_i2c)
 
 #ifdef CONFIG_MACH_T0
 		if (wac_i2c->use_aveTransition && pressure == 0) {
-#ifdef WACOM_USE_HEIGHT
+#if defined(WACOM_USE_HEIGHT)
 			height = wacom_i2c_coord_level(gain);
 #endif
-#ifdef WACOM_USE_AVE_TRANSITION
+#if defined(WACOM_USE_AVE_TRANSITION)
 			ave_level(x, y, height, &aveStrength);
 #endif
 		}
@@ -992,15 +993,12 @@ int wacom_i2c_coord(struct wacom_i2c *wac_i2c)
 			else
 				wac_i2c->tool = BTN_TOOL_PEN;
 
-			input_report_abs(wac_i2c->input_dev, ABS_X, x);
-			input_report_abs(wac_i2c->input_dev, ABS_Y, y);
 			input_report_abs(wac_i2c->input_dev, ABS_PRESSURE, 0);
 			input_report_key(wac_i2c->input_dev, BTN_STYLUS, 0);
 			input_report_key(wac_i2c->input_dev, BTN_TOUCH, 0);
-			input_report_key(wac_i2c->input_dev, wac_i2c->tool, 1);
+			input_report_key(wac_i2c->input_dev, wac_i2c->tool, 0);
 			input_sync(wac_i2c->input_dev);
 		}
-
 		schedule_delayed_work(&wac_i2c->pendct_dwork, HZ / 10);
 
 		return 0;

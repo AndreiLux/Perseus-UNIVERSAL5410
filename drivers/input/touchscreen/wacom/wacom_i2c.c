@@ -343,6 +343,10 @@ static void update_fw_p4(struct wacom_i2c *wac_i2c)
 	int ret = 0;
 	int retry = 2;
 
+	/* the firmware should be updated in factory mode durring the boot */
+	if (!epen_check_factory_mode())
+		retry = 0;
+
 	while (retry--) {
 		printk(KERN_DEBUG "[E-PEN] INIT_FIRMWARE_FLASH is enabled.\n");
 		ret = wacom_i2c_flash(wac_i2c);
@@ -791,13 +795,7 @@ static ssize_t epen_firmware_update_store(struct device *dev,
 		break;
 #elif defined(CONFIG_MACH_P4NOTE)
 	case 'R':
-		if (fw_ic_ver == 0x0
-			 || fw_ic_ver < Firmware_version_of_file) {
-			printk(KERN_INFO "[E-PEN] Enter firmware update by sysfs.\n");
-			update_fw_p4(wac_i2c);
-		} else {
-			printk(KERN_INFO "[E-PEN] Skip the firmware update by Condition.\n");
-		}
+		update_fw_p4(wac_i2c);
 		break;
 #endif
 	default:

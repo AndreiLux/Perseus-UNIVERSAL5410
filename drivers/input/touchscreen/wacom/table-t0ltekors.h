@@ -118,7 +118,7 @@ short tilt_offsetY[MAX_HAND][MAX_ROTATION] = \
 
 #elif defined(CONFIG_MACH_T0_KOR_LGT)
 char *tuning_model = "E250L";
-char *tuning_version = "0918";
+char *tuning_version = "0920";
 /* Tilt offset */
 /* 0: Left, 1: Right */
 /* 0: Portrait 0, 1: Landscape 90, 2: Portrait 180 3: Landscape 270*/
