@@ -108,6 +108,11 @@ static void s3cfb_deactivate_vsync(struct s3cfb_global *fbdev)
 
 	mutex_lock(&fbdev->vsync_info.irq_lock);
 
+	if (fbdev->vsync_info.irq_refcount <= 0) {
+		mutex_unlock(&fbdev->vsync_info.irq_lock);
+		return;
+	}
+
 	new_refcount = --fbdev->vsync_info.irq_refcount;
 	WARN_ON(new_refcount < 0);
 	if (!new_refcount) {
@@ -1001,7 +1006,6 @@ void s3cfb_late_resume(struct early_suspend *h)
 		s5c1372_ldi_enable();
 #endif
 		s3c_mdnie_init_global(fbdev[i]);
-		set_mdnie_value(g_mdnie, 1);
 		s3c_mdnie_display_on(fbdev[i]);
 #endif
 		s3cfb_display_on(fbdev[i]);

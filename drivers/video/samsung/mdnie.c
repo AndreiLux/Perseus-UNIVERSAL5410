@@ -51,7 +51,11 @@
 #include "mdnie_color_tone_4210.h"
 #else	/* CONFIG_CPU_EXYNOS4210 */
 #if defined(CONFIG_FB_S5P_S6E8AA0)
+#if defined(CONFIG_S6E8AA0_AMS465XX)
+#include "mdnie_table_superior.h"
+#else
 #include "mdnie_table_m0_perseus.h"
+#endif
 #elif defined(CONFIG_FB_S5P_EA8061) || defined(CONFIG_FB_S5P_S6EVR02)
 #include "mdnie_table_t0.h"
 #elif defined(CONFIG_FB_S5P_S6E63M0)
@@ -67,8 +71,9 @@
 #endif
 #include "mdnie_color_tone.h"	/* sholud be added for 4212, 4412 */
 #endif
-
-#if defined(CONFIG_TDMB) || defined(CONFIG_TARGET_LOCALE_NTT)
+#if defined(CONFIG_FB_S5P_LMS501XX)
+#include "mdnie_dmb_baffin.h"
+#elif defined(CONFIG_TDMB) || defined(CONFIG_TARGET_LOCALE_NTT)
 #include "mdnie_dmb.h"
 #endif
 
@@ -558,6 +563,11 @@ static ssize_t cabc_store(struct device *dev,
 	unsigned int value;
 	int ret;
 
+#if defined(CONFIG_FB_S5P_S6C1372)
+	if (mdnie->auto_brightness)
+		return -EINVAL;
+#endif
+
 	ret = strict_strtoul(buf, 0, (unsigned long *)&value);
 
 	dev_info(dev, "%s :: value=%d\n", __func__, value);
@@ -725,14 +735,16 @@ static struct device_attribute mdnie_attributes[] = {
 };
 
 #ifdef CONFIG_PM
-#if defined(CONFIG_HAS_EARLYSUSPEND) && defined(CONFIG_FB_MDNIE_PWM)
+#if defined(CONFIG_HAS_EARLYSUSPEND)
 void mdnie_early_suspend(struct early_suspend *h)
 {
 	struct mdnie_info *mdnie = container_of(h, struct mdnie_info, early_suspend);
 	struct lcd_platform_data *pd = NULL;
-	pd = mdnie->lcd_pd;
 
 	dev_info(mdnie->dev, "+%s\n", __func__);
+
+#if defined(CONFIG_FB_MDNIE_PWM)
+	pd = mdnie->lcd_pd;
 
 	mdnie->bd_enable = FALSE;
 
@@ -746,6 +758,7 @@ void mdnie_early_suspend(struct early_suspend *h)
 		dev_info(&mdnie->bd->dev, "power_on is NULL.\n");
 	else
 		pd->power_on(NULL, 0);
+#endif
 
 	dev_info(mdnie->dev, "-%s\n", __func__);
 
@@ -759,6 +772,8 @@ void mdnie_late_resume(struct early_suspend *h)
 	struct lcd_platform_data *pd = NULL;
 
 	dev_info(mdnie->dev, "+%s\n", __func__);
+
+#if defined(CONFIG_FB_MDNIE_PWM)
 	pd = mdnie->lcd_pd;
 
 	if (mdnie->enable)
@@ -778,6 +793,10 @@ void mdnie_late_resume(struct early_suspend *h)
 	}
 
 	mdnie->bd_enable = TRUE;
+#endif
+
+	set_mdnie_value(mdnie, 1);
+
 	dev_info(mdnie->dev, "-%s\n", __func__);
 
 	return ;
@@ -996,12 +1015,10 @@ static int mdnie_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_HAS_WAKELOCK
 #ifdef CONFIG_HAS_EARLYSUSPEND
-#if defined(CONFIG_FB_MDNIE_PWM)
 	mdnie->early_suspend.suspend = mdnie_early_suspend;
 	mdnie->early_suspend.resume = mdnie_late_resume;
 	mdnie->early_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB - 1;
 	register_early_suspend(&mdnie->early_suspend);
-#endif
 #endif
 #endif
 

@@ -422,7 +422,7 @@ static const unsigned short tune_standard_vt[] = {
 
 static const unsigned short tune_camera[] = {
 	0x0000, 0x0000,	/*BANK 0*/
-	0x0008, 0x002c,	/*Dither8 UC4 ABC2 CP1 | CC8 MCM4 SCR2 SCC1 | CS8 DE4 DNR2 HDR1*/
+	0x0008, 0x0028,	/*Dither8 UC4 ABC2 CP1 | CC8 MCM4 SCR2 SCC1 | CS8 DE4 DNR2 HDR1*/
 	0x0030, 0x0000,	/*FA cs1 de8 hdr2 fa1*/
 	0x0090, 0x0080,	/*DE egth*/
 	0x0092, 0x0000,	/*DE pe*/
@@ -455,7 +455,7 @@ static const unsigned short tune_camera[] = {
 
 static const unsigned short tune_camera_outdoor[] = {
 	0x0000, 0x0000,	/*BANK 0*/
-	0x0008, 0x042c,	/*Dither8 UC4 ABC2 CP1 | CC8 MCM4 SCR2 SCC1 | CS8 DE4 DNR2 HDR1*/
+	0x0008, 0x0428,	/*Dither8 UC4 ABC2 CP1 | CC8 MCM4 SCR2 SCC1 | CS8 DE4 DNR2 HDR1*/
 	0x0030, 0x0000,	/*FA cs1 de8 hdr2 fa1*/
 	0x0090, 0x0080,	/*DE egth*/
 	0x0092, 0x0000,	/*DE pe*/

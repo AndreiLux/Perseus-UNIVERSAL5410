@@ -75,6 +75,12 @@ static const unsigned char SEQ_PASSWD2[] = {
 	0x5A, 0x5A
 };
 
+static const unsigned char SEQ_PANELCTL[] = {
+	0xF6,
+	0x0B, 0x11, 0x0F, 0x25, 0x0A, 0x00, 0x13, 0x22, 0x1B, 0x03,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x1B, 0x0D, 0x3F, 0x3C, 0x51,
+};
+
 static const unsigned char SEQ_SONY_IP_SET1[] = {
 	0xC4,
 	0x7C, 0xE6, 0x7C, 0xE6, 0x7C, 0xE6, 0x7C, 0x7C,
@@ -252,10 +258,11 @@ static irqreturn_t oled_detection_int(int irq, void *_lcd)
 #endif
 
 
-static int s6d6aa1_write(struct lcd_info *lcd, const unsigned char *seq, int len)
+static int _s6d6aa1_write(struct lcd_info *lcd, const unsigned char *seq, int len)
 {
 	int size;
 	const unsigned char *wbuf;
+	int ret = 0;
 
 	if (!lcd->connected)
 		return 0;
@@ -266,15 +273,34 @@ static int s6d6aa1_write(struct lcd_info *lcd, const unsigned char *seq, int len
 	wbuf = seq;
 
 	if (size == 1)
-		lcd->dsim->ops->cmd_write(lcd->dsim, DCS_WR_NO_PARA, wbuf[0], 0);
+		ret = lcd->dsim->ops->cmd_write(lcd->dsim, DCS_WR_NO_PARA, wbuf[0], 0);
 	else if (size == 2)
-		lcd->dsim->ops->cmd_write(lcd->dsim, DCS_WR_1_PARA, wbuf[0], wbuf[1]);
+		ret = lcd->dsim->ops->cmd_write(lcd->dsim, DCS_WR_1_PARA, wbuf[0], wbuf[1]);
 	else
-		lcd->dsim->ops->cmd_write(lcd->dsim, DCS_LONG_WR, (unsigned int)wbuf, size);
+		ret = lcd->dsim->ops->cmd_write(lcd->dsim, DCS_LONG_WR, (unsigned int)wbuf, size);
 
 	mutex_unlock(&lcd->lock);
 
-	return 0;
+	return ret;
+}
+
+static int s6d6aa1_write(struct lcd_info *lcd, const unsigned char *seq, int len)
+{
+	int ret = 0;
+	int retry_cnt = 1;
+
+retry:
+	ret = _s6d6aa1_write(lcd, seq, len);
+	if (!ret) {
+		if (retry_cnt) {
+			dev_dbg(&lcd->ld->dev, "%s :: retry: %d\n", __func__, retry_cnt);
+			retry_cnt--;
+			goto retry;
+		} else
+			dev_dbg(&lcd->ld->dev, "%s :: 0x%02x\n", __func__, seq[1]);
+	}
+
+	return ret;
 }
 
 static int _s6d6aa1_read(struct lcd_info *lcd, const u8 addr, u16 count, u8 *buf)
@@ -350,14 +376,15 @@ static int s6d6aa1_ldi_init(struct lcd_info *lcd)
 {
 	int ret = 0;
 
-	msleep(15);
+	usleep_range(20000, 20000);
 
 	s6d6aa1_write(lcd, SEQ_SLPOUT, ARRAY_SIZE(SEQ_SLPOUT));
 
-	msleep(145);
+	usleep_range(145000, 145000);
 
 	s6d6aa1_write(lcd, SEQ_PASSWD1, ARRAY_SIZE(SEQ_PASSWD1));
 	s6d6aa1_write(lcd, SEQ_PASSWD2, ARRAY_SIZE(SEQ_PASSWD2));
+	s6d6aa1_write(lcd, SEQ_PANELCTL, ARRAY_SIZE(SEQ_PANELCTL));
 	s6d6aa1_write(lcd, SEQ_SONY_IP_SET1, ARRAY_SIZE(SEQ_SONY_IP_SET1));
 	s6d6aa1_write(lcd, SEQ_SONY_IP_SET2, ARRAY_SIZE(SEQ_SONY_IP_SET2));
 	s6d6aa1_write(lcd, SEQ_PGAMMACTL, ARRAY_SIZE(SEQ_PGAMMACTL));

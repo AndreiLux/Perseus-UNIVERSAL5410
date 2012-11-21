@@ -1,4 +1,4 @@
-/* linux/drivers/video/samsung/s3cfb_ea8061.c
+/* linux/drivers/video/samsung/s3cfb_s6evr01.c
  *
  * MIPI-DSI based AMS555HBxx AMOLED lcd panel driver.
  *
@@ -22,6 +22,9 @@
 #include <linux/workqueue.h>
 #include <linux/backlight.h>
 #include <linux/lcd.h>
+#include <linux/rtc.h>
+#include <linux/reboot.h>
+#include <linux/syscalls.h> /* sys_sync */
 #include <plat/gpio-cfg.h>
 #include <plat/regs-dsim.h>
 #include <mach/dsim.h>
@@ -32,14 +35,14 @@
 
 #include "s5p-dsim.h"
 #include "s3cfb.h"
-#include "ea8061_param.h"
+#include "s6evr01_param.h"
 
 #define SMART_DIMMING
 #undef SMART_DIMMING_DEBUG
 
 #ifdef SMART_DIMMING
-#include "smart_dimming_ea8061.h"
-#include "aid_ea8061.h"
+#include "smart_dimming_s6evr01.h"
+#include "aid_s6evr01.h"
 #endif
 
 
@@ -51,11 +54,11 @@
 #define DEFAULT_BRIGHTNESS		130
 #define DEFAULT_GAMMA_LEVEL		GAMMA_130CD
 
-#define LDI_ID_REG			0xD1
+#define LDI_ID_REG			0xD7
 #define LDI_ID_LEN			3
 #ifdef SMART_DIMMING
-#define LDI_MTP_LENGTH		32
-#define LDI_MTP_ADDR			0xDA
+#define LDI_MTP_LENGTH		33
+#define LDI_MTP_ADDR			0xC8
 #endif
 
 struct lcd_info {
@@ -79,15 +82,18 @@ struct lcd_info {
 	unsigned char			**elvss_table;
 #ifdef SMART_DIMMING
 	struct str_smart_dim		smart;
-	unsigned char			b3[GAMMA_MAX][ARRAY_SIZE(SEQ_LTPS_AID)];
+	unsigned char			aor[GAMMA_MAX][ARRAY_SIZE(SEQ_AOR_CONTROL)];
 #endif
 	unsigned int			irq;
-	unsigned int			gpio;
 	unsigned int			connected;
 
 #if defined(GPIO_ERR_FG)
 	struct delayed_work		err_fg_detection;
 	unsigned int			err_fg_detection_count;
+#endif
+#if defined(GPIO_OLED_DET)
+	struct delayed_work		oled_detection;
+	unsigned int			oled_detection_count;
 #endif
 
 	struct dsim_global		*dsim;
@@ -106,8 +112,8 @@ static unsigned int aid_candela_table[GAMMA_MAX] = {
 	base_20to100, base_20to100, base_20to100, base_20to100, base_20to100, base_20to100, base_20to100, base_20to100, base_20to100,
 	AOR40_BASE_102, AOR40_BASE_104, AOR40_BASE_106, AOR40_BASE_108,
 	AOR40_BASE_110, AOR40_BASE_120, AOR40_BASE_130, AOR40_BASE_140, AOR40_BASE_150,
-	AOR40_BASE_160, AOR40_BASE_170, AOR40_BASE_180, AOR40_BASE_182, AOR40_BASE_184,
-	AOR40_BASE_186, AOR40_BASE_188,
+	AOR40_BASE_160, AOR40_BASE_170, AOR40_BASE_180,
+	AOR40_BASE_182, AOR40_BASE_184, AOR40_BASE_186, AOR40_BASE_188,
 	190, 200, 210, 220, 230, 240, 250, MAX_GAMMA-1
 };
 #endif
@@ -121,11 +127,11 @@ static void err_fg_detection_work(struct work_struct *work)
 	struct lcd_info *lcd =
 		container_of(work, struct lcd_info, err_fg_detection.work);
 
-	int oled_det_level = gpio_get_value(lcd->gpio);
+	int err_fg_level = gpio_get_value(GPIO_ERR_FG);
 
-	dev_info(&lcd->ld->dev, "%s, %d, %d\n", __func__, lcd->err_fg_detection_count, oled_det_level);
+	dev_info(&lcd->ld->dev, "%s, %d, %d\n", __func__, lcd->err_fg_detection_count, err_fg_level);
 
-	if (!oled_det_level) {
+	if (!err_fg_level) {
 		if (lcd->err_fg_detection_count < 10) {
 			schedule_delayed_work(&lcd->err_fg_detection, HZ/8);
 			lcd->err_fg_detection_count++;
@@ -141,7 +147,7 @@ static irqreturn_t err_fg_detection_int(int irq, void *_lcd)
 {
 	struct lcd_info *lcd = _lcd;
 
-	dev_info(&lcd->ld->dev, "%s\n", __func__);
+	dev_info(&lcd->ld->dev, "\t\t%s\n", __func__);
 
 	lcd->err_fg_detection_count = 0;
 	schedule_delayed_work(&lcd->err_fg_detection, HZ/16);
@@ -150,7 +156,66 @@ static irqreturn_t err_fg_detection_int(int irq, void *_lcd)
 }
 #endif
 
-static int _ea8061_write(struct lcd_info *lcd, const unsigned char *seq, int len)
+#if defined(GPIO_OLED_DET)
+static void oled_detection_work(struct work_struct *work)
+{
+	struct lcd_info *lcd =
+		container_of(work, struct lcd_info, oled_detection.work);
+
+	struct file *fp;
+	char name[128];
+	struct timespec ts;
+	struct rtc_time tm;
+
+	int oled_det_level = gpio_get_value(GPIO_OLED_DET);
+
+	dev_info(&lcd->ld->dev, "%s, GPIO_OLED_DET is %s\n", __func__, oled_det_level ? "high" : "low");
+
+	if (!oled_det_level) {
+		if (lcd->oled_detection_count < 3) {
+			getnstimeofday(&ts);
+			rtc_time_to_tm(ts.tv_sec, &tm);
+			sprintf(name, "%s%02d-%02d_%02d:%02d:%02d_%02d",
+				"/sdcard/", tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, lcd->oled_detection_count);
+			fp = filp_open(name, O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+
+			if (IS_ERR_OR_NULL(fp))
+				dev_info(&lcd->ld->dev, "fail to create vgh detection log file, %s\n", name);
+
+			schedule_delayed_work(&lcd->oled_detection, msecs_to_jiffies(10));
+			lcd->oled_detection_count++;
+		} else {
+			dev_info(&lcd->ld->dev, "VGH IS NOT OK! LCD SMASH!!!\n");
+			getnstimeofday(&ts);
+			rtc_time_to_tm(ts.tv_sec, &tm);
+			sprintf(name, "%s%02d-%02d_%02d:%02d:%02d_POWEROFF",
+				"/sdcard/", tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+			fp = filp_open(name, O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+
+			if (IS_ERR_OR_NULL(fp))
+				dev_info(&lcd->ld->dev, "fail to create vgh detection log file, %s\n", name);
+
+			sys_sync();
+			kernel_power_off();
+		}
+	} else
+		dev_info(&lcd->ld->dev, "VGH IS OK\n");
+
+}
+
+static irqreturn_t oled_detection_int(int irq, void *_lcd)
+{
+	struct lcd_info *lcd = _lcd;
+
+	dev_info(&lcd->ld->dev, "\t\t%s\n", __func__);
+
+	schedule_delayed_work(&lcd->oled_detection, msecs_to_jiffies(10));
+
+	return IRQ_HANDLED;
+}
+#endif
+
+static int _s6evr01_write(struct lcd_info *lcd, const unsigned char *seq, int len)
 {
 	int size;
 	const unsigned char *wbuf;
@@ -176,13 +241,13 @@ static int _ea8061_write(struct lcd_info *lcd, const unsigned char *seq, int len
 	return ret;
 }
 
-static int ea8061_write(struct lcd_info *lcd, const unsigned char *seq, int len)
+static int s6evr01_write(struct lcd_info *lcd, const unsigned char *seq, int len)
 {
 	int ret = 0;
 	int retry_cnt = 1;
 
 retry:
-	ret = _ea8061_write(lcd, seq, len);
+	ret = _s6evr01_write(lcd, seq, len);
 	if (!ret) {
 		if (retry_cnt) {
 			dev_dbg(&lcd->ld->dev, "%s :: retry: %d\n", __func__, retry_cnt);
@@ -195,7 +260,7 @@ retry:
 	return ret;
 }
 
-static int _ea8061_read(struct lcd_info *lcd, const u8 addr, u16 count, u8 *buf)
+static int _s6evr01_read(struct lcd_info *lcd, const u8 addr, u16 count, u8 *buf)
 {
 	int ret = 0;
 
@@ -204,20 +269,20 @@ static int _ea8061_read(struct lcd_info *lcd, const u8 addr, u16 count, u8 *buf)
 
 	mutex_lock(&lcd->lock);
 
-	if (lcd->dsim->ops->cmd_dcs_read)
-		ret = lcd->dsim->ops->cmd_dcs_read(lcd->dsim, addr, count, buf);
+	if (lcd->dsim->ops->cmd_read)
+		ret = lcd->dsim->ops->cmd_read(lcd->dsim, addr, count, buf);
 
 	mutex_unlock(&lcd->lock);
 
 	return ret;
 }
 
-static int ea8061_read(struct lcd_info *lcd, const u8 addr, u16 count, u8 *buf, u8 retry_cnt)
+static int s6evr01_read(struct lcd_info *lcd, const u8 addr, u16 count, u8 *buf, u8 retry_cnt)
 {
 	int ret = 0;
 
 retry:
-	ret = _ea8061_read(lcd, addr, count, buf);
+	ret = _s6evr01_read(lcd, addr, count, buf);
 	if (!ret) {
 		if (retry_cnt) {
 			dev_dbg(&lcd->ld->dev, "%s :: retry: %d\n", __func__, retry_cnt);
@@ -345,36 +410,26 @@ static int get_backlight_level_from_brightness(int brightness)
 }
 
 #ifdef SMART_DIMMING
-static int ea8061_aid_parameter_ctl(struct lcd_info *lcd, u8 force)
+static int s6evr01_aid_parameter_ctl(struct lcd_info *lcd, u8 force)
 {
-	if (force)
-		goto aor_update;
-	else if (aid_command_table[lcd->bl][0] != aid_command_table[lcd->current_bl][0])
-		goto aor_update;
-	else if (aid_command_table[lcd->bl][1] != aid_command_table[lcd->current_bl][1])
-		goto aor_update;
-	else
-		goto exit;
+	if ((aid_command_table[lcd->bl][0] != aid_command_table[lcd->current_bl][0]) || force)
+		s6evr01_write(lcd, lcd->aor[lcd->bl], AID_PARAM_SIZE);
 
-aor_update:
-	ea8061_write(lcd, lcd->b3[lcd->bl], AID_PARAM_SIZE);
-
-exit:
 	return 0;
 }
 #endif
 
-static int ea8061_gamma_ctl(struct lcd_info *lcd)
+static int s6evr01_gamma_ctl(struct lcd_info *lcd)
 {
-	/* ea8061_write(lcd, SEQ_APPLY_LEVEL_2_KEY_ENABLE, ARRAY_SIZE(SEQ_APPLY_LEVEL_2_KEY_ENABLE)); */
-	ea8061_write(lcd, SEQ_FRAME_GAMMA_UPDATE_KEY, ARRAY_SIZE(SEQ_FRAME_GAMMA_UPDATE_KEY));
-	ea8061_write(lcd, lcd->gamma_table[lcd->bl], GAMMA_PARAM_SIZE-1);
-	ea8061_write(lcd, SEQ_FRAME_GAMMA_UPDATE_KEY2, ARRAY_SIZE(SEQ_FRAME_GAMMA_UPDATE_KEY2));
+	/* s6evr01_write(lcd, SEQ_APPLY_LEVEL_2_KEY, ARRAY_SIZE(SEQ_APPLY_LEVEL_2_KEY)); */
+	s6evr01_write(lcd, lcd->gamma_table[lcd->bl], GAMMA_PARAM_SIZE);
+	s6evr01_write(lcd, SEQ_GAMMA_UPDATE, ARRAY_SIZE(SEQ_GAMMA_UPDATE));
+	/* s6evr01_write(lcd, SEQ_BRIGHTNESS_CONTROL_ON, ARRAY_SIZE(SEQ_BRIGHTNESS_CONTROL_ON)); */
 
 	return 0;
 }
 
-static int ea8061_set_acl(struct lcd_info *lcd, u8 force)
+static int s6evr01_set_acl(struct lcd_info *lcd, u8 force)
 {
 	int ret = 0, level = 0;
 	u32 candela = candela_table[lcd->bl];
@@ -395,7 +450,7 @@ static int ea8061_set_acl(struct lcd_info *lcd, u8 force)
 		level = ACL_STATUS_0P;
 
 	if (force || lcd->current_acl != ACL_CUTOFF_TABLE[level][1]) {
-		ret = ea8061_write(lcd, ACL_CUTOFF_TABLE[level], ACL_PARAM_SIZE);
+		ret = s6evr01_write(lcd, ACL_CUTOFF_TABLE[level], ACL_PARAM_SIZE);
 		lcd->current_acl = ACL_CUTOFF_TABLE[level][1];
 		dev_dbg(&lcd->ld->dev, "current_acl = %d\n", lcd->current_acl);
 	}
@@ -406,7 +461,7 @@ static int ea8061_set_acl(struct lcd_info *lcd, u8 force)
 	return ret;
 }
 
-static int ea8061_set_elvss(struct lcd_info *lcd, u8 force)
+static int s6evr01_set_elvss(struct lcd_info *lcd, u8 force)
 {
 	int ret = 0, elvss_level = 0;
 	u32 candela = candela_table[lcd->bl];
@@ -471,12 +526,12 @@ static int ea8061_set_elvss(struct lcd_info *lcd, u8 force)
 		break;
 	}
 
-	if (force || lcd->current_elvss != lcd->elvss_table[elvss_level][1]) {
-		ret = ea8061_write(lcd, lcd->elvss_table[elvss_level], ELVSS_PARAM_SIZE);
-		lcd->current_elvss = lcd->elvss_table[elvss_level][1];
+	if (force || lcd->current_elvss != lcd->elvss_table[elvss_level][2]) {
+		ret = s6evr01_write(lcd, lcd->elvss_table[elvss_level], ELVSS_PARAM_SIZE);
+		lcd->current_elvss = lcd->elvss_table[elvss_level][2];
 	}
 
-	dev_dbg(&lcd->ld->dev, "elvss = %x\n", lcd->elvss_table[elvss_level][1]);
+	dev_dbg(&lcd->ld->dev, "elvss = %x\n", lcd->elvss_table[elvss_level][2]);
 
 	if (ret) {
 		ret = -EPERM;
@@ -493,7 +548,26 @@ static int init_elvss_table(struct lcd_info *lcd)
 #ifdef SMART_DIMMING_DEBUG
 	int j;
 #endif
-	lcd->elvss_table = (unsigned char **)ELVSS_CONTROL_TABLE;
+
+	lcd->elvss_table = kzalloc(ELVSS_STATUS_MAX * sizeof(u8 *), GFP_KERNEL);
+
+	if (IS_ERR_OR_NULL(lcd->elvss_table)) {
+		pr_err("failed to allocate elvss table\n");
+		ret = -ENOMEM;
+		goto err_alloc_elvss_table;
+	}
+
+	for (i = 0; i < ELVSS_STATUS_MAX; i++) {
+		lcd->elvss_table[i] = kzalloc(ELVSS_PARAM_SIZE * sizeof(u8), GFP_KERNEL);
+		if (IS_ERR_OR_NULL(lcd->elvss_table[i])) {
+			pr_err("failed to allocate elvss\n");
+			ret = -ENOMEM;
+			goto err_alloc_elvss;
+		}
+		lcd->elvss_table[i][0] = 0xB6;
+		lcd->elvss_table[i][1] = 0x08;
+		lcd->elvss_table[i][2] = ELVSS_CONTROL_TABLE[i][2];
+	}
 
 #ifdef SMART_DIMMING_DEBUG
 	for (i = 0; i < ELVSS_STATUS_MAX; i++) {
@@ -518,7 +592,7 @@ err_alloc_elvss_table:
 #ifdef SMART_DIMMING
 static int init_gamma_table(struct lcd_info *lcd , const u8 *mtp_data)
 {
-	int i, ret = 0;
+	int i, j, ret = 0;
 
 	lcd->gamma_table = kzalloc(GAMMA_MAX * sizeof(u8 *), GFP_KERNEL);
 	if (IS_ERR_OR_NULL(lcd->gamma_table)) {
@@ -537,50 +611,21 @@ static int init_gamma_table(struct lcd_info *lcd , const u8 *mtp_data)
 		lcd->gamma_table[i][0] = 0xCA;
 	}
 
-	for (i = 0; i < GAMMA_MAX; i++) {
-
-		if (candela_table[i] == 20)
-			calc_gamma_table_20_100_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_21, mtp_data);
-		else if (candela_table[i] == 30)
-			calc_gamma_table_20_100_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_213, mtp_data);
-		else if (candela_table[i] == 40)
-			calc_gamma_table_20_100_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_215, mtp_data);
-		else if (candela_table[i] == 50)
-			calc_gamma_table_20_100_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_218, mtp_data);
-		else if (candela_table[i] == 60)
-			calc_gamma_table_20_100_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_22, mtp_data);
-		else if (candela_table[i] == 70)
-			calc_gamma_table_20_100_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_222, mtp_data);
-		else if (candela_table[i] == 80)
-			calc_gamma_table_20_100_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_223, mtp_data);
-		else if (candela_table[i] == 90)
-			calc_gamma_table_20_100_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_224, mtp_data);
-		else if (candela_table[i] == 100)
-			calc_gamma_table_20_100_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_225, mtp_data);
-		else if (candela_table[i] == 102)
-			calc_gamma_table_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_224, mtp_data);
-		else if (candela_table[i] == 104)
-			calc_gamma_table_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_223, mtp_data);
-		else if (candela_table[i] == 106)
-			calc_gamma_table_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_222, mtp_data);
-		else if (candela_table[i] == 108)
-			calc_gamma_table_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_221, mtp_data);
+	 for (i = 0; i < GAMMA_MAX; i++) {
+		if (candela_table[i] <= 108)
+			calc_gamma_table(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_21, mtp_data);
+		else if ((candela_table[i] > 110) && (candela_table[i] < 182))
+			calc_gamma_table(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_207, mtp_data);
 		else if (candela_table[i] == 182)
-			calc_gamma_table_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_221, mtp_data);
+			calc_gamma_table(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_208, mtp_data);
 		else if (candela_table[i] == 184)
-			calc_gamma_table_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_222, mtp_data);
+			calc_gamma_table(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_21, mtp_data);
 		else if (candela_table[i] == 186)
-			calc_gamma_table_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_223, mtp_data);
+			calc_gamma_table(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_212, mtp_data);
 		else if (candela_table[i] == 188)
-			calc_gamma_table_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_224, mtp_data);
-		else if (candela_table[i] == 190)
-			calc_gamma_table_190_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_225, mtp_data);
-		else if ((candela_table[i] > 190) && (candela_table[i] < MAX_GAMMA-1))
-			calc_gamma_table_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_225 , mtp_data);
-		else if (candela_table[i] == MAX_GAMMA-1)
-			calc_gamma_table_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_22, mtp_data);
+			calc_gamma_table(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_214, mtp_data);
 		else
-			calc_gamma_table_ea8061(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_22, mtp_data);
+			calc_gamma_table(&lcd->smart, aid_candela_table[i], &lcd->gamma_table[i][1], G_215, mtp_data);
 	}
 
 #ifdef SMART_DIMMING_DEBUG
@@ -604,37 +649,25 @@ err_alloc_gamma_table:
 
 static int init_aid_dimming_table(struct lcd_info *lcd)
 {
-	unsigned int i, j, c;
+	unsigned int i, j;
+	signed int c;
 	u16 reverse_seq[] = {0, 28, 29, 30, 31, 32, 33, 25, 26, 27, 22, 23, 24, 19, 20, 21, 16, 17, 18, 13, 14, 15, 10, 11, 12, 7, 8, 9, 4, 5, 6, 1, 2, 3};
 	u16 temp[GAMMA_PARAM_SIZE];
 
-	if ((lcd->id[1] == 0x12) || (lcd->id[1] == 0x16)) {
-		for (i = 0; i < ARRAY_SIZE(aid_rgb_fix_table_SM2); i++) {
-			j = (aid_rgb_fix_table_SM2[i].gray * 3 + aid_rgb_fix_table_SM2[i].rgb) + 1;
-			c = lcd->gamma_table[aid_rgb_fix_table_SM2[i].candela_idx][j] + aid_rgb_fix_table_SM2[i].offset;
-			if (c > 0xff)
-				lcd->gamma_table[aid_rgb_fix_table_SM2[i].candela_idx][j] = 0xff;
-			else
-				lcd->gamma_table[aid_rgb_fix_table_SM2[i].candela_idx][j] += aid_rgb_fix_table_SM2[i].offset;
-		}
-	}
-
-	if (lcd->id[1] == 0x13) {
-		for (i = 0; i < ARRAY_SIZE(aid_rgb_fix_table_M4); i++) {
-			j = (aid_rgb_fix_table_M4[i].gray * 3 + aid_rgb_fix_table_M4[i].rgb) + 1;
-			c = lcd->gamma_table[aid_rgb_fix_table_M4[i].candela_idx][j] + aid_rgb_fix_table_M4[i].offset;
-			if (c > 0xff)
-				lcd->gamma_table[aid_rgb_fix_table_M4[i].candela_idx][j] = 0xff;
-			else
-				lcd->gamma_table[aid_rgb_fix_table_M4[i].candela_idx][j] += aid_rgb_fix_table_M4[i].offset;
-		}
+	for (i = 0; i < ARRAY_SIZE(aid_rgb_fix_table); i++) {
+		j = (aid_rgb_fix_table[i].gray * 3 + aid_rgb_fix_table[i].rgb) + 1;
+		c = lcd->gamma_table[aid_rgb_fix_table[i].candela_idx][j] + aid_rgb_fix_table[i].offset;
+		if (c < 0x00)
+			lcd->gamma_table[aid_rgb_fix_table[i].candela_idx][j] = 0x00;
+		else
+			lcd->gamma_table[aid_rgb_fix_table[i].candela_idx][j] += aid_rgb_fix_table[i].offset;
 	}
 
 	for (i = 0; i < GAMMA_MAX; i++) {
-		memcpy(lcd->b3[i], SEQ_LTPS_AID, AID_PARAM_SIZE);
-		lcd->b3[i][0x02] = aid_command_table[i][1];
-		lcd->b3[i][0x01] = aid_command_table[i][0];
+		memcpy(lcd->aor[i], SEQ_AOR_CONTROL, AID_PARAM_SIZE);
+		lcd->aor[i][0x01] = aid_command_table[i][0];
 	}
+
 #ifdef SMART_DIMMING_DEBUG
 	for (i = 0; i < GAMMA_MAX; i++) {
 		for (j = 0; j < GAMMA_PARAM_SIZE; j++)
@@ -652,17 +685,16 @@ static int init_aid_dimming_table(struct lcd_info *lcd)
 		for (j = 0; j < GAMMA_PARAM_SIZE; j++)
 			lcd->gamma_table[i][j] = temp[j];
 
-		lcd->gamma_table[i][31] = lcd->smart.default_gamma[31]<<4|lcd->smart.default_gamma[30];
-		/*default_gamma 30,31th range 0000~1111 */
-		/*31,30th gamma need to reverse order , because of normal order is R,G,B
-		   but Magna DDI VT G,R,B so R,G order change to G,R order*/
-		lcd->gamma_table[i][32] = lcd->smart.default_gamma[32];
+		for (c = CI_RED; c < CI_MAX ; c++)
+			lcd->gamma_table[i][31+c] = lcd->smart.default_gamma[30+c];
+
 	}
+
 
 #ifdef SMART_DIMMING_DEBUG
 	for (i = 0; i < GAMMA_MAX; i++) {
-		for (j = 0; j < GAMMA_PARAM_SIZE-1; j++)
-			printk("0x%x,", lcd->gamma_table[i][j]);
+		for (j = 0; j < GAMMA_PARAM_SIZE; j++)
+			printk("%d,", lcd->gamma_table[i][j]);
 		printk("\n");
 	}
 #endif
@@ -685,14 +717,13 @@ static int update_brightness(struct lcd_info *lcd, u8 force)
 	lcd->bl = get_backlight_level_from_brightness(brightness);
 
 	if ((force) || ((lcd->ldi_enable) && (lcd->current_bl != lcd->bl))) {
+		s6evr01_gamma_ctl(lcd);
 
-		ea8061_gamma_ctl(lcd);
+		s6evr01_aid_parameter_ctl(lcd, force);
 
-		ea8061_aid_parameter_ctl(lcd, force);
+		s6evr01_set_acl(lcd, force);
 
-		ea8061_set_acl(lcd, force);
-
-		ea8061_set_elvss(lcd, force);
+		s6evr01_set_elvss(lcd, force);
 
 		lcd->current_bl = lcd->bl;
 
@@ -704,80 +735,57 @@ static int update_brightness(struct lcd_info *lcd, u8 force)
 	return 0;
 }
 
-static int slew_rev_control_set(struct lcd_info *lcd)
-{
-	if (lcd->id[2] == 0x00)
-		ea8061_write(lcd, SEQ_SLEW_REV00, ARRAY_SIZE(SEQ_SLEW_REV00));
-	else if (lcd->id[2] == 0x01)
-		ea8061_write(lcd, SEQ_SLEW_REV01, ARRAY_SIZE(SEQ_SLEW_REV01));
-	else if (lcd->id[2] == 0x02)
-		ea8061_write(lcd, SEQ_SLEW_REV02, ARRAY_SIZE(SEQ_SLEW_REV02));
-	else if (lcd->id[2] == 0x03)
-		ea8061_write(lcd, SEQ_SLEW_REV03, ARRAY_SIZE(SEQ_SLEW_REV03));
-	else
-		ea8061_write(lcd, SEQ_SLEW_REV04, ARRAY_SIZE(SEQ_SLEW_REV04));
-	return 0;
-}
-
-static int ea8061_ldi_init(struct lcd_info *lcd)
+static int s6evr01_ldi_init(struct lcd_info *lcd)
 {
 	int ret = 0;
-	ea8061_write(lcd, SEQ_APPLY_LEVEL_2_KEY_ENABLE, ARRAY_SIZE(SEQ_APPLY_LEVEL_2_KEY_ENABLE));
-	ea8061_write(lcd, SEQ_APPLY_LEVEL_3_KEY, ARRAY_SIZE(SEQ_APPLY_LEVEL_3_KEY));
-	if (lcd->id[1] == 0x13) {  /* M4 */
-		ea8061_write(lcd, SEQ_M4_PANEL_CONDITION_SET, ARRAY_SIZE(SEQ_M4_PANEL_CONDITION_SET));
-		ea8061_write(lcd, SEQ_DISPLAY_CONDITION_SET, ARRAY_SIZE(SEQ_DISPLAY_CONDITION_SET));
-/*		ea8061_write(lcd, SEQ_FRAME_GAMMA_UPDATE_KEY, ARRAY_SIZE(SEQ_FRAME_GAMMA_UPDATE_KEY));
-		ea8061_write(lcd, SEQ_M4_GAMMA_CONDITION_SET, ARRAY_SIZE(SEQ_M4_GAMMA_CONDITION_SET));
-		ea8061_write(lcd, SEQ_FRAME_GAMMA_UPDATE_KEY2, ARRAY_SIZE(SEQ_FRAME_GAMMA_UPDATE_KEY2)); */
-		ea8061_gamma_ctl(lcd);
-		ea8061_write(lcd, SEQ_LTPS_AID, ARRAY_SIZE(SEQ_LTPS_AID));
-		ea8061_write(lcd, ELVSS_CONTROL_SET, ARRAY_SIZE(ELVSS_CONTROL_SET));
-		ea8061_write(lcd, SEQ_ETC_WCABC_CONTROL, ARRAY_SIZE(SEQ_ETC_WCABC_CONTROL));
-		ea8061_write(lcd, SEQ_M4_SLEW, ARRAY_SIZE(SEQ_M4_SLEW));
-	} else {  /* SM2 */
-		ea8061_write(lcd, SEQ_PANEL_CONDITION_SET, ARRAY_SIZE(SEQ_PANEL_CONDITION_SET));
-		ea8061_write(lcd, SEQ_DISPLAY_CONDITION_SET, ARRAY_SIZE(SEQ_DISPLAY_CONDITION_SET));
-/*		ea8061_write(lcd, SEQ_FRAME_GAMMA_UPDATE_KEY, ARRAY_SIZE(SEQ_FRAME_GAMMA_UPDATE_KEY));
-		ea8061_write(lcd, SEQ_GAMMA_CONDITION_SET, ARRAY_SIZE(SEQ_GAMMA_CONDITION_SET));
-		ea8061_write(lcd, SEQ_FRAME_GAMMA_UPDATE_KEY2, ARRAY_SIZE(SEQ_FRAME_GAMMA_UPDATE_KEY2)); */
-		ea8061_gamma_ctl(lcd);
-		ea8061_write(lcd, SEQ_LTPS_AID, ARRAY_SIZE(SEQ_LTPS_AID));
-		ea8061_write(lcd, ELVSS_CONTROL_SET, ARRAY_SIZE(ELVSS_CONTROL_SET));
-		ea8061_write(lcd, SEQ_ETC_WCABC_CONTROL, ARRAY_SIZE(SEQ_ETC_WCABC_CONTROL));
-		slew_rev_control_set(lcd);
+	s6evr01_write(lcd, SEQ_APPLY_LEVEL_2_KEY, ARRAY_SIZE(SEQ_APPLY_LEVEL_2_KEY));
+	s6evr01_write(lcd, SEQ_SLEEP_OUT, ARRAY_SIZE(SEQ_SLEEP_OUT));
+
+	if (lcd->id[1] == 0x10) { /* for S.LSI UB(YOUM) */
+		msleep(20);
+		s6evr01_write(lcd, SEQ_GAMMA_CONDITION_SET_UB, ARRAY_SIZE(SEQ_GAMMA_CONDITION_SET_UB));
+		s6evr01_write(lcd, SEQ_GAMMA_UPDATE, ARRAY_SIZE(SEQ_GAMMA_UPDATE));
+		s6evr01_write(lcd, SEQ_BRIGHTNESS_CONTROL_ON, ARRAY_SIZE(SEQ_BRIGHTNESS_CONTROL_ON));
+		s6evr01_write(lcd, SEQ_AOR_CONTROL, ARRAY_SIZE(SEQ_AOR_CONTROL));
+		s6evr01_write(lcd, SEQ_ELVSS_CONDITION_SET_UB, ARRAY_SIZE(SEQ_ELVSS_CONDITION_SET_UB));
+		s6evr01_write(lcd, SEQ_ACL_OFF, ARRAY_SIZE(SEQ_ACL_OFF));
+	} else {
+		msleep(20);
+		s6evr01_gamma_ctl(lcd);
+		s6evr01_write(lcd, SEQ_BRIGHTNESS_CONTROL_ON, ARRAY_SIZE(SEQ_BRIGHTNESS_CONTROL_ON));
+		s6evr01_write(lcd, SEQ_AOR_CONTROL, ARRAY_SIZE(SEQ_AOR_CONTROL));
+		s6evr01_write(lcd, SEQ_ELVSS_CONDITION_SET, ARRAY_SIZE(SEQ_ELVSS_CONDITION_SET));
+		s6evr01_write(lcd, SEQ_ACL_OFF, ARRAY_SIZE(SEQ_ACL_OFF));
 	}
 
-	ea8061_write(lcd, SEQ_SLEEP_OUT, ARRAY_SIZE(SEQ_SLEEP_OUT));
+	return ret;
+}
+
+static int s6evr01_ldi_enable(struct lcd_info *lcd)
+{
+	int ret = 0;
+
+	s6evr01_write(lcd, SEQ_DISPLAY_ON, ARRAY_SIZE(SEQ_DISPLAY_ON));
 
 	return ret;
 }
 
-static int ea8061_ldi_enable(struct lcd_info *lcd)
+static int s6evr01_ldi_disable(struct lcd_info *lcd)
 {
 	int ret = 0;
 
-	ea8061_write(lcd, SEQ_DISPLAY_ON, ARRAY_SIZE(SEQ_DISPLAY_ON));
-
-	return ret;
-}
-
-static int ea8061_ldi_disable(struct lcd_info *lcd)
-{
-	int ret = 0;
-
-	ea8061_write(lcd, SEQ_DISPLAY_OFF, ARRAY_SIZE(SEQ_DISPLAY_OFF));
+	s6evr01_write(lcd, SEQ_DISPLAY_OFF, ARRAY_SIZE(SEQ_DISPLAY_OFF));
 
 	msleep(35);
 
-	ea8061_write(lcd, SEQ_SLEEP_IN, ARRAY_SIZE(SEQ_SLEEP_IN));
+	s6evr01_write(lcd, SEQ_SLEEP_IN, ARRAY_SIZE(SEQ_SLEEP_IN));
 
 	msleep(100);
 
 	return ret;
 }
 
-static int ea8061_power_on(struct lcd_info *lcd)
+static int s6evr01_power_on(struct lcd_info *lcd)
 {
 	int ret = 0;
 	struct lcd_platform_data *pd = NULL;
@@ -785,7 +793,7 @@ static int ea8061_power_on(struct lcd_info *lcd)
 
 	dev_info(&lcd->ld->dev, "%s\n", __func__);
 
-	ret = ea8061_ldi_init(lcd);
+	ret = s6evr01_ldi_init(lcd);
 	if (ret) {
 		dev_err(&lcd->ld->dev, "failed to initialize ldi.\n");
 		goto err;
@@ -793,7 +801,7 @@ static int ea8061_power_on(struct lcd_info *lcd)
 
 	msleep(120);
 
-	ret = ea8061_ldi_enable(lcd);
+	ret = s6evr01_ldi_enable(lcd);
 	if (ret) {
 		dev_err(&lcd->ld->dev, "failed to enable ldi.\n");
 		goto err;
@@ -806,7 +814,7 @@ err:
 	return ret;
 }
 
-static int ea8061_power_off(struct lcd_info *lcd)
+static int s6evr01_power_off(struct lcd_info *lcd)
 {
 	int ret = 0;
 
@@ -814,21 +822,21 @@ static int ea8061_power_off(struct lcd_info *lcd)
 
 	lcd->ldi_enable = 0;
 
-	ret = ea8061_ldi_disable(lcd);
+	ret = s6evr01_ldi_disable(lcd);
 
 	msleep(135);
 
 	return ret;
 }
 
-static int ea8061_power(struct lcd_info *lcd, int power)
+static int s6evr01_power(struct lcd_info *lcd, int power)
 {
 	int ret = 0;
 
 	if (POWER_IS_ON(power) && !POWER_IS_ON(lcd->power))
-		ret = ea8061_power_on(lcd);
+		ret = s6evr01_power_on(lcd);
 	else if (!POWER_IS_ON(power) && POWER_IS_ON(lcd->power))
-		ret = ea8061_power_off(lcd);
+		ret = s6evr01_power_off(lcd);
 
 	if (!ret)
 		lcd->power = power;
@@ -836,7 +844,7 @@ static int ea8061_power(struct lcd_info *lcd, int power)
 	return ret;
 }
 
-static int ea8061_set_power(struct lcd_device *ld, int power)
+static int s6evr01_set_power(struct lcd_device *ld, int power)
 {
 	struct lcd_info *lcd = lcd_get_data(ld);
 
@@ -846,10 +854,10 @@ static int ea8061_set_power(struct lcd_device *ld, int power)
 		return -EINVAL;
 	}
 
-	return ea8061_power(lcd, power);
+	return s6evr01_power(lcd, power);
 }
 
-static int ea8061_get_power(struct lcd_device *ld)
+static int s6evr01_get_power(struct lcd_device *ld)
 {
 	struct lcd_info *lcd = lcd_get_data(ld);
 
@@ -857,7 +865,7 @@ static int ea8061_get_power(struct lcd_device *ld)
 }
 
 
-static int ea8061_set_brightness(struct backlight_device *bd)
+static int s6evr01_set_brightness(struct backlight_device *bd)
 {
 	int ret = 0;
 	int brightness = bd->props.brightness;
@@ -883,14 +891,14 @@ static int ea8061_set_brightness(struct backlight_device *bd)
 	return ret;
 }
 
-static int ea8061_get_brightness(struct backlight_device *bd)
+static int s6evr01_get_brightness(struct backlight_device *bd)
 {
 	struct lcd_info *lcd = bl_get_data(bd);
 
 	return candela_table[lcd->bl];
 }
 
-static int ea8061_check_fb(struct lcd_device *ld, struct fb_info *fb)
+static int s6evr01_check_fb(struct lcd_device *ld, struct fb_info *fb)
 {
 	struct s3cfb_window *win = fb->par;
 	struct lcd_info *lcd = lcd_get_data(ld);
@@ -900,15 +908,15 @@ static int ea8061_check_fb(struct lcd_device *ld, struct fb_info *fb)
 	return 0;
 }
 
-static struct lcd_ops ea8061_lcd_ops = {
-	.set_power = ea8061_set_power,
-	.get_power = ea8061_get_power,
-	.check_fb  = ea8061_check_fb,
+static struct lcd_ops s6evr01_lcd_ops = {
+	.set_power = s6evr01_set_power,
+	.get_power = s6evr01_get_power,
+	.check_fb  = s6evr01_check_fb,
 };
 
-static const struct backlight_ops ea8061_backlight_ops  = {
-	.get_brightness = ea8061_get_brightness,
-	.update_status = ea8061_set_brightness,
+static const struct backlight_ops s6evr01_backlight_ops  = {
+	.get_brightness = s6evr01_get_brightness,
+	.update_status = s6evr01_set_brightness,
 };
 
 static ssize_t power_reduce_show(struct device *dev,
@@ -953,7 +961,6 @@ static ssize_t lcd_type_show(struct device *dev,
 {
 	char temp[15];
 	sprintf(temp, "SMD_AMS555HBxx\n");
-
 	strcat(buf, temp);
 	return strlen(buf);
 }
@@ -1036,7 +1043,7 @@ static DEVICE_ATTR(auto_brightness, 0644, auto_brightness_show, auto_brightness_
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static struct lcd_info *g_lcd;
 
-void ea8061_early_suspend(void)
+void s6evr01_early_suspend(void)
 {
 	struct lcd_info *lcd = g_lcd;
 
@@ -1046,30 +1053,45 @@ void ea8061_early_suspend(void)
 
 #if defined(GPIO_ERR_FG)
 	disable_irq(lcd->irq);
-	gpio_request(lcd->gpio, "ERR_FG");
-	s3c_gpio_cfgpin(lcd->gpio, S3C_GPIO_OUTPUT);
-	s3c_gpio_setpull(lcd->gpio, S3C_GPIO_PULL_NONE);
-	gpio_direction_output(lcd->gpio, GPIO_LEVEL_LOW);
-	gpio_free(lcd->gpio);
+	gpio_request(GPIO_ERR_FG, "OLED_DET");
+	s3c_gpio_cfgpin(GPIO_ERR_FG, S3C_GPIO_OUTPUT);
+	s3c_gpio_setpull(GPIO_ERR_FG, S3C_GPIO_PULL_NONE);
+	gpio_direction_output(GPIO_ERR_FG, GPIO_LEVEL_LOW);
+	gpio_free(GPIO_ERR_FG);
+#endif
+#if defined(GPIO_OLED_DET)
+	disable_irq(gpio_to_irq(GPIO_OLED_DET));
+	gpio_request(GPIO_OLED_DET, "OLED_DET");
+	s3c_gpio_cfgpin(GPIO_OLED_DET, S3C_GPIO_OUTPUT);
+	s3c_gpio_setpull(GPIO_OLED_DET, S3C_GPIO_PULL_NONE);
+	gpio_direction_output(GPIO_OLED_DET, GPIO_LEVEL_LOW);
+	gpio_free(GPIO_OLED_DET);
 #endif
 
-	ea8061_power(lcd, FB_BLANK_POWERDOWN);
+	s6evr01_power(lcd, FB_BLANK_POWERDOWN);
 	dev_info(&lcd->ld->dev, "-%s\n", __func__);
 
 	return ;
 }
 
-void ea8061_late_resume(void)
+void s6evr01_late_resume(void)
 {
 	struct lcd_info *lcd = g_lcd;
 
 	dev_info(&lcd->ld->dev, "+%s\n", __func__);
-	ea8061_power(lcd, FB_BLANK_UNBLANK);
+	s6evr01_power(lcd, FB_BLANK_UNBLANK);
 
 #if defined(GPIO_ERR_FG)
-	s3c_gpio_cfgpin(lcd->gpio, S3C_GPIO_SFN(0xf));
-	s3c_gpio_setpull(lcd->gpio, S3C_GPIO_PULL_NONE);
+	s3c_gpio_cfgpin(GPIO_ERR_FG, S3C_GPIO_SFN(0xf));
+	s3c_gpio_setpull(GPIO_ERR_FG, S3C_GPIO_PULL_NONE);
 	enable_irq(lcd->irq);
+#endif
+#if defined(GPIO_OLED_DET) && defined(GPIO_OLED_ID)
+	if (gpio_get_value(GPIO_OLED_ID)) {
+		s3c_gpio_cfgpin(GPIO_OLED_DET, S3C_GPIO_SFN(0xf));
+		s3c_gpio_setpull(GPIO_OLED_DET, S3C_GPIO_PULL_NONE);
+		enable_irq(gpio_to_irq(GPIO_OLED_DET));
+	}
 #endif
 
 	dev_info(&lcd->ld->dev, "-%s\n", __func__);
@@ -1081,14 +1103,11 @@ void ea8061_late_resume(void)
 #endif
 
 
-static void ea8061_read_id(struct lcd_info *lcd, u8 *buf)
+static void s6evr01_read_id(struct lcd_info *lcd, u8 *buf)
 {
 	int ret = 0;
-	unsigned char wbuf[] = {0xFD, LDI_ID_REG};
 
-	ea8061_write(lcd, wbuf, ARRAY_SIZE(wbuf));
-
-	ret = ea8061_read(lcd, 0xFE, LDI_ID_LEN, buf, 2);
+	ret = s6evr01_read(lcd, LDI_ID_REG, LDI_ID_LEN, buf, 2);
 	if (!ret) {
 		lcd->connected = 0;
 		dev_info(&lcd->ld->dev, "panel is not connected well\n");
@@ -1096,20 +1115,21 @@ static void ea8061_read_id(struct lcd_info *lcd, u8 *buf)
 }
 
 #ifdef SMART_DIMMING
-static int ea8061_read_mtp(struct lcd_info *lcd, u8 *mtp_data)
+static int s6evr01_read_mtp(struct lcd_info *lcd, u8 *mtp_data)
 {
 	int ret;
+	s6evr01_write(lcd, SEQ_APPLY_LEVEL_2_KEY, ARRAY_SIZE(SEQ_APPLY_LEVEL_2_KEY));
+	s6evr01_write(lcd, SEQ_APPLY_LEVEL_3_KEY, ARRAY_SIZE(SEQ_APPLY_LEVEL_3_KEY));
+	msleep(20); /* one frame delay befor reading MTP. */
+	ret = s6evr01_read(lcd, LDI_MTP_ADDR, LDI_MTP_LENGTH, mtp_data, 1);
+	s6evr01_write(lcd, SEQ_APPLY_LEVEL_3_KEY_DISABLE, ARRAY_SIZE(SEQ_APPLY_LEVEL_3_KEY_DISABLE));
+	/* s6evr01_write(lcd, SEQ_APPLY_LEVEL_2_KEY_DISABLE, ARRAY_SIZE(SEQ_APPLY_LEVEL_2_KEY_DISABLE)); */
 
-	unsigned char wbuf[] = {0xFD, LDI_MTP_ADDR};
-
-	ea8061_write(lcd, wbuf, ARRAY_SIZE(wbuf));
-
-	ret = ea8061_read(lcd, 0xFE, LDI_MTP_LENGTH, mtp_data, 1);
 	return ret;
 }
 #endif
 
-static int ea8061_probe(struct device *dev)
+static int s6evr01_probe(struct device *dev)
 {
 	int ret = 0, i;
 	struct lcd_info *lcd;
@@ -1127,14 +1147,14 @@ static int ea8061_probe(struct device *dev)
 
 	g_lcd = lcd;
 
-	lcd->ld = lcd_device_register("panel", dev, lcd, &ea8061_lcd_ops);
+	lcd->ld = lcd_device_register("panel", dev, lcd, &s6evr01_lcd_ops);
 	if (IS_ERR(lcd->ld)) {
 		pr_err("failed to register lcd device\n");
 		ret = PTR_ERR(lcd->ld);
 		goto out_free_lcd;
 	}
 
-	lcd->bd = backlight_device_register("panel", dev, lcd, &ea8061_backlight_ops, NULL);
+	lcd->bd = backlight_device_register("panel", dev, lcd, &s6evr01_backlight_ops, NULL);
 	if (IS_ERR(lcd->bd)) {
 		pr_err("failed to register backlight device\n");
 		ret = PTR_ERR(lcd->bd);
@@ -1179,27 +1199,30 @@ static int ea8061_probe(struct device *dev)
 	mutex_init(&lcd->lock);
 	mutex_init(&lcd->bl_lock);
 
-	ea8061_read_id(lcd, lcd->id);
+	s6evr01_read_id(lcd, lcd->id);
 
 	dev_info(&lcd->ld->dev, "ID: %x, %x, %x\n", lcd->id[0], lcd->id[1], lcd->id[2]);
 
 	dev_info(&lcd->ld->dev, "%s lcd panel driver has been probed.\n", dev_name(dev));
 
 #ifdef SMART_DIMMING
-	for (i = 0; i < LDI_ID_LEN; i++)
+	for (i = 0; i < LDI_ID_LEN; i++) {
 		lcd->smart.panelid[i] = lcd->id[i];
+	}
 
-	init_table_info_ea8061(&lcd->smart);
+	init_table_info(&lcd->smart);
 
-	ret = ea8061_read_mtp(lcd, mtp_data);
+	ret = s6evr01_read_mtp(lcd, mtp_data);
 /*
 	for (i = 0; i < LDI_MTP_LENGTH ; i++)
 		printk(" %dth mtp value is %x\n", i, mtp_data[i]);
 */
-	if (!ret)
+	if (!ret) {
 		printk(KERN_ERR "[LCD:ERROR] : %s read mtp failed\n", __func__);
+		/*return -EPERM;*/
+	}
 
-	calc_voltage_table_ea8061(&lcd->smart, mtp_data);
+	calc_voltage_table(&lcd->smart, mtp_data);
 
 	ret = init_elvss_table(lcd);
 	ret += init_gamma_table(lcd, mtp_data);
@@ -1208,6 +1231,7 @@ static int ea8061_probe(struct device *dev)
 	if (ret)
 		printk(KERN_ERR "gamma table generation is failed\n");
 
+
 	update_brightness(lcd, 1);
 #endif
 
@@ -1215,21 +1239,33 @@ static int ea8061_probe(struct device *dev)
 	if (lcd->connected) {
 		INIT_DELAYED_WORK(&lcd->err_fg_detection, err_fg_detection_work);
 
-		/* lcd->gpio = GPIO_OLED_DET; */
-		lcd->gpio = GPIO_ERR_FG;
-		lcd->irq = gpio_to_irq(lcd->gpio);
+		lcd->irq = gpio_to_irq(GPIO_ERR_FG);
 
-		s3c_gpio_cfgpin(lcd->gpio, S3C_GPIO_SFN(0xf));
-		s3c_gpio_setpull(lcd->gpio, S3C_GPIO_PULL_NONE);
+		irq_set_irq_type(lcd->irq, IRQ_TYPE_EDGE_RISING);
+
+		s3c_gpio_cfgpin(GPIO_ERR_FG, S3C_GPIO_SFN(0xf));
+		s3c_gpio_setpull(GPIO_ERR_FG, S3C_GPIO_PULL_NONE);
 
 		if (request_irq(lcd->irq, err_fg_detection_int,
-			IRQF_TRIGGER_FALLING, "err_fg_detection", lcd))
+			IRQF_TRIGGER_RISING, "err_fg_detection", lcd))
 			pr_err("failed to reqeust irq. %d\n", lcd->irq);
 	}
 #endif
+#if defined(GPIO_OLED_DET)
+	if (lcd->connected) {
+		INIT_DELAYED_WORK(&lcd->oled_detection, oled_detection_work);
 
-	lcd_early_suspend = ea8061_early_suspend;
-	lcd_late_resume = ea8061_late_resume;
+		s3c_gpio_cfgpin(GPIO_OLED_DET, S3C_GPIO_SFN(0xf));
+		s3c_gpio_setpull(GPIO_OLED_DET, S3C_GPIO_PULL_NONE);
+
+		if (request_irq(gpio_to_irq(GPIO_OLED_DET), oled_detection_int,
+			IRQF_TRIGGER_FALLING, "oled_detection", lcd))
+			pr_err("failed to reqeust irq. %d\n", gpio_to_irq(GPIO_OLED_DET));
+	}
+#endif
+
+	lcd_early_suspend = s6evr01_early_suspend;
+	lcd_late_resume = s6evr01_late_resume;
 
 	return 0;
 
@@ -1246,11 +1282,11 @@ err_alloc:
 	return ret;
 }
 
-static int __devexit ea8061_remove(struct device *dev)
+static int __devexit s6evr01_remove(struct device *dev)
 {
 	struct lcd_info *lcd = dev_get_drvdata(dev);
 
-	ea8061_power(lcd, FB_BLANK_POWERDOWN);
+	s6evr01_power(lcd, FB_BLANK_POWERDOWN);
 	lcd_device_unregister(lcd->ld);
 	backlight_device_unregister(lcd->bd);
 	kfree(lcd);
@@ -1259,34 +1295,34 @@ static int __devexit ea8061_remove(struct device *dev)
 }
 
 /* Power down all displays on reboot, poweroff or halt. */
-static void ea8061_shutdown(struct device *dev)
+static void s6evr01_shutdown(struct device *dev)
 {
 	struct lcd_info *lcd = dev_get_drvdata(dev);
 
 	dev_info(&lcd->ld->dev, "%s\n", __func__);
 
-	ea8061_power(lcd, FB_BLANK_POWERDOWN);
+	s6evr01_power(lcd, FB_BLANK_POWERDOWN);
 }
 
-static struct mipi_lcd_driver ea8061_mipi_driver = {
-	.name = "ea8061",
-	.probe			= ea8061_probe,
-	.remove			= __devexit_p(ea8061_remove),
-	.shutdown		= ea8061_shutdown,
+static struct mipi_lcd_driver s6evr01_mipi_driver = {
+	.name = "s6evr01",
+	.probe			= s6evr01_probe,
+	.remove			= __devexit_p(s6evr01_remove),
+	.shutdown		= s6evr01_shutdown,
 };
 
-static int ea8061_init(void)
+static int s6evr01_init(void)
 {
-	return s5p_dsim_register_lcd_driver(&ea8061_mipi_driver);
+	return s5p_dsim_register_lcd_driver(&s6evr01_mipi_driver);
 }
 
-static void ea8061_exit(void)
+static void s6evr01_exit(void)
 {
 	return;
 }
 
-module_init(ea8061_init);
-module_exit(ea8061_exit);
+module_init(s6evr01_init);
+module_exit(s6evr01_exit);
 
-MODULE_DESCRIPTION("MIPI-DSI EA8061:AMS555HBXX (720x1280) Panel Driver");
+MODULE_DESCRIPTION("MIPI-DSI S6EVER02:AMS555HBXX (720x1280) Panel Driver");
 MODULE_LICENSE("GPL");

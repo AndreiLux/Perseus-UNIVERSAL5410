@@ -32,20 +32,24 @@
 
 #include "s5p-dsim.h"
 #include "s3cfb.h"
-#include "s6e8aa0_gamma_l.h"
+#include "s6e8aa0a_gamma_l.h"
 
 #if defined(CONFIG_S6E8AA0_AMS529HA01)
 #include "s6e8aa0_gamma_q1.h"
 #define SMART_DIMMING
 #else
-#include "s6e8aa0_gamma_c1m0.h"
+#include "s6e8aa0a_gamma_c1m0.h"
 #define SMART_DIMMING
 #endif
 
 #ifdef SMART_DIMMING
 #include "smart_dimming.h"
 #ifdef CONFIG_AID_DIMMING
+#ifdef CONFIG_S6E8AA0_AMS465XX
+#include "aid_s6e8aa0a.h"
+#else
 #include "aid_s6e8aa0.h"
+#endif
 #endif
 #endif
 
@@ -65,6 +69,7 @@
 
 #define LDI_ID_REG			0xD1
 #define LDI_ID_LEN			3
+#define DDI_STATUS_REG_PREVENTESD
 
 #ifdef SMART_DIMMING
 #define	PANEL_A1_M3			0xA1
@@ -126,10 +131,31 @@ struct lcd_info {
 	struct delayed_work		oled_detection;
 	unsigned int			oled_detection_count;
 #endif
+#ifdef DDI_STATUS_REG_PREVENTESD
+	struct delayed_work		check_ddi;
+#endif
 	struct dsim_global		*dsim;
 };
 
 #ifdef CONFIG_AID_DIMMING
+#ifdef CONFIG_S6E8AA0_AMS465XX
+static const unsigned int candela_table[GAMMA_MAX] = {
+	 20,  30,  40,  50,  60,  70,  80,  90, 100,
+	110, 120, 130, 140, 150, 160, 170, 180,
+	182, 184, 186, 188,
+	190, 200, 210, 220, 230, 240, 250, MAX_GAMMA-1
+};
+
+static unsigned int aid_candela_table[GAMMA_MAX] = {
+	base_20to100, base_20to100, base_20to100, base_20to100,
+	base_20to100, base_20to100, base_20to100, base_20to100,
+	base_20to100,
+	AOR40_BASE_110, AOR40_BASE_120, AOR40_BASE_130, AOR40_BASE_140,
+	AOR40_BASE_150, AOR40_BASE_160, AOR40_BASE_170, AOR40_BASE_180,
+	AOR40_BASE_182, AOR40_BASE_184, AOR40_BASE_186, AOR40_BASE_188,
+	190, 200, 210, 220, 230, 240, 250, MAX_GAMMA-1
+};
+#else
 static const unsigned int candela_table[GAMMA_MAX] = {
 	 20,  30,  40,  50,  60,  70,  80,  90, 100,
 	102, 104, 106, 108,
@@ -145,6 +171,7 @@ static unsigned int aid_candela_table[GAMMA_MAX] = {
 	AOR40_BASE_182, AOR40_BASE_184, AOR40_BASE_186, AOR40_BASE_188,
 	190, 200, 210, 220, 230, 240, 250, MAX_GAMMA-1
 };
+#endif
 
 static unsigned int elvss_offset_table[ELVSS_STATUS_MAX] = {
 	ELVSS_OFFSET_110,
@@ -183,8 +210,69 @@ static unsigned int elvss_offset_table[ELVSS_STATUS_MAX] = {
 };
 #endif
 
+#ifdef DDI_STATUS_REG_PREVENTESD
+#define DDI_STATUS_REG		0x0a
+#define DDI_STATUS_LEN		0x01
+static void s3cfb_reinitialize_lcd(void);
+static int s6e8ax0_read_ddi_status_reg(struct lcd_info *lcd, u8 *buf);
+#endif
 extern void (*lcd_early_suspend)(void);
 extern void (*lcd_late_resume)(void);
+#ifdef DDI_STATUS_REG_PREVENTESD
+static void check_ddi_work(struct work_struct *work)
+{
+	int ret;
+	unsigned char	ddi_status[DDI_STATUS_LEN];
+	unsigned long	ms_jiffies = msecs_to_jiffies(3000);
+	struct lcd_info *lcd =
+		container_of(work, struct lcd_info, check_ddi.work);
+
+	if (!lcd->connected) {
+		printk(KERN_INFO "%s, lcd is disconnected\n", __func__);
+		return;
+	}
+
+	/* check ldi status - should be ldi enabled.*/
+	if (lcd->ldi_enable != 1) {
+		printk(KERN_INFO "%s, ldi is disabled\n", __func__);
+		goto out;
+	}
+
+	ret = s6e8ax0_read_ddi_status_reg(lcd, ddi_status);
+	if (!ret) {
+		printk(KERN_INFO "%s, read failed\n", __func__);
+		set_dsim_hs_clk_toggle_count(0);
+		s3cfb_reinitialize_lcd();
+		ms_jiffies = msecs_to_jiffies(3000);
+	}
+
+	if (0x00 != ddi_status[0]) {/*0x9c*/
+	/*printk(KERN_INFO "%s,
+	normal ddi_status 0x%02x \n",__func__, ddi_status[0]);*/
+		if (lcd->oled_detection_count)
+			set_dsim_hs_clk_toggle_count(0);
+
+		lcd->oled_detection_count = 0;
+		ms_jiffies = msecs_to_jiffies(3000);
+	} else {
+	printk(KERN_INFO "%s, invalid ddi_status [0]=0x%02x\n",
+		__func__, ddi_status[0]);
+		if (lcd->oled_detection_count < 3) {
+			lcd->oled_detection_count++;
+			set_dsim_hs_clk_toggle_count(15);
+			ms_jiffies = msecs_to_jiffies(500);
+		} else {
+			set_dsim_hs_clk_toggle_count(0);
+			s3cfb_reinitialize_lcd();
+			ms_jiffies = msecs_to_jiffies(3000);
+		}
+	}
+out:
+	schedule_delayed_work(&lcd->check_ddi, ms_jiffies);
+	return;
+}
+#endif
+
 
 #if defined(GPIO_OLED_DET)
 static void oled_detection_work(struct work_struct *work)
@@ -194,7 +282,8 @@ static void oled_detection_work(struct work_struct *work)
 
 	int oled_det_level = gpio_get_value(GPIO_OLED_DET);
 
-	dev_info(&lcd->ld->dev, "%s, %d, %d\n", __func__, lcd->oled_detection_count, oled_det_level);
+	dev_info(&lcd->ld->dev, "%s, %d, %d\n", __func__,
+		lcd->oled_detection_count, oled_det_level);
 
 	if (!oled_det_level) {
 		if (lcd->oled_detection_count < 10) {
@@ -281,6 +370,17 @@ read_retry:
 	return ret;
 }
 
+#ifdef DDI_STATUS_REG_PREVENTESD
+static int s6e8ax0_read_ddi_status_reg(struct lcd_info *lcd, u8 *buf)
+{
+	int ret = 0;
+	ret = s6e8ax0_read(lcd, DDI_STATUS_REG, DDI_STATUS_LEN, buf, 3);
+	if (!ret)
+		dev_info(&lcd->ld->dev, "read failed ddi_status_reg\n");
+
+	return ret;
+}
+#endif
 #ifdef CONFIG_AID_DIMMING
 static int get_backlight_level_from_brightness(int brightness)
 {
@@ -314,6 +414,11 @@ static int get_backlight_level_from_brightness(int brightness)
 	case 90 ... 99:
 		backlightlevel = GAMMA_90CD;
 		break;
+#ifdef CONFIG_S6E8AA0_AMS465XX
+	case 100 ... 109:
+		backlightlevel = GAMMA_100CD;
+		break;
+#else
 	case 100 ... 101:
 		backlightlevel = GAMMA_100CD;
 		break;
@@ -329,6 +434,7 @@ static int get_backlight_level_from_brightness(int brightness)
 	case 108 ... 109:
 		backlightlevel = GAMMA_108CD;
 		break;
+#endif
 	case 110 ... 119:
 		backlightlevel = GAMMA_110CD;
 		break;
@@ -825,11 +931,14 @@ static int init_aid_dimming_table(struct lcd_info *lcd)
 	}
 
 	for (i = 0; i < GAMMA_MAX; i++) {
-#if defined(CONFIG_LCD_REVERSE)
-		memcpy(lcd->f8[i], SEQ_REVERSE_PANEL_CONDITION_SET_500MBPS, AID_PARAM_SIZE);
+#ifdef CONFIG_S6E8AA0_AMS465XX
+		memcpy(lcd->f8[i], SEQ_PANEL_CONDITION_SET_480MBPS_465,
+				AID_PARAM_SIZE);
 #else
-		memcpy(lcd->f8[i], SEQ_PANEL_CONDITION_SET_500MBPS, AID_PARAM_SIZE);
+		memcpy(lcd->f8[i], SEQ_PANEL_CONDITION_SET_500MBPS,
+				AID_PARAM_SIZE);
 #endif
+
 		lcd->f8[i][0x12] = aid_command_table[i][0];
 		lcd->f8[i][0x01] = aid_command_table[i][1];
 	}
@@ -947,19 +1056,28 @@ static int s6e8ax0_ldi_init(struct lcd_info *lcd)
 
 	/* 4.8" HD for M0/C1*/
 	if (lcd->id[1] == 0x20 || lcd->id[1] == 0x40 || lcd->id[1] == 0x60) {
-#if defined(CONFIG_LCD_REVERSE)
-		s6e8ax0_write(lcd, SEQ_REVERSE_PANEL_CONDITION_SET_500MBPS,\
-			ARRAY_SIZE(SEQ_REVERSE_PANEL_CONDITION_SET_500MBPS));
-#else
 		s6e8ax0_write(lcd, SEQ_PANEL_CONDITION_SET_500MBPS,\
 			ARRAY_SIZE(SEQ_PANEL_CONDITION_SET_500MBPS));
-#endif
 		s6e8ax0_write(lcd, SEQ_DISPLAY_CONDITION_SET, ARRAY_SIZE(SEQ_DISPLAY_CONDITION_SET));
 		s6e8ax0_gamma_ctl(lcd);
 		s6e8ax0_write(lcd, SEQ_ETC_SOURCE_CONTROL, ARRAY_SIZE(SEQ_ETC_SOURCE_CONTROL));
 		s6e8ax0_write(lcd, SEQ_ETC_PENTILE_CONTROL, ARRAY_SIZE(SEQ_ETC_PENTILE_CONTROL));
 		s6e8ax0_write(lcd, SEQ_ETC_NVM_SETTING, ARRAY_SIZE(SEQ_ETC_NVM_SETTING));
 		s6e8ax0_write(lcd, SEQ_ETC_POWER_CONTROL, ARRAY_SIZE(SEQ_ETC_POWER_CONTROL));
+	} else if (lcd->id[1] == 0x01 || lcd->id[1] == 0x02) {
+		s6e8ax0_write(lcd, SEQ_PANEL_CONDITION_SET_480MBPS_465,
+			ARRAY_SIZE(SEQ_PANEL_CONDITION_SET_480MBPS_465));
+		s6e8ax0_write(lcd, SEQ_DISPLAY_CONDITION_SET,
+			ARRAY_SIZE(SEQ_DISPLAY_CONDITION_SET));
+		s6e8ax0_gamma_ctl(lcd);
+		s6e8ax0_write(lcd, SEQ_ETC_SOURCE_CONTROL,
+			ARRAY_SIZE(SEQ_ETC_SOURCE_CONTROL));
+		s6e8ax0_write(lcd, SEQ_ETC_PENTILE_CONTROL_465,
+			ARRAY_SIZE(SEQ_ETC_PENTILE_CONTROL_465));
+		s6e8ax0_write(lcd, SEQ_ETC_NVM_SETTING_465,
+			ARRAY_SIZE(SEQ_ETC_NVM_SETTING_465));
+		s6e8ax0_write(lcd, SEQ_ETC_POWER_CONTROL_46,
+			ARRAY_SIZE(SEQ_ETC_POWER_CONTROL_46));
 	} else if (lcd->id[1] == 0xae) {
 		s6e8ax0_write(lcd, SEQ_PANEL_CONDITION_SET_480MBPS_46, ARRAY_SIZE(SEQ_PANEL_CONDITION_SET_480MBPS_46));
 		s6e8ax0_write(lcd, SEQ_DISPLAY_CONDITION_SET, ARRAY_SIZE(SEQ_DISPLAY_CONDITION_SET));
@@ -1214,11 +1332,7 @@ static ssize_t lcd_type_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	char temp[15];
-#if defined(CONFIG_S6E8AA0_AMS529HA01)
-	sprintf(temp, "SMD_AMS529HA01\n");
-#else
-	sprintf(temp, "SMD_AMS480GYXX\n");
-#endif
+	sprintf(temp, "SMD_AMS465GS37-0\n");
 	strcat(buf, temp);
 	return strlen(buf);
 }
@@ -1302,6 +1416,15 @@ void s6e8ax0_early_suspend(void)
 	gpio_direction_output(GPIO_OLED_DET, GPIO_LEVEL_LOW);
 	gpio_free(GPIO_OLED_DET);
 #endif
+#ifdef DDI_STATUS_REG_PREVENTESD
+	if (lcd->connected) {
+		bool ret;
+		ret = cancel_delayed_work(&lcd->check_ddi);
+		if (ret)
+			printk(KERN_INFO "%s, success - cancel delayed work\n",
+				__func__);
+	}
+#endif
 	s6e8ax0_power(lcd, FB_BLANK_POWERDOWN);
 	dev_info(&lcd->ld->dev, "-%s\n", __func__);
 
@@ -1319,12 +1442,29 @@ void s6e8ax0_late_resume(void)
 	s3c_gpio_setpull(GPIO_OLED_DET, S3C_GPIO_PULL_NONE);
 	enable_irq(lcd->irq);
 #endif
+#ifdef DDI_STATUS_REG_PREVENTESD
+	if (lcd->connected)
+		schedule_delayed_work(&lcd->check_ddi, msecs_to_jiffies(3000));
+#endif
 	dev_info(&lcd->ld->dev, "-%s\n", __func__);
 
 	set_dsim_lcd_enabled(1);
 
 	return ;
 }
+#ifdef DDI_STATUS_REG_PREVENTESD
+static void s3cfb_reinitialize_lcd(void)
+{
+	s6e8ax0_early_suspend();
+	s5p_dsim_early_suspend();
+	msleep(20);
+	s5p_dsim_late_resume();
+
+	msleep(20);
+	s6e8ax0_late_resume();
+	printk(KERN_INFO "%s, re-initialize LCD - Done\n", __func__);
+}
+#endif
 #endif
 
 static void s6e8ax0_read_id(struct lcd_info *lcd, u8 *buf)
@@ -1512,7 +1652,8 @@ static int s6e8ax0_probe(struct device *dev)
 	ret += init_gamma_table(lcd);
 
 #ifdef CONFIG_AID_DIMMING
-	if (lcd->id[1] == 0x20 || lcd->id[1] == 0x40 || lcd->id[1] == 0x60) {
+	if (lcd->id[1] == 0x20 || lcd->id[1] == 0x40 || lcd->id[1] == 0x60
+			|| lcd->id[1] == 0x01 || lcd->id[1] == 0x02) {
 		printk(KERN_INFO "AID Dimming is started. %d\n", lcd->id[1]);
 		lcd->support_aid = 1;
 		ret += init_aid_dimming_table(lcd);
@@ -1542,6 +1683,12 @@ static int s6e8ax0_probe(struct device *dev)
 	}
 #endif
 
+#ifdef DDI_STATUS_REG_PREVENTESD
+	if (lcd->connected) {
+		INIT_DELAYED_WORK(&lcd->check_ddi, check_ddi_work);
+		schedule_delayed_work(&lcd->check_ddi, msecs_to_jiffies(20000));
+	}
+#endif
 	lcd_early_suspend = s6e8ax0_early_suspend;
 	lcd_late_resume = s6e8ax0_late_resume;
 
