@@ -78,6 +78,9 @@ static u8 tos_to_tid_inv[] = {
 
 static u8 ac_to_tid[4][2] = { {1, 2}, {0, 3}, {4, 5}, {6, 7} };
 
+static int disable_tx_aggregation = 1;
+module_param(disable_tx_aggregation, int, 0644);
+
 /*
  * This function debug prints the priority parameters for a WMM AC.
  */
@@ -1211,6 +1214,7 @@ mwifiex_dequeue_tx_packet(struct mwifiex_adapter *adapter)
 	}
 
 	if (!ptr->is_11n_enabled ||
+	    disable_tx_aggregation ||
 	    mwifiex_is_ba_stream_setup(priv, ptr, tid) ||
 	    priv->wps.session_enable ||
 	    ((priv->sec_info.wpa_enabled ||
