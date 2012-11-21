@@ -79,8 +79,8 @@ static struct sec_jack_zone sec_jack_zones[] = {
 		 * in this range for 300ms (15ms delays, 20 samples)
 		 */
 		.adc_high = 0,
-		.delay_ms = 15,
-		.check_count = 20,
+		.delay_ms = 10,
+		.check_count = 5,
 		.jack_type = SEC_HEADSET_3POLE,
 	},
 	{
@@ -89,7 +89,7 @@ static struct sec_jack_zone sec_jack_zones[] = {
 		 */
 		.adc_high = 1200,
 		.delay_ms = 10,
-		.check_count = 80,
+		.check_count = 5,
 		.jack_type = SEC_HEADSET_3POLE,
 	},
 	{

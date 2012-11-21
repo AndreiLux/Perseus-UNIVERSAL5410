@@ -85,7 +85,10 @@ static void sec_reboot(char str, const char *cmd)
 		unsigned long value;
 		if (!strcmp(cmd, "fota"))
 			writel(REBOOT_MODE_PREFIX | REBOOT_MODE_FOTA,
-			       S5P_INFORM3);
+					S5P_INFORM3);
+		else if (!strcmp(cmd, "arm11_fota"))
+			writel(REBOOT_MODE_PREFIX | REBOOT_MODE_FOTA,
+					S5P_INFORM3);
 		else if (!strcmp(cmd, "fota_bl"))
 			writel(REBOOT_MODE_PREFIX | REBOOT_MODE_FOTA_BL,
 			       S5P_INFORM3);

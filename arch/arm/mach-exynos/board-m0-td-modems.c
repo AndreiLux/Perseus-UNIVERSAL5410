@@ -120,6 +120,11 @@ static struct modem_io_t tdscdma_io_devices[] = {
 	},
 };
 
+static struct modemlink_pm_data modem_link_pm_data = {
+	.name = "td_link_pm",
+	.gpio_link_enable = 0,
+};
+
 /* To get modem state, register phone active irq using resource */
 static struct resource tdscdma_modem_res[] = {
 };
@@ -148,6 +153,8 @@ static struct modem_data tdscdma_modem_data = {
 
 	.num_iodevs = ARRAY_SIZE(tdscdma_io_devices),
 	.iodevs = tdscdma_io_devices,
+
+	.link_pm_data = &modem_link_pm_data,
 };
 
 /* if use more than one modem device, then set id num */

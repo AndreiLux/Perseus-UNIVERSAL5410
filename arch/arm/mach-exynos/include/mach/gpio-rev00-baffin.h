@@ -338,5 +338,7 @@ extern void midas_config_sleep_gpio_table(void);
 
 #define GPIO_LED_VDD_EN		EXYNOS4212_GPM0(0)
 #define GPIO_KEY_LED_CTRL	EXYNOS4_GPF2(6)
+#define GPIO_MSENSE_RST_N	EXYNOS4_GPY2(1)
 
+#define GPIO_LINEOUT_EN		EXYNOS4_GPL0(3)
 #endif /* __MACH_GPIO_BAFFIN_H */

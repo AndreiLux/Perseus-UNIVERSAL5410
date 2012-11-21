@@ -280,6 +280,22 @@ static struct s3c2410_uartcfg smdkc210_uartcfgs[] __initdata = {
  */
 
 #ifdef CONFIG_VIDEO_M5MO
+
+struct class *camera_class;
+
+static int __init camera_class_init(void)
+{
+	camera_class = class_create(THIS_MODULE, "camera");
+	if (IS_ERR(camera_class)) {
+		pr_err("Failed to create class(camera)!\n");
+		return PTR_ERR(camera_class);
+	}
+
+	return 0;
+}
+
+subsys_initcall(camera_class_init);
+
 #define CAM_CHECK_ERR_RET(x, msg)					\
 	if (unlikely((x) < 0)) {					\
 		printk(KERN_ERR "\nfail to %s: err = %d\n", msg, x);	\
@@ -305,7 +321,7 @@ static int m5mo_power_on(void)
 	struct regulator *regulator;
 	int ret = 0;
 
-	printk(KERN_DEBUG "%s: in\n", __func__);
+	printk(KERN_DEBUG "%s: in. hw=0x%X\n", __func__, system_rev);
 
 	ret = gpio_request(GPIO_CAM_VGA_nSTBY, "GPL2");
 	if (ret) {
@@ -1154,6 +1170,9 @@ static struct s5k5bafx_platform_data s5k5bafx_plat = {
 	.pixelformat = V4L2_PIX_FMT_UYVY,
 	.freq = 24000000,
 	.is_mipi = 1,
+	.streamoff_delay = S5K5BAFX_STREAMOFF_DELAY,
+	.init_streamoff = true,
+	.dbg_level = CAMDBG_LEVEL_DEFAULT,
 };
 
 static struct i2c_board_info s5k5bafx_i2c_info = {
@@ -3331,7 +3350,63 @@ static struct max8997_motor_data max8997_motor = {
 #endif
 #endif
 
-#ifdef CONFIG_MACH_U1_KOR_LGT
+#if defined(CONFIG_TARGET_LOCALE_NA)
+#define USB_PATH_AP	0
+#define USB_PATH_CP	       1
+#define USB_PATH_ALL	2
+extern int u1_get_usb_hub_path(void);
+static int max8997_muic_set_safeout(int path)
+{
+	struct regulator *regulator;
+	int hub_usb_path = u1_get_usb_hub_path();
+
+	if (hub_usb_path == USB_PATH_CP) {
+		regulator = regulator_get(NULL, "safeout1");
+		if (IS_ERR(regulator))
+			return -ENODEV;
+		if (regulator_is_enabled(regulator))
+			regulator_force_disable(regulator);
+		regulator_put(regulator);
+
+		regulator = regulator_get(NULL, "safeout2");
+		if (IS_ERR(regulator))
+			return -ENODEV;
+		if (!regulator_is_enabled(regulator))
+			regulator_enable(regulator);
+		regulator_put(regulator);
+	} else if (hub_usb_path == USB_PATH_AP) {
+		regulator = regulator_get(NULL, "safeout1");
+		if (IS_ERR(regulator))
+			return -ENODEV;
+		if (!regulator_is_enabled(regulator))
+			regulator_enable(regulator);
+		regulator_put(regulator);
+
+		regulator = regulator_get(NULL, "safeout2");
+		if (IS_ERR(regulator))
+			return -ENODEV;
+		if (regulator_is_enabled(regulator))
+			regulator_force_disable(regulator);
+		regulator_put(regulator);
+	} else if (hub_usb_path == USB_PATH_ALL) {
+		regulator = regulator_get(NULL, "safeout1");
+		if (IS_ERR(regulator))
+			return -ENODEV;
+		if (!regulator_is_enabled(regulator))
+			regulator_enable(regulator);
+		regulator_put(regulator);
+
+		regulator = regulator_get(NULL, "safeout2");
+		if (IS_ERR(regulator))
+			return -ENODEV;
+		if (!regulator_is_enabled(regulator))
+			regulator_enable(regulator);
+		regulator_put(regulator);
+	}
+
+	return 0;
+}
+#elif defined(CONFIG_MACH_U1_KOR_LGT)
 static int max8997_muic_set_safeout(int path)
 {
 	static int safeout2_enabled;
@@ -5375,6 +5450,7 @@ static const u8 *mxt224_config[] = {
 #define MXT224E_BLEN_BATT		32
 #define MXT224E_T48_BLEN_BATT		0
 #define MXT224E_BLEN_CHRG		0
+#define MXT224E_T48_BLEN_CHRG		0
 #define MXT224E_MOVFILTER_BATT		14
 #define MXT224E_MOVFILTER_CHRG		46
 #define MXT224E_ACTVSYNCSPERX_NORMAL		29
@@ -6639,6 +6715,7 @@ static struct i2c_board_info i2c_devs16[] __initdata = {
 
 
 #ifdef CONFIG_S3C_DEV_I2C17_EMUL
+#ifdef CONFIG_USBHUB_USB3803
 /* I2C17_EMUL */
 static struct i2c_gpio_platform_data i2c17_platdata = {
 	.sda_pin = GPIO_USB_I2C_SDA,
@@ -6651,7 +6728,7 @@ struct platform_device s3c_device_i2c17 = {
 	.dev.platform_data = &i2c17_platdata,
 };
 
-
+#endif
 #endif /* CONFIG_S3C_DEV_I2C17_EMUL */
 
 #ifdef CONFIG_USBHUB_USB3803
@@ -7099,6 +7176,7 @@ static struct platform_device *smdkc210_devices[] __initdata = {
 #ifdef CONFIG_BATTERY_SAMSUNG
 	&samsung_device_battery,
 #endif
+
 #ifdef CONFIG_FB_S5P
 	&s3c_device_fb,
 #endif
@@ -7156,8 +7234,10 @@ static struct platform_device *smdkc210_devices[] __initdata = {
 #if defined(CONFIG_SMB136_CHARGER_Q1) || defined(CONFIG_SMB328_CHARGER)
 	&s3c_device_i2c19,	/* SMB136, SMB328 */
 #endif
+#if defined(CONFIG_USBHUB_USB3803)
 #if defined(CONFIG_S3C_DEV_I2C17_EMUL)
 	&s3c_device_i2c17,	/* USB HUB */
+#endif
 #endif
 #endif
 
@@ -7402,6 +7482,17 @@ static void __init exynos4_cma_region_reserve(struct cma_region *regions_normal,
 			continue;
 
 		if (reg->start) {
+#if defined(CONFIG_USE_MFC_CMA) && defined(CONFIG_MACH_Q1_BD)
+			if (reg->start == 0x67200000) {
+				if (!memblock_is_region_reserved
+					(reg->start, 0x600000) &&
+					memblock_reserve(reg->start,
+						reg->size) >= 0)
+					reg->reserved = 1;
+			} else if (reg->start == 0x68400000)
+				reg->reserved = 1;
+			else
+#endif
 			if (!memblock_is_region_reserved(reg->start, reg->size)
 			    && memblock_reserve(reg->start, reg->size) >= 0)
 				reg->reserved = 1;
@@ -7413,6 +7504,10 @@ static void __init exynos4_cma_region_reserve(struct cma_region *regions_normal,
 				reg->reserved = 1;
 			}
 		}
+
+		if (reg->reserved)
+			pr_info("S5P/CMA: Reserved 0x%08x/0x%08x for '%s'\n",
+				reg->start, reg->size, reg->name);
 	}
 
 	if (regions_secure && regions_secure->size) {
@@ -7507,7 +7602,11 @@ static void __init exynos4_reserve_mem(void)
 			{
 				.alignment = 1 << 17,
 			},
+#if defined(CONFIG_USE_MFC_CMA) && defined(CONFIG_MACH_Q1_BD)
+			.start = 0x68400000,
+#else
 			.start = 0,
+#endif
 		},
 #endif
 #ifdef CONFIG_VIDEO_SAMSUNG_MEMSIZE_MFC0
@@ -7517,7 +7616,11 @@ static void __init exynos4_reserve_mem(void)
 			{
 				.alignment = 1 << 17,
 			},
+#if defined(CONFIG_USE_MFC_CMA) && defined(CONFIG_MACH_Q1_BD)
+			.start = 0x67200000,
+#else
 			.start = 0,
+#endif
 		},
 #endif
 #ifdef CONFIG_VIDEO_SAMSUNG_MEMSIZE_MFC
@@ -7555,7 +7658,12 @@ static void __init exynos4_reserve_mem(void)
 		{
 			.name = "tvout",
 			.size = CONFIG_VIDEO_SAMSUNG_MEMSIZE_TVOUT * SZ_1K,
+#ifdef CONFIG_USE_TVOUT_CMA
+			.start = 0x65800000,
+			.reserved = 1,
+#else
 			.start = 0,
+#endif
 		},
 #endif
 		{
@@ -7590,6 +7698,25 @@ static void __init exynos4_reserve_mem(void)
 
 }
 #endif
+
+static void __init exynos_reserve(void)
+{
+#ifdef CONFIG_USE_TVOUT_CMA
+	if (dma_declare_contiguous(&s5p_device_tvout.dev,
+			CONFIG_VIDEO_SAMSUNG_MEMSIZE_TVOUT * SZ_1K,
+			0x65800000, 0))
+		printk(KERN_ERR "%s: failed to reserve contiguous "
+			"memory region for TVOUT\n", __func__);
+#endif
+
+#ifdef CONFIG_USE_MFC_CMA
+	if (dma_declare_contiguous(&s5p_device_mfc.dev,
+			SZ_1M * 40, 0x67800000, 0))
+		printk(KERN_ERR "%s: failed to reserve contiguous "
+			"memory region for MFC0/1\n", __func__);
+#endif
+}
+
 
 static void __init exynos_sysmmu_init(void)
 {
@@ -7818,8 +7945,10 @@ static void __init smdkc210_machine_init(void)
 						ARRAY_SIZE(i2c_devs19_emul));
 #endif
 #ifdef CONFIG_S3C_DEV_I2C17_EMUL
+#ifdef CONFIG_USBHUB_USB3803
 	i2c_register_board_info(17, i2c_devs17_emul,
 						ARRAY_SIZE(i2c_devs17_emul));
+#endif
 #endif
 #endif
 
@@ -8036,4 +8165,5 @@ MACHINE_START(SMDKC210, MODEL_NAME)
 	.init_machine	= smdkc210_machine_init,
 	.timer		= &exynos4_timer,
 	.init_early	= &exynos_init_reserve,
+	.reserve	= &exynos_reserve,
 MACHINE_END

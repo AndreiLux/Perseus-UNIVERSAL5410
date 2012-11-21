@@ -327,6 +327,9 @@ static struct regulator_consumer_supply ldo14_supply[] = {
 
 static struct regulator_consumer_supply ldo17_supply[] = {
 	REGULATOR_SUPPLY("cam_sensor_core_1.2v", NULL),
+#if defined(CONFIG_MACH_SUPERIOR_KOR_SKT)
+	REGULATOR_SUPPLY("vtouch_1.8v", NULL),
+#endif
 };
 
 static struct regulator_consumer_supply ldo18_supply[] = {
@@ -350,7 +353,11 @@ static struct regulator_consumer_supply ldo24_supply[] = {
 };
 
 static struct regulator_consumer_supply ldo25_supply[] = {
+#ifdef CONFIG_MACH_SUPERIOR_KOR_SKT
+	REGULATOR_SUPPLY("vlcd_3.1v", NULL),
+#else
 	REGULATOR_SUPPLY("vlcd_3.3v", NULL),
+#endif
 	REGULATOR_SUPPLY("VCI", "s6e8aa0"),
 #if defined(CONFIG_MACH_SLP_T0_LTE)
 	REGULATOR_SUPPLY("VCI", "ea8061"),
@@ -423,8 +430,13 @@ REGULATOR_INIT(ldo12, "VUOTG_3.0V", 3000000, 3000000, 1,
 	       REGULATOR_CHANGE_STATUS, 0);
 REGULATOR_INIT(ldo14, "VABB2_1.95V", 1950000, 1950000, 1,
 	       REGULATOR_CHANGE_STATUS, 1);
+#if defined(CONFIG_MACH_SUPERIOR_KOR_SKT)
+REGULATOR_INIT(ldo17, "VTOUCH_1.8V", 1800000, 1800000, 0,
+	       REGULATOR_CHANGE_STATUS, 1);
+#else
 REGULATOR_INIT(ldo17, "CAM_SENSOR_CORE_1.2V", 1200000, 1200000, 0,
 	       REGULATOR_CHANGE_STATUS, 1);
+#endif
 REGULATOR_INIT(ldo18, "CAM_ISP_SENSOR_1.8V", 1800000, 1800000, 0,
 	       REGULATOR_CHANGE_STATUS, 1);
 REGULATOR_INIT(ldo19, "VT_CAM_1.8V", 1800000, 1800000, 0,
@@ -435,8 +447,13 @@ REGULATOR_INIT(ldo23, "TSP_AVDD_3.3V", 3300000, 3300000, 0,
 	       REGULATOR_CHANGE_STATUS, 1);
 REGULATOR_INIT(ldo24, "VDD_1.8V_TSP", 1800000, 1800000, 0,
 	       REGULATOR_CHANGE_STATUS, 1);
+#ifdef CONFIG_MACH_SUPERIOR_KOR_SKT
+REGULATOR_INIT(ldo25, "VCC_3.1V_LCD", 3100000, 3100000, 0,
+	       REGULATOR_CHANGE_STATUS, 1);
+#else
 REGULATOR_INIT(ldo25, "VCC_3.3V_LCD", 3300000, 3300000, 0,
 	       REGULATOR_CHANGE_STATUS, 1);
+#endif
 REGULATOR_INIT(ldo26, "VCC_MOTOR_3.0V", 3000000, 3000000, 0,
 	       REGULATOR_CHANGE_STATUS, 1);
 

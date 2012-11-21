@@ -475,7 +475,7 @@ static struct s3cfb_lcd s6e8aa0 = {
 	.bpp = 24,
 
 	.freq = 60,
-#if defined(CONFIG_S6E8AA0_AMS480GYXX)
+#if defined(CONFIG_S6E8AA0_AMS480GYXX) || defined(CONFIG_S6E8AA0_AMS465XX)
 	.freq_limit = 40,
 #endif
 
@@ -515,8 +515,8 @@ static struct s3cfb_lcd ea8061 = {
 	.name = "ea8061",
 	.height = 1280,
 	.width = 720,
-	.p_width = 74,
-	.p_height = 131,
+	.p_width = 69,
+	.p_height = 123,
 	.bpp = 24,
 	.freq = 58,
 
@@ -556,8 +556,8 @@ static struct s3cfb_lcd s6evr02 = {
 	.name = "s6evr02",
 	.height = 1280,
 	.width = 720,
-	.p_width = 74,
-	.p_height = 131,
+	.p_width = 69,
+	.p_height = 123,
 	.bpp = 24,
 	.freq = 58,
 	.freq_limit = 41,
@@ -595,8 +595,8 @@ static struct s3cfb_lcd ea8061 = {
 	.name = "ea8061",
 	.height = 1280,
 	.width = 720,
-	.p_width = 64,
-	.p_height = 106,
+	.p_width = 69,
+	.p_height = 123,
 	.bpp = 24,
 	.freq = 58,
 
@@ -723,6 +723,7 @@ static struct s3cfb_lcd s6d6aa1 = {
 	.bpp = 24,
 
 	.freq = 60,
+	.freq_limit = 51,
 
 	/* minumun value is 0 except for wr_act time. */
 	.cpu_timing = {
@@ -733,15 +734,15 @@ static struct s3cfb_lcd s6d6aa1 = {
 	},
 
 	.timing = {
-		.h_fp = 50,
-		.h_bp = 15,
+		.h_fp = 60,
+		.h_bp = 60,
 		.h_sw = 3,
-		.v_fp = 3,
+		.v_fp = 13,
 		.v_fpe = 1,
-		.v_bp = 2,
+		.v_bp = 25,
 		.v_bpe = 1,
 		.v_sw = 2,
-		.cmd_allow_len = 11,	 /* v_fp=stable_vfp + cmd_allow_len */
+		.cmd_allow_len = 7,	 /* v_fp=stable_vfp + cmd_allow_len+ mask_len*/
 		.stable_vfp = 2,
 	},
 
@@ -781,8 +782,9 @@ static struct s3cfb_lcd lms501xx = {
 		.v_bp = 12,
 		.v_bpe = 1,
 		.v_sw = 4,
-		.cmd_allow_len = 6,	 /* v_fp=stable_vfp + cmd_allow_len */
-		.stable_vfp = 2,
+		.cmd_allow_len = 7,
+		/* v_fp=stable_vfp + cmd_allow_len */
+		.stable_vfp = 1,
 	},
 	.polarity = {
 		.rise_vclk = 1,
@@ -886,6 +888,63 @@ out:
 return 0;
 
 }
+#elif defined(CONFIG_S6E8AA0_AMS465XX)
+static int lcd_power_on(void *ld, int enable)
+{
+	struct regulator *regulator;
+	int err;
+
+	printk(KERN_INFO "%s : enable=%d\n", __func__, enable);
+
+	err = gpio_request(GPIO_MLCD_RST, "MLCD_RST");
+	if (err) {
+		printk(KERN_ERR "failed to request GPY4[5] for "
+			"MLCD_RST control\n");
+		return -EPERM;
+	}
+
+#if defined(GPIO_LCD_22V_EN_00)
+	err = gpio_request(GPIO_LCD_22V_EN_00, "LCD_EN");
+	if (err) {
+		printk(KERN_ERR "failed to request GPM4[4] for "
+			"LCD_2.2V_EN control\n");
+		return -EPERM;
+	}
+#endif
+	if (enable) {
+#if defined(GPIO_LCD_22V_EN_00)
+		gpio_set_value(GPIO_LCD_22V_EN_00, GPIO_LEVEL_HIGH);
+#endif
+		regulator = regulator_get(NULL, "vlcd_3.1v");
+
+		if (IS_ERR(regulator))
+			goto out;
+		regulator_enable(regulator);
+		regulator_put(regulator);
+	} else {
+		regulator = regulator_get(NULL, "vlcd_3.1v");
+
+		if (IS_ERR(regulator))
+			goto out;
+		if (regulator_is_enabled(regulator))
+			regulator_force_disable(regulator);
+		regulator_put(regulator);
+
+#if defined(GPIO_LCD_22V_EN_00)
+		gpio_set_value(GPIO_LCD_22V_EN_00, GPIO_LEVEL_LOW);
+#endif
+		gpio_set_value(GPIO_MLCD_RST, 0);
+	}
+
+out:
+/* Release GPIO */
+	gpio_free(GPIO_MLCD_RST);
+#if defined(GPIO_LCD_22V_EN_00)
+	gpio_free(GPIO_LCD_22V_EN_00);
+#endif
+	return 0;
+}
+
 #else
 static int lcd_power_on(void *ld, int enable)
 {

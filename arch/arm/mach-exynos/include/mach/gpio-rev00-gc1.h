@@ -230,6 +230,9 @@ extern int s3c_gpio_slp_setpull_updown(unsigned int pin, unsigned int config);
 #define GPIO_OK_KEY		EXYNOS4_GPX3(5)
 
 #define GPIO_FUEL_ALERT		EXYNOS4_GPX2(3)
+#if defined(CONFIG_TARGET_LOCALE_USA)/* att: rev0.3A ~, vwz: rev0.0 ~ */
+#define GPIO_BATT_PRESENT_N_INT	EXYNOS4_GPX1(3)
+#endif
 
 #define GPIO_V_BUS_INT		EXYNOS4_GPX2(4)	/* rev0.9 ~ */
 #define GPIO_WPC_INT		EXYNOS4_GPX3(0)
@@ -311,6 +314,8 @@ extern int s3c_gpio_slp_setpull_updown(unsigned int pin, unsigned int config);
 #define GPIO_WIDE_KEY		EXYNOS4_GPX3(3)
 #define GPIO_FAST_TELE_KEY	EXYNOS4_GPX1(4)
 #define GPIO_FAST_WIDE_KEY	EXYNOS4_GPX0(4)
+
+#define STR_PU_DET_18V		EXYNOS4_GPF0(5)		/*Strobe Open/Close*/
 
 #define GPIO_FM_INT_REV15	EXYNOS4_GPX1(4)
 #define GPIO_FM_INT_REV07	EXYNOS4_GPX1(3)

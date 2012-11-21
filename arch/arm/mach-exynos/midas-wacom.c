@@ -27,7 +27,7 @@ static struct wacom_g5_callbacks *wacom_callbacks;
 static int wacom_early_suspend_hw(void)
 {
 	gpio_set_value(GPIO_PEN_RESET_N, 0);
-#if defined(CONFIG_MACH_T0_EUR_OPEN)
+#if defined(CONFIG_MACH_T0_EUR_OPEN) || defined(CONFIG_MACH_T0_CHN_OPEN)
 	if (system_rev >= 10)
 		gpio_direction_output(GPIO_WACOM_LDO_EN, 0);
 	else

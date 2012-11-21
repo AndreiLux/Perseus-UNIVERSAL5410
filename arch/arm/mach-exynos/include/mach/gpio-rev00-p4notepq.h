@@ -356,6 +356,7 @@ extern void midas_config_sleep_gpio_table(void);
 #define GPIO_LVDS_NSHDN		EXYNOS4212_GPM0(5)
 #endif
 
+
 #if defined(CONFIG_QC_MODEM)
 /* Modem Interface GPIOs - MDM */
 #define GPIO_MODEM_BOOT_MODE		EXYNOS4_GPD0(1)
@@ -376,6 +377,9 @@ extern void midas_config_sleep_gpio_table(void);
 #define GPIO_MDM2AP_ERR_FATAL		EXYNOS4_GPX1(2)
 #define GPIO_MDM_LTE_ACTIVE		EXYNOS4_GPX1(6)
 #define GPIO_AP2MDM_HSIC_PORT_ACTIVE	EXYNOS4_GPX3(2)	/* AP2MDM_IPC1 */
+#ifdef CONFIG_SIM_DETECT
+#define GPIO_SIM_DETECT			EXYNOS4_GPX1(7) /* sim detect */
+#endif
 #endif
 
 #endif /* __MACH_GPIO_MIDAS_H */

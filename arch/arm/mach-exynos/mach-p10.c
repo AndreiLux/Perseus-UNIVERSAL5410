@@ -2296,6 +2296,23 @@ static struct s5p_platform_cec hdmi_cec_data __initdata = {
 #endif
 
 #if defined(CONFIG_CMA)
+static unsigned long fbmem_start;
+static unsigned long fbmem_size;
+static int __init early_fbmem(char *p)
+{
+	char *endp;
+
+	if (!p)
+		return -EINVAL;
+
+	fbmem_size = memparse(p, &endp);
+	if (*endp == '@')
+		fbmem_start = memparse(endp + 1, &endp);
+
+	return endp > p ? 0 : -EINVAL;
+}
+early_param("fbmem", early_fbmem);
+
 static void __init exynos_reserve_mem(void)
 {
 	static struct cma_region regions[] = {
@@ -2333,18 +2350,18 @@ static void __init exynos_reserve_mem(void)
 		},
 #endif
 #ifdef CONFIG_VIDEO_SAMSUNG_MEMSIZE_FLITE0
-	       {
-		       .name = "flite0",
-		       .size = CONFIG_VIDEO_SAMSUNG_MEMSIZE_FLITE0 * SZ_1K,
-		       .start = 0
-	       },
+		{
+			.name = "flite0",
+			.size = CONFIG_VIDEO_SAMSUNG_MEMSIZE_FLITE0 * SZ_1K,
+			.start = 0
+		},
 #endif
 #ifdef CONFIG_VIDEO_SAMSUNG_MEMSIZE_FLITE1
-	       {
-		       .name = "flite1",
-		       .size = CONFIG_VIDEO_SAMSUNG_MEMSIZE_FLITE1 * SZ_1K,
-		       .start = 0
-	       },
+		{
+			.name = "flite1",
+			.size = CONFIG_VIDEO_SAMSUNG_MEMSIZE_FLITE1 * SZ_1K,
+			.start = 0
+		},
 #endif
 #ifdef CONFIG_VIDEO_SAMSUNG_MEMSIZE_FIMD
 		{
@@ -2412,7 +2429,20 @@ static void __init exynos_reserve_mem(void)
 		"s5p-mixer=tv;"
 		"exynos5-fimc-is=fimc_is;";
 
-    s5p_cma_region_reserve(regions, NULL, 0, map);
+	int i;
+
+	s5p_cma_region_reserve(regions, NULL, 0, map);
+
+	if (!(fbmem_start && fbmem_size))
+		return;
+
+	for (i = 0; i < ARRAY_SIZE(regions); i++) {
+		if (regions[i].name && !strcmp(regions[i].name, "fimd")) {
+			memcpy(phys_to_virt(regions[i].start), phys_to_virt(fbmem_start), fbmem_size * SZ_1K);
+			printk(KERN_INFO "Bootloader sent 'fbmem' : %08X\n", (u32)fbmem_start);
+			break;
+		}
+	}
 }
 #else /* !CONFIG_CMA */
 static inline void exynos_reserve_mem(void)
@@ -2879,6 +2909,8 @@ static void __init p10_machine_init(void)
 	s5p_device_mipi_csis0.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
 	s5p_device_mipi_csis1.dev.parent = &exynos5_device_pd[PD_GSCL].dev;
 #endif
+	s5p_mipi_csis0_default_data.clk_rate = fimc_clk_rate();
+	s5p_mipi_csis1_default_data.clk_rate = fimc_clk_rate();
 	s3c_set_platdata(&s5p_mipi_csis0_default_data,
 			sizeof(s5p_mipi_csis0_default_data), &s5p_device_mipi_csis0);
 	s3c_set_platdata(&s5p_mipi_csis1_default_data,
