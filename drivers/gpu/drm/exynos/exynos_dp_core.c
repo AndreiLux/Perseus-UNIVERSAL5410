@@ -825,7 +825,6 @@ static int exynos_dp_config_video(struct exynos_dp_device *dp)
 {
 	int retval = 0;
 	int timeout_loop = 0;
-	int done_count = 0;
 
 	exynos_dp_config_video_slave_mode(dp);
 
@@ -838,14 +837,14 @@ static int exynos_dp_config_video(struct exynos_dp_device *dp)
 
 	for (;;) {
 		timeout_loop++;
-		if (exynos_dp_is_slave_video_stream_clock_on(dp) == 0)
+		if (!exynos_dp_is_slave_video_stream_clock_on(dp))
 			break;
 		if (DP_TIMEOUT_LOOP_COUNT < timeout_loop) {
-			dev_err(dp->dev, "Timeout of video streamclk ok\n");
+			dev_err(dp->dev, "Wait for stream clock timed out\n");
 			return -ETIMEDOUT;
 		}
 
-		msleep(100);
+		usleep_range(1000, 5000);
 	}
 
 	/* Set to use the register calculated M/N video */
@@ -867,19 +866,15 @@ static int exynos_dp_config_video(struct exynos_dp_device *dp)
 
 	for (;;) {
 		timeout_loop++;
-		if (exynos_dp_is_video_stream_on(dp) == 0) {
-			done_count++;
-			if (done_count > 10)
-				break;
-		} else if (done_count) {
-			done_count = 0;
-		}
+		if (!exynos_dp_is_video_stream_on(dp))
+			break;
+
 		if (DP_TIMEOUT_LOOP_COUNT < timeout_loop) {
-			dev_err(dp->dev, "Timeout of video streamclk ok\n");
+			dev_err(dp->dev, "Wait for video stream timed out\n");
 			return -ETIMEDOUT;
 		}
 
-		msleep(100);
+		usleep_range(1000, 5000);
 	}
 
 	if (retval != 0)
