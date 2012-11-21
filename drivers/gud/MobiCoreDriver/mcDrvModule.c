@@ -183,7 +183,7 @@ static inline int lockUserPages(
 
 		/* lock user pages, must hold the mmap_sem to do this. */
 		down_read(&(pTask->mm->mmap_sem));
-		lockedPages = get_user_pages(
+		lockedPages = get_user_pages_nocma(
 				      pTask,
 				      pTask->mm,
 				      (unsigned long)virtStartPageAddr,
