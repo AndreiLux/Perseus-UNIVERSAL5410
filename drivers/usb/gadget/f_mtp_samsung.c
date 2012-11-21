@@ -821,6 +821,11 @@ static void read_send_work(struct work_struct *work)
 			break;
 		}
 
+		if (!req) {
+			printk(KERN_ERR "[%s]Alloc has failed\n", __func__);
+			break;
+		}
+
 		if (count > MTPG_BULK_BUFFER_SIZE)
 			xfer = MTPG_BULK_BUFFER_SIZE;
 		else
