@@ -24,7 +24,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wlioctl.h 355877 2012-09-10 06:53:46Z $
+ * $Id: wlioctl.h 357629 2012-09-19 12:51:08Z $
  */
 
 #ifndef _wlioctl_h_
@@ -1782,6 +1782,9 @@ typedef struct {
 /* BCM4334(Phoenex branch) value changed to 3 */
 #define WL_AUTH_OPEN_SHARED		3	/* try open, then shared if open failed w/rc 13 */
 #endif
+#ifdef USE_WEP_AUTH_SHARED_OPEN
+#define WL_AUTH_SHARED_OPEN		4	/* try shared, then open if shared failed w/rc 13 */
+#endif /* USE_WEP_AUTH_SHARED_OPEN */
 #endif /* LINUX_POSTMOGRIFY_REMOVAL */
 
 /* Bit masks for radio disabled status - returned by WL_GET_RADIO */

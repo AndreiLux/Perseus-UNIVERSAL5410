@@ -49,7 +49,7 @@
 #define READ_MACADDR
 #endif
 
-#ifdef CONFIG_MACH_GC1
+#if defined CONFIG_MACH_GC1 || defined CONFIG_MACH_U1_NA_SPR
 #undef USE_CID_CHECK
 #define READ_MACADDR
 #endif
@@ -67,7 +67,7 @@
 
 #if (WLAN_REGION_CODE >= 100) && (WLAN_REGION_CODE < 200) /*EUR*/
 #if (WLAN_REGION_CODE == 101) /*EUR ORG*/
-;/* GAN LITE NAT KEEPALIVE FILTER */
+/* GAN LITE NAT KEEPALIVE FILTER */
 #define GAN_LITE_NAT_KEEPALIVE_FILTER
 #endif
 #endif
@@ -87,6 +87,9 @@
 #define OKC_SUPPORT
 #endif
 
+#ifndef ROAM_AP_ENV_DETECTION
+#define ROAM_AP_ENV_DETECTION
+#endif
 
 #undef WRITE_MACADDR
 #undef READ_MACADDR

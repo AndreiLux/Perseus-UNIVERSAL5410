@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_cfgp2p.c 354184 2012-08-30 08:08:08Z $
+ * $Id: wl_cfgp2p.c 357864 2012-09-20 06:41:42Z $
  *
  */
 #include <typedefs.h>
@@ -1055,7 +1055,7 @@ wl_cfgp2p_set_management_ie(struct wl_priv *wl, struct net_device *ndev, s32 bss
 	struct parsed_vndr_ies new_vndr_ies;
 	s32 i;
 	u8 *ptr;
-	u32 remained_buf_len;
+	s32 remained_buf_len;
 
 #define IE_TYPE(type, bsstype) (wl_to_p2p_bss_saved_ie(wl, bsstype).p2p_ ## type ## _ie)
 #define IE_TYPE_LEN(type, bsstype) (wl_to_p2p_bss_saved_ie(wl, bsstype).p2p_ ## type ## _ie_len)
@@ -1218,7 +1218,9 @@ wl_cfgp2p_set_management_ie(struct wl_priv *wl, struct net_device *ndev, s32 bss
 					"add");
 
 				/* verify remained buf size before copy data */
-				if ((remained_buf_len -= vndrie_info->ie_len) < 0) {
+				if (remained_buf_len >= vndrie_info->ie_len) {
+					remained_buf_len -= vndrie_info->ie_len;
+				} else {
 					CFGP2P_ERR(("no space in mgmt_ie_buf: pktflag = %d, "
 						"found vndr ies # = %d(cur %d), remained len %d, "
 						"cur mgmt_ie_len %d, new ie len = %d\n",
@@ -1448,6 +1450,8 @@ wl_cfgp2p_listen_complete(struct wl_priv *wl, struct net_device *ndev,
 {
 	s32 ret = BCME_OK;
 	struct net_device *netdev;
+	if (!wl || !wl->p2p)
+		return BCME_ERROR;
 	if (wl->p2p_net == ndev) {
 		netdev = wl_to_prmry_ndev(wl);
 	} else {

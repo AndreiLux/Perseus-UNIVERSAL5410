@@ -141,6 +141,8 @@ typedef struct cmd_tlv {
 #define CMD_COUNTRYREV_GET "GETCOUNTRYREV"
 #endif /* ROAM_API */
 
+#define CMD_SETROAMMODE "SETROAMMODE"
+
 #if defined(CUSTOMER_HW4) && defined(WES_SUPPORT)
 #define CMD_GETROAMSCANCONTROL "GETROAMSCANCONTROL"
 #define CMD_SETROAMSCANCONTROL "SETROAMSCANCONTROL"
@@ -1515,6 +1517,29 @@ wl_android_set_ampdu_mpdu(struct net_device *dev, const char* string_num)
 }
 #endif /* SUPPORT_AMPDU_MPDU_CMD */
 
+int wl_android_set_roam_mode(struct net_device *dev,
+char *command, int total_len)
+{
+	int error = 0;
+	int mode = 0;
+
+	if (sscanf(command, "%*s %d", &mode) != 1) {
+		DHD_ERROR(("wl_android_set_roam_mode:"\
+		"Failed to get Parameter\n"));
+		return -1;
+	}
+
+	error = wldev_iovar_setint(dev, "roam_off", mode);
+	if (error) {
+		DHD_ERROR(("wl_android_set_roam_mode:"\
+		"Failed to set roaming Mode %d, error = %d\n", mode, error));
+		return -1;
+	} else {
+		DHD_ERROR(("wl_android_set_roam_mode:"\
+		"succeeded to set roaming Mode %d, error = %d\n", mode, error));
+	}
+	return error;
+}
 int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 {
 #define PRIVATE_COMMAND_MAX_LEN	8192
@@ -1849,6 +1874,10 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 	else if (strnicmp(command, CMD_RESTORE_RL, strlen(CMD_RESTORE_RL)) == 0)
 		bytes_written = wl_android_ch_res_rl(net, false);
 #endif /* CUSTOMER_HW4 */
+	else if (strnicmp(command, CMD_SETROAMMODE,
+		strlen(CMD_SETROAMMODE)) == 0)
+		bytes_written = wl_android_set_roam_mode(net,
+		command, priv_cmd.total_len);
 	else {
 		DHD_ERROR(("Unknown PRIVATE command %s - ignored\n", command));
 		snprintf(command, 3, "OK");

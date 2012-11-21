@@ -27,7 +27,7 @@
 #ifndef __BCMSDH_SDMMC_H__
 #define __BCMSDH_SDMMC_H__
 
-#define sd_err(x)
+#define sd_err(x) do {printf x;} while (0)
 #define sd_trace(x)
 #define sd_info(x)
 #define sd_debug(x)
