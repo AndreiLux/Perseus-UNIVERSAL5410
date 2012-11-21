@@ -39,6 +39,8 @@
 
 static int mdm6600_on(struct modem_ctl *mc)
 {
+	struct link_device *ld = get_current_link(mc->iod);
+
 	pr_info("[MODEM_IF] mdm6600_on()\n");
 
 	if (!mc->gpio_cp_reset || !mc->gpio_cp_reset_msm || !mc->gpio_cp_on) {
@@ -58,6 +60,7 @@ static int mdm6600_on(struct modem_ctl *mc)
 	gpio_set_value(mc->gpio_pda_active, 1);
 
 	mc->iod->modem_state_changed(mc->iod, STATE_BOOTING);
+	ld->mode = LINK_MODE_BOOT;
 
 	return 0;
 }
@@ -82,7 +85,8 @@ static int mdm6600_off(struct modem_ctl *mc)
 
 static int mdm6600_reset(struct modem_ctl *mc)
 {
-	int ret;
+	struct link_device *ld = get_current_link(mc->iod);
+	/* int ret; */
 
 	pr_info("[MODEM_IF] mdm6600_reset()\n");
 
@@ -108,6 +112,9 @@ static int mdm6600_reset(struct modem_ctl *mc)
 		gpio_set_value(mc->gpio_cp_reset, 1);
 		msleep(40);	/* > 37.2 + 2 msec */
 	}
+
+	mc->iod->modem_state_changed(mc->iod, STATE_BOOTING);
+	ld->mode = LINK_MODE_BOOT;
 
 	return 0;
 }
@@ -159,6 +166,7 @@ static irqreturn_t phone_active_irq_handler(int irq, void *_mc)
 	int cp_dump_value = 0;
 	int phone_state = 0;
 	struct modem_ctl *mc = (struct modem_ctl *)_mc;
+	struct link_device *ld;
 
 	if (!mc->gpio_cp_reset || !mc->gpio_phone_active
 /*|| !mc->gpio_cp_dump_int */) {
@@ -332,7 +340,7 @@ static int mdm6600_on(struct modem_ctl *mc)
 		return -ENXIO;
 	}
 
-	gpio_set_value(mc->gpio_pda_active, 0);
+	gpio_set_value(mc->gpio_pda_active, 1);
 
 	gpio_set_value(mc->gpio_cp_on, 1);
 	msleep(500);
@@ -345,8 +353,6 @@ static int mdm6600_on(struct modem_ctl *mc)
 
 	gpio_set_value(mc->gpio_cp_on, 0);
 	msleep(500);
-
-	gpio_set_value(mc->gpio_pda_active, 1);
 
 #if defined(CONFIG_LINK_DEVICE_PLD)
 	gpio_set_value(mc->gpio_fpga_cs_n, 1);
@@ -420,8 +426,12 @@ static int mdm6600_reset(struct modem_ctl *mc)
 static int mdm6600_boot_on(struct modem_ctl *mc)
 {
 	struct regulator *regulator;
+	struct link_device *ld = get_current_link(mc->iod);
+	struct dpram_link_device *dpld = to_dpram_link_device(ld);
 
 	pr_info("[MSM] <%s>\n", __func__);
+
+	dpld->recv_intr(dpld);
 
 	if (!mc->gpio_flm_uart_sel) {
 		pr_err("[MSM] no gpio data\n");
