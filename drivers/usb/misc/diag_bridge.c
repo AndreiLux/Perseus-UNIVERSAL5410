@@ -321,22 +321,12 @@ int diag_bridge_write(char *data, int size)
 		return ret;
 	}
 
-	for (spin = 0; spin < 50; spin++) {
-		/* check rpm active */
-		if (dev->udev->dev.power.runtime_status == RPM_ACTIVE) {
-			ret = 0;
-			break;
-		} else {
-			dev_err(&dev->udev->dev, "waiting rpm active\n");
-			ret = -EAGAIN;
-		}
-		msleep(20);
-	}
-	if (ret < 0) {
-		dev_err(&dev->udev->dev, "rpm active failed:%d\n", ret);
-		usb_free_urb(urb);
-		usb_autopm_put_interface(dev->ifc);
-		return ret;
+	if (size == 4 || size == 5) {
+		if (data[0] == 0x1d && data[1] == 0x1c && data[2] == 0x3b)
+			pr_info("%s: diag.cfg [send start]\n", __func__);
+		else if (data[0] == 0x60 && data[1] == 0x00 &&
+					data[2] == 0x12 && data[3] == 0x6a)
+			pr_info("%s: diag.cfg [send complete]\n", __func__);
 	}
 
 	pipe = usb_sndbulkpipe(dev->udev, dev->out_epAddr);

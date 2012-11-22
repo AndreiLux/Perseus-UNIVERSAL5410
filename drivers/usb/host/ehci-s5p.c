@@ -94,7 +94,11 @@ static int s5p_ehci_configurate(struct usb_hcd *hcd)
 
 	/* DMA burst Enable, set utmi suspend_on_n */
 #ifdef CONFIG_USB_OHCI_S5P
+#ifdef CONFIG_CDMA_MODEM_MDM6600
+	writel(readl(INSNREG00(hcd->regs)) | ENA_DMA_INCR | OHCI_SUSP_LGCY,
+#else
 	writel(readl(INSNREG00(hcd->regs)) | ENA_DMA_INCR,
+#endif
 #else
 	writel(readl(INSNREG00(hcd->regs)) | ENA_DMA_INCR,
 #endif

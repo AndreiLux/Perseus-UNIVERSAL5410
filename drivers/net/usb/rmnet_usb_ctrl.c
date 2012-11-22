@@ -303,12 +303,14 @@ static int rmnet_usb_ctrl_start_rx(struct rmnet_ctrl_dev *dev)
 	struct usb_device *udev;
 	iface_num = dev->intf->cur_altsetting->desc.bInterfaceNumber;
 
+	dev->rx_stop_by_close = false;
 	udev = interface_to_usbdev(dev->intf);
 	usb_mark_last_busy(udev);
 	retval = usb_submit_urb(dev->inturb, GFP_KERNEL);
 	if (retval < 0)
 		dev_err(dev->devicep, "%s Intr submit %d\n", __func__, retval);
-	pr_info("[CHKRA:%d]>\n", iface_num);
+	else
+		pr_info("[CHKRA:%d]>\n", iface_num);
 
 	return retval;
 }
@@ -551,9 +553,12 @@ static int rmnet_ctl_open(struct inode *inode, struct file *file)
 	int			retval = 0;
 	struct rmnet_ctrl_dev	*dev =
 		container_of(inode->i_cdev, struct rmnet_ctrl_dev, cdev);
+	struct usb_device	*udev;
 
 	if (!dev)
 		return -ENODEV;
+
+	atomic_inc(&dev->open_cnt);
 
 	if (dev->is_opened)
 		goto already_opened;
@@ -568,10 +573,12 @@ static int rmnet_ctl_open(struct inode *inode, struct file *file)
 		if (retval == 0) {
 			dev_err(dev->devicep, "%s: Timeout opening %s\n",
 						__func__, dev->name);
+			atomic_dec(&dev->open_cnt);
 			return -ETIMEDOUT;
 		} else if (retval < 0) {
 			dev_err(dev->devicep, "%s: Error waiting for %s\n",
 						__func__, dev->name);
+			atomic_dec(&dev->open_cnt);
 			return retval;
 		}
 	}
@@ -579,6 +586,7 @@ static int rmnet_ctl_open(struct inode *inode, struct file *file)
 	if (!dev->resp_available) {
 		dev_dbg(dev->devicep, "%s: Connection timedout opening %s\n",
 					__func__, dev->name);
+		atomic_dec(&dev->open_cnt);
 		return -ETIMEDOUT;
 	}
 
@@ -586,9 +594,13 @@ static int rmnet_ctl_open(struct inode *inode, struct file *file)
 	dev->is_opened = 1;
 	mutex_unlock(&dev->dev_lock);
 
-	file->private_data = dev;
+	udev = interface_to_usbdev(dev->intf);
+	if (dev->rx_stop_by_close &&
+				udev->dev.power.runtime_status == RPM_ACTIVE)
+		rmnet_usb_ctrl_start_rx(dev);
 
 already_opened:
+	file->private_data = dev;
 	DBG("%s: Open called for %s\n", __func__, dev->name);
 
 	return 0;
@@ -606,6 +618,12 @@ static int rmnet_ctl_release(struct inode *inode, struct file *file)
 
 	DBG("%s Called on %s device\n", __func__, dev->name);
 
+	if (!atomic_dec_and_test(&dev->open_cnt)) {
+		pr_debug("%s: %s open count = %d\n", __func__, dev->name,
+				atomic_read(&dev->open_cnt));
+		return 0;
+	}
+
 	spin_lock_irqsave(&dev->rx_lock, flag);
 	while (!list_empty(&dev->rx_list)) {
 		list_elem = list_first_entry(
@@ -620,6 +638,7 @@ static int rmnet_ctl_release(struct inode *inode, struct file *file)
 
 	mutex_lock(&dev->dev_lock);
 	dev->is_opened = 0;
+	dev->rx_stop_by_close = true;
 	mutex_unlock(&dev->dev_lock);
 
 	rmnet_usb_ctrl_stop_rx(dev);
@@ -916,6 +935,7 @@ int rmnet_usb_ctrl_probe(struct usb_interface *intf,
 	dev->set_ctrl_line_state_cnt = 0;
 	dev->tx_ctrl_in_req_cnt = 0;
 	dev->tx_block = false;
+	dev->rx_stop_by_close = false;
 
 	/* give margin before send DTR high */
 	msleep(20);
@@ -1133,6 +1153,7 @@ int rmnet_usb_ctrl_init(void)
 		init_waitqueue_head(&dev->open_wait_queue);
 		INIT_LIST_HEAD(&dev->rx_list);
 		init_usb_anchor(&dev->tx_submitted);
+		atomic_set(&dev->open_cnt, 0);
 
 		wake_lock_init(&dev->ctrl_wake, WAKE_LOCK_SUSPEND, dev->name);
 
