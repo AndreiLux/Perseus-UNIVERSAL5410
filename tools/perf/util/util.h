@@ -72,7 +72,9 @@
 #include <inttypes.h>
 #include <linux/magic.h>
 #include "types.h"
+#ifndef ANDROID
 #include <sys/ttydefaults.h>
+#endif
 
 extern const char *graph_line;
 extern const char *graph_dotted_line;

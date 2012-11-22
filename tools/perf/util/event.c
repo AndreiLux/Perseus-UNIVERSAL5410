@@ -6,6 +6,7 @@
 #include "strlist.h"
 #include "thread.h"
 #include "thread_map.h"
+#include "../compat-android.h"
 
 static const char *perf_event__names[] = {
 	[0]					= "TOTAL",

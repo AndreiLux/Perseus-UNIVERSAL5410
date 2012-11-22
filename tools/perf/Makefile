@@ -104,7 +104,7 @@ ifdef PARSER_DEBUG
 endif
 
 CFLAGS = -fno-omit-frame-pointer -ggdb3 -funwind-tables -Wall -Wextra -std=gnu99 $(CFLAGS_WERROR) $(CFLAGS_OPTIMIZE) $(EXTRA_WARNINGS) $(EXTRA_CFLAGS) $(PARSER_DEBUG_CFLAGS)
-EXTLIBS = -lpthread -lrt -lelf -lm
+EXTLIBS = -lpthread -lelf -lm
 ALL_CFLAGS = $(CFLAGS) -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE
 ALL_LDFLAGS = $(LDFLAGS)
 STRIP ?= strip
@@ -498,7 +498,14 @@ FLAGS_LIBELF=$(ALL_CFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
 ifneq ($(call try-cc,$(SOURCE_LIBELF),$(FLAGS_LIBELF)),y)
 	FLAGS_GLIBC=$(ALL_CFLAGS) $(ALL_LDFLAGS)
 	ifneq ($(call try-cc,$(SOURCE_GLIBC),$(FLAGS_GLIBC)),y)
-		msg := $(error No gnu/libc-version.h found, please install glibc-dev[el]/glibc-static);
+		ifeq ($(call try-cc,$(SOURCE_BIONIC),$(FLAGS_GLIBC)),y)
+			# Found Bionic instead of glibc...
+			# That works too, but needs a bit of special treatment
+			BASIC_CFLAGS += -DANDROID -include compat-android.h
+			ANDROID := 1
+		else
+			msg := $(error No gnu/libc-version.h found, please install glibc-dev[el]/glibc-static);
+		endif
 	else
 		NO_LIBELF := 1
 		NO_DWARF := 1
@@ -512,6 +519,10 @@ else
 	endif # Dwarf support
 endif # SOURCE_LIBELF
 endif # NO_LIBELF
+
+ifneq ($(ANDROID),1)
+EXTLIBS += -lrt
+endif
 
 ifndef NO_LIBUNWIND
 # for linking with debug library, run like:
