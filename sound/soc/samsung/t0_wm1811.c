@@ -487,18 +487,15 @@ static void t0_micdet(u16 status, void *data)
 	int reg;
 	bool present;
 
+	pr_info("%s: detected jack or button\n", __func__);
+
 	/*
 	 * If the jack is inserted abnormally,
 	 * The variable puts back to its previous status.
 	 */
-	if (!wm1811->get_g_det_value_f) {
-		dev_err(wm1811->codec->dev, "Do not use the ground detection\n");
-	} else {
-		if (wm1811->get_g_det_value_f()) {
-			dev_info(wm1811->codec->dev, "The jack is inserted abnormally\n");
-
-			wm8994->mic_detecting = false;
-		}
+	if ((wm1811->get_g_det_value_f) && wm1811->get_g_det_value_f()) {
+		dev_info(wm1811->codec->dev, "The jack is inserted abnormally\n");
+		wm8994->mic_detecting = false;
 	}
 
 	wake_lock_timeout(&wm1811->jackdet_wake_lock, 5 * HZ);
@@ -671,6 +668,7 @@ static int t0_wm1811_aif2_hw_params(struct snd_pcm_substream *substream,
 					struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_codec *codec = rtd->codec;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	int ret;
 	int prate;
@@ -729,6 +727,14 @@ static int t0_wm1811_aif2_hw_params(struct snd_pcm_substream *substream,
 				     prate * 256, SND_SOC_CLOCK_IN);
 	if (ret < 0)
 		dev_err(codec_dai->dev, "Unable to switch to FLL2: %d\n", ret);
+
+	if (!(snd_soc_read(codec, WM8994_INTERRUPT_RAW_STATUS_2)
+		& WM8994_FLL2_LOCK_STS)) {
+		dev_info(codec_dai->dev, "%s: use mclk1 for FLL2\n", __func__);
+		ret = snd_soc_dai_set_pll(codec_dai, WM8994_FLL2,
+			WM8994_FLL_SRC_MCLK1,
+			MIDAS_DEFAULT_MCLK1, prate * 256);
+	}
 
 	dev_info(codec_dai->dev, "%s --\n", __func__);
 	return 0;
@@ -1017,41 +1023,7 @@ static ssize_t reselect_jack_show(struct device *dev,
 static ssize_t reselect_jack_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
-	struct snd_soc_codec *codec = dev_get_drvdata(dev);
-	struct wm8994_priv *wm8994 = snd_soc_codec_get_drvdata(codec);
-	int reg = 0;
-
-	reg = snd_soc_read(codec, WM8958_MIC_DETECT_3);
-	if (reg == 0x402) {
-		dev_info(codec->dev, "Detected open circuit\n");
-
-		snd_soc_update_bits(codec, WM8958_MICBIAS2,
-				    WM8958_MICB2_DISCH, WM8958_MICB2_DISCH);
-		/* Enable debounce while removed */
-		snd_soc_update_bits(codec, WM1811_JACKDET_CTRL,
-				    WM1811_JACKDET_DB, WM1811_JACKDET_DB);
-
-		wm8994->mic_detecting = false;
-		wm8994->jack_mic = false;
-		snd_soc_update_bits(codec, WM8958_MIC_DETECT_1,
-				    WM8958_MICD_ENA, 0);
-
-		if (wm8994->active_refcount) {
-			snd_soc_update_bits(codec,
-				WM8994_ANTIPOP_2,
-				WM1811_JACKDET_MODE_MASK,
-				WM1811_JACKDET_MODE_AUDIO);
-		} else {
-			snd_soc_update_bits(codec,
-				WM8994_ANTIPOP_2,
-				WM1811_JACKDET_MODE_MASK,
-				WM1811_JACKDET_MODE_JACK);
-		}
-
-		snd_soc_jack_report(wm8994->micdet[0].jack, 0,
-				    SND_JACK_MECHANICAL | SND_JACK_HEADSET |
-				    wm8994->btn_mask);
-	}
+	pr_info("%s : operate nothing\n", __func__);
 	return size;
 }
 
