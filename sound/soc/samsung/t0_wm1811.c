@@ -270,7 +270,7 @@ static int set_sub_mic_bias_mode(struct snd_kcontrol *kcontrol,
 				WM8994_MICB1_ENA, WM8994_MICB1_ENA);
 
 		if (wm1811->set_sub_mic_f)
-			wm1811->set_main_mic_f(1);
+			wm1811->set_sub_mic_f(1);
 		break;
 	case MIC_ENABLE:
 		snd_soc_update_bits(codec, WM8994_POWER_MANAGEMENT_1,
