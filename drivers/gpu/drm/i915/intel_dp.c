@@ -65,6 +65,7 @@ struct intel_dp {
 	int backlight_on_delay;
 	int backlight_off_delay;
 	struct drm_display_mode *panel_fixed_mode;  /* for eDP */
+	int fitting_mode;  /* for eDP */
 	struct delayed_work panel_vdd_work;
 	bool want_panel_vdd;
 };
@@ -705,7 +706,7 @@ intel_dp_mode_fixup(struct drm_encoder *encoder, struct drm_display_mode *mode,
 
 	if (is_edp(intel_dp) && intel_dp->panel_fixed_mode) {
 		intel_fixed_panel_mode(intel_dp->panel_fixed_mode, adjusted_mode);
-		intel_pch_panel_fitting(dev, DRM_MODE_SCALE_FULLSCREEN,
+		intel_pch_panel_fitting(dev, intel_dp->fitting_mode,
 					mode, adjusted_mode);
 		/*
 		 * the mode->clock is used to calculate the Data&Link M/N
@@ -2295,6 +2296,22 @@ intel_dp_set_property(struct drm_connector *connector,
 		goto done_nomodeset;
 	}
 
+	if (is_edp(intel_dp) &&
+		property == connector->dev->mode_config.scaling_mode_property) {
+		if (val == DRM_MODE_SCALE_NONE) {
+			DRM_DEBUG_KMS("no scaling not supported\n");
+			return -EINVAL;
+		}
+
+		if (intel_dp->fitting_mode == val) {
+			/* the eDP scaling property is not changed */
+			return 0;
+		}
+		intel_dp->fitting_mode = val;
+
+		goto done;
+	}
+
 	return -EINVAL;
 
 done:
@@ -2419,6 +2436,15 @@ intel_dp_add_properties(struct drm_device *dev,
 {
 	intel_attach_force_audio_property(connector);
 	intel_attach_broadcast_rgb_property(connector);
+
+	if (is_edp(intel_dp)) {
+		drm_mode_create_scaling_mode_property(dev);
+		drm_connector_attach_property(
+			connector,
+			dev->mode_config.scaling_mode_property,
+			DRM_MODE_SCALE_ASPECT);
+		intel_dp->fitting_mode = DRM_MODE_SCALE_ASPECT;
+	}
 }
 
 void
