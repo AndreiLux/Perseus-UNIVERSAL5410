@@ -32,6 +32,7 @@
 
 #define MAX_REGULATORS		10
 #define MAX_CTRL_READ_TRIES	5
+#define MAX_FET_ENABLE_TRIES	5
 
 #define CTRL_EN_BIT		0 /* Regulator enable bit, active high */
 #define CTRL_WT_BIT		2 /* Regulator wait time 0 bit */
@@ -76,13 +77,13 @@ static int tps65090_reg_read_ctrl(struct regulator_dev *rdev, uint8_t *ctrl)
 static int tps65090_reg_is_enabled(struct regulator_dev *rdev)
 {
 	int ret;
-	uint8_t control;
+	uint8_t control, expected = (1 << CTRL_EN_BIT) | (1 << CTRL_PG_BIT);
 
 	ret = tps65090_reg_read_ctrl(rdev, &control);
 	if (ret < 0)
 		return ret;
 
-	return (((control >> CTRL_EN_BIT) & 1) == 1);
+	return (control & expected) == expected;
 }
 
 static int tps65090_reg_set_overcurrent_wait(struct regulator_dev *rdev)
@@ -104,16 +105,20 @@ static int tps65090_reg_set_overcurrent_wait(struct regulator_dev *rdev)
 	return ret;
 }
 
-static int tps65090_reg_enable(struct regulator_dev *rdev)
+/**
+ * tps6090_try_enable_fet - Try to enable a FET
+ *
+ * @rdev:	Regulator device
+ * @ri:		Our regulator info structure
+ * @parent:	Parent device (in this case a tps65090 mfd parent)
+ * @return 0 if ok, -ENOTRECOVERABLE if the FET power good bit did not get set,
+ * or some other -ve value if another error occurred (e.g. i2c error)
+ */
+static int tps6090_try_enable_fet(struct regulator_dev *rdev,
+		struct tps65090_regulator *ri, struct device *parent)
 {
-	struct tps65090_regulator *ri = rdev_get_drvdata(rdev);
-	struct device *parent = to_tps65090_dev(rdev);
-	int ret, i;
 	uint8_t control;
-
-	ret = tps65090_reg_set_overcurrent_wait(rdev);
-	if (ret)
-		return ret;
+	int ret, i;
 
 	ret = tps65090_set_bits(parent, ri->reg_en_reg, CTRL_EN_BIT);
 	if (ret < 0) {
@@ -133,10 +138,48 @@ static int tps65090_reg_enable(struct regulator_dev *rdev)
 		usleep_range(1000, 1500);
 	}
 	if (!(control & (1 << CTRL_PG_BIT)))
-		dev_warn(&rdev->dev, "reg 0x%x enable failed\n",
-			 ri->reg_en_reg);
+		return -ENOTRECOVERABLE;
 
 	return 0;
+}
+
+static int tps65090_reg_enable(struct regulator_dev *rdev)
+{
+	struct tps65090_regulator *ri = rdev_get_drvdata(rdev);
+	struct device *parent = to_tps65090_dev(rdev);
+	int ret, tries;
+
+	ret = tps65090_reg_set_overcurrent_wait(rdev);
+	if (ret)
+		goto err;
+
+	/*
+	 * Try enabling multiple times until we succeed since sometimes the
+	 * first try times out.
+	 */
+	for (tries = 0; ; tries++) {
+		ret = tps6090_try_enable_fet(rdev, ri, parent);
+		if (!ret)
+			break;
+		if (ret != -ENOTRECOVERABLE || tries == MAX_FET_ENABLE_TRIES)
+			goto err;
+
+		/* Try turning the FET off (and then on again) */
+		ret = tps65090_clr_bits(parent, ri->reg_en_reg, CTRL_EN_BIT);
+		if (ret)
+			goto err;
+	}
+
+	if (tries) {
+		dev_warn(&rdev->dev, "reg 0x%x enable ok after %d tries\n",
+			 ri->reg_en_reg, tries);
+	}
+
+	return 0;
+err:
+	dev_warn(&rdev->dev, "reg 0x%x enable failed\n", ri->reg_en_reg);
+
+	return ret;
 }
 
 static int tps65090_reg_disable(struct regulator_dev *rdev)
