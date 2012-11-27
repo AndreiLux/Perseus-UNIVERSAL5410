@@ -402,13 +402,18 @@ static void _bitfix_recover_chunk(phys_addr_t failed_chunk,
 {
 	const u32 failed_cu = bitfix_get_cu(failed_chunk);
 	u32 cu;
+	size_t offset;
 
-	BUG_ON(should_skip_fn(failed_chunk));
+	/*
+	 * If any of the pages in the failed chunk were skipped then we can't
+	 * recover it; just bail.
+	 */
+	for (offset = 0; offset < CHUNK_SIZE; offset += PAGE_SIZE)
+		BUG_ON(should_skip_fn(failed_chunk + offset));
 
 	for (cu = 0; cu < CU_COUNT; cu++) {
 		phys_addr_t this_chunk = (failed_chunk & ~CU_MASK) |
 			(cu << CU_OFFSET);
-		size_t offset;
 
 		/* Don't include the failed corruption unit in our xor */
 		if (cu == failed_cu)
