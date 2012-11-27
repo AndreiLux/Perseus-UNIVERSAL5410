@@ -282,4 +282,11 @@
 	display-port-controller {
 		status = "disabled";
 	};
+
+	xhci {
+		phy {
+			compatible = "samsung,exynos-usbphy";
+			clock-enable-gpio = <&gpy1 1 1 0 3>;
+		};
+	};
 };

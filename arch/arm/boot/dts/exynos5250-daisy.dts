@@ -46,4 +46,11 @@
 				<&gpc4 5 2 3 3>, <&gpc4 6 2 3 3>;
 		};
 	};
+
+	xhci {
+		phy {
+			compatible = "samsung,exynos-usbphy";
+			clock-enable-gpio = <&gpy1 1 1 0 3>;
+		};
+	};
 };
