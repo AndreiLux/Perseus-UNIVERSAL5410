@@ -161,8 +161,13 @@ static int __devinit dwc3_exynos_probe(struct platform_device *pdev)
 	if (!pdata) {
 		dev_dbg(&pdev->dev, "missing platform data\n");
 	} else {
+		/*
+		 * if we have no gpio to control external PLL, we are using
+		 * the internal clock.
+		 */
 		if (pdata->phy_init)
-			pdata->phy_init(pdev, pdata->phy_type);
+			pdata->phy_init(pdev, pdata->phy_type,
+					gpio_is_valid(exynos->phyclk_gpio));
 	}
 
 	pm_runtime_set_active(&pdev->dev);
@@ -232,15 +237,16 @@ static int dwc3_exynos_runtime_suspend(struct device *dev)
 
 	dev_dbg(dev, "entering runtime suspend\n");
 
-	if (!pdata) {
-		dev_dbg(&pdev->dev, "missing platform data\n");
-	} else {
-		if (pdata->phyclk_switch)
-			pdata->phyclk_switch(pdev, false);
-	}
+	if (gpio_is_valid(exynos->phyclk_gpio)) {
+		if (!pdata) {
+			dev_dbg(&pdev->dev, "missing platform data\n");
+		} else {
+			if (pdata->phyclk_switch)
+				pdata->phyclk_switch(pdev, false);
+		}
 
-	if (gpio_is_valid(exynos->phyclk_gpio))
 		gpio_set_value(exynos->phyclk_gpio, 0);
+	}
 
 	return 0;
 }
@@ -263,13 +269,13 @@ static int dwc3_exynos_runtime_resume(struct device *dev)
 		 * and cross our fingers that it's enough.
 		 */
 		msleep(10);
-	}
 
-	if (!pdata) {
-		dev_dbg(&pdev->dev, "missing platform data\n");
-	} else {
-		if (pdata->phyclk_switch)
-			pdata->phyclk_switch(pdev, true);
+		if (!pdata) {
+			dev_dbg(&pdev->dev, "missing platform data\n");
+		} else {
+			if (pdata->phyclk_switch)
+				pdata->phyclk_switch(pdev, true);
+		}
 	}
 
 	return 0;
@@ -335,7 +341,8 @@ static int dwc3_exynos_resume(struct device *dev)
 		dev_dbg(&pdev->dev, "missing platform data\n");
 	} else {
 		if (pdata->phy_init)
-			pdata->phy_init(pdev, pdata->phy_type);
+			pdata->phy_init(pdev, pdata->phy_type,
+					gpio_is_valid(exynos->phyclk_gpio));
 	}
 
 	/* runtime set active to reflect active state. */

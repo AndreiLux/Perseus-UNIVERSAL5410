@@ -17,7 +17,8 @@ enum s5p_usb_phy_type {
 	S5P_USB_PHY_DRD,
 };
 
-extern int s5p_usb_phy_init(struct platform_device *pdev, int type);
+extern int s5p_usb_phy_init(struct platform_device *pdev, int type,
+						bool use_ext_clk);
 extern int s5p_usb_phy_exit(struct platform_device *pdev, int type);
 extern int exynos5_dwc_phyclk_switch(struct platform_device *pdev,
 						bool use_ext_clk);

@@ -286,7 +286,7 @@ int exynos5_dwc_phyclk_switch(struct platform_device *pdev, bool use_ext_clk)
 	return _exynos5_usb_phy30_init(pdev, use_ext_clk);
 }
 
-static int exynos5_usb_phy30_init(struct platform_device *pdev)
+static int exynos5_usb_phy30_init(struct platform_device *pdev, bool ext_clk)
 {
 	int ret;
 	struct clk *host_clk = NULL;
@@ -297,11 +297,7 @@ static int exynos5_usb_phy30_init(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	/*
-	 * We'll start out with the XusbXTI turned on
-	 * for phy reference clock refclksel [3:2]
-	 */
-	ret = _exynos5_usb_phy30_init(pdev, true);
+	ret = _exynos5_usb_phy30_init(pdev, ext_clk);
 
 	exynos_usb_phy_clock_disable(host_clk);
 
@@ -575,7 +571,7 @@ static int exynos4_usb_phy1_exit(struct platform_device *pdev)
 	return 0;
 }
 
-int s5p_usb_phy_init(struct platform_device *pdev, int type)
+int s5p_usb_phy_init(struct platform_device *pdev, int type, bool ext_clk)
 {
 	if (type == S5P_USB_PHY_HOST) {
 		if (soc_is_exynos5250())
@@ -584,7 +580,7 @@ int s5p_usb_phy_init(struct platform_device *pdev, int type)
 			return exynos4_usb_phy1_init(pdev);
 	} else if (type == S5P_USB_PHY_DRD) {
 		if (soc_is_exynos5250())
-			return exynos5_usb_phy30_init(pdev);
+			return exynos5_usb_phy30_init(pdev, ext_clk);
 		else
 			dev_err(&pdev->dev, "USB 3.0 DRD not present\n");
 	}
