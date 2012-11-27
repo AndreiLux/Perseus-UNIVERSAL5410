@@ -392,9 +392,8 @@ void rtsx_reset_cards(struct rtsx_chip *chip)
 		}
 	}
 	if (chip->need_reset & SD_CARD) {
-		chip->card_exist |= SD_CARD;
-
 		if (chip->sd_show_cnt >= MAX_SHOW_CNT) {
+			chip->card_exist |= SD_CARD;
 			rtsx_write_register(chip, RBCTL, RB_FLUSH, RB_FLUSH);
 			do_reset_sd_card(chip);
 		} else {

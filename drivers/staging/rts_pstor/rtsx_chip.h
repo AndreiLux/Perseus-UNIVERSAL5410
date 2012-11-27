@@ -37,7 +37,7 @@
 /* Enable hardware interrupt write clear */
 #define HW_INT_WRITE_CLR
 /* #define LED_AUTO_BLINK */
-/* #define DISABLE_CARD_INT */
+#define DISABLE_CARD_INT
 
 #ifdef SUPPORT_MAGIC_GATE
 	/* Using NORMAL_WRITE instead of AUTO_WRITE to set ICV */
