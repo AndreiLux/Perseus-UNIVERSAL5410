@@ -122,7 +122,7 @@ static int kbase_carveout_init(void)
 }
 subsys_initcall(kbase_carveout_init);
 
-int kbase_carveout_mem_reserve(phys_addr_t size)
+int __init kbase_carveout_mem_reserve(phys_addr_t size)
 {
 	phys_addr_t mem;
 
