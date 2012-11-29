@@ -42,6 +42,7 @@
 #include <linux/platform_data/i2c-s3c2410.h>
 #include <plat/regs-serial.h>
 #include <plat/sdhci.h>
+#include <linux/platform_data/usb-ehci-s5p.h>
 
 #include <mach/map.h>
 #include "common.h"
@@ -704,6 +705,7 @@ static struct platform_device *origen_quad_devices[] __initdata = {
 	&s3c_device_hsmmc2,
 	&s3c_device_i2c0,
 	&s3c_device_i2c3,
+	&s5p_device_ehci,
 	&s5p_device_fimc0,
 	&s5p_device_fimc1,
 	&s5p_device_fimc2,
@@ -767,6 +769,25 @@ static void __init origen_quad_reserve(void)
 	s5p_mfc_reserve_mem(0x43000000, 8 << 20, 0x51000000, 8 << 20);
 }
 
+/* USB EHCI */
+static struct s5p_ehci_platdata origen_ehci_pdata;
+
+static void __init origen_ehci_init(void)
+{
+	struct s5p_ehci_platdata *pdata = &origen_ehci_pdata;
+
+	s5p_ehci_set_platdata(pdata);
+}
+
+/* USB Hub Reset & Connect */
+static void __init usb_hub_reset_connect(void)
+{
+	/* USB Hub Reset & Connect*/
+	gpio_request_one(EXYNOS4_GPX3(5), GPIOF_OUT_INIT_LOW, "GPX3_5");
+	gpio_set_value(EXYNOS4_GPX3(5), 1);
+	gpio_request_one(EXYNOS4_GPK3(2), GPIOF_OUT_INIT_HIGH, "GPK3_2");
+}
+
 static void __init origen_quad_machine_init(void)
 {
 	origen_quad_power_init();
@@ -778,6 +799,9 @@ static void __init origen_quad_machine_init(void)
 	i2c_register_board_info(3, i2c3_devs, ARRAY_SIZE(i2c3_devs));
 
 	s3c_sdhci2_set_platdata(&origen_quad_hsmmc2_pdata);
+
+	origen_ehci_init();
+	usb_hub_reset_connect();
 
 #ifdef CONFIG_DRM_EXYNOS
 	s5p_device_fimd0.dev.platform_data = &drm_fimd_pdata;
