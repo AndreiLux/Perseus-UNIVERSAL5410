@@ -13,12 +13,15 @@
 
 #define EXYNOS4_HSOTG_PHYREG(x)		((x) + S3C_VA_USB_HSPHY)
 
+#define EXYNOS4412_USB_CFG		(S3C_VA_SYS + 0x21C)
+
 #define EXYNOS4_PHYPWR			EXYNOS4_HSOTG_PHYREG(0x00)
-#define PHY1_HSIC_NORMAL_MASK		(0xf << 9)
-#define PHY1_HSIC1_SLEEP		(1 << 12)
-#define PHY1_HSIC1_FORCE_SUSPEND	(1 << 11)
-#define PHY1_HSIC0_SLEEP		(1 << 10)
-#define PHY1_HSIC0_FORCE_SUSPEND	(1 << 9)
+#define PHY1_HSIC_NORMAL_MASK				(0xf << 9)
+#define EXYNOS4412_PHY1_HSIC_NORMAL_MASK		(0x3f << 9)
+#define PHY1_HSIC1_SLEEP				(1 << 12)
+#define PHY1_HSIC1_FORCE_SUSPEND			(1 << 11)
+#define PHY1_HSIC0_SLEEP				(1 << 10)
+#define PHY1_HSIC0_FORCE_SUSPEND			(1 << 9)
 
 #define PHY1_STD_NORMAL_MASK		(0x7 << 6)
 #define PHY1_STD_SLEEP			(1 << 8)
@@ -51,14 +54,16 @@
 #define EXYNOS4X12_CLKSEL_20M		(0x4 << 0)
 #define EXYNOS4X12_CLKSEL_24M		(0x5 << 0)
 
-#define EXYNOS4_RSTCON			EXYNOS4_HSOTG_PHYREG(0x08)
-#define HOST_LINK_PORT_SWRST_MASK	(0xf << 6)
-#define HOST_LINK_PORT2_SWRST		(1 << 9)
-#define HOST_LINK_PORT1_SWRST		(1 << 8)
-#define HOST_LINK_PORT0_SWRST		(1 << 7)
-#define HOST_LINK_ALL_SWRST		(1 << 6)
+#define EXYNOS4_RSTCON				EXYNOS4_HSOTG_PHYREG(0x08)
+#define HOST_LINK_PORT_SWRST_MASK		(0xf << 6)
+#define EXYNOS4412_HOST_LINK_PORT_SWRST_MASK	(0xf << 7)
+#define HOST_LINK_PORT2_SWRST			(1 << 9)
+#define HOST_LINK_PORT1_SWRST			(1 << 8)
+#define HOST_LINK_PORT0_SWRST			(1 << 7)
+#define HOST_LINK_ALL_SWRST			(1 << 6)
 
 #define PHY1_SWRST_MASK			(0x7 << 3)
+#define EXYNOS4412_PHY1_SWRST_MASK	(0xf << 3)
 #define PHY1_HSIC_SWRST			(1 << 5)
 #define PHY1_STD_SWRST			(1 << 4)
 #define PHY1_ALL_SWRST			(1 << 3)

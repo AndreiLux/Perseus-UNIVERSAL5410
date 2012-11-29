@@ -202,12 +202,95 @@ static int exynos4210_usb_phy1_exit(struct platform_device *pdev)
 	return 0;
 }
 
+static void exynos_usb_mux_change(struct platform_device *pdev, int val)
+{
+	u32 is_host;
+
+	is_host = readl(EXYNOS4412_USB_CFG);
+	writel(val, EXYNOS4412_USB_CFG);
+
+	if (is_host != val)
+		dev_dbg(&pdev->dev, "Change USB MUX from %s to %s",
+			is_host ? "Host" : "Device",
+			val ? "Host" : "Device");
+}
+
+static int exynos4412_usb_phy20_init(struct platform_device *pdev)
+{
+	u32 phypwr, rstcon;
+	struct clk *otg_clk;
+	int err;
+
+	atomic_inc(&host_usage);
+
+	otg_clk = clk_get(&pdev->dev, "otg");
+	if (IS_ERR(otg_clk)) {
+		dev_err(&pdev->dev, "Failed to get otg clock\n");
+		return PTR_ERR(otg_clk);
+	}
+
+	err = clk_enable(otg_clk);
+	if (err) {
+		clk_put(otg_clk);
+		return err;
+	}
+
+	if (exynos4_usb_host_phy_is_on()) {
+		dev_err(&pdev->dev, "Already power on PHY\n");
+		return 0;
+	}
+
+	writel(1, S5P_PMU_USB_PHY_CONTROL);
+	writel(1, S5P_PMU_HSIC_1_PHY_CONTROL);
+	writel(1, S5P_PMU_HSIC_2_PHY_CONTROL);
+
+	/* USB MUX change from Device to Host */
+	exynos_usb_mux_change(pdev, 1);
+
+	/* set clock frequency for PLL */
+	exynos4210_usb_phy_clkset(pdev);
+
+	/* set to normal of Device */
+	phypwr = readl(EXYNOS4_PHYPWR) & ~PHY0_NORMAL_MASK;
+	writel(phypwr, EXYNOS4_PHYPWR);
+
+	/* set to normal of Host */
+	phypwr = readl(EXYNOS4_PHYPWR);
+	phypwr &= ~(PHY1_STD_NORMAL_MASK
+		| EXYNOS4412_PHY1_HSIC_NORMAL_MASK);
+	writel(phypwr, EXYNOS4_PHYPWR);
+
+	/* reset both PHY and Link of Device */
+	rstcon = readl(EXYNOS4_RSTCON) | PHY0_SWRST_MASK;
+	writel(rstcon, EXYNOS4_RSTCON);
+	udelay(10);
+	rstcon &= ~PHY0_SWRST_MASK;
+	writel(rstcon, EXYNOS4_RSTCON);
+
+	/* reset both PHY and Link of Host */
+	rstcon = readl(EXYNOS4_RSTCON)
+		| EXYNOS4412_HOST_LINK_PORT_SWRST_MASK
+		| EXYNOS4412_PHY1_SWRST_MASK;
+	writel(rstcon, EXYNOS4_RSTCON);
+	udelay(10);
+
+	rstcon &= ~(EXYNOS4412_HOST_LINK_PORT_SWRST_MASK
+		| EXYNOS4412_PHY1_SWRST_MASK);
+	writel(rstcon, EXYNOS4_RSTCON);
+	udelay(80);
+
+	return 0;
+}
 int s5p_usb_phy_init(struct platform_device *pdev, int type)
 {
 	if (type == S5P_USB_PHY_DEVICE)
 		return exynos4210_usb_phy0_init(pdev);
-	else if (type == S5P_USB_PHY_HOST)
-		return exynos4210_usb_phy1_init(pdev);
+	else if (type == S5P_USB_PHY_HOST) {
+		if (soc_is_exynos4412())
+			return exynos4412_usb_phy20_init(pdev);
+		else if (soc_is_exynos4210())
+			return exynos4210_usb_phy1_init(pdev);
+	}
 
 	return -EINVAL;
 }
