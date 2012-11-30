@@ -408,13 +408,8 @@ static bool dw_mci_wait_reset(struct device *dev, struct dw_mci *host,
 
 	/* wait till resets clear */
 	do {
-		if (!(mci_readl(host, CTRL) & reset_val)) {
-			if (reset_val & SDMMC_CTRL_RESET)
-				/* After CTRL Reset, Should be needed clk val to CIU */
-				mci_send_cmd(host->cur_slot,
-				SDMMC_CMD_UPD_CLK, 0);
+		if (!(mci_readl(host, CTRL) & reset_val))
 			return true;
-		}
 	} while (time_before(jiffies, timeout));
 
 	dev_err(dev, "%s: Timeout resetting block (ctrl %#x)\n",
@@ -444,6 +439,10 @@ static bool dw_mci_wait_fifo_reset(struct device *dev, struct dw_mci *host)
 					ctrl = ctrl & ~(mci_readl(host, MINTSTS));
 					if (ctrl)
 						mci_writel(host, RINTSTS, ctrl);
+
+					/* After CTRL Reset, Should be needed clk val to CIU */
+					mci_send_cmd(host->cur_slot,
+							SDMMC_CMD_UPD_CLK, 0);
 					return true;
 				}
 			}
