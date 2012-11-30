@@ -781,7 +781,7 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 
 			s5p_mfc_clock_off();
 
-			wake_up_interruptible(&ctx->queue);
+			wake_up(&ctx->queue);
 
 			queue_work(dev->irq_workqueue, &dev->work_struct);
 		} else {
@@ -790,7 +790,7 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 
 			s5p_mfc_clock_off();
 
-			wake_up_interruptible(&ctx->queue);
+			wake_up(&ctx->queue);
 		}
 		break;
 	default:
