@@ -25,6 +25,8 @@
 #include <linux/sysdev.h>
 #include <linux/platform_device.h>
 
+#include <linux/sysfs_helpers.h>
+
 #include <asm/io.h>
 
 #include "mali_device_pause_resume.h"
@@ -324,29 +326,6 @@ mali_bool mali_dvfs_handler(u32 utilization)
 
 /* #### Sysfs start #### */
 
-static int read_into(int *container, int size, const char *buf, size_t count)
-{
-	int i, j, t;
-	i=0; j=0; t=0;
-
-	for(j = 0; i < count; i++) {
-		char c = buf[i];
-		if(c >= '0' && c <= '9') {
-			if(t < (j + 1)) 
-				t = j + 1;
-			if(t > size)
-				return -EINVAL;
-			*(container + j) *= 10;
-			*(container + j) += (c - '0');
-		} else if(c == ' ' || c == '\t' || c == '\n' ) {
-			if(*(container + j) != 0) j++;
-		} else
-			break;
-	}
-
-	return t;
-}
-
 static int sanitize_voltage(int voltage)
 {
 	voltage *= 1000;
@@ -373,7 +352,7 @@ static ssize_t max_freq_store(struct sysdev_class * cls, struct sysdev_class_att
 			      const char *buf, size_t count) 
 {
 	unsigned int ret = -EINVAL;
-	int freq, i;
+	int freq, i, s;
 
 	ret = sscanf(buf, "%d", &freq);
 	if (ret != 1) {
@@ -381,7 +360,16 @@ static ssize_t max_freq_store(struct sysdev_class * cls, struct sysdev_class_att
 	} else {
 		for(i = 0; i < MALI_DVFS_STEPS; i++){
 			if(mali_dvfs[i].clock != freq) continue;
-			mali_policy.highStep = findStep(freq);
+
+			s = findStep(freq);
+			if(s > mali_policy.lowStep)
+				s = mali_policy.lowStep;
+
+			mali_policy.highStep = s;
+
+			if(mali_policy.currentStep > mali_policy.highStep)
+				change_mali_dvfs_status(mali_policy.highStep, MALI_FALSE);
+			
 			break;
 		}
 	}
@@ -398,7 +386,7 @@ static ssize_t min_freq_store(struct sysdev_class * cls, struct sysdev_class_att
 			      const char *buf, size_t count) 
 {
 	unsigned int ret = -EINVAL;
-	int freq, i;
+	int freq, i, s;
 
 	ret = sscanf(buf, "%d", &freq);
 	if (ret != 1) {
@@ -406,7 +394,15 @@ static ssize_t min_freq_store(struct sysdev_class * cls, struct sysdev_class_att
 	} else {
 		for(i = 0; i < MALI_DVFS_STEPS; i++){
 			if(mali_dvfs[i].clock != freq) continue;
-			mali_policy.lowStep = findStep(freq);
+
+			s = findStep(freq);
+			if(s < mali_policy.highStep)
+				s = mali_policy.highStep;
+
+			mali_policy.lowStep = s;
+
+			if(mali_policy.currentStep < mali_policy.lowStep)
+				change_mali_dvfs_status(mali_policy.lowStep, MALI_TRUE);
 			break;
 		}
 	}
@@ -430,9 +426,6 @@ static ssize_t freq_table_store(struct sysdev_class * cls, struct sysdev_class_a
 {
 	int i, t;
 	int u[MALI_DVFS_STEPS];
-
-	for(i=0; i < MALI_DVFS_STEPS; i++)
-		u[i] = 0;
 	
 	if((t = read_into((int*)&u, MALI_DVFS_STEPS, buf, count)) < 0)
 		return -EINVAL;
@@ -467,9 +460,6 @@ static ssize_t volt_table_store(struct sysdev_class * cls, struct sysdev_class_a
 	int i, t;
 	int u[MALI_DVFS_STEPS];
 
-	for(i=0; i < MALI_DVFS_STEPS; i++)
-		u[i] = 0;
-	
 	if((t = read_into((int*)&u, MALI_DVFS_STEPS, buf, count)) < 0)
 		return -EINVAL;
 	if(t == 2 && MALI_DVFS_STEPS != 2) {
