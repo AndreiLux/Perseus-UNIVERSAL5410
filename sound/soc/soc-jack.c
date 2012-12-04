@@ -30,7 +30,7 @@
 
 #ifdef CONFIG_SWITCH
 /* Android jack detection */
-static struct switch_dev android_switch = {
+struct switch_dev android_switch = {
 	.name = "h2w",
 };
 #endif
