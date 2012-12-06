@@ -632,6 +632,20 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 	/* Reset the timeout watchdog */
 	atomic_set(&dev->watchdog_cnt, 0);
 	ctx = dev->ctx[dev->curr_ctx];
+	if (!ctx) {
+		unsigned long r2h_int;
+
+		mfc_err("Invalid context %d: num_insts=%d work_bits=%lx hw_lock=%lx\n",
+			dev->curr_ctx, dev->num_inst, dev->ctx_work_bits,
+			dev->hw_lock);
+		reason = s5p_mfc_get_int_reason();
+		err = s5p_mfc_get_int_err();
+		r2h_int = readl(dev->regs_base + S5P_FIMV_RISC2HOST_INT);
+		mfc_err("   reason=%d err=%d r2h_int=%lx\n",
+			reason, err, r2h_int);
+		BUG();
+	}
+
 	if (ctx->type == MFCINST_DECODER)
 		dec = ctx->dec_priv;
 
