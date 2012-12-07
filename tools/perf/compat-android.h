@@ -20,13 +20,35 @@
 
 #ifndef _COMPAT_ANDROID_H_
 #define _COMPAT_ANDROID_H_ 1
+/* Stuff Bionic assumes to be present, but that doesn't exist
+ * anymore after the uabi kernel header reorg
+ */
+#include <stdint.h>
+#include <stdbool.h>
+typedef unsigned short __kernel_nlink_t;
+typedef intptr_t phys_addr_t;
+#include <linux/types.h>
+typedef uint32_t u32;
+typedef uint64_t u64;
+#ifndef CONFIG_DRAM_BASEUL
+#ifdef CONFIG_DRAM_BASE
+#define CONFIG_DRAM_BASEUL UL(CONFIG_DRAM_BASE)
+#else
+#define CONFIG_DRAM_BASEUL 0
+#endif
+#endif
+#define __deprecated
+#include <asm-generic/bitsperlong.h>
+
+#undef BITS_PER_LONG /* Something seems to define this incorrectly */
+#define BITS_PER_LONG _BITSIZE
+
 #include <stdio.h>
 #include <signal.h>
 #include <asm/page.h> /* for PAGE_SIZE */
 #include <asm/termios.h> /* for winsize */
 
 #ifndef __WORDSIZE
-#include <stdint.h>
 #define __WORDSIZE _BITSIZE
 #endif
 
@@ -40,6 +62,11 @@
 
 #ifndef __le32
 #define __le32 uint32_t
+#endif
+
+#ifndef FD_SET
+#define FD_SET(fd, fdsetp) (((fd_set *)(fdsetp))->fds_bits[(fd) >> 5] |= (1<<((fd) & 31)))
+#define FD_ZERO(fdsetp) (memset (fdsetp, 0, sizeof (*(fd_set *)(fdsetp))))
 #endif
 
 /* Assorted functions that are missing from Bionic */

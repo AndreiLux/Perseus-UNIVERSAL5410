@@ -253,11 +253,13 @@ void event_attr_init(struct perf_event_attr *attr);
  * *not* considered a power of two.
  */
 
+#ifndef _LINUX_LOG2_H // defined there too
 static inline __attribute__((const))
 bool is_power_of_2(unsigned long n)
 {
 	return (n != 0 && ((n & (n - 1)) == 0));
 }
+#endif
 
 size_t hex_width(u64 v);
 
