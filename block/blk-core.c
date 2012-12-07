@@ -1266,6 +1266,7 @@ void blk_queue_bio(struct request_queue *q, struct bio *bio)
 	struct blk_plug *plug;
 	int el_ret, rw_flags, where = ELEVATOR_INSERT_SORT;
 	struct request *req;
+	unsigned int request_count = 0;
 
 	/*
 	 * low level driver can indicate that it wants pages above a
@@ -1497,7 +1498,6 @@ static inline void __generic_make_request(struct bio *bio)
 	int nr_sectors = bio_sectors(bio);
 	int err = -EIO;
 	char b[BDEVNAME_SIZE];
-	struct hd_struct *part;
 
 	might_sleep();
 
@@ -1526,10 +1526,7 @@ static inline void __generic_make_request(struct bio *bio)
 	if (unlikely(test_bit(QUEUE_FLAG_DEAD, &q->queue_flags)))
 		goto end_io;
 
-	part = bio->bi_bdev->bd_part;
-	if (should_fail_request(part, bio->bi_size) ||
-	    should_fail_request(&part_to_disk(part)->part0,
-				bio->bi_size))
+	if (should_fail_request(bio))
 		goto end_io;
 
 	/*
