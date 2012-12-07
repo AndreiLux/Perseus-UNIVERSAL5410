@@ -1580,7 +1580,7 @@ static inline void __generic_make_request(struct bio *bio)
 		goto end_io;
 	}
 
-	if (blk_throtl_bio(q, &bio))
+	if (blk_throtl_bio(q, bio))
 		goto end_io;
 
 	/* if bio = NULL, bio has been throttled and will be submitted later. */
@@ -1742,6 +1742,7 @@ EXPORT_SYMBOL_GPL(blk_rq_check_limits);
 int blk_insert_cloned_request(struct request_queue *q, struct request *rq)
 {
 	unsigned long flags;
+        int where = ELEVATOR_INSERT_BACK;
 
 	if (blk_rq_check_limits(q, rq))
 		return -EIO;
@@ -2322,7 +2323,7 @@ static bool blk_end_bidi_request(struct request *rq, int error,
  *     %false - we are done with this request
  *     %true  - still buffers pending for this request
  **/
-static bool __blk_end_bidi_request(struct request *rq, int error,
+bool __blk_end_bidi_request(struct request *rq, int error,
 				   unsigned int nr_bytes, unsigned int bidi_bytes)
 {
 	if (blk_update_bidi_request(rq, error, nr_bytes, bidi_bytes))
