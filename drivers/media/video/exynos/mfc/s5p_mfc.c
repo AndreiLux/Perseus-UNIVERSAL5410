@@ -633,6 +633,25 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 	mfc_debug_enter();
 	/* Reset the timeout watchdog */
 	atomic_set(&dev->watchdog_cnt, 0);
+
+	/* Get the reason of interrupt and the error code */
+	reason = s5p_mfc_get_int_reason();
+	err = s5p_mfc_get_int_err();
+	mfc_debug(2, "Int reason: %d (err: %d)\n", reason, err);
+
+	/* don't try to lookup current context for these operations */
+	switch (reason) {
+	case S5P_FIMV_R2H_CMD_SYS_INIT_RET:
+	case S5P_FIMV_R2H_CMD_FW_STATUS_RET:
+	case S5P_FIMV_R2H_CMD_SLEEP_RET:
+	case S5P_FIMV_R2H_CMD_WAKEUP_RET:
+		s5p_mfc_clear_int_flags();
+		wake_up_dev(dev, reason, err);
+		/* Initialize hw_lock */
+		dev->hw_lock = 0;
+		goto done;
+	}
+
 	ctx = dev->ctx[dev->curr_ctx];
 	if (!ctx) {
 		unsigned long r2h_int;
@@ -640,8 +659,6 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 		mfc_err("Invalid context %d: num_insts=%d work_bits=%lx hw_lock=%lx\n",
 			dev->curr_ctx, dev->num_inst, dev->ctx_work_bits,
 			dev->hw_lock);
-		reason = s5p_mfc_get_int_reason();
-		err = s5p_mfc_get_int_err();
 		r2h_int = readl(dev->regs_base + S5P_FIMV_RISC2HOST_INT);
 		mfc_err("   reason=%d err=%d r2h_int=%lx\n",
 			reason, err, r2h_int);
@@ -651,10 +668,6 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 	if (ctx->type == MFCINST_DECODER)
 		dec = ctx->dec_priv;
 
-	/* Get the reason of interrupt and the error code */
-	reason = s5p_mfc_get_int_reason();
-	err = s5p_mfc_get_int_err();
-	mfc_debug(2, "Int reason: %d (err: %d)\n", reason, err);
 	switch (reason) {
 	case S5P_FIMV_R2H_CMD_ERR_RET:
 		/* An error has occured */
@@ -746,15 +759,6 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 		wake_up_ctx(ctx, reason, err);
 		goto irq_cleanup_hw;
 		break;
-	case S5P_FIMV_R2H_CMD_SYS_INIT_RET:
-	case S5P_FIMV_R2H_CMD_FW_STATUS_RET:
-	case S5P_FIMV_R2H_CMD_SLEEP_RET:
-	case S5P_FIMV_R2H_CMD_WAKEUP_RET:
-		s5p_mfc_clear_int_flags();
-		wake_up_dev(dev, reason, err);
-		/* Initialize hw_lock */
-		dev->hw_lock = 0;
-		break;
 	case S5P_FIMV_R2H_CMD_INIT_BUFFERS_RET:
 		s5p_mfc_clear_int_flags();
 		ctx->int_type = reason;
@@ -813,8 +817,11 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 		mfc_debug(2, "Unknown int reason.\n");
 		s5p_mfc_clear_int_flags();
 	}
+
+done:
 	mfc_debug_leave();
 	return IRQ_HANDLED;
+
 irq_cleanup_hw:
 	s5p_mfc_clear_int_flags();
 	if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
