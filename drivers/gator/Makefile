@@ -31,6 +31,10 @@ ccflags-$(CONFIG_GATOR_MALI_400MP) += -DMALI_SUPPORT=MALI_400
 ccflags-$(CONFIG_GATOR_MALI_T6XX) += -DMALI_SUPPORT=MALI_T6xx
 endif
 
+# GATOR_TEST controls whether to include (=1) or exclude (=0) test code.
+GATOR_TEST ?= 0
+EXTRA_CFLAGS +=	-DGATOR_TEST=$(GATOR_TEST)
+
 gator-$(CONFIG_ARM) +=	gator_events_armv6.o \
 			gator_events_armv7.o \
 			gator_events_l2c-310.o \
