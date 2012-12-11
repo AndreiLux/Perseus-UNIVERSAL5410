@@ -156,7 +156,7 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 					sizeof(fd_info)))
 			return -EFAULT;
 
-		client = ion_client_create(ion_exynos, -1, "DRM");
+		client = ion_client_create(ion_exynos, "DRM");
 		if (IS_ERR(client))
 			printk(KERN_ERR "%s: Failed to get ion_client of DRM\n",
 				__func__);

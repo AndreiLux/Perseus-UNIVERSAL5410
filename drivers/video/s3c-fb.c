@@ -3566,9 +3566,7 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 		writel(0xffffff, regs + WKEYCON1);
 	}
 #ifdef CONFIG_ION_EXYNOS
-	sfb->fb_ion_client = ion_client_create(ion_exynos,
-			ION_HEAP_EXYNOS_MASK,
-			"fimd");
+	sfb->fb_ion_client = ion_client_create(ion_exynos, "fimd");
 	if (IS_ERR(sfb->fb_ion_client)) {
 		dev_err(sfb->dev, "failed to ion_client_create\n");
 		goto err_pm_runtime;
