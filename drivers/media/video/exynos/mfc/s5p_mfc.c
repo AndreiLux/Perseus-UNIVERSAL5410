@@ -838,8 +838,6 @@ static int s5p_mfc_open(struct file *file)
 
 	mfc_debug_enter();
 
-	__pm_stay_awake(&dev->mfc_ws);
-
 	node = s5p_mfc_get_node_type(file);
 	if (node == MFCNODE_INVALID) {
 		mfc_err("cannot specify node type\n");
@@ -855,6 +853,8 @@ static int s5p_mfc_open(struct file *file)
 	}
 #endif
 	dev->num_inst++;	/* It is guarded by mfc_mutex in vfd */
+	if (dev->num_inst == 1)
+		__pm_stay_awake(&dev->mfc_ws);
 
 	/* Allocate memory for context */
 	ctx = kzalloc(sizeof *ctx, GFP_KERNEL);
@@ -1021,12 +1021,13 @@ err_ctx_num:
 
 err_ctx_alloc:
 	dev->num_inst--;
+	if (dev->num_inst == 0)
+		__pm_relax(&dev->mfc_ws);
 
 #ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
 err_drm_playback:
 #endif
 err_node_type:
-	__pm_relax(&dev->mfc_ws);
 	mfc_debug_leave();
 
 	return ret;
@@ -1098,6 +1099,8 @@ static int s5p_mfc_release(struct file *file)
 
 		mfc_debug(2, "power off\n");
 		s5p_mfc_power_off();
+		__pm_relax(&dev->mfc_ws);
+
 	}
 
 	if (ctx->type == MFCINST_DECODER)
@@ -1106,8 +1109,6 @@ static int s5p_mfc_release(struct file *file)
 		kfree(ctx->enc_priv);
 	dev->ctx[ctx->num] = 0;
 	kfree(ctx);
-
-	__pm_relax(&dev->mfc_ws);
 
 	mfc_debug_leave();
 
