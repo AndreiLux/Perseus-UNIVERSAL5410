@@ -1339,7 +1339,7 @@ static void dw_mci_hw_reset(struct mmc_host *host)
 	struct dw_mci_slot *slot = mmc_priv(host);
 	struct dw_mci_board *brd = slot->host->pdata;
 
-	dev_dbg(&host->class_dev, "card is going to h/w reset\n");
+	dev_warn(&host->class_dev, "device is being hw reset\n");
 
 	/* Use platform hw_reset function */
 	if (brd->hw_reset)
