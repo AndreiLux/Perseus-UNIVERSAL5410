@@ -42,6 +42,8 @@
 #define S5P_MFC_DEC_NAME	"s5p-mfc-dec"
 #define S5P_MFC_ENC_NAME	"s5p-mfc-enc"
 
+#define DISABLE_SLEEP
+
 int debug;
 module_param(debug, int, S_IRUGO | S_IWUSR);
 
@@ -1573,7 +1575,11 @@ static int s5p_mfc_suspend(struct device *dev)
 	if (m_dev->num_inst == 0)
 		return 0;
 
+#ifndef DISABLE_SLEEP
 	ret = s5p_mfc_sleep(m_dev);
+#else
+	ret = -EBUSY;
+#endif
 
 	return ret;
 }
@@ -1586,7 +1592,13 @@ static int s5p_mfc_resume(struct device *dev)
 	if (m_dev->num_inst == 0)
 		return 0;
 
+#ifndef DISABLE_SLEEP
 	ret = s5p_mfc_wakeup(m_dev);
+#else
+	/* cannot be here without sleep enabled since suspend would return
+	 * an error */
+	BUG();
+#endif
 
 	return ret;
 }
