@@ -18,6 +18,7 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/io.h>
+#include <linux/etherdevice.h> 
 
 #include <asm/cputype.h>
 
@@ -33,6 +34,9 @@ static const char *cpu_rev;
 u32 omap_features;
 
 static void __init omap3_cpuinfo(void);
+
+static char *cpuidmac;
+module_param(cpuidmac, charp, 0644);
 
 unsigned int omap_rev(void)
 {
@@ -585,6 +589,15 @@ void omap2_die_id_to_ethernet_mac(u8 *mac, int subtype)
 
 	pr_info("  ID: %08X %08X %08X %08X %08X\n", tap,
 				odi.id_0, odi.id_1, odi.id_2, odi.id_3);
+
+	if (cpuidmac)
+		if (!eth_scan_mac(cpuidmac, mac)) {
+			mac[1] &= ~0xc0;
+			pr_info("cpuidmac <- %02x:%02x:%02x:%02x:%02x:%02x\n",
+			       mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+			return;
+		} else
+			pr_info("cpuidmac failed to parse mac %s\n", cpuidmac);
 
 	mac[0] = odi.id_2;
 	mac[1] = odi.id_2 >> 8;
