@@ -583,6 +583,9 @@ void omap2_die_id_to_ethernet_mac(u8 *mac, int subtype)
 
 	omap_get_die_id(&odi);
 
+	pr_info("  ID: %08X %08X %08X %08X %08X\n", tap,
+				odi.id_0, odi.id_1, odi.id_2, odi.id_3);
+
 	mac[0] = odi.id_2;
 	mac[1] = odi.id_2 >> 8;
 	mac[2] = odi.id_1;
