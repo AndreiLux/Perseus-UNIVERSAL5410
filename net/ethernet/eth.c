@@ -394,3 +394,22 @@ ssize_t sysfs_format_mac(char *buf, const unsigned char *addr, int len)
 	return (ssize_t)l;
 }
 EXPORT_SYMBOL(sysfs_format_mac);
+
+int eth_scan_mac(const char *mac_string, unsigned char *addr)
+{
+	int o[ETH_ALEN];
+	int n = sscanf(mac_string, "%x:%x:%x:%x:%x:%x",
+		&o[0], &o[1], &o[2], &o[3], &o[4], &o[5]);
+
+	if (n < 0)
+		return n;
+	if (n != ETH_ALEN)
+		return -EINVAL;
+
+	for (n = 0; n < ETH_ALEN; n++)
+		*addr++ = o[n];
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(eth_scan_mac);
+

@@ -45,7 +45,7 @@ extern void eth_header_cache_update(struct hh_cache *hh,
 extern int eth_mac_addr(struct net_device *dev, void *p);
 extern int eth_change_mtu(struct net_device *dev, int new_mtu);
 extern int eth_validate_addr(struct net_device *dev);
-
+extern int eth_scan_mac(const char *mac_string, unsigned char *addr);
 
 
 extern struct net_device *alloc_etherdev_mqs(int sizeof_priv, unsigned int txqs,
