@@ -630,7 +630,7 @@ static int gsc_m2m_open(struct file *file)
 
 	gsc_dbg("pid: %d, state: 0x%lx", task_pid_nr(current), gsc->state);
 
-	if (gsc_out_opened(gsc) || gsc_cap_opened(gsc))
+	if (gsc_m2m_opened(gsc) || gsc_out_opened(gsc) || gsc_cap_opened(gsc))
 		return -EBUSY;
 
 	ctx = kzalloc(sizeof *ctx, GFP_KERNEL);
