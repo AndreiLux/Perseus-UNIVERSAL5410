@@ -21,15 +21,15 @@ struct ion_platform_data exynos_ion_pdata = {
 	.heaps = {
 		{	.type = ION_HEAP_TYPE_SYSTEM,
 			.name = "ion_noncontig_heap",
-			.id = ION_HEAP_TYPE_SYSTEM,
+			.id = EXYNOS_ION_HEAP_SYSTEM_ID,
 		},
 		{	.type = ION_HEAP_TYPE_EXYNOS,
 			.name = "exynos_noncontig_heap",
-			.id = ION_HEAP_TYPE_EXYNOS,
+			.id = EXYNOS_ION_HEAP_EXYNOS_ID,
 		},
 		{	.type = ION_HEAP_TYPE_EXYNOS_CONTIG,
 			.name = "exynos_contig_heap",
-			.id = ION_HEAP_TYPE_EXYNOS_CONTIG,
+			.id = EXYNOS_ION_HEAP_EXYNOS_CONTIG_ID,
 		},
 	}
 };
