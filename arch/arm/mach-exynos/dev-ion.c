@@ -15,30 +15,29 @@
 #include <linux/slab.h>
 #include <mach/exynos-ion.h>
 
+
+struct ion_platform_data exynos_ion_pdata = {
+	.nr = 3,
+	.heaps = {
+		{	.type = ION_HEAP_TYPE_SYSTEM,
+			.name = "ion_noncontig_heap",
+			.id = ION_HEAP_TYPE_SYSTEM,
+		},
+		{	.type = ION_HEAP_TYPE_EXYNOS,
+			.name = "exynos_noncontig_heap",
+			.id = ION_HEAP_TYPE_EXYNOS,
+		},
+		{	.type = ION_HEAP_TYPE_EXYNOS_CONTIG,
+			.name = "exynos_contig_heap",
+			.id = ION_HEAP_TYPE_EXYNOS_CONTIG,
+		},
+	}
+};
+
 struct platform_device exynos_device_ion = {
 	.name		= "ion-exynos",
 	.id		= -1,
-};
-
-void __init exynos_ion_set_platdata(void)
-{
-	struct ion_platform_data *pdata;
-	pdata = kzalloc(sizeof(struct ion_platform_data)
-			+ 5 * sizeof(struct ion_platform_heap), GFP_KERNEL);
-	if (pdata) {
-		pdata->nr = 4;
-		pdata->heaps[0].type = ION_HEAP_TYPE_SYSTEM;
-		pdata->heaps[0].name = "ion_noncontig_heap";
-		pdata->heaps[0].id = ION_HEAP_TYPE_SYSTEM;
-		pdata->heaps[1].type = ION_HEAP_TYPE_SYSTEM_CONTIG;
-		pdata->heaps[1].name = "ion_contig_heap";
-		pdata->heaps[1].id = ION_HEAP_TYPE_SYSTEM_CONTIG;
-		pdata->heaps[2].type = ION_HEAP_TYPE_EXYNOS;
-		pdata->heaps[2].name = "exynos_noncontig_heap";
-		pdata->heaps[2].id = ION_HEAP_TYPE_EXYNOS;
-		pdata->heaps[3].type = ION_HEAP_TYPE_EXYNOS_CONTIG;
-		pdata->heaps[3].name = "exynos_contig_heap";
-		pdata->heaps[3].id = ION_HEAP_TYPE_EXYNOS_CONTIG;
-		exynos_device_ion.dev.platform_data = pdata;
+	.dev		= {
+		.platform_data = &exynos_ion_pdata,
 	}
-}
+};
