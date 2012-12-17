@@ -501,7 +501,8 @@ ifneq ($(call try-cc,$(SOURCE_LIBELF),$(FLAGS_LIBELF)),y)
 		ifeq ($(call try-cc,$(SOURCE_BIONIC),$(FLAGS_GLIBC)),y)
 			# Found Bionic instead of glibc...
 			# That works too, but needs a bit of special treatment
-			BASIC_CFLAGS += -DANDROID -DHAVE_STRLCPY -include $(CURDIR)/compat-android.h
+			ANDROID_CFLAGS := -DANDROID -DHAVE_STRLCPY -include $(CURDIR)/compat-android.h
+			BASIC_CFLAGS += $(ANDROID_CFLAGS)
 			ANDROID := 1
 		else
 			msg := $(error No gnu/libc-version.h found, please install glibc-dev[el]/glibc-static);
@@ -958,7 +959,7 @@ $(LIB_FILE): $(LIB_OBJS)
 
 # libtraceevent.a
 $(LIBTRACEEVENT):
-	$(QUIET_SUBDIR0)$(TRACE_EVENT_DIR) $(QUIET_SUBDIR1) VERBOSE=2 CFLAGS="$(ALL_CFLAGS)" O=$(OUTPUT) libtraceevent.a
+	$(QUIET_SUBDIR0)$(TRACE_EVENT_DIR) $(QUIET_SUBDIR1) ANDROID_CFLAGS="$(ANDROID_CFLAGS)" O=$(OUTPUT) libtraceevent.a
 
 $(LIBTRACEEVENT)-clean:
 	$(QUIET_SUBDIR0)$(TRACE_EVENT_DIR) $(QUIET_SUBDIR1) O=$(OUTPUT) clean
