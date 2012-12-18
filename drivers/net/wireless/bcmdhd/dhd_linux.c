@@ -1762,16 +1762,16 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 			wl_event_to_host_order(&event);
 			if (!tout_ctrl)
 				tout_ctrl = DHD_PACKET_TIMEOUT_MS;
+#if defined(PNO_SUPPORT)
+			if (event.event_type == WLC_E_PFN_NET_FOUND) {
+				tout_ctrl = 7 * DHD_PACKET_TIMEOUT_MS;
+			}
+#endif /* PNO_SUPPORT */
 #ifdef WLBTAMP
 			if (event.event_type == WLC_E_BTA_HCI_EVENT) {
 				dhd_bta_doevt(dhdp, data, event.datalen);
 			}
 #endif /* WLBTAMP */
-#if defined(PNO_SUPPORT)
-			if (event.event_type == WLC_E_PFN_NET_FOUND) {
-				tout_ctrl *= 2;
-			}
-#endif /* PNO_SUPPORT */
 		} else {
 			tout_rx = DHD_PACKET_TIMEOUT_MS;
 		}
@@ -1821,7 +1821,6 @@ dhd_event(struct dhd_info *dhd, char *evpkt, int evlen, int ifidx)
 void
 dhd_txcomplete(dhd_pub_t *dhdp, void *txp, bool success)
 {
-	uint ifidx;
 	dhd_info_t *dhd = (dhd_info_t *)(dhdp->info);
 	struct ether_header *eh;
 	uint16 type;
@@ -1829,7 +1828,7 @@ dhd_txcomplete(dhd_pub_t *dhdp, void *txp, bool success)
 	uint len;
 #endif
 
-	dhd_prot_hdrpull(dhdp, &ifidx, txp, NULL, NULL);
+	dhd_prot_hdrpull(dhdp, NULL, txp, NULL, NULL);
 
 	eh = (struct ether_header *)PKTDATA(dhdp->osh, txp);
 	type  = ntoh16(eh->ether_type);

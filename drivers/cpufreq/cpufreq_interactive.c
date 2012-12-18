@@ -42,8 +42,6 @@ struct cpufreq_interactive_cpuinfo {
 	int timer_idlecancel;
 	u64 time_in_idle;
 	u64 time_in_idle_timestamp;
-	u64 target_set_time;
-	u64 target_set_time_in_idle;
 	struct cpufreq_policy *policy;
 	struct cpufreq_frequency_table *freq_table;
 	unsigned int target_freq;
@@ -66,6 +64,13 @@ static unsigned int hispeed_freq;
 /* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 85
 static unsigned long go_hispeed_load;
+
+/* Target load.  Lower values result in higher CPU speeds. */
+#define DEFAULT_TARGET_LOAD 90
+static unsigned int default_target_loads[] = {DEFAULT_TARGET_LOAD};
+static spinlock_t target_loads_lock;
+static unsigned int *target_loads = default_target_loads;
+static int ntarget_loads = ARRAY_SIZE(default_target_loads);
 
 /*
  * The minimum amount of time to spend at a frequency before we can ramp down.
@@ -120,13 +125,116 @@ static void cpufreq_interactive_timer_resched(
 				     &pcpu->time_in_idle_timestamp);
 }
 
+static unsigned int freq_to_targetload(unsigned int freq)
+{
+	int i;
+	unsigned int ret;
+
+	spin_lock(&target_loads_lock);
+
+	for (i = 0; i < ntarget_loads - 1 && freq >= target_loads[i+1]; i += 2)
+		;
+
+	ret = target_loads[i];
+	spin_unlock(&target_loads_lock);
+	return ret;
+}
+
+/*
+ * If increasing frequencies never map to a lower target load then
+ * choose_freq() will find the minimum frequency that does not exceed its
+ * target load given the current load.
+ */
+
+static unsigned int choose_freq(
+	struct cpufreq_interactive_cpuinfo *pcpu, unsigned int curload)
+{
+	unsigned int freq = pcpu->policy->cur;
+	unsigned int loadadjfreq = freq * curload;
+	unsigned int prevfreq, freqmin, freqmax;
+	unsigned int tl;
+	int index;
+
+	freqmin = 0;
+	freqmax = UINT_MAX;
+
+	do {
+		prevfreq = freq;
+		tl = freq_to_targetload(freq);
+
+		/*
+		 * Find the lowest frequency where the computed load is less
+		 * than or equal to the target load.
+		 */
+
+		cpufreq_frequency_table_target(
+			pcpu->policy, pcpu->freq_table, loadadjfreq / tl,
+			CPUFREQ_RELATION_L, &index);
+		freq = pcpu->freq_table[index].frequency;
+
+		if (freq > prevfreq) {
+			/* The previous frequency is too low. */
+			freqmin = prevfreq;
+
+			if (freq >= freqmax) {
+				/*
+				 * Find the highest frequency that is less
+				 * than freqmax.
+				 */
+				cpufreq_frequency_table_target(
+					pcpu->policy, pcpu->freq_table,
+					freqmax - 1, CPUFREQ_RELATION_H,
+					&index);
+				freq = pcpu->freq_table[index].frequency;
+
+				if (freq == freqmin) {
+					/*
+					 * The first frequency below freqmax
+					 * has already been found to be too
+					 * low.  freqmax is the lowest speed
+					 * we found that is fast enough.
+					 */
+					freq = freqmax;
+					break;
+				}
+			}
+		} else if (freq < prevfreq) {
+			/* The previous frequency is high enough. */
+			freqmax = prevfreq;
+
+			if (freq <= freqmin) {
+				/*
+				 * Find the lowest frequency that is higher
+				 * than freqmin.
+				 */
+				cpufreq_frequency_table_target(
+					pcpu->policy, pcpu->freq_table,
+					freqmin + 1, CPUFREQ_RELATION_L,
+					&index);
+				freq = pcpu->freq_table[index].frequency;
+
+				/*
+				 * If freqmax is the first frequency above
+				 * freqmin then we have already found that
+				 * this speed is fast enough.
+				 */
+				if (freq == freqmax)
+					break;
+			}
+		}
+
+		/* If same frequency chosen as previous then done. */
+	} while (freq != prevfreq);
+
+	return freq;
+}
+
 static void cpufreq_interactive_timer(unsigned long data)
 {
 	u64 now;
 	unsigned int delta_idle;
 	unsigned int delta_time;
 	int cpu_load;
-	int load_since_change;
 	struct cpufreq_interactive_cpuinfo *pcpu =
 		&per_cpu(cpuinfo, data);
 	u64 now_idle;
@@ -154,52 +262,25 @@ static void cpufreq_interactive_timer(unsigned long data)
 	else
 		cpu_load = 100 * (delta_time - delta_idle) / delta_time;
 
-	delta_idle = (unsigned int)(now_idle - pcpu->target_set_time_in_idle);
-	delta_time = (unsigned int)(now - pcpu->target_set_time);
-
-	if ((delta_time == 0) || (delta_idle > delta_time))
-		load_since_change = 0;
+	if ((cpu_load >= go_hispeed_load || boost_val) &&
+	    pcpu->target_freq < hispeed_freq)
+		new_freq = hispeed_freq;
 	else
-		load_since_change =
-			100 * (delta_time - delta_idle) / delta_time;
+		new_freq = choose_freq(pcpu, cpu_load);
 
-	/*
-	 * Choose greater of short-term load (since last idle timer
-	 * started or timer function re-armed itself) or long-term load
-	 * (since last frequency change).
-	 */
-	if (load_since_change > cpu_load)
-		cpu_load = load_since_change;
-
-	if (cpu_load >= go_hispeed_load || boost_val) {
-		if (pcpu->target_freq < hispeed_freq &&
-		    hispeed_freq < pcpu->policy->max) {
-			new_freq = hispeed_freq;
-		} else {
-			new_freq = pcpu->policy->max * cpu_load / 100;
-
-			if (new_freq < hispeed_freq)
-				new_freq = hispeed_freq;
-
-			if (pcpu->target_freq == hispeed_freq &&
-			    new_freq > hispeed_freq &&
-			    now - pcpu->hispeed_validate_time
-			    < above_hispeed_delay_val) {
-				trace_cpufreq_interactive_notyet(data, cpu_load,
-								 pcpu->target_freq,
-								 new_freq);
-				goto rearm;
-			}
-		}
-	} else {
-		new_freq = hispeed_freq * cpu_load / 100;
+	if (pcpu->target_freq >= hispeed_freq &&
+	    new_freq > pcpu->target_freq &&
+	    now - pcpu->hispeed_validate_time < above_hispeed_delay_val) {
+		trace_cpufreq_interactive_notyet(
+			data, cpu_load, pcpu->target_freq,
+			pcpu->policy->cur, new_freq);
+		goto rearm;
 	}
 
-	if (new_freq <= hispeed_freq)
-		pcpu->hispeed_validate_time = now;
+	pcpu->hispeed_validate_time = now;
 
 	if (cpufreq_frequency_table_target(pcpu->policy, pcpu->freq_table,
-					   new_freq, CPUFREQ_RELATION_H,
+					   new_freq, CPUFREQ_RELATION_L,
 					   &index)) {
 		pr_warn_once("timer %d: cpufreq_frequency_table_target error\n",
 			     (int) data);
@@ -214,8 +295,9 @@ static void cpufreq_interactive_timer(unsigned long data)
 	 */
 	if (new_freq < pcpu->floor_freq) {
 		if (now - pcpu->floor_validate_time < min_sample_time) {
-			trace_cpufreq_interactive_notyet(data, cpu_load,
-					 pcpu->target_freq, new_freq);
+			trace_cpufreq_interactive_notyet(
+				data, cpu_load, pcpu->target_freq,
+				pcpu->policy->cur, new_freq);
 			goto rearm;
 		}
 	}
@@ -224,15 +306,14 @@ static void cpufreq_interactive_timer(unsigned long data)
 	pcpu->floor_validate_time = now;
 
 	if (pcpu->target_freq == new_freq) {
-		trace_cpufreq_interactive_already(data, cpu_load,
-						  pcpu->target_freq, new_freq);
+		trace_cpufreq_interactive_already(
+			data, cpu_load, pcpu->target_freq,
+			pcpu->policy->cur, new_freq);
 		goto rearm_if_notmax;
 	}
 
 	trace_cpufreq_interactive_target(data, cpu_load, pcpu->target_freq,
-					 new_freq);
-	pcpu->target_set_time_in_idle = now_idle;
-	pcpu->target_set_time = now;
+					 pcpu->policy->cur, new_freq);
 
 	pcpu->target_freq = new_freq;
 	spin_lock_irqsave(&speedchange_cpumask_lock, flags);
@@ -396,9 +477,8 @@ static void cpufreq_interactive_boost(void)
 		if (pcpu->target_freq < hispeed_freq) {
 			pcpu->target_freq = hispeed_freq;
 			cpumask_set_cpu(i, &speedchange_cpumask);
-			pcpu->target_set_time_in_idle =
-				get_cpu_idle_time_us(i, &pcpu->target_set_time);
-			pcpu->hispeed_validate_time = pcpu->target_set_time;
+			pcpu->hispeed_validate_time =
+				ktime_to_us(ktime_get());
 			anyboost = 1;
 		}
 
@@ -416,6 +496,80 @@ static void cpufreq_interactive_boost(void)
 	if (anyboost)
 		wake_up_process(speedchange_task);
 }
+
+static ssize_t show_target_loads(
+	struct kobject *kobj, struct attribute *attr, char *buf)
+{
+	int i;
+	ssize_t ret = 0;
+
+	spin_lock(&target_loads_lock);
+
+	for (i = 0; i < ntarget_loads; i++)
+		ret += sprintf(buf + ret, "%u%s", target_loads[i],
+			       i & 0x1 ? ":" : " ");
+
+	ret += sprintf(buf + ret, "\n");
+	spin_unlock(&target_loads_lock);
+	return ret;
+}
+
+static ssize_t store_target_loads(
+	struct kobject *kobj, struct attribute *attr, const char *buf,
+	size_t count)
+{
+	int ret;
+	const char *cp;
+	unsigned int *new_target_loads = NULL;
+	int ntokens = 1;
+	int i;
+
+	cp = buf;
+	while ((cp = strpbrk(cp + 1, " :")))
+		ntokens++;
+
+	if (!(ntokens & 0x1))
+		goto err_inval;
+
+	new_target_loads = kmalloc(ntokens * sizeof(unsigned int), GFP_KERNEL);
+	if (!new_target_loads) {
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	cp = buf;
+	i = 0;
+	while (i < ntokens) {
+		if (sscanf(cp, "%u", &new_target_loads[i++]) != 1)
+			goto err_inval;
+
+		cp = strpbrk(cp, " :");
+		if (!cp)
+			break;
+		cp++;
+	}
+
+	if (i != ntokens)
+		goto err_inval;
+
+	spin_lock(&target_loads_lock);
+	if (target_loads != default_target_loads)
+		kfree(target_loads);
+	target_loads = new_target_loads;
+	ntarget_loads = ntokens;
+	spin_unlock(&target_loads_lock);
+	return count;
+
+err_inval:
+	ret = -EINVAL;
+err:
+	kfree(new_target_loads);
+	return ret;
+}
+
+static struct global_attr target_loads_attr =
+	__ATTR(target_loads, S_IRUGO | S_IWUSR,
+		show_target_loads, store_target_loads);
 
 static ssize_t show_hispeed_freq(struct kobject *kobj,
 				 struct attribute *attr, char *buf)
@@ -578,6 +732,7 @@ static struct global_attr boostpulse =
 	__ATTR(boostpulse, 0200, NULL, store_boostpulse);
 
 static struct attribute *interactive_attributes[] = {
+	&target_loads_attr.attr,
 	&hispeed_freq_attr.attr,
 	&go_hispeed_load_attr.attr,
 	&above_hispeed_delay.attr,
@@ -636,14 +791,11 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			pcpu->policy = policy;
 			pcpu->target_freq = policy->cur;
 			pcpu->freq_table = freq_table;
-			pcpu->target_set_time_in_idle =
-				get_cpu_idle_time_us(j,
-					     &pcpu->target_set_time);
 			pcpu->floor_freq = pcpu->target_freq;
 			pcpu->floor_validate_time =
-				pcpu->target_set_time;
+				ktime_to_us(ktime_get());
 			pcpu->hispeed_validate_time =
-				pcpu->target_set_time;
+				pcpu->floor_validate_time;
 			pcpu->governor_enabled = 1;
 			smp_wmb();
 			pcpu->cpu_timer.expires =
@@ -717,6 +869,7 @@ static int __init cpufreq_interactive_init(void)
 		pcpu->cpu_timer.data = i;
 	}
 
+	spin_lock_init(&target_loads_lock);
 	spin_lock_init(&speedchange_cpumask_lock);
 	speedchange_task =
 		kthread_create(cpufreq_interactive_speedchange_task, NULL,
