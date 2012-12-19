@@ -618,8 +618,6 @@ int call_usermodehelper_fns(
 	struct subprocess_info *info;
 	gfp_t gfp_mask = (wait == UMH_NO_WAIT) ? GFP_ATOMIC : GFP_KERNEL;
 
-	populate_rootfs_wait();
-
 	info = call_usermodehelper_setup(path, argv, envp, gfp_mask);
 
 	if (info == NULL)

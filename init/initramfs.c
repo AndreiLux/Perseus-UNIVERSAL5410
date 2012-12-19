@@ -18,8 +18,6 @@
 #include <linux/dirent.h>
 #include <linux/syscalls.h>
 #include <linux/utime.h>
-#include <linux/async.h>
-#include <linux/export.h>
 
 static __initdata char *message;
 static void __init error(char *x)
@@ -581,15 +579,7 @@ static void __init clean_rootfs(void)
 }
 #endif
 
-LIST_HEAD(populate_rootfs_domain);
-
-void populate_rootfs_wait(void)
-{
-	async_synchronize_full_domain(&populate_rootfs_domain);
-}
-EXPORT_SYMBOL(populate_rootfs_wait);
-
-static void __init async_populate_rootfs(void *data, async_cookie_t cookie)
+static int __init populate_rootfs(void)
 {
 	char *err = unpack_to_rootfs(__initramfs_start, __initramfs_size);
 	if (err)
@@ -602,7 +592,7 @@ static void __init async_populate_rootfs(void *data, async_cookie_t cookie)
 			initrd_end - initrd_start);
 		if (!err) {
 			free_initrd();
-			return;
+			return 0;
 		} else {
 			clean_rootfs();
 			unpack_to_rootfs(__initramfs_start, __initramfs_size);
@@ -626,27 +616,6 @@ static void __init async_populate_rootfs(void *data, async_cookie_t cookie)
 		free_initrd();
 #endif
 	}
-	return;
-}
-
-static int __initdata rootfs_populated;
-
-static int __init populate_rootfs_early(void)
-{
-	if (num_online_cpus() > 1) {
-		rootfs_populated = 1;
-		async_schedule_domain(async_populate_rootfs, NULL,
-						&populate_rootfs_domain);
-	}
 	return 0;
 }
-static int __init populate_rootfs(void)
-{
-	if (!rootfs_populated)
-		async_schedule_domain(async_populate_rootfs, NULL,
-						&populate_rootfs_domain);
-	return 0;
-}
-
-earlyrootfs_initcall(populate_rootfs_early);
 rootfs_initcall(populate_rootfs);

@@ -985,18 +985,6 @@ static int battery_notify(struct notifier_block *nb,
 	return 0;
 }
 
-static LIST_HEAD(acpi_battery_domain);
-
-static void acpi_battery_update_async(struct acpi_device *device, async_cookie_t cookie)
-{
-	struct acpi_battery *battery = acpi_driver_data(device);
-
-	acpi_battery_update(battery);
-	printk(KERN_INFO PREFIX "%s Slot [%s] (battery %s)\n",
-		ACPI_BATTERY_DEVICE_NAME, acpi_device_bid(device),
-		device->status.battery_present ? "present" : "absent");
-}
-
 static int acpi_battery_add(struct acpi_device *device)
 {
 	int result = 0;
@@ -1016,16 +1004,13 @@ static int acpi_battery_add(struct acpi_device *device)
 	if (ACPI_SUCCESS(acpi_get_handle(battery->device->handle,
 			"_BIX", &handle)))
 		set_bit(ACPI_BATTERY_XINFO_PRESENT, &battery->flags);
-
-	/* Mark the battery for update at first access. */
-	battery->update_time = 0;
+	result = acpi_battery_update(battery);
+	if (result)
+		goto fail;
 #ifdef CONFIG_ACPI_PROCFS_POWER
 	result = acpi_battery_add_fs(device);
 #endif
-	if (!result) {
-		async_schedule_domain(acpi_battery_update_async, device, &acpi_battery_domain);
-
-	} else {
+	if (result) {
 #ifdef CONFIG_ACPI_PROCFS_POWER
 		acpi_battery_remove_fs(device);
 #endif
@@ -1055,10 +1040,6 @@ static int acpi_battery_remove(struct acpi_device *device, int type)
 
 	if (!device || !acpi_driver_data(device))
 		return -EINVAL;
-
-	/* Ensure all async updates are complete before freeing the battery. */
-	async_synchronize_full_domain(&acpi_battery_domain);
-
 	battery = acpi_driver_data(device);
 	unregister_pm_notifier(&battery->pm_nb);
 #ifdef CONFIG_ACPI_PROCFS_POWER
@@ -1105,21 +1086,27 @@ static struct acpi_driver acpi_battery_driver = {
 	.drv.pm = &acpi_battery_pm,
 };
 
-static int __init acpi_battery_init(void)
+static void __init acpi_battery_init_async(void *unused, async_cookie_t cookie)
 {
 	if (acpi_disabled)
 		return;
 #ifdef CONFIG_ACPI_PROCFS_POWER
 	acpi_battery_dir = acpi_lock_battery_dir();
 	if (!acpi_battery_dir)
-		return -1;
+		return;
 #endif
 	if (acpi_bus_register_driver(&acpi_battery_driver) < 0) {
 #ifdef CONFIG_ACPI_PROCFS_POWER
 		acpi_unlock_battery_dir(acpi_battery_dir);
 #endif
-		return -1;
+		return;
 	}
+	return;
+}
+
+static int __init acpi_battery_init(void)
+{
+	async_schedule(acpi_battery_init_async, NULL);
 	return 0;
 }
 
