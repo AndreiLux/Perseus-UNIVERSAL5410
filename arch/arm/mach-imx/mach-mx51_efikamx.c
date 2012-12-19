@@ -287,7 +287,13 @@ static struct sys_timer mx51_efikamx_timer = {
 	.init = mx51_efikamx_timer_init,
 };
 
+static const char *mx51_efikamx_dt_match[] __initdata = {
+	"genesi,efikamx",
+	NULL
+};
+
 MACHINE_START(MX51_EFIKAMX, "Genesi Efika MX (Smarttop)")
+	/* Maintainer: Amit Kucheria <amit.kucheria@linaro.org> */
 	.atag_offset = 0x100,
 	.map_io = mx51_map_io,
 	.init_early = imx51_init_early,
@@ -297,4 +303,5 @@ MACHINE_START(MX51_EFIKAMX, "Genesi Efika MX (Smarttop)")
 	.init_machine = mx51_efikamx_init,
 	.init_late = mx51_efikamx_init_late,
 	.restart = mx51_efikamx_restart,
+	.dt_compat = mx51_efikamx_dt_match,
 MACHINE_END

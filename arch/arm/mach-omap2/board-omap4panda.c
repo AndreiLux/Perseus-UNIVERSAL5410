@@ -515,6 +515,11 @@ static void __init omap4_panda_init(void)
 	omap4_panda_display_init();
 }
 
+static const char *omap4_panda_match[] = {
+	"ti,omap4-panda",
+	NULL,
+};
+
 MACHINE_START(OMAP4_PANDA, "OMAP4 Panda board")
 	/* Maintainer: David Anders - Texas Instruments Inc */
 	.atag_offset	= 0x100,
@@ -527,4 +532,5 @@ MACHINE_START(OMAP4_PANDA, "OMAP4 Panda board")
 	.init_late	= omap4430_init_late,
 	.timer		= &omap4_timer,
 	.restart	= omap_prcm_restart,
+	.dt_compat	= omap4_panda_match,
 MACHINE_END
