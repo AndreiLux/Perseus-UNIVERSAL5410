@@ -51,8 +51,8 @@ static int show_rcubarrier(struct seq_file *m, void *unused)
 	struct rcu_state *rsp;
 
 	for_each_rcu_flavor(rsp)
-		seq_printf(m, "%s: %c bcc: %d nbd: %lu\n",
-			   rsp->name, rsp->rcu_barrier_in_progress ? 'B' : '.',
+		seq_printf(m, "%s: bcc: %d nbd: %lu\n",
+			   rsp->name,
 			   atomic_read(&rsp->barrier_cpu_count),
 			   rsp->n_barrier_done);
 	return 0;
@@ -108,11 +108,10 @@ static void print_one_rcu_data(struct seq_file *m, struct rcu_data *rdp)
 			rdp->nxttail[RCU_WAIT_TAIL]],
 		   ".D"[&rdp->nxtlist != rdp->nxttail[RCU_DONE_TAIL]]);
 #ifdef CONFIG_RCU_BOOST
-	seq_printf(m, " kt=%d/%c/%d ktl=%x",
+	seq_printf(m, " kt=%d/%c ktl=%x",
 		   per_cpu(rcu_cpu_has_work, rdp->cpu),
 		   convert_kthread_status(per_cpu(rcu_cpu_kthread_status,
 					  rdp->cpu)),
-		   per_cpu(rcu_cpu_kthread_cpu, rdp->cpu),
 		   per_cpu(rcu_cpu_kthread_loops, rdp->cpu) & 0xffff);
 #endif /* #ifdef CONFIG_RCU_BOOST */
 	seq_printf(m, " b=%ld", rdp->blimit);

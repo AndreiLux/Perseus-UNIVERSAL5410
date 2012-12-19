@@ -133,13 +133,12 @@ static int rcu_scheduler_fully_active __read_mostly;
  */
 static DEFINE_PER_CPU(struct task_struct *, rcu_cpu_kthread_task);
 DEFINE_PER_CPU(unsigned int, rcu_cpu_kthread_status);
-DEFINE_PER_CPU(int, rcu_cpu_kthread_cpu);
 DEFINE_PER_CPU(unsigned int, rcu_cpu_kthread_loops);
 DEFINE_PER_CPU(char, rcu_cpu_has_work);
 
 #endif /* #ifdef CONFIG_RCU_BOOST */
 
-static void rcu_node_kthread_setaffinity(struct rcu_node *rnp, int outgoingcpu);
+static void rcu_boost_kthread_setaffinity(struct rcu_node *rnp, int outgoingcpu);
 static void invoke_rcu_core(void);
 static void invoke_rcu_callbacks(struct rcu_state *rsp, struct rcu_data *rdp);
 
@@ -1390,17 +1389,6 @@ static void rcu_adopt_orphan_cbs(struct rcu_state *rsp)
 	int i;
 	struct rcu_data *rdp = __this_cpu_ptr(rsp->rda);
 
-	/*
-	 * If there is an rcu_barrier() operation in progress, then
-	 * only the task doing that operation is permitted to adopt
-	 * callbacks.  To do otherwise breaks rcu_barrier() and friends
-	 * by causing them to fail to wait for the callbacks in the
-	 * orphanage.
-	 */
-	if (rsp->rcu_barrier_in_progress &&
-	    rsp->rcu_barrier_in_progress != current)
-		return;
-
 	/* Do the accounting first. */
 	rdp->qlen_lazy += rsp->qlen_lazy;
 	rdp->qlen += rsp->qlen;
@@ -1455,9 +1443,8 @@ static void rcu_cleanup_dying_cpu(struct rcu_state *rsp)
  * The CPU has been completely removed, and some other CPU is reporting
  * this fact from process context.  Do the remainder of the cleanup,
  * including orphaning the outgoing CPU's RCU callbacks, and also
- * adopting them, if there is no _rcu_barrier() instance running.
- * There can only be one CPU hotplug operation at a time, so no other
- * CPU can be attempting to update rcu_cpu_kthread_task.
+ * adopting them.  There can only be one CPU hotplug operation at a time,
+ * so no other CPU can be attempting to update rcu_cpu_kthread_task.
  */
 static void rcu_cleanup_dead_cpu(int cpu, struct rcu_state *rsp)
 {
@@ -1468,8 +1455,7 @@ static void rcu_cleanup_dead_cpu(int cpu, struct rcu_state *rsp)
 	struct rcu_node *rnp = rdp->mynode;  /* Outgoing CPU's rdp & rnp. */
 
 	/* Adjust any no-longer-needed kthreads. */
-	rcu_stop_cpu_kthread(cpu);
-	rcu_node_kthread_setaffinity(rnp, -1);
+	rcu_boost_kthread_setaffinity(rnp, -1);
 
 	/* Remove the dead CPU from the bitmasks in the rcu_node hierarchy. */
 
@@ -1515,13 +1501,12 @@ static void rcu_cleanup_dead_cpu(int cpu, struct rcu_state *rsp)
 	WARN_ONCE(rdp->qlen != 0 || rdp->nxtlist != NULL,
 		  "rcu_cleanup_dead_cpu: Callbacks on offline CPU %d: qlen=%lu, nxtlist=%p\n",
 		  cpu, rdp->qlen, rdp->nxtlist);
+	init_callback_list(rdp);
+	/* Disallow further callbacks on this CPU. */
+	rdp->nxttail[RCU_NEXT_TAIL] = NULL;
 }
 
 #else /* #ifdef CONFIG_HOTPLUG_CPU */
-
-static void rcu_adopt_orphan_cbs(struct rcu_state *rsp)
-{
-}
 
 static void rcu_cleanup_dying_cpu(struct rcu_state *rsp)
 {
@@ -1941,6 +1926,12 @@ __call_rcu(struct rcu_head *head, void (*func)(struct rcu_head *rcu),
 	rdp = this_cpu_ptr(rsp->rda);
 
 	/* Add the callback to our list. */
+	if (unlikely(rdp->nxttail[RCU_NEXT_TAIL] == NULL)) {
+		/* _call_rcu() is illegal on offline CPU; leak the callback. */
+		WARN_ON_ONCE(1);
+		local_irq_restore(flags);
+		return;
+	}
 	ACCESS_ONCE(rdp->qlen)++;
 	if (lazy)
 		rdp->qlen_lazy++;
@@ -2326,13 +2317,10 @@ static void rcu_barrier_func(void *type)
 static void _rcu_barrier(struct rcu_state *rsp)
 {
 	int cpu;
-	unsigned long flags;
 	struct rcu_data *rdp;
-	struct rcu_data rd;
 	unsigned long snap = ACCESS_ONCE(rsp->n_barrier_done);
 	unsigned long snap_done;
 
-	init_rcu_head_on_stack(&rd.barrier_head);
 	_rcu_barrier_trace(rsp, "Begin", -1, snap);
 
 	/* Take mutex to serialize concurrent rcu_barrier() requests. */
@@ -2372,70 +2360,30 @@ static void _rcu_barrier(struct rcu_state *rsp)
 	/*
 	 * Initialize the count to one rather than to zero in order to
 	 * avoid a too-soon return to zero in case of a short grace period
-	 * (or preemption of this task).  Also flag this task as doing
-	 * an rcu_barrier().  This will prevent anyone else from adopting
-	 * orphaned callbacks, which could cause otherwise failure if a
-	 * CPU went offline and quickly came back online.  To see this,
-	 * consider the following sequence of events:
-	 *
-	 * 1.	We cause CPU 0 to post an rcu_barrier_callback() callback.
-	 * 2.	CPU 1 goes offline, orphaning its callbacks.
-	 * 3.	CPU 0 adopts CPU 1's orphaned callbacks.
-	 * 4.	CPU 1 comes back online.
-	 * 5.	We cause CPU 1 to post an rcu_barrier_callback() callback.
-	 * 6.	Both rcu_barrier_callback() callbacks are invoked, awakening
-	 *	us -- but before CPU 1's orphaned callbacks are invoked!!!
+	 * (or preemption of this task).  Exclude CPU-hotplug operations
+	 * to ensure that no offline CPU has callbacks queued.
 	 */
 	init_completion(&rsp->barrier_completion);
 	atomic_set(&rsp->barrier_cpu_count, 1);
-	raw_spin_lock_irqsave(&rsp->onofflock, flags);
-	rsp->rcu_barrier_in_progress = current;
-	raw_spin_unlock_irqrestore(&rsp->onofflock, flags);
+	get_online_cpus();
 
 	/*
-	 * Force every CPU with callbacks to register a new callback
-	 * that will tell us when all the preceding callbacks have
-	 * been invoked.  If an offline CPU has callbacks, wait for
-	 * it to either come back online or to finish orphaning those
-	 * callbacks.
+	 * Force each CPU with callbacks to register a new callback.
+	 * When that callback is invoked, we will know that all of the
+	 * corresponding CPU's preceding callbacks have been invoked.
 	 */
-	for_each_possible_cpu(cpu) {
-		preempt_disable();
+	for_each_online_cpu(cpu) {
 		rdp = per_cpu_ptr(rsp->rda, cpu);
-		if (cpu_is_offline(cpu)) {
-			_rcu_barrier_trace(rsp, "Offline", cpu,
-					   rsp->n_barrier_done);
-			preempt_enable();
-			while (cpu_is_offline(cpu) && ACCESS_ONCE(rdp->qlen))
-				schedule_timeout_interruptible(1);
-		} else if (ACCESS_ONCE(rdp->qlen)) {
+		if (ACCESS_ONCE(rdp->qlen)) {
 			_rcu_barrier_trace(rsp, "OnlineQ", cpu,
 					   rsp->n_barrier_done);
 			smp_call_function_single(cpu, rcu_barrier_func, rsp, 1);
-			preempt_enable();
 		} else {
 			_rcu_barrier_trace(rsp, "OnlineNQ", cpu,
 					   rsp->n_barrier_done);
-			preempt_enable();
 		}
 	}
-
-	/*
-	 * Now that all online CPUs have rcu_barrier_callback() callbacks
-	 * posted, we can adopt all of the orphaned callbacks and place
-	 * an rcu_barrier_callback() callback after them.  When that is done,
-	 * we are guaranteed to have an rcu_barrier_callback() callback
-	 * following every callback that could possibly have been
-	 * registered before _rcu_barrier() was called.
-	 */
-	raw_spin_lock_irqsave(&rsp->onofflock, flags);
-	rcu_adopt_orphan_cbs(rsp);
-	rsp->rcu_barrier_in_progress = NULL;
-	raw_spin_unlock_irqrestore(&rsp->onofflock, flags);
-	atomic_inc(&rsp->barrier_cpu_count);
-	smp_mb__after_atomic_inc(); /* Ensure atomic_inc() before callback. */
-	rd.rsp = rsp;
-	rsp->call(&rd.barrier_head, rcu_barrier_callback);
+	put_online_cpus();
 
 	/*
 	 * Now that we have an rcu_barrier_callback() callback on each
@@ -2456,8 +2404,6 @@ static void _rcu_barrier(struct rcu_state *rsp)
 
 	/* Other rcu_barrier() invocations can now safely proceed. */
 	mutex_unlock(&rsp->barrier_mutex);
-
-	destroy_rcu_head_on_stack(&rd.barrier_head);
 }
 
 /**
@@ -2523,6 +2469,7 @@ rcu_init_percpu_data(int cpu, struct rcu_state *rsp, int preemptible)
 	rdp->qlen_last_fqs_check = 0;
 	rdp->n_force_qs_snap = rsp->n_force_qs;
 	rdp->blimit = blimit;
+	init_callback_list(rdp);  /* Re-enable callbacks on this CPU. */
 	rdp->dynticks->dynticks_nesting = DYNTICK_TASK_EXIT_IDLE;
 	atomic_set(&rdp->dynticks->dynticks,
 		   (atomic_read(&rdp->dynticks->dynticks) & ~0x1) + 1);
@@ -2594,12 +2541,10 @@ static int __cpuinit rcu_cpu_notify(struct notifier_block *self,
 		break;
 	case CPU_ONLINE:
 	case CPU_DOWN_FAILED:
-		rcu_node_kthread_setaffinity(rnp, -1);
-		rcu_cpu_kthread_setrt(cpu, 1);
+		rcu_boost_kthread_setaffinity(rnp, -1);
 		break;
 	case CPU_DOWN_PREPARE:
-		rcu_node_kthread_setaffinity(rnp, cpu);
-		rcu_cpu_kthread_setrt(cpu, 0);
+		rcu_boost_kthread_setaffinity(rnp, cpu);
 		break;
 	case CPU_DYING:
 	case CPU_DYING_FROZEN:
