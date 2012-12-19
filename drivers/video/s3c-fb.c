@@ -2393,7 +2393,7 @@ static int __devinit s3c_fb_alloc_memory(struct s3c_fb *sfb,
 
 #if defined(CONFIG_ION_EXYNOS)
 	handle = ion_alloc(sfb->fb_ion_client, (size_t)size, 0,
-					EXYNOS_ION_HEAP_EXYNOS_ID, 0);
+					EXYNOS_ION_HEAP_EXYNOS_MASK, 0);
 	if (IS_ERR(handle)) {
 		dev_err(sfb->dev, "failed to ion_alloc\n");
 		return -ENOMEM;
