@@ -7,12 +7,14 @@
 #include <linux/device_cgroup.h>
 #include <linux/cgroup.h>
 #include <linux/ctype.h>
+#include <linux/export.h>
 #include <linux/list.h>
 #include <linux/uaccess.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/rcupdate.h>
 #include <linux/mutex.h>
+#include <linux/export.h>
 
 #define ACC_MKNOD 1
 #define ACC_READ  2
@@ -493,6 +495,7 @@ found:
 
 	return -EPERM;
 }
+EXPORT_SYMBOL(__devcgroup_inode_permission);
 
 int devcgroup_inode_mknod(int mode, dev_t dev)
 {

@@ -49,6 +49,12 @@
 #include "comedi_fc.h"
 #include "../comedidev.h"
 
+#define DRIVER_VERSION "v1.0"
+#define DRIVER_AUTHOR "Bernd Porr, BerndPorr@f2s.com"
+#define DRIVER_DESC "USB-DUXfast, BerndPorr@f2s.com"
+#define BOARDNAME "usbduxfast"
+#define FIRMWARE "usbduxfast_firmware.bin"
+
 /*
  * timeout for the USB-transfer
  */

@@ -947,6 +947,11 @@ SYSCALL_DEFINE4(kexec_load, unsigned long, entry, unsigned long, nr_segments,
 	if (!capable(CAP_SYS_BOOT))
 		return -EPERM;
 
+	/* Processes in containers must not be allowed to load a new
+	 * kernel, even if they have CAP_SYS_BOOT */
+	if (task_active_pid_ns(current) != &init_pid_ns)
+		return -EPERM;
+
 	/*
 	 * Verify we have a legal set of flags
 	 * This leaves us room for future extensions.

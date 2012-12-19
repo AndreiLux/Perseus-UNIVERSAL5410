@@ -308,4 +308,13 @@ config SW_SYNC_USER
          Provides a user space API to the sw sync object.
          *WARNING* improper use of this can result in deadlocking kernel
 	 drivers from userspace.
+
+config SR_REPORT_TIME_LIMIT
+       int "Default low threshold"
+       depends on PM
+       default 100
+       help
+         Print suspend/resume information for driver/device for time greater
+         then default msec, ie 100 msec.
+
 endmenu

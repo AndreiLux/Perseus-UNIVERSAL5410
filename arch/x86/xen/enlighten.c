@@ -210,6 +210,18 @@ void xen_vcpu_restore(void)
 	}
 }
 
+/*
+ * Older (with no clear statement about what old means) Xen hypervisors
+ * will crash a PV guest that tries to store OSXSAVE into CR4.
+ * To prevent this, we force the feature bits related to this off in the
+ * xen cpuid call. This inline function serves as a centralized test
+ * on whether the quirk should be done.
+ */
+static inline needs_xsave_quirk(unsigned version)
+{
+	return (xen_pv_domain() && ((version >> 16) < 4)) ? 1 : 0;
+}
+
 static void __init xen_banner(void)
 {
 	unsigned version = HYPERVISOR_xen_version(XENVER_version, NULL);
@@ -221,6 +233,8 @@ static void __init xen_banner(void)
 	printk(KERN_INFO "Xen version: %d.%d%s%s\n",
 	       version >> 16, version & 0xffff, extra.extraversion,
 	       xen_feature(XENFEAT_mmu_pt_update_preserve_ad) ? " (preserve-AD)" : "");
+	if (needs_xsave_quirk(version))
+		printk(KERN_INFO "Forcing xsave off due to Xen version.\n");
 }
 
 #define CPUID_THERM_POWER_LEAF 6
@@ -351,6 +365,7 @@ static bool __init xen_check_mwait(void)
 }
 static void __init xen_init_cpuid_mask(void)
 {
+	unsigned version = HYPERVISOR_xen_version(XENVER_version, NULL);
 	unsigned int ax, bx, cx, dx;
 	unsigned int xsave_mask;
 
@@ -371,7 +386,7 @@ static void __init xen_init_cpuid_mask(void)
 		(1 << (X86_FEATURE_OSXSAVE % 32));
 
 	/* Xen will set CR4.OSXSAVE if supported and not disabled by force */
-	if ((cx & xsave_mask) != xsave_mask)
+	if (((cx & xsave_mask) != xsave_mask) || needs_xsave_quirk(version))
 		cpuid_leaf1_ecx_mask &= ~xsave_mask; /* disable XSAVE & OSXSAVE */
 	if (xen_check_mwait())
 		cpuid_leaf1_ecx_set_mask = (1 << (X86_FEATURE_MWAIT % 32));

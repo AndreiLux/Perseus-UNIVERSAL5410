@@ -59,6 +59,9 @@ Status: testing
 #include "comedi_fc.h"
 #include "../comedidev.h"
 
+#define BOARDNAME "usbduxsigma"
+#define FIRMWARE "usbduxsigma_firmware.bin"
+
 /* timeout for the USB-transfer in ms*/
 #define BULK_TIMEOUT 1000
 

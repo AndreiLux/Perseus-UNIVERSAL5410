@@ -18,7 +18,9 @@
 
 use strict;
 
-my ($readdir, $installdir, $arch, @files) = @ARGV;
+my ($readdir, $installdir, $arch, $printdir, @files) = @ARGV;
+
+$printdir =~ s@^include/@@;
 
 my $unifdef = "scripts/unifdef -U__KERNEL__ -D__EXPORTED_HEADERS__";
 
@@ -30,6 +32,10 @@ foreach my $file (@files) {
 	open(my $out, '>', $tmpfile)
 	    or die "$tmpfile: $!\n";
 	while (my $line = <$in>) {
+		# Any #include which uses "" and does not have a path needs
+		# rewriting so that the resultant user space headers are
+		# safe against the use of -I-.
+		$line =~ s/^(\s*#\s*include\s+)"([^\/]*?)"/$1<$printdir\/$2>/;
 		$line =~ s/([\s(])__user\s/$1/g;
 		$line =~ s/([\s(])__force\s/$1/g;
 		$line =~ s/([\s(])__iomem\s/$1/g;

@@ -98,6 +98,9 @@ sampling rate. If you sample two channels you get 4kHz and so on.
 
 #include "../comedidev.h"
 
+#define BOARDNAME "usbdux"
+#define FIRMWARE "usbdux_firmware.bin"
+
 /* timeout for the USB-transfer in ms*/
 #define BULK_TIMEOUT 1000
 

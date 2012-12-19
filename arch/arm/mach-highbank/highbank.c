@@ -15,6 +15,7 @@
  */
 #include <linux/clk.h>
 #include <linux/clkdev.h>
+#include <linux/input.h>
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
@@ -22,6 +23,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
+#include <linux/reboot.h>
 #include <linux/smp.h>
 
 #include <asm/cacheflush.h>
@@ -35,6 +37,7 @@
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 #include <asm/mach/time.h>
+#include <mach/pl320-ipc.h>
 
 #include "core.h"
 #include "sysregs.h"
@@ -149,9 +152,28 @@ static void highbank_power_off(void)
 		cpu_do_idle();
 }
 
+static int hb_keys_notifier(struct notifier_block *nb, unsigned long event, void *data)
+{
+	u32 key = *(u32 *)data;
+
+	if (event != 0x1000)
+		return 0;
+
+	if (key == KEY_POWER)
+		orderly_poweroff(false);
+	else if (key == 0xffff)
+		ctrl_alt_del();
+
+	return 0;
+}
+static struct notifier_block hb_keys_nb = {
+	.notifier_call = hb_keys_notifier,
+};
+
 static void __init highbank_init(void)
 {
 	pm_power_off = highbank_power_off;
+	pl320_ipc_register_notifier(&hb_keys_nb);
 
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 }

@@ -321,6 +321,8 @@ static const struct {
 
 	{PCI_VENDOR_ID_VIA, PCI_ANY_ID, PCI_ANY_ID,
 		QUIRK_CYCLE_TIMER | QUIRK_NO_MSI},
+	{PCI_VENDOR_ID_O2, PCI_ANY_ID, PCI_ANY_ID,
+		QUIRK_NO_MSI},
 };
 
 /* This overrides anything that was found in ohci_quirks[]. */

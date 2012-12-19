@@ -144,6 +144,10 @@
 			clock-names = "apb_pclk";
 		};
 
+		ipc-keys {
+			compatible = "calxeda,hb-keys";
+		};
+
 		gpioe: gpio@fff30000 {
 			#gpio-cells = <2>;
 			compatible = "arm,pl061", "arm,primecell";

@@ -27,6 +27,7 @@
 #include <linux/blkdev.h>
 #include <linux/backing-dev.h>
 #include <linux/tracepoint.h>
+#include <trace/events/vfs.h>
 #include "internal.h"
 
 /*
@@ -1165,6 +1166,8 @@ void __mark_inode_dirty(struct inode *inode, int flags)
 	/* avoid the locking if we can */
 	if ((inode->i_state & flags) == flags)
 		return;
+
+	trace_dirty_inode(inode, current);
 
 	if (unlikely(block_dump > 1))
 		block_dump___mark_inode_dirty(inode);

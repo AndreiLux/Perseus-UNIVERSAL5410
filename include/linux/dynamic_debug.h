@@ -45,7 +45,7 @@ extern __printf(2, 3)
 int __dynamic_pr_debug(struct _ddebug *descriptor, const char *fmt, ...);
 
 extern int ddebug_dyndbg_module_param_cb(char *param, char *val,
-					const char *modname);
+					const char *modname, int all);
 
 struct device;
 
@@ -106,7 +106,7 @@ static inline int ddebug_remove_module(const char *mod)
 }
 
 static inline int ddebug_dyndbg_module_param_cb(char *param, char *val,
-						const char *modname)
+						const char *modname, int all)
 {
 	if (strstr(param, "dyndbg")) {
 		/* avoid pr_warn(), which wants pr_fmt() fully defined */
@@ -114,7 +114,11 @@ static inline int ddebug_dyndbg_module_param_cb(char *param, char *val,
 			"CONFIG_DYNAMIC_DEBUG builds\n");
 		return 0; /* allow and ignore */
 	}
-	return -EINVAL;
+
+	if (!all)
+		return -EINVAL;
+
+	return 0;
 }
 
 #define dynamic_pr_debug(fmt, ...)					\

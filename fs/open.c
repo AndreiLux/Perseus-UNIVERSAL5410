@@ -33,6 +33,9 @@
 
 #include "internal.h"
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/fs.h>
+
 int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
 	struct file *filp)
 {
@@ -60,6 +63,7 @@ int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
 	mutex_unlock(&dentry->d_inode->i_mutex);
 	return ret;
 }
+EXPORT_SYMBOL(do_truncate);
 
 static long do_sys_truncate(const char __user *pathname, loff_t length)
 {
@@ -787,8 +791,7 @@ struct file *dentry_open(const struct path *path, int flags,
 		return ERR_PTR(error);
 
 	f->f_flags = flags;
-	f->f_path = *path;
-	error = do_dentry_open(f, NULL, cred);
+	error = vfs_open(path, f, cred);
 	if (!error) {
 		error = open_check_o_direct(f);
 		if (error) {
@@ -802,6 +805,26 @@ struct file *dentry_open(const struct path *path, int flags,
 	return f;
 }
 EXPORT_SYMBOL(dentry_open);
+
+/**
+ * vfs_open - open the file at the given path
+ * @path: path to open
+ * @filp: newly allocated file with f_flag initialized
+ * @cred: credentials to use
+ */
+int vfs_open(const struct path *path, struct file *filp,
+	     const struct cred *cred)
+{
+	struct inode *inode = path->dentry->d_inode;
+
+	if (inode->i_op->dentry_open)
+		return inode->i_op->dentry_open(path->dentry, filp, cred);
+	else {
+		filp->f_path = *path;
+		return do_dentry_open(filp, NULL, cred);
+	}
+}
+EXPORT_SYMBOL(vfs_open);
 
 static void __put_unused_fd(struct files_struct *files, unsigned int fd)
 {
@@ -958,6 +981,7 @@ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 			} else {
 				fsnotify_open(f);
 				fd_install(fd, f);
+				trace_do_sys_open(tmp, flags, mode);
 			}
 		}
 		putname(tmp);
