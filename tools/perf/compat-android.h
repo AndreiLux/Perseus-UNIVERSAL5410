@@ -38,8 +38,8 @@ typedef uint64_t u64;
 #endif
 #endif
 #define __deprecated
-#include <asm-generic/bitsperlong.h>
 
+#include <linux/bitops.h>
 #undef BITS_PER_LONG /* Something seems to define this incorrectly */
 #define BITS_PER_LONG _BITSIZE
 

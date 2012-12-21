@@ -503,6 +503,8 @@ ifneq ($(call try-cc,$(SOURCE_LIBELF),$(FLAGS_LIBELF)),y)
 			# That works too, but needs a bit of special treatment
 			ANDROID_CFLAGS := -DANDROID -DHAVE_STRLCPY -include $(CURDIR)/compat-android.h
 			BASIC_CFLAGS += $(ANDROID_CFLAGS)
+			# Make libtraceevent to see Bionic -isystem flags passed to us
+			ANDROID_CFLAGS += $(EXTRA_CFLAGS)
 			ANDROID := 1
 		else
 			msg := $(error No gnu/libc-version.h found, please install glibc-dev[el]/glibc-static);
