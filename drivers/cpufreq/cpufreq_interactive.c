@@ -65,8 +65,8 @@ static spinlock_t speedchange_cpumask_lock;
 static unsigned int hispeed_freq;
 
 /* Go to hi speed when CPU load at or above this value. */
-#define DEFAULT_GO_HISPEED_LOAD 85
-static unsigned long go_hispeed_load;
+#define DEFAULT_GO_HISPEED_LOAD 99
+static unsigned long go_hispeed_load = DEFAULT_GO_HISPEED_LOAD;
 
 /* Target load.  Lower values result in higher CPU speeds. */
 #define DEFAULT_TARGET_LOAD 90
@@ -79,20 +79,20 @@ static int ntarget_loads = ARRAY_SIZE(default_target_loads);
  * The minimum amount of time to spend at a frequency before we can ramp down.
  */
 #define DEFAULT_MIN_SAMPLE_TIME (80 * USEC_PER_MSEC)
-static unsigned long min_sample_time;
+static unsigned long min_sample_time = DEFAULT_MIN_SAMPLE_TIME;
 
 /*
  * The sample rate of the timer used to increase frequency
  */
 #define DEFAULT_TIMER_RATE (20 * USEC_PER_MSEC)
-static unsigned long timer_rate;
+static unsigned long timer_rate = DEFAULT_TIMER_RATE;
 
 /*
  * Wait this long before raising speed above hispeed, by default a single
  * timer interval.
  */
 #define DEFAULT_ABOVE_HISPEED_DELAY DEFAULT_TIMER_RATE
-static unsigned long above_hispeed_delay_val;
+static unsigned long above_hispeed_delay_val = DEFAULT_ABOVE_HISPEED_DELAY;
 
 /* Non-zero means indefinite speed boost active */
 static int boost_val;
@@ -125,6 +125,7 @@ static void cpufreq_interactive_timer_resched(
 	struct cpufreq_interactive_cpuinfo *pcpu)
 {
 	unsigned long expires = jiffies + usecs_to_jiffies(timer_rate);
+	unsigned long flags;
 
 	mod_timer_pinned(&pcpu->cpu_timer, expires);
 	if (timer_slack_val >= 0 && pcpu->target_freq > pcpu->policy->min) {
@@ -132,27 +133,28 @@ static void cpufreq_interactive_timer_resched(
 		mod_timer_pinned(&pcpu->cpu_slack_timer, expires);
 	}
 
-	spin_lock(&pcpu->load_lock);
+	spin_lock_irqsave(&pcpu->load_lock, flags);
 	pcpu->time_in_idle =
 		get_cpu_idle_time_us(smp_processor_id(),
 				     &pcpu->time_in_idle_timestamp);
 	pcpu->cputime_speedadj = 0;
 	pcpu->cputime_speedadj_timestamp = pcpu->time_in_idle_timestamp;
-	spin_unlock(&pcpu->load_lock);
+	spin_unlock_irqrestore(&pcpu->load_lock, flags);
 }
 
 static unsigned int freq_to_targetload(unsigned int freq)
 {
 	int i;
 	unsigned int ret;
+	unsigned long flags;
 
-	spin_lock(&target_loads_lock);
+	spin_lock_irqsave(&target_loads_lock, flags);
 
 	for (i = 0; i < ntarget_loads - 1 && freq >= target_loads[i+1]; i += 2)
 		;
 
 	ret = target_loads[i];
-	spin_unlock(&target_loads_lock);
+	spin_unlock_irqrestore(&target_loads_lock, flags);
 	return ret;
 }
 
@@ -283,11 +285,11 @@ static void cpufreq_interactive_timer(unsigned long data)
 	if (!pcpu->governor_enabled)
 		goto exit;
 
-	spin_lock(&pcpu->load_lock);
+	spin_lock_irqsave(&pcpu->load_lock, flags);
 	now = update_load(data);
 	delta_time = (unsigned int)(now - pcpu->cputime_speedadj_timestamp);
 	cputime_speedadj = pcpu->cputime_speedadj;
-	spin_unlock(&pcpu->load_lock);
+	spin_unlock_irqrestore(&pcpu->load_lock, flags);
 
 	if (WARN_ON_ONCE(!delta_time))
 		goto rearm;
@@ -548,19 +550,27 @@ static int cpufreq_interactive_notifier(
 	struct cpufreq_freqs *freq = data;
 	struct cpufreq_interactive_cpuinfo *pcpu;
 	int cpu;
+	unsigned long flags;
 
 	if (val == CPUFREQ_POSTCHANGE) {
 		pcpu = &per_cpu(cpuinfo, freq->cpu);
+		if (!down_read_trylock(&pcpu->enable_sem))
+			return 0;
+		if (!pcpu->governor_enabled) {
+			up_read(&pcpu->enable_sem);
+			return 0;
+		}
 
 		for_each_cpu(cpu, pcpu->policy->cpus) {
 			struct cpufreq_interactive_cpuinfo *pjcpu =
 				&per_cpu(cpuinfo, cpu);
-			spin_lock(&pjcpu->load_lock);
+			spin_lock_irqsave(&pjcpu->load_lock, flags);
 			update_load(cpu);
-			spin_unlock(&pjcpu->load_lock);
+			spin_unlock_irqrestore(&pjcpu->load_lock, flags);
 		}
-	}
 
+		up_read(&pcpu->enable_sem);
+	}
 	return 0;
 }
 
@@ -573,15 +583,16 @@ static ssize_t show_target_loads(
 {
 	int i;
 	ssize_t ret = 0;
+	unsigned long flags;
 
-	spin_lock(&target_loads_lock);
+	spin_lock_irqsave(&target_loads_lock, flags);
 
 	for (i = 0; i < ntarget_loads; i++)
 		ret += sprintf(buf + ret, "%u%s", target_loads[i],
 			       i & 0x1 ? ":" : " ");
 
 	ret += sprintf(buf + ret, "\n");
-	spin_unlock(&target_loads_lock);
+	spin_unlock_irqrestore(&target_loads_lock, flags);
 	return ret;
 }
 
@@ -594,6 +605,7 @@ static ssize_t store_target_loads(
 	unsigned int *new_target_loads = NULL;
 	int ntokens = 1;
 	int i;
+	unsigned long flags;
 
 	cp = buf;
 	while ((cp = strpbrk(cp + 1, " :")))
@@ -623,12 +635,12 @@ static ssize_t store_target_loads(
 	if (i != ntokens)
 		goto err_inval;
 
-	spin_lock(&target_loads_lock);
+	spin_lock_irqsave(&target_loads_lock, flags);
 	if (target_loads != default_target_loads)
 		kfree(target_loads);
 	target_loads = new_target_loads;
 	ntarget_loads = ntokens;
-	spin_unlock(&target_loads_lock);
+	spin_unlock_irqrestore(&target_loads_lock, flags);
 	return count;
 
 err_inval:
@@ -990,11 +1002,6 @@ static int __init cpufreq_interactive_init(void)
 	unsigned int i;
 	struct cpufreq_interactive_cpuinfo *pcpu;
 	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
-
-	go_hispeed_load = DEFAULT_GO_HISPEED_LOAD;
-	min_sample_time = DEFAULT_MIN_SAMPLE_TIME;
-	above_hispeed_delay_val = DEFAULT_ABOVE_HISPEED_DELAY;
-	timer_rate = DEFAULT_TIMER_RATE;
 
 	/* Initalize per-cpu timers */
 	for_each_possible_cpu(i) {
