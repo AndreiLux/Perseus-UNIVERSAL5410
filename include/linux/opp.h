@@ -18,7 +18,24 @@
 #include <linux/cpufreq.h>
 #include <linux/notifier.h>
 
-struct opp;
+struct opp {
+	struct list_head node;
+
+	bool available;
+	unsigned long rate;
+	unsigned long u_volt;
+
+	struct device_opp *dev_opp;
+};
+
+struct device_opp {
+	struct list_head node;
+
+	struct device *dev;
+	struct srcu_notifier_head head;
+	struct list_head opp_list;
+};
+
 struct device;
 
 enum opp_event {
@@ -26,6 +43,8 @@ enum opp_event {
 };
 
 #if defined(CONFIG_PM_OPP)
+
+struct device_opp *find_device_opp(struct device *dev);
 
 unsigned long opp_get_voltage(struct opp *opp);
 
