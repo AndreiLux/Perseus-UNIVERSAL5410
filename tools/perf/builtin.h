@@ -1,6 +1,7 @@
 #ifndef BUILTIN_H
 #define BUILTIN_H
 
+#include "compat-android.h"
 #include "util/util.h"
 #include "util/strbuf.h"
 

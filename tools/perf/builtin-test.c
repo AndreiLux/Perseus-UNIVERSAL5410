@@ -471,10 +471,17 @@ static int test__basic_mmap(void)
 		.watermark	= 0,
 	};
 	cpu_set_t cpu_set;
+#ifndef ANDROID
 	const char *syscall_names[] = { "getsid", "getppid", "getpgrp",
 					"getpgid", };
 	pid_t (*syscalls[])(void) = { (void *)getsid, getppid, getpgrp,
 				      (void*)getpgid };
+#else
+	/* No getsid() on Android */
+	const char *syscall_names[] = { "getppid", "getpgrp",
+					"getpgid", };
+	pid_t (*syscalls[])(void) = { getppid, getpgrp, (void*)getpgid };
+#endif
 #define nsyscalls ARRAY_SIZE(syscall_names)
 	int ids[nsyscalls];
 	unsigned int nr_events[nsyscalls],

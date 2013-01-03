@@ -1,6 +1,7 @@
 #include "cache.h"
 #include "run-command.h"
 #include "sigchain.h"
+#include <sys/select.h>
 
 /*
  * This is split up from the rest of git so that we can do

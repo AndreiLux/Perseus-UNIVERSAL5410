@@ -19,7 +19,6 @@
 
 #include "omap_drv.h"
 
-#include "drm_mode.h"
 #include "drm_crtc.h"
 #include "drm_crtc_helper.h"
 
