@@ -62,25 +62,37 @@ struct pmu_hw_events {
 	raw_spinlock_t		pmu_lock;
 };
 
+struct cpupmu_regs {
+	u32 pmc;
+	u32 pmcntenset;
+	u32 pmuseren;
+	u32 pmintenset;
+	u32 pmxevttype[8];
+	u32 pmxevtcnt[8];
+};
+
 struct arm_pmu {
 	struct pmu	pmu;
 	cpumask_t	active_irqs;
+	cpumask_t	valid_cpus;
 	char		*name;
 	irqreturn_t	(*handle_irq)(int irq_num, void *dev);
-	void		(*enable)(struct hw_perf_event *evt, int idx);
-	void		(*disable)(struct hw_perf_event *evt, int idx);
+	void		(*enable)(struct perf_event *event);
+	void		(*disable)(struct perf_event *event);
 	int		(*get_event_idx)(struct pmu_hw_events *hw_events,
-					 struct hw_perf_event *hwc);
+					 struct perf_event *event);
 	int		(*set_event_filter)(struct hw_perf_event *evt,
 					    struct perf_event_attr *attr);
-	u32		(*read_counter)(int idx);
-	void		(*write_counter)(int idx, u32 val);
-	void		(*start)(void);
-	void		(*stop)(void);
+	u32		(*read_counter)(struct perf_event *event);
+	void		(*write_counter)(struct perf_event *event, u32 val);
+	void		(*start)(struct arm_pmu *);
+	void		(*stop)(struct arm_pmu *);
 	void		(*reset)(void *);
-	int		(*request_irq)(irq_handler_t handler);
-	void		(*free_irq)(void);
+	int		(*request_irq)(struct arm_pmu *, irq_handler_t handler);
+	void		(*free_irq)(struct arm_pmu *);
 	int		(*map_event)(struct perf_event *event);
+	void		(*save_regs)(struct arm_pmu *, struct cpupmu_regs *);
+	void		(*restore_regs)(struct arm_pmu *, struct cpupmu_regs *);
 	int		num_events;
 	atomic_t	active_events;
 	struct mutex	reserve_mutex;
@@ -93,15 +105,11 @@ struct arm_pmu {
 
 extern const struct dev_pm_ops armpmu_dev_pm_ops;
 
-int armpmu_register(struct arm_pmu *armpmu, char *name, int type);
+int armpmu_register(struct arm_pmu *armpmu, int type);
 
-u64 armpmu_event_update(struct perf_event *event,
-			struct hw_perf_event *hwc,
-			int idx);
+u64 armpmu_event_update(struct perf_event *event);
 
-int armpmu_event_set_period(struct perf_event *event,
-			    struct hw_perf_event *hwc,
-			    int idx);
+int armpmu_event_set_period(struct perf_event *event);
 
 int armpmu_map_event(struct perf_event *event,
 		     const unsigned (*event_map)[PERF_COUNT_HW_MAX],
