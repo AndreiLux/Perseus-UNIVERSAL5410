@@ -1,13 +1,26 @@
+config ZCACHE
+	bool "Dynamic compression of swap pages and clean pagecache pages"
+	depends on CRYPTO=y && SWAP=y && CLEANCACHE && FRONTSWAP
+	select CRYPTO_LZO
+	default n
+	help
+	  Zcache doubles RAM efficiency while providing a significant
+	  performance boosts on many workloads.  Zcache uses
+	  compression and an in-kernel implementation of transcendent
+	  memory to store clean page cache pages and swap in RAM,
+	  providing a noticeable reduction in disk I/O.
+
 config RAMSTER
 	bool "Cross-machine RAM capacity sharing, aka peer-to-peer tmem"
-	depends on (CLEANCACHE || FRONTSWAP) && CONFIGFS_FS=y && !ZCACHE && !XVMALLOC && !HIGHMEM
-	select LZO_COMPRESS
-	select LZO_DECOMPRESS
+	depends on CONFIGFS_FS=y && SYSFS=y && !HIGHMEM && ZCACHE=y
+	depends on NET
+	# must ensure struct page is 8-byte aligned
+	select HAVE_ALIGNED_STRUCT_PAGE if !64_BIT
 	default n
 	help
 	  RAMster allows RAM on other machines in a cluster to be utilized
 	  dynamically and symmetrically instead of swapping to a local swap
 	  disk, thus improving performance on memory-constrained workloads
 	  while minimizing total RAM across the cluster.  RAMster, like
-	  zcache, compresses swap pages into local RAM, but then remotifies
+	  zcache2, compresses swap pages into local RAM, but then remotifies
 	  the compressed pages to another node in the RAMster cluster.
