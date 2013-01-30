@@ -31,6 +31,8 @@
 #include <linux/ioport.h>
 #include <linux/platform_data/s3c-hsudc.h>
 
+#include <media/s5p_hdmi.h>
+
 #include <asm/irq.h>
 #include <asm/pmu.h>
 #include <asm/mach/arch.h>
@@ -296,6 +298,25 @@ struct platform_device s5p_device_g2d = {
 };
 #endif /* CONFIG_S5P_DEV_G2D */
 
+/* G3D */
+
+#ifdef CONFIG_S5P_DEV_G3D
+static struct resource s5p_g3d_resource[] = {
+	[0] = DEFINE_RES_MEM(S5P_PA_G3D, SZ_256K),
+};
+
+struct platform_device s5p_device_g3d = {
+	.name		= "s5p-g3d",
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(s5p_g3d_resource),
+	.resource	= s5p_g3d_resource,
+	.dev		= {
+		.dma_mask		= &samsung_device_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+};
+#endif /* CONFIG_S5P_DEV_G3D */
+
 #ifdef CONFIG_S5P_DEV_JPEG
 static struct resource s5p_jpeg_resource[] = {
 	[0] = DEFINE_RES_MEM(S5P_PA_JPEG, SZ_4K),
@@ -370,7 +391,6 @@ struct s3c_sdhci_platdata s3c_hsmmc0_def_platdata = {
 	.max_width	= 4,
 	.host_caps	= (MMC_CAP_4_BIT_DATA |
 			   MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED),
-	.clk_type	= S3C_SDHCI_CLK_DIV_INTERNAL,
 };
 
 struct platform_device s3c_device_hsmmc0 = {
@@ -401,7 +421,6 @@ struct s3c_sdhci_platdata s3c_hsmmc1_def_platdata = {
 	.max_width	= 4,
 	.host_caps	= (MMC_CAP_4_BIT_DATA |
 			   MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED),
-	.clk_type	= S3C_SDHCI_CLK_DIV_INTERNAL,
 };
 
 struct platform_device s3c_device_hsmmc1 = {
@@ -434,7 +453,6 @@ struct s3c_sdhci_platdata s3c_hsmmc2_def_platdata = {
 	.max_width	= 4,
 	.host_caps	= (MMC_CAP_4_BIT_DATA |
 			   MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED),
-	.clk_type	= S3C_SDHCI_CLK_DIV_INTERNAL,
 };
 
 struct platform_device s3c_device_hsmmc2 = {
@@ -465,7 +483,6 @@ struct s3c_sdhci_platdata s3c_hsmmc3_def_platdata = {
 	.max_width	= 4,
 	.host_caps	= (MMC_CAP_4_BIT_DATA |
 			   MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED),
-	.clk_type	= S3C_SDHCI_CLK_DIV_INTERNAL,
 };
 
 struct platform_device s3c_device_hsmmc3 = {
@@ -770,6 +787,29 @@ void __init s5p_i2c_hdmiphy_set_platdata(struct s3c2410_platform_i2c *pd)
 	npd = s3c_set_platdata(pd, sizeof(struct s3c2410_platform_i2c),
 			       &s5p_device_i2c_hdmiphy);
 }
+
+struct s5p_hdmi_platform_data s5p_hdmi_def_platdata;
+
+void __init s5p_hdmi_set_platdata(struct i2c_board_info *hdmiphy_info,
+				struct i2c_board_info *mhl_info, int mhl_bus)
+{
+	struct s5p_hdmi_platform_data *pd = &s5p_hdmi_def_platdata;
+
+	if (soc_is_exynos4210())
+		pd->hdmiphy_bus = 8;
+	else if (soc_is_s5pv210())
+		pd->hdmiphy_bus = 3;
+	else
+		pd->hdmiphy_bus = 0;
+
+	pd->hdmiphy_info = hdmiphy_info;
+	pd->mhl_info = mhl_info;
+	pd->mhl_bus = mhl_bus;
+
+	s3c_set_platdata(pd, sizeof(struct s5p_hdmi_platform_data),
+				&s5p_device_hdmi);
+}
+
 #endif /* CONFIG_S5P_DEV_I2C_HDMIPHY */
 
 /* I2S */

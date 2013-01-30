@@ -33,6 +33,42 @@
 		reg = <0x10490000 0x1000>, <0x10480000 0x100>;
 	};
 
+	combiner:interrupt-controller@10440000 {
+		compatible = "samsung,exynos4210-combiner";
+		#interrupt-cells = <2>;
+		interrupt-controller;
+		samsung,combiner-nr = <16>;
+		reg = <0x10440000 0x1000>;
+		interrupts = <0 0 0>, <0 1 0>, <0 2 0>, <0 3 0>,
+			     <0 4 0>, <0 5 0>, <0 6 0>, <0 7 0>,
+			     <0 8 0>, <0 9 0>, <0 10 0>, <0 11 0>,
+			     <0 12 0>, <0 13 0>, <0 14 0>, <0 15 0>;
+	};
+
+	wakeup_eint: interrupt-controller-wakeup-eint {
+		compatible = "samsung,exynos4210-wakeup-eint";
+		reg = <0x11000000 0x1000>;
+		#interrupt-cells = <2>;
+		interrupt-controller;
+		interrupts = <0 16 0>, <0 17 0>, <0 18 0>, <0 19 0>,
+				<0 20 0>, <0 21 0>, <0 22 0>, <0 23 0>,
+				<0 24 0>, <0 25 0>, <0 26 0>, <0 27 0>,
+				<0 28 0>, <0 29 0>, <0 30 0>, <0 31 0>,
+				<0 32 0>;
+	};
+
+	power-domain-lcd0 {
+		compatible = "samsung,exynos4210-pd";
+		reg = <0x10023C00 0x10>;
+	};
+
+	fimd@11C00000 {
+		compatible = "samsung,exynos4210-fimd";
+		interrupt-parent = <&combiner>;
+		reg = <0x11C00000 0x8000>;
+		interrupts = <11 1>, <11 0>, <11 2>;
+	};
+
 	watchdog@10060000 {
 		compatible = "samsung,s3c2410-wdt";
 		reg = <0x10060000 0x100>;

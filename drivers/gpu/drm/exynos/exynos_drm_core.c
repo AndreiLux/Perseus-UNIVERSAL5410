@@ -26,6 +26,8 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <linux/module.h>
+
 #include "drmP.h"
 #include "exynos_drm_drv.h"
 #include "exynos_drm_encoder.h"

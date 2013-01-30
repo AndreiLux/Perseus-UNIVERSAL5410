@@ -532,6 +532,7 @@ struct s5p_mfc_ctx {
 
 	struct v4l2_ctrl *ctrls[MFC_MAX_CTRLS];
 	struct v4l2_ctrl_handler ctrl_handler;
+	unsigned int frame_tag;
 };
 
 /*

@@ -61,3 +61,4 @@ obj-$(CONFIG_USB_WPAN_HCD)	+= ozwpan/
 obj-$(CONFIG_OMAP_THERMAL)      += thermal_framework/
 obj-$(CONFIG_DRM_OMAP_DCE)	+= omapdce/
 obj-$(CONFIG_OMAP_RPMSG_RDAEMON)	+= rdaemon/
+obj-$(CONFIG_SND_SOC_ORIGEN_ALC5625)	+= alc5625/

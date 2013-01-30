@@ -1003,6 +1003,8 @@ int s5p_mfc_init_decode(struct s5p_mfc_ctx *ctx)
 	mfc_write(dev,
 	((S5P_FIMV_CH_SEQ_HEADER & S5P_FIMV_CH_MASK) << S5P_FIMV_CH_SHIFT)
 				| (ctx->inst_no), S5P_FIMV_SI_CH0_INST_ID);
+
+
 	return 0;
 }
 
@@ -1029,6 +1031,8 @@ int s5p_mfc_decode_one_frame(struct s5p_mfc_ctx *ctx,
 	mfc_write(dev, ctx->dec_dst_flag, S5P_FIMV_SI_CH0_RELEASE_BUF);
 	s5p_mfc_set_shared_buffer(ctx);
 	s5p_mfc_set_flush(ctx, ctx->dpb_flush_flag);
+
+	s5p_mfc_write_shm(ctx, ctx->frame_tag, S5P_FIMV_SHARED_SET_FRAME_TAG);
 	/* Issue different commands to instance basing on whether it
 	 * is the last frame or not. */
 	switch (last_frame) {

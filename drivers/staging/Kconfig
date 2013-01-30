@@ -140,4 +140,6 @@ source "drivers/staging/omapdce/Kconfig"
 
 source "drivers/staging/rdaemon/Kconfig"
 
+source "drivers/staging/alc5625/Kconfig"
+
 endif # STAGING
