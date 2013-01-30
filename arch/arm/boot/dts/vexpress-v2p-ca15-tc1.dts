@@ -9,6 +9,8 @@
 
 /dts-v1/;
 
+/memreserve/ 0xbf000000 0x01000000;
+
 / {
 	model = "V2P-CA15";
 	arm,hbi = <0x237>;
@@ -54,6 +56,9 @@
 		compatible = "arm,hdlcd";
 		reg = <0x2b000000 0x1000>;
 		interrupts = <0 85 4>;
+		mode = "1024x768-16@60";
+		arm,vexpress-osc = <3>;
+		framebuffer = <0xbf000000 0x01000000>;
 	};
 
 	memory-controller@2b0a0000 {
