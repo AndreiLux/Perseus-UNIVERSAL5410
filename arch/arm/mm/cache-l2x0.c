@@ -360,9 +360,6 @@ void __init l2x0_init(void __iomem *base, u32 aux_val, u32 aux_mask)
 	l2x0_cache_id = readl_relaxed(l2x0_base + L2X0_CACHE_ID);
 	aux = readl_relaxed(l2x0_base + L2X0_AUX_CTRL);
 
-	aux &= aux_mask;
-	aux |= aux_val;
-
 	/* Determine the number of ways */
 	switch (l2x0_cache_id & L2X0_CACHE_ID_PART_MASK) {
 	case L2X0_CACHE_ID_PART_L310:
@@ -376,6 +373,13 @@ void __init l2x0_init(void __iomem *base, u32 aux_val, u32 aux_mask)
 		sync_reg_offset = L2X0_DUMMY_REG;
 #endif
 		outer_cache.set_debug = pl310_set_debug;
+
+		/*
+		 * Set bit 22 in the auxiliary control register. If this bit
+		 * is cleared, PL310 treats Normal Shared Non-cacheable
+		 * accesses as Cacheable no-allocate.
+		 */
+		aux_val |= 1 << 22;
 		break;
 	case L2X0_CACHE_ID_PART_L210:
 		l2x0_ways = (aux >> 13) & 0xf;
@@ -406,6 +410,9 @@ void __init l2x0_init(void __iomem *base, u32 aux_val, u32 aux_mask)
 	if (!(readl_relaxed(l2x0_base + L2X0_CTRL) & 1)) {
 		/* Make sure that I&D is not locked down when starting */
 		l2x0_unlock(l2x0_cache_id);
+
+		aux &= aux_mask;
+		aux |= aux_val;
 
 		/* l2x0 controller is disabled */
 		writel_relaxed(aux, l2x0_base + L2X0_AUX_CTRL);
