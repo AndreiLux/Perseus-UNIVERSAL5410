@@ -292,7 +292,7 @@ static int usbhs_runtime_resume(struct device *dev)
 
 	for (i = 0; i < omap->nports; i++) {
 		if (omap->port[i].aux_clk) {
-			r = clk_enable(omap->port[i].aux_clk);
+			r = clk_prepare_enable(omap->port[i].aux_clk);
 			if (r) {
 				dev_err(dev,
 				 "%s: Can't enable port %d aux clk %d\n",
