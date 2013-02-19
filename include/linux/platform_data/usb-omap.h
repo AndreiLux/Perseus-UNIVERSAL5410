@@ -55,10 +55,14 @@ struct ohci_hcd_omap_platform_data {
 };
 
 struct usbhs_omap_platform_data {
+	int					nports;
 	enum usbhs_omap_port_mode		port_mode[OMAP3_HS_USB_PORTS];
 
 	struct ehci_hcd_omap_platform_data	*ehci_data;
 	struct ohci_hcd_omap_platform_data	*ohci_data;
+
+	const char				*clk[OMAP3_HS_USB_PORTS];
+	unsigned long int			clkrate[OMAP3_HS_USB_PORTS];
 
 	/* OMAP3 <= ES2.1 have a single ulpi bypass control bit */
 	unsigned				single_ulpi_bypass:1;
