@@ -54,10 +54,13 @@
 
 #define	OMAP_TLL_CHANNEL_CONF(num)			(0x040 + 0x004 * num)
 #define OMAP_TLL_CHANNEL_CONF_FSLSMODE_SHIFT		24
+#define OMAP_TLL_CHANNEL_CONF_DRVVBUS			(1 << 16)
+#define OMAP_TLL_CHANNEL_CONF_CHRGVBUS			(1 << 15)
 #define	OMAP_TLL_CHANNEL_CONF_ULPINOBITSTUFF		(1 << 11)
 #define	OMAP_TLL_CHANNEL_CONF_ULPI_ULPIAUTOIDLE		(1 << 10)
 #define	OMAP_TLL_CHANNEL_CONF_UTMIAUTOIDLE		(1 << 9)
 #define	OMAP_TLL_CHANNEL_CONF_ULPIDDRMODE		(1 << 8)
+#define OMAP_TLL_CHANNEL_CONF_MODE_TRANSPARENT_UTMI	(2 << 1)
 #define OMAP_TLL_CHANNEL_CONF_CHANMODE_FSLS		(1 << 1)
 #define	OMAP_TLL_CHANNEL_CONF_CHANEN			(1 << 0)
 
@@ -82,8 +85,12 @@
 #define	OMAP_TLL_ULPI_DEBUG(num)			(0x815 + 0x100 * num)
 #define	OMAP_TLL_ULPI_SCRATCH_REGISTER(num)		(0x816 + 0x100 * num)
 
-#define OMAP_REV2_TLL_CHANNEL_COUNT			2
-#define OMAP_TLL_CHANNEL_COUNT				3
+#define REV2_TLL_CHANNEL_COUNT				2
+#define DEFAULT_TLL_CHANNEL_COUNT			3
+
+/* Update if any chip has more */
+#define MAX_TLL_CHANNEL_COUNT				3
+
 #define OMAP_TLL_CHANNEL_1_EN_MASK			(1 << 0)
 #define OMAP_TLL_CHANNEL_2_EN_MASK			(1 << 1)
 #define OMAP_TLL_CHANNEL_3_EN_MASK			(1 << 2)
@@ -92,21 +99,27 @@
 #define OMAP_USBTLL_REV1		0x00000015	/* OMAP3 */
 #define OMAP_USBTLL_REV2		0x00000018	/* OMAP 3630 */
 #define OMAP_USBTLL_REV3		0x00000004	/* OMAP4 */
+#define OMAP_USBTLL_REV4		0x6		/* OMAP5 */
 
 #define is_ehci_tll_mode(x)	(x == OMAP_EHCI_PORT_MODE_TLL)
 
+/* only PHY and UNUSED modes don't need TLL */
+#define mode_needs_tll(x)	((x != OMAP_USBHS_PORT_MODE_UNUSED) && \
+				 (x != OMAP_EHCI_PORT_MODE_PHY))
+
 struct usbtll_omap {
-	struct clk				*usbtll_p1_fck;
-	struct clk				*usbtll_p2_fck;
-	struct usbtll_omap_platform_data	platdata;
+	void __iomem				*base;
+	int					nch;	/* number of channels */
+	struct clk				*ch_clk[MAX_TLL_CHANNEL_COUNT];
+	struct usbtll_omap_platform_data	*pdata;
 	/* secure the register updates */
 	spinlock_t				lock;
 };
 
 /*-------------------------------------------------------------------------*/
 
-const char usbtll_driver_name[] = USBTLL_DRIVER_NAME;
-struct platform_device	*tll_pdev;
+static const char usbtll_driver_name[] = USBTLL_DRIVER_NAME;
+static struct device *tll_dev;
 
 /*-------------------------------------------------------------------------*/
 
@@ -208,79 +221,84 @@ static int usbtll_omap_probe(struct platform_device *pdev)
 	struct resource				*res;
 	struct usbtll_omap			*tll;
 	unsigned				reg;
-	unsigned long				flags;
 	int					ret = 0;
-	int					i, ver, count;
+	int					i, ver;
+	bool needs_tll;
 
 	dev_dbg(dev, "starting TI HSUSB TLL Controller\n");
 
 	tll = kzalloc(sizeof(struct usbtll_omap), GFP_KERNEL);
 	if (!tll) {
 		dev_err(dev, "Memory allocation failed\n");
-		ret = -ENOMEM;
-		goto end;
+		return -ENOMEM;
+	}
+
+	if (!pdata) {
+		dev_err(dev, "%s : Platform data mising\n", __func__);
+		return -ENODEV;
 	}
 
 	spin_lock_init(&tll->lock);
 
-	for (i = 0; i < OMAP3_HS_USB_PORTS; i++)
-		tll->platdata.port_mode[i] = pdata->port_mode[i];
-
-	tll->usbtll_p1_fck = clk_get(dev, "usb_tll_hs_usb_ch0_clk");
-	if (IS_ERR(tll->usbtll_p1_fck)) {
-		ret = PTR_ERR(tll->usbtll_p1_fck);
-		dev_err(dev, "usbtll_p1_fck failed error:%d\n", ret);
-		goto err_tll;
-	}
-
-	tll->usbtll_p2_fck = clk_get(dev, "usb_tll_hs_usb_ch1_clk");
-	if (IS_ERR(tll->usbtll_p2_fck)) {
-		ret = PTR_ERR(tll->usbtll_p2_fck);
-		dev_err(dev, "usbtll_p2_fck failed error:%d\n", ret);
-		goto err_usbtll_p1_fck;
-	}
+	tll->pdata = pdata;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		dev_err(dev, "usb tll get resource failed\n");
 		ret = -ENODEV;
-		goto err_usbtll_p2_fck;
+		goto err_mem;
 	}
 
 	base = ioremap(res->start, resource_size(res));
 	if (!base) {
 		dev_err(dev, "TLL ioremap failed\n");
 		ret = -ENOMEM;
-		goto err_usbtll_p2_fck;
+		goto err_mem;
 	}
 
+	tll->base = base;
 	platform_set_drvdata(pdev, tll);
 	pm_runtime_enable(dev);
 	pm_runtime_get_sync(dev);
 
-	spin_lock_irqsave(&tll->lock, flags);
-
 	ver =  usbtll_read(base, OMAP_USBTLL_REVISION);
 	switch (ver) {
 	case OMAP_USBTLL_REV1:
-	case OMAP_USBTLL_REV2:
-		count = OMAP_TLL_CHANNEL_COUNT;
+	case OMAP_USBTLL_REV4:
+		tll->nch = DEFAULT_TLL_CHANNEL_COUNT;
 		break;
+	case OMAP_USBTLL_REV2:
 	case OMAP_USBTLL_REV3:
-		count = OMAP_REV2_TLL_CHANNEL_COUNT;
+		tll->nch = REV2_TLL_CHANNEL_COUNT;
 		break;
 	default:
-		dev_err(dev, "TLL version failed\n");
-		ret = -ENODEV;
-		goto err_ioremap;
+		tll->nch = DEFAULT_TLL_CHANNEL_COUNT;
+		dev_info(dev,
+		 "USB TLL Rev : 0x%x not recognized, assuming %d channels\n",
+			ver, tll->nch);
+		break;
 	}
 
-	if (is_ehci_tll_mode(pdata->port_mode[0]) ||
-	    is_ehci_tll_mode(pdata->port_mode[1]) ||
-	    is_ehci_tll_mode(pdata->port_mode[2]) ||
-	    is_ohci_port(pdata->port_mode[0]) ||
-	    is_ohci_port(pdata->port_mode[1]) ||
-	    is_ohci_port(pdata->port_mode[2])) {
+	for (i = 0; i < tll->nch; i++) {
+		char clk_name[] = "usb_tll_hs_usb_chx_clk";
+		struct clk *fck;
+
+		sprintf(clk_name, "usb_tll_hs_usb_ch%d_clk", i);
+		fck = clk_get(dev, clk_name);
+
+		if (IS_ERR(fck)) {
+			dev_err(dev, "can't get clock : %s\n", clk_name);
+			ret = PTR_ERR(fck);
+			goto err_clk;
+		}
+		tll->ch_clk[i] = fck;
+	}
+
+	needs_tll = false;
+	for (i = 0; i < tll->nch; i++)
+		needs_tll |= mode_needs_tll(pdata->port_mode[i]);
+
+	if (needs_tll) {
 
 		/* Program Common TLL register */
 		reg = usbtll_read(base, OMAP_TLL_SHARED_CONF);
@@ -292,7 +310,7 @@ static int usbtll_omap_probe(struct platform_device *pdev)
 		usbtll_write(base, OMAP_TLL_SHARED_CONF, reg);
 
 		/* Enable channels now */
-		for (i = 0; i < count; i++) {
+		for (i = 0; i < tll->nch; i++) {
 			reg = usbtll_read(base,	OMAP_TLL_CHANNEL_CONF(i));
 
 			if (is_ohci_port(pdata->port_mode[i])) {
@@ -308,6 +326,15 @@ static int usbtll_omap_probe(struct platform_device *pdev)
 				reg &= ~(OMAP_TLL_CHANNEL_CONF_UTMIAUTOIDLE
 					| OMAP_TLL_CHANNEL_CONF_ULPINOBITSTUFF
 					| OMAP_TLL_CHANNEL_CONF_ULPIDDRMODE);
+			} else if (pdata->port_mode[i] ==
+					OMAP_EHCI_PORT_MODE_HSIC) {
+				/*
+				 * HSIC Mode requires UTMI port configurations
+				 */
+				reg |= OMAP_TLL_CHANNEL_CONF_DRVVBUS
+				 | OMAP_TLL_CHANNEL_CONF_CHRGVBUS
+				 | OMAP_TLL_CHANNEL_CONF_MODE_TRANSPARENT_UTMI
+				 | OMAP_TLL_CHANNEL_CONF_ULPINOBITSTUFF;
 			} else {
 				continue;
 			}
@@ -320,25 +347,25 @@ static int usbtll_omap_probe(struct platform_device *pdev)
 		}
 	}
 
-err_ioremap:
-	spin_unlock_irqrestore(&tll->lock, flags);
-	iounmap(base);
+	/* only after this can omap_tll_enable/disable work */
+	tll_dev = dev;
+
+err_clk:
+	for (--i; i >= 0 ; i--)
+		clk_put(tll->ch_clk[i]);
+
 	pm_runtime_put_sync(dev);
-	tll_pdev = pdev;
-	if (!ret)
-		goto end;
+	if (ret == 0) {
+		pr_info("OMAP USB TLL : revision 0x%x, channels %d\n",
+				ver, tll->nch);
+		return 0;
+	}
+
+	iounmap(base);
 	pm_runtime_disable(dev);
 
-err_usbtll_p2_fck:
-	clk_put(tll->usbtll_p2_fck);
-
-err_usbtll_p1_fck:
-	clk_put(tll->usbtll_p1_fck);
-
-err_tll:
+err_mem:
 	kfree(tll);
-
-end:
 	return ret;
 }
 
@@ -351,77 +378,22 @@ end:
 static int usbtll_omap_remove(struct platform_device *pdev)
 {
 	struct usbtll_omap *tll = platform_get_drvdata(pdev);
+	int i;
 
-	clk_put(tll->usbtll_p2_fck);
-	clk_put(tll->usbtll_p1_fck);
+	tll_dev = NULL;
+	iounmap(tll->base);
+	for (i = 0; i < tll->nch; i++)
+		clk_put(tll->ch_clk[i]);
+
 	pm_runtime_disable(&pdev->dev);
 	kfree(tll);
 	return 0;
 }
 
-static int usbtll_runtime_resume(struct device *dev)
-{
-	struct usbtll_omap			*tll = dev_get_drvdata(dev);
-	struct usbtll_omap_platform_data	*pdata = &tll->platdata;
-	unsigned long				flags;
-
-	dev_dbg(dev, "usbtll_runtime_resume\n");
-
-	if (!pdata) {
-		dev_dbg(dev, "missing platform_data\n");
-		return  -ENODEV;
-	}
-
-	spin_lock_irqsave(&tll->lock, flags);
-
-	if (is_ehci_tll_mode(pdata->port_mode[0]))
-		clk_enable(tll->usbtll_p1_fck);
-
-	if (is_ehci_tll_mode(pdata->port_mode[1]))
-		clk_enable(tll->usbtll_p2_fck);
-
-	spin_unlock_irqrestore(&tll->lock, flags);
-
-	return 0;
-}
-
-static int usbtll_runtime_suspend(struct device *dev)
-{
-	struct usbtll_omap			*tll = dev_get_drvdata(dev);
-	struct usbtll_omap_platform_data	*pdata = &tll->platdata;
-	unsigned long				flags;
-
-	dev_dbg(dev, "usbtll_runtime_suspend\n");
-
-	if (!pdata) {
-		dev_dbg(dev, "missing platform_data\n");
-		return  -ENODEV;
-	}
-
-	spin_lock_irqsave(&tll->lock, flags);
-
-	if (is_ehci_tll_mode(pdata->port_mode[0]))
-		clk_disable(tll->usbtll_p1_fck);
-
-	if (is_ehci_tll_mode(pdata->port_mode[1]))
-		clk_disable(tll->usbtll_p2_fck);
-
-	spin_unlock_irqrestore(&tll->lock, flags);
-
-	return 0;
-}
-
-static const struct dev_pm_ops usbtllomap_dev_pm_ops = {
-	SET_RUNTIME_PM_OPS(usbtll_runtime_suspend,
-			   usbtll_runtime_resume,
-			   NULL)
-};
-
 static struct platform_driver usbtll_omap_driver = {
 	.driver = {
 		.name		= (char *)usbtll_driver_name,
 		.owner		= THIS_MODULE,
-		.pm		= &usbtllomap_dev_pm_ops,
 	},
 	.probe		= usbtll_omap_probe,
 	.remove		= usbtll_omap_remove,
@@ -429,21 +401,60 @@ static struct platform_driver usbtll_omap_driver = {
 
 int omap_tll_enable(void)
 {
-	if (!tll_pdev) {
-		pr_err("missing omap usbhs tll platform_data\n");
+	struct usbtll_omap			*tll;
+	unsigned long				flags;
+	int i;
+
+	if (!tll_dev) {
+		pr_err("%s: OMAP USB TLL not initialized\n", __func__);
 		return  -ENODEV;
 	}
-	return pm_runtime_get_sync(&tll_pdev->dev);
+
+	tll = dev_get_drvdata(tll_dev);
+	spin_lock_irqsave(&tll->lock, flags);
+
+	for (i = 0; i < tll->nch; i++) {
+		if (mode_needs_tll(tll->pdata->port_mode[i])) {
+			int r;
+			r = clk_enable(tll->ch_clk[i]);
+			if (r) {
+				dev_err(tll_dev,
+				  "%s : Error enabling ch %d clock: %d\n",
+				  __func__, i, r);
+			}
+		}
+	}
+
+	i = pm_runtime_get_sync(tll_dev);
+	spin_unlock_irqrestore(&tll->lock, flags);
+
+	return i;
 }
 EXPORT_SYMBOL_GPL(omap_tll_enable);
 
 int omap_tll_disable(void)
 {
-	if (!tll_pdev) {
-		pr_err("missing omap usbhs tll platform_data\n");
+	struct usbtll_omap			*tll;
+	unsigned long				flags;
+	int i;
+
+	if (!tll_dev) {
+		pr_err("%s: OMAP USB TLL not initialized\n", __func__);
 		return  -ENODEV;
 	}
-	return pm_runtime_put_sync(&tll_pdev->dev);
+
+	tll = dev_get_drvdata(tll_dev);
+	spin_lock_irqsave(&tll->lock, flags);
+
+	for (i = 0; i < tll->nch; i++) {
+		if (mode_needs_tll(tll->pdata->port_mode[i]))
+			clk_disable(tll->ch_clk[i]);
+	}
+
+	i = pm_runtime_put_sync(tll_dev);
+	spin_unlock_irqrestore(&tll->lock, flags);
+
+	return i;
 }
 EXPORT_SYMBOL_GPL(omap_tll_disable);
 
