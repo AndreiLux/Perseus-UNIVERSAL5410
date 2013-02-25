@@ -347,7 +347,7 @@ asmlinkage int compat_sys_sigsuspend(int restart, compat_ulong_t oldmask,
 {
 	sigset_t blocked;
 
-	siginitset(&current->blocked, mask);
+	siginitset(&blocked, mask);
 	return sigsuspend(&blocked);
 }
 
