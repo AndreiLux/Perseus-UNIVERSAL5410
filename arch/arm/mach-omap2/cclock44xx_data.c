@@ -1404,10 +1404,17 @@ static struct clk_hw_omap usb_host_fs_fck_hw = {
 DEFINE_STRUCT_CLK(usb_host_fs_fck, usb_host_fs_fck_parent_names,
 		  usb_host_fs_fck_ops);
 
-static const char *utmi_p1_gfclk_parents[] = {
+static const struct clksel utmi_p1_clk_sel[] = {
+		{ .parent = &init_60m_fclk, .rates = div_1_0_rates },
+		{ .parent = &xclk60mhsp1_ck, .rates = div_1_1_rates },
+		{ .parent = NULL },
+};
+
+static const char *usb_host_hs_utmi_p1_clk_parents[] = {
 	"init_60m_fclk", "xclk60mhsp1_ck",
 };
 
+#if 0
 DEFINE_CLK_MUX(utmi_p1_gfclk, utmi_p1_gfclk_parents, NULL, 0x0,
 	       OMAP4430_CM_L3INIT_USB_HOST_CLKCTRL,
 	       OMAP4430_CLKSEL_UTMI_P1_SHIFT, OMAP4430_CLKSEL_UTMI_P1_WIDTH,
@@ -1416,11 +1423,25 @@ DEFINE_CLK_MUX(utmi_p1_gfclk, utmi_p1_gfclk_parents, NULL, 0x0,
 DEFINE_CLK_GATE(usb_host_hs_utmi_p1_clk, "utmi_p1_gfclk", &utmi_p1_gfclk, 0x0,
 		OMAP4430_CM_L3INIT_USB_HOST_CLKCTRL,
 		OMAP4430_OPTFCLKEN_UTMI_P1_CLK_SHIFT, 0x0, NULL);
+#else
+DEFINE_CLK_OMAP_MUX_GATE(usb_host_hs_utmi_p1_clk, "l3_init_clkdm",
+		utmi_p1_clk_sel, OMAP4430_CM_L3INIT_USB_HOST_CLKCTRL,
+		OMAP4430_CLKSEL_UTMI_P1_MASK,
+		OMAP4430_CM_L3INIT_USB_HOST_CLKCTRL,
+		OMAP4430_OPTFCLKEN_UTMI_P1_CLK_SHIFT, 
+		NULL, usb_host_hs_utmi_p1_clk_parents, dmic_fck_ops);
+#endif /* #if 0 */
 
-static const char *utmi_p2_gfclk_parents[] = {
-	"init_60m_fclk", "xclk60mhsp2_ck",
+static const struct clksel utmi_p2_clk_sel[] = {
+		{ .parent = &init_60m_fclk, .rates = div_1_0_rates },
+		{ .parent = &xclk60mhsp2_ck, .rates = div_1_1_rates },
+		{ .parent = NULL },
 };
 
+static const char *usb_host_hs_utmi_p2_clk_parents[] = {
+	"init_60m_fclk", "xclk60mhsp2_ck",
+};
+#if 0
 DEFINE_CLK_MUX(utmi_p2_gfclk, utmi_p2_gfclk_parents, NULL, 0x0,
 	       OMAP4430_CM_L3INIT_USB_HOST_CLKCTRL,
 	       OMAP4430_CLKSEL_UTMI_P2_SHIFT, OMAP4430_CLKSEL_UTMI_P2_WIDTH,
@@ -1429,6 +1450,14 @@ DEFINE_CLK_MUX(utmi_p2_gfclk, utmi_p2_gfclk_parents, NULL, 0x0,
 DEFINE_CLK_GATE(usb_host_hs_utmi_p2_clk, "utmi_p2_gfclk", &utmi_p2_gfclk, 0x0,
 		OMAP4430_CM_L3INIT_USB_HOST_CLKCTRL,
 		OMAP4430_OPTFCLKEN_UTMI_P2_CLK_SHIFT, 0x0, NULL);
+#else
+DEFINE_CLK_OMAP_MUX_GATE(usb_host_hs_utmi_p2_clk, "l3_init_clkdm",
+		utmi_p2_clk_sel, OMAP4430_CM_L3INIT_USB_HOST_CLKCTRL,
+		OMAP4430_CLKSEL_UTMI_P2_MASK,
+		OMAP4430_CM_L3INIT_USB_HOST_CLKCTRL,
+		OMAP4430_OPTFCLKEN_UTMI_P2_CLK_SHIFT, 
+		NULL, usb_host_hs_utmi_p2_clk_parents, dmic_fck_ops);
+#endif /* #if 0 */
 
 DEFINE_CLK_GATE(usb_host_hs_utmi_p3_clk, "init_60m_fclk", &init_60m_fclk, 0x0,
 		OMAP4430_CM_L3INIT_USB_HOST_CLKCTRL,
@@ -1876,9 +1905,7 @@ static struct omap_clk omap44xx_clks[] = {
 	CLK(NULL,	"uart4_fck",			&uart4_fck,	CK_443X),
 	CLK(NULL,	"usb_host_fs_fck",		&usb_host_fs_fck,	CK_443X),
 	CLK("usbhs_omap",	"fs_fck",		&usb_host_fs_fck,	CK_443X),
-	CLK(NULL,	"utmi_p1_gfclk",		&utmi_p1_gfclk,	CK_443X),
 	CLK(NULL,	"usb_host_hs_utmi_p1_clk",	&usb_host_hs_utmi_p1_clk,	CK_443X),
-	CLK(NULL,	"utmi_p2_gfclk",		&utmi_p2_gfclk,	CK_443X),
 	CLK(NULL,	"usb_host_hs_utmi_p2_clk",	&usb_host_hs_utmi_p2_clk,	CK_443X),
 	CLK(NULL,	"usb_host_hs_utmi_p3_clk",	&usb_host_hs_utmi_p3_clk,	CK_443X),
 	CLK(NULL,	"usb_host_hs_hsic480m_p1_clk",	&usb_host_hs_hsic480m_p1_clk,	CK_443X),
