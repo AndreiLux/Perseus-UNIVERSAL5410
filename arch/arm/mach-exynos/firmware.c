@@ -48,6 +48,7 @@ static const struct firmware_ops exynos_firmware_ops = {
 
 void __init exynos_firmware_init(void)
 {
+#if 0
 	if (of_have_populated_dt()) {
 		struct device_node *nd;
 		const __be32 *addr;
@@ -63,7 +64,7 @@ void __init exynos_firmware_init(void)
 			return;
 		}
 	}
-
+#endif
 	pr_info("Running under secure firmware.\n");
 
 	register_firmware_ops(&exynos_firmware_ops);
