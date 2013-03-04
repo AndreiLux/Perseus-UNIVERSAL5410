@@ -13,14 +13,13 @@
 
 #include <linux/init.h>
 #include <linux/smp.h>
+#include <linux/irqchip/arm-gic.h>
 
 #include <asm/bL_entry.h>
 #include <asm/smp_plat.h>
-#include <asm/hardware/gic.h>
 
 static void __init simple_smp_init_cpus(void)
 {
-	set_smp_cross_call(gic_raise_softirq);
 }
 
 static int __cpuinit bL_boot_secondary(unsigned int cpu, struct task_struct *idle)
@@ -38,7 +37,7 @@ static int __cpuinit bL_boot_secondary(unsigned int cpu, struct task_struct *idl
 	if (ret)
 		return ret;
 	bL_set_entry_vector(pcpu, pcluster, secondary_startup);
-	gic_raise_softirq(cpumask_of(cpu), 0);
+	arch_send_wakeup_ipi_mask(cpumask_of(cpu));
 	sev();
 	return 0;
 }
