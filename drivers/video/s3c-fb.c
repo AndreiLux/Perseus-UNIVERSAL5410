@@ -30,6 +30,7 @@
 #include <video/samsung_fimd.h>
 #include <mach/map.h>
 #include <plat/fb.h>
+#include <plat/cpu.h>
 
 /* This driver will export a number of framebuffer interfaces depending
  * on the configuration passed in via the platform data. Each fb instance
@@ -1420,6 +1421,9 @@ static int s3c_fb_dt_parse_gpios(struct device *dev, struct s3c_fb *sfb,
 {
 	int nr_gpios, idx, gpio, ret;
 
+	if (soc_is_exynos5250())
+		return 0;
+
 	nr_gpios = sfb->pdata->win[0]->max_bpp + 4;
 	sfb->gpios = devm_kzalloc(dev, sizeof(int) * nr_gpios, GFP_KERNEL);
 	if (!sfb->gpios) {
@@ -1456,6 +1460,12 @@ static void s3c_fb_dt_free_gpios(struct s3c_fb *sfb)
 {
 	unsigned int idx, nr_gpio;
 
+<<<<<<< HEAD
+=======
+	if (!IS_ERR(sfb->pctrl))
+		return;
+
+>>>>>>> 8b3e129... video: s3c-fb: Skip GPIO setting for Arndale
 	nr_gpio = sfb->pdata->win[0]->max_bpp + 4;
 	for (idx = 0; idx < nr_gpio; idx++)
 		gpio_free(sfb->gpios[idx]);
