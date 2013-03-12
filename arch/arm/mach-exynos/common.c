@@ -31,6 +31,7 @@
 #include <asm/mach/map.h>
 #include <asm/mach/irq.h>
 #include <asm/cacheflush.h>
+#include <asm/firmware.h>
 
 #include <mach/regs-irq.h>
 #include <mach/regs-pmu.h>
@@ -775,18 +776,20 @@ static int __init exynos4_l2x0_cache_init(void)
 
 		l2x0_regs_phys = virt_to_phys(&l2x0_saved_regs);
 
-		__raw_writel(l2x0_saved_regs.tag_latency,
-				S5P_VA_L2CC + L2X0_TAG_LATENCY_CTRL);
-		__raw_writel(l2x0_saved_regs.data_latency,
-				S5P_VA_L2CC + L2X0_DATA_LATENCY_CTRL);
+		if (call_firmware_op(l2x0_init)) {
+			__raw_writel(l2x0_saved_regs.tag_latency,
+					S5P_VA_L2CC + L2X0_TAG_LATENCY_CTRL);
+			__raw_writel(l2x0_saved_regs.data_latency,
+					S5P_VA_L2CC + L2X0_DATA_LATENCY_CTRL);
 
-		/* L2X0 Prefetch Control */
-		__raw_writel(l2x0_saved_regs.prefetch_ctrl,
-				S5P_VA_L2CC + L2X0_PREFETCH_CTRL);
+			/* L2X0 Prefetch Control */
+			__raw_writel(l2x0_saved_regs.prefetch_ctrl,
+					S5P_VA_L2CC + L2X0_PREFETCH_CTRL);
 
-		/* L2X0 Power Control */
-		__raw_writel(l2x0_saved_regs.pwr_ctrl,
-				S5P_VA_L2CC + L2X0_POWER_CTRL);
+			/* L2X0 Power Control */
+			__raw_writel(l2x0_saved_regs.pwr_ctrl,
+					S5P_VA_L2CC + L2X0_POWER_CTRL);
+		}
 
 		clean_dcache_area(&l2x0_regs_phys, sizeof(unsigned long));
 		clean_dcache_area(&l2x0_saved_regs, sizeof(struct l2x0_regs));
