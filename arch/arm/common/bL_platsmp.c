@@ -45,7 +45,6 @@ static int __cpuinit bL_boot_secondary(unsigned int cpu, struct task_struct *idl
 static void __cpuinit bL_secondary_init(unsigned int cpu)
 {
 	bL_cpu_powered_up();
-	gic_secondary_init(0);
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
