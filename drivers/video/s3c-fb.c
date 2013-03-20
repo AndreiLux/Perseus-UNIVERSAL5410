@@ -1460,12 +1460,6 @@ static void s3c_fb_dt_free_gpios(struct s3c_fb *sfb)
 {
 	unsigned int idx, nr_gpio;
 
-<<<<<<< HEAD
-=======
-	if (!IS_ERR(sfb->pctrl))
-		return;
-
->>>>>>> 8b3e129... video: s3c-fb: Skip GPIO setting for Arndale
 	nr_gpio = sfb->pdata->win[0]->max_bpp + 4;
 	for (idx = 0; idx < nr_gpio; idx++)
 		gpio_free(sfb->gpios[idx]);
