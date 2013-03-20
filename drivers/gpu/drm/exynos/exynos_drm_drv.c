@@ -294,7 +294,7 @@ static int exynos_drm_platform_probe(struct platform_device *pdev)
 {
 	DRM_DEBUG_DRIVER("%s\n", __FILE__);
 
-	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
+	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(64);
 	exynos_drm_driver.num_ioctls = DRM_ARRAY_SIZE(exynos_ioctls);
 
 	return drm_platform_init(&exynos_drm_driver, pdev);
