@@ -17,6 +17,8 @@
 #include <linux/err.h>
 #include <linux/spinlock.h>
 #include <linux/io.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/completion.h>
@@ -2790,19 +2792,29 @@ static int db8500_irq_init(struct device_node *np)
 }
 
 static void dbx500_fw_version_init(struct platform_device *pdev,
-			    u32 version_offset)
+				   u32 version_offset,
+				   struct device_node *np)
 {
+	struct device_node *tcpm_np;
 	struct resource *res;
-	void __iomem *tcpm_base;
+	void __iomem *tcpm_base = NULL;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 					   "prcmu-tcpm");
 	if (!res) {
-		dev_err(&pdev->dev,
-			"Error: no prcmu tcpm memory region provided\n");
-		return;
-	}
-	tcpm_base = ioremap(res->start, resource_size(res));
+		if (np) {
+			tcpm_np = of_find_node_by_name(np->parent,
+						       "prcmu-tcpm-per4");
+			if (!tcpm_np) {
+				dev_err(&pdev->dev,
+					"no prcmu tcpm mem region provided\n");
+				return;
+			}
+			tcpm_base = of_iomap(tcpm_np, 0);
+		}
+	} else
+		tcpm_base = ioremap(res->start, resource_size(res));
+
 	if (tcpm_base != NULL) {
 		u32 version;
 
@@ -3154,7 +3166,7 @@ static int db8500_prcmu_probe(struct platform_device *pdev)
 
 	init_prcm_registers();
 
-	dbx500_fw_version_init(pdev, pdata->version_offset);
+	dbx500_fw_version_init(pdev, pdata->version_offset, np);
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "prcmu-tcdm");
 	if (!res) {
 		dev_err(&pdev->dev, "no prcmu tcdm region provided\n");
