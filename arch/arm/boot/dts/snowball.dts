@@ -126,6 +126,14 @@
 			 };
 		};
 
+		prcmu-tcpm-per4@801b0000 {
+			reg = <0x801b0000 0x1000>;
+		};
+
+		prcmu-tcdm-per4@801b8000 {
+			reg = <0x801b8000 0x1000>;
+		};
+
 		external-bus@50000000 {
 			status = "okay";
 
