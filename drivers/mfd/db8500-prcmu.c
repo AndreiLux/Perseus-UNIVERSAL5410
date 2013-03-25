@@ -3159,8 +3159,9 @@ static void db8500_prcmu_update_cpufreq(void)
  */
 static int db8500_prcmu_probe(struct platform_device *pdev)
 {
-	struct device_node *np = pdev->dev.of_node;
 	struct prcmu_pdata *pdata = dev_get_platdata(&pdev->dev);
+	struct device_node *np = pdev->dev.of_node;
+	struct device_node *tcdm_np;
 	int irq = 0, err = 0, i;
 	struct resource *res;
 
@@ -3169,11 +3170,19 @@ static int db8500_prcmu_probe(struct platform_device *pdev)
 	dbx500_fw_version_init(pdev, pdata->version_offset, np);
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "prcmu-tcdm");
 	if (!res) {
-		dev_err(&pdev->dev, "no prcmu tcdm region provided\n");
-		return -ENOENT;
-	}
-	tcdm_base = devm_ioremap(&pdev->dev, res->start,
-			resource_size(res));
+		if (np) {
+			tcdm_np = of_find_node_by_name(np->parent,
+						       "prcmu-tcdm-per4");
+			if (!tcdm_np) {
+				dev_err(&pdev->dev,
+					"no prcmu tcdm region provided\n");
+				return -ENOENT;
+			}
+			tcdm_base = of_iomap(tcdm_np, 0);
+		}
+	} else
+		tcdm_base = devm_ioremap(&pdev->dev, res->start,
+					 resource_size(res));
 
 	/* Clean up the mailbox interrupts after pre-kernel code. */
 	writel(ALL_MBOX_BITS, PRCM_ARM_IT1_CLR);
