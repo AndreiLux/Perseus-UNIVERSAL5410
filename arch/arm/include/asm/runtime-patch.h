@@ -25,7 +25,7 @@
 
 #ifdef CONFIG_ARM_RUNTIME_PATCH
 
-struct patch_info {
+struct runtime_patch_info {
 	void		*insn;
 	u16		 type;
 	u8		 insn_size;
@@ -34,7 +34,7 @@ struct patch_info {
 };
 
 #define PATCH_IMM8		0x0001
-struct patch_info_imm8 {
+struct runtime_patch_info_imm8 {
 	u32		*imm;
 	u32		 insn;
 };

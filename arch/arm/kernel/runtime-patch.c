@@ -143,11 +143,11 @@ static int do_patch_imm8(u32 insn, u32 imm, u32 *ninsn)
 
 #endif	/* CONFIG_THUMB2_KERNEL */
 
-static int apply_patch_imm8(const struct patch_info *p)
+static int apply_patch_imm8(const struct runtime_patch_info *p)
 {
 	u32 *insn_ptr = p->insn, ninsn;
 	int count = p->insn_size / sizeof(u32);
-	const struct patch_info_imm8 *info;
+	const struct runtime_patch_info_imm8 *info;
 	int err;
 
 
@@ -242,7 +242,7 @@ static void __init runtime_patch_test(void)
 
 int runtime_patch(const void *table, unsigned size)
 {
-	const struct patch_info *p = table, *end = (table + size);
+	const struct runtime_patch_info *p = table, *end = (table + size);
 
 	for (p = table; p < end; p = patch_next(p)) {
 		int err = -EINVAL;
