@@ -60,5 +60,13 @@ config ARCH_VEXPRESS_DCSCB
 	  Support for the Dual Cluster System Configuration Block (DCSCB).
 	  This is needed to provide CPU and cluster power management
 	  on RTSM.
+	  
+config ARCH_VEXPRESS_TC2
+	bool "TC2 cluster management"
+	depends on MCPM
+	select ARM_SPC
+	select ARM_CCI
+	help
+	  Support for CPU and cluster power management on TC2.
 
 endmenu
