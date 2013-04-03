@@ -89,11 +89,12 @@ static void arm_backtrace_eabi(int cpu, struct pt_regs *const regs, unsigned int
 #if defined(__arm__) || defined(__aarch64__)
 static int report_trace(struct stackframe *frame, void *d)
 {
-	unsigned int *depth = d, cookie = NO_COOKIE, cpu = get_physical_cpu();
+	unsigned int *depth = d, cookie = NO_COOKIE;
 	unsigned long addr = frame->pc;
 
 	if (*depth) {
 #if defined(MODULE)
+		unsigned int cpu = get_physical_cpu();
 		struct module *mod = __module_address(addr);
 		if (mod) {
 			cookie = get_cookie(cpu, current, mod->name, false);
