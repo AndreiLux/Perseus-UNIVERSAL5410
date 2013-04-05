@@ -1434,6 +1434,16 @@ config ARM_ERRATA_774769
 	  affected by this erratum such that no streaming-write ever allocates
 	  into the L2 cache.
 
+config ARM_ERRATA_798181
+	bool "ARM errata: TLBI/DSB failure on Cortex-A15"
+	depends on CPU_V7 && SMP
+	help
+	  On Cortex-A15 (r0p0..r3p2) the TLBI*IS/DSB operations are not
+	  adequately shooting down all use of the old entries. This
+	  option enables the Linux kernel workaround for this erratum
+	  which sends an IPI to the CPUs that are running the same mm
+	  (and ASID) as the one being invalidated.
+
 endmenu
 
 source "arch/arm/common/Kconfig"

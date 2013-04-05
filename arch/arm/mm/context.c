@@ -65,6 +65,7 @@ static void flush_context(void)
 {
 	cpu_set_reserved_ttbr0();
 	local_flush_tlb_all();
+	dummy_flush_tlb_a15_erratum();
 	if (icache_is_vivt_asid_tagged()) {
 		__flush_icache_all();
 		dsb();
