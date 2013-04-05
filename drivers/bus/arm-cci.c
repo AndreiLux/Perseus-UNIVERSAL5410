@@ -412,19 +412,12 @@ static int cci_pmu_init(struct platform_device *pdev)
 	return armpmu_register(&cci_pmu, -1);
 }
 
-static void cci_pmu_destroy(void)
-{
-	perf_pmu_unregister(&cci_pmu.pmu);
-}
-
 #else
 
 static int cci_pmu_init(struct platform_device *pdev)
 {
 	return 0;
 }
-
-static void cci_pmu_destroy(void) { }
 
 #endif /* CONFIG_HW_PERF_EVENTS */
 
