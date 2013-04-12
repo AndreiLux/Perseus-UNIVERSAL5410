@@ -15,6 +15,7 @@
 #define _LINUX_VEXPRESS_H
 
 #include <linux/device.h>
+#include <linux/err.h>
 
 #define VEXPRESS_SITE_MB		0
 #define VEXPRESS_SITE_DB1		1
@@ -125,5 +126,117 @@ void vexpress_osc_of_setup(struct device_node *node);
 
 void vexpress_clk_init(void __iomem *sp810_base);
 void vexpress_clk_of_init(void);
+
+/* SPC */
+
+#define	VEXPRESS_SPC_WAKE_INTR_IRQ(cluster, cpu) \
+			(1 << (4 * (cluster) + (cpu)))
+#define	VEXPRESS_SPC_WAKE_INTR_FIQ(cluster, cpu) \
+			(1 << (7 * (cluster) + (cpu)))
+#define	VEXPRESS_SPC_WAKE_INTR_SWDOG			(1 << 10)
+#define	VEXPRESS_SPC_WAKE_INTR_GTIMER		(1 << 11)
+#define	VEXPRESS_SPC_WAKE_INTR_MASK			0xFFF
+
+#ifdef CONFIG_ARM_SPC
+
+extern u32 vexpress_spc_get_clusterid(int cpu_part_no);
+extern u32 vexpress_spc_read_rsthold_reg(int cluster);
+extern u32 vexpress_spc_read_rststat_reg(int cluster);
+extern u32 vexpress_scc_read_rststat(int cluster);
+extern u32 vexpress_spc_get_wake_intr(int raw);
+extern int vexpress_spc_standbywfi_status(int cluster, int cpu);
+extern int vexpress_spc_standbywfil2_status(int cluster);
+extern int vexpress_spc_set_cpu_wakeup_irq(u32 cpu, u32 cluster, u32 set);
+extern int vexpress_spc_set_global_wakeup_intr(u32 set);
+extern unsigned int *vexpress_spc_get_freq_table(uint32_t cluster, int *count);
+extern int vexpress_spc_get_performance(int cluster, u32 *freq);
+extern int vexpress_spc_set_performance(int cluster, u32 freq);
+extern int vexpress_spc_wfi_cpustat(int cluster);
+extern void vexpress_spc_set_wake_intr(u32 mask);
+extern void vexpress_spc_write_bxaddr_reg(int cluster, int cpu, u32 val);
+extern int vexpress_spc_get_nb_cpus(int cluster);
+extern void vexpress_spc_write_rsthold_reg(int cluster, u32 value);
+extern void vexpress_spc_powerdown_enable(int cluster, int enable);
+extern void vexpress_spc_adb400_pd_enable(int cluster, int enable);
+extern void vexpress_spc_wfi_cpureset(int cluster, int cpu, int enable);
+extern void vexpress_spc_wfi_cluster_reset(int cluster, int enable);
+extern void vexpress_scc_ctl_snoops(int cluster, int enable);
+extern bool vexpress_spc_check_loaded(void);
+#else
+static inline int vexpress_spc_set_cpu_wakeup_irq(u32 cpu, u32 cluster, u32 set)
+{
+	return  0;
+}
+
+static inline int vexpress_spc_set_global_wakeup_intr(u32 set)
+{
+	return 0;
+}
+
+static inline int vexpress_spc_standbywfi_status(int cluster, int cpu)
+{
+	return 0;
+}
+
+static inline int vexpress_spc_standbywfil2_status(int cluster)
+{
+	return 0;
+}
+
+static inline u32 vexpress_spc_get_clusterid(int cpu_part_no)
+{
+	return 0;
+}
+
+static inline u32 vexpress_spc_read_rsthold_reg(int cluster)
+{
+	return 0;
+}
+
+static inline u32 vexpress_spc_read_rststat_reg(int cluster)
+{
+	return 0;
+}
+
+static inline void vexpress_spc_write_bxaddr_reg(int cluster, int cpu, u32 val)
+{
+}
+
+static inline void vexpress_spc_write_rsthold_reg(int cluster, u32 value)
+{
+}
+
+static inline u32 vexpress_scc_read_rststat(int cluster)
+{
+	return 0;
+}
+
+static inline unsigned int *vexpress_spc_get_freq_table(uint32_t cluster, int *count)
+{
+	return ERR_PTR(-ENOSYS);
+}
+
+static inline int vexpress_spc_get_performance(int cluster, u32 *freq)
+{
+	return -ENOSYS;
+}
+static inline int vexpress_spc_set_performance(int cluster, u32 freq)
+{
+	return -ENOSYS;
+}
+static inline void vexpress_spc_set_wake_intr(u32 mask) { }
+static inline u32 vexpress_spc_get_wake_intr(int raw) { return 0; }
+static inline void vexpress_spc_powerdown_enable(int cluster, int enable) { }
+static inline void vexpress_spc_adb400_pd_enable(int cluster, int enable) { }
+static inline void vexpress_spc_wfi_cpureset(int cluster, int cpu, int enable)
+{ }
+static inline int vexpress_spc_wfi_cpustat(int cluster) { return 0; }
+static inline void vexpress_spc_wfi_cluster_reset(int cluster, int enable) { }
+static inline bool vexpress_spc_check_loaded(void)
+{
+	return false;
+}
+static inline void vexpress_scc_ctl_snoops(int cluster, int enable) { }
+#endif
 
 #endif
