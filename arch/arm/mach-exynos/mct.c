@@ -160,6 +160,10 @@ static void __init exynos4_clocksource_init(void)
 {
 	exynos4_mct_frc_start(0, 0);
 
+	if (soc_is_exynos5250()) {
+		mct_frc.rating = 399;
+	}
+
 	if (clocksource_register_hz(&mct_frc, clk_rate))
 		panic("%s: can't register clocksource\n", mct_frc.name);
 }
