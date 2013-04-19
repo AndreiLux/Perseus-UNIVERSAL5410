@@ -125,6 +125,84 @@ config LCD_AMS369FG06
 	  If you have an AMS369FG06 AMOLED Panel, say Y to enable its
 	  LCD control driver.
 
+config LCD_MIPI_S6E8AB0
+	tristate "1280 X 800 S6E8AB0 AMOLED MIPI LCD Driver"
+	depends on BACKLIGHT_CLASS_DEVICE
+	default n
+	help
+	  If you have an S6E8AB0 MIPI LCD Panel, say Y to enable its
+	  LCD control driver.
+
+config LCD_MIPI_TC358764
+        tristate "1280 X 800 TC358764 AMOLED MIPI LCD Driver"
+        depends on BACKLIGHT_CLASS_DEVICE
+        default n
+        help
+          If you have an TC358764 MIPI LCD Panel, say Y to enable its
+          LCD control driver.
+
+config LCD_MIPI_S6E8AA0
+	tristate "800 X 1280 S6E8AA0 AMOLED LCD Driver"
+	depends on BACKLIGHT_CLASS_DEVICE
+	default n
+	help
+	  If you have an LCD_MIPI_S6E8AA0 MIPI LCD Panel, say Y to enable its
+	  LCD control driver.
+
+config LCD_LMS501KF03
+	tristate "480 X 800  LMS501KF03 TFT LCD Driver(RGB I/F)"
+	default n
+	help
+	  If you have an LMS501KF03 AMOLED Panel, say Y to enable its
+	  LCD control driver.
+
+config LCD_MIPI_AMS480GYXX
+	tristate "720 X 1280 AMS480GYXX AMOLED LCD Driver"
+	depends on BACKLIGHT_CLASS_DEVICE
+	default n
+	help
+	  If you have an AMS480GYXX MIPI LCD Panel, say Y to enable its
+	  LCD control driver.
+
+config LCD_MIPI_ER63311
+	tristate "1080 X 1920 FHD LCD Driver"
+	depends on BACKLIGHT_CLASS_DEVICE
+	default n
+	help
+	  If you have an LCD_MIPI_ER63311 MIPI LCD Panel, say Y to enable its
+	  LCD control driver.
+
+config LCD_MIPI_ER63311_LDI
+	tristate "1080 X 1920 Samsung LDI FHD LCD Driver"
+	depends on BACKLIGHT_CLASS_DEVICE
+	default n
+	help
+	  If you have an LCD_MIPI_ER63311 MIPI LCD Panel, say Y to enable its
+	  LCD control driver.
+
+config LCD_MIPI_S6E8FA0
+	tristate "1080 X 1920 FHD LCD Driver"
+	depends on BACKLIGHT_CLASS_DEVICE
+	default n
+	help
+	  If you have an LCD_MIPI_S6E8FA0 MIPI LCD Panel, say Y to enable its
+	  LCD control driver.
+
+config LCD_MIPI_S6E3FA0
+	tristate "1080 X 1920 FHD LCD Driver"
+	depends on BACKLIGHT_CLASS_DEVICE
+	default n
+	help
+	  If you have an LCD_MIPI_S6E3FA0 MIPI COMMAND MODE LCD Panel, say Y to enable its
+	  LCD control driver.
+
+config LCD_LSL122BC01
+	tristate "2560 X 1600 LCD Driver"
+	depends on BACKLIGHT_CLASS_DEVICE
+	default n
+	help
+	  If you have an LCD_LSL122BC01, say Y to enable its
+	  LCD control driver.
 endif # LCD_CLASS_DEVICE
 
 #
@@ -347,6 +425,13 @@ config BACKLIGHT_LP855X
 	  This supports TI LP8550, LP8551, LP8552, LP8553 and LP8556
 	  backlight driver.
 
+config BACKLIGHT_LP8556
+	tristate "Backlight driver for TI LP8556 for Samsung TN"
+	depends on BACKLIGHT_CLASS_DEVICE && I2C
+	default n
+	help
+	  This support TI LP8556 for For Samsung TN backlight driver.
+
 config BACKLIGHT_OT200
 	tristate "Backlight driver for ot200 visualisation device"
 	depends on BACKLIGHT_CLASS_DEVICE && CS5535_MFGPT && GPIO_CS5535
@@ -360,6 +445,14 @@ config BACKLIGHT_PANDORA
 	help
 	  If you have a Pandora console, say Y to enable the
 	  backlight driver.
+
+config TCON_S6TNDR3X
+	tristate "Pentile TCON S6TNDR3X"
+	depends on I2C
+	default n
+	help
+	  This support S6TNDR3X Tcon for Pentile LCD.
+
 
 endif # BACKLIGHT_CLASS_DEVICE
 

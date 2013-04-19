@@ -579,8 +579,26 @@ static void ehci_stop (struct usb_hcd *hcd)
 
 	/* root hub is shut down separately (first, when possible) */
 	spin_lock_irq (&ehci->lock);
+#ifdef CONFIG_MDM_HSIC_PM
+	if (ehci->async) {
+		/*
+		 * TODO: Observed that ehci->async next ptr is not
+		 * NULL sometimes which leads to crash in mem_cleanup.
+		 * Root cause is not yet known why this messup is
+		 * happenning.
+		 * The follwing workaround fixes the crash caused
+		 * by this temporarily.
+		 * check if async next ptr is not NULL and unlink
+		 * explictly.
+		 */
+		if (ehci->async->qh_next.ptr != NULL)
+			start_unlink_async(ehci, ehci->async->qh_next.qh);
+		ehci_work(ehci);
+	}
+#else
 	if (ehci->async)
 		ehci_work (ehci);
+#endif
 	spin_unlock_irq (&ehci->lock);
 	ehci_mem_cleanup (ehci);
 
@@ -843,6 +861,9 @@ static int __maybe_unused ehci_setup (struct usb_hcd *hcd)
 }
 
 /*-------------------------------------------------------------------------*/
+#if defined(CONFIG_MDM_HSIC_PM)
+extern void debug_ehci_reg_dump(struct device *hdev);
+#endif
 
 static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 {
@@ -904,8 +925,12 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 		if (ehci->reclaim) {
 			COUNT(ehci->stats.reclaim);
 			end_unlink_async(ehci);
-		} else
+		} else {
 			ehci_dbg(ehci, "IAA with nothing to reclaim?\n");
+#if defined(CONFIG_MDM_HSIC_PM)
+			debug_ehci_reg_dump(hcd->self.controller);
+#endif
+		}
 	}
 
 	/* remote wakeup [4.3.1] */
@@ -933,6 +958,13 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 			pstatus = ehci_readl(ehci,
 					 &ehci->regs->port_status[i]);
 
+#ifdef CONFIG_MDM_HSIC_PM
+			/*set RS bit in case of remote wakeup*/
+			if (ehci_is_TDI(ehci) && !(cmd & CMD_RUN) &&
+					(pstatus & PORT_SUSPEND))
+				ehci_writel(ehci, cmd | CMD_RUN,
+						&ehci->regs->command);
+#endif
 			if (pstatus & PORT_OWNER)
 				continue;
 			if (!(test_bit(i, &ehci->suspended_ports) &&
@@ -959,6 +991,9 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 		ehci_err(ehci, "fatal error\n");
 		dbg_cmd(ehci, "fatal", cmd);
 		dbg_status(ehci, "fatal", status);
+#if defined(CONFIG_MDM_HSIC_PM)
+debug_ehci_reg_dump(hcd->self.controller);
+#endif
 		ehci_halt(ehci);
 dead:
 		ehci_reset(ehci);

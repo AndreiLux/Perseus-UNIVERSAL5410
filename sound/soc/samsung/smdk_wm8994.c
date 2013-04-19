@@ -11,6 +11,8 @@
 #include <sound/pcm_params.h>
 #include <linux/module.h>
 
+#include "i2s.h"
+#include "i2s-regs.h"
  /*
   * Default CFG switch settings to use this driver:
   *	SMDKV310: CFG5-1000, CFG7-111111
@@ -75,6 +77,11 @@ static int smdk_hw_params(struct snd_pcm_substream *substream,
 	if (ret < 0)
 		return ret;
 
+	ret = snd_soc_dai_set_sysclk(cpu_dai, SAMSUNG_I2S_OPCLK,
+					0, MOD_OPCLK_PCLK);
+	if (ret < 0)
+		return ret;
+
 	return 0;
 }
 
@@ -122,7 +129,7 @@ static int smdk_wm8994_init_paiftx(struct snd_soc_pcm_runtime *rtd)
 }
 
 static struct snd_soc_dai_link smdk_dai[] = {
-	{ /* Primary DAI i/f */
+	{  /* Primary DAI i/f */
 		.name = "WM8994 AIF1",
 		.stream_name = "Pri_Dai",
 		.cpu_dai_name = "samsung-i2s.0",
@@ -136,7 +143,11 @@ static struct snd_soc_dai_link smdk_dai[] = {
 		.stream_name = "Sec_Dai",
 		.cpu_dai_name = "samsung-i2s.4",
 		.codec_dai_name = "wm8994-aif1",
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA
+		.platform_name = "samsung-idma",
+#else
 		.platform_name = "samsung-audio",
+#endif
 		.codec_name = "wm8994-codec",
 		.ops = &smdk_ops,
 	},

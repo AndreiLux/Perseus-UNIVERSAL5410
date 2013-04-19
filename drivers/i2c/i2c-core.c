@@ -845,6 +845,9 @@ static int i2c_register_adapter(struct i2c_adapter *adap)
 	if (adap->timeout == 0)
 		adap->timeout = HZ;
 
+	if (adap->nak_timeout == 0)
+		adap->nak_timeout = msecs_to_jiffies(1000);
+
 	dev_set_name(&adap->dev, "i2c-%d", adap->nr);
 	adap->dev.bus = &i2c_bus_type;
 	adap->dev.type = &i2c_adapter_type;

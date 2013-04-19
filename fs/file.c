@@ -32,6 +32,25 @@ int sysctl_nr_open __read_mostly = 1024*1024;
 int sysctl_nr_open_min = BITS_PER_LONG;
 int sysctl_nr_open_max = 1024 * 1024; /* raised later */
 
+#ifdef CONFIG_SEC_FILE_LEAK_DEBUG
+extern int get_sec_debug_level(void);
+void fdleak_debug_print(struct files_struct *files)
+{
+    struct fdtable *fdt;
+    unsigned int n;
+    fdt = files_fdtable(files);
+
+    for(n=0; n < fdt->max_fds; n++){
+        if (rcu_dereference_raw(fdt->fd[n]) != NULL) {
+            printk("[TOO MANY OPEN FILES] (%d)/(%d) =  %s\n",
+            n,
+            fdt->max_fds,
+            fdt->fd[n]->f_path.dentry->d_name.name);
+        }
+    }
+}
+#endif
+
 /*
  * We use this list to defer free fdtables that have vmalloced
  * sets/arrays. By keeping a per-cpu list, we avoid having to embed
@@ -216,6 +235,17 @@ static int expand_fdtable(struct files_struct *files, int nr)
 	 * caller and alloc_fdtable().  Cheaper to catch it here...
 	 */
 	if (unlikely(new_fdt->max_fds <= nr)) {
+#ifdef CONFIG_SEC_FILE_LEAK_DEBUG
+                printk(KERN_ERR "Too many open files(%d:%s)\n",
+                    current->tgid, current->group_leader->comm);
+
+		fdleak_debug_print(files);
+
+                if (get_sec_debug_level()
+				&& !strcmp(current->group_leader->comm, "system_server"))
+                    panic("Too many open files");
+#endif
+
 		__free_fdtable(new_fdt);
 		return -EMFILE;
 	}
@@ -255,16 +285,40 @@ int expand_files(struct files_struct *files, int nr)
 	 * N.B. For clone tasks sharing a files structure, this test
 	 * will limit the total number of files that can be opened.
 	 */
-	if (nr >= rlimit(RLIMIT_NOFILE))
+            if (nr >= rlimit(RLIMIT_NOFILE)) {
+#ifdef CONFIG_SEC_FILE_LEAK_DEBUG
+                printk(KERN_ERR "Too many open files(%d:%s)\n",
+                        current->tgid, current->group_leader->comm);
+
+		fdleak_debug_print(files);
+
+                if (get_sec_debug_level()
+				&& !strcmp(current->group_leader->comm, "system_server"))
+                    panic("Too many open files");
+#endif
+
 		return -EMFILE;
+        }
 
 	/* Do we need to expand? */
 	if (nr < fdt->max_fds)
 		return 0;
 
 	/* Can we expand? */
-	if (nr >= sysctl_nr_open)
+        if (nr >= sysctl_nr_open) {
+#ifdef CONFIG_SEC_FILE_LEAK_DEBUG
+            printk(KERN_ERR "Too many open files(%d:%s)\n",
+                current->tgid, current->group_leader->comm);
+
+		fdleak_debug_print(files);
+
+		if (get_sec_debug_level()
+			&& !strcmp(current->group_leader->comm, "system_server"))
+                    panic("Too many open files");
+#endif
+
 		return -EMFILE;
+        }
 
 	/* All good, so we try */
 	return expand_fdtable(files, nr);
@@ -333,6 +387,16 @@ struct files_struct *dup_fd(struct files_struct *oldf, int *errorp)
 
 		/* beyond sysctl_nr_open; nothing to do */
 		if (unlikely(new_fdt->max_fds < open_files)) {
+#ifdef CONFIG_SEC_FILE_LEAK_DEBUG
+                        printk(KERN_ERR "Too many open files(%d:%s)\n",
+                            current->tgid, current->group_leader->comm);
+
+			fdleak_debug_print(current->files);
+
+			if (get_sec_debug_level()
+					&& !strcmp(current->group_leader->comm, "system_server"))
+                            panic("Too many open files");
+#endif
 			__free_fdtable(new_fdt);
 			*errorp = -EMFILE;
 			goto out_release;

@@ -17,6 +17,9 @@ struct platform_pwm_backlight_data {
 	void (*notify_after)(struct device *dev, int brightness);
 	void (*exit)(struct device *dev);
 	int (*check_fb)(struct device *dev, struct fb_info *info);
+
+	unsigned int fdft_brightness;
+	unsigned int pwm_requested;
 };
 
 #endif

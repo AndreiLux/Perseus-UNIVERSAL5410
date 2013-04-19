@@ -24,6 +24,18 @@ config LEDS_CLASS
 
 comment "LED drivers"
 
+config LEDS_KTD267
+        bool "LED support for the KTD267"
+        default n
+        help
+          This option enables support for the LEDs on the KTD267.
+
+config LEDS_MAX77693
+        bool "LED support for the MAX77693"
+        default n
+        help
+          This option enables support for the LEDs on the MAX77693.
+
 config LEDS_88PM860X
 	tristate "LED Support for Marvell 88PM860x PMIC"
 	depends on LEDS_CLASS
@@ -169,6 +181,24 @@ config LEDS_LP3944
 	  To compile this driver as a module, choose M here: the
 	  module will be called leds-lp3944.
 
+config LEDS_AN30259A
+	tristate "LED driver for panasonic AN30259A RGB LED"
+	depends on I2C
+	help
+	  This option enables support for AN30259A RGB LED chips
+	  accessed via the I2C bus.
+	  AN30259A has three channel LED driver. By synchronous clock
+	  function, combined operation is possible.
+
+config LEDS_LP55XX_COMMON
+	bool "Common Code for TI/National LP5521, LP5523/55231 and LP5562"
+	depends on LEDS_LP5521 || LEDS_LP5523 || LEDS_LP5562
+	depends on I2C
+	select FW_LOADER
+	help
+	  This option supports common operations for LP5521, LP5523/55231
+	  devices.
+
 config LEDS_LP5521
 	tristate "LED Support for N.S. LP5521 LED driver chip"
 	depends on LEDS_CLASS && I2C
@@ -184,6 +214,16 @@ config LEDS_LP5523
 	help
 	  If you say yes here you get support for the National Semiconductor
 	  LP5523 LED driver. It is 9 channel chip with programmable engines.
+	  Driver provides direct control via LED class and interface for
+	  programming the engines.
+
+config LEDS_LP5562
+	tristate "LED Support for TI LP5562 LED driver chip"
+	depends on LEDS_CLASS
+	select LEDS_LP55XX_COMMON
+	help
+	  If you say yes here you get support for TI LP5562 LED driver.
+	  It is 4 channels chip with programmable engines.
 	  Driver provides direct control via LED class and interface for
 	  programming the engines.
 
@@ -387,6 +427,14 @@ config LEDS_TCA6507
 	  LED driver chips accessed via the I2C bus.
 	  Driver support brightness control and hardware-assisted blinking.
 
+config LEDS_MAX77803
+	bool "LED support for the MAX77803"
+	depends on LEDS_CLASS
+	depends on MFD_MAX77803
+	default y
+	help
+	  This option enables support for the LEDs on the MAX77803.
+
 config LEDS_MAX8997
 	tristate "LED support for MAX8997 PMIC"
 	depends on LEDS_CLASS && MFD_MAX8997
@@ -467,6 +515,12 @@ config LEDS_TRIGGER_DEFAULT_ON
 	help
 	  This allows LEDs to be initialised in the ON state.
 	  If unsure, say Y.
+
+config LEDS_TRIGGER_SLEEP
+	tristate "LED Sleep Mode Trigger"
+	depends on LEDS_TRIGGERS && HAS_EARLYSUSPEND
+	help
+	  This turns LEDs on when the screen is off but the cpu still running.
 
 comment "iptables trigger is under Netfilter config (LED target)"
 	depends on LEDS_TRIGGERS

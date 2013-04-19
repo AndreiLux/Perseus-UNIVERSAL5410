@@ -37,6 +37,10 @@
 #include <asm/irq.h>
 #include <asm/uaccess.h>
 
+#ifdef CONFIG_BT_BCM4335
+#define BT4335_LINE 0
+#endif
+
 /*
  * This is used to lock changes in serial line configuration.
  */
@@ -93,6 +97,9 @@ static void __uart_start(struct tty_struct *tty)
 {
 	struct uart_state *state = tty->driver_data;
 	struct uart_port *port = state->uart_port;
+
+	if (port->ops->wake_peer)
+		port->ops->wake_peer(port);
 
 	if (!uart_circ_empty(&state->xmit) && state->xmit.buf &&
 	    !tty->stopped && !tty->hw_stopped)
@@ -179,7 +186,12 @@ static int uart_port_startup(struct tty_struct *tty, struct uart_state *state,
 		if (port->flags & ASYNC_CTS_FLOW) {
 			spin_lock_irq(&uport->lock);
 			if (!(uport->ops->get_mctrl(uport) & TIOCM_CTS))
+#ifdef CONFIG_BT_BCM4335
+				if (state->uart_port->line != BT4335_LINE)
 				tty->hw_stopped = 1;
+#else
+				tty->hw_stopped = 1;
+#endif
 			spin_unlock_irq(&uport->lock);
 		}
 	}
@@ -1237,7 +1249,12 @@ static void uart_set_termios(struct tty_struct *tty,
 	else if (!(old_termios->c_cflag & CRTSCTS) && (cflag & CRTSCTS)) {
 		spin_lock_irqsave(&state->uart_port->lock, flags);
 		if (!(state->uart_port->ops->get_mctrl(state->uart_port) & TIOCM_CTS)) {
+#ifdef CONFIG_BT_BCM4335
+			if (state->uart_port->line != BT4335_LINE)
+				tty->hw_stopped = 1;
+#else
 			tty->hw_stopped = 1;
+#endif
 			state->uart_port->ops->stop_tx(state->uart_port);
 		}
 		spin_unlock_irqrestore(&state->uart_port->lock, flags);

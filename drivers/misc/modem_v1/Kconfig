@@ -1,0 +1,51 @@
+menuconfig SEC_MODEM
+	bool "Samsung Mobile Modem Interface"
+	default n
+	---help---
+	  Samsung Modem Interface Driver.
+
+config UMTS_MODEM_SS222
+	bool "modem chip : SEC SS222"
+	depends on SEC_MODEM
+	default n
+
+config CDMA_MODEM_MDM6600
+	bool "modem chip : QC MDM6600"
+	depends on SEC_MODEM
+	default n
+
+config GSM_MODEM_ESC6270
+	bool "modem chip : QC ESC6270"
+	depends on SEC_MODEM
+	default n
+
+config LINK_DEVICE_DPRAM
+	bool "modem driver link device DPRAM"
+	depends on SEC_MODEM
+	default n
+
+config LINK_DEVICE_PLD
+	bool "modem driver link device PLD"
+	depends on SEC_MODEM
+	default n
+
+config LINK_DEVICE_C2C
+	bool "modem driver link device C2C"
+	depends on SEC_MODEM
+	default n
+
+config SIM_DETECT
+	bool "SIM_DETECT pin"
+	depends on SEC_MODEM
+	default n
+
+config SIM_SLOT_SWITCH
+	bool "SIM_SLOT_SWITCH"
+	depends on SEC_MODEM
+	default n
+
+config USBHUB_USB3503
+	bool "USB3503 USB HUB Driver"
+	depends on I2C
+	help
+	 Enables USB HUB USB3503

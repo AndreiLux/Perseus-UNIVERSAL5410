@@ -220,6 +220,16 @@ config TOUCHSCREEN_EETI
 	  To compile this driver as a module, choose M here: the
 	  module will be called eeti_ts.
 
+config TOUCHSCREEN_EGALAX_I2C
+	tristate "EETI eGalax multi-touch panel support with I2C"
+	depends on I2C
+	help
+	  Say Y here to enable support for I2C connected EETI
+	  eGalax multi-touch panels.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called egalax_ts.
+
 config TOUCHSCREEN_EGALAX
 	tristate "EETI eGalax multi-touch panel support"
 	depends on I2C
@@ -450,6 +460,12 @@ config TOUCHSCREEN_TNETV107X
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called tnetv107x-ts.
+
+config TOUCHSCREEN_SYNAPTICS_I2C_RMI
+	tristate "Synaptics i2c touchscreen"
+	depends on I2C
+	help
+	  This enables support for Synaptics RMI over I2C based touchscreens.
 
 config TOUCHSCREEN_TOUCHRIGHT
 	tristate "Touchright serial touchscreen"
@@ -844,5 +860,42 @@ config TOUCHSCREEN_TPS6507X
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called tps6507x_ts.
+
+config TOUCHSCREEN_MXT540E
+	tristate "Atmel MXT540E Touchscreen Interface"
+	depends on I2C
+	default n
+	help
+	  Say Y here if you want support for atmel_MXT540E touchscreen controllers.
+	  To compile this driver as a module, choose M here: the
+	  module will be called mxt540e.
+
+config TOUCHSCREEN_ATMEL_MXTS
+	tristate "Atmel mXTS I2C Touchscreen"
+	depends on I2C
+	help
+	  Say Y here if you have Atmel mXT S series I2C touchscreen,
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called mxts.
+
+config TOUCHSCREEN_ATMEL_MXT540S
+	tristate "Atmel MXT540S Touchscreen Interface"
+	depends on I2C
+	default n
+	help
+	  Say Y here if you want support for atmel_MXT540S touchscreen controllers.
+	  To compile this driver as a module, choose M here: the
+	  module will be called mxt540s.
+
+config TOUCHSCREEN_ATMEL_MXT1664S
+	tristate "Atmel MXT1664S Touchscreen Interface"
+	depends on I2C
+	default n
+	help
+	  Say Y here if you want support for atmel_MXT1664S touchscreen controllers.
+	  To compile this driver as a module, choose M here: the
+	  module will be called mxt1664s.
 
 endif

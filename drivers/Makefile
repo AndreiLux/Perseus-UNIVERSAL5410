@@ -100,6 +100,7 @@ obj-$(CONFIG_CPU_IDLE)		+= cpuidle/
 obj-y				+= mmc/
 obj-$(CONFIG_MEMSTICK)		+= memstick/
 obj-y				+= leds/
+obj-$(CONFIG_SWITCH)		+= switch/
 obj-$(CONFIG_INFINIBAND)	+= infiniband/
 obj-$(CONFIG_SGI_SN)		+= sn/
 obj-y				+= firmware/
@@ -124,7 +125,7 @@ obj-y				+= ieee802154/
 obj-y				+= clk/
 
 obj-$(CONFIG_HWSPINLOCK)	+= hwspinlock/
-obj-$(CONFIG_NFC)		+= nfc/
+obj-$(CONFIG_NFC_DEVICES)	+= nfc/
 obj-$(CONFIG_IOMMU_SUPPORT)	+= iommu/
 obj-$(CONFIG_REMOTEPROC)	+= remoteproc/
 obj-$(CONFIG_RPMSG)		+= rpmsg/
@@ -134,3 +135,20 @@ obj-$(CONFIG_VIRT_DRIVERS)	+= virt/
 obj-$(CONFIG_HYPERV)		+= hv/
 
 obj-$(CONFIG_PM_DEVFREQ)	+= devfreq/
+obj-$(CONFIG_BATTERY_SAMSUNG)	+= battery/
+
+obj-$(CONFIG_VIBETONZ)		+= motor/
+
+obj-$(CONFIG_SENSORS_SSP)	+= sensorhub/
+
+obj-$(CONFIG_MOBICORE_DRIVER)	+= gud/
+
+obj-$(CONFIG_ACCESSORY)		+= accessory/
+obj-$(CONFIG_ICE4_FPGA)		+= ice4_fpga/
+obj-$(CONFIG_IR_REMOCON_MC96)		+= irda/
+
+obj-$(CONFIG_FELICA) += felica/
+
+ifeq (1, $(shell if [ -d ./drivers/exfat ]; then echo 1; fi))
+obj-y   += exfat/
+endif

@@ -210,4 +210,7 @@ struct gpio_led_platform_data {
 struct platform_device *gpio_led_register_device(
 		int id, const struct gpio_led_platform_data *pdata);
 
+extern void exynos5_led_run_pattern(int mode);
+extern void exynos5_led_blink(int rgb, int on, int off);
+
 #endif		/* __LINUX_LEDS_H_INCLUDED */

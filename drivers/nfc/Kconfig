@@ -2,8 +2,18 @@
 # Near Field Communication (NFC) devices
 #
 
+menuconfig NFC_DEVICES
+    bool "Near Field Communication (NFC) devices"
+    default n
+    ---help---
+        You'll have to say Y if your computer contains an NFC device that
+        you want to use under Linux.
+
+        You can say N here if you don't have any Near Field Communication
+        devices connected to your computer.
+
 menu "Near Field Communication (NFC) devices"
-	depends on NFC
+	depends on NFC_DEVICES
 
 config PN544_NFC
 	tristate "PN544 NFC driver"
@@ -38,4 +48,26 @@ config NFC_WILINK
 	  Say Y here to compile support for Texas Instrument's NFC WiLink driver
 	  into the kernel or say M to compile it as module.
 
+config PN65N_NFC
+    tristate "PN65N NFC driver"
+	depends on I2C
+	select CRC_CCITT
+	default n
+	---help---
+	  Say yes if you want PN65N Near Field Communication driver.
+	  This is for i2c connected version. If unsure, say N here.
+
+	  To compile this driver as a module, choose m here. The module will
+	  be called pn65n.
+
+config BCM2079X_NFC_I2C
+	tristate "BCM2079X NFC driver for I2C interface"
+	depends on I2C
+	default n
+	help
+	  Say yes if you want BCM2079X Near Field Communication driver.
+	  This is for spi connected version. If unsure, say N here.
+
+	  To compile this driver as a module, choose m here. The module will
+	  be called bcm2079x-i2c.
 endmenu

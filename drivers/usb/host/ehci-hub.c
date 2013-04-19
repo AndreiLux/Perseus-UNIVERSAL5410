@@ -254,6 +254,12 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 		if (t1 & PORT_OWNER)
 			set_bit(port, &ehci->owned_ports);
 		else if ((t1 & PORT_PE) && !(t1 & PORT_SUSPEND)) {
+#ifdef CONFIG_MDM_HSIC_PM
+			/*clear RS bit before setting SUSP bit
+			* and wait for HCH to get set*/
+			if (ehci->susp_sof_bug)
+				ehci_halt(ehci);
+#endif
 			t2 |= PORT_SUSPEND;
 			set_bit(port, &ehci->bus_suspended);
 		}
@@ -304,6 +310,10 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 	if (ehci->bus_suspended)
 		udelay(150);
 
+#ifdef CONFIG_MDM_HSIC_PM
+	/*if this bit is set, controller is already haled*/
+	if (!ehci->susp_sof_bug)
+#endif
 	/* turn off now-idle HC */
 	ehci_halt (ehci);
 	ehci->rh_state = EHCI_RH_SUSPENDED;
@@ -870,7 +880,7 @@ static int ehci_hub_control (
 			 * this bit; seems too long to spin routinely...
 			 */
 			retval = handshake(ehci, status_reg,
-					PORT_RESET, 0, 1000);
+					PORT_RESET, 0, 2000);
 			if (retval != 0) {
 				ehci_err (ehci, "port %d reset error %d\n",
 					wIndex + 1, retval);
@@ -978,6 +988,12 @@ static int ehci_hub_control (
 			if ((temp & PORT_PE) == 0
 					|| (temp & PORT_RESET) != 0)
 				goto error;
+#ifdef CONFIG_MDM_HSIC_PM
+			/*port gets suspended as part of bus suspend routine*/
+			if (!ehci->susp_sof_bug)
+				ehci_writel(ehci, temp | PORT_SUSPEND,
+						status_reg);
+#endif
 
 			/* After above check the port must be connected.
 			 * Set appropriate bit thus could put phy into low power
@@ -985,6 +1001,11 @@ static int ehci_hub_control (
 			 */
 			temp &= ~PORT_WKCONN_E;
 			temp |= PORT_WKDISC_E | PORT_WKOC_E;
+#ifdef CONFIG_MDM_HSIC_PM
+			if (ehci->susp_sof_bug)
+				ehci_writel(ehci, temp, status_reg);
+			else
+#endif
 			ehci_writel(ehci, temp | PORT_SUSPEND, status_reg);
 			if (hostpc_reg) {
 				spin_unlock_irqrestore(&ehci->lock, flags);

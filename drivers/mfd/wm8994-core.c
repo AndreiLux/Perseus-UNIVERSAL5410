@@ -375,7 +375,7 @@ static const __devinitdata struct reg_default wm8958_reva_patch[] = {
 
 static const __devinitdata struct reg_default wm1811_reva_patch[] = {
 	{ 0x102, 0x3 },
-	{ 0x56, 0x7 },
+	{ 0x56, 0xc07 },
 	{ 0x5d, 0x7e },
 	{ 0x5e, 0x0 },
 	{ 0x102, 0x0 },
@@ -390,7 +390,7 @@ static __devinit int wm8994_device_init(struct wm8994 *wm8994, int irq)
 	struct regmap_config *regmap_config;
 	const struct reg_default *regmap_patch = NULL;
 	const char *devname;
-	int ret, i, patch_regs;
+	int ret, i, patch_regs = 0;
 	int pulls = 0;
 
 	dev_set_drvdata(wm8994->dev, wm8994);

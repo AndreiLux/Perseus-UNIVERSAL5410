@@ -365,6 +365,8 @@ int snd_soc_dapm_new_widgets(struct snd_soc_dapm_context *dapm);
 void snd_soc_dapm_free(struct snd_soc_dapm_context *dapm);
 int snd_soc_dapm_add_routes(struct snd_soc_dapm_context *dapm,
 			    const struct snd_soc_dapm_route *route, int num);
+int snd_soc_dapm_del_routes(struct snd_soc_dapm_context *dapm,
+			    const struct snd_soc_dapm_route *route, int num);
 int snd_soc_dapm_weak_routes(struct snd_soc_dapm_context *dapm,
 			     const struct snd_soc_dapm_route *route, int num);
 
@@ -432,6 +434,11 @@ enum snd_soc_dapm_type {
 	snd_soc_dapm_dai,		/* link to DAI structure */
 };
 
+enum snd_soc_dapm_subclass {
+	SND_SOC_DAPM_CLASS_INIT	= 0,
+	SND_SOC_DAPM_CLASS_PCM	= 1,
+};
+
 /*
  * DAPM audio route definition.
  *
@@ -461,6 +468,7 @@ struct snd_soc_dapm_path {
 	/* status */
 	u32 connect:1;	/* source and sink widgets are connected */
 	u32 walked:1;	/* path has been walked */
+	u32 walking:1;  /* path is in the process of being walked */
 	u32 weak:1;	/* path ignored for power management */
 
 	int (*connected)(struct snd_soc_dapm_widget *source,

@@ -33,6 +33,7 @@ obj-$(CONFIG_SENSORS_TSL2550)	+= tsl2550.o
 obj-$(CONFIG_EP93XX_PWM)	+= ep93xx_pwm.o
 obj-$(CONFIG_DS1682)		+= ds1682.o
 obj-$(CONFIG_TI_DAC7512)	+= ti_dac7512.o
+obj-$(CONFIG_UID_STAT)		+= uid_stat.o
 obj-$(CONFIG_C2PORT)		+= c2port/
 obj-$(CONFIG_IWMC3200TOP)      += iwmc3200top/
 obj-$(CONFIG_HMC6352)		+= hmc6352.o
@@ -49,3 +50,16 @@ obj-y				+= carma/
 obj-$(CONFIG_USB_SWITCH_FSA9480) += fsa9480.o
 obj-$(CONFIG_ALTERA_STAPL)	+=altera-stapl/
 obj-$(CONFIG_MAX8997_MUIC)	+= max8997-muic.o
+obj-$(CONFIG_MFD_MAX77803)	+= max77803-muic.o
+obj-$(CONFIG_WL127X_RFKILL)	+= wl127x-rfkill.o
+obj-$(CONFIG_SENSORS_AK8975)	+= akm8975.o
+obj-$(CONFIG_STMPE811_ADC)	+= stmpe811-adc.o
+obj-$(CONFIG_SAMSUNG_C2C)	+= c2c/
+obj-$(CONFIG_SEC_MODEM_V2)	+= modem_v2/
+obj-$(CONFIG_SEC_MODEM_V1)	+= modem_v1/
+obj-$(CONFIG_SEC_MODEM_IF)	+= modem_if/
+obj-$(CONFIG_MFD_MAX77693)      += max77693-muic.o
+obj-y				+= 2mic/
+
+# Secure OS Mobicore Interface
+obj-$(CONFIG_MOBICORE_DRIVER)  += tzic.o

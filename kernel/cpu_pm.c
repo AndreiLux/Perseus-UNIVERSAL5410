@@ -21,6 +21,9 @@
 #include <linux/notifier.h>
 #include <linux/spinlock.h>
 #include <linux/syscore_ops.h>
+#ifdef CONFIG_SEC_PM
+#include <mach/debug.h>
+#endif
 
 static DEFINE_RWLOCK(cpu_pm_notifier_lock);
 static RAW_NOTIFIER_HEAD(cpu_pm_notifier_chain);
@@ -205,10 +208,16 @@ static int cpu_pm_suspend(void)
 {
 	int ret;
 
+#ifdef CONFIG_SEC_PM
+	if (FLAG_T32_EN)
+		goto out;
+#endif
+
 	ret = cpu_pm_enter();
 	if (ret)
 		return ret;
 
+out:
 	ret = cpu_cluster_pm_enter();
 	return ret;
 }

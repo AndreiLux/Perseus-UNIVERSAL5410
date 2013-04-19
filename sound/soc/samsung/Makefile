@@ -18,6 +18,7 @@ obj-$(CONFIG_SND_SAMSUNG_SPDIF) += snd-soc-samsung-spdif.o
 obj-$(CONFIG_SND_SAMSUNG_PCM) += snd-soc-pcm.o
 obj-$(CONFIG_SND_SAMSUNG_I2S) += snd-soc-i2s.o
 obj-$(CONFIG_SND_SAMSUNG_I2S) += snd-soc-idma.o
+obj-$(CONFIG_SND_SAMSUNG_ALP) += srp_alp/
 
 # S3C24XX Machine Support
 snd-soc-jive-wm8750-objs := jive_wm8750.o
@@ -42,6 +43,12 @@ snd-soc-speyside-objs := speyside.o
 snd-soc-tobermory-objs := tobermory.o
 snd-soc-lowland-objs := lowland.o
 snd-soc-littlemill-objs := littlemill.o
+snd-soc-adonisuniv-wm1811-objs := adonisuniv_wm1811.o
+snd-soc-adonisuniv-wm5102-objs := adonisuniv_wm5102.o
+snd-soc-adonisuniv-ymu831-objs := adonisuniv_ymu831.o
+snd-soc-adonisduos-ymu831-objs := adonisduos_ymu831.o
+snd-soc-adonisuniv-wm1811-slsi-objs := adonisuniv_wm1811_slsi.o
+snd-soc-adonisuniv-ymu831-slsi-objs := adonisuniv_ymu831_slsi.o
 
 obj-$(CONFIG_SND_SOC_SAMSUNG_JIVE_WM8750) += snd-soc-jive-wm8750.o
 obj-$(CONFIG_SND_SOC_SAMSUNG_NEO1973_WM8753) += snd-soc-neo1973-wm8753.o
@@ -65,3 +72,10 @@ obj-$(CONFIG_SND_SOC_SPEYSIDE) += snd-soc-speyside.o
 obj-$(CONFIG_SND_SOC_TOBERMORY) += snd-soc-tobermory.o
 obj-$(CONFIG_SND_SOC_LOWLAND) += snd-soc-lowland.o
 obj-$(CONFIG_SND_SOC_LITTLEMILL) += snd-soc-littlemill.o
+obj-$(CONFIG_SND_SOC_ADONISUNIV_WM1811) += snd-soc-adonisuniv-wm1811.o
+obj-$(CONFIG_SND_SOC_ADONISUNIV_WM5102) += snd-soc-adonisuniv-wm5102.o
+obj-$(CONFIG_SND_SOC_ADONISDUOS_YMU831) += snd-soc-adonisduos-ymu831.o
+obj-$(CONFIG_SND_SOC_ADONISUNIV_YMU831) += snd-soc-adonisuniv-ymu831.o
+obj-$(CONFIG_SND_SOC_ADONISUNIV_WM1811_SLSI) += snd-soc-adonisuniv-wm1811-slsi.o
+obj-$(CONFIG_SND_SOC_ADONISUNIV_YMU831_SLSI) += snd-soc-adonisuniv-ymu831-slsi.o
+obj-$(CONFIG_SND_SOC_V1_YMU831) += snd-soc-adonisuniv-ymu831.o

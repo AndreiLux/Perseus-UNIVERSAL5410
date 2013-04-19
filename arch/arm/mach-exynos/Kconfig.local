@@ -1,0 +1,92 @@
+choice
+	prompt "Support Target Locale"
+	default TARGET_LOCALE_EUR
+
+config TARGET_LOCALE_EUR
+	bool "Locale Europe Open support"
+	help
+	  Enable universal5410 LOCALE EUR.
+	  is used to distinguish LOCALE-related difference.
+	  Locale Feature is used Revision XX and
+	  LTE Only Board.
+
+config TARGET_LOCALE_KOR
+	bool "Locale Kor support"
+	help
+	  Enable universal5410 LOCALE KOR.
+	  is used to distinguish LOCALE-related difference.
+	  Locale Feature is used Revision XX and
+	  LTE Only Board.
+
+config TARGET_LOCALE_JPN
+	bool "Locale Japan support"
+	help
+	  Enable universal5410 LOCALE JPN.
+
+config TARGET_LOCALE_CHN
+	bool "Locale China support"
+	help
+	  Enable universal5410 LOCALE CHN.
+
+endchoice
+
+choice
+	prompt "Support KOR Target Carrier"
+	depends on MACH_UNIVERSAL5410 && TARGET_LOCALE_KOR
+	default MACH_JA_KOR_SKT
+
+config MACH_JA_KOR_SKT
+	bool "SKT Operator"
+	help
+	  Enable Carrier Operator SKT in LOCALE KOR.
+	  Exynos5410 is used for AP SoC.
+	  Shannon222 is used for CP SoC.
+	  is used to distinguish Carrier-related difference.
+
+config MACH_JA_KOR_KT
+	bool "KT Operator"
+	help
+	  Enable Carrier Operator KT in LOCALE KOR.
+	  Exynos5410 is used for AP SoC.
+	  Shannon222 is used for CP SoC.
+	  is used to distinguish Carrier-related difference.
+
+config MACH_JA_KOR_LGT
+	bool "LG U+ Operator"
+	help
+	  Enable Carrier Operator LGU in LOCALE KOR.
+	  Exynos5410 is used for AP SoC.
+	  MDM9X15 is used for CP SoC.
+	  is used to distinguish Carrier-related difference.
+endchoice
+
+choice
+	prompt "Support KOR Target Board Revision"
+	depends on MACH_UNIVERSAL5410 && TARGET_LOCALE_KOR
+	default JA_LTE_KOR_REV00
+
+config JA_LTE_KOR_REV00
+	bool "JA LTE KOR REV00"
+	help
+	  Support JA LTE KOR rev0.0.
+
+config JA_LTE_KOR_REV01
+	bool "JA LTE KOR REV01"
+	help
+	  Support JA LTE KOR rev0.1.
+endchoice
+
+choice
+	prompt "Support JPN Target Carrier"
+	depends on MACH_UNIVERSAL5410 && TARGET_LOCALE_JPN
+	default MACH_JA_JPN_DCM
+
+config MACH_JA_JPN_DCM
+	bool "DCM Operator"
+	help
+	  Enable Carrier Operator DCM in LOCALE JPN.
+
+endchoice
+
+config SWITCH_DUAL_MODEM
+	bool "Switch UART/USB to AP/CP/CP2"

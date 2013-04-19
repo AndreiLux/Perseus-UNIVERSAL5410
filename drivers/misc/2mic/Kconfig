@@ -1,0 +1,6 @@
+config 2MIC_AUDIENCE_ES325
+	bool "Audience ES325 driver"
+	default n
+	help
+	  This is Audience voice solution devices.
+	  The chip version is ES325.

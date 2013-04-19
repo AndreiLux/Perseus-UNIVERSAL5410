@@ -103,12 +103,14 @@ static irqreturn_t regmap_irq_thread(int irq, void *d)
 	u32 *buf32 = data->status_reg_buf;
 	bool handled = false;
 
+#if 0
 	ret = regmap_bulk_read(map, chip->status_base, data->status_reg_buf,
 			       chip->num_regs);
 	if (ret != 0) {
 		dev_err(map->dev, "Failed to read IRQ status: %d\n", ret);
 		return IRQ_NONE;
 	}
+#endif
 
 	/*
 	 * Ignore masked IRQs and ack if we need to; we ack early so
@@ -118,6 +120,7 @@ static irqreturn_t regmap_irq_thread(int irq, void *d)
 	 * doing a write per register.
 	 */
 	for (i = 0; i < data->chip->num_regs; i++) {
+#if 0
 		switch (map->format.val_bytes) {
 		case 1:
 			data->status_buf[i] = buf8[i];
@@ -131,6 +134,13 @@ static irqreturn_t regmap_irq_thread(int irq, void *d)
 		default:
 			BUG();
 			return IRQ_NONE;
+		}
+#endif
+		ret = regmap_read(map, chip->status_base + i,
+				  &data->status_buf[i]);
+		if (ret != 0) {
+			dev_err(map->dev, "Failed to read %x: %d\n",
+				chip->status_base + i, ret);
 		}
 
 		data->status_buf[i] &= ~data->mask_buf[i];

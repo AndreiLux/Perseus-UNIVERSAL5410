@@ -2165,10 +2165,12 @@ static int _wm8994_set_fll(struct snd_soc_codec *codec, int id, int src,
 		return -EINVAL;
 	}
 
+#if 0
 	/* Are we changing anything? */
 	if (wm8994->fll[id].src == src &&
 	    wm8994->fll[id].in == freq_in && wm8994->fll[id].out == freq_out)
 		return 0;
+#endif
 
 	/* If we're stopping the FLL redo the old config - no
 	 * registers will actually be written but we avoid GCC flow

@@ -380,6 +380,7 @@ struct i2c_adapter {
 	struct rt_mutex bus_lock;
 
 	int timeout;			/* in jiffies */
+	unsigned long nak_timeout;
 	int retries;
 	struct device dev;		/* the adapter device */
 

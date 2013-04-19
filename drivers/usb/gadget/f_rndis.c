@@ -67,15 +67,27 @@
  *   - MS-Windows drivers sometimes emit undocumented requests.
  */
 
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+static DEFINE_MUTEX(cpufreq_lock);
+#endif
+
 struct f_rndis {
 	struct gether			port;
 	u8				ctrl_id, data_id;
 	u8				ethaddr[ETH_ALEN];
+	u32				vendorID;
+	const char			*manufacturer;
 	int				config;
 
 	struct usb_ep			*notify;
 	struct usb_request		*notify_req;
 	atomic_t			notify_count;
+
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	bool cpufreq_lock_status;
+	struct pm_qos_request rndis_cpu_qos;
+	struct pm_qos_request rndis_mif_qos;
+#endif
 };
 
 static inline struct f_rndis *func_to_rndis(struct usb_function *f)
@@ -363,6 +375,46 @@ static struct usb_gadget_strings *rndis_strings[] = {
 };
 
 /*-------------------------------------------------------------------------*/
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+void rndis_cpufreq_lock(void *_rndis)
+{
+	struct f_rndis			*rndis = _rndis;
+
+	if (!rndis->cpufreq_lock_status) {
+		mutex_lock(&cpufreq_lock);
+
+		/* CPU KFC 300MHz */
+		pm_qos_add_request(&rndis->rndis_cpu_qos,
+				PM_QOS_CPU_FREQ_MIN, 300000);
+		/* MIF 800MHz */
+		pm_qos_add_request(&rndis->rndis_mif_qos,
+				PM_QOS_BUS_THROUGHPUT, 800000);
+
+		mutex_unlock(&cpufreq_lock);
+
+		rndis->cpufreq_lock_status = true;
+		printk("cpufreq locked\n");
+	}
+}
+
+void rndis_cpufreq_unlock(void *_rndis)
+{
+	struct f_rndis			*rndis = _rndis;
+
+	if (rndis->cpufreq_lock_status != true)
+		return;
+
+	printk("cpufreq unlock\n");
+
+	mutex_lock(&cpufreq_lock);
+
+	pm_qos_remove_request(&rndis->rndis_cpu_qos);
+	pm_qos_remove_request(&rndis->rndis_mif_qos);
+
+	mutex_unlock(&cpufreq_lock);
+	rndis->cpufreq_lock_status = false;
+}
+#endif
 
 static struct sk_buff *rndis_add_header(struct gether *port,
 					struct sk_buff *skb)
@@ -768,17 +820,18 @@ rndis_bind(struct usb_configuration *c, struct usb_function *f)
 	rndis_set_param_medium(rndis->config, NDIS_MEDIUM_802_3, 0);
 	rndis_set_host_mac(rndis->config, rndis->ethaddr);
 
-#if 0
-// FIXME
-	if (rndis_set_param_vendor(rndis->config, vendorID,
-				manufacturer))
-		goto fail0;
-#endif
+	if (rndis->manufacturer && rndis->vendorID &&
+			rndis_set_param_vendor(rndis->config, rndis->vendorID,
+					       rndis->manufacturer))
+		goto fail;
 
 	/* NOTE:  all that is done without knowing or caring about
 	 * the network link ... which is unavailable to this code
 	 * until we're activated via set_alt().
 	 */
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	rndis_cpufreq_lock(rndis);
+#endif
 
 	DBG(cdev, "RNDIS: %s speed IN/%s OUT/%s NOTIFY/%s\n",
 			gadget_is_superspeed(c->cdev->gadget) ? "super" :
@@ -830,6 +883,10 @@ rndis_unbind(struct usb_configuration *c, struct usb_function *f)
 	kfree(rndis->notify_req->buf);
 	usb_ep_free_request(rndis->notify, rndis->notify_req);
 
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	rndis_cpufreq_unlock(rndis);
+#endif
+
 	kfree(rndis);
 }
 
@@ -855,19 +912,26 @@ static inline bool can_support_rndis(struct usb_configuration *c)
 int
 rndis_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN])
 {
+	return rndis_bind_config_vendor(c, ethaddr, 0, NULL);
+}
+
+int
+rndis_bind_config_vendor(struct usb_configuration *c, u8 ethaddr[ETH_ALEN],
+				u32 vendorID, const char *manufacturer)
+{
 	struct f_rndis	*rndis;
 	int		status;
 
 	if (!can_support_rndis(c) || !ethaddr)
 		return -EINVAL;
 
+	/* setup RNDIS itself */
+	status = rndis_init();
+	if (status < 0)
+		return status;
+
 	/* maybe allocate device-global string IDs */
 	if (rndis_string_defs[0].id == 0) {
-
-		/* ... and setup RNDIS itself */
-		status = rndis_init();
-		if (status < 0)
-			return status;
 
 		/* control interface label */
 		status = usb_string_id(c->cdev);
@@ -898,6 +962,8 @@ rndis_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN])
 		goto fail;
 
 	memcpy(rndis->ethaddr, ethaddr, ETH_ALEN);
+	rndis->vendorID = vendorID;
+	rndis->manufacturer = manufacturer;
 
 	/* RNDIS activates when the host changes this filter */
 	rndis->port.cdc_filter = 0;

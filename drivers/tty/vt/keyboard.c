@@ -1419,6 +1419,11 @@ static bool kbd_match(struct input_handler *handler, struct input_dev *dev)
 {
 	int i;
 
+#ifdef CONFIG_VT_TKEY_SKIP_MATCH
+	if (test_bit(EV_TOUCHKEY, dev->evbit))
+		return false;
+#endif
+
 	if (test_bit(EV_SND, dev->evbit))
 		return true;
 

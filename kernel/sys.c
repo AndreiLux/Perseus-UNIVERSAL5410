@@ -123,6 +123,35 @@ EXPORT_SYMBOL(cad_pid);
 
 void (*pm_power_off_prepare)(void);
 
+/* Samsung Rooting Restriction Feature */
+#if defined CONFIG_SEC_RESTRICT_SETUID
+int sec_check_execpath(struct task_struct *given, char *denypath);
+#if defined CONFIG_SEC_RESTRICT_ROOTING_LOG
+#define PRINT_LOG(...)	printk(KERN_ERR __VA_ARGS__)
+#else
+#define PRINT_LOG(...)
+#endif	// End of CONFIG_SEC_RESTRICT_ROOTING_LOG
+
+static int sec_restrict_uid(void)
+{
+	if(current->parent)
+	{
+		if(current->parent->cred->euid == 0 || current->parent->pid == 1)
+			return 0;
+		else if(sec_check_execpath(current, "/system/bin/pppd")) {
+			PRINT_LOG("VPN allowed to use root permission");
+			return 0;
+		}
+		else
+			PRINT_LOG("Restricted changing UID. PID = %d(%s) PPID = %d(%s)\n",
+				current->pid, current->comm,
+				current->parent->pid, current->parent->comm);
+	}
+
+	return 1;
+}
+#endif // End of CONFIG_SEC_RESTRICT_SETUID
+
 /*
  * Returns true if current's euid is same as p's uid or euid,
  * or has CAP_SYS_NICE to p's user_ns.
@@ -479,6 +508,7 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 		panic("cannot halt");
 
 	case LINUX_REBOOT_CMD_POWER_OFF:
+		printk(KERN_WARNING "LINUX_REBOOT_CMD_POWER_OFF\n");
 		kernel_power_off();
 		do_exit(0);
 		break;
@@ -557,6 +587,14 @@ SYSCALL_DEFINE2(setregid, gid_t, rgid, gid_t, egid)
 	struct cred *new;
 	int retval;
 
+#if defined CONFIG_SEC_RESTRICT_SETUID
+	if(rgid == 0 || egid == 0)
+	{
+		if(sec_restrict_uid())
+			return -EACCES;
+	}
+#endif // End of CONFIG_SEC_RESTRICT_SETUID
+
 	new = prepare_creds();
 	if (!new)
 		return -ENOMEM;
@@ -603,6 +641,14 @@ SYSCALL_DEFINE1(setgid, gid_t, gid)
 	const struct cred *old;
 	struct cred *new;
 	int retval;
+
+#if defined CONFIG_SEC_RESTRICT_SETUID
+	if(gid == 0)
+	{
+		if(sec_restrict_uid())
+			return -EACCES;
+	}
+#endif // End of CONFIG_SEC_RESTRICT_SETUID
 
 	new = prepare_creds();
 	if (!new)
@@ -674,6 +720,14 @@ SYSCALL_DEFINE2(setreuid, uid_t, ruid, uid_t, euid)
 	struct cred *new;
 	int retval;
 
+#if defined CONFIG_SEC_RESTRICT_SETUID
+	if(ruid == 0 || euid == 0)
+	{
+		if(sec_restrict_uid())
+			return -EACCES;
+	}
+#endif // End of CONFIG_SEC_RESTRICT_SETUID
+
 	new = prepare_creds();
 	if (!new)
 		return -ENOMEM;
@@ -735,6 +789,14 @@ SYSCALL_DEFINE1(setuid, uid_t, uid)
 	struct cred *new;
 	int retval;
 
+#if defined CONFIG_SEC_RESTRICT_SETUID
+	if(uid == 0)
+	{
+		if(sec_restrict_uid())
+			return -EACCES;
+	}
+#endif // End of CONFIG_SEC_RESTRICT_SETUID
+
 	new = prepare_creds();
 	if (!new)
 		return -ENOMEM;
@@ -775,6 +837,14 @@ SYSCALL_DEFINE3(setresuid, uid_t, ruid, uid_t, euid, uid_t, suid)
 	const struct cred *old;
 	struct cred *new;
 	int retval;
+
+#if defined CONFIG_SEC_RESTRICT_SETUID
+	if(ruid == 0 || euid == 0 || suid == 0)
+	{
+		if(sec_restrict_uid())
+			return -EACCES;
+	}
+#endif // End of CONFIG_SEC_RESTRICT_SETUID
 
 	new = prepare_creds();
 	if (!new)
@@ -840,6 +910,14 @@ SYSCALL_DEFINE3(setresgid, gid_t, rgid, gid_t, egid, gid_t, sgid)
 	const struct cred *old;
 	struct cred *new;
 	int retval;
+
+#if defined CONFIG_SEC_RESTRICT_SETUID
+	if(rgid == 0 || egid == 0 || sgid == 0)
+	{
+		if(sec_restrict_uid())
+			return -EACCES;
+	}
+#endif // End of CONFIG_SEC_RESTRICT_SETUID
 
 	new = prepare_creds();
 	if (!new)
@@ -1179,15 +1257,16 @@ DECLARE_RWSEM(uts_sem);
  * Work around broken programs that cannot handle "Linux 3.0".
  * Instead we map 3.x to 2.6.40+x, so e.g. 3.0 would be 2.6.40
  */
-static int override_release(char __user *release, int len)
+static int override_release(char __user *release, size_t len)
 {
 	int ret = 0;
-	char buf[65];
 
 	if (current->personality & UNAME26) {
-		char *rest = UTS_RELEASE;
+		const char *rest = UTS_RELEASE;
+		char buf[65] = { 0 };
 		int ndots = 0;
 		unsigned v;
+		size_t copy;
 
 		while (*rest) {
 			if (*rest == '.' && ++ndots >= 3)
@@ -1197,8 +1276,9 @@ static int override_release(char __user *release, int len)
 			rest++;
 		}
 		v = ((LINUX_VERSION_CODE >> 8) & 0xff) + 40;
-		snprintf(buf, len, "2.6.%u%s", v, rest);
-		ret = copy_to_user(release, buf, len);
+		copy = clamp_t(size_t, len, 1, sizeof(buf));
+		copy = scnprintf(buf, copy, "2.6.%u%s", v, rest);
+		ret = copy_to_user(release, buf, copy + 1);
 	}
 	return ret;
 }

@@ -560,12 +560,13 @@ static int qh_link_periodic (struct ehci_hcd *ehci, struct ehci_qh *qh)
 	unsigned	i;
 	unsigned	period = qh->period;
 
+#if !defined(CONFIG_LINK_DEVICE_HSIC)
 	dev_dbg (&qh->dev->dev,
 		"link qh%d-%04x/%p start %d [%d/%d us]\n",
 		period, hc32_to_cpup(ehci, &qh->hw->hw_info2)
 			& (QH_CMASK | QH_SMASK),
 		qh, qh->start, qh->usecs, qh->c_usecs);
-
+#endif
 	/* high bandwidth, or otherwise every microframe */
 	if (period == 0)
 		period = 1;
@@ -643,12 +644,13 @@ static int qh_unlink_periodic(struct ehci_hcd *ehci, struct ehci_qh *qh)
 		? ((qh->usecs + qh->c_usecs) / qh->period)
 		: (qh->usecs * 8);
 
+#if !defined(CONFIG_LINK_DEVICE_HSIC)
 	dev_dbg (&qh->dev->dev,
 		"unlink qh%d-%04x/%p start %d [%d/%d us]\n",
 		qh->period,
 		hc32_to_cpup(ehci, &qh->hw->hw_info2) & (QH_CMASK | QH_SMASK),
 		qh, qh->start, qh->usecs, qh->c_usecs);
-
+#endif
 	/* qh->qh_next still "live" to HC */
 	qh->qh_state = QH_STATE_UNLINK;
 	qh->qh_next.ptr = NULL;
@@ -882,8 +884,11 @@ static int qh_schedule(struct ehci_hcd *ehci, struct ehci_qh *qh)
 			? cpu_to_hc32(ehci, 1 << uframe)
 			: cpu_to_hc32(ehci, QH_SMASK);
 		hw->hw_info2 |= c_mask;
-	} else
+	}
+#if !defined(CONFIG_LINK_DEVICE_HSIC)
+	else
 		ehci_dbg (ehci, "reused qh %p schedule\n", qh);
+#endif
 
 	/* stuff into the periodic schedule */
 	status = qh_link_periodic (ehci, qh);

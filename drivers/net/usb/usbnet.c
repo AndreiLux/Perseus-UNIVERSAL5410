@@ -35,6 +35,7 @@
 
 #include <linux/module.h>
 #include <linux/init.h>
+#include <linux/if_arp.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/ctype.h>
@@ -49,6 +50,10 @@
 
 #define DRIVER_VERSION		"22-Aug-2005"
 
+#ifdef CONFIG_MDM_HSIC_PM
+#include <linux/mdm_hsic_pm.h>
+static const char rmnet_pm_dev[] = "mdm_hsic_pm0";
+#endif
 
 /*-------------------------------------------------------------------------*/
 
@@ -232,7 +237,9 @@ void usbnet_skb_return (struct usbnet *dev, struct sk_buff *skb)
 		return;
 	}
 
-	skb->protocol = eth_type_trans (skb, dev->net);
+	if (!skb->protocol)
+		skb->protocol = eth_type_trans(skb, dev->net);
+
 	dev->net->stats.rx_packets++;
 	dev->net->stats.rx_bytes += skb->len;
 
@@ -247,6 +254,13 @@ void usbnet_skb_return (struct usbnet *dev, struct sk_buff *skb)
 	if (status != NET_RX_SUCCESS)
 		netif_dbg(dev, rx_err, dev->net,
 			  "netif_rx status %d\n", status);
+#ifdef CONFIG_MDM_HSIC_PM
+	if (dev->udev->descriptor.idProduct == 0x9048 ||
+				dev->udev->descriptor.idProduct == 0x904C) {
+		pr_debug("rx fast dormancy wakelock\n");
+		fast_dormancy_wakelock(rmnet_pm_dev);
+	}
+#endif
 }
 EXPORT_SYMBOL_GPL(usbnet_skb_return);
 
@@ -302,7 +316,7 @@ static enum skb_state defer_bh(struct usbnet *dev, struct sk_buff *skb,
 		struct sk_buff_head *list, enum skb_state state)
 {
 	unsigned long		flags;
-	enum skb_state 		old_state;
+	enum skb_state		old_state;
 	struct skb_data *entry = (struct skb_data *) skb->cb;
 
 	spin_lock_irqsave(&list->lock, flags);
@@ -353,6 +367,9 @@ static int rx_submit (struct usbnet *dev, struct urb *urb, gfp_t flags)
 		return -ENOMEM;
 	}
 
+	if (dev->net->type != ARPHRD_RAWIP)
+		skb_reserve(skb, NET_IP_ALIGN);
+
 	entry = (struct skb_data *) skb->cb;
 	entry->urb = urb;
 	entry->dev = dev;
@@ -387,6 +404,7 @@ static int rx_submit (struct usbnet *dev, struct urb *urb, gfp_t flags)
 			tasklet_schedule (&dev->bh);
 			break;
 		case 0:
+			usb_mark_last_busy(dev->udev);
 			__usbnet_queue_skb(&dev->rxq, skb, rx_start);
 		}
 	} else {
@@ -508,7 +526,7 @@ block:
 
 	if (urb) {
 		if (netif_running (dev->net) &&
-		    !test_bit (EVENT_RX_HALT, &dev->flags) &&
+		    !test_bit(EVENT_RX_HALT, &dev->flags) &&
 		    state != unlink_start) {
 			rx_submit (dev, urb, GFP_ATOMIC);
 			usb_mark_last_busy(dev->udev);
@@ -623,16 +641,17 @@ found:
 		 * handler(include defer_bh).
 		 */
 		usb_get_urb(urb);
-		spin_unlock_irqrestore(&q->lock, flags);
-		// during some PM-driven resume scenarios,
-		// these (async) unlinks complete immediately
+		/* spin_unlock_irqrestore(&q->lock, flags); */
+		/* during some PM-driven resume scenarios,
+		 * these (async) unlinks complete immediately
+		 */
 		retval = usb_unlink_urb (urb);
 		if (retval != -EINPROGRESS && retval != 0)
 			netdev_dbg(dev->net, "unlink urb err, %d\n", retval);
 		else
 			count++;
 		usb_put_urb(urb);
-		spin_lock_irqsave(&q->lock, flags);
+		/* spin_lock_irqsave(&q->lock, flags); */
 	}
 	spin_unlock_irqrestore (&q->lock, flags);
 	return count;
@@ -1017,7 +1036,9 @@ skip_reset:
 }
 
 /*-------------------------------------------------------------------------*/
-
+#ifdef CONFIG_MDM_HSIC_PM
+#define TX_ERR_CRASH_THRS 100
+#endif
 static void tx_complete (struct urb *urb)
 {
 	struct sk_buff		*skb = (struct sk_buff *) urb->context;
@@ -1028,8 +1049,24 @@ static void tx_complete (struct urb *urb)
 		if (!(dev->driver_info->flags & FLAG_MULTI_PACKET))
 			dev->net->stats.tx_packets++;
 		dev->net->stats.tx_bytes += entry->length;
+#ifdef CONFIG_MDM_HSIC_PM
+		if (dev->udev->descriptor.idProduct == 0x9048 ||
+				dev->udev->descriptor.idProduct == 0x904C) {
+			pr_debug("set tx wakelock for fd\n");
+			fast_dormancy_wakelock(rmnet_pm_dev);
+			dev->net->stats.tx_errors = 0;
+		}
+#endif
 	} else {
 		dev->net->stats.tx_errors++;
+
+#ifdef CONFIG_MDM_HSIC_PM
+		if (dev->udev->descriptor.idProduct == 0x9048 ||
+				dev->udev->descriptor.idProduct == 0x904C) {
+			netdev_err(dev->net, "tx err %d, %d\n",
+					urb->status, entry->urb->status);
+		}
+#endif
 
 		switch (urb->status) {
 		case -EPIPE:
@@ -1508,13 +1545,14 @@ int usbnet_suspend (struct usb_interface *intf, pm_message_t message)
 {
 	struct usbnet		*dev = usb_get_intfdata(intf);
 
-	if (!dev->suspend_count++) {
+	if (!dev->suspend_count) {
 		spin_lock_irq(&dev->txq.lock);
 		/* don't autosuspend while transmitting */
 		if (dev->txq.qlen && PMSG_IS_AUTO(message)) {
 			spin_unlock_irq(&dev->txq.lock);
 			return -EBUSY;
 		} else {
+			dev->suspend_count++;
 			set_bit(EVENT_DEV_ASLEEP, &dev->flags);
 			spin_unlock_irq(&dev->txq.lock);
 		}

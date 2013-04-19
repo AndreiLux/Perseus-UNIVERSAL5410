@@ -63,6 +63,27 @@ config DEBUG_USER
 	      8 - SIGSEGV faults
 	     16 - SIGBUS faults
 
+config DEBUG_RODATA
+	bool "Write protect kernel text section"
+	default n
+	depends on DEBUG_KERNEL && MMU
+	---help---
+	  Mark the kernel text section as write-protected in the pagetables,
+	  in order to catch accidental (and incorrect) writes to such const
+	  data. This will cause the size of the kernel, plus up to 4MB, to
+	  be mapped as pages instead of sections, which will increase TLB
+	  pressure.
+	  If in doubt, say "N".
+
+config DEBUG_RODATA_TEST
+	bool "Testcase for the DEBUG_RODATA feature"
+	depends on DEBUG_RODATA
+	default n
+	---help---
+	  This option enables a testcase for the DEBUG_RODATA
+	  feature.
+	  If in doubt, say "N"
+
 # These options are only for real kernel hackers who want to get their hands dirty.
 config DEBUG_LL
 	bool "Kernel low-level debugging functions (read help!)"
@@ -331,5 +352,38 @@ config ARM_KPROBES_TEST
 	depends on KPROBES && MODULES
 	help
 	  Perform tests of kprobes API and instruction set simulation.
+
+comment "Samsung Rooting Restriction Feature"
+config SEC_RESTRICT_ROOTING
+	bool "Samsung Rooting Restriction Feature"
+	default n
+	help
+	  Restrict unauthorized executions with root permission.
+
+config SEC_RESTRICT_SETUID
+	bool "Restrict changing root privilege except allowed process"
+	depends on SEC_RESTRICT_ROOTING
+	default y
+	help
+	  Say Y here if you want to restrict functions related setuid. Only allowed
+	  process can chanage ROOT privilege. Saying N will not restrict changing
+	  permission.
+
+config SEC_RESTRICT_FORK
+	bool "Restrict forking process except allowed process"
+	depends on SEC_RESTRICT_ROOTING
+	default y
+	help
+	  Say Y here if you want to restrict function related fork. Process matched
+	  special condition will be not forked. Saying N will not restrict forking
+	  process.
+
+config SEC_RESTRICT_ROOTING_LOG
+	bool "Print restricted result to kernel log"
+	depends on SEC_RESTRICT_ROOTING
+	default n
+	help
+	   Say Y here if you want to see result of restricting SETUID or FORK. It will
+	   be displayed by kernel error log. Saying N will not be displayed anything.
 
 endmenu

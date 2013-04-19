@@ -298,6 +298,10 @@ static void start_unlink_async (struct ehci_hcd *ehci, struct ehci_qh *qh);
 static void unlink_async (struct ehci_hcd *ehci, struct ehci_qh *qh);
 
 static int qh_schedule (struct ehci_hcd *ehci, struct ehci_qh *qh);
+#if defined(CONFIG_MACH_JA_KOR_LGT)
+extern void exynos5_usb_phy_reg_dump(void);
+static int show_logging_data = 0;
+#endif
 
 /*
  * Process and free completed qtds for a qh, returning URBs to drivers.
@@ -399,6 +403,18 @@ qh_completions (struct ehci_hcd *ehci, struct ehci_qh *qh)
 					ehci_dbg(ehci,
 	"detected XactErr len %zu/%zu retry %d\n",
 	qtd->length - QTD_LENGTH(token), qtd->length, qh->xacterrs);
+					#if defined(CONFIG_MACH_JA_KOR_LGT)
+					if (show_logging_data < 4) {
+						/* skip 0 to 2 to ignore XactErr 
+						 * after completion of bin copy. 
+						*/ 
+						if (show_logging_data > 2) {
+							dbg_qh("XactErr:", ehci, qh);
+							exynos5_usb_phy_reg_dump();
+						}
+						show_logging_data++;
+					}
+					#endif
 
 					/* reset the token in the qtd and the
 					 * qh overlay (which still contains
@@ -1209,11 +1225,13 @@ static void start_unlink_async (struct ehci_hcd *ehci, struct ehci_qh *qh)
 
 #ifdef DEBUG
 	assert_spin_locked(&ehci->lock);
+#if !defined(CONFIG_MACH_JA_KOR_LGT)
 	if (ehci->reclaim
 			|| (qh->qh_state != QH_STATE_LINKED
 				&& qh->qh_state != QH_STATE_UNLINK_WAIT)
 			)
 		BUG ();
+#endif	
 #endif
 
 	/* stop async schedule right now? */
