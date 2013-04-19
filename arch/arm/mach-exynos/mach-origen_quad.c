@@ -808,7 +808,7 @@ static struct i2c_board_info i2c3_devs[] __initdata = {
 
 static void __init origen_quad_reserve(void)
 {
-	s5p_mfc_reserve_mem(0x43000000, 8 << 20, 0x51000000, 8 << 20);
+	s5p_mfc_reserve_mem(0x43000000, 32 << 20, 0x51000000, 32 << 20);
 }
 
 /* USB EHCI */
