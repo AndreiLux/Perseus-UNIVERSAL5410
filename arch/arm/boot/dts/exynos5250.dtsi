@@ -108,24 +108,38 @@
 		compatible = "samsung,exynos4210-uart";
 		reg = <0x12C00000 0x100>;
 		interrupts = <0 51 0>;
+		gpios = <&gpa0 0 2 0 0>,
+			<&gpa0 1 2 0 0>,
+			<&gpa0 2 2 0 0>,
+			<&gpa0 3 2 0 0>;
 	};
 
 	serial@12C10000 {
 		compatible = "samsung,exynos4210-uart";
 		reg = <0x12C10000 0x100>;
 		interrupts = <0 52 0>;
+		gpios = <&gpd0 0 2 0 0>,
+			<&gpd0 1 2 0 0>,
+			<&gpd0 2 2 0 0>,
+			<&gpd0 3 2 0 0>;
 	};
 
 	serial@12C20000 {
 		compatible = "samsung,exynos4210-uart";
 		reg = <0x12C20000 0x100>;
 		interrupts = <0 53 0>;
+		gpios = <&gpa1 0 2 0 0>,
+			<&gpa1 1 2 0 0>,
+			<&gpa1 2 2 0 0>,
+			<&gpa1 3 2 0 0>;
 	};
 
 	serial@12C30000 {
 		compatible = "samsung,exynos4210-uart";
 		reg = <0x12C30000 0x100>;
 		interrupts = <0 54 0>;
+		gpios = <&gpa1 4 2 0 0>,
+			<&gpa1 5 2 0 0>;
 	};
 
 	sata@122F0000 {
