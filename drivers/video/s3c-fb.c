@@ -68,6 +68,8 @@ struct s3c_fb;
 #define VIDOSD_D(win, variant) (OSD_BASE(win, variant) + 0x0C)
 
 #define S3CFB_WIN_SET_PIXEL_ALPHA	_IOW('F', 204, __u32)
+#define S3CFB_WIN_OFF	_IOW('F', 205, __u32)
+#define S3CFB_WIN_ON	_IOW('F', 206, __u32)
 
 /**
  * struct s3c_fb_variant - fb variant information
@@ -1044,13 +1046,35 @@ int s3cfb_set_alpha_blending(struct s3c_fb *ctrl, int id)
 	return 0;
 }
 
+int s3cfb_set_enwin(struct s3c_fb *ctrl, int id, bool flag)
+{
+	u32 wvalue = 0, cfg;
+
+	if (id == 0) {
+		dev_err(ctrl->dev, "[fb%d] does not exist\n", id);
+		return -EINVAL;
+	}
+
+	if (flag == false) {
+		cfg = readl(ctrl->regs + S3C_WINCON(id));
+		cfg = cfg & (~1);
+		writel(cfg, ctrl->regs + S3C_WINCON(id));
+	} else if (flag == true) {
+		cfg = readl(ctrl->regs + S3C_WINCON(id));
+		cfg = cfg | 0x1;
+		writel(cfg, ctrl->regs + S3C_WINCON(id));
+	}
+
+	return 0;
+}
+
 static int s3c_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg)
 {
 	struct s3c_fb_win *win = info->par;
 	struct s3c_fb *sfb = win->parent;
 	int ret;
-	u32 crtc;
+	u32 crtc, window;
 
 	switch (cmd) {
 	case FBIO_WAITFORVSYNC:
@@ -1063,6 +1087,20 @@ static int s3c_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		break;
 	case S3CFB_WIN_SET_PIXEL_ALPHA:
 		ret = s3cfb_set_alpha_blending(sfb, win->index);
+		break;
+	case S3CFB_WIN_OFF:
+		if (get_user(window, (u32 __user *)arg)) {
+			ret = -EFAULT;
+			break;
+		}
+		ret = s3cfb_set_enwin(sfb, window, false);
+		break;
+	case S3CFB_WIN_ON:
+		if (get_user(window, (u32 __user *)arg)) {
+			ret = -EFAULT;
+			break;
+		}
+		ret = s3cfb_set_enwin(sfb, window, true);
 		break;
 	default:
 		ret = -ENOTTY;
