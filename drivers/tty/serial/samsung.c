@@ -43,6 +43,7 @@
 #include <linux/clk.h>
 #include <linux/cpufreq.h>
 #include <linux/of.h>
+#include <linux/of_gpio.h>
 
 #include <asm/irq.h>
 
@@ -1173,6 +1174,27 @@ static int s3c24xx_serial_init_port(struct s3c24xx_uart_port *ourport,
 		dev_err(port->dev, "failed to remap controller address\n");
 		return -EBUSY;
 	}
+
+#ifdef CONFIG_OF
+	if (platdev->dev.of_node) {
+		int gpios = of_gpio_count(platdev->dev.of_node);
+		int idx;
+		int ret;
+		int gpio;
+
+		for (idx = 0; idx < gpios; ++idx) {
+			gpio = of_get_gpio(platdev->dev.of_node, idx);
+			if (!gpio_is_valid(gpio)) {
+				dev_err(port->dev, "invalid gpio[%d]\n", gpio);
+			}
+
+			ret = gpio_request(gpio, "s3c24xx-uart");
+			if (ret)
+				dev_err(port->dev, "gpio[%d] request failed\n",
+						gpio);
+		}
+	}
+#endif
 
 	port->mapbase = res->start;
 	ret = platform_get_irq(platdev, 0);
