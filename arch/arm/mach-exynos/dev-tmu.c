@@ -32,6 +32,24 @@ struct platform_device exynos_device_tmu = {
 	.resource	= tmu_resource,
 };
 
+static struct resource tmu_resource_5410[] = {
+	[0] = DEFINE_RES_MEM(S5P_PA_TMU, SZ_16K),
+	[1] = DEFINE_RES_MEM(EXYNOS5410_PA_TMU1, SZ_16K),
+	[2] = DEFINE_RES_MEM(EXYNOS5410_PA_TMU2, SZ_16K),
+	[3] = DEFINE_RES_MEM(EXYNOS5410_PA_TMU3, SZ_16K),
+	[4] = DEFINE_RES_IRQ(EXYNOS5_IRQ_TMU),
+	[5] = DEFINE_RES_IRQ(EXYNOS5410_IRQ_TMU1),
+	[6] = DEFINE_RES_IRQ(EXYNOS5410_IRQ_TMU2),
+	[7] = DEFINE_RES_IRQ(EXYNOS5410_IRQ_TMU3),
+};
+
+struct platform_device exynos5410_device_tmu = {
+	.name	= "exynos5-tmu",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(tmu_resource_5410),
+	.resource	= tmu_resource_5410,
+};
+
 int exynos_tmu_get_irqno(int num)
 {
 	return platform_get_irq(&exynos_device_tmu, num);

@@ -23,8 +23,10 @@ enum cam_bus_type {
 enum cam_port {
 	CAM_PORT_A,
 	CAM_PORT_B,
+	CAM_PORT_C,
 };
 
+#define MAX_CAM_NUM		3
 #define CAM_CLK_INV_PCLK	(1 << 0)
 #define CAM_CLK_INV_VSYNC	(1 << 1)
 #define CAM_CLK_INV_HREF	(1 << 2)
@@ -50,6 +52,8 @@ struct exynos_isp_info {
 	unsigned long clk_frequency;
 	const char *cam_srclk_name;
 	const char *cam_clk_name;
+	const char *cam_clk_src_name;
+	const char *camif_clk_name;
 	enum cam_bus_type bus_type;
 	u16 csi_data_align;
 	u16 i2c_bus_num;

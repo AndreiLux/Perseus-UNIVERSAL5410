@@ -1,0 +1,62 @@
+
+config BATTERY_SAMSUNG
+	tristate "samsung battery driver"
+	help
+	 Say Y to include support for samsung battery driver
+	 This battery driver integrated all battery-related functions
+	 To see battery-related functions,
+	 refer to sec_charging_common.h
+
+
+# Fuel Gauge
+
+config FUELGAUGE_DUMMY
+	tristate "dummy fuel gauge driver"
+	default n
+	depends on BATTERY_SAMSUNG
+	help
+	 Say Y to include support
+	 for dummy fuel gauge driver.
+	 This driver source code implemented
+	 skeleton source code for fuel gauge functions.
+	 
+config FUELGAUGE_MAX17048
+	tristate "MAX17048 fuel gauge driver"
+	default n
+	depends on BATTERY_SAMSUNG
+	help
+	 Say Y to include support
+	 for MAXIM MAX17048 fuel gauge driver.
+	 This fuel-gauge can be used
+	 only in voltage-tracking mode.
+
+# Charger
+
+config CHARGER_DUMMY
+	tristate "dummy charger driver"
+	default n
+	depends on BATTERY_SAMSUNG
+	help
+	 Say Y to include support
+	 for dummy charger driver.
+	 This driver source code implemented
+	 skeleton source code for charger functions.
+
+config CHARGER_MAX77803
+	tristate "MAX77803 battery charger support"
+	depends on MFD_MAX77803 && I2C
+	help
+	  Say Y here to enable support for the MAX77803 charger
+	  MAX77803 incluse muic, pmic, haptic, led,
+	  flash driver.
+	  You have to define MFD_MAX77693
+
+config SAMSUNG_LPM_MODE
+	bool "Off charging mode support in sec battery driver"
+	default n
+	help
+	  Say Y to include support for sec off charging support
+	  This value defined at bootloader.
+	  Before enable this feature,
+	  implemet power off charging in the bootloader.
+

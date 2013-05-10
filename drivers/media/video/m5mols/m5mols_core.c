@@ -91,7 +91,7 @@ static struct v4l2_mbus_framefmt default_fmt[M5MOLS_RES_MAX] = {
 	[M5MOLS_RES_MON] = {
 		.width		= DEFAULT_SENSOR_WIDTH,
 		.height		= DEFAULT_SENSOR_HEIGHT,
-		.code		= V4L2_MBUS_FMT_YUYV8_2X8,
+		.code		= V4L2_MBUS_FMT_VYUY8_2X8,
 		.field		= V4L2_FIELD_NONE,
 		.colorspace	= V4L2_COLORSPACE_JPEG,
 	},
@@ -108,7 +108,7 @@ static struct v4l2_mbus_framefmt default_fmt[M5MOLS_RES_MAX] = {
 
 static const struct m5mols_format m5mols_formats[] = {
 	[M5MOLS_RES_MON] = {
-		.code		= V4L2_MBUS_FMT_YUYV8_2X8,
+		.code		= V4L2_MBUS_FMT_VYUY8_2X8,
 		.colorspace	= V4L2_COLORSPACE_JPEG,
 	},
 	[M5MOLS_RES_CAPTURE] = {

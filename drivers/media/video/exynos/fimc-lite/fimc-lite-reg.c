@@ -148,10 +148,26 @@ void flite_hw_set_output_dma(struct flite_dev *dev, bool enable)
 	u32 cfg = 0;
 	cfg = readl(dev->regs + FLITE_REG_CIGCTRL);
 
-	if (enable)
+	if (enable) {
+		cfg |= FLITE_REG_CIGCTRL_OUT_LOCAL_DISABLE;
 		cfg &= ~FLITE_REG_CIGCTRL_ODMA_DISABLE;
-	else
+	} else {
 		cfg |= FLITE_REG_CIGCTRL_ODMA_DISABLE;
+		cfg &= ~FLITE_REG_CIGCTRL_OUT_LOCAL_DISABLE;
+	}
+
+	writel(cfg, dev->regs + FLITE_REG_CIGCTRL);
+}
+
+void flite_hw_set_output_gscaler(struct flite_dev *dev, bool enable)
+{
+	u32 cfg = 0;
+	cfg = readl(dev->regs + FLITE_REG_CIGCTRL);
+
+	if (enable)
+		cfg &= ~FLITE_REG_CIGCTRL_OUT_GSCL_ENABLE;
+	else
+		cfg |= FLITE_REG_CIGCTRL_OUT_GSCL_ENABLE;
 
 	writel(cfg, dev->regs + FLITE_REG_CIGCTRL);
 }
@@ -287,9 +303,16 @@ void flite_hw_set_dma_offset(struct flite_dev *dev)
 void flite_hw_set_output_addr(struct flite_dev *dev,
 			     struct flite_addr *addr, int index)
 {
-	flite_info("dst_buf[%d]: 0x%X", index, addr->y);
+	u32 cfg = 0;
+	flite_dbg("dst_buf[%d]: 0x%X", index, addr->y);
 
-	writel(addr->y, dev->regs + FLITE_REG_CIOSA);
+	cfg = readl(dev->regs + FLITE_REG_CIOSA(index));
+	if (!cfg) {
+		writel(addr->y, dev->regs + FLITE_REG_CIOSA(index));
+	} else if (cfg != addr->y) {
+		pr_err("address is invalid(%08X != %08X)\n", cfg, addr->y);
+		writel(addr->y, dev->regs + FLITE_REG_CIOSA(index));
+	}
 }
 
 void flite_hw_set_out_order(struct flite_dev *dev)
@@ -315,6 +338,15 @@ void flite_hw_set_out_order(struct flite_dev *dev)
 			break;
 
 		}
+	} else {
+		switch (frame->fmt->code) {
+		case V4L2_MBUS_FMT_SGRBG8_1X8:
+			cfg |= FLITE_REG_CIODMAFMT_1D_DMA;
+			break;
+		default :
+			flite_err("not supported mbus_code");
+			break;
+		}
 	}
 	writel(cfg, dev->regs + FLITE_REG_CIODMAFMT);
 }
@@ -331,6 +363,17 @@ void flite_hw_set_output_size(struct flite_dev *dev)
 
 	writel(cfg, dev->regs + FLITE_REG_CIOCAN);
 }
+
+void flite_hw_set_output_frame_count_seq(struct flite_dev *dev, int cnt)
+{
+	u32 i;
+
+	for (i = 0; i < cnt; i++) {
+		writel(FLITE_REG_CIFCNTSEQ_FRMCNT_MASK(cnt),
+			dev->regs + FLITE_REG_CIFCNTSEQ);
+	}
+}
+
 #else
 void flite_hw_set_inverse_polarity(struct flite_dev *dev) {}
 void flite_hw_set_sensor_type(struct flite_dev *dev) {}

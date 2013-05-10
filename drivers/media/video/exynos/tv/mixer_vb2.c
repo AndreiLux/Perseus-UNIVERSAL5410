@@ -40,9 +40,19 @@ const struct mxr_vb2 mxr_vb2_cma = {
 	.plane_addr	= vb2_cma_phys_plane_paddr,
 	.resume		= mxr_cma_resume,
 	.suspend	= mxr_cma_suspend,
-	.cache_flush	= mxr_cma_cache_flush,
 	.set_cacheable	= mxr_cma_set_cacheable,
 };
+
+int mxr_buf_sync_prepare(struct vb2_buffer *vb)
+{
+	return mxr_cma_cache_flush(vb, vb->num_planes);
+}
+
+int mxr_buf_sync_finish(struct vb2_buffer *vb)
+{
+	return 0;
+}
+
 #elif defined(CONFIG_VIDEOBUF2_ION)
 void *mxr_ion_init(struct mxr_device *mdev)
 {
@@ -67,7 +77,6 @@ const struct mxr_vb2 mxr_vb2_ion = {
 	.plane_addr	= mxr_ion_plane_addr,
 	.resume		= vb2_ion_attach_iommu,
 	.suspend	= vb2_ion_detach_iommu,
-	.cache_flush	= vb2_ion_cache_flush,
 	.set_cacheable	= vb2_ion_set_cached,
 };
 #endif

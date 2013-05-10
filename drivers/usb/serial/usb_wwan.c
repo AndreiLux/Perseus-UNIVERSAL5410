@@ -36,8 +36,9 @@
 #include <linux/usb/serial.h>
 #include <linux/serial.h>
 #include "usb-wwan.h"
+#include <linux/mdm_hsic_pm.h>
 
-static bool debug;
+static int debug;
 
 void usb_wwan_dtr_rts(struct usb_serial_port *port, int on)
 {
@@ -219,6 +220,11 @@ int usb_wwan_write(struct tty_struct *tty, struct usb_serial_port *port,
 
 	dbg("%s: write (%d chars)", __func__, count);
 
+#ifdef CONFIG_MDM_HSIC_PM
+	if (port->serial->dev->actconfig->desc.bNumInterfaces == 9)
+		pr_info("mdm: efs, write %d chars", count);
+#endif
+
 	i = 0;
 	left = count;
 	for (i = 0; left > 0 && i < N_OUT_URB; i++) {
@@ -237,6 +243,8 @@ int usb_wwan_write(struct tty_struct *tty, struct usb_serial_port *port,
 		dbg("%s: endpoint %d buf %d", __func__,
 		    usb_pipeendpoint(this_urb->pipe), i);
 
+		usb_mark_last_busy(
+				interface_to_usbdev(port->serial->interface));
 		err = usb_autopm_get_interface_async(port->serial->interface);
 		if (err < 0)
 			break;
@@ -277,6 +285,9 @@ int usb_wwan_write(struct tty_struct *tty, struct usb_serial_port *port,
 }
 EXPORT_SYMBOL(usb_wwan_write);
 
+#ifdef CONFIG_MDM_HSIC_PM
+#define HELLO_PACKET_SIZE 48
+#endif
 static void usb_wwan_indat_callback(struct urb *urb)
 {
 	int err;
@@ -285,29 +296,76 @@ static void usb_wwan_indat_callback(struct urb *urb)
 	struct tty_struct *tty;
 	unsigned char *data = urb->transfer_buffer;
 	int status = urb->status;
+	int rx_len = urb->actual_length, added;
+	struct usb_wwan_intf_private *intfdata;
+	struct usb_device *udev;
 
 	dbg("%s: %p", __func__, urb);
 
 	endpoint = usb_pipeendpoint(urb->pipe);
 	port = urb->context;
+	intfdata = port->serial->private;
 
+	usb_mark_last_busy(interface_to_usbdev(port->serial->interface));
 	if (status) {
 		dbg("%s: nonzero status: %d on endpoint %02x.",
 		    __func__, status, endpoint);
+#ifdef CONFIG_MDM_HSIC_PM
+		if (status == -ENOENT && (urb->actual_length > 0)) {
+			pr_info("%s: handle dropped packet\n", __func__);
+			udev = port->serial->dev;
+			if (udev->actconfig->desc.bNumInterfaces == 9 &&
+							hello_packet_rx) {
+				pr_info("%s: dup packet handled\n", __func__);
+				return;
+			}
+			goto handle_rx;
+		}
+#endif
 	} else {
+#ifdef CONFIG_MDM_HSIC_PM
+handle_rx:
+#endif
 		tty = tty_port_tty_get(&port->port);
 		if (tty) {
-			if (urb->actual_length) {
-				tty_insert_flip_string(tty, data,
-						urb->actual_length);
+			if (urb->actual_length > 0) {
+#ifdef CONFIG_MDM_HSIC_PM
+				udev = port->serial->dev;
+				/* corner case : efs packet rx at rpm suspend
+				 * it can control twice in racing condition
+				 * rx call back and suspend, both of then ca
+				 * call this function , so clear the packet
+				 * length once it handled
+				 */
+				urb->status = -EINPROGRESS;
+				urb->actual_length = 0;
+				if (udev->actconfig->desc.bNumInterfaces == 9) {
+					pr_info("mdm: efs, read %d bytes\n",
+									rx_len);
+					if (rx_len == HELLO_PACKET_SIZE)
+						hello_packet_rx = 1;
+					else
+						hello_packet_rx = 0;
+				}
+#endif
+				added = tty_insert_flip_string(tty, data, rx_len);
+				if(added != rx_len)
+					pr_info("mdm: rx_len:(%d)!= added:(%d)\n", rx_len, added);
+
 				tty_flip_buffer_push(tty);
 			} else
 				dbg("%s: empty read urb received", __func__);
 			tty_kref_put(tty);
-		}
+		} else
+			return;
 
+#ifdef CONFIG_MDM_HSIC_PM
+		/* do not re-submit urb for no entry status */
+		if (status == -ENOENT)
+			return;
+#endif
 		/* Resubmit urb so we continue receiving */
-		if (status != -ESHUTDOWN) {
+		if (status != -ESHUTDOWN || !intfdata->suspended) {
 			err = usb_submit_urb(urb, GFP_ATOMIC);
 			if (err) {
 				if (err != -EPERM) {
@@ -319,6 +377,8 @@ static void usb_wwan_indat_callback(struct urb *urb)
 			} else {
 				usb_mark_last_busy(port->serial->dev);
 			}
+			usb_mark_last_busy(
+				interface_to_usbdev(port->serial->interface));
 		}
 
 	}
@@ -338,6 +398,7 @@ static void usb_wwan_outdat_callback(struct urb *urb)
 
 	usb_serial_port_softint(port);
 	usb_autopm_put_interface_async(port->serial->interface);
+	usb_mark_last_busy(interface_to_usbdev(port->serial->interface));
 	portdata = usb_get_serial_port_data(port);
 	spin_lock(&intfdata->susp_lock);
 	intfdata->in_flight--;
@@ -405,7 +466,13 @@ int usb_wwan_open(struct tty_struct *tty, struct usb_serial_port *port)
 
 	portdata = usb_get_serial_port_data(port);
 	intfdata = serial->private;
+	intfdata->suspended = 0;
 
+	/* explicitly set the driver mode to raw */
+	tty->raw = 1;
+	tty->real_raw = 1;
+
+	set_bit(TTY_NO_WRITE_SPLIT, &tty->flags);
 	dbg("%s", __func__);
 
 	/* Start reading from the IN endpoint */
@@ -527,18 +594,31 @@ static void usb_wwan_setup_urbs(struct usb_serial *serial)
 	}
 }
 
+#ifdef CONFIG_MDM_HSIC_PM
+/* prevent runtime mem re-allocation when it once attached */
+static struct usb_wwan_port_private *mdm_portdata[MAX_NUM_PORTS];
+#endif
 int usb_wwan_startup(struct usb_serial *serial)
 {
 	int i, j, err;
 	struct usb_serial_port *port;
 	struct usb_wwan_port_private *portdata;
 	u8 *buffer;
+#ifdef CONFIG_MDM_HSIC_PM
+	struct usb_wwan_intf_private *data = usb_get_serial_data(serial);
+#endif
 
 	dbg("%s", __func__);
 
 	/* Now setup per port private data */
 	for (i = 0; i < serial->num_ports; i++) {
 		port = serial->port[i];
+#ifdef CONFIG_MDM_HSIC_PM
+		if (data && data->buf_reuse && mdm_portdata[i]) {
+			portdata = mdm_portdata[i];
+			goto set_port_data;
+		}
+#endif
 		portdata = kzalloc(sizeof(*portdata), GFP_KERNEL);
 		if (!portdata) {
 			dbg("%s: kmalloc for usb_wwan_port_private (%d) failed!.",
@@ -548,7 +628,7 @@ int usb_wwan_startup(struct usb_serial *serial)
 		init_usb_anchor(&portdata->delayed);
 
 		for (j = 0; j < N_IN_URB; j++) {
-			buffer = (u8 *) __get_free_page(GFP_KERNEL);
+			buffer = kmalloc(IN_BUFLEN, GFP_KERNEL);
 			if (!buffer)
 				goto bail_out_error;
 			portdata->in_buffer[j] = buffer;
@@ -560,7 +640,11 @@ int usb_wwan_startup(struct usb_serial *serial)
 				goto bail_out_error2;
 			portdata->out_buffer[j] = buffer;
 		}
-
+#ifdef CONFIG_MDM_HSIC_PM
+		if (data && data->buf_reuse)
+			mdm_portdata[i] = portdata;
+set_port_data:
+#endif
 		usb_set_serial_port_data(port, portdata);
 
 		if (!port->interrupt_in_urb)
@@ -577,8 +661,7 @@ bail_out_error2:
 		kfree(portdata->out_buffer[j]);
 bail_out_error:
 	for (j = 0; j < N_IN_URB; j++)
-		if (portdata->in_buffer[j])
-			free_page((unsigned long)portdata->in_buffer[j]);
+		kfree(portdata->in_buffer[j]);
 	kfree(portdata);
 	return 1;
 }
@@ -603,8 +686,10 @@ static void stop_read_write_urbs(struct usb_serial *serial)
 
 void usb_wwan_disconnect(struct usb_serial *serial)
 {
+	struct usb_wwan_intf_private *intfdata = serial->private;
 	dbg("%s", __func__);
 
+	intfdata->suspended = 1;
 	stop_read_write_urbs(serial);
 }
 EXPORT_SYMBOL(usb_wwan_disconnect);
@@ -614,9 +699,11 @@ void usb_wwan_release(struct usb_serial *serial)
 	int i, j;
 	struct usb_serial_port *port;
 	struct usb_wwan_port_private *portdata;
+#ifdef CONFIG_MDM_HSIC_PM
+	struct usb_wwan_intf_private *data = usb_get_serial_data(serial);
+#endif
 
 	dbg("%s", __func__);
-
 	/* Now free them */
 	for (i = 0; i < serial->num_ports; ++i) {
 		port = serial->port[i];
@@ -624,18 +711,31 @@ void usb_wwan_release(struct usb_serial *serial)
 
 		for (j = 0; j < N_IN_URB; j++) {
 			usb_free_urb(portdata->in_urbs[j]);
-			free_page((unsigned long)
-				  portdata->in_buffer[j]);
+#ifdef CONFIG_MDM_HSIC_PM
+			if (data && !data->buf_reuse)
+				kfree(portdata->in_buffer[j]);
+#else
+			kfree(portdata->in_buffer[j]);
+#endif
 			portdata->in_urbs[j] = NULL;
 		}
 		for (j = 0; j < N_OUT_URB; j++) {
 			usb_free_urb(portdata->out_urbs[j]);
+#ifdef CONFIG_MDM_HSIC_PM
+			if (data && !data->buf_reuse)
+				kfree(portdata->out_buffer[j]);
+#else
 			kfree(portdata->out_buffer[j]);
+#endif
 			portdata->out_urbs[j] = NULL;
 		}
 	}
 
 	/* Now free per port private data */
+#ifdef CONFIG_MDM_HSIC_PM
+	if (data && data->buf_reuse)
+		return;
+#endif
 	for (i = 0; i < serial->num_ports; i++) {
 		port = serial->port[i];
 		kfree(usb_get_serial_port_data(port));
@@ -651,7 +751,7 @@ int usb_wwan_suspend(struct usb_serial *serial, pm_message_t message)
 
 	dbg("%s entered", __func__);
 
-	if (PMSG_IS_AUTO(message)) {
+	if (message.event & PM_EVENT_AUTO) {
 		spin_lock_irq(&intfdata->susp_lock);
 		b = intfdata->in_flight;
 		spin_unlock_irq(&intfdata->susp_lock);
@@ -731,6 +831,10 @@ int usb_wwan_resume(struct usb_serial *serial)
 		}
 	}
 
+	spin_lock_irq(&intfdata->susp_lock);
+	intfdata->suspended = 0;
+	spin_unlock_irq(&intfdata->susp_lock);
+
 	for (i = 0; i < serial->num_ports; i++) {
 		/* walk all ports */
 		port = serial->port[i];
@@ -756,9 +860,6 @@ int usb_wwan_resume(struct usb_serial *serial)
 		play_delayed(port);
 		spin_unlock_irq(&intfdata->susp_lock);
 	}
-	spin_lock_irq(&intfdata->susp_lock);
-	intfdata->suspended = 0;
-	spin_unlock_irq(&intfdata->susp_lock);
 err_out:
 	return err;
 }
@@ -770,5 +871,5 @@ MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_VERSION(DRIVER_VERSION);
 MODULE_LICENSE("GPL");
 
-module_param(debug, bool, S_IRUGO | S_IWUSR);
+module_param(debug, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(debug, "Debug messages");

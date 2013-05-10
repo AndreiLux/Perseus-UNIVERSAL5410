@@ -17,7 +17,7 @@
 #ifndef __VLOCK_H
 #define __VLOCK_H
 
-#include <asm/mcpm_entry.h>
+#include <asm/bL_entry.h>
 
 /* Offsets and sizes are rounded to a word (4 bytes) */
 #define VLOCK_OWNER_OFFSET	0

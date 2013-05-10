@@ -16,6 +16,7 @@
 
 #include <linux/scatterlist.h>
 #include <linux/mmc/core.h>
+#include <linux/pm_qos.h>
 
 #define MAX_MCI_SLOTS	2
 
@@ -130,7 +131,10 @@ struct dw_mci {
 	bool			stop_snd;
 	struct clk		*hclk;
 	struct clk		*cclk;
-	bool			prv_err;
+	atomic_t		cclk_cnt;
+	atomic_t		hclk_cnt;
+	spinlock_t		cclk_lock;
+	struct workqueue_struct	*card_workqueue;
 
 	/* DMA interface members*/
 	int			use_dma;
@@ -145,6 +149,10 @@ struct dw_mci {
 	struct dw_mci_dma_data	*dma_data;
 #endif
 	unsigned int		desc_sz;
+	unsigned int		align_size;
+
+	struct pm_qos_request	pm_qos_int;
+
 	u32			cmd_status;
 	u32			data_status;
 	u32			stop_cmdr;
@@ -157,13 +165,13 @@ struct dw_mci {
 	struct list_head	queue;
 
 	u32			bus_hz;
-	u32			max_bus_hz;
 	u32			current_speed;
 	u32			num_slots;
 	u32			fifoth_val;
 	u32			cd_rd_thr;
 	u16			verid;
 	u16			data_offset;
+	u32			bytcnt;
 	struct device		dev;
 	struct dw_mci_board	*pdata;
 	struct dw_mci_slot	*slot[MAX_MCI_SLOTS];
@@ -187,9 +195,18 @@ struct dw_mci {
 	/* S/W reset timer */
 	struct timer_list       timer;
 
+	struct delayed_work	tp_mon;
+	u32			transferred_cnt;
+	u32			cmd_cnt;
+	struct pm_qos_request	pm_qos_mif;
+	struct pm_qos_request	pm_qos_cpu;
+
 	struct regulator	*vmmc;	/* Power regulator */
+	struct regulator	*vqmmc;
 	unsigned long		irq_flags; /* IRQ flags */
-	unsigned int		irq;
+	int			irq;
+
+	struct mmc_queue_req    *mqrq;	/* for mmc trace */
 };
 
 /* DMA ops for Internal/External DMAC interface */
@@ -217,6 +234,8 @@ struct dw_mci_dma_ops {
 #define DW_MCI_QUIRK_NO_DETECT_EBIT             BIT(4)
 /* Hardware reset using power off/on of card */
 #define DW_MMC_QUIRK_HW_RESET_PW 		BIT(5)
+/* No use voltage switch interrupt */
+#define DW_MMC_QUIRK_NO_VOLSW_INT 		BIT(6)
 
 enum dw_mci_cd_types {
 	DW_MCI_CD_INTERNAL,	/* use mmc internal CD line */
@@ -236,13 +255,23 @@ struct block_settings {
 	unsigned int	max_seg_size;	/* see blk_queue_max_segment_size */
 };
 
+struct dw_mci_clk {
+	u32	cclkin;
+	u32	sclkin;
+};
+
+struct dw_mci_mon_table {
+	u32	range;
+	s32	mif_lock_value;
+	s32	cpu_lock_value;
+};
+
 /* Board platform data */
 struct dw_mci_board {
 	u32 num_slots;
 
 	u32 quirks; /* Workaround / Quirk flags */
 	unsigned int bus_hz; /* Bus speed */
-	unsigned int max_bus_hz; /* MAXIMUM Bus speed */
 
 	unsigned int caps;	/* Capabilities */
 	unsigned int caps2;	/* More capabilities */
@@ -269,13 +298,22 @@ struct dw_mci_board {
 	void (*cfg_gpio)(int width);
 	void (*hw_reset)(u32 slot_id);
 	void (*set_io_timing)(void *data, unsigned char timing);
+	void (*save_drv_st)(void *data, u32 slot_id);
+	void (*restore_drv_st)(void *data, u32 slot_id, int *compensation);
+	void (*tuning_drv_st)(void *data, u32 slot_id);
 
 	/* Phase Shift Value */
 	unsigned int sdr_timing;
 	unsigned int ddr_timing;
+	unsigned int ddr200_timing;
 	u8 clk_drv;
 	u8 clk_smpl;
 	bool tuned;
+	bool only_once_tune;
+	struct drv_strength {
+		unsigned int pin;
+		unsigned int val;
+	} __drv_st;
 
 	/* cd_type: Type of Card Detection method (see cd_types enum above) */
 	enum dw_mci_cd_types cd_type;
@@ -308,6 +346,16 @@ struct dw_mci_board {
 	struct dw_mci_dma_ops *dma_ops;
 	struct dma_pdata *data;
 	struct block_settings *blk_settings;
+	struct dw_mci_clk *clk_tbl;
+	struct dw_mci_mon_table *tp_mon_tbl;
+	unsigned int sw_timeout;
+#if defined(CONFIG_MACH_UNIVERSAL5410)
+	unsigned char	prev_power_mode;		/* saved power mode */
+	void (*set_sd_power)(u32 enable);
+#endif
+	unsigned int	emmc_always_on;
+	int (*om_check)(void *);
+	u8	map[4];				/* tuning bitmap for debug */
 };
 
 #endif /* LINUX_MMC_DW_MMC_H */

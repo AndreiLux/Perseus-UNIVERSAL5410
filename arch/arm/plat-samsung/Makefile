@@ -31,7 +31,7 @@ obj-y				+= platformdata.o
 obj-y				+= devs.o
 obj-y				+= dev-uart.o
 
-obj-$(CONFIG_S5P_DEV_MIPI_DSIM) += dev-mipidsim.o
+obj-$(CONFIG_FB_MIPI_DSIM)	+= dev-mipidsim.o
 obj-$(CONFIG_S5P_DEV_DP)	+= dev-dp.o
 
 obj-$(CONFIG_SAMSUNG_DEV_BACKLIGHT)	+= dev-backlight.o
@@ -56,3 +56,7 @@ obj-$(CONFIG_HAVE_PWM)		+= pwm.o
 
 obj-$(CONFIG_S5P_DEV_FIMG2D)	+= dev-fimg2d.o
 obj-$(CONFIG_S5P_DEV_BTS)	+= bts.o
+
+# BW monitor support
+
+obj-$(CONFIG_SAMSUNG_BW_MONITOR)	+= monitor.o

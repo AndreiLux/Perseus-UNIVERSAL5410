@@ -127,9 +127,26 @@ ENTRY(cpu_v7_do_resume)
 	mcr	p15, 0, r1, c2, c0, 0	@ TTB 0
 	mcr	p15, 0, r7, c2, c0, 1	@ TTB 1
 	mcr	p15, 0, r11, c2, c0, 2	@ TTB control register
+
+	mrc	p15, 0, r4, c0, c0, 0	@ read midr
+	ubfx    r4, r4, #4, #12		@ primary part number
+	ldr	r5, =0x00000c0f		@ Cortex-A15 primary part number
+	teq	r4, r5
+	biceq	r9, r9, #0x6000
+	orrne	r9, r9, #0x6000
+
 	mrc	p15, 0, r4, c1, c0, 1	@ Read Auxiliary control register
 	teq	r4, r9			@ Is it already set?
+
+#ifdef CONFIG_ARM_TRUSTZONE
+	ldrne	r0, =SMC_CMD_REG
+	ldrne	r1, =SMC_REG_ID_CP15(1, 0, 0, 1)
+	movne	r2, r9
+	smcne	0
+#else
 	mcrne	p15, 0, r9, c1, c0, 1	@ No, so write it
+#endif
+
 	mcr	p15, 0, r10, c1, c0, 2	@ Co-processor access control
 	ldr	r4, =PRRR		@ PRRR
 	ldr	r5, =NMRR		@ NMRR
@@ -174,7 +191,9 @@ __v7_ca15mp_setup:
 __v7_setup:
 	adr	r12, __v7_setup_stack		@ the local stack
 	stmia	r12, {r0-r5, r7, r9, r11, lr}
-	bl	v7_flush_dcache_all
+	mrc     p15, 1, r0, c0, c0, 1
+	ubfx    r0, r0, #21, #3
+	bl      v7_flush_dcache_level
 	ldmia	r12, {r0-r5, r7, r9, r11, lr}
 
 	mrc	p15, 0, r0, c0, c0, 0		@ read main ID register
@@ -216,6 +235,7 @@ __v7_setup:
 2:	ldr	r10, =0x00000c09		@ Cortex-A9 primary part number
 	teq	r0, r10
 	bne	3f
+#ifndef CONFIG_ARM_TRUSTZONE
 #ifdef CONFIG_ARM_ERRATA_742230
 	cmp	r6, #0x22			@ only present up to r2p2
 	mrcle	p15, 0, r10, c15, c0, 1		@ read diagnostic register
@@ -231,6 +251,11 @@ __v7_setup:
 	orreq	r10, r10, #1 << 22		@ set bit #22
 	mcreq	p15, 0, r10, c15, c0, 1		@ write diagnostic register
 #endif
+#ifdef CONFIG_ARM_ERRATA_761320
+	mrc	p15, 0, r10, c15, c0, 1		@ read diagnostic register
+	orr	r10, r10, #1 << 21		@ set bit #21
+	mcr	p15, 0, r10, c15, c0, 1		@ write diagnostic register
+#endif
 #ifdef CONFIG_ARM_ERRATA_743622
 	teq	r5, #0x00200000			@ only present in r2p*
 	mrceq	p15, 0, r10, c15, c0, 1		@ read diagnostic register
@@ -244,6 +269,7 @@ __v7_setup:
 	orrlt	r10, r10, #1 << 11		@ set bit #11
 	mcrlt	p15, 0, r10, c15, c0, 1		@ write diagnostic register
 1:
+#endif
 #endif
 	b	4f
 

@@ -37,3 +37,11 @@ void __init exynos5_gsc_set_pdev_name(int id, char *name)
 		break;
 	}
 }
+
+void __init exynos5_gsc_set_ip_ver(enum gsc_ip_version ver)
+{
+	exynos_gsc0_default_data.ip_ver = ver;
+	exynos_gsc1_default_data.ip_ver = ver;
+	exynos_gsc2_default_data.ip_ver = ver;
+	exynos_gsc3_default_data.ip_ver = ver;
+}

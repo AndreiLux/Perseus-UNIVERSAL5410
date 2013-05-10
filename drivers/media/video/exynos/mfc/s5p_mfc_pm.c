@@ -16,7 +16,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/platform_device.h>
 
-#include <mach/exynos-mfc.h>
+#include <plat/cpu.h>
 
 #include "s5p_mfc_common.h"
 #include "s5p_mfc_debug.h"
@@ -41,14 +41,14 @@ int s5p_mfc_init_pm(struct s5p_mfc_dev *dev)
 
 	pm = &dev->pm;
 
-	parent = clk_get(&dev->plat_dev->dev, MFC_PARENT_CLK_NAME);
+	parent = clk_get(dev->device, MFC_PARENT_CLK_NAME);
 	if (IS_ERR(parent)) {
 		printk(KERN_ERR "failed to get parent clock\n");
 		ret = -ENOENT;
 		goto err_p_clk;
 	}
 
-	sclk = clk_get(&dev->plat_dev->dev, MFC_CLKNAME);
+	sclk = clk_get(dev->device, MFC_CLKNAME);
 	if (IS_ERR(sclk)) {
 		printk(KERN_ERR "failed to get source clock\n");
 		ret = -ENOENT;
@@ -59,7 +59,7 @@ int s5p_mfc_init_pm(struct s5p_mfc_dev *dev)
 	clk_set_rate(sclk, 200 * 1000000);
 
 	/* clock for gating */
-	pm->clock = clk_get(&dev->plat_dev->dev, MFC_GATE_CLK_NAME);
+	pm->clock = clk_get(dev->device, MFC_GATE_CLK_NAME);
 	if (IS_ERR(pm->clock)) {
 		printk(KERN_ERR "failed to get clock-gating control\n");
 		ret = -ENOENT;
@@ -69,7 +69,7 @@ int s5p_mfc_init_pm(struct s5p_mfc_dev *dev)
 	atomic_set(&pm->power, 0);
 	atomic_set(&clk_ref, 0);
 
-	pm->device = &dev->plat_dev->dev;
+	pm->device = dev->device;
 	pm_runtime_enable(pm->device);
 
 	return 0;
@@ -84,64 +84,86 @@ err_p_clk:
 
 #elif defined(CONFIG_ARCH_EXYNOS5)
 
-#define MFC_PARENT_CLK_NAME	"dout_aclk_333"
-#define MFC_CLKNAME		"aclk_333"
+#define MFC_PARENT_CLK_NAME	"aclk_333"
+#define MFC_CLKNAME		"sclk_mfc"
 #define MFC_GATE_CLK_NAME	"mfc"
 
 int s5p_mfc_init_pm(struct s5p_mfc_dev *dev)
 {
-	struct clk *parent_clk, *sclk;
+	struct clk *parent_clk = NULL;
 	int ret = 0;
-	struct s5p_mfc_platdata *pdata;
 
 	pm = &dev->pm;
 
 	/* clock for gating */
-	pm->clock = clk_get(&dev->plat_dev->dev, MFC_GATE_CLK_NAME);
+	pm->clock = clk_get(dev->device, MFC_GATE_CLK_NAME);
 	if (IS_ERR(pm->clock)) {
 		printk(KERN_ERR "failed to get clock-gating control\n");
 		ret = PTR_ERR(pm->clock);
 		goto err_g_clk;
 	}
 
-	parent_clk = clk_get(&dev->plat_dev->dev, MFC_PARENT_CLK_NAME);
-	if (IS_ERR(parent_clk)) {
-		printk(KERN_ERR "failed to get parent clock %s.\n", MFC_PARENT_CLK_NAME);
-		ret = PTR_ERR(parent_clk);
-		goto err_p_clk;
-	}
+	if ((dev->pdata->ip_ver == IP_VER_MFC_5G_0) ||
+	    (dev->pdata->ip_ver == IP_VER_MFC_5G_1)) {
+		parent_clk = clk_get(dev->device, MFC_PARENT_CLK_NAME);
+		if (IS_ERR(parent_clk)) {
+			printk(KERN_ERR "failed to get parent clock %s.\n",
+					MFC_PARENT_CLK_NAME);
+			ret = PTR_ERR(parent_clk);
+			goto err_p_clk;
+		}
 
-	sclk = clk_get(&dev->plat_dev->dev, MFC_CLKNAME);
-	if (IS_ERR(sclk)) {
-		printk(KERN_ERR "failed to get source clock\n");
-		ret = -ENOENT;
-		goto err_s_clk;
+		clk_set_rate(parent_clk, dev->pdata->clock_rate);
 	}
-
-	clk_set_parent(sclk, parent_clk);
-	pdata = dev->platdata;
-	clk_set_rate(parent_clk, pdata->clock_rate);
 
 	spin_lock_init(&pm->clklock);
 	atomic_set(&pm->power, 0);
 	atomic_set(&clk_ref, 0);
 
-	pm->device = &dev->plat_dev->dev;
+	pm->device = dev->device;
 	pm_runtime_enable(pm->device);
 
-	clk_put(sclk);
 	clk_put(parent_clk);
 
 	return 0;
 
-err_s_clk:
-	clk_put(parent_clk);
 err_p_clk:
 	clk_put(pm->clock);
 err_g_clk:
 	return ret;
 }
 
+#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+extern spinlock_t int_div_lock;
+int s5p_mfc_clock_set_rate(struct s5p_mfc_dev *dev, unsigned long rate)
+{
+	struct clk *parent_clk = NULL;
+	int ret = 0;
+
+	pm = &dev->pm;
+
+	if ((dev->pdata->ip_ver == IP_VER_MFC_5A_0) ||
+	    (dev->pdata->ip_ver == IP_VER_MFC_5A_1)) {
+		parent_clk = clk_get(dev->device, "aclk_333_pre");
+		if (IS_ERR(parent_clk)) {
+			mfc_err("failed to get parent clock aclk_333_pre.\n");
+			ret = PTR_ERR(parent_clk);
+			goto err_g_clk;
+		}
+
+		spin_lock(&int_div_lock);
+		clk_set_rate(parent_clk, rate * 1000);
+		spin_unlock(&int_div_lock);
+
+		clk_put(parent_clk);
+	}
+
+	return 0;
+
+err_g_clk:
+	return ret;
+}
+#endif
 #endif
 
 void s5p_mfc_final_pm(struct s5p_mfc_dev *dev)
@@ -158,6 +180,9 @@ int s5p_mfc_clock_on(void)
 	struct s5p_mfc_dev *dev = platform_get_drvdata(to_platform_device(pm->device));
 	unsigned long flags;
 
+#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+	s5p_mfc_clock_set_rate(dev, dev->curr_rate);
+#endif
 	ret = clk_enable(pm->clock);
 	if (ret < 0)
 		return ret;
@@ -170,13 +195,18 @@ int s5p_mfc_clock_on(void)
 		}
 	}
 
-	spin_lock_irqsave(&pm->clklock, flags);
-	if ((atomic_inc_return(&clk_ref) == 1) && (dev->fw.date >= 0x120206)) {
-		val = s5p_mfc_read_reg(S5P_FIMV_MFC_BUS_RESET_CTRL);
-		val &= ~(0x1);
-		s5p_mfc_write_reg(val, S5P_FIMV_MFC_BUS_RESET_CTRL);
+	if (IS_MFCV6(dev)) {
+		spin_lock_irqsave(&pm->clklock, flags);
+		if ((atomic_inc_return(&clk_ref) == 1) &&
+				FW_HAS_BUS_RESET(dev)) {
+			val = s5p_mfc_read_reg(S5P_FIMV_MFC_BUS_RESET_CTRL);
+			val &= ~(0x1);
+			s5p_mfc_write_reg(val, S5P_FIMV_MFC_BUS_RESET_CTRL);
+		}
+		spin_unlock_irqrestore(&pm->clklock, flags);
+	} else {
+		atomic_inc_return(&clk_ref);
 	}
-	spin_unlock_irqrestore(&pm->clklock, flags);
 
 	state = atomic_read(&clk_ref);
 	mfc_debug(3, "+ %d", state);
@@ -190,29 +220,37 @@ void s5p_mfc_clock_off(void)
 	unsigned long timeout, flags;
 	struct s5p_mfc_dev *dev = platform_get_drvdata(to_platform_device(pm->device));
 
-	spin_lock_irqsave(&pm->clklock, flags);
-	if ((atomic_dec_return(&clk_ref) == 0) && (dev->fw.date >= 0x120206)) {
-		s5p_mfc_write_reg(0x1, S5P_FIMV_MFC_BUS_RESET_CTRL);
+	if (IS_MFCV6(dev)) {
+		spin_lock_irqsave(&pm->clklock, flags);
+		if ((atomic_dec_return(&clk_ref) == 0) &&
+				FW_HAS_BUS_RESET(dev)) {
+			s5p_mfc_write_reg(0x1, S5P_FIMV_MFC_BUS_RESET_CTRL);
 
-		timeout = jiffies + msecs_to_jiffies(MFC_BW_TIMEOUT);
-		/* Check bus status */
-		do {
-			if (time_after(jiffies, timeout)) {
-				mfc_err("Timeout while resetting MFC.\n");
-				break;
-			}
-			val = s5p_mfc_read_reg(S5P_FIMV_MFC_BUS_RESET_CTRL);
-		} while ((val & 0x2) == 0);
+			timeout = jiffies + msecs_to_jiffies(MFC_BW_TIMEOUT);
+			/* Check bus status */
+			do {
+				if (time_after(jiffies, timeout)) {
+					mfc_err("Timeout while resetting MFC.\n");
+					break;
+				}
+				val = s5p_mfc_read_reg(
+						S5P_FIMV_MFC_BUS_RESET_CTRL);
+			} while ((val & 0x2) == 0);
+		}
+		spin_unlock_irqrestore(&pm->clklock, flags);
+	} else {
+		atomic_dec_return(&clk_ref);
 	}
-	spin_unlock_irqrestore(&pm->clklock, flags);
 
 	state = atomic_read(&clk_ref);
-	if (state < 0)
+	if (state < 0) {
 		mfc_err("Clock state is wrong(%d)\n", state);
-
-	if (!dev->curr_ctx_drm)
-		s5p_mfc_mem_suspend(dev->alloc_ctx[0]);
-	clk_disable(pm->clock);
+		atomic_set(&clk_ref, 0);
+	} else {
+		if (!dev->curr_ctx_drm)
+			s5p_mfc_mem_suspend(dev->alloc_ctx[0]);
+		clk_disable(pm->clock);
+	}
 }
 
 int s5p_mfc_power_on(void)
@@ -227,4 +265,9 @@ int s5p_mfc_power_off(void)
 	atomic_set(&pm->power, 0);
 
 	return pm_runtime_put_sync(pm->device);
+}
+
+int s5p_mfc_get_clk_ref_cnt(void)
+{
+	return atomic_read(&clk_ref);
 }

@@ -31,7 +31,8 @@
 #if defined(CONFIG_ARCH_EXYNOS4)
 #define HDMI_GPX(_nr)	EXYNOS4_GPX3(_nr)
 #elif defined(CONFIG_ARCH_EXYNOS5)
-#define HDMI_GPX(_nr)	EXYNOS5_GPX3(_nr)
+#define HDMI_GPX(_nr)	(soc_is_exynos5250() ? \
+			EXYNOS5_GPX3(_nr) : EXYNOS5410_GPX3(_nr))
 #endif
 
 #define HDMI_PHY_CONTROL_OFFSET		0
@@ -101,6 +102,7 @@ void s5p_tv_setup(void)
 	s3c_gpio_cfgpin(HDMI_GPX(7), S3C_GPIO_SFN(0xf));
 	s3c_gpio_setpull(HDMI_GPX(7), S3C_GPIO_PULL_NONE);
 
+#ifdef CONFIG_VIDEO_EXYNOS_HDMI_CEC
 	/* HDMI CEC */
 	ret = gpio_request(HDMI_GPX(6), "hdmi-cec");
 	if (ret)
@@ -108,5 +110,6 @@ void s5p_tv_setup(void)
 	gpio_direction_input(HDMI_GPX(6));
 	s3c_gpio_cfgpin(HDMI_GPX(6), S3C_GPIO_SFN(0x3));
 	s3c_gpio_setpull(HDMI_GPX(6), S3C_GPIO_PULL_NONE);
+#endif
 }
 #endif

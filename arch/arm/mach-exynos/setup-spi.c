@@ -52,7 +52,10 @@ void exynos_spi_clock_setup(struct device *spi_dev, int ch_num)
 		return;
 	}
 
-	parent_clk = clk_get(spi_dev, "mout_mpll_user");
+	if (soc_is_exynos5410())
+		parent_clk = clk_get(spi_dev, "mout_mpll_bpll");
+	else
+		parent_clk = clk_get(spi_dev, "mout_mpll_user");
 
 	if (IS_ERR(parent_clk)) {
 		pr_err("%s: Failed to get mout_mpll_user clk\n", __func__);
@@ -82,13 +85,23 @@ struct s3c64xx_spi_info s3c64xx_spi0_pdata __initdata = {
 	.high_speed	= 1,
 	.clk_from_cmu	= true,
 	.tx_st_done	= 25,
+	.dma_mode	= HYBRID_MODE,
 };
 
 int s3c64xx_spi0_cfg_gpio(struct platform_device *dev)
 {
 	int gpio;
 
-	if (soc_is_exynos5250()) {
+	if (soc_is_exynos5410()) {
+		s3c_gpio_cfgpin(EXYNOS5410_GPA2(0), S3C_GPIO_SFN(2));
+		s3c_gpio_setpull(EXYNOS5410_GPA2(0), S3C_GPIO_PULL_UP);
+		s3c_gpio_cfgall_range(EXYNOS5410_GPA2(2), 2,
+				      S3C_GPIO_SFN(2), S3C_GPIO_PULL_UP);
+
+		for (gpio = EXYNOS5410_GPA2(0);
+				gpio < EXYNOS5410_GPA2(4); gpio++)
+			s5p_gpio_set_drvstr(gpio, S5P_GPIO_DRVSTR_LV3);
+	} else if (soc_is_exynos5250()) {
 		s3c_gpio_cfgpin(EXYNOS5_GPA2(0), S3C_GPIO_SFN(2));
 		s3c_gpio_setpull(EXYNOS5_GPA2(0), S3C_GPIO_PULL_UP);
 		s3c_gpio_cfgall_range(EXYNOS5_GPA2(2), 2,
@@ -117,13 +130,23 @@ struct s3c64xx_spi_info s3c64xx_spi1_pdata __initdata = {
 	.high_speed	= 1,
 	.clk_from_cmu	= true,
 	.tx_st_done	= 25,
+	.dma_mode	= HYBRID_MODE,
 };
 
 int s3c64xx_spi1_cfg_gpio(struct platform_device *dev)
 {
 	int gpio;
 
-	if (soc_is_exynos5250()) {
+	if (soc_is_exynos5410()) {
+		s3c_gpio_cfgpin(EXYNOS5410_GPA2(4), S3C_GPIO_SFN(2));
+		s3c_gpio_setpull(EXYNOS5410_GPA2(4), S3C_GPIO_PULL_UP);
+		s3c_gpio_cfgall_range(EXYNOS5410_GPA2(6), 2,
+				      S3C_GPIO_SFN(2), S3C_GPIO_PULL_UP);
+
+		for (gpio = EXYNOS5410_GPA2(4);
+				gpio < EXYNOS5410_GPA2(8); gpio++)
+			s5p_gpio_set_drvstr(gpio, S5P_GPIO_DRVSTR_LV3);
+	} else if (soc_is_exynos5250()) {
 		s3c_gpio_cfgpin(EXYNOS5_GPA2(4), S3C_GPIO_SFN(2));
 		s3c_gpio_setpull(EXYNOS5_GPA2(4), S3C_GPIO_PULL_UP);
 		s3c_gpio_cfgall_range(EXYNOS5_GPA2(6), 2,
@@ -152,13 +175,25 @@ struct s3c64xx_spi_info s3c64xx_spi2_pdata __initdata = {
 	.high_speed	= 1,
 	.clk_from_cmu	= true,
 	.tx_st_done	= 25,
+	.dma_mode	= HYBRID_MODE,
 };
 
 int s3c64xx_spi2_cfg_gpio(struct platform_device *dev)
 {
 	int gpio;
 
-	if (soc_is_exynos5250()) {
+	if (soc_is_exynos5410()) {
+		s3c_gpio_cfgpin(EXYNOS5410_GPB1(1), S3C_GPIO_SFN(5));
+		s3c_gpio_setpull(EXYNOS5410_GPB1(1), S3C_GPIO_PULL_UP);
+		s3c_gpio_cfgpin(EXYNOS5410_GPB1(3), S3C_GPIO_SFN(5));
+		s3c_gpio_setpull(EXYNOS5410_GPB1(3), S3C_GPIO_PULL_DOWN);
+		s3c_gpio_cfgpin(EXYNOS5410_GPB1(4), S3C_GPIO_SFN(5));
+		s3c_gpio_setpull(EXYNOS5410_GPB1(4), S3C_GPIO_PULL_UP);
+
+		for (gpio = EXYNOS5410_GPB1(1);
+				gpio < EXYNOS5410_GPB1(5); gpio++)
+			s5p_gpio_set_drvstr(gpio, S5P_GPIO_DRVSTR_LV2);
+	} else if (soc_is_exynos5250()) {
 		s3c_gpio_cfgpin(EXYNOS5_GPB1(1), S3C_GPIO_SFN(5));
 		s3c_gpio_setpull(EXYNOS5_GPB1(1), S3C_GPIO_PULL_UP);
 		s3c_gpio_cfgall_range(EXYNOS5_GPB1(3), 2,
@@ -176,6 +211,22 @@ int s3c64xx_spi2_cfg_gpio(struct platform_device *dev)
 			s5p_gpio_set_drvstr(gpio, S5P_GPIO_DRVSTR_LV3);
 	}
 
+	return 0;
+}
+#endif
+
+#ifdef CONFIG_S3C64XX_DEV_SPI3
+struct s3c64xx_spi_info s3c64xx_spi3_pdata __initdata = {
+	.fifo_lvl_mask	= 0x1ff,
+	.rx_lvl_offset	= 15,
+	.high_speed	= 1,
+	.clk_from_cmu	= true,
+	.tx_st_done	= 25,
+	.dma_mode	= PIO_MODE,
+};
+
+int s3c64xx_spi3_cfg_gpio(struct platform_device *dev)
+{
 	return 0;
 }
 #endif

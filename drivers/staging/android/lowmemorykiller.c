@@ -38,7 +38,70 @@
 #include <linux/swap.h>
 #include <linux/rcupdate.h>
 #include <linux/notifier.h>
+#include <linux/memory.h>
+#include <linux/memory_hotplug.h>
 
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+#include <linux/fs.h>
+
+#include <linux/device.h>
+#include <linux/err.h>
+#include <linux/mm_inline.h>
+#include <linux/kthread.h>
+#include <linux/freezer.h>
+#include <asm/atomic.h>
+
+#define MIN_FREESWAP_PAGES 8192 /* 32MB */
+#define MIN_RECLAIM_PAGES 512  /* 2MB */
+#define MIN_CSWAP_INTERVAL (10*HZ)  /* 10 senconds */
+
+#define _KCOMPCACHE_DEBUG 0
+#if _KCOMPCACHE_DEBUG
+#define lss_dbg(x...) printk("lss: " x)
+#else
+#define lss_dbg(x...)
+#endif
+
+struct soft_reclaim {
+	unsigned long nr_total_soft_reclaimed;
+	unsigned long nr_total_soft_scanned;
+	unsigned long nr_last_soft_reclaimed;
+	unsigned long nr_last_soft_scanned;
+	int nr_empty_reclaimed;
+
+	atomic_t kcompcached_running;
+	atomic_t need_to_reclaim;
+	atomic_t lmk_running;
+	atomic_t kcompcached_enable;
+	struct task_struct *kcompcached;
+};
+
+static struct soft_reclaim s_reclaim = {
+	.nr_total_soft_reclaimed = 0,
+	.nr_total_soft_scanned = 0,
+	.nr_last_soft_reclaimed = 0,
+	.nr_last_soft_scanned = 0,
+	.nr_empty_reclaimed = 0,
+	.kcompcached = NULL,
+};
+
+extern atomic_t kswapd_thread_on;
+static unsigned long prev_jiffy;
+static uint32_t minimum_freeswap_pages = MIN_FREESWAP_PAGES;
+static uint32_t minimun_reclaim_pages = MIN_RECLAIM_PAGES;
+static uint32_t minimum_interval_time = MIN_CSWAP_INTERVAL;
+#endif /* CONFIG_ZRAM_FOR_ANDROID */
+
+#define ENHANCED_LMK_ROUTINE
+#define LMK_COUNT_READ
+
+#ifdef ENHANCED_LMK_ROUTINE
+#define LOWMEM_DEATHPENDING_DEPTH 3
+#endif
+
+#ifdef LMK_COUNT_READ
+static uint32_t lmk_count = 0;
+#endif
 static uint32_t lowmem_debug_level = 1;
 static int lowmem_adj[6] = {
 	0,
@@ -55,6 +118,15 @@ static int lowmem_minfree[6] = {
 };
 static int lowmem_minfree_size = 4;
 
+
+static unsigned int offlining;
+#ifdef ENHANCED_LMK_ROUTINE
+static struct task_struct *lowmem_deathpending[LOWMEM_DEATHPENDING_DEPTH] = {
+	NULL,
+};
+#else
+static struct task_struct *lowmem_deathpending;
+#endif
 static unsigned long lowmem_deathpending_timeout;
 
 #define lowmem_print(level, x...)			\
@@ -63,20 +135,121 @@ static unsigned long lowmem_deathpending_timeout;
 			printk(x);			\
 	} while (0)
 
+static int
+task_notify_func(struct notifier_block *self, unsigned long val, void *data);
+
+static struct notifier_block task_nb = {
+	.notifier_call  = task_notify_func,
+};
+
+static int
+task_notify_func(struct notifier_block *self, unsigned long val, void *data)
+{
+	struct task_struct *task = data;
+#ifdef ENHANCED_LMK_ROUTINE
+	int i = 0;
+
+	for (i = 0; i < LOWMEM_DEATHPENDING_DEPTH; i++) {
+		if (task == lowmem_deathpending[i]) {
+			lowmem_deathpending[i] = NULL;
+			break;
+		}
+	}
+#else
+	if (task == lowmem_deathpending)
+		lowmem_deathpending = NULL;
+#endif
+
+	return NOTIFY_OK;
+}
+
+#ifdef CONFIG_MEMORY_HOTPLUG
+static int lmk_hotplug_callback(struct notifier_block *self,
+				unsigned long cmd, void *data)
+{
+	switch (cmd) {
+	/* Don't care LMK cases */
+	case MEM_ONLINE:
+	case MEM_OFFLINE:
+	case MEM_CANCEL_ONLINE:
+	case MEM_CANCEL_OFFLINE:
+	case MEM_GOING_ONLINE:
+		offlining = 0;
+		lowmem_print(4, "lmk in normal mode\n");
+		break;
+	/* LMK should account for movable zone */
+	case MEM_GOING_OFFLINE:
+		offlining = 1;
+		lowmem_print(4, "lmk in hotplug mode\n");
+		break;
+	}
+	return NOTIFY_DONE;
+}
+#endif
+
 static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 {
 	struct task_struct *tsk;
+#ifdef ENHANCED_LMK_ROUTINE
+	struct task_struct *selected[LOWMEM_DEATHPENDING_DEPTH] = {NULL,};
+#else
 	struct task_struct *selected = NULL;
+#endif
 	int rem = 0;
 	int tasksize;
 	int i;
 	int min_score_adj = OOM_SCORE_ADJ_MAX + 1;
+#ifdef ENHANCED_LMK_ROUTINE
+	int selected_tasksize[LOWMEM_DEATHPENDING_DEPTH] = {0,};
+	int selected_oom_score_adj[LOWMEM_DEATHPENDING_DEPTH] = {OOM_ADJUST_MAX,};
+	int all_selected_oom = 0;
+	int max_selected_oom_idx = 0;
+#else
 	int selected_tasksize = 0;
 	int selected_oom_score_adj;
+#endif
 	int array_size = ARRAY_SIZE(lowmem_adj);
 	int other_free = global_page_state(NR_FREE_PAGES) - totalreserve_pages;
 	int other_file = global_page_state(NR_FILE_PAGES) -
 						global_page_state(NR_SHMEM);
+	struct zone *zone;
+
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+	other_file -= total_swapcache_pages;
+#endif
+
+	if (offlining) {
+		/* Discount all free space in the section being offlined */
+		for_each_zone(zone) {
+			 if (zone_idx(zone) == ZONE_MOVABLE) {
+				other_free -= zone_page_state(zone,
+						NR_FREE_PAGES);
+				lowmem_print(4, "lowmem_shrink discounted "
+					"%lu pages in movable zone\n",
+					zone_page_state(zone, NR_FREE_PAGES));
+			}
+		}
+	}
+	/*
+	 * If we already have a death outstanding, then
+	 * bail out right away; indicating to vmscan
+	 * that we have nothing further to offer on
+	 * this pass.
+	 *
+	 * Note: Currently you need CONFIG_PROFILING
+	 * for this to work correctly.
+	 */
+#ifdef ENHANCED_LMK_ROUTINE
+	for (i = 0; i < LOWMEM_DEATHPENDING_DEPTH; i++) {
+		if (lowmem_deathpending[i] &&
+			time_before_eq(jiffies, lowmem_deathpending_timeout))
+			return 0;
+	}
+#else
+	if (lowmem_deathpending &&
+		time_before_eq(jiffies, lowmem_deathpending_timeout))
+		return 0;
+#endif
 
 	if (lowmem_adj_size < array_size)
 		array_size = lowmem_adj_size;
@@ -102,12 +275,24 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 			     sc->nr_to_scan, sc->gfp_mask, rem);
 		return rem;
 	}
-	selected_oom_score_adj = min_score_adj;
 
-	rcu_read_lock();
+#ifdef ENHANCED_LMK_ROUTINE
+	for (i = 0; i < LOWMEM_DEATHPENDING_DEPTH; i++)
+		selected_oom_score_adj[i] = min_score_adj;
+#else
+	selected_oom_score_adj = min_score_adj;
+#endif
+
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+	atomic_set(&s_reclaim.lmk_running, 1);
+#endif
+	read_lock(&tasklist_lock);
 	for_each_process(tsk) {
 		struct task_struct *p;
 		int oom_score_adj;
+#ifdef ENHANCED_LMK_ROUTINE
+		int is_exist_oom_task = 0;
+#endif
 
 		if (tsk->flags & PF_KTHREAD)
 			continue;
@@ -116,12 +301,6 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		if (!p)
 			continue;
 
-		if (test_tsk_thread_flag(p, TIF_MEMDIE) &&
-		    time_before_eq(jiffies, lowmem_deathpending_timeout)) {
-			task_unlock(p);
-			rcu_read_unlock();
-			return 0;
-		}
 		oom_score_adj = p->signal->oom_score_adj;
 		if (oom_score_adj < min_score_adj) {
 			task_unlock(p);
@@ -131,6 +310,45 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		task_unlock(p);
 		if (tasksize <= 0)
 			continue;
+
+#ifdef ENHANCED_LMK_ROUTINE
+		if (all_selected_oom < LOWMEM_DEATHPENDING_DEPTH) {
+			for (i = 0; i < LOWMEM_DEATHPENDING_DEPTH; i++) {
+				if (!selected[i]) {
+					is_exist_oom_task = 1;
+					max_selected_oom_idx = i;
+					break;
+				}
+			}
+		} else if (selected_oom_score_adj[max_selected_oom_idx] < oom_score_adj ||
+			(selected_oom_score_adj[max_selected_oom_idx] == oom_score_adj &&
+			selected_tasksize[max_selected_oom_idx] < tasksize)) {
+			is_exist_oom_task = 1;
+		}
+
+		if (is_exist_oom_task) {
+			selected[max_selected_oom_idx] = p;
+			selected_tasksize[max_selected_oom_idx] = tasksize;
+			selected_oom_score_adj[max_selected_oom_idx] = oom_score_adj;
+
+			if (all_selected_oom < LOWMEM_DEATHPENDING_DEPTH)
+				all_selected_oom++;
+
+			if (all_selected_oom == LOWMEM_DEATHPENDING_DEPTH) {
+				for (i = 0; i < LOWMEM_DEATHPENDING_DEPTH; i++) {
+					if (selected_oom_score_adj[i] < selected_oom_score_adj[max_selected_oom_idx])
+						max_selected_oom_idx = i;
+					else if (selected_oom_score_adj[i] == selected_oom_score_adj[max_selected_oom_idx] &&
+						selected_tasksize[i] < selected_tasksize[max_selected_oom_idx])
+						max_selected_oom_idx = i;
+				}
+			}
+
+			lowmem_print(2, "select %d (%s), adj %d, \
+					size %d, to kill\n",
+				p->pid, p->comm, oom_score_adj, tasksize);
+		}
+#else
 		if (selected) {
 			if (oom_score_adj < selected_oom_score_adj)
 				continue;
@@ -143,7 +361,26 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		selected_oom_score_adj = oom_score_adj;
 		lowmem_print(2, "select %d (%s), adj %d, size %d, to kill\n",
 			     p->pid, p->comm, oom_score_adj, tasksize);
+#endif
 	}
+#ifdef ENHANCED_LMK_ROUTINE
+	for (i = 0; i < LOWMEM_DEATHPENDING_DEPTH; i++) {
+		if (selected[i]) {
+			lowmem_print(1, "send sigkill to %d (%s), adj %d,\
+				     size %d\n",
+				     selected[i]->pid, selected[i]->comm,
+				     selected_oom_score_adj[i],
+				     selected_tasksize[i]);
+			lowmem_deathpending[i] = selected[i];
+			lowmem_deathpending_timeout = jiffies + HZ;
+			send_sig(SIGKILL, selected[i], 0);
+			rem -= selected_tasksize[i];
+#ifdef LMK_COUNT_READ
+			lmk_count++;
+#endif
+		}
+	}
+#else
 	if (selected) {
 		lowmem_print(1, "send sigkill to %d (%s), adj %d, size %d\n",
 			     selected->pid, selected->comm,
@@ -152,12 +389,140 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		send_sig(SIGKILL, selected, 0);
 		set_tsk_thread_flag(selected, TIF_MEMDIE);
 		rem -= selected_tasksize;
+#ifdef LMK_COUNT_READ
+		lmk_count++;
+#endif
 	}
+#endif
 	lowmem_print(4, "lowmem_shrink %lu, %x, return %d\n",
 		     sc->nr_to_scan, sc->gfp_mask, rem);
-	rcu_read_unlock();
+	read_unlock(&tasklist_lock);
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+	atomic_set(&s_reclaim.lmk_running, 0);
+#endif
 	return rem;
 }
+
+
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+void could_cswap(void)
+{
+	struct sysinfo i;
+
+	if (atomic_read(&s_reclaim.need_to_reclaim) != 1)
+		return;
+
+	if (time_before(jiffies, prev_jiffy + minimum_interval_time))
+		return;
+
+	if (atomic_read(&s_reclaim.lmk_running) == 1 || atomic_read(&kswapd_thread_on) == 1) 
+		return;
+
+	si_swapinfo(&i);
+	if (i.freeswap < minimum_freeswap_pages)
+		return;
+
+	if (unlikely(s_reclaim.kcompcached == NULL))
+		return;
+
+	if (likely(atomic_read(&s_reclaim.kcompcached_enable) == 0))
+		return;
+
+	if (idle_cpu(task_cpu(s_reclaim.kcompcached)) && this_cpu_loadx(4) == 0) {
+		if (atomic_read(&s_reclaim.kcompcached_running) == 0) {
+			lss_dbg("wakeup kcompcached\n");
+			wake_up_process(s_reclaim.kcompcached);
+			prev_jiffy = jiffies;
+			atomic_set(&s_reclaim.kcompcached_running, 1);
+		}
+	}
+}
+
+inline void enable_soft_reclaim(void)
+{
+	atomic_set(&s_reclaim.kcompcached_enable, 1);
+}
+
+inline void disable_soft_reclaim(void)
+{
+	atomic_set(&s_reclaim.kcompcached_enable, 0);
+}
+
+inline void need_soft_reclaim(void)
+{
+	atomic_set(&s_reclaim.need_to_reclaim, 1);
+}
+
+inline void cancel_soft_reclaim(void)
+{
+	atomic_set(&s_reclaim.need_to_reclaim, 0);
+}
+
+int get_soft_reclaim_status(void)
+{
+	int kcompcache_running = atomic_read(&s_reclaim.kcompcached_running);
+	if(kcompcache_running)
+		set_user_nice(s_reclaim.kcompcached, 0);
+	return kcompcache_running;
+}
+
+static int soft_reclaim(void)
+{
+	int nid;
+	int i;
+	unsigned long nr_soft_reclaimed;
+	unsigned long nr_soft_scanned;
+	unsigned long nr_reclaimed = 0;
+
+	for_each_node_state(nid, N_HIGH_MEMORY) {
+		pg_data_t *pgdat = NODE_DATA(nid);
+		for (i = 0; i <= 1; i++) {
+			struct zone *zone = pgdat->node_zones + i;
+			if (!populated_zone(zone))
+				continue;
+			if (zone->all_unreclaimable)
+				continue;
+
+			nr_soft_scanned = 0;
+			nr_soft_reclaimed = mem_cgroup_soft_limit_reclaim(zone,
+						0, GFP_KERNEL,
+						&nr_soft_scanned);
+	
+			s_reclaim.nr_last_soft_reclaimed = nr_soft_reclaimed;
+			s_reclaim.nr_last_soft_scanned = nr_soft_scanned;
+			s_reclaim.nr_total_soft_reclaimed += nr_soft_reclaimed;
+			s_reclaim.nr_total_soft_scanned += nr_soft_scanned;
+			nr_reclaimed += nr_soft_reclaimed;
+		}
+	}
+
+	lss_dbg("soft reclaimed %ld pages\n", nr_reclaimed);
+	return nr_reclaimed;
+}
+
+static int do_compcache(void * nothing)
+{
+	int ret;
+	set_freezable();
+
+	for ( ; ; ) {
+		ret = try_to_freeze();
+		if (kthread_should_stop())
+			break;
+
+		if (soft_reclaim() < minimun_reclaim_pages)
+			cancel_soft_reclaim();
+
+		atomic_set(&s_reclaim.kcompcached_running, 0);
+		set_current_state(TASK_INTERRUPTIBLE);
+		set_user_nice(s_reclaim.kcompcached, 15);
+		schedule();
+	}
+
+	return 0;
+}
+#endif /* CONFIG_ZRAM_FOR_ANDROID */
+
 
 static struct shrinker lowmem_shrinker = {
 	.shrink = lowmem_shrink,
@@ -166,13 +531,39 @@ static struct shrinker lowmem_shrinker = {
 
 static int __init lowmem_init(void)
 {
+	task_free_register(&task_nb);
 	register_shrinker(&lowmem_shrinker);
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+	s_reclaim.kcompcached = kthread_run(do_compcache, NULL, "kcompcached");
+	if (IS_ERR(s_reclaim.kcompcached)) {
+		/* failure at boot is fatal */
+		BUG_ON(system_state == SYSTEM_BOOTING);
+	}
+	set_user_nice(s_reclaim.kcompcached, 15);
+	atomic_set(&s_reclaim.need_to_reclaim, 0);
+	atomic_set(&s_reclaim.kcompcached_running, 0);
+	enable_soft_reclaim();
+	prev_jiffy = jiffies;
+#endif /* CONFIG_ZRAM_FOR_ANDROID */
+
+#ifdef CONFIG_MEMORY_HOTPLUG
+	hotplug_memory_notifier(lmk_hotplug_callback, 0);
+#endif
 	return 0;
 }
 
 static void __exit lowmem_exit(void)
 {
 	unregister_shrinker(&lowmem_shrinker);
+	task_free_unregister(&task_nb);
+
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+	if (s_reclaim.kcompcached) {
+		cancel_soft_reclaim();
+		kthread_stop(s_reclaim.kcompcached);
+		s_reclaim.kcompcached = NULL;
+	}
+#endif /* CONFIG_ZRAM_FOR_ANDROID */
 }
 
 #ifdef CONFIG_ANDROID_LOW_MEMORY_KILLER_AUTODETECT_OOM_ADJ_VALUES
@@ -267,8 +658,17 @@ module_param_array_named(minfree, lowmem_minfree, uint, &lowmem_minfree_size,
 			 S_IRUGO | S_IWUSR);
 module_param_named(debug_level, lowmem_debug_level, uint, S_IRUGO | S_IWUSR);
 
+#ifdef LMK_COUNT_READ
+module_param_named(lmkcount, lmk_count, uint, S_IRUGO);
+#endif
+
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+module_param_named(min_freeswap, minimum_freeswap_pages, uint, S_IRUSR | S_IWUSR);
+module_param_named(min_reclaim, minimun_reclaim_pages, uint, S_IRUSR | S_IWUSR);
+module_param_named(min_interval, minimum_interval_time, uint, S_IRUSR | S_IWUSR);
+#endif /* CONFIG_ZRAM_FOR_ANDROID */
+
 module_init(lowmem_init);
 module_exit(lowmem_exit);
 
 MODULE_LICENSE("GPL");
-

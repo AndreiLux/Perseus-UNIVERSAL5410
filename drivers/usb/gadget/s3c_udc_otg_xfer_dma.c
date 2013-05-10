@@ -31,9 +31,8 @@
 static u8 clear_feature_num;
 static int clear_feature_flag;
 static int set_conf_done;
-static u16 g_status __aligned(8);
 
-static u8 test_pkt[TEST_PKT_SIZE] __aligned(8) = {
+static const u8 test_pkt[TEST_PKT_SIZE] __aligned(8) = {
 	/* JKJKJKJK x 9 */
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	/* JJKKJJKK x 8 */
@@ -49,6 +48,23 @@ static u8 test_pkt[TEST_PKT_SIZE] __aligned(8) = {
 };
 
 static void s3c_udc_ep_set_stall(struct s3c_ep *ep);
+
+#if defined(CONFIG_BATTERY_SAMSUNG)
+u32 cable_connected;
+void s3c_udc_cable_connect(struct s3c_udc *dev)
+{
+	samsung_cable_check_status(1);
+	cable_connected = 1;
+}
+
+void s3c_udc_cable_disconnect(struct s3c_udc *dev)
+{
+	if (cable_connected) {
+		samsung_cable_check_status(0);
+		cable_connected = 0;
+	}
+}
+#endif
 
 static inline void s3c_udc_ep0_zlp(struct s3c_udc *dev)
 {
@@ -86,6 +102,42 @@ static inline void s3c_udc_pre_setup(struct s3c_udc *dev, bool need_nak)
 	__raw_writel(ep_ctrl, dev->regs + S3C_UDC_OTG_DOEPCTL(EP0_CON));
 }
 
+static int aligned_map_buf(struct s3c_request *req, int in)
+{
+	if ((u32)req->req.buf & 3) {
+		DEBUG("Buffer is not aligned %x\n", req->req.buf);
+		req->not_aligned = true;
+
+		/* Allocate bounce buffer */
+		req->bounce_buf = req->req.buf;
+		req->req.buf = kmalloc(req->req.length, GFP_ATOMIC);
+		if (!req->req.buf) {
+			DEBUG("%s: cannot allocate bounce buffer\n",
+			__func__);
+			req->req.buf = req->bounce_buf;
+			return -ENOMEM;
+		}
+		if (in)
+			memcpy(req->req.buf, req->bounce_buf, req->req.length);
+	}
+
+	return 0;
+}
+
+static int aligned_unmap_buf(struct s3c_request *req, int in)
+{
+	if (req->not_aligned) {
+		if (!in)
+			memcpy(req->bounce_buf,
+				req->req.buf, req->req.actual);
+		kfree(req->req.buf);
+		req->req.buf = req->bounce_buf;
+		req->not_aligned = false;
+	}
+
+	return 0;
+}
+
 static int setdma_rx(struct s3c_ep *ep, struct s3c_request *req)
 {
 	u32 *buf, ctrl;
@@ -94,6 +146,7 @@ static int setdma_rx(struct s3c_ep *ep, struct s3c_request *req)
 	struct s3c_udc *udc = ep->dev;
 	struct device *dev = &udc->dev->dev;
 
+	aligned_map_buf(req, ep_is_in(ep));
 	buf = req->req.buf + req->req.actual;
 	prefetchw(buf);
 
@@ -136,6 +189,7 @@ static int setdma_tx(struct s3c_ep *ep, struct s3c_request *req)
 	struct s3c_udc *udc = ep->dev;
 	struct device *dev = &udc->dev->dev;
 
+	aligned_map_buf(req, ep_is_in(ep));
 	buf = req->req.buf + req->req.actual;
 	prefetch(buf);
 	length = req->req.length - req->req.actual;
@@ -220,7 +274,6 @@ static void complete_rx(struct s3c_udc *dev, u8 ep_num)
 	else
 		xfer_size = (ep_tsr & 0x7fff);
 
-	__dma_single_cpu_to_dev(req->req.buf, req->req.length, DMA_FROM_DEVICE);
 	xfer_length = req->req.length - xfer_size;
 	req->req.actual += min(xfer_length, req->req.length - req->req.actual);
 	is_short = (xfer_length < ep->ep.maxpacket);
@@ -231,14 +284,14 @@ static void complete_rx(struct s3c_udc *dev, u8 ep_num)
 			is_short, ep_tsr, xfer_size);
 
 	if (is_short || req->req.actual == xfer_length) {
+		done(ep, req, 0);
+
 		if (ep_num == EP0_CON && dev->ep0state == DATA_STATE_RECV) {
 			done(ep, req, 0);
 			DEBUG_OUT_EP("	=> Send ZLP\n");
 			dev->ep0state = WAIT_FOR_OUT_STATUS;
 			s3c_udc_ep0_zlp(dev);
 		} else {
-			done(ep, req, 0);
-
 			if (!list_empty(&ep->queue)) {
 				req = list_entry(ep->queue.next,
 					struct s3c_request, queue);
@@ -519,6 +572,9 @@ static irqreturn_t s3c_udc_irq(int irq, void *_dev)
 				dev->driver->disconnect(&dev->gadget);
 				spin_lock(&dev->lock);
 			}
+#if defined(CONFIG_BATTERY_SAMSUNG)
+			s3c_udc_cable_disconnect(dev);
+#endif
 		}
 	}
 
@@ -776,22 +832,17 @@ static int s3c_udc_get_status(struct s3c_udc *dev,
 {
 	u8 ep_num = crq->wIndex & 0x7F;
 	u32 ep_ctrl;
+	u16 usb_status = 0;
 
 	DEBUG_SETUP("%s: *** USB_REQ_GET_STATUS\n", __func__);
 
 	switch (crq->bRequestType & USB_RECIP_MASK) {
 	case USB_RECIP_INTERFACE:
-		g_status = 0;
-		DEBUG_SETUP("\tGET_STATUS: USB_RECIP_INTERFACE,"
-			"g_stauts = %d\n", g_status);
+		usb_status |= dev->selfpowered << USB_DEVICE_SELF_POWERED;
 		break;
-
 	case USB_RECIP_DEVICE:
-		g_status = 0x0;
-		DEBUG_SETUP("\tGET_STATUS: USB_RECIP_DEVICE,"
-			"g_stauts = %d\n", g_status);
+		/* should set to zero */
 		break;
-
 	case USB_RECIP_ENDPOINT:
 		if (crq->wLength > 2) {
 			DEBUG_SETUP("\tGET_STATUS:"
@@ -799,18 +850,17 @@ static int s3c_udc_get_status(struct s3c_udc *dev,
 			return 1;
 		}
 
-		g_status = dev->ep[ep_num].stopped;
-		DEBUG_SETUP("\tGET_STATUS: USB_RECIP_ENDPOINT,"
-			"g_stauts = %d\n", g_status);
-
+		usb_status |= dev->ep[ep_num].stopped;
 		break;
 	default:
 		return 1;
 	}
 
-	__dma_single_cpu_to_dev(&g_status, 2, DMA_TO_DEVICE);
+	DEBUG_SETUP("\tGET_STATUS: USB_RECIP type %x,"
+		"usb_stauts = %d\n", crq->bRequestType, usb_status);
 
-	__raw_writel(virt_to_phys(&g_status),
+	((u16 *)dev->ep0_data)[0] = cpu_to_le16(usb_status);
+	__raw_writel(dev->ep0_data_dma,
 		dev->regs + S3C_UDC_OTG_DIEPDMA(EP0_CON));
 	__raw_writel((1<<19)|(2<<0),
 		dev->regs + S3C_UDC_OTG_DIEPTSIZ(EP0_CON));
@@ -1117,8 +1167,8 @@ static inline void set_test_mode(struct s3c_udc *dev)
 		printk(KERN_INFO "Test mode selector in set_feature request is"
 			"TEST PACKET\n");
 
-		__dma_single_cpu_to_dev(test_pkt, TEST_PKT_SIZE, DMA_TO_DEVICE);
-		__raw_writel(virt_to_phys(test_pkt),
+		memcpy(dev->ep0_data, test_pkt, TEST_PKT_SIZE);
+		__raw_writel(dev->ep0_data_dma,
 			dev->regs + S3C_UDC_OTG_DIEPDMA(EP0_CON));
 
 		ep_ctrl = __raw_readl(dev->regs + S3C_UDC_OTG_DIEPCTL(EP0_CON));
@@ -1295,11 +1345,16 @@ static void s3c_ep0_setup(struct s3c_udc *dev)
 		DEBUG_SETUP("============================================\n");
 		DEBUG_SETUP("%s: USB_REQ_SET_CONFIGURATION (%d)\n",
 				__func__, usb_ctrl->wValue);
+		/* After SET_CONFIGURATION, packet can be send by set_alt() */
+		set_conf_done = 1;
 
 		if (usb_ctrl->bRequestType == USB_RECIP_DEVICE) {
 			reset_available = 1;
 			dev->req_config = 1;
 		}
+#if defined(CONFIG_BATTERY_SAMSUNG)
+		s3c_udc_cable_connect(dev);
+#endif
 		break;
 
 	case USB_REQ_GET_DESCRIPTOR:

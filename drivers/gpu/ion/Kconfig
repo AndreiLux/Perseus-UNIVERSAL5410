@@ -21,7 +21,7 @@ config ION_EXYNOS
 config ION_EXYNOS_CONTIGHEAP_SIZE
 	int "Size in Kilobytes of memory pool of EXYNOS_CONTIG_HEAP"
 	depends on ION_EXYNOS && CMA
-	default 45056
+	default 0
 
 config ION_EXYNOS_DRM_MFC_SH
 	bool "ION Heap for drm mfc sh"
@@ -46,14 +46,19 @@ config ION_EXYNOS_DRM_SECTBL
 config ION_EXYNOS_DRM_MEMSIZE_FIMD_VIDEO
 	int "Reserved memsize in kilobytes for FIMD VIDEO"
 	depends on EXYNOS_CONTENT_PATH_PROTECTION
-	default 98304
+	default 49152
 
 config ION_EXYNOS_DRM_MEMSIZE_MFC_OUTPUT
 	int "Reserved memsize in kilobytes for MFC OUTPUT"
 	depends on EXYNOS_CONTENT_PATH_PROTECTION
-	default 40960
+	default 60416
 
 config ION_EXYNOS_DRM_MEMSIZE_MFC_INPUT
 	int "Reserved memsize in kilobytes for MFC INPUT"
 	depends on EXYNOS_CONTENT_PATH_PROTECTION
 	default 16384
+
+config ION_EXYNOS_DRM_MEMSIZE_G2D_WFD
+	int "Reserved memsize in kilobytes for G2D WFD"
+	depends on EXYNOS_CONTENT_PATH_PROTECTION
+	default 8192

@@ -55,7 +55,8 @@
 
 #define FLITE_MAX_RESET_READY_TIME	20 /* 100ms */
 #define FLITE_MAX_CTRL_NUM		1
-#define FLITE_MAX_OUT_BUFS		1
+#define FLITE_CLK_NAME_SIZE		20
+#define FLITE_MAX_OUT_BUFS 		flite->reqbufs_cnt
 #ifdef CONFIG_ARCH_EXYNOS4
 #define FLITE_MAX_MBUS_NUM		1
 #endif
@@ -164,6 +165,7 @@ struct flite_sensor_info {
 	struct exynos_isp_info *pdata;
 	struct v4l2_subdev *sd;
 	struct clk *camclk;
+	void (*priv_ops)(void *data, int arg);
 };
 
 struct flite_ctrls {
@@ -208,6 +210,7 @@ struct flite_dev {
 	int				buf_index;
 	struct clk			*gsc_clk;
 	struct clk			*camif_clk;
+	bool				sysmmu_atached;
 #endif
 	struct v4l2_mbus_framefmt	mbus_fmt;
 	struct flite_frame		s_frame;
@@ -249,6 +252,7 @@ void flite_hw_set_cam_channel(struct flite_dev *dev);
 void flite_hw_set_camera_type(struct flite_dev *dev, struct s3c_platform_camera *cam);
 int flite_hw_set_source_format(struct flite_dev *dev);
 void flite_hw_set_output_dma(struct flite_dev *dev, bool enable);
+void flite_hw_set_output_gscaler(struct flite_dev *dev, bool enable);
 void flite_hw_set_interrupt_source(struct flite_dev *dev, u32 source);
 void flite_hw_set_config_irq(struct flite_dev *dev, struct s3c_platform_camera *cam);
 void flite_hw_set_window_offset(struct flite_dev *dev);
@@ -263,6 +267,7 @@ void flite_hw_set_output_size(struct flite_dev *dev);
 void flite_hw_set_dma_offset(struct flite_dev *dev);
 void flite_hw_set_output_addr(struct flite_dev *dev, struct flite_addr *addr,
 							int index);
+void flite_hw_set_output_frame_count_seq(struct flite_dev *dev, int cnt);
 
 #if defined(CONFIG_VIDEOBUF2_CMA_PHYS)
 extern const struct flite_vb2 flite_vb2_cma;

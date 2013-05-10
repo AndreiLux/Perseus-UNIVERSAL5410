@@ -1321,7 +1321,7 @@ static void dapm_post_sequence_async(void *data, async_cookie_t cookie)
 			dev_err(d->dev, "Failed to turn off bias: %d\n", ret);
 
 		if (d->dev)
-			pm_runtime_put(d->dev);
+			pm_runtime_put_sync(d->dev);
 	}
 
 	/* If we just powered up then move to active bias */
@@ -1457,7 +1457,15 @@ static int dapm_power_widgets(struct snd_soc_dapm_context *dapm, int event)
 	}
 
 	list_for_each_entry(w, &card->widgets, list) {
-		list_del_init(&w->dirty);
+		switch (w->id) {
+		case snd_soc_dapm_pre:
+		case snd_soc_dapm_post:
+			/* These widgets always need to be powered */
+			break;
+		default:
+			list_del_init(&w->dirty);
+			break;
+		}
 
 		if (w->power) {
 			d = w->dapm;
@@ -2193,6 +2201,7 @@ int snd_soc_dapm_add_routes(struct snd_soc_dapm_context *dapm,
 	for (i = 0; i < num; i++) {
 		ret = snd_soc_dapm_add_route(dapm, route);
 		if (ret < 0) {
+			msleep(1000);
 			dev_err(dapm->dev, "Failed to add route %s->%s\n",
 				route->source, route->sink);
 			break;

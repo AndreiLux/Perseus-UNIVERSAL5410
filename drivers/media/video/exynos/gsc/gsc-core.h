@@ -21,8 +21,8 @@
 #include <linux/videodev2_exynos_media.h>
 #include <linux/io.h>
 #include <linux/pm_runtime.h>
+#include <linux/pm_qos.h>
 #include <mach/videonode.h>
-#include <mach/exynos5_bus.h>
 #include <media/videobuf2-core.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
@@ -36,6 +36,7 @@
 #include <media/videobuf2-cma-phys.h>
 #elif defined(CONFIG_VIDEOBUF2_ION)
 #include <media/videobuf2-ion.h>
+#include <plat/sysmmu.h>
 #endif
 
 extern const int h_coef_8t[7][16][8];
@@ -73,6 +74,8 @@ extern int gsc_dbg;
 #define GSC_MAX_CLOCKS			3
 #define GSC_SHUTDOWN_TIMEOUT		((100*HZ)/1000)
 #define GSC_MAX_DEVS			4
+#define WORKQUEUE_NAME_SIZE		32
+#define GSC_MAX_PREF_BUF		3
 #define WORKQUEUE_NAME_SIZE		32
 #define FIMD_NAME_SIZE			32
 #define GSC_M2M_BUF_NUM			0
@@ -144,6 +147,22 @@ enum gsc_irq {
 	GSC_DONE_IRQ = 16,
 };
 
+enum gsc_qos_status {
+	GSC_QOS_OFF,
+	GSC_QOS_ON,
+};
+
+enum gsc_clk_status {
+	GSC_CLK_OFF,
+	GSC_CLK_ON,
+};
+
+enum {
+	CLK_GATE,
+	CLK_CHILD,
+	CLK_PARENT,
+};
+
 /**
  * enum gsc_datapath - the path of data used for gscaler
  * @GSC_CAMERA: from camera
@@ -168,19 +187,21 @@ enum gsc_yuv_fmt {
 
 #define fh_to_ctx(__fh) container_of(__fh, struct gsc_ctx, fh)
 
-#define is_rgb(img) ((img == V4L2_PIX_FMT_RGB565X) | (img == V4L2_PIX_FMT_RGB32) | \
-						     (img == V4L2_PIX_FMT_BGR32))
-#define is_yuv422(img) ((img == V4L2_PIX_FMT_YUYV) | (img == V4L2_PIX_FMT_UYVY) | \
-		     (img == V4L2_PIX_FMT_VYUY) | (img == V4L2_PIX_FMT_YVYU) | \
-		     (img == V4L2_PIX_FMT_YUV422P) | (img == V4L2_PIX_FMT_NV16) | \
+#define is_rgb(img) ((img == V4L2_PIX_FMT_RGB565X) || \
+		(img == V4L2_PIX_FMT_RGB32) || (img == V4L2_PIX_FMT_BGR32))
+#define is_yuv422(img) ((img == V4L2_PIX_FMT_YUYV) || (img == V4L2_PIX_FMT_UYVY) || \
+		     (img == V4L2_PIX_FMT_VYUY) || (img == V4L2_PIX_FMT_YVYU) || \
+		     (img == V4L2_PIX_FMT_YUV422P) || (img == V4L2_PIX_FMT_NV16) || \
 		     (img == V4L2_PIX_FMT_NV61))
-#define is_yuv420(img) ((img == V4L2_PIX_FMT_YUV420) | (img == V4L2_PIX_FMT_YVU420) | \
-		     (img == V4L2_PIX_FMT_NV12) | (img == V4L2_PIX_FMT_NV21) | \
-		     (img == V4L2_PIX_FMT_NV12M) | (img == V4L2_PIX_FMT_NV21M) | \
-		     (img == V4L2_PIX_FMT_YUV420M) | (img == V4L2_PIX_FMT_YVU420M) | \
-		     (img == V4L2_PIX_FMT_NV12MT_16X16))
+#define is_yuv420(img) ((img == V4L2_PIX_FMT_YUV420) || \
+		(img == V4L2_PIX_FMT_YVU420) || (img == V4L2_PIX_FMT_NV12) || \
+		(img == V4L2_PIX_FMT_NV21) || (img == V4L2_PIX_FMT_NV12M) || \
+		(img == V4L2_PIX_FMT_NV21M) || (img == V4L2_PIX_FMT_YUV420M) || \
+		(img == V4L2_PIX_FMT_YVU420M) || (img == V4L2_PIX_FMT_NV12MT_16X16))
 #define is_AYV12(img) (img == V4L2_PIX_FMT_YVU420M)
-
+#define is_ver_5a (pdata->ip_ver == IP_VER_GSC_5A)
+#define is_rotation \
+	((ctx->gsc_ctrls.rotate->val == 90) || (ctx->gsc_ctrls.rotate->val == 270))
 #define gsc_m2m_run(dev) test_bit(ST_M2M_RUN, &(dev)->state)
 #define gsc_m2m_opened(dev) test_bit(ST_M2M_OPEN, &(dev)->state)
 #define gsc_out_run(dev) test_bit(ST_OUTPUT_STREAMON, &(dev)->state)
@@ -274,6 +295,7 @@ struct gsc_ctrls {
 	struct v4l2_ctrl	*csc_eq;
 	struct v4l2_ctrl	*csc_range;
 	struct v4l2_ctrl	*drm_en;
+	struct v4l2_ctrl	*m2m_ctx_num;
 };
 
 /**
@@ -442,7 +464,7 @@ struct gsc_pix_min {
 struct gsc_pix_align {
 	u16 org_h;
 	u16 org_w;
-	u16 offset_h;
+	u16 offset_w;
 	u16 real_w;
 	u16 real_h;
 	u16 target_w;
@@ -486,7 +508,6 @@ struct gsc_vb2 {
 	int (*resume)(void *alloc_ctx);
 	void (*suspend)(void *alloc_ctx);
 
-	int (*cache_flush)(struct vb2_buffer *vb, u32 num_planes);
 	void (*set_cacheable)(void *alloc_ctx, bool cacheable);
 	void (*set_sharable)(void *alloc_ctx, bool sharable);
 	void (*set_protected)(void *alloc_ctx, bool ctx_protected);
@@ -526,12 +547,12 @@ struct gsc_dev {
 	struct platform_device		*pdev;
 	struct gsc_variant		*variant;
 	u16				id;
-	struct clk			*clock;
+	struct clk			*clock[GSC_MAX_CLOCKS];
+	atomic_t			clk_cnt;
 	void __iomem			*regs;
 	struct resource			*regs_res;
 	int				irq;
 	wait_queue_head_t		irq_queue;
-	struct work_struct		work_struct;
 	struct workqueue_struct		*irq_workqueue;
 	struct gsc_m2m_device		m2m;
 	struct gsc_output_device	out;
@@ -544,10 +565,17 @@ struct gsc_dev {
 	struct gsc_pipeline		pipeline;
 	struct exynos_entity_data	md_data;
 	bool				protected_content;
-	struct exynos5_bus_int_handle	*int_poll_hd;
-	struct exynos5_bus_int_handle	*int_min_hd;
-	struct exynos5_bus_mif_handle	*mif_min_hd;
-
+#ifdef GSC_PERF
+	unsigned long long		start_time;
+	unsigned long long		end_time;
+#endif
+#if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
+	atomic_t			qos_cnt;
+	struct pm_qos_request		exynos5_gsc_mif_qos;
+	struct pm_qos_request		exynos5_gsc_int_qos;
+#endif
+	struct clk			*clk_child;
+	struct clk			*clk_parent;
 };
 
 /**
@@ -582,7 +610,9 @@ struct gsc_ctx {
 	struct v4l2_fh		fh;
 	struct v4l2_ctrl_handler ctrl_handler;
 	struct gsc_ctrls	gsc_ctrls;
+	struct timer_list	op_timer;
 	bool			ctrls_rdy;
+	struct sysmmu_prefbuf	prebuf[GSC_MAX_PREF_BUF];
 	struct work_struct	fence_work;
 	struct list_head	fence_wait_list;
 };
@@ -594,6 +624,9 @@ extern const struct gsc_vb2 gsc_vb2_ion;
 #endif
 
 void gsc_set_prefbuf(struct gsc_dev *gsc, struct gsc_frame frm);
+void gsc_pm_qos_ctrl(struct gsc_dev *gsc, enum gsc_qos_status status,
+			int mem_val, int int_val);
+void gsc_clock_gating(struct gsc_dev *gsc, enum gsc_clk_status status);
 void gsc_clk_release(struct gsc_dev *gsc);
 int gsc_register_m2m_device(struct gsc_dev *gsc);
 void gsc_unregister_m2m_device(struct gsc_dev *gsc);
@@ -677,6 +710,12 @@ static inline void gsc_hw_enable_control(struct gsc_dev *dev, bool on)
 	writel(cfg, dev->regs + GSC_ENABLE);
 }
 
+static inline int gsc_hw_get_curr_in_buf_idx(struct gsc_dev *dev)
+{
+	u32 cfg = readl(dev->regs + GSC_IN_BASE_ADDR_Y_MASK);
+	return GSC_IN_CURR_GET_INDEX(cfg);
+}
+
 static inline int gsc_hw_get_irq_status(struct gsc_dev *dev)
 {
 	u32 cfg = readl(dev->regs + GSC_IRQ);
@@ -749,10 +788,7 @@ active_queue_pop(struct gsc_output_device *vid_out, struct gsc_dev *dev)
 static inline void active_queue_push(struct gsc_output_device *vid_out,
 				     struct gsc_input_buf *buf, struct gsc_dev *dev)
 {
-	unsigned long flags;
-	spin_lock_irqsave(&dev->slock, flags);
 	list_add_tail(&buf->list, &vid_out->active_buf_q);
-	spin_unlock_irqrestore(&dev->slock, flags);
 }
 
 static inline struct gsc_dev *entity_to_gsc(struct media_entity *me)
@@ -794,7 +830,8 @@ void gsc_hw_set_rotation(struct gsc_ctx *ctx);
 void gsc_hw_set_global_alpha(struct gsc_ctx *ctx);
 void gsc_hw_set_sfr_update(struct gsc_ctx *ctx);
 void gsc_hw_set_local_dst(int id, int out, bool on);
-void gsc_hw_set_sysreg_writeback(struct gsc_ctx *ctx);
+void gsc_hw_set_mixer(int id);
+void gsc_hw_set_sysreg_writeback(struct gsc_dev *dev);
 void gsc_hw_set_pxlasync_camif_lo_mask(struct gsc_dev *dev, bool on);
 void gsc_hw_set_h_coef(struct gsc_ctx *ctx);
 void gsc_hw_set_v_coef(struct gsc_ctx *ctx);
@@ -812,11 +849,9 @@ int gsc_wait_reset(struct gsc_dev *dev);
 int gsc_wait_operating(struct gsc_dev *dev);
 int gsc_wait_stop(struct gsc_dev *dev);
 
-void gsc_disp_fifo_sw_reset(struct gsc_dev *dev);
-void gsc_pixelasync_sw_reset(struct gsc_dev *dev);
-
-int gsc_bus_request_get(struct gsc_dev *gsc);
-void gsc_bus_request_put(struct gsc_dev *gsc);
+void gsc_hw_set_disp_pixelasync_reset(struct gsc_dev *dev);
+void gsc_hw_set_pixelasync_reset_output(struct gsc_dev *dev);
+void gsc_hw_set_pixelasync_reset_wb(struct gsc_dev *dev);
 
 int gsc_set_protected_content(struct gsc_dev *gsc, bool enable);
 

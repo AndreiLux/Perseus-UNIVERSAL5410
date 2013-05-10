@@ -54,7 +54,7 @@ void s5p_dp_stop_video(struct s5p_dp_device *dp)
 void s5p_dp_lane_swap(struct s5p_dp_device *dp, bool enable)
 {
 	u32 reg;
-
+#if 0 
 	if (soc_is_exynos5250()) {
 		if (enable)
 			reg = LANE3_MAP_LOGIC_LANE_0 | LANE2_MAP_LOGIC_LANE_1 |
@@ -68,6 +68,13 @@ void s5p_dp_lane_swap(struct s5p_dp_device *dp, bool enable)
 		else
 			reg = LANE1_MAP_LOGIC_LANE_1 | LANE0_MAP_LOGIC_LANE_0;
 	}
+#endif
+    if (enable)
+    	reg = LANE3_MAP_LOGIC_LANE_0 | LANE2_MAP_LOGIC_LANE_1 |
+    		LANE1_MAP_LOGIC_LANE_2 | LANE0_MAP_LOGIC_LANE_3;
+    else
+    	reg = LANE3_MAP_LOGIC_LANE_3 | LANE2_MAP_LOGIC_LANE_2 |
+    		LANE1_MAP_LOGIC_LANE_1 | LANE0_MAP_LOGIC_LANE_0;
 
 	writel(reg, dp->reg_base + S5P_DP_LANE_MAP);
 }

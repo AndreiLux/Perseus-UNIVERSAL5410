@@ -889,6 +889,7 @@ config ARCH_EXYNOS
 	select HAVE_S3C2410_I2C if I2C
 	select HAVE_S3C2410_WATCHDOG if WATCHDOG
 	select NEED_MACH_MEMORY_H
+	select NEED_MACH_IO_H
 	help
 	  Support for SAMSUNG's EXYNOS SoCs (EXYNOS4/5)
 
@@ -1403,6 +1404,12 @@ config PL310_ERRATA_769419
 	  on systems with an outer cache, the store buffer is drained
 	  explicitly.
 
+config ARM_ERRATA_761320
+	bool "ARM errata: no direct eviction"
+	depends on CPU_V7 && SMP
+	help
+	  This option enables the workaround for the 761320 Cortex-A9 erratum.
+
 config ARM_ERRATA_766421
 	bool "ARM errata: Strongly-Ordered/Device load or NC LDREX could return incorrect data"
 	depends on CPU_V7
@@ -1433,6 +1440,16 @@ config ARM_ERRATA_774769
 	  The workaround is to configure write streaming on versions of A15
 	  affected by this erratum such that no streaming-write ever allocates
 	  into the L2 cache.
+
+config ARM_ERRATA_798181
+	bool "ARM errata: TLBI/DSB failure on Cortex-A15"
+	depends on CPU_V7 && SMP
+	help
+	  On Cortex-A15 (r0p0..r3p2) the TLBI*IS/DSB operations are not
+	  adequately shooting down all use of the old entries. This
+	  option enables the Linux kernel workaround for this erratum
+	  which executes two dummy TLBI/DSB pairs on the CPU doing the
+	  TLB invalidation.
 
 endmenu
 
@@ -1588,6 +1605,7 @@ config HAVE_ARM_TWD
 	help
 	  This options enables support for the ARM timer and watchdog unit
 
+	  
 config MCPM
 	bool "Multi-Cluster Power Management"
 	depends on CPU_V7 && SMP
@@ -1595,6 +1613,24 @@ config MCPM
 	  This option provides the common power management infrastructure
 	  for (multi-)cluster based systems, such as big.LITTLE based
 	  systems.
+	  
+config BL_SWITCHER
+	bool "big.LITTLE switcher support (experimental)"
+	depends on CPU_V7 && EXPERIMENTAL
+	select CPU_PM
+	select ARM_CPU_SUSPEND
+	help
+	  The big.LITTLE "switcher" provides the core functionality to
+	  transparently handle transition between a cluster of A15's
+	  and a cluster of A7's in a big.LITTLE system.
+
+config BL_SWITCHER_DUMMY_IF
+	bool "Simple big.LITTLE switcher user interface"
+	depends on BL_SWITCHER
+	help
+	  This is a simple and dummy char dev interface to control
+	  the big.LITTLE switcher core code.  It is meant for
+	  debugging purposes only.
 
 choice
 	prompt "Memory split"

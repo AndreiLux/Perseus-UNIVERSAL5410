@@ -71,7 +71,7 @@ static void set_refresh_period(unsigned int freq_ref,
 		auto_refresh, 0);
 #else
 	__raw_writel(auto_refresh, S5P_VA_DREXII +
-			EXYNOS_DMC_TIMING_AREF_OFFSET);
+			EXYNOS_DMC_TIMINGAREF_OFFSET);
 #endif
 }
 
@@ -107,10 +107,10 @@ static void tmu_monitor(struct work_struct *work)
 		enable_irq(info->irq);
 		goto out;
 	case TMU_STATUS_THROTTLED:
-		if (cur_temp > data->ts.stop_throttle)
-			exynos_thermal_throttle();
 		if (cur_temp >= data->ts.start_tripping)
 			info->tmu_state = TMU_STATUS_TRIPPED;
+		else if (cur_temp > data->ts.stop_throttle)
+			exynos_thermal_throttle();
 		else
 			info->tmu_state = TMU_STATUS_NORMAL;
 		break;
@@ -118,15 +118,10 @@ static void tmu_monitor(struct work_struct *work)
 		if (cur_temp >= data->ts.start_emergency)
 			panic("Emergency thermal shutdown: temp=%d\n",
 			      cur_temp);
-		if (cur_temp >= data->ts.start_tripping) {
+		if (cur_temp >= data->ts.start_tripping)
 			pr_err("thermal tripped: temp=%d\n", cur_temp);
-			/* Throttle twice while tripping */
-			exynos_thermal_throttle();
-		} else {
+		else
 			info->tmu_state = TMU_STATUS_THROTTLED;
-		}
-		/* Throttle when tripped */
-		exynos_thermal_throttle();
 		break;
 	default:
 		break;

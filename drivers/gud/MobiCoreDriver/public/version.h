@@ -1,6 +1,6 @@
-/** @addtogroup MCD_MCDIMPL_KMOD
- * @{
- * <!-- Copyright Giesecke & Devrient GmbH 2010-2012 -->
+/*
+ * <-- Copyright Giesecke & Devrient GmbH 2010-2012 -->
+ * <-- Copyright Trustonic Limited 2013 -->
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions

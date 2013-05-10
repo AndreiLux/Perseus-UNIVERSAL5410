@@ -217,8 +217,10 @@ int iommu_map(struct iommu_domain *domain, unsigned long iova,
 	size_t orig_size = size;
 	int ret = 0;
 
-	if (unlikely(domain->ops->map == NULL))
+	if (unlikely(domain->ops->map == NULL)) {
+		pr_err("domain->ops->map is null\n");
 		return -ENODEV;
+	}
 
 	/* find out the minimum page size supported */
 	min_pagesz = 1 << __ffs(domain->ops->pgsize_bitmap);

@@ -50,8 +50,11 @@ struct clk {
 	int		      usage;
 	unsigned long         rate;
 	unsigned long         ctrlbit;
+	int			orig_src;
+	int			orig_div;
 
 	struct clk_ops		*ops;
+	int		    (*init)(struct clk *);
 	int		    (*enable)(struct clk *, int enable);
 	struct clk_lookup	lookup;
 #if defined(CONFIG_PM_DEBUG) && defined(CONFIG_DEBUG_FS)

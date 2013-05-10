@@ -64,12 +64,39 @@ static inline void ipi_flush_tlb_kernel_range(void *arg)
 	local_flush_tlb_kernel_range(ta->ta_start, ta->ta_end);
 }
 
+#ifdef CONFIG_ARM_ERRATA_798181
+static int erratum_a15_798181(void)
+{
+	unsigned int midr = read_cpuid_id();
+
+	/* Cortex-A15 r0p0..r3p2 affected */
+	if ((midr & 0xff0ffff0) != 0x410fc0f0 || midr > 0x413fc0f2)
+		return 0;
+	return 1;
+}
+#else
+static int erratum_a15_798181(void)
+{
+	return 0;
+}
+#endif
+
+static void flush_tlb_a15_erratum(void)
+{
+	if (!erratum_a15_798181())
+		return;
+
+	dummy_flush_tlb_a15_erratum();
+	dummy_flush_tlb_a15_erratum();
+}
+
 void flush_tlb_all(void)
 {
 	if (tlb_ops_need_broadcast())
 		on_each_cpu(ipi_flush_tlb_all, NULL, 1);
 	else
 		local_flush_tlb_all();
+	flush_tlb_a15_erratum();
 }
 
 void flush_tlb_mm(struct mm_struct *mm)
@@ -78,6 +105,7 @@ void flush_tlb_mm(struct mm_struct *mm)
 		on_each_cpu_mask(mm_cpumask(mm), ipi_flush_tlb_mm, mm, 1);
 	else
 		local_flush_tlb_mm(mm);
+	flush_tlb_a15_erratum();
 }
 
 void flush_tlb_page(struct vm_area_struct *vma, unsigned long uaddr)
@@ -90,6 +118,7 @@ void flush_tlb_page(struct vm_area_struct *vma, unsigned long uaddr)
 					&ta, 1);
 	} else
 		local_flush_tlb_page(vma, uaddr);
+	flush_tlb_a15_erratum();
 }
 
 void flush_tlb_kernel_page(unsigned long kaddr)
@@ -100,6 +129,7 @@ void flush_tlb_kernel_page(unsigned long kaddr)
 		on_each_cpu(ipi_flush_tlb_kernel_page, &ta, 1);
 	} else
 		local_flush_tlb_kernel_page(kaddr);
+	flush_tlb_a15_erratum();
 }
 
 void flush_tlb_range(struct vm_area_struct *vma,
@@ -114,6 +144,7 @@ void flush_tlb_range(struct vm_area_struct *vma,
 					&ta, 1);
 	} else
 		local_flush_tlb_range(vma, start, end);
+	flush_tlb_a15_erratum();
 }
 
 void flush_tlb_kernel_range(unsigned long start, unsigned long end)
@@ -125,5 +156,6 @@ void flush_tlb_kernel_range(unsigned long start, unsigned long end)
 		on_each_cpu(ipi_flush_tlb_kernel_range, &ta, 1);
 	} else
 		local_flush_tlb_kernel_range(start, end);
+	flush_tlb_a15_erratum();
 }
 

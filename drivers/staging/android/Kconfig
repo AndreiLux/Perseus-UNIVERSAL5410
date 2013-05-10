@@ -26,7 +26,7 @@ config ANDROID_LOGGER
 	default n
 
 config ANDROID_PERSISTENT_RAM
-	bool
+	bool "Android Persistent RAM"
 	depends on HAVE_MEMBLOCK
 	select REED_SOLOMON
 	select REED_SOLOMON_ENC8

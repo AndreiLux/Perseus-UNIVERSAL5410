@@ -30,11 +30,11 @@
 #include <media/videobuf2-ion.h>
 #endif
 
-extern int log_level;
+extern int rot_log_level;
 
 #define rot_dbg(fmt, args...)						\
 	do {								\
-		if (log_level)						\
+		if (rot_log_level)					\
 			printk(KERN_DEBUG "[%s:%d] "			\
 			fmt, __func__, __LINE__, ##args);		\
 	} while (0)
@@ -44,6 +44,7 @@ extern int log_level;
 #define ROT_WDT_CNT		5
 #define MODULE_NAME		"exynos-rot"
 #define ROT_MAX_DEVS		1
+#define ROT_MAX_PBUF		2
 
 /* Address index */
 #define ROT_ADDR_RGB		0
@@ -79,6 +80,11 @@ enum rot_status {
 	ROT_RESERVED,
 	ROT_RUNNING,
 	ROT_RUNNING_REMAIN,
+};
+
+enum rot_clk_status {
+	ROT_CLK_ON,
+	ROT_CLK_OFF,
 };
 
 /*
@@ -208,6 +214,7 @@ struct rot_dev {
 	spinlock_t			slock;
 	struct mutex			lock;
 	struct rot_wdt			wdt;
+	atomic_t			clk_cnt;
 };
 
 /*
@@ -246,7 +253,6 @@ struct rot_vb2 {
 	int (*resume)(void *alloc_ctx);
 	void (*suspend)(void *alloc_ctx);
 
-	int (*cache_flush)(struct vb2_buffer *vb, u32 num_planes);
 	void (*set_cacheable)(void *alloc_ctx, bool cacheable);
 };
 
@@ -292,4 +298,11 @@ void rot_dump_registers(struct rot_dev *rot);
 extern const struct rot_vb2 rot_vb2_ion;
 #endif
 
+#ifdef CONFIG_VIDEOBUF2_ION
+#define rot_buf_sync_prepare vb2_ion_buf_prepare
+#define rot_buf_sync_finish vb2_ion_buf_finish
+#else
+int rot_buf_sync_finish(struct vb2_buffer *vb);
+int rot_buf_sync_prepare(struct vb2_buffer *vb);
+#endif
 #endif /* ROTATOR__H_ */

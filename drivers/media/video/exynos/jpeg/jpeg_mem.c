@@ -22,7 +22,7 @@
 #include "jpeg_core.h"
 
 #if defined(CONFIG_VIDEOBUF2_ION)
-void *jpeg_ion_init(struct jpeg_dev *dev)
+static void *jpeg_ion_init(struct jpeg_dev *dev)
 {
 	return vb2_ion_create_context(&dev->plat_dev->dev, SZ_8K,
 					VB2ION_CTX_VMCONTIG | VB2ION_CTX_IOMMU);
@@ -45,7 +45,7 @@ const struct jpeg_vb2 jpeg_vb2_ion = {
 	.plane_addr	= jpeg_vb2_plane_addr,
 	.resume		= vb2_ion_attach_iommu,
 	.suspend	= vb2_ion_detach_iommu,
-	.cache_flush	= vb2_ion_cache_flush,
-	.set_cacheable	= vb2_ion_set_cached,
+	.buf_prepare	= vb2_ion_buf_prepare,
+	.buf_finish	= vb2_ion_buf_finish,
 };
 #endif

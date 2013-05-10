@@ -25,6 +25,7 @@ struct platform_device;
  */
 struct s5p_platform_mipi_csis {
 	unsigned long clk_rate;
+	u8 wclk_source;
 	u8 lanes;
 	u8 alignment;
 	u8 hs_settle;
@@ -41,5 +42,6 @@ struct s5p_platform_mipi_csis {
 int s5p_csis_phy_enable(struct platform_device *pdev, bool on);
 extern struct s5p_platform_mipi_csis s5p_mipi_csis0_default_data;
 extern struct s5p_platform_mipi_csis s5p_mipi_csis1_default_data;
+extern struct s5p_platform_mipi_csis s5p_mipi_csis2_default_data;
 
 #endif /* __PLAT_SAMSUNG_MIPI_CSIS_H_ */

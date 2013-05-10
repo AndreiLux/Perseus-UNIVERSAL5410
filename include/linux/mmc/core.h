@@ -123,6 +123,7 @@ struct mmc_data {
 	s32			host_cookie;	/* host private data */
 };
 
+struct mmc_host;
 struct mmc_request {
 	struct mmc_command	*sbc;		/* SET_BLOCK_COUNT for multiblock */
 	struct mmc_command	*cmd;
@@ -131,9 +132,9 @@ struct mmc_request {
 
 	struct completion	completion;
 	void			(*done)(struct mmc_request *);/* completion function */
+	struct mmc_host		*host;
 };
 
-struct mmc_host;
 struct mmc_card;
 struct mmc_async_req;
 
@@ -182,6 +183,7 @@ extern void mmc_release_host(struct mmc_host *host);
 extern int mmc_try_claim_host(struct mmc_host *host);
 
 extern int mmc_flush_cache(struct mmc_card *);
+extern int mmc_bkops_enable(struct mmc_host *host, u8 value);
 
 extern int mmc_detect_card_removed(struct mmc_host *host);
 

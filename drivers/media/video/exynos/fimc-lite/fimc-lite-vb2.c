@@ -55,6 +55,11 @@ static unsigned long flite_vb2_plane_addr(struct vb2_buffer *vb, u32 plane_no)
 	return dva;
 }
 
+static int flite_vb2_ion_cache_flush(struct vb2_buffer *vb, u32 plane_no)
+{
+	return vb2_ion_buf_prepare(vb);
+}
+
 const struct flite_vb2 flite_vb2_ion = {
 	.ops		= &vb2_ion_memops,
 	.init		= flite_ion_init,
@@ -62,7 +67,7 @@ const struct flite_vb2 flite_vb2_ion = {
 	.plane_addr	= flite_vb2_plane_addr,
 	.resume		= vb2_ion_attach_iommu,
 	.suspend	= vb2_ion_detach_iommu,
-	.cache_flush	= vb2_ion_cache_flush,
+	.cache_flush	= flite_vb2_ion_cache_flush,
 	.set_cacheable	= vb2_ion_set_cached,
 };
 #endif

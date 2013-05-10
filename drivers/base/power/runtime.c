@@ -11,6 +11,7 @@
 #include <linux/export.h>
 #include <linux/pm_runtime.h>
 #include <trace/events/rpm.h>
+#include <mach/sec_debug.h>
 #include "power.h"
 
 static int rpm_resume(struct device *dev, int rpmflags);
@@ -168,8 +169,9 @@ static int __rpm_callback(int (*cb)(struct device *), struct device *dev)
 	else
 		spin_unlock_irq(&dev->power.lock);
 
+	sec_debug_aux_log(SEC_DEBUG_AUXLOG_RUNTIME_PM_CHANGE, "before %pF %pF", cb, (dev->driver ? (dev->driver->pm ? dev->driver->pm : cb) : cb));
 	retval = cb(dev);
-
+	sec_debug_aux_log(SEC_DEBUG_AUXLOG_RUNTIME_PM_CHANGE, "after  %pF %pF ret=%d", cb, (dev->driver ? (dev->driver->pm ? dev->driver->pm : cb) : cb), retval);
 	if (dev->power.irq_safe)
 		spin_lock(&dev->power.lock);
 	else

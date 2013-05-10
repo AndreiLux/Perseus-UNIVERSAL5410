@@ -15,11 +15,10 @@
 #include <linux/interrupt.h>
 #include <linux/ioport.h>
 #include <linux/export.h>
-
-#include <mach/map.h>
-
-#include <plat/fimg2d.h>
+#include <plat/devs.h>
 #include <plat/cpu.h>
+#include <plat/fimg2d.h>
+#include <mach/map.h>
 
 #define S5P_PA_FIMG2D_OFFSET	0x02000000
 #define S5P_PA_FIMG2D_3X	(S5P_PA_FIMG2D+S5P_PA_FIMG2D_OFFSET)
@@ -36,13 +35,12 @@ struct platform_device s5p_device_fimg2d = {
 	.num_resources	= ARRAY_SIZE(s5p_fimg2d_resource),
 	.resource	= s5p_fimg2d_resource
 };
-EXPORT_SYMBOL(s5p_device_fimg2d);
 
 static struct fimg2d_platdata default_fimg2d_data __initdata = {
 	.parent_clkname	= "mout_g2d0",
 	.clkname	= "sclk_fimg2d",
 	.gate_clkname	= "fimg2d",
-	.clkrate	= 250 * 1000000,
+	.clkrate	= 200 * MHZ,
 };
 
 void __init s5p_fimg2d_set_platdata(struct fimg2d_platdata *pd)
@@ -57,10 +55,7 @@ void __init s5p_fimg2d_set_platdata(struct fimg2d_platdata *pd)
 	if (!pd)
 		pd = &default_fimg2d_data;
 
-	npd = kmemdup(pd, sizeof(*pd), GFP_KERNEL);
-	if (!npd)
-		printk(KERN_ERR "no memory for fimg2d platform data\n");
-	else
-		s5p_device_fimg2d.dev.platform_data = npd;
+	npd = s3c_set_platdata(pd, sizeof(struct fimg2d_platdata),
+			&s5p_device_fimg2d);
 }
 #endif

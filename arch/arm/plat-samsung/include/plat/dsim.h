@@ -168,8 +168,10 @@ struct mipi_dsi_lcd_timing {
 	int	right_margin;
 	int	upper_margin;
 	int	lower_margin;
+	int	stable_vfp;
 	int	hsync_len;
 	int	vsync_len;
+	int	cmd_allow;
 };
 
 /* for CPU Interface */
@@ -244,6 +246,7 @@ struct mipi_dsim_lcd_config {
  *	this variable would be calculated by driver automatically.
  */
 struct mipi_dsim_device {
+	spinlock_t slock;
 	struct device *dev;
 	struct resource *res;
 	struct clk *clock;
@@ -264,9 +267,7 @@ struct mipi_dsim_device {
 	struct notifier_block fb_notif;
 
 	struct mipi_dsim_lcd_driver	*dsim_lcd_drv;
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	struct early_suspend	early_suspend;
-#endif
+	unsigned int enabled;
 };
 
 /**
@@ -280,21 +281,15 @@ struct mipi_dsim_device {
  * @part_reset: callback pointer for reseting mipi phy.
  * @init_d_phy: callback pointer for enabing d_phy of dsi master.
  * @get_fb_frame_done: callback pointer for getting frame done status of
-the
- *	display controller(FIMD).
+ *	the display controller(FIMD).
  * @trigger: callback pointer for triggering display controller(FIMD)
  *	in case of CPU mode.
- * @delay_for_stabilization: specifies stable time.
- *	this delay needs when writing data on SFR
- *	after mipi mode became LP mode.
  */
 struct s5p_platform_mipi_dsim {
 	const char	clk_name[16];
 
 	struct mipi_dsim_config *dsim_config;
 	struct mipi_dsim_lcd_config *dsim_lcd_config;
-
-	unsigned int delay_for_stabilization;
 
 	int (*mipi_power) (struct mipi_dsim_device *dsim, unsigned int
 		enable);
@@ -326,5 +321,8 @@ struct mipi_dsim_lcd_driver {
 extern int s5p_dsim_part_reset(struct mipi_dsim_device *dsim);
 extern int s5p_dsim_init_d_phy(struct mipi_dsim_device *dsim,
 	unsigned int enable);
-extern void s5p_dsim_set_platdata(struct s5p_platform_mipi_dsim * pd);
+extern void s5p_dsim0_set_platdata(struct s5p_platform_mipi_dsim *pd);
+extern void s5p_dsim1_set_platdata(struct s5p_platform_mipi_dsim *pd);
+extern int s5p_mipi_dsi_enable_by_fimd(struct device *dsim);
+extern int s5p_mipi_dsi_disable_by_fimd(struct device *dsim);
 #endif /* _DSIM_H */

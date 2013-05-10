@@ -46,6 +46,11 @@
 #define CSIS_PADS_NUM		2
 
 #define MAX_CAMIF_CLIENTS	2
+#if defined(CONFIG_SOC_EXYNOS5410)
+#define MAX_CAMIF_CHANNEL	3
+#else
+#define MAX_CAMIF_CHANNEL	2
+#endif
 
 #define MXR_SUBDEV_NAME		"s5p-mixer"
 
@@ -63,8 +68,8 @@
 #define FIMD_GRP_ID			(1 << 4)
 
 #define SENSOR_MAX_ENTITIES		MAX_CAMIF_CLIENTS
-#define FLITE_MAX_ENTITIES		2
-#define CSIS_MAX_ENTITIES		2
+#define FLITE_MAX_ENTITIES		MAX_CAMIF_CHANNEL
+#define CSIS_MAX_ENTITIES		MAX_CAMIF_CHANNEL
 
 enum mdev_node {
 	MDEV_OUTPUT,

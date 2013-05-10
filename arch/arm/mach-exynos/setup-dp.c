@@ -17,16 +17,16 @@ void s5p_dp_phy_init(void)
 {
 	u32 reg;
 
-	reg = __raw_readl(EXYNOS5250_DPTX_PHY_CONTROL);
-	reg |= EXYNOS5250_DPTX_PHY_ENABLE;
-	__raw_writel(reg, EXYNOS5250_DPTX_PHY_CONTROL);
+	reg = __raw_readl(EXYNOS5410_DPTX_PHY_CONTROL);
+	reg |= EXYNOS5410_DPTX_PHY_ENABLE;
+	__raw_writel(reg, EXYNOS5410_DPTX_PHY_CONTROL);
 }
 
 void s5p_dp_phy_exit(void)
 {
 	u32 reg;
 
-	reg = __raw_readl(EXYNOS5250_DPTX_PHY_CONTROL);
-	reg &= ~EXYNOS5250_DPTX_PHY_ENABLE;
-	__raw_writel(reg, EXYNOS5250_DPTX_PHY_CONTROL);
+	reg = __raw_readl(EXYNOS5410_DPTX_PHY_CONTROL);
+	reg &= ~EXYNOS5410_DPTX_PHY_ENABLE;
+	__raw_writel(reg, EXYNOS5410_DPTX_PHY_CONTROL);
 }

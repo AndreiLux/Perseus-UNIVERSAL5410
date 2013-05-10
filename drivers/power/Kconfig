@@ -317,4 +317,11 @@ config AB8500_BATTERY_THERM_ON_BATCTRL
 	help
 	  Say Y to enable battery temperature measurements using
 	  thermistor connected on BATCTRL ADC.
+
+config BATTERY_SAMSUNG
+	tristate "Fake battery driver for samsung smdk boards"
+	depends on PLAT_SAMSUNG
+	help
+	  Say Y to enable support for batteries with samsung chip.
+
 endif # POWER_SUPPLY

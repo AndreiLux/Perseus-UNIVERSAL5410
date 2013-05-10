@@ -2437,6 +2437,7 @@ int usb_add_hcd(struct usb_hcd *hcd,
 	 * but drivers can override it in reset() if needed, along with
 	 * recording the overall controller's system wakeup capability.
 	 */
+	device_init_wakeup(&rhdev->dev, 1);
 	device_set_wakeup_capable(&rhdev->dev, 1);
 
 	/* HCD_FLAG_RH_RUNNING doesn't matter until the root hub is

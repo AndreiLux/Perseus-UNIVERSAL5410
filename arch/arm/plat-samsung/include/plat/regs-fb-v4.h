@@ -172,3 +172,6 @@
  * 1110		-none-	 -none-	  -none-   -none-    -none-
  * 1111		-none-	 -none-   -none-   -none-    -none-
 */
+
+/* IP's version */
+#define FIMD_VERSION_4X				(0x40000000)

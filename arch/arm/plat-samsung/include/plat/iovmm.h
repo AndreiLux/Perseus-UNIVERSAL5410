@@ -62,6 +62,7 @@ int iovmm_map_oto(struct device *dev, phys_addr_t phys, size_t size);
  */
 void iovmm_unmap_oto(struct device *dev, phys_addr_t phys);
 
+int exynos_create_iovmm(struct device *dev);
 #else
 #define iovmm_activate(dev)		(-ENOSYS)
 #define iovmm_deactivate(dev)		do { } while (0)
@@ -69,6 +70,7 @@ void iovmm_unmap_oto(struct device *dev, phys_addr_t phys);
 #define iovmm_unmap(dev, iova)		do { } while (0)
 #define iovmm_map_oto(dev, phys, size)	(-ENOSYS)
 #define iovmm_unmap_oto(dev, phys)	do { } while (0)
+#define exynos_create_iovmm(sysmmu) 0
 #endif /* CONFIG_EXYNOS_IOVMM */
 
 #endif /*__ASM_PLAT_IOVMM_H*/

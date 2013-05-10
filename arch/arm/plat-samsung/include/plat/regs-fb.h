@@ -31,8 +31,9 @@
 /* VIDCON0 */
 
 #define VIDCON0					(0x00)
+#define VIDCON0_DSI_EN				(1 << 30)
 #define VIDCON0_INTERLACE			(1 << 29)
-#define VIDCON0_VIDOUT_MASK			(0x3 << 26)
+#define VIDCON0_VIDOUT_MASK			(0x7 << 26)
 #define VIDCON0_VIDOUT_SHIFT			(26)
 #define VIDCON0_VIDOUT_RGB			(0x0 << 26)
 #define VIDCON0_VIDOUT_TV			(0x1 << 26)
@@ -70,7 +71,9 @@
 #define VIDCON0_CLKVAL_F_SHIFT			(6)
 #define VIDCON0_CLKVAL_F_LIMIT			(0xff)
 #define VIDCON0_CLKVAL_F(_x)			((_x) << 6)
-#define VIDCON0_VLCKFREE			(1 << 5)
+#define VIDCON0_VCLK_MASK			(1 << 5)
+#define VIDCON0_VCLK_NORMAL			(0 << 5)
+#define VIDCON0_VCLK_FREE			(1 << 5)
 #define VIDCON0_CLKDIR				(1 << 4)
 
 #define VIDCON0_CLKSEL_MASK			(0x3 << 2)
@@ -83,6 +86,10 @@
 #define VIDCON0_ENVID_F				(1 << 0)
 
 #ifdef CONFIG_FB_EXYNOS_FIMD_V8
+#define VIDOUT_CON				(0x20000)
+#define VIDOUT_F_MASK				(7 << 8)
+#define VIDOUT_F_I80_LDI0			(2 << 8)
+#define VIDOUT_F_I80_LDI1			(3 << 8)
 #define VIDCON1					(0x20004)
 #else
 #define VIDCON1					(0x04)
@@ -96,7 +103,7 @@
 #define VIDCON1_VSTATUS_VSYNC			(0x0 << 13)
 #define VIDCON1_VSTATUS_BACKPORCH		(0x1 << 13)
 #define VIDCON1_VSTATUS_ACTIVE			(0x2 << 13)
-#define VIDCON1_VSTATUS_FRONTPORCH		(0x0 << 13)
+#define VIDCON1_VSTATUS_FRONTPORCH		(0x3 << 13)
 #define VIDCON1_VCLK_MASK			(0x3 << 9)
 #define VIDCON1_VCLK_HOLD			(0x0 << 9)
 #define VIDCON1_VCLK_RUN			(0x1 << 9)
@@ -191,12 +198,16 @@
 #define VIDTCON1_HSPW(_x)			((_x) << 0)
 
 #define VIDTCON2_LINEVAL_E(_x)			((((_x) & 0x800) >> 11) << 23)
+#define VIDTCON2_LINEVAL_E_MASK			(1 << 23)
+#define VIDTCON2_LINEVAL_E_SHIFT			(23)
 #define VIDTCON2_LINEVAL_MASK			(0x7ff << 11)
 #define VIDTCON2_LINEVAL_SHIFT			(11)
 #define VIDTCON2_LINEVAL_LIMIT			(0x7ff)
 #define VIDTCON2_LINEVAL(_x)			(((_x) & 0x7ff) << 11)
 
 #define VIDTCON2_HOZVAL_E(_x)			((((_x) & 0x800) >> 11) << 22)
+#define VIDTCON2_HOZVAL_E_MASK		(1 << 22)
+#define VIDTCON2_HOZVAL_E_SHIFT		(22)
 #define VIDTCON2_HOZVAL_MASK			(0x7ff << 0)
 #define VIDTCON2_HOZVAL_SHIFT			(0)
 #define VIDTCON2_HOZVAL_LIMIT			(0x7ff)
@@ -426,9 +437,9 @@
 #define WPALCON_W0PAL_16BPP_565			(0x6 << 0)
 
 /* Clock gate mode control */
-#define REG_CLKGATE_MODE                        (0x1b0)
-#define REG_CLKGATE_MODE_AUTO_CLOCK_GATE        (0 << 0)
-#define REG_CLKGATE_MODE_NON_CLOCK_GATE         (1 << 0)
+#define REG_CLKGATE_MODE			(0x1b0)
+#define REG_CLKGATE_MODE_AUTO_CLOCK_GATE	(0 << 0)
+#define REG_CLKGATE_MODE_NON_CLOCK_GATE		(1 << 0)
 
 /* Blending equation */
 #define BLENDEQ(_x)				(0x240 + (_x) * 4)
@@ -465,3 +476,19 @@
 /* Window alpha control */
 #define VIDW_ALPHA0(_x)				(0x21C + ((_x) * 8))
 #define VIDW_ALPHA1(_x)				(0x220 + ((_x) * 8))
+
+/* IP's version */
+#define FIMD_VERSION				(0x20274)
+#define EXYNOS5_813				(0x80000013)
+
+#define TRIGCON					(0x201A4)
+#define SWTRGCMD_I80_RGB			(1 << 1)
+#define TRGMODE_I80_RGB				(1 << 0)
+#define I80IFCONA(_x)				(0x201B0 + ((_x) * 4))
+#define I80IFCON_CS_SETUP(_x)			(((_x) & 0xf) << 16)
+#define I80IFCON_WR_SETUP(_x)			(((_x) & 0xf) << 12)
+#define I80IFCON_WR_ACT(_x)			(((_x) & 0xf) << 8)
+#define I80IFCON_WR_HOLD(_x)			(((_x) & 0xf) << 4)
+#define I80IFCON_RS_POL(_x)			((_x) << 2)
+#define I80IFCON_EN				(1 << 0)
+#define I80IFCONB(_x)				(0x201B8 + ((_x) * 4))

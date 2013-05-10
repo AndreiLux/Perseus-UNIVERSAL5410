@@ -86,6 +86,14 @@ config VT_HW_CONSOLE_BINDING
 	 information. For framebuffer console users, please refer to
 	 <file:Documentation/fb/fbcon.txt>.
 
+config VT_TKEY_SKIP_MATCH
+       bool "Support for skip registering Samsung touch key to VT keyboard"
+       depends on VT
+       default y
+       ---help---
+        This enables support for skip resigtering Samsung touchkey driver to
+	VT keyboard.
+
 config UNIX98_PTYS
 	bool "Unix98 PTY support" if EXPERT
 	default y

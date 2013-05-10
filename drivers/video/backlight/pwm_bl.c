@@ -47,13 +47,14 @@ static int pwm_backlight_update_status(struct backlight_device *bl)
 
 	if (pb->notify)
 		brightness = pb->notify(pb->dev, brightness);
+	else
+		brightness = pb->lth_brightness +
+			(brightness * (pb->period - pb->lth_brightness) / max);
 
 	if (brightness == 0) {
 		pwm_config(pb->pwm, 0, pb->period);
 		pwm_disable(pb->pwm);
 	} else {
-		brightness = pb->lth_brightness +
-			(brightness * (pb->period - pb->lth_brightness) / max);
 		pwm_config(pb->pwm, brightness, pb->period);
 		pwm_enable(pb->pwm);
 	}
@@ -195,7 +196,11 @@ static SIMPLE_DEV_PM_OPS(pwm_backlight_pm_ops, pwm_backlight_suspend,
 
 static struct platform_driver pwm_backlight_driver = {
 	.driver		= {
+#ifdef CONFIG_MACH_V1
+        .name	= "panel",
+#else
 		.name	= "pwm-backlight",
+#endif		
 		.owner	= THIS_MODULE,
 #ifdef CONFIG_PM
 		.pm	= &pwm_backlight_pm_ops,

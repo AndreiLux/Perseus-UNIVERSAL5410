@@ -43,7 +43,11 @@ void timerqueue_add(struct timerqueue_head *head, struct timerqueue_node *node)
 	struct timerqueue_node  *ptr;
 
 	/* Make sure we don't add nodes that are already added */
+#ifdef CONFIG_SEC_DEBUG_TIMERQUEUE_CORRUPTION
+	BUG_ON(!RB_EMPTY_NODE(&node->node));
+#else
 	WARN_ON_ONCE(!RB_EMPTY_NODE(&node->node));
+#endif
 
 	while (*p) {
 		parent = *p;

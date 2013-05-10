@@ -8,6 +8,7 @@
 
 #include <linux/linkage.h>
 #include <linux/init.h>
+#include <mach/smc.h>
 
 ENTRY(exynos_smc)
 	stmfd	sp!, {lr}
@@ -21,9 +22,13 @@ ENTRY(exynos_smc)
 	ldmfd	sp!, {pc}
 ENDPROC(exynos_smc)
 
-ENTRY(exynos_smc_read_sfr)
-	stmfd	sp!, {r4, lr}
-	mov	r4, r2
+ENTRY(exynos_smc_readsfr)
+	stmfd	sp!, {r2-r3, lr}
+	stmfd	sp!, {r1}
+
+	lsr	r1, r0, #2
+	orr	r1, r1, #SMC_REG_CLASS_SFR_R
+	mov	r0, #SMC_CMD_REG
 #if defined(CONFIG_ARM_ERRATA_766421)
 	dmb
 #endif
@@ -31,6 +36,12 @@ ENTRY(exynos_smc_read_sfr)
 #if defined(CONFIG_ARM_ERRATA_766421)
 	dmb
 #endif
-	str	r2, [r4]
-	ldmfd	sp!, {r4, pc}
-ENDPROC(exynos_smc_read_sfr)
+
+	mov	r3, #SMC_CMD_REG
+	cmp	r0, r3
+	moveq	r0, r1
+	ldmfd	sp!, {r3}
+	cmp	r0, #0
+	streq	r2, [r3]
+	ldmfd	sp!, {r2-r3, pc}
+ENDPROC(exynos_smc_readsfr)

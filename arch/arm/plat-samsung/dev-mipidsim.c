@@ -25,29 +25,46 @@
 #include <plat/dsim.h>
 #include <plat/mipi_dsi.h>
 
-static struct resource s5p_dsim_resource[] = {
-	[0] = {
-		.start = S5P_PA_DSIM0,
-		.end   = S5P_PA_DSIM0 + SZ_64K - 1,
-		.flags = IORESOURCE_MEM,
-	},
-	[1] = {
-		.start = IRQ_MIPIDSI0,
-		.end   = IRQ_MIPIDSI0,
-		.flags = IORESOURCE_IRQ,
-	},
+#ifdef CONFIG_S5P_DEV_MIPI_DSIM0
+static struct resource s5p_dsim0_resource[] = {
+	[0] = DEFINE_RES_MEM(S5P_PA_DSIM0, SZ_32K),
+	[1] = DEFINE_RES_IRQ(IRQ_MIPIDSI0),
 };
 
-struct platform_device s5p_device_mipi_dsim = {
+struct platform_device s5p_device_mipi_dsim0 = {
 	.name			= "s5p-mipi-dsim",
-	.id			= -1,
-	.num_resources		= ARRAY_SIZE(s5p_dsim_resource),
-	.resource		= s5p_dsim_resource,
+	.id			= 0,
+	.num_resources		= ARRAY_SIZE(s5p_dsim0_resource),
+	.resource		= s5p_dsim0_resource,
 	.dev			= {
 		.platform_data	= NULL,
 	},
 };
 
-void __init s5p_dsim_set_platdata(struct s5p_platform_mipi_dsim *pd) {
-        s3c_set_platdata(pd, sizeof(struct s5p_platform_mipi_dsim), &s5p_device_mipi_dsim);
+void __init s5p_dsim0_set_platdata(struct s5p_platform_mipi_dsim *pd)
+{
+	s3c_set_platdata(pd, sizeof(struct s5p_platform_mipi_dsim),
+			&s5p_device_mipi_dsim0);
 }
+#else
+static struct resource s5p_dsim1_resource[] = {
+	[0] = DEFINE_RES_MEM(S5P_PA_DSIM1, SZ_32K),
+	[1] = DEFINE_RES_IRQ(IRQ_MIPIDSI1),
+};
+
+struct platform_device s5p_device_mipi_dsim1 = {
+	.name			= "s5p-mipi-dsim",
+	.id			= 1,
+	.num_resources		= ARRAY_SIZE(s5p_dsim1_resource),
+	.resource		= s5p_dsim1_resource,
+	.dev			= {
+		.platform_data	= NULL,
+	},
+};
+
+void __init s5p_dsim1_set_platdata(struct s5p_platform_mipi_dsim *pd)
+{
+	s3c_set_platdata(pd, sizeof(struct s5p_platform_mipi_dsim),
+			&s5p_device_mipi_dsim1);
+}
+#endif

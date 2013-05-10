@@ -42,7 +42,7 @@
 	struct gpd_timing_data *__td = &dev_gpd_data(dev)->td;			\
 	if (!__retval && __elapsed > __td->field) {				\
 		__td->field = __elapsed;					\
-		dev_warn(dev, name " latency exceeded, new value %lld ns\n",	\
+		dev_dbg(dev, name " latency exceeded, new value %lld ns\n",	\
 			__elapsed);						\
 		genpd->max_off_time_changed = true;				\
 		__td->constraint_changed = true;				\
@@ -216,7 +216,7 @@ int __pm_genpd_poweron(struct generic_pm_domain *genpd)
 			genpd->power_on_latency_ns = elapsed_ns;
 			genpd->max_off_time_changed = true;
 			if (genpd->name)
-				pr_warning("%s: Power-on latency exceeded, "
+				pr_debug("%s: Power-on latency exceeded, "
 					"new value %lld ns\n", genpd->name,
 					elapsed_ns);
 		}
@@ -488,7 +488,7 @@ static int pm_genpd_poweroff(struct generic_pm_domain *genpd)
 			genpd->power_off_latency_ns = elapsed_ns;
 			genpd->max_off_time_changed = true;
 			if (genpd->name)
-				pr_warning("%s: Power-off latency exceeded, "
+				pr_debug("%s: Power-off latency exceeded, "
 					"new value %lld ns\n", genpd->name,
 					elapsed_ns);
 		}

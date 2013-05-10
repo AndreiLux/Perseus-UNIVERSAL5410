@@ -28,6 +28,8 @@
 #include <linux/scatterlist.h>
 #include <linux/of.h>
 
+#include <plat/cpu.h>
+
 #include "dmaengine.h"
 
 #define PL330_MAX_CHAN		8
@@ -394,36 +396,9 @@ struct pl330_req {
 	struct pl330_reqcfg *cfg;
 	/* Pointer to first xfer in the request. */
 	struct pl330_xfer *x;
+	/* Hook to attach to DMAC's list of reqs with due callback */
+	struct list_head rqd;
 	unsigned int infiniteloop;
-};
-
-/*
- * To know the status of the channel and DMAC, the client
- * provides a pointer to this structure. The PL330 core
- * fills it with current information.
- */
-struct pl330_chanstatus {
-	/*
-	 * If the DMAC engine halted due to some error,
-	 * the client should remove-add DMAC.
-	 */
-	bool dmac_halted;
-	/*
-	 * If channel is halted due to some error,
-	 * the client should ABORT/FLUSH and START the channel.
-	 */
-	bool faulting;
-	/* Location of last load */
-	u32 src_addr;
-	/* Location of last store */
-	u32 dst_addr;
-	/*
-	 * Pointer to the currently active req, NULL if channel is
-	 * inactive, even though the requests may be present.
-	 */
-	struct pl330_req *top_req;
-	/* Pointer to req waiting second in the queue if any. */
-	struct pl330_req *wait_req;
 };
 
 enum pl330_chan_op {
@@ -464,8 +439,6 @@ struct _pl330_req {
 	/* Number of bytes taken to setup MC for the req */
 	u32 mc_len;
 	struct pl330_req *r;
-	/* Hook to attach to DMAC's list of reqs with due callback */
-	struct list_head rqd;
 };
 
 /* ToBeDone for tasklet */
@@ -1277,10 +1250,11 @@ static inline int _ldst_devtomem(unsigned dry_run, u8 buf[],
 		const struct _xfer_spec *pxs, int cyc)
 {
 	int off = 0;
+	enum pl330_cond cond = (pxs->r->cfg->brst_len == 1) ? SINGLE : BURST;
 
 	while (cyc--) {
-		off += _emit_WFP(dry_run, &buf[off], SINGLE, pxs->r->peri);
-		off += _emit_LDP(dry_run, &buf[off], SINGLE, pxs->r->peri);
+		off += _emit_WFP(dry_run, &buf[off], cond, pxs->r->peri);
+		off += _emit_LDP(dry_run, &buf[off], cond, pxs->r->peri);
 		off += _emit_ST(dry_run, &buf[off], ALWAYS);
 		off += _emit_FLUSHP(dry_run, &buf[off], pxs->r->peri);
 	}
@@ -1292,11 +1266,12 @@ static inline int _ldst_memtodev(unsigned dry_run, u8 buf[],
 		const struct _xfer_spec *pxs, int cyc)
 {
 	int off = 0;
+	enum pl330_cond cond = (pxs->r->cfg->brst_len == 1) ? SINGLE : BURST;
 
 	while (cyc--) {
-		off += _emit_WFP(dry_run, &buf[off], SINGLE, pxs->r->peri);
+		off += _emit_WFP(dry_run, &buf[off], cond, pxs->r->peri);
 		off += _emit_LD(dry_run, &buf[off], ALWAYS);
-		off += _emit_STP(dry_run, &buf[off], SINGLE, pxs->r->peri);
+		off += _emit_STP(dry_run, &buf[off], cond, pxs->r->peri);
 		off += _emit_FLUSHP(dry_run, &buf[off], pxs->r->peri);
 	}
 
@@ -1349,6 +1324,7 @@ static inline int _loop_infiniteloop(unsigned dry_run, u8 buf[],
 	/* forever loop */
 	off += _emit_MOV(dry_run, &buf[off], SAR, pxs->x->src_addr);
 	off += _emit_MOV(dry_run, &buf[off], DAR, pxs->x->dst_addr);
+	off += _emit_FLUSHP(dry_run, &buf[off], pxs->r->peri);
 
 	/* loop0 */
 	off += _emit_LP(dry_run, &buf[off], 0,  lcnt0);
@@ -1515,6 +1491,7 @@ static inline int _setup_xfer(unsigned dry_run, u8 buf[],
 	off += _emit_MOV(dry_run, &buf[off], SAR, x->src_addr);
 	/* DMAMOV DAR, x->dst_addr */
 	off += _emit_MOV(dry_run, &buf[off], DAR, x->dst_addr);
+	off += _emit_FLUSHP(dry_run, &buf[off], pxs->r->peri);
 
 	/* Setup Loop(s) */
 	off += _setup_loops(dry_run, &buf[off], pxs);
@@ -1664,17 +1641,17 @@ static int pl330_submit_req(void *ch_id, struct pl330_req *r)
 		goto xfer_exit;
 	}
 
-	/* Prefer Secure Channel */
-	if (!_manager_ns(thrd))
-		r->cfg->nonsecure = 0;
-	else
-		r->cfg->nonsecure = 1;
-
-	/* Use last settings, if not provided */
-	if (r->cfg)
+	if (r->cfg) {
+		/* Prefer Secure Channel */
+		if (!_manager_ns(thrd))
+			r->cfg->nonsecure = 0;
+		else
+			r->cfg->nonsecure = 1;
 		ccr = _prepare_ccr(r->cfg);
-	else
+	} else {
+		/* Use last settings, if not provided */
 		ccr = readl(regs + CC(thrd->id));
+	}
 
 	/* If this req doesn't have valid xfer settings */
 	if (!_is_valid(ccr)) {
@@ -1780,7 +1757,7 @@ static void pl330_dotask(unsigned long data)
 /* Returns 1 if state was updated, 0 otherwise */
 static int pl330_update(const struct pl330_info *pi)
 {
-	struct _pl330_req *rqdone;
+	struct pl330_req *rqdone, *tmp;
 	struct pl330_dmac *pl330;
 	unsigned long flags;
 	void __iomem *regs;
@@ -1847,8 +1824,13 @@ static int pl330_update(const struct pl330_info *pi)
 			if (active == -1) /* Aborted */
 				continue;
 
-			rqdone = &thrd->req[active];
-			if (!rqdone->r->infiniteloop) {
+			rqdone = thrd->req[active].r;
+
+			if (!rqdone->infiniteloop) {
+
+				/* Detach the req */
+				thrd->req[active].r = NULL;
+
 				mark_free(thrd, active);
 
 				/* Get going again ASAP */
@@ -1861,21 +1843,11 @@ static int pl330_update(const struct pl330_info *pi)
 	}
 
 	/* Now that we are in no hurry, do the callbacks */
-	while (!list_empty(&pl330->req_done)) {
-		struct pl330_req *r;
-
-		rqdone = container_of(pl330->req_done.next,
-					struct _pl330_req, rqd);
-
-		list_del_init(&rqdone->rqd);
-
-		/* Detach the req */
-		r = rqdone->r;
-		if (!r->infiniteloop)
-			rqdone->r = NULL;
+	list_for_each_entry_safe(rqdone, tmp, &pl330->req_done, rqd) {
+		list_del(&rqdone->rqd);
 
 		spin_unlock_irqrestore(&pl330->lock, flags);
-		_callback(r, PL330_ERR_NONE);
+		_callback(rqdone, PL330_ERR_NONE);
 		spin_lock_irqsave(&pl330->lock, flags);
 	}
 
@@ -2014,11 +1986,17 @@ static inline void _free_event(struct pl330_thread *thrd, int ev)
 {
 	struct pl330_dmac *pl330 = thrd->dmac;
 	struct pl330_info *pi = pl330->pinfo;
+	void __iomem *regs;
 
 	/* If the event is valid and was held by the thread */
 	if (ev >= 0 && ev < pi->pcfg.num_events
-			&& pl330->events[ev] == thrd->id)
+			&& pl330->events[ev] == thrd->id) {
 		pl330->events[ev] = -1;
+
+		regs = pi->base;
+		writel(1 << ev, regs + INTCLR);
+		writel(readl(regs + INTEN) & ~(1 << ev), regs + INTEN);
+	}
 }
 
 static void pl330_release_channel(void *ch_id)
@@ -2383,19 +2361,24 @@ static inline void handle_cyclic_desc_list(struct list_head *list)
 static inline void fill_queue(struct dma_pl330_chan *pch)
 {
 	struct dma_pl330_desc *desc;
+	struct pl330_thread *thrd = pch->pl330_chid;
 	int ret;
 
 	list_for_each_entry(desc, &pch->work_list, node) {
 
 		/* If already submitted */
-		if (desc->status == BUSY)
+		if (desc->status == BUSY) {
+			if (IS_FREE(&thrd->req[1 - thrd->lstenq]))
+				continue;
 			break;
+		}
 
 		ret = pl330_submit_req(pch->pl330_chid,
 						&desc->req);
 		if (!ret) {
 			desc->status = BUSY;
-			break;
+			if (_queue_full(pch->pl330_chid))
+				break;
 		} else if (ret == -EAGAIN) {
 			/* QFull or DMAC Dying */
 			break;
@@ -2492,7 +2475,9 @@ static int pl330_alloc_chan_resources(struct dma_chan *chan)
 	struct dma_pl330_dmac *pdmac = pch->dmac;
 	unsigned long flags;
 
+#ifdef CONFIG_PM_RUNTIME
 	pm_runtime_get_sync(pdmac->pif.dev);
+#endif
 
 	spin_lock_irqsave(&pch->lock, flags);
 
@@ -2577,7 +2562,9 @@ static void pl330_free_chan_resources(struct dma_chan *chan)
 
 	spin_unlock_irqrestore(&pch->lock, flags);
 
+#ifdef CONFIG_PM_RUNTIME
 	pm_runtime_put_sync(pch->dmac->pif.dev);
+#endif
 }
 
 static enum dma_status
@@ -2776,7 +2763,9 @@ static inline int get_burst_len(struct dma_pl330_desc *desc, size_t len)
 	burst_len >>= desc->rqcfg.brst_size;
 
 	/* src/dst_burst_len can't be more than 16 */
-	if (burst_len > 16)
+	if (soc_is_exynos5410() && burst_len > 8)
+		burst_len = 8;
+	else if (burst_len > 16)
 		burst_len = 16;
 
 	while (burst_len > 1) {
@@ -2828,7 +2817,7 @@ static struct dma_async_tx_descriptor *pl330_prep_dma_cyclic(
 	}
 
 	desc->rqcfg.brst_size = pch->burst_sz;
-	desc->rqcfg.brst_len = 1;
+	desc->rqcfg.brst_len = pch->burst_len;
 	desc->req.infiniteloop = *infinite;
 
 	pch->cyclic = true;
@@ -3050,6 +3039,11 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 		num_chan = max_t(int, pi->pcfg.num_peri, pi->pcfg.num_chan);
 
 	pdmac->peripherals = kzalloc(num_chan * sizeof(*pch), GFP_KERNEL);
+	if (!pdmac->peripherals) {
+		dev_err(&adev->dev, "unable to allocate mem for channel\n");
+		ret = -ENOMEM;
+		goto probe_err4;
+	}
 
 	for (i = 0; i < num_chan; i++) {
 		pch = &pdmac->peripherals[i];
@@ -3090,10 +3084,13 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 	pd->device_control = pl330_control;
 	pd->device_issue_pending = pl330_issue_pending;
 
+	if (pdat->copy_align)
+		pd->copy_align = pdat->copy_align;
+
 	ret = dma_async_device_register(pd);
 	if (ret) {
 		dev_err(&adev->dev, "unable to register DMAC\n");
-		goto probe_err4;
+		goto probe_err5;
 	}
 
 	dev_info(&adev->dev,
@@ -3104,15 +3101,19 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 		pi->pcfg.data_bus_width / 8, pi->pcfg.num_chan,
 		pi->pcfg.num_peri, pi->pcfg.num_events);
 
+#ifdef CONFIG_PM_RUNTIME
 	pm_runtime_put_sync(&adev->dev);
+#endif
 
 	return 0;
 
-probe_err4:
+probe_err5:
 	for (i = 0; i < num_chan; i++) {
 		pch = &pdmac->peripherals[i];
 		tasklet_kill(&pch->task);
 	}
+	kfree(pdmac->peripherals);
+probe_err4:
 	pl330_del(pi);
 probe_err3:
 	free_irq(irq, pi);
@@ -3150,6 +3151,9 @@ static int __devexit pl330_remove(struct amba_device *adev)
 		tasklet_kill(&pch->task);
 		pl330_free_chan_resources(&pch->chan);
 	}
+
+	kfree(pdmac->peripherals);
+	dma_async_device_unregister(&pdmac->ddma);
 
 	pi = &pdmac->pif;
 

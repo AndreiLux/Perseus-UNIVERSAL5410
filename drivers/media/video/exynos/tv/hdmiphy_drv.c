@@ -113,6 +113,15 @@ static int hdmiphy_s_power(struct v4l2_subdev *sd, int on)
 #ifdef DEBUG
 	hdmiphy_print_reg(recv_buffer);
 #endif
+	/* going to/from configuration from/to operation mode */
+	buffer[0] = 0x1f;
+	buffer[1] = on ? 0x80 : 0x00;
+
+	ret = i2c_master_send(client, buffer, 2);
+	if (ret != 2) {
+		dev_err(dev, "stream (%d) failed\n", enable);
+		return -EIO;
+	}
 
 	if (!on)
 		hdmiphy_enable_oscpad(client, 0, recv_buffer);
@@ -178,33 +187,12 @@ static int hdmiphy_s_dv_preset(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int hdmiphy_s_stream(struct v4l2_subdev *sd, int enable)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct device *dev = &client->dev;
-	u8 buffer[2];
-	int ret;
-
-	dev_dbg(dev, "s_stream(%d)\n", enable);
-	/* going to/from configuration from/to operation mode */
-	buffer[0] = 0x1f;
-	buffer[1] = enable ? 0x80 : 0x00;
-
-	ret = i2c_master_send(client, buffer, 2);
-	if (ret != 2) {
-		dev_err(dev, "stream (%d) failed\n", enable);
-		return -EIO;
-	}
-	return 0;
-}
-
 static const struct v4l2_subdev_core_ops hdmiphy_core_ops = {
 	.s_power =  hdmiphy_s_power,
 };
 
 static const struct v4l2_subdev_video_ops hdmiphy_video_ops = {
 	.s_dv_preset = hdmiphy_s_dv_preset,
-	.s_stream =  hdmiphy_s_stream,
 };
 
 static const struct v4l2_subdev_ops hdmiphy_ops = {

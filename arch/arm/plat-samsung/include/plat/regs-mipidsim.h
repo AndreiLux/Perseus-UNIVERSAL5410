@@ -23,8 +23,7 @@
 #define S5P_DSIM_MDRESOL	(0x18)
 #define S5P_DSIM_MVPORCH	(0x1c)	/* Main display Vporch register */
 #define S5P_DSIM_MHPORCH	(0x20)	/* Main display Hporch register */
-#define S5P_DSIM_MSYNC		(0x24)	/* Main display sync area register
-*/
+#define S5P_DSIM_MSYNC		(0x24)	/* Main display sync area register */
 
 /* Sub display image resolution register */
 #define S5P_DSIM_SDRESOL	(0x28)
@@ -40,13 +39,25 @@ register */
 #define S5P_DSIM_FIFOCTRL	(0x44)	/* FIFO status and control register
 */
 
-/* FIFO memory AC characteristic register */
-#define S5P_DSIM_PLLCTRL	(0x4c)	/* PLL control register */
-#define S5P_DSIM_PLLTMR		(0x50)	/* PLL timer register */
-#define S5P_DSIM_PHYACCHR	(0x54)	/* D-PHY AC characteristic register
-*/
-#define S5P_DSIM_PHYACCHR1	(0x58)	/* D-PHY AC characteristic
-register1 */
+/* PLL ctrl register */
+#define S5P_DSIM_PLLCTRL	(0x4c)  /* PLL control register */
+/* PLL timer register */
+#define S5P_DSIM_PLLTMR		(soc_is_exynos5250() ? (0x50) : (0x58))
+
+#define S5P_DSIM_PLLCTRL1	(0x50)  /* PLL timer register 1 */
+#define S5P_DSIM_PLLCTRL2	(0x54)  /* PLL timer register 2 */
+
+/* PHY ctrl register */
+/* Only used in EXYNOS5250 */
+#define S5P_DSIM_PHYACCHR	(0x54)	/* D-PHY AC characteristic register */
+#define S5P_DSIM_PHYACCHR1	(0x58)	/* D-PHY AC characteristic register1 */
+#define S5P_DSIM_PHYCTRL	(0x5C)  /* D-PHY Master & Slave Analog block characteristics control register (B_DPHYCTL) */
+#define S5P_DSIM_PHYCTRL1	(0x60)  /* D-PHY Master & Slave Analog block characteristics control register (M_DPHYCTL) */
+#define S5P_DSIM_PHYTIMING	(0x64)  /* D-PHY Master global operating timing register */
+#define S5P_DSIM_PHYTIMING1	(0x68)  /* D-PHY Master global operating timing register */
+#define S5P_DSIM_PHYTIMING2	(0x6C)  /* D-PHY Master global operating timing register */
+/* Version register */
+#define S5P_DSIM_VERSION	(0x70)  /* Specifies the DSIM version information */
 
 /* DSIM_STATUS */
 #define DSIM_STOP_STATE_DAT(x)	(((x) & 0xf) << 0)

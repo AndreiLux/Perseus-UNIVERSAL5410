@@ -75,6 +75,17 @@ void mxr_layer_sync(struct mxr_device *mdev, int en)
 		MXR_STATUS_LAYER_SYNC);
 }
 
+void mxr_vsync_enable_update(struct mxr_device *mdev)
+{
+	mxr_write_mask(mdev, MXR_CFG,    ~0, MXR_CFG_LAYER_UPDATE);
+	mxr_write_mask(mdev, MXR_STATUS, ~0, MXR_STATUS_SYNC_ENABLE);
+}
+
+void mxr_vsync_disable_update(struct mxr_device *mdev)
+{
+	mxr_write_mask(mdev, MXR_STATUS, 0, MXR_STATUS_SYNC_ENABLE);
+}
+
 void mxr_vsync_set_update(struct mxr_device *mdev, int en)
 {
 	/* block update on vsync */
@@ -113,7 +124,7 @@ static void mxr_reg_sub_mxr_reset(struct mxr_device *mdev, int mxr_num)
 
 		/* setting graphical layers */
 
-		val  = MXR_GRP_CFG_BLANK_KEY_OFF; /* no blank key */
+		val  = MXR_GRP_CFG_BLANK_KEY_EN; /* no blank key */
 		val |= MXR_GRP_CFG_ALPHA_VAL(0xff); /* non-transparent alpha */
 
 		/* the same configuration for both layers */
@@ -132,7 +143,7 @@ static void mxr_reg_sub_mxr_reset(struct mxr_device *mdev, int mxr_num)
 
 		/* setting graphical layers */
 
-		val  = MXR_GRP_CFG_BLANK_KEY_OFF; /* no blank key */
+		val  = MXR_GRP_CFG_BLANK_KEY_EN; /* no blank key */
 		val |= MXR_GRP_CFG_ALPHA_VAL(0xff); /* non-transparent alpha */
 
 		/* the same configuration for both layers */
@@ -143,14 +154,54 @@ static void mxr_reg_sub_mxr_reset(struct mxr_device *mdev, int mxr_num)
 
 static void mxr_reg_vp_default_filter(struct mxr_device *mdev);
 
+void mxr_reg_hw_pixelasync_reset(struct mxr_device *mdev)
+{
+	int gsc_num, mxr_num;
+	u32 val;
+
+	for (mxr_num = 0; mxr_num < MXR_MAX_SUB_MIXERS; ++mxr_num) {
+		if (mdev->sub_mxr[mxr_num].local) {
+			gsc_num = mdev->sub_mxr[mxr_num].gsc_num;
+			val = readl(SYSREG_DISP1BLK_CFG2);
+			val |= DISP1BLK_CFG2_LO_MASK;
+			val &= ~DISP1BLK_CFG2_LO_MASK_GSC(gsc_num);
+			writel(val, SYSREG_DISP1BLK_CFG2);
+
+			val = readl(SYSREG_DISP1BLK_CFG);
+			val &= ~DISP1BLK_CFG_FIFORST_DISP1;
+			writel(val, SYSREG_DISP1BLK_CFG);
+			val |= DISP1BLK_CFG_FIFORST_DISP1;
+			writel(val, SYSREG_DISP1BLK_CFG);
+
+			val = readl(SYSREG_DISP1BLK_CFG2);
+			val |= DISP1BLK_CFG2_LO_MASK;
+			writel(val, SYSREG_DISP1BLK_CFG2);
+		}
+	}
+}
+
+void mxr_reg_sw_reset(struct mxr_device *mdev)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&mdev->reg_slock, flags);
+	mxr_write_mask(mdev, MXR_STATUS, ~0, MXR_STATUS_SOFT_RESET);
+	spin_unlock_irqrestore(&mdev->reg_slock, flags);
+}
+
 void mxr_reg_reset(struct mxr_device *mdev)
 {
 	int i;
 	unsigned long flags;
+	struct s5p_mxr_platdata *pdata = mdev->pdata;
 
 	spin_lock_irqsave(&mdev->reg_slock, flags);
 
 	mxr_write_mask(mdev, MXR_STATUS, ~0, MXR_STATUS_SOFT_RESET);
+
+	if (is_ip_ver_5a_1)
+		mxr_reg_hw_pixelasync_reset(mdev);
+
 	mxr_vsync_set_update(mdev, MXR_DISABLE);
 
 	/* set output in RGB888 mode */
@@ -317,10 +368,6 @@ void mxr_reg_vp_format(struct mxr_device *mdev,
 void mxr_reg_graph_buffer(struct mxr_device *mdev, int idx, dma_addr_t addr)
 {
 	u32 val = addr ? ~0 : 0;
-	unsigned long flags;
-
-	spin_lock_irqsave(&mdev->reg_slock, flags);
-	mxr_vsync_set_update(mdev, MXR_DISABLE);
 
 	if (idx == 0) {
 		mxr_write_mask(mdev, MXR_CFG, val, MXR_CFG_GRP0_ENABLE);
@@ -335,9 +382,6 @@ void mxr_reg_graph_buffer(struct mxr_device *mdev, int idx, dma_addr_t addr)
 		mxr_write_mask(mdev, MXR_CFG, val, MXR_CFG_MX1_GRP1_ENABLE);
 		mxr_write(mdev, MXR1_GRAPHIC_BASE(1), addr);
 	}
-
-	mxr_vsync_set_update(mdev, MXR_ENABLE);
-	spin_unlock_irqrestore(&mdev->reg_slock, flags);
 }
 
 void mxr_reg_vp_buffer(struct mxr_device *mdev,
@@ -477,7 +521,7 @@ void mxr_reg_set_pixel_blend(struct mxr_device *mdev, int sub_mxr, int num,
 
 void mxr_reg_set_colorkey(struct mxr_device *mdev, int sub_mxr, int num, int en)
 {
-	u32 val = en ? ~0 : 0;
+	u32 val = en ? 0 : ~0;
 	unsigned long flags;
 
 	spin_lock_irqsave(&mdev->reg_slock, flags);
@@ -485,17 +529,17 @@ void mxr_reg_set_colorkey(struct mxr_device *mdev, int sub_mxr, int num, int en)
 
 	if (sub_mxr == MXR_SUB_MIXER0 && num == MXR_LAYER_GRP0)
 		mxr_write_mask(mdev, MXR_GRAPHIC_CFG(0), val,
-				MXR_GRP_CFG_BLANK_KEY_OFF);
+				MXR_GRP_CFG_BLANK_KEY_EN);
 	else if (sub_mxr == MXR_SUB_MIXER0 && num == MXR_LAYER_GRP1)
 		mxr_write_mask(mdev, MXR_GRAPHIC_CFG(1), val,
-				MXR_GRP_CFG_BLANK_KEY_OFF);
+				MXR_GRP_CFG_BLANK_KEY_EN);
 #if defined(CONFIG_ARCH_EXYNOS5)
 	else if (sub_mxr == MXR_SUB_MIXER1 && num == MXR_LAYER_GRP0)
 		mxr_write_mask(mdev, MXR1_GRAPHIC_CFG(0), val,
-				MXR_GRP_CFG_BLANK_KEY_OFF);
+				MXR_GRP_CFG_BLANK_KEY_EN);
 	else if (sub_mxr == MXR_SUB_MIXER1 && num == MXR_LAYER_GRP1)
 		mxr_write_mask(mdev, MXR1_GRAPHIC_CFG(1), val,
-				MXR_GRP_CFG_BLANK_KEY_OFF);
+				MXR_GRP_CFG_BLANK_KEY_EN);
 #endif
 
 	mxr_vsync_set_update(mdev, MXR_ENABLE);
@@ -522,42 +566,6 @@ void mxr_reg_colorkey_val(struct mxr_device *mdev, int sub_mxr, int num, u32 v)
 
 	mxr_vsync_set_update(mdev, MXR_ENABLE);
 	spin_unlock_irqrestore(&mdev->reg_slock, flags);
-}
-
-static void mxr_irq_layer_handle(struct mxr_layer *layer)
-{
-	struct list_head *head = &layer->enq_list;
-	struct mxr_pipeline *pipe = &layer->pipe;
-	struct mxr_buffer *done;
-
-	/* skip non-existing layer */
-	if (layer == NULL)
-		return;
-
-	spin_lock(&layer->enq_slock);
-	if (pipe->state == MXR_PIPELINE_IDLE)
-		goto done;
-
-	done = layer->shadow_buf;
-	layer->shadow_buf = layer->update_buf;
-
-	if (list_empty(head)) {
-		if (pipe->state != MXR_PIPELINE_STREAMING)
-			layer->update_buf = NULL;
-	} else {
-		struct mxr_buffer *next;
-		next = list_first_entry(head, struct mxr_buffer, list);
-		list_del(&next->list);
-		layer->update_buf = next;
-	}
-
-	layer->ops.buffer_set(layer, layer->update_buf);
-
-	if (done && done != layer->shadow_buf)
-		vb2_buffer_done(&done->vb, VB2_BUF_STATE_DONE);
-
-done:
-	spin_unlock(&layer->enq_slock);
 }
 
 u32 mxr_irq_underrun_handle(struct mxr_device *mdev, u32 val)
@@ -588,15 +596,15 @@ u32 mxr_irq_underrun_handle(struct mxr_device *mdev, u32 val)
 irqreturn_t mxr_irq_handler(int irq, void *dev_data)
 {
 	struct mxr_device *mdev = dev_data;
-	u32 i, val;
+	u32 val;
 
 	spin_lock(&mdev->reg_slock);
 	val = mxr_read(mdev, MXR_INT_STATUS);
 
 	/* wake up process waiting for VSYNC */
 	if (val & MXR_INT_STATUS_VSYNC) {
-		set_bit(MXR_EVENT_VSYNC, &mdev->event_flags);
-		wake_up(&mdev->event_queue);
+		mdev->vsync_timestamp = ktime_get();
+		wake_up_interruptible_all(&mdev->vsync_wait);
 	}
 
 	/* clear interrupts.
@@ -608,24 +616,6 @@ irqreturn_t mxr_irq_handler(int irq, void *dev_data)
 	mxr_write(mdev, MXR_INT_STATUS, val);
 
 	spin_unlock(&mdev->reg_slock);
-	/* leave on non-vsync event */
-	if (~val & MXR_INT_CLEAR_VSYNC)
-		return IRQ_HANDLED;
-
-	for (i = 0; i < MXR_MAX_SUB_MIXERS; ++i) {
-#if defined(CONFIG_ARCH_EXYNOS4)
-		mxr_irq_layer_handle(mdev->sub_mxr[i].layer[MXR_LAYER_VIDEO]);
-#endif
-		mxr_irq_layer_handle(mdev->sub_mxr[i].layer[MXR_LAYER_GRP0]);
-		mxr_irq_layer_handle(mdev->sub_mxr[i].layer[MXR_LAYER_GRP1]);
-	}
-
-	if (test_bit(MXR_EVENT_VSYNC, &mdev->event_flags)) {
-		spin_lock(&mdev->reg_slock);
-		mxr_write_mask(mdev, MXR_CFG, ~0, MXR_CFG_LAYER_UPDATE);
-		spin_unlock(&mdev->reg_slock);
-	}
-
 	return IRQ_HANDLED;
 }
 
@@ -663,15 +653,20 @@ void mxr_reg_streamoff(struct mxr_device *mdev)
 	spin_unlock_irqrestore(&mdev->reg_slock, flags);
 }
 
-int mxr_reg_wait4vsync(struct mxr_device *mdev)
+static int mxr_update_pending(struct mxr_device *mdev)
 {
+	return MXR_CFG_LAYER_UPDATE_COUNT(mxr_read(mdev, MXR_CFG));
+}
+
+int mxr_reg_wait4update(struct mxr_device *mdev)
+{
+	ktime_t timestamp = mdev->vsync_timestamp;
 	int ret;
 
-	clear_bit(MXR_EVENT_VSYNC, &mdev->event_flags);
-	/* TODO: consider adding interruptible */
-	ret = wait_event_timeout(mdev->event_queue,
-		test_bit(MXR_EVENT_VSYNC, &mdev->event_flags),
-		msecs_to_jiffies(1000));
+	ret = wait_event_interruptible_timeout(mdev->vsync_wait,
+		!ktime_equal(timestamp, mdev->vsync_timestamp)
+				&& !mxr_update_pending(mdev),
+		msecs_to_jiffies(100));
 	if (ret > 0)
 		return 0;
 	if (ret < 0)
@@ -733,31 +728,103 @@ void mxr_reg_set_mbus_fmt(struct mxr_device *mdev,
 	spin_unlock_irqrestore(&mdev->reg_slock, flags);
 }
 
-void mxr_reg_local_path_clear(struct mxr_device *mdev)
+void mxr_init_csc_coef(struct mxr_device *mdev)
 {
-	u32 val;
+	unsigned long flags;
 
-	val = readl(SYSREG_DISP1BLK_CFG);
-	val &= ~(DISP1BLK_CFG_MIXER0_VALID | DISP1BLK_CFG_MIXER1_VALID);
-	writel(val, SYSREG_DISP1BLK_CFG);
-	mxr_dbg(mdev, "SYSREG_DISP1BLK_CFG = 0x%x\n",
-			readl(SYSREG_DISP1BLK_CFG));
+	spin_lock_irqsave(&mdev->reg_slock, flags);
+	mxr_vsync_set_update(mdev, MXR_DISABLE);
+
+	switch (mdev->color_range) {
+	case MIXER_RGB601_0_255:
+		mxr_write(mdev, MXR_CM_COEFF_Y,
+			(1 << 30) | (132 << 20) | (258 << 10) | (50 << 0));
+		mxr_write(mdev, MXR_CM_COEFF_CB,
+			(948 << 20) | (875 << 10) | (225 << 0));
+		mxr_write(mdev, MXR_CM_COEFF_CR,
+			(225 << 20) | (836 << 10) | (988 << 0));
+		break;
+	case MIXER_RGB601_16_235:
+		mxr_write(mdev, MXR_CM_COEFF_Y,
+			(0 << 30) | (153 << 20) | (300 << 10) | (58 << 0));
+		mxr_write(mdev, MXR_CM_COEFF_CB,
+			(936 << 20) | (851 << 10) | (262 << 0));
+		mxr_write(mdev, MXR_CM_COEFF_CR,
+			(262 << 20) | (805 << 10) | (982 << 0));
+		break;
+	case MIXER_RGB709_0_255:
+		mxr_write(mdev, MXR_CM_COEFF_Y,
+			(1 << 30) | (94 << 20) | (314 << 10) | (32 << 0));
+		mxr_write(mdev, MXR_CM_COEFF_CB,
+			(972 << 20) | (851 << 10) | (225 << 0));
+		mxr_write(mdev, MXR_CM_COEFF_CR,
+			(225 << 20) | (820 << 10) | (1004 << 0));
+		break;
+	case MIXER_RGB709_16_235:
+		mxr_write(mdev, MXR_CM_COEFF_Y,
+			(0 << 30) | (109 << 20) | (366 << 10) | (36 << 0));
+		mxr_write(mdev, MXR_CM_COEFF_CB,
+			(964 << 20) | (822 << 10) | (216 << 0));
+		mxr_write(mdev, MXR_CM_COEFF_CR,
+			(262 << 20) | (787 << 10) | (1000 << 0));
+		break;
+	default:
+		mxr_err(mdev, "invalid csc_type parameter");
+		break;
+	}
+
+	mxr_vsync_set_update(mdev, MXR_ENABLE);
+	spin_unlock_irqrestore(&mdev->reg_slock, flags);
 }
 
-void mxr_reg_local_path_set(struct mxr_device *mdev, int mxr0_gsc, int mxr1_gsc,
-		u32 flags)
+void mxr_reg_set_color_range(struct mxr_device *mdev)
 {
 	u32 val = 0;
-	int mxr0_local = mdev->sub_mxr[MXR_SUB_MIXER0].local;
-	int mxr1_local = mdev->sub_mxr[MXR_SUB_MIXER1].local;
+	unsigned long flags;
 
-	if (mxr0_local && !mxr1_local) { /* 1-path : sub-mixer0 */
+	spin_lock_irqsave(&mdev->reg_slock, flags);
+	mxr_vsync_set_update(mdev, MXR_DISABLE);
+
+	val = mdev->color_range;
+	mxr_write_mask(mdev, MXR_CFG, MXR_CFG_COLOR_RANGE(val),
+		MXR_CFG_COLOR_RANGE_MASK);
+
+	if (mdev->color_range == MIXER_RGB709_16_235 ||
+			mdev->color_range == MIXER_RGB601_16_235) {
+		val = MXR_VIDEO_LIMITER_PARA_Y_UPPER(235) |
+			MXR_VIDEO_LIMITER_PARA_Y_LOWER(16) |
+			MXR_VIDEO_LIMITER_PARA_C_UPPER(235) |
+			MXR_VIDEO_LIMITER_PARA_C_LOWER(16);
+	} else {
+		val = MXR_VIDEO_LIMITER_PARA_Y_UPPER(255) |
+			MXR_VIDEO_LIMITER_PARA_Y_LOWER(0) |
+			MXR_VIDEO_LIMITER_PARA_C_UPPER(255) |
+			MXR_VIDEO_LIMITER_PARA_C_LOWER(0);
+	}
+	mxr_write(mdev, MXR_VIDEO_LIMITER_PARA_CFG, val);
+
+	mxr_write_mask(mdev, MXR_VIDEO_CFG, 1,
+				MXR_VIDEO_CFG_LIMITER_EN);
+
+	mxr_vsync_set_update(mdev, MXR_ENABLE);
+	spin_unlock_irqrestore(&mdev->reg_slock, flags);
+
+	mxr_init_csc_coef(mdev);
+}
+
+void mxr_reg_local_path_set(struct mxr_device *mdev)
+{
+	struct sub_mxr_device *mxr0 = &mdev->sub_mxr[MXR_SUB_MIXER0];
+	struct sub_mxr_device *mxr1 = &mdev->sub_mxr[MXR_SUB_MIXER1];
+	u32 val = 0;
+
+	if (mxr0->local && !mxr1->local) { /* 1-path : sub-mixer0 */
 		val  = MXR_TVOUT_CFG_ONE_PATH;
 		val |= MXR_TVOUT_CFG_PATH_MIXER0;
-	} else if (!mxr0_local && mxr1_local) { /* 1-path : sub-mixer1 */
+	} else if (!mxr0->local && mxr1->local) { /* 1-path : sub-mixer1 */
 		val  = MXR_TVOUT_CFG_ONE_PATH;
 		val |= MXR_TVOUT_CFG_PATH_MIXER1;
-	} else if (mxr0_local && mxr1_local) { /* 2-path */
+	} else if (mxr0->local && mxr1->local) { /* 2-path */
 		val  = MXR_TVOUT_CFG_TWO_PATH;
 		val |= MXR_TVOUT_CFG_STEREO_SCOPIC;
 	}
@@ -766,16 +833,15 @@ void mxr_reg_local_path_set(struct mxr_device *mdev, int mxr0_gsc, int mxr1_gsc,
 
 	/* set local path gscaler to mixer */
 	val = readl(SYSREG_DISP1BLK_CFG);
-	val |= DISP1BLK_CFG_FIFORST_DISP1;
 	val &= ~DISP1BLK_CFG_MIXER_MASK;
-	if (flags & MEDIA_LNK_FL_ENABLED) {
-		if (mxr0_local) {
+	if (mdev->flags & MEDIA_LNK_FL_ENABLED) {
+		if (mxr0->local) {
 			val |= DISP1BLK_CFG_MIXER0_VALID;
-			val |= DISP1BLK_CFG_MIXER0_SRC_GSC(mxr0_gsc);
+			val |= DISP1BLK_CFG_MIXER0_SRC_GSC(mxr0->gsc_num);
 		}
-		if (mxr1_local) {
+		if (mxr1->local) {
 			val |= DISP1BLK_CFG_MIXER1_VALID;
-			val |= DISP1BLK_CFG_MIXER1_SRC_GSC(mxr1_gsc);
+			val |= DISP1BLK_CFG_MIXER1_SRC_GSC(mxr1->gsc_num);
 		}
 	}
 	mxr_dbg(mdev, "%s: SYSREG value = 0x%x\n", __func__, val);

@@ -153,6 +153,27 @@ static const struct usb_device_id usb_quirk_list[] = {
 	/* INTEL VALUE SSD */
 	{ USB_DEVICE(0x8086, 0xf1a5), .driver_info = USB_QUIRK_RESET_RESUME },
 
+#if defined(CONFIG_MACH_JA_KOR_LGT)
+	/* Qualcomm MDM9x15 */
+	{ USB_DEVICE(0x05c6, 0x9048), .driver_info = USB_QUIRK_HSIC_TUNE},
+
+	{ USB_DEVICE(0x05c6, 0x904C), .driver_info = USB_QUIRK_HSIC_TUNE},
+#else
+	/* Qualcomm MDM9x15 */
+	{ USB_DEVICE(0x05c6, 0x9048),
+		.driver_info = USB_QUIRK_HSIC_TUNE | USB_QUIRK_NO_DPM_RESUME},
+
+	{ USB_DEVICE(0x05c6, 0x904C),
+		.driver_info = USB_QUIRK_HSIC_TUNE | USB_QUIRK_NO_DPM_RESUME},
+#endif
+	/* IMC XMM626x modem */
+	{ USB_DEVICE(0x1519, 0x0020),
+		.driver_info = USB_QUIRK_HSIC_TUNE | USB_QUIRK_NO_DPM_RESUME},
+
+	/* IMC XMM6360 modem*/
+	{ USB_DEVICE(0x1519, 0x0443),
+		.driver_info = USB_QUIRK_HSIC_TUNE | USB_QUIRK_NO_DPM_RESUME},
+
 	{ }  /* terminating entry must be last */
 };
 

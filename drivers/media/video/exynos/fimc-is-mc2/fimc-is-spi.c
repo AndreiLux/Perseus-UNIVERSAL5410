@@ -16,19 +16,19 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/spi/spi.h>
+#include <linux/gpio.h>
+#include <plat/gpio-cfg.h>
 #include "fimc-is-core.h"
+#include "fimc-is-regs.h"
 
 #define STREAM_TO_U16(var16, p)	{(var16) = ((u16)(*((u8 *)p+1)) + \
 				((u8)(*((u8 *)p) << 8))); }
 
 static struct spi_device *g_spi;
 
-int fimc_is_spi_read(void *buf, size_t size)
+int fimc_is_spi_reset(void *buf, u32 rx_addr, size_t size)
 {
-	unsigned char req_info[4] = { 0x90, 0x00, 0x00, 0x00};
-	unsigned char req_data[4] = { 0x03,  };
-	unsigned char res[2] = { 0x00, 0x00};
-	unsigned int rx_addr = 0x00;
+	unsigned char req_rst[1] = { 0x99 };
 	int ret;
 
 	struct spi_transfer t_c;
@@ -39,17 +39,12 @@ int fimc_is_spi_read(void *buf, size_t size)
 	memset(&t_c, 0x00, sizeof(t_c));
 	memset(&t_r, 0x00, sizeof(t_r));
 
-	t_c.tx_buf = req_info;
-	t_c.len = 4;
-	t_c.cs_change = 1;
-
-	t_r.rx_buf = res;
-	t_r.len = 2;
-	t_r.cs_change = 0;
+	t_c.tx_buf = req_rst;
+	t_c.len = 1;
+	t_c.cs_change = 0;
 
 	spi_message_init(&m);
 	spi_message_add_tail(&t_c, &m);
-	spi_message_add_tail(&t_r, &m);
 
 	ret = spi_sync(g_spi, &m);
 	if (ret) {
@@ -57,8 +52,18 @@ int fimc_is_spi_read(void *buf, size_t size)
 		return -EIO;
 	}
 
-	printk(KERN_INFO "Manufacturer ID : 0x%08x\n", res[0]);
-	printk(KERN_INFO "Device ID : 0x%08x\n", res[1]);
+	return 0;
+}
+
+int fimc_is_spi_read(void *buf, u32 rx_addr, size_t size)
+{
+	unsigned char req_data[4] = { 0x03,  };
+	int ret;
+
+	struct spi_transfer t_c;
+	struct spi_transfer t_r;
+
+	struct spi_message m;
 
 	memset(&t_c, 0x00, sizeof(t_c));
 	memset(&t_r, 0x00, sizeof(t_r));
@@ -70,10 +75,12 @@ int fimc_is_spi_read(void *buf, size_t size)
 	t_c.tx_buf = req_data;
 	t_c.len = 4;
 	t_c.cs_change = 1;
+	t_c.bits_per_word = 32;
 
 	t_r.rx_buf = buf;
 	t_r.len = size;
 	t_r.cs_change = 0;
+	t_r.bits_per_word = 32;
 
 	spi_message_init(&m);
 	spi_message_add_tail(&t_c, &m);
@@ -89,21 +96,21 @@ int fimc_is_spi_read(void *buf, size_t size)
 
 static int __devinit fimc_is_spi_probe(struct spi_device *spi)
 {
-	int ret;
+	int ret = 0;
+	int gpio;
+
+	dbg_core("%s\n", __func__);
 
 	/* spi->bits_per_word = 16; */
 	if (spi_setup(spi)) {
 		pr_err("failed to setup spi for fimc_is_spi\n");
 		ret = -EINVAL;
-		goto err_setup;
+		goto exit;
 	}
 
 	g_spi = spi;
 
-	printk(KERN_INFO "fimc_is_spi successfully probed\n");
-	return 0;
-
-err_setup:
+exit:
 	return ret;
 }
 

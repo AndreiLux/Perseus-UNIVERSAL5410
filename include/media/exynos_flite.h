@@ -41,4 +41,5 @@ struct exynos_platform_flite {
 
 extern struct exynos_platform_flite exynos_flite0_default_data;
 extern struct exynos_platform_flite exynos_flite1_default_data;
+extern struct exynos_platform_flite exynos_flite2_default_data;
 #endif /* EXYNOS_FLITE_H_*/

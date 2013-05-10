@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_iw.c 347632 2012-07-27 11:00:35Z $
+ * $Id: wl_iw.c 384655 2013-02-12 19:59:43Z $
  */
 
 #if defined(USE_IW)
@@ -45,6 +45,50 @@ typedef const struct si_pub	si_t;
 
 #include <wl_dbg.h>
 #include <wl_iw.h>
+
+#ifdef BCMWAPI_WPI
+
+#ifndef IW_ENCODE_ALG_SM4
+#define IW_ENCODE_ALG_SM4 0x20
+#endif
+
+#ifndef IW_AUTH_WAPI_ENABLED
+#define IW_AUTH_WAPI_ENABLED 0x20
+#endif
+
+#ifndef IW_AUTH_WAPI_VERSION_1
+#define IW_AUTH_WAPI_VERSION_1	0x00000008
+#endif
+
+#ifndef IW_AUTH_CIPHER_SMS4
+#define IW_AUTH_CIPHER_SMS4	0x00000020
+#endif
+
+#ifndef IW_AUTH_KEY_MGMT_WAPI_PSK
+#define IW_AUTH_KEY_MGMT_WAPI_PSK 4
+#endif
+
+#ifndef IW_AUTH_KEY_MGMT_WAPI_CERT
+#define IW_AUTH_KEY_MGMT_WAPI_CERT 8
+#endif
+#endif 
+
+
+#ifndef IW_AUTH_KEY_MGMT_FT_802_1X
+#define IW_AUTH_KEY_MGMT_FT_802_1X 0x04
+#endif
+
+#ifndef IW_AUTH_KEY_MGMT_FT_PSK
+#define IW_AUTH_KEY_MGMT_FT_PSK 0x08
+#endif
+
+
+#ifndef IW_ENCODE_ALG_PMK
+#define IW_ENCODE_ALG_PMK 4
+#endif
+#ifndef IW_ENC_CAPA_4WAY_HANDSHAKE
+#define IW_ENC_CAPA_4WAY_HANDSHAKE 0x00000010
+#endif
 
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
@@ -643,6 +687,7 @@ wl_iw_get_range(
 		{14, 29, 43, 58, 87, 116, 130, 144},
 		{27, 54, 81, 108, 162, 216, 243, 270},
 		{30, 60, 90, 120, 180, 240, 270, 300}};
+	int fbt_cap = 0;
 
 	WL_TRACE(("%s: SIOCGIWRANGE\n", dev->name));
 
@@ -698,15 +743,18 @@ wl_iw_get_range(
 	range->num_bitrates = rateset.count;
 	for (i = 0; i < rateset.count && i < IW_MAX_BITRATES; i++)
 		range->bitrate[i] = (rateset.rates[i] & 0x7f) * 500000; 
-	dev_wlc_intvar_get(dev, "nmode", &nmode);
+	if ((error = dev_wlc_intvar_get(dev, "nmode", &nmode)))
+		return error;
 	if ((error = dev_wlc_ioctl(dev, WLC_GET_PHYTYPE, &phytype, sizeof(phytype))))
 		return error;
-
 	if (nmode == 1 && ((phytype == WLC_PHY_TYPE_SSN) || (phytype == WLC_PHY_TYPE_LCN) ||
 		(phytype == WLC_PHY_TYPE_LCN40))) {
-		dev_wlc_intvar_get(dev, "mimo_bw_cap", &bw_cap);
-		dev_wlc_intvar_get(dev, "sgi_tx", &sgi_tx);
-		dev_wlc_ioctl(dev, WLC_GET_CHANNEL, &ci, sizeof(channel_info_t));
+		if ((error = dev_wlc_intvar_get(dev, "mimo_bw_cap", &bw_cap)))
+			return error;
+		if ((error = dev_wlc_intvar_get(dev, "sgi_tx", &sgi_tx)))
+			return error;
+		if ((error = dev_wlc_ioctl(dev, WLC_GET_CHANNEL, &ci, sizeof(channel_info_t))))
+			return error;
 		ci.hw_channel = dtoh32(ci.hw_channel);
 
 		if (bw_cap == 0 ||
@@ -791,10 +839,14 @@ wl_iw_get_range(
 	range->enc_capa |= IW_ENC_CAPA_CIPHER_TKIP;
 	range->enc_capa |= IW_ENC_CAPA_CIPHER_CCMP;
 	range->enc_capa |= IW_ENC_CAPA_WPA2;
-#if (defined(BCMSUP_PSK) && defined(WLFBT))
+
 	
-	range->enc_capa |= IW_ENC_CAPA_4WAY_HANDSHAKE;
-#endif 
+	if (dev_wlc_intvar_get(dev, "fbt_cap", &fbt_cap) == 0) {
+		if (fbt_cap == WLC_FBT_CAP_DRV_4WAY_AND_REASSOC) {
+
+			range->enc_capa |= IW_ENC_CAPA_4WAY_HANDSHAKE;
+		}
+	}
 
 	
 	IW_EVENT_CAPA_SET_KERNEL(range->event_capa);
@@ -1255,6 +1307,35 @@ ie_is_wps_ie(uint8 **wpsie, uint8 **tlvs, int *tlvs_len)
 }
 #endif 
 
+#ifdef BCMWAPI_WPI
+static inline int _wpa_snprintf_hex(char *buf, size_t buf_size, const u8 *data,
+	size_t len, int uppercase)
+{
+	size_t i;
+	char *pos = buf, *end = buf + buf_size;
+	int ret;
+	if (buf_size == 0)
+		return 0;
+	for (i = 0; i < len; i++) {
+		ret = snprintf(pos, end - pos, uppercase ? "%02X" : "%02x",
+			data[i]);
+		if (ret < 0 || ret >= end - pos) {
+			end[-1] = '\0';
+			return pos - buf;
+		}
+		pos += ret;
+	}
+	end[-1] = '\0';
+	return pos - buf;
+}
+
+
+static int
+wpa_snprintf_hex(char *buf, size_t buf_size, const u8 *data, size_t len)
+{
+	return _wpa_snprintf_hex(buf, buf_size, data, len, 0);
+}
+#endif 
 
 static int
 wl_iw_handle_scanresults_ies(char **event_p, char *end,
@@ -1263,6 +1344,10 @@ wl_iw_handle_scanresults_ies(char **event_p, char *end,
 #if WIRELESS_EXT > 17
 	struct iw_event	iwe;
 	char *event;
+#ifdef BCMWAPI_WPI
+	char *buf;
+	int custom_event_len;
+#endif
 
 	event = *event_p;
 	if (bi->ie_length) {
@@ -1278,14 +1363,12 @@ wl_iw_handle_scanresults_ies(char **event_p, char *end,
 		}
 		ptr = ((uint8 *)bi) + sizeof(wl_bss_info_t);
 
-#if defined(WLFBT)
 		if ((ie = bcm_parse_tlvs(ptr, ptr_len, DOT11_MNG_MDIE_ID))) {
 			iwe.cmd = IWEVGENIE;
 			iwe.u.data.length = ie->len + 2;
 			event = IWE_STREAM_ADD_POINT(info, event, end, &iwe, (char *)ie);
 		}
 		ptr = ((uint8 *)bi) + sizeof(wl_bss_info_t);
-#endif 
 
 		while ((ie = bcm_parse_tlvs(ptr, ptr_len, DOT11_MNG_WPA_ID))) {
 			
@@ -1308,6 +1391,38 @@ wl_iw_handle_scanresults_ies(char **event_p, char *end,
 			}
 		}
 
+#ifdef BCMWAPI_WPI
+		ptr = ((uint8 *)bi) + sizeof(wl_bss_info_t);
+		ptr_len = bi->ie_length;
+
+		while ((ie = bcm_parse_tlvs(ptr, ptr_len, DOT11_MNG_WAPI_ID))) {
+			WL_TRACE(("%s: found a WAPI IE...\n", __FUNCTION__));
+#ifdef WAPI_IE_USE_GENIE
+			iwe.cmd = IWEVGENIE;
+			iwe.u.data.length = ie->len + 2;
+			event = IWE_STREAM_ADD_POINT(info, event, end, &iwe, (char *)ie);
+#else 
+			iwe.cmd = IWEVCUSTOM;
+			custom_event_len = strlen("wapi_ie=") + 2*(ie->len + 2);
+			iwe.u.data.length = custom_event_len;
+
+			buf = kmalloc(custom_event_len+1, GFP_KERNEL);
+			if (buf == NULL)
+			{
+				WL_ERROR(("malloc(%d) returned NULL...\n", custom_event_len));
+				break;
+			}
+
+			memcpy(buf, "wapi_ie=", 8);
+			wpa_snprintf_hex(buf + 8, 2+1, &(ie->id), 1);
+			wpa_snprintf_hex(buf + 10, 2+1, &(ie->len), 1);
+			wpa_snprintf_hex(buf + 12, 2*ie->len+1, ie->data, ie->len);
+			event = IWE_STREAM_ADD_POINT(info, event, end, &iwe, buf);
+			kfree(buf);
+#endif 
+			break;
+		}
+#endif 
 	*event_p = event;
 	}
 
@@ -2212,6 +2327,21 @@ wl_iw_set_wpaie(
 	char *extra
 )
 {
+#if defined(BCMWAPI_WPI)
+	uchar buf[WLC_IOCTL_SMLEN] = {0};
+	uchar *p = buf;
+	int wapi_ie_size;
+
+	WL_TRACE(("%s: SIOCSIWGENIE\n", dev->name));
+
+	if (extra[0] == DOT11_MNG_WAPI_ID)
+	{
+		wapi_ie_size = iwp->length;
+		memcpy(p, extra, iwp->length);
+		dev_wlc_bufvar_set(dev, "wapiie", buf, wapi_ie_size);
+	}
+	else
+#endif
 		dev_wlc_bufvar_set(dev, "wpaie", extra, iwp->length);
 
 	return 0;
@@ -2283,7 +2413,6 @@ wl_iw_set_encodeext(
 				return error;
 		}
 	}
-#if (defined(BCMSUP_PSK) && defined(WLFBT))
 	
 	else if (iwe->alg == IW_ENCODE_ALG_PMK) {
 		int j;
@@ -2306,7 +2435,6 @@ wl_iw_set_encodeext(
 		if (error)
 			return error;
 	}
-#endif 
 
 	else {
 		if (iwe->key_len > sizeof(key.data))
@@ -2353,6 +2481,14 @@ wl_iw_set_encodeext(
 			case IW_ENCODE_ALG_CCMP:
 				key.algo = CRYPTO_ALGO_AES_CCM;
 				break;
+#ifdef BCMWAPI_WPI
+			case IW_ENCODE_ALG_SM4:
+				key.algo = CRYPTO_ALGO_SMS4;
+				if (iwe->ext_flags & IW_ENCODE_EXT_GROUP_KEY) {
+					key.flags &= ~WL_PRIMARY_KEY;
+				}
+				break;
+#endif
 			default:
 				break;
 		}
@@ -2502,13 +2638,18 @@ wl_iw_set_wpaauth(
 			val = WPA_AUTH_PSK | WPA_AUTH_UNSPECIFIED;
 		else if (paramval & IW_AUTH_WPA_VERSION_WPA2)
 			val = WPA2_AUTH_PSK | WPA2_AUTH_UNSPECIFIED;
+#ifdef BCMWAPI_WPI
+		else if (paramval & IW_AUTH_WAPI_VERSION_1)
+			val = WAPI_AUTH_UNSPECIFIED;
+#endif
 		WL_TRACE(("%s: %d: setting wpa_auth to 0x%0x\n", __FUNCTION__, __LINE__, val));
 		if ((error = dev_wlc_intvar_set(dev, "wpa_auth", val)))
 			return error;
 		break;
 
 	case IW_AUTH_CIPHER_PAIRWISE:
-	case IW_AUTH_CIPHER_GROUP:
+	case IW_AUTH_CIPHER_GROUP: {
+		int fbt_cap = 0;
 
 		if (paramid == IW_AUTH_CIPHER_PAIRWISE) {
 			iw->pwsec = paramval;
@@ -2528,6 +2669,11 @@ wl_iw_set_wpaauth(
 			val |= TKIP_ENABLED;
 		if (cipher_combined & IW_AUTH_CIPHER_CCMP)
 			val |= AES_ENABLED;
+#ifdef BCMWAPI_WPI
+		val &= ~SMS4_ENABLED;
+		if (cipher_combined & IW_AUTH_CIPHER_SMS4)
+			val |= SMS4_ENABLED;
+#endif
 
 		if (iw->privacy_invoked && !val) {
 			WL_WSEC(("%s: %s: 'Privacy invoked' TRUE but clearing wsec, assuming "
@@ -2545,34 +2691,47 @@ wl_iw_set_wpaauth(
 
 		if ((error = dev_wlc_intvar_set(dev, "wsec", val)))
 			return error;
-#ifdef WLFBT
-		if ((paramid == IW_AUTH_CIPHER_PAIRWISE) && (val | AES_ENABLED)) {
-			if ((error = dev_wlc_intvar_set(dev, "sup_wpa", 1)))
-				return error;
+
+
+		if (dev_wlc_intvar_get(dev, "fbt_cap", &fbt_cap) == 0) {
+			if (fbt_cap == WLC_FBT_CAP_DRV_4WAY_AND_REASSOC) {
+				if ((paramid == IW_AUTH_CIPHER_PAIRWISE) && (val & AES_ENABLED)) {
+					if ((error = dev_wlc_intvar_set(dev, "sup_wpa", 1)))
+						return error;
+				}
+				else if (val == 0) {
+					if ((error = dev_wlc_intvar_set(dev, "sup_wpa", 0)))
+						return error;
+				}
+			}
 		}
-		else if (val == 0) {
-			if ((error = dev_wlc_intvar_set(dev, "sup_wpa", 0)))
-				return error;
-		}
-#endif 
 		break;
+	}
 
 	case IW_AUTH_KEY_MGMT:
 		if ((error = dev_wlc_intvar_get(dev, "wpa_auth", &val)))
 			return error;
 
 		if (val & (WPA_AUTH_PSK | WPA_AUTH_UNSPECIFIED)) {
-			if (paramval & IW_AUTH_KEY_MGMT_PSK)
+			if (paramval & (IW_AUTH_KEY_MGMT_FT_PSK | IW_AUTH_KEY_MGMT_PSK))
 				val = WPA_AUTH_PSK;
 			else
 				val = WPA_AUTH_UNSPECIFIED;
+			if (paramval & (IW_AUTH_KEY_MGMT_FT_802_1X | IW_AUTH_KEY_MGMT_FT_PSK))
+				val |= WPA2_AUTH_FT;
 		}
 		else if (val & (WPA2_AUTH_PSK | WPA2_AUTH_UNSPECIFIED)) {
-			if (paramval & IW_AUTH_KEY_MGMT_PSK)
+			if (paramval & (IW_AUTH_KEY_MGMT_FT_PSK | IW_AUTH_KEY_MGMT_PSK))
 				val = WPA2_AUTH_PSK;
 			else
 				val = WPA2_AUTH_UNSPECIFIED;
+			if (paramval & (IW_AUTH_KEY_MGMT_FT_802_1X | IW_AUTH_KEY_MGMT_FT_PSK))
+				val |= WPA2_AUTH_FT;
 		}
+#ifdef BCMWAPI_WPI
+		if (paramval & (IW_AUTH_KEY_MGMT_WAPI_PSK | IW_AUTH_KEY_MGMT_WAPI_CERT))
+			val = WAPI_AUTH_UNSPECIFIED;
+#endif
 		WL_TRACE(("%s: %d: setting wpa_auth to %d\n", __FUNCTION__, __LINE__, val));
 		if ((error = dev_wlc_intvar_set(dev, "wpa_auth", val)))
 			return error;
@@ -2655,6 +2814,29 @@ wl_iw_set_wpaauth(
 
 #endif 
 
+#ifdef BCMWAPI_WPI
+
+	case IW_AUTH_WAPI_ENABLED:
+		if ((error = dev_wlc_intvar_get(dev, "wsec", &val)))
+			return error;
+		if (paramval) {
+			val |= SMS4_ENABLED;
+			if ((error = dev_wlc_intvar_set(dev, "wsec", val))) {
+				WL_ERROR(("%s: setting wsec to 0x%0x returned error %d\n",
+					__FUNCTION__, val, error));
+				return error;
+			}
+			if ((error = dev_wlc_intvar_set(dev, "wpa_auth", WAPI_AUTH_UNSPECIFIED))) {
+				WL_ERROR(("%s: setting wpa_auth(%d) returned %d\n",
+					__FUNCTION__, WAPI_AUTH_UNSPECIFIED,
+					error));
+				return error;
+			}
+		}
+
+		break;
+
+#endif 
 
 	default:
 		break;
@@ -3465,7 +3647,7 @@ static void wl_iw_send_scan_complete(iscan_info_t *iscan)
 
 	memset(&wrqu, 0, sizeof(wrqu));
 
-	
+
 	wireless_send_event(iscan->dev, SIOCGIWSCAN, &wrqu, NULL);
 }
 

@@ -94,6 +94,10 @@ enum v4l2_mbus_pixelcode {
 
 	/* JPEG compressed formats - next is 0x4002 */
 	V4L2_MBUS_FMT_JPEG_1X8 = 0x4001,
+	V4L2_MBUS_FMT_INTERLEAVED = 0x4002,
+
+	/* S5C73M3 sensor specific interleaved UYVY and JPEG */
+	V4L2_MBUS_FMT_S5C_UYVY_JPEG_1X8 = 0x5001,
 };
 
 /**

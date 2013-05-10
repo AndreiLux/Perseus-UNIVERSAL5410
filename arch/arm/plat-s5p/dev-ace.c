@@ -11,6 +11,7 @@
  */
 
 #include <linux/platform_device.h>
+#include <linux/export.h>
 
 #include <mach/map.h>
 #include <mach/irqs.h>

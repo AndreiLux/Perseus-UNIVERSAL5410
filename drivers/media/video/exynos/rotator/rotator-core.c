@@ -20,11 +20,12 @@
 
 #include <media/v4l2-ioctl.h>
 #include <mach/videonode.h>
+#include <plat/sysmmu.h>
 
 #include "rotator.h"
 
-int log_level;
-module_param_named(log_level, log_level, uint, 0644);
+int rot_log_level;
+module_param_named(rot_log_level, rot_log_level, uint, 0644);
 
 static struct rot_fmt rot_formats[] = {
 	{
@@ -185,7 +186,7 @@ static int rot_v4l2_g_fmt_mplane(struct file *file, void *fh,
 		pixm->plane_fmt[i].sizeimage = pixm->plane_fmt[i].bytesperline
 				* pixm->height;
 
-		v4l2_dbg(1, log_level, &ctx->rot_dev->m2m.v4l2_dev,
+		v4l2_dbg(1, rot_log_level, &ctx->rot_dev->m2m.v4l2_dev,
 				"[%d] plane: bytesperline %d, sizeimage %d\n",
 				i, pixm->plane_fmt[i].bytesperline,
 				pixm->plane_fmt[i].sizeimage);
@@ -226,7 +227,7 @@ static int rot_v4l2_try_fmt_mplane(struct file *file, void *fh,
 		pixm->plane_fmt[i].sizeimage = pixm->plane_fmt[i].bytesperline
 				* pixm->height;
 
-		v4l2_dbg(1, log_level, &ctx->rot_dev->m2m.v4l2_dev,
+		v4l2_dbg(1, rot_log_level, &ctx->rot_dev->m2m.v4l2_dev,
 				"[%d] plane: bytesperline %d, sizeimage %d\n",
 				i, pixm->plane_fmt[i].bytesperline,
 				pixm->plane_fmt[i].sizeimage);
@@ -498,6 +499,7 @@ static int rot_vb2_queue_setup(struct vb2_queue *vq,
 				frame->rot_fmt->bitperpixel[i]) >> 3;
 		allocators[i] = ctx->rot_dev->alloc_ctx;
 	}
+	vb2_queue_init(vq);
 
 	return 0;
 }
@@ -517,10 +519,7 @@ static int rot_vb2_buf_prepare(struct vb2_buffer *vb)
 			vb2_set_plane_payload(vb, i, frame->bytesused[i]);
 	}
 
-	if (ctx->cacheable)
-		ctx->rot_dev->vb2->cache_flush(vb, frame->rot_fmt->num_planes);
-
-	return 0;
+	return rot_buf_sync_prepare(vb);
 }
 
 static void rot_vb2_buf_queue(struct vb2_buffer *vb)
@@ -554,7 +553,6 @@ static int rot_vb2_start_streaming(struct vb2_queue *vq, unsigned int count)
 static int rot_vb2_stop_streaming(struct vb2_queue *vq)
 {
 	struct rot_ctx *ctx = vb2_get_drv_priv(vq);
-	struct rot_dev *rot = ctx->rot_dev;
 	int ret;
 
 	ret = rot_ctx_stop_req(ctx);
@@ -562,7 +560,6 @@ static int rot_vb2_stop_streaming(struct vb2_queue *vq)
 		dev_err(ctx->rot_dev->dev, "wait timeout\n");
 
 	clear_bit(CTX_STREAMING, &ctx->flags);
-	v4l2_m2m_get_next_job(rot->m2m.m2m_dev, ctx->m2m_ctx);
 
 	return ret;
 }
@@ -570,6 +567,7 @@ static int rot_vb2_stop_streaming(struct vb2_queue *vq)
 static struct vb2_ops rot_vb2_ops = {
 	.queue_setup		 = rot_vb2_queue_setup,
 	.buf_prepare		 = rot_vb2_buf_prepare,
+	.buf_finish		 = rot_buf_sync_finish,
 	.buf_queue		 = rot_vb2_buf_queue,
 	.wait_finish		 = rot_vb2_lock,
 	.wait_prepare		 = rot_vb2_unlock,
@@ -585,7 +583,7 @@ static int queue_init(void *priv, struct vb2_queue *src_vq,
 
 	memset(src_vq, 0, sizeof(*src_vq));
 	src_vq->type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-	src_vq->io_modes = VB2_MMAP | VB2_USERPTR;
+	src_vq->io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	src_vq->ops = &rot_vb2_ops;
 	src_vq->mem_ops = ctx->rot_dev->vb2->ops;
 	src_vq->drv_priv = ctx;
@@ -597,7 +595,7 @@ static int queue_init(void *priv, struct vb2_queue *src_vq,
 
 	memset(dst_vq, 0, sizeof(*dst_vq));
 	dst_vq->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-	dst_vq->io_modes = VB2_MMAP | VB2_USERPTR;
+	dst_vq->io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	dst_vq->ops = &rot_vb2_ops;
 	dst_vq->mem_ops = ctx->rot_dev->vb2->ops;
 	dst_vq->drv_priv = ctx;
@@ -768,6 +766,24 @@ static const struct v4l2_file_operations rot_v4l2_fops = {
 	.mmap		= rot_mmap,
 };
 
+static void rot_clock_gating(struct rot_dev *rot, enum rot_clk_status status)
+{
+	if (status == ROT_CLK_ON) {
+		atomic_inc(&rot->clk_cnt);
+		clk_enable(rot->clock);
+		rot->vb2->resume(rot->alloc_ctx);
+	} else if (status == ROT_CLK_OFF) {
+		int clk_cnt = atomic_dec_return(&rot->clk_cnt);
+		if (clk_cnt < 0) {
+			dev_err(rot->dev, "rotator clock control is wrong!!\n");
+			atomic_set(&rot->clk_cnt, 0);
+		} else {
+			rot->vb2->suspend(rot->alloc_ctx);
+			clk_disable(rot->clock);
+		}
+	}
+}
+
 static void rot_watchdog(unsigned long arg)
 {
 	struct rot_dev *rot = (struct rot_dev *)arg;
@@ -777,7 +793,7 @@ static void rot_watchdog(unsigned long arg)
 
 	rot_dbg("timeout watchdog\n");
 	if (atomic_read(&rot->wdt.cnt) >= ROT_WDT_CNT) {
-		pm_runtime_put(rot->dev);
+		rot_clock_gating(rot, ROT_CLK_OFF);
 
 		rot_dbg("wakeup blocked process\n");
 		atomic_set(&rot->wdt.cnt, 0);
@@ -837,6 +853,8 @@ static irqreturn_t rot_irq_handler(int irq, void *priv)
 		rot_dump_registers(rot);
 	}
 
+	rot_clock_gating(rot, ROT_CLK_OFF);
+
 	ctx = v4l2_m2m_get_curr_priv(rot->m2m.m2m_dev);
 	if (!ctx || !ctx->m2m_ctx) {
 		dev_err(rot->dev, "current ctx is NULL\n");
@@ -862,8 +880,6 @@ static irqreturn_t rot_irq_handler(int irq, void *priv)
 		/* Wake up from CTX_ABORT state */
 		if (test_and_clear_bit(CTX_ABORT, &ctx->flags))
 			wake_up(&rot->wait);
-
-		pm_runtime_put(rot->dev);
 	} else {
 		dev_err(rot->dev, "failed to get the buffer done\n");
 	}
@@ -905,28 +921,40 @@ static void rot_get_bufaddr(struct rot_dev *rot, struct vb2_buffer *vb,
 
 static void rot_set_frame_addr(struct rot_ctx *ctx)
 {
-	struct vb2_buffer *vb;
+	struct vb2_buffer *src_vb, *dst_vb;
 	struct rot_frame *s_frame, *d_frame;
 	struct rot_dev *rot = ctx->rot_dev;
+	struct sysmmu_prefbuf prebuf[ROT_MAX_PBUF];
 
 	s_frame = &ctx->s_frame;
 	d_frame = &ctx->d_frame;
 
 	/* set source buffer address */
-	vb = v4l2_m2m_next_src_buf(ctx->m2m_ctx);
-	rot_get_bufaddr(rot, vb, s_frame, &s_frame->addr);
+	src_vb = v4l2_m2m_next_src_buf(ctx->m2m_ctx);
+	rot_get_bufaddr(rot, src_vb, s_frame, &s_frame->addr);
 
 	rot_hwset_src_addr(rot, s_frame->addr.y, ROT_ADDR_Y);
 	rot_hwset_src_addr(rot, s_frame->addr.cb, ROT_ADDR_CB);
 	rot_hwset_src_addr(rot, s_frame->addr.cr, ROT_ADDR_CR);
 
 	/* set destination buffer address */
-	vb = v4l2_m2m_next_dst_buf(ctx->m2m_ctx);
-	rot_get_bufaddr(rot, vb, d_frame, &d_frame->addr);
+	dst_vb = v4l2_m2m_next_dst_buf(ctx->m2m_ctx);
+	rot_get_bufaddr(rot, dst_vb, d_frame, &d_frame->addr);
 
 	rot_hwset_dst_addr(rot, d_frame->addr.y, ROT_ADDR_Y);
 	rot_hwset_dst_addr(rot, d_frame->addr.cb, ROT_ADDR_CB);
 	rot_hwset_dst_addr(rot, d_frame->addr.cr, ROT_ADDR_CR);
+
+	/* set sysmmu prefetch for source buffer */
+	prebuf[0].base = s_frame->addr.y;
+	prebuf[0].size = (s_frame->pix_mp.width * s_frame->pix_mp.height) *
+			(s_frame->rot_fmt->bitperpixel[0] >> 3);
+
+	prebuf[1].base = d_frame->addr.y;
+	prebuf[1].size = (d_frame->pix_mp.width * d_frame->pix_mp.height) *
+			(d_frame->rot_fmt->bitperpixel[0] >> 3);
+
+	exynos_sysmmu_set_pbuf(rot->dev, ROT_MAX_PBUF, prebuf);
 }
 
 static void rot_mapping_flip(struct rot_ctx *ctx, u32 *degree, u32 *flip)
@@ -958,29 +986,26 @@ static void rot_m2m_device_run(void *priv)
 	struct rot_ctx *ctx = priv;
 	struct rot_frame *s_frame, *d_frame;
 	struct rot_dev *rot;
-	unsigned long flags;
 	u32 degree = 0, flip = 0;
-
-	spin_lock_irqsave(&ctx->slock, flags);
 
 	rot = ctx->rot_dev;
 
 	if (test_bit(DEV_RUN, &rot->state)) {
 		dev_err(rot->dev, "Rotator is already in progress\n");
-		goto run_unlock;
+		return;
 	}
 
 	if (test_bit(DEV_SUSPEND, &rot->state)) {
 		dev_err(rot->dev, "Rotator is in suspend state\n");
-		goto run_unlock;
+		return;
 	}
 
 	if (test_bit(CTX_ABORT, &ctx->flags)) {
 		rot_dbg("aborted rot device run\n");
-		goto run_unlock;
+		return;
 	}
 
-	pm_runtime_get_sync(ctx->rot_dev->dev);
+	rot_clock_gating(rot, ROT_CLK_ON);
 
 	s_frame = &ctx->s_frame;
 	d_frame = &ctx->d_frame;
@@ -1015,22 +1040,16 @@ static void rot_m2m_device_run(void *priv)
 		add_timer(&rot->wdt.timer);
 	else
 		mod_timer(&rot->wdt.timer, rot->wdt.timer.expires);
-
-run_unlock:
-	spin_unlock_irqrestore(&ctx->slock, flags);
 }
 
 static void rot_m2m_job_abort(void *priv)
 {
 	struct rot_ctx *ctx = priv;
-	struct rot_dev *rot = ctx->rot_dev;
 	int ret;
 
 	ret = rot_ctx_stop_req(ctx);
 	if (ret < 0)
 		dev_err(ctx->rot_dev->dev, "wait timeout\n");
-
-	v4l2_m2m_get_next_job(rot->m2m.m2m_dev, ctx->m2m_ctx);
 }
 
 static struct v4l2_m2m_ops rot_m2m_ops = {
@@ -1069,6 +1088,7 @@ static int rot_register_m2m_device(struct rot_dev *rot)
 	vfd->fops	= &rot_v4l2_fops;
 	vfd->ioctl_ops	= &rot_v4l2_ioctl_ops;
 	vfd->release	= video_device_release;
+	vfd->lock	= &rot->lock;
 	snprintf(vfd->name, sizeof(vfd->name), "%s:m2m", MODULE_NAME);
 
 	video_set_drvdata(vfd, rot);
@@ -1124,33 +1144,9 @@ static int rot_resume(struct device *dev)
 	return 0;
 }
 
-static int rot_runtime_suspend(struct device *dev)
-{
-	struct rot_dev *rot = dev_get_drvdata(dev);
-
-	rot->vb2->suspend(rot->alloc_ctx);
-
-	clk_disable(rot->clock);
-
-	return 0;
-}
-
-static int rot_runtime_resume(struct device *dev)
-{
-	struct rot_dev *rot = dev_get_drvdata(dev);
-
-	clk_enable(rot->clock);
-
-	rot->vb2->resume(rot->alloc_ctx);
-
-	return 0;
-}
-
 static const struct dev_pm_ops rot_pm_ops = {
 	.suspend		= rot_suspend,
 	.resume			= rot_resume,
-	.runtime_suspend	= rot_runtime_suspend,
-	.runtime_resume		= rot_runtime_resume,
 };
 
 static int rot_probe(struct platform_device *pdev)
@@ -1181,6 +1177,7 @@ static int rot_probe(struct platform_device *pdev)
 	rot->variant = drv_data->variant[variant_num];
 
 	spin_lock_init(&rot->slock);
+	mutex_init(&rot->lock);
 
 	/* Get memory resource and map SFR region. */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -1227,12 +1224,6 @@ static int rot_probe(struct platform_device *pdev)
 		goto err;
 	}
 
-	pm_runtime_enable(&pdev->dev);
-
-#ifndef CONFIG_PM_RUNTIME
-	rot_runtime_resume(&pdev->dev);
-#endif
-
 	dev_info(&pdev->dev, "rotator registered successfully\n");
 
 	return 0;
@@ -1247,12 +1238,6 @@ static int rot_remove(struct platform_device *pdev)
 	struct rot_dev *rot = platform_get_drvdata(pdev);
 
 	clk_put(rot->clock);
-
-	pm_runtime_disable(&pdev->dev);
-
-#ifndef CONFIG_PM_RUNTIME
-	rot_runtime_suspend(&pdev->dev);
-#endif
 
 	if (timer_pending(&rot->wdt.timer))
 		del_timer(&rot->wdt.timer);

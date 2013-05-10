@@ -28,13 +28,13 @@
 #include <linux/string.h>
 #include <linux/delay.h>
 #include <media/v4l2-ioctl.h>
-#include <plat/bts.h>
 
 #include "gsc-core.h"
 
-int gsc_out_hw_reset_off (struct gsc_dev *gsc)
+int gsc_out_hw_reset_off(struct gsc_dev *gsc)
 {
 	int ret;
+	struct exynos_platform_gscaler *pdata = gsc->pdata;
 
 	gsc_hw_enable_control(gsc, false);
 	ret = gsc_wait_stop(gsc);
@@ -43,12 +43,23 @@ int gsc_out_hw_reset_off (struct gsc_dev *gsc)
 		return ret;
 	}
 
+	if (is_ver_5a) {
+		gsc_hw_set_sw_reset(gsc);
+		ret = gsc_wait_reset(gsc);
+		if (ret < 0) {
+			gsc_err("gscaler s/w reset timeout");
+			return ret;
+		}
+		gsc_hw_set_pixelasync_reset_output(gsc);
+	}
+
 	return 0;
 }
 
 int gsc_out_hw_set(struct gsc_ctx *ctx)
 {
 	struct gsc_dev *gsc = ctx->gsc_dev;
+	struct exynos_platform_gscaler *pdata = gsc->pdata;
 	int ret = 0;
 
 	ret = gsc_set_scaler_info(ctx);
@@ -57,10 +68,22 @@ int gsc_out_hw_set(struct gsc_ctx *ctx)
 		return ret;
 	}
 
+
+	if (gsc->out.ctx->out_path == GSC_FIMD) {
+		gsc_hw_set_local_dst(gsc->id, GSC_FIMD, true);
+	} else {
+		gsc_hw_set_mixer(gsc->id);
+		gsc_hw_set_local_dst(gsc->id, GSC_MIXER, true);
+	}
+
+	if (is_ver_5a)
+		gsc_hw_set_pixelasync_reset_output(gsc);
+
 	if (gsc_hw_get_mxr_path_status())
 		gsc_hw_set_fire_bit_sync_mode(gsc, true);
 	else
 		gsc_hw_set_fire_bit_sync_mode(gsc, false);
+
 	gsc_hw_set_frm_done_irq_mask(gsc, false);
 	gsc_hw_set_gsc_irq_enable(gsc, true);
 	gsc_hw_set_one_frm_mode(gsc, false);
@@ -80,7 +103,6 @@ int gsc_out_hw_set(struct gsc_ctx *ctx)
 	gsc_hw_set_v_coef(ctx);
 	gsc_hw_set_rotation(ctx);
 	gsc_hw_set_global_alpha(ctx);
-	gsc_hw_set_input_buf_mask_all(gsc);
 
 	gsc_hw_enable_control(gsc, true);
 	ret = gsc_wait_operating(gsc);
@@ -266,6 +288,7 @@ static int gsc_subdev_set_crop(struct v4l2_subdev *sd,
 static int gsc_subdev_s_stream(struct v4l2_subdev *sd, int enable)
 {
 	struct gsc_dev *gsc = entity_data_to_gsc(v4l2_get_subdevdata(sd));
+	struct exynos_platform_gscaler *pdata = gsc->pdata;
 	int ret;
 
 	if (enable) {
@@ -275,14 +298,15 @@ static int gsc_subdev_s_stream(struct v4l2_subdev *sd, int enable)
 			return -EINVAL;
 		}
 	} else {
+		if (is_ver_5a) {
+			ret = gsc_out_hw_reset_off(gsc);
+			if (ret < 0)
+				return ret;
+		}
 		INIT_LIST_HEAD(&gsc->out.active_buf_q);
 		clear_bit(ST_OUTPUT_STREAMON, &gsc->state);
-		bts_change_bus_traffic(&gsc->pdev->dev, BTS_DECREASE_BW);
 		pm_runtime_put_sync(&gsc->pdev->dev);
-		if (gsc->int_poll_hd) {
-			exynos5_bus_int_put(gsc->int_poll_hd);
-			gsc->int_poll_hd = NULL;
-		}
+		gsc_pm_qos_ctrl(gsc, GSC_QOS_OFF, 0, 0);
 	}
 
 	return 0;
@@ -315,10 +339,6 @@ static int gsc_out_power_off(struct v4l2_subdev *sd)
 
 	return 0;
 }
-
-static struct exynos_media_ops gsc_out_link_callback = {
-	.power_off = gsc_out_power_off,
-};
 
 /*
  * The video node ioctl operations
@@ -634,20 +654,17 @@ static int gsc_out_stop_streaming(struct vb2_queue *q)
 	if (ret)
 		return ret;
 
-	if (ctx->out_path == GSC_FIMD) {
-		gsc_hw_enable_control(gsc, false);
-		ret = gsc_wait_stop(gsc);
-		if (ret < 0)
-			return ret;
-	}
-	gsc_hw_set_input_buf_mask_all(gsc);
-
-	/* TODO: Add gscaler clock off function */
 	ret = gsc_out_video_s_stream(gsc, 0);
 	if (ret) {
 		gsc_err("G-Scaler video s_stream off failed");
 		return ret;
 	}
+
+	if (gsc->out.ctx->out_path == GSC_FIMD)
+		gsc_hw_set_local_dst(gsc->id, GSC_FIMD, false);
+	else
+		gsc_hw_set_local_dst(gsc->id, GSC_MIXER, false);
+
 	media_entity_pipeline_stop(&gsc->out.vfd->entity);
 
 	return ret;
@@ -677,24 +694,6 @@ static int gsc_out_queue_setup(struct vb2_queue *vq, const struct v4l2_format *f
 	return 0;
 }
 
-static int gsc_out_buffer_prepare(struct vb2_buffer *vb)
-{
-	struct vb2_queue *vq = vb->vb2_queue;
-	struct gsc_ctx *ctx = vq->drv_priv;
-	struct gsc_dev *gsc = ctx->gsc_dev;
-	struct gsc_frame *frame = &ctx->s_frame;
-
-	if (!ctx->s_frame.fmt || !is_output(vq->type)) {
-		gsc_err("Invalid argument");
-		return -EINVAL;
-	}
-
-	if (ctx->s_frame.cacheable)
-		gsc->vb2->cache_flush(vb, frame->fmt->num_planes);
-
-	return 0;
-}
-
 int gsc_out_set_in_addr(struct gsc_dev *gsc, struct gsc_ctx *ctx,
 			struct gsc_input_buf *buf, int index)
 {
@@ -708,6 +707,12 @@ int gsc_out_set_in_addr(struct gsc_dev *gsc, struct gsc_ctx *ctx,
 	gsc_hw_set_input_addr(gsc, &ctx->s_frame.addr, index);
 	active_queue_push(&gsc->out, buf, gsc);
 	buf->idx = index;
+
+	if (!gsc->protected_content) {
+		struct gsc_frame *frame = &ctx->s_frame;
+		exynos_sysmmu_set_pbuf(&gsc->pdev->dev, frame->fmt->nr_comp,
+				ctx->prebuf);
+	}
 
 	return 0;
 }
@@ -733,34 +738,31 @@ static void gsc_out_buffer_queue(struct vb2_buffer *vb)
 	}
 
 	if (!test_and_set_bit(ST_OUTPUT_STREAMON, &gsc->state)) {
-		if (!gsc->int_poll_hd) {
-			gsc->int_poll_hd = exynos5_bus_int_poll();
-			if (!gsc->int_poll_hd)
-				gsc_err("failed to request busfreq poll");
-		}
 		ret = pm_runtime_get_sync(&gsc->pdev->dev);
 		if (ret < 0) {
 			gsc_err("fail to pm_runtime_get_sync()");
 			return;
 		}
+		gsc_pm_qos_ctrl(gsc, GSC_QOS_ON, 160000, 160000);
 		gsc_hw_set_sw_reset(gsc);
 		ret = gsc_wait_reset(gsc);
 		if (ret < 0) {
 			gsc_err("gscaler s/w reset timeout");
 			return;
 		}
-		bts_change_bus_traffic(&gsc->pdev->dev, BTS_INCREASE_BW);
+		gsc_hw_set_input_buf_mask_all(gsc);
 	}
 
 	if (gsc->out.req_cnt >= atomic_read(&q->queued_count)) {
+		spin_lock_irqsave(&gsc->slock, flags);
 		ret = gsc_out_set_in_addr(gsc, ctx, buf, vb->v4l2_buf.index);
 		if (ret) {
 			gsc_err("Failed to prepare G-Scaler address");
+			spin_unlock_irqrestore(&gsc->slock, flags);
 			return;
 		}
-		spin_lock_irqsave(&gsc->slock, flags);
-		gsc_hw_set_input_buf_masking(gsc, vb->v4l2_buf.index, false);
 		gsc_hw_set_in_pingpong_update(gsc);
+		gsc_hw_set_input_buf_masking(gsc, vb->v4l2_buf.index, false);
 		spin_unlock_irqrestore(&gsc->slock, flags);
 	} else {
 		gsc_err("All requested buffers have been queued already");
@@ -770,7 +772,7 @@ static void gsc_out_buffer_queue(struct vb2_buffer *vb)
 
 static struct vb2_ops gsc_output_qops = {
 	.queue_setup		= gsc_out_queue_setup,
-	.buf_prepare		= gsc_out_buffer_prepare,
+	.buf_prepare		= vb2_ion_buf_prepare,
 	.buf_queue		= gsc_out_buffer_queue,
 	.wait_prepare		= gsc_unlock,
 	.wait_finish		= gsc_lock,
@@ -798,12 +800,8 @@ static int gsc_out_link_setup(struct media_entity *entity,
 				gsc->pipeline.disp = sd;
 				if (!strcmp(sd->name, name)) {
 					gsc->out.ctx->out_path = GSC_FIMD;
-					gsc_hw_set_local_dst(gsc->id,
-							GSC_FIMD, true);
 				} else {
 					gsc->out.ctx->out_path = GSC_MIXER;
-					gsc_hw_set_local_dst(gsc->id,
-							GSC_MIXER, true);
 				}
 			} else
 				gsc_err("G-Scaler source pad was linked already");
@@ -943,6 +941,7 @@ static int gsc_create_link(struct gsc_dev *gsc)
 static int gsc_create_subdev(struct gsc_dev *gsc)
 {
 	struct v4l2_subdev *sd;
+	struct exynos_media_ops *gsc_out_link_callback;
 	int ret;
 
 	sd = kzalloc(sizeof(*sd), GFP_KERNEL);
@@ -972,7 +971,12 @@ static int gsc_create_subdev(struct gsc_dev *gsc)
 	gsc_dbg("gsc_sd[%d] = 0x%08x\n", gsc->id,
 			(u32)gsc->mdev[MDEV_OUTPUT]->gsc_sd[gsc->id]);
 	gsc->out.sd = sd;
-	gsc->md_data.media_ops = &gsc_out_link_callback;
+	gsc_out_link_callback = kzalloc(sizeof(*gsc_out_link_callback), GFP_KERNEL);
+	if (!gsc_out_link_callback)
+	       goto error;
+
+	gsc_out_link_callback->power_off = gsc_out_power_off;
+	gsc->md_data.media_ops = gsc_out_link_callback;
 	v4l2_set_subdevdata(sd, &gsc->md_data);
 
 	return 0;
@@ -1027,7 +1031,7 @@ int gsc_register_output_device(struct gsc_dev *gsc)
 	memset(q, 0, sizeof(*q));
 	q->name = vfd->name;
 	q->type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-	q->io_modes = VB2_MMAP | VB2_DMABUF;
+	q->io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	q->drv_priv = gsc->out.ctx;
 	q->ops = &gsc_output_qops;
 	q->mem_ops = gsc->vb2->ops;

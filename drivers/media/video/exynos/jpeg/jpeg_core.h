@@ -170,8 +170,6 @@ struct jpeg_ctx {
 
 	int			index;
 	unsigned long		payload[VIDEO_MAX_PLANES];
-	bool			input_cacheable;
-	bool			output_cacheable;
 };
 
 struct jpeg_vb2 {
@@ -184,8 +182,9 @@ struct jpeg_vb2 {
 	int (*resume)(void *alloc_ctx);
 	void (*suspend)(void *alloc_ctx);
 
-	int (*cache_flush)(struct vb2_buffer *vb, u32 num_planes);
 	void (*set_cacheable)(void *alloc_ctx, bool cacheable);
+	int (*buf_prepare)(struct vb2_buffer *vb);
+	int (*buf_finish)(struct vb2_buffer *vb);
 };
 
 struct jpeg_dev {
@@ -201,6 +200,7 @@ struct jpeg_dev {
 	struct platform_device	*plat_dev;
 
 	struct clk		*clk;
+	struct clk		*sclk_clk;
 
 	struct mutex		lock;
 

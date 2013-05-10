@@ -265,7 +265,7 @@ static int usb_probe_interface(struct device *dev)
 	const struct usb_device_id *id;
 	int error = -ENODEV;
 
-	dev_dbg(dev, "%s\n", __func__);
+	dev_info(dev, "%s\n", __func__);
 
 	intf->needs_binding = 0;
 
@@ -283,7 +283,7 @@ static int usb_probe_interface(struct device *dev)
 	if (!id)
 		return error;
 
-	dev_dbg(dev, "%s - got id\n", __func__);
+	dev_info(dev, "%s - got id\n", __func__);
 
 	error = usb_autoresume_device(udev);
 	if (error)
@@ -1219,6 +1219,10 @@ static int usb_suspend_both(struct usb_device *udev, pm_message_t msg)
 	}
 
  done:
+#if defined(CONFIG_LINK_DEVICE_HSIC)
+	if (!udev->parent)
+		dev_dbg(&udev->dev, "%s: status %d\n", __func__, status);
+#endif
 	dev_vdbg(&udev->dev, "%s: status %d\n", __func__, status);
 	return status;
 }
@@ -1342,12 +1346,20 @@ int usb_resume(struct device *dev, pm_message_t msg)
 	 * (This can't be done in usb_resume_interface()
 	 * above because it doesn't own the right set of locks.)
 	 */
+#ifdef CONFIG_MDM_HSIC_PM
+	if(udev->quirks & USB_QUIRK_HSIC_TUNE)
+		pm_runtime_get_sync(dev->parent);
+#endif
 	status = usb_resume_both(udev, msg);
 	if (status == 0) {
 		pm_runtime_disable(dev);
 		pm_runtime_set_active(dev);
 		pm_runtime_enable(dev);
 		unbind_no_reset_resume_drivers_interfaces(udev);
+#ifdef CONFIG_MDM_HSIC_PM
+		if(udev->quirks & USB_QUIRK_HSIC_TUNE)
+			pm_runtime_put_sync(dev->parent);
+#endif
 	}
 
 	/* Avoid PM error messages for devices disconnected while suspended

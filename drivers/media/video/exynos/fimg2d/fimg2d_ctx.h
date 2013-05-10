@@ -1,4 +1,4 @@
-/* linux/drivers/media/video/samsung/fimg2d4x/fimg2d_ctx.h
+/* linux/drivers/media/video/exynos/fimg2d/fimg2d_ctx.h
  *
  * Copyright (c) 2011 Samsung Electronics Co., Ltd.
  *	http://www.samsung.com/
@@ -28,15 +28,21 @@ static inline int fimg2d_queue_is_empty(struct list_head *q)
 	return list_empty(q);
 }
 
-static inline struct fimg2d_bltcmd *fimg2d_get_first_command(struct fimg2d_control *info)
+static inline
+struct fimg2d_bltcmd *fimg2d_get_first_command(struct fimg2d_control *ctrl)
 {
-	if (list_empty(&info->cmd_q))
+	if (list_empty(&ctrl->cmd_q))
 		return NULL;
-	else
-		return list_first_entry(&info->cmd_q, struct fimg2d_bltcmd, node);
+
+	return list_first_entry(&ctrl->cmd_q, struct fimg2d_bltcmd, node);
 }
 
-void fimg2d_add_context(struct fimg2d_control *info, struct fimg2d_context *ctx);
-void fimg2d_del_context(struct fimg2d_control *info, struct fimg2d_context *ctx);
-int fimg2d_add_command(struct fimg2d_control *info, struct fimg2d_context *ctx,
-			struct fimg2d_blit __user *u);
+void fimg2d_add_context(struct fimg2d_control *ctrl,
+		struct fimg2d_context *ctx);
+void fimg2d_del_context(struct fimg2d_control *ctrl,
+		struct fimg2d_context *ctx);
+int fimg2d_add_command(struct fimg2d_control *ctrl,
+		struct fimg2d_context *ctx, struct fimg2d_blit __user *buf);
+void fimg2d_del_command(struct fimg2d_control *ctrl, struct fimg2d_bltcmd *cmd);
+struct fimg2d_bltcmd *fimg2d_get_command(struct fimg2d_control *ctrl);
+int fimg2d_check_pgd(struct mm_struct *mm, struct fimg2d_bltcmd *cmd);

@@ -68,10 +68,21 @@ static struct idma_info {
 	dma_addr_t	lp_tx_addr;
 } idma;
 
-static void idma_getpos(dma_addr_t *src)
+static void idma_getpos(dma_addr_t *res, struct snd_pcm_substream *substream)
 {
-	*src = idma.lp_tx_addr +
-		(readl(idma.regs + I2STRNCNT) & 0xffffff) * 4;
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct idma_ctrl *prtd = runtime->private_data;
+	u32 maxcnt = runtime->buffer_size;
+	u32 trncnt = readl(idma.regs + I2STRNCNT) & 0xffffff;
+
+	/*
+	 * When bus is busy, I2STRNCNT could be increased without dma transfer
+	 * in rare cases.
+	 */
+	if (prtd->state == ST_RUNNING)
+		trncnt = trncnt == 0 ? maxcnt - 1 : trncnt - 1;
+
+	*res = frames_to_bytes(runtime, trncnt);
 }
 
 static int idma_enqueue(struct snd_pcm_substream *substream)
@@ -233,13 +244,11 @@ static snd_pcm_uframes_t
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct idma_ctrl *prtd = runtime->private_data;
-	dma_addr_t src;
-	unsigned long res;
+	dma_addr_t res;
 
 	spin_lock(&prtd->lock);
 
-	idma_getpos(&src);
-	res = src - prtd->start;
+	idma_getpos(&res, substream);
 
 	spin_unlock(&prtd->lock);
 

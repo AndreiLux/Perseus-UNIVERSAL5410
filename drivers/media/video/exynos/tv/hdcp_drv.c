@@ -18,7 +18,7 @@
 #include <linux/module.h>
 
 #include "hdmi.h"
-#include "regs-hdmi-5250.h"
+#include "regs-hdmi-5xx0.h"
 
 #define AN_SIZE			8
 #define AKSV_SIZE		5
@@ -416,12 +416,13 @@ static int hdcp_reset_auth(struct hdmi_device *hdev)
 {
 	struct device *dev = hdev->dev;
 	u8 val;
-	unsigned long spin_flags;
 
-	if (!is_hdmi_streaming(hdev))
+	mutex_lock(&hdev->mutex);
+
+	if (!is_hdmi_streaming(hdev)) {
+		mutex_unlock(&hdev->mutex);
 		return -ENODEV;
-
-	spin_lock_irqsave(&hdev->hdcp_info.reset_lock, spin_flags);
+	}
 
 	hdev->hdcp_info.event		= HDCP_EVENT_STOP;
 	hdev->hdcp_info.auth_status	= NOT_AUTHENTICATED;
@@ -441,7 +442,7 @@ static int hdcp_reset_auth(struct hdmi_device *hdev)
 	hdmi_writeb(hdev, HDMI_HDCP_CHECK_RESULT, HDMI_HDCP_CLR_ALL_RESULTS);
 
 	/* need some delay (at least 1 frame) */
-	mdelay(16);
+	msleep(16);
 
 	hdcp_sw_reset(hdev);
 
@@ -449,7 +450,8 @@ static int hdcp_reset_auth(struct hdmi_device *hdev)
 		HDMI_WATCHDOG_INT_EN | HDMI_WTFORACTIVERX_INT_EN;
 	hdmi_write_mask(hdev, HDMI_STATUS_EN, ~0, val);
 	hdmi_write_mask(hdev, HDMI_HDCP_CTRL1, ~0, HDMI_HDCP_CP_DESIRED_EN);
-	spin_unlock_irqrestore(&hdev->hdcp_info.reset_lock, spin_flags);
+
+	mutex_unlock(&hdev->mutex);
 
 	return 0;
 }
@@ -813,12 +815,17 @@ check_ri_err:
 static void hdcp_work(struct work_struct *work)
 {
 	struct hdmi_device *hdev = container_of(work, struct hdmi_device, work);
+	struct device *dev = hdev->dev;
 
-	if (!hdev->hdcp_info.hdcp_start)
+	if (!hdev->hdcp_info.hdcp_start) {
+		dev_dbg(dev, "%s: hdcp is not started\n", __func__);
 		return;
+	}
 
-	if (!is_hdmi_streaming(hdev))
+	if (!is_hdmi_streaming(hdev)) {
+		dev_dbg(dev, "%s: hdmi is not streaming\n", __func__);
 		return;
+	}
 
 	if (hdev->hdcp_info.event & HDCP_EVENT_READ_BKSV_START) {
 		if (hdcp_bksv(hdev) < 0)
@@ -865,13 +872,9 @@ irqreturn_t hdcp_irq_handler(struct hdmi_device *hdev)
 	u8 flag;
 	event = 0;
 
-	if (!hdev->streaming) {
-		hdev->hdcp_info.event		= HDCP_EVENT_STOP;
-		hdev->hdcp_info.auth_status	= NOT_AUTHENTICATED;
-		return IRQ_HANDLED;
-	}
-
 	flag = hdmi_readb(hdev, HDMI_STATUS);
+
+	dev_dbg(dev, "%s: HDCP interrupt flag = 0x%x\n", __func__, flag);
 
 	if (flag & HDMI_WTFORACTIVERX_INT_OCC) {
 		event |= HDCP_EVENT_READ_BKSV_START;
@@ -916,19 +919,14 @@ irqreturn_t hdcp_irq_handler(struct hdmi_device *hdev)
 
 int hdcp_prepare(struct hdmi_device *hdev)
 {
-	hdev->hdcp_wq = create_workqueue("khdcpd");
+	hdev->hdcp_wq = create_singlethread_workqueue("khdcpd");
 	if (hdev->hdcp_wq == NULL)
 		return -ENOMEM;
 
 	INIT_WORK(&hdev->work, hdcp_work);
 
-	spin_lock_init(&hdev->hdcp_info.reset_lock);
-
-#if defined(CONFIG_VIDEO_EXYNOS_HDCP)
-	hdev->hdcp_info.hdcp_enable = 1;
-#else
 	hdev->hdcp_info.hdcp_enable = 0;
-#endif
+
 	return 0;
 }
 

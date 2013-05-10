@@ -26,6 +26,7 @@
 
 #include <plat/dsim.h>
 #include <plat/regs-mipidsim.h>
+#include <plat/cpu.h>
 
 void s5p_mipi_dsi_func_reset(struct mipi_dsim_device *dsim)
 {
@@ -70,19 +71,10 @@ void s5p_mipi_dsi_init_fifo_pointer(struct mipi_dsim_device *dsim,
 	reg = readl(dsim->reg_base + S5P_DSIM_FIFOCTRL);
 
 	writel(reg & ~(cfg), dsim->reg_base + S5P_DSIM_FIFOCTRL);
-	mdelay(10);
+	usleep_range(10000, 12000);
 	reg |= cfg;
 
 	writel(reg, dsim->reg_base + S5P_DSIM_FIFOCTRL);
-}
-
-/*
- * this function set PLL P, M and S value in D-PHY
- */
-void s5p_mipi_dsi_set_phy_tunning(struct mipi_dsim_device *dsim,
-	unsigned int value)
-{
-	writel(DSIM_AFC_CTL(value), dsim->reg_base + S5P_DSIM_PHYACCHR);
 }
 
 void s5p_mipi_dsi_set_main_disp_resol(struct mipi_dsim_device *dsim,
@@ -286,10 +278,16 @@ void s5p_mipi_dsi_pll_freq(struct mipi_dsim_device *dsim,
 {
 	unsigned int reg = (readl(dsim->reg_base + S5P_DSIM_PLLCTRL)) &
 		~(0x7ffff << 1);
-
-	reg |= (pre_divider & 0x3f) << 13 | (main_divider & 0x1ff) << 4 |
-		(scaler & 0x7) << 1;
-
+	if (soc_is_exynos5250())
+		reg |= (pre_divider & 0x3f) << 13 | (main_divider & 0x1ff) << 4 |
+			(scaler & 0x7) << 1;
+	else
+		reg |= (pre_divider & 0x3f) << 13 | (main_divider & 0x1ff) << 4 |
+#ifdef CONFIG_LCD_MIPI_S6E8FA0
+			((scaler) & 0x7) << 1;
+#else
+			((scaler/2) & 0x7) << 1;
+#endif
 	writel(reg, dsim->reg_base + S5P_DSIM_PLLCTRL);
 }
 
@@ -365,6 +363,14 @@ void s5p_mipi_dsi_force_dphy_stop_state(struct mipi_dsim_device *dsim,
 
 	reg |= ((enable & 0x1) << DSIM_FORCE_STOP_STATE_SHIFT);
 
+	writel(reg, dsim->reg_base + S5P_DSIM_ESCMODE);
+}
+
+void s5p_mipi_dsi_force_bta(struct mipi_dsim_device *dsim)
+{
+	unsigned int reg;
+	reg = readl(dsim->reg_base + S5P_DSIM_ESCMODE);
+	reg |= 1 << 16;
 	writel(reg, dsim->reg_base + S5P_DSIM_ESCMODE);
 }
 
@@ -458,12 +464,19 @@ void s5p_mipi_dsi_enable_hs_clock(struct mipi_dsim_device *dsim,
 void s5p_mipi_dsi_dp_dn_swap(struct mipi_dsim_device *dsim,
 	unsigned int swap_en)
 {
-	unsigned int reg = readl(dsim->reg_base + S5P_DSIM_PHYACCHR1);
+	unsigned int reg;
 
-	reg &= ~(0x3 << 0);
-	reg |= (swap_en & 0x3) << 0;
-
-	writel(reg, dsim->reg_base + S5P_DSIM_PHYACCHR1);
+	if (soc_is_exynos5250()) {
+		reg = readl(dsim->reg_base + S5P_DSIM_PHYACCHR1);
+		reg &= ~(0x3 << 0);
+		reg |= (swap_en & 0x3) << 0;
+		writel(reg, dsim->reg_base + S5P_DSIM_PHYACCHR1);
+	} else {
+		reg = readl(dsim->reg_base + S5P_DSIM_PLLCTRL);
+		reg &= ~(0x3 << 24);
+		reg |= (swap_en & 0x3) << 24;
+		writel(reg, dsim->reg_base + S5P_DSIM_PLLCTRL);
+	}
 }
 
 void s5p_mipi_dsi_hs_zero_ctrl(struct mipi_dsim_device *dsim,
@@ -521,9 +534,12 @@ unsigned int s5p_mipi_dsi_get_fifo_state(struct mipi_dsim_device *dsim)
 }
 
 void s5p_mipi_dsi_wr_tx_header(struct mipi_dsim_device *dsim,
-	unsigned int di, unsigned int data0, unsigned int data1)
+	unsigned int cmd, const unsigned char *data)
 {
-	unsigned int reg = (data1 << 16) | (data0 << 8) | ((di & 0x3f) << 0);
+	unsigned int reg;
+
+	reg = (data[1] << 16) | (data[0] << 8) | cmd;
+
 	writel(reg, dsim->reg_base + S5P_DSIM_PKTHDR);
 }
 
@@ -561,4 +577,36 @@ void s5p_mipi_dsi_clear_int_status(struct mipi_dsim_device *dsim, unsigned int i
 unsigned int s5p_mipi_dsi_get_FIFOCTRL_status(struct mipi_dsim_device *dsim)
 {
 	return readl(dsim->reg_base + S5P_DSIM_FIFOCTRL);
+}
+
+void s5p_mipi_dsi_set_b_dphyctrl(struct mipi_dsim_device *dsim,
+	unsigned int ulpsexitctrl)
+{
+	writel((ulpsexitctrl & 0x1FF), dsim->reg_base + S5P_DSIM_PHYCTRL);
+}
+
+void s5p_mipi_dsi_set_timing_register0(struct mipi_dsim_device *dsim,
+	unsigned int m_tlpxctl, unsigned int m_thsexitctl)
+{
+	unsigned int reg = 0;
+	reg = (m_tlpxctl << 8) | (m_thsexitctl << 0);
+	writel(reg, dsim->reg_base + S5P_DSIM_PHYTIMING);
+}
+
+void s5p_mipi_dsi_set_timing_register1(struct mipi_dsim_device *dsim,
+	unsigned int m_tclkprprctl, unsigned int m_tclkzeroctl,
+	unsigned int m_tclkpostctl, unsigned int m_tclktrailctl)
+{
+	unsigned int reg = (m_tclkprprctl << 24) | (m_tclkzeroctl << 16) |
+				(m_tclkpostctl << 8) | (m_tclktrailctl << 0);
+	writel(reg, dsim->reg_base + S5P_DSIM_PHYTIMING1);
+}
+
+void s5p_mipi_dsi_set_timing_register2(struct mipi_dsim_device *dsim,
+	unsigned int m_thsprprctl, unsigned int m_thszeroctl,
+	unsigned int m_thstrailctl)
+{
+	unsigned int reg = 0;
+	reg = (m_thsprprctl << 16) | (m_thszeroctl << 8) | (m_thstrailctl << 0);
+	writel(reg, dsim->reg_base + S5P_DSIM_PHYTIMING2);
 }

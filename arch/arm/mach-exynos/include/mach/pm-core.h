@@ -19,6 +19,9 @@
 #define __ASM_ARCH_PM_CORE_H __FILE__
 
 #include <mach/regs-pmu.h>
+#ifdef CONFIG_SEC_PM_DEBUG
+#include <mach/regs-gpio.h>
+#endif
 
 static inline void s3c_pm_debug_init_uart(void)
 {
@@ -33,8 +36,7 @@ static inline void s3c_pm_arch_prepare_irqs(void)
 	__raw_writel(tmp, EXYNOS_WAKEUP_MASK);
 
 	__raw_writel(s3c_irqwake_intmask, EXYNOS_WAKEUP_MASK);
-	__raw_writel(s3c_irqwake_eintmask & 0xFFFFFFFE,
-		     EXYNOS_EINT_WAKEUP_MASK);
+	__raw_writel(s3c_irqwake_eintmask, EXYNOS_EINT_WAKEUP_MASK);
 }
 
 static inline void s3c_pm_arch_stop_clocks(void)
@@ -45,6 +47,14 @@ static inline void s3c_pm_arch_stop_clocks(void)
 static inline void s3c_pm_arch_show_resume_irqs(void)
 {
 	/* nothing here yet */
+#ifdef CONFIG_SEC_PM_DEBUG
+	pr_info("WAKEUP_STAT: 0x%x\n", __raw_readl(EXYNOS_WAKEUP_STAT));
+	pr_info("WAKEUP_INTx_PEND: 0x%x, 0x%x, 0x%x, 0x%x\n",
+		__raw_readl(S5P_EINT_PEND(0)),
+		__raw_readl(S5P_EINT_PEND(1)),
+		__raw_readl(S5P_EINT_PEND(2)),
+		__raw_readl(S5P_EINT_PEND(3)));
+#endif
 }
 
 static inline void s3c_pm_arch_update_uart(void __iomem *regs,

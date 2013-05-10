@@ -23,6 +23,7 @@
 #include <linux/init.h>
 #include <linux/nmi.h>
 #include <linux/dmi.h>
+#include <linux/leds.h>
 
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18

@@ -13,7 +13,14 @@
 #ifndef __ASM_ARCH_FIMG2D_H
 #define __ASM_ARCH_FIMG2D_H __FILE__
 
+enum fimg2d_ip_version {
+	IP_VER_G2D_4P,
+	IP_VER_G2D_5G,
+	IP_VER_G2D_5A,
+};
+
 struct fimg2d_platdata {
+	int ip_ver;
 	int hw_ver;
 	const char *parent_clkname;
 	const char *clkname;

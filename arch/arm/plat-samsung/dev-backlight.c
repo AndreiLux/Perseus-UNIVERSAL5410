@@ -52,7 +52,12 @@ static struct platform_pwm_backlight_data samsung_dfl_bl_data __initdata = {
 };
 
 static struct platform_device samsung_dfl_bl_device __initdata = {
+#ifdef CONFIG_MACH_V1    
+    .name       = "panel", 
+    .id         = -1,
+#else
 	.name		= "pwm-backlight",
+#endif
 };
 
 /* samsung_bl_set - Set board specific data (if any) provided by user for

@@ -20,6 +20,7 @@
 #include <linux/module.h>
 #include <linux/reboot.h>
 #include <linux/delay.h>
+#include <linux/pm_qos.h>
 
 #include <mach/cpufreq.h>
 
@@ -85,6 +86,31 @@ static unsigned int exynos_get_safe_armvolt(unsigned int old_index, unsigned int
 	return safe_arm_volt;
 }
 
+static int exynos_frequency_table_target(struct cpufreq_policy *policy,
+		struct cpufreq_frequency_table *table,
+		unsigned int target_freq,
+		unsigned int relation,
+		unsigned int *index)
+{
+	unsigned int i;
+
+	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++) {
+		unsigned int freq = table[i].frequency;
+		if (freq == CPUFREQ_ENTRY_INVALID)
+			continue;
+
+		if (target_freq == freq) {
+			*index = i;
+			break;
+		}
+	}
+
+	if (table[i].frequency == CPUFREQ_TABLE_END)
+		return -EINVAL;
+
+	return 0;
+}
+
 static int exynos_cpufreq_get_index(unsigned int freq)
 {
 	int i;
@@ -104,6 +130,7 @@ static int exynos_cpufreq_scale(unsigned int target_freq, unsigned int curr_freq
 	unsigned int max_volt;
 	int ret = 0;
 
+	target_freq = max((unsigned int)pm_qos_request(PM_QOS_CPU_FREQ_MIN), target_freq);
 	freqs.new = target_freq;
 
 	if (curr_freq == freqs.new)
@@ -423,6 +450,27 @@ static struct notifier_block exynos_cpufreq_reboot_notifier = {
 	.notifier_call = exynos_cpufreq_reboot_notifier_call,
 };
 
+static int exynos_qos_handler(struct notifier_block *b, unsigned long val, void *v)
+{
+	int ret;
+
+	if (freqs.old >= val)
+		return NOTIFY_OK;
+
+	mutex_lock(&cpufreq_lock);
+	ret = exynos_cpufreq_scale(val, freqs.old);
+	mutex_unlock(&cpufreq_lock);
+
+	if (ret < 0)
+		return NOTIFY_BAD;
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block exynos_qos_notifier = {
+	.notifier_call = exynos_qos_handler,
+};
+
 static int __init exynos_cpufreq_init(void)
 {
 	int ret = -EINVAL;
@@ -461,6 +509,7 @@ static int __init exynos_cpufreq_init(void)
 
 	register_pm_notifier(&exynos_cpufreq_nb);
 	register_reboot_notifier(&exynos_cpufreq_reboot_notifier);
+	pm_qos_add_notifier(PM_QOS_CPU_FREQ_MIN, &exynos_qos_notifier);
 
 	if (cpufreq_register_driver(&exynos_driver)) {
 		pr_err("%s: failed to register cpufreq driver\n", __func__);

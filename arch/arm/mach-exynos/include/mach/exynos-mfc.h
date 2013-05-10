@@ -15,8 +15,42 @@
 
 #include <linux/platform_device.h>
 
+#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+/*
+ * thrd_mb - threshold of total MB(macroblock) count
+ * Total MB count can be calculated by
+ *	(MB of width) * (MB of height) * fps
+ */
+struct s5p_mfc_qos {
+	unsigned int thrd_mb;
+	unsigned int freq_mfc;
+	unsigned int freq_int;
+	unsigned int freq_mif;
+	unsigned int freq_cpu;
+#ifndef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
+	unsigned int freq_kfc;
+#endif
+};
+#endif
+
+enum mfc_ip_version {
+	IP_VER_MFC_4P_0,
+	IP_VER_MFC_4P_1,
+	IP_VER_MFC_4P_2,
+	IP_VER_MFC_5G_0,
+	IP_VER_MFC_5G_1,
+	IP_VER_MFC_5A_0,
+	IP_VER_MFC_5A_1,
+};
+
 struct s5p_mfc_platdata {
+	int ip_ver;
 	int clock_rate;
+	int min_rate;
+#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+	int num_qos_steps;
+	struct s5p_mfc_qos *qos_table;
+#endif
 };
 
 void s5p_mfc_set_platdata(struct s5p_mfc_platdata *pd);

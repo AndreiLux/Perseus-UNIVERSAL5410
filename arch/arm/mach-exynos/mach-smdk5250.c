@@ -25,7 +25,6 @@
 #include <linux/persistent_ram.h>
 #include <linux/clk.h>
 #include <linux/spi/spi.h>
-#include <linux/ion.h>
 
 #include <video/platform_lcd.h>
 #include <video/s5p-dp.h>
@@ -58,8 +57,6 @@
 
 #include <mach/exynos_fiq_debugger.h>
 #include <mach/map.h>
-#include <mach/sysmmu.h>
-#include <mach/exynos-ion.h>
 #include <mach/exynos-mfc.h>
 #include <mach/tmu.h>
 #include <mach/dwmci.h>
@@ -764,6 +761,11 @@ static struct s3c_adc_platdata smdk5250_adc_data __initdata = {
 	.phy_exit       = s3c_adc_phy_exit,
 };
 
+#if defined(CONFIG_VIDEO_EXYNOS_TV) && defined(CONFIG_VIDEO_EXYNOS_MIXER)
+static struct s5p_mxr_platdata mxr_platdata __initdata = {
+};
+#endif
+
 #if defined(CONFIG_VIDEO_EXYNOS_TV) && defined(CONFIG_VIDEO_EXYNOS_HDMI)
 static struct s5p_hdmi_platdata hdmi_platdata __initdata = {
 };
@@ -876,6 +878,11 @@ static void __init smdk5250_set_camera_platdata(void)
 }
 #endif /* CONFIG_VIDEO_EXYNOS_GSCALER */
 
+static int exynos_dwmci0_get_bus_wd(u32 slot_id)
+{
+	return 8;
+}
+
 static void exynos_dwmci0_cfg_gpio(int width)
 {
 	unsigned int gpio;
@@ -916,7 +923,6 @@ static struct dw_mci_board exynos_dwmci0_pdata __initdata = {
 				  DW_MCI_QUIRK_HIGHSPEED |
 				  DW_MCI_QUIRK_NO_DETECT_EBIT,
 	.bus_hz			= 200 * 1000 * 1000,
-	.max_bus_hz		= 200 * 1000 * 1000,
 	.caps			= MMC_CAP_UHS_DDR50 | MMC_CAP_1_8V_DDR |
 				  MMC_CAP_8_BIT_DATA | MMC_CAP_CMD23,
 	.caps2			= MMC_CAP2_HS200_1_8V_SDR | MMC_CAP2_PACKED_WR,
@@ -926,6 +932,7 @@ static struct dw_mci_board exynos_dwmci0_pdata __initdata = {
 	.hclk_name		= "dwmci",
 	.cclk_name		= "sclk_dwmci",
 	.cfg_gpio		= exynos_dwmci0_cfg_gpio,
+	.get_bus_wd		= exynos_dwmci0_get_bus_wd,
 	.sdr_timing		= 0x03020001,
 	.ddr_timing		= 0x03030002,
 	.clk_drv		= 0x3,
@@ -1462,6 +1469,7 @@ static struct s5p_dp_platdata smdk5250_dp_data __initdata = {
 
 #ifdef CONFIG_VIDEO_EXYNOS_FIMG2D
 static struct fimg2d_platdata fimg2d_data __initdata = {
+	.ip_ver		= IP_VER_G2D_5G,
 	.hw_ver		= 0x42,
 	.gate_clkname	= "fimg2d",
 };
@@ -1504,9 +1512,6 @@ static struct platform_device *smdk5250_devices[] __initdata = {
 	&smdk5250_input_device,
 #ifdef CONFIG_VIDEO_EXYNOS_MFC
 	&s5p_device_mfc,
-#endif
-#ifdef CONFIG_ION_EXYNOS
-	&exynos_device_ion,
 #endif
 #ifdef CONFIG_EXYNOS_DEV_TMU
 	&exynos_device_tmu,
@@ -1723,7 +1728,6 @@ static void __init exynos_reserve_mem(void)
 		"exynos5-fimc-is=fimc_is;";
 
 	exynos_cma_region_reserve(regions, regions_secure, 0, map);
-	ion_reserve(&exynos_ion_pdata);
 }
 #else /* !CONFIG_CMA*/
 static inline void exynos_reserve_mem(void)
@@ -1844,45 +1848,6 @@ static void __init smdk5250_map_io(void)
 	s3c24xx_init_uarts(smdk5250_uartcfgs, ARRAY_SIZE(smdk5250_uartcfgs));
 }
 
-static void __init exynos_sysmmu_init(void)
-{
-#ifdef CONFIG_VIDEO_EXYNOS_JPEG
-	platform_set_sysmmu(&SYSMMU_PLATDEV(jpeg).dev, &s5p_device_jpeg.dev);
-#endif
-#if defined(CONFIG_VIDEO_EXYNOS_MFC)
-	platform_set_sysmmu(&SYSMMU_PLATDEV(mfc_lr).dev, &s5p_device_mfc.dev);
-#endif
-#if defined(CONFIG_VIDEO_EXYNOS_TV) && defined(CONFIG_VIDEO_EXYNOS_MIXER)
-	platform_set_sysmmu(&SYSMMU_PLATDEV(tv).dev, &s5p_device_mixer.dev);
-#endif
-#ifdef CONFIG_VIDEO_EXYNOS_GSCALER
-	platform_set_sysmmu(&SYSMMU_PLATDEV(gsc0).dev,
-						&exynos5_device_gsc0.dev);
-	platform_set_sysmmu(&SYSMMU_PLATDEV(gsc1).dev,
-						&exynos5_device_gsc1.dev);
-	platform_set_sysmmu(&SYSMMU_PLATDEV(gsc2).dev,
-						&exynos5_device_gsc2.dev);
-	platform_set_sysmmu(&SYSMMU_PLATDEV(gsc3).dev,
-						&exynos5_device_gsc3.dev);
-#endif
-#ifdef CONFIG_VIDEO_EXYNOS_FIMC_LITE
-	platform_set_sysmmu(&SYSMMU_PLATDEV(camif0).dev,
-						&exynos_device_flite0.dev);
-	platform_set_sysmmu(&SYSMMU_PLATDEV(camif1).dev,
-						&exynos_device_flite1.dev);
-#endif
-	platform_set_sysmmu(&SYSMMU_PLATDEV(rot).dev,
-						&exynos5_device_rotator.dev);
-#ifdef CONFIG_VIDEO_EXYNOS_FIMG2D
-	platform_set_sysmmu(&SYSMMU_PLATDEV(2d).dev,
-						&s5p_device_fimg2d.dev);
-#endif
-#ifdef CONFIG_VIDEO_EXYNOS5_FIMC_IS
-	platform_set_sysmmu(&SYSMMU_PLATDEV(isp).dev,
-						&exynos5_device_fimc_is.dev);
-#endif
-}
-
 static struct persistent_ram_descriptor smdk5250_prd[] __initdata = {
 	{
 		.name = "ram_console",
@@ -1934,7 +1899,6 @@ static void __init smdk5250_machine_init(void)
 
 	s3c_adc_set_platdata(&smdk5250_adc_data);
 
-	exynos_sysmmu_init();
 	smdk5250_dwmci_init();
 
 #ifdef CONFIG_VIDEO_EXYNOS_MFC
@@ -2040,7 +2004,10 @@ static void __init smdk5250_machine_init(void)
 #ifdef CONFIG_VIDEO_EXYNOS_JPEG
 	exynos5_jpeg_setup_clock(&s5p_device_jpeg.dev, 150000000);
 #endif
-#if defined(CONFIG_VIDEO_EXYNOS_TV) && defined(CONFIG_VIDEO_EXYNOS_HDMI)
+#if defined(CONFIG_VIDEO_EXYNOS_TV)
+	mxr_platdata.ip_ver = IP_VER_TV_5G_1;
+	hdmi_platdata.ip_ver = IP_VER_TV_5G_1;
+
 	dev_set_name(&s5p_device_hdmi.dev, "exynos5-hdmi");
 	clk_add_alias("hdmi", "s5p-hdmi", "hdmi", &s5p_device_hdmi.dev);
 

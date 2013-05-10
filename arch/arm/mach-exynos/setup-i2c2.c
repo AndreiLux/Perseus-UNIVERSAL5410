@@ -21,6 +21,10 @@ void s3c_i2c2_cfg_gpio(struct platform_device *dev)
 		s3c_gpio_cfgall_range(EXYNOS5_GPA0(6), 2,
 				      S3C_GPIO_SFN(3), S3C_GPIO_PULL_UP);
 
+	else if (soc_is_exynos5410())
+		s3c_gpio_cfgall_range(EXYNOS5410_GPA0(6), 2,
+				      S3C_GPIO_SFN(3), S3C_GPIO_PULL_UP);
+
 	else	/* EXYNOS4210, EXYNOS4212, and EXYNOS4412 */
 		s3c_gpio_cfgall_range(EXYNOS4_GPA0(6), 2,
 				      S3C_GPIO_SFN(3), S3C_GPIO_PULL_UP);

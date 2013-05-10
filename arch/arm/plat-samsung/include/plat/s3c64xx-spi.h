@@ -11,6 +11,9 @@
 #ifndef __S3C64XX_PLAT_SPI_H
 #define __S3C64XX_PLAT_SPI_H
 
+#define HYBRID_MODE     0x0
+#define PIO_MODE        0x1
+
 struct platform_device;
 
 /**
@@ -56,6 +59,7 @@ struct s3c64xx_spi_info {
 	int rx_lvl_offset;
 	int high_speed;
 	int tx_st_done;
+	int dma_mode;
 };
 
 /**
@@ -74,6 +78,12 @@ extern void s3c64xx_spi1_set_platdata(struct s3c64xx_spi_info *pd,
 				      int src_clk_nr, int num_cs);
 extern void s3c64xx_spi2_set_platdata(struct s3c64xx_spi_info *pd,
 				      int src_clk_nr, int num_cs);
+extern void s3c64xx_spi3_set_platdata(struct s3c64xx_spi_info *pd,
+				      int src_clk_nr, int num_cs);
+
+/* defined to setup chip select GPIO and clock of SPI */
+extern int exynos_spi_cfg_cs(int gpio, int ch_num);
+extern void exynos_spi_clock_setup(struct device *spi_dev, int ch_num);
 
 /* defined to setup chip select GPIO and clock of SPI */
 extern int exynos_spi_cfg_cs(int gpio, int ch_num);
@@ -83,8 +93,10 @@ extern void exynos_spi_clock_setup(struct device *spi_dev, int ch_num);
 extern int s3c64xx_spi0_cfg_gpio(struct platform_device *dev);
 extern int s3c64xx_spi1_cfg_gpio(struct platform_device *dev);
 extern int s3c64xx_spi2_cfg_gpio(struct platform_device *dev);
+extern int s3c64xx_spi3_cfg_gpio(struct platform_device *dev);
 
 extern struct s3c64xx_spi_info s3c64xx_spi0_pdata;
 extern struct s3c64xx_spi_info s3c64xx_spi1_pdata;
 extern struct s3c64xx_spi_info s3c64xx_spi2_pdata;
+extern struct s3c64xx_spi_info s3c64xx_spi3_pdata;
 #endif /* __S3C64XX_PLAT_SPI_H */

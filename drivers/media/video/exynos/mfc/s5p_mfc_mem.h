@@ -44,24 +44,34 @@
 			(dma_addr_t)vb2_cma_phys_plane_paddr(v, n)	\
 		} while (0)
 
-static inline void *s5p_mfc_mem_alloc(void *alloc_ctx, unsigned long size)
+static inline void *s5p_mfc_mem_alloc_priv(void *alloc_ctx, size_t size)
 {
 	return vb2_cma_phys_memops.alloc(alloc_ctx, size);
 }
 
-static inline void s5p_mfc_mem_free(void *vb_priv)
+static inline void s5p_mfc_mem_free_priv(void *vb_priv)
 {
 	vb2_cma_phys_memops.put(vb_priv);
 }
 
-static inline dma_addr_t s5p_mfc_mem_daddr(void *vb_priv)
+static inline dma_addr_t s5p_mfc_mem_daddr_priv(void *vb_priv)
 {
 	return (dma_addr_t)vb2_cma_phys_memops.cookie(vb_priv);
 }
 
-static inline void *s5p_mfc_mem_vaddr(void *vb_priv)
+static inline void *s5p_mfc_mem_vaddr_priv(void *vb_priv)
 {
 	return vb2_cma_phys_memops.vaddr(vb_priv);
+}
+
+static inline int s5p_mfc_mem_prepare(struct vb2_buffer *vb)
+{
+	return 0;
+}
+
+static inline int s5p_mfc_mem_finish(struct vb2_buffer *vb)
+{
+	return 0;
 }
 #elif defined(CONFIG_VIDEOBUF2_ION)
 #define MFC_ALLOC_CTX_NUM	2
@@ -95,17 +105,17 @@ static inline dma_addr_t s5p_mfc_mem_plane_addr(
 	return (unsigned long)addr;
 }
 
-static inline void *s5p_mfc_mem_alloc(void *alloc_ctx, unsigned int size)
+static inline void *s5p_mfc_mem_alloc_priv(void *alloc_ctx, size_t size)
 {
 	return vb2_ion_private_alloc(alloc_ctx, size);
 }
 
-static inline void s5p_mfc_mem_free(void *cookie)
+static inline void s5p_mfc_mem_free_priv(void *cookie)
 {
 	vb2_ion_private_free(cookie);
 }
 
-static inline dma_addr_t s5p_mfc_mem_daddr(void *cookie)
+static inline dma_addr_t s5p_mfc_mem_daddr_priv(void *cookie)
 {
 	dma_addr_t addr = 0;
 
@@ -114,9 +124,19 @@ static inline dma_addr_t s5p_mfc_mem_daddr(void *cookie)
 	return addr;
 }
 
-static inline void *s5p_mfc_mem_vaddr(void *cookie)
+static inline void *s5p_mfc_mem_vaddr_priv(void *cookie)
 {
 	return vb2_ion_private_vaddr(cookie);
+}
+
+static inline int s5p_mfc_mem_prepare(struct vb2_buffer *vb)
+{
+	return vb2_ion_buf_prepare(vb);
+}
+
+static inline int s5p_mfc_mem_finish(struct vb2_buffer *vb)
+{
+	return vb2_ion_buf_finish(vb);
 }
 #endif
 
@@ -124,14 +144,15 @@ struct vb2_mem_ops *s5p_mfc_mem_ops(void);
 void **s5p_mfc_mem_init_multi(struct device *dev, unsigned int ctx_num);
 void s5p_mfc_mem_cleanup_multi(void **alloc_ctxes, unsigned int ctx_num);
 
-void s5p_mfc_cache_clean_priv(void *cookie);
-void s5p_mfc_cache_inv_priv(void *cookie);
-void s5p_mfc_cache_clean(struct vb2_buffer *vb, int plane_no);
-void s5p_mfc_cache_inv(struct vb2_buffer *vb, int plane_no);
+void s5p_mfc_mem_set_cacheable(void *alloc_ctx, bool cacheable);
+void s5p_mfc_mem_clean_priv(void *vb_priv, void *start, off_t offset,
+							size_t size);
+void s5p_mfc_mem_inv_priv(void *vb_priv, void *start, off_t offset,
+							size_t size);
+int s5p_mfc_mem_clean_vb(struct vb2_buffer *vb, u32 num_planes);
+int s5p_mfc_mem_inv_vb(struct vb2_buffer *vb, u32 num_planes);
+int s5p_mfc_mem_flush_vb(struct vb2_buffer *vb, u32 num_planes);
 
 void s5p_mfc_mem_suspend(void *alloc_ctx);
 int s5p_mfc_mem_resume(void *alloc_ctx);
-
-void s5p_mfc_mem_set_cacheable(void *alloc_ctx, bool cacheable);
-int s5p_mfc_mem_cache_flush(struct vb2_buffer *vb, u32 plane_no);
 #endif /* __S5P_MFC_MEM_H_ */

@@ -41,8 +41,8 @@ static const struct snd_pcm_hardware dma_hardware = {
 				    SNDRV_PCM_FMTBIT_U16_LE |
 				    SNDRV_PCM_FMTBIT_U8 |
 				    SNDRV_PCM_FMTBIT_S8,
-	.channels_min		= 2,
-	.channels_max		= 2,
+	.channels_min		= 1,
+	.channels_max		= 6,
 	.buffer_bytes_max	= 128*1024,
 	.period_bytes_min	= 128,
 	.period_bytes_max	= 64*1024,
@@ -126,8 +126,7 @@ static void audio_buffdone(void *data)
 
 	pr_debug("Entered %s\n", __func__);
 
-	if (substream)
-		snd_pcm_period_elapsed(substream);
+	snd_pcm_period_elapsed(substream);
 
 	spin_lock(&prtd->lock);
 	if (!samsung_dma_has_circular()) {
@@ -228,7 +227,7 @@ static int dma_prepare(struct snd_pcm_substream *substream)
 		return 0;
 
 	/* flush the DMA channel */
-	prtd->params->ops->flush(prtd->params->ch);
+	//prtd->params->ops->flush(prtd->params->ch);
 
 	prtd->dma_loaded = 0;
 	prtd->dma_pos = prtd->dma_start;
@@ -259,8 +258,8 @@ static int dma_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-		prtd->state &= ~ST_RUNNING;
-		prtd->params->ops->stop(prtd->params->ch);
+	        prtd->state &= ~ST_RUNNING;
+//		prtd->params->ops->stop(prtd->params->ch);
 		break;
 
 	default:

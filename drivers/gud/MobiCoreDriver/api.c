@@ -1,10 +1,8 @@
-/** MobiCore driver module.(interface to the secure world SWD)
- * @addtogroup MCD_MCDIMPL_KMOD_IMPL
- * @{
- * @file
+/* MobiCore driver module.(interface to the secure world SWD)
  * MobiCore Driver Kernel Module.
  *
- * <!-- Copyright Giesecke & Devrient GmbH 2009-2012 -->
+ * <-- Copyright Giesecke & Devrient GmbH 2009-2012 -->
+ * <-- Copyright Trustonic Limited 2013 -->
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -17,7 +15,7 @@
 #include "debug.h"
 
 
-/**
+/*
  * Map a virtual memory buffer structure to Mobicore
  * @param instance
  * @param addr		address of the buffer(NB it must be kernel virtual!)
@@ -36,7 +34,7 @@ int mobicore_map_vmem(struct mc_instance *instance, void *addr,
 }
 EXPORT_SYMBOL(mobicore_map_vmem);
 
-/**
+/*
  * Unmap a virtual memory buffer from mobicore
  * @param instance
  * @param handle
@@ -50,7 +48,7 @@ int mobicore_unmap_vmem(struct mc_instance *instance, uint32_t handle)
 }
 EXPORT_SYMBOL(mobicore_unmap_vmem);
 
-/**
+/*
  * Free a WSM buffer allocated with mobicore_allocate_wsm
  * @param instance
  * @param handle		handle of the buffer
@@ -65,7 +63,7 @@ int mobicore_free_wsm(struct mc_instance *instance, uint32_t handle)
 EXPORT_SYMBOL(mobicore_free_wsm);
 
 
-/**
+/*
  * Allocate WSM for given instance
  *
  * @param instance		instance
@@ -93,7 +91,7 @@ int mobicore_allocate_wsm(struct mc_instance *instance,
 }
 EXPORT_SYMBOL(mobicore_allocate_wsm);
 
-/**
+/*
  * Initialize a new mobicore API instance object
  *
  * @return Instance or NULL if no allocation was possible.
@@ -104,7 +102,7 @@ struct mc_instance *mobicore_open(void)
 }
 EXPORT_SYMBOL(mobicore_open);
 
-/**
+/*
  * Release a mobicore instance object and all objects related to it
  * @param instance instance
  * @return 0 if Ok or -E ERROR
@@ -115,4 +113,3 @@ int mobicore_release(struct mc_instance *instance)
 }
 EXPORT_SYMBOL(mobicore_release);
 
-/** @} */

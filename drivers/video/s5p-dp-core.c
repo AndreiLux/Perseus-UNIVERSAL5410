@@ -29,6 +29,8 @@
 
 static int s5p_dp_init_dp(struct s5p_dp_device *dp)
 {
+    printk("start dp init \n");
+    
 	s5p_dp_reset(dp);
 
 	/* SW defined function Normal operation */
@@ -42,9 +44,12 @@ static int s5p_dp_init_dp(struct s5p_dp_device *dp)
 	s5p_dp_init_hpd(dp);
 	s5p_dp_init_aux(dp);
 
+    printk("start dp init done \n");
+
 	return 0;
 }
 
+#if 0
 static int s5p_dp_detect_hpd(struct s5p_dp_device *dp)
 {
 	int timeout_loop = 0;
@@ -64,6 +69,7 @@ static int s5p_dp_detect_hpd(struct s5p_dp_device *dp)
 
 	return 0;
 }
+#endif
 
 static unsigned char s5p_dp_calc_edid_check_sum(unsigned char *edid_data)
 {
@@ -219,13 +225,21 @@ static int s5p_dp_handle_edid(struct s5p_dp_device *dp)
 	if (retval < 0)
 		return retval;
 
+    dev_err(dp->dev, "======== READED EDID ========\n"); 
+
+    for (i=0;i<12;i++) {
+        dev_err(dp->dev,"addr : %d, value : %x\n",i ,buf[i]);
+    }
+
+    dev_err(dp->dev,"==============================\n");
 	/* Read EDID */
+#if 0     
 	for (i = 0; i < 3; i++) {
 		retval = s5p_dp_read_edid(dp);
 		if (retval == 0)
 			break;
 	}
-
+#endif
 	return retval;
 }
 
@@ -269,7 +283,7 @@ void s5p_dp_rx_control(struct s5p_dp_device *dp, bool enable)
 		s5p_dp_write_byte_to_dpcd(dp, DPCD_ADDR_USER_DEFINED3,0x80);
 	}
 }
-
+#if 0
 static int s5p_dp_is_enhanced_mode_available(struct s5p_dp_device *dp)
 {
 	u8 data;
@@ -311,6 +325,7 @@ static int s5p_dp_set_enhanced_mode(struct s5p_dp_device *dp)
 
 	return 0;
 }
+#endif
 
 static int s5p_dp_training_pattern_dis(struct s5p_dp_device *dp)
 {
@@ -502,7 +517,7 @@ static unsigned int s5p_dp_get_lane_link_training(
 				struct s5p_dp_device *dp,
 				int lane)
 {
-	u32 reg;
+	u32 reg = 0;
 
 	switch (lane) {
 	case 0:
@@ -552,6 +567,9 @@ static int s5p_dp_process_clock_recovery(struct s5p_dp_device *dp)
 		dev_err(dp->dev, "failed to read lane status!\n");
 		return retval;
 	}
+
+    dev_err(dp->dev, "link status[0] : %x\n", link_status[0]);
+    dev_err(dp->dev, "link status[1] : %x\n", link_status[1]);
 
 	if (s5p_dp_clock_recovery_ok(link_status, lane_count) == 0) {
 		/* set training pattern 2 for EQ */
@@ -695,6 +713,9 @@ static int s5p_dp_process_equalizer_training(struct s5p_dp_device *dp)
 		dev_err(dp->dev, "failed to read lane status!\n");
 		return retval;
 	}
+
+    dev_err(dp->dev, "link status[0] : %x\n", link_status[0]);
+    dev_err(dp->dev, "link status[1] : %x\n", link_status[1]);
 
 	if (s5p_dp_clock_recovery_ok(link_status, lane_count) == 0) {
 		link_align[0] = link_status[0];
@@ -1035,9 +1056,15 @@ static int s5p_dp_enable_scramble(struct s5p_dp_device *dp, bool enable)
 
 static irqreturn_t s5p_dp_irq_handler(int irq, void *arg)
 {
+    unsigned int reg;
 	struct s5p_dp_device *dp = arg;
 
-	dev_err(dp->dev, "s5p_dp_irq_handler\n");
+    dev_err(dp->dev, "s5p_dp_irq_handler\n");
+
+    reg = readl(dp->reg_base + 0x3DC);
+
+    dev_err(dp->dev, "reg : %x\n", reg);
+	
 	return IRQ_HANDLED;
 }
 
@@ -1057,13 +1084,21 @@ static int s5p_dp_enable(struct s5p_dp_device *dp)
 	clk_enable(dp->clock);
 	pm_runtime_get_sync(dp->dev);
 
+    printk("####### start dp enable #########\n");
+
 dp_phy_init:
 
 	if (pdata->phy_init)
 		pdata->phy_init();
+    else {
+        printk("phy_init is null");
+    }
+
+    printk("done..\n");
 
 	s5p_dp_init_dp(dp);
 
+#if 0 
 	if (!soc_is_exynos5250()) {
 		ret = s5p_dp_detect_hpd(dp);
 		if (ret) {
@@ -1071,14 +1106,16 @@ dp_phy_init:
 			goto out;
 		}
 	}
+#endif
 
 	ret = s5p_dp_handle_edid(dp);
 	if (ret) {
 		dev_err(dp->dev, "unable to handle edid\n");
 		goto out;
 	}
-
+#if 0 
 	s5p_dp_disable_rx_zmux(dp);
+#endif
 
 	/* Non-enhance mode setting */
 	ret = s5p_dp_enable_scramble(dp, 0);
@@ -1093,10 +1130,10 @@ dp_phy_init:
 		goto out;
 	}
 	s5p_dp_enable_enhanced_mode(dp, 0);
-
+#if 0 
 	/* Rx data disable */
 	s5p_dp_rx_control(dp,0);
-
+#endif
        /* Link Training */
 	ret = s5p_dp_set_link_train(dp, dp->video_info->lane_count,
 				dp->video_info->link_rate);
@@ -1104,10 +1141,10 @@ dp_phy_init:
 		dev_err(dp->dev, "unable to do link train\n");
 		goto out;
 	}
-
+#if 0
 	/* Rx data enable */
 	s5p_dp_rx_control(dp,1);
-
+#endif
 	s5p_dp_set_lane_count(dp, dp->video_info->lane_count);
 	s5p_dp_set_link_bandwidth(dp, dp->video_info->link_rate);
 
@@ -1132,6 +1169,8 @@ out:
 		if (pdata->lcd_off)
 			pdata->lcd_off();
 
+        msleep(500);
+
 		if (pdata->lcd_on)
 			pdata->lcd_on();
 
@@ -1155,9 +1194,9 @@ static void s5p_dp_disable(struct s5p_dp_device *dp)
 
 	dp->enabled = 0;
 
-	s5p_dp_reset(dp);
-	s5p_dp_set_pll_power_down(dp, 1);
-	s5p_dp_set_analog_power_down(dp, POWER_ALL, 1);
+	//s5p_dp_reset(dp);
+	//s5p_dp_set_pll_power_down(dp, 1);
+	//s5p_dp_set_analog_power_down(dp, POWER_ALL, 1);
 
 	if (pdata && pdata->phy_exit)
 		pdata->phy_exit();
@@ -1197,6 +1236,8 @@ static int __devinit s5p_dp_probe(struct platform_device *pdev)
 
 	int ret = 0;
 
+    printk("############ start to dp_probe\n #############\n");
+
 	pdata = pdev->dev.platform_data;
 	if (!pdata) {
 		dev_err(&pdev->dev, "no platform data\n");
@@ -1213,12 +1254,15 @@ static int __devinit s5p_dp_probe(struct platform_device *pdev)
 
 	dp->dev = &pdev->dev;
 
+    printk("1\n");
+    
 	dp->clock = clk_get(&pdev->dev, "dp");
 	if (IS_ERR(dp->clock)) {
 		dev_err(&pdev->dev, "failed to get clock\n");
 		ret = PTR_ERR(dp->clock);
 		goto err_dp;
 	}
+
 
 	pm_runtime_enable(dp->dev);
 
@@ -1228,6 +1272,8 @@ static int __devinit s5p_dp_probe(struct platform_device *pdev)
 		ret = -EINVAL;
 		goto err_clock;
 	}
+
+    printk("2\n");
 
 	res = request_mem_region(res->start, resource_size(res),
 				dev_name(&pdev->dev));
@@ -1245,6 +1291,8 @@ static int __devinit s5p_dp_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err_req_region;
 	}
+
+    printk("3\n");
 
 	dp->irq = platform_get_irq(pdev, 0);
 	if (!dp->irq) {
@@ -1264,11 +1312,15 @@ static int __devinit s5p_dp_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, dp);
 
+    printk("4\n");
+
 	dp->lcd = lcd_device_register("s5p_dp", &pdev->dev, dp, &s5p_dp_lcd_ops);
 	if (IS_ERR(dp->lcd)) {
 		ret = PTR_ERR(dp->lcd);
 		goto err_irq;
 	}
+
+    printk("5\n");
 
 	ret = s5p_dp_enable(dp);
 	if (ret)
@@ -1315,7 +1367,7 @@ static int __devexit s5p_dp_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static int  s5p_dp_shutdown(struct platform_device *pdev)
+static void  s5p_dp_shutdown(struct platform_device *pdev)
 {
 	struct s5p_dp_device *dp = platform_get_drvdata(pdev);
 	struct s5p_dp_platdata *pdata = dp->dev->platform_data;
@@ -1340,7 +1392,6 @@ static int  s5p_dp_shutdown(struct platform_device *pdev)
 
 	kfree(dp);
 
-	return 0;
 }
 
 static struct platform_driver s5p_dp_driver = {
