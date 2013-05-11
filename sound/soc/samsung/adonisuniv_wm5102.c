@@ -46,7 +46,7 @@
 #define ADONISUNIV_DEFAULT_MCLK1	24000000
 #define ADONISUNIV_DEFAULT_MCLK2	32768
 
-#define ADONISUNIV_TELCLK_RATE		(48000 * 512)
+#define ADONISUNIV_TELCLK_RATE		(96000 * 512)
 
 #define CLK_MODE_MEDIA 0
 #define CLK_MODE_TELEPHONY 1
@@ -719,9 +719,9 @@ static struct snd_soc_dai_driver adonisuniv_ext_dai[] = {
 			.channels_min = 1,
 			.channels_max = 2,
 			.rate_min = 8000,
-			.rate_max = 48000,
+			.rate_max = 96000,
 			.rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
-				SNDRV_PCM_RATE_48000),
+				SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_96000),
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
 		},
 		.capture = {
