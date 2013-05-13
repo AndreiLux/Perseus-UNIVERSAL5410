@@ -22,7 +22,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: bcmsdh.c 347614 2012-07-27 10:24:51Z $
+ * $Id: bcmsdh.c 369547 2012-11-19 08:57:31Z $
  */
 
 /**
@@ -44,6 +44,10 @@
 #include <sbsdio.h>	/* SDIO device core hardware definitions. */
 
 #include <sdio.h>	/* SDIO Device and Protocol Specs */
+
+#ifdef CUSTOMER_HW4
+#include <dhd_sec_feature.h>
+#endif /* CUSTOMER_HW4 */
 
 #define SDIOH_API_ACCESS_RETRY_LIMIT	2
 const uint bcmsdh_msglevel = BCMSDH_ERROR_VAL;
@@ -620,6 +624,17 @@ bcmsdh_waitlockfree(void *sdh)
 }
 
 
+#ifdef BCMSPI     /* 4329 gSPI won't have CIS reads. */
+int
+bcmsdh_query_device(void *sdh)
+{
+	bcmsdh_info_t *bcmsdh = (bcmsdh_info_t *)sdh;
+
+	bcmsdh->vendevid = (VENDOR_BROADCOM << 16) | BCM4321_D11N2G_ID;
+
+	return (bcmsdh->vendevid);
+}
+#else
 int
 bcmsdh_query_device(void *sdh)
 {
@@ -627,6 +642,7 @@ bcmsdh_query_device(void *sdh)
 	bcmsdh->vendevid = (VENDOR_BROADCOM << 16) | 0;
 	return (bcmsdh->vendevid);
 }
+#endif /* else BCMSPI */
 
 uint
 bcmsdh_query_iofnum(void *sdh)
@@ -657,7 +673,13 @@ void *bcmsdh_get_sdioh(bcmsdh_info_t *sdh)
 uint32
 bcmsdh_get_dstatus(void *sdh)
 {
+#ifdef BCMSPI
+	bcmsdh_info_t *p = (bcmsdh_info_t *)sdh;
+	sdioh_info_t *sd = (sdioh_info_t *)(p->sdioh);
+	return sdioh_get_dstatus(sd);
+#else
 	return 0;
+#endif /* BCMSPI */
 }
 uint32
 bcmsdh_cur_sbwad(void *sdh)
@@ -673,9 +695,25 @@ bcmsdh_cur_sbwad(void *sdh)
 void
 bcmsdh_chipinfo(void *sdh, uint32 chip, uint32 chiprev)
 {
+#ifdef BCMSPI
+	bcmsdh_info_t *p = (bcmsdh_info_t *)sdh;
+	sdioh_info_t *sd = (sdioh_info_t *)(p->sdioh);
+	sdioh_chipinfo(sd, chip, chiprev);
+#else
 	return;
+#endif /* BCMSPI */
 }
 
+#ifdef BCMSPI
+void
+bcmsdh_dwordmode(void *sdh, bool set)
+{
+	bcmsdh_info_t *p = (bcmsdh_info_t *)sdh;
+	sdioh_info_t *sd = (sdioh_info_t *)(p->sdioh);
+	sdioh_dwordmode(sd, set);
+	return;
+}
+#endif /* BCMSPI */
 
 int
 bcmsdh_sleep(void *sdh, bool enab)
@@ -728,10 +766,10 @@ bcmsdh_gpioout(void *sdh, uint32 gpio, bool enab)
 
 #ifdef BCMSDIOH_TXGLOM
 void
-bcmsdh_glom_post(void *sdh, uint8 *frame, uint len)
+bcmsdh_glom_post(void *sdh, uint8 *frame, void *pkt, uint len)
 {
 	bcmsdh_info_t *bcmsdh = (bcmsdh_info_t *)sdh;
-	sdioh_glom_post(bcmsdh->sdioh, frame, len);
+	sdioh_glom_post(bcmsdh->sdioh, frame, pkt, len);
 }
 
 void

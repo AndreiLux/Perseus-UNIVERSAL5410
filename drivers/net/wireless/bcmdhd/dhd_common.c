@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_common.c 373873 2012-12-10 20:45:58Z $
+ * $Id: dhd_common.c 383289 2013-02-06 06:42:35Z $
  */
 #include <typedefs.h>
 #include <osl.h>
@@ -277,11 +277,29 @@ dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifindex, wl_ioctl_t *ioc, void *buf, int le
 	dhd_os_proto_block(dhd_pub);
 
 	ret = dhd_prot_ioctl(dhd_pub, ifindex, ioc, buf, len);
-	if ((ret) && (dhd_pub->up))
-		/* Send hang event only if dhd_open() was success */
-		dhd_os_check_hang(dhd_pub, ifindex, ret);
+#if defined(CUSTOMER_HW4)
+		if ((ret || ret == -ETIMEDOUT) && (dhd_pub->up))
+#else
+		if ((ret) && (dhd_pub->up))
+#endif /* CUSTOMER_HW4 */
+			/* Send hang event only if dhd_open() was success */
+			dhd_os_check_hang(dhd_pub, ifindex, ret);
 
 	dhd_os_proto_unblock(dhd_pub);
+
+#if defined(CUSTOMER_HW4)
+	if (ret < 0) {
+		if (ioc->cmd == WLC_GET_VAR)
+			DHD_ERROR(("%s: WLC_GET_VAR: %s, ret = %d\n",
+				__FUNCTION__, (char *)ioc->buf, ret));
+		else if (ioc->cmd == WLC_SET_VAR)
+			DHD_ERROR(("%s: WLC_SET_VAR: %s, ret = %d\n",
+				__FUNCTION__, (char *)ioc->buf, ret));
+		else
+			DHD_ERROR(("%s: WLC_IOCTL: cmd: %d, ret = %d\n",
+				__FUNCTION__, ioc->cmd, ret));
+	}
+#endif /* OEM_ANDROID && CUSTOMER_HW4 */
 
 	return ret;
 }
@@ -561,7 +579,8 @@ dhd_prec_enq(dhd_pub_t *dhdp, struct pktq *q, void *pkt, int prec)
 	if (pktq_pfull(q, prec))
 		eprec = prec;
 	else if (pktq_full(q)) {
-		pktq_peek_tail(q, &eprec);
+		p = pktq_peek_tail(q, &eprec);
+		ASSERT(p);
 		if (eprec > prec || eprec < 0)
 			return FALSE;
 	}
@@ -581,7 +600,8 @@ dhd_prec_enq(dhd_pub_t *dhdp, struct pktq *q, void *pkt, int prec)
 	}
 
 	/* Enqueue */
-	pktq_penq(q, prec, pkt);
+	p = pktq_penq(q, prec, pkt);
+	ASSERT(p);
 
 	return TRUE;
 }
@@ -659,7 +679,7 @@ dhd_ioctl(dhd_pub_t * dhd_pub, dhd_ioctl_t *ioc, void * buf, uint buflen)
 
 	case DHD_GET_VERSION:
 		if (buflen < sizeof(int))
-			bcmerror = -BCME_BUFTOOSHORT;
+			bcmerror = BCME_BUFTOOSHORT;
 		else
 			*(int*)buf = DHD_IOCTL_VERSION;
 		break;
@@ -952,7 +972,7 @@ wl_show_host_event(wl_event_msg_t *event, void *event_data)
 	case WLC_E_SERVICE_FOUND:
 	case WLC_E_P2PO_ADD_DEVICE:
 	case WLC_E_P2PO_DEL_DEVICE:
-		DHD_EVENT(("MACEVENT: %s, MAC: %s\n", event_name, eabuf));
+		DHD_EVENT(("MACEVENT: %s, MAC %s\n", event_name, eabuf));
 		break;
 
 	default:
@@ -1022,6 +1042,11 @@ wl_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata,
 	case WLC_E_IF:
 		{
 		dhd_if_event_t *ifevent = (dhd_if_event_t *)event_data;
+		/* Ignore the event if NOIF is set */
+		if (ifevent->flags & WLC_E_IF_FLAGS_BSSCFG_NOIF) {
+			DHD_ERROR(("WLC_E_IF: NO_IF set, event Ignored\r\n"));
+			return (BCME_OK);
+		}
 #ifdef PROP_TXSTATUS
 			{
 		uint8* ea = pvt_data->eth.ether_dhost;
@@ -1185,7 +1210,6 @@ dhd_print_buf(void *pbuf, int len, int bytes_per_line)
 	printf("\n");
 #endif /* DHD_DEBUG */
 }
-
 #ifndef strtoul
 #define strtoul(nptr, endptr, base) bcm_strtoul((nptr), (endptr), (base))
 #endif
@@ -1493,7 +1517,7 @@ dhd_aoe_arp_clr(dhd_pub_t *dhd, int idx)
 		idx = 0;
 
 	iov_len = bcm_mkiovar("arp_table_clear", 0, 0, iovbuf, sizeof(iovbuf));
-	if ((ret  = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, iov_len, TRUE, idx) < 0))
+	if ((ret  = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, iov_len, TRUE, idx)) < 0)
 		DHD_ERROR(("%s failed code %d\n", __FUNCTION__, ret));
 }
 
@@ -1593,6 +1617,191 @@ dhd_sendup_event_common(dhd_pub_t *dhdp, wl_event_msg_t *event, void *data)
 	dhd_sendup_event(dhdp, event, data);
 }
 
+#ifdef SIMPLE_ISCAN
+
+uint iscan_thread_id = 0;
+iscan_buf_t * iscan_chain = 0;
+
+iscan_buf_t *
+dhd_iscan_allocate_buf(dhd_pub_t *dhd, iscan_buf_t **iscanbuf)
+{
+	iscan_buf_t *iscanbuf_alloc = 0;
+	iscan_buf_t *iscanbuf_head;
+
+	DHD_ISCAN(("%s: Entered\n", __FUNCTION__));
+	dhd_iscan_lock();
+
+	iscanbuf_alloc = (iscan_buf_t*)MALLOC(dhd->osh, sizeof(iscan_buf_t));
+	if (iscanbuf_alloc == NULL)
+		goto fail;
+
+	iscanbuf_alloc->next = NULL;
+	iscanbuf_head = *iscanbuf;
+
+	DHD_ISCAN(("%s: addr of allocated node = 0x%X"
+		   "addr of iscanbuf_head = 0x%X dhd = 0x%X\n",
+		   __FUNCTION__, iscanbuf_alloc, iscanbuf_head, dhd));
+
+	if (iscanbuf_head == NULL) {
+		*iscanbuf = iscanbuf_alloc;
+		DHD_ISCAN(("%s: Head is allocated\n", __FUNCTION__));
+		goto fail;
+	}
+
+	while (iscanbuf_head->next)
+		iscanbuf_head = iscanbuf_head->next;
+
+	iscanbuf_head->next = iscanbuf_alloc;
+
+fail:
+	dhd_iscan_unlock();
+	return iscanbuf_alloc;
+}
+
+void
+dhd_iscan_free_buf(void *dhdp, iscan_buf_t *iscan_delete)
+{
+	iscan_buf_t *iscanbuf_free = 0;
+	iscan_buf_t *iscanbuf_prv = 0;
+	iscan_buf_t *iscanbuf_cur;
+	dhd_pub_t *dhd = dhd_bus_pub(dhdp);
+	DHD_ISCAN(("%s: Entered\n", __FUNCTION__));
+
+	dhd_iscan_lock();
+
+	iscanbuf_cur = iscan_chain;
+
+	/* If iscan_delete is null then delete the entire
+	 * chain or else delete specific one provided
+	 */
+	if (!iscan_delete) {
+		while (iscanbuf_cur) {
+			iscanbuf_free = iscanbuf_cur;
+			iscanbuf_cur = iscanbuf_cur->next;
+			iscanbuf_free->next = 0;
+			MFREE(dhd->osh, iscanbuf_free, sizeof(iscan_buf_t));
+		}
+		iscan_chain = 0;
+	} else {
+		while (iscanbuf_cur) {
+			if (iscanbuf_cur == iscan_delete)
+				break;
+			iscanbuf_prv = iscanbuf_cur;
+			iscanbuf_cur = iscanbuf_cur->next;
+		}
+		if (iscanbuf_prv)
+			iscanbuf_prv->next = iscan_delete->next;
+
+		iscan_delete->next = 0;
+		MFREE(dhd->osh, iscan_delete, sizeof(iscan_buf_t));
+
+		if (!iscanbuf_prv)
+			iscan_chain = 0;
+	}
+	dhd_iscan_unlock();
+}
+
+iscan_buf_t *
+dhd_iscan_result_buf(void)
+{
+	return iscan_chain;
+}
+
+int
+dhd_iscan_issue_request(void * dhdp, wl_iscan_params_t *pParams, uint32 size)
+{
+	int rc = -1;
+	dhd_pub_t *dhd = dhd_bus_pub(dhdp);
+	char *buf;
+	char iovar[] = "iscan";
+	uint32 allocSize = 0;
+	wl_ioctl_t ioctl;
+
+	if (pParams) {
+		allocSize = (size + strlen(iovar) + 1);
+		if ((allocSize < size) || (allocSize < strlen(iovar)))
+		{
+			DHD_ERROR(("%s: overflow - allocation size too large %d < %d + %d!\n",
+				__FUNCTION__, allocSize, size, strlen(iovar)));
+			goto cleanUp;
+		}
+		buf = MALLOC(dhd->osh, allocSize);
+
+		if (buf == NULL)
+			{
+			DHD_ERROR(("%s: malloc of size %d failed!\n", __FUNCTION__, allocSize));
+			goto cleanUp;
+			}
+		ioctl.cmd = WLC_SET_VAR;
+		bcm_mkiovar(iovar, (char *)pParams, size, buf, allocSize);
+		rc = dhd_wl_ioctl(dhd, 0, &ioctl, buf, allocSize);
+	}
+
+cleanUp:
+	if (buf) {
+		MFREE(dhd->osh, buf, allocSize);
+	}
+
+	return rc;
+}
+
+static int
+dhd_iscan_get_partial_result(void *dhdp, uint *scan_count)
+{
+	wl_iscan_results_t *list_buf;
+	wl_iscan_results_t list;
+	wl_scan_results_t *results;
+	iscan_buf_t *iscan_cur;
+	int status = -1;
+	dhd_pub_t *dhd = dhd_bus_pub(dhdp);
+	int rc;
+	wl_ioctl_t ioctl;
+
+	DHD_ISCAN(("%s: Enter\n", __FUNCTION__));
+
+	iscan_cur = dhd_iscan_allocate_buf(dhd, &iscan_chain);
+	if (!iscan_cur) {
+		DHD_ERROR(("%s: Failed to allocate node\n", __FUNCTION__));
+		dhd_iscan_free_buf(dhdp, 0);
+		dhd_iscan_request(dhdp, WL_SCAN_ACTION_ABORT);
+		dhd_ind_scan_confirm(dhdp, FALSE);
+		goto fail;
+	}
+
+	dhd_iscan_lock();
+
+	memset(iscan_cur->iscan_buf, 0, WLC_IW_ISCAN_MAXLEN);
+	list_buf = (wl_iscan_results_t*)iscan_cur->iscan_buf;
+	results = &list_buf->results;
+	results->buflen = WL_ISCAN_RESULTS_FIXED_SIZE;
+	results->version = 0;
+	results->count = 0;
+
+	memset(&list, 0, sizeof(list));
+	list.results.buflen = htod32(WLC_IW_ISCAN_MAXLEN);
+	bcm_mkiovar("iscanresults", (char *)&list, WL_ISCAN_RESULTS_FIXED_SIZE,
+		iscan_cur->iscan_buf, WLC_IW_ISCAN_MAXLEN);
+	ioctl.cmd = WLC_GET_VAR;
+	ioctl.set = FALSE;
+	rc = dhd_wl_ioctl(dhd, 0, &ioctl, iscan_cur->iscan_buf, WLC_IW_ISCAN_MAXLEN);
+
+	results->buflen = dtoh32(results->buflen);
+	results->version = dtoh32(results->version);
+	*scan_count = results->count = dtoh32(results->count);
+	status = dtoh32(list_buf->status);
+	DHD_ISCAN(("%s: Got %d resuls status = (%x)\n", __FUNCTION__, results->count, status));
+
+	dhd_iscan_unlock();
+
+	if (!(*scan_count)) {
+		 /* TODO: race condition when FLUSH already called */
+		dhd_iscan_free_buf(dhdp, 0);
+	}
+fail:
+	return status;
+}
+
+#endif /* SIMPLE_ISCAN */
 
 /*
  * returns = TRUE if associated, FALSE if not associated
@@ -1637,11 +1846,10 @@ bool dhd_is_associated(dhd_pub_t *dhd, void *bss_buf, int *retval)
 int
 dhd_get_suspend_bcn_li_dtim(dhd_pub_t *dhd)
 {
-	int bcn_li_dtim;
+	int bcn_li_dtim = 1; /* deafult no dtim skip setting */
 	int ret = -1;
 	int dtim_assoc = 0;
-
-	bcn_li_dtim = dhd->suspend_bcn_li_dtim;
+	int ap_beacon = 0;
 
 	/* Check if associated */
 	if (dhd_is_associated(dhd, NULL, NULL) == FALSE) {
@@ -1649,20 +1857,33 @@ dhd_get_suspend_bcn_li_dtim(dhd_pub_t *dhd)
 		goto exit;
 	}
 
-	/* if assoc grab ap's dtim value */
+	/* read associated AP beacon interval */
+	if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_BCNPRD,
+		&ap_beacon, sizeof(ap_beacon), FALSE, 0)) < 0) {
+		DHD_ERROR(("%s get beacon failed code %d\n", __FUNCTION__, ret));
+		goto exit;
+	}
+
+	/* if associated APs Beacon more  that 100msec do no dtim skip */
+	if (ap_beacon > MAX_DTIM_SKIP_BEACON_ITERVAL) {
+		DHD_ERROR(("%s NO dtim skip for AP with beacon %d ms\n", __FUNCTION__, ap_beacon));
+		goto exit;
+	}
+
+	/* read associated ap's dtim setup */
 	if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_DTIMPRD,
 		&dtim_assoc, sizeof(dtim_assoc), FALSE, 0)) < 0) {
 		DHD_ERROR(("%s failed code %d\n", __FUNCTION__, ret));
 		goto exit;
 	}
 
-	DHD_ERROR(("%s bcn_li_dtim=%d DTIM=%d Listen=%d\n",
-		__FUNCTION__, bcn_li_dtim, dtim_assoc, LISTEN_INTERVAL));
-
 	/* if not assocated just eixt */
 	if (dtim_assoc == 0) {
 		goto exit;
 	}
+
+	/* attemp to use platform defined dtim skip interval */
+	bcn_li_dtim = dhd->suspend_bcn_li_dtim;
 
 	/* check if sta listen interval fits into AP dtim */
 	if (dtim_assoc > LISTEN_INTERVAL) {
@@ -1678,6 +1899,9 @@ dhd_get_suspend_bcn_li_dtim(dhd_pub_t *dhd)
 		bcn_li_dtim = (int)(LISTEN_INTERVAL / dtim_assoc);
 		DHD_TRACE(("%s agjust dtim_skip as %d\n", __FUNCTION__, bcn_li_dtim));
 	}
+
+	DHD_ERROR(("%s beacon=%d bcn_li_dtim=%d DTIM=%d Listen=%d\n",
+		__FUNCTION__, ap_beacon, bcn_li_dtim, dtim_assoc, LISTEN_INTERVAL));
 
 exit:
 	return bcn_li_dtim;
@@ -1901,7 +2125,7 @@ int dhd_keep_alive_onoff(dhd_pub_t *dhd)
 {
 	char 				buf[256];
 	const char 			*str;
-	wl_mkeep_alive_pkt_t	mkeep_alive_pkt;
+	wl_mkeep_alive_pkt_t	mkeep_alive_pkt = {0};
 	wl_mkeep_alive_pkt_t	*mkeep_alive_pktp;
 	int					buf_len;
 	int					str_len;
