@@ -42,6 +42,15 @@ struct gpio_button_data {
 	bool key_pressed;
 	bool key_state;
 	bool wakeup;
+#ifdef KEY_BOOSTER
+	bool key_dvfs_lock_status;
+	struct delayed_work key_work_dvfs_off;
+	struct delayed_work key_work_dvfs_chg;
+	struct mutex key_dvfs_lock;
+	struct pm_qos_request key_cpu_qos;
+	struct pm_qos_request key_mif_qos;
+	struct pm_qos_request key_int_qos;
+#endif
 };
 
 struct gpio_keys_drvdata {
@@ -419,6 +428,86 @@ static struct attribute_group sec_key_attr_group = {
 	.attrs = sec_key_attrs,
 };
 
+#ifdef KEY_BOOSTER
+static void gpio_key_change_dvfs_lock(struct work_struct *work)
+{
+	struct gpio_button_data *bdata =
+			container_of(work,
+				struct gpio_button_data, key_work_dvfs_chg.work);
+
+	mutex_lock(&bdata->key_dvfs_lock);
+
+	if (pm_qos_request_active(&bdata->key_mif_qos)) {
+		pm_qos_update_request(&bdata->key_mif_qos, 400000); /* MIF 400MHz */
+		printk(KERN_DEBUG "[key] change_mif_dvfs_lock");
+	}
+
+	mutex_unlock(&bdata->key_dvfs_lock);
+}
+
+static void gpio_key_set_dvfs_off(struct work_struct *work)
+{
+	struct gpio_button_data *bdata =
+				container_of(work,
+					struct gpio_button_data, key_work_dvfs_off.work);
+
+	mutex_lock(&bdata->key_dvfs_lock);
+
+	pm_qos_remove_request(&bdata->key_cpu_qos);
+	pm_qos_remove_request(&bdata->key_mif_qos);
+	pm_qos_remove_request(&bdata->key_int_qos);
+
+	bdata->key_dvfs_lock_status = false;
+	mutex_unlock(&bdata->key_dvfs_lock);
+
+	printk(KERN_DEBUG "[key] DVFS Off\n");
+}
+
+static void gpio_key_set_dvfs_lock(struct gpio_button_data *bdata,
+					uint32_t on)
+{
+	mutex_lock(&bdata->key_dvfs_lock);
+	if (on == 0) {
+		if (bdata->key_dvfs_lock_status) {
+			schedule_delayed_work(&bdata->key_work_dvfs_off,
+				msecs_to_jiffies(TOUCH_BOOSTER_OFF_TIME));
+		}
+	} else if (on == 1) {
+		cancel_delayed_work(&bdata->key_work_dvfs_off);
+		if (!bdata->key_dvfs_lock_status) {
+			pm_qos_add_request(&bdata->key_cpu_qos, PM_QOS_CPU_FREQ_MIN, 600000); /* CPU KFC 1.2GHz */
+			pm_qos_add_request(&bdata->key_mif_qos, PM_QOS_BUS_THROUGHPUT, 800000); /* MIF 800MHz */
+			pm_qos_add_request(&bdata->key_int_qos, PM_QOS_DEVICE_THROUGHPUT, 200000); /* INT 200MHz */
+
+			schedule_delayed_work(&bdata->key_work_dvfs_chg,
+							msecs_to_jiffies(TOUCH_BOOSTER_CHG_TIME));
+
+			bdata->key_dvfs_lock_status = true;
+			printk(KERN_DEBUG "[key] DVFS On\n");
+		}
+	} else if (on == 2) {
+		if (bdata->key_dvfs_lock_status) {
+			cancel_delayed_work(&bdata->key_work_dvfs_off);
+			cancel_delayed_work(&bdata->key_work_dvfs_chg);
+			schedule_work(&bdata->key_work_dvfs_off.work);
+		}
+	}
+	mutex_unlock(&bdata->key_dvfs_lock);
+}
+
+
+static int gpio_key_init_dvfs(struct gpio_button_data *bdata)
+{
+	mutex_init(&bdata->key_dvfs_lock);
+
+	INIT_DELAYED_WORK(&bdata->key_work_dvfs_off, gpio_key_set_dvfs_off);
+	INIT_DELAYED_WORK(&bdata->key_work_dvfs_chg, gpio_key_change_dvfs_lock);
+
+	bdata->key_dvfs_lock_status = false;
+	return 0;
+}
+#endif
+
 static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 {
 	const struct gpio_keys_button *button = bdata->button;
@@ -455,6 +544,11 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 			printk(KERN_DEBUG "[keys]PWR %d\n", report_state);
 			prev_state = report_state;
 		}
+
+#ifdef KEY_BOOSTER
+		if (button->code == KEY_HOMEPAGE)
+			gpio_key_set_dvfs_lock(bdata, !!state);
+#endif
 	}
 }
 
@@ -754,6 +848,15 @@ static void gpio_keys_close(struct input_dev *input)
 
 	if (ddata->disable)
 		ddata->disable(input->dev.parent);
+
+#ifdef KEY_BOOSTER
+	for (i = 0; i < ddata->n_buttons; i++) {
+		struct gpio_button_data *bdata = &ddata->data[i];
+
+		if (bdata->button->code == KEY_HOMEPAGE)
+			gpio_key_set_dvfs_lock(bdata, 2);
+	}
+#endif
 }
 
 /*
@@ -934,6 +1037,16 @@ static int __devinit gpio_keys_probe(struct platform_device *pdev)
 
 		if (button->wakeup)
 			wakeup = 1;
+
+#ifdef KEY_BOOSTER
+		if (button->code == KEY_HOMEPAGE) {
+			error = gpio_key_init_dvfs(bdata);
+			if (error < 0) {
+				dev_err(dev, "Fail get dvfs level for touch booster\n");
+				goto fail2;
+			}
+		}
+#endif
 	}
 
 	error = sysfs_create_group(&pdev->dev.kobj, &gpio_keys_attr_group);

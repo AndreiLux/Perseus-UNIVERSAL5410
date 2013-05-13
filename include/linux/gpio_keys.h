@@ -1,6 +1,16 @@
 #ifndef _GPIO_KEYS_H
 #define _GPIO_KEYS_H
 
+#ifdef CONFIG_MACH_JA
+#define KEY_BOOSTER
+#endif
+
+#ifdef KEY_BOOSTER
+#include <linux/pm_qos.h>
+#define TOUCH_BOOSTER_OFF_TIME	300
+#define TOUCH_BOOSTER_CHG_TIME	200
+#endif
+
 struct device;
 
 struct gpio_keys_button {
