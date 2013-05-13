@@ -13,6 +13,8 @@ struct gpio_keys_button {
 	int wakeup;		/* configure the button as a wake-up source */
 	int debounce_interval;	/* debounce ticks interval in msecs */
 	bool can_disable;
+	/*key callback function */
+	void (*isr_hook)(unsigned int code, int value);
 	int value;		/* axis value for EV_ABS */
 	unsigned int irq;	/* Irq number in case of interrupt keys */
 };
@@ -27,5 +29,7 @@ struct gpio_keys_platform_data {
 	void (*disable)(struct device *dev);
 	const char *name;		/* input device name */
 };
+
+extern struct class *sec_class;
 
 #endif
