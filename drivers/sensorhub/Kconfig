@@ -1,0 +1,163 @@
+#
+# sensor drivers configuration
+#
+config SENSORS_SYSFS
+	tristate "Sensors sysfs"
+	help
+	  Support sysfs for sensors.
+          If you say yes here you get sysfs support for
+	  sensor factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called sensors_core.
+
+config SENSORS_SSP
+	tristate "Sensors ssp"
+	default n
+	depends on I2C
+	help
+	  ssp driver for sensor hub.
+          If you say yes here you get ssp support for
+	  sensor hub.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_K330
+	tristate "Sensors ssp k330"
+	default n
+	depends on I2C
+	help
+	  k330 file for factory test in ssp driver.
+          If you say yes here you get k330 support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_AK8963C
+	tristate "Sensors ssp ak8963c"
+	default n
+	depends on I2C
+	help
+	  ak8963c file for factory test in ssp driver.
+          If you say yes here you get ak8963c support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_AK8963C_DOEPLUS
+	tristate "Sensors ssp ak8963c doe+"
+	default n
+	depends on I2C
+	help
+	  ak8963c file for factory test and doeplus in ssp driver.
+          If you say yes here you get ak8963c support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_CM36651
+	tristate "Sensors ssp cm36651"
+	default n
+	depends on I2C
+	help
+	  cm36651 file for factory test in ssp driver.
+          If you say yes here you get cm36651 support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_CM3323
+	tristate "Sensors ssp cm3323"
+	default n
+	depends on I2C
+	help
+	  cm3323 file for factory test in ssp driver.
+          If you say yes here you will get cm3323 support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_MAX88920
+	tristate "Sensors ssp max88920"
+	default n
+	depends on I2C
+	help
+	  max88920 file for factory test in ssp driver.
+          If you say yes here you get max88920 support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_BMP182
+	tristate "Sensors ssp bmp182"
+	default n
+	depends on I2C
+	help
+	  bmp182 file for factory test in ssp driver.
+          If you say yes here you get bmp182 support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_SHTC1
+	tristate "Sensors ssp shtc1"
+	default n
+	depends on I2C
+	help
+	  shtc1 file for factory test in ssp driver.
+          If you say yes here you get shtc1 support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_SHTC1_VER
+	string "Sensors shtc1 version name"
+	default "No_Version_Name"
+	depends on SENSORS_SSP_SHTC1
+	help
+	  shtc1 version for temphumid factory test in ssp driver.
+          If you give version name here you get shtc1 version for
+	  lcd test.
+
+config SENSORS_SSP_AT32UC3L0128
+	tristate "Sensors ssp at32uc3l0128"
+	default n
+	depends on I2C
+	help
+	  at32uc3l0128 file for factory test in ssp driver.
+          If you say yes here you get at32uc3l0128 support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_ATUC128L5HAR
+	tristate "Sensors ssp atuc128l5har"
+	default n
+	depends on I2C
+	help
+	  atuc128l5har file for factory test in ssp driver.
+          If you say yes here you get atuc128l5har support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_SENSORHUB
+	tristate "Sensors ssp sensorhub"
+	default n
+	depends on I2C
+	help
+	  ssp sensor hub driver for sensor hub.
+          If you say yes here you get ssp support for
+	  sensor hub.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_C12SD
+	tristate "Sensors ssp C12SD"
+	default n
+	depends on SENSORS_SSP
+	help
+	  This is for GUVA_C12SD UV Sensor
+	  device driver.
+	  GUVA_C12SD is made by Genicom.
+          If you say yes here you get c12sd support.
+	  If you say no here c12sd will not be supported.

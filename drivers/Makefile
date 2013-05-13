@@ -138,6 +138,8 @@ obj-$(CONFIG_BATTERY_SAMSUNG)	+= battery/
 
 obj-$(CONFIG_VIBETONZ)		+= motor/
 
+obj-$(CONFIG_SENSORS_SSP)	+= sensorhub/
+
 obj-$(CONFIG_MOBICORE_DRIVER)	+= gud/
 
 obj-$(CONFIG_SWITCH)		+= switch/
