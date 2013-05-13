@@ -141,6 +141,13 @@ config LCD_MIPI_TC358764
           If you have an TC358764 MIPI LCD Panel, say Y to enable its
           LCD control driver.
 
+config LCD_MIPI_S6E8FA0
+	tristate "1080 X 1920 FHD LCD Driver"
+	depends on BACKLIGHT_CLASS_DEVICE
+	default n
+	help
+	  If you have an LCD_MIPI_S6E8FA0 MIPI LCD Panel, say Y to enable its
+	  LCD control driver.
 endif # LCD_CLASS_DEVICE
 
 #
