@@ -141,6 +141,11 @@ fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 
+#for sensorhub
+
+fw-shipped-$(CONFIG_SENSORS_SSP) += ssp.fw
+fw-shipped-$(CONFIG_SENSORS_SSP) += ssp_crashed.fw
+
 TSPFIRMWARE_DIRECTORY = firmware/tsp_synaptics
 ifeq ($(shell test -d $(TSPFIRMWARE_DIRECTORY) && echo yes),yes)
 fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI) +=  tsp_synaptics/synaptics_b0_5_1.fw \
