@@ -42,6 +42,23 @@ static struct clksrc_clk exynos_clk_mout_audss = {
 	.reg_src = { .reg = EXYNOS_CLKSRC_AUDSS, .shift = 0, .size = 1 },
 };
 
+static struct clk *exynos_clkset_mout_i2s_list[] = {
+	&exynos_clk_mout_audss.clk,
+};
+
+static struct clksrc_sources clkset_mout_i2s = {
+	.sources	= exynos_clkset_mout_i2s_list,
+	.nr_sources	= ARRAY_SIZE(exynos_clkset_mout_i2s_list),
+};
+
+static struct clksrc_clk exynos_clk_mout_i2s = {
+	.clk	= {
+		.name		= "mout_i2s",
+	},
+	.sources = &clkset_mout_i2s,
+	.reg_src = { .reg = EXYNOS_CLKSRC_AUDSS, .shift = 2, .size = 2 },
+};
+
 static struct clksrc_clk exynos_clk_dout_audss_srp = {
 	.clk	= {
 		.name		= "dout_srp",
@@ -69,6 +86,7 @@ static struct clksrc_clk exynos_clk_dout_audss_i2s = {
 /* Clock initialization code */
 static struct clksrc_clk *exynos_audss_clks[] = {
 	&exynos_clk_mout_audss,
+	&exynos_clk_mout_i2s,
 	&exynos_clk_dout_audss_srp,
 	&exynos_clk_dout_audss_bus,
 	&exynos_clk_dout_audss_i2s,
@@ -85,22 +103,20 @@ static struct clk exynos_init_audss_clocks[] = {
 		.name		= "iis",
 		.devname	= "samsung-i2s.0",
 		.enable		= exynos_clk_audss_ctrl,
-		.ctrlbit	= EXYNOS_AUDSS_CLKGATE_I2SSPECIAL | EXYNOS_AUDSS_CLKGATE_I2SBUS,
+		.ctrlbit	= EXYNOS_AUDSS_CLKGATE_I2SSPECIAL | EXYNOS_AUDSS_CLKGATE_I2SBUS
+				| EXYNOS_AUDSS_CLKGATE_GPIO,
 	}, {
 		.name		= "iis",
 		.devname	= "samsung-i2s.4",
 		.enable		= exynos_clk_audss_ctrl,
-		.ctrlbit	= EXYNOS_AUDSS_CLKGATE_I2SSPECIAL | EXYNOS_AUDSS_CLKGATE_I2SBUS,
+		.ctrlbit	= EXYNOS_AUDSS_CLKGATE_I2SSPECIAL | EXYNOS_AUDSS_CLKGATE_I2SBUS
+				| EXYNOS_AUDSS_CLKGATE_GPIO,
 	}, {
 		.name		= "pcm",
 		.devname	= "samsung-pcm.0",
 		.enable		= exynos_clk_audss_ctrl,
-		.ctrlbit	= EXYNOS_AUDSS_CLKGATE_I2SSPECIAL | EXYNOS_AUDSS_CLKGATE_I2SBUS,
-	}, {
-		.name		= "pcm",
-		.devname	= "samsung-pcm.4",
-		.enable		= exynos_clk_audss_ctrl,
-		.ctrlbit	= EXYNOS_AUDSS_CLKGATE_I2SSPECIAL | EXYNOS_AUDSS_CLKGATE_I2SBUS,
+		.ctrlbit	= EXYNOS_AUDSS_CLKGATE_PCMSPECIAL | EXYNOS_AUDSS_CLKGATE_PCMBUS
+				| EXYNOS_AUDSS_CLKGATE_GPIO,
 	},
 };
 

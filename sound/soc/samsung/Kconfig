@@ -68,6 +68,22 @@ config SND_SOC_SAMSUNG_SMDK_WM8580
 	help
 	  Say Y if you want to add support for SoC audio on the SMDKs.
 
+config SND_SOC_ADONISUNIV_WM5102
+	tristate "SoC I2S Audio support for Adonis Univ - WM5102"
+	depends on SND_SOC_SAMSUNG && MACH_UNIVERSAL5410
+	select SND_SAMSUNG_I2S
+	select SND_SOC_WM5102
+	select MFD_ARIZONA
+	select MFD_ARIZONA_SPI
+	select MFD_ARIZONA_I2C
+	select MFD_WM5102
+	select REGULATOR_ARIZONA
+	select SWITCH_ARIZONA
+	select GPIO_ARIZONA
+	help
+          Say Y if you want to add support for SoC audio on Universal 5410 Board
+          with the WM8994
+
 config SND_SOC_SAMSUNG_SMDK_WM8994
 	tristate "SoC I2S Audio support for WM8994 on SMDK"
 	depends on SND_SOC_SAMSUNG && (MACH_SMDKV310 || MACH_SMDKC210 || MACH_SMDK4212 || MACH_SMDK5250)
