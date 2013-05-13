@@ -2071,6 +2071,18 @@ config FB_I80_COMMAND_MODE
 	---help---
 	  This enables Samsung MIPI DSI command mode.
 
+config FB_S5P_MDNIE
+	bool "Samsung MDNIE"
+	depends on FB_S3C
+	default "y"
+	---help---
+	This enables support for Samsung MDNIE feature
+config S5P_MDNIE_PWM
+	bool "Samsung mDNIe PWM"
+	depends on FB_S5P_MDNIE
+	default n
+	---help---
+	This enables support for Samsung MDNIE pwm(CABC) feature
 
 config FB_LCD_FREQ_SWITCH
 	bool "support for FB LCD Frequency switch"
