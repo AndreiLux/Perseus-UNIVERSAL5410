@@ -585,4 +585,6 @@ config SENSORS_HALL
 	help
 	  Say Y here to enable the HALL.
 
+source "drivers/input/keyboard/cypress/Kconfig"
+
 endif

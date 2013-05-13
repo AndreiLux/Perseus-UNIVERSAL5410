@@ -187,6 +187,9 @@ struct input_keymap_entry {
 #define EV_FF			0x15
 #define EV_PWR			0x16
 #define EV_FF_STATUS		0x17
+#ifdef CONFIG_VT_TKEY_SKIP_MATCH
+#define EV_TOUCHKEY		0x18
+#endif 
 #define EV_MAX			0x1f
 #define EV_CNT			(EV_MAX+1)
 
