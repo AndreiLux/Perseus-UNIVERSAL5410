@@ -87,6 +87,7 @@ extern struct platform_device s5p_device_g2d;
 extern struct platform_device s5p_device_fimd0;
 extern struct platform_device s5p_device_fimd1;
 extern struct platform_device mdnie_device;
+extern struct platform_device s5p_device_extdsp;
 extern struct platform_device s5p_device_mipi_dsim0;
 extern struct platform_device s5p_device_mipi_dsim1;
 extern struct platform_device s5p_device_dp;

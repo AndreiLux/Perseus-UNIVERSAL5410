@@ -125,6 +125,7 @@ obj-$(CONFIG_FB_MIPI_DSIM)	  += s5p_mipi_dsi.o s5p_mipi_dsi_lowlevel.o
 obj-$(CONFIG_FB_S5P_MDNIE)	  += ielcd.o mdnie.o mdnie_tuning.o
 obj-$(CONFIG_FB_S3C)		  += s3c-fb.o lcdfreq.o
 obj-$(CONFIG_S5P_DP)		  += s5p-dp-core.o s5p-dp-reg.o
+obj-$(CONFIG_FB_S5P_EXTDSP)	  += samsung_extdisp/
 obj-$(CONFIG_FB_S3C2410)	  += s3c2410fb.o
 obj-$(CONFIG_FB_FSL_DIU)	  += fsl-diu-fb.o
 obj-$(CONFIG_FB_COBALT)           += cobalt_lcdfb.o

@@ -1,0 +1,17 @@
+#
+# S3C Video configuration
+#
+
+config FB_S5P_EXTDSP
+	tristate "S5P External Display Framebuffer support"
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	depends on FB && (((ARCH_S5PV210 || ARCH_EXYNOS4) && !FB_S3C) ||ARCH_EXYNOS5)
+	default y
+	help
+	  This enables support for Samsung External Display Controller
+
+config FB_S5P_EXTDSP_DEBUG
+	bool "S5P External Display Framebuffer debug messages"
+	depends on FB_S5P_EXTDSP
