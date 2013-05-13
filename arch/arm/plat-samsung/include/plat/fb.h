@@ -57,6 +57,8 @@ struct s3c_fb_platdata {
 	void	(*setup_gpio)(void);
 	void	(*backlight_off)(void);
 	void	(*lcd_off)(void);
+	int		(*dsim_on)(struct device *dsim);
+	int		(*dsim_off)(struct device *dsim);
 
 	struct s3c_fb_pd_win	*win[S3C_FB_MAX_WIN];
 
@@ -64,6 +66,8 @@ struct s3c_fb_platdata {
 
 	u32			 vidcon0;
 	u32			 vidcon1;
+	int			 ip_version;
+	struct device		*dsim1_device;
 };
 
 /**
@@ -89,6 +93,14 @@ extern void s5p_fimd0_set_platdata(struct s3c_fb_platdata *pd);
  *      machines will end up dumping their data at runtime.
  */
 extern void s5p_fimd1_set_platdata(struct s3c_fb_platdata *pd);
+
+/**
+ * s3cfb_extdsp_set_platdata() - Setup the Extension display device with platform data.
+ * @pd: The platform data to set. The data is copied from the passed structure
+ *      so the machine data can mark the data __initdata so that any unused
+ *      machines will end up dumping their data at runtime.
+ */
+extern void s3cfb_extdsp_set_platdata(struct s3c_fb_pd_win *pd);
 
 /**
  * s3c64xx_fb_gpio_setup_24bpp() - S3C64XX setup function for 24bpp LCD
@@ -139,6 +151,15 @@ extern void s5p64x0_fb_gpio_setup_24bpp(void);
  * @clk_rate: clock rate for parent clock
  */
 extern int __init exynos5_fimd1_setup_clock(struct device *dev, const char *bus_clk,
+					const char *parent, unsigned long clk_rate);
+
+/**
+ * exynos4_fimd_setup_clock() = Exynos4 setup function for parent clock.
+ * @dev: device pointer
+ * @parent: parent clock used for LCD pixel clock
+ * @clk_rate: clock rate for parent clock
+ */
+extern int __init exynos4_fimd_setup_clock(struct device *dev, const char *bus_clk,
 					const char *parent, unsigned long clk_rate);
 
 #endif /* __PLAT_S3C_FB_H */

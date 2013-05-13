@@ -2064,6 +2064,21 @@ config FB_MIPI_DSIM
 	---help---
 	  This enables support for Samsung MIPI DSIM feature
 
+config FB_I80_COMMAND_MODE
+	bool "Samsung MIPI DSI command mode"
+	depends on FB_MIPI_DSIM
+	default n
+	---help---
+	  This enables Samsung MIPI DSI command mode.
+
+
+config FB_LCD_FREQ_SWITCH
+	bool "support for FB LCD Frequency switch"
+	depends on FB_S3C
+	default n
+	---help---
+	This enables support for FB LCD Frequency switch
+
 config FB_EXYNOS_FIMD_V8
 	bool "regiter extensions for FIMD version 8"
 	depends on FB_S3C && ARCH_EXYNOS5
@@ -2087,6 +2102,12 @@ config FB_S3C_DEBUG_REGWRITE
        depends on FB_S3C
        ---help---
          Show all register writes via printk(KERN_DEBUG)
+
+config FB_EXYNOS_FIMD_SYSMMU_DISABLE
+       bool "Support for FIMD Reserved Memory"
+       depends on FB_S3C && ARCH_EXYNOS5 && SOC_EXYNOS5410
+       default n
+       ---help---
 
 config S5P_DP
 	tristate "Samsung SoC DP support"

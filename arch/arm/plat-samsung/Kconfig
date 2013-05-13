@@ -287,12 +287,20 @@ config S3C24XX_PWM
 	  Support for exporting the PWM timer blocks via the pwm device
 	  system
 
-config S5P_DEV_MIPI_DSIM
+config S5P_DEV_MIPI_DSIM0
 	bool
-	depends on FB_MIPI_DSIM
+	depends on FB_MIPI_DSIM && S5P_DEV_FIMD0
 	default y
 	help
-	  Compile in platform device definitions for MIPI_DSIM
+	  Compile in platform device definitions for MIPI_DSIM0
+	  to support mainlile style fimd
+
+config S5P_DEV_MIPI_DSIM1
+	bool
+	depends on FB_MIPI_DSIM && S5P_DEV_FIMD1
+	default y
+	help
+	  Compile in platform device definitions for MIPI_DSIM1
 	  to support mainlile style fimd
 
 config S5P_DEV_DP

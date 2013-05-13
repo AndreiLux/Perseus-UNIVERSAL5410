@@ -798,8 +798,6 @@ struct platform_device s5p_device_i2c_hdmiphy = {
 
 void __init s5p_i2c_hdmiphy_set_platdata(struct s3c2410_platform_i2c *pd)
 {
-	struct s3c2410_platform_i2c *npd;
-
 	if (!pd) {
 		pd = &default_i2c_data;
 
@@ -813,7 +811,7 @@ void __init s5p_i2c_hdmiphy_set_platdata(struct s3c2410_platform_i2c *pd)
 			pd->bus_num = 0;
 	}
 
-	npd = s3c_set_platdata(pd, sizeof(struct s3c2410_platform_i2c),
+	s3c_set_platdata(pd, sizeof(struct s3c2410_platform_i2c),
 			       &s5p_device_i2c_hdmiphy);
 }
 #endif /* CONFIG_S5P_DEV_I2C_HDMIPHY */
@@ -1357,9 +1355,10 @@ void __init s3c24xx_ts_set_platdata(struct s3c2410_ts_mach_info *pd)
 #ifdef CONFIG_S5P_DEV_TV
 
 static struct resource s5p_hdmi_resources[] = {
-	[0] = DEFINE_RES_MEM(S5P_PA_HDMI, SZ_1M),
+	[0] = DEFINE_RES_MEM(S5P_PA_HDMI, SZ_512K),
 	[1] = DEFINE_RES_IRQ(IRQ_TVOUT_EXT_HPD),
 	[2] = DEFINE_RES_IRQ(IRQ_HDMI),
+	[3] = DEFINE_RES_MEM(S5P_PA_HDMIPHY, SZ_32K),
 };
 
 struct platform_device s5p_device_hdmi = {

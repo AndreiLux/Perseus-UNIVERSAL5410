@@ -18,7 +18,8 @@ enum {
 	DSIM_STATE_INIT,	/* should be initialized. */
 	DSIM_STATE_STOP,	/* CPU and LCDC are LP mode. */
 	DSIM_STATE_HSCLKEN,	/* HS clock was enabled. */
-	DSIM_STATE_ULPS
+	DSIM_STATE_ULPS,
+	DSIM_STATE_SUSPEND	/* DSIM is suspend state */
 };
 
 /* define DSI lane types. */
@@ -30,9 +31,6 @@ enum {
 	DSIM_LANE_DATA3	= (1 << 4),
 };
 
-#ifndef MHZ
-#define MHZ			(1000 * 1000)
-#endif
 #define FIN_HZ			(24 * MHZ)
 
 #define DFIN_PLL_MIN_HZ		(6 * MHZ)
@@ -46,9 +44,10 @@ enum {
 #define DSIM_ESCCLK_ON		(0x1)
 #define DSIM_ESCCLK_OFF		(0x0)
 
-#define DSIM_CMD_LEN		(0xf)
+/* DSIM Interrupt Sources */
+#define SFR_PL_FIFO_EMPTY	(1 << 29)
+#define SFR_PH_FIFO_EMPTY	(1 << 28)
+#define RX_DAT_DONE		(1 << 18)
+#define ERR_RX_ECC		(1 << 15)
 
-int s5p_mipi_dsi_wr_data(struct mipi_dsim_device *dsim, unsigned int
-	data_id,
-	unsigned int data0, unsigned int data1);
 #endif /* _S5P_MIPI_DSI_H */

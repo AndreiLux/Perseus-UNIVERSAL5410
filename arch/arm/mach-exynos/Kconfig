@@ -130,13 +130,6 @@ config EXYNOS_SETUP_ADC
 	help
 	  Common setup code for ADC.
 
-config EXYNOS4_SETUP_MIPI_DSIM
-	bool
-	depends on FB_MIPI_DSIM
-	default y
-	help
-	  Common setup code for MIPI_DSIM to support mainline style fimd.
-
 config EXYNOS_SETUP_DP
 	bool
 	help

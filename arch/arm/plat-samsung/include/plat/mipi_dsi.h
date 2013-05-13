@@ -18,10 +18,15 @@ extern struct mipi_dsim_lcd_driver s6e8ab0_mipi_lcd_driver;
 extern struct mipi_dsim_lcd_driver s6e63m0_mipi_lcd_driver;
 #elif defined (CONFIG_LCD_MIPI_TC358764)
 extern struct mipi_dsim_lcd_driver tc358764_mipi_lcd_driver;
+#elif defined(CONFIG_LCD_MIPI_S6E8FA0)
+extern struct mipi_dsim_lcd_driver s6e8fa0_I_mipi_lcd_driver;
 #endif
 
 extern int s5p_mipi_dsi_wr_data(struct mipi_dsim_device *dsim,
-	unsigned int data_id, unsigned int data0, unsigned int data1);
+	u8 cmd, const u8 *buf, u32 len);
+
+extern int s5p_mipi_dsi_rd_data(struct mipi_dsim_device *dsim, u8 data_id,
+	u8 addr, u8 count, u8 *buf, u8 rxfifo_done);
 
 enum mipi_ddi_interface {
 	RGB_IF = 0x4000,

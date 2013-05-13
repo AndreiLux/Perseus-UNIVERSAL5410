@@ -21,9 +21,7 @@ void s5p_mipi_dsi_set_data_lane_number(struct mipi_dsim_device *dsim,
 		unsigned int count);
 void s5p_mipi_dsi_init_fifo_pointer(struct mipi_dsim_device *dsim,
 		unsigned int cfg);
-void s5p_mipi_dsi_set_phy_tunning(struct mipi_dsim_device *dsim,
-		unsigned int value);
-void s5p_mipi_dsi_set_phy_tunning(struct mipi_dsim_device *dsim,
+void s5p_mipi_dsi_set_phy_tuning(struct mipi_dsim_device *dsim,
 		unsigned int value);
 void s5p_mipi_dsi_set_main_disp_resol(struct mipi_dsim_device *dsim,
 		unsigned int vert_resol, unsigned int hori_resol);
@@ -66,6 +64,7 @@ void s5p_mipi_dsi_enable_esc_clk_on_lane(struct mipi_dsim_device *dsim,
 		unsigned int lane_sel, unsigned int enable);
 void s5p_mipi_dsi_force_dphy_stop_state(struct mipi_dsim_device *dsim,
 		unsigned int enable);
+void s5p_mipi_dsi_force_bta(struct mipi_dsim_device *dsim);
 unsigned int s5p_mipi_dsi_is_lane_state(struct mipi_dsim_device *dsim);
 void s5p_mipi_dsi_set_stop_state_counter(struct mipi_dsim_device *dsim,
 		unsigned int cnt_val);
@@ -93,11 +92,20 @@ unsigned int s5p_mipi_dsi_get_fifo_state(struct mipi_dsim_device *dsim);
 unsigned int _s5p_mipi_dsi_get_frame_done_status(struct mipi_dsim_device *dsim);
 void _s5p_mipi_dsi_clear_frame_done(struct mipi_dsim_device *dsim);
 void s5p_mipi_dsi_wr_tx_header(struct mipi_dsim_device *dsim,
-		unsigned int di, unsigned int data0, unsigned int data1);
+	unsigned int cmd, const unsigned char *data);
 void s5p_mipi_dsi_wr_tx_data(struct mipi_dsim_device *dsim,
 		unsigned int tx_data);
 unsigned int s5p_mipi_dsi_get_int_status(struct mipi_dsim_device *dsim);
 void s5p_mipi_dsi_clear_int_status(struct mipi_dsim_device *dsim, unsigned int intSrc);
 unsigned int s5p_mipi_dsi_get_FIFOCTRL_status(struct mipi_dsim_device *dsim);
-
+void s5p_mipi_dsi_set_b_dphyctrl(struct mipi_dsim_device *dsim,
+	unsigned int ulpsexitctrl);
+void s5p_mipi_dsi_set_timing_register0(struct mipi_dsim_device *dsim,
+	unsigned int m_tlpxctl, unsigned int m_thsexitctl);
+void s5p_mipi_dsi_set_timing_register1(struct mipi_dsim_device *dsim,
+	unsigned int m_tclkprprctl, unsigned int m_tclkzeroctl,
+	unsigned int m_tclkpostctl, unsigned int m_tclktrailctl);
+void s5p_mipi_dsi_set_timing_register2(struct mipi_dsim_device *dsim,
+	unsigned int m_thsprprctl, unsigned int m_thszeroctl,
+	unsigned int m_thstrailctl);
 #endif /* _S5P_MIPI_DSI_LOWLEVEL_H */

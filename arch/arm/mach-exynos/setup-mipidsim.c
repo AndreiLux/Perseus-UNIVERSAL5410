@@ -41,9 +41,19 @@ static int s5p_dsim_enable_d_phy(struct mipi_dsim_device *dsim,
 {
 	unsigned int reg;
 #if defined(CONFIG_ARCH_EXYNOS5)
+#ifdef CONFIG_S5P_DEV_MIPI_DSIM0
+	reg = readl(S5P_MIPI_DPHY_CONTROL(0)) & ~(1 << 0);
+	/*TODO: enable bit is shared by DSI and CSI,
+	 *      to use runtime PM or reference count*/
+	reg |= (enable << 0);
+	writel(reg, S5P_MIPI_DPHY_CONTROL(0));
+#else
 	reg = readl(S5P_MIPI_DPHY_CONTROL(1)) & ~(1 << 0);
+	/*TODO: enable bit is shared by DSI and CSI,
+	 *      to use runtime PM or reference count*/
 	reg |= (enable << 0);
 	writel(reg, S5P_MIPI_DPHY_CONTROL(1));
+#endif
 #else
 	reg = readl(S5P_MIPI_DPHY_CONTROL(0)) & ~(1 << 0);
 	reg |= (enable << 0);
@@ -57,9 +67,15 @@ static int s5p_dsim_enable_dsi_master(struct mipi_dsim_device *dsim,
 {
 	unsigned int reg;
 #if defined(CONFIG_ARCH_EXYNOS5)
+#ifdef CONFIG_S5P_DEV_MIPI_DSIM0
+	reg = readl(S5P_MIPI_DPHY_CONTROL(0)) & ~(1 << 2);
+	reg |= (enable << 2);
+	writel(reg, S5P_MIPI_DPHY_CONTROL(0));
+#else
 	reg = readl(S5P_MIPI_DPHY_CONTROL(1)) & ~(1 << 2);
 	reg |= (enable << 2);
 	writel(reg, S5P_MIPI_DPHY_CONTROL(1));
+#endif
 #else
 	reg = readl(S5P_MIPI_DPHY_CONTROL(0)) & ~(1 << 2);
 	reg |= (enable << 2);
