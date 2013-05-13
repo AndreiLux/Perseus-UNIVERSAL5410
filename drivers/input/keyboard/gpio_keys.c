@@ -51,6 +51,12 @@ struct gpio_keys_drvdata {
 	unsigned int n_buttons;
 	int (*enable)(struct device *dev);
 	void (*disable)(struct device *dev);
+#ifdef CONFIG_SENSORS_HALL
+	int gpio_flip_cover;
+	int irq_flip_cover;
+	bool flip_cover;
+	struct delayed_work flip_cover_dwork;
+#endif
 	struct gpio_button_data data[0];
 };
 
@@ -379,12 +385,33 @@ out:
 	return count;
 }
 
+#ifdef CONFIG_SENSORS_HALL
+static ssize_t hall_detect_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct gpio_keys_drvdata *ddata = dev_get_drvdata(dev);
+
+	if (ddata->flip_cover)
+		sprintf(buf, "OPEN");
+	else
+		sprintf(buf, "CLOSE");
+
+	return strlen(buf);
+}
+#endif
+
 static DEVICE_ATTR(sec_key_pressed, 0664, key_pressed_show, NULL);
 static DEVICE_ATTR(wakeup_keys, 0664, NULL, wakeup_enable);
+#ifdef CONFIG_SENSORS_HALL
+static DEVICE_ATTR(hall_detect, 0664, hall_detect_show, NULL);
+#endif
 
 static struct attribute *sec_key_attrs[] = {
 	&dev_attr_sec_key_pressed.attr,
 	&dev_attr_wakeup_keys.attr,
+#ifdef CONFIG_SENSORS_HALL
+	&dev_attr_hall_detect.attr,
+#endif
 	NULL,
 };
 
@@ -626,9 +653,96 @@ fail:
 	return error;
 }
 
+#ifdef CONFIG_SENSORS_HALL
+#ifdef CONFIG_SEC_TSP_FACTORY
+static void flip_cover_work(struct work_struct *work)
+{
+	bool first,second;
+	struct gpio_keys_drvdata *ddata =
+		container_of(work, struct gpio_keys_drvdata,
+				flip_cover_dwork.work);
+
+	first = gpio_get_value(ddata->gpio_flip_cover);
+
+	printk(KERN_DEBUG "[keys] %s #1 : %d\n",
+		__func__, first);
+
+	msleep(50);
+
+	second = gpio_get_value(ddata->gpio_flip_cover);
+
+	printk(KERN_DEBUG "[keys] %s #2 : %d\n",
+		__func__, second);
+
+	if(first == second && ddata->flip_cover != first) {
+		ddata->flip_cover = first;
+		input_report_switch(ddata->input,
+			SW_FLIP, ddata->flip_cover);
+		input_sync(ddata->input);
+	}
+}
+#else
+static void flip_cover_work(struct work_struct *work)
+{
+	bool first;
+	struct gpio_keys_drvdata *ddata =
+		container_of(work, struct gpio_keys_drvdata,
+				flip_cover_dwork.work);
+
+	first = gpio_get_value(ddata->gpio_flip_cover);
+
+	printk(KERN_DEBUG "[keys] %s #1 : %d\n",
+		__func__, first);
+
+	if(ddata->flip_cover != first) {
+		ddata->flip_cover = first;
+		input_report_switch(ddata->input,
+			SW_FLIP, ddata->flip_cover);
+		input_sync(ddata->input);
+	}
+}
+#endif
+
+static irqreturn_t flip_cover_detect(int irq, void *dev_id)
+{
+	struct gpio_keys_drvdata *ddata = dev_id;
+
+	cancel_delayed_work_sync(&ddata->flip_cover_dwork);
+#ifdef CONFIG_SEC_TSP_FACTORY
+	schedule_delayed_work(&ddata->flip_cover_dwork, HZ / 20);
+#else
+	schedule_delayed_work(&ddata->flip_cover_dwork, 0);
+#endif
+	return IRQ_HANDLED;
+}
+#endif
+
 static int gpio_keys_open(struct input_dev *input)
 {
 	struct gpio_keys_drvdata *ddata = input_get_drvdata(input);
+
+#ifdef CONFIG_SENSORS_HALL
+	int ret = 0;
+	int irq = gpio_to_irq(ddata->gpio_flip_cover);
+
+	INIT_DELAYED_WORK(&ddata->flip_cover_dwork, flip_cover_work);
+
+	ret =
+		request_threaded_irq(
+		irq, NULL,
+		flip_cover_detect,
+		IRQF_DISABLED | IRQF_TRIGGER_RISING |
+		IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+		"flip_cover", ddata);
+	if (ret < 0) {
+		printk(KERN_ERR
+		"keys: failed to request flip cover irq %d gpio %d\n",
+		irq, ddata->gpio_flip_cover);
+	} else {
+		/* update the current status */
+		schedule_delayed_work(&ddata->flip_cover_dwork, HZ / 2);
+	}
+#endif
 
 	return ddata->enable ? ddata->enable(input->dev.parent) : 0;
 }
@@ -782,6 +896,10 @@ static int __devinit gpio_keys_probe(struct platform_device *pdev)
 	ddata->n_buttons = pdata->nbuttons;
 	ddata->enable = pdata->enable;
 	ddata->disable = pdata->disable;
+#ifdef CONFIG_SENSORS_HALL
+	ddata->gpio_flip_cover = pdata->gpio_flip_cover;
+	ddata->irq_flip_cover = gpio_to_irq(ddata->gpio_flip_cover);;
+#endif
 	mutex_init(&ddata->disable_lock);
 
 	platform_set_drvdata(pdev, ddata);
@@ -790,6 +908,10 @@ static int __devinit gpio_keys_probe(struct platform_device *pdev)
 	input->name = pdata->name ? : pdev->name;
 	input->phys = "gpio-keys/input0";
 	input->dev.parent = &pdev->dev;
+#ifdef CONFIG_SENSORS_HALL
+	input->evbit[0] |= BIT_MASK(EV_SW);
+	input_set_capability(input, EV_SW, SW_FLIP);
+#endif
 	input->open = gpio_keys_open;
 	input->close = gpio_keys_close;
 
@@ -902,6 +1024,9 @@ static int gpio_keys_suspend(struct device *dev)
 			if (bdata->button->wakeup)
 				enable_irq_wake(bdata->irq);
 		}
+#ifdef CONFIG_SENSORS_HALL
+		enable_irq_wake(ddata->irq_flip_cover);
+#endif		
 	}
 
 	return 0;
