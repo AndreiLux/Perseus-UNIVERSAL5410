@@ -282,11 +282,11 @@ config USB_S3C_OTGD
 
 config USB_EXYNOS_SS_UDC
 	tristate "EXYNOS SuperSpeed USB 3.0 Device controller"
-	depends on EXYNOS_DEV_SS_UDC
+	depends on USB_EXYNOS_DRD
 	select USB_GADGET_DUALSPEED
-	select USB_GADGET_SUPERSPEED
 	help
-	  DWC SuperSpeed USB 3.0 Device controller.
+	  The Samsung Exynos SuperSpeed USB 3.0 device controller
+	  integrated into the Exynos5 series SoC..
 
 config USB_IMX
 	tristate "Freescale i.MX1 USB Peripheral Controller"
@@ -547,6 +547,17 @@ config USB_DUMMY_HCD
 
 endchoice
 
+config USB_EXYNOS_SS_UDC_SSMODE
+	bool "Use UDC SuperSpeed mode"
+	depends on USB_EXYNOS_SS_UDC
+	default y if !SOC_EXYNOS5410
+	select USB_GADGET_SUPERSPEED
+	help
+	  This option activates SuperSpeed mode in EXYNOS SS UDC driver.
+
+	  NOTE: this is temporarily and will be removed once both speed
+	  modes have been fully tested.
+
 # Selected by UDC drivers that support high-speed operation.
 config USB_GADGET_DUALSPEED
 	bool
@@ -555,6 +566,10 @@ config USB_GADGET_DUALSPEED
 config USB_GADGET_SUPERSPEED
 	bool
 	depends on USB_GADGET_DUALSPEED
+
+config USB_GADGET_SWITCH
+	bool
+	depends on USB_S3C_OTGD
 
 #
 # USB Gadget Drivers
@@ -875,11 +890,32 @@ config USB_G_ANDROID
 	  Each function can be configured and enabled/disabled
 	  dynamically from userspace through a sysfs interface.
 
-config USB_ANDROID_RNDIS_DWORD_ALIGNED
-	boolean "Use double word aligned"
+config USB_ANDROID_SAMSUNG_COMPOSITE
+	boolean "Samsung Composite function"
 	depends on USB_G_ANDROID
 	help
-	  Provides dword aligned for DMA controller.
+	  Provides SAMSUNG composite driver.
+	  It also provides KIES connection and
+	  Multi Configuration.
+	  If you enable this option, android composite will be changed.
+
+config USB_ANDROID_SAMSUNG_MTP
+	boolean "Samsung MTP function"
+	depends on USB_G_ANDROID
+	help
+	  Provides Media Transfer Protocol (MTP) support
+	  for samsung gadget driver.
+	  If you enable this option,
+	  google mtp will be changed to samsung mtp.
+
+config USB_DUN_SUPPORT
+	boolean "DUN support function"
+	depends on USB_G_ANDROID
+	help
+	  Provides USB modem serial driver.
+	  This function makes connection to acm from data router.
+	  It uses misc register.
+	  Support fops : open, close, release, read, poll, llseek, ioctl
 
 config USB_CDC_COMPOSITE
 	tristate "CDC Composite Device (Ethernet and ACM)"

@@ -120,6 +120,8 @@ struct s3c_request {
 	struct list_head queue;
 	unsigned char mapped;
 	unsigned written_bytes;
+	void *bounce_buf;
+	bool not_aligned;
 };
 
 struct s3c_udc {
@@ -131,10 +133,13 @@ struct s3c_udc {
 
 	int ep0state;
 	struct s3c_ep ep[S3C_MAX_ENDPOINTS];
+	bool selfpowered;
 
 	unsigned char usb_address;
 	struct usb_ctrlrequest *usb_ctrl;
+	void *ep0_data;
 	dma_addr_t usb_ctrl_dma;
+	dma_addr_t ep0_data_dma;
 
 	void __iomem *regs;
 	struct resource *regs_res;

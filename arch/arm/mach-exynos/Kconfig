@@ -822,3 +822,7 @@ config SEC_THERMISTOR
 	default n
 	help
 	  AP thermistor driver.
+
+config USB_CDFS_SUPPORT
+	bool "Auto install for cdfs"
+	default y

@@ -353,9 +353,10 @@ found:
 		 * it calls usb_gadget_connect when userspace is ready. Remove
 		 * the call to usb_gadget_connect bellow to avoid enabling the
 		 * pullup before userspace is ready.
-		 *
-		 * usb_gadget_connect(udc->gadget);
 		 */
+#if !defined(CONFIG_USB_G_ANDROID)
+		 usb_gadget_connect(udc->gadget);
+#endif
 	} else {
 
 		ret = usb_gadget_start(udc->gadget, driver, bind);
