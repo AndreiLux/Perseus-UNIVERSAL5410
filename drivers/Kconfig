@@ -142,6 +142,8 @@ source "drivers/devfreq/Kconfig"
 
 source "drivers/motor/Kconfig"
 
+source "drivers/battery/Kconfig"
+
 source "drivers/gud/Kconfig"
 
 source "drivers/switch/Kconfig"
