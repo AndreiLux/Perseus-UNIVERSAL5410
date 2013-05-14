@@ -53,6 +53,7 @@ obj-$(CONFIG_MAX8997_MUIC)	+= max8997-muic.o
 obj-$(CONFIG_MFD_MAX77803)	+= max77803-muic.o
 obj-$(CONFIG_WL127X_RFKILL)	+= wl127x-rfkill.o
 obj-$(CONFIG_SENSORS_AK8975)	+= akm8975.o
+obj-$(CONFIG_SAMSUNG_C2C)	+= c2c/
 obj-y				+= 2mic/
 
 # Secure OS Mobicore Interface
