@@ -1317,6 +1317,7 @@ source "drivers/media/video/s5p-tv/Kconfig"
 endif # V4L_PLATFORM_DRIVERS
 
 source "drivers/media/video/exynos/Kconfig"
+source "drivers/media/video/mhl/Kconfig"
 
 endif # VIDEO_CAPTURE_DRIVERS
 
