@@ -76,3 +76,8 @@ config MMC_TEST
 
 	  This driver is only of interest to those developing or
 	  testing a host driver. Most people should say N here.
+
+config MMC_SUPPORT_BKOPS_MODE
+	tristate "Support the bkops mode of eMMC 5.0"
+	help
+	  Say Y here to enable the bkops mode
