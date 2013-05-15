@@ -556,5 +556,6 @@ source "drivers/misc/lis3lv02d/Kconfig"
 source "drivers/misc/carma/Kconfig"
 source "drivers/misc/altera-stapl/Kconfig"
 source "drivers/misc/c2c/Kconfig"
+source "drivers/misc/modem_v2/Kconfig"
 source "drivers/misc/2mic/Kconfig"
 endmenu
