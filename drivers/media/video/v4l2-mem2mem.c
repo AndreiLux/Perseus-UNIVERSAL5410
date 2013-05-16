@@ -375,6 +375,8 @@ int v4l2_m2m_qbuf(struct file *file, struct v4l2_m2m_ctx *m2m_ctx,
 	ret = vb2_qbuf(vq, buf);
 	if (!ret)
 		v4l2_m2m_try_schedule(m2m_ctx);
+	else
+		pr_err("qbuf failed w/ error %d\n", ret);
 
 	return ret;
 }

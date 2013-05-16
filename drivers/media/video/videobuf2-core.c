@@ -327,6 +327,8 @@ static int __verify_planes_array(struct vb2_buffer *vb, const struct v4l2_buffer
 	if (b->length < vb->num_planes || b->length > VIDEO_MAX_PLANES) {
 		dprintk(1, "Incorrect planes array length, "
 			   "expected %d, got %d\n", vb->num_planes, b->length);
+		pr_err("Incorrect planes array length, "
+			   "expected %d, got %d\n", vb->num_planes, b->length);
 		return -EINVAL;
 	}
 
@@ -1079,14 +1081,18 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 
 	/* Verify and copy relevant information provided by the userspace */
 	ret = __fill_vb2_buffer(vb, b, planes);
-	if (ret)
+	if (ret) {
+		pr_err("__fill_vb2_buffer failed w/ err: %d\n", ret);
 		return ret;
+	}
 
 	for (plane = 0; plane < vb->num_planes; ++plane) {
 		struct dma_buf *dbuf = dma_buf_get(planes[plane].m.fd);
 
 		if (IS_ERR_OR_NULL(dbuf)) {
 			dprintk(1, "qbuf: invalid dmabuf fd for "
+				"plane %d\n", plane);
+			pr_err("qbuf: invalid dmabuf fd for "
 				"plane %d\n", plane);
 			ret = -EINVAL;
 			goto err;
@@ -1111,6 +1117,8 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 		if (IS_ERR(mem_priv)) {
 			dprintk(1, "qbuf: failed acquiring dmabuf "
 				"memory for plane %d\n", plane);
+			pr_err("qbuf: failed acquiring dmabuf "
+				"memory for plane %d\n", plane);
 			ret = PTR_ERR(mem_priv);
 			goto err;
 		}
@@ -1129,6 +1137,8 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 		if (ret) {
 			dprintk(1, "qbuf: failed mapping dmabuf "
 				"memory for plane %d\n", plane);
+			pr_err("qbuf: failed mapping dmabuf "
+				"memory for plane %d\n", plane);
 			goto err;
 		}
 		vb->planes[plane].dbuf_mapped = 1;
@@ -1141,6 +1151,7 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 	ret = call_qop(q, buf_init, vb);
 	if (ret) {
 		dprintk(1, "qbuf: buffer initialization failed\n");
+		pr_err("qbuf: buffer initialization failed\n");
 		goto err;
 	}
 
@@ -1191,6 +1202,8 @@ static int __buf_prepare(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 		break;
 	case V4L2_MEMORY_DMABUF:
 		ret = __qbuf_dmabuf(vb, b);
+		if (ret)
+			pr_err("__qbuf_dmabuf failed w/ err: %d\n", ret);
 		break;
 	default:
 		WARN(1, "Invalid queue type\n");
@@ -1317,18 +1330,22 @@ int vb2_qbuf(struct vb2_queue *q, struct v4l2_buffer *b)
 
 	if (q->fileio) {
 		dprintk(1, "qbuf: file io in progress\n");
+		pr_err("qbuf: file io in progress\n");
 		ret = -EBUSY;
 		goto unlock;
 	}
 
 	if (b->type != q->type) {
 		dprintk(1, "qbuf: invalid buffer type\n");
+		pr_err("qbuf: invalid buffer type\n");
 		ret = -EINVAL;
 		goto unlock;
 	}
 
 	if (b->index >= q->num_buffers) {
 		dprintk(1, "qbuf: buffer index out of range\n");
+		pr_err("qbuf: buffer index out of range (%d >= %d)\n",
+				b->index, q->num_buffers);
 		ret = -EINVAL;
 		goto unlock;
 	}
@@ -1337,12 +1354,14 @@ int vb2_qbuf(struct vb2_queue *q, struct v4l2_buffer *b)
 	if (NULL == vb) {
 		/* Should never happen */
 		dprintk(1, "qbuf: buffer is NULL\n");
+		pr_err("qbuf: buffer is NULL\n");
 		ret = -EINVAL;
 		goto unlock;
 	}
 
 	if (b->memory != q->memory) {
 		dprintk(1, "qbuf: invalid memory type\n");
+		pr_err("qbuf: invalid memory type\n");
 		ret = -EINVAL;
 		goto unlock;
 	}
@@ -1350,12 +1369,15 @@ int vb2_qbuf(struct vb2_queue *q, struct v4l2_buffer *b)
 	switch (vb->state) {
 	case VB2_BUF_STATE_DEQUEUED:
 		ret = __buf_prepare(vb, b);
-		if (ret)
+		if (ret) {
+			pr_err("__buf_prepare failed w/ error %d\n", ret);
 			goto unlock;
+		}
 	case VB2_BUF_STATE_PREPARED:
 		break;
 	default:
 		dprintk(1, "qbuf: buffer already in use\n");
+		pr_err("qbuf: buffer already in use\n");
 		ret = -EINVAL;
 		goto unlock;
 	}
