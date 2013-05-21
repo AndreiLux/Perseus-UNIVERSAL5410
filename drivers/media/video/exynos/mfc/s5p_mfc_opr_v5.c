@@ -27,6 +27,10 @@
 #include <linux/dma-mapping.h>
 #include <asm/cacheflush.h>
 
+#ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
+#include <plat/iovmm.h>
+#endif
+
 #include "s5p_mfc_common.h"
 
 #include "s5p_mfc_mem.h"
@@ -34,6 +38,8 @@
 #include "s5p_mfc_inst.h"
 #include "s5p_mfc_pm.h"
 #include "s5p_mfc_debug.h"
+#include "s5p_mfc_dec.h"
+#include "s5p_mfc_enc.h"
 
 /* #define S5P_MFC_DEBUG_REGWRITE  */
 #ifdef S5P_MFC_DEBUG_REGWRITE
@@ -56,17 +62,20 @@ int s5p_mfc_alloc_dec_temp_buffers(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_dec *dec = ctx->dec_priv;
 	struct s5p_mfc_buf_size_v5 *buf_size = dev->variant->buf_size->buf;
+	void *alloc_ctx = dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX];
 
 	mfc_debug_enter();
 
-	dec->dsc.alloc = s5p_mfc_mem_alloc(
-			dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX], buf_size->desc_buf);
+	if (ctx->is_drm)
+		alloc_ctx = dev->alloc_ctx_drm;
+
+	dec->dsc.alloc = s5p_mfc_mem_alloc_priv(alloc_ctx, buf_size->desc_buf);
 	if (IS_ERR(dec->dsc.alloc)) {
 		mfc_err("Allocating DESC buffer failed.\n");
 		return PTR_ERR(dec->dsc.alloc);
 	}
 
-	dec->dsc.ofs = OFFSETA(s5p_mfc_mem_daddr(dec->dsc.alloc));
+	dec->dsc.ofs = OFFSETA(s5p_mfc_mem_daddr_priv(dec->dsc.alloc));
 
 	mfc_debug_leave();
 
@@ -79,7 +88,7 @@ void s5p_mfc_release_dec_desc_buffer(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_dec *dec = ctx->dec_priv;
 
 	if (dec->dsc.alloc) {
-		s5p_mfc_mem_free(dec->dsc.alloc);
+		s5p_mfc_mem_free_priv(dec->dsc.alloc);
 		dec->dsc.alloc = NULL;
 		dec->dsc.ofs = 0;
 		dec->dsc.virt = NULL;
@@ -94,6 +103,7 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 	unsigned int enc_ref_y_size = 0;
 	unsigned int enc_ref_c_size = 0;
 	unsigned int guard_width, guard_height;
+	void *alloc_ctx = dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX];
 
 	mfc_debug_enter();
 
@@ -204,29 +214,33 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 		break;
 	}
 
+	if (ctx->is_drm)
+		alloc_ctx = dev->alloc_ctx_drm;
+
 	/* Allocate only if memory from bank 1 is necessary */
 	if (ctx->port_a_size > 0) {
-		ctx->port_a_buf = s5p_mfc_mem_alloc(
-		dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX], ctx->port_a_size);
+		ctx->port_a_buf = s5p_mfc_mem_alloc_priv(
+				alloc_ctx, ctx->port_a_size);
 		if (IS_ERR(ctx->port_a_buf)) {
 			ctx->port_a_buf = 0;
 			printk(KERN_ERR
 			       "Buf alloc for decoding failed (port A).\n");
 			return -ENOMEM;
 		}
-		ctx->port_a_phys = s5p_mfc_mem_daddr(ctx->port_a_buf);
+		ctx->port_a_phys = s5p_mfc_mem_daddr_priv(ctx->port_a_buf);
 	}
 
 	/* Allocate only if memory from bank 2 is necessary */
 	if (ctx->port_b_size > 0) {
-		ctx->port_b_buf = s5p_mfc_mem_alloc(
-		dev->alloc_ctx[MFC_CMA_BANK2_ALLOC_CTX], ctx->port_b_size);
+		ctx->port_b_buf = s5p_mfc_mem_alloc_priv(
+				dev->alloc_ctx[MFC_CMA_BANK2_ALLOC_CTX],
+				ctx->port_b_size);
 		if (IS_ERR(ctx->port_b_buf)) {
 			ctx->port_b_buf = 0;
 			mfc_err("Buf alloc for decoding failed (port B).\n");
 			return -ENOMEM;
 		}
-		ctx->port_b_phys = s5p_mfc_mem_daddr(ctx->port_b_buf);
+		ctx->port_b_phys = s5p_mfc_mem_daddr_priv(ctx->port_b_buf);
 	}
 	mfc_debug_leave();
 
@@ -237,13 +251,13 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 void s5p_mfc_release_codec_buffers(struct s5p_mfc_ctx *ctx)
 {
 	if (ctx->port_a_buf) {
-		s5p_mfc_mem_free(ctx->port_a_buf);
+		s5p_mfc_mem_free_priv(ctx->port_a_buf);
 		ctx->port_a_buf = 0;
 		ctx->port_a_phys = 0;
 		ctx->port_a_size = 0;
 	}
 	if (ctx->port_b_buf) {
-		s5p_mfc_mem_free(ctx->port_b_buf);
+		s5p_mfc_mem_free_priv(ctx->port_b_buf);
 		ctx->port_b_buf = 0;
 		ctx->port_b_phys = 0;
 		ctx->port_b_size = 0;
@@ -255,6 +269,7 @@ int s5p_mfc_alloc_instance_buffer(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_buf_size_v5 *buf_size = dev->variant->buf_size->buf;
+	void *alloc_ctx = dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX];
 
 	mfc_debug_enter();
 
@@ -263,28 +278,33 @@ int s5p_mfc_alloc_instance_buffer(struct s5p_mfc_ctx *ctx)
 	else
 		ctx->ctx_buf_size = buf_size->non_h264_ctx_buf;
 
-	ctx->ctx.alloc = s5p_mfc_mem_alloc(
-		dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX], ctx->ctx_buf_size);
+	if (ctx->is_drm)
+		alloc_ctx = dev->alloc_ctx_drm;
+
+	ctx->ctx.alloc = s5p_mfc_mem_alloc_priv(alloc_ctx, ctx->ctx_buf_size);
 	if (IS_ERR(ctx->ctx.alloc)) {
 		mfc_err("Allocating context buffer failed.\n");
 		return PTR_ERR(ctx->ctx.alloc);
 	}
 
-	ctx->ctx.ofs = OFFSETA(s5p_mfc_mem_daddr(ctx->ctx.alloc));
+	ctx->ctx.ofs = OFFSETA(s5p_mfc_mem_daddr_priv(ctx->ctx.alloc));
 
-	ctx->ctx.virt = s5p_mfc_mem_vaddr(ctx->ctx.alloc);
-	if (!ctx->ctx.virt) {
-		s5p_mfc_mem_free(ctx->ctx.alloc);
-		ctx->ctx.alloc = NULL;
-		ctx->ctx.ofs = 0;
-		ctx->ctx.virt = NULL;
+	if (!ctx->is_drm) {
+		ctx->ctx.virt = s5p_mfc_mem_vaddr_priv(ctx->ctx.alloc);
+		if (!ctx->ctx.virt) {
+			s5p_mfc_mem_free_priv(ctx->ctx.alloc);
+			ctx->ctx.alloc = NULL;
+			ctx->ctx.ofs = 0;
+			ctx->ctx.virt = NULL;
 
-		mfc_err("Remapping context buffer failed.\n");
-		return -ENOMEM;
+			mfc_err("Remapping context buffer failed.\n");
+			return -ENOMEM;
+		}
+
+		memset(ctx->ctx.virt, 0, ctx->ctx_buf_size);
+		s5p_mfc_mem_clean_priv(ctx->ctx.alloc, ctx->ctx.virt, 0,
+				ctx->ctx_buf_size);
 	}
-
-	memset(ctx->ctx.virt, 0, ctx->ctx_buf_size);
-	s5p_mfc_cache_clean_priv(ctx->ctx.alloc);
 	/*
 	ctx->ctx.dma = dma_map_single(ctx->dev->v4l2_dev.dev,
 					  ctx->ctx.virt, ctx->ctx_buf_size,
@@ -292,7 +312,7 @@ int s5p_mfc_alloc_instance_buffer(struct s5p_mfc_ctx *ctx)
 	*/
 
 	if (s5p_mfc_init_shm(ctx) < 0) {
-		s5p_mfc_mem_free(ctx->ctx.alloc);
+		s5p_mfc_mem_free_priv(ctx->ctx.alloc);
 		ctx->ctx.alloc = NULL;
 		ctx->ctx.ofs = 0;
 		ctx->ctx.virt = NULL;
@@ -317,13 +337,13 @@ void s5p_mfc_release_instance_buffer(struct s5p_mfc_ctx *ctx)
 				ctx->ctx.dma, ctx->ctx_buf_size,
 				DMA_TO_DEVICE);
 		*/
-		s5p_mfc_mem_free(ctx->ctx.alloc);
+		s5p_mfc_mem_free_priv(ctx->ctx.alloc);
 		ctx->ctx.alloc = NULL;
 		ctx->ctx.ofs = 0;
 		ctx->ctx.virt = NULL;
 	}
 	if (ctx->shm.alloc) {
-		s5p_mfc_mem_free(ctx->shm.alloc);
+		s5p_mfc_mem_free_priv(ctx->shm.alloc);
 		ctx->shm.alloc = NULL;
 		ctx->shm.ofs = 0;
 		ctx->shm.virt = NULL;
@@ -445,6 +465,7 @@ int s5p_mfc_set_dec_stream_buffer(struct s5p_mfc_ctx *ctx, dma_addr_t buf_addr,
 	return 0;
 }
 
+#define IS_H264(c)	((c)->codec_mode == S5P_FIMV_CODEC_H264_DEC)
 /* Set decoding frame buffer */
 int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 {
@@ -453,6 +474,7 @@ int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_dec *dec = ctx->dec_priv;
 	unsigned int dpb;
+	unsigned char *dpb_vir;
 	dma_addr_t buf_addr1, buf_addr2;
 	int buf_size1, buf_size2;
 	struct s5p_mfc_buf *buf;
@@ -557,7 +579,8 @@ int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 								frame_size_mv);
 
 	i = 0;
-	if (dec->dst_memtype == V4L2_MEMORY_USERPTR)
+	if (dec->dst_memtype == V4L2_MEMORY_USERPTR ||
+			dec->dst_memtype == V4L2_MEMORY_DMABUF)
 		buf_queue = &ctx->dst_queue;
 	else
 		buf_queue = &dec->dpb_queue;
@@ -579,6 +602,25 @@ int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 			buf_size2 -= frame_size_mv;
 		}
 
+		/*
+		 * Fill the default color for the stream starting with p-frame.
+		 * Reference frame is different by the codec type.
+		 * - H.264 : Last DPB
+		 * - Non H.264 : First DPB
+		 */
+		if ((!ctx->is_drm) &&
+			(((IS_H264(ctx)) && (i == dec->total_dpb_count - 1)) ||
+			((!IS_H264(ctx)) && (i == 0)))) {
+			dpb_vir = vb2_plane_vaddr(&buf->vb, 0);
+			if (dpb_vir)
+				memset(dpb_vir, 0x0, ctx->luma_size);
+
+			dpb_vir = vb2_plane_vaddr(&buf->vb, 1);
+			if (dpb_vir)
+				memset(dpb_vir, 0x80, ctx->chroma_size);
+
+			s5p_mfc_mem_clean_vb(&buf->vb, 2);
+		}
 		i++;
 	}
 
@@ -818,12 +860,14 @@ static int s5p_mfc_set_enc_params(struct s5p_mfc_ctx *ctx)
 
 	/* multi-slice control */
 	/* multi-slice MB number or bit size */
-	WRITEL(p->slice_mode, S5P_FIMV_ENC_MSLICE_CTRL);
 	if (p->slice_mode == V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_MB) {
+		WRITEL(((0x0 << 1) | 0x1), S5P_FIMV_ENC_MSLICE_CTRL);
 		WRITEL(p->slice_mb, S5P_FIMV_ENC_MSLICE_MB);
 	} else if (p->slice_mode == V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_BYTES) {
+		WRITEL(((0x1 << 1) | 0x1), S5P_FIMV_ENC_MSLICE_CTRL);
 		WRITEL(p->slice_bit, S5P_FIMV_ENC_MSLICE_BIT);
 	} else {
+		WRITEL(0, S5P_FIMV_ENC_MSLICE_CTRL);
 		WRITEL(0, S5P_FIMV_ENC_MSLICE_MB);
 		WRITEL(0, S5P_FIMV_ENC_MSLICE_BIT);
 	}
@@ -1028,6 +1072,8 @@ static int s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx)
 	/** AR VUI control */
 	shm &= ~(0x1 << 15);
 	shm |= (p_264->ar_vui << 1);
+	shm &= ~(0x1 << 8);
+	shm |= (p_264->prepend_sps_pps_to_idr << 8);
 	s5p_mfc_write_info(ctx, shm, EXT_ENC_CONTROL);
 
 	if (p_264->ar_vui) {
@@ -1116,7 +1162,7 @@ static int s5p_mfc_set_enc_params_mpeg4(struct s5p_mfc_ctx *ctx)
 	WRITEL(p_mpeg4->quarter_pixel, S5P_FIMV_ENC_MPEG4_QUART_PXL);
 
 	/* qp */
-	if (p->rc_frame) {
+	if (!p->rc_frame) {
 		shm = s5p_mfc_read_info(ctx, P_B_FRAME_QP);
 		shm &= ~(0xFFF);
 		shm |= ((p_mpeg4->rc_b_frame_qp & 0x3F) << 6);
@@ -1398,11 +1444,9 @@ int s5p_mfc_encode_one_frame(struct s5p_mfc_ctx *ctx)
 
 static inline int s5p_mfc_get_new_ctx(struct s5p_mfc_dev *dev)
 {
-	unsigned long flags;
 	int new_ctx;
 	int cnt;
 
-	spin_lock_irqsave(&dev->condlock, flags);
 	mfc_debug(2, "Previos context: %d (bits %08lx)\n", dev->curr_ctx,
 							dev->ctx_work_bits);
 	new_ctx = (dev->curr_ctx + 1) % MFC_NUM_CONTEXTS;
@@ -1412,11 +1456,9 @@ static inline int s5p_mfc_get_new_ctx(struct s5p_mfc_dev *dev)
 		cnt++;
 		if (cnt > MFC_NUM_CONTEXTS) {
 			/* No contexts to run */
-			spin_unlock_irqrestore(&dev->condlock, flags);
 			return -EAGAIN;
 		}
 	}
-	spin_unlock_irqrestore(&dev->condlock, flags);
 	return new_ctx;
 }
 
@@ -1458,6 +1500,10 @@ static inline int s5p_mfc_run_dec_frame(struct s5p_mfc_ctx *ctx)
 		spin_unlock_irqrestore(&dev->irqlock, flags);
 		return -EAGAIN;
 	}
+	if (ctx->dst_queue_cnt < ctx->dpb_count) {
+		spin_unlock_irqrestore(&dev->irqlock, flags);
+		return -EAGAIN;
+	}
 	/* Get the next source buffer */
 	temp_vb = list_entry(ctx->src_queue.next, struct s5p_mfc_buf, list);
 	temp_vb->used = 1;
@@ -1476,7 +1522,8 @@ static inline int s5p_mfc_run_dec_frame(struct s5p_mfc_ctx *ctx)
 
 	dev->curr_ctx = ctx->num;
 	s5p_mfc_clean_ctx_int_flags(ctx);
-	if (temp_vb->vb.v4l2_planes[0].bytesused == 0) {
+	if (temp_vb->vb.v4l2_planes[0].bytesused == 0 ||
+			temp_vb->vb.v4l2_buf.input == DEC_LAST_FRAME) {
 		last_frame = 1;
 		mfc_debug(2, "Setting ctx->state to FINISHING\n");
 		ctx->state = MFCINST_FINISHING;
@@ -1566,13 +1613,14 @@ static inline void s5p_mfc_run_init_dec(struct s5p_mfc_ctx *ctx)
 	s5p_mfc_init_decode(ctx);
 }
 
-static inline void s5p_mfc_run_init_enc(struct s5p_mfc_ctx *ctx)
+static inline int s5p_mfc_run_init_enc(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	unsigned long flags;
 	struct s5p_mfc_buf *dst_mb;
 	dma_addr_t dst_addr;
 	unsigned int dst_size;
+	int ret;
 
 	s5p_mfc_set_enc_ref_buffer(ctx);
 
@@ -1589,14 +1637,14 @@ static inline void s5p_mfc_run_init_enc(struct s5p_mfc_ctx *ctx)
 	mfc_debug(2, "Header addr: 0x%08lx\n",
 		(unsigned long)s5p_mfc_mem_plane_addr(ctx, &dst_mb->vb, 0));
 	s5p_mfc_clean_ctx_int_flags(ctx);
-	s5p_mfc_init_encode(ctx);
+	ret = s5p_mfc_init_encode(ctx);
+
+	return ret;
 }
 
 static inline int s5p_mfc_run_init_dec_buffers(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
-	unsigned long flags;
-	struct s5p_mfc_buf *temp_vb;
 	int ret;
 	/* Header was parsed now starting processing
 	 * First set the output frame buffers
@@ -1609,22 +1657,6 @@ static inline int s5p_mfc_run_init_dec_buffers(struct s5p_mfc_ctx *ctx)
 		return -EAGAIN;
 	}
 
-	spin_lock_irqsave(&dev->irqlock, flags);
-
-	if (list_empty(&ctx->src_queue)) {
-		mfc_err("Header has been deallocated in the middle of "
-							"initialization.\n");
-		spin_unlock_irqrestore(&dev->irqlock, flags);
-		return -EIO;
-	}
-
-	temp_vb = list_entry(ctx->src_queue.next, struct s5p_mfc_buf, list);
-	s5p_mfc_set_dec_desc_buffer(ctx);
-	mfc_debug(2, "Header size: %d\n", temp_vb->vb.v4l2_planes[0].bytesused);
-	s5p_mfc_set_dec_stream_buffer(ctx,
-			s5p_mfc_mem_plane_addr(ctx, &temp_vb->vb, 0),
-			0, temp_vb->vb.v4l2_planes[0].bytesused);
-	spin_unlock_irqrestore(&dev->irqlock, flags);
 	dev->curr_ctx = ctx->num;
 	s5p_mfc_clean_ctx_int_flags(ctx);
 	ret = s5p_mfc_set_dec_frame_buffer(ctx);
@@ -1633,6 +1665,16 @@ static inline int s5p_mfc_run_init_dec_buffers(struct s5p_mfc_ctx *ctx)
 		ctx->state = MFCINST_ERROR;
 	}
 	return ret;
+}
+
+static inline int s5p_mfc_ctx_ready(struct s5p_mfc_ctx *ctx)
+{
+	if (ctx->type == MFCINST_DECODER)
+		return s5p_mfc_dec_ctx_ready(ctx);
+	else if (ctx->type == MFCINST_ENCODER)
+		return s5p_mfc_enc_ctx_ready(ctx);
+
+	return 0;
 }
 
 /* Try running an operation on hardware */
@@ -1644,8 +1686,10 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 
 	mfc_debug(1, "Try run dev: %p\n", dev);
 
+	spin_lock_irq(&dev->condlock);
 	/* Check whether hardware is not running */
-	if (test_and_set_bit(0, &dev->hw_lock) != 0) {
+	if (dev->hw_lock != 0) {
+		spin_unlock_irq(&dev->condlock);
 		/* This is perfectly ok, the scheduled ctx should wait */
 		mfc_debug(1, "Couldn't lock HW.\n");
 		return;
@@ -1655,17 +1699,20 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 	new_ctx = s5p_mfc_get_new_ctx(dev);
 	if (new_ctx < 0) {
 		/* No contexts to run */
-		if (test_and_clear_bit(0, &dev->hw_lock) == 0) {
-			mfc_err("Failed to unlock hardware.\n");
-			return;
-		}
-
+		spin_unlock_irq(&dev->condlock);
 		mfc_debug(1, "No ctx is scheduled to be run.\n");
 		return;
 	}
 
-	mfc_debug(1, "New context: %d\n", new_ctx);
 	ctx = dev->ctx[new_ctx];
+	if (test_and_set_bit(ctx->num, &dev->hw_lock) != 0) {
+		spin_unlock_irq(&dev->condlock);
+		mfc_err("Failed to lock hardware.\n");
+		return;
+	}
+	spin_unlock_irq(&dev->condlock);
+
+	mfc_debug(1, "New context: %d\n", new_ctx);
 	mfc_debug(1, "Seting new context to %p\n", ctx);
 	/* Got context to run in ctx */
 	mfc_debug(1, "ctx->dst_queue_cnt=%d ctx->dpb_count=%d ctx->src_queue_cnt=%d\n",
@@ -1673,6 +1720,8 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 	mfc_debug(1, "ctx->state=%d\n", ctx->state);
 	/* Last frame has already been sent to MFC
 	 * Now obtaining frames from MFC buffer */
+
+	dev->curr_ctx_drm = ctx->is_drm;
 
 	s5p_mfc_clock_on();
 
@@ -1724,7 +1773,7 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 			ret = s5p_mfc_close_inst(ctx);
 			break;
 		case MFCINST_GOT_INST:
-			s5p_mfc_run_init_enc(ctx);
+			ret = s5p_mfc_run_init_enc(ctx);
 			break;
 		default:
 			ret = -EAGAIN;
@@ -1735,10 +1784,26 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 	}
 
 	if (ret) {
+		/*
+		 * Check again the ctx condition and clear work bits
+		 * if ctx is not available.
+		 */
+		if (s5p_mfc_ctx_ready(ctx) == 0) {
+			spin_lock_irq(&dev->condlock);
+			clear_bit(ctx->num, &dev->ctx_work_bits);
+			spin_unlock_irq(&dev->condlock);
+		}
+
 		/* Free hardware lock */
-		if (test_and_clear_bit(0, &dev->hw_lock) == 0)
+		if (clear_hw_bit(ctx) == 0)
 			mfc_err("Failed to unlock hardware.\n");
 		s5p_mfc_clock_off();
+
+		/* Trigger again if other instance's work is waiting */
+		spin_lock_irq(&dev->condlock);
+		if (dev->ctx_work_bits)
+			queue_work(dev->sched_wq, &dev->sched_work);
+		spin_unlock_irq(&dev->condlock);
 	}
 }
 

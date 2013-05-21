@@ -114,6 +114,19 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 						S5P_FIMV_ENC_SI_PIC_CNT)
 #define s5p_mfc_get_sei_avail_status()	s5p_mfc_read_shm(ctx, FRAME_PACK_SEI_AVAIL)
 
+#define s5p_mfc_is_interlace_picture()	((readl(dev->regs_base + \
+					S5P_FIMV_SI_DECODED_STATUS) & \
+					S5P_FIMV_DEC_STATUS_INTERLACE_MASK) == \
+					S5P_FIMV_DEC_STATUS_INTERLACE)
+
+#define s5p_mfc_get_dec_status()	(readl(dev->regs_base + \
+						S5P_FIMV_SI_DECODED_STATUS) \
+						& S5P_FIMV_DECODED_FRAME_MASK)
+
+#define s5p_mfc_get_dec_frame()		(readl(dev->regs_base + \
+						S5P_FIMV_SI_FRAME_TYPE) \
+						& S5P_FIMV_DECODED_FRAME_MASK)
+
 #define s5p_mfc_clear_int_flags()				\
 	do {							\
 		s5p_mfc_write_reg(0, S5P_FIMV_RISC_HOST_INT);	\

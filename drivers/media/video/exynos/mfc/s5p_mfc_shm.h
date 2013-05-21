@@ -83,12 +83,12 @@ int s5p_mfc_init_shm(struct s5p_mfc_ctx *ctx);
 static inline void s5p_mfc_write_shm(struct s5p_mfc_ctx *ctx, unsigned int data, unsigned int ofs)
 {
 	writel(data, (ctx->shm.virt + ofs));
-	s5p_mfc_cache_clean_priv(ctx->shm.alloc);
+	s5p_mfc_mem_clean_priv(ctx->shm.alloc, ctx->shm.virt, ofs, 4);
 }
 
 static inline u32 s5p_mfc_read_shm(struct s5p_mfc_ctx *ctx, unsigned int ofs)
 {
-	s5p_mfc_cache_inv_priv(ctx->shm.alloc);
+	s5p_mfc_mem_inv_priv(ctx->shm.alloc, ctx->shm.virt, ofs, 4);
 	return readl(ctx->shm.virt + ofs);
 }
 

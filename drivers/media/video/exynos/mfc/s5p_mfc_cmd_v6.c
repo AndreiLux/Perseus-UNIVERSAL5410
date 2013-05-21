@@ -19,7 +19,10 @@
 
 int s5p_mfc_cmd_host2risc(int cmd, struct s5p_mfc_cmd_args *args)
 {
-	mfc_debug(2, "Issue the command: %d\n", cmd);
+	if (cmd != S5P_FIMV_CH_NAL_START)
+		mfc_info("Issue the command: %d\n", cmd);
+	else
+		mfc_debug(2, "Issue the command: %d\n", cmd);
 
 	/* Reset RISC2HOST command */
 	s5p_mfc_write_reg(0x0, S5P_FIMV_RISC2HOST_CMD);
@@ -34,14 +37,17 @@ int s5p_mfc_cmd_host2risc(int cmd, struct s5p_mfc_cmd_args *args)
 int s5p_mfc_sys_init_cmd(struct s5p_mfc_dev *dev)
 {
 	struct s5p_mfc_cmd_args h2r_args;
-	struct s5p_mfc_buf_size_v6 *buf_size = dev->variant->buf_size->buf;
+	struct s5p_mfc_buf_size_v6 *buf_size;
 	int ret;
 
 	mfc_debug_enter();
 
-#ifndef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
-	s5p_mfc_alloc_dev_context_buffer(dev);
-#endif
+	if (!dev) {
+		mfc_err("no mfc device to run\n");
+		return -EINVAL;
+	}
+
+	buf_size = dev->variant->buf_size->buf;
 
 	s5p_mfc_write_reg(dev->ctx_buf.ofs, S5P_FIMV_CONTEXT_MEM_ADDR);
 	s5p_mfc_write_reg(buf_size->dev_ctx, S5P_FIMV_CONTEXT_MEM_SIZE);
@@ -89,11 +95,17 @@ int s5p_mfc_wakeup_cmd(struct s5p_mfc_dev *dev)
 int s5p_mfc_open_inst_cmd(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_cmd_args h2r_args;
-	struct s5p_mfc_dec *dec = ctx->dec_priv;
+	struct s5p_mfc_dec *dec;
 	int ret;
 
 	mfc_debug_enter();
 
+	if (!ctx) {
+		mfc_err("no mfc context to run\n");
+		return -EINVAL;
+	}
+
+	dec = ctx->dec_priv;
 	mfc_debug(2, "Requested codec mode: %d\n", ctx->codec_mode);
 
 	s5p_mfc_write_reg(ctx->codec_mode, S5P_FIMV_CODEC_TYPE);

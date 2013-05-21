@@ -20,6 +20,9 @@
 #include <linux/videodev2_exynos_media.h>
 #include <linux/workqueue.h>
 #include <linux/slab.h>
+#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+#include <linux/pm_qos.h>
+#endif
 
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
@@ -27,14 +30,14 @@
 
 #include <media/videobuf2-core.h>
 
-#include <mach/exynos5_bus.h>
+#include <mach/exynos-mfc.h>
 
-#define MFC_MAX_EXTRA_DPB       5
 #define MFC_MAX_BUFFERS		32
 #define MFC_MAX_REF_BUFS	2
 #define MFC_FRAME_PLANES	2
 
-#define MFC_NUM_CONTEXTS	4
+#define MFC_NUM_CONTEXTS	16
+#define MFC_MAX_DRM_CTX		2
 /* Interrupt timeout */
 #define MFC_INT_TIMEOUT		2000
 /* Busy wait timeout */
@@ -56,8 +59,8 @@
 #define MFC_WORKQUEUE_LEN	32
 
 #define MFC_BASE_MASK		((1 << 17) - 1)
-#define MFC_VER_MAJOR(ver)	((ver >> 4) & 0xF)
-#define MFC_VER_MINOR(ver)	(ver & 0xF)
+
+#define DEC_LAST_FRAME		0x80000000
 
 /**
  * enum s5p_mfc_inst_type - The type of an MFC device node.
@@ -96,6 +99,8 @@ enum s5p_mfc_inst_state {
 	MFCINST_RES_CHANGE_FLUSH,
 	MFCINST_RES_CHANGE_END,
 	MFCINST_RUNNING_NO_OUTPUT,
+	MFCINST_ABORT_INST,
+	MFCINST_DPB_FLUSHING,
 };
 
 /**
@@ -108,6 +113,12 @@ enum s5p_mfc_queue_state {
 	QUEUE_BUFS_MMAPED,
 };
 
+enum mfc_dec_wait_state {
+	WAIT_NONE = 0,
+	WAIT_DECODING,
+	WAIT_INITBUF_DONE,
+};
+
 /**
  * enum s5p_mfc_check_state - The state for user notification
  */
@@ -116,6 +127,7 @@ enum s5p_mfc_check_state {
 	MFCSTATE_DEC_RES_DETECT,
 	MFCSTATE_DEC_TERMINATING,
 	MFCSTATE_ENC_NO_OUTPUT,
+	MFCSTATE_DEC_S3D_REALLOC,
 };
 
 /**
@@ -159,7 +171,6 @@ struct s5p_mfc_pm {
 struct s5p_mfc_fw {
 	const struct firmware	*info;
 	int			state;
-	int			ver;
 	int			date;
 };
 
@@ -189,8 +200,6 @@ struct s5p_mfc_buf_size {
 };
 
 struct s5p_mfc_variant {
-	unsigned int version;
-	unsigned int port_num;
 	struct s5p_mfc_buf_size *buf_size;
 	struct s5p_mfc_buf_align *buf_align;
 };
@@ -211,6 +220,8 @@ struct s5p_mfc_extra_buf {
 	dma_addr_t	dma;
 };
 
+#define OTO_BUF_FW		(1 << 0)
+#define OTO_BUF_COMMON_CTX	(1 << 1)
 /**
  * struct s5p_mfc_dev - The struct containing driver internal parameters.
  */
@@ -218,7 +229,7 @@ struct s5p_mfc_dev {
 	struct v4l2_device	v4l2_dev;
 	struct video_device	*vfd_dec;
 	struct video_device	*vfd_enc;
-	struct platform_device	*plat_dev;
+	struct device		*device;
 
 	void __iomem		*regs_base;
 	int			irq;
@@ -227,7 +238,7 @@ struct s5p_mfc_dev {
 	struct s5p_mfc_pm	pm;
 	struct s5p_mfc_fw	fw;
 	struct s5p_mfc_variant	*variant;
-	struct s5p_mfc_platdata	*platdata;
+	struct s5p_mfc_platdata	*pdata;
 
 	int num_inst;
 	spinlock_t irqlock;
@@ -255,11 +266,13 @@ struct s5p_mfc_dev {
 
 	struct s5p_mfc_ctx *ctx[MFC_NUM_CONTEXTS];
 	int curr_ctx;
+	int preempt_ctx;
 	unsigned long ctx_work_bits;
 
 	atomic_t watchdog_cnt;
+	atomic_t watchdog_run;
 	struct timer_list watchdog_timer;
-	struct workqueue_struct *watchdog_workqueue;
+	struct workqueue_struct *watchdog_wq;
 	struct work_struct watchdog_work;
 
 	struct vb2_alloc_ctx **alloc_ctx;
@@ -275,11 +288,22 @@ struct s5p_mfc_dev {
 	struct vb2_alloc_ctx *alloc_ctx_sh;
 	struct vb2_alloc_ctx *alloc_ctx_drm;
 
-	struct work_struct work_struct;
-	struct workqueue_struct *irq_workqueue;
+	struct workqueue_struct *sched_wq;
+	struct work_struct sched_work;
 
-	/* to prevent suspend */
-	struct wakeup_source mfc_ws;
+#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+	struct list_head qos_queue;
+	atomic_t qos_req_cur;
+	atomic_t *qos_req_cnt;
+	struct pm_qos_request qos_req_int;
+	struct pm_qos_request qos_req_mif;
+	struct pm_qos_request qos_req_cpu;
+	struct pm_qos_request qos_req_kfc;
+
+	/* for direct clock control */
+	int min_rate;
+	int curr_rate;
+#endif
 };
 
 /**
@@ -327,6 +351,8 @@ struct s5p_mfc_h264_enc_params {
 	u32 fmo_sg_rate;
 	u32 aso_enable;
 	u32 aso_slice_order[8];
+
+	u32 prepend_sps_pps_to_idr;
 };
 
 /**
@@ -401,6 +427,8 @@ enum s5p_mfc_ctrl_mode {
 	MFC_CTRL_MODE_CST	= 0x4,
 };
 
+struct s5p_mfc_buf_ctrl;
+
 struct s5p_mfc_ctrl_cfg {
 	enum s5p_mfc_ctrl_type type;
 	unsigned int id;
@@ -412,6 +440,10 @@ struct s5p_mfc_ctrl_cfg {
 	unsigned int flag_mode;		/* only for MFC_CTRL_TYPE_SET */
 	unsigned int flag_addr;		/* only for MFC_CTRL_TYPE_SET */
 	unsigned int flag_shft;		/* only for MFC_CTRL_TYPE_SET */
+	int (*read_cst) (struct s5p_mfc_ctx *ctx,
+			struct s5p_mfc_buf_ctrl *buf_ctrl);
+	void (*write_cst) (struct s5p_mfc_ctx *ctx,
+			struct s5p_mfc_buf_ctrl *buf_ctrl);
 };
 
 struct s5p_mfc_ctx_ctrl {
@@ -439,7 +471,14 @@ struct s5p_mfc_buf_ctrl {
 	unsigned int flag_mode;		/* only for MFC_CTRL_TYPE_SET */
 	unsigned int flag_addr;		/* only for MFC_CTRL_TYPE_SET */
 	unsigned int flag_shft;		/* only for MFC_CTRL_TYPE_SET */
+	int (*read_cst) (struct s5p_mfc_ctx *ctx,
+			struct s5p_mfc_buf_ctrl *buf_ctrl);
+	void (*write_cst) (struct s5p_mfc_ctx *ctx,
+			struct s5p_mfc_buf_ctrl *buf_ctrl);
 };
+
+#define call_bop(b, op, args...)	\
+	(b->op ? b->op(args) : 0)
 
 struct s5p_mfc_codec_ops {
 	/* initialization routines */
@@ -495,9 +534,13 @@ struct s5p_mfc_dec {
 
 	int loop_filter_mpeg4;
 	int display_delay;
+	int immediate_display;
 	int is_packedpb;
 	int slice_enable;
 	int mv_count;
+	int idr_decoding;
+	int is_interlaced;
+	int is_dts_mode;
 
 	int crc_enable;
 	int crc_luma0;
@@ -512,7 +555,11 @@ struct s5p_mfc_dec {
 
 	enum v4l2_memory dst_memtype;
 	int sei_parse;
-	int eos_tag;
+	int stored_tag;
+	dma_addr_t y_addr_for_pb;
+
+	int internal_dpb;
+	int cr_left, cr_right, cr_top, cr_bot;
 
 	/* For 6.x */
 	int remained;
@@ -541,6 +588,7 @@ struct s5p_mfc_enc {
 		unsigned int mb;
 		unsigned int bits;
 	} slice_size;
+	unsigned int in_slice;
 };
 
 /**
@@ -625,8 +673,19 @@ struct s5p_mfc_ctx {
 	/* for DRM */
 	int is_drm;
 
-	/* for PPMU monitoring */
-	struct exynos5_bus_int_handle *mfc_int_handle_poll;
+	int is_dpb_realloc;
+	enum mfc_dec_wait_state wait_state;
+
+#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+	int qos_req_step;
+	struct list_head qos_list;
+#endif
+	int qos_ratio;
+	int framerate;
+	int last_framerate;
+	int avg_framerate;
+	int frame_count;
+	struct timeval last_timestamp;
 };
 
 #define fh_to_mfc_ctx(x)	\
@@ -636,10 +695,55 @@ struct s5p_mfc_ctx {
 #define MFC_FMT_ENC	1
 #define MFC_FMT_RAW	2
 
-#define HAS_PORTNUM(dev)	(dev ? (dev->variant ? \
-				(dev->variant->port_num ? 1 : 0) : 0) : 0)
-#define IS_TWOPORT(dev)		(dev->variant->port_num == 2 ? 1 : 0)
-#define IS_MFCV6(dev)		(dev->variant->version >= 0x60 ? 1 : 0)
+static inline unsigned int mfc_version(struct s5p_mfc_dev *dev)
+{
+	unsigned int version = 0;
+
+	switch (dev->pdata->ip_ver) {
+	case IP_VER_MFC_4P_0:
+	case IP_VER_MFC_4P_1:
+	case IP_VER_MFC_4P_2:
+		version = 0x51;
+		break;
+	case IP_VER_MFC_5G_0:
+		version = 0x61;
+		break;
+	case IP_VER_MFC_5G_1:
+	case IP_VER_MFC_5A_0:
+	case IP_VER_MFC_5A_1:
+		version = 0x65;
+		break;
+	}
+
+	return version;
+}
+#define MFC_VER_MAJOR(dev)	((mfc_version(dev) >> 4) & 0xF)
+#define MFC_VER_MINOR(dev)	(mfc_version(dev) & 0xF)
+
+#define IS_TWOPORT(dev)		(mfc_version(dev) == 0x51)
+#define NUM_OF_PORT(dev)	(IS_TWOPORT(dev) ? 2 : 1)
+#define NUM_OF_ALLOC_CTX(dev)	(NUM_OF_PORT(dev) + 1)
+#define IS_MFCV6(dev)		((mfc_version(dev) == 0x61) || \
+				 (mfc_version(dev) == 0x65))
+#define IS_MFCV5(dev)		(mfc_version(dev) == 0x51)
+
+/* supported feature macros by F/W version */
+#define FW_HAS_BUS_RESET(dev)		(dev->fw.date >= 0x120206)
+#define FW_HAS_VER_INFO(dev)		(dev->fw.date >= 0x120328)
+#define FW_HAS_INITBUF_TILE_MODE(dev)	(dev->fw.date >= 0x120629)
+#define FW_HAS_INITBUF_LOOP_FILTER(dev)	(dev->fw.date >= 0x120831)
+#define FW_HAS_SEI_S3D_REALLOC(dev)	(IS_MFCV6(dev) &&	\
+					(dev->fw.date >= 0x121205))
+#define FW_HAS_ENC_SPSPPS_CTRL(dev)	((IS_MFCV6(dev) &&		\
+					(dev->fw.date >= 0x121005)) ||	\
+					(IS_MFCV5(dev) &&		\
+					(dev->fw.date >= 0x120823)))
+#define FW_HAS_VUI_PARAMS(dev)		(IS_MFCV6(dev) &&		\
+					(dev->fw.date >= 0x121214))
+#define FW_HAS_ADV_RC_MODE(dev)		(IS_MFCV6(dev) &&		\
+					(dev->fw.date >= 0x130329))
+
+#define HW_LOCK_CLEAR_MASK		(0xFFFFFFFF)
 
 struct s5p_mfc_fmt {
 	char *name;
@@ -648,6 +752,9 @@ struct s5p_mfc_fmt {
 	u32 type;
 	u32 num_planes;
 };
+
+int get_framerate(struct timeval *to, struct timeval *from);
+int clear_hw_bit(struct s5p_mfc_ctx *ctx);
 
 #if defined(CONFIG_EXYNOS_MFC_V5)
 #include "regs-mfc-v5.h"

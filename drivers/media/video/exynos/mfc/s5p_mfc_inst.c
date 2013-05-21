@@ -21,7 +21,7 @@ int s5p_mfc_open_inst(struct s5p_mfc_ctx *ctx)
 	int ret;
 
 	/* Preparing decoding - getting instance number */
-	mfc_debug(2, "Getting instance number\n");
+	mfc_info("Getting instance number\n");
 	dev->curr_ctx = ctx->num;
 	s5p_mfc_clean_ctx_int_flags(ctx);
 	ret = s5p_mfc_open_inst_cmd(ctx);
@@ -38,7 +38,7 @@ int s5p_mfc_close_inst(struct s5p_mfc_ctx *ctx)
 	int ret;
 
 	/* Closing decoding instance  */
-	mfc_debug(2, "Returning instance number\n");
+	mfc_info("Returning instance number\n");
 	dev->curr_ctx = ctx->num;
 	s5p_mfc_clean_ctx_int_flags(ctx);
 	ret = s5p_mfc_close_inst_cmd(ctx);
