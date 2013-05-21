@@ -14,4 +14,6 @@ int __init exynos4_jpeg_setup_clock(struct device *dev,
 					unsigned long clk_rate);
 int __init exynos5_jpeg_setup_clock(struct device *dev,
 					unsigned long clk_rate);
+int __init exynos5_jpeg_fimp_setup_clock(struct device *dev,
+	unsigned long clk_rate);
 #endif /*__ASM_PLAT_JPEG_H */

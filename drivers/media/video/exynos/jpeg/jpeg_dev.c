@@ -38,6 +38,8 @@
 
 #include <mach/irqs.h>
 
+#include <plat/cpu.h>
+
 #ifdef CONFIG_PM_RUNTIME
 #include <linux/pm_runtime.h>
 #endif
@@ -88,16 +90,27 @@ static int jpeg_dec_buf_prepare(struct vb2_buffer *vb)
 
 	if (vb->vb2_queue->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		num_plane = ctx->param.dec_param.in_plane;
-		if (ctx->input_cacheable == 1)
-			ctx->dev->vb2->cache_flush(vb, num_plane);
+		ctx->dev->vb2->buf_prepare(vb);
 	} else if (vb->vb2_queue->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		num_plane = ctx->param.dec_param.out_plane;
-		if (ctx->output_cacheable == 1)
-			ctx->dev->vb2->cache_flush(vb, num_plane);
+		ctx->dev->vb2->buf_prepare(vb);
 	}
 
 	for (i = 0; i < num_plane; i++)
 		vb2_set_plane_payload(vb, i, ctx->payload[i]);
+
+	return 0;
+}
+
+static int jpeg_dec_buf_finish(struct vb2_buffer *vb)
+{
+	struct jpeg_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
+
+	if (vb->vb2_queue->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+		ctx->dev->vb2->buf_finish(vb);
+	} else if (vb->vb2_queue->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+		ctx->dev->vb2->buf_finish(vb);
+	}
 
 	return 0;
 }
@@ -120,16 +133,6 @@ static void jpeg_dec_unlock(struct vb2_queue *vq)
 {
 	struct jpeg_ctx *ctx = vb2_get_drv_priv(vq);
 	mutex_unlock(&ctx->dev->lock);
-}
-
-static int jpeg_dec_stop_streaming(struct vb2_queue *q)
-{
-	struct jpeg_ctx *ctx = q->drv_priv;
-	struct jpeg_dev *dev = ctx->dev;
-
-	v4l2_m2m_get_next_job(dev->m2m_dev_dec, ctx->m2m_ctx);
-
-	return 0;
 }
 
 static int jpeg_enc_queue_setup(struct vb2_queue *vq,
@@ -171,16 +174,27 @@ static int jpeg_enc_buf_prepare(struct vb2_buffer *vb)
 
 	if (vb->vb2_queue->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		num_plane = ctx->param.enc_param.in_plane;
-		if (ctx->input_cacheable == 1)
-			ctx->dev->vb2->cache_flush(vb, num_plane);
+		ctx->dev->vb2->buf_prepare(vb);
 	} else if (vb->vb2_queue->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		num_plane = ctx->param.enc_param.out_plane;
-		if (ctx->output_cacheable == 1)
-			ctx->dev->vb2->cache_flush(vb, num_plane);
+		ctx->dev->vb2->buf_prepare(vb);
 	}
 
 	for (i = 0; i < num_plane; i++)
 		vb2_set_plane_payload(vb, i, ctx->payload[i]);
+
+	return 0;
+}
+
+static int jpeg_enc_buf_finish(struct vb2_buffer *vb)
+{
+	struct jpeg_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
+
+	if (vb->vb2_queue->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+		ctx->dev->vb2->buf_finish(vb);
+	} else if (vb->vb2_queue->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+		ctx->dev->vb2->buf_finish(vb);
+	}
 
 	return 0;
 }
@@ -205,32 +219,22 @@ static void jpeg_enc_unlock(struct vb2_queue *vq)
 	mutex_unlock(&ctx->dev->lock);
 }
 
-static int jpeg_enc_stop_streaming(struct vb2_queue *q)
-{
-	struct jpeg_ctx *ctx = q->drv_priv;
-	struct jpeg_dev *dev = ctx->dev;
-
-	v4l2_m2m_get_next_job(dev->m2m_dev_enc, ctx->m2m_ctx);
-
-	return 0;
-}
-
 static struct vb2_ops jpeg_enc_vb2_qops = {
 	.queue_setup		= jpeg_enc_queue_setup,
 	.buf_prepare		= jpeg_enc_buf_prepare,
+	.buf_finish		= jpeg_enc_buf_finish,
 	.buf_queue		= jpeg_enc_buf_queue,
 	.wait_prepare		= jpeg_enc_lock,
 	.wait_finish		= jpeg_enc_unlock,
-	.stop_streaming		= jpeg_enc_stop_streaming,
 };
 
 static struct vb2_ops jpeg_dec_vb2_qops = {
 	.queue_setup		= jpeg_dec_queue_setup,
 	.buf_prepare		= jpeg_dec_buf_prepare,
+	.buf_finish		= jpeg_dec_buf_finish,
 	.buf_queue		= jpeg_dec_buf_queue,
 	.wait_prepare		= jpeg_dec_lock,
 	.wait_finish		= jpeg_dec_unlock,
-	.stop_streaming		= jpeg_dec_stop_streaming,
 };
 
 static inline enum jpeg_node_type jpeg_get_node_type(struct file *file)
@@ -348,19 +352,23 @@ static int jpeg_m2m_open(struct file *file)
 		return err;
 	}
 
-	clk_enable(dev->clk);
-
 #ifdef CONFIG_PM_RUNTIME
-#if defined (CONFIG_CPU_EXYNOS5250)
+	if (soc_is_exynos5250() || soc_is_exynos5410()) {
+		if (soc_is_exynos5410())
+			clk_enable(dev->sclk_clk);
+		clk_enable(dev->clk);
+
 	dev->vb2->resume(dev->alloc_ctx);
 #ifdef CONFIG_BUSFREQ_OPP
 	/* lock bus frequency */
 	dev_lock(dev->bus_dev, &dev->plat_dev->dev, BUSFREQ_400MHZ);
 #endif
-#else
+	} else
 	pm_runtime_get_sync(&dev->plat_dev->dev);
-#endif
 #else
+	if (soc_is_exynos5410())
+		clk_enable(dev->sclk_clk);
+	clk_enable(dev->clk);
 	dev->vb2->resume(dev->alloc_ctx);
 #ifdef CONFIG_BUSFREQ_OPP
 	/* lock bus frequency */
@@ -382,23 +390,28 @@ static int jpeg_m2m_release(struct file *file)
 	v4l2_m2m_ctx_release(ctx->m2m_ctx);
 
 #ifdef CONFIG_PM_RUNTIME
-#if defined (CONFIG_CPU_EXYNOS5250)
+	if (soc_is_exynos5250() || soc_is_exynos5410()) {
 	ctx->dev->vb2->suspend(ctx->dev->alloc_ctx);
 #ifdef CONFIG_BUSFREQ_OPP
 	/* Unlock bus frequency */
 	dev_unlock(ctx->dev->bus_dev, &ctx->dev->plat_dev->dev);
 #endif
-#else
+		clk_disable(ctx->dev->clk);
+	if (soc_is_exynos5410())
+		clk_disable(ctx->dev->sclk_clk);
+	} else
 	pm_runtime_put_sync(&ctx->dev->plat_dev->dev);
-#endif
 #else
 	ctx->dev->vb2->suspend(ctx->dev->alloc_ctx);
 #ifdef CONFIG_BUSFREQ_OPP
 	/* Unlock bus frequency */
 	dev_unlock(ctx->dev->bus_dev, &ctx->dev->plat_dev->dev);
-#endif
 #endif
 	clk_disable(ctx->dev->clk);
+	if (soc_is_exynos5410())
+		clk_disable(ctx->dev->sclk_clk);
+#endif
+
 	kfree(ctx);
 
 	return 0;
@@ -527,19 +540,9 @@ static void jpeg_device_dec_run(void *priv)
 	spin_unlock_irqrestore(&ctx->slock, flags);
 }
 
-static void jpeg_job_enc_abort(void *priv)
-{
-	struct jpeg_ctx *ctx = priv;
-	struct jpeg_dev *dev = ctx->dev;
-	v4l2_m2m_get_next_job(dev->m2m_dev_enc, ctx->m2m_ctx);
-}
+static void jpeg_job_enc_abort(void *priv) { }
 
-static void jpeg_job_dec_abort(void *priv)
-{
-	struct jpeg_ctx *ctx = priv;
-	struct jpeg_dev *dev = ctx->dev;
-	v4l2_m2m_get_next_job(dev->m2m_dev_dec, ctx->m2m_ctx);
-}
+static void jpeg_job_dec_abort(void *priv) { }
 
 static struct v4l2_m2m_ops jpeg_m2m_enc_ops = {
 	.device_run	= jpeg_device_enc_run,
@@ -720,14 +723,26 @@ static int jpeg_probe(struct platform_device *pdev)
 		ret = -ENOENT;
 		goto err_clk;
 	}
-
+	if (soc_is_exynos5410()) {
+		dev->sclk_clk = clk_get(&pdev->dev, "sclk_jpeg");
+		if (IS_ERR(dev->sclk_clk)) {
+			jpeg_err("failed to find jpeg clock source for sclk_jpeg\n");
+			ret = -ENOENT;
+			goto err_sclk_clk;
+		}
+	}
 #ifdef CONFIG_PM_RUNTIME
-#ifndef CONFIG_CPU_EXYNOS5250
-	pm_runtime_enable(&pdev->dev);
-#endif
+	if (soc_is_exynos4212() || soc_is_exynos4412())
+		pm_runtime_enable(&pdev->dev);
+	else if (soc_is_exynos5250() || soc_is_exynos5410()) {
+		pm_runtime_enable(&pdev->dev);
+		pm_runtime_get_sync(&pdev->dev);
+	}
 #endif
 
 	/* clock enable */
+	if (soc_is_exynos5410())
+		clk_enable(dev->sclk_clk);
 	clk_enable(dev->clk);
 
 	ret = v4l2_device_register(&pdev->dev, &dev->v4l2_dev);
@@ -817,6 +832,8 @@ static int jpeg_probe(struct platform_device *pdev)
 
 	/* clock disable */
 	clk_disable(dev->clk);
+	if (soc_is_exynos5410())
+		clk_disable(dev->sclk_clk);
 
 	return 0;
 
@@ -833,8 +850,18 @@ err_m2m_init_enc:
 err_vd_alloc_enc:
 	v4l2_device_unregister(&dev->v4l2_dev);
 err_v4l2:
-	clk_disable(dev->clk);
-	clk_put(dev->clk);
+	if (soc_is_exynos5410()) {
+		clk_disable(dev->sclk_clk);
+		clk_put(dev->sclk_clk);
+		clk_disable(dev->clk);
+	} else {
+		clk_disable(dev->clk);
+		clk_put(dev->clk);
+	}
+	if (soc_is_exynos5410()) {
+err_sclk_clk:
+		clk_put(dev->clk);
+	}
 err_clk:
 	free_irq(dev->irq_no, NULL);
 err_irq:
@@ -870,16 +897,20 @@ static int jpeg_remove(struct platform_device *pdev)
 	iounmap(dev->reg_base);
 
 	clk_put(dev->clk);
+	if (soc_is_exynos5410())
+		clk_put(dev->sclk_clk);
 #ifdef CONFIG_PM_RUNTIME
-#if defined (CONFIG_CPU_EXYNOS5250)
+	if (soc_is_exynos5250() || soc_is_exynos5410()) {
+		pm_runtime_put_sync(&pdev->dev);
+		pm_runtime_disable(&pdev->dev);
 #ifdef CONFIG_BUSFREQ_OPP
 	/* lock bus frequency */
 	dev_unlock(dev->bus_dev, &pdev->dev);
 #endif
-#else
+	} else {
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
-#endif
+	}
 #else
 #ifdef CONFIG_BUSFREQ_OPP
 	/* lock bus frequency */
@@ -893,26 +924,29 @@ static int jpeg_remove(struct platform_device *pdev)
 static int jpeg_suspend(struct platform_device *pdev, pm_message_t state)
 {
 #ifdef CONFIG_PM_RUNTIME
-#if defined (CONFIG_CPU_EXYNOS5250)
+	if (soc_is_exynos5250() || soc_is_exynos5410()) {
 	struct jpeg_dev *dev = platform_get_drvdata(pdev);
 
 	if (dev->ctx) {
 		dev->vb2->suspend(dev->alloc_ctx);
 		clk_disable(dev->clk);
+		if (soc_is_exynos5410())
+			clk_disable(dev->sclk_clk);
 	}
 #ifdef CONFIG_BUSFREQ_OPP
 	/* lock bus frequency */
 	dev_unlock(dev->bus_dev, &pdev->dev);
 #endif
-#else
+	} else
 	pm_runtime_put_sync(&pdev->dev);
-#endif
 #else
 	struct jpeg_dev *dev = platform_get_drvdata(pdev);
 
 	if (dev->ctx) {
 		dev->vb2->suspend(dev->alloc_ctx);
 		clk_disable(dev->clk);
+		if (soc_is_exynos5410())
+			clk_disable(dev->sclk_clk);
 	}
 #ifdef CONFIG_BUSFREQ_OPP
 	/* lock bus frequency */
@@ -925,20 +959,23 @@ static int jpeg_suspend(struct platform_device *pdev, pm_message_t state)
 static int jpeg_resume(struct platform_device *pdev)
 {
 #ifdef CONFIG_PM_RUNTIME
-#if defined (CONFIG_CPU_EXYNOS5250)
+	if (soc_is_exynos5250() || soc_is_exynos5410()) {
 	struct jpeg_dev *dev = platform_get_drvdata(pdev);
 
 	if (dev->ctx) {
+		if (soc_is_exynos5410())
+			clk_enable(dev->sclk_clk);
 		clk_enable(dev->clk);
 		dev->vb2->resume(dev->alloc_ctx);
 	}
-#else
+	} else
 	pm_runtime_get_sync(&pdev->dev);
-#endif
 #else
 	struct jpeg_dev *dev = platform_get_drvdata(pdev);
 
 	if (dev->ctx) {
+		if (soc_is_exynos5410())
+			clk_enable(dev->sclk_clk);
 		clk_enable(dev->clk);
 		dev->vb2->resume(dev->alloc_ctx);
 	}
@@ -982,6 +1019,8 @@ static int jpeg_runtime_suspend(struct device *dev)
 	jpeg_drv->vb2->suspend(jpeg_drv->alloc_ctx);
 	/* clock disable */
 	clk_disable(jpeg_drv->clk);
+	if (soc_is_exynos5410())
+		clk_disable(jpeg_drv->sclk_clk);
 	return 0;
 }
 
@@ -994,6 +1033,8 @@ static int jpeg_runtime_resume(struct device *dev)
 	dev_lock(jpeg_drv->bus_dev, &jpeg_drv->plat_dev->dev, BUSFREQ_400MHZ);
 #endif
 	clk_enable(jpeg_drv->clk);
+	if (soc_is_exynos5410())
+		clk_enable(jpeg_drv->sclk_clk);
 	jpeg_drv->vb2->resume(jpeg_drv->alloc_ctx);
 	return 0;
 }
@@ -1010,7 +1051,7 @@ static const struct dev_pm_ops jpeg_pm_ops = {
 static struct platform_driver jpeg_driver = {
 	.probe		= jpeg_probe,
 	.remove		= jpeg_remove,
-#if defined (CONFIG_CPU_EXYNOS5250)
+#if defined (CONFIG_SOC_EXYNOS5250) || (CONFIG_SOC_EXYNOS5410)
 	.suspend	= jpeg_suspend,
 	.resume		= jpeg_resume,
 #else
@@ -1023,7 +1064,7 @@ static struct platform_driver jpeg_driver = {
 		.owner	= THIS_MODULE,
 		.name	= JPEG_NAME,
 #ifdef CONFIG_PM_RUNTIME
-#if defined (CONFIG_CPU_EXYNOS5250)
+#if defined (CONFIG_SOC_EXYNOS5250) || (CONFIG_SOC_EXYNOS5410)
 		.pm = NULL,
 #else
 		.pm = &jpeg_pm_ops,
@@ -1036,11 +1077,16 @@ static struct platform_driver jpeg_driver = {
 
 static int __init jpeg_init(void)
 {
+	int ret;
+
 	printk(KERN_CRIT "Initialize JPEG driver\n");
 
-	platform_driver_register(&jpeg_driver);
+	ret = platform_driver_register(&jpeg_driver);
 
-	return 0;
+	if (ret)
+		jpeg_err("failed to register jpeg driver\n");
+
+	return ret;
 }
 
 static void __exit jpeg_exit(void)

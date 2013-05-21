@@ -15,16 +15,8 @@
 #include <mach/map.h>
 
 static struct resource s5p_jpeg_resource[] = {
-	[0] = {
-		.start = EXYNOS5_PA_JPEG,
-		.end   = EXYNOS5_PA_JPEG + SZ_64K - 1,
-		.flags = IORESOURCE_MEM,
-	},
-	[1] = {
-		.start = IRQ_JPEG,
-		.end   = IRQ_JPEG,
-		.flags = IORESOURCE_IRQ,
-	}
+	[0] = DEFINE_RES_MEM(EXYNOS5_PA_JPEG, SZ_64K),
+	[1] = DEFINE_RES_IRQ(IRQ_JPEG),
 };
 
 struct platform_device s5p_device_jpeg = {
