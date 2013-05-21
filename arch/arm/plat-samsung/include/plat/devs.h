@@ -171,6 +171,7 @@ extern struct platform_device exynos5_device_gsc0;
 extern struct platform_device exynos5_device_gsc1;
 extern struct platform_device exynos5_device_gsc2;
 extern struct platform_device exynos5_device_gsc3;
+extern struct platform_device exynos5_device_scaler;
 extern struct platform_device exynos5_device_fimc_is;
 extern struct platform_device exynos5_device_jpeg_hx;
 

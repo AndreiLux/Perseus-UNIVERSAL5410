@@ -99,6 +99,7 @@ obj-$(CONFIG_EXYNOS5_DEV_FIMC_IS)	+= dev-fimc-is.o
 obj-$(CONFIG_EXYNOS4_DEV_FIMC_LITE)	+= dev-fimc-lite.o
 obj-$(CONFIG_EXYNOS_DEV_C2C)		+= dev-c2c.o
 obj-$(CONFIG_EXYNOS5_DEV_GSC)		+= dev-gsc.o
+obj-$(CONFIG_EXYNOS5_DEV_SCALER)	+= dev-scaler.o
 obj-$(CONFIG_EXYNOS_DEV_ROTATOR)	+= dev-rotator.o
 obj-$(CONFIG_EXYNOS_DEV_SYSMMU)		+= dev-sysmmu.o
 obj-$(CONFIG_EXYNOS_DEV_DMA)		+= dma.o

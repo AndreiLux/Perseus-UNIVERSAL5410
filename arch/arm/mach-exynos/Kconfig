@@ -737,6 +737,11 @@ config EXYNOS5_SETUP_GSC
 	help
 	  Common setup code for GSC
 
+config EXYNOS5_DEV_SCALER
+	bool
+	help
+	  Compile in platform device definition for SCALER
+
 config EXYNOS5_DEV_JPEG
 	bool
 	depends on VIDEO_EXYNOS_JPEG
