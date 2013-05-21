@@ -15,6 +15,7 @@ if VIDEO_EXYNOS
 	source "drivers/media/video/exynos/mipi-csis/Kconfig"
 	source "drivers/media/video/exynos/gsc/Kconfig"
 	source "drivers/media/video/exynos/jpeg/Kconfig"
+	source "drivers/media/video/exynos/jpeg_hx/Kconfig"
 	source "drivers/media/video/exynos/fimg2d/Kconfig"
 	source "drivers/media/video/exynos/mfc/Kconfig"
 	source "drivers/media/video/exynos/tv/Kconfig"
