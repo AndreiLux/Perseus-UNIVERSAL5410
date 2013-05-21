@@ -1,4 +1,4 @@
-/* linux/drivers/media/video/samsung/fimg2d4x/fimg2d_drv.c
+/* linux/drivers/media/video/exynos/fimg2d/fimg2d_drv.c
  *
  * Copyright (c) 2011 Samsung Electronics Co., Ltd.
  *	http://www.samsung.com/
@@ -38,121 +38,169 @@
 #include "fimg2d_ctx.h"
 #include "fimg2d_helper.h"
 
-#define CTX_TIMEOUT	msecs_to_jiffies(5000)
+#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
+struct pm_qos_request exynos5_g2d_cpu_qos;
+struct pm_qos_request exynos5_g2d_mif_qos;
+#endif
 
-static struct fimg2d_control *info;
+#define POLL_TIMEOUT	2	/* 2 msec */
+#define POLL_RETRY	1000
+#define CTX_TIMEOUT	msecs_to_jiffies(10000)	/* 10 sec */
 
+#ifdef DEBUG
+int g2d_debug = DBG_INFO;
+module_param(g2d_debug, int, S_IRUGO | S_IWUSR);
+#endif
+
+static struct fimg2d_control *ctrl;
+
+/* To prevent buffer release as memory compaction */
+/* Lock */
+
+static int fimg2d_do_bitblt(struct fimg2d_control *ctrl)
+{
+	int ret;
+
+	fimg2d_clk_on(ctrl);
+	ret = ctrl->blit(ctrl);
+	fimg2d_clk_off(ctrl);
+
+	return ret;
+}
+
+#ifdef BLIT_WORKQUE
 static void fimg2d_worker(struct work_struct *work)
 {
 	fimg2d_debug("start kernel thread\n");
-	info->blit(info);
+	fimg2d_do_bitblt(ctrl);
 }
-
 static DECLARE_WORK(fimg2d_work, fimg2d_worker);
 
-/**
- * @irq: irq number
- * @dev_id: pointer to private data
- */
+static int fimg2d_context_wait(struct fimg2d_context *ctx)
+{
+	int ret;
+
+	ret = wait_event_timeout(ctx->wait_q, !atomic_read(&ctx->ncmd),
+			CTX_TIMEOUT);
+	if (!ret) {
+		fimg2d_err("ctx %p wait timeout\n", ctx);
+		return -ETIME;
+	}
+	return 0;
+}
+#endif
+
 static irqreturn_t fimg2d_irq(int irq, void *dev_id)
 {
 	fimg2d_debug("irq\n");
-	info->stop(info);
+	spin_lock(&ctrl->bltlock);
+	ctrl->stop(ctrl);
+	spin_unlock(&ctrl->bltlock);
 
 	return IRQ_HANDLED;
 }
 
-static int fimg2d_sysmmu_fault_handler(struct device *dev,
+static int fimg2d_sysmmu_fault_handler(struct device *dev, const char *mmuname,
 		enum exynos_sysmmu_inttype itype,
 		unsigned long pgtable_base, unsigned long fault_addr)
 {
 	struct fimg2d_bltcmd *cmd;
 
 	if (itype == SYSMMU_PAGEFAULT) {
-		printk(KERN_ERR "[%s] sysmmu page fault(0x%lx), pgd(0x%lx)\n",
-				__func__, fault_addr, pgtable_base);
+		fimg2d_err("sysmmu page fault(0x%lx), pgd(0x%lx)\n",
+				fault_addr, pgtable_base);
 	} else {
-		printk(KERN_ERR "[%s] sysmmu interrupt "
-				"type(%d) pgd(0x%lx) addr(0x%lx)\n",
-				__func__, itype, pgtable_base, fault_addr);
+		fimg2d_err("sysmmu fault type(%d) pgd(0x%lx) addr(0x%lx)\n",
+				itype, pgtable_base, fault_addr);
 	}
 
-	cmd = fimg2d_get_first_command(info);
-	if (!cmd) {
-		printk(KERN_ERR "[%s] null command\n", __func__);
+	cmd = fimg2d_get_command(ctrl);
+	if (WARN_ON(!cmd))
 		goto next;
-	}
 
 	if (cmd->ctx->mm->pgd != phys_to_virt(pgtable_base)) {
-		printk(KERN_ERR "[%s] pgtable base is different from current command\n",
-				__func__);
+		fimg2d_err("pgtable base invalid\n");
 		goto next;
 	}
 
 	fimg2d_dump_command(cmd);
 
 next:
-	fimg2d_clk_dump(info);
-	info->dump(info);
+	ctrl->dump(ctrl);
 
 	BUG();
 	return 0;
 }
 
-static void fimg2d_context_wait(struct fimg2d_context *ctx)
+static int fimg2d_request_bitblt(struct fimg2d_control *ctrl,
+		struct fimg2d_context *ctx)
 {
-	while (atomic_read(&ctx->ncmd)) {
-		if (!wait_event_timeout(ctx->wait_q, !atomic_read(&ctx->ncmd), CTX_TIMEOUT)) {
-			fimg2d_debug("[%s] ctx %p blit wait timeout\n", __func__, ctx);
-			if (info->err)
-				break;
-		}
-	}
-}
+#ifdef BLIT_WORKQUE
+	unsigned long flags;
 
-static void fimg2d_request_bitblt(struct fimg2d_context *ctx)
-{
-	if (!atomic_read(&info->active)) {
-		atomic_set(&info->active, 1);
-		fimg2d_debug("dispatch ctx %p to kernel thread\n", ctx);
-		queue_work(info->work_q, &fimg2d_work);
-	}
-	fimg2d_context_wait(ctx);
+	g2d_spin_lock(&ctrl->bltlock, flags);
+	fimg2d_debug("dispatch ctx %p to kernel thread\n", ctx);
+	queue_work(ctrl->work_q, &fimg2d_work);
+	g2d_spin_unlock(&ctrl->bltlock, flags);
+	return fimg2d_context_wait(ctx);
+#else
+	return fimg2d_do_bitblt(ctrl);
+#endif
 }
 
 static int fimg2d_open(struct inode *inode, struct file *file)
 {
 	struct fimg2d_context *ctx;
+	unsigned long flags, count;
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx) {
-		printk(KERN_ERR "[%s] not enough memory for ctx\n", __func__);
+		fimg2d_err("not enough memory for ctx\n");
 		return -ENOMEM;
 	}
 	file->private_data = (void *)ctx;
 
-	ctx->mm = current->mm;
-	fimg2d_debug("ctx %p current pgd %p init_mm pgd %p\n",
-			ctx, (unsigned long *)ctx->mm->pgd,
-			(unsigned long *)init_mm.pgd);
+	g2d_spin_lock(&ctrl->bltlock, flags);
+	fimg2d_add_context(ctrl, ctx);
+	count = atomic_read(&ctrl->nctx);
+	g2d_spin_unlock(&ctrl->bltlock, flags);
 
-	fimg2d_add_context(info, ctx);
+#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
+	if (count == 1) {
+		/* mif lock : 800MHz */
+		pm_qos_update_request(&exynos5_g2d_mif_qos, 800000);
+		pm_qos_update_request(&exynos5_g2d_cpu_qos, 400000);
+	} else
+		fimg2d_debug("count:%ld, pm_qos_update_request() is already called\n", count);
+#endif
 	return 0;
 }
 
 static int fimg2d_release(struct inode *inode, struct file *file)
 {
 	struct fimg2d_context *ctx = file->private_data;
+	int retry = POLL_RETRY;
+	unsigned long flags, count;
 
 	fimg2d_debug("ctx %p\n", ctx);
-	while (1) {
+	while (retry--) {
 		if (!atomic_read(&ctx->ncmd))
 			break;
-
-		mdelay(2);
+		mdelay(POLL_TIMEOUT);
 	}
-	fimg2d_del_context(info, ctx);
 
+	g2d_spin_lock(&ctrl->bltlock, flags);
+	fimg2d_del_context(ctrl, ctx);
+	count = atomic_read(&ctrl->nctx);
+	g2d_spin_unlock(&ctrl->bltlock, flags);
+
+#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
+	if (!count) {
+		pm_qos_update_request(&exynos5_g2d_mif_qos, 0);
+		pm_qos_update_request(&exynos5_g2d_cpu_qos, 0);
+	} else
+		fimg2d_debug("count:%ld, pm_qos_update_request() is already called\n", count);
+#endif
 	kfree(ctx);
 	return 0;
 }
@@ -171,49 +219,85 @@ static long fimg2d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
 	struct fimg2d_context *ctx;
-	struct fimg2d_platdata *pdata;
-	union {
-		struct fimg2d_blit *blit;
-		struct fimg2d_version ver;
-	} u;
+	struct mm_struct *mm;
 
 	ctx = file->private_data;
-	if (!ctx) {
-		printk(KERN_ERR "[%s] missing ctx\n", __func__);
-		return -EFAULT;
-	}
 
 	switch (cmd) {
 	case FIMG2D_BITBLT_BLIT:
-		fimg2d_debug("FIMG2D_BITBLT_BLIT ctx: %p\n", ctx);
-		u.blit = (struct fimg2d_blit *)arg;
 
-		ret = fimg2d_add_command(info, ctx, u.blit);
-		if (!ret)
-			fimg2d_request_bitblt(ctx);
-#ifdef PERF_PROFILE
-		perf_print(ctx, u.blit->seq_no);
-		perf_clear(ctx);
-#endif
-		break;
+		mm = get_task_mm(current);
+		if(!mm) {
+			fimg2d_err("no mm for ctx\n");
+			return -ENXIO;
+		}
 
-	case FIMG2D_BITBLT_SYNC:
-		fimg2d_debug("FIMG2D_BITBLT_SYNC ctx: %p\n", ctx);
-		/* FIXME: */
+		g2d_lock(&ctrl->drvlock);
+		ctx->mm = mm;
+
+		if (atomic_read(&ctrl->drvact) ||
+				atomic_read(&ctrl->suspended)) {
+			fimg2d_err("driver is unavailable, do sw fallback\n");
+			g2d_unlock(&ctrl->drvlock);
+			mmput(mm);
+			return -EPERM;
+		}
+
+		fimg2d_clk_on(ctrl);
+		ret = fimg2d_add_command(ctrl, ctx, (struct fimg2d_blit __user *)arg);
+		if (ret) {
+			fimg2d_err("add command not allowed.\n");
+			g2d_unlock(&ctrl->drvlock);
+			fimg2d_clk_off(ctrl);
+			mmput(mm);
+			return ret;
+		}
+
+		ret = fimg2d_request_bitblt(ctrl, ctx);
+		if (ret) {
+			fimg2d_err("request bitblit not allowed.\n");
+			g2d_unlock(&ctrl->drvlock);
+			fimg2d_clk_off(ctrl);
+			mmput(mm);
+			return -EBUSY;
+		}
+		g2d_unlock(&ctrl->drvlock);
+		fimg2d_clk_off(ctrl);
+		mmput(mm);
 		break;
 
 	case FIMG2D_BITBLT_VERSION:
-		fimg2d_debug("FIMG2D_BITBLT_VERSION ctx: %p\n", ctx);
-		pdata = to_fimg2d_plat(info->dev);
-		u.ver.hw = pdata->hw_ver;
-		u.ver.sw = 0;
-		fimg2d_debug("fimg2d version, hw: 0x%x sw: 0x%x\n", u.ver.hw, u.ver.sw);
-		if (copy_to_user((void *)arg, &u.ver, sizeof(u.ver)))
+	{
+		struct fimg2d_version ver;
+		struct fimg2d_platdata *pdata;
+
+		pdata = to_fimg2d_plat(ctrl->dev);
+		ver.hw = pdata->hw_ver;
+		ver.sw = 0;
+		fimg2d_info("version info. hw(0x%x), sw(0x%x)\n",
+				ver.hw, ver.sw);
+		if (copy_to_user((void *)arg, &ver, sizeof(ver)))
 			return -EFAULT;
 		break;
+	}
+	case FIMG2D_BITBLT_ACTIVATE:
+	{
+		enum driver_act act;
 
+		if (copy_from_user(&act, (void *)arg, sizeof(act)))
+			return -EFAULT;
+
+		g2d_lock(&ctrl->drvlock);
+		atomic_set(&ctrl->drvact, act);
+		if (act == DRV_ACT)
+			fimg2d_info("fimg2d driver is activated\n");
+		else
+			fimg2d_info("fimg2d driver is deactivated\n");
+		g2d_unlock(&ctrl->drvlock);
+		break;
+	}
 	default:
-		printk(KERN_ERR "[%s] unknown ioctl\n", __func__);
+		fimg2d_err("unknown ioctl\n");
 		ret = -EFAULT;
 		break;
 	}
@@ -238,189 +322,219 @@ static struct miscdevice fimg2d_dev = {
 	.fops		= &fimg2d_fops,
 };
 
-static int fimg2d_setup_controller(struct fimg2d_control *info)
+static int fimg2d_setup_controller(struct fimg2d_control *ctrl)
 {
-	atomic_set(&info->suspended, 0);
-	atomic_set(&info->clkon, 0);
-	atomic_set(&info->busy, 0);
-	atomic_set(&info->nctx, 0);
-	atomic_set(&info->active, 0);
+	atomic_set(&ctrl->drvact, DRV_ACT);
+	atomic_set(&ctrl->suspended, 0);
+	atomic_set(&ctrl->clkon, 0);
+	atomic_set(&ctrl->busy, 0);
+	atomic_set(&ctrl->nctx, 0);
 
-	spin_lock_init(&info->bltlock);
+	spin_lock_init(&ctrl->bltlock);
+	mutex_init(&ctrl->drvlock);
 
-	INIT_LIST_HEAD(&info->cmd_q);
-	init_waitqueue_head(&info->wait_q);
-	fimg2d_register_ops(info);
+	INIT_LIST_HEAD(&ctrl->cmd_q);
+	init_waitqueue_head(&ctrl->wait_q);
+	fimg2d_register_ops(ctrl);
 
-	info->work_q = create_singlethread_workqueue("kfimg2dd");
-	if (!info->work_q)
+#ifdef BLIT_WORKQUE
+	ctrl->work_q = create_singlethread_workqueue("kfimg2dd");
+	if (!ctrl->work_q)
 		return -ENOMEM;
+#endif
 
 	return 0;
 }
 
 static int fimg2d_probe(struct platform_device *pdev)
 {
+	int ret = 0;
 	struct resource *res;
-	struct fimg2d_platdata *pdata;
-	int ret;
 
-	pdata = to_fimg2d_plat(&pdev->dev);
-	if (!pdata) {
-		printk(KERN_ERR "FIMG2D failed to get platform data\n");
-		ret = -ENOMEM;
-		goto err_plat;
+	if (!to_fimg2d_plat(&pdev->dev)) {
+		fimg2d_err("failed to get platform data\n");
+		return -ENOMEM;
 	}
 
 	/* global structure */
-	info = kzalloc(sizeof(*info), GFP_KERNEL);
-	if (!info) {
-		printk(KERN_ERR "FIMG2D failed to allocate memory for controller\n");
-		ret = -ENOMEM;
-		goto err_plat;
+	ctrl = kzalloc(sizeof(*ctrl), GFP_KERNEL);
+	if (!ctrl) {
+		fimg2d_err("failed to allocate memory for controller\n");
+		return -ENOMEM;
 	}
 
-	/* setup global info */
-	ret = fimg2d_setup_controller(info);
+	/* setup global ctrl */
+	ret = fimg2d_setup_controller(ctrl);
 	if (ret) {
-		printk(KERN_ERR "FIMG2D failed to setup controller\n");
-		goto err_setup;
+		fimg2d_err("failed to setup controller\n");
+		goto drv_free;
 	}
-	info->dev = &pdev->dev;
+	ctrl->dev = &pdev->dev;
 
 	/* memory region */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
-		printk(KERN_ERR "FIMG2D failed to get resource\n");
+		fimg2d_err("failed to get resource\n");
 		ret = -ENOENT;
-		goto err_res;
+		goto drv_free;
 	}
 
-	info->mem = request_mem_region(res->start, resource_size(res),
+	ctrl->mem = request_mem_region(res->start, resource_size(res),
 					pdev->name);
-	if (!info->mem) {
-		printk(KERN_ERR "FIMG2D failed to request memory region\n");
+	if (!ctrl->mem) {
+		fimg2d_err("failed to request memory region\n");
 		ret = -ENOMEM;
-		goto err_region;
+		goto res_free;
 	}
 
 	/* ioremap */
-	info->regs = ioremap(res->start, resource_size(res));
-	if (!info->regs) {
-		printk(KERN_ERR "FIMG2D failed to ioremap for SFR\n");
+	ctrl->regs = ioremap(res->start, resource_size(res));
+	if (!ctrl->regs) {
+		fimg2d_err("failed to ioremap for SFR\n");
 		ret = -ENOENT;
-		goto err_map;
+		goto mem_free;
 	}
-	fimg2d_debug("device name: %s base address: 0x%lx\n",
-			pdev->name, (unsigned long)res->start);
+	fimg2d_info("base address: 0x%lx\n", (unsigned long)res->start);
 
 	/* irq */
-	info->irq = platform_get_irq(pdev, 0);
-	if (!info->irq) {
-		printk(KERN_ERR "FIMG2D failed to get irq resource\n");
+	ctrl->irq = platform_get_irq(pdev, 0);
+	if (!ctrl->irq) {
+		fimg2d_err("failed to get irq resource\n");
 		ret = -ENOENT;
-		goto err_map;
+		goto reg_unmap;
 	}
-	fimg2d_debug("irq: %d\n", info->irq);
+	fimg2d_info("irq: %d\n", ctrl->irq);
 
-	ret = request_irq(info->irq, fimg2d_irq, IRQF_DISABLED, pdev->name, info);
+	ret = request_irq(ctrl->irq, fimg2d_irq, IRQF_DISABLED,
+			pdev->name, ctrl);
 	if (ret) {
-		printk(KERN_ERR "FIMG2D failed to request irq\n");
+		fimg2d_err("failed to request irq\n");
 		ret = -ENOENT;
-		goto err_irq;
+		goto reg_unmap;
 	}
 
-	ret = fimg2d_clk_setup(info);
+	ret = fimg2d_clk_setup(ctrl);
 	if (ret) {
-		printk(KERN_ERR "FIMG2D failed to setup clk\n");
+		fimg2d_err("failed to setup clk\n");
 		ret = -ENOENT;
-		goto err_clk;
+		goto irq_free;
 	}
 
 #ifdef CONFIG_PM_RUNTIME
-	pm_runtime_enable(info->dev);
-	fimg2d_debug("enable runtime pm\n");
+	pm_runtime_enable(ctrl->dev);
+	fimg2d_info("enable runtime pm\n");
+	pm_runtime_get_sync(ctrl->dev);
+#else
+	fimg2d_clk_on(ctrl);
 #endif
 
-	exynos_sysmmu_set_fault_handler(info->dev, fimg2d_sysmmu_fault_handler);
-	fimg2d_debug("register sysmmu page fault handler\n");
+	exynos_sysmmu_set_fault_handler(ctrl->dev, fimg2d_sysmmu_fault_handler);
+	fimg2d_info("register sysmmu page fault handler\n");
 
 	/* misc register */
 	ret = misc_register(&fimg2d_dev);
 	if (ret) {
-		printk(KERN_ERR "FIMG2D failed to register misc driver\n");
-		goto err_reg;
+		fimg2d_err("failed to register misc driver\n");
+		goto clk_release;
 	}
 
-	printk(KERN_INFO "Samsung Graphics 2D driver, (c) 2011 Samsung Electronics\n");
+#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
+	pm_qos_add_request(&exynos5_g2d_cpu_qos,
+			PM_QOS_CPU_FREQ_MIN, 0);
+	pm_qos_add_request(&exynos5_g2d_mif_qos,
+			PM_QOS_BUS_THROUGHPUT, 0);
+#endif
+
 	return 0;
 
-err_reg:
-	fimg2d_clk_release(info);
+clk_release:
+#ifdef CONFIG_PM_RUNTIME
+	pm_runtime_disable(ctrl->dev);
+#else
+	fimg2d_clk_off(ctrl);
+#endif
+	fimg2d_clk_release(ctrl);
 
-err_clk:
-	free_irq(info->irq, NULL);
+irq_free:
+	free_irq(ctrl->irq, NULL);
+reg_unmap:
+	iounmap(ctrl->regs);
+mem_free:
+	kfree(ctrl->mem);
+res_free:
+	release_resource(ctrl->mem);
+drv_free:
+#ifdef BLIT_WORKQUE
+	if (ctrl->work_q)
+		destroy_workqueue(ctrl->work_q);
+#endif
+	mutex_destroy(&ctrl->drvlock);
+	kfree(ctrl);
 
-err_irq:
-	iounmap(info->regs);
-
-err_map:
-	kfree(info->mem);
-
-err_region:
-	release_resource(info->mem);
-
-err_res:
-	destroy_workqueue(info->work_q);
-
-err_setup:
-	kfree(info);
-
-err_plat:
 	return ret;
 }
 
 static int fimg2d_remove(struct platform_device *pdev)
 {
-	free_irq(info->irq, NULL);
 
-	if (info->mem) {
-		iounmap(info->regs);
-		release_resource(info->mem);
-		kfree(info->mem);
-	}
+#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
+	pm_qos_remove_request(&exynos5_g2d_cpu_qos);
+	pm_qos_remove_request(&exynos5_g2d_mif_qos);
+#endif
 
-	destroy_workqueue(info->work_q);
 	misc_deregister(&fimg2d_dev);
-	kfree(info);
 
 #ifdef CONFIG_PM_RUNTIME
 	pm_runtime_disable(&pdev->dev);
-	fimg2d_debug("disable runtime pm\n");
+#else
+	fimg2d_clk_off(ctrl);
 #endif
+	fimg2d_clk_release(ctrl);
+	free_irq(ctrl->irq, NULL);
 
+	if (ctrl->mem) {
+		iounmap(ctrl->regs);
+		release_resource(ctrl->mem);
+		kfree(ctrl->mem);
+	}
+
+#ifdef BLIT_WORKQUE
+	destroy_workqueue(ctrl->work_q);
+#endif
+	mutex_destroy(&ctrl->drvlock);
+	kfree(ctrl);
 	return 0;
 }
 
 static int fimg2d_suspend(struct device *dev)
 {
-	fimg2d_debug("suspend... start\n");
-	atomic_set(&info->suspended, 1);
-	while (1) {
-		if (fimg2d_queue_is_empty(&info->cmd_q))
-			break;
+	unsigned long flags;
+	int retry = POLL_RETRY;
 
-		mdelay(2);
+	g2d_lock(&ctrl->drvlock);
+	g2d_spin_lock(&ctrl->bltlock, flags);
+	atomic_set(&ctrl->suspended, 1);
+	g2d_spin_unlock(&ctrl->bltlock, flags);
+	while (retry--) {
+		if (fimg2d_queue_is_empty(&ctrl->cmd_q))
+			break;
+		mdelay(POLL_TIMEOUT);
 	}
-	fimg2d_debug("suspend... done\n");
+	g2d_unlock(&ctrl->drvlock);
+	fimg2d_info("suspend... done\n");
 	return 0;
 }
 
 static int fimg2d_resume(struct device *dev)
 {
-	fimg2d_debug("resume... start\n");
-	atomic_set(&info->suspended, 0);
-	fimg2d_debug("resume... done\n");
+	unsigned long flags;
+
+	g2d_lock(&ctrl->drvlock);
+	g2d_spin_lock(&ctrl->bltlock, flags);
+	atomic_set(&ctrl->suspended, 0);
+	g2d_spin_unlock(&ctrl->bltlock, flags);
+	g2d_unlock(&ctrl->drvlock);
+	fimg2d_info("resume... done\n");
 	return 0;
 }
 
@@ -457,14 +571,25 @@ static struct platform_driver fimg2d_driver = {
 	},
 };
 
+static char banner[] __initdata =
+	"Exynos Graphics 2D driver, (c) 2011 Samsung Electronics\n";
+
 static int __init fimg2d_register(void)
 {
+	pr_info("%s", banner);
 	return platform_driver_register(&fimg2d_driver);
 }
 
 static void __exit fimg2d_unregister(void)
 {
 	platform_driver_unregister(&fimg2d_driver);
+}
+
+int fimg2d_ip_version_is(void)
+{
+	struct fimg2d_platdata *pdata = to_fimg2d_plat(ctrl->dev);
+
+	return pdata->ip_ver;
 }
 
 module_init(fimg2d_register);

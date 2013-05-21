@@ -1,4 +1,4 @@
-/* linux/drivers/media/video/samsung/fimg2d4x/fimg2d4x_hw.c
+/* linux/drivers/media/video/exynos/fimg2d/fimg2d4x_hw.c
  *
  * Copyright (c) 2011 Samsung Electronics Co., Ltd.
  *	http://www.samsung.com/
@@ -17,82 +17,89 @@
 #include "fimg2d4x.h"
 #include "fimg2d_clk.h"
 
-#undef SOFT_RESET_ENABLED
-#undef FIMG2D_RESET_WA
+#define wr(d, a)	writel((d), ctrl->regs + (a))
+#define rd(a)		readl(ctrl->regs + (a))
 
 static const int a8_rgbcolor		= (int)0x0;
 static const int msk_oprmode		= (int)MSK_ARGB;
 static const int premult_round_mode	= (int)PREMULT_ROUND_1;	/* (A+1)*B) >> 8 */
 static const int blend_round_mode	= (int)BLEND_ROUND_0;	/* (A+1)*B) >> 8 */
 
-void fimg2d4x_reset(struct fimg2d_control *info)
+void fimg2d4x_init(struct fimg2d_control *ctrl)
 {
-#ifdef SOFT_RESET_ENABLED
-#ifdef FIMG2D_RESET_WA
-	fimg2d_clk_save(info);
+#ifdef CCI_SNOOP
+	unsigned long cfg;
 #endif
-	writel(FIMG2D_SOFT_RESET, info->regs + FIMG2D_SOFT_RESET_REG);
-#ifdef FIMG2D_RESET_WA
-	fimg2d_clk_restore(info);
-#endif
-#else
-	writel(FIMG2D_SFR_CLEAR, info->regs + FIMG2D_SOFT_RESET_REG);
-#endif
+
+	/* sfr clear */
+	wr(FIMG2D_SFR_CLEAR, FIMG2D_SOFT_RESET_REG);
 	/* turn off wince option */
-	writel(0x0, info->regs + FIMG2D_BLEND_FUNCTION_REG);
+	wr(0x0, FIMG2D_BLEND_FUNCTION_REG);
 
-	/* set default repeat mode to clamp */
-	writel(FIMG2D_SRC_REPEAT_CLAMP, info->regs + FIMG2D_SRC_REPEAT_MODE_REG);
-	writel(FIMG2D_MSK_REPEAT_CLAMP, info->regs + FIMG2D_MSK_REPEAT_MODE_REG);
+	/* set default repeat mode to reflect(mirror) */
+	wr(FIMG2D_SRC_REPEAT_REFLECT, FIMG2D_SRC_REPEAT_MODE_REG);
+	wr(FIMG2D_MSK_REPEAT_REFLECT, FIMG2D_MSK_REPEAT_MODE_REG);
+
+#ifdef CCI_SNOOP
+	cfg = rd(FIMG2D_AXI_MODE_REG);
+	cfg |= (0xf << FIMG2D_AXI_AWCACHE_SHIFT) |
+		(0xf << FIMG2D_AXI_ARCACHE_SHIFT);
+	wr(cfg, FIMG2D_AXI_MODE_REG);
+#endif
 }
 
-void fimg2d4x_enable_irq(struct fimg2d_control *info)
+void fimg2d4x_reset(struct fimg2d_control *ctrl)
 {
-	writel(FIMG2D_BLIT_INT_ENABLE, info->regs + FIMG2D_INTEN_REG);
+	wr(FIMG2D_SOFT_RESET, FIMG2D_SOFT_RESET_REG);
 }
 
-void fimg2d4x_disable_irq(struct fimg2d_control *info)
+void fimg2d4x_enable_irq(struct fimg2d_control *ctrl)
 {
-	writel(0, info->regs + FIMG2D_INTEN_REG);
+	wr(FIMG2D_BLIT_INT_ENABLE, FIMG2D_INTEN_REG);
 }
 
-void fimg2d4x_clear_irq(struct fimg2d_control *info)
+void fimg2d4x_disable_irq(struct fimg2d_control *ctrl)
 {
-	writel(FIMG2D_BLIT_INT_FLAG, info->regs + FIMG2D_INTC_PEND_REG);
+	wr(0, FIMG2D_INTEN_REG);
 }
 
-int fimg2d4x_is_blit_done(struct fimg2d_control *info)
+void fimg2d4x_clear_irq(struct fimg2d_control *ctrl)
 {
-	return readl(info->regs + FIMG2D_INTC_PEND_REG) & FIMG2D_BLIT_INT_FLAG;
+	wr(FIMG2D_BLIT_INT_FLAG, FIMG2D_INTC_PEND_REG);
 }
 
-int fimg2d4x_blit_done_status(struct fimg2d_control *info)
+int fimg2d4x_is_blit_done(struct fimg2d_control *ctrl)
+{
+	return rd(FIMG2D_INTC_PEND_REG) & FIMG2D_BLIT_INT_FLAG;
+}
+
+int fimg2d4x_blit_done_status(struct fimg2d_control *ctrl)
 {
 	volatile unsigned long sts;
 
 	/* read twice */
-	sts = readl(info->regs + FIMG2D_FIFO_STAT_REG);
-	sts = readl(info->regs + FIMG2D_FIFO_STAT_REG);
+	sts = rd(FIMG2D_FIFO_STAT_REG);
+	sts = rd(FIMG2D_FIFO_STAT_REG);
 
 	return (int)(sts & FIMG2D_BLIT_FINISHED);
 }
 
-void fimg2d4x_start_blit(struct fimg2d_control *info)
+void fimg2d4x_start_blit(struct fimg2d_control *ctrl)
 {
-	writel(FIMG2D_START_BITBLT, info->regs + FIMG2D_BITBLT_START_REG);
+	wr(FIMG2D_START_BITBLT, FIMG2D_BITBLT_START_REG);
 }
 
-void fimg2d4x_set_max_burst_length(struct fimg2d_control *info, enum max_burst_len len)
+void fimg2d4x_set_max_burst_length(struct fimg2d_control *ctrl, enum max_burst_len len)
 {
 	unsigned long cfg;
 
-	cfg = readl(info->regs + FIMG2D_AXI_MODE_REG);
+	cfg = rd(FIMG2D_AXI_MODE_REG);
 
 	cfg &= ~FIMG2D_MAX_BURST_LEN_MASK;
 	cfg |= len << FIMG2D_MAX_BURST_LEN_SHIFT;
 }
 
-void fimg2d4x_set_src_type(struct fimg2d_control *info, enum image_sel type)
+void fimg2d4x_set_src_type(struct fimg2d_control *ctrl, enum image_sel type)
 {
 	unsigned long cfg;
 
@@ -103,42 +110,42 @@ void fimg2d4x_set_src_type(struct fimg2d_control *info, enum image_sel type)
 	else
 		cfg = FIMG2D_IMAGE_TYPE_BGCOLOR;
 
-	writel(cfg, info->regs + FIMG2D_SRC_SELECT_REG);
+	wr(cfg, FIMG2D_SRC_SELECT_REG);
 }
 
-void fimg2d4x_set_src_image(struct fimg2d_control *info, struct fimg2d_image *s)
+void fimg2d4x_set_src_image(struct fimg2d_control *ctrl, struct fimg2d_image *s)
 {
 	unsigned long cfg;
 
-	writel(FIMG2D_ADDR(s->addr.start), info->regs + FIMG2D_SRC_BASE_ADDR_REG);
-	writel(FIMG2D_STRIDE(s->stride), info->regs + FIMG2D_SRC_STRIDE_REG);
+	wr(FIMG2D_ADDR(s->addr.start), FIMG2D_SRC_BASE_ADDR_REG);
+	wr(FIMG2D_STRIDE(s->stride), FIMG2D_SRC_STRIDE_REG);
 
 	if (s->order < ARGB_ORDER_END) {	/* argb */
 		cfg = s->order << FIMG2D_RGB_ORDER_SHIFT;
 		if (s->fmt == CF_A8)
-			writel(a8_rgbcolor, info->regs + FIMG2D_SRC_A8_RGB_EXT_REG);
+			wr(a8_rgbcolor, FIMG2D_SRC_A8_RGB_EXT_REG);
 	} else if (s->order < P1_ORDER_END) {	/* YCbC1 1plane */
 		cfg = (s->order - P1_CRY1CBY0) << FIMG2D_YCBCR_ORDER_SHIFT;
 	} else {	/* YCbCr 2plane */
 		cfg = (s->order - P2_CRCB) << FIMG2D_YCBCR_ORDER_SHIFT;
 		cfg |= FIMG2D_YCBCR_2PLANE;
 
-		writel(FIMG2D_ADDR(s->plane2.start),
-				info->regs + FIMG2D_SRC_PLANE2_BASE_ADDR_REG);
+		wr(FIMG2D_ADDR(s->plane2.start),
+				FIMG2D_SRC_PLANE2_BASE_ADDR_REG);
 	}
 
 	cfg |= s->fmt << FIMG2D_COLOR_FORMAT_SHIFT;
 
-	writel(cfg, info->regs + FIMG2D_SRC_COLOR_MODE_REG);
+	wr(cfg, FIMG2D_SRC_COLOR_MODE_REG);
 }
 
-void fimg2d4x_set_src_rect(struct fimg2d_control *info, struct fimg2d_rect *r)
+void fimg2d4x_set_src_rect(struct fimg2d_control *ctrl, struct fimg2d_rect *r)
 {
-	writel(FIMG2D_OFFSET(r->x1, r->y1), info->regs + FIMG2D_SRC_LEFT_TOP_REG);
-	writel(FIMG2D_OFFSET(r->x2, r->y2), info->regs + FIMG2D_SRC_RIGHT_BOTTOM_REG);
+	wr(FIMG2D_OFFSET(r->x1, r->y1), FIMG2D_SRC_LEFT_TOP_REG);
+	wr(FIMG2D_OFFSET(r->x2, r->y2), FIMG2D_SRC_RIGHT_BOTTOM_REG);
 }
 
-void fimg2d4x_set_dst_type(struct fimg2d_control *info, enum image_sel type)
+void fimg2d4x_set_dst_type(struct fimg2d_control *ctrl, enum image_sel type)
 {
 	unsigned long cfg;
 
@@ -149,60 +156,60 @@ void fimg2d4x_set_dst_type(struct fimg2d_control *info, enum image_sel type)
 	else
 		cfg = FIMG2D_IMAGE_TYPE_BGCOLOR;
 
-	writel(cfg, info->regs + FIMG2D_DST_SELECT_REG);
+	wr(cfg, FIMG2D_DST_SELECT_REG);
 }
 
 /**
  * @d: set base address, stride, color format, order
-*/
-void fimg2d4x_set_dst_image(struct fimg2d_control *info, struct fimg2d_image *d)
+ */
+void fimg2d4x_set_dst_image(struct fimg2d_control *ctrl, struct fimg2d_image *d)
 {
 	unsigned long cfg;
 
-	writel(FIMG2D_ADDR(d->addr.start), info->regs + FIMG2D_DST_BASE_ADDR_REG);
-	writel(FIMG2D_STRIDE(d->stride), info->regs + FIMG2D_DST_STRIDE_REG);
+	wr(FIMG2D_ADDR(d->addr.start), FIMG2D_DST_BASE_ADDR_REG);
+	wr(FIMG2D_STRIDE(d->stride), FIMG2D_DST_STRIDE_REG);
 
 	if (d->order < ARGB_ORDER_END) {
 		cfg = d->order << FIMG2D_RGB_ORDER_SHIFT;
 		if (d->fmt == CF_A8)
-			writel(a8_rgbcolor, info->regs + FIMG2D_DST_A8_RGB_EXT_REG);
+			wr(a8_rgbcolor, FIMG2D_DST_A8_RGB_EXT_REG);
 	} else if (d->order < P1_ORDER_END) {
 		cfg = (d->order - P1_CRY1CBY0) << FIMG2D_YCBCR_ORDER_SHIFT;
 	} else {
 		cfg = (d->order - P2_CRCB) << FIMG2D_YCBCR_ORDER_SHIFT;
 		cfg |= FIMG2D_YCBCR_2PLANE;
 
-		writel(FIMG2D_ADDR(d->plane2.start),
-				info->regs + FIMG2D_DST_PLANE2_BASE_ADDR_REG);
+		wr(FIMG2D_ADDR(d->plane2.start),
+				FIMG2D_DST_PLANE2_BASE_ADDR_REG);
 	}
 
 	cfg |= d->fmt << FIMG2D_COLOR_FORMAT_SHIFT;
 
-	writel(cfg, info->regs + FIMG2D_DST_COLOR_MODE_REG);
+	wr(cfg, FIMG2D_DST_COLOR_MODE_REG);
 }
 
-void fimg2d4x_set_dst_rect(struct fimg2d_control *info, struct fimg2d_rect *r)
+void fimg2d4x_set_dst_rect(struct fimg2d_control *ctrl, struct fimg2d_rect *r)
 {
-	writel(FIMG2D_OFFSET(r->x1, r->y1), info->regs + FIMG2D_DST_LEFT_TOP_REG);
-	writel(FIMG2D_OFFSET(r->x2, r->y2), info->regs + FIMG2D_DST_RIGHT_BOTTOM_REG);
+	wr(FIMG2D_OFFSET(r->x1, r->y1), FIMG2D_DST_LEFT_TOP_REG);
+	wr(FIMG2D_OFFSET(r->x2, r->y2), FIMG2D_DST_RIGHT_BOTTOM_REG);
 }
 
-void fimg2d4x_enable_msk(struct fimg2d_control *info)
+void fimg2d4x_enable_msk(struct fimg2d_control *ctrl)
 {
 	unsigned long cfg;
 
-	cfg = readl(info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	cfg = rd(FIMG2D_BITBLT_COMMAND_REG);
 	cfg |= FIMG2D_ENABLE_NORMAL_MSK;
 
-	writel(cfg, info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	wr(cfg, FIMG2D_BITBLT_COMMAND_REG);
 }
 
-void fimg2d4x_set_msk_image(struct fimg2d_control *info, struct fimg2d_image *m)
+void fimg2d4x_set_msk_image(struct fimg2d_control *ctrl, struct fimg2d_image *m)
 {
 	unsigned long cfg;
 
-	writel(FIMG2D_ADDR(m->addr.start), info->regs + FIMG2D_MSK_BASE_ADDR_REG);
-	writel(FIMG2D_STRIDE(m->stride), info->regs + FIMG2D_MSK_STRIDE_REG);
+	wr(FIMG2D_ADDR(m->addr.start), FIMG2D_MSK_BASE_ADDR_REG);
+	wr(FIMG2D_STRIDE(m->stride), FIMG2D_MSK_STRIDE_REG);
 
 	cfg = m->order << FIMG2D_MSK_ORDER_SHIFT;
 	cfg |= (m->fmt - CF_MSK_1BIT) << FIMG2D_MSK_FORMAT_SHIFT;
@@ -217,13 +224,13 @@ void fimg2d4x_set_msk_image(struct fimg2d_control *info, struct fimg2d_image *m)
 			cfg |= FIMG2D_MSK_TYPE_MIXED;
 	}
 
-	writel(cfg, info->regs + FIMG2D_MSK_MODE_REG);
+	wr(cfg, FIMG2D_MSK_MODE_REG);
 }
 
-void fimg2d4x_set_msk_rect(struct fimg2d_control *info, struct fimg2d_rect *r)
+void fimg2d4x_set_msk_rect(struct fimg2d_control *ctrl, struct fimg2d_rect *r)
 {
-	writel(FIMG2D_OFFSET(r->x1, r->y1), info->regs + FIMG2D_MSK_LEFT_TOP_REG);
-	writel(FIMG2D_OFFSET(r->x2, r->y2), info->regs + FIMG2D_MSK_RIGHT_BOTTOM_REG);
+	wr(FIMG2D_OFFSET(r->x1, r->y1), FIMG2D_MSK_LEFT_TOP_REG);
+	wr(FIMG2D_OFFSET(r->x2, r->y2), FIMG2D_MSK_RIGHT_BOTTOM_REG);
 }
 
 /**
@@ -232,70 +239,70 @@ void fimg2d4x_set_msk_rect(struct fimg2d_control *info, struct fimg2d_rect *r)
  *	the same as destination color format
  * Channel order of solid color is A-R-G-B or Y-Cb-Cr
  */
-void fimg2d4x_set_color_fill(struct fimg2d_control *info, unsigned long color)
+void fimg2d4x_set_color_fill(struct fimg2d_control *ctrl, unsigned long color)
 {
-	writel(FIMG2D_SOLID_FILL, info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	wr(FIMG2D_SOLID_FILL, FIMG2D_BITBLT_COMMAND_REG);
 
 	/* sf color */
-	writel(color, info->regs + FIMG2D_SF_COLOR_REG);
+	wr(color, FIMG2D_SF_COLOR_REG);
 
 	/* set 16 burst for performance */
-	fimg2d4x_set_max_burst_length(info, MAX_BURST_16);
+	fimg2d4x_set_max_burst_length(ctrl, MAX_BURST_16);
 }
 
 /**
  * set alpha-multiply mode for src, dst, pat read (pre-bitblt)
  * set alpha-demultiply for dst write (post-bitblt)
  */
-void fimg2d4x_set_premultiplied(struct fimg2d_control *info)
+void fimg2d4x_set_premultiplied(struct fimg2d_control *ctrl)
 {
 	unsigned long cfg;
 
-	cfg = readl(info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	cfg = rd(FIMG2D_BITBLT_COMMAND_REG);
 	cfg |= FIMG2D_PREMULT_ALL;
 
-	writel(cfg, info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	wr(cfg, FIMG2D_BITBLT_COMMAND_REG);
 }
 
-void fimg2d4x_src_premultiply(struct fimg2d_control *info)
+void fimg2d4x_src_premultiply(struct fimg2d_control *ctrl)
 {
 	unsigned long cfg;
 
-	cfg = readl(info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	cfg = rd(FIMG2D_BITBLT_COMMAND_REG);
 	cfg |= FIMG2D_SRC_PREMULT;
 
-	writel(cfg, info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	wr(cfg, FIMG2D_BITBLT_COMMAND_REG);
 }
 
-void fimg2d4x_dst_premultiply(struct fimg2d_control *info)
+void fimg2d4x_dst_premultiply(struct fimg2d_control *ctrl)
 {
 	unsigned long cfg;
 
-	cfg = readl(info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	cfg = rd(FIMG2D_BITBLT_COMMAND_REG);
 	cfg |= FIMG2D_DST_RD_PREMULT;
 
-	writel(cfg, info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	wr(cfg, FIMG2D_BITBLT_COMMAND_REG);
 }
 
-void fimg2d4x_dst_depremultiply(struct fimg2d_control *info)
+void fimg2d4x_dst_depremultiply(struct fimg2d_control *ctrl)
 {
 	unsigned long cfg;
 
-	cfg = readl(info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	cfg = rd(FIMG2D_BITBLT_COMMAND_REG);
 	cfg |= FIMG2D_DST_WR_DEPREMULT;
 
-	writel(cfg, info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	wr(cfg, FIMG2D_BITBLT_COMMAND_REG);
 }
 
 /**
  * set transp/bluscr mode, bs color, bg color
  */
-void fimg2d4x_set_bluescreen(struct fimg2d_control *info,
+void fimg2d4x_set_bluescreen(struct fimg2d_control *ctrl,
 		struct fimg2d_bluscr *bluscr)
 {
 	unsigned long cfg;
 
-	cfg = readl(info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	cfg = rd(FIMG2D_BITBLT_COMMAND_REG);
 
 	if (bluscr->mode == TRANSP)
 		cfg |= FIMG2D_TRANSP_MODE;
@@ -304,41 +311,42 @@ void fimg2d4x_set_bluescreen(struct fimg2d_control *info,
 	else	/* opaque: initial value */
 		return;
 
-	writel(cfg, info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	wr(cfg, FIMG2D_BITBLT_COMMAND_REG);
 
 	/* bs color */
 	if (bluscr->bs_color)
-		writel(bluscr->bs_color, info->regs + FIMG2D_BS_COLOR_REG);
+		wr(bluscr->bs_color, FIMG2D_BS_COLOR_REG);
 
 	/* bg color */
 	if (bluscr->mode == BLUSCR && bluscr->bg_color)
-		writel(bluscr->bg_color, info->regs + FIMG2D_BG_COLOR_REG);
+		wr(bluscr->bg_color, FIMG2D_BG_COLOR_REG);
 }
 
 /**
  * @c: destination clipping region
  */
-void fimg2d4x_enable_clipping(struct fimg2d_control *info, struct fimg2d_rect *c)
+void fimg2d4x_enable_clipping(struct fimg2d_control *ctrl,
+				struct fimg2d_clip *clp)
 {
 	unsigned long cfg;
 
-	cfg = readl(info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	cfg = rd(FIMG2D_BITBLT_COMMAND_REG);
 	cfg |= FIMG2D_ENABLE_CW;
 
-	writel(cfg, info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	wr(cfg, FIMG2D_BITBLT_COMMAND_REG);
 
-	writel(FIMG2D_OFFSET(c->x1, c->y1), info->regs + FIMG2D_CW_LT_REG);
-	writel(FIMG2D_OFFSET(c->x2, c->y2), info->regs + FIMG2D_CW_RB_REG);
+	wr(FIMG2D_OFFSET(clp->x1, clp->y1), FIMG2D_CW_LT_REG);
+	wr(FIMG2D_OFFSET(clp->x2, clp->y2), FIMG2D_CW_RB_REG);
 }
 
-void fimg2d4x_enable_dithering(struct fimg2d_control *info)
+void fimg2d4x_enable_dithering(struct fimg2d_control *ctrl)
 {
 	unsigned long cfg;
 
-	cfg = readl(info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	cfg = rd(FIMG2D_BITBLT_COMMAND_REG);
 	cfg |= FIMG2D_ENABLE_DITHER;
 
-	writel(cfg, info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	wr(cfg, FIMG2D_BITBLT_COMMAND_REG);
 }
 
 #define MAX_PRECISION		16
@@ -372,7 +380,9 @@ static inline unsigned long scale_factor_to_fixed16(int n, int d)
 	return fixed16;
 }
 
-void fimg2d4x_set_src_scaling(struct fimg2d_control *info, struct fimg2d_scale *s)
+void fimg2d4x_set_src_scaling(struct fimg2d_control *ctrl,
+				struct fimg2d_scale *scl,
+				struct fimg2d_repeat *rep)
 {
 	unsigned long wcfg, hcfg;
 	unsigned long mode;
@@ -384,26 +394,32 @@ void fimg2d4x_set_src_scaling(struct fimg2d_control *info, struct fimg2d_scale *
 	 */
 
 	/* inversed scaling factor: src is numerator */
-	wcfg = scale_factor_to_fixed16(s->src_w, s->dst_w);
-	hcfg = scale_factor_to_fixed16(s->src_h, s->dst_h);
+	wcfg = scale_factor_to_fixed16(scl->src_w, scl->dst_w);
+	hcfg = scale_factor_to_fixed16(scl->src_h, scl->dst_h);
 
 	if (wcfg == DEFAULT_SCALE_RATIO && hcfg == DEFAULT_SCALE_RATIO)
 		return;
 
-	writel(wcfg, info->regs + FIMG2D_SRC_XSCALE_REG);
-	writel(hcfg, info->regs + FIMG2D_SRC_YSCALE_REG);
+	wr(wcfg, FIMG2D_SRC_XSCALE_REG);
+	wr(hcfg, FIMG2D_SRC_YSCALE_REG);
 
 	/* scaling algorithm */
-	if (s->mode == SCALING_NEAREST)
+	if (scl->mode == SCALING_NEAREST)
 		mode = FIMG2D_SCALE_MODE_NEAREST;
-	else
-		mode = FIMG2D_SCALE_MODE_BILINEAR;
+	else {
+		/* 0x3: ignore repeat mode at boundary */
+		if (rep->mode == REPEAT_PAD || rep->mode == REPEAT_CLAMP)
+			mode = 0x3;	/* hidden */
+		else
+			mode = FIMG2D_SCALE_MODE_BILINEAR;
+	}
 
-	writel(mode, info->regs + FIMG2D_SRC_SCALE_CTRL_REG);
-
+	wr(mode, FIMG2D_SRC_SCALE_CTRL_REG);
 }
 
-void fimg2d4x_set_msk_scaling(struct fimg2d_control *info, struct fimg2d_scale *s)
+void fimg2d4x_set_msk_scaling(struct fimg2d_control *ctrl,
+				struct fimg2d_scale *scl,
+				struct fimg2d_repeat *rep)
 {
 	unsigned long wcfg, hcfg;
 	unsigned long mode;
@@ -415,57 +431,64 @@ void fimg2d4x_set_msk_scaling(struct fimg2d_control *info, struct fimg2d_scale *
 	 */
 
 	/* inversed scaling factor: src is numerator */
-	wcfg = scale_factor_to_fixed16(s->src_w, s->dst_w);
-	hcfg = scale_factor_to_fixed16(s->src_h, s->dst_h);
+	wcfg = scale_factor_to_fixed16(scl->src_w, scl->dst_w);
+	hcfg = scale_factor_to_fixed16(scl->src_h, scl->dst_h);
 
 	if (wcfg == DEFAULT_SCALE_RATIO && hcfg == DEFAULT_SCALE_RATIO)
 		return;
 
-	writel(wcfg, info->regs + FIMG2D_MSK_XSCALE_REG);
-	writel(hcfg, info->regs + FIMG2D_MSK_YSCALE_REG);
+	wr(wcfg, FIMG2D_MSK_XSCALE_REG);
+	wr(hcfg, FIMG2D_MSK_YSCALE_REG);
 
 	/* scaling algorithm */
-	if (s->mode == SCALING_NEAREST)
+	if (scl->mode == SCALING_NEAREST)
 		mode = FIMG2D_SCALE_MODE_NEAREST;
-	else
-		mode = FIMG2D_SCALE_MODE_BILINEAR;
+	else {
+		/* 0x3: ignore repeat mode at boundary */
+		if (rep->mode == REPEAT_PAD || rep->mode == REPEAT_CLAMP)
+			mode = 0x3;	/* hidden */
+		else
+			mode = FIMG2D_SCALE_MODE_BILINEAR;
+	}
 
-	writel(mode, info->regs + FIMG2D_MSK_SCALE_CTRL_REG);
+	wr(mode, FIMG2D_MSK_SCALE_CTRL_REG);
 }
 
-void fimg2d4x_set_src_repeat(struct fimg2d_control *info, struct fimg2d_repeat *r)
+void fimg2d4x_set_src_repeat(struct fimg2d_control *ctrl,
+				struct fimg2d_repeat *rep)
 {
 	unsigned long cfg;
 
-	if (r->mode == NO_REPEAT)
+	if (rep->mode == NO_REPEAT)
 		return;
 
-	cfg = (r->mode - REPEAT_NORMAL) << FIMG2D_SRC_REPEAT_SHIFT;
+	cfg = (rep->mode - REPEAT_NORMAL) << FIMG2D_SRC_REPEAT_SHIFT;
 
-	writel(cfg, info->regs + FIMG2D_SRC_REPEAT_MODE_REG);
+	wr(cfg, FIMG2D_SRC_REPEAT_MODE_REG);
 
 	/* src pad color */
-	if (r->mode == REPEAT_PAD)
-		writel(r->pad_color, info->regs + FIMG2D_SRC_PAD_VALUE_REG);
+	if (rep->mode == REPEAT_PAD)
+		wr(rep->pad_color, FIMG2D_SRC_PAD_VALUE_REG);
 }
 
-void fimg2d4x_set_msk_repeat(struct fimg2d_control *info, struct fimg2d_repeat *r)
+void fimg2d4x_set_msk_repeat(struct fimg2d_control *ctrl,
+				struct fimg2d_repeat *rep)
 {
 	unsigned long cfg;
 
-	if (r->mode == NO_REPEAT)
+	if (rep->mode == NO_REPEAT)
 		return;
 
-	cfg = (r->mode - REPEAT_NORMAL) << FIMG2D_MSK_REPEAT_SHIFT;
+	cfg = (rep->mode - REPEAT_NORMAL) << FIMG2D_MSK_REPEAT_SHIFT;
 
-	writel(cfg, info->regs + FIMG2D_MSK_REPEAT_MODE_REG);
+	wr(cfg, FIMG2D_MSK_REPEAT_MODE_REG);
 
 	/* mask pad color */
-	if (r->mode == REPEAT_PAD)
-		writel(r->pad_color, info->regs + FIMG2D_MSK_PAD_VALUE_REG);
+	if (rep->mode == REPEAT_PAD)
+		wr(rep->pad_color, FIMG2D_MSK_PAD_VALUE_REG);
 }
 
-void fimg2d4x_set_rotation(struct fimg2d_control *info, enum rotation rot)
+void fimg2d4x_set_rotation(struct fimg2d_control *ctrl, enum rotation rot)
 {
 	int rev_rot90;	/* counter clockwise, 4.1 specific */
 	unsigned long cfg;
@@ -497,7 +520,7 @@ void fimg2d4x_set_rotation(struct fimg2d_control *info, enum rotation rot)
 
 	/* destination direction */
 	if (dirx == REVERSE_ADDRESSING || diry == REVERSE_ADDRESSING) {
-		cfg = readl(info->regs + FIMG2D_DST_PAT_DIRECT_REG);
+		cfg = rd(FIMG2D_DST_PAT_DIRECT_REG);
 
 		if (dirx == REVERSE_ADDRESSING)
 			cfg |= FIMG2D_DST_X_DIR_NEGATIVE;
@@ -505,40 +528,38 @@ void fimg2d4x_set_rotation(struct fimg2d_control *info, enum rotation rot)
 		if (diry == REVERSE_ADDRESSING)
 			cfg |= FIMG2D_DST_Y_DIR_NEGATIVE;
 
-		writel(cfg, info->regs + FIMG2D_DST_PAT_DIRECT_REG);
+		wr(cfg, FIMG2D_DST_PAT_DIRECT_REG);
 	}
 
 	/* rotation -90 */
 	if (rev_rot90) {
-		cfg = readl(info->regs + FIMG2D_ROTATE_REG);
+		cfg = rd(FIMG2D_ROTATE_REG);
 		cfg |= FIMG2D_SRC_ROTATE_90;
 		cfg |= FIMG2D_MSK_ROTATE_90;
 
-		writel(cfg, info->regs + FIMG2D_ROTATE_REG);
+		wr(cfg, FIMG2D_ROTATE_REG);
 	}
 }
 
-void fimg2d4x_set_fgcolor(struct fimg2d_control *info, unsigned long fg)
+void fimg2d4x_set_fgcolor(struct fimg2d_control *ctrl, unsigned long fg)
 {
-	writel(fg, info->regs + FIMG2D_FG_COLOR_REG);
-		writel(fg, info->regs + FIMG2D_FG_COLOR_REG);
+	wr(fg, FIMG2D_FG_COLOR_REG);
 }
 
-void fimg2d4x_set_bgcolor(struct fimg2d_control *info, unsigned long bg)
+void fimg2d4x_set_bgcolor(struct fimg2d_control *ctrl, unsigned long bg)
 {
-	writel(bg, info->regs + FIMG2D_BG_COLOR_REG);
-		writel(bg, info->regs + FIMG2D_BG_COLOR_REG);
+	wr(bg, FIMG2D_BG_COLOR_REG);
 }
 
-void fimg2d4x_enable_alpha(struct fimg2d_control *info, unsigned char g_alpha)
+void fimg2d4x_enable_alpha(struct fimg2d_control *ctrl, unsigned char g_alpha)
 {
 	unsigned long cfg;
 
 	/* enable alpha */
-	cfg = readl(info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	cfg = rd(FIMG2D_BITBLT_COMMAND_REG);
 	cfg |= FIMG2D_ALPHA_BLEND_MODE;
 
-	writel(cfg, info->regs + FIMG2D_BITBLT_COMMAND_REG);
+	wr(cfg, FIMG2D_BITBLT_COMMAND_REG);
 
 	/*
 	 * global(constant) alpha
@@ -548,7 +569,7 @@ void fimg2d4x_enable_alpha(struct fimg2d_control *info, unsigned char g_alpha)
 	cfg |= g_alpha << 8;
 	cfg |= g_alpha << 16;
 	cfg |= g_alpha << 24;
-	writel(cfg, info->regs + FIMG2D_ALPHA_REG);
+	wr(cfg, FIMG2D_ALPHA_REG);
 }
 
 /**
@@ -725,7 +746,7 @@ static struct fimg2d_blend_coeff const ga_coeff_table[MAX_FIMG2D_BLIT_OP] = {
 	{ 1, COEFF_GA,		1, COEFF_ZERO },	/* USER_SRC_GA */
 };
 
-void fimg2d4x_set_alpha_composite(struct fimg2d_control *info,
+void fimg2d4x_set_alpha_composite(struct fimg2d_control *ctrl,
 		enum blit_op op, unsigned char g_alpha)
 {
 	int alphamode;
@@ -776,10 +797,10 @@ void fimg2d4x_set_alpha_composite(struct fimg2d_control *info,
 		break;
 	}
 
-	writel(cfg, info->regs + FIMG2D_BLEND_FUNCTION_REG);
+	wr(cfg, FIMG2D_BLEND_FUNCTION_REG);
 
 	/* round mode: depremult round mode is not used */
-	cfg = readl(info->regs + FIMG2D_ROUND_MODE_REG);
+	cfg = rd(FIMG2D_ROUND_MODE_REG);
 
 	/* premult */
 	cfg &= ~FIMG2D_PREMULT_ROUND_MASK;
@@ -789,10 +810,10 @@ void fimg2d4x_set_alpha_composite(struct fimg2d_control *info,
 	cfg &= ~FIMG2D_BLEND_ROUND_MASK;
 	cfg |= blend_round_mode << FIMG2D_BLEND_ROUND_SHIFT;
 
-	writel(cfg, info->regs + FIMG2D_ROUND_MODE_REG);
+	wr(cfg, FIMG2D_ROUND_MODE_REG);
 }
 
-void fimg2d4x_dump_regs(struct fimg2d_control *info)
+void fimg2d4x_dump_regs(struct fimg2d_control *ctrl)
 {
 	int i, offset;
 	unsigned long table[][2] = {
@@ -812,10 +833,10 @@ void fimg2d4x_dump_regs(struct fimg2d_control *info)
 		offset = table[i][0];
 		do {
 			printk(KERN_INFO "[0x%04x] 0x%08x 0x%08x 0x%08x 0x%08x\n", offset,
-				readl(info->regs + offset),
-				readl(info->regs + offset+0x4),
-				readl(info->regs + offset+0x8),
-				readl(info->regs + offset+0xc));
+				rd(offset),
+				rd(offset+0x4),
+				rd(offset+0x8),
+				rd(offset+0xc));
 			offset += 0x10;
 		} while (offset < table[i][1]);
 	}

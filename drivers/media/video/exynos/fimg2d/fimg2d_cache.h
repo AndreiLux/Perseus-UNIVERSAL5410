@@ -1,4 +1,4 @@
-/* linux/drivers/media/video/samsung/fimg2d4x/fimg2d_cache.h
+/* linux/drivers/media/video/exynos/fimg2d/fimg2d_cache.h
  *
  * Copyright (c) 2011 Samsung Electronics Co., Ltd.
  *	http://www.samsung.com/
@@ -46,8 +46,10 @@ enum pt_status {
 
 static inline bool is_inner_flushall(size_t size)
 {
-	if (soc_is_exynos5250())
+	if (ip_is_g2d_5g())
 		return (size >= SZ_1M * 25) ? true : false;
+	else if (ip_is_g2d_5a())
+		return (size >= SZ_1M * 8) ? true : false;
 	else
 		return (size >= L1_CACHE_SIZE) ? true : false;
 }
@@ -59,14 +61,10 @@ static inline bool is_outer_flushall(size_t size)
 
 static inline bool is_inner_flushrange(size_t hole)
 {
-	if (!soc_is_exynos5250())
+	if (hole < LINE_FLUSH_THRESHOLD)
 		return true;
-	else {
-		if (hole < LINE_FLUSH_THRESHOLD)
-			return true;
-		else
-			return false;	/* line-by-line flush */
-	}
+	else
+		return false;	/* line-by-line flush */
 }
 
 static inline bool is_outer_flushrange(size_t hole)
@@ -77,20 +75,32 @@ static inline bool is_outer_flushrange(size_t hole)
 		return false;	/* line-by-line flush */
 }
 
-static inline void fimg2d_dma_sync_inner(unsigned long addr, size_t size, int dir)
+void fimg2d_flush_cache_range(unsigned long, size_t);
+int fimg2d_fixup_user_fault(unsigned long address);
+
+static inline void fimg2d_dma_sync_inner(unsigned long addr, size_t size,
+		int dir)
 {
-	if (dir == DMA_TO_DEVICE)
+	if ((addr + size) < TASK_SIZE)
+		fimg2d_flush_cache_range(addr, size);
+	else
 		dmac_map_area((void *)addr, size, dir);
-	else if (dir == DMA_BIDIRECTIONAL)
-		dmac_flush_range((void *)addr, (void *)(addr + size));
 }
 
-static inline void fimg2d_dma_unsync_inner(unsigned long addr, size_t size, int dir)
+static inline void fimg2d_dma_unsync_inner(unsigned long addr, size_t size,
+		int dir)
 {
-	if (dir == DMA_TO_DEVICE)
+	if (dir != DMA_FROM_DEVICE)
+		return;
+	if ((addr + size) < TASK_SIZE)
+		fimg2d_flush_cache_range(addr, size);
+	else
 		dmac_unmap_area((void *)addr, size, dir);
 }
 
-void fimg2d_clean_outer_pagetable(struct mm_struct *mm, unsigned long addr, size_t size);
-void fimg2d_dma_sync_outer(struct mm_struct *mm, unsigned long addr, size_t size, enum cache_opr opr);
-enum pt_status fimg2d_check_pagetable(struct mm_struct *mm, unsigned long addr, size_t size);
+void fimg2d_clean_outer_pagetable(struct mm_struct *mm, unsigned long addr,
+		size_t size);
+void fimg2d_dma_sync_outer(struct mm_struct *mm, unsigned long addr,
+		size_t size, enum cache_opr opr);
+enum pt_status fimg2d_check_pagetable(struct mm_struct *mm, unsigned long addr,
+		size_t size);

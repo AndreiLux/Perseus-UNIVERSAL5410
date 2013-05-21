@@ -12,10 +12,9 @@ config VIDEO_EXYNOS_FIMG2D
 	---help---
 	  This is a graphics 2D driver for Samsung ARM based SoC.
 
-config VIDEO_FIMG2D_DEBUG
-	bool "Enables FIMG2D debug messages"
-	depends on VIDEO_EXYNOS_FIMG2D
+config FIMG2D_CCI_SNOOP
+	bool "Enables CCI snoop control"
+	depends on VIDEO_EXYNOS_FIMG2D && EXYNOS5_CCI
 	default n
 	---help---
-	  This enables FIMG2D driver debug messages.
-
+	  This enables CCI snoop control for cache coherency.
