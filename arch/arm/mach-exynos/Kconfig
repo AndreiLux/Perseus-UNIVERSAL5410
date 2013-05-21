@@ -152,6 +152,15 @@ config EXYNOS4_DEV_FIMC_LITE
 
 config EXYNOS4_DEV_FIMC_IS
 	bool
+	depends on (VIDEO_EXYNOS4_FIMC_IS)
+	default y
+	help
+	  Compile in platform device definition for FIMC-IS
+
+config EXYNOS5_DEV_FIMC_IS
+	bool
+	depends on (VIDEO_EXYNOS5_FIMC_IS)
+	default y
 	help
 	  Compile in platform device definition for FIMC-IS
 
@@ -285,6 +294,15 @@ config EXYNOS4_SETUP_USB_PHY
 
 config EXYNOS4_SETUP_FIMC_IS
 	bool
+	depends on (VIDEO_EXYNOS4_FIMC_IS)
+	default y
+	help
+	  Common setup code for the FIMC-IS-MC
+
+config EXYNOS5_SETUP_FIMC_IS
+	bool
+	depends on (VIDEO_EXYNOS5_FIMC_IS)
+	default y
 	help
 	  Common setup code for the FIMC-IS-MC
 

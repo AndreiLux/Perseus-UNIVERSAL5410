@@ -1,14 +1,33 @@
+/*
+ * drivers/media/video/exynos/fimc-is-mc2/fimc-is-interface.c
+ *
+ * Copyright (c) 2011 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
+ *
+ * The header file related to camera
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
 #include <linux/workqueue.h>
+#include <linux/bug.h>
 
 #include "fimc-is-time.h"
 #include "fimc-is-core.h"
 #include "fimc-is-cmd.h"
 #include "fimc-is-regs.h"
 #include "fimc-is-err.h"
+#include "fimc-is-groupmgr.h"
 
 #include "fimc-is-interface.h"
 
-u32 __iomem *notify_fcount;
+u32 __iomem *notify_fcount_sen0;
+u32 __iomem *notify_fcount_sen1;
+u32 __iomem *notify_fcount_sen2;
+u32 __iomem *last_fcount0;
+u32 __iomem *last_fcount1;
 
 #define init_request_barrier(itf) mutex_init(&itf->request_barrier)
 #define enter_request_barrier(itf) mutex_lock(&itf->request_barrier);
@@ -25,7 +44,7 @@ int print_fre_work_list(struct fimc_is_work_list *this)
 	if (!(this->id & TRACE_WORK_ID_MASK))
 		return 0;
 
-	printk(KERN_CONT "[INF] fre(%02X, %02d) :",
+	printk(KERN_ERR "[INF] fre(%02X, %02d) :",
 		this->id, this->work_free_cnt);
 
 	list_for_each(temp, &this->work_free_head) {
@@ -81,7 +100,7 @@ static int get_free_work(struct fimc_is_work_list *this,
 
 		spin_unlock_irqrestore(&this->slock_free, flags);
 	} else {
-		ret = EFAULT;
+		ret = -EFAULT;
 		err("item is null ptr");
 	}
 
@@ -106,7 +125,7 @@ static int get_free_work_irq(struct fimc_is_work_list *this,
 
 		spin_unlock(&this->slock_free);
 	} else {
-		ret = EFAULT;
+		ret = -EFAULT;
 		err("item is null ptr");
 	}
 
@@ -121,7 +140,7 @@ int print_req_work_list(struct fimc_is_work_list *this)
 	if (!(this->id & TRACE_WORK_ID_MASK))
 		return 0;
 
-	printk(KERN_CONT "[INF] req(%02X, %02d) :",
+	printk(KERN_ERR "[INF] req(%02X, %02d) :",
 		this->id, this->work_request_cnt);
 
 	list_for_each(temp, &this->work_request_head) {
@@ -151,7 +170,7 @@ static int set_req_work(struct fimc_is_work_list *this,
 
 		spin_unlock_irqrestore(&this->slock_request, flags);
 	} else {
-		ret = EFAULT;
+		ret = -EFAULT;
 		err("item is null ptr\n");
 	}
 
@@ -174,7 +193,7 @@ static int set_req_work_irq(struct fimc_is_work_list *this,
 
 		spin_unlock(&this->slock_request);
 	} else {
-		ret = EFAULT;
+		ret = -EFAULT;
 		err("item is null ptr\n");
 	}
 
@@ -200,7 +219,7 @@ static int get_req_work(struct fimc_is_work_list *this,
 
 		spin_unlock_irqrestore(&this->slock_request, flags);
 	} else {
-		ret = EFAULT;
+		ret = -EFAULT;
 		err("item is null ptr\n");
 	}
 
@@ -224,30 +243,51 @@ static void init_work_list(struct fimc_is_work_list *this, u32 id, u32 count)
 	init_waitqueue_head(&this->wait_queue);
 }
 
-static void set_state(struct fimc_is_interface *this,
-	unsigned long state)
+static int set_busystate(struct fimc_is_interface *this,
+	u32 command)
 {
-	spin_lock(&this->slock_state);
-	set_bit(state, &this->state);
-	spin_unlock(&this->slock_state);
+	int ret;
+
+	ret = test_and_set_bit(IS_IF_STATE_BUSY, &this->state);
+	if (ret)
+		warn("%d command : busy state is already set", command);
+
+	return ret;
 }
 
-static void clr_state(struct fimc_is_interface *this,
-	unsigned long state)
+static int clr_busystate(struct fimc_is_interface *this,
+	u32 command)
 {
-	spin_lock(&this->slock_state);
-	clear_bit(state, &this->state);
-	spin_unlock(&this->slock_state);
+	int ret;
+
+	ret = test_and_clear_bit(IS_IF_STATE_BUSY, &this->state);
+	if (!ret)
+		warn("%d command : busy state is already clr", command);
+
+	return !ret;
 }
 
-static int test_state(struct fimc_is_interface *this,
-	unsigned long state)
+static int test_busystate(struct fimc_is_interface *this)
 {
 	int ret = 0;
 
-	spin_lock(&this->slock_state);
-	ret = test_bit(state, &this->state);
-	spin_unlock(&this->slock_state);
+	ret = test_bit(IS_IF_STATE_BUSY, &this->state);
+
+	return ret;
+}
+
+static int wait_lockstate(struct fimc_is_interface *this)
+{
+	int ret = 0;
+
+	ret = wait_event_timeout(this->lock_wait_queue,
+		!atomic_read(&this->lock_pid), FIMC_IS_COMMAND_TIMEOUT);
+	if (ret) {
+		ret = 0;
+	} else {
+		err("timeout");
+		ret = -ETIME;
+	}
 
 	return ret;
 }
@@ -256,12 +296,11 @@ static int wait_idlestate(struct fimc_is_interface *this)
 {
 	int ret = 0;
 
-	ret = wait_event_timeout(this->wait_queue,
-		!test_state(this, IS_IF_STATE_BUSY), FIMC_IS_COMMAND_TIMEOUT);
-
-	if (ret)
+	ret = wait_event_timeout(this->idle_wait_queue,
+		!test_busystate(this), FIMC_IS_COMMAND_TIMEOUT);
+	if (ret) {
 		ret = 0;
-	else {
+	} else {
 		err("timeout");
 		ret = -ETIME;
 	}
@@ -274,11 +313,11 @@ static int wait_initstate(struct fimc_is_interface *this)
 	int ret = 0;
 
 	ret = wait_event_timeout(this->init_wait_queue,
-		test_state(this, IS_IF_STATE_START), FIMC_IS_STARTUP_TIMEOUT);
-
-	if (ret)
+		test_bit(IS_IF_STATE_START, &this->state),
+		FIMC_IS_STARTUP_TIMEOUT);
+	if (ret) {
 		ret = 0;
-	else {
+	} else {
 		err("timeout");
 		ret = -ETIME;
 	}
@@ -286,51 +325,16 @@ static int wait_initstate(struct fimc_is_interface *this)
 	return ret;
 }
 
-static int testnset_state(struct fimc_is_interface *this,
-	unsigned long state)
+static void testnclr_wakeup(struct fimc_is_interface *this,
+	u32 command)
 {
 	int ret = 0;
 
-	spin_lock(&this->slock_state);
-
-	if (test_bit(state, &this->state)) {
-		ret = -EINVAL;
-		goto exit;
-	}
-	set_bit(state, &this->state);
-
-exit:
-	spin_unlock(&this->slock_state);
-	return ret;
-}
-
-static int testnclr_state(struct fimc_is_interface *this,
-	unsigned long state)
-{
-	int ret = 0;
-
-	spin_lock(&this->slock_state);
-
-	if (!test_bit(state, &this->state)) {
-		ret = -EINVAL;
-		goto exit;
-	}
-	clear_bit(state, &this->state);
-
-exit:
-	spin_unlock(&this->slock_state);
-	return ret;
-}
-
-static void testnclr_wakeup(struct fimc_is_interface *this)
-{
-	int ret = 0;
-
-	ret = testnclr_state(this, IS_IF_STATE_BUSY);
+	ret = clr_busystate(this, command);
 	if (ret)
-		err("current state is not invalid(%ld)", this->state);
-	else
-		wake_up(&this->wait_queue);
+		err("current state is invalid(%ld)", this->state);
+
+	wake_up(&this->idle_wait_queue);
 }
 
 static int waiting_is_ready(struct fimc_is_interface *interface)
@@ -343,9 +347,10 @@ static int waiting_is_ready(struct fimc_is_interface *interface)
 	while (status) {
 		cfg = readl(interface->regs + INTMSR0);
 		status = INTMSR0_GET_INTMSD0(cfg);
+		udelay(100);
+		pr_warn("Retry to read INTMSR0(%d)", try_count);
 
-		if (try_count-- == 0) {
-			try_count = TRY_RECV_AWARE_COUNT;
+		if (--try_count == 0) {
 			err("INTMSR0's 0 bit is not cleared.");
 			ret = -EINVAL;
 			break;
@@ -361,10 +366,33 @@ static void send_interrupt(struct fimc_is_interface *interface)
 }
 
 static int fimc_is_set_cmd(struct fimc_is_interface *itf,
-	struct fimc_is_msg *msg)
+	struct fimc_is_msg *msg,
+	struct fimc_is_msg *reply)
 {
 	int ret = 0;
-	bool block_io, send_cmd;
+	int wait_lock = 0;
+	u32 lock_pid = 0;
+
+	BUG_ON(!itf);
+	BUG_ON(!msg);
+	BUG_ON(msg->instance >= FIMC_IS_MAX_NODES);
+	BUG_ON(!reply);
+
+	if (!test_bit(IS_IF_STATE_OPEN, &itf->state)) {
+		warn("interface close, %d cmd is cancel", msg->command);
+		goto exit;
+	}
+
+	lock_pid = atomic_read(&itf->lock_pid);
+	if (lock_pid && (lock_pid != current->pid)) {
+		pr_warn("itf LOCK, %d(%d) wait\n", current->pid, msg->command);
+		wait_lock = wait_lockstate(itf);
+		pr_warn("itf UNLOCK, %d(%d) go\n", current->pid, msg->command);
+		if (wait_lock) {
+			err("wait_lockstate is fail, lock reset");
+			atomic_set(&itf->lock_pid, 0);
+		}
+	}
 
 	dbg_interface("TP#1\n");
 	enter_request_barrier(itf);
@@ -372,84 +400,50 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 
 	switch (msg->command) {
 	case HIC_STREAM_ON:
-		if (itf->streaming == IS_IF_STREAMING_ON) {
-			send_cmd = false;
-		} else {
-			send_cmd = true;
-			block_io = true;
-		}
+		if (itf->streaming[msg->instance] == IS_IF_STREAMING_ON)
+			warn("already stream on");
 		break;
 	case HIC_STREAM_OFF:
-		if (itf->streaming == IS_IF_STREAMING_OFF) {
-			send_cmd = false;
-		} else {
-			send_cmd = true;
-			block_io = true;
-		}
+		if (itf->streaming[msg->instance] == IS_IF_STREAMING_OFF)
+			warn("already stream off");
 		break;
 	case HIC_PROCESS_START:
-		if (itf->processing == IS_IF_PROCESSING_ON) {
-			send_cmd = false;
-		} else {
-			send_cmd = true;
-			block_io = true;
-		}
+		if (itf->processing[msg->instance] == IS_IF_PROCESSING_ON)
+			warn("already process on");
 		break;
 	case HIC_PROCESS_STOP:
-		if (itf->processing == IS_IF_PROCESSING_OFF) {
-			send_cmd = false;
-		} else {
-			send_cmd = true;
-			block_io = true;
-		}
+		if (itf->processing[msg->instance] == IS_IF_PROCESSING_OFF)
+			warn("already process off");
 		break;
 	case HIC_POWER_DOWN:
-		if (itf->pdown_ready == IS_IF_POWER_DOWN_READY) {
-			send_cmd = false;
-		} else {
-			send_cmd = true;
-			block_io = true;
-		}
-		break;
-	case HIC_OPEN_SENSOR:
-	case HIC_GET_SET_FILE_ADDR:
-	case HIC_SET_PARAMETER:
-	case HIC_PREVIEW_STILL:
-	case HIC_GET_STATIC_METADATA:
-	case HIC_SET_A5_MEM_ACCESS:
-	case HIC_SET_CAM_CONTROL:
-		send_cmd = true;
-		block_io = true;
-		break;
-	case HIC_SHOT:
-	case ISR_DONE:
-		send_cmd = true;
-		block_io = false;
+		if (itf->pdown_ready == IS_IF_POWER_DOWN_READY)
+			warn("already powerdown ready");
 		break;
 	default:
-		send_cmd = true;
-		block_io = true;
+		if (itf->pdown_ready == IS_IF_POWER_DOWN_READY) {
+			exit_request_barrier(itf);
+			warn("already powerdown ready, %d cmd is cancel",
+				msg->command);
+			goto exit;
+		}
 		break;
-	}
-
-	if (!send_cmd) {
-		dbg_interface("skipped\n");
-		goto exit;
 	}
 
 	enter_process_barrier(itf);
 
 	ret = waiting_is_ready(itf);
 	if (ret) {
+		exit_request_barrier(itf);
+		exit_process_barrier(itf);
 		err("waiting for ready is fail");
 		ret = -EBUSY;
-		exit_process_barrier(itf);
 		goto exit;
 	}
 
-	set_state(itf, IS_IF_STATE_BUSY);
+	set_busystate(itf, msg->command);
 	itf->com_regs->hicmd = msg->command;
-	itf->com_regs->hic_sensorid = msg->instance;
+	itf->com_regs->hic_sensorid =
+		((msg->group<<GROUP_ID_SHIFT) | msg->instance);
 	itf->com_regs->hic_param1 = msg->parameter1;
 	itf->com_regs->hic_param2 = msg->parameter2;
 	itf->com_regs->hic_param3 = msg->parameter3;
@@ -458,42 +452,48 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 
 	exit_process_barrier(itf);
 
-	if (!block_io)
-		goto exit;
-
 	ret = wait_idlestate(itf);
 	if (ret) {
+		exit_request_barrier(itf);
 		err("%d command is timeout", msg->command);
-		clr_state(itf, IS_IF_STATE_BUSY);
+		clr_busystate(itf, msg->command);
 		ret = -ETIME;
 		goto exit;
 	}
 
-	if (itf->reply.command == ISR_DONE) {
+	reply->command = itf->reply.command;
+	reply->group = itf->reply.group;
+	reply->instance = itf->reply.instance;
+	reply->parameter1 = itf->reply.parameter1;
+	reply->parameter2 = itf->reply.parameter2;
+	reply->parameter3 = itf->reply.parameter3;
+	reply->parameter4 = itf->reply.parameter4;
+
+	if (reply->command == ISR_DONE) {
 		switch (msg->command) {
 		case HIC_STREAM_ON:
-			itf->streaming = IS_IF_STREAMING_ON;
+			itf->streaming[msg->instance] = IS_IF_STREAMING_ON;
 			break;
 		case HIC_STREAM_OFF:
-			itf->streaming = IS_IF_STREAMING_OFF;
+			itf->streaming[msg->instance] = IS_IF_STREAMING_OFF;
 			break;
 		case HIC_PROCESS_START:
-			itf->processing = IS_IF_PROCESSING_ON;
+			itf->processing[msg->instance] = IS_IF_PROCESSING_ON;
 			break;
 		case HIC_PROCESS_STOP:
-			itf->processing = IS_IF_PROCESSING_OFF;
+			itf->processing[msg->instance] = IS_IF_PROCESSING_OFF;
 			break;
 		case HIC_POWER_DOWN:
 			itf->pdown_ready = IS_IF_POWER_DOWN_READY;
 			break;
 		case HIC_OPEN_SENSOR:
-			if (itf->reply.parameter1 == HIC_POWER_DOWN) {
+			if (reply->parameter1 == HIC_POWER_DOWN) {
 				err("firmware power down");
 				itf->pdown_ready = IS_IF_POWER_DOWN_READY;
 				ret = -ECANCELED;
-				goto exit;
-			} else
+			} else {
 				itf->pdown_ready = IS_IF_POWER_DOWN_NREADY;
+			}
 			break;
 		default:
 			break;
@@ -503,9 +503,9 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 		ret = -EINVAL;
 	}
 
-exit:
 	exit_request_barrier(itf);
 
+exit:
 	if (ret)
 		fimc_is_hw_print(itf);
 
@@ -517,25 +517,41 @@ static int fimc_is_set_cmd_shot(struct fimc_is_interface *this,
 {
 	int ret = 0;
 
+	BUG_ON(!this);
+	BUG_ON(!msg);
+	BUG_ON(msg->instance >= FIMC_IS_MAX_NODES);
+
+	if (!test_bit(IS_IF_STATE_OPEN, &this->state)) {
+		warn("interface close, %d cmd is cancel", msg->command);
+		goto exit;
+	}
+
 	enter_process_barrier(this);
 
 	ret = waiting_is_ready(this);
 	if (ret) {
+		exit_process_barrier(this);
 		err("waiting for ready is fail");
 		ret = -EBUSY;
 		goto exit;
 	}
 
+	spin_lock_irq(&this->shot_check_lock);
+	atomic_set(&this->shot_check[msg->instance], 1);
+	spin_unlock_irq(&this->shot_check_lock);
+
 	this->com_regs->hicmd = msg->command;
-	this->com_regs->hic_sensorid = msg->instance;
+	this->com_regs->hic_sensorid =
+		((msg->group<<GROUP_ID_SHIFT) | msg->instance);
 	this->com_regs->hic_param1 = msg->parameter1;
 	this->com_regs->hic_param2 = msg->parameter2;
 	this->com_regs->hic_param3 = msg->parameter3;
 	this->com_regs->hic_param4 = msg->parameter4;
 	send_interrupt(this);
 
-exit:
 	exit_process_barrier(this);
+
+exit:
 	return ret;
 }
 
@@ -601,6 +617,15 @@ static inline void fimc_is_get_cmd(struct fimc_is_interface *itf,
 		msg->parameter3 = com_regs->scc_param3;
 		msg->parameter4 = 0;
 		break;
+	case INTR_DIS_FDONE:
+		msg->id = 0;
+		msg->command = IHC_FRAME_DONE;
+		msg->instance = com_regs->dis_sensor_id;
+		msg->parameter1 = com_regs->dis_param1;
+		msg->parameter2 = com_regs->dis_param2;
+		msg->parameter3 = com_regs->dis_param3;
+		msg->parameter4 = 0;
+		break;
 	case INTR_SCP_FDONE:
 		msg->id = 0;
 		msg->command = IHC_FRAME_DONE;
@@ -625,8 +650,11 @@ static inline void fimc_is_get_cmd(struct fimc_is_interface *itf,
 		msg->instance = com_regs->shot_sensor_id;
 		msg->parameter1 = com_regs->shot_param1;
 		msg->parameter2 = com_regs->shot_param2;
-		msg->parameter3 = 0;
+		msg->parameter3 = com_regs->shot_param3;
 		msg->parameter4 = 0;
+
+		/* debugging for lost shot done */
+		com_regs->shot_param1 = 0;
 		break;
 	default:
 		msg->id = 0;
@@ -639,6 +667,9 @@ static inline void fimc_is_get_cmd(struct fimc_is_interface *itf,
 		err("unknown command getting\n");
 		break;
 	}
+
+	msg->group = msg->instance >> GROUP_ID_SHIFT;
+	msg->instance = msg->instance & GROUP_ID_MASK;
 }
 
 static inline u32 fimc_is_get_intr(struct fimc_is_interface *itf)
@@ -648,6 +679,7 @@ static inline u32 fimc_is_get_intr(struct fimc_is_interface *itf)
 
 	status = readl(itf->regs + INTMSR1) | com_regs->ihcmd_iflag |
 		com_regs->scc_iflag |
+		com_regs->dis_iflag |
 		com_regs->scp_iflag |
 		com_regs->meta_iflag |
 		com_regs->shot_iflag;
@@ -668,6 +700,10 @@ static inline void fimc_is_clr_intr(struct fimc_is_interface *itf,
 	case INTR_SCC_FDONE:
 		writel((1<<INTR_SCC_FDONE), itf->regs + INTCR1);
 		com_regs->scc_iflag = 0;
+		break;
+	case INTR_DIS_FDONE:
+		writel((1<<INTR_DIS_FDONE), itf->regs + INTCR1);
+		com_regs->dis_iflag = 0;
 		break;
 	case INTR_SCP_FDONE:
 		writel((1<<INTR_SCP_FDONE), itf->regs + INTCR1);
@@ -695,16 +731,19 @@ static void wq_func_general(struct work_struct *data)
 	struct fimc_is_work *nblk_work;
 
 	itf = container_of(data, struct fimc_is_interface,
-		work_queue[INTR_GENERAL]);
+		work_wq[INTR_GENERAL]);
 
 	get_req_work(&itf->work_list[INTR_GENERAL], &work);
 	while (work) {
 		msg = &work->msg;
 		switch (msg->command) {
 		case IHC_GET_SENSOR_NUMBER:
-			printk(KERN_INFO "IS version : %d.%d\n",
-				ISDRV_VERSION, msg->parameter1);
-			set_state(itf, IS_IF_STATE_START);
+			pr_err("IS version: %d.%d [0x%02x]\n",
+				ISDRV_VERSION, msg->parameter1,
+				get_drv_clock_gate() |
+				get_drv_dvfs());
+			set_bit(IS_IF_STATE_START, &itf->state);
+			itf->pdown_ready = IS_IF_POWER_DOWN_NREADY;
 			wake_up(&itf->init_wait_queue);
 			break;
 		case ISR_DONE:
@@ -713,62 +752,62 @@ static void wq_func_general(struct work_struct *data)
 				dbg_interface("open done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				testnclr_wakeup(itf);
+				testnclr_wakeup(itf, msg->parameter1);
 				break;
 			case HIC_GET_SET_FILE_ADDR:
 				dbg_interface("saddr(%p) done\n",
 					(void *)msg->parameter2);
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				testnclr_wakeup(itf);
+				testnclr_wakeup(itf, msg->parameter1);
 				break;
 			case HIC_LOAD_SET_FILE:
 				dbg_interface("setfile done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				testnclr_wakeup(itf);
+				testnclr_wakeup(itf, msg->parameter1);
 				break;
 			case HIC_SET_A5_MEM_ACCESS:
 				dbg_interface("cfgmem done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				testnclr_wakeup(itf);
+				testnclr_wakeup(itf, msg->parameter1);
 				break;
 			case HIC_PROCESS_START:
 				dbg_interface("process_on done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				testnclr_wakeup(itf);
+				testnclr_wakeup(itf, msg->parameter1);
 				break;
 			case HIC_PROCESS_STOP:
 				dbg_interface("process_off done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				testnclr_wakeup(itf);
+				testnclr_wakeup(itf, msg->parameter1);
 				break;
 			case HIC_STREAM_ON:
 				dbg_interface("stream_on done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				testnclr_wakeup(itf);
+				testnclr_wakeup(itf, msg->parameter1);
 				break;
 			case HIC_STREAM_OFF:
 				dbg_interface("stream_off done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				testnclr_wakeup(itf);
+				testnclr_wakeup(itf, msg->parameter1);
 				break;
 			case HIC_SET_PARAMETER:
 				dbg_interface("s_param done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				testnclr_wakeup(itf);
+				testnclr_wakeup(itf, msg->parameter1);
 				break;
 			case HIC_GET_STATIC_METADATA:
 				dbg_interface("g_capability done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				testnclr_wakeup(itf);
+				testnclr_wakeup(itf, msg->parameter1);
 				break;
 			case HIC_PREVIEW_STILL:
 				dbg_interface("a_param(%dx%d) done\n",
@@ -776,13 +815,19 @@ static void wq_func_general(struct work_struct *data)
 					msg->parameter3);
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				testnclr_wakeup(itf);
+				testnclr_wakeup(itf, msg->parameter1);
 				break;
 			case HIC_POWER_DOWN:
 				dbg_interface("powerdown done\n");
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				testnclr_wakeup(itf);
+				testnclr_wakeup(itf, msg->parameter1);
+				break;
+			case HIC_I2C_CONTROL_LOCK:
+				dbg_interface("i2c lock done\n");
+				memcpy(&itf->reply, msg,
+					sizeof(struct fimc_is_msg));
+				testnclr_wakeup(itf, msg->parameter1);
 				break;
 			/*non-blocking command*/
 			case HIC_SHOT:
@@ -816,7 +861,8 @@ static void wq_func_general(struct work_struct *data)
 		case ISR_NDONE:
 			switch (msg->parameter1) {
 			case HIC_SHOT:
-				err("shot NOT done is not acceptable\n");
+				err("[ITF:%d] shot NDONE is not acceptable",
+					msg->instance);
 				break;
 			case HIC_SET_CAM_CONTROL:
 				dbg_interface("camctrl NOT done\n");
@@ -831,13 +877,13 @@ static void wq_func_general(struct work_struct *data)
 				err("param4 : 0x%08X", msg->parameter4);
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				testnclr_wakeup(itf);
+				testnclr_wakeup(itf, msg->parameter1);
 				break;
 			default:
 				err("a command(%d) not done", msg->parameter1);
 				memcpy(&itf->reply, msg,
 					sizeof(struct fimc_is_msg));
-				testnclr_wakeup(itf);
+				testnclr_wakeup(itf, msg->parameter1);
 				break;
 			}
 			break;
@@ -858,6 +904,7 @@ static void wq_func_general(struct work_struct *data)
 			break;
 		case IHC_NOT_READY:
 			err("IHC_NOT_READY is occured, need reset");
+			fimc_is_hw_print(itf);
 			break;
 		default:
 			err("func_general unknown(0x%08X) end\n", msg->command);
@@ -869,160 +916,405 @@ static void wq_func_general(struct work_struct *data)
 	}
 }
 
+static void wq_func_subdev(struct fimc_is_subdev *leader,
+	struct fimc_is_subdev *subdev,
+	u32 fcount, u32 rcount, u32 status, u32 instance)
+{
+	u32 findex;
+	u32 out_flag;
+	char name;
+	unsigned long flags;
+	struct fimc_is_video_ctx *ldr_vctx, *sub_vctx;
+	struct fimc_is_framemgr *ldr_framemgr, *sub_framemgr;
+	struct fimc_is_frame *ldr_frame, *sub_frame;
+
+	BUG_ON(!leader);
+	BUG_ON(!subdev);
+
+	ldr_vctx = leader->vctx;
+	if (!ldr_vctx) {
+		err("ldr_vctx is NULL");
+		return;
+	}
+
+	sub_vctx = subdev->vctx;
+	if (!sub_vctx) {
+		err("sub_vctx is NULL");
+		return;
+	}
+
+	if (!sub_vctx->video) {
+		err("video is NULL");
+		return;
+	}
+
+	ldr_framemgr = GET_SRC_FRAMEMGR(ldr_vctx);
+	sub_framemgr = GET_DST_FRAMEMGR(sub_vctx);
+
+	switch (sub_vctx->video->id) {
+	case FIMC_IS_VIDEO_SCC_NUM:
+		out_flag = OUT_SCC_FRAME;
+		name = 'C';
+		break;
+	case FIMC_IS_VIDEO_VDC_NUM:
+		out_flag = OUT_DIS_FRAME;
+		name = 'D';
+		break;
+	case FIMC_IS_VIDEO_SCP_NUM:
+		out_flag = OUT_SCP_FRAME;
+		name = 'P';
+		break;
+	default:
+		err("video node is invalid(%d)", sub_vctx->video->id);
+		return;
+	}
+
+	framemgr_e_barrier_irqs(sub_framemgr, 0, flags);
+
+	fimc_is_frame_process_head(sub_framemgr, &sub_frame);
+	if (sub_frame && test_bit(REQ_FRAME, &sub_frame->req_flag)) {
+
+#ifdef DBG_STREAMING
+		pr_info("[%c:D:%d] %d(%d,%d)\n", name, instance,
+			sub_frame->index, fcount, rcount);
+#endif
+
+		if (!sub_frame->stream) {
+			err("stream is NULL, critical error");
+			goto p_err;
+		}
+
+		findex = sub_frame->stream->findex;
+		if (findex >= ldr_vctx->q_src.buf_maxcount) {
+			err("findex(%d) is invalid(max : %d)",
+				findex, ldr_vctx->q_src.buf_maxcount);
+			sub_frame->stream->fvalid = 0;
+			goto done;
+		}
+
+		if (status) {
+			pr_err("[%c:D:%d] FRM%d NOT DONE(%d)\n", name,
+				instance, fcount, status);
+			sub_frame->stream->fvalid = 0;
+			goto done;
+		}
+
+		ldr_frame = &ldr_framemgr->frame[findex];
+		if (ldr_frame->fcount != fcount) {
+			err("%c frame mismatched(ldr%d, sub%d)", name,
+				ldr_frame->fcount, fcount);
+			sub_frame->stream->fvalid = 0;
+		} else {
+			sub_frame->stream->fvalid = 1;
+			clear_bit(out_flag, &ldr_frame->out_flag);
+		}
+
+done:
+		clear_bit(REQ_FRAME, &sub_frame->req_flag);
+		sub_frame->stream->fcount = fcount;
+		sub_frame->stream->rcount = rcount;
+
+		fimc_is_frame_trans_pro_to_com(sub_framemgr, sub_frame);
+		buffer_done(sub_vctx, sub_frame->index);
+	} else
+		err("done(%p) is occured without request", sub_frame);
+
+p_err:
+	framemgr_x_barrier_irqr(sub_framemgr, 0, flags);
+}
+
 static void wq_func_scc(struct work_struct *data)
 {
+	u32 instance, fcount, rcount, status;
 	struct fimc_is_interface *itf;
-	struct fimc_is_msg *msg;
-	struct fimc_is_framemgr *isp_framemgr;
-	struct fimc_is_framemgr *scc_framemgr;
-	struct fimc_is_frame_shot *isp_frame;
-	struct fimc_is_frame_shot *scc_frame;
-	struct fimc_is_device_ischain *ischain;
-	struct fimc_is_ischain_dev *dev;
-	struct fimc_is_video_common *video;
+	struct fimc_is_device_ischain *device;
+	struct fimc_is_subdev *leader, *subdev;
 	struct fimc_is_work *work;
-	unsigned long flags;
-	u32 fcount;
-	u32 rcount;
-	u32 findex;
+	struct fimc_is_msg *msg;
 
 	itf = container_of(data, struct fimc_is_interface,
-		work_queue[INTR_SCC_FDONE]);
-	video = itf->video_scc;
-	ischain = video->device;
-	dev = &ischain->scc;
-	isp_framemgr = ischain->framemgr;
-	scc_framemgr = &dev->framemgr;
+		work_wq[INTR_SCC_FDONE]);
 
 	get_req_work(&itf->work_list[INTR_SCC_FDONE], &work);
 	while (work) {
 		msg = &work->msg;
+		instance = msg->instance;
 		fcount = msg->parameter1;
+		status = msg->parameter2;
 		rcount = msg->parameter3;
 
-		framemgr_e_barrier_irqs(scc_framemgr, FMGR_IDX_4, flags);
+		if (instance >= FIMC_IS_MAX_NODES) {
+			err("instance is invalid(%d)", instance);
+			goto p_err;
+		}
 
-		fimc_is_frame_process_head(scc_framemgr, &scc_frame);
-		if (scc_frame && test_bit(REQ_FRAME, &scc_frame->req_flag)) {
-			clear_bit(REQ_FRAME, &scc_frame->req_flag);
+		device = &((struct fimc_is_core *)itf->core)->ischain[instance];
+		if (!device) {
+			err("device is NULL");
+			goto p_err;
+		}
 
-#ifdef DBG_STREAMING
-			printk(KERN_INFO "C%d(%d,%d)\n", scc_frame->index,
-				fcount, rcount);
-#endif
-#ifdef USE_FRAME_SYNC
-			findex = scc_frame->stream->findex;
-			isp_frame = &isp_framemgr->frame[findex];
-			if (isp_frame->fcount != fcount)
-				err("scc mismatched(%d, %d)",
-					isp_frame->fcount, fcount);
+		subdev = &device->scc;
+		leader = subdev->leader;
 
-			scc_frame->stream->fcount = fcount;
-			scc_frame->stream->rcount = rcount;
-			isp_frame->scc_out = FIMC_IS_FOUT_DONE;
-#endif
+		wq_func_subdev(leader, subdev, fcount, rcount, status, instance);
 
-			fimc_is_frame_trans_pro_to_com(scc_framemgr, scc_frame);
-			buffer_done(video, scc_frame->index);
-		} else
-			err("done(%p) is occured without request\n", scc_frame);
-
-		framemgr_x_barrier_irqr(scc_framemgr, FMGR_IDX_4, flags);
-
+p_err:
 		set_free_work(&itf->work_list[INTR_SCC_FDONE], work);
 		get_req_work(&itf->work_list[INTR_SCC_FDONE], &work);
 	}
 }
 
-static void wq_func_scp(struct work_struct *data)
+static void wq_func_dis(struct work_struct *data)
 {
+	u32 instance, fcount, rcount, status;
 	struct fimc_is_interface *itf;
-	struct fimc_is_msg *msg;
-	struct fimc_is_framemgr *isp_framemgr;
-	struct fimc_is_framemgr *scp_framemgr;
-	struct fimc_is_frame_shot *isp_frame;
-	struct fimc_is_frame_shot *scp_frame;
-	struct fimc_is_device_ischain *ischain;
-	struct fimc_is_ischain_dev *dev;
-	struct fimc_is_video_common *video;
+	struct fimc_is_device_ischain *device;
+	struct fimc_is_subdev *leader, *subdev;
 	struct fimc_is_work *work;
-	unsigned long flags;
-	u32 fcount;
-	u32 rcount;
-	u32 findex;
+	struct fimc_is_msg *msg;
 
 	itf = container_of(data, struct fimc_is_interface,
-		work_queue[INTR_SCP_FDONE]);
-	video = itf->video_scp;
-	ischain = video->device;
-	dev = &ischain->scp;
-	isp_framemgr = ischain->framemgr;
-	scp_framemgr = &dev->framemgr;
+		work_wq[INTR_DIS_FDONE]);
+
+	get_req_work(&itf->work_list[INTR_DIS_FDONE], &work);
+	while (work) {
+		msg = &work->msg;
+		instance = msg->instance;
+		fcount = msg->parameter1;
+		status = msg->parameter2;
+		rcount = msg->parameter3;
+
+		if (instance >= FIMC_IS_MAX_NODES) {
+			err("instance is invalid(%d)", instance);
+			goto p_err;
+		}
+
+		device = &((struct fimc_is_core *)itf->core)->ischain[instance];
+		if (!device) {
+			err("device is NULL");
+			goto p_err;
+		}
+
+		subdev = &device->dis;
+		leader = subdev->leader;
+
+		wq_func_subdev(leader, subdev, fcount, rcount, status, instance);
+
+p_err:
+		set_free_work(&itf->work_list[INTR_DIS_FDONE], work);
+		get_req_work(&itf->work_list[INTR_DIS_FDONE], &work);
+	}
+}
+
+static void wq_func_scp(struct work_struct *data)
+{
+	u32 instance, fcount, rcount, status;
+	struct fimc_is_interface *itf;
+	struct fimc_is_device_ischain *device;
+	struct fimc_is_subdev *leader, *subdev;
+	struct fimc_is_work *work;
+	struct fimc_is_msg *msg;
+
+	itf = container_of(data, struct fimc_is_interface,
+		work_wq[INTR_SCP_FDONE]);
 
 	get_req_work(&itf->work_list[INTR_SCP_FDONE], &work);
 	while (work) {
 		msg = &work->msg;
+		instance = msg->instance;
 		fcount = msg->parameter1;
+		status = msg->parameter2;
 		rcount = msg->parameter3;
 
-		framemgr_e_barrier_irqs(scp_framemgr, FMGR_IDX_4, flags);
+		if (instance >= FIMC_IS_MAX_NODES) {
+			err("instance is invalid(%d)", instance);
+			goto p_err;
+		}
 
-		fimc_is_frame_process_head(scp_framemgr, &scp_frame);
-		if (scp_frame && test_bit(REQ_FRAME, &scp_frame->req_flag)) {
-			clear_bit(REQ_FRAME, &scp_frame->req_flag);
+		device = &((struct fimc_is_core *)itf->core)->ischain[instance];
+		if (!device) {
+			err("device is NULL");
+			goto p_err;
+		}
 
-#ifdef DBG_STREAMING
-			printk(KERN_INFO "P%d(%d,%d)\n", scp_frame->index,
-				fcount, rcount);
-#endif
-#ifdef USE_FRAME_SYNC
-			findex = scp_frame->stream->findex;
-			isp_frame = &isp_framemgr->frame[findex];
-			if (isp_frame->fcount != fcount)
-				err("scp mismatched(%d, %d)",
-					isp_frame->fcount, fcount);
+		subdev = &device->scp;
+		leader = subdev->leader;
 
-			scp_frame->stream->fcount = fcount;
-			scp_frame->stream->rcount = rcount;
-			isp_frame->scp_out = FIMC_IS_FOUT_DONE;
-#endif
+		wq_func_subdev(leader, subdev, fcount, rcount, status, instance);
 
-			fimc_is_frame_trans_pro_to_com(scp_framemgr, scp_frame);
-			buffer_done(video, scp_frame->index);
-		} else
-			err("done is occured without request(%p)", scp_frame);
-
-		framemgr_x_barrier_irqr(scp_framemgr, FMGR_IDX_4, flags);
-
+p_err:
 		set_free_work(&itf->work_list[INTR_SCP_FDONE], work);
 		get_req_work(&itf->work_list[INTR_SCP_FDONE], &work);
 	}
 }
 
-static void wq_func_isp(struct fimc_is_interface *itf,
-	struct fimc_is_framemgr *framemgr,
-	struct fimc_is_frame_shot *frame)
+static void wq_func_group_3a0(struct fimc_is_groupmgr *groupmgr,
+	struct fimc_is_group *group,
+	struct fimc_is_framemgr *ldr_framemgr,
+	struct fimc_is_frame *ldr_frame,
+	struct fimc_is_framemgr *sub_framemgr,
+	struct fimc_is_video_ctx *vctx,
+	u32 status)
 {
-	u32 index;
+	u32 done_state = VB2_BUF_STATE_DONE;
+	unsigned long flags;
+	struct fimc_is_queue *src_queue, *dst_queue;
+	struct fimc_is_frame *sub_frame;
+
+	BUG_ON(!vctx);
+	BUG_ON(!ldr_framemgr);
+	BUG_ON(!ldr_frame);
+	BUG_ON(!sub_framemgr);
+
+	if (status != ISR_DONE) {
+		pr_err("[3A0:D:%d] GRP0 NOT DONE(%d, %d)\n", group->instance,
+			ldr_frame->fcount, ldr_frame->index);
+		ldr_frame->shot_ext->request_3ax = 0;
+		/* HACK : VB2_BUF_STATE_ERROR */
+		done_state = VB2_BUF_STATE_DONE;
+	}
+
+#ifdef DBG_STREAMING
+	if (status == ISR_DONE)
+		pr_info("[3A0:D:%d] GRP0 DONE(%d)\n", group->instance,
+			ldr_frame->fcount);
+#endif
+
+	src_queue = GET_SRC_QUEUE(vctx);
+	dst_queue = GET_DST_QUEUE(vctx);
+
+	/* 1. sub frame done */
+	framemgr_e_barrier_irqs(sub_framemgr, 0, flags);
+
+	fimc_is_frame_process_head(sub_framemgr, &sub_frame);
+	if (sub_frame && test_bit(REQ_FRAME, &sub_frame->req_flag)) {
+		clear_bit(REQ_FRAME, &sub_frame->req_flag);
+
+		sub_frame->stream->fvalid = 1;
+		sub_frame->stream->fcount = ldr_frame->fcount;
+		sub_frame->stream->rcount = ldr_frame->rcount;
+
+		fimc_is_frame_trans_pro_to_com(sub_framemgr, sub_frame);
+		queue_done(vctx, dst_queue, sub_frame->index, done_state);
+	} else
+		err("done is occured without request(%p, %d)", sub_frame, ldr_frame->fcount);
+
+	framemgr_x_barrier_irqr(sub_framemgr, 0, flags);
+
+	/* 2. leader frame done */
+	fimc_is_ischain_meta_invalid(ldr_frame);
+
+	fimc_is_frame_trans_pro_to_com(ldr_framemgr, ldr_frame);
+	fimc_is_group_done(groupmgr, group);
+	queue_done(vctx, src_queue, ldr_frame->index, done_state);
+}
+
+static void wq_func_group_3a1(struct fimc_is_groupmgr *groupmgr,
+	struct fimc_is_group *group,
+	struct fimc_is_framemgr *ldr_framemgr,
+	struct fimc_is_frame *ldr_frame,
+	struct fimc_is_framemgr *sub_framemgr,
+	struct fimc_is_video_ctx *vctx,
+	u32 status)
+{
+	u32 done_state = VB2_BUF_STATE_DONE;
+	unsigned long flags;
+	struct fimc_is_queue *src_queue, *dst_queue;
+	struct fimc_is_frame *sub_frame;
+
+	BUG_ON(!vctx);
+	BUG_ON(!ldr_framemgr);
+	BUG_ON(!ldr_frame);
+	BUG_ON(!sub_framemgr);
+
+	if (status != ISR_DONE) {
+		pr_err("[3A1:D:%d] GRP1 NOT DONE(%d, %d)\n", group->instance,
+			ldr_frame->fcount, ldr_frame->index);
+		ldr_frame->shot_ext->request_3ax = 0;
+		/* HACK : VB2_BUF_STATE_ERROR */
+		done_state = VB2_BUF_STATE_DONE;
+	}
+
+#ifdef DBG_STREAMING
+	if (status == ISR_DONE)
+		pr_info("[3A1:D:%d] GRP1 DONE(%d)\n", group->instance,
+			ldr_frame->fcount);
+#endif
+
+	src_queue = GET_SRC_QUEUE(vctx);
+	dst_queue = GET_DST_QUEUE(vctx);
+
+	/* 1. sub frame done */
+	framemgr_e_barrier_irqs(sub_framemgr, 0, flags);
+
+	fimc_is_frame_process_head(sub_framemgr, &sub_frame);
+	if (sub_frame && test_bit(REQ_FRAME, &sub_frame->req_flag)) {
+		clear_bit(REQ_FRAME, &sub_frame->req_flag);
+
+		sub_frame->stream->fvalid = 1;
+		sub_frame->stream->fcount = ldr_frame->fcount;
+		sub_frame->stream->rcount = ldr_frame->rcount;
+
+		fimc_is_frame_trans_pro_to_com(sub_framemgr, sub_frame);
+		queue_done(vctx, dst_queue, sub_frame->index, done_state);
+	} else
+		err("done is occured without request(%p)", sub_frame);
+
+	framemgr_x_barrier_irqr(sub_framemgr, 0, flags);
+
+	/* 2. leader frame done */
+	fimc_is_ischain_meta_invalid(ldr_frame);
+
+	fimc_is_frame_trans_pro_to_com(ldr_framemgr, ldr_frame);
+	fimc_is_group_done(groupmgr, group);
+	queue_done(vctx, src_queue, ldr_frame->index, done_state);
+}
+
+static void wq_func_group_isp(struct fimc_is_groupmgr *groupmgr,
+	struct fimc_is_group *group,
+	struct fimc_is_framemgr *framemgr,
+	struct fimc_is_frame *frame,
+	struct fimc_is_video_ctx *vctx,
+	u32 status)
+{
+	u32 done_state = VB2_BUF_STATE_DONE;
+	struct fimc_is_queue *queue;
+#ifdef ENABLE_SENSOR_DRIVER
 	struct camera2_lens_uctl *isp_lens_uctl;
 	struct camera2_lens_uctl *lens_uctl;
 	struct camera2_sensor_uctl *isp_sensor_uctl;
 	struct camera2_sensor_uctl *sensor_uctl;
 	struct camera2_flash_uctl *isp_flash_uctl;
 	struct camera2_flash_uctl *flash_uctl;
+#endif
 
-	index = frame->index;
+	BUG_ON(!framemgr);
+	BUG_ON(!frame);
+
+	if (status != ISR_DONE) {
+		pr_err("[ISP:D:%d] GRP2 NOT DONE(%d, %d)\n", group->instance,
+			frame->fcount, frame->index);
+		frame->shot_ext->request_isp = 0;
+		/* HACK : VB2_BUF_STATE_ERROR */
+		done_state = VB2_BUF_STATE_DONE;
+	}
+
+#ifdef DBG_STREAMING
+	if (status == ISR_DONE)
+		pr_info("[ISP:D:%d] GRP2 DONE(%d)\n", group->instance,
+			frame->fcount);
+#endif
+
+	queue = GET_SRC_QUEUE(vctx);
+
+	/* Cache Invalidation */
+	fimc_is_ischain_meta_invalid(frame);
+
+#ifdef ENABLE_SENSOR_DRIVER
 	isp_lens_uctl = &itf->isp_peri_ctl.lensUd;
 	isp_sensor_uctl = &itf->isp_peri_ctl.sensorUd;
 	isp_flash_uctl = &itf->isp_peri_ctl.flashUd;
-
-#ifdef DBG_STREAMING
-	printk(KERN_CONT "M%d %d\n", index, frame->fcount);
-#endif
-
-	/* Cache Invalidation */
-	vb2_ion_sync_for_device((void *)frame->cookie_shot, 0, frame->shot_size,
-		DMA_FROM_DEVICE);
 
 	if (frame->shot->uctl.uUpdateBitMap & CAM_SENSOR_CMD) {
 		sensor_uctl = &frame->shot->uctl.sensorUd;
@@ -1062,103 +1354,241 @@ static void wq_func_isp(struct fimc_is_interface *itf,
 		frame->shot->uctl.uUpdateBitMap &=
 			~CAM_FLASH_CMD;
 	}
-
-#ifdef AUTO_MODE
-	fimc_is_frame_trans_pro_to_fre(framemgr, frame);
-	buffer_done(itf->video_sensor, index);
-#else
-	fimc_is_frame_trans_pro_to_com(framemgr, frame);
-	buffer_done(itf->video_isp, index);
 #endif
+
+	fimc_is_frame_trans_pro_to_com(framemgr, frame);
+	fimc_is_group_done(groupmgr, group);
+	queue_done(vctx, queue, frame->index, done_state);
 }
 
-static void wq_func_meta(struct work_struct *data)
+static void wq_func_group_dis(struct fimc_is_groupmgr *groupmgr,
+	struct fimc_is_group *group,
+	struct fimc_is_framemgr *framemgr,
+	struct fimc_is_frame *frame,
+	struct fimc_is_video_ctx *vctx,
+	u32 status)
 {
-	struct fimc_is_interface *itf;
-	struct fimc_is_msg *msg;
-	struct fimc_is_framemgr *framemgr;
-	struct fimc_is_device_ischain *ischain;
-	struct fimc_is_frame_shot *frame;
-	struct fimc_is_work_list *work_list;
-	struct fimc_is_work *work;
-	unsigned long flags;
-	u32 fcount;
-	bool req_done;
+	u32 done_state = VB2_BUF_STATE_DONE;
+	struct fimc_is_queue *queue;
 
-	req_done = false;
-	itf = container_of(data, struct fimc_is_interface,
-		work_queue[INTR_META_DONE]);
-	work_list = &itf->work_list[INTR_META_DONE];
-	framemgr = itf->framemgr;
-	ischain = itf->video_isp->device;
+	BUG_ON(!framemgr);
+	BUG_ON(!frame);
 
-	get_req_work(work_list, &work);
-	while (work) {
-		msg = &work->msg;
-		fcount = msg->parameter1;
+	if (status != ISR_DONE) {
+		pr_err("[DIS:D:%d] GRP3 NOT DONE(%d, %d)\n", group->instance,
+			frame->fcount, frame->index);
+		/* HACK : VB2_BUF_STATE_ERROR */
+		done_state = VB2_BUF_STATE_DONE;
+	}
 
-		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_7, flags);
+#ifdef DBG_STREAMING
+	if (status == ISR_DONE)
+		pr_info("[DIS:D:%d] GRP3 DONE(%d)\n", group->instance,
+			frame->fcount);
+#endif
 
-		fimc_is_frame_process_head(framemgr, &frame);
-		if (frame) {
-			/* comparing input fcount and output fcount
-			just error printing although this error is occured */
-			if (fcount != frame->fcount)
-				err("frame mismatch(%d != %d)",
-					fcount, frame->fcount);
+	queue = GET_SRC_QUEUE(vctx);
 
-			if (test_bit(REQ_FRAME, &frame->req_flag)) {
-				clear_bit(REQ_FRAME, &frame->req_flag);
-				if (!frame->req_flag) {
-					wq_func_isp(itf, framemgr, frame);
-					req_done = true;
+	/* Cache Invalidation */
+	fimc_is_ischain_meta_invalid(frame);
+
+	fimc_is_frame_trans_pro_to_com(framemgr, frame);
+	fimc_is_group_done(groupmgr, group);
+	queue_done(vctx, queue, frame->index, done_state);
+}
+
+void wq_func_group(struct fimc_is_groupmgr *groupmgr,
+	struct fimc_is_group *group,
+	struct fimc_is_framemgr *ldr_framemgr,
+	struct fimc_is_frame *ldr_frame,
+	struct fimc_is_video_ctx *vctx,
+	u32 status1, u32 status2, u32 fcount)
+{
+	struct fimc_is_framemgr *sub_framemgr;
+
+	BUG_ON(!groupmgr);
+	BUG_ON(!group);
+	BUG_ON(!ldr_framemgr);
+	BUG_ON(!ldr_frame);
+	BUG_ON(!vctx);
+
+	/*
+	 * complete count should be lower than 3 when
+	 * buffer is queued or overflow can be occured
+	 */
+	if (ldr_framemgr->frame_com_cnt >= 2)
+		warn("remained completes is %d(%X)",
+			ldr_framemgr->frame_com_cnt, group->id);
+
+	if (status2 != IS_SHOT_SUCCESS)
+		err("cause : %d", status2);
+
+	switch (group->id) {
+	case GROUP_ID_3A0:
+		sub_framemgr = GET_DST_FRAMEMGR(vctx);
+
+		if (fcount != ldr_frame->fcount) {
+			err("cause : mismatch(%d != %d)", fcount,
+				ldr_frame->fcount);
+			status1 = ISR_NDONE;
+		}
+
+		wq_func_group_3a0(groupmgr, group, ldr_framemgr, ldr_frame,
+			sub_framemgr, vctx, status1);
+		break;
+	case GROUP_ID_3A1:
+		sub_framemgr = GET_DST_FRAMEMGR(vctx);
+
+		if (fcount != ldr_frame->fcount) {
+			/*
+			 * 3A1 is otf interface and 3A1 can have 2 more shots
+			 * done is reported to hal if frame count is same
+			 * not done is reported to hal if driver frame count is
+			 * less than firmware frame count
+			 * this correction is repeated
+			 */
+			while (ldr_frame) {
+				if (fcount == ldr_frame->fcount) {
+					status1 = ISR_DONE;
+					wq_func_group_3a1(groupmgr, group,
+						ldr_framemgr, ldr_frame,
+						sub_framemgr, vctx, status1);
+					break;
+				} else if (fcount > ldr_frame->fcount) {
+					err("cause : mismatch(%d != %d)", fcount,
+						ldr_frame->fcount);
+					status1 = ISR_NDONE;
+					wq_func_group_3a1(groupmgr, group,
+						ldr_framemgr, ldr_frame,
+						sub_framemgr, vctx, status1);
+
+					/* get next leader frame */
+					fimc_is_frame_process_head(ldr_framemgr,
+						&ldr_frame);
+				} else {
+					warn("%d done is ignored", fcount);
+					break;
 				}
 			}
+		} else {
+			wq_func_group_3a1(groupmgr, group,
+				ldr_framemgr, ldr_frame,
+				sub_framemgr, vctx, status1);
+		}
+		break;
+	case GROUP_ID_ISP:
+		if (fcount != ldr_frame->fcount) {
+			err("cause : mismatch(%d != %d)", fcount,
+				ldr_frame->fcount);
+			status1 = ISR_NDONE;
 		}
 
-		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_7, flags);
-
-		if (req_done) {
-			mutex_lock(&ischain->mutex_state);
-			fimc_is_ischain_callback(ischain);
-			mutex_unlock(&ischain->mutex_state);
+		wq_func_group_isp(groupmgr, group, ldr_framemgr, ldr_frame,
+			vctx, status1);
+		break;
+	case GROUP_ID_DIS:
+		if (fcount != ldr_frame->fcount) {
+			err("cause : mismatch(%d != %d)", fcount,
+				ldr_frame->fcount);
+			status1 = ISR_NDONE;
 		}
 
-		set_free_work(work_list, work);
-		get_req_work(work_list, &work);
+		wq_func_group_dis(groupmgr, group, ldr_framemgr, ldr_frame,
+			vctx, status1);
+		break;
+	default:
+		err("unresolved group id %d", group->id);
+		break;
 	}
 }
 
 static void wq_func_shot(struct work_struct *data)
 {
+	struct fimc_is_device_ischain *device;
 	struct fimc_is_interface *itf;
 	struct fimc_is_msg *msg;
-	struct fimc_is_framemgr *framemgr;
-	struct fimc_is_device_ischain *ischain;
-	struct fimc_is_frame_shot *frame;
+	struct fimc_is_framemgr *grp_framemgr;
+	struct fimc_is_frame *frame;
+	struct fimc_is_groupmgr *groupmgr;
+	struct fimc_is_group *group;
 	struct fimc_is_work_list *work_list;
 	struct fimc_is_work *work;
+	struct fimc_is_video_ctx *vctx;
 	unsigned long flags;
+	u32 req_flag;
 	u32 fcount;
-	u32 status;
-	bool req_done;
+	u32 status1, status2;
+	int instance;
+	int group_id;
+	struct fimc_is_core *core;
 
-	req_done = false;
+	BUG_ON(!data);
+
 	itf = container_of(data, struct fimc_is_interface,
-		work_queue[INTR_SHOT_DONE]);
+		work_wq[INTR_SHOT_DONE]);
 	work_list = &itf->work_list[INTR_SHOT_DONE];
-	framemgr = itf->framemgr;
-	ischain = itf->video_isp->device;
+	group  = NULL;
+	vctx = NULL;
+	grp_framemgr = NULL;
 
 	get_req_work(work_list, &work);
 	while (work) {
+		core = (struct fimc_is_core *)itf->core;
+		instance = work->msg.instance;
+		group_id = work->msg.group;
+		device = &((struct fimc_is_core *)itf->core)->ischain[instance];
+		groupmgr = device->groupmgr;
+
 		msg = &work->msg;
 		fcount = msg->parameter1;
-		status = msg->parameter2;
+		status1 = msg->parameter2;
+		status2 = msg->parameter3;
 
-		framemgr_e_barrier_irqs(framemgr, FMGR_IDX_7, flags);
+		switch (group_id) {
+		case GROUP_ID(GROUP_ID_3A0):
+			req_flag = REQ_3A0_SHOT;
+			group = &device->group_3ax;
+			break;
+		case GROUP_ID(GROUP_ID_3A1):
+			req_flag = REQ_3A1_SHOT;
+			group = &device->group_3ax;
+			break;
+		case GROUP_ID(GROUP_ID_ISP):
+			req_flag = REQ_ISP_SHOT;
+			group = &device->group_isp;
+			break;
+		case GROUP_ID(GROUP_ID_DIS):
+			req_flag = REQ_DIS_SHOT;
+			group = &device->group_dis;
+			break;
+		default:
+			merr("unresolved group id %d", device, group_id);
+			group = NULL;
+			vctx = NULL;
+			grp_framemgr = NULL;
+			goto remain;
+		}
 
-		fimc_is_frame_process_head(framemgr, &frame);
+		if (!group) {
+			merr("group is NULL", device);
+			goto remain;
+		}
+
+		vctx = group->leader.vctx;
+		if (!vctx) {
+			merr("vctx is NULL", device);
+			goto remain;
+		}
+
+		grp_framemgr = GET_SRC_FRAMEMGR(vctx);
+		if (!grp_framemgr) {
+			merr("grp_framemgr is NULL", device);
+			goto remain;
+		}
+
+		framemgr_e_barrier_irqs(grp_framemgr, FMGR_IDX_7, flags);
+
+		fimc_is_frame_process_head(grp_framemgr, &frame);
 		if (frame) {
 #ifdef MEASURE_TIME
 #ifdef INTERNAL_TIME
@@ -1167,45 +1597,162 @@ static void wq_func_shot(struct work_struct *data)
 			do_gettimeofday(&frame->tzone[TM_SHOT_D]);
 #endif
 #endif
-			/* comparing input fcount and output fcount
-			just error printing although this error is occured */
-			if (fcount != frame->fcount)
-				err("frame mismatch(%d != %d)",
-					fcount, frame->fcount);
 
-			/* need error handling */
-			if (status != ISR_DONE)
-				err("shot done is invalid(0x%08X)", status);
+			clear_bit(req_flag, &frame->req_flag);
+			if (frame->req_flag)
+				merr("group(%d) req flag is not clear all(%X)",
+					device, group->id, (u32)frame->req_flag);
 
-			if (test_bit(REQ_SHOT, &frame->req_flag)) {
-				clear_bit(REQ_SHOT, &frame->req_flag);
-				if (!frame->req_flag) {
-					wq_func_isp(itf, framemgr, frame);
-					req_done = true;
-				}
-			}
+#ifdef ENABLE_CLOCK_GATE
+			/* dynamic clock off */
+			fimc_is_clock_set(core, group->id, false);
+#endif
+
+			wq_func_group(groupmgr, group, grp_framemgr, frame,
+				vctx, status1, status2, fcount);
 		} else {
-			err("Shot done is occured without request2");
-			fimc_is_frame_print_all(framemgr);
+			merr("GRP%d DONE(%d) is occured without request",
+				device, group->id, fcount);
+			fimc_is_frame_print_all(grp_framemgr);
 		}
 
-		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_7, flags);
+		framemgr_x_barrier_irqr(grp_framemgr, FMGR_IDX_7, flags);
 
-		if (req_done) {
-			mutex_lock(&ischain->mutex_state);
-			fimc_is_ischain_callback(ischain);
-			mutex_unlock(&ischain->mutex_state);
-		}
-
+remain:
 		set_free_work(work_list, work);
 		get_req_work(work_list, &work);
 	}
 }
 
+static inline void wq_func_schedule(struct fimc_is_interface *itf,
+	struct work_struct *work_wq)
+{
+	if (itf->workqueue)
+		queue_work(itf->workqueue, work_wq);
+	else
+		schedule_work(work_wq);
+}
+
+static void interface_timer(unsigned long data)
+{
+	u32 shot_count, scount_3ax, scount_isp, i, j;
+	unsigned long flags, regs;
+	struct fimc_is_interface *itf = (struct fimc_is_interface *)data;
+	struct fimc_is_core *core;
+	struct fimc_is_device_ischain *device;
+	struct fimc_is_framemgr *framemgr;
+	struct fimc_is_work_list *work_list;
+	struct work_struct *work_wq;
+
+	BUG_ON(!itf);
+	BUG_ON(!itf->core);
+
+	if (!test_bit(IS_IF_STATE_OPEN, &itf->state)) {
+		pr_info("shot timer is terminated\n");
+		return;
+	}
+
+	core = itf->core;
+
+	for(i = 0; i < FIMC_IS_MAX_NODES; ++i) {
+		device = &core->ischain[i];
+		shot_count = 0;
+		scount_3ax = 0;
+		scount_isp = 0;
+
+		if (test_bit(FIMC_IS_ISCHAIN_OPEN_SENSOR, &device->state)) {
+			spin_lock_irq(&itf->shot_check_lock);
+			if (atomic_read(&itf->shot_check[i])) {
+				atomic_set(&itf->shot_check[i], 0);
+				atomic_set(&itf->shot_timeout[i], 0);
+				spin_unlock_irq(&itf->shot_check_lock);
+				break;
+			}
+			spin_unlock_irq(&itf->shot_check_lock);
+
+			if (test_bit(FIMC_IS_GROUP_ACTIVE, &device->group_3ax.state)) {
+				framemgr = GET_GROUP_FRAMEMGR(&device->group_3ax);
+				framemgr_e_barrier_irqs(framemgr, 0, flags);
+				scount_3ax = framemgr->frame_pro_cnt;
+				shot_count += scount_3ax;
+				framemgr_x_barrier_irqr(framemgr, 0, flags);
+			}
+
+			if (test_bit(FIMC_IS_GROUP_ACTIVE, &device->group_isp.state)) {
+				framemgr = GET_GROUP_FRAMEMGR(&device->group_isp);
+				framemgr_e_barrier_irqs(framemgr, 0, flags);
+				scount_isp = framemgr->frame_pro_cnt;
+				shot_count += scount_isp;
+				framemgr_x_barrier_irqr(framemgr, 0, flags);
+			}
+
+			if (test_bit(FIMC_IS_GROUP_ACTIVE, &device->group_dis.state)) {
+				framemgr = GET_GROUP_FRAMEMGR(&device->group_dis);
+				framemgr_e_barrier_irqs(framemgr, 0, flags);
+				shot_count += framemgr->frame_pro_cnt;
+				framemgr_x_barrier_irqr(framemgr, 0, flags);
+			}
+		}
+
+		if (shot_count) {
+			atomic_inc(&itf->shot_timeout[i]);
+			pr_err ("timer[%d] is increase to %d\n", i,
+				atomic_read(&itf->shot_timeout[i]));
+		}
+
+		if (atomic_read(&itf->shot_timeout[i]) > TRY_TIMEOUT_COUNT) {
+			merr("shot command is timeout(%d, %d(%d+%d))", device,
+				atomic_read(&itf->shot_timeout[i]),
+				shot_count, scount_3ax, scount_isp);
+
+			pr_err("\n### 3ax framemgr info ###\n");
+			if (scount_3ax) {
+				framemgr = GET_GROUP_FRAMEMGR(&device->group_3ax);
+				fimc_is_frame_print_all(framemgr);
+			}
+
+			pr_err("\n### isp framemgr info ###\n");
+			if (scount_isp) {
+				framemgr = GET_GROUP_FRAMEMGR(&device->group_isp);
+				fimc_is_frame_print_all(framemgr);
+			}
+
+			pr_err("\n### work list info ###\n");
+			work_list = &itf->work_list[INTR_SHOT_DONE];
+			print_fre_work_list(work_list);
+			print_req_work_list(work_list);
+
+			if (work_list->work_request_cnt > 0) {
+				pr_err("\n### processing work lately ###\n");
+				work_wq = &itf->work_wq[INTR_SHOT_DONE];
+				wq_func_shot(work_wq);
+
+				atomic_set(&itf->shot_check[i], 0);
+				atomic_set(&itf->shot_timeout[i], 0);
+			} else {
+				pr_err("\n### firmware messsage dump ###\n");
+				fimc_is_hw_print(itf);
+
+				pr_err("\n### MCUCTL dump ###\n");
+				regs = (unsigned long)itf->com_regs;
+				for (j = 0; j < 64; ++j)
+					pr_err("MCTL[%d] : %08X\n", j, readl(regs + 4*j));
+#ifdef BUG_ON_ENABLE
+				BUG_ON(1);
+#endif
+				return;
+			}
+		}
+	}
+
+	mod_timer(&itf->timer, jiffies +
+		(FIMC_IS_COMMAND_TIMEOUT/TRY_TIMEOUT_COUNT));
+}
+
 static irqreturn_t interface_isr(int irq, void *data)
 {
 	struct fimc_is_interface *itf;
-	struct work_struct *work_queue;
+	struct work_struct *work_wq;
 	struct fimc_is_work_list *work_list;
 	struct fimc_is_work *work;
 	u32 status;
@@ -1214,7 +1761,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 	status = fimc_is_get_intr(itf);
 
 	if (status & (1<<INTR_SHOT_DONE)) {
-		work_queue = &itf->work_queue[INTR_SHOT_DONE];
+		work_wq = &itf->work_wq[INTR_SHOT_DONE];
 		work_list = &itf->work_list[INTR_SHOT_DONE];
 
 		get_free_work_irq(work_list, &work);
@@ -1223,8 +1770,8 @@ static irqreturn_t interface_isr(int irq, void *data)
 			work->fcount = work->msg.parameter1;
 			set_req_work_irq(work_list, work);
 
-			if (!work_pending(work_queue))
-				schedule_work(work_queue);
+			if (!work_pending(work_wq))
+				wq_func_schedule(itf, work_wq);
 		} else
 			err("free work item is empty5");
 
@@ -1233,7 +1780,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 	}
 
 	if (status & (1<<INTR_GENERAL)) {
-		work_queue = &itf->work_queue[INTR_GENERAL];
+		work_wq = &itf->work_wq[INTR_GENERAL];
 		work_list = &itf->work_list[INTR_GENERAL];
 
 		get_free_work_irq(&itf->work_list[INTR_GENERAL], &work);
@@ -1241,8 +1788,8 @@ static irqreturn_t interface_isr(int irq, void *data)
 			fimc_is_get_cmd(itf, &work->msg, INTR_GENERAL);
 			set_req_work_irq(work_list, work);
 
-			if (!work_pending(work_queue))
-				schedule_work(work_queue);
+			if (!work_pending(work_wq))
+				wq_func_schedule(itf, work_wq);
 		} else
 			err("free work item is empty1");
 
@@ -1251,7 +1798,7 @@ static irqreturn_t interface_isr(int irq, void *data)
 	}
 
 	if (status & (1<<INTR_SCC_FDONE)) {
-		work_queue = &itf->work_queue[INTR_SCC_FDONE];
+		work_wq = &itf->work_wq[INTR_SCC_FDONE];
 		work_list = &itf->work_list[INTR_SCC_FDONE];
 
 		get_free_work_irq(work_list, &work);
@@ -1259,8 +1806,8 @@ static irqreturn_t interface_isr(int irq, void *data)
 			fimc_is_get_cmd(itf, &work->msg, INTR_SCC_FDONE);
 			set_req_work_irq(work_list, work);
 
-			if (!work_pending(work_queue))
-				schedule_work(work_queue);
+			if (!work_pending(work_wq))
+				wq_func_schedule(itf, work_wq);
 		} else
 			err("free work item is empty2");
 
@@ -1268,8 +1815,27 @@ static irqreturn_t interface_isr(int irq, void *data)
 		fimc_is_clr_intr(itf, INTR_SCC_FDONE);
 	}
 
+	if (status & (1<<INTR_DIS_FDONE)) {
+		work_wq = &itf->work_wq[INTR_DIS_FDONE];
+		work_list = &itf->work_list[INTR_DIS_FDONE];
+
+		get_free_work_irq(work_list, &work);
+		if (work) {
+			fimc_is_get_cmd(itf, &work->msg, INTR_DIS_FDONE);
+			set_req_work_irq(work_list, work);
+
+			if (!work_pending(work_wq))
+				wq_func_schedule(itf, work_wq);
+		} else {
+			err("free work item is empty3");
+		}
+
+		status &= ~(1<<INTR_DIS_FDONE);
+		fimc_is_clr_intr(itf, INTR_DIS_FDONE);
+	}
+
 	if (status & (1<<INTR_SCP_FDONE)) {
-		work_queue = &itf->work_queue[INTR_SCP_FDONE];
+		work_wq = &itf->work_wq[INTR_SCP_FDONE];
 		work_list = &itf->work_list[INTR_SCP_FDONE];
 
 		get_free_work_irq(work_list, &work);
@@ -1277,17 +1843,18 @@ static irqreturn_t interface_isr(int irq, void *data)
 			fimc_is_get_cmd(itf, &work->msg, INTR_SCP_FDONE);
 			set_req_work_irq(work_list, work);
 
-			if (!work_pending(work_queue))
-				schedule_work(work_queue);
-		} else
-			err("free work item is empty3");
+			if (!work_pending(work_wq))
+				wq_func_schedule(itf, work_wq);
+		} else {
+			err("free work item is empty4");
+		}
 
 		status &= ~(1<<INTR_SCP_FDONE);
 		fimc_is_clr_intr(itf, INTR_SCP_FDONE);
 	}
 
 	if (status & (1<<INTR_META_DONE)) {
-		work_queue = &itf->work_queue[INTR_META_DONE];
+		work_wq = &itf->work_wq[INTR_META_DONE];
 		work_list = &itf->work_list[INTR_META_DONE];
 
 		/* meta done is not needed now
@@ -1299,8 +1866,8 @@ static irqreturn_t interface_isr(int irq, void *data)
 			work->fcount = work->msg.parameter1;
 			set_req_work_irq(work_list, work);
 
-			if (!work_pending(work_queue))
-				schedule_work(work_queue);
+			if (!work_pending(work_wq))
+				wq_func_schedule(itf, work_wq);
 		} else
 			err("free work item is empty4");
 #endif
@@ -1316,7 +1883,6 @@ static irqreturn_t interface_isr(int irq, void *data)
 
 
 int fimc_is_interface_probe(struct fimc_is_interface *this,
-	struct fimc_is_framemgr *framemgr,
 	u32 regs,
 	u32 irq,
 	void *core_data)
@@ -1328,40 +1894,56 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 
 	init_request_barrier(this);
 	init_process_barrier(this);
-	spin_lock_init(&this->slock_state);
+	init_waitqueue_head(&this->lock_wait_queue);
 	init_waitqueue_head(&this->init_wait_queue);
-	init_waitqueue_head(&this->wait_queue);
+	init_waitqueue_head(&this->idle_wait_queue);
+	spin_lock_init(&this->shot_check_lock);
 
-	INIT_WORK(&this->work_queue[INTR_GENERAL], wq_func_general);
-	INIT_WORK(&this->work_queue[INTR_SCC_FDONE], wq_func_scc);
-	INIT_WORK(&this->work_queue[INTR_SCP_FDONE], wq_func_scp);
-	INIT_WORK(&this->work_queue[INTR_META_DONE], wq_func_meta);
-	INIT_WORK(&this->work_queue[INTR_SHOT_DONE], wq_func_shot);
+	this->workqueue = alloc_workqueue("fimc-is/highpri", WQ_HIGHPRI, 0);
+	if (!this->workqueue)
+		warn("failed to alloc own workqueue, will be use global one");
+
+	INIT_WORK(&this->work_wq[INTR_GENERAL], wq_func_general);
+	INIT_WORK(&this->work_wq[INTR_SCC_FDONE], wq_func_scc);
+	INIT_WORK(&this->work_wq[INTR_DIS_FDONE], wq_func_dis);
+	INIT_WORK(&this->work_wq[INTR_SCP_FDONE], wq_func_scp);
+	INIT_WORK(&this->work_wq[INTR_SHOT_DONE], wq_func_shot);
 
 	this->regs = (void *)regs;
 	this->com_regs = (struct is_common_reg *)(regs + ISSR0);
+
+	/* common register init */
+	this->com_regs->ihcmd_iflag = 0;
+	this->com_regs->scc_iflag = 0;
+	this->com_regs->dis_iflag = 0;
+	this->com_regs->scp_iflag = 0;
+	this->com_regs->meta_iflag = 0;
+	this->com_regs->shot_iflag = 0;
 
 	ret = request_irq(irq, interface_isr, 0, "mcuctl", this);
 	if (ret)
 		err("request_irq failed\n");
 
-	notify_fcount			= &this->com_regs->fcount;
-	this->framemgr			= framemgr;
+	notify_fcount_sen0		= &this->com_regs->fcount_sen0;
+	notify_fcount_sen1		= &this->com_regs->fcount_sen1;
+	notify_fcount_sen2		= &this->com_regs->fcount_sen2;
+	last_fcount1			= &this->com_regs->fcount_sen3;
+	last_fcount0			= &this->com_regs->reserved8[0];
 	this->core			= (void *)core;
-	this->video_isp			= &core->video_isp.common;
-	this->video_sensor		= &core->video_sensor.common;
-	this->video_scp			= &core->video_scp.common;
-	this->video_scc			= &core->video_scc.common;
 	clear_bit(IS_IF_STATE_OPEN, &this->state);
 	clear_bit(IS_IF_STATE_START, &this->state);
 	clear_bit(IS_IF_STATE_BUSY, &this->state);
+	clear_bit(IS_IF_STATE_SENSOR_OPENED, &this->state);
+	clear_bit(IS_IF_STATE_SENSOR_CLOSED, &this->state);
 
-	init_work_list(&this->nblk_cam_ctrl, TRACE_WORK_ID_CAMCTRL,
-		MAX_NBLOCKING_COUNT);
+	init_work_list(&this->nblk_cam_ctrl,
+		TRACE_WORK_ID_CAMCTRL, MAX_NBLOCKING_COUNT);
 	init_work_list(&this->work_list[INTR_GENERAL],
 		TRACE_WORK_ID_GENERAL, MAX_WORK_COUNT);
 	init_work_list(&this->work_list[INTR_SCC_FDONE],
 		TRACE_WORK_ID_SCC, MAX_WORK_COUNT);
+	init_work_list(&this->work_list[INTR_DIS_FDONE],
+		TRACE_WORK_ID_DIS, MAX_WORK_COUNT);
 	init_work_list(&this->work_list[INTR_SCP_FDONE],
 		TRACE_WORK_ID_SCP, MAX_WORK_COUNT);
 	init_work_list(&this->work_list[INTR_META_DONE],
@@ -1374,9 +1956,10 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 
 int fimc_is_interface_open(struct fimc_is_interface *this)
 {
+	int i;
 	int ret = 0;
 
-	if (testnset_state(this, IS_IF_STATE_OPEN)) {
+	if (test_bit(IS_IF_STATE_OPEN, &this->state)) {
 		err("already open");
 		ret = -EMFILE;
 		goto exit;
@@ -1384,18 +1967,27 @@ int fimc_is_interface_open(struct fimc_is_interface *this)
 
 	dbg_interface("%s\n", __func__);
 
-	/* common register init */
-	this->com_regs->ihcmd_iflag = 0;
-	this->com_regs->scc_iflag = 0;
-	this->com_regs->scp_iflag = 0;
-	this->com_regs->meta_iflag = 0;
-	this->com_regs->shot_iflag = 0;
-
-	this->streaming = IS_IF_STREAMING_INIT;
-	this->processing = IS_IF_PROCESSING_INIT;
+	for (i = 0; i < FIMC_IS_MAX_NODES; i++) {
+		this->streaming[i] = IS_IF_STREAMING_INIT;
+		this->processing[i] = IS_IF_PROCESSING_INIT;
+		atomic_set(&this->shot_check[i], 0);
+		atomic_set(&this->shot_timeout[i], 0);
+	}
 	this->pdown_ready = IS_IF_POWER_DOWN_READY;
-	clr_state(this, IS_IF_STATE_START);
-	set_state(this, IS_IF_STATE_BUSY);
+	atomic_set(&this->lock_pid, 0);
+	clear_bit(IS_IF_STATE_START, &this->state);
+	clear_bit(IS_IF_STATE_BUSY, &this->state);
+	clear_bit(IS_IF_STATE_SENSOR_OPENED, &this->state);
+	clear_bit(IS_IF_STATE_SENSOR_CLOSED, &this->state);
+
+	init_timer(&this->timer);
+	this->timer.expires = jiffies +
+		(FIMC_IS_COMMAND_TIMEOUT/TRY_TIMEOUT_COUNT);
+	this->timer.data = (unsigned long)this;
+	this->timer.function = interface_timer;
+	add_timer(&this->timer);
+
+	set_bit(IS_IF_STATE_OPEN, &this->state);
 
 exit:
 	return ret;
@@ -1406,68 +1998,99 @@ int fimc_is_interface_close(struct fimc_is_interface *this)
 	int ret = 0;
 	int retry;
 
-	if (testnclr_state(this, IS_IF_STATE_OPEN)) {
+	if (!test_bit(IS_IF_STATE_OPEN, &this->state)) {
 		err("already close");
 		ret = -EMFILE;
 		goto exit;
 	}
 
 	retry = 10;
-	while (test_state(this, IS_IF_STATE_BUSY) && retry) {
+	while (test_busystate(this) && retry) {
 		err("interface is busy");
 		msleep(20);
 		retry--;
 	}
-
 	if (!retry)
 		err("waiting idle is fail");
 
+	del_timer_sync(&this->timer);
 	dbg_interface("%s\n", __func__);
+
+	clear_bit(IS_IF_STATE_OPEN, &this->state);
 
 exit:
 	return ret;
 }
 
+void fimc_is_interface_lock(struct fimc_is_interface *this)
+{
+	atomic_set(&this->lock_pid, current->pid);
+}
+
+void fimc_is_interface_unlock(struct fimc_is_interface *this)
+{
+	atomic_set(&this->lock_pid, 0);
+	wake_up(&this->lock_wait_queue);
+}
+
+extern unsigned int g_cam_err_count;
 int fimc_is_hw_print(struct fimc_is_interface *this)
 {
-	int debug_cnt;
+	int debug_cnt, sentence_i;
 	char *debug;
 	char letter;
+	char sentence[250];
 	int count = 0, i;
-	struct fimc_is_device_ischain *ischain;
+	struct fimc_is_core *core;
 
-	if (!test_state(this, IS_IF_STATE_OPEN)) {
+	if (!test_bit(IS_IF_STATE_OPEN, &this->state)) {
 		err("interface is closed");
 		return 0;
 	}
 
-	ischain = this->video_isp->device;
+	core = (struct fimc_is_core *)this->core;
+	sentence_i = 0;
 
-	vb2_ion_sync_for_device(ischain->minfo.fw_cookie,
+	vb2_ion_sync_for_device(core->minfo.fw_cookie,
 		DEBUG_OFFSET, DEBUG_CNT, DMA_FROM_DEVICE);
 
-	debug = (char *)(ischain->minfo.kvaddr + DEBUG_OFFSET);
-	debug_cnt = *((int *)(ischain->minfo.kvaddr + DEBUGCTL_OFFSET))
+	debug = (char *)(core->minfo.kvaddr + DEBUG_OFFSET);
+	debug_cnt = *((int *)(core->minfo.kvaddr + DEBUGCTL_OFFSET))
 			- DEBUG_OFFSET;
 
-	if (ischain->debug_cnt > debug_cnt)
-		count = (DEBUG_CNT - ischain->debug_cnt) + debug_cnt;
+	if (core->debug_cnt > debug_cnt)
+		count = (DEBUG_CNT - core->debug_cnt) + debug_cnt;
 	else
-		count = debug_cnt - ischain->debug_cnt;
+		count = debug_cnt - core->debug_cnt;
 
 	if (count) {
-		printk(KERN_INFO "start(%d %d)\n", debug_cnt, count);
-		for (i = ischain->debug_cnt; count > 0; count--) {
+		printk(KERN_ERR "start(%d %d)\n", debug_cnt, count);
+		for (i = core->debug_cnt; count > 0; count--) {
 			letter = debug[i];
-			if (letter)
-				printk(KERN_CONT "%c", letter);
+			if (letter) {
+				sentence[sentence_i] = letter;
+				if (sentence_i >= 247) {
+					sentence[sentence_i + 1] = '\n';
+					sentence[sentence_i + 2] = 0;
+					printk(KERN_ERR "%s", sentence);
+					sentence_i = 0;
+				} else if (letter == '\n') {
+					sentence[sentence_i + 1] = 0;
+					printk(KERN_ERR "%s", sentence);
+					sentence_i = 0;
+				} else {
+					sentence_i++;
+				}
+			}
 			i++;
 			if (i > DEBUG_CNT)
 				i = 0;
 		}
-		ischain->debug_cnt = debug_cnt;
-		printk(KERN_INFO "end\n");
+		core->debug_cnt = debug_cnt;
+		printk(KERN_ERR "end\n");
 	}
+
+	g_cam_err_count++;
 
 	return count;
 }
@@ -1477,7 +2100,7 @@ int fimc_is_hw_enum(struct fimc_is_interface *this)
 	int ret = 0;
 	struct fimc_is_msg msg;
 
-	dbg_interface("enum(%d)\n", instances);
+	dbg_interface("enum()\n");
 
 	ret = wait_initstate(this);
 	if (ret) {
@@ -1489,9 +2112,13 @@ int fimc_is_hw_enum(struct fimc_is_interface *this)
 	msg.id = 0;
 	msg.command = ISR_DONE;
 	msg.instance = 0;
+	msg.group = 0;
 	msg.parameter1 = IHC_GET_SENSOR_NUMBER;
-	/* this mean sensor numbers */
-	msg.parameter2 = 1;
+	/*
+	 * this mean sensor numbers
+	 * signel sensor: 1, dual sensor: 2, triple sensor: 3
+	 */
+	msg.parameter2 = 3;
 	msg.parameter3 = 0;
 	msg.parameter4 = 0;
 
@@ -1511,65 +2138,70 @@ exit:
 int fimc_is_hw_saddr(struct fimc_is_interface *this,
 	u32 instance, u32 *setfile_addr)
 {
-	struct fimc_is_msg msg;
+	int ret = 0;
+	struct fimc_is_msg msg, reply;
 
 	dbg_interface("saddr(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_GET_SET_FILE_ADDR;
 	msg.instance = instance;
+	msg.group = 0;
 	msg.parameter1 = 0;
 	msg.parameter2 = 0;
 	msg.parameter3 = 0;
 	msg.parameter4 = 0;
 
-	fimc_is_set_cmd(this, &msg);
-	*setfile_addr = this->reply.parameter2;
+	ret = fimc_is_set_cmd(this, &msg, &reply);
+	*setfile_addr = reply.parameter2;
 
-	return 0;
+	return ret;
 }
 
 int fimc_is_hw_setfile(struct fimc_is_interface *this,
 	u32 instance)
 {
-	struct fimc_is_msg msg;
+	int ret = 0;
+	struct fimc_is_msg msg, reply;
 
 	dbg_interface("setfile(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_LOAD_SET_FILE;
 	msg.instance = instance;
+	msg.group = 0;
 	msg.parameter1 = 0;
 	msg.parameter2 = 0;
 	msg.parameter3 = 0;
 	msg.parameter4 = 0;
 
-	fimc_is_set_cmd(this, &msg);
+	ret = fimc_is_set_cmd(this, &msg, &reply);
 
-	return 0;
+	return ret;
 }
 
 int fimc_is_hw_open(struct fimc_is_interface *this,
-	u32 instance, u32 sensor, u32 channel, u32 ext,
+	u32 instance, u32 module, u32 info, u32 group, u32 flag,
 	u32 *mwidth, u32 *mheight)
 {
 	int ret;
-	struct fimc_is_msg msg;
+	struct fimc_is_msg msg, reply;;
 
-	dbg_interface("open(%d)\n", sensor);
+	dbg_interface("open(%d,%d,%08X)\n", module, group, flag);
 
 	msg.id = 0;
 	msg.command = HIC_OPEN_SENSOR;
 	msg.instance = instance;
-	msg.parameter1 = sensor;
-	msg.parameter2 = channel;
-	msg.parameter3 = ext;
-	msg.parameter4 = 0;
+	msg.group = 0;
+	msg.parameter1 = module;
+	msg.parameter2 = info;
+	msg.parameter3 = group;
+	msg.parameter4 = flag;
 
-	ret = fimc_is_set_cmd(this, &msg);
+	ret = fimc_is_set_cmd(this, &msg, &reply);
 
-	*mwidth = this->reply.parameter2;
-	*mheight = this->reply.parameter3;
+	*mwidth = reply.parameter2;
+	*mheight = reply.parameter3;
 
 	return ret;
 }
@@ -1578,19 +2210,22 @@ int fimc_is_hw_stream_on(struct fimc_is_interface *this,
 	u32 instance)
 {
 	int ret;
-	struct fimc_is_msg msg;
+	struct fimc_is_msg msg, reply;
+
+	BUG_ON(!this);
 
 	dbg_interface("stream_on(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_STREAM_ON;
 	msg.instance = instance;
+	msg.group = 0;
 	msg.parameter1 = 0;
 	msg.parameter2 = 0;
 	msg.parameter3 = 0;
 	msg.parameter4 = 0;
 
-	ret = fimc_is_set_cmd(this, &msg);
+	ret = fimc_is_set_cmd(this, &msg, &reply);
 
 	return ret;
 }
@@ -1599,61 +2234,88 @@ int fimc_is_hw_stream_off(struct fimc_is_interface *this,
 	u32 instance)
 {
 	int ret;
-	struct fimc_is_msg msg;
+	struct fimc_is_msg msg, reply;
 
 	dbg_interface("stream_off(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_STREAM_OFF;
 	msg.instance = instance;
+	msg.group = 0;
 	msg.parameter1 = 0;
 	msg.parameter2 = 0;
 	msg.parameter3 = 0;
 	msg.parameter4 = 0;
 
-	ret = fimc_is_set_cmd(this, &msg);
+	ret = fimc_is_set_cmd(this, &msg, &reply);
 
 	return ret;
 }
 
 int fimc_is_hw_process_on(struct fimc_is_interface *this,
-	u32 instance)
+	u32 instance, u32 group)
 {
 	int ret;
-	struct fimc_is_msg msg;
+	struct fimc_is_msg msg, reply;
 
 	dbg_interface("process_on(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_PROCESS_START;
 	msg.instance = instance;
+	msg.group = group;
 	msg.parameter1 = 0;
 	msg.parameter2 = 0;
 	msg.parameter3 = 0;
 	msg.parameter4 = 0;
 
-	ret = fimc_is_set_cmd(this, &msg);
+	ret = fimc_is_set_cmd(this, &msg, &reply);
 
 	return ret;
 }
 
 int fimc_is_hw_process_off(struct fimc_is_interface *this,
-	u32 instance)
+	u32 instance, u32 group, u32 mode)
 {
 	int ret;
-	struct fimc_is_msg msg;
+	struct fimc_is_msg msg, reply;
+
+	WARN_ON(mode >= 2);
 
 	dbg_interface("process_off(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_PROCESS_STOP;
 	msg.instance = instance;
-	msg.parameter1 = 0;
+	msg.group = group;
+	msg.parameter1 = mode;
 	msg.parameter2 = 0;
 	msg.parameter3 = 0;
 	msg.parameter4 = 0;
 
-	ret = fimc_is_set_cmd(this, &msg);
+	ret = fimc_is_set_cmd(this, &msg, &reply);
+
+	return ret;
+}
+
+int fimc_is_hw_i2c_lock(struct fimc_is_interface *this,
+	u32 instance, int i2c_clk, bool lock)
+{
+	int ret;
+	struct fimc_is_msg msg, reply;
+
+	dbg_interface("i2c_lock(%d)\n", instance);
+
+	msg.id = 0;
+	msg.command = HIC_I2C_CONTROL_LOCK;
+	msg.instance = instance;
+	msg.group = 0;
+	msg.parameter1 = lock;
+	msg.parameter2 = i2c_clk;
+	msg.parameter3 = 0;
+	msg.parameter4 = 0;
+
+	ret = fimc_is_set_cmd(this, &msg, &reply);
 
 	return ret;
 }
@@ -1662,61 +2324,42 @@ int fimc_is_hw_s_param(struct fimc_is_interface *this,
 	u32 instance, u32 indexes, u32 lindex, u32 hindex)
 {
 	int ret;
-	struct fimc_is_msg msg;
+	struct fimc_is_msg msg, reply;
 
 	dbg_interface("s_param(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_SET_PARAMETER;
 	msg.instance = instance;
+	msg.group = 0;
 	msg.parameter1 = ISS_PREVIEW_STILL;
 	msg.parameter2 = indexes;
 	msg.parameter3 = lindex;
 	msg.parameter4 = hindex;
 
-	ret = fimc_is_set_cmd(this, &msg);
+	ret = fimc_is_set_cmd(this, &msg, &reply);
 
 	return ret;
 }
 
 int fimc_is_hw_a_param(struct fimc_is_interface *this,
-	u32 instance, u32 mode, u32 sub_mode)
+	u32 instance, u32 group, u32 sub_mode)
 {
 	int ret = 0;
-	struct fimc_is_msg msg;
+	struct fimc_is_msg msg, reply;
 
 	dbg_interface("a_param(%d)\n", instance);
 
 	msg.id = 0;
-	msg.command = mode;
+	msg.command = HIC_PREVIEW_STILL;
 	msg.instance = instance;
+	msg.group = group;
 	msg.parameter1 = sub_mode;
 	msg.parameter2 = 0;
 	msg.parameter3 = 0;
 	msg.parameter4 = 0;
 
-	ret = fimc_is_set_cmd(this, &msg);
-
-	return ret;
-}
-
-int fimc_is_hw_f_param(struct fimc_is_interface *this,
-	u32 instance)
-{
-	int ret;
-	struct fimc_is_msg msg;
-
-	dbg_interface("f_param(%d)\n", instance);
-
-	msg.id = 0;
-	msg.command = HIC_PREVIEW_STILL;
-	msg.instance = instance;
-	msg.parameter1 = 0;
-	msg.parameter2 = 0;
-	msg.parameter3 = 0;
-	msg.parameter4 = 0;
-
-	ret = fimc_is_set_cmd(this, &msg);
+	ret = fimc_is_set_cmd(this, &msg, &reply);
 
 	return ret;
 }
@@ -1725,19 +2368,20 @@ int fimc_is_hw_g_capability(struct fimc_is_interface *this,
 	u32 instance, u32 address)
 {
 	int ret;
-	struct fimc_is_msg msg;
+	struct fimc_is_msg msg, reply;
 
 	dbg_interface("g_capability(%d)\n", instance);
 
 	msg.id = 0;
 	msg.command = HIC_GET_STATIC_METADATA;
 	msg.instance = instance;
+	msg.group = 0;
 	msg.parameter1 = address;
 	msg.parameter2 = 0;
 	msg.parameter3 = 0;
 	msg.parameter4 = 0;
 
-	ret = fimc_is_set_cmd(this, &msg);
+	ret = fimc_is_set_cmd(this, &msg, &reply);
 
 	return ret;
 }
@@ -1746,19 +2390,20 @@ int fimc_is_hw_cfg_mem(struct fimc_is_interface *this,
 	u32 instance, u32 address, u32 size)
 {
 	int ret;
-	struct fimc_is_msg msg;
+	struct fimc_is_msg msg, reply;
 
 	dbg_interface("cfg_mem(%d, 0x%08X)\n", instance, address);
 
 	msg.id = 0;
 	msg.command = HIC_SET_A5_MEM_ACCESS;
 	msg.instance = instance;
+	msg.group = 0;
 	msg.parameter1 = address;
 	msg.parameter2 = size;
 	msg.parameter3 = 0;
 	msg.parameter4 = 0;
 
-	ret = fimc_is_set_cmd(this, &msg);
+	ret = fimc_is_set_cmd(this, &msg, &reply);
 
 	return ret;
 }
@@ -1767,25 +2412,33 @@ int fimc_is_hw_power_down(struct fimc_is_interface *this,
 	u32 instance)
 {
 	int ret = 0;
-	struct fimc_is_msg msg;
+	struct fimc_is_msg msg, reply;
 
 	dbg_interface("pwr_down(%d)\n", instance);
+
+	if (!test_bit(IS_IF_STATE_START, &this->state)) {
+		warn("instance(%d): FW is not initialized, wait\n", instance);
+		ret = fimc_is_hw_enum(this);
+		if (ret)
+			err("fimc_is_itf_enum is fail(%d)", ret);
+	}
 
 	msg.id = 0;
 	msg.command = HIC_POWER_DOWN;
 	msg.instance = instance;
+	msg.group = 0;
 	msg.parameter1 = 0;
 	msg.parameter2 = 0;
 	msg.parameter3 = 0;
 	msg.parameter4 = 0;
 
-	ret = fimc_is_set_cmd(this, &msg);
+	ret = fimc_is_set_cmd(this, &msg, &reply);
 
 	return ret;
 }
 
 int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
-	u32 instance, u32 bayer, u32 shot, u32 fcount, u32 rcount)
+	u32 instance, u32 group, u32 bayer, u32 shot, u32 fcount, u32 rcount)
 {
 	int ret = 0;
 	struct fimc_is_msg msg;
@@ -1795,6 +2448,7 @@ int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
 	msg.id = 0;
 	msg.command = HIC_SHOT;
 	msg.instance = instance;
+	msg.group = group;
 	msg.parameter1 = bayer;
 	msg.parameter2 = shot;
 	msg.parameter3 = fcount;
@@ -1822,6 +2476,7 @@ int fimc_is_hw_s_camctrl_nblk(struct fimc_is_interface *this,
 		msg->id = 0;
 		msg->command = HIC_SET_CAM_CONTROL;
 		msg->instance = instance;
+		msg->group = 0;
 		msg->parameter1 = address;
 		msg->parameter2 = fcount;
 		msg->parameter3 = 0;

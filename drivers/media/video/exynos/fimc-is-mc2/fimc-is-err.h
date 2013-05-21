@@ -251,6 +251,34 @@ enum error {
 
 };
 
+enum ShotErrorType {
+	IS_SHOT_SUCCESS = 0,
+	/* Un-known state.(Normally under processing.) */
+	IS_SHOT_UNKNOWN,
+	/* Bad frame. Ndone is occured at provious group. */
+	IS_SHOT_BAD_FRAME,
+	/* Metadata is not valid. For example, sirc sdk's fd is not valid. */
+	IS_SHOT_CORRUPTED_FRAME,
+	/* Processing of previous group is not complete. */
+	IS_SHOT_EARLY_FRAME,
+	/* Shot is too late at OTF mode. */
+	IS_SHOT_LATE_FRAME,
+	/* Shot is coming when group is process-stop. */
+	IS_SHOT_GROUP_PROCESSSTOP,
+	/* Frame number is not allocated. */
+	IS_SHOT_INVALID_FRAMENUMBER,
+	/* Overflow is occred during processing. */
+	IS_SHOT_OVERFLOW,
+	/* Shot is time-out during processing.(Unknown reason.) */
+	IS_SHOT_SAME_FRAME_COUNT,
+	/* Shot is time-out during processing.(Unknown reason.) */
+	IS_SHOT_TIMEOUT,
+	/* Shot is droped at BufferEntry. */
+	IS_SHOT_DROP,
+	/* Capture frame number is zero. */
+	IS_SHOT_CAPTURE_FRAME_NO_ZERO,
+};
+
 #define ENOBASE_IS		0x10000
 #define	ENOSHOT			(ENOBASE_IS + 1) /* shot error */
 #define ENOMDONE		(ENOBASE_IS + 2) /* meta done error */

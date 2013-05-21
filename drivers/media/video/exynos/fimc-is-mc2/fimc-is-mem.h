@@ -12,6 +12,32 @@
 #ifndef FIMC_IS_MEM_H
 #define FIMC_IS_MEM_H
 
+struct fimc_is_minfo {
+	dma_addr_t	base;		/* buffer base */
+	size_t		size;		/* total length */
+	dma_addr_t	vaddr_base;	/* buffer base */
+	dma_addr_t	vaddr_curr;	/* current addr */
+	void		*bitproc_buf;
+	void		*fw_cookie;
+
+	u32		dvaddr;
+	u32		kvaddr;
+	u32		dvaddr_debug;
+	u32		kvaddr_debug;
+	u32		dvaddr_fshared;
+	u32		kvaddr_fshared;
+	u32		dvaddr_region;
+	u32		kvaddr_region;
+	u32		dvaddr_shared; /*shared region of is region*/
+	u32		kvaddr_shared;
+	u32		dvaddr_odc;
+	u32		kvaddr_odc;
+	u32		dvaddr_dis;
+	u32		kvaddr_dis;
+	u32		dvaddr_3dnr;
+	u32		kvaddr_3dnr;
+};
+
 struct fimc_is_vb2 {
 	const struct vb2_mem_ops *ops;
 	void *(*init)(struct platform_device *pdev);
@@ -23,7 +49,6 @@ struct fimc_is_vb2 {
 	int (*resume)(void *alloc_ctx);
 	void (*suspend)(void *alloc_ctx);
 
-	int (*cache_flush)(struct vb2_buffer *vb, u32 num_planes);
 	void (*set_cacheable)(void *alloc_ctx, bool cacheable);
 };
 

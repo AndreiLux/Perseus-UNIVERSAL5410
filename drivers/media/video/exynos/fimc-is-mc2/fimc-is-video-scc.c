@@ -29,6 +29,7 @@
 #include <linux/videodev2_exynos_media.h>
 #include <linux/videodev2_exynos_camera.h>
 #include <linux/v4l2-mediabus.h>
+#include <linux/bug.h>
 
 #include "fimc-is-core.h"
 #include "fimc-is-param.h"
@@ -39,91 +40,170 @@
 #include "fimc-is-metadata.h"
 #include "fimc-is-device-ischain.h"
 
+const struct v4l2_file_operations fimc_is_scc_video_fops;
+const struct v4l2_ioctl_ops fimc_is_scc_video_ioctl_ops;
+const struct vb2_ops fimc_is_scc_qops;
+
 int fimc_is_scc_video_probe(void *core_data)
 {
 	int ret = 0;
 	struct fimc_is_core *core = (struct fimc_is_core *)core_data;
-	struct fimc_is_video_scc *video = &core->video_scc;
+	struct fimc_is_video *video = &core->video_scc;
 
 	dbg_scc("%s\n", __func__);
 
-	ret = fimc_is_video_probe(&video->common,
+	ret = fimc_is_video_probe(video,
 		core_data,
-		video,
-		FIMC_IS_VIDEO_SCALERC_NAME,
-		FIMC_IS_VIDEO_NUM_SCALERC,
-		V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
-		&fimc_is_scalerc_video_fops,
-		&fimc_is_scalerc_video_ioctl_ops,
-		&fimc_is_scalerc_qops);
+		FIMC_IS_VIDEO_SCC_NAME,
+		FIMC_IS_VIDEO_SCC_NUM,
+		&video->lock,
+		&fimc_is_scc_video_fops,
+		&fimc_is_scc_video_ioctl_ops);
+
+	if (ret != 0)
+		dev_err(&(core->pdev->dev),
+		"%s::Failed to fimc_is_video_probe()\n", __func__);
 
 	return ret;
 }
 
-/*************************************************************************/
-/* video file opertation */
-/************************************************************************/
+/*
+ * =============================================================================
+ * Video File Opertation
+ * =============================================================================
+ */
 
-static int fimc_is_scalerc_video_open(struct file *file)
-{
-	struct fimc_is_core *core = video_drvdata(file);
-	struct fimc_is_video_scc *video = &core->video_scc;
-	struct fimc_is_device_ischain *ischain = &core->ischain;
-	struct fimc_is_ischain_dev *scc = &ischain->scc;
-
-	dbg_scc("%s\n", __func__);
-
-	file->private_data = video;
-	fimc_is_video_open(&video->common, ischain, VIDEO_SCC_READY_BUFFERS);
-	fimc_is_ischain_dev_open(scc, ENTRY_SCALERC, &video->common, NULL);
-
-	return 0;
-}
-
-static int fimc_is_scalerc_video_close(struct file *file)
+static int fimc_is_scc_video_open(struct file *file)
 {
 	int ret = 0;
-	struct fimc_is_video_scc *video = file->private_data;
-	struct fimc_is_video_common *common = &video->common;
-	struct fimc_is_device_ischain *ischain = common->device;
-	struct fimc_is_ischain_dev *scc = &ischain->scc;
+	u32 refcount;
+	struct fimc_is_core *core = video_drvdata(file);
+	struct fimc_is_video *video = &core->video_scc;
+	struct fimc_is_video_ctx *vctx = NULL;
+	struct fimc_is_device_ischain *device;
 
-	printk(KERN_INFO "%s\n", __func__);
+	ret = open_vctx(file, video, &vctx, FRAMEMGR_ID_INVALID, FRAMEMGR_ID_SCC);
+	if (ret) {
+		err("open_vctx is fail(%d)", ret);
+		goto p_err;
+	}
 
-	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state))
-		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
+	pr_info("[SCC:V:%d] %s\n", vctx->instance, __func__);
 
-	file->private_data = 0;
-	fimc_is_video_close(&video->common, &scc->framemgr);
+	refcount = atomic_read(&core->video_isp.refcount);
+	if (refcount > FIMC_IS_MAX_NODES) {
+		err("invalid ischain refcount(%d)", refcount);
+		close_vctx(file, video, vctx);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	device = &core->ischain[refcount - 1];
+
+	ret = fimc_is_ischain_sub_open(&device->scc, vctx, NULL);
+	if (ret) {
+		err("fimc_is_ischain_sub_open is fail");
+		close_vctx(file, video, vctx);
+		goto p_err;
+	}
+
+	fimc_is_video_open(vctx,
+		device,
+		VIDEO_SCC_READY_BUFFERS,
+		&core->video_scc,
+		FIMC_IS_VIDEO_TYPE_CAPTURE,
+		&fimc_is_scc_qops,
+		NULL,
+		&fimc_is_ischain_sub_ops,
+		core->mem.vb2->ops);
+
+p_err:
+	return ret;
+}
+
+static int fimc_is_scc_video_close(struct file *file)
+{
+	int ret = 0;
+	struct fimc_is_video *video;
+	struct fimc_is_video_ctx *vctx;
+	struct fimc_is_device_ischain *device;
+
+	BUG_ON(!file);
+
+	vctx = file->private_data;
+	if (!vctx) {
+		err("vctx is NULL");
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	video = vctx->video;
+	if (!video) {
+		merr("video is NULL", vctx);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	pr_info("[SCC:V:%d] %s\n", vctx->instance, __func__);
+
+	device = vctx->device;
+	if (!device) {
+		err("device is NULL");
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	fimc_is_ischain_sub_close(&device->scc);
+	fimc_is_video_close(vctx);
+
+	ret = close_vctx(file, video, vctx);
+	if (ret < 0)
+		err("close_vctx is fail(%d)", ret);
+
+p_err:
+	return ret;
+}
+
+static unsigned int fimc_is_scc_video_poll(struct file *file,
+	struct poll_table_struct *wait)
+{
+	u32 ret = 0;
+	struct fimc_is_video_ctx *vctx = file->private_data;
+
+	ret = fimc_is_video_poll(file, vctx, wait);
 
 	return ret;
 }
 
-static unsigned int fimc_is_scalerc_video_poll(struct file *file,
-				      struct poll_table_struct *wait)
+static int fimc_is_scc_video_mmap(struct file *file,
+	struct vm_area_struct *vma)
 {
-	struct fimc_is_video_scc *video = file->private_data;
+	int ret = 0;
+	struct fimc_is_video_ctx *vctx = file->private_data;
 
-	dbg("%s\n", __func__);
-	return vb2_poll(&video->common.vbq, file, wait);
+	ret = fimc_is_video_mmap(file, vctx, vma);
+	if (ret)
+		merr("fimc_is_video_mmap is fail(%d)", vctx, ret);
 
+	return ret;
 }
 
-static int fimc_is_scalerc_video_mmap(struct file *file,
-					struct vm_area_struct *vma)
-{
-	struct fimc_is_video_scc *video = file->private_data;
+const struct v4l2_file_operations fimc_is_scc_video_fops = {
+	.owner		= THIS_MODULE,
+	.open		= fimc_is_scc_video_open,
+	.release	= fimc_is_scc_video_close,
+	.poll		= fimc_is_scc_video_poll,
+	.unlocked_ioctl	= video_ioctl2,
+	.mmap		= fimc_is_scc_video_mmap,
+};
 
-	dbg("%s\n", __func__);
-	return vb2_mmap(&video->common.vbq, vma);
+/*
+ * =============================================================================
+ * Video Ioctl Opertation
+ * =============================================================================
+ */
 
-}
-
-/*************************************************************************/
-/* video ioctl operation						*/
-/************************************************************************/
-
-static int fimc_is_scalerc_video_querycap(struct file *file, void *fh,
+static int fimc_is_scc_video_querycap(struct file *file, void *fh,
 						struct v4l2_capability *cap)
 {
 	struct fimc_is_core *isp = video_drvdata(file);
@@ -141,162 +221,182 @@ static int fimc_is_scalerc_video_querycap(struct file *file, void *fh,
 	return 0;
 }
 
-static int fimc_is_scalerc_video_enum_fmt_mplane(struct file *file, void *priv,
+static int fimc_is_scc_video_enum_fmt_mplane(struct file *file, void *priv,
 				    struct v4l2_fmtdesc *f)
 {
 	dbg("%s\n", __func__);
 	return 0;
 }
 
-static int fimc_is_scalerc_video_get_format_mplane(struct file *file, void *fh,
+static int fimc_is_scc_video_get_format_mplane(struct file *file, void *fh,
 						struct v4l2_format *format)
 {
 	dbg("%s\n", __func__);
 	return 0;
 }
 
-static int fimc_is_scalerc_video_set_format_mplane(struct file *file, void *fh,
+static int fimc_is_scc_video_set_format_mplane(struct file *file, void *fh,
 						struct v4l2_format *format)
 {
 	int ret = 0;
-	struct fimc_is_video_scc *video = file->private_data;
+	struct fimc_is_video_ctx *vctx = file->private_data;
 
-	dbg_scp("%s\n", __func__);
+	mdbgv_scc("%s\n", vctx, __func__);
 
-	ret = fimc_is_video_set_format_mplane(&video->common, format);
-
-	dbg_scc("req w : %d req h : %d\n",
-		video->common.frame.width,
-		video->common.frame.height);
+	ret = fimc_is_video_set_format_mplane(file, vctx, format);
+	if (ret)
+		merr("fimc_is_video_set_format_mplane is fail(%d)", vctx, ret);
 
 	return ret;
 }
 
-static int fimc_is_scalerc_video_try_format_mplane(struct file *file, void *fh,
+static int fimc_is_scc_video_try_format_mplane(struct file *file, void *fh,
 						struct v4l2_format *format)
 {
 	dbg("%s\n", __func__);
 	return 0;
 }
 
-static int fimc_is_scalerc_video_cropcap(struct file *file, void *fh,
+static int fimc_is_scc_video_cropcap(struct file *file, void *fh,
 						struct v4l2_cropcap *cropcap)
 {
 	dbg("%s\n", __func__);
 	return 0;
 }
 
-static int fimc_is_scalerc_video_get_crop(struct file *file, void *fh,
+static int fimc_is_scc_video_get_crop(struct file *file, void *fh,
 						struct v4l2_crop *crop)
 {
 	dbg("%s\n", __func__);
 	return 0;
 }
 
-static int fimc_is_scalerc_video_set_crop(struct file *file, void *fh,
+static int fimc_is_scc_video_set_crop(struct file *file, void *fh,
 						struct v4l2_crop *crop)
 {
 	dbg("%s\n", __func__);
 	return 0;
 }
 
-static int fimc_is_scalerc_video_reqbufs(struct file *file, void *priv,
-					struct v4l2_requestbuffers *buf)
+static int fimc_is_scc_video_reqbufs(struct file *file, void *priv,
+	struct v4l2_requestbuffers *buf)
 {
 	int ret = 0;
-	struct fimc_is_video_scc *video = file->private_data;
-	struct fimc_is_video_common *common = &video->common;
-	struct fimc_is_device_ischain *ischain = common->device;
-	struct fimc_is_ischain_dev *isp = &ischain->isp;
-	struct fimc_is_ischain_dev *scc = &ischain->scc;
+	struct fimc_is_video_ctx *vctx = file->private_data;
+	struct fimc_is_device_ischain *device;
+	struct fimc_is_subdev *subdev;
+	struct fimc_is_subdev *leader;
 
-	dbg_scc("%s(buffers : %d)\n", __func__, buf->count);
+	BUG_ON(!vctx);
 
-	if (test_bit(FIMC_IS_ISDEV_DSTART, &isp->state)) {
-		err("isp still running, not applied");
+	mdbgv_scc("%s(buffers : %d)\n", vctx, __func__, buf->count);
+
+	device = vctx->device;
+	subdev = &device->scc;
+	leader = subdev->leader;
+
+	if (!leader) {
+		merr("leader is NULL ptr", vctx);
 		ret = -EINVAL;
-		goto exit;
+		goto p_err;
 	}
 
-	ret = fimc_is_video_reqbufs(common, &scc->framemgr, buf);
-	if (ret)
-		err("fimc_is_video_reqbufs is fail(error %d)", ret);
+	if (test_bit(FIMC_IS_ISDEV_DSTART, &leader->state)) {
+		merr("leader still running, not applied", vctx);
+		ret = -EINVAL;
+		goto p_err;
+	}
 
-exit:
+	ret = fimc_is_video_reqbufs(file, vctx, buf);
+	if (ret)
+		merr("fimc_is_video_reqbufs is fail(%d)", vctx, ret);
+
+p_err:
 	return ret;
 }
 
-static int fimc_is_scalerc_video_querybuf(struct file *file, void *priv,
-						struct v4l2_buffer *buf)
+static int fimc_is_scc_video_querybuf(struct file *file, void *priv,
+	struct v4l2_buffer *buf)
 {
 	int ret;
-	struct fimc_is_video_scc *video = file->private_data;
+	struct fimc_is_video_ctx *vctx = file->private_data;
 
-	dbg("%s\n", __func__);
-	ret = vb2_querybuf(&video->common.vbq, buf);
+	mdbgv_vdo("%s\n", vctx, __func__);
+
+	ret = fimc_is_video_querybuf(file, vctx, buf);
+	if (ret)
+		merr("fimc_is_video_querybuf is fail(%d)", vctx, ret);
 
 	return ret;
 }
 
-static int fimc_is_scalerc_video_qbuf(struct file *file, void *priv,
+static int fimc_is_scc_video_qbuf(struct file *file, void *priv,
 	struct v4l2_buffer *buf)
 {
 	int ret = 0;
-	struct fimc_is_video_scc *video = file->private_data;
+	struct fimc_is_video_ctx *vctx = file->private_data;
 
 #ifdef DBG_STREAMING
-	/*dbg_scc("%s(index : %d)\n", __func__, buf->index);*/
+	mdbgv_scc("%s(index : %d)\n", vctx, __func__, buf->index);
 #endif
 
-	ret = fimc_is_video_qbuf(&video->common, buf);
+	ret = fimc_is_video_qbuf(file, vctx, buf);
+	if (ret)
+		merr("fimc_is_video_qbuf is fail(%d)", vctx, ret);
 
 	return ret;
 }
 
-static int fimc_is_scalerc_video_dqbuf(struct file *file, void *priv,
+static int fimc_is_scc_video_dqbuf(struct file *file, void *priv,
 	struct v4l2_buffer *buf)
 {
 	int ret = 0;
-	struct fimc_is_video_scc *video = file->private_data;
-
-	ret = fimc_is_video_dqbuf(&video->common, buf,
-		file->f_flags & O_NONBLOCK);
+	struct fimc_is_video_ctx *vctx = file->private_data;
 
 #ifdef DBG_STREAMING
-	/*dbg_scc("%s(index : %d)\n", __func__, buf->index);*/
+	mdbgv_scc("%s\n", vctx, __func__);
 #endif
 
+	ret = fimc_is_video_dqbuf(file, vctx, buf);
+	if (ret)
+		merr("fimc_is_video_dqbuf is fail(%d)", vctx, ret);
+
+p_err:
 	return ret;
 }
 
-static int fimc_is_scalerc_video_streamon(struct file *file, void *priv,
-						enum v4l2_buf_type type)
+static int fimc_is_scc_video_streamon(struct file *file, void *priv,
+	enum v4l2_buf_type type)
 {
 	int ret = 0;
-	struct fimc_is_video_scc *video = file->private_data;
+	struct fimc_is_video_ctx *vctx = file->private_data;
 
-	dbg_scc("%s\n", __func__);
+	mdbgv_scc("%s\n", vctx, __func__);
 
-	ret = fimc_is_video_streamon(&video->common, type);
+	ret = fimc_is_video_streamon(file, vctx, type);
+	if (ret)
+		merr("fimc_is_video_streamoff is fail(%d)", vctx, ret);
 
 	return ret;
 }
 
-static int fimc_is_scalerc_video_streamoff(struct file *file, void *priv,
-						enum v4l2_buf_type type)
+static int fimc_is_scc_video_streamoff(struct file *file, void *priv,
+	enum v4l2_buf_type type)
 {
 	int ret = 0;
-	struct fimc_is_video_scc *video = file->private_data;
+	struct fimc_is_video_ctx *vctx = file->private_data;
 
-	dbg_scc("%s\n", __func__);
+	mdbgv_scc("%s\n", vctx, __func__);
 
-	ret = fimc_is_video_streamoff(&video->common, type);
+	ret = fimc_is_video_streamoff(file, vctx, type);
+	if (ret)
+		merr("fimc_is_video_streamoff is fail(%d)", vctx, ret);
 
 	return ret;
 }
 
-static int fimc_is_scalerc_video_enum_input(struct file *file, void *priv,
-						struct v4l2_input *input)
+static int fimc_is_scc_video_enum_input(struct file *file, void *priv,
+	struct v4l2_input *input)
 {
 	struct fimc_is_core *isp = video_drvdata(file);
 	struct exynos5_fimc_is_sensor_info *sensor_info
@@ -320,34 +420,31 @@ static int fimc_is_scalerc_video_enum_input(struct file *file, void *priv,
 	return 0;
 }
 
-static int fimc_is_scalerc_video_g_input(struct file *file, void *priv,
+static int fimc_is_scc_video_g_input(struct file *file, void *priv,
 						unsigned int *input)
 {
 	dbg("%s\n", __func__);
 	return 0;
 }
 
-static int fimc_is_scalerc_video_s_input(struct file *file, void *priv,
+static int fimc_is_scc_video_s_input(struct file *file, void *priv,
 						unsigned int input)
 {
 	return 0;
 }
 
-static int fimc_is_scalerc_video_g_ctrl(struct file *file, void *priv,
+static int fimc_is_scc_video_g_ctrl(struct file *file, void *priv,
 					struct v4l2_control *ctrl)
 {
 	int ret = 0;
-	struct fimc_is_video_scc *video = file->private_data;
-	struct fimc_is_video_common *common = &video->common;
-	struct fimc_is_device_ischain *ischain = common->device;
-	struct fimc_is_ischain_dev *scc = &ischain->scc;
-	struct fimc_is_framemgr *framemgr = &scc->framemgr;
+	struct fimc_is_video_ctx *vctx = file->private_data;
+	struct fimc_is_framemgr *framemgr = GET_DST_FRAMEMGR(vctx);
 
 	dbg_scc("%s\n", __func__);
 
 	switch (ctrl->id) {
 	case V4L2_CID_IS_G_COMPLETES:
-		ctrl->value = framemgr->frame_complete_cnt;
+		ctrl->value = framemgr->frame_com_cnt;
 		break;
 	default:
 		err("unsupported ioctl(%d)\n", ctrl->id);
@@ -358,29 +455,32 @@ static int fimc_is_scalerc_video_g_ctrl(struct file *file, void *priv,
 	return ret;
 }
 
-static int fimc_is_scalerc_video_s_ctrl(struct file *file, void *priv,
+static int fimc_is_scc_video_s_ctrl(struct file *file, void *priv,
 	struct v4l2_control *ctrl)
 {
 	int ret = 0;
 	unsigned long flags;
-	struct fimc_is_video_scp *video = file->private_data;
-	struct fimc_is_video_common *common = &video->common;
-	struct fimc_is_device_ischain *ischain = common->device;
-	struct fimc_is_ischain_dev *scc = &ischain->scc;
-	struct fimc_is_framemgr *framemgr = &scc->framemgr;
-	struct fimc_is_frame_shot *frame;
+	struct fimc_is_video_ctx *vctx = file->private_data;
+	struct fimc_is_framemgr *framemgr;
+	struct fimc_is_frame *frame;
 
-	dbg_scc("%s\n", __func__);
+	BUG_ON(!vctx);
+	BUG_ON(!ctrl);
+
+	mdbgv_scc("%s\n", vctx, __func__);
+
+	framemgr = GET_DST_FRAMEMGR(vctx);
+	frame = NULL;
 
 	switch (ctrl->id) {
 	case V4L2_CID_IS_FORCE_DONE:
-		if (framemgr->frame_process_cnt) {
+		if (framemgr->frame_pro_cnt) {
 			err("force done can be performed(process count %d)",
-				framemgr->frame_process_cnt);
+				framemgr->frame_pro_cnt);
 			ret = -EINVAL;
-		} else if (!framemgr->frame_request_cnt) {
+		} else if (!framemgr->frame_req_cnt) {
 			err("force done can be performed(request count %d)",
-				framemgr->frame_request_cnt);
+				framemgr->frame_req_cnt);
 			ret = -EINVAL;
 		} else {
 			framemgr_e_barrier_irqs(framemgr, 0, flags);
@@ -388,7 +488,7 @@ static int fimc_is_scalerc_video_s_ctrl(struct file *file, void *priv,
 			fimc_is_frame_request_head(framemgr, &frame);
 			if (frame) {
 				fimc_is_frame_trans_req_to_com(framemgr, frame);
-				buffer_done(common, frame->index);
+				buffer_done(vctx, frame->index);
 			} else {
 				err("frame is NULL");
 				ret = -EINVAL;
@@ -398,7 +498,7 @@ static int fimc_is_scalerc_video_s_ctrl(struct file *file, void *priv,
 		}
 		break;
 	default:
-		err("unsupported ioctl(%d)\n", ctrl->id);
+		merr("unsupported ioctl(%d)\n", vctx, ctrl->id);
 		ret = -EINVAL;
 		break;
 	}
@@ -406,175 +506,170 @@ static int fimc_is_scalerc_video_s_ctrl(struct file *file, void *priv,
 	return ret;
 }
 
-const struct v4l2_file_operations fimc_is_scalerc_video_fops = {
-	.owner		= THIS_MODULE,
-	.open		= fimc_is_scalerc_video_open,
-	.release	= fimc_is_scalerc_video_close,
-	.poll		= fimc_is_scalerc_video_poll,
-	.unlocked_ioctl	= video_ioctl2,
-	.mmap		= fimc_is_scalerc_video_mmap,
+const struct v4l2_ioctl_ops fimc_is_scc_video_ioctl_ops = {
+	.vidioc_querycap		= fimc_is_scc_video_querycap,
+	.vidioc_enum_fmt_vid_cap_mplane	= fimc_is_scc_video_enum_fmt_mplane,
+	.vidioc_g_fmt_vid_cap_mplane	= fimc_is_scc_video_get_format_mplane,
+	.vidioc_s_fmt_vid_cap_mplane	= fimc_is_scc_video_set_format_mplane,
+	.vidioc_try_fmt_vid_cap_mplane	= fimc_is_scc_video_try_format_mplane,
+	.vidioc_cropcap			= fimc_is_scc_video_cropcap,
+	.vidioc_g_crop			= fimc_is_scc_video_get_crop,
+	.vidioc_s_crop			= fimc_is_scc_video_set_crop,
+	.vidioc_reqbufs			= fimc_is_scc_video_reqbufs,
+	.vidioc_querybuf		= fimc_is_scc_video_querybuf,
+	.vidioc_qbuf			= fimc_is_scc_video_qbuf,
+	.vidioc_dqbuf			= fimc_is_scc_video_dqbuf,
+	.vidioc_streamon		= fimc_is_scc_video_streamon,
+	.vidioc_streamoff		= fimc_is_scc_video_streamoff,
+	.vidioc_enum_input		= fimc_is_scc_video_enum_input,
+	.vidioc_g_input			= fimc_is_scc_video_g_input,
+	.vidioc_s_input			= fimc_is_scc_video_s_input,
+	.vidioc_g_ctrl			= fimc_is_scc_video_g_ctrl,
+	.vidioc_s_ctrl			= fimc_is_scc_video_s_ctrl,
 };
 
-const struct v4l2_ioctl_ops fimc_is_scalerc_video_ioctl_ops = {
-	.vidioc_querycap		= fimc_is_scalerc_video_querycap,
-	.vidioc_enum_fmt_vid_cap_mplane
-				= fimc_is_scalerc_video_enum_fmt_mplane,
-	.vidioc_g_fmt_vid_cap_mplane
-				= fimc_is_scalerc_video_get_format_mplane,
-	.vidioc_s_fmt_vid_cap_mplane
-				= fimc_is_scalerc_video_set_format_mplane,
-	.vidioc_try_fmt_vid_cap_mplane
-				= fimc_is_scalerc_video_try_format_mplane,
-	.vidioc_cropcap			= fimc_is_scalerc_video_cropcap,
-	.vidioc_g_crop			= fimc_is_scalerc_video_get_crop,
-	.vidioc_s_crop			= fimc_is_scalerc_video_set_crop,
-	.vidioc_reqbufs			= fimc_is_scalerc_video_reqbufs,
-	.vidioc_querybuf		= fimc_is_scalerc_video_querybuf,
-	.vidioc_qbuf			= fimc_is_scalerc_video_qbuf,
-	.vidioc_dqbuf			= fimc_is_scalerc_video_dqbuf,
-	.vidioc_streamon		= fimc_is_scalerc_video_streamon,
-	.vidioc_streamoff		= fimc_is_scalerc_video_streamoff,
-	.vidioc_enum_input		= fimc_is_scalerc_video_enum_input,
-	.vidioc_g_input			= fimc_is_scalerc_video_g_input,
-	.vidioc_s_input			= fimc_is_scalerc_video_s_input,
-	.vidioc_g_ctrl			= fimc_is_scalerc_video_g_ctrl,
-	.vidioc_s_ctrl			= fimc_is_scalerc_video_s_ctrl,
-};
-
-static int fimc_is_scalerc_queue_setup(struct vb2_queue *vq,
+static int fimc_is_scc_queue_setup(struct vb2_queue *vbq,
 	const struct v4l2_format *fmt,
 	unsigned int *num_buffers,
 	unsigned int *num_planes, unsigned int sizes[],
 	void *allocators[])
 {
 	int ret = 0;
-	struct fimc_is_video_scc *video = vq->drv_priv;
+	struct fimc_is_video_ctx *vctx = vbq->drv_priv;
+	struct fimc_is_video *video;
+	struct fimc_is_queue *queue;
+	struct fimc_is_core *core;
+	void *alloc_ctx;
 
-	dbg_scc("%s\n", __func__);
+	BUG_ON(!vctx);
 
-	ret = fimc_is_video_queue_setup(&video->common,
+	mdbgv_scc("%s\n", vctx, __func__);
+
+	video = vctx->video;
+	queue = GET_DST_QUEUE(vctx);
+	core = video->core;
+	alloc_ctx = core->mem.alloc_ctx;
+
+	ret = fimc_is_queue_setup(queue,
+		alloc_ctx,
 		num_planes,
 		sizes,
 		allocators);
-
-	dbg_scc("(num_planes : %d)(size : %d)\n",
-		(int)*num_planes, (int)sizes[0]);
+	if (ret)
+		merr("fimc_is_queue_setup is fail(%d)", vctx, ret);
 
 	return ret;
 }
-static int fimc_is_scalerc_buffer_prepare(struct vb2_buffer *vb)
+static int fimc_is_scc_buffer_prepare(struct vb2_buffer *vb)
 {
 	return 0;
 }
 
-static inline void fimc_is_scalerc_wait_prepare(struct vb2_queue *q)
+static inline void fimc_is_scc_wait_prepare(struct vb2_queue *vbq)
 {
+	fimc_is_queue_wait_prepare(vbq);
 }
 
-static inline void fimc_is_scalerc_wait_finish(struct vb2_queue *q)
+static inline void fimc_is_scc_wait_finish(struct vb2_queue *vbq)
 {
+	fimc_is_queue_wait_finish(vbq);
 }
 
-static int fimc_is_scalerc_start_streaming(struct vb2_queue *q,
+static int fimc_is_scc_start_streaming(struct vb2_queue *q,
 	unsigned int count)
 {
 	int ret = 0;
-	struct fimc_is_video_scc *video = q->drv_priv;
-	struct fimc_is_video_common *common = &video->common;
-	struct fimc_is_device_ischain *ischain = common->device;
-	struct fimc_is_ischain_dev *scc = &ischain->scc;
+	struct fimc_is_video_ctx *vctx = q->drv_priv;
+	struct fimc_is_queue *queue;
+	struct fimc_is_device_ischain *device;
+	struct fimc_is_subdev *subdev;
 
-	dbg_scc("%s\n", __func__);
+	BUG_ON(!vctx);
 
-	if (!test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state) &&
-		test_bit(FIMC_IS_VIDEO_BUFFER_READY, &common->state)) {
-		set_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
-		fimc_is_ischain_dev_start(scc);
-	} else {
-		err("already stream on or buffer is not ready(%ld)",
-			common->state);
-		clear_bit(FIMC_IS_VIDEO_BUFFER_READY, &common->state);
-		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &common->state);
-		fimc_is_ischain_dev_stop(scc);
-		ret = -EINVAL;
-	}
+	mdbgv_scc("%s\n", vctx, __func__);
+
+	queue = GET_DST_QUEUE(vctx);
+	device = vctx->device;
+	subdev = &device->scc;
+
+	ret = fimc_is_queue_start_streaming(queue, device, subdev, vctx);
+	if (ret)
+		merr("fimc_is_queue_start_streaming is fail(%d)", vctx, ret);
 
 	return ret;
 }
 
-static int fimc_is_scalerc_stop_streaming(struct vb2_queue *q)
+static int fimc_is_scc_stop_streaming(struct vb2_queue *q)
 {
 	int ret = 0;
-	unsigned long flags;
-	struct fimc_is_video_scc *video = q->drv_priv;
-	struct fimc_is_video_common *common = &video->common;
-	struct fimc_is_device_ischain *ischain = common->device;
-	struct fimc_is_ischain_dev *scc = &ischain->scc;
-	struct fimc_is_framemgr *framemgr = &scc->framemgr;
+	struct fimc_is_video_ctx *vctx = q->drv_priv;
+	struct fimc_is_queue *queue;
+	struct fimc_is_device_ischain *device;
+	struct fimc_is_subdev *subdev;
 
-	dbg_scc("%s\n", __func__);
+	mdbgv_scc("%s\n", vctx, __func__);
 
-	if (test_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state)) {
-		framemgr_e_barrier_irqs(framemgr, 0, flags);
-		ret = framemgr->frame_process_cnt;
-		framemgr_x_barrier_irqr(framemgr, 0, flags);
-		if (ret) {
-			err("being processed, can't stop");
-			ret = -EINVAL;
-			goto exit;
-		}
-
-		clear_bit(FIMC_IS_VIDEO_STREAM_ON, &common->state);
-		clear_bit(FIMC_IS_VIDEO_BUFFER_READY, &common->state);
-		clear_bit(FIMC_IS_VIDEO_BUFFER_PREPARED, &common->state);
-		fimc_is_ischain_dev_stop(scc);
-	} else {
-		err("already stream off");
+	queue = GET_DST_QUEUE(vctx);
+	device = vctx->device;
+	if (!device) {
+		err("device is NULL");
 		ret = -EINVAL;
+		goto p_err;
 	}
+	subdev = &device->scc;
 
-exit:
+	ret = fimc_is_queue_stop_streaming(queue, device, subdev, vctx);
+	if (ret)
+		merr("fimc_is_queue_stop_streaming is fail(%d)", vctx, ret);
+
+p_err:
 	return ret;
 }
 
-static void fimc_is_scalerc_buffer_queue(struct vb2_buffer *vb)
+static void fimc_is_scc_buffer_queue(struct vb2_buffer *vb)
 {
-	struct fimc_is_video_scc *video = vb->vb2_queue->drv_priv;
-	struct fimc_is_video_common *common = &video->common;
-	struct fimc_is_device_ischain *ischain = common->device;
-	struct fimc_is_ischain_dev *scc = &ischain->scc;
+	struct fimc_is_video_ctx *vctx = vb->vb2_queue->drv_priv;
+	struct fimc_is_queue *queue = &vctx->q_dst;
+	struct fimc_is_video *video = vctx->video;
+	struct fimc_is_device_ischain *ischain = vctx->device;
+	struct fimc_is_subdev *scc = &ischain->scc;
 
 #ifdef DBG_STREAMING
 	dbg_scc("%s\n", __func__);
 #endif
 
-	fimc_is_video_buffer_queue(common, vb, &scc->framemgr);
-	fimc_is_ischain_dev_buffer_queue(scc, vb->v4l2_buf.index);
+	fimc_is_queue_buffer_queue(queue, video->vb2, vb);
+	fimc_is_subdev_buffer_queue(scc, vb->v4l2_buf.index);
 }
 
-static int fimc_is_scalerc_buffer_finish(struct vb2_buffer *vb)
+static int fimc_is_scc_buffer_finish(struct vb2_buffer *vb)
 {
 	int ret = 0;
-	struct fimc_is_video_scc *video = vb->vb2_queue->drv_priv;
-	struct fimc_is_device_ischain *ischain = video->common.device;
-	struct fimc_is_ischain_dev *scc = &ischain->scc;
+	struct fimc_is_video_ctx *vctx = vb->vb2_queue->drv_priv;
+	struct fimc_is_device_ischain *device;
+	struct fimc_is_subdev *subdev;
+
+	BUG_ON(!vctx);
 
 #ifdef DBG_STREAMING
-	dbg_scc("%s(%d)\n", __func__, vb->v4l2_buf.index);
+	mdbgv_scc("%s(%d)\n", vctx, __func__, vb->v4l2_buf.index);
 #endif
 
-	ret = fimc_is_ischain_dev_buffer_finish(scc, vb->v4l2_buf.index);
+	device = vctx->device;
+	subdev = &device->scc;
+
+	ret = fimc_is_subdev_buffer_finish(subdev, vb->v4l2_buf.index);
 
 	return ret;
 }
 
-const struct vb2_ops fimc_is_scalerc_qops = {
-	.queue_setup		= fimc_is_scalerc_queue_setup,
-	.buf_prepare		= fimc_is_scalerc_buffer_prepare,
-	.buf_queue		= fimc_is_scalerc_buffer_queue,
-	.buf_finish		= fimc_is_scalerc_buffer_finish,
-	.wait_prepare		= fimc_is_scalerc_wait_prepare,
-	.wait_finish		= fimc_is_scalerc_wait_finish,
-	.start_streaming	= fimc_is_scalerc_start_streaming,
-	.stop_streaming		= fimc_is_scalerc_stop_streaming,
+const struct vb2_ops fimc_is_scc_qops = {
+	.queue_setup		= fimc_is_scc_queue_setup,
+	.buf_prepare		= fimc_is_scc_buffer_prepare,
+	.buf_queue		= fimc_is_scc_buffer_queue,
+	.buf_finish		= fimc_is_scc_buffer_finish,
+	.wait_prepare		= fimc_is_scc_wait_prepare,
+	.wait_finish		= fimc_is_scc_wait_finish,
+	.start_streaming	= fimc_is_scc_start_streaming,
+	.stop_streaming		= fimc_is_scc_stop_streaming,
 };

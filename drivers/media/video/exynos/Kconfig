@@ -19,6 +19,7 @@ if VIDEO_EXYNOS
 	source "drivers/media/video/exynos/mfc/Kconfig"
 	source "drivers/media/video/exynos/tv/Kconfig"
 	source "drivers/media/video/exynos/rotator/Kconfig"
+	source "drivers/media/video/exynos/fimc-is-mc2/Kconfig"
 endif
 
 choice

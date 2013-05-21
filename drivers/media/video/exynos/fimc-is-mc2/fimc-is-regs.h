@@ -343,11 +343,24 @@
 
 /* PMU for FIMC-IS*/
 #define PMUREG_CMU_RESET_ISP_SYS_PWR_REG	(S5P_VA_PMU  + 0x1584)
-#define PMUREG_ISP_ARM_CONFIGURATION		(S5P_VA_PMU  + 0x2280)
-#define PMUREG_ISP_ARM_STATUS			(S5P_VA_PMU  + 0x2284)
-#define PMUREG_ISP_ARM_OPTION			(S5P_VA_PMU  + 0x2288)
+#define PMUREG_CMU_SYSCLK_ISP_SYS_PWR_REG       (S5P_VA_PMU  + 0x14C4)
+#define PMUREG_ISP_ARM_SYS_PWR_REG              (soc_is_exynos5250() ? \
+                                                S5P_VA_PMU  + 0x1050 : \
+						S5P_VA_PMU  + 0x1090)
+#define PMUREG_ISP_ARM_CONFIGURATION		(soc_is_exynos5250() ? \
+						S5P_VA_PMU  + 0x2280 : \
+						S5P_VA_PMU  + 0x2480)
+#define PMUREG_ISP_ARM_STATUS			(soc_is_exynos5250() ? \
+						S5P_VA_PMU  + 0x2284 : \
+						S5P_VA_PMU  + 0x2484)
+#define PMUREG_ISP_ARM_OPTION			(soc_is_exynos5250() ? \
+						S5P_VA_PMU  + 0x2288 : \
+						S5P_VA_PMU  + 0x2488)
 #define PMUREG_ISP_LOW_POWER_OFF		(S5P_VA_PMU  + 0x0004)
 #define PMUREG_ISP_CONFIGURATION		(S5P_VA_PMU  + 0x4020)
 #define PMUREG_ISP_STATUS				(S5P_VA_PMU  + 0x4024)
+
+#define SYSREG_GSCBLK_CFG1			(S3C_VA_SYS + 0x0224)
+#define SYSREG_ISPBLK_CFG			(S3C_VA_SYS + 0x022C)
 
 #endif

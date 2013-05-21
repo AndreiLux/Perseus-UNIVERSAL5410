@@ -146,6 +146,7 @@ extern struct platform_device exynos4_device_pd[];
 extern struct platform_device exynos4_device_spdif;
 extern struct platform_device exynos_device_ss_udc;
 extern struct platform_device exynos4_device_g3d;
+extern struct platform_device exynos4_device_fimc_is;
 
 extern struct platform_device exynos5_device_dwmci0;
 extern struct platform_device exynos5_device_dwmci1;

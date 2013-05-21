@@ -66,6 +66,7 @@
 #include <plat/s3c64xx-spi.h>
 #include <plat/tv-core.h>
 #include <plat/pwm.h>
+#include <plat/fimc-core.h>
 
 static u64 samsung_device_dma_mask = DMA_BIT_MASK(32);
 
@@ -223,6 +224,8 @@ struct platform_device s5p_device_fimc_md = {
 	.name	= "s5p-fimc-md",
 	.id	= -1,
 };
+
+struct s5p_platform_fimc s5p_fimc_md_platdata __initdata;
 #endif /* CONFIG_S5P_DEV_FIMC0 */
 
 #ifdef CONFIG_S5P_DEV_FIMC1

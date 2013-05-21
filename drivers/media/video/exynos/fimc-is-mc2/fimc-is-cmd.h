@@ -25,7 +25,7 @@ enum is_cmd {
 	HIC_STREAM_ON,
 	HIC_STREAM_OFF,
 	HIC_SHOT,
-	HIC_GET_STATIC_METADATA,
+	HIC_GET_STATIC_METADATA /* 10 */,
 	HIC_SET_CAM_CONTROL,
 	HIC_GET_CAM_CONTROL,
 	HIC_SET_PARAMETER,
@@ -36,7 +36,7 @@ enum is_cmd {
 	/* SENSOR PART*/
 	HIC_OPEN_SENSOR,
 	HIC_CLOSE_SENSOR,
-	HIC_SIMMIAN_INIT,
+	HIC_SIMMIAN_INIT /* 20 */,
 	HIC_SIMMIAN_WRITE,
 	HIC_SIMMIAN_READ,
 	HIC_POWER_DOWN,
@@ -44,6 +44,10 @@ enum is_cmd {
 	HIC_LOAD_SET_FILE,
 	HIC_MSG_CONFIG,
 	HIC_MSG_TEST,
+	HIC_ISP_I2C_CONTROL,
+	HIC_CALIBRATE_ACTUATOR,
+	HIC_GET_IP_STATUS /* 30 */,
+	HIC_I2C_CONTROL_LOCK,
 	/* IS -> HOST */
 	IHC_GET_SENSOR_NUMBER = 0x1000,
 	/* Parameter1 : Address of space to copy a setfile */
@@ -77,12 +81,15 @@ enum is_scenario_id {
 };
 
 enum is_subscenario_id {
-	ISS_SUB_SCENARIO_STILL,
-	ISS_SUB_SCENARIO_VIDEO,
-	ISS_SUB_SCENARIO_SCENE1,
-	ISS_SUB_SCENARIO_SCENE2,
-	ISS_SUB_SCENARIO_SCENE3,
-	ISS_SUB_END
+	ISS_SUB_SCENARIO_STILL = 0,		// 0: still preview
+	ISS_SUB_SCENARIO_VIDEO = 1,		// 1: video
+	ISS_SUB_SCENARIO_DUAL_STILL = 2,	// 2: dual still preview
+	ISS_SUB_SCENARIO_DUAL_VIDEO = 3,	// 3: dual video
+	ISS_SUB_SCENARIO_VIDEO_HIGH_SPEED = 4,	// 4: video high speed
+	ISS_SUB_SCENARIO_FRONT_VT1 = 4,		// 4: front camera VT1 (Temporary)
+	ISS_SUB_SCENARIO_FRONT_VT2 = 5,		// 5: front camera VT2 (Temporary)
+	ISS_SUB_SCENARIO_FRONT_SMART_STAY = 6,	// 6: front camera smart stay (Temporary)
+	ISS_SUB_END,
 };
 
 struct is_setfile_header_element {
@@ -126,12 +133,11 @@ struct is_common_reg {
 
 	u32 reserved2[3];
 
-	u32 isp_bayer_iflag;
-	u32 isp_bayer_sensor_id;
-	u32 isp_bayer_param1;
-	u32 isp_bayer_param2;
+	u32 meta_iflag;
+	u32 meta_sensor_id;
+	u32 meta_param1;
 
-	u32 reserved3[4];
+	u32 reserved3[5];
 
 	u32 scc_iflag;
 	u32 scc_sensor_id;
@@ -141,12 +147,13 @@ struct is_common_reg {
 
 	u32 reserved4[3];
 
-	u32 dnr_iflag;
-	u32 dnr_sensor_id;
-	u32 dnr_param1;
-	u32 dnr_param2;
+	u32 dis_iflag;
+	u32 dis_sensor_id;
+	u32 dis_param1;
+	u32 dis_param2;
+	u32 dis_param3;
 
-	u32 reserved5[4];
+	u32 reserved5[3];
 
 	u32 scp_iflag;
 	u32 scp_sensor_id;
@@ -167,16 +174,14 @@ struct is_common_reg {
 	u32 shot_sensor_id;
 	u32 shot_param1;
 	u32 shot_param2;
+	u32 shot_param3;
 
 	u32 reserved8[1];
 
-	u32 meta_iflag;
-	u32 meta_sensor_id;
-	u32 meta_param1;
-
-	u32 reserved9[1];
-
-	u32 fcount;
+	u32 fcount_sen3;
+	u32 fcount_sen2;
+	u32 fcount_sen1;
+	u32 fcount_sen0;
 };
 
 struct is_mcuctl_reg {
