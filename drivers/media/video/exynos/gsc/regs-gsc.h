@@ -15,18 +15,33 @@
 
 /* SYSCON. GSCBLK_CFG */
 #include <plat/map-base.h>
+#include <plat/cpu.h>
 
 #define SYSREG_DISP1BLK_CFG		(S3C_VA_SYS + 0x0214)
+#define MIXER_SRC_VALID_MASK_ALL	(0x3F << 2)
 #define FIFORST_DISP1			(1 << 23)
+#define MIXER0_VALID			(1 << 7)
+#define MIXER0_SRC_GSC(x)		((x) << 5)
+#define SYSREG_DISPBLK_CFG2		(S3C_VA_SYS + 0x0218)
+#define DISP1BLK_LO_MASK(x)		(1 << (24 + (x)))
+#define DISP1BLK_LO_MASK_ALL		(0xF << 24)
 #define SYSREG_GSCBLK_CFG0		(S3C_VA_SYS + 0x0220)
-#define GSC_OUT_DST_FIMD_SEL(x)		(1 << (8 + 2 * (x)))
-#define GSC_OUT_DST_MXR_SEL(x)		(2 << (8 + 2 * (x)))
+#define GSC_PXLASYNC_MASK(x)		(1 << (18 + (x)))
+#define GSC_PXLASYNC_MASK_ALL		(0xF << 18)
+#define GSC_OUT_DST_FIMD_SEL(x)		soc_is_exynos5410() ? \
+					(1 << (10 + 2 *(x))) : \
+					(1 << (8 + 2 *(x)))
+#define GSC_OUT_DST_MXR_SEL(x)		soc_is_exynos5410() ? \
+					(2 << (10 + 2 *(x))) : \
+					(2 << (8 + 2 *(x)))
 #define GSC_PXLASYNC_RST(x)		(1 << (x))
 #define PXLASYNC_LO_MASK_CAMIF_TOP	(1 << 20)
 #define SYSREG_GSCBLK_CFG1		(S3C_VA_SYS + 0x0224)
 #define GSC_BLK_DISP1WB_DEST(x)		(x << 10)
 #define GSC_BLK_SW_RESET_WB_DEST(x)	(1 << (18 + x))
 #define GSC_BLK_GSCL_WB_IN_SRC_SEL(x)	(1 << (2 * x))
+#define GSC_PXLASYNC_MASK_ALL_WB	(0xF << 14)
+#define GSC_PXLASYNC_MASK_WB(x)		(1 << (14 + (x)))
 #define SYSREG_GSCBLK_CFG2		(S3C_VA_SYS + 0x2000)
 #define PXLASYNC_LO_MASK_CAMIF_GSCL(x)	(1 << (x))
 
@@ -232,9 +247,11 @@
 #define GSC_IN_BASE_ADDR_CR_CUR(n)	(0xC0 + (n) * 0x4)
 
 /* G-Scaler input address mask */
-#define GSC_IN_CURR_ADDR_INDEX		(0xf << 24)
-#define GSC_IN_CURR_GET_INDEX(x)	((x) >> 24)
-#define GSC_IN_BASE_ADDR_PINGPONG(x)	((x) << 16)
+#define GSC_IN_CURR_ADDR_INDEX_SHIFT	24
+#define GSC_IN_BASE_ADDR_PP_SHIFT	16
+#define GSC_IN_CURR_ADDR_INDEX		(0xf << GSC_IN_CURR_ADDR_INDEX_SHIFT)
+#define GSC_IN_CURR_GET_INDEX(x)	((x) >> GSC_IN_CURR_ADDR_INDEX_SHIFT)
+#define GSC_IN_BASE_ADDR_PINGPONG(x)	((x) << GSC_IN_BASE_ADDR_PP_SHIFT)
 #define GSC_IN_BASE_ADDR_MASK		(0xff << 0)
 
 /* G-Scaler output y address mask */

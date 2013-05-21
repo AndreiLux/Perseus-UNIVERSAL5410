@@ -18,7 +18,6 @@
 #include <linux/errno.h>
 #include <linux/bug.h>
 #include <linux/interrupt.h>
-#include <linux/workqueue.h>
 #include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/list.h>
@@ -63,8 +62,6 @@ static int gsc_m2m_stop_streaming(struct vb2_queue *q)
 	if (ret < 0)
 		dev_err(&gsc->pdev->dev, "wait timeout : %s\n", __func__);
 
-	v4l2_m2m_get_next_job(gsc->m2m.m2m_dev, ctx->m2m_ctx);
-
 	return 0;
 }
 
@@ -80,8 +77,6 @@ static void gsc_m2m_job_abort(void *priv)
 	/* FIXME: need to add v4l2_m2m_job_finish(fail) if ret is timeout */
 	if (ret < 0)
 		dev_err(&gsc->pdev->dev, "wait timeout : %s\n", __func__);
-
-	v4l2_m2m_get_next_job(gsc->m2m.m2m_dev, ctx->m2m_ctx);
 }
 
 int gsc_fill_addr(struct gsc_ctx *ctx)
@@ -116,19 +111,42 @@ int gsc_fill_addr(struct gsc_ctx *ctx)
 	return ret;
 }
 
+void gsc_op_timer_handler(unsigned long arg)
+{
+	struct gsc_ctx *ctx = (struct gsc_ctx *)arg;
+	struct gsc_dev *gsc = ctx->gsc_dev;
+	struct vb2_buffer *src_vb, *dst_vb;
+
+	clear_bit(ST_M2M_RUN, &gsc->state);
+	pm_runtime_put_sync(&gsc->pdev->dev);
+
+	src_vb = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
+	dst_vb = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
+	if (src_vb && dst_vb) {
+		v4l2_m2m_buf_done(src_vb, VB2_BUF_STATE_ERROR);
+		v4l2_m2m_buf_done(dst_vb, VB2_BUF_STATE_ERROR);
+	}
+	gsc_err("GSCALER[%d] interrupt hasn't been triggered", gsc->id);
+	gsc_err("erro ctx: %p, ctx->state: 0x%x", ctx, ctx->state);
+}
+
 static void gsc_m2m_device_run(void *priv)
 {
 	struct gsc_ctx *ctx = priv;
 	struct gsc_dev *gsc;
 	unsigned long flags;
-	u32 ret;
+	int ret;
 	bool is_set = false;
 
 	if (WARN(!ctx, "null hardware context\n"))
 		return;
 
 	gsc = ctx->gsc_dev;
-	pm_runtime_get_sync(&gsc->pdev->dev);
+
+	if (in_irq())
+		pm_runtime_get(&gsc->pdev->dev);
+	else
+		pm_runtime_get_sync(&gsc->pdev->dev);
 
 	spin_lock_irqsave(&ctx->slock, flags);
 	/* Reconfigure hardware if the context has changed. */
@@ -152,8 +170,11 @@ static void gsc_m2m_device_run(void *priv)
 		goto put_device;
 	}
 
-	if (!gsc->protected_content)
-		gsc_set_prefbuf(gsc, ctx->s_frame);
+	if (!gsc->protected_content) {
+		struct gsc_frame *frame = &ctx->s_frame;
+		exynos_sysmmu_set_pbuf(&gsc->pdev->dev, frame->fmt->nr_comp,
+				ctx->prebuf);
+	}
 
 	if (ctx->state & GSC_PARAMS) {
 		gsc_hw_set_sw_reset(gsc);
@@ -189,9 +210,7 @@ static void gsc_m2m_device_run(void *priv)
 		gsc_hw_set_rotation(ctx);
 		gsc_hw_set_global_alpha(ctx);
 	}
-	/* When you update SFRs in the middle of operating
-	gsc_hw_set_sfr_update(ctx);
-	*/
+
 	gsc_hw_set_input_addr(gsc, &ctx->s_frame.addr, GSC_M2M_BUF_NUM);
 	gsc_hw_set_output_addr(gsc, &ctx->d_frame.addr, GSC_M2M_BUF_NUM);
 
@@ -202,12 +221,18 @@ static void gsc_m2m_device_run(void *priv)
 		 GSCALER_ON on -> GSCALER_OP_STATUS is operating ->
 		 GSCALER_ON off */
 		gsc_hw_enable_control(gsc, true);
+#ifdef GSC_PERF
+		gsc->start_time = sched_clock();
+#endif
 		ret = gsc_wait_operating(gsc);
 		if (ret < 0) {
 			gsc_err("gscaler wait operating timeout");
 			goto put_device;
 		}
 	}
+
+	ctx->op_timer.expires = (jiffies + 2 * HZ);
+	add_timer(&ctx->op_timer);
 
 	spin_unlock_irqrestore(&ctx->slock, flags);
 	return;
@@ -244,7 +269,6 @@ static int gsc_m2m_queue_setup(struct vb2_queue *vq, const struct v4l2_format *f
 static int gsc_m2m_buf_prepare(struct vb2_buffer *vb)
 {
 	struct gsc_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
-	struct gsc_dev *gsc = ctx->gsc_dev;
 	struct gsc_frame *frame;
 	int i;
 
@@ -257,8 +281,7 @@ static int gsc_m2m_buf_prepare(struct vb2_buffer *vb)
 			vb2_set_plane_payload(vb, i, frame->payload[i]);
 	}
 
-	if (frame->cacheable)
-		gsc->vb2->cache_flush(vb, frame->fmt->num_planes);
+	vb2_ion_buf_prepare(vb);
 
 	return 0;
 }
@@ -308,19 +331,27 @@ static void gsc_m2m_buf_queue(struct vb2_buffer *vb)
 	struct gsc_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
 	struct v4l2_m2m_buffer *b = container_of(vb, struct v4l2_m2m_buffer, vb);
 	unsigned long flags;
+	struct sync_fence *fence;
 
 	gsc_dbg("ctx: %p, ctx->state: 0x%x", ctx, ctx->state);
 
-	spin_lock_irqsave(&ctx->slock, flags);
-	list_add_tail(&b->wait, &ctx->fence_wait_list);
-	spin_unlock_irqrestore(&ctx->slock, flags);
+	fence = vb->acquire_fence;
+	if (fence) {
+		spin_lock_irqsave(&ctx->slock, flags);
+		list_add_tail(&b->wait, &ctx->fence_wait_list);
+		spin_unlock_irqrestore(&ctx->slock, flags);
 
-	queue_work(ctx->gsc_dev->irq_workqueue, &ctx->fence_work);
+		queue_work(ctx->gsc_dev->irq_workqueue, &ctx->fence_work);
+	} else {
+		if (ctx->m2m_ctx)
+			v4l2_m2m_buf_queue(ctx->m2m_ctx, vb);
+	}
 }
 
 struct vb2_ops gsc_m2m_qops = {
 	.queue_setup	 = gsc_m2m_queue_setup,
 	.buf_prepare	 = gsc_m2m_buf_prepare,
+	.buf_finish	 = vb2_ion_buf_finish,
 	.buf_queue	 = gsc_m2m_buf_queue,
 	.wait_prepare	 = gsc_unlock,
 	.wait_finish	 = gsc_lock,
@@ -473,6 +504,7 @@ static int gsc_m2m_streamon(struct file *file, void *fh,
 			   enum v4l2_buf_type type)
 {
 	struct gsc_ctx *ctx = fh_to_ctx(fh);
+	struct gsc_dev *gsc = ctx->gsc_dev;
 
 	/* The source and target color format need to be set */
 	if (V4L2_TYPE_IS_OUTPUT(type)) {
@@ -482,6 +514,8 @@ static int gsc_m2m_streamon(struct file *file, void *fh,
 		return -EINVAL;
 	}
 
+	gsc_pm_qos_ctrl(gsc, GSC_QOS_ON, 160000, 160000);
+
 	return v4l2_m2m_streamon(file, ctx->m2m_ctx, type);
 }
 
@@ -489,6 +523,10 @@ static int gsc_m2m_streamoff(struct file *file, void *fh,
 			    enum v4l2_buf_type type)
 {
 	struct gsc_ctx *ctx = fh_to_ctx(fh);
+	struct gsc_dev *gsc = ctx->gsc_dev;
+
+	gsc_pm_qos_ctrl(gsc, GSC_QOS_OFF, 0, 0);
+
 	return v4l2_m2m_streamoff(file, ctx->m2m_ctx, type);
 }
 
@@ -630,7 +668,7 @@ static int gsc_m2m_open(struct file *file)
 
 	gsc_dbg("pid: %d, state: 0x%lx", task_pid_nr(current), gsc->state);
 
-	if (gsc_m2m_opened(gsc) || gsc_out_opened(gsc) || gsc_cap_opened(gsc))
+	if (gsc_out_opened(gsc) || gsc_cap_opened(gsc))
 		return -EBUSY;
 
 	ctx = kzalloc(sizeof *ctx, GFP_KERNEL);
@@ -657,6 +695,11 @@ static int gsc_m2m_open(struct file *file)
 	ctx->in_path = GSC_DMA;
 	ctx->out_path = GSC_DMA;
 	spin_lock_init(&ctx->slock);
+
+	init_timer(&ctx->op_timer);
+	ctx->op_timer.data = (unsigned long)ctx;
+	ctx->op_timer.function = gsc_op_timer_handler;
+
 	INIT_LIST_HEAD(&ctx->fence_wait_list);
 	INIT_WORK(&ctx->fence_work, gsc_m2m_fence_work);
 
@@ -669,8 +712,6 @@ static int gsc_m2m_open(struct file *file)
 
 	if (gsc->m2m.refcnt++ == 0)
 		set_bit(ST_M2M_OPEN, &gsc->state);
-
-	gsc_bus_request_get(gsc);
 
 	gsc_dbg("gsc m2m driver is opened, ctx(0x%p)", ctx);
 	return 0;
@@ -695,8 +736,6 @@ static int gsc_m2m_release(struct file *file)
 	 * only way to recover this reliably is to reboot.
 	 */
 	BUG_ON(gsc->protected_content);
-
-	gsc_bus_request_put(gsc);
 
 	kfree(ctx->m2m_ctx->cap_q_ctx.q.name);
 	kfree(ctx->m2m_ctx->out_q_ctx.q.name);

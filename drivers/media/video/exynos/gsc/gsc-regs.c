@@ -24,38 +24,51 @@ void gsc_hw_set_sw_reset(struct gsc_dev *dev)
 	writel(cfg, dev->regs + GSC_SW_RESET);
 }
 
-void gsc_disp_fifo_sw_reset(struct gsc_dev *dev)
+void gsc_hw_set_disp_pixelasync_reset(struct gsc_dev *dev)
 {
-	u32 cfg = readl(SYSREG_DISP1BLK_CFG);
+	u32 cfg = readl(SYSREG_DISPBLK_CFG2);
+	cfg |= DISP1BLK_LO_MASK_ALL;
+	cfg &= ~DISP1BLK_LO_MASK(dev->id);
+	writel(cfg, SYSREG_DISPBLK_CFG2);
 	/* DISPBLK1 FIFO S/W reset sequence
 	   set FIFORST_DISP1 as 0 then, set FIFORST_DISP1 as 1 again */
+	cfg = readl(SYSREG_DISP1BLK_CFG);
 	cfg &= ~FIFORST_DISP1;
 	writel(cfg, SYSREG_DISP1BLK_CFG);
 	cfg |= FIFORST_DISP1;
 	writel(cfg, SYSREG_DISP1BLK_CFG);
+
+	cfg = readl(SYSREG_DISPBLK_CFG2);
+	cfg |= DISP1BLK_LO_MASK_ALL;
+	writel(cfg, SYSREG_DISPBLK_CFG2);
 }
 
-void gsc_pixelasync_sw_reset(struct gsc_dev *dev)
+void gsc_hw_set_pixelasync_reset_output(struct gsc_dev *dev)
 {
 	u32 cfg = readl(SYSREG_GSCBLK_CFG0);
+	cfg |= GSC_PXLASYNC_MASK_ALL;
+	cfg &= ~GSC_PXLASYNC_MASK(dev->id);
+	writel(cfg, SYSREG_GSCBLK_CFG0);
 	/* GSCBLK Pixel asyncy FIFO S/W reset sequence
 	   set PXLASYNC_SW_RESET as 0 then, set PXLASYNC_SW_RESET as 1 again */
 	cfg &= ~GSC_PXLASYNC_RST(dev->id);
 	writel(cfg, SYSREG_GSCBLK_CFG0);
 	cfg |= GSC_PXLASYNC_RST(dev->id);
 	writel(cfg, SYSREG_GSCBLK_CFG0);
+	/* This is for prohibit of reset signal DISP0 */
+	cfg |= GSC_PXLASYNC_MASK_ALL;
+	writel(cfg, SYSREG_GSCBLK_CFG0);
 }
 
 int gsc_wait_reset(struct gsc_dev *dev)
 {
 	u32 cfg;
-	u32 cnt = 10 * USEC_PER_MSEC;
+	u32 cnt = (loops_per_jiffy * HZ) / MSEC_PER_SEC;
 
 	do {
 		cfg = readl(dev->regs + GSC_SW_RESET);
 		if (!cfg)
 			return 0;
-		udelay(1);
 	} while (--cnt);
 
 	return -EINVAL;
@@ -64,13 +77,12 @@ int gsc_wait_reset(struct gsc_dev *dev)
 int gsc_wait_operating(struct gsc_dev *dev)
 {
 	u32 cfg;
-	u32 cnt = 10 * USEC_PER_MSEC;
+	u32 cnt = (loops_per_jiffy * HZ) / MSEC_PER_SEC;
 
 	do {
 		cfg = readl(dev->regs + GSC_ENABLE);
 		if (cfg & GSC_ENABLE_OP_STATUS)
 			return 0;
-		udelay(1);
 	} while (--cnt);
 
 	return -EBUSY;
@@ -80,6 +92,7 @@ int gsc_wait_stop(struct gsc_dev *dev)
 {
 	unsigned long timeo = jiffies + 10; /* timeout of 50ms */
 	u32 cfg;
+	int ret;
 
 	while (time_before(jiffies, timeo)) {
 		cfg = readl(dev->regs + GSC_ENABLE);
@@ -87,9 +100,19 @@ int gsc_wait_stop(struct gsc_dev *dev)
 			return 0;
 		usleep_range(10, 20);
 	}
-	gsc_dbg("wait time : %d ms", jiffies_to_msecs(jiffies - timeo + 20));
+	/* This is workaround until next chips.
+	 * If fimd is stop than gsc, gsc didn't work complete
+	 */
+	gsc_hw_set_sw_reset(dev);
+	ret = gsc_wait_reset(dev);
+	if (ret < 0) {
+		gsc_err("gscaler s/w reset timeout");
+		return ret;
+	}
+	gsc_hw_set_pixelasync_reset_output(dev);
+	gsc_info("wait time : %d ms", jiffies_to_msecs(jiffies - timeo + 10));
 
-	return -EBUSY;
+	return 0;
 }
 
 void gsc_hw_set_in_chrom_stride(struct gsc_ctx *ctx)
@@ -98,11 +121,6 @@ void gsc_hw_set_in_chrom_stride(struct gsc_ctx *ctx)
 	struct gsc_frame *frame = &ctx->s_frame;
 	u32 chrom_size, cfg;
 
-	cfg = readl(dev->regs + GSC_IN_CON);
-	cfg |= GSC_IN_CHROM_STRIDE_SEPAR;
-	writel(cfg, dev->regs + GSC_IN_CON);
-
-	cfg &= ~GSC_IN_CHROM_STRIDE_MASK;
 	chrom_size = ALIGN(frame->f_width / 2, 16) * 2;
 	cfg = GSC_IN_CHROM_STRIDE_VALUE(chrom_size);
 	writel(cfg, dev->regs + GSC_IN_CHROM_STRIDE);
@@ -114,11 +132,6 @@ void gsc_hw_set_out_chrom_stride(struct gsc_ctx *ctx)
 	struct gsc_frame *frame = &ctx->d_frame;
 	u32 chrom_size, cfg;
 
-	cfg = readl(dev->regs + GSC_OUT_CON);
-	cfg |= GSC_OUT_CHROM_STRIDE_SEPAR;
-	writel(cfg, dev->regs + GSC_OUT_CON);
-
-	cfg &= ~GSC_OUT_CHROM_STRIDE_MASK;
 	chrom_size = ALIGN(frame->f_width / 2, 16) * 2;
 	cfg = GSC_OUT_CHROM_STRIDE_VALUE(chrom_size);
 	writel(cfg, dev->regs + GSC_OUT_CHROM_STRIDE);
@@ -159,7 +172,7 @@ int gsc_hw_get_mxr_path_status(void)
 
 	u32 cfg = readl(SYSREG_GSCBLK_CFG0);
 	for (i = 0; i < GSC_MAX_DEVS; i++) {
-		if (cfg & GSC_OUT_DST_MXR_SEL(i))
+		if (cfg & (GSC_OUT_DST_MXR_SEL(i)))
 			cnt++;
 	}
 	return (cnt > 2) ? 1 : 0;
@@ -487,8 +500,10 @@ void gsc_hw_set_in_image_format(struct gsc_ctx *ctx)
 		break;
 	};
 
-	if (is_AYV12(frame->fmt->pixelformat))
+	if (is_AYV12(frame->fmt->pixelformat)) {
+		cfg |= GSC_IN_CHROM_STRIDE_SEPAR;
 		gsc_hw_set_in_chrom_stride(ctx);
+	}
 
 	if (is_tiled(frame->fmt))
 		cfg |= GSC_IN_TILE_C_16x8 | GSC_IN_TILE_MODE;
@@ -622,8 +637,10 @@ void gsc_hw_set_out_image_format(struct gsc_ctx *ctx)
 		break;
 	};
 
-	if (is_AYV12(frame->fmt->pixelformat))
+	if (is_AYV12(frame->fmt->pixelformat)) {
+		cfg |= GSC_OUT_CHROM_STRIDE_SEPAR;
 		gsc_hw_set_out_chrom_stride(ctx);
+	}
 end_set:
 	writel(cfg, dev->regs + GSC_OUT_CON);
 }
@@ -714,32 +731,57 @@ void gsc_hw_set_sfr_update(struct gsc_ctx *ctx)
 	writel(cfg, dev->regs + GSC_ENABLE);
 }
 
+void gsc_hw_set_mixer(int id)
+{
+	u32 cfg = readl(SYSREG_DISP1BLK_CFG);
+
+	cfg &= ~MIXER_SRC_VALID_MASK_ALL;
+	cfg |= MIXER0_SRC_GSC(id);
+	cfg |= MIXER0_VALID;
+
+	writel(cfg, SYSREG_DISP1BLK_CFG);
+}
+
 void gsc_hw_set_local_dst(int id, int out, bool on)
 {
 	u32 cfg = readl(SYSREG_GSCBLK_CFG0);
 
 	if (out == GSC_FIMD) {
 		if (on)
-			cfg |= GSC_OUT_DST_FIMD_SEL(id);
+			cfg |= (GSC_OUT_DST_FIMD_SEL(id));
 		else
-			cfg &= ~(GSC_OUT_DST_FIMD_SEL(id));
+			cfg &= ~((GSC_OUT_DST_FIMD_SEL(id)));
 	} else if (out == GSC_MIXER) {
 		if (on)
-			cfg |= GSC_OUT_DST_MXR_SEL(id);
+			cfg |= (GSC_OUT_DST_MXR_SEL(id));
 		else
-			cfg &= ~(GSC_OUT_DST_MXR_SEL(id));
+			cfg &= ~((GSC_OUT_DST_MXR_SEL(id)));
 	}
 	writel(cfg, SYSREG_GSCBLK_CFG0);
 }
 
-void gsc_hw_set_sysreg_writeback(struct gsc_ctx *ctx)
+void gsc_hw_set_pixelasync_reset_wb(struct gsc_dev *dev)
 {
-	struct gsc_dev *dev = ctx->gsc_dev;
-
 	u32 cfg = readl(SYSREG_GSCBLK_CFG1);
+
+	cfg |= GSC_PXLASYNC_MASK_ALL_WB;
+	cfg &= ~GSC_PXLASYNC_MASK_WB(dev->id);
+	writel(cfg, SYSREG_GSCBLK_CFG1);
 
 	cfg &= ~GSC_BLK_SW_RESET_WB_DEST(dev->id);
 	writel(cfg, SYSREG_GSCBLK_CFG1);
+	cfg |= GSC_BLK_SW_RESET_WB_DEST(dev->id);
+	writel(cfg, SYSREG_GSCBLK_CFG1);
+	/*
+	 * This bit should be masked if DISP0 is off
+	 */
+	cfg |= GSC_PXLASYNC_MASK_ALL_WB;
+	writel(cfg, SYSREG_GSCBLK_CFG1);
+}
+
+void gsc_hw_set_sysreg_writeback(struct gsc_dev *dev)
+{
+	u32 cfg = readl(SYSREG_GSCBLK_CFG1);
 
 	cfg |= GSC_BLK_DISP1WB_DEST(dev->id);
 	cfg |= GSC_BLK_GSCL_WB_IN_SRC_SEL(dev->id);
@@ -773,7 +815,7 @@ void gsc_hw_set_h_coef(struct gsc_ctx *ctx)
 {
 	struct gsc_scaler *sc = &ctx->scaler;
 	struct gsc_dev *dev = ctx->gsc_dev;
-	int i, j, k, sc_ratio = 0;
+	int i, j, k, sc_ratio;
 
 	if (sc->main_hratio <= GSC_SC_UP_MAX_RATIO)
 		sc_ratio = 0;
