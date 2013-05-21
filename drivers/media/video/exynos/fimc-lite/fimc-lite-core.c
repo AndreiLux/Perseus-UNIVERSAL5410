@@ -239,6 +239,8 @@ static int flite_s_stream(struct v4l2_subdev *sd, int enable)
 	u32 int_src = 0;
 	unsigned long flags;
 	int ret = 0;
+
+	flite_info("flite_s_stream(%d)", enable);
 	
 	if (!(flite->output & FLITE_OUTPUT_MEM)) {
 		if (enable)
@@ -247,9 +249,6 @@ static int flite_s_stream(struct v4l2_subdev *sd, int enable)
 	}
 
 	spin_lock_irqsave(&flite->slock, flags);
-
-	if (test_bit(FLITE_ST_SUSPEND, &flite->state))
-		goto s_stream_unlock;
 
 	if (enable) {
 		flite_hw_set_cam_channel(flite);
@@ -265,6 +264,7 @@ static int flite_s_stream(struct v4l2_subdev *sd, int enable)
 			}
 			if (cam->use_isp)
 				flite_hw_set_output_dma(flite, false);
+			flite_hw_set_output_gscaler(flite, true);
 			int_src = FLITE_REG_CIGCTRL_IRQ_OVFEN0_ENABLE |
 				FLITE_REG_CIGCTRL_IRQ_LASTEN0_ENABLE |
 				FLITE_REG_CIGCTRL_IRQ_ENDEN0_DISABLE |
@@ -282,6 +282,8 @@ static int flite_s_stream(struct v4l2_subdev *sd, int enable)
 			flite_hw_set_out_order(flite);
 			flite_hw_set_output_size(flite);
 			flite_hw_set_dma_offset(flite);
+			flite_hw_set_output_frame_count_seq(flite,
+				flite->reqbufs_cnt);
 		}
 		ret = flite_hw_set_source_format(flite);
 		if (unlikely(ret < 0))
@@ -293,6 +295,8 @@ static int flite_s_stream(struct v4l2_subdev *sd, int enable)
 
 		set_bit(FLITE_ST_STREAM, &flite->state);
 	} else {
+		INIT_LIST_HEAD(&flite->active_buf_q);
+		INIT_LIST_HEAD(&flite->pending_buf_q);
 		if (test_bit(FLITE_ST_STREAM, &flite->state)) {
 			flite_hw_set_capture_stop(flite);
 			spin_unlock_irqrestore(&flite->slock, flags);
@@ -320,6 +324,9 @@ static irqreturn_t flite_irq_handler(int irq, void *priv)
 #endif
 	u32 int_src = 0;
 
+	if (!test_bit(FLITE_ST_POWER, &flite->state))
+		return IRQ_NONE;
+
 	flite_hw_get_int_src(flite, &int_src);
 	flite_hw_clear_irq(flite);
 
@@ -341,6 +348,9 @@ static irqreturn_t flite_irq_handler(int irq, void *priv)
 		break;
 	case FLITE_REG_CISTATUS_IRQ_SRC_FRMEND:
 		set_bit(FLITE_ST_RUN, &flite->state);
+		/* TODO: need to choice sensor id */
+		flite->sensor[0].priv_ops(flite->sensor[0].sd,
+			FLITE_REG_CISTATUS_IRQ_SRC_FRMEND);
 		flite_dbg("frame end");
 		break;
 	}
@@ -363,7 +373,8 @@ static irqreturn_t flite_irq_handler(int irq, void *priv)
 			active_queue_add(flite, buf);
 		}
 		if (flite->active_buf_cnt == 0) {
-			clear_bit(FLITE_ST_RUN, &flite->state);
+			flite_warn("active buf cnt is 0");
+			/* clear_bit(FLITE_ST_RUN, &flite->state); */
 		}
 	}
 unlock:
@@ -716,7 +727,8 @@ static void flite_set_cam_clock(struct flite_dev *flite, bool on)
 {
 	struct v4l2_subdev *sd = flite->pipeline.sensor;
 
-	clk_enable(flite->gsc_clk);
+	if (!soc_is_exynos5410())
+		clk_enable(flite->gsc_clk);
 	if (flite->pipeline.sensor) {
 		struct flite_sensor_info *s_info = v4l2_get_subdev_hostdata(sd);
 		on ? clk_enable(s_info->camclk) : clk_disable(s_info->camclk);
@@ -928,6 +940,7 @@ int flite_pipeline_shutdown(struct flite_dev *flite)
 	return ret;
 }
 
+static int flite_stop_streaming(struct vb2_queue *q);
 static int flite_close(struct file *file)
 {
 	struct flite_dev *flite = video_drvdata(file);
@@ -935,16 +948,27 @@ static int flite_close(struct file *file)
 
 	flite_info("pid: %d, state: 0x%lx", task_pid_nr(current), flite->state);
 
-	if (--flite->refcnt == 0) {
-		clear_bit(FLITE_ST_OPEN, &flite->state);
-		flite_info("FIMC-LITE h/w disable control");
-		flite_hw_set_capture_stop(flite);
-		clear_bit(FLITE_ST_STREAM, &flite->state);
-		flite_pipeline_shutdown(flite);
-		clear_bit(FLITE_ST_SUSPEND, &flite->state);
+	if (flite->mdev->is_flite_on == true) {
+		flite_warn("fimc-lite is streaming, try to stop streaming");
+		if (flite_stop_streaming(&flite->vbq) < 0) {
+			flite_err("stop streaming fail and reset");
+			flite_hw_set_capture_stop(flite);
+			flite_hw_reset(flite);
+			msleep(60);
+			INIT_LIST_HEAD(&flite->active_buf_q);
+			INIT_LIST_HEAD(&flite->pending_buf_q);
+		}
+	}
+
+	if (flite->refcnt > 0) {
+		flite->refcnt--;
+	} else {
+		flite_err("flite refcnt is alreay 0, cannot close");
+		return -EINVAL;
 	}
 
 	if (flite->refcnt == 0) {
+		flite_pipeline_shutdown(flite);
 		while (!list_empty(&flite->pending_buf_q)) {
 			flite_info("clean pending q");
 			buf = pending_queue_pop(flite);
@@ -956,9 +980,13 @@ static int flite_close(struct file *file)
 			buf = active_queue_pop(flite);
 			vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
 		}
+
 		vb2_queue_release(&flite->vbq);
 		flite_ctrls_delete(flite);
+	} else {
+		flite_info("flite refcnt is %d", flite->refcnt);
 	}
+	clear_bit(FLITE_ST_OPEN, &flite->state);
 
 	return v4l2_fh_release(file);
 }
@@ -992,20 +1020,34 @@ int flite_pipeline_s_stream(struct flite_dev *flite, int on)
 
 	if (on) {
 		ret = v4l2_subdev_call(p->flite, video, s_stream, 1);
-		if (ret < 0 && ret != -ENOIOCTLCMD)
+		if (ret < 0 && ret != -ENOIOCTLCMD) {
+			flite_err("flite s_stream(%d) fail", 1);
 			return ret;
+		}
 		ret = v4l2_subdev_call(p->csis, video, s_stream, 1);
-		if (ret < 0 && ret != -ENOIOCTLCMD)
+		if (ret < 0 && ret != -ENOIOCTLCMD) {
+			flite_err("csis s_stream(%d) fail", 1);
 			return ret;
+		}
 		ret = v4l2_subdev_call(p->sensor, video, s_stream, 1);
+		if (ret < 0 && ret != -ENOIOCTLCMD) {
+			flite_err("sensor s_stream(%d) fail", 1);
+		}
 	} else {
 		ret = v4l2_subdev_call(p->sensor, video, s_stream, 0);
-		if (ret < 0 && ret != -ENOIOCTLCMD)
+		if (ret < 0 && ret != -ENOIOCTLCMD) {
+			flite_err("flite s_stream(%d) fail", 0);
 			return ret;
+		}
 		ret = v4l2_subdev_call(p->csis, video, s_stream, 0);
-		if (ret < 0 && ret != -ENOIOCTLCMD)
+		if (ret < 0 && ret != -ENOIOCTLCMD) {
+			flite_err("csis s_stream(%d) fail", 0);
 			return ret;
+		}
 		ret = v4l2_subdev_call(p->flite, video, s_stream, 0);
+		if (ret < 0 && ret != -ENOIOCTLCMD) {
+			flite_err("sensor s_stream(%d) fail", 0);
+		}
 	}
 
 	return ret == -ENOIOCTLCMD ? 0 : ret;
@@ -1014,38 +1056,56 @@ int flite_pipeline_s_stream(struct flite_dev *flite, int on)
 static int flite_start_streaming(struct vb2_queue *q, unsigned int count)
 {
 	struct flite_dev *flite = q->drv_priv;
-
-	flite->active_buf_cnt = 0;
-	flite->pending_buf_cnt = 0;
-
-	flite->mdev->is_flite_on= true;
+	int ret = 0;
 
 	if (!test_bit(FLITE_ST_STREAM, &flite->state)) {
-		if (!test_and_set_bit(FLITE_ST_PIPE_STREAM, &flite->state))
-			flite_pipeline_s_stream(flite, 1);
+		if (!test_and_set_bit(FLITE_ST_PIPE_STREAM, &flite->state)) {
+			ret = flite_pipeline_s_stream(flite, 1);
+			if (ret < 0) {
+				flite_err("flite_pipeline_s_stream(1) fail, ret(%d)", ret);
+				ret = -EINVAL;
+				goto ret;
+			}
+		} else {
+			flite_warn("FLITE pipeline is already started");
+			goto ret;
+		}
+	} else {
+		flite_warn("FLITE is already started");
+		goto ret;
 	}
 
-	return 0;
+	flite->mdev->is_flite_on = true;
+
+ret:
+	return ret;
 }
 
 static int flite_state_cleanup(struct flite_dev *flite)
 {
 	unsigned long flags;
 	bool streaming;
+	int ret = 0;
 
 	spin_lock_irqsave(&flite->slock, flags);
 	streaming = flite->state & (1 << FLITE_ST_PIPE_STREAM);
+	spin_unlock_irqrestore(&flite->slock, flags);
 
+	if (streaming) {
+		ret = flite_pipeline_s_stream(flite, 0);
+		if (ret) {
+			flite_err("pipeline stream off fail");
+			return ret;
+		}
+	}
+
+	spin_lock_irqsave(&flite->slock, flags);
 	flite->state &= ~(1 << FLITE_ST_RUN | 1 << FLITE_ST_STREAM |
 			1 << FLITE_ST_PIPE_STREAM | 1 << FLITE_ST_PEND);
 
-	set_bit(FLITE_ST_SUSPEND, &flite->state);
 	spin_unlock_irqrestore(&flite->slock, flags);
 
-	if (streaming)
-		return flite_pipeline_s_stream(flite, 0);
-	else
-		return 0;
+	return ret;
 }
 
 static int flite_stop_capture(struct flite_dev *flite)
@@ -1056,7 +1116,6 @@ static int flite_stop_capture(struct flite_dev *flite)
 	}
 	flite_info("FIMC-Lite H/W disable control");
 	flite_hw_set_capture_stop(flite);
-	clear_bit(FLITE_ST_STREAM, &flite->state);
 
 	return flite_state_cleanup(flite);
 }
@@ -1097,6 +1156,8 @@ static int flite_queue_setup(struct vb2_queue *vq, const struct v4l2_format *fmt
 
 	sizes[0] = get_plane_size(&flite->d_frame, 0);
 	allocators[0] = flite->alloc_ctx;
+
+	vb2_queue_init(vq);
 
 	return 0;
 }
@@ -1415,7 +1476,7 @@ static int flite_link_validate(struct flite_dev *flite)
 			struct flite_frame *f = &flite->s_frame;
 			sink_fmt.format.width = f->o_width;
 			sink_fmt.format.height = f->o_height;
-			sink_fmt.format.code = f->fmt ? f->fmt->code : 0;
+			sink_fmt.format.code = flite->mbus_fmt.code;
 		} else {
 			sink_fmt.pad = pad->index;
 			sink_fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
@@ -1469,6 +1530,9 @@ static int flite_streamon(struct file *file, void *priv, enum v4l2_buf_type type
 
 	if (flite_active(flite))
 		return -EBUSY;
+
+	flite->active_buf_cnt = 0;
+	flite->pending_buf_cnt = 0;
 
 	if (p->sensor) {
 		media_entity_pipeline_start(&p->sensor->entity, p->pipe);
@@ -1567,30 +1631,71 @@ static const struct v4l2_file_operations flite_fops = {
 static int flite_config_camclk(struct flite_dev *flite,
 		struct exynos_isp_info *isp_info, int i)
 {
-	struct clk *camclk;
-	struct clk *srclk;
+	struct clk *cam_srclk;
+	char cam_srclk_name[FLITE_CLK_NAME_SIZE];
 
-	camclk = clk_get(&flite->pdev->dev, isp_info->cam_clk_name);
-	if (IS_ERR_OR_NULL(camclk)) {
-		flite_err("failed to get cam clk");
+
+	if (soc_is_exynos5410()) {
+		snprintf(cam_srclk_name, sizeof(cam_srclk_name),
+			"%s%d", isp_info->cam_srclk_name, flite->id);
+	} else {
+		snprintf(cam_srclk_name, sizeof(cam_srclk_name),
+			"%s", isp_info->cam_srclk_name);
+	}
+
+	cam_srclk = clk_get(&flite->pdev->dev, cam_srclk_name);
+	if (IS_ERR_OR_NULL(cam_srclk)) {
+		flite_err("failed to get cam source clk");
 		return -ENXIO;
 	}
-	flite->sensor[i].camclk = camclk;
+	clk_set_rate(cam_srclk, isp_info->clk_frequency);
 
-	srclk = clk_get(&flite->pdev->dev, isp_info->cam_srclk_name);
-	if (IS_ERR_OR_NULL(srclk)) {
+	if (!soc_is_exynos5410()) {
+		struct clk *camclk;
+		camclk = clk_get(&flite->pdev->dev, isp_info->cam_clk_name);
+		if (IS_ERR_OR_NULL(camclk)) {
+			clk_put(cam_srclk);
+			flite_err("failed to get cam clk\n");
+			return -ENXIO;
+		}
+		clk_set_parent(camclk, cam_srclk);
+		flite->sensor[i].camclk = camclk;
 		clk_put(camclk);
-		flite_err("failed to get cam source clk\n");
-		return -ENXIO;
-	}
-	clk_set_parent(camclk, srclk);
-	clk_set_rate(camclk, isp_info->clk_frequency);
-	clk_put(srclk);
 
-	flite->gsc_clk = clk_get(&flite->pdev->dev, "gscl");
-	if (IS_ERR_OR_NULL(flite->gsc_clk)) {
-		flite_err("failed to get gscl clk");
-		return -ENXIO;
+		flite->gsc_clk = clk_get(&flite->pdev->dev, "gscl");
+		if (IS_ERR_OR_NULL(flite->gsc_clk)) {
+			flite_err("failed to get gscl clk");
+			return -ENXIO;
+		}
+	} else {
+		struct clk *clk_child;
+		struct clk *clk_parent;
+
+		/* register ISP sensor clock to fimc-lite sensor clock */
+		flite->sensor[i].camclk = cam_srclk;
+
+		clk_child = clk_get(NULL, isp_info->cam_clk_name);
+		if (IS_ERR(clk_child)) {
+			pr_err("failed to get %s clock\n", "aclk_333_432_gscl");
+			return PTR_ERR(clk_child);
+		}
+
+		clk_parent = clk_get(NULL, isp_info->cam_clk_src_name);
+		if (IS_ERR(clk_parent)) {
+			clk_put(clk_child);
+			pr_err("failed to get %s clock\n", "dout_aclk_333_432_gscl");
+			return PTR_ERR(clk_child);
+		}
+
+		if (clk_set_parent(clk_child, clk_parent)) {
+			clk_put(clk_child);
+			clk_put(clk_parent);
+			pr_err("Unable to set parent %s of clock %s.\n",
+				"dout_aclk_333_432_gscl", "aclk_333_432_gscl");
+			return PTR_ERR(clk_child);
+		}
+		clk_put(clk_child);
+		clk_put(clk_parent);
 	}
 
 	return 0;
@@ -1614,6 +1719,11 @@ static struct v4l2_subdev *flite_register_sensor(struct flite_dev *flite,
 		v4l2_err(&mdev->v4l2_dev, "Failed to acquire subdev\n");
 		return NULL;
 	}
+	if (sd->host_priv != NULL) {
+		flite->sensor[i].priv_ops = sd->host_priv;
+		sd->host_priv = NULL;
+	}
+
 	v4l2_set_subdev_hostdata(sd, &flite->sensor[i]);
 	sd->grp_id = SENSOR_GRP_ID;
 
@@ -1911,7 +2021,8 @@ static int flite_runtime_suspend(struct device *dev)
 	unsigned long flags;
 
 #if defined(CONFIG_MEDIA_CONTROLLER) && defined(CONFIG_ARCH_EXYNOS5)
-	flite->vb2->suspend(flite->alloc_ctx);
+	if (flite->sysmmu_atached)
+		flite->vb2->suspend(flite->alloc_ctx);
 	clk_disable(flite->camif_clk);
 #endif
 	spin_lock_irqsave(&flite->slock, flags);
@@ -1930,7 +2041,12 @@ static int flite_runtime_resume(struct device *dev)
 
 #if defined(CONFIG_MEDIA_CONTROLLER) && defined(CONFIG_ARCH_EXYNOS5)
 	clk_enable(flite->camif_clk);
-	flite->vb2->resume(flite->alloc_ctx);
+	if (flite->vb2->resume(flite->alloc_ctx) < 0) {
+		flite_err("resume vb2_ion_attach_iommu fail!!");
+		flite->sysmmu_atached = false;
+	} else {
+		flite->sysmmu_atached = true;
+	}
 #endif
 	spin_lock_irqsave(&flite->slock, flags);
 	clear_bit(FLITE_ST_SUSPEND, &flite->state);
@@ -1968,7 +2084,7 @@ static int flite_probe(struct platform_device *pdev)
 	struct v4l2_subdev *sd;
 	int ret = -ENODEV;
 #if defined(CONFIG_MEDIA_CONTROLLER) && defined(CONFIG_ARCH_EXYNOS5)
-	struct exynos_isp_info *isp_info;
+	struct exynos_isp_info *isp_info = NULL;
 	int i;
 #endif
 	if (!pdev->dev.platform_data) {
@@ -2014,7 +2130,8 @@ static int flite_probe(struct platform_device *pdev)
 		goto err_reg_unmap;
 	}
 
-	ret = request_irq(flite->irq, flite_irq_handler, 0, dev_name(&pdev->dev), flite);
+	ret = request_irq(flite->irq, flite_irq_handler, IRQF_SHARED,
+			dev_name(&pdev->dev), flite);
 	if (ret) {
 		dev_err(&pdev->dev, "request_irq failed\n");
 		goto err_reg_unmap;
@@ -2083,10 +2200,12 @@ static int flite_probe(struct platform_device *pdev)
 		goto err_entity;
 	}
 
-	flite->camif_clk = clk_get(&flite->pdev->dev, CAMIF_TOP_CLK);
-	if (IS_ERR(flite->camif_clk)) {
-		flite_err("failed to get flite.%d clock", flite->id);
-		goto err_entity;
+	if (isp_info) {
+		flite->camif_clk = clk_get(&flite->pdev->dev, isp_info->camif_clk_name);
+		if (IS_ERR(flite->camif_clk)) {
+			flite_err("failed to get flite.%d clock", flite->id);
+			goto err_entity;
+		}
 	}
 	flite->mdev->is_flite_on= false;
 #endif
@@ -2144,10 +2263,8 @@ static int flite_remove(struct platform_device *pdev)
 
 
 static const struct dev_pm_ops flite_pm_ops = {
-	.suspend		= flite_suspend,
-	.resume			= flite_resume,
-	.runtime_suspend	= flite_runtime_suspend,
-	.runtime_resume		= flite_runtime_resume,
+	SET_SYSTEM_SLEEP_PM_OPS(flite_suspend, flite_resume)
+	SET_RUNTIME_PM_OPS(flite_runtime_suspend, flite_runtime_resume, NULL)
 };
 
 static struct platform_driver flite_driver = {
@@ -2160,20 +2277,7 @@ static struct platform_driver flite_driver = {
 	}
 };
 
-static int __init flite_init(void)
-{
-	int ret = platform_driver_register(&flite_driver);
-	if (ret)
-		flite_err("platform_driver_register failed: %d", ret);
-	return ret;
-}
-
-static void __exit flite_exit(void)
-{
-	platform_driver_unregister(&flite_driver);
-}
-module_init(flite_init);
-module_exit(flite_exit);
+module_platform_driver(flite_driver);
 
 MODULE_AUTHOR("Sky Kang<sungchun.kang@samsung.com>");
 MODULE_DESCRIPTION("Exynos FIMC-Lite driver");

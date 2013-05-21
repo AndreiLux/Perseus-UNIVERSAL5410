@@ -282,6 +282,36 @@ struct platform_device s5p_device_fimc3 = {
 };
 #endif /* CONFIG_S5P_DEV_FIMC3 */
 
+
+#ifdef CONFIG_VIDEO_S5P_FIMC_LITE
+#ifdef CONFIG_S5P_DEV_FLITE0
+static struct resource s5p_flite0_resource[] = {
+	[0] = DEFINE_RES_MEM(S5P_PA_FIMC_LITE0, SZ_4K),
+	[1] = DEFINE_RES_IRQ(IRQ_FIMC_LITE0),
+};
+
+struct platform_device s5p_device_flite0 = {
+	.name		= "s5p-fimc-lite",
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(s5p_flite0_resource),
+	.resource	= s5p_flite0_resource,
+};
+#endif
+#ifdef CONFIG_S5P_DEV_FLITE1
+static struct resource s5p_flite1_resource[] = {
+	[0] = DEFINE_RES_MEM(S5P_PA_FIMC_LITE1, SZ_4K),
+	[1] = DEFINE_RES_IRQ(IRQ_FIMC_LITE1),
+};
+
+struct platform_device s5p_device_flite1 = {
+	.name		= "s5p-fimc-lite",
+	.id		= 1,
+	.num_resources	= ARRAY_SIZE(s5p_flite1_resource),
+	.resource	= s5p_flite1_resource,
+};
+#endif
+#endif
+
 /* G2D */
 
 #ifdef CONFIG_S5P_DEV_G2D

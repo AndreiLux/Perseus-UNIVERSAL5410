@@ -147,6 +147,8 @@ config EXYNOS_DEV_DWMCI
 
 config EXYNOS4_DEV_FIMC_LITE
 	bool
+	depends on VIDEO_EXYNOS_FIMC_LITE
+	default y
 	help
 	  Compile in platform device definitions for FIMC_LITE
 
