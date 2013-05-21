@@ -212,7 +212,7 @@ void s5p_cec_get_rx_buf(u32 size, u8 *buffer)
 	}
 }
 
-int __init s5p_cec_mem_probe(struct platform_device *pdev)
+int s5p_cec_mem_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	size_t	size;

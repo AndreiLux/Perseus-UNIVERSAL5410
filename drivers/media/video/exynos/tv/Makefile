@@ -8,7 +8,7 @@
 obj-$(CONFIG_VIDEO_EXYNOS_HDMIPHY) += s5p-hdmiphy.o
 s5p-hdmiphy-y += hdmiphy_drv.o
 obj-$(CONFIG_VIDEO_EXYNOS_HDMI) += s5p-hdmi.o
-s5p-hdmi-y += hdcp_drv.o hdmi_drv.o
+s5p-hdmi-y += hdcp_drv.o hdmi_drv.o hdmi_edid.o
 obj-$(CONFIG_VIDEO_EXYNOS_SDO) += s5p-sdo.o
 s5p-sdo-y += sdo_drv.o
 obj-$(CONFIG_VIDEO_EXYNOS_MIXER) += s5p-mixer.o
@@ -25,7 +25,9 @@ endif
 ifeq ($(CONFIG_VIDEO_EXYNOS_HDMI),y)
 	ifeq ($(CONFIG_CPU_EXYNOS4210), y)
 		s5p-hdmi-y += hdmi_reg_4210.o hdmiphy_conf_4210.o
+	else ifeq ($(CONFIG_CPU_EXYNOS5250), y)
+		s5p-hdmi-y += hdmi_reg_5xx0.o hdmiphy_conf_5250.o
 	else
-		s5p-hdmi-y += hdmi_reg_5250.o hdmiphy_conf_5250.o
+		s5p-hdmi-y += hdmi_reg_5xx0.o hdmiphy_conf_5410.o
 	endif
 endif
