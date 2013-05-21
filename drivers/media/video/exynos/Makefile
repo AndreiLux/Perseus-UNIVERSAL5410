@@ -1,3 +1,4 @@
+obj-$(CONFIG_VIDEO_EXYNOS5_FIMC_IS_SENSOR)	+= fimc-is-sensor/
 obj-$(CONFIG_EXYNOS_MEDIA_DEVICE)	+= mdev/
 obj-$(CONFIG_VIDEO_EXYNOS_MIPI_CSIS)	+= mipi-csis/
 obj-$(CONFIG_VIDEO_EXYNOS_FIMC_LITE)	+= fimc-lite/

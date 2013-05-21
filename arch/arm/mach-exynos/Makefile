@@ -124,6 +124,7 @@ obj-$(CONFIG_FB_MIPI_DSIM)		+= setup-mipidsim.o
 obj-$(CONFIG_EXYNOS_CONTENT_PATH_PROTECTION) += secmem.o
 obj-$(CONFIG_EXYNOS4_SETUP_FIMC_IS)	+= setup-fimc-is.o
 obj-$(CONFIG_EXYNOS5_SETUP_FIMC_IS)	+= setup-fimc-is.o
+obj-$(CONFIG_VISION_MODE)			+= setup-fimc-is-sensor.o
 obj-$(CONFIG_EXYNOS4_SETUP_I2C1)	+= setup-i2c1.o
 obj-$(CONFIG_EXYNOS4_SETUP_I2C2)	+= setup-i2c2.o
 obj-$(CONFIG_EXYNOS4_SETUP_I2C3)	+= setup-i2c3.o

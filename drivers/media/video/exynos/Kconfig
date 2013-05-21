@@ -20,22 +20,16 @@ if VIDEO_EXYNOS
 	source "drivers/media/video/exynos/tv/Kconfig"
 	source "drivers/media/video/exynos/rotator/Kconfig"
 	source "drivers/media/video/exynos/fimc-is-mc2/Kconfig"
+	source "drivers/media/video/exynos/fimc-is-sensor/Kconfig"
+
+config VIDEO_EXYNOS5_FIMC_IS_SENSOR
+	bool "Exynos FIMC-IS-SENSOR driver"
+	depends on VIDEO_EXYNOS || VIDEO_EXYNOS5_FIMC_IS
+	select MEDIA_EXYNOS
+	default n
+	help
+	  This is a v4l2 driver for exynos FIMC-IS-SENSOR device.
 endif
-
-choice
-depends on VIDEO_EXYNOS
-prompt "FIMC_IS(Image Signal Process) version"
-default VIDEO_EXYNOS5_FIMC_IS
-config VIDEO_EXYNOS5_FIMC_IS
-	bool "Camera 1.0"
-	help
-		This will be use fimc_is_mc for camera 1.0
-
-config VIDEO_EXYNOS5_FIMC_IS2
-	bool "Camera 2.0"
-	help
-		This will be use fimc_is_mc2 for camera 2.0
-endchoice
 
 config MEDIA_EXYNOS
 	bool
