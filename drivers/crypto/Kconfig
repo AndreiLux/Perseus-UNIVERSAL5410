@@ -327,7 +327,7 @@ config ACE_HASH_SHA1
 
 config ACE_HASH_SHA256
 	bool "Support for SHA256 hash algorithm"
-	depends on CRYPTO_S5P_DEV_ACE && ARCH_EXYNOS4
+	depends on CRYPTO_S5P_DEV_ACE && ARCH_EXYNOS
 	select CRYPTO_HASH
 	select CRYPTO_SHA256
 	default y
