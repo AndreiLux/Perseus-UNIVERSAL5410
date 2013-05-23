@@ -1645,6 +1645,9 @@ void __init s3c64xx_spi0_set_platdata(struct s3c64xx_spi_info *pd,
 	if (!pd->cfg_gpio)
 		pd->cfg_gpio = s3c64xx_spi0_cfg_gpio;
 
+	if (pd->dma_mode != PIO_MODE)
+		pd->dma_mode = HYBRID_MODE;
+
 	s3c_set_platdata(pd, sizeof(*pd), &s3c64xx_device_spi0);
 }
 #endif /* CONFIG_S3C64XX_DEV_SPI0 */
@@ -1686,6 +1689,9 @@ void __init s3c64xx_spi1_set_platdata(struct s3c64xx_spi_info *pd,
 	pd->src_clk_nr = src_clk_nr;
 	if (!pd->cfg_gpio)
 		pd->cfg_gpio = s3c64xx_spi1_cfg_gpio;
+
+	if (pd->dma_mode != PIO_MODE)
+		pd->dma_mode = HYBRID_MODE;
 
 	s3c_set_platdata(pd, sizeof(*pd), &s3c64xx_device_spi1);
 }
@@ -1729,9 +1735,51 @@ void __init s3c64xx_spi2_set_platdata(struct s3c64xx_spi_info *pd,
 	if (!pd->cfg_gpio)
 		pd->cfg_gpio = s3c64xx_spi2_cfg_gpio;
 
+	if (pd->dma_mode != PIO_MODE)
+		pd->dma_mode = HYBRID_MODE;
+
 	s3c_set_platdata(pd, sizeof(*pd), &s3c64xx_device_spi2);
 }
 #endif /* CONFIG_S3C64XX_DEV_SPI2 */
+
+#ifdef CONFIG_S3C64XX_DEV_SPI3
+static struct resource s3c64xx_spi3_resource[] = {
+	[0] = DEFINE_RES_MEM(S3C_PA_SPI3, SZ_256),
+	/* Todo : add irq resource -> [3] = DEFINE_RES_IRQ(IRQ_SPIx) */
+};
+
+struct platform_device s3c64xx_device_spi3 = {
+	.name		= "s3c64xx-spi",
+	.id		= 3,
+	.num_resources	= ARRAY_SIZE(s3c64xx_spi3_resource),
+	.resource	= s3c64xx_spi3_resource,
+};
+
+void __init s3c64xx_spi3_set_platdata(struct s3c64xx_spi_info *pd,
+				      int src_clk_nr, int num_cs)
+{
+	if (!pd) {
+		pr_err("%s:Need to pass platform data\n", __func__);
+		return;
+	}
+
+	/* Reject invalid configuration */
+	if (!num_cs || src_clk_nr < 0) {
+		pr_err("%s: Invalid SPI configuration\n", __func__);
+		return;
+	}
+
+	pd->num_cs = num_cs;
+	pd->src_clk_nr = src_clk_nr;
+	if (!pd->cfg_gpio)
+		pd->cfg_gpio = s3c64xx_spi3_cfg_gpio;
+
+	if (pd->dma_mode != PIO_MODE)
+		pd->dma_mode = HYBRID_MODE;
+
+	s3c_set_platdata(pd, sizeof(*pd), &s3c64xx_device_spi3);
+}
+#endif /* CONFIG_S3C64XX_DEV_SPI3 */
 
 #ifdef CONFIG_MALI_T6XX
 static struct resource g3d_resource[] = {
