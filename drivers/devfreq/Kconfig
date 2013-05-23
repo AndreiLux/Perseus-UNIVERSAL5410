@@ -38,6 +38,11 @@ config DEVFREQ_GOV_SIMPLE_ONDEMAND
 	  values that imply the usage rate. A device may provide tuned
 	  values to the governor with data field at devfreq_add_device().
 
+config DEVFREQ_GOV_SIMPLE_USAGE
+	bool "Simple Usage"
+	help
+	  Chooses frequency based on the percentage of target device.
+
 config DEVFREQ_GOV_PERFORMANCE
 	bool "Performance"
 	help

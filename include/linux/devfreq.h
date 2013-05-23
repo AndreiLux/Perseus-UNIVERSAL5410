@@ -210,6 +210,20 @@ struct devfreq_simple_ondemand_data {
 	unsigned int downdifferential;
 };
 #endif
+
+#ifdef CONFIG_DEVFREQ_GOV_SIMPLE_USAGE
+extern const struct devfreq_governor devfreq_simple_usage;
+
+struct devfreq_simple_usage_data {
+	unsigned int proportional;
+	unsigned int upthreshold;
+	unsigned int target_percentage;
+	int pm_qos_class;
+	unsigned long cal_qos_max;
+	bool en_monitoring;
+};
+#endif
+
 #ifdef CONFIG_DEVFREQ_GOV_PM_QOS
 extern const struct devfreq_governor devfreq_pm_qos;
 /**
@@ -260,6 +274,7 @@ static int devfreq_unregister_opp_notifier(struct device *dev,
 #define devfreq_performance	NULL
 #define devfreq_userspace	NULL
 #define devfreq_simple_ondemand	NULL
+#define devfreq_simple_usage	NULL
 #define devfreq_pm_qos		NULL
 
 #endif /* CONFIG_PM_DEVFREQ */
