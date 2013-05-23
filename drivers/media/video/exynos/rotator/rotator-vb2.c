@@ -36,7 +36,6 @@ const struct rot_vb2 rot_vb2_ion = {
 	.plane_addr	= rot_vb2_plane_addr,
 	.resume		= vb2_ion_attach_iommu,
 	.suspend	= vb2_ion_detach_iommu,
-	.cache_flush	= vb2_ion_cache_flush,
 	.set_cacheable	= vb2_ion_set_cached,
 };
 #endif
