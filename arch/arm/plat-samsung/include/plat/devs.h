@@ -164,6 +164,11 @@ extern struct platform_device exynos5_device_gsc2;
 extern struct platform_device exynos5_device_gsc3;
 extern struct platform_device exynos5_device_fimc_is;
 
+extern struct platform_device exynos5_device_hs_i2c0;
+extern struct platform_device exynos5_device_hs_i2c1;
+extern struct platform_device exynos5_device_hs_i2c2;
+extern struct platform_device exynos5_device_hs_i2c3;
+
 extern struct platform_device samsung_asoc_dma;
 extern struct platform_device samsung_asoc_idma;
 extern struct platform_device samsung_device_keypad;

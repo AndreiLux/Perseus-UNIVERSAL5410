@@ -27,7 +27,7 @@ config ARCH_EXYNOS4
 config ARCH_EXYNOS5
 	bool "SAMSUNG EXYNOS5"
 	select HAVE_SMP
-	select ARCH_NEEDS_CPU_IDLE_COUPLED
+	select HAVE_EXYNOS5_HSI2C if I2C
 	select ARM_ERRATA_773022
 	select ARM_ERRATA_774769
 	help
@@ -179,6 +179,26 @@ config EXYNOS_DEV_SS_UDC
 	  Compile in platform device definition for EXYNOS SuperSpeed USB 3.0
 	  Device controller
 
+config EXYNOS5_DEV_HSI2C0
+	bool
+	help
+	  Compile in platform device definitions for HS-I2C channel 0
+
+config EXYNOS5_DEV_HSI2C1
+	bool
+	help
+	  Compile in platform device definitions for HS-I2C channel 1
+
+config EXYNOS5_DEV_HSI2C2
+	bool
+	help
+	  Compile in platform device definitions for HS-I2C channel 2
+
+config EXYNOS5_DEV_HSI2C3
+	bool
+	help
+	  Compile in platform device definitions for HS-I2C channel 3
+
 config EXYNOS4_SETUP_I2C1
 	bool
 	help
@@ -213,6 +233,26 @@ config EXYNOS4_SETUP_I2C7
 	bool
 	help
 	  Common setup code for i2c bus 7.
+
+config EXYNOS5_SETUP_HSI2C0
+	bool
+	help
+	  Common setup code for hs-i2c bus 0.
+
+config EXYNOS5_SETUP_HSI2C1
+	bool
+	help
+	  Common setup code for hs-i2c bus 1.
+
+config EXYNOS5_SETUP_HSI2C2
+	bool
+	help
+	  Common setup code for hs-i2c bus 2.
+
+config EXYNOS5_SETUP_HSI2C3
+	bool
+	help
+	  Common setup code for hs-i2c bus 3.
 
 config EXYNOS4_SETUP_KEYPAD
 	bool
