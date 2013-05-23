@@ -12,11 +12,22 @@
 #ifndef _ARM_MACH_EXYNOS_SYSMMU_H_
 #define _ARM_MACH_EXYNOS_SYSMMU_H_
 
+#include <linux/device.h>
+#include <linux/list.h>
+
+struct sysmmu_version {
+	unsigned char major; /* major = 0 means that driver must use MMU_VERSION
+				register instead of this structure */
+	unsigned char minor;
+};
+
 struct sysmmu_platform_data {
 	char *dbgname;
 	/* comma(,) separated list of clock names for clock gating */
 	char *clockname;
-	unsigned int qos;
+	struct sysmmu_version ver;
+	short qos;
+	bool tlbinv_entry;
 };
 
 #define SYSMMU_DEVNAME_BASE "exynos-sysmmu"
@@ -25,11 +36,11 @@ struct sysmmu_platform_data {
 #define SYSMMU_CLOCK_NAME2 "sysmmu_mc"
 #define SYSMMU_CLOCK_NAME3 "sysmmu_mc2"
 
-#ifdef CONFIG_EXYNOS_DEV_SYSMMU
-#include <linux/device.h>
 struct platform_device;
 
 #define SYSMMU_PLATDEV(ipname) exynos_device_sysmmu_##ipname
+
+#ifdef CONFIG_EXYNOS_DEV_SYSMMU
 
 extern struct platform_device SYSMMU_PLATDEV(mfc_lr);
 extern struct platform_device SYSMMU_PLATDEV(tv);
@@ -43,27 +54,21 @@ extern struct platform_device SYSMMU_PLATDEV(gsc0);
 extern struct platform_device SYSMMU_PLATDEV(gsc1);
 extern struct platform_device SYSMMU_PLATDEV(gsc2);
 extern struct platform_device SYSMMU_PLATDEV(gsc3);
-extern struct platform_device SYSMMU_PLATDEV(isp);
+extern struct platform_device SYSMMU_PLATDEV(isp0);
+extern struct platform_device SYSMMU_PLATDEV(isp1);
+extern struct platform_device SYSMMU_PLATDEV(isp2);
+extern struct platform_device SYSMMU_PLATDEV(isp3);
 extern struct platform_device SYSMMU_PLATDEV(fimd0);
 extern struct platform_device SYSMMU_PLATDEV(fimd1);
 extern struct platform_device SYSMMU_PLATDEV(camif0);
 extern struct platform_device SYSMMU_PLATDEV(camif1);
 extern struct platform_device SYSMMU_PLATDEV(camif2);
 extern struct platform_device SYSMMU_PLATDEV(2d);
+extern struct platform_device SYSMMU_PLATDEV(scaler);
+extern struct platform_device SYSMMU_PLATDEV(s3d);
+extern struct platform_device SYSMMU_PLATDEV(mjpeg);
 
-#ifdef CONFIG_IOMMU_API
-static inline void platform_set_sysmmu(
-				struct device *sysmmu, struct device *dev)
-{
-	dev->archdata.iommu = sysmmu;
-}
-#else
-#define platform_set_sysmmu(dev, sysmmu) do { } while (0)
-#endif
-
-#else /* !CONFIG_EXYNOS_DEV_SYSMMU */
-#define platform_set_sysmmu(dev, sysmmu) do { } while (0)
-#endif
+#endif /* CONFIG_EXYNOS_DEV_SYSMMU */
 
 #define SYSMMU_CLOCK_DEVNAME(ipname, id) (SYSMMU_DEVNAME_BASE "." #id)
 

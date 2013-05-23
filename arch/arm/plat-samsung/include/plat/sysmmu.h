@@ -38,10 +38,15 @@ struct sysmmu_drvdata;
  *             translated. This is 0 if @itype is SYSMMU_BUSERROR.
  */
 typedef int (*sysmmu_fault_handler_t)(struct device *dev,
+				      const char *mmuname,
 				      enum exynos_sysmmu_inttype itype,
 				      unsigned long pgtable_base,
 				      unsigned long fault_addr);
 
+struct sysmmu_prefbuf {
+	unsigned long base;
+	unsigned long size;
+};
 #ifdef CONFIG_EXYNOS_IOMMU
 /**
  * exynos_sysmmu_enable() - enable system mmu
@@ -96,15 +101,39 @@ void exynos_sysmmu_set_fault_handler(struct device *sysmmu,
  *  @size1: The last virtual address of the area of the @owner device that the
  *          prefetch buffer loads translation descriptors. This can be 0. See
  *          the description of @base1 for more information with @size1 = 0
+ *
+ * THIS FUNCTION IS DEPRECATED. USE exynos_sysmmu_set_pbuf(), INSTEAD.
  */
 void exynos_sysmmu_set_prefbuf(struct device *owner,
 				unsigned long base0, unsigned long size0,
 				unsigned long base1, unsigned long size1);
+
+/** exynos_sysmmu_set_pbuf() - Initialize prefetch buffers of System MMU v3
+ *  @owner: The device which need to set the prefetch buffers
+ *  @nbufs: Number of buffer areas to set into prefetch buffers.
+ *  @prefbufs: Array of buffer areas. Number of elements of this array must
+ *             equal to @nbufs
+ *
+ *  This is the generic version of prefetch buffer setting.
+ *  exynos_sysmmu_set_prefbuf() is another wrapper of this function.
+ */
+void exynos_sysmmu_set_pbuf(struct device *owner, int nbufs,
+				struct sysmmu_prefbuf prefbuf[]);
+
 #else /* CONFIG_EXYNOS_IOMMU */
-#define exynos_sysmmu_enable(owner, pgd) do { } while (0)
-#define exynos_sysmmu_disable(owner) do { } while (0)
+static inline int exynos_sysmmu_enable(struct device *owner, unsigned long *pgd)
+{
+	return -ENODEV;
+}
+
+static inline bool exynos_sysmmu_disable(struct device *owner)
+{
+	return false;
+}
+
 #define exynos_sysmmu_tlb_invalidate(owner) do { } while (0)
 #define exynos_sysmmu_set_fault_handler(sysmmu, handler) do { } while (0)
 #define exynos_sysmmu_set_prefbuf(owner, b0, s0, b1, s1) do { } while (0)
+#define exynos_sysmmu_set_pbuf(owner, nbufs, prefbuf) do { } while (0)
 #endif
 #endif /* __ASM_PLAT_SYSMMU_H */
