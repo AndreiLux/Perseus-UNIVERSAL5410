@@ -7,6 +7,6 @@ obj-$(CONFIG_DEVFREQ_GOV_USERSPACE)	+= governor_userspace.o
 
 # DEVFREQ Drivers
 obj-$(CONFIG_ARM_EXYNOS4_BUS_DEVFREQ)	+= exynos4_bus.o
-obj-$(CONFIG_ARM_EXYNOS5_BUS_DEVFREQ)	+= exynos5_bus_mif.o exynos5_bus_int.o
-obj-$(CONFIG_ARM_EXYNOS5_BUS_DEVFREQ)	+= exynos5_ppmu.o
-obj-$(CONFIG_SAMSUNG_NOCP_MONITOR)	+= noc_probe.o nocp_monitor.o
+obj-$(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)	+= exynos5410_bus_int.o exynos5410_bus_mif.o exynos5410_volt_ctrl.o
+obj-$(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)	+= noc_probe.o
+obj-$(CONFIG_SAMSUNG_NOCP_MONITOR)	+= nocp_monitor.o

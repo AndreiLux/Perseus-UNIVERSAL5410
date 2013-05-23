@@ -83,15 +83,15 @@ config ARM_EXYNOS4_BUS_DEVFREQ
 	  To operate with optimal voltages, ASV support is required
 	  (CONFIG_EXYNOS_ASV).
 
-config ARM_EXYNOS5_BUS_DEVFREQ
-	bool "ARM Exynos5250 Memory Bus DEVFREQ Driver"
-	depends on SOC_EXYNOS5250
+config ARM_EXYNOS5410_BUS_DEVFREQ
+	bool "ARM Exynos5410 Memory Bus DEVFREQ Driver"
+	depends on SOC_EXYNOS5410
 	select ARCH_HAS_OPP
-	select DEVFREQ_GOV_SIMPLE_ONDEMAND
+	select PM_OPP
+	select DEVFREQ_GOV_SIMPLE_USAGE
+	select DEVFREQ_GOV_USERSPACE
 	help
-	  This adds the DEVFREQ driver for Exynos5250 memory interface
-	  (vdd_mif). It reads PPMU counters of memory controllers and
-	  adjusts the operating frequencies and voltages with OPP support.
+	  This adds the DEVFREQ driver for Exynos5 series memory and int.
 
 config SAMSUNG_NOCP_MONITOR
 	bool "Exynos bandwidth monitor with noc probe"
