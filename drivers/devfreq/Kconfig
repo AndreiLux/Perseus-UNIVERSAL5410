@@ -93,4 +93,11 @@ config ARM_EXYNOS5_BUS_DEVFREQ
 	  (vdd_mif). It reads PPMU counters of memory controllers and
 	  adjusts the operating frequencies and voltages with OPP support.
 
+config SAMSUNG_NOCP_MONITOR
+	bool "Exynos bandwidth monitor with noc probe"
+	depends on ARM_EXYNOS5410_BUS_DEVFREQ
+	select SAMSUNG_BW_MONITOR
+	help
+	  This adds to monitor the system bandwidth for exynos5.
+
 endif # PM_DEVFREQ
