@@ -20,6 +20,8 @@ obj-$(CONFIG_SOC_EXYNOS4212)	+= clock-exynos4212.o
 obj-$(CONFIG_SOC_EXYNOS5410)	+= clock-exynos5410.o cci.o
 obj-$(CONFIG_SOC_EXYNOS5410)	+= exynos-interface.o
 
+obj-$(CONFIG_EXYNOS5410_BTS)		+= bts-exynos5410.o
+
 obj-$(CONFIG_PM)		+= pm.o
 obj-$(CONFIG_PM_GENERIC_DOMAINS) += pm_domains.o
 obj-$(CONFIG_CPU_IDLE)		+= cpuidle.o

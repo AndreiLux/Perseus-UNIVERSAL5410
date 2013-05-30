@@ -354,7 +354,14 @@ config EXYNOS5_CLUSTER_POWER_CONTROL
 	  Enable dynamic cluster power control support.
 	  If A15 cluster power is off, T32 cannot attach
 	  to both A7 and A15 cores in the system.
-
+	  
+config EXYNOS5410_BTS
+	bool "Bus traffic shaper support"
+	default y
+	depends on SOC_EXYNOS5410
+	help
+	  Enable BTS (Bus traffic shaper) support
+	  
 # machine support
 
 if ARCH_EXYNOS4
