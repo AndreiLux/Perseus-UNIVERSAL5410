@@ -17,7 +17,7 @@ obj-$(CONFIG_ARCH_EXYNOS4)	+= clock-exynos4.o
 obj-$(CONFIG_ARM_TRUSTZONE)	+= irq-sgi.o
 obj-$(CONFIG_CPU_EXYNOS4210)	+= clock-exynos4210.o
 obj-$(CONFIG_SOC_EXYNOS4212)	+= clock-exynos4212.o
-obj-$(CONFIG_SOC_EXYNOS5410)	+= clock-exynos5410.o cci.o
+obj-$(CONFIG_SOC_EXYNOS5410)	+= clock-exynos5410.o cci.o asv-exynos5410.o
 obj-$(CONFIG_SOC_EXYNOS5410)	+= exynos-interface.o
 
 obj-$(CONFIG_EXYNOS5410_BTS)		+= bts-exynos5410.o
@@ -25,7 +25,7 @@ obj-$(CONFIG_EXYNOS5410_BTS)		+= bts-exynos5410.o
 obj-$(CONFIG_PM)		+= pm.o
 obj-$(CONFIG_PM_GENERIC_DOMAINS) += pm_domains.o
 obj-$(CONFIG_CPU_IDLE)		+= cpuidle.o
-obj-$(CONFIG_ARCH_EXYNOS)	+= asv-exynos.o abb-exynos.o
+obj-$(CONFIG_ARCH_EXYNOS)	+= asv-exynos.o
 obj-$(CONFIG_SOC_EXYNOS5250)	+= asv-exynos5250.o
 
 obj-$(CONFIG_ARCH_EXYNOS)	+= pmu.o

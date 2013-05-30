@@ -361,7 +361,11 @@ config EXYNOS5410_BTS
 	depends on SOC_EXYNOS5410
 	help
 	  Enable BTS (Bus traffic shaper) support
-	  
+
+config ASV_MARGIN_TEST
+	bool "Enable margin test"
+	default n
+
 # machine support
 
 if ARCH_EXYNOS4
