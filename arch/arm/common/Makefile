@@ -19,5 +19,6 @@ obj-$(CONFIG_FIQ_GLUE)		+= fiq_glue.o fiq_glue_setup.o
 obj-$(CONFIG_FIQ_DEBUGGER)	+= fiq_debugger.o
 obj-$(CONFIG_MCPM)		+= mcpm_head.o mcpm_entry.o mcpm_platsmp.o vlock.o
 CFLAGS_REMOVE_mcpm_entry.o	= -pg
-
+obj-$(CONFIG_BL_SWITCHER)	+= bL_head.o bL_entry.o
 obj-$(CONFIG_BL_SWITCHER)	+= bL_switcher.o
+obj-$(CONFIG_BL_SWITCHER)	+= vlock.o

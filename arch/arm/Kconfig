@@ -1616,7 +1616,6 @@ config BIG_LITTLE
 
 config BL_SWITCHER
 	bool "big.LITTLE switcher support"
-	depends on BIG_LITTLE && MCPM && HOTPLUG_CPU
 	select CPU_PM
 	select ARM_CPU_SUSPEND
 	help

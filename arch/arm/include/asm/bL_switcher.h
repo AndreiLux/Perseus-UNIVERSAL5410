@@ -12,6 +12,18 @@
 #ifndef ASM_BL_SWITCHER_H
 #define ASM_BL_SWITCHER_H
 
+enum switch_event {
+       SWITCH_ENTER,
+       SWITCH_EXIT,
+};
+
+struct bL_power_ops;
+
+int __init bL_switcher_init(const struct bL_power_ops *ops);
 void bL_switch_request(unsigned int cpu, unsigned int new_cluster_id);
+int register_bL_swicher_notifier(struct notifier_block *nb);
+int unregister_bL_swicher_notifier(struct notifier_block *nb);
+bool bL_check_auto_switcher_enable(void);
+int bL_cluster_switch_request(unsigned int new_cluster);
 
 #endif
