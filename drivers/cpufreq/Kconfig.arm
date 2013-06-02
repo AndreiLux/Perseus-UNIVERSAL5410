@@ -76,3 +76,9 @@ config ARM_EXYNOS5250_CPUFREQ
 	help
 	  This adds the CPUFreq driver for Samsung EXYNOS5250
 	  SoC.
+
+config ARM_EXYNOS5410_CPUFREQ
+	def_bool SOC_EXYNOS5410
+	help
+	  This adds the CPUFreq driver for Samsung EXYNOS5410
+	  SoC.
