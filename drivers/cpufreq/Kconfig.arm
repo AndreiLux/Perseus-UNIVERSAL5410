@@ -49,15 +49,48 @@ config ARM_S5PV210_CPUFREQ
 
 	  If in doubt, say N.
 
+choice
+	prompt "ARM exynos cpufreq switching model"
+	default ARM_EXYNOS_CPUFREQ
+
 config ARM_EXYNOS_CPUFREQ
 	bool "SAMSUNG EXYNOS SoCs"
 	depends on ARCH_EXYNOS
-	default y
 	help
 	  This adds the CPUFreq driver common part for Samsung
 	  EXYNOS SoCs.
 
 	  If in doubt, say N.
+
+config ARM_EXYNOS_IKS_CPUFREQ
+	bool "SAMSUNG EXYNOS SoCs for Inkernel Switcher"
+	help
+	  This adds the CPUFreq driver common part for Samsung
+	  EXYNOS SoCs.
+
+	  If in doubt, say N.
+endchoice
+
+choice
+	prompt "Inkernel Switcher operation mode"
+	depends on ARM_EXYNOS_IKS_CPUFREQ
+	default ARM_EXYNOS_IKS_CLUSTER
+
+config ARM_EXYNOS_IKS_CLUSTER
+	bool "Inkernel Switcher for Cluster Switching"
+	help
+	  This adds the CPUFreq driver common part for Samsung
+	  EXYNOS SoCs.
+
+	  If in doubt, say N.
+endchoice
+
+config EXYNOS5_DYNAMIC_CPU_HOTPLUG
+	bool "Dynamic CPU Hotplug support"
+	depends on SOC_EXYNOS5410
+	default y
+	help
+	  Enable Dynamic CPU Hotplug
 
 config ARM_EXYNOS4210_CPUFREQ
 	def_bool CPU_EXYNOS4210
