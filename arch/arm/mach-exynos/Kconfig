@@ -345,7 +345,16 @@ config EXYNOS5_CCI
 	default y
 	help
 	  Enable Cache Coherent Interconnect support
-	  
+
+config EXYNOS5_CLUSTER_POWER_CONTROL
+	bool "Dynamic cluster power control support"
+	depends on SOC_EXYNOS5410
+	default y
+	help
+	  Enable dynamic cluster power control support.
+	  If A15 cluster power is off, T32 cannot attach
+	  to both A7 and A15 cores in the system.
+
 # machine support
 
 if ARCH_EXYNOS4

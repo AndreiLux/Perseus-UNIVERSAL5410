@@ -184,6 +184,12 @@ static void __init exynos_reserve_mem(void)
 		},
 #endif
 #endif
+#ifdef CONFIG_BL_SWITCHER
+		{
+			.name = "bl_mem",
+			.size = SZ_8K,
+		},
+#endif
 		{
 			.size = 0
 		},
@@ -264,6 +270,9 @@ static void __init exynos_reserve_mem(void)
 		"s5p-smem/mfc_input=drm_mfc_input;"
 		"s5p-smem/mfc_fw=drm_mfc_fw;"
 		"s5p-smem/sectbl=drm_sectbl;"
+#endif
+#ifdef CONFIG_BL_SWITCHER
+		"b.L_mem=bl_mem;"
 #endif
 		"ion-exynos=ion;";
 	exynos_cma_region_reserve(regions, regions_secure, NULL, map);

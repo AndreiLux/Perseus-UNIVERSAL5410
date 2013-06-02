@@ -134,4 +134,6 @@ obj-$(CONFIG_MACH_JA)			+= sec-switch.o
 obj-$(CONFIG_SEC_PM)				+= sec_gpio.o
 obj-$(CONFIG_SEC_THERMISTOR)		+= sec_thermistor.o
 
+obj-$(CONFIG_BL_SWITCHER)		+= bL_control.o bL_setup.o
+
 obj-$(CONFIG_SEC_LOG)				+= sec_log.o
