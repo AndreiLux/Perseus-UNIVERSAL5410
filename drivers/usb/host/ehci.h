@@ -375,7 +375,12 @@ struct ehci_qh {
 #define	QH_STATE_COMPLETING	5		/* don't touch token.HALT */
 
 	u8			xacterrs;	/* XactErr retry counter */
+
+#if defined(CONFIG_LINK_DEVICE_HSIC)
+#define	QH_XACTERR_MAX		4		/* XactErr retry limit */
+#else
 #define	QH_XACTERR_MAX		32		/* XactErr retry limit */
+#endif
 
 	/* periodic schedule info */
 	u8			usecs;		/* intr bandwidth */

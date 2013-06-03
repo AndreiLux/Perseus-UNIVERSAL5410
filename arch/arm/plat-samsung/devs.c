@@ -1530,6 +1530,10 @@ void __init s5p_ehci_set_platdata(struct s5p_ehci_platdata *pd)
 		npd->phy_init = s5p_usb_phy_init;
 	if (!npd->phy_exit)
 		npd->phy_exit = s5p_usb_phy_exit;
+	if (!npd->phy_suspend)
+		npd->phy_suspend = s5p_usb_phy_suspend;
+	if (!npd->phy_resume)
+		npd->phy_resume = s5p_usb_phy_resume;
 }
 #endif /* CONFIG_S5P_DEV_USB_EHCI */
 
