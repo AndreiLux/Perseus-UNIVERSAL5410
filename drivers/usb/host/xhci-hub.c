@@ -29,6 +29,16 @@
 #define	PORT_RWC_BITS	(PORT_CSC | PORT_PEC | PORT_WRC | PORT_OCC | \
 			 PORT_RC | PORT_PLC | PORT_PE)
 
+/* 31:28 for port testing in xHCI */
+#ifdef CONFIG_HOST_COMPLIANT_TEST
+#define PORT_TEST(x)		(((x) & 0xf) << 28)     /* Port Test Control */
+#define PORT_TEST_J		PORT_TEST(0x1)
+#define PORT_TEST_K		PORT_TEST(0x2)
+#define PORT_TEST_SE0_NAK	PORT_TEST(0x3)
+#define PORT_TEST_PKT		PORT_TEST(0x4)
+#define PORT_TEST_FORCE		PORT_TEST(0x5)
+#endif
+
 /* usb 1.1 root hub device descriptor */
 static u8 usb_bos_descriptor [] = {
 	USB_DT_BOS_SIZE,		/*  __u8 bLength, 5 bytes */
@@ -548,6 +558,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 	struct xhci_bus_state *bus_state;
 	u16 link_state = 0;
 	u16 wake_mask = 0;
+	u16 selector;
 
 	max_ports = xhci_get_ports(hcd, &port_array);
 	bus_state = &xhci->bus_state[hcd_index(hcd)];
@@ -693,6 +704,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		put_unaligned(cpu_to_le32(status), (__le32 *) buf);
 		break;
 	case SetPortFeature:
+		selector = wIndex >> 8;
 		if (wValue == USB_PORT_FEAT_LINK_STATE)
 			link_state = (wIndex & 0xff00) >> 3;
 		if (wValue == USB_PORT_FEAT_REMOTE_WAKE_MASK)
@@ -721,7 +733,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			}
 			/* In spec software should not attempt to suspend
 			 * a port unless the port reports that it is in the
-			 * enabled (PED = â€˜1â€™,PLS < â€˜3â€™) state.
+			 * enabled (PED = ¢®¢ç1¢®?,PLS < ¢®¢ç3¢®?) state.
 			 */
 			temp = xhci_readl(xhci, port_array[wIndex]);
 			if ((temp & PORT_PE) == 0 || (temp & PORT_RESET)
@@ -753,12 +765,39 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			break;
 		case USB_PORT_FEAT_LINK_STATE:
 			temp = xhci_readl(xhci, port_array[wIndex]);
+
+			/* Disable port */
+			if (link_state == USB_SS_PORT_LS_SS_DISABLED) {
+				xhci_dbg(xhci, "Disable port %d\n", wIndex);
+				temp = xhci_port_state_to_neutral(temp);
+				/*
+				 * Clear all change bits, so that we get a new
+				 * connection event.
+				 */
+				temp |= PORT_CSC | PORT_PEC | PORT_WRC |
+					PORT_OCC | PORT_RC | PORT_PLC |
+					PORT_CEC;
+				xhci_writel(xhci, temp | PORT_PE,
+					port_array[wIndex]);
+				temp = xhci_readl(xhci, port_array[wIndex]);
+				break;
+			}
+
+			/* Put link in RxDetect (enable port) */
+			if (link_state == USB_SS_PORT_LS_RX_DETECT) {
+				xhci_dbg(xhci, "Enable port %d\n", wIndex);
+				xhci_set_link_state(xhci, port_array, wIndex,
+						link_state);
+				temp = xhci_readl(xhci, port_array[wIndex]);
+				break;
+			}
+
 			/* Software should not attempt to set
-			 * port link state above '5' (Rx.Detect) and the port
+			 * port link state above '3' (U3) and the port
 			 * must be enabled.
 			 */
 			if ((temp & PORT_PE) == 0 ||
-				(link_state > USB_SS_PORT_LS_RX_DETECT)) {
+				(link_state > USB_SS_PORT_LS_U3)) {
 				xhci_warn(xhci, "Cannot set link state.\n");
 				goto error;
 			}
@@ -807,6 +846,37 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			temp = xhci_readl(xhci, port_array[wIndex]);
 			xhci_dbg(xhci, "set port reset, actual port %d status  = 0x%x\n", wIndex, temp);
 			break;
+
+		/*
+		 * For downstream facing ports (these):  one hub port is put
+		 * into test mode according to USB2 11.24.2.13, then the hub
+		 * must be reset (which for root hub now means rmmod+modprobe,
+		 * or else system reboot).  See EHCI 2.3.9 and 4.14 for info
+		 * about the EHCI-specific stuff.
+		 */
+#ifdef CONFIG_HOST_COMPLIANT_TEST
+		case USB_PORT_FEAT_TEST:
+			xhci_err(xhci, "TEST MODE !!! selector = 0x%x\n",
+					selector);
+			xhci_err(xhci, "running XHCI test %x on port %x\n",
+					selector, wIndex);
+
+			xhci_halt(xhci);
+			/*
+			 * Set the Port Test Control field in the port
+			 * under test PORTPMSC register
+			 */
+			temp = xhci_readl(xhci, port_array[wIndex]);
+			xhci_err(xhci, "PORTPMSC: actual port %d status\
+					& control = 0x%x\n", wIndex, temp);
+
+			temp |= PORT_TEST_PKT;
+			xhci_writel(xhci, temp, port_array[wIndex]);
+			temp = xhci_readl(xhci, port_array[wIndex]);
+			xhci_err(xhci, "PORTPMSC: Test Packet, actual port %d\
+					status = 0x%x\n", wIndex, temp);
+			break;
+#endif/* CONFIG_HOST_COMPLIANT_TEST */
 		case USB_PORT_FEAT_REMOTE_WAKE_MASK:
 			xhci_set_remote_wake_mask(xhci, port_array,
 					wIndex, wake_mask);
