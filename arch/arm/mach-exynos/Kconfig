@@ -779,6 +779,18 @@ config SEC_PM_DEBUG
 endif
 
 endif
+	  
+config EXYNOS_C2C
+	bool "C2C device support"
+	depends on SAMSUNG_C2C
+	default y
+	help
+	  Add C2C device driver
+
+config EXYNOS_DEV_C2C
+	bool
+	depends on EXYNOS_C2C
+	default y
 
 if MACH_UNIVERSAL5410
 
