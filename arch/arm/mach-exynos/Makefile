@@ -83,6 +83,7 @@ obj-$(CONFIG_EXYNOS5_DEV_GSC)		+= dev-gsc.o
 obj-$(CONFIG_EXYNOS_DEV_ROTATOR)	+= dev-rotator.o
 obj-$(CONFIG_EXYNOS_DEV_SYSMMU)		+= dev-sysmmu.o
 obj-$(CONFIG_EXYNOS_DEV_DMA)		+= dma.o
+obj-$(CONFIG_EXYNOS_DEV_USB_SWITCH)	+= dev-usb-switch.o
 obj-$(CONFIG_EXYNOS4_DEV_USB_OHCI)	+= dev-ohci.o
 obj-$(CONFIG_EXYNOS5_DEV_USB3_DRD)	+= dev-usb3-drd.o
 obj-$(CONFIG_EXYNOS5_DEV_JPEG)			+= dev-jpeg.o

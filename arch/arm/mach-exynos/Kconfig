@@ -179,6 +179,11 @@ config EXYNOS5_DEV_USB3_DRD
 	  Compile in platform device definition for EXYNOS5 SuperSpeed USB 3.0
 	  DRD controller.
 
+config EXYNOS_DEV_USB_SWITCH
+	bool
+	help
+	  Compile in platform device definitions for USB-SWITCH
+
 config EXYNOS5_DEV_HSI2C0
 	bool
 	help
