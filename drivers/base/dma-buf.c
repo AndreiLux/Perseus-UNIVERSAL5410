@@ -28,8 +28,6 @@
 #include <linux/anon_inodes.h>
 #include <linux/export.h>
 
-static inline int is_dma_buf_file(struct file *);
-
 static int dma_buf_release(struct inode *inode, struct file *file)
 {
 	struct dma_buf *dmabuf;
@@ -69,7 +67,7 @@ static const struct file_operations dma_buf_fops = {
 /*
  * is_dma_buf_file - Check if struct file* is associated with dma_buf
  */
-static inline int is_dma_buf_file(struct file *file)
+int is_dma_buf_file(struct file *file)
 {
 	return file->f_op == &dma_buf_fops;
 }
@@ -164,10 +162,14 @@ struct dma_buf *dma_buf_get(int fd)
 
 	file = fget(fd);
 
-	if (!file)
+	if (!file) {
+		pr_err("%s: fd %d is not allocated\n", __func__, fd);
 		return ERR_PTR(-EBADF);
+	}
 
 	if (!is_dma_buf_file(file)) {
+		pr_err("%s: fd %d is opened for %s\n", __func__,
+				fd, file->f_path.dentry->d_iname);
 		fput(file);
 		return ERR_PTR(-EINVAL);
 	}
