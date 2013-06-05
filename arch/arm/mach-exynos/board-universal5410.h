@@ -21,6 +21,7 @@ void exynos5_universal5410_mmc_init(void);
 void exynos5_universal5410_power_init(void);
 void exynos5_universal5410_usb_init(void);
 void exynos5_universal5410_display_init(void);
+void exynos5_universal5410_input_init(void);
 
 extern unsigned int system_rev;
 extern unsigned int universal5410_rev(void);

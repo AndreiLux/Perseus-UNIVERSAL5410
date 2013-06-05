@@ -373,6 +373,7 @@ static void __init universal5410_machine_init(void)
 	exynos5_universal5410_usb_init();
 	exynos5_universal5410_power_init();
 	exynos5_universal5410_display_init();
+	exynos5_universal5410_input_init();
 	
 	ramconsole_pdata.bootinfo = exynos_get_resetreason();
 	platform_add_devices(universal5410_devices, ARRAY_SIZE(universal5410_devices));
