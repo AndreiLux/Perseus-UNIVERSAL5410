@@ -553,6 +553,63 @@ config MACH_SMDK5250
 	select EXYNOS5_DEV_BTS
 	help
 	  Machine support for Samsung SMDK5250
+
+comment "UNIVERSAL5410 Boards"
+
+config MACH_UNIVERSAL5410
+	bool "UNIVERSAL5410 board"
+	select SOC_EXYNOS5410
+	select S3C_DEV_RTC
+	select S3C_DEV_WDT
+	select S3C_DEV_I2C1
+	select S3C_DEV_I2C2
+	select S3C_DEV_I2C3
+	select S5P_GPIO_INT
+	select S5P_DEV_TV
+	select S5P_DEV_FIMD1
+	select S5P_DEV_USB_EHCI
+	select S5P_DEV_CSIS0
+	select S5P_DEV_CSIS1
+	select S5P_DEV_CSIS2
+	select S5P_DEV_MFC
+	select S5P_DEV_DP
+	select SAMSUNG_DEV_ADC
+	select S5P_DEV_FIMG2D
+	select EXYNOS_DEV_DWMCI
+	select EXYNOS_DEV_DMA
+	select EXYNOS_DEV_ROTATOR
+	select SAMSUNG_DEV_BACKLIGHT
+	select SAMSUNG_DEV_PWM
+	select EXYNOS_DEV_SYSMMU
+	select EXYNOS_DEV_TMU
+	select EXYNOS_SETUP_DP
+	select EXYNOS_SETUP_FIMD1
+	select EXYNOS4_SETUP_I2C1
+	select EXYNOS4_SETUP_I2C2
+	select EXYNOS4_SETUP_I2C3
+	select EXYNOS4_SETUP_USB_PHY
+	select EXYNOS4_SETUP_MFC
+	select EXYNOS4_DEV_USB_OHCI
+	select EXYNOS5_DEV_HSI2C0
+	select EXYNOS5_DEV_HSI2C1
+	select EXYNOS5_DEV_HSI2C2
+	select EXYNOS5_DEV_HSI2C3
+	select EXYNOS5_DEV_SCALER
+	select EXYNOS5_DEV_USB3_DRD
+	select EXYNOS5_SETUP_HSI2C0
+	select EXYNOS5_SETUP_HSI2C1
+	select EXYNOS5_SETUP_HSI2C2
+	select EXYNOS5_SETUP_HSI2C3
+	select S3C64XX_DEV_SPI0
+	select S3C64XX_DEV_SPI1
+	select S3C64XX_DEV_SPI2
+	select S3C64XX_DEV_SPI3
+	select EXYNOS_SETUP_SPI
+    select EXYNOS5_DEV_FIMC_IS
+    select EXYNOS5_SETUP_FIMC_IS
+	help
+	  Machine support for Universal board based on EXYNOS5410
+
 endif
 
 comment "Flattened Device Tree based board for EXYNOS SoCs"
@@ -654,5 +711,34 @@ config SEC_PM_DEBUG
 	help
 	  Samsung TN PowerManagement Debug Feature.
 endif
+
+endif
+
+if MACH_UNIVERSAL5410
+
+choice
+	prompt "Universal5410 Board Revision"
+	default UNIVERSAL5410_REV00
+
+config UNIVERSAL5410_3G_REV00
+	bool "Universal5410 3G Rev0.0"
+	help
+	  Support universal5410 3G rev0.0.
+
+endchoice
+
+config MACH_JA
+	bool "JA Board"
+	help
+	  Support JA Board.
+
+config TARGET_LOCALE_EUR
+	bool "Locale Europe Open support"
+	default y
+	help
+	  Enable universal5410 LOCALE EUR.
+	  is used to distinguish LOCALE-related difference.
+	  Locale Feature is used Revision XX and
+	  LTE Only Board.
 
 endif

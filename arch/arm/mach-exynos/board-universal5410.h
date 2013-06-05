@@ -1,0 +1,29 @@
+/*
+ * Copyright (c) 2012 Samsung Electronics Co., Ltd.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
+#ifndef __MACH_EXYNOS_BOARD_UNIVERSAL5410_H
+#define __MACH_EXYNOS_BOARD_UNIVERSAL5410_H
+#include <linux/i2c.h>
+
+extern unsigned int system_rev;
+extern unsigned int universal5410_rev(void);
+
+extern unsigned int lcdtype;
+
+#define PMIC_I2C_DEVS_MAX 1
+extern struct i2c_board_info hs_i2c_devs0[PMIC_I2C_DEVS_MAX];
+
+extern unsigned int lpcharge;
+#endif
+
