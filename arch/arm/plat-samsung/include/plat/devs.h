@@ -145,6 +145,7 @@ extern struct platform_device exynos4_device_pcm2;
 extern struct platform_device exynos4_device_pd[];
 extern struct platform_device exynos4_device_spdif;
 extern struct platform_device exynos_device_ss_udc;
+extern struct platform_device exynos4_device_g3d;
 
 extern struct platform_device exynos5_device_dwmci0;
 extern struct platform_device exynos5_device_dwmci1;
@@ -179,7 +180,7 @@ extern struct platform_device samsung_device_keypad;
 
 extern struct platform_device s5p_device_fimg2d;
 extern struct platform_device s5p_device_usbswitch;
-#ifdef CONFIG_MALI_T6XX
+#if defined(CONFIG_MALI_T6XX) || defined(CONFIG_PVR_SGX)
 extern struct platform_device exynos5_device_g3d;
 #endif
 extern struct platform_device exynos5410_device_tmu;

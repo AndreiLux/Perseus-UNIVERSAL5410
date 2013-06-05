@@ -1816,3 +1816,22 @@ struct platform_device exynos5_device_g3d = {
 	},
 };
 #endif /*CONFIG_MALI_T6XX*/
+struct platform_device exynos4_device_g3d = {
+	.name	= "mali_dev",
+	.id		= 0,
+	.dev = {
+		.dma_mask		= &samsung_device_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+};
+
+#ifdef CONFIG_PVR_SGX
+struct platform_device exynos5_device_g3d = {
+	.name   = "pvrsrvkm",
+	.id     = 0,
+	.dev    = {
+		.dma_mask =&samsung_device_dma_mask,
+		.coherent_dma_mask = DMA_BIT_MASK(32),
+	},
+};
+#endif /* CONFIG_PVR_SGX */
