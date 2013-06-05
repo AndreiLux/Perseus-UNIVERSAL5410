@@ -17,6 +17,7 @@
 #include <linux/i2c.h>
 
 void exynos5_universal5410_clock_init(void);
+void exynos5_universal5410_mmc_init(void);
 
 extern unsigned int system_rev;
 extern unsigned int universal5410_rev(void);

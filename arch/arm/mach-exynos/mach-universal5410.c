@@ -357,6 +357,7 @@ static void __init universal5410_machine_init(void)
 #endif
 
 	exynos5_universal5410_clock_init();
+	exynos5_universal5410_mmc_init();
 	ramconsole_pdata.bootinfo = exynos_get_resetreason();
 	platform_add_devices(universal5410_devices, ARRAY_SIZE(universal5410_devices));
 	register_reboot_notifier(&exynos5_reboot_notifier);
