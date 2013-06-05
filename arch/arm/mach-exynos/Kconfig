@@ -362,6 +362,14 @@ config EXYNOS5410_BTS
 	help
 	  Enable BTS (Bus traffic shaper) support
 
+config EXYNOS5_C2_STATE_IDLE
+	bool "C2 State Idle support"
+	depends on CPU_IDLE
+	default y
+	help
+	  Enable C2 State Idle support when CPU_IDLE is
+	  enabled
+
 config ASV_MARGIN_TEST
 	bool "Enable margin test"
 	default n
