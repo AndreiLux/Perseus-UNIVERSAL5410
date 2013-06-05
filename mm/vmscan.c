@@ -121,6 +121,11 @@ struct mem_cgroup_zone {
 	struct zone *zone;
 };
 
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+atomic_t kswapd_thread_on = ATOMIC_INIT(1);
+extern int get_soft_reclaim_status(void);
+#endif /* CONFIG_ZRAM_FOR_ANDROID */
+
 #define lru_to_page(_head) (list_entry((_head)->prev, struct page, lru))
 
 #ifdef ARCH_HAS_PREFETCH
@@ -1382,6 +1387,13 @@ static int too_many_isolated(struct zone *zone, int file,
 {
 	unsigned long inactive, isolated;
 
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+	if(get_soft_reclaim_status() == 1)
+	{
+		return 0;
+	}
+#endif
+
 	if (current_is_kswapd())
 		return 0;
 
@@ -2274,7 +2286,11 @@ static bool shrink_zones(int priority, struct zonelist *zonelist,
 {
 	struct zoneref *z;
 	struct zone *zone;
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+	unsigned long nr_soft_reclaimed = 0;
+#else
 	unsigned long nr_soft_reclaimed;
+#endif
 	unsigned long nr_soft_scanned;
 	bool aborted_reclaim = false;
 
@@ -2321,9 +2337,11 @@ static bool shrink_zones(int priority, struct zonelist *zonelist,
 			 * and balancing, not for a memcg's limit.
 			 */
 			nr_soft_scanned = 0;
+#ifndef CONFIG_ZRAM_FOR_ANDROID
 			nr_soft_reclaimed = mem_cgroup_soft_limit_reclaim(zone,
 						sc->order, sc->gfp_mask,
 						&nr_soft_scanned);
+#endif
 			sc->nr_reclaimed += nr_soft_reclaimed;
 			sc->nr_scanned += nr_soft_scanned;
 			/* need some check for avoid more shrink_zone() */
@@ -2483,7 +2501,11 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 		.may_writepage = !laptop_mode,
 		.nr_to_reclaim = SWAP_CLUSTER_MAX,
 		.may_unmap = 1,
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+		.may_swap = 0,
+#else
 		.may_swap = 1,
+#endif /* CONFIG_ZRAM_FOR_ANDROID */
 		.order = order,
 		.target_mem_cgroup = NULL,
 		.nodemask = nodemask,
@@ -2720,12 +2742,20 @@ static unsigned long balance_pgdat(pg_data_t *pgdat, int order,
 	int end_zone = 0;	/* Inclusive.  0 = ZONE_DMA */
 	unsigned long total_scanned;
 	struct reclaim_state *reclaim_state = current->reclaim_state;
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+	unsigned long nr_soft_reclaimed = 0;
+#else
 	unsigned long nr_soft_reclaimed;
+#endif
 	unsigned long nr_soft_scanned;
 	struct scan_control sc = {
 		.gfp_mask = GFP_KERNEL,
 		.may_unmap = 1,
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+		.may_swap = 0,
+#else
 		.may_swap = 1,
+#endif /* CONFIG_ZRAM_FOR_ANDROID */
 		/*
 		 * kswapd doesn't want to be bailed out while reclaim. because
 		 * we want to put equal scanning pressure on each zone.
@@ -2828,9 +2858,11 @@ loop_again:
 			/*
 			 * Call soft limit reclaim before calling shrink_zone.
 			 */
+#ifndef CONFIG_ZRAM_FOR_ANDROID
 			nr_soft_reclaimed = mem_cgroup_soft_limit_reclaim(zone,
 							order, sc.gfp_mask,
 							&nr_soft_scanned);
+#endif
 			sc.nr_reclaimed += nr_soft_reclaimed;
 			total_scanned += nr_soft_scanned;
 
@@ -3055,6 +3087,11 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int order, int classzone_idx)
 		 * per-cpu vmstat threshold while kswapd is awake and restore
 		 * them before going back to sleep.
 		 */
+
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+		atomic_set(&kswapd_thread_on,0);
+#endif /* CONFIG_ZRAM_FOR_ANDROID */
+
 		set_pgdat_percpu_threshold(pgdat, calculate_normal_threshold);
 		schedule();
 		set_pgdat_percpu_threshold(pgdat, calculate_pressure_threshold);
@@ -3156,6 +3193,10 @@ static int kswapd(void *p)
 		ret = try_to_freeze();
 		if (kthread_should_stop())
 			break;
+
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+		atomic_set(&kswapd_thread_on, 1);
+#endif /* CONFIG_ZRAM_FOR_ANDROID */
 
 		/*
 		 * We can speed up thawing tasks if we don't call balance_pgdat
@@ -3436,7 +3477,11 @@ static int __zone_reclaim(struct zone *zone, gfp_t gfp_mask, unsigned int order)
 	struct scan_control sc = {
 		.may_writepage = !!(zone_reclaim_mode & RECLAIM_WRITE),
 		.may_unmap = !!(zone_reclaim_mode & RECLAIM_SWAP),
+#ifdef CONFIG_ZRAM_FOR_ANDROID
+		.may_swap = 0,
+#else
 		.may_swap = 1,
+#endif /* CONFIG_ZRAM_FOR_ANDROID */
 		.nr_to_reclaim = max_t(unsigned long, nr_pages,
 				       SWAP_CLUSTER_MAX),
 		.gfp_mask = gfp_mask,
