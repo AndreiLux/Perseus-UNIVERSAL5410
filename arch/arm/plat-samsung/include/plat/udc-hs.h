@@ -39,3 +39,13 @@ struct s3c_hsotg_plat {
 };
 
 extern void s3c_hsotg_set_platdata(struct s3c_hsotg_plat *pd);
+
+enum usb_cable_status {
+	USB_CABLE_DETACHED = 0,
+	USB_CABLE_ATTACHED,
+	USB_OTGHOST_DETACHED,
+	USB_OTGHOST_ATTACHED,
+	USB_POWERED_HOST_DETACHED,
+	USB_POWERED_HOST_ATTACHED,
+	USB_CABLE_DETACHED_WITHOUT_NOTI,
+};
