@@ -915,7 +915,37 @@ config SEC_THERMISTOR
 	default n
 	help
 	  AP thermistor driver.
-
+	  
 config USB_CDFS_SUPPORT
 	bool "Auto install for cdfs"
 	default y
+	  
+if SEC_MODEM
+comment "IMC modem svnet feature"
+
+choice
+	prompt "SVNET2 version"
+	default SEC_MODEM_PRIMITIVE
+
+config SEC_MODEM_PRIMITIVE
+	bool "the first SVENT2"
+
+config SEC_MODEM_V2
+	bool "Modem IF ver. 2 for HSIC"
+
+endchoice
+
+choice
+	prompt "SEC MODEM CONFIG"
+	depends on SEC_MODEM
+	default SEC_MODEM_M0_XMM6360
+
+config SEC_MODEM_M0_XMM6360
+	bool "XMM6360 feature"
+	select UMTS_MODEM_XMM6360
+	select LINK_DEVICE_HSIC
+	select EHCI_IRQ_DISTRIBUTION
+
+endchoice
+
+endif

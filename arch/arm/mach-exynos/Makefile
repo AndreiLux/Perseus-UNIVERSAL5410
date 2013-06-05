@@ -102,6 +102,8 @@ ifeq ($(CONFIG_GPS_BCMxxxxx),y)
 obj-$(CONFIG_GPS_BCM47521)		+= sec_gps_bcm47521.o
 endif
 
+obj-$(CONFIG_SEC_MODEM_M0_XMM6360)	+= board-m0-xmm6360-modems.o
+
 obj-$(CONFIG_MACH_EXYNOS4_DT)		+= mach-exynos4-dt.o
 obj-$(CONFIG_MACH_EXYNOS5_DT)		+= mach-exynos5-dt.o
 obj-$(CONFIG_SND_SOC_SAMSUNG)		+= mach-exynos5-audio.o
