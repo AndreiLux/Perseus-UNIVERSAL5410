@@ -184,6 +184,13 @@ static void __init exynos_reserve_mem(void)
 		},
 #endif
 #endif
+#ifdef CONFIG_EXYNOS_C2C
+		{
+			.name = "c2c_shdmem",
+			.size = C2C_SHAREDMEM_SIZE,
+			{ .alignment = C2C_SHAREDMEM_SIZE, },
+		},
+#endif
 #ifdef CONFIG_BL_SWITCHER
 		{
 			.name = "bl_mem",
@@ -270,6 +277,9 @@ static void __init exynos_reserve_mem(void)
 		"s5p-smem/mfc_input=drm_mfc_input;"
 		"s5p-smem/mfc_fw=drm_mfc_fw;"
 		"s5p-smem/sectbl=drm_sectbl;"
+#endif
+#ifdef CONFIG_EXYNOS_C2C
+		"samsung-c2c=c2c_shdmem;"
 #endif
 #ifdef CONFIG_BL_SWITCHER
 		"b.L_mem=bl_mem;"
@@ -380,6 +390,9 @@ static void __init universal5410_machine_init(void)
 	exynos5_universal5410_audio_init();
 	exynos5_universal5410_vibrator_init();
 	exynos5_universal5410_mfd_init();
+#ifdef CONFIG_EXYNOS_C2C
+	exynos5_universal5410_c2c_init();
+#endif
 	
 	ramconsole_pdata.bootinfo = exynos_get_resetreason();
 	platform_add_devices(universal5410_devices, ARRAY_SIZE(universal5410_devices));

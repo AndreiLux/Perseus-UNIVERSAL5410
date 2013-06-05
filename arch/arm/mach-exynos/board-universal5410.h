@@ -33,6 +33,9 @@ void exynos5_universal5410_display_init(void);
 void exynos5_universal5410_input_init(void);
 void exynos5_universal5410_vibrator_init(void);
 void exynos5_universal5410_mfd_init(void);
+#ifdef CONFIG_EXYNOS_C2C
+void exynos5_universal5410_c2c_init(void);
+#endif
 
 extern unsigned int system_rev;
 extern unsigned int universal5410_rev(void);

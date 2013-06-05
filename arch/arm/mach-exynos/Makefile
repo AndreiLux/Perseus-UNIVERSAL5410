@@ -75,6 +75,10 @@ obj-$(CONFIG_2MIC_AUDIENCE_ES325)	+= board-universal5410-2mic.o
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-vibrator.o
 obj-$(CONFIG_MACH_JA)				+= board-universal5410-gpio.o
 
+ifeq ($(CONFIG_EXYNOS_C2C),y)
+obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-c2c.o
+endif
+
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-common.o
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-reboot.o
 
