@@ -28,6 +28,7 @@ void exynos5_universal5410_power_init(void);
 void exynos5_universal5410_battery_init(void);
 void exynos5_universal5410_usb_init(void);
 void exynos5_universal5410_audio_init(void);
+void exynos5_universal5410_2mic_init(void);
 void exynos5_universal5410_display_init(void);
 void exynos5_universal5410_input_init(void);
 void exynos5_universal5410_vibrator_init(void);
