@@ -290,6 +290,9 @@ static struct platform_device *universal5410_devices[] __initdata = {
 	&s3c_device_wdt,
 	&s3c_device_rtc,
 	&s3c_device_adc,
+#ifdef CONFIG_S5P_DEV_ACE
+	&s5p_device_ace,
+#endif
 };
 static void __init universal5410_map_io(void)
 {
