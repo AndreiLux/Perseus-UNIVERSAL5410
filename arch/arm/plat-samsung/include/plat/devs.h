@@ -172,6 +172,8 @@ extern struct platform_device s5p_device_fimg2d;
 #ifdef CONFIG_MALI_T6XX
 extern struct platform_device exynos5_device_g3d;
 #endif
+extern struct platform_device exynos5410_device_tmu;
+
 /* s3c2440 specific devices */
 
 #ifdef CONFIG_CPU_S3C2440

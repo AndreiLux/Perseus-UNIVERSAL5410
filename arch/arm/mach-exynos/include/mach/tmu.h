@@ -15,8 +15,8 @@
 #define MUX_ADDR_VALUE 6
 #define TMU_SAVE_NUM 10
 #define TMU_DC_VALUE 25
-#define EFUSE_MIN_VALUE 40
-#define EFUSE_MAX_VALUE 100
+#define EFUSE_MIN_VALUE 16
+#define EFUSE_MAX_VALUE 76
 #define UNUSED_THRESHOLD 0xFF
 
 enum tmu_status_t {
@@ -24,6 +24,16 @@ enum tmu_status_t {
 	TMU_STATUS_NORMAL,
 	TMU_STATUS_THROTTLED,
 	TMU_STATUS_TRIPPED,
+};
+
+enum {
+	TMU_NORMAL,
+	TMU_COLD,
+	TMU_HOT,
+	TMU_95,
+	TMU_109,
+	TMU_110,
+	TMU_111, // for detect thermal runaway caused by fimc
 };
 
 struct temperature_params {
@@ -69,4 +79,12 @@ extern void exynos_tmu_set_platdata(struct tmu_data *pd);
 extern struct tmu_info *exynos_tmu_get_platdata(void);
 extern int exynos_tmu_get_irqno(int num);
 extern struct platform_device exynos_device_tmu;
+#ifdef CONFIG_EXYNOS_THERMAL
+extern int exynos_tmu_add_notifier(struct notifier_block *n);
+#else
+static inline int exynos_tmu_add_notifier(struct notifier_block *n)
+{
+	return 0;
+}
+#endif
 #endif /* __ASM_ARCH_TMU_H */

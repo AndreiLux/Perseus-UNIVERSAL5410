@@ -281,7 +281,7 @@ config EXYNOS_DEV_TMU
 	help
 	  Compile in platform device definitions for TMU
 
-config EXYNOS_THERMAL
+config EXYNOS_TMU
 	bool "Use thermal management"
 	depends on CPU_FREQ
 	help
