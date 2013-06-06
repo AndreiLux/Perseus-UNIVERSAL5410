@@ -775,3 +775,10 @@ config SEC_AVC_LOG
 	depends on SEC_DEBUG
 	help
 	  This option enables additional log buffer for audit log.
+	  
+config SEC_THERMISTOR
+	bool "Use external thermistor with ADC"
+	depends on SAMSUNG_DEV_ADC
+	default n
+	help
+	  AP thermistor driver.
