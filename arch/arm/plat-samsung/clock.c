@@ -319,6 +319,9 @@ int s3c24xx_register_clock(struct clk *clk)
 	if (clk->enable == NULL)
 		clk->enable = clk_null_enable;
 
+	if (clk->init)
+		clk->init(clk);
+
 	/* add to the list of available clocks */
 
 	/* Quick check to see if this clock has already been registered. */

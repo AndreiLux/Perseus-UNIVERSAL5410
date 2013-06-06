@@ -23,16 +23,41 @@
 #include <plat/clock-clksrc.h>
 #include <plat/cpu-freq.h>
 
-static inline struct clksrc_clk *to_clksrc(struct clk *clk)
+static unsigned long s3c_getrate_clksrc(struct clk *clk)
 {
-	return container_of(clk, struct clksrc_clk, clk);
+	struct clksrc_clk *sclk = to_clksrc(clk);
+	unsigned long rate = clk_get_rate(clk->parent);
+	u32 clkdiv = __raw_readl(sclk->reg_div.reg);
+	u32 mask = bit_mask(sclk->reg_div.shift, sclk->reg_div.size);
+
+	clkdiv &= mask;
+	clkdiv >>= sclk->reg_div.shift;
+	clkdiv++;
+
+	rate /= clkdiv;
+	return rate;
 }
 
-static inline u32 bit_mask(u32 shift, u32 nr_bits)
+static int s3c_setrate_clksrc(struct clk *clk, unsigned long rate)
 {
-	u32 mask = 0xffffffff >> (32 - nr_bits);
+	struct clksrc_clk *sclk = to_clksrc(clk);
+	void __iomem *reg = sclk->reg_div.reg;
+	unsigned int div;
+	u32 mask = bit_mask(sclk->reg_div.shift, sclk->reg_div.size);
+	u32 val;
 
-	return mask << shift;
+	rate = clk_round_rate(clk, rate);
+	div = clk_get_rate(clk->parent) / rate;
+	if (div > (1 << sclk->reg_div.size))
+		return -EINVAL;
+
+	val = __raw_readl(reg);
+	val &= ~mask;
+	clk->orig_div = (div - 1) << sclk->reg_div.shift;
+	val |= (div - 1) << sclk->reg_div.shift;
+	__raw_writel(val, reg);
+
+	return 0;
 }
 
 static int s3c_setparent_clksrc(struct clk *clk, struct clk *parent)
@@ -58,6 +83,7 @@ static int s3c_setparent_clksrc(struct clk *clk, struct clk *parent)
 	clk->parent = parent;
 
 	clksrc &= ~mask;
+	clk->orig_src = src_nr << sclk->reg_src.shift;
 	clksrc |= src_nr << sclk->reg_src.shift;
 
 	__raw_writel(clksrc, sclk->reg_src.reg);
@@ -73,39 +99,6 @@ static int s3c_setparent_clksrc(struct clk *clk, struct clk *parent)
 	}
 
 	return 0;
-}
-
-static struct clk *s3c_getparent_clksrc(struct clk *clk)
-{
-	struct clksrc_clk *sclk = to_clksrc(clk);
-	struct clksrc_sources *srcs = sclk->sources;
-	u32 clksrc = __raw_readl(sclk->reg_src.reg);
-	u32 mask = bit_mask(sclk->reg_src.shift, sclk->reg_src.size);
-	int src_nr;
-	struct clk *parent;
-
-	src_nr = (clksrc & mask) >> sclk->reg_src.shift;
-	if (src_nr >= srcs->nr_sources) {
-		pr_warn("%s: clock %s has invalid source %d\n", __func__,
-				clk->name, src_nr);
-		return ERR_PTR(-EINVAL);
-	}
-
-	parent = srcs->sources[src_nr];
-	if (!parent) {
-		pr_warn("%s: clock %s has null source %d\n", __func__,
-						clk->name, src_nr);
-		return ERR_PTR(-EINVAL);
-	}
-
-	if (parent != clk->parent) {
-		pr_warn("%s: clock %s parent changed, was %s expected %s\n",
-				__func__, clk->name, parent->name,
-				clk->parent ? clk->parent->name : "(null)");
-		clk->parent = parent;
-	}
-
-	return parent;
 }
 
 static unsigned long s3c_roundrate_clksrc(struct clk *clk,
@@ -134,50 +127,6 @@ static unsigned long s3c_roundrate_clksrc(struct clk *clk,
 	return rate;
 }
 
-static unsigned long s3c_getrate_clksrc(struct clk *clk)
-{
-	struct clksrc_clk *sclk = to_clksrc(clk);
-	struct clk *parent;
-	unsigned long rate;
-	u32 clkdiv = __raw_readl(sclk->reg_div.reg);
-	u32 mask = bit_mask(sclk->reg_div.shift, sclk->reg_div.size);
-
-	parent = __clk_get_parent(clk);
-
-	rate = clk_get_rate(parent);
-
-	clkdiv &= mask;
-	clkdiv >>= sclk->reg_div.shift;
-	clkdiv++;
-
-	rate /= clkdiv;
-	return rate;
-}
-
-static int s3c_setrate_clksrc(struct clk *clk, unsigned long rate)
-{
-	struct clksrc_clk *sclk = to_clksrc(clk);
-	struct clk *parent;
-	void __iomem *reg = sclk->reg_div.reg;
-	unsigned int div;
-	u32 mask = bit_mask(sclk->reg_div.shift, sclk->reg_div.size);
-	u32 val;
-
-	parent = __clk_get_parent(clk);
-
-	rate = clk_round_rate(clk, rate);
-	div = clk_get_rate(parent) / rate;
-	if (div > (1 << sclk->reg_div.size))
-		return -EINVAL;
-
-	val = __raw_readl(reg);
-	val &= ~mask;
-	val |= (div - 1) << sclk->reg_div.shift;
-	__raw_writel(val, reg);
-
-	return 0;
-}
-
 /* Clock initialisation code */
 
 void __init_or_cpufreq s3c_set_clksrc(struct clksrc_clk *clk, bool announce)
@@ -195,6 +144,7 @@ void __init_or_cpufreq s3c_set_clksrc(struct clksrc_clk *clk, bool announce)
 
 	clksrc = __raw_readl(clk->reg_src.reg);
 	clksrc &= mask;
+	clk->clk.orig_src = clksrc;
 	clksrc >>= clk->reg_src.shift;
 
 	if (clksrc > srcs->nr_sources || !srcs->sources[clksrc]) {
@@ -213,7 +163,6 @@ void __init_or_cpufreq s3c_set_clksrc(struct clksrc_clk *clk, bool announce)
 
 static struct clk_ops clksrc_ops = {
 	.set_parent	= s3c_setparent_clksrc,
-	.get_parent	= s3c_getparent_clksrc,
 	.get_rate	= s3c_getrate_clksrc,
 	.set_rate	= s3c_setrate_clksrc,
 	.round_rate	= s3c_roundrate_clksrc,
@@ -221,7 +170,6 @@ static struct clk_ops clksrc_ops = {
 
 static struct clk_ops clksrc_ops_nodiv = {
 	.set_parent	= s3c_setparent_clksrc,
-	.get_parent	= s3c_getparent_clksrc,
 };
 
 static struct clk_ops clksrc_ops_nosrc = {
