@@ -388,6 +388,7 @@ static void __init universal5410_machine_init(void)
 	exynos5_universal5410_display_init();
 	exynos5_universal5410_input_init();
 	exynos5_universal5410_audio_init();
+	exynos5_universal5410_media_init();
 	exynos5_universal5410_vibrator_init();
 	exynos5_universal5410_mfd_init();
 #ifdef CONFIG_EXYNOS_C2C

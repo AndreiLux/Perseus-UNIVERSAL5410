@@ -31,6 +31,7 @@ void exynos5_universal5410_audio_init(void);
 void exynos5_universal5410_2mic_init(void);
 void exynos5_universal5410_display_init(void);
 void exynos5_universal5410_input_init(void);
+void exynos5_universal5410_media_init(void);
 void exynos5_universal5410_vibrator_init(void);
 void exynos5_universal5410_mfd_init(void);
 #ifdef CONFIG_EXYNOS_C2C
