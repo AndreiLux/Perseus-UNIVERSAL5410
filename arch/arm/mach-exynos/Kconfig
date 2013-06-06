@@ -294,6 +294,13 @@ config EXYNOS5_DEV_BTS
 	help
 	  Compile in platform device definitions for BTS devices
 
+config EXYNOS5_CCI
+	bool "Cache Coherent Interconnect support"
+	depends on SOC_EXYNOS5410 && ARM_EXYNOS_IKS_CORE
+	default y
+	help
+	  Enable Cache Coherent Interconnect support
+	  
 # machine support
 
 if ARCH_EXYNOS4
