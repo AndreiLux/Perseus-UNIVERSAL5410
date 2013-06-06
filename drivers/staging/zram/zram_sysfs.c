@@ -19,17 +19,6 @@
 
 #include "zram_drv.h"
 
-static u64 zram_stat64_read(struct zram *zram, u64 *v)
-{
-	u64 val;
-
-	spin_lock(&zram->stat64_lock);
-	val = *v;
-	spin_unlock(&zram->stat64_lock);
-
-	return val;
-}
-
 static inline struct zram *dev_to_zram(struct device *dev)
 {
 	return (struct zram *)dev_to_disk(dev)->private_data;
@@ -122,7 +111,7 @@ static ssize_t num_reads_show(struct device *dev,
 	struct zram *zram = dev_to_zram(dev);
 
 	return sprintf(buf, "%llu\n",
-		zram_stat64_read(zram, &zram->stats.num_reads));
+			(u64)atomic64_read(&zram->stats.num_reads));
 }
 
 static ssize_t num_writes_show(struct device *dev,
@@ -131,7 +120,7 @@ static ssize_t num_writes_show(struct device *dev,
 	struct zram *zram = dev_to_zram(dev);
 
 	return sprintf(buf, "%llu\n",
-		zram_stat64_read(zram, &zram->stats.num_writes));
+			(u64)atomic64_read(&zram->stats.num_writes));
 }
 
 static ssize_t invalid_io_show(struct device *dev,
@@ -140,7 +129,7 @@ static ssize_t invalid_io_show(struct device *dev,
 	struct zram *zram = dev_to_zram(dev);
 
 	return sprintf(buf, "%llu\n",
-		zram_stat64_read(zram, &zram->stats.invalid_io));
+			(u64)atomic64_read(&zram->stats.invalid_io));
 }
 
 static ssize_t notify_free_show(struct device *dev,
@@ -149,7 +138,7 @@ static ssize_t notify_free_show(struct device *dev,
 	struct zram *zram = dev_to_zram(dev);
 
 	return sprintf(buf, "%llu\n",
-		zram_stat64_read(zram, &zram->stats.notify_free));
+			(u64)atomic64_read(&zram->stats.notify_free));
 }
 
 static ssize_t zero_pages_show(struct device *dev,
@@ -175,7 +164,7 @@ static ssize_t compr_data_size_show(struct device *dev,
 	struct zram *zram = dev_to_zram(dev);
 
 	return sprintf(buf, "%llu\n",
-		zram_stat64_read(zram, &zram->stats.compr_size));
+			(u64)atomic64_read(&zram->stats.compr_size));
 }
 
 static ssize_t mem_used_total_show(struct device *dev,
