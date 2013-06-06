@@ -86,6 +86,8 @@ ifeq ($(CONFIG_EXYNOS_C2C),y)
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-c2c.o
 endif
 
+obj-$(CONFIG_ICE4_FPGA)				+= board-universal5410-fpga.o
+
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-common.o
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-reboot.o
 

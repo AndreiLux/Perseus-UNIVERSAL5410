@@ -392,6 +392,9 @@ static void __init universal5410_machine_init(void)
 	exynos5_universal5410_led_init();
 	exynos5_universal5410_vibrator_init();
 	exynos5_universal5410_mfd_init();
+#ifdef CONFIG_ICE4_FPGA
+	exynos5_universal5410_fpga_init();
+#endif
 #ifdef CONFIG_EXYNOS_C2C
 	exynos5_universal5410_c2c_init();
 #endif
