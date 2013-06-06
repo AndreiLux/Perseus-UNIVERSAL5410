@@ -74,6 +74,7 @@ obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-mfd.o
 obj-$(CONFIG_BATTERY_SAMSUNG)		+= board-universal5410-battery.o
 obj-$(CONFIG_SND_SOC_ADONISUNIV_WM5102)	+= board-universal5410-audio-w.o
 obj-$(CONFIG_2MIC_AUDIENCE_ES325)	+= board-universal5410-2mic.o
+obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-sensor.o
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-vibrator.o
 obj-$(CONFIG_MACH_JA)				+= board-universal5410-gpio.o
 

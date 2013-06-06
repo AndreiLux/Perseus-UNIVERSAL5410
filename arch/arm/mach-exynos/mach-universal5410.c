@@ -395,6 +395,11 @@ static void __init universal5410_machine_init(void)
 #ifdef CONFIG_EXYNOS_C2C
 	exynos5_universal5410_c2c_init();
 #endif
+
+	if (lpcharge == 0) {
+		exynos5_universal5410_sensor_init();
+	} else
+		pr_info("[SSP] : Poweroff charging\n");
 	
 	ramconsole_pdata.bootinfo = exynos_get_resetreason();
 	platform_add_devices(universal5410_devices, ARRAY_SIZE(universal5410_devices));
