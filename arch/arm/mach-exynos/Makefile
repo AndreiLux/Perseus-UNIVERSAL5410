@@ -130,6 +130,7 @@ obj-$(CONFIG_ARCH_EXYNOS5)		+= resetreason.o
 obj-$(CONFIG_EXYNOS_TMU)		+= tmu-exynos.o
 obj-$(CONFIG_MACH_JA)			+= sec-switch.o
 
+obj-$(CONFIG_SEC_PM)				+= sec_gpio.o
 obj-$(CONFIG_SEC_THERMISTOR)		+= sec_thermistor.o
 
 obj-$(CONFIG_SEC_LOG)				+= sec_log.o
