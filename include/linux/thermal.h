@@ -60,6 +60,16 @@ struct thermal_zone_device_ops {
 			      unsigned long *);
 	int (*set_trip_temp) (struct thermal_zone_device *, int,
 			      unsigned long);
+	int (*get_trip_temp_level) (struct thermal_zone_device *, int,
+			      unsigned long *);
+	int (*set_trip_temp_level) (struct thermal_zone_device *,
+			      unsigned int, unsigned int, unsigned int);
+	int (*get_trip_freq) (struct thermal_zone_device *, int,
+			      unsigned long *);
+	int (*set_trip_freq) (struct thermal_zone_device *,
+			      unsigned int, unsigned int, unsigned int);
+	int (*get_boost_mode) (struct thermal_zone_device *);
+	int (*set_boost_mode) (struct thermal_zone_device *, unsigned int);
 	int (*get_crit_temp) (struct thermal_zone_device *, unsigned long *);
 	int (*notify) (struct thermal_zone_device *, int,
 		       enum thermal_trip_type);

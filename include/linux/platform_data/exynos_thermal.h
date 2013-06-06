@@ -1,5 +1,5 @@
 /*
- * exynos4_tmu.h - Samsung EXYNOS TMU (Thermal Management Unit)
+ * exynos_thermal.h - Samsung EXYNOS TMU (Thermal Management Unit)
  *
  *  Copyright (C) 2011 Samsung Electronics
  *  Donggeun Kim <dg77.kim@samsung.com>
@@ -19,8 +19,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef _LINUX_EXYNOS4_TMU_H
-#define _LINUX_EXYNOS4_TMU_H
+#ifndef _LINUX_EXYNOS_THERMAL_H
+#define _LINUX_EXYNOS_THERMAL_H
 #include <linux/cpu_cooling.h>
 
 enum calibration_type {
@@ -82,6 +82,7 @@ enum soc_type {
 struct exynos_tmu_platform_data {
 	u8 threshold;
 	u8 trigger_levels[4];
+	u8 boost_trigger_levels[4];
 	bool trigger_level0_en;
 	bool trigger_level1_en;
 	bool trigger_level2_en;
@@ -94,7 +95,9 @@ struct exynos_tmu_platform_data {
 
 	enum calibration_type cal_type;
 	enum soc_type type;
-	struct freq_clip_table freq_tab[4];
+	struct freq_clip_table freq_tab[8];
+	struct freq_clip_table boost_freq_tab[8];
+	int size[THERMAL_TRIP_CRITICAL + 1];
 	unsigned int freq_tab_count;
 };
-#endif /* _LINUX_EXYNOS4_TMU_H */
+#endif /* _LINUX_EXYNOS_THERMAL_H */

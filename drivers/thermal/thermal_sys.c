@@ -109,6 +109,18 @@ temp_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
 	long temperature;
+
+	temperature = tz->last_temperature;
+
+	return sprintf(buf, "%ld\n", temperature);
+}
+
+#ifdef CONFIG_SEC_PM
+static ssize_t
+curr_temp_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	long temperature;
 	int ret;
 
 	if (!tz->ops->get_temp)
@@ -119,8 +131,10 @@ temp_show(struct device *dev, struct device_attribute *attr, char *buf)
 	if (ret)
 		return ret;
 
-	return sprintf(buf, "%ld\n", temperature);
+	/* curr_temp is celsius * 10 */
+	return sprintf(buf, "%ld\n", temperature/100);
 }
+#endif
 
 static ssize_t
 mode_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -240,6 +254,68 @@ trip_point_temp_show(struct device *dev, struct device_attribute *attr,
 }
 
 static ssize_t
+trip_point_freq_store(struct device *dev, struct device_attribute *attr,
+		     const char *buf, size_t count)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	int ret;
+	unsigned int trip_freq0, trip_freq1, trip_freq2;
+
+	if (!tz->ops->set_trip_freq)
+		return -EPERM;
+
+	if (!sscanf(buf, "%d %d %d\n",
+		&trip_freq0, &trip_freq1, &trip_freq2))
+		return -EINVAL;
+
+	ret = tz->ops->set_trip_freq(tz, trip_freq0, trip_freq1, trip_freq2);
+
+	return ret ? ret : count;
+}
+
+static ssize_t
+trip_point_freq_show(struct device *dev, struct device_attribute *attr,
+		     char *buf)
+{
+	printk(KERN_INFO "Not yet support");
+	return 0;
+}
+
+static ssize_t
+trip_point_temp_oneshot_store(struct device *dev, struct device_attribute *attr,
+		     const char *buf, size_t count)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	int ret;
+	unsigned int temp0, temp1, temp2;
+
+	if (!tz->ops->set_trip_temp)
+		return -EPERM;
+
+	if (!sscanf(buf, "%d %d %d\n",
+		&temp0, &temp1, &temp2))
+		return -EINVAL;
+
+	ret = tz->ops->set_trip_temp(tz, 0, temp0);
+	ret = tz->ops->set_trip_temp(tz, 1, temp1);
+
+	if (!tz->ops->set_trip_temp_level)
+		return -EPERM;
+
+	ret = tz->ops->set_trip_temp_level(tz, temp0, temp1, temp2);
+
+	return ret ? ret : count;
+}
+
+static ssize_t
+trip_point_temp_oneshot_show(struct device *dev, struct device_attribute *attr,
+		     char *buf)
+{
+	printk(KERN_INFO "Not yet support");
+	return 0;
+}
+
+static ssize_t
 passive_store(struct device *dev, struct device_attribute *attr,
 		    const char *buf, size_t count)
 {
@@ -300,10 +376,50 @@ passive_show(struct device *dev, struct device_attribute *attr,
 	return sprintf(buf, "%d\n", tz->forced_passive);
 }
 
+static ssize_t
+boost_mode_store(struct device *dev, struct device_attribute *attr,
+		     const char *buf, size_t count)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	int ret;
+	unsigned int mode;
+
+	if (!tz->ops->set_boost_mode)
+		return -EPERM;
+
+	if (!sscanf(buf, "%d\n", &mode))
+		return -EINVAL;
+
+	ret = tz->ops->set_boost_mode(tz, mode);
+
+	return ret ? ret : count;
+}
+
+static ssize_t
+boost_mode_show(struct device *dev, struct device_attribute *attr,
+		     char *buf)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	int mode;
+
+	if (!tz->ops->get_boost_mode)
+		return -EPERM;
+
+	mode = tz->ops->get_boost_mode(tz);
+	return sprintf(buf, "%d\n", mode);
+}
+
 static DEVICE_ATTR(type, 0444, type_show, NULL);
 static DEVICE_ATTR(temp, 0444, temp_show, NULL);
+#ifdef CONFIG_SEC_PM
+static DEVICE_ATTR(curr_temp, 0444, curr_temp_show, NULL);
+#endif
 static DEVICE_ATTR(mode, 0644, mode_show, mode_store);
 static DEVICE_ATTR(passive, S_IRUGO | S_IWUSR, passive_show, passive_store);
+static DEVICE_ATTR(trip_freq, 0644, trip_point_freq_show, trip_point_freq_store);
+static DEVICE_ATTR(trip_temp, 0644,
+		trip_point_temp_oneshot_show, trip_point_temp_oneshot_store);
+static DEVICE_ATTR(boost_mode, 0644, boost_mode_show, boost_mode_store);
 
 /* sys I/F for cooling device */
 #define to_cooling_device(_dev)	\
@@ -684,6 +800,7 @@ static void thermal_zone_device_passive(struct thermal_zone_device *tz,
 
 		/* Heating up? */
 		if (trend > 0) {
+			pr_info("[TMU] PASSIVE: Trend up, temp=%d\n", temp);
 			list_for_each_entry(instance, &tz->cooling_devices,
 					    node) {
 				if (instance->trip != trip)
@@ -695,6 +812,7 @@ static void thermal_zone_device_passive(struct thermal_zone_device *tz,
 					cdev->ops->set_cur_state(cdev, state);
 			}
 		} else if (trend < 0) { /* Cooling off? */
+			pr_info("[TMU] PASSIVE: Trend down, temp=%d\n", temp);
 			list_for_each_entry(instance, &tz->cooling_devices,
 					    node) {
 				if (instance->trip != trip)
@@ -702,8 +820,10 @@ static void thermal_zone_device_passive(struct thermal_zone_device *tz,
 				cdev = instance->cdev;
 				cdev->ops->get_cur_state(cdev, &state);
 				cdev->ops->get_max_state(cdev, &max_state);
-				if (state > 0)
+				if (state > 0) {
+					pr_info("[TMU] PASSIVE: Below passive trip temp=%d\n", temp);
 					cdev->ops->set_cur_state(cdev, --state);
+				}
 			}
 		}
 		return;
@@ -1029,10 +1149,11 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 		switch (trip_type) {
 		case THERMAL_TRIP_CRITICAL:
 			if (temp >= trip_temp) {
+				pr_info("[TMU] CRITICAL: Need tripping\n");
 				if (tz->ops->notify)
 					ret = tz->ops->notify(tz, count,
 							      trip_type);
-				if (!ret) {
+				if (ret) {
 					pr_emerg("Critical temperature reached (%ld C), shutting down\n",
 						 temp/1000);
 					orderly_poweroff(true);
@@ -1052,10 +1173,13 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 
 				cdev = instance->cdev;
 
-				if (temp >= trip_temp)
+				if (temp >= trip_temp) {
+					pr_info("[TMU] ACTIVE: Need tripping, temp=%ld\n", temp);
 					cdev->ops->set_cur_state(cdev, 1);
-				else
+				} else {
+					pr_info("[TMU] ACTIVE: Under active trip temp=%ld\n", temp);
 					cdev->ops->set_cur_state(cdev, 0);
+				}
 			}
 			break;
 		case THERMAL_TRIP_PASSIVE:
@@ -1236,11 +1360,29 @@ struct thermal_zone_device *thermal_zone_device_register(char *type,
 	if (result)
 		goto unregister;
 
+#ifdef CONFIG_SEC_PM
+	result = device_create_file(&tz->device, &dev_attr_curr_temp);
+	if (result)
+		goto unregister;
+#endif
+
 	if (ops->get_mode) {
 		result = device_create_file(&tz->device, &dev_attr_mode);
 		if (result)
 			goto unregister;
 	}
+
+	result = device_create_file(&tz->device, &dev_attr_trip_freq);
+	if (result)
+		goto unregister;
+
+	result = device_create_file(&tz->device, &dev_attr_trip_temp);
+	if (result)
+		goto unregister;
+
+	result = device_create_file(&tz->device, &dev_attr_boost_mode);
+	if (result)
+		goto unregister;
 
 	result = create_trip_attrs(tz, mask);
 	if (result)
@@ -1319,6 +1461,12 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 	if (tz->type[0])
 		device_remove_file(&tz->device, &dev_attr_type);
 	device_remove_file(&tz->device, &dev_attr_temp);
+	device_remove_file(&tz->device, &dev_attr_trip_freq);
+	device_remove_file(&tz->device, &dev_attr_trip_temp);
+	device_remove_file(&tz->device, &dev_attr_boost_mode);
+#ifdef CONFIG_SEC_PM
+	device_remove_file(&tz->device, &dev_attr_curr_temp);
+#endif
 	if (tz->ops->get_mode)
 		device_remove_file(&tz->device, &dev_attr_mode);
 	remove_trip_attrs(tz);
