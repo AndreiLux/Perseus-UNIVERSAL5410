@@ -61,6 +61,7 @@ obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-clock.o
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-mmc.o
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-thermistor.o
 obj-$(CONFIG_MACH_JA)				+= board-universal5410-pmic-sec.o
+obj-$(CONFIG_MACH_JA)				+= board-universal5410-gpio.o
 
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-common.o
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-reboot.o
