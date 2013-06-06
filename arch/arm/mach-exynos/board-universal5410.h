@@ -32,6 +32,7 @@ void exynos5_universal5410_2mic_init(void);
 void exynos5_universal5410_display_init(void);
 void exynos5_universal5410_input_init(void);
 void exynos5_universal5410_sensor_init(void);
+void exynos5_universal5410_nfc_init(void);
 void exynos5_universal5410_media_init(void);
 void exynos5_universal5410_led_init(void);
 void exynos5_universal5410_vibrator_init(void);

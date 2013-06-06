@@ -398,8 +398,12 @@ static void __init universal5410_machine_init(void)
 
 	if (lpcharge == 0) {
 		exynos5_universal5410_sensor_init();
+
+#ifdef CONFIG_NFC_DEVICES
+		exynos5_universal5410_nfc_init();
+#endif
 	} else
-		pr_info("[SSP] : Poweroff charging\n");
+		pr_info("[SSP NFC] : Poweroff charging\n");
 	
 	ramconsole_pdata.bootinfo = exynos_get_resetreason();
 	platform_add_devices(universal5410_devices, ARRAY_SIZE(universal5410_devices));
