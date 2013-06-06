@@ -22,6 +22,15 @@ config FUELGAUGE_MAX17048
 
 # Charger
 
+config CHARGER_MAX77803
+	tristate "MAX77803 battery charger support"
+	depends on MFD_MAX77803 && I2C
+	help
+	  Say Y here to enable support for the MAX77803 charger
+	  MAX77803 incluse muic, pmic, haptic, led,
+	  flash driver.
+	  You have to define MFD_MAX77693
+
 config SAMSUNG_LPM_MODE
 	bool "Off charging mode support in sec battery driver"
 	default n
