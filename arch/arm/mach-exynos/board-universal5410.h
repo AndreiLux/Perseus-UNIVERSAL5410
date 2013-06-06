@@ -36,6 +36,7 @@ void exynos5_universal5410_nfc_init(void);
 void exynos5_universal5410_media_init(void);
 void exynos5_universal5410_led_init(void);
 void exynos5_universal5410_vibrator_init(void);
+void exynos5_universal5410_mhl_init(void);
 void exynos5_universal5410_mfd_init(void);
 #ifdef CONFIG_EXYNOS_C2C
 void exynos5_universal5410_c2c_init(void);

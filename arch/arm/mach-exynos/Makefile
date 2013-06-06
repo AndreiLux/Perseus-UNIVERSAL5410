@@ -78,6 +78,7 @@ obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-sensor.o
 ifeq ($(CONFIG_NFC_DEVICES),y)
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-nfc.o
 endif
+obj-$(CONFIG_SAMSUNG_MHL_8240)		+= board-universal5410-mhl.o
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-vibrator.o
 obj-$(CONFIG_MACH_JA)				+= board-universal5410-gpio.o
 

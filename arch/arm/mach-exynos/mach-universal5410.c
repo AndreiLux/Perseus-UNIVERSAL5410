@@ -404,6 +404,10 @@ static void __init universal5410_machine_init(void)
 #endif
 	} else
 		pr_info("[SSP NFC] : Poweroff charging\n");
+
+#ifdef CONFIG_SAMSUNG_MHL_8240
+	exynos5_universal5410_mhl_init();
+#endif
 	
 	ramconsole_pdata.bootinfo = exynos_get_resetreason();
 	platform_add_devices(universal5410_devices, ARRAY_SIZE(universal5410_devices));
