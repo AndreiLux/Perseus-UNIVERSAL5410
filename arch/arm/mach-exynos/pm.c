@@ -25,6 +25,7 @@
 #include <asm/cacheflush.h>
 #include <asm/hardware/cache-l2x0.h>
 #include <asm/smp_scu.h>
+#include <asm/cputype.h>
 
 #include <plat/cpu.h>
 #include <plat/pm.h>
@@ -39,6 +40,11 @@
 #include <mach/pm-core.h>
 #include <mach/pmu.h>
 #include <mach/smc.h>
+
+#ifdef CONFIG_SEC_PM
+void (*exynos_set_sleep_gpio_table)(void);
+void (*exynos_debug_show_gpio)(void);
+#endif
 
 #ifdef CONFIG_ARM_TRUSTZONE
 #define REG_INFORM0            (S5P_VA_SYSRAM_NS + 0x8)
@@ -90,6 +96,19 @@ static struct sleep_save exynos5_set_clksrc[] = {
 	{ .reg = EXYNOS5_CLKSRC_MASK_ISP,		.val = 0xffffffff, },
 };
 
+static struct sleep_save exynos5410_set_clksrc[] = {
+	{ .reg = EXYNOS5410_CLKSRC_MASK_CPERI,		.val = 0xffffffff, },
+	{ .reg = EXYNOS5_CLKSRC_MASK_DISP0_0,		.val = 0xffffffff, },
+	{ .reg = EXYNOS5_CLKSRC_MASK_DISP0_1,		.val = 0xffffffff, },
+	{ .reg = EXYNOS5_CLKSRC_MASK_DISP1_1,		.val = 0xffffffff, },
+	{ .reg = EXYNOS5_CLKSRC_MASK_FSYS,		.val = 0xffffffff, },
+	{ .reg = EXYNOS5_CLKGATE_BUS_DISP1,		.val = 0xffffffff, },
+};
+
+static struct sleep_save exynos5410_enable_xxti[] = {
+	{ .reg = EXYNOS5_XXTI_SYS_PWR_REG,		.val = 0x1, },
+};
+
 static struct sleep_save exynos_core_save[] = {
 	/* SROM side */
 	SAVE_ITEM(S5P_SROM_BW),
@@ -102,17 +121,41 @@ static struct sleep_save exynos_core_save[] = {
 	SAVE_ITEM(EXYNOS_I2C_CFG),
 };
 
+static void __iomem *exynos_etc_base;
+static unsigned int save_gpio_etc;
 
 /* For Cortex-A9 Diagnostic and Power control register */
 static unsigned int save_arm_register[2];
+
+static void exynos_clkgate_ctrl(bool on)
+{
+	unsigned int tmp;
+
+	tmp = __raw_readl(EXYNOS5_CLKGATE_IP_GSCL0);
+	tmp = on ? (tmp | EXYNOS5410_CLKGATE_GSCALER0_3) :
+			(tmp & ~EXYNOS5410_CLKGATE_GSCALER0_3);
+
+	__raw_writel(tmp, EXYNOS5_CLKGATE_IP_GSCL0);
+}
 
 static int exynos_cpu_suspend(unsigned long arg)
 {
 #ifdef CONFIG_CACHE_L2X0
 	outer_flush_all();
 #endif
+	/* flush cache back to ram */
+	flush_cache_all();
 
-	exynos_reset_assert_ctrl(false);
+	if (soc_is_exynos5410())
+		exynos_lpi_mask_ctrl(true);
+	else
+		exynos_reset_assert_ctrl(false);
+
+	__raw_writel(0xcd0a0002, EXYNOS_INFORM2);
+
+	if (soc_is_exynos5410())
+		exynos_set_dummy_state(true);
+
 #ifdef CONFIG_ARM_TRUSTZONE
 	exynos_smc(SMC_CMD_SLEEP, 0, 0, 0);
 #else
@@ -120,6 +163,12 @@ static int exynos_cpu_suspend(unsigned long arg)
 	cpu_do_idle();
 #endif
 	pr_info("sleep resumed to originator?");
+
+	if (soc_is_exynos5410()) {
+		__raw_writel(EXYNOS5410_USE_STANDBY_WFI_ALL,
+			EXYNOS_CENTRAL_SEQ_OPTION);
+		exynos_lpi_mask_ctrl(false);
+	}
 	return 1; /* abort suspend */
 }
 
@@ -127,18 +176,35 @@ static void exynos_pm_prepare(void)
 {
 	unsigned int tmp;
 
-	/* Decides whether to use retention capability */
-	tmp = __raw_readl(EXYNOS5_ARM_L2_OPTION);
-	tmp &= ~EXYNOS5_USE_RETENTION;
-	__raw_writel(tmp, EXYNOS5_ARM_L2_OPTION);
+#ifdef CONFIG_SEC_PM
+	if (exynos_set_sleep_gpio_table)
+		exynos_set_sleep_gpio_table();
 
-	if (!soc_is_exynos5250()) {
+	if (exynos_debug_show_gpio)
+		exynos_debug_show_gpio();
+#endif
+
+	if (soc_is_exynos5250()) {
+		/* Decides whether to use retention capability */
+		tmp = __raw_readl(EXYNOS5_ARM_L2_OPTION);
+		tmp &= ~EXYNOS5_USE_RETENTION;
+		__raw_writel(tmp, EXYNOS5_ARM_L2_OPTION);
+	}
+
+	if (!(soc_is_exynos5250() || soc_is_exynos5410())) {
 		s3c_pm_do_save(exynos4_epll_save, ARRAY_SIZE(exynos4_epll_save));
 		s3c_pm_do_save(exynos4_vpll_save, ARRAY_SIZE(exynos4_vpll_save));
 	}
 
 	/* Set value of power down register for sleep mode */
 	exynos_sys_powerdown_conf(SYS_SLEEP);
+
+	if (soc_is_exynos5410()) {
+		if (!(__raw_readl(EXYNOS_PMU_DEBUG) & 0x1))
+			s3c_pm_do_restore_core(exynos5410_enable_xxti,
+					ARRAY_SIZE(exynos5410_enable_xxti));
+	}
+
 	__raw_writel(EXYNOS_CHECK_SLEEP, REG_INFORM1);
 
 	/* ensure at least INFORM0 has the resume address */
@@ -148,14 +214,20 @@ static void exynos_pm_prepare(void)
 	 * Before enter central sequence mode,
 	 * clock src register have to set.
 	 */
-	if (!soc_is_exynos5250())
+	if (!(soc_is_exynos5250() || soc_is_exynos5410()))
 		s3c_pm_do_restore_core(exynos4_set_clksrc,
 				ARRAY_SIZE(exynos4_set_clksrc));
 
 	if (soc_is_exynos4210())
 		s3c_pm_do_restore_core(exynos4210_set_clksrc, ARRAY_SIZE(exynos4210_set_clksrc));
 
-	s3c_pm_do_restore_core(exynos5_set_clksrc, ARRAY_SIZE(exynos5_set_clksrc));
+	if (soc_is_exynos5250() || soc_is_exynos5410())
+		s3c_pm_do_restore_core(exynos5_set_clksrc, ARRAY_SIZE(exynos5_set_clksrc));
+
+	if (soc_is_exynos5410()) {
+		s3c_pm_do_restore_core(exynos5410_set_clksrc, ARRAY_SIZE(exynos5410_set_clksrc));
+		exynos_clkgate_ctrl(true);
+	}
 }
 
 static int exynos_pm_add(struct device *dev, struct subsys_interface *sif)
@@ -233,6 +305,37 @@ static void exynos4_restore_pll(void)
 	} while (epll_wait || vpll_wait);
 }
 
+void exynos4_scu_enable(void __iomem *scu_base)
+{
+	u32 scu_ctrl;
+
+#ifdef CONFIG_ARM_ERRATA_764369
+	/* Cortex-A9 only */
+	if ((read_cpuid(CPUID_ID) & 0xff0ffff0) == 0x410fc090) {
+		scu_ctrl = __raw_readl(scu_base + 0x30);
+		if (!(scu_ctrl & 1))
+			__raw_writel(scu_ctrl | 0x1, scu_base + 0x30);
+	}
+#endif
+
+	scu_ctrl = __raw_readl(scu_base);
+	/* already enabled? */
+	if (scu_ctrl & 1)
+		return;
+
+	if (soc_is_exynos4412() && (samsung_rev() >= EXYNOS4412_REV_1_0))
+		scu_ctrl |= (1<<3);
+
+	scu_ctrl |= 1;
+	__raw_writel(scu_ctrl, scu_base);
+
+	/*
+	 * Ensure that the data accessed by CPU0 before the SCU was
+	 * initialised is visible to the other CPUs.
+	 */
+	flush_cache_all();
+}
+
 static struct subsys_interface exynos4_pm_interface = {
 	.name		= "exynos_pm",
 	.subsys		= &exynos4_subsys,
@@ -251,7 +354,7 @@ static __init int exynos_pm_drvinit(void)
 
 	s3c_pm_init();
 
-	if (!soc_is_exynos5250()) {
+	if (!(soc_is_exynos5250() || soc_is_exynos5410())) {
 		pll_base = clk_get(NULL, "xtal");
 
 		if (!IS_ERR(pll_base)) {
@@ -259,7 +362,7 @@ static __init int exynos_pm_drvinit(void)
 			clk_put(pll_base);
 		}
 	}
-	if (soc_is_exynos5250())
+	if (soc_is_exynos5250() || soc_is_exynos5410())
 		return subsys_interface_register(&exynos5_pm_interface);
 	else
 		return subsys_interface_register(&exynos4_pm_interface);
@@ -322,6 +425,7 @@ static void exynos_show_wakeup_reason(void)
 static int exynos_pm_suspend(void)
 {
 	unsigned long tmp;
+	unsigned int cluster_id;
 
 	s3c_pm_do_save(exynos_core_save, ARRAY_SIZE(exynos_core_save));
 
@@ -330,12 +434,24 @@ static int exynos_pm_suspend(void)
 	tmp &= ~EXYNOS_CENTRAL_LOWPWR_CFG;
 	__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_CONFIGURATION);
 
-	/* Setting SEQ_OPTION register */
-	tmp = (EXYNOS5_USE_STANDBYWFI_ARM_CORE0 | EXYNOS5_USE_STANDBYWFE_ARM_CORE0 |
-	       EXYNOS5_USE_STANDBYWFI_ARM_CORE1 | EXYNOS5_USE_STANDBYWFE_ARM_CORE1);
-	__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_OPTION);
+	if (!(soc_is_exynos4210() || soc_is_exynos5410()))
+		exynos_reset_assert_ctrl(false);
 
-	if (!soc_is_exynos5250()) {
+	if (soc_is_exynos5410())
+		exynos_disable_idle_clock_down(KFC);
+
+	if (soc_is_exynos5410()) {
+		cluster_id = read_cpuid(CPUID_MPIDR) >> 8 & 0xf;
+		if(!cluster_id)
+			__raw_writel(EXYNOS5410_ARM_USE_STANDBY_WFI0,
+				     EXYNOS_CENTRAL_SEQ_OPTION);
+		else
+			__raw_writel(EXYNOS5410_KFC_USE_STANDBY_WFI0,
+				     EXYNOS_CENTRAL_SEQ_OPTION);
+	} else if (!soc_is_exynos5250()) {
+		tmp = (EXYNOS4_USE_STANDBY_WFI0 | EXYNOS4_USE_STANDBY_WFE0);
+		__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_OPTION);
+
 		/* Save Power control register */
 		asm ("mrc p15, 0, %0, c15, c0, 0"
 		     : "=r" (tmp) : : "cc");
@@ -347,14 +463,25 @@ static int exynos_pm_suspend(void)
 		save_arm_register[1] = tmp;
 	}
 
+	if (soc_is_exynos5410()) {
+		if (exynos_etc_base)
+			save_gpio_etc = __raw_readl(exynos_etc_base + 0x16C);
+	}
+
 	return 0;
 }
 
 static void exynos_pm_resume(void)
 {
 	unsigned long tmp;
+	unsigned long p_reg, d_reg;
+	unsigned int cluster_id = !((read_cpuid_mpidr() >> 8) & 0xf);
 
-	exynos_reset_assert_ctrl(true);
+	if (soc_is_exynos5410())
+		__raw_writel(EXYNOS5410_USE_STANDBY_WFI_ALL,
+			EXYNOS_CENTRAL_SEQ_OPTION);
+	else
+		exynos_reset_assert_ctrl(true);
 
 	/*
 	 * If PMU failed while entering sleep mode, WFI will be
@@ -369,7 +496,14 @@ static void exynos_pm_resume(void)
 		/* No need to perform below restore code */
 		goto early_wakeup;
 	}
-	if (!soc_is_exynos5250()) {
+	if (!(soc_is_exynos5250() || soc_is_exynos5410())) {
+	#if CONFIG_ARM_TRUSTZONE
+		/* Restore Power control register */
+		p_reg = save_arm_register[0];
+		/* Restore Diagnostic register */
+		d_reg = save_arm_register[1];
+		exynos_smc(SMC_CMD_C15RESUME, p_reg, d_reg, 0);
+	#else
 		/* Restore Power control register */
 		tmp = save_arm_register[0];
 		asm volatile ("mcr p15, 0, %0, c15, c0, 0"
@@ -381,35 +515,91 @@ static void exynos_pm_resume(void)
 		asm volatile ("mcr p15, 0, %0, c15, c0, 1"
 			      : : "r" (tmp)
 			      : "cc");
+	#endif
+	}
+
+	/* For sustaining drive strenght for clock out pad */
+	if (soc_is_exynos5410()) {
+		if (exynos_etc_base)
+			__raw_writel(save_gpio_etc, exynos_etc_base + 0x16C);
 	}
 
 	/* For release retention */
-
-	__raw_writel((1 << 28), EXYNOS_PAD_RET_MAUDIO_OPTION);
-	__raw_writel((1 << 28), EXYNOS_PAD_RET_GPIO_OPTION);
-	__raw_writel((1 << 28), EXYNOS_PAD_RET_UART_OPTION);
-	__raw_writel((1 << 28), EXYNOS_PAD_RET_MMCA_OPTION);
-	__raw_writel((1 << 28), EXYNOS_PAD_RET_MMCB_OPTION);
-	__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIA_OPTION);
-	__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIB_OPTION);
-	__raw_writel((1 << 28), EXYNOS5_PAD_RETENTION_SPI_OPTION);
-	__raw_writel((1 << 28), EXYNOS5_PAD_RETENTION_GPIO_SYSMEM_OPTION);
+	if (!soc_is_exynos5410()) {
+		__raw_writel((1 << 28), EXYNOS_PAD_RET_MAUDIO_OPTION);
+		__raw_writel((1 << 28), EXYNOS_PAD_RET_GPIO_OPTION);
+		__raw_writel((1 << 28), EXYNOS_PAD_RET_UART_OPTION);
+		__raw_writel((1 << 28), EXYNOS_PAD_RET_MMCA_OPTION);
+		__raw_writel((1 << 28), EXYNOS_PAD_RET_MMCB_OPTION);
+		__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIA_OPTION);
+		__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIB_OPTION);
+		__raw_writel((1 << 28), EXYNOS5_PAD_RETENTION_SPI_OPTION);
+		__raw_writel((1 << 28), EXYNOS5_PAD_RETENTION_GPIO_SYSMEM_OPTION);
+	} else {
+		__raw_writel((1 << 28), EXYNOS_PAD_RET_DRAM_OPTION);
+		__raw_writel((1 << 28), EXYNOS_PAD_RET_MAUDIO_OPTION);
+		__raw_writel((1 << 28), EXYNOS_PAD_RET_JTAG_OPTION);
+		__raw_writel((1 << 28), EXYNOS5410_PAD_RET_GPIO_OPTION);
+		__raw_writel((1 << 28), EXYNOS5410_PAD_RET_UART_OPTION);
+		__raw_writel((1 << 28), EXYNOS5410_PAD_RET_MMCA_OPTION);
+		__raw_writel((1 << 28), EXYNOS5410_PAD_RET_MMCB_OPTION);
+		__raw_writel((1 << 28), EXYNOS5410_PAD_RET_MMCC_OPTION);
+		__raw_writel((1 << 28), EXYNOS5410_PAD_RET_HSI_OPTION);
+		__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIA_OPTION);
+		__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIB_OPTION);
+		__raw_writel((1 << 28), EXYNOS5_PAD_RETENTION_SPI_OPTION);
+	}
 
 	s3c_pm_do_restore_core(exynos_core_save, ARRAY_SIZE(exynos_core_save));
 
 	bts_initialize(NULL, true);
-	if (!soc_is_exynos5250()) {
+
+	if (!(soc_is_exynos5250() || soc_is_exynos5410())) {
 		exynos4_restore_pll();
-
 #ifdef CONFIG_SMP
+	if (soc_is_exynos5250())
 		scu_enable(S5P_VA_SCU);
+	else
+		exynos4_scu_enable(S5P_VA_SCU);
 #endif
-
 	}
 
+#ifdef CONFIG_EXYNOS5_CLUSTER_POWER_CONTROL
+	if (soc_is_exynos5410() && cluster_id == KFC &&
+		(__raw_readl(EXYNOS_COMMON_STATUS(0)) & 0x3) == 0x0) {
+		__raw_writel(0x3, EXYNOS_COMMON_CONFIGURATION(0));
+		/* wait till cluster power control is applied */
+		do {
+			if ((__raw_readl(EXYNOS_COMMON_STATUS(0)) &
+						__raw_readl(EXYNOS_L2_STATUS(0)) & 0x3) == 0x3)
+				break;
+		} while (1);
+
+		__raw_writel(0x0, EXYNOS_COMMON_CONFIGURATION(0));
+		/* wait till cluster power control is applied */
+		do {
+			if ((__raw_readl(EXYNOS_COMMON_STATUS(0)) |
+						(__raw_readl(EXYNOS_L2_STATUS(0)) & 0x3)) == 0x0)
+				break;
+		} while (1);
+	}
+#endif
+
 early_wakeup:
-	__raw_writel(0x0, REG_INFORM1);
-	exynos_show_wakeup_reason();
+	if (soc_is_exynos5410()) {
+		exynos_enable_idle_clock_down(ARM);
+		exynos_enable_idle_clock_down(KFC);
+	}
+
+	if (!soc_is_exynos5410()) {
+		exynos_reset_assert_ctrl(true);
+		__raw_writel(0x0, REG_INFORM1);
+		exynos_show_wakeup_reason();
+	}
+
+	if (soc_is_exynos5410())
+		exynos_set_dummy_state(false);
+
 	return;
 }
 
@@ -420,6 +610,13 @@ static struct syscore_ops exynos_pm_syscore_ops = {
 
 static __init int exynos_pm_syscore_init(void)
 {
+	if (soc_is_exynos5410()) {
+		exynos_etc_base = ioremap(EXYNOS5410_PA_GPIO_LB, SZ_4K);
+
+		if (!exynos_etc_base)
+			pr_err("%s: failed to allcate IO region for ETC\n", __func__);
+	}
+
 	register_syscore_ops(&exynos_pm_syscore_ops);
 	return 0;
 }

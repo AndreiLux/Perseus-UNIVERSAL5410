@@ -31,12 +31,16 @@ void exynos4_setup_clocks(void);
 #endif
 
 #ifdef CONFIG_ARCH_EXYNOS5
-void exynos5_register_clocks(void);
-void exynos5_setup_clocks(void);
+void exynos5250_register_clocks(void);
+void exynos5410_register_clocks(void);
+void exynos5250_setup_clocks(void);
+void exynos5410_setup_clocks(void);
 
 #else
-#define exynos5_register_clocks()
-#define exynos5_setup_clocks()
+#define exynos5250_register_clocks()
+#define exynos5410_register_clocks()
+#define exynos5250_setup_clocks()
+#define exynos5410_setup_clocks()
 #endif
 
 #ifdef CONFIG_CPU_EXYNOS4210
@@ -53,4 +57,6 @@ void exynos4212_register_clocks(void);
 #define exynos4212_register_clocks()
 #endif
 
+extern bool is_cable_attached;
+extern bool is_wpc_cable_attached;
 #endif /* __ARCH_ARM_MACH_EXYNOS_COMMON_H */
