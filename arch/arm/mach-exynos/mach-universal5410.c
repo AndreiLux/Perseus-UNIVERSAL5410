@@ -371,6 +371,9 @@ static void __init universal5410_machine_init(void)
 	exynos5_universal5410_clock_init();
 	exynos5_universal5410_mmc_init();
 	exynos5_universal5410_usb_init();
+#ifdef CONFIG_BATTERY_SAMSUNG
+	exynos5_universal5410_battery_init();
+#endif
 	exynos5_universal5410_power_init();
 	exynos5_universal5410_display_init();
 	exynos5_universal5410_input_init();

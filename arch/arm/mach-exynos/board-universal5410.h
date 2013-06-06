@@ -16,9 +16,16 @@
 #define __MACH_EXYNOS_BOARD_UNIVERSAL5410_H
 #include <linux/i2c.h>
 
+#if defined(CONFIG_BATTERY_SAMSUNG)
+#include <linux/battery/sec_charging_common.h>
+extern sec_battery_platform_data_t sec_battery_pdata;
+extern int current_cable_type;
+#endif
+
 void exynos5_universal5410_clock_init(void);
 void exynos5_universal5410_mmc_init(void);
 void exynos5_universal5410_power_init(void);
+void exynos5_universal5410_battery_init(void);
 void exynos5_universal5410_usb_init(void);
 void exynos5_universal5410_display_init(void);
 void exynos5_universal5410_input_init(void);
