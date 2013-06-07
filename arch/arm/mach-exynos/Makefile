@@ -98,6 +98,10 @@ obj-$(CONFIG_BT_BCM4335)			+= board-bluetooth-bcm4335.o
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-common.o
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-reboot.o
 
+ifeq ($(CONFIG_GPS_BCMxxxxx),y)
+obj-$(CONFIG_GPS_BCM47521)		+= sec_gps_bcm47521.o
+endif
+
 obj-$(CONFIG_MACH_EXYNOS4_DT)		+= mach-exynos4-dt.o
 obj-$(CONFIG_MACH_EXYNOS5_DT)		+= mach-exynos5-dt.o
 obj-$(CONFIG_SND_SOC_SAMSUNG)		+= mach-exynos5-audio.o

@@ -100,6 +100,11 @@
 struct pm_qos_request exynos5_bt_mif_qos;
 #endif
 
+#if defined(CONFIG_GPS_BCMxxxxx)
+/* Devices	*/
+#define CONFIG_GPS_S3C_UART	1
+#endif
+
 /* ? - where has parity gone?? */
 #define S3C2410_UERSTAT_PARITY (0x1000)
 
@@ -822,6 +827,14 @@ static unsigned int s3c24xx_serial_get_mctrl(struct uart_port *port)
 static void s3c24xx_serial_set_mctrl(struct uart_port *port, unsigned int mctrl)
 {
 	/* todo - possibly remove AFC and do manual CTS */
+#if defined(CONFIG_GPS_BCMxxxxx)
+	unsigned int umcon = rd_regl(port, S3C2410_UMCON);
+
+	if (port->line == CONFIG_GPS_S3C_UART)
+		umcon |= S3C2410_UMCOM_AFC;
+
+	wr_regl(port, S3C2410_UMCON, umcon);
+#endif
 }
 
 static void s3c24xx_serial_break_ctl(struct uart_port *port, int break_state)
