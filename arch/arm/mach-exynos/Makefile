@@ -92,6 +92,8 @@ ifneq ($(CONFIG_BCM4335),)
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-wlan.o
 endif
 
+obj-$(CONFIG_BT_BCM4335)			+= board-bluetooth-bcm4335.o
+
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-common.o
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-reboot.o
 

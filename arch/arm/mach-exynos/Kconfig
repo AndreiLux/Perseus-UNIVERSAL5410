@@ -698,6 +698,14 @@ config MACH_UNIVERSAL5410
 
 endif
 
+if BT
+config BT_BCM4335
+	bool "Enable BCM4335 driver"
+	default n
+	help
+	  Adds BCM4335 RFKILL driver for Broadcom BCM4335 chipset
+endif
+
 comment "Flattened Device Tree based board for EXYNOS SoCs"
 
 config MACH_EXYNOS4_DT

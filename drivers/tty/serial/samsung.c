@@ -63,6 +63,10 @@
 #include <linux/dma-mapping.h>
 #endif
 
+#ifdef CONFIG_BT_BCM4335
+#include <linux/pm_qos.h>
+#endif
+
 #include "samsung.h"
 
 /* UART name and device definitions */
@@ -92,6 +96,10 @@
 /* flag to ignore all characters coming in */
 #define RXSTAT_DUMMY_READ (0x10000000)
 
+#ifdef CONFIG_BT_BCM4335
+struct pm_qos_request exynos5_bt_mif_qos;
+#endif
+
 /* ? - where has parity gone?? */
 #define S3C2410_UERSTAT_PARITY (0x1000)
 
@@ -102,6 +110,10 @@ static struct s3c2410_dma_client samsung_uart_dma_client = {
 
 static void prepare_dma(struct uart_dma_data *dma,
 					unsigned len, dma_addr_t buf);
+#endif
+
+#ifdef CONFIG_BT_BCM4335
+struct pm_qos_request exynos5_bt_mif_qos;
 #endif
 
 static inline struct s3c24xx_uart_port *to_ourport(struct uart_port *port)
@@ -737,6 +749,16 @@ static irqreturn_t s3c24xx_serial_err_chars(int irq, void *id)
 	printk(KERN_ERR "Rx DMA Error!!!(0x%x)\n", ourport->err_occurred);
 	return IRQ_HANDLED;
 }
+#endif
+
+#ifdef CONFIG_BT_BCM4335
+static void bt_qos_func(struct work_struct *work)
+{
+	pm_qos_update_request_timeout(&exynos5_bt_mif_qos, 800000, 1000000);
+}
+
+static DECLARE_DELAYED_WORK(bt_perf_work, bt_qos_func);
+#endif
 
 /* interrupt handler for s3c64xx and later SoC's.*/
 static irqreturn_t s3c64xx_serial_handle_irq(int irq, void *id)
@@ -745,6 +767,11 @@ static irqreturn_t s3c64xx_serial_handle_irq(int irq, void *id)
 	struct uart_port *port = &ourport->port;
 	unsigned int pend = rd_regl(port, S3C64XX_UINTP);
 	irqreturn_t ret = IRQ_HANDLED;
+
+#ifdef CONFIG_BT_BCM4335
+	if (port->line == 0)
+		schedule_delayed_work(&bt_perf_work, msecs_to_jiffies(100));
+#endif
 	
 	if (pend & S3C64XX_UINTM_RXD_MSK) {
 		ret = s3c24xx_serial_rx_chars(irq, id);
@@ -1717,6 +1744,11 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 
 	dbg("%s: initialising port %p...\n", __func__, ourport);
 
+#ifdef CONFIG_BT_BCM4335
+	if (pdev->id == 0)
+		pm_qos_add_request(&exynos5_bt_mif_qos, PM_QOS_BUS_THROUGHPUT, 0);
+#endif
+
 	ret = s3c24xx_serial_init_port(ourport, pdev);
 	if (ret < 0)
 		goto probe_err;
@@ -1742,6 +1774,11 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 static int __devexit s3c24xx_serial_remove(struct platform_device *dev)
 {
 	struct uart_port *port = s3c24xx_dev_to_port(&dev->dev);
+
+#ifdef CONFIG_BT_BCM4335
+	if (dev->id == 0)
+		pm_qos_remove_request(&exynos5_bt_mif_qos);
+#endif
 
 	if (port) {
 		s3c24xx_serial_cpufreq_deregister(to_ourport(port));
