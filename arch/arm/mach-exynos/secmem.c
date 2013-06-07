@@ -20,6 +20,9 @@
 #include <linux/slab.h>
 #include <linux/mm.h>
 #include <linux/dma-mapping.h>
+#include <linux/export.h>
+#include <linux/pm_qos.h>
+#include <linux/delay.h>
 
 #include <asm/memory.h>
 #include <asm/cacheflush.h>
@@ -27,24 +30,22 @@
 #include <plat/devs.h>
 
 #include <mach/secmem.h>
-#include <linux/export.h>
 
 #define SECMEM_DEV_NAME	"s5p-smem"
+struct miscdevice secmem;
 struct secmem_crypto_driver_ftn *crypto_driver;
-#if defined(CONFIG_ION)
-extern struct ion_device *ion_exynos;
+#if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
+static struct pm_qos_request exynos5_secmem_mif_qos;
 #endif
 
 static char *secmem_regions[] = {
-#if defined(CONFIG_SOC_EXYNOS5250)
-	"mfc_sh",   	/* 0 */
-	"msgbox_sh",	/* 1 */
-	"fimd_video",  	/* 2 */
+	"mfc_sh",	/* 0 */
+	"g2d_wfd",	/* 1 */
+	"fimd_video",	/* 2 */
 	"mfc_output",	/* 3 */
 	"mfc_input",	/* 4 */
 	"mfc_fw",	/* 5 */
 	"sectbl",	/* 6 */
-#endif
 	NULL
 };
 
@@ -55,6 +56,8 @@ struct secmem_info {
 	struct device	*dev;
 	bool		drm_enabled;
 };
+
+#define SECMEM_IS_PAGE_ALIGNED(addr) (!((addr) & (~PAGE_MASK)))
 
 static int secmem_open(struct inode *inode, struct file *file)
 {
@@ -74,10 +77,12 @@ static int secmem_open(struct inode *inode, struct file *file)
 static void drm_enable_locked(struct secmem_info *info, bool enable)
 {
 	if (drm_onoff != enable) {
+#ifdef CONFIG_EXYNOS5_DEV_GSC
 		if (enable)
 			pm_runtime_forbid(info->dev->parent);
 		else
 			pm_runtime_allow(info->dev->parent);
+#endif
 		drm_onoff = enable;
 		/*
 		 * this will only allow this instance to turn drm_off either by
@@ -108,22 +113,33 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct secmem_info *info = filp->private_data;
 
-	switch (cmd) {
-	case SECMEM_IOC_CHUNKINFO:
-	{
-		struct cma_info cinfo;
-		struct secchunk_info minfo;
-		char **mname;
-		int nbufs = 0;
+	static int nbufs = 0;
 
+	switch (cmd) {
+	case SECMEM_IOC_GET_CHUNK_NUM:
+	{
+		char **mname;
+
+		nbufs = 0;
 		for (mname = secmem_regions; *mname != NULL; mname++)
 			nbufs++;
 
 		if (nbufs == 0)
 			return -ENOMEM;
 
+		if (copy_to_user((void __user *)arg, &nbufs, sizeof(int)))
+			return -EFAULT;
+		break;
+	}
+	case SECMEM_IOC_CHUNKINFO:
+	{
+		struct cma_info cinfo;
+		struct secchunk_info minfo;
+
 		if (copy_from_user(&minfo, (void __user *)arg, sizeof(minfo)))
 			return -EFAULT;
+
+		memset(&minfo.name, 0, MAX_NAME_LEN);
 
 		if (minfo.index < 0)
 			return -EINVAL;
@@ -138,6 +154,7 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 			minfo.base = cinfo.lower_bound;
 			minfo.size = cinfo.total_size;
+			memcpy(minfo.name, secmem_regions[minfo.index], MAX_NAME_LEN);
 		}
 
 		if (copy_to_user((void __user *)arg, &minfo, sizeof(minfo)))
@@ -156,24 +173,24 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 					sizeof(fd_info)))
 			return -EFAULT;
 
-		client = ion_client_create(ion_exynos, "DRM");
+		client = ion_client_create(ion_exynos, -1, "DRM");
 		if (IS_ERR(client))
-			printk(KERN_ERR "%s: Failed to get ion_client of DRM\n",
+			pr_err("%s: Failed to get ion_client of DRM\n",
 				__func__);
 
 		data.fd = fd_info.fd;
 		data.handle = ion_import_dma_buf(client, data.fd);
-		printk(KERN_DEBUG "%s: fd from user space = %d\n",
+		pr_debug("%s: fd from user space = %d\n",
 				__func__, fd_info.fd);
 		if (IS_ERR(data.handle))
-			printk(KERN_ERR "%s: Failed to get ion_handle of DRM\n",
+			pr_err("%s: Failed to get ion_handle of DRM\n",
 				__func__);
 
 		if (ion_phys(client, data.handle, &fd_info.phys, &len))
-			printk(KERN_ERR "%s: Failed to get phys. addr of DRM\n",
+			pr_err("%s: Failed to get phys. addr of DRM\n",
 				__func__);
 
-		printk(KERN_DEBUG "%s: physical addr from kernel space = 0x%08x\n",
+		pr_debug("%s: physical addr from kernel space = 0x%08x\n",
 				__func__, (unsigned int)fd_info.phys);
 
 		ion_free(client, data.handle);
@@ -219,7 +236,7 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				ret = crypto_driver->lock();
 				if (ret == 0)
 					break;
-				printk(KERN_ERR "%s : Retry to get sync lock.\n",
+				pr_err("%s : Retry to get sync lock.\n",
 					__func__);
 			}
 			return ret;
@@ -232,6 +249,25 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			return crypto_driver->release();
 		break;
 	}
+#if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
+	case SECMEM_IOC_REQ_MIF_LOCK:
+	{
+		int req_mif_lock;
+
+		if (copy_from_user(&req_mif_lock, (void __user *)arg, sizeof(int)))
+			return -EFAULT;
+
+		if (req_mif_lock) {
+			pm_qos_update_request(&exynos5_secmem_mif_qos, 800000);
+			pr_debug("%s: Get MIF lock successfully\n", __func__);
+			mdelay(10);
+		} else {
+			pm_qos_update_request(&exynos5_secmem_mif_qos, 0);
+			pr_debug("%s: Release MIF lock successfully\n", __func__);
+		}
+		break;
+	}
+#endif
 	default:
 		return -ENOTTY;
 	}
@@ -257,13 +293,13 @@ static const struct file_operations secmem_fops = {
 	.unlocked_ioctl = secmem_ioctl,
 };
 
-extern struct platform_device exynos5_device_gsc0;
-
-static struct miscdevice secmem = {
+struct miscdevice secmem = {
 	.minor	= MISC_DYNAMIC_MINOR,
 	.name	= SECMEM_DEV_NAME,
 	.fops	= &secmem_fops,
+#ifdef CONFIG_EXYNOS5_DEV_GSC
 	.parent	= &exynos5_device_gsc0.dev,
+#endif
 };
 
 static int __init secmem_init(void)
@@ -271,20 +307,28 @@ static int __init secmem_init(void)
 	int ret;
 
 	ret = misc_register(&secmem);
-	if (ret)
-		printk(KERN_ERR "%s: SECMEM can't register misc on minor=%d\n",
+	if (ret) {
+		pr_err("%s: SECMEM can't register misc on minor=%d\n",
 			__func__, MISC_DYNAMIC_MINOR);
 		return ret;
+	}
 
 	crypto_driver = NULL;
 
 	pm_runtime_enable(secmem.this_device);
+#if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
+	pm_qos_add_request(&exynos5_secmem_mif_qos, PM_QOS_BUS_THROUGHPUT, 0);
+#endif
 
 	return 0;
 }
 
 static void __exit secmem_exit(void)
 {
+#if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
+	pm_qos_remove_request(&exynos5_secmem_mif_qos);
+#endif
+
 	__pm_runtime_disable(secmem.this_device, false);
 	misc_deregister(&secmem);
 }
