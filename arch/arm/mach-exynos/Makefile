@@ -57,6 +57,7 @@ obj-$(CONFIG_MACH_SMDK4212)		+= mach-smdk4x12.o
 obj-$(CONFIG_MACH_SMDK4412)		+= mach-smdk4x12.o
 
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= mach-universal5410.o
+obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-clock.o
 
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-common.o
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-reboot.o

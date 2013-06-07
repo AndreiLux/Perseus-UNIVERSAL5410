@@ -16,6 +16,8 @@
 #define __MACH_EXYNOS_BOARD_UNIVERSAL5410_H
 #include <linux/i2c.h>
 
+void exynos5_universal5410_clock_init(void);
+
 extern unsigned int system_rev;
 extern unsigned int universal5410_rev(void);
 
