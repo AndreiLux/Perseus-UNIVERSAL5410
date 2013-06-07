@@ -58,6 +58,8 @@ obj-$(CONFIG_MACH_SMDK4412)		+= mach-smdk4x12.o
 
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= mach-universal5410.o
 
+obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-common.o
+
 obj-$(CONFIG_MACH_EXYNOS4_DT)		+= mach-exynos4-dt.o
 obj-$(CONFIG_MACH_EXYNOS5_DT)		+= mach-exynos5-dt.o
 obj-$(CONFIG_SND_SOC_SAMSUNG)		+= mach-exynos5-audio.o
