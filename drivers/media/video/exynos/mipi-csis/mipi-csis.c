@@ -29,6 +29,7 @@
 #include <media/v4l2-subdev.h>
 #include <media/exynos_mc.h>
 #include <plat/mipi_csis.h>
+#include <plat/cpu.h>
 
 static int debug;
 module_param(debug, int, 0644);
@@ -65,7 +66,9 @@ enum csis_output_entity {
 
 /* D-PHY control */
 #define S5PCSIS_DPHYCTRL		0x04
-#define S5PCSIS_DPHYCTRL_HSS_MASK	(0x1f << 27)
+#define S5PCSIS_DPHYCTRL_HSS_MASK	(soc_is_exynos5250() ? \
+					(0x1f << 27) : \
+					(0x1f << 24))
 #define S5PCSIS_DPHYCTRL_ENABLE		(0x1f << 0)
 
 #define S5PCSIS_CONFIG			0x08
@@ -159,6 +162,9 @@ static const struct csis_pix_format s5pcsis_formats[] = {
 	}, {
 		.code = V4L2_MBUS_FMT_JPEG_1X8,
 		.fmt_reg = S5PCSIS_CFG_FMT_USER(1),
+	}, {
+		.code = V4L2_MBUS_FMT_SGRBG8_1X8,
+		.fmt_reg = S5PCSIS_CFG_FMT_RAW8,
 	},
 };
 
@@ -240,7 +246,10 @@ static void s5pcsis_set_hsync_settle(struct csis_state *state, int settle)
 {
 	u32 val = s5pcsis_read(state, S5PCSIS_DPHYCTRL);
 
-	val = (val & ~S5PCSIS_DPHYCTRL_HSS_MASK) | (settle << 27);
+	if (soc_is_exynos5250())
+		val = (val & ~S5PCSIS_DPHYCTRL_HSS_MASK) | (settle << 27);
+	else
+		val = (val & ~S5PCSIS_DPHYCTRL_HSS_MASK) | (settle << 24);
 	s5pcsis_write(state, S5PCSIS_DPHYCTRL, val);
 }
 
@@ -286,6 +295,8 @@ static int s5pcsis_clk_get(struct csis_state *state)
 	char clk_name[CLK_NAME_SIZE];
 
 	for (i = 0; i < NUM_CSIS_CLOCKS; i++) {
+		if (!soc_is_exynos5250() && (i == CSIS_CLK_MUX))
+			continue;
 		snprintf(clk_name, sizeof(clk_name), "%s%d",
 			 csi_clock_name[i], state->pdev->id);
 		state->clock[i] = clk_get(dev, clk_name);
@@ -303,17 +314,20 @@ static int s5pcsis_resume(struct device *dev);
 static int s5pcsis_s_power(struct v4l2_subdev *sd, int on)
 {
 	struct csis_state *state = sd_to_csis_state(sd);
-	struct device *dev = &state->pdev->dev;
+	int ret = 0;
+
+	v4l2_dbg(1, debug, sd, "%s: %d, state: 0x%x\n",
+		 __func__, on, state->flags);
 
 	if (on) {
-#ifndef CONFIG_PM_RUNTIME
-		return s5pcsis_resume(dev);
-#else
-		return pm_runtime_get_sync(dev);
-#endif
+		ret = pm_runtime_get_sync(&state->pdev->dev);
+		if (ret && ret != 1)
+			return ret;
+	} else {
+		pm_runtime_put_sync(&state->pdev->dev);
 	}
 
-	return pm_runtime_put_sync(dev);
+	return 0;
 }
 
 static void s5pcsis_start_stream(struct csis_state *state)
@@ -339,11 +353,6 @@ static int s5pcsis_s_stream(struct v4l2_subdev *sd, int enable)
 	v4l2_dbg(1, debug, sd, "%s: %d, state: 0x%x\n",
 		 __func__, enable, state->flags);
 
-	if (enable) {
-		ret = pm_runtime_get_sync(&state->pdev->dev);
-		if (ret && ret != 1)
-			return ret;
-	}
 	mutex_lock(&state->lock);
 	if (enable) {
 		if (state->flags & ST_SUSPENDED) {
@@ -358,9 +367,6 @@ static int s5pcsis_s_stream(struct v4l2_subdev *sd, int enable)
 	}
 unlock:
 	mutex_unlock(&state->lock);
-	if (!enable)
-		pm_runtime_put(&state->pdev->dev);
-
 	return ret == 1 ? 0 : ret;
 }
 
@@ -556,6 +562,11 @@ static irqreturn_t s5pcsis_irq_handler(int irq, void *dev_id)
 	struct csis_state *state = dev_id;
 	u32 val;
 
+	v4l2_info(&state->sd, "%s : IRQ test\n", __func__);
+
+	if (!(state->flags & ST_POWERED))
+		return IRQ_HANDLED;
+
 	/* Just clear the interrupt pending bits. */
 	val = s5pcsis_read(state, S5PCSIS_INTSRC);
 	s5pcsis_write(state, S5PCSIS_INTSRC, val);
@@ -648,19 +659,21 @@ static int __devinit s5pcsis_probe(struct platform_device *pdev)
 	if (ret)
 		goto e_unmap;
 
-	clk_enable(state->clock[CSIS_CLK_MUX]);
-	if (pdata->clk_rate) {
-		struct clk *srclk;
-		srclk = clk_get(&state->pdev->dev, CSIS_SRC_CLK);
-		if (IS_ERR_OR_NULL(srclk)) {
-			dev_err(&state->pdev->dev, "failed to get csis src clk\n");
-			goto e_unmap;
+	if (soc_is_exynos5250()) {
+		clk_enable(state->clock[CSIS_CLK_MUX]);
+		if (pdata->clk_rate) {
+			struct clk *srclk;
+			srclk = clk_get(&state->pdev->dev, CSIS_SRC_CLK);
+			if (IS_ERR_OR_NULL(srclk)) {
+				dev_err(&state->pdev->dev, "failed to get csis src clk\n");
+				goto e_unmap;
+			}
+			clk_set_parent(state->clock[CSIS_CLK_MUX], srclk);
+			clk_put(srclk);
+			clk_set_rate(state->clock[CSIS_CLK_MUX], pdata->clk_rate);
+		} else {
+			dev_WARN(&pdev->dev, "No clock frequency specified!\n");
 		}
-		clk_set_parent(state->clock[CSIS_CLK_MUX], srclk);
-		clk_put(srclk);
-		clk_set_rate(state->clock[CSIS_CLK_MUX], pdata->clk_rate);
-	} else {
-		dev_WARN(&pdev->dev, "No clock frequency specified!\n");
 	}
 
 	state->irq = platform_get_irq(pdev, 0);
@@ -679,12 +692,14 @@ static int __devinit s5pcsis_probe(struct platform_device *pdev)
 		}
 	}
 
-	ret = request_irq(state->irq, s5pcsis_irq_handler, 0,
+	ret = request_irq(state->irq, s5pcsis_irq_handler, IRQF_SHARED,
 			  dev_name(&pdev->dev), state);
 	if (ret) {
 		dev_err(&pdev->dev, "request_irq failed\n");
 		goto e_regput;
 	}
+
+	disable_irq(state->irq);
 
 	v4l2_subdev_init(&state->sd, &s5pcsis_subdev_ops);
 	state->sd.owner = THIS_MODULE;
@@ -731,7 +746,8 @@ e_regput:
 	if (state->supply)
 		regulator_put(state->supply);
 e_clkput:
-	clk_disable(state->clock[CSIS_CLK_MUX]);
+	if (soc_is_exynos5250())
+		clk_disable(state->clock[CSIS_CLK_MUX]);
 	s5pcsis_clk_put(state);
 e_unmap:
 	iounmap(state->regs);
@@ -841,7 +857,8 @@ static int __devexit s5pcsis_remove(struct platform_device *pdev)
 
 	pm_runtime_disable(&pdev->dev);
 	s5pcsis_suspend(&pdev->dev);
-	clk_disable(state->clock[CSIS_CLK_MUX]);
+	if (soc_is_exynos5250())
+		clk_disable(state->clock[CSIS_CLK_MUX]);
 	pm_runtime_set_suspended(&pdev->dev);
 
 	s5pcsis_clk_put(state);
@@ -872,18 +889,7 @@ static struct platform_driver s5pcsis_driver = {
 	},
 };
 
-static int __init s5pcsis_init(void)
-{
-	return platform_driver_probe(&s5pcsis_driver, s5pcsis_probe);
-}
-
-static void __exit s5pcsis_exit(void)
-{
-	platform_driver_unregister(&s5pcsis_driver);
-}
-
-module_init(s5pcsis_init);
-module_exit(s5pcsis_exit);
+module_platform_driver(s5pcsis_driver);
 
 MODULE_AUTHOR("Sylwester Nawrocki <s.nawrocki@samsung.com>");
 MODULE_DESCRIPTION("S5P/EXYNOS4 MIPI CSI receiver driver");

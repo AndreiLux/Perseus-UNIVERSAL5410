@@ -67,6 +67,7 @@
 #include <plat/tv-core.h>
 #include <plat/pwm.h>
 #include <plat/fimc-core.h>
+#include <plat/mipi_csis.h>
 
 static u64 samsung_device_dma_mask = DMA_BIT_MASK(32);
 
@@ -282,6 +283,72 @@ struct platform_device s5p_device_fimc3 = {
 };
 #endif /* CONFIG_S5P_DEV_FIMC3 */
 
+/* MIPI CSIS */
+#if defined(CONFIG_VIDEO_S5P_MIPI_CSIS) || defined(CONFIG_VIDEO_EXYNOS_MIPI_CSIS)
+#ifdef CONFIG_S5P_DEV_CSIS0
+static struct resource s5p_mipi_csis0_resource[] = {
+	[0] = DEFINE_RES_MEM(S5P_PA_MIPI_CSIS0, SZ_16K),
+	[1] = DEFINE_RES_IRQ(IRQ_MIPICSI0),
+};
+
+struct platform_device s5p_device_mipi_csis0 = {
+	.name		  = "s5p-mipi-csis",
+	.id		  = 0,
+	.num_resources	  = ARRAY_SIZE(s5p_mipi_csis0_resource),
+	.resource	  = s5p_mipi_csis0_resource,
+};
+
+struct s5p_platform_mipi_csis s5p_mipi_csis0_default_data __initdata = {
+	.clk_rate	= 166000000,
+	.lanes		= 2,
+	.alignment	= 32,
+	.hs_settle	= 12,
+	.phy_enable	= s5p_csis_phy_enable,
+};
+#endif
+#ifdef CONFIG_S5P_DEV_CSIS1
+static struct resource s5p_mipi_csis1_resource[] = {
+	[0] = DEFINE_RES_MEM(S5P_PA_MIPI_CSIS1, SZ_16K),
+	[1] = DEFINE_RES_IRQ(IRQ_MIPICSI1),
+};
+
+struct platform_device s5p_device_mipi_csis1 = {
+	.name		  = "s5p-mipi-csis",
+	.id		  = 1,
+	.num_resources	  = ARRAY_SIZE(s5p_mipi_csis1_resource),
+	.resource	  = s5p_mipi_csis1_resource,
+};
+
+struct s5p_platform_mipi_csis s5p_mipi_csis1_default_data __initdata = {
+	.clk_rate	= 166000000,
+	.lanes		= 2,
+	.alignment	= 32,
+	.hs_settle	= 12,
+	.phy_enable	= s5p_csis_phy_enable,
+};
+#endif
+#ifdef CONFIG_S5P_DEV_CSIS2
+static struct resource s5p_mipi_csis2_resource[] = {
+	[0] = DEFINE_RES_MEM(S5P_PA_MIPI_CSIS2, SZ_4K),
+	[1] = DEFINE_RES_IRQ(IRQ_MIPICSI2),
+};
+
+struct platform_device s5p_device_mipi_csis2 = {
+	.name		  = "s5p-mipi-csis",
+	.id		  = 2,
+	.num_resources	  = ARRAY_SIZE(s5p_mipi_csis2_resource),
+	.resource	  = s5p_mipi_csis2_resource,
+};
+
+struct s5p_platform_mipi_csis s5p_mipi_csis2_default_data __initdata = {
+	.clk_rate	= 166000000,
+	.lanes		= 2,
+	.alignment	= 32,
+	.hs_settle	= 12,
+	.phy_enable	= s5p_csis_phy_enable,
+};
+#endif
+#endif
 
 #ifdef CONFIG_VIDEO_S5P_FIMC_LITE
 #ifdef CONFIG_S5P_DEV_FLITE0
