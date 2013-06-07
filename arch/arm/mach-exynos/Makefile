@@ -88,6 +88,10 @@ endif
 
 obj-$(CONFIG_ICE4_FPGA)				+= board-universal5410-fpga.o
 
+ifneq ($(CONFIG_BCM4335),)
+obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-wlan.o
+endif
+
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-common.o
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= sec-reboot.o
 

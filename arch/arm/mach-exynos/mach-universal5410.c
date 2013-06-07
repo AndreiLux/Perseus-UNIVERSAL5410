@@ -43,6 +43,8 @@
 #include <linux/i2c-gpio.h>
 #include <mach/gpio-exynos.h>
 
+#include "board-universal5410-wlan.h"
+
 #include "mach/sec_debug.h"
 
 extern phys_addr_t bootloaderfb_start;
@@ -397,6 +399,9 @@ static void __init universal5410_machine_init(void)
 #endif
 #ifdef CONFIG_EXYNOS_C2C
 	exynos5_universal5410_c2c_init();
+#endif
+#if defined(CONFIG_BCM4335) || defined(CONFIG_BCM4335_MODULE)
+	brcm_wlan_init();
 #endif
 
 	if (lpcharge == 0) {
