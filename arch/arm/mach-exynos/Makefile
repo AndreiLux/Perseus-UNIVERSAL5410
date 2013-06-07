@@ -90,6 +90,7 @@ obj-$(CONFIG_ICE4_FPGA)				+= board-universal5410-fpga.o
 
 ifneq ($(CONFIG_BCM4335),)
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-wlan.o
+obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-bt.o
 endif
 
 obj-$(CONFIG_BT_BCM4335)			+= board-bluetooth-bcm4335.o

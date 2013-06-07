@@ -44,6 +44,7 @@
 #include <mach/gpio-exynos.h>
 
 #include "board-universal5410-wlan.h"
+#include "include/board-bluetooth-bcm.h"
 
 #include "mach/sec_debug.h"
 
@@ -64,6 +65,14 @@ static struct platform_device persistent_trace_device = {
 	.name	= "persistent_trace",
 	.id	= -1,
 };
+
+/*rfkill device registeration*/
+#ifdef CONFIG_BT_BCM4335
+static struct platform_device bcm4335_bluetooth_device = {
+	.name = "bcm4335_bluetooth",
+	.id = -1,
+};
+#endif
 
 /* Following are default values for UCON, ULCON and UFCON UART registers */
 #define SMDK5410_UCON_DEFAULT	(S3C2410_UCON_TXILEVEL |	\
@@ -316,6 +325,9 @@ static struct platform_device *universal5410_devices[] __initdata = {
 #endif
 #ifdef CONFIG_S5P_DEV_ACE
 	&s5p_device_ace,
+#endif
+#ifdef CONFIG_BT_BCM4335
+	&bcm4335_bluetooth_device,
 #endif
 };
 static void __init universal5410_map_io(void)
