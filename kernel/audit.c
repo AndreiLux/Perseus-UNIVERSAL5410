@@ -64,6 +64,10 @@
 
 #include "audit.h"
 
+#ifdef CONFIG_SEC_AVC_LOG
+#include <mach/sec_debug.h>
+#endif
+
 /* No auditing will take place until audit_initialized == AUDIT_INITIALIZED.
  * (Initialization happens after skb_init is called.) */
 #define AUDIT_DISABLED		-1
@@ -385,7 +389,9 @@ static void audit_printk_skb(struct sk_buff *skb)
 	char *data = NLMSG_DATA(nlh);
 
 	if (nlh->nlmsg_type != AUDIT_EOE) {
-		printk(KERN_NOTICE "type=%d %s\n", nlh->nlmsg_type, data);
+#ifdef CONFIG_SEC_AVC_LOG
+		sec_debug_avc_log("type=%d %s\n", nlh->nlmsg_type, data);
+#endif
 	}
 
 	audit_hold_skb(skb);
@@ -404,9 +410,18 @@ static void kauditd_send_skb(struct sk_buff *skb)
 		audit_pid = 0;
 		/* we might get lucky and get this in the next auditd */
 		audit_hold_skb(skb);
-	} else
+	} else {
+#ifdef CONFIG_SEC_AVC_LOG
+		struct nlmsghdr *nlh = nlmsg_hdr(skb);
+		char *data = NLMSG_DATA(nlh);
+	
+		if (nlh->nlmsg_type != AUDIT_EOE) {
+			sec_debug_avc_log("%s\n", data);
+		}
+#endif
 		/* drop the extra reference if sent ok */
 		consume_skb(skb);
+	}
 }
 
 static int kauditd_thread(void *dummy)

@@ -114,3 +114,5 @@ obj-$(CONFIG_CMA)			+= reserve-mem.o
 obj-$(CONFIG_EXYNOS5_SETUP_JPEG)			+= setup-jpeg.o
 obj-$(CONFIG_ARCH_EXYNOS5)		+= resetreason.o
 obj-$(CONFIG_EXYNOS_THERMAL)		+= tmu-exynos.o
+
+obj-$(CONFIG_SEC_LOG)				+= sec_log.o
