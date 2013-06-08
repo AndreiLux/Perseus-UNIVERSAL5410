@@ -274,9 +274,6 @@ gen_pool_alloc_aligned(struct gen_pool *pool, size_t size,
 	BUG_ON(in_nmi());
 #endif
 
-	if (alignment_order < order)
-		alignment_order = order;
-
 	if (size == 0)
 		return 0;
 
