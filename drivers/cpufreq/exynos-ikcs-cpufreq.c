@@ -29,6 +29,7 @@
 #include <linux/pm_qos.h>
 #include <linux/kobject.h>
 #include <linux/sysfs.h>
+#include <linux/sysfs_helpers.h>
 
 #include <asm/cputype.h>
 #include <asm/bL_switcher.h>
@@ -64,6 +65,12 @@ static unsigned int freq_max[CA_END] __read_mostly;	/* Maximum (Big/Little) cloc
 
 #define LIMIT_COLD_VOLTAGE	1250000
 #define COLD_VOLTAGE_OFFSET	75000
+
+/*
+ * Taken from asv-exynos5410.h
+ */
+#define ARM_MAX_VOLT		1362500
+#define KFC_MAX_VOLT		1312500
 
 static struct exynos_dvfs_info *exynos_info[CA_END];
 static struct exynos_dvfs_info exynos_info_CA7;
@@ -858,6 +865,98 @@ static struct attribute_group iks_attr_group = {
 	.attrs = iks_attributes,
 	.name = "ikcs-cpufreq",
 };
+
+
+/********************* CPUFreq core attributes ********************/
+
+ssize_t show_UV_table_prototype(struct cpufreq_policy *policy, char *buf, bool mv)
+{
+	cluster_type cur = CA15;
+	int i, len = 0;
+
+	for (i = 0; merge_freq_table[i].frequency != CPUFREQ_TABLE_END; i++) {
+		if (merge_freq_table[i].frequency != CPUFREQ_ENTRY_INVALID) {
+			cur = (merge_freq_table[i].frequency > STEP_LEVEL_CA7_MAX) ?
+				CA15 : CA7;
+
+			if (mv) {
+				len += sprintf(buf + len, "%dmhz: %d mV\n",
+					merge_freq_table[i].frequency / 1000,
+					exynos_info[cur]->volt_table[merge_index_table[i]] / 1000);
+			} else {
+				len += sprintf(buf + len, "%d %d \n", 
+					merge_freq_table[i].frequency / 1000,
+					exynos_info[cur]->volt_table[merge_index_table[i]]);
+			}
+		}
+        }
+
+	return len;
+}
+
+ssize_t store_UV_table_prototype(struct cpufreq_policy *policy, 
+				 const char *buf, size_t count, bool mv) {
+
+	int i, tokens, rest, invalid_offset;
+	ssize_t tsize = cpufreq_get_table_size(merge_freq_table, CA15);
+	cluster_type cur = CA15;
+	int t[tsize];
+
+	invalid_offset = 0;
+
+	if ((tokens = read_into((int*)&t, tsize, buf, count)) < 0)
+		return -EINVAL;
+
+	mutex_lock(&cpufreq_lock);
+
+	for (i = 0; i < tokens; i++) {
+		while (merge_freq_table[i + invalid_offset].frequency == CPUFREQ_ENTRY_INVALID)
+			++invalid_offset;
+
+		cur = (merge_freq_table[i + invalid_offset].frequency > STEP_LEVEL_CA7_MAX)
+			? CA15 : CA7;
+
+		if (mv)
+			t[i] *= 1000;
+
+		if ((rest = t[i] % 6250) != 0)
+			t[i] += 6250 - rest;
+
+		if (cur == CA15) {
+			sanitize_min_max(t[i], 600000, ARM_MAX_VOLT);
+		} else {
+			sanitize_min_max(t[i], 600000, KFC_MAX_VOLT);
+		}
+
+		exynos_info[cur]->volt_table[merge_index_table[i + invalid_offset]] = t[i];
+	}
+
+	mutex_unlock(&cpufreq_lock);
+
+	return count;
+}
+
+ssize_t show_UV_uV_table(struct cpufreq_policy *policy, char *buf)
+{
+	return show_UV_table_prototype(policy, buf, false);
+}
+
+ssize_t store_UV_uV_table(struct cpufreq_policy *policy, 
+				 const char *buf, size_t count)
+{
+	return store_UV_table_prototype(policy, buf, count, false);
+}
+
+ssize_t show_UV_mV_table(struct cpufreq_policy *policy, char *buf)
+{
+	return show_UV_table_prototype(policy, buf, true);
+}
+
+ssize_t store_UV_mV_table(struct cpufreq_policy *policy, 
+				 const char *buf, size_t count)
+{
+	return store_UV_table_prototype(policy, buf, count, true);
+}
 
 /************************** sysfs end ************************/
 
