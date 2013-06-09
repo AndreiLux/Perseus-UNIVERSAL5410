@@ -863,7 +863,7 @@ static struct attribute *iks_attributes[] = {
 
 static struct attribute_group iks_attr_group = {
 	.attrs = iks_attributes,
-	.name = "ikcs-cpufreq",
+	.name = "iks-cpufreq",
 };
 
 
