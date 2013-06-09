@@ -774,7 +774,9 @@ static ssize_t show_freq_table(struct kobject *kobj,
 	int i, count = 0;
 
 	for (i = 0; merge_freq_table[i].frequency != CPUFREQ_TABLE_END; i++) {
-		if (merge_freq_table[i].frequency != CPUFREQ_ENTRY_INVALID)
+		if (merge_freq_table[i].frequency != CPUFREQ_ENTRY_INVALID && 
+			merge_freq_table[i].frequency <= 1600000 &&
+			merge_freq_table[i].frequency >= 250000)
 			count += sprintf(&buf[count], "%d ",
 				merge_freq_table[i].frequency);
         }
