@@ -37,7 +37,7 @@ void __iomem *sgx_bts_base;
 unsigned int sgx_clk_status;
 #endif
 
-#define DEBUG_BW
+//#define DEBUG_BW
 
 /* clock control */
 static struct clk	*sgx_core;
@@ -266,7 +266,9 @@ void gpu_clock_disable()
 /*this function using for DVFS*/
 void gpu_clock_set(int sgx_clk)
 {
+#ifdef DEBUG_BW
 	int old_clk = clk_get_rate(g3d_clock_core)/MHZ;
+#endif
 
 	if (clk_get_rate(fout_vpll_clock)/MHZ != sgx_clk)
 		sgx_gpu_src_clk = clk_set_rate(fout_vpll_clock, sgx_clk * MHZ);
