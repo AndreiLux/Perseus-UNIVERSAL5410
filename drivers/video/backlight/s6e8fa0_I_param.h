@@ -75,6 +75,11 @@ static const unsigned char SEQ_TEST_KEY_ON_FC[] = {
 	0x5A, 0x5A,
 };
 
+static const unsigned char SEQ_TEST_KEY_OFF_FC[] = {
+   0xFC,
+   0xA5, 0xA5,
+};
+
 static const unsigned char SEQ_SLEEP_OUT[] = {
 	0x11,
 	0x00, 0x00
