@@ -945,7 +945,7 @@ int _dev_info(const struct device *dev, const char *fmt, ...)
 do {						     \
 	dynamic_dev_dbg(dev, format, ##__VA_ARGS__); \
 } while (0)
-#elif defined(DEBUG)
+#elif defined(DEBUG) && 0
 #define dev_dbg(dev, format, arg...)		\
 	dev_printk(KERN_DEBUG, dev, format, ##arg)
 #else
