@@ -16,6 +16,8 @@
 #include <linux/mutex.h>
 #include <linux/err.h>
 
+#include <linux/mfd/arizona/control.h>
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/regmap.h>
 
@@ -481,6 +483,8 @@ int _regmap_write(struct regmap *map, unsigned int reg,
 	int ret;
 	BUG_ON(!map->format.format_write && !map->format.format_val);
 
+	arizona_control_regmap_hook(map, reg, &val);
+
 	if (!map->cache_bypass && map->format.format_write) {
 		ret = regcache_write(map, reg, val);
 		if (ret != 0)
@@ -830,6 +834,7 @@ int regmap_update_bits(struct regmap *map, unsigned int reg,
 		       unsigned int mask, unsigned int val)
 {
 	bool change;
+
 	return _regmap_update_bits(map, reg, mask, val, &change);
 }
 EXPORT_SYMBOL_GPL(regmap_update_bits);
