@@ -16,7 +16,9 @@
 #include <linux/mfd/arizona/registers.h>
 #include <linux/mfd/arizona/control.h>
 
-//#define SYSFS_DBG
+#if 0
+#define SYSFS_DBG
+#endif
 
 static struct snd_soc_codec *codec = NULL;
 static int ignore_next = 0;
@@ -30,8 +32,10 @@ static ssize_t store_arizona_property(struct device *dev,
 
 enum control_type {
 	CTL_VIRTUAL = 0,
-	CTL_VISIBLE,
+	CTL_ACTIVE,
+	CTL_INERT,
 	CTL_HIDDEN,
+	CTL_MONITOR,
 };
 
 #define _ctl(name_, type_, reg_, mask_, shift_, hook_)\
@@ -130,102 +134,186 @@ static unsigned int __hp_volume(struct arizona_control *ctl)
 }
 
 static unsigned int hp_callback(struct arizona_control *ctl);
+static unsigned int hp_power(struct arizona_control *ctl);
 
 /* Sound controls */
 
 enum sound_control {
 	HPLVOL = 0, HPRVOL, DCKLVOL, DCKRVOL, EPVOL, SPKVOL,
-	EQ_HP, EQ1ENA, EQ2ENA, EQ1MIX1, EQ2MIX1,
-	HPOUT1L1, HPOUT1R1,
+	EQ_HP, DRC_HP, 
+	EQ1ENA, EQ2ENA, DRC1LENA, DRC1RENA,
+	POUT1L,
+	EQ1MIX1, EQ2MIX1, DRC1L1, DRC1R1, HPOUT1L1, HPOUT1R1,
 	HPEQB1G, HPEQB2G, HPEQB3G, HPEQB4G, HPEQB5G,
+	DRCAC, DRCK2,
 };
 
 static struct arizona_control ctls[] = {
 	/* Volumes */
-	_ctl("headphone_left", CTL_VISIBLE, ARIZONA_DAC_DIGITAL_VOLUME_1L,
+	_ctl("headphone_left", CTL_ACTIVE, ARIZONA_DAC_DIGITAL_VOLUME_1L,
 		ARIZONA_OUT1L_VOL_MASK, ARIZONA_OUT1L_VOL_SHIFT, __hp_volume),
-	_ctl("headphone_right", CTL_VISIBLE, ARIZONA_DAC_DIGITAL_VOLUME_1R, 
+	_ctl("headphone_right", CTL_ACTIVE, ARIZONA_DAC_DIGITAL_VOLUME_1R, 
 		ARIZONA_OUT1R_VOL_MASK, ARIZONA_OUT1R_VOL_SHIFT, __hp_volume),
 
-	_ctl("dock_left", CTL_VISIBLE, ARIZONA_DAC_DIGITAL_VOLUME_2L, 
+	_ctl("dock_left", CTL_ACTIVE, ARIZONA_DAC_DIGITAL_VOLUME_2L, 
 		ARIZONA_OUT2L_VOL_MASK, ARIZONA_OUT2L_VOL_SHIFT, __simple),
-	_ctl("dock_right", CTL_VISIBLE, ARIZONA_DAC_DIGITAL_VOLUME_2R,
+	_ctl("dock_right", CTL_ACTIVE, ARIZONA_DAC_DIGITAL_VOLUME_2R,
 		ARIZONA_OUT2R_VOL_MASK, ARIZONA_OUT2R_VOL_SHIFT, __simple),
 
-	_ctl("earpiece_volume", CTL_VISIBLE, ARIZONA_DAC_DIGITAL_VOLUME_3L,
+	_ctl("earpiece_volume", CTL_ACTIVE, ARIZONA_DAC_DIGITAL_VOLUME_3L,
 		ARIZONA_OUT3L_VOL_MASK, ARIZONA_OUT3L_VOL_SHIFT, __delta),
 
-	_ctl("speaker_volume", CTL_VISIBLE, ARIZONA_DAC_DIGITAL_VOLUME_4L,
+	_ctl("speaker_volume", CTL_ACTIVE, ARIZONA_DAC_DIGITAL_VOLUME_4L,
 		ARIZONA_OUT4L_VOL_MASK, ARIZONA_OUT4L_VOL_SHIFT, __delta),
 
 	/* Master switches */
 
 	_ctl("switch_eq_headphone", CTL_VIRTUAL, 0, 0, 0, hp_callback),
+	_ctl("switch_drc_headphone", CTL_VIRTUAL, 0, 0, 0, hp_callback),
 
 	/* Internal switches */
 
-	_ctl("eq1_switch", CTL_HIDDEN, ARIZONA_EQ1_1, ARIZONA_EQ1_ENA_MASK,
+	_ctl("eq1_switch", CTL_INERT, ARIZONA_EQ1_1, ARIZONA_EQ1_ENA_MASK,
 		ARIZONA_EQ1_ENA_SHIFT, __simple),
-	_ctl("eq2_switch", CTL_HIDDEN, ARIZONA_EQ2_1, ARIZONA_EQ2_ENA_MASK,
+	_ctl("eq2_switch", CTL_INERT, ARIZONA_EQ2_1, ARIZONA_EQ2_ENA_MASK,
 		ARIZONA_EQ2_ENA_SHIFT, __simple),
+
+	_ctl("drc1l_switch", CTL_INERT, ARIZONA_DRC1_CTRL1, ARIZONA_DRC1L_ENA_MASK,
+		ARIZONA_DRC1L_ENA_SHIFT, __simple),
+	_ctl("drc1r_switch", CTL_INERT, ARIZONA_DRC1_CTRL1, ARIZONA_DRC1R_ENA_MASK,
+		ARIZONA_DRC1R_ENA_SHIFT, __simple),
+
+	/* Path domain */
+	_ctl("out1l_output_switch", CTL_MONITOR, ARIZONA_OUTPUT_ENABLES_1,
+		ARIZONA_OUT1L_ENA_MASK, ARIZONA_OUT1L_ENA_SHIFT, hp_power),
 
 	/* Mixers */
 
 	_ctl("eq1_input1_source",
-		CTL_HIDDEN, ARIZONA_EQ1MIX_INPUT_1_SOURCE, 0xff, 0, __simple),
+		CTL_INERT, ARIZONA_EQ1MIX_INPUT_1_SOURCE, 0xff, 0, __simple),
 	_ctl("eq2_input1_source",
-		CTL_HIDDEN, ARIZONA_EQ2MIX_INPUT_1_SOURCE, 0xff, 0, __simple),
+		CTL_INERT, ARIZONA_EQ2MIX_INPUT_1_SOURCE, 0xff, 0, __simple),
+	_ctl("drc1l_input1_source",
+		CTL_INERT, ARIZONA_DRC1LMIX_INPUT_1_SOURCE, 0xff, 0, __simple),
+	_ctl("drc1r_input1_source",
+		CTL_INERT, ARIZONA_DRC1RMIX_INPUT_1_SOURCE, 0xff, 0, __simple),
 	_ctl("hpout1l_input1_source",
-		CTL_HIDDEN, ARIZONA_OUT1LMIX_INPUT_1_SOURCE, 0xff, 0, __simple),
+		CTL_INERT, ARIZONA_OUT1LMIX_INPUT_1_SOURCE, 0xff, 0, __simple),
 	_ctl("hpout1r_input1_source",
 		CTL_HIDDEN, ARIZONA_OUT1RMIX_INPUT_1_SOURCE, 0xff, 0, __simple),
 
 	/* EQ Configurables */
 
-	_ctl("eq_hp_gain_1", CTL_VISIBLE, ARIZONA_EQ1_1, ARIZONA_EQ1_B1_GAIN_MASK,
+	_ctl("eq_hp_gain_1", CTL_ACTIVE, ARIZONA_EQ1_1, ARIZONA_EQ1_B1_GAIN_MASK,
 		ARIZONA_EQ1_B1_GAIN_SHIFT, __eq_gain),
-	_ctl("eq_hp_gain_2", CTL_VISIBLE, ARIZONA_EQ1_1, ARIZONA_EQ1_B2_GAIN_MASK,
+	_ctl("eq_hp_gain_2", CTL_ACTIVE, ARIZONA_EQ1_1, ARIZONA_EQ1_B2_GAIN_MASK,
 		ARIZONA_EQ1_B2_GAIN_SHIFT, __eq_gain),
-	_ctl("eq_hp_gain_3", CTL_VISIBLE, ARIZONA_EQ1_1, ARIZONA_EQ1_B3_GAIN_MASK,
+	_ctl("eq_hp_gain_3", CTL_ACTIVE, ARIZONA_EQ1_1, ARIZONA_EQ1_B3_GAIN_MASK,
 		ARIZONA_EQ1_B3_GAIN_SHIFT, __eq_gain),
-	_ctl("eq_hp_gain_4", CTL_VISIBLE, ARIZONA_EQ1_2, ARIZONA_EQ1_B4_GAIN_MASK,
+	_ctl("eq_hp_gain_4", CTL_ACTIVE, ARIZONA_EQ1_2, ARIZONA_EQ1_B4_GAIN_MASK,
 		ARIZONA_EQ1_B4_GAIN_SHIFT, __eq_gain),
-	_ctl("eq_hp_gain_5", CTL_VISIBLE, ARIZONA_EQ1_2, ARIZONA_EQ1_B5_GAIN_MASK,
+	_ctl("eq_hp_gain_5", CTL_ACTIVE, ARIZONA_EQ1_2, ARIZONA_EQ1_B5_GAIN_MASK,
 		ARIZONA_EQ1_B5_GAIN_SHIFT, __eq_gain),
 
+	/* DRC Configurables */
+
+	_ctl("drc_hp_anticlip", CTL_ACTIVE, ARIZONA_DRC1_CTRL1,
+		ARIZONA_DRC1_ANTICLIP_MASK, ARIZONA_DRC1_ANTICLIP_SHIFT, __simple),
+	_ctl("drc_hp_knee2_operation", CTL_ACTIVE, ARIZONA_DRC1_CTRL1,
+		ARIZONA_DRC1_KNEE2_OP_ENA_MASK, ARIZONA_DRC1_KNEE2_OP_ENA_SHIFT, __simple),
+	_ctl("drc_hp_quick_release", CTL_ACTIVE, ARIZONA_DRC1_CTRL1,
+		ARIZONA_DRC1_QR_MASK, ARIZONA_DRC1_QR_SHIFT, __simple),
+
+	_ctl("drc_hp_attack_rate", CTL_ACTIVE, ARIZONA_DRC1_CTRL2,
+		ARIZONA_DRC1_ATK_MASK, ARIZONA_DRC1_ATK_SHIFT, __simple),
+	_ctl("drc_hp_decay_rate", CTL_ACTIVE, ARIZONA_DRC1_CTRL2,
+		ARIZONA_DRC1_ATK_MASK, ARIZONA_DRC1_ATK_SHIFT, __simple),
+	_ctl("drc_hp_min_gain", CTL_ACTIVE, ARIZONA_DRC1_CTRL2,
+		ARIZONA_DRC1_MINGAIN_MASK, ARIZONA_DRC1_MINGAIN_SHIFT, __simple),
+	_ctl("drc_hp_max_gain", CTL_ACTIVE, ARIZONA_DRC1_CTRL2,
+		ARIZONA_DRC1_MAXGAIN_MASK, ARIZONA_DRC1_MAXGAIN_SHIFT, __simple),
+
+	_ctl("drc_hp_quick_release_threshold", CTL_ACTIVE, ARIZONA_DRC1_CTRL3,
+		ARIZONA_DRC1_QR_THR_MASK, ARIZONA_DRC1_QR_THR_SHIFT, __simple),
+	_ctl("drc_hp_quick_release_decay", CTL_ACTIVE, ARIZONA_DRC1_CTRL3,
+		ARIZONA_DRC1_QR_DCY_MASK, ARIZONA_DRC1_QR_DCY_SHIFT, __simple),
+	_ctl("drc_hp_high_compression", CTL_ACTIVE, ARIZONA_DRC1_CTRL3,
+		ARIZONA_DRC1_HI_COMP_MASK, ARIZONA_DRC1_HI_COMP_SHIFT, __simple),
+	_ctl("drc_hp_low_compression", CTL_ACTIVE, ARIZONA_DRC1_CTRL3,
+		ARIZONA_DRC1_LO_COMP_MASK, ARIZONA_DRC1_LO_COMP_SHIFT, __simple),
+
+	_ctl("drc_hp_knee_ip", CTL_ACTIVE, ARIZONA_DRC1_CTRL4,
+		ARIZONA_DRC1_KNEE_IP_MASK, ARIZONA_DRC1_KNEE_IP_SHIFT, __simple),
+	_ctl("drc_hp_knee_op", CTL_ACTIVE, ARIZONA_DRC1_CTRL4,
+		ARIZONA_DRC1_KNEE_OP_MASK, ARIZONA_DRC1_KNEE_OP_SHIFT, __simple),
+
+	_ctl("drc_hp_knee2_ip", CTL_ACTIVE, ARIZONA_DRC1_CTRL5,
+		ARIZONA_DRC1_KNEE2_IP_MASK, ARIZONA_DRC1_KNEE2_IP_SHIFT, __simple),
+	_ctl("drc_hp_knee2_op", CTL_ACTIVE, ARIZONA_DRC1_CTRL5,
+		ARIZONA_DRC1_KNEE2_OP_MASK, ARIZONA_DRC1_KNEE2_OP_SHIFT, __simple),
 };
+
+static unsigned int hp_power(struct arizona_control *ctl)
+{
+/*	FIXME: crashes the userspace audio subsystem
+
+	_ctl_set(&ctls[EQ1ENA], ctl->ctlval && ctls[EQ_HP].value);
+	_ctl_set(&ctls[EQ2ENA], ctl->ctlval && ctls[EQ_HP].value);
+	_ctl_set(&ctls[DRC1LENA], ctl->ctlval && ctls[DRC_HP].value);
+	_ctl_set(&ctls[DRC1RENA], ctl->ctlval && ctls[DRC_HP].value);
+*/
+	printk("%s EQ:%d DRC:%d\n",__func__, 
+		ctl->ctlval && ctls[EQ_HP].value,
+		ctl->ctlval && ctls[DRC_HP].value);
+
+	return ctl->ctlval;
+}
 
 static unsigned int hp_callback(struct arizona_control *ctl)
 {
 	static bool eq_bridge = false;
 	static bool eq_bridge_live = false;
+	static bool drc_bridge = false;
+	static bool drc_bridge_live = false;
 
 	if (ctl->type == CTL_VIRTUAL) {
-		if (ctl == &ctls[EQ_HP]) {
+		if (ctl == &ctls[EQ_HP])
 			eq_bridge = !!ctl->value;
-		}
+
+		if (ctl == &ctls[DRC_HP])
+			drc_bridge = !!ctl->value;
 	}
 
-	if (eq_bridge != eq_bridge_live) {
+	if (eq_bridge != eq_bridge_live || drc_bridge != drc_bridge_live) {
 		if (eq_bridge) {
-			_ctl_set(&ctls[HPOUT1L1], 0);
-			_ctl_set(&ctls[HPOUT1R1], 0);
 			_ctl_set(&ctls[EQ1MIX1], 32);
 			_ctl_set(&ctls[EQ2MIX1], 33);
-			_ctl_set(&ctls[HPOUT1L1], 80);
-			_ctl_set(&ctls[HPOUT1R1], 81);
-			_ctl_set(&ctls[EQ1ENA], 1);
-			_ctl_set(&ctls[EQ2ENA], 1);
+			if (drc_bridge) {
+				_ctl_set(&ctls[DRC1L1], 80);
+				_ctl_set(&ctls[DRC1R1], 81);
+				_ctl_set(&ctls[HPOUT1L1], 88);
+				_ctl_set(&ctls[HPOUT1R1], 89);
+			} else {
+				_ctl_set(&ctls[HPOUT1L1], 80);
+				_ctl_set(&ctls[HPOUT1R1], 81);
+			}
+		} else if (drc_bridge) {
+			_ctl_set(&ctls[DRC1L1], 32);
+			_ctl_set(&ctls[DRC1R1], 33);
+			_ctl_set(&ctls[HPOUT1L1], 88);
+			_ctl_set(&ctls[HPOUT1R1], 89);
 		} else {
-			_ctl_set(&ctls[EQ1ENA], 0);
-			_ctl_set(&ctls[EQ2ENA], 0);
-			_ctl_set(&ctls[EQ1MIX1], 0);
-			_ctl_set(&ctls[EQ2MIX1], 0);
 			_ctl_set(&ctls[HPOUT1L1], 32);
 			_ctl_set(&ctls[HPOUT1R1], 33);
 		}
+		
+		_ctl_set(&ctls[DRC1LENA], drc_bridge);
+		_ctl_set(&ctls[DRC1RENA], drc_bridge);
+		_ctl_set(&ctls[EQ1ENA], eq_bridge);
+		_ctl_set(&ctls[EQ2ENA], eq_bridge);
 
 		eq_bridge_live = eq_bridge;
+		drc_bridge_live = drc_bridge;
 	}
 
 	return ctl->value;
@@ -240,6 +328,17 @@ static bool is_delta(struct arizona_control *ctl)
 	return false;
 }
 
+static bool is_ignorable(struct arizona_control *ctl)
+{
+	switch (ctl->type) {
+		case CTL_INERT:
+		case CTL_MONITOR:
+			return true;
+		default:
+			return false;
+	}
+}
+
 void arizona_control_regmap_hook(struct regmap *pmap, unsigned int reg,
 		      		unsigned int *val)
 {
@@ -248,7 +347,7 @@ void arizona_control_regmap_hook(struct regmap *pmap, unsigned int reg,
 	if (codec == NULL || pmap != codec->control_data)
 		return;
 
-#if 0
+#ifdef SYSFS_DBG
 	printk("%s: pre: %x -> %u\n", __func__, reg, *val);
 #endif
 
@@ -268,13 +367,19 @@ void arizona_control_regmap_hook(struct regmap *pmap, unsigned int reg,
 					ctl->value = ctl->ctlval;
 			}
 
-			if (ctl->hook && ctl->type != CTL_HIDDEN) {
-				*val &= ~ctl->mask;
-				*val |= ctl->hook(ctl) << ctl->shift;
+			if (ctl->type == CTL_MONITOR) {
+				ctl->value = ctl->ctlval;
+				ctl->hook(ctl);
+				goto next;
 			}
 
-			return;
+			if (is_ignorable(ctl))
+				goto next;
+
+			*val &= ~ctl->mask;
+			*val |= ctl->hook(ctl) << ctl->shift;
 		}
+next:
 		++ctl;
 	}
 }
@@ -349,7 +454,7 @@ void arizona_control_init(struct snd_soc_codec *pcodec)
 
 	for(i = 0; i < ARRAY_SIZE(ctls); i++) {
 #ifndef SYSFS_DBG
-		if (ctls[i].type != CTL_HIDDEN)
+		if (ctls[i].type != CTL_HIDDEN && !is_ignorable(&ctls[i]))
 #endif
 			ret = sysfs_create_file(&sound_dev.this_device->kobj,
 						&ctls[i].attribute.attr);
