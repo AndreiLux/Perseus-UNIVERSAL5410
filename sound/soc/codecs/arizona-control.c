@@ -20,6 +20,8 @@
 #define SYSFS_DBG
 #endif
 
+#define NOT_INIT	123456
+
 static struct snd_soc_codec *codec = NULL;
 static int ignore_next = 0;
 
@@ -52,7 +54,7 @@ enum control_type {
 	.reg 	= reg_ ,						\
 	.mask 	= mask_ ,						\
 	.shift 	= shift_ ,						\
-	.value 	= -1 ,							\
+	.value 	= NOT_INIT ,						\
 	.ctlval = 0 ,							\
 	.hook 	= hook_							\
 }
@@ -78,11 +80,9 @@ struct arizona_control {
 
 static inline void _ctl_set(struct arizona_control *ctl, int val)
 {
-	unsigned int regval = _read(ctl->reg);
-	
 	ctl->value = val;
-	regval = (regval & ~ctl->mask) | (ctl->value << ctl->shift);
-	_write(ctl->reg, regval);
+	_write(ctl->reg, 
+		(_read(ctl->reg) & ~ctl->mask) | (ctl->hook(ctl) << ctl->shift));
 }
 
 static unsigned int _pair(struct arizona_control *ctl, int offset,
@@ -200,7 +200,7 @@ static struct arizona_control ctls[] = {
 	_ctl("hpout1l_input1_source",
 		CTL_INERT, ARIZONA_OUT1LMIX_INPUT_1_SOURCE, 0xff, 0, __simple),
 	_ctl("hpout1r_input1_source",
-		CTL_HIDDEN, ARIZONA_OUT1RMIX_INPUT_1_SOURCE, 0xff, 0, __simple),
+		CTL_INERT, ARIZONA_OUT1RMIX_INPUT_1_SOURCE, 0xff, 0, __simple),
 
 	/* EQ Configurables */
 
@@ -255,16 +255,10 @@ static struct arizona_control ctls[] = {
 
 static unsigned int hp_power(struct arizona_control *ctl)
 {
-/*	FIXME: crashes the userspace audio subsystem
-
 	_ctl_set(&ctls[EQ1ENA], ctl->ctlval && ctls[EQ_HP].value);
 	_ctl_set(&ctls[EQ2ENA], ctl->ctlval && ctls[EQ_HP].value);
 	_ctl_set(&ctls[DRC1LENA], ctl->ctlval && ctls[DRC_HP].value);
 	_ctl_set(&ctls[DRC1RENA], ctl->ctlval && ctls[DRC_HP].value);
-*/
-	printk("%s EQ:%d DRC:%d\n",__func__, 
-		ctl->ctlval && ctls[EQ_HP].value,
-		ctl->ctlval && ctls[DRC_HP].value);
 
 	return ctl->ctlval;
 }
@@ -343,6 +337,7 @@ void arizona_control_regmap_hook(struct regmap *pmap, unsigned int reg,
 		      		unsigned int *val)
 {
 	struct arizona_control *ctl = &ctls[0];
+	unsigned int virgin = *val;
 
 	if (codec == NULL || pmap != codec->control_data)
 		return;
@@ -358,9 +353,9 @@ void arizona_control_regmap_hook(struct regmap *pmap, unsigned int reg,
 
 	while (ctl < (&ctls[0] + ARRAY_SIZE(ctls))) {
 		if (ctl->reg == reg && ctl->type != CTL_VIRTUAL) {
-			ctl->ctlval = (*val & ctl->mask) >> ctl->shift;
+			ctl->ctlval = (virgin & ctl->mask) >> ctl->shift;
 
-			if (ctl->value == -1) {
+			if (ctl->value == NOT_INIT) {
 				if (is_delta(ctl))
 					ctl->value = 0;
 				else
@@ -391,7 +386,7 @@ static ssize_t show_arizona_property(struct device *dev,
 {
 	struct arizona_control *ctl = (struct arizona_control*)(attr);
 
-	if (ctl->value == -1) {
+	if (ctl->value == NOT_INIT) {
 		ctl->ctlval = (_read(ctl->reg) & ctl->mask) >> ctl->shift;
 		if (is_delta(ctl))
 			ctl->value = 0;
