@@ -901,14 +901,24 @@ static int update_brightness(struct lcd_info *lcd, u8 force)
 /* So other type's lcd driver don't have this function */
 static void s6e8fa0_ldi_touchkey_on(void)
 {
-	if (g_lcd != NULL)
-		s6e8fa0_write(g_lcd, SEQ_TOUCHKEY_ON, ARRAY_SIZE(SEQ_TOUCHKEY_ON));
+	struct lcd_info *lcd = g_lcd;
+
+	if (lcd->ldi_enable) {
+		s6e8fa0_write(lcd, SEQ_TEST_KEY_ON_FC, ARRAY_SIZE(SEQ_TEST_KEY_ON_FC));
+		s6e8fa0_write(lcd, SEQ_TOUCHKEY_ON, ARRAY_SIZE(SEQ_TOUCHKEY_ON));
+		s6e8fa0_write(lcd, SEQ_TEST_KEY_OFF_FC, ARRAY_SIZE(SEQ_TEST_KEY_OFF_FC));
+	}
 }
 
 static void s6e8fa0_ldi_touchkey_off(void)
 {
-	if (g_lcd != NULL)
-		s6e8fa0_write(g_lcd, SEQ_TOUCHKEY_OFF, ARRAY_SIZE(SEQ_TOUCHKEY_OFF));
+	struct lcd_info *lcd = g_lcd;
+
+	if (lcd->ldi_enable) {
+		s6e8fa0_write(lcd, SEQ_TEST_KEY_ON_FC, ARRAY_SIZE(SEQ_TEST_KEY_ON_FC));
+		s6e8fa0_write(lcd, SEQ_TOUCHKEY_OFF, ARRAY_SIZE(SEQ_TOUCHKEY_OFF));
+		s6e8fa0_write(lcd, SEQ_TEST_KEY_OFF_FC, ARRAY_SIZE(SEQ_TEST_KEY_OFF_FC));
+	}
 }
 
 static int s6e8fa0_ldi_init(struct lcd_info *lcd)
@@ -916,17 +926,20 @@ static int s6e8fa0_ldi_init(struct lcd_info *lcd)
 	int ret = 0;
 
 	s6e8fa0_write(lcd, SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0));
-	s6e8fa0_write(lcd, SEQ_TEST_KEY_ON_FC, ARRAY_SIZE(SEQ_TEST_KEY_ON_FC));
 
+	s6e8fa0_write(lcd, SEQ_TEST_KEY_ON_FC, ARRAY_SIZE(SEQ_TEST_KEY_ON_FC));
 	s6e8fa0_write(lcd, SEQ_TOUCHKEY_OFF, ARRAY_SIZE(SEQ_TOUCHKEY_OFF));
+	s6e8fa0_write(lcd, SEQ_TEST_KEY_OFF_FC, ARRAY_SIZE(SEQ_TEST_KEY_OFF_FC));
 
 	s6e8fa0_write(lcd, SEQ_SLEEP_OUT, ARRAY_SIZE(SEQ_SLEEP_OUT));
 
 	msleep(22);
 
 	s6e8fa0_write(lcd, SEQ_LTPS_F2, ARRAY_SIZE(SEQ_LTPS_F2));
-	s6e8fa0_write(lcd, SEQ_LTPS_GLOBAL, ARRAY_SIZE(SEQ_LTPS_GLOBAL));
-	s6e8fa0_write(lcd, SEQ_LTPS_CB, ARRAY_SIZE(SEQ_LTPS_CB));
+	s6e8fa0_write(lcd, SEQ_LTPS_GLOBAL_3RD, ARRAY_SIZE(SEQ_LTPS_GLOBAL_3RD));
+	s6e8fa0_write(lcd, SEQ_LTPS_CB_3RD, ARRAY_SIZE(SEQ_LTPS_CB_3RD));
+	s6e8fa0_write(lcd, SEQ_LTPS_GLOBAL_33RD, ARRAY_SIZE(SEQ_LTPS_GLOBAL_33RD));
+	s6e8fa0_write(lcd, SEQ_LTPS_CB_33RD, ARRAY_SIZE(SEQ_LTPS_CB_33RD));
 	s6e8fa0_write(lcd, SEQ_GAMMA_UPDATE, ARRAY_SIZE(SEQ_GAMMA_UPDATE));
 
 	msleep(100);

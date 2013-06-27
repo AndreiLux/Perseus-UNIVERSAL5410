@@ -1802,6 +1802,7 @@ static int fimc_is_probe(struct platform_device *pdev)
 
 	/* init spin_lock for clock gating */
 	spin_lock_init(&core->slock_clock_gate);
+	mutex_init(&core->clock.lock);
 
 	return 0;
 

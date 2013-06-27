@@ -125,7 +125,7 @@ void (*pm_power_off_prepare)(void);
 
 /* Samsung Rooting Restriction Feature */
 #if defined CONFIG_SEC_RESTRICT_SETUID
-int sec_check_execpath(struct task_struct *given, char *denypath);
+int sec_check_execpath(struct mm_struct *mm, char *denypath);
 #if defined CONFIG_SEC_RESTRICT_ROOTING_LOG
 #define PRINT_LOG(...)	printk(KERN_ERR __VA_ARGS__)
 #else
@@ -134,21 +134,41 @@ int sec_check_execpath(struct task_struct *given, char *denypath);
 
 static int sec_restrict_uid(void)
 {
-	if(current->parent)
-	{
-		if(current->parent->cred->euid == 0 || current->parent->pid == 1)
-			return 0;
-		else if(sec_check_execpath(current, "/system/bin/pppd")) {
-			PRINT_LOG("VPN allowed to use root permission");
-			return 0;
-		}
-		else
-			PRINT_LOG("Restricted changing UID. PID = %d(%s) PPID = %d(%s)\n",
-				current->pid, current->comm,
-				current->parent->pid, current->parent->comm);
+	int ret = 0;
+	struct task_struct *parent_tsk;
+	const struct cred *parent_cred;
+
+	read_lock(&tasklist_lock);
+	parent_tsk = current->parent;
+	if (!parent_tsk) {
+		read_unlock(&tasklist_lock);
+		return 0;
 	}
 
-	return 1;
+	get_task_struct(parent_tsk);
+	/* holding on to the task struct is enough so just release
+	 * the tasklist lock here */
+	read_unlock(&tasklist_lock);
+
+	parent_cred = get_task_cred(parent_tsk);
+	if (!parent_cred)
+		goto out;
+	if (parent_cred->euid == 0 || parent_tsk->pid == 1) {
+		ret = 0;
+	} else if (sec_check_execpath(current->mm, "/system/bin/pppd")) {
+		PRINT_LOG("VPN allowed to use root permission");
+		ret = 0;
+	} else {
+		PRINT_LOG("Restricted changing UID. PID = %d(%s) PPID = %d(%s)\n",
+			current->pid, current->comm,
+			parent_tsk->pid, parent_tsk->comm);
+		ret = 1;
+	}
+	put_cred(parent_cred);
+out:
+	put_task_struct(parent_tsk);
+
+	return ret;
 }
 #endif // End of CONFIG_SEC_RESTRICT_SETUID
 

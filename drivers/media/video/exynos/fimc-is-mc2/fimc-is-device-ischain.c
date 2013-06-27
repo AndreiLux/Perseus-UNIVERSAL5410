@@ -3411,6 +3411,7 @@ static int fimc_is_itf_grp_shot(struct fimc_is_device_ischain *device,
 #endif
 
 #ifdef ENABLE_DVFS
+	mutex_lock(&core->clock.lock);
 #ifdef CONFIG_MACH_V1
 	if (device->sensor->framerate == 120) {
 		core->clock.dvfs_skipcnt = DVFS_SKIP_FRAME_NUM;
@@ -3496,6 +3497,7 @@ static int fimc_is_itf_grp_shot(struct fimc_is_device_ischain *device,
 		}
 	}
 #endif
+	mutex_unlock(&core->clock.lock);
 #endif
 
 	ret = fimc_is_hw_shot_nblk(device->interface,

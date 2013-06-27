@@ -1152,7 +1152,7 @@ static int __init exynos_cpufreq_init(void)
 	}
 
 	pm_qos_add_request(&boot_cpu_qos, PM_QOS_CPU_FREQ_MIN, 0);
-	pm_qos_update_request_timeout(&boot_cpu_qos, 1200000, 40000 * 1000);
+	pm_qos_update_request_timeout(&boot_cpu_qos, 800000, 40000 * 1000);
 
 	exynos_cpufreq_init_done = true;
 

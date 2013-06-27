@@ -423,6 +423,7 @@ struct fimc_is_back_dev {
 };
 
 struct fimc_is_clock {
+	struct mutex				lock;
 	unsigned long				msk_state;
 	u32					msk_cnt[GROUP_ID_MAX];
 	bool					state_3a0;

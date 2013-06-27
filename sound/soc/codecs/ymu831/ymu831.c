@@ -64,8 +64,6 @@
 
 #define MC_ASOC_DRIVER_VERSION	"1.0.6"
 
-#define MC_ASOC_IMPCLASS_THRESHOLD	3
-
 #define MC_ASOC_RATE	(SNDRV_PCM_RATE_8000_192000)
 #define MC_ASOC_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE | \
 			 SNDRV_PCM_FMTBIT_S20_3LE | \
@@ -3676,7 +3674,7 @@ static void set_BIAS(
 		MCDRV_ASRC_MIC4_ON};
 	UINT8	bCh;
 	struct MCDRV_REG_INFO	reg_info;
-
+	
 #if (BUS_SELECT == BUS_SEL_SPI)
 	struct mc_asoc_platform_data	*platform_data	= NULL;
 #endif
@@ -3715,6 +3713,7 @@ static void set_BIAS(
 		}
 	}
 
+
 		if (mc_asoc_jack_status == SND_JACK_HEADPHONE) {
 			err	= _McDrv_Ctrl(MCDRV_GET_HSDET,
 						(void *)&stHSDetInfo, NULL, 0);
@@ -3737,7 +3736,8 @@ static void set_BIAS(
 		reg_info.bData &= 0x3F;
 		reg_info.bData |= 0x80;
 		_McDrv_Ctrl(MCDRV_WRITE_REG, (void *)&reg_info, NULL, 0);
-	} else {
+	}
+	else {
 		reg_info.bRegType = MCDRV_REGTYPE_ANA;
 		reg_info.bAddress = 13;
 		_McDrv_Ctrl(MCDRV_READ_REG, (void *)&reg_info, NULL, 0);
@@ -7474,8 +7474,6 @@ static ssize_t headset_print_name(struct switch_dev *sdev, char *buf)
 		return sprintf(buf, "No Device\n");
 	case 1:
 		return sprintf(buf, "Headset\n");
-	case 2:
-		return sprintf(buf, "Headphone\n");
 	}
 	return -EINVAL;
 }
@@ -7531,12 +7529,10 @@ static void work_mkdeten(struct work_struct *work)
 		reg_info.bData	= 1;
 	if ((reg_info.bData & 0x47) == 0) {
 		dbg_info("MICDET\n");
-		snd_soc_jack_report(&hs_jack, 0, SND_JACK_HEADSET);
 		mc_asoc_jack_status	= SND_JACK_HEADSET;
 		snd_soc_jack_report(&hs_jack,
 			mc_asoc_jack_status, SND_JACK_HEADSET);
 #ifdef SW_DRV
-		switch_set_state(h2w_sdev, 0);
 		switch_set_state(h2w_sdev, 1);
 #endif
 		cancel_delayed_work(&delayed_work_mkdeten);
@@ -7882,8 +7878,7 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 		dbg_info("PLUGDETDB\n");
 		if ((dFlags & MCDRV_HSDET_EVT_MICDET_FLAG)
 		&& (bEnMicDet & MCDRV_MICDET_ENABLE)) {
-			if ((mc_asoc_hpimpclass >= MC_ASOC_IMPCLASS_THRESHOLD)
-			&& (mc_asoc_hpimpclass != 5)) {
+			if (mc_asoc_hpimpclass >= 4) {
 				mc_asoc_jack_status	= SND_JACK_HEADPHONE;
 				snd_soc_jack_report(&hs_jack,
 					mc_asoc_jack_status, SND_JACK_HEADSET);
@@ -7897,16 +7892,15 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 				bEnKeyOff	= MCDRV_KEYEN_D_D_D;
 				bEnKeyOn	= MCDRV_KEYEN_D_D_D;
 			} else {
-				dbg_info("MICDET\n");
-				mc_asoc_jack_status	= SND_JACK_HEADSET;
-				snd_soc_jack_report(&hs_jack,
-					mc_asoc_jack_status, SND_JACK_HEADSET);
+			dbg_info("MICDET\n");
+			mc_asoc_jack_status	= SND_JACK_HEADSET;
+			snd_soc_jack_report(&hs_jack,
+				mc_asoc_jack_status, SND_JACK_HEADSET);
 #ifdef SW_DRV
-				switch_set_state(h2w_sdev, 0);
-				switch_set_state(h2w_sdev, 1);
+			switch_set_state(h2w_sdev, 1);
 #endif
-				dbg_info("queue_delayed_work_mb4\n");
-				queue_delayed_work(workq_mb4, &delayed_work_mb4,
+			dbg_info("queue_delayed_work_mb4\n");
+			queue_delayed_work(workq_mb4, &delayed_work_mb4,
 						msecs_to_jiffies(MSDETMB4OFF));
 			}
 		} else {
@@ -7945,8 +7939,7 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 	if ((mc_asoc_jack_status == SND_JACK_HEADPHONE)
 	&& (dFlags & MCDRV_HSDET_EVT_MICDET_FLAG)
 	&& (bEnMicDet & MCDRV_MICDET_ENABLE)) {
-		if ((mc_asoc_hpimpclass >= MC_ASOC_IMPCLASS_THRESHOLD)
-		&& (mc_asoc_hpimpclass != 5)) {
+		if (mc_asoc_hpimpclass >= 4) {
 			cancel_delayed_work(&delayed_work_mkdeten);
 
 			stHSDetInfo.bEnMicDet	= MCDRV_MICDET_DISABLE;
@@ -7966,27 +7959,24 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 				dbg_info("%d: Error in MCDRV_SET_HSDET\n", err);
 		}
 		else {
-			dbg_info("MICDET\n");
-			snd_soc_jack_report(&hs_jack, 0, SND_JACK_HEADSET);
-			mc_asoc_jack_status	= SND_JACK_HEADSET;
-			snd_soc_jack_report(&hs_jack,
-				mc_asoc_jack_status, SND_JACK_HEADSET);
-	#ifdef SW_DRV
-			switch_set_state(h2w_sdev, 0);
-			switch_set_state(h2w_sdev, 1);
-	#endif
-			cancel_delayed_work(&delayed_work_mkdeten);
-			dbg_info("cancel_delayed_work_mkdeten\n");
-			dbg_info("queue_delayed_work_mb4\n");
-			queue_delayed_work(workq_mb4, &delayed_work_mb4,
-							msecs_to_jiffies(MSDETMB4OFF));
-		}
+		dbg_info("MICDET\n");
+		mc_asoc_jack_status	= SND_JACK_HEADSET;
+		snd_soc_jack_report(&hs_jack,
+			mc_asoc_jack_status, SND_JACK_HEADSET);
+#ifdef SW_DRV
+		switch_set_state(h2w_sdev, 1);
+#endif
+		cancel_delayed_work(&delayed_work_mkdeten);
+		dbg_info("cancel_delayed_work_mkdeten\n");
+		dbg_info("queue_delayed_work_mb4\n");
+		queue_delayed_work(workq_mb4, &delayed_work_mb4,
+						msecs_to_jiffies(MSDETMB4OFF));
+	}
 	}
 
 	if (hpimpclass != mc_asoc_hpimpclass) {
 		if ((mc_asoc_hpimpclass == (UINT8)-1)
-		|| ((mc_asoc_hpimpclass >= MC_ASOC_IMPCLASS_THRESHOLD)
-		   && (mc_asoc_hpimpclass != 5))) {
+		|| (mc_asoc_hpimpclass >= 4)) {
 			connect_path(mc_asoc_codec);
 		} else {
 			struct mc_asoc_mixer_path_ctl_info	mixer_ctl_info;
@@ -7999,6 +7989,7 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 			if ((preset_idx < 0) || (preset_idx > PRESET_PATH_N))
 				goto exit;
 			set_volume(mc_asoc_codec, &mixer_ctl_info, preset_idx);
+		
 		}
 	}
 
@@ -8545,7 +8536,7 @@ static int mc_asoc_suspend(
 		return -EINVAL;
 
 	get_mixer_path_ctl_info(codec, &mixer_ctl_info);
-#ifdef HSDET_WHILE_SUSPEND
+#ifdef HSDET_WHILE_SUSPEND	
 	if ((mixer_ctl_info.audio_mode_play == 0)
 	&& (mixer_ctl_info.audio_mode_cap == 0)
 	&& (mixer_ctl_info.mainmic_play == 0)
@@ -8570,7 +8561,6 @@ static int mc_asoc_suspend(
 
 	set_bias_level(codec, SND_SOC_BIAS_OFF);
 #endif
-
 	mutex_lock(&mc_asoc->mutex);
 
 	err	= _McDrv_Ctrl(MCDRV_GET_HSDET,
@@ -8682,9 +8672,10 @@ static int mc_asoc_resume(
 	int	incall_mic;
 	struct mc_asoc_dsp_param	*dsp_prm	= NULL;
 #endif
-	struct mc_asoc_mixer_path_ctl_info	mixer_ctl_info;
 
+	struct mc_asoc_mixer_path_ctl_info	mixer_ctl_info;
 	TRACE_FUNC();
+
 	if (mc_asoc_suspended != 1)
 		return 0;
 
@@ -9102,7 +9093,7 @@ static int spi_rw(u8 *tx, u8 *rx, int len)
 		if(i >= 10) {
 			dev_err(&mc_asoc_spi->dev, "spi_sync failure\n");
 			return -EIO;
-		}
+	}
 	}
 
 #if 0

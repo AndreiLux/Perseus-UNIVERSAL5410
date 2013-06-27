@@ -637,3 +637,9 @@ CONFIG_IP_NF_SECURITY=y
 
 # Add audit log buffer
 CONFIG_SEC_AVC_LOG=y
+
+# Add rooting prevention
+# CONFIG_SEC_RESTRICT_ROOTING is not set
+# CONFIG_SEC_RESTRICT_SETUID is not set
+# CONFIG_SEC_RESTRICT_FORK is not set
+# CONFIG_SEC_RESTRICT_ROOTING_LOG is not set

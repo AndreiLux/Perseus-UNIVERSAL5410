@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Customer HW 4 dependant file
  *
  * Copyright (C) 1999-2012, Broadcom Corporation
@@ -108,32 +108,15 @@
 #endif /* CONFIG_BCM4334 || CONFIG_BCM4335 */
 
 #if (CONFIG_WLAN_REGION_CODE == 201)     /* SKT */
-
-#ifdef CONFIG_MACH_UNIVERSAL5410
-// Make CPU core clock 300MHz & assign dpc thread workqueue to CPU1
-#define FIX_CPU_MIN_CLOCK
-#endif
-
 #endif /* CONFIG_WLAN_REGION_CODE == 201 */
 
 #if (CONFIG_WLAN_REGION_CODE == 202)     /* KTT */
 #define VLAN_MODE_OFF
 #define CUSTOM_KEEP_ALIVE_SETTING   30000 /* JBP type KOR KTT only. do not correct here */
 #define FULL_ROAMING_SCAN_PERIOD_60_SEC
-
-#ifdef CONFIG_MACH_UNIVERSAL5410
-// Make CPU core clock 300MHz & assign dpc thread workqueue to CPU1
-#define FIX_CPU_MIN_CLOCK
-#endif
-
 #endif /* CONFIG_WLAN_REGION_CODE == 202 */
 
 #if (CONFIG_WLAN_REGION_CODE == 203)     /* LGT */
-#ifdef CONFIG_MACH_UNIVERSAL5410
-// Make CPU core clock 300MHz & assign dpc thread workqueue to CPU1
-#define FIX_CPU_MIN_CLOCK
-#define FIX_BUS_MIN_CLOCK
-#endif
 #endif /* CONFIG_WLAN_REGION_CODE == 203 */
 #endif /* CONFIG_WLAN_REGION_CODE >= 200 && CONFIG_WLAN_REGION_CODE < 300 */
 

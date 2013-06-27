@@ -75,6 +75,11 @@ static const unsigned char SEQ_TEST_KEY_ON_FC[] = {
 	0x5A, 0x5A,
 };
 
+static const unsigned char SEQ_TEST_KEY_OFF_FC[] = {
+	0xFC,
+	0xA5, 0xA5,
+};
+
 static const unsigned char SEQ_SLEEP_OUT[] = {
 	0x11,
 	0x00, 0x00
@@ -100,12 +105,22 @@ static const unsigned char SEQ_LTPS_F2[] = {
 	0x00, 0x04, 0x0C
 };
 
-static const unsigned char SEQ_LTPS_GLOBAL[] = {
+static const unsigned char SEQ_LTPS_GLOBAL_3RD[] = {
+	0xB0,
+	0x02, 0x00
+};
+
+static const unsigned char SEQ_LTPS_CB_3RD[] = {
+	0xCB,
+	0x10, 0x10
+};
+
+static const unsigned char SEQ_LTPS_GLOBAL_33RD[] = {
 	0xB0,
 	0x20, 0x00
 };
 
-static const unsigned char SEQ_LTPS_CB[] = {
+static const unsigned char SEQ_LTPS_CB_33RD[] = {
 	0xCB,
 	0x02, 0x00
 };

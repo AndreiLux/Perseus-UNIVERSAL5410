@@ -74,21 +74,20 @@ asmlinkage int sys_vfork(struct pt_regs *regs)
 /*  sec_check_execpath
     return value : give task's exec path is matched or not
 */
-int sec_check_execpath(struct task_struct *given, char *denypath)
+int sec_check_execpath(struct mm_struct *mm, char *denypath)
 {
 	struct file *exe_file;
 	char *path, *pathbuf = NULL;
 	unsigned int path_length = 0, denypath_length = 0;
 	int ret = 0;
 
-
-	if(given->mm == NULL)
-		goto out;
-
-	if(!(exe_file = get_mm_exe_file(given->mm)))
+	if(mm == NULL)
+		return 0;
+	
+	if(!(exe_file = get_mm_exe_file(mm)))
 	{
 		PRINT_LOG("Cannot get exe from task->mm.\n");
-		goto out;
+		goto out_nofile;
 	}
 
 	if(!(pathbuf = kmalloc(PATH_MAX, GFP_TEMPORARY)))
@@ -112,6 +111,8 @@ int sec_check_execpath(struct task_struct *given, char *denypath)
 		ret = 1;
 	}
 out :
+	fput(exe_file);
+out_nofile:
 	if(pathbuf)
 		kfree(pathbuf);
 
@@ -123,22 +124,41 @@ static int sec_restrict_fork(void)
 {
 	struct cred *shellcred;
 	int ret = 0;
+	struct task_struct *parent_tsk;
+	struct mm_struct *parent_mm = NULL;
+	const struct cred *parent_cred;
+
+	read_lock(&tasklist_lock);
+	parent_tsk = current->parent;
+	if (!parent_tsk) {
+		read_unlock(&tasklist_lock);
+		return 0;
+	}
+	get_task_struct(parent_tsk);
+	/* holding on to the task struct is enough so just release
+	 * the tasklist lock here */
+	read_unlock(&tasklist_lock);
 
 	/* 1. Allowed case - init process. */
-	if(current->pid == 1 || current->parent->pid == 1)
-		return ret;
+	if(current->pid == 1 || parent_tsk->pid == 1)
+		goto out;
 
+	/* get current->parent's mm struct to access it's mm
+	 * and to keep it alive */
+	parent_mm = get_task_mm(parent_tsk);
+	
 	/* 1.1 Skip for kernel tasks */
-	if(current->mm == NULL || current->parent->mm == NULL)
-		return ret;
+	if(current->mm == NULL || parent_mm == NULL)
+		goto out;
 
 	/* 2. Restrict case - parent process is /sbin/adbd. */
-	if( (current->parent != NULL) && 
-		sec_check_execpath(current->parent, "/sbin/adbd") ) {
+	if( sec_check_execpath(parent_mm, "/sbin/adbd") ) {
 
 		shellcred = prepare_creds();
-		if(!shellcred)
-			return 1;
+		if(!shellcred) {
+			ret = 1;
+			goto out;
+		}
 
 		shellcred->uid = 2000;
 		shellcred->gid = 2000;
@@ -146,18 +166,29 @@ static int sec_restrict_fork(void)
 		shellcred->egid = 2000;
 
 		commit_creds(shellcred);
-		return 0;
+		ret = 0;
+		goto out;
 	}
 
 	/* 3. Restrict case - execute file in /data directory.
 	*/
-	if( sec_check_execpath(current, "/data/") ) {
-		return 1;
+	if( sec_check_execpath(current->mm, "/data/") ) {
+		ret = 1;
+		goto out;
 	}
 
 	/* 4. Restrict case - parent's privilege is not root. */
-	if(!CHECK_ROOT_UID(current->parent))
+	parent_cred = get_task_cred(parent_tsk);
+	if (!parent_cred)
+		goto out;
+	if(!CHECK_ROOT_UID(parent_tsk))
 		ret = 1;
+	put_cred(parent_cred);
+
+out:
+	if (parent_mm)
+		mmput(parent_mm);
+	put_task_struct(parent_tsk);
 
 	return ret;
 }

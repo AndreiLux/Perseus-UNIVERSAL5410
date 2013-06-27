@@ -401,6 +401,7 @@ struct ssp_data {
 	int mag_position;
 	int fw_dl_state;
 	char *comp_engine_ver;
+	char *comp_engine_ver2;
 	struct platform_device *pdev_pam_temp;
 	struct s3c_adc_client *adc_client;
 	u8 cp_thm_adc_channel;
