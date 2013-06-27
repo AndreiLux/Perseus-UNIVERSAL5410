@@ -83,6 +83,8 @@ static void __print_ensemble_info(struct ensemble_info_type *e_info)
 		DPRINTK("start_addr(0x%x)\n", e_info->sub_ch[i].start_addr);
 		DPRINTK("tmid(0x%x)\n", e_info->sub_ch[i].tmid);
 		DPRINTK("svc_type(0x%x)\n", e_info->sub_ch[i].svc_type);
+		DPRINTK("ecc(0x%x)\n", e_info->sub_ch[i].ecc);
+		DPRINTK("scids(0x%x)\n", e_info->sub_ch[i].scids);
 	}
 }
 #endif
@@ -115,18 +117,27 @@ static bool __get_ensemble_info(struct ensemble_info_type *e_info
 			svc_comp_info->svc_comp.ascty_dscty == 0x00) ||
 			(svc_comp_info->svc_comp.tmid == 0x01 &&
 			svc_comp_info->svc_comp.ascty_dscty == 0x18)) {
-				e_info->sub_ch[cnt].sub_ch_id = \
-					svc_comp_info->sub_ch.subch_id;
-			    e_info->sub_ch[cnt].start_addr = \
-					svc_comp_info->sub_ch.start_cu;
-			    e_info->sub_ch[cnt].tmid = \
-					svc_comp_info->svc_comp.tmid;
-			    e_info->sub_ch[cnt].svc_type = \
-					svc_comp_info->svc_comp.ascty_dscty;
-			    e_info->sub_ch[cnt].svc_id = \
-					svc_comp_info->svc_comp.scid;
-			    strncpy(e_info->sub_ch[cnt].svc_label, \
-					svc_info->svc.svc_label, SVC_LABEL_MAX);
+			e_info->sub_ch[cnt].sub_ch_id = \
+				svc_comp_info->sub_ch.subch_id;
+			e_info->sub_ch[cnt].start_addr = \
+				svc_comp_info->sub_ch.start_cu;
+			e_info->sub_ch[cnt].tmid = \
+				svc_comp_info->svc_comp.tmid;
+			e_info->sub_ch[cnt].svc_type = \
+				svc_comp_info->svc_comp.ascty_dscty;
+			e_info->sub_ch[cnt].svc_id = \
+				svc_comp_info->svc_comp.sid;
+			e_info->sub_ch[cnt].ecc = esbl->ensbl_ecc;
+			if(svc_comp_info->svc_comp.order == 0 &&
+				svc_comp_info->svc_comp.scids == 0xff) {
+				e_info->sub_ch[cnt].scids = 0;
+			} else {
+				e_info->sub_ch[cnt].scids = \
+				svc_comp_info->svc_comp.scids;
+			}
+
+			strncpy(e_info->sub_ch[cnt].svc_label, \
+				svc_info->svc.svc_label, SVC_LABEL_MAX);
 			cnt++;
 		}
 	}

@@ -59,6 +59,13 @@ static void ss222_mc_state_fsm(struct modem_ctl *mc)
 		mif_err("new_state = %s\n", get_cp_state_str(new_state));
 		mc->bootd->modem_state_changed(mc->bootd, new_state);
 		mc->iod->modem_state_changed(mc->iod, new_state);
+
+		if (new_state == STATE_OFFLINE && cp_on) {
+		/* when cp_active using rising-edge for eint src,
+		   exceptional case needed for handle device power off. */
+			gpio_set_value(mc->gpio_cp_on, 0);
+			mif_err("CP power off [%d]\n", gpio_get_value(mc->gpio_cp_on));
+		}
 	}
 }
 
@@ -138,8 +145,12 @@ static int ss222_off(struct modem_ctl *mc)
 	int cp_on = gpio_get_value(mc->gpio_cp_on);
 	mif_err("+++\n");
 
-	if (mc->phone_state == STATE_OFFLINE || cp_on == 0)
+	if (mc->phone_state == STATE_OFFLINE || cp_on == 0) {
+		/* when cp_active using rising-edge for eint src,
+		   exceptional case needed for handle device power off. */
+		mif_info("modem off handled at ss222_mc_state_fsm() func.\n");
 		return 0;
+	}
 
 	mc->phone_state = STATE_OFFLINE;
 	ld->mode = LINK_MODE_OFFLINE;

@@ -723,6 +723,28 @@ s32 fig0_ext08(struct fic_parser_matadata *parser,
 	return ret;
 }
 
+s32 fig0_ext09(struct fic_parser_matadata *parser,
+	u8 *fig_buff, s32 fig_len)
+{
+	int retVal = FICERR_SUCCESS;
+	struct tcc_ensemble *ensbl;
+
+	//  char ext, lto_unique, ensemble_lto, ensemble_ecc, table_id;
+	ensbl = &parser->esmbl_start;
+	/* b6: LTO unique 0: one time zone 1: several time zone */
+	ensbl->lto_unique = (*fig_buff & 0x40) ? 1 :0 ;
+	/* b5: E_LTO sign bit 1: negative offset 0: positive offset */
+	ensbl->ensbl_lto = ((*fig_buff & 0x20) ? -1 : 1);
+	/* b5-b0: E_LTO */
+	ensbl->ensbl_lto = ensbl->ensbl_lto * ((*fig_buff++) & 0x1f);
+	/* b7-b0: Ensemble ECC(Extended Country Code */
+	ensbl->ensbl_ecc = *fig_buff++;
+	/* b7-b0: International Table Id from TS 101 756 Table 11 */
+	ensbl->inter_tbl_id = *fig_buff++;
+	/* Extended fields are skipped */
+	return retVal;
+}
+
 /********************************************************************
 *   Function: Parsing FIG 0/13
 *   User Application Field EN 300401 v010401p Figure68
@@ -735,9 +757,11 @@ s32 fig0_ext13(struct fic_parser_matadata *parser,
 	u8 scids;
 	struct tcc_ensemble *esmbl;
 	struct tcc_user_app_types *usrapp_start;
+	struct tcc_service_comp *svc_comp_start;
 
 	esmbl = &parser->esmbl_start;
 	usrapp_start = parser->user_app_start;
+	svc_comp_start = parser->svc_comp_start;
 
 	if (usrapp_start == 0)
 		return FICERR_FIG0_13_NO_USERAPPLARRAY;
@@ -802,8 +826,16 @@ s32 fig0_ext13(struct fic_parser_matadata *parser,
 
 		usrapp_start->sid = sid;
 		usrapp_start->scids = scids;
-
 		esmbl->num_user_app++;
+	}
+
+	for (i = 0; i < esmbl->num_svc_comp; i++) {
+		svc_comp_start = parser->svc_comp_start + i;
+		for (k = 0; k < esmbl->num_user_app; k++) {
+			usrapp_start = parser->user_app_start + k;
+			if(svc_comp_start->sid == usrapp_start->sid)
+				svc_comp_start->scids = usrapp_start->scids;
+		}
 	}
 
 	if (fig_len < 0)

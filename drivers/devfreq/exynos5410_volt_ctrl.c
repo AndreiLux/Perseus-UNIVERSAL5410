@@ -31,7 +31,7 @@ unsigned int g_mif_maxvol;
 static unsigned int exynos5_volt_offset;
 
 #if defined(CONFIG_MACH_JA_KOR_SKT) || defined(CONFIG_MACH_JA_KOR_KT) ||\
-	defined(CONFIG_MACH_JA_KOR_LGT) ||defined(CONFIG_MACH_J_CHN_CU) ||\
+	defined(CONFIG_MACH_JA_KOR_LGT) ||defined(CONFIG_TARGET_LOCALE_CHN) ||\
 	defined(CONFIG_TARGET_LOCALE_EUR)
 extern unsigned int system_rev;
 #endif
@@ -362,6 +362,18 @@ int exynos5_volt_ctrl(enum exynos5_volt_id target,
 		calc_int = get_limit_voltage(target_int_volt_table[exynos5_vdd_int.cur_lv].volt);
 
 #if defined(CONFIG_TARGET_LOCALE_EUR) && defined(CONFIG_REGULATOR_S2MPS11)
+		if (system_rev == 0xa) {
+			if (target_freq == 800000) {
+				exynos5_vdd_memio.set_volt = 1250000; /* increase 50mV for Mem IO */
+				regulator_set_voltage(exynos5_vdd_memio.vdd_target,
+						exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
+			} else {
+				exynos5_vdd_memio.set_volt = 1200000;
+				regulator_set_voltage(exynos5_vdd_memio.vdd_target,
+						exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
+			}
+		}
+#elif defined(CONFIG_MACH_J_CHN_OPEN)
 		if (system_rev == 0xa) {
 			if (target_freq == 800000) {
 				exynos5_vdd_memio.set_volt = 1250000; /* increase 50mV for Mem IO */

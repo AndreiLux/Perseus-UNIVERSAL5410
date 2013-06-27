@@ -605,6 +605,8 @@ static void dump_state_and_upload(void);
 static int sec_debug_panic_handler(struct notifier_block *nb,
 				   unsigned long l, void *buf)
 {
+	int i;
+
 	if (!sec_debug_level.en.kernel_fault)
 		return -1;
 
@@ -613,9 +615,13 @@ static int sec_debug_panic_handler(struct notifier_block *nb,
 #ifdef CONFIG_SEC_DEBUG_SCHED_LOG
 	bStopLogging = 1;
 
-	pr_info("APLL_CON :%x \n", __raw_readl(EXYNOS5_APLL_CON0) );	
-	pr_info("BPLL_CON :%x \n", __raw_readl(EXYNOS5_BPLL_CON0) );	
-	pr_info("KPLL_CON :%x \n", __raw_readl(EXYNOS5_KPLL_CON0) );	
+	pr_info("APLL_CON :%x \n", __raw_readl(EXYNOS5_APLL_CON0) );
+	pr_info("BPLL_CON :%x \n", __raw_readl(EXYNOS5_BPLL_CON0) );
+	pr_info("KPLL_CON :%x \n", __raw_readl(EXYNOS5_KPLL_CON0) );
+
+	for (i = 0; i < 8; i++)
+		pr_info("ARM_CORE_CONFIGURATION[%d] : 0x%x\n",
+			i, __raw_readl(EXYNOS_ARM_CORE_CONFIGURATION(i)));
 #endif
 
 	sec_debug_set_upload_magic(0x66262564, buf);
@@ -856,17 +862,26 @@ int get_sec_debug_level(void)
 
 /* klaatu - schedule log */
 #ifdef CONFIG_SEC_DEBUG_SCHED_LOG
-void __sec_debug_task_log(int cpu, struct task_struct *task)
+void __sec_debug_task_log(int cpu, struct task_struct *task, char *msg)
 {
 	unsigned i;
 
 	if (bStopLogging)
 		return;
 
+	if (!task && !msg)
+		return;
+
 	i = atomic_inc_return(&task_log_idx[cpu]) & (SCHED_LOG_MAX - 1);
 	psec_debug_log->task[cpu][i].time = cpu_clock(cpu);
-	strcpy(psec_debug_log->task[cpu][i].comm, task->comm);
-	psec_debug_log->task[cpu][i].pid = task->pid;
+
+	if (task) {
+		strlcpy(psec_debug_log->task[cpu][i].comm, task->comm,sizeof(psec_debug_log->task[cpu][i].comm));
+		psec_debug_log->task[cpu][i].pid = task->pid;
+	} else {
+		strlcpy(psec_debug_log->task[cpu][i].comm, msg,sizeof(psec_debug_log->task[cpu][i].comm));
+		psec_debug_log->task[cpu][i].pid = -1;
+	}
 }
 
 void __sec_debug_irq_log(unsigned int irq, void *fn, int en)

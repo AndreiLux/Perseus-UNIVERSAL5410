@@ -159,13 +159,14 @@ static s32 tcpal_cspi_close(void)
 
 static s32 tcpal_cspi_open(void)
 {
-	s32 ret = 0;
 	struct tcpal_cspi_data *spi_data = &tcpal_cspi_io_data;
 
 	memset(&tcpal_cspi_io_data, 0, sizeof(tcpal_cspi_io_data));
 	memset(spi_data->buff_init_cmd, 0xFF, SPICMD_BUFF_LEN);
 
 #ifdef __USE_TC_CPU__
+	s32 ret = 0;
+
 	spi_data->spi_dev = tcpal_find_cspi_device();
 
 	if (spi_data->spi_dev) {

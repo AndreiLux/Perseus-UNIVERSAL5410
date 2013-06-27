@@ -1160,6 +1160,13 @@ static int s3c_fb_setcolreg(unsigned regno,
 	return 0;
 }
 
+static void s3c_fb_inactivate_window(struct s3c_fb *sfb, unsigned int index)
+{
+	u32 wincon = readl(sfb->regs + WINCON(index));
+	wincon &= ~(WINCONx_ENWIN);
+	writel(wincon, sfb->regs + WINCON(index));
+}
+
 static void s3c_fb_activate_window(struct s3c_fb *sfb, unsigned int index)
 {
 	u32 wincon = readl(sfb->regs + WINCON(index));
@@ -1664,8 +1671,7 @@ static unsigned int s3c_fb_map_ion_handle(struct s3c_fb *sfb,
 	dma->dma_addr = iovmm_map(&s5p_device_fimd0.dev, dma->sg_table->sgl, 0,
 			dma->dma_buf->size);
 #else
-	dma->dma_addr = iovmm_map(&s5p_device_fimd1.dev, dma->sg_table->sgl, 0,
-			dma->dma_buf->size);
+	dma->dma_addr = ion_dma_address(ion_handle, sfb->dev);
 #endif
 	if (!dma->dma_addr || IS_ERR_VALUE(dma->dma_addr)) {
 		dev_err(sfb->dev, "iovmm_map() failed: %d\n", dma->dma_addr);
@@ -1703,7 +1709,9 @@ static void s3c_fb_free_dma_buf(struct s3c_fb *sfb,
 		sync_fence_put(dma->fence);
 
 #if !defined(CONFIG_FB_EXYNOS_FIMD_SYSMMU_DISABLE)
+#ifdef CONFIG_ARCH_EXYNOS4
 	iovmm_unmap(sfb->dev, dma->dma_addr);
+#endif
 	dma_buf_unmap_attachment(dma->attachment, dma->sg_table,
 			DMA_BIDIRECTIONAL);
 #endif
@@ -2204,14 +2212,8 @@ static int s3c_fb_set_win_config(struct s3c_fb *sfb,
 
 		list_add_tail(&regs->list, &sfb->update_regs_list);
 		mutex_unlock(&sfb->update_regs_list_lock);
-		if (!queue_kthread_work(&sfb->update_regs_worker,
-					&sfb->update_regs_work)) {
-			flush_kthread_work(&sfb->update_regs_work);
-			dev_err(sfb->dev, "%s info : win_config retry.\n", __func__);
-			if (!queue_kthread_work(&sfb->update_regs_worker,
-						&sfb->update_regs_work))
-				BUG();
-		}
+		queue_kthread_work(&sfb->update_regs_worker,
+					&sfb->update_regs_work);
 	}
 
 err:
@@ -2285,19 +2287,6 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 	pm_runtime_get_sync(sfb->dev);
 
 	for (i = 0; i < sfb->variant.nr_windows; i++) {
-		u32 new_start = regs->vidw_buf_start[i];
-		u32 shadow_start = readl(sfb->regs +
-				SHD_VIDW_BUF_START(i));
-
-#if !defined(CONFIG_FB_EXYNOS_FIMD_SYSMMU_DISABLE)
-		if (new_start && (new_start == shadow_start)) {
-			pr_err("%s: 0x%08x is busy\n", __func__, new_start);
-			pm_runtime_put_sync(sfb->dev);
-			sw_sync_timeline_inc(sfb->timeline, 1);
-			return;
-		}
-#endif
-
 		old_dma_bufs[i] = sfb->windows[i]->dma_buf_data;
 
 		if (regs->dma_buf_data[i].fence)
@@ -3733,6 +3722,11 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	platid = platform_get_device_id(pdev);
 	fbdrv = (struct s3c_fb_driverdata *)platid->driver_data;
 
+	if (ion_register_special_device(ion_exynos, dev)) {
+		dev_err(dev, "ION special device is already registered\n");
+		return -EBUSY;
+	}
+
 	if (fbdrv->variant.nr_windows > S3C_FB_MAX_WIN) {
 		dev_err(dev, "too many windows, cannot attach\n");
 		return -EINVAL;
@@ -4066,6 +4060,8 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	}
 #endif
 #endif
+
+	s3c_fb_inactivate_window(sfb, default_win);
 
 	sfb->output_on = true;
 	s3c_fb_set_par(sfb->windows[default_win]->fbinfo);

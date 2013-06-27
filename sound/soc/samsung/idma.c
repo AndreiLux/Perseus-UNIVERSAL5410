@@ -184,6 +184,11 @@ static int idma_hw_params(struct snd_pcm_substream *substream,
 
 	idma_setcallbk(substream, idma_done);
 
+	pr_info("I:%s:DmaAddr=@%x Total=%d PrdSz=%d #Prds=%d dma_area=0x%x\n",
+		(substream->stream == SNDRV_PCM_STREAM_PLAYBACK) ? "P" : "C",
+			prtd->start, runtime->dma_bytes,  prtd->periodsz,
+			prtd->period, (unsigned int)runtime->dma_area);
+
 	return 0;
 }
 

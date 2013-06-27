@@ -154,14 +154,14 @@ static int sec_gpu_lock_control_proc(int bmax, long value, size_t count)
 
 static ssize_t get_dvfs_table(struct device *d, struct device_attribute *a, char *buf)
 {
-	return sprintf(buf, "%s\n", sgx_dvfs_table);
+	return snprintf(buf, sizeof(sgx_dvfs_table_string), "%s\n", sgx_dvfs_table);
 }
 static DEVICE_ATTR(sgx_dvfs_table, S_IRUGO | S_IRGRP | S_IROTH, get_dvfs_table, 0);
 
 static ssize_t get_min_clock(struct device *d, struct device_attribute *a, char *buf)
 {
 	PVR_LOG(("get_min_clock: %d MHz", sgx_dvfs_min_lock));
-	return sprintf(buf, "%d\n", sgx_dvfs_min_lock);
+	return snprintf(buf, sizeof(sgx_dvfs_min_lock), "%d\n", sgx_dvfs_min_lock);
 }
 
 static ssize_t set_min_clock(struct device *d, struct device_attribute *a, const char *buf, size_t count)
@@ -176,7 +176,7 @@ static DEVICE_ATTR(sgx_dvfs_min_lock, S_IRUGO | S_IWUSR | S_IRGRP | S_IWGRP | S_
 static ssize_t get_max_clock(struct device *d, struct device_attribute *a, char *buf)
 {
 	PVR_LOG(("get_max_clock: %d MHz", sgx_dvfs_max_lock));
-	return sprintf(buf, "%d\n", sgx_dvfs_max_lock);
+	return snprintf(buf, sizeof(sgx_dvfs_max_lock), "%d\n", sgx_dvfs_max_lock);
 }
 
 static ssize_t set_max_clock(struct device *d, struct device_attribute *a, const char *buf, size_t count)
@@ -222,7 +222,7 @@ void sec_gpu_dvfs_init(void)
 
 	 /* Generate DVFS table list*/
 	for( i = 0; i < sizeof(default_dvfs_data) / sizeof(GPU_DVFS_DATA) ; i++) {
-	    offset = sprintf(sgx_dvfs_table_string+total, "%d ", default_dvfs_data[i].clock);
+	    offset = snprintf(sgx_dvfs_table_string+total, sizeof(sgx_dvfs_table_string), "%d ", default_dvfs_data[i].clock);
 	    total += offset;
 	}
 	sgx_dvfs_table = sgx_dvfs_table_string;

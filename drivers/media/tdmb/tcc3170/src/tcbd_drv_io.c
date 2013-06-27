@@ -448,7 +448,6 @@ exit_read_mail_box:
 s32 tcbd_write_mail_box(struct tcbd_device *_device, u16 _cmd, s32 _cnt,
 								u32 *_data)
 {
-	u32 *data = NULL;
 	struct tcbd_mail_data mail = {0, };
 
 	if (_cnt > MAX_MAIL_COUNT || _data == NULL) {
@@ -461,6 +460,7 @@ s32 tcbd_write_mail_box(struct tcbd_device *_device, u16 _cmd, s32 _cnt,
 	mail.count = _cnt;
 	memcpy((void *)mail.data, (void *)_data, _cnt * sizeof(u32));
 #if defined(__DEBUG_DSP_ROM__)
+	u32 *data = NULL;
 	tcbd_debug_mbox_tx(&_cmd, &_cnt, &data);
 	if (data != NULL) {
 		int i, sz = 0;

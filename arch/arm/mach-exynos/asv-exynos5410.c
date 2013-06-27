@@ -75,7 +75,7 @@
 
 #define BASE_VOLTAGE_OFFSET	1000000
 
-#ifdef CONFIG_TARGET_LOCALE_EUR
+#if defined(CONFIG_TARGET_LOCALE_EUR) || defined(CONFIG_MACH_J_CHN_OPEN)
 extern unsigned int system_rev;
 #endif
 
@@ -519,11 +519,20 @@ static void exynos5410_set_asv_info_mif(struct asv_info *asv_inform, bool show_v
 		}
 #endif
 
-#ifdef CONFIG_MACH_J_CHN_CTC
+#ifdef CONFIG_TARGET_LOCALE_CHN
+#ifdef CONFIG_MACH_J_CHN_OPEN
+		if (system_rev == 0xa) {
+			if (i == 0)
+				offset = 25000;
+			else
+				offset = 0;
+		}
+#else
 		if (i == 0)
 			offset = 25000;
 		else
 			offset = 0;
+#endif
 #endif
 
 #ifdef CONFIG_ASV_MARGIN_TEST

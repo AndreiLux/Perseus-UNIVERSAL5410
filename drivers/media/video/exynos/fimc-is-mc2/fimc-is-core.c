@@ -73,7 +73,7 @@ static int fimc_is_ischain_allocmem(struct fimc_is_core *this)
 	dbg_ischain("Allocating memory for FIMC-IS firmware.\n");
 
 	fw_cookie = vb2_ion_private_alloc(this->mem.alloc_ctx,
-				FIMC_IS_A5_MEM_SIZE + FIMC_IS_A5_SEN_SIZE +
+				FIMC_IS_A5_MEM_SIZE +
 #ifdef ENABLE_ODC
 				SIZE_ODC_INTERNAL_BUF * NUM_ODC_INTERNAL_BUF +
 #endif
@@ -575,6 +575,11 @@ int fimc_is_set_dvfs(struct fimc_is_core *core,
 	/* check current level */
 	if (core->clock.dvfs_level == __level)
 		goto exit;
+
+#ifdef CONFIG_TARGET_LOCALE_KOR	//KOR only for blackbox
+	if (__level == DVFS_L1_1)
+		pr_info("Blackbox mode\n");
+#endif
 
 	/* i2c lock */
 	ret = fimc_is_itf_i2c_lock(ischain, i2c_clk, true);

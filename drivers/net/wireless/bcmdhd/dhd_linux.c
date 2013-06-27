@@ -22,7 +22,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_linux.c 394719 2013-04-03 13:22:12Z $
+ * $Id: dhd_linux.c 400570 2013-05-06 12:13:48Z $
  */
 
 #include <typedefs.h>
@@ -109,6 +109,12 @@ static histo_t vi_d1, vi_d2, vi_d3, vi_d4;
 extern bool ap_cfg_running;
 extern bool ap_fw_loaded;
 #endif
+
+#ifdef CUSTOMER_HW4
+#ifdef FIX_CPU_MIN_CLOCK
+#include <linux/pm_qos.h>
+#endif /* FIX_CPU_MIN_CLOCK */
+#endif /* CUSTOMER_HW4 */
 
 /* enable HOSTIP cache update from the host side when an eth0:N is up */
 #define AOE_IP_ALIAS_SUPPORT 1
@@ -217,9 +223,6 @@ extern int dhd_check_module_mac(dhd_pub_t *dhd, struct ether_addr *mac);
 #endif
 #ifdef MIMO_ANT_SETTING
 extern int dhd_sel_ant_from_file(dhd_pub_t *dhd);
-#endif
-#ifdef GLOBALCONFIG_WLAN_COUNTRY_CODE
-int dhd_customer_set_country(dhd_pub_t *dhd);
 #endif
 
 #else
@@ -366,6 +369,16 @@ typedef struct dhd_info {
 #ifdef DHDTCPACK_SUPPRESS
 	spinlock_t	tcpack_lock;
 #endif /* DHDTCPACK_SUPPRESS */
+#ifdef CUSTOMER_HW4
+#ifdef FIX_CPU_MIN_CLOCK
+	bool cpufreq_fix_status;
+	struct mutex cpufreq_fix;
+	struct pm_qos_request dhd_cpu_qos;
+#ifdef FIX_BUS_MIN_CLOCK
+	struct pm_qos_request dhd_bus_qos;
+#endif /* FIX_BUS_MIN_CLOCK */
+#endif /* FIX_CPU_MIN_CLOCK */
+#endif /* CUSTOMER_HW4 */
 } dhd_info_t;
 
 /* Flag to indicate if we should download firmware on driver load */
@@ -731,7 +744,7 @@ void dhd_enable_packet_filter(int value, dhd_pub_t *dhd)
 	    (dhd_support_sta_mode(dhd) && !dhd->dhcp_in_progress)))
 	    {
 		for (i = 0; i < dhd->pktfilter_count; i++) {
-#ifdef PASS_ARP_PACKET
+#if !defined(GAN_LITE_NAT_KEEPALIVE_FILTER) && defined(PASS_ARP_PACKET)
 			if (value && (i == dhd->pktfilter_count -1) &&
 				!(dhd->op_mode & (DHD_FLAG_P2P_GC_MODE | DHD_FLAG_P2P_GO_MODE))) {
 				DHD_TRACE_HW4(("Do not turn on ARP white list pkt filter:"
@@ -739,7 +752,7 @@ void dhd_enable_packet_filter(int value, dhd_pub_t *dhd)
 					value, i, dhd->op_mode));
 				continue;
 			}
-#endif
+#endif /* !GAN_LITE_NAT_KEEPALIVE_FILTER && PASS_ARP_PACKET */
 			dhd_pktfilter_offload_enable(dhd, dhd->pktfilter[i],
 				value, dhd_master_mode);
 		}
@@ -2290,9 +2303,13 @@ dhd_dpc_thread(void *data)
 #endif
 
 #ifdef CUSTOM_DPC_CPUCORE
-	if (strstr(fw_path, "_apsta") == NULL)
-		set_cpus_allowed_ptr(current, cpumask_of(CUSTOM_DPC_CPUCORE));
-#endif
+#if defined(CUSTOMER_HW4) && defined(CONFIG_MACH_UNIVERSAL5410)
+	if (strstr(fw_path, "_apsta"))
+		set_cpus_allowed_ptr(current, cpumask_of(1));
+	else
+#endif /* CUSTOMER_HW4 && CONFIG_MACH_UNIVERSAL5410 */
+	set_cpus_allowed_ptr(current, cpumask_of(CUSTOM_DPC_CPUCORE));
+#endif /* CUSTOM_DPC_CPUCORE */
 
 	/* Run until signal received */
 	while (1) {
@@ -2917,69 +2934,23 @@ done:
 }
 
 #ifdef WL_CFG80211
-static void
-dhd_delete_virt_iface(dhd_if_t *ifp)
-{
-	dhd_info_t *dhd;
-#ifdef SOFTAP
-	unsigned long flags;
-#endif
-
-	if (!ifp || !ifp->info || !ifp->idx)
-		return;
-	ASSERT(ifp && ifp->info && ifp->idx);	/* Virtual interfaces only */
-	dhd = ifp->info;
-
-	DHD_TRACE(("%s: idx %d, state %d\n", __FUNCTION__, ifp->idx, ifp->state));
-
-	if (wl_cfg80211_is_progress_ifchange())
-		return;
-
-	/* Make sure that we don't enter again here if .. */
-	/* dhd_op_if is called again from some other context */
-	ifp->state = DHD_IF_DELETING;
-	if (ifp->net != NULL) {
-		DHD_ERROR(("\n%s: got 'DHD_IF_DEL' state\n", __FUNCTION__));
-
-		ASSERT_RTNL();
-
-		netif_stop_queue(ifp->net);
-		if (dhd->dhd_state & DHD_ATTACH_STATE_CFG80211) {
-			wl_cfg80211_ifdel_ops(ifp->net);
-		}
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 33))
-		if (rtnl_is_locked())
-			unregister_netdevice_queue(ifp->net, NULL);
-		else
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 33) */
-		unregister_netdev(ifp->net);
-
-		if (dhd->dhd_state & DHD_ATTACH_STATE_CFG80211) {
-			wl_cfg80211_notify_ifdel();
-		}
-
-		free_netdev(ifp->net);
-		ifp->net = NULL;
-	}
-
-	ifp->set_multicast = FALSE;
-	dhd->iflist[ifp->idx] = NULL;
-#ifdef SOFTAP
-	flags = dhd_os_spin_lock(&dhd->pub);
-	if (ifp->net == ap_net_dev)
-		ap_net_dev = NULL;   /*  NULL  SOFTAP global wl0.1 as well */
-	dhd_os_spin_unlock(&dhd->pub, flags);
-#endif /*  SOFTAP */
-	MFREE(dhd->pub.osh, ifp, sizeof(*ifp));
-}
-
 static int
 dhd_cleanup_virt_ifaces(dhd_info_t *dhd)
 {
 	int i = 1; /* Leave ifidx 0 [Primary Interface] */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+	int rollback_lock = FALSE;
+#endif
 
 	DHD_TRACE(("%s: Enter \n", __func__));
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+	/* release lock for unregister_netdev */
+	if (rtnl_is_locked()) {
+		rtnl_unlock();
+		rollback_lock = TRUE;
+	}
+#endif
 
 	for (i = 1; i < DHD_MAX_IFS; i++) {
 		dhd_net_if_lock_local(dhd);
@@ -2989,11 +2960,16 @@ dhd_cleanup_virt_ifaces(dhd_info_t *dhd)
 				(dhd->iflist[i]->state != DHD_IF_DELETING)) {
 				dhd->iflist[i]->state = DHD_IF_DEL;
 				dhd->iflist[i]->idx = i;
-				dhd_delete_virt_iface(dhd->iflist[i]);
+				dhd_op_if(dhd->iflist[i]);
 			}
 		}
 		dhd_net_if_unlock_local(dhd);
 	}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+	if (rollback_lock)
+		rtnl_lock();
+#endif
 
 	return 0;
 }
@@ -3006,6 +2982,64 @@ dhd_cleanup_virt_ifaces(dhd_info_t *dhd)
 int trigger_deep_sleep = 0;
 #endif /* WL_CFG80211 && SUPPORT_DEEP_SLEEP */
 
+#ifdef CUSTOMER_HW4
+#ifdef FIX_CPU_MIN_CLOCK
+static int dhd_init_cpufreq_fix(dhd_info_t *dhd)
+{
+	if (dhd) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) && 1
+		mutex_init(&dhd->cpufreq_fix);
+#endif
+		dhd->cpufreq_fix_status = FALSE;
+	}
+	return 0;
+}
+
+static void dhd_fix_cpu_freq(dhd_info_t *dhd)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) && 1
+	mutex_lock(&dhd->cpufreq_fix);
+#endif
+	if (dhd && !dhd->cpufreq_fix_status) {
+		pm_qos_add_request(&dhd->dhd_cpu_qos, PM_QOS_CPU_FREQ_MIN, 300000);
+#ifdef FIX_BUS_MIN_CLOCK
+		pm_qos_add_request(&dhd->dhd_bus_qos, PM_QOS_BUS_THROUGHPUT, 400000);
+#endif /* FIX_BUS_MIN_CLOCK */
+		DHD_ERROR(("pm_qos_add_requests called\n"));
+
+		dhd->cpufreq_fix_status = TRUE;
+	}
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) && 1
+	mutex_unlock(&dhd->cpufreq_fix);
+#endif
+}
+
+static void dhd_rollback_cpu_freq(dhd_info_t *dhd)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) && 1
+	mutex_lock(&dhd ->cpufreq_fix);
+#endif
+	if (dhd && dhd->cpufreq_fix_status != TRUE) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) && 1
+		mutex_unlock(&dhd->cpufreq_fix);
+#endif
+		return;
+	}
+
+	pm_qos_remove_request(&dhd->dhd_cpu_qos);
+#ifdef FIX_BUS_MIN_CLOCK
+	pm_qos_remove_request(&dhd->dhd_bus_qos);
+#endif /* FIX_BUS_MIN_CLOCK */
+	DHD_ERROR(("pm_qos_add_requests called\n"));
+
+	dhd->cpufreq_fix_status = FALSE;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) && 1
+	mutex_unlock(&dhd->cpufreq_fix);
+#endif
+}
+#endif /* FIX_CPU_MIN_CLOCK */
+#endif /* CUSTOMER_HW4 */
+
 static int
 dhd_stop(struct net_device *net)
 {
@@ -3016,6 +3050,14 @@ dhd_stop(struct net_device *net)
 	if (dhd->pub.up == 0) {
 		goto exit;
 	}
+
+#ifdef CUSTOMER_HW4
+#ifdef FIX_CPU_MIN_CLOCK
+	if (strstr(fw_path, "_apsta"))
+		dhd_rollback_cpu_freq(dhd);
+#endif /* FIX_CPU_MIN_CLOCK */
+#endif /* CUSTOMER_HW4 */
+
 	ifidx = dhd_net2idx(dhd, net);
 	BCM_REFERENCE(ifidx);
 
@@ -3031,9 +3073,11 @@ dhd_stop(struct net_device *net)
 		 * For CFG80211: Clean up all the left over virtual interfaces
 		 * when the primary Interface is brought down. [ifconfig wlan0 down]
 		 */
-		if ((dhd->dhd_state & DHD_ATTACH_STATE_ADD_IF) &&
-			(dhd->dhd_state & DHD_ATTACH_STATE_CFG80211)) {
-			dhd_cleanup_virt_ifaces(dhd);
+		if (!dhd_download_fw_on_driverload) {
+			if ((dhd->dhd_state & DHD_ATTACH_STATE_ADD_IF) &&
+				(dhd->dhd_state & DHD_ATTACH_STATE_CFG80211)) {
+				dhd_cleanup_virt_ifaces(dhd);
+			}
 		}
 	}
 #endif
@@ -3090,6 +3134,15 @@ dhd_open(struct net_device *net)
 	}
 	mutex_lock(&_dhd_sdio_mutex_lock_);
 #endif
+
+#ifdef CUSTOMER_HW4
+#ifdef FIX_CPU_MIN_CLOCK
+	if (strstr(fw_path, "_apsta")) {
+		dhd_init_cpufreq_fix(dhd);
+		dhd_fix_cpu_freq(dhd);
+	}
+#endif /* FIX_CPU_MIN_CLOCK */
+#endif /* CUSTOMER_HW4 */
 
 	DHD_OS_WAKE_LOCK(&dhd->pub);
 	/* Update FW path if it was changed */
@@ -3999,11 +4052,6 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 #ifdef DISABLE_11N
 	uint32 nmode = 0;
 #endif /* DISABLE_11N */
-
-#ifdef DISABLE_11AC
-	uint32 vhtmode = 0;
-#endif /* DISABLE_11AC */
-
 #if defined(VSDB) && defined(CUSTOMER_HW4)
 	int interference_mode = 3;
 #endif
@@ -4155,10 +4203,6 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 		if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0)) < 0)
 			DHD_ERROR(("%s: country code setting failed\n", __FUNCTION__));
 	}
-#ifdef DISABLE_11AC
-	bcm_mkiovar("vhtmode", (char *)&vhtmode, 4, iovbuf, sizeof(iovbuf));
-	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
-#endif
 
 	/* Set Listen Interval */
 	bcm_mkiovar("assoc_listen", (char *)&listen_interval, 4, iovbuf, sizeof(iovbuf));
@@ -4334,7 +4378,10 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 #endif /* BCMSUP_4WAY_HANDSHAKE && WLAN_AKM_SUITE_FT_8021X */
 
 	bcm_mkiovar("buf_key_b4_m4", (char *)&buf_key_b4_m4, 4, iovbuf, sizeof(iovbuf));
-	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
+	if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf,
+		sizeof(iovbuf), TRUE, 0)) < 0) {
+		DHD_ERROR(("%s buf_key_b4_m4 set failed %d\n", __FUNCTION__, ret));
+	}
 
 	/* Read event_msgs mask */
 	bcm_mkiovar("event_msgs", eventmask, WL_EVENTING_MASK_LEN, iovbuf, sizeof(iovbuf));
@@ -4459,6 +4506,9 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	dhd->pktfilter_count = 5;
 	dhd->pktfilter[4] = "104 0 0 0 0xFFFFFF 0x01005E";
 #endif /* PASS_IPV4_SUSPEND && CUSTOMER_HW4 */
+#ifdef PASS_ARP_PACKET
+	dhd->pktfilter[dhd->pktfilter_count++] = "105 0 0 12 0xFFFF 0x0806";
+#endif
 #endif /* GAN_LITE_NAT_KEEPALIVE_FILTER  && CUSTOMER_HW4 */
 
 #if defined(SOFTAP)
@@ -5917,12 +5967,20 @@ static void dhd_hang_process(struct work_struct *work)
 int dhd_os_send_hang_message(dhd_pub_t *dhdp)
 {
 	int ret = 0;
+	DHD_ERROR(("%s : Enter \n",__FUNCTION__));
+
 	if (dhdp) {
 		if (!dhdp->hang_was_sent) {
 			dhdp->hang_was_sent = 1;
-			schedule_work(&dhdp->info->work_hang);
+			ret = schedule_work(&dhdp->info->work_hang);
+			if (!ret)
+				DHD_ERROR(("%s : schedule_task fail \n",__FUNCTION__));
+			else
+				DHD_ERROR(("%s : schedule_task success \n",__FUNCTION__));
 		}
 	}
+	else
+		DHD_ERROR(("%s : dhdp is null \n",__FUNCTION__));
 	return ret;
 }
 

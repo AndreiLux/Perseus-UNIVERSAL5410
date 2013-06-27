@@ -47,6 +47,8 @@ struct sub_channel_info_type {
 	unsigned char user_appl_length[USER_APPL_NUM_MAX];
 	unsigned char user_appl_data
 		[USER_APPL_NUM_MAX][USER_APPL_DATA_SIZE_MAX];
+	unsigned char scids;
+	unsigned char ecc;
 };
 
 void dmb_drv_isr(void);

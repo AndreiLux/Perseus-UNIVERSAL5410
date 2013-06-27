@@ -88,6 +88,8 @@ s32 fig0_ext07(struct fic_parser_matadata *fic_info,
 	u8 *fig_buff, s32 iLen);
 s32 fig0_ext08(struct fic_parser_matadata *fic_info,
 	u8 *fig_buff, s32 iLen);
+s32 fig0_ext09(struct fic_parser_matadata *parser,
+	u8 *fig_buff, s32 iLen);
 s32 fig0_ext13(struct fic_parser_matadata *fic_info,
 	u8 *fig_buff, s32 iLen);
 s32 fig0_ext17(struct fic_parser_matadata *fic_info,

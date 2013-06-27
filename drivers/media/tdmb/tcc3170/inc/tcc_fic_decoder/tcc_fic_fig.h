@@ -199,6 +199,11 @@ struct tcc_ensemble {
 	u8	label[16]; /**< 16bytes	Ensemble label */
 	u16	char_flag; /**< refer to ETSI EN 300 401 5.2.2.1 */
 	u16	eid; /**< 16bits country Id Ensemble reference */
+
+	u8	lto_unique;
+	u8	ensbl_lto;
+	u8	ensbl_ecc;
+	u8	inter_tbl_id;
 };
 
 struct tcc_user_app_type {

@@ -394,6 +394,8 @@ struct sub_channel_info_type *dmb_drv_get_fic_dmb(int subchannel_count)
 						= svc_info->dscty;
 					dmb_subchannel_info.ulServiceID
 						= svc_info->sid;
+					dmb_subchannel_info.scids
+						= svc_info->scids;
 
 					num_of_user_appl =
 						svc_info->num_of_user_appl;
@@ -422,6 +424,7 @@ struct sub_channel_info_type *dmb_drv_get_fic_dmb(int subchannel_count)
 					else
 						dmb_subchannel_info.uiEnsembleID
 						= 0;
+					dmb_subchannel_info.ecc	= esb->ecc;
 
 					break;
 				}
@@ -461,6 +464,9 @@ struct sub_channel_info_type *dmb_drv_get_fic_dab(int subchannel_count)
 						svc_info->ascty;
 					dab_subchannel_info.ulServiceID =
 						svc_info->sid;
+					dab_subchannel_info.scids =
+						svc_info->scids;
+
 					esb = fic_decoder_get_ensemble_info(0);
 					if (esb->flag == 99)
 						dmb_subchannel_info.uiEnsembleID
@@ -468,6 +474,7 @@ struct sub_channel_info_type *dmb_drv_get_fic_dab(int subchannel_count)
 					else
 						dmb_subchannel_info.uiEnsembleID
 						= 0;
+					dab_subchannel_info.ecc	= esb->ecc;
 
 					break;
 				}

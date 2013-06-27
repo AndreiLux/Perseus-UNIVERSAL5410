@@ -1274,7 +1274,7 @@ static ssize_t temperature_store(struct device *dev,
 		mutex_unlock(&lcd->bl_lock);
 
 		if (lcd->ldi_enable)
-			update_brightness(lcd, 0);
+			update_brightness(lcd, 1);
 
 		dev_info(dev, "%s: %d, %d, %d\n", __func__, value, lcd->temperature, lcd->elvss_compensation);
 	}

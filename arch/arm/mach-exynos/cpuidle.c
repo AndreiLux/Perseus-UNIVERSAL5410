@@ -19,6 +19,8 @@
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
 #include <linux/suspend.h>
+#include <linux/dma-mapping.h>
+#include <mach/sec_debug.h>
 
 #include <asm/proc-fns.h>
 #include <asm/smp_scu.h>
@@ -905,6 +907,8 @@ static int exynos_enter_lowpower(struct cpuidle_device *dev,
 }
 
 static bool ping_sent = false;
+static void *c2_flag_addr = NULL;
+static unsigned int c2_flag_phy_addr = 0;
 
 static int exynos5410_enter_lowpower(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv,
@@ -945,6 +949,11 @@ static int exynos5410_enter_lowpower(struct cpuidle_device *dev,
 	__raw_writel(EXYNOS_CHECK_DIRECTGO, REG_DIRECTGO_FLAG);
 
 	set_boot_flag(cpuid, C2_STATE);
+
+	sec_debug_task_log_msg(cpuid, "c2+");
+	if (c2_flag_addr)
+		__raw_writel(C2_STATE, c2_flag_addr + (cpuid * 4));
+
 	cpu_pm_enter();
 
 	if (samsung_rev() < EXYNOS5410_REV_1_0) {
@@ -973,6 +982,15 @@ static int exynos5410_enter_lowpower(struct cpuidle_device *dev,
 	__raw_writel(value, EXYNOS5410_ARM_INTR_SPREAD_ENABLE);
 
 	clear_boot_flag(cpuid, C2_STATE);
+
+	if (ret)
+		sec_debug_task_log_msg(cpuid, "c2_");    /* early wakeup */
+	else
+		sec_debug_task_log_msg(cpuid, "c2-");    /* normal wakeup */
+
+	if (c2_flag_addr)
+		__raw_writel(0, c2_flag_addr + (cpuid * 4));
+
 	cpu_pm_exit();
 
 	do_gettimeofday(&after);
@@ -1143,6 +1161,13 @@ static int __init exynos_init_cpuidle(void)
 	}
 
 	register_pm_notifier(&exynos_cpuidle_notifier);
+
+	c2_flag_addr = dma_alloc_writecombine(NULL, 16, &c2_flag_phy_addr, GFP_KERNEL);
+	if (!c2_flag_addr)
+		pr_info("%s: c2 flag memory cannot be allocated\n", __func__);
+	else
+		pr_info("%s: c2_flag_addr(0x%x), c2_flag_phy_addr(0x%x)\n",
+					__func__, (unsigned int)c2_flag_addr, c2_flag_phy_addr);
 
 	return 0;
 }

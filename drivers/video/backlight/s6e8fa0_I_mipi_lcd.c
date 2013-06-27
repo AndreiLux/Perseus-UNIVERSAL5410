@@ -117,7 +117,6 @@ static const unsigned int candela_table[GAMMA_MAX] = {
 static struct lcd_info *g_lcd;
 
 extern void (*panel_touchkey_on)(void);
-extern void (*panel_touchkey_off)(void);
 
 static int s6e8fa0_write(struct lcd_info *lcd, const u8 *seq, u32 len)
 {
@@ -724,7 +723,7 @@ static int init_aid_dimming_table(struct lcd_info *lcd, const u8 *mtp_data)
 	smtd_dbg("%s\n", __func__);
 	for (i = 0; i < GAMMA_MAX; i++) {
 		smtd_dbg("%03d cd:", candela_table[i]);
-		for (j = 4; j < GAMMA_PARAM_SIZE; j++)
+		for (j = 0; j < GAMMA_PARAM_SIZE; j++)
 			smtd_dbg("%03d ", lcd->gamma_table[i][j]);
 		smtd_dbg("\n");
 	}
@@ -910,26 +909,11 @@ static void s6e8fa0_ldi_touchkey_on(void)
 	}
 }
 
-static void s6e8fa0_ldi_touchkey_off(void)
-{
-	struct lcd_info *lcd = g_lcd;
-
-	if (lcd->ldi_enable) {
-		s6e8fa0_write(lcd, SEQ_TEST_KEY_ON_FC, ARRAY_SIZE(SEQ_TEST_KEY_ON_FC));
-		s6e8fa0_write(lcd, SEQ_TOUCHKEY_OFF, ARRAY_SIZE(SEQ_TOUCHKEY_OFF));
-		s6e8fa0_write(lcd, SEQ_TEST_KEY_OFF_FC, ARRAY_SIZE(SEQ_TEST_KEY_OFF_FC));
-	}
-}
-
 static int s6e8fa0_ldi_init(struct lcd_info *lcd)
 {
 	int ret = 0;
 
 	s6e8fa0_write(lcd, SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0));
-
-	s6e8fa0_write(lcd, SEQ_TEST_KEY_ON_FC, ARRAY_SIZE(SEQ_TEST_KEY_ON_FC));
-	s6e8fa0_write(lcd, SEQ_TOUCHKEY_OFF, ARRAY_SIZE(SEQ_TOUCHKEY_OFF));
-	s6e8fa0_write(lcd, SEQ_TEST_KEY_OFF_FC, ARRAY_SIZE(SEQ_TEST_KEY_OFF_FC));
 
 	s6e8fa0_write(lcd, SEQ_SLEEP_OUT, ARRAY_SIZE(SEQ_SLEEP_OUT));
 
@@ -956,6 +940,10 @@ static int s6e8fa0_ldi_init(struct lcd_info *lcd)
 static int s6e8fa0_ldi_enable(struct lcd_info *lcd)
 {
 	int ret = 0;
+
+	s6e8fa0_write(lcd, SEQ_TEST_KEY_ON_FC, ARRAY_SIZE(SEQ_TEST_KEY_ON_FC));
+	s6e8fa0_write(lcd, SEQ_TOUCHKEY_ON, ARRAY_SIZE(SEQ_TOUCHKEY_ON));
+	s6e8fa0_write(lcd, SEQ_TEST_KEY_OFF_FC, ARRAY_SIZE(SEQ_TEST_KEY_OFF_FC));
 
 	s6e8fa0_write(lcd, SEQ_DISPLAY_ON, ARRAY_SIZE(SEQ_DISPLAY_ON));
 
@@ -1296,7 +1284,7 @@ static ssize_t temperature_store(struct device *dev,
 		mutex_unlock(&lcd->bl_lock);
 
 		if (lcd->ldi_enable)
-			update_brightness(lcd, 0);
+			update_brightness(lcd, 1);
 
 		dev_info(dev, "%s: %d, %d, %d\n", __func__, value, lcd->temperature, lcd->elvss_compensation);
 	}
@@ -1479,7 +1467,6 @@ static int s6e8fa0_probe(struct mipi_dsim_device *dsim)
 	/* dev_set_drvdata(dsim->dev, lcd); */
 
 	panel_touchkey_on = s6e8fa0_ldi_touchkey_on;
-	panel_touchkey_off = s6e8fa0_ldi_touchkey_off;
 
 	mutex_init(&lcd->lock);
 	mutex_init(&lcd->bl_lock);

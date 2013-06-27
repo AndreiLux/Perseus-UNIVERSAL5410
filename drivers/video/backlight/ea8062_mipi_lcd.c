@@ -117,7 +117,6 @@ static const unsigned int candela_table[GAMMA_MAX] = {
 static struct lcd_info *g_lcd;
 
 extern void (*panel_touchkey_on)(void);
-extern void (*panel_touchkey_off)(void);
 
 static int ea8062_write(struct lcd_info *lcd, const u8 *seq, u32 len)
 {
@@ -235,6 +234,8 @@ static int ea8062_read_mtp(struct lcd_info *lcd, u8 *buf)
 	for (i = 0; i < LDI_MTP_LEN ; i++)
 		smtd_dbg("%02dth mtp value is %02x\n", i+1, (int)buf[i]);
 
+	swap(buf[30], buf[31]);
+
 	return ret;
 }
 
@@ -242,7 +243,7 @@ static int ea8062_read_elvss(struct lcd_info *lcd, u8 *buf)
 {
 	int ret;
 
-	ret = ea8062_read(lcd, LDI_ELVSS_REG, buf, ELVSS_PARAM_SIZE);
+	ret = ea8062_read(lcd, LDI_ELVSS_REG, buf, LDI_ELVSS_LEN);
 
 	return ret;
 }
@@ -483,6 +484,22 @@ static int ea8062_set_hbm(struct lcd_info *lcd, u8 force)
 	}
 
 	return ret;
+}
+
+static int ea8062_testkey_f0_f1_enable(struct lcd_info *lcd)
+{
+	ea8062_write(lcd, SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0));
+	ea8062_write(lcd, SEQ_TEST_KEY_ON_F1, ARRAY_SIZE(SEQ_TEST_KEY_ON_F1));
+
+	return 0;
+}
+
+static int ea8062_testkey_f0_f1_disable(struct lcd_info *lcd)
+{
+	ea8062_write(lcd, SEQ_TEST_KEY_OFF_F0, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0));
+	ea8062_write(lcd, SEQ_TEST_KEY_OFF_F1, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F1));
+
+	return 0;
 }
 
 static int ea8062_gamma_ctl(struct lcd_info *lcd)
@@ -735,7 +752,7 @@ static int init_aid_dimming_table(struct lcd_info *lcd, const u8 *mtp_data)
 
 	smtd_dbg("%s\n", __func__);
 	for (i = 0; i < GAMMA_MAX; i++) {
-		smtd_dbg("%03d cd:", candela_table[i]);
+		smtd_dbg("%03dcd :", candela_table[i]);
 		for (j = 4; j < GAMMA_PARAM_SIZE; j++)
 			smtd_dbg("%03d ", lcd->gamma_table[i][j]);
 		smtd_dbg("\n");
@@ -790,7 +807,7 @@ static int init_elvss_table(struct lcd_info *lcd)
 
 	/* this (elvss_table[1]) is elvss table to support low temperature */
 	for (i = 0; i < ELVSS_STATUS_MAX; i++)
-		lcd->elvss_table[1][i][1] = (lcd->elvss_table[1][i][1] > 4) ? (lcd->elvss_table[1][i][1] - 4) : 0;
+		lcd->elvss_table[1][i][1] = (lcd->elvss_table[1][i][1] > (4 << 2)) ? (lcd->elvss_table[1][i][1] - (4 << 2)) : 0;
 
 	return 0;
 
@@ -825,9 +842,9 @@ static int init_tset_table(struct lcd_info *lcd, u8 *tset_data)
 		}
 
 		lcd->tset_table[i][0] = LDI_TSET_REG;
-		for (j = 0; j < 7; j++)
+		for (j = 0; j < LDI_TSET_LEN - 1; j++)
 			lcd->tset_table[i][j+1] = tset_data[j];
-		lcd->tset_table[i][7] = TSET_TABLE[i];
+		lcd->tset_table[i][LDI_TSET_LEN - 1] = TSET_TABLE[i];
 	}
 
 	for (i = 0; i < TSET_STATUS_MAX; i++) {
@@ -872,9 +889,6 @@ static int init_hbm_parameter(struct lcd_info *lcd, const u8 *elvss_data, const 
 	lcd->gamma_table[GAMMA_HBM][20] = elvss_data[24];
 	lcd->gamma_table[GAMMA_HBM][21] = elvss_data[25];
 
-	lcd->elvss_table[0][ELVSS_STATUS_HBM][1] = 0x07;
-	lcd->elvss_table[1][ELVSS_STATUS_HBM][1] = 0x07;
-
 	return 0;
 }
 
@@ -892,6 +906,8 @@ static int update_brightness(struct lcd_info *lcd, u8 force)
 		lcd->bl = GAMMA_HBM;
 
 	if ((force) || ((lcd->ldi_enable) && (lcd->current_bl != lcd->bl))) {
+		ea8062_testkey_f0_f1_enable(lcd);
+
 		ea8062_gamma_ctl(lcd);
 
 		ea8062_aid_parameter_ctl(lcd, force);
@@ -905,6 +921,8 @@ static int update_brightness(struct lcd_info *lcd, u8 force)
 		ea8062_set_tset(lcd, force);
 
 		ea8062_set_hbm(lcd, force);
+
+		ea8062_testkey_f0_f1_disable(lcd);
 
 		lcd->current_bl = lcd->bl;
 
@@ -921,17 +939,18 @@ static int update_brightness(struct lcd_info *lcd, u8 force)
 /* So other type's lcd driver don't have this function */
 void ea8062_ldi_touchkey_on(void)
 {
-	if (g_lcd != NULL) {
-		ea8062_write(g_lcd, SEQ_TEST_KEY_ON_FC, ARRAY_SIZE(SEQ_TEST_KEY_ON_FC));
-		ea8062_write(g_lcd, SEQ_FRAME_TSP_ON, ARRAY_SIZE(SEQ_FRAME_TSP_ON));
-	}
-}
+	struct lcd_info *lcd = g_lcd;
 
-void ea8062_ldi_touchkey_off(void)
-{
-	if (g_lcd != NULL) {
-		ea8062_write(g_lcd, SEQ_FRAME_TSP_OFF, ARRAY_SIZE(SEQ_FRAME_TSP_OFF));
-		ea8062_write(g_lcd, SEQ_TEST_KEY_OFF_FC, ARRAY_SIZE(SEQ_TEST_KEY_OFF_FC));
+	if (lcd->ldi_enable) {
+		ea8062_write(lcd, SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0));
+		ea8062_write(lcd, SEQ_TEST_KEY_ON_F1, ARRAY_SIZE(SEQ_TEST_KEY_ON_F1));
+		ea8062_write(lcd, SEQ_TEST_KEY_ON_FC, ARRAY_SIZE(SEQ_TEST_KEY_ON_FC));
+
+		ea8062_write(lcd, SEQ_FRAME_TSP_ON, ARRAY_SIZE(SEQ_FRAME_TSP_ON));
+
+		ea8062_write(lcd, SEQ_TEST_KEY_OFF_F0, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0));
+		ea8062_write(lcd, SEQ_TEST_KEY_OFF_F1, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F1));
+		ea8062_write(lcd, SEQ_TEST_KEY_OFF_FC, ARRAY_SIZE(SEQ_TEST_KEY_OFF_FC));
 	}
 }
 
@@ -964,6 +983,8 @@ static int ea8062_ldi_init(struct lcd_info *lcd)
 	ea8062_write(lcd, SEQ_PSRE_MODE_SET3, ARRAY_SIZE(SEQ_PSRE_MODE_SET3));
 
 	update_brightness(lcd, 1);
+
+	ea8062_write(lcd, SEQ_FRAME_TSP_ON, ARRAY_SIZE(SEQ_FRAME_TSP_ON));
 
 	ea8062_write(lcd, SEQ_TEST_KEY_OFF_F0, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0));
 	ea8062_write(lcd, SEQ_TEST_KEY_OFF_F1, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F1));
@@ -1304,7 +1325,7 @@ static ssize_t temperature_store(struct device *dev,
 		mutex_unlock(&lcd->bl_lock);
 
 		if (lcd->ldi_enable)
-			update_brightness(lcd, 0);
+			update_brightness(lcd, 1);
 
 		dev_info(dev, "%s: %d, %d, %d\n", __func__, value, lcd->temperature, lcd->elvss_compensation);
 	}
@@ -1487,7 +1508,6 @@ static int ea8062_probe(struct mipi_dsim_device *dsim)
 	/* dev_set_drvdata(dsim->dev, lcd); */
 
 	panel_touchkey_on = ea8062_ldi_touchkey_on;
-	panel_touchkey_off = ea8062_ldi_touchkey_off;
 
 	mutex_init(&lcd->lock);
 	mutex_init(&lcd->bl_lock);

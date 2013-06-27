@@ -3121,11 +3121,15 @@ static void max77803_muic_init_detect(struct work_struct *work)
 static int max77803_muic_read_otg_id(struct max77803_muic_info *info)
 {
 	int ret;
-	u8 val;
+	u8 val,adc1k;
 
 	max77803_read_reg(info->muic, MAX77803_MUIC_REG_STATUS1, &val);
 	ret = val & STATUS1_ADC_MASK;
-	dev_info(info->dev, "func:%s ret:%d val:%x\n", __func__, ret, val);
+	adc1k = (val & STATUS1_ADC1K_MASK) ? 1 : 0;
+	dev_info(info->dev, "func:%s ret:%d val:%x adc1k:%x\n", __func__, ret, val, adc1k);
+
+	if(adc1k)
+		return 1;
 
 	return ret;
 }

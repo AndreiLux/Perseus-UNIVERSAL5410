@@ -813,6 +813,12 @@ config MACH_J_CHN_CU
 	bool "EXYNOS5410_CHN_CU board"
 	help
 	  Machine support for J_CHN_CU board based on EXYNOS5410
+
+comment "EXYNOS5410_CHN_OPEN Boards"
+config MACH_J_CHN_OPEN
+	bool "EXYNOS5410_CHN_OPEN board"
+	help
+	  Machine support for J_CHN_OPEN board based on EXYNOS5410
 endif
 
 config GPS_BCMxxxxx
@@ -1326,6 +1332,16 @@ config ANDROID_WIP
         default n
         help
           This enables 'work in progress' hacks for android issues.
+
+config ANDROID_OOM_KILLER
+	bool "Android OOM Killer"
+	default n
+	help
+	  This enables 'Android-Style oom-killer'
+	  The way to select victim by oom-killer provided by
+	  linux kernel is totally different from android policy.
+	  Hence, it makes more sense that we select the oom victim
+	  as android does when LMK is invoked.
 
 config SEC_LOG
 	default n

@@ -29,6 +29,7 @@
 #include <linux/pm_qos.h>
 #include <linux/kobject.h>
 #include <linux/sysfs.h>
+#include <linux/cpumask.h>
 
 #include <asm/cputype.h>
 #include <asm/bL_switcher.h>
@@ -450,7 +451,8 @@ static cluster_type exynos_switch(struct cpufreq_policy *policy, cluster_type cu
 	core = core & 0xf;
 	new_cluster = !cur;
 
-	if (core == 0) {
+	if ((core == 0) &&
+	    (cpumask_equal(&current->cpus_allowed, cpumask_of(core)))) {
 		if (bL_cluster_switch_request(!new_cluster))
 			return cur;
 	} else {

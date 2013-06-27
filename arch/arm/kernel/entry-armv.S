@@ -252,11 +252,7 @@ __und_svc:
 	@ the saved context.
 	svc_entry 64
 #else
-#ifdef CONFIG_TARGET_LOCALE_KOR
-	svc_entry 512
-#else
 	svc_entry
-#endif
 #endif
 	@
 	@ call emulation code, which returns using r9 if it has emulated
@@ -301,11 +297,7 @@ ENDPROC(__und_svc)
 
 	.align	5
 __pabt_svc:
-#ifdef CONFIG_TARGET_LOCALE_KOR
-	svc_entry 512
-#else
 	svc_entry
-#endif
 	mov	r2, sp				@ regs
 	pabt_helper
 

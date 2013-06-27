@@ -337,7 +337,7 @@ static int mmc_wait_for_data_req_done(struct mmc_host *host,
 			context_info->is_new_req = false;
 			spin_unlock_irqrestore(&context_info->lock, flags);
 			cmd = mrq->cmd;
-#if defined(CONFIG_MACH_JA_KOR_SKT) || defined(CONFIG_MACH_JA_KOR_KT)
+#if defined(CONFIG_MACH_JA_KOR_SKT) || defined(CONFIG_MACH_JA_KOR_KT) || defined(CONFIG_MACH_JA_KOR_LGT) || defined(CONFIG_MACH_J_CHN_CU) || defined(CONFIG_MACH_J_CHN_CTC)
 			if ((!cmd->error && cmd->data->error != -EILSEQ) ||
 				!cmd->retries || mmc_card_removed(host->card)) {
 #else
@@ -356,7 +356,7 @@ static int mmc_wait_for_data_req_done(struct mmc_host *host,
 						cmd->opcode, cmd->error);
 				cmd->retries--;
 				cmd->error = 0;
-#if defined(CONFIG_MACH_JA_KOR_SKT) || defined(CONFIG_MACH_JA_KOR_KT)
+#if defined(CONFIG_MACH_JA_KOR_SKT) || defined(CONFIG_MACH_JA_KOR_KT) || defined(CONFIG_MACH_JA_KOR_LGT) || defined(CONFIG_MACH_J_CHN_CU) || defined(CONFIG_MACH_J_CHN_CTC)
 				mmc_host_clk_hold(host);
 				cmd->data->error = 0;
 #endif

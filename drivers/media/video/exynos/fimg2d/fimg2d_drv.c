@@ -36,6 +36,7 @@
 #include "fimg2d.h"
 #include "fimg2d_clk.h"
 #include "fimg2d_ctx.h"
+#include "fimg2d_cache.h"
 #include "fimg2d_helper.h"
 
 #ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
@@ -215,11 +216,42 @@ static unsigned int fimg2d_poll(struct file *file, struct poll_table_struct *wai
 	return 0;
 }
 
+static int store_user_dst(struct fimg2d_blit __user *buf,
+		struct fimg2d_dma *dst_buf)
+{
+	struct fimg2d_blit blt;
+	struct fimg2d_clip *clp;
+	struct fimg2d_image dst_img;
+	int clp_h, bpp, stride;
+
+	int len = sizeof(struct fimg2d_image);
+
+	if (copy_from_user(&blt, buf, sizeof(blt)))
+		return -EFAULT;
+
+	if (blt.dst)
+		if (copy_from_user(&dst_img, blt.dst, len))
+			return -EFAULT;
+
+	clp = &blt.param.clipping;
+	clp_h = clp->y2 - clp->y1;
+
+	bpp = bit_per_pixel(&dst_img, 0);
+	stride = width2bytes(dst_img.width, bpp);
+
+	dst_buf->addr = dst_img.addr.start + (stride * clp->y1);
+	dst_buf->size = stride * clp_h;
+	dst_buf->cached = dst_buf->cached;
+
+	return 0;
+}
+
 static long fimg2d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
 	struct fimg2d_context *ctx;
 	struct mm_struct *mm;
+	struct fimg2d_dma *usr_dst;
 
 	ctx = file->private_data;
 
@@ -245,6 +277,7 @@ static long fimg2d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		fimg2d_clk_on(ctrl);
 		ret = fimg2d_add_command(ctrl, ctx, (struct fimg2d_blit __user *)arg);
+
 		if (ret) {
 			fimg2d_err("add command not allowed.\n");
 			g2d_unlock(&ctrl->drvlock);
@@ -253,15 +286,27 @@ static long fimg2d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return ret;
 		}
 
+		usr_dst = kzalloc(sizeof(usr_dst), GFP_KERNEL);
+		store_user_dst((struct fimg2d_blit __user *)arg, usr_dst);
+		if (!usr_dst)
+			return -EPERM;
+
 		ret = fimg2d_request_bitblt(ctrl, ctx);
 		if (ret) {
 			fimg2d_err("request bitblit not allowed.\n");
 			g2d_unlock(&ctrl->drvlock);
 			fimg2d_clk_off(ctrl);
+			kfree(usr_dst);
 			mmput(mm);
 			return -EBUSY;
 		}
 		g2d_unlock(&ctrl->drvlock);
+
+		fimg2d_debug("addr : %p, size : %d\n",
+				(void *)usr_dst->addr, usr_dst->size);
+		fimg2d_dma_unsync_inner(usr_dst->addr,
+				usr_dst->size, DMA_FROM_DEVICE);
+		kfree(usr_dst);
 		fimg2d_clk_off(ctrl);
 		mmput(mm);
 		break;

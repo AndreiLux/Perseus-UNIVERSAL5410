@@ -107,8 +107,8 @@ enum fimc_is_frame_init {
 	FRAME_UNI_MEM,
 	/* initialized memory */
 	FRAME_INI_MEM,
-	/* configured memory */
-	FRAME_CFG_MEM
+	/* mapped memory */
+	FRAME_MAP_MEM
 };
 
 struct fimc_is_frame {

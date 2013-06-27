@@ -137,8 +137,8 @@ DEVICE_ATTR(disable_vbus, 0664, switch_show_vbus,
 #ifdef CONFIG_TARGET_LOCALE_KOR
 static void max77803_set_vbus_state(int state);
 struct device *usb_lock;
-static int is_usb_locked;
-
+int is_usb_locked;
+EXPORT_SYMBOL(is_usb_locked);
 static ssize_t switch_show_usb_lock(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {

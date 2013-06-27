@@ -2199,7 +2199,7 @@ struct link_device *c2c_create_link_device(struct platform_device *pdev)
 	mif_debug("CP2AP_STATUS IRQ# = %d\n", shmd->irq_cp_status);
 
 	c2c_assign_gpio_ap_wakeup(shmd->gpio_ap_wakeup);
-	c2c_assign_gpio_cp_status(shmd->gpio_ap_status);
+	c2c_assign_gpio_ap_status(shmd->gpio_ap_status);
 	c2c_assign_gpio_cp_status(shmd->gpio_cp_status);
 
 	gpio_set_value(shmd->gpio_pda_active, 1);

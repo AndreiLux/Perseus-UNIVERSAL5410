@@ -22,6 +22,13 @@
 #include <linux/regulator/machine.h>
 #include <linux/mfd/samsung/core.h>
 #include <linux/mfd/samsung/s2mps11.h>
+#include <mach/sec_debug.h>
+
+#define MANUAL_RESET_CONTROL
+#ifdef MANUAL_RESET_CONTROL
+#define MANUAL_RESET_ENABLE (1 << 3)
+#define MANUAL_RESET_DISABLE ~(1 << 3)
+#endif
 
 struct s2mps11_info {
 	struct device *dev;
@@ -42,6 +49,10 @@ struct s2mps11_info {
 	bool buck3_ramp;
 	bool buck4_ramp;
 	bool buck5_ramp;
+#ifdef MANUAL_RESET_CONTROL
+	int mrstb_enabled;
+	int mrstb_status;
+#endif
 };
 
 struct s2mps11_voltage_desc {
@@ -575,6 +586,85 @@ static int s2mps11_set_voltage_sel(struct regulator_dev *rdev, unsigned selector
 	return ret;
 }
 
+#ifdef MANUAL_RESET_CONTROL
+extern int get_sec_debug_level(void);
+
+static int s2mps11_set_mrstb_en(struct s2mps11_info *s2mps11, int enable)
+{
+	int ret= 0;
+	unsigned int val;
+
+	if (!(s2mps11->mrstb_enabled))
+		return -1;
+
+	sec_reg_read(s2mps11->iodev, S2MPS11_REG_CTRL1, &val);
+	pr_info("%s : read S2MPS11_REG_CTRL1 = 0x%x\n", __func__, val);
+
+	if (enable) {
+		val= val | MANUAL_RESET_ENABLE;
+		s2mps11->mrstb_status = 1;
+	} else {
+		val= val & MANUAL_RESET_DISABLE;
+		s2mps11->mrstb_status = 0;
+	}
+
+	pr_info("%s : set S2MPS11_REG_CTRL1 = 0x%x\n", __func__, val);
+
+	ret = sec_reg_update(s2mps11->iodev, S2MPS11_REG_CTRL1, val, 0xF);
+
+	return ret;
+}
+
+static ssize_t s2mps11_show_mrstb(struct device *dev,
+				   struct device_attribute *attr,
+				   char *buf)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct s2mps11_info *s2mps11 = platform_get_drvdata(pdev);
+
+	return sprintf(buf, "%d\n", s2mps11->mrstb_status);
+}
+
+static ssize_t s2mps11_store_mrstb(struct device *dev,
+				   struct device_attribute *attr,
+				   const char *buf, size_t n)
+{
+	int ret = 0;
+	int enable;
+	struct platform_device *pdev = to_platform_device(dev);
+	struct s2mps11_info *s2mps11 = platform_get_drvdata(pdev);
+
+	ret = sscanf(buf, "%d", &enable);
+
+	if (ret != 1 || enable > 1) {
+		pr_err("%s : invaild paramater\n",__func__);
+		return -EINVAL;
+	}
+
+	ret = s2mps11_set_mrstb_en(s2mps11, enable);
+	if (ret) {
+		pr_err("%s : error : s2mps11_set_mrstb_en\n",__func__);
+		return -EPERM;
+	}
+
+	pr_info("%s : mrstb_en = %d\n", __func__, enable);
+
+	return n;
+}
+
+static DEVICE_ATTR(mrstb, S_IWUSR | S_IRUGO, s2mps11_show_mrstb, \
+				 s2mps11_store_mrstb);
+
+static struct attribute *s2mps11_attributes[] = {
+	&dev_attr_mrstb.attr,
+	NULL
+};
+
+static const struct attribute_group s2mps11_group = {
+	.attrs = s2mps11_attributes,
+};
+#endif
+
 static int get_ramp_delay(int ramp_delay)
 {
 	unsigned char cnt = 0;
@@ -807,6 +897,23 @@ static __devinit int s2mps11_pmic_probe(struct platform_device *pdev)
 			goto err;
 		}
 	}
+
+#ifdef MANUAL_RESET_CONTROL
+	if(!get_sec_debug_level()) {
+		s2mps11->mrstb_enabled = 1;
+		s2mps11->mrstb_status = 1;
+		ret = sysfs_create_group(&s2mps11->dev->kobj, &s2mps11_group);
+
+		if (ret) {
+			dev_err(s2mps11->dev,
+				"%s : failed to create sysfs attribute group\n",__func__);
+			goto err;
+		}
+	} else {
+		s2mps11->mrstb_enabled = 0;
+		s2mps11->mrstb_status = 0;
+	}
+#endif
 
 	return 0;
 err:

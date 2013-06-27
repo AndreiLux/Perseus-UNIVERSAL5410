@@ -137,7 +137,7 @@ static const unsigned char SEQ_FRAME_TSP_OFF[] = {
 
 static const unsigned char SEQ_FRAME_TSP_ON[] = {
 	0xFF,
-	0x33, 0x33,
+	0x00, 0x26,
 };
 
 static const unsigned char SEQ_SRC_CTL[] = {

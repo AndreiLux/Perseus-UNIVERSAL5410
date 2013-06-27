@@ -69,8 +69,14 @@ typedef unsigned __bitwise__ reclaim_mode_t;
 #define RECLAIM_MODE_SINGLE		((__force reclaim_mode_t)0x01u)
 #define RECLAIM_MODE_ASYNC		((__force reclaim_mode_t)0x02u)
 #define RECLAIM_MODE_SYNC		((__force reclaim_mode_t)0x04u)
+#ifndef CONFIG_ZSWAP
 #define RECLAIM_MODE_LUMPYRECLAIM	((__force reclaim_mode_t)0x08u)
+#endif
 #define RECLAIM_MODE_COMPACTION		((__force reclaim_mode_t)0x10u)
+
+#ifdef CONFIG_ZSWAP
+int max_swappiness = 200;
+#endif
 
 struct scan_control {
 	/* Incremented by the number of inactive pages that were scanned */
@@ -412,8 +418,27 @@ out:
 	return ret;
 }
 
+#ifdef CONFIG_ZSWAP
 static void set_reclaim_mode(int priority, struct scan_control *sc,
 				   bool sync)
+{
+	/* Sync reclaim used only for compaction */
+	reclaim_mode_t syncmode = sync ? RECLAIM_MODE_SYNC : RECLAIM_MODE_ASYNC;
+
+	/*
+	 * Restrict reclaim/compaction to costly allocations or when
+	 * under memory pressure
+	 */
+	if (COMPACTION_BUILD && sc->order &&
+			(sc->order > PAGE_ALLOC_COSTLY_ORDER ||
+			 priority < DEF_PRIORITY - 2))
+		sc->reclaim_mode = RECLAIM_MODE_COMPACTION | syncmode;
+	else
+		sc->reclaim_mode = RECLAIM_MODE_SINGLE | RECLAIM_MODE_ASYNC;
+}
+#else
+static void set_reclaim_mode(int priority, struct scan_control *sc,
+				bool sync)
 {
 	reclaim_mode_t syncmode = sync ? RECLAIM_MODE_SYNC : RECLAIM_MODE_ASYNC;
 
@@ -439,6 +464,7 @@ static void set_reclaim_mode(int priority, struct scan_control *sc,
 	else
 		sc->reclaim_mode = RECLAIM_MODE_SINGLE | RECLAIM_MODE_ASYNC;
 }
+#endif
 
 static void reset_reclaim_mode(struct scan_control *sc)
 {
@@ -465,9 +491,11 @@ static int may_write_to_queue(struct backing_dev_info *bdi,
 	if (bdi == current->backing_dev_info)
 		return 1;
 
+#ifndef CONFIG_ZSWAP
 	/* lumpy reclaim for hugepage often need a lot of write */
 	if (sc->order > PAGE_ALLOC_COSTLY_ORDER)
 		return 1;
+#endif
 	return 0;
 }
 
@@ -758,9 +786,11 @@ static enum page_references page_check_references(struct page *page,
 	referenced_ptes = page_referenced(page, 1, mz->mem_cgroup, &vm_flags);
 	referenced_page = TestClearPageReferenced(page);
 
+#ifndef CONFIG_ZSWAP
 	/* Lumpy reclaim - ignore references */
 	if (sc->reclaim_mode & RECLAIM_MODE_LUMPYRECLAIM)
 		return PAGEREF_RECLAIM;
+#endif
 
 	/*
 	 * Mlock lost the isolation race with us.  Let try_to_unmap()
@@ -872,7 +902,11 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 				wait_on_page_writeback(page);
 			else {
 				unlock_page(page);
+#ifdef CONFIG_ZSWAP
+				goto keep_reclaim_mode;
+#else
 				goto keep_lumpy;
+#endif
 			}
 		}
 
@@ -956,7 +990,11 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 				goto activate_locked;
 			case PAGE_SUCCESS:
 				if (PageWriteback(page))
+#ifdef CONFIG_ZSWAP
+					goto keep_reclaim_mode;
+#else
 					goto keep_lumpy;
+#endif
 				if (PageDirty(page))
 					goto keep;
 
@@ -1056,7 +1094,11 @@ keep_locked:
 		unlock_page(page);
 keep:
 		reset_reclaim_mode(sc);
+#ifdef CONFIG_ZSWAP
+keep_reclaim_mode:
+#else
 keep_lumpy:
+#endif
 		list_add(&page->lru, &ret_pages);
 		VM_BUG_ON(PageLRU(page) || PageUnevictable(page));
 	}
@@ -1112,11 +1154,7 @@ int __isolate_lru_page(struct page *page, isolate_mode_t mode, int file)
 	if (!all_lru_mode && !!page_is_file_cache(page) != file)
 		return ret;
 
-	/*
-	 * When this function is being called for lumpy reclaim, we
-	 * initially look into all LRU pages, active, inactive and
-	 * unevictable; only give shrink_page_list evictable pages.
-	 */
+	/* Do not give back unevictable pages for compaction */
 	if (PageUnevictable(page))
 		return ret;
 
@@ -1201,9 +1239,11 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 	struct lruvec *lruvec;
 	struct list_head *src;
 	unsigned long nr_taken = 0;
+#ifndef CONFIG_ZSWAP
 	unsigned long nr_lumpy_taken = 0;
 	unsigned long nr_lumpy_dirty = 0;
 	unsigned long nr_lumpy_failed = 0;
+#endif
 	unsigned long scan;
 	int lru = LRU_BASE;
 
@@ -1216,10 +1256,12 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 
 	for (scan = 0; scan < nr_to_scan && !list_empty(src); scan++) {
 		struct page *page;
+#ifndef CONFIG_ZSWAP
 		unsigned long pfn;
 		unsigned long end_pfn;
 		unsigned long page_pfn;
 		int zone_id;
+#endif
 
 		page = lru_to_page(src);
 		prefetchw_prev_lru_page(page, src, flags);
@@ -1242,6 +1284,7 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 			BUG();
 		}
 
+#ifndef CONFIG_ZSWAP
 		if (!sc->order || !(sc->reclaim_mode & RECLAIM_MODE_LUMPYRECLAIM))
 			continue;
 
@@ -1319,6 +1362,7 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 		/* If we break out of the loop above, lumpy reclaim failed */
 		if (pfn < end_pfn)
 			nr_lumpy_failed++;
+#endif
 	}
 
 	*nr_scanned = scan;
@@ -1326,7 +1370,9 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 	trace_mm_vmscan_lru_isolate(sc->order,
 			nr_to_scan, scan,
 			nr_taken,
+#ifndef CONFIG_ZSWAP
 			nr_lumpy_taken, nr_lumpy_dirty, nr_lumpy_failed,
+#endif
 			mode, file);
 	return nr_taken;
 }
@@ -1527,7 +1573,7 @@ static inline bool should_reclaim_stall(unsigned long nr_taken,
 	if (current_is_kswapd())
 		return false;
 
-	/* Only stall on lumpy reclaim */
+	/* Only stall for memory compaction */
 	if (sc->reclaim_mode & RECLAIM_MODE_SINGLE)
 		return false;
 
@@ -1578,8 +1624,10 @@ shrink_inactive_list(unsigned long nr_to_scan, struct mem_cgroup_zone *mz,
 	}
 
 	set_reclaim_mode(priority, sc, false);
+#ifndef CONFIG_ZSWAP
 	if (sc->reclaim_mode & RECLAIM_MODE_LUMPYRECLAIM)
 		isolate_mode |= ISOLATE_ACTIVE;
+#endif
 
 	lru_add_drain();
 
@@ -2005,11 +2053,14 @@ static void get_scan_count(struct mem_cgroup_zone *mz, struct scan_control *sc,
 	}
 
 	/*
-	 * With swappiness at 100, anonymous and file have the same priority.
 	 * This scanning priority is essentially the inverse of IO cost.
 	 */
 	anon_prio = vmscan_swappiness(mz, sc);
+#ifdef CONFIG_ZSWAP
+	file_prio = max_swappiness - vmscan_swappiness(mz, sc);
+#else
 	file_prio = 200 - vmscan_swappiness(mz, sc);
+#endif
 
 	/*
 	 * OK, so we have swap space and a fair amount of page cache
@@ -2501,7 +2552,7 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 		.may_writepage = !laptop_mode,
 		.nr_to_reclaim = SWAP_CLUSTER_MAX,
 		.may_unmap = 1,
-#ifdef CONFIG_ZRAM_FOR_ANDROID
+#if defined(CONFIG_ZRAM_FOR_ANDROID) || defined(CONFIG_ZSWAP)
 		.may_swap = 0,
 #else
 		.may_swap = 1,

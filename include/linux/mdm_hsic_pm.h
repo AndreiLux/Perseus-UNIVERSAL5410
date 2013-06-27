@@ -42,6 +42,7 @@ int register_udev_to_pm_dev(const char *name, struct usb_device *udev);
 void unregister_udev_from_pm_dev(const char *name, struct usb_device *udev);
 
 int set_qmicm_mode(const char *name);
+int get_qmicm_mode(const char *name);
 
 extern struct blocking_notifier_head mdm_reset_notifier_list;
 extern void mdm_force_fatal(void);

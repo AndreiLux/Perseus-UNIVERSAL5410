@@ -318,15 +318,34 @@ static int fimc_is_3a1_video_set_crop(struct file *file, void *fh,
 static int fimc_is_3a1_video_reqbufs(struct file *file, void *priv,
 	struct v4l2_requestbuffers *buf)
 {
-	int ret;
+	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
+	struct fimc_is_device_ischain *device;
+
+	BUG_ON(!vctx);
 
 	mdbgv_3a1("%s(buffers : %d)\n", vctx, __func__, buf->count);
+
+	device = vctx->device;
+	if (!device) {
+		merr("device is NULL", vctx);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	if (V4L2_TYPE_IS_OUTPUT(buf->type)) {
+		ret = fimc_is_ischain_3a1_reqbufs(device, buf->count);
+		if (ret) {
+			merr("3a1_reqbufs is fail(%d)", vctx, ret);
+			goto p_err;
+		}
+	}
 
 	ret = fimc_is_video_reqbufs(file, vctx, buf);
 	if (ret)
 		merr("fimc_is_video_reqbufs is fail(error %d)", vctx, ret);
 
+p_err:
 	return ret;
 }
 

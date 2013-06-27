@@ -49,6 +49,14 @@
 #define ARIZONA_MIXER_VOL_SHIFT                 1
 #define ARIZONA_MIXER_VOL_WIDTH                 7
 
+#define ARIZONA_CLK_6MHZ   0
+#define ARIZONA_CLK_12MHZ  1
+#define ARIZONA_CLK_24MHZ  2
+#define ARIZONA_CLK_49MHZ  3
+#define ARIZONA_CLK_73MHZ  4
+#define ARIZONA_CLK_98MHZ  5
+#define ARIZONA_CLK_147MHZ 6
+
 #define ARIZONA_MAX_DAI  4
 #define ARIZONA_MAX_ADSP 4
 
@@ -171,6 +179,12 @@ extern int arizona_mixer_values[ARIZONA_NUM_MIXER_INPUTS];
 	ARIZONA_MIXER_INPUT_ROUTES(name " Aux 6"), \
 	ARIZONA_MIXER_ROUTES(name, name "L"), \
 	ARIZONA_MIXER_ROUTES(name, name "R")
+
+#define ARIZONA_RATE_ENUM_SIZE 4
+extern const char *arizona_rate_text[ARIZONA_RATE_ENUM_SIZE];
+extern const int arizona_rate_val[ARIZONA_RATE_ENUM_SIZE];
+
+extern const struct soc_enum arizona_isrc_fsl[];
 
 extern const struct soc_enum arizona_in_vi_ramp;
 extern const struct soc_enum arizona_in_vd_ramp;

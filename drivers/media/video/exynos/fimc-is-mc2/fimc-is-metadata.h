@@ -495,7 +495,9 @@ enum stats_mode {
 };
 
 enum stats_lowlightmode {
-	STATE_LLS_REQUIRED = 1
+	STATE_LLS_NONE = 0,
+	STATE_LLS_LEVEL_LOW,
+	STATE_LLS_LEVEL_HIGH
 };
 
 struct camera2_stats_ctl {

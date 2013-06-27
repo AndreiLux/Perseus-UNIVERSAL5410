@@ -90,6 +90,9 @@ static s32 parsing_fig0(struct fic_parser_matadata *fic_info,
 	case EXT_08:
 		ret = fig0_ext08(fic_info, fig_buff, length);
 		break;
+	case EXT_09:
+		ret = fig0_ext09(fic_info, fig_buff, length);
+		break;
 	case EXT_13:
 		ret = fig0_ext13(fic_info, fig_buff, length);
 		break;

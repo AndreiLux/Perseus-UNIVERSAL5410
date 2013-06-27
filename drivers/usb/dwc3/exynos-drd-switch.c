@@ -291,6 +291,9 @@ static int exynos_drd_switch_set_host(struct usb_otg *otg, struct usb_bus *host)
  *
  * Returns 0 on success otherwise negative errno.
  */
+#ifdef CONFIG_TARGET_LOCALE_KOR
+extern int is_usb_locked;
+#endif
 static int exynos_drd_switch_start_peripheral(struct usb_otg *otg, int on)
 {
 	int ret;
@@ -300,6 +303,13 @@ static int exynos_drd_switch_start_peripheral(struct usb_otg *otg, int on)
 
 	dev_dbg(otg->phy->dev, "Turn %s gadget %s\n",
 			on ? "on" : "off", otg->gadget->name);
+
+#ifdef CONFIG_TARGET_LOCALE_KOR
+	if (is_usb_locked) {
+		ret = usb_gadget_vbus_disconnect(otg->gadget);
+		return ret;
+	}
+#endif
 
 	if (on) {
 		/* Start device only if host is off */

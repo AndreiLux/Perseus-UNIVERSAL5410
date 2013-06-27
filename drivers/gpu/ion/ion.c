@@ -32,6 +32,7 @@
 #include <linux/uaccess.h>
 #include <linux/debugfs.h>
 #include <linux/dma-buf.h>
+#include <plat/iovmm.h>
 
 #ifdef CONFIG_ARM
 #include <asm/cacheflush.h>
@@ -61,6 +62,7 @@ struct ion_device {
 			      unsigned long arg);
 	struct rb_root clients;
 	struct dentry *debug_root;
+	struct device *special_dev;
 };
 
 /**
@@ -266,11 +268,16 @@ static void ion_buffer_destroy(struct kref *kref)
 
 	if (WARN_ON(buffer->kmap_cnt > 0))
 		buffer->heap->ops->unmap_kernel(buffer->heap, buffer);
+
+	if (buffer->dmap_cnt != 0)
+		iovmm_unmap(dev->special_dev, buffer->dma_address);
+
 	buffer->heap->ops->unmap_dma(buffer->heap, buffer);
 	buffer->heap->ops->free(buffer);
 	mutex_lock(&dev->buffer_lock);
 	rb_erase(&buffer->node, &dev->buffers);
 	mutex_unlock(&dev->buffer_lock);
+
 	if (buffer->flags & ION_FLAG_CACHED)
 		kfree(buffer->dirty);
 	kfree(buffer);
@@ -825,6 +832,21 @@ static struct sg_table *ion_map_dma_buf(struct dma_buf_attachment *attachment,
 {
 	struct dma_buf *dmabuf = attachment->dmabuf;
 	struct ion_buffer *buffer = dmabuf->priv;
+
+	if (attachment->dev == buffer->dev->special_dev) {
+		mutex_lock(&buffer->lock);
+		if (buffer->dmap_cnt == 0) {
+			buffer->dma_address = iovmm_map(attachment->dev,
+					buffer->sg_table->sgl, 0, buffer->size);
+			if (IS_ERR_VALUE(buffer->dma_address)) {
+				mutex_unlock(&buffer->lock);
+				return ERR_PTR(buffer->dma_address);
+			}
+		}
+
+		buffer->dmap_cnt = 1;
+		mutex_unlock(&buffer->lock);
+	}
 
 	ion_buffer_sync_for_device(buffer, attachment->dev, direction);
 	return buffer->sg_table;
@@ -1523,4 +1545,33 @@ void __init ion_reserve(struct ion_platform_data *data)
 			       data->heaps[i].size,
 			       data->heaps[i].base);
 	}
+}
+
+int ion_register_special_device(struct ion_device *dev, struct device *special)
+{
+	down_write(&dev->lock);
+	if (dev->special_dev) {
+		up_write(&dev->lock);
+		return -EBUSY;
+	}
+
+	dev->special_dev = special;
+
+	up_write(&dev->lock);
+
+	return 0;
+}
+
+dma_addr_t ion_dma_address(struct ion_handle *handle, struct device *special)
+{
+	dma_addr_t dma_addr = 0;
+	struct ion_buffer *buffer = handle->buffer;
+	struct ion_device *dev = buffer->dev;
+
+	mutex_lock(&buffer->lock);
+	if ((dev->special_dev == special) && (buffer->dmap_cnt != 0))
+		dma_addr = buffer->dma_address;
+	mutex_unlock(&buffer->lock);
+
+	return dma_addr;
 }

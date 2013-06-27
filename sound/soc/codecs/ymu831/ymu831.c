@@ -64,6 +64,8 @@
 
 #define MC_ASOC_DRIVER_VERSION	"1.0.6"
 
+#define MC_ASOC_IMPCLASS_THRESHOLD	3
+
 #define MC_ASOC_RATE	(SNDRV_PCM_RATE_8000_192000)
 #define MC_ASOC_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE | \
 			 SNDRV_PCM_FMTBIT_S20_3LE | \
@@ -93,6 +95,8 @@
 #define	DSP_PRM_VC_2MIC	(3)
 #define	DSP_PRM_BASE	(0)
 #define	DSP_PRM_USER	(1)
+
+#define	MICOPEN_4POLE
 
 struct mc_asoc_info_store {
 	UINT32	get;
@@ -1350,11 +1354,17 @@ static UINT8	mc_asoc_mic1_bias	= MIC1_BIAS;
 static UINT8	mc_asoc_mic2_bias	= MIC2_BIAS;
 static UINT8	mc_asoc_mic3_bias	= MIC3_BIAS;
 static UINT8	mc_asoc_mic4_bias	= MIC4_BIAS;
+static UINT8	mc_asoc_MBSEL4		= 0x80;
 
 static UINT8	mc_asoc_audio_play_port	= DIO_MUSIC;
 static UINT8	mc_asoc_audio_cap_port	= DIO_MUSIC;
 static UINT8	mc_asoc_voice_port	= DIO_EXT;
 static UINT8	mc_asoc_port_rate	= MCDRV_FS_48000;
+
+
+static struct mutex connect_path_mutex;
+static struct mutex hsdet_mutex;
+
 
 static int	set_bias_level(struct snd_soc_codec *codec,
 				enum snd_soc_bias_level level);
@@ -2811,8 +2821,8 @@ static int set_vol_info(
 					if (sw != 0) {
 						sw	= read_cache(codec,
 						      MC_ASOC_VOICE_RECORDING);
+					}
 				}
-			}
 			}
 
 			vol	= sw ? (v & 0x7f) : 0;
@@ -3674,7 +3684,7 @@ static void set_BIAS(
 		MCDRV_ASRC_MIC4_ON};
 	UINT8	bCh;
 	struct MCDRV_REG_INFO	reg_info;
-	
+
 #if (BUS_SELECT == BUS_SEL_SPI)
 	struct mc_asoc_platform_data	*platform_data	= NULL;
 #endif
@@ -3713,7 +3723,6 @@ static void set_BIAS(
 		}
 	}
 
-
 		if (mc_asoc_jack_status == SND_JACK_HEADPHONE) {
 			err	= _McDrv_Ctrl(MCDRV_GET_HSDET,
 						(void *)&stHSDetInfo, NULL, 0);
@@ -3736,12 +3745,12 @@ static void set_BIAS(
 		reg_info.bData &= 0x3F;
 		reg_info.bData |= 0x80;
 		_McDrv_Ctrl(MCDRV_WRITE_REG, (void *)&reg_info, NULL, 0);
-	}
-	else {
+	} else {
 		reg_info.bRegType = MCDRV_REGTYPE_ANA;
 		reg_info.bAddress = 13;
 		_McDrv_Ctrl(MCDRV_READ_REG, (void *)&reg_info, NULL, 0);
 		reg_info.bData &= 0x3F;
+		reg_info.bData	|= mc_asoc_MBSEL4;
 		_McDrv_Ctrl(MCDRV_WRITE_REG, (void *)&reg_info, NULL, 0);
 	}
 
@@ -4455,13 +4464,21 @@ static int connect_path(
 
 	TRACE_FUNC();
 
-	if (get_mixer_path_ctl_info(codec, &mixer_ctl_info) < 0)
-		return -EIO;
+
+
+	mutex_lock(&connect_path_mutex);
+
+	if (get_mixer_path_ctl_info(codec, &mixer_ctl_info) < 0) {
+		err	= -EIO;
+		goto exit;
+	}
 
 	preset_idx	= get_path_preset_idx(&mixer_ctl_info);
 	dbg_info("preset_idx=%d\n", preset_idx);
-	if ((preset_idx < 0) || (preset_idx > PRESET_PATH_N))
-		return -EIO;
+	if ((preset_idx < 0) || (preset_idx > PRESET_PATH_N)) {
+		err	= -EIO;
+		goto exit;
+	}
 
 	memcpy(&path_info,
 		&stPresetPathInfo[0],
@@ -4470,8 +4487,10 @@ static int connect_path(
 	set_BIAS(&path_info);
 
 	cache	= read_cache(codec, MC_ASOC_ADIF0_SOURCE);
-	if (cache < 0)
-		return -EIO;
+	if (cache < 0) {
+		err	= -EIO;
+		goto exit;
+	}
 	if (((UINT8)cache != 0)
 	&& ((UINT8)(cache>>8) != 0)) {
 		set_adif_src((UINT8)cache, &path_info.asAdif0[0].dSrcOnOff);
@@ -4479,8 +4498,10 @@ static int connect_path(
 					&path_info.asAdif0[1].dSrcOnOff);
 	}
 	cache	= read_cache(codec, MC_ASOC_ADIF1_SOURCE);
-	if (cache < 0)
-		return -EIO;
+	if (cache < 0) {
+		err	= -EIO;
+		goto exit;
+	}
 	if (((UINT8)cache != 0)
 	&& ((UINT8)(cache>>8) != 0)) {
 		set_adif_src((UINT8)cache, &path_info.asAdif1[0].dSrcOnOff);
@@ -4488,8 +4509,10 @@ static int connect_path(
 					&path_info.asAdif1[1].dSrcOnOff);
 	}
 	cache	= read_cache(codec, MC_ASOC_ADIF2_SOURCE);
-	if (cache < 0)
-		return -EIO;
+	if (cache < 0) {
+		err	= -EIO;
+		goto exit;
+	}
 	if (((UINT8)cache != 0)
 	&& ((UINT8)(cache>>8) != 0)) {
 		set_adif_src((UINT8)cache, &path_info.asAdif2[0].dSrcOnOff);
@@ -4499,17 +4522,25 @@ static int connect_path(
 
 	err	= set_volume(codec, &mixer_ctl_info, preset_idx);
 	if (err < 0)
-		return err;
+		goto exit;
 	err	= _McDrv_Ctrl(MCDRV_SET_PATH, &path_info, NULL, 0);
-	if (err != MCDRV_SUCCESS)
-		return map_drv_error(err);
+	if (err != MCDRV_SUCCESS) {
+		err	= map_drv_error(err);
+		goto exit;
+	}
 #if 0
 #ifdef MC_ASOC_TEST
 	err	= _McDrv_Ctrl(MCDRV_SET_PATH, &path_info, NULL, 0);
-	if (err != MCDRV_SUCCESS)
-		return map_drv_error(err);
+	if (err != MCDRV_SUCCESS) {
+		err	= map_drv_error(err);
+		goto exit;
+	}
 #endif
 #endif
+
+exit:
+	mutex_unlock(&connect_path_mutex);
+
 
 	return err;
 }
@@ -4791,8 +4822,14 @@ static int setup_dai(
 	if (err != MCDRV_SUCCESS)
 		return map_drv_error(err);
 
-	if (modify != 0)
-		return connect_path(codec);
+
+
+	if (modify != 0) {
+		err	= connect_path(codec);
+		return err;
+	}
+
+
 	return 0;
 }
 
@@ -5618,7 +5655,10 @@ static int set_incall_mic(
 	if (mc_asoc_hold == YMC_NOTITY_HOLD_ON)
 		return 0;
 
-	return connect_path(codec);
+
+	ret	= connect_path(codec);
+	return ret;
+
 }
 
 static int set_ain_playback(
@@ -5630,8 +5670,15 @@ static int set_ain_playback(
 	int	ret;
 	int	audio_mode;
 	int	audio_mode_cap;
+	struct mc_asoc_data	*mc_asoc	= NULL;
 
 	TRACE_FUNC();
+
+
+	mc_asoc	= mc_asoc_get_mc_asoc(codec);
+	if (mc_asoc == NULL)
+		return -EINVAL;
+
 
 	dbg_info("ain_playback=%d\n", value);
 
@@ -5680,8 +5727,15 @@ static int set_dtmf_control(
 )
 {
 	int	ret;
+	struct mc_asoc_data	*mc_asoc	= NULL;
 
 	TRACE_FUNC();
+
+
+	mc_asoc	= mc_asoc_get_mc_asoc(codec);
+	if (mc_asoc == NULL)
+		return -EINVAL;
+
 
 	ret	= write_cache(codec, reg, value);
 	if (ret < 0)
@@ -5703,8 +5757,15 @@ static int set_dtmf_output(
 )
 {
 	int		ret;
+	struct mc_asoc_data	*mc_asoc	= NULL;
 
 	TRACE_FUNC();
+
+
+	mc_asoc	= mc_asoc_get_mc_asoc(codec);
+	if (mc_asoc == NULL)
+		return -EINVAL;
+
 
 	ret	= write_cache(codec, reg, value);
 	if (ret < 0)
@@ -5713,7 +5774,10 @@ static int set_dtmf_output(
 	if (mc_asoc_hold == YMC_NOTITY_HOLD_ON)
 		return 0;
 
-	return connect_path(codec);
+
+	ret	= connect_path(codec);
+	return ret;
+
 }
 
 static int set_switch_clock(
@@ -6172,9 +6236,15 @@ static int mc_asoc_write_reg(
 	unsigned int value)
 {
 	int	err	= 0;
+	struct mc_asoc_data	*mc_asoc	= NULL;
 
 	if (codec == NULL)
 		return -EINVAL;
+
+	mc_asoc	= mc_asoc_get_mc_asoc(codec);
+	if (mc_asoc == NULL)
+		return -EINVAL;
+
 	if (reg <= MC_ASOC_N_VOL_REG) {
 		/*pr_info("reg=%d, value=%04Xh\n", reg, value);*/
 		switch (reg) {
@@ -6554,7 +6624,7 @@ static int mc_asoc_write_reg(
 			err	= connect_path(codec);
 			break;
 		case	MC_ASOC_CLEAR_DSP_PARAM:
-			del_dsp_prm(mc_asoc_get_mc_asoc(codec));
+			del_dsp_prm(mc_asoc);
 			break;
 		case	MC_ASOC_MAIN_MIC:
 			mc_asoc_main_mic	= value;
@@ -7474,6 +7544,8 @@ static ssize_t headset_print_name(struct switch_dev *sdev, char *buf)
 		return sprintf(buf, "No Device\n");
 	case 1:
 		return sprintf(buf, "Headset\n");
+	case 2:
+		return sprintf(buf, "Headphone\n");
 	}
 	return -EINVAL;
 }
@@ -7503,17 +7575,24 @@ static void work_mb4(struct work_struct *work)
 {
 	TRACE_FUNC();
 
+	mc_asoc_MBSEL4	= 0x00;
 	connect_path(mc_asoc_codec);
 }
 
 static struct workqueue_struct	*workq_mkdeten;
 static struct delayed_work	delayed_work_mkdeten;
+#ifdef MICOPEN_4POLE
+static UINT8	mc_asoc_MICDET;
+#endif
 
 static void work_mkdeten(struct work_struct *work)
 {
 	int	err;
 	struct MCDRV_HSDET_INFO	stHSDetInfo;
+#ifdef MICOPEN_4POLE
 	struct MCDRV_REG_INFO	reg_info;
+#endif
+	struct mc_asoc_data	*mc_asoc	= NULL;
 
 	TRACE_FUNC();
 
@@ -7522,17 +7601,27 @@ static void work_mkdeten(struct work_struct *work)
 		return;
 	}
 
+	mc_asoc	= mc_asoc_get_mc_asoc(mc_asoc_codec);
+	mutex_lock(&hsdet_mutex);
+
+#ifdef MICOPEN_4POLE
 	reg_info.bRegType	= MCDRV_REGTYPE_CD;
 	reg_info.bAddress	= MCI_MICDET;
 	err	= _McDrv_Ctrl(MCDRV_READ_REG, &reg_info, NULL, 0);
 	if (err != MCDRV_SUCCESS)
 		reg_info.bData	= 1;
-	if ((reg_info.bData & 0x47) == 0) {
+	if (((reg_info.bData&0x47) == 0)
+	&& ((reg_info.bData&0x47) == mc_asoc_MICDET)
+	&& ((mc_asoc_hpimpclass < MC_ASOC_IMPCLASS_THRESHOLD)
+		|| (mc_asoc_hpimpclass == 5)
+		|| (mc_asoc_hpimpclass == 6))) {
 		dbg_info("MICDET\n");
+		snd_soc_jack_report(&hs_jack, 0, SND_JACK_HEADSET);
 		mc_asoc_jack_status	= SND_JACK_HEADSET;
 		snd_soc_jack_report(&hs_jack,
 			mc_asoc_jack_status, SND_JACK_HEADSET);
 #ifdef SW_DRV
+		switch_set_state(h2w_sdev, 0);
 		switch_set_state(h2w_sdev, 1);
 #endif
 		cancel_delayed_work(&delayed_work_mkdeten);
@@ -7541,6 +7630,7 @@ static void work_mkdeten(struct work_struct *work)
 		queue_delayed_work(workq_mb4, &delayed_work_mb4,
 						msecs_to_jiffies(MSDETMB4OFF));
 	} else {
+#endif
 		err	= _McDrv_Ctrl(MCDRV_GET_HSDET, (void *)&stHSDetInfo,
 								NULL, 0);
 		if (err == MCDRV_SUCCESS) {
@@ -7553,7 +7643,11 @@ static void work_mkdeten(struct work_struct *work)
 								NULL, 0x7C);
 		}
 		connect_path(mc_asoc_codec);
+#ifdef MICOPEN_4POLE
 	}
+#endif
+
+	mutex_unlock(&hsdet_mutex);
 }
 
 static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
@@ -7575,8 +7669,13 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 	UINT8	bKey1OnDlyTim2;
 	UINT8	bKey2OnDlyTim2;
 	UINT8	bHsDetDbnc, bDbncNumPlug;
+	struct mc_asoc_data	*mc_asoc	= NULL;
 
 	TRACE_FUNC();
+
+	mc_asoc	= mc_asoc_get_mc_asoc(mc_asoc_codec);
+
+	mutex_lock(&hsdet_mutex);
 
 	dbg_info("dFlags=0x%08lX, bKeyCnt0=%d, bKeyCnt1=%d, bKeyCnt2=%d\n",
 		dFlags, psRes->bKeyCnt0, psRes->bKeyCnt1, psRes->bKeyCnt2);
@@ -7650,6 +7749,8 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 			dbg_info("cancel_delayed_work_mb4\n");
 			cancel_delayed_work(&delayed_work_mkdeten);
 			dbg_info("cancel_delayed_work_mkdeten\n");
+
+			mc_asoc_MBSEL4	= 0x80;
 
 			stHSDetInfo.bEnPlugDetDb	=
 					bEnPlugDetDb & MCDRV_PLUGDETDB_DET_ENABLE;
@@ -7878,7 +7979,9 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 		dbg_info("PLUGDETDB\n");
 		if ((dFlags & MCDRV_HSDET_EVT_MICDET_FLAG)
 		&& (bEnMicDet & MCDRV_MICDET_ENABLE)) {
-			if (mc_asoc_hpimpclass >= 4) {
+			if ((mc_asoc_hpimpclass >= MC_ASOC_IMPCLASS_THRESHOLD)
+			&& (mc_asoc_hpimpclass != 5)
+			&& (mc_asoc_hpimpclass != 6)) {
 				mc_asoc_jack_status	= SND_JACK_HEADPHONE;
 				snd_soc_jack_report(&hs_jack,
 					mc_asoc_jack_status, SND_JACK_HEADSET);
@@ -7892,18 +7995,29 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 				bEnKeyOff	= MCDRV_KEYEN_D_D_D;
 				bEnKeyOn	= MCDRV_KEYEN_D_D_D;
 			} else {
-			dbg_info("MICDET\n");
-			mc_asoc_jack_status	= SND_JACK_HEADSET;
-			snd_soc_jack_report(&hs_jack,
-				mc_asoc_jack_status, SND_JACK_HEADSET);
+				dbg_info("MICDET\n");
+				mc_asoc_jack_status	= SND_JACK_HEADSET;
+				snd_soc_jack_report(&hs_jack,
+					mc_asoc_jack_status, SND_JACK_HEADSET);
 #ifdef SW_DRV
-			switch_set_state(h2w_sdev, 1);
+				switch_set_state(h2w_sdev, 0);
+				switch_set_state(h2w_sdev, 1);
 #endif
-			dbg_info("queue_delayed_work_mb4\n");
-			queue_delayed_work(workq_mb4, &delayed_work_mb4,
+				dbg_info("queue_delayed_work_mb4\n");
+				queue_delayed_work(workq_mb4, &delayed_work_mb4,
 						msecs_to_jiffies(MSDETMB4OFF));
 			}
 		} else {
+#ifdef MICOPEN_4POLE
+			struct MCDRV_REG_INFO	reg_info;
+			reg_info.bRegType	= MCDRV_REGTYPE_CD;
+			reg_info.bAddress	= MCI_MICDET;
+			err	= _McDrv_Ctrl(MCDRV_READ_REG, &reg_info, NULL,
+									0);
+			if (err != MCDRV_SUCCESS)
+				reg_info.bData	= 1;
+			mc_asoc_MICDET	= reg_info.bData & 0x47;
+#endif
 			mc_asoc_jack_status	= SND_JACK_HEADPHONE;
 			snd_soc_jack_report(&hs_jack,
 				mc_asoc_jack_status, SND_JACK_HEADSET);
@@ -7935,11 +8049,14 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 			dbg_info("%d: Error in MCDRV_SET_HSDET\n", err);
 		if (stHSDetInfo.bSgnlNum == 0xFF)
 			mc_asoc_hpimpclass	= MC_ASOC_IMP_TBL_NUM - 1;
+		mc_asoc_MBSEL4	= 0x80;
 	}
 	if ((mc_asoc_jack_status == SND_JACK_HEADPHONE)
 	&& (dFlags & MCDRV_HSDET_EVT_MICDET_FLAG)
 	&& (bEnMicDet & MCDRV_MICDET_ENABLE)) {
-		if (mc_asoc_hpimpclass >= 4) {
+		if ((mc_asoc_hpimpclass >= MC_ASOC_IMPCLASS_THRESHOLD)
+		&& (mc_asoc_hpimpclass != 5)
+		&& (mc_asoc_hpimpclass != 6)) {
 			cancel_delayed_work(&delayed_work_mkdeten);
 
 			stHSDetInfo.bEnMicDet	= MCDRV_MICDET_DISABLE;
@@ -7959,24 +8076,28 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 				dbg_info("%d: Error in MCDRV_SET_HSDET\n", err);
 		}
 		else {
-		dbg_info("MICDET\n");
-		mc_asoc_jack_status	= SND_JACK_HEADSET;
-		snd_soc_jack_report(&hs_jack,
-			mc_asoc_jack_status, SND_JACK_HEADSET);
-#ifdef SW_DRV
-		switch_set_state(h2w_sdev, 1);
-#endif
-		cancel_delayed_work(&delayed_work_mkdeten);
-		dbg_info("cancel_delayed_work_mkdeten\n");
-		dbg_info("queue_delayed_work_mb4\n");
-		queue_delayed_work(workq_mb4, &delayed_work_mb4,
-						msecs_to_jiffies(MSDETMB4OFF));
-	}
+			dbg_info("MICDET\n");
+			snd_soc_jack_report(&hs_jack, 0, SND_JACK_HEADSET);
+			mc_asoc_jack_status	= SND_JACK_HEADSET;
+			snd_soc_jack_report(&hs_jack,
+				mc_asoc_jack_status, SND_JACK_HEADSET);
+	#ifdef SW_DRV
+			switch_set_state(h2w_sdev, 0);
+			switch_set_state(h2w_sdev, 1);
+	#endif
+			cancel_delayed_work(&delayed_work_mkdeten);
+			dbg_info("cancel_delayed_work_mkdeten\n");
+			dbg_info("queue_delayed_work_mb4\n");
+			queue_delayed_work(workq_mb4, &delayed_work_mb4,
+							msecs_to_jiffies(MSDETMB4OFF));
+		}
 	}
 
 	if (hpimpclass != mc_asoc_hpimpclass) {
 		if ((mc_asoc_hpimpclass == (UINT8)-1)
-		|| (mc_asoc_hpimpclass >= 4)) {
+		|| ((mc_asoc_hpimpclass >= MC_ASOC_IMPCLASS_THRESHOLD)
+		    && (mc_asoc_hpimpclass != 5)
+		    && (mc_asoc_hpimpclass != 6))) {
 			connect_path(mc_asoc_codec);
 		} else {
 			struct mc_asoc_mixer_path_ctl_info	mixer_ctl_info;
@@ -7989,7 +8110,6 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 			if ((preset_idx < 0) || (preset_idx > PRESET_PATH_N))
 				goto exit;
 			set_volume(mc_asoc_codec, &mixer_ctl_info, preset_idx);
-		
 		}
 	}
 
@@ -8003,6 +8123,7 @@ exit:
 #else
 	;
 #endif
+	mutex_unlock(&hsdet_mutex);
 }
 
 static struct workqueue_struct	*my_wq;
@@ -8125,6 +8246,11 @@ static int mc_asoc_probe(
 	mc_asoc_suspended	= 0;
 	mc_asoc_hpimpclass	= (UINT8)-1;
 	mc_asoc_jack_status	= 0;
+
+
+	mutex_init(&connect_path_mutex);
+	mutex_init(&hsdet_mutex);
+
 
 	workq_mb4	= create_workqueue("mb4");
 	if (workq_mb4 == NULL) {
@@ -8508,6 +8634,12 @@ static int mc_asoc_remove(struct snd_soc_codec *codec)
 			return -EIO;
 		}
 	}
+
+
+	mutex_destroy(&connect_path_mutex);
+	mutex_destroy(&hsdet_mutex);
+
+
 	return 0;
 }
 
@@ -8536,7 +8668,7 @@ static int mc_asoc_suspend(
 		return -EINVAL;
 
 	get_mixer_path_ctl_info(codec, &mixer_ctl_info);
-#ifdef HSDET_WHILE_SUSPEND	
+#ifdef HSDET_WHILE_SUSPEND
 	if ((mixer_ctl_info.audio_mode_play == 0)
 	&& (mixer_ctl_info.audio_mode_cap == 0)
 	&& (mixer_ctl_info.mainmic_play == 0)
@@ -8561,7 +8693,9 @@ static int mc_asoc_suspend(
 
 	set_bias_level(codec, SND_SOC_BIAS_OFF);
 #endif
+
 	mutex_lock(&mc_asoc->mutex);
+	mutex_lock(&hsdet_mutex);
 
 	err	= _McDrv_Ctrl(MCDRV_GET_HSDET,
 				(void *)&mc_asoc->hsdet_store, NULL, 0);
@@ -8653,6 +8787,7 @@ static int mc_asoc_suspend(
 
 error:
 	mutex_unlock(&mc_asoc->mutex);
+	mutex_unlock(&hsdet_mutex);
 
 	return err;
 }
@@ -8672,10 +8807,9 @@ static int mc_asoc_resume(
 	int	incall_mic;
 	struct mc_asoc_dsp_param	*dsp_prm	= NULL;
 #endif
-
 	struct mc_asoc_mixer_path_ctl_info	mixer_ctl_info;
-	TRACE_FUNC();
 
+	TRACE_FUNC();
 	if (mc_asoc_suspended != 1)
 		return 0;
 
@@ -8686,6 +8820,7 @@ static int mc_asoc_resume(
 		return -EINVAL;
 
 	mutex_lock(&mc_asoc->mutex);
+	mutex_lock(&hsdet_mutex);
 
 	get_mixer_path_ctl_info(codec, &mixer_ctl_info);
 #ifdef HSDET_WHILE_SUSPEND
@@ -8854,6 +8989,7 @@ static int mc_asoc_resume(
 
 error:
 	mutex_unlock(&mc_asoc->mutex);
+	mutex_unlock(&hsdet_mutex);
 
 	return err;
 }
@@ -9093,7 +9229,7 @@ static int spi_rw(u8 *tx, u8 *rx, int len)
 		if(i >= 10) {
 			dev_err(&mc_asoc_spi->dev, "spi_sync failure\n");
 			return -EIO;
-	}
+		}
 	}
 
 #if 0

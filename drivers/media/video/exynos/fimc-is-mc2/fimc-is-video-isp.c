@@ -310,17 +310,32 @@ static int fimc_is_isp_video_set_crop(struct file *file, void *fh,
 static int fimc_is_isp_video_reqbufs(struct file *file, void *priv,
 	struct v4l2_requestbuffers *buf)
 {
-	int ret;
+	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
+	struct fimc_is_device_ischain *device;
 
 	BUG_ON(!vctx);
 
 	mdbgv_isp("%s(buffers : %d)\n", vctx, __func__, buf->count);
 
+	device = vctx->device;
+	if (!device) {
+		merr("device is NULL", vctx);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	ret = fimc_is_ischain_isp_reqbufs(device, buf->count);
+	if (ret) {
+		merr("isp_reqbufs is fail(%d)", vctx, ret);
+		goto p_err;
+	}
+
 	ret = fimc_is_video_reqbufs(file, vctx, buf);
 	if (ret)
 		merr("fimc_is_video_reqbufs is fail(error %d)", vctx, ret);
 
+p_err:
 	return ret;
 }
 
@@ -500,7 +515,7 @@ static int fimc_is_isp_video_s_input(struct file *file, void *priv,
 		&sensor->enum_sensor[module].ext,
 		sensor->enum_sensor[module].setfile_name);
 	if (ret)
-		merr("fimc_is_device_init is fail\n", vctx);
+		merr("fimc_is_device_init is fail", vctx);
 
 p_err:
 	return ret;

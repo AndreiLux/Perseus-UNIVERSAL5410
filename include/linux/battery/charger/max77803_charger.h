@@ -150,4 +150,18 @@ enum {
 };
 
 extern sec_battery_platform_data_t sec_battery_pdata;
+
+#if defined(CONFIG_TARGET_LOCALE_KOR)
+#define SEC_CHG_ATTR(_name)				\
+{							\
+	.attr = {.name = #_name, .mode = 0664},	\
+	.show = sec_chg_show_attrs,			\
+	.store = sec_chg_store_attrs,			\
+}
+
+enum {
+	CHG_SIOP_INPUT_LIMIT = 0,
+};
+#endif
+
 #endif

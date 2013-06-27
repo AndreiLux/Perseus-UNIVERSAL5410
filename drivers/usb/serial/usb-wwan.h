@@ -48,6 +48,13 @@ struct usb_wwan_intf_private {
 #ifdef CONFIG_MDM_HSIC_PM
 	int buf_reuse;
 #endif
+#if defined(CONFIG_MACH_JA_KOR_LGT)
+	atomic_t sync_read_cnt;
+	struct workqueue_struct *wq;
+	struct delayed_work sync_check_work;
+	struct tty_struct *temp_tty;
+#endif
+
 	void *private;
 };
 

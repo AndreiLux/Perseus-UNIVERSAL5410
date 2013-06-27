@@ -319,11 +319,6 @@ static void ssp_get_positions(int *acc, int *mag)
 	*mag = AK8963C_BOTTOM_LOWER_LEFT;
 #elif defined(CONFIG_MACH_J_CHN_CTC) || defined(CONFIG_MACH_J_CHN_CU)
 	*acc = K330_TOP_UPPER_LEFT;
-	if (system_rev >= HW_REV_12)
-		*mag = AK8963C_TOP_LOWER_RIGHT;
-	else if (system_rev >= HW_REV_09)
-		*mag = AK8963C_BOTTOM_LOWER_RIGHT;
-	else
 		*mag = AK8963C_BOTTOM_UPPER_LEFT;
 #else
 	*acc = K330_TOP_UPPER_LEFT;

@@ -371,6 +371,9 @@ static void mdm_reconnect_fn(struct work_struct *work)
 	if (mdm_drv->shutdown)
 		return;
 
+	if (get_qmicm_mode(rmnet_pm_dev))
+		return;
+
 	if (mdm_check_main_connect(rmnet_pm_dev))
 		return;
 
@@ -411,7 +414,7 @@ void mdm_force_fatal(void)
 
 	force_dump = 1;
 
-	if (in_irq())
+	if (in_interrupt())
 		queue_work(mdm_queue, &mdm_fatal_work);
 	else {
 		notify_modem_fatal();

@@ -917,10 +917,10 @@ static const struct MCDRV_HSDET_INFO stHSDetInfo_Default = {
 	0
 };
 
-#define	HSUNDETDBNC	MCDRV_DETDBNC_55
+#define	HSUNDETDBNC	MCDRV_DETDBNC_109
 #define	HSUNDETDBNCNUM	MCDRV_DBNC_NUM_7
 #define	MSDETMB4OFF	(5000)
-#define	MSMKDETENOFF	(500)
+#define	MSMKDETENOFF	(200)
 
 static const struct MCDRV_HSDET_INFO stHSDetInfo_Suspend = {
 	/*	bEnPlugDet	*/

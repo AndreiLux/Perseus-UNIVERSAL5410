@@ -59,6 +59,8 @@
 #define IOCTL_TDMB_ASSIGN_CH			_IO(IOCTL_MAGIC, 7)
 #define IOCTL_TDMB_GET_DM				_IO(IOCTL_MAGIC, 8)
 #define IOCTL_TDMB_ASSIGN_CH_TEST	_IO(IOCTL_MAGIC, 9)
+#define IOCTL_TDMB_SET_AUTOSTART	_IO(IOCTL_MAGIC, 10)
+
 
 struct tdmb_dm {
 	unsigned int	rssi;
@@ -95,6 +97,8 @@ struct sub_ch_info_type {
 	unsigned char svc_type; /* 6 bits */
 	unsigned long svc_id; /* 16/32 bits */
 	unsigned char svc_label[SVC_LABEL_MAX+1]; /* 16*8 bits */
+	unsigned char ecc;	/* 8 bits */
+	unsigned char scids;	/* 4 bits */
 } ;
 
 struct ensemble_info_type {
@@ -132,6 +136,9 @@ bool tdmb_destroy_workqueue(void);
 bool tdmb_create_databuffer(unsigned long int_size);
 void tdmb_destroy_databuffer(void);
 void tdmb_init_data(void);
+#if defined(CONFIG_TDMB_ANT_DET)
+bool tdmb_ant_det_irq_set(bool set);
+#endif
 unsigned char tdmb_make_result
 (
 	unsigned char cmd,

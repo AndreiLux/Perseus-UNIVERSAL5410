@@ -783,8 +783,9 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 		dec->remained = 0;
 
 	spin_lock_irqsave(&dev->irqlock, flags);
-	if (dst_frame_status == S5P_FIMV_DEC_STATUS_DECODING_ONLY &&
-			FW_HAS_SEI_S3D_REALLOC(dev) && sei_avail_status) {
+	if (ctx->codec_mode == S5P_FIMV_CODEC_H264_DEC &&
+		dst_frame_status == S5P_FIMV_DEC_STATUS_DECODING_ONLY &&
+		FW_HAS_SEI_S3D_REALLOC(dev) && sei_avail_status) {
 		mfc_info("Frame packing SEI exists for a frame.\n");
 		mfc_info("Reallocate DPBs and issue init_buffer.\n");
 		ctx->is_dpb_realloc = 1;
@@ -1534,6 +1535,14 @@ static int s5p_mfc_release(struct file *file)
 			if (s5p_mfc_wait_for_done_ctx(ctx,
 				S5P_FIMV_R2H_CMD_CLOSE_INSTANCE_RET, 0)) {
 				mfc_err("Abnormal h/w state.\n");
+
+				/* cleanup for the next open */
+				if (dev->curr_ctx == ctx->num)
+					clear_bit(ctx->num, &dev->hw_lock);
+				if (ctx->is_drm)
+					dev->num_drm_inst--;
+				dev->num_inst--;
+
 				return -EIO;
 			}
 		}

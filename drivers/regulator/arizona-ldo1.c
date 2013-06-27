@@ -66,7 +66,7 @@ static int arizona_ldo_reg_get_voltage_sel(struct regulator_dev *rdev)
 	if (ret != 0)
 		return ret;
 
-	if (val&ARIZONA_LDO1_HI_PWR)
+	if (val & ARIZONA_LDO1_HI_PWR)
 		return rdev->desc->n_voltages - 1;
 
 	ret = regmap_read(ldo1->arizona->regmap,
@@ -116,7 +116,14 @@ static int arizona_ldo_reg_set_voltage_sel(struct regulator_dev *rdev,
 
 static int arizona_ldo_enable_time(struct regulator_dev *rdev)
 {
-	return 500;
+	struct arizona_ldo1 *ldo1 = rdev_get_drvdata(rdev);
+
+	switch (ldo1->arizona->type) {
+	case WM5102:
+		return 1500;
+	default:
+		return 500;
+	}
 }
 
 static int arizona_ldo_enable(struct regulator_dev *rdev)
