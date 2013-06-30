@@ -86,7 +86,7 @@
 #define FIMC_IS_CAL_SDCARD			"/data/cal_data.bin"
 /*#define FIMC_IS_MAX_CAL_SIZE			(20 * 1024)*/
 #define FIMC_IS_MAX_FW_SIZE			(2048 * 1024)
-#define FIMC_IS_CAL_START_ADDR			(0x012D0000)
+#define FIMC_IS_CAL_START_ADDR			(0x013D0000)
 #define FIMC_IS_CAL_RETRY_CNT			(2)
 #define FIMC_IS_FW_RETRY_CNT			(2)
 
@@ -1417,6 +1417,7 @@ static int fimc_is_ischain_readfw(struct fimc_is_device_ischain *this,
 	loff_t pos = 0;
 	char fw_path[100];
 	char setfile_path[100];
+	char setf_name[50];
 	int retry = FIMC_IS_FW_RETRY_CNT;
 	struct fimc_is_from_info *finfo = NULL;
 
@@ -1460,6 +1461,19 @@ static int fimc_is_ischain_readfw(struct fimc_is_device_ischain *this,
 	}
 	
 	pr_info("Camera: FW Data has dumped successfully\n");
+
+	if(sysfs_finfo->header_ver[0] == 'O') {
+		if(sysfs_finfo->header_ver[5] == 'S')
+			snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_IMX135_GUMI_SETF);
+		else
+			snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_3L2_GUMI_SETF);
+	}
+	else {		
+		if(sysfs_finfo->header_ver[5] == 'S')
+			snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_IMX135_SEC_SETF);
+		else
+			snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_3L2_SEC_SETF);		
+	}
 
 	snprintf(setfile_path, sizeof(setfile_path), "%s%s", FIMC_IS_FW_DUMP_PATH, setf_name);
 	pos = 0;
@@ -1592,6 +1606,15 @@ exit:
 
 #endif
 
+void fimc_is_ischain_savefirm(struct fimc_is_device_ischain *this)
+{
+#ifdef DEBUG_DUMP_FIRMWARE
+	loff_t pos;
+
+	write_data_to_file("/data/firmware.bin", (char *)this->imemory.kvaddr,
+		(size_t)FIMC_IS_A5_MEM_SIZE, &pos);
+#endif
+}
 
 static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *this)
 {
@@ -1650,7 +1673,8 @@ static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *this)
 
 	memcpy((void *)this->imemory.kvaddr, (void *)buf, fsize);
 	fimc_is_ischain_cache_flush(this, 0, fsize + 1);
-	fimc_is_ischain_version(this, fw_name, buf, fsize);
+	if (cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_FRONT)
+		fimc_is_ischain_version(this, fw_name, buf, fsize);
 
 request_fw:
 	if (fw_requested) {
@@ -1666,8 +1690,9 @@ request_fw:
 		memcpy((void *)this->imemory.kvaddr, fw_blob->data,
 			fw_blob->size);
 		fimc_is_ischain_cache_flush(this, 0, fw_blob->size + 1);
-		fimc_is_ischain_version(this, fw_name, fw_blob->data,
-			fw_blob->size);
+		if (cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_FRONT)
+			fimc_is_ischain_version(this, fw_name, fw_blob->data,
+				fw_blob->size);
 
 		release_firmware(fw_blob);
 #ifdef SDCARD_FW
@@ -1760,7 +1785,8 @@ static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
 	address = (void *)(this->imemory.kvaddr + load_addr);
 	memcpy((void *)address, (void *)buf, fsize);
 	fimc_is_ischain_cache_flush(this, load_addr, fsize + 1);
-	fimc_is_ischain_version(this, setf_name, buf, fsize);
+	if (cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_REAR)
+		fimc_is_ischain_version(this, setf_name, buf, fsize);
 
 request_fw:
 	if (fw_requested) {
@@ -1785,8 +1811,9 @@ request_fw:
 		address = (void *)(this->imemory.kvaddr + load_addr);
 		memcpy(address, fw_blob->data, fw_blob->size);
 		fimc_is_ischain_cache_flush(this, load_addr, fw_blob->size + 1);
-		fimc_is_ischain_version(this, setf_name, fw_blob->data,
-			(u32)fw_blob->size);
+		if (cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_REAR)
+			fimc_is_ischain_version(this, setf_name, fw_blob->data,
+				(u32)fw_blob->size);
 
 		release_firmware(fw_blob);
 #ifdef SDCARD_FW
@@ -1808,7 +1835,7 @@ out:
 		err("setfile loading is fail");
 	else
 		pr_info("Camera: the %s Setfile were applied successfully.\n",
-			((cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_FRONT) && 
+			((cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_REAR) && 
 				is_dumped_fw_loading_needed) ? "dumped" : "default");
 
 	return ret;
@@ -2956,12 +2983,12 @@ static int fimc_is_itf_setfile(struct fimc_is_device_ischain *this,
 
 	if (!setfile_addr) {
 		merr("setfile address is NULL", this);
-		pr_err("cmd : %08X\n", itf->com_regs->ihcmd);
-		pr_err("instance : %08X\n", itf->com_regs->ihc_sensorid);
-		pr_err("param1 : %08X\n", itf->com_regs->ihc_param1);
-		pr_err("param2 : %08X\n", itf->com_regs->ihc_param2);
-		pr_err("param3 : %08X\n", itf->com_regs->ihc_param3);
-		pr_err("param4 : %08X\n", itf->com_regs->ihc_param4);
+		pr_err("cmd : %08X\n", readl(&itf->com_regs->ihcmd));
+		pr_err("id : %08X\n", readl(&itf->com_regs->ihc_sensorid));
+		pr_err("param1 : %08X\n", readl(&itf->com_regs->ihc_param1));
+		pr_err("param2 : %08X\n", readl(&itf->com_regs->ihc_param2));
+		pr_err("param3 : %08X\n", readl(&itf->com_regs->ihc_param3));
+		pr_err("param4 : %08X\n", readl(&itf->com_regs->ihc_param4));
 		goto p_err;
 	}
 
@@ -2981,15 +3008,28 @@ p_err:
 	return ret;
 }
 
-static int fimc_is_itf_cfg_mem(struct fimc_is_device_ischain *this,
-	u32 shot_addr, u32 shot_size)
+static int fimc_is_itf_map(struct fimc_is_device_ischain *this,
+	u32 group, u32 shot_addr, u32 shot_size)
 {
 	int ret = 0;
 
 	dbg_ischain("%s()\n", __func__);
 
-	ret = fimc_is_hw_cfg_mem(this->interface, this->instance,
-		shot_addr, shot_size);
+	ret = fimc_is_hw_map(this->interface,
+		this->instance, group, shot_addr, shot_size);
+
+	return ret;
+}
+
+static int fimc_is_itf_unmap(struct fimc_is_device_ischain *this,
+	u32 group)
+{
+	int ret = 0;
+
+	dbg_ischain("%s()\n", __func__);
+
+	ret = fimc_is_hw_unmap(this->interface,
+		this->instance, group);
 
 	return ret;
 }
@@ -3367,6 +3407,20 @@ static int fimc_is_itf_grp_shot(struct fimc_is_device_ischain *device,
 			} else if (device->module == SENSOR_NAME_IMX135 &&
 				!test_bit(FIMC_IS_ISCHAIN_REPROCESSING, \
 					&device->state)) {
+#ifdef CONFIG_TARGET_LOCALE_KOR	//for only KOR blackbox
+				if (device->sensor->width < 2000) {
+ 					fimc_is_set_dvfs(core, device, group->id, \
+					DVFS_L1_1, I2C_L1_1);
+				} else {
+					if ((device->setfile && 0xffff) == \
+						ISS_SUB_SCENARIO_VIDEO)
+						fimc_is_set_dvfs(core, device, group->id, \
+							DVFS_L1, I2C_L1);
+					else
+						fimc_is_set_dvfs(core, device, group->id, \
+							DVFS_L1, I2C_L1);
+				}
+#else	// for Not KOR
 				if ((device->setfile && 0xffff) == \
 					ISS_SUB_SCENARIO_VIDEO)
 					fimc_is_set_dvfs(core, device, group->id, \
@@ -3374,6 +3428,7 @@ static int fimc_is_itf_grp_shot(struct fimc_is_device_ischain *device,
 				else
 					fimc_is_set_dvfs(core, device, group->id, \
 						DVFS_L1, I2C_L1);
+#endif
 			} else if (device->module == SENSOR_NAME_S5K6B2) {
 				if (((device->setfile && 0xffff) \
 					== ISS_SUB_SCENARIO_FRONT_VT1) \
@@ -5125,6 +5180,25 @@ p_err:
 	return ret;
 }
 
+int fimc_is_ischain_3a0_reqbufs(struct fimc_is_device_ischain *device,
+	u32 count)
+{
+	int ret = 0;
+	struct fimc_is_group *group;
+
+	BUG_ON(!device);
+
+	group = &device->group_3ax;
+
+	if (!count) {
+		ret = fimc_is_itf_unmap(device, GROUP_ID(group->id));
+		if (ret)
+			merr("fimc_is_itf_unmap is fail(%d)", device, ret);
+	}
+
+	return ret;
+}
+
 int fimc_is_ischain_3a0_s_format(struct fimc_is_device_ischain *device,
 	u32 width, u32 height)
 {
@@ -5453,6 +5527,25 @@ p_err:
 	return ret;
 }
 
+int fimc_is_ischain_3a1_reqbufs(struct fimc_is_device_ischain *device,
+	u32 count)
+{
+	int ret = 0;
+	struct fimc_is_group *group;
+
+	BUG_ON(!device);
+
+	group = &device->group_3ax;
+
+	if (!count) {
+		ret = fimc_is_itf_unmap(device, GROUP_ID(group->id));
+		if (ret)
+			merr("fimc_is_itf_unmap is fail(%d)", device, ret);
+	}
+
+	return ret;
+}
+
 int fimc_is_ischain_3a1_s_format(struct fimc_is_device_ischain *device,
 	u32 width, u32 height)
 {
@@ -5473,7 +5566,7 @@ int fimc_is_ischain_3a1_s_format(struct fimc_is_device_ischain *device,
 	if (test_bit(FIMC_IS_ISDEV_DSTART, &leader->state)) {
 		ret = fimc_is_ischain_s_scalable(device, leader, queue);
 		if (ret) {
-			err("fimc_is_ischain_s_scalable is fail\n");
+			err("fimc_is_ischain_s_scalable is fail");
 			goto p_err;
 		}
 	}
@@ -6001,6 +6094,25 @@ int fimc_is_ischain_isp_stop(struct fimc_is_device_ischain *device,
 p_err:
 	pr_info("[ISP:D:%d] %s(%d, %d)\n", device->instance, __func__,
 		ret, atomic_read(&group->scount));
+	return ret;
+}
+
+int fimc_is_ischain_isp_reqbufs(struct fimc_is_device_ischain *device,
+	u32 count)
+{
+	int ret = 0;
+	struct fimc_is_group *group;
+
+	BUG_ON(!device);
+
+	group = &device->group_isp;
+
+	if (!count) {
+		ret = fimc_is_itf_unmap(device, GROUP_ID(group->id));
+		if (ret)
+			merr("fimc_is_itf_unmap is fail(%d)", device, ret);
+	}
+
 	return ret;
 }
 
@@ -7124,26 +7236,35 @@ int fimc_is_ischain_3a0_callback(struct fimc_is_device_ischain *device,
 
 	fimc_is_frame_request_head(ldr_framemgr, &ldr_frame);
 
-	if (!ldr_frame) {
+	if (unlikely(!ldr_frame)) {
 		merr("ldr_frame is NULL", device);
 		return -EINVAL;
 	}
 
-	if (ldr_frame != frame) {
+	if (unlikely(ldr_frame != frame)) {
 		merr("ldr_frame is invalid(%X != %X)", device,
 			(u32)ldr_frame, (u32)frame);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto p_err;
 	}
 
-	if (!ldr_frame->shot) {
-		merr("ldr_frame->shot is NULL", device);
-		return -EINVAL;
+	if (unlikely(!frame->shot)) {
+		merr("frame->shot is NULL", device);
+		ret = -EINVAL;
+		goto p_err;
 	}
 
-	if (ldr_frame->init == FRAME_INI_MEM) {
-		fimc_is_itf_cfg_mem(device, ldr_frame->dvaddr_shot,
-			ldr_frame->shot_size);
-		ldr_frame->init = FRAME_CFG_MEM;
+	if (unlikely(frame->init != FRAME_MAP_MEM)) {
+		if (frame->init == FRAME_INI_MEM) {
+			fimc_is_itf_map(device, GROUP_ID(group->id),
+				frame->dvaddr_shot, frame->shot_size);
+			frame->init = FRAME_MAP_MEM;
+		} else {
+			merr("frame mapping is invalid(%d)", device,
+				frame->init);
+			ret = -EINVAL;
+			goto p_err;
+		}
 	}
 
 #ifdef ENABLE_SETFILE
@@ -7263,26 +7384,35 @@ int fimc_is_ischain_3a1_callback(struct fimc_is_device_ischain *device,
 
 	fimc_is_frame_request_head(ldr_framemgr, &ldr_frame);
 
-	if (!ldr_frame) {
+	if (unlikely(!ldr_frame)) {
 		merr("ldr_frame is NULL", device);
 		return -EINVAL;
 	}
 
-	if (ldr_frame != frame) {
+	if (unlikely(ldr_frame != frame)) {
 		merr("ldr_frame is invalid(%X != %X)", device,
 			(u32)ldr_frame, (u32)frame);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto p_err;
 	}
 
-	if (!ldr_frame->shot) {
-		merr("ldr_frame->shot is NULL", device);
-		return -EINVAL;
+	if (unlikely(!frame->shot)) {
+		merr("frame->shot is NULL", device);
+		ret = -EINVAL;
+		goto p_err;
 	}
 
-	if (ldr_frame->init == FRAME_INI_MEM) {
-		fimc_is_itf_cfg_mem(device, ldr_frame->dvaddr_shot,
-			ldr_frame->shot_size);
-		ldr_frame->init = FRAME_CFG_MEM;
+	if (unlikely(frame->init != FRAME_MAP_MEM)) {
+		if (frame->init == FRAME_INI_MEM) {
+			fimc_is_itf_map(device, GROUP_ID(group->id),
+				frame->dvaddr_shot, frame->shot_size);
+			frame->init = FRAME_MAP_MEM;
+		} else {
+			merr("frame mapping is invalid(%d)", device,
+				frame->init);
+			ret = -EINVAL;
+			goto p_err;
+		}
 	}
 
 #ifdef ENABLE_SETFILE
@@ -7425,16 +7555,35 @@ int fimc_is_ischain_isp_callback(struct fimc_is_device_ischain *device,
 
 	fimc_is_frame_request_head(framemgr, &frame);
 
-	if (frame != check_frame) {
-		merr("grp_frame is invalid(%X != %X)", device,
-			(u32)frame, (u32)frame);
+	if (unlikely(!frame)) {
+		merr("frame is NULL", device);
 		return -EINVAL;
 	}
 
-	if (frame->init == FRAME_INI_MEM) {
-		fimc_is_itf_cfg_mem(device, frame->dvaddr_shot,
-			frame->shot_size);
-		frame->init = FRAME_CFG_MEM;
+	if (unlikely(frame != check_frame)) {
+		merr("grp_frame is invalid(%X != %X)", device,
+			(u32)frame, (u32)frame);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	if (unlikely(!frame->shot)) {
+		merr("frame->shot is NULL", device);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	if (unlikely(frame->init != FRAME_MAP_MEM)) {
+		if (frame->init == FRAME_INI_MEM) {
+			fimc_is_itf_map(device, GROUP_ID(group->id),
+				frame->dvaddr_shot, frame->shot_size);
+			frame->init = FRAME_MAP_MEM;
+		} else {
+			merr("frame mapping is invalid(%d)", device,
+				frame->init);
+			ret = -EINVAL;
+			goto exit;
+		}
 	}
 
 #ifdef ENABLE_DRC

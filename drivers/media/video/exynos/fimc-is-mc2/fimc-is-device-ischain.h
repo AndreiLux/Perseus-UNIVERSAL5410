@@ -220,6 +220,8 @@ int fimc_is_ischain_3a0_start(struct fimc_is_device_ischain *this,
 int fimc_is_ischain_3a0_stop(struct fimc_is_device_ischain *this,
 	struct fimc_is_subdev *subdev,
 	struct fimc_is_queue *queue);
+int fimc_is_ischain_3a0_reqbufs(struct fimc_is_device_ischain *device,
+	u32 count);
 int fimc_is_ischain_3a0_s_format(struct fimc_is_device_ischain *this,
 	u32 width, u32 height);
 int fimc_is_ischain_3a0_buffer_queue(struct fimc_is_device_ischain *device,
@@ -239,6 +241,8 @@ int fimc_is_ischain_3a1_start(struct fimc_is_device_ischain *this,
 int fimc_is_ischain_3a1_stop(struct fimc_is_device_ischain *this,
 	struct fimc_is_subdev *subdev,
 	struct fimc_is_queue *queue);
+int fimc_is_ischain_3a1_reqbufs(struct fimc_is_device_ischain *device,
+	u32 count);
 int fimc_is_ischain_3a1_s_format(struct fimc_is_device_ischain *this,
 	u32 width, u32 height);
 int fimc_is_ischain_3a1_buffer_queue(struct fimc_is_device_ischain *device,
@@ -254,6 +258,8 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *device,
 int fimc_is_ischain_isp_stop(struct fimc_is_device_ischain *device,
 	struct fimc_is_subdev *subdev,
 	struct fimc_is_queue *queue);
+int fimc_is_ischain_isp_reqbufs(struct fimc_is_device_ischain *device,
+	u32 count);
 int fimc_is_ischain_isp_s_format(struct fimc_is_device_ischain *this,
 	u32 width, u32 height);
 int fimc_is_ischain_isp_buffer_queue(struct fimc_is_device_ischain *device,
@@ -350,5 +356,6 @@ extern const struct fimc_is_queue_ops fimc_is_ischain_sub_ops;
 
 int fimc_is_itf_power_down(struct fimc_is_interface *interface);
 int fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on);
+void fimc_is_ischain_savefirm(struct fimc_is_device_ischain *this);
 
 #endif
