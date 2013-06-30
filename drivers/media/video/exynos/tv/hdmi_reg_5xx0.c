@@ -2983,7 +2983,7 @@ void hdmi_reg_set_int_hpd(struct hdmi_device *hdev)
 
 	hdmi_write(hdev, HDMI_HPD_CTRL, 0x1);
 	hdmi_write(hdev, HDMI_HPD_TH_(0), 0xff);
-	hdmi_write(hdev, HDMI_HPD_TH_(1), 0x0);
+	hdmi_write(hdev, HDMI_HPD_TH_(1), 0x14);
 	hdmi_write(hdev, HDMI_HPD_TH_(2), 0x0);
 	hdmi_write(hdev, HDMI_HPD_TH_(3), 0x0);
 }
