@@ -54,6 +54,7 @@ struct ion_buffer *ion_handle_buffer(struct ion_handle *handle);
  *			handle, used for debugging
  * @pid:		pid of last client to reference this buffer in a
  *			handle, used for debugging
+ * @dma_address:	dma address of this buffer for ion_device.special_dev
 */
 struct ion_buffer {
 	struct kref ref;
@@ -77,6 +78,7 @@ struct ion_buffer {
 	int handle_count;
 	char task_comm[TASK_COMM_LEN];
 	pid_t pid;
+	dma_addr_t dma_address;
 };
 
 /**

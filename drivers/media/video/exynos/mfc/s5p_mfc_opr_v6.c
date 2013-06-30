@@ -1167,6 +1167,14 @@ static int s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx)
 		WRITEL(reg, S5P_FIMV_E_H264_OPTIONS);
 	}
 
+	/* pic_order_cnt_type = 0 for backward compatibilities */
+	if (FW_HAS_POC_TYPE_CTRL(dev)) {
+		reg = READL(S5P_FIMV_E_H264_OPTIONS_2);
+		reg &= ~(0x3 << 0);
+		reg |= (0x1 << 0); /* TODO: add new CID for this */
+		WRITEL(reg, S5P_FIMV_E_H264_OPTIONS_2);
+	}
+
 	/* hier qp enable */
 	reg = READL(S5P_FIMV_E_H264_OPTIONS);
 	reg &= ~(0x1 << 8);

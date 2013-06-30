@@ -53,6 +53,10 @@
 #define CGA_NAME	"srp_cga.bin"
 #define DATA_NAME	"srp_data.bin"
 
+#define PM_STAT_NONE	(0)
+#define PM_STAT_RUNTIME	(1)
+#define PM_STAT_SLEEP	(2)
+
 static struct srp_info srp;
 static DEFINE_MUTEX(srp_mutex);
 static DEFINE_SPINLOCK(lock);
@@ -61,11 +65,19 @@ static DECLARE_WAIT_QUEUE_HEAD(read_wq);
 static DECLARE_WAIT_QUEUE_HEAD(decinfo_wq);
 
 void srp_core_reset(void);
+void srp_core_resume(void);
 extern void audss_enable(void *i2s_info);
 extern void audss_disable(void *i2s_info);
 
+static void request_pm_get_sync(void)
+{
+	pm_runtime_get_sync(&srp.pdev->dev);
+	srp_core_resume();
+}
+
 static void request_pm_put_sync(void)
 {
+	pm_runtime_use_autosuspend(&srp.pdev->dev);
 	pm_runtime_mark_last_busy(&srp.pdev->dev);
 	pm_runtime_put_sync_autosuspend(&srp.pdev->dev);
 }
@@ -74,13 +86,13 @@ static int srp_check_sound_list(void)
 {
 	int idx, ok = 0;
 
-	printk(KERN_INFO "ALSA device list:\n");
-	for (idx = 0; idx < SNDRV_CARDS; idx++)
-		if (snd_cards[idx] != NULL) {
+	pr_info("ALSA device list:\n");
+	for (idx = 0; idx < SNDRV_CARDS; idx++) {
+		if (snd_cards[idx] != NULL)
 			ok++;
-		}
-	if (ok == 0){
-		printk(KERN_INFO "  No soundcards found.\n");
+	}
+	if (ok == 0) {
+		pr_info("  No soundcards found.\n");
 		return 0;
 	}
 	return ok;
@@ -467,6 +479,9 @@ int srp_core_suspend(int num)
 #ifdef CONFIG_PM_RUNTIME
 	if (srp.pm_suspended)
 		goto exit_func;
+
+	if (!srp.decoding_started)
+		return -1;
 #endif
 
 	srp_wait_for_pending();
@@ -524,8 +539,6 @@ void srp_core_resume(void)
 
 	srp_request_intr_mode(RESUME);
 	srp.pm_suspended = false;
-
-
 }
 
 static void srp_fill_ibuf(void)
@@ -573,7 +586,7 @@ static ssize_t srp_write(struct file *file, const char *buffer,
 
 	srp_debug("Write(%d bytes)\n", size);
 
-	pm_runtime_get_sync(&srp.pdev->dev);
+	request_pm_get_sync();
 
 	spin_lock(&lock);
 	if (srp.initialized) {
@@ -597,11 +610,17 @@ static ssize_t srp_write(struct file *file, const char *buffer,
 		goto exit_func;
 	}
 
+	spin_unlock(&lock_intr);
+	spin_unlock(&lock);
+
 	if (copy_from_user(&srp.wbuf[srp.wbuf_pos], buffer, size)) {
-		srp_err("Failed to copy_from_user!!\n");
-		ret = -EFAULT;
-		goto exit_func;
+		srp_debug("Failed to copy_from_user!!\n");
+		ret = SRP_ERROR_IBUF_OVERFLOW;
+		goto exit_put;
 	}
+
+	spin_lock(&lock);
+	spin_lock(&lock_intr);
 
 	srp.wbuf_pos += size;
 	srp.wbuf_fill_size += size;
@@ -625,6 +644,7 @@ exit_func:
 	spin_unlock(&lock_intr);
 	spin_unlock(&lock);
 
+exit_put:
 	request_pm_put_sync();
 
 	return ret;
@@ -641,7 +661,7 @@ static ssize_t srp_read(struct file *file, char *buffer,
 
 	srp_debug("Entered Get Obuf in PCM function\n");
 
-	pm_runtime_get_sync(&srp.pdev->dev);
+	request_pm_get_sync();
 
 	if (srp.prepare_for_eos) {
 		spin_lock(&lock);
@@ -739,7 +759,8 @@ static long srp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	unsigned long val = 0;
 	long ret = 0;
 
-	pm_runtime_get_sync(&srp.pdev->dev);
+	request_pm_get_sync();
+
 	mutex_lock(&srp_mutex);
 
 	switch (cmd) {
@@ -1304,24 +1325,25 @@ static int srp_resume(struct platform_device *pdev)
 #define srp_resume  NULL
 #endif
 
-static int audio_pm_notifier(struct notifier_block *nb, unsigned long event,  void *dummy)
+static int audio_pm_notifier(struct notifier_block *nb,
+				unsigned long event, void *dummy)
 {
 	switch (event) {
 	case PM_HIBERNATION_PREPARE:
 	case PM_SUSPEND_PREPARE:
-		if (!pm_runtime_status_suspended(&srp.pdev->dev)) {
-			srp_debug("%s : PM_SUSPEND_PREPARE\n", __func__);
-			srp.pm_noti_suspended = true;
-			pm_runtime_suspend(&srp.pdev->dev);
+		pm_runtime_dont_use_autosuspend(&srp.pdev->dev);
+
+		if (srp.decoding_started && !srp.pm_suspended){
+			pm_runtime_get_sync(&srp.pdev->dev);
+			srp_core_suspend(RUNTIME);
+			pm_runtime_put_sync(&srp.pdev->dev);
 		}
 		return NOTIFY_OK;
 	case PM_POST_HIBERNATION:
 	case PM_POST_SUSPEND:
-		if (srp.pm_noti_suspended) {
-			srp_debug("%s : PM_POST_SUSPEND\n", __func__);
-			pm_runtime_resume(&srp.pdev->dev);
-			srp.pm_noti_suspended = false;
-		}
+		pm_runtime_get_sync(&srp.pdev->dev);
+		srp_core_reset();
+		pm_runtime_put_sync(&srp.pdev->dev);
 		return NOTIFY_OK;
 	default:
 		return NOTIFY_DONE;
@@ -1499,9 +1521,6 @@ static int srp_runtime_suspend(struct device *dev)
 static int srp_runtime_resume(struct device *dev)
 {
 	audss_enable(srp.pm_info);
-
-	if (!srp.pm_noti_suspended)
-		srp_core_resume();
 
 	return 0;
 }

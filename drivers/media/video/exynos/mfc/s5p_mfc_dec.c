@@ -1327,9 +1327,9 @@ static int vidioc_s_fmt_vid_out_mplane(struct file *file, void *priv,
 		dec->src_buf_size = pix_mp->plane_fmt[0].sizeimage;
 	else
 		dec->src_buf_size = MAX_FRAME_SIZE;
-	mfc_debug(2, "s_fmt w/h: %dx%d, ctx: %dx%d\n", pix_mp->width,
+	mfc_info("s_fmt w/h: %dx%d, ctx: %dx%d\n", pix_mp->width,
 		pix_mp->height, ctx->img_width, ctx->img_height);
-	mfc_debug(2, "sizeimage: %d\n", pix_mp->plane_fmt[0].sizeimage);
+	mfc_info("sizeimage: %d\n", pix_mp->plane_fmt[0].sizeimage);
 	pix_mp->plane_fmt[0].bytesperline = 0;
 
 	/* In case of calling s_fmt twice or more */
@@ -1612,6 +1612,14 @@ static int vidioc_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 	}
 
 	if (buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+		if (buf->m.planes[0].bytesused > ctx->vq_src.plane_sizes[0]) {
+			mfc_err("data size (%d) must be less than "
+					"plane size(%d)\n",
+					buf->m.planes[0].bytesused,
+					ctx->vq_src.plane_sizes[0]);
+			return -EIO;
+		}
+
 		if (dec->is_dts_mode) {
 			mfc_debug(7, "timestamp: %ld %ld\n",
 					buf->timestamp.tv_sec,

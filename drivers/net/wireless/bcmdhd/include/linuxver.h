@@ -465,9 +465,11 @@ pci_restore_state(struct pci_dev *dev, u32 *buffer)
 #define SET_NETDEV_DEV(net, pdev)	do {} while (0)
 #endif
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 1, 0))
 #ifndef HAVE_FREE_NETDEV
 #define free_netdev(dev)		kfree(dev)
 #endif
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3, 1, 0) */
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 0))
 

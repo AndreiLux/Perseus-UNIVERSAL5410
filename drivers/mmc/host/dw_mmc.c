@@ -2803,11 +2803,13 @@ static void dw_mci_work_routine_card(struct work_struct *work)
 				if (!atomic_read(&host->cclk_cnt)) {
 					dw_mci_ciu_clk_en(host);
 					dw_mci_fifo_reset(&host->dev, host);
-					dw_mci_ciu_reset(&host->dev, host);
+					if (host->pdata->cd_type == DW_MCI_CD_GPIO)
+						dw_mci_ciu_reset(&host->dev, host);
 					dw_mci_ciu_clk_dis(host);
 				} else {
 					dw_mci_fifo_reset(&host->dev, host);
-					dw_mci_ciu_reset(&host->dev, host);
+					if (host->pdata->cd_type == DW_MCI_CD_GPIO)
+						dw_mci_ciu_reset(&host->dev, host);
 				}
 				spin_unlock(&host->cclk_lock);
 #ifdef CONFIG_MMC_DW_IDMAC

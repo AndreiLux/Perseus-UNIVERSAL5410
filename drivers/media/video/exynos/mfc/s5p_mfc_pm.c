@@ -223,6 +223,7 @@ void s5p_mfc_clock_off(void)
 	if (IS_MFCV6(dev)) {
 		spin_lock_irqsave(&pm->clklock, flags);
 		if ((atomic_dec_return(&clk_ref) == 0) &&
+				(atomic_read(&dev->pm.power) == 1) &&
 				FW_HAS_BUS_RESET(dev)) {
 			s5p_mfc_write_reg(0x1, S5P_FIMV_MFC_BUS_RESET_CTRL);
 

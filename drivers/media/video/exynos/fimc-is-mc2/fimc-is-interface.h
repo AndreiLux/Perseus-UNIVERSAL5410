@@ -178,8 +178,10 @@ int fimc_is_hw_a_param(struct fimc_is_interface *this,
 	u32 instance, u32 group, u32 sub_mode);
 int fimc_is_hw_g_capability(struct fimc_is_interface *this,
 	u32 instance, u32 address);
-int fimc_is_hw_cfg_mem(struct fimc_is_interface *interface,
-	u32 instance, u32 address, u32 size);
+int fimc_is_hw_map(struct fimc_is_interface *this,
+	u32 instance, u32 group, u32 address, u32 size);
+int fimc_is_hw_unmap(struct fimc_is_interface *this,
+	u32 instance, u32 group);
 int fimc_is_hw_power_down(struct fimc_is_interface *interface,
 	u32 instance);
 int fimc_is_hw_i2c_lock(struct fimc_is_interface *interface,

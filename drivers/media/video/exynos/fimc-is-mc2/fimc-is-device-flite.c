@@ -889,11 +889,11 @@ static void tasklet_flite_end(unsigned long data)
 static inline void notify_fcount(u32 channel, u32 fcount)
 {
 	if (channel == FLITE_ID_A)
-		*notify_fcount_sen0 = fcount;
+		writel(fcount, notify_fcount_sen0);
 	else if (channel == FLITE_ID_B)
-		*notify_fcount_sen1 = fcount;
+		writel(fcount, notify_fcount_sen1);
 	else if (channel == FLITE_ID_C)
-		*notify_fcount_sen2 = fcount;
+		writel(fcount, notify_fcount_sen2);
 	else
 		err("unresolved channel(%d)", channel);
 }

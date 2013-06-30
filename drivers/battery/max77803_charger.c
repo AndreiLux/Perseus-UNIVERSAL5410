@@ -15,7 +15,7 @@
 #ifdef CONFIG_USB_HOST_NOTIFY
 #include <linux/host_notify.h>
 #include <mach/usb3-drd.h>
-#endif 
+#endif
 
 
 #define DEBUG
@@ -27,6 +27,9 @@
 #define RECOVERY_CNT		5
 #define REDUCE_CURRENT_STEP	100
 #define MINIMUM_INPUT_CURRENT	300
+
+#define SIOP_INPUT_LIMIT_CURRENT 1200
+#define SIOP_CHARGING_LIMIT_CURRENT 1000
 
 struct max77803_charger_data {
 	struct max77803_dev	*max77803;
@@ -309,7 +312,7 @@ static int max77803_get_input_current(struct max77803_charger_data *charger)
 		max77803_read_reg(charger->max77803->i2c,
 			MAX77803_CHG_REG_CHG_CNFG_10, &reg_data);
 		pr_info("%s: CHG_CNFG_10(0x%02x)\n", __func__, reg_data);
-	} else {		
+	} else {
 		max77803_read_reg(charger->max77803->i2c,
 			MAX77803_CHG_REG_CHG_CNFG_09, &reg_data);
 		pr_info("%s: CHG_CNFG_09(0x%02x)\n", __func__, reg_data);
@@ -424,8 +427,15 @@ static void max77803_recovery_work(struct work_struct *work)
 		(chgin_dtls == 0x3) && (chg_dtls != 0x8) && (byp_dtls == 0x0))) {
 		pr_info("%s: try to recovery, cnt(%d)\n", __func__,
 				(charger->soft_reg_recovery_cnt + 1));
-		max77803_set_input_current(charger,
+		if (charger->siop_level < 100 &&
+			charger->cable_type == POWER_SUPPLY_TYPE_MAINS) {
+			pr_info("%s : LCD on status and revocer current\n", __func__);
+			max77803_set_input_current(charger,
+					SIOP_INPUT_LIMIT_CURRENT);
+		} else {
+			max77803_set_input_current(charger,
 				charger->charging_current_max);
+		}
 
 	} else {
 		pr_info("%s: fail to recovery, cnt(%d)\n", __func__,
@@ -569,7 +579,7 @@ static int max77803_get_health_state(struct max77803_charger_data *charger)
 	case 0x00:
 		pr_info("%s: No battery and the charger is suspended\n",
 			__func__);
-		state = POWER_SUPPLY_HEALTH_UNKNOWN;
+		state = POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
 		break;
 	case 0x01:
 		pr_info("%s: battery is okay "
@@ -834,6 +844,13 @@ static int sec_chg_set_property(struct power_supply *psy,
 			else
 				set_charging_current_max =
 					charger->charging_current_max;
+
+			if (charger->siop_level < 100 &&
+				val->intval == POWER_SUPPLY_TYPE_MAINS) {
+				set_charging_current_max = SIOP_INPUT_LIMIT_CURRENT;
+				if (set_charging_current > SIOP_CHARGING_LIMIT_CURRENT)
+					set_charging_current = SIOP_CHARGING_LIMIT_CURRENT;
+			}
 		}
 		max77803_set_charger_state(charger, charger->is_charging);
 		/* if battery full, only disable charging  */
@@ -871,9 +888,27 @@ static int sec_chg_set_property(struct power_supply *psy,
 			/* decrease the charging current according to siop level */
 			int current_now =
 				charger->charging_current * val->intval / 100;
+
+			/* do forced set charging current */
 			if (current_now > 0 &&
 					current_now < usb_charging_current)
 				current_now = usb_charging_current;
+
+			if (charger->cable_type == POWER_SUPPLY_TYPE_MAINS) {
+				if (charger->siop_level < 100 ) {
+					set_charging_current_max =
+						SIOP_INPUT_LIMIT_CURRENT;
+				} else
+					set_charging_current_max =
+						charger->charging_current_max;
+
+				if (charger->siop_level < 100 &&
+						current_now > SIOP_CHARGING_LIMIT_CURRENT)
+					current_now = SIOP_CHARGING_LIMIT_CURRENT;
+				max77803_set_input_current(charger,
+					set_charging_current_max);
+			}
+
 			max77803_set_charge_current(charger, current_now);
 		}
 		break;

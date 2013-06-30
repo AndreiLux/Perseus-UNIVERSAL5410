@@ -1346,6 +1346,32 @@ int gsc_set_protected_content(struct gsc_dev *gsc, bool enable)
 	return 0;
 }
 
+static void gsc_dump_registers(struct gsc_dev *gsc)
+{
+	pr_err("dumping registers\n");
+	print_hex_dump(KERN_ERR, "", DUMP_PREFIX_ADDRESS, 32, 4, gsc->regs,
+			0x0280, false);
+	pr_err("End of GSC_SFR DUMP\n");
+}
+
+int gsc_sysmmu_fault_handler(struct device *dev, const char *mmuname,
+		enum exynos_sysmmu_inttype itype, unsigned long pgtable_base,
+		unsigned long fault_addr)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct gsc_dev *gsc = platform_get_drvdata(pdev);
+
+	pr_err("FIMD1 PAGE FAULT occurred at 0x%lx (Page table base: 0x%lx)\n",
+			fault_addr, pgtable_base);
+
+	gsc_dump_registers(gsc);
+
+	pr_err("Generating Kernel OOPS... because it is unrecoverable.\n");
+
+	BUG();
+
+	return 0;
+}
 static int gsc_runtime_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -1532,6 +1558,9 @@ static int gsc_probe(struct platform_device *pdev)
 		ret = PTR_ERR(gsc->alloc_ctx);
 		goto err_irq;
 	}
+
+	exynos_sysmmu_set_fault_handler(&pdev->dev,
+			(sysmmu_fault_handler_t)gsc_sysmmu_fault_handler);
 
 	gsc->vb2->resume(gsc->alloc_ctx);
 

@@ -393,6 +393,7 @@ static inline unsigned int r2h_bits(int cmd)
 #define S5P_FIMV_E_EXTENDED_SAR			0xFB54
 
 #define S5P_FIMV_E_H264_OPTIONS			0xFB58
+#define S5P_FIMV_E_H264_OPTIONS_2		0xFB4C
 #define S5P_FIMV_E_H264_LF_ALPHA_OFFSET		0xFB5C
 #define S5P_FIMV_E_H264_LF_BETA_OFFSET		0xFB60
 #define S5P_FIMV_E_H264_I_PERIOD		0xFB64

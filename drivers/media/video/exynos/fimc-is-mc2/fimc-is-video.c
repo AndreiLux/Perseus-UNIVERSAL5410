@@ -509,7 +509,7 @@ set_info:
 		frame->shot = (struct camera2_shot *)frame->kvaddr_shot;
 		frame->shot_ext = (struct camera2_shot_ext *)
 			queue->buf_kva[index][spare];
-		frame->shot_size = queue->framecfg.size[spare];
+		frame->shot_size = queue->framecfg.size[spare] - ext_size;
 #ifdef MEASURE_TIME
 		frame->tzone = (struct timeval *)frame->shot_ext->timeZone;
 #endif

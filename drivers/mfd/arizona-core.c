@@ -16,9 +16,13 @@
 #include <linux/interrupt.h>
 #include <linux/mfd/core.h>
 #include <linux/module.h>
+#include <linux/of.h>
+#include <linux/of_device.h>
+#include <linux/of_gpio.h>
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
+#include <linux/regulator/machine.h>
 #include <linux/slab.h>
 
 #include <linux/mfd/arizona/core.h>
@@ -348,6 +352,17 @@ static int arizona_runtime_resume(struct device *dev)
 
 	switch (arizona->type) {
 	case WM5102:
+		if (arizona->external_dcvdd) {
+			ret = regmap_update_bits(arizona->regmap,
+						 ARIZONA_ISOLATION_CONTROL,
+						 ARIZONA_ISOLATE_DCVDD1, 0);
+			if (ret != 0) {
+				dev_err(arizona->dev,
+					"Failed to connect DCVDD: %d\n", ret);
+				goto err;
+			}
+		}
+
 		ret = wm5102_patch(arizona);
 		if (ret != 0) {
 			dev_err(arizona->dev, "Failed to apply patch: %d\n",
@@ -369,6 +384,16 @@ static int arizona_runtime_resume(struct device *dev)
 			goto err;
 		}
 
+		if (arizona->external_dcvdd) {
+			ret = regmap_update_bits(arizona->regmap,
+						 ARIZONA_ISOLATION_CONTROL,
+						 ARIZONA_ISOLATE_DCVDD1, 0);
+			if (ret != 0) {
+				dev_err(arizona->dev,
+					"Failed to connect DCVDD: %d\n", ret);
+				goto err;
+			}
+		}
 		break;
 	}
 
@@ -389,8 +414,21 @@ err:
 static int arizona_runtime_suspend(struct device *dev)
 {
 	struct arizona *arizona = dev_get_drvdata(dev);
+	int ret;
 
 	dev_dbg(arizona->dev, "Entering AoD mode\n");
+
+	if (arizona->external_dcvdd) {
+		ret = regmap_update_bits(arizona->regmap,
+					 ARIZONA_ISOLATION_CONTROL,
+					 ARIZONA_ISOLATE_DCVDD1,
+					 ARIZONA_ISOLATE_DCVDD1);
+		if (ret != 0) {
+			dev_err(arizona->dev, "Failed to isolate DCVDD: %d\n",
+				ret);
+			return ret;
+		}
+	}
 
 	regulator_disable(arizona->dcvdd);
 	regcache_cache_only(arizona->regmap, true);
@@ -430,6 +468,70 @@ const struct dev_pm_ops arizona_pm_ops = {
 };
 EXPORT_SYMBOL_GPL(arizona_pm_ops);
 
+#ifdef CONFIG_OF
+int arizona_of_get_type(struct device *dev)
+{
+	const struct of_device_id *id = of_match_device(arizona_of_match, dev);
+
+	if (id)
+		return (int)id->data;
+	else
+		return 0;
+}
+EXPORT_SYMBOL_GPL(arizona_of_get_type);
+
+static int arizona_of_get_core_pdata(struct arizona *arizona)
+{
+	int ret, i;
+
+	arizona->pdata.reset = of_get_named_gpio(arizona->dev->of_node,
+						 "reset", 0);
+	if (arizona->pdata.reset < 0)
+		arizona->pdata.reset = 0;
+
+	arizona->pdata.ldoena = of_get_named_gpio(arizona->dev->of_node,
+						  "ldoena", 0);
+	if (arizona->pdata.ldoena < 0)
+		arizona->pdata.ldoena = 0;
+
+	ret = of_property_read_u32_array(arizona->dev->of_node,
+					 "gpio-defaults",
+					 arizona->pdata.gpio_defaults,
+					 ARRAY_SIZE(arizona->pdata.gpio_defaults));
+	if (ret >= 0) {
+		/*
+		 * All values are literal except out of range values
+		 * which are chip default, translate into platform
+		 * data which uses 0 as chip default and out of range
+		 * as zero.
+		 */
+		for (i = 0; i < ARRAY_SIZE(arizona->pdata.gpio_defaults); i++) {
+			if (arizona->pdata.gpio_defaults[i] > 0xffff)
+				arizona->pdata.gpio_defaults[i] = 0;
+			if (arizona->pdata.gpio_defaults[i] == 0)
+				arizona->pdata.gpio_defaults[i] = 0x10000;
+		}
+	} else {
+		dev_err(arizona->dev, "Failed to parse GPIO defaults: %d\n",
+			ret);
+	}
+
+	return 0;
+}
+
+const struct of_device_id arizona_of_match[] = {
+	{ .compatible = "wlf,wm5102", .data = (void *)WM5102 },
+	{ .compatible = "wlf,wm5110", .data = (void *)WM5110 },
+	{},
+};
+EXPORT_SYMBOL_GPL(arizona_of_match);
+#else
+static int arizona_of_get_core_pdata(struct arizona *arizona)
+{
+	return 0;
+}
+#endif
+
 static struct mfd_cell early_devs[] = {
 	{ .name = "arizona-ldo1" },
 };
@@ -460,6 +562,8 @@ int __devinit arizona_dev_init(struct arizona *arizona)
 
 	dev_set_drvdata(arizona->dev, arizona);
 	mutex_init(&arizona->clk_lock);
+
+	arizona_of_get_core_pdata(arizona);
 
 	if (dev_get_platdata(arizona->dev))
 		memcpy(&arizona->pdata, dev_get_platdata(arizona->dev),
@@ -662,6 +766,14 @@ int __devinit arizona_dev_init(struct arizona *arizona)
 			     arizona->pdata.gpio_defaults[i]);
 	}
 
+	/*
+	 * LDO1 can only be used to supply DCVDD so if it has no
+	 * consumers then DCVDD is supplied externally.
+	 */
+	if (arizona->pdata.ldo1 &&
+	    arizona->pdata.ldo1->num_consumer_supplies == 0)
+		arizona->external_dcvdd = true;
+
 	pm_runtime_enable(arizona->dev);
 
 	/* Chip default */
@@ -706,7 +818,7 @@ int __devinit arizona_dev_init(struct arizona *arizona)
 		if (arizona->pdata.micbias[i].discharge)
 			val |= ARIZONA_MICB1_DISCH;
 
-		if (arizona->pdata.micbias[i].fast_start)
+		if (arizona->pdata.micbias[i].soft_start)
 			val |= ARIZONA_MICB1_RATE;
 
 		if (arizona->pdata.micbias[i].bypass)
