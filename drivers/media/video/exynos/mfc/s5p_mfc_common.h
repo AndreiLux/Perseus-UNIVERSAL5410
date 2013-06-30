@@ -742,6 +742,8 @@ static inline unsigned int mfc_version(struct s5p_mfc_dev *dev)
 					(dev->fw.date >= 0x121214))
 #define FW_HAS_ADV_RC_MODE(dev)		(IS_MFCV6(dev) &&		\
 					(dev->fw.date >= 0x130329))
+#define FW_HAS_POC_TYPE_CTRL(dev)	(IS_MFCV6(dev) &&		\
+					(dev->fw.date >= 0x130405))
 
 #define HW_LOCK_CLEAR_MASK		(0xFFFFFFFF)
 
