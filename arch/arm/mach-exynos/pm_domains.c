@@ -98,7 +98,7 @@ static unsigned int exynos_pd_gscl_clock_control(bool on)
 		 * parent of aclk_333_432_gscl is set with
 		 * dout_aclk_333_432_gscl
 		 */
-	        target_parent = clk_get(NULL, "dout_aclk_333_432_gscl");
+		target_parent = clk_get(NULL, "dout_aclk_333_432_gscl");
 
 		if (IS_ERR(target_parent)) {
 			pr_err("%s : clk_get(target_parent) failed[turn on]\n", __func__);
@@ -109,7 +109,7 @@ static unsigned int exynos_pd_gscl_clock_control(bool on)
 		 * If GSCL power domain is turned off
 		 * parent of aclk_333_432_gscl is set with ext_xtal
 		 */
-	        target_parent = clk_get(NULL, "ext_xtal");
+		target_parent = clk_get(NULL, "ext_xtal");
 
 		if (IS_ERR(target_parent)) {
 			pr_err("%s : clk_get(target_parent) failed[turn off]\n", __func__);
@@ -123,7 +123,7 @@ static unsigned int exynos_pd_gscl_clock_control(bool on)
 }
 
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"  // gscl0, gscl1
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"  /* gscl0, gscl1 */
 static void exynos_gscl_ctrl_save(unsigned int *gscl0, unsigned int *gscl1, bool on)
 {
 	unsigned int tmp;
@@ -203,38 +203,8 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 		__raw_writel(0x0, EXYNOS5_PAD_RETENTION_MAU_SYS_PWR_REG);
 	}
 
-	if (soc_is_exynos5410() && base == EXYNOS5_GSCL_CONFIGURATION) {
+	if (soc_is_exynos5410() && base == EXYNOS5_GSCL_CONFIGURATION)
 		exynos_gscl_ctrl_save(&gscl0, &gscl1, true);
-		pr_info("CLK_SRC_MASKS_GSCL            : 0x%08x\n", __raw_readl(EXYNOS5_CLKSRC_MASK_GSCL));
-		pr_info("CLK_GATE_BUS_GSCL0            : 0x%08x\n", __raw_readl(EXYNOS5_CLKGATE_BUS_GSCL0));
-		pr_info("CLK_GATE_BUS_GSCL1            : 0x%08x\n", __raw_readl(EXYNOS5_CLKGATE_BUS_GSCL1));
-		pr_info("CLK_GATE_TOP_SCLK_GSCL        : 0x%08x\n", __raw_readl(EXYNOS5_CLKGATE_TOP_SCLK_GSCL));
-		pr_info("CLK_GATE_IP_GSCL0             : 0x%08x\n", __raw_readl(EXYNOS5_CLKGATE_IP_GSCL0));
-		pr_info("CLK_GATE_IP_GSCL1             : 0x%08x\n", __raw_readl(EXYNOS5_CLKGATE_IP_GSCL));
-		pr_info("GSCL_OPTION                   : 0x%08x\n", __raw_readl(EXYNOS5_GSCL_OPTION));
-		pr_info("CMU_CLKSTOP_GSCL_SYS_PWR_REG  : 0x%08x\n", __raw_readl(EXYNOS5_CMU_CLKSTOP_GSCL_SYS_PWR_REG));
-		pr_info("CMU_SYSCLK_GSCL_SYS_PWR_REG   : 0x%08x\n", __raw_readl(EXYNOS5_CMU_SYSCLK_GSCL_SYS_PWR_REG));
-		pr_info("CMU_RESET_GSCL_SYS_PWR_REG    : 0x%08x\n", __raw_readl(EXYNOS5_CMU_RESET_GSCL_SYS_PWR_REG));
-	}
-
-	if (soc_is_exynos5410() && base == EXYNOS5410_DISP1_CONFIGURATION) {
-		pr_info("CLK_GATE_BUS_DISP1             : 0x%08x\n", __raw_readl(EXYNOS5_CLKGATE_BUS_DISP1));
-		pr_info("CLK_GATE_TOP_SCLK_DISP1        : 0x%08x\n", __raw_readl(EXYNOS5_CLKGATE_TOP_SCLK_DISP1));
-		pr_info("CLK_GATE_IP_DISP1              : 0x%08x\n", __raw_readl(EXYNOS5_CLKGATE_IP_DISP1));
-		pr_info("DISP1_OPTION                   : 0x%08x\n", __raw_readl(EXYNOS5410_DISP1_OPTION));
-		pr_info("CMU_CLKSTOP_DISP1_SYS_PWR_REG  : 0x%08x\n", __raw_readl(EXYNOS5_CMU_CLKSTOP_DISP1_SYS_PWR_REG));
-		pr_info("CMU_SYSCLK_DISP1_SYS_PWR_REG   : 0x%08x\n", __raw_readl(EXYNOS5_CMU_SYSCLK_DISP1_SYS_PWR_REG));
-		pr_info("CMU_RESET_DISP1_SYS_PWR_REG    : 0x%08x\n", __raw_readl(EXYNOS5_CMU_RESET_DISP1_SYS_PWR_REG));
-	}
-
-	if (soc_is_exynos5410() && base == EXYNOS5410_MFC_CONFIGURATION) {
-		pr_info("CLK_GATE_BUS_MFC		: 0x%08x\n", __raw_readl(EXYNOS5_CLKGATE_BUS_MFC));
-		pr_info("CLK_GATE_IP_MFC		: 0x%08x\n", __raw_readl(EXYNOS5_CLKGATE_IP_MFC));
-		pr_info("MFC_OPTION                     : 0x%08x\n", __raw_readl(EXYNOS5410_MFC_OPTION));
-		pr_info("CMU_CLKSTOP_MFC_SYS_PWR_REG    : 0x%08x\n", __raw_readl(EXYNOS5_CMU_CLKSTOP_MFC_SYS_PWR_REG));
-		pr_info("CMU_SYSCLK_MFC_SYS_PWR_REG     : 0x%08x\n", __raw_readl(EXYNOS5_CMU_SYSCLK_MFC_SYS_PWR_REG));
-		pr_info("CMU_RESET_MFC_SYS_PWR_REG      : 0x%08x\n", __raw_readl(EXYNOS5_CMU_RESET_MFC_SYS_PWR_REG));
-	}
 
 	if (soc_is_exynos5410() &&
 		!power_on && base == EXYNOS5_GSCL_CONFIGURATION)
@@ -262,7 +232,7 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 					tmp = __raw_readl(base + 0x4) & EXYNOS_INT_LOCAL_PWR_EN;
 					usleep_range(80, 100);
 					timeout--;
-				} while((tmp != pwr) && timeout);
+				} while ((tmp != pwr) && timeout);
 
 				if (!timeout) {
 					pr_err("ISP WFI unset power down fail(state:%x)\n", __raw_readl(base + 0x4));
@@ -281,10 +251,41 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 						tmp = __raw_readl(base + 0x4) & EXYNOS_INT_LOCAL_PWR_EN;
 						udelay(1);
 						timeout--;
-					} while((tmp != pwr) && timeout);
+					} while ((tmp != pwr) && timeout);
 
 					if (!timeout) {
-						pr_err("ISP force timeout fail\n");
+						pr_err("CG_STATUS0 : %08X\n", __raw_readl(EXYNOS5410_CG_STATUS0));
+
+						tmp = __raw_readl(EXYNOS5410_LPI_MASK0);
+						tmp |= EXYNOS5410_LPI_MASK0_FD;
+						__raw_writel(tmp, EXYNOS5410_LPI_MASK0);
+						pr_err("FD Disable(LPI : %08X)\n", __raw_readl(EXYNOS5410_LPI_MASK0));
+
+						timeout = 100;
+						do {
+							tmp = __raw_readl(base + 0x4) & EXYNOS_INT_LOCAL_PWR_EN;
+							udelay(1);
+							timeout--;
+						} while ((tmp != pwr) && timeout);
+
+						if (!timeout) {
+							pr_err("CG_STATUS0 : %08X\n", __raw_readl(EXYNOS5410_CG_STATUS0));
+
+							tmp = __raw_readl(EXYNOS5410_LPI_MASK0);
+							tmp |= EXYNOS5410_LPI_MASK0_OTHERS;
+							__raw_writel(tmp, EXYNOS5410_LPI_MASK0);
+							pr_err("Others Disable(LPI : %08X)\n", __raw_readl(EXYNOS5410_LPI_MASK0));
+
+							timeout = 100;
+							do {
+								tmp = __raw_readl(base + 0x4) & EXYNOS_INT_LOCAL_PWR_EN;
+								udelay(1);
+								timeout--;
+							} while ((tmp != pwr) && timeout);
+
+							if (!timeout)
+								pr_err("ISP force timeout fail\n");
+						}
 					} else {
 						pr_err("ISP force timeout success\n");
 						tmp = __raw_readl(EXYNOS5410_LPI_BUS_MASK0);
@@ -327,7 +328,7 @@ static int exynos_pd_power(struct generic_pm_domain *domain, bool power_on)
 			power_on && base == EXYNOS5410_DISP1_CONFIGURATION) {
 		regs = ioremap(0x14530000, SZ_32);
 		__raw_writel(0x1, regs + 0x30);
-		pr_info("HDMI phy power off : %x\n",__raw_readl(regs + 0x30));
+		pr_debug("HDMI phy power off : %x\n", __raw_readl(regs + 0x30));
 		iounmap(regs);
 	}
 
@@ -675,7 +676,9 @@ EXYNOS_PM_DEV(axi_disp1, fimd1, NULL, "axi_disp1");
 EXYNOS_PM_DEV(mie1, fimd1, NULL, "mie1");
 EXYNOS_PM_DEV(smmufimd1, fimd1, &SYSMMU_PLATDEV(fimd1), SYSMMU_CLOCK_NAME);
 EXYNOS_PM_DEV(dp, fimd1, NULL, "dp1");
+#ifdef CONFIG_FB_S5P_MDNIE
 EXYNOS_PM_DEV(mdnie, fimd1, &mdnie_device, "mdnie1");
+#endif
 #endif
 #ifdef CONFIG_S5P_DEV_MIPI_DSIM1
 EXYNOS_PM_DEV(dsim1, mipi_dsim1, &s5p_device_mipi_dsim1, "dsim1");
@@ -720,7 +723,9 @@ static struct exynos_pm_dev *exynos_pm_devs[] = {
 	&exynos5_pm_dev_mie1,
 	&exynos5_pm_dev_smmufimd1,
 	&exynos5_pm_dev_dp,
+#ifdef CONFIG_FB_S5P_MDNIE
 	&exynos5_pm_dev_mdnie,
+#endif
 #endif
 #ifdef CONFIG_S5P_DEV_MIPI_DSIM1
 	&exynos5_pm_dev_dsim1,
