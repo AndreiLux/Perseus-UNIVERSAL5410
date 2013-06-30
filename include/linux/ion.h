@@ -225,6 +225,29 @@ int ion_share_dma_buf(struct ion_client *client, struct ion_handle *handle);
  */
 struct ion_handle *ion_import_dma_buf(struct ion_client *client, int fd);
 
+struct device;
+/**
+ * ion_register_special_device() - register a special device
+ * @dev: ion_device
+ * @special: the special device that needs dma mapping kept until the buffer is
+ *           freed
+ *
+ * This registers a special device that needs dma address mapped by
+ * dma_buf_map_attachment() kept until the buffer is freed and prevents not to
+ * unmap the dma address when dma_buf_unmap_attachment().
+ * Returns -EBUSY if a device is already registered.
+ */
+int ion_register_special_device(struct ion_device *dev, struct device *special);
+
+/**
+ * ion_dma_address() - return dma address of a special device
+ * @handle: handle to a buffer that have dma address
+ * @special: the special device registered with ion_register_special_device()
+ *
+ * return dma address if the buffer has a dma address.
+ * return 0 if the buffer does not has a dma address for the special device
+ */
+dma_addr_t ion_dma_address(struct ion_handle *handle, struct device *special);
 #endif /* __KERNEL__ */
 
 /**
