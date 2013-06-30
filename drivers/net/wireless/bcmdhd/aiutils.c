@@ -234,11 +234,11 @@ ai_scan(si_t *sih, void *regs, uint devid)
 		if (asd == 0) {
 			do {
 
-			asd = get_asd(sih, &eromptr, 0, 0, AD_ST_BRIDGE, &addrl, &addrh,
+				asd = get_asd(sih, &eromptr, 0, 0, AD_ST_BRIDGE, &addrl, &addrh,
 			              &sizel, &sizeh);
-			if (asd != 0)
-				br = TRUE;
-			else {
+				if (asd != 0)
+					br = TRUE;
+				else {
 					if (br == TRUE) {
 						break;
 					}
