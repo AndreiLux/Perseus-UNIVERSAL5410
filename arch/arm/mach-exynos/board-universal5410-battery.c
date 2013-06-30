@@ -63,7 +63,7 @@ static sec_charging_current_t charging_current_table[] = {
 	{0,	0,	0,	0},
 	{1900,	1600,	200,	40*60},
 	{460,	460,	200,	40*60},
-	{460,	460,	200,	40*60},
+	{1000,	1000,	200,	40*60},
 	{1000,	1000,	200,	40*60},
 	{460,	460,	200,	40*60},
 	{1700,	1600,	200,	40*60},
@@ -243,17 +243,17 @@ static int sec_bat_get_cable_from_extended_cable_type(
 				cable_type = POWER_SUPPLY_TYPE_BATTERY;
 				break;
 			case ONLINE_POWER_TYPE_MHL_500:
-				cable_type = POWER_SUPPLY_TYPE_MAINS;
+				cable_type = POWER_SUPPLY_TYPE_MISC;
 				charge_current_max = 400;
 				charge_current = 400;
 				break;
 			case ONLINE_POWER_TYPE_MHL_900:
-				cable_type = POWER_SUPPLY_TYPE_MAINS;
+				cable_type = POWER_SUPPLY_TYPE_MISC;
 				charge_current_max = 700;
 				charge_current = 700;
 				break;
 			case ONLINE_POWER_TYPE_MHL_1500:
-				cable_type = POWER_SUPPLY_TYPE_MAINS;
+				cable_type = POWER_SUPPLY_TYPE_MISC;
 				charge_current_max = 1300;
 				charge_current = 1300;
 				break;
@@ -517,7 +517,7 @@ sec_battery_platform_data_t sec_battery_pdata = {
 	.bat_gpio_ta_nconnected = 0,
 	.bat_polarity_ta_nconnected = 0,
 	.bat_irq = IRQ_BOARD_IFIC_START + MAX77803_CHG_IRQ_BATP_I,
-	.bat_irq_attr = IRQF_TRIGGER_FALLING,
+	.bat_irq_attr = IRQF_TRIGGER_FALLING | IRQF_EARLY_RESUME,
 	.cable_check_type =
 		SEC_BATTERY_CABLE_CHECK_PSY,
 	.cable_source_type =
