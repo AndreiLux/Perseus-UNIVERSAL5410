@@ -33,7 +33,7 @@ static inline bool is_yuvfmt(enum color_format fmt)
 	}
 }
 
-static int bit_per_pixel(struct fimg2d_image *img, int plane)
+int bit_per_pixel(struct fimg2d_image *img, int plane)
 {
 	switch (img->fmt) {
 	case CF_XRGB_8888:
@@ -78,7 +78,7 @@ static inline int pixel2offset(int x1, int bpp)
 	return (x1 * bpp) >> 3;
 }
 
-static inline int width2bytes(int width, int bpp)
+inline int width2bytes(int width, int bpp)
 {
 	switch (bpp) {
 	case 32:
@@ -268,6 +268,10 @@ static int fimg2d_calc_dma_size(struct fimg2d_bltcmd *cmd)
 			c->cached = c->size;
 			cmd->dma_all += c->cached;
 		}
+
+		if (i == IDST)
+			fimg2d_debug("addr : %p, size : %d\n",
+					(void *)c->addr, c->size);
 
 		if (!is_yuvfmt(img->fmt))
 			continue;
