@@ -49,9 +49,7 @@ static int __init lcdtype_setup(char *str)
 __setup("lcdtype=", lcdtype_setup);
 
 phys_addr_t bootloaderfb_start;
-EXPORT_SYMBOL(bootloaderfb_start);
 phys_addr_t bootloaderfb_size = 1920 * 1080 * 4;
-EXPORT_SYMBOL(bootloaderfb_size);
 static int __init bootloaderfb_start_setup(char *str)
 {
 	get_option(&str, &bootloaderfb_start);
@@ -169,8 +167,8 @@ static struct s3c_fb_pd_win universal5410_fb_win0 = {
 	},
 	.virtual_x		= 1088,
 	.virtual_y		= 1920 * 2,
-	.width			= 59,
-	.height			= 104,
+	.width			= 62,
+	.height			= 110,
 	.max_bpp		= 32,
 	.default_bpp		= 24,
 };
@@ -188,8 +186,8 @@ static struct s3c_fb_pd_win universal5410_fb_win1 = {
 	},
 	.virtual_x		= 1088,
 	.virtual_y		= 1920 * 2,
-	.width			= 59,
-	.height			= 104,
+	.width			= 62,
+	.height			= 110,
 	.max_bpp		= 32,
 	.default_bpp		= 24,
 };
@@ -207,8 +205,8 @@ static struct s3c_fb_pd_win universal5410_fb_win2 = {
 	},
 	.virtual_x		= 1080,
 	.virtual_y		= 1920 * 2,
-	.width			= 59,
-	.height			= 104,
+	.width			= 62,
+	.height			= 110,
 	.max_bpp		= 32,
 	.default_bpp		= 24,
 };
@@ -226,8 +224,8 @@ static struct s3c_fb_pd_win universal5410_fb_win3 = {
 	},
 	.virtual_x		= 1080,
 	.virtual_y		= 1920 * 2,
-	.width			= 59,
-	.height			= 104,
+	.width			= 62,
+	.height			= 110,
 	.max_bpp		= 32,
 	.default_bpp		= 24,
 };
@@ -245,8 +243,8 @@ static struct s3c_fb_pd_win universal5410_fb_win4 = {
 	},
 	.virtual_x		= 1080,
 	.virtual_y		= 1920 * 2,
-	.width			= 59,
-	.height			= 104,
+	.width			= 62,
+	.height			= 110,
 	.max_bpp		= 32,
 	.default_bpp		= 24,
 };
@@ -332,11 +330,11 @@ static void exynos_fimd_gpio_setup_24bpp(void)
 
 static struct s3c_fb_platdata universal5410_lcd1_pdata __initdata = {
 #ifdef CONFIG_FB_I80_COMMAND_MODE
-	.win[0] 	= &universal5410_fb_win0,
-	.win[1] 	= &universal5410_fb_win0,
-	.win[2] 	= &universal5410_fb_win0,
-	.win[3] 	= &universal5410_fb_win0,
-	.win[4] 	= &universal5410_fb_win0,
+	.win[0]		= &universal5410_fb_win0,
+	.win[1]		= &universal5410_fb_win0,
+	.win[2]		= &universal5410_fb_win0,
+	.win[3]		= &universal5410_fb_win0,
+	.win[4]		= &universal5410_fb_win0,
 #else
 	.win[0]		= &universal5410_fb_win0,
 	.win[1]		= &universal5410_fb_win1,
