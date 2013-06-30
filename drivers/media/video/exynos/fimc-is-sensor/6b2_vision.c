@@ -1134,16 +1134,20 @@ static int sensor_setup_default(struct v4l2_subdev *sd)
 	/* AE setting */
 	vision_sensor_write_reg(sd, 0x6000, 0x11, I2C_8BIT);
 	vision_sensor_write_reg(sd, 0x6001, 0x11, I2C_8BIT);
-	vision_sensor_write_reg(sd, 0x6002, 0x14, I2C_8BIT);
-	vision_sensor_write_reg(sd, 0x6003, 0x41, I2C_8BIT);
-	vision_sensor_write_reg(sd, 0x6004, 0x14, I2C_8BIT);
-	vision_sensor_write_reg(sd, 0x6005, 0x41, I2C_8BIT);
+	vision_sensor_write_reg(sd, 0x6002, 0x11, I2C_8BIT);
+	vision_sensor_write_reg(sd, 0x6003, 0x11, I2C_8BIT);
+	vision_sensor_write_reg(sd, 0x6004, 0x11, I2C_8BIT);
+	vision_sensor_write_reg(sd, 0x6005, 0x11, I2C_8BIT);
 	vision_sensor_write_reg(sd, 0x6006, 0x11, I2C_8BIT);
 	vision_sensor_write_reg(sd, 0x6007, 0x11, I2C_8BIT);
 
 	/* Number of pixel */
-	vision_sensor_write_reg(sd, 0x5030, 0x20, I2C_8BIT);
-	vision_sensor_write_reg(sd, 0x5031, 0xB4, I2C_8BIT);
+	vision_sensor_write_reg(sd, 0x5030, 0x12, I2C_8BIT);
+	vision_sensor_write_reg(sd, 0x5031, 0xB0, I2C_8BIT);
+
+	/* AE max shutter */
+	vision_sensor_write_reg(sd, 0x5014, 0x11, I2C_8BIT);
+	vision_sensor_write_reg(sd, 0x5015, 0x00, I2C_8BIT);
 
 	/* AE target */
 	vision_sensor_write_reg(sd, 0x600A, 0x2A, I2C_8BIT);
