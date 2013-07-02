@@ -40,14 +40,13 @@
 /* useful for tracking code reachability */
 #define UDBG printk(KERN_DEFAULT "DBG:%s:%s:%d\n", __FILE__, __func__, __LINE__)
 
-#define SDCARDFS_CASE_INSENSITIVE_MATCH_SUPPORT
 #define SDCARDFS_DIRENT_SIZE 256
 
 /* ######## ATTENTION ########
- * If your device internal memory is 4GB or under, you must set 
- * LOWER_FS_MIN_FREE_SIZE to 10MB. Otherwise 100MB.
+ * Old LOWER_FS_MIN_FREE_SIZE to 100MB.
+ * Change New MIN_FREE_SIZE to 20MB cause of saving free memory.
  */
-#define LOWER_FS_MIN_FREE_SIZE  (100*1048576UL) /* 100MB */
+#define LOWER_FS_MIN_FREE_SIZE  (20*1048576UL) /* 20MB */
 
 /* temporary static uid settings for development */ 
 #define AID_ROOT             0  /* uid for accessing /mnt/sdcard & extSdcard */
