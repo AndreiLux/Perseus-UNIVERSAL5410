@@ -68,6 +68,10 @@ typedef unsigned __bitwise__ reclaim_mode_t;
 #define RECLAIM_MODE_SYNC		((__force reclaim_mode_t)0x04u)
 #define RECLAIM_MODE_COMPACTION		((__force reclaim_mode_t)0x10u)
 
+#ifdef CONFIG_ZSWAP
+int max_swappiness = 200;
+#endif
+
 struct scan_control {
 	/* Incremented by the number of inactive pages that were scanned */
 	unsigned long nr_scanned;
@@ -1891,11 +1895,14 @@ static void get_scan_count(struct mem_cgroup_zone *mz, struct scan_control *sc,
 	}
 
 	/*
-	 * With swappiness at 100, anonymous and file have the same priority.
 	 * This scanning priority is essentially the inverse of IO cost.
 	 */
 	anon_prio = vmscan_swappiness(mz, sc);
+#ifdef CONFIG_ZSWAP
+	file_prio = max_swappiness - vmscan_swappiness(mz, sc);
+#else
 	file_prio = 200 - vmscan_swappiness(mz, sc);
+#endif
 
 	/*
 	 * OK, so we have swap space and a fair amount of page cache
@@ -2387,7 +2394,7 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 		.may_writepage = !laptop_mode,
 		.nr_to_reclaim = SWAP_CLUSTER_MAX,
 		.may_unmap = 1,
-#ifdef CONFIG_ZRAM_FOR_ANDROID
+#if defined(CONFIG_ZRAM_FOR_ANDROID) || defined(CONFIG_ZSWAP)
 		.may_swap = 0,
 #else
 		.may_swap = 1,
