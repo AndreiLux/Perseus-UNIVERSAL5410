@@ -12,7 +12,7 @@ struct snappy_env {
 
 int snappy_init_env(struct snappy_env *env);
 void snappy_free_env(struct snappy_env *env);
-bool snappy_uncompress(const char *compressed, size_t n, char *uncompressed);
+int snappy_uncompress(const char *compressed, size_t n, char *uncompressed);
 int snappy_compress(struct snappy_env *env,
 		    const char *input,
 		    size_t input_length,
