@@ -19,6 +19,9 @@
 #ifndef __SEC_CONTROL_PWR_CLK_H__
 #define __SEC_CONTROL_PWR_CLK_H__
 
+#define QOSBOOSTERS
+//#define QOSBOOSTER_CPU
+
 typedef enum {
 	GPU_PWR_CLK_STATE_OFF=0,
 	GPU_PWR_CLK_STATE_ON,
