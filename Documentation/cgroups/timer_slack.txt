@@ -21,6 +21,10 @@ Timer slack controller allows to implement setting timer slack value of
 a process based on a policy. For example, you can create foreground and
 background cgroups and move tasks between them based on system state.
 
+By activating the dynamic management of the minimal timer slack value,
+you can also use a different minimal timer slack value when the system
+has been suspended.
+
 User interface
 --------------
 
@@ -70,3 +74,27 @@ timer_slack.effective_slack_ns file:
 70000
 # cat /sys/fs/cgroup/a/timer_slack.effective_slack_ns
 100000
+
+Dynamic management of the minimal timer slack value
+---------------------------------------------------
+
+To also get the dynamic management of minimal timer slack value you need to
+enable another option inside the kernel configuration:
+
+CONFIG_CGROUP_DYNAMIC_TIMER_SLACK=y
+
+This feature provides another file in addition to the above files:
+/sys/fs/cgroup/timer_slack.min_slack_suspend_ns
+
+By default timer_slack.min_slack_suspend_ns is 0:
+
+# cat /sys/fs/cgroup/timer_slack.min_slack_suspend_ns
+0
+
+You can set it to some value that will be used when the system has been suspended:
+
+# echo 100000 > /sys/fs/cgroup/timer_slack.min_slack_suspend_ns
+# cat /sys/fs/cgroup/timer_slack.min_slack_suspend_ns
+100000
+
+Instead when the system is active it will use the timer_slack.min_slack_ns.
