@@ -28,6 +28,10 @@
 #endif
 #include "synaptics_i2c_rmi.h"
 
+#define CPU_QOS_FREQ 400000
+#define MIF_QOS_FREQ 800000
+#define INT_QOS_FREQ 200000
+
 #define DRIVER_NAME "synaptics_rmi4_i2c"
 
 #define PROXIMITY
@@ -674,23 +678,23 @@ static void synaptics_set_dvfs_lock(struct synaptics_rmi4_data *rmi4_data,
 				cancel_delayed_work(&rmi4_data->work_dvfs_chg);
 
 				if (pm_qos_request_active(&rmi4_data->tsp_cpu_qos))
-					pm_qos_update_request(&rmi4_data->tsp_cpu_qos, 600000);
+					pm_qos_update_request(&rmi4_data->tsp_cpu_qos, CPU_QOS_FREQ);
 				else
-					pm_qos_add_request(&rmi4_data->tsp_cpu_qos, PM_QOS_CPU_FREQ_MIN, 600000);
+					pm_qos_add_request(&rmi4_data->tsp_cpu_qos, PM_QOS_CPU_FREQ_MIN, CPU_QOS_FREQ);
 
 				if (pm_qos_request_active(&rmi4_data->tsp_mif_qos))
-					pm_qos_update_request(&rmi4_data->tsp_mif_qos, 800000);
+					pm_qos_update_request(&rmi4_data->tsp_mif_qos, MIF_QOS_FREQ);
 				else
-					pm_qos_add_request(&rmi4_data->tsp_mif_qos, PM_QOS_BUS_THROUGHPUT, 800000);
+					pm_qos_add_request(&rmi4_data->tsp_mif_qos, PM_QOS_BUS_THROUGHPUT, MIF_QOS_FREQ);
 
 				if (pm_qos_request_active(&rmi4_data->tsp_int_qos))
-					pm_qos_update_request(&rmi4_data->tsp_int_qos, 200000);
+					pm_qos_update_request(&rmi4_data->tsp_int_qos, INT_QOS_FREQ);
 				else
-					pm_qos_add_request(&rmi4_data->tsp_int_qos, PM_QOS_DEVICE_THROUGHPUT, 200000);
+					pm_qos_add_request(&rmi4_data->tsp_int_qos, PM_QOS_DEVICE_THROUGHPUT, INT_QOS_FREQ);
 			} else {
-				pm_qos_add_request(&rmi4_data->tsp_cpu_qos, PM_QOS_CPU_FREQ_MIN, 600000); /* CPU KFC 1.2GHz */
-				pm_qos_add_request(&rmi4_data->tsp_mif_qos, PM_QOS_BUS_THROUGHPUT, 800000); /* MIF 800MHz */
-				pm_qos_add_request(&rmi4_data->tsp_int_qos, PM_QOS_DEVICE_THROUGHPUT, 200000); /* INT 200MHz */
+				pm_qos_add_request(&rmi4_data->tsp_cpu_qos, PM_QOS_CPU_FREQ_MIN, CPU_QOS_FREQ); /* CPU KFC 1.2GHz */
+				pm_qos_add_request(&rmi4_data->tsp_mif_qos, PM_QOS_BUS_THROUGHPUT, MIF_QOS_FREQ); /* MIF 800MHz */
+				pm_qos_add_request(&rmi4_data->tsp_int_qos, PM_QOS_DEVICE_THROUGHPUT, INT_QOS_FREQ); /* INT 200MHz */
 			}
 			schedule_delayed_work(&rmi4_data->work_dvfs_chg,
 							msecs_to_jiffies(TOUCH_BOOSTER_CHG_TIME));
