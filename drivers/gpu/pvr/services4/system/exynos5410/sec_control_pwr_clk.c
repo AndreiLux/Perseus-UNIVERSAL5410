@@ -116,9 +116,9 @@ void sec_gpu_vol_clk_change(int sgx_clock, int sgx_voltage)
 		}
 #endif
 		if (sgx_clock < MIF_THRESHHOLD_VALUE_CLK)
-			pm_qos_update_request(&exynos5_g3d_mif_qos, 267000);
+			pm_qos_update_request(&exynos5_g3d_mif_qos, 200000);
 		else
-			pm_qos_update_request(&exynos5_g3d_mif_qos, 800000);
+			pm_qos_update_request(&exynos5_g3d_mif_qos, 400000);
 	} else {
 		pm_qos_update_request(&exynos5_g3d_cpu_qos, 0);
 		pm_qos_update_request(&exynos5_g3d_int_qos, 0);
@@ -198,9 +198,9 @@ int sec_gpu_pwr_clk_state_set(sec_gpu_state state)
 #if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
 		pm_qos_update_request(&exynos5_g3d_int_qos, 200000);
 		if (sec_gpu_setting_clock < MIF_THRESHHOLD_VALUE_CLK)
-			pm_qos_update_request(&exynos5_g3d_mif_qos, 267000);
+			pm_qos_update_request(&exynos5_g3d_mif_qos, 200000);
 		else
-			pm_qos_update_request(&exynos5_g3d_mif_qos, 800000);
+			pm_qos_update_request(&exynos5_g3d_mif_qos, 400000);
 
 #ifdef QOSBOOSTER_CPU
 		if (sec_gpu_setting_clock >= sec_gpu_top_clock) {
