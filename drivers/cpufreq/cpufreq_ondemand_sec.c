@@ -827,6 +827,11 @@ static struct attribute_group dbs_attr_group = {
 	.name = "ondemand",
 };
 
+static struct attribute_group dbs_attr_group2 = {
+	.attrs = dbs_attributes,
+	.name = "ondemand-sec",
+};
+
 /************************** sysfs end ************************/
 
 static void dbs_freq_increase(struct cpufreq_policy *p, unsigned int freq)
@@ -1249,6 +1254,9 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 
 			rc = sysfs_create_group(cpufreq_global_kobject,
 						&dbs_attr_group);
+
+			rc += sysfs_create_group(cpufreq_global_kobject,
+						&dbs_attr_group2);
 			if (rc) {
 				mutex_unlock(&dbs_mutex);
 				return rc;
