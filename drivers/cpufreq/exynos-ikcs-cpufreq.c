@@ -264,6 +264,16 @@ static bool is_alive(unsigned int cluster)
 	return tmp ? true : false;
 }
 
+void exynos_enforce_policy(struct cpufreq_policy *policy)
+{
+	/* Squash unwanted frequencies in the CA7 range */
+	if (policy->min > step_level_CA7_max && policy->min <= STEP_LEVEL_CA7_MAX)
+		policy->min = step_level_CA7_max;
+
+	if (policy->max > step_level_CA7_max && policy->max <= STEP_LEVEL_CA7_MAX)
+		policy->max = step_level_CA7_max;
+}
+
 int exynos_verify_speed(struct cpufreq_policy *policy)
 {
 	return cpufreq_frequency_table_verify(policy, merge_freq_table);
