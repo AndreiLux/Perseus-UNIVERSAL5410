@@ -378,7 +378,7 @@ static void lp5562_set_wait2_cmd(struct lp5562_pattern_data *ptn,
 		jump = lp5562_get_pc(ptn, i);
 
 		msb = (prescale << 6) | 63;
-		lp5562_set_single_cmd(ptn, i, msb, lsb);
+		lp5562_set_single_cmd(ptn, i, msb, 0);
 
 		--loop;
 		steps -= 63;
@@ -397,7 +397,7 @@ static void lp5562_set_wait2_cmd(struct lp5562_pattern_data *ptn,
 	
 	if (steps) {
 		msb = (prescale << 6) | (steps & 63);
-		lp5562_set_single_cmd(ptn, i, msb, lsb);
+		lp5562_set_single_cmd(ptn, i, msb, 0);
 	}
 }
 
