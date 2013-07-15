@@ -384,8 +384,8 @@ static void lp5562_set_wait2_cmd(struct lp5562_pattern_data *ptn,
 		steps -= 63;
 	}
 
-	if (loop > 1) {
-		branch = (5 << 13) | ((loop - 1) << 7) | jump;
+	if (loop > 0) {
+		branch = (5 << 13) | (loop << 7) | jump;
 
 		msb = (branch >> 8) & 0xFF;
 		lsb = branch & 0xFF;
