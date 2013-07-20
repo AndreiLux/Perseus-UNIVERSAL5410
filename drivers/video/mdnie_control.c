@@ -29,6 +29,10 @@ static int br_takeover_point = 30;
 static int br_brightness_delta = 20;
 static int br_component_reduction = 0;
 
+static int black_component_increase = 0;
+static int black_component_increase_value = 0;
+static int black_component_increase_point = 255;
+
 enum mdnie_registers {
 	EFFECT_MASTER1	= 0x08,	/*SCR2 CC1 | CS2 DE1 | LoG8 WIENER4 NR2 HDR1*/
 	EFFECT_MASTER2	= 0x09,	/*MCM off*/
@@ -251,11 +255,15 @@ static int secondary_hook(struct mdnie_effect *effect, int val)
 {
 	val += effect->value;
 
-	if (!(br_reduction))
-		return val;
-
-	if (effect->reg >= SCR_RR_CR && effect->reg <= SCR_KB_WB)
-		val -= br_component_reduction;
+	switch (effect->reg) {
+		case SCR_KR_WR...SCR_KB_WB:
+			if (effect->shift) {
+				val += black_component_increase;
+				break;
+			}
+		case SCR_RR_CR...SCR_BB_YB:
+			val -= br_component_reduction;
+	}
 
 	return val;
 }
@@ -269,7 +277,7 @@ unsigned short mdnie_reg_hook(unsigned short reg, unsigned short value)
 
 	original = value;
 
-	if (unlikely(!sequence_hook && !reg_hook || g_mdnie->negative == NEGATIVE_ON))
+	if (unlikely((!sequence_hook && !reg_hook) || g_mdnie->negative == NEGATIVE_ON))
 		return value;
 
 	for (i = 0; i < ARRAY_SIZE(mdnie_controls); i++) {
@@ -325,7 +333,7 @@ void mdnie_update_brightness(int brightness, bool is_auto, bool force)
 {
 	static int prev_brightness = 255;
 	static int prev_auto = false;
-	int weight, adjusted_brightness;
+	int weight, adjusted_brightness, tmp, refresh = 0;
 
 	if (unlikely(force)) {
 		brightness = prev_brightness;
@@ -337,23 +345,30 @@ void mdnie_update_brightness(int brightness, bool is_auto, bool force)
 	if(unlikely(adjusted_brightness < 1))
 		adjusted_brightness = 1;
 
-	if(adjusted_brightness > br_takeover_point) {
+	tmp = black_component_increase;
+	black_component_increase = (brightness > black_component_increase_point)
+					? 0 : black_component_increase_value;
+
+	if (tmp != black_component_increase)
+		refresh += true;
+
+	tmp = br_component_reduction;
+
+	if (adjusted_brightness > br_takeover_point) {
 		br_component_reduction = 0;
-
-		if(prev_brightness < br_takeover_point)
-			goto do_refresh;
-
-		goto update_previous;
+		goto update;
 	}
 
 	weight = 1000 - ((adjusted_brightness * 1000) / br_takeover_point);
-
 	br_component_reduction = ((br_reduction) * weight) / 1000;
 
-do_refresh:
-	do_mdnie_refresh(NULL);
+	if (tmp != br_component_reduction)
+		refresh += true;
 
-update_previous:
+update:
+	if (refresh)
+		do_mdnie_refresh(NULL);
+
 	prev_brightness = brightness;
 	prev_auto = is_auto;
 
@@ -440,11 +455,17 @@ MAIN_CONTROL(br_reduction, br_reduction, forced_brightness);
 MAIN_CONTROL(br_takeover_point, br_takeover_point, forced_brightness);
 MAIN_CONTROL(br_brightness_delta, br_brightness_delta, forced_brightness);
 
+MAIN_CONTROL(black_increase_value, black_component_increase_value, forced_brightness);
+MAIN_CONTROL(black_increase_point, black_component_increase_point, forced_brightness);
+
 DEVICE_ATTR(hook_intercept, 0664, show_reg_hook, store_reg_hook);
 DEVICE_ATTR(sequence_intercept, 0664, show_sequence_intercept, store_sequence_intercept);
 DEVICE_ATTR(brightness_reduction, 0664, show_br_reduction, store_br_reduction);
 DEVICE_ATTR(brightness_takeover_point, 0664, show_br_takeover_point, store_br_takeover_point);
 DEVICE_ATTR(brightness_input_delta, 0664, show_br_brightness_delta, store_br_brightness_delta);
+
+DEVICE_ATTR(black_increase_value, 0664, show_black_increase_value, store_black_increase_value);
+DEVICE_ATTR(black_increase_point, 0664, show_black_increase_point, store_black_increase_point);
 
 void init_intercept_control(struct kobject *kobj)
 {
@@ -462,6 +483,9 @@ void init_intercept_control(struct kobject *kobj)
 	ret = sysfs_create_file(kobj, &dev_attr_brightness_reduction.attr);
 	ret = sysfs_create_file(kobj, &dev_attr_brightness_takeover_point.attr);
 	ret = sysfs_create_file(kobj, &dev_attr_brightness_input_delta.attr);
+
+	ret = sysfs_create_file(kobj, &dev_attr_black_increase_value.attr);
+	ret = sysfs_create_file(kobj, &dev_attr_black_increase_point.attr);
 
 	INIT_DELAYED_WORK(&mdnie_refresh_work, do_mdnie_refresh);
 }
