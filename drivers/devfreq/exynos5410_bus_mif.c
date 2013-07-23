@@ -48,7 +48,6 @@ early_param("miffreq", get_mif_freq);
 static bool en_profile = false;
 static struct device *mif_dev;
 
-#define BPLL_S_ONLY_CHANGE
 #define SET_DREX_TIMING
 
 #define SAFE_MIF_VOLT(x)	(x + 25000)
@@ -168,7 +167,6 @@ static unsigned int exynos5410_clkdiv_g2d[][2] = {
 };
 
 static unsigned int exynos5410_bpll_pms_value[][3] = {
-#ifndef BPLL_S_ONLY_CHANGE	/* PMS change method has some problem */
 	{3, 200, 1},	/* 800Mhz */
 	{3, 167, 1},	/* 667Mhz */
 	{3, 266, 2},	/* 533Mhz */
@@ -177,16 +175,6 @@ static unsigned int exynos5410_bpll_pms_value[][3] = {
 	{3, 200, 3},	/* 200Mhz */
 	{3, 160, 3},	/* 160Mhz */
 	{3, 200, 4},	/* 100Mhz */
-#else				/* S value only change */
-	{3, 200, 1},	/* 800Mhz */
-	{3, 200, 1},	/* 667Mhz Invalid */
-	{3, 200, 1},	/* 533Mhz Invalid */
-	{3, 200, 2},	/* 400Mhz */
-	{3, 200, 2},	/* 267Mhz Invalid */
-	{3, 200, 3},	/* 200Mhz */
-	{3, 200, 3},	/* 160Mhz Invalid */
-	{3, 200, 4},	/* 100Mhz */
-#endif
 };
 
 static unsigned int exynos5410_dram_param[][3] = {
@@ -460,24 +448,6 @@ static void exynos5_mif_set_freq(unsigned long target_freq)
 		   (target_mif_clkdiv->target_pms.s << PLL2550_SDIV_SHIFT));
 
 	if (mif_is_need_pms_change(old_pms, new_pms)) {
-#ifndef BPLL_S_ONLY_CHANGE
-		/* Setup BPLL FOUT with divide 2 for S value */
-		tmp = __raw_readl(EXYNOS5_BPLL_CON0);
-
-		tmp &= ~((PLL2550_MDIV_MASK << PLL2550_MDIV_SHIFT) |
-			 (PLL2550_PDIV_MASK << PLL2550_PDIV_SHIFT) |
-			 (PLL2550_SDIV_MASK << PLL2550_SDIV_SHIFT));
-
-		tmp |= target_mif_clkdiv->target_pms.p << PLL2550_PDIV_SHIFT;
-		tmp |= target_mif_clkdiv->target_pms.m << PLL2550_MDIV_SHIFT;
-		tmp |= (target_mif_clkdiv->target_pms.s + 1) << PLL2550_SDIV_SHIFT;
-
-		__raw_writel(tmp, EXYNOS5_BPLL_CON0);
-
-		do {
-			tmp = __raw_readl(EXYNOS5_BPLL_CON0);
-		} while (!(tmp & (0x1 << PLL2550_LOCKED)));
-#endif
 		/* Setup BPLL FOUT with real divide value */
 		tmp = __raw_readl(EXYNOS5_BPLL_CON0);
 
@@ -490,6 +460,10 @@ static void exynos5_mif_set_freq(unsigned long target_freq)
 		tmp |= target_mif_clkdiv->target_pms.s << PLL2550_SDIV_SHIFT;
 
 		__raw_writel(tmp, EXYNOS5_BPLL_CON0);
+
+		do {
+			tmp = __raw_readl(EXYNOS5_BPLL_CON0);
+		} while (!(tmp & (0x1 << PLL2550_LOCKED)));
 	}
 }
 
@@ -712,8 +686,8 @@ static int exynos5410_mif_table(struct busfreq_data_mif *data)
 		}
 	}
 
-#ifdef BPLL_S_ONLY_CHANGE
-	pr_info("S divider change for DFS of MIF block\n");
+#if 1
+	pr_info("Factor of 2 frequencies only\n");
 	opp_disable(data->dev, 667000);
 	opp_disable(data->dev, 533000);
 	opp_disable(data->dev, 267000);
@@ -937,7 +911,7 @@ static ssize_t store_en_monitoring(struct device *dev, struct device_attribute *
 
 	if (input) {
 		exynos5_mif_governor_data.en_monitoring = true;
-		pm_qos_update_request(&exynos5_mif_qos, 200000);
+		//pm_qos_update_request(&exynos5_mif_qos, 200000);
 		exynos5_mif_notify_transition(NULL, MIF_DEVFREQ_EN_MONITORING);
 	} else {
 		exynos5_mif_governor_data.en_monitoring = false;
@@ -951,7 +925,7 @@ static DEVICE_ATTR(en_monitoring, S_IRUGO | S_IWUSR,
 			show_en_monitoring, store_en_monitoring);
 
 static struct exynos_devfreq_platdata default_qos_mif_pd = {
-	.default_qos = 160000,
+	.default_qos = 100000, //160000,
 };
 
 static int exynos5_mif_reboot_notifier_call(struct notifier_block *this,
@@ -988,6 +962,7 @@ static int exynos5_mif_cpufreq_notifier_call(struct notifier_block *this,
 	else
 		type = CPUFREQ_POSTCHANGE;
 
+/*
 	if (type == code) {
 		if (freq->new <= 500000)
 			pm_qos_update_request(&exynos5_mif_qos, 200000);
@@ -996,7 +971,7 @@ static int exynos5_mif_cpufreq_notifier_call(struct notifier_block *this,
 		else if (freq->new > 600000)
 			pm_qos_update_request(&exynos5_mif_qos, 800000);
 	}
-
+*/
 	return NOTIFY_DONE;
 }
 
