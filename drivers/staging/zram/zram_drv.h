@@ -88,7 +88,6 @@ struct zram_stats {
 };
 
 struct zram_meta {
-	void *compress_buffer;
 	struct table *table;
 	struct zs_pool *mem_pool;
 };
