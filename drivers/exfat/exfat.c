@@ -3959,7 +3959,7 @@ void exfat_get_uni_name_from_ext_entry(struct super_block *sb, CHAIN_T *p_dir, I
 		return;
 
 	ep += 2;
-	for (i = 1; i < es->num_entries; i++, ep++) {
+	for (i = 2; i < es->num_entries; i++, ep++) {
 		if (p_fs->fs_func->get_entry_type(ep) == TYPE_EXTEND) {
 			extract_uni_name_from_name_entry((NAME_DENTRY_T *)ep, uniname, i);
 		} else {
