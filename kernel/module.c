@@ -2551,13 +2551,9 @@ static int check_modinfo(struct module *mod, struct load_info *info)
 		if (err)
 			return err;
 	} else if (!same_magic(modmagic, vermagic, info->index.vers)) {
-		if(!strncmp("exfat_", mod->name, 6))
-			printk(KERN_WARNING "exFat detected, ignore vermagic.\n");
-		else {
-			printk(KERN_ERR "%s: version magic '%s' should be '%s'\n",
+		printk(KERN_ERR "%s: version magic '%s' should be '%s'\n",
 		       mod->name, modmagic, vermagic);
-			return -ENOEXEC;
-		}
+		return -ENOEXEC;
 	}
 
 	if (!get_modinfo(info, "intree"))
