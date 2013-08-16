@@ -145,3 +145,5 @@ obj-$(CONFIG_MOBICORE_DRIVER)	+= gud/
 obj-$(CONFIG_SWITCH)		+= switch/
 
 obj-$(CONFIG_ICE4_FPGA)		+= ice4_fpga/
+
+obj-y 				+= exfat/
