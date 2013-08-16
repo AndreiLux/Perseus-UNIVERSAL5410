@@ -221,21 +221,21 @@ INT32 FsWriteFile(struct inode *inode, FILE_ID_T *fid, void *buffer, UINT64 coun
 	return(err);
 }
 
-INT32 FsTruncateFile(struct inode *inode, UINT64 new_size)
+INT32 FsTruncateFile(struct inode *inode, UINT64 old_size, UINT64 new_size)
 {
 	INT32 err;
 	struct super_block *sb = inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
-	PRINTK("FsTruncateFile entered (inode %p size %llu\n", inode, new_size);
-
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
-	err = ffsTruncateFile(inode, new_size);
+	PRINTK("FsTruncateFile entered (inode %p size %llu)\n", inode, new_size);
+	
+	err = ffsTruncateFile(inode, old_size, new_size);
+ 
+	PRINTK("FsTruncateFile exitted (%d)\n", err);
 
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
-
-	PRINTK("FsTruncateFile exitted (%d)\n", err);
 
 	return(err);
 }

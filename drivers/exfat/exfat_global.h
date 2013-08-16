@@ -99,7 +99,7 @@ extern "C" {
 #if EXFAT_CONFIG_DEBUG_MSG
 #define PRINTK(...)			\
 	do {								\
-		printk(__VA_ARGS__);		\
+		printk("[EXFAT] " __VA_ARGS__);	\
 	} while(0)
 #else
 #define PRINTK(...)
