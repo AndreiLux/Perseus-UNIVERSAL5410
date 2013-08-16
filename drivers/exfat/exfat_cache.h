@@ -42,8 +42,8 @@ extern "C" {
 
 	INT32  buf_init(struct super_block *sb);
 	INT32  buf_shutdown(struct super_block *sb);
-	INT32 FAT_read(struct super_block *sb, UINT32 loc, UINT32 *content);
-	void   FAT_write(struct super_block *sb, UINT32 loc, UINT32 content);
+	INT32  FAT_read(struct super_block *sb, UINT32 loc, UINT32 *content);
+	INT32  FAT_write(struct super_block *sb, UINT32 loc, UINT32 content);
 	UINT8 *FAT_getblk(struct super_block *sb, UINT32 sec);
 	void   FAT_modify(struct super_block *sb, UINT32 sec);
 	void   FAT_release_all(struct super_block *sb);
