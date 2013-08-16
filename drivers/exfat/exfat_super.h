@@ -52,12 +52,12 @@ struct exfat_mount_options {
 	unsigned short fs_fmask;
 	unsigned short fs_dmask;
 	unsigned short allow_utime;
-	unsigned short codepage; 
-	char *iocharset;        
+	unsigned short codepage;  
+	char *iocharset;         
 	unsigned char casesensitive;
-	unsigned char errors;  
+	unsigned char errors;   
 #if EXFAT_CONFIG_DISCARD
-	unsigned char discard;
+	unsigned char discard; 
 #endif
 };
 
@@ -85,9 +85,12 @@ struct exfat_sb_info {
 struct exfat_inode_info {
 	FILE_ID_T fid;
 	char  *target;
-	loff_t mmu_private; 
-	loff_t i_pos;      
+	loff_t mmu_private;  
+	loff_t i_pos;       
 	struct hlist_node i_fat_hash;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,00)
+	struct rw_semaphore truncate_lock;
+#endif
 	struct inode vfs_inode;
 };
 
