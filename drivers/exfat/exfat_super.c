@@ -1826,7 +1826,7 @@ static int parse_options(char *options, int silent, int *debug,
 #endif
 		default:
 			if (!silent) {
-				printk(KERN_ERR "EXFAT: Unrecognized mount option %s or missing value\n", p);
+				printk(KERN_ERR "[EXFAT] Unrecognized mount option %s or missing value\n", p);
 			}
 			return -EINVAL;
 		}
@@ -1925,7 +1925,7 @@ static int exfat_fill_super(struct super_block *sb, void *data, int silent)
 	ret = FsMountVol(sb);
 	if (ret) {
 		if (!silent)
-			printk(KERN_ERR "EXFAT: FsMountVol failed\n");
+			printk(KERN_ERR "[EXFAT] FsMountVol failed\n");
 
 		goto out_fail;
 	}
@@ -1936,13 +1936,13 @@ static int exfat_fill_super(struct super_block *sb, void *data, int silent)
 	sprintf(buf, "cp%d", sbi->options.codepage);
 	sbi->nls_disk = load_nls(buf);
 	if (!sbi->nls_disk) {
-		printk(KERN_ERR "EXFAT: Codepage %s not found\n", buf);
+		printk(KERN_ERR "[EXFAT] Codepage %s not found\n", buf);
 		goto out_fail2;
 	}
 
 	sbi->nls_io = load_nls(sbi->options.iocharset);
 	if (!sbi->nls_io) {
-		printk(KERN_ERR "EXFAT: IO charset %s not found\n",
+		printk(KERN_ERR "[EXFAT] IO charset %s not found\n",
 			   sbi->options.iocharset);
 		goto out_fail2;
 	}
@@ -1965,7 +1965,7 @@ static int exfat_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_root = d_alloc_root(root_inode);
 #endif
 	if (!sb->s_root) {
-		printk(KERN_ERR "EXFAT: Getting the root inode failed\n");
+		printk(KERN_ERR "[EXFAT] Getting the root inode failed\n");
 		goto out_fail2;
 	}
 
