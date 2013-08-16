@@ -467,7 +467,7 @@ extern "C" {
 	INT32 ffsCreateFile(struct inode *inode, UINT8 *path, UINT8 mode, FILE_ID_T *fid);
 	INT32 ffsReadFile(struct inode *inode, FILE_ID_T *fid, void *buffer, UINT64 count, UINT64 *rcount);
 	INT32 ffsWriteFile(struct inode *inode, FILE_ID_T *fid, void *buffer, UINT64 count, UINT64 *wcount);
-	INT32 ffsTruncateFile(struct inode *inode, UINT64 new_size);
+	INT32 ffsTruncateFile(struct inode *inode, UINT64 old_size, UINT64 new_size);
 	INT32 ffsMoveFile(struct inode *old_parent_inode, FILE_ID_T *fid, struct inode *new_parent_inode, struct dentry *new_dentry);
 	INT32 ffsRemoveFile(struct inode *inode, FILE_ID_T *fid);
 	INT32 ffsSetAttr(struct inode *inode, UINT32 attr);

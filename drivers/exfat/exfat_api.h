@@ -146,7 +146,7 @@ extern "C" {
 	INT32 FsCreateFile(struct inode *inode, UINT8 *path, UINT8 mode, FILE_ID_T *fid);
 	INT32 FsReadFile(struct inode *inode, FILE_ID_T *fid, void *buffer, UINT64 count, UINT64 *rcount);
 	INT32 FsWriteFile(struct inode *inode, FILE_ID_T *fid, void *buffer, UINT64 count, UINT64 *wcount);
-	INT32 FsTruncateFile(struct inode *inode, UINT64 new_size);
+	INT32 FsTruncateFile(struct inode *inode, UINT64 old_size, UINT64 new_size);
 	INT32 FsMoveFile(struct inode *old_parent_inode, FILE_ID_T *fid, struct inode *new_parent_inode, struct dentry *new_dentry);
 	INT32 FsRemoveFile(struct inode *inode, FILE_ID_T *fid);
 	INT32 FsSetAttr(struct inode *inode, UINT32 attr);
