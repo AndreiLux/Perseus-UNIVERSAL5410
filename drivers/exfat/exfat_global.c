@@ -95,6 +95,10 @@ void my_itoa(INT8 *buf, INT32 v)
 		v = v / 10;
 		if (v == 0) break;
 	}
+
+	if (i == 10)
+		i--;
+
 	for (; i >= 0; i--) {
 		*buf = (UINT8) ('0' + mod[i]);
 		buf++;
