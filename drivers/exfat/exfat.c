@@ -297,7 +297,7 @@ INT32 ffsGetVolInfo(struct super_block *sb, VOL_INFO_T *info)
 
 	info->FatType = p_fs->vol_type;
 	info->ClusterSize = p_fs->cluster_size;
-	info->NumClusters = p_fs->num_clusters - 2;
+	info->NumClusters = p_fs->num_clusters - 2; 
 	info->UsedClusters = p_fs->used_clusters;
 	info->FreeClusters = info->NumClusters - info->UsedClusters;
 

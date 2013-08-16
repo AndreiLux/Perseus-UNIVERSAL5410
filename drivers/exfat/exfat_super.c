@@ -1,3 +1,4 @@
+
 /* Some of the source code in this file came from "linux/fs/fat/file.c","linux/fs/fat/inode.c" and "linux/fs/fat/misc.c".  */
 /*
  *  linux/fs/fat/file.c
@@ -44,7 +45,7 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
-
+ 
 #include <linux/version.h>
 #include <linux/module.h>
 #include <linux/init.h>
@@ -1616,11 +1617,25 @@ static int exfat_statfs(struct dentry *dentry, struct kstatfs *buf)
 {
 	struct super_block *sb = dentry->d_sb;
 	u64 id = huge_encode_dev(sb->s_bdev->bd_dev);
+	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 	VOL_INFO_T info;
 
-	FsGetVolInfo(dentry->d_sb, &info);
+	if (p_fs->used_clusters == (UINT32) ~0) {
+		if (FFS_MEDIAERR == FsGetVolInfo(sb, &info))
+			return -EIO;
 
-	buf->f_type = dentry->d_sb->s_magic;
+	} else {
+		info.FatType = p_fs->vol_type;
+		info.ClusterSize = p_fs->cluster_size;
+		info.NumClusters = p_fs->num_clusters - 2;
+		info.UsedClusters = p_fs->used_clusters;
+		info.FreeClusters = info.NumClusters - info.UsedClusters;
+
+		if (p_fs->dev_ejected)
+			return -EIO;
+	}
+
+	buf->f_type = sb->s_magic;
 	buf->f_bsize = info.ClusterSize;
 	buf->f_blocks = info.NumClusters;
 	buf->f_bfree = info.FreeClusters;
