@@ -297,7 +297,7 @@ INT32 ffsGetVolInfo(struct super_block *sb, VOL_INFO_T *info)
 
 	info->FatType = p_fs->vol_type;
 	info->ClusterSize = p_fs->cluster_size;
-	info->NumClusters = p_fs->num_clusters - 2; 
+	info->NumClusters = p_fs->num_clusters - 2;
 	info->UsedClusters = p_fs->used_clusters;
 	info->FreeClusters = info->NumClusters - info->UsedClusters;
 
@@ -2144,7 +2144,7 @@ INT32 clr_alloc_bitmap(struct super_block *sb, UINT32 clu)
 #else
 		ret = sb_issue_discard(sb, START_SECTOR(clu), (1 << p_fs->sectors_per_clu_bits), GFP_NOFS, 0);
 #endif
-		if (ret == EOPNOTSUPP) {
+		if (ret == -EOPNOTSUPP) {
 			printk(KERN_WARNING "discard not supported by device, disabling");
 			opts->discard = 0;
 		}
@@ -4282,10 +4282,6 @@ INT32 resolve_path(struct inode *inode, UINT8 *path, CHAIN_T *p_dir, UNI_NAME_T 
 
 	nls_cstring_to_uniname(sb, p_uniname, name_buf, &lossy);
 	if (lossy)
-		return(FFS_INVALIDPATH);
-
-
-	if (p_uniname->name_len >= MAX_NAME_LENGTH)
 		return(FFS_INVALIDPATH);
 
 	fid->size = i_size_read(inode);
