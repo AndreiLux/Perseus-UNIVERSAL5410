@@ -1,4 +1,3 @@
-
 /* Some of the source code in this file came from "linux/fs/fat/file.c","linux/fs/fat/inode.c" and "linux/fs/fat/misc.c".  */
 /*
  *  linux/fs/fat/file.c
@@ -45,7 +44,7 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
- 
+
 #include <linux/version.h>
 #include <linux/module.h>
 #include <linux/init.h>
@@ -1050,6 +1049,8 @@ const struct inode_operations exfat_symlink_inode_operations = {
 static int exfat_file_release(struct inode *inode, struct file *filp)
 {
 	struct super_block *sb = inode->i_sb;
+
+	EXFAT_I(inode)->fid.size = i_size_read(inode);
 	FsSyncVol(sb, 0);
 	return 0;
 }
@@ -1515,8 +1516,6 @@ static int exfat_write_inode(struct inode *inode, struct writeback_control *wbc)
 	if (inode->i_ino == EXFAT_ROOT_INO)
 		return 0;
 
-	EXFAT_I(inode)->fid.size = i_size_read(inode);
-
 	info.Attr = exfat_make_attr(inode);
 	info.Size = i_size_read(inode);
 
@@ -1544,8 +1543,6 @@ static void exfat_clear_inode(struct inode *inode)
 #else
 static void exfat_evict_inode(struct inode *inode)
 {
-	struct super_block *sb = inode->i_sb;
-	lock_super(sb);
 	truncate_inode_pages(&inode->i_data, 0);
 
 	if (!inode->i_nlink)
@@ -1556,7 +1553,6 @@ static void exfat_evict_inode(struct inode *inode)
 	exfat_detach(inode);
 
 	remove_inode_hash(inode);
-	unlock_super(sb);
 }
 #endif
 

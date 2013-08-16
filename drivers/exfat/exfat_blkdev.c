@@ -82,7 +82,7 @@ INT32 bdev_read(struct super_block *sb, UINT32 secno, struct buffer_head **bh, U
 
 	if (*bh) return(FFS_SUCCESS);
 
-	WARN_ONCE(1, "EXFAT: Out of memory\n");
+	WARN_ONCE(1, "[EXFAT] No bh, device seems wrong or to be ejected.\n");
 
 	return(FFS_MEDIAERR);
 }
