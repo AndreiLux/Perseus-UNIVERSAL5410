@@ -64,6 +64,7 @@ INT32 bdev_close(struct super_block *sb)
 INT32 bdev_read(struct super_block *sb, UINT32 secno, struct buffer_head **bh, UINT32 num_secs, INT32 read)
 {
 	BD_INFO_T *p_bd = &(EXFAT_SB(sb)->bd_info);
+	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 #if EXFAT_CONFIG_KERNEL_DEBUG
 	struct exfat_sb_info *sbi = EXFAT_SB(sb);
 	long flags = sbi->debug_flags;
@@ -82,7 +83,8 @@ INT32 bdev_read(struct super_block *sb, UINT32 secno, struct buffer_head **bh, U
 
 	if (*bh) return(FFS_SUCCESS);
 
-	WARN_ONCE(1, "[EXFAT] No bh, device seems wrong or to be ejected.\n");
+	WARN(!p_fs->dev_ejected, 
+		"[EXFAT] No bh, device seems wrong or to be ejected.\n");
 
 	return(FFS_MEDIAERR);
 }
@@ -92,6 +94,7 @@ INT32 bdev_write(struct super_block *sb, UINT32 secno, struct buffer_head *bh, U
 	INT32 count;
 	struct buffer_head *bh2;
 	BD_INFO_T *p_bd = &(EXFAT_SB(sb)->bd_info);
+	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 #if EXFAT_CONFIG_KERNEL_DEBUG
 	struct exfat_sb_info *sbi = EXFAT_SB(sb);
 	long flags = sbi->debug_flags;
@@ -114,7 +117,7 @@ INT32 bdev_write(struct super_block *sb, UINT32 secno, struct buffer_head *bh, U
 		bh2 = __getblk(sb->s_bdev, secno, count);
 
 		if (bh2 == NULL)
-			return (FFS_MEDIAERR);
+			goto no_bh;
 
 		lock_buffer(bh2);
 		MEMCPY(bh2->b_data, bh->b_data, count);
@@ -123,12 +126,18 @@ INT32 bdev_write(struct super_block *sb, UINT32 secno, struct buffer_head *bh, U
 		unlock_buffer(bh2);
 		if (sync && (sync_dirty_buffer(bh2) != 0)) {
 			__brelse(bh2);
-			return (FFS_MEDIAERR);
+			goto no_bh;
 		}
 		__brelse(bh2);
 	}
 
 	return(FFS_SUCCESS);
+
+no_bh:
+	WARN(!p_fs->dev_ejected, 
+		"[EXFAT] No bh, device seems wrong or to be ejected.\n");
+
+	return (FFS_MEDIAERR);
 }
 
 INT32 bdev_sync(struct super_block *sb)

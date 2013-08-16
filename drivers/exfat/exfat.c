@@ -70,6 +70,16 @@ static UINT32 get_current_msec(void)
 #define PRINT_TIME(n)
 #endif
 
+static void __set_sb_dirty(struct super_block *sb)
+{
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0)
+	sb->s_dirt = 1;
+#else
+	struct exfat_sb_info *sbi = EXFAT_SB(sb);
+	sbi->s_dirt = 1;
+#endif
+}
+
 extern UINT8 uni_upcase[];
 
 static UINT8 name_buf[MAX_PATH_LENGTH *MAX_CHARSET_SIZE];
@@ -279,7 +289,8 @@ INT32 ffsUmountVol(struct super_block *sb)
 	bdev_close(sb);
 
 	if (p_fs->dev_ejected) {
-		printk("[EXFAT] failed to unmount. device's already ejected.\n");
+		printk( "[EXFAT] unmounted with media errors. "
+			"device's already ejected.\n");
 		return FFS_MEDIAERR;
 	}
 	
@@ -815,6 +826,22 @@ INT32 ffsTruncateFile(struct inode *inode, UINT64 old_size, UINT64 new_size)
 	return FFS_SUCCESS;
 } 
 
+static void update_parent_info( FILE_ID_T *fid, struct inode *parent_inode)
+{
+        FS_INFO_T *p_fs = &(EXFAT_SB(parent_inode->i_sb)->fs_info);
+	FILE_ID_T *parent_fid = &(EXFAT_I(parent_inode)->fid);
+
+	if (unlikely((parent_fid->flags != fid->dir.flags)
+		|| (parent_fid->size != (fid->dir.size<<p_fs->cluster_size_bits))
+		|| (parent_fid->start_clu != fid->dir.dir))) {
+
+		fid->dir.dir = parent_fid->start_clu;
+		fid->dir.flags = parent_fid->flags;
+		fid->dir.size = ((parent_fid->size + (p_fs->cluster_size-1)) 
+						>> p_fs->cluster_size_bits);
+	}
+}
+
 INT32 ffsMoveFile(struct inode *old_parent_inode, FILE_ID_T *fid, struct inode *new_parent_inode, struct dentry *new_dentry)
 {
 	INT32 ret;
@@ -833,6 +860,8 @@ INT32 ffsMoveFile(struct inode *old_parent_inode, FILE_ID_T *fid, struct inode *
 
 	if ((new_path == NULL) || (STRLEN(new_path) == 0))
 		return FFS_ERROR;
+
+	update_parent_info(fid, old_parent_inode);
 
 	olddir.dir = fid->dir.dir;
 	olddir.size = fid->dir.size;
@@ -857,6 +886,9 @@ INT32 ffsMoveFile(struct inode *old_parent_inode, FILE_ID_T *fid, struct inode *
 
 		ret = FFS_MEDIAERR;
 		new_fid = &EXFAT_I(new_inode)->fid;
+
+		update_parent_info(new_fid, new_parent_inode);
+
 		p_dir = &(new_fid->dir);
 		new_entry = new_fid->entry;
 		ep = get_entry_in_dir(sb, p_dir, new_entry, NULL);
@@ -1706,7 +1738,7 @@ INT32 fat_alloc_cluster(struct super_block *sb, INT32 num_alloc, CHAIN_T *p_chai
 	else if (new_clu >= p_fs->num_clusters)
 		new_clu = 2;
 
-	sb->s_dirt = 1;
+	__set_sb_dirty(sb);
 
 	p_chain->dir = CLUSTER_32(~0);
 
@@ -1760,8 +1792,8 @@ INT32 exfat_alloc_cluster(struct super_block *sb, INT32 num_alloc, CHAIN_T *p_ch
 		p_chain->flags = 0x01;
 	}
 
-	sb->s_dirt = 1;
-
+	__set_sb_dirty(sb);
+	
 	p_chain->dir = CLUSTER_32(~0);
 
 	while ((new_clu = test_alloc_bitmap(sb, hint_clu-2)) != CLUSTER_32(~0)) {
@@ -1826,9 +1858,7 @@ void fat_free_cluster(struct super_block *sb, CHAIN_T *p_chain, INT32 do_relse)
 
 	if ((p_chain->dir == CLUSTER_32(0)) || (p_chain->dir == CLUSTER_32(~0)))
 		return;
-
-	sb->s_dirt = 1;
-
+	__set_sb_dirty(sb);
 	clu = p_chain->dir;
 	
 	if (p_chain->size <= 0)
@@ -1876,8 +1906,7 @@ void exfat_free_cluster(struct super_block *sb, CHAIN_T *p_chain, INT32 do_relse
 		return;
 	}
 
-	sb->s_dirt = 1;
-
+	__set_sb_dirty(sb);
 	clu = p_chain->dir;
 
 	if (p_chain->flags == 0x03) {
@@ -4868,7 +4897,7 @@ INT32 sector_write(struct super_block *sb, UINT32 sec, struct buffer_head *bh, I
 
 	if (!p_fs->dev_ejected) {
 		ret = bdev_write(sb, sec, bh, 1, sync);
-		if (ret)
+		if (ret != FFS_SUCCESS)
 			p_fs->dev_ejected = TRUE;
 	}
 
