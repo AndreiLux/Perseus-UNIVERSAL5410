@@ -1064,6 +1064,17 @@ static int mdnie_remove(struct platform_device *pdev)
 	return 0;
 }
 
+void mdnie_toggle_negative(void)
+{
+	mutex_lock(&g_mdnie->lock);
+	g_mdnie->negative = (g_mdnie->negative == NEGATIVE_ON) ? NEGATIVE_OFF : NEGATIVE_ON;
+	mutex_unlock(&g_mdnie->lock);
+
+	printk("%s: %d\n", __func__, g_mdnie->negative);
+
+	mdnie_update(g_mdnie, 0);
+}
+
 static struct platform_driver mdnie_driver = {
 	.driver		= {
 		.name	= "mdnie",
