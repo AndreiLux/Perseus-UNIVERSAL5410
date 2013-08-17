@@ -1,7 +1,8 @@
-# CONFIG_CROSS_COMPILE="/home/af/S4/Toolchains/gcc-linaro-arm-linux-gnueabihf-4.8-2013.05_linux/bin/arm-linux-gnueabihf-"
+CONFIG_CROSS_COMPILE="/home/af/S4/Toolchains/gcc-linaro-arm-linux-gnueabihf-4.8-2013.07-1_linux/bin/arm-linux-gnueabihf-"
+# CONFIG_CROSS_COMPILE="/home/af/S4/Toolchains/gcc-linaro-arm-linux-gnueabihf-4.7-2013.04-20130415_linux/bin/arm-linux-gnueabihf-"
 # CONFIG_CROSS_COMPILE="/home/af/S4/arm-cortex_a15-linux-gnueabihf/bin/arm-cortex_a15-linux-gnueabihf-"
-CONFIG_CROSS_COMPILE="/home/af/S4/Toolchains/arm-eabi-4.6/bin/arm-eabi-"
-CONFIG_LOCALVERSION="-Perseus.Adonis-alpha5"
+# CONFIG_CROSS_COMPILE="/home/af/S4/Toolchains/arm-eabi-4.6/bin/arm-eabi-"
+CONFIG_LOCALVERSION="-Perseus.Adonis-alpha8"
 # CONFIG_LOCALVERSION_AUTO is not set
 CONFIG_EXPERIMENTAL=y
 # CONFIG_KERNEL_GZIP is not set
@@ -10,7 +11,7 @@ CONFIG_KERNEL_XZ=y
 # CONFIG_KERNEL_LZO is not set
 CONFIG_SNAPPY=y
 CONFIG_SYSVIPC=y
-CONFIG_COMPACTION=y
+# CONFIG_COMPACTION is not set
 CONFIG_SWAP=y
 CONFIG_SWAP_DISABLE_RUNTIME_DISCARD=y
 CONFIG_ZSWAP=y
@@ -42,7 +43,7 @@ CONFIG_KALLSYMS_ALL=y
 # CONFIG_AIO is not set
 CONFIG_EMBEDDED=y
 CONFIG_SLUB=y
-CONFIG_SLUB_DEBUG=y
+# CONFIG_SLUB_DEBUG is not set
 CONFIG_SLABINFO=y
 CONFIG_JUMP_LABEL=y
 CONFIG_MODULES=y
@@ -76,10 +77,10 @@ CONFIG_PREEMPT=y
 CONFIG_AEABI=y
 # CONFIG_OABI_COMPAT is not set
 CONFIG_HIGHMEM=y
-CONFIG_CMDLINE="console=ttySAC2,115200n8 vmalloc=512M androidboot.console=ttySAC2"
-CONFIG_CMDLINE="zswap.enabled=1 zswap.compressor=snappy"
+# CONFIG_CMDLINE="console=ttySAC2,115200n8 vmalloc=512M androidboot.console=ttySAC2"
+CONFIG_CMDLINE="zswap.enabled=0 zswap.compressor=snappy"
 CONFIG_CMDLINE_FROM_BOOTLOADER=y
-# CONFIG_CMDLINE_EXTEND is not set
+CONFIG_CMDLINE_EXTEND=y
 CONFIG_CPU_FREQ=y
 CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND_SEC=y
 CONFIG_EXYNOS5_DYNAMIC_CPU_HOTPLUG=y
@@ -225,6 +226,8 @@ CONFIG_CFG80211_ALLOW_RECONNECT=y
 CONFIG_WLAN=y
 CONFIG_WIFI_CONTROL_FUNC=y
 CONFIG_BCM4335=m
+CONFIG_BCMDHD_FW_PATH="/system/etc/wifi/bcmdhd_sta.bin" 
+CONFIG_BCMDHD_NVRAM_PATH="/system/etc/wifi/nvram_net.txt"
 CONFIG_BROADCOM_WIFI_RESERVED_MEM=y
 CONFIG_WLAN_REGION_CODE=100
 
