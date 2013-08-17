@@ -97,7 +97,7 @@ static const struct row_queue_params row_queues_def[] = {
 
 /* Default values for idling on read queues (in msec) */
 #define ROW_IDLE_TIME_MSEC 5
-#define ROW_READ_FREQ_MSEC 20
+#define ROW_READ_FREQ_MSEC 5
 
 /**
  * struct rowq_idling_data -  parameters for idling on the queue
@@ -331,6 +331,10 @@ static void row_add_request(struct request_queue *q,
 	struct row_queue *rqueue = RQ_ROWQ(rq);
 	s64 diff_ms;
 	bool queue_was_empty = list_empty(&rqueue->fifo);
+	unsigned long bv_page_flags = 0;
+
+	if (rq->bio && rq->bio->bi_io_vec && rq->bio->bi_io_vec->bv_page)
+		bv_page_flags = rq->bio->bi_io_vec->bv_page->flags;
 
 	list_add_tail(&rq->queuelist, &rqueue->fifo);
 	rd->nr_reqs[rq_data_dir(rq)]++;
@@ -346,11 +350,14 @@ static void row_add_request(struct request_queue *q,
 	if (row_queues_def[rqueue->prio].idling_enabled) {
 		if (rd->rd_idle_data.idling_queue_idx == rqueue->prio &&
 		    hrtimer_active(&rd->rd_idle_data.hr_timer)) {
-			(void)hrtimer_cancel(&rd->rd_idle_data.hr_timer);
-			row_log_rowq(rd, rqueue->prio,
-				"Canceled delayed work on %d",
-				rd->rd_idle_data.idling_queue_idx);
-			rd->rd_idle_data.idling_queue_idx = ROWQ_MAX_PRIO;
+			if (hrtimer_try_to_cancel(
+				&rd->rd_idle_data.hr_timer) >= 0) {
+				row_log_rowq(rd, rqueue->prio,
+				    "Canceled delayed work on %d",
+				    rd->rd_idle_data.idling_queue_idx);
+				rd->rd_idle_data.idling_queue_idx =
+					ROWQ_MAX_PRIO;
+			}
 		}
 		diff_ms = ktime_to_ms(ktime_sub(ktime_get(),
 				rqueue->idle_data.last_insert_time));
@@ -360,7 +367,9 @@ static void row_add_request(struct request_queue *q,
 			rqueue->idle_data.begin_idling = false;
 			return;
 		}
-		if (diff_ms < rd->rd_idle_data.freq_ms) {
+
+		if ((bv_page_flags & (1L << PG_readahead)) ||
+		    (diff_ms < rd->rd_idle_data.freq_ms)) {
 			rqueue->idle_data.begin_idling = true;
 			row_log_rowq(rd, rqueue->prio, "Enable idling");
 		} else {
@@ -387,7 +396,6 @@ static void row_add_request(struct request_queue *q,
 				"added urgent request (total on queue=%d)",
 				rqueue->nr_req);
 			rq->cmd_flags |= REQ_URGENT;
-			WARN_ON(rqueue->nr_req > 1);
 			rd->pending_urgent_rq = rq;
 		}
 	} else
@@ -577,14 +585,14 @@ static int row_get_ioprio_class_to_serve(struct row_data *rd, int force)
 	for (i = 0; i < ROWQ_REG_PRIO_IDX; i++) {
 		if (!list_empty(&rd->row_queues[i].fifo)) {
 			if (hrtimer_active(&rd->rd_idle_data.hr_timer)) {
-				(void)hrtimer_cancel(
-					&rd->rd_idle_data.hr_timer);
-				row_log_rowq(rd,
-					rd->rd_idle_data.idling_queue_idx,
+				if (hrtimer_try_to_cancel(
+					&rd->rd_idle_data.hr_timer) >= 0) {
+					row_log(rd->dispatch_queue,
 					"Canceling delayed work on %d. RT pending",
-					rd->rd_idle_data.idling_queue_idx);
-				rd->rd_idle_data.idling_queue_idx =
-					ROWQ_MAX_PRIO;
+					     rd->rd_idle_data.idling_queue_idx);
+					rd->rd_idle_data.idling_queue_idx =
+						ROWQ_MAX_PRIO;
+				}
 			}
 
 			if (row_regular_req_pending(rd) &&
@@ -720,11 +728,12 @@ static int row_dispatch_requests(struct request_queue *q, int force)
 	int ret = 0, currq, ioprio_class_to_serve, start_idx, end_idx;
 
 	if (force && hrtimer_active(&rd->rd_idle_data.hr_timer)) {
-		(void)hrtimer_cancel(&rd->rd_idle_data.hr_timer);
-		row_log_rowq(rd, rd->rd_idle_data.idling_queue_idx,
-			"Canceled delayed work on %d - forced dispatch",
-			rd->rd_idle_data.idling_queue_idx);
-		rd->rd_idle_data.idling_queue_idx = ROWQ_MAX_PRIO;
+		if (hrtimer_try_to_cancel(&rd->rd_idle_data.hr_timer) >= 0) {
+			row_log(rd->dispatch_queue,
+				"Canceled delayed work on %d - forced dispatch",
+				rd->rd_idle_data.idling_queue_idx);
+			rd->rd_idle_data.idling_queue_idx = ROWQ_MAX_PRIO;
+		}
 	}
 
 	if (rd->pending_urgent_rq) {
