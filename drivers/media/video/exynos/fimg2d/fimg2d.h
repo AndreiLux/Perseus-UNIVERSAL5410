@@ -523,7 +523,7 @@ struct fimg2d_control {
 int fimg2d_register_ops(struct fimg2d_control *ctrl);
 int fimg2d_ip_version_is(void);
 int bit_per_pixel(struct fimg2d_image *img, int plane);
-inline int width2bytes(int width, int bpp);
+int width2bytes(int width, int bpp);
 
 #ifdef BLIT_WORKQUE
 #define g2d_lock(x)		do {} while (0)
