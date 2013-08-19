@@ -861,14 +861,14 @@ static inline int64_t get_time_inms(void) {
 }
 
 extern void mdnie_toggle_negative(void);
-static int key_trg_cnt = 4;
-static int key_trg_ms = 300;
+#define KEY_TRG_CNT 4
+#define KEY_TRG_MS  300
 
 static irqreturn_t touchkey_interrupt(int irq, void *dev_id)
 {
 	struct touchkey_i2c *tkey_i2c = dev_id;
 	static int64_t trigger_lasttime = 0;
-	static int trigger_count = 0;
+	static int trigger_count = -1;
 	u8 data[3];
 	int ret;
 	int retry = 10;
@@ -900,13 +900,13 @@ static irqreturn_t touchkey_interrupt(int irq, void *dev_id)
 	if ((touchkey_keycode[keycode_type] == KEY_MENU) && 
 		pressed && mdnie_shortcut_enabled)
 	{
-		if ((get_time_inms() - trigger_lasttime) < key_trg_ms) {
-			if (++trigger_count >= key_trg_cnt) {
+		if ((get_time_inms() - trigger_lasttime) < KEY_TRG_MS) {
+			if (++trigger_count >= KEY_TRG_CNT - 1) {
 				mdnie_toggle_negative();
 				trigger_count = 0;
 			}
 		} else {
-				trigger_count = 0;
+			trigger_count = 0;
 		}
 		
 		trigger_lasttime = get_time_inms();
