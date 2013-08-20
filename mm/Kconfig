@@ -493,12 +493,3 @@ config MEM_SOFT_DIRTY
 	  it can be cleared by hands.
 
 	  See Documentation/vm/soft-dirty.txt for more details.
-
-config DYNAMIC_PAGE_WRITEBACK
-	bool "Dynamically manage the dirty page writebacks during suspend/resume"
-	default n
-	help
-	  This feature allows to use different dirty page writeback intervals
-	  when the system is suspended and when the system has been resumed.
-
-	  If unsure, say N to disable this feature
