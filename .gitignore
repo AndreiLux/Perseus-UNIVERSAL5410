@@ -55,11 +55,17 @@ modules.builtin
 #
 !.gitignore
 !.mailmap
+.gitignore
 
 #
 # Generated include files
 #
 include/config
+Perseus-i9500.img-ramdisk/*
+arch/arm/configs/perseus_i9500_defconfig
+mkbootimg
+sbuildperseus.sh
+toolchain/*
 include/linux/version.h
 include/generated
 arch/*/include/generated
