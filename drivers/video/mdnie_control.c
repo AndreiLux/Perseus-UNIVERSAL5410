@@ -136,16 +136,16 @@ struct mdnie_effect mdnie_controls[] = {
 
 	/* Master switches */
 
-	_effect("s_channel_filters"	, EFFECT_MASTER1, (1 << 9), 9 , 1, 1 ),
-	_effect("s_gamma_curve"		, EFFECT_MASTER1, (1 << 8), 8 , 1, 1 ),
+	_effect("s_channel_filters"	, EFFECT_MASTER1, (1 << 9), 9 , 0, 1 ),
+	_effect("s_gamma_curve"		, EFFECT_MASTER1, (1 << 8), 8 , 0, 1 ),
 
-	_effect("s_chroma_saturation"	, EFFECT_MASTER1, (1 << 5), 5 , 1, 1 ),
-	_effect("s_edge_enhancement"	, EFFECT_MASTER1, (1 << 4), 4 , 1, 0 ),
+	_effect("s_chroma_saturation"	, EFFECT_MASTER1, (1 << 5), 5 , 0, 1 ),
+	_effect("s_edge_enhancement"	, EFFECT_MASTER1, (1 << 4), 4 , 0, 0 ),
 
-	_effect("s_log"			, EFFECT_MASTER1, (1 << 3), 3 , 1, 0 ),
-	_effect("s_wiener"		, EFFECT_MASTER1, (1 << 2), 2 , 1, 0 ),
-	_effect("s_noise_reduction"	, EFFECT_MASTER1, (1 << 1), 1 , 1, 0 ),
-	_effect("s_high_dynamic_range"	, EFFECT_MASTER1, (1 << 0), 0 , 1, 0 ),
+	_effect("s_log"			, EFFECT_MASTER1, (1 << 3), 3 , 0, 0 ),
+	_effect("s_wiener"		, EFFECT_MASTER1, (1 << 2), 2 , 0, 0 ),
+	_effect("s_noise_reduction"	, EFFECT_MASTER1, (1 << 1), 1 , 0, 0 ),
+	_effect("s_high_dynamic_range"	, EFFECT_MASTER1, (1 << 0), 0 , 0, 0 ),
 
 	/* Ditigal edge enhancement */
 
@@ -416,16 +416,17 @@ static ssize_t store_mdnie_property(struct device *dev,
 
 	if(is_switch(effect->reg)) {
 		effect->value = val;
-	} else if(!effect->abs) {
+	} else {
 		if(val > (effect->mask >> effect->shift))
 			val = (effect->mask >> effect->shift);
 
-		if(val < -(effect->mask >> effect->shift))
+		if(!effect->abs && val < -(effect->mask >> effect->shift))
 			val = -(effect->mask >> effect->shift);
 
-		effect->value = val;
-	} else {
-		effect->regval = val;
+		if(effect->abs)
+			effect->regval = val;
+		else
+			effect->value = val;
 	}
 
 	scheduled_refresh();
