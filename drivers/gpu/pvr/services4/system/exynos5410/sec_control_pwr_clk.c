@@ -33,17 +33,15 @@
 #define WAKEUP_LOCK_CLOCK   266
 #define WAKEUP_LOCK_VOLTAGE 900000
 
-#ifdef QOSBOOSTERS
 #if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
 static struct pm_qos_request exynos5_g3d_cpu_qos;
 struct pm_qos_request exynos5_g3d_mif_qos;
 struct pm_qos_request exynos5_g3d_int_qos;
 #define MIF_THRESHHOLD_VALUE_CLK 350
 #endif
-#endif
 
 static int sec_gpu_top_clock;
-static int gpu_voltage_margin;
+static int gpu_voltage_marin;
 int sec_wakeup_lock_state = 1;
 bool sec_gpu_power_on = false;
 
@@ -59,7 +57,7 @@ static DEFINE_MUTEX(lock);
 int sec_gpu_pwr_clk_init(void)
 {
 	int ret = -1;
-	gpu_voltage_margin = 0;
+	gpu_voltage_marin = 0;
 	sec_gpu_top_clock = 480;
 	gpu_regulator_enable();
 	ret = gpu_clks_get();
@@ -68,12 +66,10 @@ int sec_gpu_pwr_clk_init(void)
 		return ret;
 	}
 	gpu_power_init();
-#ifdef QOSBOOSTERS
 #if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
 	pm_qos_add_request(&exynos5_g3d_cpu_qos, PM_QOS_CPU_FREQ_MIN, 0);
 	pm_qos_add_request(&exynos5_g3d_int_qos, PM_QOS_DEVICE_THROUGHPUT, 0);
 	pm_qos_add_request(&exynos5_g3d_mif_qos, PM_QOS_BUS_THROUGHPUT, 0);
-#endif
 #endif
 	return ret;
 }
@@ -86,12 +82,10 @@ int sec_gpu_pwr_clk_deinit(void)
 	ret = gpu_regulator_disable();
 	if (ret)
 		PVR_DPF((PVR_DBG_ERROR, "gpu_regulator_disable error[%d]", ret));
-#ifdef QOSBOOSTERS
 #if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
 	pm_qos_remove_request(&exynos5_g3d_cpu_qos);
 	pm_qos_remove_request(&exynos5_g3d_int_qos);
 	pm_qos_remove_request(&exynos5_g3d_mif_qos);
-#endif
 #endif
 	return ret;
 }
@@ -102,11 +96,10 @@ void sec_gpu_vol_clk_change(int sgx_clock, int sgx_voltage)
 	int cur_sgx_clock;
 	mutex_lock(&lock);
 	cur_sgx_clock = gpu_clock_get();
-	sgx_voltage += gpu_voltage_margin;
-#ifdef QOSBOOSTERS
+	sgx_voltage += gpu_voltage_marin;
 #if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
 	if (sec_gpu_power_on) {
-#ifdef QOSBOOSTER_CPU
+
 		if (sgx_clock >= sec_gpu_top_clock) {
 	#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
 			pm_qos_update_request(&exynos5_g3d_cpu_qos, 600000);
@@ -114,7 +107,7 @@ void sec_gpu_vol_clk_change(int sgx_clock, int sgx_voltage)
 			pm_qos_update_request(&exynos5_g3d_cpu_qos, 800000);
 	#endif
 		}
-#endif
+
 		if (sgx_clock < MIF_THRESHHOLD_VALUE_CLK)
 			pm_qos_update_request(&exynos5_g3d_mif_qos, 200000);
 		else
@@ -126,7 +119,6 @@ void sec_gpu_vol_clk_change(int sgx_clock, int sgx_voltage)
 	}
 
 #endif
-#endif
 	if (sec_gpu_power_on)	{
 		if (cur_sgx_clock > sgx_clock) {
 			gpu_clock_set(sgx_clock);
@@ -137,7 +129,8 @@ void sec_gpu_vol_clk_change(int sgx_clock, int sgx_voltage)
 		}
 		sec_gpu_setting_clock = gpu_clock_get();
 		sec_gpu_setting_voltage = gpu_voltage_get();
-	} else {
+	}
+	else {
 		sec_gpu_setting_clock = sgx_clock;
 		sec_gpu_setting_voltage = sgx_voltage;
 		PVR_LOG(("SGX keep DVFS info sgx_clock:%d MHz, sgx_voltage:%d mV ", sgx_clock, sgx_voltage));
@@ -169,8 +162,8 @@ static int sec_gpu_clock_enable(void)
 		gpu_voltage_set(sec_gpu_setting_voltage);
 
 	if (sec_wakeup_lock_state) {
-		if (gpu_voltage_get() < (WAKEUP_LOCK_VOLTAGE + gpu_voltage_margin))
-			gpu_voltage_set(WAKEUP_LOCK_VOLTAGE + gpu_voltage_margin);
+		if (gpu_voltage_get() < WAKEUP_LOCK_VOLTAGE + gpu_voltage_marin)
+			gpu_voltage_set(WAKEUP_LOCK_VOLTAGE + gpu_voltage_marin);
 
 		if (gpu_clock_get() < WAKEUP_LOCK_CLOCK)
 			gpu_clock_set(WAKEUP_LOCK_CLOCK);
@@ -194,7 +187,6 @@ int sec_gpu_pwr_clk_state_set(sec_gpu_state state)
 	switch (state) {
 	case GPU_PWR_CLK_STATE_ON:
 	{
-#ifdef QOSBOOSTERS
 #if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
 		pm_qos_update_request(&exynos5_g3d_int_qos, 200000);
 		if (sec_gpu_setting_clock < MIF_THRESHHOLD_VALUE_CLK)
@@ -202,7 +194,6 @@ int sec_gpu_pwr_clk_state_set(sec_gpu_state state)
 		else
 			pm_qos_update_request(&exynos5_g3d_mif_qos, 400000);
 
-#ifdef QOSBOOSTER_CPU
 		if (sec_gpu_setting_clock >= sec_gpu_top_clock) {
 #ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
 			pm_qos_update_request(&exynos5_g3d_cpu_qos, 600000);
@@ -211,9 +202,6 @@ int sec_gpu_pwr_clk_state_set(sec_gpu_state state)
 #endif
 		}
 #endif
-#endif
-#endif
-
 		err = gpu_power_enable();
 		if (err) {
 			mutex_unlock(&lock);
@@ -236,12 +224,10 @@ int sec_gpu_pwr_clk_state_set(sec_gpu_state state)
 			mutex_unlock(&lock);
 			return err;
 		}
-#ifdef QOSBOOSTERS
 #if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
 		pm_qos_update_request(&exynos5_g3d_cpu_qos, 0);
 		pm_qos_update_request(&exynos5_g3d_int_qos, 0);
 		pm_qos_update_request(&exynos5_g3d_mif_qos, 0);
-#endif
 #endif
 	}
 	break;
@@ -259,20 +245,20 @@ int sec_gpu_pwr_clk_margin_set(unsigned int margin_offset)
 	mutex_lock(&lock);
 	if (margin_offset) {
 		/* set or reset voltage margin - margin_offset */
-		if (margin_offset != gpu_voltage_margin) {
+		if (margin_offset != gpu_voltage_marin) {
 			if (sec_gpu_power_on)
-				gpu_voltage_set(sec_gpu_setting_voltage - gpu_voltage_margin + margin_offset);
-			sec_gpu_setting_voltage = sec_gpu_setting_voltage - gpu_voltage_margin + margin_offset;
-			gpu_voltage_margin = margin_offset;
+				gpu_voltage_set(sec_gpu_setting_voltage - gpu_voltage_marin + margin_offset);
+			sec_gpu_setting_voltage = sec_gpu_setting_voltage - gpu_voltage_marin + margin_offset;
+			gpu_voltage_marin = margin_offset;
 		}
 		/* else case already setting as same margin value - do nothing */
 	} else {
 		/* this case restore voltage */
-		if (gpu_voltage_margin) {
+		if (gpu_voltage_marin) {
 			if (sec_gpu_power_on)
-				gpu_voltage_set(sec_gpu_setting_voltage - gpu_voltage_margin);
-			sec_gpu_setting_voltage = sec_gpu_setting_voltage - gpu_voltage_margin;
-			gpu_voltage_margin = 0;
+				gpu_voltage_set(sec_gpu_setting_voltage - gpu_voltage_marin);
+			sec_gpu_setting_voltage = sec_gpu_setting_voltage - gpu_voltage_marin;
+			gpu_voltage_marin = 0;
 		}
 		/* else case margin value is zero - do nothing */
 	}
