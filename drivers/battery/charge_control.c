@@ -121,9 +121,11 @@ static ssize_t store_charge_property(struct device *dev,
 
 extern int SIOP_INPUT_LIMIT_CURRENT;
 extern int SIOP_CHARGING_LIMIT_CURRENT;
+extern bool unstable_power_detection;
 
 DEVICE_INT_ATTR(siop_input_limit, 0644, SIOP_INPUT_LIMIT_CURRENT);
 DEVICE_INT_ATTR(siop_charge_limit, 0644, SIOP_CHARGING_LIMIT_CURRENT);
+DEVICE_INT_ATTR(unstable_power_detection, 0644, unstable_power_detection);
 
 void charger_control_init(struct sec_battery_info *sec_info)
 {
@@ -137,4 +139,5 @@ void charger_control_init(struct sec_battery_info *sec_info)
 
 	i = device_create_file(info->dev, &dev_attr_siop_input_limit.attr);
 	i = device_create_file(info->dev, &dev_attr_siop_charge_limit.attr);
+	i = device_create_file(info->dev, &dev_attr_unstable_power_detection.attr);
 }
