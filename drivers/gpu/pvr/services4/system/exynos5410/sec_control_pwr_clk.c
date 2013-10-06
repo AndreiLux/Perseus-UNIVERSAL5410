@@ -37,7 +37,8 @@
 static struct pm_qos_request exynos5_g3d_cpu_qos;
 struct pm_qos_request exynos5_g3d_mif_qos;
 struct pm_qos_request exynos5_g3d_int_qos;
-#define MIF_THRESHHOLD_VALUE_CLK 350
+static unsigned int MIF_THRESHHOLD_VALUE_CLK = 350;
+module_param_named(qos_mif2_threshold, MIF_THRESHHOLD_VALUE_CLK, uint, S_IWUSR | S_IRUGO);
 #endif
 
 static int sec_gpu_top_clock;
@@ -52,6 +53,16 @@ int sec_gpu_setting_clock   = SGX_DEFAULT_CLOCK;
 int sec_gpu_setting_voltage = SGX_DEFAULT_VOLTAGE;
 
 static DEFINE_MUTEX(lock);
+
+static unsigned int qos_cpu_freq = 600000;
+static unsigned int qos_mif_freq = 200000;
+static unsigned int qos_mif2_freq = 400000;
+static unsigned int qos_int_freq = 200000;
+
+module_param(qos_cpu_freq, uint, S_IWUSR | S_IRUGO);
+module_param(qos_mif_freq, uint, S_IWUSR | S_IRUGO);
+module_param(qos_mif2_freq, uint, S_IWUSR | S_IRUGO);
+module_param(qos_int_freq, uint, S_IWUSR | S_IRUGO);
 
 /* gpu power clock init */
 int sec_gpu_pwr_clk_init(void)
@@ -102,16 +113,16 @@ void sec_gpu_vol_clk_change(int sgx_clock, int sgx_voltage)
 
 		if (sgx_clock >= sec_gpu_top_clock) {
 	#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
-			pm_qos_update_request(&exynos5_g3d_cpu_qos, 600000);
+			pm_qos_update_request(&exynos5_g3d_cpu_qos, qos_cpu_freq);
 	#else
 			pm_qos_update_request(&exynos5_g3d_cpu_qos, 800000);
 	#endif
 		}
 
 		if (sgx_clock < MIF_THRESHHOLD_VALUE_CLK)
-			pm_qos_update_request(&exynos5_g3d_mif_qos, 200000);
+			pm_qos_update_request(&exynos5_g3d_mif_qos, qos_mif_freq);
 		else
-			pm_qos_update_request(&exynos5_g3d_mif_qos, 400000);
+			pm_qos_update_request(&exynos5_g3d_mif_qos, qos_mif2_freq);
 	} else {
 		pm_qos_update_request(&exynos5_g3d_cpu_qos, 0);
 		pm_qos_update_request(&exynos5_g3d_int_qos, 0);
@@ -188,15 +199,15 @@ int sec_gpu_pwr_clk_state_set(sec_gpu_state state)
 	case GPU_PWR_CLK_STATE_ON:
 	{
 #if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
-		pm_qos_update_request(&exynos5_g3d_int_qos, 200000);
+		pm_qos_update_request(&exynos5_g3d_int_qos, qos_int_freq);
 		if (sec_gpu_setting_clock < MIF_THRESHHOLD_VALUE_CLK)
-			pm_qos_update_request(&exynos5_g3d_mif_qos, 200000);
+			pm_qos_update_request(&exynos5_g3d_mif_qos, qos_mif_freq);
 		else
-			pm_qos_update_request(&exynos5_g3d_mif_qos, 400000);
+			pm_qos_update_request(&exynos5_g3d_mif_qos, qos_mif2_freq);
 
 		if (sec_gpu_setting_clock >= sec_gpu_top_clock) {
 #ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
-			pm_qos_update_request(&exynos5_g3d_cpu_qos, 600000);
+			pm_qos_update_request(&exynos5_g3d_cpu_qos, qos_cpu_freq);
 #else
 			pm_qos_update_request(&exynos5_g3d_cpu_qos, 800000);
 #endif
