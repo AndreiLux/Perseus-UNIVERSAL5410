@@ -28,9 +28,13 @@
 #endif
 #include "synaptics_i2c_rmi.h"
 
-#define CPU_QOS_FREQ 400000
-#define MIF_QOS_FREQ 800000
-#define INT_QOS_FREQ 200000
+static unsigned int CPU_QOS_FREQ = 400000;
+static unsigned int MIF_QOS_FREQ = 800000;
+static unsigned int INT_QOS_FREQ = 200000;
+
+module_param_named(qos_cpu_freq, CPU_QOS_FREQ, uint, S_IWUSR | S_IRUGO);
+module_param_named(qos_mif_freq, MIF_QOS_FREQ, uint, S_IWUSR | S_IRUGO);
+module_param_named(qos_int_freq, INT_QOS_FREQ, uint, S_IWUSR | S_IRUGO);
 
 #define DRIVER_NAME "synaptics_rmi4_i2c"
 
