@@ -216,7 +216,7 @@ int s5p_cec_mem_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	size_t	size;
-	int	ret;
+	int	ret = 0;
 
 	dev_dbg(&pdev->dev, "%s\n", __func__);
 

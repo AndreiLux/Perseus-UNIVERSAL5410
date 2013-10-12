@@ -25,6 +25,7 @@
 /* Interrupt */
 #define SCALER_INT_EN			0x08
 #define SCALER_INT_EN_FRAME_END		(1 << 0)
+#define SCALER_INT_EN_ALL		0x807fffff
 
 #define SCALER_INT_STATUS		0x0c
 #define SCALER_INT_STATUS_FRAME_END	(1 << 0)
@@ -37,7 +38,7 @@
 #define SCALER_CFG_BIG_ENDIAN		(1 << 8)
 #define SCALER_CFG_BYTE_SWAP		(2 << 5)
 #define SCALER_CFG_HWORD_SWAP		(3 << 5)
-#define SCALER_CFG_FMT_MASK		(0xf << 0)
+#define SCALER_CFG_FMT_MASK		(0x1f << 0)
 #define SCALER_CFG_FMT_YCBCR420_2P	(0 << 0)
 #define SCALER_CFG_FMT_YUYV		(0xa << 0)
 #define SCALER_CFG_FMT_UYVY		(0xb << 0)
@@ -52,10 +53,17 @@
 #define SCALER_CFG_FMT_P_ARGB8888	(7 << 0)
 #define SCALER_CFG_FMT_L8A8		(0xd << 0)
 #define SCALER_CFG_FMT_L8		(0xf << 0)
+#define SCALER_CFG_FMT_YCRCB420_2P	(0x10 << 0)
+#define SCALER_CFG_FMT_YCRCB422_2P	(0x12 << 0)
+#define SCALER_CFG_FMT_YCRCB444_2P	(0x13 << 0)
+#define SCALER_CFG_FMT_YCBCR420_3P	(0x14 << 0)
+#define SCALER_CFG_FMT_YCBCR422_3P	(0x16 << 0)
+#define SCALER_CFG_FMT_YCBCR444_3P	(0x17 << 0)
 
 /* Source Y Base Address */
 #define SCALER_SRC_Y_BASE		0x14
-#define SCALER_SRC_C_BASE		0x18
+#define SCALER_SRC_CB_BASE		0x18
+#define SCALER_SRC_CR_BASE		0x294
 #define SCALER_SRC_SPAN			0x1c
 #define SCALER_SRC_CSPAN_MASK		(0xffff << 16)
 #define SCALER_SRC_YSPAN_MASK		(0xffff << 0)
@@ -63,6 +71,10 @@
 #define SCALER_SRC_Y_POS		0x20
 #define SCALER_SRC_YX(x)		((x) << 18)
 #define SCALER_SRC_YY(x)		((x) << 2)
+
+#define SCALER_SRC_CX(x, shift)		((x) << (18 - (shift)))
+#define SCALER_SRC_CY(x, shift)		((x) << (2 - (shift)))
+#define SCALER_SRC_C_POS_FRACTION	0x30003
 
 #define SCALER_SRC_WH			0x24
 #define SCALER_SRC_W(x)			((x) << 16)
@@ -72,7 +84,8 @@
 
 #define SCALER_DST_CFG			0x30
 #define SCALER_DST_Y_BASE		0x34
-#define SCALER_DST_C_BASE		0x38
+#define SCALER_DST_CB_BASE		0x38
+#define SCALER_DST_CR_BASE		0x298
 #define SCALER_DST_SPAN			0x3c
 #define SCALER_DST_CSPAN_MASK		(0xffff << 16)
 #define SCALER_DST_YSPAN_MASK		(0xffff << 0)
@@ -144,3 +157,6 @@
 #define SCALER_OP_SEL_SHIFT		(24)
 
 #define SCALER_FILL_COLOR		0x290
+
+#define SCALER_TIMEOUT_CTRL		0x2c0
+#define SCALER_TIMEOUT_CNT		0x2c4

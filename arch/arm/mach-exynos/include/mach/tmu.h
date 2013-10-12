@@ -12,6 +12,8 @@
 #ifndef __ASM_ARCH_TMU_H
 #define __ASM_ARCH_TMU_H
 
+#include <linux/platform_data/exynos_thermal.h>
+
 #define MUX_ADDR_VALUE 6
 #define TMU_SAVE_NUM 10
 #define TMU_DC_VALUE 25
@@ -26,14 +28,31 @@ enum tmu_status_t {
 	TMU_STATUS_TRIPPED,
 };
 
-enum {
+enum mif_noti_state_t {
+	MEM_TH_LV1 = 4,
+	MEM_TH_LV2,
+	MEM_TH_LV3,
+};
+
+enum tmu_noti_state_t {
 	TMU_NORMAL,
 	TMU_COLD,
 	TMU_HOT,
+	TMU_CRITICAL,
 	TMU_95,
 	TMU_109,
 	TMU_110,
 	TMU_111, // for detect thermal runaway caused by fimc
+};
+
+enum gpu_noti_state_t {
+	GPU_NORMAL,
+	GPU_COLD,
+	GPU_THROTTLING1,
+	GPU_THROTTLING2,
+	GPU_THROTTLING3,
+	GPU_THROTTLING4,
+	GPU_TRIPPING,
 };
 
 struct temperature_params {
@@ -75,12 +94,13 @@ struct tmu_info {
 	unsigned int reg_save[TMU_SAVE_NUM];
 };
 
-extern void exynos_tmu_set_platdata(struct tmu_data *pd);
+extern void exynos_tmu_set_platdata(struct exynos_tmu_platform_data *pd);
 extern struct tmu_info *exynos_tmu_get_platdata(void);
 extern int exynos_tmu_get_irqno(int num);
 extern struct platform_device exynos_device_tmu;
 #ifdef CONFIG_EXYNOS_THERMAL
 extern int exynos_tmu_add_notifier(struct notifier_block *n);
+extern int exynos_gpu_add_notifier(struct notifier_block *n);
 #else
 static inline int exynos_tmu_add_notifier(struct notifier_block *n)
 {

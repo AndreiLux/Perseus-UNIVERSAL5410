@@ -26,9 +26,15 @@
 #define REPROCESSING_SHIFT		24
 #define SSX_VINDEX_MASK			0x00FF0000
 #define SSX_VINDEX_SHIFT		16
-#define BPP_VINDEX_MASK			0x0000FF00
-#define BPP_VINDEX_SHIFT		8
+#define TAX_VINDEX_MASK			0x0000FF00
+#define TAX_VINDEX_SHIFT		8
 #define MODULE_MASK			0x000000FF
+
+#define FIMC_IS_SETFILE_MASK		0xFFFF
+#define FIMC_IS_CRANGE_MASK		0xFFFF0000
+#define FIMC_IS_CRANGE_SHIFT		16
+#define FIMC_IS_CRANGE_WIDE		0
+#define FIMC_IS_CRANGE_NARROW		1
 
 /*global state*/
 enum fimc_is_ischain_state {
@@ -39,34 +45,6 @@ enum fimc_is_ischain_state {
 	FIMC_IS_ISCHAIN_REPROCESSING,
 	FIMC_IS_ISCHAIN_OTF_OPEN,
 };
-
-enum fimc_is_camera_device {
-	CAMERA_SINGLE_REAR,
-	CAMERA_SINGLE_FRONT,
-	CAMERA_DUAL_REAR,
-	CAMERA_DUAL_FRONT,
-};
-
-struct fimc_is_from_info {
-	u32		bin_start_addr;
-	u32		bin_end_addr;
-	u32		oem_start_addr;
-	u32		oem_end_addr;
-	u32		awb_start_addr;
-	u32		awb_end_addr;
-	u32		shading_start_addr;
-	u32		shading_end_addr;
-	u32		setfile_start_addr;
-	u32		setfile_end_addr;
-
-	char		header_ver[12];
-	char		cal_map_ver[4];
-	char		setfile_ver[7];
-	char		oem_ver[12];
-	char		awb_ver[12];
-	char		shading_ver[12];
-};
-
 
 struct fimc_is_ishcain_mem {
 	/* buffer base */
@@ -120,8 +98,6 @@ struct fimc_is_device_ischain {
 	u32					instance_sensor;
 	u32					module;
 	struct fimc_is_ishcain_mem		imemory;
-	struct fimc_is_from_info		finfo;
-	struct fimc_is_from_info		pinfo;
 	struct is_region			*is_region;
 
 	bool					force_down;
@@ -133,6 +109,7 @@ struct fimc_is_device_ischain {
 	u32					bds_width;
 	u32					bds_height;
 	u32					setfile;
+	u32					scp_setfile;
 
 	struct camera2_sm			capability;
 	struct camera2_uctl			cur_peri_ctl;
@@ -179,10 +156,6 @@ struct fimc_is_device_ischain {
 	u32					chain3_height;
 	struct fimc_is_subdev			fd;
 
-	u32					lindex;
-	u32					hindex;
-	u32					indexes;
-
 	u32					private_data;
 	struct fimc_is_device_sensor		*sensor;
 	struct pm_qos_request			user_qos;
@@ -201,9 +174,10 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *device,
 	struct fimc_is_minfo *minfo);
 int fimc_is_ischain_close(struct fimc_is_device_ischain *device,
 	struct fimc_is_video_ctx *vctx);
-int fimc_is_ischain_init(struct fimc_is_device_ischain *this,
-	u32 module, u32 channel, struct sensor_open_extended *ext,
-	char *setfile_name);
+int fimc_is_ischain_init(struct fimc_is_device_ischain *device,
+	u32 module,
+	u32 group_id,
+	u32 rep_stream);
 int fimc_is_ischain_g_capability(struct fimc_is_device_ischain *this,
 	u32 user_ptr);
 int fimc_is_ischain_print_status(struct fimc_is_device_ischain *this);
@@ -275,8 +249,8 @@ int fimc_is_ischain_scc_stop(struct fimc_is_device_ischain *this);
 /*scp subdev*/
 int fimc_is_ischain_scp_start(struct fimc_is_device_ischain *this);
 int fimc_is_ischain_scp_stop(struct fimc_is_device_ischain *this);
-int fimc_is_ischain_scp_s_format(struct fimc_is_device_ischain *this,
-	u32 width, u32 height);
+int fimc_is_ischain_scp_s_format(struct fimc_is_device_ischain *device,
+	u32 pixelformat, u32 width, u32 height);
 
 /* vdisc subdev */
 int fimc_is_ischain_dis_start(struct fimc_is_device_ischain *this,

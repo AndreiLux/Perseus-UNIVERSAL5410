@@ -21,12 +21,23 @@ struct sysmmu_version {
 	unsigned char minor;
 };
 
+enum sysmmu_property {
+	SYSMMU_PROP_READ = 1,
+	SYSMMU_PROP_WRITE = 2,
+	SYSMMU_PROP_READWRITE = SYSMMU_PROP_READ | SYSMMU_PROP_WRITE,
+	SYSMMU_PROP_RW_MASK = SYSMMU_PROP_READWRITE,
+	SYSMMU_PROP_PREFETCH = 4,
+	SYSMMU_PROP_WINDOW_SHIFT = 16,
+	SYSMMU_PROP_WINDOW_MASK = 0x1F << SYSMMU_PROP_WINDOW_SHIFT,
+};
+
 struct sysmmu_platform_data {
 	char *dbgname;
 	/* comma(,) separated list of clock names for clock gating */
 	char *clockname;
 	struct sysmmu_version ver;
 	short qos;
+	enum sysmmu_property prop;
 	bool tlbinv_entry;
 };
 
@@ -60,13 +71,22 @@ extern struct platform_device SYSMMU_PLATDEV(isp2);
 extern struct platform_device SYSMMU_PLATDEV(isp3);
 extern struct platform_device SYSMMU_PLATDEV(fimd0);
 extern struct platform_device SYSMMU_PLATDEV(fimd1);
+extern struct platform_device SYSMMU_PLATDEV(fimd1a);
 extern struct platform_device SYSMMU_PLATDEV(camif0);
 extern struct platform_device SYSMMU_PLATDEV(camif1);
 extern struct platform_device SYSMMU_PLATDEV(camif2);
 extern struct platform_device SYSMMU_PLATDEV(2d);
+extern struct platform_device SYSMMU_PLATDEV(2d_wr);
 extern struct platform_device SYSMMU_PLATDEV(scaler);
 extern struct platform_device SYSMMU_PLATDEV(s3d);
 extern struct platform_device SYSMMU_PLATDEV(mjpeg);
+extern struct platform_device SYSMMU_PLATDEV(mjpeg2);
+extern struct platform_device SYSMMU_PLATDEV(scaler0r);
+extern struct platform_device SYSMMU_PLATDEV(scaler0w);
+extern struct platform_device SYSMMU_PLATDEV(scaler1r);
+extern struct platform_device SYSMMU_PLATDEV(scaler1w);
+extern struct platform_device SYSMMU_PLATDEV(scaler2r);
+extern struct platform_device SYSMMU_PLATDEV(scaler2w);
 
 #endif /* CONFIG_EXYNOS_DEV_SYSMMU */
 

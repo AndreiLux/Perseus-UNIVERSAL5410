@@ -463,27 +463,28 @@ config MFD_MAX77686
           additional drivers must be enabled in order to use the functionality
           of the device.
 
-config MFD_MAX77693
-	bool "Maxim Semiconductor MAX77693 PMIC Support"
-	depends on I2C=y && GENERIC_HARDIRQS
-	select MFD_CORE
-	help
-	  Say yes here to support for Maxim Semiconductor MAX77963.
-	  This is a Power Management IC with RTC, Flash, Fuel Gauge, Haptic,
-	  MUIC controls on chip.
-	  This driver provides common support for accessing the device;
-	  additional drivers
-
 config MFD_MAX77803
-	bool "Maxim Semiconductor MAX77803 PMIC Support"
-	depends on I2C=y && GENERIC_HARDIRQS
-	select MFD_CORE
-	help
-	  Say yes here to support for Maxim Semiconductor MAX77803.
-	  This is a Power Management IC with RTC, Flash, Fuel Gauge, Haptic,
-	  MUIC controls on chip.
-	  This driver provides common support for accessing the device;
-	  additional drivers
+        bool "Maxim Semiconductor MAX77803 PMIC Support"
+        depends on I2C=y && GENERIC_HARDIRQS
+        select MFD_CORE
+        help
+          Say yes here to support for Maxim Semiconductor MAX77803.
+          This is a Power Management IC with RTC, Flash, Fuel Gauge, Haptic,
+          MUIC controls on chip.
+          This driver provides common support for accessing the device;
+          additional drivers
+
+config MFD_MAX77888
+        bool "Maxim Semiconductor MAX77888 PMIC Support"
+        depends on I2C=y && GENERIC_HARDIRQS && MFD_MAX77803
+        select MFD_CORE
+        help
+          Say yes here to support for Maxim Semiconductor MAX77888.
+          This is a Power Management IC with RTC, Flash, Fuel Gauge, Haptic,
+          MUIC controls on chip.
+          This driver provides common support for accessing the device;
+          additional drivers
+		  depends on MAX77803
 
 config MFD_S5M_CORE
 	bool "SAMSUNG S5M Series Support"

@@ -306,24 +306,20 @@ static void modem_shutdown(struct platform_device *pdev)
 
 static int modem_suspend(struct device *pdev)
 {
-#ifndef CONFIG_LINK_DEVICE_HSIC
 	struct modem_ctl *mc = dev_get_drvdata(pdev);
 
-	if (mc->gpio_pda_active)
+	if (mc->gpio_pda_active && !mc->pda_active_hwctl)
 		gpio_set_value(mc->gpio_pda_active, 0);
-#endif
 
 	return 0;
 }
 
 static int modem_resume(struct device *pdev)
 {
-#ifndef CONFIG_LINK_DEVICE_HSIC
 	struct modem_ctl *mc = dev_get_drvdata(pdev);
 
-	if (mc->gpio_pda_active)
+	if (mc->gpio_pda_active && !mc->pda_active_hwctl)
 		gpio_set_value(mc->gpio_pda_active, 1);
-#endif
 
 	return 0;
 }
@@ -339,8 +335,13 @@ static void modem_complete(struct device *pdev)
 #endif
 
 static const struct dev_pm_ops modem_pm_ops = {
+#ifdef CONFIG_LINK_DEVICE_HSIC
+	.suspend_noirq    = modem_suspend,
+	.resume_noirq     = modem_resume,
+#else
 	.suspend    = modem_suspend,
 	.resume     = modem_resume,
+#endif
 #ifdef CONFIG_FAST_BOOT
 	.complete  = modem_complete,
 #endif

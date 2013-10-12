@@ -489,16 +489,16 @@ static void exynos5410_set_ema_CA15(unsigned int target_volt)
 {
 	unsigned int tmp;
 
-	tmp = __raw_readl(EXYNOS5410_ARM_EMA_CTRL);
+	tmp = __raw_readl(EXYNOS54XX_ARM_EMA_CTRL);
 
-	if ((target_volt <= EXYNOS5410_ARM_EMA_BASE_VOLT) &&
-			(tmp & ~EXYNOS5410_ARM_WAS_ENABLE)) {
-		tmp |= EXYNOS5410_ARM_WAS_ENABLE;
-		__raw_writel(tmp, EXYNOS5410_ARM_EMA_CTRL);
-	} else if ((target_volt > EXYNOS5410_ARM_EMA_BASE_VOLT) &&
-			(tmp & EXYNOS5410_ARM_WAS_ENABLE)) {
-		tmp &= ~EXYNOS5410_ARM_WAS_ENABLE;
-		__raw_writel(tmp, EXYNOS5410_ARM_EMA_CTRL);
+	if ((target_volt <= EXYNOS54XX_ARM_EMA_BASE_VOLT) &&
+			(tmp & ~EXYNOS54XX_ARM_WAS_ENABLE)) {
+		tmp |= EXYNOS54XX_ARM_WAS_ENABLE;
+		__raw_writel(tmp, EXYNOS54XX_ARM_EMA_CTRL);
+	} else if ((target_volt > EXYNOS54XX_ARM_EMA_BASE_VOLT) &&
+			(tmp & EXYNOS54XX_ARM_WAS_ENABLE)) {
+		tmp &= ~EXYNOS54XX_ARM_WAS_ENABLE;
+		__raw_writel(tmp, EXYNOS54XX_ARM_EMA_CTRL);
 	}
 };
 
@@ -887,7 +887,7 @@ static void __init set_volt_table_CA15(void)
 	}
 }
 
-int __init exynos5410_cpufreq_CA7_init(struct exynos_dvfs_info *info)
+int __init exynos5_cpufreq_CA7_init(struct exynos_dvfs_info *info)
 {
 	int i;
 	unsigned int tmp;
@@ -976,7 +976,7 @@ err_mout_cpu:
 	return -EINVAL;
 }
 
-int __init exynos5410_cpufreq_CA15_init(struct exynos_dvfs_info *info)
+int __init exynos5_cpufreq_CA15_init(struct exynos_dvfs_info *info)
 {
 	int i;
 	unsigned int tmp;

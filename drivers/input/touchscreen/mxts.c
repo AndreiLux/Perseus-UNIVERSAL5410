@@ -30,6 +30,10 @@
 #include <linux/earlysuspend.h>
 #endif
 
+#if TSP_CHECK_ATCH
+static void mxt_atch_check_calibration(struct mxt_data *data);
+#endif
+
 static int mxt_read_mem(struct mxt_data *data, u16 reg, u8 len, void *buf)
 {
 	int ret = 0, i = 0;
@@ -469,13 +473,34 @@ static int mxt_write_config(struct mxt_fw_info *fw_info)
 #if TSP_INFORM_CHARGER
 static int set_charger_config(struct mxt_data *data)
 {
+
+	int error = 0;
+	u8 value = 0;
+
 	dev_info(&data->client->dev, "Current state is %s",
 		data->charging_mode ? "Charging mode" : "Battery mode");
 
-/* if you need to change configuration depend on chager detection,
- * please insert below line.
- */
+	if(data->charging_mode){
+		dev_info(&data->client->dev, "T62 CHARGON Enable\n");
 
+		error = mxt_read_object(data, MXT_PROCG_NOISESUPPRESSION_T62, 1, &value);
+		if (error) {
+			dev_err(&data->client->dev, "Error read T62 [%d]\n", error);
+		} else {
+			value |= 0x01;
+			mxt_write_object(data, MXT_PROCG_NOISESUPPRESSION_T62, 1, value);
+		}
+	}else{
+		dev_info(&data->client->dev, "T62 CHARGON Disable\n");
+
+		error = mxt_read_object(data, MXT_PROCG_NOISESUPPRESSION_T62, 1, &value);
+		if (error) {
+			dev_err(&data->client->dev, "Error read T62 [%d]\n", error);
+		} else {
+			value &= ~(0x01);
+			mxt_write_object(data, MXT_PROCG_NOISESUPPRESSION_T62, 1, value);
+		}
+	}
 	return 0;
 }
 
@@ -539,17 +564,16 @@ static void mxt_report_input_data(struct mxt_data *data)
 			input_report_abs(data->input_dev, ABS_MT_PRESSURE,
 					 data->fingers[i].z);
 #if TSP_USE_SHAPETOUCH
-			/* Currently revision G firmware do not support it */
-			if (data->pdata->revision == MXT_REVISION_I) {
-				input_report_abs(data->input_dev,
-					ABS_MT_COMPONENT,
+			input_report_abs(data->input_dev, ABS_MT_COMPONENT,
 					data->fingers[i].component);
-				input_report_abs(data->input_dev,
-					ABS_MT_SUMSIZE, data->sumsize);
-			}
+			input_report_abs(data->input_dev, ABS_MT_SUMSIZE,
+					data->sumsize);
 #endif
-			input_report_key(data->input_dev,
-				BTN_TOOL_FINGER, 1);
+#if TSP_USE_PALM_FLAG
+			input_report_abs(data->input_dev, ABS_MT_PALM,
+					data->palm);
+#endif
+			input_report_key(data->input_dev, BTN_TOOL_FINGER, 1);
 
 			if (data->fingers[i].type
 				 == MXT_T100_TYPE_HOVERING_FINGER)
@@ -564,11 +588,33 @@ static void mxt_report_input_data(struct mxt_data *data)
 		report_count++;
 
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+
+#if TSP_USE_SHAPETOUCH
+
+#if TSP_USE_PALM_FLAG
+		if (data->fingers[i].state == MXT_STATE_PRESS)
+			dev_info(&data->client->dev, "[P][%d]: T[%d][%d] X[%d],Y[%d],W[%d],Z[%d],P[%d],COMP[%d],SUM[%d]\n",
+				i, data->fingers[i].type,
+				data->fingers[i].event,	data->fingers[i].x, data->fingers[i].y,
+				data->fingers[i].w, data->fingers[i].z, data->palm,
+				data->fingers[i].component, data->sumsize);
+#else
+		if (data->fingers[i].state == MXT_STATE_PRESS)
+			dev_info(&data->client->dev, "[P][%d]: T[%d][%d] X[%d],Y[%d],W[%d],Z[%d],COMP[%d],SUM[%d]\n",
+				i, data->fingers[i].type,
+				data->fingers[i].event, data->fingers[i].x, data->fingers[i].y,
+				data->fingers[i].w, data->fingers[i].z,
+				data->fingers[i].component, data->sumsize);
+#endif /*TSP_USE_PALM_FLAG*/
+
+#else
 		if (data->fingers[i].state == MXT_STATE_PRESS)
 			dev_info(&data->client->dev, "[P][%d]: T[%d][%d] X[%d],Y[%d]\n",
 				i, data->fingers[i].type,
 				data->fingers[i].event,
 				data->fingers[i].x, data->fingers[i].y);
+#endif
+
 #else
 		if (data->fingers[i].state == MXT_STATE_PRESS)
 			dev_info(&data->client->dev, "[P][%d]: T[%d][%d]\n",
@@ -610,7 +656,7 @@ static void mxt_report_input_data(struct mxt_data *data)
 		data->sumsize = 0;
 #endif
 #if TSP_BOOSTER
-		mxt_set_dvfs_lock(data, TOUCH_BOOSTER_DELAY_OFF);
+		mxt_set_dvfs_on(data, false);
 #endif
 	}
 #endif
@@ -645,6 +691,32 @@ static void mxt_current_calibration(struct mxt_data *data)
 }
 #endif
 
+#if TSP_CHECK_ATCH
+void mxt_set_T61_object(struct mxt_data *data, u8 id, u8 mode,
+							u8 cmd, u16 ms_period)
+{
+	struct mxt_object *object;
+	int ret = 0;
+	u8 buf[5] = {3, 0, 0, 0, 0};
+
+	object = mxt_get_object(data, MXT_SPT_TIMER_T61);
+
+	buf[1] = cmd;
+	buf[2] = mode;
+	buf[3] = ms_period & 0xFF;
+	buf[4] = (ms_period >> 8) & 0xFF;
+
+	ret = mxt_write_mem(data, object->start_address+5*id, 5, buf);
+
+	if (ret)
+		dev_err(&data->client->dev,
+			"%s write error T%d(%d) address[0x%x]\n",
+			__func__, MXT_SPT_TIMER_T61, id, object->start_address);
+
+	__mxt_debug_msg(data, "T61[%d] Timer Set %d ms\n", id, ms_period);
+}
+#endif
+
 static void mxt_treat_T6_object(struct mxt_data *data,
 		struct mxt_message *message)
 {
@@ -668,8 +740,16 @@ static void mxt_treat_T6_object(struct mxt_data *data,
 	if (message->message[0] & 0x08)
 		dev_err(&data->client->dev, "Config error\n");
 	/* Calibration */
-	if (message->message[0] & 0x10)
+	if (message->message[0] & 0x10) {
 		dev_info(&data->client->dev, "Calibration is on going !!\n");
+#if TSP_CHECK_ATCH
+		mxt_atch_check_calibration(data);
+		data->atch.cal_is_ongoing = 1;
+	} else {
+		data->atch.cal_is_ongoing = 0;
+#endif
+	}
+
 	/* Signal error */
 	if (message->message[0] & 0x20)
 		dev_err(&data->client->dev, "Signal error\n");
@@ -706,6 +786,9 @@ static void mxt_treat_T6_object(struct mxt_data *data,
 			}
 		}
 #endif
+#if TSP_CHECK_ATCH
+		mxt_atch_check_calibration(data);
+#endif
 	}
 }
 
@@ -714,17 +797,45 @@ static void mxt_release_all_keys(struct mxt_data *data)
 {
 	int i = 0;
 	if (data->tsp_keystatus != TOUCH_KEY_NULL) {
-		for (i = 0 ; i < data->pdata->num_touchkey ; i++) {
-			if (data->tsp_keystatus & data->pdata->touchkey[i].value) {
-				input_report_key(data->input_dev,
-					data->pdata->touchkey[i].keycode,
-					KEY_RELEASE);
-				dev_info(&data->client->dev, "[TSP_KEY] %s R!\n",
-					data->pdata->touchkey[i].name);
+
+
+		if (data->report_dummy_key) {
+			for (i = 0 ; i < data->pdata->num_touchkey ; i++) {
+				if (data->tsp_keystatus & data->pdata->touchkey[i].value) {
+
+				/* report all touch-key event */
+					input_report_key(data->input_dev,
+						data->pdata->touchkey[i].keycode, KEY_RELEASE);
+					dev_info(&data->client->dev, "[TSP_KEY] %s R!\n", data->pdata->touchkey[i].name);
+				}
+			}
+
+		} else {
+			/* menu key check*/
+			if (data->tsp_keystatus & TOUCH_KEY_MENU) {
+				if(data->ignore_menu_key) {
+					dev_info(&data->client->dev, "[TSP_KEY] Ignore menu R! by dummy key\n");
+				} else {
+					input_report_key(data->input_dev, KEY_MENU, KEY_RELEASE);
+					dev_info(&data->client->dev, "[TSP_KEY] menu R!\n");
+				}
+			}
+
+			/* back key check*/
+			if (data->tsp_keystatus & TOUCH_KEY_BACK) {
+				if (data->ignore_back_key) {
+					dev_info(&data->client->dev, "[TSP_KEY] Ignore back R! by dummy key\n");
+				} else {
+					input_report_key(data->input_dev, KEY_BACK, KEY_RELEASE);
+					dev_info(&data->client->dev, "[TSP_KEY] back R!\n");
+				}
 			}
 		}
+
 		input_sync(data->input_dev);
 		data->tsp_keystatus = TOUCH_KEY_NULL;
+		data->ignore_menu_key = false;
+		data->ignore_back_key = false;
 	}
 }
 
@@ -740,14 +851,72 @@ static void mxt_treat_T15_object(struct mxt_data *data,
 
 	/* single key configuration*/
 	if (input_status) { /* press */
-		for (i = 0 ; i < data->pdata->num_touchkey ; i++) {
-			if (change_state & data->pdata->touchkey[i].value){
-				key_state = input_message & data->pdata->touchkey[i].value;
-				input_report_key(data->input_dev, data->pdata->touchkey[i].keycode, key_state != 0 ? KEY_PRESS : KEY_RELEASE);
-				dev_info(&data->client->dev, "[TSP_KEY] %s %s\n", data->pdata->touchkey[i].name , key_state != 0 ? "P" : "R");
+
+		if (data->report_dummy_key) {
+			for (i = 0 ; i < data->pdata->num_touchkey ; i++) {
+				if (change_state & data->pdata->touchkey[i].value){
+					key_state = input_message & data->pdata->touchkey[i].value;
+					input_report_key(data->input_dev, data->pdata->touchkey[i].keycode, key_state != 0 ? KEY_PRESS : KEY_RELEASE);
+					input_sync(data->input_dev);
+					dev_info(&data->client->dev, "[TSP_KEY] %s %s\n", data->pdata->touchkey[i].name , key_state != 0 ? "P" : "R");
+				}
 			}
+			input_sync(data->input_dev);
+
+		} else {
+
+			/* menu key check*/
+			if (change_state & TOUCH_KEY_MENU) {
+				key_state = input_message & TOUCH_KEY_MENU;
+
+				if(data->ignore_menu_key) {
+					dev_info(&data->client->dev, "[TSP_KEY] Ignore menu %s by dummy key\n", key_state != 0 ? "P" : "R");
+				} else {
+					input_report_key(data->input_dev, KEY_MENU, key_state != 0 ? KEY_PRESS : KEY_RELEASE);
+					dev_info(&data->client->dev, "[TSP_KEY] menu %s\n", key_state != 0 ? "P" : "R");
+				}
+			}
+
+			/* back key check*/
+			if (change_state & TOUCH_KEY_BACK) {
+				key_state = input_message & TOUCH_KEY_BACK;
+
+				if (data->ignore_back_key) {
+					dev_info(&data->client->dev, "[TSP_KEY] Ignore back %s by dummy key\n", key_state != 0 ? "P" : "R");
+				} else {
+					input_report_key(data->input_dev, KEY_BACK, key_state != 0 ? KEY_PRESS : KEY_RELEASE);
+					dev_info(&data->client->dev, "[TSP_KEY] back %s\n" , key_state != 0 ? "P" : "R");
+				}
+			}
+
+			/* dummy menu key check*/
+			if (change_state & TOUCH_KEY_D_MENU) {
+				key_state = input_message & TOUCH_KEY_D_MENU;
+
+				if((key_state != 0) && !data->ignore_menu_key && !(input_message & TOUCH_KEY_MENU)) {
+					data->ignore_menu_key = true;
+					dev_info(&data->client->dev, "[TSP_KEY] ignore_menu_key Enable\n");
+				} else if (!key_state && data->ignore_menu_key && !(input_message & TOUCH_KEY_MENU)) {
+					data->ignore_menu_key = false;
+					dev_info(&data->client->dev, "[TSP_KEY] ignore_menu_key Disable\n");
+				}
+			}
+
+			/* dummy back key check*/
+			if (change_state & TOUCH_KEY_D_BACK) {
+				key_state = input_message & TOUCH_KEY_D_BACK;
+
+				if((key_state != 0) && !data->ignore_back_key && !(input_message & TOUCH_KEY_BACK)) {
+					data->ignore_back_key = true;
+					dev_info(&data->client->dev, "[TSP_KEY] ignore_back_key Enable\n");
+				} else if (!key_state && data->ignore_back_key && !(input_message & TOUCH_KEY_BACK)) {
+					data->ignore_back_key = false;
+					dev_info(&data->client->dev, "[TSP_KEY] ignore_back_key Disable\n");
+				}
+			}
+
+			input_sync(data->input_dev);
 		}
-		input_sync(data->input_dev);
 	} else {
 		mxt_release_all_keys(data);
 	}
@@ -771,11 +940,11 @@ static void mxt_treat_T9_object(struct mxt_data *data,
 		dev_err(&data->client->dev, "MAX_FINGER exceeded!\n");
 		return;
 	}
+
 	if (msg[0] & MXT_RELEASE_MSG_MASK) {
 		data->fingers[id].z = 0;
 		data->fingers[id].w = msg[4];
 		data->fingers[id].state = MXT_STATE_RELEASE;
-		mxt_report_input_data(data);
 	} else if ((msg[0] & MXT_DETECT_MSG_MASK)
 		&& (msg[0] & (MXT_PRESS_MSG_MASK | MXT_MOVE_MSG_MASK))) {
 		data->fingers[id].x = (msg[1] << 4) | (msg[3] >> 4);
@@ -784,6 +953,10 @@ static void mxt_treat_T9_object(struct mxt_data *data,
 		data->fingers[id].z = msg[5];
 #if TSP_USE_SHAPETOUCH
 		data->fingers[id].component = msg[6];
+#endif
+#if TSP_CHECK_ATCH
+		data->atch.t9_size = msg[4];
+		data->atch.t9_amp = msg[5];
 #endif
 
 		if (data->pdata->max_x < 1024)
@@ -801,14 +974,24 @@ static void mxt_treat_T9_object(struct mxt_data *data,
 		}
 
 #if TSP_BOOSTER
-		mxt_set_dvfs_lock(data, TOUCH_BOOSTER_ON);
+		mxt_set_dvfs_on(data, true);
+#endif
+#if TSP_USE_PALM_FLAG
+		if(msg[0] & MXT_SUPPRESS_MSG_MASK){ // 0x92(Detect|Move|Suppress)
+			data->palm = 1;
+		} else {
+			data->palm = 0;
+		}
 #endif
 	} else if ((msg[0] & MXT_SUPPRESS_MSG_MASK)
 		&& (data->fingers[id].state != MXT_STATE_INACTIVE)) {
-		data->fingers[id].z = 0;
-		data->fingers[id].w = msg[4];
-		data->fingers[id].state = MXT_STATE_RELEASE;
-		data->finger_mask |= 1U << id;
+			if((msg[0] & MXT_DETECT_MSG_MASK) != MXT_DETECT_MSG_MASK){
+				data->fingers[id].z = 0;
+				data->fingers[id].w = msg[4];
+				data->fingers[id].state = MXT_STATE_RELEASE;
+			dev_info(&data->client->dev, "%s: Only Suppress w/o Detect\n",
+				__func__);
+			}
 	} else {
 		/* ignore changed amplitude and vector messsage */
 		if (!((msg[0] & MXT_DETECT_MSG_MASK)
@@ -817,11 +1000,16 @@ static void mxt_treat_T9_object(struct mxt_data *data,
 			dev_err(&data->client->dev, "Unknown state %#02x %#02x\n",
 				msg[0], msg[1]);
 	}
+
+	mxt_report_input_data(data);
+
 }
 
 static void mxt_treat_T42_object(struct mxt_data *data,
 		struct mxt_message *message)
 {
+	dev_info(&data->client->dev, "%s\n", __func__);
+
 	if (message->message[0] & 0x01) {
 		/* Palm Press */
 		dev_info(&data->client->dev, "palm touch detected\n");
@@ -831,13 +1019,259 @@ static void mxt_treat_T42_object(struct mxt_data *data,
 	}
 }
 
+#if TSP_CHECK_ATCH
+void mxt_atch_init(struct mxt_data *data)
+{
+	struct mxt_object *obj;
+	u8 buf[35];
+	u8 offset;
+	int error;
+	/*  Init flags */
+	data->atch.enable = 0;
+	data->atch.coin = 0;
+	data->atch.calgood = 0;
+	data->atch.timer = 0;
+
+	obj = mxt_get_object(data, MXT_SPT_DYNAMICCONFIGURATIONCONTAINER_T71);
+	error = mxt_read_mem(data, obj->start_address, 33, buf);
+
+	if (error)
+		dev_err(&data->client->dev, "Error to read T71 Container\n");
+	else if (!error && buf[0] == 255) {
+		dev_info(&data->client->dev, "ATCH: Workaround Enabled");
+		offset = buf[1];
+
+		data->atch.check_condition_1  = buf[2+offset];	 /*5 */
+		data->atch.check_condition_2  = buf[3+offset];	 /*1 */
+		data->atch.check_condition_3  = buf[4+offset];	 /*44 */
+		data->atch.check_condition_4  = buf[5+offset];	 /*0 */
+		data->atch.check_condition_5  = buf[6+offset];	 /*8 */
+		data->atch.check_condition_6  = buf[7+offset];	 /*35 */
+		data->atch.check_condition_7  = buf[8+offset];	 /*40 */
+		data->atch.check_condition_8  = buf[9+offset];	 /*8 */
+		data->atch.check_condition_9  = buf[10+offset];	 /*25 */
+		data->atch.check_condition_10 = buf[11+offset];  /*30 */
+		data->atch.check_condition_11 = buf[12+offset];  /*30 */
+		data->atch.check_condition_12 = buf[13+offset];  /*7 */
+		data->atch.check_condition_13 = buf[14+offset];  /*16 */
+		data->atch.check_condition_14 = buf[15+offset];  /*25 */
+		data->atch.check_condition_15 = buf[16+offset];  /*20 */
+		data->atch.check_condition_16 = buf[17+offset];  /*5 */
+		data->atch.check_condition_17 = buf[18+offset];  /*90 */
+		data->atch.check_condition_18 = buf[19+offset];  /*3 */
+		data->atch.check_condition_19 = buf[20+offset];  /*6 */
+		data->atch.check_condition_20 = buf[21+offset];  /*2 */
+		data->atch.check_condition_21 = buf[22+offset];  /*20 */
+		data->atch.check_condition_22 = buf[23+offset];  /*15 */
+		data->atch.check_condition_23 = buf[24+offset];  /*20 */
+		data->atch.check_condition_24 = buf[25+offset];  /*35 */
+		data->atch.check_condition_25 = buf[26+offset];  /*60 */
+		data->atch.check_condition_26 = buf[27+offset];  /*0 */
+		data->atch.check_condition_27 = buf[28+offset];  /*5 */
+		data->atch.check_condition_28 = buf[29+offset];  /*16 */
+		data->atch.check_condition_29 = buf[30+offset];  /*30 */
+		data->atch.check_condition_30 = buf[31+offset];  /*30 */
+		data->atch.check_condition_31 = buf[32+offset];  /*7 */
+
+		data->atch.check_condition2_1 = ((data->atch.check_condition_2 << 8) | data->atch.check_condition_3);//20130618
+		data->atch.enable = 1;
+		data->atch.timer_id = 0;
+		data->atch.coin_time = 1;
+		data->atch.calgood_time = 1;
+		data->atch.prev_chargin_status = 0xff;
+	}
+}
+
+static void mxt_atch_check_calibration(struct mxt_data *data)
+{
+	if (data->atch.enable) {
+		data->atch.timer = 0;
+		data->atch.coin = 1;
+		data->atch.calgood = 0;
+		data->atch.abnormal_enable = 0;
+		data->atch.bigpalm_enable = 0;
+	}
+}
+
+static int mxt_command_calibration(struct mxt_data *data)
+{
+	return  mxt_write_object(data, MXT_GEN_COMMANDPROCESSOR_T6,
+						MXT_COMMAND_CALIBRATE, 1);
+}
+
+static void mxt_check_command_calibration(struct mxt_data *data)
+{
+	if (data->atch.cal_is_ongoing == 0) {
+		mxt_command_calibration(data);
+	}
+}
+#endif
+
 static void mxt_treat_T57_object(struct mxt_data *data,
 		struct mxt_message *message)
 {
+#if TSP_CHECK_ATCH
+	u8 *msg = message->message;
+	u16 sum_size = (u16)(msg[0] | (msg[1] << 8));
+	u16 tch_area = (u16)(msg[2] | (msg[3] << 8));
+	u16 atch_area = (u16)(msg[4] | (msg[5] << 8));
+
+	u8 charging_mode = data->charging_mode;
+	u8 touch_size = data->atch.t9_size;
+	u8 touch_amp = data->atch.t9_amp;
+	u8 touch_cnt = 0;
+	int i;
+
+	data->atch.touch_cnt = 0;
+	for (i = 0; i < MXT_MAX_FINGER; i++) {
+		if ((data->fingers[i].state != MXT_STATE_INACTIVE) &&
+			(data->fingers[i].state != MXT_STATE_RELEASE))
+			data->atch.touch_cnt++;
+	}
+	touch_cnt = data->atch.touch_cnt;
+#endif
+
 #if TSP_USE_SHAPETOUCH
 	data->sumsize = message->message[0] + (message->message[1] << 8);
 #endif	/* TSP_USE_SHAPETOUCH */
 
+#if TSP_CHECK_ATCH
+	if (data->atch.enable==0) {
+		return;
+	}
+
+	if (data->atch.coin) { /* 1st Stage Check */
+		__mxt_debug_msg(data, "ATCH: COIN TCHAREA=%d ATCHAREA=%d SUM=%d\n",
+				tch_area, atch_area, sum_size);
+		if (touch_cnt) {
+			if (data->atch.timer == 0) {
+				mxt_set_T61_object(data, data->atch.timer_id,
+						MXT_T61_TIMER_ONESHOT, MXT_T61_TIMER_CMD_START,
+						data->atch.coin_time*1000);
+				data->atch.timer = 1;
+			}
+			if ((atch_area > data->atch.check_condition_1) && (sum_size < data->atch.check_condition2_1)) {
+				if ((atch_area - tch_area) > data->atch.check_condition_4) {
+					__mxt_debug_msg(data,
+							"ATCH: CASE 1-1\n");
+					mxt_check_command_calibration(data);
+				}
+			}
+		} else if (atch_area) { /* Only Anti-touch */
+			__mxt_debug_msg(data, "ATCH: CASE 1-2\n");
+			mxt_check_command_calibration(data);
+		}
+	}
+
+	if (data->atch.calgood) { /* 2nd Stage Check */
+		__mxt_debug_msg(data, "ATCH: CALGOOD TCHAREA=%d ATCHAREA=%d SUM=%d\n",
+				tch_area, atch_area, sum_size);
+		if (tch_area) {
+			if (((atch_area - tch_area) > data->atch.check_condition_5) && (tch_area < data->atch.check_condition_6)) {
+				__mxt_debug_msg(data, "ATCH: CASE 2-1\n");
+				mxt_check_command_calibration(data);
+			}
+			if (((tch_area - atch_area) > data->atch.check_condition_7) && (atch_area > data->atch.check_condition_8)) {
+				__mxt_debug_msg(data, "ATCH: CASE 2-2\n");
+				mxt_check_command_calibration(data);
+			}
+			if (charging_mode == 0) {
+				if (touch_size < data->atch.check_condition_9 && touch_amp > data->atch.check_condition_10 && sum_size > data->atch.check_condition_11 && touch_cnt < data->atch.check_condition_12) {
+					__mxt_debug_msg(data,
+							"ATCH: CASE 2-3\n");
+					mxt_check_command_calibration(data);
+				}
+				if (touch_size < data->atch.check_condition_13 && touch_amp > data->atch.check_condition_14 && sum_size > data->atch.check_condition_15 && touch_cnt < data->atch.check_condition_16) {
+					__mxt_debug_msg(data,
+							"ATCH: CASE 2-4\n");
+					mxt_check_command_calibration(data);
+				}
+			}
+		} else if (atch_area) { /* Only Anti-touch */
+			__mxt_debug_msg(data, "ATCH: CASE 2-5\n");
+			mxt_check_command_calibration(data);
+		}
+	}
+
+	if (data->atch.abnormal_enable && touch_cnt) {
+		if (sum_size-tch_area > data->atch.check_condition_17 && touch_cnt < data->atch.check_condition_18) {
+			__mxt_debug_msg(data, "Abnormal Case 1\n");
+			mxt_check_command_calibration(data);
+		}
+		if (touch_cnt > data->atch.check_condition_19 && sum_size < (touch_cnt * data->atch.check_condition_20) && sum_size < data->atch.check_condition_21) {
+			__mxt_debug_msg(data, "Abnormal Case 2\n");
+			mxt_check_command_calibration(data);
+		}
+		if (data->atch.bigpalm_enable) {
+			if ((sum_size - tch_area) > data->atch.check_condition_22) {
+				__mxt_debug_msg(data, "BigPalm Case 1\n");
+				mxt_check_command_calibration(data);
+			}
+			if (touch_size >= data->atch.check_condition_23 && touch_amp > data->atch.check_condition_24 && atch_area > data->atch.check_condition_25) {
+				__mxt_debug_msg(data, "BigPalm Case 2\n");
+				mxt_check_command_calibration(data);
+			}
+			if (sum_size == tch_area && atch_area == data->atch.check_condition_26 && touch_cnt > data->atch.check_condition_27) {
+				__mxt_debug_msg(data, "BigPalm Case 3\n");
+				mxt_check_command_calibration(data);
+			}
+			if (charging_mode == 0){
+				if (touch_size < data->atch.check_condition_28 && touch_amp > data->atch.check_condition_29 && sum_size > data->atch.check_condition_30 && touch_cnt < data->atch.check_condition_31) {
+					__mxt_debug_msg(data, "BigPalm Case 4\n");
+					mxt_check_command_calibration(data);
+				}
+			}
+		}
+	}
+#endif
+}
+
+static void mxt_treat_T61_object(struct mxt_data *data,
+						struct mxt_message *message)
+{
+	int id;
+	u8 *msg = message->message;
+
+	id = data->reportids[message->reportid].index;
+
+#if TSP_CHECK_ATCH
+	if ((id != data->atch.timer_id) || ((msg[0] & 0xa0) != 0xa0))
+		return;
+
+	data->atch.timer = 0;
+	if (data->atch.bigpalm_enable) {
+		dev_err(&data->client->dev, "ATCH: BigPalm Case Disabled\n");
+		data->atch.bigpalm_enable = 0;
+		mxt_write_object(data, MXT_GEN_ACQUISITIONCONFIG_T8, 4, 100);
+		mxt_write_object(data, MXT_GEN_POWERCONFIG_T7, 3, 3);
+	}
+	if (data->atch.calgood) {
+		dev_err(&data->client->dev, "ATCH: Calgood Timer elapsed\n");
+		data->atch.calgood = 0;
+
+//		mxt_write_object(data, MXT_GEN_ACQUISITIONCONFIG_T8, 4, 100);
+		mxt_write_object(data, MXT_GEN_ACQUISITIONCONFIG_T8, 8, 128);
+		mxt_write_object(data, MXT_GEN_ACQUISITIONCONFIG_T8, 9, 100);
+
+		mxt_set_T61_object(data, data->atch.timer_id,
+							MXT_T61_TIMER_ONESHOT,
+							MXT_T61_TIMER_CMD_START,
+							3 * 1000);
+		dev_err(&data->client->dev, "ATCH: Abnormal Case enabled\n");
+		data->atch.abnormal_enable = 1;
+		data->atch.bigpalm_enable = 1;
+	}
+	if (data->atch.coin) {
+		dev_err(&data->client->dev, "ATCH: Coin Timer elapsed\n");
+		data->atch.coin = 0;
+
+		mxt_set_T61_object(data, data->atch.timer_id,
+						MXT_T61_TIMER_ONESHOT,
+						MXT_T61_TIMER_CMD_START,
+						data->atch.calgood_time * 1000);
+		data->atch.calgood = 1;
+	}
+#endif
 }
 
 static void mxt_treat_T100_object(struct mxt_data *data,
@@ -846,6 +1280,8 @@ static void mxt_treat_T100_object(struct mxt_data *data,
 	u8 id, index;
 	u8 *msg = message->message;
 	u8 touch_type = 0, touch_event = 0, touch_detect = 0;
+
+	dev_info(&data->client->dev, "%s\n", __func__);
 
 	index = data->reportids[message->reportid].index;
 
@@ -998,6 +1434,9 @@ static irqreturn_t mxt_irq_thread(int irq, void *ptr)
 		case MXT_PROCI_EXTRATOUCHSCREENDATA_T57:
 			mxt_treat_T57_object(data, &message);
 			break;
+		case MXT_SPT_TIMER_T61:
+			mxt_treat_T61_object(data, &message);
+			break;
 		case MXT_PROCG_NOISESUPPRESSION_T62:
 			break;
 		case MXT_TOUCH_MULTITOUCHSCREEN_T100:
@@ -1014,8 +1453,6 @@ static irqreturn_t mxt_irq_thread(int irq, void *ptr)
 		}
 	} while (!data->pdata->read_chg());
 
-	if (data->finger_mask)
-		mxt_report_input_data(data);
 end:
 	return IRQ_HANDLED;
 }
@@ -1141,7 +1578,7 @@ int mxt_verify_fw(struct mxt_fw_info *fw_info, const struct firmware *fw)
 
 	if (le32_to_cpu(fw_img->magic_code) != MXT_FW_MAGIC) {
 		/* In case, firmware file only consist of firmware */
-		dev_info(dev, "Firmware file only consist of raw firmware\n");
+		dev_dbg(dev, "Firmware file only consist of raw firmware\n");
 		fw_info->fw_len = fw->size;
 		fw_info->fw_raw_data = fw->data;
 	} else {
@@ -1309,6 +1746,29 @@ out:
 	return ret;
 }
 
+static void mxt_handle_T62_object(struct mxt_data *data)
+{
+	int ret;
+	u8 value;
+
+	ret = mxt_read_object(data, MXT_PROCG_NOISESUPPRESSION_T62, 0, &value);
+	if (ret) {
+		dev_err(&data->client->dev, "%s: failed to read T62 object.\n",
+				__func__);
+		return;
+	}
+
+	value &= ~(0x02);
+
+	ret = mxt_write_object(data, MXT_PROCG_NOISESUPPRESSION_T62,
+						0, value);
+	if (ret)
+		dev_err(&data->client->dev, "%s: failed to write T62 object.\n",
+				__func__);
+	else
+		dev_err(&data->client->dev, "%s: Setting T62 report disable.\n",
+				__func__);
+}
 static void mxt_handle_init_data(struct mxt_data *data)
 {
 /*
@@ -1318,40 +1778,9 @@ static void mxt_handle_init_data(struct mxt_data *data)
  * stored in Non-volatile memory in IC. So I would recommed do not use
  * this function except for bring up case. Please keep this in your mind.
  */
-#ifdef CONFIG_MACH_V1
-#if TSP_SEC_FACTORY
 
-	int ref_x26 = 0, ref_x27 = 0;
-
-	if(system_rev == 2) {	/* Check TSP Ver 0.1 and Ver 0.2 for Rev 0.2. */
-		mxt_read_all_diagnostic_data(data, MXT_DIAG_REFERENCE_MODE);
-
-		ref_x26 = data->fdata->reference[26*52 + 51];
-		ref_x27 = data->fdata->reference[27*52 + 51];
-
-		dev_info(&data->client->dev,"HW_REV 0.2, X27_ref=[%d],X26_ref=[%d]", ref_x27, ref_x26);
-
-		/* TSP Ver0.2 */
-		if(ref_x26 < 600 && ref_x27 < 600){
-			data->pdata->touchkey[2].value = 0x00; // disable
-			data->pdata->touchkey[3].value = 0x00; // disable
-			data->pdata->touchkey[4].value = 0x08; // change for back key
-			data->pdata->touchkey[5].value = 0x04; // change for dummy_back key
-
-			dev_info(&data->client->dev,"HW_REV 0.2 and TSP_REV 0.2 change keycode!");
-		} else {
-			dev_info(&data->client->dev,"HW_REV 0.2 and TSP_REV 0.1 keep current state!");
-		}
-
-	}	else if(system_rev == 3) {	/*Rev 0.3 for TSP Ver 0.3 */
-		dev_info(&data->client->dev,"HW_REV 0.3 and TSP_REV 0.3 change config!");
-		mxt_write_object(data, MXT_TOUCH_KEYARRAY_T15, MXT_KEYARRY_XORIGIN, 0);
-	}
-#else
-	dev_info(&data->client->dev,"Not support TSP_SEC_FACTORY!");
-
-#endif
-#endif
+/* disable T62 report bit. */
+	mxt_handle_T62_object(data);
 
 	return;
 }
@@ -1651,7 +2080,7 @@ static int mxt_stop(struct mxt_data *data)
 	mxt_release_all_keys(data);
 #endif
 #if TSP_BOOSTER
-	mxt_set_dvfs_lock(data, TOUCH_BOOSTER_QUICK_OFF);
+	mxt_set_dvfs_on(data, false);
 #endif
 	return 0;
 
@@ -1751,14 +2180,18 @@ static int mxt_touch_finish_init(struct mxt_data *data)
 	}
 #endif
 
+#if TSP_CHECK_ATCH
+	mxt_atch_init(data);
+#endif
 	dev_info(&client->dev,  "Mxt touch controller initialized\n");
 
 	/*
 	* to prevent unnecessary report of touch event
 	* it will be enabled in open function
 	*/
-
+#if !defined(CONFIG_N1A)
 	mxt_stop(data);
+#endif
 
 	/* for blocking to be excuted open function untile finishing ts init */
 	complete_all(&data->init_done);
@@ -1997,8 +2430,7 @@ static int mxt_suspend(struct device *dev)
 
 	mutex_lock(&data->input_dev->mutex);
 
-	if (data->input_dev->users)
-		mxt_stop(data);
+	mxt_stop(data);
 
 	mutex_unlock(&data->input_dev->mutex);
 	return 0;
@@ -2011,8 +2443,7 @@ static int mxt_resume(struct device *dev)
 
 	mutex_lock(&data->input_dev->mutex);
 
-	if (data->input_dev->users)
-		mxt_start(data);
+	mxt_start(data);
 
 	mutex_unlock(&data->input_dev->mutex);
 	return 0;
@@ -2074,6 +2505,8 @@ static int __devinit mxt_probe(struct i2c_client *client,
 
   	set_bit(EV_LED, input_dev->evbit);
 	set_bit(LED_MISC, input_dev->ledbit);
+
+	data->report_dummy_key = false; /*Disable dummy key!*/
 #endif
 
 
@@ -2092,6 +2525,10 @@ static int __devinit mxt_probe(struct i2c_client *client,
 				0, MXT_COMPONENT_MAX, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_SUMSIZE,
 				0, MXT_SUMSIZE_MAX, 0, 0);
+#endif
+#if TSP_USE_PALM_FLAG
+	input_set_abs_params(input_dev, ABS_MT_PALM,
+				0, MXT_PALM_MAX, 0, 0);
 #endif
 
 	input_set_drvdata(input_dev, data);

@@ -1250,6 +1250,16 @@ void fb_var_to_videomode(struct fb_videomode *mode,
 	mode->vmode = var->vmode & FB_VMODE_MASK;
 	mode->flag = FB_MODE_IS_FROM_VAR;
 	mode->refresh = 0;
+#if defined(CONFIG_FB_I80IF)
+	mode->cs_setup_time = 1;
+	mode->wr_setup_time = 0;
+	mode->wr_act_time = 1;
+	mode->wr_hold_time = 0;
+	mode->auto_cmd_rate = 0;
+	mode->frame_skip = 0;
+	mode->rs_pol = 0;
+	mode->i80en = 1;
+#endif
 
 	if (!var->pixclock)
 		return;
@@ -1268,6 +1278,7 @@ void fb_var_to_videomode(struct fb_videomode *mode,
 
 	hfreq = pixclock/htotal;
 	mode->refresh = hfreq/vtotal;
+
 }
 
 /**

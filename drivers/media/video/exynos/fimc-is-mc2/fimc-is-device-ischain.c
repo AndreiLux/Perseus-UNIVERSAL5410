@@ -37,8 +37,10 @@
 #include <linux/syscalls.h>
 #include <linux/bug.h>
 
+#include <mach/bts.h>
 #include <mach/map.h>
 #include <mach/regs-clock.h>
+#include <mach/smc.h>
 #include <linux/regulator/consumer.h>
 #include <linux/gpio.h>
 #include <plat/gpio-cfg.h>
@@ -55,40 +57,10 @@
 #include "fimc-is-err.h"
 #include "fimc-is-video.h"
 #include "fimc-is-groupmgr.h"
-#include "crc32.h"
 #include "fimc-is-device-ischain.h"
-
-#define SDCARD_FW
-#define FIMC_IS_SETFILE_SDCARD_PATH		"/data/media/0/"
-#define FIMC_IS_SDCARD_FW			"fimc_is_fw2.bin"
-#define FIMC_IS_GUMI_FW				"fimc_is_gumi_fw2.bin"
-#define FIMC_IS_SEC_FW				"fimc_is_sec_fw2.bin"
-#define FIMC_IS_PL_FW				"fimc_is_pl_fw2_v1.bin"
-
-#define FIMC_IS_IMX135_GUMI_SETF		"setfile_gumi_imx135.bin"
-#define FIMC_IS_IMX135_SEC_SETF			"setfile_sec_imx135.bin"
-#define FIMC_IS_3L2_GUMI_SETF			"setfile_gumi_3l2.bin"
-#define FIMC_IS_3L2_SEC_SETF			"setfile_sec_3l2.bin"
-#define FIMC_IS_6B2_SETF			"setfile_6b2.bin"
-#define FIMC_IS_4E5_SETF			"setfile_4e5.bin"
-
-#define FIMC_IS_FW_SDCARD			"/data/media/0/fimc_is_fw2.bin"
-#define FIMC_IS_FW_PATH				"/system/vendor/firmware/"
-#define FIMC_IS_FW_DUMP_PATH			"/data/"
-#define FIMC_IS_FW_BASE_MASK			((1 << 26) - 1)
-#define FIMC_IS_VERSION_SIZE			43
-#define FIMC_IS_SETFILE_VER_OFFSET		0x40
-#define FIMC_IS_SETFILE_VER_SIZE		52
-#define FIMC_IS_SETFILE_MASK			0xFFFF
+#include "fimc-is-sec-define.h"
 
 #define BINNING(x, y) ((1 << (((x) / (y)) >> 1)) * 1000)
-
-#define FIMC_IS_CAL_SDCARD			"/data/cal_data.bin"
-/*#define FIMC_IS_MAX_CAL_SIZE			(20 * 1024)*/
-#define FIMC_IS_MAX_FW_SIZE			(2048 * 1024)
-#define FIMC_IS_CAL_START_ADDR			(0x013D0000)
-#define FIMC_IS_CAL_RETRY_CNT			(2)
-#define FIMC_IS_FW_RETRY_CNT			(2)
 
 
 /* Default setting values */
@@ -107,10 +79,16 @@
 static struct pm_qos_request pm_qos_req_cpu;
 static struct exynos5_bus_int_handle *isp_int_handle_min;
 static struct exynos5_bus_mif_handle *isp_mif_handle_min;
-#elif defined(CONFIG_SOC_EXYNOS5410)
-extern struct fimc_is_from_info		*sysfs_finfo;
-extern struct fimc_is_from_info		*sysfs_pinfo;
+#elif defined(CONFIG_SOC_EXYNOS5410) || defined(CONFIG_SOC_EXYNOS5420)
+extern bool CRC32_FW_CHECK;
+extern bool CRC32_CHECK;
+extern bool CRC32_HEADER_CHECK;
+extern u32 FIMC_IS_MAX_CAL_SIZE;
+extern bool is_dumped_fw_loading_needed;
 #endif
+
+#define IS_FIRMWARE		0
+#define IS_SETFILE		1
 
 #ifdef FW_DEBUG
 #define DEBUG_FS_ROOT_NAME	"fimc-is"
@@ -121,25 +99,8 @@ static struct dentry		*debugfs_file;
 #define SETFILE_SIZE	0x6000
 #define READ_SIZE		0x100
 
-#define HEADER_CRC32_LEN (128 / 2)
-#define OEM_CRC32_LEN (192 / 2)
-#define AWB_CRC32_LEN (32 / 2)
-#define SHADING_CRC32_LEN (2336 / 2)
-
-static u32 FIMC_IS_MAX_CAL_SIZE = (20 * 1024);
-#if 0 // unused
-static u32 crc_table[256] = {0,};
-#endif
-static u8 cal_map_version[4] = {0,};
-
-static bool CRC32_FW_CHECK = true;
-static bool CRC32_CHECK = true;
-static bool CRC32_HEADER_CHECK = true;
-static bool is_caldata_read = false;
 static char fw_name[100];
 static char setf_name[100];
-static int cam_id = 0;
-bool is_dumped_fw_loading_needed = false;
 
 static int isfw_debug_open(struct inode *inode, struct file *file)
 {
@@ -152,9 +113,10 @@ static int isfw_debug_open(struct inode *inode, struct file *file)
 static int isfw_debug_read(struct file *file, char __user *user_buf,
 	size_t buf_len, loff_t *ppos)
 {
-	int debug_cnt;
 	char *debug;
-	int count1, count2;
+	size_t debug_cnt, backup_cnt;
+	size_t count1, count2;
+	size_t buf_count = 0;
 	struct fimc_is_device_ischain *device =
 		(struct fimc_is_device_ischain *)file->private_data;
 	struct fimc_is_ishcain_mem *imemory;
@@ -177,6 +139,7 @@ static int isfw_debug_read(struct file *file, char __user *user_buf,
 		DEBUG_CNT, DMA_FROM_DEVICE);
 
 	debug_cnt = *((int *)(imemory->kvaddr + DEBUGCTL_OFFSET)) - DEBUG_OFFSET;
+	backup_cnt = core->debug_cnt;
 
 	if (core->debug_cnt > debug_cnt) {
 		count1 = DEBUG_CNT - core->debug_cnt;
@@ -186,34 +149,39 @@ static int isfw_debug_read(struct file *file, char __user *user_buf,
 		count2 = 0;
 	}
 
-	if (count1) {
+	buf_count = buf_len;
+
+	if (buf_count && count1) {
 		debug = (char *)(imemory->kvaddr + DEBUG_OFFSET + core->debug_cnt);
 
-		if (count1 > buf_len)
-			count1 = buf_len;
+		if (count1 > buf_count)
+			count1 = buf_count;
+
+		buf_count -= count1;
 
 		memcpy(user_buf, debug, count1);
 		core->debug_cnt += count1;
 	}
 
-	if (count1 == buf_len) {
-		count2 = 0;
-		goto exit;
-	}
-
-	if (count2) {
-		core->debug_cnt = 0;
+	if (buf_count && count2) {
 		debug = (char *)(imemory->kvaddr + DEBUG_OFFSET);
 
-		if ((count1 + count2) > buf_len)
-			count2 = buf_len -  count1;
+		if (count2 > buf_count)
+			count2 = buf_count;
+
+		buf_count -= count2;
 
 		memcpy(user_buf, debug, count2);
-		core->debug_cnt += count2;
+		core->debug_cnt = count2;
 	}
 
+	pr_info("FW_READ : Origin(%d), New(%d) - Length(%d)\n",
+		backup_cnt,
+		core->debug_cnt,
+		(buf_len - buf_count));
+
 exit:
-	return count1 + count2;
+	return buf_len - buf_count;
 }
 
 static const struct file_operations debug_fops = {
@@ -437,6 +405,9 @@ static const struct scalerc_param init_scalerc_param = {
 	},
 	.effect = {
 		.cmd = 0,
+		.arbitrary_cb = 128, /* default value : 128 */
+		.arbitrary_cr = 128, /* default value : 128 */
+		.yuv_range = SCALER_OUTPUT_YUV_RANGE_FULL,
 		.err = 0,
 	},
 	.input_crop = {
@@ -521,7 +492,11 @@ static const struct odc_param init_odc_param = {
 
 static const struct dis_param init_dis_param = {
 	.control = {
+#if defined(CONFIG_SOC_EXYNOS5420)
+		.cmd = CONTROL_COMMAND_STOP,
+#else
 		.cmd = CONTROL_COMMAND_START,
+#endif
 		.bypass = CONTROL_BYPASS_ENABLE,
 		.err = CONTROL_ERROR_NO,
 	},
@@ -552,7 +527,11 @@ static const struct dis_param init_dis_param = {
 };
 static const struct tdnr_param init_tdnr_param = {
 	.control = {
+#if defined(CONFIG_SOC_EXYNOS5420)
+		.cmd = CONTROL_COMMAND_STOP,
+#else
 		.cmd = CONTROL_COMMAND_START,
+#endif
 		.bypass = CONTROL_BYPASS_ENABLE,
 		.err = CONTROL_ERROR_NO,
 	},
@@ -616,6 +595,9 @@ static const struct scalerp_param init_scalerp_param = {
 	},
 	.effect = {
 		.cmd = 0,
+		.arbitrary_cb = 128, /* default value : 128 */
+		.arbitrary_cr = 128, /* default value : 128 */
+		.yuv_range = SCALER_OUTPUT_YUV_RANGE_FULL,
 		.err = 0,
 	},
 	.input_crop = {
@@ -778,834 +760,31 @@ void fimc_is_ischain_meta_invalid(struct fimc_is_frame *frame)
 #endif
 }
 
-static void fimc_is_ischain_version(struct fimc_is_device_ischain *this, char *name, const char *load_bin, u32 size)
+static void fimc_is_ischain_version(struct fimc_is_device_ischain *this, int file_check, const char *load_bin, u32 size)
 {
 	struct fimc_is_from_info *pinfo = NULL;
 	char version_str[60];
 
+	fimc_is_sec_get_sysfs_pinfo(&pinfo);
 
-    if (!strcmp(fw_name, name)) {
-	memcpy(version_str, &load_bin[size - FIMC_IS_VERSION_SIZE],
-		FIMC_IS_VERSION_SIZE);
-	version_str[FIMC_IS_VERSION_SIZE] = '\0';
+	if (file_check == IS_FIRMWARE) {
+		memcpy(version_str, &load_bin[size - FIMC_IS_VERSION_SIZE],
+			FIMC_IS_VERSION_SIZE);
+		version_str[FIMC_IS_VERSION_SIZE] = '\0';
 
-        pinfo = &this->pinfo;
-        memcpy(pinfo->header_ver, &version_str[32], 11);
-        pinfo->header_ver[11] = '\0';
-    } else {
+		memcpy(pinfo->header_ver, &version_str[31], 11);
+		pinfo->header_ver[11] = '\0';
+		printk(KERN_INFO "%s version : %s\n", FIMC_IS_FW, version_str);
+	} else {
 		memcpy(version_str, &load_bin[size - FIMC_IS_SETFILE_VER_OFFSET],
 			FIMC_IS_SETFILE_VER_SIZE);
 		version_str[FIMC_IS_SETFILE_VER_SIZE] = '\0';
 
-		pinfo = &this->pinfo;
 		memcpy(pinfo->setfile_ver, &version_str[17], 4);
 		pinfo->setfile_ver[4] = '\0';
-	}
-	printk(KERN_INFO "%s version : %s\n", name, version_str);
-}
-
-#if 1
-
-bool check_cal_data_crc32(char *buf)
-{
-	u32 *buf32 = NULL;
-	u32 checksum;
-	u32 check_base;
-
-	buf32 = (u32 *)buf;
-
-	printk(KERN_INFO "+++ %s\n", __func__);
-
-
-	CRC32_CHECK = true;
-	
-	/* Header data */
-	check_base = 0;
-	checksum = 0;
-
-	checksum = getCRC((u16 *)&buf32[check_base],
-						HEADER_CRC32_LEN, NULL, NULL);
-	if (checksum != buf32[check_base + 1023]) {
-		err("Camera: CRC32 error at the header (0x%08X != 0x%08X)",
-					checksum, buf32[check_base + 1023]);
-		CRC32_CHECK = false;
-		CRC32_HEADER_CHECK = false;		
-	} else {
-		CRC32_HEADER_CHECK = true;		
-	}
-
-	/* OEM */
-	check_base = 1024;
-	checksum = 0;
-
-	checksum = getCRC((u16 *)&buf32[check_base],
-						OEM_CRC32_LEN, NULL, NULL);
-	if (checksum != buf32[check_base + 1023]) {
-		err("Camera: CRC32 error at the OEM (0x%08X != 0x%08X)",
-					checksum, buf32[check_base + 1023]);
-		CRC32_CHECK = false;
-	}
-
-	/* AWB */
-	check_base = 2048;
-	checksum = 0;
-
-	checksum = getCRC((u16 *)&buf32[check_base],
-						AWB_CRC32_LEN, NULL, NULL);
-	if (checksum != buf32[check_base + 1023]) {
-		err("Camera: CRC32 error at the AWB (0x%08X != 0x%08X)",
-					checksum, buf32[check_base + 1023]);
-		CRC32_CHECK = false;
-	}
-
-	/* Shading */
-	check_base = 3072;
-	checksum = 0;
-
-	if(cal_map_version[3] == '5')
-	{
-		checksum = getCRC((u16 *)&buf32[check_base],
-							8896/2, NULL, NULL);
-		if (checksum != buf32[check_base + 3071]) {
-			err("Camera: CRC32 error at the Shading (0x%08X != 0x%08X)",
-						checksum, buf32[check_base + 3071]);
-			CRC32_CHECK = false;
-	}
-	} else {
-	checksum = getCRC((u16 *)&buf32[check_base],
-						SHADING_CRC32_LEN, NULL, NULL);
-	if (checksum != buf32[check_base + 1023]) {
-		err("Camera: CRC32 error at the Shading (0x%08X != 0x%08X)",
-					checksum, buf32[check_base + 1023]);
-		CRC32_CHECK = false;
-	}
-	}
-
-	return CRC32_CHECK;
-}
-
-bool check_fw_data_crc32(char *buf, struct fimc_is_device_ischain *this)
-{
-	u32 *buf32 = NULL;
-	u32 checksum;
-	
-	struct fimc_is_from_info *finfo = NULL;
-
-	buf32 = (u32 *)buf;
-	finfo = &this->finfo;
-
-	pr_info("Camera: Start checking CRC32 FW\n\n"); 	
-
-    CRC32_FW_CHECK = true;
-
-	checksum = 0;
-
-	checksum = getCRC((u16 *)&buf32[0],
-						(finfo->setfile_end_addr - finfo->bin_start_addr + 1)/2, NULL, NULL);
-	if (checksum != buf32[(0x1FFFFC - 0x5000)/4]) {
-		err("Camera: CRC32 error at the binary section (0x%08X != 0x%08X)",
-					checksum, buf32[(0x1FFFFC - 0x5000)/4]);
-		CRC32_FW_CHECK = false;		
-	}
-
-	pr_info("Camera: End checking CRC32 FW\n\n"); 
-
-	return CRC32_FW_CHECK;
-}
-
-
-ssize_t write_data_to_file(char *name, char *buf, size_t count, loff_t *pos)
-{
-	struct file *fp;
-	mm_segment_t old_fs;
-	ssize_t tx;
-	int fd;
-
-	old_fs = get_fs();
-	set_fs(KERNEL_DS);
-
-	fd = sys_open(name, O_WRONLY | O_CREAT | O_TRUNC | O_SYNC, 0664);
-	if (fd < 0) {
-		err("open file error!!\n");
-		return -EINVAL;
-	}
-	fp = fget(fd);
-	if (fp) {
-		tx = vfs_write(fp, buf, count, pos);
-		vfs_fsync(fp, 0);
-		fput(fp);
-	}
-	sys_close(fd);
-	set_fs(old_fs);
-
-	return count;
-}
-
-ssize_t read_data_from_file(char *name, char *buf, size_t count, loff_t *pos)
-{
-	struct file *fp;
-	mm_segment_t old_fs;
-	ssize_t tx;
-	int fd;
-
-	old_fs = get_fs();
-	set_fs(KERNEL_DS);
-
-	fd = sys_open(name, O_RDONLY, 0664);
-	if (fd < 0) {
-		err("open file error!!\n");
-		set_fs(old_fs);
-		return -EINVAL;
-	}
-	fp = fget(fd);
-	if (fp) {
-		tx = vfs_read(fp, buf, count, pos);
-		fput(fp);
-	}
-	sys_close(fd);
-	set_fs(old_fs);
-
-	return count;
-}
-
-
-
-void make_CRC_table(u32 *table, u32 id)
-{
-	u32 i, j, k;
-
-	for (i = 0; i < 256; ++i) {
-		k = i;
-		for (j = 0; j < 8; ++j) {
-			if (k & 1)
-				k = (k >> 1) ^ id;
-			else
-				k >>= 1;
-		}
-		table[i] = k;
+		printk(KERN_INFO "%s version : %s\n", setf_name, version_str);
 	}
 }
-
-#if 0 // unused
-static void fimc_is_read_sensor_version(void)
-{
-	int ret;
-	char buf[0x50];
-
-	memset(buf, 0x0, 0x50);
-
-	printk(KERN_INFO "+++ %s\n", __func__);
-
-	ret = fimc_is_spi_read(buf, 0x0, 0x50);
-
-	printk(KERN_INFO "--- %s\n", __func__);
-
-	if (ret) {
-		err("fimc_is_spi_read - can't read sensor version\n");
-	}
-
-	err("Manufacturer ID(0x40): 0x%02x\n", buf[0x40]);
-	err("Pixel Number(0x41): 0x%02x\n", buf[0x41]);
-}
-
-static void fimc_is_read_sensor_version2(void)
-{
-	char *buf;
-	char *cal_data;
-	u32 cur;
-	u32 count = SETFILE_SIZE/READ_SIZE;
-	u32 extra = SETFILE_SIZE%READ_SIZE;
-
-	printk(KERN_ERR "%s\n\n\n\n", __func__);
-
-
-	buf = (char *)kmalloc(READ_SIZE, GFP_KERNEL);
-	cal_data = (char *)kmalloc(SETFILE_SIZE, GFP_KERNEL);
-
-	memset(buf, 0x0, READ_SIZE);
-	memset(cal_data, 0x0, SETFILE_SIZE);
-
-
-	for (cur = 0; cur < SETFILE_SIZE; cur += READ_SIZE) {
-		fimc_is_spi_read(buf, cur, READ_SIZE);
-		memcpy(cal_data+cur, buf, READ_SIZE);
-		memset(buf, 0x0, READ_SIZE);
-	}
-
-	if (extra != 0) {
-		fimc_is_spi_read(buf, cur, extra);
-		memcpy(cal_data+cur, buf, extra);
-		memset(buf, 0x0, extra);
-	}
-
-	pr_info("Manufacturer ID(0x40): 0x%02x\n", cal_data[0x40]);
-	pr_info("Pixel Number(0x41): 0x%02x\n", cal_data[0x41]);
-
-
-	pr_info("Manufacturer ID(0x4FE7): 0x%02x\n", cal_data[0x4FE7]);
-	pr_info("Pixel Number(0x4FE8): 0x%02x\n", cal_data[0x4FE8]);
-	pr_info("Manufacturer ID(0x4FE9): 0x%02x\n", cal_data[0x4FE9]);
-	pr_info("Pixel Number(0x4FEA): 0x%02x\n", cal_data[0x4FEA]);
-
-	kfree(buf);
-	kfree(cal_data);
-
-}
-
-static int fimc_is_get_cal_data(void)
-{
-	int err = 0;
-	struct file *fp = NULL;
-	mm_segment_t old_fs;
-	long ret = 0;
-	u8 mem0 = 0, mem1 = 0;
-	u32 CRC = 0;
-	u32 DataCRC = 0;
-	u32 IntOriginalCRC = 0;
-	u32 crc_index = 0;
-	int retryCnt = 2;
-	u32 header_crc32 =	0x1000;
-	u32 oem_crc32 =		0x2000;
-	u32 awb_crc32 =		0x3000;
-	u32 shading_crc32 = 0x6000;
-	u32 shading_header = 0x22C0;	
-
-	char *cal_data;
-
-	CRC32_CHECK = true;
-	printk(KERN_INFO "%s\n\n\n\n", __func__);
-	printk(KERN_INFO "+++ %s\n", __func__);
-
-	fimc_is_spi_read(cal_map_version, 0x60, 0x4);
-	printk(KERN_INFO "cal_map_version = %.4s\n", cal_map_version);
-
-	if(cal_map_version[3] == '5') {
-		shading_crc32 = 0x6000;
-		shading_header = 0x22C0;
-	}
-	else if(cal_map_version[3] == '6') {
-		shading_crc32 = 0x4000;
-		shading_header = 0x920;
-	}
-	else {
-		shading_crc32 = 0x5000;		
-		shading_header = 0x22C0;
-	}
-
-	/* Make CRC Table */
-	make_CRC_table((u32 *)&crc_table, 0xEDB88320);
-
-
-	retry:
-		cal_data = (char *)kmalloc(SETFILE_SIZE, GFP_KERNEL);
-
-		memset(cal_data, 0x0, SETFILE_SIZE);
-
-		mem0 = 0, mem1 = 0;
-		CRC = 0;
-		DataCRC = 0;
-		IntOriginalCRC = 0;
-		crc_index = 0;
-
-		fimc_is_spi_read(cal_data, 0, SETFILE_SIZE);
-
-		CRC = ~CRC;
-		for (crc_index = 0; crc_index < (0x80)/2; crc_index++) {
-			/*low byte*/
-			mem0 = (unsigned char)(cal_data[crc_index*2] & 0x00ff);
-			/*high byte*/
-			mem1 = (unsigned char)((cal_data[crc_index*2+1]) & 0x00ff);
-			CRC = crc_table[(CRC ^ (mem0)) & 0xFF] ^ (CRC >> 8);
-			CRC = crc_table[(CRC ^ (mem1)) & 0xFF] ^ (CRC >> 8);
-		}
-		CRC = ~CRC;
-
-
-		DataCRC = (CRC&0x000000ff)<<24;
-		DataCRC += (CRC&0x0000ff00)<<8;
-		DataCRC += (CRC&0x00ff0000)>>8;
-		DataCRC += (CRC&0xff000000)>>24;
-		printk(KERN_INFO "made HEADER CSC value by S/W = 0x%x\n", DataCRC);
-
-		IntOriginalCRC = (cal_data[header_crc32-4]&0x00ff)<<24;
-		IntOriginalCRC += (cal_data[header_crc32-3]&0x00ff)<<16;
-		IntOriginalCRC += (cal_data[header_crc32-2]&0x00ff)<<8;
-		IntOriginalCRC += (cal_data[header_crc32-1]&0x00ff);
-		printk(KERN_INFO "Original HEADER CRC Int = 0x%x\n", IntOriginalCRC);
-
-		if (IntOriginalCRC != DataCRC)
-			CRC32_CHECK = false;
-
-		CRC = 0;
-		CRC = ~CRC;
-		for (crc_index = 0; crc_index < (0xC0)/2; crc_index++) {
-			/*low byte*/
-			mem0 = (unsigned char)(cal_data[0x1000 + crc_index*2] & 0x00ff);
-			/*high byte*/
-			mem1 = (unsigned char)((cal_data[0x1000 + crc_index*2+1]) & 0x00ff);
-			CRC = crc_table[(CRC ^ (mem0)) & 0xFF] ^ (CRC >> 8);
-			CRC = crc_table[(CRC ^ (mem1)) & 0xFF] ^ (CRC >> 8);
-		}
-		CRC = ~CRC;
-
-
-		DataCRC = (CRC&0x000000ff)<<24;
-		DataCRC += (CRC&0x0000ff00)<<8;
-		DataCRC += (CRC&0x00ff0000)>>8;
-		DataCRC += (CRC&0xff000000)>>24;
-		printk(KERN_INFO "made OEM CSC value by S/W = 0x%x\n", DataCRC);
-
-		IntOriginalCRC = (cal_data[oem_crc32-4]&0x00ff)<<24;
-		IntOriginalCRC += (cal_data[oem_crc32-3]&0x00ff)<<16;
-		IntOriginalCRC += (cal_data[oem_crc32-2]&0x00ff)<<8;
-		IntOriginalCRC += (cal_data[oem_crc32-1]&0x00ff);
-		printk(KERN_INFO "Original OEM CRC Int = 0x%x\n", IntOriginalCRC);
-
-		if (IntOriginalCRC != DataCRC)
-			CRC32_CHECK = false;
-
-
-		CRC = 0;
-		CRC = ~CRC;
-		for (crc_index = 0; crc_index < (0x20)/2; crc_index++) {
-			/*low byte*/
-			mem0 = (unsigned char)(cal_data[0x2000 + crc_index*2] & 0x00ff);
-			/*high byte*/
-			mem1 = (unsigned char)((cal_data[0x2000 + crc_index*2+1]) & 0x00ff);
-			CRC = crc_table[(CRC ^ (mem0)) & 0xFF] ^ (CRC >> 8);
-			CRC = crc_table[(CRC ^ (mem1)) & 0xFF] ^ (CRC >> 8);
-		}
-		CRC = ~CRC;
-
-
-		DataCRC = (CRC&0x000000ff)<<24;
-		DataCRC += (CRC&0x0000ff00)<<8;
-		DataCRC += (CRC&0x00ff0000)>>8;
-		DataCRC += (CRC&0xff000000)>>24;
-		printk(KERN_INFO "made AWB CSC value by S/W = 0x%x\n", DataCRC);
-
-		IntOriginalCRC = (cal_data[awb_crc32-4]&0x00ff)<<24;
-		IntOriginalCRC += (cal_data[awb_crc32-3]&0x00ff)<<16;
-		IntOriginalCRC += (cal_data[awb_crc32-2]&0x00ff)<<8;
-		IntOriginalCRC += (cal_data[awb_crc32-1]&0x00ff);
-		printk(KERN_INFO "Original AWB CRC Int = 0x%x\n", IntOriginalCRC);
-
-		if (IntOriginalCRC != DataCRC)
-			CRC32_CHECK = false;
-
-
-		CRC = 0;
-		CRC = ~CRC;
-		for (crc_index = 0; crc_index < (shading_header)/2; crc_index++) {
-
-			/*low byte*/
-			mem0 = (unsigned char)(cal_data[0x3000 + crc_index*2] & 0x00ff);
-			/*high byte*/
-			mem1 = (unsigned char)((cal_data[0x3000 + crc_index*2+1]) & 0x00ff);
-			CRC = crc_table[(CRC ^ (mem0)) & 0xFF] ^ (CRC >> 8);
-			CRC = crc_table[(CRC ^ (mem1)) & 0xFF] ^ (CRC >> 8);
-		}
-		CRC = ~CRC;
-
-
-		DataCRC = (CRC&0x000000ff)<<24;
-		DataCRC += (CRC&0x0000ff00)<<8;
-		DataCRC += (CRC&0x00ff0000)>>8;
-		DataCRC += (CRC&0xff000000)>>24;
-		printk(KERN_INFO "made SHADING CSC value by S/W = 0x%x\n", DataCRC);
-
-		IntOriginalCRC = (cal_data[shading_crc32-4]&0x00ff)<<24;
-		IntOriginalCRC += (cal_data[shading_crc32-3]&0x00ff)<<16;
-		IntOriginalCRC += (cal_data[shading_crc32-2]&0x00ff)<<8;
-		IntOriginalCRC += (cal_data[shading_crc32-1]&0x00ff);
-		printk(KERN_INFO "Original SHADING CRC Int = 0x%x\n", IntOriginalCRC);
-
-		if (IntOriginalCRC != DataCRC)
-			CRC32_CHECK = false;
-
-
-		old_fs = get_fs();
-		set_fs(KERNEL_DS);
-
-		if (CRC32_CHECK == true) {
-			printk(KERN_INFO "make cal_data.bin~~~~ \n");
-			fp = filp_open(FIMC_IS_CAL_SDCARD, O_WRONLY|O_CREAT|O_TRUNC, 0644);
-			if (IS_ERR(fp) || fp == NULL) {
-				printk(KERN_INFO "failed to open %s, err %ld\n",
-					FIMC_IS_CAL_SDCARD, PTR_ERR(fp));
-				err = -EINVAL;
-				goto out;
-			}
-
-			ret = vfs_write(fp, (char __user *)cal_data,
-				SETFILE_SIZE, &fp->f_pos);
-
-		} else {
-			if (retryCnt > 0) {
-				set_fs(old_fs);
-				retryCnt--;
-				goto retry;
-			}
-		}
-
-/*
-		{
-			fp = filp_open(FIMC_IS_CAL_SDCARD, O_WRONLY|O_CREAT|O_TRUNC, 0644);
-			if (IS_ERR(fp) || fp == NULL) {
-				printk(KERN_INFO "failed to open %s, err %ld\n",
-					FIMC_IS_CAL_SDCARD, PTR_ERR(fp));
-				err = -EINVAL;
-				goto out;
-			}
-
-			ret = vfs_write(fp, (char __user *)cal_data,
-				SETFILE_SIZE, &fp->f_pos);
-
-		}
-*/
-
-		if (fp != NULL)
-			filp_close(fp, current->files);
-
-	out:
-		set_fs(old_fs);
-		kfree(cal_data);
-		return err;
-
-}
-#endif
-
-static int fimc_is_ischain_readcaldata(struct fimc_is_device_ischain *this,
-	struct sensor_open_extended *ext)
-{
-	int ret = 0;
-	char *buf = NULL;
-	loff_t pos = 0;
-	int retry = FIMC_IS_CAL_RETRY_CNT;
-	struct fimc_is_from_info *finfo = NULL;
-
-
-    fimc_is_spi_read(cal_map_version, 0x60, 0x4);
-	printk(KERN_INFO "Camera: Cal map_version = %c%c%c%c\n", cal_map_version[0],
-		            cal_map_version[1],cal_map_version[2],cal_map_version[3]);
-
-
-	if(cal_map_version[3] == '5'){
-	    FIMC_IS_MAX_CAL_SIZE = 24*1024;
-	    pr_info("FIMC_IS_MAX_CAL_SIZE = 24*1024\n");
-	}
-	else {
-	    FIMC_IS_MAX_CAL_SIZE = 20*1024;
-            pr_info("FIMC_IS_MAX_CAL_SIZE = 20*1024\n");		
-	}
-
-	buf = kmalloc(FIMC_IS_MAX_CAL_SIZE, GFP_KERNEL);
-	if (!buf) {
-		err("kmalloc fail");
-		ret = -ENOMEM;
-		goto exit;
-	}
-
-crc_retry:
-
-	/* read cal data */
-	pr_info("Camera: SPI read cal data\n\n"); 	
-	ret = fimc_is_spi_read(buf, 0x0, FIMC_IS_MAX_CAL_SIZE);
-	if (ret < 0) {
-		err("failed to fimc_is_spi_read (%d)\n", ret);
-		ret = -EINVAL;
-		goto exit;
-	}
-
-	finfo = &this->finfo;
-	finfo->bin_start_addr = *((u32 *)&buf[0]);
-	finfo->bin_end_addr = *((u32 *)&buf[4]);
-	pr_info("Binary start = 0x%08x, end = 0x%08x\n",
-			(finfo->bin_start_addr), (finfo->bin_end_addr));
-	finfo->oem_start_addr = *((u32 *)&buf[8]);
-	finfo->oem_end_addr = *((u32 *)&buf[12]);
-	pr_info("OEM start = 0x%08x, end = 0x%08x\n",
-			(finfo->oem_start_addr), (finfo->oem_end_addr));
-	finfo->awb_start_addr = *((u32 *)&buf[16]);
-	finfo->awb_end_addr = *((u32 *)&buf[20]);
-	pr_info("AWB start = 0x%08x, end = 0x%08x\n",
-			(finfo->awb_start_addr), (finfo->awb_end_addr));
-	finfo->shading_start_addr = *((u32 *)&buf[24]);
-	finfo->shading_end_addr = *((u32 *)&buf[28]);
-	pr_info("Shading start = 0x%08x, end = 0x%08x\n",
-		(finfo->shading_start_addr), (finfo->shading_end_addr));
-	finfo->setfile_start_addr = *((u32 *)&buf[40]);
-	finfo->setfile_end_addr = *((u32 *)&buf[44]);
-	pr_info("Setfile start = 0x%08x, end = 0x%08x\n",
-		(finfo->setfile_start_addr), (finfo->setfile_end_addr));
-
-	memcpy(finfo->header_ver, &buf[64], 11);
-	finfo->header_ver[11] = '\0';
-	memcpy(finfo->cal_map_ver, &buf[96], 4);
-	memcpy(finfo->setfile_ver, &buf[100], 6);
-	finfo->setfile_ver[6] = '\0';
-	memcpy(finfo->oem_ver, &buf[8160], 11);
-	finfo->oem_ver[11] = '\0';
-	memcpy(finfo->awb_ver, &buf[12256], 11);
-	finfo->awb_ver[11] = '\0';
-	memcpy(finfo->shading_ver, &buf[16352], 11);
-	finfo->shading_ver[11] = '\0';
-
-#ifndef CONFIG_MACH_V1
-	/*select AF actuator*/
-	if(finfo->header_ver[0] == 'S'){
-		pr_info("AF actuator is WV560\n");
-		ext->actuator_con.product_name = ACTUATOR_NAME_WV560;
-	} else {
-		pr_info("AF actuator is AK7345\n");
-		ext->actuator_con.product_name = ACTUATOR_NAME_AK7345;		
-	}
-#endif
-
-	/* debug info dump */
-#if defined(FROM_DEBUG)
-	pr_info("++++ FROM data info\n");
-	pr_info("1. Header info\n");
-	pr_info("Module info : %s\n", finfo->header_ver);
-	pr_info(" ID : %c\n", finfo->header_ver[0]);
-	pr_info(" Pixel num : %c%c\n", finfo->header_ver[1],
-							finfo->header_ver[2]);
-	pr_info(" ISP ID : %c\n", finfo->header_ver[3]);
-	pr_info(" Sensor Maker : %c\n", finfo->header_ver[5]);
-	pr_info(" Module ver : %c\n", finfo->header_ver[6]);
-	pr_info(" Year : %c\n", finfo->header_ver[7]);
-	pr_info(" Month : %c\n", finfo->header_ver[8]);
-	pr_info(" Release num : %c%c\n", finfo->header_ver[9],
-							finfo->header_ver[10]);
-	pr_info("Cal data map ver : %s\0\n", finfo->cal_map_ver);
-	pr_info("Setfile ver : %s\n", finfo->setfile_ver);
-	pr_info("2. OEM info\n");
-	pr_info("Module info : %s\n", finfo->oem_ver);
-	pr_info("3. AWB info\n");
-	pr_info("Module info : %s\n", finfo->awb_ver);
-	pr_info("4. Shading info\n");
-	pr_info("Module info : %s\n", finfo->shading_ver);
-	pr_info("---- FROM data info\n");
-#endif
-
-	/* CRC check */
-	if(!check_cal_data_crc32(buf) && (retry > 0)){
-		retry--;
-		goto crc_retry;
-	}
-
-	if (write_data_to_file(FIMC_IS_CAL_SDCARD, buf,
-					FIMC_IS_MAX_CAL_SIZE, &pos) < 0) {
-		ret = -EIO;
-		goto exit;
-	}
-	
-	pr_info("Camera: Cal Data was dumped successfully\n");
-	
-	kfree(buf);
-	return 0;
-exit:
-	if (buf)
-		kfree(buf);
-	return ret;
-}
-
-static int fimc_is_ischain_readfw(struct fimc_is_device_ischain *this,
-	struct sensor_open_extended *ext)
-{
-	int ret = 0;
-	char *buf = NULL;
-	loff_t pos = 0;
-	char fw_path[100];
-	char setfile_path[100];
-	char setf_name[50];
-	int retry = FIMC_IS_FW_RETRY_CNT;
-	struct fimc_is_from_info *finfo = NULL;
-
-	pr_info("Camera: FW, Setfile need to be dumped\n");
-
-	buf = vmalloc(FIMC_IS_MAX_FW_SIZE);
-	if (!buf) {
-		err("vmalloc fail");
-		ret = -ENOMEM;
-		goto exit;
-	}
-
-	crc_retry:
-
-	/* read fw data */
-	pr_info("Camera: Start SPI read fw data\n\n"); 	
-	ret = fimc_is_spi_read(buf, 0x5000, FIMC_IS_MAX_FW_SIZE);
-	if (ret < 0) {
-		err("failed to fimc_is_spi_read (%d)\n", ret);
-		ret = -EINVAL;
-		goto exit;
-	}
-	pr_info("Camera: End SPI read fw data\n\n"); 	
-
-	/* CRC check */
-	if(!check_fw_data_crc32(buf, this) && (retry > 0)){
-		retry--;
-		goto crc_retry;
-	}
-	else if(!retry) {
-		ret = -EINVAL;
-		goto exit;
-	}
-
-	finfo = &this->finfo;
-	snprintf(fw_path, sizeof(fw_path), "%s%s", FIMC_IS_FW_DUMP_PATH, fw_name);
-	if (write_data_to_file(fw_path, buf,
-					finfo->bin_end_addr - finfo->bin_start_addr + 1, &pos) < 0) {
-		ret = -EIO;
-		goto exit;
-	}
-	
-	pr_info("Camera: FW Data has dumped successfully\n");
-
-	if(sysfs_finfo->header_ver[0] == 'O') {
-		if(sysfs_finfo->header_ver[5] == 'S')
-			snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_IMX135_GUMI_SETF);
-		else
-			snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_3L2_GUMI_SETF);
-	}
-	else {		
-		if(sysfs_finfo->header_ver[5] == 'S')
-			snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_IMX135_SEC_SETF);
-		else
-			snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_3L2_SEC_SETF);		
-	}
-
-	snprintf(setfile_path, sizeof(setfile_path), "%s%s", FIMC_IS_FW_DUMP_PATH, setf_name);
-	pos = 0;
-
-	if (write_data_to_file(setfile_path, 
-					buf+(finfo->setfile_start_addr - finfo->bin_start_addr),
-					finfo->setfile_end_addr - finfo->setfile_start_addr + 1, &pos) < 0) {
-		ret = -EIO;
-		goto exit;
-	}
-
-	pr_info("Camera: Setfile has dumped successfully\n");
-	pr_info("Camera: FW, Setfile were dumped successfully\n");
-	
-exit:
-	if(buf)
-		vfree(buf);
-	return ret;
-}
-
-static int f_rom_gpio_enable(struct exynos5_platform_fimc_is *pdata, char *name, bool on)
-{
-	struct gpio_set *gpio;
-	int ret = 0;
-	int i = 0;
-
-	for (i = 0; i < FIMC_IS_MAX_GPIO_NUM; i++) {
-			gpio = &pdata->gpio_info->cfg[i];
-			if(strcmp(gpio->name, name) == 0)
-				break;
-			else
-				continue;
-	}
-
-	if(i == FIMC_IS_MAX_GPIO_NUM) {
-		pr_err("GPIO %s is not found!!\n", name);
-		ret = -EINVAL;
-		goto exit;
-	}
-	
-	ret = gpio_request(gpio->pin, gpio->name);
-	if(ret) {
-		pr_err("Request GPIO error(%s)\n", gpio->name);
-		goto exit;
-	}
-
-	if(on) {
-		switch (gpio->act) {
-		case GPIO_PULL_NONE:
-			s3c_gpio_cfgpin(gpio->pin, gpio->value);
-			s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_NONE);
-			break;
-		case GPIO_OUTPUT:
-			s3c_gpio_cfgpin(gpio->pin, S3C_GPIO_OUTPUT);
-			s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_NONE);
-			gpio_set_value(gpio->pin, gpio->value);
-			break;
-		case GPIO_INPUT:
-			s3c_gpio_cfgpin(gpio->pin, S3C_GPIO_INPUT);
-			s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_NONE);
-			gpio_set_value(gpio->pin, gpio->value);
-			break;
-		case GPIO_RESET:
-			s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_NONE);
-			gpio_direction_output(gpio->pin, 0);
-			gpio_direction_output(gpio->pin, 1);
-			break;
-		default:
-			pr_err("unknown act for gpio\n");
-			break;
-		}
-	} else {
-		s3c_gpio_cfgpin(gpio->pin, S3C_GPIO_INPUT);
-		s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_DOWN);
-	}
-
-	gpio_free(gpio->pin);
-
-exit: 
-	return ret;
-}
-
-
-static int f_rom_ldo_enable(struct device *dev, char *name, bool on)
-{
-	struct regulator *regulator = NULL;
-	int ret = 0;
-
-	if(on) {
-		regulator = regulator_get(dev, name);
-		if (IS_ERR(regulator)) {
-			pr_err("%s : regulator_get(%s) fail\n",
-				__func__, name);
-			ret = -EINVAL;
-			goto exit;
-		} else if (!regulator_is_enabled(regulator)) {
-			ret = regulator_enable(regulator);
-			if (ret) {
-				pr_err("%s : regulator_enable(%s) fail\n",
-					__func__, name);
-				regulator_put(regulator);
-				ret = -EINVAL;
-				goto exit;
-			}
-		}
-		regulator_put(regulator);
-	}
-	else {
-		regulator = regulator_get(dev, name);
-		if (IS_ERR(regulator)) {
-			pr_err("%s : regulator_get(%s) fail\n",
-				__func__, name);
-			ret = -EINVAL;
-			goto exit;
-		} else if (regulator_is_enabled(regulator)) {
-			ret = regulator_disable(regulator);
-			if (ret) {
-				pr_err("%s : regulator_disable(%s) fail\n",
-					__func__, name);
-				regulator_put(regulator);
-				ret = -EINVAL;
-				goto exit;
-			}
-		}
-		regulator_put(regulator);
-	}
-exit:
-	return ret;
-}
-
-#endif
 
 void fimc_is_ischain_savefirm(struct fimc_is_device_ischain *this)
 {
@@ -1629,34 +808,40 @@ static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *this)
 	long fsize, nread;
 	int fw_requested = 1;
 	char fw_path[100];
+	int cam_id;
 
 	dbg_ischain("%s\n", __func__);
+	cam_id = fimc_is_sec_get_camid();
 
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 	fp = filp_open(FIMC_IS_FW_SDCARD, O_RDONLY, 0);
 	if (IS_ERR(fp)) {
-		if(is_dumped_fw_loading_needed && 
+		if (is_dumped_fw_loading_needed &&
 				(cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_FRONT)) {
 			snprintf(fw_path, sizeof(fw_path), "%s%s",
-				FIMC_IS_FW_DUMP_PATH, fw_name);
+				FIMC_IS_FW_DUMP_PATH, FIMC_IS_FW);
 			fp = filp_open(fw_path, O_RDONLY, 0);
 			if (IS_ERR(fp)) {
 				fp = NULL;
 				ret = -EIO;
 				set_fs(old_fs);
 				goto out;
+			} else {
+				fsize = fp->f_path.dentry->d_inode->i_size;
+				pr_info("start, file path %s, size %ld Bytes\n",
+					fw_path, fsize);
 			}
-		}
-		else
+		} else
 			goto request_fw;
+	} else {
+		fsize = fp->f_path.dentry->d_inode->i_size;
+		pr_info("start, file path %s, size %ld Bytes\n",
+			FIMC_IS_FW_SDCARD, fsize);
 	}
 
 	location = 1;
 	fw_requested = 0;
-	fsize = fp->f_path.dentry->d_inode->i_size;
-	pr_info("start, file path %s, size %ld Bytes\n",
-		is_dumped_fw_loading_needed ? fw_path : FIMC_IS_FW_SDCARD, fsize);
 	buf = vmalloc(fsize);
 	if (!buf) {
 		dev_err(&this->pdev->dev,
@@ -1674,8 +859,7 @@ static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *this)
 
 	memcpy((void *)this->imemory.kvaddr, (void *)buf, fsize);
 	fimc_is_ischain_cache_flush(this, 0, fsize + 1);
-	if (cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_FRONT)
-		fimc_is_ischain_version(this, fw_name, buf, fsize);
+	fimc_is_ischain_version(this, IS_FIRMWARE, buf, fsize);
 
 request_fw:
 	if (fw_requested) {
@@ -1691,9 +875,8 @@ request_fw:
 		memcpy((void *)this->imemory.kvaddr, fw_blob->data,
 			fw_blob->size);
 		fimc_is_ischain_cache_flush(this, 0, fw_blob->size + 1);
-		if (cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_FRONT)
-			fimc_is_ischain_version(this, fw_name, fw_blob->data,
-				fw_blob->size);
+		fimc_is_ischain_version(this, IS_FIRMWARE, fw_blob->data,
+			fw_blob->size);
 
 		release_firmware(fw_blob);
 #ifdef SDCARD_FW
@@ -1703,9 +886,9 @@ request_fw:
 out:
 #ifdef SDCARD_FW
 	if (!fw_requested) {
-		if(buf)
+		if (buf)
 			vfree(buf);
-		if(fp)
+		if (fp)
 			filp_close(fp, current->files);
 		set_fs(old_fs);
 	}
@@ -1715,7 +898,7 @@ out:
 		err("firmware loading is fail");
 	else
 		pr_info("Camera: the %s FW were applied successfully.\n",
-			((cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_FRONT) && 
+			((cam_id == CAMERA_SINGLE_REAR) &&
 				is_dumped_fw_loading_needed) ? "dumped" : "default");
 
 	return ret;
@@ -1735,22 +918,30 @@ static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
 	long fsize, nread;
 	int fw_requested = 1;
 	char setfile_path[256];
+	char *setfile_select;
 	u32 retry;
+	int cam_id;
 
 	dbg_ischain("%s\n", __func__);
+	cam_id = fimc_is_sec_get_camid();
+
+	if (cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_REAR)
+		setfile_select = setf_name;
+	else
+		setfile_select = setfile_name;
 
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 	memset(setfile_path, 0x00, sizeof(setfile_path));
 	snprintf(setfile_path, sizeof(setfile_path), "%s%s",
-		FIMC_IS_SETFILE_SDCARD_PATH, setfile_name);
+		FIMC_IS_SETFILE_SDCARD_PATH, setfile_select);
 	fp = filp_open(setfile_path, O_RDONLY, 0);
 	if (IS_ERR(fp)) {
-		if(is_dumped_fw_loading_needed && 
+		if (is_dumped_fw_loading_needed &&
 			(cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_REAR)) {
 			memset(setfile_path, 0x00, sizeof(setfile_path));
 			snprintf(setfile_path, sizeof(setfile_path), "%s%s",
-				FIMC_IS_FW_DUMP_PATH, setf_name);
+				FIMC_IS_FW_DUMP_PATH, setfile_select);
 			fp = filp_open(setfile_path, O_RDONLY, 0);
 			if (IS_ERR(fp)) {
 				ret = -EIO;
@@ -1758,8 +949,7 @@ static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
 				set_fs(old_fs);
 				goto out;
 			}
-		}
-		else
+		} else
 			goto request_fw;
 	}
 
@@ -1786,8 +976,7 @@ static int fimc_is_ischain_loadsetf(struct fimc_is_device_ischain *this,
 	address = (void *)(this->imemory.kvaddr + load_addr);
 	memcpy((void *)address, (void *)buf, fsize);
 	fimc_is_ischain_cache_flush(this, load_addr, fsize + 1);
-	if (cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_REAR)
-		fimc_is_ischain_version(this, setf_name, buf, fsize);
+	fimc_is_ischain_version(this, IS_SETFILE, buf, fsize);
 
 request_fw:
 	if (fw_requested) {
@@ -1796,11 +985,11 @@ request_fw:
 
 		retry = 4;
 		ret = request_firmware((const struct firmware **)&fw_blob,
-			setf_name, &this->pdev->dev);
+			setfile_select, &this->pdev->dev);
 		while (--retry && ret) {
 			mwarn("request_firmware is fail(%d)", this, ret);
 			ret = request_firmware((const struct firmware **)&fw_blob,
-				setf_name, &this->pdev->dev);
+				setfile_select, &this->pdev->dev);
 		}
 
 		if (!retry) {
@@ -1812,9 +1001,8 @@ request_fw:
 		address = (void *)(this->imemory.kvaddr + load_addr);
 		memcpy(address, fw_blob->data, fw_blob->size);
 		fimc_is_ischain_cache_flush(this, load_addr, fw_blob->size + 1);
-		if (cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_REAR)
-			fimc_is_ischain_version(this, setf_name, fw_blob->data,
-				(u32)fw_blob->size);
+		fimc_is_ischain_version(this, IS_SETFILE, fw_blob->data,
+			(u32)fw_blob->size);
 
 		release_firmware(fw_blob);
 #ifdef SDCARD_FW
@@ -1824,9 +1012,9 @@ request_fw:
 out:
 #ifdef SDCARD_FW
 	if (!fw_requested) {
-		if(buf)
+		if (buf)
 			vfree(buf);
-		if(fp)
+		if (fp)
 			filp_close(fp, current->files);
 		set_fs(old_fs);
 	}
@@ -1836,7 +1024,7 @@ out:
 		err("setfile loading is fail");
 	else
 		pr_info("Camera: the %s Setfile were applied successfully.\n",
-			((cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_REAR) && 
+			((cam_id == CAMERA_SINGLE_REAR) &&
 				is_dumped_fw_loading_needed) ? "dumped" : "default");
 
 	return ret;
@@ -1848,7 +1036,7 @@ static int fimc_is_ischain_loadcalb(struct fimc_is_device_ischain *this,
 	int ret = 0;
 	char *buf = NULL;
 	char *cal_ptr;
-#if 0 // unused
+#if 0 /* unused */
 	u32 *buf32 = NULL;
 	u32 checksum;
 	u32 check_base;
@@ -1907,11 +1095,11 @@ static int fimc_is_ischain_loadcalb(struct fimc_is_device_ischain *this,
 		buf[0x62], buf[0x63]);
 
 	/* CRC check */
-	if(CRC32_CHECK == true) {
-		memcpy((void *)(cal_ptr),(void *)buf, nread);
- 		pr_info("Camera : the dumped Cal. data was applied successfully.\n");
+	if (CRC32_CHECK == true) {
+		memcpy((void *)(cal_ptr) ,(void *)buf, nread);
+		pr_info("Camera : the dumped Cal. data was applied successfully.\n");
 	} else {
-		if(CRC32_HEADER_CHECK == true){
+		if (CRC32_HEADER_CHECK == true) {
 			pr_err("Camera : CRC32 error but only header section is no problem.\n");
 			memset((void *)(cal_ptr + 0x1000), 0xFF, FIMC_IS_MAX_CAL_SIZE - 0x1000);
 		} else {
@@ -1921,8 +1109,8 @@ static int fimc_is_ischain_loadcalb(struct fimc_is_device_ischain *this,
 		}
 	}
 
-    //printk("buf[65]: 0x%08x buf[66]:0x%08x\n", buf[65], buf[66]);
-    //printk("cal_ptr[65]: 0x%08x cal_ptr[66]:0x%08x\n", cal_ptr[65], cal_ptr[66]);
+	/*printk("buf[65]: 0x%08x buf[66]:0x%08x\n", buf[65], buf[66]);
+	printk("cal_ptr[65]: 0x%08x cal_ptr[66]:0x%08x\n", cal_ptr[65], cal_ptr[66]);*/
 
 #if 0
 	/* CRC check */
@@ -2053,27 +1241,18 @@ void tdnr_s3d_pixel_async_sw_reset(struct fimc_is_device_ischain *this)
 
 int fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 {
-	int ret = 0;
+	int i, ret = 0;
 	u32 timeout;
 	u32 debug;
-	char spi_buf[0x50];
-	char fw_path[100];
-	char dump_fw_path[100];
-	char dump_fw_version[12] = {0, };
-	char phone_fw_version[12] = {0, };
+	int cam_sensor;
+	int cam_id;
+	int pixelsize;
 
-	struct file *fp = NULL;
-	mm_segment_t old_fs;
-	long fsize, nread;
-	u8* fw_buf = NULL;
-	bool is_dump_existed = false;
-	bool is_dump_needed = true;
-	bool is_ldo_enabled = false;
-	
 	struct device *dev = &this->pdev->dev;
 	struct fimc_is_core *core
 		= (struct fimc_is_core *)platform_get_drvdata(this->pdev);
 	struct fimc_is_device_sensor *sensor;
+	struct fimc_is_from_info *finfo = NULL;
 #if defined(CONFIG_SOC_EXYNOS5250)
 	struct fimc_is_device_sensor *sensor = &core->sensor;
 	struct fimc_is_enum_sensor *sensor_info
@@ -2090,395 +1269,48 @@ int fimc_is_ischain_power(struct fimc_is_device_ischain *this, int on)
 		dbg_ischain("pm_runtime_suspended = %d\n",
 			pm_runtime_suspended(dev));
 		pm_runtime_get_sync(dev);
+		bts_initialize("pd-fimclite", true);
 #else
 		fimc_is_runtime_resume(dev);
-		printk(KERN_INFO "%s(%d) - fimc_is runtime resume complete\n", __func__, on);
+		pr_info("%s(%d) - fimc_is runtime resume complete\n", __func__, on);
 #endif
+		cam_id = fimc_is_sec_get_camid();
+		ret = fimc_is_sec_fw_sel(dev, this->pdata, fw_name, setf_name, 0);
+		if (ret < 0) {
+			err("failed to select firmware (%d)", ret);
+			clear_bit(FIMC_IS_ISCHAIN_LOADED, &this->state);
+			goto exit;
+		}
 
-#ifndef CONFIG_MACH_V1
-		if(!is_caldata_read && 
-				(cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_FRONT)) {
-			is_dumped_fw_loading_needed = false;
+		if (cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_FRONT) {
 			sensor = &core->sensor[0];
+			fimc_is_sec_get_sysfs_finfo(&finfo);
 
-			if(cam_id == CAMERA_DUAL_FRONT) {
-				if((ret = f_rom_ldo_enable(dev, "cam_isp_sensor_io_1.8v", true)) < 0) {
-					err("f_rom_ldo_enable(true) failed!\n");
-					goto err_f_rom;
-				}
-
-				if((ret = f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_SCLK", true)) < 0) {
-					err("f_rom_gpio_enable(GPIO_CAM_SPI0_SCLK, true) failed!\n");
-					is_ldo_enabled = true;
-					goto err_f_rom;
-				}
-
-				if((ret = f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_SSN", true)) < 0) {
-					err("f_rom_gpio_enable(GPIO_CAM_SPI0_SSN, true) failed!\n");
-					is_ldo_enabled = true;
-					goto err_f_rom;
-				}
-
-				if((ret = f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_MISP", true)) < 0) {
-					err("f_rom_gpio_enable(GPIO_CAM_SPI0_MISP, true) failed!\n");
-					is_ldo_enabled = true;
-					goto err_f_rom;
-				}
-
-				if((ret = f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_MOSI", true)) < 0) {
-					err("f_rom_gpio_enable(GPIO_CAM_SPI0_MOSI, true) failed!\n");
-					is_ldo_enabled = true;
-					goto err_f_rom;
-				}
-
-				is_ldo_enabled = true;
-			}
-			
-			/* reset spi */
-			memset(spi_buf, 0x0, 0x50);
-			ret = fimc_is_spi_reset(spi_buf, 0x0, FIMC_IS_MAX_CAL_SIZE);
-			if (ret < 0) {
-				err("failed to fimc_is_spi_read (%d)\n", ret);
-				ret = -EINVAL;
-				goto err_spi_rst;
-			}
-
-		    pr_info("read cal data from FROM\n");
-		    if((fimc_is_ischain_readcaldata(this, &sensor->enum_sensor[SENSOR_NAME_IMX135].ext)!= -EIO) &&
-					CRC32_HEADER_CHECK)
-		        is_caldata_read = true;
-
-			if(!CRC32_HEADER_CHECK){
-				pr_info("Camera : CRC32 error for all section.\n");
-				ret = -EIO;
-				goto err_read_cal;
-			}
-			
-
-			sysfs_finfo = &this->finfo;
-			sysfs_pinfo = &this->pinfo;
-
-			if(sysfs_finfo->header_ver[0] == 'O') {
-				snprintf(fw_path, sizeof(fw_path),"%s%s",
-					FIMC_IS_FW_PATH, FIMC_IS_GUMI_FW);
-				snprintf(dump_fw_path, sizeof(dump_fw_path), "%s%s",
-					FIMC_IS_FW_DUMP_PATH, FIMC_IS_GUMI_FW);
-				snprintf(fw_name, sizeof(fw_name), "%s", FIMC_IS_GUMI_FW);
-
-				if (cam_id == CAMERA_SINGLE_REAR) {
-					if(sysfs_finfo->header_ver[5] == 'S')
-						snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_IMX135_GUMI_SETF);
-					else
-						snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_3L2_GUMI_SETF);
-				}
+			if (finfo->header_ver[FW_SENSOR_MAKER] == FW_SENSOR_MAKER_SLSI)
+				cam_sensor = SENSOR_NAME_3L2;
+			else if (finfo->header_ver[FW_SENSOR_MAKER] == FW_SENSOR_MAKER_SONY) {
+				pixelsize = fimc_is_sec_get_pixel_size(finfo->header_ver);
+				if (pixelsize == 8)
+					cam_sensor = SENSOR_NAME_IMX134;
 				else
-					snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_6B2_SETF);
-			}
-			else {
-				snprintf(fw_path, sizeof(fw_path), "%s%s",
-					FIMC_IS_FW_PATH, FIMC_IS_SEC_FW);
-				snprintf(dump_fw_path, sizeof(dump_fw_path), "%s%s",
-					FIMC_IS_FW_DUMP_PATH, FIMC_IS_SEC_FW);
-				snprintf(fw_name, sizeof(fw_name), "%s", FIMC_IS_SEC_FW);
+					cam_sensor = SENSOR_NAME_IMX135;
+			} else
+				cam_sensor = SENSOR_NAME_IMX135;
 
-				if (cam_id == CAMERA_SINGLE_REAR) {
-					if(sysfs_finfo->header_ver[5] == 'S')
-						snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_IMX135_SEC_SETF);
-					else
-						snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_3L2_SEC_SETF);
-				}
-				else
-					snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_6B2_SETF);
-			}
-			
-			old_fs = get_fs();
-			set_fs(KERNEL_DS);
-
-			fp = filp_open(dump_fw_path, O_RDONLY, 0);
-			if (IS_ERR(fp)){
-				pr_info("Camera: There is no dumped firmware\n");
-				fp = filp_open(fw_path, O_RDONLY, 0);
-				if (IS_ERR(fp)) {
-					pr_err("Camera: Failed open phone firmware\n");
-					fp = NULL;
-					ret = -EIO;
-					goto fw_dump_exit1;
-				}
-			}
-			else 
-				is_dump_existed = true;
-
-			fsize = fp->f_path.dentry->d_inode->i_size;
-			pr_info("start, file path %s, size %ld Bytes\n",
-				fw_path, fsize);
-			fw_buf = vmalloc(fsize);
-			if (!fw_buf) {
-				dev_err(&this->pdev->dev,
-					"failed to allocate memory\n");
-				ret = -ENOMEM;
-				goto fw_dump_exit1;
-			}
-			nread = vfs_read(fp, (char __user *)fw_buf, fsize, &fp->f_pos);
-			if (nread != fsize) {
-				dev_err(&this->pdev->dev,
-					"failed to read firmware file, %ld Bytes\n", nread);
-				ret = -EIO;
-				goto fw_dump_exit1;
-			}
-
-
-			pr_info("Camera: f-rom fw version: %s\n", sysfs_finfo->header_ver); 
-			
-			if(is_dump_existed) {
-				strncpy(dump_fw_version, fw_buf+nread-11, 11);
-				pr_info("Camera: dumped fw version: %s\n", dump_fw_version); 
-			}
-			else {
-				strncpy(phone_fw_version, fw_buf+nread-11, 11);
-				pr_info("Camera: phone fw version: %s\n", phone_fw_version); 
-			}
-
-fw_dump_exit1:
-			if (fw_buf) {
-				vfree(fw_buf);
-				fw_buf = NULL;
-			}
-
-			if (fp) {
-				filp_close(fp, current->files);
-				fp = NULL;
-			}
-
-			set_fs(old_fs);
-
-			if(ret < 0)
-				goto err_read_cal;
-			
-			if(is_dump_existed) {
-				old_fs = get_fs();
-				set_fs(KERNEL_DS);
-				
-				fp = filp_open(fw_path, O_RDONLY, 0);
-				if (IS_ERR(fp)) {
-					pr_err("Camera: Failed open phone firmware\n");
-					ret = -EIO;
-					fp = NULL;
-					goto fw_dump_exit2;
-				}
-
-				fsize = fp->f_path.dentry->d_inode->i_size;
-				pr_info("start, file path %s, size %ld Bytes\n",
-					fw_path, fsize);
-				fw_buf = vmalloc(fsize);
-				if (!fw_buf) {
-					dev_err(&this->pdev->dev,
-						"failed to allocate memory\n");
-					ret = -ENOMEM;
-					goto fw_dump_exit2;
-				}
-				nread = vfs_read(fp, (char __user *)fw_buf, fsize, &fp->f_pos);
-				if (nread != fsize) {
-					dev_err(&this->pdev->dev,
-						"failed to read firmware file, %ld Bytes\n", nread);
-					ret = -EIO;
-					goto fw_dump_exit2;
-				}
-
-				strncpy(phone_fw_version, fw_buf+nread-11, 11);
-				pr_info("Camera: phone fw version: %s\n", phone_fw_version); 
-fw_dump_exit2:
-				if (fw_buf) {
-					vfree(fw_buf);
-					fw_buf = NULL;
-				}
-
-				if (fp) {
-					filp_close(fp, current->files);
-					fp = NULL;
-				}
-
-				set_fs(old_fs);
-
-				if(ret < 0)
-					goto err_read_cal;
-			}
-
-			/* Compare f-rom fw with dumped(is_dump_existed == true) 
-									or phone fw(is_dump_existed == false)  */
-			/* Sensor Maker */
-			if(sysfs_finfo->header_ver[5] == 'L' && !is_dump_existed)	
-				is_dumped_fw_loading_needed =true;
-			else if(sysfs_finfo->header_ver[5] != (is_dump_existed ? dump_fw_version[5] : phone_fw_version[5]))
-				is_dumped_fw_loading_needed =true;
-			/* H/W Revision */
-			else if(sysfs_finfo->header_ver[6] != (is_dump_existed ? dump_fw_version[6] : phone_fw_version[6]))
-				is_dumped_fw_loading_needed =true;
-			/* Year */
-			else if(sysfs_finfo->header_ver[7] > (is_dump_existed ? dump_fw_version[7] : phone_fw_version[7]))
-				is_dumped_fw_loading_needed =true;
-			/* Month */
-			else if(sysfs_finfo->header_ver[7] == (is_dump_existed ? dump_fw_version[7] : phone_fw_version[7]) &&
-					sysfs_finfo->header_ver[8] > (is_dump_existed ? dump_fw_version[8] : phone_fw_version[8]))
-				is_dumped_fw_loading_needed =true;
-			/* Release number(high byte) */
-			else if(sysfs_finfo->header_ver[7] == (is_dump_existed ? dump_fw_version[7] : phone_fw_version[7]) &&
-					sysfs_finfo->header_ver[8] == (is_dump_existed ? dump_fw_version[8] : phone_fw_version[8]) &&
-					sysfs_finfo->header_ver[9] > (is_dump_existed ? dump_fw_version[9] : phone_fw_version[9]))
-				is_dumped_fw_loading_needed =true;
-			/* Release number(low byte) */
-			else if(sysfs_finfo->header_ver[7] == (is_dump_existed ? dump_fw_version[7] : phone_fw_version[7]) &&
-					sysfs_finfo->header_ver[8] == (is_dump_existed ? dump_fw_version[8] : phone_fw_version[8]) &&
-					sysfs_finfo->header_ver[9] == (is_dump_existed ? dump_fw_version[9] : phone_fw_version[9]) &&
-					sysfs_finfo->header_ver[10] > (is_dump_existed ? dump_fw_version[10] : phone_fw_version[10]))
-				is_dumped_fw_loading_needed =true;
-			else
-				is_dump_needed = false;
-
-			/* Compare f-rom fw with phone fw */ 
-			if(is_dump_existed && is_dumped_fw_loading_needed) {
-				/* Sensor Maker */
-				if(sysfs_finfo->header_ver[5] == 'L')		
-					is_dumped_fw_loading_needed =true;
-				/* H/W Revision */
-				else if(sysfs_finfo->header_ver[6] != phone_fw_version[6])		
-					is_dumped_fw_loading_needed =true;
-				/* Year */
-				else if(sysfs_finfo->header_ver[7] > phone_fw_version[7])
-					is_dumped_fw_loading_needed =true;
-				/* Month */
-				else if(sysfs_finfo->header_ver[7] == phone_fw_version[7] &&
-						sysfs_finfo->header_ver[8] > phone_fw_version[8])
-					is_dumped_fw_loading_needed =true;
-				/* Release number(high byte) */
-				else if(sysfs_finfo->header_ver[7] == phone_fw_version[7] &&
-						sysfs_finfo->header_ver[8] == phone_fw_version[8] &&
-						sysfs_finfo->header_ver[9] > phone_fw_version[9])
-					is_dumped_fw_loading_needed =true;
-				/* Release number(low byte) */
-				else if(sysfs_finfo->header_ver[7] == phone_fw_version[7] &&
-						sysfs_finfo->header_ver[8] == phone_fw_version[8] &&
-						sysfs_finfo->header_ver[9] == phone_fw_version[9] &&
-						sysfs_finfo->header_ver[10] > phone_fw_version[10])
-					is_dumped_fw_loading_needed =true;
-				else {
-					is_dumped_fw_loading_needed = false;
-					is_dump_needed = false;
-				}
-			}
-			/* Compare dumped fw with phone fw */ 
-			else if(is_dump_existed && !is_dumped_fw_loading_needed){
-				is_dump_needed = false;
-				
-				/* Sensor Maker */
-				if(dump_fw_version[5] == 'L')		
-					is_dumped_fw_loading_needed =true;
-				/* H/W Revision */
-				else if(dump_fw_version[6] != phone_fw_version[6])		
-					is_dumped_fw_loading_needed =true;
-				/* Year */
-				else if(dump_fw_version[7] > phone_fw_version[7])
-					is_dumped_fw_loading_needed =true;
-				/* Month */
-				else if(dump_fw_version[7] == phone_fw_version[7] &&
-						dump_fw_version[8] > phone_fw_version[8])
-					is_dumped_fw_loading_needed =true;
-				/* Release number(high byte) */
-				else if(dump_fw_version[7] == phone_fw_version[7] &&
-						dump_fw_version[8] == phone_fw_version[8] &&
-						dump_fw_version[9] > phone_fw_version[9])
-					is_dumped_fw_loading_needed =true;
-				/* Release number(low byte) */
-				else if(dump_fw_version[7] == phone_fw_version[7] &&
-						dump_fw_version[8] == phone_fw_version[8] &&
-						dump_fw_version[9] == phone_fw_version[9] &&
-						dump_fw_version[10] > phone_fw_version[10])
-					is_dumped_fw_loading_needed =true;
-				else 
-					is_dumped_fw_loading_needed = false;			
-			}
-
-			if(is_dump_needed) {
-				ret = fimc_is_ischain_readfw(this, &sensor->enum_sensor[SENSOR_NAME_IMX135].ext);
-				if(ret < 0) {
-					if(!CRC32_FW_CHECK)
-						is_dumped_fw_loading_needed = false;
-					else
-						goto err_read_cal;
+			/*select AF actuator*/
+			if (finfo->header_ver[0] == FW_MODULE_COMPANY_GUMI) {
+				pr_info("AF actuator is AK7345\n");
+				sensor->enum_sensor[SENSOR_NAME_IMX135].ext.actuator_con.product_name = ACTUATOR_NAME_AK7345;
+			} else {
+				if (cam_sensor == SENSOR_NAME_IMX134) {
+					pr_info("AF actuator is AK7345\n");
+					sensor->enum_sensor[cam_sensor].ext.actuator_con.product_name = ACTUATOR_NAME_AK7345;
+				} else {
+					pr_info("AF actuator is WV560\n");
+					sensor->enum_sensor[cam_sensor].ext.actuator_con.product_name = ACTUATOR_NAME_WV560;
 				}
 			}
 		}
-#else		
-		if(!is_caldata_read &&
-				(cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_FRONT)) {
-			is_dumped_fw_loading_needed = false;
-			sensor = &core->sensor[0];
-
-			if(cam_id == CAMERA_DUAL_FRONT) {
-				if((ret = f_rom_ldo_enable(dev, "cam_io_1.8v", true)) < 0) {
-					err("f_rom_ldo_enable(true) failed!\n");
-					goto err_f_rom;
-				}
-
-				if((ret = f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_SCLK", true)) < 0) {
-					err("f_rom_gpio_enable(GPIO_CAM_SPI0_SCLK, true) failed!\n");
-					is_ldo_enabled = true;
-					goto err_f_rom;
-				}
-
-				if((ret = f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_SSN", true)) < 0) {
-					err("f_rom_gpio_enable(GPIO_CAM_SPI0_SSN, true) failed!\n");
-					is_ldo_enabled = true;
-					goto err_f_rom;
-				}
-
-				if((ret = f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_MISP", true)) < 0) {
-					err("f_rom_gpio_enable(GPIO_CAM_SPI0_MISP, true) failed!\n");
-					is_ldo_enabled = true;
-					goto err_f_rom;
-				}
-
-				if((ret = f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_MOSI", true)) < 0) {
-					err("f_rom_gpio_enable(GPIO_CAM_SPI0_MOSI, true) failed!\n");
-					is_ldo_enabled = true;
-					goto err_f_rom;
-				}
-
-				is_ldo_enabled = true;
-			}
-			
-			/* reset spi */
-			memset(spi_buf, 0x0, 0x50);
-			ret = fimc_is_spi_reset(spi_buf, 0x0, FIMC_IS_MAX_CAL_SIZE);
-			if (ret < 0) {
-				err("failed to fimc_is_spi_read (%d)\n", ret);
-				ret = -EINVAL;
-				goto err_spi_rst;
-			}
-
-		    pr_info("read cal data from FROM\n");
-		    if((fimc_is_ischain_readcaldata(this, &sensor->enum_sensor[SENSOR_NAME_S5K4E5].ext)!= -EIO) &&
-					CRC32_HEADER_CHECK)
-		        is_caldata_read = true;
-
-			if(!CRC32_HEADER_CHECK){
-				pr_info("Camera : CRC32 error for all section.\n");
-				ret = -EIO;
-				goto err_read_cal;
-			}
-			
-			sysfs_finfo = &this->finfo;
-			sysfs_pinfo = &this->pinfo;
-		}
-
-		if(cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_REAR){
-			snprintf(fw_name, sizeof(fw_name), "%s", FIMC_IS_PL_FW);
-			snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_4E5_SETF);
-		}
-		else if(cam_id == CAMERA_SINGLE_FRONT || cam_id == CAMERA_DUAL_FRONT){
-			snprintf(fw_name, sizeof(fw_name), "%s", FIMC_IS_PL_FW);
-			snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_6B2_SETF);
-		}
-#endif		
 
 		/* 3. Load IS firmware */
 		ret = fimc_is_ischain_loadfirm(this);
@@ -2486,15 +1318,15 @@ fw_dump_exit2:
 			err("failed to fimc_is_request_firmware (%d)", ret);
 			clear_bit(FIMC_IS_ISCHAIN_LOADED, &this->state);
 			ret = -EINVAL;
-			goto err_load_firm;
+			goto exit;
 		}
 		set_bit(FIMC_IS_ISCHAIN_LOADED, &this->state);
-		
+
 		/* 3. S/W reset pixel async bridge */
-		if (soc_is_exynos5410())
+		if (soc_is_exynos5410() || soc_is_exynos5420())
 			tdnr_s3d_pixel_async_sw_reset(this);
 
-		printk(KERN_INFO "%s(%d) - async bridge\n", __func__, on);
+		pr_info("%s(%d) - async bridge\n", __func__, on);
 
 		/* 4. A5 start address setting */
 		dbg_ischain("imemory.base(dvaddr) : 0x%08x\n",
@@ -2503,25 +1335,37 @@ fw_dump_exit2:
 			this->imemory.kvaddr);
 
 		if (!this->imemory.dvaddr) {
-			err("firmware device virtual is null");
+			merr("firmware device virtual is null", this);
 			ret = -ENOMEM;
-			goto err_imem;
+			goto exit;
 		}
 
 		writel(this->imemory.dvaddr, this->regs + BBOAR);
 
-		printk(KERN_INFO "%s(%d) - check dvaddr validate...\n", __func__, on);
+		pr_debug("%s(%d) - check dvaddr validate...\n", __func__, on);
+
+#ifdef CONFIG_ARM_TRUSTZONE
+		exynos_smc(SMC_CMD_REG, SMC_REG_ID_SFR_W(0x131E0004), 0x000000FF, 0);
+		for (i = 0; i < 3; i++)
+			exynos_smc(SMC_CMD_REG, SMC_REG_ID_SFR_W(0x131F0080 + (i * 4)), 0xFFFFFFFF, 0);
+		for (i = 0; i < 18; i++)
+			exynos_smc(SMC_CMD_REG, SMC_REG_ID_SFR_W(0x131F0400 + (i * 4)), 0x10101010, 0);
+
+		exynos_smc_readsfr(0x131E0004, &debug);
+		if (debug != 0xFC)
+			merr("secure configuration is fail[0x131E0004:%08X]", this, debug);
+#endif
 
 		/* 5. A5 power on*/
 		writel(0x1, PMUREG_ISP_ARM_CONFIGURATION);
 
-		printk(KERN_INFO "%s(%d) - A5 Power on\n", __func__, on);
+		pr_info("%s(%d) - A5 Power on\n", __func__, on);
 
 		/* 6. enable A5 */
 		writel(0x00018000, PMUREG_ISP_ARM_OPTION);
 		timeout = 1000;
 
-		printk(KERN_INFO "%s(%d) - A5 enable start...\n", __func__, on);
+		pr_debug("%s(%d) - A5 enable start...\n", __func__, on);
 
 		while ((__raw_readl(PMUREG_ISP_ARM_STATUS) & 0x1) != 0x1) {
 			if (timeout == 0)
@@ -2530,14 +1374,14 @@ fw_dump_exit2:
 			udelay(1);
 		}
 
-		printk(KERN_INFO "%s(%d) - A5 enable end...\n", __func__, on);
+		pr_debug("%s(%d) - A5 enable end...\n", __func__, on);
 
 		set_bit(FIMC_IS_ISCHAIN_POWER_ON, &this->state);
 
 		/* for mideaserver force down */
 		set_bit(FIMC_IS_ISCHAIN_POWER_ON, &core->state);
 
-		printk(KERN_INFO "%s(%d) - change A5 state\n", __func__, on);
+		pr_debug("%s(%d) - change A5 state\n", __func__, on);
 	} else {
 		/* 1. disable A5 */
 		if (test_bit(IS_IF_STATE_START, &this->interface->state))
@@ -2555,6 +1399,7 @@ fw_dump_exit2:
 
 		/* 2. FIMC-IS local power down */
 #if defined(CONFIG_PM_RUNTIME)
+		bts_initialize("pd-fimclite", false);
 		pm_runtime_put_sync(dev);
 		dbg_ischain("pm_runtime_suspended = %d\n",
 					pm_runtime_suspended(dev));
@@ -2567,41 +1412,7 @@ fw_dump_exit2:
 		clear_bit(FIMC_IS_ISCHAIN_POWER_ON, &core->state);
 	}
 
-	if(is_ldo_enabled) {
-#ifndef CONFIG_MACH_V1
-		f_rom_ldo_enable(dev, "cam_isp_sensor_io_1.8v", false);
-#else
-		f_rom_ldo_enable(dev, "cam_io_1.8v", false);
-#endif
-		f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_SCLK", false);
-		f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_SSN", false);
-		f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_MISP", false);
-		f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_MOSI", false);
-	}
-	pr_info("%s(%d)\n", __func__,
-		test_bit(FIMC_IS_ISCHAIN_POWER_ON, &this->state));	
-
-	return ret;
-
-err_imem:
-err_load_firm:
-err_read_cal:
-err_spi_rst:
-err_f_rom:
-	if(is_ldo_enabled) {
-#ifndef CONFIG_MACH_V1
-		f_rom_ldo_enable(dev, "cam_isp_sensor_io_1.8v", false);
-#else
-		f_rom_ldo_enable(dev, "cam_io_1.8v", false);
-#endif
-
-		f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_SCLK", false);
-		f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_SSN", false);
-		f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_MISP", false);
-		f_rom_gpio_enable(this->pdata, "GPIO_CAM_SPI0_MOSI", false);
-	}
-
-	pm_runtime_put_sync(dev);
+exit:
 
 	pr_info("%s(%d)\n", __func__,
 		test_bit(FIMC_IS_ISCHAIN_POWER_ON, &this->state));
@@ -2910,58 +1721,25 @@ static int fimc_is_itf_enum(struct fimc_is_device_ischain *this)
 }
 
 static int fimc_is_itf_open(struct fimc_is_device_ischain *device,
-	u32 module, u32 info)
+	u32 module,
+	u32 group_id,
+	u32 flag,
+	struct sensor_open_extended *ext_info)
 {
 	int ret = 0;
-	int instance;
-	u32 flag, vindex, group, origin;
-	struct fimc_is_device_ischain *temp;
-	struct fimc_is_groupmgr *groupmgr;
-	struct is_region *region = device->is_region;
+	struct is_region *region;
 	struct fimc_is_interface *itf;
 
-	groupmgr = device->groupmgr;
-	flag = (module & REPROCESSING_MASK) >> REPROCESSING_SHIFT;
-	vindex = (module & BPP_VINDEX_MASK) >> BPP_VINDEX_SHIFT;
-	module = module & MODULE_MASK;
-	device->module = module;
-	origin = device->module;
+	BUG_ON(!device);
+	BUG_ON(!device->is_region);
+	BUG_ON(!device->sensor);
+	BUG_ON(!device->interface);
+	BUG_ON(!ext_info);
+
+	region = device->is_region;
 	itf = device->interface;
 
-	if (flag) {
-		instance = device->instance - 1;
-		while (instance >= 0) {
-			temp = groupmgr->group[instance][GROUP_ID_ISP]->device;
-#ifdef DEBUG
-			pr_info("i%d(%08X != %08X)\n", instance, temp->module, origin);
-#endif
-			if (temp->module  == origin)
-				break;
-			instance--;
-		}
-
-		if (instance < 0) {
-			merr("original instance can NOT be found", device);
-			ret = -EINVAL;
-			goto p_err;
-		}
-
-		flag = REPROCESSING_FLAG | instance;
-		set_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state);
-	}
-
-	if (vindex == FIMC_IS_VIDEO_3A0_NUM) {
-		group = GROUP_ID_3A0;
-		pr_err("[ISP:V:%d] <-> [3A0:V:X]\n", device->instance);
-	} else if (vindex == FIMC_IS_VIDEO_3A1_NUM) {
-		group = GROUP_ID_3A1;
-		pr_err("[ISP:V:%d] <-> [3A1:V:X]\n", device->instance);
-		set_bit(FIMC_IS_ISCHAIN_OTF_OPEN, &device->state);
-	} else {
-		merr("video index is invalid(%d)", device, vindex);
-		ret = -EINVAL;
-		goto p_err;
-	}
+	memcpy(&region->shared[0], ext_info, sizeof(struct sensor_open_extended));
 
 	fimc_is_ischain_region_flush(device);
 
@@ -2971,8 +1749,14 @@ static int fimc_is_itf_open(struct fimc_is_device_ischain *device,
 		goto p_err;
 	}
 
-	ret = fimc_is_hw_open(device->interface, device->instance, module, info,
-		group, flag, &device->margin_width, &device->margin_height);
+	ret = fimc_is_hw_open(device->interface,
+		device->instance,
+		module,
+		device->imemory.dvaddr_shared,
+		group_id,
+		flag,
+		&device->margin_width,
+		&device->margin_height);
 	if (ret) {
 		merr("fimc_is_hw_open is fail", device);
 		device->pdata->print_cfg(device->pdev,
@@ -2983,7 +1767,7 @@ static int fimc_is_itf_open(struct fimc_is_device_ischain *device,
 
 	set_bit(IS_IF_STATE_SENSOR_OPENED, &itf->state);
 
-	/*hack*/
+	/* HACK */
 	device->margin_left = 8;
 	device->margin_right = 8;
 	device->margin_top = 6;
@@ -2996,7 +1780,7 @@ static int fimc_is_itf_open(struct fimc_is_device_ischain *device,
 	fimc_is_ischain_region_invalid(device);
 
 	if (region->shared[MAX_SHARED_COUNT-1] != MAGIC_NUMBER) {
-		err("MAGIC NUMBER error\n");
+		merr("MAGIC NUMBER error", device);
 		ret = -EINVAL;
 		goto p_err;
 	}
@@ -3120,9 +1904,7 @@ static int fimc_is_itf_unmap(struct fimc_is_device_ischain *this,
 int fimc_is_itf_stream_on(struct fimc_is_device_ischain *device)
 {
 	int ret = 0;
-	u32 retry = 1500;
-	u32 process_cnt;
-	unsigned long flags;
+	u32 retry = 10000;
 	struct fimc_is_group *group_3ax, *group_isp;
 
 	group_3ax = &device->group_3ax;
@@ -3147,7 +1929,7 @@ int fimc_is_itf_stream_on(struct fimc_is_device_ischain *device)
 	}
 
 	if (retry)
-		pr_warn("[ISC:D:%d] stream on ready\n", device->instance);
+		pr_info("[ISC:D:%d] stream on ready\n", device->instance);
 	else
 		pr_err("[ISC:D:%d] stream on NOT ready\n", device->instance);
 
@@ -3183,9 +1965,10 @@ int fimc_is_itf_process_stop(struct fimc_is_device_ischain *device,
 	u32 group)
 {
 	int ret = 0;
-	struct fimc_is_core *core = (struct fimc_is_core *)device->interface->core;
 
 #ifdef ENABLE_CLOCK_GATE
+	struct fimc_is_core *core = (struct fimc_is_core *)device->interface->core;
+
 	/* clock on */
 	fimc_is_clock_set(core, GROUP_ID_MAX, true);
 #endif
@@ -3200,9 +1983,10 @@ int fimc_is_itf_force_stop(struct fimc_is_device_ischain *device,
 	u32 group)
 {
 	int ret = 0;
-	struct fimc_is_core *core = (struct fimc_is_core *)device->interface->core;
 
 #ifdef ENABLE_CLOCK_GATE
+	struct fimc_is_core *core = (struct fimc_is_core *)device->interface->core;
+
 	/* clock on */
 	fimc_is_clock_set(core, GROUP_ID_MAX, true);
 #endif
@@ -3232,9 +2016,10 @@ static int fimc_is_itf_init_process_stop(struct fimc_is_device_ischain *device)
 {
 	int ret = 0;
 	u32 group = 0;
-	struct fimc_is_core *core = (struct fimc_is_core *)device->interface->core;
 
 #ifdef ENABLE_CLOCK_GATE
+	struct fimc_is_core *core = (struct fimc_is_core *)device->interface->core;
+
 	/* clock on */
 	fimc_is_clock_set(core, GROUP_ID_MAX, true);
 #endif
@@ -3286,16 +2071,6 @@ int fimc_is_itf_g_capability(struct fimc_is_device_ischain *this)
 	capability = &this->capability;
 
 	printk(KERN_INFO "===ColorC================================\n");
-#if 0
-	index = 0;
-	metadata = capability->color.availableModes[index];
-	while (metadata) {
-		dbg_ischain("availableModes : %d\n", metadata);
-		index++;
-		metadata = capability->color.availableModes[index];
-	}
-#endif
-
 	printk(KERN_INFO "===ToneMapping===========================\n");
 	metadata = capability->tonemap.maxCurvePoints;
 	printk(KERN_INFO "maxCurvePoints : %d\n", metadata);
@@ -3328,16 +2103,6 @@ int fimc_is_itf_g_capability(struct fimc_is_device_ischain *this)
 		capability->stats.maxSharpnessMapValue);
 
 	printk(KERN_INFO "===3A====================================\n");
-#if 0
-	index = 0;
-	metadata = capability->aa.availableModes[index];
-	while (metadata) {
-		dbg_ischain("availableModes : %d\n", metadata);
-		index++;
-		metadata = capability->aa.availableModes[index];
-	}
-#endif
-
 	printk(KERN_INFO "maxRegions : %d\n", capability->aa.maxRegions);
 
 	index = 0;
@@ -3390,9 +2155,10 @@ int fimc_is_itf_g_capability(struct fimc_is_device_ischain *this)
 int fimc_is_itf_power_down(struct fimc_is_interface *interface)
 {
 	int ret = 0;
-	struct fimc_is_core *core = (struct fimc_is_core *)interface->core;
 
 #ifdef ENABLE_CLOCK_GATE
+	struct fimc_is_core *core = (struct fimc_is_core *)interface->core;
+
 	/* clock on */
 	fimc_is_clock_set(core, GROUP_ID_MAX, true);
 #endif
@@ -3407,8 +2173,19 @@ static int fimc_is_itf_grp_shot(struct fimc_is_device_ischain *device,
 	struct fimc_is_frame *frame)
 {
 	int ret = 0;
+#ifdef ENABLE_CLOCK_GATE
 	struct fimc_is_core *core = (struct fimc_is_core *)device->interface->core;
-
+#endif
+#ifdef ENABLE_DVFS
+#if defined(CONFIG_SOC_EXYNOS5420)
+	int int_level = 0;
+	int mif_level = 0;
+	int i2c_clk = 0;
+#endif
+#ifndef ENABLE_CLOCK_GATE
+	struct fimc_is_core *core = (struct fimc_is_core *)device->interface->core;
+#endif
+#endif
 	BUG_ON(!device);
 	BUG_ON(!group);
 	BUG_ON(!frame);
@@ -3440,7 +2217,8 @@ static int fimc_is_itf_grp_shot(struct fimc_is_device_ischain *device,
 #ifdef MEASURE_TIME
 #ifdef INTERNAL_TIME
 	do_gettimeofday(&frame->time_shot);
-#else
+#endif
+#ifdef EXTERNAL_TIME
 	do_gettimeofday(&frame->tzone[TM_SHOT]);
 #endif
 #endif
@@ -3451,12 +2229,121 @@ static int fimc_is_itf_grp_shot(struct fimc_is_device_ischain *device,
 #endif
 
 #ifdef ENABLE_DVFS
+#if defined(CONFIG_SOC_EXYNOS5420)
 	mutex_lock(&core->clock.lock);
-#ifdef CONFIG_MACH_V1
-	if (device->sensor->framerate == 120) {
+
+	/* Set DVFS level by scenario */
+	if (device->sensor->framerate > 30) {
+		core->clock.dvfs_skipcnt = DVFS_SKIP_FRAME_NUM;
+		fimc_is_set_dvfs(core, device, group->id, DVFS_L0,
+							DVFS_MIF_L2, I2C_L0);
+	} else if (fimc_is_get_dvfs_scenario(core) == DVFS_SCENARIO_DUAL) {
+		if (device->sensor_width > 2560) {
+			core->clock.dvfs_skipcnt = 1000;
+			fimc_is_set_dvfs(core, device, group->id, DVFS_L0,
+							DVFS_MIF_L0, I2C_L0);
+		} else if (core->clock.dvfs_skipcnt > 0) {
+			core->clock.dvfs_skipcnt--;
+		}
+	} else if ((device->module == SENSOR_NAME_IMX135 ||
+			device->module == SENSOR_NAME_3L2 ||
+			device->module == SENSOR_NAME_IMX134) &&
+		test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state)) {
+		core->clock.dvfs_skipcnt = DVFS_SKIP_FRAME_NUM;
+		fimc_is_set_dvfs(core, device, group->id, DVFS_L0,
+							DVFS_MIF_L2, I2C_L0);
+	} else {
+		if (core->clock.dvfs_skipcnt > 0)
+			core->clock.dvfs_skipcnt--;
+	}
+
+	if (!core->clock.dvfs_skipcnt &&
+				!pm_qos_request_active(&device->user_qos)) {
+		if ((device->chain0_width > 2400) ||
+					(device->sensor->framerate == 120)) {
+			int_level = DVFS_L0;
+			mif_level = DVFS_MIF_L2;
+			i2c_clk = I2C_L0;
+		} else if (test_bit(FIMC_IS_ISDEV_DSTART, &device->dis.state)) {
+			int_level = DVFS_L0;
+			mif_level = DVFS_MIF_L2;
+			i2c_clk = I2C_L0;
+		} else if ((device->module == SENSOR_NAME_IMX135 ||
+				device->module == SENSOR_NAME_3L2 ||
+				device->module == SENSOR_NAME_IMX134) &&
+			test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state)) {
+			int_level = DVFS_L0;
+			mif_level = DVFS_MIF_L2;
+			i2c_clk = I2C_L0;
+		} else if (fimc_is_get_dvfs_scenario(core) == DVFS_SCENARIO_DUAL) {
+			int_level = DVFS_L1_1;
+			mif_level = DVFS_MIF_L3;
+			i2c_clk = I2C_L1_1;
+		} else {
+			switch (device->module) {
+			case SENSOR_NAME_IMX135:
+			case SENSOR_NAME_IMX134:
+			case SENSOR_NAME_3L2:
+				if ((device->setfile & FIMC_IS_SETFILE_MASK) == \
+						ISS_SUB_SCENARIO_VIDEO) {
+					int_level = DVFS_L1;
+					mif_level = DVFS_MIF_L2;
+					i2c_clk = I2C_L1;
+				} else {
+					int_level = DVFS_L1;
+					mif_level = DVFS_MIF_L3;
+					i2c_clk = I2C_L1;
+				}
+				break;
+			case SENSOR_NAME_S5K6B2:
+				if (((device->setfile & FIMC_IS_SETFILE_MASK) \
+					== ISS_SUB_SCENARIO_FRONT_VT1) \
+					|| ((device->setfile & FIMC_IS_SETFILE_MASK) == \
+					ISS_SUB_SCENARIO_FRONT_VT2)) {
+					int_level = DVFS_L1_3;
+					mif_level = DVFS_MIF_L4;
+					i2c_clk = I2C_L2;
+				} else {
+					int_level = DVFS_L1_3;
+					mif_level = DVFS_MIF_L4;
+					i2c_clk = I2C_L2;
+				}
+				break;
+			default:
+				pr_warn("%s: This sensor can't be applied to DVFS\n", __func__);
+				int_level = DVFS_L0;
+				mif_level = DVFS_MIF_L1;
+				i2c_clk = I2C_L0;
+				break;
+			}
+		}
+
+		fimc_is_set_dvfs(core, device, group->id, int_level,
+							mif_level, i2c_clk);
+	}
+
+	mutex_unlock(&core->clock.lock);
+#else
+	mutex_lock(&core->clock.lock);
+	if (device->sensor->framerate > 30) {
 		core->clock.dvfs_skipcnt = DVFS_SKIP_FRAME_NUM;
 		fimc_is_set_dvfs(core, device, group->id, DVFS_L0, I2C_L0);
-	} else if (device->sensor->framerate == 30) {
+	} else if (fimc_is_get_dvfs_scenario(core) == DVFS_SCENARIO_DUAL) {
+		if (device->sensor_width > 2560) {
+			core->clock.dvfs_skipcnt = 1000;
+			fimc_is_set_dvfs(core, device, group->id, \
+			DVFS_L0, I2C_L0);
+		} else if (core->clock.dvfs_skipcnt > 0) {
+			core->clock.dvfs_skipcnt--;
+		}
+        } else if ((device->module == SENSOR_NAME_IMX135 ||
+			device->module == SENSOR_NAME_3L2 ||
+			device->module == SENSOR_NAME_IMX134) &&
+		test_bit(FIMC_IS_ISCHAIN_REPROCESSING, \
+		&device->state)) {
+		core->clock.dvfs_skipcnt = DVFS_SKIP_FRAME_NUM;
+		fimc_is_set_dvfs(core, device, group->id, DVFS_L0, I2C_L0);
+	} else {
 		if (core->clock.dvfs_skipcnt > 0)
 			core->clock.dvfs_skipcnt--;
 	}
@@ -3465,66 +2352,23 @@ static int fimc_is_itf_grp_shot(struct fimc_is_device_ischain *device,
 	if (!core->clock.dvfs_skipcnt) {
 		if (!pm_qos_request_active(&device->user_qos)) {
 			if ((2560 < device->chain0_width) ||
-			     device->sensor->framerate == 120 ||
-			     test_bit(FIMC_IS_ISDEV_DSTART, &device->dis.state))
-				fimc_is_set_dvfs(core, device, group->id, DVFS_L0, I2C_L0);
-			else
-				fimc_is_set_dvfs(core, device, group->id, DVFS_L1, I2C_L1);
-		}
-	}
-#else
-        if (30 < device->sensor->framerate) {
-                core->clock.dvfs_skipcnt = DVFS_SKIP_FRAME_NUM;
-                fimc_is_set_dvfs(core, device, group->id, DVFS_L0, I2C_L0);
-        } else if (atomic_read(&core->video_isp.refcount) >= 3) {
-		if (device->sensor_width > 2560) {
-			core->clock.dvfs_skipcnt = 1000;
-			fimc_is_set_dvfs(core, device, group->id, \
-			DVFS_L0, I2C_L0);
-		} else if (core->clock.dvfs_skipcnt > 0) {
-			core->clock.dvfs_skipcnt--;
-		}
-        } else if (device->module == SENSOR_NAME_IMX135 &&
-		test_bit(FIMC_IS_ISCHAIN_REPROCESSING, \
-		&device->state)) {
-                core->clock.dvfs_skipcnt = DVFS_SKIP_FRAME_NUM;
-                fimc_is_set_dvfs(core, device, group->id, DVFS_L0, I2C_L0);
-        } else {
-                if (core->clock.dvfs_skipcnt > 0)
-                        core->clock.dvfs_skipcnt--;
-        }
-
-        /* update dvfs */
-	if (!core->clock.dvfs_skipcnt) {
-		if (!pm_qos_request_active(&device->user_qos)) {
-			if ((2560 < device->chain0_width) ||
 			device->sensor->framerate == 120 ||
 			test_bit(FIMC_IS_ISDEV_DSTART, &device->dis.state) ||
-			(device->module == SENSOR_NAME_IMX135 &&
+			((device->module == SENSOR_NAME_IMX135 ||
+			  device->module == SENSOR_NAME_3L2 ||
+			  device->module == SENSOR_NAME_IMX134) &&
 				test_bit(FIMC_IS_ISCHAIN_REPROCESSING, \
 				&device->state))) {
 				fimc_is_set_dvfs(core, device, group->id, \
 					DVFS_L0, I2C_L0);
-			} else if (atomic_read(&core->video_isp.refcount) >= 3) {
+			} else if (fimc_is_get_dvfs_scenario(core) == DVFS_SCENARIO_DUAL) {
 				fimc_is_set_dvfs(core, device, group->id, \
 				DVFS_L1_1, I2C_L1_1);
-			} else if (device->module == SENSOR_NAME_IMX135 &&
+			} else if ((device->module == SENSOR_NAME_IMX135 ||
+					device->module == SENSOR_NAME_3L2 ||
+					device->module == SENSOR_NAME_IMX134) &&
 				!test_bit(FIMC_IS_ISCHAIN_REPROCESSING, \
 					&device->state)) {
-#ifdef CONFIG_TARGET_LOCALE_KOR	//for only KOR blackbox
-				if (device->sensor->width < 2000) {
- 					fimc_is_set_dvfs(core, device, group->id, \
-					DVFS_L1_1, I2C_L1_1);
-				} else {
-					if ((device->setfile && 0xffff) == \
-						ISS_SUB_SCENARIO_VIDEO)
-						fimc_is_set_dvfs(core, device, group->id, \
-							DVFS_L1, I2C_L1);
-					else
-						fimc_is_set_dvfs(core, device, group->id, \
-							DVFS_L1, I2C_L1);
-				}
-#else	// for Not KOR
 				if ((device->setfile && 0xffff) == \
 					ISS_SUB_SCENARIO_VIDEO)
 					fimc_is_set_dvfs(core, device, group->id, \
@@ -3532,7 +2376,6 @@ static int fimc_is_itf_grp_shot(struct fimc_is_device_ischain *device,
 				else
 					fimc_is_set_dvfs(core, device, group->id, \
 						DVFS_L1, I2C_L1);
-#endif
 			} else if (device->module == SENSOR_NAME_S5K6B2) {
 				if (((device->setfile && 0xffff) \
 					== ISS_SUB_SCENARIO_FRONT_VT1) \
@@ -3551,8 +2394,8 @@ static int fimc_is_itf_grp_shot(struct fimc_is_device_ischain *device,
 			}
 		}
 	}
-#endif
 	mutex_unlock(&core->clock.lock);
+#endif
 #endif
 
 	ret = fimc_is_hw_shot_nblk(device->interface,
@@ -3566,7 +2409,6 @@ static int fimc_is_itf_grp_shot(struct fimc_is_device_ischain *device,
 p_err:
 	return ret;
 }
-
 
 int fimc_is_ischain_probe(struct fimc_is_device_ischain *device,
 	struct fimc_is_interface *interface,
@@ -3695,8 +2537,6 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *device,
 	int ret = 0;
 	struct fimc_is_ishcain_mem *imemory;
 	struct fimc_is_core *core;
-	char buf[1];
-	loff_t pos = 0;
 
 	BUG_ON(!device);
 	BUG_ON(!device->groupmgr);
@@ -3706,7 +2546,7 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *device,
 	if (test_bit(FIMC_IS_ISCHAIN_OPEN, &device->state)) {
 		merr("already open", device);
 		ret = -EMFILE;
-		goto exit;
+		goto p_err;
 	}
 
 #ifndef RESERVED_MEM
@@ -3715,7 +2555,7 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *device,
 		ret = fimc_is_ishcain_initmem(device);
 		if (ret) {
 			err("fimc_is_ishcain_initmem is fail(%d)\n", ret);
-			goto exit;
+			goto p_err;
 		}
 	}
 #endif
@@ -3761,6 +2601,7 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *device,
 	device->dzoom_width	= 0;
 	device->force_down	= false;
 	device->sensor		= NULL;
+	device->module		= 0;
 
 	imemory			= &device->imemory;
 	imemory->base		= minfo->base;
@@ -3787,98 +2628,8 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *device,
 	imemory->kvaddr_shared	= imemory->kvaddr + imemory->offset_shared;
 	device->is_region = imemory->is_region;
 
-	/*fimc_is_fw_clear_irq1_all(core);*/
 
-	read_data_from_file("/data/CameraID.txt", buf, 1, &pos);
-	if(buf[0] == '0')
-		cam_id = CAMERA_SINGLE_REAR;
-	else if(buf[0] == '1')
-		cam_id = CAMERA_SINGLE_FRONT;
-	else if(buf[0] == '2')
-		cam_id = CAMERA_DUAL_REAR;
-	else if(buf[0] == '3')
-		cam_id = CAMERA_DUAL_FRONT;
-
-#ifdef CONFIG_MACH_V1
-	if(cam_id == CAMERA_SINGLE_REAR || cam_id == CAMERA_DUAL_REAR){
-		snprintf(fw_name, sizeof(fw_name), "%s", FIMC_IS_PL_FW);
-		snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_4E5_SETF);
-	}
-	else if(cam_id == CAMERA_SINGLE_FRONT || cam_id == CAMERA_DUAL_FRONT){
-		snprintf(fw_name, sizeof(fw_name), "%s", FIMC_IS_PL_FW);
-		snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_6B2_SETF);
-	}
-#else
-	if(cam_id == CAMERA_SINGLE_FRONT){
-		snprintf(fw_name, sizeof(fw_name), "%s", FIMC_IS_GUMI_FW);
-		snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_6B2_SETF);
-	}
-	else {
-		if(sysfs_finfo != NULL) {
-			if(sysfs_finfo->header_ver[0] == 'S') {
-				snprintf(fw_name, sizeof(fw_name), "%s", FIMC_IS_SEC_FW);
-				if(cam_id == CAMERA_DUAL_FRONT)
-					snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_6B2_SETF);
-				else {
-					if(sysfs_finfo->header_ver[5] == 'L')
-						snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_3L2_SEC_SETF);
-					else
-						snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_IMX135_SEC_SETF);
-				}
-			}
-			else {
-				snprintf(fw_name, sizeof(fw_name), "%s", FIMC_IS_GUMI_FW);
-				if(cam_id == CAMERA_DUAL_FRONT)
-					snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_6B2_SETF);
-				else {
-					if(sysfs_finfo->header_ver[5] == 'L')
-						snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_3L2_GUMI_SETF);
-					else
-						snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_IMX135_GUMI_SETF);
-				}
-			}
-		}
-		else {
-			snprintf(fw_name, sizeof(fw_name), "%s", FIMC_IS_GUMI_FW);
-			if(cam_id == CAMERA_DUAL_FRONT)
-				snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_6B2_SETF);
-			else
-				snprintf(setf_name, sizeof(setf_name), "%s", FIMC_IS_IMX135_GUMI_SETF);
-		}
-	}
-#endif
-
-	/* for mediaserver force close */
-	core = (struct fimc_is_core *)device->interface->core;
-	ret = fimc_is_resource_get(core);
-	if (ret) {
-		merr("fimc_is_resource_get is fail", device);
-		goto err_rsc_get;
-	}
-
-	if (device->instance == 0) {
-#if 0
-		/* 3. Load IS firmware */
-		ret = fimc_is_ischain_loadfirm(device);
-		if (ret) {
-			err("failed to fimc_is_request_firmware (%d)", ret);
-			clear_bit(FIMC_IS_ISCHAIN_LOADED, &device->state);
-			ret = -EINVAL;
-			goto exit;
-		}
-		set_bit(FIMC_IS_ISCHAIN_LOADED, &device->state);
-#endif
-
-		/* 5. A5 power on */
-		ret = fimc_is_ischain_power(device, 1);
-		if (ret) {
-			err("failed to fimc_is_ischain_power (%d)\n", ret);
-			ret = -EINVAL;
-			goto err_pwr;
-		}
-
-		dbg_ischain("power up and loaded firmware\n");
-	}
+	fimc_is_sec_get_camid_from_hal(fw_name, setf_name);
 
 	fimc_is_group_open(device->groupmgr, &device->group_isp, GROUP_ID_ISP,
 		device->instance, vctx, device, fimc_is_ischain_isp_callback);
@@ -3890,16 +2641,31 @@ int fimc_is_ischain_open(struct fimc_is_device_ischain *device,
 	/* FD see only control.command not bypass */
 	fimc_is_ischain_sub_open(&device->fd, NULL, NULL);
 
+	/* for mediaserver force close */
+	core = (struct fimc_is_core *)device->interface->core;
+	ret = fimc_is_resource_get(core);
+	if (ret) {
+		merr("fimc_is_resource_get is fail", device);
+		fimc_is_resource_put(core);
+		goto p_err;
+	}
+
+	if (device->instance == 0) {
+		/* 5. A5 power on */
+		ret = fimc_is_ischain_power(device, 1);
+		if (ret) {
+			err("failed to fimc_is_ischain_power (%d)\n", ret);
+			fimc_is_resource_put(core);
+			ret = -EINVAL;
+			goto p_err;
+		}
+
+		dbg_ischain("power up and loaded firmware\n");
+	}
+
 	set_bit(FIMC_IS_ISCHAIN_OPEN, &device->state);
 
-	return ret;
-
-err_pwr:
-err_rsc_get:
-	/* resource close */
-	fimc_is_resource_put(core);
-exit:
-	pm_relax(&device->pdev->dev);
+p_err:
 	pr_info("[ISC:D:%d] %s(%d)\n", device->instance, __func__, ret);
 	return ret;
 }
@@ -3914,7 +2680,6 @@ int fimc_is_ischain_close(struct fimc_is_device_ischain *device,
 	struct fimc_is_subdev *leader;
 	struct fimc_is_queue *queue;
 	struct fimc_is_core *core;
-	struct fimc_is_interface *itf;
 
 	BUG_ON(!device);
 
@@ -3973,31 +2738,39 @@ exit:
 }
 
 int fimc_is_ischain_init(struct fimc_is_device_ischain *device,
-	u32 module, u32 channel, struct sensor_open_extended *ext,
-	char *setfile_name)
+	u32 module,
+	u32 group_id,
+	u32 flag)
 {
 	int ret = 0;
+	u32 channel;
+	char *setfile_name;
+	struct sensor_open_extended *ext_info;
+	struct fimc_is_device_sensor *sensor;
 
 	BUG_ON(!device);
 	BUG_ON(!device->sensor);
-	BUG_ON(!ext);
 
-	dbg_ischain("%s(module : %d, channel : %d, Af : %d)\n",
-		__func__, module, channel, ext->actuator_con.product_name);
+	dbg_ischain("%s(module : %d)\n", __func__, module);
+
+	sensor = device->sensor;
+	channel = sensor->enum_sensor[module].i2c_ch;
+	ext_info = &sensor->enum_sensor[module].ext;
+	setfile_name = sensor->enum_sensor[module].setfile_name;
 
 	if (test_bit(FIMC_IS_ISCHAIN_OPEN_SENSOR, &device->state)) {
 		mwarn("sensor is already open", device);
 		goto p_err;
 	}
 
-	if (!test_bit(FIMC_IS_SENSOR_OPEN, &device->sensor->state)) {
+	if (!test_bit(FIMC_IS_SENSOR_OPEN, &sensor->state)) {
 		merr("I2C gpio is not yet set", device);
 		ret = -EINVAL;
 		goto p_err;
 	}
 
 	if (!test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state)) {
-		if(is_caldata_read && (channel == 0)){
+		if(channel == 0){
 			/* Load calibration data from sensor */
 			ret = fimc_is_ischain_loadcalb(device, NULL);
 			if (ret) {
@@ -4015,10 +2788,7 @@ int fimc_is_ischain_init(struct fimc_is_device_ischain *device,
 		}
 	}
 
-	memcpy(&device->is_region->shared[0], ext,
-		sizeof(struct sensor_open_extended));
-
-	ret = fimc_is_itf_open(device, module, device->imemory.dvaddr_shared);
+	ret = fimc_is_itf_open(device, module, group_id, flag, ext_info);
 	if (ret) {
 		merr("open fail", device);
 		goto p_err;
@@ -4040,109 +2810,86 @@ int fimc_is_ischain_init(struct fimc_is_device_ischain *device,
 
 	ret = fimc_is_itf_init_process_stop(device);
 	if (ret) {
-		merr("processoff fail", device);
+		merr("fimc_is_itf_init_process_stop is fail", device);
 		goto p_err;
 	}
 
+#ifdef MEASURE_TIME
+#ifdef INTERNAL_TIME
+	if (test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state)) {
+		measure_period(&device->group_3ax.time, 1);
+		measure_period(&device->group_isp.time, 1);
+		measure_period(&device->group_dis.time, 1);
+	} else {
+		measure_period(&device->group_3ax.time, 66);
+		measure_period(&device->group_isp.time, 66);
+		measure_period(&device->group_dis.time, 66);
+	}
+#endif
+#endif
+
+	device->module = module;
 	set_bit(FIMC_IS_ISCHAIN_OPEN_SENSOR, &device->state);
 
 p_err:
 	return ret;
 }
 
-static int fimc_is_ischain_s_setfile(struct fimc_is_device_ischain *device)
+static int fimc_is_ischain_s_setfile(struct fimc_is_device_ischain *device,
+	u32 setfile, u32 *lindex, u32 *hindex, u32 *indexes)
 {
 	int ret = 0;
-	u32 group_id = 0;
-	struct fimc_is_group *group_isp;
-	struct isp_param *isp_param;
-	u32 indexes, lindex, hindex, range;
+	u32 crange;
+	struct scalerp_param *scp_param;
 
 	BUG_ON(!device);
+	BUG_ON(!lindex);
+	BUG_ON(!hindex);
+	BUG_ON(!indexes);
 
-	isp_param = &device->is_region->parameter.isp;
-	group_isp = &device->group_isp;
-	indexes = lindex = hindex = 0;
-
-	if (group_isp->smp_shot.count < 1) {
-		merr("group%d is working(%d), setfile change is fail",
-			device, group_isp->id, group_isp->smp_shot.count);
+	if ((setfile & FIMC_IS_SETFILE_MASK) >= ISS_SUB_END) {
+		merr("setfile id(%08X) is invalid", device, setfile);
+		ret = -EINVAL;
 		goto p_err;
 	}
 
-	pr_info("[ISC:D:%d] setfile is %08X\n", device->instance,
-		device->setfile);
-
-	group_id |= GROUP_ID(device->group_3ax.id);
-	group_id |= GROUP_ID(device->group_isp.id);
-	if (test_bit(FIMC_IS_GROUP_ACTIVE, &device->group_dis.state))
-		group_id |= GROUP_ID(device->group_dis.id);
-
-	if ((device->setfile & FIMC_IS_SETFILE_MASK) >= ISS_SUB_END) {
-		merr("setfile id(%08X) is invalid", device, device->setfile);
-		goto p_err;
-	}
-
-	ret = fimc_is_itf_process_stop(device, group_id);
-	if (ret) {
-		merr("fimc_is_itf_process_stop fail", device);
-		goto p_err;
-	}
-
+	scp_param = &device->is_region->parameter.scalerp;
 	/*
-	 * range
-	 * 0 : wide range
-	 * 1 : narrow range
+	 * Color Range
+	 * 0 : Wide range
+	 * 1 : Narrow range
 	 */
-	range = device->setfile >> 16;
-	if (range)
-		isp_param->otf_output.format = OTF_OUTPUT_FORMAT_YUV444_TRUNCATED;
+	crange = (setfile & FIMC_IS_CRANGE_MASK) >> FIMC_IS_CRANGE_SHIFT;
+	if (crange)
+		scp_param->effect.yuv_range = SCALER_OUTPUT_YUV_RANGE_NARROW;
 	else
-		isp_param->otf_output.format = OTF_OUTPUT_FORMAT_YUV444;
-	lindex |= LOWBIT_OF(PARAM_ISP_OTF_OUTPUT);
-	hindex |= HIGHBIT_OF(PARAM_ISP_OTF_OUTPUT);
-	indexes++;
+		scp_param->effect.yuv_range = SCALER_OUTPUT_YUV_RANGE_FULL;
+	*lindex |= LOWBIT_OF(PARAM_SCALERP_IMAGE_EFFECT);
+	*hindex |= HIGHBIT_OF(PARAM_SCALERP_IMAGE_EFFECT);
+	(*indexes)++;
 
-	ret = fimc_is_itf_s_param(device, indexes, lindex, hindex);
-	if (ret) {
-		merr("fimc_is_itf_s_param is fail", device);
-		ret = -EINVAL;
-		goto p_err;
-	}
-
-	ret = fimc_is_itf_a_param(device, group_id);
-	if (ret) {
-		merr("fimc_is_itf_a_param is fail", device);
-		ret = -EINVAL;
-		goto p_err;
-	}
-
-	ret = fimc_is_itf_process_start(device, group_id);
-	if (ret) {
-		merr("fimc_is_itf_process_start fail", device);
-		ret = -EINVAL;
-		goto p_err;
-	}
-
+	pr_info("[ISC:D:%d] scp setfile is %08X (%d)\n", device->instance, setfile, crange);
 p_err:
 	return ret;
 }
 
 static int fimc_is_ischain_s_chain0_size(struct fimc_is_device_ischain *device,
-	u32 width, u32 height)
+	u32 width, u32 height, u32 *lindex, u32 *hindex, u32 *indexes)
 {
 	int ret = 0;
 	struct isp_param *isp_param;
 	struct drc_param *drc_param;
 	struct scalerc_param *scc_param;
-
 	u32 chain0_width, chain0_height;
-	u32 indexes, lindex, hindex;
+
+	BUG_ON(!device);
+	BUG_ON(!lindex);
+	BUG_ON(!hindex);
+	BUG_ON(!indexes);
 
 	isp_param = &device->is_region->parameter.isp;
 	drc_param = &device->is_region->parameter.drc;
 	scc_param = &device->is_region->parameter.scalerc;
-	indexes = lindex = hindex = 0;
 	chain0_width = width;
 	chain0_height = height;
 
@@ -4155,14 +2902,14 @@ static int fimc_is_ischain_s_chain0_size(struct fimc_is_device_ischain *device,
 	isp_param->otf_output.format = OTF_OUTPUT_FORMAT_YUV444;
 	isp_param->otf_output.bitwidth = OTF_OUTPUT_BIT_WIDTH_12BIT;
 	isp_param->otf_output.order = OTF_INPUT_ORDER_BAYER_GR_BG;
-	lindex |= LOWBIT_OF(PARAM_ISP_OTF_OUTPUT);
-	hindex |= HIGHBIT_OF(PARAM_ISP_OTF_OUTPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_ISP_OTF_OUTPUT);
+	*hindex |= HIGHBIT_OF(PARAM_ISP_OTF_OUTPUT);
+	(*indexes)++;
 
 	isp_param->dma1_output.cmd = DMA_OUTPUT_COMMAND_DISABLE;
-	lindex |= LOWBIT_OF(PARAM_ISP_DMA1_OUTPUT);
-	hindex |= HIGHBIT_OF(PARAM_ISP_DMA1_OUTPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_ISP_DMA1_OUTPUT);
+	*hindex |= HIGHBIT_OF(PARAM_ISP_DMA1_OUTPUT);
+	(indexes)++;
 
 	isp_param->dma2_output.cmd = DMA_OUTPUT_COMMAND_ENABLE;
 	isp_param->dma2_output.width = chain0_width;
@@ -4170,45 +2917,41 @@ static int fimc_is_ischain_s_chain0_size(struct fimc_is_device_ischain *device,
 	isp_param->dma2_output.format = DMA_OUTPUT_FORMAT_BAYER;
 	isp_param->dma2_output.bitwidth = DMA_OUTPUT_BIT_WIDTH_12BIT;
 	isp_param->dma2_output.buffer_number = 0;
-	lindex |= LOWBIT_OF(PARAM_ISP_DMA2_OUTPUT);
-	hindex |= HIGHBIT_OF(PARAM_ISP_DMA2_OUTPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_ISP_DMA2_OUTPUT);
+	*hindex |= HIGHBIT_OF(PARAM_ISP_DMA2_OUTPUT);
+	(*indexes)++;
 
 	/* DRC */
 	drc_param->otf_input.cmd = OTF_INPUT_COMMAND_ENABLE;
 	drc_param->otf_input.width = chain0_width;
 	drc_param->otf_input.height = chain0_height;
-	lindex |= LOWBIT_OF(PARAM_DRC_OTF_INPUT);
-	hindex |= HIGHBIT_OF(PARAM_DRC_OTF_INPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_DRC_OTF_INPUT);
+	*hindex |= HIGHBIT_OF(PARAM_DRC_OTF_INPUT);
+	(*indexes)++;
 
 	drc_param->otf_output.cmd = OTF_OUTPUT_COMMAND_ENABLE;
 	drc_param->otf_output.width = chain0_width;
 	drc_param->otf_output.height = chain0_height;
-	lindex |= LOWBIT_OF(PARAM_DRC_OTF_OUTPUT);
-	hindex |= HIGHBIT_OF(PARAM_DRC_OTF_OUTPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_DRC_OTF_OUTPUT);
+	*hindex |= HIGHBIT_OF(PARAM_DRC_OTF_OUTPUT);
+	(*indexes)++;
 
 	/* SCC */
 	scc_param->otf_input.cmd = OTF_INPUT_COMMAND_ENABLE;
 	scc_param->otf_input.width = chain0_width;
 	scc_param->otf_input.height = chain0_height;
-	lindex |= LOWBIT_OF(PARAM_SCALERC_OTF_INPUT);
-	hindex |= HIGHBIT_OF(PARAM_SCALERC_OTF_INPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_SCALERC_OTF_INPUT);
+	*hindex |= HIGHBIT_OF(PARAM_SCALERC_OTF_INPUT);
+	(*indexes)++;
 
-	device->lindex |= lindex;
-	device->hindex |= hindex;
-	device->indexes += indexes;
-
-	pr_warn("[ISC:D:%d] chain0 size(%d x %d)",
+	pr_info("[ISC:D:%d] chain0 size(%d x %d)",
 		device->instance, chain0_width, chain0_height);
 
 	return ret;
 }
 
 static int fimc_is_ischain_s_chain1_size(struct fimc_is_device_ischain *device,
-	u32 width, u32 height)
+	u32 width, u32 height, u32 *lindex, u32 *hindex, u32 *indexes)
 {
 	int ret = 0;
 	struct scalerc_param *scc_param;
@@ -4216,12 +2959,15 @@ static int fimc_is_ischain_s_chain1_size(struct fimc_is_device_ischain *device,
 	struct dis_param *dis_param;
 	u32 chain0_width, chain0_height;
 	u32 chain1_width, chain1_height;
-	u32 indexes, lindex, hindex;
+
+	BUG_ON(!device);
+	BUG_ON(!lindex);
+	BUG_ON(!hindex);
+	BUG_ON(!indexes);
 
 	scc_param = &device->is_region->parameter.scalerc;
 	odc_param = &device->is_region->parameter.odc;
 	dis_param = &device->is_region->parameter.dis;
-	indexes = lindex = hindex = 0;
 	chain0_width = device->chain0_width;
 	chain0_height = device->chain0_height;
 	chain1_width = width;
@@ -4268,81 +3014,53 @@ static int fimc_is_ischain_s_chain1_size(struct fimc_is_device_ischain *device,
 	scc_param->input_crop.in_height = chain0_height;
 	scc_param->input_crop.out_width = chain1_width;
 	scc_param->input_crop.out_height = chain1_height;
-	lindex |= LOWBIT_OF(PARAM_SCALERC_INPUT_CROP);
-	hindex |= HIGHBIT_OF(PARAM_SCALERC_INPUT_CROP);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_SCALERC_INPUT_CROP);
+	*hindex |= HIGHBIT_OF(PARAM_SCALERC_INPUT_CROP);
+	(*indexes)++;
 
 	scc_param->output_crop.cmd = SCALER_CROP_COMMAND_DISABLE;
 	scc_param->output_crop.pos_x = 0;
 	scc_param->output_crop.pos_y = 0;
 	scc_param->output_crop.crop_width = chain1_width;
 	scc_param->output_crop.crop_height = chain1_height;
-	lindex |= LOWBIT_OF(PARAM_SCALERC_OUTPUT_CROP);
-	hindex |= HIGHBIT_OF(PARAM_SCALERC_OUTPUT_CROP);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_SCALERC_OUTPUT_CROP);
+	*hindex |= HIGHBIT_OF(PARAM_SCALERC_OUTPUT_CROP);
+	(*indexes)++;
 
-	if (test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state))
-		scc_param->otf_output.cmd = OTF_OUTPUT_COMMAND_DISABLE;
-	else
-		scc_param->otf_output.cmd = OTF_OUTPUT_COMMAND_ENABLE;
-
+	scc_param->otf_output.cmd = OTF_OUTPUT_COMMAND_ENABLE;
 	scc_param->otf_output.width = chain1_width;
 	scc_param->otf_output.height = chain1_height;
-	lindex |= LOWBIT_OF(PARAM_SCALERC_OTF_OUTPUT);
-	hindex |= HIGHBIT_OF(PARAM_SCALERC_OTF_OUTPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_SCALERC_OTF_OUTPUT);
+	*hindex |= HIGHBIT_OF(PARAM_SCALERC_OTF_OUTPUT);
+	(*indexes)++;
 
 	scc_param->dma_output.width = chain0_width;
 	scc_param->dma_output.height = chain0_height;
-	lindex |= LOWBIT_OF(PARAM_SCALERC_DMA_OUTPUT);
-	hindex |= HIGHBIT_OF(PARAM_SCALERC_DMA_OUTPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_SCALERC_DMA_OUTPUT);
+	*hindex |= HIGHBIT_OF(PARAM_SCALERC_DMA_OUTPUT);
+	(*indexes)++;
 
 	/* ODC */
-	if (test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state))
-		odc_param->control.cmd = CONTROL_COMMAND_STOP;
-	else
-		odc_param->control.cmd = CONTROL_COMMAND_START;
-
-	lindex |= LOWBIT_OF(PARAM_ODC_CONTROL);
-	hindex |= HIGHBIT_OF(PARAM_ODC_CONTROL);
-	indexes++;
-
 	odc_param->otf_input.width = chain1_width;
 	odc_param->otf_input.height = chain1_height;
-	lindex |= LOWBIT_OF(PARAM_ODC_OTF_INPUT);
-	hindex |= HIGHBIT_OF(PARAM_ODC_OTF_INPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_ODC_OTF_INPUT);
+	*hindex |= HIGHBIT_OF(PARAM_ODC_OTF_INPUT);
+	(*indexes)++;
 
 	odc_param->otf_output.width = chain1_width;
 	odc_param->otf_output.height = chain1_height;
-	lindex |= LOWBIT_OF(PARAM_ODC_OTF_OUTPUT);
-	hindex |= HIGHBIT_OF(PARAM_ODC_OTF_OUTPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_ODC_OTF_OUTPUT);
+	*hindex |= HIGHBIT_OF(PARAM_ODC_OTF_OUTPUT);
+	(*indexes)++;
 
 	/* DIS INPUT */
-	clear_bit(FIMC_IS_ISDEV_DSTART, &device->dis.state);
-	if (test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state))
-		dis_param->control.cmd = CONTROL_COMMAND_STOP;
-	else
-		dis_param->control.cmd = CONTROL_COMMAND_START;
-
-	dis_param->control.bypass = CONTROL_BYPASS_ENABLE;
-	lindex |= LOWBIT_OF(PARAM_DIS_CONTROL);
-	hindex |= HIGHBIT_OF(PARAM_DIS_CONTROL);
-	indexes++;
-
 	dis_param->otf_input.width = chain1_width;
 	dis_param->otf_input.height = chain1_height;
-	lindex |= LOWBIT_OF(PARAM_DIS_OTF_INPUT);
-	hindex |= HIGHBIT_OF(PARAM_DIS_OTF_INPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_DIS_OTF_INPUT);
+	*hindex |= HIGHBIT_OF(PARAM_DIS_OTF_INPUT);
+	(*indexes)++;
 
-	device->lindex |= lindex;
-	device->hindex |= hindex;
-	device->indexes += indexes;
-
-	pr_warn("[ISC:D:%d] chain1 size(%d x %d)",
+	pr_info("[ISC:D:%d] chain1 size(%d x %d)",
 		device->instance, chain1_width, chain1_height);
 
 exit:
@@ -4350,14 +3068,18 @@ exit:
 }
 
 static int fimc_is_ischain_s_chain2_size(struct fimc_is_device_ischain *device,
-	u32 width, u32 height)
+	u32 width, u32 height, u32 *lindex, u32 *hindex, u32 *indexes)
 {
 	int ret = 0;
 	struct dis_param *dis_param;
 	struct tdnr_param *tdnr_param;
 	struct scalerp_param *scp_param;
 	u32 chain2_width, chain2_height;
-	u32 indexes, lindex, hindex;
+
+	BUG_ON(!device);
+	BUG_ON(!lindex);
+	BUG_ON(!hindex);
+	BUG_ON(!indexes);
 
 	dbg_ischain("request chain2 size : %dx%d\n", width, height);
 	dbg_ischain("current chain2 size : %dx%d\n",
@@ -4366,7 +3088,6 @@ static int fimc_is_ischain_s_chain2_size(struct fimc_is_device_ischain *device,
 	dis_param = &device->is_region->parameter.dis;
 	tdnr_param = &device->is_region->parameter.tdnr;
 	scp_param = &device->is_region->parameter.scalerp;
-	indexes = lindex = hindex = 0;
 
 	/* CALCULATION */
 	chain2_width = width;
@@ -4375,68 +3096,42 @@ static int fimc_is_ischain_s_chain2_size(struct fimc_is_device_ischain *device,
 	/* DIS OUTPUT */
 	dis_param->otf_output.width = chain2_width;
 	dis_param->otf_output.height = chain2_height;
-	lindex |= LOWBIT_OF(PARAM_DIS_OTF_OUTPUT);
-	hindex |= HIGHBIT_OF(PARAM_DIS_OTF_OUTPUT);
-	indexes++;
-
-	/* 3DNR */
-	clear_bit(FIMC_IS_ISDEV_DSTART, &device->dnr.state);
-	if (test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state))
-		tdnr_param->control.cmd = CONTROL_COMMAND_STOP;
-	else
-		tdnr_param->control.cmd = CONTROL_COMMAND_START;
-
-	tdnr_param->control.bypass = CONTROL_BYPASS_ENABLE;
-	lindex |= LOWBIT_OF(PARAM_TDNR_CONTROL);
-	hindex |= HIGHBIT_OF(PARAM_TDNR_CONTROL);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_DIS_OTF_OUTPUT);
+	*hindex |= HIGHBIT_OF(PARAM_DIS_OTF_OUTPUT);
+	(*indexes)++;
 
 	tdnr_param->otf_input.width = chain2_width;
 	tdnr_param->otf_input.height = chain2_height;
-	lindex |= LOWBIT_OF(PARAM_TDNR_OTF_INPUT);
-	hindex |= HIGHBIT_OF(PARAM_TDNR_OTF_INPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_TDNR_OTF_INPUT);
+	*hindex |= HIGHBIT_OF(PARAM_TDNR_OTF_INPUT);
+	(*indexes)++;
 
 	tdnr_param->dma_output.width = chain2_width;
 	tdnr_param->dma_output.height = chain2_height;
-	lindex |= LOWBIT_OF(PARAM_TDNR_DMA_OUTPUT);
-	hindex |= HIGHBIT_OF(PARAM_TDNR_DMA_OUTPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_TDNR_DMA_OUTPUT);
+	*hindex |= HIGHBIT_OF(PARAM_TDNR_DMA_OUTPUT);
+	(*indexes)++;
 
 	tdnr_param->otf_output.width = chain2_width;
 	tdnr_param->otf_output.height = chain2_height;
-	lindex |= LOWBIT_OF(PARAM_TDNR_OTF_OUTPUT);
-	hindex |= HIGHBIT_OF(PARAM_TDNR_OTF_OUTPUT);
-	indexes++;
-
-	/* SCALERP INPUT */
-	if (test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state))
-		scp_param->control.cmd = CONTROL_COMMAND_STOP;
-	else
-		scp_param->control.cmd = CONTROL_COMMAND_START;
-
-	lindex |= LOWBIT_OF(PARAM_SCALERP_CONTROL);
-	hindex |= HIGHBIT_OF(PARAM_SCALERP_CONTROL);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_TDNR_OTF_OUTPUT);
+	*hindex |= HIGHBIT_OF(PARAM_TDNR_OTF_OUTPUT);
+	(*indexes)++;
 
 	scp_param->otf_input.width = chain2_width;
 	scp_param->otf_input.height = chain2_height;
-	lindex |= LOWBIT_OF(PARAM_SCALERP_OTF_INPUT);
-	hindex |= HIGHBIT_OF(PARAM_SCALERP_OTF_INPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_SCALERP_OTF_INPUT);
+	*hindex |= HIGHBIT_OF(PARAM_SCALERP_OTF_INPUT);
+	(*indexes)++;
 
-	device->lindex |= lindex;
-	device->hindex |= hindex;
-	device->indexes += indexes;
-
-	pr_warn("[ISC:D:%d] chain2 size(%d x %d)",
+	pr_info("[ISC:D:%d] chain2 size(%d x %d)",
 		device->instance, chain2_width, chain2_height);
 
 	return ret;
 }
 
 static int fimc_is_ischain_s_chain3_size(struct fimc_is_device_ischain *device,
-	u32 width, u32 height)
+	u32 width, u32 height, u32 *lindex, u32 *hindex, u32 *indexes)
 {
 	int ret = 0;
 	struct scalerp_param *scp_param;
@@ -4447,13 +3142,16 @@ static int fimc_is_ischain_s_chain3_size(struct fimc_is_device_ischain *device,
 	u32 chain3_width, chain3_height;
 	u32 scp_crop_width, scp_crop_height;
 	u32 scp_crop_x, scp_crop_y;
-	u32 indexes, lindex, hindex;
+
+	BUG_ON(!device);
+	BUG_ON(!lindex);
+	BUG_ON(!hindex);
+	BUG_ON(!indexes);
 
 	scp_param = &device->is_region->parameter.scalerp;
 	fd_param = &device->is_region->parameter.fd;
 	vctx = device->scp.vctx;
 	queue = &vctx->q_dst;
-	indexes = lindex = hindex = 0;
 
 	chain2_width = device->chain2_width;
 	chain2_height = device->chain2_height;
@@ -4479,58 +3177,182 @@ static int fimc_is_ischain_s_chain3_size(struct fimc_is_device_ischain *device,
 	scp_param->input_crop.in_height = chain2_height;
 	scp_param->input_crop.out_width = chain3_width;
 	scp_param->input_crop.out_height = chain3_height;
-	lindex |= LOWBIT_OF(PARAM_SCALERP_INPUT_CROP);
-	hindex |= HIGHBIT_OF(PARAM_SCALERP_INPUT_CROP);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_SCALERP_INPUT_CROP);
+	*hindex |= HIGHBIT_OF(PARAM_SCALERP_INPUT_CROP);
+	(*indexes)++;
 
-	/* sclaer can't apply stride to each plane, only y plane.
-	cb, cr plane should be half of y plane, it's automatically set
-	3 plane : all plane can be 32 stride or 16, 8
-	2 plane : y plane only can be 32, 16 stride, other should be half of y
-	1 plane : all plane can be 8 plane */
+	/*
+	 * scaler can't apply stride to each plane, only y plane.
+	 * basically cb, cr plane should be half of y plane,
+	 * and it's automatically set
+	 *
+	 * 3 plane : all plane should be 8 or 16 stride
+	 * 2 plane : y plane should be 32, 16 stride, others should be half stride of y
+	 * 1 plane : all plane should be 8 stride
+	 */
+	/*
+	 * limitation of output_crop.pos_x and pos_y
+	 * YUV422 3P, YUV420 3P : pos_x and pos_y should be x2
+	 * YUV422 1P : pos_x should be x2
+	 */
 	if (queue->framecfg.width_stride[0]) {
 		scp_param->output_crop.cmd = SCALER_CROP_COMMAND_ENABLE;
 		scp_param->output_crop.pos_x = 0;
 		scp_param->output_crop.pos_y = 0;
-		scp_param->output_crop.crop_width = chain3_width +
-			queue->framecfg.width_stride[0];
+		scp_param->output_crop.crop_width = chain3_width + queue->framecfg.width_stride[0];
 		scp_param->output_crop.crop_height = chain3_height;
-		lindex |= LOWBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
-		hindex |= HIGHBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
-		indexes++;
+		*lindex |= LOWBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
+		*hindex |= HIGHBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
+		(*indexes)++;
 	} else {
 		scp_param->output_crop.cmd = SCALER_CROP_COMMAND_DISABLE;
-		lindex |= LOWBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
-		hindex |= HIGHBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
-		indexes++;
+		*lindex |= LOWBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
+		*hindex |= HIGHBIT_OF(PARAM_SCALERP_OUTPUT_CROP);
+		(*indexes)++;
 	}
 
 	scp_param->otf_output.width = chain3_width;
 	scp_param->otf_output.height = chain3_height;
-	lindex |= LOWBIT_OF(PARAM_SCALERP_OTF_OUTPUT);
-	hindex |= HIGHBIT_OF(PARAM_SCALERP_OTF_OUTPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_SCALERP_OTF_OUTPUT);
+	*hindex |= HIGHBIT_OF(PARAM_SCALERP_OTF_OUTPUT);
+	(*indexes)++;
 
 	scp_param->dma_output.width = chain3_width;
 	scp_param->dma_output.height = chain3_height;
-	lindex |= LOWBIT_OF(PARAM_SCALERP_DMA_OUTPUT);
-	hindex |= HIGHBIT_OF(PARAM_SCALERP_DMA_OUTPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_SCALERP_DMA_OUTPUT);
+	*hindex |= HIGHBIT_OF(PARAM_SCALERP_DMA_OUTPUT);
+	(*indexes)++;
 
 	/* FD */
 	fd_param->otf_input.width = chain3_width;
 	fd_param->otf_input.height = chain3_height;
-	lindex |= LOWBIT_OF(PARAM_FD_OTF_INPUT);
-	hindex |= HIGHBIT_OF(PARAM_FD_OTF_INPUT);
-	indexes++;
+	*lindex |= LOWBIT_OF(PARAM_FD_OTF_INPUT);
+	*hindex |= HIGHBIT_OF(PARAM_FD_OTF_INPUT);
+	(*indexes)++;
 
-	device->lindex |= lindex;
-	device->hindex |= hindex;
-	device->indexes += indexes;
-
-	pr_warn("[ISC:D:%d] chain3 size(%d x %d)",
+	pr_info("[ISC:D:%d] chain3 size(%d x %d)",
 		device->instance, chain3_width, chain3_height);
 
+	return ret;
+}
+
+static int fimc_is_ischain_s_path(struct fimc_is_device_ischain *device,
+	u32 *lindex, u32 *hindex, u32 *indexes)
+{
+	int ret = 0;
+	struct scalerc_param *scc_param;
+	struct odc_param *odc_param;
+	struct dis_param *dis_param;
+	struct tdnr_param *dnr_param;
+	struct scalerp_param *scp_param;
+
+	BUG_ON(!device);
+	BUG_ON(!lindex);
+	BUG_ON(!hindex);
+	BUG_ON(!indexes);
+
+	scc_param = &device->is_region->parameter.scalerc;
+	odc_param = &device->is_region->parameter.odc;
+	dis_param = &device->is_region->parameter.dis;
+	dnr_param = &device->is_region->parameter.tdnr;
+	scp_param = &device->is_region->parameter.scalerp;
+
+	if (test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state)) {
+		scc_param->otf_output.cmd = OTF_OUTPUT_COMMAND_DISABLE;
+		*lindex |= LOWBIT_OF(PARAM_SCALERC_OTF_OUTPUT);
+		*hindex |= HIGHBIT_OF(PARAM_SCALERC_OTF_OUTPUT);
+		(*indexes)++;
+
+		odc_param->control.cmd = CONTROL_COMMAND_STOP;
+		*lindex |= LOWBIT_OF(PARAM_ODC_CONTROL);
+		*hindex |= HIGHBIT_OF(PARAM_ODC_CONTROL);
+		(*indexes)++;
+
+		fimc_is_subdev_dis_stop(device, dis_param, lindex, hindex, indexes);
+		fimc_is_subdev_dnr_stop(device, dnr_param, lindex, hindex, indexes);
+
+		scp_param->control.cmd = CONTROL_COMMAND_STOP;
+		*lindex |= LOWBIT_OF(PARAM_SCALERP_CONTROL);
+		*hindex |= HIGHBIT_OF(PARAM_SCALERP_CONTROL);
+		(*indexes)++;
+	} else {
+		scc_param->otf_output.cmd = OTF_OUTPUT_COMMAND_ENABLE;
+		*lindex |= LOWBIT_OF(PARAM_SCALERC_OTF_OUTPUT);
+		*hindex |= HIGHBIT_OF(PARAM_SCALERC_OTF_OUTPUT);
+		(*indexes)++;
+
+		odc_param->control.cmd = CONTROL_COMMAND_START;
+		*lindex |= LOWBIT_OF(PARAM_ODC_CONTROL);
+		*hindex |= HIGHBIT_OF(PARAM_ODC_CONTROL);
+		(*indexes)++;
+
+		fimc_is_subdev_dis_bypass(device, dis_param, lindex, hindex, indexes);
+		fimc_is_subdev_dnr_bypass(device, dnr_param, lindex, hindex, indexes);
+
+		scp_param->control.cmd = CONTROL_COMMAND_START;
+		*lindex |= LOWBIT_OF(PARAM_SCALERP_CONTROL);
+		*hindex |= HIGHBIT_OF(PARAM_SCALERP_CONTROL);
+		(*indexes)++;
+	}
+
+	return ret;
+}
+
+static int fimc_is_ischain_chg_setfile(struct fimc_is_device_ischain *device)
+{
+	int ret = 0;
+	u32 group_id = 0;
+	struct fimc_is_group *group_isp;
+	u32 indexes, lindex, hindex;
+
+	BUG_ON(!device);
+
+	group_isp = &device->group_isp;
+	indexes = lindex = hindex = 0;
+
+	if (group_isp->smp_shot.count < 1) {
+		merr("group%d is working(%d), setfile change is fail",
+			device, group_isp->id, group_isp->smp_shot.count);
+		goto p_err;
+	}
+
+	group_id |= GROUP_ID(device->group_3ax.id);
+	group_id |= GROUP_ID(device->group_isp.id);
+	if (test_bit(FIMC_IS_GROUP_ACTIVE, &device->group_dis.state))
+		group_id |= GROUP_ID(device->group_dis.id);
+
+	ret = fimc_is_itf_process_stop(device, group_id);
+	if (ret) {
+		merr("fimc_is_itf_process_stop fail", device);
+		goto p_err;
+	}
+
+	ret = fimc_is_ischain_s_setfile(device, device->setfile, &lindex, &hindex, &indexes);
+	if (ret)
+		merr("fimc_is_ischain_s_setfile is fail", device);
+
+	ret = fimc_is_itf_s_param(device, indexes, lindex, hindex);
+	if (ret) {
+		merr("fimc_is_itf_s_param is fail", device);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	ret = fimc_is_itf_a_param(device, group_id);
+	if (ret) {
+		merr("fimc_is_itf_a_param is fail", device);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	ret = fimc_is_itf_process_start(device, group_id);
+	if (ret) {
+		merr("fimc_is_itf_process_start fail", device);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+p_err:
 	return ret;
 }
 
@@ -4941,82 +3763,6 @@ exit:
 }
 #endif
 
-#if 0 // unused
-static int fimc_is_ischain_sensor_ctrl(struct fimc_is_device_ischain *device)
-{
-	int ret = 0;
-	struct sensor_param *sensor_param;
-	u32 group_id = 0;
-
-	dbg_ischain("%s\n", __func__);
-
-	group_id |= GROUP_ID(device->group_3ax.id);
-	group_id |= GROUP_ID(device->group_isp.id);
-	if (test_bit(FIMC_IS_GROUP_ACTIVE, &device->group_dis.state))
-		group_id |= GROUP_ID(device->group_dis.id);
-
-	if (fimc_is_itf_stream_off(device)) {
-		err("fimc_is_itf_stream_off is fail\n");
-		return -EINVAL;
-	}
-
-	if (fimc_is_itf_process_stop(device, group_id)) {
-		err("fimc_is_itf_process_stop is fail\n");
-		ret = -EINVAL;
-		goto err_p_off;
-	}
-
-	sensor_param = &device->is_region->parameter.sensor;
-	device->lindex = device->hindex = device->indexes = 0;
-
-#ifdef FIXED_FPS_DEBUG
-	sensor_param->frame_rate.frame_rate = FIXED_FPS_VALUE;
-#else
-	sensor_param->frame_rate.frame_rate = device->sensor->framerate;
-
-	device->lindex |= LOWBIT_OF(PARAM_SENSOR_FRAME_RATE);
-	device->hindex |= HIGHBIT_OF(PARAM_SENSOR_FRAME_RATE);
-	device->indexes++;
-#endif
-
-	sensor_param->dma_output.width = device->sensor->width;
-	sensor_param->dma_output.height = device->sensor->height;
-
-	dbg_ischain("%s %dx%d\n", __func__, device->sensor->width,
-			device->sensor->height);
-
-	device->lindex |= LOWBIT_OF(PARAM_SENSOR_DMA_OUTPUT);
-	device->hindex |= HIGHBIT_OF(PARAM_SENSOR_DMA_OUTPUT);
-	device->indexes++;
-
-	if (fimc_is_itf_s_param(device, device->indexes,
-			device->lindex, device->hindex)) {
-		err("fimc_is_itf_s_param is fail\n");
-		ret = -EINVAL;
-		goto err_s_param;
-	}
-
-	if (fimc_is_itf_a_param(device, group_id)) {
-		err("fimc_is_itf_a_param is fail\n");
-		ret = -EINVAL;
-	}
-
-err_s_param:
-	if (fimc_is_itf_process_start(device, group_id)) {
-		err("fimc_is_itf_process_start is fail\n");
-		ret = -EINVAL;
-	}
-
-err_p_off:
-	if (fimc_is_itf_stream_on(device)) {
-		err("fimc_is_itf_stream_on is fail\n");
-		ret = -EINVAL;
-	}
-
-	return ret;
-}
-#endif
-
 #ifdef ENABLE_DRC
 static int fimc_is_ischain_drc_bypass(struct fimc_is_device_ischain *this,
 	bool bypass)
@@ -5059,51 +3805,45 @@ exit:
 }
 #endif
 
-static int fimc_is_ischain_dnr_bypass(struct fimc_is_device_ischain *this,
+#ifdef ENABLE_TDNR
+static int fimc_is_ischain_dnr_bypass(struct fimc_is_device_ischain *device,
 	bool bypass)
 {
 	int ret = 0;
-	struct tdnr_param *dnr_param;
+	struct fimc_is_subdev *subdev;
+	struct tdnr_param *param;
 	u32 indexes, lindex, hindex;
 
 	dbg_ischain("%s\n", __func__);
 
-	dnr_param = &this->is_region->parameter.tdnr;
+	subdev = &device->dnr;
+	param = &device->is_region->parameter.tdnr;
 	indexes = lindex = hindex = 0;
 
 	if (bypass)
-		dnr_param->control.bypass = CONTROL_BYPASS_ENABLE;
-	else {
-		dnr_param->control.bypass = CONTROL_BYPASS_DISABLE;
-		dnr_param->control.buffer_number =
-			SIZE_DNR_INTERNAL_BUF * NUM_DNR_INTERNAL_BUF;
-		dnr_param->control.buffer_address =
-			this->imemory.dvaddr_shared + 350 * sizeof(u32);
-		this->is_region->shared[350] = this->imemory.dvaddr_3dnr;
-	}
+		fimc_is_subdev_dnr_bypass(device, param, &lindex, &hindex, &indexes);
+	else
+		fimc_is_subdev_dnr_start(device, param, &lindex, &hindex, &indexes);
 
-	lindex |= LOWBIT_OF(PARAM_TDNR_CONTROL);
-	hindex |= HIGHBIT_OF(PARAM_TDNR_CONTROL);
-	indexes++;
-
-	ret = fimc_is_itf_s_param(this, indexes, lindex, hindex);
+	ret = fimc_is_itf_s_param(device, indexes, lindex, hindex);
 	if (ret) {
-		err("fimc_is_itf_s_param is fail\n");
+		merr("fimc_is_itf_s_param is fail", device);
 		ret = -EINVAL;
-		goto exit;
+		goto p_err;
 	}
 
 	if (bypass) {
-		clear_bit(FIMC_IS_ISDEV_DSTART, &this->dnr.state);
+		clear_bit(FIMC_IS_ISDEV_DSTART, &subdev->state);
 		dbg_ischain("TDNR off\n");
 	} else {
-		set_bit(FIMC_IS_ISDEV_DSTART, &this->dnr.state);
+		set_bit(FIMC_IS_ISDEV_DSTART, &subdev->state);
 		dbg_ischain("TNDR on\n");
 	}
 
-exit:
+p_err:
 	return ret;
 }
+#endif
 
 static int fimc_is_ischain_fd_bypass(struct fimc_is_device_ischain *device,
 	bool bypass)
@@ -5330,7 +4070,7 @@ int fimc_is_ischain_3a0_s_format(struct fimc_is_device_ischain *device,
 	subdev->input.width = width;
 	subdev->input.height = height;
 
-	/* for LLA capture mode */
+	/* for low light capture mode */
 	if (test_bit(FIMC_IS_ISDEV_DSTART, &subdev->state)) {
 		if (((width != device->bds_width) || (height != device->bds_height))) {
 			ret = fimc_is_ischain_s_3ax_size(device, 0, 0,
@@ -5617,8 +4357,7 @@ static int fimc_is_ischain_s_scalable(struct fimc_is_device_ischain *device,
 	hindex |= HIGHBIT_OF(PARAM_ISP_OTF_INPUT);
 	indexes++;
 
-	ret = fimc_is_itf_s_param(device,
-		indexes, lindex, hindex);
+	ret = fimc_is_itf_s_param(device, indexes, lindex, hindex);
 	if (ret) {
 		merr("fimc_is_itf_s_param is fail", device);
 		ret = -EINVAL;
@@ -5763,8 +4502,14 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *device,
 	u32 chain3_width, chain3_height, chain3_ratio;
 	u32 chain1_wmin, chain1_hmin;
 #endif
-	u32 lindex, hindex, indexes;
+	u32 lindex = 0;
+	u32 hindex = 0;
+	u32 indexes = 0;
 	u32 active_sensor_width, active_sensor_height, binning;
+#if defined(ENABLE_FULL_BYPASS)
+	int cfg;
+#endif
+	u32 crange;
 
 	BUG_ON(!device);
 	BUG_ON(!device->sensor);
@@ -5772,7 +4517,6 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *device,
 
 	mdbgd_isp("%s()\n", device, __func__);
 
-	indexes = lindex = hindex = 0;
 	groupmgr = device->groupmgr;
 	group = &device->group_isp;
 	framemgr = &queue->framemgr;
@@ -5879,16 +4623,37 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *device,
 	}
 #endif
 	fimc_is_ischain_s_chain0_size(device,
-		device->chain0_width, device->chain0_height);
+		device->chain0_width, device->chain0_height, &lindex, &hindex, &indexes);
 
 	fimc_is_ischain_s_chain1_size(device,
-		device->chain1_width, device->chain1_height);
+		device->chain1_width, device->chain1_height, &lindex, &hindex, &indexes);
 
 	fimc_is_ischain_s_chain2_size(device,
-		device->chain2_width, device->chain2_height);
+		device->chain2_width, device->chain2_height, &lindex, &hindex, &indexes);
 
 	fimc_is_ischain_s_chain3_size(device,
-		device->chain3_width, device->chain3_height);
+		device->chain3_width, device->chain3_height, &lindex, &hindex, &indexes);
+
+	fimc_is_ischain_s_path(device, &lindex, &hindex, &indexes);
+
+	/*
+	 * Color Range
+	 * 0 : Wide range
+	 * 1 : Narrow range
+	 */
+	/* ISP YUV range setting */
+	crange = (device->setfile & FIMC_IS_CRANGE_MASK) >> FIMC_IS_CRANGE_SHIFT;
+	if (crange)
+		isp_param->otf_output.format = OTF_OUTPUT_FORMAT_YUV444_TRUNCATED;
+	else
+		isp_param->otf_output.format = OTF_OUTPUT_FORMAT_YUV444;
+	lindex |= LOWBIT_OF(PARAM_ISP_OTF_OUTPUT);
+	hindex |= HIGHBIT_OF(PARAM_ISP_OTF_OUTPUT);
+	indexes++;
+	pr_info("[ISC:D:%d] isp setfile is %08X\n", device->instance, device->setfile);
+
+	/* SCP YUV range setting */
+	fimc_is_ischain_s_setfile(device, device->scp_setfile, &lindex, &hindex, &indexes);
 
 #ifdef FIXED_FPS_DEBUG
 	sensor_param->frame_rate.frame_rate = FIXED_FPS_VALUE;
@@ -6122,9 +4887,11 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *device,
 	isp_param->dma1_input.buffer_address = 0;
 	isp_param->dma1_input.binning_ratio_x = binning;
 	isp_param->dma1_input.binning_ratio_y = binning;
-	/* hidden spec
-	       [0] : sensor size is dma input size
-	       [X] : sneosr size is reserved field */
+	/*
+	 * hidden spec
+	 *     [0] : sensor size is dma input size
+	 *     [X] : sneosr size is reserved field
+	 */
 	isp_param->dma1_input.uiReserved[1] = 0;
 	isp_param->dma1_input.uiReserved[2] = 0;
 	lindex |= LOWBIT_OF(PARAM_ISP_DMA1_INPUT);
@@ -6134,17 +4901,18 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *device,
 
 	lindex = 0xFFFFFFFF;
 	hindex = 0xFFFFFFFF;
+	indexes = 64;
 
 	ret = fimc_is_itf_s_param(device , indexes, lindex, hindex);
 	if (ret) {
-		err("fimc_is_itf_s_param is fail\n");
+		merr("fimc_is_itf_s_param is fail", device);
 		ret = -EINVAL;
 		goto p_err;
 	}
 
 	ret = fimc_is_itf_f_param(device);
 	if (ret) {
-		err("fimc_is_itf_f_param is fail\n");
+		merr("fimc_is_itf_f_param is fail", device);
 		ret = -EINVAL;
 		goto p_err;
 	}
@@ -6161,13 +4929,23 @@ int fimc_is_ischain_isp_start(struct fimc_is_device_ischain *device,
 
 	ret = fimc_is_itf_init_process_start(device);
 	if (ret) {
-		err("fimc_is_itf_init_process_start is fail\n");
-		return -EINVAL;
+		merr("fimc_is_itf_init_process_start is fail", device);
+		ret = -EINVAL;
+		goto p_err;
 	}
 
 	ret = fimc_is_group_process_start(groupmgr, group, queue);
-	if (ret)
+	if (ret) {
 		merr("fimc_is_group_process_start is fail", device);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+#if defined(ENABLE_FULL_BYPASS)
+	cfg = readl(EXYNOS5_CLKGATE_IP_ISP1);
+	cfg &= ~((0x7 << 20) | (0x7 << 9) | (3 << 1));
+	writel(cfg, EXYNOS5_CLKGATE_IP_ISP1);
+#endif
 
 	set_bit(FIMC_IS_ISDEV_DSTART, &leader->state);
 
@@ -6181,6 +4959,10 @@ int fimc_is_ischain_isp_stop(struct fimc_is_device_ischain *device,
 	struct fimc_is_queue *queue)
 {
 	int ret = 0;
+#if defined(ENABLE_FULL_BYPASS)
+	int cfg;
+#endif
+
 	struct fimc_is_groupmgr *groupmgr;
 	struct fimc_is_group *group;
 
@@ -6197,6 +4979,12 @@ int fimc_is_ischain_isp_stop(struct fimc_is_device_ischain *device,
 		mwarn("already stop", device);
 		goto p_err;
 	}
+
+#if defined(ENABLE_FULL_BYPASS)
+	cfg = readl(EXYNOS5_CLKGATE_IP_ISP1);
+	cfg |= ((0x7 << 20) | (0x7 << 9) | (3 << 1));
+	writel(cfg, EXYNOS5_CLKGATE_IP_ISP1);
+#endif
 
 	ret = fimc_is_group_process_stop(groupmgr, group, queue);
 	if (ret) {
@@ -6573,20 +5361,67 @@ int fimc_is_ischain_scp_stop(struct fimc_is_device_ischain *device)
 	return ret;
 }
 
-int fimc_is_ischain_scp_s_format(struct fimc_is_device_ischain *this,
-	u32 width, u32 height)
+int fimc_is_ischain_scp_s_format(struct fimc_is_device_ischain *device,
+	u32 pixelformat, u32 width, u32 height)
 {
 	int ret = 0;
 
-	this->chain1_width = width;
-	this->chain1_height = height;
-	this->chain2_width = width;
-	this->chain2_height = height;
-	this->chain3_width = width;
-	this->chain3_height = height;
+	/* check scaler size limitation */
+	switch (pixelformat) {
+	/*
+	 * YUV422 1P, YUV422 2P : x8
+	 * YUV422 3P : x16
+	 */
+	case V4L2_PIX_FMT_YUV422P:
+		if (width % 8) {
+			merr("width(%d) of format(%d) is not supported size",
+				device, width, pixelformat);
+			ret = -EINVAL;
+			goto p_err;
+		}
+		break;
+	/*
+	 * YUV420 2P : x8
+	 * YUV420 3P : x16
+	 */
+	case V4L2_PIX_FMT_NV12M:
+	case V4L2_PIX_FMT_NV21M:
+		if (width % 8) {
+			merr("width(%d) of format(%d) is not supported size",
+				device, width, pixelformat);
+			ret = -EINVAL;
+			goto p_err;
+		}
+		break;
+	case V4L2_PIX_FMT_YUV420M:
+	case V4L2_PIX_FMT_YVU420M:
+		if (width % 16) {
+			merr("width(%d) of format(%d) is not supported size",
+				device, width, pixelformat);
+			ret = -EINVAL;
+			goto p_err;
+		}
+		break;
+	default:
+		merr("format(%d) is not supported", device, pixelformat);
+		ret = -EINVAL;
+		goto p_err;
+		break;
+	}
 
+	device->chain1_width = width;
+	device->chain1_height = height;
+	device->chain2_width = width;
+	device->chain2_height = height;
+	device->chain3_width = width;
+	device->chain3_height = height;
+
+p_err:
 	return ret;
 }
+
+u32 fcnt0, fcnt10;
+int drop_cnt;
 
 int fimc_is_ischain_scp_tag(struct fimc_is_device_ischain *device,
 	struct fimc_is_subdev *subdev,
@@ -6631,12 +5466,33 @@ int fimc_is_ischain_scp_tag(struct fimc_is_device_ischain *device,
 			set_bit(OUT_SCP_FRAME, &grp_frame->out_flag);
 			set_bit(REQ_FRAME, &frame->req_flag);
 			fimc_is_frame_trans_req_to_pro(framemgr, frame);
+			drop_cnt = 0;
+			fcnt0 = 0;
+			fcnt10 = 0;
 		} else {
 			grp_frame->shot->uctl.scalerUd.scpTargetAddress[0] = 0;
 			grp_frame->shot->uctl.scalerUd.scpTargetAddress[1] = 0;
 			grp_frame->shot->uctl.scalerUd.scpTargetAddress[2] = 0;
 			grp_frame->shot_ext->request_scp = 0;
 			mwarn("scp %d frame is drop", device, grp_frame->fcount);
+			{
+				drop_cnt++;
+				if (drop_cnt == 1)
+					fcnt0 = grp_frame->fcount;
+
+				if (drop_cnt > 200) {
+					fcnt10 = grp_frame->fcount;
+					if ((fcnt10 - fcnt0) < 220) {
+						fimc_is_hw_print(device->interface);
+						BUG_ON(1);
+					} else {
+						drop_cnt = 0;
+						fcnt0 = 0;
+						fcnt10 = 0;
+					}
+				}
+			}
+
 		}
 
 		framemgr_x_barrier_irqr(framemgr, FMGR_IDX_9, flags);
@@ -6664,13 +5520,15 @@ int fimc_is_ischain_dis_start(struct fimc_is_device_ischain *device,
 {
 	int ret = 0;
 	u32 group_id = 0;
-	u32 chain1_width, chain1_height;
 	struct dis_param *dis_param;
+	u32 chain1_width, chain1_height;
+	u32 indexes, lindex, hindex;
 
 	dbg_ischain("%s()\n", __func__);
 
 	chain1_width = device->dis_width;
 	chain1_height = device->dis_height;
+	indexes = lindex = hindex = 0;
 	dis_param = &device->is_region->parameter.dis;
 	group_id |= GROUP_ID(device->group_isp.id);
 	group_id |= GROUP_ID(device->group_dis.id);
@@ -6682,31 +5540,17 @@ int fimc_is_ischain_dis_start(struct fimc_is_device_ischain *device,
 		goto p_err;
 	}
 
-	device->lindex = device->hindex = device->indexes = 0;
-	fimc_is_ischain_s_chain1_size(device, chain1_width, chain1_height);
+	fimc_is_ischain_s_chain1_size(device,
+		chain1_width, chain1_height, &lindex, &hindex, &indexes);
 
-	if (bypass) {
-		dis_param->control.bypass = 2;
-	} else {
-#ifdef ENABLE_VDIS
-		dis_param->control.bypass = CONTROL_BYPASS_DISABLE;
-		dis_param->control.buffer_number =
-			SIZE_DIS_INTERNAL_BUF * NUM_DIS_INTERNAL_BUF;
-		dis_param->control.buffer_address =
-			device->imemory.dvaddr_shared + 300 * sizeof(u32);
-		device->is_region->shared[300] = device->imemory.dvaddr_dis;
-#else
-		merr("can't start hw vdis", device);
-		BUG_ON(1);
-#endif
-	}
+	if (bypass)
+		fimc_is_subdev_dis_bypass(device,
+			dis_param, &lindex, &hindex, &indexes);
+	else
+		fimc_is_subdev_dis_start(device,
+			dis_param, &lindex, &hindex, &indexes);
 
-	device->lindex |= LOWBIT_OF(PARAM_DIS_CONTROL);
-	device->hindex |= HIGHBIT_OF(PARAM_DIS_CONTROL);
-	device->indexes++;
-
-	ret = fimc_is_itf_s_param(device,
-		device->indexes, device->lindex, device->hindex);
+	ret = fimc_is_itf_s_param(device, indexes, lindex, hindex);
 	if (ret) {
 		merr("fimc_is_itf_s_param is fail", device);
 		ret = -EINVAL;
@@ -6741,13 +5585,15 @@ int fimc_is_ischain_dis_stop(struct fimc_is_device_ischain *device)
 {
 	int ret = 0;
 	u32 group_id = 0;
-	u32 chain1_width, chain1_height;
 	struct dis_param *dis_param;
+	u32 chain1_width, chain1_height;
+	u32 indexes, lindex, hindex;
 
 	dbg_ischain("%s()\n", __func__);
 
 	chain1_width = device->chain2_width;
 	chain1_height = device->chain2_height;
+	indexes = lindex = hindex = 0;
 	dis_param = &device->is_region->parameter.dis;
 	group_id |= GROUP_ID(device->group_isp.id);
 	group_id |= GROUP_ID(device->group_dis.id);
@@ -6759,19 +5605,15 @@ int fimc_is_ischain_dis_stop(struct fimc_is_device_ischain *device)
 		goto p_err;
 	}
 
-	device->lindex = device->hindex = device->indexes = 0;
-	fimc_is_ischain_s_chain1_size(device, chain1_width, chain1_height);
+	fimc_is_ischain_s_chain1_size(device,
+		chain1_width, chain1_height, &lindex, &hindex, &indexes);
 
-	dis_param->control.bypass = CONTROL_BYPASS_ENABLE;
+	fimc_is_subdev_dis_bypass(device,
+		dis_param, &lindex, &hindex, &indexes);
 
-	device->lindex |= LOWBIT_OF(PARAM_DIS_CONTROL);
-	device->hindex |= HIGHBIT_OF(PARAM_DIS_CONTROL);
-	device->indexes++;
-
-	ret = fimc_is_itf_s_param(device,
-		device->indexes, device->lindex, device->hindex);
+	ret = fimc_is_itf_s_param(device, indexes, lindex, hindex);
 	if (ret) {
-		err("fimc_is_itf_s_param is fail\n");
+		merr("fimc_is_itf_s_param is fail", device);
 		ret = -EINVAL;
 		goto p_err;
 	}
@@ -7092,7 +5934,14 @@ int fimc_is_ischain_sub_open(struct fimc_is_subdev *subdev,
 
 	if (init_ctl) {
 		if (init_ctl->cmd != CONTROL_COMMAND_START) {
-			err("%d entry is not start", subdev->entry);
+			if ((subdev->entry == ENTRY_DIS) ||
+					(subdev->entry == ENTRY_TDNR)) {
+#if defined(ENABLE_VDIS) || defined(ENABLE_TDNR)
+				err("%d entry is not start", subdev->entry);
+#endif
+			} else {
+				err("%d entry is not start", subdev->entry);
+			}
 			ret = -EINVAL;
 			goto p_err;
 		}
@@ -7107,8 +5956,10 @@ int fimc_is_ischain_sub_open(struct fimc_is_subdev *subdev,
 			ret = -EINVAL;
 			goto p_err;
 		}
-	} else /* isp, scc, scp do not use bypass(memory interface)*/
+	} else {
+		/* isp, scc, scp do not use bypass(memory interface)*/
 		clear_bit(FIMC_IS_ISDEV_DSTART, &subdev->state);
+	}
 
 	set_bit(FIMC_IS_ISDEV_DOPEN, &subdev->state);
 
@@ -7384,13 +6235,14 @@ int fimc_is_ischain_3a0_callback(struct fimc_is_device_ischain *device,
 	}
 
 #ifdef ENABLE_SETFILE
-	if (frame->shot_ext->setfile != device->setfile) {
+	if ((frame->shot_ext->setfile != 0xFFFFFFFF) &&
+		(frame->shot_ext->setfile != device->setfile)) {
 		setfile_save = device->setfile;
 		device->setfile = frame->shot_ext->setfile;
 
-		ret = fimc_is_ischain_s_setfile(device);
+		ret = fimc_is_ischain_chg_setfile(device);
 		if (ret) {
-			err("fimc_is_ischain_s_setfile is fail");
+			err("fimc_is_ischain_chg_setfile is fail");
 			device->setfile = setfile_save;
 			goto p_err;
 		}
@@ -7532,13 +6384,14 @@ int fimc_is_ischain_3a1_callback(struct fimc_is_device_ischain *device,
 	}
 
 #ifdef ENABLE_SETFILE
-	if (frame->shot_ext->setfile != device->setfile) {
+	if ((frame->shot_ext->setfile != 0xFFFFFFFF) &&
+		(frame->shot_ext->setfile != device->setfile)) {
 		setfile_save = device->setfile;
 		device->setfile = frame->shot_ext->setfile;
 
-		ret = fimc_is_ischain_s_setfile(device);
+		ret = fimc_is_ischain_chg_setfile(device);
 		if (ret) {
-			err("fimc_is_ischain_s_setfile is fail");
+			err("fimc_is_ischain_chg_setfile is fail");
 			device->setfile = setfile_save;
 			goto p_err;
 		}
@@ -7628,7 +6481,11 @@ int fimc_is_ischain_isp_callback(struct fimc_is_device_ischain *device,
 	struct fimc_is_frame *check_frame)
 {
 	int ret = 0;
-	u32 crop_width, bds_width, bds_height;
+#if defined(SCALER_CROP_DZOOM)
+	u32 crop_width;
+#elif defined(BAYER_CROP_DZOOM)
+	u32 bds_width, bds_height;
+#endif
 	unsigned long flags;
 	struct fimc_is_video_ctx *vctx;
 	struct fimc_is_groupmgr *groupmgr;
@@ -7769,7 +6626,7 @@ int fimc_is_ischain_isp_callback(struct fimc_is_device_ischain *device,
 
 #ifdef SCALER_CROP_DZOOM
 	crop_width = frame->shot->ctl.scaler.cropRegion[2];
-	/* Digital zoom is not supported in dual sensor mode */
+	/* Digital zoom is not supported in multiple sensor mode */
 	if (crop_width && (crop_width != device->dzoom_width)) {
 		ret = fimc_is_ischain_s_dzoom(device,
 			frame->shot->ctl.scaler.cropRegion[0],
@@ -8037,13 +6894,13 @@ int fimc_is_ischain_tag(struct fimc_is_device_ischain *ischain,
 	frame->shot->dm.flash.firingTime =
 		applied_ctl->flashUd.ctl.firingTime;
 #else
-	struct timeval curtime;
+	struct timespec curtime;
 
-	do_gettimeofday(&curtime);
+	do_posix_clock_monotonic_gettime(&curtime);
 
 	frame->shot->dm.request.frameCount = frame->fcount;
 	frame->shot->dm.sensor.timeStamp =
-		(uint64_t)curtime.tv_sec*1000000 + curtime.tv_usec;
+		(uint64_t)curtime.tv_sec*1000000000 + curtime.tv_nsec;
 #endif
 	return ret;
 }

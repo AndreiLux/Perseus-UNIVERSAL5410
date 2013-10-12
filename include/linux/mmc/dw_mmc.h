@@ -20,6 +20,8 @@
 
 #define MAX_MCI_SLOTS	2
 
+#define MAX_TUNING_RETRIES	4
+
 enum dw_mci_state {
 	STATE_IDLE = 0,
 	STATE_SENDING_CMD,
@@ -152,6 +154,7 @@ struct dw_mci {
 	unsigned int		align_size;
 
 	struct pm_qos_request	pm_qos_int;
+	struct delayed_work	qos_work;
 
 	u32			cmd_status;
 	u32			data_status;
@@ -195,9 +198,16 @@ struct dw_mci {
 	/* S/W reset timer */
 	struct timer_list       timer;
 
+	/* Data timeout timer */
+	struct timer_list       dto_timer;
+	unsigned int		dto_cnt;
+
 	struct delayed_work	tp_mon;
 	u32			transferred_cnt;
 	u32			cmd_cnt;
+	u32			sync_pre_cnt;
+	unsigned long		pm_qos_time;
+	int			pm_qos_step;
 	struct pm_qos_request	pm_qos_mif;
 	struct pm_qos_request	pm_qos_cpu;
 
@@ -235,7 +245,11 @@ struct dw_mci_dma_ops {
 /* Hardware reset using power off/on of card */
 #define DW_MMC_QUIRK_HW_RESET_PW 		BIT(5)
 /* No use voltage switch interrupt */
-#define DW_MMC_QUIRK_NO_VOLSW_INT 		BIT(6)
+#define DW_MMC_QUIRK_NO_VOLSW_INT		BIT(6)
+/* Use fixed IO voltage */
+#define DW_MMC_QUIRK_FIXED_VOLTAGE		BIT(7)
+/* Use S/W data timeout */
+#define DW_MMC_QUIRK_SW_DATA_TIMEOUT		BIT(8)
 
 enum dw_mci_cd_types {
 	DW_MCI_CD_INTERNAL,	/* use mmc internal CD line */
@@ -269,6 +283,7 @@ struct dw_mci_mon_table {
 /* Board platform data */
 struct dw_mci_board {
 	u32 num_slots;
+	u32 ch_num;	/* Host channel number */
 
 	u32 quirks; /* Workaround / Quirk flags */
 	unsigned int bus_hz; /* Bus speed */
@@ -297,10 +312,18 @@ struct dw_mci_board {
 	int (*get_bus_wd)(u32 slot_id);
 	void (*cfg_gpio)(int width);
 	void (*hw_reset)(u32 slot_id);
-	void (*set_io_timing)(void *data, unsigned char timing);
+	void (*set_io_timing)(void *data, unsigned int tuning, unsigned char timing);
 	void (*save_drv_st)(void *data, u32 slot_id);
 	void (*restore_drv_st)(void *data, u32 slot_id, int *compensation);
 	void (*tuning_drv_st)(void *data, u32 slot_id);
+
+	/* SMU control */
+	void (*cfg_smu)(void *data, u32 action);
+	/* SPLL BYPASS control */
+	void (*cfg_spll_bypass)(void *data, u32 action);
+
+	/* If necessary, add to the extra tuning */
+	s8 (*extra_tuning)(u8 map);
 
 	/* Phase Shift Value */
 	unsigned int sdr_timing;
@@ -314,6 +337,9 @@ struct dw_mci_board {
 		unsigned int pin;
 		unsigned int val;
 	} __drv_st;
+
+	/* INT QOS khz */
+	unsigned int qos_int_level;
 
 	/* cd_type: Type of Card Detection method (see cd_types enum above) */
 	enum dw_mci_cd_types cd_type;
@@ -348,14 +374,10 @@ struct dw_mci_board {
 	struct block_settings *blk_settings;
 	struct dw_mci_clk *clk_tbl;
 	struct dw_mci_mon_table *tp_mon_tbl;
+	bool ttp_enabled;
+	unsigned long ttp_timeout;
 	unsigned int sw_timeout;
-#if defined(CONFIG_MACH_UNIVERSAL5410)
-	unsigned char	prev_power_mode;		/* saved power mode */
-	void (*set_sd_power)(u32 enable);
-#endif
-	unsigned int	emmc_always_on;
-	int (*om_check)(void *);
-	u8	map[4];				/* tuning bitmap for debug */
+	u8 tuning_map[MAX_TUNING_RETRIES];
 };
 
 #endif /* LINUX_MMC_DW_MMC_H */

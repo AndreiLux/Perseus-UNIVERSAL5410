@@ -154,6 +154,13 @@ config EXYNOS_IOMMU_DEBUG
 
 	  Say N unless you need kernel log message for IOMMU debugging
 
+config EXYNOS_IOMMU_RECOVER_FAULT_HANDLER
+	bool "Register recover fault handler for Exynos IOMMU"
+	depends on EXYNOS_IOMMU
+	help
+	  Select this to use recover fault handler instead of default
+	  fault handler bringing the system down
+
 # OMAP IOMMU support
 config OMAP_IOMMU
 	bool "OMAP IOMMU Support"

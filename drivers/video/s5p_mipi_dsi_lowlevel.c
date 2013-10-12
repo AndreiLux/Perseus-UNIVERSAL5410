@@ -393,6 +393,14 @@ unsigned int s5p_mipi_dsi_is_lane_state(struct mipi_dsim_device *dsim)
 	return 0;
 }
 
+unsigned int s5p_mipi_dsi_is_hs_state(struct mipi_dsim_device *dsim)
+{
+	unsigned int reg = readl(dsim->reg_base + S5P_DSIM_STATUS);
+	if (reg & DSIM_TX_READY_HS_CLK)
+		return 1;
+	return 0;
+}
+
 void s5p_mipi_dsi_set_stop_state_counter(struct mipi_dsim_device *dsim,
 	unsigned int cnt_val)
 {
@@ -609,4 +617,54 @@ void s5p_mipi_dsi_set_timing_register2(struct mipi_dsim_device *dsim,
 	unsigned int reg = 0;
 	reg = (m_thsprprctl << 16) | (m_thszeroctl << 8) | (m_thstrailctl << 0);
 	writel(reg, dsim->reg_base + S5P_DSIM_PHYTIMING2);
+}
+
+void s5p_mipi_dsi_clear_ulps_clk_data(struct mipi_dsim_device *dsim)
+{
+	unsigned int reg = (readl(dsim->reg_base + S5P_DSIM_ESCMODE));
+
+	reg &= ~(0xf);
+	writel(reg, dsim->reg_base + S5P_DSIM_ESCMODE);
+}
+
+void s5p_mipi_dsi_enable_ulps_clk_data(struct mipi_dsim_device *dsim,
+	unsigned int enable)
+{
+	unsigned int reg = (readl(dsim->reg_base + S5P_DSIM_ESCMODE));
+
+	if (enable) {
+		reg |= DSIM_TX_ULPS_CLK;
+		reg |= DSIM_TX_ULPS_DATA;
+	} else {
+		reg |= DSIM_TX_ULPS_CLK_EXIT;
+		reg |= DSIM_TX_ULPS_DATA_EXIT;
+	}
+	writel(reg, dsim->reg_base + S5P_DSIM_ESCMODE);
+}
+
+unsigned int s5p_mipi_dsi_is_ulps_lane_state(struct mipi_dsim_device *dsim,
+	unsigned int enable)
+{
+	unsigned int reg = readl(dsim->reg_base + S5P_DSIM_STATUS);
+	if (enable) {
+		if ((reg & DSIM_ULPS_DAT(0xf)) &&
+				((reg & DSIM_ULPS_CLK)))
+			return 1;
+	} else {
+		if (!(reg & DSIM_ULPS_DAT(0xf)) &&
+				!((reg & DSIM_ULPS_CLK)))
+			return 1;
+	}
+
+	return 0;
+}
+
+void s5p_mipi_dsi_enable_main_standby(struct mipi_dsim_device *dsim,
+	unsigned int enable)
+{
+	unsigned int reg = (readl(dsim->reg_base + S5P_DSIM_MDRESOL)) &
+		~(DSIM_MAIN_STAND_BY);
+
+	reg |= enable << 31;
+	writel(reg, dsim->reg_base + S5P_DSIM_MDRESOL);
 }

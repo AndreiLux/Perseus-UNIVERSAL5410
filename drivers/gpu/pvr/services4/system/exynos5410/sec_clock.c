@@ -60,7 +60,6 @@ MODULE_PARM_DESC(sgx_gpu_clk, "SGX clock current value");
 
 module_param(sgx_gpu_src_clk, int, S_IRUSR | S_IRGRP | S_IROTH);
 MODULE_PARM_DESC(sgx_gpu_src_clk, "SGX source clock current value");
-
 /* end sys parameters */
 
 int gpu_clks_get(void)

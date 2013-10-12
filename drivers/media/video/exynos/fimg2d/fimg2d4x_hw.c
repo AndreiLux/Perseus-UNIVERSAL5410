@@ -97,6 +97,8 @@ void fimg2d4x_set_max_burst_length(struct fimg2d_control *ctrl, enum max_burst_l
 
 	cfg &= ~FIMG2D_MAX_BURST_LEN_MASK;
 	cfg |= len << FIMG2D_MAX_BURST_LEN_SHIFT;
+
+	wr(cfg, FIMG2D_AXI_MODE_REG);
 }
 
 void fimg2d4x_set_src_type(struct fimg2d_control *ctrl, enum image_sel type)

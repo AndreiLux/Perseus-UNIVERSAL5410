@@ -56,5 +56,10 @@ void __init exynos5_hs_i2c2_set_platdata(struct exynos5_platform_i2c *pd)
 		exynos5_device_hs_i2c2.resource[0].end = EXYNOS5410_PA_HSIIC(2) + SZ_4K - 1;
 		exynos5_device_hs_i2c2.resource[1].start = IRQ_IIC6;
 		exynos5_device_hs_i2c2.resource[1].end = IRQ_IIC6;
+	} else if (soc_is_exynos5420()) {
+		exynos5_device_hs_i2c2.resource[0].start = EXYNOS5420_PA_HSIIC2;
+		exynos5_device_hs_i2c2.resource[0].end = EXYNOS5420_PA_HSIIC2 + SZ_4K - 1;
+		exynos5_device_hs_i2c2.resource[1].start = IRQ_IIC6;
+		exynos5_device_hs_i2c2.resource[1].end = IRQ_IIC6;
 	}
 }

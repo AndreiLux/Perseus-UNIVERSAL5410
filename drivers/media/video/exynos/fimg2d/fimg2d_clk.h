@@ -24,6 +24,7 @@ extern struct pm_qos_request exynos5_g2d_cpu_qos;
 #endif
 
 int fimg2d_clk_setup(struct fimg2d_control *ctrl);
+int fimg2d_clk_set_gate(struct fimg2d_control *ctrl);
 void fimg2d_clk_release(struct fimg2d_control *ctrl);
 void fimg2d_clk_on(struct fimg2d_control *ctrl);
 void fimg2d_clk_off(struct fimg2d_control *ctrl);

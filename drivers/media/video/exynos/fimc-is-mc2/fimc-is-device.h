@@ -48,4 +48,16 @@ struct fimc_is_subdev {
 #define GET_SUBDEV_QUEUE(subdev) \
 	(((subdev) && (subdev)->vctx) ? (&(subdev)->vctx->q_dst) : NULL)
 
+void fimc_is_subdev_dis_start(struct fimc_is_device_ischain *device,
+	struct dis_param *param, u32 *lindex, u32 *hindex, u32 *indexes);
+void fimc_is_subdev_dis_stop(struct fimc_is_device_ischain *device,
+	struct dis_param *param, u32 *lindex, u32 *hindex, u32 *indexes);
+void fimc_is_subdev_dis_bypass(struct fimc_is_device_ischain *device,
+	struct dis_param *param, u32 *lindex, u32 *hindex, u32 *indexes);
+void fimc_is_subdev_dnr_start(struct fimc_is_device_ischain *device,
+	struct tdnr_param *param, u32 *lindex, u32 *hindex, u32 *indexes);
+void fimc_is_subdev_dnr_stop(struct fimc_is_device_ischain *device,
+	struct tdnr_param *param, u32 *lindex, u32 *hindex, u32 *indexes);
+void fimc_is_subdev_dnr_bypass(struct fimc_is_device_ischain *device,
+	struct tdnr_param *param, u32 *lindex, u32 *hindex, u32 *indexes);
 #endif

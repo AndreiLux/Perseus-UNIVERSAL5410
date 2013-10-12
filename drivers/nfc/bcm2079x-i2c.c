@@ -42,22 +42,14 @@
 
 #undef DEBUG_BCM2079X_I2C_IRQ
 
-#define TRUE		1
-#define FALSE		0
-#define STATE_HIGH	1
-#define STATE_LOW	0
-
-/* end of compile options */
-
 /* do not change below */
 #define MAX_BUFFER_SIZE		780
 
-	/* Read data */
+/* Read data */
 #define PACKET_HEADER_SIZE_NCI	(4)
 #define PACKET_HEADER_SIZE_HCI	(3)
 #define PACKET_TYPE_NCI		(16)
 #define PACKET_TYPE_HCIEV	(4)
-#define MAX_PACKET_SIZE		(PACKET_HEADER_SIZE_NCI + 255)
 
 #define ALIAS_ADDRESS	  0x79
 
@@ -165,7 +157,7 @@ static void change_client_addr(struct bcm2079x_dev *bcm2079x_dev, int addr)
 		 client->addr, client->flags, sizeof(addr_data) - 1,
 		 addr_data[sizeof(addr_data) - 1]);
 	ret = i2c_master_send(client, addr_data+offset,
-		sizeof(addr_data)-offset);
+		ARRAY_SIZE(addr_data)-offset);
 	if (ret != sizeof(addr_data)-offset) {
 		client->addr = ALIAS_ADDRESS;
 		client->flags &= ~I2C_CLIENT_TEN;
@@ -174,11 +166,11 @@ static void change_client_addr(struct bcm2079x_dev *bcm2079x_dev, int addr)
 		 "%04x, addr_data[%d] = %02x\n",
 		 client->addr, client->flags, sizeof(addr_data) - 1,
 		 addr_data[sizeof(addr_data) - 1]);
-	ret = i2c_master_send(client, addr_data, sizeof(addr_data));
+		ret = i2c_master_send(client, addr_data, ARRAY_SIZE(addr_data));
 	}
 	client->addr = addr_data[5];
 
-		dev_info(&client->dev,
+	dev_info(&client->dev,
 		 "Change client device changed to (0x%04X) flag = %04x, ret = %d\n",
 			 client->addr, client->flags, ret);
 }
@@ -373,7 +365,6 @@ static long bcm2079x_dev_unlocked_ioctl(struct file *filp,
 	default:
 		dev_err(&bcm2079x_dev->client->dev,
 			"%s, unknown cmd (%x, %lx)\n", __func__, cmd, arg);
-		return 0;
 	}
 
 	return 0;
@@ -487,8 +478,8 @@ static int bcm2079x_probe(struct i2c_client *client,
 	disable_irq_nosync(bcm2079x_dev->client->irq);
 #else
 	/* NCI reset test */
-	ret = i2c_master_send(bcm2079x_dev->client, tmp, sizeof(tmp));
-	if (ret != 5)
+	ret = i2c_master_send(bcm2079x_dev->client, tmp, ARRAY_SIZE(tmp));
+	if (ret != ARRAY_SIZE(tmp))
 		pr_err("%s, i2c write error, NCI rest cmd err = %d\n",
 			__func__, ret);
 	else

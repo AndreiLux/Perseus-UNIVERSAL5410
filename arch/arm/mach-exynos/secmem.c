@@ -22,7 +22,6 @@
 #include <linux/dma-mapping.h>
 #include <linux/export.h>
 #include <linux/pm_qos.h>
-#include <linux/delay.h>
 
 #include <asm/memory.h>
 #include <asm/cacheflush.h>
@@ -30,6 +29,7 @@
 #include <plat/devs.h>
 
 #include <mach/secmem.h>
+#include <mach/pm_interrupt_domains.h>
 
 #define SECMEM_DEV_NAME	"s5p-smem"
 struct miscdevice secmem;
@@ -41,11 +41,10 @@ static struct pm_qos_request exynos5_secmem_mif_qos;
 static char *secmem_regions[] = {
 	"mfc_sh",	/* 0 */
 	"g2d_wfd",	/* 1 */
-	"fimd_video",	/* 2 */
-	"mfc_output",	/* 3 */
-	"mfc_input",	/* 4 */
-	"mfc_fw",	/* 5 */
-	"sectbl",	/* 6 */
+	"video",	/* 2 */
+	"mfc_input",	/* 3 */
+	"mfc_fw",	/* 4 */
+	"sectbl",	/* 5 */
 	NULL
 };
 
@@ -173,7 +172,7 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 					sizeof(fd_info)))
 			return -EFAULT;
 
-		client = ion_client_create(ion_exynos, -1, "DRM");
+		client = ion_client_create(ion_exynos, "DRM");
 		if (IS_ERR(client))
 			pr_err("%s: Failed to get ion_client of DRM\n",
 				__func__);
@@ -228,25 +227,10 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	}
 	case SECMEM_IOC_GET_CRYPTO_LOCK:
 	{
-		int i;
-		int ret;
-
-		if (crypto_driver) {
-			for (i = 0; i < 100; i++) {
-				ret = crypto_driver->lock();
-				if (ret == 0)
-					break;
-				pr_err("%s : Retry to get sync lock.\n",
-					__func__);
-			}
-			return ret;
-		}
 		break;
 	}
 	case SECMEM_IOC_RELEASE_CRYPTO_LOCK:
 	{
-		if (crypto_driver)
-			return crypto_driver->release();
 		break;
 	}
 #if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
@@ -260,7 +244,6 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		if (req_mif_lock) {
 			pm_qos_update_request(&exynos5_secmem_mif_qos, 800000);
 			pr_debug("%s: Get MIF lock successfully\n", __func__);
-			mdelay(10);
 		} else {
 			pm_qos_update_request(&exynos5_secmem_mif_qos, 0);
 			pr_debug("%s: Release MIF lock successfully\n", __func__);

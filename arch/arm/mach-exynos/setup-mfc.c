@@ -26,7 +26,7 @@
 #include <mach/map.h>
 #include <mach/exynos-mfc.h>
 
-#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+#ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 static struct s5p_mfc_qos default_mfc_qos_table[] __initdata = {
 	[0] = {
 		.thrd_mb	= 0,
@@ -57,7 +57,7 @@ static struct s5p_mfc_qos default_mfc_qos_table[] __initdata = {
 
 static struct s5p_mfc_platdata default_mfc_pd __initdata = {
 	.clock_rate	= 200 * MHZ,
-#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+#ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 	.num_qos_steps	= ARRAY_SIZE(default_mfc_qos_table),
 	.qos_table	= default_mfc_qos_table,
 #endif

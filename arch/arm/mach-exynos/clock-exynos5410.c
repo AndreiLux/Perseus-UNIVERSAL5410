@@ -28,6 +28,7 @@
 #include <mach/regs-clock.h>
 #include <mach/regs-pmu.h>
 #include <mach/sysmmu.h>
+#include "board-smdk5410.h"
 
 void wait_clkdiv_stable_time(void __iomem *reg,
 			unsigned int mask, unsigned int val)
@@ -50,14 +51,12 @@ void wait_clkdiv_stable_time(void __iomem *reg,
 	 * If register status is not changed for at most 1 second
 	 * (200 jiffies), system occurs kernel panic.
 	 */
-	pr_err("Register(0x%x) status is not changed, status : 0x%x\n",
-			(unsigned int) reg, temp);
+	pr_err("Register(0x%p) status is not changed, status : 0x%x\n", reg, temp);
 	BUG();
 
 done:
 	return;
 }
-
 
 /* This setup_pll function will set rate and set parent the pll */
 static void setup_pll(const char *pll_name,
@@ -177,7 +176,7 @@ static struct sleep_save exynos5410_epll_save[] = {
 };
 
 static struct sleep_save exynos5410_vpll_save[] = {
-	SAVE_ITEM(EXYNOS5410_VPLL_LOCK),
+	SAVE_ITEM(EXYNOS5_VPLL_LOCK),
 	SAVE_ITEM(EXYNOS5_VPLL_CON0),
 	SAVE_ITEM(EXYNOS5_VPLL_CON1),
 };
@@ -314,20 +313,17 @@ static int exynos5_clksrc_init(struct clk *clk)
 	u32 mask;
 	u32 val;
 
-	if (!sclk) {
-		return 0;
+	if (sclk) {
+		reg = sclk->reg_div.reg;
+		if (reg) {
+			mask = bit_mask(sclk->reg_div.shift, sclk->reg_div.size);
+			val = __raw_readl(reg);
+			val &= mask;
+			clk->orig_div = val;
+			return 0;
+		}
 	}
-	reg = sclk->reg_div.reg;
-
-	if (!reg) {
-		return 0;
-	}
-	mask = bit_mask(sclk->reg_div.shift, sclk->reg_div.size);
-
-	val = __raw_readl(reg);
-	val &= mask;
-	clk->orig_div = val;
-	return 0;
+	return -1;
 }
 
 static int exynos5_clk_div_ctrl(struct clk *clk, int enable)
@@ -1761,20 +1757,6 @@ static struct clk exynos5_init_clocks[] = {
 		.parent         = &exynos5_clk_aclk_66.clk,
 		.enable         = exynos5_clk_ip_peris_ctrl,
 		.ctrlbit        = (1 << 21),
-	}, {
-		.name		= "dsim1",
-		.enable		= exynos5_clk_ip_disp1_ctrl,
-		.parent		= &exynos5_clk_aclk_200_disp1.clk,
-		.ctrlbit	= (1 << 3),
-	}, {
-		.name           = "mdnie1",
-		.enable         = exynos5_clk_ip_disp1_ctrl,
-		.ctrlbit        = (1 << 2),
-	}, {
-		.name           = "axi_disp1",
-		.enable         = exynos5_clk_bus_disp1_ctrl,
-		.parent		= &exynos5_clk_aclk_300_disp1.clk,
-		.ctrlbit        = (1 << 4),
 	},
 };
 
@@ -1987,6 +1969,11 @@ static struct clk exynos5_init_clocks_off[] = {
 		.enable		= exynos5_clk_ip_disp0_ctrl,
 		.ctrlbit	= (1 << 3),
 	}, {
+		.name		= "dsim1",
+		.enable		= exynos5_clk_ip_disp1_ctrl,
+		.parent		= &exynos5_clk_aclk_200_disp1.clk,
+		.ctrlbit	= (1 << 3),
+	}, {
 		.name		= "mipihsi",
 		.parent		= &exynos5_clk_mipihsi.clk,
 		.enable		= exynos5_clk_ip_fsys_ctrl,
@@ -2025,13 +2012,13 @@ static struct clk exynos5_init_clocks_off[] = {
 		.ctrlbit	= ((1 << 24) | (1 << 19) | (1 << 9) | (1 << 4)),
 	}, {
 		.name		= "sc-aclk",
-		.devname	= "exynos5-scaler",
+		.devname	= "exynos5-scaler.0",
 		.parent		= &exynos5_clk_aclk_300_gscl.clk,
 		.enable		= exynos5_clk_ip_gscl0_ctrl,
 		.ctrlbit	= (1 << 18),
 	}, {
 		.name		= "sc-pclk",
-		.devname        = "exynos5-scaler",
+		.devname        = "exynos5-scaler.0",
 		.parent         = &exynos5_clk_aclk_300_gscl.clk,
 		.enable		= exynos5_clk_ip_gscl1_ctrl,
 		.ctrlbit	= ((1 << 15) | (1 << 0)),
@@ -2160,6 +2147,10 @@ static struct clk exynos5_init_clocks_off[] = {
 		.name           = "mie1",
 		.enable         = exynos5_clk_ip_disp1_ctrl,
 		.ctrlbit        = (1 << 1),
+	}, {
+		.name           = "mdnie1",
+		.enable         = exynos5_clk_ip_disp1_ctrl,
+		.ctrlbit        = (1 << 2),
 	}, {
 		.name           = "fimd0",
 		.devname        = "exynos5-fb.0",
@@ -2317,6 +2308,11 @@ static struct clk exynos5_init_clocks_off[] = {
 		.name           = "genppmuqe",
 		.enable         = exynos5_clk_ip_gen_ctrl,
 		.ctrlbit        = ((1 << 15) | (1 << 14) | (1 << 9)),
+	}, {
+		.name           = "axi_disp1",
+		.enable         = exynos5_clk_bus_disp1_ctrl,
+		.parent		= &exynos5_clk_aclk_300_disp1.clk,
+		.ctrlbit        = (1 << 4),
 	}, {
 		.name           = "busfsysout",
 		.enable         = exynos5_clk_bus_fsys0_ctrl,
@@ -2867,15 +2863,6 @@ static struct clksrc_clk exynos5_clksrcs[] = {
 		.sources = &exynos5_clkset_group,
 		.reg_src = { .reg = EXYNOS5_CLKSRC_DISP1_0, .shift = 0, .size = 4 },
 		.reg_div = { .reg = EXYNOS5_CLKDIV_DISP1_0, .shift = 0, .size = 4 },
-	}, {
-		.clk	= {
-			.name		= "sclk_mdnie",
-			.enable		= exynos5_clksrc_mask_disp1_0_ctrl,
-			.ctrlbit	= (1 << 4),
-		},
-		.sources = &exynos5_clkset_group,
-		.reg_src = { .reg = EXYNOS5_CLKSRC_DISP1_0, .shift = 4, .size = 4 },
-		.reg_div = { .reg = EXYNOS5_CLKDIV_DISP1_0, .shift = 4, .size = 4 },
 	},
 };
 
@@ -3363,12 +3350,10 @@ static struct clksrc_clk *exynos5_sysclks_off[] = {
 	&exynos5_clk_sclk_pwi,
 	&exynos5_clk_sclk_jpeg,
 	&exynos5_clk_sclk_fimd,
-#ifndef CONFIG_FB_S5P_MDNIE
 	&exynos5_clk_sclk_mdnie,
 	&exynos5_clk_sclk_mdnie1,
-#endif
-    &exynos5_clk_dout_mdnie_pwm,
 	&exynos5_clk_sclk_mdnie_pwm,
+	&exynos5_clk_dout_mdnie_pwm1,
 	&exynos5_clk_sclk_ext_mst_vid,
 	&exynos5_clk_mipihsi,
 	&exynos5_clk_sclk_usbdrd300,
@@ -3560,8 +3545,6 @@ void __init_or_cpufreq exynos5410_setup_clocks(void)
 
 	for (i = 0; i < ARRAY_SIZE(exynos5_clksrcs); i++)
 		s3c_set_clksrc(&exynos5_clksrcs[i], true);
-
-	clk_set_parent(&exynos5_clk_sclk_c2c.clk, &exynos5_clk_mout_mpll.clk);
 }
 
 static struct clk *exynos5_clks_off[] __initdata = {
@@ -3582,6 +3565,9 @@ void __init exynos5410_register_clocks(void)
 	clk_fout_ipll.rate = 24000000;
 
 	clk_fout_epll.rate = 24000000;
+
+	clk_fout_vpll.enable = exynos5_vpll_ctrl;
+	clk_fout_vpll.ctrlbit = (1 << 4);
 
 	s3c24xx_register_clocks(exynos5_clks_off, ARRAY_SIZE(exynos5_clks_off));
 	for (ptr = 0; ptr < ARRAY_SIZE(exynos5_clks_off); ptr++)
@@ -3614,16 +3600,9 @@ void __init exynos5410_register_clocks(void)
 	s3c_disable_clocks(exynos5_i2cs_clocks, ARRAY_SIZE(exynos5_i2cs_clocks));
 
 	s3c24xx_register_clocks(exynos5_clk_cdev, ARRAY_SIZE(exynos5_clk_cdev));
-#if defined (CONFIG_MACH_V1)
-	for (ptr = 0; ptr < ARRAY_SIZE(exynos5_clk_cdev); ptr++) {
-			s3c_disable_clocks(exynos5_clk_cdev[ptr], 1);
-	}
-#else
-	for (ptr = 0; ptr < ARRAY_SIZE(exynos5_clk_cdev); ptr++) {
-		if (strcmp(exynos5_clk_cdev[ptr]->name, "fimd"))
-			s3c_disable_clocks(exynos5_clk_cdev[ptr], 1);
-	}
-#endif    
+	for (ptr = 0; ptr < ARRAY_SIZE(exynos5_clk_cdev); ptr++)
+		s3c_disable_clocks(exynos5_clk_cdev[ptr], 1);
+
 	clkdev_add_table(exynos5_clk_lookup, ARRAY_SIZE(exynos5_clk_lookup));
 
 	register_syscore_ops(&exynos5410_clock_syscore_ops);

@@ -16,19 +16,19 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 
+#include <linux/pm_qos.h>
+
 #include <plat/cpu.h>
 #include <plat/ehci.h>
 #include <plat/usb-phy.h>
 
 #include <mach/regs-pmu.h>
 #include <mach/regs-usb-host.h>
-#ifdef CONFIG_MDM_HSIC_PM
-#include <linux/mdm_hsic_pm.h>
-static const char hsic_pm_dev[] = "mdm_hsic_pm0";
-#endif
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_LINK_DEVICE_USB)
+#if defined(CONFIG_LINK_DEVICE_HSIC)
 #include <mach/sec_modem.h>
 #endif
+
+static struct pm_qos_request s5p_ehci_mif_qos;
 
 struct s5p_ehci_hcd {
 	struct device *dev;
@@ -92,8 +92,7 @@ static int s5p_ehci_configurate(struct usb_hcd *hcd)
 	return 0;
 }
 
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_LINK_DEVICE_USB) ||\
-	defined(CONFIG_CDMA_MODEM_MDM6600) || defined(CONFIG_MDM_HSIC_PM)
+#if defined(CONFIG_LINK_DEVICE_HSIC)
 int s5p_ehci_port_control(struct platform_device *pdev, int port, int enable)
 {
 	struct s5p_ehci_hcd *s5p_ehci = platform_get_drvdata(pdev);
@@ -109,53 +108,16 @@ int s5p_ehci_port_control(struct platform_device *pdev, int port, int enable)
 	return 0;
 }
 #endif
-
-#define CP_PORT      2  /* HSIC0 in S5PC210 */
-#define RETRY_CNT_LIMIT 30  /* Max 300ms wait for cp resume*/
-#if defined(CONFIG_MDM_HSIC_PM)
-static void s5p_wait_for_cp_resume(struct platform_device *pdev,
-	struct usb_hcd *hcd)
-{
-	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
-	u32 __iomem	*portsc ;
-	u32 val32, retry_cnt = 0;
-
-	portsc = &ehci->regs->port_status[CP_PORT-1];
-
-#if !defined(CONFIG_MDM_HSIC_PM)
-	set_host_states(1);
-#endif
-	do {
-		usleep_range(10000, 11000);
-		val32 = ehci_readl(ehci, portsc);
-	} while (++retry_cnt < RETRY_CNT_LIMIT && !(val32 & PORT_CONNECT));
-
-	if (retry_cnt >= RETRY_CNT_LIMIT)
-		dev_info(&pdev->dev, "%s: retry_cnt = %d, portsc = 0x%x\n",
-			__func__, retry_cnt, val32);
-}
-#endif
-
 static void s5p_ehci_phy_init(struct platform_device *pdev)
 {
 	struct s5p_ehci_platdata *pdata = pdev->dev.platform_data;
 	struct s5p_ehci_hcd *s5p_ehci = platform_get_drvdata(pdev);
 	struct usb_hcd *hcd = s5p_ehci->hcd;
-	u32 delay_count = 0;
 
 	if (pdata && pdata->phy_init) {
 		pdata->phy_init(pdev, S5P_USB_PHY_HOST);
 
-		while (!readl(hcd->regs) && delay_count < 200) {
-			delay_count++;
-			udelay(1);
-		}
-		if (delay_count)
-			dev_info(&pdev->dev, "waiting time = %d\n",
-				delay_count);
 		s5p_ehci_configurate(hcd);
-		dev_dbg(&pdev->dev, "%s : 0x%x\n", __func__,
-				readl(INSNREG00(hcd->regs)));
 	}
 }
 
@@ -170,29 +132,7 @@ static int s5p_ehci_suspend(struct device *dev)
 	unsigned long flags;
 	int rc = 0;
 
-#ifdef CONFIG_MDM_HSIC_PM
-	/*
-	 * check suspend returns 1 if it is possible to suspend
-	 * otherwise, it returns 0 impossible or returns some error
-	 */
-	rc = check_udev_suspend_allowed(hsic_pm_dev);
-	if (rc > 0) {
-		set_host_stat(hsic_pm_dev, POWER_OFF);
-		if (wait_dev_pwr_stat(hsic_pm_dev, POWER_OFF) < 0) {
-			set_host_stat(hsic_pm_dev, POWER_ON);
-			pm_runtime_resume(&pdev->dev);
-			return -EBUSY;
-		}
-	} else if (rc == -ENODEV) {
-		/* no hsic pm driver loaded, proceed suspend */
-		pr_debug("%s: suspend without hsic pm\n", __func__);
-	} else {
-		pm_runtime_resume(&pdev->dev);
-		return -EBUSY;
-	}
-	rc = 0;
-#endif
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_LINK_DEVICE_USB)
+#if defined(CONFIG_LINK_DEVICE_HSIC)
 	rc = get_hostwake_state();
 	if (rc) {
 		pr_info("%s: suspend fail by host wakeup irq\n", __func__);
@@ -202,7 +142,7 @@ static int s5p_ehci_suspend(struct device *dev)
 #endif
 
 	if (time_before(jiffies, ehci->next_statechange))
-		usleep_range(10000, 11000);
+		msleep(10);
 
 	/* Root hub was already suspended. Disable irq emission and
 	 * mark HW unaccessible, bail out if RH has been resumed. Use
@@ -214,7 +154,7 @@ static int s5p_ehci_suspend(struct device *dev)
 	 */
 
 	spin_lock_irqsave(&ehci->lock, flags);
-	if (hcd->state != HC_STATE_SUSPENDED && hcd->state != HC_STATE_HALT) {
+	if (ehci->rh_state != EHCI_RH_SUSPENDED && ehci->rh_state != EHCI_RH_HALTED) {
 		spin_unlock_irqrestore(&ehci->lock, flags);
 		return -EINVAL;
 	}
@@ -226,7 +166,7 @@ static int s5p_ehci_suspend(struct device *dev)
 
 	if (pdata && pdata->phy_exit)
 		pdata->phy_exit(pdev, S5P_USB_PHY_HOST);
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_LINK_DEVICE_USB)
+#if defined(CONFIG_LINK_DEVICE_HSIC)
 	set_host_states(0);
 #endif
 
@@ -246,14 +186,8 @@ static int s5p_ehci_resume(struct device *dev)
 
 	s5p_ehci_phy_init(pdev);
 
-	/* if EHCI was off, hcd was removed */
-	if (!s5p_ehci->power_on) {
-		dev_info(dev, "Nothing to do for the device (power off)\n");
-		return 0;
-	}
-
 	if (time_before(jiffies, ehci->next_statechange))
-		usleep_range(10000, 11000);
+		msleep(10);
 
 	/* Mark hardware accessible again as we are out of D3 state by now */
 	set_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
@@ -287,7 +221,7 @@ static int s5p_ehci_resume(struct device *dev)
 	/* here we "know" root ports should always stay powered */
 	ehci_port_power(ehci, 1);
 
-	hcd->state = HC_STATE_SUSPENDED;
+	ehci->rh_state = EHCI_RH_SUSPENDED;
 
 	/* Update runtime PM status and clear runtime_error */
 	pm_runtime_disable(dev);
@@ -297,12 +231,7 @@ static int s5p_ehci_resume(struct device *dev)
 	/* Prevent device from runtime suspend during resume time */
 	pm_runtime_get_sync(dev);
 
-#ifdef CONFIG_MDM_HSIC_PM
-	set_host_stat(hsic_pm_dev, POWER_ON);
-	wait_dev_pwr_stat(hsic_pm_dev, POWER_ON);
-#endif
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_LINK_DEVICE_USB) \
-	|| defined(CONFIG_MDM_HSIC_PM)
+#if defined(CONFIG_LINK_DEVICE_HSIC)
 	pm_runtime_mark_last_busy(&hcd->self.root_hub->dev);
 #endif
 	return 0;
@@ -313,8 +242,11 @@ int s5p_ehci_bus_suspend(struct usb_hcd *hcd)
 	int ret;
 	ret = ehci_bus_suspend(hcd);
 
+#ifdef CONFIG_USB_SUSPEND
 	/* Decrease pm_count that was increased at s5p_ehci_resume func. */
-	pm_runtime_put_noidle(hcd->self.controller);
+	if (hcd->self.controller->power.runtime_auto)
+		pm_runtime_put_noidle(hcd->self.controller);
+#endif
 
 	return ret;
 }
@@ -330,6 +262,7 @@ int s5p_ehci_bus_resume(struct usb_hcd *hcd)
 #define s5p_ehci_suspend	NULL
 #define s5p_ehci_resume		NULL
 #define s5p_ehci_bus_resume	NULL
+#define s5p_ehci_bus_suspend	NULL
 #endif
 
 #ifdef CONFIG_USB_SUSPEND
@@ -340,15 +273,18 @@ static int s5p_ehci_runtime_suspend(struct device *dev)
 
 	if (pdata && pdata->phy_suspend)
 		pdata->phy_suspend(pdev, S5P_USB_PHY_HOST);
-#ifdef CONFIG_MDM_HSIC_PM
-	request_active_lock_release(hsic_pm_dev);
-#endif
 
 #if defined(CONFIG_LINK_DEVICE_HSIC)
 	pr_info("%s: usage=%d, child=%d\n", __func__,
 					atomic_read(&dev->power.usage_count),
 					atomic_read(&dev->power.child_count));
 #endif
+
+	if (pm_qos_request_active(&s5p_ehci_mif_qos))
+		pm_qos_update_request(&s5p_ehci_mif_qos, 0);
+	else
+		pm_qos_add_request(&s5p_ehci_mif_qos, PM_QOS_BUS_THROUGHPUT, 0);
+
 	return 0;
 }
 
@@ -364,9 +300,11 @@ static int s5p_ehci_runtime_resume(struct device *dev)
 	if (dev->power.is_suspended)
 		return 0;
 
-#ifdef CONFIG_MDM_HSIC_PM
-	request_active_lock_set(hsic_pm_dev);
-#endif
+	if (pm_qos_request_active(&s5p_ehci_mif_qos))
+		pm_qos_update_request(&s5p_ehci_mif_qos, 266000);
+	else
+		pm_qos_add_request(&s5p_ehci_mif_qos, PM_QOS_BUS_THROUGHPUT, 266000);
+
 	/* platform device isn't suspended */
 	if (pdata && pdata->phy_resume)
 		rc = pdata->phy_resume(pdev, S5P_USB_PHY_HOST);
@@ -390,11 +328,7 @@ static int s5p_ehci_runtime_resume(struct device *dev)
 		/* here we "know" root ports should always stay powered */
 		ehci_port_power(ehci, 1);
 
-		hcd->state = HC_STATE_SUSPENDED;
-#ifdef CONFIG_MDM_HSIC_PM
-		set_host_stat(hsic_pm_dev, POWER_ON);
-		wait_dev_pwr_stat(hsic_pm_dev, POWER_ON);
-#endif
+		ehci->rh_state = EHCI_RH_SUSPENDED;
 	}
 #if defined(CONFIG_LINK_DEVICE_HSIC)
 	pr_info("%s: usage=%d, child=%d\n", __func__,
@@ -469,7 +403,7 @@ static ssize_t store_ehci_power(struct device *dev,
 
 	if (!power_on && s5p_ehci->power_on) {
 		printk(KERN_DEBUG "%s: EHCI turns off\n", __func__);
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_LINK_DEVICE_USB)
+#if defined(CONFIG_LINK_DEVICE_HSIC)
 		if (hcd->self.root_hub)
 			pm_runtime_forbid(&hcd->self.root_hub->dev);
 #endif
@@ -479,6 +413,9 @@ static ssize_t store_ehci_power(struct device *dev,
 
 		if (pdata && pdata->phy_exit)
 			pdata->phy_exit(pdev, S5P_USB_PHY_HOST);
+
+		if (pm_qos_request_active(&s5p_ehci_mif_qos))
+			pm_qos_remove_request(&s5p_ehci_mif_qos);
 	} else if (power_on) {
 		printk(KERN_DEBUG "%s: EHCI turns on\n", __func__);
 		if (s5p_ehci->power_on) {
@@ -488,8 +425,7 @@ static ssize_t store_ehci_power(struct device *dev,
 			s5p_ehci_phy_init(pdev);
 
 		irq = platform_get_irq(pdev, 0);
-		retval = usb_add_hcd(hcd, irq,
-				IRQF_DISABLED | IRQF_SHARED);
+		retval = usb_add_hcd(hcd, irq, IRQF_SHARED);
 		if (retval < 0) {
 			dev_err(dev, "Power On Fail\n");
 			goto exit;
@@ -502,13 +438,12 @@ static ssize_t store_ehci_power(struct device *dev,
 		device_wakeup_enable(&hcd->self.root_hub->dev);
 
 		s5p_ehci->power_on = 1;
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_LINK_DEVICE_USB)
+#if defined(CONFIG_LINK_DEVICE_HSIC)
 		/* Sometimes XMM6262 send remote wakeup when hub enter suspend
 		 * So, set the hub waiting 500ms autosuspend delay*/
 		if (hcd->self.root_hub)
 			pm_runtime_set_autosuspend_delay(
-				&hcd->self.root_hub->dev,
-				msecs_to_jiffies(500));
+				&hcd->self.root_hub->dev, 500);
 		/* mif allow the ehci runtime after enumeration */
 		pm_runtime_forbid(dev);
 #else
@@ -519,7 +454,8 @@ exit:
 	device_unlock(dev);
 	return count;
 }
-static DEVICE_ATTR(ehci_power, 0664, show_ehci_power, store_ehci_power);
+static DEVICE_ATTR(ehci_power, S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP,
+	show_ehci_power, store_ehci_power);
 
 static inline int create_ehci_sys_file(struct ehci_hcd *ehci)
 {
@@ -614,7 +550,7 @@ static int __devinit s5p_ehci_probe(struct platform_device *pdev)
 	/* cache this readonly data; minimize chip reads */
 	ehci->hcs_params = readl(&ehci->caps->hcs_params);
 
-	err = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
+	err = usb_add_hcd(hcd, irq, IRQF_SHARED);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to add USB HCD\n");
 		goto fail;
@@ -634,18 +570,6 @@ static int __devinit s5p_ehci_probe(struct platform_device *pdev)
 	pm_runtime_enable(&pdev->dev);
 	pm_runtime_get(hcd->self.controller);
 #endif
-#ifdef CONFIG_MDM_HSIC_PM
-	/* halt controller before driving suspend on ths bus */
-	ehci->susp_sof_bug = 1;
-
-	set_host_stat(hsic_pm_dev, POWER_ON);
-	/* pm_runtime_allow(&pdev->dev); */
-	pm_runtime_set_autosuspend_delay(&hcd->self.root_hub->dev, 0);
-
-	pm_runtime_forbid(&pdev->dev);
-	enable_periodic(ehci);
-#endif
-
 	return 0;
 
 fail:
@@ -668,12 +592,8 @@ static int __devexit s5p_ehci_remove(struct platform_device *pdev)
 	struct usb_hcd *hcd = s5p_ehci->hcd;
 
 #ifdef CONFIG_USB_SUSPEND
-#ifdef CONFIG_MDM_HSIC_PM
-	pm_runtime_forbid(&pdev->dev);
-#else
 	pm_runtime_put(hcd->self.controller);
 	pm_runtime_disable(&pdev->dev);
-#endif
 #endif
 	s5p_ehci->power_on = 0;
 	remove_ehci_sys_file(hcd_to_ehci(hcd));

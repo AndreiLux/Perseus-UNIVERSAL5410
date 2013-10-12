@@ -33,9 +33,10 @@ void exynos4_setup_clocks(void);
 #ifdef CONFIG_ARCH_EXYNOS5
 void exynos5250_register_clocks(void);
 void exynos5410_register_clocks(void);
+void exynos5420_register_clocks(void);
 void exynos5250_setup_clocks(void);
 void exynos5410_setup_clocks(void);
-
+void exynos5420_setup_clocks(void);
 #else
 #define exynos5250_register_clocks()
 #define exynos5410_register_clocks()
@@ -59,4 +60,6 @@ void exynos4212_register_clocks(void);
 
 extern bool is_cable_attached;
 extern bool is_wpc_cable_attached;
+extern bool is_ovlo_state;
+extern unsigned int lpcharge;
 #endif /* __ARCH_ARM_MACH_EXYNOS_COMMON_H */

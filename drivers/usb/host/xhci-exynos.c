@@ -84,9 +84,9 @@ static int exynos_xhci_suspend(struct device *dev)
 		dev_err(dev, "%s: cannot stop xHC\n", __func__);
 
 	pm_runtime_put_sync(dev->parent);
+
 	exynos_drd_put(pdev);
 
-	dev_err(dev, "%s<-- retval(%d)\n", __func__,retval);
 	return retval;
 }
 
@@ -138,7 +138,7 @@ static int exynos_xhci_resume(struct device *dev)
 	pm_runtime_disable(dev);
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
-	dev_err(dev, "%s<-- retval(%d)\n", __func__,retval);
+
 	return retval;
 }
 #else
@@ -155,7 +155,7 @@ static int exynos_xhci_runtime_suspend(struct device *dev)
 	struct xhci_hcd		*xhci;
 	int			retval = 0;
 
-	dev_err(dev, "%s\n", __func__);
+	dev_dbg(dev, "%s\n", __func__);
 
 	exynos_xhci = dev_get_drvdata(dev);
 	if (!exynos_xhci)
@@ -180,7 +180,7 @@ static int exynos_xhci_runtime_suspend(struct device *dev)
 	pm_runtime_put_sync(exynos_xhci->dev->parent);
 
 	exynos_drd_put(pdev);
-	dev_err(dev, "%s<-- retval(%d)\n", __func__,retval);
+
 	return retval;
 }
 
@@ -192,7 +192,7 @@ static int exynos_xhci_runtime_resume(struct device *dev)
 	struct xhci_hcd		*xhci;
 	int			retval = 0;
 
-	dev_err(dev, "%s\n", __func__);
+	dev_dbg(dev, "%s\n", __func__);
 
 	exynos_xhci = dev_get_drvdata(dev);
 	if (!exynos_xhci)
@@ -232,7 +232,7 @@ static int exynos_xhci_runtime_resume(struct device *dev)
 	xhci = hcd_to_xhci(hcd);
 	retval = xhci_resume(xhci, 0);
 	if (retval < 0)
-		dev_err(dev, "%s<-- retval(%d)\n", __func__,retval);
+		dev_err(dev, "%s: cannot start xHC\n", __func__);
 
 	/*
 	 * In xhci_resume(), config values(AHB bus and los_bias) are intialized.
@@ -262,8 +262,15 @@ int exynos_xhci_bus_resume(struct usb_hcd *hcd)
 
 static void exynos_xhci_quirks(struct device *dev, struct xhci_hcd *xhci)
 {
+	struct exynos_xhci_hcd  *exynos_xhci = dev_get_drvdata(dev);
+	struct exynos_drd_core  *core = exynos_xhci->core;
+
 	/* Don't use MSI interrupt */
 	xhci->quirks |= XHCI_BROKEN_MSI;
+
+	/* Race Condition in PORTSC Write Followed by Read */
+	if (core->release <= 0x210a)
+		xhci->quirks |= XHCI_PORTSC_RACE_CONDITION;
 }
 
 /* called during probe() after chip reset completes */
@@ -460,7 +467,7 @@ static int __devinit exynos_xhci_probe(struct platform_device *pdev)
 	if (exynos_xhci->core->ops->core_init)
 		exynos_xhci->core->ops->core_init(exynos_xhci->core);
 
-	err = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
+	err = usb_add_hcd(hcd, irq, IRQF_SHARED);
 	if (err) {
 		dev_err(dev, "Failed to add primary HCD\n");
 		goto put_hcd;
@@ -487,7 +494,7 @@ static int __devinit exynos_xhci_probe(struct platform_device *pdev)
 	 */
 	*((struct xhci_hcd **) xhci->shared_hcd->hcd_priv) = xhci;
 
-	err = usb_add_hcd(xhci->shared_hcd, irq, IRQF_DISABLED | IRQF_SHARED);
+	err = usb_add_hcd(xhci->shared_hcd, irq, IRQF_SHARED);
 	if (err) {
 		dev_err(dev, "Failed to add shared HCD\n");
 		goto put_usb3_hcd;

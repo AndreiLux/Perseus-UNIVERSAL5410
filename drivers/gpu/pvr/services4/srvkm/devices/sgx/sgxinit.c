@@ -1646,6 +1646,8 @@ IMG_VOID SGXOSTimer(IMG_VOID *pvData)
 #if defined(DUMP_UKERNEL_INFO_AT_TIMEOUT)
 			{
 				SGXMKIF_HOST_CTL	*psSGXHostCtl = psDevInfo->psSGXHostCtl;
+				IMG_UINT32	*pui32MKTraceBuffer = psDevInfo->psKernelEDMStatusBufferMemInfo->pvLinAddrKM;
+				IMG_UINT32	ui32LastStatusCode;
 
 				PVR_LOG(("Check counter %d", ui32LockupCounter));
 
@@ -1665,6 +1667,10 @@ IMG_VOID SGXOSTimer(IMG_VOID *pvData)
 					psDevInfo->psKernelCCBCtl->ui32ReadOffset,
 					g_debug_CCB_Info_WCNT));
 
+				ui32LastStatusCode = *pui32MKTraceBuffer;
+				pui32MKTraceBuffer++;
+				PVR_LOG(("Last SGX microkernel status code: %08X %s",
+					ui32LastStatusCode, SGXUKernelStatusString(ui32LastStatusCode)));
 				SGXDumpDebugReg(psDevInfo, 0, "EUR_CR_BIF_MEM_REQ_STAT: ", EUR_CR_BIF_MEM_REQ_STAT);
 				SGXDumpDebugReg(psDevInfo, 1, "EUR_CR_BIF_MEM_REQ_STAT: ", EUR_CR_BIF_MEM_REQ_STAT);
 				SGXDumpDebugReg(psDevInfo, 2, "EUR_CR_BIF_MEM_REQ_STAT: ", EUR_CR_BIF_MEM_REQ_STAT);

@@ -27,23 +27,13 @@
 #include <mach/devfreq.h>
 #include <mach/asv-exynos.h>
 #include <mach/smc.h>
-#include <mach/tmu.h>
 #include <mach/bts.h>
+#include <mach/tmu.h>
 
 #include <plat/pll.h>
 
 #include "noc_probe.h"
 #include "exynos5410_volt_ctrl.h"
-
-#ifdef CONFIG_ASV_MARGIN_TEST
-static int set_mif_freq = 0;
-static int __init get_mif_freq(char *str)
-{
-	get_option(&str, &set_mif_freq);
-	return 0;
-}
-early_param("miffreq", get_mif_freq);
-#endif
 
 static bool en_profile = false;
 static struct device *mif_dev;
@@ -226,11 +216,11 @@ int exynos5_mif_unregister_notifier(struct notifier_block *nb)
 }
 EXPORT_SYMBOL(exynos5_mif_unregister_notifier);
 
-void exynos5_mif_notify_transition(struct devfreq_info *info, unsigned int state)
+int exynos5_mif_notify_transition(struct devfreq_info *info, unsigned int state)
 {
 	BUG_ON(irqs_disabled());
 
-	srcu_notifier_call_chain(&exynos5_mif_transition_notifier_list, state, info);
+	return srcu_notifier_call_chain(&exynos5_mif_transition_notifier_list, state, info);
 }
 EXPORT_SYMBOL_GPL(exynos5_mif_notify_transition);
 
@@ -259,11 +249,11 @@ int exynos5_mif_bpll_unregister_notifier(struct notifier_block *nb)
 }
 EXPORT_SYMBOL(exynos5_mif_bpll_unregister_notifier);
 
-void exynos5_mif_bpll_transition_notify(struct devfreq_info *info, unsigned int state)
+int exynos5_mif_bpll_transition_notify(struct devfreq_info *info, unsigned int state)
 {
 	BUG_ON(irqs_disabled());
 
-	srcu_notifier_call_chain(&exynos5_mif_bpll_transition_notifier_list, state, info);
+	return srcu_notifier_call_chain(&exynos5_mif_bpll_transition_notifier_list, state, info);
 }
 EXPORT_SYMBOL_GPL(exynos5_mif_bpll_transition_notify);
 
@@ -549,10 +539,6 @@ static int exynos5_mif_busfreq_target(struct device *dev,
 
 	/* get available opp information */
 	rcu_read_lock();
-#ifdef CONFIG_ASV_MARGIN_TEST
-	if (set_mif_freq > 0)
-		*_freq = set_mif_freq;
-#endif
 	opp = devfreq_recommended_opp(dev, _freq, flags);
 	if (IS_ERR(opp)) {
 		rcu_read_unlock();
@@ -570,7 +556,6 @@ static int exynos5_mif_busfreq_target(struct device *dev,
 	rcu_read_unlock();
 
 	exynos5_mif_update_state(old_freq);
-
 
 	if (old_freq == freq)
 		goto out;
@@ -596,10 +581,10 @@ static int exynos5_mif_busfreq_target(struct device *dev,
 		exynos5_mif_set_freq(freq);
 		exynos5_mif_bpll_transition_notify(&info, MIF_DEVFREQ_POSTCHANGE);
 
-		if (freq == data->devfreq->max_freq)
+		if (freq == mif_bus_opp_list[LV_0].clk)
 			exynos5_clkm_gate(true);
 	} else {
-		if (old_freq == data->devfreq->max_freq)
+		if (old_freq == mif_bus_opp_list[LV_0].clk)
 			exynos5_clkm_gate(false);
 
 		exynos5_mif_bpll_transition_notify(&info, MIF_DEVFREQ_PRECHANGE);
@@ -617,7 +602,6 @@ static int exynos5_mif_busfreq_target(struct device *dev,
 	bts_change_bustraffic(&info, MIF_DEVFREQ_POSTCHANGE);
 
 	curr_mif_freq = freq;
-
 	data->curr_opp = opp;
 out:
 	g_miffreq = freq;
@@ -776,19 +760,20 @@ static ssize_t mif_show_state(struct device *dev, struct device_attribute *attr,
 {
 	unsigned int i;
 	ssize_t len = 0;
+	ssize_t write_cnt = (ssize_t)((PAGE_SIZE / LV_END) - 2);
 
 	for (i = LV_0; i < LV_END; i++)
-		len += sprintf(buf + len, "%ld %llu\n", mif_bus_opp_list[i].clk,
+		len += snprintf(buf + len, write_cnt, "%ld %llu\n", mif_bus_opp_list[i].clk,
 				(unsigned long long)mif_bus_opp_list[i].time_in_state);
 
 	return len;
 }
 
-static DEVICE_ATTR(mif_time_in_state, 0644, mif_show_state, NULL);
+static DEVICE_ATTR(mif_time_in_state, S_IRUSR | S_IRGRP, mif_show_state, NULL);
 
 static ssize_t show_upthreshold(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%d\n", exynos5_mif_governor_data.upthreshold);
+	return snprintf(buf, PAGE_SIZE, "%d\n", exynos5_mif_governor_data.upthreshold);
 }
 
 static ssize_t store_upthreshold(struct device *dev,
@@ -807,11 +792,12 @@ out:
 	return count;
 }
 
-static DEVICE_ATTR(upthreshold, S_IRUGO | S_IWUSR, show_upthreshold, store_upthreshold);
+static DEVICE_ATTR(upthreshold, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP,
+		show_upthreshold, store_upthreshold);
 
 static ssize_t show_target_percentage(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%d\n", exynos5_mif_governor_data.target_percentage);
+	return snprintf(buf, PAGE_SIZE, "%d\n", exynos5_mif_governor_data.target_percentage);
 }
 
 static ssize_t store_target_percentage(struct device *dev,
@@ -830,11 +816,12 @@ out:
 	return count;
 }
 
-static DEVICE_ATTR(target_percentage, S_IRUGO | S_IWUSR, show_target_percentage, store_target_percentage);
+static DEVICE_ATTR(target_percentage, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP,
+		show_target_percentage, store_target_percentage);
 
 static ssize_t show_proportional(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%d\n", exynos5_mif_governor_data.proportional);
+	return snprintf(buf, PAGE_SIZE, "%d\n", exynos5_mif_governor_data.proportional);
 }
 
 static ssize_t store_proportional(struct device *dev,
@@ -853,11 +840,12 @@ out:
 	return count;
 }
 
-static DEVICE_ATTR(proportional, S_IRUGO | S_IWUSR, show_proportional, store_proportional);
+static DEVICE_ATTR(proportional, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP,
+		show_proportional, store_proportional);
 
 static ssize_t show_en_profile(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", en_profile ? "true" : "false");
+	return snprintf(buf, PAGE_SIZE, "%s\n", en_profile ? "true" : "false");
 }
 
 static ssize_t store_en_profile(struct device *dev,
@@ -880,7 +868,8 @@ out:
 	return count;
 }
 
-static DEVICE_ATTR(en_profile, S_IRUGO | S_IWUSR, show_en_profile, store_en_profile);
+static DEVICE_ATTR(en_profile, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP,
+		show_en_profile, store_en_profile);
 
 static struct attribute *busfreq_mif_entries[] = {
 	&dev_attr_mif_time_in_state.attr,
@@ -900,6 +889,7 @@ static ssize_t show_freq_table(struct device *dev, struct device_attribute *attr
 {
 	int i, count = 0;
 	struct opp *opp;
+	ssize_t write_cnt = (ssize_t)((PAGE_SIZE / ARRAY_SIZE(mif_bus_opp_list)) - 2);
 
 	if (!unlikely(mif_dev)) {
 		pr_err("%s: device is not probed\n", __func__);
@@ -910,20 +900,20 @@ static ssize_t show_freq_table(struct device *dev, struct device_attribute *attr
 	for (i = 0; i < ARRAY_SIZE(mif_bus_opp_list); i++) {
 		opp = opp_find_freq_exact(mif_dev, mif_bus_opp_list[i].clk, true);
 		if (!IS_ERR_OR_NULL(opp))
-			count += sprintf(&buf[count], "%lu ", opp_get_freq(opp));
+			count += snprintf(&buf[count], write_cnt, "%lu ", opp_get_freq(opp));
 	}
 	rcu_read_unlock();
 
-	count += sprintf(&buf[count], "\n");
+	count += snprintf(&buf[count], 2, "\n");
 	return count;
 }
 
-static DEVICE_ATTR(freq_table, S_IRUGO, show_freq_table, NULL);
+static DEVICE_ATTR(freq_table, S_IRUSR | S_IRGRP, show_freq_table, NULL);
 
 static ssize_t show_en_monitoring(struct device *dev, struct device_attribute *attr,
 				  char *buf)
 {
-	return sprintf(buf, "%s\n",
+	return snprintf(buf, PAGE_SIZE, "%s\n",
 			exynos5_mif_governor_data.en_monitoring ? "true" : "false");
 }
 
@@ -947,7 +937,7 @@ static ssize_t store_en_monitoring(struct device *dev, struct device_attribute *
 	return count;
 }
 
-static DEVICE_ATTR(en_monitoring, S_IRUGO | S_IWUSR,
+static DEVICE_ATTR(en_monitoring, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP,
 			show_en_monitoring, store_en_monitoring);
 
 static struct exynos_devfreq_platdata default_qos_mif_pd = {
@@ -1003,7 +993,6 @@ static int exynos5_mif_cpufreq_notifier_call(struct notifier_block *this,
 static struct notifier_block exynos5_mif_cpufreq_notifier = {
 	.notifier_call = exynos5_mif_cpufreq_notifier_call,
 };
-
 
 static unsigned int  dll_lock_and_forcing(void __iomem *base)
 {
@@ -1178,6 +1167,7 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 	exynos5_base_drexI_0 = ioremap(EXYNOS5_PA_DREXI_0, SZ_128K);
 	exynos5_base_drexI_1 = ioremap(EXYNOS5_PA_DREXI_1, SZ_128K);
 #endif
+
 	phy0_base = ioremap(0x10c00000, SZ_4K);
 	phy1_base = ioremap(0x10c10000, SZ_4K);
 
@@ -1255,7 +1245,7 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 	pm_qos_add_request(&boot_mif_qos, PM_QOS_BUS_THROUGHPUT, 0);
 	pm_qos_update_request_timeout(&boot_mif_qos, 800000, 60000 * 1000);
 
-	pr_info("init_volt[%d], freq[%lu]\n", init_volt, data->devfreq->max_freq);
+	pr_info("init_volt[%d], freq[%ld]\n", init_volt, data->devfreq->max_freq);
 
 	err = exynos5_volt_ctrl(VDD_MIF, init_volt, data->devfreq->max_freq);
 	__raw_writel(((dll_lock_and_forcing(phy1_base) & 0x7f) << 16) |
@@ -1263,7 +1253,6 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 
 	pr_info("PMU_SPARE1 0x%x\n", __raw_readl(EXYNOS_PMU_SPARE1));
 	register_reboot_notifier(&exynos5_mif_reboot_notifier);
-
 #ifdef CONFIG_EXYNOS_THERMAL
 	exynos_tmu_add_notifier(&exynos5_bus_mif_tmu_nb);
 #endif

@@ -735,6 +735,9 @@ out:
 	kfree(n);
 	kfree(t);
 
+#ifdef CONFIG_ALWAYS_ENFORCE
+	selinux_enforcing = 1;
+#endif
 	if (!selinux_enforcing)
 		return 0;
 	return -EPERM;
@@ -1351,6 +1354,9 @@ out:
 	kfree(s);
 	kfree(t);
 	kfree(n);
+#ifdef CONFIG_ALWAYS_ENFORCE
+        selinux_enforcing = 1;
+#endif
 	if (!selinux_enforcing)
 		return 0;
 	return -EACCES;
@@ -1617,7 +1623,9 @@ static inline int convert_context_handle_invalid_context(struct context *context
 {
 	char *s;
 	u32 len;
-
+#ifdef CONFIG_ALWAYS_ENFORCE
+        selinux_enforcing = 1;
+#endif
 	if (selinux_enforcing)
 		return -EINVAL;
 

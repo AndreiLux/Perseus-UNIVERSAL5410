@@ -10,7 +10,10 @@
  * published by the Free Software Foundation.
  */
 
+#ifdef CONFIG_SEC_FACTORY
 #define DEBUG
+#endif
+/* #define DEBUG */
 /* #define VERBOSE_DEBUG */
 
 #include <linux/kernel.h>
@@ -180,34 +183,6 @@ static int exynos_ss_udc_map_dma(struct exynos_ss_udc *udc,
 				 struct exynos_ss_udc_ep *udc_ep)
 {
 	struct usb_request *req = &udc_req->req;
-	int rem;
-
-	/* Bounce buffer for OUT transfers */
-	if (!udc_ep->dir_in) {
-		rem = req->length % udc_ep->ep.maxpacket;
-		if (rem > 0) {
-			dev_vdbg(udc->dev, "Buf length isn't multiple of max packet size\n");
-
-			/* Backup buffer address and its length */
-			udc_req->buf = req->buf;
-			udc_req->length = req->length;
-
-			/*
-			 * Create buffer with the length divisible
-			 * by the maxpacket size
-			 */
-			req->length += udc_ep->ep.maxpacket - rem;
-			req->buf = kzalloc(req->length, GFP_ATOMIC);
-			if (!req->buf) {
-				dev_err(udc->dev, "Cannot allocate bounce buffer\n");
-				req->length = udc_req->length;
-				req->buf = udc_req->buf;
-				return -ENOMEM;
-			}
-
-			udc_req->bounced = true;
-		}
-	}
 
 	return usb_gadget_map_request(&udc->gadget, req, udc_ep->dir_in);
 }
@@ -228,19 +203,6 @@ static void exynos_ss_udc_unmap_dma(struct exynos_ss_udc *udc,
 	struct usb_request *req = &udc_req->req;
 
 	usb_gadget_unmap_request(&udc->gadget, req, udc_ep->dir_in);
-
-	/* Bounce buffer for OUT transfers */
-	if (!udc_ep->dir_in && udc_req->bounced) {
-		/* Copy data that we received */
-		memcpy(udc_req->buf, req->buf, udc_req->length);
-		kfree(req->buf);
-
-		/* Restore original buffer and its length */
-		req->length = udc_req->length;
-		req->buf = udc_req->buf;
-
-		udc_req->bounced = false;
-	}
 }
 
 /**
@@ -336,22 +298,24 @@ void exynos_ss_udc_cable_connect(struct exynos_ss_udc *udc, bool connect)
 #define EXYNOS_SS_UDC_CABLE_CONNECT(udc, connect)	\
 	exynos_ss_udc_cable_connect(udc, connect)
 #define WAKE_LOCK_INIT(udc)
+#define WAKE_LOCK_ACQUIRE(udc)
+#define WAKE_LOCK_RELEASE(udc)
+#define WORK_INIT(udc)
+#define WORK_CANCEL(udc)
+#define WORK_SCHEDULE(udc)
 #elif defined(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE)
 void exynos_ss_udc_cable_connect(struct exynos_ss_udc *udc, bool connect)
 {
 	static bool last_connect;
 	struct usb_composite_dev *cdev;
 	if (last_connect != connect) {
-		if (connect)
-			wake_lock(&udc->wake_lock);
-		else{
+		if (!connect){
 			cdev = get_gadget_data(&udc->gadget);
 			if (cdev != NULL) {
 				cdev->mute_switch = 0;
 				cdev->force_disconnect = 1;
 				printk(KERN_DEBUG"Force Disconnect set to 1\n");
 			}
-			wake_lock_timeout(&udc->wake_lock, HZ / 2);
 		}
 		last_connect = connect;
 	}
@@ -361,9 +325,34 @@ void exynos_ss_udc_cable_connect(struct exynos_ss_udc *udc, bool connect)
 	exynos_ss_udc_cable_connect(udc, connect)
 #define WAKE_LOCK_INIT(udc)\
 	wake_lock_init(&udc->wake_lock, WAKE_LOCK_SUSPEND, "vbus_present")
+#define WAKE_LOCK_ACQUIRE(udc) \
+	wake_lock(&udc->wake_lock);
+#define WAKE_LOCK_RELEASE(udc) \
+	wake_lock_timeout(&udc->wake_lock, HZ / 2);
+
+static void exynos_ss_udc_reconnect_work(struct work_struct *data)
+{
+	struct exynos_ss_udc *udc = container_of(data, struct exynos_ss_udc, reconnect_work);
+	usb_gadget_disconnect(&udc->gadget);
+	printk(KERN_ERR"usb: Disconnected in case of Super speed support \n");
+	mdelay(1);
+	usb_gadget_connect(&udc->gadget);
+
+}
+#define WORK_INIT(udc) \
+	INIT_WORK(&udc->reconnect_work, exynos_ss_udc_reconnect_work);
+#define WORK_CANCEL(udc) \
+	cancel_work_sync(&udc->reconnect_work);
+#define WORK_SCHEDULE(udc) \
+	schedule_work(&udc->reconnect_work);
 #else
 #define EXYNOS_SS_UDC_CABLE_CONNECT(udc, connect)
 #define WAKE_LOCK_INIT(udc)
+#define WAKE_LOCK_ACQUIRE(udc)
+#define WAKE_LOCK_RELEASE(udc)
+#define WORK_INIT(udc)
+#define WORK_CANCEL(udc)
+#define WORK_SCHEDULE(udc)
 #endif
 
 /**
@@ -374,7 +363,6 @@ void exynos_ss_udc_cable_connect(struct exynos_ss_udc *udc, bool connect)
 static void exynos_ss_udc_run_stop(struct exynos_ss_udc *udc, int is_on)
 {
 	u32 reg;
-	int i;
 	int res;
 
 	dev_dbg(udc->dev, "%s udc\n", is_on ? "Start" : "Stop");
@@ -386,6 +374,8 @@ static void exynos_ss_udc_run_stop(struct exynos_ss_udc *udc, int is_on)
 				     EXYNOS_USB3_DSTS_DevCtrlHlt,
 				     1000);
 	} else {
+		int i;
+
 		__bic32(udc->regs + EXYNOS_USB3_DCTL,
 			EXYNOS_USB3_DCTL_Run_Stop);
 
@@ -408,7 +398,7 @@ static void exynos_ss_udc_run_stop(struct exynos_ss_udc *udc, int is_on)
 	}
 
 	if (res < 0)
-		dev_vdbg(udc->dev, "Failed to %sconnect by software\n",
+		dev_err(udc->dev, "Failed to %sconnect by software\n",
 				  is_on ? "" : "dis");
 }
 
@@ -421,7 +411,7 @@ static void exynos_ss_udc_run_stop(struct exynos_ss_udc *udc, int is_on)
  * If TRB is available, the function returns its virtual address and saves TRB's
  * DMA address to location pointed by trb_dma parameter.
  */
-struct exynos_ss_udc_trb *
+static struct exynos_ss_udc_trb *
 exynos_ss_udc_get_free_trb(struct exynos_ss_udc_ep *udc_ep, dma_addr_t *trb_dma)
 {
 	const struct usb_endpoint_descriptor *desc = udc_ep->ep.desc;
@@ -443,7 +433,7 @@ exynos_ss_udc_get_free_trb(struct exynos_ss_udc_ep *udc_ep, dma_addr_t *trb_dma)
 	if (desc && usb_endpoint_xfer_isoc(desc))
 		numtrbs = NUM_ISOC_TRBS;
 	else
-		numtrbs = 1;
+		numtrbs = NUM_TRBS;
 
 	if (udc_ep->trb_index >= numtrbs)
 		udc_ep->trb_index = 0;
@@ -456,26 +446,97 @@ exynos_ss_udc_get_free_trb(struct exynos_ss_udc_ep *udc_ep, dma_addr_t *trb_dma)
 }
 
 /**
+ * exynos_ss_udc_return_trb - return TRB to EP's TRB pool
+ * @udc_ep: The endpoint
+ *
+ * Return latest requested TRB doing rollback of TRB index what allows
+ * reusing this TRB on next 'get' in near future.
+ */
+static void exynos_ss_udc_return_trb(struct exynos_ss_udc_ep *udc_ep)
+{
+	const struct usb_endpoint_descriptor *desc = udc_ep->ep.desc;
+
+	udc_ep->trb_index--;
+	if (udc_ep->trb_index < 0) {
+		if (desc && usb_endpoint_xfer_isoc(desc))
+			udc_ep->trb_index = NUM_ISOC_TRBS - 1;
+		else
+			udc_ep->trb_index = NUM_TRBS - 1;
+	}
+	udc_ep->trbs_avail++;
+}
+
+/**
+ * exynos_ss_udc_fill_trb - setup TRB for transfer
+ * @udc_ep: The endpoint.
+ * @trb_dma: The TRB's address.
+ * @dma: The buffer's dma address.
+ * @length: The number of bytes to receive or send.
+ * @type: The TRB type.
+ * @last: Indicate last TRB in the transfer.
+ */
+static void exynos_ss_udc_fill_trb(struct exynos_ss_udc_ep *udc_ep,
+				   struct exynos_ss_udc_trb *trb,
+				   dma_addr_t dma,
+				   unsigned length,
+				   enum trb_control type,
+				   bool last)
+{
+	const struct usb_endpoint_descriptor *desc = udc_ep->ep.desc;
+
+	/* Currently we don't handle request length >= 16 MB */
+	WARN_ON_ONCE(length & (~EXYNOS_USB3_TRB_BUFSIZ_MASK));
+
+	length = length & EXYNOS_USB3_TRB_BUFSIZ_MASK;
+
+	trb->buff_ptr_low = (u32) dma;
+	trb->buff_ptr_high = 0;
+	trb->param1 = EXYNOS_USB3_TRB_BUFSIZ(length);
+	trb->param2 = EXYNOS_USB3_TRB_TRBCTL(type);
+
+	if (desc && usb_endpoint_xfer_isoc(desc)) {
+		trb->param2 |= EXYNOS_USB3_TRB_ISP_IMI | EXYNOS_USB3_TRB_CSP;
+
+		if (last)
+			trb->param2 |= EXYNOS_USB3_TRB_IOC;
+		else
+			trb->param2 |= EXYNOS_USB3_TRB_CHN;
+	} else {
+		if (last)
+			trb->param2 |= EXYNOS_USB3_TRB_LST;
+		else
+			trb->param2 |= EXYNOS_USB3_TRB_CHN;
+	}
+
+	trb->param2 |= EXYNOS_USB3_TRB_HWO;
+}
+
+/**
  * exynos_ss_udc_start_req - start a USB request from an endpoint's queue
  * @udc: The device state.
  * @udc_ep: The endpoint to process a request for.
  * @udc_req: The request being started.
- * @send_zlp: True if we are sending ZLP.
  *
- * Start the given request running by setting the TRB appropriately,
- * and issuing Start Transfer endpoint command.
+ * Start the given request running by setting the TRBs appropriately,
+ * and issuing Start Transfer or Update Transfer endpoint command.
+ * To comply with Buffer Size rules the auxiliary buffer is used. It
+ * complements request buffer for OUT transfers so Buffer Descriptor
+ * size becomes multiple of MaxPacketSize. In case of IN transfers it
+ * is used for sending a zero-length packet after a multiple of
+ * MaxPacketSize to indicate a transfer completion to the host.
  */
 static void exynos_ss_udc_start_req(struct exynos_ss_udc *udc,
 				    struct exynos_ss_udc_ep *udc_ep,
-				    struct exynos_ss_udc_req *udc_req,
-				    bool send_zlp)
+				    struct exynos_ss_udc_req *udc_req)
 {
 	const struct usb_endpoint_descriptor *desc = udc_ep->ep.desc;
 	struct exynos_ss_udc_ep_command epcmd = {{0}, };
 	struct usb_request *ureq = &udc_req->req;
 	enum trb_control trb_type = NORMAL;
 	int epnum = udc_ep->epnum;
-	int xfer_length;
+	int trbs_num = 1; /* 1 TRB minimum */
+	unsigned aux_size = 0;
+	int rem;
 	int res;
 
 	dev_vdbg(udc->dev, "%s: %s, req %p\n", __func__, udc_ep->name, ureq);
@@ -529,38 +590,80 @@ static void exynos_ss_udc_start_req(struct exynos_ss_udc *udc,
 	else
 		trb_type = NORMAL;
 
-	/* Get TRB; for ZLP reuse request's TRB */
-	if (!send_zlp)
-		udc_req->trb = exynos_ss_udc_get_free_trb(udc_ep,
-							 &udc_req->trb_dma);
-	if (!udc_req->trb) {
-		dev_dbg(udc->dev, "%s: no available TRB\n", __func__);
+	/* Comply with TRB and Buffer Size Rules */
+	rem = ureq->length % udc_ep->ep.maxpacket;
+
+	if (epnum == 0 && udc->ep0_state != EP0_DATA_PHASE) {
+		; /* do nothing; see DWC3 databook, Figure 8-11 */
+	} else if (udc_ep->dir_in) {
+		/*
+		 * If software wants to indicate a transfer completion
+		 * to the host by sending a zero-length packet after
+		 * a multiple of MaxPacketSize, it must set up a zero-
+		 * length TRB following the last TRB in the transfer.
+		 */
+		if (ureq->zero && ureq->length && !rem) {
+			aux_size = 0;
+			trbs_num++;
+		}
+	} else { /* DIR OUT */
+		/*
+		 * The total size of a Buffer Descriptor must be a
+		 * multiple of MaxPacketSize.
+		 */
+		if (rem) {
+			aux_size = udc_ep->ep.maxpacket - rem;
+			trbs_num++;
+		}
+	}
+
+	/* Be sure we have enough available TRBs */
+	if (udc_ep->trbs_avail < trbs_num) {
+		dev_dbg(udc->dev, "%s: no available TRBs\n", __func__);
 		return;
 	}
 
-	if (!send_zlp)
-		list_move_tail(&udc_req->queue, &udc_ep->req_started);
+	/*
+	 * We use maximum 2 TRBs for request:
+	 * - General TRB: for actual data;
+	 * - AUX TRB: for complying with TRB and Buffer Size rules.
+	 */
 
-	/* Get transfer length */
-	if (send_zlp)
-		xfer_length = 0;
-	else
-		xfer_length = ureq->length & EXYNOS_USB3_TRB_BUFSIZ_MASK;
+	/* Prepare General TRB */
+	udc_req->trb = exynos_ss_udc_get_free_trb(udc_ep, &udc_req->trb_dma);
+	if (unlikely (!udc_req->trb)) {
+		/* BUG: we checked and it was enough available TRBs */
+		dev_err(udc->dev, "%s: cannot get General TRB\n", __func__);
+		return;
+	}
+	trbs_num--;
 
-	/* Fill TRB */
-	udc_req->trb->buff_ptr_low = (u32) ureq->dma;
-	udc_req->trb->buff_ptr_high = 0;
-	udc_req->trb->param1 = EXYNOS_USB3_TRB_BUFSIZ(xfer_length);
-	udc_req->trb->param2 = EXYNOS_USB3_TRB_TRBCTL(trb_type);
+	exynos_ss_udc_fill_trb(udc_ep, udc_req->trb,
+		ureq->dma, ureq->length, trb_type, !trbs_num);
 
-	if (desc && usb_endpoint_xfer_isoc(desc))
-		udc_req->trb->param2 |= EXYNOS_USB3_TRB_ISP_IMI |
-					EXYNOS_USB3_TRB_CSP |
-					EXYNOS_USB3_TRB_IOC;
-	else
-		udc_req->trb->param2 |= EXYNOS_USB3_TRB_LST;
+	/* Prepare AUX TRB */
+	if (trbs_num) {
+		dma_addr_t aux_trb_dma;
 
-	udc_req->trb->param2 |= EXYNOS_USB3_TRB_HWO;
+		dev_vdbg(udc->dev, "%s: use AUX TRB\n", __func__);
+
+		udc_req->aux_trb = exynos_ss_udc_get_free_trb(udc_ep,
+							      &aux_trb_dma);
+		if (unlikely (!udc_req->aux_trb)) {
+			/* BUG: we checked and it was enough available TRBs */
+			dev_err(udc->dev, "%s: cannot get AUX TRB\n", __func__);
+			/* Return General TRB */
+			exynos_ss_udc_return_trb(udc_ep);
+			udc_req->trb = NULL;
+			return;
+		}
+		trbs_num--;
+
+		exynos_ss_udc_fill_trb(udc_ep, udc_req->aux_trb,
+			udc_ep->aux_buf_dma, aux_size, trb_type, !trbs_num);
+	}
+
+	list_move_tail(&udc_req->queue, &udc_ep->req_started);
 
 	/* Start/update Transfer */
 	epcmd.ep = get_phys_epnum(udc_ep);
@@ -594,7 +697,6 @@ static void exynos_ss_udc_start_req(struct exynos_ss_udc *udc,
 		udc_ep->tri = (depcmd >> EXYNOS_USB3_DEPCMDx_EventParam_SHIFT) &
 				EXYNOS_USB3_DEPCMDx_XferRscIdx_LIMIT;
 		udc_ep->pending_xfer = 0;
-		udc_ep->sent_zlp = send_zlp;
 	}
 }
 
@@ -634,13 +736,17 @@ static void exynos_ss_udc_complete_request(struct exynos_ss_udc *udc,
 		udc_ep->trbs_avail++;
 	}
 
+	if (udc_req->aux_trb) {
+		udc_req->aux_trb = NULL;
+		udc_ep->trbs_avail++;
+	}
+
 	/* only replace the status if we've not already set an error
 	 * from a previous transaction */
 
 	if (udc_req->req.status == -EINPROGRESS)
 		udc_req->req.status = result;
 
-	udc_ep->sent_zlp = 0;
 	list_del_init(&udc_req->queue);
 
 	if (udc_req->req.buf != udc->ctrl_buff &&
@@ -666,7 +772,7 @@ static void exynos_ss_udc_complete_request(struct exynos_ss_udc *udc,
 		restart = !list_empty(&udc_ep->req_queue);
 		if (restart) {
 			udc_req = get_ep_head(udc_ep);
-			exynos_ss_udc_start_req(udc, udc_ep, udc_req, false);
+			exynos_ss_udc_start_req(udc, udc_ep, udc_req);
 		}
 	}
 }
@@ -1036,13 +1142,12 @@ static int exynos_ss_udc_ep_queue(struct usb_ep *ep,
 					break;
 
 				udc_req = get_ep_head(udc_ep);
-				exynos_ss_udc_start_req(udc, udc_ep,
-							udc_req, false);
+				exynos_ss_udc_start_req(udc, udc_ep, udc_req);
 			}
 		}
 	} else {
 		if (first)
-			exynos_ss_udc_start_req(udc, udc_ep, udc_req, false);
+			exynos_ss_udc_start_req(udc, udc_ep, udc_req);
 	}
 
 exit:
@@ -1186,7 +1291,7 @@ static void exynos_ss_udc_enqueue_status(struct exynos_ss_udc *udc)
 
 	req->zero = 0;
 	req->length = 0;
-	req->buf = udc->ctrl_buff;
+	req->buf = udc->ep0_buff;
 	req->complete = NULL;
 
 	if (!list_empty(&udc_req->queue)) {
@@ -1314,9 +1419,10 @@ static int exynos_ss_udc_process_set_config(struct exynos_ss_udc *udc,
 			if (config) {
 				udc->state = USB_STATE_CONFIGURED;
 				/* Accept U1&U2 transition */
-				__orr32(udc->regs + EXYNOS_USB3_DCTL,
-					EXYNOS_USB3_DCTL_AcceptU2Ena |
-					EXYNOS_USB3_DCTL_AcceptU1Ena);
+				if (udc->core->release >= 0x230a)
+					__orr32(udc->regs + EXYNOS_USB3_DCTL,
+						EXYNOS_USB3_DCTL_AcceptU2Ena |
+						EXYNOS_USB3_DCTL_AcceptU1Ena);
 			}
 		}
 		break;
@@ -1573,7 +1679,7 @@ static int exynos_ss_udc_process_clr_feature(struct exynos_ss_udc *udc,
 				if (restart) {
 					udc_req = get_ep_head(udc_ep);
 					exynos_ss_udc_start_req(udc, udc_ep,
-								udc_req, false);
+								udc_req);
 				}
 
 				spin_unlock(&udc_ep->lock);
@@ -1634,10 +1740,10 @@ static int exynos_ss_udc_process_set_feature(struct exynos_ss_udc *udc,
 				return -EINVAL;
 
 			/*
-			 * Enable U1 entry only for DWC3 revisions > 1.85a,
+			 * Enable U1 entry only for DWC3 revisions > 2.30a,
 			 * since earlier revisions have a bug
 			 */
-			if (udc->core->release > 0x185a)
+			if (udc->core->release >= 0x230a)
 				__orr32(udc->regs + EXYNOS_USB3_DCTL,
 					EXYNOS_USB3_DCTL_InitU1Ena);
 			break;
@@ -1648,10 +1754,10 @@ static int exynos_ss_udc_process_set_feature(struct exynos_ss_udc *udc,
 				return -EINVAL;
 
 			/*
-			 * Enable U2 entry only for DWC3 revisions > 1.85a,
+			 * Enable U2 entry only for DWC3 revisions > 2.30a,
 			 * since earlier revisions have a bug
 			 */
-			if (udc->core->release > 0x185a)
+			if (udc->core->release >= 0x230a)
 				__orr32(udc->regs + EXYNOS_USB3_DCTL,
 					EXYNOS_USB3_DCTL_InitU2Ena);
 			break;
@@ -2024,8 +2130,7 @@ static void exynos_ss_udc_ep_cmd_complete(struct exynos_ss_udc *udc,
 			restart = !list_empty(&udc_ep->req_queue);
 			if (restart) {
 				udc_req = get_ep_head(udc_ep);
-				exynos_ss_udc_start_req(udc, udc_ep,
-							udc_req, false);
+				exynos_ss_udc_start_req(udc, udc_ep, udc_req);
 			}
 		}
 
@@ -2054,7 +2159,12 @@ static void exynos_ss_udc_ep_cmd_complete(struct exynos_ss_udc *udc,
 			list_for_each_entry_safe_reverse(udc_req, treq,
 						&udc_ep->req_started, queue) {
 				list_move(&udc_req->queue, &udc_ep->req_queue);
+				udc_req->trb = NULL;
 				udc_ep->trbs_avail++;
+				if (udc_req->aux_trb) {
+					udc_req->aux_trb = NULL;
+					udc_ep->trbs_avail++;
+				}
 			}
 
 			spin_unlock(&udc_ep->lock);
@@ -2096,12 +2206,11 @@ static void exynos_ss_udc_xfer_complete(struct exynos_ss_udc *udc,
 	}
 
 	if (udc_req->trb->param2 & EXYNOS_USB3_TRB_HWO)
-		dev_err(udc->dev, "HWO bit set\n");
+		dev_err(udc->dev, "TRB HWO bit set\n");
 
-	/* Finish ZLP handling for IN tranzactions */
-	if (udc_ep->dir_in && udc_ep->sent_zlp) {
-		dev_vdbg(udc->dev, "ZLP completed\n");
-		goto sent_zlp;
+	if (udc_req->aux_trb) {
+		if (udc_req->aux_trb->param2 & EXYNOS_USB3_TRB_HWO)
+			dev_vdbg(udc->dev, "AUX TRB HWO bit set\n");
 	}
 
 	size_left = udc_req->trb->param1 & EXYNOS_USB3_TRB_BUFSIZ_MASK;
@@ -2124,28 +2233,6 @@ static void exynos_ss_udc_xfer_complete(struct exynos_ss_udc *udc,
 	}
 
 	req->actual += req->length - size_left;
-
-	/*
-	 * Check if dealing with Maximum Packet Size (MPS) IN transfer.
-	 * When sent data is a multiple MPS size, after last MPS sized
-	 * packet send IN ZLP packet to inform the host that no more data
-	 * is available.
-	 * The state of req->zero member is checked to be sure that the
-	 * number of bytes to send is smaller than expected from host.
-	 * Check req->length to NOT send another ZLP when the current one
-	 * is under completion (the one for which this completion has been
-	 * called).
-	 */
-	if (udc_ep->dir_in && req->zero) {
-		if (req->length && req->length == req->actual &&
-		    !(req->length % udc_ep->ep.maxpacket)) {
-			dev_vdbg(udc->dev, "Send ZLP to complete transfer\n");
-			exynos_ss_udc_start_req(udc, udc_ep, udc_req, true);
-			return;
-		}
-	}
-
-sent_zlp:
 
 	if (udc_ep->epnum == 0) {
 		switch (udc->ep0_state) {
@@ -2264,8 +2351,7 @@ static void exynos_ss_udc_xfer_notready(struct exynos_ss_udc *udc,
 				spin_lock_irqsave(&udc_ep->lock, irqflags);
 
 				udc_req = get_ep_head(udc_ep);
-				exynos_ss_udc_start_req(udc, udc_ep,
-							udc_req, false);
+				exynos_ss_udc_start_req(udc, udc_ep, udc_req);
 
 				spin_unlock_irqrestore(&udc_ep->lock, irqflags);
 			}
@@ -2330,7 +2416,7 @@ static void exynos_ss_udc_start_isoc_xfer(struct exynos_ss_udc *udc,
 			break;
 
 		udc_req = get_ep_head(udc_ep);
-		exynos_ss_udc_start_req(udc, udc_ep, udc_req, false);
+		exynos_ss_udc_start_req(udc, udc_ep, udc_req);
 
 	} while (!list_empty(&udc_ep->req_queue));
 
@@ -2353,6 +2439,7 @@ static void exynos_ss_udc_irq_connectdone(struct exynos_ss_udc *udc)
 	reg = readl(udc->regs + EXYNOS_USB3_DSTS);
 	speed = reg & EXYNOS_USB3_DSTS_ConnectSpd_MASK;
 
+	printk(KERN_ERR "usb: %s - connected speed = %d\n", __func__, speed);
 	switch (speed) {
 	/* High-speed */
 	case 0:
@@ -2390,10 +2477,22 @@ static void exynos_ss_udc_irq_connectdone(struct exynos_ss_udc *udc)
 			udc->core->ops->phy30_suspend(udc->core, 1);
 	}
 
+	/* WORKAROUND : TD 7.23 */
+	if (udc->gadget.speed == USB_SPEED_SUPER) {
+		/* TX_EN_OVRD(bit 7) : 1, TX_EN(bit 6) : 1 */
+		if (udc->core->ops->phy_crport_ctrl)
+			udc->core->ops->phy_crport_ctrl(udc->core, 0x1000, 0xC0);
+	} else {
+		/* TX_EN_OVRD(bit 7) : 0, TX_EN(bit 6) : 0 */
+		if (udc->core->ops->phy_crport_ctrl)
+			udc->core->ops->phy_crport_ctrl(udc->core, 0x1000, 0x0);
+	}
+
 	udc->eps[EP0INDEX].ep.maxpacket = mps0;
 
 	epcmd.ep = 0;
-	epcmd.param0 = EXYNOS_USB3_DEPCMDPAR0x_MPS(mps0);
+	epcmd.param0 = EXYNOS_USB3_DEPCMDPAR0x_MPS(mps0) |
+		       EXYNOS_USB3_DEPCMDPAR0x_ConfigAction(0x2);
 	epcmd.param1 = EXYNOS_USB3_DEPCMDPAR1x_XferNRdyEn |
 		       EXYNOS_USB3_DEPCMDPAR1x_XferCmplEn;
 	epcmd.cmdtyp = EXYNOS_USB3_DEPCMDx_CmdTyp_DEPCFG;
@@ -2414,6 +2513,29 @@ static void exynos_ss_udc_irq_connectdone(struct exynos_ss_udc *udc)
 	if (res < 0)
 		dev_err(udc->dev, "%s: failed to configure physical EP1\n",
 				   __func__);
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	/*
+	   Incase of H-Prj we want to Probe whether Host for super speed
+	   We Start the UDC with speed_limit always USB_SPEED_SUPER.
+	   if we connect at USB_SPEED_SUPER then we set that the ss_host_avail = 1
+	   We then change the speed_limit to USB_HIGH_SPEED and schedule 
+	  a work item to reconnect at HIGH SPEED.
+	  In factory mode we do not need this logic. we should always connect USB3.0
+	*/
+#ifndef CONFIG_SEC_FACTORY
+	if (udc->ss_host_avail == -1) {
+		if (udc->gadget.speed == USB_SPEED_SUPER) {
+			udc->ss_host_avail = 1;
+			udc->speed_limit = USB_SPEED_HIGH;
+			udc->reconnect = true;
+		} else {
+			udc->speed_limit = USB_SPEED_HIGH;
+			printk(KERN_ERR"usb: Super speed host not available \n");
+			udc->ss_host_avail = 0;
+		}
+	}
+#endif
+#endif
 }
 
 /**
@@ -2460,7 +2582,8 @@ static void exynos_ss_udc_irq_usbrst(struct exynos_ss_udc *udc)
 	 * - Is not configured
 	 * - Is not initially suspended
 	 */
-	if (udc->state == USB_STATE_CONFIGURED)
+	if (udc->state == USB_STATE_CONFIGURED ||
+		udc->state == USB_STATE_ADDRESS)
 		call_gadget(udc, disconnect);
 #endif
 	/* Disable test mode */
@@ -2495,6 +2618,20 @@ static void exynos_ss_udc_irq_ulstchng(struct exynos_ss_udc *udc, u32 event)
 	u32 link_state;
 
 	link_state = event & EXYNOS_USB3_DEVT_EvtInfo_MASK;
+
+	/* WORKAROUND : TD 7.23 */
+	if (link_state == EXYNOS_USB3_DEVT_EvtInfo(0x0) ||
+			link_state == EXYNOS_USB3_DEVT_EvtInfo(0x1)) {
+		/* TX_EN_OVRD(bit 7) : 1, TX_EN(bit 6) : 1 */
+		if (udc->core->ops->phy_crport_ctrl)
+			udc->core->ops->phy_crport_ctrl(udc->core, 0x1000, 0xC0);
+	} else if (link_state == EXYNOS_USB3_DEVT_EvtInfo(0x2) ||
+			link_state == EXYNOS_USB3_DEVT_EvtInfo(0x3) ||
+			link_state == EXYNOS_USB3_DEVT_EvtInfo(0x5)) {
+		/* TX_EN_OVRD(bit 7) : 0, TX_EN(bit 6) : 0 */
+		if (udc->core->ops->phy_crport_ctrl)
+			udc->core->ops->phy_crport_ctrl(udc->core, 0x1000, 0x0);
+	}
 
 	if (event & EXYNOS_USB3_DEVT_EvtInfo_SS) {
 		if (link_state == EXYNOS_USB3_DEVT_EvtInfo_U3) {
@@ -2708,7 +2845,13 @@ static irqreturn_t exynos_ss_udc_irq(int irq, void *pw)
 	/* Do we need to read GEVENTCOUNT here and retry? */
 
 	spin_unlock(&udc->lock);
-
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	/*Schedule the reconnect work event */
+	if (udc->reconnect) {
+		udc->reconnect = false;
+		WORK_SCHEDULE(udc)
+	}
+#endif
 	return IRQ_HANDLED;
 }
 
@@ -2726,6 +2869,7 @@ static int __devinit exynos_ss_udc_initep(struct exynos_ss_udc *udc,
 					  struct exynos_ss_udc_ep *udc_ep,
 					  int epindex)
 {
+	struct exynos_ss_udc_trb *link;
 	int epnum, epdir;
 	const char *dir, *type;
 	int desc_size;
@@ -2770,11 +2914,10 @@ static int __devinit exynos_ss_udc_initep(struct exynos_ss_udc *udc,
 
 	udc_ep->parent = udc;
 	udc_ep->ep.name = udc_ep->name;
-#if defined(CONFIG_USB_EXYNOS_SS_UDC_SSMODE)
-	udc_ep->ep.maxpacket = epnum ? EP_SS_MPS : EP0_SS_MPS;
-#else
-	udc_ep->ep.maxpacket = epnum ? EP_HS_MPS : EP0_HS_MPS;
-#endif
+	if (udc->gadget.max_speed == USB_SPEED_SUPER)
+		udc_ep->ep.maxpacket = epnum ? EP_SS_MPS : EP0_SS_MPS;
+	else
+		udc_ep->ep.maxpacket = epnum ? EP_HS_MPS : EP0_HS_MPS;
 	udc_ep->ep.ops = &exynos_ss_udc_ep_ops;
 
 	/* Allocate TRB(s) */
@@ -2783,8 +2926,9 @@ static int __devinit exynos_ss_udc_initep(struct exynos_ss_udc *udc,
 				(NUM_ISOC_TRBS + 1); /* +1 for link TRB */
 		udc_ep->trbs_avail = NUM_ISOC_TRBS;
 	} else {
-		desc_size = sizeof(struct exynos_ss_udc_trb);
-		udc_ep->trbs_avail = 1;
+		desc_size = sizeof(struct exynos_ss_udc_trb) *
+				(NUM_TRBS + 1); /* +1 for link TRB */
+		udc_ep->trbs_avail = NUM_TRBS;
 	}
 
 	udc_ep->trb = dmam_alloc_coherent(udc->dev, desc_size,
@@ -2794,14 +2938,16 @@ static int __devinit exynos_ss_udc_initep(struct exynos_ss_udc *udc,
 
 	memset(udc_ep->trb, 0, desc_size);
 
-	/* For isoc endpoints set last TRB as link */
-	if (!strcmp(type, "iso")) {
-		struct exynos_ss_udc_trb *link = udc_ep->trb + NUM_ISOC_TRBS;
+	/* Set last TRB as link */
+	link = udc_ep->trb + udc_ep->trbs_avail;
+	link->buff_ptr_low = (u32) udc_ep->trb_dma;
+	link->param2 = EXYNOS_USB3_TRB_HWO | EXYNOS_USB3_TRB_TRBCTL(LINK_TRB);
 
-		link->buff_ptr_low = (u32) udc_ep->trb_dma;
-		link->param2 = EXYNOS_USB3_TRB_HWO |
-			       EXYNOS_USB3_TRB_TRBCTL(LINK_TRB);
-	}
+	/* Create AUX buffer */
+	udc_ep->aux_buf = dmam_alloc_coherent(udc->dev, udc_ep->ep.maxpacket,
+			&udc_ep->aux_buf_dma, GFP_KERNEL);
+	if (!udc_ep->aux_buf)
+		return -ENOMEM;
 
 	if (epnum == 0) {
 		struct exynos_ss_udc_req *udc_req;
@@ -2854,7 +3000,22 @@ static int exynos_ss_udc_corereset(struct exynos_ss_udc *udc)
 static void exynos_ss_udc_ep0_activate(struct exynos_ss_udc *udc)
 {
 	struct exynos_ss_udc_ep_command epcmd = {{0}, };
+	int ep0_mps;
 	int res;
+
+	switch (udc->speed_limit) {
+	case USB_SPEED_FULL:
+	case USB_SPEED_HIGH:
+		ep0_mps = EP0_HS_MPS;
+		break;
+	case USB_SPEED_SUPER:
+		ep0_mps = EP0_SS_MPS;
+		break;
+	default:
+		dev_warn(udc->dev, "%s: unsupported device speed\n", __func__);
+		ep0_mps = (udc->gadget.max_speed == USB_SPEED_SUPER) ?
+				EP0_SS_MPS : EP0_HS_MPS;
+	}
 
 	/* Start New Configuration */
 	epcmd.ep = 0;
@@ -2867,11 +3028,7 @@ static void exynos_ss_udc_ep0_activate(struct exynos_ss_udc *udc)
 
 	/* Configure Physical Endpoint 0 */
 	epcmd.ep = 0;
-#if defined(CONFIG_USB_EXYNOS_SS_UDC_SSMODE)
-	epcmd.param0 = EXYNOS_USB3_DEPCMDPAR0x_MPS(EP0_SS_MPS);
-#else
-	epcmd.param0 = EXYNOS_USB3_DEPCMDPAR0x_MPS(EP0_HS_MPS);
-#endif
+	epcmd.param0 = EXYNOS_USB3_DEPCMDPAR0x_MPS(ep0_mps);
 	epcmd.param1 = EXYNOS_USB3_DEPCMDPAR1x_XferNRdyEn |
 		       EXYNOS_USB3_DEPCMDPAR1x_XferCmplEn;
 	epcmd.cmdtyp = EXYNOS_USB3_DEPCMDx_CmdTyp_DEPCFG;
@@ -2884,11 +3041,7 @@ static void exynos_ss_udc_ep0_activate(struct exynos_ss_udc *udc)
 
 	/* Configure Physical Endpoint 1 */
 	epcmd.ep = 1;
-#if defined(CONFIG_USB_EXYNOS_SS_UDC_SSMODE)
-	epcmd.param0 = EXYNOS_USB3_DEPCMDPAR0x_MPS(EP0_SS_MPS);
-#else
-	epcmd.param0 = EXYNOS_USB3_DEPCMDPAR0x_MPS(EP0_HS_MPS);
-#endif
+	epcmd.param0 = EXYNOS_USB3_DEPCMDPAR0x_MPS(ep0_mps);
 	epcmd.param1 = EXYNOS_USB3_DEPCMDPAR1x_EpDir |
 		       EXYNOS_USB3_DEPCMDPAR1x_XferNRdyEn |
 		       EXYNOS_USB3_DEPCMDPAR1x_XferCmplEn;
@@ -2935,18 +3088,31 @@ static void exynos_ss_udc_ep0_activate(struct exynos_ss_udc *udc)
  */
 static void exynos_ss_udc_init(struct exynos_ss_udc *udc)
 {
+	int devspd;
+
 	/* DRD configuration */
 	if (udc->core->ops->config)
 		udc->core->ops->config(udc->core);
 
-	writel(EXYNOS_USB3_DCFG_NumP(1) |
+	switch (udc->speed_limit) {
+	case USB_SPEED_FULL:
+		devspd = 1;
+		break;
+	case USB_SPEED_HIGH:
+		devspd = 0;
+		break;
+	case USB_SPEED_SUPER:
+		devspd = 4;
+		break;
+	default:
+		dev_warn(udc->dev, "%s: unsupported device speed\n", __func__);
+		/* Connect at max_speed */
+		devspd = (udc->gadget.max_speed == USB_SPEED_SUPER) ? 4 : 0;
+	}
+
+	writel(EXYNOS_USB3_DCFG_NumP(3) |
 	       EXYNOS_USB3_DCFG_PerFrInt(2) |
-	       EXYNOS_USB3_DCFG_LPMCap |
-#if defined(CONFIG_USB_EXYNOS_SS_UDC_SSMODE)
-	       EXYNOS_USB3_DCFG_DevSpd(4),
-#else
-	       EXYNOS_USB3_DCFG_DevSpd(0),
-#endif
+	       EXYNOS_USB3_DCFG_DevSpd(devspd),
 	       udc->regs + EXYNOS_USB3_DCFG);
 
 	/* Event buffer */
@@ -2975,8 +3141,7 @@ static int exynos_ss_udc_enable(struct exynos_ss_udc *udc)
 		return -EAGAIN;
 	}
 
-	if (pm_runtime_get_sync(udc->dev->parent) == 1)
-		dev_err(udc->dev, "%s: core is already active\n", __func__);
+	pm_runtime_get_sync(udc->dev->parent);
 
 	spin_lock_irqsave(&udc->lock, flags);
 
@@ -2988,9 +3153,6 @@ static int exynos_ss_udc_enable(struct exynos_ss_udc *udc)
 	/* Start controller if S/W connect was signalled */
 	if (udc->pullup_state) {
 		exynos_ss_udc_corereset(udc);
-
-		if (udc->core->ops->config)
-			udc->core->ops->config(udc->core);
 
 		exynos_ss_udc_init(udc);
 		udc->eps[EP0INDEX].enabled = 1;
@@ -3023,7 +3185,6 @@ static int exynos_ss_udc_disable(struct exynos_ss_udc *udc)
 		spin_unlock_irqrestore(&udc->lock, flags);
 		return 0;
 	}
-
 	/* all endpoints should be shutdown */
 	for (epindex = 0; epindex < EXYNOS_USB3_EPS; epindex++)
 		exynos_ss_udc_ep_disable(&udc->eps[epindex].ep);
@@ -3035,7 +3196,10 @@ static int exynos_ss_udc_disable(struct exynos_ss_udc *udc)
 	call_gadget(udc, disconnect);
 	udc->gadget.speed = USB_SPEED_UNKNOWN;
 	udc->enabled = false;
-
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	udc->ss_host_avail = -1;
+#endif
+	udc->speed_limit = udc->gadget.max_speed;
 	/* Disable event interrupt */
 	if (udc->core->ops->events_enable)
 		udc->core->ops->events_enable(udc->core, 0);
@@ -3048,6 +3212,7 @@ static int exynos_ss_udc_disable(struct exynos_ss_udc *udc)
 		dev_err(udc->dev, "%s: Failed to flush FIFOs\n", __func__);
 
 	spin_unlock_irqrestore(&udc->lock, flags);
+	WORK_CANCEL(udc);
 
 	pm_runtime_put_sync(udc->dev->parent);
 
@@ -3072,10 +3237,14 @@ static int exynos_ss_udc_vbus_session(struct usb_gadget *gadget, int is_active)
 	dev_dbg(udc->dev, "%s: pullup = %d, vbus = %d\n",
 			   __func__, udc->pullup_state, is_active);
 
-	if (!is_active)
+	if (!is_active){
+		WAKE_LOCK_RELEASE(udc);
 		ret = exynos_ss_udc_disable(udc);
-	else
+	}
+	else{
+		WAKE_LOCK_ACQUIRE(udc);
 		ret = exynos_ss_udc_enable(udc);
+	}
 
 	return ret;
 }
@@ -3119,10 +3288,9 @@ static int exynos_ss_udc_pullup(struct usb_gadget *gadget, int is_on)
 	}
 
 	if (is_on) {
+		if (udc->core->ops->phy_set)
+			udc->core->ops->phy_set(udc->core);
 		exynos_ss_udc_corereset(udc);
-
-		if (udc->core->ops->config)
-			udc->core->ops->config(udc->core);
 
 		exynos_ss_udc_init(udc);
 		udc->eps[EP0INDEX].enabled = 1;
@@ -3144,6 +3312,8 @@ static int exynos_ss_udc_pullup(struct usb_gadget *gadget, int is_on)
 		if (res < 0)
 			dev_err(udc->dev, "%s: Failed to flush FIFOs\n",
 					   __func__);
+		if (udc->core->ops->phy_unset)
+			udc->core->ops->phy_unset(udc->core);
 	}
 
 	spin_unlock_irqrestore(&udc->lock, flags);
@@ -3226,6 +3396,63 @@ static struct usb_gadget_ops exynos_ss_udc_gadget_ops = {
 	.udc_start		= exynos_ss_udc_start,
 	.udc_stop		= exynos_ss_udc_stop,
 };
+
+int exynos_ss_udc_set_speedlimit(struct usb_gadget *gadget,
+				 enum usb_device_speed speed)
+{
+	struct exynos_ss_udc *udc;
+	unsigned long flags;
+
+	if (!gadget)
+		return -1;
+
+	if (speed > gadget->max_speed || speed < USB_SPEED_FULL)
+		return -1;
+
+	udc = container_of(gadget, struct exynos_ss_udc, gadget);
+
+	spin_lock_irqsave(&udc->lock, flags);
+	udc->speed_limit = speed;
+	spin_unlock_irqrestore(&udc->lock, flags);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(exynos_ss_udc_set_speedlimit);
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+int exynos_ss_udc_get_ss_host_available(struct usb_gadget *gadget)
+{
+	struct exynos_ss_udc *udc;
+	int      ss_host_avail;
+	unsigned long flags;
+
+	if (!gadget)
+		return -1;
+	udc = container_of(gadget, struct exynos_ss_udc, gadget);
+	spin_lock_irqsave(&udc->lock, flags);
+	ss_host_avail = udc->ss_host_avail;
+	spin_unlock_irqrestore(&udc->lock, flags);
+	dev_dbg(udc->dev,"Superspeed Host avail(%d) \n",ss_host_avail);
+	return ss_host_avail;
+}
+EXPORT_SYMBOL_GPL(exynos_ss_udc_get_ss_host_available);
+
+
+static ssize_t
+exynos_ss_udc_show_ss_available(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct exynos_ss_udc *udc = dev_get_drvdata(dev);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", udc->ss_host_avail);
+}
+
+static DEVICE_ATTR(ss_available, S_IRUSR | S_IRGRP,
+	exynos_ss_udc_show_ss_available, NULL);
+#endif
+static void gadget_release(struct device *dev)
+{
+	return;
+}
 
 static int __devinit exynos_ss_udc_probe(struct platform_device *pdev)
 {
@@ -3336,13 +3563,23 @@ static int __devinit exynos_ss_udc_probe(struct platform_device *pdev)
 	dev_info(dev, "regs %p, irq %d\n", udc->regs, udc->irq);
 
 	WAKE_LOCK_INIT(udc);
+	WORK_INIT(udc);
 	dev_set_name(&udc->gadget.dev, "gadget");
 
 	udc->gadget.ops = &exynos_ss_udc_gadget_ops;
 	udc->gadget.name = driver_name;
+#if defined(CONFIG_USB_EXYNOS_SS_UDC_SSMODE)
+	udc->gadget.max_speed = USB_SPEED_SUPER;
+#else
+	udc->gadget.max_speed = USB_SPEED_HIGH;
+#endif
+	udc->speed_limit = udc->gadget.max_speed;
 
 	udc->gadget.dev.parent = dev;
 	udc->gadget.dev.dma_mask = dev->dma_mask;
+	udc->gadget.dev.release = gadget_release;
+
+	udc->ss_host_avail = -1;
 
 	/* setup endpoint information */
 
@@ -3372,7 +3609,13 @@ static int __devinit exynos_ss_udc_probe(struct platform_device *pdev)
 		dev_err(dev, "failed to register udc\n");
 		goto err_add_udc;
 	}
-
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	ret = sysfs_create_file(&udc->dev->kobj, &dev_attr_ss_available.attr);
+	if (ret) {
+		dev_err(udc->dev, "cannot create udc attribute\n");
+		goto err_sysfs;
+	}
+#endif
 	if (udc->core->otg) {
 		ret = otg_set_peripheral(udc->core->otg, &udc->gadget);
 		if (ret) {
@@ -3386,6 +3629,10 @@ static int __devinit exynos_ss_udc_probe(struct platform_device *pdev)
 	return 0;
 
 err_otg:
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	sysfs_remove_file(&udc->dev->kobj, &dev_attr_ss_available.attr);
+#endif
+err_sysfs:
 	usb_del_gadget_udc(&udc->gadget);
 err_add_udc:
 	device_unregister(&udc->gadget.dev);
@@ -3400,6 +3647,9 @@ static int __devexit exynos_ss_udc_remove(struct platform_device *pdev)
 	if (udc->core->otg)
 		otg_set_peripheral(udc->core->otg, NULL);
 
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	sysfs_remove_file(&udc->dev->kobj, &dev_attr_ss_available.attr);
+#endif
 	usb_del_gadget_udc(&udc->gadget);
 
 	usb_gadget_unregister_driver(udc->driver);

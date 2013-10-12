@@ -1,12 +1,12 @@
 /****************************************************************************
  *
- *		Copyright(c) 2012 Yamaha Corporation. All rights reserved.
+ *		Copyright(c) 2012-2013 Yamaha Corporation. All rights reserved.
  *
  *		Module		: mccdspdrv.h
  *
  *		Description	: CDSP Driver
  *
- *		Version		: 1.0.0	2012.12.13
+ *		Version		: 2.0.0	2013.04.09
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.	In no event will the authors be held liable for any damages
@@ -122,6 +122,8 @@
 #define CDSP_FUNC_B_ERROR_CODE				(13)
 #define CDSP_FUNC_A_VERSION				(14)
 #define CDSP_FUNC_B_VERSION				(15)
+#define CDSP_FUNC_A_HOST_COMMAND			(21)
+#define CDSP_FUNC_B_HOST_COMMAND			(22)
 
 #define CDSP_FIFO_SEL_PORT				(0)
 #define CDSP_FIFO_SEL_HOST				(1)

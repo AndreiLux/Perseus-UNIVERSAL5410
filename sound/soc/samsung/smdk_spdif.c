@@ -41,7 +41,12 @@ static int set_audio_clock_heirachy(struct platform_device *pdev)
 		goto out1;
 	}
 
+#ifdef CONFIG_SOC_EXYNOS5420
+	sclk_audio0 = clk_get(&pdev->dev, "dout_audio0");
+#else
 	sclk_audio0 = clk_get(&pdev->dev, "sclk_audio");
+#endif
+
 	if (IS_ERR(sclk_audio0)) {
 		printk(KERN_WARNING "%s: Cannot find sclk_audio.\n",
 				__func__);
@@ -80,7 +85,7 @@ out1:
 static int set_audio_clock_rate(unsigned long epll_rate,
 				unsigned long audio_rate)
 {
-	struct clk *fout_epll, *sclk_spdif;
+	struct clk *fout_epll, *clk;
 
 	fout_epll = clk_get(NULL, "fout_epll");
 	if (IS_ERR(fout_epll)) {
@@ -91,14 +96,18 @@ static int set_audio_clock_rate(unsigned long epll_rate,
 	clk_set_rate(fout_epll, epll_rate);
 	clk_put(fout_epll);
 
-	sclk_spdif = clk_get(NULL, "sclk_spdif");
-	if (IS_ERR(sclk_spdif)) {
-		printk(KERN_ERR "%s: failed to get sclk_spdif\n", __func__);
+#ifdef CONFIG_SOC_EXYNOS5420
+	clk = clk_get(NULL, "dout_audio0");
+#else
+	clk = clk_get(NULL, "sclk_spdif");
+#endif
+	if (IS_ERR(clk)) {
+		printk(KERN_ERR "%s: failed to get target clk\n", __func__);
 		return -ENOENT;
 	}
 
-	clk_set_rate(sclk_spdif, audio_rate);
-	clk_put(sclk_spdif);
+	clk_set_rate(clk, audio_rate);
+	clk_put(clk);
 
 	return 0;
 }

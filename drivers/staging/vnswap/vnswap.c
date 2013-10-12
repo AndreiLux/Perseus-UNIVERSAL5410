@@ -353,7 +353,6 @@ int vnswap_find_free_area_in_backing_storage(int *nand_offset)
 void vnswap_bio_end_read(struct bio *bio, int err)
 {
 	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
-	struct page *page = bio->bi_io_vec[0].bv_page;
 	struct bio *original_bio = (struct bio *) bio->bi_private;
 	unsigned long flags;
 
@@ -464,7 +463,6 @@ out_bio_put:
 /* refer req_bio_endio() */
 void vnswap_bio_end_write(struct bio *bio, int err)
 {
-	struct page *page = bio->bi_io_vec[0].bv_page;
 	struct bio *original_bio = (struct bio *) bio->bi_private;
 	unsigned long flags;
 
@@ -635,8 +633,6 @@ int vnswap_bvec_read(struct vnswap *vnswap, struct bio_vec *bvec,
 	struct page *page;
 	unsigned char *user_mem, *swap_header_page_mem;
 	int nand_offset = 0, ret = 0;
-	struct page *io_pool_page;
-	unsigned char *src, *dst;
 
 	page = bvec->bv_page;
 
@@ -682,8 +678,6 @@ int vnswap_bvec_write(struct vnswap *vnswap, struct bio_vec *bvec,
 	struct page *page;
 	unsigned char *user_mem, *swap_header_page_mem;
 	int nand_offset = 0, ret;
-	struct page *io_page = NULL;
-	unsigned char *dst, *buf;
 
 	page = bvec->bv_page;
 
@@ -762,7 +756,7 @@ int vnswap_bvec_rw(struct vnswap *vnswap, struct bio_vec *bvec,
 void __vnswap_make_request(struct vnswap *vnswap,
 	struct bio *bio, int rw)
 {
-	int i, offset, first_vec = 1, ret;
+	int i, offset, ret;
 	u32 index, is_swap_header_page;
 	struct bio_vec *bvec;
 
@@ -913,7 +907,7 @@ error:
 void vnswap_slot_free_notify(struct block_device *bdev, unsigned long index)
 {
 	struct vnswap *vnswap;
-	int nand_offset = 0, ret = 0;
+	int nand_offset = 0;
 
 	vnswap = bdev->bd_disk->private_data;
 
@@ -1075,7 +1069,7 @@ void destroy_device(struct vnswap *vnswap)
 
 int __init vnswap_init(void)
 {
-	int ret = 0, i = 0;
+	int ret = 0;
 
 	vnswap_major = register_blkdev(0, "vnswap");
 	if (vnswap_major <= 0) {
@@ -1124,9 +1118,6 @@ out:
 
 void __exit vnswap_exit(void)
 {
-	int i;
-	struct vnswap *vnswap;
-
 	destroy_device(vnswap_device);
 
 	unregister_blkdev(vnswap_major, "vnswap");

@@ -15,7 +15,7 @@ enum cpufreq_level_index {
 	L5, L6, L7, L8, L9,
 	L10, L11, L12, L13, L14,
 	L15, L16, L17, L18, L19,
-	L20,
+	L20, L21, L22,
 };
 
 struct exynos_dvfs_info {
@@ -67,15 +67,15 @@ static inline int exynos4x12_cpufreq_init(struct exynos_dvfs_info *info)
 }
 
 extern int exynos5250_cpufreq_init(struct exynos_dvfs_info *);
-extern int exynos5410_cpufreq_CA7_init(struct exynos_dvfs_info *);
-extern int exynos5410_cpufreq_CA15_init(struct exynos_dvfs_info *);
+extern int exynos5_cpufreq_CA7_init(struct exynos_dvfs_info *);
+extern int exynos5_cpufreq_CA15_init(struct exynos_dvfs_info *);
 #else
 	#warning "Should define CONFIG_ARCH_EXYNOS4(5)\n"
 #endif
 extern void exynos_thermal_throttle(void);
 extern void exynos_thermal_unthrottle(void);
 
-#if defined(CONFIG_SOC_EXYNOS5410)
+#if defined(CONFIG_ARCH_EXYNOS5)
 /*
  * CPU usage threshold value to determine changing from b to L
  * Assumption: A15(500MHz min), A7(1GHz max) has almost same performance
@@ -123,18 +123,15 @@ extern unsigned int exynos_cpufreq_direct_scale(unsigned int target_freq,
 						unsigned int curr_freq,
 						enum op_state state);
 extern int exynos_init_bL_info(struct cpu_info_alter *info);
-
 #ifdef CONFIG_EXYNOS5_DYNAMIC_CPU_HOTPLUG
-extern struct mutex hotplug_mutex;
-extern bool hotplug_out;
-extern struct cpumask out_cpus;
-extern void __do_hotplug(void);
+extern void dm_cpu_hotplug_init(void);
 #endif
 
 #if defined(CONFIG_ARM_EXYNOS_IKS_CPUFREQ) || defined(CONFIG_ARM_EXYNOS_CPUFREQ)
 extern void exynos_lowpower_for_cluster(cluster_type cluster, bool on);
 extern void reset_lpj_for_cluster(cluster_type cluster);
 extern struct pm_qos_request max_cpu_qos_blank;
+extern struct mutex cpufreq_lock;
 #else
 static inline void reset_lpj_for_cluster(cluster_type cluster) {}
 static inline void exynos_lowpower_for_cluster(cluster_type cluster, bool on) {}

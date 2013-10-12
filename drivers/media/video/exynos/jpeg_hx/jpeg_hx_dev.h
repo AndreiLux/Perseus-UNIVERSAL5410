@@ -14,6 +14,8 @@
 #define __JPEG_DEV_H__
 
 #define JPEG_HX_NAME		"exynos5-jpeg-hx"
+#define JPEG2_HX_ENC_NAME		"video12"
+#define JPEG2_HX_DEC_NAME		"video11"
 #define JPEG_HX_ENC_NAME		"video14"
 #define JPEG_HX_DEC_NAME		"video13"
 

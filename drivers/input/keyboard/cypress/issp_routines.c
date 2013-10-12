@@ -16,21 +16,21 @@ LIABILITY, WHETHER IN CONRTACT, STRICT LIABILITY, OR TORT (INCLUDING
 NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-Disclaimer: CYPRESS MAKES NO WARRANTY OF ANY KIND,EXPRESS OR IMPLIED,
-WITH REGARD TO THIS MATERIAL, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
-Cypress reserves the right to make changes without further notice to the
-materials described herein. Cypress does not assume any liability arising
-out of the application or use of any product or circuit described herein.
-Cypress does not authorize its products for use as critical components in
-life-support systems where a malfunction or failure may reasonably be
-expected to result in significant injury to the user. The inclusion of
-Cypress product in a life-support systems application implies that the
-manufacturer assumes all risk of such use and in doing so indemnifies
-Cypress against all charges.
+ Disclaimer: CYPRESS MAKES NO WARRANTY OF ANY KIND,EXPRESS OR IMPLIED,
+ WITH REGARD TO THIS MATERIAL, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ Cypress reserves the right to make changes without further notice to the
+ materials described herein. Cypress does not assume any liability arising
+ out of the application or use of any product or circuit described herein.
+ Cypress does not authorize its products for use as critical components in
+ life-support systems where a malfunction or failure may reasonably be
+ expected to result in significant injury to the user. The inclusion of
+ Cypressï¿?product in a life-support systems application implies that the
+ manufacturer assumes all risk of such use and in doing so indemnifies
+ Cypress against all charges.
 
-Use may be limited by and subject to the applicable Cypress software
-license agreement.
+ Use may be limited by and subject to the applicable Cypress software
+ license agreement.
 
 --------------------------------------------------------------------------*/
 #include <linux/module.h>
@@ -206,7 +206,7 @@ void SendVector(const unsigned char *bVect, unsigned int iNumBits)
 			iNumBits = 0;
 		}
 	}
-	/*SetSDATALow();		// issp_test_20100709 add*/
+	SetSDATALow();		// issp_test_20100709 add
 	SetSDATAHiZ();
 }
 
@@ -239,13 +239,11 @@ signed char fDetectHiLoTransition(void)
 	// These loops look unconventional, but it is necessary to check SDATA_PIN
 	// as shown because the transition can be missed otherwise, due to the
 	// length of the SDATA Low-High-Low after certain commands.
-
+	/*printk(KERN_DEBUG"touchkey:%s\n", __func__);*/
 	// Generate clocks for the target to pull SDATA High
 	//dog_kick();
-	
-	SetSCLKStrong();
 	iTimer = TRANSITION_TIMEOUT;
-/*	printk(KERN_INFO
+	/*printk(KERN_INFO
 	       "Generate clocks for the target to pull SDATA High\n");*/
 	while (1) {
 		SCLKLow();
@@ -257,23 +255,24 @@ signed char fDetectHiLoTransition(void)
 			return (ERROR);
 		}
 	}
+	/*printk(KERN_DEBUG"touchkey:%s second\n", __func__);*/
 	//dog_kick();
 	// Generate Clocks and wait for Target to pull SDATA Low again
 	iTimer = TRANSITION_TIMEOUT;	// reset the timeout counter
-/*	printk(KERN_INFO
-	       "Generate Clocks and wait for Target to pull SDATA Low again\n");*/
+	/*printk(KERN_INFO
+	"Generate Clocks and wait for Target to pull SDATA Low again\n");*/
 	while (1) {
 		SCLKLow();	//issp_test_20100709 unblock
 		if (!fSDATACheck()) {	// exit once SDATA returns LOW
 			break;
 		}
-	/*	SCLKHigh();	//issp_test_20100709 unblock*/
+		SCLKHigh();	//issp_test_20100709 unblock
 		// If the wait is too long then timeout
 		if (iTimer-- == 0) {
 			return (ERROR);
 		}
 	}
-/*	printk("fDetectHiLoTransition OUT!!!!\n");*/
+	//printk("fDetectHiLoTransition OUT!!!!\n");
 	return (PASS);
 }
 
@@ -341,14 +340,11 @@ signed char fPowerCycleInitializeTargetForISSP(void)
 	SetSCLKHiZ();
 	SetSDATAHiZ();
 
-	mdelay(10);
-
 	// Turn on power to the target device before other signals
 	SetTargetVDDStrong();
 	ApplyTargetVDD();
 	/* wait 7msec for the power to stabilize */
-	mdelay(1);
-
+	/*mdelay(7);*/
 #if 0
 	for (n = 0; n < 10; n++) {
 		Delay(DELAY100us);
@@ -356,14 +352,10 @@ signed char fPowerCycleInitializeTargetForISSP(void)
 #endif
 	// Set SCLK to high Z so there is no clock and wait for a high to low
 	// transition on SDAT. SCLK is not needed this time.
-/*	SetSCLKHiZ(); */
+	SetSCLKHiZ();
 //    printk(KERN_DEBUG "fDetectHiLoTransition\n");
-	if(fSDATACheck()){
 	if ((fIsError = fDetectHiLoTransition())) {
 		return (INIT_ERROR);
-	}
-	}else {
-		mdelay(10);
 	}
 	// Configure the pins for initialization
 //    SetSDATAHiZ(); // issp_test_20100709 block
@@ -377,7 +369,7 @@ signed char fPowerCycleInitializeTargetForISSP(void)
 	//  Init-Vector instructions below. Doing so could introduce excess delay
 	//  and cause the target device to exit ISSP Mode.
 
-/*	SendVector(wait_and_poll_end, num_bits_wait_and_poll_end); */	//PTJ: rev308, added to match spec
+	SendVector(wait_and_poll_end, num_bits_wait_and_poll_end);	//PTJ: rev308, added to match spec
 //    printk("SendVector(id_setup_1)\n",0,0,0);
 	SendVector(id_setup_1, num_bits_id_setup_1);
 	if ((fIsError = fDetectHiLoTransition())) {
@@ -400,7 +392,7 @@ signed char fPowerCycleInitializeTargetForISSP(void)
 signed char fVerifySiliconID(void)
 {
 	SendVector(id_setup_2, num_bits_id_setup_2);
-	printk("fVerifySiliconID: SendVector id_stup2 END\n");
+	//printk("fVerifySiliconID: SendVector id_stup2 END\n");
 
 	if ((fIsError = fDetectHiLoTransition())) {
 		printk("fVerifySiliconID(): fDetectHiLoTransition Error\n");
@@ -408,8 +400,7 @@ signed char fVerifySiliconID(void)
 	}
 	SendVector(wait_and_poll_end, num_bits_wait_and_poll_end);
 	SendVector(tsync_enable, num_bits_tsync_enable);
-	printk
-	    ("fVerifySiliconID: SendVector(wait_and_poll_end) (tsync_enable) END\n");
+	//printk("fVerifySiliconID: SendVector(wait_and_poll_end) (tsync_enable) END\n");
 
 	//Send Read ID vector and get Target ID
 	SendVector(read_id_v, 11);	// Read-MSB Vector is the first 11-Bits

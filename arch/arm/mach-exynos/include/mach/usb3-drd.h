@@ -20,6 +20,9 @@ extern struct platform_device exynos5_device_usb3_drd1;
 extern struct platform_device host_notifier_device;
 #endif
 
+extern void usb30_redriver_en(int enable);
+extern unsigned int system_rev;
+
 extern void exynos5_usb3_drd0_set_platdata(struct dwc3_exynos_data *pd);
 extern void exynos5_usb3_drd1_set_platdata(struct dwc3_exynos_data *pd);
 extern int exynos_drd_switch_id_event(struct platform_device *pdev, int state);

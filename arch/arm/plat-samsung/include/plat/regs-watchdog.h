@@ -19,6 +19,7 @@
 #define S3C2410_WTCON	   S3C_WDOGREG(0x00)
 #define S3C2410_WTDAT	   S3C_WDOGREG(0x04)
 #define S3C2410_WTCNT	   S3C_WDOGREG(0x08)
+#define S3C2410_WTCLRINT	S3C_WDOGREG(0x0C)
 
 /* the watchdog can either generate a reset pulse, or an
  * interrupt.

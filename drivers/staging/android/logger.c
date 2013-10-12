@@ -683,6 +683,11 @@ static long logger_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			ret = -EBADF;
 			break;
 		}
+		if (!(in_egroup_p(file->f_dentry->d_inode->i_gid) ||
+				capable(CAP_SYSLOG))) {
+			ret = -EPERM;
+			break;
+		}
 		list_for_each_entry(reader, &log->readers, list)
 			reader->r_off = log->w_off;
 		log->head = log->w_off;
@@ -802,11 +807,11 @@ static int __init logger_init(void)
 	ret = init_log(&log_system);
 	if (unlikely(ret))
 		goto out;
-
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 	ret = init_log(&log_sf);
 	if (unlikely(ret))
 		goto out;
-
+#endif
 	sec_getlog_supply_loggerinfo(_buf_log_main, _buf_log_radio,
 				     _buf_log_events, _buf_log_system);
 out:

@@ -16,6 +16,7 @@
 
 #include <linux/device.h>
 #include <linux/fb.h>
+#include <linux/kthread.h>
 #include <linux/notifier.h>
 
 #include <linux/regulator/consumer.h>
@@ -199,6 +200,26 @@ struct mipi_dsim_lcd_config {
 	void *mipi_ddi_pd;
 };
 
+#ifdef CONFIG_FB_I80IF
+#define MAX_DSIM_COMMAND_IDX 24
+
+/**
+ * struct dsim_command_info - command information for read/write
+ *
+ */
+struct dsim_command_info {
+	struct list_head	list;
+	u8 cmd;
+	u8 buf[32];
+	u32 len;
+};
+
+struct dsim_commands {
+	struct dsim_command_info cmd_info[MAX_DSIM_COMMAND_IDX];
+	u8 idx;
+};
+#endif
+
 /**
  * struct mipi_dsim_device - global interface for mipi-dsi driver.
  *
@@ -246,7 +267,6 @@ struct mipi_dsim_lcd_config {
  *	this variable would be calculated by driver automatically.
  */
 struct mipi_dsim_device {
-	spinlock_t slock;
 	struct device *dev;
 	struct resource *res;
 	struct clk *clock;
@@ -267,7 +287,19 @@ struct mipi_dsim_device {
 	struct notifier_block fb_notif;
 
 	struct mipi_dsim_lcd_driver	*dsim_lcd_drv;
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	struct early_suspend	early_suspend;
+#endif
+	struct lcd_device	*lcd;
 	unsigned int enabled;
+	spinlock_t slock;
+#ifdef CONFIG_FB_I80IF
+	struct dsim_commands	dsim_cmds;
+	struct list_head        command_list;
+	struct mutex            command_list_lock;
+	int use_ielcd_command;
+	bool			cmd_state;
+#endif
 };
 
 /**
@@ -281,9 +313,13 @@ struct mipi_dsim_device {
  * @part_reset: callback pointer for reseting mipi phy.
  * @init_d_phy: callback pointer for enabing d_phy of dsi master.
  * @get_fb_frame_done: callback pointer for getting frame done status of
- *	the display controller(FIMD).
+the
+ *	display controller(FIMD).
  * @trigger: callback pointer for triggering display controller(FIMD)
  *	in case of CPU mode.
+ * @delay_for_stabilization: specifies stable time.
+ *	this delay needs when writing data on SFR
+ *	after mipi mode became LP mode.
  */
 struct s5p_platform_mipi_dsim {
 	const char	clk_name[16];
@@ -291,12 +327,16 @@ struct s5p_platform_mipi_dsim {
 	struct mipi_dsim_config *dsim_config;
 	struct mipi_dsim_lcd_config *dsim_lcd_config;
 
+	unsigned int delay_for_stabilization;
+
 	int (*mipi_power) (struct mipi_dsim_device *dsim, unsigned int
 		enable);
 	int (*part_reset) (struct mipi_dsim_device *dsim);
 	int (*init_d_phy) (struct mipi_dsim_device *dsim, unsigned int enable);
 	int (*get_fb_frame_done) (struct fb_info *info);
 	void (*trigger) (struct fb_info *info);
+	int (*trigger_set)(struct device *fimd, unsigned int enable);
+	struct device *fimd1_device;
 };
 
 /**
@@ -325,4 +365,10 @@ extern void s5p_dsim0_set_platdata(struct s5p_platform_mipi_dsim *pd);
 extern void s5p_dsim1_set_platdata(struct s5p_platform_mipi_dsim *pd);
 extern int s5p_mipi_dsi_enable_by_fimd(struct device *dsim);
 extern int s5p_mipi_dsi_disable_by_fimd(struct device *dsim);
+extern int s5p_mipi_dsi_clk_enable_by_fimd(struct device *dsim);
+extern int s5p_mipi_dsi_clk_disable_by_fimd(struct device *dsim);
+#ifdef CONFIG_FB_I80IF
+extern int s5p_mipi_dsi_get_mipi_state(struct device *dsim_device);
+extern int s3c_fb_enable_trigger_by_dsim(struct device *fimd, unsigned int enable);
+#endif
 #endif /* _DSIM_H */

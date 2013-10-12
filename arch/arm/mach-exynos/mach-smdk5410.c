@@ -24,11 +24,13 @@
 #include <plat/devs.h>
 #include <plat/regs-serial.h>
 #include <plat/iic.h>
+#include <plat/watchdog.h>
 
 #include <mach/exynos_fiq_debugger.h>
 #include <mach/map.h>
 #include <mach/hs-iic.h>
 #include <mach/regs-pmu.h>
+#include <mach/pmu.h>
 
 #include "../../../drivers/staging/android/ram_console.h"
 #include "common.h"
@@ -129,7 +131,7 @@ static struct platform_device *smdk5410_devices[] __initdata = {
 	&exynos5_device_g3d,
 #endif
 #ifdef CONFIG_S5P_DEV_ACE
-	&s5p_device_ace,
+	&s5p_device_sss,
 #endif
 };
 
@@ -154,10 +156,11 @@ static void __init exynos_reserve_mem(void)
 			.size = SZ_1M,
 		},
 #endif
-#ifdef CONFIG_ION_EXYNOS_DRM_MSGBOX_SH
+#ifdef CONFIG_ION_EXYNOS_DRM_MEMSIZE_G2D_WFD
 		{
-			.name = "drm_msgbox_sh",
-			.size = SZ_1M,
+			.name = "drm_g2d_wfd",
+			.size = CONFIG_ION_EXYNOS_DRM_MEMSIZE_G2D_WFD *
+				SZ_1K,
 		},
 #endif
 #endif
@@ -172,6 +175,9 @@ static void __init exynos_reserve_mem(void)
 			.name = "drm_fimd_video",
 			.size = CONFIG_ION_EXYNOS_DRM_MEMSIZE_FIMD_VIDEO *
 				SZ_1K,
+			{
+				.alignment = SZ_1M,
+			}
 	       },
 #endif
 #ifdef CONFIG_ION_EXYNOS_DRM_MEMSIZE_MFC_OUTPUT
@@ -179,6 +185,9 @@ static void __init exynos_reserve_mem(void)
 			.name = "drm_mfc_output",
 			.size = CONFIG_ION_EXYNOS_DRM_MEMSIZE_MFC_OUTPUT *
 				SZ_1K,
+			{
+				.alignment = SZ_1M,
+			}
 	       },
 #endif
 #ifdef CONFIG_ION_EXYNOS_DRM_MEMSIZE_MFC_INPUT
@@ -186,18 +195,33 @@ static void __init exynos_reserve_mem(void)
 			.name = "drm_mfc_input",
 			.size = CONFIG_ION_EXYNOS_DRM_MEMSIZE_MFC_INPUT *
 				SZ_1K,
+			{
+				.alignment = SZ_1M,
+			}
 	       },
 #endif
 #ifdef CONFIG_ION_EXYNOS_DRM_MFC_FW
 		{
 			.name = "drm_mfc_fw",
 			.size = SZ_1M,
+			{
+				.alignment = SZ_1M,
+			}
 		},
 #endif
 #ifdef CONFIG_ION_EXYNOS_DRM_SECTBL
 		{
 			.name = "drm_sectbl",
 			.size = SZ_1M,
+			{
+				.alignment = SZ_1M,
+			}
+		},
+#endif
+#ifdef CONFIG_BL_SWITCHER
+		{
+			.name = "bl_mem",
+			.size = SZ_8K,
 		},
 #endif
 		{
@@ -210,19 +234,22 @@ static void __init exynos_reserve_mem(void)
 	static const char map[] __initconst =
 #ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
 		"ion-exynos/mfc_sh=drm_mfc_sh;"
-		"ion-exynos/msgbox_sh=drm_msgbox_sh;"
+		"ion-exynos/g2d_wfd=drm_g2d_wfd;"
 		"ion-exynos/fimd_video=drm_fimd_video;"
 		"ion-exynos/mfc_output=drm_mfc_output;"
 		"ion-exynos/mfc_input=drm_mfc_input;"
 		"ion-exynos/mfc_fw=drm_mfc_fw;"
 		"ion-exynos/sectbl=drm_sectbl;"
 		"s5p-smem/mfc_sh=drm_mfc_sh;"
-		"s5p-smem/msgbox_sh=drm_msgbox_sh;"
+		"s5p-smem/g2d_wfd=drm_g2d_wfd;"
 		"s5p-smem/fimd_video=drm_fimd_video;"
 		"s5p-smem/mfc_output=drm_mfc_output;"
 		"s5p-smem/mfc_input=drm_mfc_input;"
 		"s5p-smem/mfc_fw=drm_mfc_fw;"
 		"s5p-smem/sectbl=drm_sectbl;"
+#endif
+#ifdef CONFIG_BL_SWITCHER
+		"b.L_mem=bl_mem;"
 #endif
 		"ion-exynos=ion;";
 	exynos_cma_region_reserve(regions, regions_secure, NULL, map);
@@ -267,6 +294,12 @@ static struct persistent_ram smdk5410_pr __initdata = {
 #endif
 };
 
+/* WDT */
+static struct s3c_watchdog_platdata smdk5410_watchdog_platform_data = {
+	exynos_pmu_wdt_control,
+	PMU_WDT_RESET_TYPE1,
+};
+
 static void __init smdk5410_init_early(void)
 {
 	persistent_ram_early_init(&smdk5410_pr);
@@ -278,15 +311,12 @@ static void __init smdk5410_machine_init(void)
 	exynos_serial_debug_init(2, 0);
 #endif
 
+	s3c_watchdog_set_platdata(&smdk5410_watchdog_platform_data);
+
 	exynos5_smdk5410_clock_init();
 	exynos5_smdk5410_mmc_init();
 
 	s3c_i2c0_set_platdata(NULL);
-	s3c_i2c2_set_platdata(NULL);
-	s3c_i2c3_set_platdata(NULL);
-	exynos5_hs_i2c1_set_platdata(NULL);
-	exynos5_hs_i2c2_set_platdata(NULL);
-	exynos5_hs_i2c3_set_platdata(NULL);
 	exynos5_smdk5410_audio_init();
 	exynos5_smdk5410_usb_init();
 	exynos5_smdk5410_power_init();

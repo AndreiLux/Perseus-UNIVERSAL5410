@@ -114,6 +114,12 @@ static void exynos_power_down_cpu(unsigned int cpu)
 			if (cluster_id != 0)
 				pwr_offset = 4;
 		}
+	} else if (soc_is_exynos5420()) {
+		int cluster_id;
+		asm ("mrc\tp15, 0, %0, c0, c0, 5\n":"=r"(cluster_id));
+		cluster_id = (cluster_id >> 8) & 0xf;
+		if (cluster_id)
+			pwr_offset = 4;
 	}
 
 	power_base = EXYNOS_ARM_CORE_CONFIGURATION(cpu + pwr_offset);
@@ -175,7 +181,7 @@ void platform_cpu_die(unsigned int cpu)
 	/*
 	 * we're ready for shutdown now, so do it
 	 */
-	if (soc_is_exynos5250() || soc_is_exynos5410())
+	if (soc_is_exynos5250() || soc_is_exynos5410() || soc_is_exynos5420())
 		cpu_enter_lowpower_a15();
 	else
 		cpu_enter_lowpower_a9();

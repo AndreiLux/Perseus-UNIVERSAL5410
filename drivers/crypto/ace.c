@@ -43,6 +43,11 @@
 
 #include <mach/secmem.h>
 
+#if defined(CONFIG_PM_RUNTIME)
+#include <linux/pm_runtime.h>
+#include <mach/pm_interrupt_domains.h>
+#endif
+
 #ifdef CONFIG_EXYNOS5_CCI
 #include <plat/cci.h>
 #endif
@@ -158,6 +163,9 @@ struct s5p_ace_device {
 #ifdef CONFIG_ACE_HASH_ASYNC
 	struct crypto_queue		queue_hash;
 	struct tasklet_struct		task_hash;
+#endif
+#if defined(ACE_USE_RUNTIME_PM)
+	struct device			*dev;
 #endif
 	enum s5p_cpu_type		cputype;
 };
@@ -2327,7 +2335,13 @@ static int __devinit s5p_ace_probe(struct platform_device *pdev)
 		goto err_clk;
 	}
 	s5p_ace_init_clock_gating();
+
+#if defined(ACE_USE_RUNTIME_PM)
+	pm_runtime_enable(&pdev->dev);
+	s5p_adt->dev = &pdev->dev;
+#endif
 	s5p_adt->cputype = platform_get_device_id(pdev)->driver_data;
+
 
 #if defined(CONFIG_ACE_BC_IRQMODE) || defined(CONFIG_ACE_HASH_IRQMODE)
 	s5p_adt->irq = platform_get_irq(pdev, 0);
@@ -2495,6 +2509,9 @@ err_irq:
 	free_irq(s5p_adt->irq, (void *)s5p_adt);
 	s5p_adt->irq = 0;
 #endif
+#if defined(ACE_USE_RUNTIME_PM)
+	pm_runtime_disable(&pdev->dev);
+#endif
 err_clk:
 	iounmap(s5p_adt->ace_base);
 	s5p_adt->ace_base = NULL;
@@ -2519,6 +2536,9 @@ static int s5p_ace_remove(struct platform_device *dev)
 		free_irq(s5p_adt->irq, (void *)s5p_adt);
 		s5p_adt->irq = 0;
 	}
+#endif
+#if defined(ACE_USE_RUNTIME_PM)
+	pm_runtime_disable(&dev->dev);
 #endif
 
 	if (s5p_adt->clock) {
@@ -2574,7 +2594,7 @@ static int s5p_ace_remove(struct platform_device *dev)
 	return 0;
 }
 
-static int s5p_ace_suspend(struct platform_device *dev, pm_message_t state)
+static int s5p_ace_suspend(struct device *dev)
 {
 	unsigned long timeout;
 	int get_lock_bc = 0, get_lock_hash = 0;
@@ -2615,7 +2635,7 @@ static int s5p_ace_suspend(struct platform_device *dev, pm_message_t state)
 	return -EBUSY;
 }
 
-static int s5p_ace_resume(struct platform_device *dev)
+static int s5p_ace_resume(struct device *dev)
 {
 #if defined(ACE_DEBUG_HEARTBEAT) || defined(ACE_DEBUG_WATCHDOG)
 	do_gettimeofday(&timestamp[4]);		/* 4: resume */
@@ -2625,6 +2645,11 @@ static int s5p_ace_resume(struct platform_device *dev)
 
 	return 0;
 }
+
+static const struct dev_pm_ops s5p_ace_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(s5p_ace_suspend, s5p_ace_resume)
+	SET_RUNTIME_PM_OPS(s5p_ace_suspend, s5p_ace_resume, NULL)
+};
 
 static struct platform_device_id s5p_ace_driver_ids[] = {
 	{
@@ -2641,12 +2666,11 @@ MODULE_DEVICE_TABLE(platform, s5p_ace_driver_ids);
 static struct platform_driver s5p_ace_driver = {
 	.probe		= s5p_ace_probe,
 	.remove		= s5p_ace_remove,
-	.suspend	= s5p_ace_suspend,
-	.resume		= s5p_ace_resume,
 	.id_table	= s5p_ace_driver_ids,
 	.driver		= {
 		.name	= S5P_ACE_DRIVER_NAME,
 		.owner	= THIS_MODULE,
+		.pm	= &s5p_ace_pm_ops,
 	},
 };
 

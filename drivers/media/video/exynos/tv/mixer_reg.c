@@ -407,6 +407,18 @@ void mxr_reg_vp_buffer(struct mxr_device *mdev,
 #endif
 }
 
+/*set mixer resolution */
+void mxr_reg_set_resolution(struct mxr_device *mdev)
+{
+	u32 mxr_wh;
+	struct v4l2_mbus_framefmt mbus_fmt;
+
+	mxr_get_mbus_fmt(mdev, &mbus_fmt);
+	mxr_wh  = MXR_RESOLUTION_WIDTH(mbus_fmt.width);
+	mxr_wh |= MXR_RESOLUTION_HEIGHT(mbus_fmt.height);
+	mxr_write(mdev, MXR_RESOLUTION, mxr_wh);
+}
+
 void mxr_reg_set_layer_prio(struct mxr_device *mdev)
 {
 	u8 p_g0, p_g1, p_v;

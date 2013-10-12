@@ -738,12 +738,14 @@ static void gsc_out_buffer_queue(struct vb2_buffer *vb)
 	}
 
 	if (!test_and_set_bit(ST_OUTPUT_STREAMON, &gsc->state)) {
+		struct exynos_platform_gscaler *pdata = gsc->pdata;
 		ret = pm_runtime_get_sync(&gsc->pdev->dev);
 		if (ret < 0) {
 			gsc_err("fail to pm_runtime_get_sync()");
 			return;
 		}
-		gsc_pm_qos_ctrl(gsc, GSC_QOS_ON, 160000, 160000);
+		gsc_pm_qos_ctrl(gsc, GSC_QOS_ON,
+			pdata->mif_min, pdata->int_min);
 		gsc_hw_set_sw_reset(gsc);
 		ret = gsc_wait_reset(gsc);
 		if (ret < 0) {
@@ -795,7 +797,8 @@ static int gsc_out_link_setup(struct media_entity *entity,
 				/* Gscaler 0 --> Winwow 0, Gscaler 1 --> Window 1,
 				   Gscaler 2 --> Window 2, Gscaler 3 --> Window 2 */
 				char name[FIMD_NAME_SIZE];
-				sprintf(name, "%s%d", FIMD_ENTITY_NAME, get_win_num(gsc));
+				snprintf(name, FIMD_NAME_SIZE, "%s%d",
+				FIMD_ENTITY_NAME, get_win_num(gsc));
 				sd = media_entity_to_v4l2_subdev(remote->entity);
 				gsc->pipeline.disp = sd;
 				if (!strcmp(sd->name, name)) {

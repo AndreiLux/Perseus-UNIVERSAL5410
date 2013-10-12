@@ -188,8 +188,8 @@ extern void dw_mci_remove(struct dw_mci *host);
 #ifdef CONFIG_PM
 extern int dw_mci_suspend(struct dw_mci *host);
 extern int dw_mci_resume(struct dw_mci *host);
+#if defined(CONFIG_MACH_UNIVERSAL5420)
 extern void dw_mci_shutdown(struct dw_mci *host);
-#if defined(CONFIG_MACH_UNIVERSAL5410)
 extern int dw_mci_early_resume(struct dw_mci *host);
 #endif
 #endif

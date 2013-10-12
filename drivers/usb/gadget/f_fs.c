@@ -33,11 +33,15 @@
 /* Debugging ****************************************************************/
 
 #ifdef VERBOSE_DEBUG
+#ifndef pr_vdebug
 #  define pr_vdebug pr_debug
+#endif /* pr_vdebug */
 #  define ffs_dump_mem(prefix, ptr, len) \
 	print_hex_dump_bytes(pr_fmt(prefix ": "), DUMP_PREFIX_NONE, ptr, len)
 #else
+#ifndef pr_vdebug
 #  define pr_vdebug(...)                 do { } while (0)
+#endif /* pr_vdebug */
 #  define ffs_dump_mem(prefix, ptr, len) do { } while (0)
 #endif /* VERBOSE_DEBUG */
 
@@ -1473,7 +1477,21 @@ static int functionfs_bind_config(struct usb_composite_dev *cdev,
 
 static void ffs_func_free(struct ffs_function *func)
 {
+	struct ffs_ep *ep         = func->eps;
+	unsigned count            = func->ffs->eps_count;
+	unsigned long flags;
+
 	ENTER();
+
+	/* cleanup after autoconfig */
+	spin_lock_irqsave(&func->ffs->eps_lock, flags);
+	do {
+		if (ep->ep && ep->req)
+			usb_ep_free_request(ep->ep, ep->req);
+		ep->req = NULL;
+		++ep;
+	} while (--count);
+	spin_unlock_irqrestore(&func->ffs->eps_lock, flags);
 
 	ffs_data_put(func->ffs);
 

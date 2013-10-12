@@ -25,10 +25,10 @@ if USB_EXYNOS_DRD
 
 choice
 	prompt "EXYNOS DesignWare USB3 DRD channel (temporarily)"
-	depends on SOC_EXYNOS5410
+	depends on SOC_EXYNOS5410 || SOC_EXYNOS5420
 	default USB_EXYNOS5_USB3_DRD_CH0
 	help
-	  Samsung S5E5410 SoC has two DRD channels. This option allows to activate
+	  Samsung EXYNOS5410 and EXYNOS5420 SoC have two DRD channels. This option allows to activate
 	  one of the DRD channels.
 
 	  NOTE: this is temporarily and will be removed once multiple channels

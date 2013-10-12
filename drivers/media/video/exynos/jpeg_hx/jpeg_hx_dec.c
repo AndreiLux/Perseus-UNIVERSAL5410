@@ -77,6 +77,13 @@ static struct jpeg_fmt formats[] = {
 		.memplanes	= 1,
 		.types		= M2M_OUTPUT,
 	}, {
+		.name		= "JPEG compressed format",
+		.fourcc		= V4L2_PIX_FMT_JPEG_411,
+		.depth		= {8},
+		.color		= JPEG_411,
+		.memplanes	= 1,
+		.types		= M2M_OUTPUT,
+	}, {
 		.name		= "YUV 4:2:2 packed, CbYCrY",
 		.fourcc		= V4L2_PIX_FMT_UYVY,
 		.depth		= {16},
@@ -104,7 +111,28 @@ static struct jpeg_fmt formats[] = {
 		.color		= YCRCB_420_2P,
 		.memplanes	= 1,
 		.types		= M2M_CAPTURE,
-	},
+	}, {
+		.name		= "RGB565",
+		.fourcc		= V4L2_PIX_FMT_RGB565X,
+		.depth		= {16},
+		.color		= RGB_565,
+		.memplanes	= 1,
+		.types		= M2M_CAPTURE,
+	}, {
+		.name		= "ARGB8888",
+		.fourcc		= V4L2_PIX_FMT_BGR32,
+		.depth		= {32},
+		.color		= ARGB_8888,
+		.memplanes	= 1,
+		.types		= M2M_CAPTURE,
+	}, {
+		.name		= "ARGB8888",
+		.fourcc		= V4L2_PIX_FMT_RGB32,
+		.depth		= {32},
+		.color		= ARGB_8888,
+		.memplanes	= 1,
+		.types		= M2M_CAPTURE,
+	}
 };
 
 static struct jpeg_fmt *find_format(struct v4l2_format *f)
@@ -165,14 +193,11 @@ static int jpeg_dec_vidioc_g_fmt(struct file *file, void *priv,
 	pixm->field	= V4L2_FIELD_NONE;
 
 	if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		pixm->pixelformat = dec_param->in_fmt;
 		pixm->num_planes = dec_param->in_plane;
 		pixm->width = dec_param->in_width;
 		pixm->height = dec_param->in_height;
 	} else if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		jpeg_hx_get_frame_size(ctx->dev->reg_base, &width, &height);
-		pixm->pixelformat =
-			dec_param->out_fmt;
 		pixm->num_planes = dec_param->out_plane;
 		pixm->width = width;
 		pixm->height = height;
@@ -325,9 +350,6 @@ static int jpeg_dec_m2m_reqbufs(struct file *file, void *priv,
 			  struct v4l2_requestbuffers *reqbufs)
 {
 	struct jpeg_ctx *ctx = priv;
-	struct vb2_queue *vq;
-
-	vq = v4l2_m2m_get_vq(ctx->m2m_ctx, reqbufs->type);
 
 	return v4l2_m2m_reqbufs(file, ctx->m2m_ctx, reqbufs);
 }

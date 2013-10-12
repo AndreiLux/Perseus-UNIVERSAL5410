@@ -75,10 +75,6 @@
 
 #define BASE_VOLTAGE_OFFSET	1000000
 
-#if defined(CONFIG_TARGET_LOCALE_EUR) || defined(CONFIG_MACH_J_CHN_OPEN)
-extern unsigned int system_rev;
-#endif
-
 enum table_version {
 	ASV_TABLE_VER0,
 	ASV_TABLE_VER1,
@@ -104,49 +100,6 @@ static const char *special_lot_list[] = {
 	"NZXKR",
 	"NZXT6",
 };
-
-#ifdef CONFIG_ASV_MARGIN_TEST
-static int set_arm_volt = 0;
-static int set_kfc_volt = 0;
-static int set_int_volt = 0;
-static int set_mif_volt = 0;
-static int set_g3d_volt = 0;
-
-static int __init get_arm_volt(char *str)
-{
-	get_option(&str, &set_arm_volt);
-	return 0;
-}
-early_param("arm", get_arm_volt);
-
-static int __init get_kfc_volt(char *str)
-{
-	get_option(&str, &set_kfc_volt);
-	return 0;
-}
-early_param("kfc", get_kfc_volt);
-
-static int __init get_int_volt(char *str)
-{
-	get_option(&str, &set_int_volt);
-	return 0;
-}
-early_param("int", get_int_volt);
-
-static int __init get_mif_volt(char *str)
-{
-	get_option(&str, &set_mif_volt);
-	return 0;
-}
-early_param("mif", get_mif_volt);
-
-static int __init get_g3d_volt(char *str)
-{
-	get_option(&str, &set_g3d_volt);
-	return 0;
-}
-early_param("g3d", get_g3d_volt);
-#endif
 
 unsigned int exynos5410_add_volt_offset(unsigned int voltage, enum volt_offset offset)
 {
@@ -240,13 +193,8 @@ static void exynos5410_set_asv_info_arm(struct asv_info *asv_inform, bool show_v
 
 	for (i = 0; i < asv_inform->dvfs_level_nr; i++) {
 		asv_inform->asv_volt[i].asv_freq = arm_asv_volt_info[i][0];
-#ifdef CONFIG_ASV_MARGIN_TEST
-		asv_inform->asv_volt[i].asv_value =
-			exynos5410_apply_volt_offset(arm_asv_volt_info[i][target_asv_grp_nr + 1], ID_ARM) + set_arm_volt;
-#else
 		asv_inform->asv_volt[i].asv_value =
 			exynos5410_apply_volt_offset(arm_asv_volt_info[i][target_asv_grp_nr + 1], ID_ARM);
-#endif
 	}
 
 	if (show_value) {
@@ -296,13 +244,8 @@ static void exynos5410_set_asv_info_kfc(struct asv_info *asv_inform, bool show_v
 
 	for (i = 0; i < asv_inform->dvfs_level_nr; i++) {
 		asv_inform->asv_volt[i].asv_freq = kfc_asv_volt_info[i][0];
-#ifdef CONFIG_ASV_MARGIN_TEST
-		asv_inform->asv_volt[i].asv_value =
-			exynos5410_apply_volt_offset(kfc_asv_volt_info[i][target_asv_grp_nr + 1], ID_KFC) + set_kfc_volt;
-#else
 		asv_inform->asv_volt[i].asv_value =
 			exynos5410_apply_volt_offset(kfc_asv_volt_info[i][target_asv_grp_nr + 1], ID_KFC);
-#endif
 	}
 
 	if (show_value) {
@@ -351,13 +294,8 @@ static void exynos5410_set_asv_info_int_mif_lv0(struct asv_info *asv_inform, boo
 
 	for (i = 0; i < asv_inform->dvfs_level_nr; i++) {
 		asv_inform->asv_volt[i].asv_freq = int_mif_lv0_asv_volt_info[i][0];
-#ifdef CONFIG_ASV_MARGIN_TEST
-		asv_inform->asv_volt[i].asv_value =
-			exynos5410_apply_volt_offset(int_mif_lv0_asv_volt_info[i][target_asv_grp_nr + 1], ID_INT) + set_int_volt;
-#else
 		asv_inform->asv_volt[i].asv_value =
 			exynos5410_apply_volt_offset(int_mif_lv0_asv_volt_info[i][target_asv_grp_nr + 1], ID_INT);
-#endif
 	}
 
 	if (show_value) {
@@ -384,13 +322,8 @@ static void exynos5410_set_asv_info_int_mif_lvl(struct asv_info *asv_inform, boo
 
 	for (i = 0; i < asv_inform->dvfs_level_nr; i++) {
 		asv_inform->asv_volt[i].asv_freq = int_mif_lv1_asv_volt_info[i][0];
-#ifdef CONFIG_ASV_MARGIN_TEST
-		asv_inform->asv_volt[i].asv_value =
-			exynos5410_apply_volt_offset(int_mif_lv1_asv_volt_info[i][target_asv_grp_nr + 1], ID_INT) + set_int_volt;
-#else
 		asv_inform->asv_volt[i].asv_value =
 			exynos5410_apply_volt_offset(int_mif_lv1_asv_volt_info[i][target_asv_grp_nr + 1], ID_INT);
-#endif
 	}
 
 	if (show_value) {
@@ -417,13 +350,8 @@ static void exynos5410_set_asv_info_int_mif_lv2(struct asv_info *asv_inform, boo
 
 	for (i = 0; i < asv_inform->dvfs_level_nr; i++) {
 		asv_inform->asv_volt[i].asv_freq = int_mif_lv2_asv_volt_info[i][0];
-#ifdef CONFIG_ASV_MARGIN_TEST
-		asv_inform->asv_volt[i].asv_value =
-			exynos5410_apply_volt_offset(int_mif_lv2_asv_volt_info[i][target_asv_grp_nr + 1], ID_INT) + set_int_volt;
-#else
 		asv_inform->asv_volt[i].asv_value =
 			exynos5410_apply_volt_offset(int_mif_lv2_asv_volt_info[i][target_asv_grp_nr + 1], ID_INT);
-#endif
 	}
 
 	if (show_value) {
@@ -450,13 +378,8 @@ static void exynos5410_set_asv_info_int_mif_lv3(struct asv_info *asv_inform, boo
 
 	for (i = 0; i < asv_inform->dvfs_level_nr; i++) {
 		asv_inform->asv_volt[i].asv_freq = int_mif_lv3_asv_volt_info[i][0];
-#ifdef CONFIG_ASV_MARGIN_TEST
-		asv_inform->asv_volt[i].asv_value =
-			exynos5410_apply_volt_offset(int_mif_lv3_asv_volt_info[i][target_asv_grp_nr + 1], ID_INT) + set_int_volt;
-#else
 		asv_inform->asv_volt[i].asv_value =
 			exynos5410_apply_volt_offset(int_mif_lv3_asv_volt_info[i][target_asv_grp_nr + 1], ID_INT);
-#endif
 	}
 
 	if (show_value) {
@@ -500,7 +423,6 @@ static void exynos5410_set_asv_info_mif(struct asv_info *asv_inform, bool show_v
 {
 	unsigned int i;
 	unsigned int target_asv_grp_nr = asv_inform->result_asv_grp;
-	unsigned int offset = 0;
 
 	exynos5410_set_abb(asv_inform);
 
@@ -509,39 +431,8 @@ static void exynos5410_set_asv_info_mif(struct asv_info *asv_inform, bool show_v
 
 	for (i = 0; i < asv_inform->dvfs_level_nr; i++) {
 		asv_inform->asv_volt[i].asv_freq = mif_asv_volt_info[i][0];
-
-#ifdef CONFIG_TARGET_LOCALE_EUR
-		if (system_rev == 0xa) {
-			if (i == 0)
-				offset = 25000;
-			else
-				offset = 0;
-		}
-#endif
-
-#ifdef CONFIG_TARGET_LOCALE_CHN
-#ifdef CONFIG_MACH_J_CHN_OPEN
-		if (system_rev == 0xa) {
-			if (i == 0)
-				offset = 25000;
-			else
-				offset = 0;
-		}
-#else
-		if (i == 0)
-			offset = 25000;
-		else
-			offset = 0;
-#endif
-#endif
-
-#ifdef CONFIG_ASV_MARGIN_TEST
 		asv_inform->asv_volt[i].asv_value =
-			exynos5410_apply_volt_offset(mif_asv_volt_info[i][target_asv_grp_nr + 1], ID_MIF) + set_mif_volt + offset;
-#else
-		asv_inform->asv_volt[i].asv_value =
-			exynos5410_apply_volt_offset(mif_asv_volt_info[i][target_asv_grp_nr + 1], ID_MIF) + offset;
-#endif
+			exynos5410_apply_volt_offset(mif_asv_volt_info[i][target_asv_grp_nr + 1], ID_MIF);
 	}
 
 	if (show_value) {
@@ -590,13 +481,8 @@ static void exynos5410_set_asv_info_g3d(struct asv_info *asv_inform, bool show_v
 
 	for (i = 0; i < asv_inform->dvfs_level_nr; i++) {
 		asv_inform->asv_volt[i].asv_freq = g3d_asv_volt_info[i][0];
-#ifdef CONFIG_ASV_MARGIN_TEST
-		asv_inform->asv_volt[i].asv_value =
-			exynos5410_apply_volt_offset(g3d_asv_volt_info[i][target_asv_grp_nr + 1], ID_G3D) + set_g3d_volt;
-#else
 		asv_inform->asv_volt[i].asv_value =
 			exynos5410_apply_volt_offset(g3d_asv_volt_info[i][target_asv_grp_nr + 1], ID_G3D);
-#endif
 	}
 
 	if (show_value) {

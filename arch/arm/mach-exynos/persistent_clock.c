@@ -156,7 +156,7 @@ static int __devinit exynos_persistent_clock_probe(struct platform_device *pdev)
 	writeb(bin2bcd(tm.tm_hour), exynos_rtc_base + S3C2410_RTCHOUR);
 	writeb(bin2bcd(tm.tm_mday), exynos_rtc_base + S3C2410_RTCDATE);
 	writeb(bin2bcd(tm.tm_mon), exynos_rtc_base + S3C2410_RTCMON);
-	writeb(bin2bcd(1900 + tm.tm_year), exynos_rtc_base + S3C2410_RTCYEAR);
+	writeb(bin2bcd(tm.tm_year - 100), exynos_rtc_base + S3C2410_RTCYEAR);
 
 	pr_debug("set time %04d.%02d.%02d %02d:%02d:%02d\n", 1900 + tm.tm_year,
 		 tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);

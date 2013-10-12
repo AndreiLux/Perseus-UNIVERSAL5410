@@ -371,6 +371,14 @@ struct usb_composite_dev {
 
 	/* protects deactivations and delayed_status counts*/
 	spinlock_t			lock;
+
+	/*
+	 * specify the mA units for the bMaxPower field in
+	 * the configuration descriptor. Should be 2mA for HS
+	 * and 8mA for SS.
+	 */
+	int vbus_draw_units;
+
 #ifdef CONFIG_USB_ANDROID
 	/* switch indicating connected/disconnected state */
 	struct switch_dev		sw_connected;

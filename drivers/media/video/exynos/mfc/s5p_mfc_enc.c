@@ -36,6 +36,20 @@
 
 static struct s5p_mfc_fmt formats[] = {
 	{
+		.name = "4:2:0 3 Planes Y/Cb/Cr",
+		.fourcc = V4L2_PIX_FMT_YUV420M,
+		.codec_mode = MFC_FORMATS_NO_CODEC,
+		.type = MFC_FMT_RAW,
+		.num_planes = 3,
+	},
+	{
+		.name = "4:2:0 3 Planes Y/Cr/Cb",
+		.fourcc = V4L2_PIX_FMT_YVU420M,
+		.codec_mode = MFC_FORMATS_NO_CODEC,
+		.type = MFC_FMT_RAW,
+		.num_planes = 3,
+	},
+	{
 		.name = "4:2:0 2 Planes 16x16 Tiles",
 		.fourcc = V4L2_PIX_FMT_NV12MT_16X16,
 		.codec_mode = MFC_FORMATS_NO_CODEC,
@@ -64,6 +78,34 @@ static struct s5p_mfc_fmt formats[] = {
 		.num_planes = 2,
 	},
 	{
+		.name = "RGB888 1 Plane 24bpp",
+		.fourcc = V4L2_PIX_FMT_RGB24,
+		.codec_mode = MFC_FORMATS_NO_CODEC,
+		.type = MFC_FMT_RAW,
+		.num_planes = 1,
+	},
+	{
+		.name = "RGB565 1 Plane 16bpp",
+		.fourcc = V4L2_PIX_FMT_RGB565,
+		.codec_mode = MFC_FORMATS_NO_CODEC,
+		.type = MFC_FMT_RAW,
+		.num_planes = 1,
+	},
+	{
+		.name = "RGBX8888 1 Plane 32bpp",
+		.fourcc = V4L2_PIX_FMT_RGB32X,
+		.codec_mode = MFC_FORMATS_NO_CODEC,
+		.type = MFC_FMT_RAW,
+		.num_planes = 1,
+	},
+	{
+		.name = "BGRA8888 1 Plane 32bpp",
+		.fourcc = V4L2_PIX_FMT_BGR32,
+		.codec_mode = MFC_FORMATS_NO_CODEC,
+		.type = MFC_FMT_RAW,
+		.num_planes = 1,
+	},
+	{
 		.name = "H264 Encoded Stream",
 		.fourcc = V4L2_PIX_FMT_H264,
 		.codec_mode = S5P_FIMV_CODEC_H264_ENC,
@@ -81,6 +123,13 @@ static struct s5p_mfc_fmt formats[] = {
 		.name = "H263 Encoded Stream",
 		.fourcc = V4L2_PIX_FMT_H263,
 		.codec_mode = S5P_FIMV_CODEC_H263_ENC,
+		.type = MFC_FMT_ENC,
+		.num_planes = 1,
+	},
+	{
+		.name = "VP8 Encoded Stream",
+		.fourcc = V4L2_PIX_FMT_VP8,
+		.codec_mode = S5P_FIMV_CODEC_VP8_ENC,
 		.type = MFC_FMT_ENC,
 		.num_planes = 1,
 	},
@@ -837,6 +886,186 @@ static struct v4l2_queryctrl controls[] = {
 		.step = 10,
 		.default_value = 100,
 	},
+	{
+		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_VERSION,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 version",
+		.minimum = 0,
+		.maximum = 3,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_VP8_I_FRAME_QP,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 Frame QP value",
+		.minimum = 0,
+		.maximum = 127,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_VP8_P_FRAME_QP,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 Frame QP value",
+		.minimum = 0,
+		.maximum = 127,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_VP8_MAX_QP,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 Frame QP MAX value",
+		.minimum = 115,
+		.maximum = 127,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_VP8_MIN_QP,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 Frame QP MAX value",
+		.minimum = 0,
+		.maximum = 11,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_RC_FRAME_RATE,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 Frame rate",
+		.minimum = 1,
+		.maximum = ENC_H264_RC_FRAME_RATE_MAX,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_NUM_OF_PARTITIONS,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 number of partitions",
+		.minimum = 0,
+		.maximum = 8,
+		.step = 2,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_FILTER_LEVEL,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 loop filter level",
+		.minimum = 0,
+		.maximum = 63,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_FILTER_SHARPNESS,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 loop filter sharpness",
+		.minimum = 0,
+		.maximum = 7,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_GOLDEN_FRAMESEL,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 indication of golden frame",
+		.minimum = 0,
+		.maximum = 1,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_GF_REFRESH_PERIOD,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 indication of golden frame",
+		.minimum = 0,
+		.maximum = ((1 << 16) - 1),
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_HIERARCHY_QP_ENABLE,
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.name = "VP8 hierarchy QP enable",
+		.minimum = 0,
+		.maximum = 1,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_HIERARCHY_QP_LAYER0,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 layer0 QP value",
+		.minimum = 0,
+		.maximum = 127,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_HIERARCHY_QP_LAYER1,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 layer1 QP value",
+		.minimum = 0,
+		.maximum = 127,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_HIERARCHY_QP_LAYER2,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 layer2 QP value",
+		.minimum = 0,
+		.maximum = 127,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_REF_NUMBER_FOR_PFRAMES,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 Number of reference picture",
+		.minimum = 1,
+		.maximum = 2,
+		.step = 1,
+		.default_value = 1,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_DISABLE_INTRA_MD4X4,
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.name = "VP8 intra 4x4 mode disable",
+		.minimum = 0,
+		.maximum = 1,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_NUM_TEMPORAL_LAYER,
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.name = "VP8 number of hierarchical layer",
+		.minimum = 0,
+		.maximum = 2,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC_GET_VERSION_INFO,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Get MFC version information",
+		.minimum = 0,
+		.maximum = 1,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC_GET_EXTRA_BUFFER_SIZE,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Get extra buffer size",
+		.minimum = 0,
+		.maximum = (2 << 31) - 1,
+		.step = 1,
+		.default_value = 0,
+	},
 };
 
 #define NUM_CTRLS ARRAY_SIZE(controls)
@@ -1461,19 +1690,18 @@ static void cleanup_ref_queue(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
 	struct s5p_mfc_buf *mb_entry;
-	dma_addr_t mb_y_addr, mb_c_addr;
+	dma_addr_t mb_addr;
+	int i;
 
 	/* move buffers in ref queue to src queue */
 	while (!list_empty(&enc->ref_queue)) {
 		mb_entry = list_entry((&enc->ref_queue)->next, struct s5p_mfc_buf, list);
 
-		mb_y_addr = s5p_mfc_mem_plane_addr(ctx, &mb_entry->vb, 0);
-		mb_c_addr = s5p_mfc_mem_plane_addr(ctx, &mb_entry->vb, 1);
-
-		mfc_debug(2, "enc ref y addr: 0x%08lx",
-				(unsigned long)mb_y_addr);
-		mfc_debug(2, "enc ref c addr: 0x%08lx",
-				(unsigned long)mb_c_addr);
+		for (i = 0; i < ctx->raw_buf.num_planes; i++) {
+			mb_addr = s5p_mfc_mem_plane_addr(ctx, &mb_entry->vb, i);
+			mfc_debug(2, "enc ref[%d] addr: 0x%08lx", i,
+					(unsigned long)mb_addr);
+		}
 
 		list_del(&mb_entry->list);
 		enc->ref_queue_cnt--;
@@ -1557,23 +1785,22 @@ static int enc_pre_frame_start(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_buf *dst_mb;
 	struct s5p_mfc_buf *src_mb;
+	struct s5p_mfc_raw_info *raw;
 	unsigned long flags;
-	dma_addr_t src_y_addr, src_c_addr, dst_addr;
-	unsigned int dst_size;
+	dma_addr_t src_addr[3] = { 0, 0, 0 };
+	dma_addr_t dst_addr;
+	unsigned int dst_size, i;
 
+	raw = &ctx->raw_buf;
 	spin_lock_irqsave(&dev->irqlock, flags);
 
 	src_mb = list_entry(ctx->src_queue.next, struct s5p_mfc_buf, list);
-	src_y_addr = s5p_mfc_mem_plane_addr(ctx, &src_mb->vb, 0);
-	src_c_addr = s5p_mfc_mem_plane_addr(ctx, &src_mb->vb, 1);
-	s5p_mfc_set_enc_frame_buffer(ctx, src_y_addr, src_c_addr);
-
-	spin_unlock_irqrestore(&dev->irqlock, flags);
-
-	mfc_debug(2, "enc src y addr: 0x%08lx",	(unsigned long)src_y_addr);
-	mfc_debug(2, "enc src c addr: 0x%08lx", (unsigned long)src_c_addr);
-
-	spin_lock_irqsave(&dev->irqlock, flags);
+	for (i = 0; i < raw->num_planes; i++) {
+		src_addr[i] = s5p_mfc_mem_plane_addr(ctx, &src_mb->vb, i);
+		mfc_debug(2, "enc src[%d] addr: 0x%08lx",
+					i, (unsigned long)src_addr[i]);
+	}
+	s5p_mfc_set_enc_frame_buffer(ctx, &src_addr[0], raw->num_planes);
 
 	dst_mb = list_entry(ctx->dst_queue.next, struct s5p_mfc_buf, list);
 	dst_addr = s5p_mfc_mem_plane_addr(ctx, &dst_mb->vb, 0);
@@ -1592,9 +1819,10 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
 	struct s5p_mfc_buf *mb_entry, *next_entry;
-	dma_addr_t enc_y_addr, enc_c_addr;
-	dma_addr_t mb_y_addr, mb_c_addr;
-	int slice_type;
+	struct s5p_mfc_raw_info *raw;
+	dma_addr_t enc_addr[3] = { 0, 0, 0 };
+	dma_addr_t mb_addr[3] = { 0, 0, 0 };
+	int slice_type, i;
 	unsigned int strm_size;
 	unsigned int pic_count;
 	unsigned long flags;
@@ -1610,6 +1838,7 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 
 	/* set encoded frame type */
 	enc->frame_type = slice_type;
+	raw = &ctx->raw_buf;
 
 	spin_lock_irqsave(&dev->irqlock, flags);
 
@@ -1669,26 +1898,22 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 		if (ctx->state == MFCINST_RUNNING_NO_OUTPUT)
 			ctx->state = MFCINST_RUNNING;
 
-		s5p_mfc_get_enc_frame_buffer(ctx, &enc_y_addr, &enc_c_addr);
+		s5p_mfc_get_enc_frame_buffer(ctx, &enc_addr[0], raw->num_planes);
 
-		mfc_debug(2, "encoded y addr: 0x%08lx",
-				(unsigned long)enc_y_addr);
-		mfc_debug(2, "encoded c addr: 0x%08lx",
-				(unsigned long)enc_c_addr);
+		for (i = 0; i < raw->num_planes; i++)
+			mfc_debug(2, "encoded[%d] addr: 0x%08lx", i,
+					(unsigned long)enc_addr[i]);
 
 		list_for_each_entry_safe(mb_entry, next_entry,
 						&ctx->src_queue, list) {
-			mb_y_addr = s5p_mfc_mem_plane_addr(ctx,
-						&mb_entry->vb, 0);
-			mb_c_addr = s5p_mfc_mem_plane_addr(ctx,
-						&mb_entry->vb, 1);
+			for (i = 0; i < raw->num_planes; i++) {
+				mb_addr[i] = s5p_mfc_mem_plane_addr(ctx,
+							&mb_entry->vb, i);
+				mfc_debug(2, "enc src[%d] addr: 0x%08lx", i,
+						(unsigned long)mb_addr[i]);
+			}
 
-			mfc_debug(2, "enc src y addr: 0x%08lx",
-					(unsigned long)mb_y_addr);
-			mfc_debug(2, "enc src c addr: 0x%08lx",
-					(unsigned long)mb_c_addr);
-
-			if ((enc_y_addr == mb_y_addr) && (enc_c_addr == mb_c_addr)) {
+			if (enc_addr[0] == mb_addr[0]) {
 				index = mb_entry->vb.v4l2_buf.index;
 				if (call_cop(ctx, recover_buf_ctrls_val, ctx,
 						&ctx->src_ctrls[index]) < 0)
@@ -1703,17 +1928,14 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 		}
 
 		list_for_each_entry(mb_entry, &enc->ref_queue, list) {
-			mb_y_addr = s5p_mfc_mem_plane_addr(ctx,
-						&mb_entry->vb, 0);
-			mb_c_addr = s5p_mfc_mem_plane_addr(ctx,
-						&mb_entry->vb, 1);
+			for (i = 0; i < raw->num_planes; i++) {
+				mb_addr[i] = s5p_mfc_mem_plane_addr(ctx,
+						&mb_entry->vb, i);
+				mfc_debug(2, "enc ref[%d] addr: 0x%08lx", i,
+						(unsigned long)mb_addr[i]);
+			}
 
-			mfc_debug(2, "enc ref y addr: 0x%08lx",
-					(unsigned long)mb_y_addr);
-			mfc_debug(2, "enc ref c addr: 0x%08lx",
-					(unsigned long)mb_c_addr);
-
-			if ((enc_y_addr == mb_y_addr) && (enc_c_addr == mb_c_addr)) {
+			if (enc_addr[0] == mb_addr[0]) {
 				list_del(&mb_entry->list);
 				enc->ref_queue_cnt--;
 
@@ -1849,6 +2071,8 @@ static int vidioc_g_fmt(struct file *file, void *priv, struct v4l2_format *f)
 	struct s5p_mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
+	struct s5p_mfc_raw_info *raw;
+	int i;
 
 	mfc_debug_enter();
 
@@ -1866,16 +2090,18 @@ static int vidioc_g_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		pix_fmt_mp->plane_fmt[0].sizeimage = enc->dst_buf_size;
 	} else if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		/* This is run on capture (encoder src) */
+		raw = &ctx->raw_buf;
+
 		pix_fmt_mp->width = ctx->img_width;
 		pix_fmt_mp->height = ctx->img_height;
 		pix_fmt_mp->field = V4L2_FIELD_NONE;
 		pix_fmt_mp->pixelformat = ctx->src_fmt->fourcc;
 		pix_fmt_mp->num_planes = ctx->src_fmt->num_planes;
 
-		pix_fmt_mp->plane_fmt[0].bytesperline = ctx->buf_width;
-		pix_fmt_mp->plane_fmt[0].sizeimage = ctx->luma_size;
-		pix_fmt_mp->plane_fmt[1].bytesperline = ctx->buf_width;
-		pix_fmt_mp->plane_fmt[1].sizeimage = ctx->chroma_size;
+		for (i = 0; i < raw->num_planes; i++) {
+			pix_fmt_mp->plane_fmt[i].bytesperline = raw->stride[i];
+			pix_fmt_mp->plane_fmt[i].sizeimage = raw->plane_size[i];
+		}
 	} else {
 		mfc_err("invalid buf type\n");
 		return -EINVAL;
@@ -2012,6 +2238,7 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		}
 
 		ctx->src_fmt = fmt;
+		ctx->raw_buf.num_planes = ctx->src_fmt->num_planes;
 		ctx->img_width = pix_fmt_mp->width;
 		ctx->img_height = pix_fmt_mp->height;
 
@@ -2023,11 +2250,6 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		s5p_mfc_enc_calc_src_size(ctx);
 
 		ctx->output_state = QUEUE_FREE;
-
-		pix_fmt_mp->plane_fmt[0].bytesperline = ctx->buf_width;
-		pix_fmt_mp->plane_fmt[0].sizeimage = ctx->luma_size;
-		pix_fmt_mp->plane_fmt[1].bytesperline = ctx->buf_width;
-		pix_fmt_mp->plane_fmt[1].sizeimage = ctx->chroma_size;
 	} else {
 		mfc_err("invalid buf type\n");
 		return -EINVAL;
@@ -2396,6 +2618,12 @@ static int get_ctrl_val(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 			return -EINVAL;
 		}
 		break;
+	case V4L2_CID_MPEG_MFC_GET_VERSION_INFO:
+		ctrl->value = mfc_version(dev);
+		break;
+	case V4L2_CID_MPEG_MFC_GET_EXTRA_BUFFER_SIZE:
+		ctrl->value = mfc_linear_buf_size(mfc_version(dev));
+		break;
 	case V4L2_CID_MPEG_VIDEO_QOS_RATIO:
 		ctrl->value = ctx->qos_ratio;
 		break;
@@ -2760,6 +2988,60 @@ static int set_enc_param(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 	case V4L2_CID_MPEG_VIDEO_H263_P_FRAME_QP:
 		p->codec.mpeg4.rc_p_frame_qp = ctrl->value;
 		break;
+	case V4L2_CID_MPEG_MFC70_VIDEO_VP8_VERSION:
+		p->codec.vp8.vp8_version = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC70_VIDEO_VP8_RC_FRAME_RATE:
+		p->codec.vp8.rc_framerate = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_VP8_MIN_QP:
+		p->codec.vp8.rc_min_qp = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_VP8_MAX_QP:
+		p->codec.vp8.rc_max_qp = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_VP8_I_FRAME_QP:
+		p->codec.vp8.rc_frame_qp = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_VP8_P_FRAME_QP:
+		p->codec.vp8.rc_p_frame_qp = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC70_VIDEO_VP8_NUM_OF_PARTITIONS:
+		p->codec.vp8.vp8_numberofpartitions = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC70_VIDEO_VP8_FILTER_LEVEL:
+		p->codec.vp8.vp8_filterlevel = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC70_VIDEO_VP8_FILTER_SHARPNESS:
+		p->codec.vp8.vp8_filtersharpness = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC70_VIDEO_VP8_GOLDEN_FRAMESEL:
+		p->codec.vp8.vp8_goldenframesel = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC70_VIDEO_VP8_GF_REFRESH_PERIOD:
+		p->codec.vp8.vp8_gfrefreshperiod = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC70_VIDEO_VP8_HIERARCHY_QP_ENABLE:
+		p->codec.vp8.hierarchy_qp_enable = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC70_VIDEO_VP8_HIERARCHY_QP_LAYER0:
+		p->codec.vp8.hierarchy_qp_layer0 = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC70_VIDEO_VP8_HIERARCHY_QP_LAYER1:
+		p->codec.vp8.hierarchy_qp_layer1 = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC70_VIDEO_VP8_HIERARCHY_QP_LAYER2:
+		p->codec.vp8.hierarchy_qp_layer2 = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC70_VIDEO_VP8_REF_NUMBER_FOR_PFRAMES:
+		p->codec.vp8.num_refs_for_p = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC70_VIDEO_VP8_DISABLE_INTRA_MD4X4:
+		p->codec.vp8.intra_4x4mode_disable = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC70_VIDEO_VP8_NUM_TEMPORAL_LAYER:
+		p->codec.vp8.num_temporal_layer = ctrl->value;
+		break;
 	default:
 		v4l2_err(&dev->v4l2_dev, "Invalid control\n");
 		ret = -EINVAL;
@@ -3016,9 +3298,11 @@ static int s5p_mfc_queue_setup(struct vb2_queue *vq,
 	struct s5p_mfc_ctx *ctx = vq->drv_priv;
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
 	struct s5p_mfc_dev *dev = ctx->dev;
+	struct s5p_mfc_raw_info *raw;
 	int i;
 	void *alloc_ctx1 = ctx->dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX];
 	void *alloc_ctx2 = ctx->dev->alloc_ctx[MFC_CMA_BANK2_ALLOC_CTX];
+	void *output_ctx;
 
 	mfc_debug_enter();
 
@@ -3050,6 +3334,8 @@ static int s5p_mfc_queue_setup(struct vb2_queue *vq,
 		else
 			allocators[0] = alloc_ctx1;
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+		raw = &ctx->raw_buf;
+
 		if (ctx->src_fmt)
 			*plane_count = ctx->src_fmt->num_planes;
 		else
@@ -3060,19 +3346,18 @@ static int s5p_mfc_queue_setup(struct vb2_queue *vq,
 		if (*buf_count > MFC_MAX_BUFFERS)
 			*buf_count = MFC_MAX_BUFFERS;
 
-		psize[0] = ctx->luma_size;
-		psize[1] = ctx->chroma_size;
 		if (ctx->is_drm) {
-			allocators[0] = ctx->dev->alloc_ctx_drm;
-			allocators[1] = ctx->dev->alloc_ctx_drm;
+			output_ctx = ctx->dev->alloc_ctx_drm;
 		} else {
-			if (IS_MFCV6(dev)) {
-				allocators[0] = alloc_ctx1;
-				allocators[1] = alloc_ctx1;
-			} else {
-				allocators[0] = alloc_ctx2;
-				allocators[1] = alloc_ctx2;
-			}
+			if (IS_MFCV6(dev))
+				output_ctx = alloc_ctx1;
+			else
+				output_ctx = alloc_ctx2;
+		}
+
+		for (i = 0; i < *plane_count; i++) {
+			psize[i] = raw->plane_size[i];
+			allocators[i] = output_ctx;
 		}
 	} else {
 		mfc_err("invalid queue type: %d\n", vq->type);
@@ -3109,7 +3394,7 @@ static int s5p_mfc_buf_init(struct vb2_buffer *vb)
 	struct vb2_queue *vq = vb->vb2_queue;
 	struct s5p_mfc_ctx *ctx = vq->drv_priv;
 	struct s5p_mfc_buf *buf = vb_to_mfc_buf(vb);
-	int ret;
+	int i, ret;
 
 	mfc_debug_enter();
 
@@ -3129,8 +3414,8 @@ static int s5p_mfc_buf_init(struct vb2_buffer *vb)
 		if (ret < 0)
 			return ret;
 
-		buf->planes.raw.luma = s5p_mfc_mem_plane_addr(ctx, vb, 0);
-		buf->planes.raw.chroma = s5p_mfc_mem_plane_addr(ctx, vb, 1);
+		for (i = 0; i < ctx->src_fmt->num_planes; i++)
+			buf->planes.raw[i] = s5p_mfc_mem_plane_addr(ctx, vb, i);
 
 		if (call_cop(ctx, init_buf_ctrls, ctx, MFC_CTRL_TYPE_SRC,
 					vb->v4l2_buf.index) < 0)
@@ -3151,8 +3436,9 @@ static int s5p_mfc_buf_prepare(struct vb2_buffer *vb)
 	struct vb2_queue *vq = vb->vb2_queue;
 	struct s5p_mfc_ctx *ctx = vq->drv_priv;
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
+	struct s5p_mfc_raw_info *raw;
 	unsigned int index = vb->v4l2_buf.index;
-	int ret;
+	int ret, i;
 
 	mfc_debug_enter();
 
@@ -3173,15 +3459,18 @@ static int s5p_mfc_buf_prepare(struct vb2_buffer *vb)
 		if (ret < 0)
 			return ret;
 
-		mfc_debug(2, "plane size: %ld, luma size: %d\n",
-			vb2_plane_size(vb, 0), ctx->luma_size);
-		mfc_debug(2, "plane size: %ld, chroma size: %d\n",
-			vb2_plane_size(vb, 1), ctx->chroma_size);
-
-		if (vb2_plane_size(vb, 0) < ctx->luma_size ||
-		    vb2_plane_size(vb, 1) < ctx->chroma_size) {
-			mfc_err("plane size is too small for output\n");
-			return -EINVAL;
+		raw = &ctx->raw_buf;
+		for (i = 0; i < raw->num_planes; i++) {
+			mfc_debug(2, "plane[%d] size: %ld, src[%d] size: %d\n",
+				i, vb2_plane_size(vb, i),
+				i, raw->plane_size[i]);
+			if (vb2_plane_size(vb, i) < raw->plane_size[i]) {
+				mfc_err("Output plane[%d] is too smalli\n", i);
+				mfc_err("plane size: %ld, src size: %d\n",
+						vb2_plane_size(vb, i),
+						raw->plane_size[i]);
+				return -EINVAL;
+			}
 		}
 
 		if (call_cop(ctx, to_buf_ctrls, ctx, &ctx->src_ctrls[index]) < 0)
@@ -3258,10 +3547,6 @@ static int s5p_mfc_start_streaming(struct vb2_queue *q, unsigned int count)
 	return 0;
 }
 
-#define need_to_wait_frame_start(ctx)		\
-	(((ctx->state == MFCINST_FINISHING) ||	\
-	  (ctx->state == MFCINST_RUNNING)) &&	\
-	 test_bit(ctx->num, &ctx->dev->hw_lock))
 static int s5p_mfc_stop_streaming(struct vb2_queue *q)
 {
 	unsigned long flags;
@@ -3271,7 +3556,15 @@ static int s5p_mfc_stop_streaming(struct vb2_queue *q)
 	int index = 0;
 	int aborted = 0;
 
-	if (need_to_wait_frame_start(ctx)) {
+	if (!aborted && mfc_need_wait_got_inst(ctx)) {
+		ctx->state = MFCINST_ABORT;
+		if (s5p_mfc_wait_for_done_ctx(ctx,
+				S5P_FIMV_R2H_CMD_SEQ_DONE_RET, 0))
+			s5p_mfc_cleanup_timeout(ctx);
+		aborted = 1;
+	}
+
+	if (!aborted && mfc_need_wait_frame_start(ctx)) {
 		ctx->state = MFCINST_ABORT;
 		if (s5p_mfc_wait_for_done_ctx(ctx,
 				S5P_FIMV_R2H_CMD_FRAME_DONE_RET, 0))
@@ -3338,6 +3631,7 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 	struct s5p_mfc_dev *dev = ctx->dev;
 	unsigned long flags;
 	struct s5p_mfc_buf *buf = vb_to_mfc_buf(vb);
+	int i;
 
 	mfc_debug_enter();
 
@@ -3356,11 +3650,11 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		buf->used = 0;
 		mfc_debug(2, "src queue: %p\n", &ctx->src_queue);
-		mfc_debug(2, "adding to src: %p (%08lx, %08lx, %08x, %08x)\n", vb,
-			(unsigned long)s5p_mfc_mem_plane_addr(ctx, vb, 0),
-			(unsigned long)s5p_mfc_mem_plane_addr(ctx, vb, 1),
-			buf->planes.raw.luma,
-			buf->planes.raw.chroma);
+
+		for (i = 0; i < ctx->src_fmt->num_planes; i++)
+			mfc_debug(2, "adding to src[%d]: %p (%08lx, %08x)\n", i, vb,
+				(unsigned long)s5p_mfc_mem_plane_addr(ctx, vb, i),
+				buf->planes.raw[i]);
 
 		spin_lock_irqsave(&dev->irqlock, flags);
 
@@ -3431,7 +3725,7 @@ int s5p_mfc_init_enc_ctx(struct s5p_mfc_ctx *ctx)
 
 	ctx->framerate = ENC_MAX_FPS;
 	ctx->qos_ratio = 100;
-#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+#ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 	INIT_LIST_HEAD(&ctx->qos_list);
 #endif
 

@@ -37,6 +37,20 @@
 
 static struct s5p_mfc_fmt formats[] = {
 	{
+		.name = "4:2:0 3 Planes Y/Cb/Cr",
+		.fourcc = V4L2_PIX_FMT_YUV420M,
+		.codec_mode = MFC_FORMATS_NO_CODEC,
+		.type = MFC_FMT_RAW,
+		.num_planes = 3,
+	},
+	{
+		.name = "4:2:0 3 Planes Y/Cr/Cb",
+		.fourcc = V4L2_PIX_FMT_YVU420M,
+		.codec_mode = MFC_FORMATS_NO_CODEC,
+		.type = MFC_FMT_RAW,
+		.num_planes = 3,
+	},
+	{
 		.name = "4:2:0 2 Planes 16x16 Tiles",
 		.fourcc = V4L2_PIX_FMT_NV12MT_16X16,
 		.codec_mode = MFC_FORMATS_NO_CODEC,
@@ -337,6 +351,24 @@ static struct v4l2_queryctrl controls[] = {
 		.id = V4L2_CID_MPEG_VIDEO_DECODER_WAIT_DECODING_START,
 		.type = V4L2_CTRL_TYPE_BOOLEAN,
 		.name = "Wait until buffer setting done",
+		.minimum = 0,
+		.maximum = 1,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC_GET_VERSION_INFO,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Get MFC version information",
+		.minimum = 0,
+		.maximum = 1,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC_SET_DUAL_DPB_MODE,
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.name = "Set Dual DPB mode",
 		.minimum = 0,
 		.maximum = 1,
 		.step = 1,
@@ -1117,6 +1149,8 @@ static int vidioc_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 	struct s5p_mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
 	struct s5p_mfc_dec *dec;
 	struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
+	struct s5p_mfc_raw_info *raw;
+	int i;
 
 	dec = ctx->dec_priv;
 	if (!dec) {
@@ -1141,6 +1175,7 @@ static int vidioc_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 	if (ctx->state >= MFCINST_HEAD_PARSED &&
 	    ctx->state < MFCINST_ABORT) {
 		/* This is run on CAPTURE (deocde output) */
+		raw = &ctx->raw_buf;
 		/* Width and height are set to the dimensions
 		   of the movie, the buffer is bigger and
 		   further processing stages should crop to this
@@ -1149,7 +1184,7 @@ static int vidioc_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 
 		pix_mp->width = ctx->img_width;
 		pix_mp->height = ctx->img_height;
-		pix_mp->num_planes = 2;
+		pix_mp->num_planes = raw->num_planes;
 
 		if (dec->is_interlaced)
 			pix_mp->field = V4L2_FIELD_INTERLACED;
@@ -1159,10 +1194,10 @@ static int vidioc_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 		/* Set pixelformat to the format in which MFC
 		   outputs the decoded frame */
 		pix_mp->pixelformat = ctx->dst_fmt->fourcc;
-		pix_mp->plane_fmt[0].bytesperline = ctx->buf_width;
-		pix_mp->plane_fmt[0].sizeimage = ctx->luma_size;
-		pix_mp->plane_fmt[1].bytesperline = ctx->buf_width;
-		pix_mp->plane_fmt[1].sizeimage = ctx->chroma_size;
+		for (i = 0; i < raw->num_planes; i++) {
+			pix_mp->plane_fmt[i].bytesperline = raw->stride[i];
+			pix_mp->plane_fmt[i].sizeimage = raw->plane_size[i];
+		}
 	}
 
 	mfc_debug_leave();
@@ -1274,6 +1309,11 @@ static int vidioc_s_fmt_vid_cap_mplane(struct file *file, void *priv,
 		return ret;
 
 	ctx->dst_fmt = find_format(f, MFC_FMT_RAW);
+	if (!ctx->dst_fmt) {
+		mfc_err("Unsupported format for destination.\n");
+		return -EINVAL;
+	}
+	ctx->raw_buf.num_planes = ctx->dst_fmt->num_planes;
 
 	mfc_debug_leave();
 
@@ -1828,6 +1868,9 @@ static int get_ctrl_val(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 	case V4L2_CID_MPEG_MFC51_VIDEO_FRAME_RATE:
 		ctrl->value = ctx->framerate;
 		break;
+	case V4L2_CID_MPEG_MFC_GET_VERSION_INFO:
+		ctrl->value = mfc_version(dev);
+		break;
 	case V4L2_CID_MPEG_VIDEO_QOS_RATIO:
 		ctrl->value = ctx->qos_ratio;
 		break;
@@ -1950,6 +1993,9 @@ static int vidioc_s_ctrl(struct file *file, void *priv,
 	case V4L2_CID_MPEG_VIDEO_DECODER_WAIT_DECODING_START:
 		ctx->wait_state = ctrl->value;
 		break;
+	case V4L2_CID_MPEG_MFC_SET_DUAL_DPB_MODE:
+		dec->is_dual_dpb = ctrl->value;
+		break;
 	case V4L2_CID_MPEG_VIDEO_QOS_RATIO:
 		ctx->qos_ratio = ctrl->value;
 		break;
@@ -2009,7 +2055,6 @@ static int vidioc_g_crop(struct file *file, void *priv,
 {
 	struct s5p_mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
 	struct s5p_mfc_dec *dec = ctx->dec_priv;
-	int ret = -EINVAL;
 
 	mfc_debug_enter();
 
@@ -2106,8 +2151,11 @@ static int s5p_mfc_queue_setup(struct vb2_queue *vq,
 	struct s5p_mfc_ctx *ctx;
 	struct s5p_mfc_dev *dev;
 	struct s5p_mfc_dec *dec;
+	struct s5p_mfc_raw_info *raw;
 	void *alloc_ctx1;
 	void *alloc_ctx2;
+	void *capture_ctx;
+	int i;
 
 	mfc_debug_enter();
 
@@ -2132,6 +2180,7 @@ static int s5p_mfc_queue_setup(struct vb2_queue *vq,
 		return -EINVAL;
 	}
 
+	raw = &ctx->raw_buf;
 	alloc_ctx1 = ctx->dev->alloc_ctx[MFC_CMA_BANK1_ALLOC_CTX];
 	alloc_ctx2 = ctx->dev->alloc_ctx[MFC_CMA_BANK2_ALLOC_CTX];
 
@@ -2151,8 +2200,8 @@ static int s5p_mfc_queue_setup(struct vb2_queue *vq,
 	} else if (ctx->state == MFCINST_HEAD_PARSED &&
 		   vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		mfc_debug(2, "setting for VIDEO capture\n");
-		/* Output plane count is 2 - one for Y and one for CbCr */
-		*plane_count = 2;
+		/* Output plane count is different by the pixel format */
+		*plane_count = raw->num_planes;
 		/* Setup buffer count */
 		if (*buf_count < ctx->dpb_count)
 			*buf_count = ctx->dpb_count;
@@ -2168,19 +2217,20 @@ static int s5p_mfc_queue_setup(struct vb2_queue *vq,
 
 	if (ctx->state == MFCINST_HEAD_PARSED &&
 	    vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-		psize[0] = ctx->luma_size;
-		psize[1] = ctx->chroma_size;
+		if (ctx->is_drm)
+			capture_ctx = ctx->dev->alloc_ctx_drm;
+		else
+			capture_ctx = alloc_ctx1;
 
-		if (ctx->is_drm) {
-			allocators[0] = ctx->dev->alloc_ctx_drm;
-			allocators[1] = ctx->dev->alloc_ctx_drm;
-		} else {
-			if (IS_MFCV6(dev))
-				allocators[0] = alloc_ctx1;
-			else
-				allocators[0] = alloc_ctx2;
-			allocators[1] = alloc_ctx1;
+		for (i = 0; i < raw->num_planes; i++) {
+			psize[i] = raw->plane_size[i];
+			allocators[i] = capture_ctx;
 		}
+
+		/* For MFC 5.x only, first allocator should be alloc_ctx2 */
+		if (!ctx->is_drm && IS_MFCV5(dev))
+			allocators[0] = alloc_ctx2;
+
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE &&
 		   ctx->state == MFCINST_GOT_INST) {
 		psize[0] = dec->src_buf_size;
@@ -2270,15 +2320,13 @@ static int s5p_mfc_buf_init(struct vb2_buffer *vb)
 			mfc_debug_leave();
 			return 0;
 		}
-		for (i = 0; i <= ctx->src_fmt->num_planes ; i++) {
+		for (i = 0; i < ctx->dst_fmt->num_planes; i++) {
 			if (s5p_mfc_mem_plane_addr(ctx, vb, i) == 0) {
 				mfc_err("Plane mem not allocated.\n");
 				return -EINVAL;
 			}
+			buf->planes.raw[i] = s5p_mfc_mem_plane_addr(ctx, vb, i);
 		}
-
-		buf->planes.raw.luma = s5p_mfc_mem_plane_addr(ctx, vb, 0);
-		buf->planes.raw.chroma = s5p_mfc_mem_plane_addr(ctx, vb, 1);
 
 		spin_lock_irqsave(&dev->irqlock, flags);
 		list_add_tail(&buf->list, &dec->dpb_queue);
@@ -2313,7 +2361,9 @@ static int s5p_mfc_buf_prepare(struct vb2_buffer *vb)
 	struct vb2_queue *vq = vb->vb2_queue;
 	struct s5p_mfc_ctx *ctx = vq->drv_priv;
 	struct s5p_mfc_dec *dec;
+	struct s5p_mfc_raw_info *raw;
 	unsigned int index = vb->v4l2_buf.index;
+	int i;
 
 	if (!ctx) {
 		mfc_err("no mfc context to run\n");
@@ -2325,14 +2375,19 @@ static int s5p_mfc_buf_prepare(struct vb2_buffer *vb)
 		return -EINVAL;
 	}
 	if (vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-		if (vb2_plane_size(vb, 0) < ctx->luma_size ||
-			vb2_plane_size(vb, 1) < ctx->chroma_size) {
-			mfc_err("Plane buffer (CAPTURE) is too small.\n");
-			return -EINVAL;
+		raw = &ctx->raw_buf;
+		for (i = 0; i < raw->num_planes; i++) {
+			if (vb2_plane_size(vb, i) < raw->plane_size[i]) {
+				mfc_err("Capture plane[%d] is too small\n", i);
+				mfc_err("%lu is smaller than %d\n",
+						vb2_plane_size(vb, i),
+						raw->plane_size[i]);
+				return -EINVAL;
+			} else {
+				mfc_debug(2, "Plane[%d] size = %lu\n",
+						i, vb2_plane_size(vb, i));
+			}
 		}
-
-		mfc_debug(2, "Size: 0=%lu 2=%lu\n", vb2_plane_size(vb, 0),
-							vb2_plane_size(vb, 1));
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		mfc_debug(2, "Plane size: %ld, ctx->dec_src_buf_size: %d\n",
 				vb2_plane_size(vb, 0), dec->src_buf_size);
@@ -2431,10 +2486,6 @@ static int s5p_mfc_start_streaming(struct vb2_queue *q, unsigned int count)
 	return 0;
 }
 
-#define need_to_wait_frame_start(ctx)		\
-	(((ctx->state == MFCINST_FINISHING) ||	\
-	  (ctx->state == MFCINST_RUNNING)) &&	\
-	 test_bit(ctx->num, &ctx->dev->hw_lock))
 #define need_to_dpb_flush(ctx)		\
 	((ctx->state == MFCINST_FINISHING) ||	\
 	  (ctx->state == MFCINST_RUNNING))
@@ -2446,7 +2497,7 @@ static int s5p_mfc_stop_streaming(struct vb2_queue *q)
 	struct s5p_mfc_dev *dev;
 	int aborted = 0;
 	int index = 0;
-    int prev_state;
+	int prev_state;
 
 	if (!ctx) {
 		mfc_err("no mfc context to run\n");
@@ -2463,12 +2514,19 @@ static int s5p_mfc_stop_streaming(struct vb2_queue *q)
 		return -EINVAL;
 	}
 
-	if (need_to_wait_frame_start(ctx)) {
+	if (!aborted && mfc_need_wait_got_inst(ctx)) {
+		ctx->state = MFCINST_ABORT;
+		if (s5p_mfc_wait_for_done_ctx(ctx,
+				S5P_FIMV_R2H_CMD_SEQ_DONE_RET, 0))
+			s5p_mfc_cleanup_timeout(ctx);
+		aborted = 1;
+	}
+
+	if (!aborted && mfc_need_wait_frame_start(ctx)) {
 		ctx->state = MFCINST_ABORT;
 		if (s5p_mfc_wait_for_done_ctx(ctx,
 				S5P_FIMV_R2H_CMD_FRAME_DONE_RET, 0))
 			s5p_mfc_cleanup_timeout(ctx);
-
 		aborted = 1;
 	}
 
@@ -2590,7 +2648,7 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 			}
 			if (remove_flag == 0) {
 				mfc_err("Can't find buf(0x%08lx)\n",
-					(unsigned long)buf->planes.raw.luma);
+					(unsigned long)buf->planes.raw[0]);
 				spin_unlock_irqrestore(&dev->irqlock, flags);
 				return;
 			}
@@ -2681,7 +2739,7 @@ int s5p_mfc_init_dec_ctx(struct s5p_mfc_ctx *ctx)
 
 	ctx->framerate = DEC_MAX_FPS;
 	ctx->qos_ratio = 100;
-#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+#ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 	INIT_LIST_HEAD(&ctx->qos_list);
 #endif
 
@@ -2693,6 +2751,8 @@ int s5p_mfc_init_dec_ctx(struct s5p_mfc_ctx *ctx)
 	dec->is_interlaced = 0;
 	dec->immediate_display = 0;
 	dec->is_dts_mode = 0;
+	dec->is_dual_dpb = 0;
+	dec->tiled_buf_cnt = 0;
 
 	/* Init videobuf2 queue for OUTPUT */
 	ctx->vq_src.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;

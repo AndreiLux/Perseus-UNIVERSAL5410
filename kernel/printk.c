@@ -224,6 +224,7 @@ void __init setup_log_buf(int early)
 			new_log_buf_len);
 		return;
 	}
+
 	raw_spin_lock_irqsave(&logbuf_lock, flags);
 	log_buf_len = new_log_buf_len;
 	log_buf = new_log_buf;
@@ -694,8 +695,19 @@ static void call_console_drivers(unsigned start, unsigned end)
 	start_print = start;
 	while (cur_index != end) {
 		if (msg_level < 0 && ((end - cur_index) > 2)) {
+			/*
+			 * prepare buf_prefix, as a contiguous array,
+			 * to be processed by log_prefix function
+			 */
+			char buf_prefix[SYSLOG_PRI_MAX_LENGTH+1];
+			unsigned i;
+			for (i = 0; i < ((end - cur_index)) && (i < SYSLOG_PRI_MAX_LENGTH); i++) {
+				buf_prefix[i] = LOG_BUF(cur_index + i);
+			}
+			buf_prefix[i] = '\0'; /* force '\0' as last string character */
+
 			/* strip log prefix */
-			cur_index += log_prefix(&LOG_BUF(cur_index), &msg_level, NULL);
+			cur_index += log_prefix((const char *)&buf_prefix, &msg_level, NULL);
 			start_print = cur_index;
 		}
 		while (cur_index != end) {
@@ -805,6 +817,7 @@ static int printk_pid = 1;
 static int printk_pid;
 #endif
 module_param_named(pid, printk_pid, int, S_IRUGO | S_IWUSR);
+
 /* Check if we have any console registered that can be called early in boot. */
 static int have_callable_console(void)
 {
@@ -967,7 +980,6 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 	}
 
 	lockdep_off();
-
 	raw_spin_lock(&logbuf_lock);
 	printk_cpu = this_cpu;
 
@@ -1089,7 +1101,7 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 	 * Try to acquire and then immediately release the
 	 * console semaphore. The release will do all the
 	 * actual magic (print out buffers, wake up klogd,
-	 * etc).
+	 * etc). 
 	 *
 	 * The console_trylock_for_printk() function
 	 * will release 'logbuf_lock' regardless of whether it
@@ -1273,12 +1285,6 @@ void resume_console(void)
 	console_suspended = 0;
 	console_unlock();
 }
-
-int get_console_suspended(void)
-{
-	return console_suspended;
-}
-EXPORT_SYMBOL(get_console_suspended);
 
 /**
  * console_cpu_notify - print deferred console messages after CPU hotplug

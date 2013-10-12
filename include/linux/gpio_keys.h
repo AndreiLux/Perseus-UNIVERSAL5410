@@ -1,17 +1,23 @@
 #ifndef _GPIO_KEYS_H
 #define _GPIO_KEYS_H
 
-#ifdef CONFIG_MACH_JA
+struct device;
+
+#ifdef CONFIG_MACH_UNIVERSAL5420
 #define KEY_BOOSTER
 #endif
 
 #ifdef KEY_BOOSTER
 #include <linux/pm_qos.h>
-#define TOUCH_BOOSTER_OFF_TIME	300
-#define TOUCH_BOOSTER_CHG_TIME	200
-#endif
+#define KEY_BOOSTER_ON_TIME	500
+#define KEY_BOOSTER_OFF_TIME	500
+#define KEY_BOOSTER_CHG_TIME	130
 
-struct device;
+#define KEY_BOOSTER_CPU_FREQ1 650000
+#define KEY_BOOSTER_MIF_FREQ1 400000
+#define KEY_BOOSTER_INT_FREQ1 111000
+
+#endif
 
 struct gpio_keys_button {
 	/* Configuration parameters */
@@ -23,10 +29,9 @@ struct gpio_keys_button {
 	int wakeup;		/* configure the button as a wake-up source */
 	int debounce_interval;	/* debounce ticks interval in msecs */
 	bool can_disable;
-	/*key callback function */
-	void (*isr_hook)(unsigned int code, int value);
 	int value;		/* axis value for EV_ABS */
 	unsigned int irq;	/* Irq number in case of interrupt keys */
+	void (*isr_hook)(unsigned int code, int value);	/*key callback function */
 };
 
 struct gpio_keys_platform_data {
@@ -45,5 +50,4 @@ struct gpio_keys_platform_data {
 };
 
 extern struct class *sec_class;
-
 #endif

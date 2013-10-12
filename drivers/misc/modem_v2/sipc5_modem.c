@@ -32,6 +32,7 @@
 #include <linux/gpio.h>
 #include <linux/delay.h>
 #include <linux/wakelock.h>
+#include <linux/string.h>
 
 #include <linux/platform_data/modem.h>
 #include "modem_prj.h"
@@ -66,7 +67,7 @@ static struct modem_shared *create_modem_shared_data(void)
 		return NULL;
 	}
 	memset(msd->storage.addr, 0, size + (MAX_MIF_SEPA_SIZE * 2));
-	memcpy(msd->storage.addr, MIF_SEPARATOR, MAX_MIF_SEPA_SIZE);
+	memcpy(msd->storage.addr, MIF_SEPARATOR, strlen(MIF_SEPARATOR));
 	msd->storage.addr += MAX_MIF_SEPA_SIZE;
 	memcpy(msd->storage.addr, &size, MAX_MIF_SEPA_SIZE);
 	msd->storage.addr += MAX_MIF_SEPA_SIZE;
@@ -333,13 +334,36 @@ static int modem_resume(struct device *pdev)
 	if (mc->gpio_pda_active)
 		gpio_set_value(mc->gpio_pda_active, 1);
 #endif
+	return 0;
+}
 
+static int modem_suspend_noirq(struct device *pdev)
+{
+#ifdef CONFIG_LINK_DEVICE_HSIC
+	struct modem_ctl *mc = dev_get_drvdata(pdev);
+
+	if (mc->gpio_pda_active)
+		gpio_set_value(mc->gpio_pda_active, 0);
+#endif
+	return 0;
+}
+
+static int modem_resume_noirq(struct device *pdev)
+{
+#ifdef CONFIG_LINK_DEVICE_HSIC
+	struct modem_ctl *mc = dev_get_drvdata(pdev);
+
+	if (mc->gpio_pda_active)
+		gpio_set_value(mc->gpio_pda_active, 1);
+#endif
 	return 0;
 }
 
 static const struct dev_pm_ops modem_pm_ops = {
 	.suspend    = modem_suspend,
 	.resume     = modem_resume,
+	.suspend_noirq = modem_suspend_noirq,
+	.resume_noirq = modem_resume_noirq,
 };
 
 static struct platform_driver modem_driver = {

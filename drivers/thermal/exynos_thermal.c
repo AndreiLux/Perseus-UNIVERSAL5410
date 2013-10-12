@@ -102,6 +102,7 @@
 #define ACTIVE_INTERVAL 300
 #define IDLE_INTERVAL 1000
 #define MCELSIUS	1000
+#define kHz		1000
 
 /* CPU Zone information */
 #define PANIC_ZONE      4
@@ -113,23 +114,61 @@
 #define GET_TRIP(zone) (zone - 2)
 
 #define EXYNOS_ZONE_COUNT	3
-#if defined(CONFIG_SOC_EXYNOS5250)
-#define EXYNOS_TMU_COUNT	1
-#else
+
+#ifdef CONFIG_SOC_EXYNOS5410
 #define EXYNOS_TMU_COUNT	4
+#define COLD_TEMP		20
+#else
+#define EXYNOS_TMU_COUNT	5
+#define COLD_TEMP		10
 #endif
 
-#define COLD_TEMP		20
+#define EXYNOS_GPU_NUMBER	4
+
+#define HOT_NORMAL_TEMP		95
+#define HOT_CRITICAL_TEMP	110
 #define HOT_95			95
 #define HOT_109			104
 #define HOT_110			105
+#define MEM_TH_TEMP1		85
+#define MEM_TH_TEMP2		95
+#define GPU_TH_TEMP1		90
+#define GPU_TH_TEMP2		95
+#define GPU_TH_TEMP3		100
+#define GPU_TH_TEMP4		105
+#define GPU_TH_TEMP5		110
 
-static int old_cold;
-static int old_hot;
+#define TYPE_CPU		1
+#define TYPE_GPU		2
+
+#define RISE_LEVEL1_SHIFT	4
+#define RISE_LEVEL2_SHIFT	8
+#define FALL_LEVEL0_SHIFT	16
+#define FALL_LEVEL1_SHIFT	20
+#define FALL_LEVEL2_SHIFT	24
+
+#define THRESH_LEVE1_SHIFT	8
+#define THRESH_LEVE2_SHIFT	16
+#define THRESH_LEVE3_SHIFT	24
+
+#define GAP_WITH_RISE		2
+#define MAX_FREQ		2300
+#define MIN_FREQ		400
+
+#ifdef CONFIG_THERMAL_DEBUG
+#define DTM_DBG(x...) printk(x)
+#else
+#define DTM_DBG(x...) do {} while (0)
+#endif
+
+static int tmu_old_state;
+static int gpu_old_state;
+static int mif_old_state;
 
 static bool is_suspending;
 
 static BLOCKING_NOTIFIER_HEAD(exynos_tmu_notifier);
+static BLOCKING_NOTIFIER_HEAD(exynos_gpu_notifier);
 
 struct exynos_tmu_data {
 	struct exynos_tmu_platform_data *pdata;
@@ -147,16 +186,13 @@ struct exynos_tmu_data {
 
 struct	thermal_trip_point_conf {
 	int trip_val[MAX_TRIP_COUNT];
-	int boost_trip_val[MAX_TRIP_COUNT];
 	int trip_count;
 };
 
 struct	thermal_cooling_conf {
 	struct freq_clip_table freq_data[MAX_TRIP_COUNT];
-	struct freq_clip_table boost_freq_data[MAX_TRIP_COUNT];
 	int size[THERMAL_TRIP_CRITICAL + 1];
 	int freq_clip_count;
-	int boost_mode;
 };
 
 struct thermal_sensor_conf {
@@ -180,6 +216,9 @@ static struct exynos_thermal_zone *th_zone;
 static void exynos_unregister_thermal(void);
 static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf);
 static void exynos_tmu_control(struct platform_device *pdev, int id, bool on);
+static void exynos_check_tmu_noti_state(int temp);
+static void exynos_check_gpu_noti_state(int temp);
+static void exynos_check_mif_noti_state(int temp);
 
 /* Get mode callback functions for thermal zone */
 static int exynos_get_mode(struct thermal_zone_device *thermal,
@@ -301,14 +340,8 @@ static int exynos_set_trip_temp(struct thermal_zone_device *thermal, int trip,
 {
 	struct exynos_tmu_platform_data *pdata;
 	struct exynos_tmu_data *data;
-	unsigned int interrupt_en = 0, rising_threshold = 0;
+	unsigned int interrupt_en = 0, rising_threshold = 0, falling_threshold;
 	int threshold_code, i, con;
-	int boost_mode = th_zone->sensor_conf->cooling_data.boost_mode;
-
-	if (boost_mode) {
-		pr_info("Boost mode now, cannot change trigger level");
-		return 0;
-	}
 
 	data = th_zone->sensor_conf->private_data;
 	pdata = data->pdata;
@@ -328,36 +361,47 @@ static int exynos_set_trip_temp(struct thermal_zone_device *thermal, int trip,
 		writel(con, data->base[i] + EXYNOS_TMU_REG_CONTROL);
 
 		/* Interrupt pending clear  */
-		writel(EXYNOS5_TMU_CLEAR_RISE_INT,
+		writel(EXYNOS5_TMU_CLEAR_RISE_INT|EXYNOS5_TMU_CLEAR_FALL_INT,
 				data->base[i] + EXYNOS_TMU_REG_INTCLEAR);
 
 		/* Change the trigger levels  */
 		rising_threshold = readl(data->base[i] + EXYNOS5_THD_TEMP_RISE);
+		falling_threshold = readl(data->base[i] + EXYNOS5_THD_TEMP_FALL);
 		threshold_code = temp_to_code(data, temp, i);
 
 		switch (trip) {
 		case 0:
 			rising_threshold &= ~0xff;
+			falling_threshold &= ~0xff;
 			rising_threshold |= threshold_code;
+			falling_threshold |= threshold_code - GAP_WITH_RISE;
 			interrupt_en |= pdata->trigger_level0_en;
+			interrupt_en |= pdata->trigger_level0_en << FALL_LEVEL0_SHIFT;
 			break;
 		case 1:
-			rising_threshold &= ~(0xff << 8);
-			rising_threshold |= (threshold_code << 8);
-			interrupt_en |= pdata->trigger_level1_en << 4;
+			rising_threshold &= ~(0xff << THRESH_LEVE1_SHIFT);
+			falling_threshold &= ~(0xff << THRESH_LEVE1_SHIFT);
+			rising_threshold |= (threshold_code << THRESH_LEVE1_SHIFT);
+			falling_threshold |= ((threshold_code - GAP_WITH_RISE) << THRESH_LEVE1_SHIFT);
+			interrupt_en |= pdata->trigger_level1_en << RISE_LEVEL1_SHIFT;
+			interrupt_en |= pdata->trigger_level1_en << FALL_LEVEL1_SHIFT;
 			break;
 		case 2:
-			rising_threshold &= ~(0xff << 16);
-			rising_threshold |= (threshold_code << 16);
-			interrupt_en |= pdata->trigger_level2_en << 8;
+			rising_threshold &= ~(0xff << THRESH_LEVE2_SHIFT);
+			falling_threshold &= ~(0xff << THRESH_LEVE2_SHIFT);
+			rising_threshold |= (threshold_code << THRESH_LEVE2_SHIFT);
+			falling_threshold |= ((threshold_code - GAP_WITH_RISE) << THRESH_LEVE2_SHIFT);
+			interrupt_en |= pdata->trigger_level2_en << RISE_LEVEL2_SHIFT;
+			interrupt_en |= pdata->trigger_level2_en << FALL_LEVEL2_SHIFT;
 			break;
 		case 3:
-			rising_threshold &= ~(0xff << 24);
-			rising_threshold |= (threshold_code << 24);
+			rising_threshold &= ~(0xff << THRESH_LEVE3_SHIFT);
+			rising_threshold |= (threshold_code << THRESH_LEVE3_SHIFT);
 			break;
 		}
 
 		writel(rising_threshold, data->base[i] + EXYNOS5_THD_TEMP_RISE);
+		writel(falling_threshold, data->base[i] + EXYNOS5_THD_TEMP_FALL);
 
 		/* TMU core enable */
 		if (i <= GET_TRIP(PANIC_ZONE))
@@ -371,16 +415,20 @@ static int exynos_set_trip_temp(struct thermal_zone_device *thermal, int trip,
 
 	clk_disable(data->clk);
 
-	printk(KERN_INFO "sysfs : set_triptemp,temp=%d regval=%08x id=%d\n",
-			th_zone->sensor_conf->trip_data.trip_val[trip],
-			rising_threshold, trip);
+	printk(KERN_INFO "sysfs : set trip temp[%d] : %d\n", trip,
+			th_zone->sensor_conf->trip_data.trip_val[trip]);
 
 	return 0;
 }
 
 static int exynos_get_trip_temp_level(struct thermal_zone_device *thermal, int trip,
-				unsigned long *temp)
+				bool passive_type)
 {
+	if (trip < th_zone->sensor_conf->cooling_data.freq_clip_count) {
+		if (passive_type)
+			trip++;
+		return th_zone->sensor_conf->cooling_data.freq_data[trip].temp_level * MCELSIUS;
+	}
 	return 0;
 }
 
@@ -388,98 +436,39 @@ static int exynos_set_trip_temp_level(struct thermal_zone_device *thermal,
 				unsigned int temp0, unsigned int temp1,
 				unsigned int temp2)
 {
-	int boost_mode = th_zone->sensor_conf->cooling_data.boost_mode;
-
-	if (boost_mode) {
-		pr_info("Boost mode now, cannot change cooling temperature level");
-		return 0;
+	if (!th_zone->sensor_conf) {
+		pr_info("Temperature sensor not initialised\n");
+		return -EINVAL;
 	}
 
-	printk(KERN_INFO "Set temp_level\n");
 	th_zone->sensor_conf->cooling_data.freq_data[0].temp_level = temp0;
 	th_zone->sensor_conf->cooling_data.freq_data[1].temp_level = temp1;
 	th_zone->sensor_conf->cooling_data.freq_data[2].temp_level = temp2;
 
-	printk(KERN_INFO "temp %d %d %d\n", temp0, temp1, temp2);
 	return 0;
 }
 
-static int exynos_get_trip_freq(struct thermal_zone_device *thermal, int trip,
+static int exynos_get_trip_freq(struct thermal_zone_device *thermal, unsigned int trip,
 				unsigned long *freq)
 {
+	if ( trip > th_zone->sensor_conf->trip_data.trip_count)
+		return -EINVAL;
+
+	*freq = th_zone->sensor_conf->cooling_data.freq_data[trip].freq_clip_max;
 	return 0;
 }
 
-static int exynos_set_trip_freq(struct thermal_zone_device *thermal,
-				unsigned int clip_freq0, unsigned int clip_freq1,
-				unsigned int clip_freq2)
+static int exynos_set_trip_freq(struct thermal_zone_device *thermal, unsigned int trip,
+		unsigned long freq)
 {
-	int boost_mode = th_zone->sensor_conf->cooling_data.boost_mode;
-
-	if (boost_mode) {
-		pr_info("Boost mode now, cannot change cliping max frequency");
+	if (MAX_FREQ < freq || MIN_FREQ > freq) {
+		pr_info("Input[%d] is out of limit frequency range[%d ~ %d]", trip, MAX_FREQ, MIN_FREQ);
 		return 0;
 	}
 
-	printk(KERN_INFO "Set freq\n");
-	th_zone->sensor_conf->cooling_data.freq_data[0].freq_clip_max = clip_freq0;
-	th_zone->sensor_conf->cooling_data.freq_data[1].freq_clip_max = clip_freq1;
-	th_zone->sensor_conf->cooling_data.freq_data[2].freq_clip_max = clip_freq2;
+	th_zone->sensor_conf->cooling_data.freq_data[trip].freq_clip_max = freq * kHz;
 
-	printk(KERN_INFO "freq %d %d %d\n", clip_freq0, clip_freq1, clip_freq2);
-
-	return 0;
-}
-
-static int exynos_get_boost_mode(struct thermal_zone_device *thermal)
-{
-	return th_zone->sensor_conf->cooling_data.boost_mode;
-}
-
-static int exynos_set_boost_mode(struct thermal_zone_device *thermal, unsigned int boost_mode)
-{
-	int i;
-	struct freq_clip_table freq_tab;
-	int boost_temp;
-	int trip_count, clip_count;
-
-	if (boost_mode == th_zone->sensor_conf->cooling_data.boost_mode)
-		return 0;
-
-	/* boost_mode off : clear boost_mode the before updating trip_point and freq_data */
-	if (!boost_mode)
-		th_zone->sensor_conf->cooling_data.boost_mode = boost_mode;
-
-	trip_count = th_zone->sensor_conf->trip_data.trip_count;
-	clip_count = th_zone->sensor_conf->cooling_data.freq_clip_count;
-
-	/* update trip point */
-	for (i = 0; i < trip_count; i++) {
-		/* switch the tripping value, boost_trip_val <-> trip_val */
-		boost_temp = th_zone->sensor_conf->trip_data.boost_trip_val[i];
-
-		if (boost_temp) {
-			th_zone->sensor_conf->trip_data.boost_trip_val[i] =
-				th_zone->sensor_conf->trip_data.trip_val[i];
-			printk(KERN_INFO "%s set_boost_mode setting (%d)\n", boost_mode ? "BOOST" : "NORMAL", i);
-			exynos_set_trip_temp(thermal, i, boost_temp);
-		}
-	}
-
-	/* update freq_data */
-	for (i = 0; i < clip_count; i++) {
-		/* switch the frequency clipping table, boost_freq_data <-> freq_data */
-		freq_tab = th_zone->sensor_conf->cooling_data.boost_freq_data[i];
-
-		th_zone->sensor_conf->cooling_data.boost_freq_data[i] =
-			th_zone->sensor_conf->cooling_data.freq_data[i];
-
-		th_zone->sensor_conf->cooling_data.freq_data[i] = freq_tab;
-	}
-
-	/* boost_mode on : set boost_mode the after updating trip_point and freq_data */
-	if (boost_mode)
-		th_zone->sensor_conf->cooling_data.boost_mode = boost_mode;
+	printk(KERN_INFO "Set frequency[%d] : %ld\n", trip, freq);
 
 	return 0;
 }
@@ -591,6 +580,36 @@ static int exynos_notify(struct thermal_zone_device *dev,
 	return 0;
 }
 
+static int exynos_get_throttling_count(struct thermal_zone_device *thermal,
+		enum thermal_trip_type type)
+{
+	struct exynos_tmu_platform_data *pdata;
+	struct exynos_tmu_data *data;
+	unsigned int throttling_count;
+
+	if (!th_zone->sensor_conf->private_data)
+		return -ENODEV;
+
+	data = th_zone->sensor_conf->private_data;
+
+	if (!data || !data->pdata)
+		return -ENODEV;
+
+	pdata = data->pdata;
+
+	switch (type) {
+	case THERMAL_TRIP_ACTIVE:
+		throttling_count = pdata->size[THERMAL_TRIP_ACTIVE];
+		break;
+	case THERMAL_TRIP_PASSIVE:
+		throttling_count = pdata->size[THERMAL_TRIP_PASSIVE];
+		break;
+	default:
+		return -EINVAL;
+	}
+	return throttling_count;
+}
+
 /* Operation callback functions for thermal zone */
 static struct thermal_zone_device_ops const exynos_dev_ops = {
 	.bind = exynos_bind,
@@ -605,9 +624,8 @@ static struct thermal_zone_device_ops const exynos_dev_ops = {
 	.set_trip_temp_level = exynos_set_trip_temp_level,
 	.get_trip_freq = exynos_get_trip_freq,
 	.set_trip_freq = exynos_set_trip_freq,
-	.get_boost_mode = exynos_get_boost_mode,
-	.set_boost_mode = exynos_set_boost_mode,
 	.get_crit_temp = exynos_get_crit_temp,
+	.get_throttling_count = exynos_get_throttling_count,
 	.notify = exynos_notify,
 };
 
@@ -638,8 +656,10 @@ static int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 
 		clip_data = (struct freq_clip_table *)&(tab_ptr[pos]);
 
+#ifdef CONFIG_CPU_THERMAL
 		th_zone->cool_dev[count] = cpufreq_cooling_register(
 						clip_data, tab_size);
+#endif
 		pos += tab_size;
 
 		if (IS_ERR(th_zone->cool_dev[count])) {
@@ -676,10 +696,12 @@ static void exynos_unregister_thermal(void)
 {
 	int i;
 
+#ifdef CONFIG_CPU_THERMAL
 	for (i = 0; i < th_zone->cool_dev_size; i++) {
 		if (th_zone && th_zone->cool_dev[i])
 			cpufreq_cooling_unregister(th_zone->cool_dev[i]);
 	}
+#endif
 
 	if (th_zone && th_zone->therm_dev)
 		thermal_zone_device_unregister(th_zone->therm_dev);
@@ -694,21 +716,33 @@ int exynos_tmu_add_notifier(struct notifier_block *n)
 	return blocking_notifier_chain_register(&exynos_tmu_notifier, n);
 }
 
-void exynos_tmu_call_notifier(int cold, int hot)
+void exynos_tmu_call_notifier(enum tmu_noti_state_t cur_state)
 {
 	if (is_suspending)
-		cold = 1;
+		cur_state = TMU_COLD;
 
-	if (old_cold != cold) {
-		pr_info("old_cold %d cold %d \n", old_cold, cold);
-		blocking_notifier_call_chain(&exynos_tmu_notifier, TMU_COLD, &cold);
-		old_cold = cold;
+	if (cur_state != tmu_old_state) {
+		if (cur_state == TMU_COLD || cur_state == TMU_NORMAL)
+			blocking_notifier_call_chain(&exynos_tmu_notifier, TMU_COLD, &cur_state);
+		else
+			blocking_notifier_call_chain(&exynos_tmu_notifier, cur_state, &tmu_old_state);
+
+		pr_info("tmu temperature state %d to %d \n", tmu_old_state, cur_state);
+		tmu_old_state = cur_state;
 	}
+}
 
-	if (old_hot != hot && hot != TMU_NORMAL) {
-		pr_info("old_hot %d hot %d \n", old_hot, hot);
-		blocking_notifier_call_chain(&exynos_tmu_notifier, hot, &old_hot);
-		old_hot = hot;
+int exynos_gpu_add_notifier(struct notifier_block *n)
+{
+	return blocking_notifier_chain_register(&exynos_gpu_notifier, n);
+}
+
+void exynos_gpu_call_notifier(enum gpu_noti_state_t cur_state)
+{
+	if (cur_state!=gpu_old_state) {
+		pr_info("gpu temperature state %d to %d \n", gpu_old_state, cur_state);
+		blocking_notifier_call_chain(&exynos_gpu_notifier, cur_state, &cur_state);
+		gpu_old_state = cur_state;
 	}
 }
 
@@ -720,6 +754,7 @@ static int temp_to_code(struct exynos_tmu_data *data, u8 temp, int id)
 {
 	struct exynos_tmu_platform_data *pdata = data->pdata;
 	int temp_code;
+	int fuse_id;
 
 	if (data->soc == SOC_ARCH_EXYNOS4)
 		/* temp should range between 25 and 125 */
@@ -728,14 +763,40 @@ static int temp_to_code(struct exynos_tmu_data *data, u8 temp, int id)
 			goto out;
 		}
 
+	if (soc_is_exynos5420()) {
+		switch (id) {
+		case 0:
+			fuse_id = 0;
+			break;
+		case 1:
+			fuse_id = 1;
+			break;
+		case 2:
+			fuse_id = 3;
+			break;
+		case 3:
+			fuse_id = 4;
+			break;
+		case 4:
+			fuse_id = 2;
+			break;
+		default:
+			pr_err("unknown sensor id on Exynos5420\n");
+			BUG_ON(1);
+			break;
+		}
+	} else {
+		fuse_id = id;
+	}
+
 	switch (pdata->cal_type) {
 	case TYPE_TWO_POINT_TRIMMING:
 		temp_code = (temp - 25) *
-		    (data->temp_error2[id] - data->temp_error1[id]) /
-		    (85 - 25) + data->temp_error1[id];
+		    (data->temp_error2[fuse_id] - data->temp_error1[fuse_id]) /
+		    (85 - 25) + data->temp_error1[fuse_id];
 		break;
 	case TYPE_ONE_POINT_TRIMMING:
-		temp_code = temp + data->temp_error1[id] - 25;
+		temp_code = temp + data->temp_error1[fuse_id] - 25;
 		break;
 	default:
 		temp_code = temp + EXYNOS_TMU_DEF_CODE_TO_TEMP_OFFSET;
@@ -753,6 +814,7 @@ static int code_to_temp(struct exynos_tmu_data *data, u8 temp_code, int id)
 {
 	struct exynos_tmu_platform_data *pdata = data->pdata;
 	int min, max, temp;
+	int fuse_id;
 
 	if (data->soc == SOC_ARCH_EXYNOS4) {
 		min = 75;
@@ -760,6 +822,32 @@ static int code_to_temp(struct exynos_tmu_data *data, u8 temp_code, int id)
 	} else {
 		min = 31;
 		max = 146;
+	}
+
+	if (soc_is_exynos5420()) {
+		switch (id) {
+		case 0:
+			fuse_id = 0;
+			break;
+		case 1:
+			fuse_id = 1;
+			break;
+		case 2:
+			fuse_id = 3;
+			break;
+		case 3:
+			fuse_id = 4;
+			break;
+		case 4:
+			fuse_id = 2;
+			break;
+		default:
+			pr_err("unknown sensor id on Exynos5420\n");
+			BUG_ON(1);
+			break;
+		}
+	} else {
+		fuse_id = id;
 	}
 
 	/* temp_code should range between min and max */
@@ -770,11 +858,11 @@ static int code_to_temp(struct exynos_tmu_data *data, u8 temp_code, int id)
 
 	switch (pdata->cal_type) {
 	case TYPE_TWO_POINT_TRIMMING:
-		temp = (temp_code - data->temp_error1[id]) * (85 - 25) /
-		    (data->temp_error2[id] - data->temp_error1[id]) + 25;
+		temp = (temp_code - data->temp_error1[fuse_id]) * (85 - 25) /
+		    (data->temp_error2[fuse_id] - data->temp_error1[fuse_id]) + 25;
 		break;
 	case TYPE_ONE_POINT_TRIMMING:
-		temp = temp_code - data->temp_error1[id] + 25;
+		temp = temp_code - data->temp_error1[fuse_id] + 25;
 		break;
 	default:
 		temp = temp_code - EXYNOS_TMU_DEF_CODE_TO_TEMP_OFFSET;
@@ -784,11 +872,28 @@ out:
 	return temp;
 }
 
+static void exynos_tmu_set_efuse(struct platform_device *pdev, int id)
+{
+	struct exynos_tmu_data *data = platform_get_drvdata(pdev);
+	struct exynos_tmu_platform_data *pdata = data->pdata;
+	unsigned int trim_info;
+
+	/* Save trimming info in order to perform calibration */
+	trim_info = readl(data->base[id] + EXYNOS_TMU_REG_TRIMINFO);
+	data->temp_error1[id] = trim_info & EXYNOS_TMU_TRIM_TEMP_MASK;
+	data->temp_error2[id] = ((trim_info >> 8) & EXYNOS_TMU_TRIM_TEMP_MASK);
+
+	if ((EFUSE_MIN_VALUE > data->temp_error1[id]) ||
+			(data->temp_error1[id] > EFUSE_MAX_VALUE) ||
+			(data->temp_error2[id] != 0))
+		data->temp_error1[id] = pdata->efuse_value;
+}
+
 static int exynos_tmu_initialize(struct platform_device *pdev, int id)
 {
 	struct exynos_tmu_data *data = platform_get_drvdata(pdev);
 	struct exynos_tmu_platform_data *pdata = data->pdata;
-	unsigned int status, trim_info, rising_threshold;
+	unsigned int status, rising_threshold, falling_threshold;
 	int ret = 0, threshold_code;
 
 	mutex_lock(&data->lock);
@@ -804,15 +909,6 @@ static int exynos_tmu_initialize(struct platform_device *pdev, int id)
 		__raw_writel(EXYNOS5_TRIMINFO_RELOAD,
 				data->base[id] + EXYNOS5_TMU_TRIMINFO_CON);
 	}
-	/* Save trimming info in order to perform calibration */
-	trim_info = readl(data->base[id] + EXYNOS_TMU_REG_TRIMINFO);
-	data->temp_error1[id] = trim_info & EXYNOS_TMU_TRIM_TEMP_MASK;
-	data->temp_error2[id] = ((trim_info >> 8) & EXYNOS_TMU_TRIM_TEMP_MASK);
-
-	if ((EFUSE_MIN_VALUE > data->temp_error1[id]) ||
-			(data->temp_error1[id] > EFUSE_MAX_VALUE) ||
-			(data->temp_error2[id] != 0))
-		data->temp_error1[id] = pdata->efuse_value;
 
 	if (data->soc == SOC_ARCH_EXYNOS4) {
 		/* Write temperature code for threshold */
@@ -843,29 +939,31 @@ static int exynos_tmu_initialize(struct platform_device *pdev, int id)
 			goto out;
 		}
 		rising_threshold = threshold_code;
+		falling_threshold = threshold_code - GAP_WITH_RISE;
 		threshold_code = temp_to_code(data, pdata->trigger_levels[1], id);
 		if (threshold_code < 0) {
 			ret = threshold_code;
 			goto out;
 		}
-		rising_threshold |= (threshold_code << 8);
+		rising_threshold |= (threshold_code << THRESH_LEVE1_SHIFT);
+		falling_threshold |= ((threshold_code - GAP_WITH_RISE) << THRESH_LEVE1_SHIFT);
 		threshold_code = temp_to_code(data, pdata->trigger_levels[2], id);
 		if (threshold_code < 0) {
 			ret = threshold_code;
 			goto out;
 		}
-		rising_threshold |= (threshold_code << 16);
+		rising_threshold |= (threshold_code << THRESH_LEVE2_SHIFT);
+		falling_threshold |= ((threshold_code - GAP_WITH_RISE) << THRESH_LEVE2_SHIFT);
 		threshold_code = temp_to_code(data, pdata->trigger_levels[3], id);
 		if (threshold_code < 0) {
 			ret = threshold_code;
 			goto out;
 		}
-		rising_threshold |= (threshold_code << 24);
-		printk(KERN_INFO "tmu init threshold code=%08x, id=%d\n",
-			rising_threshold, id);
+		rising_threshold |= (threshold_code << THRESH_LEVE3_SHIFT);
+
 		writel(rising_threshold,
 				data->base[id] + EXYNOS5_THD_TEMP_RISE);
-		writel(0, data->base[id] + EXYNOS5_THD_TEMP_FALL);
+		writel(falling_threshold, data->base[id] + EXYNOS5_THD_TEMP_FALL);
 
 		writel(EXYNOS5_TMU_CLEAR_RISE_INT|EXYNOS5_TMU_CLEAR_FALL_INT,
 				data->base[id] + EXYNOS_TMU_REG_INTCLEAR);
@@ -897,13 +995,17 @@ static void exynos_tmu_control(struct platform_device *pdev, int id, bool on)
 	if (on) {
 		con |= (EXYNOS_TMU_CORE_ON | EXYNOS_THERM_TRIP_EN);
 		interrupt_en =
-			pdata->trigger_level2_en << 8 |
-			pdata->trigger_level1_en << 4 |
+			pdata->trigger_level2_en << FALL_LEVEL2_SHIFT |
+			pdata->trigger_level1_en << FALL_LEVEL1_SHIFT |
+			pdata->trigger_level0_en << FALL_LEVEL0_SHIFT |
+			pdata->trigger_level2_en << RISE_LEVEL2_SHIFT |
+			pdata->trigger_level1_en << RISE_LEVEL1_SHIFT |
 			pdata->trigger_level0_en;
 	} else {
 		con |= EXYNOS_TMU_CORE_OFF;
 		interrupt_en = 0; /* Disable all interrupts */
 	}
+	con |= EXYNOS_THERM_TRIP_EN;
 	writel(interrupt_en, data->base[id] + EXYNOS_TMU_REG_INTEN);
 	writel(con, data->base[id] + EXYNOS_TMU_REG_CONTROL);
 
@@ -921,13 +1023,22 @@ extern unsigned int g_intfreq;
 extern unsigned int g_g3dfreq;
 #endif
 
+extern bool mif_is_probed;
+static bool check_mif_probed(void)
+{
+	return mif_is_probed;
+}
+
 static int exynos_tmu_read(struct exynos_tmu_data *data)
 {
 	u8 temp_code;
-	int temp, i, max = INT_MIN, min = INT_MAX;
-	int cold_event = TMU_NORMAL;
-	int hot_event = TMU_NORMAL;
-	int alltemp[4] = {0,};
+	int temp, i, max = INT_MIN, min = INT_MAX, gpu_temp =0;
+
+#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+	enum tmu_noti_state_t cur_state;
+#endif
+
+	int alltemp[EXYNOS_TMU_COUNT] = {0,};
 
 	if (!th_zone || !th_zone->therm_dev)
 		return -EPERM;
@@ -946,46 +1057,109 @@ static int exynos_tmu_read(struct exynos_tmu_data *data)
 			max = temp;
 		if (temp < min)
 			min = temp;
+		if (soc_is_exynos5420() && i == EXYNOS_GPU_NUMBER)
+			gpu_temp = temp;
 	}
 
 	clk_disable(data->clk);
 	mutex_unlock(&data->lock);
 
-	if (min <= COLD_TEMP)
-		cold_event = TMU_COLD;
-
-	if (old_hot != TMU_110 && max >= HOT_110)
-		hot_event = TMU_110;
-	else if (old_hot != TMU_109 && (max > HOT_95 && max < HOT_110))
-		hot_event = TMU_109;
-	else if (old_hot != TMU_95 && max <= HOT_95)
-		hot_event = TMU_95;
-
 #ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
-	if (hot_event >= HOT_95)
+	if (min <= COLD_TEMP)
+		cur_state = TMU_COLD;
+
+	if (max >= HOT_110)
+		cur_state = TMU_110;
+	else if (max > HOT_95 && max < HOT_110)
+		cur_state = TMU_109;
+	else if (max <= HOT_95)
+		cur_state = TMU_95;
+
+	if (cur_state >= HOT_95)
 		pr_info("[TMU] POLLING: temp=%d, cpu=%d, int=%d, mif=%d, hot_event(for aref)=%d\n",
-			max, g_cpufreq, g_intfreq, g_miffreq, hot_event);
-#if 0
-	pr_info("auto& %d/%d/%d/%d/& %d& %d/%d/%d/%d& end\n",
-			alltemp[0], alltemp[1], alltemp[2], alltemp[3], g_count,
-			g_cpufreq, g_intfreq, g_g3dfreq*1000, g_miffreq);
-#endif
-#endif
+			max, g_cpufreq, g_intfreq, g_miffreq, cur_state);
 	g_count ++;
 
-#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
 	/* to probe thermal run away caused by fimc-is */
-	if ((max >= 112 && old_hot == TMU_110)
+	if ((max >= 112 && tmu_old_state == TMU_110)
 			&& g_cam_err_count && g_intfreq == 800000)
 	{
-		hot_event = TMU_111;
+		cur_state = TMU_111;
 	}
+	exynos_tmu_call_notifier(cur_state);
 #endif
-	th_zone->therm_dev->last_temperature = max;
 
-	exynos_tmu_call_notifier(cold_event, hot_event);
+	if (soc_is_exynos5420()) {
+		/* check temperature state */
+		exynos_check_tmu_noti_state(max);
+		exynos_check_gpu_noti_state(gpu_temp);
+
+		if (check_mif_probed())
+			exynos_check_mif_noti_state(max);
+	}
+	th_zone->therm_dev->last_temperature = max * MCELSIUS;
+	DTM_DBG("[TMU] CPU : %d  ,  GPU : %d\n", max, gpu_temp);
 
 	return max;
+}
+
+static void exynos_check_mif_noti_state(int temp)
+{
+	enum mif_noti_state_t cur_state;
+
+	/* check current temperature state */
+	if (temp <= MEM_TH_TEMP1)
+		cur_state = MEM_TH_LV1;
+	else if (temp > MEM_TH_TEMP1 && temp < MEM_TH_TEMP2)
+		cur_state = MEM_TH_LV2;
+	else if (temp >= MEM_TH_TEMP2)
+		cur_state = MEM_TH_LV3;
+
+	if (cur_state != mif_old_state) {
+		pr_info("tmu temperature state %d to %d \n", mif_old_state, cur_state);
+		blocking_notifier_call_chain(&exynos_tmu_notifier, cur_state, &mif_old_state);
+		mif_old_state = cur_state;
+	}
+}
+
+static void exynos_check_tmu_noti_state(int temp)
+{
+	enum tmu_noti_state_t cur_state;
+
+	/* check current temperature state */
+	if (temp > HOT_CRITICAL_TEMP)
+		cur_state = TMU_CRITICAL;
+	else if (temp > HOT_NORMAL_TEMP && temp <= HOT_CRITICAL_TEMP)
+		cur_state = TMU_HOT;
+	else if (temp > COLD_TEMP && temp <= HOT_NORMAL_TEMP)
+		cur_state = TMU_NORMAL;
+	else
+		cur_state = TMU_COLD;
+
+	exynos_tmu_call_notifier(cur_state);
+}
+
+static void exynos_check_gpu_noti_state(int temp)
+{
+	enum gpu_noti_state_t cur_state;
+
+	/* check current temperature state */
+	if (temp >= GPU_TH_TEMP5)
+		cur_state = GPU_TRIPPING;
+	else if (temp >= GPU_TH_TEMP4 && temp < GPU_TH_TEMP5)
+		cur_state = GPU_THROTTLING4;
+	else if (temp >= GPU_TH_TEMP3 && temp < GPU_TH_TEMP4)
+		cur_state = GPU_THROTTLING3;
+	else if (temp >= GPU_TH_TEMP2 && temp < GPU_TH_TEMP3)
+		cur_state = GPU_THROTTLING2;
+	else if (temp >= GPU_TH_TEMP1 && temp < GPU_TH_TEMP2)
+		cur_state = GPU_THROTTLING1;
+	else if (temp > COLD_TEMP && temp < GPU_TH_TEMP1)
+		cur_state = GPU_NORMAL;
+	else
+		cur_state = GPU_COLD;
+
+	exynos_gpu_call_notifier(cur_state);
 }
 
 static void exynos_tmu_work(struct work_struct *work)
@@ -1001,12 +1175,14 @@ static void exynos_tmu_work(struct work_struct *work)
 
 	if (data->soc == SOC_ARCH_EXYNOS5) {
 		for (i = 0; i < EXYNOS_TMU_COUNT; i++) {
-			writel(EXYNOS5_TMU_CLEAR_RISE_INT,
+			writel(EXYNOS5_TMU_CLEAR_RISE_INT|EXYNOS5_TMU_CLEAR_FALL_INT,
 					data->base[i] + EXYNOS_TMU_REG_INTCLEAR);
 		}
 	} else {
-		writel(EXYNOS4_TMU_INTCLEAR_VAL,
-				data->base + EXYNOS_TMU_REG_INTCLEAR);
+		for (i = 0; i < EXYNOS_TMU_COUNT; i++) {
+			writel(EXYNOS4_TMU_INTCLEAR_VAL,
+					data->base[i] + EXYNOS_TMU_REG_INTCLEAR);
+		}
 	}
 
 	clk_disable(data->clk);
@@ -1039,7 +1215,9 @@ static int exynos_pm_notifier(struct notifier_block *notifier,
 	switch (pm_event) {
 	case PM_SUSPEND_PREPARE:
 		is_suspending = true;
-		exynos_tmu_call_notifier(TMU_COLD, old_hot);
+		exynos_tmu_call_notifier(TMU_COLD);
+		exynos_tmu_call_notifier(tmu_old_state);
+		exynos_check_mif_noti_state(MEM_TH_TEMP2 - 1);
 		break;
 	case PM_POST_SUSPEND:
 		is_suspending = false;
@@ -1053,7 +1231,7 @@ static struct notifier_block exynos_pm_nb = {
 	.notifier_call = exynos_pm_notifier,
 };
 
-#if defined(CONFIG_CPU_EXYNOS4210)
+#if defined(CONFIG_SOC_EXYNOS4212) || defined(CONFIG_SOC_EXYNOS4412)
 static struct exynos_tmu_platform_data const exynos4_default_tmu_data = {
 	.threshold = 80,
 	.trigger_levels[0] = 5,
@@ -1082,7 +1260,7 @@ static struct exynos_tmu_platform_data const exynos4_default_tmu_data = {
 #define EXYNOS4_TMU_DRV_DATA (NULL)
 #endif
 
-#if defined(CONFIG_SOC_EXYNOS5250) || defined(CONFIG_SOC_EXYNOS5410)
+#if defined(CONFIG_SOC_EXYNOS5410)
 static struct exynos_tmu_platform_data const exynos5_default_tmu_data = {
 	.trigger_levels[0] = 70,
 	.trigger_levels[1] = 75,
@@ -1197,32 +1375,38 @@ exynos_thermal_sensor_temp(struct device *dev,
 	mutex_unlock(&data->lock);
 
 	for (i = 0; i < EXYNOS_TMU_COUNT; i++)
-		len += sprintf(&buf[len], "sensor%d : %ld\n", i, temp[i]);
+		len += snprintf(&buf[len], PAGE_SIZE, "sensor%d : %ld\n", i, temp[i]);
 
 	return len;
 }
 
-static DEVICE_ATTR(temp, S_IRUGO, exynos_thermal_sensor_temp, NULL);
+static DEVICE_ATTR(temp, S_IRUSR | S_IRGRP, exynos_thermal_sensor_temp, NULL);
 
-#if defined(CONFIG_SOC_EXYNOS5410) || defined(CONFIG_SEC_PM)
+#ifdef CONFIG_SEC_PM
 /* sysfs interface : /sys/devices/platform/exynos5-tmu/curr_temp */
 static ssize_t
-exynos_thermal_core_temp(struct device *dev,
+exynos_thermal_curr_temp(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct exynos_tmu_data *data = th_zone->sensor_conf->private_data;
-	u8 temp_code;
-	unsigned long temp[EXYNOS_TMU_COUNT] = {0,};
+	unsigned long temp[EXYNOS_TMU_COUNT];
 	int i, len = 0;
+
+	if (!(soc_is_exynos5410() || soc_is_exynos5420()))
+		return -EPERM;
+
+	if (EXYNOS_TMU_COUNT < 4)
+		return -EPERM;
 
 	mutex_lock(&data->lock);
 	clk_enable(data->clk);
 
 	for (i = 0; i < EXYNOS_TMU_COUNT; i++) {
-		temp_code = readb(data->base[i] + EXYNOS_TMU_REG_CURRENT_TEMP);
+		u8 temp_code = readb(data->base[i] + EXYNOS_TMU_REG_CURRENT_TEMP);
 		if (temp_code == 0xff)
-			continue;
-		temp[i] = code_to_temp(data, temp_code, i) * 10;
+			temp[i] = 0;
+		else
+			temp[i] = code_to_temp(data, temp_code, i) * 10;
 	}
 
 	clk_disable(data->clk);
@@ -1238,12 +1422,12 @@ exynos_thermal_core_temp(struct device *dev,
 	return len;
 }
 
-static DEVICE_ATTR(curr_temp, S_IRUGO, exynos_thermal_core_temp, NULL);
+static DEVICE_ATTR(curr_temp, S_IRUGO, exynos_thermal_curr_temp, NULL);
 #endif
 
 static struct attribute *exynos_thermal_sensor_attributes[] = {
 	&dev_attr_temp.attr,
-#if defined(CONFIG_SOC_EXYNOS5410) || defined(CONFIG_SEC_PM)
+#ifdef CONFIG_SEC_PM
 	&dev_attr_curr_temp.attr,
 #endif
 	NULL
@@ -1260,8 +1444,6 @@ static int __devinit exynos_tmu_probe(struct platform_device *pdev)
 	int ret, i;
 
 	is_suspending = false;
-	old_cold = 0;
-	old_hot = 0;
 
 	if (!pdata)
 		pdata = exynos_get_driver_data(pdev);
@@ -1336,6 +1518,10 @@ static int __devinit exynos_tmu_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, data);
 	mutex_init(&data->lock);
 
+	/* Save the eFuse value before initializing TMU */
+	for (i = 0; i < EXYNOS_TMU_COUNT; i++)
+		exynos_tmu_set_efuse(pdev, i);
+
 	for (i = 0; i < EXYNOS_TMU_COUNT; i++) {
 		ret = exynos_tmu_initialize(pdev, i);
 		if (ret) {
@@ -1352,16 +1538,12 @@ static int __devinit exynos_tmu_probe(struct platform_device *pdev)
 			pdata->trigger_level1_en + pdata->trigger_level2_en +
 			pdata->trigger_level3_en;
 
-	for (i = 0; i < exynos_sensor_conf.trip_data.trip_count; i++) {
+	for (i = 0; i < exynos_sensor_conf.trip_data.trip_count; i++)
 		exynos_sensor_conf.trip_data.trip_val[i] =
 			pdata->threshold + pdata->trigger_levels[i];
-		exynos_sensor_conf.trip_data.boost_trip_val[i] =
-			pdata->threshold + pdata->boost_trigger_levels[i];
-	}
 
 	exynos_sensor_conf.cooling_data.freq_clip_count =
 						pdata->freq_tab_count;
-	exynos_sensor_conf.cooling_data.boost_mode = 0;
 
 	for (i = 0; i < pdata->freq_tab_count; i++) {
 		exynos_sensor_conf.cooling_data.freq_data[i].freq_clip_max =
@@ -1369,12 +1551,6 @@ static int __devinit exynos_tmu_probe(struct platform_device *pdev)
 		exynos_sensor_conf.cooling_data.freq_data[i].temp_level =
 					pdata->freq_tab[i].temp_level;
 		exynos_sensor_conf.cooling_data.freq_data[i].mask_val = cpu_all_mask;
-
-		exynos_sensor_conf.cooling_data.boost_freq_data[i].freq_clip_max =
-					pdata->boost_freq_tab[i].freq_clip_max;
-		exynos_sensor_conf.cooling_data.boost_freq_data[i].temp_level =
-					pdata->boost_freq_tab[i].temp_level;
-		exynos_sensor_conf.cooling_data.boost_freq_data[i].mask_val = cpu_all_mask;
 
 		exynos_sensor_conf.cooling_data.size[i] =
 					pdata->size[i];

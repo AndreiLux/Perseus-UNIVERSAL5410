@@ -18,8 +18,10 @@ static void sec_power_off(void)
 
 	while (1) {
 		/* Check reboot charging */
-		if (is_wpc_cable_attached || is_cable_attached ||
-				(poweroff_try >= 5)) {
+		if ((is_wpc_cable_attached || is_cable_attached ||
+				(poweroff_try >= 5)) &&
+				(!is_ovlo_state || !lpcharge)) {
+
 			pr_emerg
 			    ("%s: charger connected(%d) or power"
 			     "off failed(%d), reboot!\n",

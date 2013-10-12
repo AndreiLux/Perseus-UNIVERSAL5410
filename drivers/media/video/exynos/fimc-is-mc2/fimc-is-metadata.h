@@ -345,7 +345,8 @@ enum colorcorrection_mode {
 	COLORCORRECTION_MODE_EFFECT_MAGENTA_POINT,
 	COLORCORRECTION_MODE_EFFECT_WARM_VINTAGE,
 	COLORCORRECTION_MODE_EFFECT_COLD_VINTAGE,
-	COLORCORRECTION_MODE_EFFECT_WASHED
+	COLORCORRECTION_MODE_EFFECT_WASHED,
+	TOTAOCOUNT_COLORCORRECTION_MODE_EFFECT
 };
 
 
@@ -577,7 +578,8 @@ enum aa_scene_mode {
 	AA_SCENE_MODE_DUAL,
 	AA_SCENE_MODE_DRAMA,
 	AA_SCENE_MODE_ANIMATED,
-	AA_SCENE_MODE_PANAROMA
+	AA_SCENE_MODE_PANAROMA,
+	AA_SCENE_MODE_GOLF,
 };
 
 enum aa_effect_mode {
@@ -616,7 +618,6 @@ enum aa_ae_flashmode {
 	AA_FLASHMODE_CAPTURE,
 	/*internal 3A can control flash forced*/
 	AA_FLASHMODE_ON_ALWAYS
-
 };
 
 enum aa_ae_antibanding_mode {
@@ -706,7 +707,6 @@ struct camera2_aa_ctl {
 	uint32_t			afTrigger;
 	enum aa_isomode			isoMode;
 	uint32_t			isoValue;
-
 };
 
 struct camera2_aa_dm {
@@ -890,12 +890,29 @@ struct camera2_as_udm {
 };
 
 /** \brief
+ User-defined metadata for debugging
+*/
+struct camera2_ipc_udm {
+	/** vendor specific length */
+	uint32_t vsLength;
+	/** vendor specific data array */
+	uint32_t vendorSpecific[CAMERA2_MAX_VENDER_LENGTH];
+};
+
+/** \brief
  User-defined metadata for aa.
 */
 struct camera2_internal_udm {
  /** vendor specific data array */
  uint32_t vendorSpecific1[CAMERA2_MAX_VENDER_LENGTH];
  uint32_t vendorSpecific2[CAMERA2_MAX_VENDER_LENGTH];
+ /*
+  * vendorSpecific2[0] : info
+  * vendorSpecific2[100] : 0:sirc 1:cml
+  * vendorSpecific2[101] : cml exposure
+  * vendorSpecific2[102] : cml iso(gain)
+  * vendorSpecific2[103] : cml Bv
+  */
 };
 
 /** \brief
@@ -972,6 +989,7 @@ struct camera2_udm {
 	struct camera2_awb_udm		awb;
 	struct camera2_af_udm		af;
 	struct camera2_as_udm		as;
+	struct camera2_ipc_udm		ipc;
 	/* KJ_121129 : Add udm for sirc sdk. */
 	struct camera2_internal_udm	internal;
 	/* Add udm for bayer down size. */
@@ -1224,6 +1242,7 @@ typedef struct camera2_ae_udm camera2_ae_udm_t;
 typedef struct camera2_awb_udm camera2_awb_udm_t;
 typedef struct camera2_af_udm camera2_af_udm_t;
 typedef struct camera2_as_udm camera2_as_udm_t;
+typedef struct camera2_ipc_udm camera2_ipc_udm_t;
 typedef struct camera2_internal_udm camera2_internal_udm_t;
 
 typedef struct camera2_flash_uctl camera2_flash_uctl_t;

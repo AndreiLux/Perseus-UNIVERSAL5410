@@ -22,7 +22,7 @@ void jpeg_hx_clk_on(void __iomem *base);
 void jpeg_hx_clk_off(void __iomem *base);
 void jpeg_hx_clk_set(void __iomem *base, enum jpeg_clk_mode mode);
 void jpeg_hx_set_dec_out_fmt(void __iomem *base,
-					enum jpeg_frame_format out_fmt);
+					enum jpeg_frame_format out_fmt, unsigned char alpha);
 void jpeg_hx_set_enc_in_fmt(void __iomem *base,
 					enum jpeg_frame_format in_fmt);
 void jpeg_hx_set_enc_out_fmt(void __iomem *base,
@@ -47,7 +47,7 @@ void jpeg_hx_set_dec_bitstream_size(void __iomem *base, unsigned int size);
 unsigned int jpeg_hx_get_stream_size(void __iomem *base);
 void jpeg_hx_get_frame_size(void __iomem *base,
 			unsigned int *width, unsigned int *height);
-void jpeg_hx_coef(void __iomem *base, unsigned int i);
+void jpeg_hx_coef(void __iomem *base, unsigned int i, struct jpeg_dev *jpeg);
 void jpeg_hx_set_enc_luma_stride(void __iomem *base, unsigned int w_stride, enum jpeg_frame_format fmt);
 void jpeg_hx_set_enc_cbcr_stride(void __iomem *base, unsigned int w_stride, enum jpeg_frame_format fmt);
 void jpeg_hx_set_y16(void __iomem *base);
@@ -61,5 +61,6 @@ void jpeg_hx_set_dec_cbcr_stride(void __iomem *base, unsigned int w_stride, enum
 void jpeg_hx_color_mode_select(void __iomem *base, enum jpeg_frame_format out_fmt);
 
 enum jpeg_stream_format jpeg_hx_get_frame_fmt(void __iomem *base);
+int jpeg_hwget_version(void __iomem *base);
 
 #endif /* __JPEG_REGS_H__ */

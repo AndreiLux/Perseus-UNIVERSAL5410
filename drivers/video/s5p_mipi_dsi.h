@@ -44,9 +44,20 @@ enum {
 #define DSIM_ESCCLK_ON		(0x1)
 #define DSIM_ESCCLK_OFF		(0x0)
 
+#ifdef CONFIG_SOC_EXYNOS5410
+#ifdef CONFIG_LCD_MIPI_S6E8FA0
+#define DSIM_CMD_LEN		(0x7)
+#else
+#define DSIM_CMD_LEN		(0x0)
+#endif
+#else
+#define DSIM_CMD_LEN		(0xf)
+#endif
+
 /* DSIM Interrupt Sources */
 #define SFR_PL_FIFO_EMPTY	(1 << 29)
 #define SFR_PH_FIFO_EMPTY	(1 << 28)
+#define FRAME_DONE		(1 << 24)
 #define RX_DAT_DONE		(1 << 18)
 #define ERR_RX_ECC		(1 << 15)
 

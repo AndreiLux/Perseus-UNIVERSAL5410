@@ -41,9 +41,6 @@ struct mmc_ios {
 #define MMC_POWER_OFF		0
 #define MMC_POWER_UP		1
 #define MMC_POWER_ON		2
-#if defined(CONFIG_MACH_UNIVERSAL5410)
-#define MMC_POWER_INIT		3
-#endif
 
 	unsigned char	bus_width;		/* data bus width */
 
@@ -192,6 +189,10 @@ struct mmc_host {
 	u32			ocr_avail_mmc;	/* MMC-specific OCR */
 	struct notifier_block	pm_notify;
 
+#define MMC_HS200_TUNING	(1 << 0)	/* HS200 tuning mode */
+#define MMC_DDR200_TUNING	(1 << 1)	/* DDR200 tuning mode */
+	unsigned int		tuning_progress;
+
 #define MMC_VDD_165_195		0x00000080	/* VDD voltage 1.65 - 1.95 */
 #define MMC_VDD_20_21		0x00000100	/* VDD voltage 2.0 ~ 2.1 */
 #define MMC_VDD_21_22		0x00000200	/* VDD voltage 2.1 ~ 2.2 */
@@ -269,7 +270,6 @@ struct mmc_host {
 #define MMC_CAP2_HS200_1_2V_DDR	(1 << 13)	/* can support */
 #define MMC_CAP2_HS200_DDR	(MMC_CAP2_HS200_1_8V_DDR | \
 				 MMC_CAP2_HS200_1_2V_SDR)
-#define MMC_CAP2_SECURE_ERASE_EN	(1 << 31)
 
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 	unsigned int        power_notify_type;
@@ -466,11 +466,6 @@ static inline int mmc_card_is_removable(struct mmc_host *host)
 static inline int mmc_card_keep_power(struct mmc_host *host)
 {
 	return host->pm_flags & MMC_PM_KEEP_POWER;
-}
-
-static inline int mmc_card_ignore_pon(struct mmc_host *host)
-{
-	return host->pm_flags & MMC_PM_IGNORE_PON;
 }
 
 static inline int mmc_card_wake_sdio_irq(struct mmc_host *host)

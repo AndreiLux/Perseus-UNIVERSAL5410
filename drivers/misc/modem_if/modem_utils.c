@@ -74,6 +74,7 @@ void get_utc_time(struct utc_time *utc)
 	getnstimeofday(&ts);
 	ts2utc(&ts, utc);
 }
+EXPORT_SYMBOL(get_utc_time);
 
 int mif_dump_log(struct modem_shared *msd, struct io_device *iod)
 {
@@ -717,7 +718,6 @@ void print_sipc4_fmt_frame(const u8 *psrc)
 	mif_err("-----------------------------------------------------------\n");
 }
 
-#if 0
 void print_sipc5_link_fmt_frame(const u8 *psrc)
 {
 	u8 *lf;				/* Link Frame	*/
@@ -758,7 +758,6 @@ void print_sipc5_link_fmt_frame(const u8 *psrc)
 
 	mif_err("-----------------------------------------------------------\n");
 }
-#endif
 
 static void strcat_tcp_header(char *buff, u8 *pkt)
 {
@@ -1260,72 +1259,3 @@ void mif_close_file(struct file *fp)
 	set_fs(old_fs);
 }
 
-#define MIF_CPUFREQ_LOCK_OFF_TIME	5000
-void mif_cpufreq_lock(struct work_struct *work)
-{
-	struct modem_ctl *mc;
-	mc = container_of(work, struct modem_ctl, work_cpufreq_lock.work);
-
-	if (!mc->cpufreq_lock_status) {
-		mutex_lock(&mc->cpufreq_lock);
-
-		/* CPU KFC 1.0GHz */
-		pm_qos_add_request(&mc->mif_cpu_qos,
-				PM_QOS_CPU_FREQ_MIN, 1000000);
-		/* MIF 800MHz */
-		pm_qos_add_request(&mc->mif_mif_qos,
-				PM_QOS_BUS_THROUGHPUT, 800000);
-		/* INT 200MHz */
-		pm_qos_add_request(&mc->mif_int_qos,
-				PM_QOS_DEVICE_THROUGHPUT, 200000);
-
-		mutex_unlock(&mc->cpufreq_lock);
-
-		mc->cpufreq_lock_status = true;
-		mif_info("cpufreq locked\n");
-	}
-
-	cancel_delayed_work(&mc->work_cpufreq_unlock);
-	schedule_delayed_work(&mc->work_cpufreq_unlock,
-		msecs_to_jiffies(MIF_CPUFREQ_LOCK_OFF_TIME));
-}
-
-void mif_cpufreq_unlock(struct work_struct *work)
-{
-	struct modem_ctl *mc;
-	int tp_level;
-
- 	mc = container_of(work, struct modem_ctl, work_cpufreq_unlock.work);
-	tp_level = gpio_get_value(mc->gpio_tp_indicate);
-
-	if (mc->cpufreq_lock_status != true)
-		return;
-
-	mif_debug("TP Level is (%d)\n", tp_level);
-	if (tp_level) {
-		mif_debug("maintain cpufreq lock\n");
-		schedule_delayed_work(&mc->work_cpufreq_unlock,
-				msecs_to_jiffies(MIF_CPUFREQ_LOCK_OFF_TIME));
-	} else {
-		mif_info("cpufreq unlock\n");
-
-		mutex_lock(&mc->cpufreq_lock);
-
-		pm_qos_remove_request(&mc->mif_cpu_qos);
-		pm_qos_remove_request(&mc->mif_mif_qos);
-		pm_qos_remove_request(&mc->mif_int_qos);
-
-		mutex_unlock(&mc->cpufreq_lock);
-		mc->cpufreq_lock_status = false;
-	}
-}
-
-int mif_init_cpufreq_lock(struct modem_ctl *mc)
-{
-	mutex_init(&mc->cpufreq_lock);
-	INIT_DELAYED_WORK(&mc->work_cpufreq_unlock, mif_cpufreq_unlock);
-	INIT_DELAYED_WORK(&mc->work_cpufreq_lock, mif_cpufreq_lock);
-
-	mc->cpufreq_lock_status = false;
-	return 0;
-}

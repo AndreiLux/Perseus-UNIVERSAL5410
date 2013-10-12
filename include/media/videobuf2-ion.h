@@ -28,7 +28,7 @@
  */
 
 /* Allocate physically contiguous memory */
-#define VB2ION_CTX_PHCONTIG	ION_HEAP_EXYNOS_CONTIG_MASK
+#define VB2ION_CTX_PHCONTIG	EXYNOS_ION_HEAP_EXYNOS_CONTIG_MASK
 /* Allocate virtually contiguous memory */
 #define VB2ION_CTX_VMCONTIG	ION_HEAP_SYSTEM_MASK
 /* Provide device a virtual address space */
@@ -220,6 +220,8 @@ void *vb2_ion_private_vaddr(void *cookie);
 /* vb2_ion_private_alloc - allocate a buffer for device drivers's private use
  * alloc_ctx - pointer returned by vb2_ion_create_context
  * size - size of the buffer allocated
+ * write - buffer DMA operation direction
+ * plane - plane ID of the buffer
  *
  * This function returns the pointer to a cookie that represents the allocated
  * buffer or minus error value. With the cookie you can:
@@ -229,7 +231,7 @@ void *vb2_ion_private_vaddr(void *cookie);
  * - retrieve virtual address in the kernel space.
  * - free the allocated buffer
  */
-void *vb2_ion_private_alloc(void *alloc_ctx, size_t size);
+void *vb2_ion_private_alloc(void *alloc_ctx, size_t size, int write, int plane);
 
 /* vb2_ion_private_free - free the buffer allocated by vb2_ion_private_alloc */
 void vb2_ion_private_free(void *cookie);

@@ -20,6 +20,9 @@ void exynos5_hs_i2c0_cfg_gpio(struct platform_device *dev)
 	else if (soc_is_exynos5410())
 		s3c_gpio_cfgall_range(EXYNOS5410_GPA2(0), 2,
 				S3C_GPIO_SFN(3), S3C_GPIO_PULL_UP);
+	else if (soc_is_exynos5420())
+		s3c_gpio_cfgall_range(EXYNOS5420_GPA2(0), 2,
+				S3C_GPIO_SFN(3), S3C_GPIO_PULL_UP);
 	else
 		pr_err("failed to configure gpio for hs-i2c0\n");
 }

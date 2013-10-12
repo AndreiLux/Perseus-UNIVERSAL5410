@@ -337,13 +337,8 @@ static int mmc_wait_for_data_req_done(struct mmc_host *host,
 			context_info->is_new_req = false;
 			spin_unlock_irqrestore(&context_info->lock, flags);
 			cmd = mrq->cmd;
-#if defined(CONFIG_MACH_JA_KOR_SKT) || defined(CONFIG_MACH_JA_KOR_KT) || defined(CONFIG_MACH_JA_KOR_LGT) || defined(CONFIG_MACH_J_CHN_CU) || defined(CONFIG_MACH_J_CHN_CTC)
-			if ((!cmd->error && cmd->data->error != -EILSEQ) ||
-				!cmd->retries || mmc_card_removed(host->card)) {
-#else
 			if (!cmd->error || !cmd->retries ||
 					mmc_card_removed(host->card)) {
-#endif
 				err = host->areq->err_check(host->card,
 						host->areq);
 
@@ -356,10 +351,6 @@ static int mmc_wait_for_data_req_done(struct mmc_host *host,
 						cmd->opcode, cmd->error);
 				cmd->retries--;
 				cmd->error = 0;
-#if defined(CONFIG_MACH_JA_KOR_SKT) || defined(CONFIG_MACH_JA_KOR_KT) || defined(CONFIG_MACH_JA_KOR_LGT) || defined(CONFIG_MACH_J_CHN_CU) || defined(CONFIG_MACH_J_CHN_CTC)
-				mmc_host_clk_hold(host);
-				cmd->data->error = 0;
-#endif
 				host->ops->request(host, mrq);
 				continue; /* wait for done/new event again */
 			}
@@ -2006,6 +1997,20 @@ int mmc_set_blocklen(struct mmc_card *card, unsigned int blocklen)
 }
 EXPORT_SYMBOL(mmc_set_blocklen);
 
+int mmc_set_blockcount(struct mmc_card *card, unsigned int blockcount,
+                       bool is_rel_write)
+{
+       struct mmc_command cmd = {0};
+
+       cmd.opcode = MMC_SET_BLOCK_COUNT;
+       cmd.arg = blockcount & 0x0000FFFF;
+       if (is_rel_write)
+               cmd.arg |= 1 << 31;
+       cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_AC;
+       return mmc_wait_for_cmd(card->host, &cmd, 5);
+}
+EXPORT_SYMBOL(mmc_set_blockcount);
+
 static void mmc_hw_reset_for_init(struct mmc_host *host)
 {
 	if (!(host->caps & MMC_CAP_HW_RESET) || !host->ops->hw_reset)
@@ -2018,6 +2023,11 @@ static void mmc_hw_reset_for_init(struct mmc_host *host)
 int mmc_can_reset(struct mmc_card *card)
 {
 	u8 rst_n_function;
+
+#if defined(CONFIG_MACH_UNIVERSAL5420)
+	if (card->host->caps & MMC_CAP_HW_RESET)
+		return 1;
+#endif
 
 	if (!mmc_card_mmc(card))
 		return 0;
@@ -2397,6 +2407,7 @@ int mmc_card_can_sleep(struct mmc_host *host)
 
 	if (host->caps2 & MMC_CAP2_NO_SLEEP_CMD)
 		return 0;
+
 	if (card && mmc_card_mmc(card) && card->ext_csd.rev >= 3)
 		return 1;
 	return 0;
@@ -2496,8 +2507,6 @@ int mmc_suspend_host(struct mmc_host *host)
 
 	mmc_bus_get(host);
 	if (host->bus_ops && !host->bus_dead) {
-		if (mmc_card_mmc(host->card) && !mmc_card_ignore_pon(host))
-			mmc_poweroff_notify(host);
 
 		if (host->bus_ops->suspend)
 			err = host->bus_ops->suspend(host);
@@ -2521,10 +2530,8 @@ int mmc_suspend_host(struct mmc_host *host)
 	}
 	mmc_bus_put(host);
 
-	if (!err && !mmc_card_keep_power(host)) {
-		if (host->card && !mmc_card_sd(host->card))
-			mmc_power_off(host);
-	}
+	if (!err && !mmc_card_keep_power(host))
+		mmc_power_off(host);
 
 out:
 	return err;
@@ -2573,8 +2580,6 @@ int mmc_resume_host(struct mmc_host *host)
 			err = 0;
 		}
 	}
-	if (!host->card)
-		mmc_power_off(host);
 	host->pm_flags &= ~MMC_PM_KEEP_POWER;
 	mmc_bus_put(host);
 
@@ -2636,6 +2641,7 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 		host->power_notify_type = MMC_HOST_PW_NOTIFY_LONG;
 		spin_unlock_irqrestore(&host->lock, flags);
 		mmc_detect_change(host, 0);
+
 	}
 
 	return 0;

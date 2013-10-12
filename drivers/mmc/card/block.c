@@ -131,6 +131,10 @@ enum {
 module_param(perdev_minors, int, 0444);
 MODULE_PARM_DESC(perdev_minors, "Minors numbers to allocate per device");
 
+static inline int mmc_blk_part_switch(struct mmc_card *card,
+				      struct mmc_blk_data *md);
+static int get_card_status(struct mmc_card *card, u32 *status, int retries);
+
 static inline void mmc_blk_clear_packed(struct mmc_queue_req *mqrq)
 {
 	mqrq->packed_cmd = MMC_PACKED_NONE;
@@ -367,42 +371,36 @@ out:
 	return ERR_PTR(err);
 }
 
-struct scatterlist *mmc_blk_get_sg(struct mmc_card *card,
-     unsigned char *buf, int *sg_len, int size)
+static int ioctl_rpmb_card_status_poll(struct mmc_card *card, u32 *status,
+				       u32 retries_max)
 {
-	struct scatterlist *sg;
-	struct scatterlist *sl;
-	int total_sec_cnt, sec_cnt;
-	int max_seg_size, len;
+	int err;
+	u32 retry_count = 0;
 
-	total_sec_cnt = size;
-	max_seg_size = card->host->max_seg_size;
-	len = (size - 1 + max_seg_size) / max_seg_size;
-	sl = kmalloc(sizeof(struct scatterlist) * len, GFP_KERNEL);
+	if (!status || !retries_max)
+		return -EINVAL;
 
-	if (!sl) {
-		return NULL;
-	}
-	sg = (struct scatterlist *)sl;
-	sg_init_table(sg, len);
+	do {
+		err = get_card_status(card, status, 5);
+		if (err)
+			break;
 
-	while (total_sec_cnt) {
-		if (total_sec_cnt < max_seg_size)
-			sec_cnt = total_sec_cnt;
-		else
-			sec_cnt = max_seg_size;
-			sg_set_page(sg, virt_to_page(buf), sec_cnt, offset_in_page(buf));
-			buf = buf + sec_cnt;
-			total_sec_cnt = total_sec_cnt - sec_cnt;
-			if (total_sec_cnt == 0)
-				break;
-			sg = sg_next(sg);
-	}
+		if (!R1_STATUS(*status) &&
+				(R1_CURRENT_STATE(*status) != R1_STATE_PRG))
+			break; /* RPMB programming operation complete */
 
-	if (sg)
-		sg_mark_end(sg);
-	*sg_len = len;
-	return sl;
+		/*
+		 * Rechedule to give the MMC device a chance to continue
+		 * processing the previous command without being polled too
+		 * frequently.
+		 */
+		usleep_range(1000, 5000);
+	} while (++retry_count < retries_max);
+
+	if (retry_count == retries_max)
+		err = -EPERM;
+
+	return err;
 }
 
 static int mmc_blk_ioctl_cmd(struct block_device *bdev,
@@ -414,8 +412,10 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 	struct mmc_command cmd = {0};
 	struct mmc_data data = {0};
 	struct mmc_request mrq = {NULL};
-	struct scatterlist *sg = 0;
+	struct scatterlist sg;
 	int err = 0;
+	int is_rpmb = false;
+	u32 status = 0;
 
 	/*
 	 * The caller must have CAP_SYS_RAWIO, and must be calling this on the
@@ -435,6 +435,9 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 		goto err_kfree;
 	}
 
+	if (md->area_type & MMC_BLK_DATA_AREA_RPMB)
+		is_rpmb = true;
+
 	card = md->queue.card;
 	if (IS_ERR(card)) {
 		err = PTR_ERR(card);
@@ -446,13 +449,12 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 	cmd.flags = idata->ic.flags;
 
 	if (idata->buf_bytes) {
-		int len;
+		data.sg = &sg;
+		data.sg_len = 1;
 		data.blksz = idata->ic.blksz;
 		data.blocks = idata->ic.blocks;
 
-		sg = mmc_blk_get_sg(card, idata->buf, &len, idata->buf_bytes);
-		data.sg = sg;
-		data.sg_len = len;
+		sg_init_one(data.sg, idata->buf, idata->buf_bytes);
 
 		if (idata->ic.write_flag)
 			data.flags = MMC_DATA_WRITE;
@@ -486,8 +488,19 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 
 	mmc_claim_host(card->host);
 
+	err = mmc_blk_part_switch(card, md);
+	if (err)
+		goto cmd_rel_host;
+
 	if (idata->ic.is_acmd) {
 		err = mmc_app_cmd(card->host, card);
+		if (err)
+			goto cmd_rel_host;
+	}
+
+	if (is_rpmb) {
+		err = mmc_set_blockcount(card, data.blocks,
+			idata->ic.write_flag & (1 << 31));
 		if (err)
 			goto cmd_rel_host;
 	}
@@ -527,13 +540,23 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 		}
 	}
 
+      if (is_rpmb) {
+               /*
+                * Ensure RPMB command has completed by polling CMD13
+                * "Send Status".
+                */
+               err = ioctl_rpmb_card_status_poll(card, &status, 5);
+               if (err)
+                       dev_err(mmc_dev(card->host),
+                                       "%s: Card Status=0x%08X, error %d\n",
+                                       __func__, status, err);
+       }
+
 cmd_rel_host:
 	mmc_release_host(card->host);
 
 cmd_done:
 	mmc_blk_put(md);
-	if (sg)
-		kfree(sg);
 
 err_kfree:
 	kfree(idata->buf);
@@ -739,6 +762,34 @@ static int mmc_blk_cmd_error(struct request *req, const char *name, int error,
 	}
 }
 
+static int mmc_blk_reset(struct mmc_blk_data *md, struct mmc_host *host,
+			 int type)
+{
+	int err;
+
+	if (md->reset_done & type)
+		return -EEXIST;
+
+	md->reset_done |= type;
+	err = mmc_hw_reset(host);
+	/* Ensure we switch back to the correct partition */
+	if (err != -EOPNOTSUPP) {
+		struct mmc_blk_data *main_md = mmc_get_drvdata(host->card);
+		int part_err;
+
+		main_md->part_curr = main_md->part_type;
+		part_err = mmc_blk_part_switch(host->card, md);
+		if (part_err) {
+			/*
+			 * We have failed to get back into the correct
+			 * partition, so we need to abort the whole request.
+			 */
+			return -ENODEV;
+		}
+	}
+	return err;
+}
+
 /*
  * Initial r/w and stop cmd error recovery.
  * We don't know whether the card received the r/w cmd or not, so try to
@@ -784,10 +835,28 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 
 	/* We couldn't get a response from the card.  Give up. */
 	if (err) {
+#if defined(CONFIG_MACH_UNIVERSAL5420)
+		struct mmc_blk_data *md = mmc_get_drvdata(card);
+		int type = rq_data_dir(req) == READ ? MMC_BLK_READ : MMC_BLK_WRITE;
+#endif
 		/* Check if the card is removed */
 		if (mmc_detect_card_removed(card->host))
 			return ERR_NOMEDIUM;
-		return ERR_ABORT;
+#if defined(CONFIG_MACH_UNIVERSAL5420)
+		if (!(card->host->caps & MMC_CAP_HW_RESET))
+#endif
+			return ERR_ABORT;
+#if defined(CONFIG_MACH_UNIVERSAL5420)
+		if (mmc_blk_reset(md, card->host, type)) {
+			pr_err("%s: softreset is failed.\n",
+					mmc_hostname(card->host));
+			return ERR_NOMEDIUM;
+		} else {
+			pr_err("%s: softreset is ok. command retrying.\n",
+					mmc_hostname(card->host));
+		}
+		return ERR_RETRY;
+#endif
 	}
 
 	/* Flag ECC errors */
@@ -845,34 +914,6 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 		brq->stop.error = 0;
 	}
 	return ERR_CONTINUE;
-}
-
-static int mmc_blk_reset(struct mmc_blk_data *md, struct mmc_host *host,
-			 int type)
-{
-	int err;
-
-	if (md->reset_done & type)
-		return -EEXIST;
-
-	md->reset_done |= type;
-	err = mmc_hw_reset(host);
-	/* Ensure we switch back to the correct partition */
-	if (err != -EOPNOTSUPP) {
-		struct mmc_blk_data *main_md = mmc_get_drvdata(host->card);
-		int part_err;
-
-		main_md->part_curr = main_md->part_type;
-		part_err = mmc_blk_part_switch(host->card, md);
-		if (part_err) {
-			/*
-			 * We have failed to get back into the correct
-			 * partition, so we need to abort the whole request.
-			 */
-			return -ENODEV;
-		}
-	}
-	return err;
 }
 
 static inline void mmc_blk_reset_success(struct mmc_blk_data *md, int type)
@@ -1328,10 +1369,6 @@ static void mmc_blk_rw_rq_prep(struct mmc_queue_req *mqrq,
 
 	brq->data.sg = mqrq->sg;
 	brq->data.sg_len = mmc_queue_map_sg(mq, mqrq);
-
-#if defined(CONFIG_MACH_JA_KOR_SKT) || defined(CONFIG_MACH_JA_KOR_KT) || defined(CONFIG_MACH_JA_KOR_LGT) || defined(CONFIG_MACH_J_CHN_CU) || defined(CONFIG_MACH_J_CHN_CTC)
-	brq->cmd.retries = 3;
-#endif
 
 	/*
 	 * Adjust the sg list so it is the same size as the
@@ -2004,8 +2041,8 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 		/* complete ongoing async transfer before issuing discard */
 		if (card->host->areq)
 			mmc_blk_issue_rw_rq(mq, NULL);
-		if ((req->cmd_flags & REQ_SECURE) &&
-			(card->host->caps2 & MMC_CAP2_SECURE_ERASE_EN))
+		if (req->cmd_flags & REQ_SECURE &&
+			!(card->quirks & MMC_QUIRK_SEC_ERASE_TRIM_BROKEN))
 			ret = mmc_blk_issue_secdiscard_rq(mq, req);
 		else
 			ret = mmc_blk_issue_discard_rq(mq, req);
@@ -2022,6 +2059,7 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 		}
 		ret = mmc_blk_issue_rw_rq(mq, req);
 	}
+
 	/* for mmc trace */
 	card->host->mqrq_prev = NULL;
 	card->host->mqrq_cur = NULL;
@@ -2105,6 +2143,9 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
 	md->disk->driverfs_dev = parent;
 	set_disk_ro(md->disk, md->read_only || default_ro);
 	md->disk->flags = GENHD_FL_EXT_DEVT;
+
+       if (area_type & MMC_BLK_DATA_AREA_RPMB)
+               md->disk->flags |= GENHD_FL_NO_PART_SCAN;
 
 	/*
 	 * As discussed on lkml, GENHD_FL_REMOVABLE should:
@@ -2205,7 +2246,7 @@ static int mmc_blk_alloc_part(struct mmc_card *card,
  * For each partition enabled in EXT_CSD a block device will be allocatedi
  * to provide access to the partition.
  */
-#if 0 // unused
+
 static int mmc_blk_alloc_parts(struct mmc_card *card, struct mmc_blk_data *md)
 {
 	int idx, ret = 0;
@@ -2228,7 +2269,6 @@ static int mmc_blk_alloc_parts(struct mmc_card *card, struct mmc_blk_data *md)
 
 	return ret;
 }
-#endif
 
 static void mmc_blk_remove_req(struct mmc_blk_data *md)
 {
@@ -2315,6 +2355,7 @@ force_ro_fail:
 #define CID_MANFID_SANDISK	0x2
 #define CID_MANFID_TOSHIBA	0x11
 #define CID_MANFID_MICRON	0x13
+#define CID_MANFID_SAMSUNG	0x15
 
 static const struct mmc_fixup blk_fixups[] =
 {
@@ -2350,6 +2391,30 @@ static const struct mmc_fixup blk_fixups[] =
 	 */
 	MMC_FIXUP(CID_NAME_ANY, CID_MANFID_MICRON, 0x200, add_quirk_mmc,
 		  MMC_QUIRK_LONG_READ_TIME),
+
+	/*
+	 * On these Samsung MoviNAND parts, performing secure erase or
+	 * secure trim can result in unrecoverable corruption due to a
+	 * firmware bug.
+	 */
+	MMC_FIXUP("M8G2FA", CID_MANFID_SAMSUNG, CID_OEMID_ANY, add_quirk_mmc,
+		  MMC_QUIRK_SEC_ERASE_TRIM_BROKEN),
+	MMC_FIXUP("MAG4FA", CID_MANFID_SAMSUNG, CID_OEMID_ANY, add_quirk_mmc,
+		  MMC_QUIRK_SEC_ERASE_TRIM_BROKEN),
+	MMC_FIXUP("MBG8FA", CID_MANFID_SAMSUNG, CID_OEMID_ANY, add_quirk_mmc,
+		  MMC_QUIRK_SEC_ERASE_TRIM_BROKEN),
+	MMC_FIXUP("MCGAFA", CID_MANFID_SAMSUNG, CID_OEMID_ANY, add_quirk_mmc,
+		  MMC_QUIRK_SEC_ERASE_TRIM_BROKEN),
+	MMC_FIXUP("VAL00M", CID_MANFID_SAMSUNG, CID_OEMID_ANY, add_quirk_mmc,
+		  MMC_QUIRK_SEC_ERASE_TRIM_BROKEN),
+	MMC_FIXUP("VYL00M", CID_MANFID_SAMSUNG, CID_OEMID_ANY, add_quirk_mmc,
+		  MMC_QUIRK_SEC_ERASE_TRIM_BROKEN),
+	MMC_FIXUP("KYL00M", CID_MANFID_SAMSUNG, CID_OEMID_ANY, add_quirk_mmc,
+		  MMC_QUIRK_SEC_ERASE_TRIM_BROKEN),
+	MMC_FIXUP("VZL00M", CID_MANFID_SAMSUNG, CID_OEMID_ANY, add_quirk_mmc,
+		  MMC_QUIRK_SEC_ERASE_TRIM_BROKEN),
+	MMC_FIXUP("V2W00M", CID_MANFID_SAMSUNG, CID_OEMID_ANY, add_quirk_mmc,
+		  MMC_QUIRK_SEC_ERASE_TRIM_BROKEN),
 
 	END_FIXUP
 };
@@ -2455,6 +2520,9 @@ static int mmc_blk_probe(struct mmc_card *card)
 	pr_info("%s: %s %s %s %s\n",
 		md->disk->disk_name, mmc_card_id(card), mmc_card_name(card),
 		cap_str, md->read_only ? "(ro)" : "");
+
+	if (mmc_blk_alloc_parts(card, md))
+		goto out;
 
 	mmc_set_drvdata(card, md);
 	mmc_fixup_device(card, blk_fixups);

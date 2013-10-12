@@ -20,9 +20,6 @@
 #include <linux/videodev2_exynos_media.h>
 #include <linux/workqueue.h>
 #include <linux/slab.h>
-#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
-#include <linux/pm_qos.h>
-#endif
 
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
@@ -31,6 +28,14 @@
 #include <media/videobuf2-core.h>
 
 #include <mach/exynos-mfc.h>
+
+/*
+ * CONFIG_MFC_USE_BUS_DEVFREQ might be defined in exynos-mfc.h.
+ * So pm_qos.h should be checked after exynos-mfc.h
+ */
+#ifdef CONFIG_MFC_USE_BUS_DEVFREQ
+#include <linux/pm_qos.h>
+#endif
 
 #define MFC_MAX_BUFFERS		32
 #define MFC_MAX_REF_BUFS	2
@@ -149,10 +154,7 @@ struct s5p_mfc_buf {
 	struct vb2_buffer vb;
 	struct list_head list;
 	union {
-		struct {
-			dma_addr_t luma;
-			dma_addr_t chroma;
-		} raw;
+		dma_addr_t raw[3];
 		dma_addr_t stream;
 	} planes;
 	int used;
@@ -263,6 +265,7 @@ struct s5p_mfc_dev {
 
 	/* For 6.x, Added for SYS_INIT context buffer */
 	struct s5p_mfc_extra_buf ctx_buf;
+	struct s5p_mfc_extra_buf dis_shm_buf;
 
 	struct s5p_mfc_ctx *ctx[MFC_NUM_CONTEXTS];
 	int curr_ctx;
@@ -291,7 +294,7 @@ struct s5p_mfc_dev {
 	struct workqueue_struct *sched_wq;
 	struct work_struct sched_work;
 
-#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+#ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 	struct list_head qos_queue;
 	atomic_t qos_req_cur;
 	atomic_t *qos_req_cnt;
@@ -377,6 +380,31 @@ struct s5p_mfc_mpeg4_enc_params {
 /**
  *
  */
+struct s5p_mfc_vp8_enc_params {
+	/* VP8 Only */
+	u32 rc_framerate;
+	u8 vp8_version;
+	u8 rc_min_qp;
+	u8 rc_max_qp;
+	u8 rc_frame_qp;
+	u8 rc_p_frame_qp;
+	u8 vp8_numberofpartitions;
+	u8 vp8_filterlevel;
+	u8 vp8_filtersharpness;
+	u8 vp8_goldenframesel;
+	u8 vp8_gfrefreshperiod;
+	u8 hierarchy_qp_enable;
+	u8 hierarchy_qp_layer0;
+	u8 hierarchy_qp_layer1;
+	u8 hierarchy_qp_layer2;
+	u8 num_refs_for_p;
+	u8 intra_4x4mode_disable;
+	u8 num_temporal_layer;
+};
+
+/**
+ *
+ */
 struct s5p_mfc_enc_params {
 	u16 width;
 	u16 height;
@@ -407,6 +435,7 @@ struct s5p_mfc_enc_params {
 	union {
 		struct s5p_mfc_h264_enc_params h264;
 		struct s5p_mfc_mpeg4_enc_params mpeg4;
+		struct s5p_mfc_vp8_enc_params vp8;
 	} codec;
 };
 
@@ -524,6 +553,12 @@ struct s5p_mfc_codec_ops {
 	(((c)->c_ops->op) ?					\
 		((c)->c_ops->op(args)) : 0)
 
+struct s5p_mfc_raw_info {
+	int num_planes;
+	int stride[3];
+	int plane_size[3];
+};
+
 struct s5p_mfc_dec {
 	int total_dpb_count;
 
@@ -563,6 +598,11 @@ struct s5p_mfc_dec {
 
 	/* For 6.x */
 	int remained;
+
+	/* For 7.x */
+	int is_dual_dpb;
+	int tiled_buf_cnt;
+	struct s5p_mfc_raw_info tiled_ref;
 };
 
 struct s5p_mfc_enc {
@@ -626,8 +666,7 @@ struct s5p_mfc_ctx {
 	int buf_height;
 	int dpb_count;
 
-	int luma_size;
-	int chroma_size;
+	struct s5p_mfc_raw_info raw_buf;
 	int mv_size;
 
 	/* Buffers */
@@ -676,7 +715,7 @@ struct s5p_mfc_ctx {
 	int is_dpb_realloc;
 	enum mfc_dec_wait_state wait_state;
 
-#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+#ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 	int qos_req_step;
 	struct list_head qos_list;
 #endif
@@ -694,6 +733,58 @@ struct s5p_mfc_ctx {
 #define MFC_FMT_DEC	0
 #define MFC_FMT_ENC	1
 #define MFC_FMT_RAW	2
+
+static inline int mfc_need_wait_got_inst(struct s5p_mfc_ctx *ctx)
+{
+	struct s5p_mfc_dev *dev = ctx->dev;
+	int need_wait = 0;
+
+	spin_lock_irq(&dev->condlock);
+
+	if ((ctx->state == MFCINST_INIT) || (ctx->state == MFCINST_GOT_INST))
+		need_wait = 1;
+
+	spin_unlock_irq(&dev->condlock);
+
+	return need_wait;
+}
+
+static inline int mfc_need_wait_frame_start(struct s5p_mfc_ctx *ctx)
+{
+	struct s5p_mfc_dev *dev = ctx->dev;
+	int need_wait = 0;
+
+	spin_lock_irq(&dev->condlock);
+
+	if (((ctx->state == MFCINST_RUNNING) ||
+		(ctx->state == MFCINST_FINISHING)) &&
+		(test_bit(ctx->num, &dev->hw_lock)))
+		need_wait = 1;
+
+	spin_unlock_irq(&dev->condlock);
+
+	return need_wait;
+}
+static inline unsigned int mfc_linear_buf_size(unsigned int version)
+{
+	unsigned int size = 0;
+
+	switch (version) {
+	case 0x51:
+	case 0x61:
+	case 0x65:
+		size = 0;
+		break;
+	case 0x72:
+		size = 256;
+		break;
+	default:
+		size = 0;
+		break;
+	}
+
+	return size;
+}
 
 static inline unsigned int mfc_version(struct s5p_mfc_dev *dev)
 {
@@ -713,6 +804,10 @@ static inline unsigned int mfc_version(struct s5p_mfc_dev *dev)
 	case IP_VER_MFC_5A_1:
 		version = 0x65;
 		break;
+	case IP_VER_MFC_6A_0:
+	case IP_VER_MFC_6A_1:
+		version = 0x72;
+		break;
 	}
 
 	return version;
@@ -723,8 +818,18 @@ static inline unsigned int mfc_version(struct s5p_mfc_dev *dev)
 #define IS_TWOPORT(dev)		(mfc_version(dev) == 0x51)
 #define NUM_OF_PORT(dev)	(IS_TWOPORT(dev) ? 2 : 1)
 #define NUM_OF_ALLOC_CTX(dev)	(NUM_OF_PORT(dev) + 1)
-#define IS_MFCV6(dev)		((mfc_version(dev) == 0x61) || \
+/*
+ * Version Description
+ *
+ * IS_MFCV5 : For MFC v5 architecure
+ * IS_MFCV6 : For MFC v6 architecure
+ * IS_MFCv6X : For MFC v6.X only
+ * IS_MFCv7X : For MFC v7.X only
+ */
+#define IS_MFCv7X(dev)		(mfc_version(dev) == 0x72)
+#define IS_MFCv6X(dev)		((mfc_version(dev) == 0x61) || \
 				 (mfc_version(dev) == 0x65))
+#define IS_MFCV6(dev)		(IS_MFCv6X(dev) || IS_MFCv7X(dev))
 #define IS_MFCV5(dev)		(mfc_version(dev) == 0x51)
 
 /* supported feature macros by F/W version */
@@ -756,7 +861,17 @@ struct s5p_mfc_fmt {
 };
 
 int get_framerate(struct timeval *to, struct timeval *from);
-inline int clear_hw_bit(struct s5p_mfc_ctx *ctx);
+
+static inline int clear_hw_bit(struct s5p_mfc_ctx *ctx)
+{
+	struct s5p_mfc_dev *dev = ctx->dev;
+	int ret = -1;
+
+	if (!atomic_read(&dev->watchdog_run))
+		ret = test_and_clear_bit(ctx->num, &dev->hw_lock);
+
+	return ret;
+}
 
 #if defined(CONFIG_EXYNOS_MFC_V5)
 #include "regs-mfc-v5.h"

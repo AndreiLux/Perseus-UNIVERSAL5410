@@ -187,8 +187,10 @@ enum gsc_yuv_fmt {
 
 #define fh_to_ctx(__fh) container_of(__fh, struct gsc_ctx, fh)
 
-#define is_rgb(img) ((img == V4L2_PIX_FMT_RGB565X) || \
+#define is_rgb(img) ((img == V4L2_PIX_FMT_RGB565) || \
 		(img == V4L2_PIX_FMT_RGB32) || (img == V4L2_PIX_FMT_BGR32))
+#define is_rgb32(img) ((img == V4L2_PIX_FMT_RGB32) || \
+			(img == V4L2_PIX_FMT_BGR32))
 #define is_yuv422(img) ((img == V4L2_PIX_FMT_YUYV) || (img == V4L2_PIX_FMT_UYVY) || \
 		     (img == V4L2_PIX_FMT_VYUY) || (img == V4L2_PIX_FMT_YVYU) || \
 		     (img == V4L2_PIX_FMT_YUV422P) || (img == V4L2_PIX_FMT_NV16) || \
@@ -198,10 +200,12 @@ enum gsc_yuv_fmt {
 		(img == V4L2_PIX_FMT_NV21) || (img == V4L2_PIX_FMT_NV12M) || \
 		(img == V4L2_PIX_FMT_NV21M) || (img == V4L2_PIX_FMT_YUV420M) || \
 		(img == V4L2_PIX_FMT_YVU420M) || (img == V4L2_PIX_FMT_NV12MT_16X16))
-#define is_AYV12(img) (img == V4L2_PIX_FMT_YVU420M)
+#define is_AYV12(img) (img == V4L2_PIX_FMT_YVU420)
 #define is_ver_5a (pdata->ip_ver == IP_VER_GSC_5A)
 #define is_rotation \
 	((ctx->gsc_ctrls.rotate->val == 90) || (ctx->gsc_ctrls.rotate->val == 270))
+#define is_csc_eq_709 \
+	(ctx->gsc_ctrls.csc_eq->val == V4L2_COLORSPACE_REC709)
 #define gsc_m2m_run(dev) test_bit(ST_M2M_RUN, &(dev)->state)
 #define gsc_m2m_opened(dev) test_bit(ST_M2M_OPEN, &(dev)->state)
 #define gsc_out_run(dev) test_bit(ST_OUTPUT_STREAMON, &(dev)->state)
@@ -569,11 +573,9 @@ struct gsc_dev {
 	unsigned long long		start_time;
 	unsigned long long		end_time;
 #endif
-#if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
 	atomic_t			qos_cnt;
 	struct pm_qos_request		exynos5_gsc_mif_qos;
 	struct pm_qos_request		exynos5_gsc_int_qos;
-#endif
 	struct clk			*clk_child;
 	struct clk			*clk_parent;
 };
@@ -663,6 +665,7 @@ int gsc_prepare_addr(struct gsc_ctx *ctx, struct vb2_buffer *vb,
 int gsc_out_link_validate(const struct media_pad *source,
 			  const struct media_pad *sink);
 int gsc_pipeline_s_stream(struct gsc_dev *gsc, bool on);
+void gsc_dump_registers(struct gsc_dev *gsc);
 
 static inline void gsc_ctx_state_lock_set(u32 state, struct gsc_ctx *ctx)
 {

@@ -270,14 +270,11 @@ int jpeg_dec_vidioc_g_fmt(struct file *file, void *priv,
 	pixm->field	= V4L2_FIELD_NONE;
 
 	if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		pixm->pixelformat = dec_param->in_fmt;
 		pixm->num_planes = dec_param->in_plane;
 		pixm->width = dec_param->in_width;
 		pixm->height = dec_param->in_height;
 	} else if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		jpeg_get_frame_size(ctx->dev->reg_base, &width, &height);
-		pixm->pixelformat =
-			dec_param->out_fmt;
 		pixm->num_planes = dec_param->out_plane;
 		pixm->width = width;
 		pixm->height = height;
@@ -433,9 +430,6 @@ static int jpeg_dec_m2m_reqbufs(struct file *file, void *priv,
 			  struct v4l2_requestbuffers *reqbufs)
 {
 	struct jpeg_ctx *ctx = priv;
-	struct vb2_queue *vq;
-
-	vq = v4l2_m2m_get_vq(ctx->m2m_ctx, reqbufs->type);
 
 	return v4l2_m2m_reqbufs(file, ctx->m2m_ctx, reqbufs);
 }

@@ -22,7 +22,6 @@
 #include <linux/sched.h>
 #include <linux/netdevice.h>
 #include <linux/if_arp.h>
-#include <linux/export.h>
 #include <linux/module.h>
 #include <linux/platform_data/modem_if.h>
 

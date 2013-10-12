@@ -6,7 +6,7 @@
  *
  *	Description	: MC Driver resource control
  *
- *	Version		: 1.0.6	2013.01.24
+ *	Version		: 2.0.1	2013.05.21
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.	In no event will the authors be held liable for any damages
@@ -145,7 +145,6 @@ static const UINT16	gawNextAddrAInc[256]	= {
 	249,	250,	251,	252,	253,	254,	255,	0xFFFF
 };
 
-static void	SetRegDefault(void);
 static void	InitClockSw(void);
 static void	InitPathInfo(void);
 static void	InitVolInfo(void);
@@ -249,16 +248,20 @@ SINT32	McResCtrl_SetHwId(
 
 	if (((bHwId_dig&MCDRV_DEVID_MASK) == MCDRV_DEVID_DIG)
 	&& ((bHwId_ana&MCDRV_DEVID_MASK) == MCDRV_DEVID_ANA)) {
-		if ((bHwId_dig&MCDRV_VERID_MASK) == 1) {
-			if ((bHwId_ana&MCDRV_VERID_MASK) == 2)
+		if ((bHwId_dig&MCDRV_VERID_MASK) != 0) {
+			if ((bHwId_dig&0x08) != 0) {
+				McDevProf_SetDevId(eMCDRV_DEV_ID_89_92H);
+				gsGlobalInfo.sHSDetInfo.bSgnlNum	=
+							MCDRV_SGNLNUM_NONE;
+			} else if ((bHwId_ana&MCDRV_VERID_MASK) == 2) {
 				McDevProf_SetDevId(eMCDRV_DEV_ID_81_92H);
-			else
+			} else {
 				McDevProf_SetDevId(eMCDRV_DEV_ID_81_91H);
+			}
 		} else {
 			McDevProf_SetDevId(eMCDRV_DEV_ID_80_90H);
 		}
 		gsGlobalInfo.bHwId	= bHwId_dig;
-		SetRegDefault();
 		gsGlobalInfo.abRegValA[MCI_A_DEV_ID]	= gsGlobalInfo.bHwId;
 	} else {
 		sdRet	= MCDRV_ERROR_INIT;
@@ -521,7 +524,7 @@ void	McResCtrl_InitEReg(
 }
 
 /****************************************************************************
- *	SetRegDefault
+ *	McResCtrl_SetRegDefault
  *
  *	Description:
  *			Initialize the virtual registers.
@@ -531,14 +534,14 @@ void	McResCtrl_InitEReg(
  *			none
  *
  ****************************************************************************/
-static void	SetRegDefault(
+void	McResCtrl_SetRegDefault(
 	void
 )
 {
 	UINT16	i;
 
 #if (MCDRV_DEBUG_LEVEL >= 4)
-	McDebugLog_FuncIn("SetRegDefault");
+	McDebugLog_FuncIn("McResCtrl_SetRegDefault");
 #endif
 
 	for (i = 0; i < MCDRV_REG_NUM_IF; i++)
@@ -546,6 +549,11 @@ static void	SetRegDefault(
 
 	gsGlobalInfo.abRegValIF[MCI_RST_A]	= MCI_RST_A_DEF;
 	gsGlobalInfo.abRegValIF[MCI_RST]	= MCI_RST_DEF;
+	if (machdep_GetBusSelect() != 2) {
+		;
+		gsGlobalInfo.abRegValIF[MCI_RST]	|=
+							(MCB_PSW_S|MCB_RST_S);
+	}
 
 	McResCtrl_InitABlockReg();
 
@@ -640,7 +648,7 @@ static void	SetRegDefault(
 	}
 
 #if (MCDRV_DEBUG_LEVEL >= 4)
-	McDebugLog_FuncOut("SetRegDefault", 0);
+	McDebugLog_FuncOut("McResCtrl_SetRegDefault", 0);
 #endif
 }
 
@@ -3912,13 +3920,15 @@ void	McResCtrl_SetHSDet(
 		gsGlobalInfo.sHSDetInfo.bDbncNumKey
 			= psHSDetInfo->bDbncNumKey;
 
-	if ((dUpdateInfo & MCDRV_SGNL_UPDATE_FLAG) != 0UL) {
-		gsGlobalInfo.sHSDetInfo.bSgnlPeriod
-			= psHSDetInfo->bSgnlPeriod;
-		gsGlobalInfo.sHSDetInfo.bSgnlNum
-			= psHSDetInfo->bSgnlNum;
-		gsGlobalInfo.sHSDetInfo.bSgnlPeak
-			= psHSDetInfo->bSgnlPeak;
+	if (McDevProf_GetDevId() != eMCDRV_DEV_ID_89_92H) {
+		if ((dUpdateInfo & MCDRV_SGNL_UPDATE_FLAG) != 0UL) {
+			gsGlobalInfo.sHSDetInfo.bSgnlPeriod
+				= psHSDetInfo->bSgnlPeriod;
+			gsGlobalInfo.sHSDetInfo.bSgnlNum
+				= psHSDetInfo->bSgnlNum;
+			gsGlobalInfo.sHSDetInfo.bSgnlPeak
+				= psHSDetInfo->bSgnlPeak;
+		}
 	}
 
 	if ((dUpdateInfo & MCDRV_IMPSEL_UPDATE_FLAG) != 0UL)
@@ -4899,6 +4909,7 @@ void	McResCtrl_GetVolReg(
 	UINT8	bCh;
 	enum MCDRV_DST_CH	abDSTCh[]	= {
 		eMCDRV_DST_CH0, eMCDRV_DST_CH1};
+	SINT16	aswD_DpathDa[DPATH_VOL_CHANNELS];
 
 #if (MCDRV_DEBUG_LEVEL >= 4)
 	McDebugLog_FuncIn("McResCtrl_GetVolReg");
@@ -4906,6 +4917,8 @@ void	McResCtrl_GetVolReg(
 
 
 	*psVolInfo	= gsGlobalInfo.sVolInfo;
+	aswD_DpathDa[0]	= gsGlobalInfo.sVolInfo.aswD_DpathDa[0];
+	aswD_DpathDa[1]	= gsGlobalInfo.sVolInfo.aswD_DpathDa[1];
 
 	if (McResCtrl_IsD1SrcUsed(MCDRV_D1SRC_MUSICIN_ON) == 0) {
 		psVolInfo->aswD_MusicIn[0]	= MCDRV_REG_MUTE;
@@ -5026,7 +5039,7 @@ void	McResCtrl_GetVolReg(
 		= McResCtrl_GetDigitalVolReg(psVolInfo->aswD_Dac0Out[0]);
 	if ((iSrc & MCDRV_D1SRC_HIFIIN_ON) != 0)
 		psVolInfo->aswD_DpathDa[0]
-		= McResCtrl_GetDigitalVolReg(psVolInfo->aswD_DpathDa[0]);
+		= McResCtrl_GetDigitalVolReg(aswD_DpathDa[0]);
 
 	iSrc	= GetD1Source(gsGlobalInfo.sPathInfo.asDac0, eMCDRV_DST_CH1);
 	if ((iSrc & ~MCDRV_D1SRC_HIFIIN_ON) == 0)
@@ -5036,7 +5049,7 @@ void	McResCtrl_GetVolReg(
 		= McResCtrl_GetDigitalVolReg(psVolInfo->aswD_Dac0Out[1]);
 	if ((iSrc & MCDRV_D1SRC_HIFIIN_ON) != 0)
 		psVolInfo->aswD_DpathDa[1]
-		= McResCtrl_GetDigitalVolReg(psVolInfo->aswD_DpathDa[1]);
+		= McResCtrl_GetDigitalVolReg(aswD_DpathDa[1]);
 
 	iSrc	= GetD1Source(gsGlobalInfo.sPathInfo.asDac1, eMCDRV_DST_CH0);
 	if ((iSrc & ~MCDRV_D1SRC_HIFIIN_ON) == 0)
@@ -5046,7 +5059,7 @@ void	McResCtrl_GetVolReg(
 		= McResCtrl_GetDigitalVolReg(psVolInfo->aswD_Dac1Out[0]);
 	if ((iSrc & MCDRV_D1SRC_HIFIIN_ON) != 0)
 		psVolInfo->aswD_DpathDa[0]
-		= McResCtrl_GetDigitalVolReg(psVolInfo->aswD_DpathDa[0]);
+		= McResCtrl_GetDigitalVolReg(aswD_DpathDa[0]);
 
 	iSrc	= GetD1Source(gsGlobalInfo.sPathInfo.asDac1, eMCDRV_DST_CH1);
 	if ((iSrc & ~MCDRV_D1SRC_HIFIIN_ON) == 0)
@@ -5056,7 +5069,7 @@ void	McResCtrl_GetVolReg(
 		= McResCtrl_GetDigitalVolReg(psVolInfo->aswD_Dac1Out[1]);
 	if ((iSrc & MCDRV_D1SRC_HIFIIN_ON) != 0)
 		psVolInfo->aswD_DpathDa[1]
-		= McResCtrl_GetDigitalVolReg(psVolInfo->aswD_DpathDa[1]);
+		= McResCtrl_GetDigitalVolReg(aswD_DpathDa[1]);
 
 	iSrc	=
 		GetD1Source(gsGlobalInfo.sPathInfo.asHifiOut, eMCDRV_DST_CH0);
@@ -5664,11 +5677,19 @@ void	McResCtrl_GetPowerInfo(
 
 	if ((psPowerInfo->abAnalog[1] != MCI_AP_DA0_DEF)
 	|| (psPowerInfo->abAnalog[2] != MCI_AP_DA1_DEF)
-	|| (psPowerInfo->abAnalog[3] != MCI_AP_MIC_DEF)
 	|| (psPowerInfo->abAnalog[4] != MCI_AP_AD_DEF)) {
 		psPowerInfo->abAnalog[0] &=
 			(UINT8)~(MCB_AP_LDOA|MCB_AP_BGR|MCB_AP_VR);
 		psPowerInfo->bDigital	&= (UINT8)~MCDRV_POWINFO_D_PLL_PD;
+	}
+	if (psPowerInfo->abAnalog[3] != MCI_AP_MIC_DEF) {
+		psPowerInfo->abAnalog[0] &=
+			(UINT8)~(MCB_AP_LDOA|MCB_AP_BGR|MCB_AP_VR);
+		if ((psPowerInfo->abAnalog[3]&0xF0) != (MCI_AP_MIC_DEF&0xF0)) {
+			;
+			psPowerInfo->bDigital	&=
+						(UINT8)~MCDRV_POWINFO_D_PLL_PD;
+		}
 	}
 
 	if ((psPowerInfo->bDigital&MCDRV_POWINFO_D_PLL_PD) == 0) {
@@ -7026,16 +7047,19 @@ void	McResCtrl_AddRegUpdate(
 		return;
 	}
 
-	if ((gsGlobalInfo.wCurSlaveAddr != 0xFFFF)
-	&& (gsGlobalInfo.wCurSlaveAddr != wSlaveAddr)) {
-		McResCtrl_ExecuteRegUpdate();
-		McResCtrl_InitRegUpdate();
+	if (machdep_GetBusSelect() == 0) {
+		/*	I2C	*/
+		if ((gsGlobalInfo.wCurSlaveAddr != 0xFFFF)
+		&& (gsGlobalInfo.wCurSlaveAddr != wSlaveAddr)) {
+			McResCtrl_ExecuteRegUpdate();
+			McResCtrl_InitRegUpdate();
+		}
 	}
 
 	if ((gsGlobalInfo.wCurRegType != 0xFFFF)
 	&& (gsGlobalInfo.wCurRegType != wRegType)) {
-		McResCtrl_ExecuteRegUpdate();
-		McResCtrl_InitRegUpdate();
+		gsGlobalInfo.wCurRegType		= 0xFFFF;
+		gsGlobalInfo.wCurRegAddr		= 0xFFFF;
 	}
 
 	if ((eMCDRV_UPDATE_FORCE == eUpdateMode)
@@ -7048,8 +7072,14 @@ void	McResCtrl_AddRegUpdate(
 		if (eMCDRV_UPDATE_DUMMY != eUpdateMode) {
 			pbCtrlData	= gsGlobalInfo.sCtrlPacket.abData;
 			pwCtrlDataNum	= &(gsGlobalInfo.sCtrlPacket.wDataNum);
-			wNextAddr	= pwNextAddr[gsGlobalInfo.wCurRegAddr];
-
+#if MCDRV_BURST_WRITE_ENABLE
+			if (gsGlobalInfo.wCurRegType == 0xFFFF) {
+				;
+				wNextAddr	= 0xFFFF;
+			} else {
+				wNextAddr	= pwNextAddr[
+						gsGlobalInfo.wCurRegAddr];
+			}
 			if ((wSlaveAddr == gsGlobalInfo.wCurSlaveAddr)
 			&& (wRegType == gsGlobalInfo.wCurRegType)
 			&& (0xFFFF != wNextAddr)
@@ -7118,6 +7148,25 @@ void	McResCtrl_AddRegUpdate(
 				}
 				gsGlobalInfo.wDataContinueCount++;
 			}
+#else
+			wNextAddr	= 0xFFFF;
+			if (MCDRV_PACKET_REGTYPE_IF == wRegType) {
+				pbCtrlData[*pwCtrlDataNum]	=
+					(bAddrADR << 1);
+				gsGlobalInfo.wPrevAddrIndex	=
+					*pwCtrlDataNum;
+				(*pwCtrlDataNum)++;
+			} else {
+				pbCtrlData[(*pwCtrlDataNum)++]	=
+					(bAddrADR << 1);
+				pbCtrlData[(*pwCtrlDataNum)++]	=
+					(UINT8)wAddr|bAIncReg;
+				pbCtrlData[*pwCtrlDataNum]	=
+					(bAddrWINDOW << 1);
+				gsGlobalInfo.wPrevAddrIndex	=
+					(*pwCtrlDataNum)++;
+			}
+#endif
 
 			pbCtrlData[(*pwCtrlDataNum)++]	= bData;
 
@@ -7522,9 +7571,6 @@ SINT32	McResCtrl_WaitEvent(
 	McDebugLog_FuncOut("McResCtrl_WaitEvent", &sdRet);
 #endif
 
-	if(sdRet < 0)
-		printk("WaitEvent error dEvent = %lX, dParam = %lX\n", dEvent, dParam);
-	
 	return sdRet;
 }
 

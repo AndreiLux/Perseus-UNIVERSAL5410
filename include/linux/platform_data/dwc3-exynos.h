@@ -41,6 +41,8 @@ struct dwc3_exynos_data {
 #define SKIP_UDC		(1 << 5)
 /* Do not create xhci child device */
 #define SKIP_XHCI		(1 << 6)
+/* Low vboost */
+#define LOW_VBOOST		(1 << 7)
 	int id_irq;
 	int vbus_irq;
 	unsigned long irq_flags;

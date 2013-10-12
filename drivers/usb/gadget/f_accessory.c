@@ -132,6 +132,23 @@ static struct usb_interface_descriptor acc_interface_desc = {
 	.bInterfaceProtocol     = 0,
 };
 
+static struct usb_endpoint_descriptor acc_superspeed_in_desc = {
+	.bLength                = USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType        = USB_DT_ENDPOINT,
+	.bEndpointAddress       = USB_DIR_IN,
+	.bmAttributes           = USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize         = __constant_cpu_to_le16(1024),
+};
+
+static struct usb_endpoint_descriptor acc_superspeed_out_desc = {
+	.bLength                = USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType        = USB_DT_ENDPOINT,
+	.bEndpointAddress       = USB_DIR_OUT,
+	.bmAttributes           = USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize         = __constant_cpu_to_le16(1024),
+};
+
+
 static struct usb_endpoint_descriptor acc_highspeed_in_desc = {
 	.bLength                = USB_DT_ENDPOINT_SIZE,
 	.bDescriptorType        = USB_DT_ENDPOINT,
@@ -162,6 +179,15 @@ static struct usb_endpoint_descriptor acc_fullspeed_out_desc = {
 	.bmAttributes           = USB_ENDPOINT_XFER_BULK,
 };
 
+static struct usb_ss_ep_comp_descriptor acc_superspeed_bulk_comp_desc = {
+	.bLength =              sizeof acc_superspeed_bulk_comp_desc,
+	.bDescriptorType =      USB_DT_SS_ENDPOINT_COMP,
+
+	/* the following 2 values can be tweaked if necessary */
+	/* .bMaxBurst =         0, */
+	/* .bmAttributes =      0, */
+};
+
 static struct usb_descriptor_header *fs_acc_descs[] = {
 	(struct usb_descriptor_header *) &acc_interface_desc,
 	(struct usb_descriptor_header *) &acc_fullspeed_in_desc,
@@ -173,6 +199,15 @@ static struct usb_descriptor_header *hs_acc_descs[] = {
 	(struct usb_descriptor_header *) &acc_interface_desc,
 	(struct usb_descriptor_header *) &acc_highspeed_in_desc,
 	(struct usb_descriptor_header *) &acc_highspeed_out_desc,
+	NULL,
+};
+
+static struct usb_descriptor_header *ss_acc_descs[] = {
+	(struct usb_descriptor_header *) &acc_interface_desc,
+	(struct usb_descriptor_header *) &acc_superspeed_in_desc,
+	(struct usb_descriptor_header *) &acc_superspeed_bulk_comp_desc,
+	(struct usb_descriptor_header *) &acc_superspeed_out_desc,
+	(struct usb_descriptor_header *) &acc_superspeed_bulk_comp_desc,
 	NULL,
 };
 
@@ -907,7 +942,16 @@ acc_function_bind(struct usb_configuration *c, struct usb_function *f)
 			acc_fullspeed_out_desc.bEndpointAddress;
 	}
 
+	/* support super speed hardware */
+	if (gadget_is_superspeed(c->cdev->gadget)) {
+		acc_superspeed_in_desc.bEndpointAddress =
+			acc_fullspeed_in_desc.bEndpointAddress;
+		acc_superspeed_out_desc.bEndpointAddress =
+			acc_fullspeed_out_desc.bEndpointAddress;
+	}
+
 	DBG(cdev, "%s speed %s: IN/%s, OUT/%s\n",
+			gadget_is_superspeed(c->cdev->gadget) ? "super" :
 			gadget_is_dualspeed(c->cdev->gadget) ? "dual" : "full",
 			f->name, dev->ep_in->name, dev->ep_out->name);
 	return 0;
@@ -1123,6 +1167,7 @@ static int acc_bind_config(struct usb_configuration *c)
 	dev->function.strings = acc_strings,
 	dev->function.descriptors = fs_acc_descs;
 	dev->function.hs_descriptors = hs_acc_descs;
+	dev->function.ss_descriptors = ss_acc_descs;
 	dev->function.bind = acc_function_bind;
 	dev->function.unbind = acc_function_unbind;
 	dev->function.set_alt = acc_function_set_alt;

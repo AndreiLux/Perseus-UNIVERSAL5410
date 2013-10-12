@@ -31,7 +31,7 @@ struct devfreq_simple_usage_nb {
 static LIST_HEAD(devfreq_pm_qos_list);
 static DEFINE_MUTEX(devfreq_pm_qos_lock);
 
-static int devfreq_simple_usage_nb(struct notifier_block *nb, unsigned long val, void *data)
+static int devfreq_simple_usage_notifier(struct notifier_block *nb, unsigned long val, void *data)
 {
 	struct devfreq_simple_usage_nb *simple_usage_nb;
 	struct devfreq_simple_usage_data *simple_usage_data;
@@ -64,11 +64,6 @@ static int devfreq_simple_usage_func(struct devfreq *df, unsigned long *freq)
 
 	pm_qos_min = pm_qos_request(data->pm_qos_class);
 
-	if (!data->en_monitoring) {
-		*freq = pm_qos_min;
-		return 0;
-	}
-
 	if (err)
 		return err;
 
@@ -89,8 +84,12 @@ static int devfreq_simple_usage_func(struct devfreq *df, unsigned long *freq)
 
 	/* If percentage is larger than upthreshold, set with max freq */
 	if (b >= data->upthreshold) {
-		max = max3(max, data->cal_qos_max, pm_qos_min);
+		max = max(data->cal_qos_max, pm_qos_min);
 		*freq = max;
+
+		if (*freq > df->max_freq)
+			*freq = df->max_freq;
+
 		return 0;
 	}
 
@@ -129,7 +128,8 @@ static int devfreq_simple_usage_init(struct devfreq *df)
 		return -ENOMEM;
 
 	simple_usage_nb->df = df;
-	simple_usage_nb->nb.notifier_call = devfreq_simple_usage_nb;
+	simple_usage_nb->nb.notifier_call = devfreq_simple_usage_notifier;
+	INIT_LIST_HEAD(&simple_usage_nb->list);
 
 	err = pm_qos_add_notifier(data->pm_qos_class, &simple_usage_nb->nb);
 

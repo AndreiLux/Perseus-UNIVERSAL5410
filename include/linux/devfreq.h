@@ -208,6 +208,8 @@ extern const struct devfreq_governor devfreq_simple_ondemand;
 struct devfreq_simple_ondemand_data {
 	unsigned int upthreshold;
 	unsigned int downdifferential;
+	unsigned long cal_qos_max;
+	int pm_qos_class;
 };
 #endif
 

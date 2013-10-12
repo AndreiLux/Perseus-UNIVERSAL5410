@@ -61,6 +61,7 @@ enum {
 	GAMMA_265CD,
 	GAMMA_282CD,
 	GAMMA_300CD,
+	GAMMA_HBM,
 	GAMMA_MAX
 };
 
@@ -223,6 +224,7 @@ enum {
 	ELVSS_STATUS_265,
 	ELVSS_STATUS_282,
 	ELVSS_STATUS_300,
+	ELVSS_STATUS_HBM,
 	ELVSS_STATUS_MAX
 };
 
@@ -352,11 +354,12 @@ static const unsigned char *ELVSS_CONTROL_TABLE[ELVSS_STATUS_MAX] = {
 	elvss_control_set_249,
 	elvss_control_set_265,
 	elvss_control_set_282,
+	elvss_control_set_300,
 	elvss_control_set_300
 };
 
 enum {
-	ACL_STATUS_0P = 0,
+	ACL_STATUS_0P,
 	ACL_STATUS_40P,
 	ACL_STATUS_40P_RE_MID,
 	ACL_STATUS_MAX

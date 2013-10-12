@@ -325,7 +325,7 @@ static int rx_hdlc_data_check(struct io_device *iod, struct link_device *ld,
 	struct sk_buff *skb = fragdata(iod, ld)->skb_recv;
 	int head_size = get_header_size(iod);
 	int data_size = get_hdlc_size(iod, hdr->hdr) - head_size;
-	int alloc_size;
+	int alloc_size =0;
 	int len = 0;
 	int done_len = 0;
 	int rest_len = data_size - hdr->frag_len;

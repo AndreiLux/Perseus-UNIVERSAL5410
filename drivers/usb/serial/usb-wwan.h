@@ -31,30 +31,16 @@ extern int usb_wwan_resume(struct usb_serial *serial);
 
 /* per port private data */
 
-#ifdef CONFIG_MDM_HSIC_PM
-#define N_IN_URB 1
-#else
-#define N_IN_URB 5
-#endif
-#define N_OUT_URB 5
-#define IN_BUFLEN 65536
-#define OUT_BUFLEN 65536
+#define N_IN_URB 4
+#define N_OUT_URB 4
+#define IN_BUFLEN 4096
+#define OUT_BUFLEN 4096
 
 struct usb_wwan_intf_private {
 	spinlock_t susp_lock;
 	unsigned int suspended:1;
 	int in_flight;
 	int (*send_setup) (struct usb_serial_port *port);
-#ifdef CONFIG_MDM_HSIC_PM
-	int buf_reuse;
-#endif
-#if defined(CONFIG_MACH_JA_KOR_LGT)
-	atomic_t sync_read_cnt;
-	struct workqueue_struct *wq;
-	struct delayed_work sync_check_work;
-	struct tty_struct *temp_tty;
-#endif
-
 	void *private;
 };
 

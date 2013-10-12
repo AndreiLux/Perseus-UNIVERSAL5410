@@ -214,6 +214,83 @@ static int exynos5_mfc_clock_init(void)
 	return 0;
 }
 
+static int exynos5_jpeg_clock_init(void)
+{
+	struct clk *sclk;
+
+	sclk = clk_get(NULL, "sclk_jpeg");
+	if (IS_ERR(sclk))
+		return PTR_ERR(sclk);
+
+	if (clk_set_rate(sclk, 166500000UL)) {
+		pr_err("%s rate change failed: %lu\n", sclk->name, 166500000UL);
+		clk_put(sclk);
+		return PTR_ERR(sclk);
+	}
+	clk_put(sclk);
+
+	return 0;
+}
+
+static int exynos5_jpeg_hx_clock_init(void)
+{
+	struct clk *sclk = NULL;
+	struct clk *dout_jpeg = NULL;
+	struct clk *mout_dpll = NULL;
+	int ret;
+
+	sclk = clk_get(NULL, "aclk_300_jpeg");
+	if (IS_ERR(sclk)) {
+		pr_err("failed to get aclk for jpeg\n");
+		goto err_clk1;
+	}
+	dout_jpeg = clk_get(NULL, "dout_aclk_300_jpeg");
+
+	if (IS_ERR(dout_jpeg)) {
+		pr_err("failed to get dout_jpeg for jpeg\n");
+		goto err_clk2;
+	}
+
+	ret = clk_set_parent(sclk, dout_jpeg);
+	if (ret < 0) {
+		pr_err("failed to clk_set_parent for jpeg\n");
+		goto err_clk3;
+	}
+
+	mout_dpll = clk_get(NULL, "mout_dpll");
+
+	if (IS_ERR(mout_dpll)) {
+		pr_err("failed to get mout_dpll for jpeg\n");
+		goto err_clk3;
+	}
+
+	ret = clk_set_parent(dout_jpeg, mout_dpll);
+	if (ret < 0) {
+		pr_err("failed to clk_set_parent for jpeg\n");
+		goto err_clk4;
+	}
+
+	ret = clk_set_rate(dout_jpeg, 300 * MHZ);
+	if (ret < 0) {
+		pr_err("failed to clk_set_rate of sclk for jpeg\n");
+		goto err_clk4;
+	}
+
+	clk_put(dout_jpeg);
+	clk_put(mout_dpll);
+	clk_put(sclk);
+	return 0;
+
+err_clk4:
+	clk_put(mout_dpll);
+err_clk3:
+	clk_put(dout_jpeg);
+err_clk2:
+	clk_put(sclk);
+err_clk1:
+	return -EINVAL;
+}
+
 static int exynos5_aclk_200_disp1_init(void)
 {
 	struct clk *aclk_200_disp1;
@@ -468,6 +545,12 @@ void __init exynos5_universal5410_clock_init(void)
 
 	if (exynos5_mfc_clock_init())
 		pr_err("failed to MFC clock init\n");
+
+	if (exynos5_jpeg_clock_init())
+		pr_err("failed to jpeg clock init\n");
+
+	if (exynos5_jpeg_hx_clock_init())
+		pr_err("failed to jpeg-hx clock init\n");
 
 	if (exynos5_aclk_300_disp1_init())
 		pr_err("failed to init aclk_300_disp1\n");

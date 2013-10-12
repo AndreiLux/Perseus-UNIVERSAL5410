@@ -117,4 +117,5 @@ extern unsigned int get_match_abb(enum asv_type_id target_type, unsigned int tar
 extern unsigned int set_match_abb(enum asv_type_id target_type, unsigned int target_abb);
 /* define function for initialize of SoC */
 extern int exynos5410_init_asv(struct asv_common *asv_info);
+extern int exynos5420_init_asv(struct asv_common *asv_info);
 #endif /* __ASM_ARCH_NEW_ASV_H */

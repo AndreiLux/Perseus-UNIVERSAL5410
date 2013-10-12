@@ -346,10 +346,10 @@ int sc_hwset_src_image_format(struct sc_dev *sc, u32 pixelformat)
 		break;
 	case V4L2_PIX_FMT_RGB32:
 		cfg |= SCALER_CFG_FMT_ARGB8888;
+		cfg |= SCALER_CFG_BYTE_SWAP;
 		break;
 	case V4L2_PIX_FMT_BGR32:
 		cfg |= SCALER_CFG_FMT_ARGB8888;
-		cfg |= SCALER_CFG_BYTE_SWAP;
 		break;
 	case V4L2_PIX_FMT_YUYV:
 		cfg |= SCALER_CFG_FMT_YUYV;
@@ -361,32 +361,49 @@ int sc_hwset_src_image_format(struct sc_dev *sc, u32 pixelformat)
 		cfg |= SCALER_CFG_FMT_YVYU;
 		break;
 	case V4L2_PIX_FMT_NV12:
-		cfg |= SCALER_CFG_FMT_YCBCR420_2P;
-		break;
-	case V4L2_PIX_FMT_NV21:
-		cfg |= SCALER_CFG_FMT_YCBCR420_2P;
-		cfg |= SCALER_CFG_HWORD_SWAP;
-		break;
 	case V4L2_PIX_FMT_NV12M:
 		cfg |= SCALER_CFG_FMT_YCBCR420_2P;
 		break;
-	case V4L2_PIX_FMT_NV21M:
+	case V4L2_PIX_FMT_NV12MT_16X16:
+		cfg |= SCALER_CFG_TILE_EN;
 		cfg |= SCALER_CFG_FMT_YCBCR420_2P;
-		cfg |= SCALER_CFG_HWORD_SWAP;
+		break;
+	case V4L2_PIX_FMT_NV21:
+	case V4L2_PIX_FMT_NV21M:
+		if (sc_ver_is_5a(sc)) {
+			cfg |= SCALER_CFG_FMT_YCBCR420_2P;
+			cfg |= SCALER_CFG_HWORD_SWAP;
+		} else {
+			cfg |= SCALER_CFG_FMT_YCRCB420_2P;
+		}
 		break;
 	case V4L2_PIX_FMT_NV16:
 		cfg |= SCALER_CFG_FMT_YCBCR422_2P;
 		break;
 	case V4L2_PIX_FMT_NV61:
-		cfg |= SCALER_CFG_FMT_YCBCR422_2P;
-		cfg |= SCALER_CFG_HWORD_SWAP;
+		if (sc_ver_is_5a(sc)) {
+			cfg |= SCALER_CFG_FMT_YCBCR422_2P;
+			cfg |= SCALER_CFG_HWORD_SWAP;
+		} else {
+			cfg |= SCALER_CFG_FMT_YCRCB422_2P;
+		}
 		break;
 	case V4L2_PIX_FMT_NV24:
 		cfg |= SCALER_CFG_FMT_YCBCR444_2P;
 		break;
 	case V4L2_PIX_FMT_NV42:
-		cfg |= SCALER_CFG_FMT_YCBCR444_2P;
-		cfg |= SCALER_CFG_HWORD_SWAP;
+		if (sc_ver_is_5a(sc)) {
+			cfg |= SCALER_CFG_FMT_YCBCR444_2P;
+			cfg |= SCALER_CFG_HWORD_SWAP;
+		} else {
+			cfg |= SCALER_CFG_FMT_YCRCB444_2P;
+		}
+		break;
+	case V4L2_PIX_FMT_YUV420:
+	case V4L2_PIX_FMT_YUV420M:
+	case V4L2_PIX_FMT_YVU420:
+	case V4L2_PIX_FMT_YVU420M:
+		cfg |= SCALER_CFG_FMT_YCBCR420_3P;
 		break;
 	/* TODO: add L8A8 and L8 source format */
 	default:
@@ -400,7 +417,7 @@ int sc_hwset_src_image_format(struct sc_dev *sc, u32 pixelformat)
 int sc_hwset_dst_image_format(struct sc_dev *sc, u32 pixelformat)
 {
 	unsigned long cfg = readl(sc->regs + SCALER_DST_CFG);
-	bool is_rgb;
+	bool is_rgb = false;
 
 	cfg &= ~SCALER_CFG_FMT_MASK;
 
@@ -419,11 +436,11 @@ int sc_hwset_dst_image_format(struct sc_dev *sc, u32 pixelformat)
 		break;
 	case V4L2_PIX_FMT_RGB32:
 		cfg |= SCALER_CFG_FMT_ARGB8888;
+		cfg |= SCALER_CFG_BYTE_SWAP;
 		is_rgb = true;
 		break;
 	case V4L2_PIX_FMT_BGR32:
 		cfg |= SCALER_CFG_FMT_ARGB8888;
-		cfg |= SCALER_CFG_BYTE_SWAP;
 		is_rgb = true;
 		break;
 	case V4L2_PIX_FMT_YUYV:
@@ -439,29 +456,51 @@ int sc_hwset_dst_image_format(struct sc_dev *sc, u32 pixelformat)
 		cfg |= SCALER_CFG_FMT_YCBCR420_2P;
 		break;
 	case V4L2_PIX_FMT_NV21:
-		cfg |= SCALER_CFG_FMT_YCBCR420_2P;
-		cfg |= SCALER_CFG_HWORD_SWAP;
+		if (sc_ver_is_5a(sc)) {
+			cfg |= SCALER_CFG_FMT_YCBCR420_2P;
+			cfg |= SCALER_CFG_HWORD_SWAP;
+		} else {
+			cfg |= SCALER_CFG_FMT_YCRCB420_2P;
+		}
 		break;
 	case V4L2_PIX_FMT_NV12M:
 		cfg |= SCALER_CFG_FMT_YCBCR420_2P;
 		break;
 	case V4L2_PIX_FMT_NV21M:
-		cfg |= SCALER_CFG_FMT_YCBCR420_2P;
-		cfg |= SCALER_CFG_HWORD_SWAP;
+		if (sc_ver_is_5a(sc)) {
+			cfg |= SCALER_CFG_FMT_YCBCR420_2P;
+			cfg |= SCALER_CFG_HWORD_SWAP;
+		} else {
+			cfg |= SCALER_CFG_FMT_YCRCB420_2P;
+		}
 		break;
 	case V4L2_PIX_FMT_NV16:
 		cfg |= SCALER_CFG_FMT_YCBCR422_2P;
 		break;
 	case V4L2_PIX_FMT_NV61:
-		cfg |= SCALER_CFG_FMT_YCBCR422_2P;
-		cfg |= SCALER_CFG_HWORD_SWAP;
+		if (sc_ver_is_5a(sc)) {
+			cfg |= SCALER_CFG_FMT_YCBCR422_2P;
+			cfg |= SCALER_CFG_HWORD_SWAP;
+		} else {
+			cfg |= SCALER_CFG_FMT_YCRCB422_2P;
+		}
 		break;
 	case V4L2_PIX_FMT_NV24:
 		cfg |= SCALER_CFG_FMT_YCBCR444_2P;
 		break;
 	case V4L2_PIX_FMT_NV42:
-		cfg |= SCALER_CFG_FMT_YCBCR444_2P;
-		cfg |= SCALER_CFG_HWORD_SWAP;
+		if (sc_ver_is_5a(sc)) {
+			cfg |= SCALER_CFG_FMT_YCBCR444_2P;
+			cfg |= SCALER_CFG_HWORD_SWAP;
+		} else {
+			cfg |= SCALER_CFG_FMT_YCRCB444_2P;
+		}
+		break;
+	case V4L2_PIX_FMT_YUV420:
+	case V4L2_PIX_FMT_YUV420M:
+	case V4L2_PIX_FMT_YVU420:
+	case V4L2_PIX_FMT_YVU420M:
+		cfg |= SCALER_CFG_FMT_YCBCR420_3P;
 		break;
 	default:
 		dev_err(sc->dev, "invalid pixelformat type\n");
@@ -650,12 +689,19 @@ void sc_hwset_flip_rotation(struct sc_dev *sc, u32 direction, int degree)
 	if (direction & SC_HFLIP)
 		cfg |= SCALER_FLIP_Y_EN;
 
+	/*
+	 * we expect that the direction of rotation is clockwise
+	 * but the Scaler does in counter clockwise.
+	 * Since the GScaler doest that in clockwise,
+	 * the following makes the direction of rotation by the Scaler
+	 * clockwise.
+	 */
 	cfg &= ~SCALER_ROT_MASK;
-	if (degree == 90)
+	if (degree == 270)
 		cfg |= SCALER_ROT_90;
 	else if (degree == 180)
 		cfg |= SCALER_ROT_180;
-	else if (degree == 270)
+	else if (degree == 90)
 		cfg |= SCALER_ROT_270;
 
 	writel(cfg, sc->regs + SCALER_ROT_CFG);
@@ -718,15 +764,42 @@ void sc_hwset_src_imgsize(struct sc_dev *sc, struct sc_frame *frame)
 	unsigned long cfg = 0;
 
 	cfg &= ~(SCALER_SRC_CSPAN_MASK | SCALER_SRC_YSPAN_MASK);
-	cfg |= frame->pix_mp.width;
+	cfg |= frame->width;
 
 	/*
 	 * TODO: C width should be half of Y width
 	 * but, how to get the diffferent c width from user
 	 * like AYV12 format
 	 */
-	if (frame->sc_fmt->num_comp >= 2)
-		cfg |= frame->pix_mp.width << 16;
+	if (frame->sc_fmt->num_comp == 2)
+		cfg |= frame->width << 16;
+	if (frame->sc_fmt->num_comp == 3) {
+		if (sc_fmt_is_ayv12(frame->sc_fmt->pixelformat))
+			cfg |= ALIGN(frame->width >> 1, 16) << 16;
+		else
+			cfg |= (frame->width >> 1) << 16;
+	}
+
+	writel(cfg, sc->regs + SCALER_SRC_SPAN);
+}
+
+void sc_hwset_intsrc_imgsize(struct sc_dev *sc, int num_comp, __u32 width)
+{
+	unsigned long cfg = 0;
+
+	cfg &= ~(SCALER_SRC_CSPAN_MASK | SCALER_SRC_YSPAN_MASK);
+	cfg |= width;
+
+	/*
+	 * TODO: C width should be half of Y width
+	 * but, how to get the diffferent c width from user
+	 * like AYV12 format
+	 */
+	if (num_comp == 2)
+		cfg |= width << 16;
+	if (num_comp == 3)
+		cfg |= (width >> 1) << 16;
+
 	writel(cfg, sc->regs + SCALER_SRC_SPAN);
 }
 
@@ -735,69 +808,98 @@ void sc_hwset_dst_imgsize(struct sc_dev *sc, struct sc_frame *frame)
 	unsigned long cfg = 0;
 
 	cfg &= ~(SCALER_DST_CSPAN_MASK | SCALER_DST_YSPAN_MASK);
-	cfg |= frame->pix_mp.width;
+	cfg |= frame->width;
 
 	/*
 	 * TODO: C width should be half of Y width
 	 * but, how to get the diffferent c width from user
 	 * like AYV12 format
 	 */
-	if (frame->sc_fmt->num_comp >= 2)
-		cfg |= frame->pix_mp.width << 16;
+	if (frame->sc_fmt->num_comp == 2)
+		cfg |= frame->width << 16;
+	if (frame->sc_fmt->num_comp == 3) {
+		if (sc_fmt_is_ayv12(frame->sc_fmt->pixelformat))
+			cfg |= ALIGN(frame->width >> 1, 16) << 16;
+		else
+			cfg |= (frame->width >> 1) << 16;
+	}
+
 	writel(cfg, sc->regs + SCALER_DST_SPAN);
 }
 
-void sc_hwset_src_crop(struct sc_dev *sc, struct v4l2_rect *rect)
+void sc_hwset_src_crop(struct sc_dev *sc, struct v4l2_rect *rect,
+		       struct sc_fmt *fmt)
 {
-	unsigned long cfg;
+	unsigned long cfg1, cfg2;
 
-	cfg = SCALER_SRC_YX(rect->left) | SCALER_SRC_YY(rect->top);
-	writel(cfg, sc->regs + SCALER_SRC_Y_POS);
+	cfg1 = SCALER_SRC_YX(rect->left) | SCALER_SRC_YY(rect->top);
+	writel(cfg1, sc->regs + SCALER_SRC_Y_POS);
 
-	cfg = SCALER_SRC_W(rect->width) | SCALER_SRC_H(rect->height);
-	writel(cfg, sc->regs + SCALER_SRC_WH);
+	cfg1 = SCALER_SRC_CX(rect->left, fmt->h_shift) |
+		SCALER_SRC_CY(rect->top, fmt->v_shift);
+	if (cfg1 & SCALER_SRC_C_POS_FRACTION)
+		dev_warn(sc->dev,
+			"Croping '%s' format @ %dx%d is not supported\n",
+			fmt->name, rect->left, rect->top);
+	writel(cfg1, sc->regs + SCALER_SRC_C_POS);
+
+	cfg2 = SCALER_SRC_W(rect->width) | SCALER_SRC_H(rect->height);
+	writel(cfg2, sc->regs + SCALER_SRC_WH);
 }
 
 void sc_hwset_dst_crop(struct sc_dev *sc, struct v4l2_rect *rect)
 {
-	unsigned long cfg;
+	unsigned long cfg1, cfg2;
 
-	cfg = SCALER_DST_X(rect->left) | SCALER_DST_Y(rect->top);
-	writel(cfg, sc->regs + SCALER_DST_POS);
+	cfg1 = SCALER_DST_X(rect->left) | SCALER_DST_Y(rect->top);
+	writel(cfg1, sc->regs + SCALER_DST_POS);
 
-	cfg = SCALER_DST_W(rect->width) | SCALER_DST_H(rect->height);
-	writel(cfg, sc->regs + SCALER_DST_WH);
+	cfg2 = SCALER_DST_W(rect->width) | SCALER_DST_H(rect->height);
+	writel(cfg2, sc->regs + SCALER_DST_WH);
 }
 
 void sc_hwset_src_addr(struct sc_dev *sc, struct sc_addr *addr)
 {
 	writel(addr->y, sc->regs + SCALER_SRC_Y_BASE);
-	writel(addr->c, sc->regs + SCALER_SRC_C_BASE);
+	writel(addr->cb, sc->regs + SCALER_SRC_CB_BASE);
+	if (!sc_ver_is_5a(sc))
+		writel(addr->cr, sc->regs + SCALER_SRC_CR_BASE);
 }
 
 void sc_hwset_dst_addr(struct sc_dev *sc, struct sc_addr *addr)
 {
 	writel(addr->y, sc->regs + SCALER_DST_Y_BASE);
-	writel(addr->c, sc->regs + SCALER_DST_C_BASE);
+	writel(addr->cb, sc->regs + SCALER_DST_CB_BASE);
+	if (!sc_ver_is_5a(sc))
+		writel(addr->cr, sc->regs + SCALER_DST_CR_BASE);
 }
 
 void sc_hwset_int_en(struct sc_dev *sc, u32 enable)
 {
 	unsigned long cfg = readl(sc->regs + SCALER_INT_EN);
+	int val;
+
+	val = sc_ver_is_5a(sc) ? \
+	      SCALER_INT_EN_FRAME_END : SCALER_INT_EN_ALL;
 
 	if (enable)
-		cfg |= SCALER_INT_EN_FRAME_END;
+		cfg |= val;
 	else
-		cfg &= ~SCALER_INT_EN_FRAME_END;
+		cfg &= ~val;
 
 	writel(cfg, sc->regs + SCALER_INT_EN);
+}
+
+int sc_hwget_int_status(struct sc_dev *sc)
+{
+	unsigned long cfg = readl(sc->regs + SCALER_INT_STATUS);
+	return cfg;
 }
 
 void sc_hwset_int_clear(struct sc_dev *sc)
 {
 	unsigned long cfg = readl(sc->regs + SCALER_INT_STATUS);
 
-	cfg |= SCALER_INT_STATUS_FRAME_END;
 	writel(cfg, sc->regs + SCALER_INT_STATUS);
 }
 
@@ -805,7 +907,7 @@ int sc_hwget_version(struct sc_dev *sc)
 {
 	unsigned long cfg = readl(sc->regs + SCALER_VER);
 
-	sc_dbg("This scaler version is 0x%lu\n", cfg);
+	sc_dbg("This scaler version is 0x%x\n", (unsigned int)cfg);
 	return cfg & 0xffff;
 }
 

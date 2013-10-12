@@ -22,7 +22,7 @@ void s3c_adc_phy_init(void)
 		reg = __raw_readl(EXYNOS5250_ADC_PHY_CONTROL);
 		reg |= EXYNOS5_ADC_PHY_ENABLE;
 		__raw_writel(reg, EXYNOS5250_ADC_PHY_CONTROL);
-	} else if (soc_is_exynos5410()) {
+	} else if (soc_is_exynos5410() || soc_is_exynos5420()) {
 		reg = __raw_readl(EXYNOS5410_ADC_PHY_CONTROL);
 		reg |= EXYNOS5_ADC_PHY_ENABLE;
 		__raw_writel(reg, EXYNOS5410_ADC_PHY_CONTROL);
@@ -38,7 +38,7 @@ void s3c_adc_phy_exit(void)
 		reg &= ~EXYNOS5_ADC_PHY_ENABLE;
 		reg |= EXYNOS5_ADC_PHY_ENABLE;
 		__raw_writel(reg, EXYNOS5250_ADC_PHY_CONTROL);
-	} else if (soc_is_exynos5410()) {
+	} else if (soc_is_exynos5410() || soc_is_exynos5420()) {
 		reg = __raw_readl(EXYNOS5410_ADC_PHY_CONTROL);
 		reg &= ~EXYNOS5_ADC_PHY_ENABLE;
 		__raw_writel(reg, EXYNOS5410_ADC_PHY_CONTROL);

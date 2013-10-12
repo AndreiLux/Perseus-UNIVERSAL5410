@@ -1,12 +1,12 @@
 /****************************************************************************
  *
- *	Copyright(c) 2012 Yamaha Corporation. All rights reserved.
+ *	Copyright(c) 2012-2013 Yamaha Corporation. All rights reserved.
  *
  *	Module		: mcdevprof.h
  *
  *	Description	: MC Driver device profile header
  *
- *	Version		: 1.0.0	2012.12.13
+ *	Version		: 2.0.0	2013.03.19
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.	In no event will the authors be held liable for any damages
@@ -36,7 +36,8 @@
 enum MCDRV_DEV_ID {
 	eMCDRV_DEV_ID_80_90H	= 0,
 	eMCDRV_DEV_ID_81_91H,
-	eMCDRV_DEV_ID_81_92H
+	eMCDRV_DEV_ID_81_92H,
+	eMCDRV_DEV_ID_89_92H
 };
 
 enum MCDRV_SLAVE_ADDR_KIND {

@@ -888,7 +888,7 @@ static const struct MCDRV_HSDET_INFO stHSDetInfo_Default = {
 	/*	bKey2OnDlyTim2	*/
 	0,
 	/*	bIrqType	*/
-	MCDRV_IRQTYPE_REF,
+	MCDRV_IRQTYPE_EX,
 	/*	bDetInv	*/
 	MCDRV_DET_IN_INV_INV,
 	/*	bHsDetMode	*/
@@ -962,7 +962,7 @@ static const struct MCDRV_HSDET_INFO stHSDetInfo_Suspend = {
 	/*	bKey2OnDlyTim2	*/
 	0,
 	/*	bIrqType	*/
-	MCDRV_IRQTYPE_REF,
+	MCDRV_IRQTYPE_EX,
 	/*	bDetInv	*/
 	MCDRV_DET_IN_INV_INV,
 	/*	bHsDetMode	*/
@@ -996,10 +996,10 @@ static const struct MCDRV_HSDET2_INFO stHSDet2Info_Default = {
 	MCDRV_IRQTYPE_REF,
 	MCDRV_IRQTYPE_REF,
 	MCDRV_IRQTYPE_REF,
+	MCDRV_IRQTYPE_NORMAL,
 	MCDRV_IRQTYPE_REF,
 	MCDRV_IRQTYPE_REF,
-	MCDRV_IRQTYPE_REF,
-	MCDRV_IRQTYPE_REF,
+	MCDRV_IRQTYPE_NORMAL,
 	MCDRV_IRQTYPE_REF,
 	MCDRV_IRQTYPE_REF
 };

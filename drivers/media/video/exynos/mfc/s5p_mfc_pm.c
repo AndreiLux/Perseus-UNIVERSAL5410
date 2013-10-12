@@ -133,8 +133,50 @@ err_g_clk:
 	return ret;
 }
 
+int s5p_mfc_set_clock_parent(struct s5p_mfc_dev *dev)
+{
+	struct clk *clk_child;
+	struct clk *clk_parent;
+	char *str_child = "aclk_333";
+	char *str_parent = "aclk_333_sw";
+
+	if ((dev->pdata->ip_ver == IP_VER_MFC_6A_0) ||
+			(dev->pdata->ip_ver == IP_VER_MFC_6A_1)) {
+		clk_child = clk_get(NULL, str_child);
+		if (IS_ERR(clk_child)) {
+			pr_err("failed to get %s clock\n", str_child);
+			return PTR_ERR(clk_child);
+		}
+
+		clk_parent = clk_get(NULL, str_parent);
+		if (IS_ERR(clk_parent)) {
+			clk_put(clk_child);
+			pr_err("failed to get %s clock\n", str_parent);
+			return PTR_ERR(clk_child);
+		}
+
+		if (clk_set_parent(clk_child, clk_parent)) {
+			clk_put(clk_child);
+			clk_put(clk_parent);
+			pr_err("Unable to set parent %s of clock %s.\n",
+					str_parent, str_child);
+			return PTR_ERR(clk_child);
+		}
+
+		clk_put(clk_child);
+		clk_put(clk_parent);
+	}
+
+	return 0;
+}
+
+#ifdef CONFIG_MFC_USE_BUS_DEVFREQ
+
+/* int_div_lock is only needed for EXYNOS5410 */
 #ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
 extern spinlock_t int_div_lock;
+#endif
+
 int s5p_mfc_clock_set_rate(struct s5p_mfc_dev *dev, unsigned long rate)
 {
 	struct clk *parent_clk = NULL;
@@ -150,13 +192,28 @@ int s5p_mfc_clock_set_rate(struct s5p_mfc_dev *dev, unsigned long rate)
 			ret = PTR_ERR(parent_clk);
 			goto err_g_clk;
 		}
-
-		spin_lock(&int_div_lock);
-		clk_set_rate(parent_clk, rate * 1000);
-		spin_unlock(&int_div_lock);
-
-		clk_put(parent_clk);
+	} else if ((dev->pdata->ip_ver == IP_VER_MFC_6A_0) ||
+		(dev->pdata->ip_ver == IP_VER_MFC_6A_1)) {
+		parent_clk = clk_get(dev->device, "aclk_333_dout");
+		if (IS_ERR(parent_clk)) {
+			mfc_err("failed to get parent clock aclk_333_dout.\n");
+			ret = PTR_ERR(parent_clk);
+			goto err_g_clk;
+		}
+	} else {
+		/* No need to set clock rate */
+		return 0;
 	}
+
+#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+	spin_lock(&int_div_lock);
+#endif
+	clk_set_rate(parent_clk, rate * 1000);
+#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+	spin_unlock(&int_div_lock);
+#endif
+
+	clk_put(parent_clk);
 
 	return 0;
 
@@ -180,7 +237,7 @@ int s5p_mfc_clock_on(void)
 	struct s5p_mfc_dev *dev = platform_get_drvdata(to_platform_device(pm->device));
 	unsigned long flags;
 
-#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+#ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 	s5p_mfc_clock_set_rate(dev, dev->curr_rate);
 #endif
 	ret = clk_enable(pm->clock);

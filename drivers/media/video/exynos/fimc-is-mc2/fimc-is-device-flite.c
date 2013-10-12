@@ -492,28 +492,28 @@ void flite_hw_set_status2(unsigned long flite_reg_base, u32 val)
 
 void flite_hw_set_start_addr(unsigned long flite_reg_base, u32 number, u32 addr)
 {
-	u32 target;
+	u32 target =0;
+
 	if (number == 0) {
 		target = flite_reg_base + 0x30;
-	} else if (number >= 1) {
+	} else {
 		number--;
 		target = flite_reg_base + 0x200 + (0x4*number);
-	} else
-		target = 0;
+	}
 
 	writel(addr, target);
 }
 
 u32 flite_hw_get_start_addr(unsigned long flite_reg_base, u32 number)
 {
-	u32 target;
+	u32 target = 0;
+
 	if (number == 0) {
 		target = flite_reg_base + 0x30;
-	} else if (number >= 1) {
+	} else {
 		number--;
 		target = flite_reg_base + 0x200 + (0x4*number);
-	} else
-		target = 0;
+	}
 
 	return readl(target);
 }
@@ -655,7 +655,7 @@ p_err:
 	return ret;
 }
 
-static u32 g_print_cnt = 0;
+static u32 g_print_cnt;
 #define LOG_INTERVAL_OF_DROPS 30
 static void tasklet_flite_str0(unsigned long data)
 {
@@ -729,7 +729,7 @@ static void tasklet_flite_str0(unsigned long data)
 	fimc_is_frame_process_head(framemgr, &frame);
 	if (frame) {
 #ifdef MEASURE_TIME
-#ifndef INTERNAL_TIME
+#ifdef EXTERNAL_TIME
 		do_gettimeofday(&frame->tzone[TM_FLITE_STR]);
 #endif
 #endif
@@ -790,7 +790,7 @@ static void tasklet_flite_str1(unsigned long data)
 	fimc_is_frame_process_head(framemgr, &frame);
 	if (frame) {
 #ifdef MEASURE_TIME
-#ifndef INTERNAL_TIME
+#ifdef EXTERNAL_TIME
 		do_gettimeofday(&frame->tzone[TM_FLITE_STR]);
 #endif
 #endif
@@ -826,13 +826,20 @@ static void tasklet_flite_end(unsigned long data)
 	pr_info("E%d %d\n", bdone, atomic_read(&flite->fcount));
 #endif
 
+#ifdef ENABLE_DTP
+	if (sensor->dtp_check) {
+		sensor->dtp_check = false;
+		del_timer(&sensor->dtp_timer);
+	}
+#endif
+
 	framemgr_e_barrier(framemgr, FMGR_IDX_1 + bdone);
 
 	if (test_bit(bdone, &flite->state)) {
 		fimc_is_frame_process_head(framemgr, &frame);
 		if (frame) {
 #ifdef MEASURE_TIME
-#ifndef INTERNAL_TIME
+#ifdef EXTERNAL_TIME
 			do_gettimeofday(&frame->tzone[TM_FLITE_END]);
 #endif
 #endif
@@ -1254,19 +1261,27 @@ int fimc_is_flite_stop(struct fimc_is_device_flite *flite, bool wait)
 	stop_fimc_lite(flite->regs);
 
 	dbg_back("waiting last capture\n");
-	ret = wait_event_timeout(flite->wait_queue,
-		(!wait || test_bit(FIMC_IS_FLITE_LAST_CAPTURE, &flite->state)),
-		FIMC_IS_FLITE_STOP_TIMEOUT);
-	if (!ret) {
-		/* forcely stop */
-		stop_fimc_lite(flite->regs);
-		set_bit(FIMC_IS_FLITE_LAST_CAPTURE, &flite->state);
-		err("last capture timeout:%s", __func__);
-		msleep(200);
-		flite_hw_force_reset(flite->regs);
-		ret = -ETIME;
+	if (wait) {
+		int timetowait;
+
+		timetowait = wait_event_timeout(flite->wait_queue,
+			test_bit(FIMC_IS_FLITE_LAST_CAPTURE, &flite->state),
+			FIMC_IS_FLITE_STOP_TIMEOUT);
+		if (!timetowait) {
+			/* forcely stop */
+			stop_fimc_lite(flite->regs);
+			set_bit(FIMC_IS_FLITE_LAST_CAPTURE, &flite->state);
+			err("last capture timeout:%s", __func__);
+			msleep(200);
+			flite_hw_force_reset(flite->regs);
+			ret = -ETIME;
+		}
 	} else {
-		ret = 0;
+		/*
+		 * DTP test can make iommu fault because senosr is streaming
+		 * therefore it need  force reset
+		 */
+		flite_hw_force_reset(flite->regs);
 	}
 
 	/* for preventing invalid memory access */
@@ -1304,67 +1319,4 @@ void fimc_is_flite_restart(struct fimc_is_device_flite *this,
 	flite_hw_set_output_dma(this->regs, true, queue);
 	flite_hw_set_last_capture_end_clear(this->regs);
 	flite_hw_set_capture_start(this->regs);
-}
-
-int fimc_is_flite_set_clk(int channel,
-	struct fimc_is_core *core,
-	struct fimc_is_device_flite *device_flite)
-{
-	int ret = 0;
-	char sensor_mclk[20];
-	struct platform_device *pdev;
-	struct clk *sclk_mout_isp_sensor = NULL;
-	struct clk *sclk_isp_sensor = NULL;
-	unsigned long isp_sensor;
-
-	pdev = core->pdev;
-
-	if (test_and_set_bit(channel, &device_flite->clk_state)) {
-		pr_debug("%s : already clk on", __func__);
-		goto exit;
-	}
-
-	/* SENSOR */
-	snprintf(sensor_mclk, sizeof(sensor_mclk), "sclk_isp_sensor%d", channel);
-	sclk_mout_isp_sensor = clk_get(&pdev->dev, "sclk_mout_isp_sensor");
-	if (IS_ERR(sclk_mout_isp_sensor)) {
-		pr_err("%s : clk_get(sclk_mout_isp_sensor) failed\n", __func__);
-		return PTR_ERR(sclk_mout_isp_sensor);
-	}
-
-	sclk_isp_sensor = clk_get(&pdev->dev, sensor_mclk);
-	if (IS_ERR(sclk_isp_sensor)) {
-		pr_err("%s : clk_get(sclk_isp_sensor0) failed\n", __func__);
-		return PTR_ERR(sclk_isp_sensor);
-	}
-
-	clk_set_parent(sclk_mout_isp_sensor, clk_get(&pdev->dev, "mout_ipll"));
-	clk_set_rate(sclk_isp_sensor, 24 * 1000000);
-
-	isp_sensor = clk_get_rate(sclk_isp_sensor);
-	pr_debug("isp_sensor : %ld\n", isp_sensor);
-
-	clk_put(sclk_mout_isp_sensor);
-	clk_put(sclk_isp_sensor);
-
-exit:
-	return ret;
-}
-
-int fimc_is_flite_put_clk(int channel,
-	struct fimc_is_core *core,
-	struct fimc_is_device_flite *device_flite)
-{
-	int ret = 0;
-	struct platform_device *pdev;
-
-	pdev = core->pdev;
-
-	if (!test_and_clear_bit(channel, &device_flite->clk_state)) {
-		pr_debug("%s : already clk off", __func__);
-		goto exit;
-	}
-
-exit:
-	return ret;
 }

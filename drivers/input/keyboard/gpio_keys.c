@@ -31,6 +31,16 @@
 #include <linux/spinlock.h>
 #include <linux/wakelock.h>
 
+#if defined(CONFIG_SEC_FACTORY)
+#define CONFIG_W1_KTHREAD
+#endif
+
+#if !defined(CONFIG_W1_KTHREAD)
+extern void w1_master_search(void);
+#endif
+
+extern int verification, fail_cnt;
+
 struct gpio_button_data {
 	struct gpio_keys_button *button;
 	struct input_dev *input;
@@ -45,12 +55,13 @@ struct gpio_button_data {
 	bool wakeup;
 #ifdef KEY_BOOSTER
 	bool key_dvfs_lock_status;
+	bool dvfs_signal;
 	struct delayed_work key_work_dvfs_off;
 	struct delayed_work key_work_dvfs_chg;
 	struct mutex key_dvfs_lock;
-	struct pm_qos_request key_cpu_qos;
-	struct pm_qos_request key_mif_qos;
-	struct pm_qos_request key_int_qos;
+	struct pm_qos_request cpu_qos;
+	struct pm_qos_request mif_qos;
+	struct pm_qos_request int_qos;
 #endif
 };
 
@@ -70,6 +81,55 @@ struct gpio_keys_drvdata {
 #endif
 	struct gpio_button_data data[0];
 };
+
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+#if defined(CONFIG_N1A)
+
+extern unsigned int lpcharge;
+
+static int set_auto_power_on_off_powerkey_val = 0;
+
+static int __init get_auto_power_on_off_powerkey_set(char *str)
+{
+	get_option(&str, &set_auto_power_on_off_powerkey_val);
+	return 0;
+}
+early_param("auto_powerkey", get_auto_power_on_off_powerkey_set);
+#endif
+#endif
+#if !defined(CONFIG_SEC_FACTORY)
+static int check_verification_status(void);
+
+static int check_verification_status(void)
+{
+	int limit_cnt;
+#if defined(CONFIG_W1_KTHREAD)
+	limit_cnt = 4;
+#else
+	limit_cnt = 0;
+#endif
+
+#if !defined(CONFIG_W1_KTHREAD)
+	w1_master_search();
+	/* one more chance to verify */
+	if (verification != 0)
+		w1_master_search();
+#endif
+
+	if (verification != 0) {
+		if (fail_cnt > limit_cnt) {
+			printk("%s : fail counter is over %d\n",__func__, limit_cnt);
+			return -1;
+		} else {
+			printk("%s : Not verified, but ...\n",__func__);
+			return 0;
+		}
+	} else {
+		printk("%s : Verified\n",__func__);
+		return 0;
+	}
+}
+#endif
 
 /*
  * SYSFS interface for enabling/disabling keys and switches:
@@ -431,6 +491,19 @@ static struct attribute_group sec_key_attr_group = {
 };
 
 #ifdef KEY_BOOSTER
+
+#define set_qos(req, pm_qos_class, value) { \
+	if (pm_qos_request_active(req)) \
+		pm_qos_update_request(req, value); \
+	else \
+		pm_qos_add_request(req, pm_qos_class, value); \
+}
+
+#define remove_qos(req) { \
+	if (pm_qos_request_active(req)) \
+		pm_qos_remove_request(req); \
+}
+
 static void gpio_key_change_dvfs_lock(struct work_struct *work)
 {
 	struct gpio_button_data *bdata =
@@ -439,10 +512,13 @@ static void gpio_key_change_dvfs_lock(struct work_struct *work)
 
 	mutex_lock(&bdata->key_dvfs_lock);
 
-	if (pm_qos_request_active(&bdata->key_mif_qos)) {
-		pm_qos_update_request(&bdata->key_mif_qos, 400000); /* MIF 400MHz */
-		printk(KERN_DEBUG "[key] change_mif_dvfs_lock");
-	}
+	set_qos(&bdata->cpu_qos, PM_QOS_CPU_FREQ_MIN, KEY_BOOSTER_CPU_FREQ1);
+	set_qos(&bdata->mif_qos, PM_QOS_BUS_THROUGHPUT, KEY_BOOSTER_MIF_FREQ1);
+	set_qos(&bdata->int_qos, PM_QOS_DEVICE_THROUGHPUT, KEY_BOOSTER_INT_FREQ1);
+
+	bdata->key_dvfs_lock_status = true;
+	bdata->dvfs_signal = false;
+	printk(KERN_DEBUG"keys:DVFS On\n");
 
 	mutex_unlock(&bdata->key_dvfs_lock);
 }
@@ -455,14 +531,15 @@ static void gpio_key_set_dvfs_off(struct work_struct *work)
 
 	mutex_lock(&bdata->key_dvfs_lock);
 
-	pm_qos_remove_request(&bdata->key_cpu_qos);
-	pm_qos_remove_request(&bdata->key_mif_qos);
-	pm_qos_remove_request(&bdata->key_int_qos);
+	remove_qos(&bdata->cpu_qos);
+	remove_qos(&bdata->mif_qos);
+	remove_qos(&bdata->int_qos);
 
 	bdata->key_dvfs_lock_status = false;
+	bdata->dvfs_signal = false;
 	mutex_unlock(&bdata->key_dvfs_lock);
 
-	printk(KERN_DEBUG "[key] DVFS Off\n");
+	printk(KERN_DEBUG "keys:DVFS Off\n");
 }
 
 static void gpio_key_set_dvfs_lock(struct gpio_button_data *bdata,
@@ -470,22 +547,21 @@ static void gpio_key_set_dvfs_lock(struct gpio_button_data *bdata,
 {
 	mutex_lock(&bdata->key_dvfs_lock);
 	if (on == 0) {
-		if (bdata->key_dvfs_lock_status) {
+		if (bdata->dvfs_signal) {
+			cancel_delayed_work(&bdata->key_work_dvfs_chg);
+			schedule_delayed_work(&bdata->key_work_dvfs_chg, 0);
 			schedule_delayed_work(&bdata->key_work_dvfs_off,
-				msecs_to_jiffies(TOUCH_BOOSTER_OFF_TIME));
+				msecs_to_jiffies(KEY_BOOSTER_OFF_TIME));
+		} else if (bdata->key_dvfs_lock_status) {
+			schedule_delayed_work(&bdata->key_work_dvfs_off,
+				msecs_to_jiffies(KEY_BOOSTER_OFF_TIME));
 		}
 	} else if (on == 1) {
 		cancel_delayed_work(&bdata->key_work_dvfs_off);
-		if (!bdata->key_dvfs_lock_status) {
-			pm_qos_add_request(&bdata->key_cpu_qos, PM_QOS_CPU_FREQ_MIN, 600000); /* CPU KFC 1.2GHz */
-			pm_qos_add_request(&bdata->key_mif_qos, PM_QOS_BUS_THROUGHPUT, 800000); /* MIF 800MHz */
-			pm_qos_add_request(&bdata->key_int_qos, PM_QOS_DEVICE_THROUGHPUT, 200000); /* INT 200MHz */
-
+		if (!bdata->key_dvfs_lock_status && !bdata->dvfs_signal) {
 			schedule_delayed_work(&bdata->key_work_dvfs_chg,
-							msecs_to_jiffies(TOUCH_BOOSTER_CHG_TIME));
-
-			bdata->key_dvfs_lock_status = true;
-			printk(KERN_DEBUG "[key] DVFS On\n");
+							msecs_to_jiffies(KEY_BOOSTER_ON_TIME));
+			bdata->dvfs_signal = true;
 		}
 	} else if (on == 2) {
 		if (bdata->key_dvfs_lock_status) {
@@ -510,7 +586,22 @@ static int gpio_key_init_dvfs(struct gpio_button_data *bdata)
 }
 #endif
 
-static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+#if defined(CONFIG_N1A)
+static struct timer_list poweroff_keypad_timer;
+static void poweroff_keypad_timer_handler(unsigned long data)
+{
+	struct gpio_button_data *bdata	= (struct gpio_button_data *)data;
+	struct gpio_keys_button *button = bdata->button;
+	struct input_dev *input = bdata->input;
+	unsigned int type = button->type ?: EV_KEY;
+	printk("force to press powerkey.\n");
+	input_event(input, type, KEY_POWER, 1);
+	input_sync(input);
+}
+#endif
+#endif
+static void gpio_keys_report_event(struct gpio_button_data *bdata)
 {
 	const struct gpio_keys_button *button = bdata->button;
 	struct input_dev *input = bdata->input;
@@ -530,20 +621,28 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 		if (bdata->wakeup && !state) {
 			input_event(input, type, button->code, !state);
 			input_sync(input);
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+			printk(KERN_DEBUG"keys:f code %d, state %d\n",
+				button->code, !state);
+#else
 			if (button->code == KEY_POWER)
-				printk(KERN_DEBUG "[keys] f PWR %d\n", !state);
+				printk(KERN_DEBUG "keys:f PWR %d\n", !state);
+#endif
 		}
 
 		bdata->key_state = !!state;
 		bdata->wakeup = false;
 
 		report_state = irqd_is_wakeup_set(&desc->irq_data) ? 1 : !!state;
-
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+		printk(KERN_DEBUG"keys:code %d, state %d\n",
+			button->code, report_state);
+#endif
 		input_event(input, type, button->code, report_state);
 		input_sync(input);
 
 		if (button->code == KEY_POWER && prev_state != report_state) {
-			printk(KERN_DEBUG "[keys]PWR %d\n", report_state);
+			printk(KERN_DEBUG "keys:PWR %d\n", report_state);
 			prev_state = report_state;
 		}
 
@@ -559,7 +658,7 @@ static void gpio_keys_gpio_work_func(struct work_struct *work)
 	struct gpio_button_data *bdata =
 		container_of(work, struct gpio_button_data, work);
 
-	gpio_keys_gpio_report_event(bdata);
+	gpio_keys_report_event(bdata);
 }
 
 static void gpio_keys_gpio_timer(unsigned long _data)
@@ -750,7 +849,7 @@ fail:
 }
 
 #ifdef CONFIG_SENSORS_HALL
-#ifdef CONFIG_SEC_TSP_FACTORY
+#ifdef CONFIG_SEC_FACTORY
 static void flip_cover_work(struct work_struct *work)
 {
 	bool first,second;
@@ -760,15 +859,20 @@ static void flip_cover_work(struct work_struct *work)
 
 	first = gpio_get_value(ddata->gpio_flip_cover);
 
-	printk(KERN_DEBUG "[keys] %s #1 : %d\n",
+	printk(KERN_DEBUG "keys:%s #1 : %d\n",
 		__func__, first);
 
 	msleep(50);
 
 	second = gpio_get_value(ddata->gpio_flip_cover);
 
-	printk(KERN_DEBUG "[keys] %s #2 : %d\n",
+#ifdef CONFIG_W1_SLAVE_DS28EL15
+	printk(KERN_DEBUG "[keys] %s : %d, Verification(%d)\n",
+		__func__, ddata->flip_cover, verification);
+#else
+	printk(KERN_DEBUG "keys:%s #2 : %d\n",
 		__func__, second);
+#endif
 
 	if(first == second && ddata->flip_cover != first) {
 		ddata->flip_cover = first;
@@ -787,8 +891,15 @@ static void flip_cover_work(struct work_struct *work)
 
 	first = gpio_get_value(ddata->gpio_flip_cover);
 
-	printk(KERN_DEBUG "[keys] %s #1 : %d\n",
+#ifdef CONFIG_W1_SLAVE_DS28EL15
+	printk(KERN_DEBUG "[keys] %s : %d, Verification(%d)\n",
+		__func__, ddata->flip_cover, verification);
+
+	if (check_verification_status() != 0 && first == 0)	return;
+#else
+	printk(KERN_DEBUG "keys:%s #1 : %d\n",
 		__func__, first);
+#endif
 
 	if(ddata->flip_cover != first) {
 		ddata->flip_cover = first;
@@ -799,21 +910,22 @@ static void flip_cover_work(struct work_struct *work)
 }
 #endif
 
-#if !defined(CONFIG_MACH_JA_KOR_SKT) && !defined(CONFIG_MACH_JA_KOR_KT)\
-&& !defined(CONFIG_MACH_JA_KOR_LGT)
-static irqreturn_t flip_cover_detect(int irq, void *dev_id)
+static void __flip_cover_detect(struct gpio_keys_drvdata *ddata, bool flip_status)
 {
-	struct gpio_keys_drvdata *ddata = dev_id;
-
 	cancel_delayed_work_sync(&ddata->flip_cover_dwork);
-#ifdef CONFIG_SEC_TSP_FACTORY
+#ifdef CONFIG_SEC_FACTORY
 	schedule_delayed_work(&ddata->flip_cover_dwork, HZ / 20);
 #else
-	schedule_delayed_work(&ddata->flip_cover_dwork, 0);
+	if(flip_status)	{
+		wake_lock_timeout(&ddata->flip_wake_lock, HZ * 45 / 100);
+		schedule_delayed_work(&ddata->flip_cover_dwork, HZ * 4 / 10);
+	} else {
+		wake_unlock(&ddata->flip_wake_lock);
+		schedule_delayed_work(&ddata->flip_cover_dwork, 0);
+	}
 #endif
-	return IRQ_HANDLED;
 }
-#else
+
 static irqreturn_t flip_cover_detect(int irq, void *dev_id)
 {
 	bool flip_status;
@@ -821,54 +933,22 @@ static irqreturn_t flip_cover_detect(int irq, void *dev_id)
 
 	flip_status = gpio_get_value(ddata->gpio_flip_cover);
 
-	printk(KERN_DEBUG "[keys] %s flip_status : %d\n",
+	printk(KERN_DEBUG "keys:%s flip_status : %d\n",
 		 __func__, flip_status);
 
-	cancel_delayed_work_sync(&ddata->flip_cover_dwork);
-#ifdef CONFIG_SEC_TSP_FACTORY
-	schedule_delayed_work(&ddata->flip_cover_dwork, HZ / 20);
-#else
-	if(flip_status)
-	{
-		wake_lock_timeout(&ddata->flip_wake_lock, HZ * 45 / 100);
-		schedule_delayed_work(&ddata->flip_cover_dwork, HZ * 4 / 10);
-	}
-	else
-	{
-		wake_unlock(&ddata->flip_wake_lock);
-		schedule_delayed_work(&ddata->flip_cover_dwork, 0);
-	}
-#endif
+	__flip_cover_detect(ddata, flip_status);
+
 	return IRQ_HANDLED;
 }
-#endif
-#endif
+#endif /* CONFIG_SENSORS_HALL */
 
 static int gpio_keys_open(struct input_dev *input)
 {
 	struct gpio_keys_drvdata *ddata = input_get_drvdata(input);
 
 #ifdef CONFIG_SENSORS_HALL
-	int ret = 0;
-	int irq = gpio_to_irq(ddata->gpio_flip_cover);
-
-	INIT_DELAYED_WORK(&ddata->flip_cover_dwork, flip_cover_work);
-
-	ret =
-		request_threaded_irq(
-		irq, NULL,
-		flip_cover_detect,
-		IRQF_DISABLED | IRQF_TRIGGER_RISING |
-		IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-		"flip_cover", ddata);
-	if (ret < 0) {
-		printk(KERN_ERR
-		"keys: failed to request flip cover irq %d gpio %d\n",
-		irq, ddata->gpio_flip_cover);
-	} else {
-		/* update the current status */
-		schedule_delayed_work(&ddata->flip_cover_dwork, HZ / 2);
-	}
+	/* update the current status */
+	schedule_delayed_work(&ddata->flip_cover_dwork, HZ / 2);
 #endif
 
 	return ddata->enable ? ddata->enable(input->dev.parent) : 0;
@@ -882,6 +962,9 @@ static void gpio_keys_close(struct input_dev *input)
 	if (ddata->disable)
 		ddata->disable(input->dev.parent);
 
+#ifdef CONFIG_SENSORS_HALL
+//	cancel_delayed_work_sync(&ddata->flip_cover_dwork);
+#endif
 #ifdef KEY_BOOSTER
 	for (i = 0; i < ddata->n_buttons; i++) {
 		struct gpio_button_data *bdata = &ddata->data[i];
@@ -916,7 +999,6 @@ static int gpio_keys_get_devtree_pdata(struct device *dev,
 	pdata->rep = !!of_get_property(node, "autorepeat", NULL);
 
 	/* First count the subnodes */
-	pdata->nbuttons = 0;
 	pp = NULL;
 	while ((pp = of_get_next_child(node, pp)))
 		pdata->nbuttons++;
@@ -1000,6 +1082,33 @@ static void gpio_remove_key(struct gpio_button_data *bdata)
 	if (gpio_is_valid(bdata->button->gpio))
 		gpio_free(bdata->button->gpio);
 }
+
+#ifdef CONFIG_SENSORS_HALL
+static void init_hall_ic_irq(struct input_dev *input)
+{
+	struct gpio_keys_drvdata *ddata = input_get_drvdata(input);
+
+	int ret = 0;
+	int irq = gpio_to_irq(ddata->gpio_flip_cover);
+
+	INIT_DELAYED_WORK(&ddata->flip_cover_dwork, flip_cover_work);
+
+	ret =
+		request_threaded_irq(
+		irq, NULL,
+		flip_cover_detect,
+		IRQF_DISABLED | IRQF_TRIGGER_RISING |
+		IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+		"flip_cover", ddata);
+	if (ret < 0) {
+		printk(KERN_ERR
+		"keys: failed to request flip cover irq %d gpio %d\n",
+		irq, ddata->gpio_flip_cover);
+	} else {
+		pr_info("%s : success\n", __func__);
+	}
+}
+#endif
 
 static int __devinit gpio_keys_probe(struct platform_device *pdev)
 {
@@ -1104,6 +1213,10 @@ static int __devinit gpio_keys_probe(struct platform_device *pdev)
 		goto fail2;
 	}
 
+#ifdef CONFIG_SENSORS_HALL
+	init_hall_ic_irq(input);
+#endif
+
 	error = input_register_device(input);
 	if (error) {
 		dev_err(dev, "Unable to register input device, error: %d\n",
@@ -1111,8 +1224,28 @@ static int __devinit gpio_keys_probe(struct platform_device *pdev)
 		goto fail3;
 	}
 
+	/* get current state of buttons */
+	for (i = 0; i < pdata->nbuttons; i++)
+		gpio_keys_report_event(&ddata->data[i]);
+	input_sync(input);
+
 	device_init_wakeup(&pdev->dev, wakeup);
 
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+#if defined(CONFIG_N1A)
+	if(set_auto_power_on_off_powerkey_val) {
+		init_timer(&poweroff_keypad_timer);
+		poweroff_keypad_timer.function = poweroff_keypad_timer_handler;
+		poweroff_keypad_timer.data = (unsigned long)&ddata->data[0];
+		if(lpcharge)
+			poweroff_keypad_timer.expires = jiffies + 20*HZ;
+		else
+			poweroff_keypad_timer.expires = jiffies + 40*HZ;
+		add_timer(&poweroff_keypad_timer);
+		printk("AUTO_POWER_ON_OFF_FLAG Test Start !!!\n");
+	}
+#endif
+#endif
 	return 0;
 
  fail3:
@@ -1198,12 +1331,8 @@ static int gpio_keys_resume(struct device *dev)
 			disable_irq_wake(bdata->irq);
 
 		if (gpio_is_valid(bdata->button->gpio))
-			gpio_keys_gpio_report_event(bdata);
+			gpio_keys_report_event(bdata);
 	}
-#ifdef disable_irq_wake
-	if (device_may_wakeup(dev))
-		disable_irq_wake(ddata->irq_flip_cover);
-#endif		
 	input_sync(ddata->input);
 
 	return 0;

@@ -282,6 +282,17 @@ __v7_setup:
 	stmia	r12, {r0-r3}
 	mov	r3, #0
 #endif
+/* Enable Non-cacheable streaming enhancement */
+	mrc	p15, 0, r10, c1, c0, 1		@ read aux control register
+	orr	r10, r10, #1 << 24		@ set bit #24
+#ifdef CONFIG_ARM_TRUSTZONE
+	ldr	r0, =SMC_CMD_REG
+	ldr	r1, =SMC_REG_ID_CP15(1, 0, 0, 1)
+	mov	r2, r10
+	smc	0
+#else
+	mcr	p15, 0, r10, c1, c0, 1		@ write aux control register
+#endif
 #ifdef CONFIG_ARM_ERRATA_773022
 	teq	r6, #0x4			@ present in r0p4
 	mrceq	p15, 0, r10, c1, c0, 1		@ read aux control register

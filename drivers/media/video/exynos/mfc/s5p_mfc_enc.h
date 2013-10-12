@@ -15,7 +15,7 @@
 
 #define MFC_ENC_AVG_FPS_MODE
 
-#define ENC_HIGH_FPS	(70000)
+#define ENC_HIGH_FPS	(48000)
 #define ENC_MAX_FPS	(120000)
 #define ENC_AVG_FRAMES	(10)
 

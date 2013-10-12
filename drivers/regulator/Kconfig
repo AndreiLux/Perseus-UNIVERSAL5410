@@ -165,12 +165,6 @@ config REGULATOR_MAX77686
 	  The provided regulator is suitable for Exynos-4 and Exynos-5
 	  chips to control VARM, VINT voltages and the other LDOs.
 
-config REGULATOR_MAX77693
-        tristate "Maxim 777693 regulator"
-        depends on MFD_MAX77693
-        help
-          This driver control a Maxsim 77693 regulator.
-
 config REGULATOR_MAX8649
 	tristate "Maxim 8649 voltage regulator"
 	depends on I2C

@@ -22,6 +22,7 @@
 
 #include <linux/videodev2.h>
 #include <linux/videodev2_exynos_media.h>
+#include <mach/videonode.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-mem2mem.h>
 #include <media/v4l2-mediabus.h>
@@ -39,6 +40,9 @@
 
 #define JPEG_NUM_INST		4
 #define JPEG_MAX_PLANE		3
+
+#define jpeg_ver_is_hx(jpeg)		((jpeg)->ver == 0x75)
+#define jpeg_ver_is_hx2(jpeg)		((jpeg)->ver == 0x7b)
 
 enum jpeg_clk_mode {
 	JPEG_CMOD_HALF,
@@ -95,6 +99,7 @@ enum jpeg_frame_format {
 	YCRCB_420_2P_M,
 	RGB_565,
 	RGB_888,
+	ARGB_8888,
 	GRAY,
 };
 
@@ -104,6 +109,7 @@ enum jpeg_stream_format {
 	JPEG_420,	/* decode input, encode output */
 	JPEG_444,	/* decode input*/
 	JPEG_GRAY,	/* decode input*/
+	JPEG_411,	/* decode input*/
 	JPEG_RESERVED,
 };
 
@@ -111,6 +117,7 @@ enum jpeg_scale_value {
 	JPEG_SCALE_NORMAL,
 	JPEG_SCALE_2,
 	JPEG_SCALE_4,
+	JPEG_SCALE_8,
 };
 
 enum jpeg_interface {
@@ -120,6 +127,8 @@ enum jpeg_interface {
 
 enum jpeg_node_type {
 	JPEG_NODE_INVALID = -1,
+	JPEG2_HX_NODE_DECODER = 11,
+	JPEG2_HX_NODE_ENCODER = 12,
 	JPEG_HX_NODE_DECODER = 13,
 	JPEG_HX_NODE_ENCODER = 14,
 };
@@ -166,6 +175,13 @@ struct jpeg_enc_param {
 	enum jpeg_img_quality_level quality;
 };
 
+struct jpeg_frame {
+	struct jpeg_fmt		*jpeg_fmt;
+	unsigned int		width;
+	unsigned int		height;
+	__u32			pixelformat;
+};
+
 struct jpeg_ctx {
 	spinlock_t			slock;
 	struct jpeg_dev		*dev;
@@ -176,6 +192,8 @@ struct jpeg_ctx {
 		struct jpeg_enc_param	enc_param;
 	} param;
 
+	struct jpeg_frame	s_frame;
+	struct jpeg_frame	d_frame;
 	int			index;
 	unsigned long		payload[VIDEO_MAX_PLANES];
 };
@@ -210,7 +228,8 @@ struct jpeg_dev {
 	struct clk		*sclk_clk;
 
 	struct mutex		lock;
-
+	int			ver;
+	int			id;
 	int			irq_no;
 	enum jpeg_result	irq_ret;
 	wait_queue_head_t	 wq;
@@ -232,6 +251,25 @@ enum jpeg_log {
 	JPEG_LOG_WARN		= 0x0010,
 	JPEG_LOG_ERR		= 0x0001,
 };
+
+static inline struct jpeg_frame *ctx_get_frame(struct jpeg_ctx *ctx,
+						enum v4l2_buf_type type)
+{
+	struct jpeg_frame *frame;
+
+	if (V4L2_TYPE_IS_MULTIPLANAR(type)) {
+		if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+			frame = &ctx->s_frame;
+		else
+			frame = &ctx->d_frame;
+	} else {
+		dev_err(ctx->dev->bus_dev,
+				"Wrong V4L2 buffer type %d\n", type);
+		return ERR_PTR(-EINVAL);
+	}
+
+	return frame;
+}
 
 /* debug macro */
 #define JPEG_LOG_DEFAULT       (JPEG_LOG_WARN | JPEG_LOG_ERR)

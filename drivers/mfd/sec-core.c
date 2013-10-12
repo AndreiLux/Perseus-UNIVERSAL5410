@@ -63,62 +63,64 @@ static struct mfd_cell s2mps11_devs[] = {
 	},
 };
 
-int sec_reg_read(struct sec_pmic_dev *sec_pmic, unsigned int reg, void *dest)
+int sec_reg_read(struct sec_pmic_dev *sec_pmic, u32 reg, void *dest)
 {
 	return regmap_read(sec_pmic->regmap, reg, dest);
 }
 EXPORT_SYMBOL_GPL(sec_reg_read);
 
-int sec_bulk_read(struct sec_pmic_dev *sec_pmic, unsigned int reg, int count, u8 *buf)
+int sec_bulk_read(struct sec_pmic_dev *sec_pmic, u32 reg, int count, u8 *buf)
 {
 	return regmap_bulk_read(sec_pmic->regmap, reg, buf, count);
 }
 EXPORT_SYMBOL_GPL(sec_bulk_read);
 
-int sec_reg_write(struct sec_pmic_dev *sec_pmic, unsigned int reg, unsigned int value)
+int sec_reg_write(struct sec_pmic_dev *sec_pmic, u32 reg, u32 value)
 {
 	return regmap_write(sec_pmic->regmap, reg, value);
 }
 EXPORT_SYMBOL_GPL(sec_reg_write);
 
-int sec_bulk_write(struct sec_pmic_dev *sec_pmic, unsigned int reg, int count, u8 *buf)
+int sec_bulk_write(struct sec_pmic_dev *sec_pmic, u32 reg, int count, u8 *buf)
 {
 	return regmap_raw_write(sec_pmic->regmap, reg, buf, count);
 }
 EXPORT_SYMBOL_GPL(sec_bulk_write);
 
-int sec_reg_update(struct sec_pmic_dev *sec_pmic, unsigned int reg, unsigned int val, unsigned int mask)
+int sec_reg_update(struct sec_pmic_dev *sec_pmic, u32 reg, u32 val, u32 mask)
 {
 	return regmap_update_bits(sec_pmic->regmap, reg, mask, val);
 }
 EXPORT_SYMBOL_GPL(sec_reg_update);
 
-int sec_rtc_read(struct sec_pmic_dev *sec_pmic, unsigned int reg, void *dest)
+int sec_rtc_read(struct sec_pmic_dev *sec_pmic, u32 reg, void *dest)
 {
 	return regmap_read(sec_pmic->rtc_regmap, reg, dest);
 }
 EXPORT_SYMBOL_GPL(sec_rtc_read);
 
-int sec_rtc_bulk_read(struct sec_pmic_dev *sec_pmic, unsigned int reg, int count, u8 *buf)
+int sec_rtc_bulk_read(struct sec_pmic_dev *sec_pmic, u32 reg, int count,
+		u8 *buf)
 {
 	return regmap_bulk_read(sec_pmic->rtc_regmap, reg, buf, count);
 }
 EXPORT_SYMBOL_GPL(sec_rtc_bulk_read);
 
-int sec_rtc_write(struct sec_pmic_dev *sec_pmic, unsigned int reg, unsigned int value)
+int sec_rtc_write(struct sec_pmic_dev *sec_pmic, u32 reg, u32 value)
 {
 	return regmap_write(sec_pmic->rtc_regmap, reg, value);
 }
 EXPORT_SYMBOL_GPL(sec_rtc_write);
 
-int sec_rtc_bulk_write(struct sec_pmic_dev *sec_pmic, unsigned int reg, int count, u8 *buf)
+int sec_rtc_bulk_write(struct sec_pmic_dev *sec_pmic, u32 reg, int count,
+		u8 *buf)
 {
 	return regmap_raw_write(sec_pmic->rtc_regmap, reg, buf, count);
 }
 EXPORT_SYMBOL_GPL(sec_rtc_bulk_write);
 
-int sec_rtc_update(struct sec_pmic_dev *sec_pmic, unsigned int reg, unsigned int val,
-		unsigned int mask)
+int sec_rtc_update(struct sec_pmic_dev *sec_pmic, u32 reg, u32 val,
+		u32 mask)
 {
 	return regmap_update_bits(sec_pmic->rtc_regmap, reg, mask, val);
 }
@@ -135,6 +137,11 @@ static int sec_pmic_probe(struct i2c_client *i2c,
 	struct sec_pmic_platform_data *pdata = i2c->dev.platform_data;
 	struct sec_pmic_dev *sec_pmic;
 	int ret = 0;
+
+	if (!pdata) {
+		dev_err(&i2c->dev, "No platform data found\n");
+		return -EIO;
+	}
 
 	sec_pmic = devm_kzalloc(&i2c->dev, sizeof(struct sec_pmic_dev),
 				GFP_KERNEL);

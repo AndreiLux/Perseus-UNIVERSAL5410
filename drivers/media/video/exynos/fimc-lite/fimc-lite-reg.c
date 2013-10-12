@@ -50,6 +50,7 @@ void flite_hw_reset(struct flite_dev *dev)
 	writel(cfg, dev->regs + FLITE_REG_CIGCTRL);
 
 	do {
+		cfg = readl(dev->regs + FLITE_REG_CIGCTRL);
 		if (cfg & FLITE_REG_CIGCTRL_SWRST_RDY)
 			break;
 		usleep_range(1000, 5000);

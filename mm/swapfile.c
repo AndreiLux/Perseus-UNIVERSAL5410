@@ -222,7 +222,6 @@ static unsigned long scan_swap_map(struct swap_info_struct *si,
 			si->cluster_nr = SWAPFILE_CLUSTER - 1;
 			goto checks;
 		}
-#ifndef CONFIG_SWAP_DISABLE_RUNTIME_DISCARD
 		if (si->flags & SWP_DISCARDABLE) {
 			/*
 			 * Start range check on racing allocations, in case
@@ -236,7 +235,6 @@ static unsigned long scan_swap_map(struct swap_info_struct *si,
 			si->lowest_alloc = si->max;
 			si->highest_alloc = 0;
 		}
-#endif
 		spin_unlock(&swap_lock);
 
 		/*

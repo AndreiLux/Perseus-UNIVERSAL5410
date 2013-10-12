@@ -25,7 +25,7 @@
 
 #include <linux/notifier.h>
 #include <linux/sii8240.h>
-#include "board-universal5410.h"
+#include "board-universal5420.h"
 
 #ifdef CONFIG_SWITCH
 #include <linux/switch.h>
@@ -56,8 +56,29 @@ static struct switch_dev switch_dock = {
 #include <linux/i2c/touchkey_i2c.h>
 #endif
 
+#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI
+#include <linux/i2c/synaptics_rmi.h>
+#endif
+#ifdef CONFIG_TOUCHSCREEN_ATMEL_MXTS
+#include <linux/i2c/mxts.h>
+#endif
+
 struct device *switch_dev;
 EXPORT_SYMBOL(switch_dev);
+
+#ifdef SYNAPTICS_RMI_INFORM_CHARGER
+struct synaptics_rmi_callbacks *charger_callbacks;
+void synaptics_tsp_charger_infom(int cable_type)
+{
+	if (charger_callbacks && charger_callbacks->inform_charger)
+		charger_callbacks->inform_charger(charger_callbacks, cable_type);
+}
+void synaptics_tsp_register_callback(struct synaptics_rmi_callbacks *cb)
+{
+	charger_callbacks = cb;
+	pr_info("%s: [synaptics] charger callback!\n", __func__);
+}
+#endif
 
 /* charger cable state */
 bool is_cable_attached;
@@ -65,6 +86,9 @@ bool is_jig_attached;
 
 #ifdef CONFIG_MFD_MAX77803
 extern int g_usbvbus;
+#endif
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+extern u8    usb30en;
 #endif
 static ssize_t switch_show_vbus(struct device *dev,
 				      struct device_attribute *attr, char *buf)
@@ -137,8 +161,8 @@ DEVICE_ATTR(disable_vbus, 0664, switch_show_vbus,
 #ifdef CONFIG_TARGET_LOCALE_KOR
 static void max77803_set_vbus_state(int state);
 struct device *usb_lock;
-int is_usb_locked;
-EXPORT_SYMBOL(is_usb_locked);
+static int is_usb_locked;
+
 static ssize_t switch_show_usb_lock(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -253,11 +277,15 @@ int max77803_muic_charger_cb(enum cable_type_muic cable_type)
 	}
 
 #if defined(CONFIG_MACH_SLP_NAPLES) || defined(CONFIG_MACH_MIDAS) \
-		|| defined(CONFIG_MACH_GC1) || defined(CONFIG_MACH_T0)
+		|| defined(CONFIG_MACH_GC1) || defined(CONFIG_MACH_T0) \
+		|| defined(CONFIG_V1A) || defined(CONFIG_N1A)
 	tsp_charger_infom(is_cable_attached);
 #endif
 #if defined(CONFIG_MACH_JA)
 	touchkey_charger_infom(is_cable_attached);
+#endif
+#ifdef SYNAPTICS_RMI_INFORM_CHARGER
+	synaptics_tsp_charger_infom(cable_type);
 #endif
 
 	/*  charger setting */
@@ -297,13 +325,13 @@ int max77803_muic_charger_cb(enum cable_type_muic cable_type)
 		current_cable_type = POWER_SUPPLY_TYPE_UARTOFF;
 		break;
 	case CABLE_TYPE_TA_MUIC:
-		current_cable_type = POWER_SUPPLY_TYPE_MAINS;
-		break;
 	case CABLE_TYPE_CARDOCK_MUIC:
 	case CABLE_TYPE_DESKDOCK_MUIC:
 	case CABLE_TYPE_SMARTDOCK_MUIC:
-	case CABLE_TYPE_AUDIODOCK_MUIC:
 	case CABLE_TYPE_SMARTDOCK_TA_MUIC:
+		current_cable_type = POWER_SUPPLY_TYPE_MAINS;
+		break;
+	case CABLE_TYPE_AUDIODOCK_MUIC:
 		current_cable_type = POWER_SUPPLY_TYPE_MISC;
 		break;
 	case CABLE_TYPE_CDP_MUIC:
@@ -321,7 +349,6 @@ int max77803_muic_charger_cb(enum cable_type_muic cable_type)
 		value.intval = current_cable_type<<ONLINE_TYPE_MAIN_SHIFT;
 		psy->set_property(psy, POWER_SUPPLY_PROP_ONLINE, &value);
 	}
-
 skip:
 #ifdef CONFIG_JACK_MON
 	jack_event_handler("charger", is_cable_attached);
@@ -344,6 +371,7 @@ void max77803_set_jig_state(int jig_state)
 static void max77803_check_id_state(int state)
 {
 	pr_info("%s: id state = %d\n", __func__, state);
+
 #if defined(CONFIG_USB_EXYNOS5_USB3_DRD_CH0)
 	exynos_drd_switch_id_event(&exynos5_device_usb3_drd0, state);
 #else
@@ -354,6 +382,7 @@ static void max77803_check_id_state(int state)
 static void max77803_set_vbus_state(int state)
 {
 	pr_info("%s: vbus state = %d\n", __func__, state);
+
 #if defined(CONFIG_USB_EXYNOS5_USB3_DRD_CH0)
 	exynos_drd_switch_vbus_event(&exynos5_device_usb3_drd0, state);
 #else
@@ -380,12 +409,28 @@ void max77803_muic_usb_cb(u8 usb_mode)
 #ifdef CONFIG_MFD_MAX77803
 		g_usbvbus = USB_CABLE_ATTACHED;
 #endif
+#ifdef CONFIG_HA_3G
+		if(system_rev >= 6)
+			usb30_redriver_en(1);
+#elif defined(CONFIG_V1A)
+		usb30_redriver_en(1);
+#endif
 		max77803_set_vbus_state(USB_CABLE_ATTACHED);
 		pr_info("%s - USB_CABLE_ATTACHED\n", __func__);
 	} else if (usb_mode == USB_CABLE_DETACHED) {
 #ifdef CONFIG_MFD_MAX77803
 		g_usbvbus = USB_CABLE_DETACHED;
-#endif	
+#endif
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+		usb30en = 0;
+#endif
+
+#ifdef CONFIG_HA_3G
+		if(system_rev >= 6)
+			usb30_redriver_en(0);
+#elif defined(CONFIG_V1A)
+		usb30_redriver_en(0);
+#endif
 		max77803_set_vbus_state(USB_CABLE_DETACHED);
 		pr_info("%s - USB_CABLE_DETACHED\n", __func__);
 	} else if (usb_mode == USB_OTGHOST_ATTACHED) {
@@ -394,13 +439,9 @@ void max77803_muic_usb_cb(u8 usb_mode)
 		host_noti_pdata->ndev.mode = NOTIFY_HOST_MODE;
 		if (host_noti_pdata->usbhostd_start)
 			host_noti_pdata->usbhostd_start();
-#endif
-
-#if defined(CONFIG_MACH_J_CHN_CTC)
 		/* defense code for otg mis-detecing issue */
-		msleep(40);
+		msleep(50);
 #endif
-
 		max77803_check_id_state(0);
 		pr_info("%s - USB_OTGHOST_ATTACHED\n", __func__);
 	} else if (usb_mode == USB_OTGHOST_DETACHED) {

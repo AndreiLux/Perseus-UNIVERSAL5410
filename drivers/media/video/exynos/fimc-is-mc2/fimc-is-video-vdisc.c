@@ -117,7 +117,7 @@ static int fimc_is_vdc_video_close(struct file *file)
 {
 	int ret = 0;
 	struct fimc_is_video *video;
-	struct fimc_is_video_ctx *vctx;
+	struct fimc_is_video_ctx *vctx = NULL;
 	struct fimc_is_device_ischain *device;
 
 	BUG_ON(!file);

@@ -29,6 +29,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/videodev2_exynos_media.h>
 #include <linux/sched.h>
+#include <linux/fb.h>
 #include <plat/devs.h>
 #include <plat/tv-core.h>
 #include <plat/cpu.h>
@@ -117,12 +118,12 @@ static int hdmi_set_infoframe(struct hdmi_device *hdev)
 	infoframe.len = HDMI_AVI_LENGTH;
 	hdmi_reg_infoframe(hdev, &infoframe);
 
-	if (hdev->audio_enable) {
-		infoframe.type = HDMI_PACKET_TYPE_AUI;
-		infoframe.ver = HDMI_AUI_VERSION;
-		infoframe.len = HDMI_AUI_LENGTH;
-		hdmi_reg_infoframe(hdev, &infoframe);
-	}
+	/*always send audio infoframe*/	
+	infoframe.type = HDMI_PACKET_TYPE_AUI;
+	infoframe.ver = HDMI_AUI_VERSION;
+	infoframe.len = HDMI_AUI_LENGTH;
+	hdmi_reg_infoframe(hdev, &infoframe);
+	
 
 	return 0;
 }
@@ -131,6 +132,52 @@ static int hdmi_set_packets(struct hdmi_device *hdev)
 {
 	hdmi_reg_set_acr(hdev);
 	return 0;
+}
+
+static void hdmi_audio_information(struct hdmi_device *hdev, u32 value)
+{
+	struct device *dev = hdev->dev;
+	u8 ch = 0;
+	u8 br = 0;
+	u8 sr = 0;
+	int cnt;
+
+	ch = value & AUDIO_CHANNEL_MASK;
+	br = (value & AUDIO_BIT_RATE_MASK) >> 16;
+	sr = (value & AUDIO_SAMPLE_RATE_MASK) >> 19;
+
+	for (cnt = 0; cnt < 8; cnt++) {
+		if (ch & (1 << cnt))
+			hdev->audio_channel_count = cnt + 1;	
+	}
+	if (br & FB_AUDIO_16BIT)
+		hdev->bits_per_sample = 16;
+	else if (br & FB_AUDIO_20BIT)
+		hdev->bits_per_sample = 20;
+	else if (br & FB_AUDIO_24BIT)
+		hdev->bits_per_sample = 24;
+	else
+		dev_err(dev, "invalid sample size\n");
+
+	if (sr & FB_AUDIO_32KHZ)
+		hdev->sample_rate = 32000;
+	else if (sr & FB_AUDIO_44KHZ)
+		hdev->sample_rate = 44100;
+	else if (sr & FB_AUDIO_48KHZ)
+		hdev->sample_rate = 48000;
+	else if (sr & FB_AUDIO_88KHZ)
+		hdev->sample_rate = 88000;
+	else if (sr & FB_AUDIO_96KHZ)
+		hdev->sample_rate = 96000;
+	else if (sr & FB_AUDIO_176KHZ)
+		hdev->sample_rate = 176000;
+	else if (sr & FB_AUDIO_192KHZ)
+		hdev->sample_rate = 192000;
+	else
+		dev_err(dev, "invalid sample size\n");
+
+	dev_info(dev, "HDMI audio : %d-ch, %dHz, %dbit\n",
+			ch, hdev->sample_rate, hdev->sample_size);
 }
 
 static int hdmi_streamon(struct hdmi_device *hdev)
@@ -169,6 +216,7 @@ static int hdmi_streamon(struct hdmi_device *hdev)
 	hdmi_reg_set_int_hpd(hdev);
 
 	hdev->streaming = HDMI_STREAMING;
+	enable_irq(hdev->int_irq);
 
 	/* start HDCP if enabled */
 	if (hdev->hdcp_info.hdcp_enable) {
@@ -204,6 +252,7 @@ static int hdmi_streamoff(struct hdmi_device *hdev)
 	hdmi_tg_enable(hdev, 0);
 
 	hdev->streaming = HDMI_STOP;
+	disable_irq(hdev->int_irq);
 
 	hdmi_dumpregs(hdev, "streamoff");
 	return 0;
@@ -234,7 +283,7 @@ static int hdmi_s_power(struct v4l2_subdev *sd, int on)
 	if (on) {
 		clk_enable(hdev->res.hdmi);
 #ifdef CONFIG_PM_RUNTIME
-		ret = pm_runtime_get_sync(hdev->dev);
+			ret = pm_runtime_get_sync(hdev->dev);
 #else
 		hdmi_runtime_resume(hdev->dev);
 #endif
@@ -244,12 +293,10 @@ static int hdmi_s_power(struct v4l2_subdev *sd, int on)
 		s5p_v4l2_int_src_hdmi_hpd();
 		hdmi_hpd_enable(hdev, 1);
 		hdmi_hpd_clear_int(hdev);
-		enable_irq(hdev->int_irq);
 		dev_info(hdev->dev, "HDMI interrupt changed to internal\n");
 	} else {
 		cancel_work_sync(&hdev->work);
 		hdmi_hpd_enable(hdev, 0);
-		disable_irq(hdev->int_irq);
 		cancel_work_sync(&hdev->hpd_work);
 
 		s5p_v4l2_int_src_ext_hpd();
@@ -288,23 +335,18 @@ int hdmi_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 		hdev->audio_enable = !!ctrl->value;
 		if (is_hdmi_streaming(hdev)) {
 			hdmi_set_infoframe(hdev);
+			hdmi_reg_i2s_audio_init(hdev);
 			hdmi_audio_enable(hdev, hdev->audio_enable);
 		}
 		mutex_unlock(&hdev->mutex);
 		break;
-	case V4L2_CID_TV_SET_NUM_CHANNELS:
+	case V4L2_CID_TV_SET_AUDIO_INFORM:
 		mutex_lock(&hdev->mutex);
-		if ((ctrl->value == 2) || (ctrl->value == 6) ||
-							(ctrl->value == 8)) {
-			hdev->audio_channel_count = ctrl->value;
-		} else {
-			dev_err(dev, "invalid channel count\n");
-			hdev->audio_channel_count = 2;
-		}
+		hdmi_audio_information(hdev, ctrl->value);
 		if (is_hdmi_streaming(hdev)) {
 			hdmi_audio_enable(hdev, 0);
-			hdmi_reg_i2s_audio_init(hdev);
 			hdmi_set_infoframe(hdev);
+			hdmi_reg_i2s_audio_init(hdev);
 			hdmi_audio_enable(hdev, 1);
 		}
 		mutex_unlock(&hdev->mutex);
@@ -347,8 +389,8 @@ int hdmi_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 		ctrl->value = (hdev->streaming |
 				switch_get_state(&hdev->hpd_switch));
 		break;
-	case V4L2_CID_TV_MAX_AUDIO_CHANNELS:
-		ctrl->value = edid_max_audio_channels(hdev);
+	case V4L2_CID_TV_GET_AUDIO_INFORM:
+		ctrl->value = edid_audio_informs(hdev);
 		break;
 	default:
 		dev_err(dev, "invalid control id\n");
@@ -377,6 +419,7 @@ static int hdmi_s_dv_preset(struct v4l2_subdev *sd,
 		hdmi_streamoff(hdev);
 		hdmi_s_power(sd, 0);
 		hdev->streaming = HDMI_STOP;
+		disable_irq(hdev->int_irq);
 	}
 
 	return 0;
@@ -516,7 +559,7 @@ static int hdmi_runtime_suspend(struct device *dev)
 	/* HDMI PHY off sequence
 	 * LINK off -> PHY off -> HDMI_PHY_CONTROL disable */
 
-	if (is_ip_ver_5a)
+	if (is_ip_ver_5a || is_ip_ver_5s)
 		hdmiphy_set_power(hdev, 0);
 
 	/* turn clocks off */
@@ -555,7 +598,7 @@ static int hdmi_runtime_resume(struct device *dev)
 	hdmi_sw_reset(hdev);
 	hdmi_phy_sw_reset(hdev);
 
-	if (soc_is_exynos5410()) {
+	if (is_ip_ver_5a || is_ip_ver_5s) {
 		hdmiphy_set_power(hdev, 1);
 	} else {
 		ret = v4l2_subdev_call(hdev->phy_sd, core, s_power, 1);
@@ -737,7 +780,7 @@ static void hdmi_hpd_changed(struct hdmi_device *hdev, int state)
 	u32 preset;
 	int ret;
 #ifdef CONFIG_SAMSUNG_MHL_8240
-	int audio_info;
+	u32 audio_info = 0;
 #endif
 	if (state == switch_get_state(&hdev->hpd_switch))
 		return;
@@ -761,7 +804,8 @@ static void hdmi_hpd_changed(struct hdmi_device *hdev, int state)
 #ifdef CONFIG_SAMSUNG_MHL_8240
 	if (state) {
 		/*Audio CH event*/
-		audio_info = hdmi_send_audio_info(state, hdev);
+		audio_info = edid_audio_informs(hdev);
+		pr_err("[HDMI] send audio_info :: %x\n", audio_info);
 		switch_set_state(&hdev->audio_ch_switch, (int)audio_info);
 
 	} else {
@@ -875,7 +919,7 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 	ret = v4l2_device_register(NULL, &hdmi_dev->v4l2_dev);
 	if (ret) {
 		dev_err(dev, "could not register v4l2 device.\n");
-		goto fail_regs;
+		goto fail_lock;
 	}
 
 	pdata = pdev->dev.platform_data;
@@ -908,7 +952,11 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 	}
 
 	hdmi_dev->hpd_switch.name = "hdmi";
-	switch_dev_register(&hdmi_dev->hpd_switch);
+	ret = switch_dev_register(&hdmi_dev->hpd_switch);
+	if (ret) {
+		dev_err(dev, "request switch class failed.\n");
+		goto fail_vdev;
+	}
 #ifdef CONFIG_SAMSUNG_MHL_8240
 	hdmi_dev->audio_ch_switch.name = "ch_hdmi_audio";
 	switch_dev_register(&hdmi_dev->audio_ch_switch);
@@ -918,7 +966,7 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 			0, "hdmi-int", hdmi_dev);
 	if (ret) {
 		dev_err(dev, "request int interrupt failed.\n");
-		goto fail_vdev;
+		goto fail_switch;
 	}
 	disable_irq(hdmi_dev->int_irq);
 
@@ -938,7 +986,6 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 	hdmi_dev->audio_enable = 0;
 	hdmi_dev->audio_channel_count = 2;
 	hdmi_dev->sample_rate = DEFAULT_SAMPLE_RATE;
-	hdmi_dev->sample_size = DEFAULT_SAMPLE_SIZE;
 	hdmi_dev->color_range = HDMI_RGB709_0_255;
 	hdmi_dev->bits_per_sample = DEFAULT_BITS_PER_SAMPLE;
 	hdmi_dev->audio_codec = DEFAULT_AUDIO_CODEC;
@@ -978,7 +1025,7 @@ static int __devinit hdmi_probe(struct platform_device *pdev)
 
 	/* TODO DISP1 power block should on state */
 	clk_enable(hdmi_dev->res.hdmi);
-	if (is_ip_ver_5a) {
+	if (is_ip_ver_5a || is_ip_ver_5s) {
 		hdmiphy_set_power(hdmi_dev, 0);
 		dev_err(dev, "Set HDMI phy power off\n");
 	}
@@ -996,8 +1043,14 @@ fail_irq:
 fail_ext:
 	free_irq(hdmi_dev->int_irq, hdmi_dev);
 
+fail_switch:
+	switch_dev_unregister(&hdmi_dev->hpd_switch);
+
 fail_vdev:
 	v4l2_device_unregister(&hdmi_dev->v4l2_dev);
+
+fail_lock:
+	mutex_destroy(&hdmi_dev->mutex);
 
 fail_regs:
 	iounmap(hdmi_dev->regs);
@@ -1024,6 +1077,7 @@ static int __devexit hdmi_remove(struct platform_device *pdev)
 	free_irq(hdmi_dev->ext_irq, hdmi_dev);
 	free_irq(hdmi_dev->int_irq, hdmi_dev);
 	switch_dev_unregister(&hdmi_dev->hpd_switch);
+	mutex_destroy(&hdmi_dev->mutex);
 	iounmap(hdmi_dev->regs);
 	hdmi_resources_cleanup(hdmi_dev);
 	flush_workqueue(hdmi_dev->hdcp_wq);

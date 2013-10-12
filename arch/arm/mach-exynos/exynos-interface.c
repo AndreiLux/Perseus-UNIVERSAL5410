@@ -30,22 +30,22 @@ static ssize_t show_cpucore_table(struct kobject *kobj,
 
 	num_cpu = num_online_cpus();
 	for (i = num_cpu; i > 0; i--)
-		count += sprintf(&buf[count], "%d ", i);
+		count += snprintf(&buf[count], 3, "%d ", i);
 
-	count += sprintf(&buf[count], "\n");
+	count += snprintf(&buf[count], 3, "\n");
 	return count;
 }
 
 static ssize_t show_cpucore_min_num_limit(struct kobject *kobj,
 			     struct attribute *attr, char *buf)
 {
-	return sprintf(buf, "%d\n", min_num_cpu);
+	return snprintf(buf, 5, "%d\n", min_num_cpu);
 }
 
 static ssize_t show_cpucore_max_num_limit(struct kobject *kobj,
 			     struct attribute *attr, char *buf)
 {
-	return sprintf(buf, "%d\n", max_num_cpu);
+	return snprintf(buf, 5, "%d\n", max_num_cpu);
 }
 
 static ssize_t store_cpucore_min_num_limit(struct kobject *kobj,
@@ -68,7 +68,7 @@ static ssize_t store_cpucore_min_num_limit(struct kobject *kobj,
 	return count;
 }
 
-static ssize_t store_cpucore_max_num_limit(struct kobject *kobj,
+static ssize_t __ref store_cpucore_max_num_limit(struct kobject *kobj,
 			struct attribute *attr, const char *buf, size_t count)
 {
 	int input, delta, cpu;

@@ -1,12 +1,12 @@
 /****************************************************************************
  *
- *		Copyright(c) 2012 Yamaha Corporation. All rights reserved.
+ *		Copyright(c) 2012-2013 Yamaha Corporation. All rights reserved.
  *
  *		Module		: mcfdspdrv.c
  *
  *		Description	: MC Fdsp Driver
  *
- *		Version		: 1.0.0	2012.12.13
+ *		Version		: 2.0.0	2013.04.01
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.	In no event will the authors be held liable for any damages
@@ -178,6 +178,11 @@
 
 #define DEF_FDSP_STOP_WAIT_TIME_US	(15000)
 
+#define FWCTL_SAVE_REG_START		(0x4F)
+#define FWCTL_SAVE_REG_END		(0x76)
+#define FWCTL_SAVE_REG_NUM		\
+			(FWCTL_SAVE_REG_END - FWCTL_SAVE_REG_START + 1)
+
 struct MCDRV_FDSP_INFO {
 	/* state */
 	UINT32				dStatus;
@@ -201,6 +206,7 @@ struct MCDRV_FDSP_INFO {
 	UINT8				bAppIEnb0;
 	UINT8				bAppIEnb1;
 	UINT8				bAppIEnb2;
+	UINT8				abFwctl[FWCTL_SAVE_REG_NUM];
 };
 
 struct MCDRV_FDSP_AEC_FDSP_INFO {
@@ -255,7 +261,60 @@ static struct MCDRV_FDSP_INFO gsFdspInfo = {
 	0,
 	0,
 	0,
+	{ /* abFwctl 0x4F-0x76 */
+		0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0
+	},
 };
+
+/****************************************************************************
+ *	LoadCtlReg
+ *
+ *	Description:
+ *			Set FWControl Register
+ *	Arguments:
+ *			none
+ *	Return:
+ *			none
+ *
+ ****************************************************************************/
+static void LoadCtlReg(void)
+{
+	UINT32 i;
+
+	for (i = FWCTL_SAVE_REG_START; i <= FWCTL_SAVE_REG_END; ++i)
+		McDevIf_AddPacket((MCDRV_PACKET_TYPE_FORCE_WRITE
+			| MCDRV_PACKET_REGTYPE_F
+			| i),
+			gsFdspInfo.abFwctl[i - FWCTL_SAVE_REG_START]);
+
+	McDevIf_ExecutePacket();
+}
+
+/****************************************************************************
+ *	SaveCtlReg
+ *
+ *	Description:
+ *			Save FWControl Register
+ *	Arguments:
+ *			none
+ *	Return:
+ *			none
+ *
+ ****************************************************************************/
+static void SaveCtlReg(void)
+{
+	UINT32 i;
+
+	for (i = FWCTL_SAVE_REG_START; i <= FWCTL_SAVE_REG_END; ++i)
+		McDevIf_ReadDirect((MCDRV_PACKET_REGTYPE_F
+			| i),
+			&gsFdspInfo.abFwctl[i - FWCTL_SAVE_REG_START],
+			1);
+}
 
 /****************************************************************************
  *	GetAppAct
@@ -2662,6 +2721,8 @@ SINT32 McFdsp_Init(struct MCDRV_FDSP_INIT *psPrm)
 
 	InitCore();
 
+	LoadCtlReg();
+
 	gsFdspInfo.dStatus = (UINT32)FDSP_STATUS_INITED;
 
 	return MCDRV_SUCCESS;
@@ -2700,6 +2761,8 @@ SINT32 McFdsp_Term(void)
 					MCI_DSPCTRL_DEF);
 
 	McDevIf_ExecutePacket();
+
+	SaveCtlReg();
 
 	gsFdspInfo.cbfunc = NULL;
 	gsFdspInfo.dStatus = (UINT32)FDSP_STATUS_IDLE;

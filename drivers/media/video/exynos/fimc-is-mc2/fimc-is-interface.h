@@ -17,6 +17,8 @@
 #include "fimc-is-metadata.h"
 #include "fimc-is-framemgr.h"
 #include "fimc-is-video.h"
+#include "fimc-is-time.h"
+#include "fimc-is-cmd.h"
 
 /*#define TRACE_WORK*/
 /* cam_ctrl : 1
@@ -118,6 +120,11 @@ struct fimc_is_interface {
 	wait_queue_head_t		init_wait_queue;
 	wait_queue_head_t		idle_wait_queue;
 	struct fimc_is_msg		reply;
+#ifdef MEASURE_TIME
+#ifdef INTERFACE_TIME
+	struct fimc_is_interface_time	time[HIC_COMMAND_END];
+#endif
+#endif
 
 	struct workqueue_struct		*workqueue;
 	struct work_struct		work_wq[INTR_MAX_MAP];
@@ -133,9 +140,14 @@ struct fimc_is_interface {
 	struct fimc_is_framemgr		*framemgr;
 
 	struct fimc_is_work_list	nblk_cam_ctrl;
+
+	/* shot timeout check */
 	spinlock_t			shot_check_lock;
 	atomic_t			shot_check[FIMC_IS_MAX_NODES];
 	atomic_t			shot_timeout[FIMC_IS_MAX_NODES];
+	/* sensor timeout check */
+	atomic_t			sensor_check[FIMC_IS_MAX_NODES];
+	atomic_t			sensor_timeout[FIMC_IS_MAX_NODES];
 	struct timer_list		timer;
 
 	struct camera2_uctl		isp_peri_ctl;

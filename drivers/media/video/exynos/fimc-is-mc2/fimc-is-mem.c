@@ -32,6 +32,7 @@
 #include <linux/videodev2_exynos_camera.h>
 #include <linux/vmalloc.h>
 #include <linux/interrupt.h>
+#include <plat/iovmm.h>
 
 #include "fimc-is-core.h"
 #include "fimc-is-param.h"
@@ -86,6 +87,7 @@ int fimc_is_mem_probe(struct fimc_is_mem *this,
 		ret = PTR_ERR(this->alloc_ctx);
 		goto p_err;
 	}
+	exynos_create_iovmm(&pdev->dev, 1, 3);
 
 p_err:
 	return ret;

@@ -23,15 +23,16 @@ enum sys_powerdown {
 	NUM_SYS_POWERDOWN,
 };
 
-enum c2c_pwr_mode {
-	MIN_LATENCY,
-	SHORT_LATENCY,
-	MAX_LATENCY,
-};
-
 enum running_cpu {
 	KFC,
 	ARM,
+};
+
+enum type_pmu_wdt_reset {
+	/* if pmu_wdt_reset is EXYNOS_SYS_WDTRESET */
+	PMU_WDT_RESET_TYPE0 = 0,
+	/* if pmu_wdt_reset is EXYNOS5410_SYS_WDTRESET */
+	PMU_WDT_RESET_TYPE1,
 };
 
 extern unsigned long l2x0_regs_phys;
@@ -49,6 +50,7 @@ extern void exynos_l2_common_pwr_ctrl(void);
 extern void exynos_enable_idle_clock_down(unsigned int cluster);
 extern void exynos_disable_idle_clock_down(unsigned int cluster);
 extern void exynos_lpi_mask_ctrl(bool on);
+extern void exynos_pmu_wdt_control(bool on, unsigned int pmu_wdt_reset_type);
 extern void exynos_set_dummy_state(bool on);
 
 #endif /* __ASM_ARCH_PMU_H */

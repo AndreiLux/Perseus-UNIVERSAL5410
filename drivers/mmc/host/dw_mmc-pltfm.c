@@ -101,15 +101,16 @@ static int dw_mci_pltfm_resume(struct device *dev)
 	return 0;
 }
 
+#if defined(CONFIG_MACH_UNIVERSAL5420)
 static void dw_mci_pltfm_shutdown(struct device *dev)
 {
 	struct dw_mci *host = dev_get_drvdata(dev);
 
-	if (host->pdata->cd_type == DW_MCI_CD_PERMANENT)
+	if (host->pdata->cd_type == DW_MCI_CD_PERMANENT ||
+			host->pdata->cd_type == DW_MCI_CD_GPIO)
 		dw_mci_shutdown(host);
 }
 
-#if defined(CONFIG_MACH_UNIVERSAL5410)
 static int dw_mci_pltfm_early_resume(struct device *dev)
 {
 	int ret = 0;
@@ -125,13 +126,13 @@ static int dw_mci_pltfm_early_resume(struct device *dev)
 #else
 #define dw_mci_pltfm_suspend	NULL
 #define dw_mci_pltfm_resume	NULL
+#if defined(CONFIG_MACH_UNIVERSAL5420)
 #define dw_mci_pltfm_shutdown	NULL
-#if defined(CONFIG_MACH_UNIVERSAL5410)
 #define dw_mci_pltfm_early_resume NULL
 #endif
 #endif /* CONFIG_PM_SLEEP */
 
-#if defined(CONFIG_MACH_UNIVERSAL5410)
+#if defined(CONFIG_MACH_UNIVERSAL5420)
 static const struct dev_pm_ops dw_mci_pltfm_pmops = {
 	SET_SYSTEM_SLEEP_PM_OPS(dw_mci_pltfm_suspend, dw_mci_pltfm_resume)
 	.resume_early   = dw_mci_pltfm_early_resume,
@@ -145,7 +146,9 @@ static struct platform_driver dw_mci_pltfm_driver = {
 	.driver		= {
 		.name		= "dw_mmc",
 		.pm		= &dw_mci_pltfm_pmops,
+#if defined(CONFIG_MACH_UNIVERSAL5420)
 		.shutdown	= dw_mci_pltfm_shutdown,
+#endif
 	},
 };
 

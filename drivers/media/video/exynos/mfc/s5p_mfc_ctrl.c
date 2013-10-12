@@ -244,6 +244,27 @@ int s5p_mfc_release_firmware(struct s5p_mfc_dev *dev)
 	return 0;
 }
 
+static inline int s5p_mfc_bus_reset(struct s5p_mfc_dev *dev)
+{
+	unsigned int status;
+	unsigned long timeout;
+
+	/* Reset */
+	s5p_mfc_write_reg(0x1, S5P_FIMV_MFC_BUS_RESET_CTRL);
+
+	timeout = jiffies + msecs_to_jiffies(MFC_BW_TIMEOUT);
+	/* Check bus status */
+	do {
+		if (time_after(jiffies, timeout)) {
+			mfc_err("Timeout while resetting MFC.\n");
+			return -EIO;
+		}
+		status = s5p_mfc_read_reg(S5P_FIMV_MFC_BUS_RESET_CTRL);
+	} while ((status & 0x2) == 0);
+
+	return 0;
+}
+
 /* Reset the device */
 static int s5p_mfc_reset(struct s5p_mfc_dev *dev)
 {
@@ -273,18 +294,10 @@ static int s5p_mfc_reset(struct s5p_mfc_dev *dev)
 		for (i = 0; i < S5P_FIMV_REG_CLEAR_COUNT; i++)
 			s5p_mfc_write_reg(0, S5P_FIMV_REG_CLEAR_BEGIN + (i*4));
 
-		/* Reset */
-		s5p_mfc_write_reg(0x1, S5P_FIMV_MFC_BUS_RESET_CTRL);
-
-		timeout = jiffies + msecs_to_jiffies(MFC_BW_TIMEOUT);
-		/* Check bus status */
-		do {
-			if (time_after(jiffies, timeout)) {
-				mfc_err("Timeout while resetting MFC.\n");
+		if (IS_MFCv6X(dev))
+			if (s5p_mfc_bus_reset(dev))
 				return -EIO;
-			}
-			status = s5p_mfc_read_reg(S5P_FIMV_MFC_BUS_RESET_CTRL);
-		} while ((status & 0x2) == 0);
+
 		s5p_mfc_write_reg(0, S5P_FIMV_RISC_ON);
 		s5p_mfc_write_reg(0x1FFF, S5P_FIMV_MFC_RESET);
 		s5p_mfc_write_reg(0, S5P_FIMV_MFC_RESET);
@@ -461,9 +474,11 @@ void s5p_mfc_deinit_hw(struct s5p_mfc_dev *dev)
 		return;
 	}
 
-	s5p_mfc_clock_on();
-	s5p_mfc_reset(dev);
-	s5p_mfc_clock_off();
+	if (!IS_MFCv7X(dev)) {
+		s5p_mfc_clock_on();
+		s5p_mfc_reset(dev);
+		s5p_mfc_clock_off();
+	}
 
 	mfc_info("mfc deinit completed\n");
 }

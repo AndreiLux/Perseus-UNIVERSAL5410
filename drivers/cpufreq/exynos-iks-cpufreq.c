@@ -35,7 +35,6 @@
 #include <mach/tmu.h>
 #include <mach/asv-exynos.h>
 #include <plat/cpu.h>
-#include <mach/sec_debug.h>
 
 struct lpj_info {
 	unsigned long   ref;
@@ -52,6 +51,7 @@ static unsigned int freq_min[CA_END] __read_mostly;	/* Minimum (Big/Little) cloc
 static unsigned int freq_max[CA_END] __read_mostly;	/* Maximum (Big/Little) clock frequency */
 static struct cpumask cluster_cpus[CA_END];	/* cpu number on (Big/Little) cluster */
 static unsigned long lpj[CA_END];
+
 #define ACTUAL_FREQ(x, cur)  ((cur == CA7) ? (x) << 1 : (x))
 #define VIRT_FREQ(x, cur)    ((cur == CA7) ? (x) >> 1 : (x))
 
@@ -130,14 +130,9 @@ static void init_cpumask_cluster_set(unsigned int cluster)
 	}
 }
 
-cluster_type get_cur_cluster(unsigned int cpu)
+static cluster_type get_cur_cluster(unsigned int cpu)
 {
 	return per_cpu(cpu_cur_cluster, cpu);
-}
-
-cluster_type get_boot_cluster()
-{
-	return boot_cluster;
 }
 
 static void set_cur_cluster(unsigned int cpu, cluster_type target_cluster)
@@ -541,8 +536,6 @@ static int exynos_target(struct cpufreq_policy *policy,
 	/* save the frequency & cpu number */
 	set_req_freq(policy->cpu, target_freq);
 
-	sec_debug_aux_log(SEC_DEBUG_AUXLOG_CPU_CLOCK_SWITCH_CHANGE, "IN  : cpu=%d cluster=%c pre=%d, new=%d", policy->cpu, (cur == CA7 ? 'L' : 'B'), freqs[cur]->old, target_freq);
-
 #if defined(CONFIG_CPU_FREQ_GOV_USERSPACE) || defined(CONFIG_CPU_FREQ_GOV_PERFORMANCE)
 	if ((strcmp(policy->governor->name, "userspace") == 0)
 		|| strcmp(policy->governor->name, "performance") == 0) {
@@ -613,9 +606,6 @@ done:
 		exynos_switch(policy, !cur);
 #endif
 out:
- 	sec_debug_aux_log(SEC_DEBUG_AUXLOG_CPU_CLOCK_SWITCH_CHANGE, "OUT : cpu=%d cluster=%c pre=%d, new=%d other=%x", \
-		policy->cpu, (cur == CA7 ? 'L' : 'B'), freqs[cur]->old, VIRT_FREQ(new_freq,cur), do_switch << 2 | later << 1 | (ret == 0 ? 0 : 1));
-
 	mutex_unlock(&cpufreq_lock);
 
 	return ret;
@@ -781,21 +771,15 @@ static int exynos_policy_notifier(struct notifier_block *nb,
 	if (!cpu_online(cpu))
 		return -EINVAL;
 
-	if (policy->max <= freq_max[CA7]) {
+	if (policy->max <= freq_max[CA7])
 		fake_policy[CA7][cpu].max = ACTUAL_FREQ(policy->max, CA7);
-		fake_policy[CA15][cpu].max = freq_max[CA15];
-	} else {
-		fake_policy[CA7][cpu].max = ACTUAL_FREQ(freq_max[CA7], CA7);
+	else
 		fake_policy[CA15][cpu].max = policy->max;
-	}
 
-	if (policy->min <= freq_max[CA7]) {
+	if (policy->min <= freq_max[CA7])
 		fake_policy[CA7][cpu].min = ACTUAL_FREQ(policy->min, CA7);
-		fake_policy[CA15][cpu].min = freq_min[CA15];
-	} else {
-		fake_policy[CA7][cpu].min = ACTUAL_FREQ(freq_min[CA7], CA7);
+	else
 		fake_policy[CA15][cpu].min = policy->min;
-	}
 
 	return 0;
 }
@@ -1221,7 +1205,6 @@ static int __init exynos_cpufreq_init(void)
 	pm_qos_add_notifier(PM_QOS_CPU_FREQ_MIN, &exynos_qos_notifier);
 
 	for_each_cpu(cpu, cpu_possible_mask) {
-		fake_policy[CA15][cpu].cpu = cpu;
 		fake_policy[CA15][cpu].max = freq_max[CA15];
 		fake_policy[CA15][cpu].min = freq_min[CA15];
 		fake_policy[CA7][cpu].max = ACTUAL_FREQ(freq_max[CA7], CA7);

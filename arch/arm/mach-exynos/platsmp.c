@@ -32,7 +32,9 @@
 #include <mach/smc.h>
 
 #include <plat/cpu.h>
+#ifdef CONFIG_WATCHDOG
 #include <plat/regs-watchdog.h>
+#endif
 
 extern void exynos4_secondary_startup(void);
 
@@ -85,7 +87,9 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 	 */
 	write_pen_release(-1);
 
+#ifdef CONFIG_ARM_TRUSTZONE
 	clear_boot_flag(cpu, HOTPLUG);
+#endif
 
 	/*
 	 * Synchronise with the boot thread.
@@ -104,14 +108,19 @@ void change_all_power_base_to(unsigned int cluster)
 	int i;
 	int offset = 0;
 
-	if (!soc_is_exynos5410())
+	if (!soc_is_exynos5410() && !soc_is_exynos5420())
 		return;
 
-	if (samsung_rev() < EXYNOS5410_REV_1_0) {
-		if (cluster == 0)
-			offset = 4;
+	if (soc_is_exynos5410())  {
+		if (samsung_rev() < EXYNOS5410_REV_1_0) {
+			if (cluster == 0)
+				offset = 4;
+		} else {
+			if (cluster != 0)
+				offset = 4;
+		}
 	} else {
-		if (cluster != 0)
+		if (cluster)
 			offset = 4;
 	}
 
@@ -162,6 +171,7 @@ static int exynos_power_up_cpu(unsigned int cpu)
 		udelay(10);
 
 		printk(KERN_DEBUG "cpu%d: SWRESET\n", cpu);
+
 		val = ((1 << 20) | (1 << 8)) << cpu;
 		__raw_writel(val, EXYNOS_SWRESET);
 	}
@@ -180,7 +190,10 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 */
 	spin_lock(&boot_lock);
 
-	watchdog_save();
+#ifdef CONFIG_WATCHDOG
+	if (soc_is_exynos5250())
+		watchdog_save();
+#endif
 
 	ret = exynos_power_up_cpu(cpu);
 	if (ret) {
@@ -209,19 +222,21 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 		smp_rmb();
 
 #ifdef CONFIG_ARM_TRUSTZONE
-		if (!soc_is_exynos5410()) {
-			if (soc_is_exynos4412())
-				exynos_smc(SMC_CMD_CPU1BOOT, cpu, 0, 0);
-			else
-				exynos_smc(SMC_CMD_CPU1BOOT, 0, 0, 0);
-		}
+		if (soc_is_exynos4210() || soc_is_exynos4212() ||
+			soc_is_exynos5250())
+			exynos_smc(SMC_CMD_CPU1BOOT, 0, 0, 0);
+		else if (soc_is_exynos4412())
+			exynos_smc(SMC_CMD_CPU1BOOT, cpu, 0, 0);
 #endif
 		__raw_writel(virt_to_phys(exynos4_secondary_startup),
 			cpu_boot_info[cpu].boot_base);
 
-		watchdog_restore();
+#ifdef CONFIG_WATCHDOG
+		if (soc_is_exynos5250())
+			watchdog_restore();
+#endif
 
-		if (soc_is_exynos5410())
+		if (soc_is_exynos5410() || soc_is_exynos5420())
 			dsb_sev();
 		else
 			arm_send_ping_ipi(cpu);
@@ -254,7 +269,7 @@ void __init smp_init_cpus(void)
 	if (soc_is_exynos4210() || soc_is_exynos4212() ||
 	    soc_is_exynos5250())
 		ncores = 2;
-	else if (soc_is_exynos4412() || soc_is_exynos5410())
+	else if (soc_is_exynos4412() || soc_is_exynos5410() || soc_is_exynos5420())
 		ncores = 4;
 	else
 		ncores = scu_base ? scu_get_core_count(scu_base) : 1;
@@ -303,6 +318,13 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 				if (cluster_id != 0)
 					pwr_offset = 4;
 			}
+		} else if (soc_is_exynos5420()) {
+			int cluster_id = read_cpuid_mpidr() & 0x100;
+#ifndef CONFIG_ARM_TRUSTZONE
+			cpu_boot_info[i].boot_base += (0x4 * i);
+#endif
+			if (cluster_id != 0)
+				pwr_offset = 4;
 		}
 
 		cpu_boot_info[i].power_base =

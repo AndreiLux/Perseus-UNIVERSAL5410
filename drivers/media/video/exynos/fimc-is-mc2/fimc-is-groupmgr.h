@@ -16,6 +16,9 @@
 #include "fimc-is-device.h"
 #include "fimc-is-video.h"
 
+/* #define DEBUG_AA */
+/* #define DEBUG_FLASH */
+
 #define TRACE_GROUP
 #define GROUP_ID_3A0		0 /* hardware : CH0 */
 #define GROUP_ID_3A1		1 /* hardware : 3AA */
@@ -95,6 +98,13 @@ struct fimc_is_group {
 	fimc_is_start_callback		start_callback;
 	struct fimc_is_device_ischain	*device;
 
+#ifdef DEBUG_AA
+#ifdef DEBUG_FLASH
+	enum aa_ae_flashmode		flashmode;
+	struct camera2_flash_dm		flash;
+#endif
+#endif
+
 #ifdef MEASURE_TIME
 #ifdef INTERNAL_TIME
 	struct fimc_is_time		time;
@@ -137,7 +147,8 @@ int fimc_is_group_start(struct fimc_is_groupmgr *groupmgr,
 	struct fimc_is_group *group,
 	struct fimc_is_frame *frame);
 int fimc_is_group_done(struct fimc_is_groupmgr *groupmgr,
-	struct fimc_is_group *group);
+	struct fimc_is_group *group,
+	struct fimc_is_frame *ldr_frame);
 
 int fimc_is_gframe_cancel(struct fimc_is_groupmgr *groupmgr,
 	struct fimc_is_group *group, u32 target_fcount);

@@ -30,6 +30,7 @@
 /* Number of USB endpoints: EP0 + 10xEPin + 10xEPout */
 #define EXYNOS_USB3_EPS	(1 + 10 + 10)
 
+#define NUM_TRBS	2
 #define NUM_ISOC_TRBS	64
 
 /* Has to be multiple of four */
@@ -165,6 +166,7 @@
 #define EXYNOS_USB3_DEPCMDPAR0(_a)	(0xC808 + ((_a) * 0x10))
 /* DEPCFG command parameter 0 */
 #define EXYNOS_USB3_DEPCMDPAR0x_IgnrSeqNum		(1 << 31)
+#define EXYNOS_USB3_DEPCMDPAR0x_ConfigAction(_x)	((_x) << 30)
 #define EXYNOS_USB3_DEPCMDPAR0x_DataSeqNum_MASK		(0x1f << 26)
 #define EXYNOS_USB3_DEPCMDPAR0x_DataSeqNum_SHIFT	26
 #define EXYNOS_USB3_DEPCMDPAR0x_DataSeqNum(_x)		((_x) << 26)
@@ -370,19 +372,15 @@ struct exynos_ss_udc_gen_command {
  * @req: The USB gadget request.
  * @trb: Transfer Request Block for the request.
  * @trb_dma: Transfer Request Block DMA address.
+ * @aux_trb: Auxiliary Transfer Request Block for the request.
  * @queue: The list of requests for the endpoint this is queued for.
- * @buf: Holds original buffer address if bounce buffer is used.
- * @length: Holds original buffer length of data if bounce buffer is used.
- * @bounced: True if bounce buffer is used for the request (only for OUT dir).
  */
 struct exynos_ss_udc_req {
 	struct usb_request	req;
 	struct exynos_ss_udc_trb *trb;
 	dma_addr_t		trb_dma;
+	struct exynos_ss_udc_trb *aux_trb;
 	struct list_head	queue;
-	void			*buf;
-	unsigned		length;
-	bool			bounced;
 };
 
 /**
@@ -396,6 +394,8 @@ struct exynos_ss_udc_req {
  *       and has yet to be completed (maybe due to data move, or simply
  *	 awaiting an ack from the core all the data has been completed).
  * @lock: State lock to protect contents of endpoint.
+ * @aux_buf: Auxiliary buffer.
+ * @aux_buf_dma: Auxiliary buffer DMA address.
  * @trb: Points the the first Transfer Request Block in the pool.
  * @trb_dma: First Transfer Request Block DMA address.
  * @trb_index: Points to the next free Transfer Request Block.
@@ -431,6 +431,9 @@ struct exynos_ss_udc_ep {
 
 	spinlock_t			lock;
 
+	u32				*aux_buf;
+	dma_addr_t			aux_buf_dma;
+
 	struct exynos_ss_udc_trb	*trb;
 	dma_addr_t			trb_dma;
 	int				trb_index;
@@ -448,9 +451,7 @@ struct exynos_ss_udc_ep {
 	unsigned int		enabled:1;
 	unsigned int		wedged:1;
 	unsigned int		not_ready:1;
-	unsigned int		sent_zlp:1;
 	unsigned int		pending_xfer:1;
-
 	char			name[13];
 };
 
@@ -467,6 +468,7 @@ struct exynos_ss_udc_ep {
  * @core: The link to drd core.
  * @enabled: Indicate whether UDC enabled or disabled.
  * @state: The device USB state.
+ * @speed_limit: Speed at which the device is allowed to connect.
  * @regs: The memory area mapped for accessing registers.
  * @irq: The IRQ number we are using.
  * @clk: The clock we are using.
@@ -499,12 +501,15 @@ struct exynos_ss_udc {
 
 	bool			enabled;
 	enum usb_device_state	state;
-
+	enum usb_device_speed	speed_limit;
 	void __iomem		*regs;
 	int			irq;
 	struct clk		*clk;
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	struct wake_lock wake_lock;
+	struct work_struct reconnect_work;
+	int			ss_host_avail;
+	bool			reconnect;
 #endif
 	u32			*event_buff;
 	dma_addr_t		event_buff_dma;
@@ -533,7 +538,7 @@ struct exynos_ss_udc {
 	struct exynos_ss_udc_ep	eps[EXYNOS_USB3_EPS];
 };
 
-#ifdef CONFIG_FAKE_BATTERY
+#ifdef CONFIG_BATTERY_SAMSUNG
 extern void samsung_cable_check_status(int flag);
 #endif
 

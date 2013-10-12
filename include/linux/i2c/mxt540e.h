@@ -99,6 +99,7 @@ struct mxt540e_platform_data {
 	int max_z;
 	int min_w;
 	int max_w;
+	u8 irqf_trigger_type;
 	u8 chrgtime_batt;
 	u8 chrgtime_charging;
 	u8 tchthr_batt;

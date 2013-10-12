@@ -67,7 +67,9 @@ struct max77802_data {
 	u8 buck4_vol[8];
 	u8 buck6_vol[8];
 	int buck12346_gpios_dvs[3];
+	char *buck12346_gpios_dvs_label[3];
 	int buck12346_gpios_selb[5];
+	char *buck12346_gpios_selb_label[5];
 	int buck12346_gpioindex;
 	bool ignore_gpiodvs_side_effect;
 
@@ -201,60 +203,6 @@ static int max77802_list_voltage(struct regulator_dev *rdev,
  * changes by carefully defining .state_mem at bsp and suspend ops
  * callbacks.
  */
-#if 0
-unsigned int max77802_opmode_reg[][3] = {
-	/* LDO1 ... LDO35 */
-	/* {NORMAL, LP, STANDBY} */
-	{0x3, 0x2, 0x0}, /* LDO1 */
-	{0x3, 0x2, 0x1},
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x1},
-	{0x3, 0x2, 0x1},
-	{0x3, 0x2, 0x1},
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x1},
-	{0x3, 0x2, 0x1}, /* LDO11 */
-	{0x3, 0x2, 0x1},
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x1},
-	{0x3, 0x2, 0x1}, /* LDO15 */
-	{0x3, 0x2, 0x1}, /* LDO17 */
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x0}, /* LDO21 */
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x0}, /* LDO30 */
-	{0x3, 0x2, 0x0}, /* LDO32 */
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x0},
-	{0x3, 0x2, 0x0}, /* LDO35 */
-	/* BUCK1 ... BUCK10 */
-	{0x3, 0x0, 0x1}, /* BUCK1 */
-	{0x3, 0x2, 0x1},
-	{0x3, 0x2, 0x1},
-	{0x3, 0x2, 0x1},
-	{0x3, 0x0, 0x0},
-	{0x3, 0x0, 0x0},
-	{0x3, 0x0, 0x0},
-	{0x3, 0x0, 0x0},
-	{0x3, 0x0, 0x0},
-	{0x3, 0x0, 0x0}, /* BUCK10 */
-#if 0
-	/* 32KHZ */
-	{0x1, 0x0, 0x0},
-	{0x1, 0x0, 0x0},
-#endif
-};
-#else
 unsigned int max77802_opmode_reg[][3] = {
 	/* LDO1 ... LDO35 */
 	/* {NORMAL, LP, STANDBY} */
@@ -276,8 +224,8 @@ unsigned int max77802_opmode_reg[][3] = {
 	{0x3, 0x2, 0x1}, /* LDO17 */
 	{0x3, 0x2, 0x1},
 	{0x3, 0x2, 0x1},
-	{0x3, 0x2, 0x1},
-	{0x3, 0x2, 0x1}, /* LDO21 */
+	{0x0, 0x0, 0x0},
+	{0x0, 0x0, 0x0}, /* LDO21 */
 	{0x3, 0x2, 0x1},
 	{0x3, 0x2, 0x1},
 	{0x3, 0x2, 0x1},
@@ -289,7 +237,7 @@ unsigned int max77802_opmode_reg[][3] = {
 	{0x3, 0x2, 0x1}, /* LDO32 */
 	{0x3, 0x2, 0x1},
 	{0x3, 0x2, 0x1},
-	{0x3, 0x2, 0x1}, /* LDO35 */
+	{0x0, 0x0, 0x0}, /* LDO35 */
 	/* BUCK1 ... BUCK10 */
 	{0x3, 0x1, 0x1}, /* BUCK1 */
 	{0x3, 0x1, 0x1},
@@ -298,7 +246,7 @@ unsigned int max77802_opmode_reg[][3] = {
 	{0x3, 0x2, 0x1},
 	{0x3, 0x1, 0x1},
 	{0x3, 0x1, 0x1},
-	{0x3, 0x1, 0x1},
+	{0x1, 0x0, 0x0},
 	{0x3, 0x1, 0x1},
 	{0x3, 0x1, 0x1}, /* BUCK10 */
 #if 0
@@ -307,7 +255,7 @@ unsigned int max77802_opmode_reg[][3] = {
 	{0x1, 0x0, 0x0},
 #endif
 };
-#endif
+
 static int max77802_get_enable_register(struct regulator_dev *rdev,
 		int *reg, int *mask, int *pattern)
 {
@@ -475,27 +423,26 @@ static int max77802_get_voltage_register(struct regulator_dev *rdev,
 		reg = MAX77802_REG_LDO32CTRL1 + (rid - MAX77802_LDO32);
 		break;
 	case MAX77802_BUCK1:
-		/* TODO: DVS1 -> DVS2 */
-		reg = MAX77802_REG_BUCK1DVS1;
+		reg = MAX77802_REG_BUCK1DVS2;
 		mask = 0xff;
 		break;
 	case MAX77802_BUCK2:
-		reg = MAX77802_REG_BUCK2DVS1;
+		reg = MAX77802_REG_BUCK2DVS2;
 		mask = 0xff;
 		break;
 	case MAX77802_BUCK3:
-		reg = MAX77802_REG_BUCK3DVS1;
+		reg = MAX77802_REG_BUCK3DVS2;
 		mask = 0xff;
 		break;
 	case MAX77802_BUCK4:
-		reg = MAX77802_REG_BUCK4DVS1;
+		reg = MAX77802_REG_BUCK4DVS2;
 		mask = 0xff;
 		break;
 	case MAX77802_BUCK5:
 		reg = MAX77802_REG_BUCK5OUT;
 		break;
 	case MAX77802_BUCK6:
-		reg = MAX77802_REG_BUCK6DVS1;
+		reg = MAX77802_REG_BUCK6DVS2;
 		mask = 0xff;
 		break;
 	case MAX77802_BUCK7 ... MAX77802_BUCK10:
@@ -781,6 +728,8 @@ static int max77802_set_ramp_rate(struct i2c_client *i2c, int rate)
 		data = MAX77802_REG_BUCK16_RAMP_RATE_12P5MV;
 		break;
 	}
+	pr_debug("%s: ramp_delay=%d, data=0x%x\n", __func__, ramp_delay, data);
+
 	max77802_update_reg(i2c, MAX77802_REG_BUCK1CTRL, data, 0xF0);
 	max77802_update_reg(i2c, MAX77802_REG_BUCK6CTRL, data, 0xF0);
 
@@ -794,7 +743,7 @@ static __devinit int max77802_pmic_probe(struct platform_device *pdev)
 	struct regulator_dev **rdev;
 	struct max77802_data *max77802;
 	struct i2c_client *i2c;
-	int i, ret, size;
+	int i, ret, size, err;
 	u8 data = 0;
 
 	pr_debug("%s\n", __func__);
@@ -840,38 +789,39 @@ static __devinit int max77802_pmic_probe(struct platform_device *pdev)
 	max77802->buck4_gpiodvs = false;
 	max77802->buck6_gpiodvs = false;
 
-/* TODO */
-#if 0
 	for (i = 0; i < 3; i++) {
-		char buf[80];
-
-		sprintf(buf, "MAX77802 DVS%d", i);
-
 		if (gpio_is_valid(pdata->buck12346_gpio_dvs[i].gpio)) {
+			max77802->buck12346_gpios_dvs_label[i] =
+				kasprintf(GFP_KERNEL, "MAX77802 DVS%d", i);
 			max77802->buck12346_gpios_dvs[i] =
 				pdata->buck12346_gpio_dvs[i].gpio;
-			gpio_request(pdata->buck12346_gpio_dvs[i].gpio, buf);
+			err = gpio_request(pdata->buck12346_gpio_dvs[i].gpio,
+					max77802->buck12346_gpios_dvs_label[i]);
+			if (err)
+				pr_warn(
+				"failed to request MAX77802 DVS%d\n", i);
 			gpio_direction_output(pdata->buck12346_gpio_dvs[i].gpio,
 				pdata->buck12346_gpio_dvs[i].data);
 		} else {
-			dev_info(&pdev->dev, "GPIO %s ignored (%d)\n",
-				 buf, pdata->buck12346_gpio_dvs[i].gpio);
+			dev_info(&pdev->dev, "GPIO MAX77686 DVS%d ignored (%d)\n",
+				 i, pdata->buck12346_gpio_dvs[i].gpio);
 		}
 	}
-
 	for (i = 0; i < 5; i++) {
-		char buf[80];
-		sprintf(buf, "MAX77802 SELB%d", i);
-
 		if (gpio_is_valid(pdata->buck12346_gpio_selb[i])) {
-			int data = (max77802->device_id <= MAX77802_DEVICE_PASS1) ? 1 : 0;
+			max77802->buck12346_gpios_selb_label[i] =
+				kasprintf(GFP_KERNEL, "MAX77802 SELB%d", i);
 			max77802->buck12346_gpios_selb[i] =
 				pdata->buck12346_gpio_selb[i];
-			gpio_request(pdata->buck12346_gpio_selb[i], buf);
-			gpio_direction_output(pdata->buck12346_gpio_selb[i], data);
+			err = gpio_request(pdata->buck12346_gpio_selb[i],
+					max77802->buck12346_gpios_selb_label[i]);
+			if (err)
+				pr_warn(
+				"failed to request MAX77802 SELB%d\n", i);
+			gpio_direction_output(pdata->buck12346_gpio_selb[i], 0);
 		} else {
-			dev_info(&pdev->dev, "GPIO %s ignored (%d)\n",
-				 buf, pdata->buck12346_gpio_selb[i]);
+			dev_info(&pdev->dev, "GPIO MAX77686 SELB%d ignored (%d)\n",
+				 i, pdata->buck12346_gpio_selb[i]);
 		}
 	}
 
@@ -898,7 +848,7 @@ static __devinit int max77802_pmic_probe(struct platform_device *pdev)
 					+ buck234_dvs_voltage_map_desc.step);
 		/* 1.1V as default for safety */
 		if (ret < 0)
-			max77802->buck2_vol[i] = 0x28;
+			max77802->buck2_vol[i] = 0x50;
 		else
 			max77802->buck2_vol[i] = ret;
 		max77802_write_reg(i2c, MAX77802_REG_BUCK2DVS1 + i,
@@ -911,7 +861,7 @@ static __devinit int max77802_pmic_probe(struct platform_device *pdev)
 					+ buck234_dvs_voltage_map_desc.step);
 		/* 1.1V as default for safety */
 		if (ret < 0)
-			max77802->buck3_vol[i] = 0x28;
+			max77802->buck3_vol[i] = 0x50;
 		else
 			max77802->buck3_vol[i] = ret;
 		max77802_write_reg(i2c, MAX77802_REG_BUCK3DVS1 + i,
@@ -924,7 +874,7 @@ static __devinit int max77802_pmic_probe(struct platform_device *pdev)
 					+ buck234_dvs_voltage_map_desc.step);
 		/* 1.1V as default for safety */
 		if (ret < 0)
-			max77802->buck4_vol[i] = 0x28;
+			max77802->buck4_vol[i] = 0x50;
 		else
 			max77802->buck4_vol[i] = ret;
 		max77802_write_reg(i2c, MAX77802_REG_BUCK4DVS1 + i,
@@ -943,7 +893,9 @@ static __devinit int max77802_pmic_probe(struct platform_device *pdev)
 		max77802_write_reg(i2c, MAX77802_REG_BUCK6DVS1 + i,
 				   max77802->buck6_vol[i]);
 	}
-#endif
+
+	if (pdata->has_full_constraints)
+		regulator_has_full_constraints();
 
 	for (i = 0; i < pdata->num_regulators; i++) {
 		const struct voltage_map_desc *desc;
@@ -975,10 +927,12 @@ err:
 	for (i = 0; i < 3; i++) {
 		if (max77802->buck12346_gpios_dvs[i])
 			gpio_free(max77802->buck12346_gpios_dvs[i]);
+		kfree(max77802->buck12346_gpios_dvs_label[i]);
 	}
 	for (i = 0; i < 5; i++) {
-		if (max77802->buck12346_gpios_dvs[i])
+		if (max77802->buck12346_gpios_selb[i])
 			gpio_free(max77802->buck12346_gpios_selb[i]);
+		kfree(max77802->buck12346_gpios_selb_label[i]);
 	}
 
 	for (i = 0; i < max77802->num_regulators; i++)
@@ -1000,10 +954,12 @@ static int __devexit max77802_pmic_remove(struct platform_device *pdev)
 	for (i = 0; i < 3; i++) {
 		if (max77802->buck12346_gpios_dvs[i])
 			gpio_free(max77802->buck12346_gpios_dvs[i]);
+		kfree(max77802->buck12346_gpios_dvs_label[i]);
 	}
 	for (i = 0; i < 5; i++) {
-		if (max77802->buck12346_gpios_dvs[i])
+		if (max77802->buck12346_gpios_selb[i])
 			gpio_free(max77802->buck12346_gpios_selb[i]);
+		kfree(max77802->buck12346_gpios_selb_label[i]);
 	}
 
 	for (i = 0; i < max77802->num_regulators; i++)

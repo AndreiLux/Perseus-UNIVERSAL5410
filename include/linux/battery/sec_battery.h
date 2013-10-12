@@ -59,6 +59,7 @@ struct sec_battery_info {
 	int voltage_ocv;		/* open circuit voltage (mV) */
 	int current_now;		/* current (mA) */
 	int current_avg;		/* average current (mA) */
+	int current_max;		/* input current limit (mA) */
 	int current_adc;
 
 	unsigned int capacity;			/* SOC (%) */
@@ -178,6 +179,10 @@ enum {
 	BATT_VOL_ADC_CAL,
 	BATT_VOL_AVER,
 	BATT_VOL_ADC_AVER,
+
+	BATT_CURRENT_UA_NOW,
+	BATT_CURRENT_UA_AVG,
+
 	BATT_TEMP_ADC,
 	BATT_TEMP_AVER,
 	BATT_TEMP_ADC_AVER,

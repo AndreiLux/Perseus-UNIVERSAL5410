@@ -84,6 +84,12 @@
 
 #define VIDCON0_ENVID				(1 << 1)
 #define VIDCON0_ENVID_F				(1 << 0)
+#define VIDCON0_83_ENABLE			(1 << 15) /* enable to use INT 83Mhz*/
+
+#define VIDOUT_CON				(0x20000)
+#define VIDOUT_CON_F_MASK			(0x7 << 8)
+#define VIDOUT_CON_WB				(0x4 << 8)
+#define VIDOUT_CON_RGB				(0x0 << 8)
 
 #ifdef CONFIG_FB_EXYNOS_FIMD_V8
 #define VIDOUT_CON				(0x20000)
@@ -214,7 +220,7 @@
 #define VIDTCON2_HOZVAL(_x)			(((_x) & 0x7ff) << 0)
 
 /* WINCONx */
-
+#define WINCONx_SHADOW_MASK			(0x4780FF)
 #define WINCONx_BITSWP				(1 << 18)
 #define WINCONx_BYTSWP				(1 << 17)
 #define WINCONx_HAWSWP				(1 << 16)
@@ -242,6 +248,7 @@
 
 #define WINCON1_BLD_PIX				(1 << 6)
 #define WINCON1_BLD_PLANE			(0 << 6)
+#define WINCON1_ALPHA_MUL			(1 << 7)
 
 #define WINCON1_ALPHA_SEL			(1 << 1)
 #define WINCON1_BPPMODE_MASK			(0xf << 2)
@@ -441,6 +448,18 @@
 #define REG_CLKGATE_MODE_AUTO_CLOCK_GATE	(0 << 0)
 #define REG_CLKGATE_MODE_NON_CLOCK_GATE		(1 << 0)
 
+/* i80 interface LDI command control 0 */
+#define LDI_CMDCON0				(0x1d0)
+#define LDI_CMDCON0_CMD_EN_MASK(_x)		(3 << (_x) * 2)
+#define LDI_CMDCON0_CMD_EN(_x)			(1 << (_x) * 2)
+
+/* i80 interface LDI command control 1 */
+#define LDI_CMDCON1				(0x1d4)
+#define LDI_CMDCON1_CMD_RS(_x)			(1 << (_x))
+
+/* i80 interface LDI command x */
+#define LDI_CMD(_x)				(0x280 + (_x) * 4)
+
 /* Blending equation */
 #define BLENDEQ(_x)				(0x240 + (_x) * 4)
 #define BLENDEQ_COEF_ZERO			0x0
@@ -482,6 +501,11 @@
 #define EXYNOS5_813				(0x80000013)
 
 #define TRIGCON					(0x201A4)
+#define HWTRIGEN_PER_RGB			(1 << 31)
+#define SWTRGCMD_W0BUF			(1 << 6)
+#define TRGMODE_W0BUF				(1 << 5)
+#define HWTRGMASK_I80_RGB			(1 << 4)
+#define HWTRGEN_I80_RGB				(1 << 3)
 #define SWTRGCMD_I80_RGB			(1 << 1)
 #define TRGMODE_I80_RGB				(1 << 0)
 #define I80IFCONA(_x)				(0x201B0 + ((_x) * 4))
@@ -492,3 +516,4 @@
 #define I80IFCON_RS_POL(_x)			((_x) << 2)
 #define I80IFCON_EN				(1 << 0)
 #define I80IFCONB(_x)				(0x201B8 + ((_x) * 4))
+#define I80IFCONB_NORMAL_CMD_ST			(1 << 9)

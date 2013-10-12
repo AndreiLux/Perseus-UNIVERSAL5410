@@ -26,16 +26,9 @@
 #include <mach/irqs.h>
 #include <mach/hs-iic.h>
 #include <mach/devfreq.h>
-#ifdef CONFIG_SEC_PM
-#include <mach/gpio-exynos.h>
-#endif
 #include <mach/tmu.h>
 
 #include "board-universal5410.h"
-
-#ifdef CONFIG_SEC_THERMISTOR
-#include <mach/sec_thermistor.h>
-#endif
 
 #ifdef CONFIG_BATTERY_SAMSUNG
 static struct platform_device samsung_device_battery = {
@@ -117,9 +110,6 @@ static struct exynos_tmu_platform_data exynos5_tmu_data = {
 	.trigger_levels[0] = 90,
 	.trigger_levels[1] = 95,
 	.trigger_levels[2] = 120,
-	.boost_trigger_levels[0] = 100,
-	.boost_trigger_levels[1] = 105,
-	.boost_trigger_levels[2] = 120,
 	.trigger_level0_en = 1,
 	.trigger_level1_en = 1,
 	.trigger_level2_en = 1,
@@ -137,17 +127,13 @@ static struct exynos_tmu_platform_data exynos5_tmu_data = {
 		.temp_level = 95,
 	},
 	.freq_tab[2] = {
-		.freq_clip_max = 600 * 1000,
+		.freq_clip_max = 800 * 1000,
 		.temp_level = 100,
 	},
 	.freq_tab[3] = {
-		.freq_clip_max = 200 * 1000,
+		.freq_clip_max = 400 * 1000,
 		.temp_level = 120,
 	},
-	.boost_temps[0] = 100,
-	.boost_temps[1] = 105,
-	.boost_temps[2] = 110,
-	.boost_temps[3] = 120,
 	.size[THERMAL_TRIP_ACTIVE] = 1,
 	.size[THERMAL_TRIP_PASSIVE] = 2,
 	.size[THERMAL_TRIP_HOT] = 1,
@@ -160,9 +146,6 @@ static struct platform_device *universal5410_power_devices[] __initdata = {
 	&exynos5_device_hs_i2c1,
 #ifdef CONFIG_BATTERY_SAMSUNG
 	&samsung_device_battery,
-#endif
-#ifdef CONFIG_SEC_THERMISTOR
-	&sec_device_thermistor,
 #endif
 #ifdef CONFIG_PM_DEVFREQ
 	&exynos5_mif_devfreq,
@@ -184,7 +167,7 @@ void __init exynos5_universal5410_power_init(void)
 {
 	exynos5_hs_i2c1_set_platdata(&hs_i2c1_data);
 	i2c_register_board_info(5, hs_i2c_devs0, ARRAY_SIZE(hs_i2c_devs0));
-	
+
 #ifdef CONFIG_PM_DEVFREQ
 	s3c_set_platdata(&universal5410_qos_mif_pd, sizeof(struct exynos_devfreq_platdata),
 			&exynos5_mif_devfreq);
@@ -197,11 +180,4 @@ void __init exynos5_universal5410_power_init(void)
 
 	platform_add_devices(universal5410_power_devices,
 			ARRAY_SIZE(universal5410_power_devices));
-
-#ifdef CONFIG_SEC_PM
-	sec_gpio_init();
-	sec_config_gpio_table();
-	exynos_set_sleep_gpio_table = sec_config_sleep_gpio_table;
-	exynos_debug_show_gpio = sec_debug_show_gpio;
-#endif
 }

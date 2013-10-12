@@ -84,6 +84,20 @@ static struct jpeg_fmt formats[] = {
 		.memplanes	= 1,
 		.types		= M2M_OUTPUT,
 	}, {
+		.name		= "ARGB8888",
+		.fourcc		= V4L2_PIX_FMT_BGR32,
+		.depth		= {32},
+		.color		= ARGB_8888,
+		.memplanes	= 1,
+		.types		= M2M_OUTPUT,
+	}, {
+		.name		= "ARGB8888",
+		.fourcc		= V4L2_PIX_FMT_RGB32,
+		.depth		= {32},
+		.color		= ARGB_8888,
+		.memplanes	= 1,
+		.types		= M2M_OUTPUT,
+	}, {
 		.name		= "YUV 4:2:2 packed, CbYCrY",
 		.fourcc		= V4L2_PIX_FMT_UYVY,
 		.depth		= {16},
@@ -165,14 +179,18 @@ static int jpeg_enc_vidioc_g_fmt(struct file *file, void *priv,
 	struct jpeg_ctx *ctx = priv;
 	struct v4l2_pix_format_mplane *pixm;
 	struct jpeg_enc_param *enc_param = &ctx->param.enc_param;
+	struct jpeg_frame *frame;
+
+	frame = ctx_get_frame(ctx, f->type);
+	if (IS_ERR(frame))
+		return PTR_ERR(frame);
 
 	pixm = &f->fmt.pix_mp;
-
 	pixm->field	= V4L2_FIELD_NONE;
 
 	if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT) {
 		pixm->pixelformat =
-			enc_param->in_fmt;
+			frame->pixelformat;
 		pixm->num_planes =
 			enc_param->in_plane;
 		pixm->width =
@@ -181,7 +199,7 @@ static int jpeg_enc_vidioc_g_fmt(struct file *file, void *priv,
 			enc_param->in_height;
 	} else if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		pixm->pixelformat =
-			enc_param->out_fmt;
+			frame->pixelformat;
 		pixm->num_planes =
 			enc_param->out_plane;
 		pixm->width =
@@ -260,6 +278,7 @@ static int jpeg_enc_vidioc_s_fmt_cap(struct file *file, void *priv,
 	struct vb2_queue *vq;
 	struct v4l2_pix_format_mplane *pix;
 	struct jpeg_fmt *fmt;
+	struct jpeg_frame *frame;
 	int ret;
 	int i;
 
@@ -279,9 +298,24 @@ static int jpeg_enc_vidioc_s_fmt_cap(struct file *file, void *priv,
 	pix = &f->fmt.pix_mp;
 	fmt = find_format(f);
 
+	frame = ctx_get_frame(ctx, f->type);
+	if (IS_ERR(frame))
+		return PTR_ERR(frame);
+
+	frame->jpeg_fmt = fmt;
+	if (!frame->jpeg_fmt) {
+		v4l2_err(&ctx->dev->v4l2_dev,
+				"not supported format values\n");
+		return -EINVAL;
+	}
+
 	for (i = 0; i < fmt->memplanes; i++)
 		ctx->payload[i] =
 			pix->plane_fmt[i].bytesperline * pix->height;
+
+	frame->width = pix->width;
+	frame->height = pix->height;
+	frame->pixelformat = pix->pixelformat;
 
 	ctx->param.enc_param.out_width = pix->height;
 	ctx->param.enc_param.out_height = pix->width;
@@ -299,6 +333,7 @@ static int jpeg_enc_vidioc_s_fmt_out(struct file *file, void *priv,
 	struct vb2_queue *vq;
 	struct v4l2_pix_format_mplane *pix;
 	struct jpeg_fmt *fmt;
+	struct jpeg_frame *frame;
 	int ret;
 	int i;
 
@@ -319,11 +354,27 @@ static int jpeg_enc_vidioc_s_fmt_out(struct file *file, void *priv,
 	pix = &f->fmt.pix_mp;
 	fmt = find_format(f);
 
+	frame = ctx_get_frame(ctx, f->type);
+	if (IS_ERR(frame))
+		return PTR_ERR(frame);
+
+	frame->jpeg_fmt = fmt;
+	if (!frame->jpeg_fmt) {
+		v4l2_err(&ctx->dev->v4l2_dev,
+				"not supported format values\n");
+		return -EINVAL;
+	}
+
 	for (i = 0; i < fmt->memplanes; i++) {
 		ctx->payload[i] =
 			pix->plane_fmt[i].bytesperline * pix->height;
 		ctx->param.enc_param.in_depth[i] = fmt->depth[i];
 	}
+
+	frame->width = pix->width;
+	frame->height = pix->height;
+	frame->pixelformat = pix->pixelformat;
+
 	ctx->param.enc_param.in_width = pix->width;
 	ctx->param.enc_param.in_height = pix->height;
 	ctx->param.enc_param.in_plane = fmt->memplanes;
@@ -336,9 +387,6 @@ static int jpeg_enc_m2m_reqbufs(struct file *file, void *priv,
 			  struct v4l2_requestbuffers *reqbufs)
 {
 	struct jpeg_ctx *ctx = priv;
-	struct vb2_queue *vq;
-
-	vq = v4l2_m2m_get_vq(ctx->m2m_ctx, reqbufs->type);
 
 	return v4l2_m2m_reqbufs(file, ctx->m2m_ctx, reqbufs);
 }

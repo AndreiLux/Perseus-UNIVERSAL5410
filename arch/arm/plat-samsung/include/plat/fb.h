@@ -59,6 +59,9 @@ struct s3c_fb_platdata {
 	void	(*lcd_off)(void);
 	int		(*dsim_on)(struct device *dsim);
 	int		(*dsim_off)(struct device *dsim);
+	int		(*dsim_clk_on)(struct device *dsim);
+	int		(*dsim_clk_off)(struct device *dsim);
+	int		(*dsim_get_state)(struct device *dsim);
 
 	struct s3c_fb_pd_win	*win[S3C_FB_MAX_WIN];
 

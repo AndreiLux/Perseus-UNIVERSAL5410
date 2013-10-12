@@ -19,8 +19,10 @@
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
 #include <linux/suspend.h>
-#include <linux/dma-mapping.h>
-#include <mach/sec_debug.h>
+#include <linux/clk.h>
+#ifdef CONFIG_SEC_PM
+#include <linux/moduleparam.h>
+#endif
 
 #include <asm/proc-fns.h>
 #include <asm/smp_scu.h>
@@ -36,76 +38,103 @@
 #include <mach/pmu.h>
 #include <mach/smc.h>
 #include <mach/asv.h>
+#include <mach/devfreq.h>
 
 #include <plat/pm.h>
 #include <plat/cpu.h>
-#include <linux/gpio.h>
-
 #include <plat/devs.h>
 #include <plat/regs-serial.h>
 #include <plat/gpio-cfg.h>
 #include <plat/gpio-core.h>
 #include <plat/usb-phy.h>
+#include <plat/audio.h>
+#include <plat/clock.h>
+#include <mach/sec_debug.h>
 
-#ifdef CONFIG_EXYNOS_C2C
-#include <mach/c2c.h>
+#ifdef CONFIG_ARM_TRUSTZONE
+#define REG_DIRECTGO_ADDR	(S5P_VA_SYSRAM_NS + 0x24)
+#define REG_DIRECTGO_FLAG	(S5P_VA_SYSRAM_NS + 0x20)
+#else
+#define REG_DIRECTGO_ADDR	EXYNOS_INFORM0
+#define REG_DIRECTGO_FLAG	EXYNOS_INFORM1
 #endif
 
-#if defined(CONFIG_SEC_PM)
-#include <linux/moduleparam.h>
+#define EXYNOS_CHECK_DIRECTGO	0xFCBA0D10
+#define EXYNOS_CHECK_LPA	0xABAD0000
 
-/* #define CPUIDLE_ENABLE_MASK (ENABLE_AFTR) */
-#define CPUIDLE_ENABLE_MASK (ENABLE_AFTR | ENABLE_LPA | ENABLE_C2S)
+#ifdef CONFIG_SEC_PM
+#if defined(CONFIG_V1A) || defined(CONFIG_N1A)
+#define CPUIDLE_ENABLE_MASK (ENABLE_C2 | ENABLE_C3_AFTR)
+#else
+#define CPUIDLE_ENABLE_MASK (ENABLE_C2 | ENABLE_C3_AFTR | ENABLE_C3_LPA)
+#endif
+
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA_DRAM
+extern int check_dram_status(void);
+#endif
 
 static enum {
-	ENABLE_IDLE = 0x0,
-	ENABLE_AFTR = 0x1,
-	ENABLE_LPA  = 0x2,
-	ENABLE_C2S  = 0x4,
+	ENABLE_C2	= BIT(0),
+	ENABLE_C3_AFTR	= BIT(1),
+	ENABLE_C3_LPA	= BIT(2),
 } enable_mask = CPUIDLE_ENABLE_MASK;
-module_param_named(enable_mask, enable_mask, uint, 0644);
 
-#ifdef CONFIG_SEC_PM_DEBUG
-unsigned int log_en = ENABLE_LPA;
-module_param_named(log_en, log_en, uint, 0644);
-#endif /* CONFIG_SEC_PM_DEBUG */
-#endif /* CONFIG_SEC_PM */
-#ifdef CONFIG_ARM_TRUSTZONE
-#define REG_DIRECTGO_ADDR	(soc_is_exynos4210() ? samsung_rev() == EXYNOS4210_REV_1_1 ? \
-			EXYNOS_INFORM7 : (samsung_rev() == EXYNOS4210_REV_1_0 ? \
-			(S5P_VA_SYSRAM_NS + 0x24) : EXYNOS_INFORM0) : (S5P_VA_SYSRAM_NS + 0x24))
-#define REG_DIRECTGO_FLAG	(soc_is_exynos4210() ? samsung_rev() == EXYNOS4210_REV_1_1 ? \
-			EXYNOS_INFORM6 : (samsung_rev() == EXYNOS4210_REV_1_0 ? \
-			(S5P_VA_SYSRAM_NS + 0x20) : EXYNOS_INFORM1) : (S5P_VA_SYSRAM_NS + 0x20))
-#else
-#define REG_DIRECTGO_ADDR	(samsung_rev() == EXYNOS4210_REV_1_1 ? \
-			EXYNOS_INFORM7 : (samsung_rev() == EXYNOS4210_REV_1_0 ? \
-			(S5P_VA_SYSRAM + 0x24) : EXYNOS_INFORM0))
-#define REG_DIRECTGO_FLAG	(samsung_rev() == EXYNOS4210_REV_1_1 ? \
-			EXYNOS_INFORM6 : (samsung_rev() == EXYNOS4210_REV_1_0 ? \
-			(S5P_VA_SYSRAM + 0x20) : EXYNOS_INFORM1))
+DEFINE_SPINLOCK(enable_mask_lock);
+
+static int set_enable_mask(const char *val, const struct kernel_param *kp)
+{
+	int rv = param_set_uint(val, kp);
+	unsigned long flags;
+
+	if (rv)
+		return rv;
+
+	spin_lock_irqsave(&enable_mask_lock, flags);
+
+	if (!(enable_mask & ENABLE_C2)) {
+		unsigned int cpuid = smp_processor_id();
+		int i;
+		for_each_online_cpu(i) {
+			if (i == cpuid)
+				continue;
+			arm_send_ping_ipi(i);
+		}
+	}
+
+	spin_unlock_irqrestore(&enable_mask_lock, flags);
+
+	return 0;
+}
+
+static struct kernel_param_ops enable_mask_param_ops = {
+	.set = set_enable_mask,
+	.get = param_get_uint,
+};
+
+module_param_cb(enable_mask, &enable_mask_param_ops, &enable_mask, 0644);
+MODULE_PARM_DESC(enabled_mask, "bitmask for C state - C2, AFTR, LPA");
 #endif
 
-#define EXYNOS_GPIO_END		(soc_is_exynos5410() ? \
-					EXYNOS5410_GPIO_END : EXYNOS4_GPIO_END)
-#define EXYNOS_CHECK_DIRECTGO		0xFCBA0D10
+#ifdef CONFIG_SEC_PM_DEBUG
+unsigned int log_en;
+module_param_named(log_en, log_en, uint, 0644);
+#endif
 
-#if defined(CONFIG_BT_BCM4335)
+#if defined(CONFIG_BT_BCM4339)
 extern int bt_is_running;
 extern void bt_uart_rts_ctrl(int flag);
 #endif
-
-extern unsigned int scu_save[2];
-
 static int exynos_enter_idle(struct cpuidle_device *dev,
 			struct cpuidle_driver *drv,
 			      int index);
+#if defined (CONFIG_EXYNOS_CPUIDLE_C2)
+static int exynos_enter_c2(struct cpuidle_device *dev,
+				 struct cpuidle_driver *drv,
+				 int index);
+#endif
 static int exynos_enter_lowpower(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv,
 				int index);
-static int exynos5410_enter_lowpower(struct cpuidle_device *dev,
-				 struct cpuidle_driver *drv,
-				 int index);
 
 struct check_reg_lpa {
 	void __iomem	*check_reg;
@@ -119,8 +148,9 @@ struct check_reg_lpa {
 static struct check_reg_lpa exynos5_power_domain[] = {
 	{.check_reg = EXYNOS5_GSCL_STATUS,	.check_bit = 0x7},
 	{.check_reg = EXYNOS5_ISP_STATUS,	.check_bit = 0x7},
-	{.check_reg = EXYNOS5410_G3D_STATUS,	.check_bit = 0x7},
 	{.check_reg = EXYNOS5410_MFC_STATUS,	.check_bit = 0x7},
+	{.check_reg = EXYNOS5410_G3D_STATUS,	.check_bit = 0x7},
+	{.check_reg = EXYNOS5410_DISP1_STATUS,	.check_bit = 0x7},
 };
 
 /*
@@ -130,10 +160,17 @@ static struct check_reg_lpa exynos5_power_domain[] = {
 static struct check_reg_lpa exynos5_clock_gating[] = {
 	{.check_reg = EXYNOS5_CLKGATE_IP_DISP1,		.check_bit = 0x00000008},
 	{.check_reg = EXYNOS5_CLKGATE_IP_MFC,		.check_bit = 0x00000001},
-	{.check_reg = EXYNOS5_CLKGATE_IP_GEN,		.check_bit = 0x00004016},
-	{.check_reg = EXYNOS5_CLKGATE_BUS_FSYS0,	.check_bit = 0x00000002},
-	{.check_reg = EXYNOS5_CLKGATE_IP_PERIC,		.check_bit = 0x003F7FC0},
+	{.check_reg = EXYNOS5_CLKGATE_IP_GEN,		.check_bit = 0x0000001E},
+	{.check_reg = EXYNOS5_CLKGATE_BUS_FSYS0,	.check_bit = 0x00000006},
+#if defined (CONFIG_SOC_EXYNOS5410)
+	{.check_reg = EXYNOS5_CLKGATE_IP_PERIC,         .check_bit = 0x003F7FC0},
+#else
+	{.check_reg = EXYNOS5_CLKGATE_IP_PERIC,		.check_bit = 0x00077FC0},
+#endif
 };
+
+static struct clk *clkm_phy;
+static bool mif_max = false;
 
 #if defined(CONFIG_EXYNOS_DEV_DWMCI)
 enum hc_type {
@@ -147,82 +184,24 @@ struct check_device_op {
 	enum hc_type		type;
 };
 
-#if defined(CONFIG_ARCH_EXYNOS4)
-static struct check_device_op chk_sdhc_op[] = {
-#if defined(CONFIG_MMC_DW)
-	{.base = 0, .pdev = &exynos4_device_dwmci, .type = HC_MSHC},
-#endif
-#if defined(CONFIG_S5P_DEV_MSHC)
-	{.base = 0, .pdev = &s3c_device_mshci, .type = HC_MSHC},
-#endif
-#if defined(CONFIG_S3C_DEV_HSMMC)
-	{.base = 0, .pdev = &s3c_device_hsmmc0, .type = HC_SDHC},
-#endif
-#if defined(CONFIG_S3C_DEV_HSMMC1)
-	{.base = 0, .pdev = &s3c_device_hsmmc1, .type = HC_SDHC},
-#endif
-#if defined(CONFIG_S3C_DEV_HSMMC2)
-	{.base = 0, .pdev = &s3c_device_hsmmc2, .type = HC_SDHC},
-#endif
-#if defined(CONFIG_S3C_DEV_HSMMC3)
-	{.base = 0, .pdev = &s3c_device_hsmmc3, .type = HC_SDHC},
-#endif
-};
-#else
 static struct check_device_op chk_sdhc_op[] = {
 	{.base = 0, .pdev = &exynos5_device_dwmci0, .type = HC_MSHC},
 	{.base = 0, .pdev = &exynos5_device_dwmci1, .type = HC_MSHC},
 	{.base = 0, .pdev = &exynos5_device_dwmci2, .type = HC_MSHC},
 };
-#endif
-
-#define S3C_HSMMC_PRNSTS	(0x24)
-#define S3C_HSMMC_CLKCON	(0x2c)
-#define S3C_HSMMC_CMD_INHIBIT	0x00000001
-#define S3C_HSMMC_DATA_INHIBIT	0x00000002
-#define S3C_HSMMC_CLOCK_CARD_EN	0x0004
-
-#define MSHCI_CLKENA	(0x10)  /* Clock enable */
-#define MSHCI_STATUS	(0x48)  /* Status */
-#define MSHCI_DATA_BUSY	(0x1<<9)
-#define MSHCI_DATA_STAT_BUSY	(0x1<<10)
-#define MSHCI_ENCLK	(0x1)
 
 static int sdmmc_dev_num;
 /* If SD/MMC interface is working: return = 1 or not 0 */
 static int check_sdmmc_op(unsigned int ch)
 {
-	unsigned int reg1;
-	void __iomem *base_addr;
-	if (soc_is_exynos5410()) {
-		if (unlikely(ch >= sdmmc_dev_num)) {
-			pr_err("Invalid ch[%d] for SD/MMC\n", ch);
-			return 0;
-		}
-
-		return (__raw_readl(EXYNOS5_CLKSRC_MASK_FSYS) & (1 << (ch * 4))) ? 1 : 0;
-	} else {
-		unsigned int reg2;
-		if (unlikely(ch >= sdmmc_dev_num)) {
-			printk(KERN_ERR "Invalid ch[%d] for SD/MMC\n", ch);
-			return 0;
-		}
-
-		if (chk_sdhc_op[ch].type == HC_SDHC) {
-			base_addr = chk_sdhc_op[ch].base;
-			/* Check CLKCON [2]: ENSDCLK */
-			reg2 = readl(base_addr + S3C_HSMMC_CLKCON);
-			return !!(reg2 & (S3C_HSMMC_CLOCK_CARD_EN));
-		} else if (chk_sdhc_op[ch].type == HC_MSHC) {
-			base_addr = chk_sdhc_op[ch].base;
-			/* Check STATUS [9] for data busy */
-			reg1 = readl(base_addr + MSHCI_STATUS);
-			return (reg1 & (MSHCI_DATA_BUSY)) ||
-				(reg1 & (MSHCI_DATA_STAT_BUSY));
-		}
+	if (unlikely(ch >= sdmmc_dev_num)) {
+		pr_err("Invalid ch[%d] for SD/MMC\n", ch);
+		return 0;
 	}
-	/* should not be here */
-	return 0;
+	if (soc_is_exynos5410())
+		return (__raw_readl(EXYNOS5_CLKSRC_MASK_FSYS) & (1 << (ch * 4))) ? 1 : 0;
+	else
+		return (__raw_readl(EXYNOS5_CLKSRC_MASK_FSYS) & (1 << ((ch * 4) + 8))) ? 1 : 0;
 }
 
 /* Check all sdmmc controller */
@@ -237,13 +216,6 @@ static int loop_sdmmc_check(void)
 		}
 	}
 	return 0;
-}
-#endif
-
-#ifdef CONFIG_EXYNOS_C2C
-static int c2c_suspend_check(void)
-{
-	return c2c_connected();
 }
 #endif
 
@@ -289,134 +261,52 @@ static int check_gps_op(void)
 
 static int check_bt_op(void)
 {
-#if defined(CONFIG_BT_BCM4335)
+#if defined(CONFIG_BT_BCM4339)
 	return bt_is_running;
 #else
 	return 0;
 #endif
 }
-
-static int check_power_domain(void)
-{
-	unsigned long tmp;
-
-	tmp = __raw_readl(EXYNOS4_LCD0_CONFIGURATION);
-	if ((tmp & EXYNOS_INT_LOCAL_PWR_EN) == EXYNOS_INT_LOCAL_PWR_EN)
-		return 1;
-
-	/*
-	 * from REV 1.1, MFC power domain can turn off
-	 */
-	if (((soc_is_exynos4412()) && (samsung_rev() >= EXYNOS4412_REV_1_1)) ||
-	    ((soc_is_exynos4212()) && (samsung_rev() >= EXYNOS4212_REV_1_0)) ||
-	     soc_is_exynos4210()) {
-		tmp = __raw_readl(EXYNOS4_MFC_CONFIGURATION);
-		if ((tmp & EXYNOS_INT_LOCAL_PWR_EN) == EXYNOS_INT_LOCAL_PWR_EN)
-			return 1;
-	}
-
-	tmp = __raw_readl(EXYNOS4_MFC_CONFIGURATION);
-	if ((tmp & EXYNOS_INT_LOCAL_PWR_EN) == EXYNOS_INT_LOCAL_PWR_EN)
-		return 1;
-
-	tmp = __raw_readl(EXYNOS4_CAM_CONFIGURATION);
-	if ((tmp & EXYNOS_INT_LOCAL_PWR_EN) == EXYNOS_INT_LOCAL_PWR_EN)
-		return 1;
-
-	tmp = __raw_readl(EXYNOS4_TV_CONFIGURATION);
-	if ((tmp & EXYNOS_INT_LOCAL_PWR_EN) == EXYNOS_INT_LOCAL_PWR_EN)
-		return 1;
-
-	tmp = __raw_readl(EXYNOS4_GPS_CONFIGURATION);
-	if ((tmp & EXYNOS_INT_LOCAL_PWR_EN) == EXYNOS_INT_LOCAL_PWR_EN)
-		return 1;
-
-	return 0;
-}
-
-static int exynos4_check_operation(void)
-{
-	if (check_power_domain())
-		return 1;
-
-	return 0;
-}
-
 static int __maybe_unused exynos_check_enter_mode(void)
 {
-#if defined(CONFIG_SEC_PM)
-	unsigned int mask = enable_mask;
+#ifdef CONFIG_SEC_PM
+	if (!(enable_mask & ENABLE_C3_LPA))
+		return EXYNOS_CHECK_DIDLE;
 #endif
-	if (check_bt_op())
+	/* Check power domain */
+	if (exynos_check_reg_status(exynos5_power_domain,
+			    ARRAY_SIZE(exynos5_power_domain)))
 		return EXYNOS_CHECK_DIDLE;
 
-	if (soc_is_exynos5410()) {
-		/* Check power domain */
-		if (exynos_check_reg_status(exynos5_power_domain,
-				    ARRAY_SIZE(exynos5_power_domain)))
-			return EXYNOS_CHECK_DIDLE;
+	/* Check clock gating */
+	if (exynos_check_reg_status(exynos5_clock_gating,
+			    ARRAY_SIZE(exynos5_clock_gating)))
+		return EXYNOS_CHECK_DIDLE;
 
-		/* Check clock gating */
-		if (exynos_check_reg_status(exynos5_clock_gating,
-				    ARRAY_SIZE(exynos5_clock_gating)))
-			return EXYNOS_CHECK_DIDLE;
-	} else {
-		if (exynos4_check_operation())
-			return EXYNOS_CHECK_DIDLE;
-	}
-
-#ifdef CONFIG_EXYNOS_C2C
-	if (c2c_suspend_check())
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA_DRAM
+	if (check_dram_status())
 		return EXYNOS_CHECK_DIDLE;
 #endif
 
+#if defined(CONFIG_SOC_EXYNOS5420)
+	if (check_adma_status())
+		return EXYNOS_CHECK_DIDLE;
+#endif
 #if defined(CONFIG_EXYNOS_DEV_DWMCI)
 	if (loop_sdmmc_check())
 		return EXYNOS_CHECK_DIDLE;
 #endif
-
-#if defined(CONFIG_GPS_BCMxxxxx)
-	if (check_gps_op()) {
+#if	defined(CONFIG_GPS_BCMxxxxx)
+	if (check_gps_op())
 		return EXYNOS_CHECK_DIDLE;
-    }
 #endif
-
-#if defined(CONFIG_SEC_PM)
-	if (mask & ENABLE_LPA) {
-		if (exynos_check_usb_op())
-			return EXYNOS_CHECK_DIDLE;
-		else
-			return EXYNOS_CHECK_LPA;
-	} else
-		return EXYNOS_CHECK_DIDLE;
-#else
 	if (exynos_check_usb_op())
 		return EXYNOS_CHECK_DIDLE;
 
 	return EXYNOS_CHECK_LPA;
-#endif
 }
 
-static struct cpuidle_state exynos_cpuidle_set[] __initdata = {
-	[0] = {
-		.enter			= exynos_enter_idle,
-		.exit_latency		= 1,
-		.target_residency	= 10000,
-		.flags			= CPUIDLE_FLAG_TIME_VALID,
-		.name			= "C0",
-		.desc			= "ARM clock gating(WFI)",
-	},
-	[1] = {
-		.enter			= exynos_enter_lowpower,
-		.exit_latency		= 300,
-		.target_residency	= 10000,
-		.flags			= CPUIDLE_FLAG_TIME_VALID,
-		.name			= "C1",
-		.desc			= "ARM power down",
-	},
-};
-
-static struct cpuidle_state exynos5410_cpuidle_set[] __initdata = {
+static struct cpuidle_state exynos5_cpuidle_set[] __initdata = {
 	[0] = {
 		.enter			= exynos_enter_idle,
 		.exit_latency		= 1,
@@ -426,7 +316,8 @@ static struct cpuidle_state exynos5410_cpuidle_set[] __initdata = {
 		.desc			= "ARM clock gating(WFI)",
 	},
 	[1] = {
-		.enter			= exynos5410_enter_lowpower,
+#if defined (CONFIG_EXYNOS_CPUIDLE_C2)
+		.enter			= exynos_enter_c2,
 		.exit_latency		= 30,
 		.target_residency	= 1000,
 		.flags			= CPUIDLE_FLAG_TIME_VALID,
@@ -434,6 +325,7 @@ static struct cpuidle_state exynos5410_cpuidle_set[] __initdata = {
 		.desc			= "ARM power down",
 	},
 	[2] = {
+#endif
 		.enter                  = exynos_enter_lowpower,
 		.exit_latency           = 300,
 		.target_residency       = 5000,
@@ -453,10 +345,7 @@ static struct cpuidle_driver exynos_idle_driver = {
 /* Ext-GIC nIRQ/nFIQ is the only wakeup source in AFTR */
 static void exynos_set_wakeupmask(void)
 {
-	if (soc_is_exynos5410())
-		__raw_writel(0x40003ffe, EXYNOS_WAKEUP_MASK);
-	else
-		__raw_writel(0x0000ff3e, EXYNOS_WAKEUP_MASK);
+	__raw_writel(0x40003ffe, EXYNOS_WAKEUP_MASK);
 }
 
 #if !defined(CONFIG_ARM_TRUSTZONE)
@@ -491,24 +380,19 @@ static void restore_cpu_arch_register(void)
 
 static int idle_finisher(unsigned long flags)
 {
-
-#ifdef CONFIG_CACHE_L2X0
-	outer_flush_all();
-#endif
-
 #if defined(CONFIG_ARM_TRUSTZONE)
-	if (soc_is_exynos5410()) {
-		exynos_smc(SMC_CMD_SAVE, OP_TYPE_CORE, SMC_POWERSTATE_IDLE, 0);
-		exynos_smc(SMC_CMD_SHUTDOWN, OP_TYPE_CLUSTER, SMC_POWERSTATE_IDLE, 0);
-	} else {
-		exynos_smc(SMC_CMD_CPU0AFTR, 0, 0, 0);
-	}
+	if (soc_is_exynos5420())
+		flush_cache_all();
+
+	exynos_smc(SMC_CMD_SAVE, OP_TYPE_CORE, SMC_POWERSTATE_IDLE, 0);
+	exynos_smc(SMC_CMD_SHUTDOWN, OP_TYPE_CLUSTER, SMC_POWERSTATE_IDLE, 0);
 #else
 	cpu_do_idle();
 #endif
 	return 1;
 }
 
+#if defined (CONFIG_EXYNOS_CPUIDLE_C2)
 static int c2_finisher(unsigned long flags)
 {
 #if defined(CONFIG_ARM_TRUSTZONE)
@@ -524,6 +408,7 @@ static int c2_finisher(unsigned long flags)
 #endif
 	return 1;
 }
+#endif
 
 static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv,
@@ -531,17 +416,16 @@ static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 {
 	struct timeval before, after;
 	int idle_time;
-	unsigned long tmp, abb_val;
+	unsigned long tmp;
 	unsigned int ret = 0;
 	unsigned int cpuid = smp_processor_id();
 
 	local_irq_disable();
-
+	sec_debug_task_log_msg(cpuid, "aftr+");
 #ifdef CONFIG_SEC_PM_DEBUG
-	if (log_en & ENABLE_AFTR)
+	if (log_en & ENABLE_C3_AFTR)
 		pr_info("+++aftr\n");
 #endif
-
 	do_gettimeofday(&before);
 
 	exynos_set_wakeupmask();
@@ -552,14 +436,7 @@ static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 	__raw_writel(virt_to_phys(s3c_cpu_resume), REG_DIRECTGO_ADDR);
 	__raw_writel(EXYNOS_CHECK_DIRECTGO, REG_DIRECTGO_FLAG);
 
-	if (!soc_is_exynos5410()) {
-		exynos_reset_assert_ctrl(0);
-
-		abb_val = exynos4x12_get_abb_member(ABB_ARM);
-		exynos4x12_set_abb_member(ABB_ARM, ABB_MODE_085V);
-	}
-
-	if (soc_is_exynos5410())
+	if (soc_is_exynos5410() || soc_is_exynos5420())
 		exynos_disable_idle_clock_down(KFC);
 
 	save_cpu_arch_register();
@@ -569,8 +446,7 @@ static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 	tmp &= ~EXYNOS_CENTRAL_LOWPWR_CFG;
 	__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_CONFIGURATION);
 
-	if (soc_is_exynos5410())
-		set_boot_flag(cpuid, C2_STATE);
+	set_boot_flag(cpuid, C2_STATE);
 
 	cpu_pm_enter();
 
@@ -581,33 +457,24 @@ static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 		__raw_writel(tmp, EXYNOS_CENTRAL_SEQ_CONFIGURATION);
 	}
 
-#ifdef CONFIG_SMP
-#if !defined(CONFIG_ARM_TRUSTZONE)
-	scu_enable(S5P_VA_SCU);
-#endif
-#endif
-	if (soc_is_exynos5410())
-		clear_boot_flag(cpuid, C2_STATE);
+	clear_boot_flag(cpuid, C2_STATE);
 
 	cpu_pm_exit();
 
 	restore_cpu_arch_register();
 
-	if (soc_is_exynos5410())
+	if (soc_is_exynos5410() || soc_is_exynos5420())
 		exynos_enable_idle_clock_down(KFC);
 
 	/* Clear wakeup state register */
 	__raw_writel(0x0, EXYNOS_WAKEUP_STAT);
 
-	if (!soc_is_exynos5410())
-		exynos_reset_assert_ctrl(1);
-
 	do_gettimeofday(&after);
-
 #ifdef CONFIG_SEC_PM_DEBUG
-	if (log_en & ENABLE_AFTR)
+	if (log_en & ENABLE_C3_AFTR)
 		pr_info("---aftr\n");
 #endif
+	sec_debug_task_log_msg(cpuid, "aftr-");
 
 	local_irq_enable();
 	idle_time = (after.tv_sec - before.tv_sec) * USEC_PER_SEC +
@@ -616,32 +483,6 @@ static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 	dev->last_residency = idle_time;
 	return index;
 }
-
-static struct sleep_save exynos4_lpa_save[] = {
-	/* CMU side */
-	SAVE_ITEM(EXYNOS4_CLKSRC_MASK_TOP),
-	SAVE_ITEM(EXYNOS4_CLKSRC_MASK_CAM),
-	SAVE_ITEM(EXYNOS4_CLKSRC_MASK_TV),
-	SAVE_ITEM(EXYNOS4_CLKSRC_MASK_LCD0),
-	SAVE_ITEM(EXYNOS4_CLKSRC_MASK_LCD1),
-	SAVE_ITEM(EXYNOS4_CLKSRC_MASK_MAUDIO),
-	SAVE_ITEM(EXYNOS4_CLKSRC_MASK_FSYS),
-	SAVE_ITEM(EXYNOS4_CLKSRC_MASK_PERIL0),
-	SAVE_ITEM(EXYNOS4_CLKSRC_MASK_PERIL1),
-	SAVE_ITEM(EXYNOS4_CLKSRC_MASK_DMC),
-};
-
-static struct sleep_save exynos4_set_clksrc[] = {
-	{ .reg = EXYNOS4_CLKSRC_MASK_TOP	, .val = 0x00000001, },
-	{ .reg = EXYNOS4_CLKSRC_MASK_CAM	, .val = 0x11111111, },
-	{ .reg = EXYNOS4_CLKSRC_MASK_TV		, .val = 0x00000111, },
-	{ .reg = EXYNOS4_CLKSRC_MASK_LCD0	, .val = 0x00001111, },
-	{ .reg = EXYNOS4_CLKSRC_MASK_MAUDIO	, .val = 0x00000001, },
-	{ .reg = EXYNOS4_CLKSRC_MASK_FSYS	, .val = 0x01011111, },
-	{ .reg = EXYNOS4_CLKSRC_MASK_PERIL0	, .val = 0x01111111, },
-	{ .reg = EXYNOS4_CLKSRC_MASK_PERIL1	, .val = 0x01110111, },
-	{ .reg = EXYNOS4_CLKSRC_MASK_DMC	, .val = 0x00010000, },
-};
 
 static struct sleep_save exynos5_lpa_save[] = {
 	/* CMU side */
@@ -653,6 +494,9 @@ static struct sleep_save exynos5_lpa_save[] = {
 	SAVE_ITEM(EXYNOS5_CLKSRC_MASK_PERIC0),
 	SAVE_ITEM(EXYNOS5_CLKSRC_MASK_PERIC1),
 	SAVE_ITEM(EXYNOS5_CLKSRC_TOP3),
+#if defined(CONFIG_SOC_EXYNOS5420)
+	SAVE_ITEM(EXYNOS5_CLKSRC_TOP5),
+#endif
 };
 
 static struct sleep_save exynos5_set_clksrc[] = {
@@ -671,64 +515,42 @@ static int exynos_enter_core0_lpa(struct cpuidle_device *dev,
 {
 	struct timeval before, after;
 	int idle_time, ret = 0;
-	unsigned long tmp, abb_val;
+	unsigned long tmp;
 	unsigned int cpuid = smp_processor_id();
 
 	/*
 	 * Before enter central sequence mode, clock src register have to set
 	 */
-	if (soc_is_exynos5410()) {
-		s3c_pm_do_save(exynos5_lpa_save, ARRAY_SIZE(exynos5_lpa_save));
-		s3c_pm_do_restore_core(exynos5_set_clksrc,
-				       ARRAY_SIZE(exynos5_set_clksrc));
-	} else {
-		s3c_pm_do_save(exynos4_lpa_save, ARRAY_SIZE(exynos4_lpa_save));
-		s3c_pm_do_restore_core(exynos4_set_clksrc,
-					ARRAY_SIZE(exynos4_set_clksrc));
-	}
+	s3c_pm_do_save(exynos5_lpa_save, ARRAY_SIZE(exynos5_lpa_save));
+	s3c_pm_do_restore_core(exynos5_set_clksrc,
+			       ARRAY_SIZE(exynos5_set_clksrc));
 
 	local_irq_disable();
-
+	sec_debug_task_log_msg(cpuid, "lpa+");
 #ifdef CONFIG_SEC_PM_DEBUG
-	if (log_en & ENABLE_LPA)
+	if (log_en & ENABLE_C3_LPA)
 		pr_info("+++lpa\n");
 #endif
-
-#if 0//def CONFIG_EXYNOS_C2C
-	__raw_writel(0x1, EXYNOS_C2C_CTRL);
-#endif
-
 	do_gettimeofday(&before);
 
 	/*
 	 * Unmasking all wakeup source.
 	 */
-	if (soc_is_exynos5410())
-		__raw_writel(0x7FFFE000, EXYNOS_WAKEUP_MASK);
-	else
-		__raw_writel(0x3FF0000, EXYNOS_WAKEUP_MASK);
+	__raw_writel(0x7FFFE000, EXYNOS_WAKEUP_MASK);
 
-#if defined(CONFIG_BT_BCM4335)
+#if defined(CONFIG_BT_BCM4339)
 	bt_uart_rts_ctrl(1);
 #endif
-
 	/* Configure GPIO Power down control register */
-	exynos_set_lpa_pdn(EXYNOS_GPIO_END);
+	exynos_set_lpa_pdn(S3C_GPIO_END);
 
 	__raw_writel(virt_to_phys(s3c_cpu_resume), REG_DIRECTGO_ADDR);
 	__raw_writel(EXYNOS_CHECK_DIRECTGO, REG_DIRECTGO_FLAG);
 
-	if (!soc_is_exynos5410()) {
-		exynos_reset_assert_ctrl(0);
-
-		abb_val = exynos4x12_get_abb_member(ABB_ARM);
-		exynos4x12_set_abb_member(ABB_ARM, ABB_MODE_085V);
-	}
-
 	/* Set value of power down register for aftr mode */
 	exynos_sys_powerdown_conf(SYS_LPA);
 
-	if (soc_is_exynos5410())
+	if (soc_is_exynos5410() || soc_is_exynos5420())
 		exynos_disable_idle_clock_down(KFC);
 
 	save_cpu_arch_register();
@@ -742,9 +564,22 @@ static int exynos_enter_core0_lpa(struct cpuidle_device *dev,
 		/* Waiting for flushing UART fifo */
 	} while (exynos_uart_fifo_check());
 
-	if (soc_is_exynos5410())
-		set_boot_flag(cpuid, C2_STATE);
+	set_boot_flag(cpuid, C2_STATE);
 
+	if (soc_is_exynos5420()) {
+		__raw_writel(EXYNOS_CHECK_LPA, EXYNOS_PMU_SPARE1);
+
+		tmp = __raw_readl(EXYNOS5420_SFR_AXI_CGDIS1_REG);
+		tmp |= (EXYNOS5420_UFS | EXYNOS5420_ACE_KFC | EXYNOS5420_ACE_EAGLE);
+		__raw_writel(tmp, EXYNOS5420_SFR_AXI_CGDIS1_REG);
+
+		exynos5_mif_transition_disable(true);
+
+		if (clkm_phy->usage) {
+			mif_max = true;
+			clk_disable(clkm_phy);
+		}
+	}
 	cpu_pm_enter();
 
 	ret = cpu_suspend(0, idle_finisher);
@@ -755,70 +590,65 @@ static int exynos_enter_core0_lpa(struct cpuidle_device *dev,
 
 		goto early_wakeup;
 	}
-
 #ifdef CONFIG_SMP
 #if !defined(CONFIG_ARM_TRUSTZONE)
 	scu_enable(S5P_VA_SCU);
 #endif
 #endif
 	/* For release retention */
-	if (!soc_is_exynos5410()) {
-		__raw_writel((1 << 28), EXYNOS_PAD_RET_GPIO_OPTION);
-		__raw_writel((1 << 28), EXYNOS_PAD_RET_UART_OPTION);
-		__raw_writel((1 << 28), EXYNOS_PAD_RET_MMCA_OPTION);
-		__raw_writel((1 << 28), EXYNOS_PAD_RET_MMCB_OPTION);
-		__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIA_OPTION);
-		__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIB_OPTION);
-	} else {
-		__raw_writel((1 << 28), EXYNOS5410_PAD_RET_GPIO_OPTION);
-		__raw_writel((1 << 28), EXYNOS5410_PAD_RET_UART_OPTION);
-		__raw_writel((1 << 28), EXYNOS5410_PAD_RET_MMCA_OPTION);
-		__raw_writel((1 << 28), EXYNOS5410_PAD_RET_MMCB_OPTION);
-		__raw_writel((1 << 28), EXYNOS5410_PAD_RET_MMCC_OPTION);
-		__raw_writel((1 << 28), EXYNOS5410_PAD_RET_SPI_OPTION);
-		__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIA_OPTION);
-		__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIB_OPTION);
-#ifdef CONFIG_EXYNOS_C2C
-		__raw_writel((1 << 28), EXYNOS5_PAD_RETENTION_GPIO_SYSMEM_OPTION);
-#endif
-	}
+	__raw_writel((1 << 28), EXYNOS54XX_PAD_RET_GPIO_OPTION);
+	__raw_writel((1 << 28), EXYNOS54XX_PAD_RET_UART_OPTION);
+	__raw_writel((1 << 28), EXYNOS54XX_PAD_RET_MMCA_OPTION);
+	__raw_writel((1 << 28), EXYNOS54XX_PAD_RET_MMCB_OPTION);
+	__raw_writel((1 << 28), EXYNOS54XX_PAD_RET_MMCC_OPTION);
+	__raw_writel((1 << 28), EXYNOS54XX_PAD_RET_SPI_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIA_OPTION);
+	__raw_writel((1 << 28), EXYNOS_PAD_RET_EBIB_OPTION);
+	if (soc_is_exynos5420())
+		__raw_writel((1 << 28), EXYNOS54XX_PAD_RET_HSI_OPTION);
 
 early_wakeup:
-	if (soc_is_exynos5410())
-		clear_boot_flag(cpuid, C2_STATE);
+	if (soc_is_exynos5420()) {
+		if (mif_max) {
+			clk_enable(clkm_phy);
+			mif_max = false;
+		}
+
+		exynos5_mif_transition_disable(false);
+
+		__raw_writel(0, EXYNOS_PMU_SPARE1);
+
+		tmp = __raw_readl(EXYNOS5420_SFR_AXI_CGDIS1_REG);
+		tmp &= ~(EXYNOS5420_UFS | EXYNOS5420_ACE_KFC | EXYNOS5420_ACE_EAGLE);
+		__raw_writel(tmp, EXYNOS5420_SFR_AXI_CGDIS1_REG);
+
+		exynos5_mif_nocp_resume();
+	}
+
+	clear_boot_flag(cpuid, C2_STATE);
 
 	cpu_pm_exit();
 
 	restore_cpu_arch_register();
 
-	if (soc_is_exynos5410())
+	if (soc_is_exynos5410() || soc_is_exynos5420())
 		exynos_enable_idle_clock_down(KFC);
 
-	if (soc_is_exynos5410())
-		s3c_pm_do_restore_core(exynos5_lpa_save,
-				       ARRAY_SIZE(exynos5_lpa_save));
-	else {
-		s3c_pm_do_restore_core(exynos4_lpa_save,
-			       ARRAY_SIZE(exynos4_lpa_save));
-		exynos_reset_assert_ctrl(1);
-	}
+	s3c_pm_do_restore_core(exynos5_lpa_save,
+			       ARRAY_SIZE(exynos5_lpa_save));
 
 	/* Clear wakeup state register */
 	__raw_writel(0x0, EXYNOS_WAKEUP_STAT);
 
-#if defined(CONFIG_BT_BCM4335)
+#if defined(CONFIG_BT_BCM4339)
 	bt_uart_rts_ctrl(0);
 #endif
 	do_gettimeofday(&after);
-
 #ifdef CONFIG_SEC_PM_DEBUG
-	if (log_en & ENABLE_LPA)
+	if (log_en & ENABLE_C3_LPA)
 		pr_info("---lpa\n");
 #endif
-
-#if 0//def CONFIG_EXYNOS_C2C
-	__raw_writel(0x0, EXYNOS_C2C_CTRL);
-#endif
+	sec_debug_task_log_msg(cpuid, "lpa-");
 
 	local_irq_enable();
 	idle_time = (after.tv_sec - before.tv_sec) * USEC_PER_SEC +
@@ -860,10 +690,16 @@ static unsigned int exynos_get_core_num(void)
 
 	cpumask_clear(&cpu_power_on_mask);
 
-	if (samsung_rev() < EXYNOS5410_REV_1_0) {
-		if (cluster_id == 0)
-			pwr_offset = 4;
+	if (soc_is_exynos5410()) {
+		if (samsung_rev() < EXYNOS5410_REV_1_0) {
+			if (cluster_id == 0)
+				pwr_offset = 4;
+		} else {
+			if (cluster_id != 0)
+				pwr_offset = 4;
+		}
 	} else {
+
 		if (cluster_id != 0)
 			pwr_offset = 4;
 	}
@@ -883,34 +719,44 @@ static int exynos_enter_lowpower(struct cpuidle_device *dev,
 				int index)
 {
 	int new_index = index;
+	unsigned int cluster_id = read_cpuid_mpidr() & 0x100;
 
-	if (!soc_is_exynos5410())
-		__raw_writel((EXYNOS4_USE_STANDBY_WFI0 |
-				EXYNOS4_USE_STANDBY_WFE0),
-				EXYNOS_CENTRAL_SEQ_OPTION);
+	if (!cluster_id)
+		return exynos_enter_c2(dev, drv, (new_index - 1));
 
 	/* This mode only can be entered when other core's are offline */
-	if (num_online_cpus() > 1) {
-		if (soc_is_exynos5410())
-			return exynos5410_enter_lowpower(dev, drv, (new_index - 1));
+	if (num_online_cpus() > 1)
+#if defined (CONFIG_EXYNOS_CPUIDLE_C2)
+		return exynos_enter_c2(dev, drv, (new_index - 1));
+#else
+		return exynos_enter_idle(dev, drv, (new_index - 2));
+#endif
+	if (exynos_get_core_num() > 1)
+#if defined (CONFIG_EXYNOS_CPUIDLE_C2)
+		return exynos_enter_c2(dev, drv, (new_index - 1));
+#else
+		return exynos_enter_idle(dev, drv, (new_index - 2));
+#endif
+
+#ifdef CONFIG_SEC_PM
+	if (exynos_check_enter_mode() == EXYNOS_CHECK_DIDLE) {
+		if (enable_mask & ENABLE_C3_AFTR)
+			return exynos_enter_core0_aftr(dev, drv, new_index);
 		else
-			return exynos_enter_idle(dev, drv, 0);
+			return exynos_enter_idle(dev, drv, (new_index - 2));
+	} else {
+		return exynos_enter_core0_lpa(dev, drv, new_index);
 	}
-
-	if (soc_is_exynos5410() && (exynos_get_core_num() > 1))
-		return exynos5410_enter_lowpower(dev, drv, (new_index - 1));
-
+#else
 	if (exynos_check_enter_mode() == EXYNOS_CHECK_DIDLE)
 		return exynos_enter_core0_aftr(dev, drv, new_index);
 	else
 		return exynos_enter_core0_lpa(dev, drv, new_index);
+#endif
 }
 
-static bool ping_sent = false;
-static void *c2_flag_addr = NULL;
-static unsigned int c2_flag_phy_addr = 0;
-
-static int exynos5410_enter_lowpower(struct cpuidle_device *dev,
+#if defined (CONFIG_EXYNOS_CPUIDLE_C2)
+static int exynos_enter_c2(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv,
 				int index)
 {
@@ -919,29 +765,15 @@ static int exynos5410_enter_lowpower(struct cpuidle_device *dev,
 	unsigned int cpuid = smp_processor_id(), cpu_offset = 0;
 	unsigned int cluster_id = read_cpuid(CPUID_MPIDR) >> 8 & 0xf;
 	unsigned int value;
-#if defined(CONFIG_SEC_PM)
-	unsigned int i;
-#endif
 
-#ifndef CONFIG_EXYNOS5_C2_STATE_IDLE
-	return exynos_enter_idle(dev, drv, (index - 1));
-#endif
-#if defined(CONFIG_SEC_PM)
-	if (!(enable_mask & ENABLE_C2S)) {
-		if (!ping_sent) {
-			ping_sent = true;
-			for_each_online_cpu(i) {
-				if (i == cpuid)
-					continue;
-				arm_send_ping_ipi(i);
-			}
-		}
+#ifdef CONFIG_SEC_PM
+	if (!(enable_mask & ENABLE_C2))
 		return exynos_enter_idle(dev, drv, (index - 1));
-	}
-
-	if (ping_sent)
-		ping_sent = false;
 #endif
+	/* HACK : Disabling C2 on KFC for EXYNOS5420 */
+	if (soc_is_exynos5420())
+	        return exynos_enter_idle(dev, drv, (index - 1));
+
 	local_irq_disable();
 	do_gettimeofday(&before);
 
@@ -949,24 +781,29 @@ static int exynos5410_enter_lowpower(struct cpuidle_device *dev,
 	__raw_writel(EXYNOS_CHECK_DIRECTGO, REG_DIRECTGO_FLAG);
 
 	set_boot_flag(cpuid, C2_STATE);
-
 	sec_debug_task_log_msg(cpuid, "c2+");
-	if (c2_flag_addr)
-		__raw_writel(C2_STATE, c2_flag_addr + (cpuid * 4));
-
 	cpu_pm_enter();
 
-	if (samsung_rev() < EXYNOS5410_REV_1_0) {
-		if (cluster_id == 0)
-			cpu_offset = cpuid + 4;
-		else
-			cpu_offset = cpuid;
+	if (soc_is_exynos5410()) {
+		if (samsung_rev() < EXYNOS5410_REV_1_0) {
+			if (cluster_id == 0)
+				cpu_offset = cpuid + 4;
+			else
+				cpu_offset = cpuid;
+		} else {
+			if (cluster_id == 0)
+				cpu_offset = cpuid;
+			else
+				cpu_offset = cpuid + 4;
+		}
 	} else {
+
 		if (cluster_id == 0)
 			cpu_offset = cpuid;
 		else
 			cpu_offset = cpuid + 4;
 	}
+
 	__raw_writel(0x0, EXYNOS_ARM_CORE_CONFIGURATION(cpu_offset));
 
 	value = __raw_readl(EXYNOS5410_ARM_INTR_SPREAD_ENABLE);
@@ -982,15 +819,10 @@ static int exynos5410_enter_lowpower(struct cpuidle_device *dev,
 	__raw_writel(value, EXYNOS5410_ARM_INTR_SPREAD_ENABLE);
 
 	clear_boot_flag(cpuid, C2_STATE);
-
 	if (ret)
 		sec_debug_task_log_msg(cpuid, "c2_");    /* early wakeup */
 	else
 		sec_debug_task_log_msg(cpuid, "c2-");    /* normal wakeup */
-
-	if (c2_flag_addr)
-		__raw_writel(0, c2_flag_addr + (cpuid * 4));
-
 	cpu_pm_exit();
 
 	do_gettimeofday(&after);
@@ -1001,6 +833,7 @@ static int exynos5410_enter_lowpower(struct cpuidle_device *dev,
 	dev->last_residency = idle_time;
 	return index;
 }
+#endif
 
 void exynos_enable_idle_clock_down(unsigned int cluster)
 {
@@ -1021,8 +854,8 @@ void exynos_enable_idle_clock_down(unsigned int cluster)
 	} else {
 		/* For A7 core */
 		tmp = __raw_readl(EXYNOS5_PWR_CTRL_KFC);
-		tmp &= ~((0x7 << 16) | (1 << 8));
-		tmp |= (0x7 << 16) | 0x1ff;
+		tmp &= ~((0x3F << 16) | (1 << 8));
+		tmp |= (0x3F << 16) | 0x1ff;
 		__raw_writel(tmp, EXYNOS5_PWR_CTRL_KFC);
 
 		tmp = __raw_readl(EXYNOS5_PWR_CTRL2_KFC);
@@ -1093,19 +926,14 @@ static int __init exynos_init_cpuidle(void)
 	struct platform_device *pdev;
 	struct resource *res;
 
-	if (soc_is_exynos5410()) {
+	if (soc_is_exynos5410() || soc_is_exynos5420()) {
 		exynos_enable_idle_clock_down(ARM);
 		exynos_enable_idle_clock_down(KFC);
 	}
 
 	/* Setup cpuidle driver */
-	if (soc_is_exynos5410()) {
-		idle_set = exynos5410_cpuidle_set;
-		drv->state_count = ARRAY_SIZE(exynos5410_cpuidle_set);
-	} else {
-		idle_set = exynos_cpuidle_set;
-		drv->state_count = ARRAY_SIZE(exynos_cpuidle_set);
-	}
+	idle_set = exynos5_cpuidle_set;
+	drv->state_count = ARRAY_SIZE(exynos5_cpuidle_set);
 
 	max_cpuidle_state = drv->state_count;
 	for (i = 0; i < max_cpuidle_state; i++) {
@@ -1119,10 +947,7 @@ static int __init exynos_init_cpuidle(void)
 		device = &per_cpu(exynos_cpuidle_device, cpu_id);
 		device->cpu = cpu_id;
 
-	if (cpu_id != 0 && !soc_is_exynos5410())
-		device->state_count = 1;
-	else
-		 device->state_count = max_cpuidle_state;
+	device->state_count = max_cpuidle_state;
 
 	if (cpuidle_register_device(device)) {
 		printk(KERN_ERR "CPUidle register device failed\n,");
@@ -1151,23 +976,16 @@ static int __init exynos_init_cpuidle(void)
 		}
 	}
 #endif
-	if (soc_is_exynos4412()) {
-		/* Save register value for SCU */
-		scu_save[0] = __raw_readl(S5P_VA_SCU + 0x30);
-		scu_save[1] = __raw_readl(S5P_VA_SCU + 0x0);
 
-		flush_cache_all();
-		outer_clean_range(virt_to_phys(scu_save), ARRAY_SIZE(scu_save));
+	if (soc_is_exynos5420()) {
+		clkm_phy = clk_get(NULL, "clkm_phy");
+		if (IS_ERR(clkm_phy)) {
+			pr_err("Cannot get clock \"clkm_phy\"\n");
+			return PTR_ERR(clkm_phy);
+		}
 	}
 
 	register_pm_notifier(&exynos_cpuidle_notifier);
-
-	c2_flag_addr = dma_alloc_writecombine(NULL, 16, &c2_flag_phy_addr, GFP_KERNEL);
-	if (!c2_flag_addr)
-		pr_info("%s: c2 flag memory cannot be allocated\n", __func__);
-	else
-		pr_info("%s: c2_flag_addr(0x%x), c2_flag_phy_addr(0x%x)\n",
-					__func__, (unsigned int)c2_flag_addr, c2_flag_phy_addr);
 
 	return 0;
 }

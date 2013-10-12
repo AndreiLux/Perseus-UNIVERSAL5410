@@ -493,8 +493,6 @@ static irqreturn_t max77802_rtc_alarm_irq(int irq, void *data)
 static irqreturn_t max77802_rtc_alarm2_irq(int irq, void *data)
 {
 	struct max77802_rtc_info *info = data;
-	int ret;
-	u8 val;
 
 	dev_info(info->dev, "%s:irq(%d)\n", __func__, irq);
 
@@ -701,6 +699,8 @@ static int __devinit max77802_rtc_probe(struct platform_device *pdev)
 #ifdef MAX77802_RTC_WTSR_SMPL
 	if (max77802->wtsr_smpl & MAX77802_WTSR_ENABLE)
 		max77802_rtc_enable_wtsr(info, true);
+	if (max77802->wtsr_smpl & MAX77802_SMPL_ENABLE)
+		max77802_rtc_enable_smpl(info, true);
 #endif
 
 	device_init_wakeup(&pdev->dev, 1);

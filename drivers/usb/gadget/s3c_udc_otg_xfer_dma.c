@@ -258,6 +258,14 @@ static void complete_rx(struct s3c_udc *dev, u8 ep_num)
 	struct s3c_request *req = NULL;
 	u32 ep_tsr = 0, xfer_size = 0, xfer_length, is_short = 0;
 
+	if (ep_num == EP0_CON && dev->ep0state == WAIT_FOR_IN_STATUS) {
+		DEBUG_IN_EP("%s: EP-%d WAIT_FOR_IN_STATUS -> WAIT_FOR_SETUP\n",
+					__func__, ep_num);
+		/* zlp received */
+		dev->ep0state = WAIT_FOR_SETUP;
+		return;
+	}
+
 	if (list_empty(&ep->queue)) {
 		DEBUG_OUT_EP("%s: RX DMA done : NULL REQ on OUT EP-%d\n",
 					__func__, ep_num);
@@ -272,7 +280,7 @@ static void complete_rx(struct s3c_udc *dev, u8 ep_num)
 		xfer_size = (ep_tsr & 0x7f);
 
 	else
-		xfer_size = (ep_tsr & 0x7fff);
+		xfer_size = (ep_tsr & 0x7ffff);
 
 	xfer_length = req->req.length - xfer_size;
 	req->req.actual += min(xfer_length, req->req.length - req->req.actual);
@@ -287,7 +295,6 @@ static void complete_rx(struct s3c_udc *dev, u8 ep_num)
 		done(ep, req, 0);
 
 		if (ep_num == EP0_CON && dev->ep0state == DATA_STATE_RECV) {
-			done(ep, req, 0);
 			DEBUG_OUT_EP("	=> Send ZLP\n");
 			dev->ep0state = WAIT_FOR_OUT_STATUS;
 			s3c_udc_ep0_zlp(dev);
@@ -313,13 +320,15 @@ static void complete_tx(struct s3c_udc *dev, u8 ep_num)
 		DEBUG_IN_EP("%s: EP-%d WAIT_FOR_OUT_STATUS -> WAIT_FOR_SETUP\n",
 					__func__, ep_num);
 		/* zlp transmitted */
-		dev->ep0state = WAIT_FOR_SETUP_NAK;
+		dev->ep0state = WAIT_FOR_SETUP;
 		return;
 	}
 
 	if (list_empty(&ep->queue)) {
 		DEBUG_IN_EP("%s: TX DMA done : NULL REQ on IN EP-%d\n",
 					__func__, ep_num);
+		if (dev->ep0state == DATA_STATE_XMIT)
+			dev->ep0state = WAIT_FOR_IN_STATUS;
 		return;
 	}
 
@@ -462,10 +471,14 @@ static void process_ep_out_intr(struct s3c_udc *dev)
 						"arrived\n");
 					s3c_handle_ep0(dev);
 				}
+				if (ep_intr_status & TRANSFER_DONE) {
+					complete_rx(dev, ep_num);
+					s3c_udc_pre_setup(dev, true);
+				}
+			} else {
+				if (ep_intr_status & TRANSFER_DONE)
+					complete_rx(dev, ep_num);
 			}
-
-			if (ep_intr_status & TRANSFER_DONE)
-				complete_rx(dev, ep_num);
 		}
 		ep_num++;
 		ep_intr >>= 1;
@@ -585,10 +598,9 @@ static irqreturn_t s3c_udc_irq(int irq, void *_dev)
 		process_ep_out_intr(dev);
 
 	if (dev->ep0state == WAIT_FOR_SETUP) {
-		s3c_udc_pre_setup(dev, false);
-	} else if (dev->ep0state == WAIT_FOR_SETUP_NAK) {
 		s3c_udc_pre_setup(dev, true);
-		dev->ep0state = WAIT_FOR_SETUP;
+	} else if (dev->ep0state == WAIT_FOR_IN_STATUS) {
+		s3c_udc_pre_setup(dev, false);
 	}
 
 	spin_unlock_irqrestore(&dev->lock, flags);
@@ -715,7 +727,7 @@ static int write_fifo_ep0(struct s3c_ep *ep, struct s3c_request *req)
 	/* requests complete when all IN data is in the FIFO */
 	if (is_last) {
 		DEBUG_EP0("%s: last packet\n", __func__);
-		ep->dev->ep0state = WAIT_FOR_SETUP;
+		ep->dev->ep0state = WAIT_FOR_IN_STATUS;
 		return 1;
 	}
 
@@ -807,7 +819,6 @@ static int s3c_ep0_write(struct s3c_udc *dev)
 {
 	struct s3c_request *req;
 	struct s3c_ep *ep = &dev->ep[0];
-	int ret;
 
 	if (list_empty(&ep->queue))
 		req = 0;
@@ -868,7 +879,7 @@ static int s3c_udc_get_status(struct s3c_udc *dev,
 	ep_ctrl = __raw_readl(dev->regs + S3C_UDC_OTG_DIEPCTL(EP0_CON));
 	__raw_writel(ep_ctrl|DEPCTL_EPENA|DEPCTL_CNAK,
 		dev->regs + S3C_UDC_OTG_DIEPCTL(EP0_CON));
-	dev->ep0state = WAIT_FOR_SETUP;
+	dev->ep0state = DATA_STATE_XMIT;
 
 	return 0;
 }
@@ -1182,6 +1193,7 @@ static inline void set_test_mode(struct s3c_udc *dev)
 		dctl = __raw_readl(dev->regs + S3C_UDC_OTG_DCTL);
 		__raw_writel((dctl & ~(TEST_CONTROL_MASK)) | TEST_PACKET_MODE,
 				dev->regs + S3C_UDC_OTG_DCTL);
+		dev->ep0state = DATA_STATE_XMIT;
 		break;
 	case TEST_FORCE_ENABLE_SEL:
 		/* some delay is necessary like printk() or udelay() */

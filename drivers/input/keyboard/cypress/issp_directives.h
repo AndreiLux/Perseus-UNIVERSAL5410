@@ -114,10 +114,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //#define CY8CTMG200_32PIN
 /***************************************************************************************************/
 
-/**** CY8C20x45 devices ****/
-#define CY8C20045_24LKXI
-
-/* #define CY8C20236 */
+#define CY8C20236
 // **** CY8C20x66 devices ****
 //#define CY8C20246       /// 2009.03.26. kimc
 //#define CY8C20266
@@ -387,9 +384,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifdef CY8C29002
 #define CY8C29x66
 #endif
-#ifdef CY8C20045_24LKXI
-#define CY8C20x45     /* 8k devices */
-#endif
 
 //-----------------------------------------------------------------------------
 // The directives below are used for Krypton.
@@ -416,29 +410,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	//READ_ID_WORD                                          //PTJ: 3rd Party Progrmmer will have to write code to handle this directive, we do it out own way in this code, see read_id_v
 #endif
 //-----------------------------------------------------------------------------
-
-#ifdef CY8C20x45		/* 2012.10.30 msp */
-#define TSYNC
-
-/* PTJ: ID_SETUP_1 is similar to init1_v */
-#define ID_SETUP_1
-/* PTJ: ID_SETUP_2 is similar to init2_v */
-#define ID_SETUP_2
-#define SET_BLOCK_NUM
-/* PTJ: CHECKSUM_SETUP_20x66 is the same as CHECKSUM-SETUP in 001-15870 */
-#define CHECKSUM_SETUP
-#define READ_CHECKSUM
-/* PTJ: PROGRAM_BLOCK_20x66 is the same as PROGRAM-AND-VERIFY in 001-15870 */
-#define PROGRAM_AND_VERIFY
-#define ERASE
-#define	SECURE
-#define READ_SECURITY
-#define READ_WRITE_SETUP
-#define WRITE_BYTE
-#define VERIFY_SETUP
-#define READ_STATUS
-#define READ_BYTE
-#endif
 
 //-----------------------------------------------------------------------------
 // The directives below are used to define various sets of vectors that differ

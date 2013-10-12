@@ -6,7 +6,7 @@
  *
  *	Description	: MC Driver machine dependent part header
  *
- *	Version		: 1.0.5	2013.01.21
+ *	Version		: 2.0.1	2013.06.10
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.	In no event will the authors be held liable for any damages
@@ -34,8 +34,11 @@
 #include "linux/string.h"
 #include "linux/kernel.h"
 
+#define	MCDRV_BURST_WRITE_ENABLE	(1)
 
-#define	MCDRV_DEBUG_LEVEL	(0)
+#define	MCDRV_AP_LDOD			(0x00)
+
+#define	MCDRV_DEBUG_LEVEL		(0)
 
 
 void	machdep_SystemInit(void);
@@ -54,6 +57,7 @@ void	machdep_Lock(void);
 void	machdep_Unlock(void);
 void	machdep_PreLDODStart(void);
 void	machdep_PostLDODStart(void);
+UINT8	machdep_GetBusSelect(void);
 void	machdep_DebugPrint(UINT8 *pbLogString);
 
 

@@ -6,7 +6,7 @@
  *
  *	Description	: MC Driver
  *
- *	Version		: 1.0.6	2013.02.04
+ *	Version		: 2.0.1	2013.06.10
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.	In no event will the authors be held liable for any damages
@@ -42,7 +42,7 @@
 #if MCDRV_DEBUG_LEVEL
 #include "mcdebuglog.h"
 #endif
-
+#include <linux/kernel.h>
 
 
 
@@ -247,6 +247,7 @@ static SINT32	init
 	McSrv_Lock();
 	McResCtrl_Init();
 
+
 	machdep_PreLDODStart();
 
 	if (bHwId_ana == 0) {
@@ -309,6 +310,7 @@ static SINT32	init
 			bHwId_dig	= 0x81;
 		sdRet	= McResCtrl_SetHwId(bHwId_dig, bHwId_ana);
 		if (sdRet == MCDRV_SUCCESS) {
+			McResCtrl_SetRegDefault();
 			if (IsValidInitParam(psInitInfo, psInit2Info) == 0)
 				sdRet	= MCDRV_ERROR_ARGUMENT;
 			McResCtrl_SetRegVal(MCDRV_PACKET_REGTYPE_ANA, MCI_AP,
@@ -318,11 +320,45 @@ static SINT32	init
 			McResCtrl_SetInitInfo(psInitInfo, psInit2Info);
 			sdRet	= McDevIf_AllocPacketBuf();
 		}
-		if (sdRet == MCDRV_SUCCESS)
+		if (sdRet == MCDRV_SUCCESS) {
 			sdRet	= McPacket_AddInit();
+			if (sdRet == MCDRV_SUCCESS) {
+				;
+				sdRet	= McDevIf_ExecutePacket();
+			}
+		}
 
-		if (sdRet == MCDRV_SUCCESS)
-			sdRet	= McDevIf_ExecutePacket();
+		if (sdRet == MCDRV_SUCCESS) {
+			if (MCDRV_AP_LDOD == 0) {
+				abData[0]	= MCI_ANA_REG_A<<1;
+				abData[1]	= MCI_AP;
+				abData[2]	= MCI_ANA_REG_D<<1;
+				bAP	&=	(UINT8)~MCB_AP_LDOD;
+				abData[3]	= bAP;
+				McSrv_WriteReg(MCDRV_SLAVEADDR_ANA, abData, 4);
+				McSrv_Sleep(MCDRV_LDO_WAIT_TIME);
+				McResCtrl_SetRegVal(MCDRV_PACKET_REGTYPE_ANA,
+							MCI_AP, bAP);
+			}
+			abData[0]	= MCI_RST_A<<1;
+			abData[1]	= MCI_RST_A_DEF;
+			McSrv_WriteReg(MCDRV_SLAVEADDR_DIG, abData, 2);
+			abData[1]	= MCI_RST_A_DEF&~MCB_RST_A;
+			McSrv_WriteReg(MCDRV_SLAVEADDR_DIG, abData, 2);
+			abData[0]	= MCI_A_REG_A<<1;
+			abData[1]	= MCI_A_DEV_ID;
+			McSrv_WriteReg(MCDRV_SLAVEADDR_DIG, abData, 2);
+			abData[3]	= McSrv_ReadReg(MCDRV_SLAVEADDR_DIG,
+						(UINT32)MCI_A_REG_D);
+			sdRet	= McResCtrl_SetHwId(abData[3], bHwId_ana);
+			if (sdRet == MCDRV_SUCCESS) {
+				if (IsValidInitParam(psInitInfo, psInit2Info)
+					== 0) {
+					;
+					sdRet	= MCDRV_ERROR_ARGUMENT;
+				}
+			}
+		}
 
 		if (sdRet == MCDRV_SUCCESS) {
 			if (psInitInfo->bPowerMode == MCDRV_POWMODE_CDSPDEBUG) {
@@ -336,61 +372,30 @@ static SINT32	init
 				sPowerUpdate.abAnalog[4]	= 0;
 				sdRet	=
 				McPacket_AddPowerUp(&sPowerInfo, &sPowerUpdate);
-			} else {
-				if ((psInit2Info != NULL)
+			} else if ((psInit2Info != NULL)
 				&& (psInit2Info->bOption[19] == 1)) {
-					/*	LDOD always on	*/
-					McResCtrl_GetPowerInfo(&sPowerInfo);
-					sPowerInfo.bDigital	&=
-						(UINT8)~MCDRV_POWINFO_D_PLL_PD;
-					sPowerInfo.abAnalog[0]	&=
-							(UINT8)~MCB_AP_LDOD;
-					/*	used path power up	*/
-					sPowerUpdate.bDigital	=
-							MCDRV_POWUPDATE_D_ALL;
-					sPowerUpdate.abAnalog[0]	=
-								MCB_AP_LDOD;
-					sPowerUpdate.abAnalog[1]	=
-					sPowerUpdate.abAnalog[2]	=
-					sPowerUpdate.abAnalog[3]	=
-					sPowerUpdate.abAnalog[4]	= 0;
-					sdRet	=
-					McPacket_AddPowerUp(&sPowerInfo,
-								&sPowerUpdate);
-				} else {
-					abData[0]	= MCI_ANA_REG_A<<1;
-					abData[1]	= MCI_AP;
-					abData[2]	= MCI_ANA_REG_D<<1;
-					bAP	&=	(UINT8)~MCB_AP_LDOD;
-					abData[3]	= bAP;
-					McSrv_WriteReg(MCDRV_SLAVEADDR_ANA,
-								abData, 4);
-					McResCtrl_SetRegVal(
-						MCDRV_PACKET_REGTYPE_ANA,
-						MCI_AP, bAP);
-					abData[0]	= MCI_RST_A<<1;
-					abData[1]	= MCI_RST_A_DEF;
-					McSrv_WriteReg(MCDRV_SLAVEADDR_DIG,
-								abData, 2);
-					abData[1]	=
-						MCI_RST_A_DEF&~MCB_RST_A;
-					McSrv_WriteReg(MCDRV_SLAVEADDR_DIG,
-								abData, 2);
-				}
+				/*	LDOD always on	*/
+				McResCtrl_GetPowerInfo(&sPowerInfo);
+				sPowerInfo.bDigital	&=
+					(UINT8)~MCDRV_POWINFO_D_PLL_PD;
+				sPowerInfo.abAnalog[0]	&=
+						(UINT8)~MCB_AP_LDOD;
+				sPowerUpdate.bDigital	=
+						MCDRV_POWUPDATE_D_ALL;
+				sPowerUpdate.abAnalog[0]	=
+							MCB_AP_LDOD;
+				sPowerUpdate.abAnalog[1]	=
+				sPowerUpdate.abAnalog[2]	=
+				sPowerUpdate.abAnalog[3]	=
+				sPowerUpdate.abAnalog[4]	= 0;
+				sdRet	=
+				McPacket_AddPowerUp(&sPowerInfo,
+							&sPowerUpdate);
 			}
-		}
-
-		if (sdRet == MCDRV_SUCCESS)
-			sdRet	= McDevIf_ExecutePacket();
-
-		if (sdRet == MCDRV_SUCCESS) {
-			abData[0]	= MCI_A_REG_A<<1;
-			abData[1]	= MCI_A_DEV_ID;
-			McSrv_WriteReg(MCDRV_SLAVEADDR_DIG, abData, 2);
-			abData[3]	= McSrv_ReadReg(MCDRV_SLAVEADDR_DIG,
-						(UINT32)MCI_A_REG_D);
-			if (abData[3] != bHwId_dig)
-				sdRet	= MCDRV_ERROR_INIT;
+			if (sdRet == MCDRV_SUCCESS) {
+				;
+				sdRet	= McDevIf_ExecutePacket();
+			}
 		}
 
 		if (sdRet == MCDRV_SUCCESS) {
@@ -499,6 +504,7 @@ static SINT32	term
 
 	McResCtrl_UpdateState(eMCDRV_STATE_NOTINIT);
 
+	bAP	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_ANA, MCI_AP);
 	if ((bAP&MCB_AP_LDOD) != 0) {
 		;
 		machdep_PostLDODStart();
@@ -1663,8 +1669,11 @@ static SINT32	set_dsp
 	if (sAECInfo.sControl.bCommand == 1) {
 		if (sAECInfo.sControl.bParam[0] == 0) {
 			if (IsPathAllOff() == 0) {
+				struct MCDRV_PATH_INFO	sTmpPathInfo;
 				McResCtrl_GetPathInfoVirtual(&sPathInfo);
-				sdRet	= set_path(&gsPathInfoAllOff);
+				sTmpPathInfo	= gsPathInfoAllOff;
+				sTmpPathInfo.asBias[3]	= sPathInfo.asBias[3];
+				sdRet	= set_path(&sTmpPathInfo);
 				if (sdRet != MCDRV_SUCCESS) {
 					;
 					goto exit;
@@ -1922,6 +1931,10 @@ static SINT32	get_dsp
 		return McCdsp_GetDSP(CDSP_DFIFO_REMAIN, pvData, dSize);
 	case	MCDRV_DSP_PARAM_CDSP_RFIFO_REMAIN:
 		return McCdsp_GetDSP(CDSP_RFIFO_REMAIN, pvData, dSize);
+	case	MCDRV_DSP_PARAM_CDSP_FUNCA:
+		return McCdsp_GetDSP(CDSP_FUNC_A_HOST_COMMAND, pvData, dSize);
+	case	MCDRV_DSP_PARAM_CDSP_FUNCB:
+		return McCdsp_GetDSP(CDSP_FUNC_B_HOST_COMMAND, pvData, dSize);
 	case	MCDRV_DSP_PARAM_FDSP_DXRAM:
 		return McFdsp_GetDSP(FDSP_AE_FW_DXRAM, psDspParam->dInfo,
 						(UINT8 *)pvData, dSize);
@@ -2120,9 +2133,6 @@ static SINT32	set_hsdet
 	struct MCDRV_HSDET_INFO	sHSDetInfo;
 	UINT8	bReg;
 	struct MCDRV_PATH_INFO	sCurPathInfo, sTmpPathInfo;
-	struct MCDRV_HSDET_RES	sHSDetRes;
-	UINT8	bSlaveAddrA;
-	UINT8	abData[2];
 	UINT8	bPlugDetDB;
 	struct MCDRV_HSDET_INFO	sHSDet;
 
@@ -2255,36 +2265,7 @@ static SINT32	set_hsdet
 	if (sdRet == MCDRV_SUCCESS)
 		sdRet	= McDevIf_ExecutePacket();
 	if (sdRet == MCDRV_SUCCESS) {
-		if (((dUpdateInfo & MCDRV_ENPLUGDETDB_UPDATE_FLAG) != 0)
-		&& ((sHSDetInfo.bEnPlugDetDb & MCDRV_PLUGDETDB_UNDET_ENABLE)
-			!= 0)
-		&& (sHSDetInfo.cbfunc != 0)) {
-			bSlaveAddrA	=
-				McDevProf_GetSlaveAddr(eMCDRV_SLAVE_ADDR_ANA);
-#if 0
-			McSrv_Sleep(sHSDetInfo.bHsDetDbnc*1000);
-			abData[0]	= MCI_CD_REG_A<<1;
-			abData[1]	= MCI_PLUGDET_DB;
-			McSrv_WriteReg(bSlaveAddrA, abData, 2);
-			bReg	= McSrv_ReadReg(bSlaveAddrA, MCI_CD_REG_D);
-			if ((bReg & MCB_PLUGUNDET_DB) != 0) {
-#else
-			abData[0]	= MCI_CD_REG_A<<1;
-			abData[1]	= MCI_PLUGDET;
-			McSrv_WriteReg(bSlaveAddrA, abData, 2);
-			bReg	= McSrv_ReadReg(bSlaveAddrA, MCI_CD_REG_D);
-			if ((bReg & MCB_PLUGDET) == 0) {
-#endif
-				McSrv_Unlock();
-				sHSDetRes.bKeyCnt0	= 0;
-				sHSDetRes.bKeyCnt1	= 0;
-				sHSDetRes.bKeyCnt2	= 0;
-				(*sHSDetInfo.cbfunc)(
-					MCDRV_HSDET_EVT_PLUGUNDET_DB_FLAG,
-					&sHSDetRes);
-				McSrv_Lock();
-			}
-		}
+		;
 		sdRet	= SavePower();
 	}
 	return sdRet;
@@ -2520,6 +2501,8 @@ static SINT32	irq_proc
 			abData[0]	= MCI_IRQR<<1;
 			abData[1]	= MCB_EIRQR;
 			McSrv_WriteReg(bSlaveAddrD, abData, 2);
+			bAP	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_ANA,
+							MCI_AP);
 			if ((bAP&MCB_AP_LDOD) != 0) {
 				;
 				machdep_PostLDODStart();
@@ -2648,11 +2631,11 @@ static SINT32	irq_proc
 
 		McResCtrl_GetPathInfoVirtual(&sCurPathInfo);
 		sdRet	= set_path(&sCurPathInfo);
+		bAP	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_ANA, MCI_AP);
 		if ((bAP&MCB_AP_LDOD) != 0) {
 			;
 			machdep_PostLDODStart();
 		}
-		McSrv_Unlock();
 		if (sHSDetInfo.cbfunc != NULL) {
 			if ((dFlg_DET & MCB_SPLUGUNDET_DB) != 0) {
 				;
@@ -2661,12 +2644,13 @@ static SINT32	irq_proc
 				dFlg_DET	|=
 						MCDRV_HSDET_EVT_SENSEFIN_FLAG;
 			}
+			McSrv_Unlock();
 			(*sHSDetInfo.cbfunc)(dFlg_DET
 						|((UINT32)bFlg_KEY<<16),
 						&sHSDetRes);
+			McSrv_Lock();
 		}
 		/*	Enable IRQ	*/
-		McSrv_Lock();
 		bAP	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_ANA,
 								MCI_AP);
 		if ((bAP&MCB_AP_LDOD) != 0) {
@@ -2692,6 +2676,7 @@ static SINT32	irq_proc
 			McResCtrl_SetRegVal(MCDRV_PACKET_REGTYPE_IF,
 						MCI_IRQ, MCB_EIRQ);
 		}
+		bAP	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_ANA, MCI_AP);
 		if ((bAP&MCB_AP_LDOD) != 0) {
 			;
 			machdep_PostLDODStart();
@@ -2816,6 +2801,13 @@ static SINT32	irq_proc
 		abData[1]	= MCI_PLUGDET_DB;
 		McSrv_WriteReg(bSlaveAddrA, abData, 2);
 		bPlugDet	= McSrv_ReadReg(bSlaveAddrA, MCI_CD_REG_D);
+
+		/* Error case */
+		if ((bPlugDet & (MCB_PLUGUNDET_DB|MCB_PLUGDET_DB)) == 0) {
+			pr_info("irq_proc bPlugDet(0x%x)\n", bPlugDet);
+			bPlugDet |= MCB_PLUGUNDET_DB;
+		}
+
 		dFlg_DET	|= bPlugDet;
 
 		if ((dFlg_DET&MCB_PLUGUNDET_DB) != 0) {
@@ -2835,8 +2827,10 @@ static SINT32	irq_proc
 			}
 			if ((bReg & MCB_SPLUGDET_DB) != 0) {
 				McResCtrl_SetPlugDetDB(bReg);
-				if (McDevProf_GetDevId() !=
-							eMCDRV_DEV_ID_81_92H) {
+				if ((McDevProf_GetDevId() ==
+							eMCDRV_DEV_ID_80_90H)
+				|| (McDevProf_GetDevId() ==
+							eMCDRV_DEV_ID_81_91H)) {
 					bReg	= McResCtrl_GetRegVal(
 						MCDRV_PACKET_REGTYPE_ANA,
 						MCI_AP);
@@ -2847,14 +2841,6 @@ static SINT32	irq_proc
 						| (UINT32)MCI_AP,
 						bReg);
 				}
-				bReg	= McResCtrl_GetRegVal(
-						MCDRV_PACKET_REGTYPE_ANA,
-						MCI_HIZ);
-				bReg	|= (MCB_HPR_HIZ|MCB_HPL_HIZ);
-				McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
-						| MCDRV_PACKET_REGTYPE_ANA
-						| (UINT32)MCI_HIZ,
-						bReg);
 				McResCtrl_GetPathInfoVirtual(&sCurPathInfo);
 				sCurPathInfo.asBias[3].dSrcOnOff	|=
 							MCDRV_ASRC_MIC4_ON;
@@ -2899,13 +2885,7 @@ static SINT32	irq_proc
 						MCDRV_PACKET_REGTYPE_ANA,
 						MCI_HPDETVOL);
 					sdRet	= BeginImpSense(&bOP_DAC);
-					if (sdRet == MCDRV_SUCCESS) {
-						if ((bAP&MCB_AP_LDOD) != 0) {
-							;
-						machdep_PostLDODStart();
-						}
-						return sdRet;
-					} else {
+					if (sdRet != MCDRV_SUCCESS) {
 						/*	Enable IRQ	*/
 						abData[1]	= MCI_IRQHS;
 						abData[3]	= MCB_EIRQHS;
@@ -2916,6 +2896,14 @@ static SINT32	irq_proc
 							MCI_IRQHS, MCB_EIRQHS);
 						goto exit;
 					}
+					bAP	= McResCtrl_GetRegVal(
+						MCDRV_PACKET_REGTYPE_ANA,
+							MCI_AP);
+					if ((bAP&MCB_AP_LDOD) != 0) {
+						;
+						machdep_PostLDODStart();
+					}
+					return sdRet;
 				}
 			}
 		}
@@ -3056,10 +3044,15 @@ static SINT32	irq_proc
 			abData[0]	= MCI_IRQR<<1;
 			abData[1]	= 0;
 			McSrv_WriteReg(bSlaveAddrD, abData, 2);
+			bAP	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_ANA,
+							MCI_AP);
 			if ((bAP&MCB_AP_LDOD) != 0) {
 				;
 				machdep_PostLDODStart();
 			}
+			sHSDetRes.bPlugRev	= 0;
+			sHSDetRes.bHpImpClass	= 0;
+			sHSDetRes.wHpImp	= 0;
 			McSrv_Unlock();
 			(*sHSDetInfo.cbfunc)(
 				dFlg_DET
@@ -3101,6 +3094,7 @@ exit:
 		}
 	}
 
+	bAP	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_ANA, MCI_AP);
 	if ((bAP&MCB_AP_LDOD) != 0) {
 		;
 		machdep_PostLDODStart();
@@ -3435,29 +3429,48 @@ static	UINT8	IsValidInitParam
 #endif
 
 
-	if ((MCDRV_CKSEL_CMOS_CMOS != psInitInfo->bCkSel)
-	&& (MCDRV_CKSEL_TCXO_TCXO != psInitInfo->bCkSel)
-	&& (MCDRV_CKSEL_CMOS_TCXO != psInitInfo->bCkSel)
-	&& (MCDRV_CKSEL_TCXO_CMOS != psInitInfo->bCkSel))
-		bRet	= 0;
+	if (McDevProf_GetDevId() == eMCDRV_DEV_ID_89_92H) {
+		if ((MCDRV_CKSEL_CMOS != psInitInfo->bCkSel)
+		&& (MCDRV_CKSEL_TCXO != psInitInfo->bCkSel))
+			bRet	= 0;
+	} else {
+		if ((MCDRV_CKSEL_CMOS_CMOS != psInitInfo->bCkSel)
+		&& (MCDRV_CKSEL_TCXO_TCXO != psInitInfo->bCkSel)
+		&& (MCDRV_CKSEL_CMOS_TCXO != psInitInfo->bCkSel)
+		&& (MCDRV_CKSEL_TCXO_CMOS != psInitInfo->bCkSel))
+			bRet	= 0;
+	}
 
-	if ((MCDRV_CKINPUT_CLKI0_CLKI1 != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_CLKI0_RTCK != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_CLKI0_SBCK != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_CLKI1_CLKI0 != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_CLKI1_RTCK != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_CLKI1_SBCK != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_RTC_CLKI0 != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_RTC_CLKI1 != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_RTC_SBCK != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_SBCK_CLKI0 != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_SBCK_CLKI1 != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_SBCK_RTC != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_CLKI0_CLKI0 != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_CLKI1_CLKI1 != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_RTC_RTC != psInitInfo->bCkInput)
-	&& (MCDRV_CKINPUT_SBCK_SBCK != psInitInfo->bCkInput))
-		bRet	= 0;
+	if (McDevProf_GetDevId() == eMCDRV_DEV_ID_89_92H) {
+		if ((MCDRV_CKINPUT_CLKI0_RTCK != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_CLKI0_SBCK != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_RTC_CLKI0 != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_RTC_SBCK != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_SBCK_CLKI0 != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_SBCK_RTC != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_CLKI0_CLKI0 != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_RTC_RTC != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_SBCK_SBCK != psInitInfo->bCkInput))
+			bRet	= 0;
+	} else {
+		if ((MCDRV_CKINPUT_CLKI0_CLKI1 != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_CLKI0_RTCK != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_CLKI0_SBCK != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_CLKI1_CLKI0 != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_CLKI1_RTCK != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_CLKI1_SBCK != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_RTC_CLKI0 != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_RTC_CLKI1 != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_RTC_SBCK != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_SBCK_CLKI0 != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_SBCK_CLKI1 != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_SBCK_RTC != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_CLKI0_CLKI0 != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_CLKI1_CLKI1 != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_RTC_RTC != psInitInfo->bCkInput)
+		&& (MCDRV_CKINPUT_SBCK_SBCK != psInitInfo->bCkInput))
+			bRet	= 0;
+	}
 
 	if (psInitInfo->bPllModeA > 7)
 		bRet	= 0;
@@ -4334,10 +4347,8 @@ static UINT8	IsValidDioPathParam
 	else if ((bRegVal & MCB_LPT1_START) != 0)
 		bLP1_start	= 1;
 
-	bRegVal	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_MB, MCI_LP2_START);
-	if ((bRegVal & MCB_LPR2_START) != 0)
-		bLP2_start	= 1;
-	else if ((bRegVal & MCB_LPT2_START) != 0)
+	if ((McResCtrl_HasSrc(eMCDRV_DST_VOICEOUT, eMCDRV_DST_CH0) != 0)
+	|| (McResCtrl_HasSrc(eMCDRV_DST_VBOXIOIN, eMCDRV_DST_CH0) != 0))
 		bLP2_start	= 1;
 
 	bRegVal	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_MB, MCI_LP3_START);
@@ -5240,14 +5251,20 @@ static UINT8	IsValidHSDetParam
 		}
 	}
 	if ((dUpdateInfo & MCDRV_DETINV_UPDATE_FLAG) != 0UL) {
-		if ((psHSDetInfo->bDetInInv != MCDRV_DET_IN_NORMAL)
-		&& (psHSDetInfo->bDetInInv != MCDRV_DET_IN_INV)
-		&& (psHSDetInfo->bDetInInv !=
-					MCDRV_DET_IN_NORMAL_NORMAL)
-		&& (psHSDetInfo->bDetInInv != MCDRV_DET_IN_INV_NORMAL)
-		&& (psHSDetInfo->bDetInInv != MCDRV_DET_IN_NORMAL_INV)
-		&& (psHSDetInfo->bDetInInv != MCDRV_DET_IN_INV_INV))
-			bRet	= 0;
+		if (McDevProf_GetDevId() == eMCDRV_DEV_ID_89_92H) {
+			if ((psHSDetInfo->bDetInInv != MCDRV_DET_IN_NORMAL)
+			&& (psHSDetInfo->bDetInInv != MCDRV_DET_IN_INV))
+				bRet	= 0;
+		} else {
+			if ((psHSDetInfo->bDetInInv != MCDRV_DET_IN_NORMAL)
+			&& (psHSDetInfo->bDetInInv != MCDRV_DET_IN_INV)
+			&& (psHSDetInfo->bDetInInv !=
+						MCDRV_DET_IN_NORMAL_NORMAL)
+			&& (psHSDetInfo->bDetInInv != MCDRV_DET_IN_INV_NORMAL)
+			&& (psHSDetInfo->bDetInInv != MCDRV_DET_IN_NORMAL_INV)
+			&& (psHSDetInfo->bDetInInv != MCDRV_DET_IN_INV_INV))
+				bRet	= 0;
+		}
 	}
 
 	if ((dUpdateInfo & MCDRV_HSDETMODE_UPDATE_FLAG) != 0UL) {
@@ -5264,13 +5281,6 @@ static UINT8	IsValidHSDetParam
 		&& (psHSDetInfo->bSperiod != MCDRV_SPERIOD_7813)
 		&& (psHSDetInfo->bSperiod != MCDRV_SPERIOD_15625)
 		&& (psHSDetInfo->bSperiod != MCDRV_SPERIOD_31250))
-			bRet	= 0;
-	}
-	if ((dUpdateInfo & MCDRV_LPERIOD_UPDATE_FLAG) != 0UL) {
-		if ((psHSDetInfo->bLperiod != MCDRV_LPERIOD_3906)
-		&& (psHSDetInfo->bLperiod != MCDRV_LPERIOD_62500)
-		&& (psHSDetInfo->bLperiod != MCDRV_LPERIOD_125000)
-		&& (psHSDetInfo->bLperiod != MCDRV_LPERIOD_250000))
 			bRet	= 0;
 	}
 	if ((dUpdateInfo & MCDRV_DBNCNUMPLUG_UPDATE_FLAG) != 0UL) {
@@ -5295,28 +5305,25 @@ static UINT8	IsValidHSDetParam
 			bRet	= 0;
 	}
 
-	if ((dUpdateInfo & MCDRV_SGNL_UPDATE_FLAG) != 0UL) {
-		if ((psHSDetInfo->bSgnlPeriod != MCDRV_SGNLPERIOD_61)
-		&& (psHSDetInfo->bSgnlPeriod != MCDRV_SGNLPERIOD_79)
-		&& (psHSDetInfo->bSgnlPeriod != MCDRV_SGNLPERIOD_97)
-		&& (psHSDetInfo->bSgnlPeriod != MCDRV_SGNLPERIOD_151))
-			bRet	= 0;
-		if ((psHSDetInfo->bSgnlNum != MCDRV_SGNLNUM_1)
-		&& (psHSDetInfo->bSgnlNum != MCDRV_SGNLNUM_4)
-		&& (psHSDetInfo->bSgnlNum != MCDRV_SGNLNUM_6)
-		&& (psHSDetInfo->bSgnlNum != MCDRV_SGNLNUM_8)
-		&& (psHSDetInfo->bSgnlNum != MCDRV_SGNLNUM_NONE))
-			bRet	= 0;
-		if ((psHSDetInfo->bSgnlPeak != MCDRV_SGNLPEAK_500)
-		&& (psHSDetInfo->bSgnlPeak != MCDRV_SGNLPEAK_730)
-		&& (psHSDetInfo->bSgnlPeak != MCDRV_SGNLPEAK_960)
-		&& (psHSDetInfo->bSgnlPeak != MCDRV_SGNLPEAK_1182))
-			bRet	= 0;
-	}
-	if ((dUpdateInfo & MCDRV_IMPSEL_UPDATE_FLAG) != 0UL) {
-		if ((psHSDetInfo->bImpSel != 0)
-		&& (psHSDetInfo->bImpSel != 1))
-			bRet	= 0;
+	if (McDevProf_GetDevId() != eMCDRV_DEV_ID_89_92H) {
+		if ((dUpdateInfo & MCDRV_SGNL_UPDATE_FLAG) != 0UL) {
+			if ((psHSDetInfo->bSgnlPeriod != MCDRV_SGNLPERIOD_61)
+			&& (psHSDetInfo->bSgnlPeriod != MCDRV_SGNLPERIOD_79)
+			&& (psHSDetInfo->bSgnlPeriod != MCDRV_SGNLPERIOD_97)
+			&& (psHSDetInfo->bSgnlPeriod != MCDRV_SGNLPERIOD_151))
+				bRet	= 0;
+			if ((psHSDetInfo->bSgnlNum != MCDRV_SGNLNUM_1)
+			&& (psHSDetInfo->bSgnlNum != MCDRV_SGNLNUM_4)
+			&& (psHSDetInfo->bSgnlNum != MCDRV_SGNLNUM_6)
+			&& (psHSDetInfo->bSgnlNum != MCDRV_SGNLNUM_8)
+			&& (psHSDetInfo->bSgnlNum != MCDRV_SGNLNUM_NONE))
+				bRet	= 0;
+			if ((psHSDetInfo->bSgnlPeak != MCDRV_SGNLPEAK_500)
+			&& (psHSDetInfo->bSgnlPeak != MCDRV_SGNLPEAK_730)
+			&& (psHSDetInfo->bSgnlPeak != MCDRV_SGNLPEAK_960)
+			&& (psHSDetInfo->bSgnlPeak != MCDRV_SGNLPEAK_1182))
+				bRet	= 0;
+		}
 	}
 
 	if ((dUpdateInfo & MCDRV_DLYIRQSTOP_UPDATE_FLAG) != 0UL) {
@@ -6168,6 +6175,8 @@ SINT32	McDrv_Ctrl(
 				machdep_PreLDODStart();
 			}
 			sdRet	= set_path((struct MCDRV_PATH_INFO *)pvPrm1);
+			bAP	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_ANA,
+							MCI_AP);
 			if ((bAP&MCB_AP_LDOD) != 0) {
 				;
 				machdep_PostLDODStart();
@@ -6214,6 +6223,8 @@ SINT32	McDrv_Ctrl(
 				machdep_PreLDODStart();
 			}
 			sdRet	= set_dsp((UINT8 *)pvPrm1, dPrm);
+			bAP	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_ANA,
+							MCI_AP);
 			if ((bAP&MCB_AP_LDOD) != 0) {
 				;
 				machdep_PostLDODStart();
@@ -6250,6 +6261,8 @@ SINT32	McDrv_Ctrl(
 			sdRet	= set_hsdet((struct MCDRV_HSDET_INFO *)pvPrm1,
 					(struct MCDRV_HSDET2_INFO *)pvPrm2,
 					dPrm);
+			bAP	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_ANA,
+							MCI_AP);
 			if ((bAP&MCB_AP_LDOD) != 0) {
 				;
 				machdep_PostLDODStart();
@@ -6272,6 +6285,8 @@ SINT32	McDrv_Ctrl(
 				machdep_PreLDODStart();
 			}
 			sdRet	= read_reg((struct MCDRV_REG_INFO *)pvPrm1);
+			bAP	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_ANA,
+							MCI_AP);
 			if ((bAP&MCB_AP_LDOD) != 0) {
 				;
 				machdep_PostLDODStart();
@@ -6283,6 +6298,8 @@ SINT32	McDrv_Ctrl(
 				machdep_PreLDODStart();
 			}
 			sdRet	= write_reg((struct MCDRV_REG_INFO *)pvPrm1);
+			bAP	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_ANA,
+							MCI_AP);
 			if ((bAP&MCB_AP_LDOD) != 0) {
 				;
 				machdep_PostLDODStart();
@@ -6299,11 +6316,7 @@ SINT32	McDrv_Ctrl(
 #if MCDRV_DEBUG_LEVEL
 	McDebugLog_CmdOut(dCmd, &sdRet, pvPrm1, pvPrm2, dPrm);
 #endif
-#if !defined(CONFIG_MACH_J_CHN_CTC) && !defined(CONFIG_MACH_J_CHN_CU)
-	if(sdRet < 0) {
-		printk("\n!!!McDrv_Ctrl failed\n\n");
-	}
-#endif
+
 	return sdRet;
 }
 

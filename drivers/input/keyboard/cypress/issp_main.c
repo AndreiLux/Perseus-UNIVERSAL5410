@@ -381,8 +381,6 @@ unsigned int iBlockCounter;
 unsigned int iChecksumData;
 unsigned int iChecksumTarget;
 
-#include "touchkey_fw_universal5410.h"
-
 #define EXT_I2C_SCL_HIGH\
 	do {\
 		int delay_count;\
@@ -614,7 +612,7 @@ void ErrorTrap(unsigned char bErrorNumber)
 	/* If Power Cycle programming, turn off the target */
 	RemoveTargetVDD();
 #endif
-	printk(KERN_DEBUG"\r\nErrorTrap: errorNumber: %d\n",
+	printk(KERN_DEBUG"touchkey:ErrorTrap: errorNumber: %d\n",
 		bErrorNumber);
 
 	return;
@@ -630,6 +628,8 @@ int ISSP_main(struct touchkey_i2c *tkey_i2c)
 	unsigned long flags;
 
 	issp_tkey_i2c = tkey_i2c;
+
+	printk(KERN_DEBUG"touchkey:%s\n", __func__);
 
 /*  This example section of commands show the highlevel calls to
 perform Target Initialization, SilcionID Test, BulkErase, Target
@@ -671,7 +671,7 @@ RAM Load, FLASHBlock Program, and Target Checksum Verification.*/
 	/*INTFREE(); */
 #else
 	/*INTLOCK(); */
-	local_irq_save(flags);
+	/*local_irq_save(flags);*/
 	/* Initialize the Host & Target for ISSP operations */
 	fIsError = fPowerCycleInitializeTargetForISSP();
 	if (fIsError) {
@@ -700,20 +700,20 @@ RAM Load, FLASHBlock Program, and Target Checksum Verification.*/
 #endif
 
 	/*INTFREE(); */
-	local_irq_restore(flags);
+	/*local_irq_restore(flags);*/
 	/*printk(KERN_DEBUG"fVerifySiliconID END\n"); */
 
 	/* Bulk-Erase the Device. */
 	/*printk(KERN_DEBUG"fEraseTarget START\n"); */
 	/*INTLOCK(); */
 	fIsError = fEraseTarget();
-	local_irq_save(flags);
+	/*local_irq_save(flags);*/
 	if (fIsError) {
 		ErrorTrap(fIsError);
 		return fIsError;
 	}
 	/*INTFREE(); */
-	local_irq_restore(flags);
+	/*local_irq_restore(flags);*/
 	/*printk(KERN_DEBUG"fEraseTarget END\n"); */
 
 /*==============================================================
@@ -726,7 +726,7 @@ this data should come from the HEX output of PSoC Designer.*/
 	iChecksumData = 0;
 	/*PTJ: NUM_BANKS should be 1 for Krypton*/
 	for (bBankCounter = 0; bBankCounter < NUM_BANKS; bBankCounter++) {
-		local_irq_save(flags);
+		/*local_irq_save(flags);*/
 		for (iBlockCounter = 0; iBlockCounter < BLOCKS_PER_BANK;
 		     iBlockCounter++) {
 			/*printk(KERN_DEBUG
@@ -738,18 +738,6 @@ this data should come from the HEX output of PSoC Designer.*/
 			/*PTJ: READ-WRITE-SETUP used here
 			to select SRAM Bank 1, and TSYNC Enable */
 #ifdef CY8C20x66
-			fIsError = fSyncEnable();
-			if (fIsError) {
-				ErrorTrap(fIsError);
-				return fIsError;
-			}
-			fIsError = fReadWriteSetup();
-			if (fIsError) {
-				ErrorTrap(fIsError);
-				return fIsError;
-			}
-#endif
-#ifdef CY8C20x45
 			fIsError = fSyncEnable();
 			if (fIsError) {
 				ErrorTrap(fIsError);
@@ -785,17 +773,10 @@ this data should come from the HEX output of PSoC Designer.*/
 				return fIsError;
 			}
 #endif
-#ifdef CY8C20x45
-			fIsError = fReadStatus();
-			if (fIsError) {
-				ErrorTrap(fIsError);
-				return fIsError;
-			}
-#endif
 			/*INTFREE(); */
 			/*local_irq_restore(flags);*/
 		}
-		local_irq_restore(flags);
+		/*local_irq_restore(flags);*/
 	}
 
 	/*printk(KERN_DEBUG"\r\n Program Flash Blocks End\n"); */
@@ -821,11 +802,6 @@ this data should come from the HEX output of PSoC Designer.*/
 			/*PTJ: READ-WRITE-SETUP used here
 			to select SRAM Bank 1, and TSYNC Enable */
 #ifdef CY8C20x66
-			fIsError = fReadWriteSetup();
-			if (fIsError)
-				ErrorTrap(fIsError);
-#endif
-#ifdef CY8C20x45
 			fIsError = fReadWriteSetup();
 			if (fIsError)
 				ErrorTrap(fIsError);
@@ -856,24 +832,6 @@ this data should come from the HEX output of PSoC Designer.*/
 			if (fIsError)
 				ErrorTrap(fIsError);
 #endif
-#ifdef CY8C20x45		/*PTJ: READ-STATUS after VERIFY-SETUP */
-			/*PTJ: 307, added for tsync enable testing */
-			fIsError = fSyncEnable();
-			if (fIsError)
-				ErrorTrap(fIsError);
-			fIsError = fReadStatus();
-			if (fIsError)
-				ErrorTrap(fIsError);
-			/*PTJ: READ-WRITE-SETUP used here
-			to select SRAM Bank 1, and TSYNC Enable */
-			fIsError = fReadWriteSetup();
-			if (fIsError)
-				ErrorTrap(fIsError);
-			/*PTJ: 307, added for tsync enable testing */
-			fIsError = fSyncDisable();
-			if (fIsError)
-				ErrorTrap(fIsError);
-#endif
 			INTFREE();
 		}
 	}
@@ -886,23 +844,10 @@ this data should come from the HEX output of PSoC Designer.*/
 	 come from the hex output of psoc designer.
 	printk(KERN_DEBUG"program security data start\n");*/
 	/*INTLOCK(); */
-	local_irq_save(flags);
+	/*local_irq_save(flags);*/
 	for (bBankCounter = 0; bBankCounter < NUM_BANKS; bBankCounter++) {
 		/*PTJ: READ-WRITE-SETUP used here to select SRAM Bank 1 */
 #ifdef CY8C20x66
-		/*PTJ: 307, added for tsync enable testing */
-		fIsError = fSyncEnable();
-		if (fIsError) {
-			ErrorTrap(fIsError);
-			return fIsError;
-		}
-		fIsError = fReadWriteSetup();
-		if (fIsError) {
-			ErrorTrap(fIsError);
-			return fIsError;
-		}
-#endif
-#ifdef CY8C20x45
 		/*PTJ: 307, added for tsync enable testing */
 		fIsError = fSyncEnable();
 		if (fIsError) {
@@ -929,7 +874,7 @@ this data should come from the HEX output of PSoC Designer.*/
 		}
 	}
 	/*INTFREE(); */
-	local_irq_restore(flags);
+	/*local_irq_restore(flags);*/
 
 	/*printk(KERN_DEBUG"Program security data END\n"); */
 
@@ -939,7 +884,7 @@ this data should come from the HEX output of PSoC Designer.*/
 	loads abTargetDataOUT[] with security data
 	that was used in secure bit stream*/
 	/*INTLOCK(); */
-	local_irq_save(flags);
+	/*local_irq_save(flags);*/
 	fIsError = fLoadSecurityData(bBankCounter);
 	if (fIsError) {
 		ErrorTrap(fIsError);
@@ -952,22 +897,15 @@ this data should come from the HEX output of PSoC Designer.*/
 		return fIsError;
 	}
 #endif
-#ifdef CY8C20x45
-	fIsError = fReadSecurity();
-	if (fIsError) {
-		ErrorTrap(fIsError);
-		return fIsError;
-	}
-#endif
 	/*INTFREE(); */
-	local_irq_restore(flags);
+	/*local_irq_restore(flags);*/
 	/*printk(KERN_DEBUG"Load security data END\n"); */
 #endif				/* security end */
 
 	/*=======================================================
 	PTJ: Doing Checksum after READ-SECURITY*/
 	/*INTLOCK(); */
-	local_irq_save(flags);
+	/*local_irq_save(flags);*/
 	iChecksumTarget = 0;
 	for (bBankCounter = 0; bBankCounter < NUM_BANKS; bBankCounter++) {
 		fIsError = fAccTargetBankChecksum(&iChecksumTarget);
@@ -978,7 +916,7 @@ this data should come from the HEX output of PSoC Designer.*/
 	}
 
 	/*INTFREE(); */
-	local_irq_restore(flags);
+	/*local_irq_restore(flags);*/
 
 	/*printk(KERN_DEBUG"Checksum : iChecksumTarget (0x%X)\n",
 	(unsigned char)iChecksumTarget);

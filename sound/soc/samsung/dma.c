@@ -24,21 +24,24 @@
 #include <asm/dma.h>
 #include <mach/hardware.h>
 #include <mach/dma.h>
+#include <mach/map.h>
 
 #include "dma.h"
 
 #define ST_RUNNING		(1<<0)
 #define ST_OPENED		(1<<1)
 
+static atomic_t dram_usage_cnt;
+
 static const struct snd_pcm_hardware dma_hardware = {
 	.info			= SNDRV_PCM_INFO_INTERLEAVED |
 				    SNDRV_PCM_INFO_BLOCK_TRANSFER |
 				    SNDRV_PCM_INFO_MMAP |
-				    SNDRV_PCM_INFO_MMAP_VALID |
-				    SNDRV_PCM_INFO_PAUSE |
-				    SNDRV_PCM_INFO_RESUME,
+				    SNDRV_PCM_INFO_MMAP_VALID,
 	.formats		= SNDRV_PCM_FMTBIT_S16_LE |
 				    SNDRV_PCM_FMTBIT_U16_LE |
+				    SNDRV_PCM_FMTBIT_S24_LE |
+				    SNDRV_PCM_FMTBIT_U24_LE |
 				    SNDRV_PCM_FMTBIT_U8 |
 				    SNDRV_PCM_FMTBIT_S8,
 	.channels_min		= 1,
@@ -60,9 +63,21 @@ struct runtime_data {
 	dma_addr_t dma_pos;
 	dma_addr_t dma_end;
 	struct s3c_dma_params *params;
+	bool dram_used;
 };
 
 static void audio_buffdone(void *data);
+
+/* check_adma_status
+ *
+ * ADMA status is checked for AP Power mode.
+ * return 1 : ADMA use dram area and it is running.
+ * return 0 : ADMA has a fine condition to enter Low Power Mode.
+ */
+int check_adma_status(void)
+{
+	return atomic_read(&dram_usage_cnt) ? 1 : 0;
+}
 
 /* dma_enqueue
  *
@@ -175,6 +190,7 @@ static int dma_hw_params(struct snd_pcm_substream *substream,
 			(substream->stream == SNDRV_PCM_STREAM_PLAYBACK
 			? DMA_MEM_TO_DEV : DMA_DEV_TO_MEM);
 		config.width = prtd->params->dma_size;
+		config.maxburst = 1;
 		config.fifo = prtd->params->dma_addr;
 		prtd->params->ch = prtd->params->ops->request(
 				prtd->params->channel, &req);
@@ -191,6 +207,11 @@ static int dma_hw_params(struct snd_pcm_substream *substream,
 	prtd->dma_start = runtime->dma_addr;
 	prtd->dma_pos = prtd->dma_start;
 	prtd->dma_end = prtd->dma_start + totbytes;
+
+	if (runtime->dma_addr > EXYNOS_PA_AUDSS)
+		prtd->dram_used = true;
+	else
+		prtd->dram_used = false;
 
         pr_info("G:%s:DmaAddr=@%x Total=%d PrdSz=%d #Prds=%d dma_area=0x%x\n",
 		(substream->stream == SNDRV_PCM_STREAM_PLAYBACK) ? "P" : "C",
@@ -260,6 +281,8 @@ static int dma_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		prtd->state |= ST_RUNNING;
 		prtd->params->ops->trigger(prtd->params->ch);
+		if (prtd->dram_used)
+			atomic_inc(&dram_usage_cnt);
 		break;
 
 	case SNDRV_PCM_TRIGGER_STOP:
@@ -267,6 +290,8 @@ static int dma_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 	        prtd->state &= ~ST_RUNNING;
 //		prtd->params->ops->stop(prtd->params->ch);
+		if (prtd->dram_used)
+			atomic_dec(&dram_usage_cnt);
 		break;
 
 	default:
@@ -454,6 +479,8 @@ static struct snd_soc_platform_driver samsung_asoc_platform = {
 
 static int __devinit samsung_asoc_platform_probe(struct platform_device *pdev)
 {
+	atomic_set(&dram_usage_cnt, 0);
+
 	return snd_soc_register_platform(&pdev->dev, &samsung_asoc_platform);
 }
 

@@ -28,11 +28,17 @@
 #include <plat/devs.h>
 #include <plat/tv-core.h>
 
-#if defined(CONFIG_ARCH_EXYNOS4)
-#define HDMI_GPX(_nr)	EXYNOS4_GPX3(_nr)
-#elif defined(CONFIG_ARCH_EXYNOS5)
-#define HDMI_GPX(_nr)	(soc_is_exynos5250() ? \
-			EXYNOS5_GPX3(_nr) : EXYNOS5410_GPX3(_nr))
+#ifdef CONFIG_ARCH_EXYNOS4
+#define HDMI_GPX(_nr) EXYNOS4_GPX3(_nr)
+#endif
+#ifdef CONFIG_ARCH_EXYNOS5
+#if defined(CONFIG_SOC_EXYNOS5250)
+#define HDMI_GPX(_nr) EXYNOS5_GPX3(_nr)
+#elif defined(CONFIG_SOC_EXYNOS5410)
+#define HDMI_GPX(_nr) EXYNOS5410_GPX3(_nr)
+#elif defined(CONFIG_SOC_EXYNOS5420)
+#define HDMI_GPX(_nr) EXYNOS5420_GPX3(_nr)
+#endif
 #endif
 
 #define HDMI_PHY_CONTROL_OFFSET		0

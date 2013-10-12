@@ -19,8 +19,8 @@
 /* For PPMU Control */
 #define PPMU_ENABLE		BIT(0)
 #define PPMU_DISABLE		0x0
-#define PPMU_CYCLE_RESET	BIT(1)
-#define PPMU_COUNTER_RESET	BIT(2)
+#define PPMU_COUNTER_RESET	BIT(1)
+#define PPMU_CYCLE_RESET	BIT(2)
 
 #define PPMU_ENABLE_COUNT0	BIT(0)
 #define PPMU_ENABLE_COUNT1	BIT(1)
@@ -30,13 +30,14 @@
 
 void exynos_ppmu_reset(void __iomem *ppmu_base)
 {
+	unsigned int cntens = PPMU_ENABLE_CYCLE | PPMU_ENABLE_COUNT0 |
+				PPMU_ENABLE_COUNT1 | PPMU_ENABLE_COUNT2 |
+				PPMU_ENABLE_COUNT3;
+
 	__raw_writel(PPMU_CYCLE_RESET | PPMU_COUNTER_RESET, ppmu_base);
-	__raw_writel(PPMU_ENABLE_CYCLE |
-		     PPMU_ENABLE_COUNT0 |
-		     PPMU_ENABLE_COUNT1 |
-		     PPMU_ENABLE_COUNT2 |
-		     PPMU_ENABLE_COUNT3,
-		     ppmu_base + PPMU_CNTENS);
+	__raw_writel(cntens, ppmu_base + PPMU_CNTENS);
+	__raw_writel(cntens, ppmu_base + PPMU_FLAG);
+	__raw_writel(0x0, ppmu_base + PPMU_CCNT);
 }
 
 void exynos_ppmu_setevent(void __iomem *ppmu_base,

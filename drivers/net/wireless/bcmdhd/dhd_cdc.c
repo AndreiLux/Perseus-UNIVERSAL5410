@@ -1424,7 +1424,7 @@ _dhd_wlfc_mac_entry_update(athost_wl_status_info_t* ctx, wlfc_mac_descriptor_t* 
 		/* enable after packets are queued-deqeued properly.
 		pktq_flush(dhd->osh, &entry->psq, FALSE, NULL, 0);
 		*/
-		memset(&entry->ea[0], 0, ETHER_ADDR_LEN);
+		memset(&entry->ea[0],0, ETHER_ADDR_LEN);
 		entry->transit_count = 0;
 		entry->suppr_transit_count = 0;
 		entry->suppress_count = 0;

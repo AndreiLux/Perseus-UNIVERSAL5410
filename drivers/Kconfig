@@ -144,18 +144,17 @@ source "drivers/devfreq/Kconfig"
 
 source "drivers/motor/Kconfig"
 
-source "drivers/sensorhub/Kconfig"
+source "drivers/fingerprint/Kconfig"
+
+source "drivers/sensorhub/stm/Kconfig"
+
+source "drivers/sensors/Kconfig"
 
 source "drivers/battery/Kconfig"
 
-source "drivers/irda/Kconfig"
-
 source "drivers/gud/Kconfig"
-
-source "drivers/accessory/Kconfig"
 
 source "drivers/ice4_fpga/Kconfig"
 
-source "drivers/felica/Kconfig"
-
+source "drivers/secfilter/Kconfig"
 endmenu

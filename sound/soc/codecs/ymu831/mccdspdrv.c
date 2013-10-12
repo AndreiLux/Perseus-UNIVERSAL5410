@@ -1,12 +1,12 @@
 /****************************************************************************
  *
- *		Copyright(c) 2012 Yamaha Corporation. All rights reserved.
+ *		Copyright(c) 2012-2013 Yamaha Corporation. All rights reserved.
  *
  *		Module		: mccdspdrv.c
  *
  *		Description	: CDSP Driver
  *
- *		Version		: 1.0.0	2012.12.13
+ *		Version		: 2.0.1	2013.05.02
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.	In no event will the authors be held liable for any damages
@@ -2343,7 +2343,7 @@ static UINT32 ConvertSamplesToTime(UINT8 bFs, UINT32 dSamples)
  *	GetOutputPosition
  *
  *	Function:
- *			Get present output position (unit of ms). 
+ *			Get present output position (unit of ms).
  *	Arguments:
  *			dCoderId	Coder ID
  *			pdPos		Pointer of output position
@@ -3182,8 +3182,12 @@ static void InterruptProcCDsp(void)
 						&bDatErr, 1);
 
 		gsCdspInfo.wHwErrorCode = (UINT16)bDatErr;
-	} else if (MCB_CDSP_FLG_WDT == (MCB_CDSP_FLG_WDT & bData))
+	} else if (MCB_CDSP_FLG_WDT == (MCB_CDSP_FLG_WDT & bData)) {
 		gsCdspInfo.wHwErrorCode = CDSP_ERR_WDT;
+	} else {
+		/* No error case */
+		return;
+	}
 
 	/* Interrupt ALL disable */
 	McDevIf_AddPacket((MCDRV_PACKET_TYPE_FORCE_WRITE
@@ -3686,7 +3690,7 @@ static SINT32 CheckFIFO(UINT32 dCoderId,
 	if ((dFifoId & FIFO_RFIFO) != 0) {
 		if (pbPrm[CDSP_RFIFO_BIT_WIDTH] != CDSP_FIFO_DONTCARE) {
 			bData = (psCdspInfo->bRDFifoBitSel & ~MCB_RFIFO_BIT);
-			switch (pbPrm[CDSP_DFIFO_BIT_WIDTH]) {
+			switch (pbPrm[CDSP_RFIFO_BIT_WIDTH]) {
 			case 32:
 				bData |= MCB_RFIFO_BIT;
 				break;
@@ -3712,7 +3716,7 @@ static SINT32 CheckFIFO(UINT32 dCoderId,
 			if (((UINT32)CBPOS_RFIFO_MAX < dPos))
 				return MCDRV_ERROR_ARGUMENT;
 
-			psCdspInfo->sdRFifoCbPos = (SINT32)dPos; 
+			psCdspInfo->sdRFifoCbPos = (SINT32)dPos;
 			break;
 		}
 
@@ -5552,7 +5556,7 @@ static void ClearOutputPosition(UINT32 dCoderId)
  *	DecClear
  *
  *	Function:
- *			Reset decoder/encoder 
+ *			Reset decoder/encoder
  *			(Excluding the parameter setting).
  *	Arguments:
  *			dCoderId	Coder ID
@@ -7633,7 +7637,7 @@ static SINT32 WriteDataCore(UINT32 dCoderId,
  *	GetInputPosition
  *
  *	Function:
- *			Get present input position (unit of ms). 
+ *			Get present input position (unit of ms).
  *	Arguments:
  *			pdPos		Pointer of input position
  *	Return:
@@ -7794,6 +7798,42 @@ SINT32 GetVersion(UINT32 dCoderId, struct MC_CODER_VERSION *psVersion)
 	}
 
 	return sizeof(*psVersion);
+}
+
+/****************************************************************************
+ *	GetHostCommand
+ *
+ *	Function:
+ *			Get host Command.
+ *	Arguments:
+ *			dCoderId	Coder ID
+ *			pbData		get command
+ *	Return:
+ *			0		success
+ *			< 0		error code
+ *
+ ****************************************************************************/
+static SINT32 GetHostCommand(UINT32 dCoderId, UINT8 *pbData)
+{
+	SINT32 i;
+	SINT32 sdRet;
+	struct MC_CODER_PARAMS sParam;
+
+	sdRet = GetParamCore(dCoderId, &sParam);
+	if (sdRet < MCDRV_SUCCESS)
+		return sdRet;
+
+	pbData[0] = sParam.bCommandId;
+	for (i = 0; i < CDSP_CMD_PARAM_NUM; i++)
+		pbData[i + 1] = sParam.abParam[i];
+
+	sParam.bCommandId |= (UINT8)CDSP_CMD_HOST2OS_COMPLETION;
+	for (i = 0; i < CDSP_CMD_PARAM_NUM; i++)
+		sParam.abParam[i] = 0;
+
+	sdRet = SetParamCore(dCoderId, &sParam);
+
+	return sdRet;
 }
 
 /***************************************************************************
@@ -8018,6 +8058,14 @@ SINT32 McCdsp_GetDSP(UINT32 dTarget, void *pvData, UINT32 dSize)
 	case CDSP_FUNC_B_VERSION:
 		sdRet = GetVersion(CODER_ENC,
 					(struct MC_CODER_VERSION *)pvData);
+		break;
+
+	case CDSP_FUNC_A_HOST_COMMAND:
+		sdRet = GetHostCommand(CODER_DEC, (UINT8 *)pvData);
+		break;
+
+	case CDSP_FUNC_B_HOST_COMMAND:
+		sdRet = GetHostCommand(CODER_ENC, (UINT8 *)pvData);
 		break;
 
 	default:

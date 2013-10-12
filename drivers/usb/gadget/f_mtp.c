@@ -146,7 +146,7 @@ static struct usb_endpoint_descriptor mtp_superspeed_out_desc = {
 };
 
 static struct usb_ss_ep_comp_descriptor mtp_superspeed_bulk_comp_desc = {
-	.bLength =              sizeof adb_superspeed_bulk_comp_desc,
+	.bLength =              sizeof mtp_superspeed_bulk_comp_desc,
 	.bDescriptorType =      USB_DT_SS_ENDPOINT_COMP,
 
 	/* the following 2 values can be tweaked if necessary */

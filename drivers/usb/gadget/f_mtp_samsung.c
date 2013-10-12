@@ -104,6 +104,8 @@
 /* ID for Microsoft MTP OS String */
 #define MTPG_OS_STRING_ID   0xEE
 
+#define INTR_BUFFER_SIZE           28
+
 #define DRIVER_NAME		 "usb_mtp_gadget"
 
 static const char mtpg_longname[] =	"mtp";
@@ -184,6 +186,31 @@ static struct usb_interface_descriptor ptp_interface_desc = {
 	.bInterfaceProtocol     = 1,
 };
 
+static struct usb_endpoint_descriptor mtpg_superspeed_in_desc = {
+	.bLength                = USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType        = USB_DT_ENDPOINT,
+	.bEndpointAddress       = USB_DIR_IN,
+	.bmAttributes           = USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize         = __constant_cpu_to_le16(1024),
+};
+
+static struct usb_endpoint_descriptor mtpg_superspeed_out_desc = {
+	.bLength                = USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType        = USB_DT_ENDPOINT,
+	.bEndpointAddress       = USB_DIR_OUT,
+	.bmAttributes           = USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize         = __constant_cpu_to_le16(1024),
+};
+
+static struct usb_ss_ep_comp_descriptor mtpg_superspeed_bulk_comp_desc = {
+	.bLength =              sizeof mtpg_superspeed_bulk_comp_desc,
+	.bDescriptorType =      USB_DT_SS_ENDPOINT_COMP,
+
+	/* the following 2 values can be tweaked if necessary */
+	/* .bMaxBurst =         0, */
+	/* .bmAttributes =      0, */
+};
+
 static struct usb_endpoint_descriptor fs_mtpg_in_desc = {
 	.bLength =		USB_DT_ENDPOINT_SIZE,
 	.bDescriptorType =	USB_DT_ENDPOINT,
@@ -245,6 +272,27 @@ static struct usb_endpoint_descriptor int_hs_notify_desc = {
 	.bInterval =		6,
 };
 
+static struct usb_ss_ep_comp_descriptor ss_intr_notify_desc = {
+	.bLength =		sizeof ss_intr_notify_desc,
+	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
+
+	/* the following 3 values can be tweaked if necessary */
+	/* .bMaxBurst =		0, */
+	/* .bmAttributes =	0, */
+	.wBytesPerInterval =	__constant_cpu_to_le16(MTPG_INTR_BUFFER_SIZE),
+};
+
+static struct usb_descriptor_header *ss_mtpg_descs[] = {
+	(struct usb_descriptor_header *) &mtpg_interface_desc,
+	(struct usb_descriptor_header *) &mtpg_superspeed_in_desc,
+	(struct usb_descriptor_header *) &mtpg_superspeed_bulk_comp_desc,
+	(struct usb_descriptor_header *) &mtpg_superspeed_out_desc,
+	(struct usb_descriptor_header *) &mtpg_superspeed_bulk_comp_desc,
+	(struct usb_descriptor_header *) &int_hs_notify_desc,
+	(struct usb_descriptor_header *) &ss_intr_notify_desc,
+	NULL,
+};
+
 static struct usb_descriptor_header *hs_mtpg_desc[] = {
 	(struct usb_descriptor_header *) &mtpg_interface_desc,
 	(struct usb_descriptor_header *) &hs_mtpg_in_desc,
@@ -252,6 +300,19 @@ static struct usb_descriptor_header *hs_mtpg_desc[] = {
 	(struct usb_descriptor_header *) &int_hs_notify_desc,
 	NULL
 };
+
+
+static struct usb_descriptor_header *ss_ptpg_descs[] = {
+	(struct usb_descriptor_header *) &ptp_interface_desc,
+	(struct usb_descriptor_header *) &mtpg_superspeed_in_desc,
+	(struct usb_descriptor_header *) &mtpg_superspeed_bulk_comp_desc,
+	(struct usb_descriptor_header *) &mtpg_superspeed_out_desc,
+	(struct usb_descriptor_header *) &mtpg_superspeed_bulk_comp_desc,
+	(struct usb_descriptor_header *) &int_hs_notify_desc,
+	(struct usb_descriptor_header *) &ss_intr_notify_desc,
+	NULL,
+};
+
 
 static struct usb_descriptor_header *fs_ptp_descs[] = {
 	(struct usb_descriptor_header *) &ptp_interface_desc,
@@ -885,6 +946,10 @@ static long  mtpg_ioctl(struct file *fd, unsigned int code, unsigned long arg)
 	char buf[USB_PTPREQUEST_GETSTATUS_SIZE+1] = {0};
 
 	cdev = dev->cdev;
+	if(dev->online == 0 || dev->error == 1) {
+	    printk(KERN_ERR "ioctl is calling when device is disable or not online\n");
+		return -EAGAIN;
+	}
 	if (!cdev) {
 		printk(KERN_ERR "usb: %s cdev not ready\n", __func__);
 		return -EAGAIN;
@@ -1067,6 +1132,14 @@ static long  mtpg_ioctl(struct file *fd, unsigned int code, unsigned long arg)
 		status = dev->read_send_result;
 		break;
 	}
+	case MTP_VBUS_DISABLE:
+		printk(KERN_DEBUG "[%s] line=[%d] \n",
+							__func__, __LINE__);
+		if (dev->cdev && dev->cdev->gadget) {
+			usb_gadget_vbus_disconnect(cdev->gadget);
+			printk(KERN_DEBUG "Restricted policy so disconnecting mtp gadget\n");
+		}
+		break;
 	default:
 		status = -ENOTTY;
 	}
@@ -1297,6 +1370,19 @@ mtpg_function_bind(struct usb_configuration *c, struct usb_function *f)
 		int_hs_notify_desc.bEndpointAddress =
 				int_fs_notify_desc.bEndpointAddress;
 	}
+
+	if (gadget_is_superspeed(c->cdev->gadget)) {
+		DEBUG_MTPB("[%s]\tdual speed line = [%d]\n",
+						__func__, __LINE__);
+		mtpg_superspeed_in_desc.bEndpointAddress =
+				fs_mtpg_in_desc.bEndpointAddress;
+		mtpg_superspeed_out_desc.bEndpointAddress =
+				fs_mtpg_out_desc.bEndpointAddress;
+	}
+	printk("%s speed %s: IN/%s, OUT/%s\n",
+			gadget_is_superspeed(c->cdev->gadget) ? "super" :
+			gadget_is_dualspeed(c->cdev->gadget) ? "dual" : "full",
+			f->name, mtpg->bulk_in->name, mtpg->bulk_out->name);
 
 	mtpg->cdev = cdev;
 	the_mtpg->cdev = cdev;
@@ -1571,9 +1657,13 @@ static int mtp_bind_config(struct usb_configuration *c, bool ptp_config)
 	if (ptp_config) {
 		mtpg->function.descriptors = fs_ptp_descs;
 		mtpg->function.hs_descriptors = hs_ptp_descs;
+		if (gadget_is_superspeed(c->cdev->gadget))
+			mtpg->function.ss_descriptors = ss_ptpg_descs;
 	} else {
 		mtpg->function.descriptors = fs_mtpg_desc;
 		mtpg->function.hs_descriptors = hs_mtpg_desc;
+		if (gadget_is_superspeed(c->cdev->gadget))
+			mtpg->function.ss_descriptors = ss_mtpg_descs;
 	}
 
 	mtpg->function.bind = mtpg_function_bind;

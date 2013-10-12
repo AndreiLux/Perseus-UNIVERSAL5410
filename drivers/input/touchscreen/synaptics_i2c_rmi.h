@@ -21,25 +21,85 @@
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
 #endif
+#ifdef CONFIG_SEC_DEBUG_TSP_LOG
+#include <mach/sec_debug.h>
+#endif
 
 /*#define dev_dbg(dev, fmt, arg...) dev_info(dev, fmt, ##arg)*/
 
-#define SYNAPTICS_DEVICE_NAME	"GT-I95XX"
+#ifdef CONFIG_SEC_DEBUG_TSP_LOG
+#define tsp_debug_dbg(mode, dev, fmt, ...)	\
+({								\
+	if (mode) {					\
+		dev_dbg(dev, fmt, ## __VA_ARGS__);	\
+		sec_debug_tsp_log(fmt, ## __VA_ARGS__);		\
+	}				\
+	else					\
+		dev_dbg(dev, fmt, ## __VA_ARGS__);	\
+})
+
+#define tsp_debug_info(mode, dev, fmt, ...)	\
+({								\
+	if (mode) {							\
+		dev_info(dev, fmt, ## __VA_ARGS__);		\
+		sec_debug_tsp_log(fmt, ## __VA_ARGS__);		\
+	}				\
+	else					\
+		dev_info(dev, fmt, ## __VA_ARGS__);	\
+})
+
+#define tsp_debug_err(mode, dev, fmt, ...)	\
+({								\
+	if (mode) {					\
+		dev_err(dev, fmt, ## __VA_ARGS__);	\
+		sec_debug_tsp_log(fmt, ## __VA_ARGS__);	\
+	}				\
+	else					\
+		dev_err(dev, fmt, ## __VA_ARGS__); \
+})
+#else
+#define tsp_debug_dbg(mode, dev, fmt, ...)	dev_dbg(dev, fmt, ## __VA_ARGS__)
+#define tsp_debug_info(mode, dev, fmt, ...)	dev_info(dev, fmt, ## __VA_ARGS__)
+#define tsp_debug_err(mode, dev, fmt, ...)	dev_err(dev, fmt, ## __VA_ARGS__)
+#endif
+
+#define SYNAPTICS_DEVICE_NAME	"SYNAPTICS"
+
 #define TSP_BOOSTER
 #ifdef TSP_BOOSTER
 #include <linux/pm_qos.h>
-#define TOUCH_BOOSTER_OFF_TIME	300
-#define TOUCH_BOOSTER_CHG_TIME	200
+#define TOUCH_BOOSTER_OFF_TIME	500
+#define TOUCH_BOOSTER_CHG_TIME	130
+
+#define TOUCH_BOOSTER_CPU_FRQ_1	1600000
+#define TOUCH_BOOSTER_MIF_FRQ_1	667000
+#define TOUCH_BOOSTER_INT_FRQ_1	333000
+
+#define TOUCH_BOOSTER_CPU_FRQ_2	650000
+#define TOUCH_BOOSTER_MIF_FRQ_2	400000
+#define TOUCH_BOOSTER_INT_FRQ_2	111000
+
+#define TOUCH_BOOSTER_CPU_FRQ_3	650000
+#define TOUCH_BOOSTER_MIF_FRQ_3	667000
+#define TOUCH_BOOSTER_INT_FRQ_3	333000
 #endif
 
 #define SECURE_TSP
+#define TYPE_B_PROTOCOL
 
+#define PROXIMITY_TSP
+#if defined(PROXIMITY_TSP)
+#endif
+#define HAND_GRIP_MODE
 /* To support suface touch, firmware should support data
  * which is required related app ex) MT_ANGLE, MT_PALM ...
  * Synpatics IC report those data through F51's edge swipe
  * fucntionality.
  */
 #define SURFACE_TOUCH
+#if defined(SURFACE_TOUCH) && defined(PROXIMITY_TSP)
+#define EDGE_SWIPE
+#endif
 
 #define	USE_OPEN_CLOSE
 #ifdef USE_OPEN_CLOSE
@@ -54,8 +114,9 @@
 #define SYNAPTICS_REZERO_TIME 100
 #define SYNAPTICS_POWER_MARGIN_TIME	150
 
-#define SYNAPTICS_PRODUCT_ID_B0	"SY 01"
-#define SYNAPTICS_PRODUCT_ID_B0_SPAIR	"S5000B"
+#define SYNAPTICS_PRODUCT_ID_NONE	0
+#define SYNAPTICS_PRODUCT_ID_S5000	1
+#define SYNAPTICS_PRODUCT_ID_S5050	2
 
 #define SYNAPTICS_MAX_FW_PATH	64
 
@@ -64,6 +125,10 @@
 #define DATE_OF_FIRMWARE_BIN_OFFSET	0xEF00
 #define IC_REVISION_BIN_OFFSET	0xEF02
 #define FW_VERSION_BIN_OFFSET	0xEF03
+
+#define DATE_OF_FIRMWARE_BIN_OFFSET_S5050	0x016D00
+#define IC_REVISION_BIN_OFFSET_S5050		0x016D02
+#define FW_VERSION_BIN_OFFSET_S5050			0x016D03
 
 #define PDT_PROPS (0X00EF)
 #define PDT_START (0x00E9)
@@ -99,6 +164,109 @@
 #define MASK_3BIT 0x07
 #define MASK_2BIT 0x03
 #define MASK_1BIT 0x01
+
+#define DRIVER_NAME "synaptics_rmi4_i2c"
+/*#define REPORT_2D_Z*/
+#define REPORT_2D_W
+
+#define F12_FINGERS_TO_SUPPORT 10
+
+#define INVALID_X	65535
+#define INVALID_Y	65535
+
+#define RPT_TYPE (1 << 0)
+#define RPT_X_LSB (1 << 1)
+#define RPT_X_MSB (1 << 2)
+#define RPT_Y_LSB (1 << 3)
+#define RPT_Y_MSB (1 << 4)
+#define RPT_Z (1 << 5)
+#define RPT_WX (1 << 6)
+#define RPT_WY (1 << 7)
+#define RPT_DEFAULT (RPT_TYPE | RPT_X_LSB | RPT_X_MSB | RPT_Y_LSB | RPT_Y_MSB)
+
+#ifdef CONFIG_GLOVE_TOUCH
+#define GLOVE_FEATURE_EN	0x20
+#define GLOVE_CLEAR_DEFAULT	0x00
+#endif
+
+#ifdef PROXIMITY_TSP
+#define USE_CUSTOM_REZERO
+#define HOVER_Z_MAX (255)
+
+#define F51_PROXIMITY_ENABLES_OFFSET (0)
+#define F51_GPIP_EDGE_EXCLUSION_RX_OFFSET (47)
+
+/* Define for proximity enables(F51_CUSTOM_CTRL00) */
+#define FINGER_HOVER_EN (1 << 0)
+#define AIR_SWIPE_EN (1 << 1)
+#define LARGE_OBJ_EN (1 << 2)
+#define HOVER_PINCH_EN (1 << 3)
+#define LARGE_OBJ_WAKEUP_GESTURE_EN (1 << 4)
+/* Reserved 5 */
+#define ENABLE_HANDGRIP_RECOG (1 << 6)
+#define SLEEP_PROXIMITY (1 << 7)
+
+#define F51_GENERAL_CONTROL_OFFSET (1)
+/* Define for General Control(F51_CUSTOM_CTRL01) */
+#define JIG_TEST_EN	(1 << 0)
+#define JIG_COMMAND_EN	(1 << 1)
+#define NO_PROXIMITY_ON_TOUCH (1 << 2)
+#define CONTINUOUS_LOAD_REPORT (1 << 3)
+#define HOST_REZERO_COMMAND (1 << 4)
+#define EDGE_SWIPE_EN (1 << 5)
+#define HSYNC_STATUS (1 << 6)
+#define HOST_ID (1 << 7)
+
+/* Define for proximity Controls(F51_CUSTOM_QUERY04) */
+#define HAS_FINGER_HOVER (1 << 0)
+#define HAS_AIR_SWIPE (1 << 1)
+#define HAS_LARGE_OBJ (1 << 2)
+#define HAS_HOVER_PINCH (1 << 3)
+#define HAS_EDGE_SWIPE (1 << 4)
+#define HAS_SINGLE_FINGER (1 << 5)
+#define HAS_GRIP_SUPPRESSION (1 << 6)
+#define HAS_PALM_REJECTION (1 << 7)
+
+#ifdef EDGE_SWIPE
+#define EDGE_SWIPE_DATA_OFFSET	9
+
+#define EDGE_SWIPE_WIDTH_MAX	255
+#define EDGE_SWIPE_ANGLE_MIN	(-90)
+#define EDGE_SWIPE_ANGLE_MAX	90
+#define EDGE_SWIPE_PALM_MAX		1
+#endif
+#define F51_FINGER_TIMEOUT 50 /* ms */
+#endif
+
+#define POLLING_PERIOD 1 /* ms */
+#define SYN_I2C_RETRY_TIMES 3
+#define MAX_F11_TOUCH_WIDTH 15
+
+#define CHECK_STATUS_TIMEOUT_MS 200
+#define STATUS_NO_ERROR 0x00
+#define STATUS_RESET_OCCURRED 0x01
+#define STATUS_INVALID_CONFIG 0x02
+#define STATUS_DEVICE_FAILURE 0x03
+#define STATUS_CONFIG_CRC_FAILURE 0x04
+#define STATUS_FIRMWARE_CRC_FAILURE 0x05
+#define STATUS_CRC_IN_PROGRESS 0x06
+
+#define F01_STD_QUERY_LEN 21
+#define F01_BUID_ID_OFFSET 18
+#define F11_STD_QUERY_LEN 9
+#define F11_STD_CTRL_LEN 10
+#define F11_STD_DATA_LEN 12
+
+/* Define for Device Control(F01_RMI_CTRL00) */
+#define NORMAL_OPERATION (0 << 0)
+#define SENSOR_SLEEP (1 << 0)
+#define NO_SLEEP_ON (1 << 2)
+#define CHARGER_CONNECTED (1 << 5)
+#define REPORT_RATE (1 << 6)
+#define CONFIGURED (1 << 7)
+
+#define TSP_NEEDTO_REBOOT	(-ECONNREFUSED)
+#define MAX_TSP_REBOOT		3
 
 /*
  * struct synaptics_rmi4_fn_desc - function descriptor fields in PDT
@@ -172,6 +340,7 @@ struct synaptics_rmi4_fn {
  * @serial_number: device serial number
  * @product_id_string: device product id
  * @support_fn_list: linked list for function handlers
+ * @exp_fn_list: linked list for expanded function handlers
  */
 struct synaptics_rmi4_device_info {
 	unsigned int version_major;
@@ -185,6 +354,7 @@ struct synaptics_rmi4_device_info {
 	unsigned char product_id_string[SYNAPTICS_RMI4_PRODUCT_ID_SIZE + 1];
 	unsigned char build_id[SYNAPTICS_RMI4_BUILD_ID_SIZE];
 	struct list_head support_fn_list;
+	struct list_head exp_fn_list;
 };
 
 /**
@@ -196,6 +366,41 @@ struct synaptics_finger {
 	unsigned char state;
 	unsigned short mcount;
 };
+
+#ifdef PROXIMITY_TSP
+#ifdef EDGE_SWIPE
+struct synaptics_rmi4_surface {
+	int width_major;
+	int palm;
+	int angle;
+	int wx;
+	int wy;
+};
+#endif
+#ifdef HAND_GRIP_MODE
+struct synaptics_rmi4_handgrip {
+	unsigned char hand_grip_mode;
+	unsigned char hand_grip;
+	unsigned char old_hand_grip;
+	unsigned char old_code;
+};
+#endif
+
+struct synaptics_rmi4_f51_handle {
+	unsigned char proximity_enables;
+	unsigned char general_control;
+	unsigned short proximity_enables_addr;
+	unsigned short general_control_addr;
+	unsigned char num_of_data_sources;
+	unsigned char proximity_controls;
+#ifdef EDGE_SWIPE
+	struct synaptics_rmi4_surface surface_data;
+#endif
+#ifdef HAND_GRIP_MODE
+	struct synaptics_rmi4_handgrip handgrip_data;
+#endif
+};
+#endif
 
 /*
  * struct synaptics_rmi4_data - rmi4 device instance data
@@ -249,7 +454,7 @@ struct synaptics_rmi4_data {
 	unsigned char full_pm_cycle;
 	unsigned char num_of_rx;
 	unsigned char num_of_tx;
-	unsigned char num_of_node;
+	unsigned int num_of_node;
 	unsigned char num_of_fingers;
 	unsigned char max_touch_width;
 	unsigned char intr_mask[MAX_INTR_REGISTERS];
@@ -258,6 +463,8 @@ struct synaptics_rmi4_data {
 	unsigned short f01_cmd_base_addr;
 	unsigned short f01_ctrl_base_addr;
 	unsigned short f01_data_base_addr;
+	unsigned short f12_ctrl11_addr;
+	unsigned short f34_ctrl_base_addr;
 	int irq;
 	int sensor_max_x;
 	int sensor_max_y;
@@ -273,6 +480,7 @@ struct synaptics_rmi4_data {
 	bool staying_awake;
 	bool tsp_probe;
 
+	int ic_product_id;			/* product id of ic */
 	int ic_revision_of_ic;		/* revision of reading from IC */
 	int fw_version_of_ic;		/* firmware version of IC */
 	int ic_revision_of_bin;		/* revision of reading from binary */
@@ -293,7 +501,6 @@ struct synaptics_rmi4_data {
 	unsigned char boost_level;
 #endif
 
-	bool hover_status_in_normal_mode;
 #ifdef CONFIG_GLOVE_TOUCH
 	unsigned char glove_mode_feature;
 	unsigned char glove_mode_enables;
@@ -301,12 +508,29 @@ struct synaptics_rmi4_data {
 	bool fast_glove_state;
 	bool touchkey_glove_mode_status;
 #endif
+	unsigned char ddi_type;
+
+#ifdef SECURE_TSP
+	int secure_mode_status;
+#endif
+
+	int hover_status_in_normal_mode;
+
+#ifdef PROXIMITY_TSP
+	struct synaptics_rmi4_f51_handle *f51;
+#endif
 #ifdef USE_OPEN_DWORK
 	struct delayed_work open_work;
 #endif
 	struct delayed_work rezero_work;
 
 	struct mutex rmi4_device_mutex;
+
+#ifdef SYNAPTICS_RMI_INFORM_CHARGER
+	int ta_status;
+	void (*register_cb)(struct synaptics_rmi_callbacks *);
+	struct synaptics_rmi_callbacks callbacks;
+#endif
 
 	int (*i2c_read)(struct synaptics_rmi4_data *pdata, unsigned short addr,
 			unsigned char *data, unsigned short length);
@@ -323,6 +547,14 @@ enum BOOST_LEVEL {
 	TSP_BOOSTER_DISABLE = 0,
 	TSP_BOOSTER_LEVEL1,
 	TSP_BOOSTER_LEVEL2,
+	TSP_BOOSTER_LEVEL3,
+	TSP_BOOSTER_LEVEL_MAX,
+};
+
+enum BOOST_MODE {
+	TSP_BOOSTER_OFF = 0,
+	TSP_BOOSTER_ON,
+	TSP_BOOSTER_FORCE_OFF,
 };
 #endif
 
@@ -333,6 +565,16 @@ enum exp_fn {
 	RMI_LAST,
 };
 
+struct synaptics_rmi4_exp_fn {
+	enum exp_fn fn_type;
+	bool initialized;
+	int (*func_init)(struct synaptics_rmi4_data *rmi4_data);
+	void (*func_remove)(struct synaptics_rmi4_data *rmi4_data);
+	void (*func_attn)(struct synaptics_rmi4_data *rmi4_data,
+			unsigned char intr_mask);
+	struct list_head link;
+};
+
 struct synaptics_rmi4_exp_fn_ptr {
 	int (*read)(struct synaptics_rmi4_data *rmi4_data, unsigned short addr,
 			unsigned char *data, unsigned short length);
@@ -341,26 +583,29 @@ struct synaptics_rmi4_exp_fn_ptr {
 	int (*enable)(struct synaptics_rmi4_data *rmi4_data, bool enable);
 };
 
-#ifdef SECURE_TSP
-static int secure_mode_status; /* global define for debugging */
-#endif
-
 int synaptics_rmi4_new_function(enum exp_fn fn_type,
+		struct synaptics_rmi4_data *rmi4_data,
 		int (*func_init)(struct synaptics_rmi4_data *rmi4_data),
 		void (*func_remove)(struct synaptics_rmi4_data *rmi4_data),
 		void (*func_attn)(struct synaptics_rmi4_data *rmi4_data,
 				unsigned char intr_mask));
 
-int rmidev_module_register(void);
-int rmi4_f54_module_register(void);
+int rmidev_module_register(struct synaptics_rmi4_data *rmi4_data);
+int rmi4_f54_module_register(struct synaptics_rmi4_data *rmi4_data);
 int synaptics_rmi4_f54_set_control(struct synaptics_rmi4_data *rmi4_data);
+int rmi4_fw_update_module_register(struct synaptics_rmi4_data *rmi4_data);
 
-int rmi4_fw_update_module_register(void);
 int synaptics_fw_updater(unsigned char *fw_data);
 int synaptics_rmi4_fw_update_on_probe(struct synaptics_rmi4_data *rmi4_data);
-int synaptics_rmi4_proximity_enables(unsigned char enables);
+int synaptics_rmi4_proximity_enables(struct synaptics_rmi4_data *rmi4_data, unsigned char enables);
 int synaptics_rmi4_glove_mode_enables(struct synaptics_rmi4_data *rmi4_data);
-int synaptics_proximity_no_sleep_set(bool enables);
+int synaptics_proximity_no_sleep_set(struct synaptics_rmi4_data *rmi4_data, bool enables);
+void synaptics_rmi4_release_all_finger(struct synaptics_rmi4_data *rmi4_data);
+int synaptics_rmi4_f12_ctrl11_set(struct synaptics_rmi4_data *rmi4_data, unsigned char data);
+int synaptics_rmi4_set_tsp_test_result_in_config(int value);
+int synaptics_rmi4_read_tsp_test_result(void);
+int synaptics_rmi4_force_calibration(void);
+int synaptics_rmi4_f51_grip_edge_exclusion_rx(struct synaptics_rmi4_data *rmi4_data, bool enables);
 
 extern struct class *sec_class;
 

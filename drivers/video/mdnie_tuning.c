@@ -34,15 +34,15 @@
 #include "mdnie.h"
 
 #define KFREE(ptr)	do { if (ptr) kfree(ptr); (ptr) = NULL; } while (0)
-#define CONSTANT_F1(x)			(((x << 10) * 107) / 100)
-#define CONSTANT_F2(x)			(((x << 10) * 44) / 43)
-#define CONSTANT_F3(x)			(((x << 10) * 57) / 8)
-#define CONSTANT_F4(x)			(((x << 10) * 19) / 6)
+#define CONSTANT_F1(x)			(((x << 10) * 99) / 91)
+#define CONSTANT_F2(x)			(((x << 10) * 164) / 157)
+#define CONSTANT_F3(x)			(((x << 10) * 218) / 39)
+#define CONSTANT_F4(x)			(((x << 10) * 23) / 8)
 
-#define COLOR_OFFSET_F1(x, y)		(((y << 10) - CONSTANT_F1(x) - (60 << 10)) >> 10)
-#define COLOR_OFFSET_F2(x, y)		(((y << 10) - CONSTANT_F2(x) - (62 << 10)) >> 10)
-#define COLOR_OFFSET_F3(x, y)		(((y << 10) + CONSTANT_F3(x) - (25161 << 10)) >> 10)
-#define COLOR_OFFSET_F4(x, y)		(((y << 10) + CONSTANT_F4(x) - (12613 << 10)) >> 10)
+#define COLOR_OFFSET_F1(x, y)		(((y << 10) - CONSTANT_F1(x) - (6 << 10)) >> 10)
+#define COLOR_OFFSET_F2(x, y)		(((y << 10) - CONSTANT_F2(x) - (8 << 10)) >> 10)
+#define COLOR_OFFSET_F3(x, y)		(((y << 10) + CONSTANT_F3(x) - (20166 << 10)) >> 10)
+#define COLOR_OFFSET_F4(x, y)		(((y << 10) + CONSTANT_F4(x) - (11610 << 10)) >> 10)
 
 int mdnie_calibration(unsigned short x, unsigned short y, int *result)
 {
@@ -141,7 +141,7 @@ int mdnie_check_firmware(const char *path, char *name)
 	if (IS_ERR_OR_NULL(ptr) || size <= 0) {
 		pr_err("%s: file open skip %s\n", __func__, path);
 		KFREE(ptr);
-		return 0;
+		return -EPERM;
 	}
 
 	ret = (strstr(ptr, name) != NULL) ? 1 : 0;
@@ -162,7 +162,7 @@ int mdnie_request_firmware(const char *path, u16 **buf, const char *name)
 	if (IS_ERR_OR_NULL(ptr) || size <= 0) {
 		pr_err("%s: file open skip %s\n", __func__, path);
 		KFREE(ptr);
-		return ret;
+		return -EPERM;
 	}
 
 	dp = kzalloc(size, GFP_KERNEL);

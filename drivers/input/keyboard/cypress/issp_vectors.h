@@ -68,11 +68,6 @@ unsigned char target_id_v[] = { 0x00, 0x9a, 0x52, 0x21 };	//ID for CY8C20066
 #ifdef CY8C200661
 unsigned char target_id_v[] = { 0x00, 0x9b, 0x52, 0x21 };	//ID for CY8C200661
 #endif
-#ifdef CY8C20045_24LKXI
-/* ID for CY8C20045-24LKXI */
-unsigned char target_id_v[] = {0x00, 0xA5, 0x52, 0x21  };
-#endif
-
 
 #ifdef CY8C20x66
 unsigned char target_status00_v = 0x00;	//PTJ: Status = 00 means Success, the SROM function did what it was supposed to
@@ -80,24 +75,6 @@ unsigned char target_status01_v = 0x01;	//PTJ: Status = 01 means that function i
 unsigned char target_status03_v = 0x03;	//PTJ: Status = 03 is fatal error, SROM halted
 unsigned char target_status04_v = 0x04;	//PTJ: Status = 04 means that ___ for test with ___ (PROGRAM-AND-VERIFY)
 unsigned char target_status06_v = 0x06;	//PTJ: Status = 06 means that Calibrate1 failed, for test with id_setup_1 (ID-SETUP-1)
-#endif
-
-#ifdef CY8C20x45		/* 2012.10.30 msp */
-/* PTJ: Status = 00 means Success,
-the SROM function did what it was supposed to */
-/* PTJ: Status = 01 means that function is not allowed
-because of block level protection,
-for test with verify_setup (VERIFY-SETUP) */
-/* PTJ: Status = 03 is fatal error, SROM halted */
-/* PTJ: Status = 04 means that ___
-for test with ___ (PROGRAM-AND-VERIFY) */
-/* PTJ: Status = 06 means that Calibrate1 failed,
-for test with id_setup_1 (ID-SETUP-1) */
-unsigned char target_status00_v = 0x00;
-unsigned char target_status01_v = 0x01;
-unsigned char target_status03_v = 0x03;
-unsigned char target_status04_v = 0x04;
-unsigned char target_status06_v = 0x06;
 #endif
 
 /*************** CY8CTMA30x, CY8CTMG30x, CY8CTST30x series by KIMC, 2009.08.11 ***********************************/

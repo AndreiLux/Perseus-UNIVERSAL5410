@@ -56,34 +56,40 @@ enum csis_output_entity {
 
 /* CSIS global control */
 #define S5PCSIS_CTRL			0x00
-#define S5PCSIS_CTRL_DPDN_DEFAULT	(0 << 31)
-#define S5PCSIS_CTRL_DPDN_SWAP		(1 << 31)
+#define S5PCSIS_CTRL_DPDN_SWAP_CLK	(1 << 31)
+#define S5PCSIS_CTRL_DPDN_SWAP_DAT	(1 << 30)
+#define S5PCSIS_CTRL_INTERLEAVE(x)	(((x) & 0x3) << 22)
 #define S5PCSIS_CTRL_ALIGN_32BIT	(1 << 20)
 #define S5PCSIS_CTRL_UPDATE_SHADOW	(1 << 16)
 #define S5PCSIS_CTRL_WCLK_EXTCLK	(1 << 8)
 #define S5PCSIS_CTRL_RESET		(1 << 4)
+#define S5PCSIS_CTRL_NUMOFDATALANE(x)	((x) << 2)
 #define S5PCSIS_CTRL_ENABLE		(1 << 0)
 
 /* D-PHY control */
 #define S5PCSIS_DPHYCTRL		0x04
 #define S5PCSIS_DPHYCTRL_HSS_MASK	(soc_is_exynos5250() ? \
 					(0x1f << 27) : \
-					(0x1f << 24))
+					(0xff << 24))
 #define S5PCSIS_DPHYCTRL_ENABLE		(0x1f << 0)
 
 #define S5PCSIS_CONFIG			0x08
+#define S5PCSIS_CFG_LINE_INTERVAL(x)	((x) << 26)
+#define S5PCSIS_CFG_START_INTERVAL(x)	((x) << 20)
+#define S5PCSIS_CFG_END_INTERVAL(x)	((x) << 8)
 #define S5PCSIS_CFG_FMT_YCBCR422_8BIT	(0x1e << 2)
 #define S5PCSIS_CFG_FMT_RAW8		(0x2a << 2)
 #define S5PCSIS_CFG_FMT_RAW10		(0x2b << 2)
 #define S5PCSIS_CFG_FMT_RAW12		(0x2c << 2)
 /* User defined formats, x = 1...4 */
-#define S5PCSIS_CFG_FMT_USER(x)		((0x30 + x - 1) << 2)
+#define S5PCSIS_CFG_FMT_USER(x)		((0x30 + (x) - 1) << 2)
 #define S5PCSIS_CFG_FMT_MASK		(0x3f << 2)
 #define S5PCSIS_CFG_NR_LANE_MASK	3
+#define S5PCSIS_CFG_VIRTUAL_CH(x)	((x) << 0)
 
 /* Interrupt mask. */
 #define S5PCSIS_INTMSK			0x10
-#define S5PCSIS_INTMSK_EN_ALL		0xf000103f
+#define S5PCSIS_INTMSK_EN_ALL		0xf0001117
 #define S5PCSIS_INTSRC			0x14
 
 /* Pixel resolution */
@@ -235,6 +241,9 @@ static void __s5pcsis_set_format(struct csis_state *state)
 	/* Color format */
 	val = s5pcsis_read(state, S5PCSIS_CONFIG);
 	val = (val & ~S5PCSIS_CFG_FMT_MASK) | state->csis_fmt->fmt_reg;
+#if defined(CONFIG_SOC_EXYNOS5420)
+	val |= S5PCSIS_CFG_START_INTERVAL(1);
+#endif
 	s5pcsis_write(state, S5PCSIS_CONFIG, val);
 
 	/* Pixel resolution */
@@ -258,9 +267,15 @@ static void s5pcsis_set_params(struct csis_state *state)
 	struct s5p_platform_mipi_csis *pdata = state->pdev->dev.platform_data;
 	u32 val;
 
+#if defined(CONFIG_SOC_EXYNOS5410)
 	val = s5pcsis_read(state, S5PCSIS_CONFIG);
 	val = (val & ~S5PCSIS_CFG_NR_LANE_MASK) | (pdata->lanes - 1);
 	s5pcsis_write(state, S5PCSIS_CONFIG, val);
+#else
+	val = s5pcsis_read(state, S5PCSIS_CTRL);
+	val |= (val & ~(S5PCSIS_CFG_NR_LANE_MASK << 2)) | ((pdata->lanes - 1) << 2);
+	s5pcsis_write(state, S5PCSIS_CTRL, val);
+#endif
 
 	__s5pcsis_set_format(state);
 	s5pcsis_set_hsync_settle(state, pdata->hs_settle);
@@ -561,8 +576,6 @@ static irqreturn_t s5pcsis_irq_handler(int irq, void *dev_id)
 {
 	struct csis_state *state = dev_id;
 	u32 val;
-
-	v4l2_info(&state->sd, "%s : IRQ test\n", __func__);
 
 	if (!(state->flags & ST_POWERED))
 		return IRQ_HANDLED;

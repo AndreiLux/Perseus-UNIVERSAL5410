@@ -14,9 +14,7 @@
 #include <linux/workqueue.h>
 #include <linux/bug.h>
 
-#include "fimc-is-time.h"
 #include "fimc-is-core.h"
-#include "fimc-is-cmd.h"
 #include "fimc-is-regs.h"
 #include "fimc-is-err.h"
 #include "fimc-is-groupmgr.h"
@@ -374,10 +372,16 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 	u32 lock_pid = 0;
 	u32 id;
 	volatile struct is_common_reg __iomem *com_regs;
+#ifdef MEASURE_TIME
+#ifdef INTERFACE_TIME
+	struct timeval measure_str, measure_end;
+#endif
+#endif
 
 	BUG_ON(!itf);
 	BUG_ON(!msg);
 	BUG_ON(msg->instance >= FIMC_IS_MAX_NODES);
+	BUG_ON(msg->command >= HIC_COMMAND_END);
 	BUG_ON(!reply);
 
 	if (!test_bit(IS_IF_STATE_OPEN, &itf->state)) {
@@ -387,9 +391,9 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 
 	lock_pid = atomic_read(&itf->lock_pid);
 	if (lock_pid && (lock_pid != current->pid)) {
-		pr_warn("itf LOCK, %d(%d) wait\n", current->pid, msg->command);
+		pr_info("itf LOCK, %d(%d) wait\n", current->pid, msg->command);
 		wait_lock = wait_lockstate(itf);
-		pr_warn("itf UNLOCK, %d(%d) go\n", current->pid, msg->command);
+		pr_info("itf UNLOCK, %d(%d) go\n", current->pid, msg->command);
 		if (wait_lock) {
 			err("wait_lockstate is fail, lock reset");
 			atomic_set(&itf->lock_pid, 0);
@@ -399,6 +403,12 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 	dbg_interface("TP#1\n");
 	enter_request_barrier(itf);
 	dbg_interface("TP#2\n");
+
+#ifdef MEASURE_TIME
+#ifdef INTERFACE_TIME
+	do_gettimeofday(&measure_str);
+#endif
+#endif
 
 	switch (msg->command) {
 	case HIC_STREAM_ON:
@@ -473,6 +483,13 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 	reply->parameter4 = itf->reply.parameter4;
 
 	if (reply->command == ISR_DONE) {
+		if (msg->command != reply->parameter1) {
+			exit_request_barrier(itf);
+			err("invalid command reply(%d != %d)", msg->command, reply->parameter1);
+			ret = -EINVAL;
+			goto exit;
+		}
+
 		switch (msg->command) {
 		case HIC_STREAM_ON:
 			itf->streaming[msg->instance] = IS_IF_STREAMING_ON;
@@ -505,6 +522,17 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 		err("ISR_NDONE is occured");
 		ret = -EINVAL;
 	}
+
+#ifdef MEASURE_TIME
+#ifdef INTERFACE_TIME
+	do_gettimeofday(&measure_end);
+	measure_time(&itf->time[msg->command],
+		msg->instance,
+		msg->group,
+		&measure_str,
+		&measure_end);
+#endif
+#endif
 
 	exit_request_barrier(itf);
 
@@ -746,7 +774,7 @@ static void wq_func_general(struct work_struct *data)
 		msg = &work->msg;
 		switch (msg->command) {
 		case IHC_GET_SENSOR_NUMBER:
-			pr_err("IS version: %d.%d [0x%02x]\n",
+			pr_info("IS version: %d.%d [0x%02x]\n",
 				ISDRV_VERSION, msg->parameter1,
 				get_drv_clock_gate() |
 				get_drv_dvfs());
@@ -1220,7 +1248,7 @@ static void wq_func_group_3a0(struct fimc_is_groupmgr *groupmgr,
 	fimc_is_ischain_meta_invalid(ldr_frame);
 
 	fimc_is_frame_trans_pro_to_com(ldr_framemgr, ldr_frame);
-	fimc_is_group_done(groupmgr, group);
+	fimc_is_group_done(groupmgr, group, ldr_frame);
 	queue_done(vctx, src_queue, ldr_frame->index, done_state);
 }
 
@@ -1281,7 +1309,7 @@ static void wq_func_group_3a1(struct fimc_is_groupmgr *groupmgr,
 	fimc_is_ischain_meta_invalid(ldr_frame);
 
 	fimc_is_frame_trans_pro_to_com(ldr_framemgr, ldr_frame);
-	fimc_is_group_done(groupmgr, group);
+	fimc_is_group_done(groupmgr, group, ldr_frame);
 	queue_done(vctx, src_queue, ldr_frame->index, done_state);
 }
 
@@ -1371,7 +1399,7 @@ static void wq_func_group_isp(struct fimc_is_groupmgr *groupmgr,
 #endif
 
 	fimc_is_frame_trans_pro_to_com(framemgr, frame);
-	fimc_is_group_done(groupmgr, group);
+	fimc_is_group_done(groupmgr, group, frame);
 	queue_done(vctx, queue, frame->index, done_state);
 }
 
@@ -1407,7 +1435,7 @@ static void wq_func_group_dis(struct fimc_is_groupmgr *groupmgr,
 	fimc_is_ischain_meta_invalid(frame);
 
 	fimc_is_frame_trans_pro_to_com(framemgr, frame);
-	fimc_is_group_done(groupmgr, group);
+	fimc_is_group_done(groupmgr, group, frame);
 	queue_done(vctx, queue, frame->index, done_state);
 }
 
@@ -1607,7 +1635,8 @@ static void wq_func_shot(struct work_struct *data)
 #ifdef MEASURE_TIME
 #ifdef INTERNAL_TIME
 			do_gettimeofday(&frame->time_shotdone);
-#else
+#endif
+#ifdef EXTERNAL_TIME
 			do_gettimeofday(&frame->tzone[TM_SHOT_D]);
 #endif
 #endif
@@ -1649,7 +1678,8 @@ static inline void wq_func_schedule(struct fimc_is_interface *itf,
 
 static void interface_timer(unsigned long data)
 {
-	u32 shot_count, scount_3ax, scount_isp, i, j;
+	u32 shot_count, scount_3ax, scount_isp;
+	u32 fcount, i, j;
 	unsigned long flags, regs;
 	struct fimc_is_interface *itf = (struct fimc_is_interface *)data;
 	struct fimc_is_core *core;
@@ -1669,7 +1699,7 @@ static void interface_timer(unsigned long data)
 
 	core = itf->core;
 
-	for(i = 0; i < FIMC_IS_MAX_NODES; ++i) {
+	for (i = 0; i < FIMC_IS_MAX_NODES; ++i) {
 		device = &core->ischain[i];
 		shot_count = 0;
 		scount_3ax = 0;
@@ -1677,10 +1707,10 @@ static void interface_timer(unsigned long data)
 
 		sensor = device->sensor;
 		if (!sensor)
-			break;
+			continue;
 
 		if (!test_bit(FIMC_IS_SENSOR_FRONT_START, &sensor->state))
-			break;
+			continue;
 
 		if (test_bit(FIMC_IS_ISCHAIN_OPEN_SENSOR, &device->state)) {
 			spin_lock_irq(&itf->shot_check_lock);
@@ -1688,7 +1718,7 @@ static void interface_timer(unsigned long data)
 				atomic_set(&itf->shot_check[i], 0);
 				atomic_set(&itf->shot_timeout[i], 0);
 				spin_unlock_irq(&itf->shot_check_lock);
-				break;
+				continue;
 			}
 			spin_unlock_irq(&itf->shot_check_lock);
 
@@ -1718,7 +1748,7 @@ static void interface_timer(unsigned long data)
 
 		if (shot_count) {
 			atomic_inc(&itf->shot_timeout[i]);
-			pr_err ("timer[%d] is increase to %d\n", i,
+			pr_err ("shot timer[%d] is increased to %d\n", i,
 				atomic_read(&itf->shot_timeout[i]));
 		}
 
@@ -1758,20 +1788,55 @@ static void interface_timer(unsigned long data)
 				pr_err("\n### MCUCTL dump ###\n");
 				regs = (unsigned long)itf->com_regs;
 				for (j = 0; j < 64; ++j)
-					pr_err("MCTL[%d] : %08X\n", j, readl(regs + 4*j));
+					pr_err("MCTL[%d] : %08X\n", j, readl(regs + (4 * j)));
 
 				if (readl(&itf->com_regs->shot_iflag)) {
 					pr_err("\n### MCUCTL check ###\n");
 					fimc_is_clr_intr(itf, INTR_SHOT_DONE);
 
 					for (j = 0; j < 64; ++j)
-						pr_err("MCTL[%d] : %08X\n", j, readl(regs + 4*j));
+						pr_err("MCTL[%d] : %08X\n", j, readl(regs + (4 * j)));
 				}
 #ifdef BUG_ON_ENABLE
 				BUG();
 #endif
 				return;
 			}
+		}
+	}
+
+	for (i = 0; i < FIMC_IS_MAX_NODES; ++i) {
+		sensor = &core->sensor[i];
+
+		if (!test_bit(FIMC_IS_SENSOR_FRONT_START, &sensor->state))
+			continue;
+
+		fcount = atomic_read(&sensor->flite.fcount);
+		if (fcount == atomic_read(&itf->sensor_check[i])) {
+			atomic_inc(&itf->sensor_timeout[i]);
+			pr_err ("sensor timer[%d] is increased to %d\n", i,
+				atomic_read(&itf->sensor_timeout[i]));
+		} else {
+			atomic_set(&itf->sensor_timeout[i], 0);
+			atomic_set(&itf->sensor_check[i], fcount);
+		}
+
+		if (atomic_read(&itf->sensor_timeout[i]) > TRY_TIMEOUT_COUNT) {
+			merr("sensor is timeout(%d, %d)", sensor,
+				atomic_read(&itf->sensor_timeout[i]),
+				atomic_read(&itf->sensor_check[i]));
+
+			pr_err("\n### firmware messsage dump ###\n");
+			fimc_is_hw_print(itf);
+
+			pr_err("\n### MCUCTL dump ###\n");
+			regs = (unsigned long)itf->com_regs;
+			for (j = 0; j < 64; ++j)
+				pr_err("MCTL[%d] : %08X\n", j, readl(regs + (4 * j)));
+#ifdef BUG_ON_ENABLE
+			BUG();
+#endif
+			return;
 		}
 	}
 
@@ -1981,6 +2046,16 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 	init_work_list(&this->work_list[INTR_SHOT_DONE],
 		TRACE_WORK_ID_SHOT, MAX_WORK_COUNT);
 
+#ifdef MEASURE_TIME
+#ifdef INTERFACE_TIME
+	{
+		u32 i;
+		for (i = 0; i < HIC_COMMAND_END; ++i)
+			measure_init(&this->time[i], i);
+	}
+#endif
+#endif
+
 	return ret;
 }
 
@@ -2002,6 +2077,8 @@ int fimc_is_interface_open(struct fimc_is_interface *this)
 		this->processing[i] = IS_IF_PROCESSING_INIT;
 		atomic_set(&this->shot_check[i], 0);
 		atomic_set(&this->shot_timeout[i], 0);
+		atomic_set(&this->sensor_check[i], 0);
+		atomic_set(&this->sensor_timeout[i], 0);
 	}
 	this->pdown_ready = IS_IF_POWER_DOWN_READY;
 	atomic_set(&this->lock_pid, 0);
@@ -2063,7 +2140,6 @@ void fimc_is_interface_unlock(struct fimc_is_interface *this)
 	wake_up(&this->lock_wait_queue);
 }
 
-extern unsigned int g_cam_err_count;
 int fimc_is_hw_print(struct fimc_is_interface *this)
 {
 	int debug_cnt, sentence_i;
@@ -2119,8 +2195,6 @@ int fimc_is_hw_print(struct fimc_is_interface *this)
 		core->debug_cnt = debug_cnt;
 		printk(KERN_ERR "end\n");
 	}
-
-	g_cam_err_count++;
 
 	return count;
 }
@@ -2213,11 +2287,16 @@ int fimc_is_hw_setfile(struct fimc_is_interface *this,
 }
 
 int fimc_is_hw_open(struct fimc_is_interface *this,
-	u32 instance, u32 module, u32 info, u32 group, u32 flag,
-	u32 *mwidth, u32 *mheight)
+	u32 instance,
+	u32 module,
+	u32 info,
+	u32 group,
+	u32 flag,
+	u32 *mwidth,
+	u32 *mheight)
 {
 	int ret;
-	struct fimc_is_msg msg, reply;;
+	struct fimc_is_msg msg, reply;
 
 	dbg_interface("open(%d,%d,%08X)\n", module, group, flag);
 

@@ -24,6 +24,9 @@
 #include <plat/udc-hs.h>
 #include <mach/sec_modem.h>
 
+#define EXYNOS5_PICO_SLEEP
+#define EXYNOS5_HSIC2_SLEEP
+
 #define EXYNOS4_USB_CFG	(S3C_VA_SYS + 0x21C)
 #define EXYNOS5_USB_CFG	(S3C_VA_SYS + 0x230)
 #define PHY_ENABLE	(1 << 0)
@@ -122,7 +125,9 @@ static int exynos_usb_phy_clock_enable(struct platform_device *pdev,
 		 * PHY clock domain is 'usbhost' on exynos5250.
 		 * But, PHY clock domain is 'otg' on others.
 		 */
-		if (soc_is_exynos5250() || soc_is_exynos5410())
+		if (soc_is_exynos5250() ||
+		    soc_is_exynos5410() ||
+		    soc_is_exynos5420())
 			clk = clk_get(&pdev->dev, "usbhost");
 		else
 			clk = clk_get(&pdev->dev, "otg");
@@ -148,7 +153,9 @@ static int exynos_usb_phy_clock_disable(struct platform_device *pdev,
 		return 0;
 
 	if (!usb_phy_control.phy_clk) {
-		if (soc_is_exynos5250() || soc_is_exynos5410())
+		if (soc_is_exynos5250() ||
+		    soc_is_exynos5410() ||
+		    soc_is_exynos5420())
 			clk = clk_get(&pdev->dev, "usbhost");
 		else
 			clk = clk_get(&pdev->dev, "otg");
@@ -582,24 +589,6 @@ static int exynos4_usb_phy20_exit(struct platform_device *pdev)
 	return 0;
 }
 
-#if defined(CONFIG_MDM_HSIC_PM)
-void exynos5_usb_phy_reg_dump(void)
-{
-	pr_err("----- EHCI PHY REG DUMP -----\n");
-	pr_err("HOSTPHYCTRL0 = 0x%08x\n", readl(EXYNOS5_PHY_HOST_CTRL0));
-	pr_err("HOSTPHYTUNE0 = 0x%08x\n", readl(EXYNOS5_PHY_HOST_TUNE0));
-	pr_err("HSICPHYCTRL1 = 0x%08x\n", readl(EXYNOS5_PHY_HSIC_CTRL1));
-	pr_err("HSICPHYTUNE1 = 0x%08x\n", readl(EXYNOS5_PHY_HSIC_TUNE1));
-	pr_err("HSICPHYCTRL2 = 0x%08x\n", readl(EXYNOS5_PHY_HSIC_CTRL2));
-	pr_err("HSICPHYTUNE2 = 0x%08x\n", readl(EXYNOS5_PHY_HSIC_TUNE2));
-	pr_err("HOSTEHCICTRL = 0x%08x\n", readl(EXYNOS5_PHY_HOST_EHCICTRL));
-	pr_err("OHCICTRL = 0x%08x\n", readl(EXYNOS5_PHY_HOST_OHCICTRL));
-	pr_err("USBOTG_SYS = 0x%08x\n", readl(EXYNOS5_PHY_OTG_SYS));
-	pr_err("USBOTG_TUNE = 0x%08x\n", readl(EXYNOS5_PHY_OTG_TUNE));
-	pr_err("-----------------------------\n");
-}
-#endif
-
 static int exynos5_usb_phy_host_suspend(struct platform_device *pdev)
 {
 	u32 hostphy_ctrl0;
@@ -613,6 +602,9 @@ static int exynos5_usb_phy_host_suspend(struct platform_device *pdev)
 	hostphy_ctrl0 = readl(EXYNOS5_PHY_HOST_CTRL0);
 	/* set to suspend standard of PHY20 */
 	hostphy_ctrl0 |= HOST_CTRL0_FORCESUSPEND;
+#ifdef EXYNOS5_PICO_SLEEP
+	hostphy_ctrl0 |= HOST_CTRL0_COMMONON_N;
+#endif
 	writel(hostphy_ctrl0, EXYNOS5_PHY_HOST_CTRL0);
 
 	return 0;
@@ -627,16 +619,21 @@ static int exynos5_usb_phy_host_resume(struct platform_device *pdev)
 		/* set to suspend HSIC 0 and 1 and standard of PHY1 */
 		hostphy_ctrl0 = readl(EXYNOS5_PHY_HOST_CTRL0);
 		hostphy_ctrl0 &= ~(HOST_CTRL0_FORCESUSPEND);
+#ifdef EXYNOS5_PICO_SLEEP
+		hostphy_ctrl0 &= ~HOST_CTRL0_COMMONON_N;
+#endif
 		writel(hostphy_ctrl0, EXYNOS5_PHY_HOST_CTRL0);
 
 		/* set common_on_n of PHY1 for power consumption */
 		hsic_ctrl = readl(EXYNOS5_PHY_HSIC_CTRL1);
 		hsic_ctrl &= ~(HSIC_CTRL_FORCESUSPEND);
 		writel(hsic_ctrl, EXYNOS5_PHY_HSIC_CTRL1);
+#ifdef EXYNOS5_HSIC2_SLEEP
+		hsic_ctrl |= HSIC_CTRL_FORCESLEEP;
+#endif
 		writel(hsic_ctrl, EXYNOS5_PHY_HSIC_CTRL2);
 		if (usb_phy_control.lpa_entered) {
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_LINK_DEVICE_USB) \
-			|| defined(CONFIG_MDM_HSIC_PM)
+#if defined(CONFIG_LINK_DEVICE_HSIC)
 			if (!strcmp(pdev->name, "s5p-ehci"))
 				set_hsic_lpa_states(STATE_HSIC_LPA_WAKE);
 #endif
@@ -663,6 +660,11 @@ static int exynos5_usb_phy_host_resume(struct platform_device *pdev)
 		/* reset all ports of both PHY and Link */
 		hostphy_ctrl0 = readl(EXYNOS5_PHY_HOST_CTRL0);
 		hostphy_ctrl0 &= ~(HOST_CTRL0_SIDDQ | HOST_CTRL0_FORCESUSPEND);
+#ifdef EXYNOS5_PICO_SLEEP
+		/* the phy is unused */
+		hostphy_ctrl0 |= HOST_CTRL0_FORCESLEEP;
+		hostphy_ctrl0 &= ~HOST_CTRL0_COMMONON_N;
+#endif
 		hostphy_ctrl0 |= (HOST_CTRL0_LINKSWRST | HOST_CTRL0_UTMISWRST);
 		writel(hostphy_ctrl0, EXYNOS5_PHY_HOST_CTRL0);
 		udelay(10);
@@ -678,17 +680,12 @@ static int exynos5_usb_phy_host_resume(struct platform_device *pdev)
 		udelay(10);
 		hsic_ctrl &= ~(HSIC_CTRL_PHYSWRST | HSIC_CTRL_UTMISWRST);
 		writel(hsic_ctrl, EXYNOS5_PHY_HSIC_CTRL1);
+#ifdef EXYNOS5_HSIC2_SLEEP
+		/* channel 2 is unused */
+		hsic_ctrl |= HSIC_CTRL_FORCESLEEP;
+#endif
 		writel(hsic_ctrl, EXYNOS5_PHY_HSIC_CTRL2);
-
-#if defined(CONFIG_MDM_HSIC_PM)
-#if defined(CONFIG_MACH_JA_KOR_LGT)
-		writel(0xFF, EXYNOS5_PHY_HSIC_TUNE1);
-		writel(0xFF, EXYNOS5_PHY_HSIC_TUNE2);
-#endif
-#endif
-
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_LINK_DEVICE_USB) \
-		|| defined(CONFIG_MDM_HSIC_PM)
+#if defined(CONFIG_LINK_DEVICE_HSIC)
 		if (!strcmp(pdev->name, "s5p-ehci"))
 			set_hsic_lpa_states(STATE_HSIC_LPA_WAKE);
 #endif
@@ -729,7 +726,12 @@ static int exynos5_usb_phy20_init(struct platform_device *pdev)
 	otgphy_sys |= (refclk_freq << OTG_SYS_CLKSEL_SHIFT);
 
 	/* COMMON Block configuration during suspend */
+#ifdef EXYNOS5_PICO_SLEEP
+	/* Keep common block ON to provide clock for HSIC */
+	hostphy_ctrl0 &= (~HOST_CTRL0_COMMONON_N);
+#else
 	hostphy_ctrl0 |= (HOST_CTRL0_COMMONON_N);
+#endif
 	if (soc_is_exynos5250())
 		otgphy_sys &= ~(OTG_SYS_COMMON_ON);
 	else
@@ -757,6 +759,10 @@ static int exynos5_usb_phy20_init(struct platform_device *pdev)
 			HOST_CTRL0_SIDDQ);
 	hostphy_ctrl0 &= ~(HOST_CTRL0_FORCESUSPEND | HOST_CTRL0_FORCESLEEP);
 	hostphy_ctrl0 |= (HOST_CTRL0_LINKSWRST | HOST_CTRL0_UTMISWRST);
+#ifdef EXYNOS5_PICO_SLEEP
+	/* the phy is unused */
+	hostphy_ctrl0 |= HOST_CTRL0_FORCESLEEP;
+#endif
 	writel(hostphy_ctrl0, EXYNOS5_PHY_HOST_CTRL0);
 	udelay(10);
 	hostphy_ctrl0 &= ~(HOST_CTRL0_LINKSWRST | HOST_CTRL0_UTMISWRST);
@@ -770,14 +776,12 @@ static int exynos5_usb_phy20_init(struct platform_device *pdev)
 	udelay(10);
 	hsic_ctrl &= ~(HSIC_CTRL_PHYSWRST);
 	writel(hsic_ctrl, EXYNOS5_PHY_HSIC_CTRL1);
+#ifdef EXYNOS5_HSIC2_SLEEP
+	/* channel 2 is unused */
+	hsic_ctrl |= HSIC_CTRL_FORCESLEEP;
+#endif
 	writel(hsic_ctrl, EXYNOS5_PHY_HSIC_CTRL2);
 
-#if defined(CONFIG_MDM_HSIC_PM)
-#if defined(CONFIG_MACH_JA_KOR_LGT)
-	writel(0xFF, EXYNOS5_PHY_HSIC_TUNE1);
-	writel(0xFF, EXYNOS5_PHY_HSIC_TUNE2);
-#endif
-#endif
 	udelay(80);
 
 	/* Enable DMA burst bus configuration */
@@ -815,6 +819,9 @@ static int exynos5_usb_phy20_exit(struct platform_device *pdev)
 	hostphy_ctrl0 |= (HOST_CTRL0_SIDDQ);
 	hostphy_ctrl0 |= (HOST_CTRL0_FORCESUSPEND | HOST_CTRL0_FORCESLEEP);
 	hostphy_ctrl0 |= (HOST_CTRL0_PHYSWRST | HOST_CTRL0_PHYSWRSTALL);
+#ifdef EXYNOS5_PICO_SLEEP
+	hostphy_ctrl0 |= HOST_CTRL0_COMMONON_N;
+#endif
 	writel(hostphy_ctrl0, EXYNOS5_PHY_HOST_CTRL0);
 
 	otgphy_sys = readl(EXYNOS5_PHY_OTG_SYS);
@@ -903,7 +910,7 @@ static int exynos5_usb_phy30_tune(struct platform_device *pdev)
 	if (!parent || !parent->platform_data)
 		return -EINVAL;
 
-	pdata = (struct dwc3_exynos_data *)parent->platform_data;
+	pdata = parent->platform_data;
 
 	switch (phy_num) {
 	case 0:
@@ -913,39 +920,28 @@ static int exynos5_usb_phy30_tune(struct platform_device *pdev)
 		reg_base = S5P_VA_USB3_DRD1_PHY;
 		break;
 	default:
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	phytune = readl(reg_base + EXYNOS_USB3_PHYPARAM0);
 	printk(KERN_DEBUG "usb: %s read original PHYPARAM0 : 0x%x\n" ,pdev->name,readl(reg_base + EXYNOS_USB3_PHYPARAM0));
-	/* modify phy tune value for Peripheral mode */
-	if (!strcmp(pdata->udc_name, pdev->name)) {
-#if defined(CONFIG_MACH_JA)
-#if defined(CONFIG_TARGET_LOCALE_JPN) || defined(CONFIG_MACH_JA_KOR_SKT) \
-	|| defined(CONFIG_MACH_JA_KOR_KT) || defined(CONFIG_MACH_JA_KOR_LGT)
-	/* sqrxtune [8:6] 3b110 : -15% */
-		phytune &= ~(0x7 << 6);
-		phytune |= (0x6 << 6);
-	/* txvreftune[25:22] 4'b1011: +10% */
-		phytune &= ~(0xf << 22);
-		phytune |= (0xb << 22);
-	/* modify phy tune value for adjusting swing level */
-#else
-	/* sqrxtune [8:6] 3b011 : 0% */
-		phytune &= ~(0x7 << 6);
-		phytune |= (0x3 << 6);
-	/* txvreftune[25:22] 4'b1011: +10% */
-		phytune &= ~(0xf << 22);
-		phytune |= (0xb << 22);
-	/* modify phy tune value for adjusting swing level */
-#endif
-#endif
 
-	/* modify phy tune value for Host mode */
+	if (!strcmp(pdata->udc_name, pdev->name)) {
+		/* TODO: Peripheral mode */
+		/* sqrxtune [8:6] 3b011 : 0% */
+			phytune &= ~(0x7 << 6);
+			phytune |= (0x3 << 6);
+		/* txvreftune[25:22] 4'b1011: +10% */
+			phytune &= ~(0xf << 22);
+			phytune |= (0xb << 22);
+		/* modify phy tune value for adjusting swing level */
 	} else if (!strcmp(pdata->xhci_name, pdev->name)) {
+		/* TODO: Host mode */
+
 	} else {
-		return -ENODEV;
+		return -EINVAL;
 	}
+
 	writel(phytune, reg_base + EXYNOS_USB3_PHYPARAM0);
 	printk(KERN_DEBUG "usb: %s  modified PHYPARAM0 : 0x%x\n" ,pdev->name,readl(reg_base + EXYNOS_USB3_PHYPARAM0));
 
@@ -983,7 +979,10 @@ static int exynos5_usb_phy30_init(struct platform_device *pdev)
 	reg = EXYNOS_USB3_LINKSYSTEM_XHCI_VERSION_CONTROL |
 		EXYNOS_USB3_LINKSYSTEM_FLADJ(0x20);
 	writel(reg, reg_base + EXYNOS_USB3_LINKSYSTEM);
-	writel(0x03fff81C, reg_base + EXYNOS_USB3_PHYPARAM1);
+	if (soc_is_exynos5250())
+		writel(0x03fff81C, reg_base + EXYNOS_USB3_PHYPARAM1);
+	else
+		writel(0x03fff020, reg_base + EXYNOS_USB3_PHYPARAM1);
 	writel(0x00000004, reg_base + EXYNOS_USB3_PHYBATCHG);
 #ifdef CONFIG_USB_EXYNOS_SWITCH
 	if (soc_is_exynos5250())
@@ -1243,12 +1242,6 @@ static int exynos5_check_usb_op(void)
 	unsigned long flags;
 	int ret;
 
-#if defined(CONFIG_MDM_HSIC_PM)
-	/* if it is normal boot, block lpa till modem boot */
-	if (set_hsic_lpa_states(STATE_HSIC_LPA_CHECK))
-		return 1;
-#endif
-
 	local_irq_save(flags);
 
 	/* Check USB 3.0 DRD power first */
@@ -1279,11 +1272,16 @@ static int exynos5_check_usb_op(void)
 	if (hostphy_ctrl0 & HOST_CTRL0_FORCESUSPEND &&
 		hsic_ctrl1 & HSIC_CTRL_FORCESUSPEND &&
 		hsic_ctrl2 & HSIC_CTRL_FORCESUSPEND) {
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_LINK_DEVICE_USB) \
-		|| defined(CONFIG_MDM_HSIC_PM)
+#if defined(CONFIG_LINK_DEVICE_HSIC)
 		/* HSIC LPA: LPA USB phy retention reume call the usb
 		 * reset resume, so we should let CP to HSIC L3 mode. */
 		set_hsic_lpa_states(STATE_HSIC_LPA_ENTER);
+#elif defined(CONFIG_MDM_HSIC_PM)
+		ret = set_hsic_lpa_states(STATE_HSIC_LPA_ENTER);
+		if (ret < 0) {
+			op = 1;
+			goto done;
+		}
 #endif
 		/* unset to normal of Host */
 		hostphy_ctrl0 |= (HOST_CTRL0_SIDDQ);
@@ -1417,8 +1415,7 @@ int s5p_usb_phy_init(struct platform_device *pdev, int type)
 
 	mutex_lock(&usb_phy_control.phy_lock);
 	if (type == S5P_USB_PHY_HOST) {
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_LINK_DEVICE_USB) \
-		|| defined(CONFIG_MDM_HSIC_PM)
+#if defined(CONFIG_LINK_DEVICE_HSIC)
 		/* HSIC LPA: Let CP know the slave wakeup from LPA wakeup */
 		if (!strcmp(pdev->name, "s5p-ehci"))
 			set_hsic_lpa_states(STATE_HSIC_LPA_PHY_INIT);

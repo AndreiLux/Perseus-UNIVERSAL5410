@@ -6,7 +6,7 @@
  *
  *	Description	: machine dependent part for MC Driver
  *
- *	Version		: 1.0.5	2013.01.21
+ *	Version		: 2.0.0	2013.03.06
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.	In no event will the authors be held liable for any damages
@@ -111,6 +111,7 @@ void	machdep_ClockStart(
 #endif
 
 	/* Please implement clock start procedure if need */
+	mc_asoc_enable_clock(1);
 
 #if (MCDRV_DEBUG_LEVEL >= 4)
 	McDebugLog_FuncOut("machdep_ClockStart", 0);
@@ -137,6 +138,7 @@ void	machdep_ClockStop(
 #endif
 
 	/* Please implement clock stop procedure if need */
+	mc_asoc_enable_clock(0);
 
 #if (MCDRV_DEBUG_LEVEL >= 4)
 	McDebugLog_FuncOut("machdep_ClockStop", 0);
@@ -311,17 +313,18 @@ void	machdep_PreLDODStart(
 	void
 )
 {
-	UINT8	bData[2];
-
 #if (MCDRV_DEBUG_LEVEL >= 4)
 	McDebugLog_FuncIn("machdep_PreLDODStart");
 #endif
 
 	/* Please implement procedure */
 	mc_asoc_set_codec_ldod(1);
-	bData[0]	= 0x04;
-	bData[1]	= 0x01;
-	mc_asoc_write_data(0, bData, 2);
+	if (mc_asoc_get_bus_select() == 1) {
+		UINT8	bData[2];
+		bData[0]	= 0x04;
+		bData[1]	= 0x01;
+		mc_asoc_write_data(0, bData, 2);
+	}
 
 #if (MCDRV_DEBUG_LEVEL >= 4)
 	McDebugLog_FuncOut("machdep_PreLDODStart", 0);
@@ -353,6 +356,33 @@ void	machdep_PostLDODStart(
 #if (MCDRV_DEBUG_LEVEL >= 4)
 	McDebugLog_FuncOut("machdep_PostLDODStart", 0);
 #endif
+}
+
+/***************************************************************************
+ *	machdep_GetBusSelect
+ *
+ *	Function:
+ *			Get bus kind.
+ *	Arguments:
+ *			none
+ *	Return:
+ *			0:I2C
+ *			1:SPI
+ *			2:SLIMbus
+ *
+ ****************************************************************************/
+UINT8	machdep_GetBusSelect(
+	void
+)
+{
+#if (MCDRV_DEBUG_LEVEL >= 4)
+	McDebugLog_FuncIn("machdep_GetBusSelect");
+#endif
+#if (MCDRV_DEBUG_LEVEL >= 4)
+	McDebugLog_FuncOut("machdep_GetBusSelect", 0);
+#endif
+	/* Please implement get bus kind procedure */
+	return mc_asoc_get_bus_select();
 }
 
 /***************************************************************************

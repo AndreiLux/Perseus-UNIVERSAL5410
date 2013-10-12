@@ -681,7 +681,7 @@ static struct sec_pmic_platform_data exynos5_s2m_pdata = {
 	.buck6_ramp_enable	= 1,
 };
 
-static struct i2c_board_info hs_i2c_devs0[] __initdata = {
+struct i2c_board_info hs_i2c_devs0[PMIC_I2C_DEVS_MAX] __initdata = {
 	{
 		I2C_BOARD_INFO("sec-pmic", 0xCC >> 1),
 		.platform_data = &exynos5_s2m_pdata,

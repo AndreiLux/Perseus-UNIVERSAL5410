@@ -169,7 +169,7 @@ static inline void _local_bh_enable_ip(unsigned long ip)
 	/*
 	 * Keep preemption disabled until we are done with
 	 * softirq processing:
-	 */
+ 	 */
 	sub_preempt_count(SOFTIRQ_DISABLE_OFFSET - 1);
 
 	if (unlikely(!in_interrupt() && local_softirq_pending()))
@@ -863,8 +863,8 @@ static int __cpuinit cpu_callback(struct notifier_block *nfb,
 			return notifier_from_errno(PTR_ERR(p));
 		}
 		kthread_bind(p, hotcpu);
-		per_cpu(ksoftirqd, hotcpu) = p;
-		break;
+  		per_cpu(ksoftirqd, hotcpu) = p;
+ 		break;
 	case CPU_ONLINE:
 	case CPU_ONLINE_FROZEN:
 		wake_up_process(per_cpu(ksoftirqd, hotcpu));
@@ -891,7 +891,7 @@ static int __cpuinit cpu_callback(struct notifier_block *nfb,
 		break;
 	}
 #endif /* CONFIG_HOTPLUG_CPU */
-	}
+ 	}
 	return NOTIFY_OK;
 }
 

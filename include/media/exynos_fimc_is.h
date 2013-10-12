@@ -124,7 +124,8 @@ extern int exynos4_fimc_is_clk_put(struct platform_device *pdev);
 enum exynos5_csi_id {
 	CSI_ID_A = 0,
 	CSI_ID_B = 1,
-	CSI_ID_C = 2
+	CSI_ID_C = 2,
+	CSI_ID_MAX
 };
 
 enum exynos5_flite_id {
@@ -149,8 +150,8 @@ enum exynos5_sensor_id {
 	SENSOR_NAME_S5K3H7_SUNNY_2M	 = 7,
 	SENSOR_NAME_IMX135		 = 8,
 	SENSOR_NAME_S5K6B2		 = 9,
-	SENSOR_NAME_IMX135_FHD60	 = 10,
-	SENSOR_NAME_IMX135_HD120	 = 11,
+	SENSOR_NAME_3L2			 = 13,
+	SENSOR_NAME_IMX134		 = 36,
 	SENSOR_NAME_CUSTOM		 = 100,
 	SENSOR_NAME_END
 };
@@ -308,39 +309,47 @@ struct sensor_open_extended {
 * @isp_info: properties of camera sensor required for host interface setup
 */
 struct exynos5_platform_fimc_is {
-	int	 hw_ver;
-	struct exynos5_fimc_is_sensor_info
-		*sensor_info[FIMC_IS_MAX_CAMIF_CLIENTS];
+	int	hw_ver;
+	struct exynos5_fimc_is_sensor_info *sensor_info[FIMC_IS_MAX_CAMIF_CLIENTS];
 	struct exynos5_sensor_gpio_info *gpio_info;
-	bool	flag_power_on[FLITE_ID_END];
-	int	 (*cfg_gpio)(struct platform_device *pdev,
-				u32 channel, bool flag_on);
-	int	 (*clk_cfg)(struct platform_device *pdev);
-	int	 (*clk_on)(struct platform_device *pdev);
-	int	 (*clk_off)(struct platform_device *pdev);
-	int	 (*sensor_power_on)(struct platform_device *pdev,
-							int sensor_id);
-	int	 (*sensor_power_off)(struct platform_device *pdev,
-							int sensor_id);
-	int	 (*print_cfg)(struct platform_device *pdev,
-				u32 channel);
+	int	flag_power_on[FLITE_ID_END];
+	int	(*cfg_gpio)(struct platform_device *pdev, int channel, bool flag_on);
+	int	(*clk_cfg)(struct platform_device *pdev);
+	int	(*clk_on)(struct platform_device *pdev);
+	int	(*clk_off)(struct platform_device *pdev);
+	int	(*sensor_clock_on)(struct platform_device *pdev, u32 source);
+	int	(*sensor_clock_off)(struct platform_device *pdev, u32 source);
+	int	(*sensor_power_on)(struct platform_device *pdev, int sensor_id);
+	int	(*sensor_power_off)(struct platform_device *pdev, int sensor_id);
+	int	(*print_cfg)(struct platform_device *pdev, u32 channel);
 };
 
 extern void exynos5_fimc_is_set_platdata(struct exynos5_platform_fimc_is *pd);
 
 /* defined by architecture to configure gpio */
 extern int exynos5_fimc_is_cfg_gpio(struct platform_device *pdev,
-					u32 channel, bool flag_on);
+					int channel, bool flag_on);
 
 /* platform specific clock functions */
-extern int exynos5_fimc_is_cfg_clk(struct platform_device *pdev);
-extern int exynos5_fimc_is_clk_on(struct platform_device *pdev);
-extern int exynos5_fimc_is_clk_off(struct platform_device *pdev);
-extern int exynos5_fimc_is_sensor_power_on(struct platform_device *pdev,
-							int sensor_id);
-extern int exynos5_fimc_is_sensor_power_off(struct platform_device *pdev,
-							int sensor_id);
+#if defined(CONFIG_SOC_EXYNOS5250)
+extern int exynos5250_fimc_is_cfg_clk(struct platform_device *pdev);
+extern int exynos5250_fimc_is_clk_on(struct platform_device *pdev);
+extern int exynos5250_fimc_is_clk_off(struct platform_device *pdev);
+#elif defined(CONFIG_SOC_EXYNOS5410)
+extern int exynos5410_fimc_is_cfg_clk(struct platform_device *pdev);
+extern int exynos5410_fimc_is_clk_on(struct platform_device *pdev);
+extern int exynos5410_fimc_is_clk_off(struct platform_device *pdev);
+extern int exynos5410_fimc_is_sensor_clk_on(struct platform_device *pdev, u32 source);
+extern int exynos5410_fimc_is_sensor_clk_off(struct platform_device *pdev, u32 source);
+#elif defined(CONFIG_SOC_EXYNOS5420)
+extern int exynos5420_fimc_is_cfg_clk(struct platform_device *pdev);
+extern int exynos5420_fimc_is_clk_on(struct platform_device *pdev);
+extern int exynos5420_fimc_is_clk_off(struct platform_device *pdev);
+extern int exynos5420_fimc_is_sensor_clk_on(struct platform_device *pdev, u32 source);
+extern int exynos5420_fimc_is_sensor_clk_off(struct platform_device *pdev, u32 source);
+#endif
+extern int exynos5_fimc_is_sensor_power_on(struct platform_device *pdev, int sensor_id);
+extern int exynos5_fimc_is_sensor_power_off(struct platform_device *pdev, int sensor_id);
 extern int exynos5_fimc_is_print_cfg(struct platform_device *pdev, u32 channel);
-
 #endif
 #endif /* EXYNOS_FIMC_IS_H_ */

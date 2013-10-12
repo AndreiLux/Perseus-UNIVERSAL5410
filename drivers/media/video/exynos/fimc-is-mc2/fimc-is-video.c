@@ -46,7 +46,7 @@
 #include "fimc-is-err.h"
 
 #define SPARE_PLANE 1
-#define SPARE_SIZE (16 * 1024)
+#define SPARE_SIZE (20 * 1024)
 
 struct fimc_is_fmt fimc_is_formats[] = {
 	 {
@@ -132,6 +132,20 @@ struct fimc_is_fmt *fimc_is_find_format(u32 *pixelformat,
 
 }
 
+int get_plane_size_flite(int width, int height)
+{
+    int PlaneSize;
+    int Alligned_Width;
+    int Bytes;
+
+    Alligned_Width = (width + 9) / 10 * 10;
+    Bytes = Alligned_Width * 8 / 5 ;
+
+    PlaneSize = Bytes * height;
+
+    return PlaneSize;
+}
+
 void fimc_is_set_plane_size(struct fimc_is_frame_cfg *frame, unsigned int sizes[])
 {
 	u32 plane;
@@ -175,18 +189,51 @@ void fimc_is_set_plane_size(struct fimc_is_frame_cfg *frame, unsigned int sizes[
 		dbg("V4L2_PIX_FMT_SBGGR10(w:%d)(h:%d)\n",
 				frame->width, frame->height);
 		sizes[0] = frame->width*frame->height*2;
+		if (frame->bytesperline[0]) {
+		    if (frame->bytesperline[0] >= frame->width * 5 / 4) {
+			sizes[0] = frame->bytesperline[0]
+			    * frame->height;
+		    } else {
+			err("Bytesperline too small\
+				(fmt(V4L2_PIX_FMT_SBGGR10), W(%d), Bytes(%d))",
+				frame->width,
+				frame->bytesperline[0]);
+		    }
+		}
 		sizes[1] = SPARE_SIZE;
 		break;
 	case V4L2_PIX_FMT_SBGGR16:
 		dbg("V4L2_PIX_FMT_SBGGR16(w:%d)(h:%d)\n",
 				frame->width, frame->height);
 		sizes[0] = frame->width*frame->height*2;
+		if (frame->bytesperline[0]) {
+			if (frame->bytesperline[0] >= frame->width * 2) {
+				sizes[0] = frame->bytesperline[0]
+						* frame->height;
+			} else {
+				err("Bytesperline too small\
+				(fmt(V4L2_PIX_FMT_SBGGR16), W(%d), Bytes(%d))",
+				frame->width,
+				frame->bytesperline[0]);
+			}
+		}
 		sizes[1] = SPARE_SIZE;
 		break;
 	case V4L2_PIX_FMT_SBGGR12:
 		dbg("V4L2_PIX_FMT_SBGGR12(w:%d)(h:%d)\n",
 				frame->width, frame->height);
-		sizes[0] = frame->width*frame->height*2;
+		sizes[0] = get_plane_size_flite(frame->width,frame->height);
+		if (frame->bytesperline[0]) {
+			if (frame->bytesperline[0] >= frame->width * 3 / 2) {
+				sizes[0] = frame->bytesperline[0]
+						* frame->height;
+			} else {
+				err("Bytesperline too small\
+				(fmt(V4L2_PIX_FMT_SBGGR12), W(%d), Bytes(%d))",
+				frame->width,
+				frame->bytesperline[0]);
+			}
+		}
 		sizes[1] = SPARE_SIZE;
 		break;
 	default:
@@ -385,11 +432,15 @@ static int fimc_is_queue_set_format_mplane(struct fimc_is_queue *queue,
 	queue->framecfg.height			= pix->height;
 
 	for (plane = 0; plane < fmt->num_planes; ++plane) {
-		if (pix->plane_fmt[plane].bytesperline)
+		if (pix->plane_fmt[plane].bytesperline) {
+			queue->framecfg.bytesperline[plane] =
+				pix->plane_fmt[plane].bytesperline;
 			queue->framecfg.width_stride[plane] =
 				pix->plane_fmt[plane].bytesperline - pix->width;
-		else
+		} else {
+			queue->framecfg.bytesperline[plane] = 0;
 			queue->framecfg.width_stride[plane] = 0;
+		}
 	}
 
 p_err:
@@ -542,7 +593,7 @@ exit:
 	return ret;
 }
 
-inline void fimc_is_queue_wait_prepare(struct vb2_queue *vbq)
+void fimc_is_queue_wait_prepare(struct vb2_queue *vbq)
 {
 	struct fimc_is_video_ctx *vctx;
 	struct fimc_is_video *video;
@@ -559,7 +610,7 @@ inline void fimc_is_queue_wait_prepare(struct vb2_queue *vbq)
 	mutex_unlock(&video->lock);
 }
 
-inline void fimc_is_queue_wait_finish(struct vb2_queue *vbq)
+void fimc_is_queue_wait_finish(struct vb2_queue *vbq)
 {
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx;
@@ -1124,7 +1175,7 @@ int fimc_is_video_streamoff(struct file *file,
 	framemgr_x_barrier_irq(framemgr, 0);
 
 	if (qcount > 0)
-		mwarn("video%d qbuf is not empty(%d)", vctx,
+		mwarn("video%d stream off : queued buffer is not empty(%d)", vctx,
 			vctx->video->id, qcount);
 
 	if (vbq->type != type) {

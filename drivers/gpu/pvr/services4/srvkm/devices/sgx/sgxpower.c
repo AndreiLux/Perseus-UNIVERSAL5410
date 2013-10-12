@@ -265,10 +265,9 @@ static IMG_VOID SGXPollForClockGating (PVRSRV_SGXDEV_INFO	*psDevInfo,
 						MAX_HW_TIME_US/WAIT_TRY_COUNT,
 						IMG_FALSE) != PVRSRV_OK)
 	{
-		PVR_DPF((PVR_DBG_WARNING,"SGXPollForClockGating: %s failed.", pszComment));
-		/* IMG recommends don't need to check sgx internal clockgating status */
-		/* SGXDumpDebugInfo(psDevInfo, IMG_FALSE); */
-		/* PVR_DBG_BREAK; */
+		PVR_DPF((PVR_DBG_ERROR,"SGXPollForClockGating: %s failed.", pszComment));
+		SGXDumpDebugInfo(psDevInfo, IMG_FALSE);
+		PVR_DBG_BREAK;
 	}
 	#endif /* NO_HARDWARE */
 

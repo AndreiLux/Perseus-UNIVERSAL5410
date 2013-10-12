@@ -2,7 +2,6 @@
 #include <linux/gpio.h>
 #include <linux/delay.h>
 #include <linux/err.h>
-#include <linux/stat.h>
 
 #include <plat/gpio-cfg.h>
 
@@ -17,7 +16,10 @@ static ssize_t get_slot_switch(struct device *dev, struct device_attribute *attr
 
 	//return '0' slot path is '||', return '1' slot path is 'X'
 	value = gpio_get_value(GPIO_UIM_SIM_SEL);
-
+#if defined(CONFIG_MACH_T0_CHN_CTC)
+	if (system_rev <= 7)
+		value = (~value & 0x1);
+#endif
 	printk("Current Slot is %x\n", value);
 
 	return sprintf(buf, "%d\n", value);
@@ -31,10 +33,20 @@ static ssize_t set_slot_switch(struct device *dev, struct device_attribute *attr
 
 	switch(value) {
 		case 0:
+#if defined(CONFIG_MACH_T0_CHN_CTC)
+			if (system_rev <= 7)
+				gpio_set_value(GPIO_UIM_SIM_SEL, 1);
+			else
+#endif
 			gpio_set_value(GPIO_UIM_SIM_SEL, 0);
 			printk("set slot switch to %x\n", gpio_get_value(GPIO_UIM_SIM_SEL));
 			break;
 		case 1:
+#if defined(CONFIG_MACH_T0_CHN_CTC)
+			if (system_rev <= 7)
+				gpio_set_value(GPIO_UIM_SIM_SEL, 0);
+			else
+#endif
 			gpio_set_value(GPIO_UIM_SIM_SEL, 1);
 			printk("set slot switch to %x\n", gpio_get_value(GPIO_UIM_SIM_SEL));
 			break;
@@ -63,6 +75,11 @@ static int __init slot_switch_manager_init(void)
 	} else {
 		gpio_direction_output(GPIO_UIM_SIM_SEL, 1);
 		s3c_gpio_setpull(GPIO_UIM_SIM_SEL, S3C_GPIO_PULL_NONE);
+#if defined(CONFIG_MACH_T0_CHN_CTC)
+	if (system_rev <= 7)
+		gpio_set_value(GPIO_UIM_SIM_SEL, 1);
+	else
+#endif
 		gpio_set_value(GPIO_UIM_SIM_SEL, 0);
 	}
 
@@ -86,6 +103,6 @@ static void __exit slot_switch_manager_exit(void)
 module_init(slot_switch_manager_init);
 module_exit(slot_switch_manager_exit);
 
-//MODULE_AUTHOR("SAMSUNG ELECTRONICS CO., LTD");
-//MODULE_DESCRIPTION("Slot Switch");
-//MODULE_LICENSE("GPL");
+MODULE_AUTHOR("SAMSUNG ELECTRONICS CO., LTD");
+MODULE_DESCRIPTION("Slot Switch");
+MODULE_LICENSE("GPL");

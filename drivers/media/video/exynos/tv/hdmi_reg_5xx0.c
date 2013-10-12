@@ -2415,29 +2415,31 @@ void hdmi_timing_apply(struct hdmi_device *hdev,
 	hdmi_writeb(hdev, HDMI_TG_V_FSZ_H, tg->v_fsz_h);
 	hdmi_writeb(hdev, HDMI_TG_VSYNC_L, tg->vsync_l);
 	hdmi_writeb(hdev, HDMI_TG_VSYNC_H, tg->vsync_h);
-	hdmi_writeb(hdev, HDMI_TG_VSYNC2_L, tg->vsync2_l);
-	hdmi_writeb(hdev, HDMI_TG_VSYNC2_H, tg->vsync2_h);
 	hdmi_writeb(hdev, HDMI_TG_VACT_ST_L, tg->vact_st_l);
 	hdmi_writeb(hdev, HDMI_TG_VACT_ST_H, tg->vact_st_h);
 	hdmi_writeb(hdev, HDMI_TG_VACT_SZ_L, tg->vact_sz_l);
 	hdmi_writeb(hdev, HDMI_TG_VACT_SZ_H, tg->vact_sz_h);
-	hdmi_writeb(hdev, HDMI_TG_FIELD_CHG_L, tg->field_chg_l);
-	hdmi_writeb(hdev, HDMI_TG_FIELD_CHG_H, tg->field_chg_h);
-	hdmi_writeb(hdev, HDMI_TG_VACT_ST2_L, tg->vact_st2_l);
-	hdmi_writeb(hdev, HDMI_TG_VACT_ST2_H, tg->vact_st2_h);
-	hdmi_writeb(hdev, HDMI_TG_VACT_ST3_L, tg->vact_st3_l);
-	hdmi_writeb(hdev, HDMI_TG_VACT_ST3_H, tg->vact_st3_h);
-	hdmi_writeb(hdev, HDMI_TG_VACT_ST4_L, tg->vact_st4_l);
-	hdmi_writeb(hdev, HDMI_TG_VACT_ST4_H, tg->vact_st4_h);
 	hdmi_writeb(hdev, HDMI_TG_VSYNC_TOP_HDMI_L, tg->vsync_top_hdmi_l);
 	hdmi_writeb(hdev, HDMI_TG_VSYNC_TOP_HDMI_H, tg->vsync_top_hdmi_h);
-	hdmi_writeb(hdev, HDMI_TG_VSYNC_BOT_HDMI_L, tg->vsync_bot_hdmi_l);
-	hdmi_writeb(hdev, HDMI_TG_VSYNC_BOT_HDMI_H, tg->vsync_bot_hdmi_h);
 	hdmi_writeb(hdev, HDMI_TG_FIELD_TOP_HDMI_L, tg->field_top_hdmi_l);
 	hdmi_writeb(hdev, HDMI_TG_FIELD_TOP_HDMI_H, tg->field_top_hdmi_h);
-	hdmi_writeb(hdev, HDMI_TG_FIELD_BOT_HDMI_L, tg->field_bot_hdmi_l);
-	hdmi_writeb(hdev, HDMI_TG_FIELD_BOT_HDMI_H, tg->field_bot_hdmi_h);
 	hdmi_writeb(hdev, HDMI_TG_3D, tg->tg_3d);
+	if (hdev->cur_conf->mbus_fmt.field == V4L2_FIELD_INTERLACED) {
+		hdmi_writeb(hdev, HDMI_TG_VSYNC2_L, tg->vsync2_l);
+		hdmi_writeb(hdev, HDMI_TG_VSYNC2_H, tg->vsync2_h);
+		hdmi_writeb(hdev, HDMI_TG_FIELD_CHG_L, tg->field_chg_l);
+		hdmi_writeb(hdev, HDMI_TG_FIELD_CHG_H, tg->field_chg_h);
+		hdmi_writeb(hdev, HDMI_TG_VACT_ST2_L, tg->vact_st2_l);
+		hdmi_writeb(hdev, HDMI_TG_VACT_ST2_H, tg->vact_st2_h);
+		hdmi_writeb(hdev, HDMI_TG_VACT_ST3_L, tg->vact_st3_l);
+		hdmi_writeb(hdev, HDMI_TG_VACT_ST3_H, tg->vact_st3_h);
+		hdmi_writeb(hdev, HDMI_TG_VACT_ST4_L, tg->vact_st4_l);
+		hdmi_writeb(hdev, HDMI_TG_VACT_ST4_H, tg->vact_st4_h);
+		hdmi_writeb(hdev, HDMI_TG_VSYNC_BOT_HDMI_L, tg->vsync_bot_hdmi_l); 	
+		hdmi_writeb(hdev, HDMI_TG_VSYNC_BOT_HDMI_H, tg->vsync_bot_hdmi_h);
+		hdmi_writeb(hdev, HDMI_TG_FIELD_BOT_HDMI_L, tg->field_bot_hdmi_l);
+		hdmi_writeb(hdev, HDMI_TG_FIELD_BOT_HDMI_H, tg->field_bot_hdmi_h);
+	}
 }
 
 const u8 *hdmiphy_preset2conf(u32 preset)
@@ -2453,6 +2455,8 @@ int hdmi_conf_apply(struct hdmi_device *hdmi_dev)
 {
 	struct device *dev = hdmi_dev->dev;
 	const struct hdmi_preset_conf *conf = hdmi_dev->cur_conf;
+	struct platform_device *pdev = to_platform_device(dev);
+	struct s5p_hdmi_platdata *pdata = pdev->dev.platform_data;
 	struct v4l2_dv_preset preset;
 	const u8 *data;
 	u8 buffer[32];
@@ -2463,7 +2467,7 @@ int hdmi_conf_apply(struct hdmi_device *hdmi_dev)
 	/* configure presets */
 	preset.preset = hdmi_dev->cur_preset;
 
-	if (soc_is_exynos5410()) {
+	if (is_ip_ver_5a || is_ip_ver_5s) {
 		data = hdmiphy_preset2conf(preset.preset);
 		if (!data) {
 			dev_err(dev, "format not supported\n");
@@ -2672,22 +2676,8 @@ void hdmi_reg_infoframe(struct hdmi_device *hdev,
 		}
 		/* AUI_BYTE(3)[7:0] : Should Be Zero */
 		hdmi_writeb(hdev, HDMI_AUI_BYTE(3), 0x00);
-		/* AUI_BYTE(2)[4:2] : Sampling Frequency */
-		if (hdev->sample_rate == 32000)
-			hdmi_writeb(hdev, HDMI_AUI_BYTE(2), HDMI_AUI_DATA_SF_32);
-		else if (hdev->sample_rate == 48000)
-			hdmi_writeb(hdev, HDMI_AUI_BYTE(2), HDMI_AUI_DATA_SF_48);
-		else if (hdev->sample_rate == 96000)
-			hdmi_writeb(hdev, HDMI_AUI_BYTE(2), HDMI_AUI_DATA_SF_96);
-		else
-			hdmi_writeb(hdev, HDMI_AUI_BYTE(2), HDMI_AUI_DATA_SF_44_1);
-		/* AUI_BYTE(2)[1:0] : Sample Size */
-		if (hdev->sample_size == 16)
-			hdmi_writeb(hdev, HDMI_AUI_BYTE(2), HDMI_AUI_DATA_SS_16BIT);
-		else if (hdev->sample_size == 20)
-			hdmi_writeb(hdev, HDMI_AUI_BYTE(2), HDMI_AUI_DATA_SS_20BIT);
-		else
-			hdmi_writeb(hdev, HDMI_AUI_BYTE(2), HDMI_AUI_DATA_SS_24BIT);
+		/* AUI_BYTE(2) : Should Be Zero */
+		hdmi_writeb(hdev, HDMI_AUI_BYTE(2), 0x00);
 		chksum = hdmi_chksum(hdev, HDMI_AUI_BYTE(1), infoframe->len, hdr_sum);
 		dev_dbg(dev, "AUI checksum = 0x%x\n", chksum);
 		hdmi_writeb(hdev, HDMI_AUI_CHECK_SUM, chksum);
@@ -2806,7 +2796,7 @@ void hdmi_reg_i2s_audio_init(struct hdmi_device *hdev)
 	u32 data_num, bit_ch, sample_frq, val;
 	int sample_rate = hdev->sample_rate;
 	int bits_per_sample = hdev->bits_per_sample;
-
+	hdmi_reg_set_acr(hdev);
 	if (bits_per_sample == 16) {
 		data_num = 1;
 		bit_ch = 0;
@@ -2833,10 +2823,7 @@ void hdmi_reg_i2s_audio_init(struct hdmi_device *hdev)
 	/* Configuration I2S input ports. Configure I2S_PIN_SEL_0~4 */
 	val = HDMI_I2S_SEL_SCLK(5) | HDMI_I2S_SEL_LRCK(6);
 	hdmi_write(hdev, HDMI_I2S_PIN_SEL_0, val);
-	if (hdev->audio_channel_count == 6 || hdev->audio_channel_count == 8)
-		val = HDMI_I2S_SEL_SDATA1(3) | HDMI_I2S_SEL_SDATA2(4);
-	else
-		val = HDMI_I2S_SEL_SDATA1(1) | HDMI_I2S_SEL_SDATA2(4);
+	val = HDMI_I2S_SEL_SDATA1(3) | HDMI_I2S_SEL_SDATA2(4);
 	hdmi_write(hdev, HDMI_I2S_PIN_SEL_1, val);
 	val = HDMI_I2S_SEL_SDATA3(1) | HDMI_I2S_SEL_SDATA2(2);
 	hdmi_write(hdev, HDMI_I2S_PIN_SEL_2, val);
@@ -2857,6 +2844,8 @@ void hdmi_reg_i2s_audio_init(struct hdmi_device *hdev)
 		sample_frq = 0x2;
 	else if (sample_rate == 96000)
 		sample_frq = 0xa;
+	else if (sample_rate == 192000)
+		sample_frq = 0xe;
 	else
 		sample_frq = 0;
 
@@ -2899,32 +2888,29 @@ void hdmi_reg_i2s_audio_init(struct hdmi_device *hdev)
 		hdmi_writeb(hdev, HDMI_ASP_CON,
 			HDMI_AUD_NO_DST_DOUBLE | HDMI_AUD_TYPE_SAMPLE |
 			HDMI_AUD_MODE_TWO_CH | HDMI_AUD_SP_ALL_DIS);
-		hdmi_writeb(hdev, HDMI_ASP_CHCFG0,
-			HDMI_SPK0R_SEL_I_PCM0R | HDMI_SPK0L_SEL_I_PCM0L);
-		hdmi_writeb(hdev, HDMI_ASP_CHCFG1,
-			HDMI_SPK0R_SEL_I_PCM0R | HDMI_SPK0L_SEL_I_PCM0L);
-		hdmi_writeb(hdev, HDMI_ASP_CHCFG2,
-			HDMI_SPK0R_SEL_I_PCM0R | HDMI_SPK0L_SEL_I_PCM0L);
-		hdmi_writeb(hdev, HDMI_ASP_CHCFG3,
-			HDMI_SPK0R_SEL_I_PCM0R | HDMI_SPK0L_SEL_I_PCM0L);
+		hdmi_writeb(hdev, HDMI_ASP, HDMI_AUD_DIRECT);
 	}
 	hdmi_writeb(hdev, HDMI_ASP_SP_FLAT, HDMI_ASP_SP_FLAT_AUD_SAMPLE);
 
 	val = HDMI_I2S_CLK_ACCUR_LEVEL_1 |
 		HDMI_I2S_SET_SAMPLING_FREQ(sample_frq);
 	hdmi_write(hdev, HDMI_I2S_CH_ST_3, val);
-	if (hdev->sample_size == 16)
-		val = HDMI_I2S_ORG_SAMPLING_FREQ_44_1 |
-			HDMI_I2S_WORD_LENGTH_MAX20_16BITS |
-			HDMI_I2S_WORD_LENGTH_MAX_20BITS;
-	else if (hdev->sample_size == 20)
-		val = HDMI_I2S_ORG_SAMPLING_FREQ_44_1 |
-			HDMI_I2S_WORD_LENGTH_MAX24_20BITS |
+	if (hdev->bits_per_sample == 24)
+		val = HDMI_I2S_WORD_LENGTH_MAX24_24BITS |
+			HDMI_I2S_WORD_LENGTH_MAX_24BITS;
+	else if (hdev->bits_per_sample == 20)
+		val = HDMI_I2S_WORD_LENGTH_MAX24_20BITS |
 			HDMI_I2S_WORD_LENGTH_MAX_24BITS;
 	else
-		val = HDMI_I2S_ORG_SAMPLING_FREQ_44_1 |
-			HDMI_I2S_WORD_LENGTH_MAX24_24BITS |
-			HDMI_I2S_WORD_LENGTH_MAX_24BITS;
+		val = HDMI_I2S_WORD_LENGTH_MAX20_16BITS |
+			HDMI_I2S_WORD_LENGTH_MAX_20BITS;
+
+	if (hdev->sample_rate == 48000)
+		val |= HDMI_I2S_ORG_SAMPLING_FREQ_48;
+	else if (hdev->sample_rate == 192000)
+		val |= HDMI_I2S_ORG_SAMPLING_FREQ_192;
+	else
+		val |= HDMI_I2S_ORG_SAMPLING_FREQ_44_1;
 	hdmi_write(hdev, HDMI_I2S_CH_ST_4, val);
 
 	hdmi_write(hdev, HDMI_I2S_CH_ST_CON, HDMI_I2S_CH_STATUS_RELOAD);

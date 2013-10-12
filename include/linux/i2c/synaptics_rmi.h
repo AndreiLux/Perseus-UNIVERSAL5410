@@ -29,9 +29,15 @@ struct synaptics_rmi_f1a_button_map {
 	unsigned char *map;
 };
 
+#define SYNAPTICS_RMI_INFORM_CHARGER
+#ifdef SYNAPTICS_RMI_INFORM_CHARGER
 struct synaptics_rmi_callbacks {
-	void (*inform_charger)(struct synaptics_rmi_callbacks *, bool);
+	void (*inform_charger)(struct synaptics_rmi_callbacks *, int);
 };
+#endif
+
+/* This define might be removed not so far */
+#define SYNAPTICS_WORKAROUND_FOR_H_PROJECT
 
 /**
  * struct synaptics_rmi4_platform_data - rmi4 platform data
@@ -42,6 +48,7 @@ struct synaptics_rmi_callbacks {
  * @irq_type: irq type
  * @gpio_config: pointer to gpio configuration function
  * @f1a_button_map: pointer to 0d button map
+ * @charger_noti_type: define method to notify the connection of charger.
  */
 struct synaptics_rmi4_platform_data {
 	bool x_flip;
@@ -58,14 +65,20 @@ struct synaptics_rmi4_platform_data {
 #ifdef NO_0D_WHILE_2D
 	int (*led_power_on) (bool);
 #endif
+	unsigned char (*get_ddi_type)(void);	/* to indentify ddi type */
 	void (*enable_sync)(bool on);
 	const char *firmware_name;
 	const char *fac_firmware_name;
+	const char *project_name;
     int num_of_rx;
     int num_of_tx;
 #ifdef CONFIG_SEC_TSP_FACTORY
 	int bootmode;
 #endif
+#ifdef SYNAPTICS_RMI_INFORM_CHARGER
+	void (*register_cb)(struct synaptics_rmi_callbacks *);
+#endif
+	bool charger_noti_type;
 	struct synaptics_rmi_f1a_button_map *f1a_button_map;
 };
 

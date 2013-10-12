@@ -224,8 +224,8 @@ static struct vb2_ops jpeg_enc_vb2_qops = {
 	.buf_prepare		= jpeg_enc_buf_prepare,
 	.buf_finish		= jpeg_enc_buf_finish,
 	.buf_queue		= jpeg_enc_buf_queue,
-	.wait_prepare		= jpeg_enc_lock,
-	.wait_finish		= jpeg_enc_unlock,
+	.wait_prepare		= jpeg_enc_unlock,
+	.wait_finish		= jpeg_enc_lock,
 };
 
 static struct vb2_ops jpeg_dec_vb2_qops = {
@@ -233,8 +233,8 @@ static struct vb2_ops jpeg_dec_vb2_qops = {
 	.buf_prepare		= jpeg_dec_buf_prepare,
 	.buf_finish		= jpeg_dec_buf_finish,
 	.buf_queue		= jpeg_dec_buf_queue,
-	.wait_prepare		= jpeg_dec_lock,
-	.wait_finish		= jpeg_dec_unlock,
+	.wait_prepare		= jpeg_dec_unlock,
+	.wait_finish		= jpeg_dec_lock,
 };
 
 static inline enum jpeg_node_type jpeg_get_node_type(struct file *file)

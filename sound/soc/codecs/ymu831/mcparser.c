@@ -6,7 +6,7 @@
  *
  *	Description	: MC Driver parse control
  *
- *	Version		: 1.0.4	2013.01.17
+ *	Version		: 2.0.1	2013.04.22
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.	In no event will the authors be held liable for any damages
@@ -74,22 +74,22 @@
 
 
 static SINT32	AnalyzeAESubChunk(
-				const UINT8 *pbPrm,
+				const UINT8 * pbPrm,
 				UINT32 *pdPos,
 				UINT32 *pdSubChunkSize,
 				struct MCDRV_AEC_INFO *psAECInfo);
 static SINT32	AnalyzeVBoxSubChunk(
-				const UINT8 *pbPrm,
+				const UINT8 * pbPrm,
 				UINT32 *pdPos,
 				UINT32 *pdSubChunkSize,
 				struct MCDRV_AEC_INFO *psAECInfo);
 static SINT32	AnalyzeSysEqExSubChunk(
-				const UINT8 *pbPrm,
+				const UINT8 * pbPrm,
 				UINT32 *pdPos,
 				UINT32 *pdSubChunkSize,
 				struct MCDRV_AEC_SYSEQ_EX *psSysEqEx);
 static SINT32	AnalyzeEDSPSubChunk(
-				const UINT8 *pbPrm,
+				const UINT8 * pbPrm,
 				UINT32 *pdPos,
 				UINT32 *pdSubChunkSize,
 				struct MCDRV_AEC_INFO *psAECInfo);

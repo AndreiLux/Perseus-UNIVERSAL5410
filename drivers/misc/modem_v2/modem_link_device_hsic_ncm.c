@@ -32,6 +32,7 @@
 #include <linux/suspend.h>
 #include <linux/version.h>
 #include <linux/rtc.h>
+#include <linux/tcp.h>
 
 #include <linux/platform_data/modem.h>
 #include "modem_prj.h"
@@ -146,8 +147,16 @@ static void pr_tx_skb_with_format(int format, struct sk_buff *skb)
 		return;
 
 	if (format == IPC_RAW_NCM) {
-		if (test_bit(LINK_DEBUG_LOG_NCM_TX, &dflags))
-			pr_skb("NCM-TX", skb);
+		if (test_bit(LINK_DEBUG_LOG_NCM_TX, &dflags)) {
+			struct tcphdr *tcp = tcp_hdr(skb);
+			if (tcp)
+				pr_info(LOG_TAG
+					"TCP-TX(%d) seq=%x, ack=%x win=%hu\n",
+					skb->len, tcp->seq, tcp->ack_seq,
+					tcp->window);
+			else
+				pr_skb("NCM-TX", skb);
+		}
 		return;
 	}
 
@@ -287,7 +296,9 @@ static struct if_usb_devdata *get_devdata_with_iod(
 	case IPC_RAW_NCM:
 		return &usb_ld->devdata[usb_ld->max_acm_ch
 						+ iod->id - PS_DATA_CH_01];
-
+	case IPC_MULTI_RAW:
+		if (iod->ipc_version == SIPC_VER_50) /* loopback start send*/
+			return &usb_ld->devdata[0];
 	default:
 		mif_err("unexpect iod format=%d\n", iod->format);
 		break;
@@ -895,7 +906,7 @@ static void link_pm_runtime_start(struct work_struct *work)
 {
 	struct link_pm_data *pm_data =
 		container_of(work, struct link_pm_data, link_pm_start.work);
-	struct device *dev, *ppdev;
+	struct device *dev;
 
 	if (!pm_data->usb_ld->if_usb_connected
 		|| pm_data->usb_ld->ld.com_state == COM_NONE) {
@@ -914,6 +925,8 @@ static void link_pm_runtime_start(struct work_struct *work)
 	}
 
 	if (pm_data->usb_ld->usbdev && dev->parent) {
+		struct device *ppdev;
+		
 		mif_info("rpm_status: %d\n", usb_get_rpm_status(dev));
 		pm_runtime_set_autosuspend_delay(dev, 500);
 		ppdev = dev->parent->parent;

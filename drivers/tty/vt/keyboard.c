@@ -1053,13 +1053,10 @@ static int kbd_update_leds_helper(struct input_handle *handle, void *data)
  */
 int vt_get_leds(int console, int flag)
 {
-	unsigned long flags;
 	struct kbd_struct * kbd = kbd_table + console;
 	int ret;
 
-	spin_lock_irqsave(&kbd_event_lock, flags);
 	ret = vc_kbd_led(kbd, flag);
-	spin_unlock_irqrestore(&kbd_event_lock, flags);
 
 	return ret;
 }
@@ -1418,11 +1415,6 @@ static void kbd_event(struct input_handle *handle, unsigned int event_type,
 static bool kbd_match(struct input_handler *handler, struct input_dev *dev)
 {
 	int i;
-
-#ifdef CONFIG_VT_TKEY_SKIP_MATCH
-	if (test_bit(EV_TOUCHKEY, dev->evbit))
-		return false;
-#endif
 
 	if (test_bit(EV_SND, dev->evbit))
 		return true;

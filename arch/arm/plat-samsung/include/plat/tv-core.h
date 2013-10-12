@@ -25,6 +25,21 @@ enum tv_ip_version {
 	IP_VER_TV_5G_1,
 	IP_VER_TV_5A_0,
 	IP_VER_TV_5A_1,
+	IP_VER_TV_5S_0,
+};
+
+#define is_ip_ver_5g_1	(pdata->ip_ver == IP_VER_TV_5G_1)
+#define is_ip_ver_5a_0	(pdata->ip_ver == IP_VER_TV_5A_0)
+#define is_ip_ver_5a_1	(pdata->ip_ver == IP_VER_TV_5A_1)
+#define is_ip_ver_5s_0	(pdata->ip_ver == IP_VER_TV_5S_0)
+#define is_ip_ver_5g	(is_ip_ver_5g_1)
+#define is_ip_ver_5a	(is_ip_ver_5a_0 || is_ip_ver_5a_1)
+#define is_ip_ver_5s	(is_ip_ver_5s_0)
+#define is_ip_ver_5	(is_ip_ver_5g || is_ip_ver_5a || is_ip_ver_5s)
+
+struct s5p_tv_hw_ver {
+	enum tv_ip_version ver;
+	char name[20];
 };
 
 /* Re-define device name to differentiate the subsystem in various SoCs. */

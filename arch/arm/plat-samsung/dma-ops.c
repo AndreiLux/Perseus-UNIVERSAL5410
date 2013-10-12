@@ -54,14 +54,20 @@ static int samsung_dmadev_config(unsigned ch,
 		slave_config.direction = param->direction;
 		slave_config.src_addr = param->fifo;
 		slave_config.src_addr_width = param->width;
-		slave_config.src_maxburst = 1;
+		if (param->maxburst)
+			slave_config.src_maxburst = param->maxburst;
+		else
+			slave_config.src_maxburst = 1;
 		dmaengine_slave_config(chan, &slave_config);
 	} else if (param->direction == DMA_MEM_TO_DEV) {
 		memset(&slave_config, 0, sizeof(struct dma_slave_config));
 		slave_config.direction = param->direction;
 		slave_config.dst_addr = param->fifo;
 		slave_config.dst_addr_width = param->width;
-		slave_config.dst_maxburst = 1;
+		if (param->maxburst)
+			slave_config.dst_maxburst = param->maxburst;
+		else
+			slave_config.dst_maxburst = 1;
 		dmaengine_slave_config(chan, &slave_config);
 	} else {
 		printk(KERN_WARNING "unsupported direction\n");

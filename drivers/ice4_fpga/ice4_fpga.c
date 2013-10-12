@@ -39,7 +39,15 @@
 #include <linux/err.h>
 #include <mach/gpio-exynos.h>
 
+#if defined(CONFIG_V1A)
+#define USING_SPI_AND_I2C_IN_SAME_LINE
+#include "ice4_fpga_v1a.h"
+#elif defined(CONFIG_N1A)
+#define USING_SPI_AND_I2C_IN_SAME_LINE
+#include "ice4_fpga_n1a.h"
+#else
 #include "ice4_fpga.h"
+#endif
 
 #if defined(TEST_DEBUG)
 #define pr_barcode	pr_emerg
@@ -149,7 +157,9 @@ static int barcode_fpga_fimrware_update_start(unsigned char *data)
 	gpio_request_one(GPIO_FPGA_SPI_SI, GPIOF_OUT_INIT_LOW, "FPGA_SPI_SI");
 	gpio_request_one(GPIO_FPGA_SPI_EN, GPIOF_OUT_INIT_LOW, "FPGA_SPI_EN");
 	gpio_request_one(GPIO_FPGA_CRESET_B, GPIOF_OUT_INIT_HIGH, "FPGA_CRESET_B");
+#if !defined(USING_SPI_AND_I2C_IN_SAME_LINE)
 	gpio_request_one(GPIO_FPGA_RST_N, GPIOF_OUT_INIT_LOW, "FPGA_RST_N");
+#endif
 
 	gpio_set_value(GPIO_FPGA_CRESET_B, GPIO_LEVEL_LOW);
 	usleep_range(30, 40);
@@ -170,7 +180,11 @@ static int barcode_fpga_fimrware_update_start(unsigned char *data)
 		}
 	}
 	if (check_fpga_cdone()) {
+#if defined(USING_SPI_AND_I2C_IN_SAME_LINE)
+		gpio_set_value(GPIO_FPGA_SPI_EN, GPIO_LEVEL_HIGH);
+#else
 		gpio_set_value(GPIO_FPGA_RST_N, GPIO_LEVEL_HIGH);
+#endif
 		pr_barcode("barcode firmware update success\n");
 		fw_loaded = 1;
 	} else {
@@ -508,7 +522,11 @@ static void print_fpga_gpio_status(void)
 		printk(KERN_ERR "%s : firmware is loaded\n", __func__);
 
 	printk(KERN_ERR "%s : CDONE    : %d\n", __func__, gpio_get_value(GPIO_FPGA_CDONE));
+#if defined(USING_SPI_AND_I2C_IN_SAME_LINE)
+	printk(KERN_ERR "%s : RST_N    : %d\n", __func__, gpio_get_value(GPIO_FPGA_SPI_EN));
+#else
 	printk(KERN_ERR "%s : RST_N    : %d\n", __func__, gpio_get_value(GPIO_FPGA_RST_N));
+#endif
 	printk(KERN_ERR "%s : CRESET_B : %d\n", __func__, gpio_get_value(GPIO_FPGA_CRESET_B));
 }
 /* sysfs node ir_send */
@@ -524,6 +542,7 @@ static void ir_remocon_work(struct ice4_fpga_data *ir_data, int count)
 	int end_data;
 	int emission_time;
 	int ack_pin_onoff;
+	int retry_count = 0;
 
 #if defined(DEBUG)
 	u8 *temp;
@@ -592,6 +611,7 @@ static void ir_remocon_work(struct ice4_fpga_data *ir_data, int count)
 
 	data->count = 2;
 
+#if 0
 	end_data = data->i2c_block_transfer.data[count-2] << 8
 		| data->i2c_block_transfer.data[count-1];
 	emission_time = \
@@ -599,13 +619,25 @@ static void ir_remocon_work(struct ice4_fpga_data *ir_data, int count)
 	sleep_timing = emission_time - 130;
 	if (sleep_timing > 0)
 		msleep(sleep_timing);
-
+#endif
 	emission_time = \
-		(1000 * (data->ir_sum) / (data->ir_freq)) + 50;
+		(1000 * (data->ir_sum) / (data->ir_freq));
 	if (emission_time > 0)
 		msleep(emission_time);
-		printk(KERN_INFO "%s: emission_time = %d\n",
+
+	printk(KERN_INFO "%s: emission_time = %d\n",
 					__func__, emission_time);
+
+	while (!gpio_get_value(GPIO_IRDA_IRQ)) {
+		mdelay(10);
+		printk(KERN_INFO "%s : %d try to check IRDA_IRQ\n",
+					__func__, retry_count);
+		retry_count++;
+
+		if (retry_count > 5) {
+			break;
+		}
+	}
 
 	if (gpio_get_value(GPIO_IRDA_IRQ)) {
 		printk(KERN_INFO "%s : %d Sending IR OK!\n",
@@ -812,6 +844,28 @@ static ssize_t irda_test_show(struct device *dev, struct device_attribute *attr,
 static DEVICE_ATTR(irda_test, 0664, irda_test_show, irda_test_store);
 #endif
 
+static struct attribute *sec_barcode_emul_attributes[] = {
+	&dev_attr_barcode_send.attr,
+	&dev_attr_barcode_fw_update.attr,
+	&dev_attr_barcode_test_send.attr,
+	&dev_attr_barcode_ver_check.attr,
+	&dev_attr_barcode_led_status.attr,
+	NULL,
+};
+static struct attribute *sec_ir_attributes[] = {
+	&dev_attr_ir_send.attr,
+	&dev_attr_ir_send_result.attr,
+	&dev_attr_check_ir.attr,
+	&dev_attr_irda_test.attr,
+	NULL,
+};
+static struct attribute_group sec_barcode_emul_attr_group = {
+	.attrs = sec_barcode_emul_attributes,
+};
+static struct attribute_group sec_ir_attr_group = {
+	.attrs = sec_ir_attributes,
+};
+
 static int __devinit barcode_emul_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
@@ -846,42 +900,19 @@ static int __devinit barcode_emul_probe(struct i2c_client *client,
 #endif
 	i2c_set_clientdata(client, data);
 	barcode_emul_dev = device_create(sec_class, NULL, 0, data, "sec_barcode_emul");
-
 	if (IS_ERR(barcode_emul_dev))
 		pr_err("Failed to create barcode_emul_dev device\n");
 
-	if (device_create_file(barcode_emul_dev, &dev_attr_barcode_send) < 0)
-		pr_err("Failed to create device file(%s)!\n",
-				dev_attr_barcode_send.attr.name);
-	if (device_create_file(barcode_emul_dev, &dev_attr_barcode_test_send) < 0)
-		pr_err("Failed to create device file(%s)!\n",
-				dev_attr_barcode_test_send.attr.name);
-	if (device_create_file(barcode_emul_dev, &dev_attr_barcode_fw_update) < 0)
-		pr_err("Failed to create device file(%s)!\n",
-				dev_attr_barcode_fw_update.attr.name);
-	if (device_create_file(barcode_emul_dev, &dev_attr_barcode_ver_check) < 0)
-		pr_err("Failed to create device file(%s)!\n",
-				dev_attr_barcode_ver_check.attr.name);
-	if (device_create_file(barcode_emul_dev, &dev_attr_barcode_led_status) < 0)
-		pr_err("Failed to create device file(%s)!\n",
-				dev_attr_barcode_led_status.attr.name);
+	if (sysfs_create_group(&barcode_emul_dev->kobj, &sec_barcode_emul_attr_group) < 0)
+		pr_err("Failed to create sysfs group for samsung barcode emul!\n");
+
 #if defined(CONFIG_IR_REMOCON_FPGA)
 	barcode_emul_dev = device_create(sec_class, NULL, 0, data, "sec_ir");
 	if (IS_ERR(barcode_emul_dev))
 		pr_err("Failed to create barcode_emul_dev device in sec_ir\n");
 
-	if (device_create_file(barcode_emul_dev, &dev_attr_ir_send) < 0)
-		pr_err("Failed to create device file(%s)!\n",
-				dev_attr_ir_send.attr.name);
-	if (device_create_file(barcode_emul_dev, &dev_attr_ir_send_result) < 0)
-		pr_err("Failed to create device file(%s)!\n",
-				dev_attr_ir_send_result.attr.name);
-	if (device_create_file(barcode_emul_dev, &dev_attr_check_ir) < 0)
-		pr_err("Failed to create device file(%s)!\n",
-				dev_attr_check_ir.attr.name);
-	if (device_create_file(barcode_emul_dev, &dev_attr_irda_test) < 0)
-		pr_err("Failed to create device file(%s)!\n",
-				dev_attr_irda_test.attr.name);
+	if (sysfs_create_group(&barcode_emul_dev->kobj, &sec_ir_attr_group) < 0)
+		pr_err("Failed to create sysfs group for samsung ir!\n");
 #endif
 	pr_err("probe complete %s\n", __func__);
 
@@ -901,13 +932,21 @@ static int __devexit barcode_emul_remove(struct i2c_client *client)
 #ifdef CONFIG_PM
 static int barcode_emul_suspend(struct device *dev)
 {
+#if defined(USING_SPI_AND_I2C_IN_SAME_LINE)
+	gpio_set_value(GPIO_FPGA_SPI_EN, GPIO_LEVEL_LOW);
+#else
 	gpio_set_value(GPIO_FPGA_RST_N, GPIO_LEVEL_LOW);
+#endif
 	return 0;
 }
 
 static int barcode_emul_resume(struct device *dev)
 {
+#if defined(USING_SPI_AND_I2C_IN_SAME_LINE)
+	gpio_set_value(GPIO_FPGA_SPI_EN, GPIO_LEVEL_HIGH);
+#else
 	gpio_set_value(GPIO_FPGA_RST_N, GPIO_LEVEL_HIGH);
+#endif
 	return 0;
 }
 
@@ -938,24 +977,24 @@ static struct i2c_driver ice4_i2c_driver = {
 static void barcode_init_workfunc(struct work_struct *work)
 {
 	barcode_fpga_firmware_update();
-/* because of permission */
-#if 0
-	i2c_add_driver(&ice4_i2c_driver);
-#endif
 }
 
 static int __init barcode_emul_init(void)
 {
+#if !defined(USING_SPI_AND_I2C_IN_SAME_LINE)
 	barcode_init_wq = create_singlethread_workqueue("barcode_init");
 	if (!barcode_init_wq) {
 		pr_err("fail to create wq\n");
 		goto err_create_wq;
 	}
 	queue_work(barcode_init_wq, &barcode_init_work);
+#endif
 
-/* because of permission */
 	i2c_add_driver(&ice4_i2c_driver);
+
+#if !defined(USING_SPI_AND_I2C_IN_SAME_LINE)
 err_create_wq:
+#endif
 	return 0;
 }
 late_initcall(barcode_emul_init);

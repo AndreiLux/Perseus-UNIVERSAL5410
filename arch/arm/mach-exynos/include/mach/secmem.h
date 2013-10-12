@@ -30,6 +30,10 @@ struct secchunk_info {
 extern struct platform_device exynos5_device_gsc0;
 #endif
 
+#ifdef CONFIG_PM_GENERIC_DOMAINS
+extern struct exynos_pm_domain exynos5420_pd_g2d;
+#endif
+
 #if defined(CONFIG_ION)
 extern struct ion_device *ion_exynos;
 struct secfd_info {
@@ -62,7 +66,7 @@ void secmem_crypto_deregister(void);
 #define SECMEM_IOC_GET_DRM_ONOFF	_IOWR('S', 3, int)
 #define SECMEM_IOC_GET_CRYPTO_LOCK	_IOR('S', 4, int)
 #define SECMEM_IOC_RELEASE_CRYPTO_LOCK	_IOR('S', 5, int)
-#if defined(CONFIG_SOC_EXYNOS5250) || defined(CONFIG_SOC_EXYNOS5410)
+#if defined(CONFIG_ION)
 #define SECMEM_IOC_GET_FD_PHYS_ADDR    _IOWR('S', 8, struct secfd_info)
 #endif
 #define SECMEM_IOC_GET_CHUNK_NUM	_IOWR('S', 9, int)

@@ -63,7 +63,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "issp_defs.h"
 #include "issp_errors.h"
 #include "issp_directives.h"
-#include <linux/i2c/touchkey_i2c.h>
+#include "cypress_touchkey.h"
 
 extern unsigned char bTargetDataPtr;
 extern unsigned char abTargetDataOUT[TARGET_DATABUFF_LEN];
@@ -84,7 +84,8 @@ extern struct touchkey_i2c *issp_tkey_i2c;
 
 unsigned int nBlockCount = 1;	/*test, KIMC */
 
-extern unsigned char firmware_data[];
+extern u8 *firmware_data;
+
 
 /* ((((((((((((((((((((((( DEMO ISSP SUBROUTINE SECTION )))))))))))))))))))))))
 * ((((( Demo Routines can be deleted in final ISSP project if not used   )))))
@@ -241,11 +242,7 @@ signed char fLoadSecurityData(unsigned char bBankNum)
 * ***************************************************************************/
 unsigned char fSDATACheck(void)
 {
-	gpio_direction_input(issp_tkey_i2c->pdata->gpio_sda);
-	if (gpio_get_value(issp_tkey_i2c->pdata->gpio_sda))
-		return 1;
-	else
-		return 0;
+	return gpio_get_value(issp_tkey_i2c->pdata->gpio_sda);
 }
 
 /* ********************* LOW-LEVEL ISSP SUBROUTINE SECTION ********************
@@ -450,7 +447,7 @@ void ApplyTargetVDD(void)
 	if (ret == 0)
 		printk(KERN_ERR "[Touchkey]regulator get fail!!!\n");
 
-	mdelay(1);
+	/*udelay(100);*/
 }
 
 /* ********************* LOW-LEVEL ISSP SUBROUTINE SECTION ********************

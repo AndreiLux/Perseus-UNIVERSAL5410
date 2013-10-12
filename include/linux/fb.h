@@ -566,6 +566,28 @@ struct fb_cursor_user {
 /*      CONSOLE-SPECIFIC: remap all consoles to new fb - for vga switcheroo */
 #define FB_EVENT_REMAP_ALL_CONSOLE      0x0F
 
+#ifdef CONFIG_S5P_DP_PSR
+/*      PSR mode enter occurred  */
+#define FB_EVENT_PSR_ENTER		0xF1
+/*      PSR mode exit occurred */
+#define FB_EVENT_PSR_EXIT		0xF2
+/*      PSR done occurred */
+#define FB_EVENT_PSR_DONE		0xF3
+/*      PSR pre entry occurred  */
+#define FB_EVENT_PSR_PRE_ENTRY		0xF4
+
+enum dp_psr_state {
+	PSR_NONE = 0,
+	PSR_PREPARE,
+	PSR_PRE_ENTRY_DONE,
+	PSR_PRE_ENTER,
+	PSR_ENTER_DONE,
+	PSR_PRE_EXIT,
+	PSR_EXIT_DONE,
+};
+
+#endif
+
 struct fb_event {
 	struct fb_info *info;
 	void *data;
@@ -1170,6 +1192,16 @@ struct fb_videomode {
 	u32 sync;
 	u32 vmode;
 	u32 flag;
+#if defined(CONFIG_FB_I80IF)
+	u8 cs_setup_time;
+	u8 wr_setup_time;
+	u8 wr_act_time;
+	u8 wr_hold_time;
+	u8 auto_cmd_rate;
+	u8 frame_skip:2;
+	u8 rs_pol:1;
+	u8 i80en;
+#endif
 };
 
 #define FB_AUDIO_LPCM	1

@@ -48,9 +48,7 @@
 #include "pvr_debug.h"
 
 #include "s3c_lcd.h"
-#if !defined(CONFIG_FB_EXYNOS_FIMD_SYSMMU_DISABLE)
 #define S3C_DC_IS_PHYS_DISCONTIG
-#endif
 #if defined(S3C_DC_IS_PHYS_DISCONTIG)
 #include "s3c_fb.h"
 #endif
@@ -590,10 +588,8 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 	}
 
 	psSwapChain = (S3C_SWAPCHAIN *)kmalloc(sizeof(S3C_SWAPCHAIN),GFP_KERNEL);
-	if(!psSwapChain)
-		return (PVRSRV_ERROR_OUT_OF_MEMORY);
-
 	psBuffer = (S3C_FRAME_BUFFER*)kmalloc(sizeof(S3C_FRAME_BUFFER) * ui32BufferCount, GFP_KERNEL);
+	
 	if(!psBuffer)
 	{
 		kfree(psSwapChain);
@@ -1047,6 +1043,7 @@ int s3c_displayclass_init(void)
 		goto err_out;
 	}
 	printk("PA FB = 0x%X, bits per pixel = %d\n", (unsigned int)parr_addr[0].uiAddr, (unsigned int)bits_per_pixel);
+//	PVR_ASSERT(page_count == num_of_fb * byteSize / PAGE_SIZE);
 #else
 	pa_fb.uiAddr = psLINFBInfo->fix.smem_start;
 	printk("PA FB = 0x%X, bits per pixel = %d\n", (unsigned int)pa_fb.uiAddr, (unsigned int)bits_per_pixel);
@@ -1062,11 +1059,6 @@ int s3c_displayclass_init(void)
 		IMG_UINT32	aui32SyncCountList[DC_S3C_LCD_COMMAND_COUNT][2];
 
 		g_psLCDInfo = (S3C_LCD_DEVINFO*)kmalloc(sizeof(S3C_LCD_DEVINFO),GFP_KERNEL);
-		if(!g_psLCDInfo)
-		{
-			printk("Fail to get memory for g_psLCDInfo\n");
-			goto err_out;
-		}
 		memset(g_psLCDInfo, 0, sizeof(S3C_LCD_DEVINFO));
 
 		g_psLCDInfo->psFBInfo = psLINFBInfo;

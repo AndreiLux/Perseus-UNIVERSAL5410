@@ -25,6 +25,8 @@ source "drivers/gpu/stub/Kconfig"
 
 source "drivers/gpu/ion/Kconfig"
 
+source "drivers/gpu/arm/Kconfig"
+
 source "drivers/gpu/pvr/Kconfig"
 
 config VGASTATE
@@ -2064,32 +2066,26 @@ config FB_MIPI_DSIM
 	---help---
 	  This enables support for Samsung MIPI DSIM feature
 
-config FB_I80_COMMAND_MODE
-	bool "Samsung MIPI DSI command mode"
+config FB_I80IF
+	bool "Samsung I80 interface mode"
 	depends on FB_MIPI_DSIM
 	default n
 	---help---
 	  This enables Samsung MIPI DSI command mode.
 
 config FB_S5P_MDNIE
-	bool "Samsung MDNIE"
-	depends on FB_S3C
-	default "y"
-	---help---
-	This enables support for Samsung MDNIE feature
-config S5P_MDNIE_PWM
-	bool "Samsung mDNIe PWM"
-	depends on FB_S5P_MDNIE
-	default n
-	---help---
-	This enables support for Samsung MDNIE pwm(CABC) feature
+        bool "Samsung MDNIE"
+        depends on FB_S3C
+        default "y"
+        ---help---
+        This enables support for Samsung MDNIE feature
 
-config FB_LCD_FREQ_SWITCH
-	bool "support for FB LCD Frequency switch"
-	depends on FB_S3C
-	default n
-	---help---
-	This enables support for FB LCD Frequency switch
+config FB_DBLC_PWM
+        bool "Samsung DBLC PWM"
+        depends on FB_S3C
+        default "0"
+        ---help---
+        This enables support for Samsung DBLC feature
 
 config FB_EXYNOS_FIMD_V8
 	bool "regiter extensions for FIMD version 8"
@@ -2128,10 +2124,17 @@ config S5P_DP
 	---help---
 	  This enables support for DP device.
 
+config S5P_DP_PSR
+	tristate "Support for DP PSR"
+	depends on S5P_DP
+	default n
+	---help---
+	This enables support for DP Panel Self Refresh.
+
 config FB_S5P_EXTDSP
 	bool "Samsung Virtual Frame Buffer support"
 	depends on FB_S3C
-	default y
+	default n
 	---help---
 	  This enables support for samsung virtual frame buffer device.
 

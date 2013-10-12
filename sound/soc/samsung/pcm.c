@@ -459,12 +459,65 @@ static int s3c_pcm_set_sysclk(struct snd_soc_dai *cpu_dai,
 	return 0;
 }
 
+static int s3c_pcm_startup(struct snd_pcm_substream *substream,
+				struct snd_soc_dai *dai)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct s3c_pcm_info *pcm = snd_soc_dai_get_drvdata(rtd->cpu_dai);
+
+	dev_dbg(pcm->dev, "Entered %s\n", __func__);
+	pm_runtime_get_sync(pcm->dev);
+
+	return 0;
+
+}
+static void s3c_pcm_shutdown(struct snd_pcm_substream *substream,
+				struct snd_soc_dai *dai)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct s3c_pcm_info *pcm = snd_soc_dai_get_drvdata(rtd->cpu_dai);
+
+	dev_dbg(pcm->dev, "Entered %s\n", __func__);
+	pm_runtime_put_sync(pcm->dev);
+}
+
+#ifdef CONFIG_PM
+static int pcm_suspend(struct snd_soc_dai *cpu_dai)
+{
+	struct s3c_pcm_info *pcm = snd_soc_dai_get_drvdata(cpu_dai);
+
+	dev_dbg(pcm->dev, "Entered %s\n", __func__);
+
+	if (cpu_dai->active)
+		pm_runtime_put_sync(pcm->dev);
+
+	return 0;
+}
+
+static int pcm_resume(struct snd_soc_dai *cpu_dai)
+{
+	struct s3c_pcm_info *pcm = snd_soc_dai_get_drvdata(cpu_dai);
+
+	dev_dbg(pcm->dev, "Entered %s\n", __func__);
+
+	if (cpu_dai->active)
+		pm_runtime_get_sync(pcm->dev);
+
+	return 0;
+}
+#else
+#define pcm_suspend NULL
+#define pcm_resume NULL
+#endif
+
 static const struct snd_soc_dai_ops s3c_pcm_dai_ops = {
 	.set_sysclk	= s3c_pcm_set_sysclk,
 	.set_clkdiv	= s3c_pcm_set_clkdiv,
 	.trigger	= s3c_pcm_trigger,
 	.hw_params	= s3c_pcm_hw_params,
 	.set_fmt	= s3c_pcm_set_fmt,
+	.startup	= s3c_pcm_startup,
+	.shutdown	= s3c_pcm_shutdown,
 };
 
 #define S3C_PCM_RATES  SNDRV_PCM_RATE_8000_96000
@@ -472,6 +525,8 @@ static const struct snd_soc_dai_ops s3c_pcm_dai_ops = {
 #define S3C_PCM_DAI_DECLARE			\
 	.symmetric_rates = 1,					\
 	.ops = &s3c_pcm_dai_ops,				\
+	.suspend = pcm_suspend,					\
+	.resume = pcm_resume,					\
 	.playback = {						\
 		.channels_min	= 2,				\
 		.channels_max	= 2,				\
@@ -649,13 +704,53 @@ static __devexit int s3c_pcm_dev_remove(struct platform_device *pdev)
 	mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	release_mem_region(mem_res->start, resource_size(mem_res));
 
-	clk_disable(pcm->cclk);
 	clk_disable(pcm->pclk);
+	clk_disable(pcm->cclk);
 	clk_put(pcm->pclk);
 	clk_put(pcm->cclk);
 
 	return 0;
 }
+
+#ifdef CONFIG_PM_RUNTIME
+static int pcm_runtime_suspend(struct device *dev)
+{
+	struct s3c_pcm_info *pcm = dev_get_drvdata(dev);
+
+	dev_info(pcm->dev, "Entered %s\n", __func__);
+
+	clk_disable(pcm->pclk);
+	clk_disable(pcm->cclk);
+
+	return 0;
+}
+
+static int pcm_runtime_resume(struct device *dev)
+{
+	struct s3c_pcm_info *pcm = dev_get_drvdata(dev);
+	struct s3c_audio_pdata *pcm_pdata = dev->platform_data;
+	struct platform_device *pdev = container_of(dev,
+					struct platform_device, dev);
+
+	dev_info(pcm->dev, "Entered %s\n", __func__);
+
+	clk_enable(pcm->cclk);
+	clk_enable(pcm->pclk);
+
+	if (pcm_pdata && pcm_pdata->cfg_gpio && pcm_pdata->cfg_gpio(pdev))
+		dev_err(&pdev->dev, "Unable to configure gpio\n");
+
+	return 0;
+}
+
+static const struct dev_pm_ops pcm_pmops = {
+	SET_RUNTIME_PM_OPS(
+		pcm_runtime_suspend,
+		pcm_runtime_resume,
+		NULL
+	)
+};
+#endif
 
 static struct platform_driver s3c_pcm_driver = {
 	.probe  = s3c_pcm_dev_probe,
@@ -663,6 +758,9 @@ static struct platform_driver s3c_pcm_driver = {
 	.driver = {
 		.name = "samsung-pcm",
 		.owner = THIS_MODULE,
+#ifdef CONFIG_PM_RUNTIME
+		.pm = &pcm_pmops,
+#endif
 	},
 };
 

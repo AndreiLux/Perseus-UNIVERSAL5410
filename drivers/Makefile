@@ -137,18 +137,16 @@ obj-$(CONFIG_HYPERV)		+= hv/
 obj-$(CONFIG_PM_DEVFREQ)	+= devfreq/
 obj-$(CONFIG_BATTERY_SAMSUNG)	+= battery/
 
-obj-$(CONFIG_VIBETONZ)		+= motor/
+obj-y		+= motor/
 
-obj-$(CONFIG_SENSORS_SSP)	+= sensorhub/
+obj-$(CONFIG_SENSORS_FINGERPRINT)	+= fingerprint/
+obj-$(CONFIG_SENSORS_SSP)		+= sensorhub/
+obj-$(CONFIG_SENSORS)		+= sensors/
 
-obj-$(CONFIG_MOBICORE_DRIVER)	+= gud/
-
-obj-$(CONFIG_ACCESSORY)		+= accessory/
+obj-y				+= gud/
 obj-$(CONFIG_ICE4_FPGA)		+= ice4_fpga/
-obj-$(CONFIG_IR_REMOCON_MC96)		+= irda/
+obj-$(CONFIG_SEC_NET_FILTER)	+= secfilter/
 
-obj-$(CONFIG_FELICA) += felica/
-
-ifeq (1, $(shell if [ -d ./drivers/exfat ]; then echo 1; fi))
-obj-y   += exfat/
+ifeq (1, $(shell if [ -d ./drivers/exfat ] ; then echo 1 ; fi))
+obj-y				+= exfat/
 endif

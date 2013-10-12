@@ -34,9 +34,27 @@
 #include <linux/regulator/consumer.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
+#include <linux/firmware.h>
 
 #include "issp_extern.h"
-#include <linux/i2c/touchkey_i2c.h>
+#include "cypress_touchkey.h"
+
+#ifdef TK_HAS_FIRMWARE_UPDATE
+u8 *tk_fw_name = FW_PATH;
+
+/*For HA-3G*/
+#ifdef CONFIG_HA
+static u8 fw_ver_file = 0x10;
+static u8 md_ver_file = 0x9;
+u8 module_divider[] = {0, 0x04, 0x07, 0x08, 0xff};
+#else
+static u8 fw_ver_file = 0x0;
+static u8 md_ver_file = 0x0;
+u8 module_divider[] = {0, 0xff};
+#endif
+
+u8 *firmware_data;
+#endif
 
 static int touchkey_keycode[] = { 0,
 #if defined(TK_USE_4KEY_TYPE_ATT)
@@ -53,7 +71,7 @@ static int touchkey_keycode[] = { 0,
 
 #endif
 };
-static const int touchkey_count = sizeof(touchkey_keycode) / sizeof(int);
+static const int touchkey_count = ARRAY_SIZE(touchkey_keycode);
 
 #if defined(TK_HAS_AUTOCAL)
 static u16 raw_data0;
@@ -210,7 +228,7 @@ static int touchkey_autocalibration(struct touchkey_i2c *tkey_i2c)
 	while (retry < 3) {
 		ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 4);
 		if (ret < 0) {
-			dev_err(&tkey_i2c->client->dev, "%s: Failed to read Keycode_reg %d times.\n",
+			dev_err(&tkey_i2c->client->dev, "%s: Failed to read Keycode_reg %d times\n",
 				__func__, retry);
 			return ret;
 		}
@@ -230,7 +248,7 @@ static int touchkey_autocalibration(struct touchkey_i2c *tkey_i2c)
 		ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 6);
 
 		if (data[5] & TK_BIT_AUTOCAL) {
-			dev_dbg(&tkey_i2c->client->dev, "%s: Run Autocal\n", __func__);
+			dev_info(&tkey_i2c->client->dev, "%s: Run Autocal\n", __func__);
 			break;
 		} else {
 			dev_err(&tkey_i2c->client->dev,	"%s: Error to set Autocal, retry %d\n",
@@ -257,7 +275,7 @@ static int touchkey_ta_setting(struct touchkey_i2c *tkey_i2c)
 	while (retry < 3) {
 		ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 4);
 		if (ret < 0) {
-			dev_err(&tkey_i2c->client->dev, "%s: Failed to read Keycode_reg %d times.\n",
+			dev_err(&tkey_i2c->client->dev, "%s: Failed to read Keycode_reg %d times\n",
 				__func__, retry);
 			return ret;
 		}
@@ -333,7 +351,7 @@ static void touchkey_glove_change_work(struct work_struct *work)
 	int ret = 0;
 	unsigned short retry = 0;
 	bool value;
-
+	u8 glove_bit;
 	struct touchkey_i2c *tkey_i2c =
 			container_of(work, struct touchkey_i2c,
 			glove_change_work.work);
@@ -355,7 +373,7 @@ static void touchkey_glove_change_work(struct work_struct *work)
 	while (retry < 3) {
 		ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 4);
 		if (ret < 0) {
-			dev_err(&tkey_i2c->client->dev, "%s: Failed to read Keycode_reg %d times.\n",
+			dev_err(&tkey_i2c->client->dev, "%s: Failed to read Keycode_reg %d times\n",
 				__func__, retry);
 			return;
 		}
@@ -374,7 +392,6 @@ static void touchkey_glove_change_work(struct work_struct *work)
 		}
 
 		i2c_touchkey_write(tkey_i2c->client, data, 4);
-
 		msleep(50);
 
 		dev_dbg(&tkey_i2c->client->dev,
@@ -384,33 +401,25 @@ static void touchkey_glove_change_work(struct work_struct *work)
 		/* Check autocal status */
 		ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 6);
 
-		if (value) {
-			if (data[5] & TK_BIT_GLOVE) {
-				dev_dbg(&tkey_i2c->client->dev, "%s: Glove mode is enabled\n", __func__);
-				break;
-			} else {
-				dev_err(&tkey_i2c->client->dev, "%s: Error to enable glove_mode, retry %d\n",
-					__func__, retry);
-			}
-		} else {
-			if (!(data[5] & TK_BIT_GLOVE)) {
-				dev_dbg(&tkey_i2c->client->dev, "%s: Normal mode from Glove mode\n", __func__);
-				break;
-			} else {
-				dev_err(&tkey_i2c->client->dev, "%s: Error to disable glove mode, retry %d \n",
-					__func__, retry);
-			}
-		}
+		glove_bit = !!(data[5] & TK_BIT_GLOVE);
+
+		if (value == glove_bit) {
+			dev_dbg(&tkey_i2c->client->dev, "%s:Glove mode is %s\n",
+				__func__, value ? "enabled" : "disabled");
+			break;
+		} else
+			dev_err(&tkey_i2c->client->dev, "%s:Error to set glove_mode val %d, bit %d, retry %d\n",
+				__func__, value, glove_bit, retry);
+
 		retry = retry + 1;
 	}
-
 	if (retry == 3)
 		dev_err(&tkey_i2c->client->dev, "%s: Failed to set the glove mode\n", __func__);
 }
 
 static struct touchkey_i2c *tkey_i2c_global;
 
-void touchkey_glovemode(int value)
+void touchkey_glovemode(int on)
 {
 	struct touchkey_i2c *tkey_i2c = tkey_i2c_global;
 
@@ -420,25 +429,23 @@ void touchkey_glovemode(int value)
 	}
 
 	mutex_lock(&tkey_i2c->tsk_glove_lock);
+
+	/* protect duplicated execution */
+	if (on == tkey_i2c->tsk_glove_mode_status) {
+		dev_info(&tkey_i2c->client->dev, "pass. cmd %d, cur status %d\n",
+			on, tkey_i2c->tsk_glove_mode_status);
+		goto end_glovemode;
+	}
+
 	cancel_delayed_work(&tkey_i2c->glove_change_work);
 
-	if (value == 0) {
-		tkey_i2c->tsk_glove_mode_status = false;
-		if (tkey_i2c->tsk_glove_lock_status) {
-			schedule_delayed_work(&tkey_i2c->glove_change_work,
-				msecs_to_jiffies(TK_GLOVE_DWORK_TIME));
-			tkey_i2c->tsk_glove_lock_status = false;
-			dev_info(&tkey_i2c->client->dev, "Touchkey glove Off\n");
-		}
-	} else if (value == 1) {
-		tkey_i2c->tsk_glove_mode_status = true;
-		if (!tkey_i2c->tsk_glove_lock_status) {
-			schedule_delayed_work(&tkey_i2c->glove_change_work,
-				msecs_to_jiffies(TK_GLOVE_DWORK_TIME));
-			tkey_i2c->tsk_glove_lock_status = true;
-			dev_info(&tkey_i2c->client->dev, "Touchkey glove On\n");
-		}
-	}
+	tkey_i2c->tsk_glove_mode_status = on;
+	schedule_delayed_work(&tkey_i2c->glove_change_work,
+		msecs_to_jiffies(TK_GLOVE_DWORK_TIME));
+
+	dev_info(&tkey_i2c->client->dev, "Touchkey glove %s\n", on ? "On" : "Off");
+
+ end_glovemode:
 	mutex_unlock(&tkey_i2c->tsk_glove_lock);
 }
 #endif
@@ -451,26 +458,33 @@ void touchkey_flip_cover(int value)
 	int count = 0;
 	int ret = 0;
 	unsigned short retry = 0;
+	u8 flip_status;
+
+	tkey_i2c->enabled_flip = value;
 
 	if (!touchkey_probe) {
 		dev_err(&tkey_i2c->client->dev, "%s: Touchkey is not probed\n", __func__);
 		return;
 	}
 
-	if (!tkey_i2c->enabled)
+	if (!tkey_i2c->enabled) {
+		dev_err(&tkey_i2c->client->dev, "%s: Touchkey is not enabled\n", __func__);
 		return;
+	}
 
+#if 0
 	if (tkey_i2c->firmware_id != TK_MODULE_20065) {
 		dev_err(&tkey_i2c->client->dev,
 				"%s: Do not support old module\n",
 				__func__);
 		return;
 	}
+#endif
 
 	while (retry < 3) {
 		ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 4);
 		if (ret < 0) {
-			dev_err(&tkey_i2c->client->dev, "%s: Failed to read Keycode_reg %d times.\n",
+			dev_err(&tkey_i2c->client->dev, "%s: Failed to read Keycode_reg %d times\n",
 				__func__, retry);
 			return;
 		}
@@ -487,40 +501,28 @@ void touchkey_flip_cover(int value)
 				data[0] = 0xA0;
 				data[3] = 0x40;
 		}
-
-		i2c_touchkey_write(tkey_i2c->client, data, 4);
-
+		
+		i2c_touchkey_write(tkey_i2c->client, data, 4);		
 		msleep(100);
 
 		dev_dbg(&tkey_i2c->client->dev,
 				"data[0]=%x data[1]=%x data[2]=%x data[3]=%x\n",
 				data[0], data[1], data[2], data[3]);
 
-		/* Check autocal status */
+		/* Check status */
 		ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 6);
+		flip_status = !!(data[5] & TK_BIT_FLIP);
 
 		dev_dbg(&tkey_i2c->client->dev,
 				"data[5]=%x",data[5] & TK_BIT_FLIP);
 
-		if (value) {
-			if (data[5] & TK_BIT_FLIP) {
-				dev_dbg(&tkey_i2c->client->dev, "%s: Flip mode is enabled\n", __func__);
-				tkey_i2c->enabled_flip = true;
-				break;
-			} else {
-				dev_err(&tkey_i2c->client->dev, "%s: Error to enable Flip mode, retry %d\n",
-					__func__, retry);
-			}
-		} else {
-			if (!(data[5] & TK_BIT_FLIP)) {
-				dev_dbg(&tkey_i2c->client->dev, "%s: Normal mode form Flip mode\n", __func__);
-				tkey_i2c->enabled_flip = false;
-				break;
-			} else {
-				dev_err(&tkey_i2c->client->dev, "%s: Error to disable Flip mode, retry %d \n",
-					__func__, retry);
-			}
-		}
+		if (value == flip_status) {
+			dev_dbg(&tkey_i2c->client->dev, "%s: Flip mode is %s\n", __func__, flip_status ? "enabled" : "disabled");
+			break;
+		} else
+			dev_err(&tkey_i2c->client->dev, "%s: Error to set Flip mode, val %d, flip bit %d, retry %d\n",
+				__func__, value, flip_status, retry);
+
 		retry = retry + 1;
 	}
 
@@ -530,6 +532,26 @@ void touchkey_flip_cover(int value)
 	return;
 }
 #endif
+
+static int touchkey_enable_status_update(struct touchkey_i2c *tkey_i2c)
+{
+	unsigned char data = 0x40;
+	int ret;
+
+	ret = i2c_touchkey_write(tkey_i2c->client, &data, 1);
+	if (ret < 0) {
+		dev_err(&tkey_i2c->client->dev, "%s, err(%d)\n", __func__, ret);
+		tkey_i2c->status_update = false;
+		return ret;
+	}
+
+	tkey_i2c->status_update = true;
+	dev_dbg(&tkey_i2c->client->dev, "%s\n", __func__);
+
+	msleep(20);
+
+	return 0;
+}
 
 #if defined(TK_HAS_AUTOCAL)
 static ssize_t touchkey_raw_data0_show(struct device *dev,
@@ -663,6 +685,12 @@ static ssize_t touchkey_threshold_show(struct device *dev,
 	u8 data[10];
 	int ret;
 
+	if (!tkey_i2c->status_update) {
+		ret = touchkey_enable_status_update(tkey_i2c);
+		if (ret < 0)
+			return ret;
+	}
+
 	dev_dbg(&tkey_i2c->client->dev, "called %s\n", __func__);
 	ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 10);
 	dev_dbg(&tkey_i2c->client->dev, "called %s data[4] = %d\n", __func__, data[4]);
@@ -672,6 +700,19 @@ static ssize_t touchkey_threshold_show(struct device *dev,
 #endif
 
 #ifdef TOUCHKEY_BOOSTER
+
+#define set_qos(req, pm_qos_class, value) { \
+	if (pm_qos_request_active(req)) \
+		pm_qos_update_request(req, value); \
+	else \
+		pm_qos_add_request(req, pm_qos_class, value); \
+}
+
+#define remove_qos(req) { \
+	if (pm_qos_request_active(req)) \
+	pm_qos_remove_request(req); \
+}
+
 static void touchkey_change_dvfs_lock(struct work_struct *work)
 {
 	struct touchkey_i2c *tkey_i2c =
@@ -680,11 +721,19 @@ static void touchkey_change_dvfs_lock(struct work_struct *work)
 
 	mutex_lock(&tkey_i2c->tsk_dvfs_lock);
 
-	if (pm_qos_request_active(&tkey_i2c->tsk_mif_qos)) {
-		pm_qos_update_request(&tkey_i2c->tsk_mif_qos, 400000); /* MIF 400MHz */
-		dev_dbg(&tkey_i2c->client->dev, "change_mif_dvfs_lock");
+	if (TKEY_BOOSTER_LEVEL1 == tkey_i2c->boost_level) {
+		set_qos(&tkey_i2c->cpu_qos, PM_QOS_CPU_FREQ_MIN, TKEY_BOOSTER_CPU_FREQ1);
+		set_qos(&tkey_i2c->mif_qos, PM_QOS_BUS_THROUGHPUT, TKEY_BOOSTER_MIF_FREQ1);
+		set_qos(&tkey_i2c->int_qos, PM_QOS_DEVICE_THROUGHPUT, TKEY_BOOSTER_INT_FREQ1);
+	} else {
+		set_qos(&tkey_i2c->cpu_qos, PM_QOS_CPU_FREQ_MIN, TKEY_BOOSTER_CPU_FREQ2);
+		set_qos(&tkey_i2c->mif_qos, PM_QOS_BUS_THROUGHPUT, TKEY_BOOSTER_MIF_FREQ2);
+		set_qos(&tkey_i2c->int_qos, PM_QOS_DEVICE_THROUGHPUT, TKEY_BOOSTER_INT_FREQ2);
 	}
-
+	
+	printk(KERN_DEBUG"touchkey:DVFS ON, %d\n", tkey_i2c->boost_level);
+	tkey_i2c->tsk_dvfs_lock_status = true;
+	tkey_i2c->dvfs_signal = false;
 	mutex_unlock(&tkey_i2c->tsk_dvfs_lock);
 }
 
@@ -696,37 +745,40 @@ static void touchkey_set_dvfs_off(struct work_struct *work)
 
 	mutex_lock(&tkey_i2c->tsk_dvfs_lock);
 
-	pm_qos_remove_request(&tkey_i2c->tsk_cpu_qos);
-	pm_qos_remove_request(&tkey_i2c->tsk_mif_qos);
-	pm_qos_remove_request(&tkey_i2c->tsk_int_qos);
+	remove_qos(&tkey_i2c->cpu_qos);
+	remove_qos(&tkey_i2c->mif_qos);
+	remove_qos(&tkey_i2c->int_qos);
 
 	tkey_i2c->tsk_dvfs_lock_status = false;
+	tkey_i2c->dvfs_signal = false;
 	mutex_unlock(&tkey_i2c->tsk_dvfs_lock);
 
-	dev_dbg(&tkey_i2c->client->dev, "TSP DVFS Off\n");
+	printk(KERN_DEBUG"touchkey:DVFS Off, %d\n", tkey_i2c->boost_level);
 }
 
 static void touchkey_set_dvfs_lock(struct touchkey_i2c *tkey_i2c,
 					uint32_t on)
 {
+	if (TKEY_BOOSTER_DISABLE == tkey_i2c->boost_level)
+		return;
+
 	mutex_lock(&tkey_i2c->tsk_dvfs_lock);
 	if (on == 0) {
-		if (tkey_i2c->tsk_dvfs_lock_status) {
+		if (tkey_i2c->dvfs_signal) {
+			cancel_delayed_work(&tkey_i2c->tsk_work_dvfs_chg);
+			schedule_delayed_work(&tkey_i2c->tsk_work_dvfs_chg, 0);
 			schedule_delayed_work(&tkey_i2c->tsk_work_dvfs_off,
-				msecs_to_jiffies(TOUCH_BOOSTER_OFF_TIME));
+				msecs_to_jiffies(TKEY_BOOSTER_OFF_TIME));
+		} else if (tkey_i2c->tsk_dvfs_lock_status) {
+			schedule_delayed_work(&tkey_i2c->tsk_work_dvfs_off,
+				msecs_to_jiffies(TKEY_BOOSTER_OFF_TIME));
 		}
 	} else if (on == 1) {
 		cancel_delayed_work(&tkey_i2c->tsk_work_dvfs_off);
-		if (!tkey_i2c->tsk_dvfs_lock_status) {
-			pm_qos_add_request(&tkey_i2c->tsk_cpu_qos, PM_QOS_CPU_FREQ_MIN, 600000); /* CPU KFC 1.2GHz */
-			pm_qos_add_request(&tkey_i2c->tsk_mif_qos, PM_QOS_BUS_THROUGHPUT, 800000); /* MIF 800MHz */
-			pm_qos_add_request(&tkey_i2c->tsk_int_qos, PM_QOS_DEVICE_THROUGHPUT, 200000); /* INT 200MHz */
-
+		if (!tkey_i2c->tsk_dvfs_lock_status && !tkey_i2c->dvfs_signal) {
 			schedule_delayed_work(&tkey_i2c->tsk_work_dvfs_chg,
-							msecs_to_jiffies(TOUCH_BOOSTER_CHG_TIME));
-
-			tkey_i2c->tsk_dvfs_lock_status = true;
-			dev_dbg(&tkey_i2c->client->dev, "Touchkey DVFS On\n");
+							msecs_to_jiffies(TKEY_BOOSTER_ON_TIME));
+			tkey_i2c->dvfs_signal = true;
 		}
 	} else if (on == 2) {
 		if (tkey_i2c->tsk_dvfs_lock_status) {
@@ -752,122 +804,300 @@ static int touchkey_init_dvfs(struct touchkey_i2c *tkey_i2c)
 #endif
 
 #if defined(TK_HAS_FIRMWARE_UPDATE)
-static int touchkey_firmware_version_check(struct touchkey_i2c *tkey_i2c)
+static int get_module_ver(void)
 {
-	int ret;
-	char data[6];
+	if (likely(system_rev >= TKEY_MODULE07_HWID))
+		return 0x09;
+	else
+		return 0x04;
+}
 
-	ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 6);
-	if (ret < 0) {
-		dev_err(&tkey_i2c->client->dev,	"i2c read fail. do not excute firm update.\n");
-		data[1] = 0;
-		data[2] = 0;
+static void touchkey_init_fw_name(struct touchkey_i2c *tkey_i2c)
+{
+	/*check ver of ic*/
+	if (tkey_i2c->md_ver_ic == 0) {
+		tkey_i2c->md_ver_ic = get_module_ver();
+		printk(KERN_DEBUG"touchkey:failed to read module_ver. seperate by hwid(ver %x)\n", tkey_i2c->md_ver_ic);
+	}
+
+	/*set fw by module_ver*/
+	switch(tkey_i2c->md_ver_ic) {
+	case 0x08:
+	case 0x09:
+	case 0x0A:
+		break;
+	case 0x07:
+		tk_fw_name = "cypress/cypress_ha_m07.fw";
+		fw_ver_file = 0xA;
+		md_ver_file = 0x7;
+		break;
+	default:
+		printk(KERN_DEBUG"touchkey:%s, unknown module ver %x\n", __func__, tkey_i2c->md_ver_ic);
+		return ;
+	}
+}
+
+/* To check firmware compatibility */
+int get_module_class(u8 ver)
+{
+	static int size = ARRAY_SIZE(module_divider);
+	int i;
+
+	if (size == 2)
+		return 0;
+
+	for (i = size - 1; i > 0; --i) {
+		if (ver < module_divider[i] &&
+			ver >= module_divider[i-1])
+			return i;
+	}
+
+	return 0;
+}
+
+bool is_same_module_class(struct touchkey_i2c *tkey_i2c)
+{
+	int class_ic, class_file;
+
+	if (md_ver_file == tkey_i2c->md_ver_ic)
+		return true;
+	
+	class_file = get_module_class(md_ver_file);
+	class_ic = get_module_class(tkey_i2c->md_ver_ic);
+
+	printk(KERN_DEBUG"touchkey:module class, IC %d, File %d\n", class_ic, class_file);
+
+	if (class_file == class_ic)
+		return true;
+
+	return false;
+}
+
+int tkey_load_fw_built_in(struct touchkey_i2c *tkey_i2c)
+{
+	int retry = 3;
+	int ret;
+
+	while (retry--) {
+		ret =
+			request_firmware(&tkey_i2c->update_info.firm_data, tk_fw_name,
+			&tkey_i2c->client->dev);
+		if (ret < 0) {
+			printk(KERN_ERR
+				"touchkey:Unable to open firmware. ret %d retry %d\n",
+				ret, retry);
+			continue;
+		}
+		break;
+	}
+
+	firmware_data = (u8 *)tkey_i2c->update_info.firm_data->data;
+
+	return ret;
+}
+
+int tkey_load_fw_sdcard(struct touchkey_i2c *tkey_i2c)
+{
+	struct file *fp;
+	mm_segment_t old_fs;
+	long fsize, nread;
+	int ret = 0;
+	unsigned int nSize;
+	u8 **ums_data = &firmware_data;
+
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
+
+	fp = filp_open(TKEY_FW_PATH, O_RDONLY, S_IRUSR);
+
+	if (IS_ERR(fp)) {
+		printk(KERN_ERR "touchkey:failed to open %s.\n", TKEY_FW_PATH);
+		ret = -ENOENT;
+		set_fs(old_fs);
 		return ret;
 	}
-	dev_info(&tkey_i2c->client->dev, "%s F/W version: 0x%x, Module version:0x%x\n",
-			__func__, data[1], data[2]);
 
-	tkey_i2c->firmware_ver = data[1];
-	tkey_i2c->module_ver = data[2];
+	fsize = fp->f_path.dentry->d_inode->i_size;
+	printk(KERN_NOTICE
+		"touchkey:start, file path %s, size %ld Bytes\n",
+		TKEY_FW_PATH, fsize);
 
-	if ((data[5] & TK_BIT_FW_ID_65)) {
-		dev_info(&tkey_i2c->client->dev, "Firmware id 20065\n");
-		tkey_i2c->firmware_id = TK_MODULE_20065;
-	} else if ((data[5] & TK_BIT_FW_ID_55)) {
-		dev_info(&tkey_i2c->client->dev, "Firmware id 20055\n");
-		tkey_i2c->firmware_id = TK_MODULE_20055;
-	} else {
-		dev_info(&tkey_i2c->client->dev, "Firmware id 20045\n");
-		tkey_i2c->firmware_id = TK_MODULE_20045;
+	*ums_data = kmalloc(fsize, GFP_KERNEL);
+	if (IS_ERR(*ums_data)) {
+		printk(KERN_ERR
+			"touchkey:%s, kmalloc failed\n", __func__);
+		ret = -EFAULT;
+		goto malloc_error;
+	}
+
+	nread = vfs_read(fp, (char __user *)*ums_data,
+		fsize, &fp->f_pos);
+	printk(KERN_NOTICE "touchkey:nread %ld Bytes\n", nread);
+	if (nread != fsize) {
+		printk(KERN_ERR
+			"touchkey:failed to read firmware file, nread %ld Bytes\n",
+			nread);
+		ret = -EIO;
+		kfree(*ums_data);
+		goto read_err;
+	}
+
+	filp_close(fp, current->files);
+	set_fs(old_fs);
+
+	return 0;
+
+read_err:
+malloc_error:
+size_error:
+	filp_close(fp, current->files);
+	set_fs(old_fs);
+	return ret;
+}
+
+int touchkey_load_fw(struct touchkey_i2c *tkey_i2c, u8 fw_path)
+{
+	int ret = 0;
+
+	switch (fw_path) {
+	case FW_BUILT_IN:
+		ret = tkey_load_fw_built_in(tkey_i2c);
+		break;
+	case FW_IN_SDCARD:
+		ret = tkey_load_fw_sdcard(tkey_i2c);
+		break;
+	default:
+		printk(KERN_DEBUG"touchkey:unknown path(%d)\n", fw_path);
+		break;
 	}
 
 	return ret;
 }
 
-static int touchkey_firmware_update(struct touchkey_i2c *tkey_i2c)
+void touchkey_unload_fw(struct touchkey_i2c *tkey_i2c)
+{
+	switch (tkey_i2c->update_info.fw_path) {
+	case FW_BUILT_IN:
+		release_firmware(tkey_i2c->update_info.firm_data);
+		tkey_i2c->update_info.firm_data = NULL;
+		break;
+	case FW_IN_SDCARD:
+		kfree(firmware_data);
+		firmware_data = NULL;
+		break;
+	default:
+		break;
+	}
+	tkey_i2c->update_info.fw_path = FW_NONE;
+}
+
+int touchkey_fw_update(struct touchkey_i2c *tkey_i2c, u8 fw_path, bool bforced)
 {
 	int ret;
 
-	disable_irq(tkey_i2c->irq);
-
-	ret = touchkey_firmware_version_check(tkey_i2c);
+	ret = touchkey_load_fw(tkey_i2c, fw_path);
 	if (ret < 0) {
-		dev_err(&tkey_i2c->client->dev, "i2c read fail.\n");
-		enable_irq(tkey_i2c->irq);
-		return TK_UPDATE_FAIL;
+		printk(KERN_DEBUG"touchkey:failed to load fw data\n");
+		return ret;
+	}
+	tkey_i2c->update_info.fw_path = fw_path;
+
+	/* f/w info */
+	dev_info(&tkey_i2c->client->dev, "fw ver %#x, new fw ver %#x\n",
+		fw_ver_file, tkey_i2c->fw_ver_ic);
+	dev_info(&tkey_i2c->client->dev, "module ver %#x, new module ver %#x\n",
+		md_ver_file, tkey_i2c->md_ver_ic);
+
+	/* check update condition */
+	if (unlikely(bforced))
+		goto run_fw_update;
+	if (is_same_module_class(tkey_i2c)) {
+		if (tkey_i2c->md_ver_ic != md_ver_file)
+			goto run_fw_update;
+#ifdef CONFIG_SAMSUNG_PRODUCT_SHIP
+		if (tkey_i2c->fw_ver_ic != fw_ver_file)
+#else
+		if (tkey_i2c->fw_ver_ic < fw_ver_file)
+#endif
+			goto run_fw_update;
 	}
 
-	if (tkey_i2c->firmware_ver < TK_FIRMWARE_VER_65 && \
-			tkey_i2c->firmware_id == TK_MODULE_20065) {
-		int retry = 3;
-		dev_info(&tkey_i2c->client->dev, "Firmware auto update excute\n");
+	/* pass update */
+	dev_info(&tkey_i2c->client->dev, "pass fw update\n");
+	touchkey_unload_fw(tkey_i2c);
+ run_fw_update:
+	schedule_work(&tkey_i2c->update_work);
+	return 0;
+}
 
-		tkey_i2c->update_status = TK_UPDATE_DOWN;
+static void touchkey_i2c_update_work(struct work_struct *work)
+{
+	struct touchkey_i2c *tkey_i2c =
+		container_of(work, struct touchkey_i2c, update_work);
+	const struct firmware *firm_data = NULL;
+	int ret;
+	int retry = 3;
 
-		while (retry--) {
-			if (ISSP_main(tkey_i2c) == 0) {
-				dev_info(&tkey_i2c->client->dev, "Firmware update succeeded\n");
-				tkey_i2c->update_status = TK_UPDATE_PASS;
-				msleep(50);
-				break;
-			}
+	disable_irq(tkey_i2c->irq);
+	wake_lock(&tkey_i2c->fw_wakelock);
+
+	if (tkey_i2c->update_info.fw_path == FW_NONE)
+		goto end_fw_update;
+
+	printk(KERN_DEBUG"touchkey:%s\n", __func__);
+	tkey_i2c->update_status = TK_UPDATE_DOWN;
+
+	while (retry--) {
+		ret = ISSP_main(tkey_i2c);
+		if (ret != 0) {
 			msleep(50);
-			dev_err(&tkey_i2c->client->dev, "Firmware update failed. retry\n");
-		}
-		if (retry <= 0) {
-			tkey_i2c->pdata->power_on(0);
-			tkey_i2c->update_status = TK_UPDATE_FAIL;
-			dev_err(&tkey_i2c->client->dev, "Firmware update failed.\n");
-		}
-		ret = touchkey_i2c_check(tkey_i2c);
-		if (ret < 0) {
-			dev_err(&tkey_i2c->client->dev, "i2c read fail.\n");
-			return TK_UPDATE_FAIL;
-		}
-		dev_info(&tkey_i2c->client->dev, "Firm ver = %d, module ver = %d\n",
-			tkey_i2c->firmware_ver, tkey_i2c->module_ver);
-	} else {
-		dev_info(&tkey_i2c->client->dev, "Firmware auto update do not excute\n");
-		if (tkey_i2c->firmware_id == TK_MODULE_20065) {
-			dev_info(&tkey_i2c->client->dev, "firmware_ver(banary=%d, current=%d)\n",
-				   TK_FIRMWARE_VER_65, tkey_i2c->firmware_ver);
-		} else if (tkey_i2c->firmware_id == TK_MODULE_20055) {
-			dev_info(&tkey_i2c->client->dev, "firmware_ver(banary=%d, current=%d)\n",
-				   TK_FIRMWARE_VER_55, tkey_i2c->firmware_ver);
-		} else {
-			dev_info(&tkey_i2c->client->dev, "firmware_ver(banary=%d, current=%d)\n",
-				   TK_FIRMWARE_VER_45, tkey_i2c->firmware_ver);
+			dev_err(&tkey_i2c->client->dev, "failed to update f/w. retry\n");
+			continue;
 		}
 
-		dev_info(&tkey_i2c->client->dev, "module_ver(banary=%d, current=%d)\n",
-		       TK_MODULE_VER, tkey_i2c->module_ver);
+		dev_info(&tkey_i2c->client->dev, "finish f/w update\n");
+		tkey_i2c->update_status = TK_UPDATE_PASS;
+		break;
 	}
+	if (retry <= 0) {
+		tkey_i2c->pdata->power_on(0);
+		tkey_i2c->update_status = TK_UPDATE_FAIL;
+		dev_err(&tkey_i2c->client->dev, "failed to update f/w\n");
+		goto err_fw_update;
+	}
+
+	ret = touchkey_i2c_check(tkey_i2c);
+	if (ret < 0)
+		goto err_fw_update;
+
+	dev_info(&tkey_i2c->client->dev, "f/w ver = %#X, module ver = %#X\n",
+		tkey_i2c->fw_ver_ic, tkey_i2c->md_ver_ic);
+
+ end_fw_update:
+#if defined(TK_HAS_AUTOCAL)
+	touchkey_autocalibration(tkey_i2c);
+#endif
 	enable_irq(tkey_i2c->irq);
-	return TK_UPDATE_PASS;
+ err_fw_update:
+	touchkey_unload_fw(tkey_i2c);
+	wake_unlock(&tkey_i2c->fw_wakelock);
 }
 #endif
 
-#ifndef TEST_JIG_MODE
 static irqreturn_t touchkey_interrupt(int irq, void *dev_id)
 {
 	struct touchkey_i2c *tkey_i2c = dev_id;
 	u8 data[3];
 	int ret;
-	int retry = 10;
 	int keycode_type = 0;
 	int pressed;
 
-	retry = 3;
-	while (retry--) {
-		ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 3);
-		if (!ret)
-			break;
-		else {
-		dev_dbg(&tkey_i2c->client->dev, "I2c read failed, ret:%d, retry: %d\n",
-			       ret, retry);
-			continue;
-		}
+	if (unlikely(!touchkey_probe)) {
+		dev_err(&tkey_i2c->client->dev, "%s: Touchkey is not probed\n", __func__);
+		return IRQ_HANDLED;
 	}
+
+	ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 3);
 	if (ret < 0)
 		return IRQ_HANDLED;
 
@@ -886,7 +1116,7 @@ static irqreturn_t touchkey_interrupt(int irq, void *dev_id)
 	dev_info(&tkey_i2c->client->dev, "keycode:%d pressed:%d %d\n",
 	touchkey_keycode[keycode_type], pressed, tkey_i2c->tsk_glove_mode_status);
 #else
-	dev_dbg(&tkey_i2c->client->dev, "pressed:%d %d\n",
+	dev_info(&tkey_i2c->client->dev, "pressed:%d %d\n",
 		pressed, tkey_i2c->tsk_glove_mode_status);
 #endif
 #ifdef TOUCHKEY_BOOSTER
@@ -894,57 +1124,6 @@ static irqreturn_t touchkey_interrupt(int irq, void *dev_id)
 #endif
 	return IRQ_HANDLED;
 }
-#else
-static irqreturn_t touchkey_interrupt(int irq, void *dev_id)
-{
-	struct touchkey_i2c *tkey_i2c = dev_id;
-	u8 data[18];
-	int ret;
-	int retry = 10;
-	int keycode_type = 0;
-	int pressed;
-
-	retry = 3;
-	while (retry--) {
-		ret = i2c_touchkey_read(tkey_i2c->client,
-				KEYCODE_REG, data, 18);
-		if (!ret)
-			break;
-		else {
-			dev_dbg(&tkey_i2c->client->dev,
-			       "%s I2c read failed, ret:%d, retry: %d\n",
-			       __func__, ret, retry);
-			continue;
-		}
-	}
-	if (ret < 0)
-		return IRQ_HANDLED;
-
-	menu_sensitivity = data[13];
-	back_sensitivity = data[11];
-
-	keycode_type = (data[0] & TK_BIT_KEYCODE);
-	pressed = !(data[0] & TK_BIT_PRESS_EV);
-
-	if (keycode_type <= 0 || keycode_type >= touchkey_count) {
-		dev_dbg(&tkey_i2c->client->dev, "keycode_type err\n");
-		return IRQ_HANDLED;
-	}
-
-	input_report_key(tkey_i2c->input_dev,
-			 touchkey_keycode[keycode_type], pressed);
-	input_sync(tkey_i2c->input_dev);
-
-	if (keycode_type == 1)
-		dev_dbg(&tkey_i2c->client->dev, "search key sensitivity = %d\n",
-		       search_sensitivity);
-	if (keycode_type == 2)
-		dev_dbg(&tkey_i2c->client->dev, "back key sensitivity = %d\n",
-		       back_sensitivity);
-
-	return IRQ_HANDLED;
-}
-#endif
 
 static int touchkey_stop(struct touchkey_i2c *tkey_i2c)
 {
@@ -954,7 +1133,11 @@ static int touchkey_stop(struct touchkey_i2c *tkey_i2c)
 
 	if (!tkey_i2c->enabled) {
 		dev_err(&tkey_i2c->client->dev, "Touch key already disabled\n");
-		goto out;
+		goto err_stop_out;
+	}
+	if (wake_lock_active(&tkey_i2c->fw_wakelock)) {
+		printk(KERN_DEBUG"touchkey:wake_lock active\n");
+		goto err_stop_out;
 	}
 
 	disable_irq(tkey_i2c->irq);
@@ -966,6 +1149,12 @@ static int touchkey_stop(struct touchkey_i2c *tkey_i2c)
 	}
 	input_sync(tkey_i2c->input_dev);
 
+#if defined(CONFIG_GLOVE_TOUCH)
+	/*cancel or waiting before pwr off*/
+	tkey_i2c->tsk_glove_mode_status = false;
+	cancel_delayed_work(&tkey_i2c->glove_change_work);
+#endif
+
 	/* disable ldo18 */
 	tkey_i2c->pdata->led_power_on(0);
 
@@ -973,13 +1162,12 @@ static int touchkey_stop(struct touchkey_i2c *tkey_i2c)
 	tkey_i2c->pdata->power_on(0);
 
 	tkey_i2c->enabled = false;
+	tkey_i2c->status_update = false;
 #ifdef TOUCHKEY_BOOSTER
 	touchkey_set_dvfs_lock(tkey_i2c, 2);
 #endif
-#if defined(CONFIG_GLOVE_TOUCH)
-	cancel_delayed_work(&tkey_i2c->glove_change_work);
-#endif
-out:
+
+ err_stop_out:
 	mutex_unlock(&tkey_i2c->lock);
 
 	return 0;
@@ -995,7 +1183,11 @@ static int touchkey_start(struct touchkey_i2c *tkey_i2c)
 
 	if (tkey_i2c->enabled) {
 		dev_err(&tkey_i2c->client->dev, "Touch key already enabled\n");
-		goto out;
+		goto err_start_out;
+	}
+	if (wake_lock_active(&tkey_i2c->fw_wakelock)) {
+		printk(KERN_DEBUG"touchkey:wake_lock active\n");
+		goto err_start_out;
 	}
 
 	/* enable ldo11 */
@@ -1026,11 +1218,11 @@ static int touchkey_start(struct touchkey_i2c *tkey_i2c)
 #endif
 
 #if defined(CONFIG_GLOVE_TOUCH)
-	tkey_i2c->tsk_glove_lock_status = false;
+	//tkey_i2c->tsk_glove_lock_status = false;
 	touchkey_glovemode(tkey_i2c->tsk_glove_mode_status);
 #endif
 	enable_irq(tkey_i2c->irq);
-out:
+ err_start_out:
 	mutex_unlock(&tkey_i2c->lock);
 
 	return 0;
@@ -1188,11 +1380,13 @@ static int touchkey_i2c_check(struct touchkey_i2c *tkey_i2c)
 	ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 3);
 	if (ret < 0) {
 		dev_err(&tkey_i2c->client->dev, "Failed to read Module version\n");
+		tkey_i2c->fw_ver_ic = 0;
+		tkey_i2c->md_ver_ic = 0;
 		return ret;
 	}
 
-	tkey_i2c->firmware_ver = data[1];
-	tkey_i2c->module_ver = data[2];
+	tkey_i2c->fw_ver_ic = data[1];
+	tkey_i2c->md_ver_ic = data[2];
 
 	return ret;
 }
@@ -1207,6 +1401,7 @@ static ssize_t touchkey_led_control(struct device *dev,
 	static const int ledCmd[] = {TK_CMD_LED_OFF, TK_CMD_LED_ON};
 
 	ret = sscanf(buf, "%d", &data);
+
 	if (ret != 1) {
 		dev_err(&tkey_i2c->client->dev, "%s, %d err\n",
 			__func__, __LINE__);
@@ -1317,6 +1512,12 @@ static ssize_t touchkey_menu_show(struct device *dev,
 	u8 data[14] = { 0, };
 	int ret;
 
+	if (!tkey_i2c->status_update) {
+		ret = touchkey_enable_status_update(tkey_i2c);
+		if (ret < 0)
+			return ret;
+	}
+
 	ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 14);
 
 	dev_dbg(&tkey_i2c->client->dev, "called %s data[10] = %d, data[11] =%d\n", __func__,
@@ -1332,6 +1533,12 @@ static ssize_t touchkey_back_show(struct device *dev,
 	struct touchkey_i2c *tkey_i2c = dev_get_drvdata(dev);
 	u8 data[14] = { 0, };
 	int ret;
+
+	if (!tkey_i2c->status_update) {
+		ret = touchkey_enable_status_update(tkey_i2c);
+		if (ret < 0)
+			return ret;
+	}
 
 	ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 14);
 
@@ -1419,6 +1626,7 @@ static ssize_t touch_sensitivity_control(struct device *dev,
 	struct touchkey_i2c *tkey_i2c = dev_get_drvdata(dev);
 	unsigned char data = 0x40;
 	i2c_touchkey_write(tkey_i2c->client, &data, 1);
+	tkey_i2c->update_status = true;
 	dev_dbg(&tkey_i2c->client->dev, "%s\n", __func__);
 	msleep(20);
 	return size;
@@ -1428,16 +1636,8 @@ static ssize_t set_touchkey_firm_version_show(struct device *dev,
 					      struct device_attribute *attr,
 					      char *buf)
 {
-	struct touchkey_i2c *tkey_i2c = dev_get_drvdata(dev);
-
-	if (tkey_i2c->firmware_id == TK_MODULE_20045)
-		return sprintf(buf, "0x%02x\n", TK_FIRMWARE_VER_45);
-	else if (tkey_i2c->firmware_id == TK_MODULE_20055)
-		return sprintf(buf, "0x%02x\n", TK_FIRMWARE_VER_55);
-	else if (tkey_i2c->firmware_id == TK_MODULE_20065)
-		return sprintf(buf, "0x%02x\n", TK_FIRMWARE_VER_65);
-	else
-		return sprintf(buf, "unknown\n");
+	printk(KERN_DEBUG"touchkey:firm_ver_bin %0#4x\n", fw_ver_file);
+	return sprintf(buf, "%0#4x\n", fw_ver_file);
 }
 
 static ssize_t set_touchkey_update_store(struct device *dev,
@@ -1445,58 +1645,25 @@ static ssize_t set_touchkey_update_store(struct device *dev,
 					 const char *buf, size_t size)
 {
 	struct touchkey_i2c *tkey_i2c = dev_get_drvdata(dev);
-	int count = 0;
-	int retry = 3;
 
-	tkey_i2c->update_status = TK_UPDATE_DOWN;
+	u8 fw_path;
 
-	disable_irq(tkey_i2c->irq);
-
-	if (tkey_i2c->firmware_id != TK_MODULE_20065) {
-		dev_info(&tkey_i2c->client->dev,
-			 "Firmware auto update do not excute\n");
-		tkey_i2c->update_status = TK_UPDATE_PASS;
-		count = 1;
-		enable_irq(tkey_i2c->irq);
-		return count;
+	switch(*buf) {
+	case 's':
+	case 'S':
+		fw_path = FW_BUILT_IN;
+		break;
+	case 'i':
+	case 'I':
+		fw_path = FW_IN_SDCARD;
+		break;
+	default:
+		return size;
 	}
 
-#ifdef TEST_JIG_MODE
-	unsigned char get_touch = 0x40;
-#endif
+	touchkey_fw_update(tkey_i2c, fw_path, true);
 
-	while (retry--) {
-		if (ISSP_main(tkey_i2c) == 0) {
-			dev_err(&tkey_i2c->client->dev,
-				"Touchkey_update succeeded\n");
-			tkey_i2c->update_status = TK_UPDATE_PASS;
-			count = 1;
-			msleep(50);
-			break;
-		}
-		dev_err(&tkey_i2c->client->dev,
-			"Touchkey_update failed... retry...\n");
-	}
-	if (retry <= 0) {
-		/* disable ldo11 */
-		tkey_i2c->pdata->power_on(0);
-		count = 0;
-		dev_err(&tkey_i2c->client->dev, "Touchkey_update fail\n");
-		tkey_i2c->update_status = TK_UPDATE_FAIL;
-		enable_irq(tkey_i2c->irq);
-		return count;
-	}
-
-#ifdef TEST_JIG_MODE
-	i2c_touchkey_write(tkey_i2c->client, &get_touch, 1);
-#endif
-
-	enable_irq(tkey_i2c->irq);
-#if defined(TK_HAS_AUTOCAL)
-	touchkey_autocalibration(tkey_i2c);
-#endif
-	return count;
-
+	return size;
 }
 
 static ssize_t set_touchkey_firm_version_read_show(struct device *dev,
@@ -1534,6 +1701,28 @@ static ssize_t set_touchkey_firm_status_show(struct device *dev,
 
 	return count;
 }
+#ifdef TOUCHKEY_BOOSTER
+static ssize_t touchkey_boost_level(struct device *dev,
+						struct device_attribute *attr, const char *buf,
+						size_t count)
+{
+	struct touchkey_i2c *tkey_i2c = dev_get_drvdata(dev);
+	int level;
+
+	sscanf(buf, "%d", &level);
+
+	if (level < 0 || level > 2) {
+		dev_err(&tkey_i2c->client->dev, "err to set boost_level %d\n", level);
+		return count;
+	}
+
+	tkey_i2c->boost_level = level;
+	dev_info(&tkey_i2c->client->dev, "%s %d\n", __func__, level);
+
+	return count;
+}
+#endif
+
 
 static DEVICE_ATTR(brightness, S_IRUGO | S_IWUSR | S_IWGRP, NULL,
 		   touchkey_led_control);
@@ -1585,6 +1774,9 @@ static DEVICE_ATTR(glove_mode, S_IRUGO | S_IWUSR | S_IWGRP, NULL,
 static DEVICE_ATTR(flip_mode, S_IRUGO | S_IWUSR | S_IWGRP, NULL,
 		   flip_cover_mode_enable);
 #endif
+#ifdef TOUCHKEY_BOOSTER
+static DEVICE_ATTR(boost_level, S_IWUSR | S_IWGRP, NULL, touchkey_boost_level);
+#endif
 
 static struct attribute *touchkey_attributes[] = {
 	&dev_attr_brightness.attr,
@@ -1621,6 +1813,9 @@ static struct attribute *touchkey_attributes[] = {
 #ifdef TKEY_FLIP_MODE
 	&dev_attr_flip_mode.attr,
 #endif
+#ifdef TOUCHKEY_BOOSTER
+	&dev_attr_boost_level.attr,	
+#endif
 	NULL,
 };
 
@@ -1633,6 +1828,7 @@ static int i2c_touchkey_probe(struct i2c_client *client,
 {
 	struct touchkey_platform_data *pdata = client->dev.platform_data;
 	struct touchkey_i2c *tkey_i2c;
+	bool bforced = false;
 	struct input_dev *input_dev;
 	int i;
 	int ret = 0;
@@ -1680,6 +1876,7 @@ static int i2c_touchkey_probe(struct i2c_client *client,
 	tkey_i2c->client = client;
 	tkey_i2c->irq = client->irq;
 	tkey_i2c->name = "sec_touchkey";
+	tkey_i2c->status_update = false;
 	init_completion(&tkey_i2c->init_done);
 	mutex_init(&(tkey_i2c->lock));
 #ifdef TK_USE_OPEN_DWORK
@@ -1692,6 +1889,8 @@ static int i2c_touchkey_probe(struct i2c_client *client,
 #ifdef CONFIG_VT_TKEY_SKIP_MATCH
 	set_bit(EV_TOUCHKEY, input_dev->evbit);
 #endif
+	INIT_WORK(&tkey_i2c->update_work, touchkey_i2c_update_work);
+	wake_lock_init(&tkey_i2c->fw_wakelock, WAKE_LOCK_SUSPEND, "touchkey");
 
 	for (i = 1; i < touchkey_count; i++)
 		set_bit(touchkey_keycode[i], input_dev->keybit);
@@ -1728,25 +1927,30 @@ static int i2c_touchkey_probe(struct i2c_client *client,
 	}
 
 #if defined(TK_USE_LCDTYPE_CHECK)
-	dev_err(&client->dev, "JA LCD type Print : 0x%06X\n", lcdtype);
+	dev_err(&client->dev, "LCD type Print : 0x%06X\n", lcdtype);
 	if (lcdtype == 0) {
 		dev_err(&client->dev, "Device wasn't connected to board\n");
-		goto err_i2c_check;
-	}
-#else
-	ret = touchkey_i2c_check(tkey_i2c);
-	if (ret < 0) {
-		dev_err(&client->dev, "i2c_check failed\n");
+		ret = -ENODEV;
 		goto err_i2c_check;
 	}
 #endif
+	ret = touchkey_i2c_check(tkey_i2c);
+	if (ret < 0) {
+		dev_err(&client->dev, "i2c_check failed\n");
+#if defined(TK_USE_LCDTYPE_CHECK)
+		bforced = true;
+#else
+		goto err_i2c_check;
+#endif
+	}
 
 #ifdef TOUCHKEY_BOOSTER
-		ret = touchkey_init_dvfs(tkey_i2c);
-		if (ret < 0) {
-			dev_err(&client->dev, "Fail get dvfs level for touch booster\n");
-			goto err_i2c_check;
-		}
+	ret = touchkey_init_dvfs(tkey_i2c);
+	if (ret < 0) {
+		dev_err(&client->dev, "Fail get dvfs level for touch booster\n");
+		goto err_i2c_check;
+	}
+	tkey_i2c->boost_level = TKEY_BOOSTER_LEVEL2;
 #endif
 
 #if defined(CONFIG_GLOVE_TOUCH)
@@ -1768,11 +1972,12 @@ static int i2c_touchkey_probe(struct i2c_client *client,
 	tkey_i2c->pdata->led_power_on(1);
 
 #if defined(TK_HAS_FIRMWARE_UPDATE)
-	ret = touchkey_firmware_update(tkey_i2c);
-	if (ret < 0) {
-		dev_err(&client->dev, "Failed firmware updating process (%d)\n",
-			ret);
-		goto err_firmware_update;
+tkey_firmupdate_retry_byreboot:
+	if (system_rev >= TK_UPDATABLE_BD_ID) {
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+		touchkey_init_fw_name(tkey_i2c);
+#endif
+		touchkey_fw_update(tkey_i2c, FW_BUILT_IN, bforced);
 	}
 #endif
 
@@ -1792,11 +1997,7 @@ static int i2c_touchkey_probe(struct i2c_client *client,
 	register_early_suspend(&tkey_i2c->early_suspend);
 #endif
 
-#if defined(TK_HAS_AUTOCAL)
-	touchkey_autocalibration(tkey_i2c);
-#endif
-
-	touchkey_stop(tkey_i2c);
+/*	touchkey_stop(tkey_i2c); */
 	complete_all(&tkey_i2c->init_done);
 	touchkey_probe = true;
 
@@ -1806,7 +2007,7 @@ static int i2c_touchkey_probe(struct i2c_client *client,
 err_firmware_update:
 	tkey_i2c->pdata->led_power_on(0);
 	disable_irq(tkey_i2c->irq);
-        free_irq(tkey_i2c->irq, tkey_i2c);	
+	free_irq(tkey_i2c->irq, tkey_i2c);
 #endif
 err_request_threaded_irq:
 err_i2c_check:

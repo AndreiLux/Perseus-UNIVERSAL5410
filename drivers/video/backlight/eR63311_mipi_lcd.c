@@ -41,7 +41,7 @@ static void er63311_fhd_read_id(struct mipi_dsim_device *dsim)
 			(unsigned int)MIPI_DCS_NOP, 0);
 
 	if (s5p_mipi_dsi_rd_data(dsim, MIPI_DSI_GENERIC_READ_REQUEST_1_PARAM,
-		0xC1, 3, rx_id, 1) == -1)
+		0xC1, 3, rx_id) == -1)
 		printk(KERN_ERR "Display module: Read ID failed!\n");
 	else
 		printk(KERN_INFO "Display module ID1: %#X\n", rx_id[0]);

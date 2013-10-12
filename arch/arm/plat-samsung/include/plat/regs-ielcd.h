@@ -26,9 +26,18 @@
 
 #define IELCD_WINCON0			(0x0020)
 
+#define IELCD_SHADOWCON			(0x0034)
+
+#define IELCD_VIDOSD0A		(0x0040)
+#define IELCD_VIDOSD0B		(0x0044)
 #define IELCD_VIDOSD0C		(0x0048)
 #define IELCD_VIDW00ADD2		(0x0100)
 
+#define IELCD_TRIGCON		(0x01A4)
+#define IELCD_I80IFCONA0		(0x01B0)
+#define IELCD_I80IFCONA1		(0x01B4)
+#define IELCD_I80IFCONB0		(0x01B8)
+#define IELCD_I80IFCONB1		(0x01BC)
 #define IELCD_AUXCON			(0x0278)
 
 /* Value */
@@ -39,4 +48,9 @@
 #define IELCD_VIDTCON2_LINEVAL_FOR_5410(_x)		((_x) << 12)
 #define IELCD_VIDTCON2_HOZVAL(_x)			((_x) << 0)
 
+/* IELCD_VIDCON0 */
+#define IELCD_SW_SHADOW_UPTRIG		(1 << 14)
+
+/* IELCD_SHADOWCON */
+#define IELCD_W0_SW_SHADOW_UPTRIG	(1 << 16)
 #endif

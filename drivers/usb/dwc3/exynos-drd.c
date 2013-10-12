@@ -80,6 +80,19 @@ static void exynos_drd_ack_evntcount(struct exynos_drd_core *core, u32 val)
 	writel(val, drd->regs + EXYNOS_USB3_GEVNTCOUNT(0));
 }
 
+static int exynos_drd_phy_crport_ctrl(struct exynos_drd_core *core, u32 addr, u32 data)
+{
+	struct exynos_drd *drd = container_of(core, struct exynos_drd, core);
+	struct platform_device *pdev = to_platform_device(drd->dev);
+	struct dwc3_exynos_data *pdata = drd->pdata;
+	int ret = 0;
+
+	if (pdata->phy_crport_ctrl)
+		ret = pdata->phy_crport_ctrl(pdev, addr, data);
+
+	return ret;
+}
+
 static void exynos_drd_events_enable(struct exynos_drd_core *core, int on)
 {
 	struct exynos_drd *drd = container_of(core, struct exynos_drd, core);
@@ -265,10 +278,51 @@ static void exynos_drd_config(struct exynos_drd_core *core)
 		writel(reg, drd->regs + EXYNOS_USB3_GRXTHRCFG);
 	}
 
+	/*
+	 * WORKAROUND: DWC3 revisions 2.10a and earlier have a bug
+	 * The delay of the entry to a low power state such that
+	 * for applications where the link stays in a non-U0 state
+	 * for a short duration(< 1 microsecond),
+	 * the local PHY does not enter the low power state prior
+	 * to receiving a potential LFPS wakeup.
+	 * This causes the PHY CDR (Clock and Data Recovery) operation
+	 * to be unstable for some Synopsys PHYs.
+	 * The proposal now is to change the default and the recommended value
+	 * for GUSB3PIPECTL[21:19] in the RTL from 3'b100 to a minimum of 3'b001
+	 */
+	if (drd->core.release <= 0x210a) {
+		reg = readl(drd->regs + EXYNOS_USB3_GUSB3PIPECTL(0));
+		reg &= ~(EXYNOS_USB3_GUSB3PIPECTLx_delay_p1p2p3_MASK);
+		reg |= EXYNOS_USB3_GUSB3PIPECTLx_delay_p1p2p3(1);
+		writel(reg, drd->regs + EXYNOS_USB3_GUSB3PIPECTL(0));
+	}
+
+	/*
+	 * WORKAROUND: DWC3 revisions 2.10a and earlier have a bug
+	 * Race Condition in PORTSC Write Followed by Read
+	 * If the software quickly does a read to the PORTSC,
+	 * some fields (port status change related fields
+	 * like OCC, etc.) may not have correct value
+	 * due to the current way of handling these bits.
+	 * After clearing the status register (for example, OCC) bit
+	 * by writing PORTSC tregister, software can insert some delay
+	 * (for example, 5 mac2_clk -> UTMI clock = 60 MHz ->
+	 * (16.66 ns x 5 = 84ns)) before reading the PORTSC to check status.
+	 */
+	if (drd->core.release <= 0x210a)
+		__orr32(drd->regs + EXYNOS_USB3_GUSB2PHYCFG(0),
+				EXYNOS_USB3_GUSB2PHYCFGx_PHYIf);
+
 	/* los_bias configuration */
 	if (pdata->phy_crport_ctrl) {
 		pdata->phy_crport_ctrl(pdev, 0x15, 0xA409);
-		pdata->phy_crport_ctrl(pdev, 0x12, 0xA000);
+		if (pdata->quirks & LOW_VBOOST)
+			pdata->phy_crport_ctrl(pdev, 0x12, 0x8000);
+		else
+			pdata->phy_crport_ctrl(pdev, 0x12, 0xA000);
+#ifdef CONFIG_HA_3G
+		pdata->phy_crport_ctrl(pdev, 0x1006, 0xB80); /*rx eq 3*/
+#endif
 	}
 }
 
@@ -337,6 +391,7 @@ static struct exynos_drd_core_ops core_ops = {
 	.events_enable	= exynos_drd_events_enable,
 	.get_evntcount	= exynos_drd_get_evntcount,
 	.ack_evntcount	= exynos_drd_ack_evntcount,
+	.phy_crport_ctrl = exynos_drd_phy_crport_ctrl,
 };
 
 void exynos_drd_put(struct platform_device *child)
@@ -351,6 +406,7 @@ void exynos_drd_put(struct platform_device *child)
 
 	dev_dbg(dev, "DRD released by %s\n", dev_name(&child->dev));
 }
+EXPORT_SYMBOL_GPL(exynos_drd_put);
 
 int exynos_drd_try_get(struct platform_device *child)
 {
@@ -371,6 +427,7 @@ int exynos_drd_try_get(struct platform_device *child)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(exynos_drd_try_get);
 
 struct exynos_drd_core *exynos_drd_bind(struct platform_device *child)
 {
@@ -380,6 +437,7 @@ struct exynos_drd_core *exynos_drd_bind(struct platform_device *child)
 
 	return &drd->core;
 }
+EXPORT_SYMBOL_GPL(exynos_drd_bind);
 
 static int exynos_drd_create_udc(struct exynos_drd *drd)
 {

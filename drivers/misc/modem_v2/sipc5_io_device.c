@@ -90,7 +90,8 @@ static ssize_t show_loopback(struct device *dev,
 	unsigned char *ip = (unsigned char *)&msd->loopback_ipaddr;
 	char *p = buf;
 
-	p += sprintf(buf, "%u.%u.%u.%u\n", ip[0], ip[1], ip[2], ip[3]);
+	p += sprintf(buf, "%u.%u.%u.%u en(%d)\n", ip[0], ip[1], ip[2], ip[3],
+		test_bit(IOD_DEBUG_IPC_LOOPBACK, &dbg_flags));
 
 	return p - buf;
 }
@@ -101,8 +102,18 @@ static ssize_t store_loopback(struct device *dev,
 	struct miscdevice *miscdev = dev_get_drvdata(dev);
 	struct modem_shared *msd =
 		container_of(miscdev, struct io_device, miscdev)->msd;
+	struct io_device *iod = to_io_device(miscdev);
 
 	msd->loopback_ipaddr = ipv4str_to_be32(buf, count);
+	if (msd->loopback_ipaddr)
+		set_bit(IOD_DEBUG_IPC_LOOPBACK, &dbg_flags);
+	else
+		clear_bit(IOD_DEBUG_IPC_LOOPBACK, &dbg_flags);
+
+	mif_info("loopback(%s), en(%d)\n", buf,
+				test_bit(IOD_DEBUG_IPC_LOOPBACK, &dbg_flags));
+	if (msd->loopback_start)
+		msd->loopback_start(iod, msd);
 
 	return count;
 }
@@ -352,18 +363,23 @@ static int sipc5_hdr_data_done(struct io_device *iod, struct sk_buff *skb,
 	return multiframe;
 }
 
+#if 0 /*unused variable warning*/
 static void skb_queue_move(struct sk_buff_head *dst, struct sk_buff_head *src)
 {
 	/*TODO: need spinlock protection? */
 	while (src->qlen)
 		skb_queue_tail(dst, skb_dequeue(src));
 }
+#endif
 
 static int rx_skb_enqueue_iod(struct link_device *ld,
 			struct sipc5_link_hdr *sipc , struct sk_buff *skb)
 {
 	struct io_device *iod; /* real iod */
+/*unused variable warning*/
+#if 0
 	int id;
+#endif
 
 	iod = link_get_iod_with_channel(ld, sipc->ch);
 	if (unlikely(!iod)) {
@@ -691,8 +707,15 @@ static int misc_release(struct inode *inode, struct file *filp)
 	skb_queue_purge(&iod->sk_rx_q);
 
 	list_for_each_entry(ld, &msd->link_dev_list, list) {
-		if (IS_CONNECTED(iod, ld) && ld->terminate_comm)
-			ld->terminate_comm(ld, iod);
+		if (IS_CONNECTED(iod, ld)) {
+			struct header_data *hdr = &fragdata(iod, ld)->h_post;
+			if (hdr->frag_len > 0) {
+				mif_err("fragdata should be cleared.(%d)\n", hdr->frag_len);
+				memset(fragdata(iod, ld), 0x00, sizeof(struct fragmented_data));
+			}
+			if (ld->terminate_comm)
+				ld->terminate_comm(ld, iod);
+		}
 	}
 
 	mif_err("%s (opened %d)\n", iod->name, atomic_read(&iod->opened));

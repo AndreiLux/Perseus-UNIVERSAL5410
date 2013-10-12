@@ -259,7 +259,8 @@ static void sec_pmic_irq_lock(struct irq_data *data)
 static void sec_pmic_irq_sync_unlock(struct irq_data *data)
 {
 	struct sec_pmic_dev *sec_pmic = irq_data_get_irq_chip_data(data);
-	int i, reg_int1m;
+	int i;
+	int reg_int1m = 0;
 
 	switch (sec_pmic->device_type) {
 	case S5M8763X:
@@ -273,6 +274,7 @@ static void sec_pmic_irq_sync_unlock(struct irq_data *data)
 		dev_err(sec_pmic->dev,
 			"Unknown device type %d\n",
 			sec_pmic->device_type);
+		goto exit_func;
 	}
 
 	for (i = 0; i < ARRAY_SIZE(sec_pmic->irq_masks_cur); i++) {
@@ -283,6 +285,7 @@ static void sec_pmic_irq_sync_unlock(struct irq_data *data)
 		}
 	}
 
+exit_func:
 	mutex_unlock(&sec_pmic->irqlock);
 }
 
@@ -332,7 +335,7 @@ static irqreturn_t sec_pmic_irq_thread(int irq, void *data)
 		dev_err(sec_pmic->dev,
 			"Unknown device type %d\n",
 			sec_pmic->device_type);
-		return -EINVAL;
+		return IRQ_NONE;
 	}
 
 	ret = sec_bulk_read(sec_pmic, reg_int1,
@@ -431,7 +434,7 @@ int sec_irq_init(struct sec_pmic_dev *sec_pmic)
 
 	ret = request_threaded_irq(sec_pmic->irq, NULL,
 				   sec_pmic_irq_thread,
-				   IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+				   IRQF_TRIGGER_LOW | IRQF_ONESHOT,
 				   "sec-pmic-irq", sec_pmic);
 	if (ret) {
 		dev_err(sec_pmic->dev, "Failed to request IRQ %d: %d\n",

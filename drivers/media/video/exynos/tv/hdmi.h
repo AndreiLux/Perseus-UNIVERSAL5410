@@ -32,13 +32,6 @@
 
 #define INFOFRAME_CNT          2
 
-/** IP version definitions */
-#define is_ip_ver_5g_1	(pdata->ip_ver == IP_VER_TV_5G_1)
-#define is_ip_ver_5g	is_ip_ver_5g_1
-#define is_ip_ver_5a_0	(pdata->ip_ver == IP_VER_TV_5A_0)
-#define is_ip_ver_5a_1	(pdata->ip_ver == IP_VER_TV_5A_1)
-#define is_ip_ver_5a	(is_ip_ver_5a_0 || is_ip_ver_5a_1)
-
 /* default preset configured on probe */
 #define HDMI_DEFAULT_PRESET	V4L2_DV_720P60
 
@@ -61,7 +54,9 @@
 /* HDMI audio configuration value */
 #define DEFAULT_SAMPLE_RATE	48000
 #define DEFAULT_BITS_PER_SAMPLE	16
-#define DEFAULT_SAMPLE_SIZE	24
+#define AUDIO_CHANNEL_MASK		(0xFF)
+#define AUDIO_BIT_RATE_MASK		(0x7 << 16)
+#define AUDIO_SAMPLE_RATE_MASK	(0x7F << 19)
 
 /* HDMI pad definitions */
 #define HDMI_PAD_SINK		0
@@ -391,12 +386,12 @@ struct hdmiphy_conf {
 extern const struct hdmiphy_conf hdmiphy_conf[];
 extern const int hdmi_pre_cnt;
 extern const int hdmiphy_conf_cnt;
+extern const u8 *hdmiphy_preset2conf(u32 preset);
 extern struct pm_qos_request exynos5_tv_mif_qos;
 
 const struct hdmi_3d_info *hdmi_preset2info(u32 preset);
 
 irqreturn_t hdmi_irq_handler(int irq, void *dev_data);
-const u8 *hdmiphy_preset2conf(u32 preset);
 int hdmi_conf_apply(struct hdmi_device *hdmi_dev);
 int is_hdmiphy_ready(struct hdmi_device *hdev);
 void hdmi_enable(struct hdmi_device *hdev, int on);
@@ -446,7 +441,7 @@ int edid_update(struct hdmi_device *hdev);
 u32 edid_enum_presets(struct hdmi_device *hdev, int index);
 u32 edid_preferred_preset(struct hdmi_device *hdev);
 bool edid_supports_hdmi(struct hdmi_device *hdev);
-int edid_max_audio_channels(struct hdmi_device *hdev);
+u32 edid_audio_informs(struct hdmi_device *hdev);
 
 static inline
 void hdmi_write(struct hdmi_device *hdev, u32 reg_id, u32 value)

@@ -465,6 +465,46 @@ static void fimc_is_group_cancel(struct fimc_is_group *group,
 	framemgr_x_barrier_irqr(ldr_framemgr, 0, flags);
 }
 
+#ifdef DEBUG_AA
+static void fimc_is_group_debug_aa_shot(struct fimc_is_group *group,
+	struct fimc_is_frame *ldr_frame)
+{
+	if (group->prev)
+		return;
+
+#ifdef DEBUG_FLASH
+	if (ldr_frame->shot->ctl.aa.aeflashMode != group->flashmode) {
+		group->flashmode = ldr_frame->shot->ctl.aa.aeflashMode;
+		pr_info("flash ctl : %d(%d)\n", group->flashmode, ldr_frame->fcount);
+	}
+#endif
+}
+
+static void fimc_is_group_debug_aa_done(struct fimc_is_group *group,
+	struct fimc_is_frame *ldr_frame)
+{
+	if (group->prev)
+		return;
+
+#ifdef DEBUG_FLASH
+	if (ldr_frame->shot->dm.flash.firingStable != group->flash.firingStable) {
+		group->flash.firingStable = ldr_frame->shot->dm.flash.firingStable;
+		pr_info("flash stable : %d(%d)\n", group->flash.firingStable, ldr_frame->fcount);
+	}
+
+	if (ldr_frame->shot->dm.flash.flashReady!= group->flash.flashReady) {
+		group->flash.flashReady = ldr_frame->shot->dm.flash.flashReady;
+		pr_info("flash ready : %d(%d)\n", group->flash.flashReady, ldr_frame->fcount);
+	}
+
+	if (ldr_frame->shot->dm.flash.flashOffReady!= group->flash.flashOffReady) {
+		group->flash.flashOffReady = ldr_frame->shot->dm.flash.flashOffReady;
+		pr_info("flash off : %d(%d)\n", group->flash.flashOffReady, ldr_frame->fcount);
+	}
+#endif
+}
+#endif
+
 static void fimc_is_group_start_trigger(struct fimc_is_groupmgr *groupmgr,
 	struct fimc_is_group *group,
 	struct fimc_is_frame *frame)
@@ -1155,42 +1195,42 @@ int fimc_is_group_buffer_queue(struct fimc_is_groupmgr *groupmgr,
 
 	if (frame->state == FIMC_IS_FRAME_STATE_FREE) {
 		if (frame->req_flag) {
-			err("req_flag of buffer%d is not clear(%08X)",
-				frame->index, (u32)frame->req_flag);
+			merr("req_flag of buffer%d is not clear(%08X)",
+				group, frame->index, (u32)frame->req_flag);
 			frame->req_flag = 0;
 		}
 
 		if (test_bit(OUT_SCC_FRAME, &frame->out_flag)) {
-			err("scc output is not generated");
+			merr("scc output is not generated", group);
 			clear_bit(OUT_SCC_FRAME, &frame->out_flag);
 		}
 
 		if (test_bit(OUT_DIS_FRAME, &frame->out_flag)) {
-			err("dis output is not generated");
+			merr("dis output is not generated", group);
 			clear_bit(OUT_DIS_FRAME, &frame->out_flag);
 		}
 
 		if (test_bit(OUT_SCP_FRAME, &frame->out_flag)) {
-			err("scp output is not generated");
+			merr("scp output is not generated", group);
 			clear_bit(OUT_SCP_FRAME, &frame->out_flag);
 		}
 
 		if (scc_queue && frame->shot_ext->request_scc &&
 			!test_bit(FIMC_IS_QUEUE_STREAM_ON, &scc_queue->state)) {
 			frame->shot_ext->request_scc = 0;
-			err("scc %d frame is drop2", frame->fcount);
+			merr("scc %d frame is drop2", group, frame->fcount);
 		}
 
 		if (dis_queue && frame->shot_ext->request_dis &&
 			!test_bit(FIMC_IS_QUEUE_STREAM_ON, &dis_queue->state)) {
 			frame->shot_ext->request_dis = 0;
-			err("dis %d frame is drop2", frame->fcount);
+			merr("dis %d frame is drop2", group, frame->fcount);
 		}
 
 		if (scp_queue && frame->shot_ext->request_scp &&
 			!test_bit(FIMC_IS_QUEUE_STREAM_ON, &scp_queue->state)) {
 			frame->shot_ext->request_scp = 0;
-			err("scp %d frame is drop2", frame->fcount);
+			merr("scp %d frame is drop2", group, frame->fcount);
 		}
 
 		frame->fcount = frame->shot->dm.request.frameCount;
@@ -1273,7 +1313,7 @@ int fimc_is_group_buffer_finish(struct fimc_is_groupmgr *groupmgr,
 #ifdef MEASURE_TIME
 #ifdef INTERNAL_TIME
 	do_gettimeofday(&frame->time_dequeued);
-	measure_internal_time(&group->time,
+	measure_time(&group->time,
 		&frame->time_queued, &frame->time_shot,
 		&frame->time_shotdone, &frame->time_dequeued);
 #endif
@@ -1291,12 +1331,12 @@ int fimc_is_group_start(struct fimc_is_groupmgr *groupmgr,
 	struct fimc_is_group *group_next, *group_prev;
 	struct fimc_is_group_framemgr *gframemgr;
 	struct fimc_is_group_frame *gframe;
-	struct timeval curtime;
+	struct timespec curtime;
 	int async_step = 0;
 	bool try_sdown = false;
 	bool try_rdown = false;
 
-	do_gettimeofday(&curtime);
+	do_posix_clock_monotonic_gettime(&curtime);
 
 	BUG_ON(!groupmgr);
 	BUG_ON(!group);
@@ -1373,7 +1413,7 @@ int fimc_is_group_start(struct fimc_is_groupmgr *groupmgr,
 		atomic_set(&group->backup_fcount, ldr_frame->fcount);
 		ldr_frame->shot->dm.request.frameCount = ldr_frame->fcount;
 		ldr_frame->shot->dm.sensor.timeStamp =
-			(uint64_t)curtime.tv_sec * 1000000 + curtime.tv_usec;
+			(uint64_t)curtime.tv_sec * 1000000000 + curtime.tv_nsec;
 
 		/* real automatic increase */
 		if (async_step &&
@@ -1517,11 +1557,15 @@ int fimc_is_group_start(struct fimc_is_groupmgr *groupmgr,
 		goto p_err;
 	}
 
+#ifdef DEBUG_AA
+	fimc_is_group_debug_aa_shot(group, ldr_frame);
+#endif
+
 	ret = group->start_callback(group->device, ldr_frame);
 	if (ret) {
 		merr("start_callback is fail", group);
 		fimc_is_group_cancel(group, ldr_frame);
-		fimc_is_group_done(groupmgr, group);
+		fimc_is_group_done(groupmgr, group, ldr_frame);
 	} else {
 		atomic_inc(&group->scount);
 	}
@@ -1541,13 +1585,15 @@ p_err:
 }
 
 int fimc_is_group_done(struct fimc_is_groupmgr *groupmgr,
-	struct fimc_is_group *group)
+	struct fimc_is_group *group,
+	struct fimc_is_frame *ldr_frame)
 {
 	int ret = 0;
 	u32 resources;
 
 	BUG_ON(!groupmgr);
 	BUG_ON(!group);
+	BUG_ON(!ldr_frame);
 	BUG_ON(group->instance >= FIMC_IS_MAX_NODES);
 	BUG_ON(group->id >= GROUP_ID_MAX);
 
@@ -1576,6 +1622,10 @@ int fimc_is_group_done(struct fimc_is_groupmgr *groupmgr,
 			group->async_shots, group->sync_shots);
 		sema_init(&groupmgr->group_smp_res[group->id], resources - 1);
 	}
+
+#ifdef DEBUG_AA
+	fimc_is_group_debug_aa_done(group, ldr_frame);
+#endif
 
 	clear_bit(FIMC_IS_GROUP_RUN, &group->state);
 	atomic_inc(&group->smp_shot_count);

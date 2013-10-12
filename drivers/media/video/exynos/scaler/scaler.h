@@ -42,11 +42,11 @@ extern int sc_log_level;
 
 #define MODULE_NAME		"exynos5-scaler"
 #define SC_MAX_DEVS		1
-#define SC_MAX_PBUF		2
 #define SC_TIMEOUT		(2 * HZ)	/* 2 seconds */
 #define SC_WDT_CNT		3
 #define SC_MAX_CTRL_NUM		11
 
+#define SC_MAX_PLANES		3
 /* Address index */
 #define SC_ADDR_RGB		0
 #define SC_ADDR_Y		0
@@ -59,14 +59,17 @@ extern int sc_log_level;
 #define SC_HFLIP	(1 << 2)
 
 /* Scaler hardware device state */
-#define DEV_RUN		(1 << 0)
-#define DEV_SUSPEND	(1 << 1)
+#define DEV_RUN		1
+#define DEV_SUSPEND	2
 
 /* Scaler m2m context state */
-#define CTX_PARAMS	(1 << 0)
-#define CTX_STREAMING	(1 << 1)
-#define CTX_RUN		(1 << 2)
-#define CTX_ABORT	(1 << 3)
+#define CTX_PARAMS	1
+#define CTX_STREAMING	2
+#define CTX_RUN		3
+#define CTX_ABORT	4
+#define CTX_SRC_FMT	5
+#define CTX_DST_FMT	6
+#define CTX_INT_FRAME	7 /* intermediate frame available */
 
 /* CSC equation */
 #define SC_CSC_NARROW	0
@@ -76,9 +79,20 @@ extern int sc_log_level;
 
 #define fh_to_sc_ctx(__fh)	container_of(__fh, struct sc_ctx, fh)
 #define sc_fmt_is_rgb(x)	(!!((x) & 0x10))
+#define sc_fmt_is_yuv422(x)	((x == V4L2_PIX_FMT_YUYV) || \
+		(x == V4L2_PIX_FMT_UYVY) || (x == V4L2_PIX_FMT_YVYU) || \
+		(x == V4L2_PIX_FMT_YUV422P) || (x == V4L2_PIX_FMT_NV16) || \
+		(x == V4L2_PIX_FMT_NV61))
+#define sc_fmt_is_yuv420(x)	((x == V4L2_PIX_FMT_YUV420) || \
+		(x == V4L2_PIX_FMT_YVU420) || (x == V4L2_PIX_FMT_NV12) || \
+		(x == V4L2_PIX_FMT_NV21) || (x == V4L2_PIX_FMT_NV12M) || \
+		(x == V4L2_PIX_FMT_NV21M) || (x == V4L2_PIX_FMT_YUV420M) || \
+		(x == V4L2_PIX_FMT_YVU420M) || (x == V4L2_PIX_FMT_NV12MT_16X16))
+#define sc_fmt_is_ayv12(x)	((x) == V4L2_PIX_FMT_YVU420)
 #define sc_dith_val(a, b, c)	((a << SCALER_DITH_R_SHIFT) |	\
-				(b << SCALER_DITH_G_SHIFT) |	\
-				(c << SCALER_DITH_B_SHIFT))
+		(b << SCALER_DITH_G_SHIFT) | (c << SCALER_DITH_B_SHIFT))
+#define sc_ver_is_5a(sc)	(sc->ver == 0x3)
+#define sc_num_pbuf(sc)		(sc_ver_is_5a(sc) ? 2 : 3)
 
 #if defined(CONFIG_VIDEOBUF2_CMA_PHYS)
 extern const struct sc_vb2 sc_vb2_cma;
@@ -193,23 +207,28 @@ struct sc_bl_op_val {
 /*
  * struct sc_size_limit - Scaler variant size information
  *
- * @min_x: minimum pixel x size
- * @min_y: minimum pixel y size
- * @max_x: maximum pixel x size
- * @max_y: maximum pixel y size
- * @align: pixel align
+ * @min_w: minimum pixel width size
+ * @min_h: minimum pixel height size
+ * @max_w: maximum pixel width size
+ * @max_h: maximum pixel height size
+ * @align_w: pixel width align
+ * @align_h: pixel height align
  */
 struct sc_size_limit {
-	u32 min_x;
-	u32 min_y;
-	u32 max_x;
-	u32 max_y;
-	u32 align;
+	u32 min_w;
+	u32 min_h;
+	u32 max_w;
+	u32 max_h;
+	u32 align_w;
+	u32 align_h;
 };
 
 struct sc_variant {
 	struct sc_size_limit limit_input;
 	struct sc_size_limit limit_output;
+	int sc_up_max;
+	int sc_down_min;
+	int sc_down_swmin;
 };
 
 /*
@@ -218,21 +237,29 @@ struct sc_variant {
  * @pixelformat: the fourcc code for this format, 0 if not applicable
  * @num_planes: number of physically non-contiguous data planes
  * @num_comp: number of color components(ex. RGB, Y, Cb, Cr)
+ * @h_div: horizontal division value of C against Y for crop
+ * @v_div: vertical division value of C against Y for crop
  * @bitperpixel: bits per pixel
  * @color: the corresponding sc_color_fmt
  */
 struct sc_fmt {
 	char	*name;
 	u32	pixelformat;
-	u16	num_planes;
-	u16	num_comp;
-	u32	bitperpixel[VIDEO_MAX_PLANES];
+	u8	num_planes;
+	u8	num_comp;
+	u8	h_shift;
+	u8	v_shift;
+	u32	bitperpixel[SC_MAX_PLANES];
 	u32	color;
 };
 
 struct sc_addr {
 	dma_addr_t	y;
-	dma_addr_t	c;
+	dma_addr_t	cb;
+	dma_addr_t	cr;
+	unsigned int	ysize;
+	unsigned int	cbsize;
+	unsigned int	crsize;
 };
 
 /*
@@ -244,10 +271,22 @@ struct sc_addr {
  */
 struct sc_frame {
 	struct sc_fmt			*sc_fmt;
-	struct v4l2_pix_format_mplane	pix_mp;
-	struct v4l2_rect		crop;
+	unsigned short		width;
+	unsigned short		height;
+	__u32			pixelformat;
+	struct v4l2_rect	crop;
+
 	struct sc_addr			addr;
-	unsigned long			bytesused[VIDEO_MAX_PLANES];
+	unsigned long			bytesused[SC_MAX_PLANES];
+};
+
+struct sc_int_frame {
+	struct sc_frame			frame;
+	void				*cookie;
+	struct ion_client		*client;
+	struct ion_handle		*handle[3];
+	struct sc_addr			src_addr;
+	struct sc_addr			dst_addr;
 };
 
 /*
@@ -301,7 +340,7 @@ struct sc_vb2;
 struct sc_dev {
 	struct device			*dev;
 	struct exynos_platform_sc	*pdata;
-	struct exynos_sc_variant	*variant;
+	struct sc_variant		*variant;
 	struct sc_m2m_device		m2m;
 	int				id;
 	int				ver;
@@ -317,6 +356,10 @@ struct sc_dev {
 	struct mutex			lock;
 	struct sc_wdt			wdt;
 	atomic_t			clk_cnt;
+	void				*clk_private;
+	void *(*setup_clocks)(void);
+	bool (*init_clocks)(void *p);
+	void (*clean_clocks)(void *p);
 };
 
 /*
@@ -345,6 +388,7 @@ struct sc_ctx {
 	struct sc_dev			*sc_dev;
 	struct v4l2_m2m_ctx		*m2m_ctx;
 	struct sc_frame			s_frame;
+	struct sc_int_frame		*i_frame;
 	struct sc_frame			d_frame;
 	struct v4l2_ctrl_handler	ctrl_handler;
 	struct v4l2_fh			fh;
@@ -409,7 +453,8 @@ void sc_hwset_csc_coef(struct sc_dev *sc, enum sc_csc_idx idx,
 void sc_hwset_flip_rotation(struct sc_dev *sc, u32 direction, int degree);
 void sc_hwset_src_imgsize(struct sc_dev *sc, struct sc_frame *frame);
 void sc_hwset_dst_imgsize(struct sc_dev *sc, struct sc_frame *frame);
-void sc_hwset_src_crop(struct sc_dev *sc, struct v4l2_rect *rect);
+void sc_hwset_src_crop(struct sc_dev *sc, struct v4l2_rect *rect,
+		       struct sc_fmt *fmt);
 void sc_hwset_dst_crop(struct sc_dev *sc, struct v4l2_rect *rect);
 void sc_hwset_src_addr(struct sc_dev *sc, struct sc_addr *addr);
 void sc_hwset_dst_addr(struct sc_dev *sc, struct sc_addr *addr);
@@ -419,8 +464,28 @@ void sc_hwset_hratio(struct sc_dev *sc, u32 ratio);
 void sc_hwset_hcoef(struct sc_dev *sc, int coef);
 void sc_hwset_vcoef(struct sc_dev *sc, int coef);
 void sc_hwset_int_en(struct sc_dev *sc, u32 enable);
+int sc_hwget_int_status(struct sc_dev *sc);
 void sc_hwset_int_clear(struct sc_dev *sc);
 int sc_hwget_version(struct sc_dev *sc);
 void sc_hwset_soft_reset(struct sc_dev *sc);
 void sc_hwset_start(struct sc_dev *sc);
+
+#ifdef CONFIG_VIDEOBUF2_ION
+static inline int sc_get_dma_address(void *cookie, dma_addr_t *addr)
+{
+	return vb2_ion_dma_address(cookie, addr);
+}
+
+#define sc_get_kernel_address vb2_ion_private_vaddr
+#else
+static inline int sc_get_dma_address(void *cookie, dma_addr_t *addr)
+{
+	return -ENOSYS;
+}
+
+static inline void *sc_get_kernel_address(void *cookie)
+{
+	return NULL;
+}
+#endif
 #endif /* SCALER__H_ */

@@ -46,12 +46,8 @@
 #define LP8556_I2C_CONFIG	((ENABLE_BL << BL_CTL_SHFT) | \
 				(LP8556_I2C_ONLY << BRT_MODE_SHFT))
 #define LP8556_COMB2_CONFIG	(LP8556_COMBINED2 << BRT_MODE_SHFT)
-
-/* ROM area boundary */
-#define EEPROM_START	(0xA0)
-#define EEPROM_END	(0xA7)
-#define EPROM_START	(0xA0)
-#define EPROM_END	(0xAF)
+#define LP8556_FAST_CONFIG	BIT(7) /* use it if EPROMs should be maintained
+					  when exiting the low power mode */
 
 enum lp855x_chip_id {
 	LP8550,
@@ -59,11 +55,6 @@ enum lp855x_chip_id {
 	LP8552,
 	LP8553,
 	LP8556,
-};
-
-enum lp855x_brightness_ctrl_mode {
-	PWM_BASED = 1,
-	REGISTER_BASED,
 };
 
 enum lp8550_brighntess_source {
@@ -93,11 +84,6 @@ enum lp8556_brightness_source {
 	LP8556_COMBINED2,	/* pwm + i2c after the shaper block */
 };
 
-struct lp855x_pwm_data {
-	void (*pwm_set_intensity) (int brightness, int max_brightness);
-	int (*pwm_get_intensity) (int max_brightness);
-};
-
 struct lp855x_rom_data {
 	u8 addr;
 	u8 val;
@@ -109,7 +95,7 @@ struct lp855x_rom_data {
  * @mode : brightness control by pwm or lp855x register
  * @device_control : value of DEVICE CONTROL register
  * @initial_brightness : initial value of backlight brightness
- * @pwm_data : platform specific pwm generation functions.
+ * @period_ns : platform specific pwm period value. unit is nano.
 		Only valid when mode is PWM_BASED.
  * @load_new_rom_data :
 	0 : use default configuration data
@@ -119,13 +105,19 @@ struct lp855x_rom_data {
  */
 struct lp855x_platform_data {
 	char *name;
-	enum lp855x_brightness_ctrl_mode mode;
 	u8 device_control;
 	int initial_brightness;
-	struct lp855x_pwm_data pwm_data;
+	int lth_brightness;
+	int uth_brightness;
+	int min_brightness;
+	int max_brightness;
+	int pwm_id;
+	unsigned int period_ns;
 	u8 load_new_rom_data;
 	int size_program;
 	struct lp855x_rom_data *rom_data;
+	int (*set_power)(int power);
+	int (*post_init_device)(struct device *dev);
 };
 
 #endif

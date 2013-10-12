@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_android.c 406708 2013-06-10 09:50:18Z $
+ * $Id: wl_android.c 397122 2013-04-17 08:59:13Z $
  */
 
 #include <linux/module.h>
@@ -81,7 +81,6 @@
 #define CMD_P2P_SET_PS		"P2P_SET_PS"
 #define CMD_SET_AP_WPS_P2P_IE 		"SET_AP_WPS_P2P_IE"
 #define CMD_SETROAMMODE		"SETROAMMODE"
-#define CMD_SETIBSSBEACONOUIDATA	"SETIBSSBEACONOUIDATA"
 
 #ifdef CUSTOMER_HW4
 #ifdef SUPPORT_AUTO_CHANNEL
@@ -102,9 +101,6 @@
 #ifdef SUPPORT_TRIGGER_HANG_EVENT
 #define CMD_TEST_FORCE_HANG		"TEST_FORCE_HANG"
 #endif /* SUPPORT_TRIGGER_HANG_EVENT */
-#ifdef SUPPORT_LTECX
-#define CMD_LTECX_SET		"LTECOEX"
-#endif /* SUPPORT_LTECX */
 #endif /* CUSTOMER_HW4 */
 
 /* CCX Private Commands */
@@ -294,11 +290,11 @@ extern int set_roamscan_channel_list(struct net_device *dev, unsigned char n,
 	unsigned char channels[], int ioctl_ver);
 #endif
 
-#ifdef ENABLE_4335BT_WAR
-extern int bcm_bt_lock(int cookie);
-extern void bcm_bt_unlock(int cookie);
-static int lock_cookie_wifi = 'W' | 'i'<<8 | 'F'<<16 | 'i'<<24;	/* cookie is "WiFi" */
-#endif /* ENABLE_4335BT_WAR */
+//#ifdef ENABLE_4335BT_WAR
+//extern int bcm_bt_lock(int cookie);
+//extern void bcm_bt_unlock(int cookie);
+//static int lock_cookie_wifi = 'W' | 'i'<<8 | 'F'<<16 | 'i'<<24;	/* cookie is "WiFi" */
+//#endif /* ENABLE_4335BT_WAR */
 
 extern bool ap_fw_loaded;
 #if defined(CUSTOMER_HW2) || defined(CUSTOMER_HW4)
@@ -1622,46 +1618,6 @@ wl_android_ch_res_rl(struct net_device *dev, bool change)
 	}
 	return error;
 }
-
-#ifdef SUPPORT_LTECX
-#define DEFAULT_WLANRX_PROT	1
-#define DEFAULT_LTERX_PROT	0
-#define DEFAULT_LTETX_ADV	1200
-
-static int
-wl_android_set_ltecx(struct net_device *dev, const char* string_num)
-{
-	uint16 chan_bitmap;
-	int ret;
-
-	chan_bitmap = bcm_strtoul(string_num, NULL, 16);
-
-	DHD_INFO(("%s : LTECOEX 0x%x\n", __FUNCTION__, chan_bitmap));
-
-	if (chan_bitmap) {
-		ret = wldev_iovar_setint(dev, "mws_coex_bitmap", chan_bitmap);
-		if (ret < 0)
-			DHD_ERROR(("mws_coex_bitmap error %d\n", ret));
-
-		ret = wldev_iovar_setint(dev, "mws_wlanrx_prot", DEFAULT_WLANRX_PROT);
-		if (ret < 0)
-			DHD_ERROR(("mws_wlanrx_prot error %d\n", ret));
-
-		ret = wldev_iovar_setint(dev, "mws_lterx_prot", DEFAULT_LTERX_PROT);
-		if (ret < 0)
-			DHD_ERROR(("mws_lterx_prot error %d\n", ret));
-
-		ret = wldev_iovar_setint(dev, "mws_ltetx_adv", DEFAULT_LTETX_ADV);
-		if (ret < 0)
-			DHD_ERROR(("mws_ltetx_adv error %d\n", ret));
-	} else {
-		ret = wldev_iovar_setint(dev, "mws_coex_bitmap", chan_bitmap);
-		if (ret < 0)
-			DHD_ERROR(("LTECX_CHAN_BITMAP error %d\n", ret));
-	}
-	return 1;
-}
-#endif /* SUPPORT_LTECX */
 #endif /* CUSTOMER_HW4 */
 
 int wl_android_set_roam_mode(struct net_device *dev, char *command, int total_len)
@@ -1684,68 +1640,6 @@ int wl_android_set_roam_mode(struct net_device *dev, char *command, int total_le
 		DHD_ERROR(("%s: succeeded to set roaming Mode %d, error = %d\n",
 		__FUNCTION__, mode, error));
 	return 0;
-}
-
-int wl_android_set_ibss_beacon_ouidata(struct net_device *dev, char *command, int total_len)
-{
-	char ie_buf[VNDR_IE_MAX_LEN];
-	char smbuf[WLC_IOCTL_SMLEN];
-	char hex[] = "XX";
-	char *pcmd = NULL;
-	int ielen = 0, datalen = 0, idx = 0, tot_len = 0;
-	vndr_ie_setbuf_t *vndr_ie = NULL;
-	s32 iecount;
-	uint32 pktflag;
-	u16 kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
-	s32 err = BCME_OK;
-
-	pcmd = command + strlen(CMD_SETIBSSBEACONOUIDATA) + 1;
-	for (idx = 0; idx < DOT11_OUI_LEN; idx++) {
-		hex[0] = *pcmd++;
-		hex[1] = *pcmd++;
-		ie_buf[idx] =  (uint8)simple_strtoul(hex, NULL, 16);
-	}
-	pcmd++;
-	while ((*pcmd != '\0') && (idx < VNDR_IE_MAX_LEN)) {
-		hex[0] = *pcmd++;
-		hex[1] = *pcmd++;
-		ie_buf[idx++] =  (uint8)simple_strtoul(hex, NULL, 16);
-		datalen++;
-	}
-	tot_len = sizeof(vndr_ie_setbuf_t) + (datalen - 1);
-	vndr_ie = (vndr_ie_setbuf_t *) kzalloc(tot_len, kflags);
-	if (!vndr_ie) {
-		WL_ERR(("IE memory alloc failed\n"));
-		return -ENOMEM;
-	}
-	/* Copy the vndr_ie SET command ("add"/"del") to the buffer */
-	strncpy(vndr_ie->cmd, "add", VNDR_IE_CMD_LEN - 1);
-	vndr_ie->cmd[VNDR_IE_CMD_LEN - 1] = '\0';
-
-	/* Set the IE count - the buffer contains only 1 IE */
-	iecount = htod32(1);
-	memcpy((void *)&vndr_ie->vndr_ie_buffer.iecount, &iecount, sizeof(s32));
-
-	/* Set packet flag to indicate that BEACON's will contain this IE */
-	pktflag = htod32(VNDR_IE_BEACON_FLAG | VNDR_IE_PRBRSP_FLAG);
-	memcpy((void *)&vndr_ie->vndr_ie_buffer.vndr_ie_list[0].pktflag, &pktflag,
-		sizeof(u32));
-	/* Set the IE ID */
-	vndr_ie->vndr_ie_buffer.vndr_ie_list[0].vndr_ie_data.id = (uchar) DOT11_MNG_PROPR_ID;
-
-	memcpy(&vndr_ie->vndr_ie_buffer.vndr_ie_list[0].vndr_ie_data.oui, &ie_buf,
-		DOT11_OUI_LEN);
-	memcpy(&vndr_ie->vndr_ie_buffer.vndr_ie_list[0].vndr_ie_data.data,
-		&ie_buf[DOT11_OUI_LEN], datalen);
-
-	ielen = DOT11_OUI_LEN + datalen;
-	vndr_ie->vndr_ie_buffer.vndr_ie_list[0].vndr_ie_data.len = (uchar) ielen;
-	err = wldev_iovar_setbuf(dev, "ie", vndr_ie, tot_len, smbuf, WLC_IOCTL_SMLEN, NULL);
-	if (err != BCME_OK)
-		err = -EINVAL;
-	if (vndr_ie)
-		kfree(vndr_ie);
-	return err;
 }
 
 int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
@@ -2114,19 +2008,9 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		bytes_written = wl_android_ch_res_rl(net, true);
 	else if (strnicmp(command, CMD_RESTORE_RL, strlen(CMD_RESTORE_RL)) == 0)
 		bytes_written = wl_android_ch_res_rl(net, false);
-#ifdef SUPPORT_LTECX
-	else if (strnicmp(command, CMD_LTECX_SET, strlen(CMD_LTECX_SET)) == 0) {
-		int skip = strlen(CMD_LTECX_SET) + 1;
-		bytes_written = wl_android_set_ltecx(net, (const char*)command+skip);
-	}
-#endif /* SUPPORT_LTECX */
 #endif /* CUSTOMER_HW4 */
 	else if (strnicmp(command, CMD_SETROAMMODE, strlen(CMD_SETROAMMODE)) == 0)
 		bytes_written = wl_android_set_roam_mode(net, command, priv_cmd.total_len);
-	else if (strnicmp(command, CMD_SETIBSSBEACONOUIDATA,
-		strlen(CMD_SETIBSSBEACONOUIDATA)) == 0)
-		bytes_written = wl_android_set_ibss_beacon_ouidata(net, command,
-			priv_cmd.total_len);
 	else {
 		DHD_ERROR(("Unknown PRIVATE command %s - ignored\n", command));
 		snprintf(command, 3, "OK");
@@ -2195,10 +2079,10 @@ int wl_android_exit(void)
 
 void wl_android_post_init(void)
 {
-#ifdef ENABLE_4335BT_WAR
-	bcm_bt_unlock(lock_cookie_wifi);
-	printk("%s: btlock released\n", __FUNCTION__);
-#endif /* ENABLE_4335BT_WAR */
+//#ifdef ENABLE_4335BT_WAR
+//	bcm_bt_unlock(lock_cookie_wifi);
+//	printk("%s: btlock released\n", __FUNCTION__);
+//#endif /* ENABLE_4335BT_WAR */
 
 	if (!dhd_download_fw_on_driverload) {
 		/* Call customer gpio to turn off power with WL_REG_ON signal */
@@ -2513,18 +2397,18 @@ int wifi_set_power(int on, unsigned long msec)
 	int ret = 0;
 	DHD_ERROR(("%s = %d\n", __FUNCTION__, on));
 	if (wifi_control_data && wifi_control_data->set_power) {
-#ifdef ENABLE_4335BT_WAR
-		if (on) {
-			printk("WiFi: trying to acquire BT lock\n");
-			if (bcm_bt_lock(lock_cookie_wifi) != 0)
-				printk("** WiFi: timeout in acquiring bt lock**\n");
-			printk("%s: btlock acquired\n", __FUNCTION__);
-		}
-		else {
-			/* For a exceptional case, release btlock */
-			bcm_bt_unlock(lock_cookie_wifi);
-		}
-#endif /* ENABLE_4335BT_WAR */
+//#ifdef ENABLE_4335BT_WAR
+//		if (on) {
+//			printk("WiFi: trying to acquire BT lock\n");
+//			if (bcm_bt_lock(lock_cookie_wifi) != 0)
+//				printk("** WiFi: timeout in acquiring bt lock**\n");
+//			printk("%s: btlock acquired\n", __FUNCTION__);
+//		}
+//		else {
+//			/* For a exceptional case, release btlock */
+//			bcm_bt_unlock(lock_cookie_wifi);
+//		}
+//#endif /* ENABLE_4335BT_WAR */
 		ret = wifi_control_data->set_power(on);
 	}
 

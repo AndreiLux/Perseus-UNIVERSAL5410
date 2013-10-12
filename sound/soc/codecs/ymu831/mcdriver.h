@@ -1,12 +1,12 @@
 /****************************************************************************
  *
- *	Copyright(c) 2012 Yamaha Corporation. All rights reserved.
+ *	Copyright(c) 2012-2013 Yamaha Corporation. All rights reserved.
  *
  *	Module		: mcdriver.h
  *
  *	Description	: MC Driver header
  *
- *	Version		: 1.0.2	2012.12.27
+ *	Version		: 2.0.0	2013.04.09
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.	In no event will the authors be held liable for any damages
@@ -97,6 +97,8 @@ SINT32	McDrv_Ctrl(UINT32 dCmd, void *pvPrm1, void *pvPrm2, UINT32 dPrm);
 #define	MCDRV_CKSEL_TCXO_TCXO		(0x03)
 #define	MCDRV_CKSEL_CMOS_TCXO		(0x02)
 #define	MCDRV_CKSEL_TCXO_CMOS		(0x01)
+#define	MCDRV_CKSEL_CMOS		(0x00)
+#define	MCDRV_CKSEL_TCXO		(0x01)
 
 /*	MCDRV_INIT_INFO bCkInput setting	*/
 #define	MCDRV_CKINPUT_CLKI0_CLKI1	(0x04)
@@ -766,6 +768,8 @@ struct MCDRV_SWAP_INFO {
 #define	MCDRV_DSP_PARAM_CDSP_OUTPOS		(0x00000002UL)
 #define	MCDRV_DSP_PARAM_CDSP_DFIFO_REMAIN	(0x00000003UL)
 #define	MCDRV_DSP_PARAM_CDSP_RFIFO_REMAIN	(0x00000004UL)
+#define	MCDRV_DSP_PARAM_CDSP_FUNCA		(0x00000005UL)
+#define	MCDRV_DSP_PARAM_CDSP_FUNCB		(0x00000006UL)
 #define	MCDRV_DSP_PARAM_FDSP_DXRAM		(0x10000001UL)
 #define	MCDRV_DSP_PARAM_FDSP_DYRAM		(0x10000002UL)
 #define	MCDRV_DSP_PARAM_FDSP_IRAM		(0x10000003UL)

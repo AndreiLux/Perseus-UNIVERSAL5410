@@ -66,6 +66,7 @@ void s5p_mipi_dsi_force_dphy_stop_state(struct mipi_dsim_device *dsim,
 		unsigned int enable);
 void s5p_mipi_dsi_force_bta(struct mipi_dsim_device *dsim);
 unsigned int s5p_mipi_dsi_is_lane_state(struct mipi_dsim_device *dsim);
+unsigned int s5p_mipi_dsi_is_hs_state(struct mipi_dsim_device *dsim);
 void s5p_mipi_dsi_set_stop_state_counter(struct mipi_dsim_device *dsim,
 		unsigned int cnt_val);
 void s5p_mipi_dsi_set_bta_timeout(struct mipi_dsim_device *dsim,
@@ -108,4 +109,11 @@ void s5p_mipi_dsi_set_timing_register1(struct mipi_dsim_device *dsim,
 void s5p_mipi_dsi_set_timing_register2(struct mipi_dsim_device *dsim,
 	unsigned int m_thsprprctl, unsigned int m_thszeroctl,
 	unsigned int m_thstrailctl);
+void s5p_mipi_dsi_clear_ulps_clk_data(struct mipi_dsim_device *dsim);
+void s5p_mipi_dsi_enable_ulps_clk_data(struct mipi_dsim_device *dsim,
+	unsigned int enable);
+unsigned int s5p_mipi_dsi_is_ulps_lane_state(struct mipi_dsim_device *dsim,
+	unsigned int enable);
+void s5p_mipi_dsi_enable_main_standby(struct mipi_dsim_device *dsim,
+	unsigned int enable);
 #endif /* _S5P_MIPI_DSI_LOWLEVEL_H */

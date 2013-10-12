@@ -62,7 +62,7 @@
 
 #define HIDIIC_VERSION V095
 
-#ifdef CONFIG_MACH_V1
+#if defined(CONFIG_EPEN_WACOM_G10PM) || defined(CONFIG_EPEN_WACOM_G9PLL)
 #define START_ADDR	0x2000
 #define MAX_ADDR	0xfbff
 #define BLOCK_NUM 62
@@ -73,6 +73,7 @@
 #endif
 
 #define MPU_W9007 0x2A
+#define MPU_W9010 0x2C
 #define FLASH_BLOCK_SIZE	64
 
 #define ASCINT_ON		0x0
@@ -504,7 +505,5 @@ struct flash{
 	unsigned long size;
 	unsigned char *data;
 };
-
-extern int wacom_i2c_flash(struct wacom_i2c *wac_i2c);
 
 #endif /*_WACOM_I2C_FLASH_H*/

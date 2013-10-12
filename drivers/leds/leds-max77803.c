@@ -137,6 +137,14 @@ static void led_set(struct max77803_led_data *led_data)
 	u8 shift = led_current_shift[id];
 	int value;
 
+#if defined(CONFIG_V1A) || defined(CONFIG_N1A)
+	/* It is for Flash Control by UART, Max77888 have internal FET structure limitation */
+	/* change MUIC Control3 to 'JIG pin Hi-Impedance' */
+	ret = max77803_muic_set_jigset(0x03);
+	if (unlikely(ret))
+		pr_err("[LED] %s : MUIC 0x0E write failed 0x03 \n", __func__);
+#endif
+
 	if (led_data->test_brightness == LED_OFF) {
 		value = max77803_led_get_en_value(led_data, 0);
 		ret = max77803_set_bits(led_data->i2c,
@@ -151,9 +159,7 @@ static void led_set(struct max77803_led_data *led_data)
 					led_data->brightness << shift);
 		if (unlikely(ret))
 			goto error_set_bits;
-
-		return;
-	}
+	} else {
 
 	/* Set current */
 	ret = max77803_set_bits(led_data->i2c, reg_led_current[id],
@@ -167,14 +173,26 @@ static void led_set(struct max77803_led_data *led_data)
 	ret = max77803_set_bits(led_data->i2c, MAX77803_LED_REG_FLASH_EN,
 				led_en_mask[id],
 				value << led_en_shift[id]);
-
 	if (unlikely(ret))
 		goto error_set_bits;
-
+	}
+#if defined(CONFIG_V1A) || defined(CONFIG_N1A)
+	/* change MUIC Control3 to 'Auto Detection' */
+	ret = max77803_muic_set_jigset(0x00);
+	if (unlikely(ret))
+		pr_err("[LED] %s : MUIC 0x0E write failed 0x00 \n", __func__);
+#endif
 	return;
 
 error_set_bits:
 	pr_err("%s: can't set led level %d\n", __func__, ret);
+
+#if defined(CONFIG_V1A) || defined(CONFIG_N1A)
+	/* change MUIC Control3 to 'Auto Detection' */
+	ret = max77803_muic_set_jigset(0x00);
+	if (unlikely(ret))
+		pr_err("[LED] %s : MUIC 0x0E write failed 0x00 \n", __func__);
+#endif
 	return;
 }
 
@@ -203,7 +221,7 @@ static int max77803_led_setup(struct max77803_led_data *led_data)
 	ret |= max77803_write_reg(led_data->i2c, MAX77803_LED_REG_VOUT_FLASH,
 				  MAX77803_BOOST_VOUT_FLASH_FROM_VOLT(3300));
 
-	ret |= max77803_write_reg(led_data->i2c, MAX77803_CHG_REG_CHG_CNFG_11, 0x00);
+	ret |= max77803_write_reg(led_data->i2c, MAX77803_CHG_REG_CHG_CNFG_11, 0x2C);
 
 	ret |= max77803_write_reg(led_data->i2c,
 				MAX77803_LED_REG_MAX_FLASH1, 0xBC);
@@ -251,6 +269,7 @@ static ssize_t max77803_flash(struct device *dev,
 
 		if (state > led_cdev->max_brightness)
 			state = led_cdev->max_brightness;
+
 		led_cdev->brightness = state;
 		if (!(led_cdev->flags & LED_SUSPENDED))
 			led_cdev->brightness_set(led_cdev, state);
@@ -335,7 +354,6 @@ static int max77803_led_probe(struct platform_device *pdev)
 		}
 	}
 	/* print_all_reg_value(max77803->i2c); */
-
 	flash_dev = device_create(camera_class, NULL, 0, led_datas[1], "flash");
 	if (IS_ERR(flash_dev))
 		pr_err("Failed to create device(flash)!\n");
@@ -362,11 +380,9 @@ static int __devexit max77803_led_remove(struct platform_device *pdev)
 		kfree(led_datas[i]);
 	}
 	kfree(led_datas);
-
 	device_remove_file(flash_dev, &dev_attr_rear_flash);
 	device_destroy(camera_class, 0);
 	class_destroy(camera_class);
-
 	return 0;
 }
 

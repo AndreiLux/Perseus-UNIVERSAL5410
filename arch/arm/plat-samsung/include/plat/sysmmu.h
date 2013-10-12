@@ -43,9 +43,16 @@ typedef int (*sysmmu_fault_handler_t)(struct device *dev,
 				      unsigned long pgtable_base,
 				      unsigned long fault_addr);
 
+#define SYSMMU_PBUFCFG_TLB_UPDATE	(1 << 16)
+#define SYSMMU_PBUFCFG_ASCENDING	(1 << 12)
+#define SYSMMU_PBUFCFG_DSECENDING	(0 << 12)
+#define SYSMMU_PBUFCFG_PREFETCH		(1 << 8)
+#define SYSMMU_PBUFCFG_WRITE		(1 << 4)
+#define SYSMMU_PBUFCFG_READ		(0 << 4)
 struct sysmmu_prefbuf {
 	unsigned long base;
 	unsigned long size;
+	unsigned long config;
 };
 #ifdef CONFIG_EXYNOS_IOMMU
 /**

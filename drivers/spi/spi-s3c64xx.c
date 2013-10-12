@@ -265,10 +265,20 @@ static void prepare_dma(struct s3c64xx_spi_dma_data *dma,
 	struct s3c64xx_spi_driver_data *sdd;
 	struct samsung_dma_prep info;
 	struct samsung_dma_config config;
+	void __iomem *regs;
+	unsigned int mode_cfg;
 
 	if (dma->direction == DMA_DEV_TO_MEM) {
 		sdd = container_of((void *)dma,
 			struct s3c64xx_spi_driver_data, rx_dma);
+
+		regs = sdd->regs;
+		mode_cfg = readl(regs + S3C64XX_SPI_MODE_CFG);
+		if (mode_cfg & S3C64XX_SPI_MODE_4BURST)
+			config.maxburst = 4;
+		else
+			config.maxburst = 1;
+
 		config.direction = sdd->rx_dma.direction;
 		config.fifo = sdd->sfr_start + S3C64XX_SPI_RX_DATA;
 		config.width = sdd->cur_bpw / 8;
@@ -276,6 +286,14 @@ static void prepare_dma(struct s3c64xx_spi_dma_data *dma,
 	} else {
 		sdd = container_of((void *)dma,
 			struct s3c64xx_spi_driver_data, tx_dma);
+
+		regs = sdd->regs;
+		mode_cfg = readl(regs + S3C64XX_SPI_MODE_CFG);
+		if (mode_cfg & S3C64XX_SPI_MODE_4BURST)
+			config.maxburst = 4;
+		else
+			config.maxburst = 1;
+
 		config.direction =  sdd->tx_dma.direction;
 		config.fifo = sdd->sfr_start + S3C64XX_SPI_TX_DATA;
 		config.width = sdd->cur_bpw / 8;
@@ -524,7 +542,7 @@ static void s3c64xx_spi_config(struct s3c64xx_spi_driver_data *sdd)
 	case 32:
 		val |= S3C64XX_SPI_MODE_BUS_TSZ_WORD;
 		val |= S3C64XX_SPI_MODE_CH_TSZ_WORD;
-		if (soc_is_exynos5410()) {
+		if (soc_is_exynos5410() || soc_is_exynos5420()) {
 			writel(S3C64XX_SPI_SWAP_TX_EN |
 				S3C64XX_SPI_SWAP_TX_BYTE |
 				S3C64XX_SPI_SWAP_TX_HALF_WORD |
@@ -537,7 +555,7 @@ static void s3c64xx_spi_config(struct s3c64xx_spi_driver_data *sdd)
 	case 16:
 		val |= S3C64XX_SPI_MODE_BUS_TSZ_HALFWORD;
 		val |= S3C64XX_SPI_MODE_CH_TSZ_HALFWORD;
-		if (soc_is_exynos5410()) {
+		if (soc_is_exynos5410() || soc_is_exynos5420()) {
 			writel(S3C64XX_SPI_SWAP_TX_EN |
 				S3C64XX_SPI_SWAP_TX_BYTE |
 				S3C64XX_SPI_SWAP_RX_EN |
@@ -548,7 +566,7 @@ static void s3c64xx_spi_config(struct s3c64xx_spi_driver_data *sdd)
 	default:
 		val |= S3C64XX_SPI_MODE_BUS_TSZ_BYTE;
 		val |= S3C64XX_SPI_MODE_CH_TSZ_BYTE;
-		if (soc_is_exynos5410())
+		if (soc_is_exynos5410() || soc_is_exynos5420())
 			writel(0, regs + S3C64XX_SPI_SWAP_CFG);
 		break;
 	}
@@ -668,6 +686,9 @@ static int s3c64xx_spi_transfer_one_message(struct spi_master *master,
 	unsigned fifo_lvl = (sci->fifo_lvl_mask >> 1) + 1;
 	u32 speed;
 	u8 bpw;
+	const void *tmp_tx_buf = 0;
+	void *tmp_rx_buf = 0;
+	unsigned tmp_len = 0;
 
 	if (sci->dma_mode != PIO_MODE) {
 		/* Acquire DMA channels */
@@ -700,6 +721,12 @@ static int s3c64xx_spi_transfer_one_message(struct spi_master *master,
 
 		unsigned long flags;
 		int use_dma;
+
+		if (sci->dma_mode == PIO_MODE) {
+			tmp_tx_buf = xfer->tx_buf;
+			tmp_rx_buf = xfer->rx_buf;
+			tmp_len = xfer->len;
+		}
 
 		INIT_COMPLETION(sdd->xfer_completion);
 
@@ -808,6 +835,9 @@ try_transfer:
 				xfer->len = target_len;
 				goto try_transfer;
 			}
+			xfer->tx_buf = tmp_tx_buf;
+			xfer->rx_buf = tmp_rx_buf;
+			xfer->len = tmp_len;
 		}
 	}
 
@@ -909,6 +939,11 @@ static int s3c64xx_spi_setup(struct spi_device *spi)
 		if (spi->max_speed_hz > speed)
 			spi->max_speed_hz = speed;
 
+		if (spi->max_speed_hz == 0) {
+			err = -EINVAL;
+			goto setup_exit_0;
+		}
+
 		psr = clk_get_rate(sdd->src_clk) / 2 / spi->max_speed_hz - 1;
 		psr &= S3C64XX_SPI_PSR_MASK;
 		if (psr == S3C64XX_SPI_PSR_MASK)
@@ -920,7 +955,7 @@ static int s3c64xx_spi_setup(struct spi_device *spi)
 				psr++;
 			} else {
 				err = -EINVAL;
-				goto setup_exit;
+				goto setup_exit_0;
 			}
 		}
 
@@ -931,6 +966,7 @@ static int s3c64xx_spi_setup(struct spi_device *spi)
 			err = -EINVAL;
 	}
 
+setup_exit_0:
 	pm_runtime_put(&sdd->pdev->dev);
 
 setup_exit:
@@ -1117,7 +1153,7 @@ static int __init s3c64xx_spi_probe(struct platform_device *pdev)
 		goto err3;
 	}
 
-	sprintf(clk_name, "spi_busclk%d", sci->src_clk_nr);
+	snprintf(clk_name, sizeof(clk_name), "spi_busclk%d", sci->src_clk_nr);
 	sdd->src_clk = clk_get(&pdev->dev, clk_name);
 	if (IS_ERR(sdd->src_clk)) {
 		dev_err(&pdev->dev,
@@ -1195,7 +1231,6 @@ static int s3c64xx_spi_remove(struct platform_device *pdev)
 {
 	struct spi_master *master = spi_master_get(platform_get_drvdata(pdev));
 	struct s3c64xx_spi_driver_data *sdd = spi_master_get_devdata(master);
-	struct resource	*mem_res;
 
 	pm_runtime_disable(&pdev->dev);
 
@@ -1212,8 +1247,6 @@ static int s3c64xx_spi_remove(struct platform_device *pdev)
 	clk_put(sdd->clk);
 
 	iounmap((void *) sdd->regs);
-
-	mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
 	platform_set_drvdata(pdev, NULL);
 	spi_master_put(master);
@@ -1305,7 +1338,8 @@ static int s3c64xx_spi_runtime_resume(struct device *dev)
 #endif /* CONFIG_PM_RUNTIME */
 
 static const struct dev_pm_ops s3c64xx_spi_pm = {
-	SET_SYSTEM_SLEEP_PM_OPS(s3c64xx_spi_suspend, s3c64xx_spi_resume)
+	.suspend_noirq = s3c64xx_spi_suspend,
+	.resume_noirq = s3c64xx_spi_resume,
 	SET_RUNTIME_PM_OPS(s3c64xx_spi_runtime_suspend,
 			   s3c64xx_spi_runtime_resume, NULL)
 };

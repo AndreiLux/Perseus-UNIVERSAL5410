@@ -269,24 +269,44 @@ enum {
 #define MXT_REVISION_I	1	/* Support hovering */
 
 /************** Feature + **************/
-#ifdef CONFIG_MACH_V1
+#if defined(CONFIG_V1A)
+#define TSP_BOOSTER			0
+#define TSP_SEC_FACTORY			1
+#define TSP_INFORM_CHARGER		1
+#define TSP_USE_SHAPETOUCH		1
+#define ENABLE_TOUCH_KEY		1
+#define TOUCHKEY_BOOSTER		0
+#define TSP_CHECK_ATCH			1
+#define TSP_PATCH               0
+#define TSP_USE_PALM_FLAG		1
+
+#elif defined(CONFIG_N1A)
 #define TSP_BOOSTER			1
 #define TSP_SEC_FACTORY			1
-#define TSP_INFORM_CHARGER		0
-#define TSP_USE_SHAPETOUCH		0
+#define TSP_INFORM_CHARGER		1
+#define TSP_USE_SHAPETOUCH		1
 #define ENABLE_TOUCH_KEY		1
+#define TOUCHKEY_BOOSTER		1
+#define TSP_CHECK_ATCH			1
+#define TSP_PATCH				1
+#define TSP_USE_PALM_FLAG		1
+
 #else
 #define TSP_BOOSTER				0
 #define TSP_SEC_FACTORY			1
 #define TSP_INFORM_CHARGER		1
 #define TSP_USE_SHAPETOUCH		1
 #define ENABLE_TOUCH_KEY		0
+#define TOUCHKEY_BOOSTER		0
+#define TSP_CHECK_ATCH			0
+#define TSP_PATCH               0
+#define TSP_USE_PALM_FLAG		0
 #endif
 /* TODO TEMP_HOVER : Need to check and modify
  * it can be changed related potocol of hover So current
  * implementation is temporary code.
  */
-#ifdef CONFIG_MACH_V1
+#if defined(CONFIG_V1A) || defined(CONFIG_N1A)
 #define TSP_HOVER_WORKAROUND			0
 #else
 #define TSP_HOVER_WORKAROUND			1
@@ -308,6 +328,11 @@ enum {
 #define MXT_COMPONENT_MAX	255
 #define MXT_SUMSIZE_MAX		(16 * 26)
 #endif
+
+#if TSP_USE_PALM_FLAG
+#define MXT_PALM_MAX	1
+#endif
+
 #if TSP_SEC_FACTORY
 #define TSP_BUF_SIZE	 1024
 
@@ -360,13 +385,33 @@ enum {
 
 #if TSP_BOOSTER
 #include <linux/pm_qos.h>
-#define TOUCH_BOOSTER_OFF_TIME	300
-#define TOUCH_BOOSTER_CHG_TIME	200
+#define TOUCH_BOOSTER_OFF_TIME	500
+#define TOUCH_BOOSTER_CHG_TIME	130
 
-enum {
-	TOUCH_BOOSTER_DELAY_OFF = 0,
-	TOUCH_BOOSTER_ON,
-	TOUCH_BOOSTER_QUICK_OFF,
+#define TOUCH_BOOSTER_CPU_FRQ_1	1600000
+#define TOUCH_BOOSTER_MIF_FRQ_1	800000
+#define TOUCH_BOOSTER_INT_FRQ_1	400000
+
+#define TOUCH_BOOSTER_CPU_FRQ_2	650000
+#define TOUCH_BOOSTER_MIF_FRQ_2	400000
+#define TOUCH_BOOSTER_INT_FRQ_2	222000
+
+#define TOUCH_BOOSTER_CPU_FRQ_3	650000
+#define TOUCH_BOOSTER_MIF_FRQ_3	400000
+#define TOUCH_BOOSTER_INT_FRQ_3	222000
+
+enum BOOST_LEVEL {
+	TSP_BOOSTER_DISABLE = 0,
+	TSP_BOOSTER_LEVEL1,
+	TSP_BOOSTER_LEVEL2,
+	TSP_BOOSTER_LEVEL3,
+	TSP_BOOSTER_LEVEL_MAX,
+};
+
+enum BOOST_MODE {
+	TSP_BOOSTER_OFF = 0,
+	TSP_BOOSTER_ON,
+	TSP_BOOSTER_FORCE_OFF,
 };
 #endif
 
@@ -381,6 +426,14 @@ enum {
 #define KEY_RELEASE     0
 #define TOUCH_KEY_NULL	0
 
+/* support 6 touch key */
+#define TOUCH_KEY_D_MENU	0x20
+#define TOUCH_KEY_MENU		0x10
+#define TOUCH_KEY_D_HOME_1	0x08
+#define TOUCH_KEY_D_HOME_2	0x04
+#define TOUCH_KEY_BACK		0x02
+#define TOUCH_KEY_D_BACK	0x01
+
 struct mxt_touchkey {
 	unsigned int value;
 	unsigned int keycode;
@@ -389,6 +442,97 @@ struct mxt_touchkey {
 	unsigned int ynode;
 	unsigned int deltaobj;
 };
+#endif
+
+#if TOUCHKEY_BOOSTER
+#include <linux/pm_qos.h>
+#define TOUCHKEY_BOOSTER_ON_TIME	500
+#define TOUCHKEY_BOOSTER_OFF_TIME	500
+#define TOUCHKEY_BOOSTER_CHG_TIME	130
+
+#define TOUCHKEY_BOOSTER_CPU_FRQ_1	1600000
+#define TOUCHKEY_BOOSTER_MIF_FRQ_1	800000
+#define TOUCHKEY_BOOSTER_INT_FRQ_1	400000
+
+#define TOUCHKEY_BOOSTER_CPU_FRQ_2	650000
+#define TOUCHKEY_BOOSTER_MIF_FRQ_2	400000
+#define TOUCHKEY_BOOSTER_INT_FRQ_2	222000
+
+enum TOUCHKEY_BOOST_LEVEL {
+	TOUCHKEY_BOOSTER_DISABLE = 0,
+	TOUCHKEY_BOOSTER_LEVEL1,
+	TOUCHKEY_BOOSTER_LEVEL2,
+	TOUCHKEY_BOOSTER_LEVEL_MAX,
+};
+
+enum TOUCHKEY_BOOST_MODE {
+	TOUCHKEY_BOOSTER_OFF = 0,
+	TOUCHKEY_BOOSTER_ON,
+	TOUCHKEY_BOOSTER_FORCE_OFF,
+};
+#endif
+
+#if TSP_CHECK_ATCH
+struct mxt_atch {
+	u8 enable;
+	u8 coin;
+	u8 calgood;
+	u8 autocal;
+	u8 timer;
+	u8 timer_id;
+	u8 coin_time;
+	u8 calgood_time;
+	u8 prev_chargin_status;
+	u8 abnormal_enable;
+	u8 bigpalm_enable;
+	u8 touch_cnt;
+	u8 t9_size;
+	u8 t9_amp;
+	u8 cal_is_ongoing;
+	u8 check_condition_1;
+	u8 check_condition_2;
+	u8 check_condition_3;
+	u8 check_condition_4;
+	u8 check_condition_5;
+	u8 check_condition_6;
+	u8 check_condition_7;
+	u8 check_condition_8;
+	u8 check_condition_9;
+	u8 check_condition_10;
+	u8 check_condition_11;
+	u8 check_condition_12;
+	u8 check_condition_13;
+	u8 check_condition_14;
+	u8 check_condition_15;
+	u8 check_condition_16;
+	u8 check_condition_17;
+	u8 check_condition_18;
+	u8 check_condition_19;
+	u8 check_condition_20;
+	u8 check_condition_21;
+	u8 check_condition_22;
+	u8 check_condition_23;
+	u8 check_condition_24;
+	u8 check_condition_25;
+	u8 check_condition_26;
+	u8 check_condition_27;
+	u8 check_condition_28;
+	u8 check_condition_29;
+	u8 check_condition_30;
+	u8 check_condition_31;
+	u16 check_condition2_1;
+	u8 abnormalcheck_time;
+};
+
+#define MXT_T61_TIMER_ONESHOT		0
+#define MXT_T61_TIMER_CMD_START		1
+#define MXT_T61_TIMER_CMD_STOP		2
+
+#define __mxt_debug_msg(_data, ...)						\
+do {													\
+	if (unlikely((_data)->atmeldbg.display_log))		\
+		dev_info(&(_data)->client->dev, __VA_ARGS__);	\
+} while (0)
 #endif
 
 struct mxt_callbacks {
@@ -442,11 +586,11 @@ struct mxt_info {
 
 struct mxt_message {
 	u8 reportid;
-#ifdef CONFIG_MACH_V1
-	u8 message[7];
-#else
+//#if defined(CONFIG_V1A)
+//	u8 message[7];
+//#else
 	u8 message[8];
-#endif
+//#endif
 };
 
 /**
@@ -478,6 +622,33 @@ struct mxt_reportid {
 	u8 type;
 	u8 index;
 };
+
+#if TSP_BOOSTER
+struct touch_booster {
+	bool dvfs_lock_status;
+	struct delayed_work work_dvfs_off;
+	struct delayed_work work_dvfs_chg;
+	struct mutex dvfs_lock;
+	struct pm_qos_request tsp_cpu_qos;
+	struct pm_qos_request tsp_mif_qos;
+	struct pm_qos_request tsp_int_qos;
+	unsigned char boost_level;
+};
+#endif
+
+#if TOUCHKEY_BOOSTER
+struct touchkey_booster {
+	bool tsk_dvfs_lock_status;
+	struct delayed_work tsk_work_dvfs_off;
+	struct delayed_work tsk_work_dvfs_chg;
+	struct mutex tsk_dvfs_lock;
+	struct pm_qos_request cpu_qos;
+	struct pm_qos_request mif_qos;
+	struct pm_qos_request int_qos;
+	unsigned char boost_level;
+	bool dvfs_signal;
+};
+#endif
 
 #if TSP_USE_ATMELDBG
 struct atmel_dbg {
@@ -519,6 +690,31 @@ struct mxt_fac_data {
 };
 #endif
 
+#if TSP_PATCH
+struct mxt_patch{
+	u8* patch;
+	u16* stage_addr;
+	u16* tline_addr;
+	u16* trigger_addr;
+	u16* event_addr;
+	u16* src_item;
+	u16* check_cnt;
+	u16 period;
+	u8 stage_cnt;
+	u8 tline_cnt;
+	u8 trigger_cnt;
+	u8 event_cnt;
+	u8 option;
+	u8 debug;
+	u8 timer_id;
+	u8 cur_stage;
+	u8 cur_stage_opt;
+	u8 run_stage;
+	u8 start;
+	u8 finger_cnt;
+};
+#endif
+
 struct mxt_data {
 	struct i2c_client *client;
 	struct i2c_client *client_boot;
@@ -536,13 +732,7 @@ struct mxt_data {
 	struct early_suspend early_suspend;
 #endif
 #if TSP_BOOSTER
-	bool dvfs_lock_status;
-	struct delayed_work work_dvfs_off;
-	struct delayed_work work_dvfs_chg;
-	struct mutex dvfs_lock;
-	struct pm_qos_request tsp_cpu_qos;
-	struct pm_qos_request tsp_mif_qos;
-	struct pm_qos_request tsp_int_qos;
+	struct touch_booster booster;
 #endif
 #if TSP_USE_ATMELDBG
 	struct atmel_dbg atmeldbg;
@@ -553,10 +743,17 @@ struct mxt_data {
 #if TSP_USE_SHAPETOUCH
 	u16 sumsize;
 #endif
+#if TSP_USE_PALM_FLAG
+	bool palm;
+#endif
+#if TSP_CHECK_ATCH
+	struct mxt_atch	atch;
+#endif
 #if TSP_INFORM_CHARGER
 	struct mxt_callbacks callbacks;
 	struct delayed_work noti_dwork;
 	bool charging_mode;
+	u8 chargin_status;
 #endif
 #if TSP_HOVER_WORKAROUND
 /* TODO HOVER : Current firmware need to current calibration for hover manually
@@ -566,6 +763,15 @@ struct mxt_data {
 #endif
 #if ENABLE_TOUCH_KEY
 	u16 tsp_keystatus;
+	bool report_dummy_key;
+	bool ignore_menu_key;
+	bool ignore_back_key;
+#endif
+#if TOUCHKEY_BOOSTER
+	struct touchkey_booster tsk_booster;
+#endif
+#if TSP_PATCH
+	struct mxt_patch patch;
 #endif
 };
 
@@ -619,14 +825,23 @@ struct mxt_fw_info {
 
 #if TSP_SEC_FACTORY
 extern struct class *sec_class;
-int mxt_read_all_diagnostic_data(struct mxt_data *data, u8 dbg_mode);
 #endif
 
+void tsp_charger_infom(bool en);
+
 #if TSP_BOOSTER
-void mxt_change_dvfs_lock(struct work_struct *work);
-void mxt_set_dvfs_off(struct work_struct *work);
-void mxt_set_dvfs_lock(struct mxt_data *data , int mode);
-int mxt_init_dvfs(struct mxt_data *data);
+static void mxt_change_dvfs_lock(struct work_struct *work);
+static void mxt_set_dvfs_off(struct work_struct *work);
+static void mxt_init_dvfs_level(struct mxt_data *data);
+static void mxt_set_dvfs_lock(struct mxt_data *data, unsigned int on,  bool booster_restart);
+static int mxt_init_dvfs(struct mxt_data *data);
+#endif
+
+#if TOUCHKEY_BOOSTER
+static void touchkey_change_dvfs_lock(struct work_struct *work);
+static void touchkey_set_dvfs_off(struct work_struct *work);
+static void touchkey_set_dvfs_lock(struct mxt_data *data, uint32_t on);
+static int touchkey_init_dvfs(struct mxt_data *data);
 #endif
 
 #endif

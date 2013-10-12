@@ -88,42 +88,40 @@ int exynos5_fimc_is_sensor_regulator(struct device *pdev, struct gpio_set *gpio,
 {
 	int ret = 0;
 
-	if (soc_is_exynos5410()) {
-		struct regulator *regulator = NULL;
+	struct regulator *regulator = NULL;
 
-		if (flag_on == 1) {
-			regulator = regulator_get(pdev, gpio->name);
-			if (IS_ERR(regulator)) {
-				pr_err("%s : regulator_get(%s) fail\n",
+	if (flag_on == 1) {
+		regulator = regulator_get(pdev, gpio->name);
+		if (IS_ERR(regulator)) {
+			pr_err("%s : regulator_get(%s) fail\n",
+				__func__, gpio->name);
+			return PTR_ERR(regulator);
+		} else if (!regulator_is_enabled(regulator)) {
+			ret = regulator_enable(regulator);
+			if (ret) {
+				pr_err("%s : regulator_enable(%s) fail\n",
 					__func__, gpio->name);
-				return PTR_ERR(regulator);
-			} else if (!regulator_is_enabled(regulator)) {
-				ret = regulator_enable(regulator);
-				if (ret) {
-					pr_err("%s : regulator_enable(%s) fail\n",
-						__func__, gpio->name);
-					regulator_put(regulator);
-					return ret;
-				}
+				regulator_put(regulator);
+				return ret;
 			}
-			regulator_put(regulator);
-		} else {
-			regulator = regulator_get(pdev, gpio->name);
-			if (IS_ERR(regulator)) {
-				pr_err("%s : regulator_get(%s) fail\n",
-					__func__, gpio->name);
-				return PTR_ERR(regulator);
-			} else if (regulator_is_enabled(regulator)) {
-				ret = regulator_disable(regulator);
-				if (ret) {
-					pr_err("%s : regulator_disable(%s) fail\n",
-						__func__, gpio->name);
-					regulator_put(regulator);
-					return ret;
-				}
-			}
-			regulator_put(regulator);
 		}
+		regulator_put(regulator);
+	} else {
+		regulator = regulator_get(pdev, gpio->name);
+		if (IS_ERR(regulator)) {
+			pr_err("%s : regulator_get(%s) fail\n",
+				__func__, gpio->name);
+			return PTR_ERR(regulator);
+		} else if (regulator_is_enabled(regulator)) {
+			ret = regulator_disable(regulator);
+			if (ret) {
+				pr_err("%s : regulator_disable(%s) fail\n",
+					__func__, gpio->name);
+				regulator_put(regulator);
+				return ret;
+			}
+		}
+		regulator_put(regulator);
 	}
 
 	return ret;
@@ -235,43 +233,6 @@ int exynos5_fimc_is_sensor_pin_cfg(struct device *pdev, int sensor_id, int flag_
 	return ret;
 
 }
-
-#if 0 // unused
-static int cfg_gpio(struct gpio_set *gpio, int value)
-{
-	int ret;
-
-	pr_debug("gpio.pin:%d gpio.name:%s\n", gpio->pin, gpio->name);
-	ret = gpio_request(gpio->pin, gpio->name);
-	if (ret) {
-		pr_err("Request GPIO error(%s)\n", gpio->name);
-		return -1;
-	}
-
-	switch (gpio->act) {
-	case GPIO_PULL_NONE:
-		s3c_gpio_cfgpin(gpio->pin, value);
-		s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_NONE);
-		break;
-	case GPIO_OUTPUT:
-		s3c_gpio_cfgpin(gpio->pin, S3C_GPIO_OUTPUT);
-		s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_NONE);
-		gpio_set_value(gpio->pin, value);
-		break;
-	case GPIO_RESET:
-		s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_NONE);
-		gpio_direction_output(gpio->pin, value);
-		break;
-	default:
-		pr_err("unknown act for gpio\n");
-		return -1;
-	}
-	gpio_free(gpio->pin);
-
-	return 0;
-
-}
-#endif
 
 int exynos5_fimc_is_sensor_clk_on(struct device *pdev, int sensor_id)
 {

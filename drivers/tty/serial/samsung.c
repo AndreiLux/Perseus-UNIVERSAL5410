@@ -63,7 +63,7 @@
 #include <linux/dma-mapping.h>
 #endif
 
-#ifdef CONFIG_BT_BCM4335
+#if defined(CONFIG_BT_BCM4339) || defined(CONFIG_BT_BCM4335)
 #include <linux/pm_qos.h>
 #endif
 
@@ -96,11 +96,6 @@
 /* flag to ignore all characters coming in */
 #define RXSTAT_DUMMY_READ (0x10000000)
 
-#if defined(CONFIG_GPS_BCMxxxxx)
-/* Devices	*/
-#define CONFIG_GPS_S3C_UART	1
-#endif
-
 /* ? - where has parity gone?? */
 #define S3C2410_UERSTAT_PARITY (0x1000)
 
@@ -113,7 +108,7 @@ static void prepare_dma(struct uart_dma_data *dma,
 					unsigned len, dma_addr_t buf);
 #endif
 
-#ifdef CONFIG_BT_BCM4335
+#if defined(CONFIG_BT_BCM4339) || defined(CONFIG_BT_BCM4335)
 struct pm_qos_request exynos5_bt_mif_qos;
 #endif
 
@@ -396,6 +391,7 @@ static void prepare_dma(struct uart_dma_data *dma,
 	config.fifo = dma->fifo_base;
 	/* burst size = 1byte (1, 4, 8bytes) */
 	config.width = DMA_SLAVE_BUSWIDTH_1_BYTE;
+	config.maxburst = 1;
 
 	if (dma->direction == DMA_MEM_TO_DEV) {
 		uart_dma = container_of((void *)dma,
@@ -752,7 +748,7 @@ static irqreturn_t s3c24xx_serial_err_chars(int irq, void *id)
 }
 #endif
 
-#ifdef CONFIG_BT_BCM4335
+#if defined(CONFIG_BT_BCM4339) || defined(CONFIG_BT_BCM4335)
 static void bt_qos_func(struct work_struct *work)
 {
 	pm_qos_update_request_timeout(&exynos5_bt_mif_qos, 800000, 1000000);
@@ -769,7 +765,7 @@ static irqreturn_t s3c64xx_serial_handle_irq(int irq, void *id)
 	unsigned int pend = rd_regl(port, S3C64XX_UINTP);
 	irqreturn_t ret = IRQ_HANDLED;
 
-#ifdef CONFIG_BT_BCM4335
+#if defined(CONFIG_BT_BCM4339) || defined(CONFIG_BT_BCM4335)
 	if (port->line == 0)
 		schedule_delayed_work(&bt_perf_work, msecs_to_jiffies(100));
 #endif
@@ -823,14 +819,6 @@ static unsigned int s3c24xx_serial_get_mctrl(struct uart_port *port)
 static void s3c24xx_serial_set_mctrl(struct uart_port *port, unsigned int mctrl)
 {
 	/* todo - possibly remove AFC and do manual CTS */
-#if defined(CONFIG_GPS_BCMxxxxx)
-	unsigned int umcon = rd_regl(port, S3C2410_UMCON);
-
-	if (port->line == CONFIG_GPS_S3C_UART)
-		umcon |= S3C2410_UMCOM_AFC;
-
-	wr_regl(port, S3C2410_UMCON, umcon);
-#endif
 }
 
 static void s3c24xx_serial_break_ctl(struct uart_port *port, int break_state)
@@ -862,6 +850,8 @@ static void s3c24xx_serial_shutdown(struct uart_port *port)
 	if (ourport->tx_claimed) {
 		if (!s3c24xx_serial_has_interrupt_mask(port))
 			free_irq(ourport->tx_irq, ourport);
+		else
+			free_irq(port->irq, ourport);
 		tx_enabled(port) = 0;
 		ourport->tx_claimed = 0;
 
@@ -878,6 +868,8 @@ static void s3c24xx_serial_shutdown(struct uart_port *port)
 	if (ourport->rx_claimed) {
 		if (!s3c24xx_serial_has_interrupt_mask(port))
 			free_irq(ourport->rx_irq, ourport);
+		/* else already freed above as the s3c64xx_serial_startup()
+		 * will have set both tx_claimed and rx_claimed */
 		ourport->rx_claimed = 0;
 		rx_enabled(port) = 0;
 
@@ -962,7 +954,6 @@ static int s3c64xx_serial_startup(struct uart_port *port)
 
 	ret = request_irq(port->irq, s3c64xx_serial_handle_irq, IRQF_SHARED,
 			  s3c24xx_serial_portname(port), ourport);
-
 	if (ret) {
 		printk(KERN_ERR "cannot get irq %d\n", port->irq);
 		return ret;
@@ -985,6 +976,12 @@ static int s3c64xx_serial_startup(struct uart_port *port)
 
 		/* Alloc buffer for dma */
 		uart_dma->rx_buff = kmalloc(RX_BUFFER_SIZE, GFP_KERNEL);
+		if (uart_dma->rx_buff == NULL) {
+			printk(KERN_ERR "%s:kmalloc failed for RX BUFFER\n",
+				__func__);
+			free_irq(port->irq, ourport);
+			return -ENOMEM;
+		}
 		uart_dma->rx.req_size = RX_BUFFER_SIZE;
 
 		/* uart_rx_dma_request */
@@ -1098,7 +1095,7 @@ static unsigned int s3c24xx_serial_getclk(struct s3c24xx_uart_port *ourport,
 		if (!(clk_sel & (1 << cnt)))
 			continue;
 
-		sprintf(clkname, "clk_uart_baud%d", cnt);
+		snprintf(clkname, sizeof(clkname), "clk_uart_baud%d", cnt);
 		clk = clk_get(ourport->port.dev, clkname);
 		if (IS_ERR(clk))
 			continue;
@@ -1753,7 +1750,7 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 
 	dbg("%s: initialising port %p...\n", __func__, ourport);
 
-#ifdef CONFIG_BT_BCM4335
+#if defined(CONFIG_BT_BCM4339) || defined(CONFIG_BT_BCM4335)
 	if (pdev->id == 0)
 		pm_qos_add_request(&exynos5_bt_mif_qos, PM_QOS_BUS_THROUGHPUT, 0);
 #endif
@@ -1784,7 +1781,7 @@ static int __devexit s3c24xx_serial_remove(struct platform_device *dev)
 {
 	struct uart_port *port = s3c24xx_dev_to_port(&dev->dev);
 
-#ifdef CONFIG_BT_BCM4335
+#if defined(CONFIG_BT_BCM4339) || defined(CONFIG_BT_BCM4335)
 	if (dev->id == 0)
 		pm_qos_remove_request(&exynos5_bt_mif_qos);
 #endif
@@ -1825,6 +1822,10 @@ static int s3c24xx_serial_resume(struct device *dev)
 		}
 
 		s3c24xx_serial_resetport(port, s3c24xx_port_to_cfg(port));
+
+		if (ourport->rx_claimed)
+			wr_regl(port, S3C64XX_UINTM, ~S3C64XX_UINTM_RXD_MSK);
+
 		clk_disable(ourport->clk);
 
 		uart_resume_port(&s3c24xx_uart_drv, port);
@@ -1872,7 +1873,17 @@ s3c24xx_serial_console_txrdy(struct uart_port *port, unsigned int ufcon)
 static void
 s3c24xx_serial_console_putchar(struct uart_port *port, int ch)
 {
-	unsigned int ufcon = rd_regl(cons_uart, S3C2410_UFCON);
+	unsigned int ufcon;
+
+	if (!(rd_regl(cons_uart, S3C2410_UCON) & S3C2410_UCON_TXIRQMODE)) {
+		wr_regl(port, S3C64XX_UINTM, 0xf);
+		wr_regl(port, S3C64XX_UINTP, 0xf);
+		s3c24xx_serial_resetport(port, s3c24xx_port_to_cfg(port));
+		/* enable RX interrupt */
+		wr_regl(port, S3C64XX_UINTM, ~S3C64XX_UINTM_RXD_MSK);
+	}
+
+	ufcon = rd_regl(cons_uart, S3C2410_UFCON);
 	while (!s3c24xx_serial_console_txrdy(port, ufcon))
 		barrier();
 	wr_regb(cons_uart, S3C2410_UTXH, ch);
@@ -1941,7 +1952,7 @@ s3c24xx_serial_get_options(struct uart_port *port, int *baud,
 		/* now calculate the baud rate */
 
 		clk_sel = s3c24xx_serial_getsource(port);
-		sprintf(clk_name, "clk_uart_baud%d", clk_sel);
+		snprintf(clk_name, sizeof(clk_name), "clk_uart_baud%d", clk_sel);
 
 		clk = clk_get(port->dev, clk_name);
 		if (!IS_ERR(clk))
@@ -2153,7 +2164,7 @@ static struct s3c24xx_serial_drv_data s5pv210_serial_drv_data = {
 
 #if defined(CONFIG_CPU_EXYNOS4210) || defined(CONFIG_SOC_EXYNOS4212) || \
 	defined(CONFIG_SOC_EXYNOS4412) || defined(CONFIG_SOC_EXYNOS5250) || \
-	defined(CONFIG_SOC_EXYNOS5410)
+	defined(CONFIG_SOC_EXYNOS5410) || defined(CONFIG_SOC_EXYNOS5420)
 static struct s3c24xx_serial_drv_data exynos4210_serial_drv_data = {
 	.info = &(struct s3c24xx_uart_info) {
 		.name		= "Samsung Exynos4 UART",
@@ -2171,7 +2182,8 @@ static struct s3c24xx_serial_drv_data exynos4210_serial_drv_data = {
 		.clksel_shift	= 0,
 	},
 	.def_cfg = &(struct s3c2410_uartcfg) {
-#if defined(CONFIG_SOC_EXYNOS5250) || defined(CONFIG_SOC_EXYNOS5410)
+#if defined(CONFIG_SOC_EXYNOS5250) || defined(CONFIG_SOC_EXYNOS5410) || \
+	defined(CONFIG_SOC_EXYNOS5420)
 		.ulcon		= 0x3,
 #endif
 		.ucon		= S5PV210_UCON_DEFAULT,

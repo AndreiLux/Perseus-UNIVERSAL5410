@@ -196,6 +196,7 @@ static int wm8994_suspend(struct device *dev)
 {
 	struct wm8994 *wm8994 = dev_get_drvdata(dev);
 	int ret;
+	int gpio_regs[WM8994_NUM_GPIO_REGS];
 
 	/* Don't actually go through with the suspend if the CODEC is
 	 * still active (eg, for audio passthrough from CP. */
@@ -277,11 +278,23 @@ static int wm8994_suspend(struct device *dev)
 				WM8994_LDO1ENA_PD | WM8994_LDO2ENA_PD,
 				WM8994_LDO1ENA_PD | WM8994_LDO2ENA_PD);
 
+	/* Save GPIO registers before reset */
+	regmap_bulk_read(wm8994->regmap, WM8994_GPIO_1, gpio_regs,
+			 WM8994_NUM_GPIO_REGS);
+
 	/* Explicitly put the device into reset in case regulators
 	 * don't get disabled in order to ensure consistent restart.
 	 */
 	wm8994_reg_write(wm8994, WM8994_SOFTWARE_RESET,
 			 wm8994_reg_read(wm8994, WM8994_SOFTWARE_RESET));
+
+	/* Restore GPIO registers to prevent problems with mismatched
+	 * pin configurations.
+	 */
+	ret = regmap_bulk_write(wm8994->regmap, WM8994_GPIO_1, gpio_regs,
+				WM8994_NUM_GPIO_REGS);
+	if (ret != 0)
+		dev_err(dev, "Failed to restore GPIO registers: %d\n", ret);
 
 	regcache_cache_only(wm8994->regmap, true);
 	regcache_mark_dirty(wm8994->regmap);
@@ -500,7 +513,8 @@ static __devinit int wm8994_device_init(struct wm8994 *wm8994, int irq)
 			ret);
 		goto err_enable;
 	}
-	wm8994->revision = ret;
+	wm8994->revision = ret & WM8994_CHIP_REV_MASK;
+	wm8994->cust_id = (ret & WM8994_CUST_ID_MASK) >> WM8994_CUST_ID_SHIFT;
 
 	switch (wm8994->type) {
 	case WM8994:
@@ -541,6 +555,7 @@ static __devinit int wm8994_device_init(struct wm8994 *wm8994, int irq)
 		case 1:
 		case 2:
 		case 3:
+		case 4:
 			regmap_patch = wm1811_reva_patch;
 			patch_regs = ARRAY_SIZE(wm1811_reva_patch);
 			break;
@@ -553,8 +568,8 @@ static __devinit int wm8994_device_init(struct wm8994 *wm8994, int irq)
 		break;
 	}
 
-	dev_info(wm8994->dev, "%s revision %c\n", devname,
-		 'A' + wm8994->revision);
+	dev_info(wm8994->dev, "%s revision %c CUST_ID %02x\n", devname,
+		 'A' + wm8994->revision, wm8994->cust_id);
 
 	switch (wm8994->type) {
 	case WM1811:
@@ -732,23 +747,7 @@ static struct i2c_driver wm8994_i2c_driver = {
 	.id_table = wm8994_i2c_id,
 };
 
-static int __init wm8994_i2c_init(void)
-{
-	int ret;
-
-	ret = i2c_add_driver(&wm8994_i2c_driver);
-	if (ret != 0)
-		pr_err("Failed to register wm8994 I2C driver: %d\n", ret);
-
-	return ret;
-}
-module_init(wm8994_i2c_init);
-
-static void __exit wm8994_i2c_exit(void)
-{
-	i2c_del_driver(&wm8994_i2c_driver);
-}
-module_exit(wm8994_i2c_exit);
+module_i2c_driver(wm8994_i2c_driver);
 
 MODULE_DESCRIPTION("Core support for the WM8994 audio CODEC");
 MODULE_LICENSE("GPL");

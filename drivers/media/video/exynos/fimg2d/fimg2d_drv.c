@@ -30,19 +30,13 @@
 #include <plat/cpu.h>
 #include <plat/fimg2d.h>
 #include <plat/sysmmu.h>
-#ifdef CONFIG_PM_RUNTIME
 #include <linux/pm_runtime.h>
-#endif
+#include <mach/pm_interrupt_domains.h>
 #include "fimg2d.h"
 #include "fimg2d_clk.h"
 #include "fimg2d_ctx.h"
 #include "fimg2d_cache.h"
 #include "fimg2d_helper.h"
-
-#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
-struct pm_qos_request exynos5_g2d_cpu_qos;
-struct pm_qos_request exynos5_g2d_mif_qos;
-#endif
 
 #define POLL_TIMEOUT	2	/* 2 msec */
 #define POLL_RETRY	1000
@@ -58,13 +52,95 @@ static struct fimg2d_control *ctrl;
 /* To prevent buffer release as memory compaction */
 /* Lock */
 
+void fimg2d_pm_qos_add(struct fimg2d_control *ctrl)
+{
+	struct fimg2d_platdata *pdata = to_fimg2d_plat(ctrl->dev);
+
+#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
+	if (pdata->cpu_min)
+		pm_qos_add_request(&ctrl->exynos5_g2d_cpu_qos,
+					PM_QOS_CPU_FREQ_MIN, 0);
+#endif
+#ifdef CONFIG_FIMG2D_USE_BUS_DEVFREQ
+	if (pdata->mif_min)
+		pm_qos_add_request(&ctrl->exynos5_g2d_mif_qos,
+					PM_QOS_BUS_THROUGHPUT, 0);
+	if (pdata->int_min)
+		pm_qos_add_request(&ctrl->exynos5_g2d_int_qos,
+					PM_QOS_DEVICE_THROUGHPUT, 0);
+#endif
+}
+
+void fimg2d_pm_qos_remove(struct fimg2d_control *ctrl)
+{
+	struct fimg2d_platdata *pdata = to_fimg2d_plat(ctrl->dev);
+
+#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
+	if (pdata->cpu_min)
+		pm_qos_remove_request(&ctrl->exynos5_g2d_cpu_qos);
+#endif
+#ifdef CONFIG_FIMG2D_USE_BUS_DEVFREQ
+	if (pdata->mif_min)
+		pm_qos_remove_request(&ctrl->exynos5_g2d_mif_qos);
+	if (pdata->int_min)
+		pm_qos_remove_request(&ctrl->exynos5_g2d_int_qos);
+#endif
+}
+
+void fimg2d_pm_qos_update(struct fimg2d_control *ctrl, enum fimg2d_qos_status status)
+{
+	struct fimg2d_platdata *pdata = to_fimg2d_plat(ctrl->dev);
+
+	if (status == FIMG2D_QOS_ON) {
+#ifdef CONFIG_FIMG2D_USE_BUS_DEVFREQ
+		if (pdata->mif_min)
+			pm_qos_update_request(&ctrl->exynos5_g2d_mif_qos, pdata->mif_min);
+		if (pdata->int_min)
+			pm_qos_update_request(&ctrl->exynos5_g2d_int_qos, pdata->int_min);
+#endif
+#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
+		if (pdata->cpu_min)
+			pm_qos_update_request(&ctrl->exynos5_g2d_cpu_qos, pdata->cpu_min);
+#endif
+	} else if (status == FIMG2D_QOS_OFF) {
+#ifdef CONFIG_FIMG2D_USE_BUS_DEVFREQ
+		if (pdata->mif_min)
+			pm_qos_update_request(&ctrl->exynos5_g2d_mif_qos, 0);
+		if (pdata->int_min)
+			pm_qos_update_request(&ctrl->exynos5_g2d_int_qos, 0);
+#endif
+#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
+		if (pdata->cpu_min)
+			pm_qos_update_request(&ctrl->exynos5_g2d_cpu_qos, 0);
+#endif
+	}
+	fimg2d_debug("Done fimg2d_pm_qos_update(cpu:%d, mif:%d, int:%d)\n",
+			pdata->cpu_min, pdata->mif_min, pdata->int_min);
+}
+
 static int fimg2d_do_bitblt(struct fimg2d_control *ctrl)
 {
 	int ret;
 
+	if (fimg2d_ip_version_is() >= IP_VER_G2D_5AR) {
+		pm_runtime_get_sync(ctrl->dev);
+		fimg2d_debug("Done pm_runtime_get_sync()\n");
+	} else {
+		pm_runtime_get_sync(ctrl->dev);
+		fimg2d_debug("Done pm_runtime_get_sync()\n");
+	}
+
 	fimg2d_clk_on(ctrl);
 	ret = ctrl->blit(ctrl);
 	fimg2d_clk_off(ctrl);
+
+	if (fimg2d_ip_version_is() >= IP_VER_G2D_5AR) {
+		pm_runtime_put_sync(ctrl->dev);
+		fimg2d_debug("Done pm_runtime_put_sync()\n");
+	} else {
+		pm_runtime_put_sync(ctrl->dev);
+		fimg2d_debug("Done pm_runtime_put_sync()\n");
+	}
 
 	return ret;
 }
@@ -166,14 +242,16 @@ static int fimg2d_open(struct inode *inode, struct file *file)
 	count = atomic_read(&ctrl->nctx);
 	g2d_spin_unlock(&ctrl->bltlock, flags);
 
-#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
-	if (count == 1) {
-		/* mif lock : 800MHz */
-		pm_qos_update_request(&exynos5_g2d_mif_qos, 800000);
-		pm_qos_update_request(&exynos5_g2d_cpu_qos, 400000);
-	} else
-		fimg2d_debug("count:%ld, pm_qos_update_request() is already called\n", count);
+	if (count == 1)
+		fimg2d_pm_qos_update(ctrl, FIMG2D_QOS_ON);
+	else {
+#ifdef CONFIG_FIMG2D_USE_BUS_DEVFREQ
+		fimg2d_debug("count:%ld, fimg2d_pm_qos_update(ON,mif,int) is already called\n", count);
 #endif
+#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
+		fimg2d_debug("count:%ld, fimg2d_pm_qos_update(ON,cpu) is already called\n", count);
+#endif
+	}
 	return 0;
 }
 
@@ -195,13 +273,16 @@ static int fimg2d_release(struct inode *inode, struct file *file)
 	count = atomic_read(&ctrl->nctx);
 	g2d_spin_unlock(&ctrl->bltlock, flags);
 
-#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
-	if (!count) {
-		pm_qos_update_request(&exynos5_g2d_mif_qos, 0);
-		pm_qos_update_request(&exynos5_g2d_cpu_qos, 0);
-	} else
-		fimg2d_debug("count:%ld, pm_qos_update_request() is already called\n", count);
+	if (!count)
+		fimg2d_pm_qos_update(ctrl, FIMG2D_QOS_OFF);
+	else {
+#ifdef CONFIG_FIMG2D_USE_BUS_DEVFREQ
+		fimg2d_debug("count:%ld, fimg2d_pm_qos_update(OFF,mif.int) is not called yet\n", count);
 #endif
+#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
+		fimg2d_debug("count:%ld, fimg2d_pm_qos_update(OFF, cpu) is not called yet\n", count);
+#endif
+	}
 	kfree(ctx);
 	return 0;
 }
@@ -226,6 +307,8 @@ static int store_user_dst(struct fimg2d_blit __user *buf,
 
 	int len = sizeof(struct fimg2d_image);
 
+	memset(&dst_img, 0, len);
+
 	if (copy_from_user(&blt, buf, sizeof(blt)))
 		return -EFAULT;
 
@@ -241,7 +324,6 @@ static int store_user_dst(struct fimg2d_blit __user *buf,
 
 	dst_buf->addr = dst_img.addr.start + (stride * clp->y1);
 	dst_buf->size = stride * clp_h;
-	dst_buf->cached = dst_buf->cached;
 
 	return 0;
 }
@@ -259,7 +341,7 @@ static long fimg2d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case FIMG2D_BITBLT_BLIT:
 
 		mm = get_task_mm(current);
-		if(!mm) {
+		if (!mm) {
 			fimg2d_err("no mm for ctx\n");
 			return -ENXIO;
 		}
@@ -275,31 +357,40 @@ static long fimg2d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return -EPERM;
 		}
 
-		fimg2d_clk_on(ctrl);
 		ret = fimg2d_add_command(ctrl, ctx, (struct fimg2d_blit __user *)arg);
-
 		if (ret) {
 			fimg2d_err("add command not allowed.\n");
 			g2d_unlock(&ctrl->drvlock);
-			fimg2d_clk_off(ctrl);
 			mmput(mm);
 			return ret;
 		}
 
-		usr_dst = kzalloc(sizeof(usr_dst), GFP_KERNEL);
-		store_user_dst((struct fimg2d_blit __user *)arg, usr_dst);
-		if (!usr_dst)
-			return -EPERM;
+		usr_dst = kzalloc(sizeof(struct fimg2d_dma), GFP_KERNEL);
+		if (!usr_dst) {
+			fimg2d_err("failed to allocate memory for fimg2d_dma\n");
+			g2d_unlock(&ctrl->drvlock);
+			mmput(mm);
+			return -ENOMEM;
+		}
+
+		ret = store_user_dst((struct fimg2d_blit __user *)arg, usr_dst);
+		if (ret) {
+			fimg2d_err("store_user_dst() not allowed.\n");
+			g2d_unlock(&ctrl->drvlock);
+			kfree(usr_dst);
+			mmput(mm);
+			return ret;
+		}
 
 		ret = fimg2d_request_bitblt(ctrl, ctx);
 		if (ret) {
 			fimg2d_err("request bitblit not allowed.\n");
 			g2d_unlock(&ctrl->drvlock);
-			fimg2d_clk_off(ctrl);
 			kfree(usr_dst);
 			mmput(mm);
 			return -EBUSY;
 		}
+
 		g2d_unlock(&ctrl->drvlock);
 
 		fimg2d_debug("addr : %p, size : %d\n",
@@ -307,7 +398,6 @@ static long fimg2d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		fimg2d_dma_unsync_inner(usr_dst->addr,
 				usr_dst->size, DMA_FROM_DEVICE);
 		kfree(usr_dst);
-		fimg2d_clk_off(ctrl);
 		mmput(mm);
 		break;
 
@@ -396,6 +486,8 @@ static int fimg2d_probe(struct platform_device *pdev)
 	int ret = 0;
 	struct resource *res;
 
+	dev_info(&pdev->dev, "++%s\n", __func__);
+
 	if (!to_fimg2d_plat(&pdev->dev)) {
 		fimg2d_err("failed to get platform data\n");
 		return -ENOMEM;
@@ -429,7 +521,7 @@ static int fimg2d_probe(struct platform_device *pdev)
 	if (!ctrl->mem) {
 		fimg2d_err("failed to request memory region\n");
 		ret = -ENOMEM;
-		goto res_free;
+		goto drv_free;
 	}
 
 	/* ioremap */
@@ -439,7 +531,7 @@ static int fimg2d_probe(struct platform_device *pdev)
 		ret = -ENOENT;
 		goto mem_free;
 	}
-	fimg2d_info("base address: 0x%lx\n", (unsigned long)res->start);
+	fimg2d_debug("base address: 0x%lx\n", (unsigned long)res->start);
 
 	/* irq */
 	ctrl->irq = platform_get_irq(pdev, 0);
@@ -448,7 +540,7 @@ static int fimg2d_probe(struct platform_device *pdev)
 		ret = -ENOENT;
 		goto reg_unmap;
 	}
-	fimg2d_info("irq: %d\n", ctrl->irq);
+	fimg2d_debug("irq: %d\n", ctrl->irq);
 
 	ret = request_irq(ctrl->irq, fimg2d_irq, IRQF_DISABLED,
 			pdev->name, ctrl);
@@ -468,13 +560,12 @@ static int fimg2d_probe(struct platform_device *pdev)
 #ifdef CONFIG_PM_RUNTIME
 	pm_runtime_enable(ctrl->dev);
 	fimg2d_info("enable runtime pm\n");
-	pm_runtime_get_sync(ctrl->dev);
 #else
 	fimg2d_clk_on(ctrl);
 #endif
 
 	exynos_sysmmu_set_fault_handler(ctrl->dev, fimg2d_sysmmu_fault_handler);
-	fimg2d_info("register sysmmu page fault handler\n");
+	fimg2d_debug("register sysmmu page fault handler\n");
 
 	/* misc register */
 	ret = misc_register(&fimg2d_dev);
@@ -483,12 +574,9 @@ static int fimg2d_probe(struct platform_device *pdev)
 		goto clk_release;
 	}
 
-#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
-	pm_qos_add_request(&exynos5_g2d_cpu_qos,
-			PM_QOS_CPU_FREQ_MIN, 0);
-	pm_qos_add_request(&exynos5_g2d_mif_qos,
-			PM_QOS_BUS_THROUGHPUT, 0);
-#endif
+	fimg2d_pm_qos_add(ctrl);
+
+	dev_info(&pdev->dev, "fimg2d registered successfully\n");
 
 	return 0;
 
@@ -505,9 +593,7 @@ irq_free:
 reg_unmap:
 	iounmap(ctrl->regs);
 mem_free:
-	kfree(ctrl->mem);
-res_free:
-	release_resource(ctrl->mem);
+	release_mem_region(res->start, resource_size(res));
 drv_free:
 #ifdef BLIT_WORKQUE
 	if (ctrl->work_q)
@@ -521,11 +607,7 @@ drv_free:
 
 static int fimg2d_remove(struct platform_device *pdev)
 {
-
-#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
-	pm_qos_remove_request(&exynos5_g2d_cpu_qos);
-	pm_qos_remove_request(&exynos5_g2d_mif_qos);
-#endif
+	fimg2d_pm_qos_remove(ctrl);
 
 	misc_deregister(&fimg2d_dev);
 

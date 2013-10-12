@@ -1002,10 +1002,7 @@ static int register_root_hub(struct usb_hcd *hcd)
 	if (retval) {
 		dev_err (parent_dev, "can't register root hub for %s, %d\n",
 				dev_name(&usb_dev->dev), retval);
-	}
-	mutex_unlock(&usb_bus_list_lock);
-
-	if (retval == 0) {
+	} else {
 		spin_lock_irq (&hcd_root_hub_lock);
 		hcd->rh_registered = 1;
 		spin_unlock_irq (&hcd_root_hub_lock);
@@ -1014,6 +1011,7 @@ static int register_root_hub(struct usb_hcd *hcd)
 		if (HCD_DEAD(hcd))
 			usb_hc_died (hcd);	/* This time clean up */
 	}
+	mutex_unlock(&usb_bus_list_lock);
 
 	return retval;
 }
@@ -2437,7 +2435,6 @@ int usb_add_hcd(struct usb_hcd *hcd,
 	 * but drivers can override it in reset() if needed, along with
 	 * recording the overall controller's system wakeup capability.
 	 */
-	device_init_wakeup(&rhdev->dev, 1);
 	device_set_wakeup_capable(&rhdev->dev, 1);
 
 	/* HCD_FLAG_RH_RUNNING doesn't matter until the root hub is

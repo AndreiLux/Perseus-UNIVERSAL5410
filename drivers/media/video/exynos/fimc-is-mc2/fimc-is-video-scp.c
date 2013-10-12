@@ -120,9 +120,9 @@ p_err:
 static int fimc_is_scp_video_close(struct file *file)
 {
 	int ret = 0;
-	struct fimc_is_video *video;
-	struct fimc_is_video_ctx *vctx;
-	struct fimc_is_device_ischain *device;
+	struct fimc_is_video *video = NULL;
+	struct fimc_is_video_ctx *vctx = NULL;
+	struct fimc_is_device_ischain *device = NULL;
 
 	BUG_ON(!file);
 
@@ -236,19 +236,36 @@ static int fimc_is_scp_video_set_format_mplane(struct file *file, void *fh,
 {
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
-	struct fimc_is_queue *queue = &vctx->q_dst;
-	struct fimc_is_device_ischain *ischain = vctx->device;
+	struct fimc_is_queue *queue;
+	struct fimc_is_device_ischain *ischain;
+
+	BUG_ON(!vctx);
+	BUG_ON(!format);
 
 	mdbgv_scp("%s\n", vctx, __func__);
 
-	ret = fimc_is_video_set_format_mplane(file, vctx, format);
-	if (ret)
-		merr("fimc_is_video_set_format_mplane is fail(%d)", vctx, ret);
+	queue = GET_DST_QUEUE(vctx);
+	ischain = vctx->device;
+	if (!ischain) {
+		merr("ischain is NULL", vctx);
+		ret = -EINVAL;
+		goto p_err;
+	}
 
-	fimc_is_ischain_scp_s_format(ischain,
+	ret = fimc_is_video_set_format_mplane(file, vctx, format);
+	if (ret) {
+		merr("fimc_is_video_set_format_mplane is fail(%d)", vctx, ret);
+		goto p_err;
+	}
+
+	ret = fimc_is_ischain_scp_s_format(ischain,
+		queue->framecfg.format.pixelformat,
 		queue->framecfg.width,
 		queue->framecfg.height);
+	if (ret)
+		merr("fimc_is_ischain_scp_s_format is fail(%d)", vctx, ret);
 
+p_err:
 	return ret;
 }
 
@@ -274,22 +291,34 @@ static int fimc_is_scp_video_get_crop(struct file *file, void *fh,
 }
 
 static int fimc_is_scp_video_set_crop(struct file *file, void *fh,
-						struct v4l2_crop *crop)
+	struct v4l2_crop *crop)
 {
+	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
+	struct fimc_is_queue *queue;
 	struct fimc_is_device_ischain *ischain;
 
 	BUG_ON(!vctx);
 
 	mdbgv_scp("%s\n", vctx, __func__);
 
+	queue = GET_DST_QUEUE(vctx);
 	ischain = vctx->device;
-	BUG_ON(!ischain);
+	if (!ischain) {
+		merr("ischain is NULL", vctx);
+		ret = -EINVAL;
+		goto p_err;
+	}
 
-	fimc_is_ischain_scp_s_format(ischain,
-		crop->c.width, crop->c.height);
+	ret = fimc_is_ischain_scp_s_format(ischain,
+		queue->framecfg.format.pixelformat,
+		crop->c.width,
+		crop->c.height);
+	if (ret)
+		merr("fimc_is_ischain_scp_s_format is fail(%d)", vctx, ret);
 
-	return 0;
+p_err:
+	return ret;
 }
 
 static int fimc_is_scp_video_reqbufs(struct file *file, void *priv,
@@ -375,7 +404,6 @@ static int fimc_is_scp_video_dqbuf(struct file *file, void *priv,
 	if (ret)
 		merr("fimc_is_video_dqbuf is fail(%d)", vctx, ret);
 
-p_err:
 	return ret;
 }
 
@@ -485,7 +513,9 @@ static int fimc_is_scp_video_s_ctrl(struct file *file, void *priv,
 {
 	int ret = 0;
 	unsigned long flags;
+	u32 crange;
 	struct fimc_is_video_ctx *vctx = file->private_data;
+	struct fimc_is_device_ischain *device;
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_frame *frame;
 
@@ -493,6 +523,13 @@ static int fimc_is_scp_video_s_ctrl(struct file *file, void *priv,
 	BUG_ON(!ctrl);
 
 	mdbgv_scp("%s\n", vctx, __func__);
+
+	device = vctx->device;
+	if (!device) {
+		merr("device is NULL", vctx);
+		ret = -EINVAL;
+		goto p_err;
+	}
 
 	framemgr = GET_DST_FRAMEMGR(vctx);
 	frame = NULL;
@@ -522,12 +559,21 @@ static int fimc_is_scp_video_s_ctrl(struct file *file, void *priv,
 			framemgr_x_barrier_irqr(framemgr, 0, flags);
 		}
 		break;
+	case V4L2_CID_IS_SET_SETFILE:
+		if (test_bit(FIMC_IS_ISDEV_DSTART, &device->group_isp.leader.state)) {
+			err("Setting setfile is only avaiable before starting device!! (0x%08x)", ctrl->value);
+			ret = -EINVAL;
+		} else {
+			device->scp_setfile = ctrl->value;
+		}
+		break;
 	default:
 		err("unsupported ioctl(%d)\n", ctrl->id);
 		ret = -EINVAL;
 		break;
 	}
 
+p_err:
 	return ret;
 }
 

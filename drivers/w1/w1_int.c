@@ -32,6 +32,10 @@
 #include "w1_netlink.h"
 #include "w1_int.h"
 
+#if defined(CONFIG_SEC_FACTORY)
+#define CONFIG_W1_KTHREAD
+#endif
+
 static int w1_search_count = -1; /* Default is continual scan */
 module_param_named(search_count, w1_search_count, int, 0);
 
@@ -161,6 +165,8 @@ int w1_add_master_device(struct w1_bus_master *master)
 
 	dev->initialized = 1;
 
+#ifdef CONFIG_W1_KTHREAD
+	printk(KERN_INFO "%s : W1 kthread will start\n", __func__);
 	dev->thread = kthread_run(&w1_process, dev, "%s", dev->name);
 	if (IS_ERR(dev->thread)) {
 		retval = PTR_ERR(dev->thread);
@@ -171,6 +177,7 @@ int w1_add_master_device(struct w1_bus_master *master)
 		goto err_out_rm_attr;
 	}
 
+#endif
 	list_add(&dev->w1_master_entry, &w1_masters);
 	mutex_unlock(&w1_mlock);
 

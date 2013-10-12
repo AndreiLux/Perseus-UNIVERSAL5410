@@ -59,7 +59,7 @@ static struct exynos_power_info *cur_power_mode;
 static ssize_t exynos_power_show(struct device *dev, struct device_attribute *attr,
 			     char *buf)
 {
-	return sprintf(buf, "%s\n", cur_power_mode->mode_name);
+	return snprintf(buf, POWER_MODE_LEN, "%s\n", cur_power_mode->mode_name);
 }
 
 static unsigned int exynos_get_power_mode(char *target_mode, unsigned int *cpu_lock,
@@ -89,7 +89,7 @@ set_power_mode_info:
 	return 0;
 }
 
-static ssize_t exynos_power_stroe(struct device *dev, struct device_attribute *attr,
+static ssize_t __ref exynos_power_store(struct device *dev, struct device_attribute *attr,
 			      const char *buf, size_t count)
 {
 	char str_power_mode[POWER_MODE_LEN];
@@ -124,7 +124,7 @@ static ssize_t exynos_power_stroe(struct device *dev, struct device_attribute *a
 	return count;
 }
 
-static DEVICE_ATTR(cur_power_mode, S_IRUGO | S_IWUSR, exynos_power_show, exynos_power_stroe);
+static DEVICE_ATTR(cur_power_mode, S_IRUGO | S_IWUSR, exynos_power_show, exynos_power_store);
 
 static int __init exynos_power_mode_init(void)
 {

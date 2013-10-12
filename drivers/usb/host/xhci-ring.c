@@ -1219,7 +1219,7 @@ static void xhci_cmd_to_noop(struct xhci_hcd *xhci, struct xhci_cd *cur_cd)
 {
 	struct xhci_segment *cur_seg;
 	union xhci_trb *cmd_trb;
-	u32 cycle_state=0;
+	u32 cycle_state;
 
 	if (xhci->cmd_ring->dequeue == xhci->cmd_ring->enqueue)
 		return;
@@ -2027,8 +2027,8 @@ static int process_ctrl_td(struct xhci_hcd *xhci, struct xhci_td *td,
 		if (event_trb != ep_ring->dequeue &&
 				event_trb != td->last_trb)
 			td->urb->actual_length =
-				td->urb->transfer_buffer_length
-				- TRB_LEN(le32_to_cpu(event->transfer_len));
+				td->urb->transfer_buffer_length -
+				EVENT_TRB_LEN(le32_to_cpu(event->transfer_len));
 		else
 			td->urb->actual_length = 0;
 
@@ -2060,7 +2060,7 @@ static int process_ctrl_td(struct xhci_hcd *xhci, struct xhci_td *td,
 		/* Maybe the event was for the data stage? */
 			td->urb->actual_length =
 				td->urb->transfer_buffer_length -
-				TRB_LEN(le32_to_cpu(event->transfer_len));
+				EVENT_TRB_LEN(le32_to_cpu(event->transfer_len));
 			xhci_dbg(xhci, "Waiting for status "
 					"stage event\n");
 			return 0;
@@ -2096,7 +2096,7 @@ static int process_isoc_td(struct xhci_hcd *xhci, struct xhci_td *td,
 	/* handle completion code */
 	switch (trb_comp_code) {
 	case COMP_SUCCESS:
-		if (TRB_LEN(le32_to_cpu(event->transfer_len)) == 0) {
+		if (EVENT_TRB_LEN(le32_to_cpu(event->transfer_len)) == 0) {
 			frame->status = 0;
 			break;
 		}
@@ -2141,7 +2141,7 @@ static int process_isoc_td(struct xhci_hcd *xhci, struct xhci_td *td,
 				len += TRB_LEN(le32_to_cpu(cur_trb->generic.field[2]));
 		}
 		len += TRB_LEN(le32_to_cpu(cur_trb->generic.field[2])) -
-			TRB_LEN(le32_to_cpu(event->transfer_len));
+			EVENT_TRB_LEN(le32_to_cpu(event->transfer_len));
 
 		if (trb_comp_code != COMP_STOP_INVAL) {
 			frame->actual_length = len;
@@ -2199,7 +2199,7 @@ static int process_bulk_intr_td(struct xhci_hcd *xhci, struct xhci_td *td,
 	case COMP_SUCCESS:
 		/* Double check that the HW transferred everything. */
 		if (event_trb != td->last_trb ||
-				TRB_LEN(le32_to_cpu(event->transfer_len)) != 0) {
+		    EVENT_TRB_LEN(le32_to_cpu(event->transfer_len)) != 0) {
 			xhci_warn(xhci, "WARN Successful completion "
 					"on short TX\n");
 			if (td->urb->transfer_flags & URB_SHORT_NOT_OK)
@@ -2227,18 +2227,18 @@ static int process_bulk_intr_td(struct xhci_hcd *xhci, struct xhci_td *td,
 				"%d bytes untransferred\n",
 				td->urb->ep->desc.bEndpointAddress,
 				td->urb->transfer_buffer_length,
-				TRB_LEN(le32_to_cpu(event->transfer_len)));
+				EVENT_TRB_LEN(le32_to_cpu(event->transfer_len)));
 	/* Fast path - was this the last TRB in the TD for this URB? */
 	if (event_trb == td->last_trb) {
-		if (TRB_LEN(le32_to_cpu(event->transfer_len)) != 0) {
+		if (EVENT_TRB_LEN(le32_to_cpu(event->transfer_len)) != 0) {
 			td->urb->actual_length =
 				td->urb->transfer_buffer_length -
-				TRB_LEN(le32_to_cpu(event->transfer_len));
+				EVENT_TRB_LEN(le32_to_cpu(event->transfer_len));
 			if (td->urb->transfer_buffer_length <
 					td->urb->actual_length) {
 				xhci_warn(xhci, "HC gave bad length "
 						"of %d bytes left\n",
-					  TRB_LEN(le32_to_cpu(event->transfer_len)));
+					  EVENT_TRB_LEN(le32_to_cpu(event->transfer_len)));
 				td->urb->actual_length = 0;
 				if (td->urb->transfer_flags & URB_SHORT_NOT_OK)
 					*status = -EREMOTEIO;
@@ -2280,7 +2280,7 @@ static int process_bulk_intr_td(struct xhci_hcd *xhci, struct xhci_td *td,
 		if (trb_comp_code != COMP_STOP_INVAL)
 			td->urb->actual_length +=
 				TRB_LEN(le32_to_cpu(cur_trb->generic.field[2])) -
-				TRB_LEN(le32_to_cpu(event->transfer_len));
+				EVENT_TRB_LEN(le32_to_cpu(event->transfer_len));
 	}
 
 	return finish_td(xhci, td, event_trb, event, ep, status, false);
@@ -2366,7 +2366,7 @@ static int handle_tx_event(struct xhci_hcd *xhci,
 	 * transfer type
 	 */
 	case COMP_SUCCESS:
-		if (TRB_LEN(le32_to_cpu(event->transfer_len)) == 0)
+		if (EVENT_TRB_LEN(le32_to_cpu(event->transfer_len)) == 0)
 			break;
 		if (xhci->quirks & XHCI_TRUST_TX_LENGTH)
 			trb_comp_code = COMP_SHORT_TX;
@@ -2602,6 +2602,16 @@ cleanup:
 						urb->transfer_buffer_length,
 						status);
 			spin_unlock(&xhci->lock);
+
+#ifdef CONFIG_HOST_COMPLIANT_TEST
+			if (likely(urb->transfer_flags & URB_HCD_DRIVER_TEST)) {
+				xhci_info(xhci, "USB_TEST : URB_HCD_DRIVER_TEST\n");
+				ep->skip = false;
+				spin_lock(&xhci->lock);
+				break;
+			}
+#endif
+
 			/* EHCI, UHCI, and OHCI always unconditionally set the
 			 * urb->status of an isochronous endpoint to 0.
 			 */
@@ -3525,6 +3535,134 @@ int xhci_queue_ctrl_tx(struct xhci_hcd *xhci, gfp_t mem_flags,
 			start_cycle, start_trb);
 	return 0;
 }
+
+#ifdef CONFIG_HOST_COMPLIANT_TEST
+int xhci_queue_ctrl_tx_single_step(struct xhci_hcd *xhci,
+		gfp_t mem_flags, struct urb *urb, int slot_id,
+		unsigned int ep_index, int get_dev_desc)
+{
+	struct xhci_ring *ep_ring;
+	int num_trbs;
+	int ret;
+	struct usb_ctrlrequest *setup;
+	struct xhci_generic_trb *start_trb;
+	int start_cycle;
+	u32 field, length_field;
+	struct urb_priv *urb_priv;
+	struct xhci_td *td;
+
+	ep_ring = xhci_urb_to_transfer_ring(xhci, urb);
+	if (!ep_ring)
+		return -EINVAL;
+
+	/*
+	 * Need to copy setup packet into setup TRB, so we can't use the setup
+	 * DMA address.
+	 */
+	if (!urb->setup_packet)
+		return -EINVAL;
+	/* 1 TRB for setup, 1 for status */
+	num_trbs = 2;
+	/*
+	 * Don't need to check if we need additional event data and normal TRBs,
+	 * since data in control transfers will never get bigger than 16MB
+	 * XXX: can we get a buffer that crosses 64KB boundaries?
+	 */
+	if (urb->transfer_buffer_length > 0)
+		num_trbs++;
+
+	ret = prepare_transfer(xhci, xhci->devs[slot_id], ep_index,
+				urb->stream_id, num_trbs, urb, 0, GFP_KERNEL);
+	if (ret < 0)
+		return ret;
+
+	urb_priv = urb->hcpriv;
+	td = urb_priv->td[0];
+
+	start_trb = &ep_ring->enqueue->generic;
+	start_cycle = ep_ring->cycle_state;
+
+	/* Queue setup TRB - see section 6.4.1.2.1 */
+	/* FIXME better way to translate setup_packet into two u32 fields? */
+	setup = (struct usb_ctrlrequest *) urb->setup_packet;
+	field = 0;
+	field |= TRB_IDT | TRB_TYPE(TRB_SETUP);
+	if (start_cycle == 0)
+		field |= 0x1;
+
+	/* xHCI 1.0 6.4.1.2.1: Transfer Type field */
+	if (xhci->hci_version == 0x100) {
+		if (urb->transfer_buffer_length > 0) {
+			if (setup->bRequestType & USB_DIR_IN)
+				field |= TRB_TX_TYPE(TRB_DATA_IN);
+			else
+				field |= TRB_TX_TYPE(TRB_DATA_OUT);
+		}
+	}
+
+	if (get_dev_desc) {
+		/* Sending SOF for 15 seconds */
+		schedule_timeout_uninterruptible(msecs_to_jiffies(15000));
+	}
+
+	queue_trb(xhci, ep_ring, true,
+			setup->bRequestType | setup->bRequest << 8 |
+			le16_to_cpu(setup->wValue) << 16,
+			le16_to_cpu(setup->wIndex) |
+			le16_to_cpu(setup->wLength) << 16,
+			TRB_LEN(8) | TRB_INTR_TARGET(0), field);
+
+	if (!get_dev_desc) {
+		giveback_first_trb(xhci, slot_id, ep_index, 0, start_cycle, start_trb);
+
+		/* Sending SOF for 15 seconds */
+		schedule_timeout_uninterruptible(msecs_to_jiffies(15000));
+	}
+
+	/* If there's data, queue data TRBs */
+	/* Only set interrupt on short packet for IN endpoints */
+	if (usb_urb_dir_in(urb))
+		field = TRB_ISP | TRB_TYPE(TRB_DATA);
+	else
+		field = TRB_TYPE(TRB_DATA);
+
+	length_field = TRB_LEN(urb->transfer_buffer_length) |
+		xhci_td_remainder(urb->transfer_buffer_length) |
+		TRB_INTR_TARGET(0);
+
+	if (urb->transfer_buffer_length > 0) {
+		if (setup->bRequestType & USB_DIR_IN)
+			field |= TRB_DIR_IN;
+		queue_trb(xhci, ep_ring, true,
+				lower_32_bits(urb->transfer_dma),
+				upper_32_bits(urb->transfer_dma),
+				length_field,
+				field | ep_ring->cycle_state);
+	}
+
+	/* Save the DMA address of the last TRB in the TD */
+	td->last_trb = ep_ring->enqueue;
+
+	/* Queue status TRB - see Table 7 and sections 4.11.2.2 and 6.4.1.2.3 */
+	/* If the device sent data, the status stage is an OUT transfer */
+	if (urb->transfer_buffer_length > 0 && setup->bRequestType & USB_DIR_IN)
+		field = 0;
+	else
+		field = TRB_DIR_IN;
+
+	queue_trb(xhci, ep_ring, false,
+			0,
+			0,
+			TRB_INTR_TARGET(0),
+			/* Event on completion */
+			field | TRB_IOC | TRB_TYPE(TRB_STATUS) |
+			ep_ring->cycle_state);
+
+	giveback_first_trb(xhci, slot_id, ep_index, 0, start_cycle, start_trb);
+
+	return 0;
+}
+#endif/* CONFIG_HOST_COMPLIANT_TEST */
 
 static int count_isoc_trbs_needed(struct xhci_hcd *xhci,
 		struct urb *urb, int i)

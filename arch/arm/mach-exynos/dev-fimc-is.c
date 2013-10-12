@@ -112,30 +112,44 @@ void __init exynos5_fimc_is_set_platdata(struct exynos5_platform_fimc_is *pd)
 	struct exynos5_platform_fimc_is *npd;
 
 	if (!pd)
-		pd = (struct exynos5_platform_fimc_is *)
-				&exynos5_fimc_is_default_data;
+		pd = (struct exynos5_platform_fimc_is *) &exynos5_fimc_is_default_data;
 
 	npd = kmemdup(pd, sizeof(struct exynos5_platform_fimc_is), GFP_KERNEL);
-
 	if (!npd) {
 		printk(KERN_ERR "%s: no memory for platform data\n", __func__);
-	} else {
-		if (!npd->cfg_gpio)
-			npd->cfg_gpio = exynos5_fimc_is_cfg_gpio;
-		if (!npd->clk_cfg)
-			npd->clk_cfg = exynos5_fimc_is_cfg_clk;
-		if (!npd->clk_on)
-			npd->clk_on = exynos5_fimc_is_clk_on;
-		if (!npd->clk_off)
-			npd->clk_off = exynos5_fimc_is_clk_off;
-		if (!npd->sensor_power_on)
-			npd->sensor_power_on = exynos5_fimc_is_sensor_power_on;
-		if (!npd->sensor_power_off)
-			npd->sensor_power_off = exynos5_fimc_is_sensor_power_off;
-		if (!npd->print_cfg)
-			npd->print_cfg = exynos5_fimc_is_print_cfg;
-
-		exynos5_device_fimc_is.dev.platform_data = npd;
+		return;
 	}
+
+#if defined(CONFIG_SOC_EXYNOS5250)
+	npd->cfg_gpio = exynos5_fimc_is_cfg_gpio;
+	npd->clk_cfg = exynos5250_fimc_is_cfg_clk;
+	npd->clk_on = exynos5250_fimc_is_clk_on;
+	npd->clk_off = exynos5250_fimc_is_clk_off;
+	npd->sensor_power_on = exynos5_fimc_is_sensor_power_on;
+	npd->sensor_power_off = exynos5_fimc_is_sensor_power_off;
+	npd->print_cfg = exynos5_fimc_is_print_cfg;
+#elif defined(CONFIG_SOC_EXYNOS5410)
+	npd->cfg_gpio = exynos5_fimc_is_cfg_gpio;
+	npd->clk_cfg = exynos5410_fimc_is_cfg_clk;
+	npd->clk_on = exynos5410_fimc_is_clk_on;
+	npd->clk_off = exynos5410_fimc_is_clk_off;
+	npd->sensor_clock_on = exynos5410_fimc_is_sensor_clk_on;
+	npd->sensor_clock_off = exynos5410_fimc_is_sensor_clk_off;
+	npd->sensor_power_on = exynos5_fimc_is_sensor_power_on;
+	npd->sensor_power_off = exynos5_fimc_is_sensor_power_off;
+	npd->print_cfg = exynos5_fimc_is_print_cfg;
+#elif defined(CONFIG_SOC_EXYNOS5420)
+	npd->cfg_gpio = exynos5_fimc_is_cfg_gpio;
+	npd->clk_cfg = exynos5420_fimc_is_cfg_clk;
+	npd->clk_on = exynos5420_fimc_is_clk_on;
+	npd->clk_off = exynos5420_fimc_is_clk_off;
+	npd->sensor_clock_on = exynos5420_fimc_is_sensor_clk_on;
+	npd->sensor_clock_off = exynos5420_fimc_is_sensor_clk_off;
+	npd->sensor_power_on = exynos5_fimc_is_sensor_power_on;
+	npd->sensor_power_off = exynos5_fimc_is_sensor_power_off;
+	npd->print_cfg = exynos5_fimc_is_print_cfg;
+#endif
+
+	exynos5_device_fimc_is.dev.platform_data = npd;
 }
 #endif

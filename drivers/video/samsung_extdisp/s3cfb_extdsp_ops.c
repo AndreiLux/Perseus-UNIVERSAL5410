@@ -287,7 +287,7 @@ int s3cfb_extdsp_release(struct fb_info *fb, int user)
 			fbdev->buf_list[i].dma_buf = NULL;
 			fbdev->buf_list[i].dma_buf_uv = NULL;
 #endif
-			printk("fbdev->buf_list[%d].dma_buf: %p\n", i, fbdev->buf_list[i].dma_buf);
+			printk("fbdev->buf_list[%d].dma_buf: 0x%08x\n", i, fbdev->buf_list[i].dma_buf);
 		}
 	}
 
@@ -306,7 +306,7 @@ int s3cfb_extdsp_unmap_fd(void)
 			dma_buf_put(fbdev->buf_list[i].dma_buf);
 			fbdev->buf_list[i].dma_buf = NULL;
 			fbdev->buf_list[i].dma_buf_uv = NULL;
-			printk("fbdev->buf_list[%d].dma_buf: %p\n", i, fbdev->buf_list[i].dma_buf);
+			printk("fbdev->buf_list[%d].dma_buf: 0x%08x\n", i, fbdev->buf_list[i].dma_buf);
 		}
 	}
 	return 0;
@@ -473,7 +473,7 @@ static void fb_vm_open(struct vm_area_struct *vma)
 static void fb_vm_close(struct vm_area_struct *vma)
 {
 	struct extdsp_mmap_data *data = vma->vm_private_data;
-	atomic_dec_return(&data->cnt); // atomic_dec_and_test(&data->cnt);
+	atomic_dec_and_test(&data->cnt);
 #if 0
 	if (atomic_dec_and_test(&data->cnt)) {
 		int i;
@@ -526,9 +526,9 @@ int s3cfb_extdsp_mmap(struct fb_info *info, struct vm_area_struct *vma)
 			fbdev->buf_list[1].dma_buf == NULL ||
 			fbdev->buf_list[2].dma_buf == NULL) {
 		printk("[VFB] %s: buf_list[] should be set before calling mmap\n", __func__);
-		printk("fbdev->buf_list[0].dma_buf: %p\n", fbdev->buf_list[0].dma_buf);
-		printk("fbdev->buf_list[1].dma_buf: %p\n", fbdev->buf_list[1].dma_buf);
-		printk("fbdev->buf_list[2].dma_buf: %p\n", fbdev->buf_list[2].dma_buf);
+		printk("fbdev->buf_list[0].dma_buf: 0x%08x\n", fbdev->buf_list[0].dma_buf);
+		printk("fbdev->buf_list[1].dma_buf: 0x%08x\n", fbdev->buf_list[1].dma_buf);
+		printk("fbdev->buf_list[2].dma_buf: 0x%08x\n", fbdev->buf_list[2].dma_buf);
 		return -EINVAL;
 	}
 

@@ -76,10 +76,11 @@
 #define DATA_STATE_XMIT         1
 #define DATA_STATE_NEED_ZLP     2
 #define WAIT_FOR_OUT_STATUS     3
-#define DATA_STATE_RECV         4
-#define RegReadErr		5
-#define FAIL_TO_SETUP		6
-#define WAIT_FOR_SETUP_NAK	7
+#define WAIT_FOR_IN_STATUS	4
+#define DATA_STATE_RECV         5
+#define RegReadErr		6
+#define FAIL_TO_SETUP		7
+#define WAIT_FOR_SETUP_NAK	8
 
 #define TEST_J_SEL		0x1
 #define TEST_K_SEL		0x2
@@ -145,6 +146,7 @@ struct s3c_udc {
 	struct resource *regs_res;
 	unsigned int irq;
 	unsigned req_pending:1, req_std:1, req_config:1;
+	int udc_enabled;
 };
 
 extern struct s3c_udc *the_controller;

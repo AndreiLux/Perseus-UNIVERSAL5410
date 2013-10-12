@@ -34,46 +34,12 @@
 #include <linux/wakelock.h>
 
 #include <linux/platform_data/modem_if.h>
-#include <mach/c2c.h>
 #include "modem_prj.h"
 #include "modem_variation.h"
 #include "modem_utils.h"
 
 #define FMT_WAKE_TIME   (HZ/2)
 #define RAW_WAKE_TIME   (HZ*6)
-
-static void print_pm_status(struct modem_ctl *mc, int level)
-{
-#ifdef DEBUG_MODEM_IF
-	struct utc_time t;
-	int ap_wakeup;
-	int ap_status;
-	int cp_wakeup;
-	int cp_status;
-
-	if (level < 0)
-		return;
-
-	get_utc_time(&t);
-	ap_wakeup = gpio_get_value(mc->gpio_ap_wakeup);
-	ap_status = gpio_get_value(mc->gpio_ap_status);
-	cp_wakeup = gpio_get_value(mc->gpio_cp_wakeup);
-	cp_status = gpio_get_value(mc->gpio_cp_status);
-
-	/*
-	** PM {ap_wakeup:cp_wakeup:cp_status:ap_status} CALLER
-	*/
-	if (level > 0) {
-		pr_err(LOG_TAG "[%02d:%02d:%02d.%03d] PM {%d:%d:%d:%d} %pf\n",
-			t.hour, t.min, t.sec, t.msec, ap_wakeup, cp_wakeup,
-			cp_status, ap_status, CALLER);
-	} else {
-		pr_info(LOG_TAG "[%02d:%02d:%02d.%03d] PM {%d:%d:%d:%d} %pf\n",
-			t.hour, t.min, t.sec, t.msec, ap_wakeup, cp_wakeup,
-			cp_status, ap_status, CALLER);
-	}
-#endif
-}
 
 static struct modem_shared *create_modem_shared_data(void)
 {
@@ -357,35 +323,11 @@ static void modem_shutdown(struct platform_device *pdev)
 
 static int modem_suspend(struct device *pdev)
 {
+#if !defined(CONFIG_LINK_DEVICE_HSIC)
 	struct modem_ctl *mc = dev_get_drvdata(pdev);
 
-#if !defined(CONFIG_LINK_DEVICE_HSIC) && !defined(CONFIG_LINK_DEVICE_C2C)
 	if (mc->gpio_pda_active)
 		gpio_set_value(mc->gpio_pda_active, 0);
-#endif
-
-#ifdef CONFIG_LINK_DEVICE_C2C
-	if (mc->mdm_data->link_types & LINKTYPE(LINKDEV_C2C)) {
-		int cp_status = gpio_get_value(mc->gpio_cp_status);
-		int cnt = 0;
-
-		while (cp_status != 0) {
-			cnt++;
-			if (cnt >= 100) {
-				mif_err("ERR! cp_status != 0 (cnt %d)\n", cnt);
-				print_pm_status(mc, 1);
-				return -EACCES;
-			}
-
-			usleep_range(100, 200);
-
-			cp_status = gpio_get_value(mc->gpio_cp_status);
-		}
-
-		gpio_set_value(mc->gpio_ap_status, 0);
-		c2c_suspend();
-		print_pm_status(mc, 0);
-	}
 #endif
 
 	return 0;
@@ -393,19 +335,11 @@ static int modem_suspend(struct device *pdev)
 
 static int modem_resume(struct device *pdev)
 {
+#if !defined(CONFIG_LINK_DEVICE_HSIC)
 	struct modem_ctl *mc = dev_get_drvdata(pdev);
 
-#if !defined(CONFIG_LINK_DEVICE_HSIC) && !defined(CONFIG_LINK_DEVICE_C2C)
 	if (mc->gpio_pda_active)
 		gpio_set_value(mc->gpio_pda_active, 1);
-#endif
-
-#ifdef CONFIG_LINK_DEVICE_C2C
-	if (mc->mdm_data->link_types & LINKTYPE(LINKDEV_C2C)) {
-		if (c2c_suspended())
-			c2c_resume();
-		print_pm_status(mc, 0);
-	}
 #endif
 
 	return 0;

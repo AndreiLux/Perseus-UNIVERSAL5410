@@ -149,9 +149,6 @@ struct ehci_hcd {			/* one per controller */
 	unsigned		use_dummy_qh:1;	/* AMD Frame List table quirk*/
 	unsigned		has_synopsys_hc_bug:1; /* Synopsys HC */
 	unsigned		frame_index_bug:1; /* MosChip (AKA NetMos) */
-#ifdef CONFIG_MDM_HSIC_PM
-	unsigned		susp_sof_bug; /*Chip Idea HC*/
-#endif
 
 	/* required for usb32 quirk */
 	#define OHCI_CTRL_HCFS          (3 << 6)
@@ -379,7 +376,7 @@ struct ehci_qh {
 
 	u8			xacterrs;	/* XactErr retry counter */
 
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_MDM_HSIC_PM)
+#if defined(CONFIG_LINK_DEVICE_HSIC)
 #define	QH_XACTERR_MAX		4		/* XactErr retry limit */
 #else
 #define	QH_XACTERR_MAX		32		/* XactErr retry limit */
@@ -610,6 +607,23 @@ ehci_port_speed(struct ehci_hcd *ehci, unsigned int portsc)
 #define	ehci_port_speed(ehci, portsc)	USB_PORT_STAT_HIGH_SPEED
 #endif
 
+#ifdef CONFIG_HOST_COMPLIANT_TEST
+static struct list_head *qh_urb_transaction(
+		struct ehci_hcd *ehci,
+		struct urb *urb,
+		struct list_head *head,
+		gfp_t flags);
+
+static int submit_async(
+		struct ehci_hcd *ehci,
+		struct urb *urb,
+		struct list_head *qtd_list,
+		gfp_t mem_flags);
+
+static inline void ehci_qtd_free(
+		struct ehci_hcd *ehci,
+		struct ehci_qtd *qtd);
+#endif
 /*-------------------------------------------------------------------------*/
 
 #ifdef CONFIG_PPC_83xx

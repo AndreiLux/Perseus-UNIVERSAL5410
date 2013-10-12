@@ -47,6 +47,7 @@ struct sec_pmic_dev {
 	struct mutex irqlock;
 
 	int device_type;
+	int rev_num;
 	int irq_base;
 	int irq;
 	int ono;
@@ -111,20 +112,23 @@ int sec_irq_init(struct sec_pmic_dev *sec_pmic);
 void sec_irq_exit(struct sec_pmic_dev *sec_pmic);
 int sec_irq_resume(struct sec_pmic_dev *sec_pmic);
 
-extern int sec_reg_read(struct sec_pmic_dev *sec_pmic, unsigned int reg, void *dest);
-extern int sec_bulk_read(struct sec_pmic_dev *sec_pmic, unsigned int reg, int count, u8 *buf);
-extern int sec_reg_write(struct sec_pmic_dev *sec_pmic, unsigned int reg, unsigned int value);
-extern int sec_bulk_write(struct sec_pmic_dev *sec_pmic, unsigned int reg, int count, u8 *buf);
-extern int sec_reg_update(struct sec_pmic_dev *sec_pmic, unsigned int reg, unsigned int val, unsigned int mask);
+extern int sec_reg_read(struct sec_pmic_dev *sec_pmic, u32 reg, void *dest);
+extern int sec_bulk_read(struct sec_pmic_dev *sec_pmic, u32 reg, int count,
+		u8 *buf);
+extern int sec_reg_write(struct sec_pmic_dev *sec_pmic, u32 reg, u32 value);
+extern int sec_bulk_write(struct sec_pmic_dev *sec_pmic, u32 reg, int count,
+		u8 *buf);
+extern int sec_reg_update(struct sec_pmic_dev *sec_pmic, u32 reg, u32 val,
+		u32 mask);
 
-extern int sec_rtc_read(struct sec_pmic_dev *sec_pmic, unsigned int reg, void *dest);
-extern int sec_rtc_bulk_read(struct sec_pmic_dev *sec_pmic, unsigned int reg, int count,
+extern int sec_rtc_read(struct sec_pmic_dev *sec_pmic, u32 reg, void *dest);
+extern int sec_rtc_bulk_read(struct sec_pmic_dev *sec_pmic, u32 reg, int count,
 				u8 *buf);
-extern int sec_rtc_write(struct sec_pmic_dev *sec_pmic, unsigned int reg, unsigned int value);
-extern int sec_rtc_bulk_write(struct sec_pmic_dev *sec_pmic, unsigned int reg, int count,
+extern int sec_rtc_write(struct sec_pmic_dev *sec_pmic, u32 reg, u32 value);
+extern int sec_rtc_bulk_write(struct sec_pmic_dev *sec_pmic, u32 reg, int count,
 				u8 *buf);
-extern int sec_rtc_update(struct sec_pmic_dev *sec_pmic, unsigned int reg, unsigned int val,
-				unsigned int mask);
+extern int sec_rtc_update(struct sec_pmic_dev *sec_pmic, u32 reg, u32 val,
+				u32 mask);
 
 /**
  * sec_regulator_data - regulator data

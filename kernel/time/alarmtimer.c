@@ -182,13 +182,13 @@ static enum hrtimer_restart alarmtimer_fired(struct hrtimer *timer)
 
 	spin_lock_irqsave(&base->lock, flags);
 	alarmtimer_dequeue(base, alarm);
-	spin_unlock_irqrestore(&base->lock, flags);
+		spin_unlock_irqrestore(&base->lock, flags);
 
-	if (alarm->function)
+		if (alarm->function)
 		restart = alarm->function(alarm, base->gettime());
 
 	spin_lock_irqsave(&base->lock, flags);
-	if (restart != ALARMTIMER_NORESTART) {
+		if (restart != ALARMTIMER_NORESTART) {
 		hrtimer_set_expires(&alarm->timer, alarm->node.expires);
 		alarmtimer_enqueue(base, alarm);
 		ret = HRTIMER_RESTART;

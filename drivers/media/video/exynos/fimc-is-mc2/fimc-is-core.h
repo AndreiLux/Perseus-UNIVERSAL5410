@@ -48,6 +48,7 @@
 
 #define FIMC_IS_COMMAND_TIMEOUT			(3*HZ)
 #define FIMC_IS_STARTUP_TIMEOUT			(3*HZ)
+
 #define FIMC_IS_SHUTDOWN_TIMEOUT		(10*HZ)
 #define FIMC_IS_FLITE_STOP_TIMEOUT		(3*HZ)
 
@@ -75,6 +76,7 @@
 #define FIMC_IS_SETFILE_SIZE		(0x00140000)
 #define FIMC_IS_DEBUG_REGION_ADDR	(0x01340000)
 #define FIMC_IS_SHARED_REGION_ADDR	(0x013C0000)
+
 #define FIMC_IS_FW_BASE_MASK		((1 << 26) - 1)
 
 #define FW_SHARED_OFFSET		FIMC_IS_SHARED_REGION_ADDR
@@ -109,32 +111,62 @@
 #define GATE_IP_ODC			(0)
 #define GATE_IP_DIS			(1)
 #define GATE_IP_DNR			(2)
+#if defined(CONFIG_SOC_EXYNOS5410)
 #define DVFS_L0				(800000)
 #define DVFS_L1				(700000)
 #define DVFS_L1_1			(650000)
 #define DVFS_L1_2			(600000)
 #define DVFS_L1_3			(550000)
-#define DVFS_L1_2_1			(600001) /* for rear recording */
-#define DVFS_L1_3_1			(550001) /* for VT-call */
+#define DVFS_L1_2_1			(650001) /* for rear recording */
+#define DVFS_L1_3_1			(650001) /* for VT-call */
 #define I2C_L0				(108000000)
 #define I2C_L1				(36000000)
 #define I2C_L1_1			(54000000)
 #define I2C_L2				(21600000)
 #define DVFS_SKIP_FRAME_NUM		(5)
+#elif defined(CONFIG_SOC_EXYNOS5420)
+#define DVFS_L0				(600000)
+#define DVFS_L1				(500000)
+#define DVFS_L1_1			(480000)
+#define DVFS_L1_2			(460000)
+#define DVFS_L1_3			(440000)
 
+#define DVFS_MIF_L0			(800000)
+#define DVFS_MIF_L1			(733000)
+#define DVFS_MIF_L2			(667000)
+#define DVFS_MIF_L3			(533000)
+#define DVFS_MIF_L4			(400000)
+#define DVFS_MIF_L5			(266000)
+
+#define I2C_L0				(108000000)
+#define I2C_L1				(36000000)
+#define I2C_L1_1			(54000000)
+#define I2C_L2				(21600000)
+#define DVFS_SKIP_FRAME_NUM		(5)
+#endif
 /* configuration - default post processing */
 #define ENABLE_SETFILE
 /* #define ENABLE_DRC */
 /* #define ENABLE_ODC */
 /* #define ENABLE_VDIS */
-#define ENABLE_TDNR
+/* #define ENABLE_TDNR */
 #define ENABLE_FD
 #define ENABLE_CLOCK_GATE
 #define ENABLE_DVFS
 /* #define ENABLE_CACHE */
+#define ENABLE_FULL_BYPASS
 #define ENABLE_FAST_SHOT
 #define USE_OWN_FAULT_HANDLER
-#define ENABLE_MIF_400
+/* #define ENABLE_MIF_400 */
+#define ENABLE_DTP
+
+#if defined(ENABLE_FULL_BYPASS) && defined(CONFIG_SOC_EXYNOS5410)
+#undef ENABLE_FULL_BYPASS
+#endif
+
+#if defined(ENABLE_ODC) && defined(CONFIG_SOC_EXYNOS5420)
+#undef ENABLE_ODC
+#endif
 
 /*
  * -----------------------------------------------------------------------------
@@ -147,12 +179,9 @@
 #define DBG_DEVICE
 /* #define DBG_STREAMING */
 #define DEBUG_INSTANCE 0xF
-#define DEBUG_DUMP_FIRMWARE
-#ifndef CONFIG_TARGET_LOCALE_KOR
-/* #define BUG_ON_ENABLE */
-#endif
+#define BUG_ON_ENABLE
 /* #define FIXED_FPS_DEBUG */
-#define FIXED_FPS_VALUE 24
+#define FIXED_FPS_VALUE 10
 /* #define DBG_FLITEISR */
 #define FW_DEBUG
 #define RESERVED_MEM
@@ -165,7 +194,7 @@
 /* #define PRINT_CAPABILITY */
 /* #define PRINT_BUFADDR */
 /* #define PRINT_DZOOM */
-#define ISDRV_VERSION 234
+#define ISDRV_VERSION 243
 
 #if (defined(BAYER_CROP_DZOOM) && defined(SCALER_CROP_DZOOM))
 #error BAYER_CROP_DZOOM and SCALER_CROP_DZOOM can''t be enable together
@@ -337,6 +366,13 @@
 #define dbg_frame(fmt, args...)
 #endif
 
+enum fimc_is_dvfs_scenario_name {
+	DVFS_SCENARIO_NORMAL = 0,
+	DVFS_SCENARIO_RECORDING,
+	DVFS_SCENARIO_DUAL,
+	DVFS_SCENARIO_MAX
+};
+
 enum fimc_is_debug_device {
 	FIMC_IS_DEBUG_MAIN = 0,
 	FIMC_IS_DEBUG_EC,
@@ -492,14 +528,19 @@ int fimc_is_init_set(struct fimc_is_core *dev , u32 val);
 int fimc_is_load_fw(struct fimc_is_core *dev);
 int fimc_is_load_setfile(struct fimc_is_core *dev);
 int fimc_is_clock_set(struct fimc_is_core *dev,	int group_id, bool on);
+#if defined(CONFIG_SOC_EXYNOS5420)
+int fimc_is_set_dvfs(struct fimc_is_core *core,
+			struct fimc_is_device_ischain *ischain,
+			int group_id, int int_level, int mif_level, int i2c_clk);
+#else
 int fimc_is_set_dvfs(struct fimc_is_core *core,
 			struct fimc_is_device_ischain *ischain,
 			int group_id, int level, int i2c_clk);
+#endif
 int fimc_is_resource_get(struct fimc_is_core *core);
 int fimc_is_resource_put(struct fimc_is_core *core);
 int fimc_is_otf_close(struct fimc_is_device_ischain *ischain);
-int fimc_is_spi_reset(void *buf, u32 rx_addr, size_t size);
-int fimc_is_spi_read(void *buf, u32 rx_addr, size_t size);
 int fimc_is_runtime_suspend(struct device *dev);
 int fimc_is_runtime_resume(struct device *dev);
+int fimc_is_get_dvfs_scenario(struct fimc_is_core *core);
 #endif /* FIMC_IS_CORE_H_ */

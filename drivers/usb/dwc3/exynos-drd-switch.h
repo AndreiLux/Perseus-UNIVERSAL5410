@@ -14,11 +14,12 @@
 #define __DRIVERS_USB_DWC3_EXYNOS_DRD_SWITCH_H
 
 #include <linux/workqueue.h>
+#include <linux/wakelock.h>
 #include <linux/usb/otg.h>
 
 /* TODO: adjust */
 #define ID_DEBOUNCE_DELAY	(HZ / 2)	/* 0.5 sec */
-#define VBUS_DEBOUNCE_DELAY	(HZ / 2)	/* 0.5 sec */
+#define VBUS_DEBOUNCE_DELAY	(HZ / 10)	/* 0.1 sec */
 #define EAGAIN_DELAY		100		/* msec */
 
 enum id_pin_state {
@@ -37,9 +38,11 @@ enum id_pin_state {
  * @vbus_gpio: GPIO that is used to detect a change in VBus status.
  * @wq: switch workqueue.
  * @work: OTG state machine work.
+ * @sm_reset: indicates that state machine must be reset;
  * @vbus_active: true if VBus is applied in device mode, false otherwise.
  * @id_state: last value of ID GPIO.
  * @lock: lock to protect the switch state.
+ * @wakelock: lock to block suspend.
  */
 struct exynos_drd_switch {
 	struct exynos_drd_core *core;
@@ -52,9 +55,13 @@ struct exynos_drd_switch {
 	struct timer_list vbus_db_timer;
 	struct workqueue_struct *wq;
 	struct delayed_work work;
+	atomic_t sm_reset;
 	bool vbus_active;
 	enum id_pin_state id_state;
 	spinlock_t lock;
+#if !defined(CONFIG_USB_HOST_NOTIFY)
+	struct wake_lock wakelock;
+#endif
 };
 
 int exynos_drd_switch_init(struct exynos_drd *drd);

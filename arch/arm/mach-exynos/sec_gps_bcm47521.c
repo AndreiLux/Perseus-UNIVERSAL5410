@@ -21,7 +21,6 @@
 
 #include <plat/gpio-cfg.h>
 
-
 #define IRQ_GPS_HOST_WAKE gpio_to_irq(GPIO_GPS_HOST_WAKE)
 
 static struct device *gps_dev;

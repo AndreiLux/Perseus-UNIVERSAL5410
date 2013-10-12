@@ -61,16 +61,18 @@ struct thermal_zone_device_ops {
 	int (*set_trip_temp) (struct thermal_zone_device *, int,
 			      unsigned long);
 	int (*get_trip_temp_level) (struct thermal_zone_device *, int,
-			      unsigned long *);
+			      bool);
 	int (*set_trip_temp_level) (struct thermal_zone_device *,
 			      unsigned int, unsigned int, unsigned int);
-	int (*get_trip_freq) (struct thermal_zone_device *, int,
+	int (*get_trip_freq) (struct thermal_zone_device *, unsigned int,
 			      unsigned long *);
-	int (*set_trip_freq) (struct thermal_zone_device *,
-			      unsigned int, unsigned int, unsigned int);
+	int (*set_trip_freq) (struct thermal_zone_device *, unsigned int,
+			      unsigned long);
 	int (*get_boost_mode) (struct thermal_zone_device *);
 	int (*set_boost_mode) (struct thermal_zone_device *, unsigned int);
 	int (*get_crit_temp) (struct thermal_zone_device *, unsigned long *);
+	int (*get_throttling_count) (struct thermal_zone_device *,
+			enum thermal_trip_type);
 	int (*notify) (struct thermal_zone_device *, int,
 		       enum thermal_trip_type);
 };
@@ -108,6 +110,7 @@ struct thermal_zone_device {
 	struct device device;
 	struct thermal_attr *trip_temp_attrs;
 	struct thermal_attr *trip_type_attrs;
+	struct thermal_attr *trip_freq_attrs;
 	void *devdata;
 	int trips;
 	int tc1;
@@ -127,7 +130,7 @@ struct thermal_zone_device {
 /* Adding event notification support elements */
 #define THERMAL_GENL_FAMILY_NAME                "thermal_event"
 #define THERMAL_GENL_VERSION                    0x01
-#define THERMAL_GENL_MCAST_GROUP_NAME           "thermal_mc_group"
+#define THERMAL_GENL_MCAST_GROUP_NAME           "thermal_mc_grp"
 
 enum events {
 	THERMAL_AUX0,

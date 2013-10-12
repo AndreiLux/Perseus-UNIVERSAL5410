@@ -16,6 +16,8 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/i2c.h>
+#include <plat/iovmm.h>
+#include <linux/pm_qos.h>
 #if defined(CONFIG_MEDIA_CONTROLLER) && defined(CONFIG_ARCH_EXYNOS5)
 #include <mach/videonode.h>
 #include <media/exynos_mc.h>
@@ -26,6 +28,8 @@
 #define DEFAULT_FLITE_SINK_WIDTH	800
 #define DEFAULT_FLITE_SINK_HEIGHT	480
 #define CAMIF_TOP_CLK			"camif_top"
+
+struct pm_qos_request exynos5_flite_qos_dev;
 
 static struct flite_fmt flite_formats[] = {
 	{
@@ -122,7 +126,7 @@ static struct flite_fmt *find_format(u32 *pixelformat, u32 *mbus_code, int index
 }
 #endif
 
-inline struct flite_fmt const *find_flite_format(struct v4l2_mbus_framefmt *mf)
+struct flite_fmt const *find_flite_format(struct v4l2_mbus_framefmt *mf)
 {
 	int num_fmt = ARRAY_SIZE(flite_formats);
 
@@ -727,8 +731,9 @@ static void flite_set_cam_clock(struct flite_dev *flite, bool on)
 {
 	struct v4l2_subdev *sd = flite->pipeline.sensor;
 
-	if (!soc_is_exynos5410())
+	if (!(soc_is_exynos5410() || soc_is_exynos5420()))
 		clk_enable(flite->gsc_clk);
+
 	if (flite->pipeline.sensor) {
 		struct flite_sensor_info *s_info = v4l2_get_subdev_hostdata(sd);
 		on ? clk_enable(s_info->camclk) : clk_disable(s_info->camclk);
@@ -769,6 +774,15 @@ static int flite_pipeline_s_power(struct flite_dev *flite, int state)
 			return ret;
 		ret = __subdev_set_power(flite->pipeline.sensor, 1);
 	} else {
+#ifdef CONFIG_SOC_EXYNOS5420
+		ret = __subdev_set_power(flite->pipeline.csis, 0);
+		if (ret && ret != -ENXIO)
+			return ret;
+		ret = __subdev_set_power(flite->pipeline.flite, 0);
+		if (ret && ret != -ENXIO)
+			return ret;
+		ret = __subdev_set_power(flite->pipeline.sensor, 0);
+#else
 		ret = __subdev_set_power(flite->pipeline.flite, 0);
 		if (ret && ret != -ENXIO)
 			return ret;
@@ -776,6 +790,7 @@ static int flite_pipeline_s_power(struct flite_dev *flite, int state)
 		if (ret && ret != -ENXIO)
 			return ret;
 		ret = __subdev_set_power(flite->pipeline.csis, 0);
+#endif
 	}
 	return ret == -ENXIO ? 0 : ret;
 }
@@ -1634,7 +1649,6 @@ static int flite_config_camclk(struct flite_dev *flite,
 	struct clk *cam_srclk;
 	char cam_srclk_name[FLITE_CLK_NAME_SIZE];
 
-
 	if (soc_is_exynos5410()) {
 		snprintf(cam_srclk_name, sizeof(cam_srclk_name),
 			"%s%d", isp_info->cam_srclk_name, flite->id);
@@ -1648,26 +1662,10 @@ static int flite_config_camclk(struct flite_dev *flite,
 		flite_err("failed to get cam source clk");
 		return -ENXIO;
 	}
+
 	clk_set_rate(cam_srclk, isp_info->clk_frequency);
 
-	if (!soc_is_exynos5410()) {
-		struct clk *camclk;
-		camclk = clk_get(&flite->pdev->dev, isp_info->cam_clk_name);
-		if (IS_ERR_OR_NULL(camclk)) {
-			clk_put(cam_srclk);
-			flite_err("failed to get cam clk\n");
-			return -ENXIO;
-		}
-		clk_set_parent(camclk, cam_srclk);
-		flite->sensor[i].camclk = camclk;
-		clk_put(camclk);
-
-		flite->gsc_clk = clk_get(&flite->pdev->dev, "gscl");
-		if (IS_ERR_OR_NULL(flite->gsc_clk)) {
-			flite_err("failed to get gscl clk");
-			return -ENXIO;
-		}
-	} else {
+	if (soc_is_exynos5410()) {
 		struct clk *clk_child;
 		struct clk *clk_parent;
 
@@ -1696,6 +1694,58 @@ static int flite_config_camclk(struct flite_dev *flite,
 		}
 		clk_put(clk_child);
 		clk_put(clk_parent);
+	} else if (soc_is_exynos5420()) {
+		struct clk *clk_child;
+		struct clk *clk_parent;
+		struct clk *clk_grand;
+
+		/* register ISP sensor clock to fimc-lite sensor clock */
+		flite->sensor[i].camclk = cam_srclk;
+
+		clk_grand = clk_get(NULL, isp_info->cam_clk_src_name);
+		if (IS_ERR(clk_grand)) {
+			pr_err("%s : clk_get(aclk_333_432_gscl_dout) failed\n", __func__);
+			return PTR_ERR(clk_grand);
+		}
+
+		clk_parent = clk_get(NULL, "aclk_333_432_gscl_sw");
+		if (IS_ERR(clk_parent)) {
+			clk_put(clk_grand);
+			pr_err("%s : clk_get(aclk_333_432_gscl_sw) failed\n", __func__);
+			return PTR_ERR(clk_parent);
+		}
+
+		clk_child = clk_get(NULL, "aclk_333_432_gscl");
+		if (IS_ERR(clk_child)) {
+			clk_put(clk_grand);
+			clk_put(clk_parent);
+			pr_err("%s : clk_get(aclk_333_432_gscl) failed\n", __func__);
+			return PTR_ERR(clk_child);
+		}
+
+		clk_set_parent(clk_parent, clk_grand);
+		clk_set_parent(clk_child, clk_parent);
+
+		clk_put(clk_grand);
+		clk_put(clk_parent);
+		clk_put(clk_child);
+	} else {
+		struct clk *camclk;
+		camclk = clk_get(&flite->pdev->dev, isp_info->cam_clk_name);
+		if (IS_ERR_OR_NULL(camclk)) {
+			clk_put(cam_srclk);
+			flite_err("failed to get cam clk\n");
+			return -ENXIO;
+		}
+		clk_set_parent(camclk, cam_srclk);
+		flite->sensor[i].camclk = camclk;
+		clk_put(camclk);
+
+		flite->gsc_clk = clk_get(&flite->pdev->dev, "gscl");
+		if (IS_ERR_OR_NULL(flite->gsc_clk)) {
+			flite_err("failed to get gscl clk");
+			return -ENXIO;
+		}
 	}
 
 	return 0;
@@ -1711,8 +1761,11 @@ static struct v4l2_subdev *flite_register_sensor(struct flite_dev *flite,
 	struct v4l2_subdev *sd = NULL;
 
 	adapter = i2c_get_adapter(isp_info->i2c_bus_num);
-	if (!adapter)
+	if (!adapter) {
+		v4l2_err(&mdev->v4l2_dev, "i2c_get_adapter%d is fail\n", isp_info->i2c_bus_num);
 		return NULL;
+	}
+
 	sd = v4l2_i2c_new_subdev_board(&mdev->v4l2_dev, adapter,
 				       isp_info->board_info, NULL);
 	if (IS_ERR_OR_NULL(sd)) {
@@ -2029,6 +2082,8 @@ static int flite_runtime_suspend(struct device *dev)
 	set_bit(FLITE_ST_SUSPEND, &flite->state);
 	spin_unlock_irqrestore(&flite->slock, flags);
 
+	pm_qos_remove_request(&exynos5_flite_qos_dev);
+
 	return 0;
 }
 
@@ -2038,6 +2093,37 @@ static int flite_runtime_resume(struct device *dev)
 	struct v4l2_subdev *sd = platform_get_drvdata(pdev);
 	struct flite_dev *flite = v4l2_get_subdevdata(sd);
 	unsigned long flags;
+
+	/*
+	 * 1. MUX configratuion : oscillator -> ipll, MUX will reset after power off
+	 * 2. DVFS_L1_3(440000) : 86Mhz GSCL setting
+	 */
+	if (soc_is_exynos5420()) {
+		struct clk *clk_child;
+		struct clk *clk_parent;
+		struct clk *clk_grand;
+
+		clk_grand = clk_get(NULL, "aclk_333_432_gscl_dout");
+		if (IS_ERR(clk_grand))
+			pr_err("%s : clk_get(aclk_333_432_gscl_dout) failed\n", __func__);
+
+		clk_parent = clk_get(NULL, "aclk_333_432_gscl_sw");
+		if (IS_ERR(clk_parent))
+			pr_err("%s : clk_get(aclk_333_432_gscl_sw) failed\n", __func__);
+
+		clk_child = clk_get(NULL, "aclk_333_432_gscl");
+		if (IS_ERR(clk_child))
+			pr_err("%s : clk_get(aclk_333_432_gscl) failed\n", __func__);
+
+		clk_set_parent(clk_parent, clk_grand);
+		clk_set_parent(clk_child, clk_parent);
+
+		clk_put(clk_grand);
+		clk_put(clk_parent);
+		clk_put(clk_child);
+	}
+
+	pm_qos_add_request(&exynos5_flite_qos_dev, PM_QOS_DEVICE_THROUGHPUT, 440000);
 
 #if defined(CONFIG_MEDIA_CONTROLLER) && defined(CONFIG_ARCH_EXYNOS5)
 	clk_enable(flite->camif_clk);
@@ -2211,6 +2297,8 @@ static int flite_probe(struct platform_device *pdev)
 #endif
 	platform_set_drvdata(flite->pdev, flite->sd_flite);
 	pm_runtime_enable(&pdev->dev);
+
+	exynos_create_iovmm(&pdev->dev, 0, 1);
 
 	flite_info("FIMC-LITE%d probe success", pdev->id);
 

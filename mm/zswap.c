@@ -772,9 +772,12 @@ static int zswap_frontswap_store(unsigned type, pgoff_t offset,
 	unsigned int dlen = PAGE_SIZE;
 	unsigned long handle;
 	char *buf;
-	u8 *src, *dst, *tmpdst;
+	u8 *src, *dst;
 	struct page *tmppage;
 	bool writeback_attempted = 0;
+#ifdef CONFIG_ZSWAP_ENABLE_WRITEBACK
+	u8 *tmpdst;
+#endif
 
 	if (!tree) {
 		ret = -ENODEV;
@@ -808,12 +811,12 @@ static int zswap_frontswap_store(unsigned type, pgoff_t offset,
 	handle = zs_malloc(tree->pool, dlen,
 		__GFP_NORETRY | __GFP_HIGHMEM | __GFP_NOMEMALLOC |
 			__GFP_NOWARN);
-#ifndef CONFIG_ZSWAP_ENABLE_WRITEBACK
 	if (!handle) {
 		ret = -ENOMEM;
 		goto freepage;
 	}
-#else
+
+#ifdef CONFIG_ZSWAP_ENABLE_WRITEBACK
 	if (!handle) {
 		zswap_writeback_attempted++;
 		/*

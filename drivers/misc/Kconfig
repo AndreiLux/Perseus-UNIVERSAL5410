@@ -539,14 +539,6 @@ config MUIC_MAX77803_SUPPORT_MHL_CABLE_DETECTION
 	  If you say yes here you will get support for the MHL cable 
 	  detection. 
 
-config MUIC_MAX77693_SUPPORT_MHL_CABLE_DETECTION
-        bool "MUIC_MAX77693_SUPPORT_MHL_CABLE_DETECTION"
-        depends on MFD_MAX77693
-        default y
-        help
-          If you say yes here you will get support for the MHL cable
-          detection.
-
 config WL127X_RFKILL
 	tristate "Bluetooth power control driver for TI wl127x"
 	depends on RFKILL
@@ -554,14 +546,12 @@ config WL127X_RFKILL
 	---help---
 	 Creates an rfkill entry in sysfs for power control of Bluetooth
 	 TI wl127x chips.
-	 
-config STMPE811_ADC
-	tristate "STMPE811 ADC driver"
-	depends on I2C
-	default n
+
+config TIMA_LOG
+	tristate "Support for dumping TIMA log"
+	default y
 	help
-	 If you say yes here you get support for the STMicroelectronics
-	 STMPE811 8 channel ADC driver.
+	  This option enables support for dumping TIMA log.
 	 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
@@ -571,8 +561,5 @@ source "drivers/misc/ti-st/Kconfig"
 source "drivers/misc/lis3lv02d/Kconfig"
 source "drivers/misc/carma/Kconfig"
 source "drivers/misc/altera-stapl/Kconfig"
-source "drivers/misc/c2c/Kconfig"
 source "drivers/misc/modem_v2/Kconfig"
-source "drivers/misc/modem_if/Kconfig"
-source "drivers/misc/2mic/Kconfig"
 endmenu

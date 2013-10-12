@@ -154,7 +154,6 @@ static bool exynos_drd_switch_is_host_off(struct usb_otg *otg)
 {
 	struct usb_hcd *hcd;
 	struct device *dev;
-	bool ret;
 
 	if (!otg->host)
 		/* REVISIT: what should we return here? */
@@ -163,14 +162,7 @@ static bool exynos_drd_switch_is_host_off(struct usb_otg *otg)
 	hcd = bus_to_hcd(otg->host);
 	dev = hcd->self.controller;
 
-	ret = pm_runtime_suspended(dev);
-	if (!ret)
-		dev_err(dev, "host is not suspended: uc = %d, cc = %d, err = %d\n",
-			atomic_read(&dev->power.usage_count),
-			atomic_read(&dev->power.child_count),
-			dev->power.runtime_error);
-
-	return ret;
+	return pm_runtime_suspended(dev);
 }
 
 /**
@@ -187,7 +179,6 @@ static int exynos_drd_switch_start_host(struct usb_otg *otg, int on)
 	struct exynos_drd_switch *drd_switch = container_of(otg,
 					struct exynos_drd_switch, otg);
 	struct usb_hcd *hcd;
-	struct xhci_hcd *xhci;
 	struct device *xhci_dev;
 	int ret = 0;
 
@@ -198,10 +189,12 @@ static int exynos_drd_switch_start_host(struct usb_otg *otg, int on)
 			on ? "on" : "off", otg->host->bus_name);
 
 	hcd = bus_to_hcd(otg->host);
-	xhci = hcd_to_xhci(hcd);
 	xhci_dev = hcd->self.controller;
 
 	if (on) {
+#if !defined(CONFIG_USB_HOST_NOTIFY)
+		wake_lock(&drd_switch->wakelock);
+#endif
 		/*
 		 * Clear runtime_error flag. The flag could be
 		 * set when user space accessed the host while DRD
@@ -227,6 +220,10 @@ static int exynos_drd_switch_start_host(struct usb_otg *otg, int on)
 		ret = pm_runtime_put_sync(xhci_dev);
 		if (ret == -EAGAIN)
 			pm_runtime_get_noresume(xhci_dev);
+#if !defined(CONFIG_USB_HOST_NOTIFY)
+		else
+			wake_unlock(&drd_switch->wakelock);
+#endif
 	}
 
 err:
@@ -246,15 +243,15 @@ static int exynos_drd_switch_set_host(struct usb_otg *otg, struct usb_bus *host)
 {
 	struct exynos_drd_switch *drd_switch = container_of(otg,
 					struct exynos_drd_switch, otg);
+	struct device *dev = otg->phy->dev;
 	bool activate = false;
 	unsigned long flags;
 
-	spin_lock_irqsave(&drd_switch->lock, flags);
-
 	if (host) {
-		dev_dbg(otg->phy->dev, "Binding host %s\n", host->bus_name);
-		otg->host = host;
+		dev_dbg(dev, "Binding host %s\n", host->bus_name);
 
+		spin_lock_irqsave(&drd_switch->lock, flags);
+		otg->host = host;
 		/*
 		 * Prevents unnecessary activation of the work function.
 		 * If both peripheral and host are set or if ID pin is low
@@ -262,20 +259,24 @@ static int exynos_drd_switch_set_host(struct usb_otg *otg, struct usb_bus *host)
 		 */
 		if (otg->gadget || drd_switch->id_state == A_DEV)
 			activate = true;
+		spin_unlock_irqrestore(&drd_switch->lock, flags);
 	} else {
-		dev_dbg(otg->phy->dev, "Unbinding host\n");
+		dev_dbg(dev, "Unbinding host\n");
 
-		if (otg->phy->state == OTG_STATE_A_HOST) {
-			exynos_drd_switch_start_host(otg, 0);
-			otg->host = NULL;
-			otg->phy->state = OTG_STATE_UNDEFINED;
-			activate = true;
-		} else {
-			otg->host = NULL;
-		}
+		/* put state machine into reset state */
+		atomic_inc(&drd_switch->sm_reset);
+		exynos_drd_switch_schedule_work(&drd_switch->work);
+		flush_delayed_work_sync(&drd_switch->work);
+		if (otg->phy->state != OTG_STATE_UNDEFINED)
+			dev_err(dev, "%s: SM reset failed\n", __func__);
+
+		spin_lock_irqsave(&drd_switch->lock, flags);
+		otg->host = NULL;
+		activate = true;
+		spin_unlock_irqrestore(&drd_switch->lock, flags);
+
+		atomic_dec(&drd_switch->sm_reset);
 	}
-
-	spin_unlock_irqrestore(&drd_switch->lock, flags);
 
 	if (activate)
 		exynos_drd_switch_schedule_work(&drd_switch->work);
@@ -291,9 +292,6 @@ static int exynos_drd_switch_set_host(struct usb_otg *otg, struct usb_bus *host)
  *
  * Returns 0 on success otherwise negative errno.
  */
-#ifdef CONFIG_TARGET_LOCALE_KOR
-extern int is_usb_locked;
-#endif
 static int exynos_drd_switch_start_peripheral(struct usb_otg *otg, int on)
 {
 	int ret;
@@ -303,13 +301,6 @@ static int exynos_drd_switch_start_peripheral(struct usb_otg *otg, int on)
 
 	dev_dbg(otg->phy->dev, "Turn %s gadget %s\n",
 			on ? "on" : "off", otg->gadget->name);
-
-#ifdef CONFIG_TARGET_LOCALE_KOR
-	if (is_usb_locked) {
-		ret = usb_gadget_vbus_disconnect(otg->gadget);
-		return ret;
-	}
-#endif
 
 	if (on) {
 		/* Start device only if host is off */
@@ -349,15 +340,16 @@ static int exynos_drd_switch_set_peripheral(struct usb_otg *otg,
 					struct exynos_drd_switch, otg);
 	struct exynos_drd *drd = container_of(drd_switch->core,
 						struct exynos_drd, core);
+	struct device *dev = otg->phy->dev;
 	bool activate = false;
 	unsigned long flags;
 
-	spin_lock_irqsave(&drd_switch->lock, flags);
 
 	if (gadget) {
-		dev_dbg(otg->phy->dev, "Binding gadget %s\n", gadget->name);
-		otg->gadget = gadget;
+		dev_dbg(dev, "Binding gadget %s\n", gadget->name);
 
+		spin_lock_irqsave(&drd_switch->lock, flags);
+		otg->gadget = gadget;
 		/*
 		 * Prevents unnecessary activation of the work function.
 		 * If both peripheral and host are set or if we want to force
@@ -367,20 +359,24 @@ static int exynos_drd_switch_set_peripheral(struct usb_otg *otg,
 		if (otg->host || (drd->pdata->quirks & FORCE_RUN_PERIPHERAL &&
 				  drd_switch->id_state == B_DEV))
 			activate = true;
+		spin_unlock_irqrestore(&drd_switch->lock, flags);
 	} else {
-		dev_dbg(otg->phy->dev, "Unbinding gadget\n");
+		dev_dbg(dev, "Unbinding gadget\n");
 
-		if (otg->phy->state == OTG_STATE_B_PERIPHERAL) {
-			exynos_drd_switch_start_peripheral(otg, 0);
-			otg->gadget = NULL;
-			otg->phy->state = OTG_STATE_UNDEFINED;
-			activate = true;
-		} else {
-			otg->gadget = NULL;
-		}
+		/* put state machine into reset state */
+		atomic_inc(&drd_switch->sm_reset);
+		exynos_drd_switch_schedule_work(&drd_switch->work);
+		flush_delayed_work_sync(&drd_switch->work);
+		if (otg->phy->state != OTG_STATE_UNDEFINED)
+			dev_err(dev, "%s: SM reset failed\n", __func__);
+
+		spin_lock_irqsave(&drd_switch->lock, flags);
+		otg->gadget = NULL;
+		activate = true;
+		spin_unlock_irqrestore(&drd_switch->lock, flags);
+
+		atomic_dec(&drd_switch->sm_reset);
 	}
-
-	spin_unlock_irqrestore(&drd_switch->lock, flags);
 
 	if (activate)
 		exynos_drd_switch_schedule_work(&drd_switch->work);
@@ -607,13 +603,23 @@ static void exynos_drd_switch_work(struct work_struct *w)
 	unsigned long flags;
 	int ret = 0;
 
-	spin_lock_irqsave(&drd_switch->lock, flags);
 	state = phy->state;
+	new_state = state;
+
+	if (atomic_read(&drd_switch->sm_reset)) {
+		if (state == OTG_STATE_A_HOST)
+			exynos_drd_switch_start_host(&drd_switch->otg, 0);
+		else if (state == OTG_STATE_B_PERIPHERAL)
+			exynos_drd_switch_start_peripheral(&drd_switch->otg, 0);
+
+		new_state = OTG_STATE_UNDEFINED;
+		goto exit;
+	}
+
+	spin_lock_irqsave(&drd_switch->lock, flags);
 	id_state = drd_switch->id_state;
 	vbus_active = drd_switch->vbus_active;
 	spin_unlock_irqrestore(&drd_switch->lock, flags);
-
-	new_state = state;
 
 	/* Check OTG state */
 	switch (state) {
@@ -703,14 +709,9 @@ static void exynos_drd_switch_work(struct work_struct *w)
 
 	}
 
-	spin_lock_irqsave(&drd_switch->lock, flags);
-	/*
-	 * PHY state could be changed outside of this function.
-	 * If so, we don't update the state to prevent overwriting.
-	 */
-	if (phy->state == state)
-		phy->state = new_state;
-	spin_unlock_irqrestore(&drd_switch->lock, flags);
+exit:
+	WARN((phy->state != state), "PHY state has been changed outside of SM\n");
+	phy->state = new_state;
 }
 
 /**
@@ -729,6 +730,11 @@ void exynos_drd_switch_reset(struct exynos_drd *drd, int run)
 		drd_switch = container_of(otg,
 					struct exynos_drd_switch, otg);
 
+		/* reset state machine; we assume no works scheduled
+		   or running at this moment */
+		atomic_inc(&drd_switch->sm_reset);
+		exynos_drd_switch_work(&drd_switch->work.work);
+
 		spin_lock_irqsave(&drd_switch->lock, flags);
 
 		if (drd->pdata->quirks & FORCE_INIT_PERIPHERAL)
@@ -740,9 +746,9 @@ void exynos_drd_switch_reset(struct exynos_drd *drd, int run)
 		drd_switch->vbus_active =
 			exynos_drd_switch_get_bses_vld(drd_switch);
 
-		otg->phy->state = OTG_STATE_UNDEFINED;
-
 		spin_unlock_irqrestore(&drd_switch->lock, flags);
+
+		atomic_dec(&drd_switch->sm_reset);
 
 		if (run)
 			exynos_drd_switch_schedule_work(&drd_switch->work);
@@ -765,7 +771,8 @@ exynos_drd_switch_show_state(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%s\n", otg_state_string(phy->state));
 }
 
-static DEVICE_ATTR(state, S_IRUGO, exynos_drd_switch_show_state, NULL);
+static DEVICE_ATTR(state, S_IRUSR | S_IRGRP,
+	exynos_drd_switch_show_state, NULL);
 
 /*
  * id and vbus attributes allow to change DRD mode and VBus state.
@@ -801,7 +808,7 @@ exynos_drd_switch_store_vbus(struct device *dev,
 	return n;
 }
 
-static DEVICE_ATTR(vbus, S_IWUSR | S_IRUGO,
+static DEVICE_ATTR(vbus, S_IWUSR | S_IRUSR | S_IRGRP,
 	exynos_drd_switch_show_vbus, exynos_drd_switch_store_vbus);
 
 static ssize_t
@@ -835,7 +842,7 @@ exynos_drd_switch_store_id(struct device *dev,
 	return n;
 }
 
-static DEVICE_ATTR(id, S_IWUSR | S_IRUGO,
+static DEVICE_ATTR(id, S_IWUSR | S_IRUSR | S_IRGRP,
 	exynos_drd_switch_show_id, exynos_drd_switch_store_id);
 
 static struct attribute *exynos_drd_switch_attributes[] = {
@@ -873,6 +880,7 @@ int exynos_drd_switch_init(struct exynos_drd *drd)
 	}
 
 	drd_switch->core = &drd->core;
+	atomic_set(&drd_switch->sm_reset, 0);
 
 	/* ID pin gpio IRQ */
 	drd_switch->id_irq = pdata->id_irq;
@@ -924,13 +932,17 @@ int exynos_drd_switch_init(struct exynos_drd *drd)
 	}
 #endif
 	spin_lock_init(&drd_switch->lock);
-
+#if !defined(CONFIG_USB_HOST_NOTIFY)
+	wake_lock_init(&drd_switch->wakelock,
+		WAKE_LOCK_SUSPEND, "drd_switch");
+#endif
 	exynos_drd_switch_reset(drd, 0);
 
 	drd_switch->wq = create_freezable_workqueue("drd_switch");
 	if (!drd_switch->wq) {
 		dev_err(drd->dev, "cannot create workqueue\n");
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto err_wq;
 	}
 
 	INIT_DELAYED_WORK(&drd_switch->work, exynos_drd_switch_work);
@@ -968,7 +980,10 @@ int exynos_drd_switch_init(struct exynos_drd *drd)
 err_irq:
 	cancel_delayed_work_sync(&drd_switch->work);
 	destroy_workqueue(drd_switch->wq);
-
+err_wq:
+#if !defined(CONFIG_USB_HOST_NOTIFY)
+	wake_lock_destroy(&drd_switch->wakelock);
+#endif
 	return ret;
 }
 
@@ -987,7 +1002,9 @@ void exynos_drd_switch_exit(struct exynos_drd *drd)
 	if (otg) {
 		drd_switch = container_of(otg,
 					struct exynos_drd_switch, otg);
-
+#if !defined(CONFIG_USB_HOST_NOTIFY)
+		wake_lock_destroy(&drd_switch->wakelock);
+#endif
 		sysfs_remove_group(&drd->dev->kobj,
 			&exynos_drd_switch_attr_group);
 		cancel_delayed_work_sync(&drd_switch->work);

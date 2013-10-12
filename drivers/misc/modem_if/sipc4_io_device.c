@@ -42,7 +42,13 @@
 
 static const char hdlc_start[1] = { HDLC_START };
 static const char hdlc_end[1] = { HDLC_END };
-static const char hdlc_padding[3] = {0xAA, 0xAA, 0xAA};
+
+enum iod_debug_flag_bit {
+	IOD_DEBUG_IPC_LOOPBACK,
+};
+static unsigned long dbg_flags = 0;
+module_param(dbg_flags, ulong, S_IRUGO | S_IWUSR | S_IWGRP);
+MODULE_PARM_DESC(dbg_flags, "sipc iodevice debug flags\n");
 
 static int rx_iodev_skb(struct sk_buff *skb);
 
@@ -92,7 +98,8 @@ static ssize_t show_loopback(struct device *dev,
 	unsigned char *ip = (unsigned char *)&msd->loopback_ipaddr;
 	char *p = buf;
 
-	p += sprintf(buf, "%u.%u.%u.%u\n", ip[0], ip[1], ip[2], ip[3]);
+	p += sprintf(buf, "%u.%u.%u.%u en(%d)\n", ip[0], ip[1], ip[2], ip[3],
+		test_bit(IOD_DEBUG_IPC_LOOPBACK, &dbg_flags));
 
 	return p - buf;
 }
@@ -103,8 +110,18 @@ static ssize_t store_loopback(struct device *dev,
 	struct miscdevice *miscdev = dev_get_drvdata(dev);
 	struct modem_shared *msd =
 		container_of(miscdev, struct io_device, miscdev)->msd;
+	struct io_device *iod = to_io_device(miscdev);
 
 	msd->loopback_ipaddr = ipv4str_to_be32(buf, count);
+	if (msd->loopback_ipaddr)
+		set_bit(IOD_DEBUG_IPC_LOOPBACK, &dbg_flags);
+	else
+		clear_bit(IOD_DEBUG_IPC_LOOPBACK, &dbg_flags);
+
+	mif_info("loopback(%s), en(%d)\n", buf,
+				test_bit(IOD_DEBUG_IPC_LOOPBACK, &dbg_flags));
+	if (msd->loopback_start)
+		msd->loopback_start(iod, msd);
 
 	return count;
 }
@@ -277,7 +294,7 @@ static int rx_hdlc_data_check(struct io_device *iod, struct link_device *ld,
 	struct sk_buff *skb = fragdata(iod, ld)->skb_recv;
 	int head_size = get_header_size(iod);
 	int data_size = get_hdlc_size(iod, hdr->hdr) - head_size;
-	int alloc_size;
+	int alloc_size = 0;
 	int len = 0;
 	int done_len = 0;
 	int rest_len = data_size - hdr->frag_len;
@@ -886,11 +903,24 @@ static void io_dev_modem_state_changed(struct io_device *iod,
  */
 static void io_dev_sim_state_changed(struct io_device *iod, bool sim_online)
 {
+
+#if defined(CONFIG_MACH_KONA) && defined(CONFIG_UMTS_MODEM_XMM6262)
+	mif_err("modem_current_state is %d\n", iod->mc->phone_state);
+#endif
+
 	if (atomic_read(&iod->opened) == 0) {
 		mif_err("iod is not opened: %s\n", iod->name);
 		/* update latest sim status */
 		iod->mc->sim_state.online = sim_online;
-	} else if (iod->mc->sim_state.online == sim_online) {
+	}
+#if defined(CONFIG_LINK_DEVICE_HSIC) && defined(CONFIG_UMTS_MODEM_XMM6262) // fixed modem unknown issue (kina 3G)
+	else if (iod->mc->phone_state == STATE_BOOTING) {
+		mif_err("modem_current_state is STATE_BOOTING\n");
+		/* update latest sim status */
+		iod->mc->sim_state.online = sim_online;
+	}
+#endif
+	else if (iod->mc->sim_state.online == sim_online) {
 		mif_err("sim state not changed.\n");
 	} else {
 		iod->mc->sim_state.online = sim_online;
@@ -904,6 +934,7 @@ static void io_dev_sim_state_changed(struct io_device *iod, bool sim_online)
 		wake_up(&iod->wq);
 	}
 }
+
 
 static int misc_open(struct inode *inode, struct file *filp)
 {
@@ -1086,10 +1117,12 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	case IOCTL_MODEM_CP_UPLOAD:
 		mif_err("%s: IOCTL_MODEM_CP_UPLOAD\n", iod->name);
 		if (copy_from_user(cpinfo_buf + strlen(cpinfo_buf),
-			(void __user *)arg, MAX_CPINFO_SIZE) != 0)
+			(void __user *)arg, MAX_CPINFO_SIZE) != 0) {
 			panic("CP Crash");
-		else
+		} else {
+			mif_err("%s\n", cpinfo_buf);
 			panic(cpinfo_buf);
+		}
 		return 0;
 
 	case IOCTL_MODEM_DUMP_RESET:
@@ -1114,20 +1147,6 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		mif_dump_log(iod->mc->msd, iod);
 		return 0;
 
-	case IOCTL_MIF_DPRAM_DUMP:
-#ifdef CONFIG_LINK_DEVICE_DPRAM
-		if (iod->mc->mdm_data->link_types & LINKTYPE(LINKDEV_DPRAM)) {
-			size = iod->mc->mdm_data->dpram->size;
-			ret = copy_to_user((void __user *)arg, &size,
-				sizeof(unsigned long));
-			if (ret < 0)
-				return -EFAULT;
-			mif_dump_dpram(iod);
-			return 0;
-		}
-#endif
-		return -EINVAL;
-
 	default:
 		 /* If you need to handle the ioctl for specific link device,
 		  * then assign the link ioctl handler to ld->ioctl
@@ -1141,18 +1160,56 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	return 0;
 }
 
+static void check_ipc_loopback(struct io_device *iod, struct sk_buff *skb)
+{
+	struct sipc_fmt_hdr *ipc;
+	struct link_device *ld = skbpriv(skb)->ld;
+
+	if (!skb || !test_bit(IOD_DEBUG_IPC_LOOPBACK, &dbg_flags)
+						|| iod->format != IPC_FMT)
+		return;
+
+	ipc = (struct sipc_fmt_hdr *)skb->data;
+	if (ipc->main_cmd == 0x90) { /* loop-back */
+		int ret, timeout;
+		struct sk_buff *skb_bk = skb_copy_expand(skb,
+			SIZE_OF_HDLC_START + get_header_size(iod),
+			SIZE_OF_HDLC_END, GFP_KERNEL);
+		if (!skb_bk) {
+			mif_err("SKB clone fail\n");
+			return;
+		}
+		memcpy(skb_push(skb_bk, get_header_size(iod)),
+			get_header(iod, skb->len, skb->data),
+			get_header_size(iod));
+		memcpy(skb_push(skb_bk, sizeof(hdlc_start)), hdlc_start,
+			sizeof(hdlc_start));
+		memcpy(skb_put(skb_bk, sizeof(hdlc_end)), hdlc_end,
+			sizeof(hdlc_end));
+
+		ret = ld->send(ld, iod, skb_bk);
+		if (ret < 0) {
+			mif_err("ld->send fail (%s, err %d)\n", iod->name, ret);
+		}
+		/* Because CP IPC loop period is 5 second, we can try variery
+		 * timmging with wakelock 2000 ~ 4555ms */
+		timeout = (jiffies & 0x1ff) + HZ * 2;
+		wake_lock_timeout(&iod->wakelock, timeout);
+		mif_debug("lb wakelock = %d\n", jiffies_to_msecs(timeout));
+	}
+	return;
+}
+
 static size_t _boot_write(struct io_device *iod, const char __user *buf,
 								size_t count)
 {
-	int rest_len = count, frame_len = 0;
+	int rest_len = count;
 	char *cur = (char *)buf;
-	struct sk_buff *skb = NULL;
 	struct link_device *ld = get_current_link(iod);
-	int ret;
 
 	while (rest_len) {
-		frame_len = min(rest_len, MAX_BOOTDATA_SIZE);
-		skb = alloc_skb(frame_len, GFP_KERNEL);
+		int ret, frame_len = min(rest_len, MAX_BOOTDATA_SIZE);
+		struct sk_buff *skb = alloc_skb(frame_len, GFP_KERNEL);
 		if (!skb) {
 			mif_err("fail alloc skb (%d)\n", __LINE__);
 			return -ENOMEM;
@@ -1187,7 +1244,6 @@ static ssize_t misc_write(struct file *filp, const char __user *buf,
 	struct sk_buff *skb;
 	int err;
 	size_t tx_size;
-	int padding_size = 0;
 
 	/* TODO - check here flow control for only raw data */
 
@@ -1243,13 +1299,7 @@ static ssize_t misc_write(struct file *filp, const char __user *buf,
 		break;
 	}
 
-	if(ld->aligned)	{
-		padding_size = calc_padding_size(iod, ld, skb->len);
-		memcpy(skb_put(skb, padding_size), hdlc_padding,
-						 padding_size);
-	}
-	else
-		skb_put(skb, calc_padding_size(iod, ld, skb->len));
+	skb_put(skb, calc_padding_size(iod, ld, skb->len));
 
 	/* send data with sk_buff, link device will put sk_buff
 	 * into the specific sk_buff_q and run work-q to send data
@@ -1338,6 +1388,8 @@ static ssize_t misc_read(struct file *filp, char *buf, size_t count,
 			}
 		}
 	} else {
+		check_ipc_loopback(iod, skb);
+
 		if (skb->len > count) {
 			mif_err("<%s> skb->len %d > count %d\n", iod->name,
 				skb->len, count);

@@ -23,9 +23,10 @@ void s5p_mfc_clock_release(void);
 int s5p_mfc_power_on(void);
 int s5p_mfc_power_off(void);
 int s5p_mfc_get_clk_ref_cnt(void);
+int s5p_mfc_set_clock_parent(struct s5p_mfc_dev *dev);
 int s5p_mfc_clock_set_rate(struct s5p_mfc_dev *dev, unsigned long rate);
 
-#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+#ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 void s5p_mfc_qos_on(struct s5p_mfc_ctx *ctx);
 void s5p_mfc_qos_off(struct s5p_mfc_ctx *ctx);
 #else

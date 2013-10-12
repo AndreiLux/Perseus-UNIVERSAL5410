@@ -10,7 +10,6 @@
  * published by the Free Software Foundation.
  */
 
-#define DEBUG
 
 #include <linux/battery/sec_battery.h>
 
@@ -24,6 +23,8 @@ static struct device_attribute sec_battery_attrs[] = {
 	SEC_BATTERY_ATTR(batt_vol_adc_cal),
 	SEC_BATTERY_ATTR(batt_vol_aver),
 	SEC_BATTERY_ATTR(batt_vol_adc_aver),
+	SEC_BATTERY_ATTR(batt_current_ua_now),
+	SEC_BATTERY_ATTR(batt_current_ua_avg),
 	SEC_BATTERY_ATTR(batt_temp_adc),
 	SEC_BATTERY_ATTR(batt_temp_aver),
 	SEC_BATTERY_ATTR(batt_temp_adc_aver),
@@ -658,7 +659,8 @@ check_recharge_check_count:
 
 static bool sec_bat_voltage_check(struct sec_battery_info *battery)
 {
-	if (battery->status == POWER_SUPPLY_STATUS_DISCHARGING) {
+	if ((battery->status == POWER_SUPPLY_STATUS_DISCHARGING) ||
+		(battery->cable_type == POWER_SUPPLY_TYPE_BATTERY)) {
 		dev_dbg(battery->dev,
 			"%s: Charging Disabled\n", __func__);
 		return true;
@@ -1149,7 +1151,7 @@ static bool sec_bat_time_management(
 #endif
 
 	if (battery->charging_start_time == 0) {
-		dev_info(battery->dev,
+		dev_dbg(battery->dev,
 			"%s: Charging Disabled\n", __func__);
 		return true;
 	}
@@ -1471,76 +1473,6 @@ static bool sec_bat_fullcharged_check(
 		sec_bat_charging_mode_str[battery->charging_mode]);
 
 	return true;
-};
-
-#define DISCHARGE_SAMPLE_CNT 20
-static int discharge_cnt=0;
-static int all_vcell[20] = {0,};
-
-/* if ret < 0, discharge */
-static int sec_bat_check_discharge(struct sec_battery_info *battery)
-{
-	int i, cnt, ret = 0;
-
-	all_vcell[discharge_cnt++] = battery->voltage_now;
-	if (discharge_cnt >= DISCHARGE_SAMPLE_CNT)
-		discharge_cnt = 0;
-
-	cnt = discharge_cnt;
-
-	/* check after last value is set */
-	if (all_vcell[cnt] == 0)
-		return 0;
-
-	for (i = 0; i < DISCHARGE_SAMPLE_CNT; i++) {
-		if (cnt == i)
-			continue;
-		if (all_vcell[cnt] > all_vcell[i])
-			ret--;
-		else
-			ret++;
-	}
-	return ret;
-}
-
-/* judge power off or not by current_avg */
-static int sec_bat_get_current_average(
-				struct sec_battery_info *battery)
-{
-	int curr_avg;
-	int check_discharge;
-
-	pr_debug("%s\n", __func__);
-	check_discharge = sec_bat_check_discharge(battery);
-	/* if 0% && under 3.4v && low power charging(1000mA), power off */
-	if (!battery->pdata->is_lpm() &&
-		(battery->capacity <= 0) &&
-		(battery->voltage_now < 3400) &&
-			(check_discharge < 0) &&
-		((battery->current_now < 1000) ||
-		((battery->health == POWER_SUPPLY_HEALTH_OVERHEAT) ||
-		(battery->health == POWER_SUPPLY_HEALTH_COLD)))) {
-
-			pr_info("%s: SOC(%d), Vnow(%d), Vocv(%d), Inow(%d)\n",
-				__func__, battery->capacity,
-				battery->voltage_now,
-				battery->voltage_ocv,
-				battery->current_now);
-		curr_avg = -1;
-	} else {
-		curr_avg = battery->current_now;
-	}
-
-	return curr_avg;
-}
-
-void sec_bat_reset_discharge(struct sec_battery_info *battery)
-{
-	int i;
-
-	for (i = 0; i < DISCHARGE_SAMPLE_CNT ; i++)
-		all_vcell[i] = 0;
-	discharge_cnt = 0;
 }
 
 static void sec_bat_get_battery_info(
@@ -1562,22 +1494,20 @@ static void sec_bat_get_battery_info(
 		POWER_SUPPLY_PROP_VOLTAGE_AVG, value);
 	battery->voltage_ocv = value.intval;
 
-	if (battery->pdata->get_fg_current) {
-		/* read from fuelgauge */
-		psy_do_property("sec-fuelgauge", get,
-			POWER_SUPPLY_PROP_CURRENT_NOW, value);
-		battery->current_now = value.intval;
+	value.intval = SEC_BATTEY_CURRENT_MA;
+	psy_do_property("sec-fuelgauge", get,
+		POWER_SUPPLY_PROP_CURRENT_NOW, value);
+	battery->current_now = value.intval;
 
-		psy_do_property("sec-fuelgauge", get,
-			POWER_SUPPLY_PROP_CURRENT_AVG, value);
-		battery->current_avg = value.intval;
-	} else {
-		/* read current info from charger */
-		psy_do_property("sec-charger", get,
-			POWER_SUPPLY_PROP_CURRENT_NOW, value);
-		battery->current_now = value.intval;
-		battery->current_avg = sec_bat_get_current_average(battery);
-	}
+	value.intval = SEC_BATTEY_CURRENT_MA;
+	psy_do_property("sec-fuelgauge", get,
+		POWER_SUPPLY_PROP_CURRENT_AVG, value);
+	battery->current_avg = value.intval;
+
+	/* input current limit in charger */
+	psy_do_property("sec-charger", get,
+		POWER_SUPPLY_PROP_CURRENT_MAX, value);
+	battery->current_max = value.intval;
 
 	/* To get SOC value (NOT raw SOC), need to reset value */
 	value.intval = 0;
@@ -1591,8 +1521,6 @@ static void sec_bat_get_battery_info(
 				battery->capacity, value.intval);
 		else
 			battery->capacity = value.intval;
-	} else {
-		battery->capacity = value.intval;
 	}
 #else
 	battery->capacity = value.intval;
@@ -1639,16 +1567,18 @@ static void sec_bat_get_battery_info(
 	}
 
 	dev_info(battery->dev,
-		"%s:Vnow(%dmV),Inow(%dmA),SOC(%d%%),Tbat(%d)\n", __func__,
+		"%s:Vnow(%dmV),Inow(%dmA),Imax(%dmA),SOC(%d%%),Tbat(%d)\n",
+		__func__,
 		battery->voltage_now, battery->current_now,
-		battery->capacity, battery->temperature);
+		battery->current_max, battery->capacity, battery->temperature);
 	dev_dbg(battery->dev,
-		"%s,Vavg(%dmV),Vocv(%dmV),Tamb(%d),Iavg(%dmA),Iadc(%d)\n",
+		"%s,Vavg(%dmV),Vocv(%dmV),Tamb(%d),"
+		"Iavg(%dmA),Iadc(%d)\n",
 		battery->present ? "Connected" : "Disconnected",
 		battery->voltage_avg, battery->voltage_ocv,
 		battery->temper_amb,
 		battery->current_avg, battery->current_adc);
-};
+}
 
 static void sec_bat_polling_work(struct work_struct *work)
 {
@@ -1893,8 +1823,6 @@ continue_monitor:
 
 	power_supply_changed(&battery->psy_bat);
 
-	dev_info(battery->dev,
-			"%s: Call sec_bat_set_polling\n", __func__);
 	sec_bat_set_polling(battery);
 
 	if (battery->capacity <= 0)
@@ -1959,6 +1887,11 @@ static void sec_bat_cable_work(struct work_struct *work)
 			val.intval = POWER_SUPPLY_TYPE_BATTERY;
 			psy_do_property("sec-fuelgauge", set,
 					POWER_SUPPLY_PROP_CHARGE_FULL, val);
+			/* To get SOC value (NOT raw SOC), need to reset value */
+			val.intval = 0;
+			psy_do_property("sec-fuelgauge", get,
+					POWER_SUPPLY_PROP_CAPACITY, val);
+			battery->capacity = val.intval;
 		}
 		battery->charging_mode = SEC_BATTERY_CHARGING_NONE;
 		battery->is_recharging = false;
@@ -2019,7 +1952,8 @@ static void sec_bat_cable_work(struct work_struct *work)
 	queue_delayed_work(battery->monitor_wqueue, &battery->monitor_work,
 					msecs_to_jiffies(500));
 end_of_cable_work:
-	wake_unlock(&battery->cable_wake_lock);
+	if (battery->cable_type == POWER_SUPPLY_TYPE_BATTERY)
+		wake_unlock(&battery->cable_wake_lock);
 	dev_dbg(battery->dev, "%s: End\n", __func__);
 }
 
@@ -2065,6 +1999,31 @@ ssize_t sec_bat_show_attrs(struct device *dev,
 	case BATT_VOL_AVER:
 		break;
 	case BATT_VOL_ADC_AVER:
+		break;
+
+	case BATT_CURRENT_UA_NOW:
+		{
+			union power_supply_propval value;
+
+			value.intval = SEC_BATTEY_CURRENT_UA;
+			psy_do_property("sec-fuelgauge", get,
+				POWER_SUPPLY_PROP_CURRENT_NOW, value);
+
+			i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n",
+				value.intval);
+		}
+		break;
+	case BATT_CURRENT_UA_AVG:
+		{
+			union power_supply_propval value;
+
+			value.intval = SEC_BATTEY_CURRENT_UA;
+			psy_do_property("sec-fuelgauge", get,
+				POWER_SUPPLY_PROP_CURRENT_AVG, value);
+
+			i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n",
+				value.intval);
+		}
 		break;
 	case BATT_TEMP_ADC:
 		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n",
@@ -2289,6 +2248,10 @@ ssize_t sec_bat_store_attrs(
 	case BATT_VOL_AVER:
 		break;
 	case BATT_VOL_ADC_AVER:
+		break;
+	case BATT_CURRENT_UA_NOW:
+		break;
+	case BATT_CURRENT_UA_AVG:
 		break;
 	case BATT_TEMP_ADC:
 		break;
@@ -2626,7 +2589,6 @@ static int sec_bat_set_property(struct power_supply *psy,
 				battery->extended_cable_type);
 		 } else
 			current_cable_type = val->intval;
-		sec_bat_reset_discharge(battery);
 
 		  /* if another cable is connected,
 		  * ignore wireless charing event
@@ -2692,19 +2654,25 @@ static int sec_bat_get_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
-		if (battery->pdata->cable_check_type &
-			SEC_BATTERY_CABLE_CHECK_NOUSBCHARGE) {
-			switch (battery->cable_type) {
-			case POWER_SUPPLY_TYPE_USB:
-			case POWER_SUPPLY_TYPE_USB_DCP:
-			case POWER_SUPPLY_TYPE_USB_CDP:
-			case POWER_SUPPLY_TYPE_USB_ACA:
-				val->intval =
-					POWER_SUPPLY_STATUS_DISCHARGING;
-				return 0;
+		if ((battery->health == POWER_SUPPLY_HEALTH_OVERVOLTAGE) ||
+			(battery->health == POWER_SUPPLY_HEALTH_UNDERVOLTAGE)) {
+				val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+		} else {
+			if ((battery->pdata->cable_check_type &
+			     SEC_BATTERY_CABLE_CHECK_NOUSBCHARGE) &&
+			     !battery->pdata->is_lpm()) {
+				switch (battery->cable_type) {
+				case POWER_SUPPLY_TYPE_USB:
+				case POWER_SUPPLY_TYPE_USB_DCP:
+				case POWER_SUPPLY_TYPE_USB_CDP:
+				case POWER_SUPPLY_TYPE_USB_ACA:
+					val->intval =
+						POWER_SUPPLY_STATUS_DISCHARGING;
+					return 0;
+				}
 			}
+			val->intval = battery->status;
 		}
-		val->intval = battery->status;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
 		psy_do_property("sec-charger", get,
@@ -2776,6 +2744,12 @@ static int sec_usb_get_property(struct power_supply *psy,
 	if (psp != POWER_SUPPLY_PROP_ONLINE)
 		return -EINVAL;
 
+	if ((battery->health == POWER_SUPPLY_HEALTH_OVERVOLTAGE) ||
+		(battery->health == POWER_SUPPLY_HEALTH_UNDERVOLTAGE)) {
+		val->intval = 0;
+		return 0;
+	}
+
 	/* Set enable=1 only if the USB charger is connected */
 	switch (battery->cable_type) {
 	case POWER_SUPPLY_TYPE_USB:
@@ -2801,6 +2775,12 @@ static int sec_ac_get_property(struct power_supply *psy,
 
 	if (psp != POWER_SUPPLY_PROP_ONLINE)
 		return -EINVAL;
+
+	if ((battery->health == POWER_SUPPLY_HEALTH_OVERVOLTAGE) ||
+		(battery->health == POWER_SUPPLY_HEALTH_UNDERVOLTAGE)) {
+			val->intval = 0;
+			return 0;
+	}
 
 	/* Set enable=1 only if the AC charger is connected */
 	switch (battery->cable_type) {
@@ -2960,7 +2940,8 @@ static int __devinit sec_battery_probe(struct platform_device *pdev)
 
 	/* create work queue */
 	battery->monitor_wqueue =
-		alloc_workqueue(dev_name(&pdev->dev), WQ_FREEZABLE, 1);
+		alloc_workqueue(dev_name(&pdev->dev), WQ_UNBOUND |
+		WQ_MEM_RECLAIM, 1);
 	if (!battery->monitor_wqueue) {
 		dev_err(battery->dev,
 			"%s: Fail to Create Workqueue\n", __func__);
@@ -3178,7 +3159,7 @@ static void sec_battery_complete(struct device *dev)
 
 	wake_lock(&battery->monitor_wake_lock);
 	queue_delayed_work(battery->monitor_wqueue,
-		&battery->monitor_work, 0);
+		&battery->monitor_work, 500);
 
 	dev_dbg(battery->dev, "%s: End\n", __func__);
 

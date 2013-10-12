@@ -68,6 +68,7 @@
 #include <plat/pwm.h>
 #include <plat/fimc-core.h>
 #include <plat/mipi_csis.h>
+#include <plat/watchdog.h>
 
 static u64 samsung_device_dma_mask = DMA_BIT_MASK(32);
 
@@ -466,9 +467,6 @@ static struct resource s5p_fimd1_resource[] = {
 	[2] = DEFINE_RES_IRQ(IRQ_FIMD1_FIFO),
 	[3] = DEFINE_RES_IRQ(IRQ_FIMD1_SYSTEM),
 	[4] = DEFINE_RES_MEM(0, SZ_1), /* to be populated later */
-#ifdef CONFIG_FB_I80_COMMAND_MODE
-	[5] = DEFINE_RES_IRQ(IRQ_EINT(24)),
-#endif
 };
 
 struct platform_device s5p_device_fimd1 = {
@@ -1310,7 +1308,6 @@ struct platform_device s3c_device_timer[] = {
 void __init samsung_pwm_set_platdata(struct samsung_pwm_platdata *pd)
 {
 	int i;
-	struct samsung_pwm_platdata *npd;
 
 	BUG_ON(!pd);
 
@@ -1319,8 +1316,8 @@ void __init samsung_pwm_set_platdata(struct samsung_pwm_platdata *pd)
 	 * only one platform_data is valid for all of PWMs
 	 */
 	for (i = 0 ; i < 5; i++)
-		npd = s3c_set_platdata(pd, sizeof(struct samsung_pwm_platdata),
-				       &s3c_device_timer[i]);
+		s3c_set_platdata(pd, sizeof(struct samsung_pwm_platdata),
+				&s3c_device_timer[i]);
 }
 #endif /* CONFIG_SAMSUNG_DEV_PWM */
 
@@ -1724,6 +1721,11 @@ struct platform_device s3c_device_wdt = {
 	.num_resources	= ARRAY_SIZE(s3c_wdt_resource),
 	.resource	= s3c_wdt_resource,
 };
+
+void __init s3c_watchdog_set_platdata(struct s3c_watchdog_platdata *pd)
+{
+	s3c_set_platdata(pd, sizeof(*pd), &s3c_device_wdt);
+}
 #endif /* CONFIG_S3C_DEV_WDT */
 
 #ifdef CONFIG_S3C64XX_DEV_SPI0

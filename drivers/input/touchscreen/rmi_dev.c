@@ -722,11 +722,12 @@ static void rmidev_remove_device(struct synaptics_rmi4_data *rmi4_data)
 	return;
 }
 
-int rmidev_module_register(void)
+int rmidev_module_register(struct synaptics_rmi4_data *rmi4_data)
 {
 	int retval;
 
 	retval = synaptics_rmi4_new_function(RMI_DEV,
+			rmi4_data,
 			rmidev_init_device,
 			rmidev_remove_device,
 			NULL);

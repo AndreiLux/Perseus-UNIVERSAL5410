@@ -11,15 +11,11 @@
 #include <linux/gpio.h>
 #include <linux/platform_device.h>
 #include <linux/i2c.h>
-#ifdef CONFIG_ISDBTMM
-#include <linux/i2c-gpio.h>
-#endif
 #include <linux/clkdev.h>
 #include <media/exynos_gscaler.h>
 #include <media/exynos_flite.h>
 #include <media/m5mols.h>
 #include <linux/spi/spi.h>
-#include <linux/spi/spi_gpio.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/fixed.h>
 #include <plat/cpu.h>
@@ -36,22 +32,11 @@
 #include <mach/hs-iic.h>
 #include <mach/exynos-tv.h>
 #include <mach/exynos-mfc.h>
+#include <mach/exynos-scaler.h>
 
 #include <media/exynos_fimc_is.h>
 #include <media/exynos_fimc_is_sensor.h>
 #include "board-universal5410.h"
-
-#if defined(CONFIG_TDMB) || defined(CONFIG_TDMB_MODULE)
-#include <mach/tdmb_pdata.h>
-#if defined(CONFIG_TDMB_EBI)
-#include <linux/io.h>
-#include <mach/sromc-exynos5410.h>
-#endif
-#endif
-
-#ifdef CONFIG_LEDS_KTD267
-#include <linux/leds-ktd267.h>
-#endif
 
 #ifdef CONFIG_VIDEO_EXYNOS_FIMC_LITE
 /* 1 MIPI Cameras */
@@ -333,189 +318,26 @@ static struct fimg2d_platdata fimg2d_data __initdata = {
 	.ip_ver		= IP_VER_G2D_5A,
 	.hw_ver		= 0x42,
 	.gate_clkname	= "fimg2d",
+	.cpu_min	= 400000, /* KFC 800MHz */
+	.mif_min	= 800000,
+	.int_min	= 0,
 };
 #endif
 
-#ifdef CONFIG_LEDS_KTD267
-static int ktd267_initGpio(void)
-{
-	int err;
-
-	err = gpio_request_one(GPIO_CAM_FLASH_EN,
-					GPIOF_OUT_INIT_LOW, "TORCH_EN");
-	if (err) {
-		printk(KERN_ERR "failed to request TORCH_EN\n");
-		return -EPERM;
-	}
-
-	err = gpio_request_one(GPIO_CAM_FLASH_SET,
-					GPIOF_OUT_INIT_LOW, "TORCH_SET");
-	if (err) {
-		printk(KERN_ERR "failed to request TORCH_SET\n");
-		gpio_free(GPIO_CAM_FLASH_EN);
-		return -EPERM;
-	}
-
-	gpio_free(GPIO_CAM_FLASH_EN);
-	gpio_free(GPIO_CAM_FLASH_SET);
-
-	return 0;
-}
-
-static int ktd267_setGpio(void)
-{
-	int err;
-
-	err = gpio_request_one(GPIO_CAM_FLASH_EN,
-					GPIOF_OUT_INIT_LOW, "TORCH_EN");
-	if (err) {
-		printk(KERN_ERR "failed to request TORCH_EN\n");
-		return -EPERM;
-	}
-
-	err = gpio_request_one(GPIO_CAM_FLASH_SET,
-					GPIOF_OUT_INIT_LOW,  "TORCH_SET");
-	if (err) {
-		printk(KERN_ERR "failed to request TORCH_SET\n");
-		gpio_free(GPIO_CAM_FLASH_EN);
-		return -EPERM;
-	}
-
-	return 0;
-}
-
-static int ktd267_freeGpio(void)
-{
-	gpio_free(GPIO_CAM_FLASH_EN);
-	gpio_free(GPIO_CAM_FLASH_SET);
-
-	return 0;
-}
-
-static void ktd267_torch_en(int onoff)
-{
-	gpio_set_value(GPIO_CAM_FLASH_EN, onoff);
-}
-
-static void ktd267_torch_set(int onoff)
-{
-	gpio_set_value(GPIO_CAM_FLASH_SET, onoff);
-}
-
-static struct ktd267_led_platform_data ktd267_led_data = {
-	.brightness = TORCH_BRIGHTNESS_50,
-	.status	= STATUS_UNAVAILABLE,
-	.initGpio = ktd267_initGpio,
-	.setGpio = ktd267_setGpio,
-	.freeGpio = ktd267_freeGpio,
-	.torch_en = ktd267_torch_en,
-	.torch_set = ktd267_torch_set,
-};
-
-static struct platform_device s3c_device_ktd267_led = {
-	.name	= "ktd267-led",
-	.id	= -1,
-	.dev	= {
-		.platform_data	= &ktd267_led_data,
-	},
+#ifdef CONFIG_VIDEO_EXYNOS_JPEG
+static struct exynos_jpeg_platdata exynos5_jpeg_pd __initdata = {
+	.ip_ver		= IP_VER_JPEG_5A,
+	.gateclk	= "jpeg",
+	.extra_gateclk	= "sclk_jpeg",
 };
 #endif
 
-#ifdef CONFIG_ISDBTMM
-/* I2C25 */
-static struct i2c_gpio_platform_data gpio_i2c_tmm25 = {
-	.scl_pin = GPIO_TMM_SCL,
-	.sda_pin = GPIO_TMM_SDA,
+#ifdef CONFIG_VIDEO_EXYNOS_JPEG_HX
+static struct exynos_jpeg_platdata exynos5_jpeg_hx_pd __initdata = {
+	.ip_ver		= IP_VER_JPEG_HX_5A,
+	.gateclk	= "jpeg-hx",
+	.extra_gateclk	= "dout_aclk_300_jpeg",
 };
-
-struct platform_device smtej113_device_i2c25 = {
-	.name = "i2c-gpio",
-	.id = 25,
-	.dev.platform_data = &gpio_i2c_tmm25,
-};
-
-static struct i2c_board_info i2c_smtej113_tmm[] __initdata = {
-	{
-		I2C_BOARD_INFO("smtej113_main1", 0xC2 >> 1),
-	},
-	{
-		I2C_BOARD_INFO("smtej113_main2", 0xC4 >> 1),
-	},
-	{
-		I2C_BOARD_INFO("smtej113_sub", 0xC0 >> 1),
-	},
-};
-
-static struct s3c64xx_spi_csinfo spi1_csi[] = {
-	[0] = {
-		.line = EXYNOS5410_GPA2(5),
-		.set_level = gpio_set_value,
-	},
-};
-
-static struct spi_board_info spi1_board_info[] __initdata = {
-	{
-		.modalias			= "tmmspidev",
-		.platform_data		= NULL,
-		.max_speed_hz		= 30 * 1000 * 1000,
-		.bus_num			= 1,
-		.chip_select		= 0,
-		.mode				= SPI_MODE_0,
-		.controller_data = &spi1_csi[0],
-	}
-};
-
-static struct platform_device tmm_spi_device = {
-	.name			= "tmmspi",
-	.id 			= -1,
-};
-
-static struct platform_device tmm_i2c_device = {
-	.name			= "tmmi2c",
-	.id 			= -1,
-};
-
-void __init tmm_dev_init(void)
-{
-	int ret;
-	
-#if defined(CONFIG_TMM_ANT_DET)
-	s5p_register_gpio_interrupt(GPIO_TDMB_ANT_DET);
-	s3c_gpio_cfgpin(GPIO_TDMB_ANT_DET, S3C_GPIO_SFN(0xf));
-	s3c_gpio_setpull(GPIO_TDMB_ANT_DET, S3C_GPIO_PULL_UP);
-#endif
-	
-	ret = platform_device_register(&tmm_i2c_device);
-	
-	if (ret < 0) {
-		pr_err("%s: i2c platform_device_register returned error ret = %d\n", __func__, ret);
-		return;
-	}
-	
-	ret = platform_device_register(&tmm_spi_device);
-	
-	if (ret < 0) {
-		pr_err("%s: spi platform_device_register returned error ret = %d\n", __func__, ret);
-		return;
-	}
-	
-	i2c_register_board_info(25, i2c_smtej113_tmm,
-							ARRAY_SIZE(i2c_smtej113_tmm));
-	
-	if (!exynos_spi_cfg_cs(spi1_csi[0].line, 1)) {
-		s3c64xx_spi1_set_platdata(&s3c64xx_spi1_pdata,
-								EXYNOS_SPI_SRCCLK_SCLK, ARRAY_SIZE(spi1_csi));
-		ret = spi_register_board_info(spi1_board_info,
-								ARRAY_SIZE(spi1_board_info));
-		if (ret) {
-			pr_err("%s: spi_register_board_info returned error ret = %d\n", __func__, ret);
-		}
-	}
-	else {
-		pr_err("%s:exynos_spi_cfg_cs returned error ret = %d\n", __func__, ret);
-	}
-	return;
-}
 #endif
 
 static struct platform_device *universal5410_media_devices[] __initdata = {
@@ -530,7 +352,7 @@ static struct platform_device *universal5410_media_devices[] __initdata = {
 	&exynos_device_md1,
 	&exynos_device_md2,
 #endif
-	&exynos5_device_scaler,
+	&exynos5_device_scaler0,
 	&exynos5_device_rotator,
 #ifdef CONFIG_VIDEO_EXYNOS_GSCALER
 	&exynos5_device_gsc0,
@@ -548,11 +370,6 @@ static struct platform_device *universal5410_media_devices[] __initdata = {
 	&s5p_device_mipi_csis1,
 	&s5p_device_mipi_csis2,
 	&mipi_csi_fixed_voltage,
-#endif
-#if defined(CONFIG_TDMB) || defined(CONFIG_TDMB_MODULE)
-#if defined(CONFIG_TDMB_SPI)
-	&s3c64xx_device_spi1,
-#endif
 #endif
 	&s3c64xx_device_spi3,
 
@@ -589,10 +406,6 @@ static struct platform_device *universal5410_media_devices[] __initdata = {
 #ifdef CONFIG_VIDEO_EXYNOS_JPEG_HX
 	&exynos5_device_jpeg_hx,
 #endif
-#ifdef CONFIG_ISDBTMM
-	&smtej113_device_i2c25,
-	&s3c64xx_device_spi1,
-#endif
 };
 #ifdef CONFIG_VIDEO_EXYNOS5_FIMC_IS
 static struct exynos5_sensor_gpio_info gpio_universal5410 = {
@@ -604,7 +417,6 @@ static struct exynos5_sensor_gpio_info gpio_universal5410 = {
 			.flite_id = FLITE_ID_A,
 			.count = 0,
 		},
-		/*
 		{
 			.pin_type = PIN_GPIO,
 			.pin = EXYNOS5410_GPH1(4),
@@ -614,6 +426,7 @@ static struct exynos5_sensor_gpio_info gpio_universal5410 = {
 			.flite_id = FLITE_ID_A,
 			.count = 0,
 		},
+		/*
 		{
 			.pin_type = PIN_GPIO,
 			.pin = EXYNOS5410_GPH1(6),
@@ -862,258 +675,7 @@ static struct exynos5_sensor_gpio_info gpio_universal5410 = {
 			.name = "GPIO_RXD_UART_ISP",
 			.value = (0x3<<4),
 			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_END,
-			.count = 0,
-		},
-	}
-};
-static struct exynos5_sensor_gpio_info gpio_camera_v1 = {
-	.cfg = {
-		/* 5M CORE_15V */
-		{
-			.pin_type = PIN_REGULATOR,
-			.name = "5m_core_1.5v",
 			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-		/*5M CAM_SENSOR_A28V */
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPH1(4),
-			.name = "GPIO_CAM_IO_EN",
-			.value = (1),
-			.act = GPIO_OUTPUT,
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-		/* 5M CAM_IO_18V */
-		{
-			.pin_type = PIN_REGULATOR,
-			.name = "cam_io_1.8v",
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-		/* 5M AF_28V */
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPE0(3),
-			.name = "GPIO_CAM_AF_EN",
-			.value = (1),
-			.act = GPIO_OUTPUT,
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-		/* 5M X SHUT/DOWN */
-		{
-			/* MIPI-CSI0 */
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPE0(5),
-			.name = "GPIO_5M_CAM_RESET",
-			.value = (1),
-			.act = GPIO_RESET,
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-		/* 5M MCLK */
-		{
-			/* MIPI-CSI0 */
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPM7(5),
-			.name = "GPIO_CAM_MCLK",
-			.value = (0x2<<20),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},		
-		/* 5M I2C */
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPF0(0),
-			.name = "GPIO_MAIN_CAM_SDA_18V",
-			.value = (0x2<<0),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPF0(1),
-			.name = "GPIO_MAIN_CAM_SCL_18V",
-			.value = (0x2<<4),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-#if 0
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPF0(2),
-			.name = "GPIO_AF_SDA",
-			.value = (0x2<<8),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPF0(3),
-			.name = "GPIO_AF_SCL",
-			.value = (0x2<<12),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-#endif
-		/* 5M Flash */
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPE0(0),
-			.name = "GPIO_CAM_FLASH_EN",
-			.value = (0x2<<0),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPE0(1),
-			.name = "GPIO_CAM_FLASH_SET",
-			.value = (0x2<<4),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-		/* 2M_CAM_A2.8V */
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPH1(7),
-			.name = "GPIO_2M_A2.8V_EN",
-			.value = (1),
-			.act = GPIO_OUTPUT,
-			.flite_id = FLITE_ID_C,
-			.count = 0,
-		},
-		/* 2M DVDD_18V */
-		{
-			.pin_type = PIN_REGULATOR,
-			.name = "2m_cam_1.8v",
-			.flite_id = FLITE_ID_C,
-			.count = 0,
-		},
-		/* 2M X SHUT/DOWN */
-		{
-			/* MIPI-CSI2 */
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPE0(4),
-			.name = "GPIO_CAM_VT_nRST",
-			.value = (1),
-			.act = GPIO_RESET,
-			.flite_id = FLITE_ID_C,
-			.count = 0,
-		},
-		/* 2M MCLK */
-		{
-			/* MIPI-CSI2 */
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPM7(7),
-			.name = "GPIO_VT_CAM_MCLK",
-			.value = (0x2<<28),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_C,
-			.count = 0,
-		},
-		/* 2M I2C */
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPF0(4),
-			.name = "GPIO_VT_CAM_SDA_18V",
-			.value = (0x2<<16),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_C,
-			.count = 0,
-		},
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPF0(5),
-			.name = "GPIO_VT_CAM_SCL_18V",
-			.value = (0x2<<20),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_C,
-			.count = 0,
-		},
-		/* ETC */
-		/* Host use spi controller in image subsystem */
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPF1(0),
-			.name = "GPIO_CAM_SPI0_SCLK",
-			.value = (0x2<<0),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-		/* chip select is controlled by gpio output */
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPF1(1),
-			.name = "GPIO_CAM_SPI0_SSN",
-			.value = (0x1<<4),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPF1(2),
-			.name = "GPIO_CAM_SPI0_MISP",
-			.value = (0x2<<8),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPF1(3),
-			.name = "GPIO_CAM_SPI0_MOSI",
-			.value = (0x2<<12),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_A,
-			.count = 0,
-		},
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPE0(6),
-			.name = "GPIO_nRTS_UART_ISP",
-			.value = (0x3<<24),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_END,
-			.count = 0,
-		},
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPE0(7),
-			.name = "GPIO_TXD_UART_ISP",
-			.value = (0x3<<28),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_END,
-			.count = 0,
-		},
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPE1(0),
-			.name = "GPIO_nCTS_UART_ISP",
-			.value = (0x3<<0),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_END,
-			.count = 0,
-		},
-		{
-			.pin_type = PIN_GPIO,
-			.pin = EXYNOS5410_GPE1(1),
-			.name = "GPIO_RXD_UART_ISP",
-			.value = (0x3<<4),
-			.act = GPIO_PULL_NONE,
-			.flite_id = FLITE_ID_END,
 			.count = 0,
 		},
 	}
@@ -1202,7 +764,7 @@ static struct s3c_platform_camera flite_m5mo = {
 
 #ifdef CONFIG_VIDEO_S5K6B2
 #ifdef CONFIG_VISION_MODE
-static struct exynos_isp_info s5k6b2 __initdata = {
+static struct exynos_isp_info s5k6b2 = {
 	.board_info	= hs_i2c_devs1,
 	.cam_srclk_name	= "sclk_isp_sensor",
 	.clk_frequency	= 24000000UL,
@@ -1324,181 +886,6 @@ static void __init universal5410_set_camera_platdata(void)
 }
 #endif /* CONFIG_VIDEO_EXYNOS_GSCALER */
 
-#if defined(CONFIG_TDMB) || defined(CONFIG_TDMB_MODULE)
-#if defined(CONFIG_TDMB_SPI)
-static struct s3c64xx_spi_csinfo spi1_csi[] = {
-	[0] = {
-		.line = EXYNOS5410_GPA2(5),
-		.set_level = gpio_set_value,
-	},
-};
-static struct spi_board_info spi1_board_info[] __initdata = {
-	{
-		.modalias = "tdmbspi",
-		.platform_data = NULL,
-		.max_speed_hz = 5000000,
-		.bus_num = 1,
-		.chip_select = 0,
-		.mode = SPI_MODE_0,
-		.controller_data = &spi1_csi[0],
-	}
-};
-
-#endif
-#if defined(CONFIG_TDMB_EBI)
-#define TDMB_EBI_CS_BASE SROM_CS0_BASE
-#define TDMB_EBI_MEM_SIZE 0x1000
-#endif
-static void tdmb_set_config_poweron(void)
-{
-	s3c_gpio_cfgpin(GPIO_TDMB_EN, S3C_GPIO_OUTPUT);
-	s3c_gpio_setpull(GPIO_TDMB_EN, S3C_GPIO_PULL_NONE);
-	gpio_set_value(GPIO_TDMB_EN, GPIO_LEVEL_LOW);
-
-	s3c_gpio_cfgpin(GPIO_TDMB_RST_N, S3C_GPIO_OUTPUT);
-	s3c_gpio_setpull(GPIO_TDMB_RST_N, S3C_GPIO_PULL_NONE);
-	gpio_set_value(GPIO_TDMB_RST_N, GPIO_LEVEL_LOW);
-
-	s3c_gpio_cfgpin(GPIO_TDMB_INT, S3C_GPIO_SFN(0xf));
-	s3c_gpio_setpull(GPIO_TDMB_INT, S3C_GPIO_PULL_NONE);
-}
-static void tdmb_set_config_poweroff(void)
-{
-	s3c_gpio_cfgpin(GPIO_TDMB_EN, S3C_GPIO_OUTPUT);
-	s3c_gpio_setpull(GPIO_TDMB_EN, S3C_GPIO_PULL_NONE);
-	gpio_set_value(GPIO_TDMB_EN, GPIO_LEVEL_LOW);
-
-	s3c_gpio_cfgpin(GPIO_TDMB_RST_N, S3C_GPIO_OUTPUT);
-	s3c_gpio_setpull(GPIO_TDMB_RST_N, S3C_GPIO_PULL_NONE);
-	gpio_set_value(GPIO_TDMB_RST_N, GPIO_LEVEL_LOW);
-
-	s3c_gpio_cfgpin(GPIO_TDMB_INT, S3C_GPIO_OUTPUT);
-	s3c_gpio_setpull(GPIO_TDMB_INT, S3C_GPIO_PULL_NONE);
-	gpio_set_value(GPIO_TDMB_INT, GPIO_LEVEL_LOW);
-}
-
-static void tdmb_gpio_on(void)
-{
-	printk(KERN_DEBUG "tdmb_gpio_on\n");
-
-	tdmb_set_config_poweron();
-
-	gpio_set_value(GPIO_TDMB_EN, GPIO_LEVEL_LOW);
-	usleep_range(1000, 1000);
-	gpio_set_value(GPIO_TDMB_EN, GPIO_LEVEL_HIGH);
-
-	usleep_range(1000, 1000);
-	gpio_set_value(GPIO_TDMB_RST_N, GPIO_LEVEL_LOW);
-	usleep_range(2000, 2000);
-	gpio_set_value(GPIO_TDMB_RST_N, GPIO_LEVEL_HIGH);
-	usleep_range(1000, 1000);
-}
-
-static void tdmb_gpio_off(void)
-{
-	printk(KERN_DEBUG "tdmb_gpio_off\n");
-
-	tdmb_set_config_poweroff();
-
-	gpio_set_value(GPIO_TDMB_RST_N, GPIO_LEVEL_LOW);
-	usleep_range(1000, 1000);
-	gpio_set_value(GPIO_TDMB_EN, GPIO_LEVEL_LOW);
-}
-
-static struct tdmb_platform_data tdmb_pdata = {
-	.gpio_on = tdmb_gpio_on,
-	.gpio_off = tdmb_gpio_off,
-#if defined(CONFIG_TDMB_EBI)
-	.cs_base = TDMB_EBI_CS_BASE,
-	.mem_size = TDMB_EBI_MEM_SIZE,
-#endif
-};
-
-static struct platform_device tdmb_device = {
-	.name			= "tdmb",
-	.id				= -1,
-	.dev			= {
-		.platform_data = &tdmb_pdata,
-	},
-};
-#if defined(CONFIG_TDMB_EBI)
-static struct sromc_bus_cfg tdmb_sromc_bus_cfg = {
-	.addr_bits = 0,
-	.data_bits = 8,
-	.byte_acc = 0,
-};
-
-static struct sromc_bank_cfg tdmb_ebi_bank_cfg = {
-	.csn = 0,
-	.attr = 0,
-};
-
-static struct sromc_timing_cfg tdmb_ebi_timing_cfg = {
-	.tacs = 0x0F << 28,
-	.tcos = 0x02 << 24,
-	.tacc = 0x1F << 16,
-	.tcoh = 0x02 << 12,
-	.tcah = 0x0F << 8,
-	.tacp = 0x00 << 4,
-	.pmc  = 0x00 << 0,
-};
-#endif
-
-static int __init tdmb_dev_init(void)
-{
-#if defined(CONFIG_TDMB_EBI)
-	struct sromc_bus_cfg *bus_cfg;
-	struct sromc_bank_cfg *bnk_cfg;
-	struct sromc_timing_cfg *tm_cfg;
-
-	if (sromc_enable() < 0) {
-		printk(KERN_DEBUG "tdmb_dev_init sromc_enable fail\n");
-		return -1;
-	}
-
-	bus_cfg = &tdmb_sromc_bus_cfg;
-	if (sromc_config_demux_gpio(bus_cfg) < 0) {
-		printk(KERN_DEBUG "tdmb_dev_init sromc_config_demux_gpio fail\n");
-		return -1;
-	}
-
-	bnk_cfg = &tdmb_ebi_bank_cfg;
-	if (sromc_config_csn_gpio(bnk_cfg->csn) < 0) {
-		printk(KERN_DEBUG "tdmb_dev_init sromc_config_csn_gpio fail\n");
-		return -1;
-	}
-
-	sromc_config_access_attr(bnk_cfg->csn, bnk_cfg->attr);
-
-	tm_cfg = &tdmb_ebi_timing_cfg;
-	sromc_config_access_timing(bnk_cfg->csn, tm_cfg);
-#endif
-#if defined(CONFIG_TDMB_ANT_DET)
-	{
-	unsigned int tdmb_ant_det_gpio;
-	unsigned int tdmb_ant_det_irq;
-
-	s5p_register_gpio_interrupt(GPIO_TDMB_ANT_DET);
-	tdmb_ant_det_gpio = GPIO_TDMB_ANT_DET;
-	tdmb_ant_det_irq = GPIO_TDMB_IRQ_ANT_DET;
-	
-	s3c_gpio_cfgpin(tdmb_ant_det_gpio, S3C_GPIO_SFN(0xf));
-	s3c_gpio_setpull(tdmb_ant_det_gpio, S3C_GPIO_PULL_NONE);
-	tdmb_pdata.gpio_ant_det = tdmb_ant_det_gpio;
-	tdmb_pdata.irq_ant_det = tdmb_ant_det_irq;
-	}
-#endif
-
-	tdmb_set_config_poweroff();
-
-	s5p_register_gpio_interrupt(GPIO_TDMB_INT);
-	tdmb_pdata.irq = gpio_to_irq(GPIO_TDMB_INT);
-	platform_device_register(&tdmb_device);
-
-	return 0;
-}
-#endif
-
 void __init exynos5_universal5410_media_init(void)
 {
 #if defined (CONFIG_CSI_D) || defined (CONFIG_S5K6B2_CSI_D)
@@ -1517,6 +904,9 @@ void __init exynos5_universal5410_media_init(void)
 
 	platform_add_devices(universal5410_media_devices,
 			ARRAY_SIZE(universal5410_media_devices));
+
+	s3c_set_platdata(&exynos5410_scaler_pd, sizeof(exynos5410_scaler_pd),
+			&exynos5_device_scaler0);
 
 #ifdef CONFIG_VIDEO_S5K6B2
 #if defined(CONFIG_S5K6B2_CSI_C)
@@ -1571,6 +961,7 @@ void __init exynos5_universal5410_media_init(void)
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_GSCALER
 	exynos5_gsc_set_ip_ver(IP_VER_GSC_5A);
+	exynos5_gsc_set_pm_qos_val(160000, 160000);
 
 	s3c_set_platdata(&exynos_gsc0_default_data, sizeof(exynos_gsc0_default_data),
 			&exynos5_device_gsc0);
@@ -1591,11 +982,7 @@ void __init exynos5_universal5410_media_init(void)
 
 	dev_set_name(&exynos5_device_fimc_is.dev, FIMC_IS_MODULE_NAME);
 
-#if defined(CONFIG_MACH_V1)
-	exynos5_fimc_is_data.gpio_info = &gpio_camera_v1;
-#else
 	exynos5_fimc_is_data.gpio_info = &gpio_universal5410;
-#endif
 
 	exynos5_fimc_is_set_platdata(&exynos5_fimc_is_data);
 
@@ -1613,29 +1000,11 @@ void __init exynos5_universal5410_media_init(void)
 	s5p_fimg2d_set_platdata(&fimg2d_data);
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_JPEG
-	exynos5_jpeg_fimp_setup_clock(&s5p_device_jpeg.dev, 166500000);
+	s3c_set_platdata(&exynos5_jpeg_pd, sizeof(exynos5_jpeg_pd),
+			&s5p_device_jpeg);
 #endif
 #ifdef CONFIG_VIDEO_EXYNOS_JPEG_HX
-	exynos5_jpeg_hx_setup_clock(&exynos5_device_jpeg_hx.dev, 300000000);
-#endif
-#if defined(CONFIG_TDMB) || defined(CONFIG_TDMB_MODULE)
-#if defined(CONFIG_TDMB_SPI)
-	if (!exynos_spi_cfg_cs(spi1_csi[0].line, 1)) {
-		s3c64xx_spi1_set_platdata(&s3c64xx_spi1_pdata,
-			EXYNOS_SPI_SRCCLK_SCLK, ARRAY_SIZE(spi1_csi));
-	spi_register_board_info(spi1_board_info,
-		ARRAY_SIZE(spi1_board_info));
-	} else {
-		pr_err("%s: Error requesting gpio for TDMB_SPI CS\n", __func__);
-	}
-#endif
-	tdmb_dev_init();
-#endif
-#ifdef CONFIG_ISDBTMM
-    tmm_dev_init();
-#endif
-
-#ifdef CONFIG_LEDS_KTD267
-	platform_device_register(&s3c_device_ktd267_led);
+	s3c_set_platdata(&exynos5_jpeg_hx_pd, sizeof(exynos5_jpeg_hx_pd),
+			&exynos5_device_jpeg_hx);
 #endif
 }

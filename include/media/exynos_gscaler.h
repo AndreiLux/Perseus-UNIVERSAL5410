@@ -33,6 +33,8 @@ struct exynos_platform_gscaler {
 	u32 cam_preview:1;
 	u32 cam_camcording:1;
 	u32 ip_ver;
+	u32 mif_min;
+	u32 int_min;
 };
 
 extern struct exynos_platform_gscaler exynos_gsc0_default_data;
@@ -47,4 +49,5 @@ extern struct exynos_platform_gscaler exynos_gsc3_default_data;
   */
 void __init exynos5_gsc_set_pdev_name(int id, char *name);
 void __init exynos5_gsc_set_ip_ver(enum gsc_ip_version ver);
+void __init exynos5_gsc_set_pm_qos_val(u32 mif_min, u32 int_min);
 #endif /* EXYNOS_GSCALER_H_ */

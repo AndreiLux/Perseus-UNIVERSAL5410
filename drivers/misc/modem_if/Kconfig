@@ -4,6 +4,36 @@ menuconfig SEC_MODEM
 	---help---
 	  Samsung Modem Interface Driver.
 
+config UMTS_MODEM_XMM6260
+	bool "modem chip : IMC XMM6260"
+	depends on SEC_MODEM
+	default n
+
+config UMTS_MODEM_XMM6262
+	bool "modem chip : IMC XMM6262"
+	depends on SEC_MODEM
+	default n
+
+config CDMA_MODEM_CBP71
+	bool "modem chip : VIA CBP7.1"
+	depends on SEC_MODEM
+	default n
+
+config CDMA_MODEM_CBP72
+	bool "modem chip : VIA CBP7.2"
+	depends on SEC_MODEM
+	default n
+
+config CDMA_MODEM_CBP82
+	bool "modem chip : VIA CBP8.2"
+	depends on SEC_MODEM
+	default n
+
+config LTE_MODEM_CMC221
+	bool "modem chip : SEC CMC221"
+	depends on SEC_MODEM
+	default n
+
 config UMTS_MODEM_SS222
 	bool "modem chip : SEC SS222"
 	depends on SEC_MODEM
@@ -14,8 +44,23 @@ config CDMA_MODEM_MDM6600
 	depends on SEC_MODEM
 	default n
 
+config TDSCDMA_MODEM_SPRD8803
+	bool "modem chip : SPRD SC8803"
+	depends on SEC_MODEM
+	default n
+
 config GSM_MODEM_ESC6270
 	bool "modem chip : QC ESC6270"
+	depends on SEC_MODEM
+	default n
+
+config CDMA_MODEM_QSC6085
+	bool "modem chip : Qualcomm QSC6085"
+	depends on SEC_MODEM
+	default n
+
+config LINK_DEVICE_MIPI
+	bool "modem driver link device MIPI-HSI"
 	depends on SEC_MODEM
 	default n
 
@@ -29,8 +74,33 @@ config LINK_DEVICE_PLD
 	depends on SEC_MODEM
 	default n
 
+config LINK_DEVICE_USB
+	bool "modem driver link device USB"
+	depends on SEC_MODEM
+	default n
+
+config LINK_DEVICE_HSIC
+	bool "modem driver link device HSIC"
+	depends on SEC_MODEM
+	default n
+
 config LINK_DEVICE_C2C
 	bool "modem driver link device C2C"
+	depends on SEC_MODEM
+	default n
+
+config LINK_DEVICE_SPI
+	bool "modem driver link device SPI"
+	depends on SEC_MODEM
+	default n
+
+config BOOT_DEVICE_SPI
+	bool "modem driver boot device SPI"
+	depends on SEC_MODEM
+	default n
+
+config WORKQUEUE_FRONT
+	bool "IPC: SPI workqueue front"
 	depends on SEC_MODEM
 	default n
 
@@ -43,9 +113,3 @@ config SIM_SLOT_SWITCH
 	bool "SIM_SLOT_SWITCH"
 	depends on SEC_MODEM
 	default n
-
-config USBHUB_USB3503
-	bool "USB3503 USB HUB Driver"
-	depends on I2C
-	help
-	 Enables USB HUB USB3503

@@ -25,6 +25,8 @@ extern void s3c64xx_ac97_setup_gpio(int);
 #define S5PC100_SPDIF_GPG3 1
 extern void s5pc100_spdif_setup_gpio(int);
 
+extern int check_adma_status(void);
+
 struct samsung_i2s {
 /* If the Primary DAI has 5.1 Channels */
 #define QUIRK_PRI_6CHAN		(1 << 0)

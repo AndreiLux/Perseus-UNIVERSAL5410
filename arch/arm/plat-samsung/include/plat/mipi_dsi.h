@@ -27,20 +27,23 @@ extern struct mipi_dsim_lcd_driver ams480gyxx_mipi_lcd_driver;
 #elif defined(CONFIG_LCD_MIPI_ER63311)
 extern struct mipi_dsim_lcd_driver er63311_mipi_lcd_driver;
 #elif defined(CONFIG_LCD_MIPI_S6E8FA0)
-extern struct mipi_dsim_lcd_driver s6e8fa0_mipi_lcd_driver;
 extern struct mipi_dsim_lcd_driver s6e8fa0_6P_mipi_lcd_driver;
-extern struct mipi_dsim_lcd_driver s6e8fa0_G_mipi_lcd_driver;
-extern struct mipi_dsim_lcd_driver s6e8fa0_I_mipi_lcd_driver;
-extern struct mipi_dsim_lcd_driver ea8062_mipi_lcd_driver;
 #elif defined(CONFIG_LCD_MIPI_S6E3FA0)
 extern struct mipi_dsim_lcd_driver s6e3fa0_mipi_lcd_driver;
+#endif
+
+#ifdef CONFIG_FB_I80IF
+extern int s5p_mipi_dsi_command_run(struct mipi_dsim_device *dsim);
 #endif
 
 extern int s5p_mipi_dsi_wr_data(struct mipi_dsim_device *dsim,
 	u8 cmd, const u8 *buf, u32 len);
 
 extern int s5p_mipi_dsi_rd_data(struct mipi_dsim_device *dsim, u8 data_id,
-	u8 addr, u8 count, u8 *buf, u8 rxfifo_done);
+	 u8 addr, u8 count, u8 *buf, u8 rxfifo_done);
+
+extern int s5p_mipi_dsi_enable_by_fimd(struct device *dsim_device);
+extern int s5p_mipi_dsi_disable_by_fimd(struct device *dsim_device);
 
 enum mipi_ddi_interface {
 	RGB_IF = 0x4000,

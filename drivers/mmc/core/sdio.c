@@ -1245,17 +1245,26 @@ int sdio_reset_comm(struct mmc_card *card)
 	printk("%s():\n", __func__);
 	mmc_claim_host(host);
 
+	sdio_reset(host);
 	mmc_go_idle(host);
 
-	mmc_set_clock(host, host->f_min);
+	mmc_send_if_cond(host, host->ocr_avail);
+
+	//mmc_set_clock(host, host->f_min);
 
 	err = mmc_send_io_op_cond(host, 0, &ocr);
 	if (err)
 		goto err;
 
-	host->ocr = mmc_select_voltage(host, ocr);
+	if (host->ocr_avail_sdio)
+		host->ocr_avail = host->ocr_avail_sdio;
+
+	//host->ocr = mmc_select_voltage(host, ocr);
+	host->ocr = mmc_select_voltage(host, ocr & ~0x7F);
+
 	if (!host->ocr) {
 		err = -EINVAL;
+		printk("%s(): voltage err\n", __func__);
 		goto err;
 	}
 

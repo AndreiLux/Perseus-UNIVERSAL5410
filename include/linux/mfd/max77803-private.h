@@ -119,6 +119,7 @@ enum max77803_muic_reg {
 	MAX77803_MUIC_REG_CTRL1		= 0x0C,
 	MAX77803_MUIC_REG_CTRL2		= 0x0D,
 	MAX77803_MUIC_REG_CTRL3		= 0x0E,
+	MAX77803_MUIC_REG_CTRL4		= 0x16,
 
 	MAX77803_MUIC_REG_END,
 };
@@ -190,6 +191,10 @@ enum max77803_haptic_reg {
 #define CHGDETEN_MASK			(0x1 << CHGDETEN_SHIFT)
 #define CHGTYPM_MASK			(0x1 << CHGTYPM_SHIFT)
 
+/* MAX77803 CDETCTRL2 register */
+#define FRCCHG_SHIFT			0
+#define FRCCHG_MASK			(0x1 << FRCCHG_SHIFT)
+
 /* MAX77803 CONTROL1 register */
 #define CLEAR_IDBEN_MICEN_MASK	0x3f
 #define COMN1SW_SHIFT				0x0
@@ -210,6 +215,8 @@ enum max77803_haptic_reg {
 				(MAX77803_DISABLE_BIT << CTRL2_LOWPWD_SHIFT))
 #define CTRL2_CPEn0_LOWPWD1 ((MAX77803_DISABLE_BIT << CTRL2_CPEn_SHIFT) | \
 				(MAX77803_ENABLE_BIT << CTRL2_LOWPWD_SHIFT))
+#define CTRL2_ADCEn_SHIFT	1
+#define CTRL2_ADCEn_MASK	(0x1 << CTRL2_ADCEn_SHIFT)
 
 /* MAX77803 CONTROL3 register */
 #define CTRL3_JIGSET_SHIFT		0
@@ -218,6 +225,16 @@ enum max77803_haptic_reg {
 #define CTRL3_JIGSET_MASK		(0x3 << CTRL3_JIGSET_SHIFT)
 #define CTRL3_BOOTSET_MASK		(0x3 << CTRL3_BOOTSET_SHIFT)
 #define CTRL3_ADCDBSET_MASK		(0x3 << CTRL3_ADCDBSET_SHIFT)
+
+/* MAX77803 CONTROL4 register */
+#define CTRL4_ADCDBSET_SHIFT		0
+#define CTRL4_USBAUTO_SHIFT		4
+#define CTRL4_FACTAUTO_SHIFT		5
+#define CTRL4_ADCMODE_SHIFT		6
+#define CTRL4_ADCDBSET_MASK		(0x3 << CTRL4_ADCDBSET_SHIFT)
+#define CTRL4_USBAUTO_MASK		(0x1 << CTRL4_USBAUTO_SHIFT)
+#define CTRL4_FACTAUTO_MASK		(0x1 << CTRL4_FACTAUTO_SHIFT)
+#define CTRL4_ADCMODE_MASK		(0x3 << CTRL4_ADCMODE_SHIFT)
 
 /* Interrupt 1 */
 #define INT_DETACH		(0x1 << 1)
@@ -380,6 +397,9 @@ extern int max77803_muic_set_audio_switch(bool enable);
 extern int max77803_muic_read_adc(void);
 extern int max77803_muic_read_vbvolt(void);
 extern int max77803_muic_read_vbus(void);
+#if defined(CONFIG_V1A) || defined(CONFIG_N1A)
+extern int max77803_muic_set_jigset(int reg_value);
+#endif
 
 #ifdef CONFIG_USB_HOST_NOTIFY
 extern int max77803_muic_host_notify_cb(int enable);

@@ -1,6 +1,6 @@
 /* linux/driver/media/exynos/jpeg_hx/regs-jpeg_hx.h
  *
- * Copyright (c) 2012 Samsung Electronics Co., Ltd.
+ * Copyright (c) 2012~2013 Samsung Electronics Co., Ltd.
  * http://www.samsung.com/
  *
  * Register definition file for Samsung JPEG hx Encoder/Decoder
@@ -39,6 +39,7 @@
 #define JPEG_CHROMA_STRIDE_REG		0x110 /* Stride of source or destination chroma raw image buffer */
 #define JPEG_CHROMA_XY_OFFSET_REG		0x114 /* Horizontal/vertical offset of active region in chroma raw image buffer */
 
+#if defined(CONFIG_SOC_EXYNOS5410)
 #define JPEG_IMG_ADDRESS_REG		0x118 /* Source or destination JPEG file address */
 
 #define JPEG_COEF1_REG		0x11c /* Coefficient values for RGB   YCbCr converter */
@@ -67,6 +68,29 @@
 
 #define JPEG_DMA_OPER_STATUS_REG		0x15c /* Check operation of the RDMA and WDMA */
 #define JPEG_DMA_ISSUE_NUM_REG		0x160 /* Set issue gathering number and issue number of DMA */
+#elif defined(CONFIG_SOC_EXYNOS5420)
+/* JPEG Codec Control Registers */
+#define JPEG_IMG_ADDRESS_REG	0x124 /* Source or destination JPEG file address */
+#define JPEG_COEF1_REG	0x128 /* Coefficient values for RGB   YCbCr converter */
+#define JPEG_COEF2_REG	0x12c /* Coefficient values for RGB   YCbCr converter */
+#define JPEG_COEF3_REG	0x130 /* Coefficient values for RGB   YCbCr converter */
+#define JPEG_CMOD_REG	0x134 /* Mode selection and core clock setting */
+#define JPEG_CLK_CON_REG		0x138 /* Power on/off and clock down control */
+#define JPEG_START_REG		0x13c /* Start compression or decompression */
+#define JPEG_RE_START_REG		0x140 /* Restart decompression after header analysis */
+#define JPEG_SW_RESET_REG		0x144 /* JPEG2 HX S/W reset */
+#define JPEG_TIMER_SET_REG		0x148 /* Internal timer setting register */
+#define JPEG_TIMER_STATUS_REG	0x14c /* Internal timer status register */
+#define JPEG_COMMAND_STATUS_REG	0x150 /* Command status register */
+#define JPEG_OUT_FORMAT_REG		0x154 /* Output color format of decompression */
+#define JPEG_DEC_STREAM_SIZE_REG	0x158 /* Input jpeg stream byte size for decompression */
+#define JPEG_ENC_STREAM_BOUND_REG	0x15c /* Compressed stream size interrupt setting register */
+#define JPEG_DEC_SCALE_RATIO_REG	0x160 /* Scale-down ratio when decoding */
+#define JPEG_CRC_RESULT_REG		0x164 /* Error check */
+#define JPEG_DMA_OPER_STATUS_REG	0x168 /* Check operation of the RDMA and WDMA for HX2.0 */
+#define JPEG_DMA_ISSUE_NUM_REG	0x16c /* Set issue gathering number and issue number of DMA for HX2.0 */
+#endif
+#define JPEG_VER		0x1fc /* JPEG Version Register */
 
 /* JPEG quantizer table register */
 #define JPEG_QTBL_CONTENT(n)		(0x400 + (n) * 0x100)
@@ -168,6 +192,9 @@
 #define JPEG_MOD_YUV_420		(0 << JPEG_MOD_SEL_SHIFT)
 #define JPEG_MOD_YUV_422		(1 << JPEG_MOD_SEL_SHIFT)
 #define JPEG_MOD_YUV_422_2YUV		(3 << JPEG_MOD_SEL_SHIFT)
+#define JPEG_MOD_YUV_420_3P		(4 << JPEG_MOD_SEL_SHIFT)
+#define JPEG_MOD_RGB_565		(5 << JPEG_MOD_SEL_SHIFT)
+#define JPEG_MOD_ARGB_8888		(6 << JPEG_MOD_SEL_SHIFT)
 
 /* JPEG_SW_RESET Register bit */
 #define JPEG_SW_RESET_ENABLE			(1 << 0)
@@ -197,6 +224,11 @@
 #define JPEG_SRC_YUYV		(1 << JPEG_SRC_MOD_SEL_SHIFT)
 #define JPEG_SRC_RGB565		(2 << JPEG_SRC_MOD_SEL_SHIFT)
 #define JPEG_SRC_UYUV		(3 << JPEG_SRC_MOD_SEL_SHIFT)
+#define JPEG_SRC_ARGB8888	(4 << JPEG_SRC_MOD_SEL_SHIFT)
+
+#define JPEG_SRC_RGB_ORDER_SHIFT	3
+#define JPEG_SRC_RGB_ORDER_MASK		(1 << JPEG_SRC_RGB_ORDER_SHIFT)
+#define JPEG_SRC_RGB_ORDER(n)		(n << JPEG_SRC_RGB_ORDER_SHIFT)
 
 #define JPEG_SRC_MODE_Y16_SHIFT		1
 #define JPEG_SRC_MODE_Y16_MASK		(1 << JPEG_SRC_MODE_Y16_SHIFT)
@@ -205,10 +237,17 @@
 
 /* JPEG_OUT_FORMAT Register bit */
 #define JPEG_DEC_OUT_FORMAT_SHIFT		0
-#define JPEG_DEC_OUT_FORMAT_MASK			(3 << JPEG_DEC_OUT_FORMAT_SHIFT)
+#define JPEG_DEC_OUT_FORMAT_MASK	(7 << JPEG_DEC_OUT_FORMAT_SHIFT)
 #define JPEG_DEC_YUV_420		(0 << JPEG_DEC_OUT_FORMAT_SHIFT)
 #define JPEG_DEC_YUYV		(1 << JPEG_DEC_OUT_FORMAT_SHIFT)
 #define JPEG_DEC_UYVY		(3 << JPEG_DEC_OUT_FORMAT_SHIFT)
+#define JPEG_DEC_YUV_420_3P	(4 << JPEG_DEC_OUT_FORMAT_SHIFT)
+#define JPEG_DEC_RGB565		(5 << JPEG_DEC_OUT_FORMAT_SHIFT)
+#define JPEG_DEC_ARGB8888	(6 << JPEG_DEC_OUT_FORMAT_SHIFT)
+
+#define JPEG_OUT_RGB_ORDER_SHIFT	7
+#define JPEG_OUT_RGB_ORDER_MASK		(1 << JPEG_OUT_RGB_ORDER_SHIFT)
+#define JPEG_OUT_RGB_ORDER(n)		(n << JPEG_OUT_RGB_ORDER_SHIFT)
 
 #define JPEG_OUT_BIG_ENDIAN_SHIFT		8
 #define JPEG_OUT_BIG_ENDIAN_MASK		(1 << JPEG_OUT_BIG_ENDIAN_SHIFT)
@@ -225,6 +264,10 @@
 #define JPEG_OUT_TILE_EN_MASK		(1 << JPEG_OUT_TILE_EN_SHIFT)
 #define JPEG_DEC_TILE_EN			(1 << JPEG_OUT_TILE_EN_SHIFT)	/* tile mode */
 #define JPEG_DEC_LINEAR_EN			(0 << JPEG_OUT_TILE_EN_SHIFT)	/* tile mode */
+
+#define JPEG_OUT_ALPHA_SHIFT		24
+#define JPEG_OUT_ALPHA_MASK		(255 << JPEG_OUT_ALPHA_SHIFT)
+#define JPEG_OUT_ALPHA(n)		(n << JPEG_OUT_ALPHA_SHIFT)
 
 /* JPEG_DEC_STREAM_SIZE Register bit */
 

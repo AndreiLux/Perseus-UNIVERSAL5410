@@ -193,7 +193,7 @@ struct mxr_layer *mxr_vp_layer_create(struct mxr_device *mdev, int cur_mxr,
 	};
 	char name[32];
 
-	sprintf(name, "mxr%d_video%d", cur_mxr, idx);
+	snprintf(name, sizeof(name), "mxr%d_video%d", cur_mxr, idx);
 
 	layer = mxr_base_layer_create(mdev, idx, name, &ops);
 	if (layer == NULL) {

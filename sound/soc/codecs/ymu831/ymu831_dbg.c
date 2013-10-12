@@ -92,7 +92,7 @@ static void mc_asoc_dump_init_info(const void *pvPrm, UINT32 dPrm)
 	dbg_info("sWaitTime.dWaitTime=");
 	p = str;
 	for (i = 0; i < 20; i++) {
-		if (i==10) {
+		if (i == 10) {
 			dbg_info("%s\n", str);
 			p = str;
 		}
@@ -103,7 +103,7 @@ static void mc_asoc_dump_init_info(const void *pvPrm, UINT32 dPrm)
 	dbg_info("sWaitTime.dPollInterval=");
 	p = str;
 	for (i = 0; i < 20; i++) {
-		if (i==10) {
+		if (i == 10) {
 			dbg_info("%s\n", str);
 			p = str;
 		}
@@ -114,7 +114,7 @@ static void mc_asoc_dump_init_info(const void *pvPrm, UINT32 dPrm)
 	dbg_info("sWaitTime.dPollTimeOut=");
 	p = str;
 	for (i = 0; i < 20; i++) {
-		if (i==10) {
+		if (i == 10) {
 			dbg_info("%s\n", str);
 			p = str;
 		}
@@ -502,7 +502,7 @@ SINT32 McDrv_Ctrl_dbg(UINT32 dCmd, void *pvPrm1, void *pvPrm2, UINT32 dPrm)
 		mc_asoc_dump_func_map[dCmd].func(pvPrm1, dPrm);
 
 	err = McDrv_Ctrl(dCmd, pvPrm1, pvPrm2, dPrm);
-	dbg_info("err = %d\n", (int)err);
+	dbg_info("err(%s) = %d\n", mc_asoc_dump_func_map[dCmd].name, (int)err);
 
 	if (dCmd == MCDRV_SET_VOLUME) {
 		/*

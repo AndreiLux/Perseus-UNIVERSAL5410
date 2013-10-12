@@ -55,6 +55,11 @@ static int exynos_cfg_i2s_gpio(struct platform_device *pdev)
 				{ EXYNOS5410_GPB0(0), 5, S3C_GPIO_SFN(2) },
 				{ EXYNOS5410_GPB1(0), 5, S3C_GPIO_SFN(2) }
 	};
+	struct exynos_gpio_cfg exynos5420_cfg[3] = {
+				{ EXYNOS5420_GPZ(0),  7, S3C_GPIO_SFN(2) },
+				{ EXYNOS5420_GPB0(0), 5, S3C_GPIO_SFN(2) },
+				{ EXYNOS5420_GPB1(0), 5, S3C_GPIO_SFN(2) }
+	};
 
 	if (pdev->id < 0 || pdev->id > 2) {
 		printk(KERN_ERR "Invalid Device %d\n", pdev->id);
@@ -67,6 +72,9 @@ static int exynos_cfg_i2s_gpio(struct platform_device *pdev)
 	else if (soc_is_exynos5410())
 		s3c_gpio_cfgpin_range(exynos5410_cfg[pdev->id].addr,
 			exynos5410_cfg[pdev->id].num, exynos5410_cfg[pdev->id].bit);
+	else if (soc_is_exynos5420())
+		s3c_gpio_cfgpin_range(exynos5420_cfg[pdev->id].addr,
+			exynos5420_cfg[pdev->id].num, exynos5420_cfg[pdev->id].bit);
 	else if (soc_is_exynos4210() || soc_is_exynos4212() || soc_is_exynos4412())
 		s3c_gpio_cfgpin_range(exynos4_cfg[pdev->id].addr,
 			exynos4_cfg[pdev->id].num, exynos4_cfg[pdev->id].bit);
@@ -219,6 +227,11 @@ static int exynos_pcm_cfg_gpio(struct platform_device *pdev)
 				{ EXYNOS5410_GPB0(0), 5, S3C_GPIO_SFN(3) },
 				{ EXYNOS5410_GPB1(0), 5, S3C_GPIO_SFN(3) }
 	};
+	struct exynos_gpio_cfg exynos5420_cfg[3] = {
+				{ EXYNOS5420_GPZ(0),  5, S3C_GPIO_SFN(3) },
+				{ EXYNOS5420_GPB0(0), 5, S3C_GPIO_SFN(3) },
+				{ EXYNOS5420_GPB1(0), 5, S3C_GPIO_SFN(3) }
+	};
 
 	if (pdev->id < 0 || pdev->id > 2) {
 		printk(KERN_ERR "Invalid Device %d\n", pdev->id);
@@ -231,6 +244,9 @@ static int exynos_pcm_cfg_gpio(struct platform_device *pdev)
 	else if (soc_is_exynos5410())
 		s3c_gpio_cfgpin_range(exynos5410_cfg[pdev->id].addr,
 			exynos5410_cfg[pdev->id].num, exynos5410_cfg[pdev->id].bit);
+	else if (soc_is_exynos5420())
+		s3c_gpio_cfgpin_range(exynos5420_cfg[pdev->id].addr,
+			exynos5420_cfg[pdev->id].num, exynos5420_cfg[pdev->id].bit);
 	else if (soc_is_exynos4210() || soc_is_exynos4212() || soc_is_exynos4412())
 		s3c_gpio_cfgpin_range(exynos4_cfg[pdev->id].addr,
 			exynos4_cfg[pdev->id].num, exynos4_cfg[pdev->id].bit);
@@ -386,6 +402,8 @@ static int exynos_spdif_cfg_gpio(struct platform_device *pdev)
 		s3c_gpio_cfgpin_range(EXYNOS5_GPB1(0), 2, S3C_GPIO_SFN(4));
 	else if (soc_is_exynos5410())
 		s3c_gpio_cfgpin_range(EXYNOS5410_GPB1(0), 2, S3C_GPIO_SFN(4));
+	else if (soc_is_exynos5420())
+		s3c_gpio_cfgpin_range(EXYNOS5420_GPB1(0), 2, S3C_GPIO_SFN(4));
 	else if (soc_is_exynos4210() || soc_is_exynos4212() || soc_is_exynos4412())
 		s3c_gpio_cfgpin_range(EXYNOS4_GPC1(0), 2, S3C_GPIO_SFN(4));
 

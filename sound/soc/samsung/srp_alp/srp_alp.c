@@ -66,8 +66,15 @@ static DECLARE_WAIT_QUEUE_HEAD(decinfo_wq);
 
 void srp_core_reset(void);
 void srp_core_resume(void);
+static int srp_runtime_suspend(struct device *dev);
+static int srp_runtime_resume(struct device *dev);
 extern void audss_enable(void *i2s_info);
 extern void audss_disable(void *i2s_info);
+
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA_DRAM
+int srp_disable;
+int srp_firmware_broken;
+#endif
 
 static void request_pm_get_sync(void)
 {
@@ -92,11 +99,39 @@ static int srp_check_sound_list(void)
 			ok++;
 	}
 	if (ok == 0) {
-		pr_info("  No soundcards found.\n");
+		pr_info("No soundcards found.\n");
 		return 0;
 	}
 	return ok;
 }
+
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA_DRAM
+int srp_check(int noti)
+{
+	mutex_lock(&srp_mutex);
+
+	srp_info("%s : noti : %d\n", __func__, noti);
+
+	if (noti == SRP_DISABLE) { /* Disable flag set to disable */
+		if (srp.is_opened) {
+			mutex_unlock(&srp_mutex);
+			return 0; /* return fail */
+		} else {
+			srp_disable = 1; /* flag set */
+			mutex_unlock(&srp_mutex);
+			return 1; /* return success */
+		}
+	} else if (noti == SRP_ENABLE) { /* Disable flag set to enable */
+		if (!srp_firmware_broken)
+			srp_disable = 0; /* flag set */
+	} else if (noti == SRP_FIRM_BROKEN) /* srp firmware broken noti flag */
+		srp_firmware_broken = 1;
+
+	mutex_unlock(&srp_mutex);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(srp_check);
+#endif
 
 void srp_prepare_pm(void *info)
 {
@@ -445,6 +480,11 @@ void srp_core_reset(void)
 	do {
 		/* Waiting for completed suspend mode */
 		if (srp.hw_reset_stat) {
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA_DRAM
+			/* Reset flag for UHQA */
+			srp_disable = 0;
+			srp_firmware_broken = 0;
+#endif
 			ret = 1;
 			break;
 		}
@@ -808,12 +848,12 @@ static long srp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case SRP_GET_OBUF_INFO:
 		ret = copy_from_user(&srp.obuf_info, argp,
 				sizeof(struct srp_buf_info));
-		if (!ret) {
-			srp.obuf_info.addr = srp.obuf_info.mmapped_addr
-							+ obuf.offset;
-			srp.obuf_info.size = obuf.size;
-			srp.obuf_info.num = obuf.num;
-		}
+		srp.obuf_info.mmapped_size = obuf.size * obuf.num
+						+ obuf.offset;
+		srp.obuf_info.addr = srp.obuf_info.mmapped_addr
+						+ obuf.offset;
+		srp.obuf_info.size = obuf.size;
+		srp.obuf_info.num = obuf.num;
 
 		ret = copy_to_user(argp, &srp.obuf_info,
 					sizeof(struct srp_buf_info));
@@ -887,6 +927,15 @@ static int srp_open(struct inode *inode, struct file *file)
 	srp_info("Opened!\n");
 
 	mutex_lock(&srp_mutex);
+
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA_DRAM
+	if(srp_disable){
+		srp_err("Not use SRP for High Quality Audio.\n");
+		mutex_unlock(&srp_mutex);
+		return -ENXIO;
+	}
+#endif
+
 	if (!srp.is_loaded) {
 		srp_err("Not loaded srp firmware.\n");
 		mutex_unlock(&srp_mutex);
@@ -1270,6 +1319,7 @@ srp_firmware_request_complete(const struct firmware *vliw, void *context)
 	if (reset_type == SRP_SW_RESET) {
 		pm_runtime_get_sync(&srp.pdev->dev);
 #ifndef CONFIG_PM_RUNTIME
+		srp_runtime_resume(&srp.pdev->dev);
 		srp_core_reset();
 #endif
 		pm_runtime_put_sync(&srp.pdev->dev);
@@ -1309,6 +1359,9 @@ static struct miscdevice srp_miscdev = {
 static int srp_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	srp_info("Suspend\n");
+#ifndef CONFIG_PM_RUNTIME
+	srp_runtime_suspend(&pdev->dev);
+#endif
 
 	return 0;
 }
@@ -1316,6 +1369,9 @@ static int srp_suspend(struct platform_device *pdev, pm_message_t state)
 static int srp_resume(struct platform_device *pdev)
 {
 	srp_info("Resume\n");
+#ifndef CONFIG_PM_RUNTIME
+	srp_runtime_resume(&pdev->dev);
+#endif
 
 	return 0;
 }
@@ -1333,7 +1389,7 @@ static int audio_pm_notifier(struct notifier_block *nb,
 	case PM_SUSPEND_PREPARE:
 		pm_runtime_dont_use_autosuspend(&srp.pdev->dev);
 
-		if (srp.decoding_started && !srp.pm_suspended){
+		if (srp.decoding_started && !srp.pm_suspended) {
 			pm_runtime_get_sync(&srp.pdev->dev);
 			srp_core_suspend(RUNTIME);
 			pm_runtime_put_sync(&srp.pdev->dev);

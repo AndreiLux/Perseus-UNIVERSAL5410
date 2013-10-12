@@ -20,11 +20,11 @@
  *
  */
 
-#ifndef __BOARD_BLUETOOTH_BCM4334_H__
-#define __BOARD_BLUETOOTH_BCM4334_H__
+#ifndef __BOARD_BLUETOOTH_BCM4339_H__
+#define __BOARD_BLUETOOTH_BCM4339_H__
 
 #include <linux/serial_core.h>
 
 extern void bcm_bt_lpm_exit_lpm_locked(struct uart_port *uport);
 
-#endif /*  __BOARD_BLUETOOTH_BCM4334_H__  */
+#endif /*  __BOARD_BLUETOOTH_BCM4339_H__  */

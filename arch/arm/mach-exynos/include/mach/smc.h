@@ -53,11 +53,6 @@
 #define SMC_POWERSTATE_IDLE     0x1
 #define SMC_POWERSTATE_SWITCH   0x2
 
-/* Power State required for SMC_CMD_SAVE and SMC_CMD_SHUTDOWN */
-#define SMC_POWERSTATE_SLEEP	0x0
-#define SMC_POWERSTATE_IDLE	0x1
-#define SMC_POWERSTATE_SWITCH	0x2
-
 #ifndef __ASSEMBLY__
 u32 exynos_smc(u32 cmd, u32 arg1, u32 arg2, u32 arg3);
 u32 exynos_smc_readsfr(u32 addr, u32 *val);

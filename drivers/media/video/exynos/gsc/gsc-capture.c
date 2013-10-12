@@ -528,7 +528,7 @@ static int gsc_capture_g_input(struct file *file, void *priv, unsigned int *i)
 	return 0;
 }
 
-int gsc_capture_ctrls_create(struct gsc_dev *gsc)
+static int gsc_capture_ctrls_create(struct gsc_dev *gsc)
 {
 	int ret;
 
@@ -1399,11 +1399,7 @@ err_ent:
 static int gsc_capture_create_link(struct gsc_dev *gsc)
 {
 	struct media_entity *source, *sink;
-	struct exynos_platform_gscaler *pdata = gsc->pdata;
-	struct exynos_isp_info *isp_info;
-	u32 num_clients = pdata->num_clients;
-	int ret, i;
-	enum cam_port id;
+	int ret;
 
 	/* GSC-SUBDEV ------> GSC-VIDEO (Always link enable) */
 	source = &gsc->cap.sd_cap->entity;
@@ -1415,86 +1411,6 @@ static int gsc_capture_create_link(struct gsc_dev *gsc)
 			return ret;
 		}
 	}
-	for (i = 0; i < num_clients; i++) {
-		isp_info = pdata->isp_info[i];
-		id = isp_info->cam_port;
-		/* FIMC-LITE ------> GSC-SUBDEV (ITU & MIPI common) */
-		source = &gsc->cap.sd_flite[id]->entity;
-		sink = &gsc->cap.sd_cap->entity;
-		if (source && sink) {
-			if (pdata->cam_preview)
-				ret = media_entity_create_link(source,
-						FLITE_PAD_SOURCE_PREV,
-						sink, GSC_PAD_SINK, 0);
-			if (!ret && pdata->cam_camcording)
-				ret = media_entity_create_link(source,
-						FLITE_PAD_SOURCE_CAMCORD,
-						sink, GSC_PAD_SINK, 0);
-			if (ret) {
-				gsc_err("failed link flite to gsc\n");
-				return ret;
-			}
-		}
-	}
-
-	return 0;
-}
-
-static struct v4l2_subdev *gsc_cap_register_sensor(struct gsc_dev *gsc, int i)
-{
-	struct exynos_md *mdev = gsc->mdev[MDEV_CAPTURE];
-	struct v4l2_subdev *sd = NULL;
-
-	sd = mdev->sensor_sd[i];
-	if (!sd)
-		return NULL;
-
-	v4l2_set_subdev_hostdata(sd, &gsc->cap.sensor[i]);
-
-	return sd;
-}
-
-static int gsc_cap_register_sensor_entities(struct gsc_dev *gsc)
-{
-	struct exynos_platform_gscaler *pdata = gsc->pdata;
-	u32 num_clients = pdata->num_clients;
-	int i;
-
-	for (i = 0; i < num_clients; i++) {
-		gsc->cap.sensor[i].pdata = pdata->isp_info[i];
-		gsc->cap.sensor[i].sd = gsc_cap_register_sensor(gsc, i);
-		if (IS_ERR_OR_NULL(gsc->cap.sensor[i].sd)) {
-			gsc_err("failed to get register sensor");
-			return -EINVAL;
-		}
-	}
-
-	return 0;
-}
-
-static int gsc_cap_config_camclk(struct gsc_dev *gsc,
-		struct exynos_isp_info *isp_info, int i)
-{
-	struct gsc_capture_device *gsc_cap = &gsc->cap;
-	struct clk *camclk;
-	struct clk *srclk;
-
-	camclk = clk_get(&gsc->pdev->dev, isp_info->cam_clk_name);
-	if (IS_ERR_OR_NULL(camclk)) {
-		gsc_err("failed to get cam clk");
-		return -ENXIO;
-	}
-	gsc_cap->sensor[i].camclk = camclk;
-
-	srclk = clk_get(&gsc->pdev->dev, isp_info->cam_srclk_name);
-	if (IS_ERR_OR_NULL(srclk)) {
-		clk_put(camclk);
-		gsc_err("failed to get cam source clk\n");
-		return -ENXIO;
-	}
-	clk_set_parent(camclk, srclk);
-	clk_set_rate(camclk, isp_info->clk_frequency);
-	clk_put(srclk);
 
 	return 0;
 }
@@ -1505,10 +1421,7 @@ int gsc_register_capture_device(struct gsc_dev *gsc)
 	struct gsc_capture_device *gsc_cap;
 	struct gsc_ctx *ctx;
 	struct vb2_queue *q;
-	struct exynos_platform_gscaler *pdata = gsc->pdata;
-	struct exynos_isp_info *isp_info;
 	int ret = -ENOMEM;
-	int i;
 
 	ctx = kzalloc(sizeof *ctx, GFP_KERNEL);
 	if (!ctx)
@@ -1555,35 +1468,11 @@ int gsc_register_capture_device(struct gsc_dev *gsc)
 
 	vb2_queue_init(q);
 
-	/* Get mipi-csis and fimc-lite subdev ptr using mdev */
-	for (i = 0; i < FLITE_MAX_ENTITIES; i++)
-		gsc->cap.sd_flite[i] = gsc->mdev[MDEV_CAPTURE]->flite_sd[i];
-
-	for (i = 0; i < CSIS_MAX_ENTITIES; i++)
-		gsc->cap.sd_csis[i] = gsc->mdev[MDEV_CAPTURE]->csis_sd[i];
-
-	if (soc_is_exynos5250()) {
-		for (i = 0; i < pdata->num_clients; i++) {
-			isp_info = pdata->isp_info[i];
-			ret = gsc_cap_config_camclk(gsc, isp_info, i);
-			if (ret) {
-				gsc_err("failed setup cam clk");
-				goto err_ctx_alloc;
-			}
-		}
-	}
-
-	ret = gsc_cap_register_sensor_entities(gsc);
-	if (ret) {
-		gsc_err("failed register sensor entities");
-		goto err_clk;
-	}
-
 	ret = video_register_device(vfd, VFL_TYPE_GRABBER,
 				    EXYNOS_VIDEONODE_GSC_CAP(gsc->id));
 	if (ret) {
 		gsc_err("failed to register video device");
-		goto err_clk;
+		goto err_ctx_alloc;
 	}
 
 	gsc->cap.vd_pad.flags = MEDIA_PAD_FL_SOURCE;
@@ -1614,11 +1503,6 @@ err_sd_reg:
 	media_entity_cleanup(&vfd->entity);
 err_ent:
 	video_device_release(vfd);
-err_clk:
-	if (soc_is_exynos5250()) {
-		for (i = 0; i < pdata->num_clients; i++)
-			clk_put(gsc_cap->sensor[i].camclk);
-	}
 err_ctx_alloc:
 	kfree(ctx);
 

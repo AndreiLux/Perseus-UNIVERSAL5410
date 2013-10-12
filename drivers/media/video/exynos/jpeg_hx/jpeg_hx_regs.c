@@ -1,6 +1,6 @@
 /* linux/drivers/media/video/exynos/jpeg_hx/jpeg_hx_regs.c
  *
- * Copyright (c) 2012 Samsung Electronics Co., Ltd.
+ * Copyright (c) 2012~2013 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com/
  *
  * Register interface file for jpeg hx driver
@@ -11,6 +11,7 @@
 */
 #include <linux/io.h>
 #include <linux/delay.h>
+#include <plat/cpu.h>
 
 #include "jpeg_hx_regs.h"
 #include "jpeg_hx_conf.h"
@@ -65,7 +66,7 @@ void jpeg_hx_clk_set(void __iomem *base, enum jpeg_clk_mode mode)
 }
 
 void jpeg_hx_set_dec_out_fmt(void __iomem *base,
-					enum jpeg_frame_format out_fmt)
+					enum jpeg_frame_format out_fmt, unsigned char alpha)
 {
 	unsigned int reg = 0;
 
@@ -87,6 +88,18 @@ void jpeg_hx_set_dec_out_fmt(void __iomem *base,
 
 	case YCRCB_420_2P:
 		reg = reg | JPEG_DEC_YUV_420 | JPEG_OUT_NV_21;
+		break;
+
+	case YCBCR_420_3P:
+		reg = reg | JPEG_DEC_YUV_420_3P;
+		break;
+
+	case RGB_565:
+		reg = reg | JPEG_DEC_RGB565;
+		break;
+
+	case ARGB_8888:
+		reg = reg | JPEG_DEC_ARGB8888 | JPEG_OUT_ALPHA(alpha);
 		break;
 
 	default:
@@ -139,6 +152,18 @@ void jpeg_hx_color_mode_select(void __iomem *base, enum jpeg_frame_format out_fm
 		reg = reg | JPEG_MOD_YUV_420;
 		break;
 
+	case YCBCR_420_3P:
+		reg = reg | JPEG_MOD_YUV_420_3P;
+		break;
+
+	case RGB_565:
+		reg = reg | JPEG_MOD_RGB_565;
+		break;
+
+	case ARGB_8888:
+		reg = reg | JPEG_MOD_ARGB_8888 | JPEG_SRC_RGB_ORDER(1);
+		break;
+
 	default:
 		break;
 	}
@@ -164,6 +189,7 @@ void jpeg_hx_set_frame_buf_address(void __iomem *base, enum jpeg_frame_format fm
 {
 	switch (fmt) {
 	case RGB_565:
+	case ARGB_8888:
 	case YCBYCR_422_1P:
 	case CBYCRY_422_1P:
 		writel(address, base + JPEG_LUMA_BASE_REG);
@@ -185,6 +211,9 @@ void jpeg_hx_set_enc_luma_stride(void __iomem *base, unsigned int w_stride, enum
 	unsigned int stride;
 
 	switch (fmt) {
+	case ARGB_8888:
+		byteperpixel = 4;
+		break;
 	case RGB_565:
 	case YCRYCB_422_1P:
 	case YCBYCR_422_1P:
@@ -227,6 +256,10 @@ void jpeg_hx_set_dec_luma_stride(void __iomem *base, unsigned int w_stride, enum
 	unsigned int byteperpixel;
 
 	switch (fmt) {
+	case ARGB_8888:
+		byteperpixel = 4;
+		break;
+	case RGB_565:
 	case YCRYCB_422_1P:
 	case YCBYCR_422_1P:
 	case YCRCB_422_2P:
@@ -291,7 +324,7 @@ void jpeg_hx_set_timer(void __iomem *base,
 {
 	if (time_value > 0x7fffffff)
 		time_value =  0x7fffffff;
-	writel(JPEG_TIMER_INT_EN | time_value, base + JPEG_DEC_SCALE_RATIO_REG);
+	writel(JPEG_TIMER_INT_EN | time_value, base + JPEG_TIMER_SET_REG);
 }
 
 void jpeg_hx_start(void __iomem *base)
@@ -304,11 +337,23 @@ void jpeg_hx_re_start(void __iomem *base)
 	writel(1, base + JPEG_RE_START_REG);
 }
 
-void jpeg_hx_coef(void __iomem *base, unsigned int i)
+void jpeg_hx_coef(void __iomem *base, enum jpeg_mode mode, struct jpeg_dev *jpeg)
 {
-	writel(JPEG_COEF1, base + JPEG_COEF1_REG);
-	writel(JPEG_COEF2, base + JPEG_COEF2_REG);
-	writel(JPEG_COEF3, base + JPEG_COEF3_REG);
+	if (jpeg_ver_is_hx2(jpeg)) {
+		if (mode == ENCODING) {
+			writel(JPEG2_ENC_COEF1, base + JPEG_COEF1_REG);
+			writel(JPEG2_ENC_COEF2, base + JPEG_COEF2_REG);
+			writel(JPEG2_ENC_COEF3, base + JPEG_COEF3_REG);
+		} else {
+			writel(JPEG2_DEC_COEF1, base + JPEG_COEF1_REG);
+			writel(JPEG2_DEC_COEF2, base + JPEG_COEF2_REG);
+			writel(JPEG2_DEC_COEF3, base + JPEG_COEF3_REG);
+		}
+	} else {
+		writel(JPEG_COEF1, base + JPEG_COEF1_REG);
+		writel(JPEG_COEF2, base + JPEG_COEF2_REG);
+		writel(JPEG_COEF3, base + JPEG_COEF3_REG);
+	}
 }
 
 void jpeg_hx_set_qtbl(void __iomem *base, const unsigned char *qtbl,
@@ -483,6 +528,10 @@ void jpeg_hx_set_enc_out_fmt(void __iomem *base,
 		reg = reg | JPEG_SUBSAMPLE_420;
 		break;
 
+	case JPEG_411:
+		reg = reg | JPEG_SUBSAMPLE_411;
+		break;
+
 	default:
 		break;
 	}
@@ -500,6 +549,10 @@ void jpeg_hx_set_enc_in_fmt(void __iomem *base,
 			~(JPEG_SRC_NV_MASK | JPEG_SRC_MOD_SEL_MASK); /* clear enc input format */
 
 	switch (in_fmt) {
+	case ARGB_8888:
+		reg = reg | JPEG_SRC_ARGB8888;
+		break;
+
 	case RGB_565:
 		reg = reg | JPEG_SRC_RGB565;
 		break;
@@ -535,4 +588,12 @@ void jpeg_hx_set_y16(void __iomem *base)
 			~(JPEG_SRC_MODE_Y16_MASK); /* clear */
 
 	writel(reg | JPEG_SRC_C1_16, base + JPEG_CMOD_REG);
+}
+
+int jpeg_hwget_version(void __iomem *base)
+{
+	unsigned long cfg = readl(base + JPEG_VER);
+
+	jpeg_dbg("This jpeg version is 0x%x\n", (unsigned int)cfg);
+	return cfg;
 }

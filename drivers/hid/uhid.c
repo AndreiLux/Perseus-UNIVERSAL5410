@@ -151,10 +151,10 @@ static int uhid_hid_input(struct input_dev *input, unsigned int type,
 		break;
 
 	default:
-		ev->type = UHID_OUTPUT_EV;
-		ev->u.output_ev.type = type;
-		ev->u.output_ev.code = code;
-		ev->u.output_ev.value = value;
+	ev->type = UHID_OUTPUT_EV;
+	ev->u.output_ev.type = type;
+	ev->u.output_ev.code = code;
+	ev->u.output_ev.value = value;
 	}
 
 	spin_lock_irqsave(&uhid->qlock, flags);

@@ -90,14 +90,19 @@ ENTRY(cpu_resume)
 #else
 	ldr	r0, sleep_save_sp	@ stack phys addr
 #endif
+	dsb
 	setmode	PSR_I_BIT | PSR_F_BIT | SVC_MODE, r1  @ set SVC, irqs off
+	dsb
 	@ load phys pgd, stack, resume fn
+  ARM(	ldmia	r0, {r1, r2, r3}	)
+  ARM(	ldmia	r0, {r1, r2, r3}	)
   ARM(	ldmia	r0!, {r1, sp, pc}	)
 THUMB(	ldmia	r0!, {r1, r2, r3}	)
 THUMB(	mov	sp, r2			)
 THUMB(	bx	r3			)
 ENDPROC(cpu_resume)
 
+	.align 7
 sleep_save_sp:
 	.rept	CONFIG_NR_CPUS
 	.long	0				@ preserve stack phys ptr here

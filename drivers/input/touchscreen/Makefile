@@ -72,5 +72,9 @@ obj-$(CONFIG_TOUCHSCREEN_WM97XX_ZYLONITE)	+= zylonite-wm97xx.o
 obj-$(CONFIG_TOUCHSCREEN_W90X900)	+= w90p910_ts.o
 obj-$(CONFIG_TOUCHSCREEN_TPS6507X)	+= tps6507x-ts.o
 obj-$(CONFIG_TOUCHSCREEN_MELFAS)	+= mms_ts.o
-obj-$(CONFIG_TOUCHSCREEN_ATMEL_MXTS)        += mxts.o
+ifeq ($(CONFIG_N1A),y)
+obj-$(CONFIG_TOUCHSCREEN_ATMEL_MXTS)    += mxts_n1.o
+else
+obj-$(CONFIG_TOUCHSCREEN_ATMEL_MXTS)    += mxts.o
+endif
 obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI)	+= synaptics_i2c_rmi.o rmi_dev.o rmi_fw_update.o rmi_f54.o

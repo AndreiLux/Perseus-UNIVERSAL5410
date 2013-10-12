@@ -14,6 +14,12 @@
 #ifndef __LINUX_MFD_S2MPS11_H
 #define __LINUX_MFD_S2MPS11_H
 
+/* S2MPS11 Revision Number */
+enum s2mps11_revision_number {
+	S2MPS11_REV_82 = 0x82,
+	S2MPS11_REV_83 = 0x83,
+};
+
 /* S2MPS11 registers */
 enum s2mps11_reg {
 	S2MPS11_REG_ID,

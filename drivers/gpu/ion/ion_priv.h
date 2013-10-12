@@ -26,6 +26,8 @@
 #include <linux/shrinker.h>
 #include <linux/types.h>
 
+#include <plat/iovmm.h>
+
 struct ion_buffer *ion_handle_buffer(struct ion_handle *handle);
 
 /**
@@ -58,7 +60,10 @@ struct ion_buffer *ion_handle_buffer(struct ion_handle *handle);
 */
 struct ion_buffer {
 	struct kref ref;
-	struct rb_node node;
+	union {
+		struct rb_node node;
+		struct list_head list;
+	};
 	struct ion_device *dev;
 	struct ion_heap *heap;
 	unsigned long flags;
@@ -78,8 +83,17 @@ struct ion_buffer {
 	int handle_count;
 	char task_comm[TASK_COMM_LEN];
 	pid_t pid;
-	dma_addr_t dma_address;
+	dma_addr_t dma_address[IOVMM_MAX_NUM_ID];
 };
+
+/*
+ * set once the buffer mapped for CPU without fault user mapping
+ * cleared if the buffer has no mapping for CPU
+ */
+#define ION_FLAG_CPUMAPPED  __ION_FLAG_CPUMAPPED_DO_NOT_USE__INTERNAL_USE_ONLY__
+
+#define __KVA_PRESERVE_HIGHLIMIT SZ_8M
+#define __KVA_PRESERVE_LOWLIMIT SZ_256K
 
 /**
  * struct ion_heap_ops - ops to operate on a given heap
@@ -110,15 +124,25 @@ struct ion_heap_ops {
 };
 
 /**
+ * heap flags - flags between the heaps and core ion code
+ */
+#define ION_HEAP_FLAG_DEFER_FREE (1 << 0)
+
+/**
  * struct ion_heap - represents a heap in the system
  * @node:		rb node to put the heap on the device's tree of heaps
  * @dev:		back pointer to the ion_device
  * @type:		type of heap
  * @ops:		ops struct as above
+ * @flags:		flags
  * @id:			id of heap, also indicates priority of this heap when
  *			allocating.  These are specified by platform data and
  *			MUST be unique
  * @name:		used for debugging
+ * @free_list:		free list head if deferred free is used
+ * @lock:		protects the free list
+ * @waitqueue:		queue to wait on from deferred free thread
+ * @task:		task struct of deferred free thread
  * @debug_show:		called when heap debug file is read to add any
  *			heap specific debug info to output
  *
@@ -128,12 +152,17 @@ struct ion_heap_ops {
  * that are allocated from a specially reserved heap.
  */
 struct ion_heap {
-	struct rb_node node;
+	struct plist_node node;
 	struct ion_device *dev;
 	enum ion_heap_type type;
 	struct ion_heap_ops *ops;
-	int id;
+	unsigned long flags;
+	unsigned int id;
 	const char *name;
+	struct list_head free_list;
+	struct rt_mutex lock;
+	wait_queue_head_t waitqueue;
+	struct task_struct *task;
 	int (*debug_show)(struct ion_heap *heap, struct seq_file *, void *);
 	void (*showmem)(struct ion_heap *heap);
 };
@@ -144,7 +173,10 @@ struct ion_heap {
  *
  * indicates whether this ion buffer is cached
  */
-bool ion_buffer_cached(struct ion_buffer *buffer);
+static inline bool ion_buffer_cached(struct ion_buffer *buffer)
+{
+	return !!(buffer->flags & ION_FLAG_CACHED);
+}
 
 /**
  * ion_buffer_fault_user_mappings - fault in user mappings of this buffer
@@ -153,7 +185,11 @@ bool ion_buffer_cached(struct ion_buffer *buffer);
  * indicates whether userspace mappings of this buffer will be faulted
  * in, this can affect how buffers are allocated from the heap.
  */
-bool ion_buffer_fault_user_mappings(struct ion_buffer *buffer);
+static inline bool ion_buffer_fault_user_mappings(struct ion_buffer *buffer)
+{
+	return (buffer->flags & ION_FLAG_CACHED) &&
+		!(buffer->flags & ION_FLAG_CACHED_NEEDS_SYNC);
+}
 
 /**
  * ion_device_create - allocates and returns an ion device
@@ -180,6 +216,17 @@ void ion_device_destroy(struct ion_device *dev);
 void ion_device_add_heap(struct ion_device *dev, struct ion_heap *heap);
 
 /**
+ * some helpers for common operations on buffers using the sg_table
+ * and vaddr fields
+ */
+void *ion_heap_map_kernel(struct ion_heap *, struct ion_buffer *);
+void ion_heap_unmap_kernel(struct ion_heap *, struct ion_buffer *);
+int ion_heap_map_user(struct ion_heap *, struct ion_buffer *,
+			struct vm_area_struct *);
+int ion_heap_buffer_zero(struct ion_buffer *buffer);
+
+
+/**
  * functions for creating and destroying the built in ion heaps.
  * architectures can add their own custom architecture specific
  * heaps as appropriate.
@@ -187,7 +234,6 @@ void ion_device_add_heap(struct ion_device *dev, struct ion_heap *heap);
 
 struct ion_heap *ion_heap_create(struct ion_platform_heap *);
 void ion_heap_destroy(struct ion_heap *);
-
 struct ion_heap *ion_system_heap_create(struct ion_platform_heap *);
 void ion_system_heap_destroy(struct ion_heap *);
 
@@ -196,6 +242,9 @@ void ion_system_contig_heap_destroy(struct ion_heap *);
 
 struct ion_heap *ion_carveout_heap_create(struct ion_platform_heap *);
 void ion_carveout_heap_destroy(struct ion_heap *);
+
+struct ion_heap *ion_chunk_heap_create(struct ion_platform_heap *);
+void ion_chunk_heap_destroy(struct ion_heap *);
 /**
  * kernel api to allocate/free from carveout -- used when carveout is
  * used to back an architecture specific custom heap

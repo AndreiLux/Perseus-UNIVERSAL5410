@@ -32,8 +32,7 @@
 
 #include "ea8062_param.h"
 
-#include "smart_dimming_s6e8fa0_G.h"
-#include "aid_ea8062.h"
+#include "dynamic_aid_ea8062.h"
 
 #define MIN_BRIGHTNESS		0
 #define MAX_BRIGHTNESS		255
@@ -91,8 +90,7 @@ struct lcd_info {
 	unsigned char			**gamma_table;
 	unsigned char			**elvss_table[2];
 
-	struct str_smart_dim		smart;
-	struct aid_info			*aid;
+	struct dynamic_aid_param_t	daid;
 	unsigned char			aor[GAMMA_MAX][ARRAY_SIZE(SEQ_AOR_CONTROL)];
 	unsigned int			connected;
 
@@ -111,7 +109,7 @@ static const unsigned int candela_table[GAMMA_MAX] = {
 	50,	53,	56,	60,	64,	68,	72,	77,
 	82,	87,	93,	98,	105,	111,	119,	126,
 	134,	143,	152,	162,	172,	183,	195,	207,
-	220,	234,	249,	265,	282,	MAX_GAMMA-1,	400,
+	220,	234,	249,	265,	282,	300,	400,
 };
 
 static struct lcd_info *g_lcd;
@@ -197,20 +195,6 @@ read_err:
 	return ret;
 }
 
-static void ea8062_read_coordinate(struct lcd_info *lcd)
-{
-	int ret = 0;
-	unsigned char buf[LDI_COORDINATE_LEN] = {0,};
-
-	ret = ea8062_read(lcd, LDI_COORDINATE_REG, buf, LDI_COORDINATE_LEN);
-
-	if (ret < 1)
-		dev_err(&lcd->ld->dev, "%s failed\n", __func__);
-
-	lcd->coordinate[0] = buf[0] << 8 | buf[1];	/* X */
-	lcd->coordinate[1] = buf[2] << 8 | buf[3];	/* Y */
-}
-
 static void ea8062_read_id(struct lcd_info *lcd, u8 *buf)
 {
 	int ret = 0;
@@ -228,31 +212,65 @@ static int ea8062_read_mtp(struct lcd_info *lcd, u8 *buf)
 
 	ret = ea8062_read(lcd, LDI_MTP_REG, buf, LDI_MTP_LEN);
 
-	if (ret < 1)
-		dev_err(&lcd->ld->dev, "%s failed\n", __func__);
-
-	for (i = 0; i < LDI_MTP_LEN ; i++)
-		smtd_dbg("%02dth mtp value is %02x\n", i+1, (int)buf[i]);
-
 	swap(buf[30], buf[31]);
+
+	smtd_dbg("%02xh\n", LDI_MTP_REG);
+	for (i = 0; i < LDI_MTP_LEN; i++)
+		smtd_dbg("%02dth value is %02x\n", i+1, (int)buf[i]);
 
 	return ret;
 }
 
 static int ea8062_read_elvss(struct lcd_info *lcd, u8 *buf)
 {
-	int ret;
+	int ret, i;
 
 	ret = ea8062_read(lcd, LDI_ELVSS_REG, buf, LDI_ELVSS_LEN);
+
+	smtd_dbg("%02xh\n", LDI_ELVSS_REG);
+	for (i = 0; i < ELVSS_PARAM_SIZE; i++)
+		smtd_dbg("%02dth value is %02x\n", i+1, (int)buf[i]);
 
 	return ret;
 }
 
+static void ea8062_read_coordinate(struct lcd_info *lcd)
+{
+	int ret = 0;
+	unsigned char buf[LDI_COORDINATE_LEN] = {0,};
+
+	ret = ea8062_read(lcd, LDI_COORDINATE_REG, buf, LDI_COORDINATE_LEN);
+
+	if (ret < 1)
+		dev_err(&lcd->ld->dev, "%s failed\n", __func__);
+
+	lcd->coordinate[0] = buf[0] << 8 | buf[1];	/* X */
+	lcd->coordinate[1] = buf[2] << 8 | buf[3];	/* Y */
+}
+
 static int ea8062_read_tset(struct lcd_info *lcd, u8 *buf)
 {
-	int ret;
+	int ret, i;
 
 	ret = ea8062_read(lcd, LDI_TSET_REG, buf, LDI_TSET_LEN);
+
+	smtd_dbg("%02xh\n", LDI_TSET_REG);
+	for (i = 0; i < LDI_TSET_LEN; i++)
+		smtd_dbg("%02dth value is %02x\n", i+1, (int)buf[i]);
+
+	return ret;
+}
+
+static int ea8062_read_hbm(struct lcd_info *lcd, u8 *buf)
+{
+	int ret, i;
+
+	ret = ea8062_read(lcd, LDI_HBM_REG, buf, LDI_HBM_LEN);
+
+	smtd_dbg("%02xh\n", LDI_HBM_REG);
+	for (i = 0; i < LDI_HBM_LEN; i++)
+		smtd_dbg("%02dth value is %02x\n", i+1, (int)buf[i]);
+
 
 	return ret;
 }
@@ -262,15 +280,6 @@ static int ea8062_read_date(struct lcd_info *lcd, u8 *buf)
 	int ret;
 
 	ret = ea8062_read(lcd, LDI_ELVSS_REG, buf, LDI_ELVSS_LEN);
-
-	return ret;
-}
-
-static int ea8062_read_hbm(struct lcd_info *lcd, u8 *buf)
-{
-	int ret;
-
-	ret = ea8062_read(lcd, LDI_HBM_REG, buf, LDI_HBM_LEN);
 
 	return ret;
 }
@@ -530,7 +539,7 @@ exit:
 
 static int ea8062_set_acl(struct lcd_info *lcd, u8 force)
 {
-	int ret = 0, level = 0;
+	int ret = 0, level;
 
 	if (LEVEL_IS_PSRE(lcd->auto_brightness))
 		level = ACL_STATUS_40P_RE_LOW;
@@ -675,42 +684,150 @@ err:
 	return ret;
 }
 
+static void init_dynamic_aid(struct lcd_info *lcd)
+{
+	lcd->daid.vreg = VREG_OUT_X1000;
+	lcd->daid.iv_tbl = index_voltage_table;
+	lcd->daid.iv_max = IV_MAX;
+	lcd->daid.mtp = kzalloc(IV_MAX * CI_MAX * sizeof(int), GFP_KERNEL);
+	lcd->daid.gamma_default = gamma_default;
+	lcd->daid.formular = gamma_formula;
+	lcd->daid.vt_voltage_value = vt_voltage_value;
+
+	lcd->daid.ibr_tbl = index_brightness_table;
+	lcd->daid.ibr_max = IBRIGHTNESS_MAX;
+	lcd->daid.br_base = brightness_base_table;
+	lcd->daid.gc_tbls = gamma_curve_tables;
+	lcd->daid.gc_lut = gamma_curve_lut;
+	lcd->daid.offset_gra = offset_gradation;
+	lcd->daid.offset_color = (const struct rgb_t(*)[])offset_color;
+}
+
+static void init_mtp_data(struct lcd_info *lcd, const u8 *mtp_data)
+{
+	int i, c, j;
+	int *mtp;
+
+	mtp = lcd->daid.mtp;
+
+	for (c = 0, j = 0; c < CI_MAX; c++, j++) {
+		if (mtp_data[j++] & 0x01)
+			mtp[(IV_MAX-1)*CI_MAX+c] = mtp_data[j] * (-1);
+		else
+			mtp[(IV_MAX-1)*CI_MAX+c] = mtp_data[j];
+	}
+
+	for (i = IV_203; i >= 0; i--) {
+		for (c = 0; c < CI_MAX; c++, j++) {
+			if (mtp_data[j] & 0x80)
+				mtp[CI_MAX*i+c] = (mtp_data[j] & 0x7F) * (-1);
+			else
+				mtp[CI_MAX*i+c] = mtp_data[j];
+		}
+	}
+
+	for (i = 0, j = 0; i <= IV_MAX; i++)
+		for (c = 0; c < CI_MAX; c++, j++)
+			smtd_dbg("mtp_data[%d] = %d\n", j, mtp_data[j]);
+
+	for (i = 0, j = 0; i < IV_MAX; i++)
+		for (c = 0; c < CI_MAX; c++, j++)
+			smtd_dbg("mtp[%d] = %d\n", j, mtp[j]);
+
+	for (i = 0, j = 0; i < IV_MAX; i++) {
+		for (c = 0; c < CI_MAX; c++, j++)
+			smtd_dbg("%04d ", mtp[j]);
+		smtd_dbg("\n");
+	}
+}
+
 static int init_gamma_table(struct lcd_info *lcd, const u8 *mtp_data)
 {
-	int i, j, ret = 0;
+	int i, c, j, v;
+	int ret = 0;
+	int *pgamma;
+	int **gamma;
 
-	lcd->gamma_table = kzalloc(GAMMA_MAX * sizeof(u8 *), GFP_KERNEL);
-	if (IS_ERR_OR_NULL(lcd->gamma_table)) {
+	/* allocate memory for local gamma table */
+	gamma = kzalloc(IBRIGHTNESS_MAX * sizeof(int *), GFP_KERNEL);
+	if (IS_ERR_OR_NULL(gamma)) {
 		pr_err("failed to allocate gamma table\n");
 		ret = -ENOMEM;
 		goto err_alloc_gamma_table;
 	}
 
-	for (i = 0; i < GAMMA_MAX; i++) {
-		lcd->gamma_table[i] = kzalloc(GAMMA_PARAM_SIZE * sizeof(u8), GFP_KERNEL);
-		if (IS_ERR_OR_NULL(lcd->gamma_table[i])) {
+	for (i = 0; i < IBRIGHTNESS_MAX; i++) {
+		gamma[i] = kzalloc(IV_MAX*CI_MAX * sizeof(int), GFP_KERNEL);
+		if (IS_ERR_OR_NULL(gamma[i])) {
 			pr_err("failed to allocate gamma\n");
 			ret = -ENOMEM;
 			goto err_alloc_gamma;
 		}
+	}
+
+	/* allocate memory for gamma table */
+	lcd->gamma_table = kzalloc(GAMMA_MAX * sizeof(u8 *), GFP_KERNEL);
+	if (IS_ERR_OR_NULL(lcd->gamma_table)) {
+		pr_err("failed to allocate gamma table 2\n");
+		ret = -ENOMEM;
+		goto err_alloc_gamma_table2;
+	}
+
+	for (i = 0; i < GAMMA_MAX; i++) {
+		lcd->gamma_table[i] = kzalloc(GAMMA_PARAM_SIZE * sizeof(u8), GFP_KERNEL);
+		if (IS_ERR_OR_NULL(lcd->gamma_table[i])) {
+			pr_err("failed to allocate gamma 2\n");
+			ret = -ENOMEM;
+			goto err_alloc_gamma2;
+		}
 		lcd->gamma_table[i][0] = 0xCA;
 	}
 
-	lcd->aid = aid_setting_table_VT232;
-	for (i = 0; i < ARRAY_SIZE(aid_setting_table_VT232); i++)
-		calc_gamma_table_G(&lcd->smart, lcd->aid, &lcd->gamma_table[i][1], mtp_data, i);
+	/* calculate gamma table */
+	init_mtp_data(lcd, mtp_data);
+	dynamic_aid(lcd->daid, gamma);
 
-	smtd_dbg("%s\n", __func__);
+	/* relocate gamma order */
 	for (i = 0; i < GAMMA_MAX; i++) {
-		smtd_dbg("%03d cd:", candela_table[i]);
-		for (j = 4; j < GAMMA_PARAM_SIZE; j++)
-			smtd_dbg("%03d ", lcd->gamma_table[i][j]);
+		/* Brightness table */
+		v = IV_MAX - 1;
+		pgamma = &gamma[i][v * CI_MAX];
+		for (c = 0, j = 1; c < CI_MAX; c++, pgamma++) {
+			if (*pgamma & 0x100)
+				lcd->gamma_table[i][j++] = 1;
+			else
+				lcd->gamma_table[i][j++] = 0;
+
+			lcd->gamma_table[i][j++] = *pgamma & 0xff;
+		}
+
+		for (v = IV_MAX - 2; v >= 0; v--) {
+			pgamma = &gamma[i][v * CI_MAX];
+			for (c = 0; c < CI_MAX; c++, pgamma++)
+				lcd->gamma_table[i][j++] = *pgamma;
+		}
+
+		smtd_dbg("%03d: ", candela_table[i]);
+		for (v = 0; v < GAMMA_PARAM_SIZE; v++)
+			smtd_dbg("%03d ", lcd->gamma_table[i][v]);
 		smtd_dbg("\n");
 	}
-	smtd_dbg("\n");
+
+	/* free local gamma table */
+	for (i = 0; i < IBRIGHTNESS_MAX; i++)
+		kfree(gamma[i]);
+	kfree(gamma);
 
 	return 0;
 
+err_alloc_gamma2:
+	while (i > 0) {
+		kfree(lcd->gamma_table[i-1]);
+		i--;
+	}
+	kfree(lcd->gamma_table);
+err_alloc_gamma_table2:
+	i = IBRIGHTNESS_MAX;
 err_alloc_gamma:
 	while (i > 0) {
 		kfree(lcd->gamma_table[i-1]);
@@ -721,53 +838,18 @@ err_alloc_gamma_table:
 	return ret;
 }
 
-static int init_aid_dimming_table(struct lcd_info *lcd, const u8 *mtp_data)
+static int init_aid_dimming_table(struct lcd_info *lcd)
 {
-	unsigned int i, j, c;
-	u16 reverse_seq[] = {
-		0, 28, 29, 30, 31, 32,
-		33, 25, 26, 27, 22, 23,
-		24, 19, 20, 21, 16, 17,
-		18, 13, 14, 15, 10, 11,
-		12, 7, 8, 9, 4, 5, 6, 2, 1, 3};
-	u16 temp[GAMMA_PARAM_SIZE];
-
-	for (i = 0; i < ARRAY_SIZE(aid_rgb_fix_table_VT232); i++) {
-		if (aid_rgb_fix_table_VT232[i].gray == IV_255)
-			j = (aid_rgb_fix_table_VT232[i].gray * 3 + aid_rgb_fix_table_VT232[i].rgb*2) + 2;
-		else
-			j = (aid_rgb_fix_table_VT232[i].gray * 3 + aid_rgb_fix_table_VT232[i].rgb) + 1;
-		c = lcd->gamma_table[aid_rgb_fix_table_VT232[i].candela_idx][j] + aid_rgb_fix_table_VT232[i].offset;
-		if (c > 0xff)
-			lcd->gamma_table[aid_rgb_fix_table_VT232[i].candela_idx][j] = 0xff;
-		else
-			lcd->gamma_table[aid_rgb_fix_table_VT232[i].candela_idx][j] += aid_rgb_fix_table_VT232[i].offset;
-	}
+	int i, j;
 
 	for (i = 0; i < GAMMA_MAX; i++) {
-		memcpy(lcd->aor[i], SEQ_AOR_CONTROL, AID_PARAM_SIZE);
-		lcd->aor[i][0x03] = aid_setting_table_VT232[i].aor_cmd[1];
-		lcd->aor[i][0x04] = aid_setting_table_VT232[i].aor_cmd[2];
-	}
+		memcpy(lcd->aor[i], SEQ_AOR_CONTROL, ARRAY_SIZE(SEQ_AOR_CONTROL));
+		lcd->aor[i][0x03] = aor_cmd[i][0];
+		lcd->aor[i][0x04] = aor_cmd[i][1];
 
-	smtd_dbg("%s\n", __func__);
-	for (i = 0; i < GAMMA_MAX; i++) {
-		smtd_dbg("%03dcd :", candela_table[i]);
-		for (j = 4; j < GAMMA_PARAM_SIZE; j++)
-			smtd_dbg("%03d ", lcd->gamma_table[i][j]);
+		for (j = 0; j < ARRAY_SIZE(SEQ_AOR_CONTROL); j++)
+			smtd_dbg("%02X ", lcd->aor[i][j]);
 		smtd_dbg("\n");
-	}
-	smtd_dbg("\n");
-
-	for (i = 0; i < GAMMA_MAX; i++) {
-		for (j = 0; j < GAMMA_PARAM_SIZE; j++)
-			temp[j] = lcd->gamma_table[i][reverse_seq[j]];
-
-		for (j = 0; j < GAMMA_PARAM_SIZE; j++)
-			lcd->gamma_table[i][j] = temp[j];
-
-		for (c = CI_RED; c < CI_MAX ; c++)
-			lcd->gamma_table[i][31+c] = lcd->smart.default_gamma[30+c];
 	}
 
 	return 0;
@@ -798,11 +880,6 @@ static int init_elvss_table(struct lcd_info *lcd)
 			lcd->elvss_table[k][i][1] = ELVSS_TABLE[i];
 		}
 
-		for (i = 0; i < ELVSS_STATUS_MAX; i++) {
-			for (j = 0; j < ELVSS_PARAM_SIZE; j++)
-				smtd_dbg("0x%02x, ", lcd->elvss_table[k][i][j]);
-			smtd_dbg("\n");
-		}
 	}
 
 	/* this (elvss_table[1]) is elvss table to support low temperature */
@@ -844,7 +921,7 @@ static int init_tset_table(struct lcd_info *lcd, u8 *tset_data)
 		lcd->tset_table[i][0] = LDI_TSET_REG;
 		for (j = 0; j < LDI_TSET_LEN - 1; j++)
 			lcd->tset_table[i][j+1] = tset_data[j];
-		lcd->tset_table[i][LDI_TSET_LEN - 1] = TSET_TABLE[i];
+		lcd->tset_table[i][7] = TSET_TABLE[i];
 	}
 
 	for (i = 0; i < TSET_STATUS_MAX; i++) {
@@ -1195,27 +1272,6 @@ static ssize_t window_type_show(struct device *dev,
 	return strlen(buf);
 }
 
-static ssize_t gamma_table_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct lcd_info *lcd = dev_get_drvdata(dev);
-	int i, j;
-
-	for (i = 0; i < GAMMA_MAX; i++) {
-		for (j = 0; j < GAMMA_PARAM_SIZE; j++)
-			printk("0x%02x, ", lcd->gamma_table[i][j]);
-		printk("\n");
-	}
-
-	for (i = 0; i < ELVSS_STATUS_MAX; i++) {
-		for (j = 0; j < ELVSS_PARAM_SIZE; j++)
-			printk("0x%02x, ", lcd->elvss_table[0][i][j]);
-		printk("\n");
-	}
-
-	return strlen(buf);
-}
-
 static ssize_t auto_brightness_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -1361,65 +1417,18 @@ static ssize_t manufacture_date_show(struct device *dev,
 	return strlen(buf);
 }
 
-static ssize_t parameter_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct lcd_info *lcd = dev_get_drvdata(dev);
-	char *pos = buf;
-	unsigned char temp[50] = {0,};
-	int i;
-
-	if (!lcd->ldi_enable)
-		return -EINVAL;
-
-	/* ID */
-	ea8062_read(lcd, LDI_ID_REG, temp, LDI_ID_LEN);
-	pos += sprintf(pos, "ID    [04]: %02x, %02x, %02x\n", temp[0], temp[1], temp[2]);
-
-	/* PSRE */
-	ea8062_read(lcd, 0xB5, temp, 3);
-	pos += sprintf(pos, "PSRE  [B5]: %02x, %02x, %02x\n", temp[0], temp[1], temp[2]);
-
-	/* ACL */
-	ea8062_read(lcd, 0x56, temp, ACL_PARAM_SIZE);
-	pos += sprintf(pos, "ACL   [56]: %02x, %02x, %02x\n", temp[0], temp[1], temp[2]);
-
-	/* ELVSS */
-	ea8062_read(lcd, LDI_ELVSS_REG, temp, ELVSS_PARAM_SIZE);
-	pos += sprintf(pos, "ELVSS [B6]: %02x, %02x, %02x / %d\n",
-		temp[0], temp[1], temp[2], lcd->elvss_compensation);
-
-	/* TSET */
-	ea8062_read(lcd, LDI_TSET_REG, temp, LDI_TSET_LEN);
-	pos += sprintf(pos, "TSET  [B8]: ");
-	for (i = 0; i < LDI_TSET_LEN; i++)
-		pos += sprintf(pos, "%02x, ", temp[i]);
-	pos += sprintf(pos, "/ %d, %d\n", lcd->temperature, lcd->current_tset);
-
-	/* GAMMA */
-	ea8062_read(lcd, 0xCA, temp, GAMMA_PARAM_SIZE);
-	pos += sprintf(pos, "GAMMA [CA]: ");
-	for (i = 0; i < GAMMA_PARAM_SIZE; i++)
-		pos += sprintf(pos, "%02x, ", temp[i]);
-	pos += sprintf(pos, "\n");
-
-	return pos - buf;
-}
-
 static DEVICE_ATTR(power_reduce, 0664, power_reduce_show, power_reduce_store);
 static DEVICE_ATTR(lcd_type, 0444, lcd_type_show, NULL);
 static DEVICE_ATTR(window_type, 0444, window_type_show, NULL);
-static DEVICE_ATTR(gamma_table, 0444, gamma_table_show, NULL);
 static DEVICE_ATTR(auto_brightness, 0644, auto_brightness_show, auto_brightness_store);
 static DEVICE_ATTR(siop_enable, 0664, siop_enable_show, siop_enable_store);
 static DEVICE_ATTR(temperature, 0664, temperature_show, temperature_store);
 static DEVICE_ATTR(color_coordinate, 0444, color_coordinate_show, NULL);
 static DEVICE_ATTR(manufacture_date, 0444, manufacture_date_show, NULL);
-static DEVICE_ATTR(parameter, 0444, parameter_show, NULL);
 
 static int ea8062_probe(struct mipi_dsim_device *dsim)
 {
-	int ret = 0, i;
+	int ret = 0, i, j;
 	struct lcd_info *lcd;
 	u8 mtp_data[LDI_MTP_LEN] = {0,};
 	u8 elvss_data[LDI_ELVSS_LEN] = {0,};
@@ -1477,10 +1486,6 @@ static int ea8062_probe(struct mipi_dsim_device *dsim)
 	if (ret < 0)
 		dev_err(&lcd->ld->dev, "failed to add sysfs entries, %d\n", __LINE__);
 
-	ret = device_create_file(&lcd->ld->dev, &dev_attr_gamma_table);
-	if (ret < 0)
-		dev_err(&lcd->ld->dev, "failed to add sysfs entries, %d\n", __LINE__);
-
 	ret = device_create_file(&lcd->bd->dev, &dev_attr_auto_brightness);
 	if (ret < 0)
 		dev_err(&lcd->ld->dev, "failed to add sysfs entries, %d\n", __LINE__);
@@ -1501,10 +1506,6 @@ static int ea8062_probe(struct mipi_dsim_device *dsim)
 	if (ret < 0)
 		dev_err(&lcd->ld->dev, "failed to add sysfs entries, %d\n", __LINE__);
 
-	ret = device_create_file(&lcd->ld->dev, &dev_attr_parameter);
-	if (ret < 0)
-		dev_err(&lcd->ld->dev, "failed to add sysfs entries, %d\n", __LINE__);
-
 	/* dev_set_drvdata(dsim->dev, lcd); */
 
 	panel_touchkey_on = ea8062_ldi_touchkey_on;
@@ -1513,25 +1514,37 @@ static int ea8062_probe(struct mipi_dsim_device *dsim)
 	mutex_init(&lcd->bl_lock);
 
 	ea8062_read_id(lcd, lcd->id);
-	ea8062_read_coordinate(lcd);
 	ea8062_read_mtp(lcd, mtp_data);
 	ea8062_read_elvss(lcd, elvss_data);
+	ea8062_read_coordinate(lcd);
 	ea8062_read_tset(lcd, tset_data);
 	ea8062_read_hbm(lcd, hbm_data);
 
 	dev_info(&lcd->ld->dev, "ID: %x, %x, %x\n", lcd->id[0], lcd->id[1], lcd->id[2]);
 
-	for (i = 0; i < LDI_ID_LEN; i++)
-		lcd->smart.panelid[i] = lcd->id[i];
-
-	init_table_info_G(&lcd->smart);
-	calc_voltage_table_G(&lcd->smart, mtp_data);
+	init_dynamic_aid(lcd);
 
 	ret = init_gamma_table(lcd, mtp_data);
-	ret += init_aid_dimming_table(lcd, mtp_data);
+	ret += init_aid_dimming_table(lcd);
 	ret += init_elvss_table(lcd);
 	ret += init_tset_table(lcd, tset_data);
 	ret += init_hbm_parameter(lcd, elvss_data, hbm_data);
+
+	for (i = 0; i < GAMMA_MAX; i++) {
+		smtd_dbg("%03d: ", candela_table[i]);
+		for (j = 0; j < GAMMA_PARAM_SIZE; j++)
+			smtd_dbg("%02X, ", lcd->gamma_table[i][j]);
+		smtd_dbg("\n");
+	}
+
+	for (i = 0; i < ELVSS_STATUS_MAX; i++) {
+		for (j = 0; j < ELVSS_PARAM_SIZE; j++)
+			smtd_dbg("%02X, ", lcd->elvss_table[0][i][j]);
+		smtd_dbg("\n");
+		for (j = 0; j < ELVSS_PARAM_SIZE; j++)
+			smtd_dbg("%02X, ", lcd->elvss_table[1][i][j]);
+		smtd_dbg("\n");
+	}
 
 	if (ret)
 		dev_info(&lcd->ld->dev, "gamma table generation is failed\n");

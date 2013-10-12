@@ -117,8 +117,10 @@ void gsc_op_timer_handler(unsigned long arg)
 	struct gsc_dev *gsc = ctx->gsc_dev;
 	struct vb2_buffer *src_vb, *dst_vb;
 
+	gsc_dump_registers(gsc);
+
 	clear_bit(ST_M2M_RUN, &gsc->state);
-	pm_runtime_put_sync(&gsc->pdev->dev);
+	pm_runtime_put(&gsc->pdev->dev);
 
 	src_vb = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
 	dst_vb = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
@@ -210,11 +212,6 @@ static void gsc_m2m_device_run(void *priv)
 		gsc_hw_set_rotation(ctx);
 		gsc_hw_set_global_alpha(ctx);
 	}
-    
-#if defined(CONFIG_MACH_V1) && defined(CONFIG_FB_EXYNOS_FIMD_SYSMMU_DISABLE)
-	if (is_rgb(ctx->d_frame.fmt->pixelformat))
-		ctx->d_frame.addr.y += 0x8000;
-#endif
 
 	gsc_hw_set_input_addr(gsc, &ctx->s_frame.addr, GSC_M2M_BUF_NUM);
 	gsc_hw_set_output_addr(gsc, &ctx->d_frame.addr, GSC_M2M_BUF_NUM);
@@ -268,12 +265,6 @@ static int gsc_m2m_queue_setup(struct vb2_queue *vq, const struct v4l2_format *f
 		sizes[i] = get_plane_size(frame, i);
 		allocators[i] = ctx->gsc_dev->alloc_ctx;
 	}
-
-#if defined(CONFIG_MACH_V1) && defined(CONFIG_FB_EXYNOS_FIMD_SYSMMU_DISABLE)
-	if ((frame->fmt->num_planes == 1) && is_rgb(ctx->d_frame.fmt->pixelformat))
-		sizes[0] += 0x8000;
-#endif
-
 	return 0;
 }
 
@@ -516,6 +507,7 @@ static int gsc_m2m_streamon(struct file *file, void *fh,
 {
 	struct gsc_ctx *ctx = fh_to_ctx(fh);
 	struct gsc_dev *gsc = ctx->gsc_dev;
+	struct exynos_platform_gscaler *pdata = gsc->pdata;
 
 	/* The source and target color format need to be set */
 	if (V4L2_TYPE_IS_OUTPUT(type)) {
@@ -525,7 +517,7 @@ static int gsc_m2m_streamon(struct file *file, void *fh,
 		return -EINVAL;
 	}
 
-	gsc_pm_qos_ctrl(gsc, GSC_QOS_ON, 160000, 160000);
+	gsc_pm_qos_ctrl(gsc, GSC_QOS_ON, pdata->mif_min, pdata->int_min);
 
 	return v4l2_m2m_streamon(file, ctx->m2m_ctx, type);
 }

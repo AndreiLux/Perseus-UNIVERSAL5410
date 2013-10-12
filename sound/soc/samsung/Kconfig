@@ -72,21 +72,20 @@ config SND_SOC_ADONISUNIV_WM1811
 
 config SND_SOC_ADONISUNIV_YMU831
 	tristate "SoC I2S Audio support for Adonis Univ - YMU831"
-	depends on SND_SOC_SAMSUNG && MACH_UNIVERSAL5410
+	depends on SND_SOC_SAMSUNG && MACH_UNIVERSAL5420
 	select SND_SAMSUNG_I2S
 	select SND_SOC_YAMAHA_YMU831
 	help
-	   Say Y if you want to add support for SoC audio on Universal 5410 Board
+	   Say Y if you want to add support for SoC audio on Universal 5420 Board
 	   with the YMU831
 
 config SND_SOC_ADONISUNIV_WM5102
 	tristate "SoC I2S Audio support for Adonis Univ - WM5102"
-	depends on SND_SOC_SAMSUNG && MACH_UNIVERSAL5410
+	depends on SND_SOC_SAMSUNG && MACH_UNIVERSAL5420
 	select SND_SAMSUNG_I2S
 	select SND_SOC_WM5102
 	select MFD_ARIZONA
 	select MFD_ARIZONA_SPI
-	select MFD_ARIZONA_I2C
 	select MFD_WM5102
 	select REGULATOR_ARIZONA
 	select SWITCH_ARIZONA
@@ -94,15 +93,6 @@ config SND_SOC_ADONISUNIV_WM5102
 	help
           Say Y if you want to add support for SoC audio on Universal 5410 Board
           with the WM8994
-
-config SND_SOC_ADONISDUOS_YMU831
-	tristate "SoC I2S Audio support for Adonis DUOS - YMU831"
-	depends on SND_SOC_SAMSUNG && MACH_UNIVERSAL5410
-	select SND_SAMSUNG_I2S
-	select SND_SOC_YAMAHA_YMU831
-	help
-          Say Y if you want to add support for SoC audio on Universal 5410 Board
-          with the YMU831
 
 config SND_SOC_ADONISUNIV_WM1811_SLSI
 	tristate "SoC I2S Audio support for Adonis Univ - WM8994 SLSI"
@@ -125,7 +115,7 @@ config SND_SOC_ADONISUNIV_YMU831_SLSI
 config SND_SOC_SAMSUNG_SMDK_WM8994
 	tristate "SoC I2S Audio support for WM8994 on SMDK"
 	depends on SND_SOC_SAMSUNG && (MACH_SMDKV310 || MACH_SMDKC210 || \
-MACH_SMDK4212 || MACH_SMDK5250 || MACH_SMDK5410)
+MACH_SMDK4212 || MACH_SMDK5250 || MACH_SMDK5410 || MACH_SMDK5420)
 	depends on I2C=y && GENERIC_HARDIRQS
 	select MFD_WM8994
 	select SND_SOC_WM8994
@@ -133,14 +123,12 @@ MACH_SMDK4212 || MACH_SMDK5250 || MACH_SMDK5410)
 	help
 		Say Y if you want to add support for SoC audio on the SMDKs.
 
-config SND_SOC_V1_YMU831
-	tristate "SoC I2S Audio support for Vienna - YMU831"
-	depends on SND_SOC_SAMSUNG && MACH_V1
-	select SND_SAMSUNG_I2S
-	select SND_SOC_YAMAHA_YMU831
+config SND_SAMSUNG_UHQA
+	bool "High Quality Audio Support"
+	depends on SND_SAMSUNG_I2S
+	default y
 	help
-	   Say Y if you want to add support for SoC audio on Vienna Board
-	   with the YMU831
+	   Say Y if you want to add support for High Quality audio
 
 menuconfig SND_SAMSUNG_USE_IDMA
 	bool "Lower power audio support"
@@ -155,6 +143,15 @@ config SND_SAMSUNG_ALP
 	default y
 	help
 	  Say Y if you want to support ALP audio.
+
+config SND_SAMSUNG_USE_IDMA_DRAM
+	bool "IDMA use dram"
+	depends on SND_SAMSUNG_USE_IDMA && SND_SAMSUNG_UHQA
+	default y
+	help
+	  Say Y if you want to use dram area on internal dma
+	  for Low Power mode at High Quality audio.
+
 
 # For support ALP audio
 source "sound/soc/samsung/srp_alp/Kconfig"
@@ -256,7 +253,7 @@ config SND_SOC_SAMSUNG_SMDK_SPDIF
 	tristate "SoC S/PDIF Audio support for SMDK"
 	depends on SND_SOC_SAMSUNG && (MACH_SMDKC100 || MACH_SMDKC110 || \
 MACH_SMDKV210 || MACH_SMDKV310 || MACH_SMDK4212 || MACH_SMDK5250 || \
-MACH_SMDK5410)
+MACH_SMDK5410 || MACH_SMDK5420)
 	select SND_SAMSUNG_SPDIF
 	help
 	  Say Y if you want to add support for SoC S/PDIF audio on the SMDK.
@@ -272,7 +269,7 @@ config SND_SOC_SMDK_WM8580_PCM
 config SND_SOC_SMDK_WM8994_PCM
 	tristate "SoC PCM Audio support for WM8994 on SMDK"
 	depends on SND_SOC_SAMSUNG && (MACH_SMDKC210 || MACH_SMDKV310 || \
-MACH_SMDK4212 || MACH_SMDK5250 || MACH_SMDK5410)
+MACH_SMDK4212 || MACH_SMDK5250 || MACH_SMDK5410 || MACH_SMDK5420)
 	depends on I2C=y && GENERIC_HARDIRQS
 	select MFD_WM8994
 	select SND_SOC_WM8994
@@ -307,11 +304,3 @@ config SND_SOC_LITTLEMILL
 	select SND_SAMSUNG_I2S
 	select MFD_WM8994
 	select SND_SOC_WM8994
-
-config SND_DUOS_MODEM_SWITCH
-	bool "Select DUOS Modem"
-	depends on SND_SOC_SAMSUNG
-
-config SND_USE_YMU831_LDODE_GPIO
-	bool "Use YMU831_LDODE_GPIO"
-	depends on SND_SOC_SAMSUNG && SND_SOC_YAMAHA_YMU831

@@ -59,13 +59,8 @@
 #define MAX_ADDR_W8501   0x7FFF
 
 #define MAX_BLOCK_514    47
-#if defined(CONFIG_MACH_P4NOTE)
-#define MPUVER_514       0x22
-#define BLVER_514        0x70
-#else
 #define MPUVER_514       0x27
 #define BLVER_514        0x50
-#endif
 #define MAX_ADDR_514     0xBFFF
 
 #define MPUVER_505             0x28
@@ -81,7 +76,5 @@
 #define ERR_FAILED_EXIT  -4
 
 #define PEN_QUERY '*'
-
-extern int wacom_i2c_flash(struct wacom_i2c *wac_i2c);
 
 #endif /* _LINUX_WACOM_I2C_FLASH_H */

@@ -36,3 +36,23 @@ config MOTOR_DRV_ISA1400
 	help
 	  Say Y to enalbe the ISA1400 IC.
 
+config HAPTIC_ISA1200
+	tristate "ISA1200 motor"
+	default n
+	depends on I2C
+	help
+	  Say Y to enalbe the ISA1200 IC.
+
+config HAPTIC_ISA1400
+	tristate "ISA1400 motor"
+	default n
+	depends on I2C
+	help
+	  Say Y to enalbe the ISA1400 IC.
+
+config HAPTIC
+	tristate "Immersion TouchSense"
+	default n
+	help
+	  Say Y to enable Immersion TouchSense.
+

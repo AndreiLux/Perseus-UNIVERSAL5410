@@ -48,7 +48,7 @@ static inline bool is_inner_flushall(size_t size)
 {
 	if (ip_is_g2d_5g())
 		return (size >= SZ_1M * 25) ? true : false;
-	else if (ip_is_g2d_5a())
+	else if ( ip_is_g2d_5a() || ip_is_g2d_5ar() )
 		return (size >= SZ_1M * 8) ? true : false;
 	else
 		return (size >= L1_CACHE_SIZE) ? true : false;
@@ -77,6 +77,7 @@ static inline bool is_outer_flushrange(size_t hole)
 
 void fimg2d_flush_cache_range(unsigned long, size_t);
 int fimg2d_fixup_user_fault(unsigned long address);
+void fimg2d_touch_range(unsigned long, size_t);
 
 static inline void fimg2d_dma_sync_inner(unsigned long addr, size_t size,
 		int dir)

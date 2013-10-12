@@ -40,17 +40,18 @@
 #include "fimc-is-regs.h"
 #include "fimc-is-err.h"
 #include "fimc-is-framemgr.h"
+#include "fimc-is-sec-define.h"
 
 #ifdef USE_OWN_FAULT_HANDLER
 #include <plat/sysmmu.h>
 #endif
 
-struct class *camera_class;
-struct device *camera_front_dev; /*sys/class/camera/front*/
-struct device *camera_rear_dev; /*sys/class/camera/rear*/
-struct fimc_is_from_info *sysfs_finfo = NULL;
-struct fimc_is_from_info *sysfs_pinfo = NULL;
+
+extern struct class *camera_class;
+extern struct device *camera_front_dev; /*sys/class/camera/front*/
+extern struct device *camera_rear_dev; /*sys/class/camera/rear*/
 static struct device *is_dev = NULL;
+struct fimc_is_core *sysfs_core;
 
 extern int fimc_is_ss0_video_probe(void *data);
 extern int fimc_is_ss1_video_probe(void *data);
@@ -83,7 +84,7 @@ static int fimc_is_ischain_allocmem(struct fimc_is_core *this)
 #ifdef ENABLE_TDNR
 				SIZE_DNR_INTERNAL_BUF * NUM_DNR_INTERNAL_BUF +
 #endif
-				0);
+				0, 1, 0);
 
 	if (IS_ERR(fw_cookie)) {
 		err("Allocating bitprocessor buffer failed");
@@ -213,13 +214,16 @@ static inline int isp_clock_onoff(int onoff, int isp, int dis)
 	int timeout = 1000;
 	int isp0_on_mask = ((0x1 << GATE_IP_ISP) | (0x1 << GATE_IP_DRC) | \
 		(0x1 << GATE_IP_SCC) | (0x1 << GATE_IP_SCP));
+#ifndef ENABLE_FULL_BYPASS
 	int isp1_on_mask = ((0x1 << GATE_IP_ODC) | (0x1 << GATE_IP_DIS) | \
 		(0x1 << GATE_IP_DNR));
+#endif
 	int isp0_off_mask = ((0x1 << GATE_IP_DRC) | (0x1 << GATE_IP_SCC) | \
 		(0x1 << GATE_IP_SCP));
+#ifndef ENABLE_FULL_BYPASS
 	int isp1_off_mask = ((0x1 << GATE_IP_ODC) | (0x1 << GATE_IP_DIS) | \
 		(0x1 << GATE_IP_DNR));
-
+#endif
 	int cfg;
 
 	if (onoff == ISP_CLK_ON) {
@@ -243,6 +247,7 @@ static inline int isp_clock_onoff(int onoff, int isp, int dis)
 			return 0;
 		}
 
+#ifndef ENABLE_FULL_BYPASS
 		timeout = 1000;
 		do
 		{
@@ -261,6 +266,7 @@ static inline int isp_clock_onoff(int onoff, int isp, int dis)
 			pr_err("%s can never turn on the clocks #2\n", __func__);
 			return 0;
 		}
+#endif
 	} else {
 		if (isp == ISP_CLK_ISP_ON) {
 			timeout = 1000;
@@ -310,11 +316,13 @@ static inline int isp_clock_onoff(int onoff, int isp, int dis)
 			return 0;
 		}
 
+#ifndef ENABLE_FULL_BYPASS
 		timeout = 1000;
 		if (dis == ISP_DIS_OFF) {
 			do
 			{
 				cfg = readl(EXYNOS5_CLKGATE_IP_ISP1);
+
 				cfg &= ~(0x1<<GATE_IP_ODC);
 				cfg &= ~(0x1<<GATE_IP_DIS);
 				cfg &= ~(0x1<<GATE_IP_DNR);
@@ -329,6 +337,7 @@ static inline int isp_clock_onoff(int onoff, int isp, int dis)
 			pr_err("%s can never turn on the clocks #5\n", __func__);
 			return 0;
 		}
+#endif
 	}
 	return 1;
 }
@@ -345,7 +354,8 @@ int fimc_is_clock_set(struct fimc_is_core *this,
 	spin_lock(&this->slock_clock_gate);
 
 	if (!test_bit(FIMC_IS_ISCHAIN_POWER_ON, &this->state)) {
-		err("power down state, accessing register is not allowd");
+		if (group_id != GROUP_ID_MAX)
+			err("power down state, accessing register is not allowd");
 		goto exit;
 	}
 
@@ -358,7 +368,6 @@ int fimc_is_clock_set(struct fimc_is_core *this,
 	if (group_id == GROUP_ID_3A1)
 		goto exit;
 
-	/* check dual sensor mode */
 	if (refcount >= 3)
 		group_id = GROUP_ID_MAX;
 
@@ -459,10 +468,10 @@ int fimc_is_clock_set(struct fimc_is_core *this,
 
 			cfg = readl(EXYNOS5_CLKGATE_IP_ISP0);
 			if (state & (1<<GROUP_ID_3A0)) {
-			    isp_clock_onoff(ISP_CLK_OFF, ISP_CLK_ISP_ON, \
+				isp_clock_onoff(ISP_CLK_OFF, ISP_CLK_ISP_ON, \
 				ISP_DIS_ON);
 			} else {
-			    isp_clock_onoff(ISP_CLK_OFF, ISP_CLK_ISP_OFF, \
+				isp_clock_onoff(ISP_CLK_OFF, ISP_CLK_ISP_OFF, \
 				ISP_DIS_ON);
 			}
 		}
@@ -475,7 +484,7 @@ exit:
 
 #if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
 static int exynos5_fimc_mif_notifier(struct notifier_block *notifier,
-       unsigned long event, void *v)
+	unsigned long event, void *v)
 {
 	struct devfreq_info *info = (struct devfreq_info *)v;
 	int cfg;
@@ -532,10 +541,72 @@ static int exynos5_fimc_mif_notifier(struct notifier_block *notifier,
 }
 
 static struct notifier_block exynos_mif_nb = {
-        .notifier_call = exynos5_fimc_mif_notifier,
+	.notifier_call = exynos5_fimc_mif_notifier,
 };
 #endif
 
+#if defined(CONFIG_SOC_EXYNOS5420)
+int fimc_is_set_dvfs(struct fimc_is_core *core,
+			struct fimc_is_device_ischain *ischain,
+			int group_id, int int_level, int mif_level, int i2c_clk)
+{
+	int ret = 0;
+	int refcount;
+
+	refcount = atomic_read(&core->video_isp.refcount);
+	if (refcount < 0) {
+		err("invalid ischain refcount");
+		goto exit;
+	}
+
+	/* set state */
+	if (int_level == DVFS_L0) {
+		set_bit(group_id, &core->clock.dvfs_state);
+	} else {
+		if (test_bit(GROUP_ID_3A0, &core->clock.dvfs_state)
+			&& !test_bit(GROUP_ID_ISP, &core->clock.dvfs_state))
+			goto exit;
+		else
+			core->clock.dvfs_state = 0;
+	}
+
+	/* check current level */
+	if (core->clock.dvfs_level != int_level) {
+		ret = fimc_is_itf_i2c_lock(ischain, i2c_clk, true);
+		if (ret) {
+			err("fimc_is_itf_i2_clock fail\n");
+			goto exit;
+		}
+
+		pm_qos_update_request(&exynos5_isp_qos_dev, int_level);
+		core->clock.dvfs_level = int_level;
+
+		/* i2c unlock */
+		ret = fimc_is_itf_i2c_lock(ischain, i2c_clk, false);
+		if (ret) {
+			err("fimc_is_itf_i2c_unlock fail\n");
+			goto exit;
+		}
+
+		pr_info("[RSC:%d] %s: DVFS INT level(%d) \n", ischain->instance,
+							__func__, int_level);
+	}
+
+	if (core->clock.dvfs_mif_level != mif_level) {
+		pm_qos_update_request(&exynos5_isp_qos_mem, mif_level);
+		core->clock.dvfs_mif_level = mif_level;
+
+		pr_info("[RSC:%d] %s: DVFS MIF level(%d) \n", ischain->instance,
+							__func__, mif_level);
+	}
+
+	dbg("[RSC:%d] %s: DVFS level(%d), MIF level (%d), I2C clock(%d)\n",
+		ischain->instance, __func__, int_level, mif_level, i2c_clk);
+exit:
+	return ret;
+}
+
+#else
 int fimc_is_set_dvfs(struct fimc_is_core *core,
 			struct fimc_is_device_ischain *ischain,
 			int group_id, int __level, int i2c_clk)
@@ -543,7 +614,7 @@ int fimc_is_set_dvfs(struct fimc_is_core *core,
 	int ret = 0;
 	int refcount;
 	int rear_recording;
-	int level, cfg;
+	int level;
 
 	refcount = atomic_read(&core->video_isp.refcount);
 	if (refcount < 0) {
@@ -576,11 +647,6 @@ int fimc_is_set_dvfs(struct fimc_is_core *core,
 	if (core->clock.dvfs_level == __level)
 		goto exit;
 
-#ifdef CONFIG_TARGET_LOCALE_KOR	//KOR only for blackbox
-	if (__level == DVFS_L1_1)
-		pr_info("Blackbox mode\n");
-#endif
-
 	/* i2c lock */
 	ret = fimc_is_itf_i2c_lock(ischain, i2c_clk, true);
 	if (ret) {
@@ -590,10 +656,10 @@ int fimc_is_set_dvfs(struct fimc_is_core *core,
 	/* update mif level */
 	if (rear_recording) {
 #if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ) && defined(ENABLE_MIF_400)
-                if (core->clock.dvfs_mif_level != 400000) {
-                        pm_qos_update_request(&exynos5_isp_qos_mem, 400000);
-                        core->clock.dvfs_level = 400000;
-                }
+		if (core->clock.dvfs_mif_level != 400000) {
+			pm_qos_update_request(&exynos5_isp_qos_mem, 400000);
+			core->clock.dvfs_level = 400000;
+		}
 #endif
 		/* update int level */
 		pm_qos_update_request(&exynos5_isp_qos_dev, level);
@@ -648,6 +714,23 @@ int fimc_is_set_dvfs(struct fimc_is_core *core,
 exit:
 	return ret;
 }
+#endif
+
+int fimc_is_get_dvfs_scenario(struct fimc_is_core *core)
+{
+	int i, ret = 0;
+	int ref_count = 0;
+
+	for (i=0; i<FIMC_IS_MAX_NODES; i++) {
+		if (test_bit(FIMC_IS_SENSOR_OPEN, &core->sensor[i].state))
+			ref_count++;
+	}
+
+	if (ref_count >= 2)
+		ret = DVFS_SCENARIO_DUAL;
+
+	return ret;
+}
 
 int fimc_is_resource_get(struct fimc_is_core *core)
 {
@@ -683,7 +766,6 @@ int fimc_is_resource_get(struct fimc_is_core *core)
 	return ret;
 }
 
-extern unsigned int g_cam_err_count;
 int fimc_is_resource_put(struct fimc_is_core *core)
 {
 	int ret = 0;
@@ -738,8 +820,6 @@ int fimc_is_resource_put(struct fimc_is_core *core)
 	}
 
 exit:
-	if (ret)
-		g_cam_err_count++;
 	return ret;
 }
 
@@ -1078,8 +1158,8 @@ static const struct v4l2_subdev_internal_ops fimc_is_back_v4l2_internal_ops = {
 };
 
 static int fimc_is_sensor_link_setup(struct media_entity *entity,
-			    const struct media_pad *local,
-			    const struct media_pad *remote, u32 flags)
+				const struct media_pad *local,
+				const struct media_pad *remote, u32 flags)
 {
 	struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(entity);
 	struct fimc_is_sensor_dev *fimc_is_sensor;
@@ -1108,8 +1188,8 @@ static int fimc_is_sensor_link_setup(struct media_entity *entity,
 }
 
 static int fimc_is_front_link_setup(struct media_entity *entity,
-			    const struct media_pad *local,
-			    const struct media_pad *remote, u32 flags)
+				const struct media_pad *local,
+				const struct media_pad *remote, u32 flags)
 {
 	struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(entity);
 	struct fimc_is_front_dev *fimc_is_front = to_fimc_is_front_dev(sd);
@@ -1163,8 +1243,8 @@ static int fimc_is_front_link_setup(struct media_entity *entity,
 }
 
 static int fimc_is_back_link_setup(struct media_entity *entity,
-			    const struct media_pad *local,
-			    const struct media_pad *remote, u32 flags)
+				const struct media_pad *local,
+				const struct media_pad *remote, u32 flags)
 {
 	struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(entity);
 	struct fimc_is_back_dev *fimc_is_back = to_fimc_is_back_dev(sd);
@@ -1231,17 +1311,17 @@ int fimc_is_pipeline_s_stream_preview(struct media_entity *start_entity, int on)
 		dbg("cannot find back entity\n");
 
 	if(pad != NULL) {
-	back_sd = media_entity_to_v4l2_subdev(pad->entity);
-	pad = &pad->entity->pads[0];
-    	pad = media_entity_remote_source(pad);		
+		back_sd = media_entity_to_v4l2_subdev(pad->entity);
+		pad = &pad->entity->pads[0];
+		pad = media_entity_remote_source(pad);
 	}
 	if ((pad == NULL) || media_entity_type(pad->entity) != MEDIA_ENT_T_V4L2_SUBDEV)
 		dbg("cannot find front entity\n");
 
 	if(pad != NULL) {
-	front_sd = media_entity_to_v4l2_subdev(pad->entity);
-	pad = &pad->entity->pads[0];
-    	pad = media_entity_remote_source(pad);		
+		front_sd = media_entity_to_v4l2_subdev(pad->entity);
+		pad = &pad->entity->pads[0];
+		pad = media_entity_remote_source(pad);
 	}
 	if ((pad == NULL) || media_entity_type(pad->entity) != MEDIA_ENT_T_V4L2_SUBDEV)
 		dbg("cannot find sensor entity\n");
@@ -1305,6 +1385,23 @@ int fimc_is_runtime_suspend(struct device *dev)
 		vb2_ion_detach_iommu(core->mem.alloc_ctx);
 #endif
 
+#if defined(CONFIG_SOC_EXYNOS5420)
+	 exynos5_update_media_layers(TYPE_FIMC_LITE, 0);
+#endif
+
+#if defined(CONFIG_MACH_SMDK5410) || defined(CONFIG_MACH_SMDK5420)
+	/* Sensor power off */
+        /* TODO : need close_sensor */
+	if (core->pdata->cfg_gpio) {
+		core->pdata->cfg_gpio(core->pdev, 0, false);
+		core->pdata->cfg_gpio(core->pdev, 2, false);
+	} else {
+		err("failed to sensor_power_on\n");
+		ret = -EINVAL;
+		goto p_err;
+	}
+#endif
+
 	if (core->pdata->clk_off) {
 		core->pdata->clk_off(core->pdev);
 	} else {
@@ -1331,7 +1428,7 @@ int fimc_is_runtime_resume(struct device *dev)
 	/* 1. Enable MIPI */
 	enable_mipi();
 
-	printk(KERN_INFO "FIMC_IS runtime resume - mipi enabled\n");
+	pr_debug("FIMC_IS runtime resume - mipi enabled\n");
 
 	/* 2. Low clock setting */
 	if (core->pdata->clk_cfg) {
@@ -1342,7 +1439,7 @@ int fimc_is_runtime_resume(struct device *dev)
 		goto p_err;
 	}
 
-	printk(KERN_INFO "FIMC_IS runtime resume - Low clock setting complete\n");
+	pr_info("FIMC_IS runtime resume - clock setting complete\n");
 
 	/* 4. Clock on */
 	if (core->pdata->clk_on) {
@@ -1353,7 +1450,7 @@ int fimc_is_runtime_resume(struct device *dev)
 		goto p_err;
 	}
 
-	printk(KERN_INFO "FIMC_IS runtime resume -  Clock on\n");
+	pr_debug("FIMC_IS runtime resume -  Clock on\n");
 
 #if defined(CONFIG_SOC_EXYNOS5250)
 	/* 5. High clock setting */
@@ -1364,14 +1461,19 @@ int fimc_is_runtime_resume(struct device *dev)
 		ret = -EINVAL;
 		goto p_err;
 	}
-	printk(KERN_INFO "FIMC_IS runtime resume - high clock setting complete\n");
+	pr_info("FIMC_IS runtime resume - high clock setting complete\n");
 #endif
 
 #if defined(CONFIG_VIDEOBUF2_ION)
 	if (core->mem.alloc_ctx)
 		vb2_ion_attach_iommu(core->mem.alloc_ctx);
-	printk(KERN_INFO "FIMC_IS runtime resume - ion attach complete\n");
+	pr_debug("FIMC_IS runtime resume - ion attach complete\n");
 #endif
+
+#if defined(CONFIG_SOC_EXYNOS5420)
+	exynos5_update_media_layers(TYPE_FIMC_LITE, 1);
+#endif
+	pr_info("FIMC-IS runtime resume out\n");
 
 	return 0;
 
@@ -1404,7 +1506,7 @@ static struct exynos_md *fimc_is_get_md(enum mdev_node node)
 		return ERR_PTR(-ENODEV);
 
 	ret = driver_for_each_device(drv, NULL, &md[0],
-				     fimc_is_get_md_callback);
+					fimc_is_get_md_callback);
 	/* put_driver(drv); */
 
 	return ret ? NULL : md[node];
@@ -1413,14 +1515,14 @@ static struct exynos_md *fimc_is_get_md(enum mdev_node node)
 static ssize_t camera_front_camtype_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	char type[] = "SLSI_S5K6B2_FIMC_IS";
+	char type[] = "SLSI_S5K6B2YX_FIMC_IS";
 	return sprintf(buf, "%s\n", type);
 }
 
 static ssize_t camera_front_camfw_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	char type[] = "S5K6B2";
+	char type[] = "S5K6B2YX";
 	return sprintf(buf, "%s %s\n", type, type);
 }
 
@@ -1428,38 +1530,88 @@ static DEVICE_ATTR(front_camtype, S_IRUGO,
 		camera_front_camtype_show, NULL);
 static DEVICE_ATTR(front_camfw, S_IRUGO, camera_front_camfw_show, NULL);
 
-#ifdef CONFIG_MACH_V1
-static ssize_t camera_rear_camtype_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	char type[] = "SLSI_S5K4E5_FIMC_IS";
-	return sprintf(buf, "%s\n", type);
-}
+struct fimc_is_from_info *pinfo = NULL;
+struct fimc_is_from_info *finfo = NULL;
 
-static ssize_t camera_rear_camfw_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
+int read_from_firmware_version(void)
 {
-	return sprintf(buf, "%s %s\n",
-		sysfs_finfo->header_ver, sysfs_pinfo->header_ver);
-}
+	char fw_name[100];
+	char setf_name[100];
+	struct device *is_dev = &sysfs_core->ischain[0].pdev->dev;
+
+	fimc_is_sec_get_sysfs_pinfo(&pinfo);
+	fimc_is_sec_get_sysfs_finfo(&finfo);
+
+	if (finfo->bin_start_addr != 0x5000) {
+		fimc_is_sec_set_camid(CAMERA_DUAL_FRONT);
+#if defined(CONFIG_PM_RUNTIME)
+		dbg_ischain("pm_runtime_suspended = %d\n",
+			pm_runtime_suspended(is_dev));
+		pm_runtime_get_sync(is_dev);
 #else
+		fimc_is_runtime_resume(is_dev);
+		printk(KERN_INFO "%s(%d) - fimc_is runtime resume complete\n", __func__, on);
+#endif
+		fimc_is_sec_fw_sel(is_dev, sysfs_core->ischain[0].pdata, fw_name, setf_name, 1);
+#if defined(CONFIG_PM_RUNTIME)
+		pm_runtime_put_sync(is_dev);
+		dbg_ischain("pm_runtime_suspended = %d\n",
+					pm_runtime_suspended(is_dev));
+#else
+		fimc_is_runtime_suspend(is_dev);
+#endif
+	}
+
+	return 0;
+}
+
 static ssize_t camera_rear_camtype_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	char type[] = "SONY_IMX135_FIMC_IS";
-	return sprintf(buf, "%s\n", type);
+	char type_sony13[] = "SONY_IMX135_FIMC_IS";
+	char type_sony8[] = "SONY_IMX134_FIMC_IS";
+	char type_slsi[] = "SLSI_3L2_FIMC_IS";
+	int pixelSize = 0;
+	read_from_firmware_version();
+	pixelSize = fimc_is_sec_get_pixel_size(finfo->header_ver);
+	if (finfo->header_ver[FW_SENSOR_MAKER] == FW_SENSOR_MAKER_SLSI) {
+		return sprintf(buf, "%s\n", type_slsi);
+	} else {
+		if (pixelSize == 13)
+			return sprintf(buf, "%s\n", type_sony13);
+		else if (pixelSize == 8)
+			return sprintf(buf, "%s\n", type_sony8);
+		else
+			return sprintf(buf, "%s\n", type_sony13);
+	}
 }
 
 static ssize_t camera_rear_camfw_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
+	read_from_firmware_version();
 	return sprintf(buf, "%s %s\n",
-		sysfs_finfo->header_ver, sysfs_pinfo->header_ver);
+		finfo->header_ver, pinfo->header_ver);
 }
-#endif
+
+static ssize_t camera_rear_camfw_write(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	ssize_t ret = -EINVAL;
+
+	if ((size == 1 || size == 2) && (buf[0] == 'F' || buf[0] == 'f')) {
+		fimc_is_sec_set_force_caldata_dump(true);
+		ret = size;
+	} else {
+		fimc_is_sec_set_force_caldata_dump(false);
+	}
+	return ret;
+}
+
 static DEVICE_ATTR(rear_camtype, S_IRUGO,
 		camera_rear_camtype_show, NULL);
-static DEVICE_ATTR(rear_camfw, S_IRUGO, camera_rear_camfw_show, NULL);
+static DEVICE_ATTR(rear_camfw, S_IRUGO|S_IWUSR|S_IWGRP|S_IROTH,
+		camera_rear_camfw_show, camera_rear_camfw_write);
 
 #ifdef USE_OWN_FAULT_HANDLER
 #define SECT_ORDER 20
@@ -1535,7 +1687,7 @@ static int fimc_is_probe(struct platform_device *pdev)
 	struct fimc_is_core *core;
 	int ret = -ENODEV;
 
-	pr_debug("%s\n", __func__);
+	pr_info("%s\n", __func__);
 
 	core = kzalloc(sizeof(struct fimc_is_core), GFP_KERNEL);
 	if (!core)
@@ -1560,7 +1712,7 @@ static int fimc_is_probe(struct platform_device *pdev)
 	}
 
 	regs_res = request_mem_region(mem_res->start, resource_size(mem_res),
-				      pdev->name);
+					pdev->name);
 	if (!regs_res) {
 		dev_err(&pdev->dev, "Failed to request io memory region\n");
 		goto p_err1;
@@ -1684,10 +1836,27 @@ static int fimc_is_probe(struct platform_device *pdev)
 #endif
 
 	/* device entity - sensor0 */
-	fimc_is_sensor_probe(&core->sensor[0], FLITE_ID_A);
+	fimc_is_sensor_probe(&core->sensor[0],
+		0,
+		CSI_ID_A,
+		FLITE_ID_A);
 
 	/* device entity - sensor1 */
-	fimc_is_sensor_probe(&core->sensor[1], FLITE_ID_C);
+#if defined(CONFIG_SOC_EXYNOS5420)
+	fimc_is_sensor_probe(&core->sensor[1],
+#if defined(CONFIG_MACH_SMDK5420)
+		1,
+#else
+		2,
+#endif
+		CSI_ID_B,
+		FLITE_ID_B);
+#else
+	fimc_is_sensor_probe(&core->sensor[1],
+		2,
+		CSI_ID_C,
+		FLITE_ID_C);
+#endif
 
 	/* device entity - ischain0 */
 	fimc_is_ischain_probe(&core->ischain[0],
@@ -1797,6 +1966,8 @@ static int fimc_is_probe(struct platform_device *pdev)
 				dev_attr_rear_camfw.attr.name);
 		}
 	}
+
+	sysfs_core = core;
 
 #ifdef USE_OWN_FAULT_HANDLER
 	if (!dev_set_drvdata(is_dev, core))

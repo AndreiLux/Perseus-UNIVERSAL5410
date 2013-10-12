@@ -37,16 +37,6 @@ static unsigned int exynos_int_cur_freq;
 
 static unsigned int exynos5410_int_limit_freq;
 
-#ifdef CONFIG_ASV_MARGIN_TEST
-static int set_int_freq = 0;
-static int __init get_int_freq(char *str)
-{
-	get_option(&str, &set_int_freq);
-	return 0;
-}
-early_param("intfreq", get_int_freq);
-#endif
-
 static bool en_profile = false;
 static struct device *int_dev;
 
@@ -154,6 +144,7 @@ static unsigned int exynos5410_clkdiv_top0[][6] = {
 	{2, 1, 2, 2, 3, 3},	/* L1-1(For ISP) */
 	{2, 1, 3, 2, 3, 3},	/* L1-2(For ISP) */
 	{2, 1, 6, 2, 3, 3},	/* L1-3(For ISP) */
+	{2, 1, 1, 2, 3, 3},	/* L2_H */
 	{2, 1, 1, 2, 3, 3},	/* L2 */
 	{2, 2, 2, 2, 4, 3},	/* L3 */
 	{2, 3, 3, 3, 5, 3},	/* L4 */
@@ -203,7 +194,7 @@ static unsigned int exynos5410_clkdiv_top2[][7] = {
  */
 	{1, 0, 0, 2, 2, 1, 7},	/* L0(For ISP) */
 	{1, 0, 2, 2, 2, 1, 7},	/* L1(For ISP) */
-	{1, 1, 1, 2, 2, 1, 7},	/* L1-1(For ISP) */
+	{1, 4, 1, 2, 2, 1, 7},	/* L1-1(For ISP) */
 	{1, 0, 2, 2, 2, 1, 7},	/* L1-2(For ISP) */
 	{1, 4, 4, 2, 2, 1, 7},	/* L1-3(For ISP) */
 	{1, 7, 7, 2, 2, 1, 7},	/* L2 */
@@ -505,10 +496,6 @@ static int exynos5_int_busfreq_target(struct device *dev,
 
 	/* get available opp information */
 	rcu_read_lock();
-#ifdef CONFIG_ASV_MARGIN_TEST
-	if (set_int_freq > 0)
-		*_freq = set_int_freq;
-#endif
 	opp = devfreq_recommended_opp(dev, _freq, flags);
 	if (IS_ERR(opp)) {
 		rcu_read_unlock();
@@ -768,19 +755,20 @@ static ssize_t int_show_state(struct device *dev, struct device_attribute *attr,
 {
 	unsigned int i;
 	ssize_t len = 0;
+	ssize_t write_cnt = (ssize_t)((PAGE_SIZE / LV_END) - 2);
 
 	for (i = LV_0; i < LV_END; i++)
-		len += sprintf(buf + len, "%ld %llu\n", int_bus_opp_list[i].clk,
+		len += snprintf(buf + len, write_cnt, "%ld %llu\n", int_bus_opp_list[i].clk,
 				(unsigned long long)int_bus_opp_list[i].time_in_state);
 
 	return len;
 }
 
-static DEVICE_ATTR(int_time_in_state, 0644, int_show_state, NULL);
+static DEVICE_ATTR(int_time_in_state, S_IRUSR | S_IRGRP, int_show_state, NULL);
 
 static ssize_t show_upthreshold(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%d\n", exynos5_int_governor_data.upthreshold);
+	return snprintf(buf, PAGE_SIZE, "%d\n", exynos5_int_governor_data.upthreshold);
 }
 
 static ssize_t store_upthreshold(struct device *dev,
@@ -799,11 +787,12 @@ out:
 	return count;
 }
 
-static DEVICE_ATTR(upthreshold, S_IRUGO | S_IWUSR, show_upthreshold, store_upthreshold);
+static DEVICE_ATTR(upthreshold, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP,
+		show_upthreshold, store_upthreshold);
 
 static ssize_t show_target_percentage(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%d\n", exynos5_int_governor_data.target_percentage);
+	return snprintf(buf, PAGE_SIZE, "%d\n", exynos5_int_governor_data.target_percentage);
 }
 
 static ssize_t store_target_percentage(struct device *dev,
@@ -822,11 +811,12 @@ out:
 	return count;
 }
 
-static DEVICE_ATTR(target_percentage, S_IRUGO | S_IWUSR, show_target_percentage, store_target_percentage);
+static DEVICE_ATTR(target_percentage, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP,
+		show_target_percentage, store_target_percentage);
 
 static ssize_t show_proportional(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%d\n", exynos5_int_governor_data.proportional);
+	return snprintf(buf, PAGE_SIZE, "%d\n", exynos5_int_governor_data.proportional);
 }
 
 static ssize_t store_proportional(struct device *dev,
@@ -845,11 +835,12 @@ out:
 	return count;
 }
 
-static DEVICE_ATTR(proportional, S_IRUGO | S_IWUSR, show_proportional, store_proportional);
+static DEVICE_ATTR(proportional, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP,
+		show_proportional, store_proportional);
 
 static ssize_t show_en_profile(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", en_profile ? "true" : "false");
+	return snprintf(buf, PAGE_SIZE, "%s\n", en_profile ? "true" : "false");
 }
 
 static ssize_t store_en_profile(struct device *dev,
@@ -872,7 +863,8 @@ out:
 	return count;
 }
 
-static DEVICE_ATTR(en_profile, S_IRUGO | S_IWUSR, show_en_profile, store_en_profile);
+static DEVICE_ATTR(en_profile, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP,
+		show_en_profile, store_en_profile);
 
 static struct attribute *busfreq_int_entries[] = {
 	&dev_attr_int_time_in_state.attr,
@@ -891,6 +883,7 @@ static ssize_t show_freq_table(struct device *dev, struct device_attribute *attr
 {
 	int i, count = 0;
 	struct opp *opp;
+	ssize_t write_cnt = (ssize_t)((PAGE_SIZE / ARRAY_SIZE(int_bus_opp_list)) - 2);
 
 	if (!unlikely(int_dev)) {
 		pr_err("%s: device is not probed\n", __func__);
@@ -901,20 +894,20 @@ static ssize_t show_freq_table(struct device *dev, struct device_attribute *attr
 	for (i = 0; i < ARRAY_SIZE(int_bus_opp_list); i++) {
 		opp = opp_find_freq_exact(int_dev, int_bus_opp_list[i].clk, true);
 		if (!IS_ERR_OR_NULL(opp))
-			count += sprintf(&buf[count], "%lu ", opp_get_freq(opp));
+			count += snprintf(&buf[count], write_cnt, "%lu ", opp_get_freq(opp));
 	}
 	rcu_read_unlock();
 
-	count += sprintf(&buf[count], "\n");
+	count += snprintf(&buf[count], 2, "\n");
 	return count;
 }
 
-static DEVICE_ATTR(freq_table, S_IRUGO, show_freq_table, NULL);
+static DEVICE_ATTR(freq_table, S_IRUSR | S_IRGRP, show_freq_table, NULL);
 
 static ssize_t show_en_monitoring(struct device *dev, struct device_attribute *attr,
 				  char *buf)
 {
-	return sprintf(buf, "%s\n",
+	return snprintf(buf, PAGE_SIZE, "%s\n",
 			exynos5_int_governor_data.en_monitoring ? "true" : "false");
 }
 
@@ -934,7 +927,7 @@ static ssize_t store_en_monitoring(struct device *dev, struct device_attribute *
 	return count;
 }
 
-static DEVICE_ATTR(en_monitoring, S_IRUGO | S_IWUSR,
+static DEVICE_ATTR(en_monitoring, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP,
 			show_en_monitoring, store_en_monitoring);
 
 static struct exynos_devfreq_platdata default_qos_int_pd = {
@@ -1079,7 +1072,9 @@ static __devinit int exynos5_busfreq_int_probe(struct platform_device *pdev)
 		pdata = &default_qos_int_pd;
 
 	pm_qos_add_request(&exynos5_int_qos, PM_QOS_DEVICE_THROUGHPUT, pdata->default_qos);
+#ifdef CONFIG_ARM_EXYNOS5410_CPUFREQ
 	pm_qos_add_request(&exynos5_cpu_int_qos, PM_QOS_DEVICE_THROUGHPUT, 400000);
+#endif
 
 	register_reboot_notifier(&exynos5_int_reboot_notifier);
 

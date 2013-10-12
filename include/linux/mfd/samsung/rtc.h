@@ -94,10 +94,6 @@ enum s5m87xx_rtc_reg {
 
 #define RTC_WUDR_SHIFT		4
 #define RTC_WUDR_MASK		(1 << RTC_WUDR_SHIFT)
-#if defined(CONFIG_RTC_ALARM_BOOT)
-#define RTC_WAKE_SHIFT		3
-#define RTC_WAKE_MASK		(1 << RTC_WAKE_SHIFT)
-#endif
 #define RTC_TCON_SHIFT		2
 #define RTC_TCON_MASK		(1 << RTC_TCON_SHIFT)
 #define RTC_RUDR_SHIFT		0
@@ -113,22 +109,9 @@ enum s5m87xx_rtc_reg {
 
 #define SMPL_ENABLE_SHIFT	7
 #define SMPL_ENABLE_MASK	(1 << SMPL_ENABLE_SHIFT)
-#define SMPL_TIMER_SHIFT	2
-#define SMPL_TIMER_MASK		(3 << SMPL_TIMER_SHIFT)
-#define SMPL_TIMER_05		0
-#define SMPL_TIMER_10		1
-#define SMPL_TIMER_15		2
-#define SMPL_TIMER_20		3
 
 #define WTSR_ENABLE_SHIFT	6
 #define WTSR_ENABLE_MASK	(1 << WTSR_ENABLE_SHIFT)
-#define WTSR_TIMER_SHIFT	0
-#define WTSR_TIMER_MASK		(3 << WTSR_TIMER_SHIFT)
-#define WTSR_TIMER_025		0
-#define WTSR_TIMER_05		1
-#define WTSR_TIMER_075		2
-#define WTSR_TIMER_10		3
-
 #define RTCA0E			(1<<2)
 #define RTCA1E			(1<<1)
 

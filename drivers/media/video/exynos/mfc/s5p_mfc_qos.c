@@ -23,7 +23,7 @@
 #include "s5p_mfc_pm.h"
 #include "s5p_mfc_reg.h"
 
-#ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
+#ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 enum {
 	MFC_QOS_ADD,
 	MFC_QOS_UPDATE,
@@ -35,8 +35,6 @@ void mfc_qos_operate(struct s5p_mfc_ctx *ctx, int opr_type, int idx)
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_platdata *pdata = dev->pdata;
 	struct s5p_mfc_qos *qos_table = pdata->qos_table;
-	struct s5p_mfc_pm *pm = &dev->pm;
-	int ret;
 
 	switch (opr_type) {
 	case MFC_QOS_ADD:

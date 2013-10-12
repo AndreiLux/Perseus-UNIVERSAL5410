@@ -22,6 +22,7 @@
 #include <linux/platform_device.h>
 #include <linux/atomic.h>
 #include <linux/mutex.h>
+#include <linux/pm_qos.h>
 #include <plat/fimg2d.h>
 #ifdef CCI_SNOOP
 #include <plat/cci.h>
@@ -31,6 +32,7 @@
 
 #define to_fimg2d_plat(d)	(to_platform_device(d)->dev.platform_data)
 #define ip_is_g2d_5a()		(fimg2d_ip_version_is() == IP_VER_G2D_5A)
+#define ip_is_g2d_5ar()		(fimg2d_ip_version_is() == IP_VER_G2D_5AR)
 #define ip_is_g2d_5g()		(fimg2d_ip_version_is() == IP_VER_G2D_5G)
 #define ip_is_g2d_4p()		(fimg2d_ip_version_is() == IP_VER_G2D_4P)
 
@@ -79,6 +81,11 @@ enum debug_level {
 #define FIMG2D_BITBLT_SYNC	_IOW(FIMG2D_IOCTL_MAGIC, 1, int)
 #define FIMG2D_BITBLT_VERSION	_IOR(FIMG2D_IOCTL_MAGIC, 2, struct fimg2d_version)
 #define FIMG2D_BITBLT_ACTIVATE	_IOW(FIMG2D_IOCTL_MAGIC, 3, enum driver_act)
+
+enum fimg2d_qos_status {
+	FIMG2D_QOS_ON = 0,
+	FIMG2D_QOS_OFF
+};
 
 enum driver_act {
 	DRV_ACT = 0,
@@ -271,7 +278,7 @@ enum blit_op {
 	/* end of blit operation */
 	BLIT_OP_END,
 };
-#define MAX_FIMG2D_BLIT_OP (int)BLIT_OP_END
+#define MAX_FIMG2D_BLIT_OP	((int)BLIT_OP_END)
 
 #ifdef __KERNEL__
 
@@ -510,6 +517,9 @@ struct fimg2d_control {
 	wait_queue_head_t wait_q;
 	struct list_head cmd_q;
 	struct workqueue_struct *work_q;
+	struct pm_qos_request exynos5_g2d_cpu_qos;
+	struct pm_qos_request exynos5_g2d_mif_qos;
+	struct pm_qos_request exynos5_g2d_int_qos;
 
 	int (*blit)(struct fimg2d_control *ctrl);
 	int (*configure)(struct fimg2d_control *ctrl,
@@ -523,7 +533,23 @@ struct fimg2d_control {
 int fimg2d_register_ops(struct fimg2d_control *ctrl);
 int fimg2d_ip_version_is(void);
 int bit_per_pixel(struct fimg2d_image *img, int plane);
-inline int width2bytes(int width, int bpp);
+
+static inline int width2bytes(int width, int bpp)
+{
+	switch (bpp) {
+	case 32:
+	case 24:
+	case 16:
+	case 8:
+		return (width * bpp) >> 3;
+	case 1:
+		return (width + 7) >> 3;
+	case 4:
+		return (width + 1) >> 1;
+	default:
+		return 0;
+	}
+}
 
 #ifdef BLIT_WORKQUE
 #define g2d_lock(x)		do {} while (0)

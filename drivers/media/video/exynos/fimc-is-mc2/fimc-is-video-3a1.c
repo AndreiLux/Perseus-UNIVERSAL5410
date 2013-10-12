@@ -132,9 +132,9 @@ p_err:
 static int fimc_is_3a1_video_close(struct file *file)
 {
 	int ret = 0;
-	struct fimc_is_video_ctx *vctx;
-	struct fimc_is_video *video;
-	struct fimc_is_device_ischain *device;
+	struct fimc_is_video_ctx *vctx = NULL;
+	struct fimc_is_video *video = NULL;
+	struct fimc_is_device_ischain *device = NULL;
 
 	BUG_ON(!file);
 

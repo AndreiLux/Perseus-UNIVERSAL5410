@@ -23,7 +23,13 @@
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 #include "multi_config.h"
 #endif
-
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+#ifdef CONFIG_USB_GADGET_SUPERSPEED
+#include <linux/power_supply.h>
+#define PSY_CHG_NAME "battery"
+extern void usb30_redriver_en(int enable);
+#endif
+#endif
 /*
  * The code in this file is utility code, used to build a gadget driver
  * from one or more "function" drivers, one or more "configuration"
@@ -374,7 +380,8 @@ static int config_buf(struct usb_configuration *config,
 #endif
 	c->iConfiguration = config->iConfiguration;
 	c->bmAttributes = USB_CONFIG_ATT_ONE | config->bmAttributes;
-	c->bMaxPower = config->bMaxPower ? : (CONFIG_USB_GADGET_VBUS_DRAW / 2);
+	c->bMaxPower = config->bMaxPower ? :
+		(CONFIG_USB_GADGET_VBUS_DRAW / config->cdev->vbus_draw_units);
 
 	/* There may be e.g. OTG descriptors */
 	if (config->descriptors) {
@@ -548,7 +555,7 @@ static int bos_desc(struct usb_composite_dev *cdev)
 	usb_ext->bLength = USB_DT_USB_EXT_CAP_SIZE;
 	usb_ext->bDescriptorType = USB_DT_DEVICE_CAPABILITY;
 	usb_ext->bDevCapabilityType = USB_CAP_TYPE_EXT;
-	usb_ext->bmAttributes = cpu_to_le32(USB_LPM_SUPPORT);
+	usb_ext->bmAttributes = 0;
 
 	/*
 	 * The Superspeed USB Capability descriptor shall be implemented by all
@@ -720,7 +727,8 @@ static int set_config(struct usb_composite_dev *cdev,
 	}
 
 	/* when we return, be sure our power usage is valid */
-	power = c->bMaxPower ? (2 * c->bMaxPower) : CONFIG_USB_GADGET_VBUS_DRAW;
+	power = c->bMaxPower ? (cdev->vbus_draw_units * c->bMaxPower) :
+			CONFIG_USB_GADGET_VBUS_DRAW;
 done:
 	usb_gadget_vbus_draw(gadget, power);
 	if (result >= 0 && cdev->delayed_status)
@@ -942,7 +950,6 @@ static int get_string(struct usb_composite_dev *cdev,
 			collect_langs(sp, s->wData);
 
 		list_for_each_entry(c, &cdev->configs, list) {
-
 			sp = c->strings;
 			if (sp)
 				collect_langs(sp, s->wData);
@@ -1164,12 +1171,16 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 				count_configs(cdev, USB_DT_DEVICE);
 			cdev->desc.bMaxPacketSize0 =
 				cdev->gadget->ep0->maxpacket;
+			cdev->vbus_draw_units = 2;
 			if (gadget_is_superspeed(gadget)) {
 				if (gadget->speed >= USB_SPEED_SUPER) {
 					cdev->desc.bcdUSB = cpu_to_le16(0x0300);
 					cdev->desc.bMaxPacketSize0 = 9;
+					cdev->vbus_draw_units = 8;
+					DBG(cdev, "Config SS device in SS\n");
 				} else {
 					cdev->desc.bcdUSB = cpu_to_le16(0x0210);
+					DBG(cdev, "Config SS device in HS\n");
 				}
 			}
 
@@ -1229,6 +1240,20 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 		value = set_config(cdev, ctrl, w_value);
 		spin_unlock(&cdev->lock);
 		printk(KERN_DEBUG "usb: SET_CON\n");
+		if(value == 0) {
+			if(w_value)
+				set_config_number(w_value - 1);
+		}
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+#ifdef CONFIG_USB_GADGET_SUPERSPEED
+		if(gadget->speed >= USB_SPEED_SUPER) {
+			if(get_host_os_type() == 0) {
+				usb30_redriver_en(0);
+				pr_err("usb: %s redriver disabled \n",__func__);
+			}
+		}
+#endif
+#endif
 		break;
 	case USB_REQ_GET_CONFIGURATION:
 		if (ctrl->bRequestType != USB_DIR_IN)
@@ -1638,7 +1663,8 @@ composite_resume(struct usb_gadget *gadget)
 		maxpower = cdev->config->bMaxPower;
 
 		usb_gadget_vbus_draw(gadget, maxpower ?
-			(2 * maxpower) : CONFIG_USB_GADGET_VBUS_DRAW);
+			(cdev->vbus_draw_units * maxpower) :
+			CONFIG_USB_GADGET_VBUS_DRAW);
 	}
 
 	cdev->suspended = 0;

@@ -20,12 +20,29 @@
 
 #include <plat/iovmm.h>
 #include <plat/sysmmu.h>
+#include <plat/cpu.h>
 
 #include <mach/sysmmu.h>
 
 #include "exynos-iommu.h"
 
-#define IOVM_BITMAP_SIZE (IOVM_SIZE / PAGE_SIZE)
+#define SZ_768M (SZ_512M + SZ_256M)
+
+static int find_iovm_id(struct exynos_iovmm *vmm,
+		struct exynos_vm_region *region)
+{
+	int i;
+
+	if (region->start < IOVA_START || region->start > (IOVA_START + IOVM_SIZE))
+			return -EINVAL;
+
+	for (i = 0; i < MAX_NUM_PLANE; i++) {
+		if (region->start < (vmm->iova_start[i] + vmm->iovm_size[i]))
+			return i;
+	}
+	return -EINVAL;
+}
+
 
 /* alloc_iovm_region - Allocate IO virtual memory region
  * vmm: virtual memory allocator
@@ -48,23 +65,29 @@
  */
 static dma_addr_t alloc_iovm_region(struct exynos_iovmm *vmm, size_t size,
 			size_t align, size_t max_align, size_t exact_align_mask,
-			off_t offset)
+			off_t offset, int id)
 {
 	dma_addr_t index = 0;
+	dma_addr_t vstart;
+	size_t vsize;
 	unsigned long end, i;
 	struct exynos_vm_region *region;
+	size_t dummy_size;
 
 	BUG_ON(align & (align - 1));
 	BUG_ON(offset >= PAGE_SIZE);
 
-	size >>= PAGE_SHIFT;
+	/* To avoid allocating prefetched iovm region */
+	vsize = ALIGN(size + SZ_256K, SZ_256K) >> PAGE_SHIFT;
+	dummy_size = (vsize << PAGE_SHIFT) - size;
 	align >>= PAGE_SHIFT;
 	exact_align_mask >>= PAGE_SHIFT;
 	max_align >>= PAGE_SHIFT;
 
 	spin_lock(&vmm->bitmap_lock);
 again:
-	index = find_next_zero_bit(vmm->vm_map, IOVM_BITMAP_SIZE, index);
+	index = find_next_zero_bit(vmm->vm_map[id],
+			IOVM_NUM_PAGES(vmm->iovm_size[id]), index);
 
 	if (align) {
 		if (exact_align_mask) {
@@ -76,51 +99,77 @@ again:
 			index = ALIGN(index, align);
 		}
 
-		if (index >= IOVM_BITMAP_SIZE) {
+		if (index >= IOVM_NUM_PAGES(vmm->iovm_size[id])) {
 			spin_unlock(&vmm->bitmap_lock);
 			return 0;
 		}
 
-		if (test_bit(index, vmm->vm_map))
+		if (test_bit(index, vmm->vm_map[id]))
 			goto again;
 	}
 
-	end = index + size;
+	end = index + vsize;
 
-	if (end >= IOVM_BITMAP_SIZE) {
+	if (end >= IOVM_NUM_PAGES(vmm->iovm_size[id])) {
 		spin_unlock(&vmm->bitmap_lock);
 		return 0;
 	}
 
-	i = find_next_bit(vmm->vm_map, end, index);
+	i = find_next_bit(vmm->vm_map[id], end, index);
 	if (i < end) {
 		index = i + 1;
 		goto again;
 	}
 
-	bitmap_set(vmm->vm_map, index, size);
+	bitmap_set(vmm->vm_map[id], index, vsize);
 
 	spin_unlock(&vmm->bitmap_lock);
 
+	vstart = (index << PAGE_SHIFT) + vmm->iova_start[id] + offset;
+	if (((vstart + size - 1) >> 20) != ((vstart + size + dummy_size - 1) >> 20)) {
+		dma_addr_t dummy_start = (vstart + size + dummy_size - 1) & ~0xFFF;
+		lv2_dummy_map(vmm->domain, dummy_start);
+	}
+
 	region = kmalloc(sizeof(*region), GFP_KERNEL);
-	if (!region) {
+	if (unlikely(!region)) {
 		spin_lock(&vmm->bitmap_lock);
-		bitmap_clear(vmm->vm_map, index, size);
+		bitmap_clear(vmm->vm_map[id], index, vsize);
 		spin_unlock(&vmm->bitmap_lock);
 		return 0;
 	}
 
 	INIT_LIST_HEAD(&region->node);
-	region->start = (index << PAGE_SHIFT) + IOVA_START + offset;
-	region->size = size << PAGE_SHIFT;
+	region->start = vstart;
+	region->size = vsize << PAGE_SHIFT;
 
 	spin_lock(&vmm->vmlist_lock);
 	list_add_tail(&region->node, &vmm->regions_list);
-	vmm->allocated_size += region->size;
-	vmm->num_areas++;
+	vmm->allocated_size[id] += region->size;
+	vmm->num_areas[id]++;
 	spin_unlock(&vmm->vmlist_lock);
 
 	return region->start;
+}
+
+struct exynos_vm_region *find_iovm_region(struct exynos_iovmm *vmm,
+							dma_addr_t iova)
+{
+	struct exynos_vm_region *region;
+
+	spin_lock(&vmm->vmlist_lock);
+
+	list_for_each_entry(region, &vmm->regions_list, node) {
+		if (region->start <= iova &&
+			(region->start + region->size) > iova) {
+			spin_unlock(&vmm->vmlist_lock);
+			return region;
+		}
+	}
+
+	spin_unlock(&vmm->vmlist_lock);
+
+	return NULL;
 }
 
 static struct exynos_vm_region *remove_iovm_region(struct exynos_iovmm *vmm,
@@ -132,9 +181,15 @@ static struct exynos_vm_region *remove_iovm_region(struct exynos_iovmm *vmm,
 
 	list_for_each_entry(region, &vmm->regions_list, node) {
 		if (region->start == iova) {
+			int id;
+
+			id = find_iovm_id(vmm, region);
+			if (id < 0)
+				continue;
+
 			list_del(&region->node);
-			vmm->allocated_size -= region->size;
-			vmm->num_areas--;
+			vmm->allocated_size[id] -= region->size;
+			vmm->num_areas[id]--;
 			spin_unlock(&vmm->vmlist_lock);
 			return region;
 		}
@@ -148,17 +203,21 @@ static struct exynos_vm_region *remove_iovm_region(struct exynos_iovmm *vmm,
 static void free_iovm_region(struct exynos_iovmm *vmm,
 				struct exynos_vm_region *region)
 {
+	int id;
+
 	if (!region)
 		return;
 
-	if (region->start < IOVA_START) {
+	id = find_iovm_id(vmm, region);
+	if (id < 0) {
 		kfree(region);
 		return;
 	}
 
 	spin_lock(&vmm->bitmap_lock);
-	bitmap_clear(vmm->vm_map, (region->start - IOVA_START) >> PAGE_SHIFT,
-						region->size >> PAGE_SHIFT);
+	bitmap_clear(vmm->vm_map[id],
+			(region->start - vmm->iova_start[id]) >> PAGE_SHIFT,
+			region->size >> PAGE_SHIFT);
 	spin_unlock(&vmm->bitmap_lock);
 
 	kfree(region);
@@ -240,7 +299,7 @@ void iovmm_deactivate(struct device *dev)
  * function with IS_ERR_VALUE().
  */
 dma_addr_t iovmm_map(struct device *dev, struct scatterlist *sg, off_t offset,
-								size_t size)
+		size_t size, enum dma_data_direction direction, int id)
 {
 	off_t start_off;
 	dma_addr_t addr, start = 0;
@@ -251,6 +310,11 @@ dma_addr_t iovmm_map(struct device *dev, struct scatterlist *sg, off_t offset,
 	int ret = 0;
 	struct scatterlist *tsg;
 
+	if ((id < 0) || (id >= MAX_NUM_PLANE)) {
+		dev_err(dev, "%s: Invalid plane ID %d\n", __func__, id);
+		return -EINVAL;
+	}
+
 	for (; (sg != NULL) && (sg_dma_len(sg) < offset); sg = sg_next(sg))
 		offset -= sg_dma_len(sg);
 
@@ -259,10 +323,22 @@ dma_addr_t iovmm_map(struct device *dev, struct scatterlist *sg, off_t offset,
 		return -EINVAL;
 	}
 
+	if (soc_is_exynos5410())
+		id = 0;
+	else if (direction != DMA_TO_DEVICE)
+		id += vmm->inplanes;
+
+	if (id >= (vmm->inplanes + vmm->onplanes)) {
+		dev_err(dev, "%s: id(%d) is larger than the number of IOVMs\n",
+				__func__, id);
+		return -EINVAL;
+	}
+
 	tsg = sg;
 
 	start_off = offset_in_page(sg_phys(sg) + offset);
 	size = PAGE_ALIGN(size + start_off);
+	offset = round_down(offset, PAGE_SIZE);
 
 	if (size >= SECT_SIZE)
 		max_align = SECT_SIZE;
@@ -295,18 +371,14 @@ dma_addr_t iovmm_map(struct device *dev, struct scatterlist *sg, off_t offset,
 	}
 
 	start = alloc_iovm_region(vmm, size, align, max_align,
-				exact_align_mask, start_off);
+				exact_align_mask, start_off, id);
 	if (!start) {
 		spin_lock(&vmm->vmlist_lock);
-		dev_info(dev, "%s: Not enough IOVM space to allocate %#x/%#x\n",
+		dev_err(dev, "%s: Not enough IOVM space to allocate %#x/%#x\n",
 				__func__, size, align);
-		dev_info(dev, "%s: Total %#x , Free %#x , Chunks %d\n",
+		dev_err(dev, "%s: Total %#x , Free %#x , Chunks %d\n",
 				__func__, IOVM_SIZE,
-				vmm->allocated_size, vmm->num_areas);
-		spin_unlock(&vmm->vmlist_lock);
-#ifdef CONFIG_SEC_DEBUG_IOVMM
-		panic("iovmm_map: alloc_iovm_region failed");
-#endif
+				vmm->allocated_size[id], vmm->num_areas[id]);
 		ret = -ENOMEM;
 		goto err_map_nomem;
 	}
@@ -486,13 +558,26 @@ void iovmm_unmap_oto(struct device *dev, phys_addr_t phys)
 	}
 }
 
-int exynos_create_iovmm(struct device *dev)
+int exynos_create_iovmm(struct device *dev, int inplanes, int onplanes)
 {
-	int ret = 0;
+	static unsigned long iovmcfg[MAX_NUM_PLANE][MAX_NUM_PLANE] = {
+		{IOVM_SIZE, 0, 0, 0, 0, 0},
+		{SZ_2G, IOVM_SIZE - SZ_2G, 0, 0, 0, 0},
+		{SZ_1G + SZ_256M, SZ_1G, SZ_1G, 0, 0, 0},
+		{SZ_1G, SZ_768M, SZ_768M, SZ_768M , 0, 0},
+		{SZ_768M, SZ_768M, SZ_768M, SZ_512M, SZ_512M, 0},
+		{SZ_1G, SZ_512M, SZ_256M, SZ_768M, SZ_512M, SZ_256M},
+		};
+	int i, nplanes, ret = 0;
+	size_t sum_iovm = 0;
 	struct exynos_iovmm *vmm;
 	struct exynos_iommu_owner *owner = dev->archdata.iommu;
 
-	if (WARN_ON(!owner)) {
+	if (owner->vmm_data)
+		return 0;
+
+	nplanes = inplanes + onplanes;
+	if (WARN_ON(!owner) || nplanes > MAX_NUM_PLANE || nplanes < 1) {
 		ret = -ENOSYS;
 		goto err_alloc_vmm;
 	}
@@ -503,14 +588,22 @@ int exynos_create_iovmm(struct device *dev)
 		goto err_alloc_vmm;
 	}
 
-	vmm->vm_map = kzalloc(
-		ALIGN(IOVM_BITMAP_SIZE, BITS_PER_BYTE) / BITS_PER_BYTE,
-		GFP_KERNEL);
-	if (!vmm->vm_map) {
-		ret = -ENOMEM;
-		goto err_alloc_vmm_map;
+	for (i = 0; i < nplanes; i++) {
+		vmm->iovm_size[i] = iovmcfg[nplanes - 1][i];
+		vmm->iova_start[i] = IOVA_START + sum_iovm;
+		vmm->vm_map[i] = kzalloc(IOVM_BITMAP_SIZE(vmm->iovm_size[i]),
+					 GFP_KERNEL);
+		if (!vmm->vm_map[i]) {
+			ret = -ENOMEM;
+			goto err_setup_domain;
+		}
+		sum_iovm += iovmcfg[nplanes - 1][i];
+		dev_info(dev, "IOVMM: IOVM SIZE = %#x B, IOVMM from %#x.\n",
+				vmm->iovm_size[i], vmm->iova_start[i]);
 	}
 
+	vmm->inplanes = inplanes;
+	vmm->onplanes = onplanes;
 	vmm->domain = iommu_domain_alloc(&platform_bus_type);
 	if (!vmm->domain) {
 		ret = -ENOMEM;
@@ -529,8 +622,8 @@ int exynos_create_iovmm(struct device *dev)
 						IOVM_SIZE, IOVA_START);
 	return 0;
 err_setup_domain:
-	kfree(vmm->vm_map);
-err_alloc_vmm_map:
+	for (i = 0; i < nplanes; i++)
+		kfree(vmm->vm_map[i]);
 	kfree(vmm);
 err_alloc_vmm:
 	dev_dbg(dev, "IOVMM: Failed to create IOVMM (%d)\n", ret);

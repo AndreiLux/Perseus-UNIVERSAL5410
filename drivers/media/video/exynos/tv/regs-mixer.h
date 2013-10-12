@@ -61,7 +61,8 @@
 /* after EXYNOS5250 for video layer transfered from Gscaler */
 #define MXR_VIDEO_LT			0x0090
 #define MXR_VIDEO_RB			0x0094
-
+/* after is_ip_ver_5s for mixer resolution setting */
+#define MXR_RESOLUTION			0x0310
 /* after EXYNOS4212 for setting 3D */
 #define MXR_TVOUT_CFG			0x0100
 #define MXR_3D_ACTIVE_VIDEO		0x0104
@@ -158,7 +159,9 @@
 #define MXR_CFG_SCAN_HD			(1 << 0)
 #define MXR_CFG_SCAN_MASK		0x47
 #define MXR_CFG_COLOR_RANGE(x)		MXR_MASK_VAL(x, 10, 9)
-
+/*bits for MXR_RESOLUTION */
+#define MXR_RESOLUTION_WIDTH(x)		(x << 0)
+#define MXR_RESOLUTION_HEIGHT(x)	(x << 16)
 /* bits for MXR_GRAPHICn_CFG */
 #define MXR_GRP_CFG_BLANK_KEY_EN	(1 << 21)
 #define MXR_GRP_CFG_LAYER_BLEND_EN	(1 << 17)

@@ -69,8 +69,10 @@ void enable_cci_snoops(unsigned int cluster_id)
 	if (!cci_enabled)
 		return;
 
-	if (samsung_rev() < EXYNOS5410_REV_1_0)
-		cluster_id ^= 1;
+	if (soc_is_exynos5410()) {
+		if (samsung_rev() < EXYNOS5410_REV_1_0)
+			cluster_id ^= 1;
+	}
 
 	if (cluster_id)
 		control_reg = CCI_A7_SL_IFACE(cci_base) + SNOOP_CTLR_REG;
@@ -97,8 +99,10 @@ void disable_cci_snoops(unsigned int cluster_id)
 	if (!cci_enabled)
 		return;
 
-	if (samsung_rev() < EXYNOS5410_REV_1_0)
-		cluster_id ^= 1;
+	if (soc_is_exynos5410()) {
+		if (samsung_rev() < EXYNOS5410_REV_1_0)
+			cluster_id ^= 1;
+	}
 
 	if (cluster_id)
 		control_reg = CCI_A7_SL_IFACE(cci_base) + SNOOP_CTLR_REG;
@@ -269,7 +273,7 @@ static int __init cci_init(void)
 	int err;
 
 #if defined(CONFIG_EXYNOS5_CCI)
-	if (soc_is_exynos5410())
+	if (soc_is_exynos5410() || soc_is_exynos5420())
 		cci_enabled = 1;
 #endif
 
@@ -280,7 +284,8 @@ static int __init cci_init(void)
 		writel(0x1, core_misc_base);
 
 #ifndef CONFIG_EXYNOS5_CCI
-		cci_check_hw();
+		if (soc_is_exynos5410())
+			cci_check_hw();
 #endif
 		goto disabled;
 	}

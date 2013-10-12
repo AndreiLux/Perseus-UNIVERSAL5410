@@ -30,12 +30,6 @@ unsigned int g_mif_maxvol;
 #endif
 static unsigned int exynos5_volt_offset;
 
-#if defined(CONFIG_MACH_JA_KOR_SKT) || defined(CONFIG_MACH_JA_KOR_KT) ||\
-	defined(CONFIG_MACH_JA_KOR_LGT) ||defined(CONFIG_TARGET_LOCALE_CHN) ||\
-	defined(CONFIG_TARGET_LOCALE_EUR)
-extern unsigned int system_rev;
-#endif
-
 struct mutex voltlock;
 
 struct exynos5_volt_info exynos5_vdd_int = {
@@ -46,11 +40,9 @@ struct exynos5_volt_info exynos5_vdd_mif = {
 	.idx	= VDD_MIF,
 };
 
-#if defined(CONFIG_REGULATOR_S2MPS11)
 struct exynos5_volt_info exynos5_vdd_memio = {
 	.idx	= VDD_MEMIO,
 };
-#endif
 
 enum exynos5_int_idx {
 	INT_L0,
@@ -209,7 +201,7 @@ static void volt_checkup(unsigned int number)
 
 	if ((int_volt - mif_volt) > UPPER_ALLOWED_SKEW && (int_volt > mif_volt)) {
 		pr_info("\n%d\n\nUpper skew violation!!!\nintvolt=%d, mifvolt=%d\n\n\n",
-				number ,int_volt, mif_volt);
+				number , int_volt, mif_volt);
 		BUG_ON(1);
 	}
 
@@ -360,32 +352,6 @@ int exynos5_volt_ctrl(enum exynos5_volt_id target,
 			pr_err("%s : Target freq is invalid\n", __func__);
 
 		calc_int = get_limit_voltage(target_int_volt_table[exynos5_vdd_int.cur_lv].volt);
-
-#if defined(CONFIG_TARGET_LOCALE_EUR) && defined(CONFIG_REGULATOR_S2MPS11)
-		if (system_rev == 0xa) {
-			if (target_freq == 800000) {
-				exynos5_vdd_memio.set_volt = 1250000; /* increase 50mV for Mem IO */
-				regulator_set_voltage(exynos5_vdd_memio.vdd_target,
-						exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
-			} else {
-				exynos5_vdd_memio.set_volt = 1200000;
-				regulator_set_voltage(exynos5_vdd_memio.vdd_target,
-						exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
-			}
-		}
-#elif defined(CONFIG_MACH_J_CHN_OPEN)
-		if (system_rev == 0xa) {
-			if (target_freq == 800000) {
-				exynos5_vdd_memio.set_volt = 1250000; /* increase 50mV for Mem IO */
-				regulator_set_voltage(exynos5_vdd_memio.vdd_target,
-						exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
-			} else {
-				exynos5_vdd_memio.set_volt = 1200000;
-				regulator_set_voltage(exynos5_vdd_memio.vdd_target,
-						exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
-			}
-		}
-#endif
 		break;
 	case VDD_MEMIO:
 		break;
@@ -443,7 +409,7 @@ int exynos5_volt_ctrl(enum exynos5_volt_id target,
 					SAFE_VOLT(prev_int - UPPER_ALLOWED_SKEW));
 			volt_checkup(60);
 			if ((is_skew_ok(calc_int, prev_int - UPPER_ALLOWED_SKEW))
-					|| (calc_int > prev_int - UPPER_ALLOWED_SKEW)){
+					|| (calc_int > prev_int - UPPER_ALLOWED_SKEW)) {
 				regulator_set_voltage(exynos5_vdd_int.vdd_target, calc_int, SAFE_VOLT(calc_int));
 				volt_checkup(61);
 				regulator_set_voltage(exynos5_vdd_mif.vdd_target, calc_mif, SAFE_VOLT(calc_mif));
@@ -562,7 +528,7 @@ int exynos5_volt_ctrl(enum exynos5_volt_id target,
 					SAFE_VOLT(prev_int - UPPER_ALLOWED_SKEW));
 			volt_checkup(160);
 			if ((is_skew_ok(calc_int, prev_int - UPPER_ALLOWED_SKEW))
-					|| (calc_int > prev_int - UPPER_ALLOWED_SKEW)){
+					|| (calc_int > prev_int - UPPER_ALLOWED_SKEW)) {
 				regulator_set_voltage(exynos5_vdd_int.vdd_target, calc_int, SAFE_VOLT(calc_int));
 				volt_checkup(161);
 				regulator_set_voltage(exynos5_vdd_mif.vdd_target, calc_mif, SAFE_VOLT(calc_mif));
@@ -669,37 +635,9 @@ static int exynos5_volt_ctrl_tmu_notifier(struct notifier_block *notifier,
 		exynos5_vdd_mif.set_volt = get_limit_voltage(prev_mif);
 		calc_int = exynos5_vdd_int.set_volt;
 		calc_mif = exynos5_vdd_mif.set_volt;
-#if defined(CONFIG_REGULATOR_S2MPS11)
-#if defined(CONFIG_MACH_JA_KOR_SKT) || defined(CONFIG_MACH_JA_KOR_KT)
-		if((system_rev == 4) || (system_rev == 6) || (system_rev == 9)){
-			pr_info("disable low temp volt\n");
-		}else{
-			exynos5_vdd_memio.set_volt = 1250000; /* increase 50mV for Mem IO */
-			regulator_set_voltage(exynos5_vdd_memio.vdd_target,
-					exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
-		}			
-#elif defined(CONFIG_MACH_JA_KOR_LGT)
-		if((4 < system_rev) && (9 > system_rev)){
-			pr_info("disable low temp volt\n");
-		}else{
 		exynos5_vdd_memio.set_volt = 1250000; /* increase 50mV for Mem IO */
 		regulator_set_voltage(exynos5_vdd_memio.vdd_target,
 				exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
-		}			
-#elif defined(CONFIG_MACH_J_CHN_CU)
-		if ((system_rev >= 0x05) && (system_rev < 0xb)) {
-			pr_info("disable low temp volt\n");
-		} else {
-		exynos5_vdd_memio.set_volt = 1250000; /* increase 50mV for Mem IO */
-		regulator_set_voltage(exynos5_vdd_memio.vdd_target,
-				exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
-		}			
-#else
-		exynos5_vdd_memio.set_volt = 1250000; /* increase 50mV for Mem IO */
-		regulator_set_voltage(exynos5_vdd_memio.vdd_target,
-				exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
-#endif
-#endif
 	} else {
 		if (exynos5_volt_offset != 0) {
 			exynos5_volt_offset = 0;
@@ -713,37 +651,9 @@ static int exynos5_volt_ctrl_tmu_notifier(struct notifier_block *notifier,
 		exynos5_vdd_mif.set_volt = get_limit_voltage(prev_mif - COLD_VOLT_OFFSET);
 		calc_int = exynos5_vdd_int.set_volt;
 		calc_mif = exynos5_vdd_mif.set_volt;
-#if defined(CONFIG_REGULATOR_S2MPS11)		
-#if defined(CONFIG_MACH_JA_KOR_SKT) || defined(CONFIG_MACH_JA_KOR_KT)
-		if((system_rev == 4) || (system_rev == 6) || (system_rev == 9)){
-			pr_info("disable low temp volt\n");
-		}else{
-			exynos5_vdd_memio.set_volt = 1200000; /* default Mem IO voltage */
-			regulator_set_voltage(exynos5_vdd_memio.vdd_target,
-					exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
-		}			
-#elif defined(CONFIG_MACH_JA_KOR_LGT)
-		if((4 < system_rev) && (9 > system_rev)){
-			pr_info("disable low temp volt\n");
-		}else{
-			exynos5_vdd_memio.set_volt = 1200000; /* default Mem IO voltage */
-			regulator_set_voltage(exynos5_vdd_memio.vdd_target,
-					exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
-		}			
-#elif defined(CONFIG_MACH_J_CHN_CU)
-		if ((system_rev >= 0x05) && (system_rev < 0xb)) {
-			pr_info("disable low temp volt\n");
-		} else {
-			exynos5_vdd_memio.set_volt = 1200000; /* default Mem IO voltage */
-			regulator_set_voltage(exynos5_vdd_memio.vdd_target,
-					exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
-		}			
-#else
 		exynos5_vdd_memio.set_volt = 1200000; /* default Mem IO voltage */
 		regulator_set_voltage(exynos5_vdd_memio.vdd_target,
 				exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
-#endif
-#endif
 	}
 #ifdef SKEW_DEBUG
 	pr_info("TMU Noti: offset=%d, prevInt=%d, prevMif=%d, int=%d, mif=%d\n",exynos5_volt_offset,
@@ -893,10 +803,10 @@ static int __init exynos5_volt_ctrl_init(void)
 
 	exynos5_vdd_mif.set_volt = regulator_get_voltage(exynos5_vdd_mif.vdd_target);
 	exynos5_vdd_mif.target_volt = exynos5_vdd_mif.set_volt;
+
 #ifdef SKEW_DEBUG
 	g_mif_maxvol = exynos5_vdd_mif.set_volt;
 #endif
-#if defined(CONFIG_REGULATOR_S2MPS11)
 	/* MEMIO Setting regulator inform */
 	exynos5_vdd_memio.vdd_target = regulator_get(NULL, "vdd_mem2");
 
@@ -907,7 +817,6 @@ static int __init exynos5_volt_ctrl_init(void)
 
 	exynos5_vdd_memio.set_volt = regulator_get_voltage(exynos5_vdd_memio.vdd_target);
 	exynos5_vdd_memio.target_volt = exynos5_vdd_memio.set_volt;
-#endif
 
 	exynos5_set_int_volt_list();
 
@@ -921,7 +830,6 @@ static int __init exynos5_volt_ctrl_init(void)
 #ifdef CONFIG_EXYNOS_THERMAL
 	exynos_tmu_add_notifier(&exynos5_volt_ctrl_tmu_nb);
 #endif
-
 	return err;
 }
 device_initcall(exynos5_volt_ctrl_init);
@@ -933,9 +841,8 @@ static void __exit exynos5_volt_ctrl_exit(void)
 
 	if (exynos5_vdd_mif.vdd_target)
 		regulator_put(exynos5_vdd_mif.vdd_target);
-#if defined(CONFIG_REGULATOR_S2MPS11)
+
 	if (exynos5_vdd_memio.vdd_target)
 		regulator_put(exynos5_vdd_memio.vdd_target);
-#endif
 }
 module_exit(exynos5_volt_ctrl_exit);

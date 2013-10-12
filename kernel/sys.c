@@ -123,7 +123,6 @@ EXPORT_SYMBOL(cad_pid);
 
 void (*pm_power_off_prepare)(void);
 
-/* Samsung Rooting Restriction Feature */
 #if defined CONFIG_SEC_RESTRICT_SETUID
 int sec_check_execpath(struct mm_struct *mm, char *denypath);
 #if defined CONFIG_SEC_RESTRICT_ROOTING_LOG
@@ -414,6 +413,7 @@ EXPORT_SYMBOL(unregister_reboot_notifier);
 void kernel_restart(char *cmd)
 {
 	kernel_restart_prepare(cmd);
+	disable_nonboot_cpus();
 	if (!cmd)
 		printk(KERN_EMERG "Restarting system.\n");
 	else

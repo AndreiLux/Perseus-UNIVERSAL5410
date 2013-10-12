@@ -244,7 +244,9 @@ static void s3c_adc_stop(struct s3c_adc_client *client)
 	if (adc_dev->cur == client) {
 		adc_dev->cur = NULL;
 		INIT_LIST_HEAD(&client->pend);
-	} if (adc_dev->ts_pend == client) {
+	}
+
+	if (adc_dev->ts_pend == client) {
 		adc_dev->ts_pend = NULL;
 	} else {
 		struct list_head *p, *n;

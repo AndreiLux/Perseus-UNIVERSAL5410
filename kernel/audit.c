@@ -185,7 +185,7 @@ void audit_panic(const char *message)
 	case AUDIT_FAIL_SILENT:
 		break;
 	case AUDIT_FAIL_PRINTK:
-		printk(KERN_ERR "audit: %s\n", message);
+			printk(KERN_ERR "audit: %s\n", message);
 		break;
 	case AUDIT_FAIL_PANIC:
 		/* test audit_pid since printk is always losey, why bother? */
@@ -421,7 +421,7 @@ static void kauditd_send_skb(struct sk_buff *skb)
 #endif
 		/* drop the extra reference if sent ok */
 		consume_skb(skb);
-	}
+}
 }
 
 static int kauditd_thread(void *dummy)

@@ -40,8 +40,12 @@ extern struct clk clk_fout_mpll;
 extern struct clk clk_fout_epll;
 extern struct clk clk_fout_dpll;
 extern struct clk clk_fout_vpll;
-extern struct clk clk_fout_ipll;
 extern struct clk clk_fout_kpll;
+#if defined(CONFIG_SOC_EXYNOS5420)
+extern struct clk clk_ipll;
+#else
+extern struct clk clk_fout_ipll;
+#endif
 extern struct clk clk_arm;
 extern struct clk clk_vpll;
 

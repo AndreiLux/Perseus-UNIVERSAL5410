@@ -434,9 +434,6 @@ static int jpeg_enc_m2m_reqbufs(struct file *file, void *priv,
 			  struct v4l2_requestbuffers *reqbufs)
 {
 	struct jpeg_ctx *ctx = priv;
-	struct vb2_queue *vq;
-
-	vq = v4l2_m2m_get_vq(ctx->m2m_ctx, reqbufs->type);
 
 	return v4l2_m2m_reqbufs(file, ctx->m2m_ctx, reqbufs);
 }

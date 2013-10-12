@@ -52,10 +52,25 @@ static void sec_fg_get_atomic_capacity(
 				struct sec_fuelgauge_info *fuelgauge,
 				union power_supply_propval *val)
 {
+	if (fuelgauge->pdata->capacity_calculation_type &
+		SEC_FUELGAUGE_CAPACITY_TYPE_ATOMIC) {
 	if (fuelgauge->capacity_old < val->intval)
 		val->intval = fuelgauge->capacity_old + 1;
 	else if (fuelgauge->capacity_old > val->intval)
 		val->intval = fuelgauge->capacity_old - 1;
+	}
+
+	/* keep SOC stable in abnormal status */
+	if (fuelgauge->pdata->capacity_calculation_type &
+		SEC_FUELGAUGE_CAPACITY_TYPE_SKIP_ABNORMAL) {
+		if (!fuelgauge->is_charging &&
+			fuelgauge->capacity_old < val->intval) {
+			dev_err(&fuelgauge->client->dev,
+				"%s: capacity (old %d : new %d)\n",
+				__func__, fuelgauge->capacity_old, val->intval);
+			val->intval = fuelgauge->capacity_old;
+		}
+	}
 
 	/* updated old capacity */
 	fuelgauge->capacity_old = val->intval;
@@ -125,7 +140,8 @@ static int sec_fg_get_property(struct power_supply *psy,
 			}
 
 			if (fuelgauge->pdata->capacity_calculation_type &
-				SEC_FUELGAUGE_CAPACITY_TYPE_ATOMIC)
+				(SEC_FUELGAUGE_CAPACITY_TYPE_ATOMIC |
+				 SEC_FUELGAUGE_CAPACITY_TYPE_SKIP_ABNORMAL))
 				sec_fg_get_atomic_capacity(fuelgauge, val);
 		}
 		break;
@@ -173,6 +189,8 @@ static int sec_fg_calculate_dynamic_scale(
 	dev_info(&fuelgauge->client->dev, "%s: %d is used for capacity_max\n",
 		__func__, fuelgauge->capacity_max);
 
+	fuelgauge->capacity_old = 100;
+
 	return fuelgauge->capacity_max;
 }
 
@@ -208,6 +226,7 @@ static int sec_fg_set_property(struct power_supply *psy,
 			else
 				break;
 		}
+	case POWER_SUPPLY_PROP_ENERGY_NOW:
 	case POWER_SUPPLY_PROP_TEMP:
 	case POWER_SUPPLY_PROP_TEMP_AMBIENT:
 		if (!sec_hal_fg_set_property(fuelgauge->client, psp, val))
@@ -333,7 +352,7 @@ static int __devinit sec_fuelgauge_probe(struct i2c_client *client,
 	int ret = 0;
 	union power_supply_propval raw_soc_val;
 
-	dev_dbg(&client->dev,
+	dev_info(&client->dev,
 		"%s: SEC Fuelgauge Driver Loading\n", __func__);
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE))
@@ -457,22 +476,23 @@ static int __devexit sec_fuelgauge_remove(
 	return 0;
 }
 
-static int sec_fuelgauge_suspend(
-				struct i2c_client *client, pm_message_t state)
+static int sec_fuelgauge_suspend(struct device *dev)
 {
-	if (!sec_hal_fg_suspend(client))
-		dev_err(&client->dev,
+	struct sec_fuelgauge_info *fuelgauge = dev_get_drvdata(dev);
+
+	if (!sec_hal_fg_suspend(fuelgauge->client))
+		dev_err(&fuelgauge->client->dev,
 			"%s: Failed to Suspend Fuelgauge\n", __func__);
 
 	return 0;
 }
 
-static int sec_fuelgauge_resume(struct i2c_client *client)
+static int sec_fuelgauge_resume(struct device *dev)
 {
-	struct sec_fuelgauge_info *fuelgauge = i2c_get_clientdata(client);
+	struct sec_fuelgauge_info *fuelgauge = dev_get_drvdata(dev);
 
-	if (!sec_hal_fg_resume(client))
-		dev_err(&client->dev,
+	if (!sec_hal_fg_resume(fuelgauge->client))
+		dev_err(&fuelgauge->client->dev,
 			"%s: Failed to Resume Fuelgauge\n", __func__);
 
 	fuelgauge->initial_update_of_soc = true;
@@ -489,16 +509,23 @@ static const struct i2c_device_id sec_fuelgauge_id[] = {
 	{}
 };
 
+static const struct dev_pm_ops sec_fuelgauge_pm_ops = {
+	.suspend = sec_fuelgauge_suspend,
+	.resume  = sec_fuelgauge_resume,
+};
+
 MODULE_DEVICE_TABLE(i2c, sec_fuelgauge_id);
 
 static struct i2c_driver sec_fuelgauge_driver = {
 	.driver = {
 		   .name = "sec-fuelgauge",
+		   	.owner = THIS_MODULE,
+#ifdef CONFIG_PM
+			.pm = &sec_fuelgauge_pm_ops,
+#endif
 		   },
 	.probe	= sec_fuelgauge_probe,
 	.remove	= __devexit_p(sec_fuelgauge_remove),
-	.suspend    = sec_fuelgauge_suspend,
-	.resume		= sec_fuelgauge_resume,
 	.shutdown   = sec_fuelgauge_shutdown,
 	.id_table   = sec_fuelgauge_id,
 };

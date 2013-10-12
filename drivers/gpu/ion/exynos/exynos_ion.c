@@ -28,6 +28,7 @@
 #include <linux/pagemap.h>
 #include <linux/dma-mapping.h>
 #include <linux/seq_file.h>
+#include <linux/oom.h>
 
 #include <asm/pgtable.h>
 
@@ -38,8 +39,10 @@ struct ion_device *ion_exynos;
 static int num_heaps;
 static struct ion_heap **heaps;
 
+extern int exynos_ion_debug_heap_show(struct ion_heap *heap);
+
 /* IMBUFS stands for "InterMediate BUFfer Storage" */
-#define IMBUFS_SHIFT	8
+#define IMBUFS_SHIFT	4
 #define IMBUFS_ENTRIES	(1 << IMBUFS_SHIFT)
 #define IMBUFS_MASK	(IMBUFS_ENTRIES - 1)	/* masking lower bits */
 #define MAX_LV0IMBUFS	IMBUFS_ENTRIES
@@ -414,13 +417,15 @@ static char *ion_exynos_contig_heap_type[ION_EXYNOS_MAX_CONTIG_ID] = {
 	"common",
 	"reserved",
 	"mfc_sh",
-	"g2d_wfd",
-	"fimd_video",
+	"msgbox_sh",
+	"video", /* compatibility link for fimd_video */
 	"gsc",
-	"mfc_output",
+	"video", /* compatibility link for mfc_output */
 	"mfc_input",
 	"mfc_fw",
 	"sectbl",
+	"g2d_wfd",
+	"video",
 };
 
 static int ion_exynos_contig_heap_allocate(struct ion_heap *heap,
@@ -493,6 +498,7 @@ static void ion_exynos_contig_heap_unmap_dma(struct ion_heap *heap,
 {
 	if (buffer->sg_table)
 		sg_free_table(buffer->sg_table);
+	kfree(buffer->sg_table);
 }
 
 static int ion_exynos_contig_heap_map_user(struct ion_heap *heap,
@@ -559,6 +565,10 @@ static void ion_exynos_contig_heap_showmem(struct ion_heap *heap)
 	for (i = 0; i < ION_EXYNOS_MAX_CONTIG_ID; i++) {
 		struct cma_info info;
 
+		/* skip for duplicated print out for video */
+		if ((i == 4) || (i == 6))
+			continue;
+
 		if (!contig_region_is_available(contig_heap, i))
 			continue;
 
@@ -588,6 +598,10 @@ static int ion_exynos_contig_heap_debug_show(struct ion_heap *heap,
 
 	for (i = 0; i < ION_EXYNOS_MAX_CONTIG_ID; i++) {
 		struct cma_info info;
+
+		/* skip for duplicated print out for video */
+		if ((i == 4) || (i == 6))
+			continue;
 
 		if (!contig_region_is_available(contig_heap, i))
 			continue;
@@ -623,8 +637,8 @@ static struct ion_heap *ion_exynos_contig_heap_create(struct device *dev)
 
 	heap->heap.ops = &contig_heap_ops;
 	heap->heap.type = ION_HEAP_TYPE_EXYNOS_CONTIG;
-	heap->heap.showmem = ion_exynos_contig_heap_showmem,
 	heap->heap.debug_show = ion_exynos_contig_heap_debug_show;
+	heap->heap.showmem = ion_exynos_contig_heap_showmem,
 	heap->dev = dev;
 
 	/* 0 is reserved for "common" type */
@@ -1030,8 +1044,6 @@ static long exynos_heap_ioctl(struct ion_client *client, unsigned int cmd,
 }
 #endif
 
-static struct ion_heap *contig_heap;
-
 static struct ion_heap *__ion_heap_create(struct ion_platform_heap *heap_data,
 					  struct device *dev)
 {
@@ -1043,7 +1055,6 @@ static struct ion_heap *__ion_heap_create(struct ion_platform_heap *heap_data,
 		break;
 	case ION_HEAP_TYPE_EXYNOS_CONTIG:
 		heap = ion_exynos_contig_heap_create(dev);
-		contig_heap = heap; /* fixme */
 		break;
 	case ION_HEAP_TYPE_EXYNOS_USER:
 		heap = ion_exynos_user_heap_create(heap_data);
@@ -1084,7 +1095,23 @@ void __ion_heap_destroy(struct ion_heap *heap)
 		ion_heap_destroy(heap);
 	}
 }
+static int exynos_ion_oom_handler(struct notifier_block *nb,
+					unsigned long val, void *data)
+{
+	int i;
 
+	pr_info("===== DUMPING ION HEAPS =====\n");
+	for (i = 0; i < num_heaps; i++) {
+		pr_info("[Name] %s, [ID] : %d\n", heaps[i]->name, heaps[i]->id);
+		exynos_ion_debug_heap_show(heaps[i]);
+	}
+
+	return 0;
+}
+
+static struct notifier_block exynos_ion_oom_notifier = {
+	.notifier_call = exynos_ion_oom_handler,
+};
 static int exynos_ion_probe(struct platform_device *pdev)
 {
 	struct ion_platform_data *pdata = pdev->dev.platform_data;
@@ -1116,6 +1143,7 @@ static int exynos_ion_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, ion_exynos);
+	register_oom_notifier(&exynos_ion_oom_notifier);
 
 	return 0;
 err:

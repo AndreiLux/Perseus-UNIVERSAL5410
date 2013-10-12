@@ -1,12 +1,12 @@
 /****************************************************************************
  *
- *	Copyright(c) 2012 Yamaha Corporation. All rights reserved.
+ *	Copyright(c) 2012-2013 Yamaha Corporation. All rights reserved.
  *
  *	Module		: mcresctrl.h
  *
  *	Description	: MC Driver resource control header
  *
- *	Version		: 1.0.2	2012.12.27
+ *	Version		: 2.0.0	2013.04.04
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.	In no event will the authors be held liable for any damages
@@ -32,8 +32,6 @@
 #include "mcdevif.h"
 #include "mcpacking.h"
 
-#define	MCDRV_BURST_WRITE_ENABLE	(0x01)
-
 /*	Slave Address	*/
 #define	MCDRV_SLAVEADDR_ANA		(0x3A)
 #define	MCDRV_SLAVEADDR_DIG		(0x11)
@@ -41,7 +39,7 @@
 /*	DEV_ID	*/
 #define	MCDRV_DEVID_ANA			(0x90)
 #define	MCDRV_DEVID_DIG			(0x80)
-#define	MCDRV_DEVID_MASK		(0xF8)
+#define	MCDRV_DEVID_MASK		(0xF0)
 #define	MCDRV_VERID_MASK		(0x07)
 
 /*	eState setting	*/
@@ -391,6 +389,7 @@ void		McResCtrl_Init(void);
 void		McResCtrl_InitABlockReg(void);
 void		McResCtrl_InitMBlockReg(void);
 void		McResCtrl_InitEReg(void);
+void		McResCtrl_SetRegDefault(void);
 void		McResCtrl_UpdateState(enum MCDRV_STATE eState);
 enum MCDRV_STATE	McResCtrl_GetState(void);
 UINT8		McResCtrl_GetRegVal(UINT16 wRegType, UINT16 wRegAddr);

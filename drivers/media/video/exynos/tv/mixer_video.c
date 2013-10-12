@@ -18,6 +18,8 @@
 #include <linux/version.h>
 #include <linux/timer.h>
 #include <linux/export.h>
+#include <plat/iovmm.h>
+#include <mach/devfreq.h>
 
 #include <media/exynos_mc.h>
 #include <media/v4l2-ioctl.h>
@@ -42,6 +44,7 @@ int __devinit mxr_acquire_video(struct mxr_device *mdev,
 		ret = PTR_ERR(mdev->alloc_ctx);
 		goto fail;
 	}
+	exynos_create_iovmm(mdev->dev, 3, 0);
 
 	/* registering outputs */
 	mdev->output_cnt = 0;
@@ -145,7 +148,7 @@ static int mxr_querycap(struct file *file, void *priv,
 
 	strlcpy(cap->driver, MXR_DRIVER_NAME, sizeof cap->driver);
 	strlcpy(cap->card, layer->vfd.name, sizeof cap->card);
-	sprintf(cap->bus_info, "%d", layer->idx);
+	snprintf(cap->bus_info, sizeof(cap->bus_info), "%d", layer->idx);
 	cap->version = KERNEL_VERSION(0, 1, 0);
 	cap->capabilities = V4L2_CAP_STREAMING |
 		V4L2_CAP_VIDEO_OUTPUT | V4L2_CAP_VIDEO_OUTPUT_MPLANE;
@@ -439,7 +442,7 @@ static int mxr_s_ctrl(struct file *file, void *fh, struct v4l2_control *ctrl)
 		mdev->blank = v;
 		break;
 	case V4L2_CID_TV_ENABLE_HDMI_AUDIO:
-	case V4L2_CID_TV_SET_NUM_CHANNELS:
+	case V4L2_CID_TV_SET_AUDIO_INFORM:
 	case V4L2_CID_TV_HPD_STATUS:
 	case V4L2_CID_TV_SET_DVI_MODE:
 	case V4L2_CID_TV_SET_ASPECT_RATIO:
@@ -484,7 +487,7 @@ static int mxr_g_ctrl(struct file *file, void *fh, struct v4l2_control *ctrl)
 
 	switch (ctrl->id) {
 	case V4L2_CID_TV_HPD_STATUS:
-	case V4L2_CID_TV_MAX_AUDIO_CHANNELS:
+	case V4L2_CID_TV_GET_AUDIO_INFORM:
 	case V4L2_CID_TV_SOURCE_PHY_ADDR:
 		v4l2_subdev_call(to_outsd(mdev), core, g_ctrl, ctrl);
 		break;
@@ -1104,7 +1107,9 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 	struct mxr_layer *layer = vb2_get_drv_priv(vq);
 	struct mxr_device *mdev = layer->mdev;
 	struct mxr_pipeline *pipe = &layer->pipe;
+	struct s5p_mxr_platdata *pdata = mdev->pdata;
 	unsigned long flags;
+	int n_layer = 0;
 	int ret = 0;
 
 	mxr_dbg(mdev, "%s\n", __func__);
@@ -1132,6 +1137,13 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 		pipe->state = MXR_PIPELINE_STREAMING;
 	spin_unlock_irqrestore(&layer->enq_slock, flags);
 
+	/* Informing BTS of the number of layers turned on */
+	if (is_ip_ver_5s) {
+		n_layer = mdev->layer_en.graph0 + mdev->layer_en.graph1
+			+ mdev->layer_en.graph2 + mdev->layer_en.graph3;
+		exynos5_update_media_layers(TYPE_MIXER, n_layer);
+	}
+
 	/* enabling layer in hardware */
 	layer->ops.stream_set(layer, MXR_ENABLE);
 	/* store starting entity ptr on the tv graphic pipeline */
@@ -1149,6 +1161,8 @@ static int stop_streaming(struct vb2_queue *vq)
 	unsigned long flags;
 	struct mxr_buffer *buf, *buf_tmp;
 	struct mxr_pipeline *pipe = &layer->pipe;
+	struct s5p_mxr_platdata *pdata = mdev->pdata;
+	int n_layer = 0;
 	int ret = 0;
 
 	mxr_dbg(mdev, "%s\n", __func__);
@@ -1194,6 +1208,13 @@ static int stop_streaming(struct vb2_queue *vq)
 	pipe->layer = layer;
 	/* stop streaming all entities on the pipeline */
 	ret = tv_graph_pipeline_stream(pipe, 0);
+
+	/* Informing BTS of the number of layers turned on */
+	if (is_ip_ver_5s) {
+		n_layer = mdev->layer_en.graph0 + mdev->layer_en.graph1
+			+ mdev->layer_en.graph2 + mdev->layer_en.graph3;
+		exynos5_update_media_layers(TYPE_MIXER, n_layer);
+	}
 
 	/* disable mixer clock */
 	mxr_power_put(mdev);

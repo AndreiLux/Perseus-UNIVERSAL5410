@@ -26,6 +26,8 @@
 #define EDID_SEGMENT(x)		((x) >> 1)
 #define EDID_OFFSET(x)		(((x) & 1) * EDID_BLOCK_SIZE)
 #define EDID_EXTENSION_FLAG	0x7E
+#define EDID_NATIVE_FORMAT	0x83
+#define EDID_BASIC_AUDIO	(1 << 6)
 
 static struct i2c_client *edid_client;
 
@@ -55,6 +57,8 @@ static struct edid_preset {
 static u32 preferred_preset = HDMI_DEFAULT_PRESET;
 static u32 edid_misc;
 static int max_audio_channels;
+static int audio_bit_rates;
+static int audio_sample_rates;
 
 #ifdef CONFIG_SAMSUNG_MHL_8240
 u8 exynos_hdmi_edid[EDID_MAX_LENGTH];
@@ -304,7 +308,8 @@ int edid_update(struct hdmi_device *hdev)
 #endif
 	bool first = true;
 	u8 *edid = NULL;
-	int channels_max = 0;
+	int channels_max = 0, support_bit_rates = 0, support_sample_rates = 0;
+	int basic_audio = 0;
 	int ret = 0;
 	int i;
 
@@ -313,6 +318,9 @@ int edid_update(struct hdmi_device *hdev)
 	ret = edid_read(hdev, &edid);
 	if (ret < 0)
 		goto out;
+	else if (ret > 1)
+		basic_audio = edid[EDID_NATIVE_FORMAT] & EDID_BASIC_AUDIO;
+
 /* EDID is printed at MHL driver already.
 	print_hex_dump_bytes("EDID: ", DUMP_PREFIX_OFFSET, edid,
 						ret * EDID_BLOCK_SIZE);
@@ -369,17 +377,34 @@ int edid_update(struct hdmi_device *hdev)
 	for (i = 0; i < specs.audiodb_len; i++) {
 		if (specs.audiodb[i].format != FB_AUDIO_LPCM)
 			continue;
-		if (specs.audiodb[i].channel_count > channels_max)
+		if (specs.audiodb[i].channel_count > channels_max) {
 			channels_max = specs.audiodb[i].channel_count;
+			support_sample_rates = specs.audiodb[i].sample_rates;
+			support_bit_rates = specs.audiodb[i].bit_rates;
+			
+		}
 	}
 
 	if (edid_misc & FB_MISC_HDMI) {
-		if (channels_max)
+		if (channels_max) {
 			max_audio_channels = channels_max;
-		else
-			max_audio_channels = 2;
+			audio_sample_rates = support_sample_rates;
+			audio_bit_rates = support_bit_rates;
+		} else {
+			if (basic_audio) {
+				max_audio_channels = 2;
+				audio_sample_rates = FB_AUDIO_48KHZ; /*default audio info*/
+				audio_bit_rates = FB_AUDIO_16BIT;
+			} else {
+				max_audio_channels = 0;
+				audio_sample_rates = 0;
+				audio_bit_rates = 0;
+			}		
+		}
 	} else {
 		max_audio_channels = 0;
+		audio_sample_rates = 0;
+		audio_bit_rates = 0;
 	}
 	pr_info("EDID: Audio channels %d", max_audio_channels);
 
@@ -423,9 +448,17 @@ bool edid_supports_hdmi(struct hdmi_device *hdev)
 	return edid_misc & FB_MISC_HDMI;
 }
 
-int edid_max_audio_channels(struct hdmi_device *hdev)
+u32 edid_audio_informs(struct hdmi_device *hdev)
 {
-	return max_audio_channels;
+	u32 value = 0, ch_info = 0;
+	
+	if (max_audio_channels > 0)
+		ch_info |= (1 << (max_audio_channels - 1));
+	if (max_audio_channels > 6)
+		ch_info |= (1 << 5);
+	value = ((audio_sample_rates << 19) | (audio_bit_rates << 16) |
+			ch_info);
+	return value;
 }
 
 static int __devinit edid_probe(struct i2c_client *client,

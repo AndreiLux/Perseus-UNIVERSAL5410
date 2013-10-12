@@ -30,7 +30,6 @@
 #include <linux/usb/android_composite.h>
 
 #include "gadget_chips.h"
-
 /*
  * Kbuild is not very cooperative with respect to linking separately
  * compiled library objects into one module.  So for now we won't use
@@ -73,6 +72,9 @@ static const char longname[] = "Gadget Android";
 
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 static int composite_string_index;
+u8    usb30en;
+extern int exynos_ss_udc_set_speedlimit(struct usb_gadget *gadget,enum usb_device_speed speed);
+int exynos_ss_udc_get_ss_host_available(struct usb_gadget *gadget);
 #endif
 
 
@@ -653,6 +655,7 @@ static struct android_usb_function ptp_function = {
 	.init		= ptp_function_init,
 	.cleanup	= ptp_function_cleanup,
 	.bind_config	= ptp_function_bind_config,
+	.ctrlrequest    = mtp_function_ctrlrequest,
 };
 
 
@@ -1618,6 +1621,33 @@ out:
 	return sprintf(buf, "%s\n", state);
 }
 
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+/* find crurrent enable function */
+/* ret value = 1 : mtp or mtp,acm */
+/* ret value = 0 : other function enable*/
+static int android_find_mtp_mode_enabled(struct android_dev *dev)
+{
+	struct android_usb_function *f;
+	int function=0;
+
+	list_for_each_entry(f, &dev->enabled_functions, enabled_list) {
+		if (!strcmp(f->name, "mtp")) {
+			function++;
+		} else if (!strcmp(f->name, "acm")) {
+			function++;
+		} else if (!strcmp(f->name, "adb")) {
+			return 0;
+		}
+	}
+	if ((function==1)||(function==2)) {
+		printk("usb: %s - mtp to mtp change case \r\n",__func__);
+		return 1;
+	} else {
+		return 0;
+	}
+}
+#endif
+
 #define DESCRIPTOR_ATTR(field, format_string)				\
 static ssize_t								\
 field ## _show(struct device *dev, struct device_attribute *attr,	\
@@ -1666,10 +1696,121 @@ DESCRIPTOR_STRING_ATTR(iManufacturer, manufacturer_string)
 DESCRIPTOR_STRING_ATTR(iProduct, product_string)
 DESCRIPTOR_STRING_ATTR(iSerial, serial_string)
 
+static ssize_t
+bcdUSB_show(struct device *pdev, struct device_attribute *attr, char *buf)
+{
+	struct android_dev *dev = dev_get_drvdata(pdev);
+
+	if (dev->cdev)
+		return sprintf(buf, "%04x\n", dev->cdev->desc.bcdUSB);
+	else
+		return sprintf(buf, "%04x\n", device_desc.bcdUSB);
+}
+static ssize_t
+usb30en_show(struct device *pdev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%01x\n", usb30en);
+}
+
+extern void usb30_redriver_en(int enable);
+static ssize_t
+usb30en_store (struct device *pdev, struct device_attribute *attr,const char *buf, size_t size)
+{
+	int value;
+	struct android_dev *dev = dev_get_drvdata(pdev);
+	if(get_host_os_type() == 0) {
+		usb30en = 0;
+		printk(KERN_ERR "usb: [%s:%d] Host Type is MAC always disable \n",
+								__func__, __LINE__);
+		return size;
+	}
+	if (sscanf(buf, "%d", &value) == 1) {
+		if (dev->cdev ) {
+			usb30en = value;
+			usb_gadget_disconnect(dev->cdev->gadget);
+			exynos_ss_udc_set_speedlimit(dev->cdev->gadget,(usb30en? USB_SPEED_SUPER:USB_SPEED_HIGH));
+			printk(KERN_DEBUG "usb: [%s:%d] B4 disconectng gadget, usb30en=%d\n",__func__, __LINE__, usb30en);
+			msleep(200);
+			usb_gadget_connect(dev->cdev->gadget);
+			printk(KERN_DEBUG "usb: [%s:%d] after usb_gadget_connect\n",
+						__func__, __LINE__);
+
+			udelay(500);
+			if (android_find_mtp_mode_enabled(dev)) {
+				printk(KERN_DEBUG "usb: [%s:%d] usb gadget disconnect and reconnect - use mutex\n",
+				   __func__, __LINE__);
+				mutex_lock(&dev->mutex);
+				android_disable(dev);
+				android_enable(dev);
+				mutex_unlock(&dev->mutex);
+			}
+			return size;
+		}
+	}
+	printk(KERN_ERR "usb: [%s:%d] Failed to set the usb30_en value\n",
+					__func__, __LINE__);
+	return -1;
+}
+
+static ssize_t
+ss_host_available_show(struct device *pdev, struct device_attribute *attr, char *buf)
+{
+	int value = 0;
+	int ss_host_available;
+	int windowsos;
+	struct android_dev *dev = dev_get_drvdata(pdev);
+	if (dev->cdev ) {
+		ss_host_available = exynos_ss_udc_get_ss_host_available(dev->cdev->gadget);
+		windowsos = get_host_os_type();
+		if((ss_host_available == 1) && ( windowsos == 1)) {
+			printk(KERN_ERR "usb: [%s:%d]  superspeed host available \n",
+					__func__, __LINE__);
+		value = 1;
+		}
+		printk(KERN_ERR "usb: [%s:%d] ss_host_available(%d) , windowsos(%d)  \n",
+					__func__, __LINE__,ss_host_available,windowsos);
+	} else {
+		printk(KERN_ERR "usb: [%s:%d]  gadget not available \n",
+					__func__, __LINE__);
+		value = -1;
+	}
+	return sprintf(buf, "%d\n", value);
+}
+
+static ssize_t
+macos_show(struct device *pdev, struct device_attribute *attr, char *buf)
+{
+	int value = 1;
+	int ss_host_available;
+	int windowsos;
+	struct android_dev *dev = dev_get_drvdata(pdev);
+	if (dev->cdev ) {
+		ss_host_available = exynos_ss_udc_get_ss_host_available(dev->cdev->gadget);
+		windowsos = get_host_os_type();
+		if((ss_host_available == 1) && ( windowsos == 1)) {
+			printk(KERN_ERR "usb : [%s:%d]  superspeed host available \n",
+					__func__, __LINE__);
+			value = 0;
+		}
+		printk(KERN_ERR "usb: [%s:%d] ss_host_available(%d) , windowsos(%d)  \n",
+					__func__, __LINE__,ss_host_available,windowsos);
+	} else {
+		printk(KERN_ERR "usb: [%s:%d]  gadget not available \n",
+					__func__, __LINE__);
+		value = -1;
+	}
+	return sprintf(buf, "%d\n", value);
+}
+
+static DEVICE_ATTR(bcdUSB, S_IRUGO | S_IWUSR, bcdUSB_show, NULL);
+
 static DEVICE_ATTR(functions, S_IRUGO | S_IWUSR, functions_show,
 						 functions_store);
 static DEVICE_ATTR(enable, S_IRUGO | S_IWUSR, enable_show, enable_store);
 static DEVICE_ATTR(state, S_IRUGO, state_show, NULL);
+static DEVICE_ATTR(usb30en,S_IRUGO | S_IWUSR, usb30en_show, usb30en_store);
+static DEVICE_ATTR(macos,S_IRUGO | S_IWUSR, macos_show, NULL);
+static DEVICE_ATTR(ss_host_available,S_IRUGO | S_IWUSR, ss_host_available_show, NULL);
 
 static struct device_attribute *android_usb_attributes[] = {
 	&dev_attr_idVendor,
@@ -1684,6 +1825,10 @@ static struct device_attribute *android_usb_attributes[] = {
 	&dev_attr_functions,
 	&dev_attr_enable,
 	&dev_attr_state,
+	&dev_attr_bcdUSB,
+	&dev_attr_usb30en,
+	&dev_attr_macos,
+	&dev_attr_ss_host_available,
 	NULL
 };
 

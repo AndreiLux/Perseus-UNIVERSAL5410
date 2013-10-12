@@ -181,6 +181,11 @@ static irqreturn_t max77802_irq_thread(int irq, void *data)
 
 	/* MAX77802_IRQSRC_RTC may be set even if there are pending at INT1/2 */
 	ret = max77802_read_reg(max77802->i2c, MAX77802_REG_INT1, &irq_reg[0]);
+	if (ret < 0) {
+		dev_err(max77802->dev, "Failed to read pmic interrupt: %d\n",
+				ret);
+		return IRQ_NONE;
+	}
 	ret = max77802_read_reg(max77802->i2c, MAX77802_REG_INT2, &irq_reg[1]);
 	if (ret < 0) {
 		dev_err(max77802->dev, "Failed to read pmic interrupt: %d\n",
@@ -227,7 +232,6 @@ int max77802_irq_resume(struct max77802_dev *max77802)
 int max77802_irq_init(struct max77802_dev *max77802)
 {
 	int i;
-	int cur_irq;
 	int ret;
 	int val;
 #ifdef MAX77802_IRQ_TEST
@@ -308,7 +312,7 @@ int max77802_irq_init(struct max77802_dev *max77802)
 
 	/* Register with genirq */
 	for (i = 0; i < MAX77802_IRQ_NR; i++) {
-		cur_irq = i + max77802->irq_base;
+		int cur_irq = i + max77802->irq_base;
 		irq_set_chip_data(cur_irq, max77802);
 		irq_set_chip_and_handler(cur_irq, &max77802_irq_chip,
 					 handle_edge_irq);

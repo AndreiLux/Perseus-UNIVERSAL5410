@@ -168,6 +168,7 @@
 #define HDMI_ASP_CHCFG1			HDMI_CORE_BASE(0x314)
 #define HDMI_ASP_CHCFG2			HDMI_CORE_BASE(0x318)
 #define HDMI_ASP_CHCFG3			HDMI_CORE_BASE(0x31c)
+#define HDMI_ASP			HDMI_CORE_BASE(0xD000)
 
 #define HDMI_ACR_CON			HDMI_CORE_BASE(0x400)
 #define HDMI_ACR_MCTS0			HDMI_CORE_BASE(0x410)
@@ -650,6 +651,8 @@
 #define HDMI_AUD_SP_AUD1_EN			(1 << 1)
 #define HDMI_AUD_SP_AUD0_EN			(1 << 0)
 #define HDMI_AUD_SP_ALL_DIS			(0 << 0)
+#define HDMI_AUD_DIRECT				(1 << 7)
+
 
 #define HDMI_AUD_SET_SP_PRE(x)			((x) & 0xF)
 
@@ -831,6 +834,7 @@
 #define HDMI_AUI_DATA_SF_44_1			(0x2 << 2)
 #define HDMI_AUI_DATA_SF_48			(0x3 << 2)
 #define HDMI_AUI_DATA_SF_96			(0x5 << 2)
+#define HDMI_AUI_DATA_SF_192			(0x7 << 2)
 #define HDMI_AUI_DATA_CA_2CH			(0x0 << 0)
 #define HDMI_AUI_DATA_CA_6CH			(0xb << 0)
 #define HDMI_AUI_DATA_CA_8CH			(0x13 << 0)
@@ -1099,9 +1103,11 @@
 
 /* I2S_CH_ST_4 / I2S_CH_ST_SH_4 */
 #define HDMI_I2S_ORG_SAMPLING_FREQ_44_1		(0xF << 4)
+#define HDMI_I2S_ORG_SAMPLING_FREQ_48           (0xD << 4)
 #define HDMI_I2S_ORG_SAMPLING_FREQ_88_2		(0x7 << 4)
 #define HDMI_I2S_ORG_SAMPLING_FREQ_22_05	(0xB << 4)
 #define HDMI_I2S_ORG_SAMPLING_FREQ_176_4	(0x3 << 4)
+#define HDMI_I2S_ORG_SAMPLING_FREQ_192          (0x1 << 4)
 #define HDMI_I2S_WORD_LENGTH_NOT_DEFINE		(0x0 << 1)
 #define HDMI_I2S_WORD_LENGTH_MAX24_20BITS	(0x1 << 1)
 #define HDMI_I2S_WORD_LENGTH_MAX24_22BITS	(0x2 << 1)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2011 Samsung Electronics Co., Ltd.
+ * Copyright (C) 2010-2013 Samsung Electronics Co., Ltd.
  *
  * Exynos series device definition for JPEG HX
  *
@@ -18,17 +18,34 @@
 static u64 exynos5_jpeg_hx_dma_mask = DMA_BIT_MASK(32);
 
 static struct resource exynos5_jpeg_hx_resource[] = {
-	[0] = DEFINE_RES_MEM(EXYNOS5_PA_JPEG_HX, SZ_64K),
+	[0] = DEFINE_RES_MEM(EXYNOS5_PA_JPEG_HX, SZ_4K),
 	[1] = DEFINE_RES_IRQ(IRQ_JPEG_HX),
 };
 
 struct platform_device exynos5_device_jpeg_hx = {
-	.name             = "exynos5-jpeg-hx",
-	.id               = -1,
-	.num_resources    = ARRAY_SIZE(exynos5_jpeg_hx_resource),
-	.resource         = exynos5_jpeg_hx_resource,
+	.name		= "exynos5-jpeg-hx",
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(exynos5_jpeg_hx_resource),
+	.resource	= exynos5_jpeg_hx_resource,
 	.dev		= {
 		.dma_mask		= &exynos5_jpeg_hx_dma_mask,
 		.coherent_dma_mask	= DMA_BIT_MASK(32),
 	},
 };
+#if defined(CONFIG_SOC_EXYNOS5420)
+static struct resource exynos5_jpeg2_hx_resource[] = {
+	[0] = DEFINE_RES_MEM(EXYNOS5_PA_JPEG2_HX, SZ_4K),
+	[1] = DEFINE_RES_IRQ(IRQ_JPEG),
+};
+
+struct platform_device exynos5_device_jpeg2_hx = {
+	.name		= "exynos5-jpeg-hx",
+	.id		= 1,
+	.num_resources	= ARRAY_SIZE(exynos5_jpeg2_hx_resource),
+	.resource	= exynos5_jpeg2_hx_resource,
+	.dev		= {
+		.dma_mask		= &exynos5_jpeg_hx_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+};
+#endif

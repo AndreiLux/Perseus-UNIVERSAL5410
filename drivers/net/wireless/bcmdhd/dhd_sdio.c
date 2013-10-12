@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_sdio.c 404381 2013-05-26 05:00:59Z $
+ * $Id: dhd_sdio.c 398875 2013-04-26 11:40:52Z $
  */
 
 #include <typedefs.h>
@@ -1848,7 +1848,7 @@ dhdsdio_txpkt(dhd_bus_t *bus, void *pkt, uint chan, bool free_pkt, bool queue_on
 	int ret;
 	osl_t *osh;
 	uint8 *frame;
-	uint16 len, pad1 = 0, act_len = 0;
+	uint16 len, pad1 = 0;
 	uint32 swheader;
 	uint retries = 0;
 	uint32 real_pad = 0;
@@ -1934,8 +1934,7 @@ dhdsdio_txpkt(dhd_bus_t *bus, void *pkt, uint chan, bool free_pkt, bool queue_on
 
 #ifdef BCMSDIOH_TXGLOM
 	if (bus->glom_enable) {
-		uint32 hwheader1 = 0, hwheader2 = 0;
-		act_len = len;
+		uint32 hwheader1 = 0, hwheader2 = 0, act_len = len;
 
 		/* Software tag: channel, sequence number, data offset */
 		swheader = ((chan << SDPCM_CHANNEL_SHIFT) & SDPCM_CHANNEL_MASK) |
@@ -1965,9 +1964,7 @@ dhdsdio_txpkt(dhd_bus_t *bus, void *pkt, uint chan, bool free_pkt, bool queue_on
 				DHD_INFO(("%s 1: insufficient tailroom %d for %d real_pad\n",
 				__FUNCTION__, (int)PKTTAILROOM(osh, pkt), real_pad));
 				if (PKTPADTAILROOM(osh, pkt, real_pad)) {
-					DHD_ERROR(("CHK1: padding error size %d\n", real_pad));
-					ret = BCME_NOMEM;
-					goto done;
+					DHD_ERROR(("padding error size %d\n", real_pad));
 				}
 #ifndef BCMLXSDMMC
 				else
@@ -2016,18 +2013,7 @@ dhdsdio_txpkt(dhd_bus_t *bus, void *pkt, uint chan, bool free_pkt, bool queue_on
 					" for %d real_pad\n",
 					__FUNCTION__, (int)PKTTAILROOM(osh, pkt), real_pad));
 					if (PKTPADTAILROOM(osh, pkt, real_pad)) {
-						DHD_ERROR(("CHK2: padding error size %d."
-							" %d more pkts are discarded together.\n",
-							real_pad, bus->glom_cnt));
-						/* Save the pkt pointer in bus glom array
-						* Otherwise, this last pkt will not be
-						* cleaned under "goto done"
-						*/
-						bus->glom_pkt_arr[bus->glom_cnt] = pkt;
-						bus->glom_cnt++;
-						bus->glom_total_len += len;
-						ret = BCME_NOMEM;
-						goto done;
+						DHD_ERROR(("padding error size %d\n", real_pad));
 					}
 #ifndef BCMLXSDMMC
 					else
@@ -2037,7 +2023,6 @@ dhdsdio_txpkt(dhd_bus_t *bus, void *pkt, uint chan, bool free_pkt, bool queue_on
 #ifdef BCMLXSDMMC
 				PKTSETLEN(osh, pkt, len);
 #endif /* BCMLXSDMMC */
-
 				/* Post the frame pointer to sdio glom array */
 				dhd_bcmsdh_glom_post(bus, frame, pkt, len);
 				/* Save the pkt pointer in bus glom array */
@@ -2053,68 +2038,60 @@ dhdsdio_txpkt(dhd_bus_t *bus, void *pkt, uint chan, bool free_pkt, bool queue_on
 	} else
 #endif /* BCMSDIOH_TXGLOM */
 	{
-		act_len = len;
-		/* Software tag: channel, sequence number, data offset */
-		swheader = ((chan << SDPCM_CHANNEL_SHIFT) & SDPCM_CHANNEL_MASK) | bus->tx_seq |
-		        (((pad1 + SDPCM_HDRLEN) << SDPCM_DOFFSET_SHIFT) & SDPCM_DOFFSET_MASK);
-		htol32_ua_store(swheader, frame + SDPCM_FRAMETAG_LEN);
-		htol32_ua_store(0, frame + SDPCM_FRAMETAG_LEN + sizeof(swheader));
+	uint32 act_len = len;
+	/* Software tag: channel, sequence number, data offset */
+	swheader = ((chan << SDPCM_CHANNEL_SHIFT) & SDPCM_CHANNEL_MASK) | bus->tx_seq |
+	        (((pad1 + SDPCM_HDRLEN) << SDPCM_DOFFSET_SHIFT) & SDPCM_DOFFSET_MASK);
+	htol32_ua_store(swheader, frame + SDPCM_FRAMETAG_LEN);
+	htol32_ua_store(0, frame + SDPCM_FRAMETAG_LEN + sizeof(swheader));
 
 #ifdef DHD_DEBUG
-		if (PKTPRIO(pkt) < ARRAYSIZE(tx_packets)) {
-			tx_packets[PKTPRIO(pkt)]++;
-		}
-		if (DHD_BYTES_ON() &&
-		    (((DHD_CTL_ON() && (chan == SDPCM_CONTROL_CHANNEL)) ||
-		      (DHD_DATA_ON() && (chan != SDPCM_CONTROL_CHANNEL))))) {
-			prhex("Tx Frame", frame, len);
-		} else if (DHD_HDRS_ON()) {
-			prhex("TxHdr", frame, MIN(len, 16));
-		}
+	if (PKTPRIO(pkt) < ARRAYSIZE(tx_packets)) {
+		tx_packets[PKTPRIO(pkt)]++;
+	}
+	if (DHD_BYTES_ON() &&
+	    (((DHD_CTL_ON() && (chan == SDPCM_CONTROL_CHANNEL)) ||
+	      (DHD_DATA_ON() && (chan != SDPCM_CONTROL_CHANNEL))))) {
+		prhex("Tx Frame", frame, len);
+	} else if (DHD_HDRS_ON()) {
+		prhex("TxHdr", frame, MIN(len, 16));
+	}
 #endif
 
 #ifndef BCMSPI
-		/* Raise len to next SDIO block to eliminate tail command */
-		if (bus->roundup && bus->blocksize && (len > bus->blocksize)) {
-			uint16 pad2 = bus->blocksize - (len % bus->blocksize);
-			if ((pad2 <= bus->roundup) && (pad2 < bus->blocksize))
+	/* Raise len to next SDIO block to eliminate tail command */
+	if (bus->roundup && bus->blocksize && (len > bus->blocksize)) {
+		uint16 pad2 = bus->blocksize - (len % bus->blocksize);
+		if ((pad2 <= bus->roundup) && (pad2 < bus->blocksize))
 #ifdef NOTUSED
-				if (pad2 <= PKTTAILROOM(osh, pkt))
+			if (pad2 <= PKTTAILROOM(osh, pkt))
 #endif /* NOTUSED */
-					len += pad2;
-		} else if (len % DHD_SDALIGN) {
-			len += DHD_SDALIGN - (len % DHD_SDALIGN);
-		}
+				len += pad2;
+	} else if (len % DHD_SDALIGN) {
+		len += DHD_SDALIGN - (len % DHD_SDALIGN);
+	}
 #endif  /* BCMSPI */
 
-		/* Some controllers have trouble with odd bytes -- round to even */
-		if (forcealign && (len & (ALIGNMENT - 1))) {
+	/* Some controllers have trouble with odd bytes -- round to even */
+	if (forcealign && (len & (ALIGNMENT - 1))) {
 #ifdef NOTUSED
-			if (PKTTAILROOM(osh, pkt))
+		if (PKTTAILROOM(osh, pkt))
 #endif
-				len = ROUNDUP(len, ALIGNMENT);
+			len = ROUNDUP(len, ALIGNMENT);
 #ifdef NOTUSED
-			else
-				DHD_ERROR(("%s: sending unrounded %d-byte packet\n", __FUNCTION__, len));
+		else
+			DHD_ERROR(("%s: sending unrounded %d-byte packet\n", __FUNCTION__, len));
 #endif
-		}
-		real_pad = len - act_len;
-		if (PKTTAILROOM(osh, pkt) < real_pad) {
-			DHD_INFO(("%s 3: insufficient tailroom %d for %d real_pad\n",
-				__FUNCTION__, (int)PKTTAILROOM(osh, pkt), real_pad));
-			if (PKTPADTAILROOM(osh, pkt, real_pad)) {
-				DHD_ERROR(("CHK3: padding error size %d\n", real_pad));
-				ret = BCME_NOMEM;
-				goto done;
-			}
-#ifndef BCMLXSDMMC
-			else
+	}
+	real_pad = len - act_len;
+	if (PKTTAILROOM(osh, pkt) < real_pad) {
+		DHD_INFO(("%s 3: insufficient tailroom %d for %d real_pad\n",
+		__FUNCTION__, (int)PKTTAILROOM(osh, pkt), real_pad));
+		if (PKTPADTAILROOM(osh, pkt, real_pad)) {
+			DHD_ERROR(("padding error size %d\n", real_pad));
+			} else
 				PKTSETLEN(osh, pkt, act_len);
-#endif
-		}
-#ifdef BCMLXSDMMC
-		PKTSETLEN(osh, pkt, len);
-#endif /* BCMLXSDMMC */
+	}
 	}
 	do {
 		ret = dhd_bcmsdh_send_buf(bus, bcmsdh_cur_sbwad(sdh), SDIO_FUNC_2, F2SYNC,
@@ -2165,7 +2142,7 @@ dhdsdio_txpkt(dhd_bus_t *bus, void *pkt, uint chan, bool free_pkt, bool queue_on
 done:
 
 #ifdef BCMSDIOH_TXGLOM
-	if (bus->glom_enable && !queue_only) {
+	if (bus->glom_enable) {
 		dhd_bcmsdh_glom_clear(bus);
 		pkt_cnt = bus->glom_cnt;
 	} else
@@ -2181,9 +2158,7 @@ done:
 #ifdef BCMLXSDMMC
 			uint32 pad2 = 0;
 #endif /* BCMLXSDMMC */
-			if (!queue_only)
-				pkt = bus->glom_pkt_arr[bus->glom_cnt - pkt_cnt];
-
+			pkt = bus->glom_pkt_arr[bus->glom_cnt - pkt_cnt];
 			frame = (uint8*)PKTDATA(osh, pkt);
 			doff = ltoh32_ua(frame + SDPCM_FRAMETAG_LEN + SDPCM_HWEXT_LEN);
 			doff = (doff & SDPCM_DOFFSET_MASK) >> SDPCM_DOFFSET_SHIFT;
@@ -2195,11 +2170,7 @@ done:
 		} else
 #endif /* BCMSDIOH_TXGLOM */
 		{
-#ifdef BCMLXSDMMC
-			if (act_len > 0)
-				PKTSETLEN(osh, pkt, act_len);
-#endif /* BCMLXSDMMC */
-			PKTPULL(osh, pkt, SDPCM_HDRLEN + pad1);
+	PKTPULL(osh, pkt, SDPCM_HDRLEN + pad1);
 		}
 #ifdef PROP_TXSTATUS
 	if (bus->dhd->wlfc_state) {
@@ -2226,7 +2197,7 @@ done:
 
 #ifdef BCMSDIOH_TXGLOM
 	/* Reset the glom array */
-	if (bus->glom_enable && !queue_only) {
+	if (bus->glom_enable) {
 		bus->glom_cnt = 0;
 		bus->glom_total_len = 0;
 	}
@@ -2440,16 +2411,13 @@ dhdsdio_sendfromq(dhd_bus_t *bus, uint maxframes)
 				break;
 			datalen = 0;
 			for (i = 0; i < glom_cnt; i++) {
-				uint datalen_tmp = 0;
-
 				if ((pkt = pkttable[i]) == NULL) {
 					/* This case should not happen */
 					DHD_ERROR(("No pkts in the queue for glomming\n"));
 					break;
 				}
 
-				datalen_tmp = (PKTLEN(bus->dhd->osh, pkt) - SDPCM_HDRLEN);
-
+				datalen += (PKTLEN(bus->dhd->osh, pkt) - SDPCM_HDRLEN);
 #ifndef SDTEST
 				ret = dhdsdio_txpkt(bus,
 					pkt,
@@ -2463,8 +2431,6 @@ dhdsdio_sendfromq(dhd_bus_t *bus, uint maxframes)
 					TRUE,
 					(i == (glom_cnt-1))? FALSE: TRUE);
 #endif
-				if (ret == BCME_OK)
-					datalen += datalen_tmp;
 			}
 			cnt += i-1;
 		} else

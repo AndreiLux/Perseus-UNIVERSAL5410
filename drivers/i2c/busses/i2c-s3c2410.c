@@ -231,9 +231,6 @@ static inline void s3c24xx_i2c_stop(struct s3c24xx_i2c *i2c, int ret)
 
 	/* stop the transfer */
 
-	/* Disable irq */
-	s3c24xx_i2c_disable_irq(i2c);
-
 	/* STOP signal generation : MTx(0xD0) */
 	iicstat = readl(i2c->regs + S3C2410_IICSTAT);
 	iicstat &= ~S3C2410_IICSTAT_START;
@@ -243,6 +240,9 @@ static inline void s3c24xx_i2c_stop(struct s3c24xx_i2c *i2c, int ret)
 	iiccon = readl(i2c->regs + S3C2410_IICCON);
 	iiccon &= ~S3C2410_IICCON_IRQPEND;
 	writel(iiccon, i2c->regs + S3C2410_IICCON);
+
+	/* Disable irq */
+	s3c24xx_i2c_disable_irq(i2c);
 
 	s3c24xx_i2c_master_complete(i2c, ret);
 
@@ -758,7 +758,6 @@ static int s3c24xx_i2c_cpufreq_transition(struct notifier_block *nb,
 {
 	struct s3c24xx_i2c *i2c = freq_to_i2c(nb);
 	unsigned long flags;
-	unsigned int got;
 	int delta_f;
 	int ret;
 

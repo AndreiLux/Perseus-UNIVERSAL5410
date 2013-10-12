@@ -150,8 +150,11 @@ static int exynos_ohci_bus_suspend(struct usb_hcd *hcd)
 	int ret;
 	ret = ohci_bus_suspend(hcd);
 
+#ifdef CONFIG_USB_SUSPEND
 	/* Decrease pm_count that was increased at s5p_ehci_resume func. */
-	pm_runtime_put_noidle(hcd->self.controller);
+	if (hcd->self.controller->power.runtime_auto)
+		pm_runtime_put_noidle(hcd->self.controller);
+#endif
 
 	return ret;
 }
@@ -166,7 +169,8 @@ static int exynos_ohci_bus_resume(struct usb_hcd *hcd)
 #else
 #define exynos_ohci_suspend	NULL
 #define exynos_ohci_resume		NULL
-#define exynos_ohci_bus_resume			NULL
+#define exynos_ohci_bus_resume		NULL
+#define exynos_ohci_bus_suspend	NULL
 #endif
 
 static const struct hc_driver exynos_ohci_hc_driver = {
@@ -243,8 +247,7 @@ static ssize_t store_ohci_power(struct device *dev,
 		}
 
 		irq = platform_get_irq(pdev, 0);
-		retval = usb_add_hcd(hcd, irq,
-				IRQF_DISABLED | IRQF_SHARED);
+		retval = usb_add_hcd(hcd, irq, IRQF_SHARED);
 		if (retval < 0) {
 			dev_err(dev, "Power On Fail\n");
 			goto exit;
@@ -264,7 +267,8 @@ exit:
 	device_unlock(dev);
 	return count;
 }
-static DEVICE_ATTR(ohci_power, 0664, show_ohci_power, store_ohci_power);
+static DEVICE_ATTR(ohci_power, S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP,
+	show_ohci_power, store_ohci_power);
 
 static inline int create_ohci_sys_file(struct ohci_hcd *ohci)
 {
@@ -350,8 +354,7 @@ static int __devinit exynos_ohci_probe(struct platform_device *pdev)
 	ohci = hcd_to_ohci(hcd);
 	ohci_hcd_init(ohci);
 
-	err = usb_add_hcd(hcd, irq,
-				IRQF_DISABLED | IRQF_SHARED);
+	err = usb_add_hcd(hcd, irq, IRQF_SHARED);
 
 	if (err) {
 		dev_err(&pdev->dev, "Failed to add USB HCD\n");

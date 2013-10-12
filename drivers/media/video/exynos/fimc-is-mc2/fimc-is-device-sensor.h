@@ -28,6 +28,13 @@ enum fimc_is_sensor_output_entity {
 	FIMC_IS_SENSOR_OUTPUT_FRONT,
 };
 
+struct fimc_is_settle {
+	u32 width;
+	u32 height;
+	u32 framerate;
+	u32 settle;
+};
+
 struct fimc_is_enum_sensor {
 	u32 sensor;
 	u32 pixel_width;
@@ -38,19 +45,26 @@ struct fimc_is_enum_sensor {
 	u32 csi_ch;
 	u32 flite_ch;
 	u32 i2c_ch;
+	u32 settles;
+	struct fimc_is_settle *settle_table;
 	struct sensor_open_extended ext;
 	char *setfile_name;
 };
 
 enum fimc_is_sensor_state {
 	FIMC_IS_SENSOR_OPEN,
+	FIMC_IS_SENSOR_CLOCK_ON,
 	FIMC_IS_SENSOR_FRONT_START,
 	FIMC_IS_SENSOR_BACK_START,
 	FIMC_IS_SENSOR_BACK_NOWAIT_STOP
 };
 
+struct fimc_is_device_csi {
+	u32				channel;
+	u32				private_data;
+};
+
 struct fimc_is_device_sensor {
-	int id_dual;			/* for dual camera scenario */
 	int id_position;		/* 0 : rear camera, 1: front camera */
 	u32 instance;
 	u32 width;
@@ -68,10 +82,20 @@ struct fimc_is_device_sensor {
 
 	void *dev_data;
 
+	/* hardware configuration */
+	u32				clk_source;
+	struct fimc_is_device_csi	csi;
 	struct fimc_is_device_flite	flite;
+
+	/* ENABLE_DTP */
+	bool				dtp_check;
+	struct timer_list		dtp_timer;
 };
 
-int fimc_is_sensor_probe(struct fimc_is_device_sensor *device, u32 channel);
+int fimc_is_sensor_probe(struct fimc_is_device_sensor *device,
+	u32 clk_source,
+	u32 csi_channel,
+	u32 flite_channel);
 int fimc_is_sensor_open(struct fimc_is_device_sensor *device,
 	struct fimc_is_video_ctx *vctx);
 int fimc_is_sensor_close(struct fimc_is_device_sensor *device);

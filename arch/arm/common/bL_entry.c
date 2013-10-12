@@ -170,7 +170,7 @@ void bL_update_cpu_state(unsigned int value, unsigned int cpu,
 }
 
 static struct miscdevice bL_reserve_mem_device = {
-	BL_MEM_MINOR,
+	MISC_DYNAMIC_MINOR,
 	"b.L_mem",
 };
 

@@ -23,9 +23,6 @@ static struct clk *mclk_clkout;
 static unsigned int mclk_usecount;
 
 struct platform_device *exynos5_audio_devices[] __initdata = {
-#ifdef CONFIG_SND_SAMSUNG_AC97
-	&exynos_device_ac97,
-#endif
 #ifdef CONFIG_SND_SAMSUNG_I2S
 	&exynos5_device_i2s0,
 #endif
@@ -35,7 +32,7 @@ struct platform_device *exynos5_audio_devices[] __initdata = {
 #ifdef CONFIG_SND_SAMSUNG_SPDIF
 	&exynos5_device_spdif,
 #endif
-#if defined(CONFIG_SND_SAMSUNG_RP) || defined(CONFIG_SND_SAMSUNG_ALP)
+#ifdef CONFIG_SND_SAMSUNG_ALP
 	&exynos5_device_srp,
 #endif
 	&samsung_asoc_dma,
@@ -83,8 +80,6 @@ static void exynos5_audio_setup_clocks(void)
 
 void exynos5_audio_set_mclk(bool enable, bool forced)
 {
-	void __iomem *exynos_etc6;
-
 	/* forced disable */
 	if (forced) {
 		mclk_usecount = 0;
@@ -93,22 +88,12 @@ void exynos5_audio_set_mclk(bool enable, bool forced)
 	}
 
 	if (enable) {
-		/* Change MCLK drive strength */
-		exynos_etc6 = ioremap(EXYNOS5410_PA_GPIO_LB, SZ_4K);
-
-		if (exynos_etc6 == NULL)
-			pr_err("unable to ioremap for EINT base address\n");
-		else
-			__raw_writel(0x000004, exynos_etc6 + 0x16C);
-
 		if (mclk_usecount == 0) {
 			clk_enable(mclk_clkout);
 			pr_info("%s: mclk enable\n", __func__);
 		}
 
 		mclk_usecount++;
-
-		iounmap(exynos_etc6);
 	} else {
 		if (--mclk_usecount > 0)
 			return;

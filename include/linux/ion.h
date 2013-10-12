@@ -18,6 +18,8 @@
 #define _LINUX_ION_H
 
 #include <linux/types.h>
+#include <linux/dma-direction.h>
+#include <linux/dma-buf.h>
 
 struct ion_handle;
 /**
@@ -35,6 +37,7 @@ enum ion_heap_type {
 	ION_HEAP_TYPE_SYSTEM,
 	ION_HEAP_TYPE_SYSTEM_CONTIG,
 	ION_HEAP_TYPE_CARVEOUT,
+	ION_HEAP_TYPE_CHUNK,
 	ION_HEAP_TYPE_CUSTOM, /* must be last so device specific heaps always
 				 are at the end of this enum */
 	ION_NUM_HEAPS = 16,
@@ -44,8 +47,10 @@ enum ion_heap_type {
 #define ION_HEAP_SYSTEM_CONTIG_MASK	(1 << ION_HEAP_TYPE_SYSTEM_CONTIG)
 #define ION_HEAP_CARVEOUT_MASK		(1 << ION_HEAP_TYPE_CARVEOUT)
 
+#define ION_NUM_HEAP_IDS		sizeof(unsigned int) * 8
+
 /**
- * heap flags - the lower 16 bits are used by core ion, the upper 16
+ * allocation flags - the lower 16 bits are used by core ion, the upper 16
  * bits are reserved for use by the heaps themselves.
  */
 #define ION_FLAG_CACHED 1		/* mappings of this buffer should be
@@ -58,6 +63,7 @@ enum ion_heap_type {
 #define ION_FLAG_PRESERVE_KMAP 4	/* kernel address is generated when
 					   allocating a buffer
 					 */
+#define __ION_FLAG_CPUMAPPED_DO_NOT_USE__INTERNAL_USE_ONLY__ 8
 
 #ifdef __KERNEL__
 struct ion_device;
@@ -75,11 +81,14 @@ struct ion_buffer;
 /**
  * struct ion_platform_heap - defines a heap in the given platform
  * @type:	type of the heap from ion_heap_type enum
- * @id:		unique identifier for heap.  When allocating (lower numbers 
- * 		will be allocated from first)
+ * @id:		unique identifier for heap.  When allocating higher numbers
+ * 		will be allocated from first.  At allocation these are passed
+ *		as a bit mask and therefore can not exceed ION_NUM_HEAP_IDS.
  * @name:	used for debug purposes
  * @base:	base address of heap in physical memory if applicable
  * @size:	size of the heap in bytes if applicable
+ * @align:	required alignment in physical memory if applicable
+ * @priv:	private info passed from the board file
  *
  * Provided by the board file.
  */
@@ -89,6 +98,8 @@ struct ion_platform_heap {
 	const char *name;
 	ion_phys_addr_t base;
 	size_t size;
+	ion_phys_addr_t align;
+	void *priv;
 };
 
 /**
@@ -116,12 +127,12 @@ void ion_reserve(struct ion_platform_data *data);
 
 /**
  * ion_client_create() -  allocate a client and returns it
- * @dev:	the global ion device
- * @heap_mask:	mask of heaps this client can allocate from
- * @name:	used for debugging
+ * @dev:		the global ion device
+ * @heap_type_mask:	mask of heaps this client can allocate from
+ * @name:		used for debugging
  */
 struct ion_client *ion_client_create(struct ion_device *dev,
-				     unsigned int heap_mask, const char *name);
+				     const char *name);
 
 /**
  * ion_client_destroy() -  free's a client and all it's handles
@@ -134,21 +145,22 @@ void ion_client_destroy(struct ion_client *client);
 
 /**
  * ion_alloc - allocate ion memory
- * @client:	the client
- * @len:	size of the allocation
- * @align:	requested allocation alignment, lots of hardware blocks have
- *		alignment requirements of some kind
- * @heap_mask:	mask of heaps to allocate from, if multiple bits are set
- *		heaps will be tried in order from lowest to highest order bit
- * @flags:	heap flags, the low 16 bits are consumed by ion, the high 16
- *		bits are passed on to the respective heap and can be heap
- * 		custom
+ * @client:		the client
+ * @len:		size of the allocation
+ * @align:		requested allocation alignment, lots of hardware blocks
+ *			have alignment requirements of some kind
+ * @heap_id_mask:	mask of heaps to allocate from, if multiple bits are set
+ *			heaps will be tried in order from highest to lowest
+ *			id
+ * @flags:		heap flags, the low 16 bits are consumed by ion, the
+ *			high 16 bits are passed on to the respective heap and
+ *			can be heap custom
  *
  * Allocate memory in one of the heaps provided in heap mask and return
  * an opaque handle to it.
  */
 struct ion_handle *ion_alloc(struct ion_client *client, size_t len,
-			     size_t align, unsigned int heap_mask,
+			     size_t align, unsigned int heap_id_mask,
 			     unsigned int flags);
 
 /**
@@ -208,11 +220,19 @@ void *ion_map_kernel(struct ion_client *client, struct ion_handle *handle);
 void ion_unmap_kernel(struct ion_client *client, struct ion_handle *handle);
 
 /**
- * ion_share_dma_buf() - given an ion client, create a dma-buf fd
+ * ion_share_dma_buf() - share buffer as dma-buf
  * @client:	the client
  * @handle:	the handle
  */
-int ion_share_dma_buf(struct ion_client *client, struct ion_handle *handle);
+struct dma_buf *ion_share_dma_buf(struct ion_client *client,
+						struct ion_handle *handle);
+
+/**
+ * ion_share_dma_buf_fd() - given an ion client, create a dma-buf fd
+ * @client:	the client
+ * @handle:	the handle
+ */
+int ion_share_dma_buf_fd(struct ion_client *client, struct ion_handle *handle);
 
 /**
  * ion_import_dma_buf() - given an dma-buf fd from the ion exporter get handle
@@ -240,14 +260,20 @@ struct device;
 int ion_register_special_device(struct ion_device *dev, struct device *special);
 
 /**
- * ion_dma_address() - return dma address of a special device
- * @handle: handle to a buffer that have dma address
- * @special: the special device registered with ion_register_special_device()
- *
+ * ion_iovmm_map() - map buffer to the address space for the special device
+ * @attachment: attachment of dma_buf that is the result of dma_buf_attach()
+ * @offset: offset that starts mapping
+ * @size: size of the mapping
+ * @direction: whether the device read or write
+ * @id: id of the part of the address space
+
  * return dma address if the buffer has a dma address.
- * return 0 if the buffer does not has a dma address for the special device
+ * return minus error number if mapping fails.
  */
-dma_addr_t ion_dma_address(struct ion_handle *handle, struct device *special);
+dma_addr_t ion_iovmm_map(struct dma_buf_attachment *attachment,
+		     off_t offset, size_t size,
+		     enum dma_data_direction direction, int id);
+
 #endif /* __KERNEL__ */
 
 /**
@@ -260,19 +286,19 @@ dma_addr_t ion_dma_address(struct ion_handle *handle, struct device *special);
 
 /**
  * struct ion_allocation_data - metadata passed from userspace for allocations
- * @len:	size of the allocation
- * @align:	required alignment of the allocation
- * @heap_mask:	mask of heaps to allocate from
- * @flags:	flags passed to heap
- * @handle:	pointer that will be populated with a cookie to use to refer
- *		to this allocation
+ * @len:		size of the allocation
+ * @align:		required alignment of the allocation
+ * @heap_id_mask:	mask of heap ids to allocate from
+ * @flags:		flags passed to heap
+ * @handle:		pointer that will be populated with a cookie to use to 
+ *			refer to this allocation
  *
  * Provided by userspace as an argument to the ioctl
  */
 struct ion_allocation_data {
 	size_t len;
 	size_t align;
-	unsigned int heap_mask;
+	unsigned int heap_id_mask;
 	unsigned int flags;
 	struct ion_handle *handle;
 };
@@ -378,5 +404,11 @@ struct ion_custom_data {
  * passes appropriate userdata for that ioctl
  */
 #define ION_IOC_CUSTOM		_IOWR(ION_IOC_MAGIC, 6, struct ion_custom_data)
+
+#if defined(CONFIG_ION_EXYNOS_DEBUG_VERBOSE)
+#define ION_DBG(format, args...)	pr_info(format, ##args)
+#else
+#define ION_DBG(format, args...)	do { } while (0)
+#endif
 
 #endif /* _LINUX_ION_H */

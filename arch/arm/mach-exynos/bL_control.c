@@ -25,6 +25,8 @@
 #include <linux/clk.h>
 #include <linux/syscore_ops.h>
 #include <linux/cpu.h>
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
 
 #include <asm/bL_switcher.h>
 #include <asm/bL_entry.h>
@@ -40,15 +42,23 @@
 #include <mach/debug.h>
 #include <mach/cpufreq.h>
 
-bool cluster_power_down_en = true;
-
-static int __init cluster_power(char *str)
+static bool cluster_power_ctrl_en = true;
+static int __init cluster_power_ctrl(char *str)
 {
-	cluster_power_down_en = false;
+	cluster_power_ctrl_en = false;
 	return 1;
 }
+__setup("cluster_power=", cluster_power_ctrl);
 
-__setup("cluster_power", cluster_power);
+struct sysfs_attr {
+	struct attribute attr;
+	ssize_t (*show)(struct kobject *kobj,
+			struct attribute *attr, char *buf);
+	ssize_t (*store)(struct kobject *a, struct attribute *b,
+			 const char *c, size_t count);
+};
+
+#define PA_SLEP_PLUGIN		(0x02020000)
 
 #ifdef CONFIG_EXYNOS5_CCI
 
@@ -60,6 +70,7 @@ __setup("cluster_power", cluster_power);
 static int core_count[2];
 static int online_core_count;
 static struct hrtimer cluster_power_down_timer;
+
 /*
  * We can't use regular spinlocks. In the switcher case, it is possible
  * for an outbound CPU to call power_down() after its inbound counterpart
@@ -94,14 +105,19 @@ static void exynos_core_power_control(unsigned int cpu,
 {
 	int value = 0;
 
-	if (samsung_rev() >= EXYNOS5410_REV_1_0)
-		cluster = !cluster;
+	if (soc_is_exynos5410()) {
+		if (samsung_rev() >= EXYNOS5410_REV_1_0)
+			cluster = !cluster;
+		if (cluster == 0)
+			cpu += 4;
+	} else {
+		if (cluster == 1)
+			cpu += 4;
+	}
 
 	if (enable)
 		value = EXYNOS_CORE_LOCAL_PWR_EN;
 
-	if (cluster == 0)
-		cpu += 4;
 
 	__raw_writel(value, EXYNOS_ARM_CORE_CONFIGURATION(cpu));
 }
@@ -135,15 +151,17 @@ static int exynos_cluster_power_control(unsigned int cluster, int enable)
 	int ret = 0;
 	unsigned long timeout = jiffies + msecs_to_jiffies(10);
 
-#ifdef CONFIG_EXYNOS5410_DEBUG
-	if (FLAG_T32_EN)
+#ifdef CONFIG_EXYNOS54XX_DEBUG
+	if ((soc_is_exynos5420() || soc_is_exynos5410()) && FLAG_T32_EN)
 		return 0;
 #endif
-	if (!cluster_power_down_en)
+	if (!cluster_power_ctrl_en)
 		return 0;
 
-	if (samsung_rev() < EXYNOS5410_REV_1_0)
-		cluster = !cluster;
+	if (soc_is_exynos5410()) {
+		if (samsung_rev() < EXYNOS5410_REV_1_0)
+			cluster = !cluster;
+	}
 
 	if (enable) {
 		value = EXYNOS_CORE_LOCAL_PWR_EN;
@@ -152,8 +170,9 @@ static int exynos_cluster_power_control(unsigned int cluster, int enable)
 	} else {
 		if (cluster == 0)
 			ret = exynos_change_apll_parent(0);
-
+#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
 		reset_lpj_for_cluster(cluster);
+#endif
 	}
 
 	if (ret)
@@ -182,10 +201,14 @@ static int exynos_cluster_power_status(unsigned int cluster)
 	int status = 0;
 	int i;
 
-	if (samsung_rev() >= EXYNOS5410_REV_1_0)
-		cluster = !cluster;
+	if (soc_is_exynos5410()) {
+		if (samsung_rev() >= EXYNOS5410_REV_1_0)
+			cluster = !cluster;
 
-	cluster = (cluster == 0) ? 4 : 0;
+		cluster = (cluster == 0) ? 4 : 0;
+	} else {
+		cluster = (cluster == 1) ? 4 : 0;
+	}
 
 	for (i = 0; i < NR_CPUS; i++)
 		status |= !!(__raw_readl(EXYNOS_ARM_CORE_STATUS(cluster + i)) &
@@ -259,11 +282,13 @@ static void bL_power_up(unsigned int cpu, unsigned int cluster)
 
 	kfs_use_count[cpu][cluster]++;
 	if (kfs_use_count[cpu][cluster] == 1) {
+#ifdef CONFIG_ARM_TRUSTZONE
 		/*
 		 * Before turning inbound cpu on, save secure contexts
 		 * of outbound
 		 */
 		exynos_smc(SMC_CMD_SAVE, OP_TYPE_CORE, SMC_POWERSTATE_SWITCH, 0);
+#endif
 
 		add_core_count(cluster);
 
@@ -379,12 +404,14 @@ static void bL_power_down(unsigned int cpu, unsigned int cluster)
 	cpu_proc_fin();
 	__bL_cpu_down(cpu, cluster);
 
+#ifdef CONFIG_ARM_TRUSTZONE
 	/* Now we are prepared for power-down, do it: */
 	if (!skip_wfi) {
 		exynos_smc(SMC_CMD_SHUTDOWN, op_type, SMC_POWERSTATE_SWITCH, 0);
 		/* should never get here */
 		BUG();
 	}
+#endif
 
 }
 
@@ -402,82 +429,6 @@ static void bL_inbound_setup(unsigned int cpu, unsigned int cluster)
 			ktime_set(0, 1000000), HRTIMER_MODE_REL);
 }
 
-static size_t bL_check_status(char *info)
-{
-	size_t len = 0;
-	int i;
-	void __iomem *cci_base;
-
-	cci_base = ioremap(EXYNOS5_PA_CCI, SZ_64K);
-	if (!cci_base)
-		return -ENOMEM;
-
-	len += sprintf(&info[len], "\t0 1 2 3 L2 CCI\n");
-	len += sprintf(&info[len], "[A15]   ");
-	for (i = 0; i < 4; i++)
-		len += sprintf(&info[len], "%d ",
-			(readl(EXYNOS_PMUREG(0x2004) + i * 0x80) & 0x3)
-								== 3 ? 1 : 0);
-
-	len += sprintf(&info[len], " %d",
-			(readl(EXYNOS_PMUREG(0x2504) + 0 * 0x80) & 0x3)
-								== 3 ? 1 : 0);
-	len += sprintf(&info[len], "  %d\n",
-			(readl(cci_base + 0x4000 + 1 * 0x1000) & 0x3)
-								== 3 ? 1 : 0);
-
-	len += sprintf(&info[len], "[A7]    ");
-	for (i = 4; i < 8; i++)
-		len += sprintf(&info[len], "%d ",
-			(readl(EXYNOS_PMUREG(0x2004) + i * 0x80) & 0x3)
-								== 3 ? 1 : 0);
-
-	len += sprintf(&info[len], " %d",
-			(readl(EXYNOS_PMUREG(0x2504) + 1 * 0x80) & 0x3)
-								== 3 ? 1 : 0);
-	len += sprintf(&info[len], "  %d\n\n",
-			(readl(cci_base + 0x4000 + 0 * 0x1000) & 0x3)
-								== 3 ? 1 : 0);
-
-	iounmap(cci_base);
-
-	return len;
-}
-
-static ssize_t bL_status_write(struct file *file, const char __user *buf,
-                        size_t len, loff_t *pos)
-{
-	unsigned char val[1];
-
-	pr_debug("%s\n", __func__);
-
-	if (len < 1)
-		return -EINVAL;
-
-	if (copy_from_user(val, buf, 1))
-		return -EFAULT;
-
-	if (val[0] == '1')
-		exynos_l2_common_pwr_ctrl();
-	else
-		return -EINVAL;
-
-
-	return len;
-}
-
-static ssize_t bL_status_read(struct file *file, char __user *buf,
-			size_t len, loff_t *pos)
-{
-	size_t count = 0;
-	char info[100];
-	count = bL_check_status(info);
-	if (count < 0)
-		return -EINVAL;
-
-	return simple_read_from_buffer(buf, len, pos, info, count);
-}
-
 extern void bL_power_up_setup(void);
 
 static const struct bL_power_ops bL_control_power_ops = {
@@ -485,17 +436,6 @@ static const struct bL_power_ops bL_control_power_ops = {
 	.power_down		= bL_power_down,
 	.power_up_setup		= bL_power_up_setup,
 	.inbound_setup		= bL_inbound_setup,
-};
-
-static const struct file_operations bL_status_fops = {
-	.read           = bL_status_read,
-	.write          = bL_status_write,
-};
-
-static struct miscdevice bL_status_device = {
-	BL_STATUS_MINOR,
-	"bL_status",
-	&bL_status_fops
 };
 
 #if defined(CONFIG_PM)
@@ -596,11 +536,9 @@ static struct notifier_block __cpuinitdata bL_hotplug_cpu_notifier = {
 static int __init bL_control_init(void)
 {
 	unsigned int cpu, cluster_id = (read_mpidr() >> 8) & 0xf;
-	int err;
 
 	/* All future entries into the kernel goes through our entry vectors. */
 	__raw_writel(virt_to_phys(bl_entry_point), REG_SWITCHING_ADDR);
-
 
 	core_count[cluster_id] = MAX_CORE_COUNT;
 	online_core_count = MAX_CORE_COUNT;
@@ -640,12 +578,6 @@ static int __init bL_control_init(void)
 
 	clk_enable(fout_apll);
 
-	err = misc_register(&bL_status_device);
-	if (err) {
-		pr_err("Error to register misc device(%s)\n", __func__);
-		return err;
-	}
-
 	return bL_switcher_init(&bL_control_power_ops);
 }
 
@@ -684,14 +616,18 @@ static void exynos_core_power_control(unsigned int cpu,
 {
 	int value = 0;
 
-	if (samsung_rev() >= EXYNOS5410_REV_1_0)
-		cluster = !cluster;
+	if (soc_is_exynos5410()) {
+		if (samsung_rev() >= EXYNOS5410_REV_1_0)
+			cluster = !cluster;
+		if (cluster == 0)
+			cpu += 4;
+	} else {
+		if (cluster == 1)
+			cpu += 4;
+	}
 
 	if (enable)
 		value = EXYNOS_CORE_LOCAL_PWR_EN;
-
-	if (cluster == 0)
-		cpu += 4;
 
 	__raw_writel(value, EXYNOS_ARM_CORE_CONFIGURATION(cpu));
 }
@@ -724,15 +660,17 @@ static int exynos_cluster_power_control(unsigned int cluster, int enable)
 	int ret = 0;
 	unsigned long timeout = jiffies + msecs_to_jiffies(10);
 
-#ifdef CONFIG_EXYNOS5410_DEBUG
-	if (FLAG_T32_EN)
+#ifdef CONFIG_EXYNOS54XX_DEBUG
+	if ((soc_is_exynos5420() || soc_is_exynos5410()) && FLAG_T32_EN)
 		return 0;
 #endif
-	if (!cluster_power_down_en)
+	if (!cluster_power_ctrl_en)
 		return 0;
 
-	if (samsung_rev() < EXYNOS5410_REV_1_0)
-		cluster = !cluster;
+	if (soc_is_exynos5410()) {
+		if (samsung_rev() < EXYNOS5410_REV_1_0)
+			cluster = !cluster;
+	}
 
 	if (enable)
 		value = EXYNOS_CORE_LOCAL_PWR_EN;
@@ -776,10 +714,14 @@ static int exynos_cluster_power_status(unsigned int cluster)
 	int status = 0;
 	int i;
 
-	if (samsung_rev() >= EXYNOS5410_REV_1_0)
-		cluster = !cluster;
+	if (soc_is_exynos5410()) {
+		if (samsung_rev() >= EXYNOS5410_REV_1_0)
+			cluster = !cluster;
 
-	cluster = (cluster == 0) ? 4 : 0;
+		cluster = (cluster == 0) ? 4 : 0;
+	} else {
+		cluster = (cluster == 1) ? 4 : 0;
+	}
 
 	for (i = 0; i < NR_CPUS; i++)
 		status |= !!(__raw_readl(EXYNOS_ARM_CORE_STATUS(cluster + i)) &
@@ -795,7 +737,7 @@ static int read_mpidr(void)
 	return id;
 }
 
-static void bL_debug_info(void)
+void bL_debug_info(void)
 {
 	/*
 	 * If abnormal state occurs, prints the power state of 8 cores
@@ -816,7 +758,7 @@ static void bL_debug_info(void)
 		config_val = __raw_readl(EXYNOS_ARM_CORE_CONFIGURATION(cores));
 		status_val = __raw_readl(EXYNOS_ARM_CORE_STATUS(cores));
 		pr_info("\t\t%s\tcpu%d\tconfiguration : %#x, status %#x",
-			cores > 4 ? "KFC" : "EAGLE", core_num, config_val, status_val);
+			cores > 3 ? "KFC" : "EAGLE", core_num, config_val, status_val);
 		core_num++;
 	}
 
@@ -863,11 +805,13 @@ static void bL_power_up(unsigned int cpu, unsigned int cluster)
 
 	pr_debug("%s: cpu %u cluster %u\n", __func__, cpu, cluster);
 
+#ifdef CONFIG_ARM_TRUSTZONE
 	/*
 	 * Before turning inbound cpu on, save secure contexts
 	 * of outbound
 	 */
 	exynos_smc(SMC_CMD_SAVE, OP_TYPE_CORE, SMC_POWERSTATE_SWITCH, 0);
+#endif
 
 	/*
 	 * Since this is called with IRQs enabled, and no arch_spin_lock_irq
@@ -890,6 +834,25 @@ static void bL_power_up(unsigned int cpu, unsigned int cluster)
 
 	set_boot_flag(cpu, SWITCH);
 	exynos_core_power_control(cpu, cluster, 1);
+
+#ifdef CONFIG_ARM_TRUSTZONE
+	if (soc_is_exynos5420() && (samsung_rev() == EXYNOS5420_REV_0)
+							&& cpu == 2) {
+		unsigned int value;
+		while (1) {
+			exynos_smc_readsfr(PA_SLEP_PLUGIN + 0x4, &value);
+			if (!value) {
+				exynos_smc_readsfr(PA_SLEP_PLUGIN, &value);
+				exynos_smc(SMC_CMD_REG,
+					SMC_REG_ID_SFR_W(PA_SLEP_PLUGIN + 0x4),
+					value,
+					0);
+				sev();
+				break;
+			}
+		}
+	}
+#endif
 
 	while (1) {
 		if (read_gic_flag(cpu) == GIC_ENABLE_STATUS) {
@@ -957,8 +920,10 @@ static void bL_power_down(unsigned int cpu, unsigned int cluster)
 
 	cpu_proc_fin();
 
+#ifdef CONFIG_ARM_TRUSTZONE
 	/* Now we are prepared for power-down, do it: */
 	exynos_smc(SMC_CMD_SHUTDOWN, op_type, SMC_POWERSTATE_SWITCH, 0);
+#endif
 
 	/* should never get here */
 	BUG();
@@ -997,71 +962,6 @@ static void bL_inbound_setup(unsigned int cpu, unsigned int cluster)
 	}
 }
 
-static size_t bL_check_status(char *info)
-{
-	size_t len = 0;
-	int i;
-
-	len += sprintf(&info[len], "\t0 1 2 3 L2 CCI\n");
-	len += sprintf(&info[len], "[A15]   ");
-	for (i = 0; i < 4; i++)
-		len += sprintf(&info[len], "%d ",
-			(readl(EXYNOS_PMUREG(0x2004) + i * 0x80) & 0x3)
-								== 3 ? 1 : 0);
-
-	len += sprintf(&info[len], " %d",
-			(readl(EXYNOS_PMUREG(0x2504) + 0 * 0x80) & 0x3)
-								== 3 ? 1 : 0);
-	len += sprintf(&info[len], "\n");
-
-	len += sprintf(&info[len], "[A7]    ");
-	for (i = 4; i < 8; i++)
-		len += sprintf(&info[len], "%d ",
-			(readl(EXYNOS_PMUREG(0x2004) + i * 0x80) & 0x3)
-								== 3 ? 1 : 0);
-
-	len += sprintf(&info[len], " %d",
-			(readl(EXYNOS_PMUREG(0x2504) + 1 * 0x80) & 0x3)
-								== 3 ? 1 : 0);
-	len += sprintf(&info[len], "\n\n");
-
-	return len;
-}
-
-static ssize_t bL_status_write(struct file *file, const char __user *buf,
-			size_t len, loff_t *pos)
-{
-	unsigned char val[1];
-
-	pr_debug("%s\n", __func__);
-
-	if (len < 1)
-		return -EINVAL;
-
-	if (copy_from_user(val, buf, 1))
-		return -EFAULT;
-
-	if (val[0] == '1')
-		exynos_l2_common_pwr_ctrl();
-	else
-		return -EINVAL;
-
-
-	return len;
-}
-
-static ssize_t bL_status_read(struct file *file, char __user *buf,
-			size_t len, loff_t *pos)
-{
-	size_t count = 0;
-	char info[100];
-	count = bL_check_status(info);
-	if (count < 0)
-		return -EINVAL;
-
-	return simple_read_from_buffer(buf, len, pos, info, count);
-}
-
 extern void bL_power_up_setup(void);
 
 static const struct bL_power_ops bL_control_power_ops = {
@@ -1069,17 +969,6 @@ static const struct bL_power_ops bL_control_power_ops = {
 	.power_down		= bL_power_down,
 	.power_up_setup		= bL_power_up_setup,
 	.inbound_setup		= bL_inbound_setup,
-};
-
-static const struct file_operations bL_status_fops = {
-	.read		= bL_status_read,
-	.write		= bL_status_write,
-};
-
-static struct miscdevice bL_status_device = {
-	BL_STATUS_MINOR,
-	"bL_status",
-	&bL_status_fops
 };
 
 #if defined(CONFIG_PM)
@@ -1126,10 +1015,70 @@ static struct notifier_block __cpuinitdata bL_hotplug_cpu_notifier = {
 	.notifier_call = bL_hotplug_cpu_callback,
 };
 
+
+void exynos_l2_common_power_on(bool on)
+{
+	unsigned int cluster = (read_mpidr() >> 8) & 0xf;
+	unsigned int ob_cluster = cluster ^ 1;
+
+	if (on) {
+		if ((__raw_readl(EXYNOS_COMMON_STATUS(ob_cluster)) & 0x3) == 0)
+			__raw_writel(EXYNOS_L2_COMMON_PWR_EN,
+					EXYNOS_COMMON_CONFIGURATION(ob_cluster));
+	} else {
+		if ((__raw_readl(EXYNOS_COMMON_STATUS(ob_cluster)) & 0x3) != 0)
+			__raw_writel(0, EXYNOS_COMMON_CONFIGURATION(ob_cluster));
+	}
+}
+
+static ssize_t show_bL_cluster(struct kobject *kobj,
+			       struct attribute *attr, char *buf)
+{
+	size_t len = 0;
+	unsigned int i;
+
+	len += sprintf(&buf[len], "Dynamic cluster power control is %s\n",
+			cluster_power_ctrl_en ? "enabled" : "disabled");
+
+	for (i = 0; i < CLUSTER_NUM; i++) {
+		len += sprintf(&buf[len], "Cluster %d L2 common : ", i);
+		len += sprintf(&buf[len], "%s\n",
+				(__raw_readl(EXYNOS_COMMON_STATUS(i)) & 0x3) ? "on" : "off");
+	}
+
+	return len;
+}
+
+static ssize_t store_bL_cluster(struct kobject *kobj, struct attribute *attr,
+				const char *buf, size_t count)
+{
+	int input;
+
+	if (!sscanf(buf, "%d", &input))
+		return -EINVAL;
+
+	input = !!input;
+
+	if (input == cluster_power_ctrl_en)
+		goto done;
+
+	if (input)
+		exynos_l2_common_power_on(false);
+	else
+		exynos_l2_common_power_on(true);
+
+	cluster_power_ctrl_en = input;
+
+done:
+	return count;
+}
+
+static struct sysfs_attr bL_cluster =
+__ATTR(bL_cluster, S_IRUGO | S_IWUSR, show_bL_cluster, store_bL_cluster);
+
 static int __init bL_control_init(void)
 {
 	unsigned int cluster_id = (read_mpidr() >> 8) & 0xf;
-	int err;
 
 	/* All future entries into the kernel goes through our entry vectors. */
 	__raw_writel(virt_to_phys(bl_entry_point), REG_SWITCHING_ADDR);
@@ -1137,6 +1086,9 @@ static int __init bL_control_init(void)
 	core_count[cluster_id] = NR_CPUS;
 
 	register_syscore_ops(&exynos_bL_syscore_ops);
+
+	if (sysfs_create_file(power_kobj, &bL_cluster.attr))
+		pr_err("%s: failed to crate /sys/power/bL_cluster\n", __func__);
 
 	/*
 	 * Reaction of cpu hotplug in & out
@@ -1157,12 +1109,6 @@ static int __init bL_control_init(void)
 			"function of cluster power down is nothing.\n");
 
 	clk_enable(fout_apll);
-
-	err = misc_register(&bL_status_device);
-	if (err) {
-		pr_err("Error to register misc device(%s)\n", __func__);
-		return err;
-	}
 
 	return bL_switcher_init(&bL_control_power_ops);
 }

@@ -16,6 +16,22 @@ enum devfreq_transition {
 	MIF_DEVFREQ_DIS_MONITORING,
 };
 
+enum devfreq_media_type {
+	TYPE_FIMC_LITE,
+	TYPE_MIXER,
+	TYPE_FIMD1,
+};
+
+#ifdef CONFIG_ARM_EXYNOS5420_BUS_DEVFREQ
+#define NUM_LAYERS_6	6
+#define NUM_LAYERS_5	5
+#define NUM_LAYERS_4	4
+#define NUM_LAYERS_3	3
+#define NUM_LAYERS_2	2
+#define NUM_LAYERS_1	1
+#define NUM_LAYERS_0	0
+#endif
+
 struct exynos_devfreq_platdata {
 	unsigned int default_qos;
 };
@@ -26,8 +42,9 @@ struct devfreq_info {
 };
 
 extern struct pm_qos_request exynos5_cpu_int_qos;
+extern struct pm_qos_request exynos5_cpu_mif_qos;
 
-extern void exynos5_mif_notify_transition(struct devfreq_info *info, unsigned int state);
+extern int exynos5_mif_notify_transition(struct devfreq_info *info, unsigned int state);
 extern int exynos5_mif_register_notifier(struct notifier_block *nb);
 extern int exynos5_mif_unregister_notifier(struct notifier_block *nb);
 
@@ -35,4 +52,29 @@ extern int exynos5_mif_bpll_register_notifier(struct notifier_block *nb);
 extern int exynos5_mif_bpll_unregister_notifier(struct notifier_block *nb);
 
 extern spinlock_t int_div_lock;
+
+#ifdef CONFIG_ARM_EXYNOS5420_BUS_DEVFREQ
+void exynos5_mif_nocp_resume(void);
+void exynos5_mif_transition_disable(bool disable);
+void exynos5_update_media_layers(enum devfreq_media_type media_type, unsigned int value);
+#else
+static inline
+void exynos5_mif_nocp_resume(void)
+{
+	return;
+}
+
+static inline
+void exynos5_mif_transition_disable(bool disable)
+{
+	return;
+}
+
+static inline
+void exynos5_update_media_layers(enum devfreq_media_type media_type, unsigned int value)
+{
+	return;
+}
+#endif
+
 #endif

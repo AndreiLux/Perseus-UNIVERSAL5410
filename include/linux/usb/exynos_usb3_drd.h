@@ -48,6 +48,8 @@ struct exynos_drd_core_ops {
 	void (*events_enable)(struct exynos_drd_core *core, int on);
 	u32 (*get_evntcount)(struct exynos_drd_core *core);
 	void (*ack_evntcount)(struct exynos_drd_core *core, u32 val);
+	int (*phy_crport_ctrl)(struct exynos_drd_core *core,
+			       u32 addr, u32 data);
 };
 
 struct exynos_drd_core {

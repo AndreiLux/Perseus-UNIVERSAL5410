@@ -45,9 +45,23 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Evgeniy Polyakov <zbr@ioremap.net>");
 MODULE_DESCRIPTION("Driver for 1-wire Dallas network protocol.");
 
+#ifdef CONFIG_W1_SLAVE_DS28EL15
+static int w1_timeout = 2;
+int w1_max_slave_count = 1;
+#ifdef CONFIG_W1_KTHREAD
+int w1_max_slave_ttl = 2;
+#else
+int w1_max_slave_ttl = 1;
+#endif
+
+static struct w1_master *master_dev = NULL;
+extern int w1_ds28el15_verifymac(struct w1_slave *sl);
+extern int id, color;
+#else
 static int w1_timeout = 10;
 int w1_max_slave_count = 10;
 int w1_max_slave_ttl = 10;
+#endif
 
 module_param_named(timeout, w1_timeout, int, 0);
 module_param_named(max_slave_count, w1_max_slave_count, int, 0);
@@ -55,6 +69,23 @@ module_param_named(slave_ttl, w1_max_slave_ttl, int, 0);
 
 DEFINE_MUTEX(w1_mlock);
 LIST_HEAD(w1_masters);
+
+//---------------------------------------------------------------------
+// Count total security fail
+//
+// int reseult - result of slave node state
+//
+int fail_cnt = 0;
+
+void w1_ds28el15_fail_count(int result)
+{
+	if (result == 0)
+		fail_cnt = 0;
+	else
+		fail_cnt++;
+
+	if (fail_cnt > 100)	fail_cnt = 0;
+}
 
 static int w1_attach_slave_device(struct w1_master *dev, struct w1_reg_num *rn);
 
@@ -82,6 +113,7 @@ static void w1_slave_release(struct device *dev)
 	struct w1_slave *sl = dev_to_w1_slave(dev);
 
 	dev_dbg(dev, "%s: Releasing %s.\n", __func__, sl->name);
+	printk(KERN_ERR "%s: Releasing %s.\n", __func__, sl->name);
 
 	while (atomic_read(&sl->refcnt)) {
 		dev_dbg(dev, "Waiting for %s to become free: refcnt=%d.\n",
@@ -499,6 +531,37 @@ static ssize_t w1_master_attribute_store_remove(struct device *dev,
 	return result;
 }
 
+static ssize_t w1_master_attribute_show_verify_mac(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct w1_master *md = dev_to_w1_master(dev);
+	int result = -1;
+	struct list_head *ent, *n;
+	struct w1_slave *sl = NULL;
+
+	list_for_each_safe(ent, n, &md->slist)
+		sl = list_entry(ent, struct w1_slave, w1_slave_entry);
+
+	/* verify mac */
+	if (sl)
+		result = w1_ds28el15_verifymac(sl);
+	else
+		pr_info("%s : sysfs call fail\n", __func__);
+
+	return sprintf(buf, "%d\n", result);
+}
+
+static ssize_t w1_master_attribute_show_check_id(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", id);
+}
+
+static ssize_t w1_master_attribute_show_check_color(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", color);
+}
+/* need to add */
+
+
 #define W1_MASTER_ATTR_RO(_name, _mode)				\
 	struct device_attribute w1_master_attribute_##_name =	\
 		__ATTR(w1_master_##_name, _mode,		\
@@ -521,6 +584,9 @@ static W1_MASTER_ATTR_RW(search, S_IRUGO | S_IWUSR | S_IWGRP);
 static W1_MASTER_ATTR_RW(pullup, S_IRUGO | S_IWUSR | S_IWGRP);
 static W1_MASTER_ATTR_RW(add, S_IRUGO | S_IWUSR | S_IWGRP);
 static W1_MASTER_ATTR_RW(remove, S_IRUGO | S_IWUSR | S_IWGRP);
+static W1_MASTER_ATTR_RO(verify_mac, S_IRUGO);
+static W1_MASTER_ATTR_RO(check_id, S_IRUGO);
+static W1_MASTER_ATTR_RO(check_color, S_IRUGO);
 
 static struct attribute *w1_master_default_attrs[] = {
 	&w1_master_attribute_name.attr,
@@ -534,6 +600,9 @@ static struct attribute *w1_master_default_attrs[] = {
 	&w1_master_attribute_pullup.attr,
 	&w1_master_attribute_add.attr,
 	&w1_master_attribute_remove.attr,
+	&w1_master_attribute_verify_mac.attr,
+	&w1_master_attribute_check_id.attr,
+	&w1_master_attribute_check_color.attr,
 	NULL
 };
 
@@ -563,6 +632,10 @@ static int w1_uevent(struct device *dev, struct kobj_uevent_env *env)
 		md = container_of(dev, struct w1_master, dev);
 		event_owner = "master";
 		name = md->name;
+#ifdef CONFIG_W1_SLAVE_DS28EL15
+		master_dev = md; //container_of(dev, struct w1_master, dev);
+		printk(KERN_ERR "%s master_dev name = %s\n", __func__, master_dev->name);
+#endif
 	} else if (dev->driver == &w1_slave_driver) {
 		sl = container_of(dev, struct w1_slave, dev);
 		event_owner = "slave";
@@ -594,6 +667,16 @@ static int w1_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	return 0;
 }
+#endif
+
+#ifdef CONFIG_W1_SLAVE_DS28EL15
+static void w1_search_process(struct w1_master *dev, u8 search_type);
+
+void w1_master_search(void)
+{
+	w1_search_process(master_dev, W1_SEARCH);
+}
+EXPORT_SYMBOL(w1_master_search);
 #endif
 
 static int __w1_attach_slave_device(struct w1_slave *sl)
@@ -727,6 +810,7 @@ void w1_slave_detach(struct w1_slave *sl)
 	struct w1_netlink_msg msg;
 
 	dev_dbg(&sl->dev, "%s: detaching %s [%p].\n", __func__, sl->name, sl);
+	printk(KERN_ERR "%s: detaching %s [%p].\n", __func__, sl->name, sl);
 
 	list_del(&sl->w1_slave_entry);
 
@@ -840,9 +924,15 @@ void w1_slave_found(struct w1_master *dev, u64 rn)
 	sl = w1_slave_search_device(dev, tmp);
 	if (sl) {
 		set_bit(W1_SLAVE_ACTIVE, (long *)&sl->flags);
+		printk(KERN_ERR "%s : family id=0x%x\n", __func__, sl->reg_num.family);
+		w1_ds28el15_fail_count(0);
 	} else {
+		printk(KERN_ERR "%s : no slave before, id=0x%x\n", __func__, tmp->family);
+
 		if (rn && tmp->crc == w1_calc_crc8((u8 *)&rn_le, 7))
 			w1_attach_slave_device(dev, tmp);
+
+		w1_ds28el15_fail_count(-1);
 	}
 
 	atomic_dec(&dev->refcnt);
@@ -889,6 +979,7 @@ void w1_search(struct w1_master *dev, u8 search_type, w1_slave_found_callback cb
 		 */
 		if (w1_reset_bus(dev)) {
 			dev_dbg(&dev->dev, "No devices present on the wire.\n");
+			w1_ds28el15_fail_count(-1);
 			break;
 		}
 

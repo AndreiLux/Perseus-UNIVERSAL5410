@@ -314,6 +314,5 @@ struct file *mif_open_file(const char *path);
 void mif_save_file(struct file *fp, const char *buff, size_t size);
 void mif_close_file(struct file *fp);
 
-int mif_init_cpufreq_lock(struct modem_ctl *mc);
 #endif/*__MODEM_UTILS_H__*/
 

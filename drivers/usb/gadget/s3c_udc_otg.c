@@ -314,15 +314,22 @@ int s3c_vbus_enable(struct usb_gadget *gadget, int is_active)
 	unsigned long flags;
 	struct s3c_udc *dev = container_of(gadget, struct s3c_udc, gadget);
 
-	if (!is_active) {
-		spin_lock_irqsave(&dev->lock, flags);
-		stop_activity(dev, dev->driver);
-		spin_unlock_irqrestore(&dev->lock, flags);
-		udc_disable(dev);
+	if (dev->udc_enabled != is_active) {
+		dev->udc_enabled = is_active;
+
+		if (!is_active) {
+			spin_lock_irqsave(&dev->lock, flags);
+			stop_activity(dev, dev->driver);
+			spin_unlock_irqrestore(&dev->lock, flags);
+			udc_disable(dev);
+		} else {
+			udc_reinit(dev);
+			udc_enable(dev);
+			s3c_udc_soft_connect();
+		}
 	} else {
-		udc_reinit(dev);
-		udc_enable(dev);
-		s3c_udc_soft_connect();
+		printk(KERN_INFO "usb: %s, udc_enabled : %d, is_active : %d\n",
+				__func__, dev->udc_enabled, is_active);
 	}
 
 	return 0;
@@ -353,8 +360,12 @@ static int s3c_udc_start(struct usb_gadget *gadget,
 
 	printk(KERN_INFO "bound driver '%s'\n",
 			driver->driver.name);
-	if (is_nonswitch())
+	if (is_nonswitch()) {
 		udc_enable(dev);
+		dev->udc_enabled = 1;
+	} else {
+		printk(KERN_INFO "usb: Skip udc_enable\n");
+	}
 
 	return 0;
 }
@@ -1313,12 +1324,10 @@ static int s3c_udc_suspend(struct platform_device *pdev, pm_message_t state)
 			struct s3c_ep *ep = &dev->ep[i];
 			unsigned long flags;
 
-			if (ep->dev != NULL)
-				spin_lock_irqsave(&ep->dev->lock, flags);
+			spin_lock_irqsave(&dev->lock, flags);
 			ep->stopped = 1;
 			nuke(ep, -ESHUTDOWN);
-			if (ep->dev != NULL)
-				spin_unlock_irqrestore(&ep->dev->lock, flags);
+			spin_unlock_irqrestore(&dev->lock, flags);
 		}
 
 		if (dev->driver->disconnect)

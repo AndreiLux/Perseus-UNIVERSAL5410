@@ -14,6 +14,9 @@
 #define _S5P_DP_CORE_H
 
 #include <linux/lcd.h>
+#ifdef CONFIG_S5P_DP_PSR
+#include <linux/fb.h>
+#endif
 
 struct link_train {
 	int eq_loop;
@@ -40,6 +43,17 @@ struct s5p_dp_device {
 	struct link_train	link_train;
 
 	struct lcd_device	*lcd;
+#ifdef CONFIG_S5P_DP_PSR
+	struct notifier_block	notifier;
+	enum dp_psr_state	psr_enter_state;
+	enum dp_psr_state	psr_exit_state;
+#endif
+
+#ifdef CONFIG_S5P_DP_ESD_RECOVERY
+	struct delayed_work esd_recovery;
+	int	hpd_count;
+#endif
+
 };
 
 /* s5p_dp_reg.c */
@@ -134,6 +148,24 @@ void s5p_dp_enable_scrambling(struct s5p_dp_device *dp);
 void s5p_dp_disable_scrambling(struct s5p_dp_device *dp);
 void s5p_dp_rx_control(struct s5p_dp_device *dp, bool enable);
 
+#ifdef CONFIG_S5P_DP_PSR
+void s5p_dp_reset_pll(struct s5p_dp_device *dp, bool enable);
+void s5p_dp_set_video_timing(struct s5p_dp_device *dp);
+void s5p_dp_force_stream_clock_change_status(struct s5p_dp_device *dp);
+void s5p_dp_set_force_stream_valid(struct s5p_dp_device *dp);
+void s5p_dp_clear_force_stream_valid(struct s5p_dp_device *dp);
+void s5p_dp_set_fifo_reset(struct s5p_dp_device *dp);
+void s5p_dp_clear_fifo_reset(struct s5p_dp_device *dp);
+void s5p_dp_set_idle_en(struct s5p_dp_device *dp);
+void s5p_dp_enable_psr(struct s5p_dp_device *dp);
+void s5p_dp_scramber_rst_cnt(struct s5p_dp_device *dp);
+void s5p_dp_disable_psr(struct s5p_dp_device *dp);
+void s5p_dp_exit_psr(struct s5p_dp_device *dp);
+u32 s5p_dp_get_psr_status(struct s5p_dp_device *dp);
+void s5p_dp_enable_ssc(struct s5p_dp_device *dp, bool enable);
+void s5p_dp_sr_wait_on(struct s5p_dp_device *dp);
+#endif
+
 /* I2C EDID Chip ID, Slave Address */
 #define I2C_EDID_DEVICE_ADDR			0x50
 #define I2C_E_EDID_DEVICE_ADDR			0x30
@@ -163,6 +195,62 @@ void s5p_dp_rx_control(struct s5p_dp_device *dp, bool enable);
 #define DPCD_ADDR_USER_DEFINED2			0x0492
 #define DPCD_ADDR_USER_DEFINED3			0x0493
 #define DPCD_ADDR_SINK_POWER_STATE		0x0600
+
+#ifdef CONFIG_S5P_DP_PSR
+#define DPCD_ADDR_DOWNSPREAD_CTRL		0x0107
+#define DPCD_ADDR_EDP_CONFIGURATION_SET		0x010A
+#define DPCD_ADDR_PSR_CONFIGURATION		0x0170
+#define DPCD_ADDR_PRE_ENTRY		0x00350
+#define DPCD_ADDR_SINK_PSR_STATUS		0x2008
+
+#define S5P_DP_TOTAL_LINE_CFG_L			0x48
+#define S5P_DP_TOTAL_LINE_CFG_H			0x4C
+#define S5P_DP_ACTIVE_LINE_CFG_L		0x50
+#define S5P_DP_ACTIVE_LINE_CFG_H		0x54
+#define S5P_DP_V_F_PORCH_CFG			0x58
+#define S5P_DP_V_SYNC_WIDTH_CFG			0x5C
+#define S5P_DP_V_B_PORCH_CFG			0x60
+#define S5P_DP_TOTAL_PIXEL_CFG_L		0x64
+#define S5P_DP_TOTAL_PIXEL_CFG_H		0x68
+#define S5P_DP_ACTIVE_PIXEL_CFG_L		0x6C
+#define S5P_DP_ACTIVE_PIXEL_CFG_H		0x70
+#define S5P_DP_H_F_PORCH_CFG_L			0x74
+#define S5P_DP_H_F_PORCH_CFG_H			0x78
+#define S5P_DP_H_SYNC_CFG_L			0x7C
+#define S5P_DP_H_SYNC_CFG_H			0x80
+#define S5P_DP_H_B_PORCH_CFG_L			0x84
+#define S5P_DP_H_B_PORCH_CFG_H			0x88
+#define S5P_DP_SCRAMBER_RESET_CNT			0x8C8
+#define S5P_DP_PSR_CONFIG			0x8D0
+#define S5P_DP_PSR_COMMAND0			0x8D4
+#define S5P_DP_PSR_COMMAND1			0x8D8
+
+#define FIFO_RST				(0x1 << 2)
+#define IDLE_EN					(0x1 << 1)
+#define FRAME_UPDATE_EN				(0x1 << 0)
+#define ML_OFF_STATUS_INACTIVE			(0x1 << 21)
+#define NUM_IDLE_PATTERNS_EXIT_MASK		(0xff << 4)
+#define NUM_IDLE_PATTERNS_EXIT(x)		(((x) & 0xff) << 4)
+
+#define PSR_STATUS				(0x1 << 1)
+#define PSR_ON					(0x1 << 0)
+#define SPREAD_AMP				(0x1 << 4)
+#define MODULATION_FREQ_30KHZ			(0x0 << 0)
+
+#define SSC_D_CTRL				(0x1 << 6)
+#define FS_CTRL_TH_CTRL				(0x1 << 5)
+#define S5P_DP_DP_DN_SPREAD_CTL			0x69C
+#define DP_DN_SPREAD_CTL_2			0x744
+
+#define DPCD_PSR_MAIN_LINK_ACTIVE		(0x1 << 1)
+#define DPCD_PSR_MAIN_LINK_INACTIVE		(0x0 << 1)
+#define DPCD_PSR_ENABLE				(0x1 << 0)
+#define DPCD_PSR_DISABLE			(0x0 << 0)
+
+/* DPCD_ADDR_SINK_PSR_STATUS */
+#define SINK_PSR_ACTIVE_DISPLAY_FROM_RFB	(0x2 << 0)
+#define SINK_PSR_INACTIVE_STATE			(0x0 << 0)
+#endif
 
 /* DPCD_ADDR_MAX_LANE_COUNT */
 #define DPCD_ENHANCED_FRAME_CAP(x)		(((x) >> 7) & 0x1)

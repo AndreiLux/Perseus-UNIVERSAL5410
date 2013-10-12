@@ -26,23 +26,31 @@ ENTRY(fimg2d_flush_cache_range)
 1:
 	mcr	p15, 0, r0, c7, c14, 1
 	add	r0, r0, r2
-2:
 	cmp	r0, r1
 	blo	1b
 	dsb
 	mov	pc, lr
-bad_area:
-	stmfd	sp!, {r0-r3, lr}
-	bl fimg2d_fixup_user_fault
-	cmp	r0, #0
-	ldmfd	sp!, {r0-r3, lr}
-	beq	1b
-	add	r0, r0, #4096
-	bic	r0, r0, #0x03f
-	bic	r0, r0, #0xfc0
-	b	2b
+2:
+	b	1b
 ENDPROC(fimg2d_flush_cache_range)
 .pushsection __ex_table, "a"
-	.long	1b, bad_area
+	.long	1b, 2
 .popsection
 
+
+ENTRY(fimg2d_touch_range)
+	add r1, r0, r1
+	bic r0, r0, #0xFF
+	bic r0, r0, #0xF00
+1:
+	ldr	r3, [r0]
+	add	r0, r0, #4096
+	cmp	r0, r1
+	blo	1b
+	mov	pc, lr
+2:
+	b	1b
+ENDPROC(fimg2d_touch_range)
+.pushsection __ex_table, "a"
+	.long	1b, 2b
+.popsection

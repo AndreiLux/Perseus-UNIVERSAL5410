@@ -95,6 +95,31 @@ void s5p_mfc_release_dec_desc_buffer(struct s5p_mfc_ctx *ctx)
 	}
 }
 
+/* Allocate encoder DPB dynamically */
+int get_enc_dynamic_dpb(struct s5p_mfc_ctx *ctx)
+{
+	struct s5p_mfc_enc *enc = ctx->enc_priv;
+	struct s5p_mfc_enc_params *p = &enc->params;
+	struct s5p_mfc_h264_enc_params *p_264 = &p->codec.h264;
+	int ret = ENC_REF_2;
+
+	switch (ctx->codec_mode) {
+	case S5P_FIMV_CODEC_H264_ENC:
+		if ((p->num_b_frame > 0) || (p_264->num_ref_pic_4p > 1))
+			ret = ENC_REF_4;
+		break;
+	case S5P_FIMV_CODEC_MPEG4_ENC:
+		if (p->num_b_frame > 0)
+			ret = ENC_REF_4;
+		break;
+	case S5P_FIMV_CODEC_H263_ENC:
+	default:
+		break;
+	}
+
+	return ret;
+}
+
 /* Allocate codec buffers */
 int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 {
@@ -127,8 +152,10 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 					       S5P_FIMV_NV12MT_SALIGN);
 		}
 
+		ctx->dpb_count = get_enc_dynamic_dpb(ctx);
 		mfc_debug(2, "recon luma size: %d chroma size: %d\n",
 			  enc_ref_y_size, enc_ref_c_size);
+		mfc_debug(2, "Encoder ref count: %d\n", ctx->dpb_count);
 	} else {
 		return -EINVAL;
 	}
@@ -186,29 +213,30 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 		break;
 
 	case S5P_FIMV_CODEC_H264_ENC:
-		ctx->port_a_size = (enc_ref_y_size * 2) +
+		ctx->port_a_size = (enc_ref_y_size * ENC_REF_2) +
 				   S5P_FIMV_ENC_UPMV_SIZE +
 				   S5P_FIMV_ENC_COLFLG_SIZE +
 				   S5P_FIMV_ENC_INTRAMD_SIZE +
 				   S5P_FIMV_ENC_NBORINFO_SIZE;
-		ctx->port_b_size = (enc_ref_y_size * 2) +
-				   (enc_ref_c_size * 4) +
+		ctx->port_b_size = (enc_ref_y_size *
+					(ctx->dpb_count - ENC_REF_2)) +
+				   (enc_ref_c_size * ctx->dpb_count) +
 				   S5P_FIMV_ENC_INTRAPRED_SIZE;
 		break;
 	case S5P_FIMV_CODEC_MPEG4_ENC:
-		ctx->port_a_size = (enc_ref_y_size * 2) +
+		ctx->port_a_size = (enc_ref_y_size * ENC_REF_2) +
 				   S5P_FIMV_ENC_UPMV_SIZE +
 				   S5P_FIMV_ENC_COLFLG_SIZE +
 				   S5P_FIMV_ENC_ACDCCOEF_SIZE;
-		ctx->port_b_size = (enc_ref_y_size * 2) +
-				   (enc_ref_c_size * 4);
+		ctx->port_b_size = (enc_ref_y_size *
+					(ctx->dpb_count - ENC_REF_2)) +
+				   (enc_ref_c_size * ctx->dpb_count);
 		break;
 	case S5P_FIMV_CODEC_H263_ENC:
-		ctx->port_a_size = (enc_ref_y_size * 2) +
+		ctx->port_a_size = (enc_ref_y_size * ctx->dpb_count) +
 				   S5P_FIMV_ENC_UPMV_SIZE +
 				   S5P_FIMV_ENC_ACDCCOEF_SIZE;
-		ctx->port_b_size = (enc_ref_y_size * 2) +
-				   (enc_ref_c_size * 4);
+		ctx->port_b_size = (enc_ref_c_size * ctx->dpb_count);
 		break;
 	default:
 		break;
@@ -586,12 +614,12 @@ int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 		buf_queue = &dec->dpb_queue;
 	list_for_each_entry(buf, buf_queue, list) {
 		mfc_debug(2, "Luma 0x%08lx\n",
-				(unsigned long)buf->planes.raw.luma);
-		WRITEL(OFFSETB(buf->planes.raw.luma),
+				(unsigned long)buf->planes.raw[0]);
+		WRITEL(OFFSETB(buf->planes.raw[0]),
 					S5P_FIMV_DEC_LUMA_ADR + i * 4);
 		mfc_debug(2, "\tChroma 0x%08lx\n",
-				(unsigned long)buf->planes.raw.chroma);
-		WRITEL(OFFSETA(buf->planes.raw.chroma),
+				(unsigned long)buf->planes.raw[1]);
+		WRITEL(OFFSETA(buf->planes.raw[1]),
 					S5P_FIMV_DEC_CHROMA_ADR + i * 4);
 
 		if (ctx->codec_mode == S5P_FIMV_CODEC_H264_DEC) {
@@ -712,19 +740,21 @@ int s5p_mfc_set_enc_ref_buffer(struct s5p_mfc_ctx *ctx)
 
 	switch (ctx->codec_mode) {
 	case S5P_FIMV_CODEC_H264_ENC:
-		for (i = 0; i < 2; i++) {
+		for (i = 0; i < ENC_REF_2; i++) {
 			WRITEL(OFFSETA(buf_addr1),
 				S5P_FIMV_ENC_REF0_LUMA_ADR + (4 * i));
 			buf_addr1 += enc_ref_y_size;
 			buf_size1 -= enc_ref_y_size;
 
-			WRITEL(OFFSETB(buf_addr2),
-				S5P_FIMV_ENC_REF2_LUMA_ADR + (4 * i));
-			buf_addr2 += enc_ref_y_size;
-			buf_size2 -= enc_ref_y_size;
+			if (ctx->dpb_count == ENC_REF_4) {
+				WRITEL(OFFSETB(buf_addr2),
+					S5P_FIMV_ENC_REF2_LUMA_ADR + (4 * i));
+				buf_addr2 += enc_ref_y_size;
+				buf_size2 -= enc_ref_y_size;
+			}
 		}
 
-		for (i = 0; i < 4; i++) {
+		for (i = 0; i < ctx->dpb_count; i++) {
 			WRITEL(OFFSETB(buf_addr2),
 				S5P_FIMV_ENC_REF0_CHROMA_ADR + (4 * i));
 			buf_addr2 += enc_ref_c_size;
@@ -756,19 +786,21 @@ int s5p_mfc_set_enc_ref_buffer(struct s5p_mfc_ctx *ctx)
 		break;
 
 	case S5P_FIMV_CODEC_MPEG4_ENC:
-		for (i = 0; i < 2; i++) {
+		for (i = 0; i < ENC_REF_2; i++) {
 			WRITEL(OFFSETA(buf_addr1),
 				S5P_FIMV_ENC_REF0_LUMA_ADR + (4 * i));
 			buf_addr1 += enc_ref_y_size;
 			buf_size1 -= enc_ref_y_size;
 
-			WRITEL(OFFSETB(buf_addr2),
-				S5P_FIMV_ENC_REF2_LUMA_ADR + (4 * i));
-			buf_addr2 += enc_ref_y_size;
-			buf_size2 -= enc_ref_y_size;
+			if (ctx->dpb_count == ENC_REF_4) {
+				WRITEL(OFFSETB(buf_addr2),
+					S5P_FIMV_ENC_REF2_LUMA_ADR + (4 * i));
+				buf_addr2 += enc_ref_y_size;
+				buf_size2 -= enc_ref_y_size;
+			}
 		}
 
-		for (i = 0; i < 4; i++) {
+		for (i = 0; i < ctx->dpb_count; i++) {
 			WRITEL(OFFSETB(buf_addr2),
 				S5P_FIMV_ENC_REF0_CHROMA_ADR + (4 * i));
 			buf_addr2 += enc_ref_c_size;
@@ -792,19 +824,14 @@ int s5p_mfc_set_enc_ref_buffer(struct s5p_mfc_ctx *ctx)
 		break;
 
 	case S5P_FIMV_CODEC_H263_ENC:
-		for (i = 0; i < 2; i++) {
+		for (i = 0; i < ENC_REF_2; i++) {
 			WRITEL(OFFSETA(buf_addr1),
 				S5P_FIMV_ENC_REF0_LUMA_ADR + (4 * i));
 			buf_addr1 += enc_ref_y_size;
 			buf_size1 -= enc_ref_y_size;
-
-			WRITEL(OFFSETB(buf_addr2),
-				S5P_FIMV_ENC_REF2_LUMA_ADR + (4 * i));
-			buf_addr2 += enc_ref_y_size;
-			buf_size2 -= enc_ref_y_size;
 		}
 
-		for (i = 0; i < 4; i++) {
+		for (i = 0; i < ctx->dpb_count; i++) {
 			WRITEL(OFFSETB(buf_addr2),
 				S5P_FIMV_ENC_REF0_CHROMA_ADR + (4 * i));
 			buf_addr2 += enc_ref_c_size;
@@ -1795,7 +1822,7 @@ void s5p_mfc_try_run(struct s5p_mfc_dev *dev)
 		}
 
 		/* Free hardware lock */
-		if (clear_hw_bit(ctx) == 0)
+		if (test_and_clear_bit(ctx->num, &dev->hw_lock) == 0)
 			mfc_err("Failed to unlock hardware.\n");
 		s5p_mfc_clock_off();
 

@@ -447,6 +447,12 @@ config DEBUG_S3C_UART
 	default "1" if DEBUG_S3C_UART1
 	default "2" if DEBUG_S3C_UART2
 
+config SAMSUNG_CORE_TEST
+	tristate "core configuration debugging"
+	depends on ARCH_EXYNOS5
+	help
+		Debug core configuration.
+
 config SAMSUNG_BW_MONITOR
 	bool
 	help

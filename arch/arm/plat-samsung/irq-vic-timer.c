@@ -59,7 +59,7 @@ void __init s3c_init_vic_timer_irq(unsigned int num, unsigned int timer_irq)
 	unsigned int i;
 
 #ifdef CONFIG_ARCH_EXYNOS
-	if (soc_is_exynos5250()) {
+	if (soc_is_exynos5250() || soc_is_exynos5410() || soc_is_exynos5420()) {
 		pirq[0] = EXYNOS5_IRQ_TIMER0_VIC;
 		pirq[1] = EXYNOS5_IRQ_TIMER1_VIC;
 		pirq[2] = EXYNOS5_IRQ_TIMER2_VIC;

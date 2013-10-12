@@ -798,14 +798,6 @@ config RTC_DRV_SEC
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-sec.
 
-config RTC_ALARM_BOOT
-	bool "Android alarm boot function"
-	depends on RTC_DRV_SEC
-	default n
-	help
-	  This is for alarm booting function. This feature is only used in
-	  Chinese models.
-
 config RTC_DRV_EP93XX
 	tristate "Cirrus Logic EP93XX"
 	depends on ARCH_EP93XX

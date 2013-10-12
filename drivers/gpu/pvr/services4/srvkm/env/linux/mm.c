@@ -328,8 +328,6 @@ DebugMemAllocRecordAdd(DEBUG_MEM_ALLOC_TYPE eAllocType,
     LinuxLockMutex(&g_sDebugMutex);
 
     psRecord = kmalloc(sizeof(DEBUG_MEM_ALLOC_REC), GFP_KERNEL);
-	if(!psRecord)
-		return;
 
     psRecord->eAllocType = eAllocType;
     psRecord->uiKey = uiKey;

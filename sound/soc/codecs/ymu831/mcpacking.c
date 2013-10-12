@@ -6,7 +6,7 @@
  *
  *	Description	: MC Driver packet packing control
  *
- *	Version		: 1.0.6	2013.01.25
+ *	Version		: 2.0.1	2013.06.10
  *
  * This software is provided 'as-is', without any express or implied
  * warranty.	In no event will the authors be held liable for any damages
@@ -459,7 +459,7 @@ static void	AddInitDigtalIO(
 	/*	DIO1	*/
 	if ((sInitInfo.bPowerMode == MCDRV_POWMODE_CDSPDEBUG)
 	|| (sAecInfo.sAecVBox.sAecCDspDbg.bJtagOn == 1)) {
-		bReg	= 0x22;
+		bReg	= 0x2A;
 	} else {
 		bReg	= MCI_DO1_DRV_DEF;
 		if (sInitInfo.bDio1SdoHiz == MCDRV_DAHIZ_LOW)
@@ -683,7 +683,7 @@ static SINT32	InitMBlock(
 				MCDRV_PHYSPORT_NONE);
 		McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 				| MCDRV_PACKET_REGTYPE_A
-				| (UINT32)MCI_LP0_FP,
+				| (UINT32)MCI_LP3_FP,
 				MCDRV_PHYSPORT_NONE);
 		McPacket_AddDigitalIOPath();
 		sdRet	= McDevIf_ExecutePacket();
@@ -1490,7 +1490,7 @@ static SINT32	Offsetcancel(
 		McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 				| MCDRV_PACKET_REGTYPE_ANA
 				| (UINT32)22,
-				CP_88OFF<<1);
+				sInit2Info.bOption[14]);
 
 		McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 				| MCDRV_PACKET_REGTYPE_ANA
@@ -1737,7 +1737,7 @@ SINT32	McPacket_AddPowerUp(
 			McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 					| MCDRV_PACKET_REGTYPE_ANA
 					| (UINT32)MCI_AP,
-					bAP);
+					bAP|MCDRV_AP_LDOD);
 
 			McDevIf_AddPacket(MCDRV_PACKET_TYPE_TIMWAIT
 					| MCDRV_LDO_WAIT_TIME,
@@ -1971,7 +1971,8 @@ SINT32	McPacket_AddPowerUp(
 	}
 
 	/*	ANACLK_PD	*/
-	if ((((psPowerUpdate->abAnalog[0] & MCB_AP_LDOA) != 0)
+	if ((((bDUpdate & MCDRV_POWINFO_D_PLL_PD) != 0UL)
+	&& ((psPowerUpdate->abAnalog[0] & MCB_AP_LDOA) != 0)
 	&& ((psPowerInfo->abAnalog[0] & MCB_AP_LDOA) == 0))
 	|| (bOfc == 1)) {
 		bRegPD	&= (UINT8)~MCB_ANACLK_PD;
@@ -2009,7 +2010,7 @@ SINT32	McPacket_AddPowerUp(
 				McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 						| MCDRV_PACKET_REGTYPE_ANA
 						| (UINT32)MCI_AP,
-						bAP);
+						bAP|MCDRV_AP_LDOD);
 				McDevIf_AddPacket(MCDRV_PACKET_TYPE_TIMWAIT
 						| MCDRV_VREF_WAIT_TIME_ES1,
 						0);
@@ -2018,7 +2019,7 @@ SINT32	McPacket_AddPowerUp(
 				McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 						| MCDRV_PACKET_REGTYPE_ANA
 						| (UINT32)MCI_AP,
-						bAP);
+						bAP|MCDRV_AP_LDOD);
 				McDevIf_AddPacket(MCDRV_PACKET_TYPE_TIMWAIT
 						| MCDRV_LDO_WAIT_TIME,
 						0);
@@ -2028,14 +2029,14 @@ SINT32	McPacket_AddPowerUp(
 				McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 						| MCDRV_PACKET_REGTYPE_ANA
 						| (UINT32)MCI_AP,
-						bAP);
+						bAP|MCDRV_AP_LDOD);
 
 				/*	AP_LDOA	*/
 				bAP	&= (UINT8)~(MCB_AP_LDOA);
 				McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 						| MCDRV_PACKET_REGTYPE_ANA
 						| (UINT32)MCI_AP,
-						bAP);
+						bAP|MCDRV_AP_LDOD);
 				McDevIf_AddPacket(MCDRV_PACKET_TYPE_TIMWAIT
 						| MCDRV_LDO_WAIT_TIME,
 						0);
@@ -2047,7 +2048,7 @@ SINT32	McPacket_AddPowerUp(
 				McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 						| MCDRV_PACKET_REGTYPE_ANA
 						| (UINT32)MCI_AP,
-						bAP);
+						bAP|MCDRV_AP_LDOD);
 				McDevIf_AddPacket(MCDRV_PACKET_TYPE_TIMWAIT
 					| sInitInfo.sWaitTime.dWaitTime[6],
 						0);
@@ -2201,8 +2202,11 @@ SINT32	McPacket_AddPowerUp(
 		stCDSPInit.bJtag	= sAecInfo.sAecVBox.sAecCDspDbg.bJtagOn;
 		/*	JTAGSEL	*/
 		if (sInitInfo.bPowerMode == MCDRV_POWMODE_CDSPDEBUG) {
-			;
 			stCDSPInit.bJtag	= 1;
+			McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
+					| MCDRV_PACKET_REGTYPE_A
+					| (UINT32)MCI_DO1_DRV,
+					0x22);
 		}
 		McCdsp_Init(&stCDSPInit);
 		McCdsp_SetCBFunc(eMC_PLAYER_CODER_A, DSPCallback);
@@ -2299,7 +2303,7 @@ SINT32	McPacket_AddPowerUp(
 				McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 						| MCDRV_PACKET_REGTYPE_ANA
 						| (UINT32)MCI_AP,
-						bAP);
+						bAP|MCDRV_AP_LDOD);
 				if (McDevProf_GetDevId()
 					== eMCDRV_DEV_ID_80_90H) {
 					if (dWaitTime > MCDRV_CP_WAIT_TIME) {
@@ -2523,6 +2527,7 @@ SINT32	McPacket_AddPowerDown(
 			| MCDRV_PACKET_REGTYPE_A
 			| (UINT32)MCI_PD,
 			bRegPD);
+
 	bRegRst	|= bRST;
 	McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 			| MCDRV_PACKET_REGTYPE_IF
@@ -2549,6 +2554,25 @@ SINT32	McPacket_AddPowerDown(
 					| (UINT32)MCI_HSDETEN,
 					bReg);
 		}
+		if ((bRegPD&MCB_ANACLK_PD) == 0) {
+			if (McDevProf_GetDevId() != eMCDRV_DEV_ID_80_90H) {
+				;
+				McDevIf_AddPacket(MCDRV_PACKET_TYPE_EVTWAIT
+						| MCDRV_EVT_AP_CP_A_SET
+						| ((UINT32)91 << 8)
+						| (UINT32)0x02,
+						0);
+			}
+			/*	ANACLK_PD	*/
+			bRegPD	|= MCB_ANACLK_PD;
+			McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
+					| MCDRV_PACKET_REGTYPE_A
+					| (UINT32)MCI_PD,
+					bRegPD);
+		}
+	} else if (((bUpdate & MCDRV_POWINFO_D_PLL_PD) != 0UL)
+	&& ((bRegPD&MCB_PLL_PD) == 0)
+	&& ((bAP & MCB_AP_LDOA) == 0)) {
 		if (McDevProf_GetDevId() != eMCDRV_DEV_ID_80_90H) {
 			;
 			McDevIf_AddPacket(MCDRV_PACKET_TYPE_EVTWAIT
@@ -2668,7 +2692,8 @@ SINT32	McPacket_AddPowerDown(
 	&& ((psPowerInfo->abAnalog[0] & MCB_AP_HPDET) != 0))
 		bAP	|= MCB_AP_HPDET;
 
-	if (McDevProf_GetDevId() != eMCDRV_DEV_ID_81_92H) {
+	if ((McDevProf_GetDevId() == eMCDRV_DEV_ID_80_90H)
+	|| (McDevProf_GetDevId() == eMCDRV_DEV_ID_81_91H)) {
 		if ((bAP & (MCB_AP_LDOA|MCB_AP_LDOD)) ==
 			(MCB_AP_LDOA|MCB_AP_LDOD)
 		&& ((bAP & MCB_AP_BGR) == 0)
@@ -2846,6 +2871,7 @@ static void	AddDIPad(
 	struct MCDRV_PATH_INFO	sPathInfo;
 	struct MCDRV_DIO_INFO	sDioInfo;
 	struct MCDRV_AEC_INFO	sAecInfo;
+	struct MCDRV_DIOPATH_INFO	sDioPathInfo;
 
 #if (MCDRV_DEBUG_LEVEL >= 4)
 	McDebugLog_FuncIn("AddDIPad");
@@ -2855,6 +2881,7 @@ static void	AddDIPad(
 	McResCtrl_GetPathInfo(&sPathInfo);
 	McResCtrl_GetDioInfo(&sDioInfo);
 	McResCtrl_GetAecInfo(&sAecInfo);
+	McResCtrl_GetDioPathInfo(&sDioPathInfo);
 
 	bReg	= 0;
 	GetDIState(MCDRV_PHYSPORT_DIO0, &bIsUsedDIR, &bIsUsedDIT, &bLPort);
@@ -2873,15 +2900,16 @@ static void	AddDIPad(
 			bReg |= MCB_BCLK0_DDR;
 			bReg |= MCB_LRCK0_DDR;
 		}
-	} else {
-		if ((bLPort == 3)
-		|| ((bLPort <= 2)
-			&& (sDioInfo.asPortInfo[bLPort].sDioCommon.bMasterSlave
-							== MCDRV_DIO_MASTER))
-		) {
-			bReg |= MCB_BCLK0_DDR;
-			bReg |= MCB_LRCK0_DDR;
-		}
+	} else if ((sDioPathInfo.abPhysPort[0] == MCDRV_PHYSPORT_SLIM0)
+	|| (sDioPathInfo.abPhysPort[1] == MCDRV_PHYSPORT_SLIM0)
+	|| (sDioPathInfo.abPhysPort[2] == MCDRV_PHYSPORT_SLIM0)
+	|| (sDioPathInfo.abPhysPort[3] == MCDRV_PHYSPORT_SLIM0)
+	|| (bLPort == 3)
+	|| ((bLPort <= 2)
+		&& (sDioInfo.asPortInfo[bLPort].sDioCommon.bMasterSlave
+							== MCDRV_DIO_MASTER))) {
+		bReg |= MCB_BCLK0_DDR;
+		bReg |= MCB_LRCK0_DDR;
 	}
 	if ((bLPort <= 3)
 	&& (sDioInfo.asPortInfo[bLPort].sDioCommon.bBckInvert
@@ -2913,15 +2941,16 @@ static void	AddDIPad(
 			bReg |= MCB_BCLK1_DDR;
 			bReg |= MCB_LRCK1_DDR;
 		}
-	} else {
-		if ((bLPort == 3)
-		|| ((bLPort <= 2)
-			&& (sDioInfo.asPortInfo[bLPort].sDioCommon.bMasterSlave
-							== MCDRV_DIO_MASTER))
-		) {
-			bReg |= MCB_BCLK1_DDR;
-			bReg |= MCB_LRCK1_DDR;
-		}
+	} else if ((sDioPathInfo.abPhysPort[0] == MCDRV_PHYSPORT_SLIM1)
+	|| (sDioPathInfo.abPhysPort[1] == MCDRV_PHYSPORT_SLIM1)
+	|| (sDioPathInfo.abPhysPort[2] == MCDRV_PHYSPORT_SLIM1)
+	|| (sDioPathInfo.abPhysPort[3] == MCDRV_PHYSPORT_SLIM1)
+	|| (bLPort == 3)
+	|| ((bLPort <= 2)
+		&& (sDioInfo.asPortInfo[bLPort].sDioCommon.bMasterSlave
+							== MCDRV_DIO_MASTER))) {
+		bReg |= MCB_BCLK1_DDR;
+		bReg |= MCB_LRCK1_DDR;
 	}
 	if ((bLPort <= 3)
 	&& (sDioInfo.asPortInfo[bLPort].sDioCommon.bBckInvert
@@ -2957,15 +2986,16 @@ static void	AddDIPad(
 			bReg |= MCB_BCLK2_DDR;
 			bReg |= MCB_LRCK2_DDR;
 		}
-	} else {
-		if ((bLPort == 3)
-		|| ((bLPort <= 2)
-			&& (sDioInfo.asPortInfo[bLPort].sDioCommon.bMasterSlave
-							== MCDRV_DIO_MASTER))
-		) {
-			bReg |= MCB_BCLK2_DDR;
-			bReg |= MCB_LRCK2_DDR;
-		}
+	} else if ((sDioPathInfo.abPhysPort[0] == MCDRV_PHYSPORT_SLIM2)
+	|| (sDioPathInfo.abPhysPort[1] == MCDRV_PHYSPORT_SLIM2)
+	|| (sDioPathInfo.abPhysPort[2] == MCDRV_PHYSPORT_SLIM2)
+	|| (sDioPathInfo.abPhysPort[3] == MCDRV_PHYSPORT_SLIM2)
+	|| (bLPort == 3)
+	|| ((bLPort <= 2)
+		&& (sDioInfo.asPortInfo[bLPort].sDioCommon.bMasterSlave
+							== MCDRV_DIO_MASTER))) {
+		bReg |= MCB_BCLK2_DDR;
+		bReg |= MCB_LRCK2_DDR;
 	}
 	if ((bLPort <= 3)
 	&& (sDioInfo.asPortInfo[bLPort].sDioCommon.bBckInvert
@@ -4235,7 +4265,7 @@ void	McPacket_AddStop(
 			bDirect_Enb	&= (UINT8)~MCB_DIRECT_ENB_DAC1;
 		}
 	}
-	if ((bReg & 0x0F) == 0)
+	if ((bReg & (MCB_LPT3_START|MCB_LPR3_START)) == 0)
 		bReg	= 0;
 	McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 			| MCDRV_PACKET_REGTYPE_MB
@@ -4507,6 +4537,7 @@ void	McPacket_AddFDSPStop(
 #endif
 }
 
+
 /****************************************************************************
  *	AddDIStart
  *
@@ -4561,6 +4592,17 @@ static void	AddDIStart(
 				| MCDRV_PACKET_REGTYPE_A
 				| (UINT32)MCI_LP0_FP,
 				sDioPathInfo.abPhysPort[0]);
+		if (sDioPathInfo.abPhysPort[0] >= MCDRV_PHYSPORT_SLIM0) {
+			bStart	|= MCB_LP0_TIM_START;
+			if ((bStart&MCB_LPR0_START) != 0) {
+				;
+				bStart	|= MCB_LPR0_STOP_EN;
+			}
+			if ((bStart&MCB_LPT0_START) != 0) {
+				;
+				bStart	|= MCB_LPT0_STOP_EN;
+			}
+		}
 		if (McDevProf_GetDevId() != eMCDRV_DEV_ID_80_90H) {
 			McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 					| MCDRV_PACKET_REGTYPE_MA
@@ -4600,6 +4642,17 @@ static void	AddDIStart(
 				| MCDRV_PACKET_REGTYPE_A
 				| (UINT32)MCI_LP1_FP,
 				sDioPathInfo.abPhysPort[1]);
+		if (sDioPathInfo.abPhysPort[1] >= MCDRV_PHYSPORT_SLIM0) {
+			bStart	|= MCB_LP1_TIM_START;
+			if ((bStart&MCB_LPR1_START) != 0) {
+				;
+				bStart	|= MCB_LPR1_STOP_EN;
+			}
+			if ((bStart&MCB_LPT1_START) != 0) {
+				;
+				bStart	|= MCB_LPT1_STOP_EN;
+			}
+		}
 		if (McDevProf_GetDevId() != eMCDRV_DEV_ID_80_90H) {
 			McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 					| MCDRV_PACKET_REGTYPE_MA
@@ -4664,6 +4717,18 @@ static void	AddDIStart(
 					| MCDRV_PACKET_REGTYPE_A
 					| (UINT32)MCI_LP2_FP,
 					sDioPathInfo.abPhysPort[2]);
+			if (sDioPathInfo.abPhysPort[2] >= MCDRV_PHYSPORT_SLIM0
+			) {
+				bStart	|= MCB_LP2_TIM_START;
+				if ((bStart&MCB_LPR2_START) != 0) {
+					;
+					bStart	|= MCB_LPR2_STOP_EN;
+				}
+				if ((bStart&MCB_LPT2_START) != 0) {
+					;
+					bStart	|= MCB_LPT2_STOP_EN;
+				}
+			}
 		} else {	/*	LP2 not running	*/
 			bReg	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_MB,
 							MCI_LP2_START);
@@ -4698,13 +4763,13 @@ static void	AddDIStart(
 	|| (McResCtrl_HasSrc(eMCDRV_DST_VBOXMIXIN, eMCDRV_DST_CH3) != 0)) {
 		bStart |= MCB_SRC3_TIM_START;
 		bStart |= MCB_OSRC3_START;
-		bThru	= (sAecInfo.sAecVBox.bSrc3_Thru<<5);
+		bThru	= sAecInfo.sAecVBox.bSrc3_Thru;
 		bFs	= sAecInfo.sAecVBox.bSrc3_Fs;
 	}
 	if (McResCtrl_IsD1SrcUsed(MCDRV_D1SRC_VBOXREFOUT_ON) != 0) {
 		bStart |= MCB_SRC3_TIM_START;
 		bStart |= MCB_ISRC3_START;
-		bThru	= (sAecInfo.sAecVBox.bSrc3_Thru<<5);
+		bThru	= sAecInfo.sAecVBox.bSrc3_Thru;
 		bFs	= sAecInfo.sAecVBox.bSrc3_Fs;
 	}
 	if ((bStart != 0)
@@ -4732,6 +4797,17 @@ static void	AddDIStart(
 				| MCDRV_PACKET_REGTYPE_A
 				| (UINT32)MCI_LP3_FP,
 				sDioPathInfo.abPhysPort[3]);
+		if (sDioPathInfo.abPhysPort[3] >= MCDRV_PHYSPORT_SLIM0) {
+			bStart	|= MCB_LP3_TIM_START;
+			if ((bStart&MCB_LPR3_START) != 0) {
+				;
+				bStart	|= MCB_LPR3_STOP_EN;
+			}
+			if ((bStart&MCB_LPT3_START) != 0) {
+				;
+				bStart	|= MCB_LPT3_STOP_EN;
+			}
+		}
 		if (McDevProf_GetDevId() != eMCDRV_DEV_ID_80_90H) {
 			McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 					| MCDRV_PACKET_REGTYPE_MA
@@ -6154,22 +6230,21 @@ static void	AddDIODIR(
 	}
 
 	/*	LPT*_FMT, LPT*_BIT, LPR*_FMT, LPR*_BIT	*/
-	bReg	=
-	(sDioInfo.asPortInfo[ePort].sDit.sDaFormat.bMode << 6)
-	| (sDioInfo.asPortInfo[ePort].sDit.sDaFormat.bBitSel << 4)
-	| (sDioInfo.asPortInfo[ePort].sDir.sDaFormat.bMode << 2)
-	| (sDioInfo.asPortInfo[ePort].sDir.sDaFormat.bBitSel);
+	bReg	= (sDioInfo.asPortInfo[ePort].sDit.sDaFormat.bMode << 6)
+		| (sDioInfo.asPortInfo[ePort].sDit.sDaFormat.bBitSel << 4)
+		| (sDioInfo.asPortInfo[ePort].sDir.sDaFormat.bMode << 2)
+		| (sDioInfo.asPortInfo[ePort].sDir.sDaFormat.bBitSel);
 	McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 			| MCDRV_PACKET_REGTYPE_MB
 			| (UINT32)(MCI_LP0_FMT+bRegOffset),
 			bReg);
+
 	/*	LPR*_PCM_MONO, LPR*_PCM_EXTEND, LPR*_PCM_LSBON,
 		LPR*_PCM_LAW, LPR*_PCM_BIT	*/
-	bReg	=
-	(sDioInfo.asPortInfo[ePort].sDir.sPcmFormat.bMono << 7)
-	| (sDioInfo.asPortInfo[ePort].sDir.sPcmFormat.bOrder << 4)
-	| (sDioInfo.asPortInfo[ePort].sDir.sPcmFormat.bLaw << 2)
-	| (sDioInfo.asPortInfo[ePort].sDir.sPcmFormat.bBitSel);
+	bReg	= (sDioInfo.asPortInfo[ePort].sDir.sPcmFormat.bMono << 7)
+		| (sDioInfo.asPortInfo[ePort].sDir.sPcmFormat.bOrder << 4)
+		| (sDioInfo.asPortInfo[ePort].sDir.sPcmFormat.bLaw << 2)
+		| (sDioInfo.asPortInfo[ePort].sDir.sPcmFormat.bBitSel);
 	McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 			| MCDRV_PACKET_REGTYPE_MB
 			| (UINT32)(MCI_LPR0_PCM+bRegOffset),
@@ -6221,22 +6296,21 @@ static void	AddDIODIT(
 	}
 
 	/*	LPT*_FMT, LPT*_BIT	*/
-	bReg	=
-	(sDioInfo.asPortInfo[ePort].sDit.sDaFormat.bMode << 6)
-	| (sDioInfo.asPortInfo[ePort].sDit.sDaFormat.bBitSel << 4)
-	| (sDioInfo.asPortInfo[ePort].sDir.sDaFormat.bMode << 2)
-	| (sDioInfo.asPortInfo[ePort].sDir.sDaFormat.bBitSel);
+	bReg	= (sDioInfo.asPortInfo[ePort].sDit.sDaFormat.bMode << 6)
+		| (sDioInfo.asPortInfo[ePort].sDit.sDaFormat.bBitSel << 4)
+		| (sDioInfo.asPortInfo[ePort].sDir.sDaFormat.bMode << 2)
+		| (sDioInfo.asPortInfo[ePort].sDir.sDaFormat.bBitSel);
 	McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 			| MCDRV_PACKET_REGTYPE_MB
 			| (UINT32)(MCI_LP0_FMT+bRegOffset),
 			bReg);
+
 	/*	LPT*_PCM_MONO, LPT*_PCM_EXTEND, LPT*_PCM_LSBON,
 		LPT*_PCM_LAW, LPT*_PCM_BIT	*/
-	bReg	=
-	(sDioInfo.asPortInfo[ePort].sDit.sPcmFormat.bMono << 7)
-	| (sDioInfo.asPortInfo[ePort].sDit.sPcmFormat.bOrder << 4)
-	| (sDioInfo.asPortInfo[ePort].sDit.sPcmFormat.bLaw << 2)
-	| (sDioInfo.asPortInfo[ePort].sDit.sPcmFormat.bBitSel);
+	bReg	= (sDioInfo.asPortInfo[ePort].sDit.sPcmFormat.bMono << 7)
+		| (sDioInfo.asPortInfo[ePort].sDit.sPcmFormat.bOrder << 4)
+		| (sDioInfo.asPortInfo[ePort].sDit.sPcmFormat.bLaw << 2)
+		| (sDioInfo.asPortInfo[ePort].sDit.sPcmFormat.bBitSel);
 	McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
 			| MCDRV_PACKET_REGTYPE_MB
 			| (UINT32)(MCI_LPT0_PCM+bRegOffset),
@@ -6277,43 +6351,6 @@ void	McPacket_AddDigitalIOPath(
 		return;
 
 	McResCtrl_GetDioPathInfo(&sDioPathInfo);
-
-	bReg	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_IF, MCI_RST);
-	if ((sDioPathInfo.abPhysPort[0] >= 4)
-	|| (sDioPathInfo.abPhysPort[1] >= 4)
-	|| (sDioPathInfo.abPhysPort[2] >= 4)
-	|| (sDioPathInfo.abPhysPort[3] >= 4)) {
-		if ((bReg & MCB_PSW_S) != 0) {
-			bReg	&= MCB_PSW_S;
-			McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
-					| MCDRV_PACKET_REGTYPE_IF
-					| (UINT32)MCI_RST,
-					bReg);
-			McDevIf_AddPacket(MCDRV_PACKET_TYPE_EVTWAIT
-					| MCDRV_EVT_PSW_RESET
-					| (UINT32)MCI_RST<<8
-					| MCB_PSW_S,
-					0);
-			bReg	&= (UINT8)~MCB_RST_S;
-			McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
-					| MCDRV_PACKET_REGTYPE_IF
-					| (UINT32)MCI_RST,
-					bReg);
-		}
-	} else {
-		if ((bReg & MCB_PSW_S) == 0) {
-			bReg	|= MCB_RST_S;
-			McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
-					| MCDRV_PACKET_REGTYPE_IF
-					| (UINT32)MCI_RST,
-					bReg);
-			bReg	|= MCB_PSW_S;
-			McDevIf_AddPacket(MCDRV_PACKET_TYPE_WRITE
-					| MCDRV_PACKET_REGTYPE_IF
-					| (UINT32)MCI_RST,
-					bReg);
-		}
-	}
 
 	bReg	= McResCtrl_GetRegVal(MCDRV_PACKET_REGTYPE_MB, MCI_LP0_MODE);
 	bReg	&= (MCB_LP0_STMODE

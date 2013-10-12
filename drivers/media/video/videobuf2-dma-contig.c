@@ -34,7 +34,7 @@ struct vb2_dc_buf {
 
 static void vb2_dc_put(void *buf_priv);
 
-static void *vb2_dc_alloc(void *alloc_ctx, unsigned long size)
+static void *vb2_dc_alloc(void *alloc_ctx, unsigned long size, int write, int plane)
 {
 	struct vb2_dc_conf *conf = alloc_ctx;
 	struct vb2_dc_buf *buf;
@@ -112,7 +112,7 @@ static int vb2_dc_mmap(void *buf_priv, struct vm_area_struct *vma)
 }
 
 static void *vb2_dc_get_userptr(void *alloc_ctx, unsigned long vaddr,
-					unsigned long size, int write)
+					unsigned long size, int write, int plane)
 {
 	struct vb2_dc_buf *buf;
 	struct vm_area_struct *vma;

@@ -936,7 +936,7 @@ static int sensor_power(struct sensor_info *info, bool enable)
 			return 0;
 
 		if (pdata->clk_on) {
-			pdata->clk_on(cdev, FLITE_ID_C);
+			pdata->clk_on(cdev, FLITE_ID_B);
 		} else {
 			sensor_err("failed to clk_on\n");
 			return -1;
@@ -947,7 +947,7 @@ static int sensor_power(struct sensor_info *info, bool enable)
 			return 0;
 
 		if (pdata->clk_off) {
-			pdata->clk_off(cdev, FLITE_ID_C);
+			pdata->clk_off(cdev, FLITE_ID_B);
 		} else {
 			sensor_err("failed to clk_off\n");
 			return -1;
@@ -1134,20 +1134,16 @@ static int sensor_setup_default(struct v4l2_subdev *sd)
 	/* AE setting */
 	vision_sensor_write_reg(sd, 0x6000, 0x11, I2C_8BIT);
 	vision_sensor_write_reg(sd, 0x6001, 0x11, I2C_8BIT);
-	vision_sensor_write_reg(sd, 0x6002, 0x11, I2C_8BIT);
-	vision_sensor_write_reg(sd, 0x6003, 0x11, I2C_8BIT);
-	vision_sensor_write_reg(sd, 0x6004, 0x11, I2C_8BIT);
-	vision_sensor_write_reg(sd, 0x6005, 0x11, I2C_8BIT);
+	vision_sensor_write_reg(sd, 0x6002, 0x14, I2C_8BIT);
+	vision_sensor_write_reg(sd, 0x6003, 0x41, I2C_8BIT);
+	vision_sensor_write_reg(sd, 0x6004, 0x14, I2C_8BIT);
+	vision_sensor_write_reg(sd, 0x6005, 0x41, I2C_8BIT);
 	vision_sensor_write_reg(sd, 0x6006, 0x11, I2C_8BIT);
 	vision_sensor_write_reg(sd, 0x6007, 0x11, I2C_8BIT);
 
 	/* Number of pixel */
-	vision_sensor_write_reg(sd, 0x5030, 0x12, I2C_8BIT);
-	vision_sensor_write_reg(sd, 0x5031, 0xB0, I2C_8BIT);
-
-	/* AE max shutter */
-	vision_sensor_write_reg(sd, 0x5014, 0x11, I2C_8BIT);
-	vision_sensor_write_reg(sd, 0x5015, 0x00, I2C_8BIT);
+	vision_sensor_write_reg(sd, 0x5030, 0x20, I2C_8BIT);
+	vision_sensor_write_reg(sd, 0x5031, 0xB4, I2C_8BIT);
 
 	/* AE target */
 	vision_sensor_write_reg(sd, 0x600A, 0x2A, I2C_8BIT);
@@ -1215,12 +1211,86 @@ static int sensor_setup_default(struct v4l2_subdev *sd)
 	return ret;
 }
 
+static int sensor_set_clock(struct v4l2_subdev *sd, int sensor_id)
+{
+	struct sensor_info *info = to_sensor(sd);
+	char sensor_mclk[20];
+	struct clk *sclk_mout_sensor = NULL;
+	struct clk *sclk_sensor = NULL;
+	unsigned long sensor;
+
+	if (soc_is_exynos5410()) {
+		/* SENSOR */
+		sprintf(sensor_mclk, "sclk_isp_sensor%d", sensor_id);
+		sclk_mout_sensor = clk_get(NULL, "sclk_mout_isp_sensor");
+		if (IS_ERR(sclk_mout_sensor)) {
+			pr_err("%s : clk_get(sclk_mout_sensor%d) failed\n", __func__, sensor_id);
+			return PTR_ERR(sclk_mout_sensor);
+		}
+
+		sclk_sensor = clk_get(NULL, sensor_mclk);
+		if (IS_ERR(sclk_sensor)) {
+			pr_err("%s : clk_get(sclk_isp_sensor%d) failed\n", __func__, sensor_id);
+			return PTR_ERR(sclk_sensor);
+		}
+
+		clk_set_parent(sclk_mout_sensor, clk_get(NULL, "mout_ipll"));
+		clk_set_rate(sclk_sensor, 24 * 1000000);
+
+		sensor = clk_get_rate(sclk_sensor);
+		pr_debug("sensor : %ld\n", sensor);
+
+		clk_put(sclk_mout_sensor);
+		clk_put(sclk_sensor);
+	} else {
+		char source_name[30];
+		struct clk *mout_ipll = NULL;
+		struct clk *sclk_isp_sensor = NULL;
+		u32 sensor_mclk;
+
+		mout_ipll = clk_get(NULL, "mout_ipll");
+		if (IS_ERR(mout_ipll)) {
+			pr_err("%s : clk_get(mout_ipll ) failed\n", __func__);
+			return PTR_ERR(mout_ipll);
+		}
+
+		snprintf(source_name, sizeof(source_name), "sclk_isp_sensor%d", sensor_id);
+		sclk_isp_sensor = clk_get(NULL, source_name);
+		if (IS_ERR(sclk_isp_sensor)) {
+			pr_err("%s : clk_get(sclk_isp_sensor%d) failed\n", __func__, sensor_id);
+			return PTR_ERR(sclk_isp_sensor);
+		}
+
+		clk_set_parent(sclk_isp_sensor, mout_ipll);
+		/* HACK : 24Mhz */
+		clk_set_rate(sclk_isp_sensor, 24 * 1000 * 1000);
+		pr_info("sclk_isp_sensor%d mclk : %ldHz\n", sensor_id,
+			clk_get_rate(sclk_isp_sensor));
+
+		clk_put(mout_ipll);
+		clk_put(sclk_isp_sensor);
+	}
+
+	return 0;
+}
+
 static int sensor_s_power(struct v4l2_subdev *sd, int on)
 {
 	struct sensor_info *info = to_sensor(sd);
 	int ret;
 
 	if (on) {
+
+		/*
+		 * HACK
+		 * s_power of flite make mux to change to ipll and then
+		 * mclk for vision should be cacaluate again after mux setting changes
+		 * vision clock source is channel 2
+		 */
+		ret = sensor_set_clock(sd, FLITE_ID_C);
+		if (ret < 0)
+			sensor_err("sensor set clock fail");
+
 		ret = sensor_power(info, true);
 		if (!ret)
 			ret = sensor_setup_default(sd);
@@ -1355,40 +1425,6 @@ static int sensor_init_formats(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh
 	return 0;
 }
 
-static int sensor_set_clock(struct v4l2_subdev *sd, int sensor_id)
-{
-	struct sensor_info *info = to_sensor(sd);
-	char sensor_mclk[20];
-	struct clk *sclk_mout_sensor = NULL;
-	struct clk *sclk_sensor = NULL;
-	unsigned long sensor;
-
-	/* SENSOR */
-	sprintf(sensor_mclk, "sclk_isp_sensor%d", sensor_id);
-	sclk_mout_sensor = clk_get(NULL, "sclk_mout_isp_sensor");
-	if (IS_ERR(sclk_mout_sensor)) {
-		pr_err("%s : clk_get(sclk_mout_sensor%d) failed\n", __func__, sensor_id);
-		return PTR_ERR(sclk_mout_sensor);
-	}
-
-	sclk_sensor = clk_get(NULL, sensor_mclk);
-	if (IS_ERR(sclk_sensor)) {
-		pr_err("%s : clk_get(sclk_isp_sensor%d) failed\n", __func__, sensor_id);
-		return PTR_ERR(sclk_sensor);
-	}
-
-	clk_set_parent(sclk_mout_sensor, clk_get(NULL, "mout_ipll"));
-	clk_set_rate(sclk_sensor, 24 * 1000000);
-
-	sensor = clk_get_rate(sclk_sensor);
-	pr_debug("sensor : %ld\n", sensor);
-
-	clk_put(sclk_mout_sensor);
-	clk_put(sclk_sensor);
-
-	return 0;
-}
-
 static int mipi_csis_callback(struct device *dev, void *p)
 {
 	struct platform_device **pd_list = p;
@@ -1438,6 +1474,10 @@ static int sensor_subdev_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 
 	v4l2_dbg(1, sensor_debug, sd, "%s", __func__);
 
+	/*
+	 * HACK
+	 * vision clock source is channel 2
+	 */
 	ret = sensor_set_clock(sd, FLITE_ID_C);
 	if (ret < 0) {
 		sensor_err("sensor set clock fail");
@@ -1453,7 +1493,7 @@ static int sensor_subdev_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 	fh->vfh.ctrl_handler = &info->handle;
 	sensor_init_formats(sd, fh);
 
-	pdev = get_mipi_csis_pdev(FLITE_ID_C);
+	pdev = get_mipi_csis_pdev(FLITE_ID_B);
 	irq = platform_get_irq(pdev, 0);
 	v4l2_dbg(1, sensor_debug, sd, "%s : mipi irq num : %d", __func__, irq);
 
@@ -1471,7 +1511,7 @@ static int sensor_subdev_close(struct v4l2_subdev *sd,
 
 	v4l2_dbg(1, sensor_debug, sd, "%s", __func__);
 
-	pdev = get_mipi_csis_pdev(FLITE_ID_C);
+	pdev = get_mipi_csis_pdev(FLITE_ID_B);
 	irq = platform_get_irq(pdev, 0);
 	v4l2_dbg(1, sensor_debug, sd, "%s : mipi irq num : %d", __func__, irq);
 

@@ -86,7 +86,7 @@ EXPORT_SYMBOL(mmc_add_trace);
 
 /* profiling part */
 #define MMC_PROFILE_COUNT_MAX			65536
-#define MMC_PROFILE_MAX_SLOT			10
+#define MMC_PROFILE_MAX_SLOT			4
 
 static bool init_lock = true;
 static spinlock_t mmc_profile_lock;

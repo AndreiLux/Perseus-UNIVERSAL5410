@@ -42,6 +42,23 @@ void __init exynos5_gsc_set_ip_ver(enum gsc_ip_version ver)
 {
 	exynos_gsc0_default_data.ip_ver = ver;
 	exynos_gsc1_default_data.ip_ver = ver;
-	exynos_gsc2_default_data.ip_ver = ver;
-	exynos_gsc3_default_data.ip_ver = ver;
+	if (soc_is_exynos5250() || soc_is_exynos5410()) {
+		exynos_gsc2_default_data.ip_ver = ver;
+		exynos_gsc3_default_data.ip_ver = ver;
+	}
 }
+
+void __init exynos5_gsc_set_pm_qos_val(u32 mif_min, u32 int_min)
+{
+	exynos_gsc0_default_data.mif_min = mif_min;
+	exynos_gsc0_default_data.int_min = int_min;
+	exynos_gsc1_default_data.mif_min = mif_min;
+	exynos_gsc1_default_data.int_min = int_min;
+	if (soc_is_exynos5250() || soc_is_exynos5410()) {
+		exynos_gsc2_default_data.mif_min = mif_min;
+		exynos_gsc2_default_data.int_min = int_min;
+		exynos_gsc3_default_data.mif_min = mif_min;
+		exynos_gsc3_default_data.int_min = int_min;
+	}
+}
+

@@ -28,6 +28,8 @@
 #include <linux/debugfs.h>
 #include <linux/string.h>
 
+#include <plat/cpu.h>
+
 #include <asm/cacheflush.h>
 
 #include "exynos-iommu.h"
@@ -42,7 +44,7 @@
 #define lv1ent_page(sent) ((*(sent) & 3) == 1)
 #define lv1ent_section(sent) ((*(sent) & 3) == 2)
 
-#define lv2ent_fault(pent) ((*(pent) & 3) == 0)
+#define lv2ent_fault(pent) ((*(pent) & 3) == 0 || (*(pent) & SPAGE_MASK) == fault_page)
 #define lv2ent_small(pent) ((*(pent) & 2) == 2)
 #define lv2ent_large(pent) ((*(pent) & 3) == 1)
 
@@ -76,10 +78,12 @@
 
 #define CFG_LRU		0x1
 #define CFG_QOS(n)	((n & 0xF) << 7)
-#define CFG_MASK	0x0050FFFF /* Selecting bit 0-15, 20, 22 */
+#define CFG_MASK	0x0150FFFF /* Selecting bit 0-15, 20, 22 and 24 */
+#define CFG_ACGEN	(1 << 24) /* System MMU 3.3 only */
 #define CFG_SYSSEL	(1 << 22) /* System MMU 3.2 only */
 #define CFG_FLPDCACHE	(1 << 20) /* System MMU 3.2+ only */
 #define CFG_SHAREABLE	(1 << 12) /* System MMU 3.x only */
+#define CFG_QOS_OVRRIDE (1 << 11) /* System MMU 3.3 only */
 
 #define REG_MMU_CTRL		0x000
 #define REG_MMU_CFG		0x004
@@ -89,6 +93,10 @@
 #define REG_PT_BASE_ADDR	0x014
 #define REG_INT_STATUS		0x018
 #define REG_INT_CLEAR		0x01C
+#define REG_PB_INFO		0x400
+#define REG_PB_LMM		0x404
+#define REG_PB_INDICATE		0x408
+#define REG_PB_CFG		0x40C
 
 #define REG_PAGE_FAULT_ADDR	0x024
 #define REG_AW_FAULT_ADDR	0x028
@@ -100,7 +108,7 @@
 #define MMU_MAJ_VER(reg)	(reg >> 28)
 #define MMU_MIN_VER(reg)	((reg >> 21) & 0x7F)
 
-#define MAX_NUM_PBUF		3
+#define MAX_NUM_PBUF		6
 
 #define NUM_MINOR_OF_SYSMMU_V3	4
 
@@ -115,13 +123,12 @@ static void *sysmmu_placeholder; /* Inidcate if a device is System MMU */
 #define for_each_sysmmu_until(dev, sysmmu, until)			\
 	for (sysmmu = dev->parent; sysmmu != until; sysmmu = sysmmu->parent)
 
-/* Offset of prefetch buffer setting registers are different
- * between SysMMU 3.1 and 3.2
- */
-static unsigned short
-	pbuf_offset[NUM_MINOR_OF_SYSMMU_V3] = {0x04C, 0x04C, 0x070, 0x000};
-
 static struct kmem_cache *lv2table_kmem_cache;
+static unsigned long fault_page;
+
+static int recover_fault_handler (struct iommu_domain *domain,
+				struct device *dev, unsigned long fault_addr,
+				int itype);
 
 static unsigned long *section_entry(unsigned long *pgtable, unsigned long iova)
 {
@@ -181,6 +188,7 @@ struct sysmmu_drvdata {
 	int num_pbufs;
 	struct dentry *debugfs_root;
 	bool runtime_active;
+	enum sysmmu_property prop; /* mach/sysmmu.h */
 	bool tlbinv_entry;
 };
 
@@ -191,6 +199,13 @@ struct exynos_iommu_domain {
 	spinlock_t lock; /* lock for this structure */
 	spinlock_t pgtablelock; /* lock for modifying page table @ pgtable */
 };
+
+static inline void pgtable_flush(void *vastart, void *vaend)
+{
+	dmac_flush_range(vastart, vaend);
+	outer_flush_range(virt_to_phys(vastart),
+				virt_to_phys(vaend));
+}
 
 static bool set_sysmmu_active(struct sysmmu_drvdata *data)
 {
@@ -216,18 +231,48 @@ static unsigned int __sysmmu_version(struct sysmmu_drvdata *drvdata,
 {
 	unsigned int major;
 
-	if (drvdata->ver.major == 0) {
-		major = readl(
-			drvdata->sfrbases[idx] + REG_MMU_VERSION);
-		if (minor)
-			*minor = MMU_MIN_VER(major);
-		major = MMU_MAJ_VER(major);
-	} else {
-		major = drvdata->ver.major;
-		if (minor)
-			*minor = drvdata->ver.minor;
+	major = readl(drvdata->sfrbases[idx] + REG_MMU_VERSION);
+
+	if ((MMU_MAJ_VER(major) == 0) || (MMU_MAJ_VER(major) > 3)) {
+		/* register MMU_VERSION is used for special purpose */
+		if (drvdata->ver.major == 0) {
+			/* min ver. is not important for System MMU 1 and 2 */
+			major = 1;
+		} else {
+			if (minor)
+				*minor = drvdata->ver.minor;
+			major = drvdata->ver.major;
+		}
+
+		return major;
 	}
+
+	if (minor)
+		*minor = MMU_MIN_VER(major);
+
+	major = MMU_MAJ_VER(major);
+
 	return major;
+}
+
+static bool has_sysmmu_capable_pbuf(struct sysmmu_drvdata *drvdata,
+			int idx, struct sysmmu_prefbuf pbuf[], int *min)
+{
+	if (__sysmmu_version(drvdata, idx, min) != 3)
+		return false;
+
+	if (*min == 3)
+		return false;
+
+	if ((pbuf[0].config & SYSMMU_PBUFCFG_WRITE) &&
+		(drvdata->prop & SYSMMU_PROP_WRITE))
+		return true;
+
+	if (!(pbuf[0].config & SYSMMU_PBUFCFG_WRITE) &&
+		(drvdata->prop & SYSMMU_PROP_READ))
+		return true;
+
+	return false;
 }
 
 static void sysmmu_unblock(void __iomem *sfrbase)
@@ -265,7 +310,6 @@ static void __sysmmu_tlb_invalidate_entry(void __iomem *sfrbase,
 static void __sysmmu_set_ptbase(void __iomem *sfrbase,
 				       unsigned long pgd)
 {
-	__raw_writel(0x1, sfrbase + REG_MMU_CFG); /* 16KB LV1, LRU */
 	__raw_writel(pgd, sfrbase + REG_PT_BASE_ADDR);
 
 	__sysmmu_tlb_invalidate(sfrbase);
@@ -278,33 +322,115 @@ static void __sysmmu_set_prefbuf(void __iomem *pbufbase, unsigned long base,
 	__raw_writel(size - 1 + base,  pbufbase + 4 + idx * 8);
 }
 
+/*
+ * Offset of prefetch buffer setting registers are different
+ * between SysMMU 3.1 and 3.2. 3.3 has a single prefetch buffer setting.
+ */
+static unsigned short
+	pbuf_offset[NUM_MINOR_OF_SYSMMU_V3] = {0x04C, 0x04C, 0x070, 0x410};
+
+#define SYSMMU_PBUFCFG_DEFAULT (		\
+		SYSMMU_PBUFCFG_TLB_UPDATE |	\
+		SYSMMU_PBUFCFG_ASCENDING	\
+	)
+
+static int __prepare_prefetch_buffers(struct sysmmu_drvdata *drvdata, int idx,
+				struct sysmmu_prefbuf prefbuf[], int num_pb)
+{
+	int ret_num_pb = 0;
+	int i;
+	struct exynos_iovmm *vmm;
+
+	if (!drvdata->master || !drvdata->master->archdata.iommu) {
+		dev_err(drvdata->sysmmu, "%s: No master device is specified\n",
+					__func__);
+		return 0;
+	}
+
+	vmm = ((struct exynos_iommu_owner *)
+			(drvdata->master->archdata.iommu))->vmm_data;
+	if (!vmm || (drvdata->num_pbufs > 0)) {
+		if (drvdata->num_pbufs > num_pb)
+			drvdata->num_pbufs = num_pb;
+
+		memcpy(prefbuf, drvdata->pbufs,
+				drvdata->num_pbufs * sizeof(prefbuf[0]));
+
+		return drvdata->num_pbufs;
+	}
+
+	if (drvdata->prop & SYSMMU_PROP_READ) {
+		ret_num_pb = min(vmm->inplanes, num_pb);
+		for (i = 0; i < ret_num_pb; i++) {
+			prefbuf[i].base = vmm->iova_start[i];
+			prefbuf[i].size = vmm->iovm_size[i];
+			prefbuf[i].config =
+				SYSMMU_PBUFCFG_DEFAULT | SYSMMU_PBUFCFG_READ;
+		}
+	}
+
+	if ((drvdata->prop & SYSMMU_PROP_WRITE) &&
+				(ret_num_pb < num_pb) && (vmm->onplanes > 0)) {
+		for (i = 0; i < min(num_pb - ret_num_pb,
+					vmm->inplanes + vmm->onplanes); i++) {
+			prefbuf[ret_num_pb + i].base =
+					vmm->iova_start[vmm->inplanes + i];
+			prefbuf[ret_num_pb + i].size =
+					vmm->iovm_size[vmm->inplanes + i];
+			prefbuf[ret_num_pb + i].config =
+				SYSMMU_PBUFCFG_DEFAULT | SYSMMU_PBUFCFG_WRITE;
+		}
+
+		ret_num_pb += i;
+	}
+
+	if (drvdata->prop & SYSMMU_PROP_WINDOW_MASK) {
+		unsigned long prop = (drvdata->prop & SYSMMU_PROP_WINDOW_MASK)
+						>> SYSMMU_PROP_WINDOW_SHIFT;
+		BUG_ON(ret_num_pb != 0);
+		for (i = 0; (i < (vmm->inplanes + vmm->onplanes)) &&
+						(ret_num_pb < num_pb); i++) {
+			if (prop & 1) {
+				prefbuf[ret_num_pb].base = vmm->iova_start[i];
+				prefbuf[ret_num_pb].size = vmm->iovm_size[i];
+				prefbuf[ret_num_pb].config =
+					SYSMMU_PBUFCFG_DEFAULT |
+					SYSMMU_PBUFCFG_READ;
+				ret_num_pb++;
+			}
+			prop >>= 1;
+			if (prop == 0)
+				break;
+		}
+	}
+
+	if (drvdata->prop & SYSMMU_PROP_PREFETCH)
+		for (i = 0; i < ret_num_pb; i++)
+			prefbuf[i].config |= SYSMMU_PBUFCFG_PREFETCH;
+
+	return ret_num_pb;
+}
+
 static void __exynos_sysmmu_set_pbuf_ver31(struct sysmmu_drvdata *drvdata,
-			int idx, int nbufs, struct sysmmu_prefbuf prefbuf[])
+					   int idx)
 {
 	unsigned long cfg =
 		__raw_readl(drvdata->sfrbases[idx] + REG_MMU_CFG) & CFG_MASK;
+	int num_bufs;
+	struct sysmmu_prefbuf prefbuf[2];
 
-	if (nbufs > 1) {
-		unsigned long base = prefbuf[1].base;
-		unsigned long end = prefbuf[1].base + prefbuf[1].size;
+	num_bufs = __prepare_prefetch_buffers(drvdata, idx, prefbuf, 2);
+	if (num_bufs == 0)
+		return;
 
-		/* merging buffers from the second to the last */
-		while (nbufs-- > 2) {
-			base = min(base, prefbuf[nbufs - 1].base);
-			end = max(end, prefbuf[nbufs - 1].base +
-					prefbuf[nbufs - 1].size);
-		}
+	BUG_ON(num_bufs > 2);
 
+	if (num_bufs == 2) {
 		/* Separate PB mode */
 		cfg |= 2 << 28;
 
 		__sysmmu_set_prefbuf(drvdata->sfrbases[idx] + pbuf_offset[1],
-					base, end - base, 1);
-
-		drvdata->num_pbufs = 2;
-		drvdata->pbufs[0] = prefbuf[0];
-		drvdata->pbufs[1] = prefbuf[1];
-
+					prefbuf[1].base, prefbuf[1].size, 1);
 	} else {
 		/* Combined PB mode */
 		cfg |= 3 << 28;
@@ -319,99 +445,97 @@ static void __exynos_sysmmu_set_pbuf_ver31(struct sysmmu_drvdata *drvdata,
 }
 
 static void __exynos_sysmmu_set_pbuf_ver32(struct sysmmu_drvdata *drvdata,
-			int idx, int nbufs, struct sysmmu_prefbuf prefbuf[])
+					   int idx)
 {
+	int i;
 	unsigned long cfg =
 		__raw_readl(drvdata->sfrbases[idx] + REG_MMU_CFG) & CFG_MASK;
+	int num_bufs;
+	struct sysmmu_prefbuf prefbuf[3];
+
+	num_bufs = __prepare_prefetch_buffers(drvdata, idx, prefbuf, 3);
+	if (num_bufs == 0)
+		return;
 
 	cfg |= 7 << 16; /* enabling PB0 ~ PB2 */
 
-	switch (nbufs) {
+	switch (num_bufs) {
 	case 1:
-	{
 		/* Combined PB mode (0 ~ 2) */
 		cfg |= 1 << 19;
-		__sysmmu_set_prefbuf(drvdata->sfrbases[idx] + pbuf_offset[2],
-				prefbuf[0].base, prefbuf[0].size, 0);
-		drvdata->num_pbufs = 1;
-		drvdata->pbufs[0] = prefbuf[0];
 		break;
-	}
 	case 2:
-	{
 		/* Combined PB mode (0 ~ 1) */
 		cfg |= 1 << 21;
-		__sysmmu_set_prefbuf(drvdata->sfrbases[idx] + pbuf_offset[2],
-				prefbuf[0].base, prefbuf[0].size, 0);
-		__sysmmu_set_prefbuf(drvdata->sfrbases[idx] + pbuf_offset[2],
-				prefbuf[1].base, prefbuf[1].size, 2);
-		drvdata->num_pbufs = 2;
-		drvdata->pbufs[0] = prefbuf[0];
-		drvdata->pbufs[1] = prefbuf[1];
 		break;
-	}
 	case 3:
-	{
-		/* Finding largest buffer and set it to prefbuf 2 */
-		int i, j, k = 0;
-		for (j = 1; j < 3; j++)
-			if (prefbuf[j].size > prefbuf[0].size)
-				k = j;
-		/* Set to k-th buf to prefbuf 2 */
-		__sysmmu_set_prefbuf(drvdata->sfrbases[idx] + pbuf_offset[2],
-					prefbuf[k].base, prefbuf[k].size, 2);
-
-		/* Set other buffers to prefbuf 0 and 1 */
-		for (i = 0, j = 0; i < 3; i++) {
-			if (i != k) {
-				/*set i-th buffer to j-th prefbuf */
-				__sysmmu_set_prefbuf(
-					drvdata->sfrbases[idx] + pbuf_offset[2],
-					prefbuf[i].base, prefbuf[i].size,
-					j++);
-			}
-		}
-		drvdata->num_pbufs = 3;
-		drvdata->pbufs[0] = prefbuf[0];
-		drvdata->pbufs[1] = prefbuf[1];
-		drvdata->pbufs[2] = prefbuf[2];
 		break;
-	}
 	default:
-	{
-		unsigned long base = prefbuf[2].base;
-		unsigned long end = prefbuf[2].base + prefbuf[2].size;
-
-		/* Merging all buffers from the third to the last */
-		while (nbufs-- > 3) {
-			base = min(base, prefbuf[nbufs - 1].base);
-			end = max(end, prefbuf[nbufs - 1].base +
-					prefbuf[nbufs - 1].size);
-		}
-		__sysmmu_set_prefbuf(drvdata->sfrbases[idx] + pbuf_offset[2],
-					prefbuf[0].base, prefbuf[0].size, 0);
-		__sysmmu_set_prefbuf(drvdata->sfrbases[idx] + pbuf_offset[2],
-					prefbuf[1].base, prefbuf[1].size, 1);
-		__sysmmu_set_prefbuf(drvdata->sfrbases[idx] + pbuf_offset[2],
-					base, end - base, 2);
-		drvdata->num_pbufs = 3;
-		drvdata->pbufs[0] = prefbuf[0];
-		drvdata->pbufs[1] = prefbuf[1];
-		drvdata->pbufs[2] = prefbuf[2];
+		BUG();
 	}
-	} /* switch (nbufs) */
+
+	for (i = 0; i < num_bufs; i++)
+		__sysmmu_set_prefbuf(drvdata->sfrbases[idx] + pbuf_offset[2],
+			prefbuf[i].base, prefbuf[i].size, i);
 
 	__raw_writel(cfg, drvdata->sfrbases[idx] + REG_MMU_CFG);
 }
 
 static void __exynos_sysmmu_set_pbuf_ver33(struct sysmmu_drvdata *drvdata,
-			int idx, int nbufs, struct sysmmu_prefbuf prefbuf[])
+					   int idx)
 {
-	WARN(1, "System MMU ver. 3.3 is not available now\n");
+	int num_pb, num_bufs;
+	struct sysmmu_prefbuf prefbuf[6];
+	int i;
+	static char lmm_preset[4][6] = {  /* [num of PB][num of buffers] */
+	/*	  1,  2,  3,  4,  5,  6 */
+		{ 1,  1,  0, -1, -1, -1}, /* num of pb: 3 */
+		{ 3,  2,  1,  0, -1, -1}, /* num of pb: 4 */
+		{-1, -1, -1, -1, -1, -1},
+		{ 5,  5,  4,  2,  1,  0}, /* num of pb: 6 */
+		};
+
+	num_pb = __raw_readl(drvdata->sfrbases[idx] + REG_PB_INFO) & 0xFF;
+	if ((num_pb != 3) && (num_pb != 4) && (num_pb != 6)) {
+		dev_err(drvdata->master,
+			"%s: Read invalid PB information from %s\n",
+			__func__, drvdata->dbgname);
+		return;
+	}
+
+	num_bufs = __prepare_prefetch_buffers(drvdata, idx, prefbuf, num_pb);
+	if (num_bufs == 0) {
+		dev_err(drvdata->master,
+			"%s: Unable to initialize PB of %s -" \
+			"NUM_PB %d, numbufs %d\n",
+			__func__, drvdata->dbgname, num_pb, num_bufs);
+		return;
+	}
+
+	if (lmm_preset[num_pb - 3][num_bufs - 1] == -1) {
+		dev_err(drvdata->master,
+			"%s: Unable to initialize PB of %s -" \
+			"NUM_PB %d, prop %d, numbuf %d\n",
+			__func__, drvdata->dbgname, num_pb, drvdata->prop,
+			num_bufs);
+		return;
+	}
+
+	__raw_writel(lmm_preset[num_pb - 3][num_bufs - 1],
+		     drvdata->sfrbases[idx] + REG_PB_LMM);
+
+	for (i = 0; i < num_bufs; i++) {
+		__raw_writel(i, drvdata->sfrbases[idx] + REG_PB_INDICATE);
+		__raw_writel(0, drvdata->sfrbases[idx] + REG_PB_CFG);
+		__sysmmu_set_prefbuf(drvdata->sfrbases[idx] + pbuf_offset[3],
+					prefbuf[i].base, prefbuf[i].size, 0);
+		__raw_writel(prefbuf[i].config | 1,
+					drvdata->sfrbases[idx] + REG_PB_CFG);
+	}
 }
 
 static void (*func_set_pbuf[NUM_MINOR_OF_SYSMMU_V3])
-	(struct sysmmu_drvdata *, int, int, struct sysmmu_prefbuf []) = {
+			(struct sysmmu_drvdata *, int) = {
 		__exynos_sysmmu_set_pbuf_ver31,
 		__exynos_sysmmu_set_pbuf_ver31,
 		__exynos_sysmmu_set_pbuf_ver32,
@@ -434,21 +558,26 @@ void exynos_sysmmu_set_pbuf(struct device *dev, int nbufs,
 		drvdata = dev_get_drvdata(sysmmu);
 
 		spin_lock_irqsave(&drvdata->lock, flags);
-		if (!is_sysmmu_active(drvdata)) {
+
+		drvdata->num_pbufs = min(6, nbufs);
+
+		if ((drvdata->num_pbufs == 0) || !is_sysmmu_active(drvdata)) {
 			spin_unlock_irqrestore(&drvdata->lock, flags);
 			continue;
 		}
 
+		memcpy(drvdata->pbufs, prefbuf,
+				sizeof(prefbuf[0]) * drvdata->num_pbufs);
+
 		for (nsfrs = 0; nsfrs < drvdata->nsfrs; nsfrs++) {
-			unsigned int maj, min;
+			int min;
 
-			maj = __sysmmu_version(drvdata, nsfrs, &min);
-
-			BUG_ON(min > 3);
+			if (!has_sysmmu_capable_pbuf(
+					drvdata, nsfrs, prefbuf, &min))
+				continue;
 
 			if (sysmmu_block(drvdata->sfrbases[nsfrs])) {
-				func_set_pbuf[min](drvdata, nsfrs,
-							nbufs, prefbuf);
+				func_set_pbuf[min](drvdata, nsfrs);
 				sysmmu_unblock(drvdata->sfrbases[nsfrs]);
 			}
 		} /* while (nsfrs < drvdata->nsfrs) */
@@ -481,8 +610,7 @@ static void __sysmmu_restore_state(struct sysmmu_drvdata *drvdata)
 	for (i = 0; i < drvdata->nsfrs; i++) {
 		if (__sysmmu_version(drvdata, i, &min) == 3) {
 			if (sysmmu_block(drvdata->sfrbases[i])) {
-				func_set_pbuf[min](drvdata, i,
-					drvdata->num_pbufs, drvdata->pbufs);
+				func_set_pbuf[min](drvdata, i);
 				sysmmu_unblock(drvdata->sfrbases[i]);
 			}
 		}
@@ -614,9 +742,11 @@ static void __sysmmu_disable_nocount(struct sysmmu_drvdata *drvdata)
 {
 		int i;
 
-		for (i = 0; i < drvdata->nsfrs; i++)
+		for (i = 0; i < drvdata->nsfrs; i++) {
+			__raw_writel(0, drvdata->sfrbases[i] + REG_MMU_CFG);
 			__raw_writel(CTRL_DISABLE,
 				drvdata->sfrbases[i] + REG_MMU_CTRL);
+		}
 
 		clk_disable(drvdata->clk);
 }
@@ -648,16 +778,29 @@ static bool __sysmmu_disable(struct sysmmu_drvdata *drvdata)
 	return disabled;
 }
 
-static void __sysmmu_init_prefbuf(struct sysmmu_drvdata *drvdata, int idx,
-							int maj, int min)
+static void __sysmmu_init_config(struct sysmmu_drvdata *drvdata, int idx)
 {
-	if (maj == 3) {
-		struct sysmmu_prefbuf pbuf[1] = {
-			{IOVA_START, IOVM_SIZE}
-		};
+	unsigned long cfg = CFG_LRU | CFG_QOS(drvdata->qos);
+	int maj, min = 0;
 
-		func_set_pbuf[min](drvdata, idx, 1, pbuf);
-	}
+	maj = __sysmmu_version(drvdata, idx, &min);
+	if ((maj == 1) || (maj == 2))
+		goto set_cfg;
+
+	BUG_ON(maj != 3);
+
+	if (min < 2)
+		goto set_cfg;
+
+	BUG_ON(min > 3);
+
+	cfg |= CFG_FLPDCACHE;
+	cfg |= (min == 2) ? CFG_SYSSEL : (CFG_ACGEN | CFG_QOS_OVRRIDE);
+
+	func_set_pbuf[min](drvdata, idx);
+set_cfg:
+	cfg |= __raw_readl(drvdata->sfrbases[idx] + REG_MMU_CFG) & ~CFG_MASK;
+	__raw_writel(cfg, drvdata->sfrbases[idx] + REG_MMU_CFG);
 }
 
 static void __sysmmu_enable_nocount(struct sysmmu_drvdata *drvdata)
@@ -667,24 +810,15 @@ static void __sysmmu_enable_nocount(struct sysmmu_drvdata *drvdata)
 	clk_enable(drvdata->clk);
 
 	for (i = 0; i < drvdata->nsfrs; i++) {
-		int maj, min;
-		unsigned long cfg = CFG_LRU;
+		if (soc_is_exynos5420())
+			__raw_writel(0, drvdata->sfrbases[i] + REG_MMU_CTRL);
 
-		cfg |= CFG_QOS(drvdata->qos);
+		BUG_ON(__raw_readl(drvdata->sfrbases[i] + REG_MMU_CTRL)
+								& CTRL_ENABLE);
+
+		__sysmmu_init_config(drvdata, i);
 
 		__sysmmu_set_ptbase(drvdata->sfrbases[i], drvdata->pgtable);
-
-		/* Initialization of REG_MMU_CFG must be prior to
-		   call to __sysmmu_init_prefbuf() */
-		maj = __sysmmu_version(drvdata, i, &min);
-		if (maj == 3) {
-			cfg |= CFG_SHAREABLE;
-			if (min == 2)
-				cfg |= CFG_FLPDCACHE | CFG_SYSSEL;
-		}
-		__raw_writel(cfg, drvdata->sfrbases[i] + REG_MMU_CFG);
-
-		__sysmmu_init_prefbuf(drvdata, i, maj, min);
 
 		__raw_writel(CTRL_ENABLE, drvdata->sfrbases[i] + REG_MMU_CTRL);
 	}
@@ -740,15 +874,15 @@ static int __exynos_sysmmu_enable(struct device *dev, unsigned long pgtable,
 
 	for_each_sysmmu(dev, sysmmu) {
 		struct sysmmu_drvdata *drvdata = dev_get_drvdata(sysmmu);
+		drvdata->master = dev;
 		ret = __sysmmu_enable(drvdata, pgtable, domain);
 		if (ret < 0) {
 			struct device *iter;
 			for_each_sysmmu_until(dev, iter, sysmmu) {
 				drvdata = dev_get_drvdata(iter);
 				__sysmmu_disable(drvdata);
+				drvdata->master = NULL;
 			}
-		} else {
-			drvdata->master = dev;
 		}
 	}
 
@@ -851,6 +985,76 @@ static void sysmmu_tlb_invalidate_entry(struct device *dev, dma_addr_t iova)
 		spin_unlock_irqrestore(&drvdata->lock, flags);
 	}
 }
+
+#ifdef CONFIG_EXYNOS_IOMMU_RECOVER_FAULT_HANDLER
+static int recover_fault_handler (struct iommu_domain *domain,
+				struct device *dev, unsigned long fault_addr,
+				int itype)
+{
+	struct exynos_iommu_domain *priv = domain->priv;
+	struct exynos_iommu_owner *owner;
+	unsigned long flags;
+
+	if (itype == SYSMMU_PAGEFAULT) {
+		struct exynos_iovmm *vmm_data;
+		unsigned long *sent;
+		unsigned long *pent;
+
+		BUG_ON(priv->pgtable == NULL);
+
+		spin_lock_irqsave(&priv->pgtablelock, flags);
+
+		sent = section_entry(priv->pgtable, fault_addr);
+		if (!lv1ent_page(sent)) {
+			pent = kmem_cache_zalloc(lv2table_kmem_cache, GFP_ATOMIC);
+			if (!pent)
+				return -ENOMEM;
+
+			*sent = mk_lv1ent_page(__pa(pent));
+			pgtable_flush(sent, sent + 1);
+		}
+		pent = page_entry(sent, fault_addr);
+		if (lv2ent_fault(pent)) {
+			*pent = mk_lv2ent_spage(__pa(fault_page));
+			pgtable_flush(pent, pent + 1);
+		} else {
+			pr_err("[%s] 0x%lx by '%s' is already mapped\n",
+				sysmmu_fault_name[itype], fault_addr, dev_name(dev));
+		}
+
+		spin_unlock_irqrestore(&priv->pgtablelock, flags);
+
+		owner = dev->archdata.iommu;
+		vmm_data = (struct exynos_iovmm *)owner->vmm_data;
+		if (find_iovm_region(vmm_data, fault_addr)) {
+			pr_err("[%s] 0x%lx by '%s' is remapped\n", sysmmu_fault_name[itype],
+				fault_addr, dev_name(dev));
+		} else {
+			pr_err("[%s] '%s' accessed unmapped address(0x%lx)\n",
+				sysmmu_fault_name[itype], dev_name(dev), fault_addr);
+		}
+	} else if (itype == SYSMMU_AR_MULTIHIT || itype == SYSMMU_AW_MULTIHIT) {
+		spin_lock_irqsave(&priv->lock, flags);
+		list_for_each_entry(owner, &priv->clients, client)
+			sysmmu_tlb_invalidate_entry(owner->dev, fault_addr);
+		spin_unlock_irqrestore(&priv->lock, flags);
+
+		pr_err("[%s] occured at 0x%lx by '%s'\n", sysmmu_fault_name[itype],
+			fault_addr, dev_name(dev));
+	} else {
+		return -ENOSYS;
+	}
+
+	return 0;
+}
+#else
+static int recover_fault_handler (struct iommu_domain *domain,
+				struct device *dev, unsigned long fault_addr,
+				int itype)
+{
+	return -ENOSYS;
+}
+#endif
 
 static int __init __sysmmu_init_clock(struct device *sysmmu,
 					struct sysmmu_drvdata *drvdata,
@@ -966,10 +1170,12 @@ static struct device * __init __sysmmu_init_master(
 
 	master->archdata.iommu = owner;
 
-	ret = exynos_create_iovmm(master);
-	if (ret) {
-		dev_err(sysmmu, "Failed create IOVMM context.\n");
-		return ERR_PTR(ret);
+	if (soc_is_exynos5410()) {
+		ret = exynos_create_iovmm(master, 1, 0);
+		if (ret) {
+			dev_err(sysmmu, "Failed create IOVMM context.\n");
+			return ERR_PTR(ret);
+		}
 	}
 
 	dev_dbg(sysmmu, "Assigned master device %s.\n", dev_name(master));
@@ -987,8 +1193,10 @@ static int __init __sysmmu_setup(struct device *sysmmu,
 	drvdata->ver = platdata->ver;
 	drvdata->dbgname = platdata->dbgname;
 	drvdata->qos = platdata->qos;
+	drvdata->prop = platdata->prop;
 	if ((drvdata->qos < 0) || (drvdata->qos > 15))
 		drvdata->qos = 15;
+	drvdata->num_pbufs = 0;
 
 	drvdata->tlbinv_entry = platdata->tlbinv_entry;
 
@@ -1147,13 +1355,6 @@ static struct platform_driver exynos_sysmmu_driver __refdata = {
 	}
 };
 
-static inline void pgtable_flush(void *vastart, void *vaend)
-{
-	dmac_flush_range(vastart, vaend);
-	outer_flush_range(virt_to_phys(vastart),
-				virt_to_phys(vaend));
-}
-
 static int exynos_iommu_domain_init(struct iommu_domain *domain)
 {
 	struct exynos_iommu_domain *priv;
@@ -1179,6 +1380,7 @@ static int exynos_iommu_domain_init(struct iommu_domain *domain)
 	INIT_LIST_HEAD(&priv->clients);
 
 	domain->priv = priv;
+	domain->handler = recover_fault_handler;
 	return 0;
 
 err_counter:
@@ -1226,40 +1428,12 @@ static int exynos_iommu_attach_device(struct iommu_domain *domain,
 	unsigned long flags;
 	int ret;
 
-	if (WARN_ON(!list_empty(&owner->client))) {
-		bool found = false;
-		struct exynos_iommu_owner *tmpowner;
-
-		spin_lock_irqsave(&priv->lock, flags);
-		list_for_each_entry(tmpowner, &priv->clients, client) {
-			if (tmpowner == owner) {
-				found = true;
-				break;
-			}
-		}
-		spin_unlock_irqrestore(&priv->lock, flags);
-
-		if (!found) {
-			dev_err(dev, "%s: Already attached to another domain\n",
-								__func__);
-			return -EBUSY;
-		}
-
-		dev_dbg(dev, "%s: Already attached to this domain\n", __func__);
-		return 0;
-	}
-
 	spin_lock_irqsave(&priv->lock, flags);
 
 	ret = __exynos_sysmmu_enable(dev, __pa(priv->pgtable), domain);
 
-	/*
-	 * __exynos_sysmmu_enable() returns 1
-	 * if the System MMU of dev is already enabled
-	 */
-	BUG_ON(ret > 0);
-
-	list_add_tail(&owner->client, &priv->clients);
+	if (ret == 0)
+		list_add_tail(&owner->client, &priv->clients);
 
 	spin_unlock_irqrestore(&priv->lock, flags);
 
@@ -1267,8 +1441,9 @@ static int exynos_iommu_attach_device(struct iommu_domain *domain,
 		dev_err(dev, "%s: Failed to attach IOMMU with pgtable %#lx\n",
 				__func__, __pa(priv->pgtable));
 	else
-		dev_dbg(dev, "%s: Attached new IOMMU with pgtable 0x%lx\n",
-					__func__, __pa(priv->pgtable));
+		dev_dbg(dev, "%s: Attached new IOMMU with pgtable 0x%lx%s\n",
+					__func__, __pa(priv->pgtable),
+					(ret == 0) ? "" : ", again");
 
 	return ret;
 }
@@ -1286,8 +1461,6 @@ static void exynos_iommu_detach_device(struct iommu_domain *domain,
 		if (owner == dev->archdata.iommu) {
 			if (exynos_sysmmu_disable(dev))
 				list_del_init(&owner->client);
-			else
-				BUG();
 			break;
 		}
 	}
@@ -1313,6 +1486,7 @@ static unsigned long *alloc_lv2entry(unsigned long *sent, unsigned long iova,
 			return ERR_PTR(-ENOMEM);
 
 		*sent = mk_lv1ent_page(__pa(pent));
+		kmemleak_ignore(pent);
 		*pgcounter = NUM_LV2ENTRIES;
 		pgtable_flush(pent, pent + NUM_LV2ENTRIES);
 		pgtable_flush(sent, sent + 1);
@@ -1369,6 +1543,27 @@ static int lv2set_page(unsigned long *pent, phys_addr_t paddr, size_t size,
 	}
 
 	return 0;
+}
+
+void lv2_dummy_map(struct iommu_domain *domain, unsigned long iova)
+{
+	struct exynos_iommu_domain *priv = domain->priv;
+	unsigned long *entry;
+	unsigned long *pent;
+	unsigned long flags;
+
+	BUG_ON(priv->pgtable == NULL);
+
+	spin_lock_irqsave(&priv->pgtablelock, flags);
+	entry = section_entry(priv->pgtable, iova);
+
+	pent = alloc_lv2entry(entry, iova,
+			&priv->lv2entcnt[lv1ent_offset(iova)]);
+	if (IS_ERR(pent)) {
+		pr_info("%s: Failed(%ld) to map @ %#lx\n",
+				__func__, PTR_ERR(pent), iova);
+	}
+	spin_unlock_irqrestore(&priv->pgtablelock, flags);
 }
 
 static int exynos_iommu_map(struct iommu_domain *domain, unsigned long iova,
@@ -1532,6 +1727,7 @@ static struct iommu_ops exynos_iommu_ops = {
 
 static int __init exynos_bus_set_iommu(void)
 {
+	struct page *page;
 	int ret;
 
 	lv2table_kmem_cache = kmem_cache_create("exynos-iommu-lv2table",
@@ -1541,8 +1737,17 @@ static int __init exynos_bus_set_iommu(void)
 		return -ENOMEM;
 	}
 
+	page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+	if (!page) {
+		pr_err("%s: failed to allocate fault page\n", __func__);
+		kmem_cache_destroy(lv2table_kmem_cache);
+		return -ENOMEM;
+	}
+	fault_page = page_to_phys(page);
+
 	ret = bus_set_iommu(&platform_bus_type, &exynos_iommu_ops);
 	if (ret) {
+		__free_page(page);
 		kmem_cache_destroy(lv2table_kmem_cache);
 		pr_err("%s: Failed to register IOMMU ops\n", __func__);
 	}

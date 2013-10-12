@@ -28,10 +28,17 @@
 #include <mach/map.h>
 #include <plat/gpio-cfg.h>
 #include "mdnie.h"
-#if defined(CONFIG_LCD_MIPI_S6E8FA0) || defined(CONFIG_LCD_MIPI_S6E3FA0)
+#if defined(CONFIG_LCD_MIPI_S6E8FA0)
 #include "mdnie_table_j.h"
-#elif defined(CONFIG_LCD_LSL122BC01)
+#elif defined(CONFIG_LCD_MIPI_S6E3FA0)
+#include "mdnie_table_h.h"
+#elif defined(CONFIG_LCD_LSL122DL01)
+#ifdef CONFIG_N1A
+#include "mdnie_table_n1.h"
+#else
 #include "mdnie_table_v1.h"
+#endif
+#include "secfb_notify.h"
 #endif
 #include "mdnie_color_tone_5410.h"
 
@@ -162,15 +169,9 @@ int s3c_mdnie_set_size(void)
 	s3c_mdnie_write(S3C_MDNIE_rR1, cfg);
 
 	/* LCD width */
-	cfg = s3c_mdnie_read(S3C_MDNIE_rR3);
-	cfg &= S3C_MDNIE_SIZE_MASK;
-	cfg |= S3C_MDNIE_HSIZE(xres);
 	s3c_mdnie_write(S3C_MDNIE_rR3, xres);
 
 	/* LCD height */
-	cfg = s3c_mdnie_read(S3C_MDNIE_rR4);
-	cfg &= S3C_MDNIE_SIZE_MASK;
-	cfg |= S3C_MDNIE_VSIZE(xres);
 	s3c_mdnie_write(S3C_MDNIE_rR4, yres);
 
 	/* unmask all */
@@ -218,12 +219,6 @@ static struct mdnie_tuning_info *mdnie_request_table(struct mdnie_info *mdnie)
 
 	mutex_lock(&mdnie->lock);
 
-	/* it will be removed next year */
-	if (mdnie->negative == NEGATIVE_ON) {
-		table = &negative_table[mdnie->cabc];
-		goto exit;
-	}
-
 	if (ACCESSIBILITY_IS_VALID(mdnie->accessibility)) {
 		table = &accessibility_table[mdnie->cabc][mdnie->accessibility];
 		goto exit;
@@ -251,14 +246,12 @@ static void mdnie_update_sequence(struct mdnie_info *mdnie, struct mdnie_tuning_
 	if (unlikely(mdnie->tuning)) {
 		ret = mdnie_request_firmware(mdnie->path, &wbuf, table->name);
 		if (ret < 0 && IS_ERR_OR_NULL(wbuf))
-			goto exit;
-		mdnie_send_sequence(mdnie, wbuf);
+			mdnie_send_sequence(mdnie, table->sequence);
+		else
+			mdnie_send_sequence(mdnie, wbuf);
 		kfree(wbuf);
 	} else
 		mdnie_send_sequence(mdnie, table->sequence);
-
-exit:
-	return;
 }
 
 void mdnie_update(struct mdnie_info *mdnie, u8 force)
@@ -279,7 +272,7 @@ void mdnie_update(struct mdnie_info *mdnie, u8 force)
 	return;
 }
 
-#if !defined(CONFIG_S5P_MDNIE_PWM)
+#if !defined(CONFIG_FB_MDNIE_PWM)
 static void update_color_position(struct mdnie_info *mdnie, u16 idx)
 {
 	u8 cabc, mode, scenario, i;
@@ -360,13 +353,16 @@ static ssize_t mode_store(struct device *dev,
 {
 	struct mdnie_info *mdnie = dev_get_drvdata(dev);
 	unsigned int value = 0;
-	int ret, result[5] = {0,};
+	int ret;
+#if !defined(CONFIG_FB_MDNIE_PWM)
+	int result[5] = {0,};
+#endif
 
 	ret = kstrtoul(buf, 0, (unsigned long *)&value);
-	if (ret)
-		return -EINVAL;
+	if (ret < 0)
+		return ret;
 
-	dev_info(dev, "%s :: value=%d\n", __func__, value);
+	dev_info(dev, "%s: value=%d\n", __func__, value);
 
 	if (value >= MODE_MAX) {
 		value = STANDARD;
@@ -377,7 +373,7 @@ static ssize_t mode_store(struct device *dev,
 	mdnie->mode = value;
 	mutex_unlock(&mdnie->lock);
 
-#if !defined(CONFIG_S5P_MDNIE_PWM)
+#if !defined(CONFIG_FB_MDNIE_PWM)
 	if (!mdnie->color_correction) {
 		ret = get_panel_coordinate(mdnie, result);
 		if (ret > 0)
@@ -387,7 +383,7 @@ static ssize_t mode_store(struct device *dev,
 
 	mdnie_update(mdnie, 0);
 
-#if defined(CONFIG_S5P_MDNIE_PWM)
+#if defined(CONFIG_FB_MDNIE_PWM)
 	if ((mdnie->support_pwm) && (mdnie->enable))
 		backlight_update_status(mdnie->bd);
 #endif
@@ -412,13 +408,15 @@ static ssize_t scenario_store(struct device *dev,
 	int ret;
 
 	ret = kstrtoul(buf, 0, (unsigned long *)&value);
+	if (ret < 0)
+		return ret;
 
-	dev_info(dev, "%s :: value=%d\n", __func__, value);
+	dev_info(dev, "%s: value=%d\n", __func__, value);
 
 	if (!SCENARIO_IS_VALID(value))
 		value = UI_MODE;
 
-#if defined(CONFIG_S5P_MDNIE_PWM)
+#if defined(CONFIG_FB_MDNIE_PWM)
 	if (value >= SCENARIO_MAX)
 		value = UI_MODE;
 #endif
@@ -428,7 +426,7 @@ static ssize_t scenario_store(struct device *dev,
 	mutex_unlock(&mdnie->lock);
 
 	mdnie_update(mdnie, 0);
-#if defined(CONFIG_S5P_MDNIE_PWM)
+#if defined(CONFIG_FB_MDNIE_PWM)
 	if ((mdnie->support_pwm) && (mdnie->enable))
 		backlight_update_status(mdnie->bd);
 #endif
@@ -436,9 +434,7 @@ static ssize_t scenario_store(struct device *dev,
 	return count;
 }
 
-
-#if defined(CONFIG_S5P_MDNIE_PWM)
-
+#if defined(CONFIG_FB_MDNIE_PWM)
 static ssize_t cabc_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -455,8 +451,10 @@ static ssize_t cabc_store(struct device *dev,
 	struct mdnie_info *mdnie = dev_get_drvdata(dev);
 
 	ret = kstrtoul(buf, 0, (unsigned long *)&value);
+	if (ret < 0)
+		return ret;
 
-	dev_info(dev, "%s :: value=%d\n", __func__, value);
+	dev_info(dev, "%s: value=%d\n", __func__, value);
 
 	if (value >= CABC_MAX)
 		value = CABC_OFF;
@@ -474,6 +472,86 @@ static ssize_t cabc_store(struct device *dev,
 	return count;
 }
 #endif
+
+#if !defined(CONFIG_FB_MDNIE_PWM) && defined(CONFIG_FB_DBLC_PWM)
+static ssize_t dblc_cabc_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct mdnie_info *mdnie = dev_get_drvdata(dev);
+	unsigned int value = 0;
+
+	secfb_notifier_call_chain(SECFB_EVENT_CABC_READ, &value);
+
+	return sprintf(buf, "%d\n", value);
+}
+
+static ssize_t dblc_cabc_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret;
+	unsigned int value;
+	struct mdnie_info *mdnie = dev_get_drvdata(dev);
+
+	ret = kstrtoul(buf, 0, (unsigned long *)&value);
+	if (ret < 0)
+		return ret;
+
+	dev_info(dev, "%s: value=%d\n", __func__, value);
+
+	if (value > 1)
+		value = 0;
+
+	secfb_notifier_call_chain(SECFB_EVENT_CABC_WRITE, &value);
+
+	return count;
+}
+#endif
+
+static void mdnie_update_table(struct mdnie_info *mdnie)
+{
+	struct mdnie_tuning_info *table = NULL;
+	unsigned short *wbuf = NULL;
+	u8 cabc, mode, scenario, lux, i;
+	int ret;
+
+	if (!mdnie->enable) {
+		dev_err(mdnie->dev, "mdnie state is off\n");
+		return;
+	}
+
+	mutex_lock(&mdnie->lock);
+
+	for (cabc = 0; cabc < CABC_MAX; cabc++) {
+		for (mode = 0; mode < MODE_MAX; mode++) {
+			for (scenario = 0; scenario < SCENARIO_MAX; scenario++) {
+				table = &tuning_table[cabc][mode][scenario];
+				ret = mdnie_request_firmware(mdnie->path, &wbuf, table->name);
+				if (ret < 0 && IS_ERR_OR_NULL(wbuf))
+					goto exit;
+				table->sequence = wbuf;
+
+				dev_dbg(mdnie->dev, "++ %s\n", table->name);
+				i = 0;
+				while (wbuf[i] != END_SEQ) {
+					dev_dbg(mdnie->dev, "0x%04x, 0x%04x\n", table->sequence[i], table->sequence[i+1]);
+					i += 2;
+				}
+				dev_dbg(mdnie->dev, "-- %s is updated\n", table->name);
+			}
+		}
+	}
+
+	mutex_unlock(&mdnie->lock);
+
+	table = mdnie_request_table(mdnie);
+	if (!IS_ERR_OR_NULL(table) && !IS_ERR_OR_NULL(table->sequence)) {
+		mdnie_send_sequence(mdnie, table->sequence);
+		dev_info(mdnie->dev, "%s\n", table->name);
+	}
+
+exit:
+	return;
+}
 
 static ssize_t tuning_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -523,9 +601,11 @@ static ssize_t tuning_store(struct device *dev,
 
 	if (sysfs_streq(buf, "0") || sysfs_streq(buf, "1")) {
 		ret = kstrtoul(buf, 0, (unsigned long *)&mdnie->tuning);
+		if (ret < 0)
+			return ret;
 		if (!mdnie->tuning)
 			memset(mdnie->path, 0, sizeof(mdnie->path));
-		dev_info(dev, "%s :: %s\n", __func__, mdnie->tuning ? "enable" : "disable");
+		dev_info(dev, "%s: %s\n", __func__, mdnie->tuning ? "enable" : "disable");
 	} else {
 		if (!mdnie->tuning)
 			return count;
@@ -537,50 +617,11 @@ static ssize_t tuning_store(struct device *dev,
 
 		memset(mdnie->path, 0, sizeof(mdnie->path));
 		snprintf(mdnie->path, sizeof(MDNIE_SYSFS_PREFIX) + count-1, "%s%s", MDNIE_SYSFS_PREFIX, buf);
-		dev_info(dev, "%s :: %s\n", __func__, mdnie->path);
+		dev_info(dev, "%s: %s\n", __func__, mdnie->path);
 
-		mdnie_update(mdnie, 0);
+		mdnie_update_table(mdnie);
 	}
 
-	return count;
-}
-
-static ssize_t negative_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct mdnie_info *mdnie = dev_get_drvdata(dev);
-
-	return sprintf(buf, "%d\n", mdnie->negative);
-}
-
-static ssize_t negative_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct mdnie_info *mdnie = dev_get_drvdata(dev);
-	unsigned int value;
-	int ret;
-
-	ret = kstrtoul(buf, 0, (unsigned long *)&value);
-
-	dev_info(dev, "%s :: value=%d\n", __func__, value);
-
-	if (ret < 0)
-		return ret;
-	else {
-		if (mdnie->negative == value)
-			return count;
-
-		if (value >= NEGATIVE_MAX)
-			value = NEGATIVE_OFF;
-
-		value = (value) ? NEGATIVE_ON : NEGATIVE_OFF;
-
-		mutex_lock(&mdnie->lock);
-		mdnie->negative = value;
-		mutex_unlock(&mdnie->lock);
-
-		mdnie_update(mdnie, 0);
-	}
 	return count;
 }
 
@@ -621,7 +662,7 @@ static ssize_t accessibility_store(struct device *dev,
 		&value, &s[0], &s[1], &s[2], &s[3],
 		&s[4], &s[5], &s[6], &s[7], &s[8]);
 
-	dev_info(dev, "%s :: value=%d\n", __func__, value);
+	dev_info(dev, "%s: value=%d\n", __func__, value);
 
 	if (ret < 0)
 		return ret;
@@ -650,7 +691,7 @@ static ssize_t accessibility_store(struct device *dev,
 			}
 
 			i = 0;
-			len = sprintf(str + len, "%s :: ", __func__);
+			len = sprintf(str + len, "%s: ", __func__);
 			while (len < sizeof(str) && i < ARRAY_SIZE(s)) {
 				len += sprintf(str + len, "0x%04x, ", s[i]);
 				i++;
@@ -665,7 +706,7 @@ static ssize_t accessibility_store(struct device *dev,
 	return count;
 }
 
-#if !defined(CONFIG_S5P_MDNIE_PWM)
+#if !defined(CONFIG_FB_MDNIE_PWM)
 static ssize_t color_correct_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -703,6 +744,8 @@ static ssize_t bypass_store(struct device *dev,
 	int ret;
 
 	ret = kstrtoul(buf, 0, (unsigned long *)&value);
+	if (ret)
+		return ret;
 
 	dev_info(dev, "%s :: value=%d\n", __func__, value);
 
@@ -731,13 +774,15 @@ static ssize_t bypass_store(struct device *dev,
 static struct device_attribute mdnie_attributes[] = {
 	__ATTR(mode, 0664, mode_show, mode_store),
 	__ATTR(scenario, 0664, scenario_show, scenario_store),
-#if defined(CONFIG_S5P_MDNIE_PWM)
+#if defined(CONFIG_FB_MDNIE_PWM)
 	__ATTR(cabc, 0664, cabc_show, cabc_store),
 #endif
+#if !defined(CONFIG_FB_MDNIE_PWM) && defined(CONFIG_FB_DBLC_PWM)
+	__ATTR(cabc, 0664, dblc_cabc_show, dblc_cabc_store),
+#endif
 	__ATTR(tuning, 0664, tuning_show, tuning_store),
-	__ATTR(negative, 0664, negative_show, negative_store),
 	__ATTR(accessibility, 0664, accessibility_show, accessibility_store),
-#if !defined(CONFIG_S5P_MDNIE_PWM)
+#if !defined(CONFIG_FB_MDNIE_PWM)
 	__ATTR(color_correct, 0444, color_correct_show, NULL),
 #endif
 	__ATTR(bypass, 0664, bypass_show, bypass_store),
@@ -795,8 +840,7 @@ static int mdnie_register_fb(struct mdnie_info *mdnie)
 }
 #endif
 
-#if defined (CONFIG_S5P_MDNIE_PWM)
-
+#if defined(CONFIG_FB_MDNIE_PWM)
 static int mdnie_runtime_suspend(struct device *dev)
 {
 	struct mdnie_info *mdnie = dev_get_drvdata(dev);
@@ -848,15 +892,11 @@ static const struct dev_pm_ops mdnie_pm_ops = {
 };
 #endif
 
-#if defined (CONFIG_S5P_MDNIE_PWM)
-
+#if defined(CONFIG_FB_MDNIE_PWM)
 static int mdnie_get_br(struct backlight_device *bd)
 {
-	struct mdnie_info *mdnie = bl_get_data(bd);
-
 	return bd->props.brightness;
 }
-
 
 static int mdnie_set_pwm(struct mdnie_info *mdnie, unsigned int br)
 {
@@ -903,11 +943,8 @@ static int mdnie_set_cabc_pwm(struct mdnie_info *mdnie, unsigned int br)
 	return ret;
 }
 
-
-
 static int mdnie_set_br(struct backlight_device *bd)
 {
-	int i;
 	int ret = 0;
 	unsigned int br;
 	struct mdnie_info *mdnie;
@@ -936,15 +973,13 @@ static const struct backlight_ops mdnie_backlight_ops = {
 	.get_brightness = mdnie_get_br,
 	.update_status = mdnie_set_br,
 };
-
 #endif
-
 
 static int mdnie_probe(struct platform_device *pdev)
 {
-    int ret = 0;
+	int ret = 0;
 	struct mdnie_info *mdnie;
-#if defined (CONFIG_S5P_MDNIE_PWM)
+#if defined(CONFIG_FB_MDNIE_PWM)
 	struct backlight_properties props;
 	struct platform_mdnie_data *mdnie_data;
 #endif
@@ -976,7 +1011,6 @@ static int mdnie_probe(struct platform_device *pdev)
 	mdnie->mode = STANDARD;
 	mdnie->enable = FALSE;
 	mdnie->tuning = FALSE;
-	mdnie->negative = NEGATIVE_OFF;
 	mdnie->accessibility = ACCESSIBILITY_OFF;
 	mdnie->cabc = CABC_OFF;
 	mdnie->bypass = BYPASS_OFF;
@@ -984,7 +1018,7 @@ static int mdnie_probe(struct platform_device *pdev)
 	mutex_init(&mdnie->lock);
 	mutex_init(&mdnie->dev_lock);
 
-#if defined (CONFIG_S5P_MDNIE_PWM)
+#if defined(CONFIG_FB_MDNIE_PWM)
 	mdnie_data = pdev->dev.platform_data;
 
 	if (mdnie_data->support_pwm) {
@@ -1062,7 +1096,7 @@ static struct platform_driver mdnie_driver = {
 	.driver		= {
 		.name	= "mdnie",
 		.owner	= THIS_MODULE,
-#if defined (CONFIG_S5P_MDNIE_PWM)
+#if defined(CONFIG_FB_MDNIE_PWM)
 		.pm	= &mdnie_pm_ops,
 #endif
 	},
@@ -1084,3 +1118,4 @@ module_exit(mdnie_exit);
 
 MODULE_DESCRIPTION("mDNIe Driver");
 MODULE_LICENSE("GPL");
+

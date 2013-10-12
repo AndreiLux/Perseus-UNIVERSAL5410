@@ -61,7 +61,9 @@ register */
 
 /* DSIM_STATUS */
 #define DSIM_STOP_STATE_DAT(x)	(((x) & 0xf) << 0)
+#define DSIM_ULPS_DAT(x)	(((x) & 0xf) << 4)
 #define DSIM_STOP_STATE_CLK	(1 << 8)
+#define DSIM_ULPS_CLK		(1 << 9)
 #define DSIM_TX_READY_HS_CLK	(1 << 10)
 
 /* DSIM_SWRST */
@@ -99,6 +101,10 @@ register */
 #define DSIM_NUM_OF_DATA_LANE(x)	((x) << DSIM_NUM_OF_DATALANE_SHIFT)
 
 /* S5P_DSIM_ESCMODE */
+#define DSIM_TX_ULPS_CLK_EXIT		(1 << 0)
+#define DSIM_TX_ULPS_CLK		(1 << 1)
+#define DSIM_TX_ULPS_DATA_EXIT		(1 << 2)
+#define DSIM_TX_ULPS_DATA		(1 << 3)
 #define DSIM_TX_LPDT_SHIFT		(6)
 #define DSIM_CMD_LPDT_SHIFT		(7)
 #define DSIM_TX_LPDT_LP			(1 << DSIM_TX_LPDT_SHIFT)
@@ -143,6 +149,7 @@ register */
 #define INTSRC_FRAME_DONE		(1 << 24)
 #define INTSRC_PLL_STABLE		(1 << 31)
 #define INTSRC_SFR_FIFO_EMPTY		(1 << 29)
+#define INTSRC_SFR_PH_FIFO_EMPTY	(1 << 28)
 
 /* S5P_DSIM_INTMSK */
 #define INTMSK_FRAME_DONE		(1 << 24)

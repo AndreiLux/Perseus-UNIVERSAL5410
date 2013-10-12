@@ -139,11 +139,15 @@ static unsigned	n_ports;
 
 
 #ifdef VERBOSE_DEBUG
-#define PR_VDEBUG(fmt, arg...) \
+#ifndef pr_vdebug
+#define pr_vdebug(fmt, arg...) \
 	pr_debug(fmt, ##arg)
+#endif /* pr_vdebug */
 #else
-#define PR_VDEBUG(fmt, arg...) \
+#ifndef pr_vdebug
+#define pr_vdebug(fmt, arg...) \
 	({ if (0) pr_debug(fmt, ##arg); })
+#endif /* pr_vdebug */
 #endif
 
 /*-------------------------------------------------------------------------*/
@@ -392,7 +396,7 @@ __acquires(&port->port_lock)
 		req->zero = (gs_buf_data_avail(&port->port_write_buf) == 0);
 #endif
 
-		PR_VDEBUG(PREFIX "%d: tx len=%d, 0x%02x 0x%02x 0x%02x ...\n",
+		pr_vdebug(PREFIX "%d: tx len=%d, 0x%02x 0x%02x 0x%02x ...\n",
 				port->port_num, len, *((u8 *)req->buf),
 				*((u8 *)req->buf+1), *((u8 *)req->buf+2));
 
@@ -514,7 +518,7 @@ static void gs_rx_push(unsigned long _port)
 		switch (req->status) {
 		case -ESHUTDOWN:
 			disconnect = true;
-			PR_VDEBUG(PREFIX "%d: shutdown\n", port->port_num);
+			pr_vdebug(PREFIX "%d: shutdown\n", port->port_num);
 			break;
 
 		default:
@@ -547,7 +551,7 @@ static void gs_rx_push(unsigned long _port)
 			if (count != size) {
 				/* stop pushing; TTY layer can't handle more */
 				port->n_read += count;
-				PR_VDEBUG(PREFIX "%d: rx block %d/%d\n",
+				pr_vdebug(PREFIX "%d: rx block %d/%d\n",
 						port->port_num,
 						count, req->actual);
 				break;
@@ -623,7 +627,7 @@ static void gs_write_complete(struct usb_ep *ep, struct usb_request *req)
 
 	case -ESHUTDOWN:
 		/* disconnect */
-		PR_VDEBUG("%s: %s shutdown\n", __func__, ep->name);
+		pr_vdebug("%s: %s shutdown\n", __func__, ep->name);
 		break;
 	}
 
@@ -906,7 +910,7 @@ static int gs_write(struct tty_struct *tty, const unsigned char *buf, int count)
 	unsigned long	flags;
 	int		status;
 
-	PR_VDEBUG("gs_write: ttyGS%d (%p) writing %d bytes\n",
+	pr_vdebug("gs_write: ttyGS%d (%p) writing %d bytes\n",
 			port->port_num, tty, count);
 
 	spin_lock_irqsave(&port->port_lock, flags);
@@ -926,7 +930,7 @@ static int gs_put_char(struct tty_struct *tty, unsigned char ch)
 	unsigned long	flags;
 	int		status;
 
-	PR_VDEBUG("gs_put_char: (%d,%p) char=0x%x, called from %p\n",
+	pr_vdebug("gs_put_char: (%d,%p) char=0x%x, called from %p\n",
 		port->port_num, tty, ch, __builtin_return_address(0));
 
 	spin_lock_irqsave(&port->port_lock, flags);
@@ -941,7 +945,7 @@ static void gs_flush_chars(struct tty_struct *tty)
 	struct gs_port	*port = tty->driver_data;
 	unsigned long	flags;
 
-	PR_VDEBUG("gs_flush_chars: (%d,%p)\n", port->port_num, tty);
+	pr_vdebug("gs_flush_chars: (%d,%p)\n", port->port_num, tty);
 
 	spin_lock_irqsave(&port->port_lock, flags);
 	if (port->port_usb)
@@ -960,7 +964,7 @@ static int gs_write_room(struct tty_struct *tty)
 		room = gs_buf_space_avail(&port->port_write_buf);
 	spin_unlock_irqrestore(&port->port_lock, flags);
 
-	PR_VDEBUG("gs_write_room: (%d,%p) room=%d\n",
+	pr_vdebug("gs_write_room: (%d,%p) room=%d\n",
 		port->port_num, tty, room);
 
 	return room;
@@ -976,7 +980,7 @@ static int gs_chars_in_buffer(struct tty_struct *tty)
 	chars = gs_buf_data_avail(&port->port_write_buf);
 	spin_unlock_irqrestore(&port->port_lock, flags);
 
-	PR_VDEBUG("gs_chars_in_buffer: (%d,%p) chars=%d\n",
+	pr_vdebug("gs_chars_in_buffer: (%d,%p) chars=%d\n",
 		port->port_num, tty, chars);
 
 	return chars;
@@ -995,7 +999,7 @@ static void gs_unthrottle(struct tty_struct *tty)
 		 * read queue backs up enough we'll be NAKing OUT packets.
 		 */
 		tasklet_schedule(&port->push);
-		PR_VDEBUG(PREFIX "%d: unthrottle\n", port->port_num);
+		pr_vdebug(PREFIX "%d: unthrottle\n", port->port_num);
 	}
 	spin_unlock_irqrestore(&port->port_lock, flags);
 }
@@ -1006,7 +1010,7 @@ static int gs_break_ctl(struct tty_struct *tty, int duration)
 	int		status = 0;
 	struct gserial	*gser;
 
-	PR_VDEBUG("gs_break_ctl: ttyGS%d, send break (%d) \n",
+	pr_vdebug("gs_break_ctl: ttyGS%d, send break (%d) \n",
 			port->port_num, duration);
 
 	spin_lock_irq(&port->port_lock);

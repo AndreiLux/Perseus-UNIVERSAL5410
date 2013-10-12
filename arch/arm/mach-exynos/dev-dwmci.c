@@ -25,7 +25,6 @@
 #include <plat/cpu.h>
 
 #include <mach/map.h>
-#include "board-universal5410.h"
 
 #define DWMCI_CLKSEL	0x09c
 #define DWMCI_DDR200_RDDQS_EN		0x110
@@ -48,6 +47,23 @@
 /* DDR200 DLINE Control */
 #define DWMCI_FIFO_CLK_DELAY_CTRL(x)	(((x) & 0x3) << 16)
 #define DWMCI_RD_DQS_DELAY_CTRL(x)	((x) & 0x3FF)
+
+/* SMU(Security Management Unit) Control */
+#define DWMCI_EMMCP_BASE		0x1000
+#define DWMCI_MPSECURITY		(DWMCI_EMMCP_BASE + 0x0010)
+#define DWMCI_MPSBEGIN0			(DWMCI_EMMCP_BASE + 0x0200)
+#define DWMCI_MPSEND0			(DWMCI_EMMCP_BASE + 0x0204)
+#define DWMCI_MPSCTRL0			(DWMCI_EMMCP_BASE + 0x020C)
+
+/* SMU control bits */
+#define DWMCI_MPSCTRL_SECURE_READ_BIT		BIT(7)
+#define DWMCI_MPSCTRL_SECURE_WRITE_BIT		BIT(6)
+#define DWMCI_MPSCTRL_NON_SECURE_READ_BIT	BIT(5)
+#define DWMCI_MPSCTRL_NON_SECURE_WRITE_BIT	BIT(4)
+#define DWMCI_MPSCTRL_USE_FUSE_KEY		BIT(3)
+#define DWMCI_MPSCTRL_ECB_MODE			BIT(2)
+#define DWMCI_MPSCTRL_ENCRYPTION		BIT(1)
+#define DWMCI_MPSCTRL_VALID			BIT(0)
 
 static struct dw_mci_clk exynos_dwmci_clk_rates[] = {
 	{25 * 1000 * 1000, 100 * 1000 * 1000},
@@ -77,19 +93,7 @@ static int exynos_dwmci_init(u32 slot_id, irq_handler_t handler, void *data)
 	return 0;
 }
 
-static int exynos_dwmci_om_check(void *data)
-{
-	return 0;
-}
-
-#if defined(CONFIG_MACH_UNIVERSAL5410)
-static void exynos_dwmci_set_sd_power(u32 enable)
-{
-	return;
-}
-#endif
-
-static void exynos_dwmci_set_io_timing(void *data, unsigned char timing)
+static void exynos_dwmci_set_io_timing(void *data, unsigned int tuning, unsigned char timing)
 {
 	struct dw_mci *host = (struct dw_mci *)data;
 	struct dw_mci_board *pdata = host->pdata;
@@ -115,27 +119,19 @@ static void exynos_dwmci_set_io_timing(void *data, unsigned char timing)
 	}
 
 	if (timing == MMC_TIMING_MMC_HS200_DDR) {
-		clksel = (pdata->ddr200_timing & 0xfffffff8) | (pdata->clk_smpl >> 1);
-		rddqs |= DWMCI_RDDQS_EN;
-#if defined(CONFIG_MACH_V1)
-		if (system_rev == 1)
-			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(160);
-		else if (system_rev >= 2)
-			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(70);
-#elif defined(CONFIG_MACH_JA_KOR_SKT) || defined(CONFIG_MACH_JA_KOR_KT)
-		if(system_rev == 4)
-			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(140);
-		else
-			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(120);
-#elif defined(CONFIG_MACH_JA_KOR_LGT)
-		if(system_rev >= 10)
-			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(140);
-		else
-			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(120);
+		clksel = (pdata->ddr200_timing & 0xfffffff8) | pdata->clk_smpl;
+
+		if (!tuning) {
+			rddqs |= DWMCI_RDDQS_EN;
+#if defined(CONFIG_V1A)
+			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(110);
+#elif defined(CONFIG_N1A)
+			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(100);
 #else
-		dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(90);
+			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(90);
 #endif
-		host->quirks &= ~DW_MCI_QUIRK_NO_DETECT_EBIT;
+			host->quirks &= ~DW_MCI_QUIRK_NO_DETECT_EBIT;
+		}
 	} else if (timing == MMC_TIMING_MMC_HS200 ||
 			timing == MMC_TIMING_UHS_SDR104) {
 		clksel = (clksel & 0xfff8ffff) | (pdata->clk_drv << 16);
@@ -148,8 +144,33 @@ static void exynos_dwmci_set_io_timing(void *data, unsigned char timing)
 	}
 
 	__raw_writel(clksel, host->regs + DWMCI_CLKSEL);
-	__raw_writel(rddqs, host->regs + DWMCI_DDR200_RDDQS_EN);
-	__raw_writel(dline, host->regs + DWMCI_DDR200_DLINE_CTRL);
+
+	if (soc_is_exynos5420()) {
+		__raw_writel(rddqs, host->regs + DWMCI_DDR200_RDDQS_EN + 0x70);
+		__raw_writel(dline, host->regs + DWMCI_DDR200_DLINE_CTRL + 0x70);
+	} else {
+		__raw_writel(rddqs, host->regs + DWMCI_DDR200_RDDQS_EN);
+		__raw_writel(dline, host->regs + DWMCI_DDR200_DLINE_CTRL);
+	}
+}
+
+static void exynos_dwmci_cfg_smu(void *data, u32 action)
+{
+	struct dw_mci *host = (struct dw_mci *)data;
+
+	if (!soc_is_exynos5420() || action != 0)
+		return;
+
+	/* bypass mode */
+	if (host->pdata->ch_num != 2) {
+		__raw_writel(0, host->regs + DWMCI_MPSBEGIN0);
+		__raw_writel(0xFFFFFFFF, host->regs + DWMCI_MPSEND0);
+		__raw_writel(DWMCI_MPSCTRL_SECURE_READ_BIT |
+			DWMCI_MPSCTRL_SECURE_WRITE_BIT |
+			DWMCI_MPSCTRL_NON_SECURE_READ_BIT |
+			DWMCI_MPSCTRL_NON_SECURE_WRITE_BIT |
+			DWMCI_MPSCTRL_VALID, host->regs + DWMCI_MPSCTRL0);
+	}
 }
 
 static struct dw_mci_board exynos4_dwmci_pdata = {
@@ -185,14 +206,16 @@ struct platform_device exynos4_device_dwmci = {
 
 #define EXYNOS5_DWMCI_RESOURCE(_channel)			\
 static struct resource exynos5_dwmci##_channel##_resource[] = {	\
-	[0] = DEFINE_RES_MEM(S3C_PA_HSMMC##_channel, SZ_4K),	\
+	[0] = DEFINE_RES_MEM(S3C_PA_HSMMC##_channel, SZ_8K),	\
 	[1] = DEFINE_RES_IRQ(IRQ_HSMMC##_channel),		\
 }
 
 EXYNOS5_DWMCI_RESOURCE(0);
 EXYNOS5_DWMCI_RESOURCE(1);
 EXYNOS5_DWMCI_RESOURCE(2);
+#if !defined(CONFIG_SOC_EXYNOS5420)
 EXYNOS5_DWMCI_RESOURCE(3);
+#endif
 
 #define EXYNOS5_DWMCI_DEF_PLATDATA(_channel)			\
 struct dw_mci_board exynos5_dwmci##_channel##_def_platdata = {	\
@@ -207,12 +230,15 @@ struct dw_mci_board exynos5_dwmci##_channel##_def_platdata = {	\
 	.get_ocr		= exynos_dwmci_get_ocr,		\
 	.cd_type		= DW_MCI_CD_PERMANENT,		\
 	.clk_tbl		= exynos_dwmci_clk_rates,	\
+	.cfg_smu		= exynos_dwmci_cfg_smu,		\
 }
 
 EXYNOS5_DWMCI_DEF_PLATDATA(0);
 EXYNOS5_DWMCI_DEF_PLATDATA(1);
 EXYNOS5_DWMCI_DEF_PLATDATA(2);
+#if !defined(CONFIG_SOC_EXYNOS5420)
 EXYNOS5_DWMCI_DEF_PLATDATA(3);
+#endif
 
 #define EXYNOS5_DWMCI_PLATFORM_DEVICE(_channel)			\
 struct platform_device exynos5_device_dwmci##_channel =		\
@@ -233,13 +259,17 @@ struct platform_device exynos5_device_dwmci##_channel =		\
 EXYNOS5_DWMCI_PLATFORM_DEVICE(0);
 EXYNOS5_DWMCI_PLATFORM_DEVICE(1);
 EXYNOS5_DWMCI_PLATFORM_DEVICE(2);
+#if !defined(CONFIG_SOC_EXYNOS5420)
 EXYNOS5_DWMCI_PLATFORM_DEVICE(3);
+#endif
 
 static struct platform_device *exynos5_dwmci_devs[] = {
 	&exynos5_device_dwmci0,
 	&exynos5_device_dwmci1,
 	&exynos5_device_dwmci2,
+#if !defined(CONFIG_SOC_EXYNOS5420)
 	&exynos5_device_dwmci3,
+#endif
 };
 
 void __init exynos_dwmci_set_platdata(struct dw_mci_board *pd, u32 slot_id)
@@ -250,7 +280,8 @@ void __init exynos_dwmci_set_platdata(struct dw_mci_board *pd, u32 slot_id)
 		soc_is_exynos4412()) {
 		npd = s3c_set_platdata(pd, sizeof(struct dw_mci_board),
 				&exynos4_device_dwmci);
-	} else if (soc_is_exynos5250() || soc_is_exynos5410()) {
+	} else if (soc_is_exynos5250() || soc_is_exynos5410() ||
+			soc_is_exynos5420()) {
 		if (slot_id < ARRAY_SIZE(exynos5_dwmci_devs))
 			npd = s3c_set_platdata(pd, sizeof(struct dw_mci_board),
 					       exynos5_dwmci_devs[slot_id]);
@@ -272,10 +303,6 @@ void __init exynos_dwmci_set_platdata(struct dw_mci_board *pd, u32 slot_id)
 		npd->get_ocr = exynos_dwmci_get_ocr;
 	if (!npd->clk_tbl)
 		npd->clk_tbl = exynos_dwmci_clk_rates;
-	if (!npd->om_check)
-		npd->om_check = exynos_dwmci_om_check;
-#if defined(CONFIG_MACH_UNIVERSAL5410)
-	if (!npd->set_sd_power)
-		npd->set_sd_power = exynos_dwmci_set_sd_power;
-#endif
+	if (!npd->cfg_smu)
+		npd->cfg_smu = exynos_dwmci_cfg_smu;
 }

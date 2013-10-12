@@ -16,17 +16,15 @@
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/slab.h>
+#ifdef CONFIG_SEC_PM_DEBUG
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
+#endif
 
 #include <plat/cpu.h>
 
 #include <mach/map.h>
 #include <mach/asv-exynos.h>
-
-#ifdef CONFIG_SEC_PM_DEBUG
-#include <linux/module.h>
-static int asv_group = 0;
-module_param_named(asv_group, asv_group, uint, 0444);
-#endif
 
 static LIST_HEAD(asv_list);
 static DEFINE_MUTEX(asv_mutex);
@@ -134,29 +132,56 @@ static void set_asv_info(struct asv_common *exynos_asv_common, bool show_volt)
 		if (exynos_asv_info->abb_info)
 			exynos_asv_info->abb_info->set_target_abb(exynos_asv_info);
 	}
+}
 
 #ifdef CONFIG_SEC_PM_DEBUG
-	asv_group = match_grp_nr;
-#endif
+static int asv_debug_show(struct seq_file *s, void *d)
+{
+	struct asv_info *exynos_asv_info;
+
+	list_for_each_entry(exynos_asv_info, &asv_list, node) {
+		seq_printf(s, "%s ASV group is %d\n", exynos_asv_info->name,
+					exynos_asv_info->result_asv_grp);
+	}
+
+	return 0;
 }
+
+static int asv_debug_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, asv_debug_show, inode->i_private);
+}
+
+
+const static struct file_operations asv_debug_fops = {
+	.open		= asv_debug_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+#endif
 
 static int __init asv_init(void)
 {
 	struct asv_common *exynos_asv_common;
-	int ret;
+	int ret = 0;
 
 	exynos_asv_common = kzalloc(sizeof(struct asv_common), GFP_KERNEL);
 
 	if (!exynos_asv_common) {
 		pr_err("ASV : Allocation failed\n");
+		ret = -EINVAL;
 		goto out1;
 	}
 
 	/* Define init function for each SoC types */
-	if (soc_is_exynos5410())
+	if (soc_is_exynos5410()) {
 		ret = exynos5410_init_asv(exynos_asv_common);
-	else {
+	} else if (soc_is_exynos5420()) {
+		ret = exynos5420_init_asv(exynos_asv_common);
+	} else {
 		pr_err("ASV : Unknown SoC type\n");
+		ret = -EINVAL;
 		goto out2;
 	}
 
@@ -169,6 +194,7 @@ static int __init asv_init(void)
 	if (exynos_asv_common->init) {
 		if (exynos_asv_common->init()) {
 			pr_err("ASV : Can not run init functioin\n");
+			ret = -EINVAL;
 			goto out2;
 		}
 	}
@@ -178,14 +204,18 @@ static int __init asv_init(void)
 		ret = exynos_asv_common->regist_asv_member();
 	} else {
 		pr_err("ASV : There is no regist_asv_member function\n");
+		ret = -EINVAL;
 		goto out2;
 	}
 
 	set_asv_info(exynos_asv_common, false);
+#ifdef CONFIG_SEC_PM_DEBUG
+	debugfs_create_file("asv_group", S_IRUGO, NULL, NULL, &asv_debug_fops);
+#endif
 
 out2:
 	kfree(exynos_asv_common);
 out1:
-	return -EINVAL;
+	return ret;
 }
 arch_initcall_sync(asv_init);

@@ -237,6 +237,17 @@ static struct usb_descriptor_header *acm_hs_function[] = {
 	NULL,
 };
 
+/* super speed support: */
+
+static struct usb_endpoint_descriptor acm_ss_notify_desc = {
+	.bLength =		USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType =	USB_DT_ENDPOINT,
+	.bEndpointAddress =	USB_DIR_IN,
+	.bmAttributes =		USB_ENDPOINT_XFER_INT,
+	.wMaxPacketSize =	cpu_to_le16(GS_NOTIFY_MAXPACKET),
+	.bInterval =		GS_LOG2_NOTIFY_INTERVAL+4,
+};
+
 static struct usb_endpoint_descriptor acm_ss_in_desc = {
 	.bLength =		USB_DT_ENDPOINT_SIZE,
 	.bDescriptorType =	USB_DT_ENDPOINT,
@@ -824,12 +835,15 @@ int acm_bind_config(struct usb_configuration *c, u8 port_num)
 	acm->port.connect = acm_connect;
 	acm->port.disconnect = acm_disconnect;
 	acm->port.send_break = acm_send_break;
-
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	acm->port.func.name = kasprintf(GFP_KERNEL, "acm%u", port_num);
 	if (!acm->port.func.name) {
 		kfree(acm);
 		return -ENOMEM;
 	}
+#else
+	acm->port.func.name = "acm";
+#endif
 	acm->port.func.strings = acm_strings;
 	/* descriptors are per-instance copies */
 	acm->port.func.bind = acm_bind;

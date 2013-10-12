@@ -6,7 +6,7 @@
 enum MODE {
 	DYNAMIC,
 	STANDARD,
-#if !defined(CONFIG_S5P_MDNIE_PWM)
+#if !defined(CONFIG_FB_MDNIE_PWM) && !defined(CONFIG_FB_DBLC_PWM)
 	NATURAL,
 #endif
 	MOVIE,
@@ -23,6 +23,7 @@ enum SCENARIO {
 	VT_MODE,
 	BROWSER_MODE,
 	EBOOK_MODE,
+	EMAIL_MODE,
 	SCENARIO_MAX,
 	DMB_NORMAL_MODE = 20,
 	DMB_MODE_MAX,
@@ -30,7 +31,7 @@ enum SCENARIO {
 
 enum CABC {
 	CABC_OFF,
-#if defined(CONFIG_S5P_MDNIE_PWM)
+#if defined(CONFIG_FB_MDNIE_PWM)
 	CABC_ON,
 #endif
 	CABC_MAX,
@@ -40,12 +41,6 @@ enum POWER_LUT {
 	LUT_DEFAULT,
 	LUT_VIDEO,
 	LUT_MAX,
-};
-
-enum NEGATIVE {
-	NEGATIVE_OFF,
-	NEGATIVE_ON,
-	NEGATIVE_MAX,
 };
 
 enum BYPASS {
@@ -63,7 +58,7 @@ enum ACCESSIBILITY {
 
 struct mdnie_tuning_info {
 	const char *name;
-	unsigned short * const sequence;
+	unsigned short *sequence;
 };
 
 struct mdnie_info {
@@ -74,26 +69,25 @@ struct mdnie_info {
 	struct mutex		dev_lock;
 	struct mutex		lock;
 
-	unsigned int 		enable;
+	unsigned int		enable;
 
 	enum SCENARIO scenario;
 	enum MODE mode;
 	enum CABC cabc;
 	enum BYPASS bypass;
 	unsigned int tuning;
-	unsigned int negative;
 	unsigned int accessibility;
 	unsigned int color_correction;
 	char path[50];
 
-
 	struct notifier_block fb_notif;
-#if defined (CONFIG_S5P_MDNIE_PWM)
+
+#if defined(CONFIG_FB_MDNIE_PWM)
 	struct backlight_device		*bd;
-    int *br_table;
-    struct clk *pwm_clk;
-    unsigned int support_pwm;
-#endif    
+	int				*br_table;
+	struct clk			*pwm_clk;
+	unsigned int			support_pwm;
+#endif
 };
 
 extern struct mdnie_info *g_mdnie;

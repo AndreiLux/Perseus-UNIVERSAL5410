@@ -138,7 +138,6 @@ EXPORT_SYMBOL(vb2_ion_set_alignment);
 void *vb2_ion_create_context(struct device *dev, size_t alignment, long flags)
 {
 	struct vb2_ion_context *ctx;
-	unsigned int heapmask = ion_heapflag(flags);
 
 	 /* non-contigous memory without H/W virtualization is not supported */
 	if ((flags & VB2ION_CTX_VMCONTIG) && !(flags & VB2ION_CTX_IOMMU))
@@ -149,7 +148,7 @@ void *vb2_ion_create_context(struct device *dev, size_t alignment, long flags)
 		return ERR_PTR(-ENOMEM);
 
 	ctx->dev = dev;
-	ctx->client = ion_client_create(ion_exynos, heapmask, dev_name(dev));
+	ctx->client = ion_client_create(ion_exynos, dev_name(dev));
 	if (IS_ERR(ctx->client)) {
 		void *retp = ctx->client;
 		kfree(ctx);
@@ -174,7 +173,7 @@ void vb2_ion_destroy_context(void *ctx)
 }
 EXPORT_SYMBOL(vb2_ion_destroy_context);
 
-void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
+void *vb2_ion_private_alloc(void *alloc_ctx, size_t size, int write, int plane)
 {
 	struct vb2_ion_context *ctx = alloc_ctx;
 	struct vb2_ion_buf *buf;
@@ -201,6 +200,7 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 	buf->ctx = ctx;
 	buf->size = size;
 	buf->cached = ctx_cached(ctx);
+	buf->direction = write ? DMA_FROM_DEVICE: DMA_TO_DEVICE;
 
 	if (need_kaddr(ctx, size, buf->cached)) {
 		buf->kva = ion_map_kernel(ctx->client, buf->handle);
@@ -215,7 +215,7 @@ void *vb2_ion_private_alloc(void *alloc_ctx, size_t size)
 	if (ctx_iommu(ctx) && !ctx->protected) {
 		buf->cookie.ioaddr = iovmm_map(ctx->dev,
 					       buf->cookie.sgt->sgl, 0,
-					       buf->size);
+					       buf->size, buf->direction, plane);
 		if (IS_ERR_VALUE(buf->cookie.ioaddr)) {
 			ret = (int)buf->cookie.ioaddr;
 			mutex_unlock(&ctx->lock);
@@ -268,12 +268,12 @@ static void vb2_ion_put(void *buf_priv)
 		vb2_ion_private_free(&buf->cookie);
 }
 
-static void *vb2_ion_alloc(void *alloc_ctx, unsigned long size)
+static void *vb2_ion_alloc(void *alloc_ctx, unsigned long size, int write, int plane)
 {
 	struct vb2_ion_buf *buf;
 	void *cookie;
 
-	cookie = vb2_ion_private_alloc(alloc_ctx, size);
+	cookie = vb2_ion_private_alloc(alloc_ctx, size, write, plane);
 	if (IS_ERR(cookie))
 		return cookie;
 
@@ -299,8 +299,8 @@ void *vb2_ion_private_vaddr(void *cookie)
 		buf->kva = ion_map_kernel(buf->ctx->client, buf->handle);
 		if (IS_ERR_OR_NULL(buf->kva))
 			buf->kva = NULL;
-		buf->kva += buf->cookie.offset;
 
+		buf->kva += buf->cookie.offset;
 	}
 
 	return buf->kva;
@@ -397,7 +397,7 @@ static int vb2_ion_mmap(void *buf_priv, struct vm_area_struct *vma)
 	return ret;
 }
 
-static int vb2_ion_map_dmabuf(void *mem_priv)
+static int vb2_ion_map_dmabuf(void *mem_priv, int plane)
 {
 	struct vb2_ion_buf *buf = mem_priv;
 	struct vb2_ion_context *ctx = buf->ctx;
@@ -426,7 +426,8 @@ static int vb2_ion_map_dmabuf(void *mem_priv)
 	mutex_lock(&ctx->lock);
 	if (ctx_iommu(ctx) && !ctx->protected && buf->cookie.ioaddr == 0) {
 		buf->cookie.ioaddr = iovmm_map(ctx->dev,
-				       buf->cookie.sgt->sgl, 0, buf->size);
+				       buf->cookie.sgt->sgl, 0, buf->size,
+				       buf->direction, plane);
 		if (IS_ERR_VALUE(buf->cookie.ioaddr)) {
 			pr_err("buf->cookie.ioaddr is error: %d\n",
 					buf->cookie.ioaddr);
@@ -489,7 +490,7 @@ static void *vb2_ion_attach_dmabuf(void *alloc_ctx, struct dma_buf *dbuf,
 	struct dma_buf_attachment *attachment;
 
 	if (dbuf->size < size) {
-		pr_err("dbuf->size(%d) is smaller than size(%lu)\n",
+		pr_err("dbuf->size(%d) is smaller than size(%ld)\n",
 				dbuf->size, size);
 		return ERR_PTR(-EFAULT);
 	}
@@ -731,7 +732,7 @@ static struct dma_buf *vb2_ion_get_user_pages(unsigned long start,
 
 	nr_pages = PFN_DOWN(PAGE_ALIGN(len + start_off));
 
-	pages =vzalloc(nr_pages * sizeof(*pages));
+	pages = vzalloc(nr_pages * sizeof(*pages));
 	if (!pages)
 		return ERR_PTR(-ENOMEM);
 
@@ -803,7 +804,7 @@ err_privdata:
 }
 
 static void *vb2_ion_get_userptr(void *alloc_ctx, unsigned long vaddr,
-				unsigned long size, int write)
+				unsigned long size, int write, int plane)
 {
 	struct vb2_ion_context *ctx = alloc_ctx;
 	struct vb2_ion_buf *buf = NULL;
@@ -840,7 +841,7 @@ static void *vb2_ion_get_userptr(void *alloc_ctx, unsigned long vaddr,
 	}
 
 	buf->ctx = ctx;
-	buf->direction = write ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
+	buf->direction = write ? DMA_FROM_DEVICE : DMA_TO_DEVICE;
 	buf->size = size;
 
 	buf->attachment = dma_buf_attach(buf->dma_buf, ctx->dev);
@@ -872,7 +873,8 @@ static void *vb2_ion_get_userptr(void *alloc_ctx, unsigned long vaddr,
 
 	if (ctx_iommu(ctx))
 		buf->cookie.ioaddr = iovmm_map(ctx->dev, buf->cookie.sgt->sgl,
-					buf->cookie.offset, size);
+					buf->cookie.offset, size, buf->direction,
+					plane);
 
 	if (IS_ERR_VALUE(buf->cookie.ioaddr)) {
 		dev_err(ctx->dev,
@@ -903,7 +905,6 @@ static void *vb2_ion_get_userptr(void *alloc_ctx, unsigned long vaddr,
 
 		buf->kva = dma_buf_kmap(buf->dma_buf,
 					buf->cookie.offset / PAGE_SIZE);
-
 		if (!buf->kva) {
 			dev_err(ctx->dev,
 			"%s: No space in kernel for user buffer @ %#lx/%#lx\n",
@@ -1092,7 +1093,6 @@ void vb2_ion_sync_for_cpu(void *cookie, off_t offset, size_t size,
 		flush_all_cpu_caches();
 	} else {
 		dmac_unmap_area(buf->kva + offset, size, dir);
-
 	}
 
 #ifdef CONFIG_OUTER_CACHE
@@ -1169,7 +1169,6 @@ int vb2_ion_buf_prepare(struct vb2_buffer *vb)
 			vb2_ion_sync_bufs(buf, dir, dma_sync_sg_for_device);
 		else
 			dmac_map_area(buf->kva, buf->size, dir);
-
 	}
 
 	if (nokaddr) /* vb2_ion_sync_bufs() operates on the outer cache also */
@@ -1268,7 +1267,6 @@ int vb2_ion_buf_finish(struct vb2_buffer *vb)
 			vb2_ion_sync_bufs(buf, dir, dma_sync_sg_for_cpu);
 		else
 			dmac_unmap_area(buf->kva, buf->size, dir);
-
 	}
 
 	if (nokaddr) /* vb2_ion_sync_bufs() operates on the outer cache also */

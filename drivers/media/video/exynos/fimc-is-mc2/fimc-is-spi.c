@@ -97,7 +97,6 @@ int fimc_is_spi_read(void *buf, u32 rx_addr, size_t size)
 static int __devinit fimc_is_spi_probe(struct spi_device *spi)
 {
 	int ret = 0;
-	int gpio;
 
 	dbg_core("%s\n", __func__);
 

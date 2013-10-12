@@ -29,11 +29,11 @@ int s5p_mfc_set_dec_stream_buffer(struct s5p_mfc_ctx *ctx,
 		unsigned int buf_size);
 
 void s5p_mfc_set_enc_frame_buffer(struct s5p_mfc_ctx *ctx,
-		dma_addr_t y_addr, dma_addr_t c_addr);
+		dma_addr_t addr[], int num_planes);
 int s5p_mfc_set_enc_stream_buffer(struct s5p_mfc_ctx *ctx,
 		dma_addr_t addr, unsigned int size);
 void s5p_mfc_get_enc_frame_buffer(struct s5p_mfc_ctx *ctx,
-		dma_addr_t *y_addr, dma_addr_t *c_addr);
+		dma_addr_t addr[], int num_planes);
 int s5p_mfc_set_enc_ref_buffer(struct s5p_mfc_ctx *mfc_ctx);
 
 int s5p_mfc_decode_one_frame(struct s5p_mfc_ctx *ctx, int last_frame);
@@ -84,6 +84,8 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 						S5P_FIMV_D_DISPLAY_FRAME_HEIGHT)
 #define s5p_mfc_get_dpb_count()		readl(dev->regs_base + \
 						S5P_FIMV_D_MIN_NUM_DPB)
+#define s5p_mfc_get_dis_count()		readl(dev->regs_base + \
+						S5P_FIMV_D_MIN_NUM_DIS)
 #define s5p_mfc_get_mv_count()		readl(dev->regs_base + \
 						S5P_FIMV_D_MIN_NUM_MV)
 #define s5p_mfc_get_inst_no()		readl(dev->regs_base + \
@@ -116,6 +118,10 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 #define s5p_mfc_get_dec_frame()		(readl(dev->regs_base + \
 						S5P_FIMV_D_DECODED_FRAME_TYPE) \
 						& S5P_FIMV_DECODED_FRAME_MASK)
+#define mfc_get_disp_first_addr()	readl(dev->regs_base + \
+						S5P_FIMV_D_DISPLAY_FIRST_ADDR)
+#define mfc_get_dec_first_addr()	readl(dev->regs_base + \
+						S5P_FIMV_D_DECODED_FIRST_ADDR)
 
 #define mb_width(x_size)		((x_size + 15) / 16)
 #define mb_height(y_size)		((y_size + 15) / 16)
@@ -185,6 +191,13 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 		(((x) * 48) + (((x) + 1) / 2 * 128) + 144)
 #define ENC_V65_MPEG4_SCRATCH_SIZE(x, y)			\
 		(((x) * 32) + 16)
+#define ENC_V70_VP8_SCRATCH_SIZE(x, y)				\
+		(((x) * 48) + (((x) + 1) / 2 * 128) + 144 +	\
+		 8192 + (((x) * 16) * (((y) * 16) * 3 / 2) * 4))
+
+/* Additional scratch buffer size for MFC v7.x */
+#define DEC_V72_ADD_SIZE_0(x)					\
+		(((x) * 16 * 72 * 2) + 256)
 
 /* Encoder buffer size for common */
 #define ENC_TMV_SIZE(x, y)					\

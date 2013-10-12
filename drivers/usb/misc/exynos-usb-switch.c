@@ -16,6 +16,7 @@
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
 #include <linux/pm_runtime.h>
+#include <linux/wakelock.h>
 
 #include <plat/devs.h>
 #include <plat/ehci.h>
@@ -32,18 +33,6 @@
 
 static const char switch_name[] = "exynos_usb_switch";
 static struct exynos_usb_switch *our_switch;
-
-#if defined(CONFIG_BATTERY_SAMSUNG)
-void exynos_usb_cable_connect(void)
-{
-	samsung_cable_check_status(1);
-}
-
-void exynos_usb_cable_disconnect(void)
-{
-	samsung_cable_check_status(0);
-}
-#endif
 
 static int is_host_detect(struct exynos_usb_switch *usb_switch)
 {
@@ -118,28 +107,26 @@ static int exynos_change_usb_mode(struct exynos_usb_switch *usb_switch,
 			return -EPERM;
 		}
 		if (usb_switch->ohci_dev)
-			pm_runtime_put(usb_switch->ohci_dev);
+			pm_runtime_allow(usb_switch->ohci_dev);
 		if (usb_switch->ehci_dev)
-			pm_runtime_put(usb_switch->ehci_dev);
+			pm_runtime_allow(usb_switch->ehci_dev);
 		if (usb_switch->gpio_host_vbus)
 			set_host_vbus(usb_switch, 0);
 
-#if defined(CONFIG_BATTERY_SAMSUNG)
-		exynos_usb_cable_disconnect();
-#endif
+		wake_unlock(&usb_switch->wake_lock);
+
 		clear_bit(USB_HOST_ATTACHED, &usb_switch->connect);
 		break;
 	case USB_HOST_ATTACHED:
-#if defined(CONFIG_BATTERY_SAMSUNG)
-		exynos_usb_cable_connect();
-#endif
+		wake_lock(&usb_switch->wake_lock);
+
 		if (usb_switch->gpio_host_vbus)
 			set_host_vbus(usb_switch, 1);
 
 		if (usb_switch->ehci_dev)
-			pm_runtime_get_sync(usb_switch->ehci_dev);
+			pm_runtime_forbid(usb_switch->ehci_dev);
 		if (usb_switch->ohci_dev)
-			pm_runtime_get_sync(usb_switch->ohci_dev);
+			pm_runtime_forbid(usb_switch->ohci_dev);
 		set_bit(USB_HOST_ATTACHED, &usb_switch->connect);
 		break;
 	default:
@@ -313,6 +300,9 @@ static int __devinit exynos_usbswitch_probe(struct platform_device *pdev)
 
 	usb_switch->s3c_udc_dev = pdata->s3c_udc_dev;
 
+	wake_lock_init(&usb_switch->wake_lock, WAKE_LOCK_SUSPEND,
+			"usb_switch_present");
+
 	/* USB Device detect IRQ */
 	irq = platform_get_irq(pdev, 1);
 	if (irq > 0 && usb_switch->s3c_udc_dev) {
@@ -356,6 +346,7 @@ static int __devinit exynos_usbswitch_probe(struct platform_device *pdev)
 fail_gpio_device_detect:
 	free_irq(usb_switch->device_detect_irq, usb_switch);
 fail:
+	wake_unlock(&usb_switch->wake_lock);
 	cancel_work_sync(&usb_switch->switch_work);
 	destroy_workqueue(usb_switch->workqueue);
 	mutex_destroy(&usb_switch->mutex);
@@ -371,6 +362,7 @@ static int __devexit exynos_usbswitch_remove(struct platform_device *pdev)
 	free_irq(usb_switch->device_detect_irq, usb_switch);
 	platform_set_drvdata(pdev, 0);
 
+	wake_unlock(&usb_switch->wake_lock);
 	cancel_work_sync(&usb_switch->switch_work);
 	destroy_workqueue(usb_switch->workqueue);
 	mutex_destroy(&usb_switch->mutex);

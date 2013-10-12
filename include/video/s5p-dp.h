@@ -12,7 +12,7 @@
 #ifndef _S5P_DP_H
 #define _S5P_DP_H
 
-#define DP_TIMEOUT_LOOP_COUNT 100
+#define DP_TIMEOUT_LOOP_COUNT 300
 #define MAX_CR_LOOP 5
 #define MAX_EQ_LOOP 4
 
@@ -126,6 +126,9 @@ struct video_info {
 
 	enum link_rate_type link_rate;
 	enum link_lane_count_type lane_count;
+#ifdef CONFIG_S5P_DP_PSR
+	struct fb_videomode	*video_mode;
+#endif
 };
 
 struct analog_param {
@@ -144,5 +147,12 @@ struct s5p_dp_platdata {
 	void (*lcd_on)(void);
 	void (*lcd_off)(void);
 };
+
+#ifdef CONFIG_S5P_DP_PSR
+	enum psr_status {
+		PSR_STATUS_INACTIVE,
+		PSR_STATUS_ACTIVE
+	};
+#endif
 
 #endif /* _S5P_DP_H */

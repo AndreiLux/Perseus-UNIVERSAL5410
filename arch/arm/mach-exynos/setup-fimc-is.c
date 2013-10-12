@@ -458,8 +458,12 @@ int exynos5_fimc_is_gpio(struct platform_device *pdev, struct gpio_set *gpio, in
 			s3c_gpio_cfgpin(gpio->pin, gpio->value);
 			s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_NONE);
 			/* set max strength */
-			if (strstr(gpio->name, "SDA") || strstr(gpio->name, "SCL"))
+			if (strstr(gpio->name, "SDA") || strstr(gpio->name, "SCL")) {
 				s5p_gpio_set_drvstr(gpio->pin, S5P_GPIO_DRVSTR_LV4);
+#if defined(CONFIG_N1A)
+				s3c_gpio_setpull(gpio->pin, S3C_GPIO_PULL_UP);
+#endif
+			}
 			break;
 		case GPIO_OUTPUT:
 			s3c_gpio_cfgpin(gpio->pin, S3C_GPIO_OUTPUT);
@@ -496,55 +500,51 @@ int exynos5_fimc_is_gpio(struct platform_device *pdev, struct gpio_set *gpio, in
 int exynos5_fimc_is_regulator(struct platform_device *pdev, struct gpio_set *gpio, int flag_on)
 {
 	int ret = 0;
+	struct regulator *regulator = NULL;
 
-	if (soc_is_exynos5410()) {
-		struct regulator *regulator = NULL;
-
-		if (flag_on == 1) {
-			regulator = regulator_get(&(pdev->dev), gpio->name);
-			if (IS_ERR(regulator)) {
-				pr_err("%s : regulator_get(%s) fail\n",
+	if (flag_on == 1) {
+		regulator = regulator_get(&(pdev->dev), gpio->name);
+		if (IS_ERR(regulator)) {
+			pr_err("%s : regulator_get(%s) fail\n",
+				__func__, gpio->name);
+			return PTR_ERR(regulator);
+		} else if (!regulator_is_enabled(regulator)) {
+			ret = regulator_enable(regulator);
+			if (ret) {
+				pr_err("%s : regulator_enable(%s) fail\n",
 					__func__, gpio->name);
-				return PTR_ERR(regulator);
-			} else if (!regulator_is_enabled(regulator)) {
-				ret = regulator_enable(regulator);
-				if (ret) {
-					pr_err("%s : regulator_enable(%s) fail\n",
-						__func__, gpio->name);
-					regulator_put(regulator);
-					return ret;
-				}
+				regulator_put(regulator);
+				return ret;
 			}
-			regulator_put(regulator);
-		} else {
-			regulator = regulator_get(&(pdev->dev), gpio->name);
-			if (IS_ERR(regulator)) {
-				pr_err("%s : regulator_get(%s) fail\n",
-					__func__, gpio->name);
-				return PTR_ERR(regulator);
-			} else if (regulator_is_enabled(regulator)) {
-				ret = regulator_disable(regulator);
-				if (ret) {
-					pr_err("%s : regulator_disable(%s) fail\n",
-						__func__, gpio->name);
-					regulator_put(regulator);
-					return ret;
-				}
-			}
-			regulator_put(regulator);
 		}
+		regulator_put(regulator);
+	} else {
+		regulator = regulator_get(&(pdev->dev), gpio->name);
+		if (IS_ERR(regulator)) {
+			pr_err("%s : regulator_get(%s) fail\n",
+				__func__, gpio->name);
+			return PTR_ERR(regulator);
+		} else if (regulator_is_enabled(regulator)) {
+			ret = regulator_disable(regulator);
+			if (ret) {
+				pr_err("%s : regulator_disable(%s) fail\n",
+					__func__, gpio->name);
+				regulator_put(regulator);
+				return ret;
+			}
+		}
+		regulator_put(regulator);
 	}
 
 	return ret;
 }
 
-static int exynos5_fimc_is_pin_cfg_exception(struct platform_device *pdev, 
+static int exynos5_fimc_is_pin_cfg_exception(struct platform_device *pdev,
 	int channel, int flag_on, char *gpio_list[], int gpio_list_size)
-
 {
 	int ret = 0;
 	int i = 0;
-	int j = 0; 
+	int j = 0;
 	int flag_found = 0;
 
 	struct exynos5_platform_fimc_is *dev = pdev->dev.platform_data;
@@ -569,7 +569,7 @@ static int exynos5_fimc_is_pin_cfg_exception(struct platform_device *pdev,
 			}
 
 			if (flag_found == 1) {
-				switch(gpio->pin_type) {
+				switch (gpio->pin_type) {
 				case PIN_GPIO:
 					ret = exynos5_fimc_is_gpio(pdev, gpio, flag_on);
 					if (ret)
@@ -592,7 +592,7 @@ static int exynos5_fimc_is_pin_cfg_exception(struct platform_device *pdev,
 	return ret;
 }
 
-int exynos5_fimc_is_pin_cfg(struct platform_device *pdev, u32 channel, bool flag_on)
+int exynos5_fimc_is_pin_cfg(struct platform_device *pdev, int channel, int flag_on)
 {
 	int ret = 0;
 	int i = 0;
@@ -632,8 +632,11 @@ int exynos5_fimc_is_pin_cfg(struct platform_device *pdev, u32 channel, bool flag
 				/* vtT0 */
 				if (strcmp("GPIO_CAM_VT_nRST", gpio->name) == 0)
 					usleep_range(1000, 1000);
+				
+				if (strcmp("GPIO_CAM_MCLK", gpio->name) == 0)
+					usleep_range(2000, 2000);
 
-				switch(gpio->pin_type) {
+				switch (gpio->pin_type) {
 				case PIN_GPIO:
 					ret = exynos5_fimc_is_gpio(pdev, gpio, flag_on);
 					if (ret)
@@ -675,30 +678,44 @@ int exynos5_fimc_is_pin_cfg(struct platform_device *pdev, u32 channel, bool flag
 				/* insert timing */
 				if (strcmp("GPIO_MAIN_CAM_RESET", gpio->name) == 0) {
 					/* GPIO_CAM_AF_EN and cam_af_2.8v_pm must turn off before GPIO_MAIN_CAM_RESET */
+#if defined(CONFIG_HA) || defined(CONFIG_HA_3G)
 					char *pic_cfg_exception_af[] = {
 						"GPIO_CAM_AF_EN",
 						"cam_af_2.8v_pm",
 					};
+					int size = 2;
+#elif defined(CONFIG_N1A)
+					char *pic_cfg_exception_af[] = {
+						"cam_af_2.8v_pm",
+					};
+					int size = 1;
+#else
+					char *pic_cfg_exception_af[] = {
+						"GPIO_CAM_AF_EN",
+					};
+					int size = 1;
+#endif
 
 					/* GPIO_CAM_MCLK and must turn off before cGPIO_MAIN_CAM_RESET */
 					char *pic_cfg_exception_mclk[] = {
 						"GPIO_CAM_MCLK",
 					};
 
-					ret = exynos5_fimc_is_pin_cfg_exception(pdev, channel, flag_on, pic_cfg_exception_af, 2);
+					ret = exynos5_fimc_is_pin_cfg_exception(pdev, channel, flag_on, pic_cfg_exception_af, size);
 					if (ret)
 						pr_err("%s : exynos5_fimc_is_pin_cfg_exception failed\n", __func__);
+					
+					usleep_range(2000, 2000);
 
 					ret = exynos5_fimc_is_pin_cfg_exception(pdev, channel, flag_on, pic_cfg_exception_mclk, 1);
 					if (ret)
 						pr_err("%s : exynos5_fimc_is_pin_cfg_exception failed\n", __func__);
 				}
-
 				/* iT4 */
 				if (strcmp("cam_isp_sensor_io_1.8v", gpio->name) == 0)
 					usleep_range(9, 9);
 
-				switch(gpio->pin_type) {
+				switch (gpio->pin_type) {
 				case PIN_GPIO:
 					ret = exynos5_fimc_is_gpio(pdev, gpio, flag_on);
 					if (ret)
@@ -721,10 +738,11 @@ int exynos5_fimc_is_pin_cfg(struct platform_device *pdev, u32 channel, bool flag
 
 p_err:
 	return ret;
+
 }
 
 int exynos5_fimc_is_cfg_gpio(struct platform_device *pdev,
-				u32 channel, bool flag_on)
+				int channel, bool flag_on)
 {
 	int ret = 0;
 
@@ -813,7 +831,6 @@ static int cfg_gpio(struct gpio_set *gpio, int value)
 	int ret;
 
 	pr_debug("gpio.pin:%d gpio.name:%s\n", gpio->pin, gpio->name);
-
 	ret = gpio_request(gpio->pin, gpio->name);
 	if (ret) {
 		pr_err("Request GPIO error(%s)\n", gpio->name);
@@ -866,840 +883,1631 @@ static int power_control_sensor(char *regulator_name, int on)
 	return 0;
 }
 
-int exynos5_fimc_is_cfg_clk(struct platform_device *pdev)
+/* Exynos5250 */
+int exynos5250_fimc_is_cfg_clk(struct platform_device *pdev)
 {
-	pr_debug("exynos5_fimc_is_cfg_clk\n");
-	if (soc_is_exynos5250()) {
-		struct clk *aclk_mcuisp = NULL;
-		struct clk *aclk_266 = NULL;
-		struct clk *aclk_mcuisp_div0 = NULL;
-		struct clk *aclk_mcuisp_div1 = NULL;
-		struct clk *aclk_266_div0 = NULL;
-		struct clk *aclk_266_div1 = NULL;
-		struct clk *aclk_266_mpwm = NULL;
+	struct clk *aclk_mcuisp = NULL;
+	struct clk *aclk_266 = NULL;
+	struct clk *aclk_mcuisp_div0 = NULL;
+	struct clk *aclk_mcuisp_div1 = NULL;
+	struct clk *aclk_266_div0 = NULL;
+	struct clk *aclk_266_div1 = NULL;
+	struct clk *aclk_266_mpwm = NULL;
 #ifdef USE_UART_DEBUG
-		struct clk *sclk_uart_isp = NULL;
-		struct clk *sclk_uart_isp_div = NULL;
-		unsigned long isp_uart;
+	struct clk *sclk_uart_isp = NULL;
+	struct clk *sclk_uart_isp_div = NULL;
+	unsigned long isp_uart;
 #endif
-		struct clk *mout_mpll = NULL;
-		struct clk *sclk_mipi0 = NULL;
-		struct clk *sclk_mipi1 = NULL;
-		struct clk *cam_src = NULL;
-		struct clk *cam_A_clk = NULL;
-		unsigned long mcu_isp_400;
-		unsigned long isp_266;
-		unsigned long mipi;
-		unsigned long xxti;
+	struct clk *mout_mpll = NULL;
+	struct clk *sclk_mipi0 = NULL;
+	struct clk *sclk_mipi1 = NULL;
+	struct clk *cam_src = NULL;
+	struct clk *cam_A_clk = NULL;
+	unsigned long mcu_isp_400;
+	unsigned long isp_266;
+	unsigned long mipi;
+	unsigned long xxti;
 
-		/* 1. MCUISP */
-		aclk_mcuisp = clk_get(&pdev->dev, "aclk_400_isp");
-		if (IS_ERR(aclk_mcuisp))
-			return PTR_ERR(aclk_mcuisp);
+	pr_debug("exynos5250_fimc_is_cfg_clk\n");
 
-		aclk_mcuisp_div0 = clk_get(&pdev->dev, "aclk_400_isp_div0");
-		if (IS_ERR(aclk_mcuisp_div0)) {
-			clk_put(aclk_mcuisp);
-			return PTR_ERR(aclk_mcuisp_div0);
-		}
+	/* 1. MCUISP */
+	aclk_mcuisp = clk_get(&pdev->dev, "aclk_400_isp");
+	if (IS_ERR(aclk_mcuisp))
+		return PTR_ERR(aclk_mcuisp);
 
-		aclk_mcuisp_div1 = clk_get(&pdev->dev, "aclk_400_isp_div1");
-		if (IS_ERR(aclk_mcuisp_div1)) {
-			clk_put(aclk_mcuisp);
-			clk_put(aclk_mcuisp_div0);
-			return PTR_ERR(aclk_mcuisp_div1);
-		}
+	aclk_mcuisp_div0 = clk_get(&pdev->dev, "aclk_400_isp_div0");
+	if (IS_ERR(aclk_mcuisp_div0)) {
+		clk_put(aclk_mcuisp);
+		return PTR_ERR(aclk_mcuisp_div0);
+	}
 
-		clk_set_rate(aclk_mcuisp_div0, 200 * 1000000);
-		clk_set_rate(aclk_mcuisp_div1, 100 * 1000000);
-
-		mcu_isp_400 = clk_get_rate(aclk_mcuisp);
-		pr_debug("mcu_isp_400 : %ld\n", mcu_isp_400);
-
-		mcu_isp_400 = clk_get_rate(aclk_mcuisp_div0);
-		pr_debug("mcu_isp_400_div0 : %ld\n", mcu_isp_400);
-
-		mcu_isp_400 = clk_get_rate(aclk_mcuisp_div1);
-		pr_debug("aclk_mcuisp_div1 : %ld\n", mcu_isp_400);
-
+	aclk_mcuisp_div1 = clk_get(&pdev->dev, "aclk_400_isp_div1");
+	if (IS_ERR(aclk_mcuisp_div1)) {
 		clk_put(aclk_mcuisp);
 		clk_put(aclk_mcuisp_div0);
-		clk_put(aclk_mcuisp_div1);
+		return PTR_ERR(aclk_mcuisp_div1);
+	}
 
-		/* 2. ACLK_ISP */
-		aclk_266 = clk_get(&pdev->dev, "aclk_266_isp");
-		if (IS_ERR(aclk_266))
-			return PTR_ERR(aclk_266);
+	clk_set_rate(aclk_mcuisp_div0, 200 * 1000000);
+	clk_set_rate(aclk_mcuisp_div1, 100 * 1000000);
 
-		aclk_266_div0 = clk_get(&pdev->dev, "aclk_266_isp_div0");
-		if (IS_ERR(aclk_266_div0)) {
-			clk_put(aclk_266);
-			return PTR_ERR(aclk_266_div0);
-		}
+	mcu_isp_400 = clk_get_rate(aclk_mcuisp);
+	pr_debug("mcu_isp_400 : %ld\n", mcu_isp_400);
 
-		aclk_266_div1 = clk_get(&pdev->dev, "aclk_266_isp_div1");
-		if (IS_ERR(aclk_266_div1)) {
-			clk_put(aclk_266);
-			clk_put(aclk_266_div0);
-			return PTR_ERR(aclk_266_div1);
-		}
+	mcu_isp_400 = clk_get_rate(aclk_mcuisp_div0);
+	pr_debug("mcu_isp_400_div0 : %ld\n", mcu_isp_400);
 
-		aclk_266_mpwm = clk_get(&pdev->dev, "aclk_266_isp_divmpwm");
-		if (IS_ERR(aclk_266_mpwm)) {
-			clk_put(aclk_266);
-			clk_put(aclk_266_div0);
-			clk_put(aclk_266_div1);
-			return PTR_ERR(aclk_266_mpwm);
-		}
+	mcu_isp_400 = clk_get_rate(aclk_mcuisp_div1);
+	pr_debug("aclk_mcuisp_div1 : %ld\n", mcu_isp_400);
 
-		clk_set_rate(aclk_266_div0, 134 * 1000000);
-		clk_set_rate(aclk_266_div1, 68 * 1000000);
-		clk_set_rate(aclk_266_mpwm, 34 * 1000000);
+	clk_put(aclk_mcuisp);
+	clk_put(aclk_mcuisp_div0);
+	clk_put(aclk_mcuisp_div1);
 
-		isp_266 = clk_get_rate(aclk_266);
-		pr_debug("isp_266 : %ld\n", isp_266);
+	/* 2. ACLK_ISP */
+	aclk_266 = clk_get(&pdev->dev, "aclk_266_isp");
+	if (IS_ERR(aclk_266))
+		return PTR_ERR(aclk_266);
 
-		isp_266 = clk_get_rate(aclk_266_div0);
-		pr_debug("isp_266_div0 : %ld\n", isp_266);
+	aclk_266_div0 = clk_get(&pdev->dev, "aclk_266_isp_div0");
+	if (IS_ERR(aclk_266_div0)) {
+		clk_put(aclk_266);
+		return PTR_ERR(aclk_266_div0);
+	}
 
-		isp_266 = clk_get_rate(aclk_266_div1);
-		pr_debug("isp_266_div1 : %ld\n", isp_266);
+	aclk_266_div1 = clk_get(&pdev->dev, "aclk_266_isp_div1");
+	if (IS_ERR(aclk_266_div1)) {
+		clk_put(aclk_266);
+		clk_put(aclk_266_div0);
+		return PTR_ERR(aclk_266_div1);
+	}
 
-		isp_266 = clk_get_rate(aclk_266_mpwm);
-		pr_debug("isp_266_mpwm : %ld\n", isp_266);
-
+	aclk_266_mpwm = clk_get(&pdev->dev, "aclk_266_isp_divmpwm");
+	if (IS_ERR(aclk_266_mpwm)) {
 		clk_put(aclk_266);
 		clk_put(aclk_266_div0);
 		clk_put(aclk_266_div1);
-		clk_put(aclk_266_mpwm);
+		return PTR_ERR(aclk_266_mpwm);
+	}
+
+	clk_set_rate(aclk_266_div0, 134 * 1000000);
+	clk_set_rate(aclk_266_div1, 68 * 1000000);
+	clk_set_rate(aclk_266_mpwm, 34 * 1000000);
+
+	isp_266 = clk_get_rate(aclk_266);
+	pr_debug("isp_266 : %ld\n", isp_266);
+
+	isp_266 = clk_get_rate(aclk_266_div0);
+	pr_debug("isp_266_div0 : %ld\n", isp_266);
+
+	isp_266 = clk_get_rate(aclk_266_div1);
+	pr_debug("isp_266_div1 : %ld\n", isp_266);
+
+	isp_266 = clk_get_rate(aclk_266_mpwm);
+	pr_debug("isp_266_mpwm : %ld\n", isp_266);
+
+	clk_put(aclk_266);
+	clk_put(aclk_266_div0);
+	clk_put(aclk_266_div1);
+	clk_put(aclk_266_mpwm);
 
 #ifdef USE_UART_DEBUG
-		/* 3. UART-ISP */
-		sclk_uart_isp = clk_get(&pdev->dev, "sclk_uart_src_isp");
-		if (IS_ERR(sclk_uart_isp))
-			return PTR_ERR(sclk_uart_isp);
+	/* 3. UART-ISP */
+	sclk_uart_isp = clk_get(&pdev->dev, "sclk_uart_src_isp");
+	if (IS_ERR(sclk_uart_isp))
+		return PTR_ERR(sclk_uart_isp);
 
-		sclk_uart_isp_div = clk_get(&pdev->dev, "sclk_uart_isp");
-		if (IS_ERR(sclk_uart_isp_div)) {
-			clk_put(sclk_uart_isp);
-			return PTR_ERR(sclk_uart_isp_div);
-		}
-
-		clk_set_parent(sclk_uart_isp, clk_get(&pdev->dev, "mout_mpll_user"));
-		clk_set_parent(sclk_uart_isp_div, sclk_uart_isp);
-		clk_set_rate(sclk_uart_isp_div, 50 * 1000000);
-
-		isp_uart = clk_get_rate(sclk_uart_isp);
-		pr_debug("isp_uart : %ld\n", isp_uart);
-		isp_uart = clk_get_rate(sclk_uart_isp_div);
-		pr_debug("isp_uart_div : %ld\n", isp_uart);
-
+	sclk_uart_isp_div = clk_get(&pdev->dev, "sclk_uart_isp");
+	if (IS_ERR(sclk_uart_isp_div)) {
 		clk_put(sclk_uart_isp);
-		clk_put(sclk_uart_isp_div);
+		return PTR_ERR(sclk_uart_isp_div);
+	}
+
+	clk_set_parent(sclk_uart_isp, clk_get(&pdev->dev, "mout_mpll_user"));
+	clk_set_parent(sclk_uart_isp_div, sclk_uart_isp);
+	clk_set_rate(sclk_uart_isp_div, 50 * 1000000);
+
+	isp_uart = clk_get_rate(sclk_uart_isp);
+	pr_debug("isp_uart : %ld\n", isp_uart);
+	isp_uart = clk_get_rate(sclk_uart_isp_div);
+	pr_debug("isp_uart_div : %ld\n", isp_uart);
+
+	clk_put(sclk_uart_isp);
+	clk_put(sclk_uart_isp_div);
 #endif
 
-		/* 4. MIPI-CSI */
-		mout_mpll = clk_get(&pdev->dev, "mout_mpll_user");
-		if (IS_ERR(mout_mpll))
-			return PTR_ERR(mout_mpll);
+	/* 4. MIPI-CSI */
+	mout_mpll = clk_get(&pdev->dev, "mout_mpll_user");
+	if (IS_ERR(mout_mpll))
+		return PTR_ERR(mout_mpll);
 
-		sclk_mipi0 = clk_get(&pdev->dev, "sclk_gscl_wrap0");
-		if (IS_ERR(sclk_mipi0)) {
-			clk_put(mout_mpll);
-			return PTR_ERR(sclk_mipi0);
-		}
-
-		clk_set_parent(sclk_mipi0, mout_mpll);
-		clk_set_rate(sclk_mipi0, 267 * 1000000);
-
+	sclk_mipi0 = clk_get(&pdev->dev, "sclk_gscl_wrap0");
+	if (IS_ERR(sclk_mipi0)) {
 		clk_put(mout_mpll);
-		clk_put(sclk_mipi0);
-
-		mout_mpll = clk_get(&pdev->dev, "mout_mpll_user");
-		if (IS_ERR(mout_mpll))
-			return PTR_ERR(mout_mpll);
-
-		sclk_mipi1 = clk_get(&pdev->dev, "sclk_gscl_wrap1");
-		if (IS_ERR(sclk_mipi1)) {
-			clk_put(mout_mpll);
-			return PTR_ERR(sclk_mipi1);
-		}
-
-		clk_set_parent(sclk_mipi1, mout_mpll);
-		clk_set_rate(sclk_mipi1, 267 * 1000000);
-
-		mipi = clk_get_rate(mout_mpll);
-		pr_debug("mipi_src : %ld\n", mipi);
-		mipi = clk_get_rate(sclk_mipi1);
-		pr_debug("mipi_div : %ld\n", mipi);
-
-		clk_put(mout_mpll);
-		clk_put(sclk_mipi1);
-
-		/* 5. Camera A */
-		cam_src = clk_get(&pdev->dev, "xxti");
-		if (IS_ERR(cam_src))
-			return PTR_ERR(cam_src);
-
-		cam_A_clk = clk_get(&pdev->dev, "sclk_cam0");
-		if (IS_ERR(cam_A_clk)) {
-			clk_put(cam_src);
-			return PTR_ERR(cam_A_clk);
-		}
-
-		xxti = clk_get_rate(cam_src);
-		pr_debug("xxti : %ld\n", xxti);
-
-		clk_set_parent(cam_A_clk, cam_src);
-		clk_set_rate(cam_A_clk, 24 * 1000000);
-
-		clk_put(cam_src);
-		clk_put(cam_A_clk);
-
-		/* 6. Camera B */
-		cam_src = clk_get(&pdev->dev, "xxti");
-		if (IS_ERR(cam_src))
-			return PTR_ERR(cam_src);
-
-		cam_A_clk = clk_get(&pdev->dev, "sclk_bayer");
-		if (IS_ERR(cam_A_clk)) {
-			clk_put(cam_src);
-			return PTR_ERR(cam_A_clk);
-		}
-
-		xxti = clk_get_rate(cam_src);
-		pr_debug("xxti : %ld\n", xxti);
-
-		clk_set_parent(cam_A_clk, cam_src);
-		clk_set_rate(cam_A_clk, 24 * 1000000);
-
-		clk_put(cam_src);
-		clk_put(cam_A_clk);
-	} else if (soc_is_exynos5410()) {
-		int cfg;
-		struct clk *mout_bpll_user = NULL;
-		struct clk *aclk_400_isp_pre = NULL;
-		struct clk *aclk_mcuisp = NULL;
-		struct clk *aclk_266_pre = NULL;
-		struct clk *aclk_266 = NULL;
-		struct clk *aclk_mcuisp_div0 = NULL;
-		struct clk *aclk_mcuisp_div1 = NULL;
-		struct clk *dout_aclk_333_432 = NULL;
-		struct clk *aclk_333_432 = NULL;
-		struct clk *isp_div0 = NULL;
-		struct clk *isp_div1 = NULL;
-		struct clk *mpwm_div = NULL;
-		struct clk *dout_aclk_333_432_gscl = NULL;
-		struct clk *aclk_333_432_gscl = NULL;
-		struct clk *pclk_166_gscl = NULL;
-		struct clk *sclk_pwm_isp = NULL;
-		struct clk *sclk_uart_isp = NULL;
-		struct clk *sclk_spi1_isp = NULL;
-		struct clk *sclk_spi1_isp_pre = NULL;
-		struct clk *sclk_spi0_isp = NULL;
-		struct clk *sclk_spi0_isp_pre = NULL;
-		unsigned long mcu_isp_400;
-		unsigned long isp_266;
-		unsigned long isp_uart;
-		unsigned long isp_pwm;
-		unsigned long isp_spi1;
-		unsigned long isp_spi1_pre;
-		unsigned long isp_spi0;
-		unsigned long isp_spi0_pre;
-
-		/* initialize Clocks */
-
-		/*
-		 * HACK: hard clock setting to preventing
-		 * ISP init fail problem
-		 */
-		writel(0x31, EXYNOS5_CLKDIV_ISP0);
-		writel(0x31, EXYNOS5_CLKDIV_ISP1);
-		writel(0x1, EXYNOS5_CLKDIV_ISP2);
-		cfg = readl(EXYNOS5_CLKDIV2_RATIO0);
-		cfg |= (0x1 < 6);
-		writel(0x1, EXYNOS5_CLKDIV2_RATIO0);
-
-		/* 1. MCUISP */
-		mout_bpll_user = clk_get(&pdev->dev, "mout_bpll_user");
-
-		aclk_400_isp_pre = clk_get(&pdev->dev, "aclk_400_isp_pre");
-		if (IS_ERR(aclk_400_isp_pre)) {
-			pr_err("%s : clk_get(aclk_400_isp_pre) failed\n", __func__);
-			return PTR_ERR(aclk_400_isp_pre);
-		}
-
-		clk_set_parent(aclk_400_isp_pre, mout_bpll_user);
-		clk_set_rate(aclk_400_isp_pre, 400 * 1000000);
-
-		aclk_mcuisp = clk_get(&pdev->dev, "aclk_400_isp");
-		if (IS_ERR(aclk_mcuisp)) {
-			pr_err("%s : clk_get(aclk_400_isp) failed\n", __func__);
-			return PTR_ERR(aclk_mcuisp);
-		}
-
-		clk_set_parent(aclk_mcuisp, aclk_400_isp_pre);
-
-		aclk_mcuisp_div0 = clk_get(&pdev->dev, "mcuisp_div0");
-		if (IS_ERR(aclk_mcuisp_div0)) {
-			pr_err("%s : clk_get(mcuisp_div0) failed\n", __func__);
-			return PTR_ERR(aclk_mcuisp_div0);
-		}
-
-		aclk_mcuisp_div1 = clk_get(&pdev->dev, "mcuisp_div1");
-		if (IS_ERR(aclk_mcuisp_div1)) {
-			pr_err("%s : clk_get(mcuisp_div1) failed\n", __func__);
-			return PTR_ERR(aclk_mcuisp_div1);
-		}
-
-		clk_set_rate(aclk_mcuisp_div0, 200 * 1000000);
-		clk_set_rate(aclk_mcuisp_div1, 100 * 1000000);
-
-		mcu_isp_400 = clk_get_rate(aclk_mcuisp);
-		pr_debug("mcu_isp_400 : %ld\n", mcu_isp_400);
-
-		mcu_isp_400 = clk_get_rate(aclk_mcuisp_div0);
-		pr_debug("mcu_isp_400_div0 : %ld\n", mcu_isp_400);
-
-		mcu_isp_400 = clk_get_rate(aclk_mcuisp_div1);
-		pr_debug("aclk_mcuisp_div1 : %ld\n", mcu_isp_400);
-
-		clk_put(aclk_400_isp_pre);
-		clk_put(aclk_mcuisp);
-		clk_put(aclk_mcuisp_div0);
-		clk_put(aclk_mcuisp_div1);
-
-		/* 2. ACLK_266_ISP */
-		aclk_266_pre = clk_get(&pdev->dev, "aclk_266");
-		if (IS_ERR(aclk_266_pre)) {
-			pr_err("%s : clk_get(aclk_266) failed\n", __func__);
-			return PTR_ERR(aclk_266_pre);
-		}
-
-		aclk_266 = clk_get(&pdev->dev, "aclk_266_isp");
-		if (IS_ERR(aclk_266)) {
-			pr_err("%s : clk_get(aclk_266_isp) failed\n", __func__);
-			return PTR_ERR(aclk_266);
-		}
-
-		clk_set_parent(aclk_266, aclk_266_pre);
-
-		isp_266 = clk_get_rate(aclk_266);
-		pr_debug("isp_266 : %ld\n", isp_266);
-
-		clk_put(aclk_266_pre);
-		clk_put(aclk_266);
-
-		/* 3. ACLK_333_432_ISP */
-		dout_aclk_333_432 = clk_get(&pdev->dev, "dout_aclk_333_432_isp");
-		if (IS_ERR(dout_aclk_333_432)) {
-			pr_err("%s : clk_get(dout_aclk_333_432_isp) failed\n", __func__);
-			return PTR_ERR(dout_aclk_333_432);
-		}
-
-		clk_set_rate(dout_aclk_333_432, 432 * 1000000);
-
-		aclk_333_432 = clk_get(&pdev->dev, "aclk_333_432_isp");
-		if (IS_ERR(aclk_333_432)) {
-			pr_err("%s : clk_get(aclk_333_432_isp) failed\n", __func__);
-			return PTR_ERR(aclk_333_432);
-		}
-
-		clk_set_parent(aclk_333_432, dout_aclk_333_432);
-
-		/* ISP_DIV0 */
-		isp_div0 = clk_get(&pdev->dev, "isp_div0");
-		if (IS_ERR(isp_div0)) {
-			pr_err("%s : clk_get(isp_div0) failed\n", __func__);
-			return PTR_ERR(isp_div0);
-		}
-
-		clk_set_rate(isp_div0, 216 * 1000000);
-
-		/* ISP_DIV1 */
-		isp_div1 = clk_get(&pdev->dev, "isp_div1");
-		if (IS_ERR(isp_div1)) {
-			pr_err("%s : clk_get(isp_div1) failed\n", __func__);
-			return PTR_ERR(isp_div1);
-		}
-
-		clk_set_rate(isp_div1, 108 * 1000000);
-
-		/* MPWM_DIV */
-		mpwm_div = clk_get(&pdev->dev, "mpwm_div");
-		if (IS_ERR(mpwm_div)) {
-			pr_err("%s : clk_get(mpwm_div) failed\n", __func__);
-			return PTR_ERR(mpwm_div);
-		}
-
-		clk_set_rate(mpwm_div, 54 * 1000000);
-
-		clk_put(dout_aclk_333_432);
-		clk_put(aclk_333_432);
-		clk_put(isp_div0);
-		clk_put(isp_div1);
-		clk_put(mpwm_div);
-
-		/* 4. ACLK_333_432_GSL */
-		dout_aclk_333_432_gscl = clk_get(&pdev->dev, "dout_aclk_333_432_gscl");
-		if (IS_ERR(dout_aclk_333_432_gscl)) {
-			pr_err("%s : clk_get(dout_aclk_333_432_gscl) failed\n", __func__);
-			return PTR_ERR(dout_aclk_333_432_gscl);
-		}
-
-		clk_set_rate(dout_aclk_333_432_gscl, 432 * 1000000);
-
-		aclk_333_432_gscl = clk_get(&pdev->dev, "aclk_333_432_gscl");
-		if (IS_ERR(aclk_333_432_gscl)) {
-			pr_err("%s : clk_get(aclk_333_432_gscl) failed\n", __func__);
-			return PTR_ERR(aclk_333_432_gscl);
-		}
-
-		clk_set_parent(aclk_333_432_gscl, dout_aclk_333_432_gscl);
-
-		/* PCLK_166_GSCL */
-		pclk_166_gscl = clk_get(&pdev->dev, "pclk_166_gscl");
-		if (IS_ERR(pclk_166_gscl)) {
-			pr_err("%s : clk_get(pclk_166_gscl) failed\n", __func__);
-			return PTR_ERR(pclk_166_gscl);
-		}
-
-		clk_set_rate(pclk_166_gscl, 216 * 1000000);
-
-		clk_put(dout_aclk_333_432_gscl);
-		clk_put(aclk_333_432_gscl);
-		clk_put(pclk_166_gscl);
-
-		/* 5. SCLK_ISP_BLK */
-		/* PWM-ISP */
-		sclk_pwm_isp = clk_get(&pdev->dev, "sclk_pwm_isp");
-		if (IS_ERR(sclk_pwm_isp)) {
-			pr_err("%s : clk_get(sclk_pwm_isp) failed\n", __func__);
-			return PTR_ERR(sclk_pwm_isp);
-		}
-
-		clk_set_parent(sclk_pwm_isp, clk_get(&pdev->dev, "ext_xtal"));
-		clk_set_rate(sclk_pwm_isp, 2 * 1000000);
-
-		isp_pwm = clk_get_rate(sclk_pwm_isp);
-		pr_debug("isp_pwm : %ld\n", isp_pwm);
-
-		clk_put(sclk_pwm_isp);
-
-		/* UART-ISP */
-		sclk_uart_isp = clk_get(&pdev->dev, "sclk_uart_isp");
-		if (IS_ERR(sclk_uart_isp)) {
-			pr_err("%s : clk_get(sclk_uart_isp) failed\n", __func__);
-			return PTR_ERR(sclk_uart_isp);
-		}
-
-		clk_set_parent(sclk_uart_isp, clk_get(&pdev->dev, "mout_cpll"));
-		clk_set_rate(sclk_uart_isp, 67 * 1000000);
-
-		isp_uart = clk_get_rate(sclk_uart_isp);
-		pr_debug("isp_uart : %ld\n", isp_uart);
-
-		clk_put(sclk_uart_isp);
-
-		/* SPI1-ISP */
-		sclk_spi1_isp = clk_get(&pdev->dev, "sclk_spi1_isp");
-		if (IS_ERR(sclk_spi1_isp)) {
-			pr_err("%s : clk_get(sclk_spi1_isp) failed\n", __func__);
-			return PTR_ERR(sclk_spi1_isp);
-		}
-
-		sclk_spi1_isp_pre = clk_get(&pdev->dev, "sclk_spi1_isp_pre");
-		if (IS_ERR(sclk_spi1_isp_pre)) {
-			pr_err("%s : clk_get(sclk_spi1_isp_pre) failed\n", __func__);
-			return PTR_ERR(sclk_spi1_isp_pre);
-		}
-
-		clk_set_parent(sclk_spi1_isp, clk_get(&pdev->dev, "mout_epll"));
-		clk_set_rate(sclk_spi1_isp, 100 * 1000000);
-		clk_set_rate(sclk_spi1_isp_pre, 100 * 1000000);
-
-		isp_spi1 = clk_get_rate(sclk_spi1_isp);
-		pr_debug("isp_spi1 : %ld\n", isp_spi1);
-		isp_spi1_pre = clk_get_rate(sclk_spi1_isp_pre);
-		pr_debug("isp_spi1_pre : %ld\n", isp_spi1_pre);
-
-		clk_put(sclk_spi1_isp);
-		clk_put(sclk_spi1_isp_pre);
-
-		/* SPI0-ISP */
-		sclk_spi0_isp = clk_get(&pdev->dev, "sclk_spi0_isp");
-		if (IS_ERR(sclk_spi0_isp)) {
-			pr_err("%s : clk_get(sclk_spi0_isp) failed\n", __func__);
-			return PTR_ERR(sclk_spi0_isp);
-		}
-
-		sclk_spi0_isp_pre = clk_get(&pdev->dev, "sclk_spi0_isp_pre");
-		if (IS_ERR(sclk_spi0_isp_pre)) {
-			pr_err("%s : clk_get(sclk_spi0_isp_pre) failed\n", __func__);
-			return PTR_ERR(sclk_spi0_isp_pre);
-		}
-
-		clk_set_parent(sclk_spi0_isp, clk_get(&pdev->dev, "mout_epll"));
-		clk_set_rate(sclk_spi0_isp, 100 * 1000000);
-		clk_set_rate(sclk_spi0_isp_pre, 100 * 1000000);
-
-		isp_spi0 = clk_get_rate(sclk_spi0_isp);
-		pr_debug("isp_spi0 : %ld\n", isp_spi0);
-		isp_spi0_pre = clk_get_rate(sclk_spi0_isp_pre);
-		pr_debug("isp_spi0_pre : %ld\n", isp_spi0_pre);
-
-		clk_put(sclk_spi0_isp);
-		clk_put(sclk_spi0_isp_pre);
-
-		/* Enable from booting time */
-		/* UART-ISP */
-		sclk_uart_isp = clk_get(&pdev->dev, "sclk_uart_isp");
-		if (IS_ERR(sclk_uart_isp)) {
-			pr_err("%s : clk_get(sclk_uart_isp) failed\n", __func__);
-			return PTR_ERR(sclk_uart_isp);
-		}
-
-		clk_enable(sclk_uart_isp);
-		clk_put(sclk_uart_isp);
+		return PTR_ERR(sclk_mipi0);
 	}
+
+	clk_set_parent(sclk_mipi0, mout_mpll);
+	clk_set_rate(sclk_mipi0, 267 * 1000000);
+
+	clk_put(mout_mpll);
+	clk_put(sclk_mipi0);
+
+	mout_mpll = clk_get(&pdev->dev, "mout_mpll_user");
+	if (IS_ERR(mout_mpll))
+		return PTR_ERR(mout_mpll);
+
+	sclk_mipi1 = clk_get(&pdev->dev, "sclk_gscl_wrap1");
+	if (IS_ERR(sclk_mipi1)) {
+		clk_put(mout_mpll);
+		return PTR_ERR(sclk_mipi1);
+	}
+
+	clk_set_parent(sclk_mipi1, mout_mpll);
+	clk_set_rate(sclk_mipi1, 267 * 1000000);
+
+	mipi = clk_get_rate(mout_mpll);
+	pr_debug("mipi_src : %ld\n", mipi);
+	mipi = clk_get_rate(sclk_mipi1);
+	pr_debug("mipi_div : %ld\n", mipi);
+
+	clk_put(mout_mpll);
+	clk_put(sclk_mipi1);
+
+	/* 5. Camera A */
+	cam_src = clk_get(&pdev->dev, "xxti");
+	if (IS_ERR(cam_src))
+		return PTR_ERR(cam_src);
+
+	cam_A_clk = clk_get(&pdev->dev, "sclk_cam0");
+	if (IS_ERR(cam_A_clk)) {
+		clk_put(cam_src);
+		return PTR_ERR(cam_A_clk);
+	}
+
+	xxti = clk_get_rate(cam_src);
+	pr_debug("xxti : %ld\n", xxti);
+
+	clk_set_parent(cam_A_clk, cam_src);
+	clk_set_rate(cam_A_clk, 24 * 1000000);
+
+	clk_put(cam_src);
+	clk_put(cam_A_clk);
+
+	/* 6. Camera B */
+	cam_src = clk_get(&pdev->dev, "xxti");
+	if (IS_ERR(cam_src))
+		return PTR_ERR(cam_src);
+
+	cam_A_clk = clk_get(&pdev->dev, "sclk_bayer");
+	if (IS_ERR(cam_A_clk)) {
+		clk_put(cam_src);
+		return PTR_ERR(cam_A_clk);
+	}
+
+	xxti = clk_get_rate(cam_src);
+	pr_debug("xxti : %ld\n", xxti);
+
+	clk_set_parent(cam_A_clk, cam_src);
+	clk_set_rate(cam_A_clk, 24 * 1000000);
+
+	clk_put(cam_src);
+	clk_put(cam_A_clk);
 
 	return 0;
 }
 
-int exynos5_fimc_is_clk_on(struct platform_device *pdev)
+int exynos5410_fimc_is_cfg_clk(struct platform_device *pdev)
 {
-	pr_debug("exynos5_fimc_is_clk_on\n");
+	int cfg;
+	struct clk *mout_bpll_user = NULL;
+	struct clk *aclk_400_isp_pre = NULL;
+	struct clk *aclk_mcuisp = NULL;
+	struct clk *aclk_266_pre = NULL;
+	struct clk *aclk_266 = NULL;
+	struct clk *aclk_mcuisp_div0 = NULL;
+	struct clk *aclk_mcuisp_div1 = NULL;
+	struct clk *dout_aclk_333_432 = NULL;
+	struct clk *aclk_333_432 = NULL;
+	struct clk *isp_div0 = NULL;
+	struct clk *isp_div1 = NULL;
+	struct clk *mpwm_div = NULL;
+	struct clk *dout_aclk_333_432_gscl = NULL;
+	struct clk *aclk_333_432_gscl = NULL;
+	struct clk *pclk_166_gscl = NULL;
+	struct clk *sclk_pwm_isp = NULL;
+	struct clk *sclk_uart_isp = NULL;
+	struct clk *sclk_spi1_isp = NULL;
+	struct clk *sclk_spi1_isp_pre = NULL;
+	struct clk *sclk_spi0_isp = NULL;
+	struct clk *sclk_spi0_isp_pre = NULL;
+	struct clk *sclk_mout_isp_sensor = NULL;
+	struct clk *sclk_isp_sensor0 = NULL;
+	struct clk *sclk_isp_sensor1 = NULL;
+	struct clk *sclk_isp_sensor2 = NULL;
+	unsigned long mcu_isp_400;
+	unsigned long isp_266;
+	unsigned long isp_uart;
+	unsigned long isp_pwm;
+	unsigned long isp_spi1;
+	unsigned long isp_spi1_pre;
+	unsigned long isp_spi0;
+	unsigned long isp_spi0_pre;
+	unsigned long isp_sensor0;
+	unsigned long isp_sensor1;
+	unsigned long isp_sensor2;
 
-	if (soc_is_exynos5250()) {
-		struct clk *gsc_ctrl = NULL;
-		struct clk *isp_ctrl = NULL;
-		struct clk *cam_if_top = NULL;
-		struct clk *isp_400_src = NULL;
-		struct clk *isp_266_src = NULL;
-		struct clk *isp_400_clk = NULL;
-		struct clk *isp_266_clk = NULL;
+	/* initialize Clocks */
 
-		gsc_ctrl = clk_get(&pdev->dev, "gscl");
-		if (IS_ERR(gsc_ctrl))
-			return PTR_ERR(gsc_ctrl);
+	pr_debug("exynos5410_fimc_is_cfg_clk\n");
 
-		clk_enable(gsc_ctrl);
-		clk_put(gsc_ctrl);
+	/*
+	 * HACK: hard clock setting to preventing
+	 * ISP init fail problem
+	 */
+	writel(0x31, EXYNOS5_CLKDIV_ISP0);
+	writel(0x31, EXYNOS5_CLKDIV_ISP1);
+	writel(0x1, EXYNOS5_CLKDIV_ISP2);
+	cfg = readl(EXYNOS5_CLKDIV2_RATIO0);
+	cfg |= (0x1 < 6);
+	writel(0x1, EXYNOS5_CLKDIV2_RATIO0);
 
-		isp_ctrl = clk_get(&pdev->dev, "isp0");
-		if (IS_ERR(isp_ctrl))
-			return PTR_ERR(isp_ctrl);
+	/* 1. MCUISP */
+	mout_bpll_user = clk_get(&pdev->dev, "mout_bpll_user");
 
-		clk_enable(isp_ctrl);
-		clk_put(isp_ctrl);
+	aclk_400_isp_pre = clk_get(&pdev->dev, "aclk_400_isp_pre");
+	if (IS_ERR(aclk_400_isp_pre)) {
+		pr_err("%s : clk_get(aclk_400_isp_pre) failed\n", __func__);
+		return PTR_ERR(aclk_400_isp_pre);
+	}
 
-		isp_ctrl = clk_get(&pdev->dev, "isp1");
-		if (IS_ERR(isp_ctrl))
-			return PTR_ERR(isp_ctrl);
+	clk_set_parent(aclk_400_isp_pre, mout_bpll_user);
+	clk_set_rate(aclk_400_isp_pre, 400 * 1000000);
 
-		clk_enable(isp_ctrl);
-		clk_put(isp_ctrl);
+	aclk_mcuisp = clk_get(&pdev->dev, "aclk_400_isp");
+	if (IS_ERR(aclk_mcuisp)) {
+		pr_err("%s : clk_get(aclk_400_isp) failed\n", __func__);
+		return PTR_ERR(aclk_mcuisp);
+	}
 
-		cam_if_top = clk_get(&pdev->dev, "camif_top");
-		if (IS_ERR(cam_if_top))
-			return PTR_ERR(cam_if_top);
+	clk_set_parent(aclk_mcuisp, aclk_400_isp_pre);
 
-		clk_enable(cam_if_top);
-		clk_put(cam_if_top);
+	aclk_mcuisp_div0 = clk_get(&pdev->dev, "mcuisp_div0");
+	if (IS_ERR(aclk_mcuisp_div0)) {
+		pr_err("%s : clk_get(mcuisp_div0) failed\n", __func__);
+		return PTR_ERR(aclk_mcuisp_div0);
+	}
 
-		/*isp sub src selection*/
-		isp_400_src = clk_get(&pdev->dev, "aclk_400_isp");
-		if (IS_ERR(isp_400_src))
-			return PTR_ERR(isp_400_src);
+	aclk_mcuisp_div1 = clk_get(&pdev->dev, "mcuisp_div1");
+	if (IS_ERR(aclk_mcuisp_div1)) {
+		pr_err("%s : clk_get(mcuisp_div1) failed\n", __func__);
+		return PTR_ERR(aclk_mcuisp_div1);
+	}
 
-		isp_266_src = clk_get(&pdev->dev, "aclk_266_isp");
-		if (IS_ERR(isp_266_src)) {
-			clk_put(isp_400_src);
-			return PTR_ERR(isp_266_src);
+	clk_set_rate(aclk_mcuisp_div0, 200 * 1000000);
+	clk_set_rate(aclk_mcuisp_div1, 100 * 1000000);
+
+	mcu_isp_400 = clk_get_rate(aclk_mcuisp);
+	pr_debug("mcu_isp_400 : %ld\n", mcu_isp_400);
+
+	mcu_isp_400 = clk_get_rate(aclk_mcuisp_div0);
+	pr_debug("mcu_isp_400_div0 : %ld\n", mcu_isp_400);
+
+	mcu_isp_400 = clk_get_rate(aclk_mcuisp_div1);
+	pr_debug("aclk_mcuisp_div1 : %ld\n", mcu_isp_400);
+
+	clk_put(aclk_400_isp_pre);
+	clk_put(aclk_mcuisp);
+	clk_put(aclk_mcuisp_div0);
+	clk_put(aclk_mcuisp_div1);
+
+	/* 2. ACLK_266_ISP */
+	aclk_266_pre = clk_get(&pdev->dev, "aclk_266");
+	if (IS_ERR(aclk_266_pre)) {
+		pr_err("%s : clk_get(aclk_266) failed\n", __func__);
+		return PTR_ERR(aclk_266_pre);
+	}
+
+	aclk_266 = clk_get(&pdev->dev, "aclk_266_isp");
+	if (IS_ERR(aclk_266)) {
+		pr_err("%s : clk_get(aclk_266_isp) failed\n", __func__);
+		return PTR_ERR(aclk_266);
+	}
+
+	clk_set_parent(aclk_266, aclk_266_pre);
+
+	isp_266 = clk_get_rate(aclk_266);
+	pr_debug("isp_266 : %ld\n", isp_266);
+
+	clk_put(aclk_266_pre);
+	clk_put(aclk_266);
+
+	/* 3. ACLK_333_432_ISP */
+	dout_aclk_333_432 = clk_get(&pdev->dev, "dout_aclk_333_432_isp");
+	if (IS_ERR(dout_aclk_333_432)) {
+		pr_err("%s : clk_get(dout_aclk_333_432_isp) failed\n", __func__);
+		return PTR_ERR(dout_aclk_333_432);
+	}
+
+	clk_set_rate(dout_aclk_333_432, 432 * 1000000);
+
+	aclk_333_432 = clk_get(&pdev->dev, "aclk_333_432_isp");
+	if (IS_ERR(aclk_333_432)) {
+		pr_err("%s : clk_get(aclk_333_432_isp) failed\n", __func__);
+		return PTR_ERR(aclk_333_432);
+	}
+
+	clk_set_parent(aclk_333_432, dout_aclk_333_432);
+
+	/* ISP_DIV0 */
+	isp_div0 = clk_get(&pdev->dev, "isp_div0");
+	if (IS_ERR(isp_div0)) {
+		pr_err("%s : clk_get(isp_div0) failed\n", __func__);
+		return PTR_ERR(isp_div0);
+	}
+
+	clk_set_rate(isp_div0, 216 * 1000000);
+
+	/* ISP_DIV1 */
+	isp_div1 = clk_get(&pdev->dev, "isp_div1");
+	if (IS_ERR(isp_div1)) {
+		pr_err("%s : clk_get(isp_div1) failed\n", __func__);
+		return PTR_ERR(isp_div1);
+	}
+
+	clk_set_rate(isp_div1, 108 * 1000000);
+
+	/* MPWM_DIV */
+	mpwm_div = clk_get(&pdev->dev, "mpwm_div");
+	if (IS_ERR(mpwm_div)) {
+		pr_err("%s : clk_get(mpwm_div) failed\n", __func__);
+		return PTR_ERR(mpwm_div);
+	}
+
+	clk_set_rate(mpwm_div, 54 * 1000000);
+
+	clk_put(dout_aclk_333_432);
+	clk_put(aclk_333_432);
+	clk_put(isp_div0);
+	clk_put(isp_div1);
+	clk_put(mpwm_div);
+
+	/* 4. ACLK_333_432_GSL */
+	dout_aclk_333_432_gscl = clk_get(&pdev->dev, "dout_aclk_333_432_gscl");
+	if (IS_ERR(dout_aclk_333_432_gscl)) {
+		pr_err("%s : clk_get(dout_aclk_333_432_gscl) failed\n", __func__);
+		return PTR_ERR(dout_aclk_333_432_gscl);
+	}
+
+	clk_set_rate(dout_aclk_333_432_gscl, 432 * 1000000);
+
+	aclk_333_432_gscl = clk_get(&pdev->dev, "aclk_333_432_gscl");
+	if (IS_ERR(aclk_333_432_gscl)) {
+		pr_err("%s : clk_get(aclk_333_432_gscl) failed\n", __func__);
+		return PTR_ERR(aclk_333_432_gscl);
+	}
+
+	clk_set_parent(aclk_333_432_gscl, dout_aclk_333_432_gscl);
+
+	/* PCLK_166_GSCL */
+	pclk_166_gscl = clk_get(&pdev->dev, "pclk_166_gscl");
+	if (IS_ERR(pclk_166_gscl)) {
+		pr_err("%s : clk_get(pclk_166_gscl) failed\n", __func__);
+		return PTR_ERR(pclk_166_gscl);
+	}
+
+	clk_set_rate(pclk_166_gscl, 216 * 1000000);
+
+	clk_put(dout_aclk_333_432_gscl);
+	clk_put(aclk_333_432_gscl);
+	clk_put(pclk_166_gscl);
+
+	/* 4. ACLK_333_432_GSL */
+	dout_aclk_333_432_gscl = clk_get(&pdev->dev, "dout_aclk_333_432_gscl");
+	if (IS_ERR(dout_aclk_333_432_gscl)) {
+		pr_err("%s : clk_get(dout_aclk_333_432_gscl) failed\n", __func__);
+		return PTR_ERR(dout_aclk_333_432_gscl);
+	}
+
+	clk_set_rate(dout_aclk_333_432_gscl, 432 * 1000000);
+
+	aclk_333_432_gscl = clk_get(&pdev->dev, "aclk_333_432_gscl");
+	if (IS_ERR(aclk_333_432_gscl)) {
+		pr_err("%s : clk_get(aclk_333_432_gscl) failed\n", __func__);
+		return PTR_ERR(aclk_333_432_gscl);
+	}
+
+	clk_set_parent(aclk_333_432_gscl, dout_aclk_333_432_gscl);
+
+	/* PCLK_166_GSCL */
+	pclk_166_gscl = clk_get(&pdev->dev, "pclk_166_gscl");
+	if (IS_ERR(pclk_166_gscl)) {
+		pr_err("%s : clk_get(pclk_166_gscl) failed\n", __func__);
+		return PTR_ERR(pclk_166_gscl);
+	}
+
+	clk_set_rate(pclk_166_gscl, 216 * 1000000);
+
+	clk_put(dout_aclk_333_432_gscl);
+	clk_put(aclk_333_432_gscl);
+	clk_put(pclk_166_gscl);
+
+	/* 5. SCLK_ISP_BLK */
+	/* PWM-ISP */
+	sclk_pwm_isp = clk_get(&pdev->dev, "sclk_pwm_isp");
+	if (IS_ERR(sclk_pwm_isp)) {
+		pr_err("%s : clk_get(sclk_pwm_isp) failed\n", __func__);
+		return PTR_ERR(sclk_pwm_isp);
+	}
+
+	clk_set_parent(sclk_pwm_isp, clk_get(&pdev->dev, "ext_xtal"));
+	clk_set_rate(sclk_pwm_isp, 2 * 1000000);
+
+	isp_pwm = clk_get_rate(sclk_pwm_isp);
+	pr_debug("isp_pwm : %ld\n", isp_pwm);
+
+	clk_put(sclk_pwm_isp);
+
+	/* UART-ISP */
+	sclk_uart_isp = clk_get(&pdev->dev, "sclk_uart_isp");
+	if (IS_ERR(sclk_uart_isp)) {
+		pr_err("%s : clk_get(sclk_uart_isp) failed\n", __func__);
+		return PTR_ERR(sclk_uart_isp);
+	}
+
+	clk_set_parent(sclk_uart_isp, clk_get(&pdev->dev, "mout_cpll"));
+	clk_set_rate(sclk_uart_isp, 67 * 1000000);
+
+	isp_uart = clk_get_rate(sclk_uart_isp);
+	pr_debug("isp_uart : %ld\n", isp_uart);
+
+	clk_put(sclk_uart_isp);
+
+	/* SPI1-ISP */
+	sclk_spi1_isp = clk_get(&pdev->dev, "sclk_spi1_isp");
+	if (IS_ERR(sclk_spi1_isp)) {
+		pr_err("%s : clk_get(sclk_spi1_isp) failed\n", __func__);
+		return PTR_ERR(sclk_spi1_isp);
+	}
+
+	sclk_spi1_isp_pre = clk_get(&pdev->dev, "sclk_spi1_isp_pre");
+	if (IS_ERR(sclk_spi1_isp_pre)) {
+		pr_err("%s : clk_get(sclk_spi1_isp_pre) failed\n", __func__);
+		return PTR_ERR(sclk_spi1_isp_pre);
+	}
+
+	clk_set_parent(sclk_spi1_isp, clk_get(&pdev->dev, "mout_epll"));
+	clk_set_rate(sclk_spi1_isp, 100 * 1000000);
+	clk_set_rate(sclk_spi1_isp_pre, 100 * 1000000);
+
+	isp_spi1 = clk_get_rate(sclk_spi1_isp);
+	pr_debug("isp_spi1 : %ld\n", isp_spi1);
+	isp_spi1_pre = clk_get_rate(sclk_spi1_isp_pre);
+	pr_debug("isp_spi1_pre : %ld\n", isp_spi1_pre);
+
+	clk_put(sclk_spi1_isp);
+	clk_put(sclk_spi1_isp_pre);
+
+	/* SPI0-ISP */
+	sclk_spi0_isp = clk_get(&pdev->dev, "sclk_spi0_isp");
+	if (IS_ERR(sclk_spi0_isp)) {
+		pr_err("%s : clk_get(sclk_spi0_isp) failed\n", __func__);
+		return PTR_ERR(sclk_spi0_isp);
+	}
+
+	sclk_spi0_isp_pre = clk_get(&pdev->dev, "sclk_spi0_isp_pre");
+	if (IS_ERR(sclk_spi0_isp_pre)) {
+		pr_err("%s : clk_get(sclk_spi0_isp_pre) failed\n", __func__);
+		return PTR_ERR(sclk_spi0_isp_pre);
+	}
+
+	clk_set_parent(sclk_spi0_isp, clk_get(&pdev->dev, "mout_epll"));
+	clk_set_rate(sclk_spi0_isp, 100 * 1000000);
+	clk_set_rate(sclk_spi0_isp_pre, 100 * 1000000);
+
+	isp_spi0 = clk_get_rate(sclk_spi0_isp);
+	pr_debug("isp_spi0 : %ld\n", isp_spi0);
+	isp_spi0_pre = clk_get_rate(sclk_spi0_isp_pre);
+	pr_debug("isp_spi0_pre : %ld\n", isp_spi0_pre);
+
+	clk_put(sclk_spi0_isp);
+	clk_put(sclk_spi0_isp_pre);
+
+	/* SENSOR0~2 */
+	sclk_mout_isp_sensor = clk_get(&pdev->dev, "sclk_mout_isp_sensor");
+	if (IS_ERR(sclk_mout_isp_sensor)) {
+		pr_err("%s : clk_get(sclk_mout_isp_sensor) failed\n", __func__);
+		return PTR_ERR(sclk_mout_isp_sensor);
+	}
+
+	sclk_isp_sensor0 = clk_get(&pdev->dev, "sclk_isp_sensor0");
+	if (IS_ERR(sclk_isp_sensor0)) {
+		pr_err("%s : clk_get(sclk_isp_sensor0) failed\n", __func__);
+		return PTR_ERR(sclk_isp_sensor0);
+	}
+
+	sclk_isp_sensor1 = clk_get(&pdev->dev, "sclk_isp_sensor1");
+	if (IS_ERR(sclk_isp_sensor1)) {
+		pr_err("%s : clk_get(sclk_isp_sensor1) failed\n", __func__);
+		return PTR_ERR(sclk_isp_sensor1);
+	}
+
+	sclk_isp_sensor2 = clk_get(&pdev->dev, "sclk_isp_sensor2");
+	if (IS_ERR(sclk_isp_sensor2)) {
+		pr_err("%s : clk_get(sclk_isp_sensor2) failed\n", __func__);
+		return PTR_ERR(sclk_isp_sensor2);
+	}
+
+	clk_set_parent(sclk_mout_isp_sensor, clk_get(&pdev->dev, "mout_ipll"));
+	clk_set_rate(sclk_isp_sensor0, 24 * 1000000);
+	clk_set_rate(sclk_isp_sensor1, 24 * 1000000);
+	clk_set_rate(sclk_isp_sensor2, 24 * 1000000);
+
+	isp_sensor0 = clk_get_rate(sclk_isp_sensor0);
+	pr_debug("isp_sensor0 : %ld\n", isp_sensor0);
+	isp_sensor1 = clk_get_rate(sclk_isp_sensor1);
+	pr_debug("isp_sensor1 : %ld\n", isp_sensor1);
+	isp_sensor2 = clk_get_rate(sclk_isp_sensor2);
+	pr_debug("isp_sensor2 : %ld\n", isp_sensor2);
+
+	clk_put(sclk_mout_isp_sensor);
+	clk_put(sclk_isp_sensor0);
+	clk_put(sclk_isp_sensor1);
+	clk_put(sclk_isp_sensor2);
+
+	/* Enable from booting time */
+	/* UART-ISP */
+	sclk_uart_isp = clk_get(&pdev->dev, "sclk_uart_isp");
+	if (IS_ERR(sclk_uart_isp)) {
+		pr_err("%s : clk_get(sclk_uart_isp) failed\n", __func__);
+		return PTR_ERR(sclk_uart_isp);
+	}
+
+	clk_enable(sclk_uart_isp);
+	clk_put(sclk_uart_isp);
+
+	return 0;
+}
+
+int exynos5420_fimc_is_cfg_clk(struct platform_device *pdev)
+{
+	int cfg;
+	struct clk *mout_mpll = NULL;
+	struct clk *mout_ipll = NULL;
+	struct clk *mout_dpll = NULL;
+	struct clk *mout_cpll = NULL;
+	struct clk *mout_epll = NULL;
+	struct clk *mout_xtal = NULL;
+	struct clk *mout_spll = NULL;
+	struct clk *aclk_400_isp_dout = NULL;
+	struct clk *aclk_400_isp_sw = NULL;
+	struct clk *aclk_400_isp = NULL;
+	struct clk *aclk_mcuisp_div0 = NULL;
+	struct clk *aclk_mcuisp_div1 = NULL;
+	struct clk *aclk_266_dout = NULL;
+	struct clk *aclk_266_sw = NULL;
+	struct clk *aclk_266_isp = NULL;
+	struct clk *aclk_333_432_isp_dout = NULL;
+	struct clk *aclk_333_432_isp_sw = NULL;
+	struct clk *aclk_333_432_isp = NULL;
+	struct clk *aclk_div0 = NULL;
+	struct clk *aclk_div1 = NULL;
+	struct clk *aclk_div2 = NULL;
+	struct clk *aclk_333_432_gscl_dout = NULL;
+	struct clk *aclk_333_432_gscl_sw = NULL;
+	struct clk *aclk_333_432_gscl = NULL;
+	struct clk *aclk_300_gscl_dout = NULL;
+	struct clk *aclk_300_gscl_sw = NULL;
+	struct clk *aclk_300_gscl = NULL;
+	/* Special clocks */
+	struct clk *sclk_pwm_isp = NULL;
+	struct clk *sclk_uart_isp = NULL;
+	struct clk *sclk_spi0_isp = NULL;
+	struct clk *sclk_spi1_isp = NULL;
+	struct clk *sclk_spi0_isp_pre = NULL;
+	struct clk *sclk_spi1_isp_pre = NULL;
+	unsigned long mcuisp_400;
+	unsigned long mcuisp_266;
+	unsigned long mcuisp_333_432;
+	unsigned long mcuisp_sensor;
+	unsigned long mcuisp_pwm;
+	unsigned long mcuisp_uart;
+	unsigned long mcuisp_spi;
+	unsigned long mcugscl_300;
+
+	pr_debug("exynos5420_fimc_is_cfg_clk\n");
+
+	/* initialize Clocks */
+	/*
+	 * HACK: hard clock setting to preventing
+	 * ISP init fail problem
+	 */
+	writel(0x31, EXYNOS5_CLKDIV_ISP0);
+	writel(0x31, EXYNOS5_CLKDIV_ISP1);
+	writel(0x1, EXYNOS5_CLKDIV_ISP2);
+	cfg = readl(EXYNOS5_CLKDIV2_RATIO0);
+	cfg |= ((1 < 8) | (1 < 6) | (1 < 4));
+	writel(cfg, EXYNOS5_CLKDIV2_RATIO0);
+
+	/* ACLK_400_ISP */
+	mout_spll = clk_get(&pdev->dev, "mout_spll");
+	if (IS_ERR(mout_spll)) {
+		pr_err("%s : clk_get(mout_spll) failed\n", __func__);
+		return PTR_ERR(mout_spll);
+	}
+
+	mout_mpll = clk_get(&pdev->dev, "mout_mpll");
+	if (IS_ERR(mout_mpll)) {
+		pr_err("%s : clk_get(mout_mpll) failed\n", __func__);
+		return PTR_ERR(mout_mpll);
+	}
+	aclk_400_isp_dout = clk_get(&pdev->dev, "aclk_400_isp_dout");
+	if (IS_ERR(aclk_400_isp_dout)) {
+		pr_err("%s : clk_get(aclk_400_isp_dout) failed\n", __func__);
+		return PTR_ERR(aclk_400_isp_dout);
+	}
+	clk_set_parent(aclk_400_isp_dout, mout_mpll);
+	clk_set_rate(aclk_400_isp_dout, 400 * 1000000);
+
+	aclk_400_isp_sw = clk_get(&pdev->dev, "aclk_400_isp_sw");
+	if (IS_ERR(aclk_400_isp_sw)) {
+		pr_err("%s : clk_get(aclk_400_isp_sw) failed\n", __func__);
+		return PTR_ERR(aclk_400_isp_sw);
+	}
+	clk_set_parent(aclk_400_isp_sw, mout_spll);
+
+	aclk_400_isp = clk_get(&pdev->dev, "aclk_400_isp");
+	if (IS_ERR(aclk_400_isp)) {
+		pr_err("%s : clk_get(aclk_400_isp) failed\n", __func__);
+		return PTR_ERR(aclk_400_isp);
+	}
+	clk_set_parent(aclk_400_isp, aclk_400_isp_sw);
+
+	/* ACLK_MCUISP_DIV0 */
+	aclk_mcuisp_div0 = clk_get(&pdev->dev, "aclk_mcuisp_div0");
+	if (IS_ERR(aclk_mcuisp_div0)) {
+		pr_err("%s : clk_get(aclk_mcuisp_div0) failed\n", __func__);
+		return PTR_ERR(aclk_mcuisp_div0);
+	}
+	clk_set_rate(aclk_mcuisp_div0, 200 * 1000000);
+
+	/* ACLK_MCUISP_DIV1 */
+	aclk_mcuisp_div1 = clk_get(&pdev->dev, "aclk_mcuisp_div1");
+	if (IS_ERR(aclk_mcuisp_div1)) {
+		pr_err("%s : clk_get(aclk_mcuisp_div1) failed\n", __func__);
+		return PTR_ERR(aclk_mcuisp_div1);
+	}
+	clk_set_rate(aclk_mcuisp_div1, 100 * 1000000);
+
+	/* Debugging */
+	mcuisp_400 = clk_get_rate(aclk_400_isp);
+	pr_debug("aclk_400_isp : %ld\n", mcuisp_400);
+	mcuisp_400 = clk_get_rate(aclk_mcuisp_div0);
+	pr_debug("aclk_mcuisp_div0 : %ld\n", mcuisp_400);
+	mcuisp_400 = clk_get_rate(aclk_mcuisp_div1);
+	pr_debug("aclk_mcuisp_div1 : %ld\n", mcuisp_400);
+
+	clk_put(aclk_400_isp_dout);
+	clk_put(aclk_400_isp_sw);
+	clk_put(aclk_400_isp);
+	clk_put(aclk_mcuisp_div0);
+	clk_put(aclk_mcuisp_div1);
+
+	/* ACLK_266_ISP */
+	aclk_266_dout = clk_get(&pdev->dev, "aclk_266_dout");
+	if (IS_ERR(aclk_266_dout)) {
+		pr_err("%s : clk_get(aclk_266_dout) failed\n", __func__);
+		return PTR_ERR(aclk_266_dout);
+	}
+	clk_set_parent(aclk_266_dout, mout_mpll);
+	clk_set_rate(aclk_266_dout, 267 * 1000000);
+
+	aclk_266_sw = clk_get(&pdev->dev, "aclk_266_sw");
+	if (IS_ERR(aclk_266_sw)) {
+		pr_err("%s : clk_get(aclk_266_sw) failed\n", __func__);
+		return PTR_ERR(aclk_266_sw);
+	}
+	clk_set_parent(aclk_266_sw, aclk_266_dout);
+
+	aclk_266_isp = clk_get(&pdev->dev, "aclk_266_isp");
+	if (IS_ERR(aclk_266_isp)) {
+		pr_err("%s : clk_get(aclk_266_isp) failed\n", __func__);
+		return PTR_ERR(aclk_266_isp);
+	}
+	clk_set_parent(aclk_266_isp, aclk_266_sw);
+
+	/* Debugging */
+	mcuisp_266 = clk_get_rate(aclk_266_isp);
+	pr_debug("aclk_266_isp : %ld\n", mcuisp_266);
+
+	clk_put(aclk_266_dout);
+	clk_put(aclk_266_sw);
+	clk_put(aclk_266_isp);
+
+	/* ACLK_333_432_ISP */
+	mout_ipll = clk_get(&pdev->dev, "mout_ipll");
+	aclk_333_432_isp_dout = clk_get(&pdev->dev, "aclk_333_432_isp_dout");
+	if (IS_ERR(aclk_333_432_isp_dout)) {
+		pr_err("%s : clk_get(aclk_333_432_isp_dout) failed\n", __func__);
+		return PTR_ERR(aclk_333_432_isp_dout);
+	}
+	clk_set_parent(aclk_333_432_isp_dout, mout_ipll);
+	clk_set_rate(aclk_333_432_isp_dout, 432 * 1000000);
+
+	aclk_333_432_isp_sw = clk_get(&pdev->dev, "aclk_333_432_isp_sw");
+	if (IS_ERR(aclk_333_432_isp_sw)) {
+		pr_err("%s : clk_get(aclk_333_432_isp_sw) failed\n", __func__);
+		return PTR_ERR(aclk_333_432_isp_sw);
+	}
+	clk_set_parent(aclk_333_432_isp_sw, aclk_333_432_isp_dout);
+
+	aclk_333_432_isp = clk_get(&pdev->dev, "aclk_333_432_isp");
+	if (IS_ERR(aclk_333_432_isp)) {
+		pr_err("%s : clk_get(aclk_333_432_isp) failed\n", __func__);
+		return PTR_ERR(aclk_333_432_isp);
+	}
+	clk_set_parent(aclk_333_432_isp, aclk_333_432_isp_sw);
+
+	/* Debugging */
+	mcuisp_333_432 = clk_get_rate(aclk_333_432_isp);
+	pr_debug("aclk_333_432_isp : %ld\n", mcuisp_333_432);
+
+	clk_put(aclk_333_432_isp_dout);
+	clk_put(aclk_333_432_isp_sw);
+	clk_put(aclk_333_432_isp);
+
+	/* ACLK_333_432_ISP0 */
+	if (samsung_rev() > EXYNOS5420_REV_0) {
+		aclk_333_432_isp_dout = clk_get(&pdev->dev, "aclk_333_432_isp0_dout");
+		if (IS_ERR(aclk_333_432_isp_dout)) {
+			pr_err("%s : clk_get(aclk_333_432_isp0_dout) failed\n", __func__);
+			return PTR_ERR(aclk_333_432_isp_dout);
 		}
+		clk_set_parent(aclk_333_432_isp_dout, mout_ipll);
+		clk_set_rate(aclk_333_432_isp_dout, 432 * 1000000);
 
-		isp_400_clk = clk_get(&pdev->dev, "dout_aclk_400_isp");
-		if (IS_ERR(isp_400_clk)) {
-			clk_put(isp_400_src);
-			clk_put(isp_266_src);
-			return PTR_ERR(isp_400_clk);
+		aclk_333_432_isp_sw = clk_get(&pdev->dev, "aclk_333_432_isp0_sw");
+		if (IS_ERR(aclk_333_432_isp_sw)) {
+			pr_err("%s : clk_get(aclk_333_432_isp0_sw) failed\n", __func__);
+			return PTR_ERR(aclk_333_432_isp_sw);
 		}
+		clk_set_parent(aclk_333_432_isp_sw, aclk_333_432_isp_dout);
 
-		isp_266_clk = clk_get(&pdev->dev, "aclk_266");
-		if (IS_ERR(isp_266_clk)) {
-			clk_put(isp_400_src);
-			clk_put(isp_266_src);
-			clk_put(isp_400_clk);
-			return PTR_ERR(isp_266_clk);
+		aclk_333_432_isp = clk_get(&pdev->dev, "aclk_333_432_isp0");
+		if (IS_ERR(aclk_333_432_isp)) {
+			pr_err("%s : clk_get(aclk_333_4320_isp) failed\n", __func__);
+			return PTR_ERR(aclk_333_432_isp);
 		}
+		clk_set_parent(aclk_333_432_isp, aclk_333_432_isp_sw);
 
-		clk_set_parent(isp_400_src, isp_400_clk);
-		clk_set_parent(isp_266_src, isp_266_clk);
+		/* Debugging */
+		mcuisp_333_432 = clk_get_rate(aclk_333_432_isp);
+		pr_debug("aclk_333_432_isp0 : %ld\n", mcuisp_333_432);
 
+		clk_put(aclk_333_432_isp_dout);
+		clk_put(aclk_333_432_isp_sw);
+		clk_put(aclk_333_432_isp);
+	}
+
+	/* ACLK_DIV0 */
+	aclk_div0 = clk_get(&pdev->dev, "aclk_div0");
+	if (IS_ERR(aclk_div0)) {
+		pr_err("%s : clk_get(aclk_div0) failed\n", __func__);
+		return PTR_ERR(aclk_div0);
+	}
+	clk_set_rate(aclk_div0, 216 * 1000000);
+	/* ACLK_DIV1 */
+	aclk_div1 = clk_get(&pdev->dev, "aclk_div1");
+	if (IS_ERR(aclk_div1)) {
+		pr_err("%s : clk_get(aclk_div1) failed\n", __func__);
+		return PTR_ERR(aclk_div1);
+	}
+	clk_set_rate(aclk_div1, 108 * 1000000);
+	/* ACLK_DIV2 */
+	aclk_div2 = clk_get(&pdev->dev, "aclk_div2");
+	if (IS_ERR(aclk_div2)) {
+		pr_err("%s : clk_get(aclk_div2) failed\n", __func__);
+		return PTR_ERR(aclk_div2);
+	}
+	clk_set_rate(aclk_div2, 54 * 1000000);
+
+	/* Debugging */
+	mcuisp_333_432 = clk_get_rate(aclk_div0);
+	pr_debug("aclk_div0 : %ld\n", mcuisp_333_432);
+	mcuisp_333_432 = clk_get_rate(aclk_div1);
+	pr_debug("aclk_div1 : %ld\n", mcuisp_333_432);
+	mcuisp_333_432 = clk_get_rate(aclk_div2);
+	pr_debug("aclk_div2 : %ld\n", mcuisp_333_432);
+
+	clk_put(aclk_div0);
+	clk_put(aclk_div1);
+	clk_put(aclk_div2);
+
+	/* ACLK_333_432_GSCL */
+	aclk_333_432_gscl_dout = clk_get(&pdev->dev, "aclk_333_432_gscl_dout");
+	if (IS_ERR(aclk_333_432_gscl_dout)) {
+		pr_err("%s : clk_get(aclk_333_432_gscl_dout) failed\n", __func__);
+		return PTR_ERR(aclk_333_432_gscl_dout);
+	}
+	clk_set_parent(aclk_333_432_gscl_dout, mout_ipll);
+	clk_set_rate(aclk_333_432_gscl_dout, 432 * 1000000);
+
+	aclk_333_432_gscl_sw = clk_get(&pdev->dev, "aclk_333_432_gscl_sw");
+	if (IS_ERR(aclk_333_432_gscl_sw)) {
+		pr_err("%s : clk_get(aclk_333_432_gscl_sw) failed\n", __func__);
+		return PTR_ERR(aclk_333_432_gscl_sw);
+	}
+	clk_set_parent(aclk_333_432_gscl_sw, aclk_333_432_gscl_dout);
+
+	aclk_333_432_gscl = clk_get(&pdev->dev, "aclk_333_432_gscl");
+	if (IS_ERR(aclk_333_432_gscl)) {
+		pr_err("%s : clk_get(aclk_333_432_gscl) failed\n", __func__);
+		return PTR_ERR(aclk_333_432_gscl);
+	}
+	clk_set_parent(aclk_333_432_gscl, aclk_333_432_gscl_sw);
+
+	/* Debugging */
+	mcuisp_333_432 = clk_get_rate(aclk_333_432_gscl);
+	pr_debug("aclk_333_432_gscl : %ld\n", mcuisp_333_432);
+
+	clk_put(aclk_333_432_gscl_dout);
+	clk_put(aclk_333_432_gscl_sw);
+	clk_put(aclk_333_432_gscl);
+
+	/* ACLK_300_GSCL */
+	mout_dpll = clk_get(&pdev->dev, "mout_dpll");
+	aclk_300_gscl_dout = clk_get(&pdev->dev, "aclk_300_gscl_dout");
+	if (IS_ERR(aclk_300_gscl_dout)) {
+		pr_err("%s : clk_get(aclk_300_gscl_dout) failed\n", __func__);
+		return PTR_ERR(aclk_300_gscl_dout);
+	}
+	clk_set_parent(aclk_300_gscl_dout, mout_dpll);
+	clk_set_rate(aclk_300_gscl_dout, 300 * 1000000);
+
+	aclk_300_gscl_sw = clk_get(&pdev->dev, "aclk_300_gscl_sw");
+	if (IS_ERR(aclk_300_gscl_sw)) {
+		pr_err("%s : clk_get(aclk_300_gscl_sw) failed\n", __func__);
+		return PTR_ERR(aclk_300_gscl_sw);
+	}
+	clk_set_parent(aclk_300_gscl_sw, aclk_300_gscl_dout);
+
+	aclk_300_gscl = clk_get(&pdev->dev, "aclk_300_gscl");
+	if (IS_ERR(aclk_300_gscl)) {
+		pr_err("%s : clk_get(aclk_300_gscl) failed\n", __func__);
+		return PTR_ERR(aclk_300_gscl);
+	}
+	clk_set_parent(aclk_300_gscl, aclk_300_gscl_sw);
+
+	/* Debugging */
+	mcugscl_300 = clk_get_rate(aclk_300_gscl);
+	pr_debug("aclk_300_gscl : %ld\n", mcugscl_300);
+
+	clk_put(aclk_300_gscl_dout);
+	clk_put(aclk_300_gscl_sw);
+	clk_put(aclk_300_gscl);
+
+	/* Special clocks */
+	/* PWM-ISP */
+	mout_xtal = clk_get(&pdev->dev, "ext_xtal");
+	sclk_pwm_isp = clk_get(&pdev->dev, "sclk_pwm_isp");
+	if (IS_ERR(sclk_pwm_isp)) {
+		pr_err("%s : clk_get(sclk_pwm_isp) failed\n", __func__);
+		return PTR_ERR(sclk_pwm_isp);
+	}
+
+	clk_set_parent(sclk_pwm_isp, mout_xtal);
+	clk_set_rate(sclk_pwm_isp, 2 * 1000000);
+
+	mcuisp_pwm = clk_get_rate(sclk_pwm_isp);
+	pr_debug("sclk_pwm_isp : %ld\n", mcuisp_pwm);
+
+	clk_put(sclk_pwm_isp);
+
+	/* UART-ISP */
+	mout_cpll = clk_get(&pdev->dev, "mout_cpll");
+	sclk_uart_isp = clk_get(&pdev->dev, "sclk_uart_isp");
+	if (IS_ERR(sclk_uart_isp)) {
+		pr_err("%s : clk_get(sclk_uart_isp) failed\n", __func__);
+		return PTR_ERR(sclk_uart_isp);
+	}
+
+	clk_set_parent(sclk_uart_isp, mout_cpll);
+	clk_set_rate(sclk_uart_isp, 67 * 1000000);
+
+	mcuisp_uart = clk_get_rate(sclk_uart_isp);
+	pr_debug("isp_uart : %ld\n", mcuisp_uart);
+
+	clk_put(sclk_uart_isp);
+
+	/* SPI0-ISP */
+	mout_epll = clk_get(&pdev->dev, "mout_epll");
+	sclk_spi0_isp = clk_get(&pdev->dev, "sclk_spi0_isp");
+	if (IS_ERR(sclk_spi0_isp)) {
+		pr_err("%s : clk_get(sclk_spi0_isp) failed\n", __func__);
+		return PTR_ERR(sclk_spi0_isp);
+	}
+
+	sclk_spi0_isp_pre = clk_get(&pdev->dev, "sclk_spi0_isp_pre");
+	if (IS_ERR(sclk_spi0_isp_pre)) {
+		pr_err("%s : clk_get(sclk_spi0_isp_pre) failed\n", __func__);
+		return PTR_ERR(sclk_spi0_isp_pre);
+	}
+
+	clk_set_parent(sclk_spi0_isp, mout_epll);
+	clk_set_rate(sclk_spi0_isp, 100 * 1000000);
+	clk_set_rate(sclk_spi0_isp_pre, 100 * 1000000);
+
+	mcuisp_spi = clk_get_rate(sclk_spi0_isp);
+	pr_debug("sclk_spi0_isp : %ld\n", mcuisp_spi);
+	mcuisp_spi = clk_get_rate(sclk_spi0_isp_pre);
+	pr_debug("sclk_spi0_isp_pre : %ld\n", mcuisp_spi);
+
+	clk_put(sclk_spi0_isp);
+	clk_put(sclk_spi0_isp_pre);
+
+	/* SPI1-ISP */
+	sclk_spi1_isp = clk_get(&pdev->dev, "sclk_spi1_isp");
+	if (IS_ERR(sclk_spi1_isp)) {
+		pr_err("%s : clk_get(sclk_spi1_isp) failed\n", __func__);
+		return PTR_ERR(sclk_spi1_isp);
+	}
+
+	sclk_spi1_isp_pre = clk_get(&pdev->dev, "sclk_spi1_isp_pre");
+	if (IS_ERR(sclk_spi1_isp_pre)) {
+		pr_err("%s : clk_get(sclk_spi1_isp_pre) failed\n", __func__);
+		return PTR_ERR(sclk_spi1_isp_pre);
+	}
+
+	clk_set_parent(sclk_spi1_isp, mout_epll);
+	clk_set_rate(sclk_spi1_isp, 100 * 1000000);
+	clk_set_rate(sclk_spi1_isp_pre, 100 * 1000000);
+
+	mcuisp_spi = clk_get_rate(sclk_spi1_isp);
+	pr_debug("sclk_spi1_isp : %ld\n", mcuisp_spi);
+	mcuisp_spi = clk_get_rate(sclk_spi1_isp_pre);
+	pr_debug("sclk_spi1_isp_pre : %ld\n", mcuisp_spi);
+
+	clk_put(sclk_spi1_isp);
+	clk_put(sclk_spi1_isp_pre);
+
+	/* PLL */
+	clk_put(mout_mpll);
+	clk_put(mout_dpll);
+	clk_put(mout_cpll);
+	clk_put(mout_ipll);
+	clk_put(mout_epll);
+	clk_put(mout_xtal);
+	clk_put(mout_spll);
+
+	pr_debug("exynos5420_fimc_is_cfg_clk ends\n");
+	return 0;
+}
+
+
+
+int exynos5250_fimc_is_clk_on(struct platform_device *pdev)
+{
+	struct clk *gsc_ctrl = NULL;
+	struct clk *isp_ctrl = NULL;
+	struct clk *cam_if_top = NULL;
+	struct clk *isp_400_src = NULL;
+	struct clk *isp_266_src = NULL;
+	struct clk *isp_400_clk = NULL;
+	struct clk *isp_266_clk = NULL;
+
+	pr_debug("exynos5250_fimc_is_clk_on\n");
+
+	gsc_ctrl = clk_get(&pdev->dev, "gscl");
+	if (IS_ERR(gsc_ctrl))
+		return PTR_ERR(gsc_ctrl);
+
+	clk_enable(gsc_ctrl);
+	clk_put(gsc_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp0");
+	if (IS_ERR(isp_ctrl))
+		return PTR_ERR(isp_ctrl);
+
+	clk_enable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp1");
+	if (IS_ERR(isp_ctrl))
+		return PTR_ERR(isp_ctrl);
+
+	clk_enable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	cam_if_top = clk_get(&pdev->dev, "camif_top");
+	if (IS_ERR(cam_if_top))
+		return PTR_ERR(cam_if_top);
+
+	clk_enable(cam_if_top);
+	clk_put(cam_if_top);
+
+	/*isp sub src selection*/
+	isp_400_src = clk_get(&pdev->dev, "aclk_400_isp");
+	if (IS_ERR(isp_400_src))
+		return PTR_ERR(isp_400_src);
+
+	isp_266_src = clk_get(&pdev->dev, "aclk_266_isp");
+	if (IS_ERR(isp_266_src)) {
+		clk_put(isp_400_src);
+		return PTR_ERR(isp_266_src);
+	}
+
+	isp_400_clk = clk_get(&pdev->dev, "dout_aclk_400_isp");
+	if (IS_ERR(isp_400_clk)) {
+		clk_put(isp_400_src);
+		clk_put(isp_266_src);
+		return PTR_ERR(isp_400_clk);
+	}
+
+	isp_266_clk = clk_get(&pdev->dev, "aclk_266");
+	if (IS_ERR(isp_266_clk)) {
 		clk_put(isp_400_src);
 		clk_put(isp_266_src);
 		clk_put(isp_400_clk);
-		clk_put(isp_266_clk);
-	} else if (soc_is_exynos5410()) {
-		int channel;
-		char mipi[20];
-		char flite[20];
-		struct clk *isp_ctrl = NULL;
-		struct clk *fimc_3aa_ctrl = NULL;
-		struct clk *mipi_ctrl = NULL;
-		struct clk *flite_ctrl = NULL;
+		return PTR_ERR(isp_266_clk);
+	}
 
-		isp_ctrl = clk_get(&pdev->dev, "isp0_333_432");
-		if (IS_ERR(isp_ctrl)) {
-			pr_err("%s : clk_get(isp0_333_432) failed\n", __func__);
-			return PTR_ERR(isp_ctrl);
+	clk_set_parent(isp_400_src, isp_400_clk);
+	clk_set_parent(isp_266_src, isp_266_clk);
+
+	clk_put(isp_400_src);
+	clk_put(isp_266_src);
+	clk_put(isp_400_clk);
+	clk_put(isp_266_clk);
+
+	return 0;
+}
+
+int exynos5410_fimc_is_clk_on(struct platform_device *pdev)
+{
+	int channel;
+	char mipi[20];
+	char flite[20];
+	struct clk *isp_ctrl = NULL;
+	struct clk *fimc_3aa_ctrl = NULL;
+	struct clk *mipi_ctrl = NULL;
+	struct clk *flite_ctrl = NULL;
+
+	pr_debug("exynos5410_fimc_is_clk_on\n");
+
+	isp_ctrl = clk_get(&pdev->dev, "isp0_333_432");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp0_333_432) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_enable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp0_400");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp0_400) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_enable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp0_266");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp0_266) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_enable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp1_333_432");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp1_333_432) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_enable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp1_266");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp1_266) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_enable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	fimc_3aa_ctrl = clk_get(&pdev->dev, "3aa");
+	if (IS_ERR(fimc_3aa_ctrl)) {
+		pr_err("%s : clk_get(fimc_3aa) failed\n", __func__);
+		return PTR_ERR(fimc_3aa_ctrl);
+	}
+
+	clk_enable(fimc_3aa_ctrl);
+	clk_put(fimc_3aa_ctrl);
+
+	for (channel = FLITE_ID_A; channel < FLITE_ID_END; channel++) {
+		snprintf(mipi, sizeof(mipi), "gscl_wrap%d", channel);
+		snprintf(flite, sizeof(flite), "gscl_flite%d", channel);
+
+		mipi_ctrl = clk_get(&pdev->dev, mipi);
+		if (IS_ERR(mipi_ctrl)) {
+			pr_err("%s : clk_get(%s) failed\n",
+				__func__, mipi);
+			return  PTR_ERR(mipi_ctrl);
 		}
 
-		clk_enable(isp_ctrl);
-		clk_put(isp_ctrl);
+		clk_enable(mipi_ctrl);
+		clk_put(mipi_ctrl);
 
-		isp_ctrl = clk_get(&pdev->dev, "isp0_400");
-		if (IS_ERR(isp_ctrl)) {
-			pr_err("%s : clk_get(isp0_400) failed\n", __func__);
-			return PTR_ERR(isp_ctrl);
+		flite_ctrl = clk_get(&pdev->dev, flite);
+		if (IS_ERR(flite_ctrl)) {
+			pr_err("%s : clk_get(%s) failed\n",
+				__func__, flite);
+			return PTR_ERR(flite_ctrl);
 		}
 
-		clk_enable(isp_ctrl);
-		clk_put(isp_ctrl);
-
-		isp_ctrl = clk_get(&pdev->dev, "isp0_266");
-		if (IS_ERR(isp_ctrl)) {
-			pr_err("%s : clk_get(isp0_266) failed\n", __func__);
-			return PTR_ERR(isp_ctrl);
-		}
-
-		clk_enable(isp_ctrl);
-		clk_put(isp_ctrl);
-
-		isp_ctrl = clk_get(&pdev->dev, "isp1_333_432");
-		if (IS_ERR(isp_ctrl)) {
-			pr_err("%s : clk_get(isp1_333_432) failed\n", __func__);
-			return PTR_ERR(isp_ctrl);
-		}
-
-		clk_enable(isp_ctrl);
-		clk_put(isp_ctrl);
-
-		isp_ctrl = clk_get(&pdev->dev, "isp1_266");
-		if (IS_ERR(isp_ctrl)) {
-			pr_err("%s : clk_get(isp1_266) failed\n", __func__);
-			return PTR_ERR(isp_ctrl);
-		}
-
-		clk_enable(isp_ctrl);
-		clk_put(isp_ctrl);
-
-		fimc_3aa_ctrl = clk_get(&pdev->dev, "3aa");
-		if (IS_ERR(fimc_3aa_ctrl)) {
-			pr_err("%s : clk_get(fimc_3aa) failed\n", __func__);
-			return PTR_ERR(fimc_3aa_ctrl);
-		}
-
-		clk_enable(fimc_3aa_ctrl);
-		clk_put(fimc_3aa_ctrl);
-
-		for (channel = FLITE_ID_A; channel < FLITE_ID_END; channel++) {
-			sprintf(mipi, "gscl_wrap%d", channel);
-			sprintf(flite, "gscl_flite%d", channel);
-
-			mipi_ctrl = clk_get(&pdev->dev, mipi);
-			if (IS_ERR(mipi_ctrl)) {
-				pr_err("%s : clk_get(%s) failed\n",
-					__func__, mipi);
-				return  PTR_ERR(mipi_ctrl);
-			}
-
-			clk_enable(mipi_ctrl);
-			clk_put(mipi_ctrl);
-
-			flite_ctrl = clk_get(&pdev->dev, flite);
-			if (IS_ERR(flite_ctrl)) {
-				pr_err("%s : clk_get(%s) failed\n",
-					__func__, flite);
-				return PTR_ERR(flite_ctrl);
-			}
-
-			clk_enable(flite_ctrl);
-			clk_put(flite_ctrl);
-		}
+		clk_enable(flite_ctrl);
+		clk_put(flite_ctrl);
 	}
 
 	return 0;
 }
 
-int exynos5_fimc_is_clk_off(struct platform_device *pdev)
+int exynos5420_fimc_is_clk_on(struct platform_device *pdev)
 {
-	pr_debug("exynos5_fimc_is_clk_off\n");
+	int channel;
+	char mipi[20];
+	char flite[20];
+	struct clk *isp_ctrl = NULL;
+	struct clk *fimc_3aa_ctrl = NULL;
+	struct clk *mipi_ctrl = NULL;
+	struct clk *flite_ctrl = NULL;
 
-	if (soc_is_exynos5250()) {
-		struct clk *gsc_ctrl = NULL;
-		struct clk *isp_ctrl = NULL;
-		struct clk *cam_if_top = NULL;
-		struct clk *isp_400_src = NULL;
-		struct clk *isp_266_src = NULL;
-		struct clk *xtal_clk = NULL;
+	pr_debug("exynos5420_fimc_is_clk_on\n");
 
-		cam_if_top = clk_get(&pdev->dev, "camif_top");
-		if (IS_ERR(cam_if_top))
-			return PTR_ERR(cam_if_top);
-
-		clk_disable(cam_if_top);
-		clk_put(cam_if_top);
-
-		isp_ctrl = clk_get(&pdev->dev, "isp0");
-		if (IS_ERR(isp_ctrl))
-			return PTR_ERR(isp_ctrl);
-
-		clk_disable(isp_ctrl);
-		clk_put(isp_ctrl);
-
-		isp_ctrl = clk_get(&pdev->dev, "isp1");
-		if (IS_ERR(isp_ctrl))
-			return PTR_ERR(isp_ctrl);
-
-		clk_disable(isp_ctrl);
-		clk_put(isp_ctrl);
-
-		gsc_ctrl = clk_get(&pdev->dev, "gscl");
-		if (IS_ERR(gsc_ctrl))
-			return PTR_ERR(gsc_ctrl);
-
-		clk_disable(gsc_ctrl);
-		clk_put(gsc_ctrl);
-
-		/*isp sub src selection*/
-		isp_400_src = clk_get(&pdev->dev, "aclk_400_isp");
-		if (IS_ERR(isp_400_src))
-			return PTR_ERR(isp_400_src);
-
-		isp_266_src = clk_get(&pdev->dev, "aclk_266_isp");
-		if (IS_ERR(isp_266_src)) {
-			clk_put(isp_400_src);
-			return PTR_ERR(isp_266_src);
-		}
-
-		xtal_clk = clk_get(&pdev->dev, "ext_xtal");
-		if (IS_ERR(xtal_clk)) {
-			clk_put(isp_400_src);
-			clk_put(isp_266_src);
-			return PTR_ERR(xtal_clk);
-		}
-
-		clk_set_parent(isp_400_src, xtal_clk);
-		clk_set_parent(isp_266_src, xtal_clk);
-
-		clk_put(isp_400_src);
-		clk_put(isp_266_src);
-		clk_put(xtal_clk);
-	} else if (soc_is_exynos5410()) {
-		int channel;
-		char mipi[20];
-		char flite[20];
-		struct clk *isp_ctrl = NULL;
-		struct clk *fimc_3aa_ctrl = NULL;
-		struct clk *mipi_ctrl = NULL;
-		struct clk *flite_ctrl = NULL;
-
-		isp_ctrl = clk_get(&pdev->dev, "isp0_333_432");
-		if (IS_ERR(isp_ctrl)) {
-			pr_err("%s : clk_get(isp0_333_432) failed\n", __func__);
-			return PTR_ERR(isp_ctrl);
-		}
-
-		clk_disable(isp_ctrl);
-		clk_put(isp_ctrl);
-
-		isp_ctrl = clk_get(&pdev->dev, "isp0_400");
-		if (IS_ERR(isp_ctrl)) {
-			pr_err("%s : clk_get(isp0_400) failed\n", __func__);
-			return PTR_ERR(isp_ctrl);
-		}
-
-		clk_disable(isp_ctrl);
-		clk_put(isp_ctrl);
-
-		isp_ctrl = clk_get(&pdev->dev, "isp0_266");
-		if (IS_ERR(isp_ctrl)) {
-			pr_err("%s : clk_get(isp0_266) failed\n", __func__);
-			return PTR_ERR(isp_ctrl);
-		}
-
-		clk_disable(isp_ctrl);
-		clk_put(isp_ctrl);
-
-		isp_ctrl = clk_get(&pdev->dev, "isp1_333_432");
-		if (IS_ERR(isp_ctrl)) {
-			pr_err("%s : clk_get(isp1_333_432) failed\n", __func__);
-			return PTR_ERR(isp_ctrl);
-		}
-
-		clk_disable(isp_ctrl);
-		clk_put(isp_ctrl);
-
-		isp_ctrl = clk_get(&pdev->dev, "isp1_266");
-		if (IS_ERR(isp_ctrl)) {
-			pr_err("%s : clk_get(isp1_266) failed\n", __func__);
-			return PTR_ERR(isp_ctrl);
-		}
-
-		clk_disable(isp_ctrl);
-		clk_put(isp_ctrl);
-
-		fimc_3aa_ctrl = clk_get(&pdev->dev, "3aa");
-		if (IS_ERR(fimc_3aa_ctrl)) {
-			pr_err("%s : clk_get(fimc_3aa) failed\n", __func__);
-			return PTR_ERR(fimc_3aa_ctrl);
-		}
-
-		clk_disable(fimc_3aa_ctrl);
-		clk_put(fimc_3aa_ctrl);
-
-		for (channel = FLITE_ID_A; channel < FLITE_ID_END; channel++) {
-			sprintf(mipi, "gscl_wrap%d", channel);
-			sprintf(flite, "gscl_flite%d", channel);
-
-			flite_ctrl = clk_get(&pdev->dev, flite);
-			if (IS_ERR(flite_ctrl)) {
-				pr_err("%s : clk_get(%s) failed\n",
-					__func__, flite);
-				return PTR_ERR(flite_ctrl);
-			}
-
-			clk_disable(flite_ctrl);
-			clk_put(flite_ctrl);
-
-			mipi_ctrl = clk_get(&pdev->dev, mipi);
-			if (IS_ERR(mipi_ctrl)) {
-				pr_err("%s : clk_get(%s) failed\n",
-					__func__, mipi);
-				return PTR_ERR(mipi_ctrl);
-			}
-
-			clk_disable(mipi_ctrl);
-			clk_put(mipi_ctrl);
-		}
+	isp_ctrl = clk_get(&pdev->dev, "isp0_333_432");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp0_333_432) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
 	}
 
+	clk_enable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp0_400");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp0_400) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_enable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp0_266");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp0_266) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_enable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp1_333_432");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp1_333_432) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_enable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp1_266");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp1_266) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_enable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	fimc_3aa_ctrl = clk_get(&pdev->dev, "gscl_3aa");
+	if (IS_ERR(fimc_3aa_ctrl)) {
+		pr_err("%s : clk_get(gscl_3aa) failed\n", __func__);
+		return PTR_ERR(fimc_3aa_ctrl);
+	}
+
+	clk_enable(fimc_3aa_ctrl);
+	clk_put(fimc_3aa_ctrl);
+
+	for (channel = FLITE_ID_A; channel < FLITE_ID_C; channel++) {
+		snprintf(mipi, sizeof(mipi), "gscl_wrap%d", channel);
+		snprintf(flite, sizeof(flite), "gscl_flite%d", channel);
+
+		mipi_ctrl = clk_get(&pdev->dev, mipi);
+		if (IS_ERR(mipi_ctrl)) {
+			pr_err("%s : clk_get(%s) failed\n",
+				__func__, mipi);
+			return  PTR_ERR(mipi_ctrl);
+		}
+
+		clk_enable(mipi_ctrl);
+		clk_put(mipi_ctrl);
+
+		flite_ctrl = clk_get(&pdev->dev, flite);
+		if (IS_ERR(flite_ctrl)) {
+			pr_err("%s : clk_get(%s) failed\n",
+				__func__, flite);
+			return PTR_ERR(flite_ctrl);
+		}
+
+		clk_enable(flite_ctrl);
+		clk_put(flite_ctrl);
+	}
+
+	pr_debug("exynos5420_fimc_is_clk_on ends\n");
+	return 0;
+}
+
+int exynos5250_fimc_is_clk_off(struct platform_device *pdev)
+{
+	struct clk *gsc_ctrl = NULL;
+	struct clk *isp_ctrl = NULL;
+	struct clk *cam_if_top = NULL;
+	struct clk *isp_400_src = NULL;
+	struct clk *isp_266_src = NULL;
+	struct clk *xtal_clk = NULL;
+
+	pr_debug("exynos5250_fimc_is_clk_off\n");
+
+	cam_if_top = clk_get(&pdev->dev, "camif_top");
+	if (IS_ERR(cam_if_top))
+		return PTR_ERR(cam_if_top);
+
+	clk_disable(cam_if_top);
+	clk_put(cam_if_top);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp0");
+	if (IS_ERR(isp_ctrl))
+		return PTR_ERR(isp_ctrl);
+
+	clk_disable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp1");
+	if (IS_ERR(isp_ctrl))
+		return PTR_ERR(isp_ctrl);
+
+	clk_disable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	gsc_ctrl = clk_get(&pdev->dev, "gscl");
+	if (IS_ERR(gsc_ctrl))
+		return PTR_ERR(gsc_ctrl);
+
+	clk_disable(gsc_ctrl);
+	clk_put(gsc_ctrl);
+
+	/*isp sub src selection*/
+	isp_400_src = clk_get(&pdev->dev, "aclk_400_isp");
+	if (IS_ERR(isp_400_src))
+		return PTR_ERR(isp_400_src);
+
+	isp_266_src = clk_get(&pdev->dev, "aclk_266_isp");
+	if (IS_ERR(isp_266_src)) {
+		clk_put(isp_400_src);
+		return PTR_ERR(isp_266_src);
+	}
+
+	xtal_clk = clk_get(&pdev->dev, "ext_xtal");
+	if (IS_ERR(xtal_clk)) {
+		clk_put(isp_400_src);
+		clk_put(isp_266_src);
+		return PTR_ERR(xtal_clk);
+	}
+
+	clk_set_parent(isp_400_src, xtal_clk);
+	clk_set_parent(isp_266_src, xtal_clk);
+
+	clk_put(isp_400_src);
+	clk_put(isp_266_src);
+	clk_put(xtal_clk);
+
+	return 0;
+}
+
+int exynos5410_fimc_is_clk_off(struct platform_device *pdev)
+{
+	int channel;
+	char mipi[20];
+	char flite[20];
+	struct clk *isp_ctrl = NULL;
+	struct clk *fimc_3aa_ctrl = NULL;
+	struct clk *mipi_ctrl = NULL;
+	struct clk *flite_ctrl = NULL;
+
+	pr_debug("exynos5410_fimc_is_clk_off\n");
+
+	isp_ctrl = clk_get(&pdev->dev, "isp0_333_432");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp0_333_432) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_disable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp0_400");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp0_400) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_disable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp0_266");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp0_266) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_disable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp1_333_432");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp1_333_432) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_disable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp1_266");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp1_266) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_disable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	fimc_3aa_ctrl = clk_get(&pdev->dev, "3aa");
+	if (IS_ERR(fimc_3aa_ctrl)) {
+		pr_err("%s : clk_get(fimc_3aa) failed\n", __func__);
+		return PTR_ERR(fimc_3aa_ctrl);
+	}
+
+	clk_disable(fimc_3aa_ctrl);
+	clk_put(fimc_3aa_ctrl);
+
+	for (channel = FLITE_ID_A; channel < FLITE_ID_END; channel++) {
+		snprintf(mipi, sizeof(mipi), "gscl_wrap%d", channel);
+		snprintf(flite, sizeof(flite), "gscl_flite%d", channel);
+
+		flite_ctrl = clk_get(&pdev->dev, flite);
+		if (IS_ERR(flite_ctrl)) {
+			pr_err("%s : clk_get(%s) failed\n",
+				__func__, flite);
+			return PTR_ERR(flite_ctrl);
+		}
+
+		clk_disable(flite_ctrl);
+		clk_put(flite_ctrl);
+
+		mipi_ctrl = clk_get(&pdev->dev, mipi);
+		if (IS_ERR(mipi_ctrl)) {
+			pr_err("%s : clk_get(%s) failed\n",
+				__func__, mipi);
+			return PTR_ERR(mipi_ctrl);
+		}
+
+		clk_disable(mipi_ctrl);
+		clk_put(mipi_ctrl);
+	}
+
+	return 0;
+}
+
+int exynos5420_fimc_is_clk_off(struct platform_device *pdev)
+{
+	int channel;
+	char mipi[20];
+	char flite[20];
+	struct clk *isp_ctrl = NULL;
+	struct clk *fimc_3aa_ctrl = NULL;
+	struct clk *mipi_ctrl = NULL;
+	struct clk *flite_ctrl = NULL;
+
+	pr_info("exynos5420_fimc_is_clk_off\n");
+
+	isp_ctrl = clk_get(&pdev->dev, "isp0_333_432");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp0_333_432) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_disable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp0_400");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp0_400) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_disable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp0_266");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp0_266) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_disable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp1_333_432");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp1_333_432) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_disable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	isp_ctrl = clk_get(&pdev->dev, "isp1_266");
+	if (IS_ERR(isp_ctrl)) {
+		pr_err("%s : clk_get(isp1_266) failed\n", __func__);
+		return PTR_ERR(isp_ctrl);
+	}
+
+	clk_disable(isp_ctrl);
+	clk_put(isp_ctrl);
+
+	fimc_3aa_ctrl = clk_get(&pdev->dev, "gscl_3aa");
+	if (IS_ERR(fimc_3aa_ctrl)) {
+		pr_err("%s : clk_get(gscl_3aa) failed\n", __func__);
+		return PTR_ERR(fimc_3aa_ctrl);
+	}
+
+	clk_disable(fimc_3aa_ctrl);
+	clk_put(fimc_3aa_ctrl);
+
+	for (channel = FLITE_ID_A; channel < FLITE_ID_C; channel++) {
+		snprintf(mipi, sizeof(mipi), "gscl_wrap%d", channel);
+		snprintf(flite, sizeof(flite), "gscl_flite%d", channel);
+
+		flite_ctrl = clk_get(&pdev->dev, flite);
+		if (IS_ERR(flite_ctrl)) {
+			pr_err("%s : clk_get(%s) failed\n",
+				__func__, flite);
+			return PTR_ERR(flite_ctrl);
+		}
+
+		clk_disable(flite_ctrl);
+		clk_put(flite_ctrl);
+
+		mipi_ctrl = clk_get(&pdev->dev, mipi);
+		if (IS_ERR(mipi_ctrl)) {
+			pr_err("%s : clk_get(%s) failed\n",
+				__func__, mipi);
+			return PTR_ERR(mipi_ctrl);
+		}
+
+		clk_disable(mipi_ctrl);
+		clk_put(mipi_ctrl);
+	}
+
+	pr_info("exynos5420_fimc_is_clk_off ends\n");
+	return 0;
+}
+
+int exynos5410_fimc_is_sensor_clk_on(struct platform_device *pdev, u32 source)
+{
+	char source_name[30];
+	struct clk *mout_ipll = NULL;
+	struct clk *sclk_mout_isp_sensor = NULL;
+	struct clk *sclk_isp_sensor = NULL;
+	u32 sensor_mclk;
+
+	mout_ipll = clk_get(&pdev->dev, "mout_ipll");
+	if (IS_ERR(mout_ipll)) {
+		pr_err("%s : clk_get(mout_ipll ) failed\n", __func__);
+		return PTR_ERR(mout_ipll);
+	}
+
+	sclk_mout_isp_sensor = clk_get(&pdev->dev, "sclk_mout_isp_sensor");
+	if (IS_ERR(sclk_mout_isp_sensor)) {
+		pr_err("%s : clk_get(sclk_mout_isp_sensor) failed\n", __func__);
+		return PTR_ERR(sclk_mout_isp_sensor);
+	}
+
+	snprintf(source_name, sizeof(source_name), "sclk_isp_sensor%d", source);
+	sclk_isp_sensor = clk_get(&pdev->dev, source_name);
+	if (IS_ERR(sclk_isp_sensor)) {
+		pr_err("%s : clk_get(sclk_isp_sensor0) failed\n", __func__);
+		return PTR_ERR(sclk_isp_sensor);
+	}
+
+	clk_set_parent(sclk_mout_isp_sensor, mout_ipll);
+	clk_set_rate(sclk_isp_sensor, 24 * 1000000);
+
+	sensor_mclk = clk_get_rate(sclk_isp_sensor);
+	pr_info("sensor mclk%d : %dHz\n", source, sensor_mclk);
+
+	clk_put(mout_ipll);
+	clk_put(sclk_mout_isp_sensor);
+	clk_put(sclk_isp_sensor);
+
+	return 0;
+}
+
+int exynos5420_fimc_is_sensor_clk_on(struct platform_device *pdev, u32 source)
+{
+	char source_name[30];
+	struct clk *mout_ipll = NULL;
+	struct clk *sclk_isp_sensor = NULL;
+	u32 sensor_mclk;
+
+	mout_ipll = clk_get(&pdev->dev, "mout_ipll");
+	if (IS_ERR(mout_ipll)) {
+		pr_err("%s : clk_get(mout_ipll ) failed\n", __func__);
+		return PTR_ERR(mout_ipll);
+	}
+
+	snprintf(source_name, sizeof(source_name), "sclk_isp_sensor%d", source);
+	sclk_isp_sensor = clk_get(&pdev->dev, source_name);
+	if (IS_ERR(sclk_isp_sensor)) {
+		pr_err("%s : clk_get(sclk_isp_sensor%d) failed\n", __func__, source);
+		return PTR_ERR(sclk_isp_sensor);
+	}
+
+	clk_set_parent(sclk_isp_sensor, mout_ipll);
+	clk_set_rate(sclk_isp_sensor, 24 * 1000000);
+	clk_enable(sclk_isp_sensor);
+
+	sensor_mclk = clk_get_rate(sclk_isp_sensor);
+	pr_info("sensor mclk%d : On(%dHz)\n", source, sensor_mclk);
+
+	clk_put(mout_ipll);
+	clk_put(sclk_isp_sensor);
+
+	return 0;
+}
+
+int exynos5410_fimc_is_sensor_clk_off(struct platform_device *pdev, u32 source)
+{
+	return 0;
+}
+
+int exynos5420_fimc_is_sensor_clk_off(struct platform_device *pdev, u32 source)
+{
+	char source_name[30];
+	struct clk *sclk_isp_sensor = NULL;
+
+	snprintf(source_name, sizeof(source_name), "sclk_isp_sensor%d", source);
+	sclk_isp_sensor = clk_get(&pdev->dev, source_name);
+	clk_disable(sclk_isp_sensor);
+
+	pr_info("sensor mclk%d : Off\n", source);
+	clk_put(sclk_isp_sensor);
 	return 0;
 }
 
 /* sequence is important, don't change order */
-int exynos5_fimc_is_sensor_power_on(struct platform_device *pdev,
-						int sensor_id)
+int exynos5_fimc_is_sensor_power_on(struct platform_device *pdev, int sensor_id)
 {
 
 	struct exynos5_platform_fimc_is *dev = pdev->dev.platform_data;
-	struct exynos5_fimc_is_sensor_info *sensor =
-						dev->sensor_info[sensor_id];
+	struct exynos5_fimc_is_sensor_info *sensor = dev->sensor_info[sensor_id];
 	int i;
 
-	pr_debug("exynos5_fimc_is_sensor_power_on(%d)\n",
-					sensor_id);
+	pr_debug("exynos5_fimc_is_sensor_power_on(%d)\n", sensor_id);
 
 	switch (sensor->sensor_id) {
 	case SENSOR_NAME_S5K4E5:

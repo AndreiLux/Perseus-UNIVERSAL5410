@@ -196,13 +196,14 @@ config LCD_MIPI_S6E3FA0
 	  If you have an LCD_MIPI_S6E3FA0 MIPI COMMAND MODE LCD Panel, say Y to enable its
 	  LCD control driver.
 
-config LCD_LSL122BC01
+config LCD_LSL122DL01
 	tristate "2560 X 1600 LCD Driver"
 	depends on BACKLIGHT_CLASS_DEVICE
 	default n
 	help
-	  If you have an LCD_LSL122BC01, say Y to enable its
+	  If you have an LCD_LSL122DL01, say Y to enable its
 	  LCD control driver.
+
 endif # LCD_CLASS_DEVICE
 
 #
@@ -425,13 +426,6 @@ config BACKLIGHT_LP855X
 	  This supports TI LP8550, LP8551, LP8552, LP8553 and LP8556
 	  backlight driver.
 
-config BACKLIGHT_LP8556
-	tristate "Backlight driver for TI LP8556 for Samsung TN"
-	depends on BACKLIGHT_CLASS_DEVICE && I2C
-	default n
-	help
-	  This support TI LP8556 for For Samsung TN backlight driver.
-
 config BACKLIGHT_OT200
 	tristate "Backlight driver for ot200 visualisation device"
 	depends on BACKLIGHT_CLASS_DEVICE && CS5535_MFGPT && GPIO_CS5535
@@ -445,14 +439,6 @@ config BACKLIGHT_PANDORA
 	help
 	  If you have a Pandora console, say Y to enable the
 	  backlight driver.
-
-config TCON_S6TNDR3X
-	tristate "Pentile TCON S6TNDR3X"
-	depends on I2C
-	default n
-	help
-	  This support S6TNDR3X Tcon for Pentile LCD.
-
 
 endif # BACKLIGHT_CLASS_DEVICE
 

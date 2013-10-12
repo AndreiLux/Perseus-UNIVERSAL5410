@@ -22,13 +22,6 @@
 #include <linux/regulator/machine.h>
 #include <linux/mfd/samsung/core.h>
 #include <linux/mfd/samsung/s2mps11.h>
-#include <mach/sec_debug.h>
-
-#define MANUAL_RESET_CONTROL
-#ifdef MANUAL_RESET_CONTROL
-#define MANUAL_RESET_ENABLE (1 << 3)
-#define MANUAL_RESET_DISABLE ~(1 << 3)
-#endif
 
 struct s2mps11_info {
 	struct device *dev;
@@ -49,10 +42,6 @@ struct s2mps11_info {
 	bool buck3_ramp;
 	bool buck4_ramp;
 	bool buck5_ramp;
-#ifdef MANUAL_RESET_CONTROL
-	int mrstb_enabled;
-	int mrstb_status;
-#endif
 };
 
 struct s2mps11_voltage_desc {
@@ -73,9 +62,15 @@ static const struct s2mps11_voltage_desc buck_voltage_val2 = {
 	.step =  12500,
 };
 
+/* NOTES that buck_voltage_val3 is used for only BUCKBOOST9.
+ * BUCKBOOST9: 5-bit Programmable from 3.0V to 3.75V in 25mV steps
+ * min = 1400000uV does not mean actual minimum voltage. It is used for the
+ * convenience of converting voltage to output control bits of BUCKBOOST9_CTRL2
+ * register.
+ */
 static const struct s2mps11_voltage_desc buck_voltage_val3 = {
 	.max = 3775000,
-	.min = 3000000,
+	.min = 1400000,
 	.step =  25000,
 };
 
@@ -381,7 +376,8 @@ static int s2mps11_reg_disable(struct regulator_dev *rdev)
 	return sec_reg_update(s2mps11->iodev, reg, ~mask, mask);
 }
 
-static int s2mps11_get_voltage_register(struct regulator_dev *rdev, unsigned int *_reg)
+static int s2mps11_get_voltage_register(struct regulator_dev *rdev,
+		unsigned int *_reg)
 {
 	int reg_id = rdev_get_id(rdev);
 	unsigned int reg;
@@ -543,8 +539,6 @@ static int s2mps11_set_voltage_sel(struct regulator_dev *rdev, unsigned selector
 	int mask = 0xff, ret;
 	int reg_id = rdev_get_id(rdev);
 	unsigned int reg;
-	unsigned int pmic_id, val;
-	int cnt = 10000; /* PWM mode transition count */
 
 	ret = s2mps11_get_voltage_register(rdev, &reg);
 	if (ret)
@@ -564,106 +558,8 @@ static int s2mps11_set_voltage_sel(struct regulator_dev *rdev, unsigned selector
 		return -EINVAL;
 	}
 
-	if (reg_id == S2MPS11_BUCK5V123) {
-		sec_reg_read(s2mps11->iodev, 0x00, &pmic_id);		/* read pmic_id */
-		if (pmic_id < 0x82) {
-			sec_reg_update(s2mps11->iodev, 0x2D, 0x0, 0x8); /* PWM mode */
-
-			do {
-				sec_reg_read(s2mps11->iodev, 0x2D, &val);
-				val = val & 0x01;
-			} while(val == 0x00 && cnt-- > 0);
-		}
-	 }
-
-	ret = sec_reg_update(s2mps11->iodev, reg, selector, mask);
-
-	if (reg_id == S2MPS11_BUCK5V123) {
-		if (pmic_id < 0x82)
-			sec_reg_update(s2mps11->iodev, 0x2D, 0x8, 0x8);	/* auto mode */
-	}
-
-	return ret;
+	return sec_reg_update(s2mps11->iodev, reg, selector, mask);
 }
-
-#ifdef MANUAL_RESET_CONTROL
-extern int get_sec_debug_level(void);
-
-static int s2mps11_set_mrstb_en(struct s2mps11_info *s2mps11, int enable)
-{
-	int ret= 0;
-	unsigned int val;
-
-	if (!(s2mps11->mrstb_enabled))
-		return -1;
-
-	sec_reg_read(s2mps11->iodev, S2MPS11_REG_CTRL1, &val);
-	pr_info("%s : read S2MPS11_REG_CTRL1 = 0x%x\n", __func__, val);
-
-	if (enable) {
-		val= val | MANUAL_RESET_ENABLE;
-		s2mps11->mrstb_status = 1;
-	} else {
-		val= val & MANUAL_RESET_DISABLE;
-		s2mps11->mrstb_status = 0;
-	}
-
-	pr_info("%s : set S2MPS11_REG_CTRL1 = 0x%x\n", __func__, val);
-
-	ret = sec_reg_update(s2mps11->iodev, S2MPS11_REG_CTRL1, val, 0xF);
-
-	return ret;
-}
-
-static ssize_t s2mps11_show_mrstb(struct device *dev,
-				   struct device_attribute *attr,
-				   char *buf)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct s2mps11_info *s2mps11 = platform_get_drvdata(pdev);
-
-	return sprintf(buf, "%d\n", s2mps11->mrstb_status);
-}
-
-static ssize_t s2mps11_store_mrstb(struct device *dev,
-				   struct device_attribute *attr,
-				   const char *buf, size_t n)
-{
-	int ret = 0;
-	int enable;
-	struct platform_device *pdev = to_platform_device(dev);
-	struct s2mps11_info *s2mps11 = platform_get_drvdata(pdev);
-
-	ret = sscanf(buf, "%d", &enable);
-
-	if (ret != 1 || enable > 1) {
-		pr_err("%s : invaild paramater\n",__func__);
-		return -EINVAL;
-	}
-
-	ret = s2mps11_set_mrstb_en(s2mps11, enable);
-	if (ret) {
-		pr_err("%s : error : s2mps11_set_mrstb_en\n",__func__);
-		return -EPERM;
-	}
-
-	pr_info("%s : mrstb_en = %d\n", __func__, enable);
-
-	return n;
-}
-
-static DEVICE_ATTR(mrstb, S_IWUSR | S_IRUGO, s2mps11_show_mrstb, \
-				 s2mps11_store_mrstb);
-
-static struct attribute *s2mps11_attributes[] = {
-	&dev_attr_mrstb.attr,
-	NULL
-};
-
-static const struct attribute_group s2mps11_group = {
-	.attrs = s2mps11_attributes,
-};
-#endif
 
 static int get_ramp_delay(int ramp_delay)
 {
@@ -819,11 +715,13 @@ static __devinit int s2mps11_pmic_probe(struct platform_device *pdev)
 
 	size = sizeof(struct regulator_dev *) * pdata->num_regulators;
 	s2mps11->rdev = devm_kzalloc(&pdev->dev, size, GFP_KERNEL);
-	if (!s2mps11->rdev) {
-		devm_kfree(&pdev->dev, s2mps11);
+	if (!s2mps11->rdev)
 		return -ENOMEM;
-	}
 
+	ret = sec_reg_read(iodev, S2MPS11_REG_ID, &iodev->rev_num);
+	if (ret < 0)
+		return ret;
+		
 	rdev = s2mps11->rdev;
 	s2mps11->dev = &pdev->dev;
 	s2mps11->iodev = iodev;
@@ -863,6 +761,14 @@ static __devinit int s2mps11_pmic_probe(struct platform_device *pdev)
 	ramp_reg |= get_ramp_delay(s2mps11->ramp_delay9);
 	sec_reg_update(s2mps11->iodev, S2MPS11_REG_RAMP_BUCK, ramp_reg, 0xff);
 
+	/* OVCM disable setting */
+	sec_reg_update(s2mps11->iodev, S2MPS11_REG_LDO1_8_1, 0xff, 0xff);
+	sec_reg_update(s2mps11->iodev, S2MPS11_REG_LDO9_16_1, 0xff, 0xff);
+	sec_reg_update(s2mps11->iodev, S2MPS11_REG_LDO17_24_1, 0xff, 0xff);
+	sec_reg_update(s2mps11->iodev, S2MPS11_REG_LDO25_32_1, 0xff, 0xff);
+	sec_reg_update(s2mps11->iodev, S2MPS11_REG_LDO33_38_1, 0xfc, 0xff);
+
+	/* Make delay for on-sequence */
 	sec_reg_update(s2mps11->iodev, 0x24, 0x03, 0x03);
 	sec_reg_update(s2mps11->iodev, 0x63, 0xdd, 0xff);
 	sec_reg_update(s2mps11->iodev, 0x64, 0xee, 0xff);
@@ -871,6 +777,7 @@ static __devinit int s2mps11_pmic_probe(struct platform_device *pdev)
 	sec_reg_update(s2mps11->iodev, 0x6b, 0xdf, 0xff);
 	sec_reg_update(s2mps11->iodev, 0x6c, 0xff, 0xff);
 	sec_reg_update(s2mps11->iodev, 0x6d, 0xff, 0xff);
+	sec_reg_update(s2mps11->iodev, 0x6e, 0xff, 0xff);
 	sec_reg_update(s2mps11->iodev, 0x79, 0xef, 0xff);
 	sec_reg_update(s2mps11->iodev, 0x7a, 0xde, 0xff);
 	sec_reg_update(s2mps11->iodev, 0x7b, 0x3f, 0xff);
@@ -897,23 +804,6 @@ static __devinit int s2mps11_pmic_probe(struct platform_device *pdev)
 			goto err;
 		}
 	}
-
-#ifdef MANUAL_RESET_CONTROL
-	if(!get_sec_debug_level()) {
-		s2mps11->mrstb_enabled = 1;
-		s2mps11->mrstb_status = 1;
-		ret = sysfs_create_group(&s2mps11->dev->kobj, &s2mps11_group);
-
-		if (ret) {
-			dev_err(s2mps11->dev,
-				"%s : failed to create sysfs attribute group\n",__func__);
-			goto err;
-		}
-	} else {
-		s2mps11->mrstb_enabled = 0;
-		s2mps11->mrstb_status = 0;
-	}
-#endif
 
 	return 0;
 err:

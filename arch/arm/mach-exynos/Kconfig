@@ -91,7 +91,7 @@ config SOC_EXYNOS5250
 config EXYNOS_CONTENT_PATH_PROTECTION
 	bool "Exynos Content Path Protection"
 	depends on (ARM_TRUSTZONE && ARCH_EXYNOS5)
-	default n
+	default y
 	help
 	  Enable content path protection of EXYNOS.
 
@@ -105,6 +105,17 @@ config SOC_EXYNOS5410
 	select PM_GENERIC_DOMAINS if PM_RUNTIME
 	help
 	  Enable EXYNOS5410 SoC support
+
+config SOC_EXYNOS5420
+	bool "SAMSUNG EXYNOS5420"
+	default y
+	depends on ARCH_EXYNOS5
+	select SAMSUNG_DMADEV
+	select S5P_PM if PM
+	select S5P_SLEEP if PM
+	select PM_GENERIC_DOMAINS if PM_RUNTIME
+	help
+	  Enable EXYNOS5420 SoC support
 
 config EXYNOS4_MCT
 	bool
@@ -216,6 +227,21 @@ config EXYNOS5_DEV_HSI2C3
 	help
 	  Compile in platform device definitions for HS-I2C channel 3
 
+config EXYNOS5_DEV_HSI2C4
+	bool
+	help
+	  Compile in platform device definitions for HS-I2C channel 4
+
+config EXYNOS5_DEV_HSI2C5
+	bool
+	help
+	  Compile in platform device definitions for HS-I2C channel 5
+
+config EXYNOS5_DEV_HSI2C6
+	bool
+	help
+	  Compile in platform device definitions for HS-I2C channel 6
+
 config EXYNOS4_SETUP_I2C1
 	bool
 	help
@@ -270,6 +296,21 @@ config EXYNOS5_SETUP_HSI2C3
 	bool
 	help
 	  Common setup code for hs-i2c bus 3.
+
+config EXYNOS5_SETUP_HSI2C4
+	bool
+	help
+	  Common setup code for hs-i2c bus 4.
+
+config EXYNOS5_SETUP_HSI2C5
+	bool
+	help
+	  Common setup code for hs-i2c bus 5.
+
+config EXYNOS5_SETUP_HSI2C6
+	bool
+	help
+	  Common setup code for hs-i2c bus 6.
 
 config EXYNOS4_SETUP_KEYPAD
 	bool
@@ -335,6 +376,10 @@ config EXYNOS5_CORESIGHT
 	help
 	  Enable embedded trace support
 
+config SAMSUNG_PRODUCT_SHIP
+	bool "set up for product shipping"
+	default n
+
 config EXYNOS_PERSISTENT_CLOCK
 	bool
 	depends on !RTC_DRV_S3C
@@ -362,10 +407,17 @@ config EXYNOS5_DEV_BTS
 
 config EXYNOS5_CCI
 	bool "Cache Coherent Interconnect support"
-	depends on SOC_EXYNOS5410 && ARM_EXYNOS_IKS_CORE
-	default y
+	depends on ARCH_EXYNOS5
+	default n
 	help
 	  Enable Cache Coherent Interconnect support
+
+config EXYNOS5420_BTS
+	bool "Bus traffic shaper support"
+	default y
+	depends on SOC_EXYNOS5420
+	help
+	  Enable BTS (Bus traffic shaper) support
 
 config EXYNOS5410_BTS
 	bool "Bus traffic shaper support"
@@ -376,34 +428,33 @@ config EXYNOS5410_BTS
 
 config EXYNOS5_CLUSTER_POWER_CONTROL
 	bool "Dynamic cluster power control support"
-	depends on SOC_EXYNOS5410
+	depends on ARCH_EXYNOS5
 	default y
 	help
 	  Enable dynamic cluster power control support.
 	  If A15 cluster power is off, T32 cannot attach
 	  to both A7 and A15 cores in the system.
 
-config EXYNOS5410_DEBUG
+config EXYNOS54XX_DEBUG
 	bool "ARM Debug architecture v7.1 support"
-	depends on SOC_EXYNOS5410
+	depends on SOC_EXYNOS5410 || SOC_EXYNOS5420
 	default y
 	help
 	  Enable preserve debug logic state.
 
-config EXYNOS5_C2_STATE_IDLE
-	bool "C2 State Idle support"
-	depends on CPU_IDLE
-	default y
-	help
-	  Enable C2 State Idle support when CPU_IDLE is
-	  enabled
-
 config EXYNOS5_DYNAMIC_CPU_HOTPLUG
 	bool "Dynamic CPU Hotplug support"
-	depends on SOC_EXYNOS5410
+	depends on (SOC_EXYNOS5410 || SOC_EXYNOS5420)
 	default y
 	help
 	  Enable Dynamic CPU Hotplug
+
+config EXYNOS5_MAX_CPU_HOTPLUG
+	bool "Max Perf CPU hotplug support"
+	depends on (ARM_EXYNOS_IKS_CLUSTER && EXYNOS5_DYNAMIC_DUAL_HOTPLUG)
+	default n
+	help
+	  Enable Maximum Performance CPU Hotplug
 
 config ASV_MARGIN_TEST
 	bool "Enable margin test"
@@ -731,7 +782,12 @@ config MACH_SMDK5410
 	select EXYNOS5_DEV_HSI2C2
 	select EXYNOS5_DEV_HSI2C3
 	select EXYNOS5_DEV_SCALER
+	select EXYNOS5_DEV_GSC
 	select EXYNOS5_DEV_USB3_DRD
+	select EXYNOS5_DEV_JPEG
+	select EXYNOS5_DEV_JPEG_HX
+	select EXYNOS5_SETUP_JPEG
+	select EXYNOS5_SETUP_JPEG_HX
 	select EXYNOS5_SETUP_HSI2C0
 	select EXYNOS5_SETUP_HSI2C1
 	select EXYNOS5_SETUP_HSI2C2
@@ -764,17 +820,14 @@ config MACH_UNIVERSAL5410
 	select S5P_DEV_CSIS1
 	select S5P_DEV_CSIS2
 	select S5P_DEV_MFC
-	select S5P_DEV_DP
 	select SAMSUNG_DEV_ADC
 	select S5P_DEV_FIMG2D
 	select EXYNOS_DEV_DWMCI
 	select EXYNOS_DEV_DMA
 	select EXYNOS_DEV_ROTATOR
-	select SAMSUNG_DEV_BACKLIGHT
 	select SAMSUNG_DEV_PWM
 	select EXYNOS_DEV_SYSMMU
 	select EXYNOS_DEV_TMU
-	select EXYNOS_SETUP_DP
 	select EXYNOS_SETUP_FIMD1
 	select EXYNOS4_SETUP_I2C1
 	select EXYNOS4_SETUP_I2C2
@@ -787,7 +840,12 @@ config MACH_UNIVERSAL5410
 	select EXYNOS5_DEV_HSI2C2
 	select EXYNOS5_DEV_HSI2C3
 	select EXYNOS5_DEV_SCALER
+	select EXYNOS5_DEV_GSC
 	select EXYNOS5_DEV_USB3_DRD
+	select EXYNOS5_DEV_JPEG
+	select EXYNOS5_DEV_JPEG_HX
+	select EXYNOS5_SETUP_JPEG
+	select EXYNOS5_SETUP_JPEG_HX
 	select EXYNOS5_SETUP_HSI2C0
 	select EXYNOS5_SETUP_HSI2C1
 	select EXYNOS5_SETUP_HSI2C2
@@ -802,24 +860,218 @@ config MACH_UNIVERSAL5410
 	help
 	  Machine support for Universal board based on EXYNOS5410
 
-comment "EXYNOS5410_CHN_CTC Boards"
-config MACH_J_CHN_CTC
-	bool "EXYNOS5410_CHN_CTC board"
-	help
-	  Machine support for J_CHN_CTC board based on EXYNOS5410
+comment "EXYNOS5420 Boards"
 
-comment "EXYNOS5410_CHN_CU Boards"
-config MACH_J_CHN_CU
-	bool "EXYNOS5410_CHN_CU board"
+config MACH_SMDK5420
+	bool "SMDK5420"
+	select SOC_EXYNOS5420
+	select S3C_DEV_I2C1
+	select S3C_DEV_I2C2
+	select S3C_DEV_I2C3
+	select S3C_DEV_RTC
+	select S3C_DEV_WDT
+	select S3C64XX_DEV_SPI0
+	select S3C64XX_DEV_SPI1
+	select S3C64XX_DEV_SPI2
+	select S3C64XX_DEV_SPI3
+	select S5P_DEV_USB_EHCI
+	select S5P_DEV_FIMD1
+	select S5P_DEV_TV
+	select S5P_GPIO_INT
+	select S5P_DEV_MFC
+	select S5P_DEV_FIMG2D
+	select S5P_DEV_CSIS0
+	select S5P_DEV_CSIS1
+	select SAMSUNG_DEV_ADC
+	select SAMSUNG_DEV_BACKLIGHT
+	select SAMSUNG_DEV_PWM
+	select EXYNOS_DEV_DWMCI
+	select EXYNOS_DEV_SYSMMU
+	select EXYNOS_DEV_USB_SWITCH
+	select EXYNOS_SETUP_ADC
+	select EXYNOS_SETUP_FIMD1
+	select EXYNOS_SETUP_SPI
+	select EXYNOS_DEV_DMA
+	select EXYNOS4_DEV_USB_OHCI
+	select EXYNOS4_SETUP_I2C1
+	select EXYNOS4_SETUP_I2C2
+	select EXYNOS4_SETUP_I2C3
+	select EXYNOS4_SETUP_USB_PHY
+	select EXYNOS4_SETUP_MFC
+	select EXYNOS5_DEV_HSI2C0
+	select EXYNOS5_DEV_HSI2C1
+	select EXYNOS5_DEV_HSI2C2
+	select EXYNOS5_DEV_HSI2C3
+	select EXYNOS5_DEV_HSI2C4
+	select EXYNOS5_DEV_HSI2C5
+	select EXYNOS5_DEV_HSI2C6
+	select EXYNOS5_DEV_USB3_DRD
+	select EXYNOS5_DEV_SCALER
+	select EXYNOS5_DEV_GSC
+	select EXYNOS5_DEV_JPEG_HX
+	select EXYNOS5_SETUP_JPEG_HX
+	select EXYNOS5_SETUP_HSI2C0
+	select EXYNOS5_SETUP_HSI2C1
+	select EXYNOS5_SETUP_HSI2C2
+	select EXYNOS5_SETUP_HSI2C3
+	select EXYNOS5_SETUP_HSI2C4
+	select EXYNOS5_SETUP_HSI2C5
+	select EXYNOS5_SETUP_HSI2C6
+	select EXYNOS5_DEV_FIMC_IS
+	select EXYNOS5_SETUP_FIMC_IS
 	help
-	  Machine support for J_CHN_CU board based on EXYNOS5410
+	  Machine support for Samsung SMDK5420
 
-comment "EXYNOS5410_CHN_OPEN Boards"
-config MACH_J_CHN_OPEN
-	bool "EXYNOS5410_CHN_OPEN board"
+comment "UNIVERSAL5420 Boards"
+
+config MACH_UNIVERSAL5420
+	bool "UNIVERSAL5420"
+	select SOC_EXYNOS5420
+	select S3C_DEV_I2C1
+	select S3C_DEV_I2C3
+	select S3C_DEV_RTC
+	select S3C_DEV_WDT
+	select S3C64XX_DEV_SPI0
+	select S3C64XX_DEV_SPI1
+	select S3C64XX_DEV_SPI2
+	select S3C64XX_DEV_SPI3
+	select S5P_DEV_USB_EHCI
+	select S5P_DEV_FIMD1
+	select S5P_DEV_TV
+	select S5P_GPIO_INT
+	select S5P_DEV_MFC
+	select S5P_DEV_FIMG2D
+	select S5P_DEV_CSIS0
+	select S5P_DEV_CSIS1
+	select SAMSUNG_DEV_ADC
+	select SAMSUNG_DEV_BACKLIGHT
+	select SAMSUNG_DEV_PWM
+	select EXYNOS_DEV_DWMCI
+	select EXYNOS_DEV_SYSMMU
+	select EXYNOS_DEV_USB_SWITCH
+	select EXYNOS_SETUP_ADC
+	select EXYNOS_SETUP_FIMD1
+	select EXYNOS_SETUP_SPI
+	select EXYNOS_DEV_DMA
+	select EXYNOS_PERSISTENT_CLOCK
+	select EXYNOS4_DEV_USB_OHCI
+	select EXYNOS4_SETUP_I2C1
+	select EXYNOS4_SETUP_I2C2
+	select EXYNOS4_SETUP_I2C3
+	select EXYNOS4_SETUP_USB_PHY
+	select EXYNOS4_SETUP_MFC
+	select EXYNOS5_DEV_HSI2C0
+	select EXYNOS5_DEV_HSI2C1
+	select EXYNOS5_DEV_HSI2C2
+	select EXYNOS5_DEV_HSI2C3
+	select EXYNOS5_DEV_HSI2C4
+	select EXYNOS5_DEV_HSI2C5
+	select EXYNOS5_DEV_HSI2C6
+	select EXYNOS5_DEV_USB3_DRD
+	select EXYNOS5_DEV_SCALER
+	select EXYNOS5_DEV_GSC
+	select EXYNOS5_DEV_JPEG_HX
+	select EXYNOS5_SETUP_JPEG_HX
+	select EXYNOS5_SETUP_HSI2C0
+	select EXYNOS5_SETUP_HSI2C1
+	select EXYNOS5_SETUP_HSI2C2
+	select EXYNOS5_SETUP_HSI2C3
+	select EXYNOS5_SETUP_HSI2C4
+	select EXYNOS5_SETUP_HSI2C5
+	select EXYNOS5_SETUP_HSI2C6
+	select EXYNOS5_DEV_FIMC_IS
+	select EXYNOS5_SETUP_FIMC_IS
 	help
-	  Machine support for J_CHN_OPEN board based on EXYNOS5410
+	  Machine support for Universal board based on EXYNOS5420
 endif
+
+if MACH_UNIVERSAL5420
+
+choice
+	prompt "Universal5420 Board H/V1/N1"
+
+config HA
+	bool "HA Board"
+	help
+	  Support HA Board
+config V1A
+	bool "V1A Board"
+	select S5P_DEV_DP
+	select EXYNOS_SETUP_DP
+	help
+	  Support V1A Board
+config N1A
+	bool "N1A Board"
+	select S5P_DEV_DP
+	select EXYNOS_SETUP_DP
+	help
+	  Support N1A Board
+
+endchoice
+
+choice
+	prompt "H/V1/N1 Board 3g/wifi"
+
+config HA_3G
+	bool "HA 3G Board"
+	help
+	  Support HA 3G Board
+
+config V1A_3G
+	bool "V1A 3G Board"
+	help
+	  Support V1A 3G Board
+
+config V1A_WIFI
+	bool "V1A WIFI Board"
+	help
+	  Support V1A WIFI Board
+
+config N1A_3G
+	bool "N1A 3G Board"
+	help
+	  Support N1A 3G Board
+
+config N1A_WIFI
+	bool "N1A WIFI Board"
+	help
+	  Support N1A WIFI Board
+
+endchoice
+
+choice
+	prompt "Support Target Locale"
+
+config TARGET_LOCALE_EUR
+	bool "Locale Europe Open support"
+	help
+	  Enable universal5420 LOCALE EUR.
+
+config TARGET_LOCALE_KOR
+	bool "Locale Kor support"
+	help
+	  Enable universal5420 LOCALE KOR.
+
+endchoice
+
+choice
+	prompt "Support KOR Target Carrier"
+	depends on MACH_UNIVERSAL5420 && TARGET_LOCALE_KOR
+
+config N1A_WIFI_ANY
+	bool "ANY Operator"
+	help
+	  Enable Carrier Operator N1WIFI ANY in LOCALE KOR.
+
+config V1A_WIFI_ANY
+	bool "ANY Operator"
+	help
+	  Enable Carrier Operator V1WIFI ANY in LOCALE KOR.
+
+endchoice
+
+endif
+
 
 config GPS_BCMxxxxx
 	bool "BROADCOM_GPS_CHIPSET_COMMON"
@@ -848,14 +1100,12 @@ config GPS_GSD4T
 config GPS_GSD5T
 	bool "CSR_GPS_CHIPSET_5T"
 	default n
-
-if BT
-config BT_BCM4335
-	bool "Enable BCM4335 driver"
+	
+config BT_BCM4339
+	bool "Enable BCM4339 driver"
 	default n
 	help
-	  Adds BCM4335 RFKILL driver for Broadcom BCM4335 chipset
-endif
+	  Adds BCM4339 RFKILL driver for Broadcom BCM4339 chipset
 
 comment "Flattened Device Tree based board for EXYNOS SoCs"
 
@@ -884,17 +1134,8 @@ config MACH_EXYNOS5_DT
 
 config EXYNOS5_DEV_GSC
 	bool
-	depends on VIDEO_EXYNOS_GSCALER
-	default y
 	help
 	  Compile in platform device definitions for GSC
-
-config EXYNOS5_SETUP_GSC
-	bool
-	depends on VIDEO_EXYNOS_GSCALER
-	default y
-	help
-	  Common setup code for GSC
 
 config EXYNOS5_DEV_SCALER
 	bool
@@ -903,29 +1144,21 @@ config EXYNOS5_DEV_SCALER
 
 config EXYNOS5_DEV_JPEG
 	bool
-	depends on VIDEO_EXYNOS_JPEG
-	default y
 	help
 	  Compile in platform device definitions for JPEG
 
 config EXYNOS5_SETUP_JPEG
 	bool
-	depends on VIDEO_EXYNOS_JPEG
-	default y
 	help
 	  Common setup code for JPEG
 
 config EXYNOS5_DEV_JPEG_HX
 	bool
-	depends on VIDEO_EXYNOS_JPEG
-	default y
 	help
 	  Compile in platform device definitions for JPEG
 
 config EXYNOS5_SETUP_JPEG_HX
 	bool
-	depends on VIDEO_EXYNOS_JPEG
-	default y
 	help
 	  Common setup code for JPEG
 
@@ -938,6 +1171,7 @@ config EXYNOS4_SETUP_CSIS
 
 config EXYNOS5_SETUP_TVOUT
 	bool
+	depends on S5P_DEV_TV
 	default y
 	help
 	  Common setup code for TVOUT
@@ -964,6 +1198,14 @@ endmenu
 
 endif
 
+comment "Configuration for Memory base address"
+
+config EXYNOS_MEM_BASE
+	hex "Memory base address"
+	default 0x20000000
+	help
+	  Memory base address for Exynos series.
+
 endmenu
 
 endif
@@ -978,219 +1220,69 @@ config EXYNOS_EMMC_HS200
 endmenu
 endif
 
-config EXYNOS_C2C
-	bool "C2C device support"
-	depends on SAMSUNG_C2C
-	default y
-	help
-	  Add C2C device driver
-
-config EXYNOS_DEV_C2C
-	bool
-	depends on EXYNOS_C2C
-	default y
-
-if MACH_J_CHN_CTC
-
-choice
-	prompt "EXYNOS5410_CHN_CTC Board Revision"
-	default J_CHN_CTC_REV00
-
-config J_CHN_CTC_REV00
-	bool "EXYNOS5410_CHN_CTC 3G Rev0.0"
-	help
-	  Support exynos5410_chn_ctc 3G rev0.0.
-
-config J_CHN_CTC_REV01
-	bool "EXYNOS5410_CHN_CTC 3G Rev0.1"
-	help
-	  Support exynos5410_chn_ctc 3G rev0.1.
-
-config J_CHN_CTC_REV02
-	bool "EXYNOS5410_CHN_CTC 3G Rev0.2"
-	help
-	  Support exynos5410_chn_ctc 3G rev0.2.
-
-config J_CHN_CTC_REV03
-	bool "EXYNOS5410_CHN_CTC 3G Rev0.3"
-	help
-	  Support exynos5410_chn_ctc 3G rev0.3.
-
-config J_CHN_CTC_REV04
-	bool "EXYNOS5410_CHN_CTC 3G Rev0.4"
-	help
-	  Support exynos5410_chn_ctc 3G rev0.4.
-
-config J_CHN_CTC_REV05
-	bool "EXYNOS5410_CHN_CTC 3G Rev0.5"
-	help
-	  Support exynos5410_chn_ctc 3G rev0.5.
-
-config J_CHN_CTC_REV06
-	bool "EXYNOS5410_CHN_CTC 3G Rev0.6"
-	help
-	  Support exynos5410_chn_ctc 3G rev0.6.
-
-endchoice
-endif
-
 if MACH_UNIVERSAL5410
 
 choice
 	prompt "Universal5410 Board Revision"
-	default UNIVERSAL5410_REV00
+	default UNIVERSAL5410_REV01
 
-config UNIVERSAL5410_LTE_REV00
-	bool "Universal5410 LTE Rev0.0"
+config UNIVERSAL5410_REV00
+	bool "UNIVERSAL5410 Rev0.0"
 	help
-	  Support universal5410 LTE rev0.0.
+	  Support UNIVERSAL5410 Rev0.0.
 
-config UNIVERSAL5410_3G_REV00
-	bool "Universal5410 3G Rev0.0"
+config UNIVERSAL5410_REV01
+	bool "UNIVERSAL5410 Rev0.1"
 	help
-	  Support universal5410 3G rev0.0.
+	  Support UNIVERSAL5410 Rev0.1.
 
-config V1_LTE_REV00
-	bool "Vienna LTE Rev0.0"
+config UNIVERSAL5410_REV02
+	bool "UNIVERSAL5410 Rev0.2"
 	help
-	  Support Vienna LTE rev0.0.
+	  Support UNIVERSAL5410 Rev0.2.
 
-config V1_3G_REV00
-	bool "Vienna 3G Rev0.0"
+config UNIVERSAL5410_REV03
+	bool "UNIVERSAL5410 Rev0.3"
 	help
-	  Support Vienna 3G rev0.0.
+	  Support UNIVERSAL5410 Rev0.3.
 
-config V1_WIFI_REV00
-	bool "Vienna WIFI Rev0.0"
+config UNIVERSAL5410_REV04
+	bool "UNIVERSAL5410 Rev0.4"
 	help
-	  Support Vienna WIFI rev0.0.
+	  Support UNIVERSAL5410 Rev0.4.
 
+config UNIVERSAL5410_REV05
+	bool "UNIVERSAL5410 Rev0.5"
+	help
+	  Support UNIVERSAL5410 Rev0.5.
+
+config UNIVERSAL5410_REV06
+	bool "UNIVERSAL5410 Rev0.6"
+	help
+	  Support UNIVERSAL5410 Rev0.6.
+
+config UNIVERSAL5410_REV07
+	bool "UNIVERSAL5410 Rev0.7"
+	help
+	  Support UNIVERSAL5410 Rev0.7.
+
+config UNIVERSAL5410_REV08
+	bool "UNIVERSAL5410 Rev0.8"
+	help
+	  Support UNIVERSAL5410 Rev0.8.
+
+config UNIVERSAL5410_REV09
+	bool "UNIVERSAL5410 Rev0.9"
+	help
+	  Support UNIVERSAL5410 Rev0.9.
+
+config UNIVERSAL5410_REAL_REV00
+	bool "UNIVERSAL5410 Real Rev0.0"
+	help
+	  Support UNIVERSAL5410 Real Rev0.0.
 endchoice
-
-config MACH_JA
-	bool "JA Board"
-	help
-	  Support JA Board.
-
-config MACH_HA
-	bool "HA Board"
-	help
-	  Support HA Board.
-
-config MACH_V1
-	bool "V1 Board"
-	help
-	  Support V1 Board.
-
-source "arch/arm/mach-exynos/Kconfig.local"
 
 endif
-
-comment "Qualcomm Modem Feature"
-
-config QC_MODEM
-	bool "Qualcomm modem support"
-	default n
-
-config MSM_SUBSYSTEM_RESTART
-	bool "QC Modem restart handler"
-	default n
-
-config QC_MODEM_MDM9X15
-	bool "support QC mdm9x15 modem"
-	default n
-
-config MDM_HSIC_PM
-	bool "support QC mdm9x15 PM over HSIC"
-	default n
-
-config EMI_ERROR_RECOVERY
-	bool "unsuspected emi error recovery on HUB"
-	default n
-
-if QC_MODEM
-choice
-	prompt "QC MODEM CONFIG"
-	depends on QC_MODEM
-	default QC_MODEM_ADONIS
-
-config QC_MODEM_ADONIS
-	bool "Adonis support QMI inteface over HSIC"
-	select MODEM_SUPPORT_QMI_INTERFACE
-	select MSM_SUBSYSTEM_RESTART
-	select USB_QCOM_DIAG_BRIDGE
-	select USB_QCOM_MDM_BRIDGE
-	select QC_MODEM_MDM9X15
-	select MSM_RMNET_USB
-	select DIAG_CHAR
-	select MDM_HSIC_PM
-
-endchoice
-endif
-
-if SEC_MODEM
-comment "IMC modem svnet feature"
-
-choice
-	prompt "SVNET2 version"
-	default SEC_MODEM_PRIMITIVE
-
-config SEC_MODEM_PRIMITIVE
-	bool "the first SVENT2"
-
-config SEC_MODEM_V2
-	bool "Modem IF ver. 2 for HSIC"
-
-config SEC_MODEM_V1
-	bool "Modem IF ver. 1 for C2C"
-
-config SEC_MODEM_IF
-	bool "Modem IF"
-endchoice
-
-choice
-	prompt "SEC MODEM CONFIG"
-	depends on SEC_MODEM
-	default SEC_MODEM_M0_XMM6360
-
-config SEC_MODEM_M0_XMM6360
-	bool "XMM6360 feature"
-	select UMTS_MODEM_XMM6360
-	select LINK_DEVICE_HSIC
-	select EHCI_IRQ_DISTRIBUTION
-
-config SEC_MODEM_J_SKT
-	bool "J SKT with SS222"
-	select UMTS_MODEM_SS222
-	select LINK_DEVICE_C2C
-	select SAMSUNG_C2C
-	select C2C_IPC_ENABLE
-
-config SEC_MODEM_J_KTT
-	bool "J KTT with SS222"
-	select UMTS_MODEM_SS222
-	select LINK_DEVICE_C2C
-	select SAMSUNG_C2C
-	select C2C_IPC_ENABLE
-
-config SEC_MODEM_J_CTC
-	bool "J CTC with ESC6270 and MDM6600"
-	select CDMA_MODEM_MDM6600
-	select GSM_MODEM_ESC6270
-	select LINK_DEVICE_PLD
-
-endchoice
-
-config SEC_MODEM_J_CU
-	bool "J CU with XMM6360 and ESC6270"
-	select GSM_MODEM_ESC6270
-	select LINK_DEVICE_PLD
-
-endif
-
-config USB_CDFS_SUPPORT
-	bool "Auto install for cdfs"
-	default y
 
 comment "Debugging Feature"
 menuconfig SEC_DEBUG
@@ -1327,22 +1419,6 @@ endif
 
 endif
 
-config ANDROID_WIP
-        bool "work in progress hacks for android"
-        default n
-        help
-          This enables 'work in progress' hacks for android issues.
-
-config ANDROID_OOM_KILLER
-	bool "Android OOM Killer"
-	default n
-	help
-	  This enables 'Android-Style oom-killer'
-	  The way to select victim by oom-killer provided by
-	  linux kernel is totally different from android policy.
-	  Hence, it makes more sense that we select the oom victim
-	  as android does when LMK is invoked.
-
 config SEC_LOG
 	default n
 	bool "Enable support for sec_log" if EMBEDDED
@@ -1368,6 +1444,7 @@ config SEC_LOG_LAST_KMSG
 	depends on SEC_LOG
 	help
 	  This option enables /proc/last_kmsg support.
+
 config SEC_AVC_LOG
 	default n
 	bool "Enable avc audit log support" if EMBEDDED
@@ -1375,29 +1452,33 @@ config SEC_AVC_LOG
 	help
 	  This option enables additional log buffer for audit log.
 
-config KOR_B10_DEBUG
-	bool "KOR ASTOOL debug feature"
+config SEC_DEBUG_TSP_LOG
 	default n
+	bool "Enable tsp log support" if EMBEDDED
+	depends on SEC_DEBUG
 	help
-	  This option enables debugging log for B10 project.
-	  This option provides reset history log in user version.
-	  This option enable proc/reset_reason support
-	  It's only support KOR Model
+	  This option enables additional log buffer for tsp log.
 
-comment "PowerManagement Feature"
+config SEC_DEBUG_TIMA_LOG
+	default n
+	bool "Enable tima log support" if EMBEDDED
+	depends on SEC_DEBUG
+	help
+	  This option enables additional log buffer for tsp log.
+
+comment "Samsung TN Power Management Options"
 menuconfig SEC_PM
-	bool "Samsung TN PowerManagement Feature"
+	bool "Samsung TN Power Management"
 	default y
 	help
-	  Samsung TN PowerManagement Feature.
+	  Samsung TN Power Management.
 
 if SEC_PM
 config SEC_PM_DEBUG
-	bool "Samsung TN PowerManagement Debug Feature"
-	default n
+	bool "Enable Samsung TN Power management debug support"
+	default y
 	help
-	  Samsung TN PowerManagement Debug Feature.
-
+	  Enable Samsung TN Power management debug support.
 endif
 
 config SEC_THERMISTOR
@@ -1407,39 +1488,47 @@ config SEC_THERMISTOR
 	help
 	  AP thermistor driver.
 
-config USE_GPIO_AP_MCU_RXTXD
-	bool "enable GPIO about MCU TXD and RXD"
+config SEC_MODEM
+	bool "IMC modem support"
 	default n
-	help
-	  MCU TXD, RXD enable Feature.
 
-config USE_NFC_IRQ_REV01
-	bool "enable NFC IRQ GPIO GPX1(3) "
-	default n
-	help
-	  To support NFC IRQ GPIO as GPX1(3)
+if SEC_MODEM
+comment "IMC modem svnet feature"
 
-config CORESIGHT_ETM
-	bool "CoreSight ETM debug system"
-	help
-	  Enables the CoreSight ETM debug system.
-	  Enables the CoreSight ETM debug system.
-	  Enables the CoreSight ETM debug system.
-	  Enables the CoreSight ETM debug system.
+choice
+	prompt "SVNET2 version"
+	default SEC_MODEM_PRIMITIVE
 
-config CORESIGHT_ETM_DEFAULT_ENABLE
-	bool "Turn on ETM Tracing by Default"
-	depends on CORESIGHT_ETM
-	help
-	  Turns on ETM tracing by default. Otherwise, tracing is
-	  disabled by default but can be enabled by other means.
+config SEC_MODEM_PRIMITIVE
+	bool "the first SVENT2"
 
-config SEC_TSP_FACTORY
-	bool "TSP Firmware for factory mode is included"
-	default n
-	help
-	  With this configuration, TSP Firmware for factory mode is included.
+config SEC_MODEM_V2
+	bool "Modem IF ver. 2 for HSIC"
 
-config SAMSUNG_PRODUCT_SHIP
-	bool "set up for product shippling"
-	default n
+config SEC_MODEM_V1
+	bool "Modem IF ver. 1 for C2C"
+
+config SEC_MODEM_IF
+	bool "Modem IF"
+endchoice
+
+choice
+	prompt "SEC MODEM CONFIG"
+	depends on SEC_MODEM
+	default SEC_MODEM_M0_XMM6360
+
+config SEC_MODEM_M0_XMM6360
+	bool "XMM6360 feature"
+	select UMTS_MODEM_XMM6360
+	select LINK_DEVICE_HSIC
+	select EHCI_IRQ_DISTRIBUTION
+
+config SEC_MODEM_XMM6262
+	bool "M0 with xmm6262"
+	select UMTS_MODEM_XMM6262
+	select LINK_DEVICE_HSIC
+	select EHCI_IRQ_DISTRIBUTION
+
+endchoice
+
+endif

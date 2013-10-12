@@ -209,6 +209,12 @@ int adonisuniv_set_media_clocking(struct wm5102_machine_priv *priv)
 {
 	struct snd_soc_codec *codec = priv->codec;
 	int ret;
+	int fs;
+
+	if (priv->aif1rate >= 192000)
+		fs = 256;
+	else
+		fs = 512;
 
 	ret = snd_soc_codec_set_pll(codec, WM5102_FLL1_REFCLK,
 				    ARIZONA_FLL_SRC_NONE, 0, 0);
@@ -218,7 +224,7 @@ int adonisuniv_set_media_clocking(struct wm5102_machine_priv *priv)
 	}
 	ret = snd_soc_codec_set_pll(codec, WM5102_FLL1, ARIZONA_CLK_SRC_MCLK1,
 				    ADONISUNIV_DEFAULT_MCLK1,
-				    priv->aif1rate * 512);
+				    priv->aif1rate * fs);
 	if (ret != 0) {
 		dev_err(codec->dev, "Failed to start FLL1: %d\n", ret);
 		return ret;
@@ -227,7 +233,7 @@ int adonisuniv_set_media_clocking(struct wm5102_machine_priv *priv)
 	ret = snd_soc_codec_set_sysclk(codec,
 				       ARIZONA_CLK_SYSCLK,
 				       ARIZONA_CLK_SRC_FLL1,
-				       priv->aif1rate * 512,
+				       priv->aif1rate * fs,
 				       SND_SOC_CLOCK_IN);
 	if (ret < 0)
 		dev_err(codec->dev, "Failed to set SYSCLK to FLL1: %d\n", ret);
@@ -280,7 +286,8 @@ static void adonisuniv_gpio_init(void)
 static int adonisuniv_ext_mainmicbias(struct snd_soc_dapm_widget *w,
 			struct snd_kcontrol *kcontrol,  int event)
 {
-	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct snd_soc_card *card = w->dapm->card;
+	struct snd_soc_codec *codec = card->rtd[0].codec;
 
 #ifdef GPIO_MICBIAS_EN
 	switch (event) {
@@ -422,6 +429,8 @@ const struct snd_soc_dapm_route adonisuniv_dapm_routes[] = {
 
 	{ "SPK", NULL, "SPKOUTLN" },
 	{ "SPK", NULL, "SPKOUTLP" },
+	{ "SPK", NULL, "SPKOUTRN" },
+	{ "SPK", NULL, "SPKOUTRP" },
 
 	{ "VPS", NULL, "HPOUT2L" },
 	{ "VPS", NULL, "HPOUT2R" },
@@ -640,6 +649,8 @@ static int adonisuniv_late_probe(struct snd_soc_card *card)
 
 	codec_dai->driver->playback.channels_max =
 				cpu_dai->driver->playback.channels_max;
+	/* close codec device immediately when pcm is closed */
+	codec->ignore_pmdown_time = true;
 
 	snd_soc_dapm_ignore_suspend(&codec->dapm, "RCV");
 	snd_soc_dapm_ignore_suspend(&codec->dapm, "VPS");

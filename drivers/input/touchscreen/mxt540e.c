@@ -136,6 +136,7 @@ struct mxt540e_data {
 	u32 x_dropbits:2;
 	u32 y_dropbits:2;
 	u32 finger_mask;
+	u8 irqf_trigger_type;
 	u8 objects_len;
 	u8 tsp_version;
 	u8 tsp_build;
@@ -1161,6 +1162,14 @@ static void report_input_data(struct mxt540e_data *data)
 	}
 }
 
+static int mxt540e_irq_state(struct mxt540e_data *data)
+{
+	if (data->irqf_trigger_type == IRQF_TRIGGER_HIGH)
+		return gpio_get_value(data->gpio_read_done);
+	else
+		return !gpio_get_value(data->gpio_read_done);
+}
+
 static irqreturn_t mxt540e_irq_thread(int irq, void *ptr)
 {
 	struct mxt540e_data *data = ptr;
@@ -1287,7 +1296,7 @@ static irqreturn_t mxt540e_irq_thread(int irq, void *ptr)
 				continue;
 			}
 		}
-	} while (gpio_get_value(data->gpio_read_done));
+	} while (mxt540e_irq_state(data));
 
 	if (data->finger_mask)
 		report_input_data(data);
@@ -2632,6 +2641,7 @@ static int __devinit mxt540e_probe(struct i2c_client *client,
 		tsp_config = (u8 **) pdata->config_e;
 		data->t48_config_batt_e = pdata->t48_config_batt_e;
 		data->t48_config_chrg_e = pdata->t48_config_chrg_e;
+		data->irqf_trigger_type = pdata->irqf_trigger_type;
 		data->chrgtime_batt = pdata->chrgtime_batt;
 		data->chrgtime_charging = pdata->chrgtime_charging;
 		data->tchthr_batt = pdata->tchthr_batt;
@@ -2718,7 +2728,8 @@ static int __devinit mxt540e_probe(struct i2c_client *client,
 		data->fingers[i].state = MXT540E_STATE_INACTIVE;
 
 	ret = request_threaded_irq(client->irq, NULL, mxt540e_irq_thread,
-			IRQF_TRIGGER_HIGH | IRQF_ONESHOT, "mxt540e_ts", data);
+			data->irqf_trigger_type | IRQF_ONESHOT,
+			"mxt540e_ts", data);
 	if (ret < 0)
 		goto err_irq;
 

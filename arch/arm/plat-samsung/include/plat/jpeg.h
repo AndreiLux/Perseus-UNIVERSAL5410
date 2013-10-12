@@ -7,15 +7,30 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
 */
-#ifndef __ASM_PLAT_JPEG_H
-#define __ASM_PLAT_JPEG_H __FILE__
+#ifndef __PLAT_JPEG_H
+#define __PLAT_JPEG_H __FILE__
 
-int __init exynos4_jpeg_setup_clock(struct device *dev,
-					unsigned long clk_rate);
-int __init exynos5_jpeg_setup_clock(struct device *dev,
-					unsigned long clk_rate);
-int __init exynos5_jpeg_fimp_setup_clock(struct device *dev,
-	unsigned long clk_rate);
-int __init exynos5_jpeg_hx_setup_clock(struct device *dev,
-	unsigned long clk_rate);
-#endif /*__ASM_PLAT_JPEG_H */
+#include <linux/platform_device.h>
+
+enum jpeg_ip_version {
+	IP_VER_JPEG_4P,
+	IP_VER_JPEG_5G,
+	IP_VER_JPEG_5A,
+	IP_VER_JPEG_HX_5A,
+	IP_VER_JPEG_HX_5AR,
+};
+
+struct exynos_jpeg_platdata {
+	int ip_ver;
+	const char *gateclk;
+	const char *extra_gateclk;
+};
+
+static inline int exynos_jpeg_ip_version(struct device *dev)
+{
+	struct exynos_jpeg_platdata *pdata = dev_get_platdata(dev);
+
+	return pdata->ip_ver;
+}
+
+#endif /* __PLAT_JPEG_H */

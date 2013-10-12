@@ -29,19 +29,37 @@
 #include <mach/videonode-exynos5.h>
 #include <media/exynos_mc.h>
 
-#include <plat/bts.h>
-
 MODULE_AUTHOR("Tomasz Stanislawski, <t.stanislaws@samsung.com>");
 MODULE_DESCRIPTION("Samsung MIXER");
 MODULE_LICENSE("GPL");
 
-#if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
+#if	defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ) ||   \
+	defined(CONFIG_ARM_EXYNOS5420_BUS_DEVFREQ)
+#define CONFIG_TV_USE_BUS_DEVFREQ
+#endif
+
+#if defined(CONFIG_TV_USE_BUS_DEVFREQ)
 struct pm_qos_request exynos5_tv_mif_qos;
 static struct pm_qos_request exynos5_tv_int_qos;
 #endif
 
 /* --------- DRIVER PARAMETERS ---------- */
 
+const struct s5p_tv_hw_ver tv_hw_ver[] = {
+	{
+		.ver    = IP_VER_TV_5G_1,
+		.name   = "5G_1",
+	},{
+		.ver    = IP_VER_TV_5A_0,
+		.name   = "5A_0",
+	},{
+		.ver    = IP_VER_TV_5A_1,
+		.name   = "5A_1",
+	},{
+		.ver    = IP_VER_TV_5S_0,
+		.name   = "5S_0",
+	},
+};
 static struct mxr_output_conf mxr_output_conf[] = {
 	{
 		.output_name = "S5P HDMI connector",
@@ -107,6 +125,7 @@ static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 	struct sub_mxr_device *sub_mxr;
 	struct mxr_layer *layer;
 	struct media_pad *pad;
+	struct s5p_mxr_platdata *pdata = mdev->pdata;
 	struct v4l2_mbus_framefmt mbus_fmt;
 #if defined(CONFIG_CPU_EXYNOS4210)
 	struct mxr_resources *res = &mdev->res;
@@ -116,9 +135,9 @@ static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 	mutex_lock(&mdev->s_mutex);
 	++mdev->n_streamer;
 	mxr_dbg(mdev, "%s(%d)\n", __func__, mdev->n_streamer);
+
 	/* If pipeline is started from Gscaler input video device,
 	 * TV basic configuration must be set before running mixer */
-
 	if (mdev->mxr_data_from == FROM_GSC_SD) {
 		mxr_dbg(mdev, "%s: from gscaler\n", __func__);
 		local = 0;
@@ -154,11 +173,14 @@ static int mxr_streamer_get(struct mxr_device *mdev, struct v4l2_subdev *sd)
 	mxr_set_alpha_blend(mdev);
 	mxr_reg_set_color_range(mdev);
 	mxr_reg_set_layer_prio(mdev);
+	if (is_ip_ver_5s)
+		mxr_reg_set_resolution(mdev);
 
 	if ((mdev->n_streamer == 1 && local == 1) ||
 	    (mdev->n_streamer == 2 && local == 2)) {
-#if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
-		pm_qos_add_request(&exynos5_tv_mif_qos, PM_QOS_BUS_THROUGHPUT, 800000);
+#if defined(CONFIG_TV_USE_BUS_DEVFREQ)
+		if (is_ip_ver_5a)
+			pm_qos_add_request(&exynos5_tv_mif_qos, PM_QOS_BUS_THROUGHPUT, 800000);
 		pm_qos_add_request(&exynos5_tv_int_qos, PM_QOS_DEVICE_THROUGHPUT, 400000);
 #endif
 
@@ -371,10 +393,11 @@ static int mxr_streamer_put(struct mxr_device *mdev, struct v4l2_subdev *sd)
 		mdev->n_streamer);
 
 out:
-#if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
+#if defined(CONFIG_TV_USE_BUS_DEVFREQ)
 	if ((mdev->n_streamer == 0 && local == 1) ||
 	    (mdev->n_streamer == 1 && local == 2)) {
-		pm_qos_remove_request(&exynos5_tv_mif_qos);
+		if (is_ip_ver_5a)
+			pm_qos_remove_request(&exynos5_tv_mif_qos);
 		pm_qos_remove_request(&exynos5_tv_int_qos);
 	}
 #endif
@@ -512,7 +535,7 @@ static void mxr_release_clocks(struct mxr_device *mdev)
 	if (!IS_ERR_OR_NULL(res->sclk_dac))
 		clk_put(res->sclk_dac);
 #endif
-	if (is_ip_ver_5a_0 || is_ip_ver_5a_1)
+	if (is_ip_ver_5a || is_ip_ver_5s)
 		if (!IS_ERR_OR_NULL(res->axi_disp1))
 			clk_put(res->axi_disp1);
 	if (!IS_ERR_OR_NULL(res->mixer))
@@ -547,7 +570,7 @@ static int mxr_acquire_clocks(struct mxr_device *mdev)
 		goto fail;
 	}
 #endif
-	if (is_ip_ver_5a_0 || is_ip_ver_5a_1) {
+	if (is_ip_ver_5a || is_ip_ver_5s) {
 		res->axi_disp1 = clk_get(dev, "axi_disp1");
 		if (IS_ERR_OR_NULL(res->axi_disp1)) {
 			mxr_err(mdev, "failed to get clock 'axi_disp1'\n");
@@ -667,9 +690,38 @@ static int mxr_runtime_resume(struct device *dev)
 	struct s5p_mxr_platdata *pdata = mdev->pdata;
 
 	mxr_dbg(mdev, "resume - start\n");
+
+	if (is_ip_ver_5s) {
+		struct clk *aclk_200_disp1 = NULL;
+		struct clk *aclk_200_sw = NULL;
+		int ret;
+
+		aclk_200_disp1 = clk_get(NULL, "aclk_200_disp1");
+		if (IS_ERR(aclk_200_disp1)) {
+			pr_err("failed to get %s clock\n", "aclk_200_disp1");
+			return PTR_ERR(aclk_200_disp1);
+		}
+
+		aclk_200_sw = clk_get(NULL, "aclk_200_sw");
+		if (IS_ERR(aclk_200_sw)) {
+			clk_put(aclk_200_disp1);
+			pr_err("failed to get %s clock\n", "aclk_200_sw");
+			return PTR_ERR(aclk_200_sw);
+		}
+
+		ret = clk_set_parent(aclk_200_disp1, aclk_200_sw);
+		if (ret < 0) {
+			clk_put(aclk_200_disp1);
+			clk_put(aclk_200_sw);
+			pr_err("Unable to set parent %s of clock %s.\n",
+					"aclk_200_disp1", "aclk_200_sw");
+			return PTR_ERR(aclk_200_disp1);
+		}
+	}
+
 	mutex_lock(&mdev->mutex);
 	/* turn clocks on */
-	if (is_ip_ver_5a_0 || is_ip_ver_5a_1)
+	if (is_ip_ver_5a || is_ip_ver_5s)
 		clk_enable(res->axi_disp1);
 	clk_enable(res->mixer);
 #if defined(CONFIG_ARCH_EXYNOS4)
@@ -707,7 +759,7 @@ static int mxr_runtime_suspend(struct device *dev)
 	clk_disable(res->vp);
 #endif
 	clk_disable(res->mixer);
-	if (is_ip_ver_5a_0 || is_ip_ver_5a_1)
+	if (is_ip_ver_5a || is_ip_ver_5s)
 		clk_disable(res->axi_disp1);
 	mutex_unlock(&mdev->mutex);
 	mxr_dbg(mdev, "suspend - finished\n");
@@ -1200,7 +1252,7 @@ static int mxr_register_entity(struct mxr_device *mdev, int mxr_num)
 	/* init mixer sub-device */
 	v4l2_subdev_init(sd, &mxr_sd_ops);
 	sd->owner = THIS_MODULE;
-	sprintf(sd->name, "s5p-mixer%d", mxr_num);
+	snprintf(sd->name, sizeof(sd->name), "s5p-mixer%d", mxr_num);
 
 	/* mixer sub-device can be opened in user space */
 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
@@ -1314,7 +1366,7 @@ static int mxr_create_links_sub_mxr(struct mxr_device *mdev, int mxr_num,
 				&mdev->sub_mxr[mxr_num].sd.entity,
 				MXR_PAD_SINK_GSCALER, 0);
 			if (ret) {
-				sprintf(err, "%s --> %s",
+				snprintf(err, sizeof(err), "%s --> %s",
 					md->gsc_sd[i]->entity.name,
 					mdev->sub_mxr[mxr_num].sd.entity.name);
 				goto fail;
@@ -1327,7 +1379,7 @@ static int mxr_create_links_sub_mxr(struct mxr_device *mdev, int mxr_num,
 	ret = media_entity_create_link(&layer->vfd.entity, 0,
 		&mdev->sub_mxr[mxr_num].sd.entity, MXR_PAD_SINK_GRP0, flags);
 	if (ret) {
-		sprintf(err, "%s --> %s", layer->vfd.entity.name,
+		snprintf(err, sizeof(err), "%s --> %s", layer->vfd.entity.name,
 				mdev->sub_mxr[mxr_num].sd.entity.name);
 		goto fail;
 	}
@@ -1337,7 +1389,7 @@ static int mxr_create_links_sub_mxr(struct mxr_device *mdev, int mxr_num,
 	ret = media_entity_create_link(&layer->vfd.entity, 0,
 		&mdev->sub_mxr[mxr_num].sd.entity, MXR_PAD_SINK_GRP1, flags);
 	if (ret) {
-		sprintf(err, "%s --> %s", layer->vfd.entity.name,
+		snprintf(err, sizeof(err), "%s --> %s", layer->vfd.entity.name,
 				mdev->sub_mxr[mxr_num].sd.entity.name);
 		goto fail;
 	}
@@ -1356,7 +1408,7 @@ static int mxr_create_links_sub_mxr(struct mxr_device *mdev, int mxr_num,
 					j, &mdev->output[i]->sd->entity,
 					0, flags);
 			if (ret) {
-				sprintf(err, "%s --> %s",
+				snprintf(err, sizeof(err), "%s --> %s",
 					mdev->sub_mxr[mxr_num].sd.entity.name,
 					mdev->output[i]->sd->entity.name);
 				goto fail;
@@ -1412,8 +1464,7 @@ static int __devinit mxr_probe(struct platform_device *pdev)
 	int ret;
 
 	/* mdev does not exist yet so no mxr_dbg is used */
-	dev_info(dev, "probe start\n");
-	dev_info(dev, "mixer ip version = %d\n", pdata->ip_ver);
+	dev_info(dev, "probe start: tv ip version(%s)\n", tv_hw_ver[pdata->ip_ver].name);
 
 	mdev = kzalloc(sizeof *mdev, GFP_KERNEL);
 	if (!mdev) {
@@ -1433,7 +1484,8 @@ static int __devinit mxr_probe(struct platform_device *pdev)
 
 	/* use only sub mixer0 as default */
 	mdev->sub_mxr[MXR_SUB_MIXER0].use = 1;
-	mdev->sub_mxr[MXR_SUB_MIXER1].use = 1;
+	if (MXR_MAX_SUB_MIXERS == 2)
+		mdev->sub_mxr[MXR_SUB_MIXER1].use = 1;
 
 #if defined(CONFIG_VIDEOBUF2_CMA_PHYS)
 	mdev->vb2 = &mxr_vb2_cma;

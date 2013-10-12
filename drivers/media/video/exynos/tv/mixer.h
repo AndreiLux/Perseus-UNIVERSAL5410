@@ -66,11 +66,6 @@
 #define MXR_PAD_SOURCE_GRP1	5
 #define MXR_PADS_NUM		6
 
-/** IP version definitions */
-#define is_ip_ver_5g_1	(pdata->ip_ver == IP_VER_TV_5G_1)
-#define is_ip_ver_5a_0	(pdata->ip_ver == IP_VER_TV_5A_0)
-#define is_ip_ver_5a_1	(pdata->ip_ver == IP_VER_TV_5A_1)
-
 /* HDMI and HPD state definitions */
 #define HPD_LOW		0
 #define HPD_HIGH	1
@@ -553,6 +548,7 @@ void mxr_reg_sw_reset(struct mxr_device *mdev);
 void mxr_vsync_enable_update(struct mxr_device *mdev);
 void mxr_vsync_disable_update(struct mxr_device *mdev);
 void mxr_reg_reset(struct mxr_device *mdev);
+void mxr_reg_set_resolution(struct mxr_device *mdev);
 void mxr_reg_set_layer_prio(struct mxr_device *mdev);
 void mxr_reg_set_color_range(struct mxr_device *mdev);
 void mxr_reg_set_layer_blend(struct mxr_device *mdev, int sub_mxr, int num,

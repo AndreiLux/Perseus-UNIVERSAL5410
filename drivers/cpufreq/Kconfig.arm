@@ -74,7 +74,7 @@ endchoice
 choice
 	prompt "Inkernel Switcher operation mode"
 	depends on ARM_EXYNOS_IKS_CPUFREQ
-	default ARM_EXYNOS_IKS_CORE
+	default ARM_EXYNOS_IKS_CORECPUFREQ
 
 config ARM_EXYNOS_IKS_CORE
 	bool "Inkernel Switcher for Core Switching"
@@ -115,4 +115,10 @@ config ARM_EXYNOS5410_CPUFREQ
 	def_bool SOC_EXYNOS5410
 	help
 	  This adds the CPUFreq driver for Samsung EXYNOS5410
+	  SoC.
+
+config ARM_EXYNOS5420_CPUFREQ
+	def_bool SOC_EXYNOS5420
+	help
+	  This adds the CPUFreq driver for Samsung EXYNOS5420
 	  SoC.

@@ -103,9 +103,14 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 #define s5p_mfc_get_inst_no()		readl(dev->regs_base + \
 						S5P_FIMV_RISC2HOST_ARG1)
 #define s5p_mfc_get_mv_count()		0
+#define s5p_mfc_get_dis_count()		0
 #define s5p_mfc_get_mvc_num_views()	-1
 #define s5p_mfc_get_mvc_disp_view_id()	-1
 #define s5p_mfc_get_enc_dpb_count()	-1
+
+#define mfc_get_disp_first_addr()	-1
+#define mfc_get_dec_first_addr()	-1
+
 #define s5p_mfc_get_enc_strm_size()	readl(dev->regs_base + \
 						S5P_FIMV_ENC_SI_STRM_SIZE)
 #define s5p_mfc_get_enc_slice_type()	readl(dev->regs_base + \
@@ -147,6 +152,11 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 #define ENC_H264_PROFILE_MAX		2
 #define ENC_H264_LEVEL_MAX		40
 #define ENC_MPEG4_VOP_TIME_RES_MAX	((1 << 15) - 1)
+
+enum {
+	ENC_REF_2 = 2,
+	ENC_REF_4 = 4,
+};
 
 void s5p_mfc_try_run(struct s5p_mfc_dev *dev);
 

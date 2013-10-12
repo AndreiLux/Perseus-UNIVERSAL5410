@@ -39,16 +39,13 @@
 #include "fimc-is-err.h"
 #include "fimc-is-video.h"
 #include "fimc-is-metadata.h"
+#include "fimc-is-sec-define.h"
 
 const struct v4l2_file_operations fimc_is_isp_video_fops;
 const struct v4l2_ioctl_ops fimc_is_isp_video_ioctl_ops;
 const struct vb2_ops fimc_is_isp_qops;
 
-extern struct fimc_is_from_info		*sysfs_finfo;
-extern struct fimc_is_from_info		*sysfs_pinfo;
 extern bool is_dumped_fw_loading_needed;
-
-
 
 int fimc_is_isp_video_probe(void *data)
 {
@@ -104,6 +101,9 @@ static int fimc_is_isp_video_open(struct file *file)
 		core->clock.msk_state = 0;
 		core->clock.state_3a0 = 0;
 		core->clock.dvfs_level = DVFS_L0;
+#if defined(CONFIG_SOC_EXYNOS5420)
+		core->clock.dvfs_mif_level = DVFS_MIF_L2;
+#endif
 		core->clock.dvfs_skipcnt = 0;
 		core->clock.dvfs_state = 0;
 	}
@@ -132,9 +132,9 @@ p_err:
 static int fimc_is_isp_video_close(struct file *file)
 {
 	int ret = 0;
-	struct fimc_is_video *video;
-	struct fimc_is_video_ctx *vctx;
-	struct fimc_is_device_ischain *device;
+	struct fimc_is_video *video = NULL;
+	struct fimc_is_video_ctx *vctx = NULL;
+	struct fimc_is_device_ischain *device = NULL;
 
 	BUG_ON(!file);
 
@@ -467,31 +467,49 @@ static int fimc_is_isp_video_s_input(struct file *file, void *priv,
 	unsigned int input)
 {
 	int ret = 0;
-	u32 vindex, module;
-	bool reprocessing;
+	u32 dindex;
+	u32 flag;
+	u32 group_id;
+	u32 module, ssx_vindex, tax_vindex, rep_stream;
 	struct fimc_is_video_ctx *vctx = file->private_data;
 	struct fimc_is_core *core;
-	struct fimc_is_device_ischain *device;
+	struct fimc_is_device_ischain *device, *temp;
 	struct fimc_is_device_sensor *sensor;
 
 	BUG_ON(!vctx);
 
 	mdbgv_isp("%s(input : %08X)\n", vctx, __func__, input);
 
-	core = vctx->video->core;
-	device = vctx->device;
-	module = input & MODULE_MASK;
-	vindex = (input & SSX_VINDEX_MASK) >> SSX_VINDEX_SHIFT;
-	reprocessing = input & REPROCESSING_MASK;
-	input = input & ~SSX_VINDEX_MASK;
+	flag = 0;
+	temp = NULL;
+	device = NULL;
 	sensor = NULL;
+	module = input & MODULE_MASK;
+	ssx_vindex = (input & SSX_VINDEX_MASK) >> SSX_VINDEX_SHIFT;
+	tax_vindex = (input & TAX_VINDEX_MASK) >> TAX_VINDEX_SHIFT;
+	rep_stream = (input & REPROCESSING_MASK) >> REPROCESSING_SHIFT;
 
-	if (vindex == FIMC_IS_VIDEO_SS0_NUM) {
+	core = vctx->video->core;
+	if (!core) {
+		merr("core is NULL", vctx);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	device = vctx->device;
+	if (!device) {
+		merr("device is NULL", vctx);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	/* 1. checking sensor video node to connect */
+	if (ssx_vindex == FIMC_IS_VIDEO_SS0_NUM) {
 		sensor = &core->sensor[0];
-		pr_err("[ISP:V:%d] <-> [SEN:V:0]\n", vctx->instance);
-	} else if (vindex == FIMC_IS_VIDEO_SS1_NUM) {
+		pr_info("[ISP:V:%d] <-> [SEN:V:0]\n", vctx->instance);
+	} else if (ssx_vindex == FIMC_IS_VIDEO_SS1_NUM) {
 		sensor = &core->sensor[1];
-		pr_err("[ISP:V:%d] <-> [SEN:V:1]\n", vctx->instance);
+		pr_info("[ISP:V:%d] <-> [SEN:V:1]\n", vctx->instance);
 	} else {
 		sensor = NULL;
 		merr("sensor is not matched", vctx);
@@ -500,22 +518,74 @@ static int fimc_is_isp_video_s_input(struct file *file, void *priv,
 	}
 
 	if (!test_bit(FIMC_IS_SENSOR_OPEN, &sensor->state)) {
-		merr("sensor%d is not opened", vctx, vindex);
+		merr("sensor%d is not opened", vctx, ssx_vindex);
 		ret = -EINVAL;
 		goto p_err;
 	}
 
+	/* 2. checking 3ax group to connect */
+	if (tax_vindex == FIMC_IS_VIDEO_3A0_NUM) {
+		group_id = GROUP_ID_3A0;
+		pr_info("[ISP:V:%d] <-> [3A0:V:X]\n", device->instance);
+	} else if (tax_vindex == FIMC_IS_VIDEO_3A1_NUM) {
+		group_id = GROUP_ID_3A1;
+		pr_info("[ISP:V:%d] <-> [3A1:V:X]\n", device->instance);
+	} else {
+		group_id = GROUP_ID_INVALID;
+		merr("group%d is invalid", device, group_id);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	if (!test_bit(FIMC_IS_GROUP_OPEN, &device->group_3ax.state)) {
+		merr("group%d is not opened", vctx, group_id);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	/* 3. checking reprocessing stream */
+	if (rep_stream) {
+		for (dindex = 0; dindex < FIMC_IS_MAX_NODES; ++dindex) {
+			temp = &core->ischain[dindex];
+
+			if (temp == device)
+				continue;
+
+			if (!test_bit(FIMC_IS_ISCHAIN_OPEN, &temp->state))
+				continue;
+
+			if (temp->module == module) {
+				flag = REPROCESSING_FLAG | dindex;
+				break;
+			}
+
+#ifdef DEBUG
+			pr_info("device.module(%08X) != ischain[%d].module(%08X)\n", module,
+				dindex, temp->module);
+#endif
+		}
+
+		if (dindex >= FIMC_IS_MAX_NODES) {
+			merr("preview stream can NOT be found", vctx);
+			ret = -EINVAL;
+			goto p_err;
+		}
+
+		set_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state);
+	} else {
+		/* connect to sensor if it's not a reprocessing stream */
+		sensor->ischain = device;
+		flag = 0;
+	}
+
+	/* 4. init variable */
 	device->instance_sensor = sensor->instance;
 	device->sensor = sensor;
-	if (!reprocessing)
-		sensor->ischain = device;
 
-	ret = fimc_is_ischain_init(device, input,
-		sensor->enum_sensor[module].i2c_ch,
-		&sensor->enum_sensor[module].ext,
-		sensor->enum_sensor[module].setfile_name);
+	/* 5. init ischain */
+	ret = fimc_is_ischain_init(device, module, group_id, flag);
 	if (ret)
-		merr("fimc_is_device_init is fail", vctx);
+		merr("fimc_is_device_init(%d, %d, %d) is fail", vctx, module, group_id, rep_stream);
 
 p_err:
 	return ret;
@@ -589,6 +659,14 @@ static int fimc_is_isp_video_s_ctrl(struct file *file, void *priv,
 		}
 		dbg_isp("V4L2_CID_IS_DVFS_UNLOCK : %d I2C(%d)\n", ctrl->value, i2c_clk);
 		break;
+	case V4L2_CID_IS_SET_SETFILE:
+		if (test_bit(FIMC_IS_ISDEV_DSTART, &device->group_isp.leader.state)) {
+			err("Setting setfile is only avaiable before starting device!! (0x%08x)", ctrl->value);
+			ret = -EINVAL;
+		} else {
+			device->setfile = ctrl->value;
+		}
+		break;
 	default:
 		err("unsupported ioctl(%d)\n", ctrl->id);
 		ret = -EINVAL;
@@ -629,6 +707,7 @@ static int fimc_is_isp_video_g_ext_ctrl(struct file *file, void *priv,
 {
 	int ret = 0;
 	struct v4l2_ext_control *ctrl;
+	struct fimc_is_from_info *pinfo = NULL;
 
 	dbg_isp("%s\n", __func__);
 
@@ -637,9 +716,13 @@ static int fimc_is_isp_video_g_ext_ctrl(struct file *file, void *priv,
 
 	switch (ctrl->id) {
 	case V4L2_CID_CAM_SENSOR_FW_VER:
-		if((sysfs_pinfo != NULL)&&(sysfs_pinfo->header_ver != NULL))
-				strcpy(ctrl->string, sysfs_pinfo->header_ver);
-		break;	
+		fimc_is_sec_get_sysfs_pinfo(&pinfo);
+		if((pinfo != NULL) && (pinfo->header_ver != NULL)) {
+			strncpy(ctrl->string, pinfo->header_ver,
+						strlen(pinfo->header_ver));
+			ctrl->string[strlen(pinfo->header_ver)] = '\0';
+		}
+		break;
 
 	default:
 		err("unsupported ioctl(%d)\n", ctrl->id);

@@ -99,6 +99,7 @@ static int hdmiphy_s_power(struct v4l2_subdev *sd, int on)
 {
 	u8 recv_buffer[32];
 	u8 buffer[2];
+	int ret;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct device *dev = &client->dev;
 
@@ -119,7 +120,7 @@ static int hdmiphy_s_power(struct v4l2_subdev *sd, int on)
 
 	ret = i2c_master_send(client, buffer, 2);
 	if (ret != 2) {
-		dev_err(dev, "stream (%d) failed\n", enable);
+		dev_err(dev, "stream (%d) failed\n", on);
 		return -EIO;
 	}
 

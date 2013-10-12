@@ -1641,12 +1641,15 @@ static int pl330_submit_req(void *ch_id, struct pl330_req *r)
 		goto xfer_exit;
 	}
 
+
+	/* Use last settings, if not provided */
 	if (r->cfg) {
 		/* Prefer Secure Channel */
 		if (!_manager_ns(thrd))
 			r->cfg->nonsecure = 0;
 		else
 			r->cfg->nonsecure = 1;
+
 		ccr = _prepare_ccr(r->cfg);
 	} else {
 		/* Use last settings, if not provided */
@@ -2767,7 +2770,7 @@ static inline int get_burst_len(struct dma_pl330_desc *desc, size_t len)
 	burst_len >>= desc->rqcfg.brst_size;
 
 	/* src/dst_burst_len can't be more than 16 */
-	if (soc_is_exynos5410() && burst_len > 8)
+	if ((soc_is_exynos5410() || soc_is_exynos5420()) && burst_len > 8)
 		burst_len = 8;
 	else if (burst_len > 16)
 		burst_len = 16;
@@ -2939,7 +2942,7 @@ pl330_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
 		}
 
 		desc->rqcfg.brst_size = pch->burst_sz;
-		desc->rqcfg.brst_len = 1;
+		desc->rqcfg.brst_len = pch->burst_len;
 	}
 
 	/* Return the last desc in the chain */
@@ -3044,8 +3047,8 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 
 	pdmac->peripherals = kzalloc(num_chan * sizeof(*pch), GFP_KERNEL);
 	if (!pdmac->peripherals) {
-		dev_err(&adev->dev, "unable to allocate mem for channel\n");
 		ret = -ENOMEM;
+		dev_err(&adev->dev, "unable to allocate pdmac->peripherals\n");
 		goto probe_err4;
 	}
 

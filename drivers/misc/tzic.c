@@ -51,10 +51,11 @@ u32 exynos_smc1(u32 cmd, u32 arg1, u32 arg2, u32 arg3)
 
 int exynos_smc_read_oemflag(u32 ctrl_word, u32 *val)
 {
-	register u32 reg0 __asm__("r0");
-	register u32 reg1 __asm__("r1");
-	register u32 reg2 __asm__("r2");
-	register u32 reg3 __asm__("r3");
+	u32 arg = 0;
+	register u32 reg0 __asm__("r0") = arg;
+	register u32 reg1 __asm__("r1") = arg;
+	register u32 reg2 __asm__("r2") = arg;
+	register u32 reg3 __asm__("r3") = arg;
 	u32 idx = 0;
 
 	for (idx = 0; reg2 != ctrl_word; idx++) {
@@ -109,11 +110,7 @@ static long tzic_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 		exynos_smc1(SMC_CMD_STORE_BINFO, 0x00000001, 0, 0);
 	} else if (cmd == TZIC_IOCTL_GET_FUSE_REQ) {
 		LOG(KERN_INFO "get_fuse");
-#if defined(CONFIG_FELICA)
 		exynos_smc_read_oemflag(0x80010001, (u32 *) arg);
-#else
-		LOG(KERN_INFO "get_fuse not supported : CONFIG_FELICA");
-#endif
 	} else {
 		LOG(KERN_INFO "command error");
 	}

@@ -292,10 +292,9 @@ static int s3c_pm_enter(suspend_state_t state)
 
 	s3c_pm_arch_stop_clocks();
 
-#ifdef CONFIG_SEC_PM_DEBUG
-	printk(KERN_ALERT "PM: SLEEP\n");
+#ifdef CONFIG_SEC_PM
+	pr_info("PM: SLEEP\n");
 #endif
-
 	/* this will also act as our return point from when
 	 * we resume as it saves its own register state and restores it
 	 * during the resume.  */

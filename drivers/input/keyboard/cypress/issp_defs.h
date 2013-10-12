@@ -44,11 +44,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // The number of Flash blocks in each part is defined here. This is used in
 // main programming loop when programming and verifying the blocks.
-#ifdef CY8C20x45                      /**** CY8C20x45 (8k) Device ****/
-#define NUM_BANKS					1
-#define BLOCKS_PER_BANK			64
-#define SECURITY_BYTES_PER_BANK	16
-#endif
 
 #ifdef CY8CTMx30x		// **** CY8C20x66 Device ****
 #define NUM_BANKS                     1

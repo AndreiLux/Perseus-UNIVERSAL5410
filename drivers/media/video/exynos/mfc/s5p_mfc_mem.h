@@ -107,7 +107,7 @@ static inline dma_addr_t s5p_mfc_mem_plane_addr(
 
 static inline void *s5p_mfc_mem_alloc_priv(void *alloc_ctx, size_t size)
 {
-	return vb2_ion_private_alloc(alloc_ctx, size);
+	return vb2_ion_private_alloc(alloc_ctx, size, 0, 0);
 }
 
 static inline void s5p_mfc_mem_free_priv(void *cookie)

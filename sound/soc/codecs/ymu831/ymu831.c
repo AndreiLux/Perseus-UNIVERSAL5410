@@ -40,41 +40,41 @@
 #include <sound/soc-dapm.h>
 #include <sound/tlv.h>
 #include <sound/jack.h>
-
 #include <mach/exynos5-audio.h>
 
-#if defined(CONFIG_MACH_J_CHN_CTC) || defined(CONFIG_MACH_J_CHN_CU)
-#include "ymu831_cfg_ctc.h"
-#elif defined(CONFIG_UMTS_MODEM_SS222)
-#include "ymu831_cfg_pcm.h"
-#else
 #include "ymu831_cfg.h"
-#endif
-
 #include "ymu831_path_cfg.h"
 #include "ymu831.h"
 #include "ymu831_priv.h"
 #include "mcdefs.h"
 #include "mcresctrl.h"
+#include "mcmachdep.h"
 #if (BUS_SELECT == BUS_SEL_I2C)
 #include <linux/i2c.h>
 #elif (BUS_SELECT == BUS_SEL_SPI)
 #include <linux/spi/spi.h>
+#elif (BUS_SELECT == BUS_SEL_SLIM)
+#include <linux/slimbus/slimbus.h>
 #endif
 
-#define MC_ASOC_DRIVER_VERSION	"1.0.6"
+#define MC_ASOC_DRIVER_VERSION	"2.0.1"
 
 #define MC_ASOC_IMPCLASS_THRESHOLD	3
 
 #define MC_ASOC_RATE	(SNDRV_PCM_RATE_8000_192000)
 #define MC_ASOC_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE | \
 			 SNDRV_PCM_FMTBIT_S20_3LE | \
-			 SNDRV_PCM_FMTBIT_S24_3LE)
+			 SNDRV_PCM_FMTBIT_S24_LE | \
+			 SNDRV_PCM_FMTBIT_S24_3LE | \
+			 SNDRV_PCM_FMTBIT_S32_LE)
 
 #define MC_ASOC_HWDEP_ID	"ymu831"
 
+#if (BUS_SELECT == BUS_SEL_SLIM)
+#define get_port_id(id)	((id-1)/2)
+#else
 #define get_port_id(id)	(id-1)
-
+#endif
 #define	PORT_MUSIC	(0)
 #define	PORT_EXT	(1)
 #define	PORT_VOICE	(2)
@@ -143,6 +143,40 @@ static const struct mc_asoc_info_store	info_store_tbl[]	= {
 };
 #define MC_ASOC_N_INFO_STORE \
 	(sizeof(info_store_tbl) / sizeof(struct mc_asoc_info_store))
+
+static const char	* const firmware_name[]	= {
+	"",	/*	dummy	*/
+	"aec_config.dat",
+	"aec_control_path_off.dat",
+	"aec_control_path_resume.dat",
+	"aec_hp_dac0.dat",
+	"aec_line1_dac0.dat",
+	"aec_line2_dac1.dat",
+	"aec_rc_dac0.dat",
+	"aec_sp_dac1.dat",
+	"aec_adc.dat",
+	"aec_hf50_vbox_nb.dat",
+	"aec_hf50_vbox_wb.dat",
+	"aec_hf50_chsel.dat",
+	"aec_hf50_nb_type0_rc_2mic_2.dat",
+	"aec_hf50_nb_type0_sp_2mic_2.dat",
+	"aec_hf50_nb_type1_rc_2mic_2.dat",
+	"aec_hf50_nb_type1_sp_2mic_2.dat",
+	"aec_hf50_wb_type0_rc_2mic_2.dat",
+	"aec_hf50_wb_type0_sp_2mic_2.dat",
+	"aec_hf50_wb_type1_rc_2mic_2.dat",
+	"aec_hf50_wb_type1_sp_2mic_2.dat",
+	"aec_hf50_vt_nb_type0_rc_2mic_2.dat",
+	"aec_hf50_vt_nb_type0_sp_2mic_2.dat",
+	"aec_hf50_vt_nb_type1_rc_2mic_2.dat",
+	"aec_hf50_vt_nb_type1_sp_2mic_2.dat",
+	"aec_hf50_vt_wb_type0_rc_2mic_2.dat",
+	"aec_hf50_vt_wb_type0_sp_2mic_2.dat",
+	"aec_hf50_vt_wb_type1_rc_2mic_2.dat",
+	"aec_hf50_vt_wb_type1_sp_2mic_2.dat",
+	"aec_hf50_wb_svoice_2.dat",
+	"aec_hf50_wb_svoicecar_2.dat",
+};
 
 /* volmap for Digital Volumes */
 static const SINT16	volmap_digital[]	= {
@@ -512,7 +546,7 @@ static struct mc_asoc_vreg_info	vreg_map[MC_ASOC_N_VOL_REG]	= {
 	{(size_t)-1,	volmap_digital,	ADIF0IN_VOL_CHANNELS},
 };
 
-static const DECLARE_TLV_DB_SCALE(mc_asoc_tlv_digital, -9600, 1800, 1);
+static const DECLARE_TLV_DB_SCALE(mc_asoc_tlv_digital, -9600, 100, 1);
 static unsigned int	mc_asoc_tlv_ain[]	= {
 	TLV_DB_RANGE_HEAD(4),
 	0x00,	0x02,	TLV_DB_SCALE_ITEM(-9600, 0, 1),
@@ -560,7 +594,8 @@ static unsigned int	mc_asoc_tlv_sp_gain[]	= {
 static const char	* const audio_mode_play_param_text[] = {
 	"off", "audio", "incall", "audio+incall", "incommunication", "karaoke",
 	"incall2", "audio+incall2", "incommunication2",
-	"incall3", "audio+incall3", "incall4", "audio+incall4"
+	"incall3", "audio+incall3", "incall4", "audio+incall4",
+	"audiocp"
 };
 static const struct soc_enum	audio_mode_play_param_enum =
 	SOC_ENUM_SINGLE(MC_ASOC_AUDIO_MODE_PLAY, 0,
@@ -569,7 +604,7 @@ static const struct soc_enum	audio_mode_play_param_enum =
 
 static const char	* const audio_mode_cap_param_text[] = {
 	"off", "audio", "incall", "audio+incall", "incommunication", "audioex",
-	"audiovr"
+	"audiovr", "audiolb"
 };
 static const struct soc_enum	audio_mode_cap_param_enum =
 	SOC_ENUM_SINGLE(MC_ASOC_AUDIO_MODE_CAP, 0,
@@ -1316,7 +1351,18 @@ static const struct snd_kcontrol_new	mc_asoc_snd_controls[]	= {
 	SOC_ENUM("ADIF0 Source", adif_src[0]),
 	SOC_ENUM("ADIF1 Source", adif_src[1]),
 	SOC_ENUM("ADIF2 Source", adif_src[2]),
+
+	SOC_SINGLE("Dsp Parameter", MC_ASOC_DSP_PARAM, 0,
+					ARRAY_SIZE(firmware_name)-1, 0),
+	SOC_SINGLE("Dsp Parameter Option", MC_ASOC_DSP_PARAM_OPT, 0,
+					YMC_DSP_VOICECALL_BASE_COMMON, 0),
 	SOC_ENUM("Clear Dsp Parameter", clear_dsp_prm_param_enum),
+
+	SOC_SINGLE("Playback Scenario", MC_ASOC_PLAYBACK_SCENARIO, 0,
+					500, 0),
+	SOC_SINGLE("Capture Scenario", MC_ASOC_CAPTURE_SCENARIO, 0,
+					500, 0),
+
 	SOC_ENUM("Parameter Setting", parameter_setting_param_enum)
 	, SOC_ENUM("Main Mic", main_mic_param_enum)
 	, SOC_ENUM("Sub Mic", sub_mic_param_enum)
@@ -1337,6 +1383,39 @@ static struct i2c_client	*mc_asoc_i2c_a;
 #elif (BUS_SELECT == BUS_SEL_SPI)
 static struct spi_device	*mc_asoc_spi;
 #elif (BUS_SELECT == BUS_SEL_SLIM)
+#define DELAY_CONNECT_XXX
+#define MAX_PORTS		(6)
+
+static int	hold_ldod;
+static struct slim_device	*mc_asoc_slim;
+struct slim_sch_rx {
+	u32	sph;
+	u32	ch_num;
+	u16	ch_h;
+	u16	grph;
+};
+
+struct slim_sch_tx {
+	u32	sph;
+	u32	ch_num;
+	u16	ch_h;
+	u16	grph;
+};
+
+struct slim_sch {
+	struct slim_sch_rx	rx[MAX_PORTS];
+	struct slim_sch_tx	tx[MAX_PORTS];
+};
+static struct slim_sch	sh_ch;
+
+static const u16	slim_port_tx[MAX_PORTS]	= {0, 1, 4, 5, 8, 9};
+static const u16	slim_port_rx[MAX_PORTS]	= {2, 3, 6, 7, 10, 11};
+
+static int	set_I2Smode(u8 port);
+static int	cfg_slim_sch_rx(u8 port_num, u8 ch_cnt, u32 rate);
+static int	cfg_slim_sch_tx(u8 port_num, u8 ch_cnt, u32 rate);
+static int	close_slim_sch_rx(u8 port_num, u8 ch_cnt);
+static int	close_slim_sch_tx(u8 port_num, u8 ch_cnt);
 #endif
 
 static UINT8	mc_asoc_ver_id		= 1;
@@ -1344,6 +1423,7 @@ static UINT8	mc_asoc_hold		= YMC_NOTITY_HOLD_OFF;
 static UINT8	mc_asoc_suspended;
 static UINT8	mc_asoc_hpimpclass	= (UINT8)-1;
 static UINT8	mc_asoc_jack_status;
+static UINT8	mc_asoc_irq_func;
 
 static struct MCDRV_VOL_INFO	mc_asoc_vol_info_mute;
 
@@ -1361,17 +1441,51 @@ static UINT8	mc_asoc_audio_cap_port	= DIO_MUSIC;
 static UINT8	mc_asoc_voice_port	= DIO_EXT;
 static UINT8	mc_asoc_port_rate	= MCDRV_FS_48000;
 
+static struct mutex	mc_asoc_mutex;
+static struct mutex	hsdet_mutex;
 
-static struct mutex connect_path_mutex;
-static struct mutex hsdet_mutex;
-
-
+static struct mc_asoc_data *mc_asoc_get_mc_asoc(
+			const struct snd_soc_codec *codec);
+static int	map_drv_error(int err);
 static int	set_bias_level(struct snd_soc_codec *codec,
 				enum snd_soc_bias_level level);
-
 /*
  * Function
  */
+UINT8 mc_asoc_get_bus_select(void)
+{
+	return BUS_SELECT;
+}
+
+void mc_asoc_set_enable_clock_func(
+	int (*pcbfunc)(struct snd_soc_codec *, int, bool))
+{
+	struct mc_asoc_data	*mc_asoc	= NULL;
+
+	mc_asoc	= mc_asoc_get_mc_asoc(mc_asoc_codec);
+	mc_asoc->penableclkfn	= pcbfunc;
+}
+
+void mc_asoc_enable_clock(int enable)
+{
+#ifdef FEATURE_MCLK_CONTROL_BY_YMU831
+	if (enable)
+		exynos5_audio_set_mclk(1, 0);
+	else
+		exynos5_audio_set_mclk(0, 1);
+#endif
+}
+
+static void mc_asoc_lock(char *fn)
+{
+	mutex_lock(&mc_asoc_mutex);
+}
+
+static void mc_asoc_unlock(char *fn)
+{
+	mutex_unlock(&mc_asoc_mutex);
+}
+
 static struct mc_asoc_data *mc_asoc_get_mc_asoc(
 	const struct snd_soc_codec *codec)
 {
@@ -1427,6 +1541,64 @@ static int write_cache(
 	unsigned int value)
 {
 	return snd_soc_cache_write(codec, reg, value);
+}
+
+#define	DSP_MEM_STATIC
+#ifdef DSP_MEM_STATIC
+#define	DSP_MEM_SIZE	(200000)
+static int	dsp_mem_pt;
+static UINT8	dsp_mem[DSP_MEM_SIZE];
+#else
+#include "linux/vmalloc.h"
+#endif
+
+static UINT8 *get_dsp_mem(int size)
+{
+#ifdef DSP_MEM_STATIC
+	UINT8	*p	= NULL;
+	if ((dsp_mem_pt+size) < DSP_MEM_SIZE) {
+		p	= dsp_mem + dsp_mem_pt;
+		dsp_mem_pt	+= size;
+		dbg_info("dsp_mem_pt:%d\n", dsp_mem_pt);
+	} else {
+		pr_info("mem alloc failed!\n");
+	}
+	return p;
+#else
+	return vmalloc(size);
+#endif
+}
+
+#include <linux/firmware.h>
+static int load_file(const char *fn, char **fp)
+{
+	int	ret;
+	struct device	*dev	= mc_asoc_codec->dev;
+	const struct firmware	*fw;
+	char	filename[512];
+
+	TRACE_FUNC();
+
+	strcpy(filename, MC_ASOC_HWDEP_ID);
+	strcat(filename, "/");
+	strcat(filename, fn);
+	ret	= request_firmware(&fw, filename, dev);
+	if (ret != 0) {
+		pr_err("request_firmware failed(errno %d) for %s", ret, fn);
+		return ret;
+	}
+
+	*fp	= get_dsp_mem(fw->size);
+	if (*fp == NULL) {
+		printk(KERN_INFO "Out of memory loading '%s'.\n", fn);
+		release_firmware(fw);
+		return -EIO;
+	}
+	memcpy(*fp, fw->data, fw->size);
+	ret	= fw->size;
+
+	release_firmware(fw);
+	return ret;
 }
 
 static int get_mic_block_on(UINT8 mic)
@@ -1621,7 +1793,22 @@ static int get_path_preset_idx(
 )
 {
 	if ((mixer_ctl_info->audio_mode_play == MC_ASOC_AUDIO_MODE_INCOMM)
-	&& (mixer_ctl_info->audio_mode_cap == MC_ASOC_AUDIO_MODE_INCOMM)) {
+	&& ((mixer_ctl_info->audio_mode_cap == MC_ASOC_AUDIO_MODE_INCOMM) ||
+	    (mixer_ctl_info->audio_mode_cap == MC_ASOC_AUDIO_MODE_OFF))) {
+		if (mixer_ctl_info->output_path == MC_ASOC_OUTPUT_PATH_BT)
+			return 25;
+		else if ((mixer_ctl_info->output_path
+			== MC_ASOC_OUTPUT_PATH_SP_BT)
+		|| (mixer_ctl_info->output_path == MC_ASOC_OUTPUT_PATH_LO1_BT)
+		|| (mixer_ctl_info->output_path == MC_ASOC_OUTPUT_PATH_LO2_BT)
+		)
+			return 26;
+		else
+			return 24;
+	}
+	if ((mixer_ctl_info->audio_mode_cap == MC_ASOC_AUDIO_MODE_INCOMM)
+	&& ((mixer_ctl_info->audio_mode_play == MC_ASOC_AUDIO_MODE_INCOMM) ||
+	    (mixer_ctl_info->audio_mode_play == MC_ASOC_AUDIO_MODE_OFF))) {
 		if (mixer_ctl_info->output_path == MC_ASOC_OUTPUT_PATH_BT)
 			return 25;
 		else if ((mixer_ctl_info->output_path
@@ -1635,7 +1822,8 @@ static int get_path_preset_idx(
 	}
 
 	if ((mixer_ctl_info->audio_mode_play == MC_ASOC_AUDIO_MODE_INCOMM2)
-	&& (mixer_ctl_info->audio_mode_cap == MC_ASOC_AUDIO_MODE_INCOMM)) {
+	&& ((mixer_ctl_info->audio_mode_cap == MC_ASOC_AUDIO_MODE_INCOMM) ||
+	    (mixer_ctl_info->audio_mode_cap == MC_ASOC_AUDIO_MODE_OFF))) {
 		if (mixer_ctl_info->output_path == MC_ASOC_OUTPUT_PATH_BT)
 			return 63;
 		else if ((mixer_ctl_info->output_path
@@ -2260,6 +2448,32 @@ static int get_path_preset_idx(
 				return 48;
 		}
 	}
+	if ((mixer_ctl_info->audio_mode_play == MC_ASOC_AUDIO_MODE_AUDIO)
+	&& (mixer_ctl_info->audio_mode_cap == MC_ASOC_AUDIO_MODE_AUDIOLB)) {
+		if ((mc_asoc_port_rate == MCDRV_FS_96000)
+		|| (mc_asoc_port_rate == MCDRV_FS_192000)) {
+			;
+			return -1;
+		}
+		if (mixer_ctl_info->output_path == MC_ASOC_OUTPUT_PATH_BT) {
+			return 90;
+		} else if ((mixer_ctl_info->output_path
+			== MC_ASOC_OUTPUT_PATH_SP_BT)
+		|| (mixer_ctl_info->output_path == MC_ASOC_OUTPUT_PATH_LO1_BT)
+		|| (mixer_ctl_info->output_path == MC_ASOC_OUTPUT_PATH_LO2_BT)
+		) {
+			return 91;
+		} else {
+			return 89;
+		}
+	}
+
+	if ((mixer_ctl_info->audio_mode_play == MC_ASOC_AUDIO_MODE_AUDIOCP)
+	&& (mixer_ctl_info->audio_mode_cap == MC_ASOC_AUDIO_MODE_OFF)) {
+		;
+		return 92;
+	}
+
 	return 0;
 }
 
@@ -2381,7 +2595,7 @@ static int get_master_vol(
 			sum	= vreg_map[reg].volmap[0];
 		*db	= sum;
 	}
-dbg_info("db=%d\n", *db);
+	/*dbg_info("db=%d\n", *db);*/
 	return 0;
 }
 
@@ -2799,12 +3013,13 @@ static int set_vol_info(
 
 			if (is_incall(preset_idx) != 0) {
 				if (reg == MC_ASOC_DVOL_VOICEOUT) {
-					if ((mc_asoc_voice_port == DIO_VOICE)
-					|| (mc_asoc_voice_port == DIO_EXT))
-						if (sw != 0)
-							sw	=
-							read_cache(codec,
+					if (((mc_asoc_voice_port == DIO_VOICE)
+					  || (mc_asoc_voice_port == DIO_EXT))
+					&& (sw != 0)) {
+						;
+						sw	= read_cache(codec,
 						      MC_ASOC_VOICE_RECORDING);
+					}
 				} else if (reg == MC_ASOC_DVOL_DAC0OUT) {
 					if ((mc_asoc_voice_port == LIN1_LOUT1)
 					&& (sw != 0))
@@ -2874,12 +3089,13 @@ static int set_vol_info(
 						return -EIO;
 			} else if (reg == MC_ASOC_AVOL_LINEIN1) {
 				if (is_incall(preset_idx) != 0) {
-					if ((mc_asoc_voice_port == LIN1_LOUT1)
-					|| (mc_asoc_voice_port == LIN1_LOUT2))
-						if (get_voice_vol(
-							codec, &db, reg, i)
-							!= 0)
-							return -EIO;
+					if (((mc_asoc_voice_port == LIN1_LOUT1)
+					  || (mc_asoc_voice_port == LIN1_LOUT2))
+					&& (get_voice_vol(codec, &db, reg, i)
+							!= 0)) {
+						;
+						return -EIO;
+					}
 				} else {
 					if (get_aplay_vol(
 						codec, &db, reg, i,
@@ -2941,7 +3157,7 @@ static int set_volume(
 	int	err;
 	int	reg;
 
-	TRACE_FUNC();
+	/*TRACE_FUNC();*/
 
 	if (codec == NULL)
 		return -EIO;
@@ -3274,28 +3490,27 @@ static void mask_ADC_src(
 				if ((mixer_ctl_info->incall_mic
 					!= MC_ASOC_INCALL_MIC_MAINMIC)
 				&& (mixer_ctl_info->incall_mic
-					!= MC_ASOC_INCALL_MIC_2MIC)) {
-					if (main_mic_block_on != -1)
-						for (bCh = 0;
-						bCh < ADC0_PATH_CHANNELS;
+					!= MC_ASOC_INCALL_MIC_2MIC)
+				&& (main_mic_block_on != -1)) {
+					for (bCh = 0; bCh < ADC0_PATH_CHANNELS;
 						bCh++) {
-							;
+						;
 					    path_info->asAdc0[bCh].dSrcOnOff
 							&= ~main_mic_block_on;
-						}
+					}
 				}
 				if ((mixer_ctl_info->incall_mic
 					!= MC_ASOC_INCALL_MIC_SUBMIC)
 				&& (mixer_ctl_info->incall_mic
-					!= MC_ASOC_INCALL_MIC_2MIC)) {
-					if (sub_mic_block_on != -1)
-						for (bCh = 0;
+					!= MC_ASOC_INCALL_MIC_2MIC)
+				&& (sub_mic_block_on != -1)) {
+					for (bCh = 0;
 						bCh < ADC0_PATH_CHANNELS;
 						bCh++) {
 							;
 					    path_info->asAdc0[bCh].dSrcOnOff
 							&= ~sub_mic_block_on;
-						}
+					}
 				}
 				if (mixer_ctl_info->incall_mic
 					== MC_ASOC_INCALL_MIC_2MIC) {
@@ -3380,7 +3595,7 @@ static void mask_DacRef(
 {
 	UINT8	bCh;
 
-	TRACE_FUNC();
+	/*TRACE_FUNC();*/
 
 	switch (output_path) {
 	case	MC_ASOC_OUTPUT_PATH_SP:
@@ -3531,7 +3746,7 @@ static void exchange_ADCtoPDM(
 	UINT32	dAdcOff	= MCDRV_D2SRC_ADC0_L_OFF
 			 |MCDRV_D2SRC_ADC0_R_OFF;
 
-	TRACE_FUNC();
+	/*TRACE_FUNC();*/
 
 	if (dPdmLOn != 0) {
 		path_info->asAdif1[0].dSrcOnOff	&= ~dAdcOn;
@@ -3554,7 +3769,7 @@ static void exchange_ADC1toPDM(
 	UINT32	dAdcOn	= MCDRV_D2SRC_ADC1_ON;
 	UINT32	dAdcOff	= MCDRV_D2SRC_ADC1_OFF;
 
-	TRACE_FUNC();
+	/*TRACE_FUNC();*/
 
 	if (dPdmLOn != 0) {
 		path_info->asAdif0[0].dSrcOnOff	&= ~dAdcOn;
@@ -3683,13 +3898,10 @@ static void set_BIAS(
 		MCDRV_ASRC_MIC3_ON,
 		MCDRV_ASRC_MIC4_ON};
 	UINT8	bCh;
-	struct MCDRV_REG_INFO	reg_info;
-
-#if (BUS_SELECT == BUS_SEL_SPI)
-	struct mc_asoc_platform_data	*platform_data	= NULL;
-#endif
+	struct mc_asoc_data	*mc_asoc	= NULL;
 	int	err;
 	struct MCDRV_HSDET_INFO	stHSDetInfo;
+	struct MCDRV_REG_INFO	reg_info;
 
 	for (i = 0; i < BIAS_PATH_CHANNELS; i++) {
 		switch (mic_bias[i]) {
@@ -3723,53 +3935,66 @@ static void set_BIAS(
 		}
 	}
 
-		if (mc_asoc_jack_status == SND_JACK_HEADPHONE) {
-			err	= _McDrv_Ctrl(MCDRV_GET_HSDET,
-						(void *)&stHSDetInfo, NULL, 0);
-			if ((err == MCDRV_SUCCESS)
-			&& (stHSDetInfo.bEnMicDet == MCDRV_MICDET_ENABLE)) {
-				;
-				path_info->asBias[3].dSrcOnOff	|=
-							MCDRV_ASRC_MIC4_ON;
-			}
-		} else if (mc_asoc_jack_status == SND_JACK_HEADSET) {
+	if (mc_asoc_jack_status == SND_JACK_HEADPHONE) {
+		err	= _McDrv_Ctrl(MCDRV_GET_HSDET,
+					(void *)&stHSDetInfo, NULL, 0);
+		if ((err == MCDRV_SUCCESS)
+		&& (stHSDetInfo.bEnMicDet == MCDRV_MICDET_ENABLE)) {
 			;
-			path_info->asBias[3].dSrcOnOff	|= MCDRV_ASRC_MIC4_ON;
+			path_info->asBias[3].dSrcOnOff	|=
+						MCDRV_ASRC_MIC4_ON;
 		}
+	} else if (mc_asoc_jack_status == SND_JACK_HEADSET) {
+		;
+		path_info->asBias[3].dSrcOnOff	|= MCDRV_ASRC_MIC4_ON;
+	}
 
 	if (((path_info->asHp[0].dSrcOnOff & MCDRV_ASRC_DAC0_L_ON) != 0)
-	|| ((path_info->asHp[1].dSrcOnOff & MCDRV_ASRC_DAC0_R_ON) != 0)) {
+	|| ((path_info->asHp[1].dSrcOnOff & MCDRV_ASRC_DAC0_R_ON) != 0)
+	|| ((path_info->asAdc0[0].dSrcOnOff & MCDRV_ASRC_MIC4_ON) != 0)
+	|| ((path_info->asAdc0[1].dSrcOnOff & MCDRV_ASRC_MIC4_ON) != 0)
+	|| ((path_info->asAdc1[0].dSrcOnOff & MCDRV_ASRC_MIC4_ON) != 0)) {
 		reg_info.bRegType = MCDRV_REGTYPE_ANA;
 		reg_info.bAddress = 13;
-		_McDrv_Ctrl(MCDRV_READ_REG, (void *)&reg_info, NULL, 0);
-		reg_info.bData &= 0x3F;
-		reg_info.bData |= 0x80;
-		_McDrv_Ctrl(MCDRV_WRITE_REG, (void *)&reg_info, NULL, 0);
+		err	= _McDrv_Ctrl(MCDRV_READ_REG, (void *)&reg_info, NULL,
+					0);
+		if (err == MCDRV_SUCCESS) {
+			reg_info.bData &= 0x3F;
+			reg_info.bData |= 0x80;
+			err	= _McDrv_Ctrl(MCDRV_WRITE_REG,
+						(void *)&reg_info, NULL, 0);
+		}
 	} else {
 		reg_info.bRegType = MCDRV_REGTYPE_ANA;
 		reg_info.bAddress = 13;
-		_McDrv_Ctrl(MCDRV_READ_REG, (void *)&reg_info, NULL, 0);
-		reg_info.bData &= 0x3F;
-		reg_info.bData	|= mc_asoc_MBSEL4;
-		_McDrv_Ctrl(MCDRV_WRITE_REG, (void *)&reg_info, NULL, 0);
+		err	= _McDrv_Ctrl(MCDRV_READ_REG, (void *)&reg_info, NULL,
+					0);
+		if (err == MCDRV_SUCCESS) {
+			reg_info.bData &= 0x3F;
+			reg_info.bData	|= mc_asoc_MBSEL4;
+			err	= _McDrv_Ctrl(MCDRV_WRITE_REG,
+						(void *)&reg_info, NULL, 0);
+		}
+	}
+	if (err != MCDRV_SUCCESS) {
+		;
+		dbg_info("%d: Error in set_BIAS\n", err);
 	}
 
-#if (BUS_SELECT == BUS_SEL_SPI)
-	if (mc_asoc_spi->dev.platform_data != NULL) {
-		platform_data	= mc_asoc_spi->dev.platform_data;
-		if (platform_data->set_ext_micbias != NULL) {
+	mc_asoc	= mc_asoc_get_mc_asoc(mc_asoc_codec);
+	if (mc_asoc->pdata != NULL) {
+		if (mc_asoc->pdata->set_ext_micbias != NULL) {
 			if ((path_info->asAdc0[0].dSrcOnOff&MCDRV_ASRC_MIC1_ON)
 			|| (path_info->asAdc0[1].dSrcOnOff&MCDRV_ASRC_MIC1_ON)
 			|| (path_info->asAdc1[0].dSrcOnOff&MCDRV_ASRC_MIC1_ON)
 			) {
 				;
-				(*platform_data->set_ext_micbias)(1);
+				(*mc_asoc->pdata->set_ext_micbias)(1);
 			} else {
-				(*platform_data->set_ext_micbias)(0);
+				(*mc_asoc->pdata->set_ext_micbias)(0);
 			}
 		}
 	}
-#endif
 }
 
 static void get_path_info(
@@ -4075,7 +4300,11 @@ static void get_path_info(
 	if ((preset_idx == 1)
 	|| (preset_idx == 2)
 	|| (preset_idx == 3)
-	|| (preset_idx == 27)) {
+	|| (preset_idx == 27)
+	|| (preset_idx == 89)
+	|| (preset_idx == 90)
+	|| (preset_idx == 91)
+	|| (preset_idx == 92)) {
 		if (ain_play == 1)
 			set_ain_play_path(path_info, mixer_ctl_info,
 				preset_idx, 1);
@@ -4452,6 +4681,37 @@ static void set_adif_src(
 	}
 }
 
+#if (BUS_SELECT == BUS_SEL_SLIM)
+static bool is_d1src_used(
+	struct MCDRV_PATH_INFO	*path_info,
+	UINT32	dSrc
+)
+{
+	if (((path_info->asMusicOut[0].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asMusicOut[1].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asExtOut[0].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asExtOut[1].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asVboxMixIn[0].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asVboxMixIn[1].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asAe0[0].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asAe0[1].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asAe1[0].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asAe1[1].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asAe2[0].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asAe2[1].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asAe3[0].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asAe3[1].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asDac0[0].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asDac0[1].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asDac1[0].dSrcOnOff&dSrc) != 0)
+	|| ((path_info->asDac1[1].dSrcOnOff&dSrc) != 0)) {
+		;
+		return true;
+	}
+	return false;
+}
+#endif
+
 static int connect_path(
 	struct snd_soc_codec *codec
 )
@@ -4461,24 +4721,32 @@ static int connect_path(
 	struct MCDRV_PATH_INFO	path_info;
 	int	preset_idx	= 0;
 	int	cache;
-
+#if (BUS_SELECT == BUS_SEL_SLIM)
+	struct MCDRV_DIO_INFO	sDioInfo;
+	struct MCDRV_DIOPATH_INFO	sDioPathInfo;
+	int	port;
+	UINT8	tx_used[3]	= {0xFE, 0xFE, 0xFE},
+		rx_used[3]	= {0xFE, 0xFE, 0xFE};
+  #ifdef DELAY_CONNECT_XXX
+  #else
+	int	rate[]	= {48000, 44100, 32000, -1, 24000, 22050, 16000, -1,
+				12000, 11025, 8000, -1, 192000, 96000};
+  #endif
+#endif
 	TRACE_FUNC();
 
-
-
-	mutex_lock(&connect_path_mutex);
-
-	if (get_mixer_path_ctl_info(codec, &mixer_ctl_info) < 0) {
-		err	= -EIO;
-		goto exit;
+	if (mc_asoc_hold == YMC_NOTITY_HOLD_ON) {
+		dbg_info("hold=on\n");
+		return 0;
 	}
+
+	if (get_mixer_path_ctl_info(codec, &mixer_ctl_info) < 0)
+		return -EIO;
 
 	preset_idx	= get_path_preset_idx(&mixer_ctl_info);
 	dbg_info("preset_idx=%d\n", preset_idx);
-	if ((preset_idx < 0) || (preset_idx > PRESET_PATH_N)) {
-		err	= -EIO;
-		goto exit;
-	}
+	if ((preset_idx < 0) || (preset_idx > PRESET_PATH_N))
+		return -EIO;
 
 	memcpy(&path_info,
 		&stPresetPathInfo[0],
@@ -4486,11 +4754,137 @@ static int connect_path(
 	get_path_info(&path_info, &mixer_ctl_info, preset_idx);
 	set_BIAS(&path_info);
 
-	cache	= read_cache(codec, MC_ASOC_ADIF0_SOURCE);
-	if (cache < 0) {
-		err	= -EIO;
-		goto exit;
+#if (BUS_SELECT == BUS_SEL_SLIM)
+	_McDrv_Ctrl(MCDRV_GET_DIGITALIO, &sDioInfo, NULL, 0);
+	_McDrv_Ctrl(MCDRV_GET_DIGITALIO_PATH, &sDioPathInfo, NULL, 0);
+
+	port	= sDioPathInfo.abPhysPort[0];
+	if (port >= MCDRV_PHYSPORT_SLIM0) {
+		if ((path_info.asMusicOut[0].dSrcOnOff != 0x00AAAAAA)
+		|| (path_info.asMusicOut[1].dSrcOnOff != 0x00AAAAAA)) {
+			err	= set_I2Smode((port - MCDRV_PHYSPORT_SLIM0)*2);
+			if (err < 0) {
+				pr_err("set_I2Smode failed\n");
+				return err;
+			}
+#ifdef DELAY_CONNECT_XXX
+#else
+			cfg_slim_sch_tx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[0].sDioCommon.bFs]);
+#endif
+		}
+		if (is_d1src_used(&path_info, MCDRV_D1SRC_MUSICIN_ON)) {
+			err	= set_I2Smode(
+					(port - MCDRV_PHYSPORT_SLIM0)*2+1);
+			if (err < 0) {
+				pr_err("set_I2Smode failed\n");
+				return err;
+			}
+#ifdef DELAY_CONNECT_XXX
+#else
+			cfg_slim_sch_rx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[0].sDioCommon.bFs]);
+#endif
+		}
 	}
+
+	port	= sDioPathInfo.abPhysPort[1];
+	if (port >= MCDRV_PHYSPORT_SLIM0) {
+		if ((path_info.asExtOut[0].dSrcOnOff != 0x00AAAAAA)
+		|| (path_info.asExtOut[1].dSrcOnOff != 0x00AAAAAA)) {
+			err	= set_I2Smode((port - MCDRV_PHYSPORT_SLIM0)*2);
+			if (err < 0) {
+				pr_err("set_I2Smode failed\n");
+				return err;
+			}
+#ifdef DELAY_CONNECT_XXX
+#else
+			cfg_slim_sch_tx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[1].sDioCommon.bFs]);
+#endif
+		}
+		if (is_d1src_used(&path_info, MCDRV_D1SRC_EXTIN_ON)) {
+			err	= set_I2Smode(
+					(port - MCDRV_PHYSPORT_SLIM0)*2+1);
+			if (err < 0) {
+				pr_err("set_I2Smode failed\n");
+				return err;
+			}
+#ifdef DELAY_CONNECT_XXX
+#else
+			cfg_slim_sch_rx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[1].sDioCommon.bFs]);
+#endif
+		}
+	}
+
+	port	= sDioPathInfo.abPhysPort[2];
+	if (port >= MCDRV_PHYSPORT_SLIM0) {
+		if (path_info.asVoiceOut[0].dSrcOnOff != 0x00AAAAAA) {
+			err	= set_I2Smode((port - MCDRV_PHYSPORT_SLIM0)*2);
+			if (err < 0) {
+				pr_err("set_I2Smode failed\n");
+				return err;
+			}
+#ifdef DELAY_CONNECT_XXX
+#else
+			cfg_slim_sch_tx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[2].sDioCommon.bFs]);
+#endif
+		}
+		if ((path_info.asVboxIoIn[0].dSrcOnOff != 0x00AAAAAA)
+		|| (path_info.asVboxHostIn[0].dSrcOnOff != 0x00AAAAAA)) {
+			err	= set_I2Smode(
+					(port - MCDRV_PHYSPORT_SLIM0)*2+1);
+			if (err < 0) {
+				pr_err("set_I2Smode failed\n");
+				return err;
+			}
+#ifdef DELAY_CONNECT_XXX
+#else
+			cfg_slim_sch_rx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[2].sDioCommon.bFs]);
+#endif
+		}
+	}
+
+	port	= sDioPathInfo.abPhysPort[3];
+	if (port >= MCDRV_PHYSPORT_SLIM0) {
+		if (path_info.asHifiOut[0].dSrcOnOff != 0x00AAAAAA) {
+			err	= set_I2Smode((port - MCDRV_PHYSPORT_SLIM0)*2);
+			if (err < 0) {
+				pr_err("set_I2Smode failed\n");
+				return err;
+			}
+#ifdef DELAY_CONNECT_XXX
+#else
+			cfg_slim_sch_tx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[3].sDioCommon.bFs]);
+#endif
+		}
+		if (((path_info.asDac0[0].dSrcOnOff&MCDRV_D1SRC_HIFIIN_ON) != 0)
+		|| ((path_info.asDac0[1].dSrcOnOff&MCDRV_D1SRC_HIFIIN_ON) != 0)
+		|| ((path_info.asDac1[0].dSrcOnOff&MCDRV_D1SRC_HIFIIN_ON) != 0)
+		|| ((path_info.asDac1[1].dSrcOnOff&MCDRV_D1SRC_HIFIIN_ON) != 0)
+		) {
+			err	= set_I2Smode(
+					(port - MCDRV_PHYSPORT_SLIM0)*2+1);
+			if (err < 0) {
+				pr_err("set_I2Smode failed\n");
+				return err;
+			}
+#ifdef DELAY_CONNECT_XXX
+#else
+			cfg_slim_sch_rx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[3].sDioCommon.bFs]);
+#endif
+		}
+	}
+#endif
+
+	cache	= read_cache(codec, MC_ASOC_ADIF0_SOURCE);
+	if (cache < 0)
+		return -EIO;
 	if (((UINT8)cache != 0)
 	&& ((UINT8)(cache>>8) != 0)) {
 		set_adif_src((UINT8)cache, &path_info.asAdif0[0].dSrcOnOff);
@@ -4498,10 +4892,8 @@ static int connect_path(
 					&path_info.asAdif0[1].dSrcOnOff);
 	}
 	cache	= read_cache(codec, MC_ASOC_ADIF1_SOURCE);
-	if (cache < 0) {
-		err	= -EIO;
-		goto exit;
-	}
+	if (cache < 0)
+		return -EIO;
 	if (((UINT8)cache != 0)
 	&& ((UINT8)(cache>>8) != 0)) {
 		set_adif_src((UINT8)cache, &path_info.asAdif1[0].dSrcOnOff);
@@ -4509,10 +4901,8 @@ static int connect_path(
 					&path_info.asAdif1[1].dSrcOnOff);
 	}
 	cache	= read_cache(codec, MC_ASOC_ADIF2_SOURCE);
-	if (cache < 0) {
-		err	= -EIO;
-		goto exit;
-	}
+	if (cache < 0)
+		return -EIO;
 	if (((UINT8)cache != 0)
 	&& ((UINT8)(cache>>8) != 0)) {
 		set_adif_src((UINT8)cache, &path_info.asAdif2[0].dSrcOnOff);
@@ -4522,26 +4912,93 @@ static int connect_path(
 
 	err	= set_volume(codec, &mixer_ctl_info, preset_idx);
 	if (err < 0)
-		goto exit;
+		return err;
 	err	= _McDrv_Ctrl(MCDRV_SET_PATH, &path_info, NULL, 0);
-	if (err != MCDRV_SUCCESS) {
-		err	= map_drv_error(err);
-		goto exit;
+	if (err != MCDRV_SUCCESS)
+		return map_drv_error(err);
+
+#if (BUS_SELECT == BUS_SEL_SLIM)
+	port	= sDioPathInfo.abPhysPort[0];
+	if (port >= MCDRV_PHYSPORT_SLIM0) {
+		if ((path_info.asMusicOut[0].dSrcOnOff == 0x00AAAAAA)
+		&& (path_info.asMusicOut[1].dSrcOnOff == 0x00AAAAAA)) {
+			;
+			tx_used[port - MCDRV_PHYSPORT_SLIM0]	&= 1;
+		} else {
+			tx_used[port - MCDRV_PHYSPORT_SLIM0]	= 1;
+		}
+		if (!is_d1src_used(&path_info, MCDRV_D1SRC_MUSICIN_ON)) {
+			;
+			rx_used[port - MCDRV_PHYSPORT_SLIM0]	&= 1;
+		} else {
+			rx_used[port - MCDRV_PHYSPORT_SLIM0]	= 1;
+		}
 	}
-#if 0
-#ifdef MC_ASOC_TEST
-	err	= _McDrv_Ctrl(MCDRV_SET_PATH, &path_info, NULL, 0);
-	if (err != MCDRV_SUCCESS) {
-		err	= map_drv_error(err);
-		goto exit;
+
+	port	= sDioPathInfo.abPhysPort[1];
+	if (port >= MCDRV_PHYSPORT_SLIM0) {
+		if ((path_info.asExtOut[0].dSrcOnOff == 0x00AAAAAA)
+		&& (path_info.asExtOut[1].dSrcOnOff == 0x00AAAAAA)) {
+			;
+			tx_used[port - MCDRV_PHYSPORT_SLIM0]	&= 1;
+		} else {
+			tx_used[port - MCDRV_PHYSPORT_SLIM0]	= 1;
+		}
+		if (!is_d1src_used(&path_info, MCDRV_D1SRC_EXTIN_ON)) {
+			;
+			rx_used[port - MCDRV_PHYSPORT_SLIM0]	&= 1;
+		} else {
+			rx_used[port - MCDRV_PHYSPORT_SLIM0]	= 1;
+		}
+	}
+
+	port	= sDioPathInfo.abPhysPort[2];
+	if (port >= MCDRV_PHYSPORT_SLIM0) {
+		if (path_info.asVoiceOut[0].dSrcOnOff == 0x00AAAAAA) {
+			;
+			tx_used[port - MCDRV_PHYSPORT_SLIM0]	&= 1;
+		} else {
+			tx_used[port - MCDRV_PHYSPORT_SLIM0]	= 1;
+		}
+		if ((path_info.asVboxIoIn[0].dSrcOnOff == 0x00AAAAAA)
+		&& (path_info.asVboxHostIn[0].dSrcOnOff == 0x00AAAAAA)) {
+			;
+			rx_used[port - MCDRV_PHYSPORT_SLIM0]	&= 1;
+		} else {
+			rx_used[port - MCDRV_PHYSPORT_SLIM0]	= 1;
+		}
+	}
+
+	port	= sDioPathInfo.abPhysPort[3];
+	if (port >= MCDRV_PHYSPORT_SLIM0) {
+		if (path_info.asHifiOut[0].dSrcOnOff == 0x00AAAAAA) {
+			;
+			tx_used[port - MCDRV_PHYSPORT_SLIM0]	&= 1;
+		} else {
+			tx_used[port - MCDRV_PHYSPORT_SLIM0]	= 1;
+		}
+		if (((path_info.asDac0[0].dSrcOnOff&MCDRV_D1SRC_HIFIIN_ON) == 0)
+		&& ((path_info.asDac0[1].dSrcOnOff&MCDRV_D1SRC_HIFIIN_ON) == 0)
+		&& ((path_info.asDac1[0].dSrcOnOff&MCDRV_D1SRC_HIFIIN_ON) == 0)
+		&& ((path_info.asDac1[1].dSrcOnOff&MCDRV_D1SRC_HIFIIN_ON) == 0)
+		) {
+			;
+			rx_used[port - MCDRV_PHYSPORT_SLIM0]	&= 1;
+		} else {
+			rx_used[port - MCDRV_PHYSPORT_SLIM0]	= 1;
+		}
+	}
+	for (port = 0; port < 3; port++) {
+		if (tx_used[port] == 0) {
+			;
+			close_slim_sch_tx(port*2, 2);
+		}
+		if (rx_used[port] == 0) {
+			;
+			close_slim_sch_rx(port*2, 2);
+		}
 	}
 #endif
-#endif
-
-exit:
-	mutex_unlock(&connect_path_mutex);
-
-
 	return err;
 }
 
@@ -4822,14 +5279,10 @@ static int setup_dai(
 	if (err != MCDRV_SUCCESS)
 		return map_drv_error(err);
 
-
-
 	if (modify != 0) {
 		err	= connect_path(codec);
 		return err;
 	}
-
-
 	return 0;
 }
 
@@ -4838,9 +5291,12 @@ static int mc_asoc_set_clkdiv(
 	int div_id,
 	int div)
 {
+	int	err	= 0;
 	struct snd_soc_codec	*codec	= NULL;
 	struct mc_asoc_data	*mc_asoc	= NULL;
 	struct mc_asoc_port_params	*port	= NULL;
+
+	/*TRACE_FUNC();*/
 
 	if ((dai == NULL)
 	|| (dai->codec == NULL)
@@ -4851,6 +5307,9 @@ static int mc_asoc_set_clkdiv(
 	mc_asoc	= mc_asoc_get_mc_asoc(codec);
 	if (mc_asoc == NULL)
 		return -EINVAL;
+
+	mc_asoc_lock("mc_asoc_set_clkdiv");
+
 	port	= &mc_asoc->port;
 
 	switch (div_id) {
@@ -4887,7 +5346,7 @@ static int mc_asoc_set_clkdiv(
 			port->bckfs	= MCDRV_BCKFS_16;
 			break;
 		default:
-			return -EINVAL;
+			err	= -EINVAL;
 		}
 		break;
 
@@ -4895,16 +5354,20 @@ static int mc_asoc_set_clkdiv(
 		break;
 	}
 
-	return 0;
+	mc_asoc_unlock("mc_asoc_set_clkdiv");
+	return err;
 }
 
 static int mc_asoc_set_fmt(
 	struct snd_soc_dai *dai,
 	unsigned int fmt)
 {
+	int	err	= 0;
 	struct snd_soc_codec	*codec	= NULL;
 	struct mc_asoc_data	*mc_asoc	= NULL;
 	struct mc_asoc_port_params	*port	= NULL;
+
+	/*TRACE_FUNC();*/
 
 	if ((dai == NULL)
 	|| (dai->codec == NULL)
@@ -4915,6 +5378,9 @@ static int mc_asoc_set_fmt(
 	mc_asoc	= mc_asoc_get_mc_asoc(codec);
 	if (mc_asoc == NULL)
 		return -EINVAL;
+
+	mc_asoc_lock("mc_asoc_set_fmt");
+
 	port	= &mc_asoc->port;
 
 	/* format */
@@ -4935,7 +5401,9 @@ static int mc_asoc_set_fmt(
 		port->format	= MCDRV_PCM_LONGFRAME;
 		break;
 	default:
-		return -EINVAL;
+		err	= -EINVAL;
+		goto exit;
+		break;
 	}
 
 	/* master */
@@ -4947,7 +5415,9 @@ static int mc_asoc_set_fmt(
 		port->master	= MCDRV_DIO_SLAVE;
 		break;
 	default:
-		return -EINVAL;
+		err	= -EINVAL;
+		goto exit;
+		break;
 	}
 
 	/* inv */
@@ -4959,11 +5429,97 @@ static int mc_asoc_set_fmt(
 		port->inv	= MCDRV_BCLK_INVERT;
 		break;
 	default:
-		return -EINVAL;
+		err	= -EINVAL;
+		break;
 	}
 
-	return 0;
+exit:
+	mc_asoc_unlock("mc_asoc_set_fmt");
+	return err;
 }
+
+#ifdef DELAY_CONNECT_XXX
+#define	DELAY_CFG_SLIM_SCH	(200)
+
+static struct workqueue_struct	*workq_cfg_slim_sch;
+static struct delayed_work	delayed_work_cfg_slim_sch;
+static void work_cfg_slim_sch(struct work_struct *work)
+{
+	int	err;
+	struct MCDRV_PATH_INFO	path_info;
+	struct MCDRV_DIO_INFO	sDioInfo;
+	struct MCDRV_DIOPATH_INFO	sDioPathInfo;
+	int	port;
+	int	rate[]	= {48000, 44100, 32000, -1, 24000, 22050, 16000, -1,
+				12000, 11025, 8000, -1, 192000, 96000};
+
+	TRACE_FUNC();
+
+	err	= _McDrv_Ctrl(MCDRV_GET_PATH, &path_info, NULL, 0);
+	if (err != MCDRV_SUCCESS) {
+		pr_info("get path info failed:%d\n", err);
+		return;
+	}
+
+	_McDrv_Ctrl(MCDRV_GET_DIGITALIO, &sDioInfo, NULL, 0);
+	_McDrv_Ctrl(MCDRV_GET_DIGITALIO_PATH, &sDioPathInfo, NULL, 0);
+
+	port	= sDioPathInfo.abPhysPort[0];
+	if (port >= MCDRV_PHYSPORT_SLIM0) {
+		if ((path_info.asMusicOut[0].dSrcOnOff != 0x00AAAAAA)
+		|| (path_info.asMusicOut[1].dSrcOnOff != 0x00AAAAAA)) {
+			cfg_slim_sch_tx((port - MCDRV_PHYSPORT_SLIM0)*2, 1,
+				rate[sDioInfo.asPortInfo[0].sDioCommon.bFs]);
+		}
+		if (is_d1src_used(&path_info, MCDRV_D1SRC_MUSICIN_ON)) {
+			cfg_slim_sch_rx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[0].sDioCommon.bFs]);
+		}
+	}
+
+	port	= sDioPathInfo.abPhysPort[1];
+	if (port >= MCDRV_PHYSPORT_SLIM0) {
+		if ((path_info.asExtOut[0].dSrcOnOff != 0x00AAAAAA)
+		|| (path_info.asExtOut[1].dSrcOnOff != 0x00AAAAAA)) {
+			cfg_slim_sch_tx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[1].sDioCommon.bFs]);
+		}
+		if (is_d1src_used(&path_info, MCDRV_D1SRC_EXTIN_ON)) {
+			cfg_slim_sch_rx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[1].sDioCommon.bFs]);
+		}
+	}
+
+	port	= sDioPathInfo.abPhysPort[2];
+	if (port >= MCDRV_PHYSPORT_SLIM0) {
+		if (path_info.asVoiceOut[0].dSrcOnOff != 0x00AAAAAA) {
+			cfg_slim_sch_tx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[2].sDioCommon.bFs]);
+		}
+		if ((path_info.asVboxIoIn[0].dSrcOnOff != 0x00AAAAAA)
+		|| (path_info.asVboxHostIn[0].dSrcOnOff != 0x00AAAAAA)) {
+			cfg_slim_sch_rx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[2].sDioCommon.bFs]);
+		}
+	}
+
+	port	= sDioPathInfo.abPhysPort[3];
+	if (port >= MCDRV_PHYSPORT_SLIM0) {
+		if (path_info.asHifiOut[0].dSrcOnOff != 0x00AAAAAA) {
+			cfg_slim_sch_tx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[3].sDioCommon.bFs]);
+		}
+		if (((path_info.asDac0[0].dSrcOnOff&MCDRV_D1SRC_HIFIIN_ON) != 0)
+		|| ((path_info.asDac0[1].dSrcOnOff&MCDRV_D1SRC_HIFIIN_ON) != 0)
+		|| ((path_info.asDac1[0].dSrcOnOff&MCDRV_D1SRC_HIFIIN_ON) != 0)
+		|| ((path_info.asDac1[1].dSrcOnOff&MCDRV_D1SRC_HIFIIN_ON) != 0)
+		) {
+			cfg_slim_sch_rx((port - MCDRV_PHYSPORT_SLIM0)*2, 2,
+				rate[sDioInfo.asPortInfo[3].sDioCommon.bFs]);
+		}
+	}
+}
+#endif
 
 static int mc_asoc_hw_params(
 	struct snd_pcm_substream *substream,
@@ -4978,6 +5534,8 @@ static int mc_asoc_hw_params(
 	int	err	= 0;
 	int	id;
 	struct MCDRV_DIOPATH_INFO	sDioPathInfo;
+	struct mc_asoc_mixer_path_ctl_info	mixer_ctl_info;
+	int	preset_idx	= 0;
 
 	TRACE_FUNC();
 
@@ -5038,8 +5596,12 @@ static int mc_asoc_hw_params(
 	case SNDRV_PCM_FORMAT_S20_3LE:
 		port->bits[dir]	= MCDRV_BITSEL_20;
 		break;
+	case SNDRV_PCM_FORMAT_S24_LE:
 	case SNDRV_PCM_FORMAT_S24_3LE:
 		port->bits[dir]	= MCDRV_BITSEL_24;
+		break;
+	case SNDRV_PCM_FORMAT_S32_LE:
+		port->bits[dir]	= MCDRV_BITSEL_32;
 		break;
 	default:
 		return -EINVAL;
@@ -5089,7 +5651,7 @@ static int mc_asoc_hw_params(
 		return -EINVAL;
 	}
 
-	mutex_lock(&mc_asoc->mutex);
+	mc_asoc_lock("mc_asoc_hw_params");
 
 	if (CAPTURE_PORT == CAPTURE_PORT_MUSIC)
 		if ((port->stream & ~(1 << dir)) && (rate != port->rate)) {
@@ -5099,16 +5661,13 @@ static int mc_asoc_hw_params(
 
 	port->rate	= rate;
 
+	if (get_mixer_path_ctl_info(codec, &mixer_ctl_info) < 0) {
+		err	= -EIO;
+		goto error;
+	}
+	preset_idx	= get_path_preset_idx(&mixer_ctl_info);
 	if ((rate == MCDRV_FS_96000)
 	|| (rate == MCDRV_FS_192000)) {
-		struct mc_asoc_mixer_path_ctl_info	mixer_ctl_info;
-		int	preset_idx	= 0;
-
-		if (get_mixer_path_ctl_info(codec, &mixer_ctl_info) < 0) {
-			err	= -EIO;
-			goto error;
-		}
-		preset_idx	= get_path_preset_idx(&mixer_ctl_info);
 		if ((is_incall(preset_idx) != 0)
 		|| (is_incommunication(preset_idx) != 0)) {
 			err	= -EINVAL;
@@ -5134,6 +5693,7 @@ static int mc_asoc_hw_params(
 		&& (CAPTURE_PORT == CAPTURE_PORT_EXT))
 			id	= 1;
 	}
+
 	err	= setup_dai(codec, mc_asoc, id, MCDRV_DIO_DA, dir);
 	if (err != MCDRV_SUCCESS) {
 		dev_err(codec->dev, "%d: Error in setup_dai\n", err);
@@ -5141,11 +5701,25 @@ static int mc_asoc_hw_params(
 		goto error;
 	}
 
-	port->stream |= (1 << dir);
 	mc_asoc_port_rate	= rate;
+	port->stream |= (1 << dir);
+
+	if (preset_idx != get_path_preset_idx(&mixer_ctl_info)) {
+		err	= connect_path(codec);
+		if (err < 0) {
+			;
+			goto error;
+		}
+	}
 
 error:
-	mutex_unlock(&mc_asoc->mutex);
+	mc_asoc_unlock("mc_asoc_hw_params");
+
+#ifdef DELAY_CONNECT_XXX
+	dbg_info("queue_delayed_work_cfg_slim_sch\n");
+	queue_delayed_work(workq_cfg_slim_sch, &delayed_work_cfg_slim_sch,
+					msecs_to_jiffies(DELAY_CFG_SLIM_SCH));
+#endif
 
 	return err;
 }
@@ -5175,7 +5749,7 @@ static int mc_asoc_hw_free(
 
 	port	= &mc_asoc->port;
 
-	mutex_lock(&mc_asoc->mutex);
+	mc_asoc_lock("mc_asoc_hw_free");
 
 	if (!(port->stream & (1 << dir))) {
 		err	= 0;
@@ -5185,10 +5759,24 @@ static int mc_asoc_hw_free(
 	port->stream &= ~(1 << dir);
 
 error:
-	mutex_unlock(&mc_asoc->mutex);
+	mc_asoc_unlock("mc_asoc_hw_free");
+
+#ifdef DELAY_CONNECT_XXX
+	cancel_delayed_work(&delayed_work_cfg_slim_sch);
+	dbg_info("cancel_delayed_work_cfg_slim_sch\n");
+#endif
 
 	return err;
 }
+
+#if (BUS_SELECT == BUS_SEL_SLIM)
+static int mc_asoc_set_channel_map(struct snd_soc_dai *dai,
+				unsigned int tx_num, unsigned int *tx_slot,
+				unsigned int rx_num, unsigned int *rx_slot);
+static int mc_asoc_get_channel_map(struct snd_soc_dai *dai,
+				unsigned int *tx_num, unsigned int *tx_slot,
+				unsigned int *rx_num, unsigned int *rx_slot);
+#endif
 
 static struct snd_soc_dai_ops	mc_asoc_dai_ops[]	= {
 	{
@@ -5196,9 +5784,41 @@ static struct snd_soc_dai_ops	mc_asoc_dai_ops[]	= {
 		.set_fmt	= mc_asoc_set_fmt,
 		.hw_params	= mc_asoc_hw_params,
 		.hw_free	= mc_asoc_hw_free,
+#if (BUS_SELECT == BUS_SEL_SLIM)
+		.set_channel_map = mc_asoc_set_channel_map,
+		.get_channel_map = mc_asoc_get_channel_map,
+#endif
 	},
 };
 
+#if (BUS_SELECT == BUS_SEL_SLIM)
+struct snd_soc_dai_driver	mc_asoc_dai[]	= {
+	{
+		.name	= "ymu831_rx1",
+		.id = 1,
+		.playback = {
+			.stream_name = "Playback",
+			.rates		= MC_ASOC_RATE,
+			.formats	= MC_ASOC_FORMATS,
+			.channels_min = 1,
+			.channels_max = 6,
+		},
+		.ops	= &mc_asoc_dai_ops[0]
+	},
+	{
+		.name	= "ymu831_tx1",
+		.id = 2,
+		.capture = {
+			.stream_name = "Capture",
+			.rates		= MC_ASOC_RATE,
+			.formats	= MC_ASOC_FORMATS,
+			.channels_min = 1,
+			.channels_max = 2,
+		},
+		.ops	= &mc_asoc_dai_ops[0]
+	},
+};
+#else
 struct snd_soc_dai_driver	mc_asoc_dai[]	= {
 	{
 		.name	= MC_ASOC_NAME "-da0",
@@ -5220,6 +5840,55 @@ struct snd_soc_dai_driver	mc_asoc_dai[]	= {
 		.ops	= &mc_asoc_dai_ops[0]
 	},
 };
+#endif
+
+#if (BUS_SELECT == BUS_SEL_SLIM)
+static int mc_asoc_set_channel_map(struct snd_soc_dai *dai,
+				unsigned int tx_num, unsigned int *tx_slot,
+				unsigned int rx_num, unsigned int *rx_slot)
+
+{
+	mc_asoc_lock("mc_asoc_set_channel_map");
+	mc_asoc_unlock("mc_asoc_set_channel_map");
+	return 0;
+}
+
+static int mc_asoc_get_channel_map(struct snd_soc_dai *dai,
+				unsigned int *tx_num, unsigned int *tx_slot,
+				unsigned int *rx_num, unsigned int *rx_slot)
+
+{
+	u32 cnt = 0;
+
+	if (!rx_slot && !tx_slot) {
+		pr_err("%s: Invalid\n", __func__);
+		return -EINVAL;
+	}
+
+	mc_asoc_lock("mc_asoc_get_channel_map");
+	/* for virtual port, codec driver needs to do
+	 * housekeeping, for now should be ok
+	 */
+	if (dai->id == 1) {
+		*rx_num	= mc_asoc_dai[dai->id - 1].playback.channels_max;
+		while (cnt < *rx_num) {
+			rx_slot[cnt]	= sh_ch.rx[cnt].ch_num;
+			cnt++;
+		}
+	} else if (dai->id == 2) {
+		*tx_num	= mc_asoc_dai[dai->id - 1].capture.channels_max;
+		while (cnt < *tx_num) {
+			tx_slot[cnt]	= sh_ch.tx[cnt].ch_num;
+			cnt++;
+		}
+	}
+	pr_debug("%s(): dai_name = %s DAI-ID %x tx_ch %d rx_ch %d\n",
+			__func__, dai->name, dai->id, *tx_num, *rx_num);
+
+	mc_asoc_unlock("mc_asoc_get_channel_map");
+	return 0;
+}
+#endif
 
 /*
  * Control interface
@@ -5236,20 +5905,6 @@ struct snd_soc_dai_driver	mc_asoc_dai[]	= {
  *	|swR|	volume-R		|swL|	volume-L		|
  *	+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
  */
-
-static unsigned int mc_asoc_read_reg(
-	struct snd_soc_codec *codec,
-	unsigned int reg)
-{
-	int	ret;
-
-	if (codec == NULL)
-		return -EINVAL;
-	ret	= read_cache(codec, reg);
-	if (ret < 0)
-		return -EIO;
-	return (unsigned int)ret;
-}
 
 static int write_reg_vol(
 	struct snd_soc_codec *codec,
@@ -5364,6 +6019,7 @@ static void auto_powerdown(
 )
 {
 #if (AUTO_POWEROFF == AUTO_POWEROFF_ON)
+	int	err	= 0;
 	struct mc_asoc_mixer_path_ctl_info	mixer_ctl_info;
 	UINT8	bAEC[]	= {
 		0x41, 0x45, 0x43,
@@ -5423,31 +6079,11 @@ static void auto_powerdown(
 	&& (mixer_ctl_info.btmic_play == 0)
 	&& (mixer_ctl_info.lin1_play == 0)
 	&& (mixer_ctl_info.dtmf_control == 0))
-		_McDrv_Ctrl(MCDRV_SET_DSP, bAEC, NULL, sizeof(bAEC));
-#endif
-}
-
-#define	DSP_MEM_STATIC
-#ifdef DSP_MEM_STATIC
-#define	DSP_MEM_SIZE	(200000)
-static int	dsp_mem_pt;
-static UINT8	dsp_mem[DSP_MEM_SIZE];
-#endif
-
-static UINT8 *get_dsp_mem(int size)
-{
-#ifdef DSP_MEM_STATIC
-	UINT8	*p	= NULL;
-	if ((dsp_mem_pt+size) < DSP_MEM_SIZE) {
-		p	= dsp_mem + dsp_mem_pt;
-		dsp_mem_pt	+= size;
-		dbg_info("dsp_mem_pt:%d\n", dsp_mem_pt);
-	} else {
-		pr_info("mem alloc failed!\n");
-	}
-	return p;
-#else
-	return kzalloc(size, GFP_KERNEL);
+		err	= _McDrv_Ctrl(MCDRV_SET_DSP, bAEC, NULL, sizeof(bAEC));
+		if (err != MCDRV_SUCCESS) {
+			;
+			dbg_info("%d: Error in MCDRV_SET_DSP\n", err);
+		}
 #endif
 }
 
@@ -5501,25 +6137,25 @@ static void del_dsp_prm(
 			if (mc_asoc->param_store[i][j].pabParam
 				!= NULL) {
 				dbg_info(
-			"kfree(param_store[%d][%d].pabParam:%8p)\n",
+			"free(param_store[%d][%d].pabParam:%8p)\n",
 				i, j,
 				mc_asoc->param_store[i][j].pabParam);
 #ifdef DSP_MEM_STATIC
 #else
-				kfree(
+				vfree(
 				mc_asoc->param_store[i][j].pabParam);
 #endif
 			}
 			dsp_prm	= mc_asoc->param_store[i][j].next;
 			while (dsp_prm != NULL) {
-				dbg_info("kfree(pabParam:%8p)\n",
+				dbg_info("free(pabParam:%8p)\n",
 					dsp_prm->pabParam);
 #ifdef DSP_MEM_STATIC
 #else
-				kfree(dsp_prm->pabParam);
+				vfree(dsp_prm->pabParam);
 #endif
 				next_prm	= dsp_prm->next;
-				dbg_info("kfree(dsp_prm:%8p)\n",
+				dbg_info("free(dsp_prm:%8p)\n",
 					dsp_prm);
 				kfree(dsp_prm);
 				dsp_prm	= next_prm;
@@ -5536,6 +6172,94 @@ static void del_dsp_prm(
 	dsp_mem_pt	= 0;
 	dbg_info("dsp_mem_pt:%d\n", dsp_mem_pt);
 #endif
+}
+
+#define	DELAY_RESET_VREF	(100)
+static int reset_vref(
+	struct snd_soc_codec *codec
+)
+{
+	struct mc_asoc_mixer_path_ctl_info	mixer_ctl_info;
+	UINT8	pbData[4];
+	UINT8	bAP_VR, bAP_MB, bMKDETEN;
+
+	if (get_mixer_path_ctl_info(codec, &mixer_ctl_info) < 0) {
+		;
+		return -EIO;
+	}
+
+	if ((mixer_ctl_info.audio_mode_cap > 0)
+	|| (mixer_ctl_info.mainmic_play == 1)
+	|| (mixer_ctl_info.submic_play == 1)
+	|| (mixer_ctl_info.msmic_play == 1)
+	|| (mixer_ctl_info.hsmic_play == 1)
+	|| (mixer_ctl_info.lin1_play == 1)) {
+		;
+		return 0;
+	}
+
+	machdep_Lock();
+	pbData[0]	= MCI_ANA_REG_A << 1;
+	pbData[1]	= MCI_AP;
+	mc_asoc_write_data(0, pbData, 2);
+	mc_asoc_read_data(0, MCI_ANA_REG_D, &bAP_VR, 1);
+	if ((bAP_VR & MCB_AP_VR) != 0) {
+		machdep_Unlock();
+		return 0;
+	}
+
+	TRACE_FUNC();
+
+	pbData[0]	= MCI_ANA_REG_A << 1;
+	pbData[1]	= MCI_AP_MIC;
+	mc_asoc_write_data(0, pbData, 2);
+	mc_asoc_read_data(0, MCI_ANA_REG_D, &bAP_MB, 1);
+	pbData[0]	= MCI_CD_REG_A << 1;
+	pbData[1]	= MCI_HSDETEN;
+	mc_asoc_write_data(0, pbData, 2);
+	mc_asoc_read_data(0, MCI_CD_REG_D, &bMKDETEN, 1);
+
+	pbData[0]	= MCI_ANA_REG_A << 1;
+	pbData[1]	= MCI_AP_MIC;
+	pbData[2]	= MCI_ANA_REG_D << 1;
+	pbData[3]	= bAP_MB | MCB_MB4;
+	mc_asoc_write_data(0, pbData, 4);
+
+	pbData[0]	= MCI_CD_REG_A << 1;
+	pbData[1]	= MCI_HSDETEN;
+	pbData[2]	= MCI_CD_REG_D << 1;
+	pbData[3]	= bMKDETEN & ~MCB_MKDETEN;
+	mc_asoc_write_data(0, pbData, 4);
+
+	pbData[0]	= MCI_ANA_REG_A << 1;
+	pbData[1]	= MCI_AP;
+	pbData[2]	= MCI_ANA_REG_D << 1;
+	pbData[3]	= bAP_VR | MCB_AP_VR;
+	mc_asoc_write_data(0, pbData, 4);
+
+	usleep_range(DELAY_RESET_VREF, DELAY_RESET_VREF);
+
+	pbData[0]	= MCI_ANA_REG_A << 1;
+	pbData[1]	= MCI_AP;
+	pbData[2]	= MCI_ANA_REG_D << 1;
+	pbData[3]	= bAP_VR;
+	mc_asoc_write_data(0, pbData, 4);
+
+	pbData[0]	= MCI_ANA_REG_A << 1;
+	pbData[1]	= MCI_AP_MIC;
+	pbData[2]	= MCI_ANA_REG_D << 1;
+	pbData[3]	= bAP_MB;
+	mc_asoc_write_data(0, pbData, 4);
+
+	pbData[0]	= MCI_CD_REG_A << 1;
+	pbData[1]	= MCI_HSDETEN;
+	pbData[2]	= MCI_CD_REG_D << 1;
+	pbData[3]	= bMKDETEN;
+	mc_asoc_write_data(0, pbData, 4);
+
+	machdep_Unlock();
+	pr_info("reset_vref\n");
+	return 0;
 }
 
 static int set_audio_mode_play(
@@ -5600,6 +6324,14 @@ static int set_audio_mode_cap(
 			|| (port->rate == MCDRV_FS_192000)))
 			return -EINVAL;
 
+	if (value > 0) {
+		ret	= reset_vref(codec);
+		if (ret < 0) {
+			;
+			return ret;
+		}
+	}
+
 	ret	= write_cache(codec, MC_ASOC_AUDIO_MODE_CAP, value);
 	if (ret < 0)
 		return ret;
@@ -5655,10 +6387,8 @@ static int set_incall_mic(
 	if (mc_asoc_hold == YMC_NOTITY_HOLD_ON)
 		return 0;
 
-
 	ret	= connect_path(codec);
 	return ret;
-
 }
 
 static int set_ain_playback(
@@ -5670,15 +6400,8 @@ static int set_ain_playback(
 	int	ret;
 	int	audio_mode;
 	int	audio_mode_cap;
-	struct mc_asoc_data	*mc_asoc	= NULL;
 
 	TRACE_FUNC();
-
-
-	mc_asoc	= mc_asoc_get_mc_asoc(codec);
-	if (mc_asoc == NULL)
-		return -EINVAL;
-
 
 	dbg_info("ain_playback=%d\n", value);
 
@@ -5688,6 +6411,14 @@ static int set_ain_playback(
 	audio_mode	= read_cache(codec, MC_ASOC_AUDIO_MODE_PLAY);
 	if (audio_mode < 0)
 		return -EIO;
+
+	if (value > 0) {
+		ret	= reset_vref(codec);
+		if (ret < 0) {
+			;
+			return ret;
+		}
+	}
 
 	ret	= write_cache(codec, reg, value);
 	if (ret < 0)
@@ -5708,6 +6439,10 @@ static int set_ain_playback(
 	}
 	if (((audio_mode == MC_ASOC_AUDIO_MODE_INCOMM)
 		|| (audio_mode == MC_ASOC_AUDIO_MODE_INCOMM2))
+	&& ((audio_mode_cap == MC_ASOC_AUDIO_MODE_INCOMM)
+		|| (audio_mode_cap == MC_ASOC_AUDIO_MODE_OFF)))
+		return 0;
+	if ((audio_mode == MC_ASOC_AUDIO_MODE_OFF)
 	&& (audio_mode_cap == MC_ASOC_AUDIO_MODE_INCOMM))
 		return 0;
 
@@ -5727,15 +6462,8 @@ static int set_dtmf_control(
 )
 {
 	int	ret;
-	struct mc_asoc_data	*mc_asoc	= NULL;
 
 	TRACE_FUNC();
-
-
-	mc_asoc	= mc_asoc_get_mc_asoc(codec);
-	if (mc_asoc == NULL)
-		return -EINVAL;
-
 
 	ret	= write_cache(codec, reg, value);
 	if (ret < 0)
@@ -5757,15 +6485,8 @@ static int set_dtmf_output(
 )
 {
 	int		ret;
-	struct mc_asoc_data	*mc_asoc	= NULL;
 
 	TRACE_FUNC();
-
-
-	mc_asoc	= mc_asoc_get_mc_asoc(codec);
-	if (mc_asoc == NULL)
-		return -EINVAL;
-
 
 	ret	= write_cache(codec, reg, value);
 	if (ret < 0)
@@ -5774,10 +6495,8 @@ static int set_dtmf_output(
 	if (mc_asoc_hold == YMC_NOTITY_HOLD_ON)
 		return 0;
 
-
 	ret	= connect_path(codec);
 	return ret;
-
 }
 
 static int set_switch_clock(
@@ -6230,6 +6949,453 @@ static int set_swap(
 	return ret;
 }
 
+static int set_dsp(
+	struct snd_soc_codec	*codec,
+	UINT8	*param,
+	unsigned long	size,
+	unsigned long	option
+)
+{
+	int	err	= 0;
+	struct mc_asoc_data	*mc_asoc	= NULL;
+	int	output_path;
+	int	input_path;
+	int	incall_mic;
+	UINT8	*param2;
+
+	mc_asoc	= mc_asoc_get_mc_asoc(codec);
+	if (mc_asoc == NULL)
+		return -EINVAL;
+
+	output_path	= read_cache(codec, MC_ASOC_OUTPUT_PATH);
+	if (output_path < 0)
+		return -EIO;
+	input_path	= read_cache(codec, MC_ASOC_INPUT_PATH);
+	if (input_path < 0)
+		return -EIO;
+	incall_mic	= get_incall_mic(codec, output_path);
+	if (incall_mic < 0)
+		return -EIO;
+
+	dbg_info("option=%08lX\n", option);
+	switch (option) {
+	case	YMC_DSP_OUTPUT_BASE:
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_OUTPUT,
+				DSP_PRM_BASE, param, size);
+		break;
+	case	YMC_DSP_INPUT_BASE:
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_INPUT,
+				DSP_PRM_BASE, param, size);
+		break;
+	case	YMC_DSP_VOICECALL_BASE_COMMON:
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
+				DSP_PRM_BASE, param, size);
+		if (err != 0)
+			break;
+
+		param2	= get_dsp_mem(size);
+		if (param2 == NULL) {
+			err	= -ENOMEM;
+			break;
+		}
+		memcpy(param2, param, size);
+		param	= param2;
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
+				DSP_PRM_BASE, param, size);
+		break;
+	case	YMC_DSP_VOICECALL_BASE_1MIC:
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
+				DSP_PRM_BASE, param, size);
+		if (err != 0)
+			break;
+		if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
+		&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
+			goto exit;
+		break;
+	case	YMC_DSP_VOICECALL_BASE_2MIC:
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
+				DSP_PRM_BASE, param, size);
+		if (err != 0)
+			break;
+		if (incall_mic != MC_ASOC_INCALL_MIC_2MIC)
+			goto exit;
+		break;
+	case	YMC_DSP_OUTPUT_SP:
+		if (output_path != MC_ASOC_OUTPUT_PATH_SP) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_OUTPUT,
+				DSP_PRM_USER, param, size);
+		break;
+	case	YMC_DSP_OUTPUT_RC:
+		if ((output_path != MC_ASOC_OUTPUT_PATH_RC)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_SP_RC)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_RC)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_RC)) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_OUTPUT,
+				DSP_PRM_USER, param, size);
+		break;
+	case	YMC_DSP_OUTPUT_HP:
+		if ((output_path != MC_ASOC_OUTPUT_PATH_HP)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_HS)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_SP_HP)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_HP)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_HP)) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_OUTPUT,
+				DSP_PRM_USER, param, size);
+		break;
+	case	YMC_DSP_OUTPUT_LO1:
+		if ((output_path != MC_ASOC_OUTPUT_PATH_LO1)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_SP_LO1)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_LO1)) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_OUTPUT,
+				DSP_PRM_USER, param, size);
+		break;
+	case	YMC_DSP_OUTPUT_LO2:
+		if ((output_path != MC_ASOC_OUTPUT_PATH_LO2)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_SP_LO2)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_LO2)) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_OUTPUT,
+				DSP_PRM_USER, param, size);
+		break;
+	case	YMC_DSP_OUTPUT_BT:
+		if ((output_path != MC_ASOC_OUTPUT_PATH_BT)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_SP_BT)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_BT)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_BT)) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_OUTPUT,
+				DSP_PRM_USER, param, size);
+		break;
+	case	YMC_DSP_INPUT_MAINMIC:
+		if (input_path != MC_ASOC_INPUT_PATH_MAINMIC) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_INPUT,
+				DSP_PRM_USER, param, size);
+		break;
+	case	YMC_DSP_INPUT_SUBMIC:
+		if (input_path != MC_ASOC_INPUT_PATH_SUBMIC) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_INPUT,
+				DSP_PRM_USER, param, size);
+		break;
+	case	YMC_DSP_INPUT_2MIC:
+		if (input_path != MC_ASOC_INPUT_PATH_2MIC) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_INPUT,
+				DSP_PRM_USER, param, size);
+		break;
+	case	YMC_DSP_INPUT_HEADSET:
+		if (input_path != MC_ASOC_INPUT_PATH_HS) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_INPUT,
+				DSP_PRM_USER, param, size);
+		break;
+	case	YMC_DSP_INPUT_BT:
+		if (input_path != MC_ASOC_INPUT_PATH_BT) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_INPUT,
+				DSP_PRM_USER, param, size);
+		break;
+	case	YMC_DSP_INPUT_LINEIN1:
+		if (input_path != MC_ASOC_INPUT_PATH_LIN1) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_INPUT,
+				DSP_PRM_USER, param, size);
+		break;
+	case	YMC_DSP_VOICECALL_SP_1MIC:
+		if (output_path != MC_ASOC_OUTPUT_PATH_SP) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
+			DSP_PRM_USER, param, size);
+		if (err != 0)
+			break;
+		if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
+		&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
+			goto exit;
+		break;
+	case	YMC_DSP_VOICECALL_RC_1MIC:
+		if ((output_path != MC_ASOC_OUTPUT_PATH_RC)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_SP_RC)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_RC)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_RC)) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
+				DSP_PRM_USER, param, size);
+		if (err != 0)
+			break;
+		if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
+		&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
+			goto exit;
+		break;
+	case	YMC_DSP_VOICECALL_HP_1MIC:
+		if ((output_path != MC_ASOC_OUTPUT_PATH_HP)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_SP_HP)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_HP)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_HP)) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
+				DSP_PRM_USER, param, size);
+		if (err != 0)
+			break;
+		if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
+		&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
+			goto exit;
+		break;
+	case	YMC_DSP_VOICECALL_LO1_1MIC:
+		if ((output_path != MC_ASOC_OUTPUT_PATH_LO1)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_SP_LO1)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_LO1)) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
+				DSP_PRM_USER, param, size);
+		if (err != 0)
+			break;
+		if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
+		&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
+			goto exit;
+		break;
+	case	YMC_DSP_VOICECALL_LO2_1MIC:
+		if ((output_path != MC_ASOC_OUTPUT_PATH_LO2)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_SP_LO2)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_LO2)) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
+				DSP_PRM_USER, param, size);
+		if (err != 0)
+			break;
+		if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
+		&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
+			goto exit;
+		break;
+	case	YMC_DSP_VOICECALL_HEADSET:
+		if (output_path != MC_ASOC_OUTPUT_PATH_HS) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
+				DSP_PRM_USER, param, size);
+		if (err != 0)
+			break;
+		if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
+		&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
+			goto exit;
+		break;
+	case	YMC_DSP_VOICECALL_BT:
+		if ((output_path != MC_ASOC_OUTPUT_PATH_BT)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_SP_BT)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_BT)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_BT)) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
+				DSP_PRM_USER, param, size);
+		if (err != 0)
+			break;
+		if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
+		&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
+			goto exit;
+		break;
+	case	YMC_DSP_VOICECALL_SP_2MIC:
+		if (output_path != MC_ASOC_OUTPUT_PATH_SP) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
+				DSP_PRM_USER, param, size);
+		if (err != 0)
+			break;
+		if (incall_mic != MC_ASOC_INCALL_MIC_2MIC)
+			goto exit;
+		break;
+	case	YMC_DSP_VOICECALL_RC_2MIC:
+		if ((output_path != MC_ASOC_OUTPUT_PATH_RC)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_SP_RC)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_RC)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_RC)) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
+				DSP_PRM_USER, param, size);
+		if (err != 0)
+			break;
+		if (incall_mic != MC_ASOC_INCALL_MIC_2MIC)
+			goto exit;
+		break;
+	case	YMC_DSP_VOICECALL_HP_2MIC:
+		if ((output_path != MC_ASOC_OUTPUT_PATH_HP)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_HS)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_SP_HP)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_HP)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_HP)) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
+				DSP_PRM_USER, param, size);
+		if (err != 0)
+			break;
+		if (incall_mic != MC_ASOC_INCALL_MIC_2MIC)
+			goto exit;
+		break;
+	case	YMC_DSP_VOICECALL_LO1_2MIC:
+		if ((output_path != MC_ASOC_OUTPUT_PATH_LO1)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_SP_LO1)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_LO1)) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
+				DSP_PRM_USER, param, size);
+		if (err != 0)
+			break;
+		if (incall_mic != MC_ASOC_INCALL_MIC_2MIC)
+			goto exit;
+		break;
+	case	YMC_DSP_VOICECALL_LO2_2MIC:
+		if ((output_path != MC_ASOC_OUTPUT_PATH_LO2)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_SP_LO2)
+		&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_LO2)) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
+			goto exit;
+		}
+		err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
+				DSP_PRM_USER, param, size);
+		if (err != 0)
+			break;
+		if (incall_mic != MC_ASOC_INCALL_MIC_2MIC)
+			goto exit;
+		break;
+	default:
+		err	= -EINVAL;
+		break;
+	}
+	if (err != 0) {
+		;
+		goto error;
+	}
+	err	= map_drv_error(_McDrv_Ctrl(MCDRV_SET_DSP, param, NULL, size));
+exit:
+	return err;
+error:
+#ifdef DSP_MEM_STATIC
+#else
+	vfree(param);
+#endif
+	return err;
+}
+
 static int mc_asoc_write_reg(
 	struct snd_soc_codec *codec,
 	unsigned int reg,
@@ -6238,6 +7404,10 @@ static int mc_asoc_write_reg(
 	int	err	= 0;
 	struct mc_asoc_data	*mc_asoc	= NULL;
 
+	/* TRACE_FUNC(); */
+
+	/* dbg_info("reg=%d, value=%04Xh\n", reg, value); */
+
 	if (codec == NULL)
 		return -EINVAL;
 
@@ -6245,8 +7415,9 @@ static int mc_asoc_write_reg(
 	if (mc_asoc == NULL)
 		return -EINVAL;
 
+	mc_asoc_lock("mc_asoc_write_reg");
+
 	if (reg <= MC_ASOC_N_VOL_REG) {
-		/*pr_info("reg=%d, value=%04Xh\n", reg, value);*/
 		switch (reg) {
 		case	MC_ASOC_DVOL_MUSICIN:
 		case	MC_ASOC_DVOL_EXTIN:
@@ -6267,7 +7438,7 @@ static int mc_asoc_write_reg(
 			if ((((value>>8)&0x7F) > 114)
 			|| ((value&0x7F) > 114)) {
 				dbg_info("reg=%d, value=%04Xh\n", reg, value);
-				return -EINVAL;
+				err	= -EINVAL;
 			}
 			break;
 		case	MC_ASOC_AVOL_LINEIN1:
@@ -6279,28 +7450,28 @@ static int mc_asoc_write_reg(
 			if ((((value>>8)&0x7F) > 63)
 			|| ((value&0x7F) > 63)) {
 				dbg_info("reg=%d, value=%04Xh\n", reg, value);
-				return -EINVAL;
+				err	= -EINVAL;
 			}
 			break;
 		case	MC_ASOC_AVOL_HP:
 			if ((((value>>8)&0x7F) > 127)
 			|| ((value&0x7F) > 127)) {
 				dbg_info("reg=%d, value=%04Xh\n", reg, value);
-				return -EINVAL;
+				err	= -EINVAL;
 			}
 			break;
 		case	MC_ASOC_AVOL_SP:
 			if ((((value>>8)&0x7F) > 127)
 			|| ((value&0x7F) > 127)) {
 				dbg_info("reg=%d, value=%04Xh\n", reg, value);
-				return -EINVAL;
+				err	= -EINVAL;
 			}
 			break;
 		case	MC_ASOC_AVOL_RC:
 			if ((((value>>8)&0x7F) > 111)
 			|| ((value&0x7F) > 111)) {
 				dbg_info("reg=%d, value=%04Xh\n", reg, value);
-				return -EINVAL;
+				err	= -EINVAL;
 			}
 			break;
 		case	MC_ASOC_AVOL_LINEOUT1:
@@ -6308,14 +7479,14 @@ static int mc_asoc_write_reg(
 			if ((((value>>8)&0x7F) > 119)
 			|| ((value&0x7F) > 119)) {
 				dbg_info("reg=%d, value=%04Xh\n", reg, value);
-				return -EINVAL;
+				err	= -EINVAL;
 			}
 			break;
 		case	MC_ASOC_AVOL_SP_GAIN:
 			if ((((value>>8)&0x7F) > 4)
 			|| ((value&0x7F) > 4)) {
 				dbg_info("reg=%d, value=%04Xh\n", reg, value);
-				return -EINVAL;
+				err	= -EINVAL;
 			}
 			break;
 		case	MC_ASOC_DVOL_MASTER:
@@ -6323,13 +7494,13 @@ static int mc_asoc_write_reg(
 			if ((((value>>8)&0x7F) > 75)
 			|| ((value&0x7F) > 75)) {
 				dbg_info("reg=%d, value=%04Xh\n", reg, value);
-				return -EINVAL;
+				err	= -EINVAL;
 			}
 			break;
 		case	MC_ASOC_VOICE_RECORDING:
 			if ((value&0x7F) > 1) {
 				dbg_info("reg=%d, value=%04Xh\n", reg, value);
-				return -EINVAL;
+				err	= -EINVAL;
 			}
 			break;
 		}
@@ -6623,6 +7794,88 @@ static int mc_asoc_write_reg(
 				break;
 			err	= connect_path(codec);
 			break;
+		case	MC_ASOC_DSP_PARAM:
+			{
+			char	*param	= NULL;
+			UINT32	size;
+			UINT16	option;
+
+			if (value >= ARRAY_SIZE(firmware_name)) {
+				err	= -EINVAL;
+				break;
+			}
+			size	= load_file(firmware_name[value], &param);
+			dbg_info("file:%s\n", firmware_name[value]);
+			dbg_info("size:%ld\n", size);
+			dbg_info("param:%p", param);
+			if (size < 0) {
+				break;
+			} else {
+#if 0
+				int	i;
+				char	tmp[20], str[256];
+				tmp[0]	= str[0]	= 0;
+				strcat(str, "read data:\n");
+				for (i = 0; i < size; i++) {
+					sprintf(tmp, " %02X", param[i]);
+					strcat(str, tmp);
+					if ((i%16) == 15) {
+						pr_info("%s", str);
+						str[0]	= 0;
+					}
+				}
+				strcat(str, "\n");
+				pr_info("%s", str);
+#endif
+			}
+
+			option	= read_cache(codec, MC_ASOC_DSP_PARAM_OPT);
+			err	= set_dsp(codec, param, size, option);
+			}
+			break;
+		case	MC_ASOC_DSP_PARAM_OPT:
+			switch (value) {
+			case	YMC_DSP_OUTPUT_BASE:
+			case	YMC_DSP_OUTPUT_SP:
+			case	YMC_DSP_OUTPUT_RC:
+			case	YMC_DSP_OUTPUT_HP:
+			case	YMC_DSP_OUTPUT_LO1:
+			case	YMC_DSP_OUTPUT_LO2:
+			case	YMC_DSP_OUTPUT_BT:
+			case	YMC_DSP_INPUT_BASE:
+			case	YMC_DSP_INPUT_MAINMIC:
+			case	YMC_DSP_INPUT_SUBMIC:
+			case	YMC_DSP_INPUT_2MIC:
+			case	YMC_DSP_INPUT_HEADSET:
+			case	YMC_DSP_INPUT_BT:
+			case	YMC_DSP_INPUT_LINEIN1:
+			case	YMC_DSP_INPUT_LINEIN2:
+			case	YMC_DSP_VOICECALL_BASE_1MIC:
+			case	YMC_DSP_VOICECALL_BASE_2MIC:
+			case	YMC_DSP_VOICECALL_SP_1MIC:
+			case	YMC_DSP_VOICECALL_SP_2MIC:
+			case	YMC_DSP_VOICECALL_RC_1MIC:
+			case	YMC_DSP_VOICECALL_RC_2MIC:
+			case	YMC_DSP_VOICECALL_HP_1MIC:
+			case	YMC_DSP_VOICECALL_HP_2MIC:
+			case	YMC_DSP_VOICECALL_LO1_1MIC:
+			case	YMC_DSP_VOICECALL_LO1_2MIC:
+			case	YMC_DSP_VOICECALL_LO2_1MIC:
+			case	YMC_DSP_VOICECALL_LO2_2MIC:
+			case	YMC_DSP_VOICECALL_HEADSET:
+			case	YMC_DSP_VOICECALL_BT:
+			case	YMC_DSP_VOICECALL_BASE_COMMON:
+				write_cache(codec, reg, value);
+				break;
+			default:
+				err	= -EINVAL;
+				break;
+			}
+			break;
+		case	MC_ASOC_PLAYBACK_SCENARIO:
+		case	MC_ASOC_CAPTURE_SCENARIO:
+			write_cache(codec, reg, value);
+			break;
 		case	MC_ASOC_CLEAR_DSP_PARAM:
 			del_dsp_prm(mc_asoc);
 			break;
@@ -6669,7 +7922,32 @@ static int mc_asoc_write_reg(
 
 	if (err < 0)
 		dbg_info("err=%d\n", err);
+
+	mc_asoc_unlock("mc_asoc_write_reg");
 	return err;
+}
+
+static unsigned int mc_asoc_read_reg(
+	struct snd_soc_codec *codec,
+	unsigned int reg)
+{
+	int	ret;
+/*
+	TRACE_FUNC();
+
+	dbg_info("reg=%d\n", reg);
+*/
+	mc_asoc_lock("mc_asoc_read_reg");
+	if (codec == NULL) {
+		ret	= -EINVAL;
+		goto exit;
+	}
+	ret	= read_cache(codec, reg);
+	if (ret < 0)
+		ret	= -EIO;
+exit:
+	mc_asoc_unlock("mc_asoc_read_reg");
+	return (unsigned int)ret;
 }
 
 /*
@@ -6785,12 +8063,16 @@ static int mc_asoc_add_widgets(struct snd_soc_codec *codec)
 static int mc_asoc_hwdep_open(struct snd_hwdep *hw, struct file *file)
 {
 	/* Nothing to do */
+	mc_asoc_lock("mc_asoc_hwdep_open");
+	mc_asoc_unlock("mc_asoc_hwdep_open");
 	return 0;
 }
 
 static int mc_asoc_hwdep_release(struct snd_hwdep *hw, struct file *file)
 {
 	/* Nothing to do */
+	mc_asoc_lock("mc_asoc_hwdep_release");
+	mc_asoc_unlock("mc_asoc_hwdep_release");
 	return 0;
 }
 
@@ -6930,512 +8212,53 @@ static int mc_asoc_hwdep_ioctl(
 	unsigned long arg)
 {
 	int	err	= 0;
-	int	output_path;
-	int	input_path;
-	int	incall_mic;
 	UINT8	*param	= NULL;
 	struct snd_soc_codec	*codec	= NULL;
-	struct mc_asoc_data	*mc_asoc	= NULL;
 	struct ymc_ctrl_args	ymc_ctrl_arg;
 	UINT32	hold;
-	int	errCause = 0;
 
 	if (hw != NULL)
 		codec	= hw->private_data;
-	mc_asoc	= mc_asoc_get_mc_asoc(codec);
-	if (mc_asoc == NULL)
-		return -EINVAL;
 
-	output_path	= read_cache(codec, MC_ASOC_OUTPUT_PATH);
-	if (output_path < 0)
-		return -EIO;
-	input_path	= read_cache(codec, MC_ASOC_INPUT_PATH);
-	if (input_path < 0)
-		return -EIO;
-	incall_mic	= get_incall_mic(codec, output_path);
-	if (incall_mic < 0)
-		return -EIO;
+	mc_asoc_lock("mc_asoc_hwdep_ioctl");
 
 	switch (cmd) {
 	case YMC_IOCTL_SET_CTRL:
 		if (!access_ok(VERIFY_READ,
 			(struct ymc_ctrl_args *)arg,
-			sizeof(struct ymc_ctrl_args)))
-			return -EFAULT;
+			sizeof(struct ymc_ctrl_args))) {
+			err	= -EFAULT;
+			break;
+		}
 		if (copy_from_user(&ymc_ctrl_arg,
 			(struct ymc_ctrl_args *)arg,
 			sizeof(struct ymc_ctrl_args)) != 0) {
-			return -EFAULT;
+			err	= -EFAULT;
+			break;
 		}
 		if (ymc_ctrl_arg.size == 0)
 			break;
-		if (MAX_YMS_CTRL_PARAM_SIZE < ymc_ctrl_arg.size)
-			return -ENOMEM;
-#ifdef DSP_MEM_STATIC
+		if (MAX_YMS_CTRL_PARAM_SIZE < ymc_ctrl_arg.size) {
+			err	= -ENOMEM;
+			break;
+		}
+
 		param	= get_dsp_mem(ymc_ctrl_arg.size);
-#else
-		param	= kzalloc(ymc_ctrl_arg.size, GFP_KERNEL);
-#endif
-		if (param == NULL)
-			return -ENOMEM;
+		if (param == NULL) {
+			err	= -ENOMEM;
+			break;
+		}
 		if (copy_from_user(param, ymc_ctrl_arg.param,
 			ymc_ctrl_arg.size) != 0) {
+#ifdef DSP_MEM_STATIC
+#else
+			vfree(param);
+#endif
 			err	= -EFAULT;
-			errCause = 1;
-			goto error;
-		}
-		dbg_info("option=%08lX\n", ymc_ctrl_arg.option);
-		switch (ymc_ctrl_arg.option) {
-		case	YMC_DSP_OUTPUT_BASE:
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_OUTPUT,
-					DSP_PRM_BASE, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_INPUT_BASE:
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_INPUT,
-					DSP_PRM_BASE, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_VOICECALL_BASE_COMMON:
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
-				DSP_PRM_BASE, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 2;
-				goto error;
-			}
-#ifdef DSP_MEM_STATIC
-			param	= get_dsp_mem(ymc_ctrl_arg.size);
-#else
-			param	= kzalloc(ymc_ctrl_arg.size, GFP_KERNEL);
-#endif
-			if (param == NULL) {
-				err	= -ENOMEM;
-				errCause = 3;
-				goto error;
-			}
-			if (copy_from_user(param, ymc_ctrl_arg.param,
-				ymc_ctrl_arg.size) != 0) {
-				err	= -EFAULT;
-				errCause = 4;
-				goto error;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
-				DSP_PRM_BASE, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_VOICECALL_BASE_1MIC:
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
-				DSP_PRM_BASE, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 5;
-				goto error;
-			}
-			if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
-			&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
-				goto exit;
-			break;
-		case	YMC_DSP_VOICECALL_BASE_2MIC:
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
-				DSP_PRM_BASE, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 6;
-				goto error;
-			}
-			if (incall_mic != MC_ASOC_INCALL_MIC_2MIC)
-				goto exit;
-			break;
-		case	YMC_DSP_OUTPUT_SP:
-			if (output_path != MC_ASOC_OUTPUT_PATH_SP) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_OUTPUT,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_OUTPUT_RC:
-			if ((output_path != MC_ASOC_OUTPUT_PATH_RC)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_SP_RC)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_RC)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_RC)) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_OUTPUT,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_OUTPUT_HP:
-			if ((output_path != MC_ASOC_OUTPUT_PATH_HP)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_HS)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_SP_HP)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_HP)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_HP)) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_OUTPUT,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_OUTPUT_LO1:
-			if ((output_path != MC_ASOC_OUTPUT_PATH_LO1)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_SP_LO1)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_LO1)) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_OUTPUT,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_OUTPUT_LO2:
-			if ((output_path != MC_ASOC_OUTPUT_PATH_LO2)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_SP_LO2)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_LO2)) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_OUTPUT,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_OUTPUT_BT:
-			if ((output_path != MC_ASOC_OUTPUT_PATH_BT)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_SP_BT)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_BT)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_BT)) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_OUTPUT,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_INPUT_MAINMIC:
-			if (input_path != MC_ASOC_INPUT_PATH_MAINMIC) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_INPUT,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_INPUT_SUBMIC:
-			if (input_path != MC_ASOC_INPUT_PATH_SUBMIC) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_INPUT,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_INPUT_2MIC:
-			if (input_path != MC_ASOC_INPUT_PATH_2MIC) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_INPUT,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_INPUT_HEADSET:
-			if (input_path != MC_ASOC_INPUT_PATH_HS) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_INPUT,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_INPUT_BT:
-			if (input_path != MC_ASOC_INPUT_PATH_BT) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_INPUT,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_INPUT_LINEIN1:
-			if (input_path != MC_ASOC_INPUT_PATH_LIN1) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_INPUT,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			break;
-		case	YMC_DSP_VOICECALL_SP_1MIC:
-			if (output_path != MC_ASOC_OUTPUT_PATH_SP) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
-				DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 7;
-				goto error;
-			}
-			if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
-			&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
-				goto exit;
-			break;
-		case	YMC_DSP_VOICECALL_RC_1MIC:
-			if ((output_path != MC_ASOC_OUTPUT_PATH_RC)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_SP_RC)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_RC)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_RC)) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
-				DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 8;
-				goto error;
-			}
-			if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
-			&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
-				goto exit;
-			break;
-		case	YMC_DSP_VOICECALL_HP_1MIC:
-			if ((output_path != MC_ASOC_OUTPUT_PATH_HP)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_SP_HP)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_HP)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_HP)) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
-				DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 9;
-				goto error;
-			}
-			if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
-			&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
-				goto exit;
-			break;
-		case	YMC_DSP_VOICECALL_LO1_1MIC:
-			if ((output_path != MC_ASOC_OUTPUT_PATH_LO1)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_SP_LO1)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_LO1)) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
-				DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 10;
-				goto error;
-			}
-			if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
-			&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
-				goto exit;
-			break;
-		case	YMC_DSP_VOICECALL_LO2_1MIC:
-			if ((output_path != MC_ASOC_OUTPUT_PATH_LO2)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_SP_LO2)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_LO2)) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
-				DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 11;
-				goto error;
-			}
-			if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
-			&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
-				goto exit;
-			break;
-		case	YMC_DSP_VOICECALL_HEADSET:
-			if (output_path != MC_ASOC_OUTPUT_PATH_HS) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_1MIC,
-				DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 12;
-				goto error;
-			}
-			if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
-			&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
-				goto exit;
-			break;
-		case	YMC_DSP_VOICECALL_BT:
-			if ((output_path != MC_ASOC_OUTPUT_PATH_BT)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_SP_BT)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_BT)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_BT)) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 13;
-				goto error;
-			}
-			if ((incall_mic != MC_ASOC_INCALL_MIC_MAINMIC)
-			&& (incall_mic != MC_ASOC_INCALL_MIC_SUBMIC))
-				goto exit;
-			break;
-		case	YMC_DSP_VOICECALL_SP_2MIC:
-			if (output_path != MC_ASOC_OUTPUT_PATH_SP) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 14;
-				goto error;
-			}
-			if (incall_mic != MC_ASOC_INCALL_MIC_2MIC)
-				goto exit;
-			break;
-		case	YMC_DSP_VOICECALL_RC_2MIC:
-			if ((output_path != MC_ASOC_OUTPUT_PATH_RC)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_SP_RC)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_RC)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_RC)) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 15;
-				goto error;
-			}
-			if (incall_mic != MC_ASOC_INCALL_MIC_2MIC)
-				goto exit;
-			break;
-		case	YMC_DSP_VOICECALL_HP_2MIC:
-			if ((output_path != MC_ASOC_OUTPUT_PATH_HP)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_HS)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_SP_HP)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_HP)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_HP)) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 16;
-				goto error;
-			}
-			if (incall_mic != MC_ASOC_INCALL_MIC_2MIC)
-				goto exit;
-			break;
-		case	YMC_DSP_VOICECALL_LO1_2MIC:
-			if ((output_path != MC_ASOC_OUTPUT_PATH_LO1)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_SP_LO1)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO2_LO1)) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 17;
-				goto error;
-			}
-			if (incall_mic != MC_ASOC_INCALL_MIC_2MIC)
-				goto exit;
-			break;
-		case	YMC_DSP_VOICECALL_LO2_2MIC:
-			if ((output_path != MC_ASOC_OUTPUT_PATH_LO2)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_SP_LO2)
-			&& (output_path != MC_ASOC_OUTPUT_PATH_LO1_LO2)) {
-#ifdef DSP_MEM_STATIC
-#else
-				kfree(param);
-#endif
-				goto exit;
-			}
-			err	= add_dsp_prm(mc_asoc, DSP_PRM_VC_2MIC,
-					DSP_PRM_USER, param, ymc_ctrl_arg.size);
-			if (err != 0) {
-				errCause = 18;
-				goto error;
-			}
-			if (incall_mic != MC_ASOC_INCALL_MIC_2MIC)
-				goto exit;
-			break;
-		default:
-			err	= -EINVAL;
 			break;
 		}
-		if (err != 0) {
-			errCause = 19;
-			goto error;
-		}
-		err	= _McDrv_Ctrl(MCDRV_SET_DSP, param, NULL,
-							ymc_ctrl_arg.size);
-		if (err != 0) {
-			err	= map_drv_error(err);
-			break;	/*	don't return	*/
-		}
+		err	= set_dsp(codec, param, ymc_ctrl_arg.size,
+							ymc_ctrl_arg.option);
 		break;
 
 	case YMC_IOCTL_READ_REG:
@@ -7457,8 +8280,10 @@ static int mc_asoc_hwdep_ioctl(
 		break;
 
 	case YMC_IOCTL_NOTIFY_HOLD:
-		if (!access_ok(VERIFY_READ, (UINT32 *)arg, sizeof(UINT32)))
-			return -EFAULT;
+		if (!access_ok(VERIFY_READ, (UINT32 *)arg, sizeof(UINT32))) {
+			err	= -EFAULT;
+			break;
+		}
 		if (copy_from_user(&hold, (UINT32 *)arg, sizeof(UINT32)) != 0
 		) {
 			err	= -EFAULT;
@@ -7467,9 +8292,11 @@ static int mc_asoc_hwdep_ioctl(
 		dbg_info("hold=%ld\n", hold);
 		switch (hold) {
 		case	YMC_NOTITY_HOLD_OFF:
+			mc_asoc_hold	= (UINT8)hold;
 			err	= connect_path(codec);
 			if (err == 0)
 				auto_powerdown(codec);
+			break;
 		case	YMC_NOTITY_HOLD_ON:
 			mc_asoc_hold	= (UINT8)hold;
 			break;
@@ -7490,17 +8317,8 @@ static int mc_asoc_hwdep_ioctl(
 	default:
 		err	= -EINVAL;
 	}
-exit:
-	return err;
-error:
-#ifdef DSP_MEM_STATIC
-#else
-	if (param != NULL)
-		kfree(param);
-#endif
 
-	printk("\n!!!YMU831 - Invalid mc_asoc_hwdep_ioctl err[%d] cause[%d]\n", err, errCause);
-
+	mc_asoc_unlock("mc_asoc_hwdep_ioctl");
 	return err;
 }
 
@@ -7575,8 +8393,10 @@ static void work_mb4(struct work_struct *work)
 {
 	TRACE_FUNC();
 
+	mc_asoc_lock("work_mb4");
 	mc_asoc_MBSEL4	= 0x00;
 	connect_path(mc_asoc_codec);
+	mc_asoc_unlock("work_mb4");
 }
 
 static struct workqueue_struct	*workq_mkdeten;
@@ -7588,11 +8408,11 @@ static UINT8	mc_asoc_MICDET;
 static void work_mkdeten(struct work_struct *work)
 {
 	int	err;
+	UINT8	jack_status	= mc_asoc_jack_status;
 	struct MCDRV_HSDET_INFO	stHSDetInfo;
 #ifdef MICOPEN_4POLE
 	struct MCDRV_REG_INFO	reg_info;
 #endif
-	struct mc_asoc_data	*mc_asoc	= NULL;
 
 	TRACE_FUNC();
 
@@ -7601,8 +8421,8 @@ static void work_mkdeten(struct work_struct *work)
 		return;
 	}
 
-	mc_asoc	= mc_asoc_get_mc_asoc(mc_asoc_codec);
 	mutex_lock(&hsdet_mutex);
+	mc_asoc_lock("work_mkdeten");
 
 #ifdef MICOPEN_4POLE
 	reg_info.bRegType	= MCDRV_REGTYPE_CD;
@@ -7616,16 +8436,11 @@ static void work_mkdeten(struct work_struct *work)
 		|| (mc_asoc_hpimpclass == 5)
 		|| (mc_asoc_hpimpclass == 6))) {
 		dbg_info("MICDET\n");
-		snd_soc_jack_report(&hs_jack, 0, SND_JACK_HEADSET);
 		mc_asoc_jack_status	= SND_JACK_HEADSET;
-		snd_soc_jack_report(&hs_jack,
-			mc_asoc_jack_status, SND_JACK_HEADSET);
 #ifdef SW_DRV
 		switch_set_state(h2w_sdev, 0);
 		switch_set_state(h2w_sdev, 1);
 #endif
-		cancel_delayed_work(&delayed_work_mkdeten);
-		dbg_info("cancel_delayed_work_mkdeten\n");
 		dbg_info("queue_delayed_work_mb4\n");
 		queue_delayed_work(workq_mb4, &delayed_work_mb4,
 						msecs_to_jiffies(MSDETMB4OFF));
@@ -7639,14 +8454,27 @@ static void work_mkdeten(struct work_struct *work)
 			stHSDetInfo.bEnDlyKeyOn		= MCDRV_KEYEN_D_D_D;
 			stHSDetInfo.bEnKeyOff		= MCDRV_KEYEN_D_D_D;
 			stHSDetInfo.bEnKeyOn		= MCDRV_KEYEN_D_D_D;
-			_McDrv_Ctrl(MCDRV_SET_HSDET, (void *)&stHSDetInfo,
-								NULL, 0x7C);
+			err	= _McDrv_Ctrl(MCDRV_SET_HSDET,
+					(void *)&stHSDetInfo, NULL, 0x7C);
+		}
+		if (err < MCDRV_SUCCESS) {
+			;
+			dbg_info("%d: Error in work_mkdeten\n", err);
 		}
 		connect_path(mc_asoc_codec);
 #ifdef MICOPEN_4POLE
 	}
 #endif
 
+	mc_asoc_unlock("work_mkdeten");
+	if (jack_status != mc_asoc_jack_status) {
+		if ((jack_status == 1) && (mc_asoc_jack_status == 3)) {
+			;
+			snd_soc_jack_report(&hs_jack, 0, SND_JACK_HEADSET);
+		}
+		snd_soc_jack_report(&hs_jack,
+			mc_asoc_jack_status, SND_JACK_HEADSET);
+	}
 	mutex_unlock(&hsdet_mutex);
 }
 
@@ -7669,16 +8497,20 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 	UINT8	bKey1OnDlyTim2;
 	UINT8	bKey2OnDlyTim2;
 	UINT8	bHsDetDbnc, bDbncNumPlug;
-	struct mc_asoc_data	*mc_asoc	= NULL;
+	UINT8	jack_status	= mc_asoc_jack_status;
+	UINT32	jack_btn_on	= 0,
+		jack_btn_off	= 0,
+		jack_btn_stat	= 0;
 
 	TRACE_FUNC();
 
-	mc_asoc	= mc_asoc_get_mc_asoc(mc_asoc_codec);
-
 	mutex_lock(&hsdet_mutex);
+	mc_asoc_lock("hsdet_cb");
 
-	dbg_info("dFlags=0x%08lX, bKeyCnt0=%d, bKeyCnt1=%d, bKeyCnt2=%d\n",
-		dFlags, psRes->bKeyCnt0, psRes->bKeyCnt1, psRes->bKeyCnt2);
+	pr_info("dFlags=0x%08lX, bKeyCnt0=%d, bKeyCnt1=%d, bKeyCnt2=%d\n",
+		dFlags,
+		psRes->bKeyCnt0, psRes->bKeyCnt1,
+		psRes->bKeyCnt2);
 
 #ifdef HSDET_WHILE_SUSPEND
 	if (mc_asoc_suspended == 0) {
@@ -7726,22 +8558,24 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 	bKey1OnDlyTim2	= stHSDetInfo_Default.bKey1OnDlyTim2;
 	bKey2OnDlyTim2	= stHSDetInfo_Default.bKey2OnDlyTim2;
 #endif
-	_McDrv_Ctrl(MCDRV_GET_HSDET, (void *)&stHSDetInfo, NULL, 0);
+	err	= _McDrv_Ctrl(MCDRV_GET_HSDET, (void *)&stHSDetInfo, NULL, 0);
+	if (err < MCDRV_SUCCESS) {
+		dbg_info("%d: Error in MCDRV_GET_HSDET\n", err);
+		goto exit;
+	}
 	bCurEnPlugDetDb	= stHSDetInfo.bEnPlugDetDb;
 
 	if (dFlags & MCDRV_HSDET_EVT_SENSEFIN_FLAG) {
 		dbg_info("bPlugRev=%d, bHpImpClass=%d, wHpImp=%d\n",
-			psRes->bPlugRev, psRes->bHpImpClass, psRes->wHpImp);
+			psRes->bPlugRev, psRes->bHpImpClass,
+			psRes->wHpImp);
 		mc_asoc_hpimpclass	= psRes->bHpImpClass;
 	}
 
-	dbg_info("mc_asoc_jack_status=%d\n", mc_asoc_jack_status);
 	if (dFlags & MCDRV_HSDET_EVT_PLUGUNDET_DB_FLAG) {
 		if (bCurEnPlugDetDb & MCDRV_PLUGDETDB_UNDET_ENABLE) {
 			dbg_info("PLUGUNDETDB\n");
 			mc_asoc_jack_status	= 0;
-			snd_soc_jack_report(&hs_jack,
-				mc_asoc_jack_status, SND_JACK_HEADSET);
 #ifdef SW_DRV
 			switch_set_state(h2w_sdev, 0);
 #endif
@@ -7782,25 +8616,20 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 		if (dFlags & MCDRV_HSDET_EVT_KEYON0_FLAG) {
 			dbg_info("KEYON_0\n");
 			if ((bEnKeyOn & MCDRV_KEYEN_D_D_E) != 0) {
-				;
-				snd_soc_jack_report(&hs_jack, SND_JACK_BTN_0,
-					SND_JACK_BTN_0);
+				jack_btn_on	= SND_JACK_BTN_0;
+				jack_btn_stat	= SND_JACK_BTN_0;
 			}
-		}
-		if (dFlags & MCDRV_HSDET_EVT_KEYON1_FLAG) {
+		} else if (dFlags & MCDRV_HSDET_EVT_KEYON1_FLAG) {
 			dbg_info("KEYON_1\n");
 			if ((bEnKeyOn & MCDRV_KEYEN_D_E_D) != 0) {
-				;
-				snd_soc_jack_report(&hs_jack, SND_JACK_BTN_1,
-					SND_JACK_BTN_1);
+				jack_btn_on	= SND_JACK_BTN_1;
+				jack_btn_stat	= SND_JACK_BTN_1;
 			}
-		}
-		if (dFlags & MCDRV_HSDET_EVT_KEYON2_FLAG) {
+		} else if (dFlags & MCDRV_HSDET_EVT_KEYON2_FLAG) {
 			dbg_info("KEYON_2\n");
 			if ((bEnKeyOn & MCDRV_KEYEN_E_D_D) != 0) {
-				;
-				snd_soc_jack_report(&hs_jack, SND_JACK_BTN_2,
-					SND_JACK_BTN_2);
+				jack_btn_on	= SND_JACK_BTN_2;
+				jack_btn_stat	= SND_JACK_BTN_2;
 			}
 		}
 
@@ -7808,8 +8637,7 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 			dbg_info("KEYOFF_0\n");
 			if ((bEnKeyOff & MCDRV_KEYEN_D_D_E) != 0) {
 				;
-				snd_soc_jack_report(&hs_jack, 0,
-					SND_JACK_BTN_0);
+				jack_btn_off	= SND_JACK_BTN_0;
 			}
 			if (((bEnDlyKeyOn & MCDRV_KEYEN_D_D_E) != 0)
 			&& (mc_asoc_ver_id == 0)
@@ -7825,13 +8653,11 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 					"%d: Error in MCDRV_SET_HSDET\n", err);
 				}
 			}
-		}
-		if (dFlags & MCDRV_HSDET_EVT_KEYOFF1_FLAG) {
+		} else if (dFlags & MCDRV_HSDET_EVT_KEYOFF1_FLAG) {
 			dbg_info("KEYOFF_1\n");
 			if ((bEnKeyOff & MCDRV_KEYEN_D_E_D) != 0) {
 				;
-				snd_soc_jack_report(&hs_jack, 0,
-					SND_JACK_BTN_1);
+				jack_btn_off	= SND_JACK_BTN_1;
 			}
 			if (((bEnDlyKeyOn & MCDRV_KEYEN_D_E_D) != 0)
 			&& (mc_asoc_ver_id == 0)
@@ -7847,13 +8673,11 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 					"%d: Error in MCDRV_SET_HSDET\n", err);
 				}
 			}
-		}
-		if (dFlags & MCDRV_HSDET_EVT_KEYOFF2_FLAG) {
+		} else if (dFlags & MCDRV_HSDET_EVT_KEYOFF2_FLAG) {
 			dbg_info("KEYOFF_2\n");
 			if ((bEnKeyOff & MCDRV_KEYEN_E_D_D) != 0) {
 				;
-				snd_soc_jack_report(&hs_jack, 0,
-					SND_JACK_BTN_2);
+				jack_btn_off	= SND_JACK_BTN_2;
 			}
 			if (((bEnDlyKeyOn & MCDRV_KEYEN_E_D_D) != 0)
 			&& (mc_asoc_ver_id == 0)
@@ -7983,8 +8807,6 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 			&& (mc_asoc_hpimpclass != 5)
 			&& (mc_asoc_hpimpclass != 6)) {
 				mc_asoc_jack_status	= SND_JACK_HEADPHONE;
-				snd_soc_jack_report(&hs_jack,
-					mc_asoc_jack_status, SND_JACK_HEADSET);
 #ifdef SW_DRV
 				switch_set_state(h2w_sdev, 2);
 #endif
@@ -7997,10 +8819,7 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 			} else {
 				dbg_info("MICDET\n");
 				mc_asoc_jack_status	= SND_JACK_HEADSET;
-				snd_soc_jack_report(&hs_jack,
-					mc_asoc_jack_status, SND_JACK_HEADSET);
 #ifdef SW_DRV
-				switch_set_state(h2w_sdev, 0);
 				switch_set_state(h2w_sdev, 1);
 #endif
 				dbg_info("queue_delayed_work_mb4\n");
@@ -8019,8 +8838,6 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 			mc_asoc_MICDET	= reg_info.bData & 0x47;
 #endif
 			mc_asoc_jack_status	= SND_JACK_HEADPHONE;
-			snd_soc_jack_report(&hs_jack,
-				mc_asoc_jack_status, SND_JACK_HEADSET);
 #ifdef SW_DRV
 			switch_set_state(h2w_sdev, 2);
 #endif
@@ -8059,28 +8876,18 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 		&& (mc_asoc_hpimpclass != 6)) {
 			cancel_delayed_work(&delayed_work_mkdeten);
 
-			stHSDetInfo.bEnMicDet	= MCDRV_MICDET_DISABLE;
+			stHSDetInfo.bEnMicDet		= MCDRV_MICDET_DISABLE;
 			stHSDetInfo.bEnDlyKeyOff	= MCDRV_KEYEN_D_D_D;
 			stHSDetInfo.bEnDlyKeyOn		= MCDRV_KEYEN_D_D_D;
 			stHSDetInfo.bEnKeyOff		= MCDRV_KEYEN_D_D_D;
 			stHSDetInfo.bEnKeyOn		= MCDRV_KEYEN_D_D_D;
-			stHSDetInfo.cbfunc		= NULL;
 			err	= _McDrv_Ctrl(MCDRV_SET_HSDET,
-					(void *)&stHSDetInfo, NULL, 0x410000FE);
+					(void *)&stHSDetInfo, NULL, 0x7C);
 			if (err < MCDRV_SUCCESS)
 				dbg_info("%d: Error in MCDRV_SET_HSDET\n", err);
-			stHSDetInfo.cbfunc	= hsdet_cb;
-			err	= _McDrv_Ctrl(MCDRV_SET_HSDET,
-					(void *)&stHSDetInfo, NULL, 0x40000000);
-			if (err < MCDRV_SUCCESS)
-				dbg_info("%d: Error in MCDRV_SET_HSDET\n", err);
-		}
-		else {
+		} else {
 			dbg_info("MICDET\n");
-			snd_soc_jack_report(&hs_jack, 0, SND_JACK_HEADSET);
 			mc_asoc_jack_status	= SND_JACK_HEADSET;
-			snd_soc_jack_report(&hs_jack,
-				mc_asoc_jack_status, SND_JACK_HEADSET);
 	#ifdef SW_DRV
 			switch_set_state(h2w_sdev, 0);
 			switch_set_state(h2w_sdev, 1);
@@ -8123,6 +8930,22 @@ exit:
 #else
 	;
 #endif
+	mc_asoc_unlock("hsdet_cb");
+	if (jack_status != mc_asoc_jack_status) {
+		dbg_info("mc_asoc_jack_status=%d\n", mc_asoc_jack_status);
+		if ((jack_status == 1) && (mc_asoc_jack_status == 3)) {
+			;
+			snd_soc_jack_report(&hs_jack, 0, SND_JACK_HEADSET);
+		}
+		snd_soc_jack_report(&hs_jack,
+			mc_asoc_jack_status, SND_JACK_HEADSET);
+	}
+	if (jack_btn_on != 0) {
+		snd_soc_jack_report(&hs_jack, jack_btn_stat, jack_btn_on);
+	}
+	if (jack_btn_off != 0) {
+		snd_soc_jack_report(&hs_jack, 0, jack_btn_off);
+	}
 	mutex_unlock(&hsdet_mutex);
 }
 
@@ -8131,20 +8954,19 @@ static struct workqueue_struct	*my_wq;
 static void irq_func(struct work_struct *work)
 {
 	int	err;
+	struct mc_asoc_data	*mc_asoc	= NULL;
 
 	TRACE_FUNC();
+
+	mc_asoc	= mc_asoc_get_mc_asoc(mc_asoc_codec);
 
 	err	= _McDrv_Ctrl(MCDRV_IRQ, NULL, NULL, 0);
 	if (err < 0)
 		pr_info("irq_func %d\n", map_drv_error(err));
 
 	if (IRQ_TYPE == IRQ_TYPE_LEVEL_LOW) {
-#if (BUS_SELECT == BUS_SEL_I2C)
-		enable_irq(mc_asoc_i2c_a->irq);
-#elif (BUS_SELECT == BUS_SEL_SPI)
-		enable_irq(mc_asoc_spi->irq);
-#elif (BUS_SELECT == BUS_SEL_SLIM)
-#endif
+		;
+		enable_irq(mc_asoc->pdata->irq);
 	}
 	kfree((void *)work);
 }
@@ -8152,18 +8974,22 @@ irqreturn_t irq_handler(int irq, void *data)
 {
 	int	ret;
 	struct work_struct	*work;
+	struct mc_asoc_data	*mc_asoc	= NULL;
 
 	TRACE_FUNC();
+
+	if (mc_asoc_suspended == 1) {
+		mc_asoc_irq_func	= 1;
+		return IRQ_HANDLED;
+	}
+
+	mc_asoc	= mc_asoc_get_mc_asoc(mc_asoc_codec);
 
 	work	= kmalloc(sizeof(struct work_struct), GFP_ATOMIC);
 	if (work) {
 		if (IRQ_TYPE == IRQ_TYPE_LEVEL_LOW) {
-#if (BUS_SELECT == BUS_SEL_I2C)
-			disable_irq_nosync(mc_asoc_i2c_a->irq);
-#elif (BUS_SELECT == BUS_SEL_SPI)
-			disable_irq_nosync(mc_asoc_spi->irq);
-#elif (BUS_SELECT == BUS_SEL_SLIM)
-#endif
+			;
+			disable_irq_nosync(mc_asoc->pdata->irq);
 		}
 		INIT_WORK((struct work_struct *)work, irq_func);
 		ret	= queue_work(my_wq, (struct work_struct *)work);
@@ -8174,29 +9000,20 @@ irqreturn_t irq_handler(int irq, void *data)
 static int init_irq(struct snd_soc_codec *codec)
 {
 	int	err	= 0;
+	struct mc_asoc_data	*mc_asoc	= NULL;
 
 	TRACE_FUNC();
 
+	mc_asoc	= mc_asoc_get_mc_asoc(codec);
 	my_wq	= create_workqueue("irq_queue");
 
-#if (BUS_SELECT == BUS_SEL_I2C)
-	err = irq_set_irq_type(mc_asoc_i2c_a->irq, IRQ_TYPE);
-#elif (BUS_SELECT == BUS_SEL_SPI)
-	err = irq_set_irq_type(mc_asoc_spi->irq, IRQ_TYPE);
-#elif (BUS_SELECT == BUS_SEL_SLIM)
-#endif
+	err	= irq_set_irq_type(mc_asoc->pdata->irq, IRQ_TYPE);
 	if (err < 0) {
 		dev_err(codec->dev, "Failed to set_irq_type: %d\n", err);
 		return -EIO;
 	}
-#if (BUS_SELECT == BUS_SEL_I2C)
-	err	= request_irq(mc_asoc_i2c_a->irq, irq_handler,
-		IRQF_DISABLED, "MC_YAMAHA IRQ", NULL);
-#elif (BUS_SELECT == BUS_SEL_SPI)
-	err	= request_irq(mc_asoc_spi->irq, irq_handler,
-		IRQF_DISABLED, "MC_YAMAHA IRQ", NULL);
-#elif (BUS_SELECT == BUS_SEL_SLIM)
-#endif
+	err	= request_irq(mc_asoc->pdata->irq, irq_handler, IRQF_DISABLED,
+							"MC_YAMAHA IRQ", NULL);
 	if (err < 0) {
 		dev_err(codec->dev, "Failed to request_irq: %d\n", err);
 		return -EIO;
@@ -8205,12 +9022,11 @@ static int init_irq(struct snd_soc_codec *codec)
 }
 static int term_irq(void)
 {
-#if (BUS_SELECT == BUS_SEL_I2C)
-	free_irq(mc_asoc_i2c_a->irq, NULL);
-#elif (BUS_SELECT == BUS_SEL_SPI)
-	free_irq(mc_asoc_spi->irq, NULL);
-#elif (BUS_SELECT == BUS_SEL_SLIM)
-#endif
+	struct mc_asoc_data	*mc_asoc	= NULL;
+
+	mc_asoc	= mc_asoc_get_mc_asoc(mc_asoc_codec);
+
+	free_irq(mc_asoc->pdata->irq, NULL);
 	destroy_workqueue(my_wq);
 	if (workq_mb4)
 		destroy_workqueue(workq_mb4);
@@ -8233,24 +9049,21 @@ static int mc_asoc_probe(
 	struct device		*dev		= NULL;
 	struct MCDRV_DIO_INFO	sDioInfo;
 	struct MCDRV_DIOPATH_INFO	sDioPathInfo;
-	int	err;
+	int	err, err2;
 	UINT32	update	= 0;
 	struct MCDRV_REG_INFO	reg_info;
-#if (BUS_SELECT == BUS_SEL_SPI)
-	struct mc_asoc_platform_data	*platform_data	= NULL;
-#endif
 
 	TRACE_FUNC();
+
 
 	mc_asoc_codec		= codec;
 	mc_asoc_suspended	= 0;
 	mc_asoc_hpimpclass	= (UINT8)-1;
 	mc_asoc_jack_status	= 0;
-
-
-	mutex_init(&connect_path_mutex);
-	mutex_init(&hsdet_mutex);
-
+	mc_asoc_irq_func	= 0;
+#ifdef DSP_MEM_STATIC
+	dsp_mem_pt		= 0;
+#endif
 
 	workq_mb4	= create_workqueue("mb4");
 	if (workq_mb4 == NULL) {
@@ -8258,6 +9071,7 @@ static int mc_asoc_probe(
 		goto error_codec_data;
 	}
 	INIT_DELAYED_WORK(&delayed_work_mb4, work_mb4);
+
 	workq_mkdeten	= create_workqueue("mkdeten");
 	if (workq_mkdeten == NULL) {
 		err	= -ENOMEM;
@@ -8265,8 +9079,17 @@ static int mc_asoc_probe(
 	}
 	INIT_DELAYED_WORK(&delayed_work_mkdeten, work_mkdeten);
 
+#ifdef DELAY_CONNECT_XXX
+	workq_cfg_slim_sch	= create_workqueue("cfg_slim_sch");
+	if (workq_cfg_slim_sch == NULL) {
+		err	= -ENOMEM;
+		goto error_codec_data;
+	}
+	INIT_DELAYED_WORK(&delayed_work_cfg_slim_sch, work_cfg_slim_sch);
+#endif
+
 	if (codec == NULL) {
-		/*pr_info(KERN_ERR "I2C bus is not probed successfully\n");*/
+		/*printk(KERN_ERR "I2C bus is not probed successfully\n");*/
 		err	= -ENODEV;
 		goto error_codec_data;
 	}
@@ -8282,9 +9105,8 @@ static int mc_asoc_probe(
 	mc_asoc->setup	= mc_asoc_cfg_setup;
 #if (BUS_SELECT == BUS_SEL_SPI)
 	mc_asoc->setup.init2.bOption[19]	= 1;
-	if (mc_asoc_spi->dev.platform_data != NULL) {
-		platform_data	= mc_asoc_spi->dev.platform_data;
-		if (platform_data->set_codec_ldod != NULL) {
+	if (mc_asoc->pdata != NULL) {
+		if (mc_asoc->pdata->set_codec_ldod != NULL) {
 			;
 			mc_asoc->setup.init2.bOption[19]	= 0;
 		}
@@ -8312,7 +9134,8 @@ static int mc_asoc_probe(
 		err	= _McDrv_Ctrl(MCDRV_TERM, NULL, NULL, 0);
 		if (err != MCDRV_SUCCESS) {
 			dev_err(dev, "%d: Error in MCDRV_TERM\n", err);
-			return -EIO;
+			err	= -EIO;
+			goto error_init_hw;
 		}
 		mc_asoc->setup.init.bMbSel1	= MCDRV_MBSEL_20;
 		mc_asoc->setup.init.bMbSel2	= MCDRV_MBSEL_20;
@@ -8580,16 +9403,22 @@ static int mc_asoc_probe(
 		dev_err(dev, "%d: Error in init_irq\n", err);
 		goto error_set_mode;
 	}
+
 #ifdef HSDET_WHILE_SUSPEND
 	device_init_wakeup(dev, 1);
 #endif
+
 	set_bias_level(codec, SND_SOC_BIAS_STANDBY);
-	return 0;
+	goto exit;
 
 error_set_mode:
 error_add_hwdep:
 error_add_ctl:
-	_McDrv_Ctrl(MCDRV_TERM, NULL, NULL, 0);
+	err2	= _McDrv_Ctrl(MCDRV_TERM, NULL, NULL, 0);
+	if (err2 < 0) {
+		;
+		dev_err(dev, "%d: Error in MCDRV_TERM\n", err2);
+	}
 error_init_hw:
 error_codec_data:
 	if (workq_mb4)
@@ -8598,15 +9427,21 @@ error_codec_data:
 		destroy_workqueue(workq_mkdeten);
 	workq_mb4	= NULL;
 	workq_mkdeten	= NULL;
+#ifdef DELAY_CONNECT_XXX
+	if (workq_cfg_slim_sch)
+		destroy_workqueue(workq_cfg_slim_sch);
+	workq_cfg_slim_sch	= NULL;
+#endif
+exit:
 	return err;
 }
 
 static int mc_asoc_remove(struct snd_soc_codec *codec)
 {
-	int err;
+	int err	= 0;
 	struct mc_asoc_data	*mc_asoc	= NULL;
 
-	TRACE_FUNC();
+	/*TRACE_FUNC();*/
 
 	mc_asoc	= mc_asoc_get_mc_asoc(codec);
 	if (mc_asoc == NULL)
@@ -8631,16 +9466,19 @@ static int mc_asoc_remove(struct snd_soc_codec *codec)
 		err	= _McDrv_Ctrl(MCDRV_TERM, NULL, NULL, 0);
 		if (err != MCDRV_SUCCESS) {
 			dev_err(codec->dev, "%d: Error in MCDRV_TERM\n", err);
-			return -EIO;
+			err	= -EIO;
 		}
 	}
 
-
-	mutex_destroy(&connect_path_mutex);
-	mutex_destroy(&hsdet_mutex);
-
-
-	return 0;
+	destroy_workqueue(workq_mb4);
+	destroy_workqueue(workq_mkdeten);
+	workq_mb4	= NULL;
+	workq_mkdeten	= NULL;
+#ifdef DELAY_CONNECT_XXX
+	destroy_workqueue(workq_cfg_slim_sch);
+	workq_cfg_slim_sch	= NULL;
+#endif
+	return err;
 }
 
 static int mc_asoc_suspend(
@@ -8694,8 +9532,7 @@ static int mc_asoc_suspend(
 	set_bias_level(codec, SND_SOC_BIAS_OFF);
 #endif
 
-	mutex_lock(&mc_asoc->mutex);
-	mutex_lock(&hsdet_mutex);
+	mc_asoc_lock("mc_asoc_suspend");
 
 	err	= _McDrv_Ctrl(MCDRV_GET_HSDET,
 				(void *)&mc_asoc->hsdet_store, NULL, 0);
@@ -8708,14 +9545,8 @@ static int mc_asoc_suspend(
 					stHSDetInfo_Default.bDlyIrqStop;
 
 #ifdef HSDET_WHILE_SUSPEND
-#if (BUS_SELECT == BUS_SEL_I2C)
 	if (device_may_wakeup(codec->dev))
-		enable_irq_wake(mc_asoc_i2c_a->irq);
-#elif (BUS_SELECT == BUS_SEL_SPI)
-	if (device_may_wakeup(codec->dev))
-		enable_irq_wake(mc_asoc_spi->irq);
-#elif (BUS_SELECT == BUS_SEL_SLIM)
-#endif
+		enable_irq_wake(mc_asoc->pdata->irq);
 
 	stHSDetInfo	= stHSDetInfo_Suspend;
 	if (mc_asoc_ver_id == 0) {
@@ -8771,7 +9602,7 @@ static int mc_asoc_suspend(
 		err	= -EIO;
 	}
 #endif
-
+#ifndef FEATURE_MCLK_CONTROL_BY_YMU831
 	if ((mixer_ctl_info.audio_mode_play == 0)
 	&& (mixer_ctl_info.audio_mode_cap == 0)
 	&& (mixer_ctl_info.mainmic_play == 0)
@@ -8782,12 +9613,11 @@ static int mc_asoc_suspend(
 	&& (mixer_ctl_info.lin1_play == 0)
 	&& (mixer_ctl_info.dtmf_control == 0))
 		exynos5_audio_set_mclk(0, 1);
-
+#endif
 	mc_asoc_suspended	= 1;
 
 error:
-	mutex_unlock(&mc_asoc->mutex);
-	mutex_unlock(&hsdet_mutex);
+	mc_asoc_unlock("mc_asoc_suspend");
 
 	return err;
 }
@@ -8810,17 +9640,25 @@ static int mc_asoc_resume(
 	struct mc_asoc_mixer_path_ctl_info	mixer_ctl_info;
 
 	TRACE_FUNC();
+
 	if (mc_asoc_suspended != 1)
 		return 0;
 
+#ifndef FEATURE_MCLK_CONTROL_BY_YMU831
 	exynos5_audio_set_mclk(1, 0);
-
+#endif
 	mc_asoc	= mc_asoc_get_mc_asoc(codec);
 	if (mc_asoc == NULL)
 		return -EINVAL;
 
-	mutex_lock(&mc_asoc->mutex);
-	mutex_lock(&hsdet_mutex);
+	mc_asoc_suspended	= 0;
+
+	if (mc_asoc_irq_func != 0) {
+		err	= map_drv_error(_McDrv_Ctrl(MCDRV_IRQ, NULL, NULL, 0));
+		mc_asoc_irq_func	= 0;
+	}
+
+	mc_asoc_lock("mc_asoc_resume");
 
 	get_mixer_path_ctl_info(codec, &mixer_ctl_info);
 #ifdef HSDET_WHILE_SUSPEND
@@ -8881,14 +9719,8 @@ static int mc_asoc_resume(
 		err	= -EIO;
 		goto error;
 	}
-#if (BUS_SELECT == BUS_SEL_I2C)
 	if (device_may_wakeup(codec->dev))
-		disable_irq_wake(mc_asoc_i2c_a->irq);
-#elif (BUS_SELECT == BUS_SEL_SPI)
-	if (device_may_wakeup(codec->dev))
-		disable_irq_wake(mc_asoc_spi->irq);
-#elif (BUS_SELECT == BUS_SEL_SLIM)
-#endif
+		disable_irq_wake(mc_asoc->pdata->irq);
 
 #else
 	err	= _McDrv_Ctrl(MCDRV_INIT, &mc_asoc->setup.init,
@@ -8985,12 +9817,8 @@ static int mc_asoc_resume(
 	}
 #endif
 
-	mc_asoc_suspended	= 0;
-
 error:
-	mutex_unlock(&mc_asoc->mutex);
-	mutex_unlock(&hsdet_mutex);
-
+	mc_asoc_unlock("mc_asoc_resume");
 	return err;
 }
 
@@ -9000,6 +9828,15 @@ static int set_bias_level(
 {
 	pr_info("%s codec[%p] level[%d]\n", __func__, codec, level);
 	codec->dapm.bias_level	= level;
+	return 0;
+}
+static int mc_asoc_set_bias_level(
+	struct snd_soc_codec	*codec,
+	enum snd_soc_bias_level	level)
+{
+	mc_asoc_lock("mc_asoc_set_bias_level");
+	set_bias_level(codec, level);
+	mc_asoc_unlock("mc_asoc_set_bias_level");
 	return 0;
 }
 
@@ -9016,7 +9853,7 @@ struct snd_soc_codec_driver	mc_asoc_codec_dev	= {
 #ifdef KERNEL_3_4
 	.idle_bias_off	= true,
 #endif
-	.set_bias_level	= set_bias_level
+	.set_bias_level	= mc_asoc_set_bias_level
 };
 
 #if (BUS_SELECT == BUS_SEL_I2C)
@@ -9050,7 +9887,7 @@ static int mc_asoc_i2c_probe(
 	mc_asoc_i2c_a	= client;
 
 	memset(&mc_asoc_vol_info_mute, 0, sizeof(struct MCDRV_VOL_INFO));
-	return 0;
+	goto exit;
 
 err_reg_codec:
 	i2c_set_clientdata(client, NULL);
@@ -9058,6 +9895,8 @@ err_reg_codec:
 err_alloc_priv:
 	kfree(mc_asoc_priv);
 	dev_err(&client->dev, "err=%d: failed to probe MC_ASOC\n", err);
+
+exit:
 	return err;
 }
 
@@ -9142,7 +9981,7 @@ void mc_asoc_write_data(
 		char	tmp[20], str[256];
 		tmp[0]	= str[0]	= 0;
 		strcat(str, "tx data:");
-		for (i = 0 ; i < dSize; i++) {
+		for (i = 0; i < dSize; i++) {
 			sprintf(tmp, " %02X", pbData[i]);
 			strcat(str, tmp);
 		}
@@ -9170,7 +10009,7 @@ void mc_asoc_read_data(
 		tmp[0]	= str[0]	= 0;
 		pr_info("read %02X:", (UINT8)dAddress);
 		strcat(str, "rx data:");
-		for (i = 0 ; i < dSize; i++) {
+		for (i = 0; i < dSize; i++) {
 			sprintf(tmp, " %02X", pbData[i]);
 			strcat(str, tmp);
 		}
@@ -9186,7 +10025,6 @@ static int spi_rw(u8 *tx, u8 *rx, int len)
 {
 	struct spi_message	spi_msg;
 	struct spi_transfer	spi_xfer;
-	int i = 0;
 
 	/* Initialize SPI ,message */
 	spi_message_init(&spi_msg);
@@ -9207,7 +10045,7 @@ static int spi_rw(u8 *tx, u8 *rx, int len)
 		tmp[0]	= str[0]	= 0;
 		sprintf(tmp, "tx len %d:\n", spi_xfer.len);
 		strcat(str, tmp);
-		for (i = 0 ; i < spi_xfer.len && i < 32 ; i++) {
+		for (i = 0; i < spi_xfer.len && i < 32; i++) {
 			sprintf(tmp, " %02X", ((u8 *)spi_xfer.tx_buf)[i]);
 			strcat(str, tmp);
 		}
@@ -9218,18 +10056,8 @@ static int spi_rw(u8 *tx, u8 *rx, int len)
 
 	/* Perform synchronous SPI transfer */
 	if (spi_sync(mc_asoc_spi, &spi_msg)) {
-		while(i < 10){
-			msleep(10);
-			if (spi_sync(mc_asoc_spi, &spi_msg))
-				i++;
-			else
-				break;
-		}
-
-		if(i >= 10) {
-			dev_err(&mc_asoc_spi->dev, "spi_sync failure\n");
-			return -EIO;
-		}
+		dev_err(&mc_asoc_spi->dev, "spi_sync failure\n");
+		return -EIO;
 	}
 
 #if 0
@@ -9239,7 +10067,7 @@ static int spi_rw(u8 *tx, u8 *rx, int len)
 		tmp[0]	= str[0]	= 0;
 		sprintf(tmp, "rx len %d:\n", spi_xfer.len);
 		strcat(str, tmp);
-		for (i = 1 ; i < spi_xfer.len && i < 32 ; i++) {
+		for (i = 1; i < spi_xfer.len && i < 32; i++) {
 			sprintf(tmp, " %02X", ((u8 *)spi_xfer.rx_buf)[i]);
 			strcat(str, tmp);
 		}
@@ -9263,7 +10091,7 @@ void mc_asoc_read_data(
 	if ((dSize+2) > sizeof(buf)) {
 		rx	= kmalloc(dSize+2, GFP_KERNEL);
 		if (rx == NULL) {
-			pr_info(KERN_ERR "Failed to ReadReg\n");
+			printk(KERN_ERR "Failed to ReadReg\n");
 			return;
 		}
 		readBuf	= rx;
@@ -9282,7 +10110,7 @@ void mc_asoc_read_data(
 		pr_info("read %02X:", (UINT8)dAddress);
 #endif
 		strcat(str, "rx data:");
-		for (i = 0 ; i < dSize && i < 32; i++) {
+		for (i = 0; i < dSize && i < 32; i++) {
 			sprintf(tmp, " %02X", pbData[i]);
 			strcat(str, tmp);
 		}
@@ -9304,16 +10132,21 @@ void mc_asoc_write_data(
 	spi_rw((u8 *)pbData, NULL, dSize);
 #ifdef CONFIG_SND_SOC_YAMAHA_YMU831_DEBUG
 	{
+#ifdef SHOW_REG_ACCESS
 		int i;
 		char	tmp[20], str[256];
 		tmp[0]	= str[0]	= 0;
 		strcat(str, "tx data:");
-		for (i = 0 ; i < dSize && i < 32; i++) {
+		for (i = 0; i < dSize; i++) {
+			if (strlen(str) >= 72) {
+				strcat(str, "\n");
+				pr_info("%s", str);
+				str[0]	= 0;
+			}
 			sprintf(tmp, " %02X", pbData[i]);
 			strcat(str, tmp);
 		}
 		strcat(str, "\n");
-#ifdef SHOW_REG_ACCESS
 		pr_info("%s", str);
 #endif
 	}
@@ -9322,17 +10155,15 @@ void mc_asoc_write_data(
 
 void mc_asoc_set_codec_ldod(int status)
 {
-	struct mc_asoc_platform_data	*platform_data	= NULL;
+	struct mc_asoc_data	*mc_asoc	= NULL;
 
-	pr_err("%s: set_codec_ldod = %02Xh\n", __func__, status); 
-	if (mc_asoc_spi->dev.platform_data != NULL) {
-		platform_data	= mc_asoc_spi->dev.platform_data;
-		if (platform_data->set_codec_ldod != NULL) {
-			pr_err("%s: set_ldod = %02Xh\n", __func__, status); 
-			(*platform_data->set_codec_ldod)(status);
+	mc_asoc	= mc_asoc_get_mc_asoc(mc_asoc_codec);
+	if (mc_asoc->pdata != NULL) {
+		if (mc_asoc->pdata->set_codec_ldod != NULL) {
+			(*mc_asoc->pdata->set_codec_ldod)(status);
 			if (status == 1) {
 				;
-				udelay(500);
+				usleep_range(500, 600);
 			}
 		}
 	}
@@ -9347,8 +10178,9 @@ static int __devinit mc_asoc_spi_probe(
 
 	TRACE_FUNC();
 
+#ifndef FEATURE_MCLK_CONTROL_BY_YMU831
 	exynos5_audio_set_mclk(1, 0);
-
+#endif
 	mc_asoc_priv	= kzalloc(sizeof(struct mc_asoc_priv), GFP_KERNEL);
 	if (!mc_asoc_priv) {
 		err	= -ENOMEM;
@@ -9366,12 +10198,14 @@ static int __devinit mc_asoc_spi_probe(
 	if (err < 0)
 		goto err_reg_codec;
 
-	return 0;
+	goto exit;
 
 err_reg_codec:
 	kfree(mc_asoc_priv);
 err_alloc_priv:
 	dev_err(&spi->dev, "err=%d: failed to probe MC_ASOC\n", err);
+
+exit:
 	return err;
 }
 
@@ -9385,9 +10219,9 @@ static int __devexit mc_asoc_spi_remove(struct spi_device *spi)
 		mutex_destroy(&mc_asoc_priv->data.mutex);
 		kfree(mc_asoc_priv);
 	}
-
+#ifndef FEATURE_MCLK_CONTROL_BY_YMU831
 	exynos5_audio_set_mclk(0, 0);
-
+#endif
 	return 0;
 }
 
@@ -9400,6 +10234,881 @@ static struct spi_driver	mc_asoc_spi_driver = {
 	.remove	= __devexit_p(mc_asoc_spi_remove),
 };
 #elif (BUS_SELECT == BUS_SEL_SLIM)
+#define GLA_MAX_RETRIES		(5)
+#define RW_MAX_TRIES		(3)
+#define BASE_CH_NUM		(128)
+
+void mc_asoc_read_data(
+	UINT8 bSlaveAdr,
+	UINT32 dAddress,
+	UINT8 *pbData,
+	UINT32 dSize)
+{
+	int	i;
+	int	ret	= 0;
+	struct slim_ele_access	msg;
+	int	write_tries	= RW_MAX_TRIES;
+
+	msg.start_offset	= 0x880 | ((dAddress&0xFF)<<1);
+	msg.num_bytes	= 1;
+	msg.comp	= NULL;
+
+	for (i = 0; i < dSize && ret == 0; i++) {
+		while (1) {
+			ret = slim_request_val_element(mc_asoc_slim, &msg,
+								pbData+i, 1);
+			if (likely(ret == 0) || (--write_tries == 0))
+				break;
+			usleep_range(5000, 5000);
+		}
+	}
+	if (ret) {
+		pr_err("%s: Error, Codec read failed (%d)\n", __func__, ret);
+	} else {
+#ifdef CONFIG_SND_SOC_YAMAHA_YMU831_DEBUG
+		int i;
+		char	tmp[20], str[256];
+		tmp[0]	= str[0]	= 0;
+#ifdef SHOW_REG_ACCESS
+		pr_info("read %02X:", (UINT8)dAddress);
+#endif
+		strcat(str, "rx data:");
+		for (i = 0; i < dSize && i < 32; i++) {
+			sprintf(tmp, " %02X", pbData[i]);
+			strcat(str, tmp);
+		}
+		strcat(str, "\n");
+#ifdef SHOW_REG_ACCESS
+		pr_info("%s", str);
+#endif
+#endif
+	}
+}
+
+void mc_asoc_write_data(
+	UINT8 bSlaveAdr,
+	const UINT8 *pbData,
+	UINT32 dSize)
+{
+	int	ret	= 0;
+	struct slim_ele_access	msg;
+	int	write_tries	= RW_MAX_TRIES;
+	UINT32	dOffset;
+
+	msg.comp	= NULL;
+
+	for (dOffset = 0; dOffset < dSize && ret == 0; dOffset++) {
+		msg.start_offset	= 0x800 | pbData[dOffset];
+		if ((pbData[dOffset++]&1) == 0) {
+			msg.num_bytes	= 1;
+			while (1) {
+				ret	= slim_change_val_element(mc_asoc_slim,
+						&msg, pbData+dOffset, 1);
+				if (likely(ret == 0)
+				|| (--write_tries == 0))
+					break;
+				usleep_range(5000, 5000);
+			}
+#ifdef CONFIG_SND_SOC_YAMAHA_YMU831_DEBUG
+			{
+				char	str[256];
+				sprintf(str, "tx data : %02X %02X\n",
+					(UINT8)msg.start_offset&0xFF,
+					*(pbData+dOffset));
+#ifdef SHOW_REG_ACCESS
+				pr_info("%s", str);
+#endif
+			}
+#endif
+		} else {
+			while (dOffset < dSize) {
+				if ((dSize-dOffset) >= 16) {
+					msg.num_bytes	= 16;
+				} else if ((dSize-dOffset) >= 12) {
+					msg.num_bytes	= 12;
+				} else if ((dSize-dOffset) >= 8) {
+					msg.num_bytes	= 8;
+				} else if ((dSize-dOffset) >= 6) {
+					msg.num_bytes	= 6;
+				} else if ((dSize-dOffset) >= 4) {
+					msg.num_bytes	= 4;
+				} else {
+					msg.num_bytes	=
+						dSize-dOffset;
+					if (msg.num_bytes == 1) {
+						;
+						msg.start_offset--;
+					}
+				}
+				while (1) {
+					ret	= slim_change_val_element(
+							mc_asoc_slim,
+							&msg,
+							pbData+dOffset,
+							msg.num_bytes);
+					if (likely(ret == 0)
+					|| (--write_tries == 0))
+						break;
+					usleep_range(5000, 5000);
+				}
+#ifdef CONFIG_SND_SOC_YAMAHA_YMU831_DEBUG
+				{
+					int i;
+					char	tmp[20], str[256];
+					tmp[0]	= str[0]	= 0;
+					sprintf(tmp, "tx data : %02X",
+						(UINT8)msg.start_offset&0xFF);
+					strcat(str, tmp);
+					for (i = 0; i < msg.num_bytes; i++) {
+						sprintf(tmp, " %02X",
+							*(pbData+dOffset+i));
+						strcat(str, tmp);
+					}
+					strcat(str, "\n");
+#ifdef SHOW_REG_ACCESS
+					pr_info("%s", str);
+#endif
+				}
+#endif
+				dOffset	+= msg.num_bytes;
+			}
+		}
+	}
+
+	if (ret) {
+		;
+		pr_err("%s: Error, Codec write failed (%d)\n", __func__, ret);
+	}
+}
+
+static int slim_processtxn(struct slim_controller *ctrl, u8 dt, u16 mc, u16 ec,
+			u8 mt, u8 *rbuf, const u8 *wbuf, u8 len, u8 mlen,
+			struct completion *comp, u8 la, u8 *tid)
+{
+	u8 i = 0;
+	int ret = 0;
+	struct slim_msg_txn *txn = kmalloc(sizeof(struct slim_msg_txn),
+					GFP_KERNEL);
+	if (!txn)
+		return -ENOMEM;
+	if (tid) {
+		mutex_lock(&ctrl->m_ctrl);
+		for (i = 0; i < ctrl->last_tid; i++) {
+			if (ctrl->txnt[i] == NULL)
+				break;
+		}
+		if (i >= ctrl->last_tid) {
+			if (ctrl->last_tid == 255) {
+				mutex_unlock(&ctrl->m_ctrl);
+				kfree(txn);
+				return -ENOMEM;
+			}
+			ctrl->txnt = krealloc(ctrl->txnt,
+					(i + 1) * sizeof(struct slim_msg_txn *),
+					GFP_KERNEL);
+			if (!ctrl->txnt) {
+				mutex_unlock(&ctrl->m_ctrl);
+				kfree(txn);
+				return -ENOMEM;
+			}
+			ctrl->last_tid++;
+		}
+		ctrl->txnt[i] = txn;
+		mutex_unlock(&ctrl->m_ctrl);
+		txn->tid = i;
+		*tid = i;
+	}
+	txn->mc = mc;
+	txn->mt = mt;
+	txn->dt = dt;
+	txn->ec = ec;
+	txn->la = la;
+	txn->rbuf = rbuf;
+	txn->wbuf = wbuf;
+	txn->rl = mlen;
+	txn->len = len;
+	txn->comp = comp;
+
+	ret = ctrl->xfer_msg(ctrl, txn);
+	if (!tid)
+		kfree(txn);
+	return ret;
+}
+
+static int	ldod_status;
+
+static void alloc_ch(void)
+{
+	int	err;
+	u8	port_idx;
+	u16	slave_port_id;
+	int	retries	= RW_MAX_TRIES;
+
+	if (ldod_status != 0) {
+		;
+		return;
+	}
+
+	while (1) {
+		err	= slim_get_logical_addr(mc_asoc_slim,
+					mc_asoc_slim->e_addr,
+					ARRAY_SIZE(mc_asoc_slim->e_addr),
+					&mc_asoc_slim->laddr);
+		if (likely(err == 0)
+		|| (--retries == 0))
+			break;
+		usleep_range(5000, 5000);
+	};
+	if (err) {
+		pr_err("fail to get slimbus logical address %d\n", err);
+		return;
+	}
+
+	/*
+	 * DSP requires channel number to be between 128 and 255.
+	 */
+	/*
+	 * For RX port use channel numbers from 138 to 144
+	 */
+	pr_debug("%s: pgd_la[%d]\n", __func__, mc_asoc_slim->laddr);
+	for (port_idx = 0; port_idx < MAX_PORTS; port_idx++) {
+		slave_port_id	= slim_port_rx[port_idx];
+		err	= slim_get_slaveport(mc_asoc_slim->laddr, slave_port_id,
+					&sh_ch.rx[port_idx].sph, SLIM_SINK);
+		if (err < 0) {
+			pr_err("%s: slave port failure id[%d] ret[%d]\n",
+				__func__, slave_port_id, err);
+			return;
+		}
+
+		err	= slim_query_ch(mc_asoc_slim, sh_ch.rx[port_idx].ch_num,
+						&sh_ch.rx[port_idx].ch_h);
+		if (err < 0) {
+			pr_err("%s: slim_query_ch failed ch-num[%d] ret[%d]\n",
+				__func__, sh_ch.rx[port_idx].ch_num, err);
+			return;
+		}
+		sh_ch.rx[port_idx].grph	= 0xFFFF;
+		dbg_info("RX:ch_h[%d]:%d, sph[%d]:%d\n",
+				port_idx, sh_ch.rx[port_idx].ch_h,
+				port_idx, sh_ch.rx[port_idx].sph);
+	}
+	/*
+	 * For TX port use channel numbers from 128 to 137
+	 */
+	for (port_idx = 0; port_idx < MAX_PORTS; port_idx++) {
+		slave_port_id	= slim_port_tx[port_idx];
+		sh_ch.tx[port_idx].ch_num	= port_idx + BASE_CH_NUM;
+		err	= slim_get_slaveport(mc_asoc_slim->laddr, slave_port_id,
+					&sh_ch.tx[port_idx].sph, SLIM_SRC);
+		if (err < 0) {
+			pr_err("%s: slave port failure id[%d] ret[%d]\n",
+				__func__, slave_port_id, err);
+			slim_dealloc_ch(mc_asoc_slim, sh_ch.rx[port_idx].ch_h);
+			return;
+		}
+
+		err	= slim_query_ch(mc_asoc_slim, sh_ch.tx[port_idx].ch_num,
+						&sh_ch.tx[port_idx].ch_h);
+		if (err < 0) {
+			pr_err("%s: slim_query_ch failed ch-num[%d] ret[%d]\n",
+				__func__, sh_ch.tx[port_idx].ch_num, err);
+			slim_dealloc_ch(mc_asoc_slim, sh_ch.rx[port_idx].ch_h);
+			return;
+		}
+		sh_ch.tx[port_idx].grph	= 0xFFFF;
+		dbg_info("TX:ch_h[%d]:%d, sph[%d]:%d\n",
+				port_idx, sh_ch.tx[port_idx].ch_h,
+				port_idx, sh_ch.tx[port_idx].sph);
+	}
+	ldod_status	= 1;
+}
+
+static void dealloc_ch(void)
+{
+	int	port_idx;
+	int	ret;
+	int	port[4];
+
+	if (ldod_status == 0) {
+		;
+		return;
+	}
+
+	port[0]	= read_cache(mc_asoc_codec, MC_ASOC_MUSIC_PHYSICAL_PORT);
+	port[1]	= read_cache(mc_asoc_codec, MC_ASOC_EXT_PHYSICAL_PORT);
+	port[2]	= read_cache(mc_asoc_codec, MC_ASOC_VOICE_PHYSICAL_PORT);
+	port[3]	= read_cache(mc_asoc_codec, MC_ASOC_HIFI_PHYSICAL_PORT);
+
+	if ((port[0] == MCDRV_PHYSPORT_SLIM0)
+	|| (port[1] == MCDRV_PHYSPORT_SLIM0)
+	|| (port[2] == MCDRV_PHYSPORT_SLIM0)
+	|| (port[3] == MCDRV_PHYSPORT_SLIM0)) {
+		close_slim_sch_tx(0, 2);
+		close_slim_sch_rx(0, 2);
+	}
+	if ((port[0] == MCDRV_PHYSPORT_SLIM1)
+	|| (port[1] == MCDRV_PHYSPORT_SLIM1)
+	|| (port[2] == MCDRV_PHYSPORT_SLIM1)
+	|| (port[3] == MCDRV_PHYSPORT_SLIM1)) {
+		close_slim_sch_tx(1, 2);
+		close_slim_sch_rx(1, 2);
+	}
+	if ((port[0] == MCDRV_PHYSPORT_SLIM2)
+	|| (port[1] == MCDRV_PHYSPORT_SLIM2)
+	|| (port[2] == MCDRV_PHYSPORT_SLIM2)
+	|| (port[3] == MCDRV_PHYSPORT_SLIM2)) {
+		close_slim_sch_tx(2, 2);
+		close_slim_sch_rx(2, 2);
+	}
+
+	pr_info("dealloc_ch calling dealloc_ch\n");
+	/*	slim_dealloc_ch	*/
+	for (port_idx = 0; port_idx < MAX_PORTS; port_idx++) {
+		ret	= slim_dealloc_ch(mc_asoc_slim,
+						sh_ch.rx[port_idx].ch_h);
+		if (ret < 0) {
+			pr_err("%s: slim_dealloc_ch fail ret[%d] ch_h[%d]\n",
+				__func__, ret, sh_ch.rx[port_idx].ch_h);
+		}
+	}
+
+	for (port_idx = 0; port_idx < MAX_PORTS; port_idx++) {
+		ret	= slim_dealloc_ch(mc_asoc_slim,
+						sh_ch.tx[port_idx].ch_h);
+		if (ret < 0) {
+			pr_err(
+			"%s: slim_dealloc_ch(tx) fail ret[%d] ch_h[%d]\n",
+				__func__, ret, sh_ch.tx[port_idx].ch_h);
+		}
+	}
+}
+
+
+static struct workqueue_struct	*workq_ldod;
+static struct delayed_work	delayed_work_ldod;
+#define DELAY_MS_LDOD	3000
+static void work_ldod(struct work_struct *work)
+{
+	struct mc_asoc_data	*mc_asoc	= NULL;
+
+	TRACE_FUNC();
+
+	mc_asoc	= mc_asoc_get_mc_asoc(mc_asoc_codec);
+
+	dealloc_ch();
+	if (mc_asoc->pdata != NULL) {
+		if (mc_asoc->pdata->set_codec_ldod != NULL) {
+			(*mc_asoc->pdata->set_codec_ldod)(0);
+			if (mc_asoc->pdata->set_codec_ifsel != NULL) {
+				;
+				(*mc_asoc->pdata->set_codec_ifsel)(0);
+			}
+			ldod_status	= 0;
+		}
+	}
+}
+
+void mc_asoc_set_codec_ldod(int status)
+{
+	struct mc_asoc_data	*mc_asoc	= NULL;
+
+	mc_asoc	= mc_asoc_get_mc_asoc(mc_asoc_codec);
+
+	if (mc_asoc->pdata != NULL) {
+		if (mc_asoc->pdata->set_codec_ldod != NULL) {
+			if (status == 0) {
+				if ((ldod_status == 0)
+				|| (hold_ldod != 0)) {
+					;
+					return;
+				}
+				dbg_info("queue_delayed_work_ldod\n");
+				cancel_delayed_work(&delayed_work_ldod);
+				queue_delayed_work(workq_ldod,
+					&delayed_work_ldod,
+					msecs_to_jiffies(DELAY_MS_LDOD));
+				return;
+			} else {
+				cancel_delayed_work(&delayed_work_ldod);
+				dbg_info("cancel_delayed_work_ldod\n");
+				if (ldod_status == 0) {
+					slim_ctrl_clk_pause(mc_asoc_slim->ctrl,
+								true, 0);
+					(*mc_asoc->pdata->set_codec_ldod)(
+									status);
+					udelay(500);
+					if (mc_asoc->pdata->set_codec_ifsel !=
+						NULL) {
+						;
+					(*mc_asoc->pdata->set_codec_ifsel)(1);
+						udelay(1);
+					}
+					alloc_ch();
+				}
+			}
+		}
+	}
+}
+
+static int mc_asoc_slim_probe(struct slim_device *slim)
+{
+	struct mc_asoc_priv	*mc_asoc_priv;
+	struct mc_asoc_data	*mc_asoc;
+	int	err;
+
+	dev_info(&slim->dev, "Initialized slim device %s\n", slim->name);
+	if (!slim->ctrl) {
+		pr_err("Error, no SLIMBUS control data\n");
+		err	= -EINVAL;
+		goto exit;
+	}
+	mc_asoc_priv	= kzalloc(sizeof(struct mc_asoc_priv), GFP_KERNEL);
+	if (!mc_asoc_priv) {
+		err	= -ENOMEM;
+		goto exit;
+	}
+	mc_asoc	= &mc_asoc_priv->data;
+	if (!slim->dev.platform_data) {
+		dev_err(&slim->dev, "Error, no platform data\n");
+		err	= -EINVAL;
+		goto exit;
+	}
+
+	mutex_init(&mc_asoc->mutex);
+	slim_set_clientdata(slim, mc_asoc_priv);
+	mc_asoc->pdata	= (struct mc_asoc_platform_data *)
+					slim->dev.platform_data;
+	mc_asoc_slim	= slim;
+	ldod_status	= 0;
+	hold_ldod	= 0;
+
+	err	= snd_soc_register_codec(&slim->dev, &mc_asoc_codec_dev,
+					mc_asoc_dai, ARRAY_SIZE(mc_asoc_dai));
+	if (err < 0) {
+		pr_err("fail to retist codec %d\n", err);
+		goto err_slim_add;
+	}
+
+	alloc_ch();
+
+	workq_ldod	= create_workqueue("ldod");
+	if (workq_ldod == NULL) {
+		err	= -ENOMEM;
+		goto err_slim_add;
+	}
+	INIT_DELAYED_WORK(&delayed_work_ldod, work_ldod);
+
+	goto exit;
+
+err_slim_add:
+	kfree(mc_asoc_priv);
+
+exit:
+	return err;
+}
+static int mc_asoc_slim_remove(struct slim_device *pdev)
+{
+	struct mc_asoc_priv	*mc_asoc_priv;
+
+	dealloc_ch();
+
+	if (workq_ldod)
+		destroy_workqueue(workq_ldod);
+
+	mc_asoc_priv	= slim_get_devicedata(pdev);
+	if (mc_asoc_priv != 0) {
+		mutex_destroy(&mc_asoc_priv->data.mutex);
+		kfree(mc_asoc_priv);
+	}
+	return 0;
+}
+
+static int set_I2Smode(
+	u8	port
+)
+{
+	struct slim_ele_access	msg;
+	int	write_tries	= RW_MAX_TRIES;
+	u8	vu;
+	int	ret;
+	UINT8	bData;
+
+	TRACE_FUNC();
+
+	mc_asoc_set_codec_ldod(1);
+
+	msg.start_offset	= 0x87E;
+	msg.comp	= NULL;
+	msg.num_bytes	= 1;
+
+	vu	=  (port << 5) | 0x0E;
+	while (1) {
+		ret	= slim_change_val_element(mc_asoc_slim, &msg, &vu, 1);
+		if (likely(ret == 0)
+		|| (--write_tries == 0))
+			break;
+		usleep_range(5000, 5000);
+	}
+	if (ret < 0) {
+		pr_err("%s: Error, Codec write failed (%d)\n", __func__, ret);
+		return ret;
+	}
+
+	mc_asoc_read_data(0, 0, &bData, 1);
+	return ret;
+}
+
+static int cfg_slim_sch_rx(
+	u8 port_num,
+	u8 port_cnt,
+	u32 rate
+)
+{
+	u8	i;
+	int	ret;
+	u16	ch_h[MAX_PORTS]	= {0xFFFF};
+	u32	sph[MAX_PORTS]	= {0};
+	struct slim_ch	prop;
+	u16	grph	= 0xFFFF;
+
+	/* Configure slave interface device */
+
+	for (i = 0; i < port_cnt; i++) {
+		if (sh_ch.rx[port_num+i].grph != 0xFFFF) {
+			;/*	already done	*/
+			continue;
+		}
+		ch_h[i]	= sh_ch.rx[port_num+i].ch_h;
+		sph[i]	= sh_ch.rx[port_num+i].sph;
+	}
+	if (sph[0] == 0) {
+		;/*	already done	*/
+		return 0;
+	}
+	dbg_info("%s: port:%d, port_cnt[%d]\n", __func__, port_num, port_cnt);
+
+	/* slim_define_ch api */
+	prop.prot	= SLIM_AUTO_ISO;
+	prop.baser	= SLIM_RATE_4000HZ;
+	prop.dataf	= SLIM_CH_DATAF_NOT_DEFINED;
+	prop.auxf	= SLIM_CH_AUXF_NOT_APPLICABLE;
+	prop.ratem	= (rate/4000);
+	prop.sampleszbits	= 16;
+
+	ret	= slim_define_ch(mc_asoc_slim, &prop, ch_h, port_cnt, true,
+				&grph);
+	if (ret < 0) {
+		int	err;
+		u8	port_idx;
+		u16	slave_port_id;
+		for (port_idx = 0; port_idx < MAX_PORTS; port_idx++) {
+			slave_port_id	= slim_port_rx[port_idx];
+			err	= slim_get_slaveport(mc_asoc_slim->laddr,
+						slave_port_id,
+						&sh_ch.rx[port_idx].sph,
+						SLIM_SINK);
+			if (err < 0) {
+				pr_err(
+				"%s: slave port failure id[%d] ret[%d]\n",
+					__func__, slave_port_id, err);
+				return err;
+			}
+
+			err	= slim_query_ch(mc_asoc_slim,
+						sh_ch.rx[port_idx].ch_num,
+						&sh_ch.rx[port_idx].ch_h);
+			if (err < 0) {
+				pr_err(
+				"%s: slim_query_ch failed ch-num[%d] ret[%d]\n",
+				__func__, sh_ch.rx[port_idx].ch_num, err);
+				return err;
+			}
+			sh_ch.rx[port_idx].grph	= 0xFFFF;
+			dbg_info("RX:ch_h[%d]:%d, sph[%d]:%d\n",
+					port_idx, sh_ch.rx[port_idx].ch_h,
+					port_idx, sh_ch.rx[port_idx].sph);
+		}
+		for (i = 0; i < port_cnt; i++) {
+			ch_h[i]	= sh_ch.rx[port_num+i].ch_h;
+			sph[i]	= sh_ch.rx[port_num+i].sph;
+		}
+
+		ret	= slim_define_ch(mc_asoc_slim, &prop, ch_h, port_cnt,
+					true, &grph);
+		if (ret < 0) {
+			pr_err("%s: slim_define_ch failed ret[%d]\n", __func__,
+				ret);
+			goto err;
+		}
+	}
+	for (i = 0; i < port_cnt; i++) {
+		ret	= slim_connect_sink(mc_asoc_slim, &sph[i], 1, ch_h[i]);
+		if (ret < 0) {
+			pr_err("%s: slim_connect_sink failed ret[%d]\n",
+				__func__, ret);
+			goto err_close_slim_sch;
+		}
+	}
+	/* slim_control_ch */
+	ret	= slim_control_ch(mc_asoc_slim, grph, SLIM_CH_ACTIVATE, true);
+	if (ret < 0) {
+		pr_err("%s: slim_control_ch failed ret[%d]\n", __func__, ret);
+		goto err_close_slim_sch;
+	}
+	for (i = 0; i < port_cnt; i++) {
+		;
+		sh_ch.rx[port_num+i].grph	= grph;
+	}
+	return 0;
+
+err_close_slim_sch:
+	/*  release all acquired handles */
+	close_slim_sch_rx(port_num, port_cnt);
+err:
+	return ret;
+}
+
+static int cfg_slim_sch_tx(
+	u8 port_num,
+	u8 port_cnt,
+	u32 rate
+)
+{
+	u8	i;
+	int	ret;
+	u16	ch_h[MAX_PORTS]	= {0xFFFF};
+	u32	sph[MAX_PORTS]	= {0};
+	struct slim_ch	prop;
+	u16	grph	= 0xFFFF;
+
+	for (i = 0; i < port_cnt; i++) {
+		if (sh_ch.tx[port_num+i].grph != 0xFFFF) {
+			;/*	already done	*/
+			continue;
+		}
+		ch_h[i]	= sh_ch.tx[port_num+i].ch_h;
+		sph[i]	= sh_ch.tx[port_num+i].sph;
+	}
+	if (sph[0] == 0) {
+		;/*	already done	*/
+		return 0;
+	}
+	dbg_info("%s: port:%d, port_cnt[%d]\n", __func__, port_num, port_cnt);
+
+	/* slim_define_ch api */
+	prop.prot	= SLIM_AUTO_ISO;
+	prop.baser	= SLIM_RATE_4000HZ;
+	prop.dataf	= SLIM_CH_DATAF_NOT_DEFINED;
+	prop.auxf	= SLIM_CH_AUXF_NOT_APPLICABLE;
+	prop.ratem	= (rate/4000);
+	prop.sampleszbits	= 16;
+	ret	= slim_define_ch(mc_asoc_slim, &prop, ch_h, port_cnt, true,
+				&grph);
+	if (ret < 0) {
+		int	err;
+		u8	port_idx;
+		u16	slave_port_id;
+		for (port_idx = 0; port_idx < MAX_PORTS; port_idx++) {
+			slave_port_id	= slim_port_tx[port_idx];
+			sh_ch.tx[port_idx].ch_num	= port_idx +
+								BASE_CH_NUM;
+			err	= slim_get_slaveport(mc_asoc_slim->laddr,
+					slave_port_id, &sh_ch.tx[port_idx].sph,
+					SLIM_SRC);
+			if (err < 0) {
+				pr_err(
+				"%s: slave port failure id[%d] ret[%d]\n",
+						__func__, slave_port_id, err);
+				slim_dealloc_ch(mc_asoc_slim,
+						sh_ch.rx[port_idx].ch_h);
+				return err;
+			}
+
+			err	= slim_query_ch(mc_asoc_slim,
+						sh_ch.tx[port_idx].ch_num,
+						&sh_ch.tx[port_idx].ch_h);
+			if (err < 0) {
+				pr_err(
+				"%s: slim_query_ch failed ch-num[%d] ret[%d]\n",
+					__func__, sh_ch.tx[port_idx].ch_num,
+					err);
+				slim_dealloc_ch(
+					mc_asoc_slim, sh_ch.rx[port_idx].ch_h);
+				return err;
+			}
+			sh_ch.tx[port_idx].grph	= 0xFFFF;
+			dbg_info("TX:ch_h[%d]:%d, sph[%d]:%d\n",
+					port_idx, sh_ch.tx[port_idx].ch_h,
+					port_idx, sh_ch.tx[port_idx].sph);
+		}
+
+		for (i = 0; i < port_cnt; i++) {
+			ch_h[i]	= sh_ch.tx[port_num+i].ch_h;
+			sph[i]	= sh_ch.tx[port_num+i].sph;
+		}
+		ret	= slim_define_ch(mc_asoc_slim, &prop, ch_h, port_cnt,
+					true, &grph);
+		if (ret < 0) {
+			pr_err("%s: slim_define_ch failed ret[%d]\n", __func__,
+				ret);
+			goto err;
+		}
+	}
+	for (i = 0; i < port_cnt; i++) {
+		ret	= slim_connect_src(mc_asoc_slim, sph[i], ch_h[i]);
+		if (ret < 0) {
+			pr_err("%s: slim_connect_src failed ret[%d]\n",
+				__func__, ret);
+			goto err;
+		}
+	}
+	/* slim_control_ch */
+	ret	= slim_control_ch(mc_asoc_slim, grph, SLIM_CH_ACTIVATE, true);
+	if (ret < 0) {
+		pr_err("%s: slim_control_ch failed ret[%d]\n", __func__, ret);
+		goto err;
+	}
+	for (i = 0; i < port_cnt; i++) {
+		;
+		sh_ch.tx[port_num+i].grph	= grph;
+	}
+	return 0;
+err:
+	/* release all acquired handles */
+	close_slim_sch_tx(port_num, port_cnt);
+	return ret;
+}
+
+static int close_slim_sch_rx(
+	u8 port_num,
+	u8 port_cnt
+)
+{
+	int	i;
+	int	ret;
+	u32	sph[MAX_PORTS]	= {0};
+	u16	grph	= 0xFFFF;
+
+	for (i = 0; i < port_cnt; i++) {
+		if (sh_ch.rx[port_num+i].grph == 0xFFFF) {
+			;
+			continue;
+		}
+		sph[i]	= sh_ch.rx[port_num+i].sph;
+		grph	= sh_ch.rx[port_num+i].grph;
+	}
+	if (grph == 0xFFFF) {
+		;
+		return 0;
+	}
+	dbg_info("%s: port:%d, port_cnt[%d]\n", __func__, port_num, port_cnt);
+
+	{
+		u8	wbuf[4];
+		wbuf[0] = 139;
+		wbuf[1] = 0;
+		wbuf[2] = 0;
+		wbuf[3] = 1;
+		ret = slim_processtxn(mc_asoc_slim->ctrl,
+					SLIM_MSG_DEST_BROADCAST,
+					SLIM_MSG_MC_BEGIN_RECONFIGURATION, 0,
+					SLIM_MSG_MT_CORE, NULL, NULL, 0, 3,
+					NULL, 0, NULL);
+		ret = slim_processtxn(mc_asoc_slim->ctrl,
+					SLIM_MSG_DEST_BROADCAST,
+					SLIM_MSG_MC_NEXT_DEFINE_CHANNEL, 0,
+					SLIM_MSG_MT_CORE, NULL, (u8 *)wbuf, 4,
+					7, NULL, 0, NULL);
+		if (ret) {
+			pr_err("%s: slim_processtxn failed ret[%d]\n",
+								__func__, ret);
+			goto err;
+		}
+		ret = slim_processtxn(mc_asoc_slim->ctrl,
+				SLIM_MSG_DEST_BROADCAST,
+				SLIM_MSG_MC_RECONFIGURE_NOW, 0,
+				SLIM_MSG_MT_CORE, NULL, NULL, 0, 3, NULL, 0,
+				NULL);
+		usleep_range(2000, 2000);
+	}
+
+	/* slim_control_ch (REMOVE) */
+	ret	= slim_control_ch(mc_asoc_slim, grph, SLIM_CH_REMOVE, true);
+	if (ret < 0) {
+		pr_err("%s: slim_control_ch failed ret[%d]\n", __func__, ret);
+		goto err;
+	}
+	usleep_range(2000, 2000);
+	for (i = 0; i < port_cnt; i++) {
+		ret	= slim_disconnect_ports(mc_asoc_slim, &sph[i], 1);
+		if (ret < 0) {
+			pr_err("%s: slim_disconnect_ports failed ret[%d]\n",
+				__func__, ret);
+			break;
+		}
+		sh_ch.rx[port_num+i].grph	= 0xFFFF;
+	}
+err:
+	for (i = 0; i < port_cnt; i++) {
+		;
+		sh_ch.rx[port_num+i].grph	= 0xFFFF;
+	}
+	return ret;
+}
+
+static int close_slim_sch_tx(
+	u8 port_num,
+	u8 port_cnt
+)
+{
+	u16 grph	= 0xFFFF;
+	u32 sph[MAX_PORTS]	= {0};
+	int ret;
+	int i;
+
+	for (i = 0; i < port_cnt; i++) {
+		if (sh_ch.tx[port_num+i].grph == 0xFFFF) {
+			;
+			continue;
+		}
+		sph[i]	= sh_ch.tx[port_num+i].sph;
+		grph	= sh_ch.tx[port_num+i].grph;
+	}
+	if (grph == 0xFFFF) {
+		;
+		return 0;
+	}
+	dbg_info("%s: port:%d, port_cnt[%d]\n", __func__, port_num, port_cnt);
+
+	/* slim_control_ch (REMOVE) */
+	ret	= slim_control_ch(mc_asoc_slim, grph, SLIM_CH_REMOVE, true);
+	if (ret < 0) {
+		pr_err("%s: slim_control_ch failed ret[%d]\n", __func__, ret);
+		goto err;
+	}
+err:
+	for (i = 0; i < port_cnt; i++) {
+		;
+		sh_ch.tx[port_num+i].grph	= 0xFFFF;
+	}
+	return ret;
+}
+
+static const struct slim_device_id	mc_asoc_slim_id[]	= {
+	{"ymu831-slim", 0},
+	{}
+};
+
+static struct slim_driver	mc_asoc_slim_driver	= {
+	.driver	= {
+		.name	= "ymu831-slim",
+		.owner	= THIS_MODULE,
+	},
+	.probe		= mc_asoc_slim_probe,
+	.remove		= mc_asoc_slim_remove,
+	.id_table	= mc_asoc_slim_id,
+};
 #endif
 /*
  * Module init and exit
@@ -9410,6 +11119,9 @@ static int __init ymu831_init(void)
 
 	TRACE_FUNC();
 
+	mutex_init(&mc_asoc_mutex);
+	mutex_init(&hsdet_mutex);
+
 #if (BUS_SELECT == BUS_SEL_I2C)
 	err	= i2c_add_driver(&mc_asoc_i2c_driver_a);
 	if (err >= 0)
@@ -9417,11 +11129,14 @@ static int __init ymu831_init(void)
 #elif (BUS_SELECT == BUS_SEL_SPI)
 	err	= spi_register_driver(&mc_asoc_spi_driver);
 #elif (BUS_SELECT == BUS_SEL_SLIM)
+	err	= slim_driver_register(&mc_asoc_slim_driver);
 #endif
 
-	if (err != 0)
-		pr_info(KERN_ERR "Failed to register MC ASoC driver: %d\n",
-			err);
+	if (err != 0) {
+		;
+		printk(KERN_ERR "Failed to register MC ASoC Bus driver: %d\n",
+									err);
+	}
 	return err;
 }
 module_init(ymu831_init);
@@ -9435,6 +11150,8 @@ static void __exit ymu831_exit(void)
 	spi_unregister_driver(&mc_asoc_spi_driver);
 #elif (BUS_SELECT == BUS_SEL_SLIM)
 #endif
+	mutex_destroy(&mc_asoc_mutex);
+	mutex_destroy(&hsdet_mutex);
 }
 module_exit(ymu831_exit);
 

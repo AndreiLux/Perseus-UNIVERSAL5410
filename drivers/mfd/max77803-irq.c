@@ -168,6 +168,9 @@ static struct irq_chip max77803_irq_chip = {
 	.irq_unmask		= max77803_irq_unmask,
 };
 
+#if defined(CONFIG_N1A_3G) || defined(CONFIG_N1A_WIFI)
+extern int max77803_muic_interruptmask_check(void);
+#endif
 static irqreturn_t max77803_irq_thread(int irq, void *data)
 {
 	struct max77803_dev *max77803 = data;
@@ -179,6 +182,11 @@ static irqreturn_t max77803_irq_thread(int irq, void *data)
 	pr_debug("%s: irq gpio pre-state(0x%02x)\n", __func__,
 				gpio_get_value(max77803->irq_gpio));
 
+#if defined(CONFIG_N1A_3G) || defined(CONFIG_N1A_WIFI)
+	// [[  workaround for MUIC reset
+	max77803_muic_interruptmask_check();
+	// workaround for MUIC reset ]]
+#endif
 clear_retry:
 	ret = max77803_read_reg(max77803->i2c,
 					MAX77803_PMIC_REG_INTSRC, &irq_src);
@@ -195,6 +203,18 @@ clear_retry:
 				&irq_reg[CHG_INT]);
 		pr_info("%s: charger interrupt(0x%02x)\n",
 				__func__, irq_reg[CHG_INT]);
+		/* mask chgin to prevent chgin infinite interrupt
+		 * chgin is unmasked chgin isr
+		 */
+		if (irq_reg[CHG_INT] &
+				max77803_irqs[MAX77803_CHG_IRQ_CHGIN_I].mask) {
+			u8 reg_data;
+			max77803_read_reg(max77803->i2c,
+				MAX77803_CHG_REG_CHG_INT_MASK, &reg_data);
+			reg_data |= (1 << 6);
+			max77803_write_reg(max77803->i2c,
+				MAX77803_CHG_REG_CHG_INT_MASK, reg_data);
+		}
 	}
 
 	if (irq_src & MAX77803_IRQSRC_TOP) {

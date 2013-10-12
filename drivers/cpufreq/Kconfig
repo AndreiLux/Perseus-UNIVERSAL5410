@@ -212,7 +212,7 @@ source "drivers/cpufreq/Kconfig.x86"
 endmenu
 
 menu "ARM CPU frequency scaling drivers"
-depends on ARM
+depends on ARM && BL_SWITCHER
 source "drivers/cpufreq/Kconfig.arm"
 endmenu
 

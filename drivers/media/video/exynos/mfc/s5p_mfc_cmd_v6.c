@@ -51,6 +51,12 @@ int s5p_mfc_sys_init_cmd(struct s5p_mfc_dev *dev)
 
 	s5p_mfc_write_reg(dev->ctx_buf.ofs, S5P_FIMV_CONTEXT_MEM_ADDR);
 	s5p_mfc_write_reg(buf_size->dev_ctx, S5P_FIMV_CONTEXT_MEM_SIZE);
+	if (IS_MFCv7X(dev)) {
+		s5p_mfc_write_reg(dev->dis_shm_buf.ofs,
+					S5P_FIMV_DIS_SHARED_MEM_ADDR);
+		mfc_debug(2, "Setting shared memory = 0x%x\n",
+					(unsigned int)dev->dis_shm_buf.ofs);
+	}
 
 	ret = s5p_mfc_cmd_host2risc(S5P_FIMV_H2R_CMD_SYS_INIT, &h2r_args);
 

@@ -3,8 +3,15 @@
 
 #include <linux/sched.h>
 #include <linux/semaphore.h>
+#include <linux/input.h>
 
 #ifdef CONFIG_SEC_DEBUG
+#define SEC_DEBUG_NAME		"sec_debug"
+#define SET_DEBUG_KEY(_key, _state) 	\
+{	\
+	.code = _key,	\
+	.state = _state,	\
+}
 
 union sec_debug_level_t {
 	struct {
@@ -12,6 +19,24 @@ union sec_debug_level_t {
 		u16 user_fault;
 	} en;
 	u32 uint_val;
+};
+
+struct input_debug_key_state {
+	bool state;
+	u32 code;
+};
+
+struct input_debug_pdata {
+	struct input_debug_key_state *key_state;
+	int nkeys;
+};
+
+struct input_debug_drv_data {
+	struct input_handler input_handler;
+	struct input_debug_pdata *pdata;
+	struct input_device_id input_ids[2];
+	int crash_key_cnt;
+	kernel_ulong_t keybit[INPUT_DEVICE_ID_KEY_MAX / BITS_PER_LONG + 1];
 };
 
 extern union sec_debug_level_t sec_debug_level;
@@ -235,6 +260,9 @@ extern void sec_debug_aux_log(int idx, char *fmt, ...);
 
 #ifdef CONFIG_SEC_AVC_LOG
 extern void sec_debug_avc_log(char *fmt, ...);
+#endif
+#ifdef CONFIG_SEC_DEBUG_TSP_LOG
+extern void sec_debug_tsp_log(char *fmt, ...);
 #endif
 
 #if defined(CONFIG_MACH_Q1_BD)

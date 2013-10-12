@@ -26,6 +26,8 @@
 #include <linux/kernel_stat.h>
 #include <linux/moduleparam.h>
 #include <asm/system_misc.h>
+#include <linux/module.h>
+#include <linux/platform_device.h>
 
 #include <mach/sec_debug.h>
 #include <mach/regs-clock.h>
@@ -36,9 +38,6 @@
 #include <linux/seq_file.h>
 #include "common.h"
 
-#if defined(CONFIG_SEC_MODEM_P8LTE)
-#include <linux/miscdevice.h>
-#endif
 /* klaatu - schedule log */
 #ifdef CONFIG_SEC_DEBUG_SCHED_LOG
 #define SCHED_LOG_MAX 2048
@@ -134,7 +133,6 @@ struct rwsem_debug {
 #define SEC_DEBUG_MAGIC_PA S5P_PA_SDRAM
 #define SEC_DEBUG_MAGIC_VA phys_to_virt(SEC_DEBUG_MAGIC_PA)
 
-#ifdef CONFIG_KOR_B10_DEBUG
 enum sec_debug_reset_reason_t {
 	RR_S = 1,
 	RR_W = 2,
@@ -146,7 +144,6 @@ enum sec_debug_reset_reason_t {
 	RR_B = 8,
 	RR_N = 9,
 };
-#endif
 
 enum sec_debug_upload_cause_t {
 	UPLOAD_CAUSE_INIT = 0xCAFEBABE,
@@ -248,10 +245,8 @@ struct sec_debug_core_t {
  */
 union sec_debug_level_t sec_debug_level = { .en.kernel_fault = 1, };
 
-#ifdef CONFIG_KOR_B10_DEBUG
 static unsigned reset_reason = RR_N;
 module_param_named(reset_reason, reset_reason, uint, 0644);
-#endif
 
 module_param_named(enable, sec_debug_level.en.kernel_fault, ushort, 0644);
 module_param_named(enable_user, sec_debug_level.en.user_fault, ushort, 0644);
@@ -599,14 +594,12 @@ static inline void sec_debug_disable_watchdog(void)
 #ifdef CONFIG_SEC_DEBUG_FUPLOAD_DUMP_MORE
 static void dump_all_task_info(void);
 static void dump_cpu_stat(void);
-static void dump_state_and_upload(void);
+/* static void dump_state_and_upload(void); */
 #endif
 
 static int sec_debug_panic_handler(struct notifier_block *nb,
 				   unsigned long l, void *buf)
 {
-	int i;
-
 	if (!sec_debug_level.en.kernel_fault)
 		return -1;
 
@@ -615,13 +608,9 @@ static int sec_debug_panic_handler(struct notifier_block *nb,
 #ifdef CONFIG_SEC_DEBUG_SCHED_LOG
 	bStopLogging = 1;
 
-	pr_info("APLL_CON :%x \n", __raw_readl(EXYNOS5_APLL_CON0) );
-	pr_info("BPLL_CON :%x \n", __raw_readl(EXYNOS5_BPLL_CON0) );
-	pr_info("KPLL_CON :%x \n", __raw_readl(EXYNOS5_KPLL_CON0) );
-
-	for (i = 0; i < 8; i++)
-		pr_info("ARM_CORE_CONFIGURATION[%d] : 0x%x\n",
-			i, __raw_readl(EXYNOS_ARM_CORE_CONFIGURATION(i)));
+	pr_info("APLL_CON :%x \n", __raw_readl(EXYNOS5_APLL_CON0) );	
+	pr_info("BPLL_CON :%x \n", __raw_readl(EXYNOS5_BPLL_CON0) );	
+	pr_info("KPLL_CON :%x \n", __raw_readl(EXYNOS5_KPLL_CON0) );	
 #endif
 
 	sec_debug_set_upload_magic(0x66262564, buf);
@@ -1189,7 +1178,6 @@ static int __init sec_debug_user_fault_init(void)
 device_initcall(sec_debug_user_fault_init);
 #endif
 
-#ifdef CONFIG_KOR_B10_DEBUG
 static int set_reset_reason_proc_show(struct seq_file *m, void *v)
 {
 	if (reset_reason == RR_S)
@@ -1230,7 +1218,7 @@ static int __init sec_debug_reset_reason_init(void)
 {
 	struct proc_dir_entry *entry;
 
-	entry = proc_create("reset_reason", S_IWUGO, NULL,
+	entry = proc_create("reset_reason", S_IWUSR|S_IWGRP, NULL,
 		&sec_reset_reason_proc_fops);
 
 	if (!entry)
@@ -1240,7 +1228,6 @@ static int __init sec_debug_reset_reason_init(void)
 }
 
 device_initcall(sec_debug_reset_reason_init);
-#endif
 
 int __init sec_debug_magic_init(void)
 {
@@ -1493,3 +1480,194 @@ static void dump_state_and_upload(void)
 #endif
 
 #endif /* CONFIG_SEC_DEBUG_FUPLOAD_DUMP_MORE */
+
+static void sec_debug_check_key_state(struct input_debug_drv_data *ddata,
+	int index, bool state)
+{
+	struct input_debug_pdata *pdata = ddata->pdata;
+
+	if (state == pdata->key_state[index].state)
+		__set_bit(pdata->key_state[index].code,
+			ddata->keybit);
+	else
+		__clear_bit(pdata->key_state[index].code,
+			ddata->keybit);
+}
+
+static void sec_debug_check_crash_keys(struct input_debug_drv_data *ddata)
+{
+	int i = 0;
+
+	if (!sec_debug_level.en.kernel_fault)
+		return;
+
+	for (i = 0; i < ARRAY_SIZE(ddata->keybit); i++) {
+		if (ddata->input_ids[0].keybit[i] != ddata->keybit[i])
+			return ;
+	}
+
+#if !defined(CONFIG_TARGET_LOCALE_NA)
+#ifdef CONFIG_FB_S5P
+	read_lcd_register();
+#endif
+	panic("Crash Key");
+#else
+	hrtimer_start(&upload_start_timer,
+	      ktime_set(3, 0),
+	      HRTIMER_MODE_REL);
+#endif
+}
+
+static bool sec_debug_check_keys(struct input_debug_drv_data *ddata,
+	u32 code, int value)
+{
+
+	struct input_debug_pdata *pdata = ddata->pdata;
+	int i = 0;
+	int j = 0;
+
+	for (i = 0; i < pdata->nkeys; i++) {
+		if (KEY_POWER == code) {
+			for (j = 0; j < ARRAY_SIZE(ddata->keybit); j++) {
+				if (ddata->input_ids[0].keybit[j] != ddata->keybit[j])
+					goto out;
+			}
+			if (!!value) {
+					ddata->crash_key_cnt++;
+				printk(KERN_DEBUG
+					"%s: count for enter forced upload : %d\n",
+				     __func__, ddata->crash_key_cnt);
+			}
+
+			return (2 == ddata->crash_key_cnt) ? true : false;
+
+		} else if (code == pdata->key_state[i].code) {
+			sec_debug_check_key_state(ddata, i, !!value);
+			goto out;
+		}
+	}
+out :
+	ddata->crash_key_cnt = 0;
+	return false;
+}
+
+static void sec_input_debug_event(struct input_handle *handle,
+	unsigned int type, u32 code, int value)
+{
+	struct input_handler *handler = handle->handler;
+	struct input_debug_drv_data *ddata = handler->private;
+
+	if ((!sec_debug_level.en.kernel_fault) || (EV_KEY != type))
+		return;
+
+	if (sec_debug_check_keys(ddata, code, value))
+		sec_debug_check_crash_keys(handler->private);
+}
+
+static int sec_input_debug_connect(struct input_handler *handler, struct input_dev *dev,
+			 const struct input_device_id *id)
+{
+	struct input_handle *handle;
+	int error;
+
+	handle = kzalloc(sizeof(struct input_handle), GFP_KERNEL);
+	if (!handle)
+		return -ENOMEM;
+
+	handle->dev = dev;
+	handle->handler = handler;
+	handle->name = SEC_DEBUG_NAME;
+
+	error = input_register_handle(handle);
+	if (error)
+		goto err_free_handle;
+
+	error = input_open_device(handle);
+	if (error)
+		goto err_unregister_handle;
+
+	printk(KERN_DEBUG "[sec_debug] Connected device: %s (%s at %s)\n",
+	       dev_name(&dev->dev),
+	       dev->name ?: "unknown",
+	       dev->phys ?: "unknown");
+
+	return 0;
+
+ err_unregister_handle:
+	input_unregister_handle(handle);
+ err_free_handle:
+	kfree(handle);
+	return error;
+}
+
+static void sec_input_debug_disconnect(struct input_handle *handle)
+{
+	printk(KERN_DEBUG "[sec_debug] Disconnected device: %s\n",
+	       dev_name(&handle->dev->dev));
+
+	input_close_device(handle);
+	input_unregister_handle(handle);
+	kfree(handle);
+}
+
+static int __devinit sec_input_debug_probe(struct platform_device *pdev)
+{
+	struct input_debug_pdata *pdata = pdev->dev.platform_data;
+	struct input_debug_drv_data *ddata;
+	int i = 0;
+
+	ddata = kzalloc(sizeof(struct input_debug_drv_data), GFP_KERNEL);
+
+	ddata->pdata = pdata;
+
+	ddata->input_handler.event = sec_input_debug_event;
+	ddata->input_handler.connect = sec_input_debug_connect;
+	ddata->input_handler.disconnect = sec_input_debug_disconnect;
+	ddata->input_handler.name = SEC_DEBUG_NAME;
+	ddata->input_handler.id_table = ddata->input_ids;
+	ddata->input_handler.private = ddata;
+
+	ddata->input_ids[0].flags = INPUT_DEVICE_ID_MATCH_KEYBIT;
+	for (i = 0; i < pdata->nkeys; i++) {
+		bool state = pdata->key_state[i].state;
+		u32 code = pdata->key_state[i].code;
+
+		__set_bit(code, ddata->input_ids[0].keybit);
+
+		if (!state)
+			__set_bit(code, ddata->keybit);
+	}
+
+	ddata->input_ids[0].flags |= INPUT_DEVICE_ID_MATCH_EVBIT;
+	__set_bit(EV_KEY, ddata->input_ids[0].evbit);
+
+	return input_register_handler(&ddata->input_handler);
+}
+
+static int __devexit sec_input_debug_remove(struct platform_device *pdev)
+{
+	return 0;
+}
+
+static struct platform_driver sec_input_debug_driver = {
+	.probe		= sec_input_debug_probe,
+	.remove		= __devexit_p(sec_input_debug_remove),
+	.driver		= {
+		.name	= SEC_DEBUG_NAME,
+		.owner	= THIS_MODULE,
+	}
+};
+
+static int __init sec_input_debug_init(void)
+{
+	return platform_driver_register(&sec_input_debug_driver);
+}
+
+static __exit void sec_input_debug_exit(void)
+{
+	platform_driver_unregister(&sec_input_debug_driver);
+}
+
+late_initcall(sec_input_debug_init);
+module_exit(sec_input_debug_exit);
+

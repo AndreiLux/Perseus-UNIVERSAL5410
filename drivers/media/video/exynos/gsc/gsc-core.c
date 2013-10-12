@@ -26,19 +26,25 @@
 #include <linux/clk.h>
 #include <media/v4l2-ioctl.h>
 #include <plat/sysmmu.h>
+#include <plat/iovmm.h>
 
 #include "gsc-core.h"
+#if defined(CONFIG_SOC_EXYNOS5410)
 static char *gsc_clocks[GSC_MAX_CLOCKS] = {
 	"gscl", "aclk_300_gscl", "dout_aclk_300_gscl"
 };
-
+#else
+static char *gsc_clocks[GSC_MAX_CLOCKS] = {
+	"gscl", "aclk_300_gscl", "aclk_300_gscl_sw"
+};
+#endif
 int gsc_dbg = 6;
 module_param(gsc_dbg, int, 0644);
 
 static struct gsc_fmt gsc_formats[] = {
 	{
 		.name		= "RGB565",
-		.pixelformat	= V4L2_PIX_FMT_RGB565X,
+		.pixelformat	= V4L2_PIX_FMT_RGB565,
 		.depth		= { 16 },
 		.num_planes	= 1,
 		.nr_comp	= 1,
@@ -220,8 +226,6 @@ struct gsc_fmt *find_format(u32 *pixelformat, u32 *mbus_code, int index)
 			return fmt;
 		if (mbus_code && fmt->mbus_code == *mbus_code)
 			return fmt;
-		if (index == i)
-			def_fmt = fmt;
 	}
 	return def_fmt;
 
@@ -467,17 +471,24 @@ int gsc_try_fmt_mplane(struct gsc_ctx *ctx, struct v4l2_format *f)
 
 	if (ctx->gsc_ctrls.csc_eq_mode->val)
 		ctx->gsc_ctrls.csc_eq->val =
-			(pix_mp->width >= 1280) ? 1 : 0;
-	if (ctx->gsc_ctrls.csc_eq->val) /* HD */
+		(pix_mp->width >= 1280) ?
+		V4L2_COLORSPACE_REC709 : V4L2_COLORSPACE_SMPTE170M;
+
+	if (is_csc_eq_709) /* HD */
 		pix_mp->colorspace = V4L2_COLORSPACE_REC709;
 	else	/* SD */
 		pix_mp->colorspace = V4L2_COLORSPACE_SMPTE170M;
 
-
 	for (i = 0; i < pix_mp->num_planes; ++i) {
 		int bpl = (pix_mp->width * fmt->depth[i]) >> 3;
 		pix_mp->plane_fmt[i].bytesperline = bpl;
-		pix_mp->plane_fmt[i].sizeimage = bpl * pix_mp->height;
+		if (is_AYV12(fmt->pixelformat))
+			pix_mp->plane_fmt[i].sizeimage =
+			(pix_mp->width * pix_mp->height) +
+			((ALIGN(pix_mp->width >> 1, 16) *
+			  (pix_mp->height >> 1) * 2));
+		else
+			pix_mp->plane_fmt[i].sizeimage = bpl * pix_mp->height;
 
 		gsc_dbg("[%d]: bpl: %d, sizeimage: %d",
 		    i, bpl, pix_mp->plane_fmt[i].sizeimage);
@@ -975,8 +986,8 @@ static const struct v4l2_ctrl_config gsc_custom_ctrl[] = {
 		.name = "Set CSC equation",
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.max = 8,
 		.step = 1,
+		.max = V4L2_COLORSPACE_SRGB,
 		.def = V4L2_COLORSPACE_REC709,
 	}, {
 		.ops = &gsc_ctrl_ops,
@@ -1113,8 +1124,14 @@ int gsc_prepare_addr(struct gsc_ctx *ctx, struct vb2_buffer *vb,
 			addr->cr = 0;
 			break;
 		case 3:
-			addr->cb = (dma_addr_t)(addr->y + pix_size);
-			addr->cr = (dma_addr_t)(addr->cb + (pix_size >> 2));
+			if (is_AYV12(frame->fmt->pixelformat)) {
+				addr->cb = (dma_addr_t)(addr->y + pix_size);
+				addr->cr = (dma_addr_t)(addr->cb + (ALIGN(frame->f_width >> 1, 16)) *
+						(frame->f_height >> 1));
+			} else {
+				addr->cb = (dma_addr_t)(addr->y + pix_size);
+				addr->cr = (dma_addr_t)(addr->cb + (pix_size >> 2));
+			}
 			break;
 		default:
 			gsc_err("Invalid the number of color planes");
@@ -1136,7 +1153,7 @@ int gsc_prepare_addr(struct gsc_ctx *ctx, struct vb2_buffer *vb,
 
 	if (!gsc->protected_content && is_output(vb->vb2_queue->type)) {
 		if (is_rgb(frame->fmt->pixelformat)) {
-			if (frame->fmt->pixelformat == V4L2_PIX_FMT_RGB32)
+			if (is_rgb32(frame->fmt->pixelformat))
 				y_size = pix_size << 2;
 			else
 				y_size = pix_size << 1;
@@ -1151,7 +1168,12 @@ int gsc_prepare_addr(struct gsc_ctx *ctx, struct vb2_buffer *vb,
 				cb_size = pix_size >> 1;
 			} else if (frame->fmt->nr_comp == 3) {
 				y_size = pix_size;
-				cb_size = cr_size = pix_size >> 2;
+				if (is_AYV12(frame->fmt->pixelformat))
+					cb_size = cr_size =
+					ALIGN(frame->f_width >> 1, 16) *
+						(frame->f_height >> 1);
+				else
+					cb_size = cr_size = pix_size >> 2;
 			}
 		}
 
@@ -1266,11 +1288,11 @@ static int gsc_get_media_info(struct device *dev, void *p)
 void gsc_pm_qos_ctrl(struct gsc_dev *gsc, enum gsc_qos_status status,
 			int mem_val, int int_val)
 {
-#if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
 	int qos_cnt;
 
 	if (status == GSC_QOS_ON) {
 		qos_cnt = atomic_inc_return(&gsc->qos_cnt);
+		gsc_dbg("mif val : %d, int val : %d", mem_val, int_val);
 		if (qos_cnt == 1) {
 			pm_qos_add_request(&gsc->exynos5_gsc_mif_qos,
 					PM_QOS_BUS_THROUGHPUT, mem_val);
@@ -1289,9 +1311,6 @@ void gsc_pm_qos_ctrl(struct gsc_dev *gsc, enum gsc_qos_status status,
 			pm_qos_remove_request(&gsc->exynos5_gsc_int_qos);
 		}
 	}
-#else
-	return;
-#endif
 }
 
 static void gsc_clk_put(struct gsc_dev *gsc)
@@ -1346,7 +1365,7 @@ int gsc_set_protected_content(struct gsc_dev *gsc, bool enable)
 	return 0;
 }
 
-static void gsc_dump_registers(struct gsc_dev *gsc)
+void gsc_dump_registers(struct gsc_dev *gsc)
 {
 	pr_err("dumping registers\n");
 	print_hex_dump(KERN_ERR, "", DUMP_PREFIX_ADDRESS, 32, 4, gsc->regs,
@@ -1361,8 +1380,8 @@ int gsc_sysmmu_fault_handler(struct device *dev, const char *mmuname,
 	struct platform_device *pdev = to_platform_device(dev);
 	struct gsc_dev *gsc = platform_get_drvdata(pdev);
 
-	pr_err("FIMD1 PAGE FAULT occurred at 0x%lx (Page table base: 0x%lx)\n",
-			fault_addr, pgtable_base);
+	pr_err("GSC(%d) PAGE FAULT occurred at 0x%lx (Page table base: 0x%lx)\n",
+			gsc->id, fault_addr, pgtable_base);
 
 	gsc_dump_registers(gsc);
 
@@ -1389,7 +1408,8 @@ static int gsc_runtime_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct gsc_dev *gsc = (struct gsc_dev *)platform_get_drvdata(pdev);
 
-	if (clk_set_parent(gsc->clock[CLK_CHILD], gsc->clock[CLK_PARENT])) {
+	if (clk_set_parent(gsc->clock[CLK_CHILD],
+			gsc->clock[CLK_PARENT])) {
 		dev_err(dev, "Unable to set parent %s of clock %s.\n",
 			gsc_clocks[CLK_CHILD], gsc_clocks[CLK_PARENT]);
 		return -EINVAL;
@@ -1472,14 +1492,14 @@ static int gsc_probe(struct platform_device *pdev)
 		ret = -ENXIO;
 		goto err_req_region;
 	}
-
-	/* Get Gscaler clock */
-	gsc->clock[CLK_GATE] = clk_get(&gsc->pdev->dev, gsc_clocks[CLK_GATE]);
+	gsc->clock[CLK_GATE] =
+		clk_get(&gsc->pdev->dev, gsc_clocks[CLK_GATE]);
 	if (IS_ERR(gsc->clock[CLK_GATE])) {
 		gsc_err("failed to get gscaler.%d clock", gsc->id);
 		goto err_regs_unmap;
 	}
 
+	/* Get Gscaler clock */
 	gsc->clock[CLK_CHILD] = clk_get(NULL, gsc_clocks[CLK_CHILD]);
 	if (IS_ERR(gsc->clock[CLK_CHILD])) {
 		dev_err(&pdev->dev, "failed to get %s clock\n",
@@ -1493,7 +1513,6 @@ static int gsc_probe(struct platform_device *pdev)
 			gsc_clocks[CLK_PARENT]);
 		goto err_clk_put;
 	}
-
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (!res) {
 		dev_err(&pdev->dev, "failed to get IRQ resource\n");
@@ -1546,7 +1565,8 @@ static int gsc_probe(struct platform_device *pdev)
 		if (ret)
 			goto err_irq;
 	}
-	sprintf(workqueue_name, "gsc%d_irq_wq_name", gsc->id);
+	snprintf(workqueue_name, WORKQUEUE_NAME_SIZE,
+			"gsc%d_irq_wq_name", gsc->id);
 	gsc->irq_workqueue = create_singlethread_workqueue(workqueue_name);
 	if (gsc->irq_workqueue == NULL) {
 		dev_err(&pdev->dev, "failed to create workqueue for gsc\n");
@@ -1562,6 +1582,7 @@ static int gsc_probe(struct platform_device *pdev)
 	exynos_sysmmu_set_fault_handler(&pdev->dev,
 			(sysmmu_fault_handler_t)gsc_sysmmu_fault_handler);
 
+	exynos_create_iovmm(&pdev->dev, 3, 3);
 	gsc->vb2->resume(gsc->alloc_ctx);
 
 	gsc_pm_runtime_enable(&pdev->dev);
@@ -1659,17 +1680,7 @@ static int gsc_resume(struct device *dev)
 			gsc->m2m.ctx = NULL;
 			v4l2_m2m_job_finish(gsc->m2m.m2m_dev, ctx->m2m_ctx);
 		}
-	} else if (gsc_cap_opened(gsc)) {
-		struct gsc_capture_device *cap = &gsc->cap;
-		if (cap->ctx->in_path == GSC_WRITEBACK) {
-			if (clk_set_parent(gsc->clock[CLK_CHILD],
-					   gsc->clock[CLK_PARENT])) {
-				gsc_err("unable to set parent clock");
-				return -EINVAL;
-			}
-		}
 	}
-
 	return 0;
 }
 

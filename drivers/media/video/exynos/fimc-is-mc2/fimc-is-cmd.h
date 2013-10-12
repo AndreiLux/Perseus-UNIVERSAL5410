@@ -22,16 +22,16 @@ enum is_cmd {
 	HIC_CAPTURE_VIDEO,
 	HIC_PROCESS_START,
 	HIC_PROCESS_STOP,
-	HIC_STREAM_ON,
-	HIC_STREAM_OFF,
+	HIC_STREAM_ON /* 7 */,
+	HIC_STREAM_OFF /* 8 */,
 	HIC_SHOT,
 	HIC_GET_STATIC_METADATA /* 10 */,
 	HIC_SET_CAM_CONTROL,
 	HIC_GET_CAM_CONTROL,
-	HIC_SET_PARAMETER,
+	HIC_SET_PARAMETER /* 13 */,
 	HIC_GET_PARAMETER,
-	HIC_SET_A5_MAP,
-	HIC_SET_A5_UNMAP,
+	HIC_SET_A5_MAP /* 15 */,
+	HIC_SET_A5_UNMAP /* 16 */,
 	HIC_GET_STATUS,
 	/* SENSOR PART*/
 	HIC_OPEN_SENSOR,
@@ -48,6 +48,7 @@ enum is_cmd {
 	HIC_CALIBRATE_ACTUATOR,
 	HIC_GET_IP_STATUS /* 30 */,
 	HIC_I2C_CONTROL_LOCK,
+	HIC_COMMAND_END,
 	/* IS -> HOST */
 	IHC_GET_SENSOR_NUMBER = 0x1000,
 	/* Parameter1 : Address of space to copy a setfile */
@@ -64,7 +65,8 @@ enum is_cmd {
 	/* PARAM2 : frame count */
 	IHC_AA_DONE,
 	IHC_NOT_READY,
-	IHC_FLASH_READY
+	IHC_FLASH_READY,
+	IHC_COMMAND_END
 };
 
 enum is_reply {
@@ -81,11 +83,14 @@ enum is_scenario_id {
 };
 
 enum is_subscenario_id {
-	ISS_SUB_SCENARIO_STILL = 0,		// 0: still preview
+	ISS_SUB_SCENARIO_STILL_PREVIEW = 0,	// 0: still preview
 	ISS_SUB_SCENARIO_VIDEO = 1,		// 1: video
 	ISS_SUB_SCENARIO_DUAL_STILL = 2,	// 2: dual still preview
 	ISS_SUB_SCENARIO_DUAL_VIDEO = 3,	// 3: dual video
 	ISS_SUB_SCENARIO_VIDEO_HIGH_SPEED = 4,	// 4: video high speed
+	ISS_SUB_SCENARIO_STILL_CAPTURE = 5,	// 5: still capture
+	ISS_SUB_SCENARIO_FHD_60FPS = 6,		// 6: video FHD 60fps
+
 	ISS_SUB_SCENARIO_FRONT_VT1 = 4,		// 4: front camera VT1 (Temporary)
 	ISS_SUB_SCENARIO_FRONT_VT2 = 5,		// 5: front camera VT2 (Temporary)
 	ISS_SUB_SCENARIO_FRONT_SMART_STAY = 6,	// 6: front camera smart stay (Temporary)
