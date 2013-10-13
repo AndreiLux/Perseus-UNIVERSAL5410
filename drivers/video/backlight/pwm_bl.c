@@ -47,14 +47,13 @@ static int pwm_backlight_update_status(struct backlight_device *bl)
 
 	if (pb->notify)
 		brightness = pb->notify(pb->dev, brightness);
-	else
-		brightness = pb->lth_brightness +
-			(brightness * (pb->period - pb->lth_brightness) / max);
 
 	if (brightness == 0) {
 		pwm_config(pb->pwm, 0, pb->period);
 		pwm_disable(pb->pwm);
 	} else {
+		brightness = pb->lth_brightness +
+			(brightness * (pb->period - pb->lth_brightness) / max);
 		pwm_config(pb->pwm, brightness, pb->period);
 		pwm_enable(pb->pwm);
 	}
