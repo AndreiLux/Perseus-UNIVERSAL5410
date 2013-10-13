@@ -124,10 +124,7 @@ extern unsigned int exynos_cpufreq_direct_scale(unsigned int target_freq,
 extern int exynos_init_bL_info(struct cpu_info_alter *info);
 
 #ifdef CONFIG_EXYNOS5_DYNAMIC_CPU_HOTPLUG
-extern struct mutex hotplug_mutex;
-extern bool hotplug_out;
-extern struct cpumask out_cpus;
-extern void __do_hotplug(void);
+extern void dm_cpu_hotplug_init(void);
 #endif
 
 #if defined(CONFIG_ARM_EXYNOS_IKS_CPUFREQ) || defined(CONFIG_ARM_EXYNOS_CPUFREQ)

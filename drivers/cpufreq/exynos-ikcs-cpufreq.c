@@ -30,6 +30,7 @@
 #include <linux/kobject.h>
 #include <linux/sysfs.h>
 #include <linux/cpumask.h>
+#include <linux/fb.h>
 #include <linux/sysfs_helpers.h>
 
 #include <asm/cputype.h>
@@ -105,7 +106,10 @@ DEFINE_PER_CPU(cluster_type, cpu_cur_cluster);
 static struct pm_qos_request boot_cpu_qos;
 static struct pm_qos_request min_cpu_qos;
 static struct pm_qos_request max_cpu_qos;
+
+/* CPU pm_qos handling for LCD on&off */
 struct pm_qos_request max_cpu_qos_blank;
+static struct work_struct blank_qos_change;
 
 #ifdef CONFIG_ASV_MARGIN_TEST
 static int set_cpu_freq = 0;
@@ -1158,6 +1162,51 @@ static struct notifier_block exynos_max_qos_notifier = {
 	.notifier_call = exynos_max_qos_handler,
 };
 
+static struct work_struct blank_qos_change;
+
+static void change_blank_cpu_qos(struct work_struct *work)
+{
+	/*
+	 * LCD blank CPU qos is set by exynos-ikcs-cpufreq
+	 * This line of code release max limit when LCD is
+	 * turned on.
+	 */
+#ifdef CONFIG_ARM_EXYNOS_IKS_CLUSTER
+	if (pm_qos_request_active(&max_cpu_qos_blank))
+		pm_qos_remove_request(&max_cpu_qos_blank);
+#endif
+
+	return;
+}
+
+static int fb_state_change(struct notifier_block *nb,
+		unsigned long val, void *data)
+{
+	struct fb_event *evdata = data;
+	unsigned int blank;
+
+	if (val != FB_EVENT_BLANK)
+		return 0;
+
+	blank = *(int *)evdata->data;
+
+	switch (blank) {
+	case FB_BLANK_POWERDOWN:
+		break;
+	case FB_BLANK_UNBLANK:
+		schedule_work(&blank_qos_change);
+		break;
+	default:
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block fb_block = {
+	.notifier_call = fb_state_change,
+};
+
 static int __init exynos_cpufreq_init(void)
 {
 	int ret = -EINVAL;
@@ -1286,6 +1335,13 @@ static int __init exynos_cpufreq_init(void)
 	pm_qos_update_request_timeout(&boot_cpu_qos, 1200000, 40000 * 1000);
 
 	exynos_cpufreq_init_done = true;
+
+	INIT_WORK(&blank_qos_change, change_blank_cpu_qos);
+	fb_register_client(&fb_block);
+
+#ifdef CONFIG_EXYNOS5_DYNAMIC_CPU_HOTPLUG
+	dm_cpu_hotplug_init();
+#endif
 
 	return 0;
 
