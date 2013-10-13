@@ -27,10 +27,15 @@
 
 #include <mach/cpufreq.h>
 
+#include <plat/cpu.h>
+
 /*
  * dbs is used in this file as a shortform for demandbased switching
  * It helps to keep variable names smaller, simpler
  */
+
+#define B_MAX_FREQ	(2000000)
+#define L_MAX_FREQ	(750000)
 
 #define DEF_FREQUENCY_DOWN_DIFFERENTIAL		(10)
 #define DEF_FREQUENCY_UP_THRESHOLD		(80)
@@ -42,11 +47,11 @@
 #define MICRO_FREQUENCY_MIN_SAMPLE_RATE		(80000)
 #define MIN_FREQUENCY_UP_THRESHOLD		(10)
 #define MAX_FREQUENCY_UP_THRESHOLD		(100)
-#define MAX_FREQ_BLANK				(1600000)
+#define MAX_FREQ_BLANK				B_MAX_FREQ
 
 #define DEF_FREQUENCY_UP_THRESHOLD_L		(50)
 #define DEF_FREQUENCY_UP_STEP_LEVEL_B		(1200000)
-#define DEF_FREQUENCY_UP_STEP_LEVEL_L		(750000)
+#define DEF_FREQUENCY_UP_STEP_LEVEL_L		L_MAX_FREQ
 #define DEF_FREQUENCY_DOWN_STEP_LEVEL           (800000)
 #define DEF_FREQUENCY_DOWN_DIFFER_L		(20)
 #define DEF_FREQUENCY_HIGH_ZONE			(1200000)
@@ -54,11 +59,11 @@
 #define MICRO_FREQUENCY_UP_THRESHOLD_H		(90)
 #define MICRO_FREQUENCY_UP_THRESHOLD_L		(60)
 #define MICRO_FREQUENCY_UP_STEP_LEVEL_B		(1200000)
-#define MICRO_FREQUENCY_UP_STEP_LEVEL_L		(750000)
+#define MICRO_FREQUENCY_UP_STEP_LEVEL_L		L_MAX_FREQ
 #define MICRO_FREQUENCY_DOWN_STEP_LEVEL		(250000)
 #define MICRO_FREQUENCY_DOWN_DIFFER_L		(20)
-#define MIN_FREQUENCY_UP_STEP_LEVEL		(250000)
-#define MAX_FREQUENCY_UP_STEP_LEVEL		(1800000)
+#define MIN_FREQUENCY_UP_STEP_LEVEL		(500000)
+#define MAX_FREQUENCY_UP_STEP_LEVEL		B_MAX_FREQ
 
 extern unsigned int step_level_CA7_max;
 
@@ -966,7 +971,7 @@ static void do_dbs_timer(struct work_struct *work)
 			 */
 			struct cpufreq_policy *policy = dbs_info->cur_policy;
 			if (policy->cur >= 1400000)
-				dbs_info->rate_mult = 2;
+				dbs_info->rate_mult = 1;
 			else
 				dbs_info->rate_mult = 1;
 
@@ -1033,7 +1038,7 @@ static int should_io_be_busy(void)
 	return 0;
 }
 
-static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
+static int __ref cpufreq_governor_dbs(struct cpufreq_policy *policy,
 				   unsigned int event)
 {
 	unsigned int cpu = policy->cpu;
