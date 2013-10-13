@@ -131,6 +131,7 @@ extern void dm_cpu_hotplug_init(void);
 extern void exynos_lowpower_for_cluster(cluster_type cluster, bool on);
 extern void reset_lpj_for_cluster(cluster_type cluster);
 extern struct pm_qos_request max_cpu_qos_blank;
+extern struct mutex cpufreq_lock;
 #else
 static inline void reset_lpj_for_cluster(cluster_type cluster) {}
 static inline void exynos_lowpower_for_cluster(cluster_type cluster, bool on) {}
