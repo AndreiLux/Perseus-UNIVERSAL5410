@@ -121,11 +121,25 @@ static ssize_t store_charge_property(struct device *dev,
 
 extern int SIOP_INPUT_LIMIT_CURRENT;
 extern int SIOP_CHARGING_LIMIT_CURRENT;
+extern int mhl_class_usb;
+extern int mhl_class_500;
+extern int mhl_class_900;
+extern int mhl_class_1500;
+
 extern bool unstable_power_detection;
 
-DEVICE_INT_ATTR(siop_input_limit, 0644, SIOP_INPUT_LIMIT_CURRENT);
-DEVICE_INT_ATTR(siop_charge_limit, 0644, SIOP_CHARGING_LIMIT_CURRENT);
-DEVICE_INT_ATTR(unstable_power_detection, 0644, unstable_power_detection);
+#define CHARGE_INT_ATTR(_name, _mode, _var) \
+	{ __ATTR(_name, _mode, device_show_int, device_store_int), &(_var) }
+
+struct dev_ext_attribute static_controls[] = {
+	CHARGE_INT_ATTR(siop_input_limit, 0644, SIOP_INPUT_LIMIT_CURRENT),
+	CHARGE_INT_ATTR(siop_charge_limit, 0644, SIOP_CHARGING_LIMIT_CURRENT),
+	CHARGE_INT_ATTR(mhl_usb_curr, 0644, mhl_class_usb),
+	CHARGE_INT_ATTR(mhl_500_curr, 0644, mhl_class_500),
+	CHARGE_INT_ATTR(mhl_900_curr, 0644, mhl_class_900),
+	CHARGE_INT_ATTR(mhl_1500_curr, 0644, mhl_class_1500),
+	CHARGE_INT_ATTR(unstable_power_detection, 0644, unstable_power_detection)
+};
 
 void charger_control_init(struct sec_battery_info *sec_info)
 {
@@ -137,7 +151,7 @@ void charger_control_init(struct sec_battery_info *sec_info)
 		if (device_create_file(info->dev, &charge_controls[i].attribute))
 			;;
 
-	i = device_create_file(info->dev, &dev_attr_siop_input_limit.attr);
-	i = device_create_file(info->dev, &dev_attr_siop_charge_limit.attr);
-	i = device_create_file(info->dev, &dev_attr_unstable_power_detection.attr);
+	for (i = 0; i < ARRAY_SIZE(static_controls); i++)
+		if (device_create_file(info->dev, &static_controls[i].attr))
+			;;
 }
