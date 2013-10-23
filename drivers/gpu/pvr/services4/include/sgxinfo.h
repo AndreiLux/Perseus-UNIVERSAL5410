@@ -120,10 +120,6 @@ typedef struct _SGX_BRIDGE_INIT_INFO_
 	IMG_HANDLE hKernelClearClipWAPSGRgnHdrMemInfo;
 #endif
 
-#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && defined(FIX_HW_BRN_31559)
-	IMG_HANDLE	hKernelVDMSnapShotBufferMemInfo;
-	IMG_HANDLE	hKernelVDMCtrlStreamBufferMemInfo;
-#endif
 #if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && \
 	defined(FIX_HW_BRN_33657) && defined(SUPPORT_SECURE_33657_FIX)
 	IMG_HANDLE	hKernelVDMStateUpdateBufferMemInfo;
@@ -305,6 +301,10 @@ typedef struct _PVRSRV_TRANSFER_SGX_KICK_
 	IMG_UINT32		ui32CCBDumpWOff;
 #endif
 	IMG_HANDLE		hDevMemContext;
+#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
+	/* Android >JB MR1 doesn't use ahSrcSyncInfo for synchronization */
+	IMG_INT			iFenceFd;
+#endif
 } PVRSRV_TRANSFER_SGX_KICK, *PPVRSRV_TRANSFER_SGX_KICK;
 
 #if defined(SGX_FEATURE_2D_HARDWARE)
@@ -332,6 +332,10 @@ typedef struct _PVRSRV_2D_SGX_KICK_
 	IMG_UINT32		ui32CCBDumpWOff;
 #endif
 	IMG_HANDLE		hDevMemContext;
+#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
+	/* Android >JB MR1 doesn't use ahSrcSyncInfo for synchronization */
+	IMG_INT			iFenceFd;
+#endif
 } PVRSRV_2D_SGX_KICK, *PPVRSRV_2D_SGX_KICK;
 #endif	/* defined(SGX_FEATURE_2D_HARDWARE) */
 #endif	/* defined(TRANSFER_QUEUE) */

@@ -1,7 +1,9 @@
 /*************************************************************************/ /*!
-@Title          SGX kernel services structues/functions
+@File           pvr_sync_user.h
+@Title          Userspace definitions to use the kernel sync driver
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description    SGX initialisation script definitions.
+@Description    Version numbers and strings for PVR Consumer services
+				components.
 @License        Dual MIT/GPLv2
 
 The contents of this file are subject to the MIT license as set out below.
@@ -39,68 +41,77 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
-#ifndef __SGXSCRIPT_H__
-#define __SGXSCRIPT_H__
 
-#include "sgxfeaturedefs.h"
-#if defined (__cplusplus)
-extern "C" {
+#ifndef _PVR_SYNC_USER_H_
+#define _PVR_SYNC_USER_H_
+
+#include <linux/ioctl.h>
+
+#ifdef __KERNEL__
+#include "sgxapi_km.h"
+#else
+#include "sgxapi.h"
 #endif
 
-#define	SGX_MAX_INIT_COMMANDS	64
-#define	SGX_MAX_PRINT_COMMANDS	96
-#define	SGX_MAX_DEINIT_COMMANDS	16
+#include "servicesext.h" // PVRSRV_SYNC_DATA
+#include "img_types.h"
 
-typedef	enum _SGX_INIT_OPERATION
+/* This matches the sw_sync create ioctl data */
+struct PVR_SYNC_CREATE_IOCTL_DATA
 {
-	SGX_INIT_OP_ILLEGAL = 0,
-	SGX_INIT_OP_WRITE_HW_REG,
-	SGX_INIT_OP_READ_HW_REG,
-	SGX_INIT_OP_PRINT_HW_REG,
-#if defined(PDUMP)
-	SGX_INIT_OP_PDUMP_HW_REG,
-#endif
-	SGX_INIT_OP_HALT
-} SGX_INIT_OPERATION;
+	char	name[32];
+	__s32	fence; /* fd of new fence */
+                   /* or fd of already alloc'd fence */
+	__s32	allocdSyncInfo; /* If this is provided (not -1) this points to a fence allocated
+	                         *  by the ALLOC_FENCE ioctl, and it's syncinfo is moved to the newly created
+							 *  fence */
+};
 
-typedef union _SGX_INIT_COMMAND
+struct PVR_SYNC_ALLOC_IOCTL_DATA
 {
-	SGX_INIT_OPERATION eOp;
-	struct {
-		SGX_INIT_OPERATION eOp;
-		IMG_UINT32 ui32Offset;
-		IMG_UINT32 ui32Value;
-	} sWriteHWReg;
-	struct {
-		SGX_INIT_OPERATION eOp;
-		IMG_UINT32 ui32Offset;
-	} sReadHWReg;
-#if defined(PDUMP)
-	struct {
-		SGX_INIT_OPERATION eOp;
-		IMG_UINT32 ui32Offset;
-		IMG_UINT32 ui32Value;
-	} sPDumpHWReg;
-#endif
-} SGX_INIT_COMMAND;
+	char name[32];
+	__s32 fence; /* fd of newly alloc'd fence */
+};
 
-typedef struct _SGX_INIT_SCRIPTS_
+#define PVR_SYNC_DEBUG_MAX_POINTS 3
+
+typedef struct
 {
-	SGX_INIT_COMMAND asInitCommandsPart1[SGX_MAX_INIT_COMMANDS];
-	SGX_INIT_COMMAND asInitCommandsPart2[SGX_MAX_INIT_COMMANDS];
-	SGX_INIT_COMMAND asDeinitCommands[SGX_MAX_DEINIT_COMMANDS];
-#if defined(SGX_FEATURE_MP)
-	SGX_INIT_COMMAND asSGXREGDebugCommandsPart1[SGX_MAX_PRINT_COMMANDS];
-#endif
-	SGX_INIT_COMMAND *apsSGXREGDebugCommandsPart2[SGX_FEATURE_MP_CORE_COUNT_3D];
-} SGX_INIT_SCRIPTS;
-
-#if defined(__cplusplus)
+	IMG_UINT64 ui64Stamp;
+	IMG_UINT32 ui32WriteOpsPendingSnapshot;
 }
-#endif
+PVR_SYNC_DEBUG;
 
-#endif /* __SGXSCRIPT_H__ */
+struct PVR_SYNC_DEBUG_IOCTL_DATA
+{
+	/* Input: Fence to acquire debug for */
+	int						iFenceFD;
 
-/*****************************************************************************
- End of file (sgxscript.h)
-*****************************************************************************/
+	/* Output: Number of points merged into this fence */
+	IMG_UINT32				ui32NumPoints;
+
+	struct
+	{
+		/* Output: Metadata for sync point */
+		PVR_SYNC_DEBUG		sMetaData;
+
+		/* Output: 'Live' sync information. */
+		PVRSRV_SYNC_DATA	sSyncData;
+	}
+	sSync[PVR_SYNC_DEBUG_MAX_POINTS];
+};
+
+#define PVR_SYNC_IOC_MAGIC	'W'
+
+#define PVR_SYNC_IOC_CREATE_FENCE \
+	_IOWR(PVR_SYNC_IOC_MAGIC, 0, struct PVR_SYNC_CREATE_IOCTL_DATA)
+
+#define PVR_SYNC_IOC_DEBUG_FENCE \
+	_IOWR(PVR_SYNC_IOC_MAGIC, 1, struct PVR_SYNC_DEBUG_IOCTL_DATA)
+
+#define PVR_SYNC_IOC_ALLOC_FENCE \
+	_IOWR(PVR_SYNC_IOC_MAGIC, 2, struct PVR_SYNC_ALLOC_IOCTL_DATA)
+
+#define PVRSYNC_MODNAME "pvr_sync"
+
+#endif /* _PVR_SYNC_USER_H_ */

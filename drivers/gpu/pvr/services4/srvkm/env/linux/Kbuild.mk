@@ -82,7 +82,7 @@ pvrsrvkm-y += \
 	services4/srvkm/env/linux/ion.o
 endif
 
-ifeq ($(SUPPORT_ANDROID_SYNC),1)
+ifeq ($(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC),1)
 pvrsrvkm-y += \
 	services4/srvkm/env/linux/pvr_sync.o
 endif

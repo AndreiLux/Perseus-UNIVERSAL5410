@@ -530,11 +530,13 @@ typedef struct PVRSRV_BRIDGE_IN_EXPORTDEVICEMEM_TAG
 /******************************************************************************
  *	'bridge in' map ion handle
  *****************************************************************************/
+#define ION_IMPORT_MAX_FDS 3
 #define ION_IMPORT_MAX_CHUNK_COUNT 3
 typedef struct _PVRSRV_BRIDGE_IN_MAP_ION_HANDLE_
 {
 	IMG_UINT32			ui32BridgeFlags; /* Must be first member of structure */
-	IMG_HANDLE			handle;
+	IMG_UINT32			ui32NumFDs;
+	IMG_INT32			ai32BufferFDs[ION_IMPORT_MAX_FDS];
 	IMG_UINT32			ui32Attribs;
 	IMG_UINT32 			ui32ChunkCount;
 	IMG_SIZE_T 			auiOffset[ION_IMPORT_MAX_CHUNK_COUNT];
@@ -1235,8 +1237,9 @@ typedef struct PVRSRV_BRIDGE_IN_SWAP_DISPCLASS_TO_BUFFER_TAG
 
 } PVRSRV_BRIDGE_IN_SWAP_DISPCLASS_TO_BUFFER;
 
+
 /******************************************************************************
- *	'bridge in' swap to buffer
+ *	'bridge in' swap to buffer 2
  *****************************************************************************/
 typedef struct PVRSRV_BRIDGE_IN_SWAP_DISPCLASS_TO_BUFFER2_TAG
 {
@@ -1253,6 +1256,18 @@ typedef struct PVRSRV_BRIDGE_IN_SWAP_DISPCLASS_TO_BUFFER2_TAG
 	IMG_PVOID			pvPrivData;
 
 } PVRSRV_BRIDGE_IN_SWAP_DISPCLASS_TO_BUFFER2;
+
+
+/******************************************************************************
+ *	'bridge out' swap to buffer 2
+ *****************************************************************************/
+typedef struct PVRSRV_BRIDGE_OUT_SWAP_DISPCLASS_TO_BUFFER2_TAG
+{
+	PVRSRV_ERROR		eError;
+	IMG_HANDLE			hFence;
+
+} PVRSRV_BRIDGE_OUT_SWAP_DISPCLASS_TO_BUFFER2;
+
 
 /******************************************************************************
  *	'bridge in' swap to system buffer (primary)

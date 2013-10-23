@@ -53,6 +53,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "sgxutils.h"
 #include "ttrace.h"
 
+#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
+#include "pvr_sync.h"
+#endif
+
 /*!
 ******************************************************************************
 
@@ -235,7 +239,41 @@ PVRSRV_ERROR SGXDoKickKM(IMG_HANDLE hDevHandle, SGX_CCB_KICK *psCCBKick)
 	}
 #else /* SUPPORT_SGX_GENERALISED_SYNCOBJECTS */
 	/* texture dependencies */
-	psTACmd->ui32NumSrcSyncs = psCCBKick->ui32NumSrcSyncs;
+#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
+	eError = PVRSyncPatchCCBKickSyncInfos(psCCBKick->ahSrcKernelSyncInfo,
+										  psTACmd->asSrcSyncs,
+										  &psCCBKick->ui32NumSrcSyncs);
+	if(eError != PVRSRV_OK)
+	{
+		/* We didn't kick yet, or perform PDUMP processing, so we should
+		 * be able to trivially roll back any changes made to the sync
+		 * data. If we don't do this, we'll wedge services cleanup.
+		 */
+
+		if (psCCBKick->h3DSyncInfo != IMG_NULL)
+		{
+			psSyncInfo = (PVRSRV_KERNEL_SYNC_INFO *)psCCBKick->h3DSyncInfo;
+			psSyncInfo->psSyncData->ui32ReadOpsPending--;
+		}
+
+		if (psCCBKick->hTASyncInfo != IMG_NULL)
+		{
+			psSyncInfo = (PVRSRV_KERNEL_SYNC_INFO *)psCCBKick->hTASyncInfo;
+			psSyncInfo->psSyncData->ui32ReadOpsPending--;
+		}
+
+		if (psCCBKick->hTA3DSyncInfo && psCCBKick->bTADependency)
+		{
+			psSyncInfo = (PVRSRV_KERNEL_SYNC_INFO *)psCCBKick->hTA3DSyncInfo;
+			psSyncInfo->psSyncData->ui32WriteOpsPending--;
+		}
+
+		PVR_DPF((PVR_DBG_ERROR, "SGXDoKickKM: PVRSyncPatchCCBKickSyncInfos failed."));
+		PVR_TTRACE(PVRSRV_TRACE_GROUP_KICK, PVRSRV_TRACE_CLASS_FUNCTION_EXIT,
+				   KICK_TOKEN_DOKICK);
+		return eError;
+	}
+#else /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
 	for (i=0; i<psCCBKick->ui32NumSrcSyncs; i++)
 	{
 		psSyncInfo = (PVRSRV_KERNEL_SYNC_INFO *) psCCBKick->ahSrcKernelSyncInfo[i];
@@ -251,7 +289,9 @@ PVRSRV_ERROR SGXDoKickKM(IMG_HANDLE hDevHandle, SGX_CCB_KICK *psCCBKick)
 		/* Copy ui32WriteOpsPending snapshot into the CCB. */
 		psTACmd->asSrcSyncs[i].ui32WriteOpsPendingVal = psSyncInfo->psSyncData->ui32WriteOpsPending;
 	}
-#endif/* SUPPORT_SGX_GENERALISED_SYNCOBJECTS */
+#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
+	psTACmd->ui32NumSrcSyncs = psCCBKick->ui32NumSrcSyncs;
+#endif /* defined(SUPPORT_SGX_GENERALISED_SYNCOBJECTS) */
 
 	if (psCCBKick->bFirstKickOrResume && psCCBKick->ui32NumDstSyncObjects > 0)
 	{
@@ -506,6 +546,25 @@ PVRSRV_ERROR SGXDoKickKM(IMG_HANDLE hDevHandle, SGX_CCB_KICK *psCCBKick)
 				MAKEUNIQUETAG(psCCBMemInfo));
 		}
 
+		if (psCCBKick->hTA3DSyncInfo != IMG_NULL)
+		{
+			psSyncInfo = (PVRSRV_KERNEL_SYNC_INFO *)psCCBKick->hTA3DSyncInfo;
+
+			PDUMPCOMMENT("Modify TA/3D dependency WOpPendingVal\r\n");
+
+			PDUMPMEM(&psSyncInfo->psSyncData->ui32LastOpDumpVal,
+					psCCBMemInfo,
+					psCCBKick->ui32CCBDumpWOff + offsetof(SGXMKIF_CMDTA_SHARED, sTA3DDependency.ui32WriteOpsPendingVal),
+					sizeof(IMG_UINT32),
+					0,
+					MAKEUNIQUETAG(psCCBMemInfo));
+			
+			if (psCCBKick->bTADependency)
+			{
+				psSyncInfo->psSyncData->ui32LastOpDumpVal++;
+			}
+		}
+
 		if (psCCBKick->hTASyncInfo != IMG_NULL)
 		{
 			psSyncInfo = (PVRSRV_KERNEL_SYNC_INFO *)psCCBKick->hTASyncInfo;
@@ -519,7 +578,7 @@ PVRSRV_ERROR SGXDoKickKM(IMG_HANDLE hDevHandle, SGX_CCB_KICK *psCCBKick)
 					0,
 					MAKEUNIQUETAG(psCCBMemInfo));
 
-			PDUMPCOMMENT("Modify TA/TQ OpPendingVal\r\n");
+			PDUMPCOMMENT("Modify TA/TQ WOpPendingVal\r\n");
 
 			PDUMPMEM(&psSyncInfo->psSyncData->ui32LastOpDumpVal,
 					psCCBMemInfo,
@@ -544,7 +603,7 @@ PVRSRV_ERROR SGXDoKickKM(IMG_HANDLE hDevHandle, SGX_CCB_KICK *psCCBKick)
 					0,
 					MAKEUNIQUETAG(psCCBMemInfo));
 
-			PDUMPCOMMENT("Modify 3D/TQ OpPendingVal\r\n");
+			PDUMPCOMMENT("Modify 3D/TQ WOpPendingVal\r\n");
 
 			PDUMPMEM(&psSyncInfo->psSyncData->ui32LastOpDumpVal,
 					psCCBMemInfo,

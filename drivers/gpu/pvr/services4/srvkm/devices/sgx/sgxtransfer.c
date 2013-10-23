@@ -58,6 +58,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "sgxutils.h"
 #include "ttrace.h"
 
+#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
+#include "pvr_sync.h"
+#endif
+
 IMG_EXPORT PVRSRV_ERROR SGXSubmitTransferKM(IMG_HANDLE hDevHandle, PVRSRV_TRANSFER_SGX_KICK *psKick)
 {
 	PVRSRV_KERNEL_MEM_INFO		*psCCBMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psKick->hCCBMemInfo;
@@ -206,9 +210,6 @@ IMG_EXPORT PVRSRV_ERROR SGXSubmitTransferKM(IMG_HANDLE hDevHandle, PVRSRV_TRANSF
 		}
 	}
 
-	psSharedTransferCmd->ui32NumSrcSyncs = ui32RealSrcSyncNum; 
-	psSharedTransferCmd->ui32NumDstSyncs = ui32RealDstSyncNum; 
-
 	if ((psKick->ui32Flags & SGXMKIF_TQFLAGS_KEEPPENDING) == 0UL)
 	{
 		IMG_UINT32 i = 0;
@@ -278,7 +279,86 @@ IMG_EXPORT PVRSRV_ERROR SGXSubmitTransferKM(IMG_HANDLE hDevHandle, PVRSRV_TRANSF
 				psSyncInfo->psSyncData->ui32WriteOpsPending++;
 			}
 		}
+
+#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
+		if (ui32RealDstSyncNum < SGX_MAX_TRANSFER_SYNC_OPS - 2 && psKick->iFenceFd > 0)
+		{
+			IMG_HANDLE ahSyncInfo[SGX_MAX_SRC_SYNCS_TA];
+			PVRSRV_DEVICE_SYNC_OBJECT *apsDevSyncs = &psSharedTransferCmd->asDstSyncs[ui32RealDstSyncNum];
+			IMG_UINT32 ui32NumSrcSyncs = 1;
+			IMG_UINT32 i;
+			ahSyncInfo[0] = (IMG_HANDLE)(psKick->iFenceFd - 1);
+
+			eError = PVRSyncPatchTransferSyncInfos(ahSyncInfo, apsDevSyncs, &ui32NumSrcSyncs);
+			if (eError != PVRSRV_OK)
+			{
+				/* We didn't kick yet, or perform PDUMP processing, so we should
+				 * be able to trivially roll back any changes made to the sync
+				 * data. If we don't do this, we'll wedge services cleanup.
+				 */
+
+				for (loop = 0; loop < psKick->ui32NumDstSync; loop++)
+				{
+					if (abDstSyncEnable[loop])
+					{
+						psSyncInfo = (PVRSRV_KERNEL_SYNC_INFO *)psKick->ahDstSyncInfo[loop];
+						psSyncInfo->psSyncData->ui32WriteOpsPending--;
+					}
+				}
+
+				for (loop = 0; loop < psKick->ui32NumSrcSync; loop++)
+				{
+					if (abSrcSyncEnable[loop])
+					{
+						psSyncInfo = (PVRSRV_KERNEL_SYNC_INFO *)psKick->ahSrcSyncInfo[loop];
+						psSyncInfo->psSyncData->ui32ReadOpsPending--;
+					}
+				}
+
+				if (psKick->h3DSyncInfo != IMG_NULL)
+				{
+					psSyncInfo = (PVRSRV_KERNEL_SYNC_INFO *)psKick->h3DSyncInfo;
+					psSyncInfo->psSyncData->ui32WriteOpsPending++;
+				}
+
+				if (psKick->hTASyncInfo != IMG_NULL)
+				{
+					psSyncInfo = (PVRSRV_KERNEL_SYNC_INFO *)psKick->hTASyncInfo;
+					psSyncInfo->psSyncData->ui32WriteOpsPending--;
+				}
+
+				PVR_DPF((PVR_DBG_ERROR, "SGXSubmitTransferKM: PVRSyncPatchCCBKickSyncInfos failed."));
+				PVR_TTRACE(PVRSRV_TRACE_GROUP_TRANSFER, PVRSRV_TRACE_CLASS_FUNCTION_EXIT,
+						   TRANSFER_TOKEN_SUBMIT);
+				return eError;
+			}
+
+			/* Find a free dst sync to slot in our extra sync */
+			for (loop = 0; loop < psKick->ui32NumDstSync; loop++)
+			{
+				if (abDstSyncEnable[loop])
+					break;
+			}
+
+			/* We shouldn't be in this code path if ui32RealDstSyncNum
+			 * didn't allow for at least two free synchronization slots.
+			 */
+			PVR_ASSERT(loop + ui32NumSrcSyncs <= SGX_MAX_TRANSFER_SYNC_OPS);
+
+			/* Slot in the extra dst syncs */
+			for (i = 0; i < ui32NumSrcSyncs; i++)
+			{
+				psKick->ahDstSyncInfo[loop + i] = ahSyncInfo[i];
+				abDstSyncEnable[loop + i] = IMG_TRUE;
+				psKick->ui32NumDstSync++;
+				ui32RealDstSyncNum++;
+			}
+		}
+#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
 	}
+
+	psSharedTransferCmd->ui32NumSrcSyncs = ui32RealSrcSyncNum; 
+	psSharedTransferCmd->ui32NumDstSyncs = ui32RealDstSyncNum; 
 
 #if defined(PDUMP)
 	if (PDumpIsCaptureFrameKM()
@@ -627,6 +707,9 @@ IMG_EXPORT PVRSRV_ERROR SGXSubmit2DKM(IMG_HANDLE hDevHandle, PVRSRV_2D_SGX_KICK 
 		ps2DCmd->sDstSyncData.sWriteOpsCompleteDevVAddr = psSyncInfo->sWriteOpsCompleteDevVAddr;
 		ps2DCmd->sDstSyncData.sReadOpsCompleteDevVAddr = psSyncInfo->sReadOpsCompleteDevVAddr;
 		ps2DCmd->sDstSyncData.sReadOps2CompleteDevVAddr = psSyncInfo->sReadOps2CompleteDevVAddr;
+
+		/* We can do this immediately as we only have one */
+		psSyncInfo->psSyncData->ui32WriteOpsPending++;
 	}
 	else
 	{
@@ -640,12 +723,6 @@ IMG_EXPORT PVRSRV_ERROR SGXSubmit2DKM(IMG_HANDLE hDevHandle, PVRSRV_2D_SGX_KICK 
 	{
 		psSyncInfo = psKick->ahSrcSyncInfo[i];
 		psSyncInfo->psSyncData->ui32ReadOpsPending++;
-	}
-
-	if (psKick->hDstSyncInfo != IMG_NULL)
-	{
-		psSyncInfo = psKick->hDstSyncInfo;
-		psSyncInfo->psSyncData->ui32WriteOpsPending++;
 	}
 
 #if defined(PDUMP)

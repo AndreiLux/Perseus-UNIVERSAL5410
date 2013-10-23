@@ -48,9 +48,7 @@
 #include "pvr_debug.h"
 
 #include "s3c_lcd.h"
-#if !defined(CONFIG_FB_EXYNOS_FIMD_SYSMMU_DISABLE)
 #define S3C_DC_IS_PHYS_DISCONTIG
-#endif
 #if defined(S3C_DC_IS_PHYS_DISCONTIG)
 #include "s3c_fb.h"
 #endif
@@ -592,8 +590,8 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 	psSwapChain = (S3C_SWAPCHAIN *)kmalloc(sizeof(S3C_SWAPCHAIN),GFP_KERNEL);
 	if(!psSwapChain)
 		return (PVRSRV_ERROR_OUT_OF_MEMORY);
-
 	psBuffer = (S3C_FRAME_BUFFER*)kmalloc(sizeof(S3C_FRAME_BUFFER) * ui32BufferCount, GFP_KERNEL);
+
 	if(!psBuffer)
 	{
 		kfree(psSwapChain);
@@ -1148,7 +1146,7 @@ int s3c_displayclass_init(void)
 			goto err_out;
 		}
 
-		pfnCmdProcList[DC_FLIP_COMMAND] = ProcessFlip;
+		pfnCmdProcList[DC_FLIP_COMMAND] = (PFN_CMD_PROC)ProcessFlip;
 		aui32SyncCountList[DC_FLIP_COMMAND][0] = 0;
 		aui32SyncCountList[DC_FLIP_COMMAND][1] = 2;
 

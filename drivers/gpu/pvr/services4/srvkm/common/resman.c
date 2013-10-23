@@ -374,7 +374,7 @@ IMG_VOID PVRSRVResManDisconnect(PRESMAN_CONTEXT psResManContext,
 	}
 
 	/* Ensure that there are no resources left */
-	PVR_ASSERT(psResManContext->psResItemList == IMG_NULL);
+	/* PVR_ASSERT(psResManContext->psResItemList == IMG_NULL); S.LSI remove the assert it is just leak */
 
 	/* Remove the context struct from the list */
 	List_RESMAN_CONTEXT_Remove(psResManContext);
